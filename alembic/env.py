@@ -18,6 +18,8 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 from src.models.repository import Repository  # noqa: F401
 from src.models.analysis import Analysis      # noqa: F401
+from src.models.repo_config import RepoConfig  # noqa: F401
+from src.models.gate_decision import GateDecision  # noqa: F401
 from src.database import Base
 from src.config import settings
 
