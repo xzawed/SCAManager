@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Overview — SCAManager{% endblock %}
+{% block content %}
+<h2>리포지토리 현황</h2>
+{% if repos %}
+<div class="card">
+  <table>
+    <thead><tr><th>리포지토리</th><th>분석 수</th><th>최근 점수</th><th>등급</th><th></th></tr></thead>
+    <tbody>
+    {% for item in repos %}
+    <tr>
+      <td><a href="/repos/{{ item.full_name }}">{{ item.full_name }}</a></td>
+      <td>{{ item.analysis_count }}</td>
+      <td>{{ item.latest_score if item.latest_score is not none else "—" }}</td>
+      <td>{% if item.latest_grade %}<span class="grade grade-{{ item.latest_grade }}">{{ item.latest_grade }}</span>{% endif %}</td>
+      <td><a href="/repos/{{ item.full_name }}/settings">설정</a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card"><p>등록된 리포지토리가 없습니다. GitHub Webhook을 설정하면 자동으로 등록됩니다.</p></div>
+{% endif %}
+{% endblock %}

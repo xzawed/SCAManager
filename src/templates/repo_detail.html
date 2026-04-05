@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}{{ repo_name }} — SCAManager{% endblock %}
+{% block content %}
+<h2>{{ repo_name }}</h2>
+<div class="card"><canvas id="scoreChart" height="80"></canvas></div>
+<div class="card">
+  <h3>분석 이력</h3>
+  <table>
+    <thead><tr><th>날짜</th><th>커밋</th><th>PR</th><th>점수</th><th>등급</th></tr></thead>
+    <tbody>
+    {% for a in analyses %}
+    <tr>
+      <td>{{ a.created_at[:10] if a.created_at else "—" }}</td>
+      <td><code>{{ a.commit_sha[:7] }}</code></td>
+      <td>{% if a.pr_number %}#{{ a.pr_number }}{% else %}—{% endif %}</td>
+      <td>{{ a.score }}</td>
+      <td><span class="grade grade-{{ a.grade }}">{{ a.grade }}</span></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+new Chart(document.getElementById('scoreChart'), {
+  type: 'line',
+  data: {
+    labels: {{ chart_labels | tojson }},
+    datasets: [{ label: '점수', data: {{ chart_scores | tojson }},
+      borderColor: '#0066cc', backgroundColor: 'rgba(0,102,204,0.1)',
+      tension: 0.3, fill: true }]
+  },
+  options: { scales: { y: { min: 0, max: 100 } }, plugins: { legend: { display: false } } }
+});
+</script>
+{% endblock %}

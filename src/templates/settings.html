@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}설정 — {{ repo_name }}{% endblock %}
+{% block content %}
+<h2>{{ repo_name }} 설정</h2>
+<div class="card">
+  <form method="post" action="/repos/{{ repo_name }}/settings">
+    <div style="margin-bottom:1rem">
+      <label><strong>Gate 모드</strong></label><br>
+      <select name="gate_mode" style="padding:.4rem;margin-top:.3rem">
+        <option value="disabled" {% if config.gate_mode == "disabled" %}selected{% endif %}>비활성화</option>
+        <option value="auto" {% if config.gate_mode == "auto" %}selected{% endif %}>자동</option>
+        <option value="semi-auto" {% if config.gate_mode == "semi-auto" %}selected{% endif %}>반자동 (Telegram)</option>
+      </select>
+    </div>
+    <div style="margin-bottom:1rem">
+      <label><strong>자동 승인 임계값</strong></label><br>
+      <input type="number" name="auto_approve_threshold" value="{{ config.auto_approve_threshold }}" min="0" max="100" style="padding:.4rem;margin-top:.3rem">
+    </div>
+    <div style="margin-bottom:1rem">
+      <label><strong>자동 반려 임계값</strong></label><br>
+      <input type="number" name="auto_reject_threshold" value="{{ config.auto_reject_threshold }}" min="0" max="100" style="padding:.4rem;margin-top:.3rem">
+    </div>
+    <div style="margin-bottom:1rem">
+      <label><strong>Telegram Chat ID (반자동 모드)</strong></label><br>
+      <input type="text" name="notify_chat_id" value="{{ config.notify_chat_id or '' }}" placeholder="-100xxxxxxxxx" style="padding:.4rem;margin-top:.3rem;width:300px">
+    </div>
+    <button type="submit" class="btn btn-primary">저장</button>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,76 @@
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+from src.database import SessionLocal
+from src.models.repository import Repository
+from src.models.analysis import Analysis
+from src.config_manager.manager import get_repo_config, upsert_repo_config, RepoConfigData
+
+templates = Jinja2Templates(directory="src/templates")
+router = APIRouter()
+
+
+@router.get("/", response_class=HTMLResponse)
+def overview(request: Request):
+    with SessionLocal() as db:
+        repos = db.query(Repository).order_by(Repository.created_at.desc()).all()
+        repo_data = []
+        for r in repos:
+            latest = (db.query(Analysis).filter(Analysis.repo_id == r.id)
+                      .order_by(Analysis.created_at.desc()).first())
+            count = db.query(Analysis).filter(Analysis.repo_id == r.id).count()
+            repo_data.append({
+                "full_name": r.full_name,
+                "analysis_count": count,
+                "latest_score": latest.score if latest else None,
+                "latest_grade": latest.grade if latest else None,
+            })
+    return templates.TemplateResponse(request, "overview.html", {"repos": repo_data})
+
+
+@router.get("/repos/{repo_name:path}/settings", response_class=HTMLResponse)
+def repo_settings(request: Request, repo_name: str):
+    with SessionLocal() as db:
+        repo = db.query(Repository).filter(Repository.full_name == repo_name).first()
+        if not repo:
+            raise HTTPException(status_code=404, detail="Repository not found")
+        config = get_repo_config(db, repo_name)
+    return templates.TemplateResponse(request, "settings.html", {
+        "repo_name": repo_name, "config": config,
+    })
+
+
+@router.post("/repos/{repo_name:path}/settings")
+async def update_repo_settings(request: Request, repo_name: str):
+    form = await request.form()
+    with SessionLocal() as db:
+        upsert_repo_config(db, RepoConfigData(
+            repo_full_name=repo_name,
+            gate_mode=form.get("gate_mode", "disabled"),
+            auto_approve_threshold=int(form.get("auto_approve_threshold", 75)),
+            auto_reject_threshold=int(form.get("auto_reject_threshold", 50)),
+            notify_chat_id=form.get("notify_chat_id") or None,
+        ))
+    return RedirectResponse(url=f"/repos/{repo_name}/settings", status_code=303)
+
+
+@router.get("/repos/{repo_name:path}", response_class=HTMLResponse)
+def repo_detail(request: Request, repo_name: str):
+    with SessionLocal() as db:
+        repo = db.query(Repository).filter(Repository.full_name == repo_name).first()
+        if not repo:
+            raise HTTPException(status_code=404, detail="Repository not found")
+        analyses = (db.query(Analysis).filter(Analysis.repo_id == repo.id)
+                    .order_by(Analysis.created_at.desc()).limit(30).all())
+        analyses_data = [
+            {"commit_sha": a.commit_sha, "pr_number": a.pr_number,
+             "score": a.score, "grade": a.grade,
+             "created_at": a.created_at.isoformat() if a.created_at else None}
+            for a in analyses
+        ]
+        rev = list(reversed(analyses_data))
+    return templates.TemplateResponse(request, "repo_detail.html", {
+        "repo_name": repo_name, "analyses": analyses_data,
+        "chart_labels": [a["created_at"][:10] if a["created_at"] else "" for a in rev],
+        "chart_scores": [a["score"] for a in rev],
+    })
