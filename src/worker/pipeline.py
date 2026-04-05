@@ -12,6 +12,8 @@ from src.notifier.github_comment import post_pr_comment
 from src.models.repository import Repository
 from src.models.analysis import Analysis
 from src.gate.engine import run_gate_check
+from src.notifier.n8n import notify_n8n
+from src.config_manager.manager import get_repo_config
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +57,7 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
 
         score_result = calculate_score(analysis_results, ai_review=ai_review)
 
+        n8n_url: str | None = None
         db: Session = SessionLocal()
         try:
             repo = db.query(Repository).filter_by(full_name=repo_name).first()
@@ -99,6 +102,8 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
             db.commit()
             db.refresh(analysis)
 
+            n8n_url = get_repo_config(db, repo_name).n8n_webhook_url
+
             # Gate Engine (PR 이벤트만)
             if pr_number is not None:
                 try:
@@ -136,6 +141,16 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
                     score_result=score_result,
                     analysis_results=analysis_results,
                     ai_review=ai_review,
+                )
+            )
+        if n8n_url:
+            notify_tasks.append(
+                notify_n8n(
+                    webhook_url=n8n_url,
+                    repo_full_name=repo_name,
+                    commit_sha=commit_sha,
+                    pr_number=pr_number,
+                    score_result=score_result,
                 )
             )
         results = await asyncio.gather(*notify_tasks, return_exceptions=True)

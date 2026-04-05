@@ -171,13 +171,43 @@ async def test_pipeline_calls_gate_for_pr(mock_deps):
 
     mock_db = mock_deps["db"]
     mock_db.query.return_value.filter_by.return_value.first.side_effect = [
-        MagicMock(id=1), None
+        MagicMock(id=1), None, None
     ]
     mock_db.refresh = MagicMock()
 
     with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock) as mock_gate:
-        await run_analysis_pipeline("pull_request", PR_DATA)
-        mock_gate.assert_called_once()
+        with patch("src.worker.pipeline.get_repo_config",
+                   return_value=MagicMock(n8n_webhook_url=None)):
+            await run_analysis_pipeline("pull_request", PR_DATA)
+            mock_gate.assert_called_once()
+
+
+async def test_pipeline_calls_n8n_when_url_set(mock_deps):
+    from src.worker.pipeline import run_analysis_pipeline
+    from src.analyzer.ai_review import AiReviewResult
+    from src.scorer.calculator import ScoreResult
+
+    mock_deps["push"].return_value = [MagicMock(filename="a.py", content="x=1", patch="@@ +1")]
+    mock_deps["ai"].return_value = AiReviewResult(commit_score=15, ai_score=15, has_tests=False, summary="ok")
+    mock_deps["score"].return_value = ScoreResult(
+        total=80, grade="B", code_quality_score=25, security_score=20, breakdown={}
+    )
+
+    mock_db = mock_deps["db"]
+    mock_db.query.return_value.filter_by.return_value.first.side_effect = [
+        MagicMock(id=1), None, None
+    ]
+    mock_db.refresh = MagicMock()
+
+    from src.config_manager.manager import RepoConfigData
+    with patch("src.worker.pipeline.get_repo_config",
+               return_value=RepoConfigData(repo_full_name="owner/repo",
+                                           n8n_webhook_url="https://n8n.test/webhook/x")):
+        with patch("src.worker.pipeline.notify_n8n", new_callable=AsyncMock) as mock_n8n:
+            with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
+                await run_analysis_pipeline("push", PUSH_DATA)
+                mock_n8n.assert_called_once()
+                assert mock_n8n.call_args.kwargs["webhook_url"] == "https://n8n.test/webhook/x"
 
 
 async def test_pipeline_skips_gate_for_push(mock_deps):
@@ -193,10 +223,12 @@ async def test_pipeline_skips_gate_for_push(mock_deps):
 
     mock_db = mock_deps["db"]
     mock_db.query.return_value.filter_by.return_value.first.side_effect = [
-        MagicMock(id=1), None
+        MagicMock(id=1), None, None
     ]
     mock_db.refresh = MagicMock()
 
-    with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock) as mock_gate:
-        await run_analysis_pipeline("push", PUSH_DATA)
-        mock_gate.assert_not_called()
+    with patch("src.worker.pipeline.get_repo_config",
+               return_value=MagicMock(n8n_webhook_url=None)):
+        with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock) as mock_gate:
+            await run_analysis_pipeline("push", PUSH_DATA)
+            mock_gate.assert_not_called()
