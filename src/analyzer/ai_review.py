@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 
 import anthropic
@@ -72,11 +73,10 @@ async def review_code(
 def _parse_response(text: str) -> AiReviewResult:
     try:
         cleaned = text.strip()
-        if cleaned.startswith("```"):
-            parts = cleaned.split("```")
-            cleaned = parts[1]
-            if cleaned.startswith("json"):
-                cleaned = cleaned[4:]
+        # 마크다운 코드 블록 내 JSON 추출 (앞에 설명 텍스트가 있어도 처리)
+        block_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", cleaned, re.DOTALL)
+        if block_match:
+            cleaned = block_match.group(1)
         data = json.loads(cleaned)
         return AiReviewResult(
             commit_score=max(0, min(20, int(data.get("commit_message_score", 15)))),

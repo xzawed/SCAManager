@@ -121,7 +121,10 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
                     ai_review=ai_review,
                 )
             )
-        await asyncio.gather(*notify_tasks)
+        results = await asyncio.gather(*notify_tasks, return_exceptions=True)
+        for exc in results:
+            if isinstance(exc, Exception):
+                logger.error("Notification task failed: %s", exc)
 
     except Exception:
         logger.exception("Analysis pipeline failed for event=%s", event)
