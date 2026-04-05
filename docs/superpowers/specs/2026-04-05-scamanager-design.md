@@ -1,8 +1,9 @@
 # SCAManager — 시스템 설계 문서
 
 **작성일:** 2026-04-05  
-**상태:** 승인됨  
-**기술 스택:** Python + FastAPI, PostgreSQL, Railway
+**최종 업데이트:** 2026-04-05  
+**상태:** Phase 1+2 완료, Phase 3 예정  
+**기술 스택:** Python 3.12 + FastAPI, PostgreSQL, Railway
 
 ---
 
@@ -220,8 +221,19 @@ repo_configs     — repo_id, 설정 JSON, 수정일
 
 ## 9. 구현 순서 (단계별)
 
-1. **Phase 1**: Webhook 수신 → 정적 분석 → Telegram 알림 (MVP)
-2. **Phase 2**: Claude AI 리뷰 + Scorer + GitHub PR Comment
-3. **Phase 3**: PR Gate Engine (자동/반자동) + Config Manager
-4. **Phase 4**: Dashboard API + Web UI
-5. **Phase 5**: n8n 연동 + 외부 REST API + 통계 고도화
+| Phase | 내용 | 상태 | 테스트 |
+|-------|------|------|--------|
+| Phase 1 | Webhook 수신 → 정적 분석 → Telegram 알림 (MVP) | ✅ 완료 | 35개 |
+| Phase 2 | Claude AI 리뷰 + Scorer + GitHub PR Comment | ✅ 완료 | 65개 |
+| Phase 3 | PR Gate Engine (자동/반자동) + Config Manager | 예정 | — |
+| Phase 4 | Dashboard API + Web UI (Jinja2 + Chart.js) | 예정 | — |
+| Phase 5 | n8n 연동 + 외부 REST API + 통계 고도화 | 예정 | — |
+
+### Phase 2 구현 내용 (2026-04-05 완료)
+
+- `src/analyzer/ai_review.py`: Claude Haiku API로 diff + 커밋 메시지 분석, JSON 응답 파싱
+- `src/notifier/github_comment.py`: httpx로 GitHub REST API 호출, PR에 마크다운 리포트 게시
+- `src/scorer/calculator.py`: AI 리뷰 점수(커밋20 + 방향성20 + 테스트10) 실제 반영
+- `src/worker/pipeline.py`: `asyncio.gather` 병렬 분석, `return_exceptions=True` 알림 독립성
+- `src/config.py`: `ANTHROPIC_API_KEY` 추가, `postgres://` → `postgresql://` 자동 변환
+- `src/main.py`: FastAPI lifespan으로 DB 마이그레이션 자동화 (Railway 배포 안정성)
