@@ -11,6 +11,7 @@ from src.notifier.telegram import send_analysis_result
 from src.notifier.github_comment import post_pr_comment
 from src.models.repository import Repository
 from src.models.analysis import Analysis
+from src.gate.engine import run_gate_check
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +97,22 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
             )
             db.add(analysis)
             db.commit()
+            db.refresh(analysis)
+
+            # Gate Engine (PR 이벤트만)
+            if pr_number is not None:
+                try:
+                    await run_gate_check(
+                        db=db,
+                        github_token=settings.github_token,
+                        telegram_bot_token=settings.telegram_bot_token,
+                        repo_full_name=repo_name,
+                        pr_number=pr_number,
+                        analysis_id=analysis.id,
+                        score_result=score_result,
+                    )
+                except Exception as exc:
+                    logger.error("Gate check failed: %s", exc)
         finally:
             db.close()
 

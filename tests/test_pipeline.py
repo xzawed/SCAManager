@@ -156,3 +156,47 @@ async def test_db_result_stores_ai_summary(mock_deps):
 
     analysis_added = mock_deps["db"].add.call_args_list[-1][0][0]
     assert "ai_summary" in analysis_added.result
+
+
+async def test_pipeline_calls_gate_for_pr(mock_deps):
+    from src.worker.pipeline import run_analysis_pipeline
+    from src.analyzer.ai_review import AiReviewResult
+    from src.scorer.calculator import ScoreResult
+
+    mock_deps["pr"].return_value = [MagicMock(filename="a.py", content="x=1", patch="@@ +1")]
+    mock_deps["ai"].return_value = AiReviewResult(commit_score=15, ai_score=15, has_tests=False, summary="ok")
+    mock_deps["score"].return_value = ScoreResult(
+        total=80, grade="B", code_quality_score=25, security_score=20, breakdown={}
+    )
+
+    mock_db = mock_deps["db"]
+    mock_db.query.return_value.filter_by.return_value.first.side_effect = [
+        MagicMock(id=1), None
+    ]
+    mock_db.refresh = MagicMock()
+
+    with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock) as mock_gate:
+        await run_analysis_pipeline("pull_request", PR_DATA)
+        mock_gate.assert_called_once()
+
+
+async def test_pipeline_skips_gate_for_push(mock_deps):
+    from src.worker.pipeline import run_analysis_pipeline
+    from src.analyzer.ai_review import AiReviewResult
+    from src.scorer.calculator import ScoreResult
+
+    mock_deps["push"].return_value = [MagicMock(filename="a.py", content="x=1", patch="@@ +1")]
+    mock_deps["ai"].return_value = AiReviewResult(commit_score=15, ai_score=15, has_tests=False, summary="ok")
+    mock_deps["score"].return_value = ScoreResult(
+        total=80, grade="B", code_quality_score=25, security_score=20, breakdown={}
+    )
+
+    mock_db = mock_deps["db"]
+    mock_db.query.return_value.filter_by.return_value.first.side_effect = [
+        MagicMock(id=1), None
+    ]
+    mock_db.refresh = MagicMock()
+
+    with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock) as mock_gate:
+        await run_analysis_pipeline("push", PUSH_DATA)
+        mock_gate.assert_not_called()
