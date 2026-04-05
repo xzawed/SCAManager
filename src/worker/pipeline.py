@@ -1,20 +1,37 @@
+import asyncio
 import logging
 from sqlalchemy.orm import Session
 from src.database import SessionLocal
 from src.config import settings
-from src.github_client.diff import get_pr_files, get_push_files
-from src.analyzer.static import analyze_file
+from src.github_client.diff import get_pr_files, get_push_files, ChangedFile
+from src.analyzer.static import analyze_file, StaticAnalysisResult
+from src.analyzer.ai_review import review_code
 from src.scorer.calculator import calculate_score
 from src.notifier.telegram import send_analysis_result
+from src.notifier.github_comment import post_pr_comment
 from src.models.repository import Repository
 from src.models.analysis import Analysis
 
 logger = logging.getLogger(__name__)
 
 
+def _extract_commit_message(event: str, data: dict) -> str:
+    if event == "pull_request":
+        return data.get("pull_request", {}).get("title", "")
+    commits = data.get("commits", [])
+    return commits[0]["message"] if commits else ""
+
+
+async def _run_static_analysis(files: list[ChangedFile]) -> list[StaticAnalysisResult]:
+    return await asyncio.to_thread(
+        lambda: [analyze_file(f.filename, f.content) for f in files]
+    )
+
+
 async def run_analysis_pipeline(event: str, data: dict) -> None:
     try:
         repo_name: str = data["repository"]["full_name"]
+        commit_message = _extract_commit_message(event, data)
 
         if event == "pull_request":
             pr_number: int | None = data["number"]
@@ -29,8 +46,13 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
             logger.info("No Python files changed in %s @ %s", repo_name, commit_sha)
             return
 
-        analysis_results = [analyze_file(f.filename, f.content) for f in files]
-        score_result = calculate_score(analysis_results)
+        patches = [f.patch for f in files if f.patch]
+        analysis_results, ai_review = await asyncio.gather(
+            _run_static_analysis(files),
+            review_code(settings.anthropic_api_key, commit_message, patches),
+        )
+
+        score_result = calculate_score(analysis_results, ai_review=ai_review)
 
         db: Session = SessionLocal()
         try:
@@ -58,6 +80,8 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
                 grade=score_result.grade,
                 result={
                     "breakdown": score_result.breakdown,
+                    "ai_summary": ai_review.summary,
+                    "ai_suggestions": ai_review.suggestions,
                     "issues": [
                         {
                             "tool": i.tool,
@@ -75,15 +99,32 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
         finally:
             db.close()
 
-        await send_analysis_result(
-            bot_token=settings.telegram_bot_token,
-            chat_id=settings.telegram_chat_id,
-            repo_name=repo_name,
-            commit_sha=commit_sha,
-            score_result=score_result,
-            analysis_results=analysis_results,
-            pr_number=pr_number,
-        )
+        notify_tasks = [
+            send_analysis_result(
+                bot_token=settings.telegram_bot_token,
+                chat_id=settings.telegram_chat_id,
+                repo_name=repo_name,
+                commit_sha=commit_sha,
+                score_result=score_result,
+                analysis_results=analysis_results,
+                pr_number=pr_number,
+            )
+        ]
+        if pr_number is not None:
+            notify_tasks.append(
+                post_pr_comment(
+                    github_token=settings.github_token,
+                    repo_name=repo_name,
+                    pr_number=pr_number,
+                    score_result=score_result,
+                    analysis_results=analysis_results,
+                    ai_review=ai_review,
+                )
+            )
+        results = await asyncio.gather(*notify_tasks, return_exceptions=True)
+        for exc in results:
+            if isinstance(exc, Exception):
+                logger.error("Notification task failed: %s", exc)
 
     except Exception:
         logger.exception("Analysis pipeline failed for event=%s", event)

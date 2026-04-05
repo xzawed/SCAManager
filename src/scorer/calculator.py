@@ -1,5 +1,7 @@
+from __future__ import annotations
 from dataclasses import dataclass
 from src.analyzer.static import StaticAnalysisResult
+from src.analyzer.ai_review import AiReviewResult
 
 
 @dataclass
@@ -11,7 +13,10 @@ class ScoreResult:
     breakdown: dict
 
 
-def calculate_score(analysis_results: list[StaticAnalysisResult]) -> ScoreResult:
+def calculate_score(
+    analysis_results: list[StaticAnalysisResult],
+    ai_review: AiReviewResult | None = None,
+) -> ScoreResult:
     all_issues = [issue for r in analysis_results for issue in r.issues]
 
     pylint_errors = sum(1 for i in all_issues if i.tool == "pylint" and i.severity == "error")
@@ -23,10 +28,15 @@ def calculate_score(analysis_results: list[StaticAnalysisResult]) -> ScoreResult
     code_quality_score = max(0, 30 - pylint_errors * 5 - pylint_warnings * 1 - flake8_warnings * 1)
     security_score = max(0, 20 - bandit_errors * 10 - bandit_warnings * 3)
 
-    # Phase 1: AI/커밋/테스트 점수는 Phase 2에서 구현, 현재 고정값
-    commit_score = 15
-    ai_score = 15
-    test_score = 5
+    if ai_review is not None:
+        commit_score = ai_review.commit_score
+        ai_score = ai_review.ai_score
+        test_score = 10 if ai_review.has_tests else 0
+    else:
+        # AI 리뷰 없을 때 Phase 1 호환 기본값
+        commit_score = 15
+        ai_score = 15
+        test_score = 5
 
     total = code_quality_score + security_score + commit_score + ai_score + test_score
 

@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     github_token: str
     telegram_bot_token: str
     telegram_chat_id: str
+    anthropic_api_key: str = ""  # 빈 문자열이면 AI 리뷰 건너뜀
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
