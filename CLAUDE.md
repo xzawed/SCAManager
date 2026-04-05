@@ -251,6 +251,22 @@ Railway 대시보드 설정:
 - **Hook 신뢰**: `src/` 파일 편집 후 PostToolUse Hook이 자동 실행하는 pytest 결과를 확인한다. 실패 시 다음 단계로 진행하지 않는다.
 - **Phase 완료 조건**: 테스트 전체 통과 + `/lint` 통과 + (파이프라인 변경 시 `pipeline-reviewer` 승인) 세 조건이 모두 충족될 때만 Phase 완료를 선언한다.
 
+### 모바일 환경 보호 — 수정 금지 파일
+
+아래 파일들은 자동화 테스트로 검증이 불가능한 고위험 영역이다.
+**`pytest, fastapi, sqlalchemy`가 import 불가능한 환경(테스트 환경 미구성)에서는 절대 수정하지 않는다.**
+PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한다.
+
+| 파일/경로 | 위험 유형 | 차단 조건 |
+|-----------|----------|----------|
+| `alembic/versions/` | DB 스키마 손상, 데이터 손실 | 테스트 환경 없을 때 |
+| `src/templates/*.html` | Jinja2 렌더링 오류 (pytest 미감지) | 테스트 환경 없을 때 |
+| `railway.toml` | 프로덕션 배포 실패 | 테스트 환경 없을 때 |
+| `Procfile` | 프로덕션 시작 명령 오류 | 테스트 환경 없을 때 |
+| `alembic.ini` | Alembic 경로 설정 오류 | 테스트 환경 없을 때 |
+
+**예외:** `make test` 가 정상 실행되는 환경(로컬 PC, GitHub Codespaces)에서는 모든 파일 수정이 허용된다.
+
 ### 작업 유형별 필수 실행 순서
 
 **1. 새 기능 구현 시**
