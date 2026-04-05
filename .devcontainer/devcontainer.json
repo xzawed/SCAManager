@@ -1,0 +1,35 @@
+{
+  "name": "SCAManager Dev",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "postCreateCommand": "pip install -r requirements.txt",
+  "forwardPorts": [8000],
+  "portsAttributes": {
+    "8000": {
+      "label": "SCAManager API",
+      "onAutoForward": "notify"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.pylint",
+        "charliermarsh.ruff"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.testing.pytestEnabled": true,
+        "python.testing.pytestArgs": ["tests"]
+      }
+    }
+  },
+  "remoteEnv": {
+    "DATABASE_URL": "sqlite:///./dev.db",
+    "GITHUB_WEBHOOK_SECRET": "dev_secret",
+    "GITHUB_TOKEN": "",
+    "TELEGRAM_BOT_TOKEN": "",
+    "TELEGRAM_CHAT_ID": "",
+    "ANTHROPIC_API_KEY": "",
+    "API_KEY": ""
+  }
+}
