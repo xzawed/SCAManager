@@ -1,0 +1,73 @@
+import hashlib
+import hmac
+import json
+import pytest
+from unittest.mock import patch
+from fastapi.testclient import TestClient
+from src.main import app
+
+
+client = TestClient(app)
+
+SECRET = "test_webhook_secret"
+
+def _sign(payload: bytes) -> str:
+    mac = hmac.new(SECRET.encode(), payload, hashlib.sha256)
+    return "sha256=" + mac.hexdigest()
+
+
+@pytest.fixture(autouse=True)
+def patch_settings(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", SECRET)
+    monkeypatch.setenv("GITHUB_TOKEN", "ghp_test")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:ABC")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "-100123")
+
+
+def test_valid_push_event_returns_202():
+    payload = json.dumps({"repository": {"full_name": "owner/repo"}, "after": "abc123"}).encode()
+    with patch("src.webhook.router.settings") as mock_settings:
+        mock_settings.github_webhook_secret = SECRET
+        with patch("src.webhook.router.run_analysis_pipeline"):
+            resp = client.post(
+                "/webhooks/github",
+                content=payload,
+                headers={
+                    "X-Hub-Signature-256": _sign(payload),
+                    "X-GitHub-Event": "push",
+                },
+            )
+    assert resp.status_code == 202
+    assert resp.json()["status"] == "accepted"
+
+
+def test_invalid_signature_returns_401():
+    payload = b'{"test": true}'
+    with patch("src.webhook.router.settings") as mock_settings:
+        mock_settings.github_webhook_secret = SECRET
+        resp = client.post(
+            "/webhooks/github",
+            content=payload,
+            headers={
+                "X-Hub-Signature-256": "sha256=invalidsignature",
+                "X-GitHub-Event": "push",
+            },
+        )
+    assert resp.status_code == 401
+
+
+def test_ignored_event_returns_200():
+    payload = json.dumps({"action": "labeled"}).encode()
+    with patch("src.webhook.router.settings") as mock_settings:
+        mock_settings.github_webhook_secret = SECRET
+        resp = client.post(
+            "/webhooks/github",
+            content=payload,
+            headers={
+                "X-Hub-Signature-256": _sign(payload),
+                "X-GitHub-Event": "issues",
+            },
+        )
+    assert resp.status_code == 202
+    assert resp.json()["status"] == "ignored"
