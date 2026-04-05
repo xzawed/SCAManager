@@ -1,6 +1,6 @@
 # SCAManager
 
-GitHub Repository에 Push/PR 이벤트 발생 시 정적 분석 + AI 코드 리뷰를 자동 수행하고, 점수와 개선사항을 Telegram 및 GitHub PR Comment로 전달하는 서비스.
+GitHub Repository에 Push/PR 이벤트 발생 시 정적 분석 + AI 코드 리뷰를 자동 수행하고, 점수와 개선사항을 Telegram·GitHub PR Comment·n8n으로 전달하며, 점수 기반 PR 자동/반자동 Gate와 웹 대시보드를 제공하는 서비스.
 
 ## 빠른 시작
 
@@ -63,6 +63,7 @@ alembic downgrade -1
 | `TELEGRAM_BOT_TOKEN` | Telegram Bot API 토큰 | `123456:ABC-xxx` | ✅ |
 | `TELEGRAM_CHAT_ID` | Telegram 알림 수신 Chat ID | `-100xxxxxxxxx` | ✅ |
 | `ANTHROPIC_API_KEY` | Claude AI 리뷰 API 키 | `sk-ant-xxxx` | ❌ (없으면 AI 리뷰 건너뜀) |
+| `API_KEY` | Dashboard API 인증 키 | `any-secret-string` | ❌ (없으면 인증 건너뜀) |
 
 **주의:** `.env` 파일은 절대 git commit 하지 말 것 (`.gitignore`에 포함됨)
 
@@ -70,47 +71,64 @@ alembic downgrade -1
 
 ```
 src/
-├── main.py                     # FastAPI 앱, lifespan(DB 마이그레이션), webhook_router
+├── main.py                     # FastAPI 앱, lifespan(DB 마이그레이션), 전체 라우터 등록
 ├── config.py                   # pydantic-settings 환경변수 관리, postgres:// URL 자동 변환
-├── database.py                 # SQLAlchemy engine, Base, get_db()
+├── database.py                 # SQLAlchemy engine, Base, SessionLocal
 ├── models/
-│   ├── repository.py           # Repository ORM 모델
-│   └── analysis.py             # Analysis ORM 모델
+│   ├── repository.py           # Repository ORM
+│   ├── analysis.py             # Analysis ORM
+│   ├── repo_config.py          # RepoConfig ORM (gate_mode, threshold, n8n_url)
+│   └── gate_decision.py        # GateDecision ORM (analysis_id, decision, mode)
 ├── webhook/
 │   ├── validator.py            # HMAC-SHA256 서명 검증
-│   └── router.py               # POST /webhooks/github 엔드포인트
+│   └── router.py               # POST /webhooks/github, POST /api/webhook/telegram
 ├── github_client/
 │   └── diff.py                 # get_pr_files, get_push_files, ChangedFile
 ├── analyzer/
-│   ├── static.py               # analyze_file — pylint/flake8/bandit subprocess 호출
-│   └── ai_review.py            # review_code() — Claude API AI 리뷰, AiReviewResult
+│   ├── static.py               # analyze_file — pylint/flake8/bandit
+│   └── ai_review.py            # review_code() — Claude API, AiReviewResult
 ├── scorer/
 │   └── calculator.py           # calculate_score(ai_review), ScoreResult, _grade
+├── config_manager/
+│   └── manager.py              # get_repo_config(), upsert_repo_config(), RepoConfigData
+├── gate/
+│   ├── engine.py               # run_gate_check() — auto/semi-auto 분기
+│   ├── github_review.py        # post_github_review() — GitHub Review API
+│   └── telegram_gate.py        # send_gate_request() — 인라인 키보드 메시지
 ├── notifier/
-│   ├── telegram.py             # send_analysis_result, _build_message
-│   └── github_comment.py       # post_pr_comment() — PR에 마크다운 리포트 게시
+│   ├── telegram.py             # send_analysis_result()
+│   ├── github_comment.py       # post_pr_comment()
+│   └── n8n.py                  # notify_n8n() — n8n Webhook POST
+├── api/
+│   ├── auth.py                 # require_api_key Depends (X-API-Key 헤더)
+│   ├── repos.py                # GET/PUT /api/repos, /api/repos/{repo}/analyses, /config
+│   └── stats.py                # GET /api/analyses/{id}, /api/repos/{repo}/stats
+├── ui/
+│   └── router.py               # Jinja2 Web UI — /, /repos/{repo}, /repos/{repo}/settings
+├── templates/
+│   ├── base.html               # 공통 레이아웃
+│   ├── overview.html           # 리포 현황 목록
+│   ├── repo_detail.html        # 점수 차트(Chart.js) + 분석 이력
+│   └── settings.html           # Gate 모드·임계값 설정 폼
 └── worker/
-    └── pipeline.py             # run_analysis_pipeline — asyncio.gather 병렬 실행
+    └── pipeline.py             # run_analysis_pipeline — 전체 파이프라인
 
-tests/
-├── conftest.py                 # 환경변수 주입, TestClient fixture
-├── test_config.py
-├── test_github_diff.py
-├── test_models.py
-├── test_notifier_telegram.py
-├── test_github_comment.py      # Phase 2: PR Comment 테스트 (9개)
-├── test_ai_review.py           # Phase 2: AI 리뷰 테스트 (10개)
-├── test_pipeline.py            # Phase 1+2 통합 (20개)
-├── test_scorer.py              # Phase 1+2 점수 계산 (15개)
-├── test_static_analyzer.py
-├── test_webhook_router.py
-└── test_webhook_validator.py
+tests/                          # 110개 테스트 (Phase 1~5)
+├── conftest.py
+├── test_config.py, test_models.py, test_repo_config_model.py
+├── test_github_diff.py, test_webhook_router.py, test_webhook_validator.py
+├── test_webhook_telegram.py    # Telegram callback endpoint
+├── test_static_analyzer.py, test_ai_review.py
+├── test_scorer.py, test_pipeline.py
+├── test_notifier_telegram.py, test_github_comment.py, test_n8n_notifier.py
+├── test_config_manager.py
+├── test_gate_engine.py, test_github_review.py, test_telegram_gate.py
+├── test_api_auth.py, test_api_repos.py, test_api_stats.py
+└── test_ui_router.py
 
-docs/
-└── superpowers/
-    ├── specs/2026-04-05-scamanager-design.md     # 전체 시스템 설계 문서
-    ├── plans/2026-04-05-phase1-mvp.md            # Phase 1 구현 계획
-    └── plans/2026-04-05-phase2-ai-review.md      # Phase 2 구현 계획
+docs/superpowers/
+├── specs/2026-04-05-scamanager-design.md
+└── plans/ (phase1~5 구현 계획)
 ```
 
 ## 핵심 데이터 흐름
@@ -126,10 +144,25 @@ GitHub Push/PR
           └─ review_code()       (Claude AI — 커밋 메시지 + diff 분석)
       → calculate_score(ai_review)
           (커밋20 + 코드품질30 + 보안20 + AI방향성20 + 테스트10)
-      → DB 저장 (Analysis 레코드, ai_summary, ai_suggestions)
+      → DB 저장 (Analysis 레코드)
+      → run_gate_check() [PR 이벤트만]
+          [auto]      → GitHub Approve / Request Changes 즉시 실행
+          [semi-auto] → Telegram 인라인 키보드 전송 → POST /api/webhook/telegram 콜백 수신
       → asyncio.gather(return_exceptions=True):
           ├─ send_analysis_result()  (Telegram 알림)
-          └─ post_pr_comment()       (PR 이벤트 시 GitHub PR Comment)
+          ├─ post_pr_comment()       (PR 이벤트 시 GitHub PR Comment)
+          └─ notify_n8n()            (n8n_webhook_url 설정 시)
+
+Telegram 반자동 콜백:
+  → POST /api/webhook/telegram
+  → gate:approve:{id} or gate:reject:{id} 파싱
+  → post_github_review() + GateDecision DB 저장
+
+대시보드:
+  → GET /              (리포 현황 Web UI)
+  → GET /repos/{repo}  (점수 차트 + 이력 Web UI)
+  → GET /api/repos     (REST API)
+  → GET /api/repos/{repo}/stats (통계 API)
 ```
 
 ## 점수 체계
@@ -229,6 +262,6 @@ Railway 대시보드 설정:
 |-------|------|------|
 | Phase 1 | Webhook → 정적 분석 → Telegram 알림 (MVP) | ✅ 완료 (35 테스트) |
 | Phase 2 | Claude AI 리뷰 + 커밋 메시지 점수 + GitHub PR Comment | ✅ 완료 (65 테스트) |
-| Phase 3 | PR Gate Engine (자동/반자동) + Config Manager | 예정 |
-| Phase 4 | Dashboard API + Web UI (Jinja2 + Chart.js) | 예정 |
-| Phase 5 | n8n 연동 + 외부 REST API + 통계 고도화 | 예정 |
+| Phase 3 | PR Gate Engine (자동/반자동) + Config Manager | ✅ 완료 (~30 테스트) |
+| Phase 4 | Dashboard API + Web UI (Jinja2 + Chart.js) | ✅ 완료 (~15 테스트) |
+| Phase 5 | n8n 연동 + 외부 REST API + 통계 고도화 | ✅ 완료 (~4 테스트, 총 110 테스트) |
