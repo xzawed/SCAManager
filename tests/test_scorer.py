@@ -47,3 +47,49 @@ def test_breakdown_keys_present():
     assert "commit_message" in result.breakdown
     assert "ai_review" in result.breakdown
     assert "test_coverage" in result.breakdown
+
+
+from src.analyzer.ai_review import AiReviewResult
+
+
+def _make_ai_review(commit_score=18, ai_score=17, has_tests=True):
+    return AiReviewResult(
+        commit_score=commit_score,
+        ai_score=ai_score,
+        has_tests=has_tests,
+        summary="ok",
+        suggestions=[],
+    )
+
+
+def test_calculate_score_uses_ai_review_scores():
+    result = calculate_score([_make_result([])], ai_review=_make_ai_review(commit_score=18, ai_score=17))
+    assert result.breakdown["commit_message"] == 18
+    assert result.breakdown["ai_review"] == 17
+
+
+def test_calculate_score_test_coverage_10_when_has_tests():
+    result = calculate_score([_make_result([])], ai_review=_make_ai_review(has_tests=True))
+    assert result.breakdown["test_coverage"] == 10
+
+
+def test_calculate_score_test_coverage_0_when_no_tests():
+    result = calculate_score([_make_result([])], ai_review=_make_ai_review(has_tests=False))
+    assert result.breakdown["test_coverage"] == 0
+
+
+def test_calculate_score_fallback_when_no_ai_review():
+    result = calculate_score([_make_result([])], ai_review=None)
+    assert result.breakdown["commit_message"] == 15
+    assert result.breakdown["ai_review"] == 15
+    assert result.breakdown["test_coverage"] == 5
+
+
+def test_calculate_score_total_with_ai_review():
+    result = calculate_score(
+        [_make_result([])],
+        ai_review=_make_ai_review(commit_score=20, ai_score=20, has_tests=True),
+    )
+    # code_quality=30, security=20, commit=20, ai=20, test=10 = 100
+    assert result.total == 100
+    assert result.grade == "A"
