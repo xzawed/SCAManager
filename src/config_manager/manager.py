@@ -1,0 +1,54 @@
+from dataclasses import dataclass, field
+from sqlalchemy.orm import Session
+from src.models.repo_config import RepoConfig
+
+
+@dataclass
+class RepoConfigData:
+    repo_full_name: str
+    gate_mode: str = "disabled"
+    auto_approve_threshold: int = 75
+    auto_reject_threshold: int = 50
+    notify_chat_id: str | None = None
+    n8n_webhook_url: str | None = None
+    analysis_rules: dict = field(default_factory=dict)
+
+
+def get_repo_config(db: Session, repo_full_name: str) -> RepoConfigData:
+    record = db.query(RepoConfig).filter_by(repo_full_name=repo_full_name).first()
+    if record is None:
+        return RepoConfigData(repo_full_name=repo_full_name)
+    return RepoConfigData(
+        repo_full_name=record.repo_full_name,
+        gate_mode=record.gate_mode,
+        auto_approve_threshold=record.auto_approve_threshold,
+        auto_reject_threshold=record.auto_reject_threshold,
+        notify_chat_id=record.notify_chat_id,
+        n8n_webhook_url=record.n8n_webhook_url,
+        analysis_rules=record.analysis_rules or {},
+    )
+
+
+def upsert_repo_config(db: Session, data: RepoConfigData) -> RepoConfig:
+    record = db.query(RepoConfig).filter_by(repo_full_name=data.repo_full_name).first()
+    if record is None:
+        record = RepoConfig(
+            repo_full_name=data.repo_full_name,
+            gate_mode=data.gate_mode,
+            auto_approve_threshold=data.auto_approve_threshold,
+            auto_reject_threshold=data.auto_reject_threshold,
+            notify_chat_id=data.notify_chat_id,
+            n8n_webhook_url=data.n8n_webhook_url,
+            analysis_rules=data.analysis_rules,
+        )
+        db.add(record)
+    else:
+        record.gate_mode = data.gate_mode
+        record.auto_approve_threshold = data.auto_approve_threshold
+        record.auto_reject_threshold = data.auto_reject_threshold
+        record.notify_chat_id = data.notify_chat_id
+        record.n8n_webhook_url = data.n8n_webhook_url
+        record.analysis_rules = data.analysis_rules
+    db.commit()
+    db.refresh(record)
+    return record
