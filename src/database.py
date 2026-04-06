@@ -1,26 +1,32 @@
-import socket as _socket
+import socket
+from urllib.parse import urlparse
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase, Session
 from src.config import settings
 
-# Railway 컨테이너에서 IPv6 아웃바운드 차단 → IPv4 우선 강제
-_orig_getaddrinfo = _socket.getaddrinfo
 
-def _prefer_ipv4(host, port, family=0, type=0, proto=0, flags=0):
-    results = _orig_getaddrinfo(host, port, _socket.AF_INET, type, proto, flags)
-    if results:
-        return results
-    return _orig_getaddrinfo(host, port, family, type, proto, flags)
-
-_socket.getaddrinfo = _prefer_ipv4
+def _ipv4_connect_args(url: str) -> dict:
+    """Railway 컨테이너에서 IPv6 아웃바운드 차단 문제 해결.
+    Python socket으로 IPv4 주소를 조회한 뒤 psycopg2 hostaddr에 전달.
+    libpq는 hostaddr로 직접 TCP 연결하고, SSL 인증서는 host(hostname)로 검증."""
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        port = parsed.port or 5432
+        infos = socket.getaddrinfo(hostname, port, socket.AF_INET)
+        if infos:
+            return {"hostaddr": infos[0][4][0]}
+    except Exception:
+        pass
+    return {}
 
 
 class Base(DeclarativeBase):
     pass
 
 
-engine = create_engine(settings.database_url)
+engine = create_engine(settings.database_url, connect_args=_ipv4_connect_args(settings.database_url))
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
