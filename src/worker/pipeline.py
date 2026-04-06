@@ -92,6 +92,12 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
                     "breakdown": score_result.breakdown,
                     "ai_summary": ai_review.summary,
                     "ai_suggestions": ai_review.suggestions,
+                    "commit_message_feedback": ai_review.commit_message_feedback,
+                    "code_quality_feedback": ai_review.code_quality_feedback,
+                    "security_feedback": ai_review.security_feedback,
+                    "direction_feedback": ai_review.direction_feedback,
+                    "test_feedback": ai_review.test_feedback,
+                    "file_feedbacks": ai_review.file_feedbacks,
                     "issues": [
                         {
                             "tool": i.tool,
@@ -136,6 +142,7 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
                 score_result=score_result,
                 analysis_results=analysis_results,
                 pr_number=pr_number,
+                ai_review=ai_review,
             )
         ]
         if pr_number is not None:

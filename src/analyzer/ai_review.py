@@ -17,6 +17,12 @@ class AiReviewResult:
     has_tests: bool
     summary: str
     suggestions: list[str] = field(default_factory=list)
+    commit_message_feedback: str = ""    # 커밋 메시지 평가 상세
+    code_quality_feedback: str = ""      # 코드 품질 평가 상세
+    security_feedback: str = ""          # 보안 평가 상세
+    direction_feedback: str = ""         # 구현 방향성 평가 상세
+    test_feedback: str = ""              # 테스트 평가 상세
+    file_feedbacks: list[dict] = field(default_factory=list)  # 파일별 피드백
 
 
 _PROMPT_TEMPLATE = """\
@@ -33,8 +39,16 @@ _PROMPT_TEMPLATE = """\
   "commit_message_score": <0~20 정수, 컨벤션 준수/명확성/변경범위 일치성>,
   "direction_score": <0~20 정수, 구현 방향성/패턴/설계 적합성>,
   "has_tests": <true/false, 테스트 코드 변경 포함 여부>,
-  "summary": "<변경사항 한 줄 요약>",
-  "suggestions": ["<개선 제안1>", "<개선 제안2>"]
+  "summary": "<변경사항 2~3문장 요약: 무엇을 왜 변경했는지>",
+  "suggestions": ["<구체적 개선 제안 (파일명:라인 포함)>"],
+  "commit_message_feedback": "<커밋 메시지 평가: 컨벤션 준수 여부, 명확성, 변경범위 일치성에 대한 구체적 피드백>",
+  "code_quality_feedback": "<코드 품질 평가: 가독성, 네이밍, 중복, 복잡도 등 구체적 피드백>",
+  "security_feedback": "<보안 평가: 잠재적 보안 취약점, 입력 검증, 인증 등에 대한 피드백. 이슈 없으면 '보안 이슈 없음'>",
+  "direction_feedback": "<구현 방향성 평가: 설계 패턴, 아키텍처 적합성, 확장성에 대한 피드백>",
+  "test_feedback": "<테스트 평가: 테스트 존재 여부, 커버리지 충분성, 엣지케이스 포함 여부>",
+  "file_feedbacks": [
+    {{"file": "<파일명>", "issues": ["<라인 N: 구체적 문제 설명과 수정 방법>"]}}
+  ]
 }}"""
 
 
@@ -55,7 +69,7 @@ async def review_code(
         client = anthropic.AsyncAnthropic(api_key=api_key)
         response = await client.messages.create(
             model="claude-haiku-4-5",
-            max_tokens=512,
+            max_tokens=1500,
             messages=[{
                 "role": "user",
                 "content": _PROMPT_TEMPLATE.format(
@@ -84,6 +98,12 @@ def _parse_response(text: str) -> AiReviewResult:
             has_tests=bool(data.get("has_tests", False)),
             summary=str(data.get("summary", "")),
             suggestions=[str(s) for s in data.get("suggestions", [])],
+            commit_message_feedback=str(data.get("commit_message_feedback", "")),
+            code_quality_feedback=str(data.get("code_quality_feedback", "")),
+            security_feedback=str(data.get("security_feedback", "")),
+            direction_feedback=str(data.get("direction_feedback", "")),
+            test_feedback=str(data.get("test_feedback", "")),
+            file_feedbacks=list(data.get("file_feedbacks", [])),
         )
     except (json.JSONDecodeError, ValueError, KeyError):
         logger.warning("Failed to parse AI review response: %s", text[:200])

@@ -100,6 +100,28 @@ async def test_post_pr_comment_calls_github_api():
     assert "42" in url
 
 
+def test_comment_body_includes_category_feedback():
+    ai = AiReviewResult(
+        commit_score=17, ai_score=15, has_tests=True,
+        summary="좋은 리팩토링입니다.",
+        suggestions=["타입 힌트 추가 권장"],
+        commit_message_feedback="커밋 메시지가 변경 범위를 잘 설명합니다.",
+        code_quality_feedback="전반적으로 깔끔한 코드입니다.",
+        security_feedback="보안 이슈가 발견되지 않았습니다.",
+        direction_feedback="설계 방향이 적절합니다.",
+        test_feedback="테스트 코드가 포함되어 있습니다.",
+        file_feedbacks=[{"file": "app.py", "issues": ["라인 10: 변수명 개선 필요"]}],
+    )
+    body = _build_comment_body(_make_score(), [], ai)
+    assert "커밋 메시지가 변경 범위를 잘 설명합니다." in body
+    assert "전반적으로 깔끔한 코드입니다." in body
+    assert "보안 이슈가 발견되지 않았습니다." in body
+    assert "설계 방향이 적절합니다." in body
+    assert "테스트 코드가 포함되어 있습니다." in body
+    assert "app.py" in body
+    assert "변수명 개선 필요" in body
+
+
 async def test_post_pr_comment_sets_auth_header():
     with patch("src.notifier.github_comment.httpx.AsyncClient") as mock_cls:
         mock_client = AsyncMock()
