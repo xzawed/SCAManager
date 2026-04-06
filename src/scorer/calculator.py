@@ -56,8 +56,12 @@ def calculate_score(
 
 
 def _grade(score: int) -> str:
-    if score >= 90: return "A"
-    if score >= 75: return "B"
-    if score >= 60: return "C"
-    if score >= 45: return "D"
+    if score >= 90:
+        return "A"
+    if score >= 75:
+        return "B"
+    if score >= 60:
+        return "C"
+    if score >= 45:
+        return "D"
     return "F"

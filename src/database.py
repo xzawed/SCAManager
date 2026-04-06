@@ -17,7 +17,7 @@ def _ipv4_connect_args(url: str) -> dict:
         infos = socket.getaddrinfo(hostname, port, socket.AF_INET)
         if infos:
             return {"hostaddr": infos[0][4][0]}
-    except Exception:
+    except Exception:  # nosec B110
         pass
     return {}
 
