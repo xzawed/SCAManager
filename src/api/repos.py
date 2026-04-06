@@ -66,5 +66,4 @@ def update_repo_config(repo_name: str, body: RepoConfigUpdate):
             "auto_reject_threshold": record.auto_reject_threshold,
             "notify_chat_id": record.notify_chat_id,
             "n8n_webhook_url": record.n8n_webhook_url,
-            "analysis_rules": record.analysis_rules,
         }

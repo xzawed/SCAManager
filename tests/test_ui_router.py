@@ -56,3 +56,50 @@ def test_settings_returns_html():
                    return_value=RepoConfigData(repo_full_name="owner/repo")):
             r = client.get("/repos/owner%2Frepo/settings")
     assert r.status_code == 200
+
+
+def test_post_settings_redirects():
+    # POST /repos/{repo}/settings 호출 시 upsert_repo_config에 n8n_webhook_url이 전달되고 303 리다이렉트 반환됨
+    mock_db = MagicMock()
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.ui.router.upsert_repo_config") as mock_upsert:
+            r = client.post(
+                "/repos/owner%2Frepo/settings",
+                data={
+                    "gate_mode": "auto",
+                    "auto_approve_threshold": "85",
+                    "auto_reject_threshold": "55",
+                    "notify_chat_id": "-123",
+                    "n8n_webhook_url": "http://n8n.local/webhook/abc",
+                },
+                follow_redirects=False,
+            )
+    # upsert_repo_config가 정확히 1회 호출됐는지 확인
+    assert mock_upsert.call_count == 1
+    called_config = mock_upsert.call_args[0][1]
+    # n8n_webhook_url 값이 RepoConfigData에 전달됐는지 확인
+    assert called_config.n8n_webhook_url == "http://n8n.local/webhook/abc"
+    # 응답이 리다이렉트(303)인지 확인
+    assert r.status_code == 303
+
+
+def test_post_settings_empty_n8n_url():
+    # n8n_webhook_url을 비워서 전송 시 빈 문자열 또는 None이 RepoConfigData에 전달됨
+    mock_db = MagicMock()
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.ui.router.upsert_repo_config") as mock_upsert:
+            r = client.post(
+                "/repos/owner%2Frepo/settings",
+                data={
+                    "gate_mode": "disabled",
+                    "auto_approve_threshold": "75",
+                    "auto_reject_threshold": "50",
+                    "notify_chat_id": "",
+                    "n8n_webhook_url": "",
+                },
+                follow_redirects=False,
+            )
+    assert mock_upsert.call_count == 1
+    called_config = mock_upsert.call_args[0][1]
+    # 빈 문자열이 RepoConfigData에 전달됐는지 확인 (None 또는 "" 모두 허용하지 않고 "" 그대로 확인)
+    assert called_config.n8n_webhook_url == ""

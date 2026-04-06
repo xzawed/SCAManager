@@ -188,7 +188,7 @@ Telegram 반자동 콜백:
 
 등급: A(90+), B(75+), C(60+), D(45+), F(44-)
 
-> `ANTHROPIC_API_KEY` 미설정 시 AI 항목은 기본값(커밋15 + 방향15, 테스트0)으로 fallback
+> `ANTHROPIC_API_KEY` 미설정 시 AI 항목은 기본값(커밋15 + 방향15, 테스트5)으로 fallback
 
 ## 알려진 주의사항 (Gotchas)
 

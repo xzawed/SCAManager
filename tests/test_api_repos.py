@@ -59,7 +59,7 @@ def test_put_repo_config():
             mock_upsert.return_value = MagicMock(
                 repo_full_name="owner/repo", gate_mode="auto",
                 auto_approve_threshold=80, auto_reject_threshold=45,
-                notify_chat_id=None, n8n_webhook_url=None, analysis_rules={}
+                notify_chat_id=None, n8n_webhook_url=None
             )
             r = client.put("/api/repos/owner%2Frepo/config", json={
                 "gate_mode": "auto", "auto_approve_threshold": 80, "auto_reject_threshold": 45,

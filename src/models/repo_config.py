@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, JSON, DateTime
+from sqlalchemy import Column, Integer, String, DateTime
 from src.database import Base
 
 
@@ -12,7 +12,6 @@ class RepoConfig(Base):
     auto_reject_threshold = Column(Integer, default=50, nullable=False)
     notify_chat_id = Column(String, nullable=True)
     n8n_webhook_url = Column(String, nullable=True)
-    analysis_rules = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))

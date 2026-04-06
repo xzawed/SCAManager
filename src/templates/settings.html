@@ -24,6 +24,10 @@
       <label><strong>Telegram Chat ID (반자동 모드)</strong></label><br>
       <input type="text" name="notify_chat_id" value="{{ config.notify_chat_id or '' }}" placeholder="-100xxxxxxxxx" style="padding:.4rem;margin-top:.3rem;width:300px">
     </div>
+    <div style="margin-bottom:1rem">
+      <label><strong>n8n Webhook URL</strong></label><br>
+      <input type="url" name="n8n_webhook_url" value="{{ config.n8n_webhook_url or '' }}" placeholder="https://n8n.example.com/webhook/..." style="padding:.4rem;margin-top:.3rem;width:400px">
+    </div>
     <button type="submit" class="btn btn-primary">저장</button>
   </form>
 </div>

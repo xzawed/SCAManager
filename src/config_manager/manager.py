@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from sqlalchemy.orm import Session
 from src.models.repo_config import RepoConfig
 
@@ -11,7 +11,6 @@ class RepoConfigData:
     auto_reject_threshold: int = 50
     notify_chat_id: str | None = None
     n8n_webhook_url: str | None = None
-    analysis_rules: dict = field(default_factory=dict)
 
 
 def get_repo_config(db: Session, repo_full_name: str) -> RepoConfigData:
@@ -25,7 +24,6 @@ def get_repo_config(db: Session, repo_full_name: str) -> RepoConfigData:
         auto_reject_threshold=record.auto_reject_threshold,
         notify_chat_id=record.notify_chat_id,
         n8n_webhook_url=record.n8n_webhook_url,
-        analysis_rules=record.analysis_rules or {},
     )
 
 
@@ -39,7 +37,6 @@ def upsert_repo_config(db: Session, data: RepoConfigData) -> RepoConfig:
             auto_reject_threshold=data.auto_reject_threshold,
             notify_chat_id=data.notify_chat_id,
             n8n_webhook_url=data.n8n_webhook_url,
-            analysis_rules=data.analysis_rules,
         )
         db.add(record)
     else:
@@ -48,7 +45,6 @@ def upsert_repo_config(db: Session, data: RepoConfigData) -> RepoConfig:
         record.auto_reject_threshold = data.auto_reject_threshold
         record.notify_chat_id = data.notify_chat_id
         record.n8n_webhook_url = data.n8n_webhook_url
-        record.analysis_rules = data.analysis_rules
     db.commit()
     db.refresh(record)
     return record
