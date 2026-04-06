@@ -32,6 +32,30 @@ def _build_comment_body(
     if ai_review and ai_review.summary:
         lines += ["", "### AI 요약", ai_review.summary]
 
+    # 카테고리별 상세 피드백
+    if ai_review:
+        feedback_items = [
+            ("커밋 메시지", ai_review.commit_message_feedback),
+            ("코드 품질", ai_review.code_quality_feedback),
+            ("보안", ai_review.security_feedback),
+            ("구현 방향성", ai_review.direction_feedback),
+            ("테스트", ai_review.test_feedback),
+        ]
+        has_feedback = any(fb for _, fb in feedback_items)
+        if has_feedback:
+            lines += ["", "### 카테고리별 피드백"]
+            for label, fb in feedback_items:
+                if fb:
+                    lines.append(f"- **{label}**: {fb}")
+
+    # 파일별 피드백
+    if ai_review and ai_review.file_feedbacks:
+        lines += ["", "### 파일별 피드백"]
+        for ff in ai_review.file_feedbacks:
+            lines.append(f"#### `{ff.get('file', '?')}`")
+            for issue in ff.get("issues", []):
+                lines.append(f"- {issue}")
+
     if ai_review and ai_review.suggestions:
         lines += ["", "### 개선 제안"]
         for s in ai_review.suggestions:
@@ -39,7 +63,7 @@ def _build_comment_body(
 
     all_issues = [i for r in analysis_results for i in r.issues]
     if all_issues:
-        lines += ["", "### 주요 이슈 (상위 10건)"]
+        lines += ["", "### 정적 분석 이슈 (상위 10건)"]
         for issue in all_issues[:10]:
             lines.append(f"- **[{issue.tool}]** {issue.message} (line {issue.line})")
 

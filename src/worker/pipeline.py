@@ -45,6 +45,19 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
             commit_sha = data["after"]
             files = get_push_files(settings.github_token, repo_name, commit_sha)
 
+        db: Session = SessionLocal()
+        try:
+            repo = db.query(Repository).filter_by(full_name=repo_name).first()
+            if not repo:
+                repo = Repository(
+                    full_name=repo_name,
+                    telegram_chat_id=settings.telegram_chat_id,
+                )
+                db.add(repo)
+                db.commit()
+        finally:
+            db.close()
+
         if not files:
             logger.info("No Python files changed in %s @ %s", repo_name, commit_sha)
             return
@@ -58,16 +71,9 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
         score_result = calculate_score(analysis_results, ai_review=ai_review)
 
         n8n_url: str | None = None
-        db: Session = SessionLocal()
+        db = SessionLocal()
         try:
             repo = db.query(Repository).filter_by(full_name=repo_name).first()
-            if not repo:
-                repo = Repository(
-                    full_name=repo_name,
-                    telegram_chat_id=settings.telegram_chat_id,
-                )
-                db.add(repo)
-                db.flush()
 
             existing = db.query(Analysis).filter_by(
                 commit_sha=commit_sha, repo_id=repo.id
@@ -86,6 +92,12 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
                     "breakdown": score_result.breakdown,
                     "ai_summary": ai_review.summary,
                     "ai_suggestions": ai_review.suggestions,
+                    "commit_message_feedback": ai_review.commit_message_feedback,
+                    "code_quality_feedback": ai_review.code_quality_feedback,
+                    "security_feedback": ai_review.security_feedback,
+                    "direction_feedback": ai_review.direction_feedback,
+                    "test_feedback": ai_review.test_feedback,
+                    "file_feedbacks": ai_review.file_feedbacks,
                     "issues": [
                         {
                             "tool": i.tool,
@@ -130,6 +142,7 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
                 score_result=score_result,
                 analysis_results=analysis_results,
                 pr_number=pr_number,
+                ai_review=ai_review,
             )
         ]
         if pr_number is not None:

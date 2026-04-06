@@ -20,13 +20,20 @@ async def test_empty_patches_returns_default():
 
 
 def test_parse_response_valid_json():
-    text = '{"commit_message_score": 18, "direction_score": 16, "has_tests": true, "summary": "Good refactoring", "suggestions": ["Add type hints"]}'
+    text = '{"commit_message_score": 18, "direction_score": 16, "has_tests": true, "summary": "Good refactoring", "suggestions": ["Add type hints"], "commit_message_feedback": "커밋 메시지가 명확합니다", "code_quality_feedback": "코드 품질이 우수합니다", "security_feedback": "보안 이슈 없음", "direction_feedback": "설계 방향이 적절합니다", "test_feedback": "테스트 코드가 포함되어 있습니다", "file_feedbacks": [{"file": "app.py", "issues": ["라인 10: 변수명 개선 필요"]}]}'
     result = _parse_response(text)
     assert result.commit_score == 18
     assert result.ai_score == 16
     assert result.has_tests is True
     assert result.summary == "Good refactoring"
     assert "Add type hints" in result.suggestions
+    assert result.commit_message_feedback == "커밋 메시지가 명확합니다"
+    assert result.code_quality_feedback == "코드 품질이 우수합니다"
+    assert result.security_feedback == "보안 이슈 없음"
+    assert result.direction_feedback == "설계 방향이 적절합니다"
+    assert result.test_feedback == "테스트 코드가 포함되어 있습니다"
+    assert len(result.file_feedbacks) == 1
+    assert result.file_feedbacks[0]["file"] == "app.py"
 
 
 def test_parse_response_clamps_above_max():
@@ -62,6 +69,21 @@ def test_default_result_values():
     assert result.ai_score == 15
     assert result.has_tests is False
     assert isinstance(result.suggestions, list)
+    assert result.commit_message_feedback == ""
+    assert result.code_quality_feedback == ""
+    assert result.security_feedback == ""
+    assert result.direction_feedback == ""
+    assert result.test_feedback == ""
+    assert result.file_feedbacks == []
+
+
+def test_parse_response_without_new_fields_uses_defaults():
+    """기존 형식(새 필드 없음)의 응답도 정상 파싱되어야 함."""
+    text = '{"commit_message_score": 18, "direction_score": 16, "has_tests": true, "summary": "ok", "suggestions": []}'
+    result = _parse_response(text)
+    assert result.commit_score == 18
+    assert result.commit_message_feedback == ""
+    assert result.file_feedbacks == []
 
 
 async def test_review_code_calls_anthropic_and_parses():

@@ -1,6 +1,7 @@
 import httpx
 from src.scorer.calculator import ScoreResult
 from src.analyzer.static import StaticAnalysisResult
+from src.analyzer.ai_review import AiReviewResult
 
 GRADE_EMOJI = {"A": "🟢", "B": "🔵", "C": "🟡", "D": "🟠", "F": "🔴"}
 
@@ -11,6 +12,7 @@ def _build_message(
     score_result: ScoreResult,
     analysis_results: list[StaticAnalysisResult],
     pr_number: int | None,
+    ai_review: AiReviewResult | None = None,
 ) -> str:
     ref = f"PR #{pr_number}" if pr_number else f"커밋 {commit_sha[:7]}"
     total_issues = sum(len(r.issues) for r in analysis_results)
@@ -22,14 +24,38 @@ def _build_message(
 
     grade_emoji = GRADE_EMOJI.get(score_result.grade, "⚪")
     issues_text = "\n".join(top_issues) if top_issues else "이슈 없음"
+    bd = score_result.breakdown
 
-    return (
-        f"{grade_emoji} *SCA 분석 결과*\n"
-        f"📁 `{repo_name}` — {ref}\n\n"
-        f"*점수:* {score_result.total}/100  (등급 {score_result.grade})\n"
-        f"*이슈 수:* {total_issues}건\n\n"
-        f"*주요 이슈:*\n{issues_text}"
-    )
+    lines = [
+        f"{grade_emoji} *SCA 분석 결과*",
+        f"📁 `{repo_name}` — {ref}",
+        "",
+        f"*총점:* {score_result.total}/100  (등급 {score_result.grade})",
+        "",
+        "*점수 상세:*",
+        f"  커밋 메시지: {bd.get('commit_message', '-')}/20",
+        f"  코드 품질: {bd.get('code_quality', '-')}/30",
+        f"  보안: {bd.get('security', '-')}/20",
+        f"  구현 방향성: {bd.get('ai_review', '-')}/20",
+        f"  테스트: {bd.get('test_coverage', '-')}/10",
+    ]
+
+    if ai_review and ai_review.summary:
+        lines += ["", f"*AI 요약:* {ai_review.summary}"]
+
+    if ai_review and ai_review.suggestions:
+        lines += ["", "*개선 제안:*"]
+        for s in ai_review.suggestions:
+            lines.append(f"- {s}")
+
+    if top_issues:
+        lines += [
+            "",
+            f"*정적 분석 이슈:* {total_issues}건",
+            issues_text,
+        ]
+
+    return "\n".join(lines)
 
 
 async def send_analysis_result(
@@ -40,8 +66,9 @@ async def send_analysis_result(
     score_result: ScoreResult,
     analysis_results: list[StaticAnalysisResult],
     pr_number: int | None = None,
+    ai_review: AiReviewResult | None = None,
 ) -> None:
-    text = _build_message(repo_name, commit_sha, score_result, analysis_results, pr_number)
+    text = _build_message(repo_name, commit_sha, score_result, analysis_results, pr_number, ai_review=ai_review)
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     async with httpx.AsyncClient() as client:
         r = await client.post(url, json={
