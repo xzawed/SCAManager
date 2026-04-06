@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 from src.notifier.telegram import send_analysis_result, _build_message
 from src.scorer.calculator import ScoreResult
 from src.analyzer.static import StaticAnalysisResult, AnalysisIssue
+from src.analyzer.ai_review import AiReviewResult
 
 
 def _make_score(total=80, grade="B") -> ScoreResult:
@@ -40,6 +41,25 @@ def test_build_message_lists_issues():
     issues = [AnalysisIssue(tool="pylint", severity="error", message="undefined variable x", line=5)]
     msg = _build_message("owner/repo", "abc1234", _make_score(), _make_analysis(issues), None)
     assert "undefined variable x" in msg
+
+
+def test_build_message_includes_ai_summary():
+    ai = AiReviewResult(
+        commit_score=17, ai_score=15, has_tests=True,
+        summary="전체적으로 좋은 리팩토링입니다.",
+        suggestions=["타입 힌트를 추가하세요", "함수를 분리하세요"],
+    )
+    msg = _build_message("owner/repo", "abc1234", _make_score(), _make_analysis(), None, ai_review=ai)
+    assert "전체적으로 좋은 리팩토링입니다." in msg
+    assert "타입 힌트를 추가하세요" in msg
+    assert "함수를 분리하세요" in msg
+
+
+def test_build_message_includes_score_breakdown():
+    msg = _build_message("owner/repo", "abc1234", _make_score(), _make_analysis(), None)
+    assert "코드 품질" in msg
+    assert "보안" in msg
+    assert "커밋" in msg
 
 @pytest.mark.asyncio
 async def test_send_analysis_result_calls_telegram_api():
