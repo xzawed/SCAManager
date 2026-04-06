@@ -36,30 +36,3 @@ def health():
     return {"status": "ok"}
 
 
-@app.get("/debug/info")
-def debug_info():
-    import traceback, os
-    from src.config import settings
-    from src.database import engine
-    from sqlalchemy import text, inspect
-
-    result = {
-        "db_url_prefix": settings.database_url[:40] + "...",
-        "db_connect": None,
-        "tables": None,
-        "migration_error": None,
-        "cwd": os.getcwd(),
-        "alembic_ini_exists": os.path.exists("alembic.ini"),
-    }
-
-    try:
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-            result["db_connect"] = "ok"
-            inspector = inspect(engine)
-            result["tables"] = inspector.get_table_names()
-    except Exception:
-        result["db_connect"] = "error"
-        result["migration_error"] = traceback.format_exc()[-600:]
-
-    return result
