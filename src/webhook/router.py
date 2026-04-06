@@ -5,7 +5,8 @@ from src.config import settings
 from src.webhook.validator import verify_github_signature
 from src.worker.pipeline import run_analysis_pipeline
 from src.gate.engine import _save_gate_decision
-from src.gate.github_review import post_github_review
+from src.gate.github_review import post_github_review, merge_pr
+from src.config_manager.manager import get_repo_config
 from src.models.analysis import Analysis
 from src.models.repository import Repository
 from src.database import SessionLocal
@@ -55,6 +56,13 @@ async def handle_gate_callback(
         await post_github_review(settings.github_token, repo.full_name,
                                   analysis.pr_number, decision, body)
         _save_gate_decision(db, analysis_id, decision, "manual", decided_by)
+        if decision == "approve":
+            config = get_repo_config(db, repo.full_name)
+            if config.auto_merge:
+                merged = await merge_pr(settings.github_token, repo.full_name, analysis.pr_number)
+                if merged:
+                    logger.info("PR #%d manual-approved+auto-merged: %s",
+                                analysis.pr_number, repo.full_name)
     except Exception as exc:
         logger.error("Gate callback failed: %s", exc)
     finally:

@@ -103,3 +103,53 @@ def test_post_settings_empty_n8n_url():
     called_config = mock_upsert.call_args[0][1]
     # 빈 문자열이 RepoConfigData에 전달됐는지 확인 (None 또는 "" 모두 허용하지 않고 "" 그대로 확인)
     assert called_config.n8n_webhook_url == ""
+
+
+# --- UI form auto_merge 파싱 테스트 (Red: UI router가 auto_merge 체크박스를 파싱하지 않음) ---
+
+def test_post_settings_with_auto_merge_checked():
+    # HTML form에서 auto_merge=on 전송 시 RepoConfigData.auto_merge가 True인지 검증
+    mock_db = MagicMock()
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.ui.router.upsert_repo_config") as mock_upsert:
+            r = client.post(
+                "/repos/owner%2Frepo/settings",
+                data={
+                    "gate_mode": "auto",
+                    "auto_approve_threshold": "80",
+                    "auto_reject_threshold": "50",
+                    "notify_chat_id": "",
+                    "n8n_webhook_url": "",
+                    "auto_merge": "on",
+                },
+                follow_redirects=False,
+            )
+    assert mock_upsert.call_count == 1
+    called_config = mock_upsert.call_args[0][1]
+    # 체크박스가 체크된 경우 auto_merge=True가 전달되어야 함
+    assert called_config.auto_merge is True
+    assert r.status_code == 303
+
+
+def test_post_settings_without_auto_merge_checkbox():
+    # HTML form에서 auto_merge 체크박스가 없을 때(미체크) RepoConfigData.auto_merge가 False인지 검증
+    mock_db = MagicMock()
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.ui.router.upsert_repo_config") as mock_upsert:
+            r = client.post(
+                "/repos/owner%2Frepo/settings",
+                data={
+                    "gate_mode": "auto",
+                    "auto_approve_threshold": "80",
+                    "auto_reject_threshold": "50",
+                    "notify_chat_id": "",
+                    "n8n_webhook_url": "",
+                    # auto_merge 체크박스 미포함 = 미체크 상태
+                },
+                follow_redirects=False,
+            )
+    assert mock_upsert.call_count == 1
+    called_config = mock_upsert.call_args[0][1]
+    # 체크박스가 없으면 auto_merge=False가 전달되어야 함
+    assert called_config.auto_merge is False
+    assert r.status_code == 303

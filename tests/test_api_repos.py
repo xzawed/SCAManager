@@ -66,3 +66,46 @@ def test_put_repo_config():
             })
     assert r.status_code == 200
     assert r.json()["gate_mode"] == "auto"
+
+
+# --- API auto_merge 테스트 (Red: RepoConfigUpdate와 응답에 auto_merge 필드가 아직 없음) ---
+
+def test_put_repo_config_with_auto_merge_true():
+    # PUT /api/repos/{repo}/config 에 auto_merge=True 전달 시 응답 JSON에 포함되는지 검증
+    with patch("src.api.repos.SessionLocal") as mock_cls:
+        with patch("src.api.repos.upsert_repo_config") as mock_upsert:
+            mock_db = MagicMock()
+            mock_cls.return_value = _make_session_mock(mock_db)
+            mock_upsert.return_value = MagicMock(
+                repo_full_name="owner/repo", gate_mode="auto",
+                auto_approve_threshold=80, auto_reject_threshold=45,
+                notify_chat_id=None, n8n_webhook_url=None,
+                auto_merge=True,
+            )
+            r = client.put("/api/repos/owner%2Frepo/config", json={
+                "gate_mode": "auto",
+                "auto_approve_threshold": 80,
+                "auto_reject_threshold": 45,
+                "auto_merge": True,
+            })
+    assert r.status_code == 200
+    assert r.json()["auto_merge"] is True
+
+
+def test_put_repo_config_auto_merge_defaults_false():
+    # auto_merge 없이 PUT 요청 시 응답의 auto_merge가 False인지 검증
+    with patch("src.api.repos.SessionLocal") as mock_cls:
+        with patch("src.api.repos.upsert_repo_config") as mock_upsert:
+            mock_db = MagicMock()
+            mock_cls.return_value = _make_session_mock(mock_db)
+            mock_upsert.return_value = MagicMock(
+                repo_full_name="owner/repo", gate_mode="disabled",
+                auto_approve_threshold=75, auto_reject_threshold=50,
+                notify_chat_id=None, n8n_webhook_url=None,
+                auto_merge=False,
+            )
+            r = client.put("/api/repos/owner%2Frepo/config", json={
+                "gate_mode": "disabled",
+            })
+    assert r.status_code == 200
+    assert r.json()["auto_merge"] is False

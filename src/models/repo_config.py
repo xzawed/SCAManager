@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy import Column, Integer, String, DateTime, Boolean
 from src.database import Base
 
 
@@ -12,6 +12,7 @@ class RepoConfig(Base):
     auto_reject_threshold = Column(Integer, default=50, nullable=False)
     notify_chat_id = Column(String, nullable=True)
     n8n_webhook_url = Column(String, nullable=True)
+    auto_merge = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
@@ -20,4 +21,5 @@ class RepoConfig(Base):
         kwargs.setdefault("gate_mode", "disabled")
         kwargs.setdefault("auto_approve_threshold", 75)
         kwargs.setdefault("auto_reject_threshold", 50)
+        kwargs.setdefault("auto_merge", False)
         super().__init__(**kwargs)

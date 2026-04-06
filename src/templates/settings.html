@@ -28,6 +28,14 @@
       <label><strong>n8n Webhook URL</strong></label><br>
       <input type="url" name="n8n_webhook_url" value="{{ config.n8n_webhook_url or '' }}" placeholder="https://n8n.example.com/webhook/..." style="padding:.4rem;margin-top:.3rem;width:400px">
     </div>
+    <div style="margin-bottom:1rem">
+      <label><strong>PR 자동 Merge</strong></label><br>
+      <label style="margin-top:.3rem;display:inline-flex;align-items:center;gap:.4rem">
+        <input type="checkbox" name="auto_merge" value="on"
+               {% if config.auto_merge %}checked{% endif %}>
+        승인 시 자동으로 PR을 Merge합니다 (squash merge)
+      </label>
+    </div>
     <button type="submit" class="btn btn-primary">저장</button>
   </form>
 </div>

@@ -51,6 +51,7 @@ async def update_repo_settings(request: Request, repo_name: str):
             auto_reject_threshold=int(form.get("auto_reject_threshold", 50)),
             notify_chat_id=form.get("notify_chat_id") or None,
             n8n_webhook_url=form.get("n8n_webhook_url", ""),
+            auto_merge=form.get("auto_merge") == "on",
         ))
     return RedirectResponse(url=f"/repos/{repo_name}/settings", status_code=303)
 

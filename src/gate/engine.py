@@ -1,7 +1,7 @@
 import logging
 from sqlalchemy.orm import Session
 from src.config_manager.manager import get_repo_config
-from src.gate.github_review import post_github_review
+from src.gate.github_review import post_github_review, merge_pr
 from src.gate.telegram_gate import send_gate_request
 from src.models.gate_decision import GateDecision
 from src.scorer.calculator import ScoreResult
@@ -35,6 +35,10 @@ async def run_gate_check(
         try:
             await post_github_review(github_token, repo_full_name, pr_number, decision, body)
             _save_gate_decision(db, analysis_id, decision, "auto")
+            if decision == "approve" and config.auto_merge:
+                merged = await merge_pr(github_token, repo_full_name, pr_number)
+                if merged:
+                    logger.info("PR #%d auto-merged: %s", pr_number, repo_full_name)
         except Exception as exc:
             logger.error("GitHub Review 실패: %s", exc)
     elif config.gate_mode == "semi-auto":

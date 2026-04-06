@@ -80,3 +80,65 @@ async def test_semi_auto_no_chat_id_skips():
         with patch("src.gate.engine.send_gate_request", new_callable=AsyncMock) as mock_send:
             await run_gate_check(mock_db, "tok", "bot", "owner/repo", 7, 5, _score(65))
             mock_send.assert_not_called()
+
+
+# --- auto_merge 분기 테스트 (Red: RepoConfigData.auto_merge 필드가 아직 존재하지 않음) ---
+
+async def test_auto_approve_with_auto_merge_calls_merge_pr():
+    # auto 모드 + approve 결정 + auto_merge=True → merge_pr이 호출되는지 검증
+    mock_db = MagicMock()
+    config = RepoConfigData(repo_full_name="owner/repo", gate_mode="auto",
+                            auto_approve_threshold=75, auto_reject_threshold=50,
+                            auto_merge=True)
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch("src.gate.engine.post_github_review", new_callable=AsyncMock):
+            with patch("src.gate.engine._save_gate_decision"):
+                with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
+                    mock_merge.return_value = True
+                    await run_gate_check(mock_db, "tok", "bot", "owner/repo", 5, 1, _score(80))
+                    mock_merge.assert_called_once()
+
+
+async def test_auto_approve_without_auto_merge_does_not_call_merge_pr():
+    # auto 모드 + approve 결정 + auto_merge=False → merge_pr이 호출되지 않는지 검증
+    mock_db = MagicMock()
+    config = RepoConfigData(repo_full_name="owner/repo", gate_mode="auto",
+                            auto_approve_threshold=75, auto_reject_threshold=50,
+                            auto_merge=False)
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch("src.gate.engine.post_github_review", new_callable=AsyncMock):
+            with patch("src.gate.engine._save_gate_decision"):
+                with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
+                    await run_gate_check(mock_db, "tok", "bot", "owner/repo", 5, 1, _score(80))
+                    mock_merge.assert_not_called()
+
+
+async def test_auto_reject_does_not_call_merge_pr():
+    # auto 모드 + reject 결정 시 auto_merge=True여도 merge_pr이 호출되지 않는지 검증
+    mock_db = MagicMock()
+    config = RepoConfigData(repo_full_name="owner/repo", gate_mode="auto",
+                            auto_approve_threshold=75, auto_reject_threshold=50,
+                            auto_merge=True)
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch("src.gate.engine.post_github_review", new_callable=AsyncMock):
+            with patch("src.gate.engine._save_gate_decision"):
+                with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
+                    await run_gate_check(mock_db, "tok", "bot", "owner/repo", 5, 1, _score(40))
+                    mock_merge.assert_not_called()
+
+
+async def test_auto_approve_merge_pr_failure_does_not_raise():
+    # merge_pr가 False를 반환해도 run_gate_check이 예외 없이 완료되는지 검증
+    mock_db = MagicMock()
+    config = RepoConfigData(repo_full_name="owner/repo", gate_mode="auto",
+                            auto_approve_threshold=75, auto_reject_threshold=50,
+                            auto_merge=True)
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch("src.gate.engine.post_github_review", new_callable=AsyncMock):
+            with patch("src.gate.engine._save_gate_decision") as mock_save:
+                with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
+                    mock_merge.return_value = False
+                    # 예외 없이 완료되어야 함
+                    await run_gate_check(mock_db, "tok", "bot", "owner/repo", 5, 1, _score(80))
+                    # GateDecision은 merge_pr 결과와 무관하게 저장되어야 함
+                    mock_save.assert_called_once_with(mock_db, 1, "approve", "auto")

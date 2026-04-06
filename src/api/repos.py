@@ -15,6 +15,7 @@ class RepoConfigUpdate(BaseModel):
     auto_reject_threshold: int = 50
     notify_chat_id: str | None = None
     n8n_webhook_url: str | None = None
+    auto_merge: bool = False
 
 
 @router.get("/repos")
@@ -58,6 +59,7 @@ def update_repo_config(repo_name: str, body: RepoConfigUpdate):
             auto_reject_threshold=body.auto_reject_threshold,
             notify_chat_id=body.notify_chat_id,
             n8n_webhook_url=body.n8n_webhook_url,
+            auto_merge=body.auto_merge,
         ))
         return {
             "repo_full_name": record.repo_full_name,
@@ -66,4 +68,5 @@ def update_repo_config(repo_name: str, body: RepoConfigUpdate):
             "auto_reject_threshold": record.auto_reject_threshold,
             "notify_chat_id": record.notify_chat_id,
             "n8n_webhook_url": record.n8n_webhook_url,
+            "auto_merge": record.auto_merge,
         }
