@@ -55,6 +55,24 @@ def test_build_message_includes_ai_summary():
     assert "함수를 분리하세요" in msg
 
 
+def test_build_message_escapes_markdown_special_chars():
+    """AI 생성 텍스트에 Markdown 특수문자가 있어도 메시지가 깨지지 않아야 한다."""
+    ai = AiReviewResult(
+        commit_score=17, ai_score=15, has_tests=True,
+        summary="변수 `user_name`을 *snake_case*로 변경하세요. [참고](link)",
+        suggestions=["_private 메서드를 `__init__`에서 호출하세요"],
+    )
+    msg = _build_message("owner/repo", "abc1234", _make_score(), _make_analysis(), None, ai_review=ai)
+    # Markdown 특수문자(`, *, [, ])가 제거되어야 함
+    assert "`user_name`" not in msg
+    assert "*snake_case*" not in msg
+    assert "[참고]" not in msg
+    # 특수문자 제거 후 텍스트 내용은 유지되어야 함
+    assert "username" in msg
+    assert "snakecase" in msg
+    assert "init" in msg
+
+
 def test_build_message_includes_score_breakdown():
     msg = _build_message("owner/repo", "abc1234", _make_score(), _make_analysis(), None)
     assert "코드 품질" in msg
