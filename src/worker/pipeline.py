@@ -36,15 +36,7 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
         repo_name: str = data["repository"]["full_name"]
         commit_message = _extract_commit_message(event, data)
 
-        if event == "pull_request":
-            pr_number: int | None = data["number"]
-            commit_sha: str = data["pull_request"]["head"]["sha"]
-            files = get_pr_files(settings.github_token, repo_name, pr_number)
-        else:
-            pr_number = None
-            commit_sha = data["after"]
-            files = get_push_files(settings.github_token, repo_name, commit_sha)
-
+        # Repository 등록을 최우선 실행 — API 실패와 무관하게 목록 노출 보장
         db: Session = SessionLocal()
         try:
             repo = db.query(Repository).filter_by(full_name=repo_name).first()
@@ -57,6 +49,15 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
                 db.commit()
         finally:
             db.close()
+
+        if event == "pull_request":
+            pr_number: int | None = data["number"]
+            commit_sha: str = data["pull_request"]["head"]["sha"]
+            files = get_pr_files(settings.github_token, repo_name, pr_number)
+        else:
+            pr_number = None
+            commit_sha = data["after"]
+            files = get_push_files(settings.github_token, repo_name, commit_sha)
 
         if not files:
             logger.info("No Python files changed in %s @ %s", repo_name, commit_sha)

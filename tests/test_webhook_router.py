@@ -71,3 +71,48 @@ def test_ignored_event_returns_200():
         )
     assert resp.status_code == 202
     assert resp.json()["status"] == "ignored"
+
+
+def test_closed_pr_action_ignored():
+    payload = json.dumps({
+        "action": "closed",
+        "repository": {"full_name": "owner/repo"},
+        "number": 1,
+        "pull_request": {"head": {"sha": "abc123"}},
+    }).encode()
+    with patch("src.webhook.router.settings") as mock_settings:
+        mock_settings.github_webhook_secret = SECRET
+        with patch("src.webhook.router.run_analysis_pipeline") as mock_pipeline:
+            resp = client.post(
+                "/webhooks/github",
+                content=payload,
+                headers={
+                    "X-Hub-Signature-256": _sign(payload),
+                    "X-GitHub-Event": "pull_request",
+                },
+            )
+    assert resp.status_code == 202
+    assert resp.json()["status"] == "ignored"
+    mock_pipeline.assert_not_called()
+
+
+def test_opened_pr_action_accepted():
+    payload = json.dumps({
+        "action": "opened",
+        "repository": {"full_name": "owner/repo"},
+        "number": 1,
+        "pull_request": {"head": {"sha": "abc123"}},
+    }).encode()
+    with patch("src.webhook.router.settings") as mock_settings:
+        mock_settings.github_webhook_secret = SECRET
+        with patch("src.webhook.router.run_analysis_pipeline"):
+            resp = client.post(
+                "/webhooks/github",
+                content=payload,
+                headers={
+                    "X-Hub-Signature-256": _sign(payload),
+                    "X-GitHub-Event": "pull_request",
+                },
+            )
+    assert resp.status_code == 202
+    assert resp.json()["status"] == "accepted"

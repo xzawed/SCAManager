@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 HANDLED_EVENTS = {"push", "pull_request"}
+HANDLED_PR_ACTIONS = {"opened", "synchronize", "reopened"}
 
 
 @router.post("/webhooks/github", status_code=202)
@@ -34,6 +35,12 @@ async def github_webhook(
         return {"status": "ignored"}
 
     data = json.loads(payload)
+
+    if x_github_event == "pull_request":
+        action = data.get("action")
+        if action not in HANDLED_PR_ACTIONS:
+            return {"status": "ignored"}
+
     background_tasks.add_task(run_analysis_pipeline, x_github_event, data)
     return {"status": "accepted"}
 
