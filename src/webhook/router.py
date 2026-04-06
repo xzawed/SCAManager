@@ -60,8 +60,10 @@ async def handle_gate_callback(
         if not repo:
             return
         body = f"{'✅ 승인' if decision == 'approve' else '❌ 반려'} by @{decided_by}"
-        await post_github_review(settings.github_token, repo.full_name,
-                                  analysis.pr_number, decision, body)
+        await post_github_review(
+            settings.github_token, repo.full_name,
+            analysis.pr_number, decision, body,
+        )
         _save_gate_decision(db, analysis_id, decision, "manual", decided_by)
         if decision == "approve":
             config = get_repo_config(db, repo.full_name)

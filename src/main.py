@@ -34,5 +34,3 @@ app.include_router(ui_router)
 @app.get("/health")
 def health():
     return {"status": "ok"}
-
-
