@@ -34,3 +34,16 @@ app.include_router(ui_router)
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/debug/db")
+def debug_db():
+    import traceback
+    from src.database import engine
+    from sqlalchemy import text
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT 1"))
+            return {"db": "ok", "url_prefix": str(engine.url)[:30]}
+    except Exception:
+        return {"db": "error", "detail": traceback.format_exc()[-800:]}
