@@ -1,9 +1,18 @@
+import re
+
 import httpx
 from src.scorer.calculator import ScoreResult
 from src.analyzer.static import StaticAnalysisResult
 from src.analyzer.ai_review import AiReviewResult
 
 GRADE_EMOJI = {"A": "🟢", "B": "🔵", "C": "🟡", "D": "🟠", "F": "🔴"}
+
+_MD_SPECIAL = re.compile(r"[*_`\[\]]")
+
+
+def _escape_md(text: str) -> str:
+    """Telegram Markdown 특수문자를 제거하여 파싱 오류를 방지한다."""
+    return _MD_SPECIAL.sub("", text)
 
 
 def _build_message(
@@ -41,12 +50,12 @@ def _build_message(
     ]
 
     if ai_review and ai_review.summary:
-        lines += ["", f"*AI 요약:* {ai_review.summary}"]
+        lines += ["", f"*AI 요약:* {_escape_md(ai_review.summary)}"]
 
     if ai_review and ai_review.suggestions:
         lines += ["", "*개선 제안:*"]
         for s in ai_review.suggestions:
-            lines.append(f"- {s}")
+            lines.append(f"- {_escape_md(s)}")
 
     if top_issues:
         lines += [
