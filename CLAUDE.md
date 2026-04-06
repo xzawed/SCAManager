@@ -53,40 +53,16 @@ make run         # 개발 서버 (포트 8000 자동 포워딩)
 > **주의:** 실제 GitHub·Telegram 연동 기능은 `.env`에 API 키 설정 후 사용 가능합니다.
 > 단위 테스트 전체(110개)는 API 키 없이 실행됩니다.
 
-## 테스트
-
-```bash
-# 전체 테스트 실행
-pytest
-
-# 특정 모듈 테스트
-pytest tests/test_pipeline.py -v
-pytest tests/test_ai_review.py -v
-
-# 커버리지 포함
-pytest --cov=src --cov-report=term-missing
-```
-
-## 코드 품질 검사
-
-```bash
-pylint src/
-flake8 src/
-bandit -r src/
-```
-
 ## DB 마이그레이션
 
-```bash
-# 새 모델 변경 후 마이그레이션 파일 생성
-alembic revision --autogenerate -m "설명"
+`make revision m="설명"` / `make migrate` 사용 (위 Makefile 표 참조)
 
-# 마이그레이션 수동 적용
-alembic upgrade head
+### 현재 마이그레이션 파일
 
-# 롤백
-alembic downgrade -1
-```
+| 파일 | 내용 |
+|------|------|
+| `3b8216565fed_create_repositories_and_analyses_tables.py` | 초기 테이블 생성 |
+| `0002_phase3_add_repo_config_gate_decision.py` | RepoConfig + GateDecision 추가 |
 
 ## 환경 변수
 
