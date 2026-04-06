@@ -132,6 +132,20 @@ async def test_no_python_files_still_creates_repository(mock_deps):
     mock_deps["db"].commit.assert_called()
 
 
+async def test_repo_created_even_when_api_fails(mock_deps):
+    """GitHub API 호출 실패 시에도 Repository는 DB에 생성되어야 한다."""
+    mock_deps["push"].side_effect = Exception("GitHub API error")
+    from src.worker.pipeline import run_analysis_pipeline
+    await run_analysis_pipeline("push", PUSH_DATA)
+
+    from src.models.repository import Repository
+    add_calls = mock_deps["db"].add.call_args_list
+    added_repos = [c[0][0] for c in add_calls if isinstance(c[0][0], Repository)]
+    assert len(added_repos) == 1
+    assert added_repos[0].full_name == "owner/repo"
+    mock_deps["db"].commit.assert_called()
+
+
 async def test_duplicate_commit_is_skipped(mock_deps):
     existing = MagicMock()
     mock_deps["db"].query.return_value.filter_by.return_value.first.side_effect = [
