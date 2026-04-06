@@ -1,9 +1,9 @@
 import logging
 from contextlib import asynccontextmanager
 
+from fastapi import FastAPI
 from alembic import command
 from alembic.config import Config
-from fastapi import FastAPI
 
 from src.webhook.router import router as webhook_router
 from src.api.repos import router as api_repos_router
