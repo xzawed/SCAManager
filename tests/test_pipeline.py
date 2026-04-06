@@ -53,7 +53,12 @@ def mock_deps():
         )
 
         mock_db = MagicMock()
-        mock_db.query.return_value.filter_by.return_value.first.return_value = None
+        mock_repo = MagicMock(id=1)
+        # Call sequence: 1) repo creation (None→create), 2) repo lookup (found),
+        # 3) dup check (None), 4) get_repo_config (None→defaults)
+        mock_db.query.return_value.filter_by.return_value.first.side_effect = [
+            None, mock_repo, None, None,
+        ]
         mock_db.flush = MagicMock()
         mock_db.commit = MagicMock()
         mock_session_cls.return_value = mock_db
@@ -74,7 +79,7 @@ async def test_push_event_calls_full_pipeline(mock_deps):
     mock_deps["ai"].assert_called_once()
     mock_deps["score"].assert_called_once()
     mock_deps["telegram"].assert_called_once()
-    mock_deps["db"].commit.assert_called_once()
+    assert mock_deps["db"].commit.call_count == 2  # repo creation + analysis save
 
 
 async def test_pr_event_calls_full_pipeline(mock_deps):
@@ -110,6 +115,21 @@ async def test_no_python_files_skips_pipeline(mock_deps):
 
     mock_deps["ai"].assert_not_called()
     mock_deps["telegram"].assert_not_called()
+
+
+async def test_no_python_files_still_creates_repository(mock_deps):
+    """Even when no Python files changed, the Repository should be created in DB."""
+    mock_deps["push"].return_value = []
+    from src.worker.pipeline import run_analysis_pipeline
+    await run_analysis_pipeline("push", PUSH_DATA)
+
+    # Repository should have been added and committed even though pipeline was skipped
+    from src.models.repository import Repository
+    add_calls = mock_deps["db"].add.call_args_list
+    added_repos = [c[0][0] for c in add_calls if isinstance(c[0][0], Repository)]
+    assert len(added_repos) == 1
+    assert added_repos[0].full_name == "owner/repo"
+    mock_deps["db"].commit.assert_called()
 
 
 async def test_duplicate_commit_is_skipped(mock_deps):
@@ -171,7 +191,7 @@ async def test_pipeline_calls_gate_for_pr(mock_deps):
 
     mock_db = mock_deps["db"]
     mock_db.query.return_value.filter_by.return_value.first.side_effect = [
-        MagicMock(id=1), None, None
+        MagicMock(id=1), MagicMock(id=1), None,
     ]
     mock_db.refresh = MagicMock()
 
@@ -195,7 +215,7 @@ async def test_pipeline_calls_n8n_when_url_set(mock_deps):
 
     mock_db = mock_deps["db"]
     mock_db.query.return_value.filter_by.return_value.first.side_effect = [
-        MagicMock(id=1), None, None
+        MagicMock(id=1), MagicMock(id=1), None,
     ]
     mock_db.refresh = MagicMock()
 
@@ -223,7 +243,7 @@ async def test_pipeline_skips_gate_for_push(mock_deps):
 
     mock_db = mock_deps["db"]
     mock_db.query.return_value.filter_by.return_value.first.side_effect = [
-        MagicMock(id=1), None, None
+        MagicMock(id=1), MagicMock(id=1), None,
     ]
     mock_db.refresh = MagicMock()
 
