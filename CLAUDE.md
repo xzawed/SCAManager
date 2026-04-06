@@ -1,6 +1,6 @@
 # SCAManager
 
-GitHub Repository에 Push/PR 이벤트 발생 시 정적 분석 + AI 코드 리뷰를 자동 수행하고, 점수와 개선사항을 Telegram·GitHub PR Comment·n8n으로 전달하며, 점수 기반 PR 자동/반자동 Gate와 웹 대시보드를 제공하는 서비스.
+GitHub Repository에 Push/PR 이벤트 발생 시 정적 분석 + AI 코드 리뷰를 자동 수행하고, 점수와 개선사항을 Telegram·GitHub PR Comment·n8n으로 전달하며, 점수 기반 PR 자동/반자동 Gate(Approve + 자동 Merge 포함)와 웹 대시보드를 제공하는 서비스.
 
 ## 빠른 시작
 
@@ -51,7 +51,7 @@ make run         # 개발 서버 (포트 8000 자동 포워딩)
 ```
 
 > **주의:** 실제 GitHub·Telegram 연동 기능은 `.env`에 API 키 설정 후 사용 가능합니다.
-> 단위 테스트 전체(110개)는 API 키 없이 실행됩니다.
+> 단위 테스트 전체(131개)는 API 키 없이 실행됩니다.
 
 ## DB 마이그레이션
 
@@ -63,6 +63,8 @@ make run         # 개발 서버 (포트 8000 자동 포워딩)
 |------|------|
 | `3b8216565fed_create_repositories_and_analyses_tables.py` | 초기 테이블 생성 |
 | `0002_phase3_add_repo_config_gate_decision.py` | RepoConfig + GateDecision 추가 |
+| `0003_drop_analysis_rules.py` | analysis_rules 컬럼 제거 |
+| `0004_add_auto_merge.py` | RepoConfig에 auto_merge Boolean 컬럼 추가 |
 
 ## 환경 변수
 
@@ -88,7 +90,7 @@ src/
 ├── models/
 │   ├── repository.py           # Repository ORM
 │   ├── analysis.py             # Analysis ORM
-│   ├── repo_config.py          # RepoConfig ORM (gate_mode, threshold, n8n_url)
+│   ├── repo_config.py          # RepoConfig ORM (gate_mode, threshold, n8n_url, auto_merge)
 │   └── gate_decision.py        # GateDecision ORM (analysis_id, decision, mode)
 ├── webhook/
 │   ├── validator.py            # HMAC-SHA256 서명 검증
@@ -103,8 +105,8 @@ src/
 ├── config_manager/
 │   └── manager.py              # get_repo_config(), upsert_repo_config(), RepoConfigData
 ├── gate/
-│   ├── engine.py               # run_gate_check() — auto/semi-auto 분기
-│   ├── github_review.py        # post_github_review() — GitHub Review API
+│   ├── engine.py               # run_gate_check() — auto/semi-auto 분기, auto_merge 처리
+│   ├── github_review.py        # post_github_review(), merge_pr() — GitHub Review/Merge API
 │   └── telegram_gate.py        # send_gate_request() — 인라인 키보드 메시지
 ├── notifier/
 │   ├── telegram.py             # send_analysis_result()
@@ -124,7 +126,7 @@ src/
 └── worker/
     └── pipeline.py             # run_analysis_pipeline — 전체 파이프라인
 
-tests/                          # 110개 테스트 (Phase 1~5)
+tests/                          # 131개 테스트 (Phase 1~5 + auto_merge)
 ├── conftest.py
 ├── test_config.py, test_models.py, test_repo_config_model.py
 ├── test_github_diff.py, test_webhook_router.py, test_webhook_validator.py
@@ -158,6 +160,7 @@ GitHub Push/PR
       → DB 저장 (Analysis 레코드)
       → run_gate_check() [PR 이벤트만]
           [auto]      → GitHub Approve / Request Changes 즉시 실행
+                         → auto_merge=True이면 squash merge 자동 실행
           [semi-auto] → Telegram 인라인 키보드 전송 → POST /api/webhook/telegram 콜백 수신
       → asyncio.gather(return_exceptions=True):
           ├─ send_analysis_result()  (Telegram 알림)
@@ -168,6 +171,7 @@ Telegram 반자동 콜백:
   → POST /api/webhook/telegram
   → gate:approve:{id} or gate:reject:{id} 파싱
   → post_github_review() + GateDecision DB 저장
+  → approve + auto_merge=True이면 squash merge 자동 실행
 
 대시보드:
   → GET /              (리포 현황 Web UI)
@@ -200,6 +204,8 @@ Telegram 반자동 콜백:
 - **AI 리뷰 JSON 파싱**: Claude가 JSON 앞에 설명 텍스트를 붙이는 경우 `re.search`로 코드 블록 내 JSON만 추출
 - **알림 독립성**: `asyncio.gather(return_exceptions=True)` — Telegram 또는 GitHub Comment 중 하나 실패해도 나머지는 계속 실행
 - **Webhook 서명**: `X-Hub-Signature-256` 헤더 없으면 403 반환 — 로컬 테스트 시 서명 생성 필요
+- **auto_merge GitHub 권한**: `merge_pr()`은 `repo` 스코프 또는 Fine-grained `pull_requests: write` 권한 필요 — 권한 부족 시 False 반환(파이프라인 미중단)
+- **Branch Protection Rules**: 보호 규칙이 있는 브랜치는 APPROVE 후에도 Merge 실패 가능 (False 반환, 경고 로그 기록)
 
 ## Railway 배포
 
@@ -291,4 +297,5 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 | Phase 2 | Claude AI 리뷰 + 커밋 메시지 점수 + GitHub PR Comment | ✅ 완료 (65 테스트) |
 | Phase 3 | PR Gate Engine (자동/반자동) + Config Manager | ✅ 완료 (~30 테스트) |
 | Phase 4 | Dashboard API + Web UI (Jinja2 + Chart.js) | ✅ 완료 (~15 테스트) |
-| Phase 5 | n8n 연동 + 외부 REST API + 통계 고도화 | ✅ 완료 (~4 테스트, 총 110 테스트) |
+| Phase 5 | n8n 연동 + 외부 REST API + 통계 고도화 | ✅ 완료 (~4 테스트, 총 112 테스트) |
+| Phase 6 | PR 자동 Merge (auto_merge 설정 + squash merge) | ✅ 완료 (19 테스트, 총 131 테스트) |
