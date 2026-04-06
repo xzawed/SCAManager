@@ -43,8 +43,11 @@ def analyze_file(filename: str, content: str) -> StaticAnalysisResult:
 def _run_pylint(path: str) -> list[AnalysisIssue]:
     try:
         r = subprocess.run(  # nosec B603 B607
-            ["pylint", path, "--output-format=json", "--disable=C0114,C0115,C0116,C0301"],
-            capture_output=True, text=True, timeout=30,
+            ["pylint", path, "--output-format=json",
+             "--disable=C0114,C0115,C0116,C0301,C0411,"
+             "R0801,R0902,R0903,R0912,R0913,R0914,R0915,R0917,"
+             "W0511,W0613,W0621,W0718"],
+            capture_output=True, text=True, timeout=30, check=False,
         )
         items = json.loads(r.stdout) if r.stdout.strip().startswith("[") else []
         return [
@@ -64,7 +67,7 @@ def _run_flake8(path: str) -> list[AnalysisIssue]:
     try:
         r = subprocess.run(  # nosec B603 B607
             ["flake8", path, "--max-line-length=120", "--format=%(row)d:%(col)d: %(text)s"],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True, text=True, timeout=30, check=False,
         )
         issues = []
         for line in r.stdout.strip().splitlines():
@@ -88,7 +91,7 @@ def _run_bandit(path: str) -> list[AnalysisIssue]:
     try:
         r = subprocess.run(  # nosec B603 B607
             ["bandit", "-f", "json", "-q", path],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True, text=True, timeout=30, check=False,
         )
         data = json.loads(r.stdout) if r.stdout.strip() else {}
         return [
