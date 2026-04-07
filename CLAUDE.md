@@ -51,7 +51,7 @@ make run         # 개발 서버 (포트 8000 자동 포워딩)
 ```
 
 > **주의:** 실제 GitHub·Telegram 연동 기능은 `.env`에 API 키 설정 후 사용 가능합니다.
-> 단위 테스트 전체(140개)는 API 키 없이 실행됩니다.
+> 단위 테스트 전체(146개)는 API 키 없이 실행됩니다.
 
 ## DB 마이그레이션
 
@@ -126,7 +126,7 @@ src/
 └── worker/
     └── pipeline.py             # run_analysis_pipeline — 전체 파이프라인
 
-tests/                          # 140개 테스트 (Phase 1~6 + 버그 수정)
+tests/                          # 146개 테스트 (Phase 1~6 + 버그 수정 + 점수 개선)
 ├── conftest.py
 ├── test_config.py, test_models.py, test_repo_config_model.py
 ├── test_github_diff.py, test_webhook_router.py, test_webhook_validator.py
@@ -298,4 +298,4 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 | Phase 3 | PR Gate Engine (자동/반자동) + Config Manager | ✅ 완료 (~30 테스트) |
 | Phase 4 | Dashboard API + Web UI (Jinja2 + Chart.js) | ✅ 완료 (~15 테스트) |
 | Phase 5 | n8n 연동 + 외부 REST API + 통계 고도화 | ✅ 완료 (~4 테스트, 총 112 테스트) |
-| Phase 6 | PR 자동 Merge (auto_merge 설정 + squash merge) | ✅ 완료 (19 테스트, 총 140 테스트) |
+| Phase 6 | PR 자동 Merge (auto_merge 설정 + squash merge) | ✅ 완료 (19 테스트, 총 146 테스트) |
