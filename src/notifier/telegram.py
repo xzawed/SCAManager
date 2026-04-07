@@ -36,11 +36,11 @@ def _build_message(
         f"<b>총점:</b> {score_result.total}/100  (등급 {score_result.grade})",
         "",
         "<b>점수 상세:</b>",
-        f"  커밋 메시지: {bd.get('commit_message', '-')}/20",
-        f"  코드 품질: {bd.get('code_quality', '-')}/30",
+        f"  커밋 메시지: {bd.get('commit_message', '-')}/15",
+        f"  코드 품질: {bd.get('code_quality', '-')}/25",
         f"  보안: {bd.get('security', '-')}/20",
-        f"  구현 방향성: {bd.get('ai_review', '-')}/20",
-        f"  테스트: {bd.get('test_coverage', '-')}/10",
+        f"  구현 방향성: {bd.get('ai_review', '-')}/25",
+        f"  테스트: {bd.get('test_coverage', '-')}/15",
     ]
 
     if ai_review and ai_review.summary:
