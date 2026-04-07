@@ -310,6 +310,12 @@
     box-shadow: 0 6px 20px rgba(99,102,241,0.5);
   }
   .btn-save:active { transform: translateY(0); }
+  @media (max-width: 480px) {
+    .gate-mode-group { grid-template-columns: 1fr; }
+    .settings-header { flex-direction: column; gap: 0.5rem; }
+    .settings-card-body { padding: 1rem; }
+    .settings-card-header { padding: 0.875rem 1rem; }
+  }
 </style>
 
 <div class="settings-layout">
