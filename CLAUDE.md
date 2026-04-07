@@ -258,8 +258,8 @@ Telegram 반자동 콜백:
 ## Railway 배포
 
 ```bash
-# 시작 명령 (railway.toml에 설정됨)
-uvicorn src.main:app --host 0.0.0.0 --port $PORT
+# 시작 명령 (railway.toml에 설정됨 — --proxy-headers 포함)
+uvicorn src.main:app --host 0.0.0.0 --port $PORT --proxy-headers
 # DB 마이그레이션은 앱 lifespan에서 자동 실행
 ```
 
@@ -267,6 +267,7 @@ Railway 대시보드 설정:
 - **PostgreSQL 플러그인** 추가 (`DATABASE_URL` 자동 생성)
 - **Variables** 탭에서 나머지 환경변수 설정
 - `DATABASE_URL` 참조: `${{Postgres.DATABASE_URL}}`
+- `APP_BASE_URL` 반드시 설정 — OAuth redirect_uri HTTPS 보장
 
 헬스체크 엔드포인트: `GET /health` (healthcheckTimeout: 60초)
 
@@ -349,5 +350,5 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 | Phase 6 | PR 자동 Merge (auto_merge 설정 + squash merge) | ✅ 완료 (19 테스트, 총 146 테스트) |
 | Phase 7 | 3-테마 UI 리디자인 + Playwright E2E 테스트 | ✅ 완료 (단위 146개 + E2E 26개) |
 | Phase 8A | Google OAuth + User 모델 + 사용자별 대시보드 | ✅ 완료 (단위 164개) |
-| Phase 8B | GitHub OAuth + 리포 추가 UI + Webhook 자동 생성 | ✅ 완료 (단위 179개) |
-| 코드 품질 개선 | 보안·성능·로깅 전수 검토 — N+1, expunge, logging, 4096 트런케이션 | ✅ 완료 |
+| Phase 8B | GitHub OAuth + 리포 추가 UI + Webhook 자동 생성 + 운영 이슈 수정 | ✅ 완료 (단위 179개) |
+| 코드 품질 | 전수 검토 — N+1 방지, DB expunge, 로깅 보강, Telegram 4096 절단 | ✅ 완료 |
