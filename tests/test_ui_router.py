@@ -182,3 +182,100 @@ def test_post_settings_without_auto_merge_checkbox():
     called_config = mock_upsert.call_args[0][1]
     assert called_config.auto_merge is False
     assert r.status_code == 303
+
+
+def test_add_repo_page_loads():
+    """GET /repos/add는 리포 추가 페이지(200 HTML)를 반환한다."""
+    r = client.get("/repos/add")
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+
+
+def test_api_github_repos_returns_json():
+    """GET /api/github/repos는 리포 목록 JSON을 반환한다."""
+    from unittest.mock import AsyncMock, patch
+
+    mock_repos = [
+        {"full_name": "owner/repo-a", "private": False, "description": ""},
+        {"full_name": "owner/repo-b", "private": True, "description": "Private"},
+    ]
+
+    with patch("src.ui.router.list_user_repos", new_callable=AsyncMock, return_value=mock_repos):
+        with patch("src.ui.router.SessionLocal") as mock_sl:
+            mock_db = MagicMock()
+            mock_db.query.return_value.filter.return_value.all.return_value = []
+            mock_sl.return_value.__enter__.return_value = mock_db
+            r = client.get("/api/github/repos")
+
+    assert r.status_code == 200
+    data = r.json()
+    assert isinstance(data, list)
+    assert len(data) == 2
+
+
+def test_api_github_repos_excludes_already_registered():
+    """GET /api/github/repos는 이미 등록된 리포를 제외한다."""
+    from unittest.mock import AsyncMock, patch, MagicMock
+    from src.models.repository import Repository
+
+    mock_repos = [
+        {"full_name": "owner/repo-a", "private": False, "description": ""},
+        {"full_name": "owner/already-registered", "private": False, "description": ""},
+    ]
+    existing_repo = MagicMock(spec=Repository)
+    existing_repo.full_name = "owner/already-registered"
+
+    with patch("src.ui.router.list_user_repos", new_callable=AsyncMock, return_value=mock_repos):
+        with patch("src.ui.router.SessionLocal") as mock_sl:
+            mock_db = MagicMock()
+            mock_db.query.return_value.filter.return_value.all.return_value = [existing_repo]
+            mock_sl.return_value.__enter__.return_value = mock_db
+            r = client.get("/api/github/repos")
+
+    assert r.status_code == 200
+    data = r.json()
+    full_names = [repo["full_name"] for repo in data]
+    assert "owner/already-registered" not in full_names
+    assert "owner/repo-a" in full_names
+
+
+def test_add_repo_post_creates_repo_and_webhook():
+    """POST /repos/add는 리포를 DB에 저장하고 Webhook을 생성한 후 리다이렉트한다."""
+    from unittest.mock import AsyncMock, patch, MagicMock
+
+    with patch("src.ui.router.create_webhook", new_callable=AsyncMock, return_value=77777):
+        with patch("src.ui.router.SessionLocal") as mock_sl:
+            mock_db = MagicMock()
+            mock_db.query.return_value.filter.return_value.first.return_value = None  # 미등록
+            mock_sl.return_value.__enter__.return_value = mock_db
+            r = client.post(
+                "/repos/add",
+                data={"repo_full_name": "owner/new-repo"},
+                follow_redirects=False,
+            )
+
+    assert r.status_code == 303
+    assert "/repos/owner/new-repo" in r.headers["location"]
+    assert mock_db.add.called
+    assert mock_db.commit.called
+
+
+def test_add_repo_post_rejects_duplicate():
+    """POST /repos/add는 이미 등록된 리포에 대해 400을 반환한다."""
+    from unittest.mock import AsyncMock, patch, MagicMock
+    from src.models.repository import Repository
+
+    existing = MagicMock(spec=Repository)
+    existing.full_name = "owner/already-registered"
+
+    with patch("src.ui.router.SessionLocal") as mock_sl:
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = existing
+        mock_sl.return_value.__enter__.return_value = mock_db
+        r = client.post(
+            "/repos/add",
+            data={"repo_full_name": "owner/already-registered"},
+            follow_redirects=False,
+        )
+
+    assert r.status_code == 400
