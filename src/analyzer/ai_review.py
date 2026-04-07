@@ -14,7 +14,7 @@ MAX_DIFF_CHARS = 8000  # Claude API 토큰 비용 제어
 class AiReviewResult:
     commit_score: int        # 0-20: 커밋 메시지 품질
     ai_score: int            # 0-20: 구현 방향성
-    has_tests: bool
+    test_score: int          # 0-10: 테스트 커버리지 점수
     summary: str
     suggestions: list[str] = field(default_factory=list)
     commit_message_feedback: str = ""    # 커밋 메시지 평가 상세
@@ -31,6 +31,9 @@ _PROMPT_TEMPLATE = """\
 커밋 메시지:
 {commit_message}
 
+변경된 파일 목록:
+{filenames}
+
 변경사항:
 {diff_text}
 
@@ -38,7 +41,7 @@ _PROMPT_TEMPLATE = """\
 {{
   "commit_message_score": <0~20 정수, 컨벤션 준수/명확성/변경범위 일치성>,
   "direction_score": <0~20 정수, 구현 방향성/패턴/설계 적합성>,
-  "has_tests": <true/false, 테스트 코드 변경 포함 여부>,
+  "test_score": <0~10 정수, 아래 채점 기준 참고>,
   "summary": "<변경사항 2~3문장 요약: 무엇을 왜 변경했는지>",
   "suggestions": ["<구체적 개선 제안 (파일명:라인 포함)>"],
   "commit_message_feedback": "<커밋 메시지 평가: 컨벤션 준수 여부, 명확성, 변경범위 일치성에 대한 구체적 피드백>",
@@ -49,19 +52,30 @@ _PROMPT_TEMPLATE = """\
   "file_feedbacks": [
     {{"file": "<파일명>", "issues": ["<라인 N: 구체적 문제 설명과 수정 방법>"]}}
   ]
-}}"""
+}}
+
+test_score 채점 기준:
+- 10: 테스트 불필요 파일만 변경됨(.md, .cfg, .toml, .yml, .yaml, .html, .css, .json, .txt, .rst, .ini, Dockerfile, .gitignore, LICENSE 등) 또는 변경에 대한 충분한 테스트 포함
+- 7~9: 테스트 코드 존재하나 커버리지가 부분적 (핵심 경로만 커버, 엣지케이스 부족 등)
+- 4~6: 테스트 파일 수정이 있으나 새로운 코드에 대한 커버리지 부족
+- 1~3: 테스트가 필요하지만 미포함 (단순한 변경이라 심각하지 않음)
+- 0: 테스트가 반드시 필요한 코드 변경인데 테스트 전무"""
 
 
 async def review_code(
     api_key: str,
     commit_message: str,
-    patches: list[str],
+    patches: list[tuple[str, str]],
 ) -> AiReviewResult:
     """Claude API로 코드를 리뷰하고 점수를 반환한다. API key가 없으면 기본값 반환."""
     if not api_key:
         return _default_result()
 
-    diff_text = "\n".join(patches)[:MAX_DIFF_CHARS]
+    diff_text = "\n".join(
+        f"--- {fname}\n{patch}" for fname, patch in patches
+    )[:MAX_DIFF_CHARS]
+    filenames = "\n".join(fname for fname, _ in patches)
+
     if not diff_text.strip():
         return _default_result()
 
@@ -74,6 +88,7 @@ async def review_code(
                 "role": "user",
                 "content": _PROMPT_TEMPLATE.format(
                     commit_message=commit_message or "(없음)",
+                    filenames=filenames or "(없음)",
                     diff_text=diff_text,
                 ),
             }],
@@ -82,6 +97,13 @@ async def review_code(
     except Exception:
         logger.exception("AI review failed, using default scores")
         return _default_result()
+
+
+def _extract_test_score(data: dict) -> int:
+    """test_score 추출. 구 포맷(has_tests boolean) 하위 호환."""
+    if "test_score" in data:
+        return max(0, min(10, int(data["test_score"])))
+    return 10 if data.get("has_tests", False) else 0
 
 
 def _parse_response(text: str) -> AiReviewResult:
@@ -95,7 +117,7 @@ def _parse_response(text: str) -> AiReviewResult:
         return AiReviewResult(
             commit_score=max(0, min(20, int(data.get("commit_message_score", 15)))),
             ai_score=max(0, min(20, int(data.get("direction_score", 15)))),
-            has_tests=bool(data.get("has_tests", False)),
+            test_score=_extract_test_score(data),
             summary=str(data.get("summary", "")),
             suggestions=[str(s) for s in data.get("suggestions", [])],
             commit_message_feedback=str(data.get("commit_message_feedback", "")),
@@ -115,7 +137,7 @@ def _default_result() -> AiReviewResult:
     return AiReviewResult(
         commit_score=15,
         ai_score=15,
-        has_tests=False,
+        test_score=5,
         summary="AI 리뷰 불가 (기본값 적용)",
         suggestions=[],
     )

@@ -52,11 +52,11 @@ def test_breakdown_keys_present():
 from src.analyzer.ai_review import AiReviewResult
 
 
-def _make_ai_review(commit_score=18, ai_score=17, has_tests=True):
+def _make_ai_review(commit_score=18, ai_score=17, test_score=10):
     return AiReviewResult(
         commit_score=commit_score,
         ai_score=ai_score,
-        has_tests=has_tests,
+        test_score=test_score,
         summary="ok",
         suggestions=[],
     )
@@ -68,14 +68,19 @@ def test_calculate_score_uses_ai_review_scores():
     assert result.breakdown["ai_review"] == 17
 
 
-def test_calculate_score_test_coverage_10_when_has_tests():
-    result = calculate_score([_make_result([])], ai_review=_make_ai_review(has_tests=True))
+def test_calculate_score_test_coverage_10_when_full_score():
+    result = calculate_score([_make_result([])], ai_review=_make_ai_review(test_score=10))
     assert result.breakdown["test_coverage"] == 10
 
 
 def test_calculate_score_test_coverage_0_when_no_tests():
-    result = calculate_score([_make_result([])], ai_review=_make_ai_review(has_tests=False))
+    result = calculate_score([_make_result([])], ai_review=_make_ai_review(test_score=0))
     assert result.breakdown["test_coverage"] == 0
+
+
+def test_calculate_score_test_coverage_graduated():
+    result = calculate_score([_make_result([])], ai_review=_make_ai_review(test_score=7))
+    assert result.breakdown["test_coverage"] == 7
 
 
 def test_calculate_score_fallback_when_no_ai_review():
@@ -88,7 +93,7 @@ def test_calculate_score_fallback_when_no_ai_review():
 def test_calculate_score_total_with_ai_review():
     result = calculate_score(
         [_make_result([])],
-        ai_review=_make_ai_review(commit_score=20, ai_score=20, has_tests=True),
+        ai_review=_make_ai_review(commit_score=20, ai_score=20, test_score=10),
     )
     # code_quality=30, security=20, commit=20, ai=20, test=10 = 100
     assert result.total == 100
