@@ -4,17 +4,17 @@ from pydantic import field_validator
 
 class Settings(BaseSettings):
     database_url: str
-    github_webhook_secret: str
-    github_token: str
+    github_webhook_secret: str = ""   # 레거시 리포 fallback (optional)
+    github_token: str = ""            # 레거시 리포 fallback (optional)
     telegram_bot_token: str
     telegram_chat_id: str
     anthropic_api_key: str = ""  # 빈 문자열이면 AI 리뷰 건너뜀
     api_key: str = ""  # 빈 문자열이면 인증 건너뜀
-    google_client_id: str = ""
-    google_client_secret: str = ""
+    github_client_id: str = ""
+    github_client_secret: str = ""
     session_secret: str = "dev-secret-change-in-production"
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
     @field_validator("database_url")
     @classmethod
