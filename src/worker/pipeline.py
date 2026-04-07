@@ -169,9 +169,15 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
                 )
             )
         results = await asyncio.gather(*notify_tasks, return_exceptions=True)
-        for exc in results:
+        for idx, exc in enumerate(results):
             if isinstance(exc, Exception):
-                logger.error("Notification task failed: %s", exc)
+                task_names = ["telegram"]
+                if pr_number is not None:
+                    task_names.append("github_comment")
+                if n8n_url:
+                    task_names.append("n8n")
+                name = task_names[idx] if idx < len(task_names) else "unknown"
+                logger.error("Notification [%s] failed: %s", name, exc, exc_info=exc)
 
     except Exception:
         logger.exception("Analysis pipeline failed for event=%s", event)
