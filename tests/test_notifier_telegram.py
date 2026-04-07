@@ -24,18 +24,22 @@ def test_build_message_contains_repo_name():
     msg = _build_message("owner/repo", "abc1234", _make_score(), _make_analysis(), None)
     assert "owner/repo" in msg
 
+
 def test_build_message_contains_score():
     msg = _build_message("owner/repo", "abc1234", _make_score(80, "B"), _make_analysis(), None)
     assert "80" in msg
     assert "B" in msg
 
+
 def test_build_message_shows_pr_number():
     msg = _build_message("owner/repo", "abc1234", _make_score(), _make_analysis(), 42)
     assert "PR #42" in msg
 
+
 def test_build_message_shows_commit_when_no_pr():
     msg = _build_message("owner/repo", "abc1234567", _make_score(), _make_analysis(), None)
     assert "abc1234" in msg
+
 
 def test_build_message_lists_issues():
     issues = [AnalysisIssue(tool="pylint", severity="error", message="undefined variable x", line=5)]
@@ -55,22 +59,31 @@ def test_build_message_includes_ai_summary():
     assert "함수를 분리하세요" in msg
 
 
-def test_build_message_escapes_markdown_special_chars():
-    """AI 생성 텍스트에 Markdown 특수문자가 있어도 메시지가 깨지지 않아야 한다."""
+def test_build_message_escapes_html_special_chars():
+    """HTML 특수문자가 이스케이프되어 Telegram 파싱 오류를 방지해야 한다."""
     ai = AiReviewResult(
         commit_score=17, ai_score=15, has_tests=True,
-        summary="변수 `user_name`을 *snake_case*로 변경하세요. [참고](link)",
-        suggestions=["_private 메서드를 `__init__`에서 호출하세요"],
+        summary="변수 <user_name>을 사용하세요 & 'config'를 확인",
+        suggestions=["func<T>() 제네릭을 추가하세요"],
     )
     msg = _build_message("owner/repo", "abc1234", _make_score(), _make_analysis(), None, ai_review=ai)
-    # Markdown 특수문자(`, *, [, ])가 제거되어야 함
-    assert "`user_name`" not in msg
-    assert "*snake_case*" not in msg
-    assert "[참고]" not in msg
-    # 특수문자 제거 후 텍스트 내용은 유지되어야 함
-    assert "username" in msg
-    assert "snakecase" in msg
-    assert "init" in msg
+    assert "&lt;user_name&gt;" in msg
+    assert "&amp;" in msg
+    assert "<user_name>" not in msg
+
+
+def test_build_message_escapes_issue_text():
+    """정적 분석 이슈 메시지의 특수문자도 이스케이프되어야 한다."""
+    issues = [AnalysisIssue(tool="pylint", severity="error", message="Unable to import 'src.config'", line=1)]
+    msg = _build_message("owner/repo", "abc1234", _make_score(), _make_analysis(issues), None)
+    assert "Unable to import &#x27;src.config&#x27;" in msg or "Unable to import 'src.config'" in msg
+    assert "[pylint]" in msg
+
+
+def test_build_message_uses_html_formatting():
+    msg = _build_message("owner/repo", "abc1234", _make_score(), _make_analysis(), None)
+    assert "<b>" in msg
+    assert "<code>" in msg
 
 
 def test_build_message_includes_score_breakdown():
@@ -79,8 +92,9 @@ def test_build_message_includes_score_breakdown():
     assert "보안" in msg
     assert "커밋" in msg
 
+
 @pytest.mark.asyncio
-async def test_send_analysis_result_calls_telegram_api():
+async def test_send_analysis_result_uses_html_parse_mode():
     with patch("src.notifier.telegram.httpx.AsyncClient") as MockClient:
         mock_response = MagicMock()
         mock_response.raise_for_status = MagicMock()
@@ -102,3 +116,4 @@ async def test_send_analysis_result_calls_telegram_api():
     call_kwargs = mock_post.call_args[1]
     assert "sendMessage" in mock_post.call_args[0][0]
     assert call_kwargs["json"]["chat_id"] == "-100123"
+    assert call_kwargs["json"]["parse_mode"] == "HTML"

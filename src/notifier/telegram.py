@@ -1,4 +1,4 @@
-import re
+from html import escape
 
 import httpx
 from src.scorer.calculator import ScoreResult
@@ -6,13 +6,6 @@ from src.analyzer.static import StaticAnalysisResult
 from src.analyzer.ai_review import AiReviewResult
 
 GRADE_EMOJI = {"A": "🟢", "B": "🔵", "C": "🟡", "D": "🟠", "F": "🔴"}
-
-_MD_SPECIAL = re.compile(r"[*_`\[\]]")
-
-
-def _escape_md(text: str) -> str:
-    """Telegram Markdown 특수문자를 제거하여 파싱 오류를 방지한다."""
-    return _MD_SPECIAL.sub("", text)
 
 
 def _build_message(
@@ -26,7 +19,7 @@ def _build_message(
     ref = f"PR #{pr_number}" if pr_number else f"커밋 {commit_sha[:7]}"
     total_issues = sum(len(r.issues) for r in analysis_results)
     top_issues = [
-        f"- [{i.tool}] {i.message[:80]}"
+        f"- [{escape(i.tool)}] {escape(i.message[:80])}"
         for r in analysis_results
         for i in r.issues
     ][:5]
@@ -36,12 +29,12 @@ def _build_message(
     bd = score_result.breakdown
 
     lines = [
-        f"{grade_emoji} *SCA 분석 결과*",
-        f"📁 `{repo_name}` — {ref}",
+        f"{grade_emoji} <b>SCA 분석 결과</b>",
+        f"📁 <code>{escape(repo_name)}</code> — {escape(ref)}",
         "",
-        f"*총점:* {score_result.total}/100  (등급 {score_result.grade})",
+        f"<b>총점:</b> {score_result.total}/100  (등급 {score_result.grade})",
         "",
-        "*점수 상세:*",
+        "<b>점수 상세:</b>",
         f"  커밋 메시지: {bd.get('commit_message', '-')}/20",
         f"  코드 품질: {bd.get('code_quality', '-')}/30",
         f"  보안: {bd.get('security', '-')}/20",
@@ -50,17 +43,17 @@ def _build_message(
     ]
 
     if ai_review and ai_review.summary:
-        lines += ["", f"*AI 요약:* {_escape_md(ai_review.summary)}"]
+        lines += ["", f"<b>AI 요약:</b> {escape(ai_review.summary)}"]
 
     if ai_review and ai_review.suggestions:
-        lines += ["", "*개선 제안:*"]
+        lines += ["", "<b>개선 제안:</b>"]
         for s in ai_review.suggestions:
-            lines.append(f"- {_escape_md(s)}")
+            lines.append(f"- {escape(s)}")
 
     if top_issues:
         lines += [
             "",
-            f"*정적 분석 이슈:* {total_issues}건",
+            f"<b>정적 분석 이슈:</b> {total_issues}건",
             issues_text,
         ]
 
@@ -83,6 +76,6 @@ async def send_analysis_result(
         r = await client.post(url, json={
             "chat_id": chat_id,
             "text": text,
-            "parse_mode": "Markdown",
+            "parse_mode": "HTML",
         })
         r.raise_for_status()
