@@ -38,7 +38,10 @@ async def login_page(request: Request):
 @router.get("/auth/github")
 async def auth_github(request: Request):
     """GitHub OAuth 동의 화면으로 리다이렉트."""
-    redirect_uri = str(request.url_for("auth_callback"))
+    if settings.app_base_url:
+        redirect_uri = settings.app_base_url.rstrip("/") + "/auth/callback"
+    else:
+        redirect_uri = str(request.url_for("auth_callback"))
     return await oauth.github.authorize_redirect(request, redirect_uri)
 
 
