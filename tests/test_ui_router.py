@@ -261,12 +261,13 @@ def test_add_repo_post_creates_repo_and_webhook():
 
 
 def test_add_repo_post_rejects_duplicate():
-    """POST /repos/add는 이미 등록된 리포에 대해 400을 반환한다."""
+    """POST /repos/add는 이미 소유자가 있는 리포에 대해 /repos/add?error= 로 리다이렉트한다."""
     from unittest.mock import AsyncMock, patch, MagicMock
     from src.models.repository import Repository
 
     existing = MagicMock(spec=Repository)
     existing.full_name = "owner/already-registered"
+    existing.user_id = 999  # 다른 사용자가 소유
 
     with patch("src.ui.router.SessionLocal") as mock_sl:
         mock_db = MagicMock()
@@ -278,4 +279,5 @@ def test_add_repo_post_rejects_duplicate():
             follow_redirects=False,
         )
 
-    assert r.status_code == 400
+    assert r.status_code == 303
+    assert r.headers["location"].startswith("/repos/add?error=")

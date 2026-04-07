@@ -3,6 +3,24 @@
 {% block content %}
 <style>
   .add-repo-card { max-width: 560px; margin: 2rem auto; }
+  .toast {
+    position: fixed;
+    top: 1.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--danger, #e74c3c);
+    color: #fff;
+    padding: .75rem 1.5rem;
+    border-radius: var(--radius-btn);
+    font-size: 14px;
+    font-weight: 600;
+    box-shadow: 0 4px 16px rgba(0,0,0,.3);
+    z-index: 9999;
+    opacity: 0;
+    transition: opacity .3s;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
   .form-group { margin-bottom: 1.25rem; }
   .form-label {
     display: block;
@@ -36,6 +54,8 @@
     margin-top: .5rem;
   }
 </style>
+
+<div class="toast" id="errorToast"></div>
 
 <div class="page-header">
   <a class="back-btn" href="/">← 돌아가기</a>
@@ -103,6 +123,18 @@
   });
 
   loadRepos();
+
+  // 에러 쿼리 파라미터 → 토스트 팝업
+  const params = new URLSearchParams(window.location.search);
+  const errorMsg = params.get('error');
+  if (errorMsg) {
+    const toast = document.getElementById('errorToast');
+    toast.textContent = errorMsg;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 4000);
+    // URL에서 쿼리 파라미터 제거
+    history.replaceState(null, '', '/repos/add');
+  }
 </script>
 {% endblock %}
 {% endblock %}
