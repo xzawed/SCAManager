@@ -1,4 +1,4 @@
-from src.scorer.calculator import calculate_score, ScoreResult
+from src.scorer.calculator import calculate_score
 from src.analyzer.static import StaticAnalysisResult, AnalysisIssue
 
 
