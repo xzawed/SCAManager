@@ -26,8 +26,9 @@ def _extract_commit_message(event: str, data: dict) -> str:
 
 
 async def _run_static_analysis(files: list[ChangedFile]) -> list[StaticAnalysisResult]:
+    python_files = [f for f in files if f.filename.endswith(".py")]
     return await asyncio.to_thread(
-        lambda: [analyze_file(f.filename, f.content) for f in files]
+        lambda: [analyze_file(f.filename, f.content) for f in python_files]
     )
 
 
@@ -60,7 +61,7 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
             files = get_push_files(settings.github_token, repo_name, commit_sha)
 
         if not files:
-            logger.info("No Python files changed in %s @ %s", repo_name, commit_sha)
+            logger.info("No changed files in %s @ %s", repo_name, commit_sha)
             return
 
         patches = [f.patch for f in files if f.patch]
