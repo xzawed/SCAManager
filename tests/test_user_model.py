@@ -65,3 +65,27 @@ def test_user_query_by_google_id(db):
     found = db.query(User).filter(User.google_id == "g-456").first()
     assert found is not None
     assert found.email == "foo@bar.com"
+
+
+def test_repository_user_id_is_nullable(db):
+    """기존 Repository는 user_id 없이 생성 가능하다 (하위 호환성)."""
+    from src.models.repository import Repository
+    repo = Repository(full_name="owner/orphan-repo")
+    db.add(repo)
+    db.commit()
+    db.refresh(repo)
+    assert repo.user_id is None
+
+
+def test_repository_owner_relationship(db):
+    """Repository.owner는 연결된 User를 반환한다."""
+    from src.models.repository import Repository
+    user = User(google_id="g-rel-1", email="rel@example.com", display_name="Rel User")
+    db.add(user)
+    db.flush()
+    repo = Repository(full_name="owner/owned-repo", user_id=user.id)
+    db.add(repo)
+    db.commit()
+    db.refresh(repo)
+    assert repo.user_id == user.id
+    assert repo.owner.email == "rel@example.com"
