@@ -17,6 +17,9 @@ import requests
 E2E_PORT = 8001
 BASE_URL = f"http://localhost:{E2E_PORT}"
 
+# E2E 테스트용 고정 사용자 ID
+_E2E_USER_ID = 1
+
 
 # ── 서버 시작/종료 ──────────────────────────────────────────────────────
 
@@ -32,6 +35,9 @@ def _start_uvicorn(db_path: str) -> tuple:
     os.environ["TELEGRAM_BOT_TOKEN"] = "1234567890:AAe2etest"
     os.environ["TELEGRAM_CHAT_ID"] = "-100000000"
     os.environ["API_KEY"] = "e2e-api-key"
+    os.environ["GITHUB_CLIENT_ID"] = "e2e-github-client-id"
+    os.environ["GITHUB_CLIENT_SECRET"] = "e2e-github-client-secret"
+    os.environ["SESSION_SECRET"] = "e2e-session-secret-32chars-long!!"
 
     # pydantic-settings 캐시 무효화
     for mod_name in list(sys.modules.keys()):
@@ -39,6 +45,19 @@ def _start_uvicorn(db_path: str) -> tuple:
             del sys.modules[mod_name]
 
     from src.main import app  # noqa: PLC0415
+    from src.auth.session import require_login  # noqa: PLC0415
+    from src.models.user import User as UserModel  # noqa: PLC0415
+
+    # E2E용 테스트 사용자 — require_login 의존성 우회
+    _e2e_user = UserModel(
+        id=_E2E_USER_ID,
+        github_id="e2e-test-user-12345",
+        github_login="e2e-tester",
+        github_access_token="gho_e2e_test_token",
+        email="e2e@test.com",
+        display_name="E2E Test User",
+    )
+    app.dependency_overrides[require_login] = lambda: _e2e_user
 
     config = uvicorn.Config(
         app,
@@ -87,6 +106,9 @@ def live_server(tmp_path_factory):
         thread.join(timeout=5)
         pytest.skip("E2E 서버 시작 실패 — 테스트 건너뜁니다")
 
+    # E2E 테스트용 User를 DB에 직접 삽입
+    _seed_user(db_path)
+
     yield BASE_URL
 
     server.should_exit = True
@@ -130,8 +152,30 @@ def _build_sig(payload: str, secret: str) -> str:
     ).hexdigest()
 
 
-def _seed_repo(base_url: str) -> None:
-    """Push Webhook을 시뮬레이션해 Repository를 DB에 등록한다."""
+def _seed_user(db_path: str) -> None:
+    """E2E 테스트용 User를 DB에 직접 삽입한다."""
+    from sqlalchemy import create_engine, text
+    engine = create_engine(f"sqlite:///{db_path}")
+    with engine.connect() as conn:
+        conn.execute(text("""
+            INSERT OR IGNORE INTO users
+                (id, github_id, github_login, github_access_token, email, display_name, created_at)
+            VALUES
+                (:id, :gid, :login, :token, :email, :name, datetime('now'))
+        """), {
+            "id": _E2E_USER_ID,
+            "gid": "e2e-test-user-12345",
+            "login": "e2e-tester",
+            "token": "gho_e2e_test_token",
+            "email": "e2e@test.com",
+            "name": "E2E Test User",
+        })
+        conn.commit()
+    engine.dispose()
+
+
+def _seed_repo(base_url: str, db_path: str) -> None:
+    """Push Webhook을 시뮬레이션해 Repository를 DB에 등록하고, E2E 사용자에게 소유권을 부여한다."""
     payload = json.dumps({
         "ref": "refs/heads/main",
         "repository": {"full_name": "owner/testrepo"},
@@ -157,11 +201,25 @@ def _seed_repo(base_url: str) -> None:
         pass
     time.sleep(0.3)
 
+    # Webhook으로 생성된 repo의 user_id를 E2E 테스트 사용자로 업데이트
+    from sqlalchemy import create_engine, text
+    engine = create_engine(f"sqlite:///{db_path}")
+    with engine.connect() as conn:
+        conn.execute(text(
+            "UPDATE repositories SET user_id=:uid WHERE full_name=:fn"
+        ), {"uid": _E2E_USER_ID, "fn": "owner/testrepo"})
+        conn.commit()
+    engine.dispose()
+
 
 @pytest.fixture
-def seeded_page(browser_instance, live_server):
+def seeded_page(browser_instance, live_server, tmp_path_factory):
     """테스트 레포(owner/testrepo)가 DB에 등록된 상태의 page fixture."""
-    _seed_repo(live_server)
+    # db_path를 tmp_path_factory에서 재구성하는 대신, live_server fixture에서 전달받은 경로 활용
+    # live_server가 세션 scope이므로 DB 경로를 세션 레벨에서 공유해야 함
+    # 간단히: 같은 tmpdir 패턴으로 추정하는 대신, 환경변수에서 읽음
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    _seed_repo(live_server, db_path)
     context = browser_instance.new_context(base_url=live_server)
     pg = context.new_page()
     yield pg

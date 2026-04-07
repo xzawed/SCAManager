@@ -27,16 +27,17 @@ def upgrade() -> None:
     op.create_index(op.f('ix_users_google_id'), 'users', ['google_id'], unique=True)
     op.create_index(op.f('ix_users_email'), 'users', ['email'], unique=True)
 
-    op.add_column(
-        'repositories',
-        sa.Column('user_id', sa.Integer(), sa.ForeignKey('users.id'), nullable=True)
-    )
-    op.create_index(op.f('ix_repositories_user_id'), 'repositories', ['user_id'], unique=False)
+    with op.batch_alter_table('repositories') as batch_op:
+        batch_op.add_column(
+            sa.Column('user_id', sa.Integer(), nullable=True)
+        )
+        batch_op.create_index('ix_repositories_user_id', ['user_id'], unique=False)
 
 
 def downgrade() -> None:
-    op.drop_index(op.f('ix_repositories_user_id'), table_name='repositories')
-    op.drop_column('repositories', 'user_id')
+    with op.batch_alter_table('repositories') as batch_op:
+        batch_op.drop_index('ix_repositories_user_id')
+        batch_op.drop_column('user_id')
 
     op.drop_index(op.f('ix_users_email'), table_name='users')
     op.drop_index(op.f('ix_users_google_id'), table_name='users')
