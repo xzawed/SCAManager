@@ -43,7 +43,12 @@ async def add_repo(request: Request, current_user: User = Depends(require_login)
             Repository.full_name == repo_full_name
         ).first()
         if existing:
-            raise HTTPException(status_code=400, detail="이미 등록된 리포입니다")
+            if existing.user_id is not None:
+                raise HTTPException(status_code=400, detail="이미 등록된 리포입니다")
+            # user_id=NULL인 기존 리포 → 현재 사용자가 소유권 획득
+            existing.user_id = current_user.id
+            db.commit()
+            return RedirectResponse(url=f"/repos/{repo_full_name}", status_code=303)
 
     webhook_secret = secrets.token_hex(32)
     webhook_url = str(request.base_url) + "webhooks/github"
@@ -71,7 +76,7 @@ async def add_repo(request: Request, current_user: User = Depends(require_login)
 def overview(request: Request, current_user: User = Depends(require_login)):
     with SessionLocal() as db:
         repos = db.query(Repository).filter(
-            Repository.user_id == current_user.id
+            (Repository.user_id == current_user.id) | (Repository.user_id.is_(None))
         ).order_by(Repository.created_at.desc()).all()
         repo_data = []
         for r in repos:
