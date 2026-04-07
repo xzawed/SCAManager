@@ -46,8 +46,8 @@ async def github_webhook(
                 ).first()
                 if repo and repo.webhook_secret:
                     secret = repo.webhook_secret
-        except Exception:  # noqa: BLE001
-            pass  # DB 조회 실패 시 전역 시크릿으로 fallback
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Per-repo webhook secret lookup failed, using global secret: %s", exc)
 
     if not verify_github_signature(payload, x_hub_signature_256, secret):
         raise HTTPException(status_code=401, detail="Invalid signature")
