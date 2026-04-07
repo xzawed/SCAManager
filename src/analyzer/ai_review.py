@@ -7,7 +7,7 @@ import anthropic
 
 logger = logging.getLogger(__name__)
 
-MAX_DIFF_CHARS = 8000  # Claude API 토큰 비용 제어
+MAX_DIFF_CHARS = 16000  # Claude API 컨텍스트 활용 확대
 
 
 @dataclass
@@ -36,6 +36,12 @@ _PROMPT_TEMPLATE = """\
 
 변경사항:
 {diff_text}
+
+채점 유의사항:
+- 일반적으로 양호한 코드/커밋은 15~18점 범위에 해당합니다.
+- 명확한 문제가 없다면 최소 12점 이상을 부여하세요.
+- 0~5점은 명백히 잘못된 경우에만 부여하세요.
+- 점수를 지나치게 보수적으로 낮추지 마세요.
 
 다음 JSON만 응답 (추가 텍스트 없이):
 {{
@@ -115,8 +121,8 @@ def _parse_response(text: str) -> AiReviewResult:
             cleaned = block_match.group(1)
         data = json.loads(cleaned)
         return AiReviewResult(
-            commit_score=max(0, min(20, int(data.get("commit_message_score", 15)))),
-            ai_score=max(0, min(20, int(data.get("direction_score", 15)))),
+            commit_score=max(0, min(20, int(data.get("commit_message_score", 17)))),
+            ai_score=max(0, min(20, int(data.get("direction_score", 17)))),
             test_score=_extract_test_score(data),
             summary=str(data.get("summary", "")),
             suggestions=[str(s) for s in data.get("suggestions", [])],
@@ -133,11 +139,11 @@ def _parse_response(text: str) -> AiReviewResult:
 
 
 def _default_result() -> AiReviewResult:
-    """API key 없음, 빈 diff, 또는 오류 시 반환하는 기본값."""
+    """API key 없음, 빈 diff, 또는 오류 시 반환하는 중립적 기본값."""
     return AiReviewResult(
-        commit_score=15,
-        ai_score=15,
-        test_score=5,
+        commit_score=17,
+        ai_score=17,
+        test_score=7,
         summary="AI 리뷰 불가 (기본값 적용)",
         suggestions=[],
     )
