@@ -5,31 +5,421 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}SCAManager{% endblock %}</title>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 0; background: #f5f5f5; }
-    nav { background: #1a1a2e; color: white; padding: 1rem 2rem; display: flex; align-items: center; gap: 2rem; }
-    nav a { color: #eee; text-decoration: none; }
-    nav a:hover { color: white; }
-    .container { max-width: 1200px; margin: 2rem auto; padding: 0 1rem; }
-    .card { background: white; border-radius: 8px; padding: 1.5rem; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
-    .grade { display: inline-block; padding: 2px 8px; border-radius: 4px; font-weight: bold; }
-    .grade-A { background: #d4edda; color: #155724; }
-    .grade-B { background: #cce5ff; color: #004085; }
-    .grade-C { background: #fff3cd; color: #856404; }
-    .grade-D { background: #ffd0b3; color: #7a3000; }
-    .grade-F { background: #f8d7da; color: #721c24; }
+    /* ── 공통 변수 ─────────────────────────────── */
+    :root {
+      --radius-card: 12px;
+      --radius-btn:  8px;
+      --transition:  0.25s ease;
+    }
+
+    /* ── 다크 대시보드 (기본) ─────────────────── */
+    [data-theme="dark"], body:not([data-theme]) {
+      --bg-page:      #0f1117;
+      --bg-card:      #1e2130;
+      --bg-nav:       #1a1a2e;
+      --bg-input:     #2d3748;
+      --bg-input-focus: #374151;
+      --border:       #2d3748;
+      --border-focus: #6366f1;
+      --text-primary: #e2e8f0;
+      --text-muted:   #64748b;
+      --text-nav:     #cbd5e1;
+      --accent:       #6366f1;
+      --accent-hover: #818cf8;
+      --accent-grad:  linear-gradient(135deg, #6366f1, #818cf8);
+      --success:      #10b981;
+      --danger:       #ef4444;
+      --shadow:       0 4px 24px rgba(0,0,0,0.4);
+      --shadow-card:  0 2px 12px rgba(0,0,0,0.3);
+      --table-head:   #252840;
+      --table-row-hover: #252840;
+      --code-bg:      #0f1117;
+    }
+
+    /* ── 클린 카드 (라이트) ───────────────────── */
+    [data-theme="light"] {
+      --bg-page:      #f1f5f9;
+      --bg-card:      #ffffff;
+      --bg-nav:       #1e293b;
+      --bg-input:     #f8fafc;
+      --bg-input-focus: #ffffff;
+      --border:       #e2e8f0;
+      --border-focus: #6366f1;
+      --text-primary: #1e293b;
+      --text-muted:   #94a3b8;
+      --text-nav:     #cbd5e1;
+      --accent:       #6366f1;
+      --accent-hover: #4f46e5;
+      --accent-grad:  linear-gradient(135deg, #667eea, #764ba2);
+      --success:      #10b981;
+      --danger:       #ef4444;
+      --shadow:       0 4px 16px rgba(0,0,0,0.08);
+      --shadow-card:  0 2px 8px rgba(0,0,0,0.06);
+      --table-head:   #f8fafc;
+      --table-row-hover: #f8fafc;
+      --code-bg:      #f1f5f9;
+    }
+
+    /* ── 글래스모피즘 ─────────────────────────── */
+    [data-theme="glass"] {
+      --bg-page:      #0f3460;
+      --bg-card:      rgba(255,255,255,0.07);
+      --bg-nav:       rgba(15,20,60,0.85);
+      --bg-input:     rgba(255,255,255,0.08);
+      --bg-input-focus: rgba(255,255,255,0.14);
+      --border:       rgba(255,255,255,0.14);
+      --border-focus: #818cf8;
+      --text-primary: #e2e8f0;
+      --text-muted:   rgba(255,255,255,0.45);
+      --text-nav:     #cbd5e1;
+      --accent:       #818cf8;
+      --accent-hover: #a5b4fc;
+      --accent-grad:  linear-gradient(135deg, #6366f1, #ec4899);
+      --success:      #10b981;
+      --danger:       #ef4444;
+      --shadow:       0 8px 32px rgba(0,0,0,0.4);
+      --shadow-card:  0 4px 20px rgba(0,0,0,0.35);
+      --table-head:   rgba(255,255,255,0.05);
+      --table-row-hover: rgba(255,255,255,0.05);
+      --code-bg:      rgba(0,0,0,0.25);
+    }
+
+    /* ── 리셋 & 기본 ──────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+      background-color: var(--bg-page);
+      color: var(--text-primary);
+      transition: background-color var(--transition), color var(--transition);
+      min-height: 100vh;
+    }
+    body[data-theme="glass"] {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      background-attachment: fixed;
+    }
+
+    /* ── 네비게이션 ───────────────────────────── */
+    nav {
+      background: var(--bg-nav);
+      color: var(--text-nav);
+      padding: 0 2rem;
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+      height: 56px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.06), var(--shadow);
+      backdrop-filter: blur(12px);
+    }
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+      color: #fff;
+    }
+    .nav-logo-icon {
+      width: 28px;
+      height: 28px;
+      background: var(--accent-grad);
+      border-radius: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    .nav-logo strong { font-size: 15px; letter-spacing: -.2px; }
+    nav a.nav-link {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color var(--transition);
+    }
+    nav a.nav-link:hover { color: var(--text-nav); }
+    .nav-spacer { flex: 1; }
+
+    /* ── 테마 스위처 ──────────────────────────── */
+    .theme-switcher {
+      position: relative;
+    }
+    .theme-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      color: var(--text-nav);
+      padding: 6px 12px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: background var(--transition), border-color var(--transition);
+      white-space: nowrap;
+    }
+    .theme-btn:hover {
+      background: rgba(255,255,255,0.14);
+      border-color: rgba(255,255,255,0.2);
+    }
+    .theme-btn .chevron {
+      font-size: 10px;
+      opacity: 0.6;
+      transition: transform var(--transition);
+    }
+    .theme-switcher.open .chevron { transform: rotate(180deg); }
+    .theme-dropdown {
+      display: none;
+      position: absolute;
+      right: 0;
+      top: calc(100% + 8px);
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-card);
+      box-shadow: var(--shadow);
+      min-width: 180px;
+      overflow: hidden;
+      z-index: 200;
+    }
+    .theme-switcher.open .theme-dropdown { display: block; }
+    body[data-theme="glass"] .theme-dropdown {
+      backdrop-filter: blur(20px);
+    }
+    .theme-option {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--text-primary);
+      transition: background var(--transition);
+    }
+    .theme-option:hover { background: rgba(99,102,241,0.12); }
+    .theme-option.active {
+      color: var(--accent);
+      background: rgba(99,102,241,0.1);
+      font-weight: 600;
+    }
+    .theme-option.active::after {
+      content: '✓';
+      margin-left: auto;
+      font-size: 12px;
+    }
+
+    /* ── 레이아웃 ──────────────────────────────── */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+
+    /* ── 카드 ──────────────────────────────────── */
+    .card {
+      background: var(--bg-card);
+      border-radius: var(--radius-card);
+      padding: 1.5rem;
+      margin-bottom: 1.25rem;
+      box-shadow: var(--shadow-card);
+      border: 1px solid var(--border);
+      transition: background var(--transition), border-color var(--transition);
+    }
+    body[data-theme="glass"] .card {
+      backdrop-filter: blur(16px);
+    }
+
+    /* ── 등급 배지 ─────────────────────────────── */
+    .grade {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 13px;
+    }
+    .grade-A { background: rgba(16,185,129,0.15); color: #10b981; }
+    .grade-B { background: rgba(59,130,246,0.15); color: #3b82f6; }
+    .grade-C { background: rgba(245,158,11,0.15); color: #f59e0b; }
+    .grade-D { background: rgba(249,115,22,0.15); color: #f97316; }
+    .grade-F { background: rgba(239,68,68,0.15);  color: #ef4444; }
+
+    /* ── 테이블 ────────────────────────────────── */
     table { width: 100%; border-collapse: collapse; }
-    th, td { padding: .75rem; text-align: left; border-bottom: 1px solid #eee; }
-    th { background: #f8f9fa; font-weight: 600; }
-    .btn { padding: .4rem 1rem; border-radius: 4px; border: none; cursor: pointer; }
-    .btn-primary { background: #0066cc; color: white; }
+    th {
+      padding: .75rem 1rem;
+      text-align: left;
+      background: var(--table-head);
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: .875rem 1rem;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+      color: var(--text-primary);
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: var(--table-row-hover); }
+    tbody tr { transition: background var(--transition); }
+
+    /* ── 링크 ──────────────────────────────────── */
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { color: var(--accent-hover); text-decoration: underline; }
+
+    /* ── 버튼 ──────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: .5rem 1.25rem;
+      border-radius: var(--radius-btn);
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all var(--transition);
+    }
+    .btn-primary {
+      background: var(--accent-grad);
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(99,102,241,0.35);
+    }
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 16px rgba(99,102,241,0.5);
+    }
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+    .btn-ghost:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* ── 페이지 헤더 ───────────────────────────── */
+    .page-header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.75rem;
+    }
+    .page-header h2 {
+      margin: 0;
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+    .page-header .subtitle {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text-muted);
+      font-size: 13px;
+      text-decoration: none;
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      transition: all var(--transition);
+      flex-shrink: 0;
+    }
+    .back-btn:hover {
+      color: var(--text-primary);
+      border-color: var(--accent);
+      text-decoration: none;
+    }
+
+    /* ── 코드 ──────────────────────────────────── */
+    code {
+      background: var(--code-bg);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-family: 'Menlo', 'Consolas', monospace;
+      color: var(--accent-hover);
+      border: 1px solid var(--border);
+    }
+
+    /* ── 섹션 제목 ─────────────────────────────── */
+    .section-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--text-muted);
+      margin: 0 0 1rem;
+    }
   </style>
 </head>
-<body>
+<body data-theme="dark">
   <nav>
-    <strong>SCAManager</strong>
-    <a href="/">Overview</a>
+    <a class="nav-logo" href="/">
+      <div class="nav-logo-icon">⚡</div>
+      <strong>SCAManager</strong>
+    </a>
+    <a class="nav-link" href="/">Overview</a>
+    <div class="nav-spacer"></div>
+    <div class="theme-switcher" id="themeSwitcher">
+      <button class="theme-btn" id="themeToggle" aria-label="테마 변경">
+        <span id="themeIcon">🌙</span>
+        <span id="themeName">다크</span>
+        <span class="chevron">▾</span>
+      </button>
+      <div class="theme-dropdown" id="themeDropdown">
+        <div class="theme-option" data-theme="dark">🌙 다크 대시보드</div>
+        <div class="theme-option" data-theme="light">☀️ 클린 카드</div>
+        <div class="theme-option" data-theme="glass">✨ 글래스모피즘</div>
+      </div>
+    </div>
   </nav>
   <div class="container">{% block content %}{% endblock %}</div>
   {% block scripts %}{% endblock %}
+  <script>
+    const THEMES = {
+      dark:  { icon: '🌙', name: '다크' },
+      light: { icon: '☀️', name: '클린' },
+      glass: { icon: '✨', name: '글래스' }
+    };
+    function applyTheme(theme) {
+      if (!THEMES[theme]) theme = 'dark';
+      document.body.dataset.theme = theme;
+      localStorage.setItem('sca-theme', theme);
+      document.getElementById('themeIcon').textContent = THEMES[theme].icon;
+      document.getElementById('themeName').textContent = THEMES[theme].name;
+      document.querySelectorAll('.theme-option').forEach(el => {
+        el.classList.toggle('active', el.dataset.theme === theme);
+      });
+      document.dispatchEvent(new CustomEvent('themechange', { detail: theme }));
+    }
+    // 초기화
+    applyTheme(localStorage.getItem('sca-theme') || 'dark');
+    // 드롭다운 토글
+    const switcher = document.getElementById('themeSwitcher');
+    document.getElementById('themeToggle').addEventListener('click', e => {
+      e.stopPropagation();
+      switcher.classList.toggle('open');
+    });
+    document.querySelectorAll('.theme-option').forEach(el => {
+      el.addEventListener('click', () => {
+        applyTheme(el.dataset.theme);
+        switcher.classList.remove('open');
+      });
+    });
+    document.addEventListener('click', () => switcher.classList.remove('open'));
+  </script>
 </body>
 </html>

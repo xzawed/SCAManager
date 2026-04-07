@@ -1,25 +1,152 @@
 {% extends "base.html" %}
 {% block title %}Overview — SCAManager{% endblock %}
 {% block content %}
-<h2>리포지토리 현황</h2>
+<style>
+  .overview-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.75rem;
+  }
+  .overview-header h2 {
+    margin: 0;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+  .repo-count {
+    font-size: 13px;
+    color: var(--text-muted);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    padding: 4px 12px;
+    border-radius: 20px;
+  }
+  .repo-link {
+    font-weight: 600;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-primary);
+    text-decoration: none;
+  }
+  .repo-link:hover { color: var(--accent); text-decoration: none; }
+  .repo-link::before {
+    content: '';
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--success);
+    flex-shrink: 0;
+  }
+  .score-cell {
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--text-primary);
+  }
+  .score-cell.score-high { color: var(--success); }
+  .score-cell.score-mid  { color: #f59e0b; }
+  .score-cell.score-low  { color: var(--danger); }
+  .analysis-count {
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  .settings-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--text-muted);
+    text-decoration: none;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    transition: all var(--transition);
+  }
+  .settings-link:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+    text-decoration: none;
+  }
+  .empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+  }
+  .empty-state .empty-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+  }
+  .empty-state p {
+    color: var(--text-muted);
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .empty-state code {
+    font-size: 12px;
+  }
+</style>
+
+<div class="overview-header">
+  <h2>리포지토리 현황</h2>
+  {% if repos %}
+  <span class="repo-count">{{ repos | length }}개 리포</span>
+  {% endif %}
+</div>
+
 {% if repos %}
-<div class="card">
+<div class="card" style="padding:0;overflow:hidden;">
   <table>
-    <thead><tr><th>리포지토리</th><th>분석 수</th><th>최근 점수</th><th>등급</th><th></th></tr></thead>
+    <thead>
+      <tr>
+        <th>리포지토리</th>
+        <th>분석 수</th>
+        <th>최근 점수</th>
+        <th>등급</th>
+        <th></th>
+      </tr>
+    </thead>
     <tbody>
     {% for item in repos %}
     <tr>
-      <td><a href="/repos/{{ item.full_name }}">{{ item.full_name }}</a></td>
-      <td>{{ item.analysis_count }}</td>
-      <td>{{ item.latest_score if item.latest_score is not none else "—" }}</td>
-      <td>{% if item.latest_grade %}<span class="grade grade-{{ item.latest_grade }}">{{ item.latest_grade }}</span>{% endif %}</td>
-      <td><a href="/repos/{{ item.full_name }}/settings">설정</a></td>
+      <td>
+        <a class="repo-link" href="/repos/{{ item.full_name }}">{{ item.full_name }}</a>
+      </td>
+      <td>
+        <span class="analysis-count">{{ item.analysis_count }}회</span>
+      </td>
+      <td>
+        {% if item.latest_score is not none %}
+        <span class="score-cell {% if item.latest_score >= 75 %}score-high{% elif item.latest_score >= 50 %}score-mid{% else %}score-low{% endif %}">
+          {{ item.latest_score }}
+        </span>
+        {% else %}
+        <span style="color:var(--text-muted)">—</span>
+        {% endif %}
+      </td>
+      <td>
+        {% if item.latest_grade %}
+        <span class="grade grade-{{ item.latest_grade }}">{{ item.latest_grade }}</span>
+        {% endif %}
+      </td>
+      <td>
+        <a class="settings-link" href="/repos/{{ item.full_name }}/settings">⚙️ 설정</a>
+      </td>
     </tr>
     {% endfor %}
     </tbody>
   </table>
 </div>
 {% else %}
-<div class="card"><p>등록된 리포지토리가 없습니다. GitHub Webhook을 설정하면 자동으로 등록됩니다.</p></div>
+<div class="card">
+  <div class="empty-state">
+    <div class="empty-icon">🔗</div>
+    <p>등록된 리포지토리가 없습니다.<br>
+      GitHub Webhook을 설정하면 자동으로 등록됩니다.</p>
+  </div>
+</div>
 {% endif %}
 {% endblock %}
