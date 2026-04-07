@@ -49,7 +49,7 @@ def test_build_message_lists_issues():
 
 def test_build_message_includes_ai_summary():
     ai = AiReviewResult(
-        commit_score=17, ai_score=15, has_tests=True,
+        commit_score=17, ai_score=15, test_score=10,
         summary="전체적으로 좋은 리팩토링입니다.",
         suggestions=["타입 힌트를 추가하세요", "함수를 분리하세요"],
     )
@@ -62,7 +62,7 @@ def test_build_message_includes_ai_summary():
 def test_build_message_escapes_html_special_chars():
     """HTML 특수문자가 이스케이프되어 Telegram 파싱 오류를 방지해야 한다."""
     ai = AiReviewResult(
-        commit_score=17, ai_score=15, has_tests=True,
+        commit_score=17, ai_score=15, test_score=10,
         summary="변수 <user_name>을 사용하세요 & 'config'를 확인",
         suggestions=["func<T>() 제네릭을 추가하세요"],
     )

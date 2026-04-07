@@ -40,7 +40,7 @@ def mock_deps():
         mock_push.return_value = [ChangedFile("app.py", "x = 1\n", "@@ +1 @@")]
         mock_pr.return_value = [ChangedFile("app.py", "x = 1\n", "@@ +1 @@")]
         mock_ai.return_value = AiReviewResult(
-            commit_score=17, ai_score=16, has_tests=True,
+            commit_score=17, ai_score=16, test_score=10,
             summary="Good change", suggestions=[]
         )
         mock_score.return_value = ScoreResult(
@@ -209,7 +209,7 @@ async def test_pipeline_calls_gate_for_pr(mock_deps):
     from src.scorer.calculator import ScoreResult
 
     mock_deps["pr"].return_value = [MagicMock(filename="a.py", content="x=1", patch="@@ +1")]
-    mock_deps["ai"].return_value = AiReviewResult(commit_score=15, ai_score=15, has_tests=False, summary="ok")
+    mock_deps["ai"].return_value = AiReviewResult(commit_score=15, ai_score=15, test_score=0, summary="ok")
     mock_deps["score"].return_value = ScoreResult(
         total=80, grade="B", code_quality_score=25, security_score=20, breakdown={}
     )
@@ -233,7 +233,7 @@ async def test_pipeline_calls_n8n_when_url_set(mock_deps):
     from src.scorer.calculator import ScoreResult
 
     mock_deps["push"].return_value = [MagicMock(filename="a.py", content="x=1", patch="@@ +1")]
-    mock_deps["ai"].return_value = AiReviewResult(commit_score=15, ai_score=15, has_tests=False, summary="ok")
+    mock_deps["ai"].return_value = AiReviewResult(commit_score=15, ai_score=15, test_score=0, summary="ok")
     mock_deps["score"].return_value = ScoreResult(
         total=80, grade="B", code_quality_score=25, security_score=20, breakdown={}
     )
@@ -261,7 +261,7 @@ async def test_pipeline_skips_gate_for_push(mock_deps):
     from src.scorer.calculator import ScoreResult
 
     mock_deps["push"].return_value = [MagicMock(filename="a.py", content="x=1", patch="@@ +1")]
-    mock_deps["ai"].return_value = AiReviewResult(commit_score=15, ai_score=15, has_tests=False, summary="ok")
+    mock_deps["ai"].return_value = AiReviewResult(commit_score=15, ai_score=15, test_score=0, summary="ok")
     mock_deps["score"].return_value = ScoreResult(
         total=80, grade="B", code_quality_score=25, security_score=20, breakdown={}
     )
