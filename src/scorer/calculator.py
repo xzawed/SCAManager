@@ -25,18 +25,22 @@ def calculate_score(
     bandit_errors = sum(1 for i in all_issues if i.tool == "bandit" and i.severity == "error")
     bandit_warnings = sum(1 for i in all_issues if i.tool == "bandit" and i.severity == "warning")
 
-    code_quality_score = max(0, 30 - pylint_errors * 5 - pylint_warnings * 1 - flake8_warnings * 1)
-    security_score = max(0, 20 - bandit_errors * 10 - bandit_warnings * 3)
+    code_quality_score = max(0, 25
+                             - pylint_errors * 3
+                             - min(pylint_warnings, 15) * 1
+                             - min(flake8_warnings, 10) * 1)
+    security_score = max(0, 20 - bandit_errors * 7 - bandit_warnings * 2)
 
     if ai_review is not None:
-        commit_score = ai_review.commit_score
-        ai_score = ai_review.ai_score
-        test_score = ai_review.test_score
+        # AI 점수를 새 배점으로 스케일링 (commit 0-20→0-15, ai 0-20→0-25, test 0-10→0-15)
+        commit_score = round(ai_review.commit_score * 15 / 20)
+        ai_score = round(ai_review.ai_score * 25 / 20)
+        test_score = round(ai_review.test_score * 15 / 10)
     else:
-        # AI 리뷰 없을 때 Phase 1 호환 기본값
-        commit_score = 15
-        ai_score = 15
-        test_score = 5
+        # AI 리뷰 없을 때 중립적 기본값 (raw 17/20, 17/20, 7/10 스케일링 상당)
+        commit_score = 13
+        ai_score = 21
+        test_score = 10
 
     total = code_quality_score + security_score + commit_score + ai_score + test_score
 

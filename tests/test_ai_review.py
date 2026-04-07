@@ -9,15 +9,15 @@ from src.analyzer.ai_review import (
 async def test_empty_api_key_returns_default():
     result = await review_code("", "feat: test", [("test.py", "+ x = 1")])
     assert isinstance(result, AiReviewResult)
-    assert result.commit_score == 15
-    assert result.ai_score == 15
-    assert result.test_score == 5
+    assert result.commit_score == 17
+    assert result.ai_score == 17
+    assert result.test_score == 7
 
 
 async def test_empty_patches_returns_default():
     result = await review_code("sk-key", "feat: test", [])
-    assert result.commit_score == 15
-    assert result.test_score == 5
+    assert result.commit_score == 17
+    assert result.test_score == 7
 
 
 def test_parse_response_valid_json():
@@ -61,8 +61,8 @@ def test_parse_response_clamps_below_min():
 
 def test_parse_response_invalid_json_returns_default():
     result = _parse_response("not valid json at all")
-    assert result.commit_score == 15
-    assert result.test_score == 5
+    assert result.commit_score == 17
+    assert result.test_score == 7
 
 
 def test_parse_response_json_in_markdown_code_block():
@@ -77,9 +77,9 @@ def test_parse_response_json_in_markdown_code_block():
 
 def test_default_result_values():
     result = _default_result()
-    assert result.commit_score == 15
-    assert result.ai_score == 15
-    assert result.test_score == 5
+    assert result.commit_score == 17
+    assert result.ai_score == 17
+    assert result.test_score == 7
     assert isinstance(result.suggestions, list)
     assert result.commit_message_feedback == ""
     assert result.file_feedbacks == []
@@ -132,5 +132,5 @@ async def test_review_code_returns_default_on_api_exception():
 
         result = await review_code("sk-test", "feat: add", [("app.py", "+ x = 1")])
 
-    assert result.commit_score == 15
-    assert result.test_score == 5
+    assert result.commit_score == 17
+    assert result.test_score == 7

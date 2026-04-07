@@ -63,14 +63,17 @@ def _make_ai_review(commit_score=18, ai_score=17, test_score=10):
 
 
 def test_calculate_score_uses_ai_review_scores():
+    """AI 점수가 새 배점으로 스케일링되는지 확인."""
     result = calculate_score([_make_result([])], ai_review=_make_ai_review(commit_score=18, ai_score=17))
-    assert result.breakdown["commit_message"] == 18
-    assert result.breakdown["ai_review"] == 17
+    # commit: round(18*15/20) = round(13.5) = 14, ai: round(17*25/20) = round(21.25) = 21
+    assert result.breakdown["commit_message"] == 14
+    assert result.breakdown["ai_review"] == 21
 
 
-def test_calculate_score_test_coverage_10_when_full_score():
+def test_calculate_score_test_coverage_max_when_full_score():
+    """test_score=10 → 스케일링 후 15점."""
     result = calculate_score([_make_result([])], ai_review=_make_ai_review(test_score=10))
-    assert result.breakdown["test_coverage"] == 10
+    assert result.breakdown["test_coverage"] == 15
 
 
 def test_calculate_score_test_coverage_0_when_no_tests():
@@ -79,15 +82,20 @@ def test_calculate_score_test_coverage_0_when_no_tests():
 
 
 def test_calculate_score_test_coverage_graduated():
+    """test_score=7 → round(7*15/10) = round(10.5) = 10."""
     result = calculate_score([_make_result([])], ai_review=_make_ai_review(test_score=7))
-    assert result.breakdown["test_coverage"] == 7
+    assert result.breakdown["test_coverage"] == 10
 
 
 def test_calculate_score_fallback_when_no_ai_review():
+    """AI 리뷰 없을 때 중립적 기본값 (스케일링 후)."""
     result = calculate_score([_make_result([])], ai_review=None)
-    assert result.breakdown["commit_message"] == 15
-    assert result.breakdown["ai_review"] == 15
-    assert result.breakdown["test_coverage"] == 5
+    assert result.breakdown["commit_message"] == 13
+    assert result.breakdown["ai_review"] == 21
+    assert result.breakdown["test_coverage"] == 10
+    # 25 + 20 + 13 + 21 + 10 = 89
+    assert result.total == 89
+    assert result.grade == "B"
 
 
 def test_calculate_score_total_with_ai_review():
@@ -95,6 +103,60 @@ def test_calculate_score_total_with_ai_review():
         [_make_result([])],
         ai_review=_make_ai_review(commit_score=20, ai_score=20, test_score=10),
     )
-    # code_quality=30, security=20, commit=20, ai=20, test=10 = 100
+    # code_quality=25, security=20, commit=20, ai=25, test=10 = 100
     assert result.total == 100
     assert result.grade == "A"
+
+
+def test_pylint_error_deduction_capped():
+    """pylint error 감점이 error당 -3으로 완화되었는지 확인."""
+    issues = [AnalysisIssue(tool="pylint", severity="error", message="err", line=i) for i in range(4)]
+    result = calculate_score([_make_result(issues)])
+    # code_quality = max(0, 25 - 4*3) = 13
+    assert result.code_quality_score == 13
+
+
+def test_warning_cap_limits_deduction():
+    """pylint warning 감점이 15개에서 cap되는지 확인."""
+    issues = [AnalysisIssue(tool="pylint", severity="warning", message="w", line=i) for i in range(20)]
+    result = calculate_score([_make_result(issues)])
+    # pylint_warnings=20이지만 min(20,15)=15만 감점 → 25 - 15 = 10
+    assert result.code_quality_score == 10
+
+
+def test_flake8_cap_limits_deduction():
+    """flake8 warning 감점이 10개에서 cap되는지 확인."""
+    issues = [AnalysisIssue(tool="flake8", severity="warning", message="f", line=i) for i in range(15)]
+    result = calculate_score([_make_result(issues)])
+    # flake8_warnings=15이지만 min(15,10)=10만 감점 → 25 - 10 = 15
+    assert result.code_quality_score == 15
+
+
+def test_bandit_error_deduction_reduced():
+    """bandit HIGH 감점이 -7로 완화되었는지 확인."""
+    issues = [AnalysisIssue(tool="bandit", severity="error", message="eval", line=1)]
+    result = calculate_score([_make_result(issues)])
+    # security = max(0, 20 - 1*7) = 13
+    assert result.security_score == 13
+
+
+def test_bandit_warning_deduction_reduced():
+    """bandit warning 감점이 -2로 완화되었는지 확인."""
+    issues = [AnalysisIssue(tool="bandit", severity="warning", message="w", line=i) for i in range(3)]
+    result = calculate_score([_make_result(issues)])
+    # security = max(0, 20 - 3*2) = 14
+    assert result.security_score == 14
+
+
+def test_new_weight_distribution():
+    """배점 비중 재조정 확인: code_quality=25, commit=15, ai=25, test=15."""
+    result = calculate_score(
+        [_make_result([])],
+        ai_review=_make_ai_review(commit_score=20, ai_score=20, test_score=10),
+    )
+    # code_quality max=25, security max=20, commit 20→15 scaled, ai 20→25 scaled, test 10→15 scaled
+    assert result.breakdown["code_quality"] == 25
+    assert result.breakdown["commit_message"] == 15
+    assert result.breakdown["ai_review"] == 25
+    assert result.breakdown["test_coverage"] == 15
+    assert result.total == 100
