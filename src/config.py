@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     telegram_chat_id: str
     anthropic_api_key: str = ""  # 빈 문자열이면 AI 리뷰 건너뜀
     api_key: str = ""  # 빈 문자열이면 인증 건너뜀
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    session_secret: str = "dev-secret-change-in-production"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

@@ -9,6 +9,9 @@ os.environ.setdefault("GITHUB_TOKEN", "ghp_test")
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "123:ABC")
 os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 os.environ.setdefault("ANTHROPIC_API_KEY", "sk-test-key")
+os.environ.setdefault("GOOGLE_CLIENT_ID", "test-google-client-id")
+os.environ.setdefault("GOOGLE_CLIENT_SECRET", "test-google-client-secret")
+os.environ.setdefault("SESSION_SECRET", "test-session-secret-32-chars-long!")
 
 from src.main import app
 
