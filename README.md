@@ -7,16 +7,17 @@ GitHub 리포지토리에 Push 또는 Pull Request 이벤트가 발생하면 자
 ## 주요 기능
 
 ### 자동 코드 분석
-- Push 및 PR 이벤트 발생 시 변경된 파일을 자동으로 분석 (PR은 `opened`/`synchronize`/`reopened` action만 처리)
-- **정적 분석**: pylint, flake8, bandit을 사용한 코드 품질 및 보안 검사
-- **AI 리뷰**: Claude AI를 통한 커밋 메시지 품질 및 구현 방향성 평가
+- Push 및 PR 이벤트 발생 시 **모든 변경 파일**을 AI 리뷰 대상으로 수집 (PR은 `opened`/`synchronize`/`reopened` action만 처리)
+- **정적 분석** (`.py` 파일만): pylint, flake8, bandit을 사용한 코드 품질 및 보안 검사
+  - 테스트 파일(`test_*.py`)은 bandit 제외 (assert 오탐 방지)
+- **AI 리뷰** (모든 파일): Claude AI를 통한 커밋 메시지 품질 및 구현 방향성 평가
   - 카테고리별 상세 피드백 (커밋 메시지, 코드 품질, 보안, 구현 방향성, 테스트)
   - 파일별 라인 단위 피드백
   - 구체적 개선 제안
 - 100점 만점의 점수 및 A~F 등급 산출
 
 ### 알림 전달
-- **Telegram**: 점수 상세(5개 카테고리별), AI 요약, 개선 제안, 정적 분석 이슈 포함
+- **Telegram** (HTML 파싱): 점수 상세(5개 카테고리별), AI 요약, 개선 제안, 정적 분석 이슈 포함
 - **GitHub PR Comment**: 카테고리별 피드백, 파일별 피드백, 개선 제안, 정적 분석 이슈 포함
 - **n8n**: 외부 n8n 워크플로우로 분석 결과 전달 (선택)
 
@@ -45,7 +46,7 @@ GitHub 리포지토리에 Push 또는 Pull Request 이벤트가 발생하면 자
 | 코드 품질 | 30점 | pylint + flake8 |
 | 보안 | 20점 | bandit |
 | 구현 방향성 | 20점 | Claude AI |
-| 테스트 코드 | 10점 | Claude AI |
+| 테스트 코드 | 10점 | Claude AI (0~10 단계별, 비-코드 파일 면제) |
 | **합계** | **100점** | |
 
 **등급 기준:** A (90점+) / B (75점+) / C (60점+) / D (45점+) / F (44점 이하)
