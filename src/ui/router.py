@@ -44,7 +44,10 @@ async def add_repo(request: Request, current_user: User = Depends(require_login)
         ).first()
         if existing:
             if existing.user_id is not None:
-                raise HTTPException(status_code=400, detail="이미 등록된 리포입니다")
+                return RedirectResponse(
+                    url=f"/repos/add?error=이미+다른+사용자가+등록한+리포입니다",
+                    status_code=303,
+                )
             # user_id=NULL인 기존 리포 → 현재 사용자가 소유권 획득
             existing.user_id = current_user.id
             db.commit()
