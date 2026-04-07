@@ -6,8 +6,8 @@ os.environ.setdefault("TELEGRAM_BOT_TOKEN", "123:ABC")
 os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 os.environ.setdefault("ANTHROPIC_API_KEY", "")
 os.environ.setdefault("API_KEY", "")
-os.environ.setdefault("GOOGLE_CLIENT_ID", "test-cid")
-os.environ.setdefault("GOOGLE_CLIENT_SECRET", "test-csecret")
+os.environ.setdefault("GITHUB_CLIENT_ID", "test-github-client-id")
+os.environ.setdefault("GITHUB_CLIENT_SECRET", "test-github-client-secret")
 os.environ.setdefault("SESSION_SECRET", "test-session-secret")
 
 from unittest.mock import MagicMock, patch
@@ -17,7 +17,7 @@ from src.auth.session import require_login
 from src.models.user import User as UserModel
 
 # 모든 UI 테스트에서 require_login 의존성을 우회 (user_id=1 로그인 상태)
-_test_user = UserModel(id=1, google_id="g-id-1", email="test@example.com", display_name="Test User")
+_test_user = UserModel(id=1, github_id="12345", github_login="testuser", github_access_token="gho_test", email="test@example.com", display_name="Test User")
 app.dependency_overrides[require_login] = lambda: _test_user
 
 client = TestClient(app)
