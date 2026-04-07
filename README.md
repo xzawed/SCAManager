@@ -132,7 +132,7 @@ cp .env.example .env
 | `GITHUB_TOKEN` | ✅ | GitHub API Personal Access Token (`repo` 또는 `pull_requests: write` 권한 필요) |
 | `TELEGRAM_BOT_TOKEN` | ✅ | Telegram Bot API 토큰 |
 | `TELEGRAM_CHAT_ID` | ✅ | 알림 수신 채팅 ID |
-| `ANTHROPIC_API_KEY` | - | Claude AI 리뷰 API 키 (미설정 시 AI 항목 기본값 적용) |
+| `ANTHROPIC_API_KEY` | - | Claude AI 리뷰 API 키 (미설정 시 커밋·방향성 각 15점, 테스트 5점 기본값 적용) |
 | `API_KEY` | - | 대시보드 REST API 인증 키 (미설정 시 인증 생략) |
 
 ### 실행
