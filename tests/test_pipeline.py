@@ -108,13 +108,24 @@ async def test_push_event_does_not_post_github_comment(mock_deps):
     mock_deps["comment"].assert_not_called()
 
 
-async def test_no_python_files_skips_pipeline(mock_deps):
+async def test_no_files_at_all_skips_pipeline(mock_deps):
     mock_deps["push"].return_value = []
     from src.worker.pipeline import run_analysis_pipeline
     await run_analysis_pipeline("push", PUSH_DATA)
 
     mock_deps["ai"].assert_not_called()
     mock_deps["telegram"].assert_not_called()
+
+
+async def test_non_python_files_still_run_ai_review(mock_deps):
+    """비-Python 파일만 있어도 AI 리뷰와 알림이 실행되어야 한다."""
+    from src.github_client.diff import ChangedFile
+    mock_deps["push"].return_value = [ChangedFile("README.md", "# Hello\n", "@@ +1 @@")]
+    from src.worker.pipeline import run_analysis_pipeline
+    await run_analysis_pipeline("push", PUSH_DATA)
+
+    mock_deps["ai"].assert_called_once()
+    mock_deps["telegram"].assert_called_once()
 
 
 async def test_no_python_files_still_creates_repository(mock_deps):
