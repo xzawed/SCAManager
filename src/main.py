@@ -11,7 +11,7 @@ from src.webhook.router import router as webhook_router
 from src.api.repos import router as api_repos_router
 from src.api.stats import router as api_stats_router
 from src.ui.router import router as ui_router
-from src.auth.google import router as auth_router
+from src.auth.github import router as auth_router
 
 logger = logging.getLogger(__name__)
 
