@@ -43,15 +43,15 @@ async def auth_callback(request: Request):
     token = await oauth.google.authorize_access_token(request)
     userinfo = token.get("userinfo", {})
 
-    github_id = userinfo["sub"]
+    google_id = userinfo["sub"]
     email = userinfo["email"]
     display_name = userinfo.get("name", email)
 
     db = SessionLocal()
     try:
-        user = db.query(User).filter(User.github_id == github_id).first()
+        user = db.query(User).filter(User.github_id == google_id).first()
         if not user:
-            user = User(github_id=github_id, email=email, display_name=display_name)
+            user = User(github_id=google_id, email=email, display_name=display_name)
             db.add(user)
             db.commit()
             db.refresh(user)
