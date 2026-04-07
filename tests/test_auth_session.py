@@ -40,7 +40,7 @@ def test_get_current_user_invalid_id():
 
 def test_get_current_user_valid():
     """세션에 user_id 있고 DB에 유저 존재하면 User 반환."""
-    mock_user = User(id=1, google_id="g1", email="a@b.com", display_name="Test")
+    mock_user = User(id=1, github_id="g1", email="a@b.com", display_name="Test")
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = mock_user
     with patch("src.auth.session.SessionLocal", return_value=mock_db):
@@ -58,7 +58,7 @@ def test_require_login_no_session_raises_302():
 
 def test_require_login_returns_user():
     """로그인 상태에서 User 반환."""
-    mock_user = User(id=1, google_id="g1", email="a@b.com", display_name="Test")
+    mock_user = User(id=1, github_id="g1", email="a@b.com", display_name="Test")
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = mock_user
     with patch("src.auth.session.SessionLocal", return_value=mock_db):

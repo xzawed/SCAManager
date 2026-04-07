@@ -27,7 +27,7 @@ def test_login_page_loads():
 def test_login_redirects_if_already_authenticated():
     """이미 로그인된 사용자가 /login 접근 시 / 로 리다이렉트."""
     from src.models.user import User
-    mock_user = User(id=1, google_id="g1", email="a@b.com", display_name="Test")
+    mock_user = User(id=1, github_id="g1", email="a@b.com", display_name="Test")
     with patch("src.auth.google.get_current_user", return_value=mock_user):
         r = client.get("/login", follow_redirects=False)
     assert r.status_code == 302
@@ -73,7 +73,7 @@ def test_callback_returns_existing_user_and_redirects():
             "name": "Existing User",
         }
     }
-    existing_user = User(id=5, google_id="google-existing-id", email="existing@gmail.com", display_name="Existing User")
+    existing_user = User(id=5, github_id="google-existing-id", email="existing@gmail.com", display_name="Existing User")
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = existing_user
 
