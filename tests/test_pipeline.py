@@ -309,9 +309,8 @@ async def test_pipeline_uses_owner_github_token():
             await run_analysis_pipeline("pull_request", event_data)
 
     # owner 토큰이 사용됐는지 확인
-    if mock_get_files.called:
-        call_args = mock_get_files.call_args
-        assert call_args[0][0] == "gho_owner_token"
+    mock_get_files.assert_called_once()
+    assert mock_get_files.call_args[0][0] == "gho_owner_token"
 
 
 @pytest.mark.asyncio
@@ -341,6 +340,5 @@ async def test_pipeline_falls_back_to_settings_token_when_no_owner():
         with patch("src.worker.pipeline.get_push_files", return_value=[]) as mock_get_files:
             await run_analysis_pipeline("push", event_data)
 
-    if mock_get_files.called:
-        call_args = mock_get_files.call_args
-        assert call_args[0][0] == "ghp_test"  # conftest의 GITHUB_TOKEN
+    mock_get_files.assert_called_once()
+    assert mock_get_files.call_args[0][0] == "ghp_test"  # conftest의 GITHUB_TOKEN
