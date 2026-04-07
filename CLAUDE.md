@@ -96,10 +96,10 @@ src/
 │   ├── validator.py            # HMAC-SHA256 서명 검증
 │   └── router.py               # POST /webhooks/github, POST /api/webhook/telegram
 ├── github_client/
-│   └── diff.py                 # get_pr_files, get_push_files, ChangedFile
+│   └── diff.py                 # get_pr_files, get_push_files, ChangedFile (모든 파일 수집)
 ├── analyzer/
-│   ├── static.py               # analyze_file — pylint/flake8/bandit
-│   └── ai_review.py            # review_code() — Claude API, AiReviewResult
+│   ├── static.py               # analyze_file — pylint/flake8/bandit (.py만, 테스트 bandit 제외)
+│   └── ai_review.py            # review_code() — Claude API, AiReviewResult (파일명+diff 분석)
 ├── scorer/
 │   └── calculator.py           # calculate_score(ai_review), ScoreResult, _grade
 ├── config_manager/
@@ -109,7 +109,7 @@ src/
 │   ├── github_review.py        # post_github_review(), merge_pr() — GitHub Review/Merge API
 │   └── telegram_gate.py        # send_gate_request() — 인라인 키보드 메시지
 ├── notifier/
-│   ├── telegram.py             # send_analysis_result()
+│   ├── telegram.py             # send_analysis_result() — HTML 파싱 모드
 │   ├── github_comment.py       # post_pr_comment()
 │   └── n8n.py                  # notify_n8n() — n8n Webhook POST
 ├── api/
@@ -139,6 +139,8 @@ tests/                          # 146개 테스트 (Phase 1~6 + 버그 수정 + 
 ├── test_api_auth.py, test_api_repos.py, test_api_stats.py
 └── test_ui_router.py
 
+setup.cfg                       # flake8/pylint 프로젝트 설정 (테스트 파일별 규칙 포함)
+
 docs/superpowers/
 ├── specs/2026-04-05-scamanager-design.md
 └── plans/ (phase1~5 구현 계획)
@@ -149,12 +151,14 @@ docs/superpowers/
 ```
 GitHub Push/PR
   → POST /webhooks/github (HMAC 서명 검증)
+  → PR action 필터링 (opened/synchronize/reopened만 처리)
   → BackgroundTasks 비동기 등록
   → run_analysis_pipeline()
-      → get_pr_files / get_push_files (변경 파일 목록)
+      → Repository DB 등록 (API 호출 전, 실패해도 목록 노출 보장)
+      → get_pr_files / get_push_files (모든 변경 파일 수집)
       → asyncio.gather() 병렬 실행:
-          ├─ analyze_file() × N  (pylint + flake8 + bandit)
-          └─ review_code()       (Claude AI — 커밋 메시지 + diff 분석)
+          ├─ analyze_file() × N  (.py만 정적 분석, 테스트 파일은 bandit 제외)
+          └─ review_code()       (Claude AI — 모든 파일의 diff + 파일명 분석)
       → calculate_score(ai_review)
           (커밋20 + 코드품질30 + 보안20 + AI방향성20 + 테스트10)
       → DB 저장 (Analysis 레코드)
@@ -188,7 +192,7 @@ Telegram 반자동 콜백:
 | 코드 품질 | 30점 | pylint + flake8 |
 | 보안 | 20점 | bandit |
 | 구현 방향성 | 20점 | Claude AI 분석 |
-| 테스트 | 10점 | AI가 테스트 코드 존재 여부 판단 |
+| 테스트 | 10점 | AI가 0~10 단계별 채점 (비-코드 파일 면제) |
 
 등급: A(90+), B(75+), C(60+), D(45+), F(44-)
 
@@ -206,6 +210,10 @@ Telegram 반자동 콜백:
 - **Webhook 서명**: `X-Hub-Signature-256` 헤더 없으면 403 반환 — 로컬 테스트 시 서명 생성 필요
 - **auto_merge GitHub 권한**: `merge_pr()`은 `repo` 스코프 또는 Fine-grained `pull_requests: write` 권한 필요 — 권한 부족 시 False 반환(파이프라인 미중단)
 - **Branch Protection Rules**: 보호 규칙이 있는 브랜치는 APPROVE 후에도 Merge 실패 가능 (False 반환, 경고 로그 기록)
+- **테스트 파일 분석 제외**: `test_*.py`/`*_test.py` 파일은 bandit 실행 제외 (B101 assert 오탐 방지), pylint/flake8 규칙도 완화
+- **Telegram HTML 파싱**: `parse_mode: "HTML"` 사용 — 모든 동적 콘텐츠(AI 요약, 이슈 메시지)에 `html.escape()` 적용 필수
+- **비-Python 파일 AI 리뷰**: `.md`, `.cfg`, `.yml` 등도 AI 리뷰 대상 — 정적 분석은 `.py`만 실행, 비-코드 파일만 변경 시 테스트 점수 면제(10/10)
+- **PR action 필터링**: `pull_request` 이벤트 중 `opened`/`synchronize`/`reopened`만 처리, `closed`/`labeled` 등은 무시
 
 ## Railway 배포
 
