@@ -34,6 +34,9 @@ make run
 | `make run` | 개발 서버 실행 (port 8000) |
 | `make migrate` | DB 마이그레이션 실행 |
 | `make revision m="설명"` | 새 마이그레이션 파일 생성 |
+| `make install-playwright` | Playwright + Chromium 설치 |
+| `make test-e2e` | E2E 테스트 실행 (headless) |
+| `make test-e2e-headed` | E2E 테스트 실행 (브라우저 표시) |
 
 ## GitHub Codespaces (모바일/원격 개발)
 
@@ -86,7 +89,7 @@ make run         # 개발 서버 (포트 8000 자동 포워딩)
 src/
 ├── main.py                     # FastAPI 앱, lifespan(DB 마이그레이션), 전체 라우터 등록
 ├── config.py                   # pydantic-settings 환경변수 관리, postgres:// URL 자동 변환
-├── database.py                 # SQLAlchemy engine, Base, SessionLocal
+├── database.py                 # SQLAlchemy engine, Base, SessionLocal (SQLite는 hostaddr 제외)
 ├── models/
 │   ├── repository.py           # Repository ORM
 │   ├── analysis.py             # Analysis ORM
@@ -126,7 +129,14 @@ src/
 └── worker/
     └── pipeline.py             # run_analysis_pipeline — 전체 파이프라인
 
-tests/                          # 146개 테스트 (Phase 1~6 + 버그 수정 + 점수 개선)
+e2e/                            # Playwright E2E 테스트 26개 (브라우저 기반 JS 동작 검증)
+├── conftest.py                 # uvicorn 스레드 서버 + Playwright browser/page fixture
+├── pytest.ini                  # asyncio_mode 없는 별도 설정 (tests/ 와 격리)
+├── test_theme.py               # 3-테마 전환 E2E (localStorage, data-theme, dropdown)
+├── test_settings.py            # 설정 페이지 E2E (Gate 모드 토글, 슬라이더, 폼 제출)
+└── test_navigation.py          # 네비게이션 E2E (로고, 뒤로가기, 설정 버튼)
+
+tests/                          # 146개 단위 테스트 (Phase 1~6 + 버그 수정 + 점수 개선)
 ├── conftest.py
 ├── test_config.py, test_models.py, test_repo_config_model.py
 ├── test_github_diff.py, test_webhook_router.py, test_webhook_validator.py
@@ -214,6 +224,9 @@ Telegram 반자동 콜백:
 - **Telegram HTML 파싱**: `parse_mode: "HTML"` 사용 — 모든 동적 콘텐츠(AI 요약, 이슈 메시지)에 `html.escape()` 적용 필수
 - **비-Python 파일 AI 리뷰**: `.md`, `.cfg`, `.yml` 등도 AI 리뷰 대상 — 정적 분석은 `.py`만 실행, 비-코드 파일만 변경 시 테스트 점수 면제(10/10)
 - **PR action 필터링**: `pull_request` 이벤트 중 `opened`/`synchronize`/`reopened`만 처리, `closed`/`labeled` 등은 무시
+- **E2E 테스트 격리**: `e2e/`를 최상위 별도 디렉토리로 분리 (`tests/` 아래 금지) — `tests/e2e/`가 있으면 `asyncio_mode=auto`와 `sys.modules` 삭제가 충돌해 단위 테스트 98개 실패
+- **SQLite hostaddr 제외**: `src/database.py`의 `_ipv4_connect_args`는 hostname이 None(SQLite URL)이면 빈 dict 반환 — 그렇지 않으면 `sqlite3.connect(hostaddr=...)` TypeError 발생
+- **E2E 서버 asyncio**: `uvicorn.Server.serve()`를 `asyncio.new_event_loop()` + `loop.run_until_complete()`로 실행 — `server.run()` 대신 사용 (`server.run()`은 asyncio_mode=auto 환경에서 이벤트 루프 충돌)
 
 ## Railway 배포
 
@@ -307,3 +320,4 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 | Phase 4 | Dashboard API + Web UI (Jinja2 + Chart.js) | ✅ 완료 (~15 테스트) |
 | Phase 5 | n8n 연동 + 외부 REST API + 통계 고도화 | ✅ 완료 (~4 테스트, 총 112 테스트) |
 | Phase 6 | PR 자동 Merge (auto_merge 설정 + squash merge) | ✅ 완료 (19 테스트, 총 146 테스트) |
+| Phase 7 | 3-테마 UI 리디자인 + Playwright E2E 테스트 | ✅ 완료 (단위 146개 + E2E 26개) |

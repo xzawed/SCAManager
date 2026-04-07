@@ -9,10 +9,13 @@ from src.config import settings
 def _ipv4_connect_args(url: str) -> dict:
     """Railway 컨테이너에서 IPv6 아웃바운드 차단 문제 해결.
     Python socket으로 IPv4 주소를 조회한 뒤 psycopg2 hostaddr에 전달.
-    libpq는 hostaddr로 직접 TCP 연결하고, SSL 인증서는 host(hostname)로 검증."""
+    libpq는 hostaddr로 직접 TCP 연결하고, SSL 인증서는 host(hostname)로 검증.
+    SQLite는 hostaddr를 지원하지 않으므로 건너뜀."""
     try:
         parsed = urlparse(url)
         hostname = parsed.hostname
+        if not hostname:  # SQLite (hostname이 None인 경우)
+            return {}
         port = parsed.port or 5432
         infos = socket.getaddrinfo(hostname, port, socket.AF_INET)
         if infos:

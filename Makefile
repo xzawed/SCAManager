@@ -1,4 +1,4 @@
-.PHONY: install test test-v test-cov lint run migrate
+.PHONY: install test test-v test-cov lint run migrate install-playwright test-e2e test-e2e-headed
 
 # 의존성 설치
 install:
@@ -37,3 +37,16 @@ run:
 # 새 마이그레이션 생성 (예: make revision m="add column")
 revision:
 	alembic revision --autogenerate -m "$(m)"
+
+# Playwright 브라우저 설치
+install-playwright:
+	pip install playwright pytest-playwright
+	playwright install chromium
+
+# E2E 테스트 (headless)
+test-e2e:
+	python -m pytest e2e/ -v -p no:asyncio
+
+# E2E 테스트 (브라우저 표시)
+test-e2e-headed:
+	python -m pytest e2e/ -v -p no:asyncio --headed
