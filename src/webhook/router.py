@@ -28,13 +28,35 @@ async def github_webhook(
 ):
     payload = await request.body()
 
-    if not verify_github_signature(payload, x_hub_signature_256, settings.github_webhook_secret):
+    # payload에서 리포 이름 파싱 (per-repo 시크릿 조회용)
+    full_name = ""
+    try:
+        data = json.loads(payload)
+        full_name = data.get("repository", {}).get("full_name", "")
+    except (json.JSONDecodeError, AttributeError):
+        data = {}
+
+    # 리포별 시크릿 조회 → 없으면 전역 시크릿 fallback
+    secret = settings.github_webhook_secret
+    if full_name:
+        try:
+            with SessionLocal() as db:
+                repo = db.query(Repository).filter(
+                    Repository.full_name == full_name
+                ).first()
+                if repo and repo.webhook_secret:
+                    secret = repo.webhook_secret
+        except Exception:  # noqa: BLE001
+            pass  # DB 조회 실패 시 전역 시크릿으로 fallback
+
+    if not verify_github_signature(payload, x_hub_signature_256, secret):
         raise HTTPException(status_code=401, detail="Invalid signature")
+
+    if not data:
+        return {"status": "ignored"}
 
     if x_github_event not in HANDLED_EVENTS:
         return {"status": "ignored"}
-
-    data = json.loads(payload)
 
     if x_github_event == "pull_request":
         action = data.get("action")

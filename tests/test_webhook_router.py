@@ -116,3 +116,63 @@ def test_opened_pr_action_accepted():
             )
     assert resp.status_code == 202
     assert resp.json()["status"] == "accepted"
+
+
+def test_webhook_uses_repo_specific_secret(client):
+    """리포별 webhook_secret이 있으면 해당 시크릿으로 검증한다."""
+    import hmac, hashlib
+    from unittest.mock import patch, MagicMock
+
+    payload = b'{"repository": {"full_name": "owner/repo-with-secret"}, "ref": "refs/heads/main", "after": "abc123", "commits": []}'
+    repo_secret = "per-repo-secret-xyz"
+    sig = "sha256=" + hmac.new(repo_secret.encode(), payload, hashlib.sha256).hexdigest()
+
+    mock_repo = MagicMock()
+    mock_repo.webhook_secret = repo_secret
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = mock_repo
+    mock_db.__enter__ = MagicMock(return_value=mock_db)
+    mock_db.__exit__ = MagicMock(return_value=None)
+
+    with patch("src.webhook.router.SessionLocal", return_value=mock_db):
+        with patch("src.webhook.router.run_analysis_pipeline"):
+            r = client.post(
+                "/webhooks/github",
+                content=payload,
+                headers={
+                    "X-Hub-Signature-256": sig,
+                    "X-GitHub-Event": "push",
+                    "Content-Type": "application/json",
+                },
+            )
+    assert r.status_code == 202
+
+
+def test_webhook_falls_back_to_global_secret_for_legacy_repo(client):
+    """webhook_secret이 없는 레거시 리포는 전역 시크릿으로 검증한다."""
+    import hmac, hashlib
+    from unittest.mock import patch, MagicMock
+
+    payload = b'{"repository": {"full_name": "owner/legacy-repo"}, "ref": "refs/heads/main", "after": "abc123", "commits": []}'
+    global_secret = "test_secret"  # conftest.py의 GITHUB_WEBHOOK_SECRET
+    sig = "sha256=" + hmac.new(global_secret.encode(), payload, hashlib.sha256).hexdigest()
+
+    mock_repo = MagicMock()
+    mock_repo.webhook_secret = None   # 레거시 리포
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = mock_repo
+    mock_db.__enter__ = MagicMock(return_value=mock_db)
+    mock_db.__exit__ = MagicMock(return_value=None)
+
+    with patch("src.webhook.router.SessionLocal", return_value=mock_db):
+        with patch("src.webhook.router.run_analysis_pipeline"):
+            r = client.post(
+                "/webhooks/github",
+                content=payload,
+                headers={
+                    "X-Hub-Signature-256": sig,
+                    "X-GitHub-Event": "push",
+                    "Content-Type": "application/json",
+                },
+            )
+    assert r.status_code == 202
