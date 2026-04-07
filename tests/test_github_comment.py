@@ -19,7 +19,7 @@ def _make_score(total=82, grade="B"):
 
 def _make_ai_review():
     return AiReviewResult(
-        commit_score=17, ai_score=15, has_tests=True,
+        commit_score=17, ai_score=15, test_score=10,
         summary="좋은 리팩토링입니다.",
         suggestions=["타입 힌트 추가 권장", "메서드 분리 고려"],
     )
@@ -102,7 +102,7 @@ async def test_post_pr_comment_calls_github_api():
 
 def test_comment_body_includes_category_feedback():
     ai = AiReviewResult(
-        commit_score=17, ai_score=15, has_tests=True,
+        commit_score=17, ai_score=15, test_score=10,
         summary="좋은 리팩토링입니다.",
         suggestions=["타입 힌트 추가 권장"],
         commit_message_feedback="커밋 메시지가 변경 범위를 잘 설명합니다.",

@@ -64,7 +64,7 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
             logger.info("No changed files in %s @ %s", repo_name, commit_sha)
             return
 
-        patches = [f.patch for f in files if f.patch]
+        patches = [(f.filename, f.patch) for f in files if f.patch]
         analysis_results, ai_review = await asyncio.gather(
             _run_static_analysis(files),
             review_code(settings.anthropic_api_key, commit_message, patches),

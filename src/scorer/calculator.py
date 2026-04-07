@@ -31,7 +31,7 @@ def calculate_score(
     if ai_review is not None:
         commit_score = ai_review.commit_score
         ai_score = ai_review.ai_score
-        test_score = 10 if ai_review.has_tests else 0
+        test_score = ai_review.test_score
     else:
         # AI 리뷰 없을 때 Phase 1 호환 기본값
         commit_score = 15
