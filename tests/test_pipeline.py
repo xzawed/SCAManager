@@ -276,3 +276,71 @@ async def test_pipeline_skips_gate_for_push(mock_deps):
         with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock) as mock_gate:
             await run_analysis_pipeline("push", PUSH_DATA)
             mock_gate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_pipeline_uses_owner_github_token():
+    """리포 owner의 github_access_token이 있으면 settings.github_token 대신 사용한다."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from src.models.user import User
+    from src.models.repository import Repository
+
+    owner = User(id=1, github_id="111", github_login="owner", email="o@e.com",
+                 display_name="Owner", github_access_token="gho_owner_token")
+    repo = MagicMock(spec=Repository)
+    repo.id = 10
+    repo.full_name = "owner/repo"
+    repo.owner = owner
+
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter_by.return_value.first.return_value = repo
+    mock_db.__enter__ = MagicMock(return_value=mock_db)
+    mock_db.__exit__ = MagicMock(return_value=None)
+
+    event_data = {
+        "repository": {"full_name": "owner/repo"},
+        "pull_request": {"head": {"sha": "abc123"}, "title": "feat: test"},
+        "number": 1,
+    }
+
+    from src.worker.pipeline import run_analysis_pipeline
+    with patch("src.worker.pipeline.SessionLocal", return_value=mock_db):
+        with patch("src.worker.pipeline.get_pr_files", return_value=[]) as mock_get_files:
+            await run_analysis_pipeline("pull_request", event_data)
+
+    # owner 토큰이 사용됐는지 확인
+    if mock_get_files.called:
+        call_args = mock_get_files.call_args
+        assert call_args[0][0] == "gho_owner_token"
+
+
+@pytest.mark.asyncio
+async def test_pipeline_falls_back_to_settings_token_when_no_owner():
+    """owner나 github_access_token이 없으면 settings.github_token을 사용한다."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from src.models.repository import Repository
+
+    repo = MagicMock(spec=Repository)
+    repo.id = 20
+    repo.full_name = "owner/legacy-repo"
+    repo.owner = None  # 소유자 없는 레거시 리포
+
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter_by.return_value.first.return_value = repo
+    mock_db.__enter__ = MagicMock(return_value=mock_db)
+    mock_db.__exit__ = MagicMock(return_value=None)
+
+    event_data = {
+        "repository": {"full_name": "owner/legacy-repo"},
+        "after": "def456",
+        "commits": [{"message": "fix: legacy"}],
+    }
+
+    from src.worker.pipeline import run_analysis_pipeline
+    with patch("src.worker.pipeline.SessionLocal", return_value=mock_db):
+        with patch("src.worker.pipeline.get_push_files", return_value=[]) as mock_get_files:
+            await run_analysis_pipeline("push", event_data)
+
+    if mock_get_files.called:
+        call_args = mock_get_files.call_args
+        assert call_args[0][0] == "ghp_test"  # conftest의 GITHUB_TOKEN

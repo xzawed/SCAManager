@@ -37,7 +37,8 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
         repo_name: str = data["repository"]["full_name"]
         commit_message = _extract_commit_message(event, data)
 
-        # Repository 등록을 최우선 실행 — API 실패와 무관하게 목록 노출 보장
+        # Repository 등록 + owner 토큰 결정
+        owner_token: str = settings.github_token
         db: Session = SessionLocal()
         try:
             repo = db.query(Repository).filter_by(full_name=repo_name).first()
@@ -48,17 +49,19 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
                 )
                 db.add(repo)
                 db.commit()
+            if repo.owner and repo.owner.github_access_token:
+                owner_token = repo.owner.github_access_token
         finally:
             db.close()
 
         if event == "pull_request":
             pr_number: int | None = data["number"]
             commit_sha: str = data["pull_request"]["head"]["sha"]
-            files = get_pr_files(settings.github_token, repo_name, pr_number)
+            files = get_pr_files(owner_token, repo_name, pr_number)
         else:
             pr_number = None
             commit_sha = data["after"]
-            files = get_push_files(settings.github_token, repo_name, commit_sha)
+            files = get_push_files(owner_token, repo_name, commit_sha)
 
         if not files:
             logger.info("No changed files in %s @ %s", repo_name, commit_sha)
@@ -123,7 +126,7 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
                 try:
                     await run_gate_check(
                         db=db,
-                        github_token=settings.github_token,
+                        github_token=owner_token,
                         telegram_bot_token=settings.telegram_bot_token,
                         repo_full_name=repo_name,
                         pr_number=pr_number,
@@ -150,7 +153,7 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
         if pr_number is not None:
             notify_tasks.append(
                 post_pr_comment(
-                    github_token=settings.github_token,
+                    github_token=owner_token,
                     repo_name=repo_name,
                     pr_number=pr_number,
                     score_result=score_result,
