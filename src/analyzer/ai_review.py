@@ -55,7 +55,7 @@ _PROMPT_TEMPLATE = """\
 }}
 
 test_score 채점 기준:
-- 10: 테스트 불필요 파일만 변경됨(.md, .cfg, .toml, .yml, .yaml, .html, .css, .json, .txt, .rst, .ini, Dockerfile, .gitignore, LICENSE 등) 또는 변경에 대한 충분한 테스트 포함
+- 10: 테스트 불필요 파일만 변경됨(.md, .cfg, .toml, .yml, .html, .json, Dockerfile, LICENSE 등) 또는 충분한 테스트 포함
 - 7~9: 테스트 코드 존재하나 커버리지가 부분적 (핵심 경로만 커버, 엣지케이스 부족 등)
 - 4~6: 테스트 파일 수정이 있으나 새로운 코드에 대한 커버리지 부족
 - 1~3: 테스트가 필요하지만 미포함 (단순한 변경이라 심각하지 않음)

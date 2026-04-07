@@ -27,7 +27,6 @@ def mock_deps():
         patch("src.worker.pipeline.SessionLocal") as mock_session_cls,
         patch("src.worker.pipeline.settings") as mock_settings,
     ):
-        from src.analyzer.static import StaticAnalysisResult
         from src.scorer.calculator import ScoreResult
         from src.github_client.diff import ChangedFile
         from src.analyzer.ai_review import AiReviewResult

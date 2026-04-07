@@ -1,4 +1,3 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from src.notifier.github_comment import _build_comment_body, post_pr_comment
 from src.scorer.calculator import ScoreResult

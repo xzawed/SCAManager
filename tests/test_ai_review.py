@@ -1,5 +1,5 @@
 # tests/test_ai_review.py
-import pytest
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 from src.analyzer.ai_review import (
     AiReviewResult, review_code, _parse_response, _default_result, _extract_test_score
@@ -21,7 +21,17 @@ async def test_empty_patches_returns_default():
 
 
 def test_parse_response_valid_json():
-    text = '{"commit_message_score": 18, "direction_score": 16, "test_score": 8, "summary": "Good refactoring", "suggestions": ["Add type hints"], "commit_message_feedback": "커밋 메시지가 명확합니다", "code_quality_feedback": "코드 품질이 우수합니다", "security_feedback": "보안 이슈 없음", "direction_feedback": "설계 방향이 적절합니다", "test_feedback": "테스트가 부분적으로 포함", "file_feedbacks": [{"file": "app.py", "issues": ["라인 10: 변수명 개선 필요"]}]}'
+    text = json.dumps({
+        "commit_message_score": 18, "direction_score": 16,
+        "test_score": 8, "summary": "Good refactoring",
+        "suggestions": ["Add type hints"],
+        "commit_message_feedback": "커밋 메시지가 명확합니다",
+        "code_quality_feedback": "코드 품질이 우수합니다",
+        "security_feedback": "보안 이슈 없음",
+        "direction_feedback": "설계 방향이 적절합니다",
+        "test_feedback": "테스트가 부분적으로 포함",
+        "file_feedbacks": [{"file": "app.py", "issues": ["라인 10: 변수명 개선 필요"]}],
+    })
     result = _parse_response(text)
     assert result.commit_score == 18
     assert result.ai_score == 16
@@ -56,7 +66,9 @@ def test_parse_response_invalid_json_returns_default():
 
 
 def test_parse_response_json_in_markdown_code_block():
-    text = '```json\n{"commit_message_score": 17, "direction_score": 19, "test_score": 9, "summary": "ok", "suggestions": []}\n```'
+    inner = json.dumps({"commit_message_score": 17, "direction_score": 19,
+                        "test_score": 9, "summary": "ok", "suggestions": []})
+    text = f"```json\n{inner}\n```"
     result = _parse_response(text)
     assert result.commit_score == 17
     assert result.ai_score == 19
@@ -96,7 +108,9 @@ def test_extract_test_score_prefers_test_score_over_has_tests():
 
 async def test_review_code_calls_anthropic_and_parses():
     mock_response = MagicMock()
-    mock_response.content = [MagicMock(text='{"commit_message_score": 18, "direction_score": 17, "test_score": 10, "summary": "ok", "suggestions": []}')]
+    mock_text = json.dumps({"commit_message_score": 18, "direction_score": 17,
+                            "test_score": 10, "summary": "ok", "suggestions": []})
+    mock_response.content = [MagicMock(text=mock_text)]
 
     with patch("src.analyzer.ai_review.anthropic.AsyncAnthropic") as mock_cls:
         mock_client = AsyncMock()
