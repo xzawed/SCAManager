@@ -22,11 +22,11 @@ def _build_comment_body(
         "### 점수 상세",
         "| 항목 | 점수 | 만점 |",
         "|------|------|------|",
-        f"| 커밋 메시지 | {bd['commit_message']} | 20 |",
-        f"| 코드 품질 | {bd['code_quality']} | 30 |",
+        f"| 커밋 메시지 | {bd['commit_message']} | 15 |",
+        f"| 코드 품질 | {bd['code_quality']} | 25 |",
         f"| 보안 | {bd['security']} | 20 |",
-        f"| 구현 방향성 (AI) | {bd['ai_review']} | 20 |",
-        f"| 테스트 | {bd['test_coverage']} | 10 |",
+        f"| 구현 방향성 (AI) | {bd['ai_review']} | 25 |",
+        f"| 테스트 | {bd['test_coverage']} | 15 |",
     ]
 
     if ai_review and ai_review.summary:
