@@ -85,6 +85,7 @@ make run         # 개발 서버 (포트 8000 자동 포워딩)
 | `GITHUB_CLIENT_ID` | GitHub OAuth 앱 클라이언트 ID | `Ov23li...` | ✅ |
 | `GITHUB_CLIENT_SECRET` | GitHub OAuth 앱 클라이언트 시크릿 | `github_...` | ✅ |
 | `SESSION_SECRET` | 세션 쿠키 서명 키 (32자 이상 랜덤 문자열 권장) | `random-secret-key` | ✅ |
+| `APP_BASE_URL` | Railway 등 리버스 프록시에서 HTTPS redirect_uri 강제 지정 | `https://your-app.railway.app` | ❌ (Railway 배포 시 권장) |
 
 **주의:** `.env` 파일은 절대 git commit 하지 말 것 (`.gitignore`에 포함됨)
 
@@ -245,10 +246,14 @@ Telegram 반자동 콜백:
 - **SQLite hostaddr 제외**: `src/database.py`의 `_ipv4_connect_args`는 hostname이 None(SQLite URL)이면 빈 dict 반환 — 그렇지 않으면 `sqlite3.connect(hostaddr=...)` TypeError 발생
 - **E2E 서버 asyncio**: `uvicorn.Server.serve()`를 `asyncio.new_event_loop()` + `loop.run_until_complete()`로 실행 — `server.run()` 대신 사용 (`server.run()`은 asyncio_mode=auto 환경에서 이벤트 루프 충돌)
 - **Phase 8B 이후 로그인 필수**: UI 라우트(`/`, `/repos/*`)는 `require_login` Depends로 보호됨. 비로그인 시 `/login` 리다이렉트. `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET`/`SESSION_SECRET` 미설정 시 OAuth 로그인 불가.
-- **기존 Webhook 등록 리포**: Phase 8A 이후 `repositories.user_id = NULL` 상태 유지. 대시보드에서는 보이지 않음 (user_id 필터). 소유권 이전은 Phase 8B에서 처리.
+- **기존 Webhook 등록 리포**: `user_id = NULL` 리포는 대시보드에서 모든 로그인 사용자에게 표시됨. `/repos/add`로 동일 리포 재등록 시 소유권 이전 처리 (`user_id=NULL`이면 현재 사용자 소유, 이미 소유자 있으면 에러 팝업).
 - **테스트 require_login 우회**: `tests/test_ui_router.py`는 `app.dependency_overrides[require_login] = lambda: _test_user`로 의존성 override. 신규 UI 라우트 테스트 작성 시 동일 패턴 사용.
 - **리포 추가 Webhook URL**: `POST /repos/add` 처리 시 `request.base_url`로 Webhook URL 자동 결정. Railway 배포 시 HTTPS URL이 자동으로 사용됨.
 - **GitHub OAuth token 스코프**: `repo user:email` 스코프. 재로그인 시 토큰 자동 갱신. 100개 초과 리포는 첫 페이지(100개)만 표시.
+- **APP_BASE_URL**: Railway 리버스 프록시 환경에서 `request.url_for()`가 `http://`를 반환하는 문제 해결. 설정 시 OAuth redirect_uri를 해당 URL로 직접 구성.
+- **Telegram 메시지 길이**: `_build_message()`가 4096자 초과 시 자동 절단 (`_TELEGRAM_MAX_LEN = 4096`).
+- **DB 세션 expunge**: `get_current_user()`는 `db.expunge(user)` 후 세션 반환 — 세션 종료 후에도 컬럼 속성 안전하게 접근 가능. 관계 lazy-load는 사용하지 말 것.
+- **N+1 쿼리 방지**: overview에서 분석 수·최신 분석을 배치 쿼리(subquery + GROUP BY)로 조회. 리포가 늘어나도 쿼리 수는 일정.
 
 ## Railway 배포
 
@@ -345,3 +350,4 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 | Phase 7 | 3-테마 UI 리디자인 + Playwright E2E 테스트 | ✅ 완료 (단위 146개 + E2E 26개) |
 | Phase 8A | Google OAuth + User 모델 + 사용자별 대시보드 | ✅ 완료 (단위 164개) |
 | Phase 8B | GitHub OAuth + 리포 추가 UI + Webhook 자동 생성 | ✅ 완료 (단위 179개) |
+| 코드 품질 개선 | 보안·성능·로깅 전수 검토 — N+1, expunge, logging, 4096 트런케이션 | ✅ 완료 |

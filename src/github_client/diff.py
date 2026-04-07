@@ -1,5 +1,8 @@
+import logging
 from dataclasses import dataclass
 from github import Github
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -28,7 +31,8 @@ def _collect_changed_files(repo, files, ref: str) -> list[ChangedFile]:
     for f in files:
         try:
             content = repo.get_contents(f.filename, ref=ref).decoded_content.decode("utf-8")
-        except Exception:
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("파일 내용 로드 실패 %s@%s: %s", f.filename, ref, exc)
             content = ""
         result.append(ChangedFile(
             filename=f.filename,

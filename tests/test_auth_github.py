@@ -62,7 +62,8 @@ def test_callback_creates_new_user_and_redirects():
         with patch("src.auth.github.oauth.github.get",
                    new_callable=AsyncMock,
                    side_effect=[mock_user_info, mock_emails_resp]):
-            with patch("src.auth.github.SessionLocal", return_value=mock_db):
+            with patch("src.auth.github.SessionLocal") as mock_sl:
+                mock_sl.return_value.__enter__.return_value = mock_db
                 r = client.get(
                     "/auth/callback?code=test-code&state=test-state",
                     follow_redirects=False,
@@ -103,7 +104,8 @@ def test_callback_updates_existing_user_and_redirects():
         with patch("src.auth.github.oauth.github.get",
                    new_callable=AsyncMock,
                    side_effect=[mock_user_info, mock_emails_resp]):
-            with patch("src.auth.github.SessionLocal", return_value=mock_db):
+            with patch("src.auth.github.SessionLocal") as mock_sl:
+                mock_sl.return_value.__enter__.return_value = mock_db
                 r = client.get(
                     "/auth/callback?code=test-code&state=test-state",
                     follow_redirects=False,
