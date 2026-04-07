@@ -1,8 +1,11 @@
 import json
+import logging
 import os
 import subprocess  # nosec B404
 import tempfile
 from dataclasses import dataclass, field
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -72,7 +75,11 @@ def _run_pylint(path: str, is_test: bool = False) -> list[AnalysisIssue]:
             )
             for item in items
         ]
-    except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
+    except subprocess.TimeoutExpired:
+        logger.warning("pylint timed out for %s", path)
+        return []
+    except (json.JSONDecodeError, FileNotFoundError) as exc:
+        logger.warning("pylint failed for %s: %s", path, exc)
         return []
 
 
@@ -100,7 +107,11 @@ def _run_flake8(path: str, is_test: bool = False) -> list[AnalysisIssue]:
                 except ValueError:
                     continue
         return issues
-    except (subprocess.TimeoutExpired, FileNotFoundError):
+    except subprocess.TimeoutExpired:
+        logger.warning("flake8 timed out for %s", path)
+        return []
+    except FileNotFoundError as exc:
+        logger.warning("flake8 failed for %s: %s", path, exc)
         return []
 
 
@@ -120,5 +131,9 @@ def _run_bandit(path: str) -> list[AnalysisIssue]:
             )
             for item in data.get("results", [])
         ]
-    except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
+    except subprocess.TimeoutExpired:
+        logger.warning("bandit timed out for %s", path)
+        return []
+    except (json.JSONDecodeError, FileNotFoundError) as exc:
+        logger.warning("bandit failed for %s: %s", path, exc)
         return []

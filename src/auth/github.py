@@ -65,8 +65,7 @@ async def auth_callback(request: Request):
     github_login = user_info.get("login", "")
     display_name = user_info.get("name") or github_login
 
-    db = SessionLocal()
-    try:
+    with SessionLocal() as db:
         user = db.query(User).filter(User.github_id == github_id).first()
         if not user:
             user = User(
@@ -84,9 +83,7 @@ async def auth_callback(request: Request):
             user.github_login = github_login
             user.display_name = display_name
             db.commit()
-        request.session["user_id"] = user.id
-    finally:
-        db.close()
+        request.session["user_id"] = user.id  # 세션 닫히기 전에 id 저장
 
     return RedirectResponse(url="/", status_code=302)
 

@@ -6,6 +6,7 @@ from src.analyzer.static import StaticAnalysisResult
 from src.analyzer.ai_review import AiReviewResult
 
 GRADE_EMOJI = {"A": "🟢", "B": "🔵", "C": "🟡", "D": "🟠", "F": "🔴"}
+_TELEGRAM_MAX_LEN = 4096
 
 
 def _build_message(
@@ -57,7 +58,10 @@ def _build_message(
             issues_text,
         ]
 
-    return "\n".join(lines)
+    msg = "\n".join(lines)
+    if len(msg) > _TELEGRAM_MAX_LEN:
+        msg = msg[:_TELEGRAM_MAX_LEN - 3] + "..."
+    return msg
 
 
 async def send_analysis_result(

@@ -2,6 +2,7 @@ import secrets
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import func
 from src.database import SessionLocal
 from src.models.repository import Repository
 from src.models.analysis import Analysis
@@ -82,16 +83,37 @@ def overview(request: Request, current_user: User = Depends(require_login)):
             (Repository.user_id == current_user.id) | (Repository.user_id.is_(None))
         ).order_by(Repository.created_at.desc()).all()
         repo_data = []
-        for r in repos:
-            latest = (db.query(Analysis).filter(Analysis.repo_id == r.id)
-                      .order_by(Analysis.created_at.desc()).first())
-            count = db.query(Analysis).filter(Analysis.repo_id == r.id).count()
-            repo_data.append({
-                "full_name": r.full_name,
-                "analysis_count": count,
-                "latest_score": latest.score if latest else None,
-                "latest_grade": latest.grade if latest else None,
-            })
+        if repos:
+            repo_ids = [r.id for r in repos]
+
+            # 분석 수 배치 조회 (N+1 방지)
+            count_map = dict(
+                db.query(Analysis.repo_id, func.count(Analysis.id))
+                .filter(Analysis.repo_id.in_(repo_ids))
+                .group_by(Analysis.repo_id)
+                .all()
+            )
+
+            # 리포별 최신 분석 배치 조회
+            latest_id_subq = (
+                db.query(func.max(Analysis.id))
+                .filter(Analysis.repo_id.in_(repo_ids))
+                .group_by(Analysis.repo_id)
+                .subquery()
+            )
+            latest_map = {
+                a.repo_id: a
+                for a in db.query(Analysis).filter(Analysis.id.in_(latest_id_subq)).all()
+            }
+
+            for r in repos:
+                latest = latest_map.get(r.id)
+                repo_data.append({
+                    "full_name": r.full_name,
+                    "analysis_count": count_map.get(r.id, 0),
+                    "latest_score": latest.score if latest else None,
+                    "latest_grade": latest.grade if latest else None,
+                })
     return templates.TemplateResponse(request, "overview.html", {
         "repos": repo_data,
         "current_user": current_user,

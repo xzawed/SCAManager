@@ -8,11 +8,11 @@ def get_current_user(request: Request):
     user_id = request.session.get("user_id")
     if not user_id:
         return None
-    db = SessionLocal()
-    try:
-        return db.query(User).filter(User.id == user_id).first()
-    finally:
-        db.close()
+    with SessionLocal() as db:
+        user = db.query(User).filter(User.id == user_id).first()
+        if user:
+            db.expunge(user)  # 세션 종료 후에도 컬럼 속성 접근 가능
+        return user
 
 
 def require_login(request: Request) -> User:
