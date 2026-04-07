@@ -363,6 +363,35 @@
       color: var(--text-muted);
       margin: 0 0 1rem;
     }
+
+    /* ── 테이블 스크롤 래퍼 ────────────────────── */
+    .table-wrap {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* ── 모바일 반응형 (태블릿) ────────────────── */
+    @media (max-width: 768px) {
+      nav { padding: 0 1rem; gap: 1rem; }
+      .container { padding: 1.25rem 0.75rem; }
+      .card { padding: 1rem; border-radius: 8px; }
+      th { padding: .5rem .625rem; font-size: 11px; }
+      td { padding: .625rem; font-size: 13px; }
+      .page-header { flex-wrap: wrap; gap: .75rem; }
+      .page-header h2 { font-size: 1.2rem; }
+      .back-btn { padding: 3px 8px; font-size: 12px; }
+      .btn { padding: .4rem 1rem; font-size: 13px; }
+    }
+
+    /* ── 모바일 반응형 (소형) ─────────────────── */
+    @media (max-width: 480px) {
+      nav { gap: 0.5rem; padding: 0 0.75rem; }
+      .nav-logo strong { display: none; }
+      .theme-btn { padding: 5px 8px; font-size: 12px; }
+      .container { padding: 1rem 0.5rem; }
+      th { padding: .4rem .5rem; }
+      td { padding: .5rem; font-size: 12px; }
+    }
   </style>
 </head>
 <body data-theme="dark">

@@ -88,6 +88,13 @@
   .empty-state code {
     font-size: 12px;
   }
+  @media (max-width: 768px) {
+    .overview-header {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.75rem;
+    }
+  }
 </style>
 
 <div class="overview-header">
@@ -102,12 +109,14 @@
 
 {% if repos %}
 <div class="card" style="padding:0;overflow:hidden;">
+  <div class="table-wrap">
   <table>
     <thead>
       <tr>
         <th>리포지토리</th>
         <th>분석 수</th>
         <th>최근 점수</th>
+        <th>평균 점수</th>
         <th>등급</th>
         <th></th>
       </tr>
@@ -131,6 +140,15 @@
         {% endif %}
       </td>
       <td>
+        {% if item.avg_score %}
+        <span class="score-cell {% if item.avg_score >= 75 %}score-high{% elif item.avg_score >= 50 %}score-mid{% else %}score-low{% endif %}">
+          {{ item.avg_score }}
+        </span>
+        {% else %}
+        <span style="color:var(--text-muted)">—</span>
+        {% endif %}
+      </td>
+      <td>
         {% if item.latest_grade %}
         <span class="grade grade-{{ item.latest_grade }}">{{ item.latest_grade }}</span>
         {% endif %}
@@ -142,6 +160,7 @@
     {% endfor %}
     </tbody>
   </table>
+  </div>
 </div>
 {% else %}
 <div class="card">

@@ -94,6 +94,14 @@ def overview(request: Request, current_user: User = Depends(require_login)):
                 .all()
             )
 
+            # 평균 점수 배치 조회
+            avg_map = dict(
+                db.query(Analysis.repo_id, func.avg(Analysis.score))
+                .filter(Analysis.repo_id.in_(repo_ids))
+                .group_by(Analysis.repo_id)
+                .all()
+            )
+
             # 리포별 최신 분석 배치 조회
             latest_id_subq = (
                 db.query(func.max(Analysis.id))
@@ -111,6 +119,7 @@ def overview(request: Request, current_user: User = Depends(require_login)):
                 repo_data.append({
                     "full_name": r.full_name,
                     "analysis_count": count_map.get(r.id, 0),
+                    "avg_score": round(avg_map.get(r.id) or 0),
                     "latest_score": latest.score if latest else None,
                     "latest_grade": latest.grade if latest else None,
                 })

@@ -55,6 +55,20 @@ def test_overview_returns_html():
     assert "text/html" in r.headers["content-type"]
 
 
+def test_overview_with_repos_shows_avg_score():
+    """리포 목록에 평균 점수(avg_score) 컬럼이 표시되어야 한다."""
+    mock_db = MagicMock()
+    mock_repo = MagicMock(id=1, full_name="owner/repo", user_id=1, created_at="2026-01-01")
+    mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [mock_repo]
+    # count_map, avg_map → dict([]) = {}, latest_map → {}
+    mock_db.query.return_value.filter.return_value.group_by.return_value.all.return_value = []
+    mock_db.query.return_value.filter.return_value.all.return_value = []
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        r = client.get("/")
+    assert r.status_code == 200
+    assert "평균 점수" in r.text
+
+
 def test_repo_detail_returns_html():
     """로그인 후 본인 리포 상세 페이지는 200 HTML을 반환한다."""
     mock_db = MagicMock()
