@@ -6,10 +6,19 @@ os.environ.setdefault("TELEGRAM_BOT_TOKEN", "123:ABC")
 os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 os.environ.setdefault("ANTHROPIC_API_KEY", "")
 os.environ.setdefault("API_KEY", "")
+os.environ.setdefault("GOOGLE_CLIENT_ID", "test-cid")
+os.environ.setdefault("GOOGLE_CLIENT_SECRET", "test-csecret")
+os.environ.setdefault("SESSION_SECRET", "test-session-secret")
 
 from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 from src.main import app
+from src.auth.session import require_login
+from src.models.user import User as UserModel
+
+# 모든 UI 테스트에서 require_login 의존성을 우회 (user_id=1 로그인 상태)
+_test_user = UserModel(id=1, google_id="g-id-1", email="test@example.com", display_name="Test User")
+app.dependency_overrides[require_login] = lambda: _test_user
 
 client = TestClient(app)
 
@@ -21,9 +30,25 @@ def _ctx(db_mock):
     return ctx
 
 
+# ── 비로그인 리다이렉트 테스트 ──────────────────────────
+
+def test_overview_redirects_when_not_logged_in():
+    """비로그인 상태에서 / 접근 시 /login 으로 302 리다이렉트."""
+    del app.dependency_overrides[require_login]
+    try:
+        r = client.get("/", follow_redirects=False)
+        assert r.status_code == 302
+        assert "/login" in r.headers.get("location", "")
+    finally:
+        app.dependency_overrides[require_login] = lambda: _test_user
+
+
+# ── 로그인 상태 기존 테스트 ──
+
 def test_overview_returns_html():
+    """로그인 후 / 는 200 HTML을 반환한다."""
     mock_db = MagicMock()
-    mock_db.query.return_value.order_by.return_value.all.return_value = []
+    mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
     with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/")
     assert r.status_code == 200
@@ -31,8 +56,11 @@ def test_overview_returns_html():
 
 
 def test_repo_detail_returns_html():
+    """로그인 후 본인 리포 상세 페이지는 200 HTML을 반환한다."""
     mock_db = MagicMock()
-    mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(id=1, full_name="owner/repo")
+    mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
+        id=1, full_name="owner/repo", user_id=None
+    )
     mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
     with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/repos/owner%2Frepo")
@@ -40,6 +68,7 @@ def test_repo_detail_returns_html():
 
 
 def test_repo_detail_404():
+    """존재하지 않는 리포 접근 시 404."""
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = None
     with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
@@ -47,9 +76,22 @@ def test_repo_detail_404():
     assert r.status_code == 404
 
 
+def test_repo_detail_404_for_other_users_repo():
+    """타인 소유 리포(user_id=2) 접근 시 404. 현재 사용자는 user_id=1."""
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
+        id=2, full_name="owner/repo", user_id=2
+    )
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        r = client.get("/repos/owner%2Frepo")
+    assert r.status_code == 404
+
+
 def test_settings_returns_html():
     mock_db = MagicMock()
-    mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(id=1, full_name="owner/repo")
+    mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
+        id=1, full_name="owner/repo", user_id=None
+    )
     from src.config_manager.manager import RepoConfigData
     with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.ui.router.get_repo_config",
@@ -59,7 +101,6 @@ def test_settings_returns_html():
 
 
 def test_post_settings_redirects():
-    # POST /repos/{repo}/settings 호출 시 upsert_repo_config에 n8n_webhook_url이 전달되고 303 리다이렉트 반환됨
     mock_db = MagicMock()
     with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.ui.router.upsert_repo_config") as mock_upsert:
@@ -74,17 +115,13 @@ def test_post_settings_redirects():
                 },
                 follow_redirects=False,
             )
-    # upsert_repo_config가 정확히 1회 호출됐는지 확인
     assert mock_upsert.call_count == 1
     called_config = mock_upsert.call_args[0][1]
-    # n8n_webhook_url 값이 RepoConfigData에 전달됐는지 확인
     assert called_config.n8n_webhook_url == "http://n8n.local/webhook/abc"
-    # 응답이 리다이렉트(303)인지 확인
     assert r.status_code == 303
 
 
 def test_post_settings_empty_n8n_url():
-    # n8n_webhook_url을 비워서 전송 시 빈 문자열 또는 None이 RepoConfigData에 전달됨
     mock_db = MagicMock()
     with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.ui.router.upsert_repo_config") as mock_upsert:
@@ -101,14 +138,10 @@ def test_post_settings_empty_n8n_url():
             )
     assert mock_upsert.call_count == 1
     called_config = mock_upsert.call_args[0][1]
-    # 빈 문자열이 RepoConfigData에 전달됐는지 확인 (None 또는 "" 모두 허용하지 않고 "" 그대로 확인)
     assert called_config.n8n_webhook_url == ""
 
 
-# --- UI form auto_merge 파싱 테스트 (Red: UI router가 auto_merge 체크박스를 파싱하지 않음) ---
-
 def test_post_settings_with_auto_merge_checked():
-    # HTML form에서 auto_merge=on 전송 시 RepoConfigData.auto_merge가 True인지 검증
     mock_db = MagicMock()
     with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.ui.router.upsert_repo_config") as mock_upsert:
@@ -126,13 +159,11 @@ def test_post_settings_with_auto_merge_checked():
             )
     assert mock_upsert.call_count == 1
     called_config = mock_upsert.call_args[0][1]
-    # 체크박스가 체크된 경우 auto_merge=True가 전달되어야 함
     assert called_config.auto_merge is True
     assert r.status_code == 303
 
 
 def test_post_settings_without_auto_merge_checkbox():
-    # HTML form에서 auto_merge 체크박스가 없을 때(미체크) RepoConfigData.auto_merge가 False인지 검증
     mock_db = MagicMock()
     with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.ui.router.upsert_repo_config") as mock_upsert:
@@ -144,12 +175,10 @@ def test_post_settings_without_auto_merge_checkbox():
                     "auto_reject_threshold": "50",
                     "notify_chat_id": "",
                     "n8n_webhook_url": "",
-                    # auto_merge 체크박스 미포함 = 미체크 상태
                 },
                 follow_redirects=False,
             )
     assert mock_upsert.call_count == 1
     called_config = mock_upsert.call_args[0][1]
-    # 체크박스가 없으면 auto_merge=False가 전달되어야 함
     assert called_config.auto_merge is False
     assert r.status_code == 303
