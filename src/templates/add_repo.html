@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}리포 추가 — SCAManager{% endblock %}
+{% block content %}
+<style>
+  .add-repo-card { max-width: 560px; margin: 2rem auto; }
+  .form-group { margin-bottom: 1.25rem; }
+  .form-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: .5rem;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+  .form-select {
+    width: 100%;
+    padding: .625rem 1rem;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-btn);
+    color: var(--text-primary);
+    font-size: 14px;
+    transition: border-color var(--transition), background var(--transition);
+    appearance: none;
+    cursor: pointer;
+  }
+  .form-select:focus {
+    outline: none;
+    border-color: var(--border-focus);
+    background: var(--bg-input-focus);
+  }
+  .repo-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: .5rem;
+  }
+</style>
+
+<div class="page-header">
+  <a class="back-btn" href="/">← 돌아가기</a>
+  <div>
+    <h2>리포지토리 추가</h2>
+    <p class="subtitle">GitHub 리포를 선택하면 Webhook이 자동 생성됩니다</p>
+  </div>
+</div>
+
+<div class="card add-repo-card">
+  <form method="post" action="/repos/add" id="addRepoForm">
+    <div class="form-group">
+      <label class="form-label" for="repo_full_name">GitHub 리포지토리</label>
+      <select class="form-select" name="repo_full_name" id="repo_full_name" required>
+        <option value="">리포 목록 불러오는 중...</option>
+      </select>
+      <p class="repo-hint" id="repoHint">GitHub API에서 접근 가능한 리포 목록을 불러옵니다.</p>
+    </div>
+    <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;" id="submitBtn" disabled>
+      Webhook 생성 + 리포 추가
+    </button>
+  </form>
+</div>
+
+{% block scripts %}
+<script>
+  const select = document.getElementById('repo_full_name');
+  const submitBtn = document.getElementById('submitBtn');
+  const hint = document.getElementById('repoHint');
+
+  async function loadRepos() {
+    try {
+      const resp = await fetch('/api/github/repos');
+      if (!resp.ok) throw new Error('API 오류: ' + resp.status);
+      const repos = await resp.json();
+
+      select.innerHTML = '';
+      if (repos.length === 0) {
+        select.innerHTML = '<option value="">추가 가능한 리포가 없습니다</option>';
+        hint.textContent = '모든 리포가 이미 등록되었거나 접근 가능한 리포가 없습니다.';
+        return;
+      }
+
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = '리포를 선택하세요';
+      select.appendChild(placeholder);
+
+      repos.forEach(repo => {
+        const opt = document.createElement('option');
+        opt.value = repo.full_name;
+        opt.textContent = repo.full_name + (repo.private ? ' 🔒' : '');
+        select.appendChild(opt);
+      });
+
+      hint.textContent = repos.length + '개 리포를 불러왔습니다.';
+    } catch (e) {
+      select.innerHTML = '<option value="">리포 목록 로드 실패</option>';
+      hint.textContent = '오류: ' + e.message;
+    }
+  }
+
+  select.addEventListener('change', () => {
+    submitBtn.disabled = !select.value;
+  });
+
+  loadRepos();
+</script>
+{% endblock %}
+{% endblock %}

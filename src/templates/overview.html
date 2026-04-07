@@ -92,9 +92,12 @@
 
 <div class="overview-header">
   <h2>리포지토리 현황</h2>
-  {% if repos %}
-  <span class="repo-count">{{ repos | length }}개 리포</span>
-  {% endif %}
+  <div style="display:flex;align-items:center;gap:.75rem;">
+    {% if repos %}
+    <span class="repo-count">{{ repos | length }}개 리포</span>
+    {% endif %}
+    <a href="/repos/add" class="btn btn-primary" style="padding:.4rem 1rem;font-size:13px;">+ 리포 추가</a>
+  </div>
 </div>
 
 {% if repos %}
@@ -145,7 +148,7 @@
   <div class="empty-state">
     <div class="empty-icon">🔗</div>
     <p>등록된 리포지토리가 없습니다.<br>
-      GitHub Webhook을 설정하면 자동으로 등록됩니다.</p>
+      <a href="/repos/add">리포 추가</a>를 클릭해 GitHub 리포를 등록하세요.</p>
   </div>
 </div>
 {% endif %}
