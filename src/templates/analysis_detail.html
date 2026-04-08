@@ -312,4 +312,15 @@
 </div>
 {% endif %}
 
+<!-- 디버그: result JSON 키 확인 (원인 파악 후 제거) -->
+<details style="margin-top:1rem">
+  <summary style="font-size:12px;color:var(--text-muted);cursor:pointer">🔧 진단 정보</summary>
+  <pre style="font-size:11px;color:var(--text-muted);background:var(--code-bg);padding:10px;border-radius:6px;overflow-x:auto;margin-top:8px">result type: {{ analysis.result.__class__.__name__ if analysis.result else 'None' }}
+result keys: {{ analysis.result.keys() | list if analysis.result and analysis.result.keys is defined else 'N/A' }}
+ai_summary: {{ (analysis.result.get('ai_summary', 'MISSING') if analysis.result else 'NO RESULT')[:100] }}
+ai_suggestions count: {{ analysis.result.get('ai_suggestions', [])|length if analysis.result else 0 }}
+issues count: {{ analysis.result.get('issues', [])|length if analysis.result else 0 }}
+file_feedbacks count: {{ analysis.result.get('file_feedbacks', [])|length if analysis.result else 0 }}</pre>
+</details>
+
 {% endblock %}
