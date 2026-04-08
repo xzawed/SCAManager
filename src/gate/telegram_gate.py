@@ -1,5 +1,15 @@
+import hashlib
+import hmac
+
 import httpx
 from src.scorer.calculator import ScoreResult
+
+
+def _gate_callback_token(bot_token: str, analysis_id: int) -> str:
+    """콜백 데이터 위변조 방지용 HMAC 토큰 (앞 16자)."""
+    return hmac.new(
+        bot_token.encode(), str(analysis_id).encode(), digestmod=hashlib.sha256
+    ).hexdigest()[:16]
 
 
 async def send_gate_request(
@@ -16,10 +26,11 @@ async def send_gate_request(
         f"점수: *{score_result.total}점* ({score_result.grade}등급)\n\n"
         f"승인 또는 반려를 선택하세요."
     )
+    token = _gate_callback_token(bot_token, analysis_id)
     reply_markup = {
         "inline_keyboard": [[
-            {"text": "✅ 승인", "callback_data": f"gate:approve:{analysis_id}"},
-            {"text": "❌ 반려", "callback_data": f"gate:reject:{analysis_id}"},
+            {"text": "✅ 승인", "callback_data": f"gate:approve:{analysis_id}:{token}"},
+            {"text": "❌ 반려", "callback_data": f"gate:reject:{analysis_id}:{token}"},
         ]]
     }
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"

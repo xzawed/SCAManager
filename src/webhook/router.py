@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import json
 import logging
 from fastapi import APIRouter, Request, HTTPException, BackgroundTasks, Header
@@ -81,16 +83,21 @@ async def handle_gate_callback(
         repo = db.query(Repository).filter_by(id=analysis.repo_id).first()
         if not repo:
             return
+        github_token = (
+            repo.owner.github_access_token
+            if repo.owner and repo.owner.github_access_token
+            else settings.github_token
+        )
         body = f"{'✅ 승인' if decision == 'approve' else '❌ 반려'} by @{decided_by}"
         await post_github_review(
-            settings.github_token, repo.full_name,
+            github_token, repo.full_name,
             analysis.pr_number, decision, body,
         )
         _save_gate_decision(db, analysis_id, decision, "manual", decided_by)
         if decision == "approve":
             config = get_repo_config(db, repo.full_name)
             if config.auto_merge:
-                merged = await merge_pr(settings.github_token, repo.full_name, analysis.pr_number)
+                merged = await merge_pr(github_token, repo.full_name, analysis.pr_number)
                 if merged:
                     logger.info("PR #%d manual-approved+auto-merged: %s",
                                 analysis.pr_number, repo.full_name)
@@ -110,14 +117,22 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     if not data.startswith("gate:"):
         return {"status": "ok"}
     parts = data.split(":")
-    if len(parts) != 3:
+    if len(parts) != 4:
         return {"status": "ok"}
-    _, decision, analysis_id_str = parts
+    _, decision, analysis_id_str, callback_token = parts
     if decision not in ("approve", "reject"):
         return {"status": "ok"}
     try:
         analysis_id = int(analysis_id_str)
     except ValueError:
+        return {"status": "ok"}
+    expected = hmac.new(
+        settings.telegram_bot_token.encode(),
+        str(analysis_id).encode(),
+        digestmod=hashlib.sha256,
+    ).hexdigest()[:16]
+    if not hmac.compare_digest(expected, callback_token):
+        logger.warning("Telegram gate callback: invalid token for analysis_id=%d", analysis_id)
         return {"status": "ok"}
     decided_by = callback_query.get("from", {}).get("username", "unknown")
     background_tasks.add_task(

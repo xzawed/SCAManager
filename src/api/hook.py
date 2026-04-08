@@ -2,7 +2,7 @@
 
 X-API-Key 없이 hook_token으로 인증 (훅은 일반 개발자 터미널에서 실행됨).
 """
-import json
+import hmac
 import logging
 from typing import Any
 
@@ -37,7 +37,7 @@ def verify_hook(repo: str, token: str):
             RepoConfig.repo_full_name == repo
         ).first()
 
-    if config is None or config.hook_token != token:
+    if config is None or not hmac.compare_digest(config.hook_token or "", token):
         raise HTTPException(status_code=404, detail="등록되지 않은 리포 또는 유효하지 않은 토큰")
 
     return {"status": "active"}
@@ -66,7 +66,7 @@ def save_hook_result(body: HookResultRequest):
             RepoConfig.repo_full_name == body.repo
         ).first()
 
-        if config is None or config.hook_token != body.token:
+        if config is None or not hmac.compare_digest(config.hook_token or "", body.token):
             raise HTTPException(status_code=403, detail="유효하지 않은 토큰")
 
         repo = db.query(Repository).filter(
@@ -75,6 +75,17 @@ def save_hook_result(body: HookResultRequest):
 
         if repo is None:
             raise HTTPException(status_code=404, detail="리포지토리를 찾을 수 없습니다")
+
+        existing = db.query(Analysis).filter_by(
+            commit_sha=body.commit_sha, repo_id=repo.id
+        ).first()
+        if existing:
+            return {
+                "status": "duplicate",
+                "score": existing.score,
+                "grade": existing.grade,
+                "analysis_id": existing.id,
+            }
 
         # ai_result → AiReviewResult 변환
         ar = body.ai_result
@@ -102,7 +113,7 @@ def save_hook_result(body: HookResultRequest):
             pr_number=None,
             score=score_result.total,
             grade=score_result.grade,
-            result=json.dumps({
+            result={
                 "breakdown": score_result.breakdown,
                 "ai_summary": ai_review.summary,
                 "ai_suggestions": ai_review.suggestions,
@@ -114,7 +125,7 @@ def save_hook_result(body: HookResultRequest):
                 "file_feedbacks": ai_review.file_feedbacks,
                 "issues": [],
                 "source": "cli",
-            }, ensure_ascii=False),
+            },
         )
 
         db.add(analysis)

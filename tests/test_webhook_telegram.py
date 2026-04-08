@@ -13,10 +13,12 @@ from src.config_manager.manager import RepoConfigData
 
 client = TestClient(app)
 
+# HMAC token for analysis_id=42, bot_token="123:ABC"
+_TOKEN_42 = "d9939856ed07d33d"
 APPROVE = {"update_id": 1, "callback_query": {"id": "c1", "from": {"id": 1, "username": "john"},
-            "data": "gate:approve:42", "message": {"message_id": 1, "chat": {"id": -1}}}}
+            "data": f"gate:approve:42:{_TOKEN_42}", "message": {"message_id": 1, "chat": {"id": -1}}}}
 REJECT = {"update_id": 2, "callback_query": {"id": "c2", "from": {"id": 1, "username": "john"},
-           "data": "gate:reject:42", "message": {"message_id": 1, "chat": {"id": -1}}}}
+           "data": f"gate:reject:42:{_TOKEN_42}", "message": {"message_id": 1, "chat": {"id": -1}}}}
 OTHER = {"update_id": 3, "callback_query": {"id": "c3", "from": {"id": 1, "username": "john"},
           "data": "other:action", "message": {"message_id": 1, "chat": {"id": -1}}}}
 
