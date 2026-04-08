@@ -123,3 +123,146 @@ async def test_delete_webhook_returns_false_on_error():
         )
 
     assert result is False
+
+
+# ------------------------------------------------------------------
+# commit_scamanager_files 테스트
+# ------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_commit_scamanager_files_creates_new():
+    # 파일이 없을 때(GET → 404) config.json과 install-hook.sh 각각 PUT 2회 호출됨
+    from src.github_client.repos import commit_scamanager_files
+
+    # GET 파일 존재 여부 조회 → 404 (파일 없음)
+    mock_get_resp = MagicMock()
+    mock_get_resp.status_code = 404
+    mock_get_resp.json.return_value = {}
+
+    # PUT 성공 응답
+    mock_put_resp = MagicMock()
+    mock_put_resp.status_code = 201
+    mock_put_resp.raise_for_status = MagicMock()
+
+    with patch("httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_get_resp)
+        mock_client.put = AsyncMock(return_value=mock_put_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client_cls.return_value = mock_client
+
+        result = await commit_scamanager_files(
+            token="gho_test_token",
+            repo_full_name="owner/test-repo",
+            server_url="https://scamanager.example.com",
+            hook_token="hook-token-xyz",
+        )
+
+    # 파일 2개(config.json, install-hook.sh) 각각 PUT 호출
+    assert mock_client.put.call_count == 2
+    put_urls = [call.args[0] for call in mock_client.put.call_args_list]
+    assert any("config.json" in url for url in put_urls)
+    assert any("install-hook.sh" in url for url in put_urls)
+
+
+@pytest.mark.asyncio
+async def test_commit_scamanager_files_updates_existing():
+    # 파일이 이미 존재할 때(GET → 200 + sha) PUT 요청에 sha가 포함됨
+    from src.github_client.repos import commit_scamanager_files
+
+    existing_sha = "existingsha1234567890"
+
+    mock_get_resp = MagicMock()
+    mock_get_resp.status_code = 200
+    mock_get_resp.json.return_value = {"sha": existing_sha}
+
+    mock_put_resp = MagicMock()
+    mock_put_resp.status_code = 200
+    mock_put_resp.raise_for_status = MagicMock()
+
+    with patch("httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_get_resp)
+        mock_client.put = AsyncMock(return_value=mock_put_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client_cls.return_value = mock_client
+
+        await commit_scamanager_files(
+            token="gho_test_token",
+            repo_full_name="owner/test-repo",
+            server_url="https://scamanager.example.com",
+            hook_token="hook-token-xyz",
+        )
+
+    # PUT 요청 body에 sha가 포함되어야 함
+    assert mock_client.put.call_count == 2
+    for call in mock_client.put.call_args_list:
+        put_body = call.kwargs.get("json", {})
+        assert put_body.get("sha") == existing_sha
+
+
+@pytest.mark.asyncio
+async def test_commit_scamanager_files_returns_true_on_success():
+    # 모든 PUT 성공 시 True 반환
+    from src.github_client.repos import commit_scamanager_files
+
+    mock_get_resp = MagicMock()
+    mock_get_resp.status_code = 404
+    mock_get_resp.json.return_value = {}
+
+    mock_put_resp = MagicMock()
+    mock_put_resp.status_code = 201
+    mock_put_resp.raise_for_status = MagicMock()
+
+    with patch("httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_get_resp)
+        mock_client.put = AsyncMock(return_value=mock_put_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client_cls.return_value = mock_client
+
+        result = await commit_scamanager_files(
+            token="gho_test_token",
+            repo_full_name="owner/test-repo",
+            server_url="https://scamanager.example.com",
+            hook_token="hook-token-xyz",
+        )
+
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_commit_scamanager_files_returns_false_on_error():
+    # PUT 요청 중 예외 발생(httpx.HTTPStatusError 등) 시 False 반환
+    from src.github_client.repos import commit_scamanager_files
+    import httpx
+
+    mock_get_resp = MagicMock()
+    mock_get_resp.status_code = 404
+    mock_get_resp.json.return_value = {}
+
+    with patch("httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_get_resp)
+        mock_client.put = AsyncMock(
+            side_effect=httpx.HTTPStatusError(
+                "API Error",
+                request=MagicMock(),
+                response=MagicMock(status_code=422),
+            )
+        )
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client_cls.return_value = mock_client
+
+        result = await commit_scamanager_files(
+            token="gho_test_token",
+            repo_full_name="owner/test-repo",
+            server_url="https://scamanager.example.com",
+            hook_token="hook-token-xyz",
+        )
+
+    assert result is False

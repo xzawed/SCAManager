@@ -92,6 +92,19 @@
   }
 </style>
 
+{% if hook_installed %}
+<div style="background:var(--accent-blue,#2563eb);color:#fff;border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.25rem;display:flex;align-items:flex-start;gap:.75rem;">
+  <span style="font-size:1.3rem;flex-shrink:0;">✅</span>
+  <div>
+    <strong>CLI 코드리뷰 훅이 설정됐습니다!</strong><br>
+    <span style="font-size:13px;opacity:.9;">로컬 리포에서 아래 명령어를 실행하면 <code style="background:rgba(255,255,255,.2);padding:1px 5px;border-radius:4px;">git push</code> 시 자동으로 코드리뷰가 실행됩니다.</span>
+    <div style="margin-top:.6rem;background:rgba(0,0,0,.25);border-radius:6px;padding:.5rem .75rem;font-family:monospace;font-size:13px;">
+      git pull &amp;&amp; bash .scamanager/install-hook.sh
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <!-- 헤더 -->
 <div class="detail-header">
   <a class="back-btn" href="/">← 목록</a>

@@ -17,6 +17,7 @@ class RepoConfig(Base):
     custom_webhook_url = Column(String, nullable=True)
     email_recipients = Column(String, nullable=True)
     auto_merge = Column(Boolean, default=False, nullable=False)
+    hook_token = Column(String, nullable=True, unique=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
