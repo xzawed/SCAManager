@@ -2,549 +2,349 @@
 {% block title %}설정 — {{ repo_name }}{% endblock %}
 {% block content %}
 <style>
-  /* ── 설정 페이지 전용 ─────────────────────── */
-  .settings-layout {
-    max-width: 680px;
-  }
+  .settings-wrap { max-width: 860px; margin: 0 auto; padding: 1.5rem 1rem 5rem; }
 
   /* 페이지 헤더 */
-  .settings-header {
-    display: flex;
-    align-items: flex-start;
-    gap: 1rem;
-    margin-bottom: 2rem;
+  .settings-header { display:flex; align-items:center; gap:.75rem; margin-bottom:1.75rem; }
+  .settings-title {
+    font-size:1.35rem; font-weight:800; letter-spacing:-.02em;
+    background: var(--title-gradient);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
   }
-  .settings-header-text h2 {
-    margin: 0 0 4px;
-    font-size: 1.4rem;
-    font-weight: 700;
-    color: var(--text-primary);
-  }
-  .settings-header-text .repo-path {
-    font-size: 13px;
-    color: var(--text-muted);
-    font-family: 'Menlo', 'Consolas', monospace;
+  .repo-badge {
+    margin-left:auto; background:var(--bg-input); color:var(--text-muted);
+    padding:.25rem .8rem; border-radius:20px; font-size:12px; font-family:monospace;
+    border:1px solid var(--border);
   }
 
-  /* 설정 카드 공통 */
-  .settings-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-card);
-    margin-bottom: 1.25rem;
-    overflow: hidden;
-    box-shadow: var(--shadow-card);
-    transition: background var(--transition), border-color var(--transition);
-  }
-  body[data-theme="glass"] .settings-card {
-    backdrop-filter: blur(16px);
-  }
-  .settings-card-header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 1.125rem 1.5rem;
-    border-bottom: 1px solid var(--border);
-  }
-  .settings-card-icon {
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    background: rgba(99,102,241,0.15);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 15px;
-    flex-shrink: 0;
-  }
-  .settings-card-title {
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--text-primary);
-    margin: 0;
-  }
-  .settings-card-desc {
-    font-size: 12px;
-    color: var(--text-muted);
-    margin: 2px 0 0;
-  }
-  .settings-card-body {
-    padding: 1.25rem 1.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: 1.25rem;
-  }
+  /* 2컬럼 그리드 */
+  .settings-grid { display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem; }
 
-  /* Gate 모드 버튼 그룹 */
-  .gate-mode-group {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
+  /* 카드 */
+  .s-card {
+    border-radius:var(--radius-card); background:var(--bg-card);
+    border:1px solid var(--border); box-shadow:var(--shadow-card); overflow:hidden;
+    transition:background var(--transition), border-color var(--transition);
   }
+  body[data-theme="glass"] .s-card { backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px); }
+
+  /* 카드 헤더 그라디언트 */
+  .s-card-hdr {
+    padding:.72rem 1.1rem; display:flex; align-items:center; gap:.55rem;
+  }
+  .s-card-hdr .hdr-icon { font-size:16px; }
+  .s-card-hdr .hdr-title { font-size:13px; font-weight:700; color:#fff; flex:1; }
+  .s-card-hdr .hdr-badge {
+    background:rgba(255,255,255,.22); color:#fff; font-size:11px; padding:2px 9px; border-radius:10px;
+  }
+  .hdr-gate   { background:var(--grad-gate); }
+  .hdr-merge  { background:var(--grad-merge); }
+  .hdr-notify { background:var(--grad-notify); }
+  .hdr-hook   { background:var(--grad-hook); }
+  .s-card-body { padding:1.1rem; }
+
+  /* Gate 모드 버튼 */
+  .gate-btns { display:grid; grid-template-columns:repeat(3,1fr); gap:.4rem; margin-bottom:1rem; }
   .gate-mode-btn {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    padding: 12px 8px;
-    border-radius: 10px;
-    border: 1.5px solid var(--border);
-    background: var(--bg-input);
-    cursor: pointer;
-    transition: all var(--transition);
-    color: var(--text-muted);
-    font-size: 12px;
-    font-weight: 600;
-    text-align: center;
-    line-height: 1.3;
+    padding:.5rem .25rem; border-radius:8px; border:1.5px solid var(--border);
+    background:var(--bg-input); color:var(--text-muted);
+    font-size:12px; font-weight:600; text-align:center; cursor:pointer;
+    transition:all var(--transition);
+    display:flex; flex-direction:column; align-items:center; gap:.15rem;
   }
-  .gate-mode-btn .gm-icon {
-    font-size: 20px;
-    line-height: 1;
-  }
-  .gate-mode-btn:hover {
-    border-color: var(--accent);
-    color: var(--text-primary);
-    background: rgba(99,102,241,0.08);
-  }
+  .gate-mode-btn .gm-icon { font-size:15px; }
   .gate-mode-btn.active {
-    border-color: var(--accent);
-    background: rgba(99,102,241,0.14);
-    color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
-  }
-  body[data-theme="glass"] .gate-mode-btn.active {
-    box-shadow: 0 0 0 3px rgba(129,140,248,0.2);
+    background:var(--btn-gate-active-bg);
+    border-color:var(--btn-gate-active-bd);
+    color:var(--btn-gate-active-tx);
   }
 
-  /* 슬라이더 행 */
-  .slider-row {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+  /* 슬라이더 + 숫자 인라인 */
+  .threshold-row { margin-bottom:.85rem; }
+  .threshold-label {
+    display:flex; justify-content:space-between; align-items:center;
+    margin-bottom:.35rem; font-size:12px; color:var(--text-muted);
   }
-  .slider-label-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+  .threshold-ctrl { display:flex; align-items:center; gap:.5rem; }
+  .threshold-ctrl input[type=range] {
+    flex:1; height:6px; border-radius:3px; background:var(--border);
+    -webkit-appearance:none; outline:none; cursor:pointer;
   }
-  .slider-label {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-primary);
+  .threshold-ctrl input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:18px; height:18px; border-radius:50%; cursor:pointer;
   }
-  .slider-badge {
-    font-size: 14px;
-    font-weight: 700;
-    min-width: 36px;
-    text-align: right;
+  .approve-range::-webkit-slider-thumb { background:linear-gradient(135deg,#10b981,#34d399); box-shadow:0 2px 6px rgba(16,185,129,.4); }
+  .reject-range::-webkit-slider-thumb  { background:linear-gradient(135deg,#ef4444,#f87171); box-shadow:0 2px 6px rgba(239,68,68,.4); }
+  .num-input {
+    width:50px; background:var(--bg-input); border:1.5px solid var(--success);
+    border-radius:6px; color:var(--success); text-align:center;
+    font-size:13px; font-weight:700; padding:3px 2px;
+    transition:border-color var(--transition), color var(--transition);
   }
-  .slider-badge.approve { color: var(--success); }
-  .slider-badge.reject  { color: var(--danger); }
-  input[type="range"] {
-    -webkit-appearance: none;
-    width: 100%;
-    height: 6px;
-    border-radius: 3px;
-    background: var(--border);
-    outline: none;
-    transition: background var(--transition);
+  .num-input.danger { border-color:var(--danger); color:var(--danger); }
+  .range-hint {
+    margin-top:.65rem; padding:.5rem .75rem;
+    background:var(--hint-bg); border:1px solid var(--hint-border);
+    border-radius:7px; font-size:11px; color:var(--text-muted); line-height:1.6;
   }
-  input[type="range"]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    background: var(--accent-grad);
-    cursor: pointer;
-    box-shadow: 0 2px 6px rgba(99,102,241,0.4);
-    transition: transform var(--transition), box-shadow var(--transition);
-  }
-  input[type="range"]::-webkit-slider-thumb:hover {
-    transform: scale(1.2);
-    box-shadow: 0 3px 10px rgba(99,102,241,0.5);
-  }
-  input[type="range"].approve-slider::-webkit-slider-thumb { background: linear-gradient(135deg, #10b981, #34d399); box-shadow: 0 2px 6px rgba(16,185,129,0.4); }
-  input[type="range"].reject-slider::-webkit-slider-thumb  { background: linear-gradient(135deg, #ef4444, #f87171); box-shadow: 0 2px 6px rgba(239,68,68,0.4); }
-  .slider-range-hint {
-    display: flex;
-    justify-content: space-between;
-    font-size: 10px;
-    color: var(--text-muted);
-    margin-top: -4px;
-  }
+  .range-hint strong { color:var(--text-primary); }
 
   /* 토글 스위치 */
-  .toggle-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-  }
-  .toggle-label-group { flex: 1; }
-  .toggle-label {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-primary);
-    display: block;
-    margin-bottom: 2px;
-  }
-  .toggle-hint {
-    font-size: 12px;
-    color: var(--text-muted);
-    line-height: 1.4;
-  }
-  .toggle-switch {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    flex-shrink: 0;
-  }
-  .toggle-switch input[type="checkbox"] {
-    width: 0;
-    height: 0;
-    opacity: 0;
-    position: absolute;
-  }
+  .toggle-row { display:flex; align-items:center; justify-content:space-between; gap:1rem; }
+  .toggle-info .t-title { font-size:13px; font-weight:600; margin-bottom:.2rem; }
+  .toggle-info .t-desc  { font-size:11px; color:var(--text-muted); line-height:1.4; }
+  .toggle-switch { position:relative; display:inline-flex; align-items:center; flex-shrink:0; }
+  .toggle-switch input[type="checkbox"] { width:0; height:0; opacity:0; position:absolute; }
   .toggle-track {
-    width: 44px;
-    height: 24px;
-    background: var(--border);
-    border-radius: 12px;
-    cursor: pointer;
-    transition: background var(--transition);
-    position: relative;
-    display: block;
+    width:44px; height:24px; background:var(--border); border-radius:12px;
+    cursor:pointer; transition:background var(--transition); position:relative; display:block;
   }
   .toggle-track::after {
-    content: '';
-    position: absolute;
-    top: 3px;
-    left: 3px;
-    width: 18px;
-    height: 18px;
-    background: #fff;
-    border-radius: 50%;
-    transition: transform var(--transition);
-    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+    content:''; position:absolute; top:3px; left:3px;
+    width:18px; height:18px; background:#fff; border-radius:50%;
+    transition:transform var(--transition); box-shadow:0 1px 4px rgba(0,0,0,.3);
   }
-  .toggle-switch input:checked + .toggle-track {
-    background: var(--success);
-  }
-  .toggle-switch input:checked + .toggle-track::after {
-    transform: translateX(20px);
-  }
+  .toggle-switch input:checked + .toggle-track { background:var(--success); }
+  .toggle-switch input:checked + .toggle-track::after { transform:translateX(20px); }
 
   /* 입력 필드 */
-  .field-row {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-  .field-label {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-primary);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
+  .field-row { display:flex; flex-direction:column; gap:6px; margin-bottom:.7rem; }
+  .field-row:last-child { margin-bottom:0; }
+  .field-label { font-size:13px; font-weight:600; color:var(--text-primary); display:flex; align-items:center; gap:6px; }
   .field-tag {
-    font-size: 10px;
-    font-weight: 600;
-    padding: 2px 6px;
-    border-radius: 4px;
-    background: rgba(99,102,241,0.12);
-    color: var(--accent);
-    letter-spacing: .04em;
+    font-size:10px; font-weight:600; padding:2px 6px; border-radius:4px;
+    background:rgba(99,102,241,.12); color:var(--accent); letter-spacing:.04em;
   }
-  .field-hint {
-    font-size: 12px;
-    color: var(--text-muted);
-  }
+  .field-hint { font-size:12px; color:var(--text-muted); }
   .field-input {
-    width: 100%;
-    padding: .625rem .875rem;
-    border-radius: 8px;
-    border: 1.5px solid var(--border);
-    background: var(--bg-input);
-    color: var(--text-primary);
-    font-size: 13px;
-    font-family: 'Menlo', 'Consolas', monospace;
-    transition: border-color var(--transition), background var(--transition), box-shadow var(--transition);
-    outline: none;
+    width:100%; padding:.6rem .875rem; border-radius:8px;
+    border:1.5px solid var(--border); background:var(--bg-input);
+    color:var(--text-primary); font-size:13px; font-family:'Menlo','Consolas',monospace;
+    transition:border-color var(--transition), background var(--transition), box-shadow var(--transition);
+    outline:none;
   }
-  .field-input:focus {
-    border-color: var(--border-focus);
-    background: var(--bg-input-focus);
-    box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
-  }
-  .field-input::placeholder { color: var(--text-muted); opacity: 0.7; }
+  .field-input:focus { border-color:var(--border-focus); background:var(--bg-input-focus); box-shadow:0 0 0 3px rgba(99,102,241,.15); }
+  .field-input::placeholder { color:var(--text-muted); opacity:.7; }
 
-  /* 저장 버튼 영역 */
-  .settings-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
-    margin-top: .5rem;
-    padding-top: 1.25rem;
-    border-top: 1px solid var(--border);
+  /* Hook 카드 */
+  .hook-code {
+    background:var(--bg-input); border:1px solid var(--border); border-radius:7px;
+    padding:.55rem .8rem; font-family:monospace; font-size:12px; color:var(--text-muted);
+    margin-bottom:.75rem;
   }
-  .btn-save {
-    padding: .65rem 2rem;
-    font-size: 14px;
-    font-weight: 700;
-    background: var(--accent-grad);
-    color: #fff;
-    border: none;
-    border-radius: var(--radius-btn);
-    cursor: pointer;
-    box-shadow: 0 2px 12px rgba(99,102,241,0.4);
-    transition: all var(--transition);
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
+  .hook-btns { display:flex; gap:.5rem; flex-wrap:wrap; }
+  .hook-btn {
+    padding:.42rem .9rem; border-radius:8px;
+    background:var(--hook-btn-bg); border:1.5px solid var(--hook-btn-bd); color:var(--hook-btn-tx);
+    font-size:12px; font-weight:500; cursor:pointer; transition:all var(--transition);
   }
-  .btn-save:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(99,102,241,0.5);
+  .hook-btn:hover { filter:brightness(1.15); }
+  .hook-alert {
+    padding:.55rem .9rem; border-radius:8px; font-size:13px; margin-bottom:.6rem;
   }
-  .btn-save:active { transform: translateY(0); }
-  @media (max-width: 480px) {
-    .gate-mode-group { grid-template-columns: 1fr; }
-    .settings-header { flex-direction: column; gap: 0.5rem; }
-    .settings-card-body { padding: 1rem; }
-    .settings-card-header { padding: 0.875rem 1rem; }
+  .hook-alert.ok   { background:#d1fae5; color:#065f46; }
+  .hook-alert.fail { background:#fee2e2; color:#991b1b; }
+
+  /* 저장 버튼 */
+  .save-bar {
+    position:sticky; bottom:0;
+    padding:.75rem 0 .5rem;
+    background:linear-gradient(transparent, var(--bg-page) 45%);
+  }
+  .btn-save-new {
+    width:100%; padding:.72rem; border-radius:9px; border:none;
+    background:var(--save-btn-bg); color:#fff;
+    font-size:14px; font-weight:700; cursor:pointer;
+    box-shadow:0 4px 14px var(--save-btn-shadow);
+    transition:opacity var(--transition), box-shadow var(--transition);
+    display:flex; align-items:center; justify-content:center; gap:8px;
+  }
+  .btn-save-new:hover { opacity:.88; }
+
+  /* 반응형 */
+  @media(max-width:640px) {
+    .settings-grid { grid-template-columns:1fr; }
+    .repo-badge { display:none; }
+    .settings-wrap { padding:1rem .75rem 5rem; }
   }
 </style>
 
-<div class="settings-layout">
+<div class="settings-wrap">
+
   <!-- 헤더 -->
   <div class="settings-header">
     <a class="back-btn" href="/repos/{{ repo_name }}">← 상세</a>
-    <div class="settings-header-text">
-      <h2>⚙️ 설정</h2>
-      <div class="repo-path">{{ repo_name }}</div>
-    </div>
+    <h1 class="settings-title">리포지토리 설정</h1>
+    <div class="repo-badge">{{ repo_name }}</div>
   </div>
 
   <form method="post" action="/repos/{{ repo_name }}/settings">
-    <!-- Hidden: gate_mode (JS로 관리) -->
     <input type="hidden" name="gate_mode" id="gateModeValue" value="{{ config.gate_mode }}">
 
-    <!-- ① Gate 엔진 카드 -->
-    <div class="settings-card">
-      <div class="settings-card-header">
-        <div class="settings-card-icon">⚡</div>
-        <div>
-          <div class="settings-card-title">Gate 엔진</div>
-          <div class="settings-card-desc">PR 승인/반려 자동화 설정</div>
-        </div>
-      </div>
-      <div class="settings-card-body">
+    <div class="settings-grid">
 
-        <!-- Gate 모드 선택 -->
-        <div>
-          <div class="section-title" style="margin-bottom:.75rem;">Gate 모드</div>
-          <div class="gate-mode-group">
+      <!-- ① Gate 엔진 -->
+      <div class="s-card">
+        <div class="s-card-hdr hdr-gate">
+          <span class="hdr-icon">⚡</span>
+          <span class="hdr-title">Gate 엔진</span>
+          <span class="hdr-badge" id="gateBadge">{{ config.gate_mode }}</span>
+        </div>
+        <div class="s-card-body">
+          <div class="gate-btns">
             <div class="gate-mode-btn {% if config.gate_mode == 'disabled' %}active{% endif %}"
                  data-mode="disabled" onclick="setGateMode('disabled')">
-              <span class="gm-icon">🚫</span>
-              비활성
+              <span class="gm-icon">🚫</span>비활성
             </div>
             <div class="gate-mode-btn {% if config.gate_mode == 'auto' %}active{% endif %}"
                  data-mode="auto" onclick="setGateMode('auto')">
-              <span class="gm-icon">⚡</span>
-              자동
+              <span class="gm-icon">⚡</span>자동
             </div>
             <div class="gate-mode-btn {% if config.gate_mode == 'semi-auto' %}active{% endif %}"
                  data-mode="semi-auto" onclick="setGateMode('semi-auto')">
-              <span class="gm-icon">📱</span>
-              반자동
+              <span class="gm-icon">📱</span>반자동
             </div>
           </div>
-        </div>
 
-        <!-- 승인 임계값 슬라이더 -->
-        <div class="slider-row">
-          <div class="slider-label-row">
-            <span class="slider-label">자동 승인 임계값</span>
-            <span class="slider-badge approve" id="approveVal">{{ config.auto_approve_threshold }}</span>
+          <div class="threshold-row">
+            <div class="threshold-label">
+              <span>자동 승인 기준점</span>
+              <span style="color:var(--success);font-size:11px;font-weight:600;">이상 → 승인</span>
+            </div>
+            <div class="threshold-ctrl">
+              <input type="range" class="approve-range" name="auto_approve_threshold"
+                     min="0" max="100" value="{{ config.auto_approve_threshold }}"
+                     oninput="document.getElementById('approveVal').value=this.value">
+              <input type="number" id="approveVal" class="num-input"
+                     min="0" max="100" value="{{ config.auto_approve_threshold }}"
+                     oninput="this.previousElementSibling.value=this.value">
+            </div>
           </div>
-          <input type="range" class="approve-slider" name="auto_approve_threshold"
-                 min="0" max="100" value="{{ config.auto_approve_threshold }}"
-                 oninput="document.getElementById('approveVal').textContent=this.value">
-          <div class="slider-range-hint"><span>0</span><span>100</span></div>
-        </div>
 
-        <!-- 반려 임계값 슬라이더 -->
-        <div class="slider-row">
-          <div class="slider-label-row">
-            <span class="slider-label">자동 반려 임계값</span>
-            <span class="slider-badge reject" id="rejectVal">{{ config.auto_reject_threshold }}</span>
+          <div class="threshold-row" style="margin-bottom:0">
+            <div class="threshold-label">
+              <span>자동 반려 기준점</span>
+              <span style="color:var(--danger);font-size:11px;font-weight:600;">미만 → 반려</span>
+            </div>
+            <div class="threshold-ctrl">
+              <input type="range" class="reject-range" name="auto_reject_threshold"
+                     min="0" max="100" value="{{ config.auto_reject_threshold }}"
+                     oninput="document.getElementById('rejectVal').value=this.value">
+              <input type="number" id="rejectVal" class="num-input danger"
+                     min="0" max="100" value="{{ config.auto_reject_threshold }}"
+                     oninput="this.previousElementSibling.value=this.value">
+            </div>
           </div>
-          <input type="range" class="reject-slider" name="auto_reject_threshold"
-                 min="0" max="100" value="{{ config.auto_reject_threshold }}"
-                 oninput="document.getElementById('rejectVal').textContent=this.value">
-          <div class="slider-range-hint"><span>0</span><span>100</span></div>
-        </div>
 
-      </div>
-    </div>
-
-    <!-- ② 자동 Merge 카드 -->
-    <div class="settings-card">
-      <div class="settings-card-header">
-        <div class="settings-card-icon">🔀</div>
-        <div>
-          <div class="settings-card-title">자동 Merge</div>
-          <div class="settings-card-desc">승인 후 PR을 자동으로 병합합니다</div>
-        </div>
-      </div>
-      <div class="settings-card-body">
-        <div class="toggle-row">
-          <div class="toggle-label-group">
-            <span class="toggle-label">PR 자동 Merge</span>
-            <span class="toggle-hint">Gate 승인 시 squash merge를 자동 실행합니다.<br>
-              <code style="font-size:11px;">pull_requests: write</code> 권한 필요</span>
+          <div class="range-hint">
+            💡 <strong>{{ config.auto_approve_threshold }}점 이상</strong> 자동 승인 ·
+               <strong>{{ config.auto_reject_threshold }}점 미만</strong> 자동 반려 · 그 사이 반자동
           </div>
-          <label class="toggle-switch">
-            <input type="checkbox" name="auto_merge" value="on"
-                   {% if config.auto_merge %}checked{% endif %}>
-            <span class="toggle-track"></span>
-          </label>
         </div>
       </div>
-    </div>
 
-    <!-- ③ 알림 설정 카드 -->
-    <div class="settings-card">
-      <div class="settings-card-header">
-        <div class="settings-card-icon">🔔</div>
-        <div>
-          <div class="settings-card-title">알림 설정</div>
-          <div class="settings-card-desc">분석 결과를 다양한 채널로 전달합니다</div>
+      <!-- ② 알림 채널 -->
+      <div class="s-card">
+        <div class="s-card-hdr hdr-notify">
+          <span class="hdr-icon">🔔</span>
+          <span class="hdr-title">알림 채널</span>
+        </div>
+        <div class="s-card-body">
+          <div class="field-row">
+            <label class="field-label">Telegram Chat ID <span class="field-tag">반자동 모드</span></label>
+            <span class="field-hint">반자동 Gate에서 승인 요청을 보낼 채팅 ID</span>
+            <input class="field-input" type="text" name="notify_chat_id"
+                   value="{{ config.notify_chat_id or '' }}" placeholder="-100xxxxxxxxx">
+          </div>
+          <div class="field-row">
+            <label class="field-label">Discord Webhook <span class="field-tag">선택</span></label>
+            <input class="field-input" type="url" name="discord_webhook_url"
+                   value="{{ config.discord_webhook_url or '' }}"
+                   placeholder="https://discord.com/api/webhooks/...">
+          </div>
+          <div class="field-row">
+            <label class="field-label">Slack Webhook <span class="field-tag">선택</span></label>
+            <input class="field-input" type="url" name="slack_webhook_url"
+                   value="{{ config.slack_webhook_url or '' }}"
+                   placeholder="https://hooks.slack.com/services/...">
+          </div>
+          <div class="field-row">
+            <label class="field-label">Email 수신자 <span class="field-tag">선택</span></label>
+            <span class="field-hint">쉼표로 구분 (SMTP 환경변수 필요)</span>
+            <input class="field-input" type="text" name="email_recipients"
+                   value="{{ config.email_recipients or '' }}"
+                   placeholder="admin@example.com, dev@example.com">
+          </div>
+          <div class="field-row">
+            <label class="field-label">Custom Webhook <span class="field-tag">선택</span></label>
+            <input class="field-input" type="url" name="custom_webhook_url"
+                   value="{{ config.custom_webhook_url or '' }}"
+                   placeholder="https://example.com/webhook/...">
+          </div>
+          <div class="field-row">
+            <label class="field-label">n8n Webhook <span class="field-tag">선택</span></label>
+            <input class="field-input" type="url" name="n8n_webhook_url"
+                   value="{{ config.n8n_webhook_url or '' }}"
+                   placeholder="https://n8n.example.com/webhook/...">
+          </div>
         </div>
       </div>
-      <div class="settings-card-body">
 
-        <div class="field-row">
-          <label class="field-label">
-            Telegram Chat ID
-            <span class="field-tag">반자동 모드</span>
-          </label>
-          <span class="field-hint">반자동 Gate에서 승인 요청을 보낼 채팅 ID</span>
-          <input class="field-input" type="text" name="notify_chat_id"
-                 value="{{ config.notify_chat_id or '' }}"
-                 placeholder="-100xxxxxxxxx">
+      <!-- ③ 자동 Merge -->
+      <div class="s-card">
+        <div class="s-card-hdr hdr-merge">
+          <span class="hdr-icon">🔀</span>
+          <span class="hdr-title">자동 Merge</span>
         </div>
-
-        <div class="field-row">
-          <label class="field-label">
-            Discord Webhook URL
-            <span class="field-tag">선택</span>
-          </label>
-          <span class="field-hint">분석 완료 시 Discord 채널로 결과를 전달합니다</span>
-          <input class="field-input" type="url" name="discord_webhook_url"
-                 value="{{ config.discord_webhook_url or '' }}"
-                 placeholder="https://discord.com/api/webhooks/...">
+        <div class="s-card-body">
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="t-title">승인 시 자동 Merge</div>
+              <div class="t-desc">Gate 승인 즉시 squash merge 실행.<br>
+                <code style="font-size:11px;">pull_requests: write</code> 권한 필요</div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" name="auto_merge" value="on"
+                     {% if config.auto_merge %}checked{% endif %}>
+              <span class="toggle-track"></span>
+            </label>
+          </div>
         </div>
-
-        <div class="field-row">
-          <label class="field-label">
-            Slack Webhook URL
-            <span class="field-tag">선택</span>
-          </label>
-          <span class="field-hint">분석 완료 시 Slack 채널로 결과를 전달합니다</span>
-          <input class="field-input" type="url" name="slack_webhook_url"
-                 value="{{ config.slack_webhook_url or '' }}"
-                 placeholder="https://hooks.slack.com/services/...">
-        </div>
-
-        <div class="field-row">
-          <label class="field-label">
-            Email 수신자
-            <span class="field-tag">선택</span>
-          </label>
-          <span class="field-hint">쉼표로 구분하여 여러 주소 입력 (SMTP 환경변수 필요)</span>
-          <input class="field-input" type="text" name="email_recipients"
-                 value="{{ config.email_recipients or '' }}"
-                 placeholder="admin@example.com, dev@example.com">
-        </div>
-
-        <div class="field-row">
-          <label class="field-label">
-            Custom Webhook URL
-            <span class="field-tag">선택</span>
-          </label>
-          <span class="field-hint">분석 완료 시 표준 JSON 페이로드를 전달합니다 (범용 연동)</span>
-          <input class="field-input" type="url" name="custom_webhook_url"
-                 value="{{ config.custom_webhook_url or '' }}"
-                 placeholder="https://example.com/webhook/...">
-        </div>
-
-        <div class="field-row">
-          <label class="field-label">
-            n8n Webhook URL
-            <span class="field-tag">선택</span>
-          </label>
-          <span class="field-hint">분석 완료 시 n8n 워크플로우로 결과를 전달합니다</span>
-          <input class="field-input" type="url" name="n8n_webhook_url"
-                 value="{{ config.n8n_webhook_url or '' }}"
-                 placeholder="https://n8n.example.com/webhook/...">
-        </div>
-
       </div>
-    </div>
 
-    <!-- 저장 버튼 -->
-    <div class="settings-actions">
-      <a class="btn btn-ghost" href="/repos/{{ repo_name }}">취소</a>
-      <button type="submit" class="btn-save">💾 설정 저장</button>
+      <!-- ④ CLI Hook -->
+      <div class="s-card">
+        <div class="s-card-hdr hdr-hook">
+          <span class="hdr-icon">🔧</span>
+          <span class="hdr-title">CLI Hook</span>
+        </div>
+        <div class="s-card-body">
+          {% if hook_ok %}
+          <div class="hook-alert ok">✅ <strong>.scamanager/</strong> 파일이 Repo에 커밋됐습니다.</div>
+          {% endif %}
+          {% if hook_fail %}
+          <div class="hook-alert fail">❌ 파일 커밋 실패. GitHub 토큰 권한(repo 스코프)을 확인하세요.</div>
+          {% endif %}
+          <div class="hook-code">git pull &amp;&amp; bash .scamanager/install-hook.sh</div>
+          <div class="hook-btns">
+            <form method="post" action="/repos/{{ repo_name }}/reinstall-hook" style="display:contents">
+              <button type="submit" class="hook-btn">🔄 훅 파일 재커밋</button>
+            </form>
+            <form method="post" action="/repos/{{ repo_name }}/reinstall-webhook" style="display:contents"
+                  onsubmit="return confirm('GitHub Webhook을 재등록합니다.\n기존 Webhook이 삭제되고 새로 생성됩니다.')">
+              <button type="submit" class="hook-btn">🔗 Webhook 재등록</button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /settings-grid -->
+
+    <div class="save-bar">
+      <button type="submit" class="btn-save-new">💾 설정 저장</button>
     </div>
 
   </form>
-
-  <!-- CLI Hook 재설치 -->
-  <div class="settings-card" style="margin-top:1.5rem;">
-    <div class="settings-section-title">🔧 CLI Hook 설치</div>
-    <p style="font-size:13px;color:var(--text-secondary);margin:0 0 .75rem;">
-      <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:4px;font-size:12px;">git push</code> 시 자동 코드리뷰를 실행하려면 아래 버튼을 클릭해 설치 파일을 Repo에 커밋한 뒤, 로컬 클론에서 명령어를 실행하세요.
-    </p>
-
-    {% if hook_ok %}
-    <div style="background:#d1fae5;color:#065f46;border-radius:8px;padding:.6rem 1rem;font-size:13px;margin-bottom:.75rem;">
-      ✅ <strong>.scamanager/</strong> 파일이 Repo에 커밋됐습니다. 아래 명령어를 실행하세요.
-    </div>
-    {% endif %}
-    {% if hook_fail %}
-    <div style="background:#fee2e2;color:#991b1b;border-radius:8px;padding:.6rem 1rem;font-size:13px;margin-bottom:.75rem;">
-      ❌ 파일 커밋에 실패했습니다. GitHub 토큰 권한(repo 스코프)을 확인하세요.
-    </div>
-    {% endif %}
-
-    <div style="background:var(--bg-secondary);border-radius:8px;padding:.6rem 1rem;font-family:monospace;font-size:13px;margin-bottom:.75rem;color:var(--text-primary);">
-      git pull &amp;&amp; bash .scamanager/install-hook.sh
-    </div>
-
-    <form method="post" action="/repos/{{ repo_name }}/reinstall-hook">
-      <button type="submit" class="btn" style="background:var(--accent-blue,#2563eb);color:#fff;border:none;padding:.45rem 1rem;border-radius:8px;font-size:13px;cursor:pointer;">
-        🔄 훅 파일 Repo에 재커밋
-      </button>
-    </form>
-
-    <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border-color);">
-      <p style="font-size:13px;color:var(--text-secondary);margin:0 0 .5rem;">
-        GitHub Webhook URL이 HTTP로 등록되었거나 배포 URL이 변경된 경우 재등록하세요.
-      </p>
-      <form method="post" action="/repos/{{ repo_name }}/reinstall-webhook"
-            onsubmit="return confirm('GitHub Webhook을 재등록합니다.\n기존 Webhook이 삭제되고 새로 생성됩니다.')">
-        <button type="submit" class="btn" style="background:var(--accent-secondary,#7c3aed);color:#fff;border:none;padding:.45rem 1rem;border-radius:8px;font-size:13px;cursor:pointer;">
-          🔗 GitHub Webhook 재등록
-        </button>
-      </form>
-    </div>
-  </div>
 </div>
 
 <script>
@@ -553,6 +353,8 @@
     document.querySelectorAll('.gate-mode-btn').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.mode === mode);
     });
+    const badge = document.getElementById('gateBadge');
+    if (badge) badge.textContent = mode;
   }
 </script>
 {% endblock %}
