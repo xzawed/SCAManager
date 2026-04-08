@@ -1,0 +1,315 @@
+{% extends "base.html" %}
+{% block title %}분석 #{{ analysis.id }} — {{ repo_name }} — SCAManager{% endblock %}
+{% block content %}
+<style>
+  .ad-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.75rem;
+    flex-wrap: wrap;
+  }
+  .ad-header h2 {
+    margin: 0;
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+  .ad-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem 1.5rem;
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 1.5rem;
+  }
+  .ad-meta span { display: inline-flex; align-items: center; gap: 4px; }
+  .ad-score-banner {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.25rem;
+  }
+  .ad-score-big {
+    font-size: 2rem;
+    font-weight: 800;
+    line-height: 1;
+  }
+  .ad-score-big.high { color: var(--success); }
+  .ad-score-big.mid  { color: #f59e0b; }
+  .ad-score-big.low  { color: var(--danger); }
+  .ad-score-label {
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  .ad-breakdown { margin-bottom: 1.25rem; }
+  .ad-breakdown table { width: 100%; }
+  .ad-bar-cell { width: 50%; }
+  .ad-bar-wrap {
+    background: var(--bg-input);
+    border-radius: 4px;
+    height: 8px;
+    overflow: hidden;
+  }
+  .ad-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.4s ease;
+  }
+  .ad-bar-fill.high { background: var(--success); }
+  .ad-bar-fill.mid  { background: #f59e0b; }
+  .ad-bar-fill.low  { background: var(--danger); }
+  .ad-section { margin-bottom: 1.25rem; }
+  .ad-section-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    margin-bottom: .75rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .ad-text {
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .ad-list { list-style: none; padding: 0; margin: 0; }
+  .ad-list li {
+    font-size: 14px;
+    padding: .4rem 0;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-primary);
+  }
+  .ad-list li:last-child { border-bottom: none; }
+  .ad-feedback-item {
+    padding: .75rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .ad-feedback-item:last-child { border-bottom: none; }
+  .ad-feedback-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 4px;
+  }
+  .ad-feedback-text {
+    font-size: 14px;
+    color: var(--text-primary);
+    line-height: 1.6;
+  }
+  .ad-file-name {
+    font-family: 'Menlo', 'Consolas', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+    background: var(--code-bg);
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    margin-bottom: 6px;
+    display: inline-block;
+  }
+  .ad-issue-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: .35rem 0;
+    font-size: 13px;
+  }
+  .ad-issue-tool {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+  .ad-issue-tool.error { background: rgba(239,68,68,0.15); color: #ef4444; }
+  .ad-issue-tool.warning { background: rgba(245,158,11,0.15); color: #f59e0b; }
+  .ad-issue-line {
+    font-size: 12px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+  .ad-issue-msg { color: var(--text-primary); }
+  .ad-empty {
+    text-align: center;
+    padding: 3rem 2rem;
+    color: var(--text-muted);
+    font-size: 14px;
+  }
+  .commit-msg-text {
+    font-family: 'Menlo', 'Consolas', monospace;
+    font-size: 13px;
+    background: var(--code-bg);
+    padding: 10px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  @media (max-width: 768px) {
+    .ad-header { gap: 0.75rem; }
+    .ad-score-big { font-size: 1.6rem; }
+    .ad-score-banner { padding: 1rem; }
+  }
+</style>
+
+<!-- 헤더 -->
+<div class="ad-header">
+  <a class="back-btn" href="/repos/{{ repo_name }}">← 이력</a>
+  <h2>{{ repo_name }}</h2>
+  <span class="grade grade-{{ analysis.grade }}" style="margin-left:auto">{{ analysis.grade }}</span>
+</div>
+
+<!-- 메타 정보 -->
+<div class="ad-meta">
+  <span>📅 {{ analysis.created_at[:10] if analysis.created_at else "—" }}</span>
+  <span>🔗 <code style="font-size:12px">{{ analysis.commit_sha[:7] }}</code></span>
+  {% if analysis.pr_number %}
+  <span>🔀 PR #{{ analysis.pr_number }}</span>
+  {% endif %}
+</div>
+
+<!-- 커밋 메시지 -->
+{% if analysis.commit_message %}
+<div class="card ad-section">
+  <div class="ad-section-title">📝 커밋 메시지</div>
+  <div class="commit-msg-text">{{ analysis.commit_message }}</div>
+</div>
+{% endif %}
+
+{% set r = analysis.result %}
+{% if r %}
+
+<!-- 점수 배너 -->
+<div class="card ad-score-banner">
+  <div>
+    <span class="ad-score-big {% if analysis.score >= 75 %}high{% elif analysis.score >= 50 %}mid{% else %}low{% endif %}">
+      {{ analysis.score }}
+    </span>
+    <span style="font-size:1.2rem;color:var(--text-muted)">/100</span>
+  </div>
+  <div>
+    <div style="font-size:15px;font-weight:700;color:var(--text-primary)">등급 {{ analysis.grade }}</div>
+    <div class="ad-score-label">종합 점수</div>
+  </div>
+</div>
+
+<!-- 점수 상세 -->
+{% set bd = r.get('breakdown', {}) %}
+{% if bd %}
+<div class="card ad-breakdown">
+  <div class="ad-section-title">📊 점수 상세</div>
+  <table>
+    <tbody>
+    {% for label, key, mx in [('코드 품질','code_quality',25),('보안','security',20),('커밋 메시지','commit_message',15),('구현 방향성','ai_review',25),('테스트','test_coverage',15)] %}
+    {% set val = bd.get(key, 0) %}
+    {% set pct = (val / mx * 100) if mx else 0 %}
+    <tr>
+      <td style="width:110px;font-size:13px;padding:6px 8px;color:var(--text-muted)">{{ label }}</td>
+      <td style="font-size:14px;font-weight:700;padding:6px 4px;width:60px;text-align:right">{{ val }}/{{ mx }}</td>
+      <td class="ad-bar-cell" style="padding:6px 8px">
+        <div class="ad-bar-wrap">
+          <div class="ad-bar-fill {% if pct >= 75 %}high{% elif pct >= 50 %}mid{% else %}low{% endif %}" style="width:{{ pct }}%"></div>
+        </div>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<!-- AI 요약 -->
+{% if r.get('ai_summary') %}
+<div class="card ad-section">
+  <div class="ad-section-title">🤖 AI 요약</div>
+  <div class="ad-text">{{ r.ai_summary }}</div>
+</div>
+{% endif %}
+
+<!-- 개선 제안 -->
+{% if r.get('ai_suggestions') %}
+<div class="card ad-section">
+  <div class="ad-section-title">💡 개선 제안</div>
+  <ul class="ad-list">
+    {% for s in r.ai_suggestions %}
+    <li>{{ s }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<!-- 카테고리별 피드백 -->
+{% set feedbacks = [
+  ('커밋 메시지', r.get('commit_message_feedback', '')),
+  ('코드 품질', r.get('code_quality_feedback', '')),
+  ('보안', r.get('security_feedback', '')),
+  ('구현 방향성', r.get('direction_feedback', '')),
+  ('테스트', r.get('test_feedback', '')),
+] %}
+{% set has_fb = feedbacks | selectattr('1') | list %}
+{% if has_fb %}
+<div class="card ad-section">
+  <div class="ad-section-title">📋 카테고리별 피드백</div>
+  {% for label, fb in feedbacks %}
+  {% if fb %}
+  <div class="ad-feedback-item">
+    <div class="ad-feedback-label">{{ label }}</div>
+    <div class="ad-feedback-text">{{ fb }}</div>
+  </div>
+  {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- 파일별 피드백 -->
+{% if r.get('file_feedbacks') %}
+<div class="card ad-section">
+  <div class="ad-section-title">📁 파일별 피드백</div>
+  {% for ff in r.file_feedbacks %}
+  <div style="margin-bottom:1rem">
+    <div class="ad-file-name">{{ ff.get('file', '?') }}</div>
+    <ul class="ad-list">
+      {% for issue in ff.get('issues', []) %}
+      <li>{{ issue }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- 정적 분석 이슈 -->
+{% set issues = r.get('issues', []) %}
+{% if issues %}
+<div class="card ad-section">
+  <div class="ad-section-title">🔍 정적 분석 이슈 ({{ issues | length }}건)</div>
+  {% for issue in issues %}
+  <div class="ad-issue-row">
+    <span class="ad-issue-tool {{ issue.get('severity', 'warning') }}">{{ issue.get('tool', '?') }}</span>
+    {% if issue.get('line') %}<span class="ad-issue-line">L{{ issue.line }}</span>{% endif %}
+    <span class="ad-issue-msg">{{ issue.get('message', '') }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% else %}
+<!-- result가 없는 구버전 분석 -->
+<div class="card">
+  <div class="ad-empty">
+    <div style="font-size:2rem;margin-bottom:.75rem;opacity:0.5">📭</div>
+    <p>이 분석에는 상세 데이터가 없습니다.<br>(AI 리뷰 도입 전 분석 기록)</p>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
