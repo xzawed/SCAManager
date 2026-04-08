@@ -1,6 +1,7 @@
 # SCAManager
 
-GitHub 리포지토리에 Push 또는 Pull Request 이벤트가 발생하면 자동으로 코드를 분석하고, 점수와 개선사항을 알림으로 전달하는 코드 품질 관리 서비스입니다.
+GitHub 리포지토리에 Push 또는 Pull Request 이벤트가 발생하면 자동으로 코드를 분석하고, 점수와 개선사항을 알림으로 전달하는 코드 품질 관리 서비스입니다.  
+`git push` 시 Claude Code CLI를 활용한 **로컬 pre-push 자동 코드리뷰**도 지원합니다.
 
 ---
 
@@ -10,7 +11,7 @@ GitHub 리포지토리에 Push 또는 Pull Request 이벤트가 발생하면 자
 - GitHub 계정으로 로그인 — 별도 가입 없이 바로 사용
 - 로그인한 사용자가 직접 리포지토리를 추가하고 Webhook을 자동 생성
 
-### 자동 코드 분석
+### 자동 코드 분석 (서버 Webhook)
 - Push 및 PR 이벤트 발생 시 **모든 변경 파일**을 AI 리뷰 대상으로 수집
   - PR은 `opened` / `synchronize` / `reopened` action만 처리
 - **정적 분석** (`.py` 파일): pylint, flake8, bandit
@@ -18,9 +19,20 @@ GitHub 리포지토리에 Push 또는 Pull Request 이벤트가 발생하면 자
 - **AI 리뷰** (모든 파일): Claude AI를 통한 커밋 메시지 품질 및 구현 방향성 평가
 - 100점 만점의 점수 및 A~F 등급 산출
 
+### CLI Hook 자동 코드리뷰 (로컬)
+- 리포 등록 시 `.scamanager/` 설정 파일을 Repo에 자동 커밋
+- `git pull && bash .scamanager/install-hook.sh` 1회 실행으로 pre-push 훅 설치
+- 이후 `git push` 시 자동으로 코드리뷰 실행 — **ANTHROPIC_API_KEY 불필요**
+  - 사용자의 Claude Code CLI(`claude -p`)를 활용하여 별도 API 요금 없음
+- 결과는 터미널 출력 + SCAManager 대시보드에 동시 저장
+
 ### 알림 전달
 - **Telegram** (HTML 파싱): 점수 상세(5개 카테고리별), AI 요약, 개선 제안, 정적 분석 이슈
 - **GitHub PR Comment**: 카테고리별 피드백, 파일별 피드백, 개선 제안
+- **Discord**: Embed 형식 알림 (선택)
+- **Slack**: Attachment 형식 알림 (선택)
+- **Generic Webhook**: 범용 JSON POST (선택)
+- **Email**: SMTP HTML 이메일 (선택)
 - **n8n**: 외부 n8n 워크플로우로 분석 결과 전달 (선택)
 
 ### PR Gate Engine
@@ -30,9 +42,10 @@ GitHub 리포지토리에 Push 또는 Pull Request 이벤트가 발생하면 자
 
 ### 웹 대시보드
 - GitHub OAuth 로그인 후 사용자별 리포지토리 현황 확인
-- 리포지토리 추가 — GitHub 드롭다운에서 선택 시 Webhook 자동 생성
+- 리포지토리 추가 — GitHub 드롭다운에서 선택 시 Webhook + CLI Hook 파일 자동 생성
 - 리포지토리별 점수 추이 차트 (Chart.js) + 분석 이력
-- Gate 모드 및 임계값 설정 UI
+- 분석 이력 클릭 → 상세 AI 리뷰·피드백·정적 분석 이슈 확인
+- Gate 모드 및 임계값, 알림 채널 설정 UI
 
 ### REST API
 - 리포지토리 목록 및 분석 이력 조회
@@ -45,16 +58,17 @@ GitHub 리포지토리에 Push 또는 Pull Request 이벤트가 발생하면 자
 
 | 항목 | 배점 | 분석 도구 |
 |------|------|----------|
-| 커밋 메시지 품질 | 20점 | Claude AI |
-| 코드 품질 | 30점 | pylint + flake8 |
-| 보안 | 20점 | bandit |
-| 구현 방향성 | 20점 | Claude AI |
-| 테스트 코드 | 10점 | Claude AI (0~10 단계별, 비-코드 파일 면제) |
+| 코드 품질 | 25점 | pylint + flake8 (error -3, warning -1) |
+| 보안 | 20점 | bandit (HIGH -7, LOW/MED -2) |
+| 커밋 메시지 품질 | 15점 | Claude AI (0-20 → 0-15 스케일링) |
+| 구현 방향성 | 25점 | Claude AI (0-20 → 0-25 스케일링) |
+| 테스트 코드 | 15점 | Claude AI (0-10 → 0-15 스케일링, 비-코드 파일 면제) |
 | **합계** | **100점** | |
 
 **등급 기준:** A (90점+) / B (75점+) / C (60점+) / D (45점+) / F (44점 이하)
 
-> `ANTHROPIC_API_KEY` 미설정 시 AI 항목은 기본값(커밋·방향성 각 15점, 테스트 5점)으로 처리
+> `ANTHROPIC_API_KEY` 미설정 시 AI 항목은 중립 기본값(커밋13 + 방향21 + 테스트10 = 44/55)으로 처리 — AI 없이도 최대 89점(B등급) 가능  
+> CLI Hook 리뷰는 정적 분석 없이 AI 점수만 산출 (코드품질·보안은 만점 적용)
 
 ---
 
@@ -62,13 +76,14 @@ GitHub 리포지토리에 Push 또는 Pull Request 이벤트가 발생하면 자
 
 | 분류 | 사용 기술 |
 |------|----------|
-| 언어 | Python 3.12 |
+| 언어 | Python 3.13 |
 | 웹 프레임워크 | FastAPI |
-| 인증 | GitHub OAuth2 (authlib) |
+| 인증 | GitHub OAuth2 (authlib) + SessionMiddleware |
 | 데이터베이스 | PostgreSQL + SQLAlchemy 2 + Alembic |
-| AI | Anthropic Claude API |
+| AI (서버) | Anthropic Claude API (claude-haiku-4-5) |
+| AI (로컬 CLI Hook) | Claude Code CLI (`claude -p`) |
 | 정적 분석 | pylint, flake8, bandit |
-| 알림 | Telegram Bot API, GitHub REST API |
+| 알림 | Telegram, GitHub, Discord, Slack, Webhook, Email, n8n |
 | 웹 UI | Jinja2 템플릿, Chart.js |
 | 배포 | Railway |
 
@@ -77,11 +92,12 @@ GitHub 리포지토리에 Push 또는 Pull Request 이벤트가 발생하면 자
 ## 화면 구성
 
 ```
-/login                     → GitHub OAuth 로그인 페이지
-/repos/add                 → 리포지토리 추가 (GitHub 드롭다운 + Webhook 자동 생성)
-/                          → 리포지토리 현황 목록 (최신 점수 및 등급)
-/repos/{repo}              → 점수 추이 차트 + 분석 이력
-/repos/{repo}/settings     → Gate 모드 및 임계값 설정
+/login                          → GitHub OAuth 로그인 페이지
+/repos/add                      → 리포지토리 추가 (GitHub 드롭다운 + Webhook/Hook 자동 생성)
+/                               → 리포지토리 현황 목록 (최신 점수, 등급, 평균 점수)
+/repos/{repo}                   → 점수 추이 차트 + 분석 이력
+/repos/{repo}/analyses/{id}     → 분석 상세 (AI 리뷰·피드백·정적 분석 이슈)
+/repos/{repo}/settings          → Gate 모드·임계값·알림 채널 설정
 ```
 
 > 모든 UI 페이지는 로그인 필수 — 미로그인 시 `/login` 자동 리다이렉트
@@ -98,7 +114,7 @@ GET  /auth/callback                       → GitHub OAuth 콜백
 POST /auth/logout                         → 로그아웃
 GET  /repos/add                           → 리포 추가 페이지
 GET  /api/github/repos                    → 사용자 GitHub 리포 목록 (드롭다운용)
-POST /repos/add                           → 리포 등록 + Webhook 자동 생성
+POST /repos/add                           → 리포 등록 + Webhook + CLI Hook 파일 자동 생성
 POST /webhooks/github                     → GitHub Webhook 수신
 POST /api/webhook/telegram                → Telegram 반자동 Gate 콜백 수신
 GET  /api/repos                           → 리포지토리 목록 (API Key 인증)
@@ -106,6 +122,8 @@ GET  /api/repos/{repo}/analyses           → 분석 이력 (페이지네이션)
 PUT  /api/repos/{repo}/config             → 리포지토리 설정 변경
 GET  /api/repos/{repo}/stats              → 점수 통계 및 추이
 GET  /api/analyses/{id}                   → 분석 상세 조회
+GET  /api/hook/verify                     → CLI Hook 등록 확인 (hook_token 인증)
+POST /api/hook/result                     → CLI Hook 코드리뷰 결과 저장
 ```
 
 ---
@@ -122,7 +140,7 @@ GET  /api/analyses/{id}                   → 분석 상세 조회
 
 ### 요구사항
 
-- Python 3.12 이상
+- Python 3.13 이상
 - PostgreSQL
 - GitHub OAuth App (Client ID / Client Secret)
 
@@ -151,10 +169,11 @@ cp .env.example .env
 | `GITHUB_CLIENT_SECRET` | ✅ | GitHub OAuth App 클라이언트 시크릿 |
 | `SESSION_SECRET` | ✅ | 세션 쿠키 서명 키 (32자 이상 랜덤 문자열) |
 | `APP_BASE_URL` | - | Railway 등 리버스 프록시 환경에서 HTTPS redirect_uri 강제 지정 |
-| `ANTHROPIC_API_KEY` | - | Claude AI 리뷰 API 키 (미설정 시 기본값 적용) |
+| `ANTHROPIC_API_KEY` | - | Claude AI 리뷰 API 키 (미설정 시 기본값 적용, CLI Hook은 불필요) |
 | `API_KEY` | - | REST API 인증 키 (미설정 시 인증 생략) |
 | `GITHUB_WEBHOOK_SECRET` | - | 레거시 리포용 Webhook 시크릿 (신규 리포는 자동 생성) |
 | `GITHUB_TOKEN` | - | 레거시 리포용 GitHub API 토큰 (신규 리포는 사용자 토큰 자동 사용) |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` | - | Email 알림 사용 시 SMTP 설정 |
 
 ### 실행
 
@@ -190,8 +209,22 @@ uvicorn src.main:app --reload --port 8000
 1. GitHub 드롭다운에서 원하는 리포지토리 선택
 2. **Webhook 생성 + 리포 추가** 클릭
 3. Webhook이 자동으로 생성되고 대시보드에 리포가 등록됩니다
+4. `.scamanager/` 설정 파일이 해당 Repo에 자동 커밋됩니다
 
 > Push 또는 PR 이벤트가 발생하면 자동으로 분석이 시작됩니다.
+
+### CLI Hook 설치 (로컬 자동 코드리뷰)
+
+리포 등록 완료 후 로컬 클론에서 1회 실행합니다.
+
+```bash
+git pull
+bash .scamanager/install-hook.sh
+```
+
+이후 `git push` 시마다 자동으로 코드리뷰가 실행되며, 결과는 터미널과 대시보드에서 확인할 수 있습니다.
+
+> Claude Code CLI(`claude`)가 설치되어 있어야 합니다. 미설치 시 조용히 건너뜁니다.
 
 ### PR 자동 Merge 설정
 
@@ -203,7 +236,7 @@ uvicorn src.main:app --reload --port 8000
 | `gate_mode=semi` + `auto_merge=true` | Telegram 승인 버튼 클릭 시 → squash merge 자동 실행 |
 | `auto_merge=false` (기본값) | GitHub Review만 수행, merge는 수동 |
 
-> **주의:** `repo` 스코프 OAuth 토큰 또는 Fine-grained `pull_requests: write` 권한이 필요합니다.
+> **주의:** `repo` 스코프 OAuth 토큰 또는 Fine-grained `pull_requests: write` 권한이 필요합니다.  
 > Branch Protection Rules가 설정된 브랜치는 APPROVE 후에도 merge가 거부될 수 있습니다.
 
 ---
