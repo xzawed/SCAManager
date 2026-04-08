@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     github_client_secret: str = ""
     session_secret: str = "dev-secret-change-in-production"
     app_base_url: str = ""  # Railway 등 리버스 프록시 환경에서 HTTPS redirect_uri 강제 지정
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_pass: str = ""
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 

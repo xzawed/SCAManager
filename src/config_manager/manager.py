@@ -13,6 +13,8 @@ class RepoConfigData:
     n8n_webhook_url: str | None = None
     discord_webhook_url: str | None = None
     slack_webhook_url: str | None = None
+    custom_webhook_url: str | None = None
+    email_recipients: str | None = None
     auto_merge: bool = False
 
 
@@ -29,6 +31,8 @@ def get_repo_config(db: Session, repo_full_name: str) -> RepoConfigData:
         n8n_webhook_url=record.n8n_webhook_url,
         discord_webhook_url=record.discord_webhook_url,
         slack_webhook_url=record.slack_webhook_url,
+        custom_webhook_url=record.custom_webhook_url,
+        email_recipients=record.email_recipients,
         auto_merge=record.auto_merge,
     )
 
@@ -45,6 +49,8 @@ def upsert_repo_config(db: Session, data: RepoConfigData) -> RepoConfig:
             n8n_webhook_url=data.n8n_webhook_url,
             discord_webhook_url=data.discord_webhook_url,
             slack_webhook_url=data.slack_webhook_url,
+            custom_webhook_url=data.custom_webhook_url,
+            email_recipients=data.email_recipients,
             auto_merge=data.auto_merge,
         )
         db.add(record)
@@ -56,6 +62,8 @@ def upsert_repo_config(db: Session, data: RepoConfigData) -> RepoConfig:
         record.n8n_webhook_url = data.n8n_webhook_url
         record.discord_webhook_url = data.discord_webhook_url
         record.slack_webhook_url = data.slack_webhook_url
+        record.custom_webhook_url = data.custom_webhook_url
+        record.email_recipients = data.email_recipients
         record.auto_merge = data.auto_merge
     db.commit()
     db.refresh(record)

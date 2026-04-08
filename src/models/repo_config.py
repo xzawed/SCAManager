@@ -14,6 +14,8 @@ class RepoConfig(Base):
     n8n_webhook_url = Column(String, nullable=True)
     discord_webhook_url = Column(String, nullable=True)
     slack_webhook_url = Column(String, nullable=True)
+    custom_webhook_url = Column(String, nullable=True)
+    email_recipients = Column(String, nullable=True)
     auto_merge = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),

@@ -453,12 +453,34 @@
         <div class="field-row">
           <label class="field-label">
             Slack Webhook URL
-            <span class="field-tag">선택 · 준비 중</span>
+            <span class="field-tag">선택</span>
           </label>
-          <span class="field-hint">분석 완료 시 Slack 채널로 결과를 전달합니다 (Phase 2)</span>
+          <span class="field-hint">분석 완료 시 Slack 채널로 결과를 전달합니다</span>
           <input class="field-input" type="url" name="slack_webhook_url"
                  value="{{ config.slack_webhook_url or '' }}"
                  placeholder="https://hooks.slack.com/services/...">
+        </div>
+
+        <div class="field-row">
+          <label class="field-label">
+            Email 수신자
+            <span class="field-tag">선택</span>
+          </label>
+          <span class="field-hint">쉼표로 구분하여 여러 주소 입력 (SMTP 환경변수 필요)</span>
+          <input class="field-input" type="text" name="email_recipients"
+                 value="{{ config.email_recipients or '' }}"
+                 placeholder="admin@example.com, dev@example.com">
+        </div>
+
+        <div class="field-row">
+          <label class="field-label">
+            Custom Webhook URL
+            <span class="field-tag">선택</span>
+          </label>
+          <span class="field-hint">분석 완료 시 표준 JSON 페이로드를 전달합니다 (범용 연동)</span>
+          <input class="field-input" type="url" name="custom_webhook_url"
+                 value="{{ config.custom_webhook_url or '' }}"
+                 placeholder="https://example.com/webhook/...">
         </div>
 
         <div class="field-row">
