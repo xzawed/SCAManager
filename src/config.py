@@ -21,6 +21,14 @@ class Settings(BaseSettings):
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
+    @field_validator("smtp_port", mode="before")
+    @classmethod
+    def coerce_smtp_port(cls, v: object) -> object:
+        """Railway에서 SMTP_PORT=""(빈 문자열)로 설정된 경우 기본값 587로 대체."""
+        if v == "" or v is None:
+            return 587
+        return v
+
     @field_validator("database_url")
     @classmethod
     def fix_postgres_url(cls, v: str) -> str:
