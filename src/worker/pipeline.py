@@ -14,6 +14,9 @@ from src.models.analysis import Analysis
 from src.gate.engine import run_gate_check
 from src.notifier.n8n import notify_n8n
 from src.notifier.discord import send_discord_notification
+from src.notifier.slack import send_slack_notification
+from src.notifier.webhook import send_webhook_notification
+from src.notifier.email import send_email_notification
 from src.config_manager.manager import get_repo_config
 
 logger = logging.getLogger(__name__)
@@ -81,9 +84,48 @@ def _build_notify_tasks(
         ))
         names.append("discord")
 
-    # Slack (Phase 2 — URL 설정 시 활성화)
+    # Slack
     if repo_config.slack_webhook_url:
-        logger.info("Slack notification configured but not yet implemented for %s", repo_name)
+        tasks.append(send_slack_notification(
+            webhook_url=repo_config.slack_webhook_url,
+            repo_name=repo_name,
+            commit_sha=commit_sha,
+            score_result=score_result,
+            analysis_results=analysis_results,
+            pr_number=pr_number,
+            ai_review=ai_review,
+        ))
+        names.append("slack")
+
+    # Generic Webhook
+    if repo_config.custom_webhook_url:
+        tasks.append(send_webhook_notification(
+            webhook_url=repo_config.custom_webhook_url,
+            repo_name=repo_name,
+            commit_sha=commit_sha,
+            score_result=score_result,
+            analysis_results=analysis_results,
+            pr_number=pr_number,
+            ai_review=ai_review,
+        ))
+        names.append("webhook")
+
+    # Email
+    if repo_config.email_recipients and settings.smtp_host:
+        tasks.append(send_email_notification(
+            recipients=repo_config.email_recipients,
+            repo_name=repo_name,
+            commit_sha=commit_sha,
+            score_result=score_result,
+            analysis_results=analysis_results,
+            pr_number=pr_number,
+            ai_review=ai_review,
+            smtp_host=settings.smtp_host,
+            smtp_port=settings.smtp_port,
+            smtp_user=settings.smtp_user,
+            smtp_pass=settings.smtp_pass,
+        ))
+        names.append("email")
 
     # n8n
     if repo_config.n8n_webhook_url:
