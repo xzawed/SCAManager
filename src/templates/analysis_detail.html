@@ -178,12 +178,10 @@
 </div>
 
 <!-- 커밋 메시지 -->
-{% if analysis.commit_message %}
 <div class="card ad-section">
   <div class="ad-section-title">📝 커밋 메시지</div>
-  <div class="commit-msg-text">{{ analysis.commit_message }}</div>
+  <div class="commit-msg-text">{{ analysis.commit_message or '(커밋 메시지 없음 — ' ~ analysis.commit_sha[:7] ~ ')' }}</div>
 </div>
-{% endif %}
 
 {% set r = analysis.result %}
 {% if r %}
