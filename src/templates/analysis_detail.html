@@ -153,11 +153,28 @@
     color: var(--text-primary);
     white-space: pre-wrap;
     word-break: break-word;
+    overflow-x: auto;
+    max-width: 100%;
   }
   @media (max-width: 768px) {
     .ad-header { gap: 0.75rem; }
+    .ad-header h2 { font-size: 1.1rem; word-break: break-all; }
     .ad-score-big { font-size: 1.6rem; }
     .ad-score-banner { padding: 1rem; }
+    .ad-breakdown table { font-size: 12px; }
+    .ad-breakdown td { padding: 4px 4px !important; }
+    .ad-bar-cell { width: 40%; }
+    .ad-section { margin-bottom: 1rem; }
+    .card { padding: 1rem; }
+    .ad-issue-row { flex-wrap: wrap; gap: 4px; }
+    .ad-feedback-text { font-size: 13px; }
+    .ad-text { font-size: 13px; }
+    .ad-list li { font-size: 13px; }
+    .commit-msg-text { font-size: 12px; padding: 8px 10px; }
+  }
+  @media (max-width: 480px) {
+    .ad-breakdown td:first-child { width: 80px; font-size: 11px !important; }
+    .ad-breakdown td:nth-child(2) { width: 50px; font-size: 12px !important; }
   }
 </style>
 
