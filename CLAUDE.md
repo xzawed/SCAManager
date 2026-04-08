@@ -194,8 +194,19 @@ docs/
 └── superpowers/
     ├── specs/
     │   ├── 2026-04-05-scamanager-design.md
+    │   ├── 2026-04-07-phase8a-auth-user-design.md
     │   └── 2026-04-07-phase8b-github-oauth-repo-add-design.md
-    └── plans/ (phase1~5, phase8B 구현 계획)
+    └── plans/
+        ├── 2026-04-05-phase1-mvp.md
+        ├── 2026-04-05-phase2-ai-review.md
+        ├── 2026-04-05-phase3-gate-engine.md
+        ├── 2026-04-05-phase4-dashboard.md
+        ├── 2026-04-05-phase5-n8n-stats.md
+        ├── 2026-04-07-phase8a-auth-user.md
+        └── 2026-04-07-phase8b-github-oauth-repo-add.md
+
+.devcontainer/
+└── devcontainer.json               # GitHub Codespaces 개발 컨테이너 설정
 ```
 
 ## 핵심 데이터 흐름
