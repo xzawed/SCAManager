@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func
+from src.config import settings
 from src.database import SessionLocal
 from src.models.repository import Repository
 from src.models.analysis import Analysis
@@ -10,10 +11,17 @@ from src.models.repo_config import RepoConfig
 from src.models.user import User
 from src.auth.session import require_login
 from src.config_manager.manager import get_repo_config, upsert_repo_config, RepoConfigData
-from src.github_client.repos import list_user_repos, create_webhook, commit_scamanager_files
+from src.github_client.repos import list_user_repos, create_webhook, delete_webhook, commit_scamanager_files
 
 templates = Jinja2Templates(directory="src/templates")
 router = APIRouter()
+
+
+def _webhook_base_url(request: Request) -> str:
+    """APP_BASE_URL 설정 시 해당 URL 우선 사용 (Railway HTTPS 보장)."""
+    if settings.app_base_url:
+        return settings.app_base_url.rstrip("/")
+    return str(request.base_url).rstrip("/")
 
 
 @router.get("/repos/add", response_class=HTMLResponse)
@@ -57,7 +65,7 @@ async def add_repo(request: Request, current_user: User = Depends(require_login)
 
     webhook_secret = secrets.token_hex(32)
     hook_token = secrets.token_hex(32)
-    webhook_url = str(request.base_url) + "webhooks/github"
+    webhook_url = _webhook_base_url(request) + "/webhooks/github"
     webhook_id = await create_webhook(
         current_user.github_access_token or "",
         repo_full_name,
@@ -230,7 +238,7 @@ async def reinstall_hook(
         db.commit()
         hook_token = config.hook_token
 
-    server_url = str(request.base_url).rstrip("/")
+    server_url = _webhook_base_url(request)
     ok = await commit_scamanager_files(
         current_user.github_access_token or "",
         repo_name,
@@ -241,6 +249,37 @@ async def reinstall_hook(
     status = "hook_ok" if ok else "hook_fail"
     return RedirectResponse(
         url=f"/repos/{repo_name}/settings?{status}=1",
+        status_code=303,
+    )
+
+
+@router.post("/repos/{repo_name:path}/reinstall-webhook")
+async def reinstall_webhook(
+    request: Request,
+    repo_name: str,
+    current_user: User = Depends(require_login),
+):
+    """GitHub Webhook을 삭제하고 새 URL(HTTPS)로 재등록한다."""
+    with SessionLocal() as db:
+        repo = db.query(Repository).filter(Repository.full_name == repo_name).first()
+        if not repo or (repo.user_id is not None and repo.user_id != current_user.id):
+            raise HTTPException(status_code=404)
+
+        token = current_user.github_access_token or ""
+
+        if repo.webhook_id:
+            await delete_webhook(token, repo_name, repo.webhook_id)
+
+        new_secret = secrets.token_hex(32)
+        webhook_url = _webhook_base_url(request) + "/webhooks/github"
+        new_id = await create_webhook(token, repo_name, webhook_url, new_secret)
+
+        repo.webhook_id = new_id
+        repo.webhook_secret = new_secret
+        db.commit()
+
+    return RedirectResponse(
+        url=f"/repos/{repo_name}/settings?hook_ok=1",
         status_code=303,
     )
 
