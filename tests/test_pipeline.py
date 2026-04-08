@@ -202,6 +202,14 @@ async def test_db_result_stores_ai_summary(mock_deps):
     assert "ai_summary" in analysis_added.result
 
 
+async def test_db_stores_commit_message(mock_deps):
+    from src.worker.pipeline import run_analysis_pipeline
+    await run_analysis_pipeline("push", PUSH_DATA)
+
+    analysis_added = mock_deps["db"].add.call_args_list[-1][0][0]
+    assert analysis_added.commit_message == "feat: add awesome feature"
+
+
 async def test_pipeline_calls_gate_for_pr(mock_deps):
     from src.worker.pipeline import run_analysis_pipeline
     from src.analyzer.ai_review import AiReviewResult
