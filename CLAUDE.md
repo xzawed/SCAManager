@@ -55,7 +55,7 @@ make run         # 개발 서버 (포트 8000 자동 포워딩)
 ```
 
 > **주의:** 실제 GitHub·Telegram 연동 기능은 `.env`에 API 키 설정 후 사용 가능합니다.
-> 단위 테스트 전체(273개)는 API 키 없이 실행됩니다.
+> 단위 테스트 전체(276개)는 API 키 없이 실행됩니다.
 
 ## DB 마이그레이션
 
@@ -145,7 +145,7 @@ src/
 │   ├── stats.py                # GET /api/analyses/{id}, /api/repos/{repo}/stats
 │   └── hook.py                 # GET /api/hook/verify, POST /api/hook/result (hook_token 인증, X-API-Key 불필요)
 ├── ui/
-│   └── router.py               # Jinja2 Web UI — /, /repos/{repo}, /repos/{repo}/settings, POST /repos/{repo}/reinstall-hook (require_login + user_id 필터)
+│   └── router.py               # Jinja2 Web UI — /, /repos/{repo}, /repos/{repo}/settings, POST /repos/{repo}/reinstall-hook, POST /repos/{repo}/reinstall-webhook (require_login + user_id 필터)
 ├── templates/
 │   ├── add_repo.html           # 리포 추가 페이지 (GitHub 드롭다운 + Webhook 자동 생성)
 │   ├── base.html               # 공통 레이아웃
@@ -245,7 +245,7 @@ GitHub Push/PR
 
 Telegram 반자동 콜백:
   → POST /api/webhook/telegram
-  → gate:approve:{id} or gate:reject:{id} 파싱
+  → gate:{decision}:{id}:{token} 파싱 (HMAC 인증 포함)
   → post_github_review() + GateDecision DB 저장
   → approve + auto_merge=True이면 squash merge 자동 실행
 
@@ -306,9 +306,9 @@ CLI Hook (로컬 pre-push 자동 코드리뷰):
 - **Phase 8B 이후 로그인 필수**: UI 라우트(`/`, `/repos/*`)는 `require_login` Depends로 보호됨. 비로그인 시 `/login` 리다이렉트. `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET`/`SESSION_SECRET` 미설정 시 OAuth 로그인 불가.
 - **기존 Webhook 등록 리포**: `user_id = NULL` 리포는 대시보드에서 모든 로그인 사용자에게 표시됨. `/repos/add`로 동일 리포 재등록 시 소유권 이전 처리 (`user_id=NULL`이면 현재 사용자 소유, 이미 소유자 있으면 에러 팝업).
 - **테스트 require_login 우회**: `tests/test_ui_router.py`는 `app.dependency_overrides[require_login] = lambda: _test_user`로 의존성 override. 신규 UI 라우트 테스트 작성 시 동일 패턴 사용.
-- **리포 추가 Webhook URL**: `POST /repos/add` 처리 시 `request.base_url`로 Webhook URL 자동 결정. Railway 배포 시 HTTPS URL이 자동으로 사용됨.
+- **리포 추가 Webhook URL**: `_webhook_base_url(request)` 헬퍼가 `APP_BASE_URL` 설정 시 HTTPS URL 강제, 미설정 시 `request.base_url` 사용. Railway 배포 시 반드시 `APP_BASE_URL`을 설정할 것 — 미설정 시 `http://`로 등록되어 Webhook 전달 실패. 기존 HTTP 등록 리포는 Settings 페이지의 "GitHub Webhook 재등록" 버튼으로 수정.
 - **GitHub OAuth token 스코프**: `repo user:email` 스코프. 재로그인 시 토큰 자동 갱신. 100개 초과 리포는 첫 페이지(100개)만 표시.
-- **APP_BASE_URL**: Railway 리버스 프록시 환경에서 `request.url_for()`가 `http://`를 반환하는 문제 해결. 설정 시 OAuth redirect_uri를 해당 URL로 직접 구성.
+- **APP_BASE_URL**: Railway 리버스 프록시 환경에서 `http://` 반환 문제 해결. 설정 시 **OAuth redirect_uri**와 **GitHub Webhook 등록 URL** 양쪽에 HTTPS URL 강제 적용. Railway 배포 필수 설정.
 - **Telegram 메시지 길이**: `_build_message()`가 4096자 초과 시 자동 절단 (`_TELEGRAM_MAX_LEN = 4096`).
 - **DB 세션 expunge**: `get_current_user()`는 `db.expunge(user)` 후 세션 반환 — 세션 종료 후에도 컬럼 속성 안전하게 접근 가능. 관계 lazy-load는 사용하지 말 것.
 - **N+1 쿼리 방지**: overview에서 분석 수·최신 분석·평균 점수를 배치 쿼리(subquery + GROUP BY)로 조회. 리포가 늘어나도 쿼리 수는 일정.
@@ -430,3 +430,5 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 | 커밋 메시지 개선 | PR body 포함 전체 캡처 + head_commit 우선 + 모바일 CSS 수평 스크롤 수정 | ✅ 완료 (단위 230개) |
 | CLI 코드리뷰 | 터미널 CLI 도구 — 로컬 git diff + 정적 분석 + AI 리뷰 + 점수 산출 | ✅ 완료 (단위 259개) |
 | CLI Hook 자동 코드리뷰 | git push 시 pre-push hook 자동 실행 — Claude Code CLI 기반, 대시보드 저장 | ✅ 완료 (단위 273개) |
+| 보안 강화 | hook_token hmac.compare_digest + Telegram gate HMAC 콜백 인증 + 중복 분석 체크 | ✅ 완료 (단위 273개) |
+| Webhook 재등록 | APP_BASE_URL 기반 HTTPS URL 강제 + POST reinstall-webhook 엔드포인트 | ✅ 완료 (단위 276개) |
