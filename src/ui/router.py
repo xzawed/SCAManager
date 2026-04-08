@@ -6,10 +6,11 @@ from sqlalchemy import func
 from src.database import SessionLocal
 from src.models.repository import Repository
 from src.models.analysis import Analysis
+from src.models.repo_config import RepoConfig
 from src.models.user import User
 from src.auth.session import require_login
 from src.config_manager.manager import get_repo_config, upsert_repo_config, RepoConfigData
-from src.github_client.repos import list_user_repos, create_webhook
+from src.github_client.repos import list_user_repos, create_webhook, commit_scamanager_files
 
 templates = Jinja2Templates(directory="src/templates")
 router = APIRouter()
@@ -55,6 +56,7 @@ async def add_repo(request: Request, current_user: User = Depends(require_login)
             return RedirectResponse(url=f"/repos/{repo_full_name}", status_code=303)
 
     webhook_secret = secrets.token_hex(32)
+    hook_token = secrets.token_hex(32)
     webhook_url = str(request.base_url) + "webhooks/github"
     webhook_id = await create_webhook(
         current_user.github_access_token or "",
@@ -73,7 +75,29 @@ async def add_repo(request: Request, current_user: User = Depends(require_login)
         db.add(repo)
         db.commit()
 
-    return RedirectResponse(url=f"/repos/{repo_full_name}", status_code=303)
+        config = db.query(RepoConfig).filter(
+            RepoConfig.repo_full_name == repo_full_name
+        ).first()
+        if config is None:
+            config = RepoConfig(repo_full_name=repo_full_name, hook_token=hook_token)
+            db.add(config)
+        else:
+            config.hook_token = hook_token
+        db.commit()
+
+    # .scamanager/ 파일을 Repo에 커밋 (실패해도 등록 자체는 성공)
+    server_url = str(request.base_url).rstrip("/")
+    await commit_scamanager_files(
+        current_user.github_access_token or "",
+        repo_full_name,
+        server_url,
+        hook_token,
+    )
+
+    return RedirectResponse(
+        url=f"/repos/{repo_full_name}?hook_installed=1",
+        status_code=303,
+    )
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -199,7 +223,12 @@ def analysis_detail(
 
 
 @router.get("/repos/{repo_name:path}", response_class=HTMLResponse)
-def repo_detail(request: Request, repo_name: str, current_user: User = Depends(require_login)):
+def repo_detail(
+    request: Request,
+    repo_name: str,
+    hook_installed: int = 0,
+    current_user: User = Depends(require_login),
+):
     with SessionLocal() as db:
         repo = db.query(Repository).filter(Repository.full_name == repo_name).first()
         if not repo:
@@ -219,4 +248,6 @@ def repo_detail(request: Request, repo_name: str, current_user: User = Depends(r
         "repo_name": repo_name, "analyses": analyses_data,
         "chart_labels": [a["created_at"][:10] if a["created_at"] else "" for a in rev],
         "chart_scores": [a["score"] for a in rev],
+        "hook_installed": bool(hook_installed),
+        "current_user": current_user,
     })
