@@ -145,7 +145,7 @@ src/
 │   ├── stats.py                # GET /api/analyses/{id}, /api/repos/{repo}/stats
 │   └── hook.py                 # GET /api/hook/verify, POST /api/hook/result (hook_token 인증, X-API-Key 불필요)
 ├── ui/
-│   └── router.py               # Jinja2 Web UI — /, /repos/{repo}, /repos/{repo}/settings (require_login + user_id 필터)
+│   └── router.py               # Jinja2 Web UI — /, /repos/{repo}, /repos/{repo}/settings, POST /repos/{repo}/reinstall-hook (require_login + user_id 필터)
 ├── templates/
 │   ├── add_repo.html           # 리포 추가 페이지 (GitHub 드롭다운 + Webhook 자동 생성)
 │   ├── base.html               # 공통 레이아웃
@@ -153,7 +153,7 @@ src/
 │   ├── overview.html           # 리포 현황 목록
 │   ├── repo_detail.html        # 점수 차트(Chart.js) + 분석 이력 (행 클릭 → 상세)
 │   ├── analysis_detail.html    # 분석 상세 — AI 리뷰·피드백·정적 분석 이슈
-│   └── settings.html           # Gate 모드·임계값·알림 채널 설정 폼
+│   └── settings.html           # Gate 모드·임계값·알림 채널 설정 폼 + CLI Hook 재설치 섹션
 ├── cli/
 │   ├── __main__.py             # CLI entry point — python -m src.cli review
 │   ├── git_diff.py             # 로컬 git diff 수집 (ChangedFile, get_diff_files)
@@ -320,7 +320,7 @@ CLI Hook (로컬 pre-push 자동 코드리뷰):
 - **CLI Hook 점수**: pre-push 훅은 정적 분석 없이 AI 리뷰만 실행 → `calculate_score([], ai_review)` 호출 (code_quality=25, security=20 만점 적용).
 - **commit_scamanager_files**: GitHub Contents API `PUT /repos/{owner}/{repo}/contents/{path}` 사용. 파일 이미 있으면 GET으로 sha 조회 후 body에 포함해야 200 성공 (sha 누락 시 422 에러).
 - **Mock side_effect 재귀**: `mock.add.side_effect = fn` 설정 후 fn 내에서 `original_add(obj)` 호출 시 재귀 발생. side_effect 함수에서는 원본 mock을 호출하지 말 것 — 캡처만 하고 return None.
-- **hook_token unique 제약**: SQLite는 `op.add_column`에 unique=True 직접 불가 — `batch_alter_table`로 `create_unique_constraint` 별도 실행 필요.
+- **Alembic batch_alter_table는 PostgreSQL 금지**: `batch_alter_table`은 SQLite 전용 패턴(테이블 전체 재생성). PostgreSQL에서는 `op.create_unique_constraint('이름', '테이블', ['컬럼'])` 직접 사용. 잘못 사용 시 lifespan 마이그레이션 실패 → `/health` 응답 전 프로세스 종료 → Railway 헬스체크 실패.
 
 ## Railway 배포
 
