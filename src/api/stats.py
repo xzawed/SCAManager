@@ -15,6 +15,7 @@ def get_analysis(analysis_id: int):
             raise HTTPException(status_code=404, detail="Analysis not found")
         return {
             "id": analysis.id, "commit_sha": analysis.commit_sha,
+            "commit_message": analysis.commit_message,
             "pr_number": analysis.pr_number, "score": analysis.score,
             "grade": analysis.grade, "result": analysis.result,
             "created_at": analysis.created_at.isoformat() if analysis.created_at else None,
