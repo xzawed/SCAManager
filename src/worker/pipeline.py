@@ -24,7 +24,13 @@ logger = logging.getLogger(__name__)
 
 def _extract_commit_message(event: str, data: dict) -> str:
     if event == "pull_request":
-        return data.get("pull_request", {}).get("title", "")
+        pr = data.get("pull_request", {})
+        title = pr.get("title", "")
+        body = pr.get("body") or ""
+        return f"{title}\n\n{body}".strip() if body else title
+    head = data.get("head_commit")
+    if head:
+        return head.get("message", "")
     commits = data.get("commits", [])
     return commits[0]["message"] if commits else ""
 
