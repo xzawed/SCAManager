@@ -432,3 +432,4 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 | CLI Hook 자동 코드리뷰 | git push 시 pre-push hook 자동 실행 — Claude Code CLI 기반, 대시보드 저장 | ✅ 완료 (단위 273개) |
 | 보안 강화 | hook_token hmac.compare_digest + Telegram gate HMAC 콜백 인증 + 중복 분석 체크 | ✅ 완료 (단위 273개) |
 | Webhook 재등록 | APP_BASE_URL 기반 HTTPS URL 강제 + POST reinstall-webhook 엔드포인트 | ✅ 완료 (단위 276개) |
+| 설정 페이지 UI | 2컬럼 그리드 + 그라디언트 카드 헤더 + 슬라이더+숫자 인라인 + 3테마 CSS 변수 | ✅ 완료 (단위 276개) |
