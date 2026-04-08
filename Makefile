@@ -1,4 +1,4 @@
-.PHONY: install test test-v test-cov lint run migrate install-playwright test-e2e test-e2e-headed
+.PHONY: install test test-v test-cov lint run migrate review install-playwright test-e2e test-e2e-headed
 
 # 의존성 설치
 install:
@@ -29,6 +29,10 @@ lint:
 # DB 마이그레이션
 migrate:
 	alembic upgrade head
+
+# 로컬 코드리뷰 (CLI)
+review:
+	python -m src.cli review
 
 # 개발 서버 실행
 run:
