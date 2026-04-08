@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 PUSH_DATA = {
     "repository": {"full_name": "owner/repo"},
     "after": "abc123def456",
+    "head_commit": {"id": "abc123def456", "message": "feat: add awesome feature"},
     "commits": [{"id": "abc123def456", "message": "feat: add awesome feature"}],
 }
 
@@ -350,3 +351,60 @@ async def test_pipeline_falls_back_to_settings_token_when_no_owner():
 
     mock_get_files.assert_called_once()
     assert mock_get_files.call_args[0][0] == "ghp_test"  # conftest의 GITHUB_TOKEN
+
+
+async def test_pr_body_included_in_commit_message(mock_deps):
+    """PR body가 있으면 title + body를 합쳐서 커밋 메시지로 사용한다."""
+    pr_data_with_body = {
+        "repository": {"full_name": "owner/repo"},
+        "number": 7,
+        "pull_request": {
+            "head": {"sha": "def456abc123"},
+            "title": "feat: new PR title",
+            "body": "This PR adds a new feature.\n\n- Change 1\n- Change 2",
+        },
+    }
+    from src.worker.pipeline import run_analysis_pipeline
+    await run_analysis_pipeline("pull_request", pr_data_with_body)
+
+    call_args = mock_deps["ai"].call_args
+    commit_msg = call_args[0][1]
+    assert "feat: new PR title" in commit_msg
+    assert "This PR adds a new feature." in commit_msg
+    assert "- Change 1" in commit_msg
+
+
+async def test_pr_empty_body_returns_title_only(mock_deps):
+    """PR body가 None이거나 빈 문자열이면 title만 반환한다."""
+    pr_data_null_body = {
+        "repository": {"full_name": "owner/repo"},
+        "number": 7,
+        "pull_request": {
+            "head": {"sha": "def456abc123"},
+            "title": "feat: new PR title",
+            "body": None,
+        },
+    }
+    from src.worker.pipeline import run_analysis_pipeline
+    await run_analysis_pipeline("pull_request", pr_data_null_body)
+
+    call_args = mock_deps["ai"].call_args
+    assert call_args[0][1] == "feat: new PR title"
+
+
+async def test_push_head_commit_preferred(mock_deps):
+    """push 이벤트에서 head_commit이 있으면 commits[0] 대신 사용한다."""
+    push_data_multi = {
+        "repository": {"full_name": "owner/repo"},
+        "after": "bbb222",
+        "head_commit": {"id": "bbb222", "message": "fix: head commit message"},
+        "commits": [
+            {"id": "aaa111", "message": "chore: older commit"},
+            {"id": "bbb222", "message": "fix: head commit message"},
+        ],
+    }
+    from src.worker.pipeline import run_analysis_pipeline
+    await run_analysis_pipeline("push", push_data_multi)
+
+    call_args = mock_deps["ai"].call_args
+    assert call_args[0][1] == "fix: head commit message"
