@@ -24,12 +24,14 @@ def _ctx(db_mock):
 def test_get_analysis_detail():
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
-        id=1, commit_sha="abc", pr_number=1, score=85, grade="B",
+        id=1, commit_sha="abc", commit_message="feat: test",
+        pr_number=1, score=85, grade="B",
         result={"breakdown": {}}, created_at=None)
     with patch("src.api.stats.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/api/analyses/1")
     assert r.status_code == 200
     assert r.json()["score"] == 85
+    assert r.json()["commit_message"] == "feat: test"
 
 
 def test_get_analysis_detail_404():
