@@ -15,11 +15,9 @@ depends_on = None
 
 def upgrade() -> None:
     op.add_column('repo_configs', sa.Column('hook_token', sa.String(), nullable=True))
-    with op.batch_alter_table('repo_configs') as batch_op:
-        batch_op.create_unique_constraint('uq_repo_configs_hook_token', ['hook_token'])
+    op.create_unique_constraint('uq_repo_configs_hook_token', 'repo_configs', ['hook_token'])
 
 
 def downgrade() -> None:
-    with op.batch_alter_table('repo_configs') as batch_op:
-        batch_op.drop_constraint('uq_repo_configs_hook_token', type_='unique')
+    op.drop_constraint('uq_repo_configs_hook_token', 'repo_configs', type_='unique')
     op.drop_column('repo_configs', 'hook_token')
