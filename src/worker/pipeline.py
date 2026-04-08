@@ -199,6 +199,7 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
             analysis = Analysis(
                 repo_id=repo.id,
                 commit_sha=commit_sha,
+                commit_message=commit_message,
                 pr_number=pr_number,
                 score=score_result.total,
                 grade=score_result.grade,

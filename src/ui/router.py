@@ -167,6 +167,37 @@ async def update_repo_settings(
     return RedirectResponse(url=f"/repos/{repo_name}/settings", status_code=303)
 
 
+@router.get("/repos/{repo_name:path}/analyses/{analysis_id}", response_class=HTMLResponse)
+def analysis_detail(
+    request: Request, repo_name: str, analysis_id: int,
+    current_user: User = Depends(require_login),
+):
+    with SessionLocal() as db:
+        repo = db.query(Repository).filter(Repository.full_name == repo_name).first()
+        if not repo:
+            raise HTTPException(status_code=404, detail="Repository not found")
+        if repo.user_id is not None and repo.user_id != current_user.id:
+            raise HTTPException(status_code=404)
+        analysis = db.query(Analysis).filter(
+            Analysis.id == analysis_id, Analysis.repo_id == repo.id
+        ).first()
+        if not analysis:
+            raise HTTPException(status_code=404, detail="Analysis not found")
+        data = {
+            "id": analysis.id,
+            "commit_sha": analysis.commit_sha,
+            "commit_message": analysis.commit_message,
+            "pr_number": analysis.pr_number,
+            "score": analysis.score,
+            "grade": analysis.grade,
+            "result": analysis.result or {},
+            "created_at": analysis.created_at.isoformat() if analysis.created_at else None,
+        }
+    return templates.TemplateResponse(request, "analysis_detail.html", {
+        "repo_name": repo_name, "analysis": data,
+    })
+
+
 @router.get("/repos/{repo_name:path}", response_class=HTMLResponse)
 def repo_detail(request: Request, repo_name: str, current_user: User = Depends(require_login)):
     with SessionLocal() as db:
@@ -178,7 +209,7 @@ def repo_detail(request: Request, repo_name: str, current_user: User = Depends(r
         analyses = (db.query(Analysis).filter(Analysis.repo_id == repo.id)
                     .order_by(Analysis.created_at.desc()).limit(30).all())
         analyses_data = [
-            {"commit_sha": a.commit_sha, "pr_number": a.pr_number,
+            {"id": a.id, "commit_sha": a.commit_sha, "pr_number": a.pr_number,
              "score": a.score, "grade": a.grade,
              "created_at": a.created_at.isoformat() if a.created_at else None}
             for a in analyses

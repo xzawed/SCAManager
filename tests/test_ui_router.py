@@ -295,3 +295,51 @@ def test_add_repo_post_rejects_duplicate():
 
     assert r.status_code == 303
     assert r.headers["location"].startswith("/repos/add?error=")
+
+
+# ── 분석 상세 페이지 테스트 ──────────────────────────
+
+def test_analysis_detail_returns_html():
+    """분석 상세 페이지는 200 HTML을 반환한다."""
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
+        id=1, full_name="owner/repo", user_id=None
+    )
+    mock_analysis = MagicMock(
+        id=42, commit_sha="abc1234", commit_message="feat: add feature",
+        pr_number=10, score=82, grade="B",
+        result={"breakdown": {}, "ai_summary": "ok"},
+        created_at=MagicMock(isoformat=MagicMock(return_value="2026-04-08T00:00:00")),
+    )
+    # first() 호출: 1번째=repo, 2번째=analysis
+    mock_db.query.return_value.filter.return_value.first.side_effect = [
+        MagicMock(id=1, full_name="owner/repo", user_id=None),
+        mock_analysis,
+    ]
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        r = client.get("/repos/owner%2Frepo/analyses/42")
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+
+
+def test_analysis_detail_404_when_not_found():
+    """존재하지 않는 분석 ID → 404."""
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.side_effect = [
+        MagicMock(id=1, full_name="owner/repo", user_id=None),
+        None,  # analysis not found
+    ]
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        r = client.get("/repos/owner%2Frepo/analyses/999")
+    assert r.status_code == 404
+
+
+def test_analysis_detail_404_for_other_users_repo():
+    """타인 리포의 분석 → 404."""
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
+        id=2, full_name="owner/repo", user_id=999  # 다른 사용자
+    )
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        r = client.get("/repos/owner%2Frepo/analyses/42")
+    assert r.status_code == 404

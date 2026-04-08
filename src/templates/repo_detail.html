@@ -126,7 +126,7 @@
     </thead>
     <tbody>
     {% for a in analyses %}
-    <tr>
+    <tr style="cursor:pointer" onclick="location.href='/repos/{{ repo_name }}/analyses/{{ a.id }}'">
       <td class="date-cell">{{ a.created_at[:10] if a.created_at else "—" }}</td>
       <td><span class="commit-sha">{{ a.commit_sha[:7] }}</span></td>
       <td>

@@ -10,6 +10,7 @@ class Analysis(Base):
     id = Column(Integer, primary_key=True, index=True)
     repo_id = Column(Integer, ForeignKey("repositories.id"), nullable=False)
     commit_sha = Column(String, nullable=False, index=True)
+    commit_message = Column(String, nullable=True)
     pr_number = Column(Integer, nullable=True)
     score = Column(Integer, nullable=True)
     grade = Column(String(1), nullable=True)
