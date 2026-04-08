@@ -111,6 +111,7 @@ def test_hook_result_saves_analysis():
         return query_side_effects.get(idx)
 
     mock_db.query.return_value.filter.return_value.first.side_effect = _first_side_effect
+    mock_db.query.return_value.filter_by.return_value.first.return_value = None  # no duplicate
     mock_db.add = MagicMock()
     mock_db.commit = MagicMock()
     mock_db.refresh = MagicMock()
@@ -145,6 +146,7 @@ def test_hook_result_calculates_score():
         return {0: mock_config, 1: mock_repo}.get(idx)
 
     mock_db.query.return_value.filter.return_value.first.side_effect = _first_side_effect
+    mock_db.query.return_value.filter_by.return_value.first.return_value = None  # no duplicate
     mock_db.add = MagicMock()
     mock_db.commit = MagicMock()
     mock_db.refresh = MagicMock()

@@ -183,6 +183,11 @@ async def update_repo_settings(
 ):
     form = await request.form()
     with SessionLocal() as db:
+        repo = db.query(Repository).filter(Repository.full_name == repo_name).first()
+        if not repo:
+            raise HTTPException(status_code=404, detail="Repository not found")
+        if repo.user_id is not None and repo.user_id != current_user.id:
+            raise HTTPException(status_code=403)
         upsert_repo_config(db, RepoConfigData(
             repo_full_name=repo_name,
             gate_mode=form.get("gate_mode", "disabled"),

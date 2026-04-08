@@ -32,7 +32,7 @@ def _extract_commit_message(event: str, data: dict) -> str:
     if head:
         return head.get("message", "")
     commits = data.get("commits", [])
-    return commits[0]["message"] if commits else ""
+    return commits[-1]["message"] if commits else ""
 
 
 async def _run_static_analysis(files: list[ChangedFile]) -> list[StaticAnalysisResult]:
@@ -194,6 +194,9 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
         db = SessionLocal()
         try:
             repo = db.query(Repository).filter_by(full_name=repo_name).first()
+            if repo is None:
+                logger.warning("Repository not found in second session: %s", repo_name)
+                return
 
             existing = db.query(Analysis).filter_by(
                 commit_sha=commit_sha, repo_id=repo.id

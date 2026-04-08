@@ -116,6 +116,9 @@ def test_settings_returns_html():
 
 def test_post_settings_redirects():
     mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
+        id=1, full_name="owner/repo", user_id=None
+    )
     with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.ui.router.upsert_repo_config") as mock_upsert:
             r = client.post(
@@ -137,6 +140,9 @@ def test_post_settings_redirects():
 
 def test_post_settings_empty_n8n_url():
     mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
+        id=1, full_name="owner/repo", user_id=None
+    )
     with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.ui.router.upsert_repo_config") as mock_upsert:
             r = client.post(
@@ -157,6 +163,9 @@ def test_post_settings_empty_n8n_url():
 
 def test_post_settings_with_auto_merge_checked():
     mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
+        id=1, full_name="owner/repo", user_id=None
+    )
     with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.ui.router.upsert_repo_config") as mock_upsert:
             r = client.post(
@@ -179,6 +188,9 @@ def test_post_settings_with_auto_merge_checked():
 
 def test_post_settings_without_auto_merge_checkbox():
     mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
+        id=1, full_name="owner/repo", user_id=None
+    )
     with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.ui.router.upsert_repo_config") as mock_upsert:
             r = client.post(
