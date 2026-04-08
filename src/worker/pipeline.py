@@ -46,7 +46,7 @@ def _build_notify_tasks(
     names = []
 
     # Telegram (리포 설정 우선, 없으면 global fallback)
-    tg_chat_id = repo_config.notify_chat_id or settings.telegram_chat_id
+    tg_chat_id = (repo_config.notify_chat_id if repo_config else None) or settings.telegram_chat_id
     tasks.append(send_analysis_result(
         bot_token=settings.telegram_bot_token,
         chat_id=tg_chat_id,
@@ -72,7 +72,7 @@ def _build_notify_tasks(
         names.append("github_comment")
 
     # Discord
-    if repo_config.discord_webhook_url:
+    if repo_config and repo_config.discord_webhook_url:
         tasks.append(send_discord_notification(
             webhook_url=repo_config.discord_webhook_url,
             repo_name=repo_name,
@@ -85,7 +85,7 @@ def _build_notify_tasks(
         names.append("discord")
 
     # Slack
-    if repo_config.slack_webhook_url:
+    if repo_config and repo_config.slack_webhook_url:
         tasks.append(send_slack_notification(
             webhook_url=repo_config.slack_webhook_url,
             repo_name=repo_name,
@@ -98,7 +98,7 @@ def _build_notify_tasks(
         names.append("slack")
 
     # Generic Webhook
-    if repo_config.custom_webhook_url:
+    if repo_config and repo_config.custom_webhook_url:
         tasks.append(send_webhook_notification(
             webhook_url=repo_config.custom_webhook_url,
             repo_name=repo_name,
@@ -111,7 +111,7 @@ def _build_notify_tasks(
         names.append("webhook")
 
     # Email
-    if repo_config.email_recipients and settings.smtp_host:
+    if repo_config and repo_config.email_recipients and settings.smtp_host:
         tasks.append(send_email_notification(
             recipients=repo_config.email_recipients,
             repo_name=repo_name,
@@ -128,7 +128,7 @@ def _build_notify_tasks(
         names.append("email")
 
     # n8n
-    if repo_config.n8n_webhook_url:
+    if repo_config and repo_config.n8n_webhook_url:
         tasks.append(notify_n8n(
             webhook_url=repo_config.n8n_webhook_url,
             repo_full_name=repo_name,
@@ -184,7 +184,7 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
 
         score_result = calculate_score(analysis_results, ai_review=ai_review)
 
-        n8n_url: str | None = None
+        repo_config = None
         db = SessionLocal()
         try:
             repo = db.query(Repository).filter_by(full_name=repo_name).first()
@@ -228,7 +228,11 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
             db.commit()
             db.refresh(analysis)
 
-            repo_config = get_repo_config(db, repo_name)
+            try:
+                repo_config = get_repo_config(db, repo_name)
+            except Exception:
+                logger.warning("Failed to load repo config for %s, using defaults", repo_name)
+                repo_config = None
 
             # Gate Engine (PR 이벤트만)
             if pr_number is not None:
