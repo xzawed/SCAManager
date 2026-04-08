@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -17,12 +18,18 @@ from src.auth.github import router as auth_router
 logger = logging.getLogger(__name__)
 
 
+def _run_migrations() -> None:
+    alembic_cfg = Config("alembic.ini")
+    command.upgrade(alembic_cfg, "head")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
-        alembic_cfg = Config("alembic.ini")
-        command.upgrade(alembic_cfg, "head")
+        await asyncio.wait_for(asyncio.to_thread(_run_migrations), timeout=30)
         logger.info("DB migration completed")
+    except asyncio.TimeoutError:
+        logger.error("DB migration timed out after 30s — starting app anyway")
     except Exception as exc:
         logger.error("DB migration failed: %s", exc)
     yield
