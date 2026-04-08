@@ -423,7 +423,7 @@
         <div class="settings-card-icon">🔔</div>
         <div>
           <div class="settings-card-title">알림 설정</div>
-          <div class="settings-card-desc">Telegram 반자동 게이트 및 n8n 웹훅</div>
+          <div class="settings-card-desc">분석 결과를 다양한 채널로 전달합니다</div>
         </div>
       </div>
       <div class="settings-card-body">
@@ -437,6 +437,28 @@
           <input class="field-input" type="text" name="notify_chat_id"
                  value="{{ config.notify_chat_id or '' }}"
                  placeholder="-100xxxxxxxxx">
+        </div>
+
+        <div class="field-row">
+          <label class="field-label">
+            Discord Webhook URL
+            <span class="field-tag">선택</span>
+          </label>
+          <span class="field-hint">분석 완료 시 Discord 채널로 결과를 전달합니다</span>
+          <input class="field-input" type="url" name="discord_webhook_url"
+                 value="{{ config.discord_webhook_url or '' }}"
+                 placeholder="https://discord.com/api/webhooks/...">
+        </div>
+
+        <div class="field-row">
+          <label class="field-label">
+            Slack Webhook URL
+            <span class="field-tag">선택 · 준비 중</span>
+          </label>
+          <span class="field-hint">분석 완료 시 Slack 채널로 결과를 전달합니다 (Phase 2)</span>
+          <input class="field-input" type="url" name="slack_webhook_url"
+                 value="{{ config.slack_webhook_url or '' }}"
+                 placeholder="https://hooks.slack.com/services/...">
         </div>
 
         <div class="field-row">
