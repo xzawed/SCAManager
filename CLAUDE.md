@@ -321,6 +321,10 @@ CLI Hook (로컬 pre-push 자동 코드리뷰):
 - **commit_scamanager_files**: GitHub Contents API `PUT /repos/{owner}/{repo}/contents/{path}` 사용. 파일 이미 있으면 GET으로 sha 조회 후 body에 포함해야 200 성공 (sha 누락 시 422 에러).
 - **Mock side_effect 재귀**: `mock.add.side_effect = fn` 설정 후 fn 내에서 `original_add(obj)` 호출 시 재귀 발생. side_effect 함수에서는 원본 mock을 호출하지 말 것 — 캡처만 하고 return None.
 - **Alembic batch_alter_table는 PostgreSQL 금지**: `batch_alter_table`은 SQLite 전용 패턴(테이블 전체 재생성). PostgreSQL에서는 `op.create_unique_constraint('이름', '테이블', ['컬럼'])` 직접 사용. 잘못 사용 시 lifespan 마이그레이션 실패 → `/health` 응답 전 프로세스 종료 → Railway 헬스체크 실패.
+- **hook_token 비교는 hmac.compare_digest() 필수**: `!=` 연산자는 타이밍 공격에 취약. `src/api/hook.py`의 verify/result 엔드포인트는 `hmac.compare_digest(config.hook_token or "", token)` 사용. 토큰 비교 시 항상 `hmac.compare_digest()` 사용.
+- **Telegram 게이트 콜백 HMAC 인증**: 콜백 데이터 형식 `gate:{decision}:{id}:{token}` — token은 `hmac(bot_token, str(analysis_id), sha256)[:16]`. `telegram_gate.py`의 `_gate_callback_token()` 참조. 테스트 시 HMAC 토큰을 직접 계산해 픽스처에 포함해야 함.
+- **SMTP_PORT 빈 문자열**: Railway 환경에서 `SMTP_PORT=""`로 설정 시 pydantic ValidationError로 즉시 크래시. `config.py`의 `coerce_smtp_port` validator가 처리하므로 Railway Variables에서 SMTP_PORT 값을 삭제하거나 숫자로 설정.
+- **_ipv4_connect_args with 블록 금지**: `ThreadPoolExecutor`를 `with` 문으로 사용하면 `__exit__`가 `shutdown(wait=True)` 호출 → DNS hang 시 무기한 블록. `try/finally` + `executor.shutdown(wait=False)` 패턴 사용 (database.py 참조).
 
 ## Railway 배포
 
