@@ -154,7 +154,13 @@ def overview(request: Request, current_user: User = Depends(require_login)):
 
 
 @router.get("/repos/{repo_name:path}/settings", response_class=HTMLResponse)
-def repo_settings(request: Request, repo_name: str, current_user: User = Depends(require_login)):
+def repo_settings(
+    request: Request,
+    repo_name: str,
+    hook_ok: int = 0,
+    hook_fail: int = 0,
+    current_user: User = Depends(require_login),
+):
     with SessionLocal() as db:
         repo = db.query(Repository).filter(Repository.full_name == repo_name).first()
         if not repo:
@@ -164,6 +170,8 @@ def repo_settings(request: Request, repo_name: str, current_user: User = Depends
         config = get_repo_config(db, repo_name)
     return templates.TemplateResponse(request, "settings.html", {
         "repo_name": repo_name, "config": config,
+        "hook_ok": bool(hook_ok), "hook_fail": bool(hook_fail),
+        "current_user": current_user,
     })
 
 
@@ -189,6 +197,47 @@ async def update_repo_settings(
             auto_merge=form.get("auto_merge") == "on",
         ))
     return RedirectResponse(url=f"/repos/{repo_name}/settings", status_code=303)
+
+
+@router.post("/repos/{repo_name:path}/reinstall-hook")
+async def reinstall_hook(
+    request: Request,
+    repo_name: str,
+    current_user: User = Depends(require_login),
+):
+    """기존 등록 리포에 .scamanager/ 파일을 재커밋한다."""
+    with SessionLocal() as db:
+        repo = db.query(Repository).filter(Repository.full_name == repo_name).first()
+        if not repo or (repo.user_id is not None and repo.user_id != current_user.id):
+            raise HTTPException(status_code=404)
+
+        config = db.query(RepoConfig).filter(
+            RepoConfig.repo_full_name == repo_name
+        ).first()
+        if config is None:
+            config = RepoConfig(
+                repo_full_name=repo_name,
+                hook_token=secrets.token_hex(32),
+            )
+            db.add(config)
+        elif not config.hook_token:
+            config.hook_token = secrets.token_hex(32)
+        db.commit()
+        hook_token = config.hook_token
+
+    server_url = str(request.base_url).rstrip("/")
+    ok = await commit_scamanager_files(
+        current_user.github_access_token or "",
+        repo_name,
+        server_url,
+        hook_token,
+    )
+
+    status = "hook_ok" if ok else "hook_fail"
+    return RedirectResponse(
+        url=f"/repos/{repo_name}/settings?{status}=1",
+        status_code=303,
+    )
 
 
 @router.get("/repos/{repo_name:path}/analyses/{analysis_id}", response_class=HTMLResponse)

@@ -504,6 +504,35 @@
     </div>
 
   </form>
+
+  <!-- CLI Hook 재설치 -->
+  <div class="settings-card" style="margin-top:1.5rem;">
+    <div class="settings-section-title">🔧 CLI Hook 설치</div>
+    <p style="font-size:13px;color:var(--text-secondary);margin:0 0 .75rem;">
+      <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:4px;font-size:12px;">git push</code> 시 자동 코드리뷰를 실행하려면 아래 버튼을 클릭해 설치 파일을 Repo에 커밋한 뒤, 로컬 클론에서 명령어를 실행하세요.
+    </p>
+
+    {% if hook_ok %}
+    <div style="background:#d1fae5;color:#065f46;border-radius:8px;padding:.6rem 1rem;font-size:13px;margin-bottom:.75rem;">
+      ✅ <strong>.scamanager/</strong> 파일이 Repo에 커밋됐습니다. 아래 명령어를 실행하세요.
+    </div>
+    {% endif %}
+    {% if hook_fail %}
+    <div style="background:#fee2e2;color:#991b1b;border-radius:8px;padding:.6rem 1rem;font-size:13px;margin-bottom:.75rem;">
+      ❌ 파일 커밋에 실패했습니다. GitHub 토큰 권한(repo 스코프)을 확인하세요.
+    </div>
+    {% endif %}
+
+    <div style="background:var(--bg-secondary);border-radius:8px;padding:.6rem 1rem;font-family:monospace;font-size:13px;margin-bottom:.75rem;color:var(--text-primary);">
+      git pull &amp;&amp; bash .scamanager/install-hook.sh
+    </div>
+
+    <form method="post" action="/repos/{{ repo_name }}/reinstall-hook">
+      <button type="submit" class="btn" style="background:var(--accent-blue,#2563eb);color:#fff;border:none;padding:.45rem 1rem;border-radius:8px;font-size:13px;cursor:pointer;">
+        🔄 훅 파일 Repo에 재커밋
+      </button>
+    </form>
+  </div>
 </div>
 
 <script>
