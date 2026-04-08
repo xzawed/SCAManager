@@ -13,6 +13,7 @@ from src.models.repository import Repository
 from src.models.analysis import Analysis
 from src.gate.engine import run_gate_check
 from src.notifier.n8n import notify_n8n
+from src.notifier.discord import send_discord_notification
 from src.config_manager.manager import get_repo_config
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,72 @@ async def _run_static_analysis(files: list[ChangedFile]) -> list[StaticAnalysisR
     return await asyncio.to_thread(
         lambda: [analyze_file(f.filename, f.content) for f in python_files]
     )
+
+
+def _build_notify_tasks(
+    repo_config,
+    repo_name, commit_sha, pr_number,
+    owner_token, score_result, analysis_results, ai_review,
+):
+    """RepoConfig 기반으로 활성 알림 채널의 task 목록을 생성한다."""
+    tasks = []
+    names = []
+
+    # Telegram (리포 설정 우선, 없으면 global fallback)
+    tg_chat_id = repo_config.notify_chat_id or settings.telegram_chat_id
+    tasks.append(send_analysis_result(
+        bot_token=settings.telegram_bot_token,
+        chat_id=tg_chat_id,
+        repo_name=repo_name,
+        commit_sha=commit_sha,
+        score_result=score_result,
+        analysis_results=analysis_results,
+        pr_number=pr_number,
+        ai_review=ai_review,
+    ))
+    names.append("telegram")
+
+    # GitHub PR Comment (PR 이벤트만)
+    if pr_number is not None:
+        tasks.append(post_pr_comment(
+            github_token=owner_token,
+            repo_name=repo_name,
+            pr_number=pr_number,
+            score_result=score_result,
+            analysis_results=analysis_results,
+            ai_review=ai_review,
+        ))
+        names.append("github_comment")
+
+    # Discord
+    if repo_config.discord_webhook_url:
+        tasks.append(send_discord_notification(
+            webhook_url=repo_config.discord_webhook_url,
+            repo_name=repo_name,
+            commit_sha=commit_sha,
+            score_result=score_result,
+            analysis_results=analysis_results,
+            pr_number=pr_number,
+            ai_review=ai_review,
+        ))
+        names.append("discord")
+
+    # Slack (Phase 2 — URL 설정 시 활성화)
+    if repo_config.slack_webhook_url:
+        logger.info("Slack notification configured but not yet implemented for %s", repo_name)
+
+    # n8n
+    if repo_config.n8n_webhook_url:
+        tasks.append(notify_n8n(
+            webhook_url=repo_config.n8n_webhook_url,
+            repo_full_name=repo_name,
+            commit_sha=commit_sha,
+            pr_number=pr_number,
+            score_result=score_result,
+        ))
+        names.append("n8n")
+
+    return tasks, names
 
 
 async def run_analysis_pipeline(event: str, data: dict) -> None:
@@ -119,7 +186,7 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
             db.commit()
             db.refresh(analysis)
 
-            n8n_url = get_repo_config(db, repo_name).n8n_webhook_url
+            repo_config = get_repo_config(db, repo_name)
 
             # Gate Engine (PR 이벤트만)
             if pr_number is not None:
@@ -138,47 +205,19 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
         finally:
             db.close()
 
-        notify_tasks = [
-            send_analysis_result(
-                bot_token=settings.telegram_bot_token,
-                chat_id=settings.telegram_chat_id,
-                repo_name=repo_name,
-                commit_sha=commit_sha,
-                score_result=score_result,
-                analysis_results=analysis_results,
-                pr_number=pr_number,
-                ai_review=ai_review,
-            )
-        ]
-        if pr_number is not None:
-            notify_tasks.append(
-                post_pr_comment(
-                    github_token=owner_token,
-                    repo_name=repo_name,
-                    pr_number=pr_number,
-                    score_result=score_result,
-                    analysis_results=analysis_results,
-                    ai_review=ai_review,
-                )
-            )
-        if n8n_url:
-            notify_tasks.append(
-                notify_n8n(
-                    webhook_url=n8n_url,
-                    repo_full_name=repo_name,
-                    commit_sha=commit_sha,
-                    pr_number=pr_number,
-                    score_result=score_result,
-                )
-            )
+        notify_tasks, task_names = _build_notify_tasks(
+            repo_config=repo_config,
+            repo_name=repo_name,
+            commit_sha=commit_sha,
+            pr_number=pr_number,
+            owner_token=owner_token,
+            score_result=score_result,
+            analysis_results=analysis_results,
+            ai_review=ai_review,
+        )
         results = await asyncio.gather(*notify_tasks, return_exceptions=True)
         for idx, exc in enumerate(results):
             if isinstance(exc, Exception):
-                task_names = ["telegram"]
-                if pr_number is not None:
-                    task_names.append("github_comment")
-                if n8n_url:
-                    task_names.append("n8n")
                 name = task_names[idx] if idx < len(task_names) else "unknown"
                 logger.error("Notification [%s] failed: %s", name, exc, exc_info=exc)
 

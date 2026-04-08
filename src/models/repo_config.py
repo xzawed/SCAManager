@@ -12,6 +12,8 @@ class RepoConfig(Base):
     auto_reject_threshold = Column(Integer, default=50, nullable=False)
     notify_chat_id = Column(String, nullable=True)
     n8n_webhook_url = Column(String, nullable=True)
+    discord_webhook_url = Column(String, nullable=True)
+    slack_webhook_url = Column(String, nullable=True)
     auto_merge = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),

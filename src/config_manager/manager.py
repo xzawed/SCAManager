@@ -11,6 +11,8 @@ class RepoConfigData:
     auto_reject_threshold: int = 50
     notify_chat_id: str | None = None
     n8n_webhook_url: str | None = None
+    discord_webhook_url: str | None = None
+    slack_webhook_url: str | None = None
     auto_merge: bool = False
 
 
@@ -25,6 +27,8 @@ def get_repo_config(db: Session, repo_full_name: str) -> RepoConfigData:
         auto_reject_threshold=record.auto_reject_threshold,
         notify_chat_id=record.notify_chat_id,
         n8n_webhook_url=record.n8n_webhook_url,
+        discord_webhook_url=record.discord_webhook_url,
+        slack_webhook_url=record.slack_webhook_url,
         auto_merge=record.auto_merge,
     )
 
@@ -39,6 +43,8 @@ def upsert_repo_config(db: Session, data: RepoConfigData) -> RepoConfig:
             auto_reject_threshold=data.auto_reject_threshold,
             notify_chat_id=data.notify_chat_id,
             n8n_webhook_url=data.n8n_webhook_url,
+            discord_webhook_url=data.discord_webhook_url,
+            slack_webhook_url=data.slack_webhook_url,
             auto_merge=data.auto_merge,
         )
         db.add(record)
@@ -48,6 +54,8 @@ def upsert_repo_config(db: Session, data: RepoConfigData) -> RepoConfig:
         record.auto_reject_threshold = data.auto_reject_threshold
         record.notify_chat_id = data.notify_chat_id
         record.n8n_webhook_url = data.n8n_webhook_url
+        record.discord_webhook_url = data.discord_webhook_url
+        record.slack_webhook_url = data.slack_webhook_url
         record.auto_merge = data.auto_merge
     db.commit()
     db.refresh(record)
