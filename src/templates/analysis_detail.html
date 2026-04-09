@@ -325,7 +325,19 @@
 </div>
 {% endif %}
 
-{% elif analysis.score is none %}
+<!-- result는 있지만 모든 AI 필드가 비어있는 경우 -->
+{% if not (r.get('ai_summary') or r.get('ai_suggestions') or has_fb or r.get('file_feedbacks') or r.get('issues')) %}
+<div class="card">
+  <div class="ad-empty">
+    <div style="font-size:2rem;margin-bottom:.75rem;opacity:0.5">🤖</div>
+    <p>AI 리뷰 데이터가 없습니다.</p>
+  </div>
+</div>
+{% endif %}
+
+{% else %}
+<!-- result가 없는 경우 -->
+{% if analysis.score is none %}
 <!-- result도 없고 score도 없는 구버전 분석 -->
 <div class="card">
   <div class="ad-empty">
@@ -333,6 +345,15 @@
     <p>이 분석에는 상세 데이터가 없습니다.<br>(AI 리뷰 도입 전 분석 기록)</p>
   </div>
 </div>
+{% else %}
+<!-- score는 있지만 result가 없는 경우 -->
+<div class="card">
+  <div class="ad-empty">
+    <div style="font-size:2rem;margin-bottom:.75rem;opacity:0.5">📭</div>
+    <p>분석 결과 데이터가 없습니다.</p>
+  </div>
+</div>
+{% endif %}
 {% endif %}
 
 {% endblock %}
