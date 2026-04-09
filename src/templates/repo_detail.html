@@ -94,13 +94,84 @@
     text-overflow: ellipsis;
     max-width: 200px;
   }
+  /* ── 필터 바 ─────────────────────────── */
+  .filter-bar {
+    display: flex; flex-wrap: wrap; gap: .6rem; align-items: center;
+    margin-bottom: 1rem; padding: .75rem 1rem;
+    background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border);
+  }
+  .filter-search {
+    flex: 1; min-width: 180px; padding: .4rem .75rem;
+    border-radius: 6px; border: 1.5px solid var(--border);
+    background: transparent; color: var(--text-primary);
+    font-size: 13px; outline: none;
+    transition: border-color var(--transition);
+  }
+  .filter-search:focus { border-color: var(--accent); }
+  .filter-search::placeholder { color: var(--text-muted); opacity: .7; }
+  .filter-group { display: flex; gap: .3rem; flex-wrap: wrap; }
+  .filter-btn {
+    padding: .3rem .65rem; font-size: 12px; font-weight: 600;
+    border-radius: 6px; border: 1.5px solid var(--border);
+    background: transparent; color: var(--text-muted); cursor: pointer;
+    transition: all var(--transition);
+  }
+  .filter-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .filter-btn.active { background: rgba(99,102,241,.15); border-color: var(--accent); color: var(--accent); }
+  .filter-btn[data-source="pr"].active   { background: rgba(59,130,246,.15); border-color:#3b82f6; color:#3b82f6; }
+  .filter-btn[data-source="push"].active { background: rgba(16,185,129,.15); border-color:var(--success); color:var(--success); }
+  .filter-btn[data-source="cli"].active  { background: rgba(245,158,11,.15); border-color:#f59e0b; color:#f59e0b; }
+  .filter-divider { width: 1px; height: 22px; background: var(--border); flex-shrink: 0; }
+  /* ── 점수 범위 슬라이더 ────────────────── */
+  .score-range-wrap { display: flex; align-items: center; gap: .5rem; font-size: 12px; color: var(--text-muted); min-width: 220px; }
+  .dual-slider-track { position: relative; flex: 1; height: 6px; min-width: 100px; }
+  .dual-slider-track input[type=range] {
+    position: absolute; width: 100%; height: 6px;
+    -webkit-appearance: none; appearance: none;
+    background: transparent; outline: none; pointer-events: none; top: 0; left: 0;
+  }
+  .dual-slider-track input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+    background: var(--accent); border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,.3); cursor: pointer; pointer-events: all;
+  }
+  .dual-slider-fill { position: absolute; height: 6px; background: var(--accent); border-radius: 3px; top: 0; pointer-events: none; }
+  .dual-slider-bg { position: absolute; width: 100%; height: 6px; background: var(--border); border-radius: 3px; top: 0; }
+  .score-val-label { font-size: 12px; font-weight: 700; color: var(--text-primary); min-width: 28px; text-align: center; }
+  /* ── 정렬 헤더 ─────────────────────────── */
+  .sortable-th { cursor: pointer; user-select: none; white-space: nowrap; }
+  .sortable-th:hover { color: var(--accent); }
+  .sort-icon { font-size: 10px; margin-left: 3px; opacity: .5; }
+  .sortable-th.asc  .sort-icon::after { content: '▲'; opacity: 1; color: var(--accent); }
+  .sortable-th.desc .sort-icon::after { content: '▼'; opacity: 1; color: var(--accent); }
+  .sortable-th:not(.asc):not(.desc) .sort-icon::after { content: '⇅'; }
+  /* ── 페이지네이션 ───────────────────────── */
+  .pagination { display: flex; align-items: center; justify-content: center; gap: .35rem; margin-top: .875rem; flex-wrap: wrap; }
+  .page-btn {
+    min-width: 32px; height: 32px; padding: 0 .5rem;
+    border-radius: 6px; border: 1.5px solid var(--border);
+    background: transparent; color: var(--text-muted);
+    font-size: 13px; font-weight: 500; cursor: pointer;
+    transition: all var(--transition);
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .page-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .page-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+  .page-btn:disabled { opacity: .35; cursor: not-allowed; }
+  .page-info { font-size: 12px; color: var(--text-muted); margin-top: .35rem; text-align: center; }
+  .filter-empty { text-align: center; padding: 2rem 1rem; color: var(--text-muted); font-size: 13px; }
   @media (max-width: 768px) {
     .detail-header { flex-wrap: wrap; gap: 0.75rem; }
     .settings-btn { margin-left: 0; }
     .chart-card { padding: 1rem; }
+    .filter-bar { gap: .45rem; padding: .6rem .75rem; }
+    .score-range-wrap { min-width: 160px; }
+    .filter-divider { display: none; }
   }
   @media (max-width: 480px) {
     .commit-msg-preview { display: none; }
+    .filter-bar { flex-direction: column; align-items: stretch; }
+    .filter-search { min-width: unset; }
   }
 </style>
 
@@ -136,47 +207,61 @@
 <div class="card" style="padding:1.25rem 1.5rem;">
   <div class="history-header">
     <h3>분석 이력</h3>
-    <span class="history-count">최근 {{ analyses | length }}건</span>
+    <span class="history-count" id="historyCount">최근 {{ analyses | length }}건</span>
   </div>
+
+  <!-- 필터 바 -->
+  <div class="filter-bar">
+    <input type="search" class="filter-search" id="searchInput"
+      placeholder="커밋 메시지 또는 SHA 검색…" autocomplete="off">
+    <div class="filter-divider"></div>
+    <div class="filter-group" id="gradeFilter">
+      <button class="filter-btn active" data-grade="all">전체</button>
+      <button class="filter-btn" data-grade="A">A</button>
+      <button class="filter-btn" data-grade="B">B</button>
+      <button class="filter-btn" data-grade="C">C</button>
+      <button class="filter-btn" data-grade="D">D</button>
+      <button class="filter-btn" data-grade="F">F</button>
+    </div>
+    <div class="filter-divider"></div>
+    <div class="filter-group" id="sourceFilter">
+      <button class="filter-btn active" data-source="all">전체</button>
+      <button class="filter-btn" data-source="pr">PR</button>
+      <button class="filter-btn" data-source="push">Push</button>
+      <button class="filter-btn" data-source="cli">CLI</button>
+    </div>
+    <div class="filter-divider"></div>
+    <div class="score-range-wrap">
+      <span>점수</span>
+      <div class="dual-slider-track" id="dualSliderTrack">
+        <div class="dual-slider-bg"></div>
+        <div class="dual-slider-fill" id="sliderFill"></div>
+        <input type="range" id="scoreMin" min="0" max="100" value="0" step="1">
+        <input type="range" id="scoreMax" min="0" max="100" value="100" step="1">
+      </div>
+      <span class="score-val-label" id="scoreMinLabel">0</span>
+      <span style="color:var(--text-muted);font-size:11px">–</span>
+      <span class="score-val-label" id="scoreMaxLabel">100</span>
+    </div>
+  </div>
+
   <div class="table-wrap">
   <table>
     <thead>
       <tr>
-        <th>날짜</th>
+        <th class="sortable-th" data-sort="created_at">날짜 <span class="sort-icon"></span></th>
         <th>커밋</th>
         <th>PR</th>
-        <th>점수</th>
+        <th class="sortable-th" data-sort="score">점수 <span class="sort-icon"></span></th>
         <th>등급</th>
+        <th>소스</th>
       </tr>
     </thead>
-    <tbody>
-    {% for a in analyses %}
-    <tr style="cursor:pointer" onclick="location.href='/repos/{{ repo_name }}/analyses/{{ a.id }}'">
-      <td class="date-cell">
-        {{ a.created_at[:10] if a.created_at else "—" }}
-        {% if a.commit_message %}
-        <div class="commit-msg-preview">{{ a.commit_message.split('\n')[0][:50] }}{% if a.commit_message|length > 50 %}…{% endif %}</div>
-        {% endif %}
-      </td>
-      <td><span class="commit-sha">{{ a.commit_sha[:7] }}</span></td>
-      <td>
-        {% if a.pr_number %}
-        <span class="pr-badge">#{{ a.pr_number }}</span>
-        {% else %}
-        <span style="color:var(--text-muted)">—</span>
-        {% endif %}
-      </td>
-      <td>
-        <span class="score-val {% if a.score >= 75 %}high{% elif a.score >= 50 %}mid{% else %}low{% endif %}">
-          {{ a.score }}
-        </span>
-      </td>
-      <td><span class="grade grade-{{ a.grade }}">{{ a.grade }}</span></td>
-    </tr>
-    {% endfor %}
-    </tbody>
+    <tbody id="analysisTable"></tbody>
   </table>
   </div>
+  <div id="pagination" class="pagination"></div>
+  <div id="pageInfo" class="page-info"></div>
 </div>
 {% endblock %}
 
@@ -246,5 +331,204 @@
   buildChart();
   // 테마 변경 시 차트 색상 재빌드
   document.addEventListener('themechange', buildChart);
+</script>
+<script>
+// ── 데이터 주입 ──────────────────────────────────────
+const ALL_ANALYSES = {{ analyses | tojson }};
+const REPO_NAME_JS = {{ repo_name | tojson }};
+const PAGE_SIZE = 20;
+
+// ── 상태 ─────────────────────────────────────────────
+const state = {
+  searchQuery: '', gradeFilter: 'all', sourceFilter: 'all',
+  sortField: 'created_at', sortDir: 'desc',
+  scoreMin: 0, scoreMax: 100, currentPage: 1,
+};
+
+// ── 유틸 ─────────────────────────────────────────────
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function encodeRepo(name) {
+  return name.split('/').map(encodeURIComponent).join('/');
+}
+
+// ── 슬라이더 ─────────────────────────────────────────
+function updateSliderFill() {
+  const mn = parseInt(document.getElementById('scoreMin').value);
+  const mx = parseInt(document.getElementById('scoreMax').value);
+  document.getElementById('sliderFill').style.left  = mn + '%';
+  document.getElementById('sliderFill').style.width = (mx - mn) + '%';
+  document.getElementById('scoreMinLabel').textContent = mn;
+  document.getElementById('scoreMaxLabel').textContent = mx;
+}
+document.getElementById('scoreMin').addEventListener('input', function() {
+  if (parseInt(this.value) >= parseInt(document.getElementById('scoreMax').value))
+    this.value = parseInt(document.getElementById('scoreMax').value) - 1;
+  state.scoreMin = parseInt(this.value); state.currentPage = 1;
+  updateSliderFill(); applyFilters();
+});
+document.getElementById('scoreMax').addEventListener('input', function() {
+  if (parseInt(this.value) <= parseInt(document.getElementById('scoreMin').value))
+    this.value = parseInt(document.getElementById('scoreMin').value) + 1;
+  state.scoreMax = parseInt(this.value); state.currentPage = 1;
+  updateSliderFill(); applyFilters();
+});
+
+// ── 렌더 테이블 ──────────────────────────────────────
+function renderSourceBadge(src) {
+  const m = { pr: ['PR','#3b82f6'], push: ['Push','var(--success)'], cli: ['CLI','#f59e0b'] };
+  const [label, color] = m[src] || [src || '—', 'var(--text-muted)'];
+  return '<span style="font-size:11px;font-weight:600;color:' + color + '">' + label + '</span>';
+}
+function renderTable(data) {
+  const tbody = document.getElementById('analysisTable');
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="filter-empty">조건에 맞는 분석 이력이 없습니다.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = data.map(function(a) {
+    const date = a.created_at ? a.created_at.slice(0,10) : '—';
+    const msgPreview = a.commit_message
+      ? '<div class="commit-msg-preview">' + escHtml(a.commit_message.split('\n')[0].slice(0,50)) + (a.commit_message.length > 50 ? '…' : '') + '</div>'
+      : '';
+    const sc = a.score >= 75 ? 'high' : a.score >= 50 ? 'mid' : 'low';
+    const pr = a.pr_number
+      ? '<span class="pr-badge">#' + a.pr_number + '</span>'
+      : '<span style="color:var(--text-muted)">—</span>';
+    return '<tr style="cursor:pointer" onclick="location.href=\'/repos/' + encodeRepo(REPO_NAME_JS) + '/analyses/' + a.id + '\'">'
+      + '<td class="date-cell">' + date + msgPreview + '</td>'
+      + '<td><span class="commit-sha">' + escHtml((a.commit_sha || '').slice(0,7)) + '</span></td>'
+      + '<td>' + pr + '</td>'
+      + '<td><span class="score-val ' + sc + '">' + (a.score != null ? a.score : '—') + '</span></td>'
+      + '<td><span class="grade grade-' + (a.grade || '') + '">' + (a.grade || '—') + '</span></td>'
+      + '<td>' + renderSourceBadge(a.source) + '</td>'
+      + '</tr>';
+  }).join('');
+}
+
+// ── 페이지네이션 ──────────────────────────────────────
+function getPageRange(cp, total) {
+  if (total <= 7) return Array.from({length: total}, function(_, i) { return i + 1; });
+  var r = [1];
+  if (cp > 3) r.push('...');
+  for (var p = Math.max(2, cp-1); p <= Math.min(total-1, cp+1); p++) r.push(p);
+  if (cp < total - 2) r.push('...');
+  r.push(total);
+  return r;
+}
+function renderPagination(totalPages, total, start, count) {
+  const pg = document.getElementById('pagination');
+  const info = document.getElementById('pageInfo');
+  if (totalPages <= 1) {
+    pg.innerHTML = '';
+    info.textContent = total > 0 ? '총 ' + total + '건' : '';
+    return;
+  }
+  const cp = state.currentPage;
+  var parts = ['<button class="page-btn" ' + (cp === 1 ? 'disabled' : '') + ' data-page="' + (cp-1) + '">‹</button>'];
+  getPageRange(cp, totalPages).forEach(function(p) {
+    if (p === '...') {
+      parts.push('<span style="color:var(--text-muted);padding:0 .25rem">…</span>');
+    } else {
+      parts.push('<button class="page-btn ' + (p === cp ? 'active' : '') + '" data-page="' + p + '">' + p + '</button>');
+    }
+  });
+  parts.push('<button class="page-btn" ' + (cp === totalPages ? 'disabled' : '') + ' data-page="' + (cp+1) + '">›</button>');
+  pg.innerHTML = parts.join('');
+  info.textContent = (start+1) + '–' + (start+count) + ' / ' + total + '건';
+  pg.onclick = function(e) {
+    var btn = e.target.closest('[data-page]');
+    if (!btn || btn.disabled) return;
+    state.currentPage = parseInt(btn.dataset.page);
+    applyFilters();
+    document.querySelector('.history-header').scrollIntoView({behavior:'smooth', block:'nearest'});
+  };
+}
+
+// ── applyFilters ──────────────────────────────────────
+function applyFilters() {
+  const q = state.searchQuery.toLowerCase();
+  var filtered = ALL_ANALYSES.filter(function(a) {
+    if (q && !(a.commit_message || '').toLowerCase().includes(q) && !(a.commit_sha || '').toLowerCase().includes(q)) return false;
+    if (state.gradeFilter !== 'all' && a.grade !== state.gradeFilter) return false;
+    if (state.sourceFilter !== 'all' && a.source !== state.sourceFilter) return false;
+    var sc = a.score != null ? a.score : -1;
+    if (sc < state.scoreMin || sc > state.scoreMax) return false;
+    return true;
+  });
+  filtered.sort(function(a, b) {
+    var f = state.sortField;
+    var va = f === 'created_at' ? (a[f] || '') : (a[f] != null ? a[f] : -1);
+    var vb = f === 'created_at' ? (b[f] || '') : (b[f] != null ? b[f] : -1);
+    var cmp = va < vb ? -1 : va > vb ? 1 : 0;
+    return state.sortDir === 'asc' ? cmp : -cmp;
+  });
+  var total = filtered.length;
+  var totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if (state.currentPage > totalPages) state.currentPage = totalPages;
+  var start = (state.currentPage - 1) * PAGE_SIZE;
+  var pageData = filtered.slice(start, start + PAGE_SIZE);
+  renderTable(pageData);
+  renderPagination(totalPages, total, start, pageData.length);
+  var el = document.getElementById('historyCount');
+  if (el) el.textContent = total === ALL_ANALYSES.length
+    ? '최근 ' + total + '건'
+    : total + '건 / 전체 ' + ALL_ANALYSES.length + '건';
+}
+
+// ── 정렬 헤더 ─────────────────────────────────────────
+function updateSortHeaders() {
+  document.querySelectorAll('.sortable-th').forEach(function(th) {
+    th.classList.remove('asc', 'desc');
+    if (th.dataset.sort === state.sortField) th.classList.add(state.sortDir);
+  });
+}
+document.querySelectorAll('.sortable-th').forEach(function(th) {
+  th.addEventListener('click', function() {
+    if (state.sortField === this.dataset.sort) {
+      state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      state.sortField = this.dataset.sort;
+      state.sortDir = 'desc';
+    }
+    state.currentPage = 1;
+    updateSortHeaders();
+    applyFilters();
+  });
+});
+
+// ── 이벤트 바인딩 ─────────────────────────────────────
+var searchTimer;
+document.getElementById('searchInput').addEventListener('input', function() {
+  clearTimeout(searchTimer);
+  var self = this;
+  searchTimer = setTimeout(function() {
+    state.searchQuery = self.value.trim();
+    state.currentPage = 1;
+    applyFilters();
+  }, 150);
+});
+document.getElementById('gradeFilter').addEventListener('click', function(e) {
+  var btn = e.target.closest('[data-grade]');
+  if (!btn) return;
+  state.gradeFilter = btn.dataset.grade;
+  state.currentPage = 1;
+  this.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.toggle('active', b === btn); });
+  applyFilters();
+});
+document.getElementById('sourceFilter').addEventListener('click', function(e) {
+  var btn = e.target.closest('[data-source]');
+  if (!btn) return;
+  state.sourceFilter = btn.dataset.source;
+  state.currentPage = 1;
+  this.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.toggle('active', b === btn); });
+  applyFilters();
+});
+
+// ── 초기 렌더 ─────────────────────────────────────────
+updateSliderFill();
+updateSortHeaders();
+applyFilters();
 </script>
 {% endblock %}

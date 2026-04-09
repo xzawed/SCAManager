@@ -461,7 +461,7 @@ def test_repo_detail_shows_commit_message():
     )
     mock_analysis = MagicMock(
         id=1, commit_sha="abc1234", commit_message="feat: new feature for users",
-        pr_number=None, score=90, grade="A",
+        pr_number=None, score=90, grade="A", result=None,
         created_at=MagicMock(isoformat=MagicMock(return_value="2026-04-08T10:00:00")),
     )
     mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [mock_analysis]
@@ -553,3 +553,89 @@ def test_nav_user_fallback_to_github_login():
         assert "fallback_user" in r.text
     finally:
         app.dependency_overrides[require_login] = lambda: _test_user
+
+
+# ── 이력 페이지 조회 강화 테스트 ──────────────────────────
+
+def test_repo_detail_queries_limit_100():
+    """repo_detail은 최근 100건을 조회한다."""
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
+        id=1, full_name="owner/repo", user_id=None
+    )
+    mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        client.get("/repos/owner%2Frepo")
+    call_args = mock_db.query.return_value.filter.return_value.order_by.return_value.limit.call_args
+    assert call_args is not None
+    assert call_args[0][0] == 100
+
+
+def test_repo_detail_source_pr():
+    """pr_number가 있으면 source='pr'이 analyses JSON에 포함된다."""
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
+        id=1, full_name="owner/repo", user_id=None
+    )
+    mock_analysis = MagicMock(
+        id=1, commit_sha="abc1234", commit_message="feat: pr",
+        pr_number=5, score=88, grade="A", result={},
+        created_at=MagicMock(isoformat=MagicMock(return_value="2026-04-09T10:00:00")),
+    )
+    mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [mock_analysis]
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        r = client.get("/repos/owner%2Frepo")
+    assert r.status_code == 200
+    assert '"source"' in r.text
+    assert '"pr"' in r.text
+
+
+def test_repo_detail_source_push_fallback():
+    """pr_number가 없고 result에 source 없으면 source='push' 폴백."""
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
+        id=1, full_name="owner/repo", user_id=None
+    )
+    mock_analysis = MagicMock(
+        id=2, commit_sha="def5678", commit_message="fix: push",
+        pr_number=None, score=70, grade="B", result=None,
+        created_at=MagicMock(isoformat=MagicMock(return_value="2026-04-09T11:00:00")),
+    )
+    mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [mock_analysis]
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        r = client.get("/repos/owner%2Frepo")
+    assert '"push"' in r.text
+
+
+def test_repo_detail_source_cli_from_result():
+    """result에 source='cli'가 있으면 cli로 반영된다."""
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
+        id=1, full_name="owner/repo", user_id=None
+    )
+    mock_analysis = MagicMock(
+        id=3, commit_sha="ghi9012", commit_message="chore: cli",
+        pr_number=None, score=75, grade="B", result={"source": "cli"},
+        created_at=MagicMock(isoformat=MagicMock(return_value="2026-04-09T12:00:00")),
+    )
+    mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [mock_analysis]
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        r = client.get("/repos/owner%2Frepo")
+    assert '"cli"' in r.text
+
+
+def test_repo_detail_filter_bar_rendered():
+    """이력 페이지에 필터 바 UI 요소가 렌더링된다."""
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
+        id=1, full_name="owner/repo", user_id=None
+    )
+    mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        r = client.get("/repos/owner%2Frepo")
+    assert r.status_code == 200
+    assert 'id="searchInput"' in r.text
+    assert 'data-grade="A"' in r.text
+    assert 'data-source="pr"' in r.text
+    assert 'id="scoreMin"' in r.text
+    assert 'id="pagination"' in r.text

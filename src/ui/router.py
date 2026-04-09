@@ -332,11 +332,12 @@ def repo_detail(
         if repo.user_id is not None and repo.user_id != current_user.id:
             raise HTTPException(status_code=404)
         analyses = (db.query(Analysis).filter(Analysis.repo_id == repo.id)
-                    .order_by(Analysis.created_at.desc()).limit(30).all())
+                    .order_by(Analysis.created_at.desc()).limit(100).all())
         analyses_data = [
             {"id": a.id, "commit_sha": a.commit_sha, "pr_number": a.pr_number,
              "commit_message": a.commit_message,
              "score": a.score, "grade": a.grade,
+             "source": (a.result or {}).get("source") or ("pr" if a.pr_number else "push"),
              "created_at": a.created_at.isoformat() if a.created_at else None}
             for a in analyses
         ]
