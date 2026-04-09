@@ -95,13 +95,14 @@ async def handle_gate_callback(
             analysis.pr_number, decision, body,
         )
         _save_gate_decision(db, analysis_id, decision, "manual", decided_by)
-        if decision == "approve":
-            config = get_repo_config(db, repo.full_name)
-            if config.auto_merge:
-                merged = await merge_pr(github_token, repo.full_name, analysis.pr_number)
-                if merged:
-                    logger.info("PR #%d manual-approved+auto-merged: %s",
-                                analysis.pr_number, repo.full_name)
+        config = get_repo_config(db, repo.full_name)
+        result_dict = analysis.result if isinstance(analysis.result, dict) else {}
+        score = result_dict.get("score", analysis.score or 0)
+        if config.auto_merge and score >= config.merge_threshold:
+            merged = await merge_pr(github_token, repo.full_name, analysis.pr_number)
+            if merged:
+                logger.info("PR #%d manual-approved+auto-merged: %s",
+                            analysis.pr_number, repo.full_name)
     except Exception as exc:
         logger.error("Gate callback failed: %s", exc)
     finally:

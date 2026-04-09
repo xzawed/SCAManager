@@ -57,55 +57,57 @@ def test_put_repo_config():
             mock_db = MagicMock()
             mock_cls.return_value = _make_session_mock(mock_db)
             mock_upsert.return_value = MagicMock(
-                repo_full_name="owner/repo", gate_mode="auto",
-                auto_approve_threshold=80, auto_reject_threshold=45,
-                notify_chat_id=None, n8n_webhook_url=None
+                repo_full_name="owner/repo", approve_mode="auto",
+                approve_threshold=80, reject_threshold=45,
+                pr_review_comment=True, merge_threshold=75,
+                notify_chat_id=None, n8n_webhook_url=None, auto_merge=False,
             )
             r = client.put("/api/repos/owner%2Frepo/config", json={
-                "gate_mode": "auto", "auto_approve_threshold": 80, "auto_reject_threshold": 45,
+                "approve_mode": "auto", "approve_threshold": 80, "reject_threshold": 45,
             })
     assert r.status_code == 200
-    assert r.json()["gate_mode"] == "auto"
+    assert r.json()["approve_mode"] == "auto"
 
 
 # --- API auto_merge 테스트 (Red: RepoConfigUpdate와 응답에 auto_merge 필드가 아직 없음) ---
 
 def test_put_repo_config_with_auto_merge_true():
-    # PUT /api/repos/{repo}/config 에 auto_merge=True 전달 시 응답 JSON에 포함되는지 검증
     with patch("src.api.repos.SessionLocal") as mock_cls:
         with patch("src.api.repos.upsert_repo_config") as mock_upsert:
             mock_db = MagicMock()
             mock_cls.return_value = _make_session_mock(mock_db)
             mock_upsert.return_value = MagicMock(
-                repo_full_name="owner/repo", gate_mode="auto",
-                auto_approve_threshold=80, auto_reject_threshold=45,
+                repo_full_name="owner/repo", approve_mode="auto",
+                approve_threshold=80, reject_threshold=45,
+                pr_review_comment=True, merge_threshold=80,
                 notify_chat_id=None, n8n_webhook_url=None,
                 auto_merge=True,
             )
             r = client.put("/api/repos/owner%2Frepo/config", json={
-                "gate_mode": "auto",
-                "auto_approve_threshold": 80,
-                "auto_reject_threshold": 45,
+                "approve_mode": "auto",
+                "approve_threshold": 80,
+                "reject_threshold": 45,
                 "auto_merge": True,
+                "merge_threshold": 80,
             })
     assert r.status_code == 200
     assert r.json()["auto_merge"] is True
 
 
 def test_put_repo_config_auto_merge_defaults_false():
-    # auto_merge 없이 PUT 요청 시 응답의 auto_merge가 False인지 검증
     with patch("src.api.repos.SessionLocal") as mock_cls:
         with patch("src.api.repos.upsert_repo_config") as mock_upsert:
             mock_db = MagicMock()
             mock_cls.return_value = _make_session_mock(mock_db)
             mock_upsert.return_value = MagicMock(
-                repo_full_name="owner/repo", gate_mode="disabled",
-                auto_approve_threshold=75, auto_reject_threshold=50,
+                repo_full_name="owner/repo", approve_mode="disabled",
+                approve_threshold=75, reject_threshold=50,
+                pr_review_comment=True, merge_threshold=75,
                 notify_chat_id=None, n8n_webhook_url=None,
                 auto_merge=False,
             )
             r = client.put("/api/repos/owner%2Frepo/config", json={
-                "gate_mode": "disabled",
+                "approve_mode": "disabled",
             })
     assert r.status_code == 200
     assert r.json()["auto_merge"] is False
@@ -119,8 +121,9 @@ def test_update_config_discord_webhook_url_passed():
         with patch("src.api.repos.upsert_repo_config") as mock_upsert:
             mock_cls.return_value = _make_session_mock(MagicMock())
             mock_upsert.return_value = MagicMock(
-                repo_full_name="owner/repo", gate_mode="disabled",
-                auto_approve_threshold=75, auto_reject_threshold=50,
+                repo_full_name="owner/repo", approve_mode="disabled",
+                approve_threshold=75, reject_threshold=50,
+                pr_review_comment=True, merge_threshold=75,
                 notify_chat_id=None, n8n_webhook_url=None,
                 discord_webhook_url="https://discord.com/api/webhooks/test",
                 slack_webhook_url=None, custom_webhook_url=None,
@@ -139,8 +142,9 @@ def test_update_config_slack_webhook_url_passed():
         with patch("src.api.repos.upsert_repo_config") as mock_upsert:
             mock_cls.return_value = _make_session_mock(MagicMock())
             mock_upsert.return_value = MagicMock(
-                repo_full_name="owner/repo", gate_mode="disabled",
-                auto_approve_threshold=75, auto_reject_threshold=50,
+                repo_full_name="owner/repo", approve_mode="disabled",
+                approve_threshold=75, reject_threshold=50,
+                pr_review_comment=True, merge_threshold=75,
                 notify_chat_id=None, n8n_webhook_url=None,
                 discord_webhook_url=None,
                 slack_webhook_url="https://hooks.slack.com/test",
@@ -159,8 +163,9 @@ def test_update_config_custom_webhook_url_passed():
         with patch("src.api.repos.upsert_repo_config") as mock_upsert:
             mock_cls.return_value = _make_session_mock(MagicMock())
             mock_upsert.return_value = MagicMock(
-                repo_full_name="owner/repo", gate_mode="disabled",
-                auto_approve_threshold=75, auto_reject_threshold=50,
+                repo_full_name="owner/repo", approve_mode="disabled",
+                approve_threshold=75, reject_threshold=50,
+                pr_review_comment=True, merge_threshold=75,
                 notify_chat_id=None, n8n_webhook_url=None,
                 discord_webhook_url=None, slack_webhook_url=None,
                 custom_webhook_url="https://my.server/hook",
@@ -179,8 +184,9 @@ def test_update_config_email_recipients_passed():
         with patch("src.api.repos.upsert_repo_config") as mock_upsert:
             mock_cls.return_value = _make_session_mock(MagicMock())
             mock_upsert.return_value = MagicMock(
-                repo_full_name="owner/repo", gate_mode="disabled",
-                auto_approve_threshold=75, auto_reject_threshold=50,
+                repo_full_name="owner/repo", approve_mode="disabled",
+                approve_threshold=75, reject_threshold=50,
+                pr_review_comment=True, merge_threshold=75,
                 notify_chat_id=None, n8n_webhook_url=None,
                 discord_webhook_url=None, slack_webhook_url=None,
                 custom_webhook_url=None, email_recipients="a@b.com",
@@ -191,3 +197,145 @@ def test_update_config_email_recipients_passed():
             })
     called_data = mock_upsert.call_args[0][1]
     assert called_data.email_recipients == "a@b.com"
+
+
+# ---------------------------------------------------------------------------
+# PR Gate 3-옵션 분리 재설계 — API 신규 필드 테스트 (Red)
+#
+# 신규 필드: approve_mode, approve_threshold, reject_threshold,
+#            pr_review_comment, merge_threshold
+# 기존 필드 rename: gate_mode → approve_mode,
+#                   auto_approve_threshold → approve_threshold,
+#                   auto_reject_threshold → reject_threshold
+# ---------------------------------------------------------------------------
+
+def test_config_update_with_approve_mode():
+    """PUT /config 에 approve_mode 전달 시 응답 JSON에 포함되어야 한다."""
+    with patch("src.api.repos.SessionLocal") as mock_cls:
+        with patch("src.api.repos.upsert_repo_config") as mock_upsert:
+            mock_db = MagicMock()
+            mock_cls.return_value = _make_session_mock(mock_db)
+            mock_upsert.return_value = MagicMock(
+                repo_full_name="owner/repo",
+                approve_mode="auto",
+                approve_threshold=80,
+                reject_threshold=45,
+                notify_chat_id=None,
+                n8n_webhook_url=None,
+                auto_merge=False,
+                pr_review_comment=True,
+                merge_threshold=75,
+            )
+            r = client.put("/api/repos/owner%2Frepo/config", json={
+                "approve_mode": "auto",
+                "approve_threshold": 80,
+                "reject_threshold": 45,
+            })
+    assert r.status_code == 200
+    assert r.json()["approve_mode"] == "auto"
+
+
+def test_config_update_with_pr_review_comment_false():
+    """PUT /config 에 pr_review_comment=False 전달 시 upsert_repo_config에 전달되어야 한다."""
+    with patch("src.api.repos.SessionLocal") as mock_cls:
+        with patch("src.api.repos.upsert_repo_config") as mock_upsert:
+            mock_db = MagicMock()
+            mock_cls.return_value = _make_session_mock(mock_db)
+            mock_upsert.return_value = MagicMock(
+                repo_full_name="owner/repo",
+                approve_mode="disabled",
+                approve_threshold=75,
+                reject_threshold=50,
+                notify_chat_id=None,
+                n8n_webhook_url=None,
+                auto_merge=False,
+                pr_review_comment=False,
+                merge_threshold=75,
+            )
+            r = client.put("/api/repos/owner%2Frepo/config", json={
+                "pr_review_comment": False,
+            })
+    assert r.status_code == 200
+    assert r.json()["pr_review_comment"] is False
+
+
+def test_config_update_with_merge_threshold():
+    """PUT /config 에 merge_threshold 전달 시 upsert_repo_config에 전달되어야 한다."""
+    with patch("src.api.repos.SessionLocal") as mock_cls:
+        with patch("src.api.repos.upsert_repo_config") as mock_upsert:
+            mock_cls.return_value = _make_session_mock(MagicMock())
+            mock_upsert.return_value = MagicMock(
+                repo_full_name="owner/repo",
+                approve_mode="disabled",
+                approve_threshold=75,
+                reject_threshold=50,
+                notify_chat_id=None,
+                n8n_webhook_url=None,
+                auto_merge=True,
+                pr_review_comment=True,
+                merge_threshold=85,
+            )
+            client.put("/api/repos/owner%2Frepo/config", json={
+                "auto_merge": True,
+                "merge_threshold": 85,
+            })
+    called_data = mock_upsert.call_args[0][1]
+    assert called_data.merge_threshold == 85
+
+
+def test_config_response_includes_new_fields():
+    """GET/PUT 응답에 pr_review_comment, merge_threshold, approve_mode가 포함된다."""
+    with patch("src.api.repos.SessionLocal") as mock_cls:
+        with patch("src.api.repos.upsert_repo_config") as mock_upsert:
+            mock_db = MagicMock()
+            mock_cls.return_value = _make_session_mock(mock_db)
+            mock_upsert.return_value = MagicMock(
+                repo_full_name="owner/repo",
+                approve_mode="semi-auto",
+                approve_threshold=70,
+                reject_threshold=40,
+                notify_chat_id="-100999",
+                n8n_webhook_url=None,
+                auto_merge=True,
+                pr_review_comment=True,
+                merge_threshold=80,
+            )
+            r = client.put("/api/repos/owner%2Frepo/config", json={
+                "approve_mode": "semi-auto",
+                "approve_threshold": 70,
+                "reject_threshold": 40,
+                "auto_merge": True,
+                "pr_review_comment": True,
+                "merge_threshold": 80,
+            })
+    assert r.status_code == 200
+    body = r.json()
+    assert "approve_mode" in body
+    assert "pr_review_comment" in body
+    assert "merge_threshold" in body
+    assert body["approve_mode"] == "semi-auto"
+    assert body["pr_review_comment"] is True
+    assert body["merge_threshold"] == 80
+
+
+def test_config_update_approve_threshold_passed_to_upsert():
+    """PUT /config 에 approve_threshold 전달 시 RepoConfigData에 올바르게 전달된다."""
+    with patch("src.api.repos.SessionLocal") as mock_cls:
+        with patch("src.api.repos.upsert_repo_config") as mock_upsert:
+            mock_cls.return_value = _make_session_mock(MagicMock())
+            mock_upsert.return_value = MagicMock(
+                repo_full_name="owner/repo",
+                approve_mode="auto",
+                approve_threshold=90,
+                reject_threshold=60,
+                notify_chat_id=None, n8n_webhook_url=None,
+                auto_merge=False, pr_review_comment=True, merge_threshold=75,
+            )
+            client.put("/api/repos/owner%2Frepo/config", json={
+                "approve_mode": "auto",
+                "approve_threshold": 90,
+                "reject_threshold": 60,
+            })
+    called_data = mock_upsert.call_args[0][1]
+    assert called_data.approve_threshold == 90
+    assert called_data.reject_threshold == 60

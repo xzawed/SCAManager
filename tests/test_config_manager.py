@@ -17,6 +17,7 @@ from src.config_manager.manager import get_repo_config, upsert_repo_config, Repo
 
 @pytest.fixture
 def db():
+    """인메모리 SQLite 세션 — 각 테스트마다 독립 DB."""
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
@@ -25,63 +26,195 @@ def db():
     session.close()
 
 
+# ---------------------------------------------------------------------------
+# 기존 동작 유지 테스트
+# ---------------------------------------------------------------------------
+
 def test_get_repo_config_returns_default_when_not_found(db):
+    """존재하지 않는 repo 조회 시 기본값 RepoConfigData가 반환된다."""
     config = get_repo_config(db, "owner/nonexistent")
     assert config.repo_full_name == "owner/nonexistent"
-    assert config.gate_mode == "disabled"
-    assert config.auto_approve_threshold == 75
-    assert config.auto_reject_threshold == 50
+    # 기존 필드 — approve_mode로 rename 후에도 기본값은 "disabled"
+    assert config.approve_mode == "disabled"
+    assert config.approve_threshold == 75
+    assert config.reject_threshold == 50
     assert config.notify_chat_id is None
 
 
 def test_upsert_creates_new_config(db):
-    data = RepoConfigData(repo_full_name="owner/repo", gate_mode="auto",
-                          auto_approve_threshold=80, auto_reject_threshold=45)
+    """신규 RepoConfig가 DB에 생성되어야 한다."""
+    data = RepoConfigData(
+        repo_full_name="owner/repo",
+        approve_mode="auto",
+        approve_threshold=80,
+        reject_threshold=45,
+    )
     record = upsert_repo_config(db, data)
     assert record.id is not None
-    assert record.gate_mode == "auto"
-    assert record.auto_approve_threshold == 80
+    assert record.approve_mode == "auto"
+    assert record.approve_threshold == 80
 
 
 def test_upsert_updates_existing_config(db):
-    upsert_repo_config(db, RepoConfigData(repo_full_name="owner/repo", gate_mode="auto"))
-    record = upsert_repo_config(db, RepoConfigData(repo_full_name="owner/repo",
-                                                    gate_mode="semi-auto",
-                                                    auto_approve_threshold=90))
-    assert record.gate_mode == "semi-auto"
-    assert record.auto_approve_threshold == 90
+    """기존 RepoConfig가 업데이트되고 중복 생성되지 않아야 한다."""
+    upsert_repo_config(db, RepoConfigData(repo_full_name="owner/repo", approve_mode="auto"))
+    record = upsert_repo_config(db, RepoConfigData(
+        repo_full_name="owner/repo",
+        approve_mode="semi-auto",
+        approve_threshold=90,
+    ))
+    assert record.approve_mode == "semi-auto"
+    assert record.approve_threshold == 90
     assert db.query(RepoConfig).filter_by(repo_full_name="owner/repo").count() == 1
 
 
 def test_get_repo_config_returns_existing(db):
-    upsert_repo_config(db, RepoConfigData(repo_full_name="owner/repo", gate_mode="auto",
-                                           notify_chat_id="-100999"))
+    """저장된 RepoConfig가 올바르게 조회된다."""
+    upsert_repo_config(db, RepoConfigData(
+        repo_full_name="owner/repo",
+        approve_mode="auto",
+        notify_chat_id="-100999",
+    ))
     config = get_repo_config(db, "owner/repo")
-    assert config.gate_mode == "auto"
+    assert config.approve_mode == "auto"
     assert config.notify_chat_id == "-100999"
 
 
-# --- auto_merge 필드 테스트 (Red: RepoConfigData와 RepoConfig에 auto_merge가 아직 없음) ---
+# ---------------------------------------------------------------------------
+# 신규 필드 기본값 테스트 (Red: pr_review_comment, merge_threshold 미존재)
+# ---------------------------------------------------------------------------
+
+def test_repo_config_data_new_fields_defaults():
+    """RepoConfigData에 신규 필드가 있고 기본값이 올바른지 검증한다."""
+    # pr_review_comment 기본값은 True
+    config = RepoConfigData(repo_full_name="owner/repo")
+    assert config.pr_review_comment is True
+    # merge_threshold 기본값은 75
+    assert config.merge_threshold == 75
+    # approve_mode 기본값은 "disabled" (gate_mode rename)
+    assert config.approve_mode == "disabled"
+    # approve_threshold 기본값은 75 (auto_approve_threshold rename)
+    assert config.approve_threshold == 75
+    # reject_threshold 기본값은 50 (auto_reject_threshold rename)
+    assert config.reject_threshold == 50
+
+
+def test_get_repo_config_default_pr_review_comment_is_true(db):
+    """존재하지 않는 repo 조회 시 pr_review_comment 기본값이 True인지 검증한다."""
+    config = get_repo_config(db, "owner/new-repo")
+    assert config.pr_review_comment is True
+
+
+def test_get_repo_config_default_merge_threshold_is_75(db):
+    """존재하지 않는 repo 조회 시 merge_threshold 기본값이 75인지 검증한다."""
+    config = get_repo_config(db, "owner/new-repo-2")
+    assert config.merge_threshold == 75
+
 
 def test_get_repo_config_default_auto_merge_is_false(db):
-    # 존재하지 않는 repo 조회 시 auto_merge 기본값이 False인지 검증
+    """존재하지 않는 repo 조회 시 auto_merge 기본값이 False인지 검증한다."""
     config = get_repo_config(db, "owner/nonexistent-auto-merge")
     assert config.auto_merge is False
 
 
+# ---------------------------------------------------------------------------
+# 신규 필드 저장/조회 테스트 (Red: DB 컬럼 미존재)
+# ---------------------------------------------------------------------------
+
+def test_get_repo_config_returns_new_fields(db):
+    """get_repo_config()가 신규 필드(pr_review_comment, merge_threshold)를 포함한다."""
+    upsert_repo_config(db, RepoConfigData(
+        repo_full_name="owner/repo",
+        approve_mode="auto",
+        pr_review_comment=False,
+        merge_threshold=80,
+    ))
+    config = get_repo_config(db, "owner/repo")
+    assert config.pr_review_comment is False
+    assert config.merge_threshold == 80
+
+
+def test_upsert_repo_config_with_pr_review_comment_false(db):
+    """pr_review_comment=False로 upsert 시 DB에 올바르게 저장된다."""
+    data = RepoConfigData(
+        repo_full_name="owner/repo-noreview",
+        approve_mode="auto",
+        pr_review_comment=False,
+    )
+    record = upsert_repo_config(db, data)
+    assert record.pr_review_comment is False
+
+
+def test_upsert_repo_config_with_merge_threshold(db):
+    """merge_threshold 값이 지정되면 DB에 올바르게 저장된다."""
+    data = RepoConfigData(
+        repo_full_name="owner/repo-mergethresh",
+        approve_mode="auto",
+        auto_merge=True,
+        merge_threshold=85,
+    )
+    record = upsert_repo_config(db, data)
+    assert record.merge_threshold == 85
+
+
+def test_upsert_updates_pr_review_comment(db):
+    """pr_review_comment를 True → False로 업데이트 시 DB에 반영된다."""
+    upsert_repo_config(db, RepoConfigData(
+        repo_full_name="owner/repo-toggle",
+        approve_mode="auto",
+        pr_review_comment=True,
+    ))
+    record = upsert_repo_config(db, RepoConfigData(
+        repo_full_name="owner/repo-toggle",
+        approve_mode="auto",
+        pr_review_comment=False,
+    ))
+    assert record.pr_review_comment is False
+    assert db.query(RepoConfig).filter_by(repo_full_name="owner/repo-toggle").count() == 1
+
+
+def test_upsert_updates_merge_threshold(db):
+    """merge_threshold를 75 → 90으로 업데이트 시 DB에 반영된다."""
+    upsert_repo_config(db, RepoConfigData(
+        repo_full_name="owner/repo-thresh",
+        approve_mode="auto",
+        merge_threshold=75,
+    ))
+    record = upsert_repo_config(db, RepoConfigData(
+        repo_full_name="owner/repo-thresh",
+        approve_mode="auto",
+        merge_threshold=90,
+    ))
+    assert record.merge_threshold == 90
+    assert db.query(RepoConfig).filter_by(repo_full_name="owner/repo-thresh").count() == 1
+
+
+# ---------------------------------------------------------------------------
+# auto_merge 기존 테스트 — approve_mode 필드명 기준으로 유지
+# ---------------------------------------------------------------------------
+
 def test_upsert_creates_config_with_auto_merge_true(db):
-    # auto_merge=True로 RepoConfig 생성 시 DB에 올바르게 저장되는지 검증
-    data = RepoConfigData(repo_full_name="owner/repo-merge", gate_mode="auto",
-                          auto_merge=True)
+    """auto_merge=True로 RepoConfig 생성 시 DB에 올바르게 저장된다."""
+    data = RepoConfigData(
+        repo_full_name="owner/repo-merge",
+        approve_mode="auto",
+        auto_merge=True,
+    )
     record = upsert_repo_config(db, data)
     assert record.auto_merge is True
 
 
 def test_upsert_updates_auto_merge_flag(db):
-    # auto_merge를 False → True로 업데이트 시 DB에 반영되는지 검증
-    upsert_repo_config(db, RepoConfigData(repo_full_name="owner/repo-flag",
-                                           gate_mode="auto", auto_merge=False))
-    record = upsert_repo_config(db, RepoConfigData(repo_full_name="owner/repo-flag",
-                                                    gate_mode="auto", auto_merge=True))
+    """auto_merge를 False → True로 업데이트 시 DB에 반영된다."""
+    upsert_repo_config(db, RepoConfigData(
+        repo_full_name="owner/repo-flag",
+        approve_mode="auto",
+        auto_merge=False,
+    ))
+    record = upsert_repo_config(db, RepoConfigData(
+        repo_full_name="owner/repo-flag",
+        approve_mode="auto",
+        auto_merge=True,
+    ))
     assert record.auto_merge is True
     assert db.query(RepoConfig).filter_by(repo_full_name="owner/repo-flag").count() == 1

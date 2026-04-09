@@ -13,9 +13,10 @@ router = APIRouter(prefix="/api", dependencies=[require_api_key])
 class RepoConfigUpdate(BaseModel):
     """Request body for PUT /api/repos/{repo}/config."""
 
-    gate_mode: str = "disabled"
-    auto_approve_threshold: int = 75
-    auto_reject_threshold: int = 50
+    pr_review_comment: bool = True
+    approve_mode: str = "disabled"
+    approve_threshold: int = 75
+    reject_threshold: int = 50
     notify_chat_id: str | None = None
     n8n_webhook_url: str | None = None
     discord_webhook_url: str | None = None
@@ -23,6 +24,7 @@ class RepoConfigUpdate(BaseModel):
     custom_webhook_url: str | None = None
     email_recipients: str | None = None
     auto_merge: bool = False
+    merge_threshold: int = 75
 
 
 @router.get("/repos")
@@ -61,9 +63,10 @@ def update_repo_config(repo_name: str, body: RepoConfigUpdate):
     with SessionLocal() as db:
         record = upsert_repo_config(db, RepoConfigData(
             repo_full_name=repo_name,
-            gate_mode=body.gate_mode,
-            auto_approve_threshold=body.auto_approve_threshold,
-            auto_reject_threshold=body.auto_reject_threshold,
+            pr_review_comment=body.pr_review_comment,
+            approve_mode=body.approve_mode,
+            approve_threshold=body.approve_threshold,
+            reject_threshold=body.reject_threshold,
             notify_chat_id=body.notify_chat_id,
             n8n_webhook_url=body.n8n_webhook_url,
             discord_webhook_url=body.discord_webhook_url,
@@ -71,13 +74,16 @@ def update_repo_config(repo_name: str, body: RepoConfigUpdate):
             custom_webhook_url=body.custom_webhook_url,
             email_recipients=body.email_recipients,
             auto_merge=body.auto_merge,
+            merge_threshold=body.merge_threshold,
         ))
         return {
             "repo_full_name": record.repo_full_name,
-            "gate_mode": record.gate_mode,
-            "auto_approve_threshold": record.auto_approve_threshold,
-            "auto_reject_threshold": record.auto_reject_threshold,
+            "pr_review_comment": record.pr_review_comment,
+            "approve_mode": record.approve_mode,
+            "approve_threshold": record.approve_threshold,
+            "reject_threshold": record.reject_threshold,
             "notify_chat_id": record.notify_chat_id,
             "n8n_webhook_url": record.n8n_webhook_url,
             "auto_merge": record.auto_merge,
+            "merge_threshold": record.merge_threshold,
         }

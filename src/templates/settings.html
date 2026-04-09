@@ -179,71 +179,92 @@
   </div>
 
   <form method="post" action="/repos/{{ repo_name }}/settings">
-    <input type="hidden" name="gate_mode" id="gateModeValue" value="{{ config.gate_mode }}">
+    <input type="hidden" name="approve_mode" id="approveModeValue" value="{{ config.approve_mode }}">
 
     <div class="settings-grid">
 
-      <!-- ① Gate 엔진 -->
+      <!-- ① Review Comment -->
+      <div class="s-card">
+        <div class="s-card-hdr hdr-gate">
+          <span class="hdr-icon">💬</span>
+          <span class="hdr-title">PR 코드리뷰 댓글</span>
+        </div>
+        <div class="s-card-body">
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="t-title">PR에 AI 리뷰 댓글 발송</div>
+              <div class="t-desc">분석 완료 시 점수·AI 피드백·개선 제안을<br>PR 댓글로 자동 발송합니다.</div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" name="pr_review_comment" value="on"
+                     {% if config.pr_review_comment %}checked{% endif %}>
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- ② Approve -->
       <div class="s-card">
         <div class="s-card-hdr hdr-gate">
           <span class="hdr-icon">⚡</span>
-          <span class="hdr-title">Gate 엔진</span>
-          <span class="hdr-badge" id="gateBadge">{{ config.gate_mode }}</span>
+          <span class="hdr-title">Approve</span>
+          <span class="hdr-badge" id="approveBadge">{{ config.approve_mode }}</span>
         </div>
         <div class="s-card-body">
           <div class="gate-btns">
-            <div class="gate-mode-btn {% if config.gate_mode == 'disabled' %}active{% endif %}"
-                 data-mode="disabled" onclick="setGateMode('disabled')">
+            <div class="gate-mode-btn {% if config.approve_mode == 'disabled' %}active{% endif %}"
+                 data-mode="disabled" onclick="setApproveMode('disabled')">
               <span class="gm-icon">🚫</span>비활성
             </div>
-            <div class="gate-mode-btn {% if config.gate_mode == 'auto' %}active{% endif %}"
-                 data-mode="auto" onclick="setGateMode('auto')">
+            <div class="gate-mode-btn {% if config.approve_mode == 'auto' %}active{% endif %}"
+                 data-mode="auto" onclick="setApproveMode('auto')">
               <span class="gm-icon">⚡</span>자동
             </div>
-            <div class="gate-mode-btn {% if config.gate_mode == 'semi-auto' %}active{% endif %}"
-                 data-mode="semi-auto" onclick="setGateMode('semi-auto')">
+            <div class="gate-mode-btn {% if config.approve_mode == 'semi-auto' %}active{% endif %}"
+                 data-mode="semi-auto" onclick="setApproveMode('semi-auto')">
               <span class="gm-icon">📱</span>반자동
             </div>
           </div>
 
           <div class="threshold-row">
             <div class="threshold-label">
-              <span>자동 승인 기준점</span>
+              <span>승인 기준점</span>
               <span style="color:var(--success);font-size:11px;font-weight:600;">이상 → 승인</span>
             </div>
             <div class="threshold-ctrl">
-              <input type="range" class="approve-range" name="auto_approve_threshold"
-                     min="0" max="100" value="{{ config.auto_approve_threshold }}"
+              <input type="range" class="approve-range" name="approve_threshold"
+                     min="0" max="100" value="{{ config.approve_threshold }}"
                      oninput="document.getElementById('approveVal').value=this.value">
               <input type="number" id="approveVal" class="num-input"
-                     min="0" max="100" value="{{ config.auto_approve_threshold }}"
+                     min="0" max="100" value="{{ config.approve_threshold }}"
                      oninput="this.previousElementSibling.value=this.value">
             </div>
           </div>
 
           <div class="threshold-row" style="margin-bottom:0">
             <div class="threshold-label">
-              <span>자동 반려 기준점</span>
+              <span>반려 기준점</span>
               <span style="color:var(--danger);font-size:11px;font-weight:600;">미만 → 반려</span>
             </div>
             <div class="threshold-ctrl">
-              <input type="range" class="reject-range" name="auto_reject_threshold"
-                     min="0" max="100" value="{{ config.auto_reject_threshold }}"
+              <input type="range" class="reject-range" name="reject_threshold"
+                     min="0" max="100" value="{{ config.reject_threshold }}"
                      oninput="document.getElementById('rejectVal').value=this.value">
               <input type="number" id="rejectVal" class="num-input danger"
-                     min="0" max="100" value="{{ config.auto_reject_threshold }}"
+                     min="0" max="100" value="{{ config.reject_threshold }}"
                      oninput="this.previousElementSibling.value=this.value">
             </div>
           </div>
 
           <div class="range-hint">
-            💡 <strong>{{ config.auto_approve_threshold }}점 이상</strong> 자동 승인 ·
-               <strong>{{ config.auto_reject_threshold }}점 미만</strong> 자동 반려 · 그 사이 반자동
+            💡 <strong>{{ config.approve_threshold }}점 이상</strong> 자동 승인 ·
+               <strong>{{ config.reject_threshold }}점 미만</strong> 자동 반려 · 그 사이 스킵
           </div>
         </div>
       </div>
 
-      <!-- ② 알림 채널 -->
+      <!-- ③ 알림 채널 -->
       <div class="s-card">
         <div class="s-card-hdr hdr-notify">
           <span class="hdr-icon">🔔</span>
@@ -251,8 +272,8 @@
         </div>
         <div class="s-card-body">
           <div class="field-row">
-            <label class="field-label">Telegram Chat ID <span class="field-tag">반자동 모드</span></label>
-            <span class="field-hint">반자동 Gate에서 승인 요청을 보낼 채팅 ID</span>
+            <label class="field-label">Telegram Chat ID <span class="field-tag">반자동 Approve</span></label>
+            <span class="field-hint">반자동 Approve에서 승인 요청을 보낼 채팅 ID</span>
             <input class="field-input" type="text" name="notify_chat_id"
                    value="{{ config.notify_chat_id or '' }}" placeholder="-100xxxxxxxxx">
           </div>
@@ -290,17 +311,18 @@
         </div>
       </div>
 
-      <!-- ③ 자동 Merge -->
+      <!-- ④ 자동 Merge -->
       <div class="s-card">
         <div class="s-card-hdr hdr-merge">
           <span class="hdr-icon">🔀</span>
-          <span class="hdr-title">자동 Merge</span>
+          <span class="hdr-title">Auto Merge</span>
         </div>
         <div class="s-card-body">
-          <div class="toggle-row">
+          <div class="toggle-row" style="margin-bottom:.85rem">
             <div class="toggle-info">
-              <div class="t-title">승인 시 자동 Merge</div>
-              <div class="t-desc">Gate 승인 즉시 squash merge 실행.<br>
+              <div class="t-title">자동 Merge</div>
+              <div class="t-desc">점수가 Merge 임계값 이상이면 즉시 squash merge.<br>
+                Approve 설정과 완전 독립 동작.<br>
                 <code style="font-size:11px;">pull_requests: write</code> 권한 필요</div>
             </div>
             <label class="toggle-switch">
@@ -309,10 +331,25 @@
               <span class="toggle-track"></span>
             </label>
           </div>
+
+          <div class="threshold-row" style="margin-bottom:0">
+            <div class="threshold-label">
+              <span>Merge 임계값</span>
+              <span style="color:var(--success);font-size:11px;font-weight:600;">이상 → Merge</span>
+            </div>
+            <div class="threshold-ctrl">
+              <input type="range" class="approve-range" name="merge_threshold"
+                     min="0" max="100" value="{{ config.merge_threshold }}"
+                     oninput="document.getElementById('mergeVal').value=this.value">
+              <input type="number" id="mergeVal" class="num-input"
+                     min="0" max="100" value="{{ config.merge_threshold }}"
+                     oninput="this.previousElementSibling.value=this.value">
+            </div>
+          </div>
         </div>
       </div>
 
-      <!-- ④ CLI Hook -->
+      <!-- ⑤ CLI Hook -->
       <div class="s-card">
         <div class="s-card-hdr hdr-hook">
           <span class="hdr-icon">🔧</span>
@@ -348,12 +385,12 @@
 </div>
 
 <script>
-  function setGateMode(mode) {
-    document.getElementById('gateModeValue').value = mode;
+  function setApproveMode(mode) {
+    document.getElementById('approveModeValue').value = mode;
     document.querySelectorAll('.gate-mode-btn').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.mode === mode);
     });
-    const badge = document.getElementById('gateBadge');
+    const badge = document.getElementById('approveBadge');
     if (badge) badge.textContent = mode;
   }
 </script>
