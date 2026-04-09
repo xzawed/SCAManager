@@ -357,6 +357,120 @@ def test_analysis_detail_404_for_other_users_repo():
     assert r.status_code == 404
 
 
+def test_analysis_detail_shows_commit_message():
+    """분석 상세 페이지에 커밋 메시지가 표시된다."""
+    mock_db = MagicMock()
+    mock_analysis = MagicMock(
+        id=42, commit_sha="abc1234567890", commit_message="feat: add login page",
+        pr_number=10, score=82, grade="B",
+        result={"breakdown": {"code_quality": 20}, "ai_summary": "good code"},
+        created_at=MagicMock(isoformat=MagicMock(return_value="2026-04-08T14:30:00")),
+    )
+    mock_db.query.return_value.filter.return_value.first.side_effect = [
+        MagicMock(id=1, full_name="owner/repo", user_id=None),
+        mock_analysis,
+    ]
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        r = client.get("/repos/owner%2Frepo/analyses/42")
+    assert r.status_code == 200
+    assert "feat: add login page" in r.text
+
+
+def test_analysis_detail_shows_fallback_when_no_commit_message():
+    """커밋 메시지가 없어도 fallback 텍스트가 표시된다."""
+    mock_db = MagicMock()
+    mock_analysis = MagicMock(
+        id=42, commit_sha="abc1234567890", commit_message=None,
+        pr_number=None, score=70, grade="C",
+        result={"breakdown": {}},
+        created_at=MagicMock(isoformat=MagicMock(return_value="2026-04-08T10:00:00")),
+    )
+    mock_db.query.return_value.filter.return_value.first.side_effect = [
+        MagicMock(id=1, full_name="owner/repo", user_id=None),
+        mock_analysis,
+    ]
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        r = client.get("/repos/owner%2Frepo/analyses/42")
+    assert r.status_code == 200
+    assert "커밋 메시지 없음" in r.text
+
+
+def test_analysis_detail_shows_score_when_result_empty():
+    """result가 빈 dict일 때도 점수 배너가 표시된다."""
+    mock_db = MagicMock()
+    mock_analysis = MagicMock(
+        id=42, commit_sha="abc1234567890", commit_message="fix: bug",
+        pr_number=None, score=65, grade="C",
+        result={},
+        created_at=MagicMock(isoformat=MagicMock(return_value="2026-04-08T10:00:00")),
+    )
+    mock_db.query.return_value.filter.return_value.first.side_effect = [
+        MagicMock(id=1, full_name="owner/repo", user_id=None),
+        mock_analysis,
+    ]
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        r = client.get("/repos/owner%2Frepo/analyses/42")
+    assert r.status_code == 200
+    assert "65" in r.text
+    assert "/100" in r.text
+
+
+def test_analysis_detail_shows_source_indicator():
+    """분석 소스(CLI/PR/Push)가 표시된다."""
+    mock_db = MagicMock()
+    mock_analysis = MagicMock(
+        id=42, commit_sha="abc1234567890", commit_message="test",
+        pr_number=None, score=80, grade="B",
+        result={"source": "cli", "breakdown": {}},
+        created_at=MagicMock(isoformat=MagicMock(return_value="2026-04-08T10:00:00")),
+    )
+    mock_db.query.return_value.filter.return_value.first.side_effect = [
+        MagicMock(id=1, full_name="owner/repo", user_id=None),
+        mock_analysis,
+    ]
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        r = client.get("/repos/owner%2Frepo/analyses/42")
+    assert r.status_code == 200
+    assert "CLI" in r.text
+
+
+def test_analysis_detail_shows_full_datetime():
+    """분석 상세에 날짜와 시간이 모두 표시된다."""
+    mock_db = MagicMock()
+    mock_analysis = MagicMock(
+        id=42, commit_sha="abc1234567890", commit_message="test",
+        pr_number=None, score=80, grade="B",
+        result={"breakdown": {}},
+        created_at=MagicMock(isoformat=MagicMock(return_value="2026-04-08T14:30:00")),
+    )
+    mock_db.query.return_value.filter.return_value.first.side_effect = [
+        MagicMock(id=1, full_name="owner/repo", user_id=None),
+        mock_analysis,
+    ]
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        r = client.get("/repos/owner%2Frepo/analyses/42")
+    assert r.status_code == 200
+    assert "2026-04-08 14:30" in r.text
+
+
+def test_repo_detail_shows_commit_message():
+    """리포 상세 이력 테이블에 커밋 메시지 미리보기가 표시된다."""
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
+        id=1, full_name="owner/repo", user_id=None
+    )
+    mock_analysis = MagicMock(
+        id=1, commit_sha="abc1234", commit_message="feat: new feature for users",
+        pr_number=None, score=90, grade="A",
+        created_at=MagicMock(isoformat=MagicMock(return_value="2026-04-08T10:00:00")),
+    )
+    mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [mock_analysis]
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        r = client.get("/repos/owner%2Frepo")
+    assert r.status_code == 200
+    assert "feat: new feature" in r.text
+
+
 # ── reinstall-webhook 엔드포인트 테스트 ──────────────────────────
 
 def test_reinstall_webhook_deletes_and_recreates():

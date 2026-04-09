@@ -211,6 +211,24 @@ async def test_db_stores_commit_message(mock_deps):
     assert analysis_added.commit_message == "feat: add awesome feature"
 
 
+async def test_db_result_stores_source_push(mock_deps):
+    """Push 이벤트 시 result에 source='push'가 저장된다."""
+    from src.worker.pipeline import run_analysis_pipeline
+    await run_analysis_pipeline("push", PUSH_DATA)
+
+    analysis_added = mock_deps["db"].add.call_args_list[-1][0][0]
+    assert analysis_added.result["source"] == "push"
+
+
+async def test_db_result_stores_source_pr(mock_deps):
+    """PR 이벤트 시 result에 source='pr'이 저장된다."""
+    from src.worker.pipeline import run_analysis_pipeline
+    await run_analysis_pipeline("pull_request", PR_DATA)
+
+    analysis_added = mock_deps["db"].add.call_args_list[-1][0][0]
+    assert analysis_added.result["source"] == "pr"
+
+
 async def test_pipeline_calls_gate_for_pr(mock_deps):
     from src.worker.pipeline import run_analysis_pipeline
     from src.analyzer.ai_review import AiReviewResult
