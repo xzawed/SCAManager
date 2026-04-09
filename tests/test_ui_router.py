@@ -639,3 +639,24 @@ def test_repo_detail_filter_bar_rendered():
     assert 'data-source="pr"' in r.text
     assert 'id="scoreMin"' in r.text
     assert 'id="pagination"' in r.text
+
+
+def test_repo_detail_date_filter_rendered():
+    """이력 페이지에 날짜 필터 UI 요소가 렌더링된다."""
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
+        id=1, full_name="owner/repo", user_id=None
+    )
+    mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        r = client.get("/repos/owner%2Frepo")
+    assert r.status_code == 200
+    assert 'id="dateFilter"' in r.text
+    assert 'data-date="today"' in r.text
+    assert 'data-date="week"' in r.text
+    assert 'data-date="month"' in r.text
+    assert 'data-date="year"' in r.text
+    assert 'data-date="custom"' in r.text
+    assert 'id="customDateWrap"' in r.text
+    assert 'id="dateFrom"' in r.text
+    assert 'id="dateTo"' in r.text
