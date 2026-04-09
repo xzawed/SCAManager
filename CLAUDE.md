@@ -131,12 +131,12 @@ src/
 ├── config_manager/
 │   └── manager.py              # get_repo_config(), upsert_repo_config(), RepoConfigData
 ├── gate/
-│   ├── engine.py               # run_gate_check() — auto/semi-auto 분기, auto_merge 처리
+│   ├── engine.py               # run_gate_check() — 3-옵션 독립(pr_review_comment·approve_mode·auto_merge) 처리
 │   ├── github_review.py        # post_github_review(), merge_pr() — GitHub Review/Merge API (github_api_headers 사용)
 │   └── telegram_gate.py        # send_gate_request() — 인라인 키보드 메시지
 ├── notifier/
 │   ├── telegram.py             # send_analysis_result() — HTML 파싱 모드
-│   ├── github_comment.py       # post_pr_comment()
+│   ├── github_comment.py       # post_pr_comment(), post_pr_comment_from_result() — result dict 기반 PR 코드리뷰 댓글
 │   ├── discord.py              # send_discord_notification() — Discord Embed
 │   ├── slack.py                # send_slack_notification() — Slack Attachment
 │   ├── webhook.py              # send_webhook_notification() — 범용 JSON POST
@@ -156,7 +156,7 @@ src/
 │   ├── overview.html           # 리포 현황 목록
 │   ├── repo_detail.html        # 점수 차트(Chart.js) + 분석 이력 (검색·날짜범위·등급/소스 필터·정렬·페이지네이션·점수 슬라이더, 소스 컬럼)
 │   ├── analysis_detail.html    # 분석 상세 — AI 리뷰·피드백·정적 분석 이슈 + 날짜·시간·소스(CLI/PR/Push)·SHA title
-│   └── settings.html           # Gate 모드·임계값·알림 채널 설정 폼 + CLI Hook 재설치 섹션
+│   └── settings.html           # 4-카드 설정 폼(PR 리뷰 댓글·Approve·알림 채널·Auto Merge) + CLI Hook 재설치 섹션
 ├── cli/
 │   ├── __main__.py             # CLI entry point — python -m src.cli review
 │   ├── git_diff.py             # 로컬 git diff 수집 (ChangedFile, get_diff_files)
@@ -202,7 +202,9 @@ docs/
     ├── specs/
     │   ├── 2026-04-05-scamanager-design.md
     │   ├── 2026-04-07-phase8a-auth-user-design.md
-    │   └── 2026-04-07-phase8b-github-oauth-repo-add-design.md
+    │   ├── 2026-04-07-phase8b-github-oauth-repo-add-design.md
+    │   ├── 2026-04-09-settings-ui-redesign-design.md
+    │   └── 2026-04-10-pr-gate-three-options-design.md
     └── plans/
         ├── 2026-04-05-phase1-mvp.md
         ├── 2026-04-05-phase2-ai-review.md
@@ -233,14 +235,15 @@ GitHub Push/PR
       → calculate_score(ai_review)
           (코드품질25 + 보안20 + 커밋15 + AI방향성25 + 테스트15)
       → DB 저장 (Analysis 레코드)
-      → run_gate_check() [PR 이벤트만]
-          [auto]      → GitHub Approve / Request Changes 즉시 실행
-                         → auto_merge=True이면 squash merge 자동 실행
-          [semi-auto] → Telegram 인라인 키보드 전송 → POST /api/webhook/telegram 콜백 수신
+      → run_gate_check() [PR 이벤트만] — 3-옵션 완전 독립 처리
+          [pr_review_comment=on] → post_pr_comment_from_result() — PR에 AI 코드리뷰 댓글 발송
+          [approve_mode=auto]    → score ≥ approve_threshold → GitHub APPROVE
+                                   score < reject_threshold → GitHub REQUEST_CHANGES
+          [approve_mode=semi]    → Telegram 인라인 키보드 전송 → POST /api/webhook/telegram 콜백 수신
+          [auto_merge=on, score ≥ merge_threshold] → squash merge (approve_mode 무관)
       → _build_notify_tasks() — RepoConfig 기반 채널 디스패처
       → asyncio.gather(return_exceptions=True):
           ├─ send_analysis_result()        (Telegram — notify_chat_id 또는 global fallback)
-          ├─ post_pr_comment()             (PR 이벤트 시 GitHub PR Comment)
           ├─ send_discord_notification()   (discord_webhook_url 설정 시)
           ├─ send_slack_notification()     (slack_webhook_url 설정 시)
           ├─ send_webhook_notification()   (custom_webhook_url 설정 시)
@@ -251,7 +254,7 @@ Telegram 반자동 콜백:
   → POST /api/webhook/telegram
   → gate:{decision}:{id}:{token} 파싱 (HMAC 인증 포함)
   → post_github_review() + GateDecision DB 저장
-  → approve + auto_merge=True이면 squash merge 자동 실행
+  → auto_merge=on, score ≥ merge_threshold → squash merge (approve_mode 무관하게 독립 동작)
 
 대시보드:
   → GET /                              (리포 현황 Web UI)
