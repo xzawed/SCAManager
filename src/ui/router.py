@@ -315,7 +315,7 @@ def analysis_detail(
             "created_at": analysis.created_at.isoformat() if analysis.created_at else None,
         }
     return templates.TemplateResponse(request, "analysis_detail.html", {
-        "repo_name": repo_name, "analysis": data,
+        "repo_name": repo_name, "analysis": data, "current_user": current_user,
     })
 
 
