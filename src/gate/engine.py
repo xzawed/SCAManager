@@ -1,3 +1,4 @@
+"""Gate Engine — decides auto/semi-auto PR approve, reject, and merge actions."""
 import logging
 from sqlalchemy.orm import Session
 from src.config_manager.manager import get_repo_config

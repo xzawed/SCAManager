@@ -1,3 +1,4 @@
+"""Telegram notifier — sends HTML-formatted analysis results via Bot API."""
 from html import escape
 
 import httpx

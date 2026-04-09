@@ -15,6 +15,7 @@ from src.models.repo_config import RepoConfig
 from src.models.repository import Repository
 from src.analyzer.ai_review import AiReviewResult
 from src.scorer.calculator import calculate_score
+from src.worker.pipeline import _build_result_dict
 
 logger = logging.getLogger(__name__)
 
@@ -113,19 +114,7 @@ def save_hook_result(body: HookResultRequest):
             pr_number=None,
             score=score_result.total,
             grade=score_result.grade,
-            result={
-                "breakdown": score_result.breakdown,
-                "ai_summary": ai_review.summary,
-                "ai_suggestions": ai_review.suggestions,
-                "commit_message_feedback": ai_review.commit_message_feedback,
-                "code_quality_feedback": ai_review.code_quality_feedback,
-                "security_feedback": ai_review.security_feedback,
-                "direction_feedback": ai_review.direction_feedback,
-                "test_feedback": ai_review.test_feedback,
-                "file_feedbacks": ai_review.file_feedbacks,
-                "issues": [],
-                "source": "cli",
-            },
+            result=_build_result_dict(ai_review, score_result, [], "cli"),
         )
 
         db.add(analysis)

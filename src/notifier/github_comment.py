@@ -1,4 +1,7 @@
+"""GitHub pull request comment notifier using the GitHub Issues API."""
 import httpx
+
+from src.github_client.helpers import github_api_headers
 from src.scorer.calculator import ScoreResult
 from src.analyzer.static import StaticAnalysisResult
 from src.analyzer.ai_review import AiReviewResult
@@ -78,13 +81,13 @@ async def post_pr_comment(
     analysis_results: list[StaticAnalysisResult],
     ai_review: AiReviewResult | None,
 ) -> None:
+    """Post a formatted analysis result comment on a GitHub pull request."""
     body = _build_comment_body(score_result, analysis_results, ai_review)
     url = f"https://api.github.com/repos/{repo_name}/issues/{pr_number}/comments"
-    headers = {
-        "Authorization": f"Bearer {github_token}",
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-    }
     async with httpx.AsyncClient() as client:
-        r = await client.post(url, json={"body": body}, headers=headers)
+        r = await client.post(
+            url,
+            json={"body": body},
+            headers=github_api_headers(github_token),
+        )
         r.raise_for_status()

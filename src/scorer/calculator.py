@@ -1,3 +1,4 @@
+"""Score calculator — converts static analysis and AI review results into a 0–100 score."""
 from __future__ import annotations
 from dataclasses import dataclass
 from src.analyzer.static import StaticAnalysisResult

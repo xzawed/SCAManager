@@ -1,3 +1,4 @@
+"""Discord notifier — sends analysis results as embed messages via webhook."""
 import httpx
 from src.scorer.calculator import ScoreResult
 from src.analyzer.static import StaticAnalysisResult

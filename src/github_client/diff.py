@@ -1,18 +1,15 @@
+"""GitHub API client for fetching changed files from PRs and push commits."""
 import logging
-from dataclasses import dataclass
+
 from github import Github
+
+from src.github_client.models import ChangedFile
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class ChangedFile:
-    filename: str
-    content: str
-    patch: str
-
-
 def get_pr_files(github_token: str, repo_name: str, pr_number: int) -> list[ChangedFile]:
+    """Fetch all changed files for a given pull request."""
     g = Github(github_token)
     repo = g.get_repo(repo_name)
     pr = repo.get_pull(pr_number)
@@ -20,6 +17,7 @@ def get_pr_files(github_token: str, repo_name: str, pr_number: int) -> list[Chan
 
 
 def get_push_files(github_token: str, repo_name: str, commit_sha: str) -> list[ChangedFile]:
+    """Fetch all changed files for a given push commit SHA."""
     g = Github(github_token)
     repo = g.get_repo(repo_name)
     commit = repo.get_commit(commit_sha)
@@ -27,6 +25,7 @@ def get_push_files(github_token: str, repo_name: str, commit_sha: str) -> list[C
 
 
 def _collect_changed_files(repo, files, ref: str) -> list[ChangedFile]:
+    """Collect file content and patch for each changed file in the given ref."""
     result = []
     for f in files:
         try:

@@ -1,3 +1,4 @@
+"""AI code review using the Anthropic Claude API."""
 import json
 import logging
 import re
@@ -11,7 +12,8 @@ MAX_DIFF_CHARS = 16000  # Claude API 컨텍스트 활용 확대
 
 
 @dataclass
-class AiReviewResult:
+class AiReviewResult:  # pylint: disable=too-many-instance-attributes
+    """Structured result from the Claude AI code review, including scores and per-category feedback."""
     commit_score: int        # 0-20: 커밋 메시지 품질
     ai_score: int            # 0-20: 구현 방향성
     test_score: int          # 0-10: 테스트 커버리지 점수

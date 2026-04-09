@@ -1,3 +1,4 @@
+"""Repository configuration manager — get and upsert RepoConfig records."""
 from dataclasses import dataclass
 from sqlalchemy.orm import Session
 from src.models.repo_config import RepoConfig

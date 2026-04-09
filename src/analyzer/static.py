@@ -1,3 +1,4 @@
+"""Static code analysis — runs pylint, flake8, and bandit on Python source files."""
 import json
 import logging
 import os
@@ -10,6 +11,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class AnalysisIssue:
+    """A single issue reported by a static analysis tool."""
+
     tool: str
     severity: str   # "error" | "warning"
     message: str
@@ -18,16 +21,19 @@ class AnalysisIssue:
 
 @dataclass
 class StaticAnalysisResult:
+    """Aggregated static analysis result for one source file."""
+
     filename: str
     issues: list[AnalysisIssue] = field(default_factory=list)
 
 
-def _is_test_file(filename: str) -> bool:
+def _is_test_file(filename: str) -> bool:  # pylint: disable=missing-function-docstring
     base = os.path.basename(filename)
     return base.startswith("test_") or base.endswith("_test.py")
 
 
 def analyze_file(filename: str, content: str) -> StaticAnalysisResult:
+    """Run all applicable static analysers on a single file and return aggregated results."""
     if not content.strip():
         return StaticAnalysisResult(filename=filename)
 

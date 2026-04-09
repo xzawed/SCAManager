@@ -1,3 +1,4 @@
+"""Repository and config REST API endpoints (/api/repos/*)."""
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from src.api.auth import require_api_key
@@ -10,11 +11,17 @@ router = APIRouter(prefix="/api", dependencies=[require_api_key])
 
 
 class RepoConfigUpdate(BaseModel):
+    """Request body for PUT /api/repos/{repo}/config."""
+
     gate_mode: str = "disabled"
     auto_approve_threshold: int = 75
     auto_reject_threshold: int = 50
     notify_chat_id: str | None = None
     n8n_webhook_url: str | None = None
+    discord_webhook_url: str | None = None
+    slack_webhook_url: str | None = None
+    custom_webhook_url: str | None = None
+    email_recipients: str | None = None
     auto_merge: bool = False
 
 
@@ -59,6 +66,10 @@ def update_repo_config(repo_name: str, body: RepoConfigUpdate):
             auto_reject_threshold=body.auto_reject_threshold,
             notify_chat_id=body.notify_chat_id,
             n8n_webhook_url=body.n8n_webhook_url,
+            discord_webhook_url=body.discord_webhook_url,
+            slack_webhook_url=body.slack_webhook_url,
+            custom_webhook_url=body.custom_webhook_url,
+            email_recipients=body.email_recipients,
             auto_merge=body.auto_merge,
         ))
         return {

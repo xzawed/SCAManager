@@ -1,3 +1,4 @@
+"""Session helpers — get_current_user() and require_login Depends."""
 from fastapi import Request, HTTPException
 from src.database import SessionLocal
 from src.models.user import User
