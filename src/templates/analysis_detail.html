@@ -187,25 +187,27 @@
 
 <!-- 메타 정보 -->
 <div class="ad-meta">
-  <span>📅 {{ analysis.created_at[:10] if analysis.created_at else "—" }}</span>
-  <span>🔗 <code style="font-size:12px">{{ analysis.commit_sha[:7] }}</code></span>
+  <span>📅 {{ analysis.created_at[:16].replace('T', ' ') if analysis.created_at else "—" }}</span>
+  <span>🔗 <code style="font-size:12px" title="{{ analysis.commit_sha }}">{{ analysis.commit_sha[:7] }}</code></span>
   {% if analysis.pr_number %}
   <span>🔀 PR #{{ analysis.pr_number }}</span>
   {% endif %}
+  <span>
+    {% if analysis.source == 'cli' %}🖥️ CLI
+    {% elif analysis.source == 'pr' %}🔀 PR
+    {% else %}📤 Push
+    {% endif %}
+  </span>
 </div>
 
 <!-- 커밋 메시지 -->
-{% if analysis.commit_message %}
 <div class="card ad-section">
   <div class="ad-section-title">📝 커밋 메시지</div>
-  <div class="commit-msg-text">{{ analysis.commit_message }}</div>
+  <div class="commit-msg-text">{{ analysis.commit_message or "(커밋 메시지 없음)" }}</div>
 </div>
-{% endif %}
-
-{% set r = analysis.result %}
-{% if r %}
 
 <!-- 점수 배너 -->
+{% if analysis.score is not none %}
 <div class="card ad-score-banner">
   <div>
     <span class="ad-score-big {% if analysis.score >= 75 %}high{% elif analysis.score >= 50 %}mid{% else %}low{% endif %}">
@@ -218,9 +220,12 @@
     <div class="ad-score-label">종합 점수</div>
   </div>
 </div>
+{% endif %}
+
+{% set r = analysis.result %}
 
 <!-- 점수 상세 -->
-{% set bd = r.get('breakdown', {}) %}
+{% set bd = r.get('breakdown', {}) if r else {} %}
 {% if bd %}
 <div class="card ad-breakdown">
   <div class="ad-section-title">📊 점수 상세</div>
@@ -244,6 +249,7 @@
 </div>
 {% endif %}
 
+{% if r %}
 <!-- AI 요약 -->
 {% if r.get('ai_summary') %}
 <div class="card ad-section">
@@ -319,8 +325,8 @@
 </div>
 {% endif %}
 
-{% else %}
-<!-- result가 없는 구버전 분석 -->
+{% elif analysis.score is none %}
+<!-- result도 없고 score도 없는 구버전 분석 -->
 <div class="card">
   <div class="ad-empty">
     <div style="font-size:2rem;margin-bottom:.75rem;opacity:0.5">📭</div>
