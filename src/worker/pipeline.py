@@ -213,6 +213,7 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
                 score=score_result.total,
                 grade=score_result.grade,
                 result={
+                    "source": "pr" if pr_number else "push",
                     "breakdown": score_result.breakdown,
                     "ai_summary": ai_review.summary,
                     "ai_suggestions": ai_review.suggestions,

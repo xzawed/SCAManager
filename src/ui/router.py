@@ -300,6 +300,8 @@ def analysis_detail(
         ).first()
         if not analysis:
             raise HTTPException(status_code=404, detail="Analysis not found")
+        result = analysis.result or {}
+        source = result.get("source") or ("pr" if analysis.pr_number else "push")
         data = {
             "id": analysis.id,
             "commit_sha": analysis.commit_sha,
@@ -307,7 +309,8 @@ def analysis_detail(
             "pr_number": analysis.pr_number,
             "score": analysis.score,
             "grade": analysis.grade,
-            "result": analysis.result or {},
+            "result": result,
+            "source": source,
             "created_at": analysis.created_at.isoformat() if analysis.created_at else None,
         }
     return templates.TemplateResponse(request, "analysis_detail.html", {
@@ -332,6 +335,7 @@ def repo_detail(
                     .order_by(Analysis.created_at.desc()).limit(30).all())
         analyses_data = [
             {"id": a.id, "commit_sha": a.commit_sha, "pr_number": a.pr_number,
+             "commit_message": a.commit_message,
              "score": a.score, "grade": a.grade,
              "created_at": a.created_at.isoformat() if a.created_at else None}
             for a in analyses
