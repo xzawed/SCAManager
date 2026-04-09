@@ -12,133 +12,434 @@ from src.scorer.calculator import ScoreResult
 from src.config_manager.manager import RepoConfigData
 
 
-def _score(total): return ScoreResult(total=total, grade="B", code_quality_score=20, security_score=15, breakdown={})
+# ---------------------------------------------------------------------------
+# 공용 헬퍼
+# ---------------------------------------------------------------------------
+
+def _score(total):
+    """테스트용 ScoreResult 생성 — total만 다르고 나머지는 고정."""
+    return ScoreResult(
+        total=total, grade="B",
+        code_quality_score=20, security_score=15,
+        breakdown={},
+    )
 
 
-async def test_disabled_mode_does_nothing():
+def _config(**kwargs):
+    """신규 필드를 포함한 RepoConfigData 기본 픽스처.
+
+    모든 테스트가 신규 시그니처(approve_mode, approve_threshold,
+    reject_threshold, pr_review_comment, merge_threshold)를 사용한다.
+    """
+    defaults = dict(
+        repo_full_name="owner/repo",
+        pr_review_comment=True,
+        approve_mode="auto",
+        approve_threshold=75,
+        reject_threshold=50,
+        auto_merge=False,
+        merge_threshold=75,
+        notify_chat_id=None,
+    )
+    defaults.update(kwargs)
+    return RepoConfigData(**defaults)
+
+
+# ---------------------------------------------------------------------------
+# Review Comment 옵션 테스트
+# ---------------------------------------------------------------------------
+
+async def test_review_comment_on_calls_post_pr_comment():
+    """pr_review_comment=True → post_pr_comment가 호출되어야 한다."""
     mock_db = MagicMock()
-    with patch("src.gate.engine.get_repo_config",
-               return_value=RepoConfigData(repo_full_name="owner/repo", gate_mode="disabled")):
-        with patch("src.gate.engine.post_github_review") as mock_review:
-            await run_gate_check(mock_db, "tok", "bot", "owner/repo", 1, 1, _score(80))
-            mock_review.assert_not_called()
+    config = _config(pr_review_comment=True, approve_mode="disabled")
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock) as mock_comment:
+            with patch("src.gate.engine.post_github_review", new_callable=AsyncMock):
+                with patch("src.gate.engine.merge_pr", new_callable=AsyncMock):
+                    with patch("src.gate.engine.send_gate_request", new_callable=AsyncMock):
+                        with patch("src.gate.engine._save_gate_decision"):
+                            await run_gate_check(
+                                repo_name="owner/repo",
+                                pr_number=1,
+                                analysis_id=1,
+                                result={"ai_summary": "ok", "suggestions": []},
+                                github_token="tok",
+                                db=mock_db,
+                            )
+                            mock_comment.assert_called_once()
 
 
-async def test_auto_approve():
+async def test_review_comment_off_skips_post_pr_comment():
+    """pr_review_comment=False → post_pr_comment가 호출되지 않아야 한다."""
     mock_db = MagicMock()
-    config = RepoConfigData(repo_full_name="owner/repo", gate_mode="auto",
-                            auto_approve_threshold=75, auto_reject_threshold=50)
+    config = _config(pr_review_comment=False, approve_mode="disabled")
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock) as mock_comment:
+            with patch("src.gate.engine._save_gate_decision"):
+                await run_gate_check(
+                    repo_name="owner/repo",
+                    pr_number=1,
+                    analysis_id=1,
+                    result={"score": 80, "grade": "B"},
+                    github_token="tok",
+                    db=mock_db,
+                )
+                mock_comment.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Approve 옵션 — auto 모드 테스트
+# ---------------------------------------------------------------------------
+
+async def test_auto_approve_high_score():
+    """score >= approve_threshold → post_github_review가 'approve'로 호출된다."""
+    mock_db = MagicMock()
+    config = _config(approve_mode="auto", approve_threshold=75, reject_threshold=50)
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock) as mock_review:
-            with patch("src.gate.engine._save_gate_decision") as mock_save:
-                await run_gate_check(mock_db, "tok", "bot", "owner/repo", 1, 1, _score(80))
-                assert mock_review.call_args.args[3] == "approve"
-                mock_save.assert_called_once_with(mock_db, 1, "approve", "auto")
+            with patch("src.gate.engine._save_gate_decision"):
+                with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
+                    with patch("src.gate.engine.merge_pr", new_callable=AsyncMock):
+                        await run_gate_check(
+                            repo_name="owner/repo",
+                            pr_number=1,
+                            analysis_id=1,
+                            result={"score": 80, "grade": "B"},
+                            github_token="tok",
+                            db=mock_db,
+                        )
+                        mock_review.assert_called_once()
+                        # 네 번째 positional 인자 또는 keyword 'decision'이 "approve"
+                        call = mock_review.call_args
+                        decision = call.kwargs.get("decision") or call.args[3]
+                        assert decision == "approve"
 
 
-async def test_auto_reject():
+async def test_auto_reject_low_score():
+    """score < reject_threshold → post_github_review가 'reject'로 호출된다."""
     mock_db = MagicMock()
-    config = RepoConfigData(repo_full_name="owner/repo", gate_mode="auto",
-                            auto_approve_threshold=75, auto_reject_threshold=50)
+    config = _config(approve_mode="auto", approve_threshold=75, reject_threshold=50)
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock) as mock_review:
-            with patch("src.gate.engine._save_gate_decision") as mock_save:
-                await run_gate_check(mock_db, "tok", "bot", "owner/repo", 1, 1, _score(40))
-                assert mock_review.call_args.args[3] == "reject"
-                mock_save.assert_called_once_with(mock_db, 1, "reject", "auto")
+            with patch("src.gate.engine._save_gate_decision"):
+                with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
+                    with patch("src.gate.engine.merge_pr", new_callable=AsyncMock):
+                        await run_gate_check(
+                            repo_name="owner/repo",
+                            pr_number=1,
+                            analysis_id=1,
+                            result={"score": 40, "grade": "F"},
+                            github_token="tok",
+                            db=mock_db,
+                        )
+                        mock_review.assert_called_once()
+                        call = mock_review.call_args
+                        decision = call.kwargs.get("decision") or call.args[3]
+                        assert decision == "reject"
 
 
-async def test_auto_skip_between_thresholds():
+async def test_auto_skip_middle_score():
+    """reject_threshold <= score < approve_threshold → post_github_review 미호출."""
     mock_db = MagicMock()
-    config = RepoConfigData(repo_full_name="owner/repo", gate_mode="auto",
-                            auto_approve_threshold=75, auto_reject_threshold=50)
+    config = _config(approve_mode="auto", approve_threshold=75, reject_threshold=50)
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock) as mock_review:
-            with patch("src.gate.engine._save_gate_decision") as mock_save:
-                await run_gate_check(mock_db, "tok", "bot", "owner/repo", 1, 1, _score(62))
-                mock_review.assert_not_called()
-                mock_save.assert_called_once_with(mock_db, 1, "skip", "auto")
+            with patch("src.gate.engine._save_gate_decision"):
+                with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
+                    with patch("src.gate.engine.merge_pr", new_callable=AsyncMock):
+                        await run_gate_check(
+                            repo_name="owner/repo",
+                            pr_number=1,
+                            analysis_id=1,
+                            result={"score": 62, "grade": "C"},
+                            github_token="tok",
+                            db=mock_db,
+                        )
+                        mock_review.assert_not_called()
 
+
+# ---------------------------------------------------------------------------
+# Approve 옵션 — semi-auto 모드 테스트
+# ---------------------------------------------------------------------------
 
 async def test_semi_auto_sends_telegram():
+    """approve_mode=semi-auto → send_gate_request가 호출된다."""
     mock_db = MagicMock()
-    config = RepoConfigData(repo_full_name="owner/repo", gate_mode="semi-auto",
-                            notify_chat_id="-100999")
+    config = _config(approve_mode="semi-auto", notify_chat_id="-100999")
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.send_gate_request", new_callable=AsyncMock) as mock_send:
-            await run_gate_check(mock_db, "tok", "bot", "owner/repo", 7, 5, _score(65))
-            mock_send.assert_called_once()
-            assert mock_send.call_args.kwargs["analysis_id"] == 5
-            assert mock_send.call_args.kwargs["chat_id"] == "-100999"
+            with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
+                with patch("src.gate.engine._save_gate_decision"):
+                    await run_gate_check(
+                        repo_name="owner/repo",
+                        pr_number=7,
+                        analysis_id=5,
+                        result={"score": 65, "grade": "C"},
+                        github_token="tok",
+                        db=mock_db,
+                    )
+                    mock_send.assert_called_once()
+                    assert mock_send.call_args.kwargs["analysis_id"] == 5
+                    assert mock_send.call_args.kwargs["chat_id"] == "-100999"
 
 
-async def test_semi_auto_no_chat_id_skips():
+# ---------------------------------------------------------------------------
+# Approve 옵션 — disabled 모드 테스트
+# ---------------------------------------------------------------------------
+
+async def test_approve_disabled_no_review():
+    """approve_mode=disabled → post_github_review가 호출되지 않는다."""
     mock_db = MagicMock()
-    config = RepoConfigData(repo_full_name="owner/repo", gate_mode="semi-auto",
-                            notify_chat_id=None)
+    config = _config(approve_mode="disabled", pr_review_comment=False)
     with patch("src.gate.engine.get_repo_config", return_value=config):
-        with patch("src.gate.engine.send_gate_request", new_callable=AsyncMock) as mock_send:
-            await run_gate_check(mock_db, "tok", "bot", "owner/repo", 7, 5, _score(65))
-            mock_send.assert_not_called()
+        with patch("src.gate.engine.post_github_review", new_callable=AsyncMock) as mock_review:
+            with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
+                with patch("src.gate.engine._save_gate_decision"):
+                    await run_gate_check(
+                        repo_name="owner/repo",
+                        pr_number=1,
+                        analysis_id=1,
+                        result={"score": 80, "grade": "B"},
+                        github_token="tok",
+                        db=mock_db,
+                    )
+                    mock_review.assert_not_called()
 
 
-# --- auto_merge 분기 테스트 (Red: RepoConfigData.auto_merge 필드가 아직 존재하지 않음) ---
+# ---------------------------------------------------------------------------
+# Auto Merge 독립 동작 테스트
+# ---------------------------------------------------------------------------
 
-async def test_auto_approve_with_auto_merge_calls_merge_pr():
-    # auto 모드 + approve 결정 + auto_merge=True → merge_pr이 호출되는지 검증
+async def test_auto_merge_independent_of_approve_mode():
+    """approve_mode=disabled + auto_merge=True + score >= merge_threshold → merge_pr 호출.
+
+    auto_merge는 approve_mode와 완전 독립적으로 동작해야 한다.
+    """
     mock_db = MagicMock()
-    config = RepoConfigData(repo_full_name="owner/repo", gate_mode="auto",
-                            auto_approve_threshold=75, auto_reject_threshold=50,
-                            auto_merge=True)
+    config = _config(
+        approve_mode="disabled",
+        auto_merge=True,
+        merge_threshold=75,
+        pr_review_comment=False,
+    )
     with patch("src.gate.engine.get_repo_config", return_value=config):
-        with patch("src.gate.engine.post_github_review", new_callable=AsyncMock):
-            with patch("src.gate.engine._save_gate_decision"):
-                with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
+        with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
+            with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
+                with patch("src.gate.engine._save_gate_decision"):
                     mock_merge.return_value = True
-                    await run_gate_check(mock_db, "tok", "bot", "owner/repo", 5, 1, _score(80))
+                    await run_gate_check(
+                        repo_name="owner/repo",
+                        pr_number=3,
+                        analysis_id=10,
+                        result={"score": 80, "grade": "B"},
+                        github_token="tok",
+                        db=mock_db,
+                    )
                     mock_merge.assert_called_once()
 
 
-async def test_auto_approve_without_auto_merge_does_not_call_merge_pr():
-    # auto 모드 + approve 결정 + auto_merge=False → merge_pr이 호출되지 않는지 검증
+async def test_auto_merge_with_auto_approve():
+    """approve_mode=auto (고점수) + auto_merge=True → post_github_review AND merge_pr 둘 다 호출."""
     mock_db = MagicMock()
-    config = RepoConfigData(repo_full_name="owner/repo", gate_mode="auto",
-                            auto_approve_threshold=75, auto_reject_threshold=50,
-                            auto_merge=False)
+    config = _config(
+        approve_mode="auto",
+        approve_threshold=75,
+        reject_threshold=50,
+        auto_merge=True,
+        merge_threshold=75,
+    )
     with patch("src.gate.engine.get_repo_config", return_value=config):
-        with patch("src.gate.engine.post_github_review", new_callable=AsyncMock):
-            with patch("src.gate.engine._save_gate_decision"):
-                with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
-                    await run_gate_check(mock_db, "tok", "bot", "owner/repo", 5, 1, _score(80))
+        with patch("src.gate.engine.post_github_review", new_callable=AsyncMock) as mock_review:
+            with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
+                with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
+                    with patch("src.gate.engine._save_gate_decision"):
+                        mock_merge.return_value = True
+                        await run_gate_check(
+                            repo_name="owner/repo",
+                            pr_number=5,
+                            analysis_id=20,
+                            result={"score": 90, "grade": "A"},
+                            github_token="tok",
+                            db=mock_db,
+                        )
+                        mock_review.assert_called_once()
+                        mock_merge.assert_called_once()
+
+
+async def test_auto_merge_below_threshold():
+    """auto_merge=True이지만 score < merge_threshold → merge_pr 미호출."""
+    mock_db = MagicMock()
+    config = _config(
+        approve_mode="disabled",
+        auto_merge=True,
+        merge_threshold=75,
+        pr_review_comment=False,
+    )
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
+            with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
+                with patch("src.gate.engine._save_gate_decision"):
+                    await run_gate_check(
+                        repo_name="owner/repo",
+                        pr_number=3,
+                        analysis_id=10,
+                        result={"score": 60, "grade": "C"},
+                        github_token="tok",
+                        db=mock_db,
+                    )
                     mock_merge.assert_not_called()
 
 
-async def test_auto_reject_does_not_call_merge_pr():
-    # auto 모드 + reject 결정 시 auto_merge=True여도 merge_pr이 호출되지 않는지 검증
+async def test_auto_merge_false_no_merge():
+    """auto_merge=False → score가 충분해도 merge_pr이 호출되지 않는다."""
     mock_db = MagicMock()
-    config = RepoConfigData(repo_full_name="owner/repo", gate_mode="auto",
-                            auto_approve_threshold=75, auto_reject_threshold=50,
-                            auto_merge=True)
+    config = _config(
+        approve_mode="auto",
+        approve_threshold=75,
+        reject_threshold=50,
+        auto_merge=False,
+        merge_threshold=75,
+    )
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock):
-            with patch("src.gate.engine._save_gate_decision"):
-                with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
-                    await run_gate_check(mock_db, "tok", "bot", "owner/repo", 5, 1, _score(40))
-                    mock_merge.assert_not_called()
+            with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
+                with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
+                    with patch("src.gate.engine._save_gate_decision"):
+                        await run_gate_check(
+                            repo_name="owner/repo",
+                            pr_number=5,
+                            analysis_id=20,
+                            result={"score": 90, "grade": "A"},
+                            github_token="tok",
+                            db=mock_db,
+                        )
+                        mock_merge.assert_not_called()
 
 
-async def test_auto_approve_merge_pr_failure_does_not_raise():
-    # merge_pr가 False를 반환해도 run_gate_check이 예외 없이 완료되는지 검증
+# ---------------------------------------------------------------------------
+# Push 이벤트 — PR 액션 없음 테스트
+# ---------------------------------------------------------------------------
+
+async def test_push_event_no_gate_actions():
+    """pr_number=None(push 이벤트) → 모든 PR 관련 액션이 호출되지 않는다."""
     mock_db = MagicMock()
-    config = RepoConfigData(repo_full_name="owner/repo", gate_mode="auto",
-                            auto_approve_threshold=75, auto_reject_threshold=50,
-                            auto_merge=True)
+    config = _config(
+        approve_mode="auto",
+        approve_threshold=75,
+        reject_threshold=50,
+        auto_merge=True,
+        merge_threshold=75,
+        pr_review_comment=True,
+    )
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock) as mock_comment:
+            with patch("src.gate.engine.post_github_review", new_callable=AsyncMock) as mock_review:
+                with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
+                    with patch("src.gate.engine.send_gate_request", new_callable=AsyncMock) as mock_send:
+                        with patch("src.gate.engine._save_gate_decision"):
+                            await run_gate_check(
+                                repo_name="owner/repo",
+                                pr_number=None,  # push 이벤트
+                                analysis_id=99,
+                                result={"score": 90, "grade": "A"},
+                                github_token="tok",
+                                db=mock_db,
+                            )
+                            mock_comment.assert_not_called()
+                            mock_review.assert_not_called()
+                            mock_merge.assert_not_called()
+                            mock_send.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# 하위 호환성 — 기존 동작 유지 확인
+# ---------------------------------------------------------------------------
+
+async def test_save_gate_decision_called_on_approve():
+    """auto approve 시 _save_gate_decision이 'approve'로 호출되어야 한다."""
+    mock_db = MagicMock()
+    config = _config(approve_mode="auto", approve_threshold=75, reject_threshold=50)
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock):
             with patch("src.gate.engine._save_gate_decision") as mock_save:
-                with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
-                    mock_merge.return_value = False
-                    # 예외 없이 완료되어야 함
-                    await run_gate_check(mock_db, "tok", "bot", "owner/repo", 5, 1, _score(80))
-                    # GateDecision은 merge_pr 결과와 무관하게 저장되어야 함
-                    mock_save.assert_called_once_with(mock_db, 1, "approve", "auto")
+                with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
+                    with patch("src.gate.engine.merge_pr", new_callable=AsyncMock):
+                        await run_gate_check(
+                            repo_name="owner/repo",
+                            pr_number=1,
+                            analysis_id=42,
+                            result={"score": 80, "grade": "B"},
+                            github_token="tok",
+                            db=mock_db,
+                        )
+                        mock_save.assert_called_once_with(mock_db, 42, "approve", "auto")
+
+
+async def test_save_gate_decision_called_on_reject():
+    """auto reject 시 _save_gate_decision이 'reject'로 호출되어야 한다."""
+    mock_db = MagicMock()
+    config = _config(approve_mode="auto", approve_threshold=75, reject_threshold=50)
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch("src.gate.engine.post_github_review", new_callable=AsyncMock):
+            with patch("src.gate.engine._save_gate_decision") as mock_save:
+                with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
+                    with patch("src.gate.engine.merge_pr", new_callable=AsyncMock):
+                        await run_gate_check(
+                            repo_name="owner/repo",
+                            pr_number=1,
+                            analysis_id=43,
+                            result={"score": 40, "grade": "F"},
+                            github_token="tok",
+                            db=mock_db,
+                        )
+                        mock_save.assert_called_once_with(mock_db, 43, "reject", "auto")
+
+
+async def test_save_gate_decision_skip_on_middle_score():
+    """중간 점수에서 _save_gate_decision이 'skip'으로 호출되어야 한다."""
+    mock_db = MagicMock()
+    config = _config(approve_mode="auto", approve_threshold=75, reject_threshold=50)
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch("src.gate.engine.post_github_review", new_callable=AsyncMock):
+            with patch("src.gate.engine._save_gate_decision") as mock_save:
+                with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
+                    with patch("src.gate.engine.merge_pr", new_callable=AsyncMock):
+                        await run_gate_check(
+                            repo_name="owner/repo",
+                            pr_number=1,
+                            analysis_id=44,
+                            result={"score": 62, "grade": "C"},
+                            github_token="tok",
+                            db=mock_db,
+                        )
+                        mock_save.assert_called_once_with(mock_db, 44, "skip", "auto")
+
+
+async def test_merge_pr_failure_does_not_raise():
+    """merge_pr이 False를 반환해도 run_gate_check이 예외 없이 완료된다."""
+    mock_db = MagicMock()
+    config = _config(
+        approve_mode="auto",
+        approve_threshold=75,
+        reject_threshold=50,
+        auto_merge=True,
+        merge_threshold=75,
+    )
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch("src.gate.engine.post_github_review", new_callable=AsyncMock):
+            with patch("src.gate.engine._save_gate_decision") as mock_save:
+                with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
+                    with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
+                        mock_merge.return_value = False
+                        # 예외 없이 완료되어야 한다
+                        await run_gate_check(
+                            repo_name="owner/repo",
+                            pr_number=5,
+                            analysis_id=50,
+                            result={"score": 80, "grade": "B"},
+                            github_token="tok",
+                            db=mock_db,
+                        )
+                        # GateDecision은 merge_pr 결과와 무관하게 저장된다
+                        mock_save.assert_called_once_with(mock_db, 50, "approve", "auto")

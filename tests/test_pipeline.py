@@ -24,7 +24,6 @@ def mock_deps():
         patch("src.worker.pipeline.review_code", new_callable=AsyncMock) as mock_ai,
         patch("src.worker.pipeline.calculate_score") as mock_score,
         patch("src.worker.pipeline.send_analysis_result", new_callable=AsyncMock) as mock_telegram,
-        patch("src.worker.pipeline.post_pr_comment", new_callable=AsyncMock) as mock_comment,
         patch("src.worker.pipeline.SessionLocal") as mock_session_cls,
         patch("src.worker.pipeline.settings") as mock_settings,
     ):
@@ -66,7 +65,7 @@ def mock_deps():
         yield {
             "push": mock_push, "pr": mock_pr,
             "ai": mock_ai, "score": mock_score,
-            "telegram": mock_telegram, "comment": mock_comment,
+            "telegram": mock_telegram,
             "db": mock_db,
         }
 
@@ -91,21 +90,30 @@ async def test_pr_event_calls_full_pipeline(mock_deps):
     mock_deps["telegram"].assert_called_once()
 
 
-async def test_pr_event_posts_github_comment(mock_deps):
+async def test_pr_event_calls_gate_engine(mock_deps):
+    """PR 이벤트 시 gate engine이 호출된다 (PR comment는 gate engine 내부에서 처리)."""
     from src.worker.pipeline import run_analysis_pipeline
-    await run_analysis_pipeline("pull_request", PR_DATA)
+    from unittest.mock import AsyncMock, patch
 
-    mock_deps["comment"].assert_called_once()
-    call_kwargs = mock_deps["comment"].call_args[1]
+    with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock) as mock_gate:
+        await run_analysis_pipeline("pull_request", PR_DATA)
+
+    mock_gate.assert_called_once()
+    call_kwargs = mock_gate.call_args.kwargs
     assert call_kwargs["pr_number"] == 7
     assert call_kwargs["repo_name"] == "owner/repo"
 
 
-async def test_push_event_does_not_post_github_comment(mock_deps):
+async def test_push_event_does_not_call_gate_with_pr_number(mock_deps):
+    """push 이벤트 시 gate engine은 pr_number=None으로 호출된다 (또는 미호출)."""
     from src.worker.pipeline import run_analysis_pipeline
-    await run_analysis_pipeline("push", PUSH_DATA)
+    from unittest.mock import AsyncMock, patch
 
-    mock_deps["comment"].assert_not_called()
+    with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock) as mock_gate:
+        await run_analysis_pipeline("push", PUSH_DATA)
+
+    # push 이벤트는 pr_number=None이므로 gate engine이 호출되지 않는다
+    mock_gate.assert_not_called()
 
 
 async def test_no_files_at_all_skips_pipeline(mock_deps):
@@ -426,3 +434,72 @@ async def test_push_head_commit_preferred(mock_deps):
 
     call_args = mock_deps["ai"].call_args
     assert call_args[0][1] == "fix: head commit message"
+
+
+# ---------------------------------------------------------------------------
+# PR Gate 3-옵션 분리 재설계 — pipeline 관련 테스트 (Red)
+#
+# 신규 설계에서는 post_pr_comment가 pipeline._build_notify_tasks에서 제거되고
+# gate engine(run_gate_check) 내부로 이동한다.
+# pipeline은 pr_review_comment 옵션 판단을 gate engine에 위임한다.
+# ---------------------------------------------------------------------------
+
+async def test_pipeline_pr_review_comment_not_in_notify_tasks(mock_deps):
+    """신규 설계에서 _build_notify_tasks는 post_pr_comment를 포함하지 않는다.
+
+    gate engine이 pr_review_comment 옵션을 처리하므로, pipeline의
+    notify tasks에서 post_pr_comment는 제거되어야 한다.
+    """
+    from src.worker.pipeline import run_analysis_pipeline
+    from unittest.mock import AsyncMock, patch
+
+    mock_db = mock_deps["db"]
+    mock_db.query.return_value.filter_by.return_value.first.side_effect = [
+        MagicMock(id=1), MagicMock(id=1), None,
+    ]
+    mock_db.refresh = MagicMock()
+
+    from src.config_manager.manager import RepoConfigData
+
+    with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
+        with patch("src.worker.pipeline.get_repo_config",
+                   return_value=RepoConfigData(repo_full_name="owner/repo")):
+            await run_analysis_pipeline("pull_request", PR_DATA)
+
+    # 신규 설계: pipeline이 직접 post_pr_comment를 호출하지 않는다
+    # post_pr_comment는 gate engine 내부에서 pr_review_comment 플래그에 따라 처리된다
+    # (pipeline에서 직접 import하지 않으므로 import 여부로 검증)
+    import src.worker.pipeline as pl_module
+    assert not hasattr(pl_module, "post_pr_comment"), \
+        "pipeline은 post_pr_comment를 직접 import하지 않아야 한다"
+
+
+async def test_pipeline_passes_new_gate_signature(mock_deps):
+    """pipeline이 run_gate_check를 새 시그니처로 호출한다.
+
+    신규 시그니처: run_gate_check(repo_name, pr_number, analysis_id, result, github_token, db)
+    기존 시그니처: run_gate_check(db, github_token, telegram_bot_token, repo_full_name, ...)
+    """
+    from src.worker.pipeline import run_analysis_pipeline
+    from unittest.mock import AsyncMock, patch
+
+    mock_db = mock_deps["db"]
+    mock_db.query.return_value.filter_by.return_value.first.side_effect = [
+        MagicMock(id=1), MagicMock(id=1), None,
+    ]
+    mock_db.refresh = MagicMock()
+
+    from src.config_manager.manager import RepoConfigData
+
+    with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock) as mock_gate:
+        with patch("src.worker.pipeline.get_repo_config",
+                   return_value=RepoConfigData(repo_full_name="owner/repo")):
+            await run_analysis_pipeline("pull_request", PR_DATA)
+
+    mock_gate.assert_called_once()
+    # 새 시그니처에는 telegram_bot_token 인자가 없다
+    call_kwargs = mock_gate.call_args.kwargs
+    assert "telegram_bot_token" not in call_kwargs
+    # 새 시그니처 필수 인자 확인
+    assert "repo_name" in call_kwargs or len(mock_gate.call_args.args) > 0
+    assert "pr_number" in call_kwargs or len(mock_gate.call_args.args) > 1

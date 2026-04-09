@@ -199,9 +199,10 @@ async def update_repo_settings(
             raise HTTPException(status_code=403)
         upsert_repo_config(db, RepoConfigData(
             repo_full_name=repo_name,
-            gate_mode=form.get("gate_mode", "disabled"),
-            auto_approve_threshold=int(form.get("auto_approve_threshold", 75)),
-            auto_reject_threshold=int(form.get("auto_reject_threshold", 50)),
+            pr_review_comment=form.get("pr_review_comment") == "on",
+            approve_mode=form.get("approve_mode", "disabled"),
+            approve_threshold=int(form.get("approve_threshold", 75)),
+            reject_threshold=int(form.get("reject_threshold", 50)),
             notify_chat_id=form.get("notify_chat_id") or None,
             n8n_webhook_url=form.get("n8n_webhook_url", ""),
             discord_webhook_url=form.get("discord_webhook_url", "") or None,
@@ -209,6 +210,7 @@ async def update_repo_settings(
             custom_webhook_url=form.get("custom_webhook_url", "") or None,
             email_recipients=form.get("email_recipients", "") or None,
             auto_merge=form.get("auto_merge") == "on",
+            merge_threshold=int(form.get("merge_threshold", 75)),
         ))
     return RedirectResponse(url=f"/repos/{repo_name}/settings", status_code=303)
 

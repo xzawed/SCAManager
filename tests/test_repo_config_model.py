@@ -12,9 +12,11 @@ from src.models.gate_decision import GateDecision
 
 def test_repo_config_defaults():
     config = RepoConfig(repo_full_name="owner/repo")
-    assert config.gate_mode == "disabled"
-    assert config.auto_approve_threshold == 75
-    assert config.auto_reject_threshold == 50
+    assert config.approve_mode == "disabled"
+    assert config.approve_threshold == 75
+    assert config.reject_threshold == 50
+    assert config.pr_review_comment is True
+    assert config.merge_threshold == 75
     assert config.notify_chat_id is None
     assert config.n8n_webhook_url is None
 
@@ -22,13 +24,17 @@ def test_repo_config_defaults():
 def test_repo_config_custom_values():
     config = RepoConfig(
         repo_full_name="owner/repo",
-        gate_mode="auto",
-        auto_approve_threshold=80,
-        auto_reject_threshold=40,
+        approve_mode="auto",
+        approve_threshold=80,
+        reject_threshold=40,
+        pr_review_comment=False,
+        merge_threshold=60,
         notify_chat_id="-100999",
     )
-    assert config.gate_mode == "auto"
-    assert config.auto_approve_threshold == 80
+    assert config.approve_mode == "auto"
+    assert config.approve_threshold == 80
+    assert config.pr_review_comment is False
+    assert config.merge_threshold == 60
     assert config.notify_chat_id == "-100999"
 
 

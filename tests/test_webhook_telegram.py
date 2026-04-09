@@ -55,13 +55,14 @@ def test_gate_callback_called_with_correct_args():
 async def test_handle_gate_callback_approve_with_auto_merge():
     # approve 결정 + auto_merge=True → merge_pr이 호출되는지 검증
     from src.webhook.router import handle_gate_callback
-    mock_analysis = MagicMock(id=42, repo_id=1, pr_number=5)
+    mock_analysis = MagicMock(id=42, repo_id=1, pr_number=5, score=85,
+                              result={"score": 85})
     mock_repo = MagicMock(id=1, full_name="owner/repo")
     mock_db = MagicMock()
     mock_db.query.return_value.filter_by.return_value.first.side_effect = [
         mock_analysis, mock_repo
     ]
-    config = RepoConfigData(repo_full_name="owner/repo", auto_merge=True)
+    config = RepoConfigData(repo_full_name="owner/repo", auto_merge=True, merge_threshold=75)
     with patch("src.webhook.router.SessionLocal", return_value=mock_db):
         with patch("src.webhook.router.post_github_review", new_callable=AsyncMock):
             with patch("src.webhook.router._save_gate_decision"):

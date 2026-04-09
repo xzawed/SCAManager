@@ -11,7 +11,6 @@ from src.analyzer.static import analyze_file, StaticAnalysisResult
 from src.analyzer.ai_review import review_code
 from src.scorer.calculator import calculate_score
 from src.notifier.telegram import send_analysis_result
-from src.notifier.github_comment import post_pr_comment
 from src.models.repository import Repository
 from src.models.analysis import Analysis
 from src.gate.engine import run_gate_check
@@ -34,6 +33,8 @@ def _build_result_dict(
     """Build the standardised analysis result dict stored in Analysis.result."""
     return {
         "source": source,
+        "score": score_result.total,
+        "grade": score_result.grade,
         "breakdown": score_result.breakdown,
         "ai_summary": ai_review.summary,
         "ai_suggestions": ai_review.suggestions,
@@ -95,18 +96,6 @@ def _build_notify_tasks(  # pylint: disable=too-many-positional-arguments
         ai_review=ai_review,
     ))
     names.append("telegram")
-
-    # GitHub PR Comment (PR 이벤트만)
-    if pr_number is not None:
-        tasks.append(post_pr_comment(
-            github_token=owner_token,
-            repo_name=repo_name,
-            pr_number=pr_number,
-            score_result=score_result,
-            analysis_results=analysis_results,
-            ai_review=ai_review,
-        ))
-        names.append("github_comment")
 
     # Discord
     if repo_config and repo_config.discord_webhook_url:
@@ -262,13 +251,12 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
             if pr_number is not None:
                 try:
                     await run_gate_check(
-                        db=db,
-                        github_token=owner_token,
-                        telegram_bot_token=settings.telegram_bot_token,
-                        repo_full_name=repo_name,
+                        repo_name=repo_name,
                         pr_number=pr_number,
                         analysis_id=analysis.id,
-                        score_result=score_result,
+                        result=analysis.result,
+                        github_token=owner_token,
+                        db=db,
                     )
                 except Exception as exc:
                     logger.error("Gate check failed: %s", exc)
