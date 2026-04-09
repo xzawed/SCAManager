@@ -1,3 +1,4 @@
+"""Webhook endpoints — POST /webhooks/github and POST /api/webhook/telegram."""
 import hashlib
 import hmac
 import json

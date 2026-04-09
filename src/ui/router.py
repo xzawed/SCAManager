@@ -1,3 +1,4 @@
+"""Web UI router — Jinja2 dashboard pages for repos, analyses, and settings."""
 import secrets
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -55,7 +56,7 @@ async def add_repo(request: Request, current_user: User = Depends(require_login)
         if existing:
             if existing.user_id is not None:
                 return RedirectResponse(
-                    url=f"/repos/add?error=이미+다른+사용자가+등록한+리포입니다",
+                    url="/repos/add?error=이미+다른+사용자가+등록한+리포입니다",
                     status_code=303,
                 )
             # user_id=NULL인 기존 리포 → 현재 사용자가 소유권 획득

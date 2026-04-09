@@ -1,6 +1,9 @@
+"""Analysis pipeline — orchestrates static analysis, AI review, scoring, and notifications."""
 import asyncio
 import logging
+
 from sqlalchemy.orm import Session
+
 from src.database import SessionLocal
 from src.config import settings
 from src.github_client.diff import get_pr_files, get_push_files, ChangedFile
@@ -22,7 +25,34 @@ from src.config_manager.manager import get_repo_config
 logger = logging.getLogger(__name__)
 
 
+def _build_result_dict(
+    ai_review,
+    score_result,
+    analysis_results: list,
+    source: str,
+) -> dict:
+    """Build the standardised analysis result dict stored in Analysis.result."""
+    return {
+        "source": source,
+        "breakdown": score_result.breakdown,
+        "ai_summary": ai_review.summary,
+        "ai_suggestions": ai_review.suggestions,
+        "commit_message_feedback": ai_review.commit_message_feedback,
+        "code_quality_feedback": ai_review.code_quality_feedback,
+        "security_feedback": ai_review.security_feedback,
+        "direction_feedback": ai_review.direction_feedback,
+        "test_feedback": ai_review.test_feedback,
+        "file_feedbacks": ai_review.file_feedbacks,
+        "issues": [
+            {"tool": i.tool, "severity": i.severity, "message": i.message, "line": i.line}
+            for r in analysis_results
+            for i in r.issues
+        ],
+    }
+
+
 def _extract_commit_message(event: str, data: dict) -> str:
+    """Extract the commit or PR message from the webhook payload."""
     if event == "pull_request":
         pr = data.get("pull_request", {})
         title = pr.get("title", "")
@@ -36,18 +66,19 @@ def _extract_commit_message(event: str, data: dict) -> str:
 
 
 async def _run_static_analysis(files: list[ChangedFile]) -> list[StaticAnalysisResult]:
+    """Run pylint/flake8/bandit on Python files; returns empty list for non-Python repos."""
     python_files = [f for f in files if f.filename.endswith(".py")]
     return await asyncio.to_thread(
         lambda: [analyze_file(f.filename, f.content) for f in python_files]
     )
 
 
-def _build_notify_tasks(
+def _build_notify_tasks(  # pylint: disable=too-many-positional-arguments
     repo_config,
     repo_name, commit_sha, pr_number,
     owner_token, score_result, analysis_results, ai_review,
 ):
-    """RepoConfig 기반으로 활성 알림 채널의 task 목록을 생성한다."""
+    """Build coroutine task list for all active notification channels."""
     tasks = []
     names = []
 
@@ -147,7 +178,7 @@ def _build_notify_tasks(
     return tasks, names
 
 
-async def run_analysis_pipeline(event: str, data: dict) -> None:
+async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disable=too-many-branches,too-many-statements,too-many-locals  # noqa: E501
     try:
         repo_name: str = data["repository"]["full_name"]
         commit_message = _extract_commit_message(event, data)
@@ -212,28 +243,10 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
                 pr_number=pr_number,
                 score=score_result.total,
                 grade=score_result.grade,
-                result={
-                    "source": "pr" if pr_number else "push",
-                    "breakdown": score_result.breakdown,
-                    "ai_summary": ai_review.summary,
-                    "ai_suggestions": ai_review.suggestions,
-                    "commit_message_feedback": ai_review.commit_message_feedback,
-                    "code_quality_feedback": ai_review.code_quality_feedback,
-                    "security_feedback": ai_review.security_feedback,
-                    "direction_feedback": ai_review.direction_feedback,
-                    "test_feedback": ai_review.test_feedback,
-                    "file_feedbacks": ai_review.file_feedbacks,
-                    "issues": [
-                        {
-                            "tool": i.tool,
-                            "severity": i.severity,
-                            "message": i.message,
-                            "line": i.line,
-                        }
-                        for r in analysis_results
-                        for i in r.issues
-                    ],
-                },
+                result=_build_result_dict(
+                    ai_review, score_result, analysis_results,
+                    source="pr" if pr_number else "push",
+                ),
             )
             db.add(analysis)
             db.commit()

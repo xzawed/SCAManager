@@ -1,5 +1,5 @@
 """Terminal output formatting for CLI code review results."""
-import json as _json
+import json
 from src.analyzer.static import StaticAnalysisResult
 from src.analyzer.ai_review import AiReviewResult
 from src.scorer.calculator import ScoreResult
@@ -53,13 +53,14 @@ def format_result(
 
     # breakdown table
     lines.append(_bold("  Score Breakdown:", use_color))
-    lines.append("  \u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252c\u2500\u2500\u2500\u2500\u2500\u2500\u2510")
+    _H = "\u2500"
+    lines.append(f"  \u250c{_H*18}\u252c{_H*7}\u252c{_H*6}\u2510")
     lines.append("  \u2502 Category         \u2502 Score \u2502  Max \u2502")
-    lines.append("  \u251c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253c\u2500\u2500\u2500\u2500\u2500\u2500\u2524")
+    lines.append(f"  \u251c{_H*18}\u253c{_H*7}\u253c{_H*6}\u2524")
     for label, key, mx in _CATEGORIES:
         val = bd.get(key, 0)
         lines.append(f"  \u2502 {label:<16} \u2502 {val:>5} \u2502 {mx:>4} \u2502")
-    lines.append("  \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2518")
+    lines.append(f"  \u2514{_H*18}\u2534{_H*7}\u2534{_H*6}\u2518")
     lines.append("")
 
     # AI review sections
@@ -140,4 +141,4 @@ def format_json(
         "ai_summary": ai_review.summary if ai_review else None,
         "ai_suggestions": ai_review.suggestions if ai_review else [],
     }
-    return _json.dumps(data, ensure_ascii=False, indent=2)
+    return json.dumps(data, ensure_ascii=False, indent=2)

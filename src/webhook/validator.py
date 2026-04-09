@@ -1,3 +1,4 @@
+"""HMAC-SHA256 GitHub webhook signature verification."""
 import hashlib
 import hmac
 

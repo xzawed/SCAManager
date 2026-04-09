@@ -1,8 +1,9 @@
-"""Local git diff collection — replaces github_client/diff.py for CLI usage."""
+"""Local git diff collection for CLI usage — reads diffs from the working repo."""
 import logging
 import re
 import subprocess  # nosec B404
-from dataclasses import dataclass
+
+from src.github_client.models import ChangedFile
 
 logger = logging.getLogger(__name__)
 
@@ -12,13 +13,6 @@ _BINARY_PATTERN = re.compile(r"^Binary files", re.MULTILINE)
 
 class GitError(Exception):
     """Raised when a git operation fails."""
-
-
-@dataclass
-class ChangedFile:
-    filename: str
-    content: str
-    patch: str
 
 
 def _git(*args: str, check: bool = True) -> subprocess.CompletedProcess:

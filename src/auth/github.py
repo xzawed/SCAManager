@@ -1,3 +1,4 @@
+"""GitHub OAuth2 login flow — /login, /auth/github, /auth/callback, /auth/logout."""
 import logging
 from authlib.integrations.starlette_client import OAuth
 from fastapi import APIRouter, Request

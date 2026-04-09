@@ -1,3 +1,4 @@
+"""GitHub repos API — list repos, create/delete webhooks, commit .scamanager/ files."""
 import base64
 import json
 import logging

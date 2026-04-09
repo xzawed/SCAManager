@@ -109,3 +109,85 @@ def test_put_repo_config_auto_merge_defaults_false():
             })
     assert r.status_code == 200
     assert r.json()["auto_merge"] is False
+
+
+# --- 누락 필드 버그 수정 테스트 (discord/slack/webhook/email) ---
+
+def test_update_config_discord_webhook_url_passed():
+    """PUT /config 에 discord_webhook_url 전달 시 upsert_repo_config에 전달되어야 한다."""
+    with patch("src.api.repos.SessionLocal") as mock_cls:
+        with patch("src.api.repos.upsert_repo_config") as mock_upsert:
+            mock_cls.return_value = _make_session_mock(MagicMock())
+            mock_upsert.return_value = MagicMock(
+                repo_full_name="owner/repo", gate_mode="disabled",
+                auto_approve_threshold=75, auto_reject_threshold=50,
+                notify_chat_id=None, n8n_webhook_url=None,
+                discord_webhook_url="https://discord.com/api/webhooks/test",
+                slack_webhook_url=None, custom_webhook_url=None,
+                email_recipients=None, auto_merge=False,
+            )
+            client.put("/api/repos/owner%2Frepo/config", json={
+                "discord_webhook_url": "https://discord.com/api/webhooks/test",
+            })
+    called_data = mock_upsert.call_args[0][1]
+    assert called_data.discord_webhook_url == "https://discord.com/api/webhooks/test"
+
+
+def test_update_config_slack_webhook_url_passed():
+    """PUT /config 에 slack_webhook_url 전달 시 upsert_repo_config에 전달되어야 한다."""
+    with patch("src.api.repos.SessionLocal") as mock_cls:
+        with patch("src.api.repos.upsert_repo_config") as mock_upsert:
+            mock_cls.return_value = _make_session_mock(MagicMock())
+            mock_upsert.return_value = MagicMock(
+                repo_full_name="owner/repo", gate_mode="disabled",
+                auto_approve_threshold=75, auto_reject_threshold=50,
+                notify_chat_id=None, n8n_webhook_url=None,
+                discord_webhook_url=None,
+                slack_webhook_url="https://hooks.slack.com/test",
+                custom_webhook_url=None, email_recipients=None, auto_merge=False,
+            )
+            client.put("/api/repos/owner%2Frepo/config", json={
+                "slack_webhook_url": "https://hooks.slack.com/test",
+            })
+    called_data = mock_upsert.call_args[0][1]
+    assert called_data.slack_webhook_url == "https://hooks.slack.com/test"
+
+
+def test_update_config_custom_webhook_url_passed():
+    """PUT /config 에 custom_webhook_url 전달 시 upsert_repo_config에 전달되어야 한다."""
+    with patch("src.api.repos.SessionLocal") as mock_cls:
+        with patch("src.api.repos.upsert_repo_config") as mock_upsert:
+            mock_cls.return_value = _make_session_mock(MagicMock())
+            mock_upsert.return_value = MagicMock(
+                repo_full_name="owner/repo", gate_mode="disabled",
+                auto_approve_threshold=75, auto_reject_threshold=50,
+                notify_chat_id=None, n8n_webhook_url=None,
+                discord_webhook_url=None, slack_webhook_url=None,
+                custom_webhook_url="https://my.server/hook",
+                email_recipients=None, auto_merge=False,
+            )
+            client.put("/api/repos/owner%2Frepo/config", json={
+                "custom_webhook_url": "https://my.server/hook",
+            })
+    called_data = mock_upsert.call_args[0][1]
+    assert called_data.custom_webhook_url == "https://my.server/hook"
+
+
+def test_update_config_email_recipients_passed():
+    """PUT /config 에 email_recipients 전달 시 upsert_repo_config에 전달되어야 한다."""
+    with patch("src.api.repos.SessionLocal") as mock_cls:
+        with patch("src.api.repos.upsert_repo_config") as mock_upsert:
+            mock_cls.return_value = _make_session_mock(MagicMock())
+            mock_upsert.return_value = MagicMock(
+                repo_full_name="owner/repo", gate_mode="disabled",
+                auto_approve_threshold=75, auto_reject_threshold=50,
+                notify_chat_id=None, n8n_webhook_url=None,
+                discord_webhook_url=None, slack_webhook_url=None,
+                custom_webhook_url=None, email_recipients="a@b.com",
+                auto_merge=False,
+            )
+            client.put("/api/repos/owner%2Frepo/config", json={
+                "email_recipients": "a@b.com",
+            })
+    called_data = mock_upsert.call_args[0][1]
+    assert called_data.email_recipients == "a@b.com"

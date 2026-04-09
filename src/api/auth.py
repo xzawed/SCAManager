@@ -1,3 +1,4 @@
+"""API key authentication dependency for REST API endpoints."""
 from fastapi import Depends, HTTPException, Security
 from fastapi.security import APIKeyHeader
 from src.config import settings

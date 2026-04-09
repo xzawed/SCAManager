@@ -1,8 +1,10 @@
+"""Application settings loaded from environment variables via pydantic-settings."""
 from pydantic_settings import BaseSettings
 from pydantic import field_validator
 
 
 class Settings(BaseSettings):
+    """Centralised configuration — all values read from environment / .env file."""
     database_url: str
     github_webhook_secret: str = ""   # 레거시 리포 fallback (optional)
     github_token: str = ""            # 레거시 리포 fallback (optional)

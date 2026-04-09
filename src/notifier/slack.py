@@ -1,3 +1,4 @@
+"""Slack notifier — sends analysis results as attachment messages via incoming webhook."""
 import httpx
 from src.scorer.calculator import ScoreResult
 from src.analyzer.static import StaticAnalysisResult

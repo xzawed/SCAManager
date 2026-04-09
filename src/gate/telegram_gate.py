@@ -1,3 +1,4 @@
+"""Telegram semi-auto gate — sends inline keyboard review request to chat."""
 import hashlib
 import hmac
 

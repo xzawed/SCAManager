@@ -1,3 +1,4 @@
+"""n8n notifier — sends analysis score payload to an n8n webhook URL."""
 import httpx
 from src.scorer.calculator import ScoreResult
 

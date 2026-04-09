@@ -1,3 +1,4 @@
+"""Generic webhook notifier — sends analysis results as a JSON POST request."""
 from datetime import datetime, timezone
 
 import httpx

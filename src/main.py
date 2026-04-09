@@ -1,10 +1,11 @@
+"""SCAManager FastAPI application — entry point, lifespan, and router registration."""
 import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
 from alembic import command
 from alembic.config import Config
+from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
 
 from src.config import settings
@@ -19,12 +20,14 @@ logger = logging.getLogger(__name__)
 
 
 def _run_migrations() -> None:
+    """Run Alembic migrations to head."""
     alembic_cfg = Config("alembic.ini")
     command.upgrade(alembic_cfg, "head")
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
+    """Run DB migrations on startup, then yield control to the application."""
     try:
         await asyncio.wait_for(asyncio.to_thread(_run_migrations), timeout=30)
         logger.info("DB migration completed")
@@ -47,4 +50,5 @@ app.include_router(ui_router)
 
 @app.get("/health")
 def health():
+    """Liveness probe — returns 200 OK when the application is running."""
     return {"status": "ok"}

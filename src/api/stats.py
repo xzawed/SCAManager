@@ -1,3 +1,4 @@
+"""Statistics API — analysis detail and per-repo score statistics endpoints."""
 from fastapi import APIRouter, HTTPException
 from src.api.auth import require_api_key
 from src.database import SessionLocal
