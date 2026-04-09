@@ -512,3 +512,44 @@ def test_reinstall_webhook_no_existing_webhook():
                 r = client.post("/repos/owner%2Frepo/reinstall-webhook", follow_redirects=False)
     mock_del.assert_not_called()  # webhook_id None → 삭제 스킵
     assert r.status_code == 303
+
+
+# ── 네비게이션 사용자 UI 테스트 ──────────────────────────
+
+def test_overview_shows_display_name_in_nav():
+    """로그인 후 nav에 display_name이 표시된다."""
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        r = client.get("/")
+    assert r.status_code == 200
+    assert "Test User" in r.text
+
+
+def test_overview_shows_logout_button_in_nav():
+    """로그인 후 nav에 로그아웃 버튼과 action URL이 표시된다."""
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        r = client.get("/")
+    assert r.status_code == 200
+    assert "로그아웃" in r.text
+    assert "/auth/logout" in r.text
+
+
+def test_nav_user_fallback_to_github_login():
+    """display_name이 빈 문자열이면 github_login이 nav에 표시된다."""
+    no_name_user = UserModel(
+        id=2, github_id="99999", github_login="fallback_user",
+        github_access_token="gho_x", email="fb@example.com", display_name=""
+    )
+    app.dependency_overrides[require_login] = lambda: no_name_user
+    try:
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
+        with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+            r = client.get("/")
+        assert r.status_code == 200
+        assert "fallback_user" in r.text
+    finally:
+        app.dependency_overrides[require_login] = lambda: _test_user

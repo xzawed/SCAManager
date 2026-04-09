@@ -190,6 +190,40 @@
     nav a.nav-link:hover { color: var(--text-nav); }
     .nav-spacer { flex: 1; }
 
+    /* ── 사용자 정보 & 로그아웃 ──────────────────────── */
+    .nav-user {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .nav-user-name {
+      font-size: 13px;
+      color: var(--text-nav);
+      white-space: nowrap;
+      max-width: 140px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .nav-logout-btn {
+      display: flex;
+      align-items: center;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      color: var(--text-nav);
+      padding: 6px 12px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: background var(--transition), border-color var(--transition), color var(--transition);
+      white-space: nowrap;
+    }
+    .nav-logout-btn:hover {
+      background: rgba(239, 68, 68, 0.18);
+      border-color: rgba(239, 68, 68, 0.45);
+      color: #fca5a5;
+    }
+
     /* ── 테마 스위처 ──────────────────────────── */
     .theme-switcher {
       position: relative;
@@ -429,13 +463,17 @@
       .page-header h2 { font-size: 1.2rem; }
       .back-btn { padding: 3px 8px; font-size: 12px; }
       .btn { padding: .4rem 1rem; font-size: 13px; }
+      .nav-user-name { max-width: 90px; }
+      .nav-logout-btn { padding: 4px 9px; font-size: 12px; }
     }
 
     /* ── 모바일 반응형 (소형) ─────────────────── */
     @media (max-width: 480px) {
       nav { gap: 0.5rem; padding: 0 0.75rem; }
       .nav-logo strong { display: none; }
+      .nav-user-name { display: none; }
       .theme-btn { padding: 5px 8px; font-size: 12px; }
+      .nav-logout-btn { padding: 4px 8px; font-size: 11px; }
       .container { padding: 1rem 0.5rem; }
       th { padding: .4rem .5rem; }
       td { padding: .5rem; font-size: 12px; }
@@ -450,6 +488,14 @@
     </a>
     <a class="nav-link" href="/">Overview</a>
     <div class="nav-spacer"></div>
+    {% if current_user %}
+    <div class="nav-user">
+      <span class="nav-user-name">{{ current_user.display_name or current_user.github_login }}</span>
+      <form method="post" action="/auth/logout" style="display:inline;margin:0">
+        <button type="submit" class="nav-logout-btn">로그아웃</button>
+      </form>
+    </div>
+    {% endif %}
     <div class="theme-switcher" id="themeSwitcher">
       <button class="theme-btn" id="themeToggle" aria-label="테마 변경">
         <span id="themeIcon">🌙</span>
