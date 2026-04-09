@@ -160,6 +160,20 @@
   .page-btn:disabled { opacity: .35; cursor: not-allowed; }
   .page-info { font-size: 12px; color: var(--text-muted); margin-top: .35rem; text-align: center; }
   .filter-empty { text-align: center; padding: 2rem 1rem; color: var(--text-muted); font-size: 13px; }
+  /* ── 날짜 필터 ─────────────────────────── */
+  .custom-date-wrap {
+    display: none; align-items: center; gap: .4rem; flex-shrink: 0;
+  }
+  .custom-date-wrap.visible { display: flex; }
+  .date-input {
+    padding: .3rem .5rem; border-radius: 6px; border: 1.5px solid var(--border);
+    background: transparent; color: var(--text-primary); font-size: 12px;
+    width: 128px; outline: none; transition: border-color var(--transition);
+  }
+  .date-input:focus { border-color: var(--accent); }
+  [data-theme="dark"] .date-input,
+  [data-theme="glass"] .date-input { color-scheme: dark; }
+  [data-theme="light"] .date-input { color-scheme: light; }
   @media (max-width: 768px) {
     .detail-header { flex-wrap: wrap; gap: 0.75rem; }
     .settings-btn { margin-left: 0; }
@@ -167,11 +181,15 @@
     .filter-bar { gap: .45rem; padding: .6rem .75rem; }
     .score-range-wrap { min-width: 160px; }
     .filter-divider { display: none; }
+    .custom-date-wrap { flex-wrap: wrap; }
+    .date-input { width: 110px; }
   }
   @media (max-width: 480px) {
     .commit-msg-preview { display: none; }
     .filter-bar { flex-direction: column; align-items: stretch; }
     .filter-search { min-width: unset; }
+    .custom-date-wrap { flex-direction: column; align-items: stretch; }
+    .date-input { width: 100%; }
   }
 </style>
 
@@ -214,6 +232,19 @@
   <div class="filter-bar">
     <input type="search" class="filter-search" id="searchInput"
       placeholder="커밋 메시지 또는 SHA 검색…" autocomplete="off">
+    <div class="filter-group" id="dateFilter">
+      <button class="filter-btn active" data-date="all">전체</button>
+      <button class="filter-btn" data-date="today">오늘</button>
+      <button class="filter-btn" data-date="week">금주</button>
+      <button class="filter-btn" data-date="month">이번달</button>
+      <button class="filter-btn" data-date="year">올해</button>
+      <button class="filter-btn" data-date="custom">직접 지정</button>
+    </div>
+    <div class="custom-date-wrap" id="customDateWrap">
+      <input type="date" class="date-input" id="dateFrom">
+      <span style="color:var(--text-muted);font-size:11px">–</span>
+      <input type="date" class="date-input" id="dateTo">
+    </div>
     <div class="filter-divider"></div>
     <div class="filter-group" id="gradeFilter">
       <button class="filter-btn active" data-grade="all">전체</button>
@@ -343,6 +374,7 @@ const state = {
   searchQuery: '', gradeFilter: 'all', sourceFilter: 'all',
   sortField: 'created_at', sortDir: 'desc',
   scoreMin: 0, scoreMax: 100, currentPage: 1,
+  datePreset: 'all', dateFrom: null, dateTo: null,
 };
 
 // ── 유틸 ─────────────────────────────────────────────
@@ -351,6 +383,52 @@ function escHtml(s) {
 }
 function encodeRepo(name) {
   return name.split('/').map(encodeURIComponent).join('/');
+}
+
+// ── 날짜 프리셋 ───────────────────────────────────────
+function todayStr() {
+  var d = new Date();
+  var p = function(n) { return String(n).padStart(2, '0'); };
+  return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate());
+}
+function getPresetRange(preset) {
+  var today = new Date();
+  var p = function(n) { return String(n).padStart(2, '0'); };
+  var fmt = function(d) { return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate()); };
+  var t = fmt(today);
+  if (preset === 'today') return { from: t, to: t };
+  if (preset === 'week') {
+    var mon = new Date(today);
+    mon.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+    return { from: fmt(mon), to: t };
+  }
+  if (preset === 'month') {
+    return { from: today.getFullYear() + '-' + p(today.getMonth()+1) + '-01', to: t };
+  }
+  if (preset === 'year') {
+    return { from: today.getFullYear() + '-01-01', to: t };
+  }
+  return { from: null, to: null };
+}
+function applyDatePreset(preset) {
+  var range = getPresetRange(preset);
+  state.dateFrom = range.from;
+  state.dateTo = range.to;
+  var wrap = document.getElementById('customDateWrap');
+  if (preset === 'custom') {
+    wrap.classList.add('visible');
+    if (!state.dateFrom) {
+      var d90 = new Date();
+      d90.setDate(d90.getDate() - 90);
+      var p2 = function(n) { return String(n).padStart(2, '0'); };
+      state.dateFrom = d90.getFullYear() + '-' + p2(d90.getMonth()+1) + '-' + p2(d90.getDate());
+      state.dateTo = todayStr();
+    }
+    document.getElementById('dateFrom').value = state.dateFrom || '';
+    document.getElementById('dateTo').value   = state.dateTo   || '';
+  } else {
+    wrap.classList.remove('visible');
+  }
 }
 
 // ── 슬라이더 ─────────────────────────────────────────
@@ -455,6 +533,11 @@ function applyFilters() {
     if (state.sourceFilter !== 'all' && a.source !== state.sourceFilter) return false;
     var sc = a.score != null ? a.score : -1;
     if (sc < state.scoreMin || sc > state.scoreMax) return false;
+    if (state.dateFrom || state.dateTo) {
+      var d = (a.created_at || '').slice(0, 10);
+      if (state.dateFrom && d < state.dateFrom) return false;
+      if (state.dateTo   && d > state.dateTo)   return false;
+    }
     return true;
   });
   filtered.sort(function(a, b) {
@@ -523,6 +606,33 @@ document.getElementById('sourceFilter').addEventListener('click', function(e) {
   state.sourceFilter = btn.dataset.source;
   state.currentPage = 1;
   this.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.toggle('active', b === btn); });
+  applyFilters();
+});
+document.getElementById('dateFilter').addEventListener('click', function(e) {
+  var btn = e.target.closest('[data-date]');
+  if (!btn) return;
+  state.datePreset = btn.dataset.date;
+  state.currentPage = 1;
+  this.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.toggle('active', b === btn); });
+  applyDatePreset(state.datePreset);
+  applyFilters();
+});
+document.getElementById('dateFrom').addEventListener('change', function() {
+  state.dateFrom = this.value || null;
+  if (state.dateFrom && state.dateTo && state.dateFrom > state.dateTo) {
+    state.dateTo = state.dateFrom;
+    document.getElementById('dateTo').value = state.dateTo;
+  }
+  state.currentPage = 1;
+  applyFilters();
+});
+document.getElementById('dateTo').addEventListener('change', function() {
+  state.dateTo = this.value || null;
+  if (state.dateFrom && state.dateTo && state.dateTo < state.dateFrom) {
+    state.dateFrom = state.dateTo;
+    document.getElementById('dateFrom').value = state.dateFrom;
+  }
+  state.currentPage = 1;
   applyFilters();
 });
 
