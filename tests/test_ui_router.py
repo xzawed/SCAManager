@@ -660,3 +660,97 @@ def test_repo_detail_date_filter_rendered():
     assert 'id="customDateWrap"' in r.text
     assert 'id="dateFrom"' in r.text
     assert 'id="dateTo"' in r.text
+
+
+# ── 분석 상세 버그 수정 TDD 테스트 ──────────────────────────
+
+def test_analysis_detail_result_none_shows_fallback():
+    """result=None, score=75, grade='B' 분석 조회 시:
+    - HTTP 200 반환
+    - 점수 배너(75 텍스트, /100) 포함
+    - fallback 메시지("분석 결과 데이터가 없습니다" 또는 유사 문구) 포함
+    - AI 요약(ai_summary) 섹션은 없어야 함
+    현재 버그: result=None → {} → {% if r %} falsy → AI 블록 숨김,
+    {% elif analysis.score is none %} → score 있으므로 False → fallback도 없음.
+    """
+    mock_db = MagicMock()
+    mock_analysis = MagicMock(
+        id=10, commit_sha="aaa1111", commit_message="fix: null result case",
+        pr_number=None, score=75, grade="B",
+        result=None,  # DB에 NULL 저장된 구버전 분석
+        created_at=MagicMock(isoformat=MagicMock(return_value="2026-04-09T12:00:00")),
+    )
+    mock_db.query.return_value.filter.return_value.first.side_effect = [
+        MagicMock(id=1, full_name="owner/repo", user_id=None),
+        mock_analysis,
+    ]
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        r = client.get("/repos/owner%2Frepo/analyses/10")
+    # 200 반환
+    assert r.status_code == 200
+    # 점수 배너 표시
+    assert "75" in r.text
+    assert "/100" in r.text
+    # fallback 메시지 포함 (result 데이터 없음을 안내)
+    assert "분석 결과 데이터가 없습니다" in r.text or "상세 데이터가 없습니다" in r.text
+    # AI 관련 섹션은 없어야 함 (result가 없으므로)
+    assert "ai_summary" not in r.text
+    assert "AI 요약" not in r.text
+
+
+def test_analysis_detail_result_empty_dict_shows_fallback():
+    """result={} (빈 dict), score=80, grade='A' 분석 조회 시:
+    - HTTP 200 반환
+    - 점수 배너(80 텍스트) 포함
+    - fallback 메시지 포함
+    현재 버그: {} → {% if r %} falsy → AI 블록 전체 숨김,
+    {% elif analysis.score is none %} → score 있으므로 False → fallback도 없음.
+    """
+    mock_db = MagicMock()
+    mock_analysis = MagicMock(
+        id=11, commit_sha="bbb2222", commit_message="chore: empty result case",
+        pr_number=None, score=80, grade="A",
+        result={},  # 빈 dict — 데이터 누락 상태
+        created_at=MagicMock(isoformat=MagicMock(return_value="2026-04-09T13:00:00")),
+    )
+    mock_db.query.return_value.filter.return_value.first.side_effect = [
+        MagicMock(id=1, full_name="owner/repo", user_id=None),
+        mock_analysis,
+    ]
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        r = client.get("/repos/owner%2Frepo/analyses/11")
+    # 200 반환
+    assert r.status_code == 200
+    # 점수 배너 표시
+    assert "80" in r.text
+    assert "/100" in r.text
+    # fallback 메시지 포함
+    assert "분석 결과 데이터가 없습니다" in r.text or "상세 데이터가 없습니다" in r.text
+    # AI 요약 섹션 없음
+    assert "AI 요약" not in r.text
+
+
+def test_analysis_detail_with_current_user_shows_nav():
+    """analysis_detail 렌더링 시 current_user가 nav에 표시된다.
+    현재 버그: router.py의 analysis_detail이 current_user를 template context에
+    전달하지 않아 base.html nav의 사용자명·로그아웃 버튼이 표시되지 않음.
+    """
+    mock_db = MagicMock()
+    mock_analysis = MagicMock(
+        id=12, commit_sha="ccc3333", commit_message="feat: nav user test",
+        pr_number=5, score=90, grade="A",
+        result={"breakdown": {"code_quality": 25}, "ai_summary": "excellent"},
+        created_at=MagicMock(isoformat=MagicMock(return_value="2026-04-09T14:00:00")),
+    )
+    mock_db.query.return_value.filter.return_value.first.side_effect = [
+        MagicMock(id=1, full_name="owner/repo", user_id=None),
+        mock_analysis,
+    ]
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        r = client.get("/repos/owner%2Frepo/analyses/12")
+    assert r.status_code == 200
+    # _test_user의 display_name="Test User"가 nav에 표시되어야 함
+    assert "Test User" in r.text
+    # 로그아웃 버튼 및 URL이 포함되어야 함
+    assert "로그아웃" in r.text
+    assert "/auth/logout" in r.text
