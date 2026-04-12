@@ -6,6 +6,8 @@ from src.models.repo_config import RepoConfig
 
 @dataclass
 class RepoConfigData:
+    """RepoConfig ORM 레코드를 Python 데이터클래스로 표현한다 (단일 출처)."""
+
     repo_full_name: str
     pr_review_comment: bool = True
     approve_mode: str = "disabled"
@@ -22,6 +24,7 @@ class RepoConfigData:
 
 
 def get_repo_config(db: Session, repo_full_name: str) -> RepoConfigData:
+    """DB에서 RepoConfig를 조회하여 RepoConfigData로 반환. 미존재 시 기본값 반환."""
     record = db.query(RepoConfig).filter_by(repo_full_name=repo_full_name).first()
     if record is None:
         return RepoConfigData(repo_full_name=repo_full_name)
@@ -43,6 +46,7 @@ def get_repo_config(db: Session, repo_full_name: str) -> RepoConfigData:
 
 
 def upsert_repo_config(db: Session, data: RepoConfigData) -> RepoConfig:
+    """RepoConfig를 INSERT 또는 UPDATE(Upsert)한다."""
     record = db.query(RepoConfig).filter_by(repo_full_name=data.repo_full_name).first()
     if record is None:
         record = RepoConfig(

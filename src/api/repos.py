@@ -2,6 +2,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from src.api.auth import require_api_key
+from src.api.deps import get_repo_or_404
 from src.database import SessionLocal
 from src.models.repository import Repository
 from src.models.analysis import Analysis
@@ -29,6 +30,7 @@ class RepoConfigUpdate(BaseModel):
 
 @router.get("/repos")
 def list_repos():
+    """등록된 전체 리포지토리 목록을 반환한다."""
     with SessionLocal() as db:
         repos = db.query(Repository).order_by(Repository.created_at.desc()).all()
         return [
@@ -40,10 +42,9 @@ def list_repos():
 
 @router.get("/repos/{repo_name:path}/analyses")
 def list_repo_analyses(repo_name: str, skip: int = 0, limit: int = 20):
+    """리포지토리 분석 이력 목록을 반환한다."""
     with SessionLocal() as db:
-        repo = db.query(Repository).filter(Repository.full_name == repo_name).first()
-        if not repo:
-            raise HTTPException(status_code=404, detail="Repository not found")
+        repo = get_repo_or_404(repo_name, db)
         analyses = (
             db.query(Analysis)
             .filter(Analysis.repo_id == repo.id)
@@ -60,6 +61,7 @@ def list_repo_analyses(repo_name: str, skip: int = 0, limit: int = 20):
 
 @router.put("/repos/{repo_name:path}/config")
 def update_repo_config(repo_name: str, body: RepoConfigUpdate):
+    """리포지토리 Gate·알림 설정을 업데이트한다."""
     with SessionLocal() as db:
         record = upsert_repo_config(db, RepoConfigData(
             repo_full_name=repo_name,

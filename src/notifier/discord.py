@@ -1,17 +1,9 @@
 """Discord notifier — sends analysis results as embed messages via webhook."""
 import httpx
+from src.constants import GRADE_EMOJI, GRADE_COLOR_DISCORD
 from src.scorer.calculator import ScoreResult
 from src.analyzer.static import StaticAnalysisResult
 from src.analyzer.ai_review import AiReviewResult
-
-GRADE_COLORS = {
-    "A": 0x10B981,  # green
-    "B": 0x3B82F6,  # blue
-    "C": 0xF59E0B,  # amber
-    "D": 0xF97316,  # orange
-    "F": 0xEF4444,  # red
-}
-GRADE_EMOJI = {"A": "🟢", "B": "🔵", "C": "🟡", "D": "🟠", "F": "🔴"}
 _EMBED_DESC_MAX = 4096
 
 
@@ -55,12 +47,13 @@ def _build_embed(
     return {
         "title": f"📊 SCA 분석 — {repo_name}",
         "description": desc,
-        "color": GRADE_COLORS.get(score_result.grade, 0x6366F1),
+        "color": GRADE_COLOR_DISCORD.get(score_result.grade, 0x6366F1),
         "fields": fields,
     }
 
 
 async def send_discord_notification(
+    *,
     webhook_url: str | None,
     repo_name: str,
     commit_sha: str,
@@ -69,6 +62,7 @@ async def send_discord_notification(
     pr_number: int | None = None,
     ai_review: AiReviewResult | None = None,
 ) -> None:
+    """Discord Embed 메시지를 Webhook URL로 전송한다."""
     if not webhook_url:
         return
     embed = _build_embed(repo_name, commit_sha, score_result, analysis_results, pr_number, ai_review)

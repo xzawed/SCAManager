@@ -1,19 +1,17 @@
 """Slack notifier — sends analysis results as attachment messages via incoming webhook."""
 import httpx
+from src.constants import GRADE_COLOR_HTML
 from src.scorer.calculator import ScoreResult
 from src.analyzer.static import StaticAnalysisResult
 from src.analyzer.ai_review import AiReviewResult
 
-GRADE_COLORS = {
-    "A": "#10b981",
-    "B": "#3b82f6",
-    "C": "#f59e0b",
-    "D": "#f97316",
-    "F": "#ef4444",
+# Slack attachment color = hex string (GRADE_COLOR_HTML 재사용)
+# Slack emoji는 Slack 고유 텍스트 형식(:large_green_circle:)이라 별도 정의
+_SLACK_GRADE_EMOJI = {
+    "A": ":large_green_circle:", "B": ":large_blue_circle:",
+    "C": ":large_yellow_circle:", "D": ":large_orange_circle:",
+    "F": ":red_circle:",
 }
-GRADE_EMOJI = {"A": ":large_green_circle:", "B": ":large_blue_circle:",
-               "C": ":large_yellow_circle:", "D": ":large_orange_circle:",
-               "F": ":red_circle:"}
 
 
 def _build_payload(
@@ -24,7 +22,7 @@ def _build_payload(
     pr_number: int | None,
     ai_review: AiReviewResult | None = None,
 ) -> dict:
-    grade_emoji = GRADE_EMOJI.get(score_result.grade, ":white_circle:")
+    grade_emoji = _SLACK_GRADE_EMOJI.get(score_result.grade, ":white_circle:")
     ref = f"PR #{pr_number}" if pr_number else f"커밋 {commit_sha[:7]}"
     bd = score_result.breakdown
 
@@ -56,7 +54,7 @@ def _build_payload(
 
     attachment = {
         "fallback": fallback,
-        "color": GRADE_COLORS.get(score_result.grade, "#6366f1"),
+        "color": GRADE_COLOR_HTML.get(score_result.grade, "#6366f1"),
         "pretext": pretext,
         "fields": fields,
     }
@@ -67,6 +65,7 @@ def _build_payload(
 
 
 async def send_slack_notification(
+    *,
     webhook_url: str | None,
     repo_name: str,
     commit_sha: str,
@@ -75,6 +74,7 @@ async def send_slack_notification(
     pr_number: int | None = None,
     ai_review: AiReviewResult | None = None,
 ) -> None:
+    """Slack Incoming Webhook으로 분석 결과 메시지를 전송한다."""
     if not webhook_url:
         return
     payload = _build_payload(repo_name, commit_sha, score_result, analysis_results, pr_number, ai_review)

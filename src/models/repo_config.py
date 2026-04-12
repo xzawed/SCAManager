@@ -1,9 +1,12 @@
+"""RepoConfig ORM 모델 — 리포별 분석·Gate·알림 설정."""
 from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, DateTime, Boolean
 from src.database import Base
 
 
 class RepoConfig(Base):
+    """리포별 Gate·알림 설정 테이블 (approve_mode·auto_merge·채널 설정 포함)."""
+
     __tablename__ = "repo_configs"
     id = Column(Integer, primary_key=True, index=True)
     repo_full_name = Column(String, unique=True, nullable=False, index=True)

@@ -28,7 +28,13 @@ async def test_notify_n8n_posts_to_webhook():
         mock_cls.return_value = mock_client
 
         score = ScoreResult(total=82, grade="B", code_quality_score=28, security_score=20, breakdown={})
-        await notify_n8n("https://n8n.example.com/webhook/abc", "owner/repo", "abc123", 5, score)
+        await notify_n8n(
+            webhook_url="https://n8n.example.com/webhook/abc",
+            repo_full_name="owner/repo",
+            commit_sha="abc123",
+            pr_number=5,
+            score_result=score,
+        )
 
         mock_client.post.assert_called_once()
         call_args = mock_client.post.call_args
@@ -47,7 +53,7 @@ async def test_notify_n8n_skips_when_no_url():
         mock_cls.return_value = mock_client
 
         score = ScoreResult(total=80, grade="B", code_quality_score=25, security_score=20, breakdown={})
-        await notify_n8n(None, "owner/repo", "abc123", None, score)
+        await notify_n8n(webhook_url=None, repo_full_name="owner/repo", commit_sha="abc123", pr_number=None, score_result=score)
         mock_client.post.assert_not_called()
 
 
@@ -63,4 +69,10 @@ async def test_notify_n8n_raises_on_error():
 
         score = ScoreResult(total=80, grade="B", code_quality_score=25, security_score=20, breakdown={})
         with pytest.raises(Exception, match="Connection error"):
-            await notify_n8n("https://n8n.example.com/webhook/abc", "owner/repo", "abc123", None, score)
+            await notify_n8n(
+                webhook_url="https://n8n.example.com/webhook/abc",
+                repo_full_name="owner/repo",
+                commit_sha="abc123",
+                pr_number=None,
+                score_result=score,
+            )

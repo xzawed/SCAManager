@@ -10,9 +10,9 @@ from src.scorer.calculator import ScoreResult
 from src.analyzer.static import StaticAnalysisResult
 from src.analyzer.ai_review import AiReviewResult
 
-logger = logging.getLogger(__name__)
+from src.constants import GRADE_COLOR_HTML
 
-GRADE_COLOR = {"A": "#10b981", "B": "#3b82f6", "C": "#f59e0b", "D": "#f97316", "F": "#ef4444"}
+logger = logging.getLogger(__name__)
 
 
 def _build_html_body(
@@ -25,7 +25,7 @@ def _build_html_body(
 ) -> str:
     ref = f"PR #{pr_number}" if pr_number else f"커밋 {commit_sha[:7]}"
     bd = score_result.breakdown
-    color = GRADE_COLOR.get(score_result.grade, "#6366f1")
+    color = GRADE_COLOR_HTML.get(score_result.grade, "#6366f1")
 
     rows = "".join(
         f"<tr><td style='padding:4px 8px'>{name}</td>"
@@ -71,6 +71,7 @@ def _build_html_body(
 
 
 async def send_email_notification(
+    *,
     recipients: str | None,
     repo_name: str,
     commit_sha: str,
@@ -83,6 +84,7 @@ async def send_email_notification(
     smtp_user: str | None = None,
     smtp_pass: str | None = None,
 ) -> None:
+    """SMTP를 통해 HTML 분석 리포트 이메일을 전송한다."""
     if not recipients or not smtp_host:
         return
 

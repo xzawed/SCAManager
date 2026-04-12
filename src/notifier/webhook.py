@@ -34,6 +34,7 @@ def _build_payload(
 
 
 async def send_webhook_notification(
+    *,
     webhook_url: str | None,
     repo_name: str,
     commit_sha: str,
@@ -42,6 +43,7 @@ async def send_webhook_notification(
     pr_number: int | None = None,
     ai_review: AiReviewResult | None = None,
 ) -> None:
+    """범용 Webhook URL로 분석 결과 JSON을 POST한다."""
     if not webhook_url:
         return
     payload = _build_payload(repo_name, commit_sha, score_result, analysis_results, pr_number, ai_review)

@@ -3,10 +3,10 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from alembic import command
-from alembic.config import Config
 from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
+from alembic import command
+from alembic.config import Config
 
 from src.config import settings
 from src.database import SessionLocal

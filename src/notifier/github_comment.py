@@ -1,12 +1,11 @@
 """GitHub pull request comment notifier using the GitHub Issues API."""
 import httpx
 
+from src.constants import GRADE_EMOJI
 from src.github_client.helpers import github_api_headers
 from src.scorer.calculator import ScoreResult
 from src.analyzer.static import StaticAnalysisResult
 from src.analyzer.ai_review import AiReviewResult
-
-GRADE_EMOJI = {"A": "🟢", "B": "🔵", "C": "🟡", "D": "🟠", "F": "🔴"}
 
 
 def _build_comment_body(

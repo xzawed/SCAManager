@@ -48,7 +48,7 @@ async def github_repos_list(current_user: User = Depends(require_login)):
                 Repository.user_id == current_user.id
             ).all()
         }
-    repos = await list_user_repos(current_user.github_access_token or "")
+    repos = await list_user_repos(current_user.plaintext_token or "")
     return [r for r in repos if r["full_name"] not in existing_names]
 
 
@@ -78,7 +78,7 @@ async def add_repo(request: Request, current_user: User = Depends(require_login)
     hook_token = secrets.token_hex(32)
     webhook_url = _webhook_base_url(request) + "/webhooks/github"
     webhook_id = await create_webhook(
-        current_user.github_access_token or "",
+        current_user.plaintext_token or "",
         repo_full_name,
         webhook_url,
         webhook_secret,
@@ -107,7 +107,7 @@ async def add_repo(request: Request, current_user: User = Depends(require_login)
     # .scamanager/ 파일을 Repo에 커밋 (실패해도 등록 자체는 성공)
     server_url = str(request.base_url).rstrip("/")
     await commit_scamanager_files(
-        current_user.github_access_token or "",
+        current_user.plaintext_token or "",
         repo_full_name,
         server_url,
         hook_token,
@@ -242,7 +242,7 @@ async def reinstall_hook(
 
     server_url = _webhook_base_url(request)
     ok = await commit_scamanager_files(
-        current_user.github_access_token or "",
+        current_user.plaintext_token or "",
         repo_name,
         server_url,
         hook_token,
@@ -264,7 +264,7 @@ async def reinstall_webhook(
     """GitHub Webhook을 삭제하고 새 URL(HTTPS)로 재등록한다."""
     with SessionLocal() as db:
         repo = _get_accessible_repo(db, repo_name, current_user)
-        token = current_user.github_access_token or ""
+        token = current_user.plaintext_token or ""
 
         if repo.webhook_id:
             await delete_webhook(token, repo_name, repo.webhook_id)
