@@ -22,9 +22,11 @@ def test_health_returns_200(client):
 
 
 def test_health_returns_status_ok(client):
-    # GET /health 응답 body 가 {"status": "ok"} 인지 검증
+    # GET /health 응답 body 가 status=ok + active_db 필드를 포함하는지 검증
     response = client.get("/health")
-    assert response.json() == {"status": "ok"}
+    data = response.json()
+    assert data["status"] == "ok"
+    assert "active_db" in data
 
 
 # --- 라우트 등록 검증 ---

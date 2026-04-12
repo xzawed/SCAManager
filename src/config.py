@@ -27,8 +27,20 @@ class Settings(BaseSettings):
     db_max_overflow: int = 10
     db_pool_timeout: int = 30   # seconds
     db_pool_recycle: int = 1800  # seconds
+    # DB Failover 설정 (빈 문자열이면 failover 비활성)
+    database_url_fallback: str = ""
+    db_failover_probe_interval: int = 30  # Primary 복구 확인 주기(초)
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+
+    @staticmethod
+    def _normalize_pg_url(v: str) -> str:
+        """postgres:// → postgresql:// 변환 + Supabase SSL 자동 추가."""
+        if v.startswith("postgres://"):
+            v = v.replace("postgres://", "postgresql://", 1)
+        if 'supabase.co' in v and 'sslmode' not in v:
+            v += '?sslmode=require'
+        return v
 
     @field_validator("smtp_port", mode="before")
     @classmethod
@@ -41,13 +53,14 @@ class Settings(BaseSettings):
     @field_validator("database_url")
     @classmethod
     def fix_postgres_url(cls, v: str) -> str:
-        # SQLAlchemy 2.x는 'postgres://' 미지원, 'postgresql://'로 변환
-        if v.startswith("postgres://"):
-            v = v.replace("postgres://", "postgresql://", 1)
-        # Supabase는 SSL 필수
-        if 'supabase.co' in v and 'sslmode' not in v:
-            v += '?sslmode=require'
-        return v
+        return cls._normalize_pg_url(v)
+
+    @field_validator("database_url_fallback")
+    @classmethod
+    def fix_fallback_url(cls, v: str) -> str:
+        if not v:
+            return v
+        return cls._normalize_pg_url(v)
 
 
 settings = Settings()
