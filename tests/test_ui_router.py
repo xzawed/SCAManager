@@ -754,3 +754,170 @@ def test_analysis_detail_with_current_user_shows_nav():
     # 로그아웃 버튼 및 URL이 포함되어야 함
     assert "로그아웃" in r.text
     assert "/auth/logout" in r.text
+
+
+# ── analysis_detail trend_data / prev_id / next_id TDD (Red 단계) ──────────────────────────
+
+def _make_sibling(id_, score, created_at_str):
+    """시블링 분석 mock 생성 헬퍼 — id·score·created_at 속성 제공."""
+    from datetime import datetime
+    m = MagicMock()
+    m.id = id_
+    m.score = score
+    m.created_at = datetime.fromisoformat(created_at_str)
+    return m
+
+
+def test_analysis_detail_trend_data_returned():
+    """analysis_detail 라우트가 같은 리포의 최근 30건을 trend_data로 context에 전달한다.
+    3건 시블링(id=1,2,3) 중 현재 분석이 id=1일 때:
+    - trend_data 길이 3, 시간 오름차순
+    - 각 항목에 id·score·label 키 포함
+    - context에 trend_data 키가 존재
+    """
+    from unittest.mock import call
+    import json
+
+    mock_db = MagicMock()
+
+    mock_repo = MagicMock(id=10, full_name="owner/repo", user_id=None)
+    mock_analysis = MagicMock(
+        id=1, commit_sha="sha001", commit_message="feat: first",
+        pr_number=None, score=70, grade="C",
+        result={"breakdown": {}},
+        created_at=MagicMock(isoformat=MagicMock(return_value="2026-04-01T10:00:00")),
+    )
+
+    siblings = [
+        _make_sibling(3, 90, "2026-04-03T12:00:00"),  # desc 순서 최신
+        _make_sibling(2, 80, "2026-04-02T11:00:00"),
+        _make_sibling(1, 70, "2026-04-01T10:00:00"),  # 가장 오래된
+    ]
+
+    # first() 호출 순서: repo → analysis
+    mock_db.query.return_value.filter.return_value.first.side_effect = [
+        mock_repo,
+        mock_analysis,
+    ]
+    # siblings: .order_by(...).limit(30).all()
+    mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = siblings
+    # prev scalar: None (id=1보다 작은 것 없음)
+    # next scalar: 2
+    mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.scalar.side_effect = [None, 2]
+
+    captured_context = {}
+
+    def fake_template_response(request, template_name, context):
+        captured_context.update(context)
+        # 실제 응답 대신 간단한 HTML 반환
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(content="<html>ok</html>")
+
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.ui.router.templates.TemplateResponse", side_effect=fake_template_response):
+            r = client.get("/repos/owner%2Frepo/analyses/1")
+
+    assert r.status_code == 200
+    # trend_data 키가 context에 있어야 한다
+    assert "trend_data" in captured_context, "trend_data가 template context에 없음 — 미구현 상태"
+    trend = captured_context["trend_data"]
+    # 3건 반환
+    assert len(trend) == 3
+    # 오름차순 (가장 오래된 것이 index 0)
+    assert trend[0]["id"] == 1
+    assert trend[-1]["id"] == 3
+    # 각 항목에 id·score·label 키 포함
+    for item in trend:
+        assert "id" in item
+        assert "score" in item
+        assert "label" in item
+
+
+def test_analysis_detail_prev_next_navigation():
+    """중간 분석(id=2)을 조회할 때 prev_id=1, next_id=3이 context에 전달된다."""
+    mock_db = MagicMock()
+
+    mock_repo = MagicMock(id=10, full_name="owner/repo", user_id=None)
+    mock_analysis = MagicMock(
+        id=2, commit_sha="sha002", commit_message="feat: middle",
+        pr_number=None, score=80, grade="B",
+        result={"breakdown": {}},
+        created_at=MagicMock(isoformat=MagicMock(return_value="2026-04-02T11:00:00")),
+    )
+
+    siblings = [
+        _make_sibling(3, 90, "2026-04-03T12:00:00"),
+        _make_sibling(2, 80, "2026-04-02T11:00:00"),
+        _make_sibling(1, 70, "2026-04-01T10:00:00"),
+    ]
+
+    mock_db.query.return_value.filter.return_value.first.side_effect = [
+        mock_repo,
+        mock_analysis,
+    ]
+    mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = siblings
+    # prev scalar=1, next scalar=3
+    mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.scalar.side_effect = [1, 3]
+
+    captured_context = {}
+
+    def fake_template_response(request, template_name, context):
+        captured_context.update(context)
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(content="<html>ok</html>")
+
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.ui.router.templates.TemplateResponse", side_effect=fake_template_response):
+            r = client.get("/repos/owner%2Frepo/analyses/2")
+
+    assert r.status_code == 200
+    # prev_id, next_id 키가 context에 있어야 한다
+    assert "prev_id" in captured_context, "prev_id가 template context에 없음 — 미구현 상태"
+    assert "next_id" in captured_context, "next_id가 template context에 없음 — 미구현 상태"
+    assert captured_context["prev_id"] == 1
+    assert captured_context["next_id"] == 3
+
+
+def test_analysis_detail_single_analysis_no_siblings():
+    """리포에 분석이 1건만 있을 때(id=5) trend_data=1건, prev_id=None, next_id=None."""
+    mock_db = MagicMock()
+
+    mock_repo = MagicMock(id=20, full_name="owner/solo-repo", user_id=None)
+    mock_analysis = MagicMock(
+        id=5, commit_sha="sha005", commit_message="chore: only one",
+        pr_number=None, score=60, grade="C",
+        result={"breakdown": {}},
+        created_at=MagicMock(isoformat=MagicMock(return_value="2026-04-10T09:00:00")),
+    )
+
+    siblings = [_make_sibling(5, 60, "2026-04-10T09:00:00")]
+
+    mock_db.query.return_value.filter.return_value.first.side_effect = [
+        mock_repo,
+        mock_analysis,
+    ]
+    mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = siblings
+    # prev scalar=None, next scalar=None
+    mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.scalar.side_effect = [None, None]
+
+    captured_context = {}
+
+    def fake_template_response(request, template_name, context):
+        captured_context.update(context)
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(content="<html>ok</html>")
+
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.ui.router.templates.TemplateResponse", side_effect=fake_template_response):
+            r = client.get("/repos/owner%2Frepo/analyses/5")
+
+    assert r.status_code == 200
+    # trend_data 1건
+    assert "trend_data" in captured_context, "trend_data가 template context에 없음 — 미구현 상태"
+    assert len(captured_context["trend_data"]) == 1
+    assert captured_context["trend_data"][0]["id"] == 5
+    # prev/next 없음
+    assert "prev_id" in captured_context, "prev_id가 template context에 없음 — 미구현 상태"
+    assert "next_id" in captured_context, "next_id가 template context에 없음 — 미구현 상태"
+    assert captured_context["prev_id"] is None
+    assert captured_context["next_id"] is None

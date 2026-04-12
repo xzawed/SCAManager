@@ -316,8 +316,25 @@ def analysis_detail(
             "source": source,
             "created_at": analysis.created_at.isoformat() if analysis.created_at else None,
         }
+        # 트렌드 차트: 같은 리포 최근 30건 (시간 오름차순)
+        siblings = (db.query(Analysis.id, Analysis.score, Analysis.created_at)
+                    .filter(Analysis.repo_id == repo.id)
+                    .order_by(Analysis.created_at.desc()).limit(30).all())
+        trend_data = [
+            {"id": s.id, "score": s.score,
+             "label": s.created_at.strftime("%m/%d") if s.created_at else ""}
+            for s in reversed(siblings)
+        ]
+        # 이전/다음 분석 내비게이션
+        prev_id = (db.query(Analysis.id)
+                   .filter(Analysis.repo_id == repo.id, Analysis.id < analysis_id)
+                   .order_by(Analysis.id.desc()).limit(1).scalar())
+        next_id = (db.query(Analysis.id)
+                   .filter(Analysis.repo_id == repo.id, Analysis.id > analysis_id)
+                   .order_by(Analysis.id.asc()).limit(1).scalar())
     return templates.TemplateResponse(request, "analysis_detail.html", {
         "repo_name": repo_name, "analysis": data, "current_user": current_user,
+        "trend_data": trend_data, "prev_id": prev_id, "next_id": next_id,
     })
 
 
