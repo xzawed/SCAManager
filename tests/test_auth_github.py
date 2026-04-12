@@ -115,3 +115,63 @@ def test_callback_updates_existing_user_and_redirects():
     assert r.headers["location"] == "/"
     assert not mock_db.add.called   # 기존 유저이므로 add 미호출
     assert existing_user.github_access_token == "gho_updated_token"
+
+
+# ---------------------------------------------------------------------------
+# 라우트 등록 확인 — OAuth 외부 연결 없이 라우트 존재 여부만 검증
+# ---------------------------------------------------------------------------
+
+def test_auth_github_route_exists():
+    """/auth/github 라우트가 앱에 등록되어 있는지 확인한다."""
+    from src.main import app  # noqa: PLC0415
+    routes = [r.path for r in app.routes]
+    assert "/auth/github" in routes
+
+
+def test_auth_callback_route_exists():
+    """/auth/callback 라우트가 앱에 등록되어 있는지 확인한다."""
+    from src.main import app  # noqa: PLC0415
+    routes = [r.path for r in app.routes]
+    assert "/auth/callback" in routes
+
+
+def test_logout_route_exists():
+    """POST /auth/logout 라우트가 앱에 등록되어 있는지 확인한다."""
+    from src.main import app  # noqa: PLC0415
+    routes = [r.path for r in app.routes]
+    assert "/auth/logout" in routes
+
+
+def test_callback_no_primary_email_uses_fallback():
+    """이메일 응답에 primary+verified 이메일이 없을 경우 user_info["email"]을 fallback으로 사용해야 한다."""
+    from src.models.user import User  # noqa: PLC0415
+    mock_token = {"access_token": "gho_token"}
+    mock_user_info = MagicMock()
+    mock_user_info.json.return_value = {
+        "id": 12345, "login": "user", "name": "User", "email": "fallback@example.com"
+    }
+    mock_emails_resp = MagicMock()
+    mock_emails_resp.json.return_value = [
+        {"email": "notprimary@example.com", "primary": False, "verified": True}
+    ]
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = None
+    captured = {}
+
+    def capture_add(obj):
+        # add된 User 객체를 캡처만 하고 반환하지 않는다 (재귀 방지)
+        if isinstance(obj, User):
+            captured["user"] = obj
+
+    mock_db.add.side_effect = capture_add
+
+    with patch("src.auth.github.oauth.github.authorize_access_token",
+               new_callable=AsyncMock, return_value=mock_token):
+        with patch("src.auth.github.oauth.github.get",
+                   new_callable=AsyncMock, side_effect=[mock_user_info, mock_emails_resp]):
+            with patch("src.auth.github.SessionLocal") as mock_sl:
+                mock_sl.return_value.__enter__.return_value = mock_db
+                client.get("/auth/callback?code=test&state=test", follow_redirects=False)
+
+    assert captured.get("user") is not None
+    assert captured["user"].email == "fallback@example.com"

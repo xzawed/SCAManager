@@ -3,6 +3,7 @@ uvicorn[standard]==0.30.6
 pydantic-settings==2.3.4
 sqlalchemy==2.0.35
 alembic==1.13.3
+# 온프레미스 프로덕션: psycopg2-binary → psycopg2 + libpq-dev(Ubuntu) / postgresql-devel(RHEL) 설치 권장
 psycopg2-binary==2.9.11
 PyGithub==2.3.0
 httpx==0.27.2

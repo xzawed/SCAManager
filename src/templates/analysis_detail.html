@@ -224,6 +224,27 @@
 
 {% set r = analysis.result %}
 
+<!-- AI 기본값 적용 경고 배너 -->
+{% set ai_status = r.get('ai_review_status', 'success') if r else 'success' %}
+{% if ai_status != 'success' %}
+<div class="card ad-section" style="border-left:4px solid #f59e0b;background:rgba(245,158,11,0.06)">
+  <div style="display:flex;align-items:center;gap:.6rem">
+    <span style="font-size:1.1rem">⚠️</span>
+    <div>
+      <div style="font-size:13px;font-weight:700;color:#f59e0b;margin-bottom:2px">AI 리뷰 기본값 적용</div>
+      <div style="font-size:13px;color:var(--text-primary)">
+        {% if ai_status == 'no_api_key' %}ANTHROPIC_API_KEY가 설정되지 않아 AI 점수에 중립적 기본값이 적용되었습니다.
+        {% elif ai_status == 'api_error' %}AI API 호출에 실패하여 기본값이 적용되었습니다. 서버 로그를 확인하세요.
+        {% elif ai_status == 'empty_diff' %}분석 가능한 코드 변경사항이 없어 기본값이 적용되었습니다.
+        {% elif ai_status == 'parse_error' %}AI 응답 파싱에 실패하여 기본값이 적용되었습니다.
+        {% else %}AI 리뷰를 수행하지 못해 기본값이 적용되었습니다.
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <!-- 점수 상세 -->
 {% set bd = r.get('breakdown', {}) if r else {} %}
 {% if bd %}

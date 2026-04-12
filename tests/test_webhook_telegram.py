@@ -135,3 +135,71 @@ async def test_handle_gate_callback_merge_failure_does_not_propagate():
                                                    decided_by="john")
                         # GateDecision은 merge 결과와 무관하게 저장되어야 함
                         mock_save.assert_called_once()
+
+
+# --- 추가 테스트: HMAC 검증 실패·파트 형식 오류·analysis 미존재·내부 예외 ---
+
+INVALID_TOKEN_PAYLOAD = {
+    "update_id": 9,
+    "callback_query": {
+        "id": "c9",
+        "from": {"id": 1, "username": "attacker"},
+        "data": "gate:approve:42:badtoken1234567",  # 잘못된 HMAC 토큰
+        "message": {"message_id": 1, "chat": {"id": -1}}
+    }
+}
+
+BAD_PARTS_PAYLOAD = {
+    "update_id": 10,
+    "callback_query": {
+        "id": "c10",
+        "from": {"id": 1, "username": "user"},
+        "data": "gate:approve:only-3-parts",  # 파트 3개 (4개 미만)
+        "message": {"message_id": 1, "chat": {"id": -1}}
+    }
+}
+
+
+def test_invalid_hmac_token_does_not_call_callback():
+    # HMAC 토큰이 잘못된 경우 handle_gate_callback이 호출되지 않아야 한다
+    with patch("src.webhook.router.handle_gate_callback", new_callable=AsyncMock) as mock_h:
+        r = client.post("/api/webhook/telegram", json=INVALID_TOKEN_PAYLOAD)
+    assert r.status_code == 200
+    mock_h.assert_not_called()
+
+
+def test_malformed_callback_data_no_crash():
+    # 콜백 data가 gate:로 시작하지만 파트 수가 4개 미만이면 200 반환, callback 미호출
+    with patch("src.webhook.router.handle_gate_callback", new_callable=AsyncMock) as mock_h:
+        r = client.post("/api/webhook/telegram", json=BAD_PARTS_PAYLOAD)
+    assert r.status_code == 200
+    mock_h.assert_not_called()
+
+
+async def test_handle_gate_callback_analysis_not_found():
+    # analysis DB 조회가 None 반환 시 예외 없이 정상 종료, post_github_review 미호출
+    from src.webhook.router import handle_gate_callback
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter_by.return_value.first.return_value = None
+    with patch("src.webhook.router.SessionLocal", return_value=mock_db):
+        with patch("src.webhook.router.post_github_review", new_callable=AsyncMock) as mock_review:
+            await handle_gate_callback(analysis_id=999, decision="approve", decided_by="user")
+            mock_review.assert_not_called()
+
+
+async def test_handle_gate_callback_exception_does_not_propagate():
+    # post_github_review가 예외를 던져도 handle_gate_callback이 정상 종료되어야 한다
+    from src.webhook.router import handle_gate_callback
+    mock_analysis = MagicMock(id=42, repo_id=1, pr_number=5, result={"score": 85})
+    mock_repo = MagicMock(id=1, full_name="owner/repo")
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter_by.return_value.first.side_effect = [
+        mock_analysis, mock_repo
+    ]
+    config = RepoConfigData(repo_full_name="owner/repo", auto_merge=False)
+    with patch("src.webhook.router.SessionLocal", return_value=mock_db):
+        with patch("src.webhook.router.post_github_review",
+                   new_callable=AsyncMock, side_effect=Exception("GitHub API down")):
+            with patch("src.webhook.router.get_repo_config", return_value=config):
+                # 예외가 전파되지 않아야 한다
+                await handle_gate_callback(analysis_id=42, decision="approve", decided_by="user")

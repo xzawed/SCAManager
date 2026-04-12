@@ -36,6 +36,7 @@ def _build_result_dict(
         "score": score_result.total,
         "grade": score_result.grade,
         "breakdown": score_result.breakdown,
+        "ai_review_status": ai_review.status,
         "ai_summary": ai_review.summary,
         "ai_suggestions": ai_review.suggestions,
         "commit_message_feedback": ai_review.commit_message_feedback,
@@ -172,7 +173,15 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
         repo_name: str = data["repository"]["full_name"]
         commit_message = _extract_commit_message(event, data)
 
-        # Repository 등록 + owner 토큰 결정
+        # commit_sha / pr_number 결정 (파일 fetch 전에 중복 체크를 위해 먼저 추출)
+        if event == "pull_request":
+            pr_number: int | None = data["number"]
+            commit_sha: str = data["pull_request"]["head"]["sha"]
+        else:
+            pr_number = None
+            commit_sha = data["after"]
+
+        # Repository 등록 + owner 토큰 결정 + SHA 중복 체크 (파일 fetch 전에 조기 종료)
         owner_token: str = settings.github_token
         db: Session = SessionLocal()
         try:
@@ -186,16 +195,19 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
                 db.commit()
             if repo.owner and repo.owner.github_access_token:
                 owner_token = repo.owner.github_access_token
+
+            existing = db.query(Analysis).filter_by(
+                commit_sha=commit_sha, repo_id=repo.id
+            ).first()
+            if existing:
+                logger.info("Commit %s already analyzed, skipping", commit_sha)
+                return
         finally:
             db.close()
 
         if event == "pull_request":
-            pr_number: int | None = data["number"]
-            commit_sha: str = data["pull_request"]["head"]["sha"]
             files = get_pr_files(owner_token, repo_name, pr_number)
         else:
-            pr_number = None
-            commit_sha = data["after"]
             files = get_push_files(owner_token, repo_name, commit_sha)
 
         if not files:
@@ -216,13 +228,6 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
             repo = db.query(Repository).filter_by(full_name=repo_name).first()
             if repo is None:
                 logger.warning("Repository not found in second session: %s", repo_name)
-                return
-
-            existing = db.query(Analysis).filter_by(
-                commit_sha=commit_sha, repo_id=repo.id
-            ).first()
-            if existing:
-                logger.info("Commit %s already analyzed, skipping", commit_sha)
                 return
 
             analysis = Analysis(

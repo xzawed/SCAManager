@@ -443,3 +443,83 @@ async def test_merge_pr_failure_does_not_raise():
                         )
                         # GateDecision은 merge_pr 결과와 무관하게 저장된다
                         mock_save.assert_called_once_with(mock_db, 50, "approve", "auto")
+
+
+# ---------------------------------------------------------------------------
+# 예외 내성 — 각 단계 예외가 다음 단계를 중단시키지 않아야 한다
+# ---------------------------------------------------------------------------
+
+async def test_post_pr_comment_exception_does_not_abort_gate():
+    """post_pr_comment가 예외를 던져도 run_gate_check가 계속 실행되어 post_github_review도 호출되어야 한다."""
+    mock_db = MagicMock()
+    config = _config(pr_review_comment=True, approve_mode="auto", approve_threshold=75, reject_threshold=50)
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock, side_effect=Exception("comment failed")):
+            with patch("src.gate.engine.post_github_review", new_callable=AsyncMock) as mock_review:
+                with patch("src.gate.engine._save_gate_decision"):
+                    with patch("src.gate.engine.merge_pr", new_callable=AsyncMock):
+                        await run_gate_check(
+                            repo_name="owner/repo", pr_number=1, analysis_id=1,
+                            result={"score": 80, "grade": "B"}, github_token="tok", db=mock_db,
+                        )
+                        # comment 실패해도 approve는 실행되어야 한다
+                        mock_review.assert_called_once()
+
+
+async def test_post_github_review_exception_does_not_crash():
+    """post_github_review가 예외를 던져도 run_gate_check가 크래시 없이 완료되어야 한다."""
+    mock_db = MagicMock()
+    config = _config(approve_mode="auto", approve_threshold=75, reject_threshold=50, pr_review_comment=False)
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch("src.gate.engine.post_github_review", new_callable=AsyncMock, side_effect=Exception("GitHub API error")):
+            with patch("src.gate.engine._save_gate_decision"):
+                with patch("src.gate.engine.merge_pr", new_callable=AsyncMock):
+                    with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
+                        # 예외 없이 완료되어야 한다
+                        await run_gate_check(
+                            repo_name="owner/repo", pr_number=1, analysis_id=1,
+                            result={"score": 80, "grade": "B"}, github_token="tok", db=mock_db,
+                        )
+
+
+async def test_merge_pr_exception_does_not_crash():
+    """merge_pr이 예외를 던져도 run_gate_check가 크래시 없이 완료되어야 한다."""
+    mock_db = MagicMock()
+    config = _config(approve_mode="disabled", auto_merge=True, merge_threshold=75, pr_review_comment=False)
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch("src.gate.engine.merge_pr", new_callable=AsyncMock, side_effect=Exception("merge error")):
+            with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
+                with patch("src.gate.engine._save_gate_decision"):
+                    await run_gate_check(
+                        repo_name="owner/repo", pr_number=3, analysis_id=10,
+                        result={"score": 90, "grade": "A"}, github_token="tok", db=mock_db,
+                    )
+
+
+async def test_semi_auto_no_notify_chat_id_skips_telegram():
+    """approve_mode="semi-auto"이지만 notify_chat_id=None인 경우 send_gate_request가 호출되지 않아야 한다."""
+    mock_db = MagicMock()
+    config = _config(approve_mode="semi-auto", notify_chat_id=None, pr_review_comment=False)
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch("src.gate.engine.send_gate_request", new_callable=AsyncMock) as mock_send:
+            with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
+                with patch("src.gate.engine._save_gate_decision"):
+                    await run_gate_check(
+                        repo_name="owner/repo", pr_number=1, analysis_id=1,
+                        result={"score": 70, "grade": "C"}, github_token="tok", db=mock_db,
+                    )
+                    mock_send.assert_not_called()
+
+
+async def test_send_gate_request_exception_does_not_crash():
+    """send_gate_request가 예외를 던져도 run_gate_check가 크래시 없이 완료되어야 한다."""
+    mock_db = MagicMock()
+    config = _config(approve_mode="semi-auto", notify_chat_id="-100999", pr_review_comment=False)
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch("src.gate.engine.send_gate_request", new_callable=AsyncMock, side_effect=Exception("Telegram error")):
+            with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
+                with patch("src.gate.engine._save_gate_decision"):
+                    await run_gate_check(
+                        repo_name="owner/repo", pr_number=1, analysis_id=1,
+                        result={"score": 70, "grade": "C"}, github_token="tok", db=mock_db,
+                    )
