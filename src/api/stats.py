@@ -1,6 +1,7 @@
 """Statistics API — analysis detail and per-repo score statistics endpoints."""
 from fastapi import APIRouter, HTTPException
 from src.api.auth import require_api_key
+from src.api.deps import get_repo_or_404
 from src.database import SessionLocal
 from src.models.repository import Repository
 from src.models.analysis import Analysis
@@ -10,6 +11,7 @@ router = APIRouter(prefix="/api", dependencies=[require_api_key])
 
 @router.get("/analyses/{analysis_id}")
 def get_analysis(analysis_id: int):
+    """단일 분석 상세 정보를 반환한다."""
     with SessionLocal() as db:
         analysis = db.query(Analysis).filter(Analysis.id == analysis_id).first()
         if not analysis:
@@ -25,10 +27,9 @@ def get_analysis(analysis_id: int):
 
 @router.get("/repos/{repo_name:path}/stats")
 def get_repo_stats(repo_name: str, limit: int = 30):
+    """리포지토리 점수 통계(평균·트렌드)를 반환한다."""
     with SessionLocal() as db:
-        repo = db.query(Repository).filter(Repository.full_name == repo_name).first()
-        if not repo:
-            raise HTTPException(status_code=404, detail="Repository not found")
+        repo = get_repo_or_404(repo_name, db)
         analyses = (
             db.query(Analysis).filter(Analysis.repo_id == repo.id)
             .order_by(Analysis.created_at.asc()).limit(limit).all()

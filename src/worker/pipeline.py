@@ -190,8 +190,8 @@ def _ensure_repo(db: Session, repo_name: str, commit_sha: str) -> tuple[Reposito
         repo = Repository(full_name=repo_name, telegram_chat_id=settings.telegram_chat_id)
         db.add(repo)
         db.commit()
-    if repo.owner and repo.owner.github_access_token:
-        owner_token = repo.owner.github_access_token
+    if repo.owner and repo.owner.plaintext_token:
+        owner_token = repo.owner.plaintext_token
     if db.query(Analysis).filter_by(commit_sha=commit_sha, repo_id=repo.id).first():
         logger.info("Commit %s already analyzed, skipping", commit_sha)
         return None
@@ -244,7 +244,7 @@ async def _save_and_gate(
                 github_token=owner_token,
                 db=db,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — gate check는 httpx·DB·기타 다양한 예외 발생 가능
             logger.error("Gate check failed: %s", exc)
     return repo_config
 
@@ -311,5 +311,5 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
                 name = task_names[idx] if idx < len(task_names) else "unknown"
                 logger.error("Notification [%s] failed: %s", name, exc, exc_info=exc)
 
-    except Exception:
+    except Exception:  # noqa: BLE001 — 파이프라인 최상위 방어 — 모든 예외를 로그로 기록하고 종료
         logger.exception("Analysis pipeline failed for event=%s", event)

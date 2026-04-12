@@ -39,6 +39,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> None:
+    """CLI 진입점 — 로컬 git diff 수집 → 분석 → 결과 출력."""
     args = _parse_args(argv)
 
     try:

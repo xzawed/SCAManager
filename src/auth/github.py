@@ -6,6 +6,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from src.config import settings
+from src.crypto import encrypt_token
 from src.database import SessionLocal
 from src.models.user import User
 from src.auth.session import get_current_user
@@ -50,7 +51,7 @@ async def auth_github(request: Request):
 async def auth_callback(request: Request):
     """GitHub OAuth 콜백. 유저 upsert 후 세션 저장."""
     token = await oauth.github.authorize_access_token(request)
-    access_token = token["access_token"]
+    access_token = encrypt_token(token["access_token"])
 
     user_resp = await oauth.github.get("user", token=token)
     user_info = user_resp.json()
@@ -72,7 +73,7 @@ async def auth_callback(request: Request):
             user = User(
                 github_id=github_id,
                 github_login=github_login,
-                github_access_token=access_token,
+                github_access_token=access_token,  # 이미 encrypt_token() 적용됨
                 email=primary_email,
                 display_name=display_name,
             )
@@ -80,7 +81,7 @@ async def auth_callback(request: Request):
             db.commit()
             db.refresh(user)
         else:
-            user.github_access_token = access_token
+            user.github_access_token = access_token  # 이미 encrypt_token() 적용됨
             user.github_login = github_login
             user.display_name = display_name
             db.commit()

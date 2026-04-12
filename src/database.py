@@ -181,9 +181,9 @@ class FailoverSessionFactory:
                 pass
 
 
-_fallback_url = settings.database_url_fallback or None
-SessionLocal = FailoverSessionFactory(settings.database_url, _fallback_url)
-engine = SessionLocal._primary_engine  # alembic/env.py 호환
+_FALLBACK_URL = settings.database_url_fallback or None
+SessionLocal = FailoverSessionFactory(settings.database_url, _FALLBACK_URL)
+engine = SessionLocal._primary_engine  # pylint: disable=protected-access  # alembic/env.py 호환
 
 
 def get_db():

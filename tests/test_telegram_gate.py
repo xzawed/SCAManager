@@ -15,13 +15,21 @@ async def test_send_gate_request_calls_telegram_api():
     score_result = ScoreResult(total=72, grade="B", code_quality_score=25, security_score=17, breakdown={})
     mock_response = MagicMock()
     mock_response.raise_for_status = MagicMock()
-    with patch("src.gate.telegram_gate.httpx.AsyncClient") as mock_cls:
+    # telegram_gate는 notifier.telegram.telegram_post_message를 사용
+    with patch("src.notifier.telegram.httpx.AsyncClient") as mock_cls:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client.post = AsyncMock(return_value=mock_response)
         mock_cls.return_value = mock_client
-        await send_gate_request("123:ABC", "-100999", 42, "owner/repo", 7, score_result)
+        await send_gate_request(
+            bot_token="123:ABC",
+            chat_id="-100999",
+            analysis_id=42,
+            repo_full_name="owner/repo",
+            pr_number=7,
+            score_result=score_result,
+        )
         mock_client.post.assert_called_once()
         call_args = mock_client.post.call_args
         payload = call_args.kwargs.get("json") or call_args.args[1]
@@ -33,13 +41,20 @@ async def test_send_gate_request_includes_analysis_id_in_callback():
     score_result = ScoreResult(total=60, grade="C", code_quality_score=20, security_score=15, breakdown={})
     mock_response = MagicMock()
     mock_response.raise_for_status = MagicMock()
-    with patch("src.gate.telegram_gate.httpx.AsyncClient") as mock_cls:
+    with patch("src.notifier.telegram.httpx.AsyncClient") as mock_cls:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client.post = AsyncMock(return_value=mock_response)
         mock_cls.return_value = mock_client
-        await send_gate_request("123:ABC", "-100999", 99, "owner/repo", 3, score_result)
+        await send_gate_request(
+            bot_token="123:ABC",
+            chat_id="-100999",
+            analysis_id=99,
+            repo_full_name="owner/repo",
+            pr_number=3,
+            score_result=score_result,
+        )
         call_args = mock_client.post.call_args
         payload = call_args.kwargs.get("json") or call_args.args[1]
         assert "99" in str(payload.get("reply_markup", ""))

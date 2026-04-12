@@ -87,8 +87,8 @@ async def handle_gate_callback(
         if not repo:
             return
         github_token = (
-            repo.owner.github_access_token
-            if repo.owner and repo.owner.github_access_token
+            repo.owner.plaintext_token
+            if repo.owner and repo.owner.plaintext_token
             else settings.github_token
         )
         body = f"{'✅ 승인' if decision == 'approve' else '❌ 반려'} by @{decided_by}"

@@ -1,6 +1,7 @@
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
-from src.notifier.discord import send_discord_notification, _build_embed, GRADE_COLORS
+from src.notifier.discord import send_discord_notification, _build_embed
+from src.constants import GRADE_COLOR_DISCORD as GRADE_COLORS
 from src.scorer.calculator import ScoreResult
 from src.analyzer.static import StaticAnalysisResult, AnalysisIssue
 from src.analyzer.ai_review import AiReviewResult

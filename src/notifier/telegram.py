@@ -2,12 +2,26 @@
 from html import escape
 
 import httpx
+from src.constants import GRADE_EMOJI
 from src.scorer.calculator import ScoreResult
 from src.analyzer.static import StaticAnalysisResult
 from src.analyzer.ai_review import AiReviewResult
 
-GRADE_EMOJI = {"A": "🟢", "B": "🔵", "C": "🟡", "D": "🟠", "F": "🔴"}
 _TELEGRAM_MAX_LEN = 4096
+
+
+async def telegram_post_message(bot_token: str, chat_id: str, payload: dict) -> None:
+    """Telegram Bot API sendMessage 엔드포인트에 JSON 페이로드를 POST한다.
+
+    Args:
+        bot_token: Telegram Bot API 토큰
+        chat_id:   대상 채팅 ID (사용자·그룹·채널)
+        payload:   sendMessage JSON 페이로드 (text, parse_mode 등)
+    """
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    async with httpx.AsyncClient() as client:
+        r = await client.post(url, json={"chat_id": chat_id, **payload})
+        r.raise_for_status()
 
 
 def _build_message(
@@ -26,7 +40,7 @@ def _build_message(
         for i in r.issues
     ][:5]
 
-    grade_emoji = GRADE_EMOJI.get(score_result.grade, "⚪")
+    grade_emoji = GRADE_EMOJI.get(score_result.grade, "⚪")  # type: ignore[union-attr]
     issues_text = "\n".join(top_issues) if top_issues else "이슈 없음"
     bd = score_result.breakdown
 
@@ -66,6 +80,7 @@ def _build_message(
 
 
 async def send_analysis_result(
+    *,
     bot_token: str,
     chat_id: str,
     repo_name: str,
@@ -75,12 +90,6 @@ async def send_analysis_result(
     pr_number: int | None = None,
     ai_review: AiReviewResult | None = None,
 ) -> None:
+    """분석 결과를 Telegram HTML 메시지로 전송한다."""
     text = _build_message(repo_name, commit_sha, score_result, analysis_results, pr_number, ai_review=ai_review)
-    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    async with httpx.AsyncClient() as client:
-        r = await client.post(url, json={
-            "chat_id": chat_id,
-            "text": text,
-            "parse_mode": "HTML",
-        })
-        r.raise_for_status()
+    await telegram_post_message(bot_token, chat_id, {"text": text, "parse_mode": "HTML"})

@@ -1,6 +1,11 @@
 """Application settings loaded from environment variables via pydantic-settings."""
+import logging
 from pydantic_settings import BaseSettings
 from pydantic import field_validator
+
+logger = logging.getLogger(__name__)
+
+_SESSION_SECRET_MIN_LEN = 32  # 보안 권고: 32자 이상
 
 
 class Settings(BaseSettings):
@@ -16,6 +21,9 @@ class Settings(BaseSettings):
     github_client_secret: str = ""
     session_secret: str = "dev-secret-change-in-production"
     app_base_url: str = ""  # Railway 등 리버스 프록시 환경에서 HTTPS redirect_uri 강제 지정
+    # GitHub OAuth 토큰 Fernet 암호화 키 (없으면 평문 저장 — 운영환경 필수 설정)
+    # 생성: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    token_encryption_key: str = ""
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_user: str = ""
@@ -40,6 +48,18 @@ class Settings(BaseSettings):
             v = v.replace("postgres://", "postgresql://", 1)
         if 'supabase.co' in v and 'sslmode' not in v:
             v += '?sslmode=require'
+        return v
+
+    @field_validator("session_secret")
+    @classmethod
+    def warn_weak_session_secret(cls, v: str) -> str:
+        """SESSION_SECRET이 기본값이거나 너무 짧으면 보안 경고 로그를 출력."""
+        if v == "dev-secret-change-in-production" or len(v) < _SESSION_SECRET_MIN_LEN:
+            logger.warning(
+                "SECURITY: SESSION_SECRET is too short or using default value "
+                "(%d chars, minimum %d). Set a strong random secret in production!",
+                len(v), _SESSION_SECRET_MIN_LEN,
+            )
         return v
 
     @field_validator("smtp_port", mode="before")

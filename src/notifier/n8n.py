@@ -4,12 +4,14 @@ from src.scorer.calculator import ScoreResult
 
 
 async def notify_n8n(
+    *,
     webhook_url: str | None,
     repo_full_name: str,
     commit_sha: str,
     pr_number: int | None,
     score_result: ScoreResult,
 ) -> None:
+    """n8n Webhook으로 분석 점수 페이로드를 POST한다."""
     if not webhook_url:
         return
     payload = {

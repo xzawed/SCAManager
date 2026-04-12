@@ -2,7 +2,7 @@
 import hashlib
 import hmac
 
-import httpx
+from src.notifier.telegram import telegram_post_message
 from src.scorer.calculator import ScoreResult
 
 
@@ -14,6 +14,7 @@ def _gate_callback_token(bot_token: str, analysis_id: int) -> str:
 
 
 async def send_gate_request(
+    *,
     bot_token: str,
     chat_id: str,
     analysis_id: int,
@@ -21,6 +22,7 @@ async def send_gate_request(
     pr_number: int,
     score_result: ScoreResult,
 ) -> None:
+    """반자동 Gate PR 검토 요청을 Telegram 인라인 키보드로 전송한다."""
     text = (
         f"🔍 *PR 검토 요청*\n"
         f"리포: `{repo_full_name}` — PR #{pr_number}\n"
@@ -34,12 +36,8 @@ async def send_gate_request(
             {"text": "❌ 반려", "callback_data": f"gate:reject:{analysis_id}:{token}"},
         ]]
     }
-    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    async with httpx.AsyncClient() as client:
-        r = await client.post(url, json={
-            "chat_id": chat_id,
-            "text": text,
-            "parse_mode": "Markdown",
-            "reply_markup": reply_markup,
-        })
-        r.raise_for_status()
+    await telegram_post_message(bot_token, chat_id, {
+        "text": text,
+        "parse_mode": "Markdown",
+        "reply_markup": reply_markup,
+    })

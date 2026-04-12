@@ -35,6 +35,7 @@ def _git(*args: str, check: bool = True) -> subprocess.CompletedProcess:
 def get_diff_files(
     base: str = "HEAD~1", staged: bool = False
 ) -> list[ChangedFile]:
+    """로컬 git diff로 변경 파일 목록과 패치를 수집한다."""
     if staged:
         result = _git("diff", "--cached", "--name-status", check=False)
     else:
@@ -75,11 +76,13 @@ def get_diff_files(
 
 
 def get_commit_message(base: str = "HEAD~1") -> str:
+    """base부터 HEAD까지 커밋 메시지를 반환한다."""
     result = _git("log", "--format=%B", f"{base}..HEAD", check=False)
     return result.stdout.strip()
 
 
 def get_repo_name() -> str:
+    """git remote origin URL에서 owner/repo 형태의 리포 이름을 추출한다."""
     try:
         result = _git("remote", "get-url", "origin")
     except GitError:
