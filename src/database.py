@@ -23,13 +23,13 @@ def _ipv4_connect_args(url: str) -> dict:
         try:
             future = executor.submit(socket.getaddrinfo, hostname, port, socket.AF_INET)
             infos = future.result(timeout=3)
-        except Exception:  # nosec B110
+        except (concurrent.futures.TimeoutError, socket.gaierror, OSError):  # nosec B110
             return {}
         finally:
             executor.shutdown(wait=False)  # DNS 스레드 완료 대기 없이 즉시 반환
         if infos:
             return {"hostaddr": infos[0][4][0]}
-    except Exception:  # nosec B110
+    except (OSError, ValueError):  # nosec B110
         pass
     return {}
 

@@ -1,7 +1,7 @@
 """GitHub API client for fetching changed files from PRs and push commits."""
 import logging
 
-from github import Github
+from github import Github, GithubException
 
 from src.github_client.models import ChangedFile
 
@@ -30,7 +30,7 @@ def _collect_changed_files(repo, files, ref: str) -> list[ChangedFile]:
     for f in files:
         try:
             content = repo.get_contents(f.filename, ref=ref).decoded_content.decode("utf-8")
-        except Exception as exc:  # noqa: BLE001
+        except (GithubException, UnicodeDecodeError) as exc:
             logger.debug("파일 내용 로드 실패 %s@%s: %s", f.filename, ref, exc)
             content = ""
         result.append(ChangedFile(

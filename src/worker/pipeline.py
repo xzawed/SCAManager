@@ -20,6 +20,7 @@ from src.notifier.slack import send_slack_notification
 from src.notifier.webhook import send_webhook_notification
 from src.notifier.email import send_email_notification
 from src.config_manager.manager import get_repo_config
+from sqlalchemy.exc import SQLAlchemyError
 
 logger = logging.getLogger(__name__)
 
@@ -168,42 +169,109 @@ def _build_notify_tasks(  # pylint: disable=too-many-positional-arguments
     return tasks, names
 
 
-async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disable=too-many-branches,too-many-statements,too-many-locals  # noqa: E501
+def _extract_event_metadata(event: str, data: dict) -> tuple[str, str, str, int | None]:
+    """Webhook 페이로드에서 repo_name, commit_sha, commit_message, pr_number를 추출한다."""
+    repo_name: str = data["repository"]["full_name"]
+    commit_message = _extract_commit_message(event, data)
+    if event == "pull_request":
+        pr_number: int | None = data["number"]
+        commit_sha: str = data["pull_request"]["head"]["sha"]
+    else:
+        pr_number = None
+        commit_sha = data["after"]
+    return repo_name, commit_sha, commit_message, pr_number
+
+
+def _ensure_repo(db: Session, repo_name: str, commit_sha: str) -> tuple[Repository, str] | None:
+    """리포를 조회·등록하고 owner token을 결정한다. SHA 중복이면 None을 반환한다."""
+    owner_token: str = settings.github_token
+    repo = db.query(Repository).filter_by(full_name=repo_name).first()
+    if not repo:
+        repo = Repository(full_name=repo_name, telegram_chat_id=settings.telegram_chat_id)
+        db.add(repo)
+        db.commit()
+    if repo.owner and repo.owner.github_access_token:
+        owner_token = repo.owner.github_access_token
+    if db.query(Analysis).filter_by(commit_sha=commit_sha, repo_id=repo.id).first():
+        logger.info("Commit %s already analyzed, skipping", commit_sha)
+        return None
+    return repo, owner_token
+
+
+async def _save_and_gate(
+    db: Session,
+    repo_name: str,
+    commit_sha: str,
+    commit_message: str,
+    pr_number: int | None,
+    owner_token: str,
+    analysis_results: list,
+    ai_review,
+    score_result,
+):
+    """Analysis를 DB에 저장하고 Gate Engine을 실행한다. repo_config를 반환한다."""
+    repo = db.query(Repository).filter_by(full_name=repo_name).first()
+    if repo is None:
+        logger.warning("Repository not found in second session: %s", repo_name)
+        return None
+    analysis = Analysis(
+        repo_id=repo.id,
+        commit_sha=commit_sha,
+        commit_message=commit_message,
+        pr_number=pr_number,
+        score=score_result.total,
+        grade=score_result.grade,
+        result=_build_result_dict(
+            ai_review, score_result, analysis_results,
+            source="pr" if pr_number else "push",
+        ),
+    )
+    db.add(analysis)
+    db.commit()
+    db.refresh(analysis)
     try:
-        repo_name: str = data["repository"]["full_name"]
-        commit_message = _extract_commit_message(event, data)
-
-        # commit_sha / pr_number 결정 (파일 fetch 전에 중복 체크를 위해 먼저 추출)
-        if event == "pull_request":
-            pr_number: int | None = data["number"]
-            commit_sha: str = data["pull_request"]["head"]["sha"]
-        else:
-            pr_number = None
-            commit_sha = data["after"]
-
-        # Repository 등록 + owner 토큰 결정 + SHA 중복 체크 (파일 fetch 전에 조기 종료)
-        owner_token: str = settings.github_token
-        db: Session = SessionLocal()
+        repo_config = get_repo_config(db, repo_name)
+    except (SQLAlchemyError, KeyError):
+        logger.warning("Failed to load repo config for %s, using defaults", repo_name)
+        repo_config = None
+    if pr_number is not None:
         try:
-            repo = db.query(Repository).filter_by(full_name=repo_name).first()
-            if not repo:
-                repo = Repository(
-                    full_name=repo_name,
-                    telegram_chat_id=settings.telegram_chat_id,
-                )
-                db.add(repo)
-                db.commit()
-            if repo.owner and repo.owner.github_access_token:
-                owner_token = repo.owner.github_access_token
+            await run_gate_check(
+                repo_name=repo_name,
+                pr_number=pr_number,
+                analysis_id=analysis.id,
+                result=analysis.result,
+                github_token=owner_token,
+                db=db,
+            )
+        except Exception as exc:
+            logger.error("Gate check failed: %s", exc)
+    return repo_config
 
-            existing = db.query(Analysis).filter_by(
-                commit_sha=commit_sha, repo_id=repo.id
-            ).first()
-            if existing:
-                logger.info("Commit %s already analyzed, skipping", commit_sha)
+
+async def run_analysis_pipeline(event: str, data: dict) -> None:
+    """Webhook 이벤트를 받아 정적분석 + AI 리뷰 → 점수 → Gate → 알림 파이프라인을 실행한다.
+
+    Args:
+        event: GitHub 이벤트 타입 ("push" | "pull_request")
+        data:  GitHub Webhook JSON 페이로드
+
+    흐름:
+        1. repo 등록 / SHA 중복 체크 (중복이면 즉시 반환)
+        2. 변경 파일 수집 (get_pr_files / get_push_files)
+        3. asyncio.gather — 정적분석(pylint·flake8·bandit) + AI 리뷰 병렬 실행
+        4. 점수·등급 계산 → Analysis DB 저장
+        5. run_gate_check (PR 이벤트만) — Review Comment·Approve·Auto Merge
+        6. _build_notify_tasks → Telegram·Discord·Slack·Webhook·Email·n8n 알림
+    """
+    try:
+        repo_name, commit_sha, commit_message, pr_number = _extract_event_metadata(event, data)
+
+        with SessionLocal() as db:
+            result = _ensure_repo(db, repo_name, commit_sha)
+            if result is None:
                 return
-        finally:
-            db.close()
+            _, owner_token = result
 
         if event == "pull_request":
             files = get_pr_files(owner_token, repo_name, pr_number)
@@ -219,54 +287,13 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
             _run_static_analysis(files),
             review_code(settings.anthropic_api_key, commit_message, patches),
         )
-
         score_result = calculate_score(analysis_results, ai_review=ai_review)
 
-        repo_config = None
-        db = SessionLocal()
-        try:
-            repo = db.query(Repository).filter_by(full_name=repo_name).first()
-            if repo is None:
-                logger.warning("Repository not found in second session: %s", repo_name)
-                return
-
-            analysis = Analysis(
-                repo_id=repo.id,
-                commit_sha=commit_sha,
-                commit_message=commit_message,
-                pr_number=pr_number,
-                score=score_result.total,
-                grade=score_result.grade,
-                result=_build_result_dict(
-                    ai_review, score_result, analysis_results,
-                    source="pr" if pr_number else "push",
-                ),
+        with SessionLocal() as db:
+            repo_config = await _save_and_gate(
+                db, repo_name, commit_sha, commit_message, pr_number,
+                owner_token, analysis_results, ai_review, score_result,
             )
-            db.add(analysis)
-            db.commit()
-            db.refresh(analysis)
-
-            try:
-                repo_config = get_repo_config(db, repo_name)
-            except Exception:
-                logger.warning("Failed to load repo config for %s, using defaults", repo_name)
-                repo_config = None
-
-            # Gate Engine (PR 이벤트만)
-            if pr_number is not None:
-                try:
-                    await run_gate_check(
-                        repo_name=repo_name,
-                        pr_number=pr_number,
-                        analysis_id=analysis.id,
-                        result=analysis.result,
-                        github_token=owner_token,
-                        db=db,
-                    )
-                except Exception as exc:
-                    logger.error("Gate check failed: %s", exc)
-        finally:
-            db.close()
 
         notify_tasks, task_names = _build_notify_tasks(
             repo_config=repo_config,

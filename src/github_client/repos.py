@@ -201,6 +201,6 @@ async def commit_scamanager_files(
                 put_resp.raise_for_status()
 
         return True
-    except Exception as exc:  # noqa: BLE001
+    except httpx.HTTPError as exc:
         logger.warning("commit_scamanager_files 실패 (%s): %s", repo_full_name, exc)
         return False

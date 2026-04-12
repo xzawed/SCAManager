@@ -53,13 +53,16 @@ def mock_deps():
 
         mock_db = MagicMock()
         mock_repo = MagicMock(id=1)
-        # Call sequence: 1) repo creation (None→create), 2) repo lookup (found),
-        # 3) dup check (None), 4) get_repo_config (None→defaults)
+        # Call sequence: 1) repo creation (None→create), 2) dup check (None),
+        # 3) repo lookup in second session (found), 4) get_repo_config (None→defaults)
         mock_db.query.return_value.filter_by.return_value.first.side_effect = [
             None, None, mock_repo, None,
         ]
         mock_db.flush = MagicMock()
         mock_db.commit = MagicMock()
+        # Support both SessionLocal() and `with SessionLocal() as db:` patterns
+        mock_db.__enter__ = MagicMock(return_value=mock_db)
+        mock_db.__exit__ = MagicMock(return_value=False)
         mock_session_cls.return_value = mock_db
 
         yield {
@@ -650,7 +653,8 @@ async def test_repo_config_none_sends_only_telegram(mock_deps):
     mock_deps["db"].refresh = MagicMock()
 
     # get_repo_config 예외 → pipeline이 repo_config=None으로 fallback
-    with patch("src.worker.pipeline.get_repo_config", side_effect=Exception("config error")):
+    from sqlalchemy.exc import SQLAlchemyError
+    with patch("src.worker.pipeline.get_repo_config", side_effect=SQLAlchemyError("config error")):
         with patch("src.worker.pipeline.send_discord_notification",
                    new_callable=AsyncMock) as mock_discord:
             with patch("src.worker.pipeline.send_slack_notification",

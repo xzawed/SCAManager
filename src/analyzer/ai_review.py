@@ -103,7 +103,7 @@ async def review_code(
             }],
         )
         return _parse_response(response.content[0].text)
-    except Exception:
+    except Exception:  # noqa: BLE001 — anthropic 라이브러리는 다양한 예외를 발생시킬 수 있음
         logger.exception("AI review failed, using default scores")
         return _default_result("api_error")
 

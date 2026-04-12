@@ -112,7 +112,7 @@ async def test_merge_pr_returns_false_on_connection_error():
     from src.gate.github_review import merge_pr
     with patch("src.gate.github_review.httpx.AsyncClient") as mock_cls:
         mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(side_effect=Exception("Connection refused"))
+        mock_client.__aenter__ = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_cls.return_value = mock_client
         result = await merge_pr("token", "owner/repo", 5)

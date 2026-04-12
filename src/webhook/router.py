@@ -3,7 +3,9 @@ import hashlib
 import hmac
 import json
 import logging
+import httpx
 from fastapi import APIRouter, Request, HTTPException, BackgroundTasks, Header
+from sqlalchemy.exc import SQLAlchemyError
 from src.config import settings
 from src.webhook.validator import verify_github_signature
 from src.worker.pipeline import run_analysis_pipeline
@@ -13,13 +15,13 @@ from src.config_manager.manager import get_repo_config
 from src.models.analysis import Analysis
 from src.models.repository import Repository
 from src.database import SessionLocal
+from src.constants import HANDLED_EVENTS, PR_HANDLED_ACTIONS
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-HANDLED_EVENTS = {"push", "pull_request"}
-HANDLED_PR_ACTIONS = {"opened", "synchronize", "reopened"}
+HANDLED_PR_ACTIONS = PR_HANDLED_ACTIONS  # 하위 호환 별칭
 
 
 @router.post("/webhooks/github", status_code=202)
@@ -103,7 +105,7 @@ async def handle_gate_callback(
             if merged:
                 logger.info("PR #%d manual-approved+auto-merged: %s",
                             analysis.pr_number, repo.full_name)
-    except Exception as exc:
+    except (httpx.HTTPError, KeyError, ValueError, SQLAlchemyError) as exc:
         logger.error("Gate callback failed: %s", exc)
     finally:
         db.close()
