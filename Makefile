@@ -1,8 +1,8 @@
 .PHONY: install test test-v test-cov lint run migrate review install-playwright test-e2e test-e2e-headed
 
-# 의존성 설치
+# 의존성 설치 (개발 환경 — 테스트/E2E 포함)
 install:
-	pip install -r requirements.txt
+	pip install -r requirements-dev.txt
 
 # 테스트 (빠른 실행)
 test:
