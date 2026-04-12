@@ -55,7 +55,8 @@ def test_get_pr_files_handles_content_error():
     mock_pr.get_files.return_value = [mock_file]
     mock_repo = MagicMock()
     mock_repo.get_pull.return_value = mock_pr
-    mock_repo.get_contents.side_effect = Exception("Not found")
+    from github import GithubException
+    mock_repo.get_contents.side_effect = GithubException(404, "Not found")
     with patch("src.github_client.diff.Github") as MockGithub:
         MockGithub.return_value.get_repo.return_value = mock_repo
         result = get_pr_files("token", "owner/repo", 1)

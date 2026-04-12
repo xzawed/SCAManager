@@ -1,5 +1,7 @@
 """Gate Engine — 3개 독립 옵션: Review Comment / Approve / Auto Merge."""
 import logging
+
+import httpx
 from sqlalchemy.orm import Session
 from src.config import settings
 from src.config_manager.manager import get_repo_config
@@ -56,7 +58,7 @@ async def run_gate_check(
                 pr_number=pr_number,
                 result=result,
             )
-        except Exception as exc:
+        except (httpx.HTTPError, KeyError) as exc:
             logger.error("PR Review Comment 실패: %s", exc)
 
     # 2. Approve (독립)
@@ -76,7 +78,7 @@ async def run_gate_check(
             try:
                 await post_github_review(github_token, repo_name, pr_number, decision, body)
                 _save_gate_decision(db, analysis_id, decision, "auto")
-            except Exception as exc:
+            except (httpx.HTTPError, KeyError) as exc:
                 logger.error("GitHub Review 실패: %s", exc)
 
     elif config.approve_mode == "semi-auto":
@@ -93,7 +95,7 @@ async def run_gate_check(
                     pr_number=pr_number,
                     score_result=score_result,
                 )
-            except Exception as exc:
+            except (httpx.HTTPError, KeyError) as exc:
                 logger.error("Telegram Gate 요청 실패: %s", exc)
 
     # 3. Auto Merge (독립 — approve_mode 무관)
@@ -102,7 +104,7 @@ async def run_gate_check(
             merged = await merge_pr(github_token, repo_name, pr_number)
             if merged:
                 logger.info("PR #%d auto-merged: %s", pr_number, repo_name)
-        except Exception as exc:
+        except (httpx.HTTPError, KeyError) as exc:
             logger.error("Auto Merge 실패: %s", exc)
 
 

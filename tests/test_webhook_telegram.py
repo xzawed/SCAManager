@@ -6,6 +6,7 @@ os.environ.setdefault("TELEGRAM_BOT_TOKEN", "123:ABC")
 os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 os.environ.setdefault("ANTHROPIC_API_KEY", "")
 
+import httpx
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 from src.main import app
@@ -95,9 +96,9 @@ async def test_handle_gate_callback_approve_without_auto_merge():
 
 
 async def test_handle_gate_callback_reject_does_not_merge():
-    # reject 결정 시 auto_merge=True여도 merge_pr이 호출되지 않는지 검증
+    # reject 결정 시 auto_merge=True여도 score가 낮아 merge_pr이 호출되지 않는지 검증
     from src.webhook.router import handle_gate_callback
-    mock_analysis = MagicMock(id=42, repo_id=1, pr_number=5)
+    mock_analysis = MagicMock(id=42, repo_id=1, pr_number=5, score=0)
     mock_repo = MagicMock(id=1, full_name="owner/repo")
     mock_db = MagicMock()
     mock_db.query.return_value.filter_by.return_value.first.side_effect = [
@@ -117,7 +118,7 @@ async def test_handle_gate_callback_reject_does_not_merge():
 async def test_handle_gate_callback_merge_failure_does_not_propagate():
     # merge_pr가 False를 반환해도 handle_gate_callback이 예외 없이 완료되는지 검증
     from src.webhook.router import handle_gate_callback
-    mock_analysis = MagicMock(id=42, repo_id=1, pr_number=5)
+    mock_analysis = MagicMock(id=42, repo_id=1, pr_number=5, score=90)
     mock_repo = MagicMock(id=1, full_name="owner/repo")
     mock_db = MagicMock()
     mock_db.query.return_value.filter_by.return_value.first.side_effect = [
@@ -199,7 +200,7 @@ async def test_handle_gate_callback_exception_does_not_propagate():
     config = RepoConfigData(repo_full_name="owner/repo", auto_merge=False)
     with patch("src.webhook.router.SessionLocal", return_value=mock_db):
         with patch("src.webhook.router.post_github_review",
-                   new_callable=AsyncMock, side_effect=Exception("GitHub API down")):
+                   new_callable=AsyncMock, side_effect=httpx.ConnectError("GitHub API down")):
             with patch("src.webhook.router.get_repo_config", return_value=config):
                 # 예외가 전파되지 않아야 한다
                 await handle_gate_callback(analysis_id=42, decision="approve", decided_by="user")

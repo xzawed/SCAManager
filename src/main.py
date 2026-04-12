@@ -28,12 +28,17 @@ def _run_migrations() -> None:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     """Run DB migrations on startup, then yield control to the application."""
+    if settings.session_secret == "dev-secret-change-in-production":
+        logger.warning(
+            "SESSION_SECRET is using the default insecure value — "
+            "set SESSION_SECRET environment variable in production!"
+        )
     try:
         await asyncio.wait_for(asyncio.to_thread(_run_migrations), timeout=30)
         logger.info("DB migration completed")
     except asyncio.TimeoutError:
         logger.error("DB migration timed out after 30s — starting app anyway")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — 마이그레이션 실패가 앱 시작을 막아선 안 됨
         logger.error("DB migration failed: %s", exc)
     yield
 

@@ -25,6 +25,16 @@ def _webhook_base_url(request: Request) -> str:
     return str(request.base_url).rstrip("/")
 
 
+def _get_accessible_repo(db, repo_name: str, current_user: User) -> Repository:
+    """로그인 사용자가 접근 가능한 리포를 반환. 없거나 권한 없으면 404."""
+    repo = db.query(Repository).filter(Repository.full_name == repo_name).first()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+    if repo.user_id is not None and repo.user_id != current_user.id:
+        raise HTTPException(status_code=404)
+    return repo
+
+
 @router.get("/repos/add", response_class=HTMLResponse)
 async def add_repo_page(request: Request, current_user: User = Depends(require_login)):
     return templates.TemplateResponse(request, "add_repo.html", {"current_user": current_user})
@@ -171,11 +181,7 @@ def repo_settings(
     current_user: User = Depends(require_login),
 ):
     with SessionLocal() as db:
-        repo = db.query(Repository).filter(Repository.full_name == repo_name).first()
-        if not repo:
-            raise HTTPException(status_code=404, detail="Repository not found")
-        if repo.user_id is not None and repo.user_id != current_user.id:
-            raise HTTPException(status_code=404)
+        _get_accessible_repo(db, repo_name, current_user)
         config = get_repo_config(db, repo_name)
     return templates.TemplateResponse(request, "settings.html", {
         "repo_name": repo_name, "config": config,
@@ -192,11 +198,7 @@ async def update_repo_settings(
 ):
     form = await request.form()
     with SessionLocal() as db:
-        repo = db.query(Repository).filter(Repository.full_name == repo_name).first()
-        if not repo:
-            raise HTTPException(status_code=404, detail="Repository not found")
-        if repo.user_id is not None and repo.user_id != current_user.id:
-            raise HTTPException(status_code=403)
+        _get_accessible_repo(db, repo_name, current_user)
         upsert_repo_config(db, RepoConfigData(
             repo_full_name=repo_name,
             pr_review_comment=form.get("pr_review_comment") == "on",
@@ -223,10 +225,7 @@ async def reinstall_hook(
 ):
     """기존 등록 리포에 .scamanager/ 파일을 재커밋한다."""
     with SessionLocal() as db:
-        repo = db.query(Repository).filter(Repository.full_name == repo_name).first()
-        if not repo or (repo.user_id is not None and repo.user_id != current_user.id):
-            raise HTTPException(status_code=404)
-
+        _get_accessible_repo(db, repo_name, current_user)
         config = db.query(RepoConfig).filter(
             RepoConfig.repo_full_name == repo_name
         ).first()
@@ -264,10 +263,7 @@ async def reinstall_webhook(
 ):
     """GitHub Webhook을 삭제하고 새 URL(HTTPS)로 재등록한다."""
     with SessionLocal() as db:
-        repo = db.query(Repository).filter(Repository.full_name == repo_name).first()
-        if not repo or (repo.user_id is not None and repo.user_id != current_user.id):
-            raise HTTPException(status_code=404)
-
+        repo = _get_accessible_repo(db, repo_name, current_user)
         token = current_user.github_access_token or ""
 
         if repo.webhook_id:
@@ -293,11 +289,7 @@ def analysis_detail(
     current_user: User = Depends(require_login),
 ):
     with SessionLocal() as db:
-        repo = db.query(Repository).filter(Repository.full_name == repo_name).first()
-        if not repo:
-            raise HTTPException(status_code=404, detail="Repository not found")
-        if repo.user_id is not None and repo.user_id != current_user.id:
-            raise HTTPException(status_code=404)
+        repo = _get_accessible_repo(db, repo_name, current_user)
         analysis = db.query(Analysis).filter(
             Analysis.id == analysis_id, Analysis.repo_id == repo.id
         ).first()
@@ -346,11 +338,7 @@ def repo_detail(
     current_user: User = Depends(require_login),
 ):
     with SessionLocal() as db:
-        repo = db.query(Repository).filter(Repository.full_name == repo_name).first()
-        if not repo:
-            raise HTTPException(status_code=404, detail="Repository not found")
-        if repo.user_id is not None and repo.user_id != current_user.id:
-            raise HTTPException(status_code=404)
+        repo = _get_accessible_repo(db, repo_name, current_user)
         analyses = (db.query(Analysis).filter(Analysis.repo_id == repo.id)
                     .order_by(Analysis.created_at.desc()).limit(100).all())
         analyses_data = [
