@@ -1,10 +1,17 @@
+"""SQLAlchemy engine, session factory, and DB failover logic."""
 import concurrent.futures
+import logging
 import socket
-from urllib.parse import urlparse
+import threading
+import time
+from urllib.parse import urlparse, parse_qs
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import sessionmaker, DeclarativeBase, Session
 from src.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 def _ipv4_connect_args(url: str) -> dict:
@@ -38,6 +45,7 @@ def _build_connect_args(url: str) -> dict:
     """환경변수 기반 연결 인수를 구성한다.
     - db_force_ipv4=True: Railway IPv4 강제 (Supabase/Railway 환경)
     - db_sslmode: SSL 모드 명시 설정 (온프레미스 PostgreSQL 등)
+    - URL query에 sslmode가 이미 포함된 경우 connect_args에 중복 설정하지 않음
     SQLite URL은 hostaddr/sslmode 모두 미적용."""
     args: dict = {}
     parsed = urlparse(url)
@@ -45,7 +53,9 @@ def _build_connect_args(url: str) -> dict:
         return args
     if settings.db_force_ipv4:
         args.update(_ipv4_connect_args(url))
-    if settings.db_sslmode:
+    # URL query에 sslmode가 없을 때만 전역 설정 적용 (Supabase URL 중복 방지)
+    url_sslmode = parse_qs(parsed.query).get("sslmode")
+    if settings.db_sslmode and not url_sslmode:
         args["sslmode"] = settings.db_sslmode
     return args
 
@@ -54,21 +64,130 @@ class Base(DeclarativeBase):
     pass
 
 
-_is_postgres = settings.database_url.startswith("postgresql")
-_engine_kwargs: dict = {"connect_args": _build_connect_args(settings.database_url)}
-if _is_postgres:
-    # SQLite(SingletonThreadPool)는 QueuePool 파라미터 미지원 — PostgreSQL에만 적용
-    _engine_kwargs.update({
-        "pool_size": settings.db_pool_size,
-        "max_overflow": settings.db_max_overflow,
-        "pool_timeout": settings.db_pool_timeout,
-        "pool_recycle": settings.db_pool_recycle,
-    })
-engine = create_engine(settings.database_url, **_engine_kwargs)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+class FailoverSessionFactory:
+    """Primary DB 장애 시 Fallback DB로 자동 전환하는 세션 팩토리.
+
+    SessionLocal = FailoverSessionFactory(primary_url, fallback_url)
+    with SessionLocal() as db:  # 기존 코드와 동일하게 동작
+        ...
+
+    fallback_url이 None이면 단일 엔진 모드로 동작 (기존과 동일).
+    """
+
+    def __init__(self, primary_url, fallback_url: str | None = None):
+        self._primary_url = primary_url if isinstance(primary_url, str) else None
+        self._fallback_url = fallback_url
+        self._lock = threading.Lock()
+        self._active = "primary"
+        self._probe_thread: threading.Thread | None = None
+
+        # primary_url은 URL 문자열 또는 이미 생성된 Engine 객체 모두 허용
+        if isinstance(primary_url, str):
+            self._primary_engine = self._create_engine(primary_url)
+        else:
+            self._primary_engine = primary_url  # Engine 객체 직접 사용 (테스트용)
+
+        self._fallback_engine = (
+            self._create_engine(fallback_url) if fallback_url else None
+        )
+
+        # Primary/Fallback 각각 독립적인 sessionmaker 유지
+        self._primary_maker = sessionmaker(
+            autocommit=False, autoflush=False, bind=self._primary_engine
+        )
+        self._fallback_maker = (
+            sessionmaker(autocommit=False, autoflush=False, bind=self._fallback_engine)
+            if self._fallback_engine is not None else None
+        )
+
+        if self._fallback_engine is not None:
+            self._start_probe_thread()
+
+    def _create_engine(self, url: str):
+        """URL에 맞는 SQLAlchemy 엔진을 생성한다."""
+        is_pg = url.startswith("postgresql")
+        kwargs: dict = {"connect_args": _build_connect_args(url)}
+        if is_pg:
+            kwargs.update({
+                "pool_size": settings.db_pool_size,
+                "max_overflow": settings.db_max_overflow,
+                "pool_timeout": settings.db_pool_timeout,
+                "pool_recycle": settings.db_pool_recycle,
+                "pool_pre_ping": True,
+            })
+        return create_engine(url, **kwargs)
+
+    def _start_probe_thread(self) -> None:
+        """Primary 복구 감지용 daemon 스레드를 시작한다."""
+        self._probe_thread = threading.Thread(
+            target=self._probe_primary_loop, daemon=True, name="db-failover-probe"
+        )
+        self._probe_thread.start()
+
+    def _switch_to(self, target: str) -> None:
+        """활성 maker를 전환한다. 호출 전 self._lock 획득 필요."""
+        self._active = target
+        logger.warning("DB failover: switched to %s", target)
+
+    def _current_maker(self):
+        """현재 활성 maker를 반환한다."""
+        if self._active == "fallback" and self._fallback_maker is not None:
+            return self._fallback_maker
+        return self._primary_maker
+
+    def __call__(self) -> Session:
+        """세션을 반환한다. Fallback 설정 시 연결 실패에 대해 자동 전환한다."""
+        if self._fallback_maker is None:
+            # 단일 엔진 모드 — 기존 동작과 동일
+            return self._primary_maker()
+
+        # 이미 fallback 모드면 primary 시도 없이 바로 fallback 사용
+        if self._active == "fallback":
+            session = self._fallback_maker()
+            session.execute(text("SELECT 1"))
+            return session
+
+        try:
+            session = self._primary_maker()
+            session.execute(text("SELECT 1"))
+            return session
+        except OperationalError:
+            with self._lock:
+                if self._active == "primary" and self._fallback_maker is not None:
+                    self._switch_to("fallback")
+            session = self._fallback_maker()
+            session.execute(text("SELECT 1"))
+            return session
+
+    @property
+    def active_db(self) -> str:
+        """현재 활성 DB: "primary" 또는 "fallback"."""
+        return self._active
+
+    def _probe_primary_loop(self) -> None:
+        """Fallback 중에 Primary 복구를 주기적으로 확인하고 자동 복귀한다."""
+        interval = settings.db_failover_probe_interval
+        while True:
+            time.sleep(interval)
+            if self._active != "fallback":
+                continue
+            try:
+                with self._primary_engine.connect() as conn:
+                    conn.execute(text("SELECT 1"))
+                with self._lock:
+                    if self._active == "fallback":
+                        self._switch_to("primary")
+            except Exception:  # noqa: BLE001 — probe 실패는 무시
+                pass
+
+
+_fallback_url = settings.database_url_fallback or None
+SessionLocal = FailoverSessionFactory(settings.database_url, _fallback_url)
+engine = SessionLocal._primary_engine  # alembic/env.py 호환
 
 
 def get_db():
+    """FastAPI dependency injection용 세션 제너레이터."""
     db: Session = SessionLocal()
     try:
         yield db

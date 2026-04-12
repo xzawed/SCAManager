@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
 
 from src.config import settings
+from src.database import SessionLocal
 from src.webhook.router import router as webhook_router
 from src.api.repos import router as api_repos_router
 from src.api.stats import router as api_stats_router
@@ -55,5 +56,6 @@ app.include_router(ui_router)
 
 @app.get("/health")
 def health():
-    """Liveness probe — returns 200 OK when the application is running."""
-    return {"status": "ok"}
+    """Liveness probe — active_db 필드로 현재 연결 중인 DB를 표시한다."""
+    active = getattr(SessionLocal, "active_db", "primary")
+    return {"status": "ok", "active_db": active}
