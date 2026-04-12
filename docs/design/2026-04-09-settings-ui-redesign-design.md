@@ -87,7 +87,7 @@
 
 ```html
 <div class="threshold-ctrl">
-  <input type="range" name="auto_approve_threshold" min="0" max="100"
+  <input type="range" name="approve_threshold" min="0" max="100"
          oninput="document.getElementById('approveVal').value=this.value">
   <input type="number" id="approveVal" class="num-input" min="0" max="100"
          oninput="this.previousElementSibling.value=this.value">

@@ -136,16 +136,14 @@ GitHub Push/PR
 ```json
 {
   "repo": "owner/repo-name",
-  "gate_mode": "auto" | "semi-auto",
-  "auto_approve_threshold": 75,
-  "auto_reject_threshold": 50,
+  "approve_mode": "auto" | "semi-auto" | "disabled",
+  "approve_threshold": 75,
+  "reject_threshold": 50,
+  "pr_review_comment": true,
+  "auto_merge": false,
+  "merge_threshold": 75,
   "notify_telegram_chat_id": "-100xxxxxxxxx",
-  "n8n_webhook_url": "https://your-n8n-instance/webhook/xxx",
-  "analysis_rules": {
-    "enable_bandit": true,
-    "enable_pylint": true,
-    "max_line_length": 120
-  }
+  "n8n_webhook_url": "https://your-n8n-instance/webhook/xxx"
 }
 ```
 

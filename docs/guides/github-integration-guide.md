@@ -201,9 +201,9 @@ curl -X PUT https://your-app.railway.app/api/repos/owner/repo-name/config \
   -H "Content-Type: application/json" \
   -H "X-API-Key: your-api-key" \
   -d '{
-    "gate_mode": "auto",
-    "auto_approve_threshold": 75,
-    "auto_reject_threshold": 50
+    "approve_mode": "auto",
+    "approve_threshold": 75,
+    "reject_threshold": 50
   }'
 ```
 
@@ -218,8 +218,8 @@ curl -X PUT https://your-app.railway.app/api/repos/owner/repo-name/config \
 ### 임계값 기준
 
 ```
-점수 ≥ auto_approve_threshold (기본 75) → GitHub PR Approve
-점수 < auto_reject_threshold  (기본 50) → GitHub PR Request Changes
+점수 ≥ approve_threshold (기본 75) → GitHub PR Approve
+점수 < reject_threshold  (기본 50) → GitHub PR Request Changes
 그 사이 (50~75)                          → Gate 없이 통과 (알림만 전달)
 ```
 

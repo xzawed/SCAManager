@@ -291,8 +291,8 @@ bash .scamanager/install-hook.sh
 
 | 설정 | 동작 |
 |------|------|
-| `gate_mode=auto` + `auto_merge=true` | 점수 통과 시 GitHub Review Approve → squash merge 자동 실행 |
-| `gate_mode=semi-auto` + `auto_merge=true` | Telegram 승인 버튼 클릭 시 → squash merge 자동 실행 |
+| `approve_mode="auto"` + `auto_merge=true` | 점수 통과 시 GitHub Review Approve → squash merge 자동 실행 |
+| `approve_mode="semi-auto"` + `auto_merge=true` | Telegram 승인 버튼 클릭 시 → squash merge 자동 실행 |
 | `auto_merge=false` (기본값) | GitHub Review만 수행, merge는 수동 |
 
 > **주의:** `repo` 스코프 OAuth 토큰 또는 Fine-grained `pull_requests: write` 권한이 필요합니다.  
