@@ -376,6 +376,15 @@ CLI Hook (로컬 pre-push 자동 코드리뷰):
 - **FailoverSessionFactory API 불변**: 소비자 코드(`SessionLocal()`)는 변경 없이 그대로 사용. `engine = SessionLocal._primary_engine`으로 alembic/env.py 호환성 유지. Engine 객체를 직접 생성자에 전달하는 것도 지원 (테스트용).
 - **Supabase Fallback SSL 중복 방지**: Supabase URL에는 `?sslmode=require`가 이미 포함. `_build_connect_args`가 `parse_qs`로 URL query를 검사해 `connect_args`에 `sslmode` 중복 설정 방지. `DB_SSLMODE`와 URL query `sslmode` 동시 설정 시 URL query 우선.
 - **`/health` active_db 필드**: `{"status":"ok","active_db":"primary"|"fallback"}` 반환. `active_db="fallback"`이면 Primary DB 장애 상태 — 모니터링 경보 연동 가능. `getattr(SessionLocal, "active_db", "primary")`로 테스트 환경(plain sessionmaker) 호환.
+- **Railway NIXPACKS npm 빌드 오탐**: NIXPACKS가 Python 프로젝트를 Node.js로 오인해 `npm run build`를 자동 추가하는 경우가 있음. 원인: `cryptography`, `python-telegram-bot` 등 패키지 내부 Node.js 바이너리, 또는 Railway 서비스 레벨 캐시. `nixpacks.toml`의 `providers = ["python"]`만으로는 해결 불가 — 반드시 `railway.toml`에 `buildCommand = "echo 'no build'"` 추가로 최상위 오버라이드해야 함.
+- **Railway 빌드 검증 필수**: `git push` 성공은 Railway 빌드 성공을 보장하지 않음. 빌드 관련 파일(`railway.toml`, `nixpacks.toml`, `requirements.txt`) 변경 후 Railway 대시보드 빌드 로그를 직접 확인한 후 완료 선언.
+- **요구사항 파일 분리**: `requirements.txt`(프로덕션 — Railway 자동 감지)와 `requirements-dev.txt`(개발 — `-r requirements.txt` 포함 + pytest/playwright) 분리. Railway에 `pytest`, `playwright`가 포함되면 NIXPACKS가 Node.js 빌드 단계를 추가하는 오탐이 발생할 수 있음.
+- **GitHub Access Token 암호화**: `src/crypto.py`의 `encrypt_token()`/`decrypt_token()` — `TOKEN_ENCRYPTION_KEY` 환경변수 미설정 시 no-op(평문 저장). `User.plaintext_token` property가 DB 읽기 시 자동 복호화. 새 GitHub API 토큰 접근 코드는 `user.github_access_token` 직접 사용 금지 — `user.plaintext_token` 사용.
+- **SESSION_SECRET 강도 검증**: `src/config.py`의 `warn_weak_session_secret` validator가 32자 미만 또는 기본값(`"changeme"` 등)이면 WARNING 로그 출력. 프로덕션에서는 32자 이상 랜덤 문자열 필수.
+- **GRADE 상수 단일 출처**: `src/constants.py`에 `GRADE_EMOJI`, `GRADE_COLOR_DISCORD`, `GRADE_COLOR_HTML`, `GRADE_COLOR_ANSI` 정의. 새 알림 채널 추가 시 이곳에서 import — 각 모듈에 로컬 정의 금지.
+- **telegram_post_message 공용 헬퍼**: `src/notifier/telegram.py`의 `telegram_post_message(bot_token, chat_id, payload)` 사용. `src/gate/telegram_gate.py`도 이 헬퍼를 사용 — `httpx` 직접 import 금지. 새 Telegram 발송 코드는 이 헬퍼 경유.
+- **API 공용 404 헬퍼**: `src/api/deps.py`의 `get_repo_or_404(repo_name, db)` 사용. `src/api/repos.py`, `src/api/stats.py`에서 중복 Repository 조회+404 패턴 제거됨. 신규 API 엔드포인트에서 Repository 조회 시 동일 패턴 사용.
+- **keyword-only 강제 (`*`)**: 모든 `send_*` notifier 함수와 `run_gate_check()` 등 인자가 많은 함수는 `def fn(*, arg1, arg2)` 형태로 keyword-only 강제. 테스트에서 positional 호출 시 TypeError 발생 — 반드시 키워드 인자로 호출.
 
 ## Railway 배포
 
@@ -392,6 +401,47 @@ Railway 대시보드 설정:
 - `APP_BASE_URL` 반드시 설정 — OAuth redirect_uri HTTPS 보장
 
 헬스체크 엔드포인트: `GET /health` — `{"status":"ok","active_db":"primary"|"fallback"}` (healthcheckTimeout: 60초)
+
+### Railway NIXPACKS 빌드 설정
+
+Railway는 NIXPACKS 빌더를 사용하며, `railway.toml`과 `nixpacks.toml` 두 파일로 제어한다.
+
+**설정 우선순위 (높음 → 낮음):**
+
+| 우선순위 | 설정 위치 | 적용 범위 |
+|---------|----------|---------|
+| 1 | `railway.toml`의 `buildCommand` | 빌드 명령 최상위 오버라이드 |
+| 2 | `nixpacks.toml`의 `[phases.build]` | NIXPACKS 빌드 단계 설정 |
+| 3 | `nixpacks.toml`의 `providers` | NIXPACKS 언어 감지 오버라이드 |
+| 4 | NIXPACKS 자동 감지 | `requirements.txt`, `package.json` 등 파일 기반 |
+
+**현재 설정 (`railway.toml`):**
+```toml
+[build]
+builder = "NIXPACKS"
+buildCommand = "echo 'Python project — no build step'"
+```
+
+**현재 설정 (`nixpacks.toml`):**
+```toml
+providers = ["python"]
+
+[phases.build]
+cmds = []
+```
+
+**주의사항:**
+- NIXPACKS는 `requirements.txt`(Python)와 다른 파일 조합에 따라 **멀티 provider**를 감지할 수 있음
+- `python-telegram-bot`, `cryptography` 등 일부 패키지는 설치 중 Node.js 관련 바이너리를 포함할 수 있어 NIXPACKS가 npm 빌드 단계를 자동 추가할 수 있음
+- `nixpacks.toml`만으로는 Railway 서비스 레벨 설정을 덮어쓸 수 없음 → **반드시 `railway.toml`의 `buildCommand`로 명시 차단**
+- Railway 빌드 수정 후에는 대시보드 빌드 로그를 직접 확인한 후 완료 선언할 것 (`git push` 성공 ≠ Railway 빌드 성공)
+
+**의존성 파일 분리 (프로덕션 vs 개발):**
+```
+requirements.txt      ← Railway(프로덕션) 전용 — pytest/playwright 제외
+requirements-dev.txt  ← 로컬 개발 환경 — pytest, playwright 포함 (-r requirements.txt 포함)
+```
+Railway는 `requirements.txt`만 자동 감지. `pytest`, `playwright`, `pytest-playwright`는 `requirements-dev.txt`에만 유지.
 
 ## Agent 작업 규칙
 
@@ -498,3 +548,5 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 | 점수 이력 차트 동기화 | repo_detail 차트-필터 동기화 + analysis_detail 미니 트렌드 차트 + 이전/다음 내비게이션 (단위 397개) | ✅ 완료 |
 | 온프레미스 마이그레이션 가이드 | Railway→온프레미스 전환 절차 문서 + .env.example OAuth 변수 보강 | ✅ 완료 |
 | DB Failover | Primary 장애 시 Supabase 자동 전환 — FailoverSessionFactory + probe thread + /health active_db (단위 423개) | ✅ 완료 |
+| Railway 빌드 수정 | requirements-dev.txt 분리 + nixpacks.toml + railway.toml buildCommand로 npm run build 오탐 완전 차단 | ✅ 완료 |
+| 코드품질 2차 강화 | Token 암호화(crypto.py) + GRADE 상수 단일화(constants.py) + keyword-only 강제 + API deps 헬퍼 + telegram_post_message 공용화 + pylint 9.66 (단위 434개) | ✅ 완료 |
