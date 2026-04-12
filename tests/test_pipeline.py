@@ -56,7 +56,7 @@ def mock_deps():
         # Call sequence: 1) repo creation (None→create), 2) repo lookup (found),
         # 3) dup check (None), 4) get_repo_config (None→defaults)
         mock_db.query.return_value.filter_by.return_value.first.side_effect = [
-            None, mock_repo, None, None,
+            None, None, mock_repo, None,
         ]
         mock_db.flush = MagicMock()
         mock_db.commit = MagicMock()
@@ -250,7 +250,7 @@ async def test_pipeline_calls_gate_for_pr(mock_deps):
 
     mock_db = mock_deps["db"]
     mock_db.query.return_value.filter_by.return_value.first.side_effect = [
-        MagicMock(id=1), MagicMock(id=1), None,
+        MagicMock(id=1), None, MagicMock(id=1),
     ]
     mock_db.refresh = MagicMock()
 
@@ -274,7 +274,7 @@ async def test_pipeline_calls_n8n_when_url_set(mock_deps):
 
     mock_db = mock_deps["db"]
     mock_db.query.return_value.filter_by.return_value.first.side_effect = [
-        MagicMock(id=1), MagicMock(id=1), None,
+        MagicMock(id=1), None, MagicMock(id=1),
     ]
     mock_db.refresh = MagicMock()
 
@@ -302,7 +302,7 @@ async def test_pipeline_skips_gate_for_push(mock_deps):
 
     mock_db = mock_deps["db"]
     mock_db.query.return_value.filter_by.return_value.first.side_effect = [
-        MagicMock(id=1), MagicMock(id=1), None,
+        MagicMock(id=1), None, MagicMock(id=1),
     ]
     mock_db.refresh = MagicMock()
 
@@ -328,7 +328,8 @@ async def test_pipeline_uses_owner_github_token():
     repo.owner = owner
 
     mock_db = MagicMock()
-    mock_db.query.return_value.filter_by.return_value.first.return_value = repo
+    # 순서: 첫 번째 세션 repo 조회 → SHA 중복 체크(None=중복 없음) → (파일 없어 조기 종료)
+    mock_db.query.return_value.filter_by.return_value.first.side_effect = [repo, None]
     mock_db.__enter__ = MagicMock(return_value=mock_db)
     mock_db.__exit__ = MagicMock(return_value=None)
 
@@ -360,7 +361,8 @@ async def test_pipeline_falls_back_to_settings_token_when_no_owner():
     repo.owner = None  # 소유자 없는 레거시 리포
 
     mock_db = MagicMock()
-    mock_db.query.return_value.filter_by.return_value.first.return_value = repo
+    # 순서: 첫 번째 세션 repo 조회 → SHA 중복 체크(None=중복 없음) → (파일 없어 조기 종료)
+    mock_db.query.return_value.filter_by.return_value.first.side_effect = [repo, None]
     mock_db.__enter__ = MagicMock(return_value=mock_db)
     mock_db.__exit__ = MagicMock(return_value=None)
 
@@ -455,7 +457,7 @@ async def test_pipeline_pr_review_comment_not_in_notify_tasks(mock_deps):
 
     mock_db = mock_deps["db"]
     mock_db.query.return_value.filter_by.return_value.first.side_effect = [
-        MagicMock(id=1), MagicMock(id=1), None,
+        MagicMock(id=1), None, MagicMock(id=1),
     ]
     mock_db.refresh = MagicMock()
 
@@ -485,7 +487,7 @@ async def test_pipeline_passes_new_gate_signature(mock_deps):
 
     mock_db = mock_deps["db"]
     mock_db.query.return_value.filter_by.return_value.first.side_effect = [
-        MagicMock(id=1), MagicMock(id=1), None,
+        MagicMock(id=1), None, MagicMock(id=1),
     ]
     mock_db.refresh = MagicMock()
 
@@ -503,3 +505,213 @@ async def test_pipeline_passes_new_gate_signature(mock_deps):
     # 새 시그니처 필수 인자 확인
     assert "repo_name" in call_kwargs or len(mock_gate.call_args.args) > 0
     assert "pr_number" in call_kwargs or len(mock_gate.call_args.args) > 1
+
+
+# ---------------------------------------------------------------------------
+# Task 1 — SHA 중복 체크 이동 및 result dict ai_review_status 필드 테스트
+# (Red 단계: SHA 중복 체크가 아직 review_code 이전으로 이동하지 않음)
+# ---------------------------------------------------------------------------
+
+async def test_sha_duplicate_skips_before_review_code(mock_deps):
+    """중복 SHA가 감지되면 review_code가 호출되지 않아야 한다.
+
+    현재 구현은 review_code 호출 후 DB 저장 직전에 중복 체크하므로 이 테스트는 Red 상태다.
+    구현 후: SHA 중복 체크를 repo 등록 직후, 파일 fetch 전으로 이동하면 Green이 된다.
+    """
+    # 첫 번째 first(): repo 없음(생성), 두 번째 first(): repo 조회 성공, 세 번째 first(): 중복 SHA 발견
+    existing_analysis = MagicMock()
+    mock_deps["db"].query.return_value.filter_by.return_value.first.side_effect = [
+        None,             # 첫 번째 세션: repo 없음 → 생성
+        existing_analysis,  # 첫 번째 세션: SHA 중복 감지 (파일 fetch 전에 조기 종료)
+    ]
+
+    from src.worker.pipeline import run_analysis_pipeline
+    await run_analysis_pipeline("push", PUSH_DATA)
+
+    # SHA 중복 → review_code 미호출
+    mock_deps["ai"].assert_not_called()
+
+
+async def test_sha_duplicate_skips_before_file_fetch(mock_deps):
+    """중복 SHA가 감지되면 get_push_files / get_pr_files가 호출되지 않아야 한다."""
+    existing_analysis = MagicMock()
+    mock_deps["db"].query.return_value.filter_by.return_value.first.side_effect = [
+        None,             # 첫 번째 세션: repo 없음 → 생성
+        existing_analysis,  # 첫 번째 세션: SHA 중복 감지 (파일 fetch 전에 조기 종료)
+    ]
+
+    from src.worker.pipeline import run_analysis_pipeline
+    await run_analysis_pipeline("push", PUSH_DATA)
+
+    # SHA 중복 → 파일 fetch 미호출
+    mock_deps["push"].assert_not_called()
+
+
+async def test_result_dict_contains_ai_review_status(mock_deps):
+    """_build_result_dict() 결과에 ai_review_status 키가 포함되어야 한다.
+
+    현재 _build_result_dict는 ai_review_status를 반환하지 않으므로 Red 상태다.
+    구현 후: ai_review.status 값을 result dict에 포함하면 Green이 된다.
+    """
+    from src.worker.pipeline import run_analysis_pipeline
+    await run_analysis_pipeline("push", PUSH_DATA)
+
+    analysis_added = mock_deps["db"].add.call_args_list[-1][0][0]
+    # result dict에 ai_review_status 키가 존재해야 한다
+    assert "ai_review_status" in analysis_added.result
+
+
+# ---------------------------------------------------------------------------
+# 알림 디스패처(_build_notify_tasks) 조합 검증
+# discord / slack / n8n 채널 설정 여부에 따른 호출 분기,
+# repo_config 로드 실패 시 Telegram 전용 fallback,
+# gate 예외 발생 시 Analysis DB 저장 보장
+# ---------------------------------------------------------------------------
+
+async def test_discord_notifier_called_when_configured(mock_deps):
+    """repo_config.discord_webhook_url이 설정된 경우 send_discord_notification이 호출된다."""
+    from src.worker.pipeline import run_analysis_pipeline
+    from src.config_manager.manager import RepoConfigData
+
+    # get_repo_config를 직접 patch하므로 두 번째 DB 세션은 repo 조회(mock_repo)만 필요
+    mock_repo = MagicMock(id=1)
+    mock_deps["db"].query.return_value.filter_by.return_value.first.side_effect = [
+        None, None, mock_repo,
+    ]
+    mock_deps["db"].refresh = MagicMock()
+
+    config = RepoConfigData(
+        repo_full_name="owner/repo",
+        discord_webhook_url="https://discord.com/api/webhooks/test",
+    )
+    with patch("src.worker.pipeline.get_repo_config", return_value=config):
+        with patch("src.worker.pipeline.send_discord_notification",
+                   new_callable=AsyncMock) as mock_discord:
+            with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
+                await run_analysis_pipeline("push", PUSH_DATA)
+
+    mock_discord.assert_called_once()
+
+
+async def test_discord_notifier_not_called_when_not_configured(mock_deps):
+    """repo_config.discord_webhook_url이 없으면 send_discord_notification이 호출되지 않는다."""
+    from src.worker.pipeline import run_analysis_pipeline
+    from src.config_manager.manager import RepoConfigData
+
+    mock_repo = MagicMock(id=1)
+    mock_deps["db"].query.return_value.filter_by.return_value.first.side_effect = [
+        None, None, mock_repo,
+    ]
+    mock_deps["db"].refresh = MagicMock()
+
+    # discord_webhook_url 미설정
+    config = RepoConfigData(repo_full_name="owner/repo")
+    with patch("src.worker.pipeline.get_repo_config", return_value=config):
+        with patch("src.worker.pipeline.send_discord_notification",
+                   new_callable=AsyncMock) as mock_discord:
+            with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
+                await run_analysis_pipeline("push", PUSH_DATA)
+
+    mock_discord.assert_not_called()
+
+
+async def test_slack_notifier_called_when_configured(mock_deps):
+    """repo_config.slack_webhook_url이 설정된 경우 send_slack_notification이 호출된다."""
+    from src.worker.pipeline import run_analysis_pipeline
+    from src.config_manager.manager import RepoConfigData
+
+    mock_repo = MagicMock(id=1)
+    mock_deps["db"].query.return_value.filter_by.return_value.first.side_effect = [
+        None, None, mock_repo,
+    ]
+    mock_deps["db"].refresh = MagicMock()
+
+    config = RepoConfigData(
+        repo_full_name="owner/repo",
+        slack_webhook_url="https://hooks.slack.com/services/T000/B000/xxx",
+    )
+    with patch("src.worker.pipeline.get_repo_config", return_value=config):
+        with patch("src.worker.pipeline.send_slack_notification",
+                   new_callable=AsyncMock) as mock_slack:
+            with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
+                await run_analysis_pipeline("push", PUSH_DATA)
+
+    mock_slack.assert_called_once()
+
+
+async def test_repo_config_none_sends_only_telegram(mock_deps):
+    """get_repo_config 로드 실패 시 Telegram 만 발송되고 Discord/Slack은 미발송이다."""
+    from src.worker.pipeline import run_analysis_pipeline
+
+    mock_repo = MagicMock(id=1)
+    mock_deps["db"].query.return_value.filter_by.return_value.first.side_effect = [
+        None, None, mock_repo,
+    ]
+    mock_deps["db"].refresh = MagicMock()
+
+    # get_repo_config 예외 → pipeline이 repo_config=None으로 fallback
+    with patch("src.worker.pipeline.get_repo_config", side_effect=Exception("config error")):
+        with patch("src.worker.pipeline.send_discord_notification",
+                   new_callable=AsyncMock) as mock_discord:
+            with patch("src.worker.pipeline.send_slack_notification",
+                       new_callable=AsyncMock) as mock_slack:
+                with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
+                    await run_analysis_pipeline("push", PUSH_DATA)
+
+    # Telegram은 global fallback으로 항상 발송
+    mock_deps["telegram"].assert_called_once()
+    # Discord/Slack은 config 없으므로 미발송
+    mock_discord.assert_not_called()
+    mock_slack.assert_not_called()
+
+
+async def test_gate_check_exception_still_saves_analysis(mock_deps):
+    """gate check 예외가 발생해도 Analysis DB 저장은 이미 완료되어야 한다."""
+    from src.worker.pipeline import run_analysis_pipeline
+    from src.models.analysis import Analysis
+
+    mock_repo = MagicMock(id=1)
+    mock_deps["db"].query.return_value.filter_by.return_value.first.side_effect = [
+        None, None, mock_repo,
+    ]
+    mock_deps["db"].refresh = MagicMock()
+
+    with patch("src.worker.pipeline.run_gate_check",
+               new_callable=AsyncMock, side_effect=Exception("gate error")):
+        with patch("src.worker.pipeline.get_repo_config", return_value=MagicMock(
+            discord_webhook_url=None,
+            slack_webhook_url=None,
+            custom_webhook_url=None,
+            email_recipients=None,
+            n8n_webhook_url=None,
+            notify_chat_id=None,
+        )):
+            await run_analysis_pipeline("pull_request", PR_DATA)
+
+    # gate 예외 이전에 db.add(analysis) + db.commit()이 이미 호출됨
+    add_calls = mock_deps["db"].add.call_args_list
+    added_analyses = [c[0][0] for c in add_calls if isinstance(c[0][0], Analysis)]
+    assert len(added_analyses) == 1
+
+
+async def test_n8n_notifier_called_when_configured(mock_deps):
+    """repo_config.n8n_webhook_url이 설정된 경우 notify_n8n이 호출된다."""
+    from src.worker.pipeline import run_analysis_pipeline
+    from src.config_manager.manager import RepoConfigData
+
+    mock_repo = MagicMock(id=1)
+    mock_deps["db"].query.return_value.filter_by.return_value.first.side_effect = [
+        None, None, mock_repo,
+    ]
+    mock_deps["db"].refresh = MagicMock()
+
+    config = RepoConfigData(
+        repo_full_name="owner/repo",
+        n8n_webhook_url="https://n8n.example.com/webhook/test",
+    )
+    with patch("src.worker.pipeline.get_repo_config", return_value=config):
+        with patch("src.worker.pipeline.notify_n8n", new_callable=AsyncMock) as mock_n8n:
+            with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
+                await run_analysis_pipeline("push", PUSH_DATA)
+
+    mock_n8n.assert_called_once()

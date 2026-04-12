@@ -20,6 +20,13 @@ class Settings(BaseSettings):
     smtp_port: int = 587
     smtp_user: str = ""
     smtp_pass: str = ""
+    # DB 연결 설정 (온프레미스 PostgreSQL 지원)
+    db_sslmode: str = ""        # "require", "verify-full" 등 (빈 문자열=미적용)
+    db_force_ipv4: bool = False  # True=Railway IPv4 강제 (온프레미스에서는 False)
+    db_pool_size: int = 5
+    db_max_overflow: int = 10
+    db_pool_timeout: int = 30   # seconds
+    db_pool_recycle: int = 1800  # seconds
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 

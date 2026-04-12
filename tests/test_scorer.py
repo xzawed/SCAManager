@@ -160,3 +160,38 @@ def test_new_weight_distribution():
     assert result.breakdown["ai_review"] == 25
     assert result.breakdown["test_coverage"] == 15
     assert result.total == 100
+
+
+# ---------------------------------------------------------------------------
+# Task 1 — breakdown["ai_defaults_applied"] 플래그 테스트
+# (Red 단계: calculate_score가 아직 ai_defaults_applied 플래그를 반환하지 않음)
+# ---------------------------------------------------------------------------
+
+def test_breakdown_has_ai_defaults_flag_when_no_review():
+    # ai_review=None 이면 breakdown에 ai_defaults_applied == True 가 포함되어야 한다
+    result = calculate_score([_make_result([])], ai_review=None)
+    assert result.breakdown.get("ai_defaults_applied") is True
+
+
+def test_breakdown_has_ai_defaults_flag_when_default_status():
+    # ai_review.status == "no_api_key" 이면 ai_defaults_applied == True 이어야 한다
+    ai = _make_ai_review()
+    ai.status = "no_api_key"  # type: ignore[attr-defined]
+    result = calculate_score([_make_result([])], ai_review=ai)
+    assert result.breakdown.get("ai_defaults_applied") is True
+
+
+def test_breakdown_has_ai_defaults_flag_when_api_error_status():
+    # ai_review.status == "api_error" 이면 ai_defaults_applied == True 이어야 한다
+    ai = _make_ai_review()
+    ai.status = "api_error"  # type: ignore[attr-defined]
+    result = calculate_score([_make_result([])], ai_review=ai)
+    assert result.breakdown.get("ai_defaults_applied") is True
+
+
+def test_breakdown_no_ai_defaults_flag_on_success():
+    # ai_review.status == "success" 이면 ai_defaults_applied 키가 breakdown에 없어야 한다
+    ai = _make_ai_review()
+    ai.status = "success"  # type: ignore[attr-defined]
+    result = calculate_score([_make_result([])], ai_review=ai)
+    assert "ai_defaults_applied" not in result.breakdown

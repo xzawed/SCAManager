@@ -134,3 +134,76 @@ async def test_review_code_returns_default_on_api_exception():
 
     assert result.commit_score == 17
     assert result.test_score == 7
+
+
+# ---------------------------------------------------------------------------
+# Task 1 — AiReviewResult.status 필드 및 _default_result(reason) 파라미터 테스트
+# (Red 단계: AiReviewResult에 status 필드 없음, _default_result에 reason 파라미터 없음)
+# ---------------------------------------------------------------------------
+
+def test_default_result_has_no_api_key_status():
+    # _default_result("no_api_key") 호출 시 status == "no_api_key" 이어야 한다
+    result = _default_result("no_api_key")
+    assert result.status == "no_api_key"
+
+
+def test_default_result_has_api_error_status():
+    # _default_result("api_error") 호출 시 status == "api_error" 이어야 한다
+    result = _default_result("api_error")
+    assert result.status == "api_error"
+
+
+def test_default_result_has_empty_diff_status():
+    # _default_result("empty_diff") 호출 시 status == "empty_diff" 이어야 한다
+    result = _default_result("empty_diff")
+    assert result.status == "empty_diff"
+
+
+def test_default_result_has_parse_error_status():
+    # _default_result("parse_error") 호출 시 status == "parse_error" 이어야 한다
+    result = _default_result("parse_error")
+    assert result.status == "parse_error"
+
+
+async def test_review_code_no_key_returns_no_api_key_status():
+    # api_key=""로 호출하면 status == "no_api_key" 이어야 한다
+    result = await review_code("", "feat: test", [("test.py", "+ x = 1")])
+    assert result.status == "no_api_key"
+
+
+async def test_review_code_empty_diff_returns_empty_diff_status():
+    # diff가 빈 문자열(패치 없음)이면 status == "empty_diff" 이어야 한다
+    result = await review_code("sk-key", "feat: test", [])
+    assert result.status == "empty_diff"
+
+
+async def test_review_code_api_error_returns_api_error_status():
+    # API 호출 중 예외 발생 시 status == "api_error" 이어야 한다
+    with patch("src.analyzer.ai_review.anthropic.AsyncAnthropic") as mock_cls:
+        mock_client = AsyncMock()
+        mock_client.messages.create = AsyncMock(side_effect=Exception("network error"))
+        mock_cls.return_value = mock_client
+
+        result = await review_code("sk-test", "feat: add", [("app.py", "+ x = 1")])
+
+    assert result.status == "api_error"
+
+
+async def test_successful_review_has_success_status():
+    # 정상적으로 파싱된 결과는 status == "success" 이어야 한다
+    import json as _json
+    mock_response = MagicMock()
+    mock_text = _json.dumps({
+        "commit_message_score": 18, "direction_score": 17,
+        "test_score": 10, "summary": "ok", "suggestions": [],
+    })
+    mock_response.content = [MagicMock(text=mock_text)]
+
+    with patch("src.analyzer.ai_review.anthropic.AsyncAnthropic") as mock_cls:
+        mock_client = AsyncMock()
+        mock_client.messages.create = AsyncMock(return_value=mock_response)
+        mock_cls.return_value = mock_client
+
+        result = await review_code("sk-test", "feat: add feature", [("app.py", "+ x = 1")])
+
+    assert result.status == "success"

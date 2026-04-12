@@ -25,6 +25,7 @@ class AiReviewResult:  # pylint: disable=too-many-instance-attributes
     direction_feedback: str = ""         # 구현 방향성 평가 상세
     test_feedback: str = ""              # 테스트 평가 상세
     file_feedbacks: list[dict] = field(default_factory=list)  # 파일별 피드백
+    status: str = "success"  # "success" | "no_api_key" | "empty_diff" | "api_error" | "parse_error"
 
 
 _PROMPT_TEMPLATE = """\
@@ -77,7 +78,7 @@ async def review_code(
 ) -> AiReviewResult:
     """Claude API로 코드를 리뷰하고 점수를 반환한다. API key가 없으면 기본값 반환."""
     if not api_key:
-        return _default_result()
+        return _default_result("no_api_key")
 
     diff_text = "\n".join(
         f"--- {fname}\n{patch}" for fname, patch in patches
@@ -85,7 +86,7 @@ async def review_code(
     filenames = "\n".join(fname for fname, _ in patches)
 
     if not diff_text.strip():
-        return _default_result()
+        return _default_result("empty_diff")
 
     try:
         client = anthropic.AsyncAnthropic(api_key=api_key)
@@ -104,7 +105,7 @@ async def review_code(
         return _parse_response(response.content[0].text)
     except Exception:
         logger.exception("AI review failed, using default scores")
-        return _default_result()
+        return _default_result("api_error")
 
 
 def _extract_test_score(data: dict) -> int:
@@ -137,10 +138,10 @@ def _parse_response(text: str) -> AiReviewResult:
         )
     except (json.JSONDecodeError, ValueError, KeyError):
         logger.warning("Failed to parse AI review response: %s", text[:200])
-        return _default_result()
+        return _default_result("parse_error")
 
 
-def _default_result() -> AiReviewResult:
+def _default_result(reason: str = "no_api_key") -> AiReviewResult:
     """API key 없음, 빈 diff, 또는 오류 시 반환하는 중립적 기본값."""
     return AiReviewResult(
         commit_score=17,
@@ -148,4 +149,5 @@ def _default_result() -> AiReviewResult:
         test_score=7,
         summary="AI 리뷰 불가 (기본값 적용)",
         suggestions=[],
+        status=reason,
     )

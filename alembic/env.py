@@ -20,7 +20,7 @@ from src.models.repository import Repository  # noqa: F401
 from src.models.analysis import Analysis      # noqa: F401
 from src.models.repo_config import RepoConfig  # noqa: F401
 from src.models.gate_decision import GateDecision  # noqa: F401
-from src.database import Base, _ipv4_connect_args
+from src.database import Base, _build_connect_args
 from src.config import settings
 
 target_metadata = Base.metadata
@@ -66,10 +66,9 @@ def run_migrations_online() -> None:
 
     """
     url = config.get_main_option("sqlalchemy.url", "")
-    # Railway IPv6 우회: main 엔진과 동일하게 hostaddr(IPv4)를 강제 지정
-    # connect_timeout=10 으로 DB 연결 hang 방지
+    # db_force_ipv4/db_sslmode 설정을 동일하게 적용, connect_timeout=10으로 hang 방지
     if url.startswith("postgresql"):
-        connect_args = _ipv4_connect_args(url)
+        connect_args = _build_connect_args(url)
         connect_args["connect_timeout"] = 10
     else:
         connect_args = {}
