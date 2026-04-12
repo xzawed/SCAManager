@@ -216,7 +216,8 @@ docs/
 │   ├── 2026-04-07-phase8a-auth-user-design.md
 │   ├── 2026-04-07-phase8b-github-oauth-repo-add-design.md
 │   ├── 2026-04-09-settings-ui-redesign-design.md
-│   └── 2026-04-10-pr-gate-three-options-design.md
+│   ├── 2026-04-10-pr-gate-three-options-design.md
+│   └── 2026-04-12-score-history-chart-design.md
 └── reports/
     └── code-quality-report-2026-04-09.md # 코드품질 강화 보고서 (버그·중복·docstring·lint)
 

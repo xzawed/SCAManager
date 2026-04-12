@@ -197,30 +197,38 @@ bash .scamanager/install-hook.sh
 ### API로 설정
 
 ```bash
-curl -X PUT https://your-app.railway.app/api/repos/owner/repo-name/config \
+curl -X PUT https://your-domain/api/repos/owner/repo-name/config \
   -H "Content-Type: application/json" \
   -H "X-API-Key: your-api-key" \
   -d '{
+    "pr_review_comment": true,
     "approve_mode": "auto",
     "approve_threshold": 75,
-    "reject_threshold": 50
+    "reject_threshold": 50,
+    "auto_merge": false,
+    "merge_threshold": 80
   }'
 ```
 
-### Gate 모드 설명
+### Gate 3-옵션 설명
 
-| 모드 | 동작 |
-|------|------|
-| `disabled` | Gate 없음 — 분석 결과를 알림으로만 전달 (기본값) |
-| `auto` | 점수 기준 자동 Approve/Request Changes |
-| `semi-auto` | Telegram 인라인 버튼으로 수동 결정 |
+설정 페이지의 세 옵션은 완전히 독립적으로 동작합니다.
+
+| 옵션 | 설정값 | 동작 |
+|------|--------|------|
+| **PR 리뷰 댓글** | `pr_review_comment=on` | PR에 AI 코드리뷰 댓글 자동 게시 |
+| **Approve 모드** | `approve_mode="disabled"` | Gate 없음 (기본값) |
+| | `approve_mode="auto"` | 점수 기준 자동 Approve / Request Changes |
+| | `approve_mode="semi"` | Telegram 인라인 버튼으로 수동 승인/반려 |
+| **Auto Merge** | `auto_merge=on` + `merge_threshold` | 점수 통과 시 squash merge 자동 실행 (approve_mode 무관) |
 
 ### 임계값 기준
 
 ```
 점수 ≥ approve_threshold (기본 75) → GitHub PR Approve
 점수 < reject_threshold  (기본 50) → GitHub PR Request Changes
-그 사이 (50~75)                          → Gate 없이 통과 (알림만 전달)
+점수 ≥ merge_threshold   (기본 80) → squash merge 자동 (auto_merge=on 시)
+그 사이 (50~75)                     → Gate 없이 통과 (알림만 전달)
 ```
 
 ---
@@ -239,7 +247,7 @@ git push origin main
 | 확인 방법 | 위치 |
 |----------|------|
 | Telegram 알림 | 설정된 채팅방에 점수 및 등급 메시지 수신 |
-| 웹 대시보드 | `https://your-app.railway.app` → 리포지토리 클릭 |
+| 웹 대시보드 | `https://your-domain` → 리포지토리 클릭 |
 | REST API | `GET /api/repos/owner/repo-name/analyses` |
 
 ### PR 이벤트 확인
@@ -261,14 +269,14 @@ Pull Request를 생성하면:
 |-----------|-------------|
 | `403` | Webhook Secret 불일치 — 방법 A: 설정 페이지에서 Webhook 재등록 / 방법 B: `GITHUB_WEBHOOK_SECRET` 값 확인 |
 | `422` | 지원하지 않는 이벤트 타입 — Pushes + Pull requests 이벤트만 처리됨 |
-| `5xx` | 서버 오류 — Railway 로그 확인 (`railway logs`) |
+| `5xx` | 서버 오류 — 서버 로그 확인 (`railway logs` 또는 `journalctl -u scamanager`) |
 | 연결 실패 | Payload URL 오타 또는 서비스 미기동 — `GET /health` 응답 확인 |
 
 ### Webhook URL이 HTTP로 등록됨
 
 Railway 등 리버스 프록시 환경에서 `APP_BASE_URL` 미설정 시 발생합니다.
 
-1. Railway Variables에 `APP_BASE_URL=https://your-app.up.railway.app` 추가
+1. 환경변수에 `APP_BASE_URL=https://your-domain` 추가 (Railway 또는 온프레미스 도메인)
 2. 설정 페이지 → **🔗 Webhook 재등록** 클릭
 
 ### Telegram 알림이 오지 않음
@@ -298,7 +306,7 @@ command -v claude
 cat .git/hooks/pre-push
 
 # 서버 연결 확인
-curl https://your-app.railway.app/api/hook/verify?repo=owner/repo&token=TOKEN
+curl https://your-domain/api/hook/verify?repo=owner/repo&token=TOKEN
 ```
 
 - `claude` 미설치 → Claude Code CLI 설치 필요 (데스크탑 환경만 지원)
@@ -318,14 +326,16 @@ curl https://your-app.railway.app/api/hook/verify?repo=owner/repo&token=TOKEN
 □ 1. GitHub OAuth App 생성 → Client ID / Secret 발급
 □ 2. 서버 환경변수 설정
      - GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, SESSION_SECRET
-     - APP_BASE_URL=https://your-app.up.railway.app  ← Railway 필수
+     - APP_BASE_URL=https://your-domain  ← 리버스 프록시 필수
      - TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
      - DATABASE_URL
+     - (선택) DATABASE_URL_FALLBACK=...supabase.co...  ← DB Failover
 □ 3. 웹 UI에서 GitHub 로그인
 □ 4. 리포지토리 추가 → Webhook 자동 생성 확인
 □ 5. 테스트 Push → Telegram 알림 + 대시보드 확인
-□ 6. (선택) 로컬 클론에서 bash .scamanager/install-hook.sh 실행
-□ 7. (선택) 설정 탭에서 Gate 모드 및 임계값 설정
+□ 6. GET /health → {"status":"ok","active_db":"primary"} 확인
+□ 7. (선택) 로컬 클론에서 bash .scamanager/install-hook.sh 실행
+□ 8. (선택) 설정 탭에서 PR 리뷰 댓글 · Gate 모드 · Auto Merge 설정
 ```
 
 ### 방법 B (레거시)
@@ -333,7 +343,7 @@ curl https://your-app.railway.app/api/hook/verify?repo=owner/repo&token=TOKEN
 ```
 □ 1. Webhook Secret 생성
 □ 2. GitHub 리포 Settings → Webhooks 등록
-     - Payload URL: https://your-app.railway.app/webhooks/github
+     - Payload URL: https://your-domain/webhooks/github
      - Content type: application/json / Events: Pushes + Pull requests
 □ 3. GitHub PAT 발급 (repo scope)
 □ 4. 서버 환경변수 설정
