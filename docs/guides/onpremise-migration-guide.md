@@ -13,8 +13,9 @@
 3. [환경변수 설정](#3-환경변수-설정)
 4. [데이터 마이그레이션](#4-데이터-마이그레이션)
 5. [애플리케이션 배포](#5-애플리케이션-배포)
-6. [검증 체크리스트](#6-검증-체크리스트)
-7. [트러블슈팅](#7-트러블슈팅)
+6. [DB Failover 설정](#6-db-failover-설정)
+7. [검증 체크리스트](#7-검증-체크리스트)
+8. [트러블슈팅](#8-트러블슈팅)
 
 ---
 
@@ -313,11 +314,71 @@ docker compose logs -f app
 
 ---
 
-## 6. 검증 체크리스트
+## 6. DB Failover 설정
+
+온프레미스 Primary DB 장애 시 Supabase 클라우드로 자동 전환하려면 `DATABASE_URL_FALLBACK`을 설정합니다.
+
+### 개요
+
+```
+Primary 장애 감지 (OperationalError)
+  → Fallback DB(Supabase)로 자동 전환
+  → probe thread가 30초마다 Primary 복구 확인
+  → Primary 복구 감지 시 자동 복귀
+  → /health → {"status":"ok","active_db":"fallback"} (장애 중)
+              {"status":"ok","active_db":"primary"}  (정상)
+```
+
+`DATABASE_URL_FALLBACK`이 비어 있으면 Failover 비활성 — 단일 엔진 모드로 동작합니다.
+
+### .env 설정
+
+```ini
+# === DB Failover (온프레미스 장애 시 Supabase 자동 전환) ===
+# Supabase 대시보드 → Project Settings → Database → Connection string
+DATABASE_URL_FALLBACK=postgresql://postgres.xxxxxxxxxx:password@aws-1-ap-southeast-2.pooler.supabase.com:5432/postgres?sslmode=require
+# Primary 복구 확인 주기 (초, 기본 30)
+DB_FAILOVER_PROBE_INTERVAL=30
+```
+
+> Supabase URL에는 `?sslmode=require`가 필수입니다. `config.py`가 `supabase.co` 도메인을 감지해 자동 추가하므로, Supabase URL 끝에 직접 붙이지 않아도 됩니다.
+
+### Supabase Fallback DB 준비
+
+Supabase Fallback DB는 스키마가 동일해야 합니다. SCAManager 앱이 Supabase에 처음 연결될 때 마이그레이션이 자동 실행되지 않으므로, 미리 수동 마이그레이션을 실행해 두세요.
+
+```bash
+# DATABASE_URL을 Supabase URL로 임시 교체 후 마이그레이션
+DATABASE_URL="postgresql://...supabase.co/postgres?sslmode=require" make migrate
+```
+
+### /health 모니터링
+
+```bash
+curl http://localhost:8000/health
+# 정상: {"status":"ok","active_db":"primary"}
+# 장애: {"status":"ok","active_db":"fallback"}
+```
+
+`active_db`가 `"fallback"`이면 Primary DB 장애 상태입니다. 모니터링 도구(Uptime Kuma, Prometheus 등)에서 이 필드를 감시해 경보를 설정하세요.
+
+### 동작 방식 상세
+
+| 상황 | 동작 |
+|------|------|
+| `DATABASE_URL_FALLBACK` 미설정 | 단일 엔진 모드 — Failover 없음 |
+| Primary 정상 | `SessionLocal()` → Primary DB 세션 반환 |
+| Primary `OperationalError` | 즉시 Fallback DB로 전환 |
+| Fallback 중 Primary 복구 | probe thread가 `DB_FAILOVER_PROBE_INTERVAL`초 이내 감지 후 자동 복귀 |
+| Fallback도 실패 | `OperationalError` 그대로 전파 (앱 레벨에서 500 응답) |
+
+---
+
+## 7. 검증 체크리스트
 
 ```
 □ curl https://your-domain/health
-      → {"status":"ok"} 응답 확인
+      → {"status":"ok","active_db":"primary"} 응답 확인
 
 □ GitHub OAuth 로그인
       → https://your-domain/login → GitHub으로 로그인
@@ -334,7 +395,7 @@ docker compose logs -f app
 
 ---
 
-## 7. 트러블슈팅
+## 8. 트러블슈팅
 
 | 증상 | 원인 | 해결 방법 |
 |------|------|----------|
@@ -346,3 +407,5 @@ docker compose logs -f app
 | `SESSION_SECRET` 경고 | `.env`에서 세션 시크릿 미설정 또는 기본값 사용 | `python -c "import secrets; print(secrets.token_hex(32))"` 로 새 값 생성 |
 | Webhook ping 실패 | nginx `X-Forwarded-Proto` 미설정 → HTTP URL 등록 | nginx 설정에 `proxy_set_header X-Forwarded-Proto $scheme` 추가 + `APP_BASE_URL` 확인 |
 | `DB_FORCE_IPV4=true` 오류 | Railway 전용 옵션이 온프레미스에서 DNS hang 유발 | `.env`에서 `DB_FORCE_IPV4=false` 로 변경 |
+| `active_db: "fallback"` 지속 | Primary DB 연결 복구 안 됨 | `DATABASE_URL` 연결 확인 (포트 방화벽·PostgreSQL 기동 상태) |
+| Supabase Fallback 연결 실패 | SSL 설정 불일치 | `DATABASE_URL_FALLBACK`에 `?sslmode=require` 포함 확인 |
