@@ -156,6 +156,44 @@
     overflow-wrap: anywhere;
     max-width: 100%;
   }
+  /* 이전/다음 내비게이션 */
+  .analysis-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    gap: .5rem;
+  }
+  .nav-btn {
+    padding: 0.35rem 0.8rem;
+    border-radius: 6px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    text-decoration: none;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .nav-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .nav-btn.disabled { opacity: 0.38; cursor: default; pointer-events: none; }
+  .nav-label { font-size: 0.82rem; color: var(--text-muted); flex: 1; text-align: center; }
+  /* 트렌드 차트 섹션 */
+  .trend-section {
+    margin-bottom: 1.25rem;
+    padding: 1rem 1.25rem;
+  }
+  .trend-section-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    margin-bottom: .75rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
   @media (max-width: 768px) {
     .ad-header { gap: 0.75rem; }
     .ad-header h2 { font-size: 1.1rem; word-break: break-all; }
@@ -171,6 +209,7 @@
     .ad-text { font-size: 13px; }
     .ad-list li { font-size: 13px; }
     .commit-msg-text { font-size: 12px; padding: 8px 10px; }
+    .analysis-nav { flex-wrap: wrap; }
   }
   @media (max-width: 480px) {
     .ad-breakdown td:first-child { width: 80px; font-size: 11px !important; }
@@ -183,6 +222,21 @@
   <a class="back-btn" href="/repos/{{ repo_name }}">← 이력</a>
   <h2>{{ repo_name }}</h2>
   <span class="grade grade-{{ analysis.grade }}" style="margin-left:auto">{{ analysis.grade }}</span>
+</div>
+
+<!-- 이전/다음 내비게이션 -->
+<div class="analysis-nav">
+  {% if prev_id %}
+    <a href="/repos/{{ repo_name }}/analyses/{{ prev_id }}" class="nav-btn">◀ 이전</a>
+  {% else %}
+    <span class="nav-btn disabled">◀ 이전</span>
+  {% endif %}
+  <span class="nav-label">분석 #{{ analysis.id }}</span>
+  {% if next_id %}
+    <a href="/repos/{{ repo_name }}/analyses/{{ next_id }}" class="nav-btn">다음 ▶</a>
+  {% else %}
+    <span class="nav-btn disabled">다음 ▶</span>
+  {% endif %}
 </div>
 
 <!-- 메타 정보 -->
@@ -223,6 +277,14 @@
 {% endif %}
 
 {% set r = analysis.result %}
+
+<!-- 점수 추이 트렌드 차트 -->
+{% if trend_data is defined and trend_data|length > 1 %}
+<div class="card trend-section">
+  <div class="trend-section-title">📈 점수 추이 (최근 {{ trend_data|length }}건)</div>
+  <canvas id="trendChart" height="100"></canvas>
+</div>
+{% endif %}
 
 <!-- AI 기본값 적용 경고 배너 -->
 {% set ai_status = r.get('ai_review_status', 'success') if r else 'success' %}
@@ -377,4 +439,90 @@
 {% endif %}
 {% endif %}
 
+{% endblock %}
+
+{% block scripts %}
+{% if trend_data is defined and trend_data|length > 1 %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+  var TREND = {{ trend_data | tojson }};
+  var CURRENT_ID = {{ analysis.id }};
+  var REPO_NAME = {{ repo_name | tojson }};
+
+  var canvas = document.getElementById('trendChart');
+  if (!canvas) return;
+
+  var s = getComputedStyle(document.body);
+  var accent = s.getPropertyValue('--accent').trim() || '#6366f1';
+  var muted  = s.getPropertyValue('--text-muted').trim() || '#64748b';
+  var border = s.getPropertyValue('--border').trim() || '#2d3748';
+
+  var pointColors  = TREND.map(function(t) { return t.id === CURRENT_ID ? '#ef4444' : accent; });
+  var pointRadii   = TREND.map(function(t) { return t.id === CURRENT_ID ? 7 : 3; });
+  var pointBorders = TREND.map(function(t) { return t.id === CURRENT_ID ? '#fff' : accent; });
+
+  new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: TREND.map(function(t) { return t.label; }),
+      datasets: [{
+        data: TREND.map(function(t) { return t.score; }),
+        borderColor: accent,
+        backgroundColor: accent + '22',
+        pointBackgroundColor: pointColors,
+        pointBorderColor: pointBorders,
+        pointBorderWidth: 2,
+        pointRadius: pointRadii,
+        pointHoverRadius: 9,
+        tension: 0.35,
+        fill: true,
+        borderWidth: 2
+      }]
+    },
+    options: {
+      onClick: function(evt, elements) {
+        if (elements.length > 0) {
+          var idx = elements[0].index;
+          var targetId = TREND[idx].id;
+          if (targetId !== CURRENT_ID) {
+            window.location.href = '/repos/' + REPO_NAME + '/analyses/' + targetId;
+          }
+        }
+      },
+      scales: {
+        y: {
+          min: 0, max: 100,
+          grid: { color: border + '66' },
+          ticks: { color: muted, font: { size: 10 } }
+        },
+        x: {
+          grid: { display: false },
+          ticks: { color: muted, font: { size: 9 }, maxTicksLimit: 8 }
+        }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: 'rgba(0,0,0,0.75)',
+          titleColor: '#fff',
+          bodyColor: '#e2e8f0',
+          padding: 8,
+          cornerRadius: 6,
+          callbacks: {
+            title: function(items) {
+              var idx = items[0].dataIndex;
+              return TREND[idx].label + (TREND[idx].id === CURRENT_ID ? ' ★ 현재' : '');
+            },
+            label: function(item) { return '점수: ' + item.raw; }
+          }
+        }
+      },
+      responsive: true,
+      maintainAspectRatio: true
+    }
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}

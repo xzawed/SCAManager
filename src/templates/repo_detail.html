@@ -308,17 +308,21 @@
   }
 
   let chart;
-  function buildChart() {
+  let _chartData = [];
+  function buildChart(data) {
+    if (data !== undefined) _chartData = data;
     const { accent, muted, border } = getThemeColors();
     const ctx = document.getElementById('scoreChart');
+    const labels = _chartData.map(function(a) { return (a.created_at || '').slice(0, 10); });
+    const scores = _chartData.map(function(a) { return a.score; });
     if (chart) chart.destroy();
     chart = new Chart(ctx, {
       type: 'line',
       data: {
-        labels: {{ chart_labels | tojson }},
+        labels: labels,
         datasets: [{
           label: '점수',
-          data: {{ chart_scores | tojson }},
+          data: scores,
           borderColor: accent,
           backgroundColor: accent + '22',
           borderWidth: 2,
@@ -359,9 +363,8 @@
     });
   }
 
-  buildChart();
-  // 테마 변경 시 차트 색상 재빌드
-  document.addEventListener('themechange', buildChart);
+  // 테마 변경 시 마지막 필터 상태 데이터로 재빌드
+  document.addEventListener('themechange', function() { buildChart(); });
 </script>
 <script>
 // ── 데이터 주입 ──────────────────────────────────────
@@ -558,6 +561,11 @@ function applyFilters() {
   if (el) el.textContent = total === ALL_ANALYSES.length
     ? '최근 ' + total + '건'
     : total + '건 / 전체 ' + ALL_ANALYSES.length + '건';
+  // 필터 결과를 시간 오름차순으로 차트에 동기화
+  var chartData = filtered.slice().sort(function(a, b) {
+    return (a.created_at || '') < (b.created_at || '') ? -1 : 1;
+  });
+  buildChart(chartData);
 }
 
 // ── 정렬 헤더 ─────────────────────────────────────────
