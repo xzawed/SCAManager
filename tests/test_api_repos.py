@@ -339,3 +339,34 @@ def test_config_update_approve_threshold_passed_to_upsert():
     called_data = mock_upsert.call_args[0][1]
     assert called_data.approve_threshold == 90
     assert called_data.reject_threshold == 60
+
+
+# ── DELETE /api/repos/{repo} 테스트 ──────────────────────────
+
+def test_delete_repo_api_success():
+    """API로 리포 삭제 시 연관 데이터 정리 후 200 JSON 반환."""
+    mock_repo = MagicMock(id=1, full_name="owner/repo", webhook_id=999)
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = mock_repo
+    mock_db.query.return_value.filter.return_value.all.return_value = []
+
+    with patch("src.api.repos.SessionLocal", return_value=_make_session_mock(mock_db)):
+        r = client.delete("/api/repos/owner%2Frepo")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["deleted"] is True
+    assert body["repo_full_name"] == "owner/repo"
+    assert body["webhook_id"] == 999
+    mock_db.delete.assert_called_once_with(mock_repo)
+    mock_db.commit.assert_called()
+
+
+def test_delete_repo_api_404():
+    """존재하지 않는 리포 삭제 → 404."""
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = None
+    with patch("src.api.repos.SessionLocal", return_value=_make_session_mock(mock_db)):
+        r = client.delete("/api/repos/nope%2Frepo")
+    assert r.status_code == 404
+    mock_db.delete.assert_not_called()

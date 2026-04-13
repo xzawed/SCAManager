@@ -9,6 +9,7 @@ from src.database import SessionLocal
 from src.models.repository import Repository
 from src.models.analysis import Analysis
 from src.models.repo_config import RepoConfig
+from src.models.gate_decision import GateDecision
 from src.models.user import User
 from src.auth.session import require_login
 from src.config_manager.manager import get_repo_config, upsert_repo_config, RepoConfigData
@@ -33,6 +34,40 @@ def _get_accessible_repo(db, repo_name: str, current_user: User) -> Repository:
     if repo.user_id is not None and repo.user_id != current_user.id:
         raise HTTPException(status_code=404)
     return repo
+
+
+async def _delete_repo_cascade(db, repo: Repository, github_token: str) -> None:
+    """리포 + 연관 데이터(Webhook, GateDecision, Analysis, RepoConfig)를 모두 삭제한다.
+
+    Webhook 삭제는 best-effort — GitHub API 실패 시에도 DB 정리는 계속 진행된다.
+    """
+    # 1. GitHub Webhook 삭제 (best-effort — httpx·네트워크·권한 등 모든 예외 무시)
+    if repo.webhook_id:
+        try:
+            await delete_webhook(github_token, repo.full_name, repo.webhook_id)
+        except Exception:  # nosec B110  # pylint: disable=broad-except
+            pass
+
+    # 2. GateDecision 삭제 (Analysis.id FK 참조)
+    analysis_ids = [
+        row.id for row in db.query(Analysis.id).filter(Analysis.repo_id == repo.id).all()
+    ]
+    if analysis_ids:
+        db.query(GateDecision).filter(
+            GateDecision.analysis_id.in_(analysis_ids)
+        ).delete(synchronize_session=False)
+
+    # 3. Analysis 삭제
+    db.query(Analysis).filter(Analysis.repo_id == repo.id).delete(synchronize_session=False)
+
+    # 4. RepoConfig 삭제 (FK 아님 — full_name 기반)
+    db.query(RepoConfig).filter(
+        RepoConfig.repo_full_name == repo.full_name
+    ).delete(synchronize_session=False)
+
+    # 5. Repository 삭제
+    db.delete(repo)
+    db.commit()
 
 
 @router.get("/repos/add", response_class=HTMLResponse)
@@ -281,6 +316,18 @@ async def reinstall_webhook(
         url=f"/repos/{repo_name}/settings?hook_ok=1",
         status_code=303,
     )
+
+
+@router.post("/repos/{repo_name:path}/delete")
+async def delete_repo(
+    repo_name: str,
+    current_user: User = Depends(require_login),
+):
+    """리포지토리 + 연관 데이터(Webhook, Analysis, GateDecision, RepoConfig)를 삭제한다."""
+    with SessionLocal() as db:
+        repo = _get_accessible_repo(db, repo_name, current_user)
+        await _delete_repo_cascade(db, repo, current_user.plaintext_token or "")
+    return RedirectResponse(url="/?deleted=1", status_code=303)
 
 
 @router.get("/repos/{repo_name:path}/analyses/{analysis_id}", response_class=HTMLResponse)
