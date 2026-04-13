@@ -514,6 +514,90 @@ def test_reinstall_webhook_no_existing_webhook():
     assert r.status_code == 303
 
 
+# ── 리포 삭제 엔드포인트 테스트 ──────────────────────────
+
+def test_delete_repo_success():
+    """소유자 삭제 시 webhook 삭제 + DB cascade 후 303 /?deleted=1."""
+    from unittest.mock import AsyncMock, patch
+    mock_repo = MagicMock(id=1, full_name="owner/repo", user_id=1, webhook_id=999)
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = mock_repo
+    # Analysis.id 조회 시 빈 결과
+    mock_db.query.return_value.filter.return_value.all.return_value = []
+
+    with patch("src.ui.router.delete_webhook", new_callable=AsyncMock, return_value=True) as mock_del:
+        with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+            r = client.post("/repos/owner%2Frepo/delete", follow_redirects=False)
+
+    assert r.status_code == 303
+    assert r.headers["location"] == "/?deleted=1"
+    mock_del.assert_called_once()
+    mock_db.delete.assert_called_once_with(mock_repo)
+    mock_db.commit.assert_called()
+
+
+def test_delete_repo_404_for_other_user():
+    """타인 소유 리포 삭제 → 404, db.delete 호출되지 않음."""
+    from unittest.mock import AsyncMock, patch
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
+        id=2, full_name="owner/repo", user_id=99, webhook_id=None
+    )
+    with patch("src.ui.router.delete_webhook", new_callable=AsyncMock) as mock_del:
+        with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+            r = client.post("/repos/owner%2Frepo/delete", follow_redirects=False)
+
+    assert r.status_code == 404
+    mock_del.assert_not_called()
+    mock_db.delete.assert_not_called()
+
+
+def test_delete_repo_404_not_found():
+    """존재하지 않는 리포 삭제 → 404."""
+    from unittest.mock import AsyncMock, patch
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = None
+    with patch("src.ui.router.delete_webhook", new_callable=AsyncMock):
+        with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+            r = client.post("/repos/nope%2Frepo/delete", follow_redirects=False)
+    assert r.status_code == 404
+
+
+def test_delete_repo_webhook_failure_still_deletes_db():
+    """delete_webhook이 예외를 던져도 DB 정리는 계속 진행되어야 한다."""
+    from unittest.mock import AsyncMock, patch
+    mock_repo = MagicMock(id=1, full_name="owner/repo", user_id=None, webhook_id=999)
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = mock_repo
+    mock_db.query.return_value.filter.return_value.all.return_value = []
+
+    with patch("src.ui.router.delete_webhook", new_callable=AsyncMock,
+               side_effect=RuntimeError("github api down")):
+        with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+            r = client.post("/repos/owner%2Frepo/delete", follow_redirects=False)
+
+    assert r.status_code == 303
+    mock_db.delete.assert_called_once_with(mock_repo)
+    mock_db.commit.assert_called()
+
+
+def test_delete_repo_skips_webhook_when_none():
+    """webhook_id가 None이면 delete_webhook 호출하지 않고 DB만 정리."""
+    from unittest.mock import AsyncMock, patch
+    mock_repo = MagicMock(id=1, full_name="owner/repo", user_id=1, webhook_id=None)
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = mock_repo
+    mock_db.query.return_value.filter.return_value.all.return_value = []
+
+    with patch("src.ui.router.delete_webhook", new_callable=AsyncMock) as mock_del:
+        with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+            r = client.post("/repos/owner%2Frepo/delete", follow_redirects=False)
+
+    assert r.status_code == 303
+    mock_del.assert_not_called()
+    mock_db.delete.assert_called_once_with(mock_repo)
+
+
 # ── 네비게이션 사용자 UI 테스트 ──────────────────────────
 
 def test_overview_shows_display_name_in_nav():

@@ -382,6 +382,29 @@
     </div>
 
   </form>
+
+  <!-- 위험 구역 (메인 form 외부) -->
+  <div class="s-card" style="border:1px solid var(--danger);margin-top:1.5rem;">
+    <div class="s-card-hdr" style="background:rgba(220,53,69,.08);color:var(--danger);">
+      <span class="hdr-icon">⚠️</span>
+      <span class="hdr-title">위험 구역</span>
+    </div>
+    <div class="s-card-body">
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <div class="t-title">리포지토리 삭제</div>
+          <div class="t-desc">SCAManager에서 이 리포지토리를 제거합니다.<br>
+            GitHub Webhook과 모든 분석 이력이 영구 삭제됩니다.</div>
+        </div>
+        <form method="post" action="/repos/{{ repo_name }}/delete"
+              onsubmit="return confirm('정말 「{{ repo_name }}」 리포지토리를 삭제하시겠습니까?\n\n모든 분석 이력과 GitHub Webhook이 영구 삭제됩니다.');">
+          <button type="submit" style="background:var(--danger);color:#fff;border:none;border-radius:8px;padding:.6rem 1.1rem;font-weight:600;cursor:pointer;">
+            🗑️ 삭제
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
