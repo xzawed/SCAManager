@@ -67,3 +67,33 @@ def test_lifespan_exception_does_not_crash():
         with TestClient(app) as c:
             response = c.get("/health")
     assert response.status_code == 200
+
+
+# --- ANTHROPIC_API_KEY 부재 경고 ---
+
+def test_lifespan_warns_when_anthropic_key_missing(caplog):
+    # settings.anthropic_api_key 가 빈 값이면 lifespan 시작 시 경고 로그가 남는지 검증
+    import logging as _logging
+    with patch("src.main._run_migrations"), \
+         patch("src.main.settings") as mock_settings:
+        mock_settings.session_secret = "test-session-secret-32-chars-long!"
+        mock_settings.anthropic_api_key = ""
+        with caplog.at_level(_logging.WARNING, logger="src.main"):
+            with TestClient(app):
+                pass
+    assert any("ANTHROPIC_API_KEY" in rec.message for rec in caplog.records), \
+        "ANTHROPIC_API_KEY 부재 경고가 로그에 남지 않았습니다"
+
+
+def test_lifespan_no_warning_when_anthropic_key_set(caplog):
+    # settings.anthropic_api_key 가 설정되어 있으면 경고 로그가 남지 않아야 함
+    import logging as _logging
+    with patch("src.main._run_migrations"), \
+         patch("src.main.settings") as mock_settings:
+        mock_settings.session_secret = "test-session-secret-32-chars-long!"
+        mock_settings.anthropic_api_key = "sk-ant-test-key"
+        with caplog.at_level(_logging.WARNING, logger="src.main"):
+            with TestClient(app):
+                pass
+    assert not any("ANTHROPIC_API_KEY" in rec.message for rec in caplog.records), \
+        "키가 설정되어 있는데도 경고 로그가 남았습니다"

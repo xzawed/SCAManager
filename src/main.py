@@ -34,6 +34,12 @@ async def lifespan(_app: FastAPI):
             "SESSION_SECRET is using the default insecure value — "
             "set SESSION_SECRET environment variable in production!"
         )
+    if not (settings.anthropic_api_key or "").strip():
+        logger.warning(
+            "ANTHROPIC_API_KEY is empty — AI 리뷰가 비활성화됩니다. "
+            "모든 분석이 기본값(89/B)으로 fallback 됩니다. "
+            "Railway Variables 또는 .env 에 키를 설정하세요."
+        )
     try:
         await asyncio.wait_for(asyncio.to_thread(_run_migrations), timeout=30)
         logger.info("DB migration completed")
