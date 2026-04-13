@@ -236,6 +236,106 @@ def test_hook_result_missing_ai_result():
     assert r.status_code == 422
 
 
+def test_hook_result_empty_ai_result_marks_parse_error():
+    # ai_result가 빈 dict이면 status="parse_error"로 저장되어 fallback 경고 배너 표시 가능해야 함
+    mock_db = MagicMock()
+    mock_config = MagicMock()
+    mock_config.hook_token = "empty-token"
+    mock_repo = MagicMock()
+    mock_repo.id = 1
+
+    call_count = {"n": 0}
+
+    def _first_side_effect():
+        idx = call_count["n"]
+        call_count["n"] += 1
+        return {0: mock_config, 1: mock_repo}.get(idx)
+
+    mock_db.query.return_value.filter.return_value.first.side_effect = _first_side_effect
+    mock_db.query.return_value.filter_by.return_value.first.return_value = None
+    saved = []
+    mock_db.add.side_effect = lambda obj: saved.append(obj)
+
+    with patch("src.api.hook.SessionLocal", return_value=_make_session_mock(mock_db)):
+        r = client.post("/api/hook/result", json={
+            "repo": "owner/repo",
+            "token": "empty-token",
+            "commit_sha": "shaempty",
+            "commit_message": "feat: empty",
+            "ai_result": {},
+        })
+
+    assert r.status_code == 200
+    assert len(saved) == 1
+    assert saved[0].result["ai_review_status"] == "parse_error"
+
+
+def test_hook_result_partial_ai_result_marks_parse_error():
+    # ai_result에 score 필드 중 일부만 있으면 parse_error로 분류
+    mock_db = MagicMock()
+    mock_config = MagicMock()
+    mock_config.hook_token = "partial-token"
+    mock_repo = MagicMock()
+    mock_repo.id = 2
+
+    call_count = {"n": 0}
+
+    def _first_side_effect():
+        idx = call_count["n"]
+        call_count["n"] += 1
+        return {0: mock_config, 1: mock_repo}.get(idx)
+
+    mock_db.query.return_value.filter.return_value.first.side_effect = _first_side_effect
+    mock_db.query.return_value.filter_by.return_value.first.return_value = None
+    saved = []
+    mock_db.add.side_effect = lambda obj: saved.append(obj)
+
+    with patch("src.api.hook.SessionLocal", return_value=_make_session_mock(mock_db)):
+        r = client.post("/api/hook/result", json={
+            "repo": "owner/repo",
+            "token": "partial-token",
+            "commit_sha": "shapartial",
+            "commit_message": "feat: partial",
+            "ai_result": {"commit_message_score": 15},  # direction_score, test_score 누락
+        })
+
+    assert r.status_code == 200
+    assert saved[0].result["ai_review_status"] == "parse_error"
+
+
+def test_hook_result_complete_ai_result_marks_success():
+    # 모든 score 필드가 있는 정상 ai_result는 status="success"로 저장
+    mock_db = MagicMock()
+    mock_config = MagicMock()
+    mock_config.hook_token = "ok-token"
+    mock_repo = MagicMock()
+    mock_repo.id = 3
+
+    call_count = {"n": 0}
+
+    def _first_side_effect():
+        idx = call_count["n"]
+        call_count["n"] += 1
+        return {0: mock_config, 1: mock_repo}.get(idx)
+
+    mock_db.query.return_value.filter.return_value.first.side_effect = _first_side_effect
+    mock_db.query.return_value.filter_by.return_value.first.return_value = None
+    saved = []
+    mock_db.add.side_effect = lambda obj: saved.append(obj)
+
+    with patch("src.api.hook.SessionLocal", return_value=_make_session_mock(mock_db)):
+        r = client.post("/api/hook/result", json={
+            "repo": "owner/repo",
+            "token": "ok-token",
+            "commit_sha": "shaok",
+            "commit_message": "feat: ok",
+            "ai_result": _AI_RESULT,
+        })
+
+    assert r.status_code == 200
+    assert saved[0].result["ai_review_status"] == "success"
+
+
 def test_hook_result_unknown_repo_returns_404():
     # hook_token은 맞지만 Repository 레코드가 없을 때 → 404 반환
     mock_db = MagicMock()

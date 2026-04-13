@@ -123,7 +123,8 @@ $DIFF
 {"commit_message_score":<0-20>,"direction_score":<0-20>,"test_score":<0-10>,"summary":"요약","suggestions":["제안"],"commit_message_feedback":"피드백","code_quality_feedback":"피드백","security_feedback":"피드백","direction_feedback":"피드백","test_feedback":"피드백","file_feedbacks":[]}
 PROMPT
 
-RESULT=$(claude -p "$(cat "$TMPFILE")" 2>/dev/null)
+RESULT=$(claude -p "$(cat "$TMPFILE")")
+[ -z "$RESULT" ] && echo "⚠️  [SCAManager] claude CLI 실행 실패 또는 빈 응답 — 코드리뷰를 건너뜁니다." >&2
 rm -f "$TMPFILE"
 
 if [ -n "$RESULT" ]; then

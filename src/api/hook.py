@@ -89,7 +89,10 @@ def save_hook_result(body: HookResultRequest):
             }
 
         # ai_result → AiReviewResult 변환
+        # 필수 score 필드 누락 시 status="parse_error"로 표시 (대시보드 fallback 배너 노출)
         ar = body.ai_result
+        required_keys = ("commit_message_score", "direction_score", "test_score")
+        ai_status = "success" if all(k in ar for k in required_keys) else "parse_error"
         ai_review = AiReviewResult(
             commit_score=int(ar.get("commit_message_score", 13)),
             ai_score=int(ar.get("direction_score", 17)),
@@ -102,6 +105,7 @@ def save_hook_result(body: HookResultRequest):
             direction_feedback=ar.get("direction_feedback", ""),
             test_feedback=ar.get("test_feedback", ""),
             file_feedbacks=ar.get("file_feedbacks", []),
+            status=ai_status,
         )
 
         # CLI 훅은 정적 분석 없음 → 빈 리스트 (code_quality=25, security=20 만점)
