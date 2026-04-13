@@ -6,6 +6,8 @@ from src.api.deps import get_repo_or_404
 from src.database import SessionLocal
 from src.models.repository import Repository
 from src.models.analysis import Analysis
+from src.models.repo_config import RepoConfig
+from src.models.gate_decision import GateDecision
 from src.config_manager.manager import upsert_repo_config, RepoConfigData
 
 router = APIRouter(prefix="/api", dependencies=[require_api_key])
@@ -89,3 +91,32 @@ def update_repo_config(repo_name: str, body: RepoConfigUpdate):
             "auto_merge": record.auto_merge,
             "merge_threshold": record.merge_threshold,
         }
+
+
+@router.delete("/repos/{repo_name:path}")
+def delete_repo_api(repo_name: str):
+    """리포지토리와 모든 연관 데이터(Analysis, GateDecision, RepoConfig)를 삭제한다.
+
+    API 모드는 사용자 OAuth 토큰이 없으므로 GitHub Webhook은 자동 삭제하지 않는다.
+    응답에 `webhook_id`를 포함해 호출자가 직접 정리할 수 있게 한다.
+    """
+    with SessionLocal() as db:
+        repo = get_repo_or_404(repo_name, db)
+        webhook_id = repo.webhook_id
+        full_name = repo.full_name
+
+        analysis_ids = [
+            row.id for row in db.query(Analysis.id).filter(Analysis.repo_id == repo.id).all()
+        ]
+        if analysis_ids:
+            db.query(GateDecision).filter(
+                GateDecision.analysis_id.in_(analysis_ids)
+            ).delete(synchronize_session=False)
+        db.query(Analysis).filter(Analysis.repo_id == repo.id).delete(synchronize_session=False)
+        db.query(RepoConfig).filter(
+            RepoConfig.repo_full_name == full_name
+        ).delete(synchronize_session=False)
+        db.delete(repo)
+        db.commit()
+
+    return {"deleted": True, "repo_full_name": full_name, "webhook_id": webhook_id}
