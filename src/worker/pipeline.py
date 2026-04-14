@@ -214,6 +214,13 @@ async def _save_and_gate(
     if repo is None:
         logger.warning("Repository not found in second session: %s", repo_name)
         return None
+    # 멱등성 재확인 — 동시 Webhook 전달로 인한 중복 Analysis 삽입 방지 (TOCTOU 완화)
+    if db.query(Analysis).filter_by(commit_sha=commit_sha, repo_id=repo.id).first():
+        logger.info("Commit %s already saved (concurrent insert detected), skipping", commit_sha)
+        try:
+            return get_repo_config(db, repo_name)
+        except (SQLAlchemyError, KeyError):
+            return None
     analysis = Analysis(
         repo_id=repo.id,
         commit_sha=commit_sha,
