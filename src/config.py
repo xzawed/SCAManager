@@ -52,13 +52,25 @@ class Settings(BaseSettings):
 
     @field_validator("session_secret")
     @classmethod
-    def warn_weak_session_secret(cls, v: str) -> str:
-        """SESSION_SECRET이 기본값이거나 너무 짧으면 보안 경고 로그를 출력."""
-        if v == "dev-secret-change-in-production" or len(v) < _SESSION_SECRET_MIN_LEN:
+    def validate_session_secret(cls, v: str) -> str:
+        """SESSION_SECRET 유효성 검사.
+
+        - 기본값 사용 시: 보안 경고 로그만 출력 (개발 환경 호환)
+        - 커스텀 값이지만 32자 미만: ValueError 발생 (배포 전 실수 방지)
+        """
+        _default = "dev-secret-change-in-production"
+        if v == _default:
             logger.warning(
-                "SECURITY: SESSION_SECRET is too short or using default value "
-                "(%d chars, minimum %d). Set a strong random secret in production!",
-                len(v), _SESSION_SECRET_MIN_LEN,
+                "SECURITY: SESSION_SECRET is using the default value. "
+                "Set a strong random secret (>= %d chars) in production!",
+                _SESSION_SECRET_MIN_LEN,
+            )
+            return v
+        if len(v) < _SESSION_SECRET_MIN_LEN:
+            raise ValueError(
+                f"SESSION_SECRET must be at least {_SESSION_SECRET_MIN_LEN} characters long "
+                f"(current: {len(v)} chars). "
+                f"Generate one with: openssl rand -hex 32"
             )
         return v
 
@@ -78,6 +90,7 @@ class Settings(BaseSettings):
     @field_validator("database_url_fallback")
     @classmethod
     def fix_fallback_url(cls, v: str) -> str:
+        """DATABASE_URL_FALLBACK의 postgres:// 스킴을 postgresql://로 변환한다."""
         if not v:
             return v
         return cls._normalize_pg_url(v)
