@@ -11,8 +11,7 @@ from src.models.repository import Repository
 from src.models.analysis import Analysis
 from src.models.repo_config import RepoConfig
 from src.models.gate_decision import GateDecision
-from src.models.user import User
-from src.auth.session import require_login
+from src.auth.session import require_login, CurrentUser
 from src.config_manager.manager import get_repo_config, upsert_repo_config, RepoConfigData
 from src.github_client.repos import list_user_repos, create_webhook, delete_webhook, commit_scamanager_files
 
@@ -28,7 +27,7 @@ def _webhook_base_url(request: Request) -> str:
     return str(request.base_url).rstrip("/")
 
 
-def _get_accessible_repo(db, repo_name: str, current_user: User) -> Repository:
+def _get_accessible_repo(db, repo_name: str, current_user: CurrentUser) -> Repository:
     """로그인 사용자가 접근 가능한 리포를 반환. 없거나 권한 없으면 404."""
     repo = db.query(Repository).filter(Repository.full_name == repo_name).first()
     if not repo:
@@ -73,12 +72,12 @@ async def _delete_repo_cascade(db, repo: Repository, github_token: str) -> None:
 
 
 @router.get("/repos/add", response_class=HTMLResponse)
-async def add_repo_page(request: Request, current_user: User = Depends(require_login)):
+async def add_repo_page(request: Request, current_user: CurrentUser = Depends(require_login)):
     return templates.TemplateResponse(request, "add_repo.html", {"current_user": current_user})
 
 
 @router.get("/api/github/repos")
-async def github_repos_list(current_user: User = Depends(require_login)):
+async def github_repos_list(current_user: CurrentUser = Depends(require_login)):
     with SessionLocal() as db:
         existing_names = {
             r.full_name for r in db.query(Repository).filter(
@@ -90,7 +89,7 @@ async def github_repos_list(current_user: User = Depends(require_login)):
 
 
 @router.post("/repos/add")
-async def add_repo(request: Request, current_user: User = Depends(require_login)):
+async def add_repo(request: Request, current_user: CurrentUser = Depends(require_login)):
     form = await request.form()
     repo_full_name = (form.get("repo_full_name") or "").strip()
     if not repo_full_name:
@@ -157,7 +156,7 @@ async def add_repo(request: Request, current_user: User = Depends(require_login)
 
 
 @router.get("/", response_class=HTMLResponse)
-def overview(request: Request, current_user: User = Depends(require_login)):
+def overview(request: Request, current_user: CurrentUser = Depends(require_login)):
     with SessionLocal() as db:
         repos = db.query(Repository).filter(
             (Repository.user_id == current_user.id) | (Repository.user_id.is_(None))
@@ -215,7 +214,7 @@ def repo_settings(
     repo_name: str,
     hook_ok: int = 0,
     hook_fail: int = 0,
-    current_user: User = Depends(require_login),
+    current_user: CurrentUser = Depends(require_login),
 ):
     with SessionLocal() as db:
         _get_accessible_repo(db, repo_name, current_user)
@@ -231,7 +230,7 @@ def repo_settings(
 async def update_repo_settings(
     request: Request,
     repo_name: str,
-    current_user: User = Depends(require_login),  # pylint: disable=unused-argument
+    current_user: CurrentUser = Depends(require_login),  # pylint: disable=unused-argument
 ):
     form = await request.form()
     with SessionLocal() as db:
@@ -261,7 +260,7 @@ async def update_repo_settings(
 async def reinstall_hook(
     request: Request,
     repo_name: str,
-    current_user: User = Depends(require_login),
+    current_user: CurrentUser = Depends(require_login),
 ):
     """기존 등록 리포에 .scamanager/ 파일을 재커밋한다."""
     with SessionLocal() as db:
@@ -299,7 +298,7 @@ async def reinstall_hook(
 async def reinstall_webhook(
     request: Request,
     repo_name: str,
-    current_user: User = Depends(require_login),
+    current_user: CurrentUser = Depends(require_login),
 ):
     """GitHub Webhook을 삭제하고 새 URL(HTTPS)로 재등록한다."""
     with SessionLocal() as db:
@@ -326,7 +325,7 @@ async def reinstall_webhook(
 @router.post("/repos/{repo_name:path}/delete")
 async def delete_repo(
     repo_name: str,
-    current_user: User = Depends(require_login),
+    current_user: CurrentUser = Depends(require_login),
 ):
     """리포지토리 + 연관 데이터(Webhook, Analysis, GateDecision, RepoConfig)를 삭제한다."""
     with SessionLocal() as db:
@@ -338,7 +337,7 @@ async def delete_repo(
 @router.get("/repos/{repo_name:path}/analyses/{analysis_id}", response_class=HTMLResponse)
 def analysis_detail(
     request: Request, repo_name: str, analysis_id: int,
-    current_user: User = Depends(require_login),
+    current_user: CurrentUser = Depends(require_login),
 ):
     with SessionLocal() as db:
         repo = _get_accessible_repo(db, repo_name, current_user)
@@ -387,7 +386,7 @@ def repo_detail(
     request: Request,
     repo_name: str,
     hook_installed: int = 0,
-    current_user: User = Depends(require_login),
+    current_user: CurrentUser = Depends(require_login),
 ):
     with SessionLocal() as db:
         repo = _get_accessible_repo(db, repo_name, current_user)
