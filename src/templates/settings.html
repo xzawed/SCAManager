@@ -364,13 +364,8 @@
           {% endif %}
           <div class="hook-code">git pull &amp;&amp; bash .scamanager/install-hook.sh</div>
           <div class="hook-btns">
-            <form method="post" action="/repos/{{ repo_name }}/reinstall-hook" style="display:contents">
-              <button type="submit" class="hook-btn">🔄 훅 파일 재커밋</button>
-            </form>
-            <form method="post" action="/repos/{{ repo_name }}/reinstall-webhook" style="display:contents"
-                  onsubmit="return confirm('GitHub Webhook을 재등록합니다.\n기존 Webhook이 삭제되고 새로 생성됩니다.')">
-              <button type="submit" class="hook-btn">🔗 Webhook 재등록</button>
-            </form>
+            <button type="submit" class="hook-btn" form="reinstall_hook_form">🔄 훅 파일 재커밋</button>
+            <button type="submit" class="hook-btn" form="reinstall_webhook_form">🔗 Webhook 재등록</button>
           </div>
         </div>
       </div>
@@ -382,6 +377,13 @@
     </div>
 
   </form>
+
+  <!-- CLI Hook 재설치/Webhook 재등록 form — 버튼은 카드 ⑤ 안에서 form="..." 으로 연결 -->
+  <form id="reinstall_hook_form" method="post"
+        action="/repos/{{ repo_name }}/reinstall-hook" style="display:none"></form>
+  <form id="reinstall_webhook_form" method="post"
+        action="/repos/{{ repo_name }}/reinstall-webhook" style="display:none"
+        onsubmit="return confirm('GitHub Webhook을 재등록합니다.\n기존 Webhook이 삭제되고 새로 생성됩니다.')"></form>
 
   <!-- 위험 구역 (메인 form 외부) -->
   <div class="s-card" style="border:1px solid var(--danger);margin-top:1.5rem;">
