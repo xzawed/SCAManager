@@ -68,7 +68,7 @@ def calculate_score(
         test_score = AI_DEFAULT_TEST
         ai_defaults_applied = True
 
-    total = code_quality_score + security_score + commit_score + ai_score + test_score
+    total = max(0, min(code_quality_score + security_score + commit_score + ai_score + test_score, 100))
 
     breakdown: dict = {
         "code_quality": code_quality_score,

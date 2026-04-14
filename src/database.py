@@ -144,20 +144,32 @@ class FailoverSessionFactory:
         # 이미 fallback 모드면 primary 시도 없이 바로 fallback 사용
         if self._active == "fallback":
             session = self._fallback_maker()
-            session.execute(text("SELECT 1"))
-            return session
+            try:
+                session.execute(text("SELECT 1"))
+                return session
+            except Exception:
+                session.close()
+                raise
 
         try:
             session = self._primary_maker()
-            session.execute(text("SELECT 1"))
-            return session
+            try:
+                session.execute(text("SELECT 1"))
+                return session
+            except OperationalError:
+                session.close()
+                raise
         except OperationalError:
             with self._lock:
                 if self._active == "primary" and self._fallback_maker is not None:
                     self._switch_to("fallback")
             session = self._fallback_maker()
-            session.execute(text("SELECT 1"))
-            return session
+            try:
+                session.execute(text("SELECT 1"))
+                return session
+            except Exception:
+                session.close()
+                raise
 
     @property
     def active_db(self) -> str:

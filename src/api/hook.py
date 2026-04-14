@@ -16,6 +16,7 @@ from src.models.repository import Repository
 from src.analyzer.ai_review import AiReviewResult
 from src.scorer.calculator import calculate_score
 from src.worker.pipeline import _build_result_dict
+from src.constants import AI_DEFAULT_COMMIT_RAW, AI_DEFAULT_DIRECTION_RAW, AI_DEFAULT_TEST_RAW
 
 logger = logging.getLogger(__name__)
 
@@ -94,9 +95,9 @@ def save_hook_result(body: HookResultRequest):
         required_keys = ("commit_message_score", "direction_score", "test_score")
         ai_status = "success" if all(k in ar for k in required_keys) else "parse_error"
         ai_review = AiReviewResult(
-            commit_score=int(ar.get("commit_message_score", 13)),
-            ai_score=int(ar.get("direction_score", 17)),
-            test_score=int(ar.get("test_score", 7)),
+            commit_score=int(ar.get("commit_message_score", AI_DEFAULT_COMMIT_RAW)),
+            ai_score=int(ar.get("direction_score", AI_DEFAULT_DIRECTION_RAW)),
+            test_score=int(ar.get("test_score", AI_DEFAULT_TEST_RAW)),
             summary=ar.get("summary", ""),
             suggestions=ar.get("suggestions", []),
             commit_message_feedback=ar.get("commit_message_feedback", ""),

@@ -1,4 +1,5 @@
 """Web UI router — Jinja2 dashboard pages for repos, analyses, and settings."""
+import logging
 import secrets
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -15,6 +16,7 @@ from src.auth.session import require_login
 from src.config_manager.manager import get_repo_config, upsert_repo_config, RepoConfigData
 from src.github_client.repos import list_user_repos, create_webhook, delete_webhook, commit_scamanager_files
 
+logger = logging.getLogger(__name__)
 templates = Jinja2Templates(directory="src/templates")
 router = APIRouter()
 
@@ -234,21 +236,24 @@ async def update_repo_settings(
     form = await request.form()
     with SessionLocal() as db:
         _get_accessible_repo(db, repo_name, current_user)
-        upsert_repo_config(db, RepoConfigData(
-            repo_full_name=repo_name,
-            pr_review_comment=form.get("pr_review_comment") == "on",
-            approve_mode=form.get("approve_mode", "disabled"),
-            approve_threshold=int(form.get("approve_threshold", 75)),
-            reject_threshold=int(form.get("reject_threshold", 50)),
-            notify_chat_id=form.get("notify_chat_id") or None,
-            n8n_webhook_url=form.get("n8n_webhook_url") or None,
-            discord_webhook_url=form.get("discord_webhook_url", "") or None,
-            slack_webhook_url=form.get("slack_webhook_url", "") or None,
-            custom_webhook_url=form.get("custom_webhook_url", "") or None,
-            email_recipients=form.get("email_recipients", "") or None,
-            auto_merge=form.get("auto_merge") == "on",
-            merge_threshold=int(form.get("merge_threshold", 75)),
-        ))
+        try:
+            upsert_repo_config(db, RepoConfigData(
+                repo_full_name=repo_name,
+                pr_review_comment=form.get("pr_review_comment") == "on",
+                approve_mode=form.get("approve_mode", "disabled"),
+                approve_threshold=int(form.get("approve_threshold", 75)),
+                reject_threshold=int(form.get("reject_threshold", 50)),
+                notify_chat_id=form.get("notify_chat_id") or None,
+                n8n_webhook_url=form.get("n8n_webhook_url") or None,
+                discord_webhook_url=form.get("discord_webhook_url", "") or None,
+                slack_webhook_url=form.get("slack_webhook_url", "") or None,
+                custom_webhook_url=form.get("custom_webhook_url", "") or None,
+                email_recipients=form.get("email_recipients", "") or None,
+                auto_merge=form.get("auto_merge") == "on",
+                merge_threshold=int(form.get("merge_threshold", 75)),
+            ))
+        except ValueError:
+            logger.warning("Invalid threshold values for %s, settings not saved", repo_name)
     return RedirectResponse(url=f"/repos/{repo_name}/settings", status_code=303)
 
 

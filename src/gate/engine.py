@@ -4,7 +4,7 @@ import logging
 import httpx
 from sqlalchemy.orm import Session
 from src.config import settings
-from src.config_manager.manager import get_repo_config
+from src.config_manager.manager import get_repo_config, RepoConfigData
 from src.gate.github_review import post_github_review, merge_pr
 from src.gate.telegram_gate import send_gate_request
 from src.notifier.github_comment import post_pr_comment_from_result as post_pr_comment
@@ -33,6 +33,7 @@ async def run_gate_check(
     result: dict,
     github_token: str,
     db: Session,
+    config: RepoConfigData | None = None,
 ) -> None:
     """PR 이벤트 시 3개 독립 옵션을 각각 실행한다.
 
@@ -42,11 +43,13 @@ async def run_gate_check(
 
     세 옵션은 완전 독립 — 어떤 조합이든 가능하다.
     pr_number=None(push 이벤트)이면 모든 PR 관련 액션을 건너뛴다.
+    config: 이미 로드된 RepoConfigData — None이면 DB에서 직접 조회한다.
     """
     if pr_number is None:
         return
 
-    config = get_repo_config(db, repo_name)
+    if config is None:
+        config = get_repo_config(db, repo_name)
     score = result.get("score", 0)
 
     # 1. Review Comment (독립)
