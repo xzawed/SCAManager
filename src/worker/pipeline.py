@@ -309,7 +309,8 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
         for idx, exc in enumerate(results):
             if isinstance(exc, Exception):
                 name = task_names[idx] if idx < len(task_names) else "unknown"
-                logger.error("Notification [%s] failed: %s", name, exc, exc_info=exc)
+                logger.error("Notification [%s] failed: %s", name, exc,
+                             exc_info=(type(exc), exc, exc.__traceback__))
 
     except Exception:  # noqa: BLE001 — 파이프라인 최상위 방어 — 모든 예외를 로그로 기록하고 종료
         logger.exception("Analysis pipeline failed for event=%s", event)

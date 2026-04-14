@@ -23,6 +23,14 @@ REJECT = {"update_id": 2, "callback_query": {"id": "c2", "from": {"id": 1, "user
 OTHER = {"update_id": 3, "callback_query": {"id": "c3", "from": {"id": 1, "username": "john"},
           "data": "other:action", "message": {"message_id": 1, "chat": {"id": -1}}}}
 
+def _ctx(db_mock):
+    """SessionLocal() 컨텍스트 매니저 mock 헬퍼."""
+    ctx = MagicMock()
+    ctx.__enter__ = MagicMock(return_value=db_mock)
+    ctx.__exit__ = MagicMock(return_value=False)
+    return ctx
+
+
 def test_approve_returns_200():
     with patch("src.webhook.router.handle_gate_callback", new_callable=AsyncMock):
         r = client.post("/api/webhook/telegram", json=APPROVE)
@@ -64,7 +72,7 @@ async def test_handle_gate_callback_approve_with_auto_merge():
         mock_analysis, mock_repo
     ]
     config = RepoConfigData(repo_full_name="owner/repo", auto_merge=True, merge_threshold=75)
-    with patch("src.webhook.router.SessionLocal", return_value=mock_db):
+    with patch("src.webhook.router.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.webhook.router.post_github_review", new_callable=AsyncMock):
             with patch("src.webhook.router._save_gate_decision"):
                 with patch("src.webhook.router.get_repo_config", return_value=config):
@@ -85,7 +93,7 @@ async def test_handle_gate_callback_approve_without_auto_merge():
         mock_analysis, mock_repo
     ]
     config = RepoConfigData(repo_full_name="owner/repo", auto_merge=False)
-    with patch("src.webhook.router.SessionLocal", return_value=mock_db):
+    with patch("src.webhook.router.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.webhook.router.post_github_review", new_callable=AsyncMock):
             with patch("src.webhook.router._save_gate_decision"):
                 with patch("src.webhook.router.get_repo_config", return_value=config):
@@ -105,7 +113,7 @@ async def test_handle_gate_callback_reject_does_not_merge():
         mock_analysis, mock_repo
     ]
     config = RepoConfigData(repo_full_name="owner/repo", auto_merge=True)
-    with patch("src.webhook.router.SessionLocal", return_value=mock_db):
+    with patch("src.webhook.router.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.webhook.router.post_github_review", new_callable=AsyncMock):
             with patch("src.webhook.router._save_gate_decision"):
                 with patch("src.webhook.router.get_repo_config", return_value=config):
@@ -125,7 +133,7 @@ async def test_handle_gate_callback_merge_failure_does_not_propagate():
         mock_analysis, mock_repo
     ]
     config = RepoConfigData(repo_full_name="owner/repo", auto_merge=True)
-    with patch("src.webhook.router.SessionLocal", return_value=mock_db):
+    with patch("src.webhook.router.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.webhook.router.post_github_review", new_callable=AsyncMock):
             with patch("src.webhook.router._save_gate_decision") as mock_save:
                 with patch("src.webhook.router.get_repo_config", return_value=config):
@@ -182,7 +190,7 @@ async def test_handle_gate_callback_analysis_not_found():
     from src.webhook.router import handle_gate_callback
     mock_db = MagicMock()
     mock_db.query.return_value.filter_by.return_value.first.return_value = None
-    with patch("src.webhook.router.SessionLocal", return_value=mock_db):
+    with patch("src.webhook.router.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.webhook.router.post_github_review", new_callable=AsyncMock) as mock_review:
             await handle_gate_callback(analysis_id=999, decision="approve", decided_by="user")
             mock_review.assert_not_called()
@@ -198,7 +206,7 @@ async def test_handle_gate_callback_exception_does_not_propagate():
         mock_analysis, mock_repo
     ]
     config = RepoConfigData(repo_full_name="owner/repo", auto_merge=False)
-    with patch("src.webhook.router.SessionLocal", return_value=mock_db):
+    with patch("src.webhook.router.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.webhook.router.post_github_review",
                    new_callable=AsyncMock, side_effect=httpx.ConnectError("GitHub API down")):
             with patch("src.webhook.router.get_repo_config", return_value=config):

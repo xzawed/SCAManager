@@ -88,6 +88,10 @@ def update_repo_config(repo_name: str, body: RepoConfigUpdate):
             "reject_threshold": record.reject_threshold,
             "notify_chat_id": record.notify_chat_id,
             "n8n_webhook_url": record.n8n_webhook_url,
+            "discord_webhook_url": record.discord_webhook_url,
+            "slack_webhook_url": record.slack_webhook_url,
+            "custom_webhook_url": record.custom_webhook_url,
+            "email_recipients": record.email_recipients,
             "auto_merge": record.auto_merge,
             "merge_threshold": record.merge_threshold,
         }

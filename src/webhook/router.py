@@ -54,6 +54,8 @@ async def github_webhook(
         except Exception as exc:  # noqa: BLE001
             logger.warning("Per-repo webhook secret lookup failed, using global secret: %s", exc)
 
+    if not secret:
+        raise HTTPException(status_code=401, detail="Webhook secret not configured")
     if not verify_github_signature(payload, x_hub_signature_256, secret):
         raise HTTPException(status_code=401, detail="Invalid signature")
 
@@ -77,38 +79,36 @@ async def handle_gate_callback(
     decision: str,
     decided_by: str,
 ) -> None:
-    db = SessionLocal()
-    try:
-        analysis = db.query(Analysis).filter_by(id=analysis_id).first()
-        if not analysis:
-            logger.warning("handle_gate_callback: analysis %d not found", analysis_id)
-            return
-        repo = db.query(Repository).filter_by(id=analysis.repo_id).first()
-        if not repo:
-            return
-        github_token = (
-            repo.owner.plaintext_token
-            if repo.owner and repo.owner.plaintext_token
-            else settings.github_token
-        )
-        body = f"{'✅ 승인' if decision == 'approve' else '❌ 반려'} by @{decided_by}"
-        await post_github_review(
-            github_token, repo.full_name,
-            analysis.pr_number, decision, body,
-        )
-        _save_gate_decision(db, analysis_id, decision, "manual", decided_by)
-        config = get_repo_config(db, repo.full_name)
-        result_dict = analysis.result if isinstance(analysis.result, dict) else {}
-        score = result_dict.get("score", analysis.score or 0)
-        if config.auto_merge and score >= config.merge_threshold:
-            merged = await merge_pr(github_token, repo.full_name, analysis.pr_number)
-            if merged:
-                logger.info("PR #%d manual-approved+auto-merged: %s",
-                            analysis.pr_number, repo.full_name)
-    except (httpx.HTTPError, KeyError, ValueError, SQLAlchemyError) as exc:
-        logger.error("Gate callback failed: %s", exc)
-    finally:
-        db.close()
+    with SessionLocal() as db:
+        try:
+            analysis = db.query(Analysis).filter_by(id=analysis_id).first()
+            if not analysis:
+                logger.warning("handle_gate_callback: analysis %d not found", analysis_id)
+                return
+            repo = db.query(Repository).filter_by(id=analysis.repo_id).first()
+            if not repo:
+                return
+            github_token = (
+                repo.owner.plaintext_token
+                if repo.owner and repo.owner.plaintext_token
+                else settings.github_token
+            )
+            body = f"{'✅ 승인' if decision == 'approve' else '❌ 반려'} by @{decided_by}"
+            await post_github_review(
+                github_token, repo.full_name,
+                analysis.pr_number, decision, body,
+            )
+            _save_gate_decision(db, analysis_id, decision, "manual", decided_by)
+            config = get_repo_config(db, repo.full_name)
+            result_dict = analysis.result if isinstance(analysis.result, dict) else {}
+            score = result_dict.get("score", analysis.score or 0)
+            if config.auto_merge and score >= config.merge_threshold:
+                merged = await merge_pr(github_token, repo.full_name, analysis.pr_number)
+                if merged:
+                    logger.info("PR #%d manual-approved+auto-merged: %s",
+                                analysis.pr_number, repo.full_name)
+        except (httpx.HTTPError, KeyError, ValueError, SQLAlchemyError) as exc:
+            logger.error("Gate callback failed: %s", exc)
 
 
 @router.post("/api/webhook/telegram")
