@@ -54,9 +54,10 @@ def mock_deps():
         mock_db = MagicMock()
         mock_repo = MagicMock(id=1)
         # Call sequence: 1) repo creation (None→create), 2) dup check (None),
-        # 3) repo lookup in second session (found), 4) get_repo_config (None→defaults)
+        # 3) repo lookup in second session (found), 4) TOCTOU re-check (None),
+        # 5) get_repo_config RepoConfig query (None→defaults)
         mock_db.query.return_value.filter_by.return_value.first.side_effect = [
-            None, None, mock_repo, None,
+            None, None, mock_repo, None, None,
         ]
         mock_db.flush = MagicMock()
         mock_db.commit = MagicMock()
@@ -253,7 +254,7 @@ async def test_pipeline_calls_gate_for_pr(mock_deps):
 
     mock_db = mock_deps["db"]
     mock_db.query.return_value.filter_by.return_value.first.side_effect = [
-        MagicMock(id=1), None, MagicMock(id=1),
+        MagicMock(id=1), None, MagicMock(id=1), None,
     ]
     mock_db.refresh = MagicMock()
 
@@ -277,7 +278,7 @@ async def test_pipeline_calls_n8n_when_url_set(mock_deps):
 
     mock_db = mock_deps["db"]
     mock_db.query.return_value.filter_by.return_value.first.side_effect = [
-        MagicMock(id=1), None, MagicMock(id=1),
+        MagicMock(id=1), None, MagicMock(id=1), None,
     ]
     mock_db.refresh = MagicMock()
 
@@ -305,7 +306,7 @@ async def test_pipeline_skips_gate_for_push(mock_deps):
 
     mock_db = mock_deps["db"]
     mock_db.query.return_value.filter_by.return_value.first.side_effect = [
-        MagicMock(id=1), None, MagicMock(id=1),
+        MagicMock(id=1), None, MagicMock(id=1), None,
     ]
     mock_db.refresh = MagicMock()
 
@@ -460,7 +461,7 @@ async def test_pipeline_pr_review_comment_not_in_notify_tasks(mock_deps):
 
     mock_db = mock_deps["db"]
     mock_db.query.return_value.filter_by.return_value.first.side_effect = [
-        MagicMock(id=1), None, MagicMock(id=1),
+        MagicMock(id=1), None, MagicMock(id=1), None,
     ]
     mock_db.refresh = MagicMock()
 
@@ -490,7 +491,7 @@ async def test_pipeline_passes_new_gate_signature(mock_deps):
 
     mock_db = mock_deps["db"]
     mock_db.query.return_value.filter_by.return_value.first.side_effect = [
-        MagicMock(id=1), None, MagicMock(id=1),
+        MagicMock(id=1), None, MagicMock(id=1), None,
     ]
     mock_db.refresh = MagicMock()
 
@@ -582,7 +583,7 @@ async def test_discord_notifier_called_when_configured(mock_deps):
     # get_repo_config를 직접 patch하므로 두 번째 DB 세션은 repo 조회(mock_repo)만 필요
     mock_repo = MagicMock(id=1)
     mock_deps["db"].query.return_value.filter_by.return_value.first.side_effect = [
-        None, None, mock_repo,
+        None, None, mock_repo, None,
     ]
     mock_deps["db"].refresh = MagicMock()
 
@@ -606,7 +607,7 @@ async def test_discord_notifier_not_called_when_not_configured(mock_deps):
 
     mock_repo = MagicMock(id=1)
     mock_deps["db"].query.return_value.filter_by.return_value.first.side_effect = [
-        None, None, mock_repo,
+        None, None, mock_repo, None,
     ]
     mock_deps["db"].refresh = MagicMock()
 
@@ -628,7 +629,7 @@ async def test_slack_notifier_called_when_configured(mock_deps):
 
     mock_repo = MagicMock(id=1)
     mock_deps["db"].query.return_value.filter_by.return_value.first.side_effect = [
-        None, None, mock_repo,
+        None, None, mock_repo, None,
     ]
     mock_deps["db"].refresh = MagicMock()
 
@@ -651,7 +652,7 @@ async def test_repo_config_none_sends_only_telegram(mock_deps):
 
     mock_repo = MagicMock(id=1)
     mock_deps["db"].query.return_value.filter_by.return_value.first.side_effect = [
-        None, None, mock_repo,
+        None, None, mock_repo, None,
     ]
     mock_deps["db"].refresh = MagicMock()
 
@@ -679,7 +680,7 @@ async def test_gate_check_exception_still_saves_analysis(mock_deps):
 
     mock_repo = MagicMock(id=1)
     mock_deps["db"].query.return_value.filter_by.return_value.first.side_effect = [
-        None, None, mock_repo,
+        None, None, mock_repo, None,
     ]
     mock_deps["db"].refresh = MagicMock()
 
@@ -708,7 +709,7 @@ async def test_n8n_notifier_called_when_configured(mock_deps):
 
     mock_repo = MagicMock(id=1)
     mock_deps["db"].query.return_value.filter_by.return_value.first.side_effect = [
-        None, None, mock_repo,
+        None, None, mock_repo, None,
     ]
     mock_deps["db"].refresh = MagicMock()
 
