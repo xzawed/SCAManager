@@ -241,7 +241,7 @@ async def update_repo_settings(
             approve_threshold=int(form.get("approve_threshold", 75)),
             reject_threshold=int(form.get("reject_threshold", 50)),
             notify_chat_id=form.get("notify_chat_id") or None,
-            n8n_webhook_url=form.get("n8n_webhook_url", ""),
+            n8n_webhook_url=form.get("n8n_webhook_url") or None,
             discord_webhook_url=form.get("discord_webhook_url", "") or None,
             slack_webhook_url=form.get("slack_webhook_url", "") or None,
             custom_webhook_url=form.get("custom_webhook_url", "") or None,

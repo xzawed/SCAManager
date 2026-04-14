@@ -3,7 +3,6 @@ from fastapi import APIRouter, HTTPException
 from src.api.auth import require_api_key
 from src.api.deps import get_repo_or_404
 from src.database import SessionLocal
-from src.models.repository import Repository
 from src.models.analysis import Analysis
 
 router = APIRouter(prefix="/api", dependencies=[require_api_key])

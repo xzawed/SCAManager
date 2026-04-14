@@ -124,9 +124,9 @@ def test_post_settings_redirects():
             r = client.post(
                 "/repos/owner%2Frepo/settings",
                 data={
-                    "gate_mode": "auto",
-                    "auto_approve_threshold": "85",
-                    "auto_reject_threshold": "55",
+                    "approve_mode": "auto",
+                    "approve_threshold": "85",
+                    "reject_threshold": "55",
                     "notify_chat_id": "-123",
                     "n8n_webhook_url": "http://n8n.local/webhook/abc",
                 },
@@ -134,11 +134,15 @@ def test_post_settings_redirects():
             )
     assert mock_upsert.call_count == 1
     called_config = mock_upsert.call_args[0][1]
+    assert called_config.approve_mode == "auto"
+    assert called_config.approve_threshold == 85
+    assert called_config.reject_threshold == 55
     assert called_config.n8n_webhook_url == "http://n8n.local/webhook/abc"
     assert r.status_code == 303
 
 
-def test_post_settings_empty_n8n_url():
+def test_post_settings_empty_optional_fields():
+    """빈 문자열 선택 필드는 None으로 저장되어야 한다."""
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
         id=1, full_name="owner/repo", user_id=None
@@ -148,17 +152,24 @@ def test_post_settings_empty_n8n_url():
             r = client.post(
                 "/repos/owner%2Frepo/settings",
                 data={
-                    "gate_mode": "disabled",
-                    "auto_approve_threshold": "75",
-                    "auto_reject_threshold": "50",
+                    "approve_mode": "disabled",
+                    "approve_threshold": "75",
+                    "reject_threshold": "50",
                     "notify_chat_id": "",
                     "n8n_webhook_url": "",
+                    "discord_webhook_url": "",
+                    "slack_webhook_url": "",
+                    "custom_webhook_url": "",
+                    "email_recipients": "",
                 },
                 follow_redirects=False,
             )
     assert mock_upsert.call_count == 1
     called_config = mock_upsert.call_args[0][1]
-    assert called_config.n8n_webhook_url == ""
+    assert called_config.n8n_webhook_url is None
+    assert called_config.notify_chat_id is None
+    assert called_config.discord_webhook_url is None
+    assert r.status_code == 303
 
 
 def test_post_settings_with_auto_merge_checked():
@@ -171,18 +182,20 @@ def test_post_settings_with_auto_merge_checked():
             r = client.post(
                 "/repos/owner%2Frepo/settings",
                 data={
-                    "gate_mode": "auto",
-                    "auto_approve_threshold": "80",
-                    "auto_reject_threshold": "50",
+                    "approve_mode": "auto",
+                    "approve_threshold": "80",
+                    "reject_threshold": "50",
                     "notify_chat_id": "",
                     "n8n_webhook_url": "",
                     "auto_merge": "on",
+                    "merge_threshold": "90",
                 },
                 follow_redirects=False,
             )
     assert mock_upsert.call_count == 1
     called_config = mock_upsert.call_args[0][1]
     assert called_config.auto_merge is True
+    assert called_config.merge_threshold == 90
     assert r.status_code == 303
 
 
@@ -196,9 +209,9 @@ def test_post_settings_without_auto_merge_checkbox():
             r = client.post(
                 "/repos/owner%2Frepo/settings",
                 data={
-                    "gate_mode": "auto",
-                    "auto_approve_threshold": "80",
-                    "auto_reject_threshold": "50",
+                    "approve_mode": "semi-auto",
+                    "approve_threshold": "80",
+                    "reject_threshold": "50",
                     "notify_chat_id": "",
                     "n8n_webhook_url": "",
                 },
@@ -206,6 +219,7 @@ def test_post_settings_without_auto_merge_checkbox():
             )
     assert mock_upsert.call_count == 1
     called_config = mock_upsert.call_args[0][1]
+    assert called_config.approve_mode == "semi-auto"
     assert called_config.auto_merge is False
     assert r.status_code == 303
 
