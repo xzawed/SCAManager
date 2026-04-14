@@ -112,7 +112,21 @@ async def handle_gate_callback(
 
 
 @router.post("/api/webhook/telegram")
-async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
+async def telegram_webhook(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    x_telegram_bot_api_secret_token: str | None = Header(default=None),
+):
+    """Telegram 게이트 콜백 수신 엔드포인트.
+
+    TELEGRAM_WEBHOOK_SECRET 설정 시 X-Telegram-Bot-Api-Secret-Token 헤더를 검증한다.
+    """
+    if settings.telegram_webhook_secret:
+        provided = x_telegram_bot_api_secret_token or ""
+        if not hmac.compare_digest(provided, settings.telegram_webhook_secret):
+            logger.warning("Telegram webhook: invalid or missing secret token")
+            return {"status": "ok"}
+
     payload = await request.json()
     callback_query = payload.get("callback_query")
     if not callback_query:
@@ -134,11 +148,14 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         settings.telegram_bot_token.encode(),
         str(analysis_id).encode(),
         digestmod=hashlib.sha256,
-    ).hexdigest()[:16]
+    ).hexdigest()[:32]
     if not hmac.compare_digest(expected, callback_token):
         logger.warning("Telegram gate callback: invalid token for analysis_id=%d", analysis_id)
         return {"status": "ok"}
-    decided_by = callback_query.get("from", {}).get("username", "unknown")
+    from_data = callback_query.get("from", {})
+    user_id = from_data.get("id", "unknown")
+    username = from_data.get("username", "")
+    decided_by = f"{username}(id:{user_id})" if username else f"id:{user_id}"
     background_tasks.add_task(
         handle_gate_callback,
         analysis_id=analysis_id,

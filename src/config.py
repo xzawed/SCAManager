@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     github_token: str = ""            # 레거시 리포 fallback (optional)
     telegram_bot_token: str
     telegram_chat_id: str
+    telegram_webhook_secret: str = ""  # Telegram setWebhook secret_token — 설정 시 헤더 검증
     anthropic_api_key: str = ""  # 빈 문자열이면 AI 리뷰 건너뜀
     api_key: str = ""  # 빈 문자열이면 인증 건너뜀
     github_client_id: str = ""

@@ -14,8 +14,8 @@ from src.config_manager.manager import RepoConfigData
 
 client = TestClient(app)
 
-# HMAC token for analysis_id=42, bot_token="123:ABC"
-_TOKEN_42 = "d9939856ed07d33d"
+# HMAC token for analysis_id=42, bot_token="123:ABC" (32자, SHA-256 앞 32자)
+_TOKEN_42 = "d9939856ed07d33d8689614fcb1a7dff"
 APPROVE = {"update_id": 1, "callback_query": {"id": "c1", "from": {"id": 1, "username": "john"},
             "data": f"gate:approve:42:{_TOKEN_42}", "message": {"message_id": 1, "chat": {"id": -1}}}}
 REJECT = {"update_id": 2, "callback_query": {"id": "c2", "from": {"id": 1, "username": "john"},
@@ -56,7 +56,9 @@ def test_gate_callback_called_with_correct_args():
     kw = mock_h.call_args.kwargs
     assert kw["analysis_id"] == 42
     assert kw["decision"] == "approve"
-    assert kw["decided_by"] == "john"
+    # decided_by 형식: "username(id:user_id)" — user_id(stable integer) 포함
+    assert "john" in kw["decided_by"]
+    assert "1" in kw["decided_by"]
 
 
 # --- handle_gate_callback auto_merge 테스트 (Red: handle_gate_callback에 auto_merge 로직이 없음) ---
@@ -183,6 +185,42 @@ def test_malformed_callback_data_no_crash():
         r = client.post("/api/webhook/telegram", json=BAD_PARTS_PAYLOAD)
     assert r.status_code == 200
     mock_h.assert_not_called()
+
+
+# --- P1-1: secret_token 헤더 검증 테스트 ---
+
+def test_secret_token_valid_passes():
+    """TELEGRAM_WEBHOOK_SECRET 설정 + 올바른 헤더 → 정상 처리."""
+    with patch("src.webhook.router.settings.telegram_webhook_secret", "mysecret"):
+        with patch("src.webhook.router.handle_gate_callback", new_callable=AsyncMock):
+            r = client.post(
+                "/api/webhook/telegram",
+                json=APPROVE,
+                headers={"X-Telegram-Bot-Api-Secret-Token": "mysecret"},
+            )
+    assert r.status_code == 200
+
+
+def test_secret_token_invalid_skips_callback():
+    """TELEGRAM_WEBHOOK_SECRET 설정 + 잘못된 헤더 → callback 미호출."""
+    with patch("src.webhook.router.settings.telegram_webhook_secret", "mysecret"):
+        with patch("src.webhook.router.handle_gate_callback", new_callable=AsyncMock) as mock_h:
+            r = client.post(
+                "/api/webhook/telegram",
+                json=APPROVE,
+                headers={"X-Telegram-Bot-Api-Secret-Token": "wrong"},
+            )
+    assert r.status_code == 200
+    mock_h.assert_not_called()
+
+
+def test_secret_token_not_configured_skips_check():
+    """TELEGRAM_WEBHOOK_SECRET 미설정 → 헤더 없어도 정상 처리."""
+    with patch("src.webhook.router.settings.telegram_webhook_secret", ""):
+        with patch("src.webhook.router.handle_gate_callback", new_callable=AsyncMock) as mock_h:
+            r = client.post("/api/webhook/telegram", json=APPROVE)
+    assert r.status_code == 200
+    mock_h.assert_called_once()
 
 
 async def test_handle_gate_callback_analysis_not_found():
