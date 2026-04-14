@@ -210,6 +210,47 @@ def test_post_settings_without_auto_merge_checkbox():
     assert r.status_code == 303
 
 
+def test_settings_no_nested_forms():
+    """
+    regression: settings.html에 중첩 <form> 태그가 있으면 HTML5 브라우저 파서가
+    바깥쪽 메인 form을 </form> 첫 출현 시 조기에 닫아 저장 버튼이 고아가 된다.
+    이 테스트는 렌더된 HTML에서 <form> 중첩 깊이가 최대 1인지 확인해 구조적 원인을 잡는다.
+    """
+    from html.parser import HTMLParser
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
+        id=1, full_name="owner/repo", user_id=None
+    )
+    from src.config_manager.manager import RepoConfigData
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.ui.router.get_repo_config",
+                   return_value=RepoConfigData(repo_full_name="owner/repo")):
+            r = client.get("/repos/owner%2Frepo/settings")
+    assert r.status_code == 200
+
+    class _NestingChecker(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.depth = 0
+            self.max_depth = 0
+
+        def handle_starttag(self, tag, attrs):
+            if tag == "form":
+                self.depth += 1
+                self.max_depth = max(self.max_depth, self.depth)
+
+        def handle_endtag(self, tag):
+            if tag == "form" and self.depth > 0:
+                self.depth -= 1
+
+    checker = _NestingChecker()
+    checker.feed(r.text)
+    assert checker.max_depth <= 1, (
+        f"중첩된 <form> 태그 발견 (최대 depth={checker.max_depth}). "
+        "메인 form 안에 다른 form이 있으면 HTML5 파서가 저장 버튼을 고아로 만든다."
+    )
+
+
 def test_add_repo_page_loads():
     """GET /repos/add는 리포 추가 페이지(200 HTML)를 반환한다."""
     r = client.get("/repos/add")
