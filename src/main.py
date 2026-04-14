@@ -51,7 +51,13 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="SCAManager", version="0.1.0", lifespan=lifespan)
-app.add_middleware(SessionMiddleware, secret_key=settings.session_secret)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.session_secret,
+    https_only=settings.app_base_url.startswith("https"),
+    same_site="lax",
+    max_age=60 * 60 * 24 * 7,  # 7 days
+)
 app.include_router(auth_router)
 app.include_router(webhook_router)
 app.include_router(api_repos_router)
