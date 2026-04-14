@@ -12,7 +12,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 from fastapi import HTTPException
 
-from src.auth.session import get_current_user, require_login
+from src.auth.session import get_current_user, require_login, CurrentUser
 from src.models.user import User
 
 
@@ -40,14 +40,17 @@ def test_get_current_user_invalid_id():
 
 
 def test_get_current_user_valid():
-    """세션에 user_id 있고 DB에 유저 존재하면 User 반환."""
+    """세션에 user_id 있고 DB에 유저 존재하면 CurrentUser 데이터클래스 반환."""
     mock_user = User(id=1, github_id="g1", email="a@b.com", display_name="Test")
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = mock_user
     with patch("src.auth.session.SessionLocal") as mock_sl:
         mock_sl.return_value.__enter__.return_value = mock_db
         result = get_current_user(_req({"user_id": 1}))
-    assert result is mock_user
+    assert isinstance(result, CurrentUser)
+    assert result.id == 1
+    assert result.email == "a@b.com"
+    assert result.display_name == "Test"
 
 
 def test_require_login_no_session_raises_302():
@@ -58,12 +61,13 @@ def test_require_login_no_session_raises_302():
     assert exc_info.value.headers["Location"] == "/login"
 
 
-def test_require_login_returns_user():
-    """로그인 상태에서 User 반환."""
+def test_require_login_returns_current_user():
+    """로그인 상태에서 CurrentUser 데이터클래스 반환."""
     mock_user = User(id=1, github_id="g1", email="a@b.com", display_name="Test")
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = mock_user
     with patch("src.auth.session.SessionLocal") as mock_sl:
         mock_sl.return_value.__enter__.return_value = mock_db
         result = require_login(_req({"user_id": 1}))
-    assert result is mock_user
+    assert isinstance(result, CurrentUser)
+    assert result.id == 1
