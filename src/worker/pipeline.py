@@ -243,6 +243,7 @@ async def _save_and_gate(
                 result=analysis.result,
                 github_token=owner_token,
                 db=db,
+                config=repo_config,
             )
         except Exception as exc:  # noqa: BLE001 — gate check는 httpx·DB·기타 다양한 예외 발생 가능
             logger.error("Gate check failed: %s", exc)

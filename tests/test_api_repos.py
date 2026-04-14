@@ -370,3 +370,36 @@ def test_delete_repo_api_404():
         r = client.delete("/api/repos/nope%2Frepo")
     assert r.status_code == 404
     mock_db.delete.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# P1 — approve_threshold < reject_threshold → 422 검증
+# ---------------------------------------------------------------------------
+
+def test_put_config_returns_422_when_approve_threshold_less_than_reject():
+    """approve_threshold < reject_threshold 이면 pydantic이 422를 반환해야 한다."""
+    r = client.put("/api/repos/owner%2Frepo/config", json={
+        "approve_threshold": 40,
+        "reject_threshold": 60,
+    })
+    assert r.status_code == 422
+
+
+def test_put_config_returns_200_when_thresholds_equal():
+    """approve_threshold == reject_threshold 이면 정상 저장된다."""
+    with patch("src.api.repos.SessionLocal") as mock_cls:
+        with patch("src.api.repos.upsert_repo_config") as mock_upsert:
+            mock_cls.return_value = _make_session_mock(MagicMock())
+            mock_upsert.return_value = MagicMock(
+                repo_full_name="owner/repo", approve_mode="disabled",
+                approve_threshold=60, reject_threshold=60,
+                pr_review_comment=True, merge_threshold=75,
+                notify_chat_id=None, n8n_webhook_url=None,
+                discord_webhook_url=None, slack_webhook_url=None,
+                custom_webhook_url=None, email_recipients=None, auto_merge=False,
+            )
+            r = client.put("/api/repos/owner%2Frepo/config", json={
+                "approve_threshold": 60,
+                "reject_threshold": 60,
+            })
+    assert r.status_code == 200

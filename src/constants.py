@@ -20,6 +20,11 @@ BANDIT_LOW_PENALTY = 2      # bandit LOW/MEDIUM severity 1건당 감점
 AI_DEFAULT_COMMIT = 13      # commit_score 기본값 (스케일링 후)
 AI_DEFAULT_DIRECTION = 21   # ai_score 기본값 (스케일링 후)
 AI_DEFAULT_TEST = 10        # test_score 기본값 (스케일링 후)
+# hook.py: AiReviewResult 생성 시 사용하는 raw 스케일 기본값 (스케일링 전)
+# 스케일링 후 결과가 파이프라인 기본값(AI_DEFAULT_*)과 일치하도록 역산
+AI_DEFAULT_COMMIT_RAW = 17  # raw 0-20 → round(17*15/20) = 13 = AI_DEFAULT_COMMIT
+AI_DEFAULT_DIRECTION_RAW = 17  # raw 0-20 → round(17*25/20) = 21 = AI_DEFAULT_DIRECTION
+AI_DEFAULT_TEST_RAW = 7     # raw 0-10 → round(7*15/10) = 10 = AI_DEFAULT_TEST
 
 # ── 등급 임계값 ────────────────────────────────────────────────────────────
 GRADE_THRESHOLDS: dict[str, int] = {"A": 90, "B": 75, "C": 60, "D": 45}

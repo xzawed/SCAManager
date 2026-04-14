@@ -1,6 +1,7 @@
 """Repository and config REST API endpoints (/api/repos/*)."""
+from typing import Literal
 from fastapi import APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 from src.api.auth import require_api_key
 from src.api.deps import get_repo_or_404
 from src.database import SessionLocal
@@ -17,9 +18,9 @@ class RepoConfigUpdate(BaseModel):
     """Request body for PUT /api/repos/{repo}/config."""
 
     pr_review_comment: bool = True
-    approve_mode: str = "disabled"
-    approve_threshold: int = 75
-    reject_threshold: int = 50
+    approve_mode: Literal["disabled", "auto", "semi-auto"] = "disabled"
+    approve_threshold: int = Field(75, ge=0, le=100)
+    reject_threshold: int = Field(50, ge=0, le=100)
     notify_chat_id: str | None = None
     n8n_webhook_url: str | None = None
     discord_webhook_url: str | None = None
@@ -27,7 +28,17 @@ class RepoConfigUpdate(BaseModel):
     custom_webhook_url: str | None = None
     email_recipients: str | None = None
     auto_merge: bool = False
-    merge_threshold: int = 75
+    merge_threshold: int = Field(75, ge=0, le=100)
+
+    @model_validator(mode="after")
+    def validate_thresholds(self) -> "RepoConfigUpdate":
+        """approve_threshold가 reject_threshold 이상인지 검증한다."""
+        if self.approve_threshold < self.reject_threshold:
+            raise ValueError(
+                f"approve_threshold({self.approve_threshold})는 "
+                f"reject_threshold({self.reject_threshold}) 이상이어야 합니다"
+            )
+        return self
 
 
 @router.get("/repos")

@@ -256,6 +256,45 @@ async def test_post_pr_comment_from_result_calls_api():
     assert "7" in url
 
 
+# P2-11 — 두 빌더의 출력이 동일한지 확인 (통합 회귀)
+
+def test_build_comment_body_and_from_result_produce_same_output():
+    """_build_comment_body와 _build_comment_from_result이 동일한 마크다운을 생성해야 한다."""
+    ai = AiReviewResult(
+        commit_score=17, ai_score=15, test_score=8,
+        summary="리팩토링 양호.",
+        suggestions=["타입 힌트 추가"],
+        commit_message_feedback="커밋 메시지 명확",
+        code_quality_feedback="품질 양호",
+        security_feedback="이슈 없음",
+        direction_feedback="방향 적절",
+        test_feedback="테스트 충분",
+        file_feedbacks=[{"file": "app.py", "issues": ["개선 필요"]}],
+    )
+    score = _make_score(total=80, grade="B")
+    issues = [AnalysisIssue(tool="pylint", severity="error", message="err", line=1)]
+    r = StaticAnalysisResult(filename="app.py", issues=issues)
+
+    body_obj = _build_comment_body(score, [r], ai)
+
+    result_dict = {
+        "score": 80, "grade": "B",
+        "breakdown": score.breakdown,
+        "ai_summary": "리팩토링 양호.",
+        "ai_suggestions": ["타입 힌트 추가"],
+        "commit_message_feedback": "커밋 메시지 명확",
+        "code_quality_feedback": "품질 양호",
+        "security_feedback": "이슈 없음",
+        "direction_feedback": "방향 적절",
+        "test_feedback": "테스트 충분",
+        "file_feedbacks": [{"file": "app.py", "issues": ["개선 필요"]}],
+        "issues": [{"tool": "pylint", "severity": "error", "message": "err", "line": 1}],
+    }
+    body_dict = _build_comment_from_result(result_dict)
+
+    assert body_obj == body_dict
+
+
 async def test_post_pr_comment_from_result_sends_auth_header():
     with patch("src.notifier.github_comment.httpx.AsyncClient") as mock_cls:
         mock_client = AsyncMock()

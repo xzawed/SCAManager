@@ -218,3 +218,39 @@ def test_upsert_updates_auto_merge_flag(db):
     ))
     assert record.auto_merge is True
     assert db.query(RepoConfig).filter_by(repo_full_name="owner/repo-flag").count() == 1
+
+
+# ---------------------------------------------------------------------------
+# P1 — approve_threshold >= reject_threshold 검증
+# ---------------------------------------------------------------------------
+
+def test_upsert_raises_when_approve_threshold_less_than_reject(db):
+    """approve_threshold < reject_threshold 이면 ValueError가 발생해야 한다."""
+    with pytest.raises(ValueError, match="approve_threshold"):
+        upsert_repo_config(db, RepoConfigData(
+            repo_full_name="owner/invalid",
+            approve_threshold=40,
+            reject_threshold=60,
+        ))
+
+
+def test_upsert_allows_equal_thresholds(db):
+    """approve_threshold == reject_threshold 이면 정상 저장된다."""
+    record = upsert_repo_config(db, RepoConfigData(
+        repo_full_name="owner/equal",
+        approve_threshold=60,
+        reject_threshold=60,
+    ))
+    assert record.approve_threshold == 60
+    assert record.reject_threshold == 60
+
+
+def test_upsert_allows_approve_greater_than_reject(db):
+    """approve_threshold > reject_threshold 이면 정상 저장된다."""
+    record = upsert_repo_config(db, RepoConfigData(
+        repo_full_name="owner/normal",
+        approve_threshold=75,
+        reject_threshold=50,
+    ))
+    assert record.approve_threshold == 75
+    assert record.reject_threshold == 50

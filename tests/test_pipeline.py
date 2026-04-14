@@ -508,6 +508,9 @@ async def test_pipeline_passes_new_gate_signature(mock_deps):
     # 새 시그니처 필수 인자 확인
     assert "repo_name" in call_kwargs or len(mock_gate.call_args.args) > 0
     assert "pr_number" in call_kwargs or len(mock_gate.call_args.args) > 1
+    # config가 이미 로드된 RepoConfigData로 전달되어야 한다 (중복 DB 조회 방지)
+    assert "config" in call_kwargs, "config 파라미터가 run_gate_check에 전달되지 않음 — 중복 DB 조회 발생"
+    assert call_kwargs["config"] is not None, "config가 None으로 전달됨 — get_repo_config 재조회 발생"
 
 
 # ---------------------------------------------------------------------------

@@ -46,7 +46,16 @@ def get_repo_config(db: Session, repo_full_name: str) -> RepoConfigData:
 
 
 def upsert_repo_config(db: Session, data: RepoConfigData) -> RepoConfig:
-    """RepoConfig를 INSERT 또는 UPDATE(Upsert)한다."""
+    """RepoConfig를 INSERT 또는 UPDATE(Upsert)한다.
+
+    Raises:
+        ValueError: approve_threshold < reject_threshold 인 경우
+    """
+    if data.approve_threshold < data.reject_threshold:
+        raise ValueError(
+            f"approve_threshold({data.approve_threshold})는 "
+            f"reject_threshold({data.reject_threshold}) 이상이어야 합니다"
+        )
     record = db.query(RepoConfig).filter_by(repo_full_name=data.repo_full_name).first()
     if record is None:
         record = RepoConfig(

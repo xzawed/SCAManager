@@ -195,3 +195,29 @@ def test_breakdown_no_ai_defaults_flag_on_success():
     ai.status = "success"  # type: ignore[attr-defined]
     result = calculate_score([_make_result([])], ai_review=ai)
     assert "ai_defaults_applied" not in result.breakdown
+
+
+# ---------------------------------------------------------------------------
+# P2-14 — total 점수 0-100 clamp
+# ---------------------------------------------------------------------------
+
+def test_total_score_clamped_to_100():
+    """비정상적으로 높은 AI 점수 입력 시 총점이 100을 초과하지 않아야 한다."""
+    # raw 점수가 상한을 넘어도 total은 100으로 고정
+    ai = AiReviewResult(
+        commit_score=20, ai_score=20, test_score=10,
+        summary="ok", suggestions=[],
+    )
+    ai.status = "success"  # type: ignore[attr-defined]
+    result = calculate_score([_make_result([])], ai_review=ai)
+    assert result.total <= 100
+
+
+def test_total_score_cannot_be_negative():
+    """과도한 감점이 있어도 총점이 음수가 되지 않아야 한다."""
+    issues = (
+        [AnalysisIssue(tool="pylint", severity="error", message="e", line=i) for i in range(50)]
+        + [AnalysisIssue(tool="bandit", severity="error", message="b", line=i) for i in range(10)]
+    )
+    result = calculate_score([_make_result(issues)], ai_review=None)
+    assert result.total >= 0
