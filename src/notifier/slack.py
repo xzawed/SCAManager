@@ -1,9 +1,13 @@
 """Slack notifier — sends analysis results as attachment messages via incoming webhook."""
-import httpx
+import logging
+
+from src.notifier._http import build_safe_client, validate_external_url
 from src.constants import GRADE_COLOR_HTML
 from src.scorer.calculator import ScoreResult
 from src.analyzer.static import StaticAnalysisResult
 from src.analyzer.ai_review import AiReviewResult
+
+logger = logging.getLogger(__name__)
 
 # Slack attachment color = hex string (GRADE_COLOR_HTML 재사용)
 # Slack emoji는 Slack 고유 텍스트 형식(:large_green_circle:)이라 별도 정의
@@ -77,7 +81,10 @@ async def send_slack_notification(
     """Slack Incoming Webhook으로 분석 결과 메시지를 전송한다."""
     if not webhook_url:
         return
+    if not validate_external_url(webhook_url):
+        logger.warning("send_slack_notification: blocked unsafe URL '%s'", webhook_url)
+        return
     payload = _build_payload(repo_name, commit_sha, score_result, analysis_results, pr_number, ai_review)
-    async with httpx.AsyncClient() as client:
+    async with build_safe_client() as client:
         r = await client.post(webhook_url, json=payload)
         r.raise_for_status()
