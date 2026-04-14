@@ -76,13 +76,15 @@ def test_build_payload_includes_issues():
 
 
 async def test_send_slack_notification_posts_to_webhook():
-    with patch("src.notifier.slack.httpx.AsyncClient") as MockClient:
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        mock_post = AsyncMock(return_value=mock_response)
-        MockClient.return_value.__aenter__ = AsyncMock(return_value=MagicMock(post=mock_post))
-        MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+    mock_post = AsyncMock(return_value=mock_response)
+    mock_client = MagicMock()
+    mock_client.__aenter__ = AsyncMock(return_value=MagicMock(post=mock_post))
+    mock_client.__aexit__ = AsyncMock(return_value=False)
 
+    with patch("src.notifier.slack.validate_external_url", return_value=True), \
+         patch("src.notifier.slack.build_safe_client", return_value=mock_client):
         await send_slack_notification(
             webhook_url="https://hooks.slack.com/services/T/B/xxx",
             repo_name="owner/repo",
@@ -97,7 +99,7 @@ async def test_send_slack_notification_posts_to_webhook():
 
 
 async def test_send_slack_notification_skips_when_no_url():
-    with patch("src.notifier.slack.httpx.AsyncClient") as MockClient:
+    with patch("src.notifier.slack.build_safe_client") as mock_build:
         await send_slack_notification(
             webhook_url=None,
             repo_name="owner/repo",
@@ -105,4 +107,4 @@ async def test_send_slack_notification_skips_when_no_url():
             score_result=_make_score(),
             analysis_results=_make_analysis(),
         )
-    MockClient.assert_not_called()
+    mock_build.assert_not_called()

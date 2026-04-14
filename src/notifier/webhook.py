@@ -1,10 +1,13 @@
 """Generic webhook notifier — sends analysis results as a JSON POST request."""
+import logging
 from datetime import datetime, timezone
 
-import httpx
+from src.notifier._http import build_safe_client, validate_external_url
 from src.scorer.calculator import ScoreResult
 from src.analyzer.static import StaticAnalysisResult
 from src.analyzer.ai_review import AiReviewResult
+
+logger = logging.getLogger(__name__)
 
 
 def _build_payload(
@@ -46,7 +49,10 @@ async def send_webhook_notification(
     """범용 Webhook URL로 분석 결과 JSON을 POST한다."""
     if not webhook_url:
         return
+    if not validate_external_url(webhook_url):
+        logger.warning("send_webhook_notification: blocked unsafe URL '%s'", webhook_url)
+        return
     payload = _build_payload(repo_name, commit_sha, score_result, analysis_results, pr_number, ai_review)
-    async with httpx.AsyncClient() as client:
+    async with build_safe_client() as client:
         r = await client.post(webhook_url, json=payload)
         r.raise_for_status()
