@@ -1,5 +1,5 @@
 """Repository and config REST API endpoints (/api/repos/*)."""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
 from src.api.auth import require_api_key
 from src.api.deps import get_repo_or_404
