@@ -93,3 +93,47 @@ async def send_analysis_result(
     """분석 결과를 Telegram HTML 메시지로 전송한다."""
     text = _build_message(repo_name, commit_sha, score_result, analysis_results, pr_number, ai_review=ai_review)
     await telegram_post_message(bot_token, chat_id, {"text": text, "parse_mode": "HTML"})
+
+
+async def send_regression_alert(
+    *,
+    bot_token: str,
+    chat_id: str,
+    repo_name: str,
+    commit_sha: str,
+    current_score: int,
+    regression_info: dict,
+) -> None:
+    """회귀(급락·F 진입) 감지 시 별도 경보를 Telegram HTML 메시지로 전송한다.
+
+    일반 분석 알림과 시각적으로 구분되도록 ⚠️📉 이모지와 "급락"/"F등급" 문구를 사용한다.
+    """
+    info_type = regression_info.get("type")
+    delta = regression_info.get("delta", 0)
+    baseline = regression_info.get("baseline", 0.0)
+
+    if info_type == "drop":
+        title = "⚠️📉 점수 급락 감지"
+        reason = f"직전 평균 대비 {int(delta)}점 급락"
+    elif info_type == "f_entry":
+        title = "⚠️📉 F등급 진입 감지"
+        reason = f"F등급 진입 (직전 평균 {baseline:.1f}점)"
+    else:
+        title = "⚠️📉 회귀 감지"
+        reason = "회귀 조건 충족"
+
+    lines = [
+        f"<b>{escape(title)}</b>",
+        f"📁 <code>{escape(repo_name)}</code> — 커밋 <code>{escape(commit_sha[:7])}</code>",
+        "",
+        f"<b>현재 점수:</b> {current_score}/100",
+        f"<b>직전 평균:</b> {baseline:.1f}",
+        f"<b>사유:</b> {escape(reason)}",
+    ]
+    if info_type == "drop" and regression_info.get("secondary") == "f_entry":
+        lines.append("🔻 F등급 진입 동반")
+
+    text = "\n".join(lines)
+    if len(text) > _TELEGRAM_MAX_LEN:
+        text = text[:_TELEGRAM_MAX_LEN - 3] + "..."
+    await telegram_post_message(bot_token, chat_id, {"text": text, "parse_mode": "HTML"})

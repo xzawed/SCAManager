@@ -728,3 +728,95 @@ async def test_n8n_notifier_called_when_configured(mock_deps):
                 await run_analysis_pipeline("push", PUSH_DATA)
 
     mock_n8n.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Phase 3-B — 회귀 감지 및 알림 통합 테스트 (Red)
+#
+# pipeline은 분석 저장 후 detect_regression을 호출하고, 회귀가 감지되며
+# regression_alert 플래그가 True이면 send_regression_alert를 호출해야 한다.
+# 현재 pipeline.py에는 detect_regression/send_regression_alert import가 없으므로
+# patch("src.worker.pipeline.detect_regression") 자체가 AttributeError로 Red 상태가 된다.
+# ---------------------------------------------------------------------------
+
+async def test_pipeline_detects_regression_and_sends_alert(mock_deps):
+    """regression_alert=True + detect_regression이 dict 반환 → send_regression_alert 호출."""
+    from src.worker.pipeline import run_analysis_pipeline
+    from src.config_manager.manager import RepoConfigData
+
+    mock_repo = MagicMock(id=1)
+    mock_deps["db"].query.return_value.filter_by.return_value.first.side_effect = [
+        None, None, mock_repo,
+    ]
+    mock_deps["db"].refresh = MagicMock()
+
+    config = RepoConfigData(
+        repo_full_name="owner/repo",
+        regression_alert=True,
+        regression_drop_threshold=15,
+    )
+
+    with patch("src.worker.pipeline.send_regression_alert",
+               new_callable=AsyncMock) as mock_reg:
+        with patch("src.worker.pipeline.detect_regression",
+                   return_value={"type": "drop", "delta": 20, "baseline": 85.0}):
+            with patch("src.worker.pipeline.get_repo_config", return_value=config):
+                with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
+                    await run_analysis_pipeline("push", PUSH_DATA)
+
+    mock_reg.assert_called_once()
+
+
+async def test_pipeline_regression_alert_disabled(mock_deps):
+    """regression_alert=False 이면 회귀가 감지되어도 send_regression_alert는 미호출."""
+    from src.worker.pipeline import run_analysis_pipeline
+    from src.config_manager.manager import RepoConfigData
+
+    mock_repo = MagicMock(id=1)
+    mock_deps["db"].query.return_value.filter_by.return_value.first.side_effect = [
+        None, None, mock_repo,
+    ]
+    mock_deps["db"].refresh = MagicMock()
+
+    config = RepoConfigData(
+        repo_full_name="owner/repo",
+        regression_alert=False,
+        regression_drop_threshold=15,
+    )
+
+    with patch("src.worker.pipeline.send_regression_alert",
+               new_callable=AsyncMock) as mock_reg:
+        with patch("src.worker.pipeline.detect_regression",
+                   return_value={"type": "drop", "delta": 20, "baseline": 85.0}):
+            with patch("src.worker.pipeline.get_repo_config", return_value=config):
+                with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
+                    await run_analysis_pipeline("push", PUSH_DATA)
+
+    mock_reg.assert_not_called()
+
+
+async def test_pipeline_regression_alert_no_regression(mock_deps):
+    """detect_regression이 None 반환(안정)이면 regression_alert=True여도 알림 미발송."""
+    from src.worker.pipeline import run_analysis_pipeline
+    from src.config_manager.manager import RepoConfigData
+
+    mock_repo = MagicMock(id=1)
+    mock_deps["db"].query.return_value.filter_by.return_value.first.side_effect = [
+        None, None, mock_repo,
+    ]
+    mock_deps["db"].refresh = MagicMock()
+
+    config = RepoConfigData(
+        repo_full_name="owner/repo",
+        regression_alert=True,
+        regression_drop_threshold=15,
+    )
+
+    with patch("src.worker.pipeline.send_regression_alert",
+               new_callable=AsyncMock) as mock_reg:
+        with patch("src.worker.pipeline.detect_regression", return_value=None):
+            with patch("src.worker.pipeline.get_repo_config", return_value=config):
+                with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
+                    await run_analysis_pipeline("push", PUSH_DATA)
+
+    mock_reg.assert_not_called()

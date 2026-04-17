@@ -9,8 +9,9 @@ from src.config import settings
 from src.github_client.diff import get_pr_files, get_push_files, ChangedFile
 from src.analyzer.static import analyze_file, StaticAnalysisResult
 from src.analyzer.ai_review import review_code
+from src.analyzer.regression import detect_regression
 from src.scorer.calculator import calculate_score
-from src.notifier.telegram import send_analysis_result
+from src.notifier.telegram import send_analysis_result, send_regression_alert
 from src.models.repository import Repository
 from src.models.analysis import Analysis
 from src.gate.engine import run_gate_check
@@ -209,11 +210,11 @@ async def _save_and_gate(
     ai_review,
     score_result,
 ):
-    """Analysis를 DB에 저장하고 Gate Engine을 실행한다. repo_config를 반환한다."""
+    """Analysis를 DB에 저장하고 Gate Engine을 실행한다. (repo_config, regression_info) 반환."""
     repo = db.query(Repository).filter_by(full_name=repo_name).first()
     if repo is None:
         logger.warning("Repository not found in second session: %s", repo_name)
-        return None
+        return None, None
     analysis = Analysis(
         repo_id=repo.id,
         commit_sha=commit_sha,
@@ -246,7 +247,28 @@ async def _save_and_gate(
         )
     except Exception as exc:  # noqa: BLE001 — gate check는 httpx·DB·기타 다양한 예외 발생 가능
         logger.error("Gate check failed: %s", exc)
-    return repo_config
+
+    regression_info: dict | None = None
+    if repo_config and repo_config.regression_alert:
+        try:
+            previous = (
+                db.query(Analysis)
+                .filter(Analysis.repo_id == repo.id, Analysis.id != analysis.id)
+                .order_by(Analysis.created_at.desc())
+                .limit(5)
+                .all()
+            )
+            previous_scores = [a.score for a in previous if a.score is not None]
+            regression_info = detect_regression(
+                current_score=score_result.total,
+                previous_scores=previous_scores,
+                current_grade=score_result.grade,
+                drop_threshold=repo_config.regression_drop_threshold or 15,
+            )
+        except SQLAlchemyError as exc:
+            logger.warning("Regression detection failed: %s", exc)
+
+    return repo_config, regression_info
 
 
 async def run_analysis_pipeline(event: str, data: dict) -> None:
@@ -290,7 +312,7 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
         score_result = calculate_score(analysis_results, ai_review=ai_review)
 
         with SessionLocal() as db:
-            repo_config = await _save_and_gate(
+            repo_config, regression_info = await _save_and_gate(
                 db, repo_name, commit_sha, commit_message, pr_number,
                 owner_token, analysis_results, ai_review, score_result,
             )
@@ -305,6 +327,17 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
             analysis_results=analysis_results,
             ai_review=ai_review,
         )
+        if regression_info and repo_config and repo_config.regression_alert:
+            tg_chat_id = repo_config.notify_chat_id or settings.telegram_chat_id
+            notify_tasks.append(send_regression_alert(
+                bot_token=settings.telegram_bot_token,
+                chat_id=tg_chat_id,
+                repo_name=repo_name,
+                commit_sha=commit_sha,
+                current_score=score_result.total,
+                regression_info=regression_info,
+            ))
+            task_names.append("regression_alert")
         results = await asyncio.gather(*notify_tasks, return_exceptions=True)
         for idx, exc in enumerate(results):
             if isinstance(exc, Exception):
