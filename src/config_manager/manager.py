@@ -21,6 +21,8 @@ class RepoConfigData:
     email_recipients: str | None = None
     auto_merge: bool = False
     merge_threshold: int = 75
+    commit_comment: bool = False
+    create_issue: bool = False
 
 
 def get_repo_config(db: Session, repo_full_name: str) -> RepoConfigData:
@@ -42,6 +44,8 @@ def get_repo_config(db: Session, repo_full_name: str) -> RepoConfigData:
         email_recipients=record.email_recipients,
         auto_merge=record.auto_merge,
         merge_threshold=record.merge_threshold,
+        commit_comment=record.commit_comment,
+        create_issue=record.create_issue,
     )
 
 
@@ -72,6 +76,8 @@ def upsert_repo_config(db: Session, data: RepoConfigData) -> RepoConfig:
             email_recipients=data.email_recipients,
             auto_merge=data.auto_merge,
             merge_threshold=data.merge_threshold,
+            commit_comment=data.commit_comment,
+            create_issue=data.create_issue,
         )
         db.add(record)
     else:
@@ -87,6 +93,8 @@ def upsert_repo_config(db: Session, data: RepoConfigData) -> RepoConfig:
         record.email_recipients = data.email_recipients
         record.auto_merge = data.auto_merge
         record.merge_threshold = data.merge_threshold
+        record.commit_comment = data.commit_comment
+        record.create_issue = data.create_issue
     db.commit()
     db.refresh(record)
     return record

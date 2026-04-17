@@ -22,6 +22,8 @@ class RepoConfig(Base):
     email_recipients = Column(String, nullable=True)
     auto_merge = Column(Boolean, default=False, nullable=False)
     merge_threshold = Column(Integer, default=75, nullable=False)
+    commit_comment = Column(Boolean, default=False, nullable=False)
+    create_issue = Column(Boolean, default=False, nullable=False)
     hook_token = Column(String, nullable=True, unique=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
@@ -34,4 +36,6 @@ class RepoConfig(Base):
         kwargs.setdefault("reject_threshold", 50)
         kwargs.setdefault("auto_merge", False)
         kwargs.setdefault("merge_threshold", 75)
+        kwargs.setdefault("commit_comment", False)
+        kwargs.setdefault("create_issue", False)
         super().__init__(**kwargs)

@@ -11,6 +11,8 @@ from src.analyzer.static import analyze_file, StaticAnalysisResult
 from src.analyzer.ai_review import review_code
 from src.scorer.calculator import calculate_score
 from src.notifier.telegram import send_analysis_result
+from src.notifier.github_commit_comment import post_commit_comment
+from src.notifier.github_issue import create_low_score_issue
 from src.models.repository import Repository
 from src.models.analysis import Analysis
 from src.gate.engine import run_gate_check
@@ -80,6 +82,7 @@ def _build_notify_tasks(  # pylint: disable=too-many-positional-arguments
     repo_config,
     repo_name, commit_sha, pr_number,
     owner_token, score_result, analysis_results, ai_review,
+    analysis_id=None, result_dict=None,
 ):
     """Build coroutine task list for all active notification channels."""
     tasks = []
@@ -166,6 +169,32 @@ def _build_notify_tasks(  # pylint: disable=too-many-positional-arguments
         ))
         names.append("n8n")
 
+    # GitHub Commit Comment (Push 이벤트 전용)
+    if repo_config and repo_config.commit_comment and pr_number is None and result_dict:
+        tasks.append(post_commit_comment(
+            github_token=owner_token,
+            repo_name=repo_name,
+            commit_sha=commit_sha,
+            result=result_dict,
+        ))
+        names.append("commit_comment")
+
+    # GitHub Issue (낮은 점수 OR bandit HIGH — 두 조건 중 하나라도 충족 시 1건)
+    if repo_config and repo_config.create_issue and result_dict:
+        has_bandit_high = any(
+            i.get("severity") == "HIGH" and i.get("tool") == "bandit"
+            for i in (result_dict.get("issues") or [])
+        )
+        if score_result.total < repo_config.reject_threshold or has_bandit_high:
+            tasks.append(create_low_score_issue(
+                github_token=owner_token,
+                repo_name=repo_name,
+                commit_sha=commit_sha,
+                analysis_id=analysis_id,
+                result=result_dict,
+            ))
+            names.append("create_issue")
+
     return tasks, names
 
 
@@ -209,18 +238,27 @@ async def _save_and_gate(
     ai_review,
     score_result,
 ):
-    """Analysis를 DB에 저장하고 Gate Engine을 실행한다. repo_config를 반환한다."""
+    """Analysis를 DB에 저장하고 Gate Engine을 실행한다.
+
+    Returns:
+        (repo_config, analysis_id, result_dict) 튜플.
+        중복 커밋이면 (repo_config_or_None, None, None).
+    """
     repo = db.query(Repository).filter_by(full_name=repo_name).first()
     if repo is None:
         logger.warning("Repository not found in second session: %s", repo_name)
-        return None
+        return None, None, None
     # 멱등성 재확인 — 동시 Webhook 전달로 인한 중복 Analysis 삽입 방지 (TOCTOU 완화)
     if db.query(Analysis).filter_by(commit_sha=commit_sha, repo_id=repo.id).first():
         logger.info("Commit %s already saved (concurrent insert detected), skipping", commit_sha)
         try:
-            return get_repo_config(db, repo_name)
+            return get_repo_config(db, repo_name), None, None
         except (SQLAlchemyError, KeyError):
-            return None
+            return None, None, None
+    result_dict = _build_result_dict(
+        ai_review, score_result, analysis_results,
+        source="pr" if pr_number else "push",
+    )
     analysis = Analysis(
         repo_id=repo.id,
         commit_sha=commit_sha,
@@ -228,14 +266,12 @@ async def _save_and_gate(
         pr_number=pr_number,
         score=score_result.total,
         grade=score_result.grade,
-        result=_build_result_dict(
-            ai_review, score_result, analysis_results,
-            source="pr" if pr_number else "push",
-        ),
+        result=result_dict,
     )
     db.add(analysis)
     db.commit()
     db.refresh(analysis)
+    analysis_id = analysis.id
     try:
         repo_config = get_repo_config(db, repo_name)
     except (SQLAlchemyError, KeyError):
@@ -246,15 +282,15 @@ async def _save_and_gate(
             await run_gate_check(
                 repo_name=repo_name,
                 pr_number=pr_number,
-                analysis_id=analysis.id,
-                result=analysis.result,
+                analysis_id=analysis_id,
+                result=result_dict,
                 github_token=owner_token,
                 db=db,
                 config=repo_config,
             )
         except Exception as exc:  # noqa: BLE001 — gate check는 httpx·DB·기타 다양한 예외 발생 가능
             logger.error("Gate check failed: %s", exc)
-    return repo_config
+    return repo_config, analysis_id, result_dict
 
 
 async def run_analysis_pipeline(event: str, data: dict) -> None:
@@ -298,7 +334,7 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
         score_result = calculate_score(analysis_results, ai_review=ai_review)
 
         with SessionLocal() as db:
-            repo_config = await _save_and_gate(
+            repo_config, analysis_id, result_dict = await _save_and_gate(
                 db, repo_name, commit_sha, commit_message, pr_number,
                 owner_token, analysis_results, ai_review, score_result,
             )
@@ -312,6 +348,8 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
             score_result=score_result,
             analysis_results=analysis_results,
             ai_review=ai_review,
+            analysis_id=analysis_id,
+            result_dict=result_dict,
         )
         results = await asyncio.gather(*notify_tasks, return_exceptions=True)
         for idx, exc in enumerate(results):
