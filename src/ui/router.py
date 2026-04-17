@@ -214,6 +214,8 @@ def repo_settings(
     repo_name: str,
     hook_ok: int = 0,
     hook_fail: int = 0,
+    saved: int = 0,
+    save_error: int = 0,
     current_user: CurrentUser = Depends(require_login),
 ):
     with SessionLocal() as db:
@@ -222,6 +224,7 @@ def repo_settings(
     return templates.TemplateResponse(request, "settings.html", {
         "repo_name": repo_name, "config": config,
         "hook_ok": bool(hook_ok), "hook_fail": bool(hook_fail),
+        "saved": bool(saved), "save_error": bool(save_error),
         "current_user": current_user,
     })
 
@@ -255,7 +258,10 @@ async def update_repo_settings(
             ))
         except ValueError:
             logger.warning("Invalid threshold values for %s, settings not saved", repo_name)
-    return RedirectResponse(url=f"/repos/{repo_name}/settings", status_code=303)
+            return RedirectResponse(
+                url=f"/repos/{repo_name}/settings?save_error=1", status_code=303
+            )
+    return RedirectResponse(url=f"/repos/{repo_name}/settings?saved=1", status_code=303)
 
 
 @router.post("/repos/{repo_name:path}/reinstall-hook")
