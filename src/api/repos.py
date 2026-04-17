@@ -29,6 +29,8 @@ class RepoConfigUpdate(BaseModel):
     email_recipients: str | None = None
     auto_merge: bool = False
     merge_threshold: int = Field(75, ge=0, le=100)
+    commit_comment: bool = False
+    create_issue: bool = False
 
     @model_validator(mode="after")
     def validate_thresholds(self) -> "RepoConfigUpdate":
@@ -90,6 +92,8 @@ def update_repo_config(repo_name: str, body: RepoConfigUpdate):
             email_recipients=body.email_recipients,
             auto_merge=body.auto_merge,
             merge_threshold=body.merge_threshold,
+            commit_comment=body.commit_comment,
+            create_issue=body.create_issue,
         ))
         return {
             "repo_full_name": record.repo_full_name,
@@ -105,6 +109,8 @@ def update_repo_config(repo_name: str, body: RepoConfigUpdate):
             "email_recipients": record.email_recipients,
             "auto_merge": record.auto_merge,
             "merge_threshold": record.merge_threshold,
+            "commit_comment": record.commit_comment,
+            "create_issue": record.create_issue,
         }
 
 

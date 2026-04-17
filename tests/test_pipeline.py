@@ -723,3 +723,209 @@ async def test_n8n_notifier_called_when_configured(mock_deps):
                 await run_analysis_pipeline("push", PUSH_DATA)
 
     mock_n8n.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# 신규 알림 — commit_comment / create_issue
+# ---------------------------------------------------------------------------
+
+async def test_commit_comment_called_on_push_when_enabled(mock_deps):
+    """commit_comment=True + Push 이벤트 → post_commit_comment 호출."""
+    from src.worker.pipeline import run_analysis_pipeline
+    from src.config_manager.manager import RepoConfigData
+
+    mock_repo = MagicMock(id=1)
+    mock_deps["db"].query.return_value.filter_by.return_value.first.side_effect = [
+        None, None, mock_repo, None,
+    ]
+    mock_deps["db"].refresh = MagicMock()
+
+    config = RepoConfigData(repo_full_name="owner/repo", commit_comment=True)
+    with patch("src.worker.pipeline.get_repo_config", return_value=config):
+        with patch("src.worker.pipeline.post_commit_comment",
+                   new_callable=AsyncMock) as mock_cc:
+            with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
+                await run_analysis_pipeline("push", PUSH_DATA)
+
+    mock_cc.assert_called_once()
+
+
+async def test_commit_comment_not_called_on_pr_event(mock_deps):
+    """commit_comment=True여도 PR 이벤트에서는 호출되지 않는다 (PR은 gate의 pr_review_comment가 처리)."""
+    from src.worker.pipeline import run_analysis_pipeline
+    from src.config_manager.manager import RepoConfigData
+
+    mock_repo = MagicMock(id=1)
+    mock_deps["db"].query.return_value.filter_by.return_value.first.side_effect = [
+        None, None, mock_repo, None,
+    ]
+    mock_deps["db"].refresh = MagicMock()
+
+    config = RepoConfigData(repo_full_name="owner/repo", commit_comment=True)
+    with patch("src.worker.pipeline.get_repo_config", return_value=config):
+        with patch("src.worker.pipeline.post_commit_comment",
+                   new_callable=AsyncMock) as mock_cc:
+            with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
+                await run_analysis_pipeline("pull_request", PR_DATA)
+
+    mock_cc.assert_not_called()
+
+
+async def test_commit_comment_not_called_when_disabled(mock_deps):
+    """commit_comment=False(기본값)일 때는 Push 이벤트에서도 호출되지 않는다."""
+    from src.worker.pipeline import run_analysis_pipeline
+    from src.config_manager.manager import RepoConfigData
+
+    mock_repo = MagicMock(id=1)
+    mock_deps["db"].query.return_value.filter_by.return_value.first.side_effect = [
+        None, None, mock_repo, None,
+    ]
+    mock_deps["db"].refresh = MagicMock()
+
+    config = RepoConfigData(repo_full_name="owner/repo", commit_comment=False)
+    with patch("src.worker.pipeline.get_repo_config", return_value=config):
+        with patch("src.worker.pipeline.post_commit_comment",
+                   new_callable=AsyncMock) as mock_cc:
+            with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
+                await run_analysis_pipeline("push", PUSH_DATA)
+
+    mock_cc.assert_not_called()
+
+
+async def test_create_issue_called_on_low_score(mock_deps):
+    """create_issue=True + score < reject_threshold → create_low_score_issue 호출."""
+    from src.worker.pipeline import run_analysis_pipeline
+    from src.config_manager.manager import RepoConfigData
+    from src.scorer.calculator import ScoreResult
+
+    # 낮은 점수로 덮어쓰기
+    mock_deps["score"].return_value = ScoreResult(
+        total=30, grade="F",
+        code_quality_score=10, security_score=10,
+        breakdown={"code_quality": 10, "security": 10,
+                   "commit_message": 5, "ai_review": 3, "test_coverage": 2},
+    )
+
+    mock_repo = MagicMock(id=1)
+    mock_deps["db"].query.return_value.filter_by.return_value.first.side_effect = [
+        None, None, mock_repo, None,
+    ]
+    mock_deps["db"].refresh = MagicMock()
+
+    config = RepoConfigData(
+        repo_full_name="owner/repo",
+        create_issue=True,
+        reject_threshold=50,
+    )
+    with patch("src.worker.pipeline.get_repo_config", return_value=config):
+        with patch("src.worker.pipeline.create_low_score_issue",
+                   new_callable=AsyncMock) as mock_issue:
+            with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
+                await run_analysis_pipeline("push", PUSH_DATA)
+
+    mock_issue.assert_called_once()
+
+
+async def test_create_issue_called_on_security_high_even_when_score_high(mock_deps):
+    """create_issue=True + bandit HIGH 존재 → 점수가 높아도 Issue 생성."""
+    from src.worker.pipeline import run_analysis_pipeline
+    from src.config_manager.manager import RepoConfigData
+    from src.analyzer.static import StaticAnalysisResult, AnalysisIssue
+
+    # 점수 높게 유지 (85) → 보안 HIGH만으로 트리거돼야 함
+    high_issue_result = StaticAnalysisResult(
+        filename="app.py",
+        issues=[AnalysisIssue(tool="bandit", severity="HIGH",
+                              message="B602: subprocess call with shell=True", line=10)],
+    )
+
+    mock_repo = MagicMock(id=1)
+    mock_deps["db"].query.return_value.filter_by.return_value.first.side_effect = [
+        None, None, mock_repo, None,
+    ]
+    mock_deps["db"].refresh = MagicMock()
+
+    config = RepoConfigData(
+        repo_full_name="owner/repo",
+        create_issue=True,
+        reject_threshold=50,
+    )
+    with patch("src.worker.pipeline._run_static_analysis",
+               new_callable=AsyncMock, return_value=[high_issue_result]):
+        with patch("src.worker.pipeline.get_repo_config", return_value=config):
+            with patch("src.worker.pipeline.create_low_score_issue",
+                       new_callable=AsyncMock) as mock_issue:
+                with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
+                    await run_analysis_pipeline("push", PUSH_DATA)
+
+    mock_issue.assert_called_once()
+
+
+async def test_create_issue_called_only_once_when_both_conditions_match(mock_deps):
+    """점수 낮고 보안 HIGH 둘 다여도 Issue는 1회만 생성된다 (OR, 중복 방지)."""
+    from src.worker.pipeline import run_analysis_pipeline
+    from src.config_manager.manager import RepoConfigData
+    from src.scorer.calculator import ScoreResult
+    from src.analyzer.static import StaticAnalysisResult, AnalysisIssue
+
+    mock_deps["score"].return_value = ScoreResult(
+        total=30, grade="F",
+        code_quality_score=10, security_score=10,
+        breakdown={"code_quality": 10, "security": 10,
+                   "commit_message": 5, "ai_review": 3, "test_coverage": 2},
+    )
+
+    high_issue_result = StaticAnalysisResult(
+        filename="app.py",
+        issues=[AnalysisIssue(tool="bandit", severity="HIGH", message="B602", line=10)],
+    )
+
+    mock_repo = MagicMock(id=1)
+    mock_deps["db"].query.return_value.filter_by.return_value.first.side_effect = [
+        None, None, mock_repo, None,
+    ]
+    mock_deps["db"].refresh = MagicMock()
+
+    config = RepoConfigData(
+        repo_full_name="owner/repo",
+        create_issue=True,
+        reject_threshold=50,
+    )
+    with patch("src.worker.pipeline._run_static_analysis",
+               new_callable=AsyncMock, return_value=[high_issue_result]):
+        with patch("src.worker.pipeline.get_repo_config", return_value=config):
+            with patch("src.worker.pipeline.create_low_score_issue",
+                       new_callable=AsyncMock) as mock_issue:
+                with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
+                    await run_analysis_pipeline("push", PUSH_DATA)
+
+    assert mock_issue.call_count == 1
+
+
+async def test_create_issue_not_called_when_disabled(mock_deps):
+    """create_issue=False(기본값)일 때는 점수 낮아도 Issue 생성되지 않는다."""
+    from src.worker.pipeline import run_analysis_pipeline
+    from src.config_manager.manager import RepoConfigData
+    from src.scorer.calculator import ScoreResult
+
+    mock_deps["score"].return_value = ScoreResult(
+        total=30, grade="F",
+        code_quality_score=10, security_score=10,
+        breakdown={"code_quality": 10, "security": 10,
+                   "commit_message": 5, "ai_review": 3, "test_coverage": 2},
+    )
+
+    mock_repo = MagicMock(id=1)
+    mock_deps["db"].query.return_value.filter_by.return_value.first.side_effect = [
+        None, None, mock_repo, None,
+    ]
+    mock_deps["db"].refresh = MagicMock()
+
+    config = RepoConfigData(repo_full_name="owner/repo", create_issue=False)
+    with patch("src.worker.pipeline.get_repo_config", return_value=config):
+        with patch("src.worker.pipeline.create_low_score_issue",
+                   new_callable=AsyncMock) as mock_issue:
+            with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
+                await run_analysis_pipeline("push", PUSH_DATA)
+
+    mock_issue.assert_not_called()

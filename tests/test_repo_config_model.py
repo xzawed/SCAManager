@@ -49,3 +49,25 @@ def test_gate_decision_fields():
 def test_gate_decision_manual_with_user():
     decision = GateDecision(analysis_id=5, decision="reject", mode="manual", decided_by="john")
     assert decision.decided_by == "john"
+
+
+def test_repo_config_defaults_commit_comment_false():
+    """신규 필드 commit_comment의 기본값은 False (Push 이벤트에서 자동 발송 안 함)."""
+    config = RepoConfig(repo_full_name="owner/repo")
+    assert config.commit_comment is False
+
+
+def test_repo_config_defaults_create_issue_false():
+    """신규 필드 create_issue의 기본값은 False (명시적 opt-in)."""
+    config = RepoConfig(repo_full_name="owner/repo")
+    assert config.create_issue is False
+
+
+def test_repo_config_custom_commit_comment_and_create_issue():
+    config = RepoConfig(
+        repo_full_name="owner/repo",
+        commit_comment=True,
+        create_issue=True,
+    )
+    assert config.commit_comment is True
+    assert config.create_issue is True

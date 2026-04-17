@@ -254,3 +254,55 @@ def test_upsert_allows_approve_greater_than_reject(db):
     ))
     assert record.approve_threshold == 75
     assert record.reject_threshold == 50
+
+
+# ---------------------------------------------------------------------------
+# 신규 필드 — commit_comment, create_issue
+# ---------------------------------------------------------------------------
+
+def test_repo_config_data_commit_comment_default_false():
+    data = RepoConfigData(repo_full_name="owner/repo")
+    assert data.commit_comment is False
+
+
+def test_repo_config_data_create_issue_default_false():
+    data = RepoConfigData(repo_full_name="owner/repo")
+    assert data.create_issue is False
+
+
+def test_upsert_persists_commit_comment(db):
+    record = upsert_repo_config(db, RepoConfigData(
+        repo_full_name="owner/repo-cc",
+        commit_comment=True,
+    ))
+    assert record.commit_comment is True
+
+    got = get_repo_config(db, "owner/repo-cc")
+    assert got.commit_comment is True
+
+
+def test_upsert_persists_create_issue(db):
+    record = upsert_repo_config(db, RepoConfigData(
+        repo_full_name="owner/repo-ci",
+        create_issue=True,
+    ))
+    assert record.create_issue is True
+
+    got = get_repo_config(db, "owner/repo-ci")
+    assert got.create_issue is True
+
+
+def test_upsert_updates_commit_comment_and_create_issue(db):
+    upsert_repo_config(db, RepoConfigData(
+        repo_full_name="owner/repo-both",
+        commit_comment=False,
+        create_issue=False,
+    ))
+    record = upsert_repo_config(db, RepoConfigData(
+        repo_full_name="owner/repo-both",
+        commit_comment=True,
+        create_issue=True,
+    ))
+    assert record.commit_comment is True
+    assert record.create_issue is True
+    assert db.query(RepoConfig).filter_by(repo_full_name="owner/repo-both").count() == 1

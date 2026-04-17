@@ -403,3 +403,29 @@ def test_put_config_returns_200_when_thresholds_equal():
                 "reject_threshold": 60,
             })
     assert r.status_code == 200
+
+
+def test_config_update_with_commit_comment_and_create_issue():
+    """PUT /config 에 commit_comment/create_issue 전달 시 upsert에 전달되고 응답에 포함된다."""
+    with patch("src.api.repos.SessionLocal") as mock_cls:
+        with patch("src.api.repos.upsert_repo_config") as mock_upsert:
+            mock_cls.return_value = _make_session_mock(MagicMock())
+            mock_upsert.return_value = MagicMock(
+                repo_full_name="owner/repo", approve_mode="disabled",
+                approve_threshold=75, reject_threshold=50,
+                pr_review_comment=True, merge_threshold=75,
+                notify_chat_id=None, n8n_webhook_url=None,
+                discord_webhook_url=None, slack_webhook_url=None,
+                custom_webhook_url=None, email_recipients=None, auto_merge=False,
+                commit_comment=True, create_issue=True,
+            )
+            r = client.put("/api/repos/owner%2Frepo/config", json={
+                "commit_comment": True,
+                "create_issue": True,
+            })
+    assert r.status_code == 200
+    assert r.json()["commit_comment"] is True
+    assert r.json()["create_issue"] is True
+    called_data = mock_upsert.call_args[0][1]
+    assert called_data.commit_comment is True
+    assert called_data.create_issue is True

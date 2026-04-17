@@ -349,7 +349,42 @@
         </div>
       </div>
 
-      <!-- ⑤ CLI Hook -->
+      <!-- ⑤ Push 분석 알림 -->
+      <div class="s-card">
+        <div class="s-card-hdr hdr-notify">
+          <span class="hdr-icon">📌</span>
+          <span class="hdr-title">Push 분석 알림</span>
+        </div>
+        <div class="s-card-body">
+          <div class="toggle-row" style="margin-bottom:.85rem">
+            <div class="toggle-info">
+              <div class="t-title">커밋 코멘트</div>
+              <div class="t-desc">Push 커밋에 AI 리뷰 결과를 GitHub<br>
+                커밋 코멘트로 자동 게시합니다.</div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" name="commit_comment" value="on"
+                     {% if config.commit_comment %}checked{% endif %}>
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="t-title">이슈 자동 생성</div>
+              <div class="t-desc">점수 미달(<strong>반려 기준 미만</strong>) 또는<br>
+                보안 HIGH 이슈 발견 시 GitHub Issue를<br>
+                자동으로 생성합니다.</div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" name="create_issue" value="on"
+                     {% if config.create_issue %}checked{% endif %}>
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- ⑥ CLI Hook -->
       <div class="s-card">
         <div class="s-card-hdr hdr-hook">
           <span class="hdr-icon">🔧</span>

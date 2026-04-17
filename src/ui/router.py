@@ -250,6 +250,8 @@ async def update_repo_settings(
                 email_recipients=form.get("email_recipients", "") or None,
                 auto_merge=form.get("auto_merge") == "on",
                 merge_threshold=int(form.get("merge_threshold", 75)),
+                commit_comment=form.get("commit_comment") == "on",
+                create_issue=form.get("create_issue") == "on",
             ))
         except ValueError:
             logger.warning("Invalid threshold values for %s, settings not saved", repo_name)
