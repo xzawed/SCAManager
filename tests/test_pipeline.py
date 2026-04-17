@@ -107,16 +107,23 @@ async def test_pr_event_calls_gate_engine(mock_deps):
     assert call_kwargs["repo_name"] == "owner/repo"
 
 
-async def test_push_event_does_not_call_gate_with_pr_number(mock_deps):
-    """push 이벤트 시 gate engine은 pr_number=None으로 호출된다 (또는 미호출)."""
+async def test_push_event_calls_gate_with_pr_number_none(mock_deps):
+    """push 이벤트 시 gate engine은 pr_number=None + commit_sha로 호출된다.
+
+    Phase 3-A 이후 push 이벤트도 run_gate_check을 호출한다
+    (내부에서 push_commit_comment 옵션 처리).
+    """
     from src.worker.pipeline import run_analysis_pipeline
     from unittest.mock import AsyncMock, patch
 
     with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock) as mock_gate:
         await run_analysis_pipeline("push", PUSH_DATA)
 
-    # push 이벤트는 pr_number=None이므로 gate engine이 호출되지 않는다
-    mock_gate.assert_not_called()
+    mock_gate.assert_called_once()
+    call_kwargs = mock_gate.call_args.kwargs
+    assert call_kwargs["pr_number"] is None
+    assert call_kwargs["commit_sha"] == PUSH_DATA["after"]
+    assert call_kwargs["repo_name"] == "owner/repo"
 
 
 async def test_no_files_at_all_skips_pipeline(mock_deps):
@@ -292,7 +299,8 @@ async def test_pipeline_calls_n8n_when_url_set(mock_deps):
                 assert mock_n8n.call_args.kwargs["webhook_url"] == "https://n8n.test/webhook/x"
 
 
-async def test_pipeline_skips_gate_for_push(mock_deps):
+async def test_pipeline_invokes_gate_for_push(mock_deps):
+    """Phase 3-A: push 이벤트도 gate engine을 pr_number=None으로 호출한다."""
     from src.worker.pipeline import run_analysis_pipeline
     from src.analyzer.ai_review import AiReviewResult
     from src.scorer.calculator import ScoreResult
@@ -313,7 +321,8 @@ async def test_pipeline_skips_gate_for_push(mock_deps):
                return_value=MagicMock(n8n_webhook_url=None)):
         with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock) as mock_gate:
             await run_analysis_pipeline("push", PUSH_DATA)
-            mock_gate.assert_not_called()
+            mock_gate.assert_called_once()
+            assert mock_gate.call_args.kwargs["pr_number"] is None
 
 
 @pytest.mark.asyncio

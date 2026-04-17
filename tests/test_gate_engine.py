@@ -30,7 +30,8 @@ def _config(**kwargs):
     """신규 필드를 포함한 RepoConfigData 기본 픽스처.
 
     모든 테스트가 신규 시그니처(approve_mode, approve_threshold,
-    reject_threshold, pr_review_comment, merge_threshold)를 사용한다.
+    reject_threshold, pr_review_comment, merge_threshold,
+    push_commit_comment)를 사용한다.
     """
     defaults = dict(
         repo_full_name="owner/repo",
@@ -41,6 +42,7 @@ def _config(**kwargs):
         auto_merge=False,
         merge_threshold=75,
         notify_chat_id=None,
+        push_commit_comment=True,
     )
     defaults.update(kwargs)
     return RepoConfigData(**defaults)
@@ -66,7 +68,7 @@ async def test_review_comment_on_calls_post_pr_comment():
                                 analysis_id=1,
                                 result={"ai_summary": "ok", "suggestions": []},
                                 github_token="tok",
-                                db=mock_db,
+                                db=mock_db, commit_sha="deadbeef",
                             )
                             mock_comment.assert_called_once()
 
@@ -84,7 +86,7 @@ async def test_review_comment_off_skips_post_pr_comment():
                     analysis_id=1,
                     result={"score": 80, "grade": "B"},
                     github_token="tok",
-                    db=mock_db,
+                    db=mock_db, commit_sha="deadbeef",
                 )
                 mock_comment.assert_not_called()
 
@@ -108,7 +110,7 @@ async def test_auto_approve_high_score():
                             analysis_id=1,
                             result={"score": 80, "grade": "B"},
                             github_token="tok",
-                            db=mock_db,
+                            db=mock_db, commit_sha="deadbeef",
                         )
                         mock_review.assert_called_once()
                         # 네 번째 positional 인자 또는 keyword 'decision'이 "approve"
@@ -132,7 +134,7 @@ async def test_auto_reject_low_score():
                             analysis_id=1,
                             result={"score": 40, "grade": "F"},
                             github_token="tok",
-                            db=mock_db,
+                            db=mock_db, commit_sha="deadbeef",
                         )
                         mock_review.assert_called_once()
                         call = mock_review.call_args
@@ -155,7 +157,7 @@ async def test_auto_skip_middle_score():
                             analysis_id=1,
                             result={"score": 62, "grade": "C"},
                             github_token="tok",
-                            db=mock_db,
+                            db=mock_db, commit_sha="deadbeef",
                         )
                         mock_review.assert_not_called()
 
@@ -178,7 +180,7 @@ async def test_semi_auto_sends_telegram():
                         analysis_id=5,
                         result={"score": 65, "grade": "C"},
                         github_token="tok",
-                        db=mock_db,
+                        db=mock_db, commit_sha="deadbeef",
                     )
                     mock_send.assert_called_once()
                     assert mock_send.call_args.kwargs["analysis_id"] == 5
@@ -203,7 +205,7 @@ async def test_approve_disabled_no_review():
                         analysis_id=1,
                         result={"score": 80, "grade": "B"},
                         github_token="tok",
-                        db=mock_db,
+                        db=mock_db, commit_sha="deadbeef",
                     )
                     mock_review.assert_not_called()
 
@@ -235,7 +237,7 @@ async def test_auto_merge_independent_of_approve_mode():
                         analysis_id=10,
                         result={"score": 80, "grade": "B"},
                         github_token="tok",
-                        db=mock_db,
+                        db=mock_db, commit_sha="deadbeef",
                     )
                     mock_merge.assert_called_once()
 
@@ -262,7 +264,7 @@ async def test_auto_merge_with_auto_approve():
                             analysis_id=20,
                             result={"score": 90, "grade": "A"},
                             github_token="tok",
-                            db=mock_db,
+                            db=mock_db, commit_sha="deadbeef",
                         )
                         mock_review.assert_called_once()
                         mock_merge.assert_called_once()
@@ -287,7 +289,7 @@ async def test_auto_merge_below_threshold():
                         analysis_id=10,
                         result={"score": 60, "grade": "C"},
                         github_token="tok",
-                        db=mock_db,
+                        db=mock_db, commit_sha="deadbeef",
                     )
                     mock_merge.assert_not_called()
 
@@ -313,17 +315,20 @@ async def test_auto_merge_false_no_merge():
                             analysis_id=20,
                             result={"score": 90, "grade": "A"},
                             github_token="tok",
-                            db=mock_db,
+                            db=mock_db, commit_sha="deadbeef",
                         )
                         mock_merge.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
-# Push 이벤트 — PR 액션 없음 테스트
+# Push 이벤트 — PR 액션 없음 테스트 (Phase 3-A)
 # ---------------------------------------------------------------------------
 
-async def test_push_event_no_gate_actions():
-    """pr_number=None(push 이벤트) → 모든 PR 관련 액션이 호출되지 않는다."""
+async def test_push_event_no_pr_actions():
+    """pr_number=None(push 이벤트) → PR 전용 액션(review/merge/telegram gate)이 호출되지 않는다.
+
+    push_commit_comment=False 로 두어 commit comment 호출도 발생하지 않는지 확인한다.
+    """
     mock_db = MagicMock()
     config = _config(
         approve_mode="auto",
@@ -332,6 +337,7 @@ async def test_push_event_no_gate_actions():
         auto_merge=True,
         merge_threshold=75,
         pr_review_comment=True,
+        push_commit_comment=False,  # commit comment 비활성화
     )
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock) as mock_comment:
@@ -345,12 +351,105 @@ async def test_push_event_no_gate_actions():
                                 analysis_id=99,
                                 result={"score": 90, "grade": "A"},
                                 github_token="tok",
-                                db=mock_db,
+                                db=mock_db, commit_sha="deadbeef",
                             )
                             mock_comment.assert_not_called()
                             mock_review.assert_not_called()
                             mock_merge.assert_not_called()
                             mock_send.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Phase 3-A: Push 이벤트 → Commit Comment 발송 테스트
+# ---------------------------------------------------------------------------
+
+async def test_push_event_calls_commit_comment():
+    """pr_number=None + push_commit_comment=True → post_commit_comment_from_result 호출."""
+    mock_db = MagicMock()
+    config = _config(push_commit_comment=True, approve_mode="disabled", pr_review_comment=False)
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch("src.gate.engine.post_commit_comment_from_result", new_callable=AsyncMock) as mock_commit_comment:
+            with patch("src.gate.engine._save_gate_decision"):
+                await run_gate_check(
+                    repo_name="owner/repo",
+                    pr_number=None,
+                    analysis_id=100,
+                    result={"score": 82, "grade": "B"},
+                    github_token="tok",
+                    db=mock_db,
+                    commit_sha="abc123",
+                )
+                mock_commit_comment.assert_called_once()
+                kwargs = mock_commit_comment.call_args.kwargs
+                assert kwargs["commit_sha"] == "abc123"
+                assert kwargs["repo_name"] == "owner/repo"
+                assert kwargs["github_token"] == "tok"
+                assert kwargs["result"] == {"score": 82, "grade": "B"}
+
+
+async def test_push_event_commit_comment_off():
+    """pr_number=None + push_commit_comment=False → post_commit_comment_from_result 미호출."""
+    mock_db = MagicMock()
+    config = _config(push_commit_comment=False, approve_mode="disabled", pr_review_comment=False)
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch("src.gate.engine.post_commit_comment_from_result", new_callable=AsyncMock) as mock_commit_comment:
+            with patch("src.gate.engine._save_gate_decision"):
+                await run_gate_check(
+                    repo_name="owner/repo",
+                    pr_number=None,
+                    analysis_id=101,
+                    result={"score": 82, "grade": "B"},
+                    github_token="tok",
+                    db=mock_db,
+                    commit_sha="abc123",
+                )
+                mock_commit_comment.assert_not_called()
+
+
+async def test_push_event_commit_comment_exception_does_not_crash():
+    """post_commit_comment_from_result가 예외를 던져도 run_gate_check가 크래시 없이 완료된다."""
+    mock_db = MagicMock()
+    config = _config(push_commit_comment=True, approve_mode="disabled", pr_review_comment=False)
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch(
+            "src.gate.engine.post_commit_comment_from_result",
+            new_callable=AsyncMock,
+            side_effect=httpx.ConnectError("commit comment failed"),
+        ):
+            with patch("src.gate.engine._save_gate_decision"):
+                # 예외 없이 완료되어야 한다
+                await run_gate_check(
+                    repo_name="owner/repo",
+                    pr_number=None,
+                    analysis_id=102,
+                    result={"score": 82, "grade": "B"},
+                    github_token="tok",
+                    db=mock_db,
+                    commit_sha="abc123",
+                )
+
+
+async def test_pr_event_does_not_call_commit_comment():
+    """pr_number가 있는 PR 이벤트에서는 post_commit_comment_from_result가 호출되지 않는다.
+
+    commit comment는 push 전용. PR 이벤트는 pr_review_comment 경로만 사용한다.
+    """
+    mock_db = MagicMock()
+    config = _config(push_commit_comment=True, pr_review_comment=False, approve_mode="disabled")
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch("src.gate.engine.post_commit_comment_from_result", new_callable=AsyncMock) as mock_commit_comment:
+            with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
+                with patch("src.gate.engine._save_gate_decision"):
+                    await run_gate_check(
+                        repo_name="owner/repo",
+                        pr_number=7,  # PR 이벤트
+                        analysis_id=103,
+                        result={"score": 82, "grade": "B"},
+                        github_token="tok",
+                        db=mock_db,
+                        commit_sha="abc123",
+                    )
+                    mock_commit_comment.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -372,7 +471,7 @@ async def test_save_gate_decision_called_on_approve():
                             analysis_id=42,
                             result={"score": 80, "grade": "B"},
                             github_token="tok",
-                            db=mock_db,
+                            db=mock_db, commit_sha="deadbeef",
                         )
                         mock_save.assert_called_once_with(mock_db, 42, "approve", "auto")
 
@@ -392,7 +491,7 @@ async def test_save_gate_decision_called_on_reject():
                             analysis_id=43,
                             result={"score": 40, "grade": "F"},
                             github_token="tok",
-                            db=mock_db,
+                            db=mock_db, commit_sha="deadbeef",
                         )
                         mock_save.assert_called_once_with(mock_db, 43, "reject", "auto")
 
@@ -412,7 +511,7 @@ async def test_save_gate_decision_skip_on_middle_score():
                             analysis_id=44,
                             result={"score": 62, "grade": "C"},
                             github_token="tok",
-                            db=mock_db,
+                            db=mock_db, commit_sha="deadbeef",
                         )
                         mock_save.assert_called_once_with(mock_db, 44, "skip", "auto")
 
@@ -440,7 +539,7 @@ async def test_merge_pr_failure_does_not_raise():
                             analysis_id=50,
                             result={"score": 80, "grade": "B"},
                             github_token="tok",
-                            db=mock_db,
+                            db=mock_db, commit_sha="deadbeef",
                         )
                         # GateDecision은 merge_pr 결과와 무관하게 저장된다
                         mock_save.assert_called_once_with(mock_db, 50, "approve", "auto")
@@ -461,7 +560,7 @@ async def test_post_pr_comment_exception_does_not_abort_gate():
                     with patch("src.gate.engine.merge_pr", new_callable=AsyncMock):
                         await run_gate_check(
                             repo_name="owner/repo", pr_number=1, analysis_id=1,
-                            result={"score": 80, "grade": "B"}, github_token="tok", db=mock_db,
+                            result={"score": 80, "grade": "B"}, github_token="tok", db=mock_db, commit_sha="deadbeef",
                         )
                         # comment 실패해도 approve는 실행되어야 한다
                         mock_review.assert_called_once()
@@ -479,7 +578,7 @@ async def test_post_github_review_exception_does_not_crash():
                         # 예외 없이 완료되어야 한다
                         await run_gate_check(
                             repo_name="owner/repo", pr_number=1, analysis_id=1,
-                            result={"score": 80, "grade": "B"}, github_token="tok", db=mock_db,
+                            result={"score": 80, "grade": "B"}, github_token="tok", db=mock_db, commit_sha="deadbeef",
                         )
 
 
@@ -493,7 +592,7 @@ async def test_merge_pr_exception_does_not_crash():
                 with patch("src.gate.engine._save_gate_decision"):
                     await run_gate_check(
                         repo_name="owner/repo", pr_number=3, analysis_id=10,
-                        result={"score": 90, "grade": "A"}, github_token="tok", db=mock_db,
+                        result={"score": 90, "grade": "A"}, github_token="tok", db=mock_db, commit_sha="deadbeef",
                     )
 
 
@@ -507,7 +606,7 @@ async def test_semi_auto_no_notify_chat_id_skips_telegram():
                 with patch("src.gate.engine._save_gate_decision"):
                     await run_gate_check(
                         repo_name="owner/repo", pr_number=1, analysis_id=1,
-                        result={"score": 70, "grade": "C"}, github_token="tok", db=mock_db,
+                        result={"score": 70, "grade": "C"}, github_token="tok", db=mock_db, commit_sha="deadbeef",
                     )
                     mock_send.assert_not_called()
 
@@ -522,5 +621,5 @@ async def test_send_gate_request_exception_does_not_crash():
                 with patch("src.gate.engine._save_gate_decision"):
                     await run_gate_check(
                         repo_name="owner/repo", pr_number=1, analysis_id=1,
-                        result={"score": 70, "grade": "C"}, github_token="tok", db=mock_db,
+                        result={"score": 70, "grade": "C"}, github_token="tok", db=mock_db, commit_sha="deadbeef",
                     )

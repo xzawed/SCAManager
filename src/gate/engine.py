@@ -8,6 +8,7 @@ from src.config_manager.manager import get_repo_config
 from src.gate.github_review import post_github_review, merge_pr
 from src.gate.telegram_gate import send_gate_request
 from src.notifier.github_comment import post_pr_comment_from_result as post_pr_comment
+from src.notifier.commit_comment import post_commit_comment_from_result
 from src.models.gate_decision import GateDecision
 from src.scorer.calculator import ScoreResult
 
@@ -27,27 +28,42 @@ def _score_from_result(result: dict) -> ScoreResult:
 
 
 async def run_gate_check(
+    *,
     repo_name: str,
     pr_number: int | None,
     analysis_id: int,
     result: dict,
     github_token: str,
     db: Session,
+    commit_sha: str,
 ) -> None:
-    """PR 이벤트 시 3개 독립 옵션을 각각 실행한다.
+    """이벤트 타입에 따라 Gate 액션을 실행한다.
 
-    1. Review Comment — pr_review_comment=True 이면 PR에 상세 AI 리뷰 댓글 발송
-    2. Approve       — approve_mode에 따라 GitHub APPROVE/REQUEST_CHANGES 또는 Telegram 요청
-    3. Auto Merge    — auto_merge=True이고 score >= merge_threshold이면 squash merge
+    PR 이벤트(pr_number != None):
+        1. Review Comment — pr_review_comment=True 이면 PR에 상세 AI 리뷰 댓글 발송
+        2. Approve       — approve_mode에 따라 GitHub APPROVE/REQUEST_CHANGES 또는 Telegram 요청
+        3. Auto Merge    — auto_merge=True이고 score >= merge_threshold이면 squash merge
 
-    세 옵션은 완전 독립 — 어떤 조합이든 가능하다.
-    pr_number=None(push 이벤트)이면 모든 PR 관련 액션을 건너뛴다.
+    Push 이벤트(pr_number == None):
+        - Commit Comment — push_commit_comment=True 이면 커밋 뷰에 AI 리뷰 댓글 발송
+
+    모든 옵션은 독립 — 한 옵션의 예외가 다른 옵션을 중단시키지 않는다.
     """
-    if pr_number is None:
-        return
-
     config = get_repo_config(db, repo_name)
     score = result.get("score", 0)
+
+    if pr_number is None:
+        if config.push_commit_comment:
+            try:
+                await post_commit_comment_from_result(
+                    github_token=github_token,
+                    repo_name=repo_name,
+                    commit_sha=commit_sha,
+                    result=result,
+                )
+            except (httpx.HTTPError, KeyError) as exc:
+                logger.error("Commit Comment 실패: %s", exc)
+        return
 
     # 1. Review Comment (독립)
     if config.pr_review_comment:

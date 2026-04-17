@@ -49,3 +49,46 @@ def test_gate_decision_fields():
 def test_gate_decision_manual_with_user():
     decision = GateDecision(analysis_id=5, decision="reject", mode="manual", decided_by="john")
     assert decision.decided_by == "john"
+
+
+# ---------------------------------------------------------------------------
+# Phase 3-A: RepoConfig ORM 신규 4필드 기본값 (Red)
+# ---------------------------------------------------------------------------
+
+def test_repo_config_push_commit_comment_default_true():
+    """push_commit_comment 기본값은 True여야 한다."""
+    config = RepoConfig(repo_full_name="owner/repo-new")
+    assert config.push_commit_comment is True
+
+
+def test_repo_config_regression_alert_default_true():
+    """regression_alert 기본값은 True여야 한다."""
+    config = RepoConfig(repo_full_name="owner/repo-new")
+    assert config.regression_alert is True
+
+
+def test_repo_config_regression_drop_threshold_default_15():
+    """regression_drop_threshold 기본값은 15점이어야 한다."""
+    config = RepoConfig(repo_full_name="owner/repo-new")
+    assert config.regression_drop_threshold == 15
+
+
+def test_repo_config_block_threshold_default_none():
+    """block_threshold 기본값은 None (nullable)이어야 한다."""
+    config = RepoConfig(repo_full_name="owner/repo-new")
+    assert config.block_threshold is None
+
+
+def test_repo_config_phase3a_custom_values():
+    """Phase 3-A 신규 필드를 커스텀 값으로 생성할 수 있어야 한다."""
+    config = RepoConfig(
+        repo_full_name="owner/repo-custom",
+        push_commit_comment=False,
+        regression_alert=False,
+        regression_drop_threshold=20,
+        block_threshold=60,
+    )
+    assert config.push_commit_comment is False
+    assert config.regression_alert is False
+    assert config.regression_drop_threshold == 20
+    assert config.block_threshold == 60

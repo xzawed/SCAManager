@@ -28,6 +28,10 @@ class RepoConfigUpdate(BaseModel):
     email_recipients: str | None = None
     auto_merge: bool = False
     merge_threshold: int = 75
+    push_commit_comment: bool = True
+    regression_alert: bool = True
+    regression_drop_threshold: int = 15
+    block_threshold: int | None = None
 
 
 @router.get("/repos")
@@ -79,6 +83,10 @@ def update_repo_config(repo_name: str, body: RepoConfigUpdate):
             email_recipients=body.email_recipients,
             auto_merge=body.auto_merge,
             merge_threshold=body.merge_threshold,
+            push_commit_comment=body.push_commit_comment,
+            regression_alert=body.regression_alert,
+            regression_drop_threshold=body.regression_drop_threshold,
+            block_threshold=body.block_threshold,
         ))
         return {
             "repo_full_name": record.repo_full_name,
@@ -94,6 +102,10 @@ def update_repo_config(repo_name: str, body: RepoConfigUpdate):
             "email_recipients": record.email_recipients,
             "auto_merge": record.auto_merge,
             "merge_threshold": record.merge_threshold,
+            "push_commit_comment": record.push_commit_comment,
+            "regression_alert": record.regression_alert,
+            "regression_drop_threshold": record.regression_drop_threshold,
+            "block_threshold": record.block_threshold,
         }
 
 

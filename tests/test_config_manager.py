@@ -218,3 +218,130 @@ def test_upsert_updates_auto_merge_flag(db):
     ))
     assert record.auto_merge is True
     assert db.query(RepoConfig).filter_by(repo_full_name="owner/repo-flag").count() == 1
+
+
+# ---------------------------------------------------------------------------
+# Phase 3-A: RepoConfigData 신규 4필드 기본값 (Red)
+# ---------------------------------------------------------------------------
+
+def test_repo_config_data_push_commit_comment_default():
+    """RepoConfigData.push_commit_comment 기본값은 True여야 한다."""
+    data = RepoConfigData(repo_full_name="owner/repo")
+    assert data.push_commit_comment is True
+
+
+def test_repo_config_data_regression_alert_default():
+    """RepoConfigData.regression_alert 기본값은 True여야 한다."""
+    data = RepoConfigData(repo_full_name="owner/repo")
+    assert data.regression_alert is True
+
+
+def test_repo_config_data_regression_drop_threshold_default():
+    """RepoConfigData.regression_drop_threshold 기본값은 15여야 한다."""
+    data = RepoConfigData(repo_full_name="owner/repo")
+    assert data.regression_drop_threshold == 15
+
+
+def test_repo_config_data_block_threshold_default():
+    """RepoConfigData.block_threshold 기본값은 None이어야 한다."""
+    data = RepoConfigData(repo_full_name="owner/repo")
+    assert data.block_threshold is None
+
+
+def test_get_repo_config_returns_phase3a_defaults(db):
+    """존재하지 않는 repo 조회 시 Phase 3-A 신규 필드가 기본값으로 반환된다."""
+    config = get_repo_config(db, "owner/phase3a-new")
+    assert config.push_commit_comment is True
+    assert config.regression_alert is True
+    assert config.regression_drop_threshold == 15
+    assert config.block_threshold is None
+
+
+# ---------------------------------------------------------------------------
+# Phase 3-A: upsert 신규 필드 저장/업데이트 (Red)
+# ---------------------------------------------------------------------------
+
+def test_upsert_creates_with_push_commit_comment_false(db):
+    """push_commit_comment=False로 upsert 시 DB에 저장된다."""
+    record = upsert_repo_config(db, RepoConfigData(
+        repo_full_name="owner/repo-push-off",
+        push_commit_comment=False,
+    ))
+    assert record.push_commit_comment is False
+
+
+def test_upsert_creates_with_regression_alert_false(db):
+    """regression_alert=False로 upsert 시 DB에 저장된다."""
+    record = upsert_repo_config(db, RepoConfigData(
+        repo_full_name="owner/repo-reg-off",
+        regression_alert=False,
+    ))
+    assert record.regression_alert is False
+
+
+def test_upsert_creates_with_regression_drop_threshold(db):
+    """regression_drop_threshold 커스텀 값이 DB에 저장된다."""
+    record = upsert_repo_config(db, RepoConfigData(
+        repo_full_name="owner/repo-drop",
+        regression_drop_threshold=25,
+    ))
+    assert record.regression_drop_threshold == 25
+
+
+def test_upsert_creates_with_block_threshold(db):
+    """block_threshold 커스텀 값이 DB에 저장된다."""
+    record = upsert_repo_config(db, RepoConfigData(
+        repo_full_name="owner/repo-block",
+        block_threshold=40,
+    ))
+    assert record.block_threshold == 40
+
+
+def test_upsert_updates_push_commit_comment(db):
+    """push_commit_comment를 True → False로 업데이트 시 DB에 반영된다."""
+    upsert_repo_config(db, RepoConfigData(
+        repo_full_name="owner/repo-toggle-push",
+        push_commit_comment=True,
+    ))
+    record = upsert_repo_config(db, RepoConfigData(
+        repo_full_name="owner/repo-toggle-push",
+        push_commit_comment=False,
+    ))
+    assert record.push_commit_comment is False
+    assert db.query(RepoConfig).filter_by(repo_full_name="owner/repo-toggle-push").count() == 1
+
+
+def test_upsert_updates_regression_fields(db):
+    """regression_alert / regression_drop_threshold / block_threshold 업데이트."""
+    upsert_repo_config(db, RepoConfigData(
+        repo_full_name="owner/repo-reg",
+        regression_alert=True,
+        regression_drop_threshold=15,
+        block_threshold=None,
+    ))
+    record = upsert_repo_config(db, RepoConfigData(
+        repo_full_name="owner/repo-reg",
+        regression_alert=False,
+        regression_drop_threshold=30,
+        block_threshold=55,
+    ))
+    assert record.regression_alert is False
+    assert record.regression_drop_threshold == 30
+    assert record.block_threshold == 55
+    assert db.query(RepoConfig).filter_by(repo_full_name="owner/repo-reg").count() == 1
+
+
+def test_get_repo_config_returns_phase3a_saved_values(db):
+    """저장된 Phase 3-A 필드가 get_repo_config로 조회되어야 한다."""
+    upsert_repo_config(db, RepoConfigData(
+        repo_full_name="owner/repo-saved",
+        push_commit_comment=False,
+        regression_alert=False,
+        regression_drop_threshold=20,
+        block_threshold=45,
+    ))
+    config = get_repo_config(db, "owner/repo-saved")
+    assert config.push_commit_comment is False
+    assert config.regression_alert is False
+    assert config.regression_drop_threshold == 20
+    assert config.block_threshold == 45

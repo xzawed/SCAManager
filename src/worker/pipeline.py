@@ -234,18 +234,18 @@ async def _save_and_gate(
     except (SQLAlchemyError, KeyError):
         logger.warning("Failed to load repo config for %s, using defaults", repo_name)
         repo_config = None
-    if pr_number is not None:
-        try:
-            await run_gate_check(
-                repo_name=repo_name,
-                pr_number=pr_number,
-                analysis_id=analysis.id,
-                result=analysis.result,
-                github_token=owner_token,
-                db=db,
-            )
-        except Exception as exc:  # noqa: BLE001 — gate check는 httpx·DB·기타 다양한 예외 발생 가능
-            logger.error("Gate check failed: %s", exc)
+    try:
+        await run_gate_check(
+            repo_name=repo_name,
+            pr_number=pr_number,
+            analysis_id=analysis.id,
+            result=analysis.result,
+            github_token=owner_token,
+            db=db,
+            commit_sha=commit_sha,
+        )
+    except Exception as exc:  # noqa: BLE001 — gate check는 httpx·DB·기타 다양한 예외 발생 가능
+        logger.error("Gate check failed: %s", exc)
     return repo_config
 
 

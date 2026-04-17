@@ -370,3 +370,126 @@ def test_delete_repo_api_404():
         r = client.delete("/api/repos/nope%2Frepo")
     assert r.status_code == 404
     mock_db.delete.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Phase 3-A: PUT /api/repos/{repo}/config 신규 4필드 (Red)
+# ---------------------------------------------------------------------------
+
+def _phase3a_mock_upsert_return(**overrides):
+    """Phase 3-A 신규 필드를 포함한 MagicMock 응답 생성기."""
+    defaults = dict(
+        repo_full_name="owner/repo",
+        approve_mode="disabled",
+        approve_threshold=75,
+        reject_threshold=50,
+        notify_chat_id=None,
+        n8n_webhook_url=None,
+        discord_webhook_url=None,
+        slack_webhook_url=None,
+        custom_webhook_url=None,
+        email_recipients=None,
+        auto_merge=False,
+        pr_review_comment=True,
+        merge_threshold=75,
+        push_commit_comment=True,
+        regression_alert=True,
+        regression_drop_threshold=15,
+        block_threshold=None,
+    )
+    defaults.update(overrides)
+    return MagicMock(**defaults)
+
+
+def test_put_config_push_commit_comment_passed_to_upsert():
+    """PUT /config 에 push_commit_comment=False 전달 시 RepoConfigData에 전달된다."""
+    with patch("src.api.repos.SessionLocal") as mock_cls:
+        with patch("src.api.repos.upsert_repo_config") as mock_upsert:
+            mock_cls.return_value = _make_session_mock(MagicMock())
+            mock_upsert.return_value = _phase3a_mock_upsert_return(push_commit_comment=False)
+            client.put("/api/repos/owner%2Frepo/config", json={
+                "push_commit_comment": False,
+            })
+    called_data = mock_upsert.call_args[0][1]
+    assert called_data.push_commit_comment is False
+
+
+def test_put_config_regression_alert_passed_to_upsert():
+    """PUT /config 에 regression_alert=False 전달 시 RepoConfigData에 전달된다."""
+    with patch("src.api.repos.SessionLocal") as mock_cls:
+        with patch("src.api.repos.upsert_repo_config") as mock_upsert:
+            mock_cls.return_value = _make_session_mock(MagicMock())
+            mock_upsert.return_value = _phase3a_mock_upsert_return(regression_alert=False)
+            client.put("/api/repos/owner%2Frepo/config", json={
+                "regression_alert": False,
+            })
+    called_data = mock_upsert.call_args[0][1]
+    assert called_data.regression_alert is False
+
+
+def test_put_config_regression_drop_threshold_passed_to_upsert():
+    """PUT /config 에 regression_drop_threshold 전달 시 RepoConfigData에 전달된다."""
+    with patch("src.api.repos.SessionLocal") as mock_cls:
+        with patch("src.api.repos.upsert_repo_config") as mock_upsert:
+            mock_cls.return_value = _make_session_mock(MagicMock())
+            mock_upsert.return_value = _phase3a_mock_upsert_return(regression_drop_threshold=20)
+            client.put("/api/repos/owner%2Frepo/config", json={
+                "regression_drop_threshold": 20,
+            })
+    called_data = mock_upsert.call_args[0][1]
+    assert called_data.regression_drop_threshold == 20
+
+
+def test_put_config_block_threshold_passed_to_upsert():
+    """PUT /config 에 block_threshold 전달 시 RepoConfigData에 전달된다."""
+    with patch("src.api.repos.SessionLocal") as mock_cls:
+        with patch("src.api.repos.upsert_repo_config") as mock_upsert:
+            mock_cls.return_value = _make_session_mock(MagicMock())
+            mock_upsert.return_value = _phase3a_mock_upsert_return(block_threshold=55)
+            client.put("/api/repos/owner%2Frepo/config", json={
+                "block_threshold": 55,
+            })
+    called_data = mock_upsert.call_args[0][1]
+    assert called_data.block_threshold == 55
+
+
+def test_put_config_response_includes_phase3a_fields():
+    """PUT /config 응답에 Phase 3-A 신규 4필드가 포함된다."""
+    with patch("src.api.repos.SessionLocal") as mock_cls:
+        with patch("src.api.repos.upsert_repo_config") as mock_upsert:
+            mock_cls.return_value = _make_session_mock(MagicMock())
+            mock_upsert.return_value = _phase3a_mock_upsert_return(
+                push_commit_comment=False,
+                regression_alert=False,
+                regression_drop_threshold=25,
+                block_threshold=40,
+            )
+            r = client.put("/api/repos/owner%2Frepo/config", json={
+                "push_commit_comment": False,
+                "regression_alert": False,
+                "regression_drop_threshold": 25,
+                "block_threshold": 40,
+            })
+    assert r.status_code == 200
+    body = r.json()
+    assert body["push_commit_comment"] is False
+    assert body["regression_alert"] is False
+    assert body["regression_drop_threshold"] == 25
+    assert body["block_threshold"] == 40
+
+
+def test_put_config_phase3a_defaults_when_body_omitted():
+    """body에 Phase 3-A 필드 생략 시 응답에 기본값(True/True/15/None)이 포함된다."""
+    with patch("src.api.repos.SessionLocal") as mock_cls:
+        with patch("src.api.repos.upsert_repo_config") as mock_upsert:
+            mock_cls.return_value = _make_session_mock(MagicMock())
+            mock_upsert.return_value = _phase3a_mock_upsert_return()
+            r = client.put("/api/repos/owner%2Frepo/config", json={
+                "approve_mode": "disabled",
+            })
+    assert r.status_code == 200
+    body = r.json()
+    assert body["push_commit_comment"] is True
+    assert body["regression_alert"] is True
+    assert body["regression_drop_threshold"] == 15
+    assert body["block_threshold"] is None

@@ -23,6 +23,10 @@ class RepoConfig(Base):
     auto_merge = Column(Boolean, default=False, nullable=False)
     merge_threshold = Column(Integer, default=75, nullable=False)
     hook_token = Column(String, nullable=True, unique=True)
+    push_commit_comment = Column(Boolean, default=True, nullable=False)
+    regression_alert = Column(Boolean, default=True, nullable=False)
+    regression_drop_threshold = Column(Integer, default=15, nullable=False)
+    block_threshold = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
@@ -34,4 +38,7 @@ class RepoConfig(Base):
         kwargs.setdefault("reject_threshold", 50)
         kwargs.setdefault("auto_merge", False)
         kwargs.setdefault("merge_threshold", 75)
+        kwargs.setdefault("push_commit_comment", True)
+        kwargs.setdefault("regression_alert", True)
+        kwargs.setdefault("regression_drop_threshold", 15)
         super().__init__(**kwargs)

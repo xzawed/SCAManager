@@ -21,6 +21,10 @@ class RepoConfigData:
     email_recipients: str | None = None
     auto_merge: bool = False
     merge_threshold: int = 75
+    push_commit_comment: bool = True
+    regression_alert: bool = True
+    regression_drop_threshold: int = 15
+    block_threshold: int | None = None
 
 
 def get_repo_config(db: Session, repo_full_name: str) -> RepoConfigData:
@@ -42,6 +46,10 @@ def get_repo_config(db: Session, repo_full_name: str) -> RepoConfigData:
         email_recipients=record.email_recipients,
         auto_merge=record.auto_merge,
         merge_threshold=record.merge_threshold,
+        push_commit_comment=record.push_commit_comment,
+        regression_alert=record.regression_alert,
+        regression_drop_threshold=record.regression_drop_threshold,
+        block_threshold=record.block_threshold,
     )
 
 
@@ -63,6 +71,10 @@ def upsert_repo_config(db: Session, data: RepoConfigData) -> RepoConfig:
             email_recipients=data.email_recipients,
             auto_merge=data.auto_merge,
             merge_threshold=data.merge_threshold,
+            push_commit_comment=data.push_commit_comment,
+            regression_alert=data.regression_alert,
+            regression_drop_threshold=data.regression_drop_threshold,
+            block_threshold=data.block_threshold,
         )
         db.add(record)
     else:
@@ -78,6 +90,10 @@ def upsert_repo_config(db: Session, data: RepoConfigData) -> RepoConfig:
         record.email_recipients = data.email_recipients
         record.auto_merge = data.auto_merge
         record.merge_threshold = data.merge_threshold
+        record.push_commit_comment = data.push_commit_comment
+        record.regression_alert = data.regression_alert
+        record.regression_drop_threshold = data.regression_drop_threshold
+        record.block_threshold = data.block_threshold
     db.commit()
     db.refresh(record)
     return record
