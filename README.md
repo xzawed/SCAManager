@@ -1,6 +1,7 @@
 # SCAManager
 
 GitHub 리포지토리에 Push 또는 Pull Request 이벤트가 발생하면 자동으로 코드를 분석하고, 점수와 개선사항을 Telegram·GitHub PR Comment·Discord·Slack·Email·n8n으로 전달하는 코드 품질 관리 서비스입니다.  
+PR 없이 기본 브랜치로 직접 푸시하는 워크플로우에도 **커밋 뷰 AI 리뷰 댓글**, **점수 회귀 경보**, **Pre-push 훅 차단(Opt-in)** 을 제공해 품질 게이트가 동작합니다.  
 `git push` 시 Claude Code CLI 기반 **로컬 pre-push 자동 코드리뷰**와 터미널에서 바로 실행하는 **CLI 코드리뷰 도구**도 제공합니다.
 
 ---
@@ -63,6 +64,21 @@ python -m src.cli review --json
 - 점수 기반으로 PR Approve / Request Changes 자동 적용
 - **자동 모드**: 임계값에 따라 즉시 GitHub Review 실행, `auto_merge` 설정 시 squash merge까지 자동
 - **반자동 모드**: Telegram 인라인 버튼으로 수동 승인/반려, 승인 시 `auto_merge` 설정에 따라 merge 자동
+
+### 직접 푸시 워크플로우 (Phase 3)
+PR 없이 기본 브랜치에 바로 커밋·푸시하는 환경에서도 품질 관리가 동작합니다.
+
+- **커밋 라인 코멘트** (`push_commit_comment`, 기본 ON): Push 이벤트 시 AI 리뷰 요약·파일별 피드백을 GitHub 커밋 뷰(`commit/<sha>`)에 댓글로 기록
+- **회귀 감지 경보** (`regression_alert`, 기본 ON): 직전 5건 평균 대비 점수가 `regression_drop_threshold`(기본 15점) 이상 하락하거나 F등급으로 진입 시 Telegram에 ⚠️📉 별도 경보 발송
+- **Pre-push 훅 차단** (`block_threshold`, 기본 비활성): 점수가 임계값 미달 시 로컬 `git push`를 차단(`exit 1`). Opt-in 설정이며 `git push --no-verify`로 언제든 우회 가능
+
+> **설정 방법 (임시)**: 현재 설정 UI에 위 3개 필드가 반영되지 않았습니다. REST API로 직접 호출해야 합니다:
+> ```bash
+> curl -X PUT https://your-app/api/repos/{owner}/{repo}/config \
+>   -H "X-API-Key: $API_KEY" -H "Content-Type: application/json" \
+>   -d '{"push_commit_comment": true, "regression_alert": true, "regression_drop_threshold": 15, "block_threshold": 60}'
+> ```
+> 설정 UI 반영은 다음 업데이트에서 제공됩니다.
 
 ### 웹 대시보드
 - GitHub OAuth 로그인 후 사용자별 리포지토리 현황 확인

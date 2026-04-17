@@ -3,7 +3,7 @@
 > **문서 작성 원칙**: 이 프로젝트의 모든 문서는 Claude가 가장 읽기 쉽고 이해하기 편한 구조로 작성한다.
 > 새 문서를 작성하거나 기존 문서를 수정할 때 이 원칙을 반드시 따른다.
 
-GitHub Push/PR 이벤트 시 정적 분석 + AI 코드 리뷰를 자동 수행하고, 점수와 개선사항을 Telegram·GitHub PR Comment·Discord·Slack·Email·n8n으로 전달하며, 점수 기반 PR 자동/반자동 Gate(Approve + 자동 Merge 포함)와 웹 대시보드를 제공하는 서비스. `git push` 시 Claude Code CLI 기반 자동 코드리뷰(pre-push hook)도 지원한다.
+GitHub Push/PR 이벤트 시 정적 분석 + AI 코드 리뷰를 자동 수행하고, 점수와 개선사항을 Telegram·GitHub PR Comment·Discord·Slack·Email·n8n으로 전달하며, 점수 기반 PR 자동/반자동 Gate(Approve + 자동 Merge 포함)와 웹 대시보드를 제공하는 서비스. **기본 브랜치 직접 푸시 워크플로우**에도 커밋 뷰 AI 리뷰 댓글·점수 회귀 경보·Pre-push 훅 차단(Opt-in)을 제공해 PR 없이도 품질 게이트가 동작한다. `git push` 시 Claude Code CLI 기반 자동 코드리뷰(pre-push hook)도 지원한다.
 
 ## 핵심 명령
 
@@ -44,7 +44,7 @@ src/
 ├── models/
 │   ├── repository.py           # Repository ORM (user_id FK nullable)
 │   ├── analysis.py             # Analysis ORM (commit_message 포함)
-│   ├── repo_config.py          # RepoConfig ORM (pr_review_comment, approve_mode, approve/reject_threshold, auto_merge, merge_threshold, hook_token)
+│   ├── repo_config.py          # RepoConfig ORM (pr_review_comment, approve_mode, approve/reject_threshold, auto_merge, merge_threshold, hook_token, push_commit_comment, regression_alert, regression_drop_threshold, block_threshold)
 │   ├── gate_decision.py        # GateDecision ORM
 │   └── user.py                 # User ORM (github_id, github_login, github_access_token, email, display_name)
 ├── webhook/
@@ -57,18 +57,20 @@ src/
 │   └── repos.py                # list_user_repos(), create_webhook(), delete_webhook(), commit_scamanager_files()
 ├── analyzer/
 │   ├── static.py               # analyze_file — pylint/flake8/bandit (.py만, 테스트 bandit 제외)
-│   └── ai_review.py            # review_code() — Claude API, AiReviewResult
+│   ├── ai_review.py            # review_code() — Claude API, AiReviewResult
+│   └── regression.py           # detect_regression() — 직전 이력 대비 drop·f_entry 순수 판정
 ├── scorer/
 │   └── calculator.py           # calculate_score(ai_review), ScoreResult, _grade
 ├── config_manager/
 │   └── manager.py              # get_repo_config(), upsert_repo_config(), RepoConfigData
 ├── gate/
-│   ├── engine.py               # run_gate_check() — 3-옵션 독립 처리
+│   ├── engine.py               # run_gate_check() — PR 3옵션 + Push 1옵션(commit comment) 독립 처리
 │   ├── github_review.py        # post_github_review(), merge_pr()
 │   └── telegram_gate.py        # send_gate_request() — 인라인 키보드 메시지
 ├── notifier/
-│   ├── telegram.py             # send_analysis_result(), telegram_post_message() 공용 헬퍼
-│   ├── github_comment.py       # post_pr_comment_from_result() — result dict 기반
+│   ├── telegram.py             # send_analysis_result(), send_regression_alert(), telegram_post_message() 공용 헬퍼
+│   ├── github_comment.py       # post_pr_comment_from_result() — result dict 기반 (PR Issues API)
+│   ├── commit_comment.py       # post_commit_comment_from_result() — 커밋 뷰 AI 리뷰 (Push 전용)
 │   ├── discord.py, slack.py, webhook.py, email.py, n8n.py
 ├── api/
 │   ├── auth.py                 # require_api_key Depends (X-API-Key 헤더)
@@ -104,15 +106,24 @@ GitHub Push/PR
       → calculate_score(ai_review)
           (코드품질25 + 보안20 + 커밋15 + AI방향성25 + 테스트15)
       → DB 저장 (Analysis 레코드)
-      → run_gate_check() [PR 이벤트만] — 3-옵션 완전 독립 처리
-          [pr_review_comment=on] → post_pr_comment_from_result() — PR에 AI 코드리뷰 댓글 발송
-          [approve_mode=auto]    → score ≥ approve_threshold → GitHub APPROVE
-                                   score < reject_threshold → GitHub REQUEST_CHANGES
-          [approve_mode=semi]    → Telegram 인라인 키보드 전송 → POST /api/webhook/telegram 콜백 수신
-          [auto_merge=on, score ≥ merge_threshold] → squash merge (approve_mode 무관)
+      → run_gate_check() — PR/Push 분기 독립 처리
+          (PR 이벤트, pr_number != None):
+              [pr_review_comment=on] → post_pr_comment_from_result() — PR Issues API 댓글
+              [approve_mode=auto]    → score ≥ approve_threshold → GitHub APPROVE
+                                       score < reject_threshold  → GitHub REQUEST_CHANGES
+              [approve_mode=semi]    → Telegram 인라인 키보드 → POST /api/webhook/telegram 콜백
+              [auto_merge=on, score ≥ merge_threshold] → squash merge (approve_mode 무관)
+          (Push 이벤트, pr_number is None):
+              [push_commit_comment=on] → post_commit_comment_from_result() — 커밋 뷰 댓글
+                                         (GitHub POST /repos/{repo}/commits/{sha}/comments)
+      → 회귀 감지 (regression_alert=on 리포만):
+          → 직전 5건(repo_id, created_at 복합 인덱스) 평균 대비 detect_regression()
+          → drop(≥drop_threshold 하락) 또는 f_entry(F등급 진입) 감지 시
+          → send_regression_alert()를 notify_tasks에 append (⚠️📉 별도 Telegram 메시지)
       → _build_notify_tasks() — RepoConfig 기반 채널 디스패처
       → asyncio.gather(return_exceptions=True):
           ├─ send_analysis_result()        (Telegram — notify_chat_id 또는 global fallback)
+          ├─ send_regression_alert()       (회귀 감지 시만 추가, Telegram)
           ├─ send_discord_notification()   (discord_webhook_url 설정 시)
           ├─ send_slack_notification()     (slack_webhook_url 설정 시)
           ├─ send_webhook_notification()   (custom_webhook_url 설정 시)
@@ -142,8 +153,9 @@ CLI Hook (로컬 pre-push 자동 코드리뷰):
     → git diff로 push 대상 diff 수집
     → claude -p "[프롬프트+diff]" 실행 (Claude Code CLI — ANTHROPIC_API_KEY 불필요)
     → 터미널에 결과 출력
-    → POST /api/hook/result → Analysis DB 저장 + 대시보드 반영
-    → exit 0 (push 항상 진행)
+    → POST /api/hook/result (동기 curl + JSON 파싱) → Analysis DB 저장 + 대시보드 반영
+    → [block_threshold 설정된 리포] score < block_threshold → exit 1 (push 차단)
+    → 그 외 exit 0 (push 진행, --no-verify로 언제든 우회 가능)
 ```
 
 ### 점수 체계
@@ -309,14 +321,18 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 ### API / 알림 채널
 
 - **알림 독립성**: `_build_notify_tasks()` 디스패처, `asyncio.gather(return_exceptions=True)`로 실행 — 한 채널 실패해도 나머지 채널은 정상 전송. `repo_config` 로드 실패 시에도 Telegram은 global fallback으로 항상 발송.
-- **알림 채널 추가 체크리스트**: `RepoConfig` ORM → `RepoConfigData` dataclass → `RepoConfigUpdate` API body → UI 폼 4곳 반드시 동기화. 누락 시 REST API 업데이트 시 해당 필드가 NULL로 덮어써지는 버그 발생.
+- **알림 채널/설정 추가 체크리스트**: `RepoConfig` ORM → `RepoConfigData` dataclass → `RepoConfigUpdate` API body → UI 폼 4곳 반드시 동기화 + Alembic 마이그레이션(`server_default` 포함). 누락 시 REST API 업데이트 시 해당 필드가 NULL로 덮어써지는 버그 발생. Phase 3에서 추가된 `push_commit_comment`·`regression_alert`·`regression_drop_threshold`·`block_threshold`는 UI 폼 반영이 **미완료** — 다음 세션 우선 과제 참조.
 - **GRADE 상수 단일 출처**: `src/constants.py`에 `GRADE_EMOJI`, `GRADE_COLOR_DISCORD`, `GRADE_COLOR_HTML`, `GRADE_COLOR_ANSI` 정의. 각 모듈에 로컬 정의 금지.
 - **ChangedFile / github_api_headers 단일 출처**: `src/github_client/models.py`가 ChangedFile 정의 출처. `src/github_client/helpers.py`의 `github_api_headers(token)` 사용 — 새 GitHub API 호출 시 직접 dict를 만들지 말 것.
 - **keyword-only 강제 (`*`)**: 모든 `send_*` notifier 함수와 `run_gate_check()` 등은 `def fn(*, arg1, arg2)` 형태. 테스트에서 positional 호출 시 TypeError — 반드시 키워드 인자로 호출.
 - **get_repo_or_404**: `src/api/deps.py`의 `get_repo_or_404(repo_name, db)` 사용. 신규 API 엔드포인트에서 Repository 조회 시 동일 패턴 사용.
 - **_build_result_dict**: `src/worker/pipeline.py` 모듈 레벨 함수. pipeline과 hook.py 두 곳에서 Analysis.result dict를 생성할 때 사용. `score`·`grade` 필드 포함 — gate engine이 이를 기반으로 결정.
-- **PR Gate 3-옵션 독립**: `pr_review_comment`·`approve_mode`·`auto_merge+merge_threshold` 완전 독립. `post_pr_comment_from_result(result: dict, ...)` 사용 — `AiReviewResult` 객체 불필요. `run_gate_check` 시그니처: `(repo_name, pr_number, analysis_id, result, github_token, db)`.
-- **RepoConfig 필드명**: `approve_mode`(구 `gate_mode`), `approve_threshold`(구 `auto_approve_threshold`), `reject_threshold`(구 `auto_reject_threshold`) — 구 필드명 사용 시 AttributeError.
+- **PR Gate 3-옵션 + Push 1-옵션 독립**: `pr_review_comment`·`approve_mode`·`auto_merge+merge_threshold`·`push_commit_comment` 완전 독립. `post_pr_comment_from_result(result: dict, ...)` 사용 — `AiReviewResult` 객체 불필요. `run_gate_check` 시그니처는 **keyword-only**: `(*, repo_name, pr_number, analysis_id, result, github_token, db, commit_sha)`. `pr_number is None`일 때 push 분기(commit comment)만 실행.
+- **Push Commit Comment**: `src/notifier/commit_comment.py`의 `post_commit_comment_from_result(*, github_token, repo_name, commit_sha, result)` — PR 댓글 빌더(`_build_comment_from_result`) 그대로 재사용해 본문 포맷 통일. GitHub API `POST /repos/{repo}/commits/{sha}/comments` 엔드포인트.
+- **회귀 감지 파이프라인 흐름**: `_save_and_gate`가 `(repo_config, regression_info)` 튜플 반환. `regression_alert=True` 리포에서만 `Analysis` 이력 최근 5건(`ix_analyses_repo_created` 복합 인덱스) 조회 → `detect_regression` 호출. `regression_info`가 truthy면 `run_analysis_pipeline`이 `send_regression_alert`를 `notify_tasks`에 append — 일반 알림 gather에 편승(독립 실패).
+- **detect_regression 판정**: `drop` = 직전 5건 평균 − current ≥ `regression_drop_threshold`, `f_entry` = `current_grade=="F"` 이고 직전 중 ≥45점 존재. 둘 다 성립 시 `type="drop"` + `secondary="f_entry"`. `previous_scores` 빈 리스트는 항상 None(baseline 없음).
+- **RepoConfig 필드명**: `approve_mode`(구 `gate_mode`), `approve_threshold`(구 `auto_approve_threshold`), `reject_threshold`(구 `auto_reject_threshold`) — 구 필드명 사용 시 AttributeError. Phase 3 신규: `push_commit_comment`, `regression_alert`, `regression_drop_threshold`, `block_threshold`.
+- **hook block 응답**: `POST /api/hook/result` 응답에 `block: bool` + `block_threshold: int | None` 포함. 판정 함수 `_should_block(block_threshold, score)`는 `isinstance(int)` 가드로 MagicMock·None 방어 — opt-in semantics(`block_threshold=None` → 항상 False). 훅 스크립트는 동기 `RESP=$(curl ...)` 캡처로 `block=true` 시 `exit 1`.
 - **auto_merge GitHub 권한**: `merge_pr()`은 `repo` 스코프 또는 Fine-grained `pull_requests: write` 권한 필요 — 권한 부족 시 False 반환(파이프라인 미중단). Branch Protection Rules가 있으면 APPROVE 후에도 Merge 실패 가능.
 - **Webhook 서명**: `X-Hub-Signature-256` 헤더 없거나 서명 불일치 시 401 반환 — 로컬 테스트 시 서명 생성 필요. 빈 시크릿(`GITHUB_WEBHOOK_SECRET` 미설정)이면 즉시 401.
 - **telegram_post_message**: `src/notifier/telegram.py`의 공용 헬퍼. `src/gate/telegram_gate.py`도 이 헬퍼 사용 — `httpx` 직접 import 금지.
@@ -348,4 +364,38 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 
 ## 현재 상태
 
-단위 테스트 434개 | E2E 26개 | pylint 9.66 | 커버리지 94%
+단위 테스트 508개 | E2E 26개 | pylint 9.68 | bandit HIGH 0 | 커버리지 94%
+
+## 다음 세션 최우선 작업
+
+Phase 3(직접 푸시 워크플로우 실질화) 코드·테스트·마이그레이션은 완료되어
+`claude/git-workflow-proposal-SE1As` 브랜치에 푸시되었으나, **운영 가시성·배포 검증**
+잔여 과제가 남아 있다. 다음 세션 착수 시 아래 순서로 처리한다.
+
+**상세 설계·체크리스트**: `docs/design/2026-04-17-phase3-push-workflow-followup.md`
+
+### P0 — 사용자 노출 블로커
+
+1. **`src/templates/settings.html`에 신규 4필드 UI 추가**
+   - `push_commit_comment` 토글 (기본 ON), `regression_alert` 토글 (기본 ON),
+     `regression_drop_threshold` number input (기본 15), `block_threshold` number input + "비활성" 옵션 (기본 비활성)
+   - 현재 REST API(`PUT /api/repos/{repo}/config`)로만 설정 가능 — 일반 사용자가 조작 불가
+   - 저장 후 재로드 시 값 유지되는지 수동 검증 필수 (Jinja 렌더링은 pytest로 감지 불가)
+
+2. **기존 등록 리포의 훅 스크립트 재배포 경로**
+   - Phase 3-C가 `_INSTALL_HOOK_SH` 스크립트 본문을 변경 — 기존 리포는 구버전 훅 사용 중
+   - 권장: 설정 페이지에 "훅 스크립트 재배포" 버튼 + `POST /api/repos/{repo}/redeploy-hook` 엔드포인트 신설
+   - 내부 동작: 기존 `hook_token` 유지한 채 `commit_scamanager_files()` 재호출
+
+### P1 — 수동 E2E 검증 (배포 전 필수)
+
+3. 로컬 `make run` + ngrok 또는 Railway 스테이징에서 아래 3종 실증:
+   - **3-A**: 기본 브랜치 푸시 → GitHub 커밋 뷰(`commit/<sha>`)에 AI 리뷰 댓글 확인
+   - **3-B**: F등급 유도 커밋 → Telegram에 ⚠️📉 회귀 경보 **별도 메시지**로 수신
+   - **3-C**: `block_threshold=60` 설정 → 로컬 `git push` 차단 + `--no-verify` 우회 동작
+4. Railway 배포 시 마이그레이션 `0011`·`0012` 자동 실행 및 `ix_analyses_repo_created` 인덱스 생성 확인
+
+### P2 — 품질 향상
+
+5. `README.md` 상단 요약에 "직접 푸시 워크플로우" 1문단 추가 (완료) → Phase 3 기능 설명 정식화
+6. 회귀 감지 민감도 튜닝 여지 — false positive 빈발 시 `regression_drop_threshold`만이 아닌 표준편차·연속 하락 조건 검토 (follow-up 문서 "설계 메모" 참조)
