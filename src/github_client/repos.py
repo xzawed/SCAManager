@@ -141,21 +141,43 @@ except Exception:
     print(sys.stdin.read())
 " 2>/dev/null || echo "$RESULT"
 
-    curl -s -X POST "$SERVER/api/hook/result" \\
-      -H "Content-Type: application/json" \\
-      -d "$(python3 -c "
+    PAYLOAD=$(python3 -c "
 import json, sys
 repo = '$REPO'
 token = '$TOKEN'
 sha = '$LOCAL_SHA'
 msg = '''$COMMIT_MSG'''
-result_str = open('/dev/stdin').read() if False else sys.argv[1]
+result_str = sys.argv[1]
 try:
     ai = json.loads(result_str)
     print(json.dumps({'repo': repo, 'token': token, 'commit_sha': sha, 'commit_message': msg, 'ai_result': ai}))
-except Exception as e:
+except Exception:
     print('{}')
-" "$RESULT" 2>/dev/null)" >/dev/null 2>&1 &
+" "$RESULT" 2>/dev/null)
+
+    RESP=$(curl -s -X POST "$SERVER/api/hook/result" \\
+      -H "Content-Type: application/json" \\
+      -d "$PAYLOAD" 2>/dev/null)
+
+    BLOCK=$(echo "$RESP" | python3 -c "import json,sys
+try:
+    d = json.loads(sys.stdin.read())
+    print('1' if d.get('block') else '0')
+except Exception:
+    print('0')
+" 2>/dev/null)
+
+    if [ "$BLOCK" = "1" ]; then
+        THRESHOLD=$(echo "$RESP" | python3 -c "import json,sys
+try:
+    d = json.loads(sys.stdin.read())
+    print(d.get('block_threshold',''))
+except Exception:
+    print('')
+" 2>/dev/null)
+        echo "❌ [SCAManager] 점수 미달로 push를 차단합니다 (기준: $THRESHOLD점). --no-verify로 우회 가능." >&2
+        exit 1
+    fi
 fi
 
 exit 0

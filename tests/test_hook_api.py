@@ -362,3 +362,180 @@ def test_hook_result_unknown_repo_returns_404():
 
     assert r.status_code == 404
     mock_db.add.assert_not_called()
+
+
+# ------------------------------------------------------------------
+# Phase 3-C: block_threshold 기반 차단 판정
+# ------------------------------------------------------------------
+
+_LOW_AI_RESULT = {
+    # AI가 명시적으로 아주 낮은 점수를 부여한 경우를 가정
+    "commit_message_score": 1,
+    "direction_score": 1,
+    "test_score": 0,
+    "summary": "매우 낮은 품질",
+    "suggestions": [],
+    "commit_message_feedback": "",
+    "code_quality_feedback": "",
+    "security_feedback": "",
+    "direction_feedback": "",
+    "test_feedback": "",
+    "file_feedbacks": [],
+}
+
+
+def _build_hook_post_mocks(hook_token: str, block_threshold, repo_id: int = 99):
+    """POST /api/hook/result 호출을 위한 mock_db + config 세팅 공통 헬퍼.
+
+    RepoConfig.block_threshold를 명시적으로 설정해야 함 (MagicMock 기본 속성 금지).
+    """
+    mock_db = MagicMock()
+    mock_config = MagicMock()
+    mock_config.hook_token = hook_token
+    mock_config.block_threshold = block_threshold
+    mock_repo = MagicMock()
+    mock_repo.id = repo_id
+
+    call_count = {"n": 0}
+
+    def _first_side_effect():
+        idx = call_count["n"]
+        call_count["n"] += 1
+        return {0: mock_config, 1: mock_repo}.get(idx)
+
+    mock_db.query.return_value.filter.return_value.first.side_effect = _first_side_effect
+    mock_db.query.return_value.filter_by.return_value.first.return_value = None
+    saved = []
+    mock_db.add.side_effect = lambda obj: saved.append(obj)
+
+    # refresh 호출 후 analysis.id 속성이 할당되도록 simulate
+    def _refresh(obj):
+        if not hasattr(obj, "id") or obj.id is None:
+            obj.id = 12345
+    mock_db.refresh.side_effect = _refresh
+
+    return mock_db, saved
+
+
+def test_hook_result_block_false_when_threshold_none():
+    # block_threshold가 None(opt-in 미설정) → 응답 block=False, block_threshold=None
+    mock_db, _ = _build_hook_post_mocks("tok-none", block_threshold=None)
+
+    with patch("src.api.hook.SessionLocal", return_value=_make_session_mock(mock_db)):
+        r = client.post("/api/hook/result", json={
+            "repo": "owner/repo",
+            "token": "tok-none",
+            "commit_sha": "sha_block_none",
+            "commit_message": "feat: no threshold",
+            "ai_result": _AI_RESULT,
+        })
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["block"] is False
+    assert body["block_threshold"] is None
+
+
+def test_hook_result_block_true_when_score_below_threshold():
+    # block_threshold=95, 저점수 AI result → 계산 점수가 95 미만이므로 block=True
+    mock_db, saved = _build_hook_post_mocks("tok-low", block_threshold=95)
+
+    with patch("src.api.hook.SessionLocal", return_value=_make_session_mock(mock_db)):
+        r = client.post("/api/hook/result", json={
+            "repo": "owner/repo",
+            "token": "tok-low",
+            "commit_sha": "sha_block_true",
+            "commit_message": "feat: low score",
+            "ai_result": _LOW_AI_RESULT,
+        })
+
+    assert r.status_code == 200
+    body = r.json()
+    assert saved[0].score < 95  # sanity — 낮은 AI result 로 실제 점수가 낮음
+    assert body["block"] is True
+    assert body["block_threshold"] == 95
+
+
+def test_hook_result_block_false_when_score_meets_threshold():
+    # block_threshold=60, 고점수(_AI_RESULT=90점) → score >= threshold → block=False
+    mock_db, saved = _build_hook_post_mocks("tok-hi", block_threshold=60)
+
+    with patch("src.api.hook.SessionLocal", return_value=_make_session_mock(mock_db)):
+        r = client.post("/api/hook/result", json={
+            "repo": "owner/repo",
+            "token": "tok-hi",
+            "commit_sha": "sha_block_false",
+            "commit_message": "feat: high score",
+            "ai_result": _AI_RESULT,
+        })
+
+    assert r.status_code == 200
+    body = r.json()
+    assert saved[0].score >= 60
+    assert body["block"] is False
+    assert body["block_threshold"] == 60
+
+
+def test_hook_result_block_false_when_score_exactly_threshold():
+    # block_threshold == score(90) 인 경계값 — `<` 비교이므로 block=False 이어야 함
+    mock_db, saved = _build_hook_post_mocks("tok-eq", block_threshold=90)
+
+    with patch("src.api.hook.SessionLocal", return_value=_make_session_mock(mock_db)):
+        r = client.post("/api/hook/result", json={
+            "repo": "owner/repo",
+            "token": "tok-eq",
+            "commit_sha": "sha_block_eq",
+            "commit_message": "feat: edge threshold",
+            "ai_result": _AI_RESULT,
+        })
+
+    assert r.status_code == 200
+    body = r.json()
+    assert saved[0].score == 90  # _AI_RESULT → 90
+    assert body["block"] is False
+    assert body["block_threshold"] == 90
+
+
+def test_hook_result_duplicate_also_returns_block():
+    # 기존 Analysis 가 존재(duplicate)해도 응답에 block / block_threshold 필드가 포함되고,
+    # 기존 레코드 score 기준으로 block_threshold 판정을 수행해야 함
+    mock_db = MagicMock()
+    mock_config = MagicMock()
+    mock_config.hook_token = "tok-dup"
+    mock_config.block_threshold = 80  # 기존 score=50 → block=True 기대
+    mock_repo = MagicMock()
+    mock_repo.id = 55
+
+    call_count = {"n": 0}
+
+    def _first_side_effect():
+        idx = call_count["n"]
+        call_count["n"] += 1
+        return {0: mock_config, 1: mock_repo}.get(idx)
+
+    mock_db.query.return_value.filter.return_value.first.side_effect = _first_side_effect
+
+    # 기존 Analysis 존재 → score=50
+    existing = MagicMock()
+    existing.id = 777
+    existing.score = 50
+    existing.grade = "D"
+    mock_db.query.return_value.filter_by.return_value.first.return_value = existing
+
+    with patch("src.api.hook.SessionLocal", return_value=_make_session_mock(mock_db)):
+        r = client.post("/api/hook/result", json={
+            "repo": "owner/repo",
+            "token": "tok-dup",
+            "commit_sha": "sha_dup",
+            "commit_message": "feat: duplicate",
+            "ai_result": _AI_RESULT,
+        })
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "duplicate"
+    assert body["score"] == 50
+    assert body["analysis_id"] == 777
+    assert body["block"] is True
+    assert body["block_threshold"] == 80
+    mock_db.add.assert_not_called()

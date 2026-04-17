@@ -234,6 +234,40 @@ async def test_commit_scamanager_files_returns_true_on_success():
     assert result is True
 
 
+# ------------------------------------------------------------------
+# Phase 3-C: _INSTALL_HOOK_SH 스크립트 내용 검증
+# ------------------------------------------------------------------
+
+def test_install_hook_script_parses_block_response():
+    # 설치 스크립트가 서버 응답의 "block" key를 python3로 파싱하고,
+    # 차단 판정 시 exit 1 로 push를 중단하며 stderr로 차단 메시지를 출력해야 함
+    from src.github_client.repos import _INSTALL_HOOK_SH
+
+    # 서버 응답에서 "block" 필드를 해석하는 구문이 존재
+    assert "block" in _INSTALL_HOOK_SH
+    # JSON 파싱용 python3 one-liner 존재 (stdin 파이프 or -c)
+    assert "python3" in _INSTALL_HOOK_SH
+    assert "json" in _INSTALL_HOOK_SH
+    # push 차단 exit 코드 존재
+    assert "exit 1" in _INSTALL_HOOK_SH
+    # 차단 사유를 stderr 로 출력하는 구문 존재 ( >&2 리다이렉션)
+    assert ">&2" in _INSTALL_HOOK_SH
+    # 사용자 안내용 "차단" 문구 (한국어) — 또는 최소 block 관련 안내 존재
+    assert "차단" in _INSTALL_HOOK_SH
+
+
+def test_install_hook_script_synchronous_post():
+    # 기존 백그라운드(`&`) POST 패턴은 제거되고,
+    # 응답을 캡처하기 위한 동기 `RESP=$(curl ...)` 패턴으로 변경되어야 함
+    from src.github_client.repos import _INSTALL_HOOK_SH
+
+    # 동기 캡처 패턴 존재
+    assert "RESP=$(curl" in _INSTALL_HOOK_SH or "RESP=\"$(curl" in _INSTALL_HOOK_SH
+    # 기존 백그라운드 패턴 (> /dev/null 2>&1 &) 이 curl POST 줄에서 제거됐는지
+    # — 스크립트 전체에 "2>&1 &" 로 끝나는 curl 호출이 없어야 함
+    assert "/dev/null 2>&1 &" not in _INSTALL_HOOK_SH
+
+
 @pytest.mark.asyncio
 async def test_commit_scamanager_files_returns_false_on_error():
     # PUT 요청 중 예외 발생(httpx.HTTPStatusError 등) 시 False 반환

@@ -86,6 +86,8 @@ def save_hook_result(body: HookResultRequest):
                 "score": existing.score,
                 "grade": existing.grade,
                 "analysis_id": existing.id,
+                "block": _should_block(config.block_threshold, existing.score),
+                "block_threshold": config.block_threshold,
             }
 
         # ai_result → AiReviewResult 변환
@@ -133,4 +135,17 @@ def save_hook_result(body: HookResultRequest):
             "score": score_result.total,
             "grade": score_result.grade,
             "analysis_id": analysis.id,
+            "block": _should_block(config.block_threshold, score_result.total),
+            "block_threshold": config.block_threshold,
         }
+
+
+def _should_block(block_threshold: int | None, score: int | None) -> bool:
+    """block_threshold가 설정되어 있고 점수가 이에 미달하면 True를 반환한다.
+
+    block_threshold=None 또는 비-int 이면 opt-in 미사용 → 항상 False.
+    경계값(score == block_threshold)은 차단하지 않음 (strict `<`).
+    """
+    if not isinstance(block_threshold, int) or not isinstance(score, int):
+        return False
+    return score < block_threshold
