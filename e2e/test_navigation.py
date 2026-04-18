@@ -66,6 +66,6 @@ def test_detail_settings_button(seeded_page, base_url):
 def test_settings_cancel_button(seeded_page, base_url):
     """설정 페이지의 취소 버튼이 레포 상세로 이동해야 한다."""
     seeded_page.goto(f"{base_url}/repos/owner%2Ftestrepo/settings")
-    seeded_page.click("a.btn-ghost")
+    seeded_page.click("a.back-btn")
     seeded_page.wait_for_url("**/repos/**", timeout=5000)
     assert "/settings" not in seeded_page.url

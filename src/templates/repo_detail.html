@@ -60,9 +60,9 @@
     font-weight: 700;
     font-size: 15px;
   }
-  .score-val.high { color: var(--success); }
-  .score-val.mid  { color: #f59e0b; }
-  .score-val.low  { color: var(--danger); }
+  .score-val.high { color: var(--grade-a); }
+  .score-val.mid  { color: var(--grade-c); }
+  .score-val.low  { color: var(--grade-f); }
   .date-cell {
     font-size: 13px;
     color: var(--text-muted);
@@ -117,10 +117,10 @@
     transition: all var(--transition);
   }
   .filter-btn:hover { border-color: var(--accent); color: var(--accent); }
-  .filter-btn.active { background: rgba(99,102,241,.15); border-color: var(--accent); color: var(--accent); }
-  .filter-btn[data-source="pr"].active   { background: rgba(59,130,246,.15); border-color:#3b82f6; color:#3b82f6; }
-  .filter-btn[data-source="push"].active { background: rgba(16,185,129,.15); border-color:var(--success); color:var(--success); }
-  .filter-btn[data-source="cli"].active  { background: rgba(245,158,11,.15); border-color:#f59e0b; color:#f59e0b; }
+  .filter-btn.active { background: rgba(94,106,210,.12); border-color: var(--accent); color: var(--accent); }
+  .filter-btn[data-source="pr"].active   { background: rgba(96,165,250,.12); border-color: var(--grade-b); color: var(--grade-b); }
+  .filter-btn[data-source="push"].active { background: rgba(74,222,128,.12); border-color: var(--grade-a); color: var(--grade-a); }
+  .filter-btn[data-source="cli"].active  { background: rgba(251,191,36,.12); border-color: var(--grade-c); color: var(--grade-c); }
   .filter-divider { width: 1px; height: 22px; background: var(--border); flex-shrink: 0; }
   /* ── 점수 범위 슬라이더 ────────────────── */
   .score-range-wrap { display: flex; align-items: center; gap: .5rem; font-size: 12px; color: var(--text-muted); min-width: 220px; }

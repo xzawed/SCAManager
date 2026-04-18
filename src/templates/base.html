@@ -4,146 +4,180 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}SCAManager{% endblock %}</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" crossorigin="anonymous">
   <style>
-    /* ── 공통 변수 ─────────────────────────────── */
+    /* ── 공통 변수 (이전 버전 호환 유지) ───────── */
     :root {
-      --radius-card: 12px;
-      --radius-btn:  8px;
-      --transition:  0.25s ease;
+      --radius-card: 10px;
+      --radius-btn:  7px;
+      --transition:  0.18s ease;
+
+      /* 스페이싱 스케일 */
+      --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+      --space-5: 20px; --space-6: 24px; --space-7: 32px; --space-8: 48px;
+
+      /* 폰트 크기 스케일 */
+      --fs-xs: 12px; --fs-sm: 13px; --fs-md: 14px; --fs-base: 15px;
+      --fs-lg: 16px; --fs-xl: 18px; --fs-2xl: 20px; --fs-3xl: 24px;
+
+      /* 반경 스케일 */
+      --radius-xs: 4px; --radius-sm: 6px; --radius-md: 10px;
+      --radius-lg: 14px; --radius-pill: 999px;
+
+      /* 그림자 스케일 */
+      --shadow-sm: 0 1px 3px rgba(0,0,0,.1), 0 1px 2px rgba(0,0,0,.07);
+      --shadow-md: 0 4px 16px rgba(0,0,0,.14);
+      --shadow-lg: 0 8px 32px rgba(0,0,0,.22);
+
+      /* 등급 색상 */
+      --grade-a: #4ade80; --grade-b: #60a5fa; --grade-c: #fbbf24;
+      --grade-d: #fb923c; --grade-f: #f87171;
+
+      /* 컨테이너 너비 */
+      --container-lg: 1200px; --container-md: 860px; --container-sm: 560px;
     }
 
-    /* ── 다크 대시보드 (기본) ─────────────────── */
+    /* ── 다크 테마 (Linear 스타일) ─────────────── */
     [data-theme="dark"], body:not([data-theme]) {
-      --bg-page:      #0f1117;
-      --bg-card:      #1e2130;
-      --bg-nav:       #1a1a2e;
-      --bg-input:     #2d3748;
-      --bg-input-focus: #374151;
-      --border:       #2d3748;
-      --border-focus: #6366f1;
-      --text-primary: #e2e8f0;
-      --text-muted:   #64748b;
-      --text-nav:     #cbd5e1;
-      --accent:       #6366f1;
-      --accent-hover: #818cf8;
-      --accent-grad:  linear-gradient(135deg, #6366f1, #818cf8);
-      --success:      #10b981;
-      --danger:       #ef4444;
-      --shadow:       0 4px 24px rgba(0,0,0,0.4);
-      --shadow-card:  0 2px 12px rgba(0,0,0,0.3);
-      --table-head:   #252840;
-      --table-row-hover: #252840;
-      --code-bg:      #0f1117;
-      /* 설정 페이지 */
-      --grad-gate:          linear-gradient(135deg, #6366f1, #4f46e5);
-      --grad-merge:         linear-gradient(135deg, #10b981, #059669);
-      --grad-notify:        linear-gradient(135deg, #f59e0b, #d97706);
-      --grad-hook:          linear-gradient(135deg, #8b5cf6, #7c3aed);
-      --title-gradient:     linear-gradient(135deg, #818cf8, #c084fc);
-      --btn-gate-active-bg: rgba(99,102,241,.18);
-      --btn-gate-active-bd: #6366f1;
-      --btn-gate-active-tx: #818cf8;
-      --save-btn-bg:        linear-gradient(135deg, #6366f1, #4f46e5);
-      --save-btn-shadow:    rgba(99,102,241,.4);
-      --hint-bg:            rgba(255,255,255,.04);
-      --hint-border:        rgba(255,255,255,.06);
-      --hook-btn-bg:        rgba(139,92,246,.12);
-      --hook-btn-bd:        rgba(139,92,246,.35);
-      --hook-btn-tx:        #a78bfa;
+      --bg-page:        #111118;
+      --bg-card:        #1c1c23;
+      --bg-nav:         #111118;
+      --bg-input:       #2a2a34;
+      --bg-input-focus: #32323e;
+      --border:         #2c2c38;
+      --border-focus:   #5e6ad2;
+      --text-primary:   #e2e2e8;
+      --text-muted:     #73737c;
+      --text-nav:       #a8a8b2;
+      --accent:         #5e6ad2;
+      --accent-hover:   #8d95e0;
+      --accent-grad:    linear-gradient(135deg, #5e6ad2, #8d95e0);
+      --success:        #4ade80;
+      --danger:         #f87171;
+      --shadow:         0 4px 24px rgba(0,0,0,.5);
+      --shadow-card:    0 1px 3px rgba(0,0,0,.25), 0 0 0 1px rgba(255,255,255,.04);
+      --table-head:     #1a1a21;
+      --table-row-hover: #21212a;
+      --code-bg:        #0f0f15;
+      /* 설정 페이지 호환 */
+      --grad-gate:           linear-gradient(135deg, #5e6ad2, #4a57c4);
+      --grad-merge:          linear-gradient(135deg, #4ade80, #22c55e);
+      --grad-notify:         linear-gradient(135deg, #fbbf24, #f59e0b);
+      --grad-hook:           linear-gradient(135deg, #a78bfa, #8b5cf6);
+      --title-gradient:      linear-gradient(135deg, #8d95e0, #c084fc);
+      --btn-gate-active-bg:  rgba(94,106,210,.15);
+      --btn-gate-active-bd:  #5e6ad2;
+      --btn-gate-active-tx:  #8d95e0;
+      --save-btn-bg:         linear-gradient(135deg, #5e6ad2, #4a57c4);
+      --save-btn-shadow:     rgba(94,106,210,.4);
+      --hint-bg:             rgba(255,255,255,.03);
+      --hint-border:         rgba(255,255,255,.05);
+      --hook-btn-bg:         rgba(139,92,246,.1);
+      --hook-btn-bd:         rgba(139,92,246,.3);
+      --hook-btn-tx:         #a78bfa;
     }
 
-    /* ── 클린 카드 (라이트) ───────────────────── */
+    /* ── 라이트 테마 (Vercel 스타일) ──────────── */
     [data-theme="light"] {
-      --bg-page:      #f1f5f9;
-      --bg-card:      #ffffff;
-      --bg-nav:       #1e293b;
-      --bg-input:     #f8fafc;
+      --bg-page:        #f5f5f7;
+      --bg-card:        #ffffff;
+      --bg-nav:         #000000;
+      --bg-input:       #f5f5f7;
       --bg-input-focus: #ffffff;
-      --border:       #e2e8f0;
-      --border-focus: #6366f1;
-      --text-primary: #1e293b;
-      --text-muted:   #94a3b8;
-      --text-nav:     #cbd5e1;
-      --accent:       #6366f1;
-      --accent-hover: #4f46e5;
-      --accent-grad:  linear-gradient(135deg, #667eea, #764ba2);
-      --success:      #10b981;
-      --danger:       #ef4444;
-      --shadow:       0 4px 16px rgba(0,0,0,0.08);
-      --shadow-card:  0 2px 8px rgba(0,0,0,0.06);
-      --table-head:   #f8fafc;
-      --table-row-hover: #f8fafc;
-      --code-bg:      #f1f5f9;
-      /* 설정 페이지 */
-      --grad-gate:          linear-gradient(135deg, #818cf8, #6366f1);
-      --grad-merge:         linear-gradient(135deg, #34d399, #059669);
-      --grad-notify:        linear-gradient(135deg, #fcd34d, #f59e0b);
-      --grad-hook:          linear-gradient(135deg, #c4b5fd, #8b5cf6);
-      --title-gradient:     linear-gradient(135deg, #4f46e5, #7c3aed);
-      --btn-gate-active-bg: rgba(79,70,229,.09);
-      --btn-gate-active-bd: #4f46e5;
-      --btn-gate-active-tx: #4f46e5;
-      --save-btn-bg:        linear-gradient(135deg, #4f46e5, #7c3aed);
-      --save-btn-shadow:    rgba(79,70,229,.3);
-      --hint-bg:            #f8fafc;
-      --hint-border:        #e2e8f0;
-      --hook-btn-bg:        rgba(124,58,237,.07);
-      --hook-btn-bd:        rgba(124,58,237,.25);
-      --hook-btn-tx:        #7c3aed;
+      --border:         #e5e5e8;
+      --border-focus:   #5e6ad2;
+      --text-primary:   #111118;
+      --text-muted:     #8a8a96;
+      --text-nav:       #e5e5e8;
+      --accent:         #5e6ad2;
+      --accent-hover:   #4a57c4;
+      --accent-grad:    linear-gradient(135deg, #5e6ad2, #4a57c4);
+      --success:        #16a34a;
+      --danger:         #dc2626;
+      --shadow:         0 2px 8px rgba(0,0,0,.07), 0 0 0 1px rgba(0,0,0,.04);
+      --shadow-card:    0 1px 3px rgba(0,0,0,.05), 0 0 0 1px rgba(0,0,0,.05);
+      --table-head:     #f9f9fb;
+      --table-row-hover: #f5f5f7;
+      --code-bg:        #f5f5f7;
+      /* 설정 페이지 호환 */
+      --grad-gate:           linear-gradient(135deg, #8d95e0, #5e6ad2);
+      --grad-merge:          linear-gradient(135deg, #4ade80, #16a34a);
+      --grad-notify:         linear-gradient(135deg, #fcd34d, #f59e0b);
+      --grad-hook:           linear-gradient(135deg, #c4b5fd, #8b5cf6);
+      --title-gradient:      linear-gradient(135deg, #4a57c4, #7c3aed);
+      --btn-gate-active-bg:  rgba(94,106,210,.08);
+      --btn-gate-active-bd:  #5e6ad2;
+      --btn-gate-active-tx:  #5e6ad2;
+      --save-btn-bg:         linear-gradient(135deg, #5e6ad2, #7c3aed);
+      --save-btn-shadow:     rgba(94,106,210,.25);
+      --hint-bg:             #f9f9fb;
+      --hint-border:         #e5e5e8;
+      --hook-btn-bg:         rgba(124,58,237,.06);
+      --hook-btn-bd:         rgba(124,58,237,.2);
+      --hook-btn-tx:         #7c3aed;
     }
 
     /* ── 글래스모피즘 ─────────────────────────── */
     [data-theme="glass"] {
-      --bg-page:      #0f3460;
-      --bg-card:      rgba(255,255,255,0.07);
-      --bg-nav:       rgba(15,20,60,0.85);
-      --bg-input:     rgba(255,255,255,0.08);
-      --bg-input-focus: rgba(255,255,255,0.14);
-      --border:       rgba(255,255,255,0.14);
-      --border-focus: #818cf8;
-      --text-primary: #e2e8f0;
-      --text-muted:   rgba(255,255,255,0.45);
-      --text-nav:     #cbd5e1;
-      --accent:       #818cf8;
-      --accent-hover: #a5b4fc;
-      --accent-grad:  linear-gradient(135deg, #6366f1, #ec4899);
-      --success:      #10b981;
-      --danger:       #ef4444;
-      --shadow:       0 8px 32px rgba(0,0,0,0.4);
-      --shadow-card:  0 4px 20px rgba(0,0,0,0.35);
-      --table-head:   rgba(255,255,255,0.05);
-      --table-row-hover: rgba(255,255,255,0.05);
-      --code-bg:      rgba(0,0,0,0.25);
-      /* 설정 페이지 */
-      --grad-gate:          linear-gradient(135deg, rgba(129,140,248,.88), rgba(99,102,241,.88));
-      --grad-merge:         linear-gradient(135deg, rgba(52,211,153,.88), rgba(16,185,129,.88));
-      --grad-notify:        linear-gradient(135deg, rgba(251,191,36,.88), rgba(245,158,11,.88));
-      --grad-hook:          linear-gradient(135deg, rgba(196,181,253,.88), rgba(139,92,246,.88));
-      --title-gradient:     linear-gradient(135deg, #c084fc, #f472b6);
-      --btn-gate-active-bg: rgba(129,140,248,.2);
-      --btn-gate-active-bd: #818cf8;
-      --btn-gate-active-tx: #c4b5fd;
-      --save-btn-bg:        linear-gradient(135deg, #818cf8, #c084fc);
-      --save-btn-shadow:    rgba(192,132,252,.35);
-      --hint-bg:            rgba(255,255,255,.05);
-      --hint-border:        rgba(255,255,255,.08);
-      --hook-btn-bg:        rgba(196,181,253,.1);
-      --hook-btn-bd:        rgba(196,181,253,.3);
-      --hook-btn-tx:        #c4b5fd;
+      --bg-page:        #0c0e1a;
+      --bg-card:        rgba(255,255,255,0.06);
+      --bg-nav:         rgba(12,14,26,0.9);
+      --bg-input:       rgba(255,255,255,0.07);
+      --bg-input-focus: rgba(255,255,255,0.12);
+      --border:         rgba(255,255,255,0.12);
+      --border-focus:   #8d95e0;
+      --text-primary:   #e2e2e8;
+      --text-muted:     rgba(255,255,255,0.4);
+      --text-nav:       #c8c8d4;
+      --accent:         #8d95e0;
+      --accent-hover:   #b0b8f0;
+      --accent-grad:    linear-gradient(135deg, #5e6ad2, #ec4899);
+      --success:        #4ade80;
+      --danger:         #f87171;
+      --shadow:         0 8px 32px rgba(0,0,0,.5);
+      --shadow-card:    0 4px 20px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.06);
+      --table-head:     rgba(255,255,255,0.04);
+      --table-row-hover: rgba(255,255,255,0.04);
+      --code-bg:        rgba(0,0,0,0.3);
+      /* 설정 페이지 호환 */
+      --grad-gate:           linear-gradient(135deg, rgba(141,149,224,.9), rgba(94,106,210,.9));
+      --grad-merge:          linear-gradient(135deg, rgba(74,222,128,.9), rgba(34,197,94,.9));
+      --grad-notify:         linear-gradient(135deg, rgba(251,191,36,.9), rgba(245,158,11,.9));
+      --grad-hook:           linear-gradient(135deg, rgba(196,181,253,.9), rgba(139,92,246,.9));
+      --title-gradient:      linear-gradient(135deg, #c084fc, #f472b6);
+      --btn-gate-active-bg:  rgba(141,149,224,.18);
+      --btn-gate-active-bd:  #8d95e0;
+      --btn-gate-active-tx:  #c4b5fd;
+      --save-btn-bg:         linear-gradient(135deg, #8d95e0, #c084fc);
+      --save-btn-shadow:     rgba(192,132,252,.3);
+      --hint-bg:             rgba(255,255,255,.04);
+      --hint-border:         rgba(255,255,255,.07);
+      --hook-btn-bg:         rgba(196,181,253,.08);
+      --hook-btn-bd:         rgba(196,181,253,.25);
+      --hook-btn-tx:         #c4b5fd;
     }
 
     /* ── 리셋 & 기본 ──────────────────────────── */
-    *, *::before, *::after { box-sizing: border-box; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    *:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+      border-radius: var(--radius-xs);
+    }
     body {
-      font-family: system-ui, -apple-system, sans-serif;
-      margin: 0;
+      font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont,
+                   'Segoe UI', system-ui, sans-serif;
       background-color: var(--bg-page);
       color: var(--text-primary);
       transition: background-color var(--transition), color var(--transition);
       min-height: 100vh;
+      font-size: var(--fs-md);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
     }
     body[data-theme="glass"] {
-      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0c0e1a 100%);
       background-attachment: fixed;
     }
 
@@ -151,54 +185,79 @@
     nav {
       background: var(--bg-nav);
       color: var(--text-nav);
-      padding: 0 2rem;
+      padding: 0 1.5rem;
       display: flex;
       align-items: center;
-      gap: 2rem;
-      height: 56px;
+      gap: var(--space-2);
+      height: 52px;
       position: sticky;
       top: 0;
       z-index: 100;
-      box-shadow: 0 1px 0 rgba(255,255,255,0.06), var(--shadow);
+      box-shadow: 0 1px 0 rgba(255,255,255,0.06);
       backdrop-filter: blur(12px);
     }
     .nav-logo {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: var(--space-2);
       text-decoration: none;
       color: #fff;
+      margin-right: var(--space-2);
+      flex-shrink: 0;
     }
     .nav-logo-icon {
-      width: 28px;
-      height: 28px;
+      width: 26px;
+      height: 26px;
       background: var(--accent-grad);
       border-radius: 7px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 14px;
+      font-size: 13px;
       flex-shrink: 0;
     }
-    .nav-logo strong { font-size: 15px; letter-spacing: -.2px; }
+    .nav-logo strong { font-size: var(--fs-sm); letter-spacing: -.2px; font-weight: 600; }
+    .nav-links { display: flex; align-items: center; gap: 2px; }
     nav a.nav-link {
       color: var(--text-muted);
       text-decoration: none;
-      font-size: 14px;
-      transition: color var(--transition);
+      font-size: var(--fs-sm);
+      font-weight: 500;
+      padding: 5px 10px;
+      border-radius: var(--radius-sm);
+      transition: color var(--transition), background var(--transition);
     }
-    nav a.nav-link:hover { color: var(--text-nav); }
+    nav a.nav-link:hover { color: var(--text-nav); background: rgba(255,255,255,.06); }
+    nav a.nav-link[aria-current="page"] { color: #fff; background: rgba(255,255,255,.1); }
     .nav-spacer { flex: 1; }
 
-    /* ── 사용자 정보 & 로그아웃 ──────────────────────── */
+    /* 모바일 햄버거 */
+    .nav-hamburger {
+      display: none;
+      background: none;
+      border: 1px solid rgba(255,255,255,.12);
+      color: var(--text-nav);
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 15px;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background var(--transition);
+    }
+    .nav-hamburger:hover { background: rgba(255,255,255,.08); }
+
+    /* ── 사용자 정보 & 로그아웃 ──────────────── */
     .nav-user {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: var(--space-2);
       flex-shrink: 0;
     }
     .nav-user-name {
-      font-size: 13px;
+      font-size: var(--fs-xs);
       color: var(--text-nav);
       white-space: nowrap;
       max-width: 140px;
@@ -208,97 +267,80 @@
     .nav-logout-btn {
       display: flex;
       align-items: center;
-      background: rgba(255,255,255,0.08);
-      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.1);
       color: var(--text-nav);
-      padding: 6px 12px;
-      border-radius: 20px;
+      padding: 5px 10px;
+      border-radius: var(--radius-pill);
       cursor: pointer;
-      font-size: 13px;
+      font-size: var(--fs-xs);
+      font-family: inherit;
       transition: background var(--transition), border-color var(--transition), color var(--transition);
       white-space: nowrap;
     }
     .nav-logout-btn:hover {
-      background: rgba(239, 68, 68, 0.18);
-      border-color: rgba(239, 68, 68, 0.45);
+      background: rgba(239,68,68,.15);
+      border-color: rgba(239,68,68,.4);
       color: #fca5a5;
     }
 
     /* ── 테마 스위처 ──────────────────────────── */
-    .theme-switcher {
-      position: relative;
-    }
+    .theme-switcher { position: relative; }
     .theme-btn {
       display: flex;
       align-items: center;
-      gap: 6px;
-      background: rgba(255,255,255,0.08);
-      border: 1px solid rgba(255,255,255,0.12);
+      gap: var(--space-1);
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.1);
       color: var(--text-nav);
-      padding: 6px 12px;
-      border-radius: 20px;
+      padding: 5px 10px;
+      border-radius: var(--radius-pill);
       cursor: pointer;
-      font-size: 13px;
+      font-size: var(--fs-xs);
+      font-family: inherit;
       transition: background var(--transition), border-color var(--transition);
       white-space: nowrap;
     }
-    .theme-btn:hover {
-      background: rgba(255,255,255,0.14);
-      border-color: rgba(255,255,255,0.2);
-    }
-    .theme-btn .chevron {
-      font-size: 10px;
-      opacity: 0.6;
-      transition: transform var(--transition);
-    }
+    .theme-btn:hover { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.18); }
+    .theme-btn .chevron { font-size: 10px; opacity: 0.5; transition: transform var(--transition); }
     .theme-switcher.open .chevron { transform: rotate(180deg); }
     .theme-dropdown {
       display: none;
       position: absolute;
       right: 0;
-      top: calc(100% + 8px);
+      top: calc(100% + 6px);
       background: var(--bg-card);
       border: 1px solid var(--border);
-      border-radius: var(--radius-card);
-      box-shadow: var(--shadow);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-md);
       min-width: 180px;
       overflow: hidden;
       z-index: 200;
     }
     .theme-switcher.open .theme-dropdown { display: block; }
-    body[data-theme="glass"] .theme-dropdown {
-      backdrop-filter: blur(20px);
-    }
+    body[data-theme="glass"] .theme-dropdown { backdrop-filter: blur(20px); }
     .theme-option {
       display: flex;
       align-items: center;
       gap: 10px;
-      padding: 10px 14px;
+      padding: 9px 14px;
       cursor: pointer;
-      font-size: 13px;
+      font-size: var(--fs-sm);
       color: var(--text-primary);
       transition: background var(--transition);
     }
-    .theme-option:hover { background: rgba(99,102,241,0.12); }
-    .theme-option.active {
-      color: var(--accent);
-      background: rgba(99,102,241,0.1);
-      font-weight: 600;
-    }
-    .theme-option.active::after {
-      content: '✓';
-      margin-left: auto;
-      font-size: 12px;
-    }
+    .theme-option:hover { background: rgba(94,106,210,.1); }
+    .theme-option.active { color: var(--accent); background: rgba(94,106,210,.08); font-weight: 600; }
+    .theme-option.active::after { content: '✓'; margin-left: auto; font-size: 11px; }
 
     /* ── 레이아웃 ──────────────────────────────── */
     .container {
-      max-width: 1200px;
+      max-width: var(--container-lg);
       margin: 0 auto;
-      padding: 2rem 1.5rem;
+      padding: var(--space-7) var(--space-6);
     }
 
-    /* ── 카드 ──────────────────────────────────── */
+    /* ── 레거시 카드 (기존 페이지 호환) ─────── */
     .card {
       background: var(--bg-card);
       border-radius: var(--radius-card);
@@ -308,44 +350,62 @@
       border: 1px solid var(--border);
       transition: background var(--transition), border-color var(--transition);
     }
-    body[data-theme="glass"] .card {
-      backdrop-filter: blur(16px);
+    body[data-theme="glass"] .card { backdrop-filter: blur(16px); }
+
+    /* ── 구조화 카드 (신규 페이지 표준) ──────── */
+    .s-card {
+      background: var(--bg-card);
+      border-radius: var(--radius-card);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-card);
+      margin-bottom: var(--space-5);
+      overflow: hidden;
+      transition: background var(--transition), border-color var(--transition);
     }
+    .s-card-hdr {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+    }
+    .s-card-body { padding: var(--space-5) 20px; }
+    body[data-theme="glass"] .s-card { backdrop-filter: blur(16px); }
 
     /* ── 등급 배지 ─────────────────────────────── */
     .grade {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 28px;
-      height: 28px;
-      border-radius: 6px;
+      width: 26px;
+      height: 26px;
+      border-radius: var(--radius-xs);
       font-weight: 700;
-      font-size: 13px;
+      font-size: var(--fs-xs);
     }
-    .grade-A { background: rgba(16,185,129,0.15); color: #10b981; }
-    .grade-B { background: rgba(59,130,246,0.15); color: #3b82f6; }
-    .grade-C { background: rgba(245,158,11,0.15); color: #f59e0b; }
-    .grade-D { background: rgba(249,115,22,0.15); color: #f97316; }
-    .grade-F { background: rgba(239,68,68,0.15);  color: #ef4444; }
+    .grade-A { background: rgba(74,222,128,.12); color: var(--grade-a); }
+    .grade-B { background: rgba(96,165,250,.12); color: var(--grade-b); }
+    .grade-C { background: rgba(251,191,36,.12);  color: var(--grade-c); }
+    .grade-D { background: rgba(251,146,60,.12);  color: var(--grade-d); }
+    .grade-F { background: rgba(248,113,113,.12); color: var(--grade-f); }
 
     /* ── 테이블 ────────────────────────────────── */
     table { width: 100%; border-collapse: collapse; }
     th {
-      padding: .75rem 1rem;
+      padding: .625rem 1rem;
       text-align: left;
       background: var(--table-head);
       color: var(--text-muted);
-      font-size: 12px;
+      font-size: var(--fs-xs);
       font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: .05em;
+      letter-spacing: .06em;
       border-bottom: 1px solid var(--border);
     }
     td {
-      padding: .875rem 1rem;
+      padding: .75rem 1rem;
       border-bottom: 1px solid var(--border);
-      font-size: 14px;
+      font-size: var(--fs-sm);
       color: var(--text-primary);
     }
     tbody tr:last-child td { border-bottom: none; }
@@ -354,83 +414,108 @@
 
     /* ── 링크 ──────────────────────────────────── */
     a { color: var(--accent); text-decoration: none; }
-    a:hover { color: var(--accent-hover); text-decoration: underline; }
+    a:hover { color: var(--accent-hover); }
 
-    /* ── 버튼 ──────────────────────────────────── */
+    /* ── 버튼 (베이스) ─────────────────────────── */
     .btn {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      padding: .5rem 1.25rem;
+      justify-content: center;
+      gap: var(--space-1);
+      padding: 7px 14px;
       border-radius: var(--radius-btn);
-      border: none;
+      border: 1px solid transparent;
       cursor: pointer;
-      font-size: 14px;
-      font-weight: 600;
+      font-size: var(--fs-sm);
+      font-weight: 500;
+      font-family: inherit;
       transition: all var(--transition);
+      white-space: nowrap;
+      text-decoration: none;
+      letter-spacing: -.01em;
     }
-    .btn-primary {
-      background: var(--accent-grad);
+    /* Primary — 기존 .btn-primary + 새 .btn--primary */
+    .btn-primary, .btn--primary {
+      background: var(--accent);
       color: #fff;
-      box-shadow: 0 2px 8px rgba(99,102,241,0.35);
+      border-color: var(--accent);
+      box-shadow: 0 1px 3px rgba(94,106,210,.25);
     }
-    .btn-primary:hover {
+    .btn-primary:hover, .btn--primary:hover {
+      background: var(--accent-hover);
+      border-color: var(--accent-hover);
+      color: #fff;
       transform: translateY(-1px);
-      box-shadow: 0 4px 16px rgba(99,102,241,0.5);
+      box-shadow: 0 3px 12px rgba(94,106,210,.4);
+      text-decoration: none;
     }
-    .btn-ghost {
+    /* Ghost — 기존 .btn-ghost + 새 .btn--ghost */
+    .btn-ghost, .btn--ghost {
       background: transparent;
       color: var(--text-muted);
-      border: 1px solid var(--border);
+      border-color: var(--border);
     }
-    .btn-ghost:hover {
+    .btn-ghost:hover, .btn--ghost:hover {
       border-color: var(--accent);
       color: var(--accent);
+      background: rgba(94,106,210,.06);
+      text-decoration: none;
     }
+    /* Danger */
+    .btn--danger {
+      background: transparent;
+      color: var(--danger);
+      border-color: rgba(248,113,113,.3);
+    }
+    .btn--danger:hover {
+      background: rgba(248,113,113,.1);
+      border-color: var(--danger);
+    }
+    /* Sizes */
+    .btn--sm { padding: 4px 10px; font-size: var(--fs-xs); }
+    .btn--lg { padding: 10px 20px; font-size: var(--fs-md); }
 
     /* ── 페이지 헤더 ───────────────────────────── */
     .page-header {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       gap: 1rem;
-      margin-bottom: 1.75rem;
+      margin-bottom: var(--space-7);
     }
-    .page-header h2 {
-      margin: 0;
-      font-size: 1.4rem;
+    .page-header-text { flex: 1; }
+    .page-header h2, .page-header h1 {
+      margin: 0 0 2px;
+      font-size: 1.35rem;
       font-weight: 700;
       color: var(--text-primary);
+      letter-spacing: -.02em;
     }
     .page-header .subtitle {
-      font-size: 13px;
+      font-size: var(--fs-sm);
       color: var(--text-muted);
       margin-top: 2px;
     }
     .back-btn {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
+      gap: var(--space-1);
       color: var(--text-muted);
-      font-size: 13px;
+      font-size: var(--fs-sm);
       text-decoration: none;
       padding: 4px 10px;
-      border-radius: 6px;
+      border-radius: var(--radius-sm);
       border: 1px solid var(--border);
       transition: all var(--transition);
       flex-shrink: 0;
     }
-    .back-btn:hover {
-      color: var(--text-primary);
-      border-color: var(--accent);
-      text-decoration: none;
-    }
+    .back-btn:hover { color: var(--text-primary); border-color: var(--accent); text-decoration: none; }
 
     /* ── 코드 ──────────────────────────────────── */
     code {
       background: var(--code-bg);
       padding: 2px 6px;
-      border-radius: 4px;
-      font-size: 12px;
+      border-radius: var(--radius-xs);
+      font-size: var(--fs-xs);
       font-family: 'Menlo', 'Consolas', monospace;
       color: var(--accent-hover);
       border: 1px solid var(--border);
@@ -438,7 +523,7 @@
 
     /* ── 섹션 제목 ─────────────────────────────── */
     .section-title {
-      font-size: 11px;
+      font-size: var(--fs-xs);
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: .08em;
@@ -447,36 +532,68 @@
     }
 
     /* ── 테이블 스크롤 래퍼 ────────────────────── */
-    .table-wrap {
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
+    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+    /* ── 스켈레톤 로더 ─────────────────────────── */
+    @keyframes shimmer {
+      0%   { background-position: -200% 0; }
+      100% { background-position:  200% 0; }
+    }
+    .skeleton {
+      background: linear-gradient(90deg, var(--bg-input) 25%, var(--border) 50%, var(--bg-input) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.4s infinite;
+      border-radius: var(--radius-sm);
     }
 
-    /* ── 모바일 반응형 (태블릿) ────────────────── */
+    /* ── 반응형 (태블릿) ───────────────────────── */
     @media (max-width: 768px) {
-      nav { padding: 0 1rem; gap: 1rem; }
-      .container { padding: 1.25rem 0.75rem; }
-      .card { padding: 1rem; border-radius: 8px; }
-      th { padding: .5rem .625rem; font-size: 11px; }
-      td { padding: .625rem; font-size: 13px; }
-      .page-header { flex-wrap: wrap; gap: .75rem; }
-      .page-header h2 { font-size: 1.2rem; }
-      .back-btn { padding: 3px 8px; font-size: 12px; }
-      .btn { padding: .4rem 1rem; font-size: 13px; }
-      .nav-user-name { max-width: 90px; }
-      .nav-logout-btn { padding: 4px 9px; font-size: 12px; }
+      nav { padding: 0 1rem; gap: var(--space-1); }
+      .nav-links { display: none; }
+      .nav-links.open {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        position: fixed;
+        top: 52px;
+        left: 0;
+        right: 0;
+        background: var(--bg-nav);
+        padding: var(--space-3) var(--space-4) var(--space-4);
+        border-bottom: 1px solid rgba(255,255,255,.08);
+        gap: 2px;
+        z-index: 99;
+        box-shadow: var(--shadow-md);
+      }
+      .nav-links.open a.nav-link { width: 100%; padding: 8px 10px; }
+      .nav-hamburger { display: flex; }
+      .container { padding: var(--space-5) var(--space-3); }
+      .card { padding: 1rem; border-radius: var(--radius-sm); }
+      .s-card-body { padding: var(--space-4); }
+      th { padding: .5rem .75rem; font-size: 11px; }
+      td { padding: .625rem .75rem; font-size: var(--fs-xs); }
+      .page-header { flex-wrap: wrap; gap: .75rem; margin-bottom: var(--space-5); }
+      .page-header h2, .page-header h1 { font-size: 1.15rem; }
+      .btn { padding: 6px 12px; font-size: var(--fs-xs); }
+      .nav-user-name { max-width: 80px; }
+      .nav-logout-btn { padding: 4px 9px; }
     }
 
-    /* ── 모바일 반응형 (소형) ─────────────────── */
+    /* ── 반응형 (소형) ─────────────────────────── */
     @media (max-width: 480px) {
-      nav { gap: 0.5rem; padding: 0 0.75rem; }
+      nav { gap: var(--space-1); }
       .nav-logo strong { display: none; }
       .nav-user-name { display: none; }
-      .theme-btn { padding: 5px 8px; font-size: 12px; }
-      .nav-logout-btn { padding: 4px 8px; font-size: 11px; }
-      .container { padding: 1rem 0.5rem; }
-      th { padding: .4rem .5rem; }
-      td { padding: .5rem; font-size: 12px; }
+      .theme-btn, .nav-logout-btn { padding: 4px 8px; font-size: 11px; }
+      .container { padding: var(--space-4) var(--space-2); }
+    }
+
+    /* ── 모션 감소 ─────────────────────────────── */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
     }
   </style>
 </head>
@@ -486,7 +603,10 @@
       <div class="nav-logo-icon">⚡</div>
       <strong>SCAManager</strong>
     </a>
-    <a class="nav-link" href="/">Overview</a>
+    <button class="nav-hamburger" id="navHamburger" aria-label="메뉴" aria-expanded="false">☰</button>
+    <div class="nav-links" id="navLinks">
+      <a class="nav-link" href="/">Overview</a>
+    </div>
     <div class="nav-spacer"></div>
     {% if current_user %}
     <div class="nav-user">
@@ -497,15 +617,15 @@
     </div>
     {% endif %}
     <div class="theme-switcher" id="themeSwitcher">
-      <button class="theme-btn" id="themeToggle" aria-label="테마 변경">
+      <button class="theme-btn" id="themeToggle" aria-label="테마 변경" aria-haspopup="true" aria-expanded="false">
         <span id="themeIcon">🌙</span>
         <span id="themeName">다크</span>
         <span class="chevron">▾</span>
       </button>
-      <div class="theme-dropdown" id="themeDropdown">
-        <div class="theme-option" data-theme="dark">🌙 다크 대시보드</div>
-        <div class="theme-option" data-theme="light">☀️ 클린 카드</div>
-        <div class="theme-option" data-theme="glass">✨ 글래스모피즘</div>
+      <div class="theme-dropdown" id="themeDropdown" role="menu">
+        <div class="theme-option" data-theme="dark"  role="menuitem" tabindex="0">🌙 다크 대시보드</div>
+        <div class="theme-option" data-theme="light" role="menuitem" tabindex="0">☀️ 클린 카드</div>
+        <div class="theme-option" data-theme="glass" role="menuitem" tabindex="0">✨ 글래스모피즘</div>
       </div>
     </div>
   </nav>
@@ -528,21 +648,61 @@
       });
       document.dispatchEvent(new CustomEvent('themechange', { detail: theme }));
     }
-    // 초기화
     applyTheme(localStorage.getItem('sca-theme') || 'dark');
-    // 드롭다운 토글
+
+    // nav 활성 링크
+    (function() {
+      const path = location.pathname;
+      document.querySelectorAll('nav a.nav-link').forEach(a => {
+        try {
+          const href = new URL(a.href, location.origin).pathname;
+          if (href === '/' ? path === '/' : path.startsWith(href)) {
+            a.setAttribute('aria-current', 'page');
+          }
+        } catch (_) {}
+      });
+    })();
+
+    // 테마 드롭다운
     const switcher = document.getElementById('themeSwitcher');
-    document.getElementById('themeToggle').addEventListener('click', e => {
+    const toggleBtn = document.getElementById('themeToggle');
+    toggleBtn.addEventListener('click', e => {
       e.stopPropagation();
-      switcher.classList.toggle('open');
+      const open = switcher.classList.toggle('open');
+      toggleBtn.setAttribute('aria-expanded', open);
     });
     document.querySelectorAll('.theme-option').forEach(el => {
-      el.addEventListener('click', () => {
-        applyTheme(el.dataset.theme);
-        switcher.classList.remove('open');
+      el.addEventListener('click', () => { applyTheme(el.dataset.theme); switcher.classList.remove('open'); toggleBtn.setAttribute('aria-expanded', 'false'); });
+      el.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          applyTheme(el.dataset.theme);
+          switcher.classList.remove('open');
+          toggleBtn.setAttribute('aria-expanded', 'false');
+          toggleBtn.focus();
+        }
       });
     });
-    document.addEventListener('click', () => switcher.classList.remove('open'));
+    document.addEventListener('click', () => { switcher.classList.remove('open'); toggleBtn.setAttribute('aria-expanded', 'false'); });
+
+    // 모바일 햄버거
+    const hamburger = document.getElementById('navHamburger');
+    const navLinks = document.getElementById('navLinks');
+    if (hamburger) {
+      hamburger.addEventListener('click', e => {
+        e.stopPropagation();
+        const open = navLinks.classList.toggle('open');
+        hamburger.setAttribute('aria-expanded', String(open));
+        hamburger.textContent = open ? '✕' : '☰';
+      });
+      document.addEventListener('click', () => {
+        if (navLinks.classList.contains('open')) {
+          navLinks.classList.remove('open');
+          hamburger.setAttribute('aria-expanded', 'false');
+          hamburger.textContent = '☰';
+        }
+      });
+    }
   </script>
 </body>
 </html>
