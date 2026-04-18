@@ -265,6 +265,106 @@ def test_settings_no_nested_forms():
     )
 
 
+def _render_settings(config=None):
+    """설정 페이지 HTML을 렌더링해 반환하는 헬퍼."""
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
+        id=1, full_name="owner/repo", user_id=None
+    )
+    from src.config_manager.manager import RepoConfigData
+    cfg = config or RepoConfigData(repo_full_name="owner/repo")
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.ui.router.get_repo_config", return_value=cfg):
+            r = client.get("/repos/owner%2Frepo/settings")
+    assert r.status_code == 200
+    return r.text
+
+
+def test_telegram_chat_id_in_notify_channel_card():
+    """notify_chat_id 필드가 ③ 알림 채널 카드에 존재해야 한다."""
+    html = _render_settings()
+    # ③ 알림 채널 카드 헤더(s-card-hdr hdr-notify) 이후에 notify_chat_id 입력이 있어야 함
+    notify_section_idx = html.find("s-card-hdr hdr-notify")
+    notify_chat_idx = html.find('name="notify_chat_id"')
+    assert notify_section_idx != -1, "s-card-hdr hdr-notify 카드 헤더가 없음"
+    assert notify_chat_idx != -1, "notify_chat_id 입력 필드가 없음"
+    assert notify_chat_idx > notify_section_idx, (
+        "notify_chat_id 필드가 ③ 알림 채널 카드 이전에 위치함"
+    )
+
+
+def test_telegram_chat_id_always_visible():
+    """notify_chat_id는 approve_mode와 무관하게 항상 노출되어야 한다 (is-hidden 없음)."""
+    from src.config_manager.manager import RepoConfigData
+    for mode in ("disabled", "auto", "semi-auto"):
+        cfg = RepoConfigData(repo_full_name="owner/repo", approve_mode=mode)
+        html = _render_settings(cfg)
+        # notify_chat_id 주변에 is-hidden 클래스가 없어야 함
+        idx = html.find('name="notify_chat_id"')
+        assert idx != -1, f"notify_chat_id 없음 (mode={mode})"
+        # 앞 200자에 telegramChatRow + is-hidden 조합이 없어야 함
+        surrounding = html[max(0, idx - 200): idx + 50]
+        assert "is-hidden" not in surrounding, (
+            f"approve_mode={mode}에서 notify_chat_id 주변에 is-hidden 발견"
+        )
+
+
+def test_sensitive_fields_are_masked():
+    """6개 민감 필드는 type=password로 렌더되어야 한다."""
+    from src.config_manager.manager import RepoConfigData
+    cfg = RepoConfigData(
+        repo_full_name="owner/repo",
+        notify_chat_id="-100999",
+        discord_webhook_url="https://discord.com/webhook/x",
+        slack_webhook_url="https://hooks.slack.com/x",
+        email_recipients="admin@example.com",
+        custom_webhook_url="https://example.com/hook",
+        n8n_webhook_url="https://n8n.example.com/webhook/x",
+    )
+    html = _render_settings(cfg)
+    sensitive_names = [
+        "notify_chat_id",
+        "discord_webhook_url",
+        "slack_webhook_url",
+        "email_recipients",
+        "custom_webhook_url",
+        "n8n_webhook_url",
+    ]
+    for field in sensitive_names:
+        # 해당 name 속성 주변에 type="password"가 있어야 함
+        idx = html.find(f'name="{field}"')
+        assert idx != -1, f"{field} 입력 필드 없음"
+        surrounding = html[max(0, idx - 100): idx + 100]
+        assert 'type="password"' in surrounding, (
+            f"{field}가 type=password로 마스킹되지 않음"
+        )
+
+
+def test_mask_toggle_buttons_present():
+    """마스킹 토글 버튼(.mask-toggle)이 6개 민감 필드마다 존재해야 한다."""
+    html = _render_settings()
+    assert html.count("mask-toggle") >= 6, (
+        f"mask-toggle 버튼이 6개 미만: {html.count('mask-toggle')}개 발견"
+    )
+
+
+def test_semi_auto_hint_in_pr_card():
+    """semi-auto 모드에서 ① PR 동작 카드에 hint 텍스트가 노출되어야 한다."""
+    from src.config_manager.manager import RepoConfigData
+    cfg = RepoConfigData(repo_full_name="owner/repo", approve_mode="semi-auto")
+    html = _render_settings(cfg)
+    assert "semiAutoHint" in html, "semiAutoHint 엘리먼트가 없음"
+    # PR 동작 카드(s-card-hdr hdr-gate div) 이후, Push 동작 카드(s-card-hdr hdr-merge) 이전에 hint가 있어야 함
+    gate_card_idx = html.find('s-card-hdr hdr-gate')
+    merge_card_idx = html.find('s-card-hdr hdr-merge')
+    hint_idx = html.find("semiAutoHint")
+    assert gate_card_idx != -1, "s-card-hdr hdr-gate 카드 헤더가 없음"
+    assert merge_card_idx != -1, "s-card-hdr hdr-merge 카드 헤더가 없음"
+    assert gate_card_idx < hint_idx < merge_card_idx, (
+        "semiAutoHint가 ① PR 동작 카드 안에 없음"
+    )
+
+
 def test_add_repo_page_loads():
     """GET /repos/add는 리포 추가 페이지(200 HTML)를 반환한다."""
     r = client.get("/repos/add")
