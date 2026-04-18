@@ -6,160 +6,132 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 1.75rem;
+    margin-bottom: var(--space-7);
+    gap: var(--space-4);
   }
-  .overview-header h2 {
+  .overview-title {
     margin: 0;
-    font-size: 1.4rem;
+    font-size: 1.35rem;
     font-weight: 700;
     color: var(--text-primary);
+    letter-spacing: -.02em;
   }
+  .overview-actions { display: flex; align-items: center; gap: var(--space-3); }
   .repo-count {
-    font-size: 13px;
+    font-size: var(--fs-xs);
     color: var(--text-muted);
-    background: var(--bg-card);
+    background: var(--bg-input);
     border: 1px solid var(--border);
     padding: 4px 12px;
-    border-radius: 20px;
+    border-radius: var(--radius-pill);
   }
   .repo-link {
     font-weight: 600;
-    font-size: 14px;
+    font-size: var(--fs-sm);
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-2);
     color: var(--text-primary);
     text-decoration: none;
   }
-  .repo-link:hover { color: var(--accent); text-decoration: none; }
   .repo-link::before {
     content: '';
     display: inline-block;
-    width: 8px;
-    height: 8px;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
     background: var(--success);
     flex-shrink: 0;
   }
-  .score-cell {
-    font-weight: 700;
-    font-size: 15px;
-    color: var(--text-primary);
-  }
-  .score-cell.score-high { color: var(--success); }
-  .score-cell.score-mid  { color: #f59e0b; }
-  .score-cell.score-low  { color: var(--danger); }
-  .analysis-count {
-    font-size: 13px;
-    color: var(--text-muted);
-  }
+  .repo-link:hover { color: var(--accent); text-decoration: none; }
+  .score-cell { font-weight: 700; font-size: var(--fs-base); }
+  .score-cell.score-high { color: var(--grade-a); }
+  .score-cell.score-mid  { color: var(--grade-c); }
+  .score-cell.score-low  { color: var(--grade-f); }
+  .analysis-count { font-size: var(--fs-xs); color: var(--text-muted); }
   .settings-link {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    font-size: 12px;
+    gap: var(--space-1);
+    font-size: var(--fs-xs);
     color: var(--text-muted);
     text-decoration: none;
     padding: 4px 10px;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     border: 1px solid var(--border);
     transition: all var(--transition);
   }
-  .settings-link:hover {
-    color: var(--accent);
-    border-color: var(--accent);
-    text-decoration: none;
-  }
+  .settings-link:hover { color: var(--accent); border-color: var(--accent); text-decoration: none; }
   .empty-state {
     text-align: center;
     padding: 4rem 2rem;
   }
-  .empty-state .empty-icon {
-    font-size: 3rem;
-    margin-bottom: 1rem;
-    opacity: 0.5;
-  }
-  .empty-state p {
-    color: var(--text-muted);
-    margin: 0;
-    font-size: 14px;
-    line-height: 1.6;
-  }
-  .empty-state code {
-    font-size: 12px;
-  }
+  .empty-icon { font-size: 2.5rem; margin-bottom: var(--space-4); opacity: 0.4; }
+  .empty-state p { color: var(--text-muted); margin: 0; font-size: var(--fs-sm); line-height: 1.7; }
   @media (max-width: 768px) {
-    .overview-header {
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 0.75rem;
-    }
+    .overview-header { flex-direction: column; align-items: flex-start; margin-bottom: var(--space-5); }
   }
 </style>
 
 <div class="overview-header">
-  <h2>리포지토리 현황</h2>
-  <div style="display:flex;align-items:center;gap:.75rem;">
+  <h2 class="overview-title">리포지토리 현황</h2>
+  <div class="overview-actions">
     {% if repos %}
     <span class="repo-count">{{ repos | length }}개 리포</span>
     {% endif %}
-    <a href="/repos/add" class="btn btn-primary" style="padding:.4rem 1rem;font-size:13px;">+ 리포 추가</a>
+    <a href="/repos/add" class="btn btn-primary btn--sm">+ 리포 추가</a>
   </div>
 </div>
 
 {% if repos %}
-<div class="card" style="padding:0;overflow:hidden;">
+<div class="s-card" style="margin-bottom:0">
   <div class="table-wrap">
-  <table>
-    <thead>
+    <table>
+      <thead>
+        <tr>
+          <th>리포지토리</th>
+          <th>분석</th>
+          <th>최근 점수</th>
+          <th>평균 점수</th>
+          <th>등급</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for item in repos %}
       <tr>
-        <th>리포지토리</th>
-        <th>분석 수</th>
-        <th>최근 점수</th>
-        <th>평균 점수</th>
-        <th>등급</th>
-        <th></th>
+        <td>
+          <a class="repo-link" href="/repos/{{ item.full_name }}">{{ item.full_name }}</a>
+        </td>
+        <td><span class="analysis-count">{{ item.analysis_count }}회</span></td>
+        <td>
+          {% if item.latest_score is not none %}
+          <span class="score-cell {% if item.latest_score >= 75 %}score-high{% elif item.latest_score >= 50 %}score-mid{% else %}score-low{% endif %}">
+            {{ item.latest_score }}
+          </span>
+          {% else %}
+          <span style="color:var(--text-muted)">—</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if item.avg_score %}
+          <span class="score-cell {% if item.avg_score >= 75 %}score-high{% elif item.avg_score >= 50 %}score-mid{% else %}score-low{% endif %}">
+            {{ item.avg_score }}
+          </span>
+          {% else %}
+          <span style="color:var(--text-muted)">—</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if item.latest_grade %}
+          <span class="grade grade-{{ item.latest_grade }}">{{ item.latest_grade }}</span>
+          {% endif %}
+        </td>
+        <td><a class="settings-link" href="/repos/{{ item.full_name }}/settings">⚙️ 설정</a></td>
       </tr>
-    </thead>
-    <tbody>
-    {% for item in repos %}
-    <tr>
-      <td>
-        <a class="repo-link" href="/repos/{{ item.full_name }}">{{ item.full_name }}</a>
-      </td>
-      <td>
-        <span class="analysis-count">{{ item.analysis_count }}회</span>
-      </td>
-      <td>
-        {% if item.latest_score is not none %}
-        <span class="score-cell {% if item.latest_score >= 75 %}score-high{% elif item.latest_score >= 50 %}score-mid{% else %}score-low{% endif %}">
-          {{ item.latest_score }}
-        </span>
-        {% else %}
-        <span style="color:var(--text-muted)">—</span>
-        {% endif %}
-      </td>
-      <td>
-        {% if item.avg_score %}
-        <span class="score-cell {% if item.avg_score >= 75 %}score-high{% elif item.avg_score >= 50 %}score-mid{% else %}score-low{% endif %}">
-          {{ item.avg_score }}
-        </span>
-        {% else %}
-        <span style="color:var(--text-muted)">—</span>
-        {% endif %}
-      </td>
-      <td>
-        {% if item.latest_grade %}
-        <span class="grade grade-{{ item.latest_grade }}">{{ item.latest_grade }}</span>
-        {% endif %}
-      </td>
-      <td>
-        <a class="settings-link" href="/repos/{{ item.full_name }}/settings">⚙️ 설정</a>
-      </td>
-    </tr>
-    {% endfor %}
-    </tbody>
-  </table>
+      {% endfor %}
+      </tbody>
+    </table>
   </div>
 </div>
 {% else %}
