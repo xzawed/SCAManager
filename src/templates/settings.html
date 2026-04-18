@@ -53,6 +53,29 @@
   /* Progressive Disclosure */
   .is-hidden { display:none !important; }
 
+  /* 프리셋 카드 */
+  .hdr-preset { background: linear-gradient(135deg, #6366f1, #ec4899); }
+  .preset-desc { font-size:12px; color:var(--text-muted); margin-bottom:.85rem; line-height:1.5; }
+  .preset-btns { display:grid; grid-template-columns:repeat(3,1fr); gap:.6rem; }
+  .preset-btn {
+    padding:.95rem .5rem; border-radius:10px;
+    border:1.5px solid var(--border); background:var(--bg-input); color:var(--text-primary);
+    cursor:pointer; transition:all var(--transition);
+    display:flex; flex-direction:column; align-items:center; gap:.3rem;
+    font-family:inherit;
+  }
+  .preset-btn:hover {
+    border-color:var(--accent); transform:translateY(-1px);
+    box-shadow:0 4px 12px rgba(99,102,241,.18);
+  }
+  .preset-btn.recently-applied {
+    border-color:var(--success); background:rgba(16,185,129,.08);
+    box-shadow:0 0 0 3px rgba(16,185,129,.12);
+  }
+  .preset-icon { font-size:22px; line-height:1; }
+  .preset-name { font-size:13px; font-weight:700; }
+  .preset-hint { font-size:11px; color:var(--text-muted); text-align:center; line-height:1.3; }
+
   /* Gate 모드 버튼 */
   .gate-btns { display:grid; grid-template-columns:repeat(3,1fr); gap:.4rem; margin-bottom:1rem; }
   .gate-mode-btn {
@@ -202,6 +225,7 @@
   @media(max-width:640px) {
     .settings-grid { grid-template-columns:1fr; }
     .channel-grid  { grid-template-columns:1fr; }
+    .preset-btns   { grid-template-columns:1fr; }
     .repo-badge { display:none; }
     .settings-wrap { padding:1rem .75rem 5rem; }
   }
@@ -229,6 +253,38 @@
 
   <form method="post" action="/repos/{{ repo_name }}/settings">
     <input type="hidden" name="approve_mode" id="approveModeValue" value="{{ config.approve_mode }}">
+
+    <!-- 🚀 빠른 설정 (프리셋) -->
+    <div class="s-card" style="margin-bottom:1rem;">
+      <div class="s-card-hdr hdr-preset">
+        <span class="hdr-icon">🚀</span>
+        <span class="hdr-title">빠른 설정</span>
+        <span class="hdr-badge">원클릭 프리셋</span>
+      </div>
+      <div class="s-card-body">
+        <div class="preset-desc">
+          권장 설정을 한 번에 적용합니다. 적용 후 <strong>저장 버튼</strong>을 눌러 반영하세요.
+          알림 채널(Slack·Discord 등)은 변경되지 않습니다.
+        </div>
+        <div class="preset-btns">
+          <button type="button" class="preset-btn" onclick="applyPreset('minimal', this)">
+            <div class="preset-icon">🌱</div>
+            <div class="preset-name">최소</div>
+            <div class="preset-hint">PR 댓글만 활성화</div>
+          </button>
+          <button type="button" class="preset-btn" onclick="applyPreset('standard', this)">
+            <div class="preset-icon">⚙️</div>
+            <div class="preset-name">표준</div>
+            <div class="preset-hint">커밋 코멘트 + 자동 승인<br>(75 / 50)</div>
+          </button>
+          <button type="button" class="preset-btn" onclick="applyPreset('strict', this)">
+            <div class="preset-icon">🛡️</div>
+            <div class="preset-name">엄격</div>
+            <div class="preset-hint">이슈 생성 + Auto Merge<br>(85 / 60 / 85)</div>
+          </button>
+        </div>
+      </div>
+    </div>
 
     <div class="settings-grid">
 
@@ -499,6 +555,95 @@
 </div>
 
 <script>
+  // 프리셋 정의 — 알림 채널 URL은 건드리지 않음
+  const PRESETS = {
+    minimal: {
+      pr_review_comment: true,
+      commit_comment: false,
+      create_issue: false,
+      approve_mode: 'disabled',
+      auto_merge: false,
+      approve_threshold: 75,
+      reject_threshold: 50,
+      merge_threshold: 75,
+    },
+    standard: {
+      pr_review_comment: true,
+      commit_comment: true,
+      create_issue: false,
+      approve_mode: 'auto',
+      auto_merge: false,
+      approve_threshold: 75,
+      reject_threshold: 50,
+      merge_threshold: 75,
+    },
+    strict: {
+      pr_review_comment: true,
+      commit_comment: true,
+      create_issue: true,
+      approve_mode: 'auto',
+      auto_merge: true,
+      approve_threshold: 85,
+      reject_threshold: 60,
+      merge_threshold: 85,
+    },
+  };
+  const PRESET_LABELS = { minimal: '최소', standard: '표준', strict: '엄격' };
+
+  function applyPreset(name, btn) {
+    const p = PRESETS[name];
+    if (!p) return;
+
+    // 토글
+    document.querySelector('input[name="pr_review_comment"]').checked = p.pr_review_comment;
+    document.querySelector('input[name="commit_comment"]').checked = p.commit_comment;
+    document.querySelector('input[name="create_issue"]').checked = p.create_issue;
+    document.querySelector('input[name="auto_merge"]').checked = p.auto_merge;
+
+    // 슬라이더 + 숫자 동기화
+    _setPair('approve_threshold', 'approveVal', p.approve_threshold);
+    _setPair('reject_threshold', 'rejectVal', p.reject_threshold);
+    _setPair('merge_threshold', 'mergeVal', p.merge_threshold);
+
+    // Approve mode + Progressive Disclosure (기존 헬퍼 재사용)
+    setApproveMode(p.approve_mode);
+    toggleMergeThreshold(p.auto_merge);
+
+    // hint 텍스트 업데이트
+    const hint = document.querySelector('.range-hint');
+    if (hint) {
+      hint.innerHTML =
+        '💡 <strong>' + p.approve_threshold + '점 이상</strong> 자동 승인 · ' +
+        '<strong>' + p.reject_threshold + '점 미만</strong> 자동 반려 · 그 사이 스킵';
+    }
+
+    // 시각 피드백
+    document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('recently-applied'));
+    if (btn) btn.classList.add('recently-applied');
+
+    _showPresetToast(PRESET_LABELS[name]);
+  }
+
+  function _setPair(rangeName, numId, value) {
+    const range = document.querySelector('input[name="' + rangeName + '"]');
+    const num = document.getElementById(numId);
+    if (range) range.value = value;
+    if (num) num.value = value;
+  }
+
+  function _showPresetToast(label) {
+    const existing = document.getElementById('presetToast');
+    if (existing) existing.remove();
+    const toast = document.createElement('div');
+    toast.id = 'presetToast';
+    toast.className = 'save-toast save-toast-ok';
+    toast.innerHTML = '✅ <strong>' + label + '</strong> 프리셋 적용됨 — 저장 버튼을 눌러주세요';
+    toast.style.cursor = 'pointer';
+    toast.addEventListener('click', () => toast.remove());
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3600);
+  }
+
   function setApproveMode(mode) {
     document.getElementById('approveModeValue').value = mode;
     document.querySelectorAll('.gate-mode-btn').forEach(btn => {
