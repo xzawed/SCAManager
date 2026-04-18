@@ -348,6 +348,54 @@ def test_mask_toggle_buttons_present():
     )
 
 
+def test_advanced_settings_accordion_exists():
+    """①·② 카드는 '고급 설정' <details>로 감싸져야 한다."""
+    html = _render_settings()
+    assert "advanced-details" in html, "advanced-details 클래스가 없음"
+    assert "고급 설정" in html, "'고급 설정' summary 텍스트가 없음"
+
+
+def test_advanced_settings_default_closed():
+    """고급 설정 <details>는 기본 닫힘 상태여야 한다 (open 속성 없음)."""
+    html = _render_settings()
+    # advanced-details 엘리먼트에 open 속성이 없어야 함
+    import re
+    match = re.search(r'<details[^>]*class="[^"]*advanced-details[^"]*"[^>]*>', html)
+    assert match, "advanced-details <details> 엘리먼트를 찾지 못함"
+    assert " open" not in match.group(0), (
+        f"고급 설정이 기본 열림 상태: {match.group(0)}"
+    )
+
+
+def test_pr_and_push_cards_inside_advanced():
+    """① PR 동작(hdr-gate) / ② Push 동작(hdr-merge) 카드는 고급 설정 <details> 안에 위치해야 한다."""
+    html = _render_settings()
+    adv_open_idx = html.find('class="advanced-details')
+    adv_close_idx = html.find("</details>", adv_open_idx)
+    assert adv_open_idx != -1, "advanced-details 시작 태그 없음"
+    assert adv_close_idx != -1, "advanced-details 닫기 태그 없음"
+    gate_idx = html.find("s-card-hdr hdr-gate")
+    merge_idx = html.find("s-card-hdr hdr-merge")
+    assert adv_open_idx < gate_idx < adv_close_idx, (
+        "① PR 동작 카드가 고급 설정 <details> 안에 없음"
+    )
+    assert adv_open_idx < merge_idx < adv_close_idx, (
+        "② Push 동작 카드가 고급 설정 <details> 안에 없음"
+    )
+
+
+def test_notify_channel_outside_advanced():
+    """③ 알림 채널은 고급 설정 <details> 바깥에 있어야 한다 (항상 표시)."""
+    html = _render_settings()
+    adv_open_idx = html.find('class="advanced-details')
+    adv_close_idx = html.find("</details>", adv_open_idx)
+    notify_idx = html.find("s-card-hdr hdr-notify")
+    assert notify_idx != -1, "③ 알림 채널 카드 없음"
+    assert notify_idx > adv_close_idx, (
+        "③ 알림 채널이 고급 설정 <details> 바깥에 없음 — 항상 표시되어야 함"
+    )
+
+
 def test_semi_auto_hint_in_pr_card():
     """semi-auto 모드에서 ① PR 동작 카드에 hint 텍스트가 노출되어야 한다."""
     from src.config_manager.manager import RepoConfigData
