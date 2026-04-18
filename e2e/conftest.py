@@ -20,6 +20,36 @@ BASE_URL = f"http://localhost:{E2E_PORT}"
 # E2E 테스트용 고정 사용자 ID
 _E2E_USER_ID = 1
 
+# Alembic head revision — E2E DB 스탬핑용 (alembic/versions/ 최신 revision)
+_ALEMBIC_HEAD = "0011ccandissue"
+
+
+# ── E2E DB 스키마 직접 생성 (Alembic SQLite 호환 문제 우회) ──────────────
+
+
+def _setup_e2e_db(db_path: str) -> None:
+    """SQLite E2E DB에 ORM 스키마를 직접 생성하고 alembic_version을 head로 스탬핑한다.
+
+    Alembic 0009/0010 마이그레이션이 SQLite에서 NotImplementedError를 발생시키므로
+    Base.metadata.create_all()로 스키마를 생성한 뒤 버전만 수동 삽입한다.
+    """
+    from sqlalchemy import create_engine, text
+    from src.database import Base
+    import src.models.repository  # noqa: F401
+    import src.models.analysis    # noqa: F401
+    import src.models.repo_config  # noqa: F401
+    import src.models.gate_decision  # noqa: F401
+    import src.models.user  # noqa: F401
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    Base.metadata.create_all(engine)
+    with engine.connect() as conn:
+        conn.execute(text("CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(32) NOT NULL)"))
+        conn.execute(text("DELETE FROM alembic_version"))
+        conn.execute(text("INSERT INTO alembic_version (version_num) VALUES (:v)"), {"v": _ALEMBIC_HEAD})
+        conn.commit()
+    engine.dispose()
+
 
 # ── 서버 시작/종료 ──────────────────────────────────────────────────────
 
@@ -45,17 +75,15 @@ def _start_uvicorn(db_path: str) -> tuple:
             del sys.modules[mod_name]
 
     from src.main import app  # noqa: PLC0415
-    from src.auth.session import require_login  # noqa: PLC0415
-    from src.models.user import User as UserModel  # noqa: PLC0415
+    from src.auth.session import require_login, CurrentUser  # noqa: PLC0415
 
-    # E2E용 테스트 사용자 — require_login 의존성 우회
-    _e2e_user = UserModel(
+    # E2E용 테스트 사용자 — require_login 의존성 우회 (CurrentUser dataclass 사용)
+    _e2e_user = CurrentUser(
         id=_E2E_USER_ID,
-        github_id="e2e-test-user-12345",
         github_login="e2e-tester",
-        github_access_token="gho_e2e_test_token",
         email="e2e@test.com",
         display_name="E2E Test User",
+        plaintext_token="gho_e2e_test_token",
     )
     app.dependency_overrides[require_login] = lambda: _e2e_user
 
@@ -86,6 +114,18 @@ def live_server(tmp_path_factory):
     """SQLite + 더미 시크릿으로 uvicorn 서버를 세션 동안 실행한다."""
     db_file = tmp_path_factory.mktemp("e2e_db") / "test_e2e.db"
     db_path = str(db_file)
+
+    # Alembic SQLite 호환 문제 우회 — 스키마 직접 생성 후 버전 스탬핑
+    os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
+    os.environ["GITHUB_WEBHOOK_SECRET"] = "e2e-test-secret"
+    os.environ["GITHUB_TOKEN"] = "e2e-test-token"
+    os.environ["TELEGRAM_BOT_TOKEN"] = "1234567890:AAe2etest"
+    os.environ["TELEGRAM_CHAT_ID"] = "-100000000"
+    os.environ["API_KEY"] = "e2e-api-key"
+    os.environ["GITHUB_CLIENT_ID"] = "e2e-github-client-id"
+    os.environ["GITHUB_CLIENT_SECRET"] = "e2e-github-client-secret"
+    os.environ["SESSION_SECRET"] = "e2e-session-secret-32chars-long!!"
+    _setup_e2e_db(db_path)
 
     server, thread = _start_uvicorn(db_path)
 
@@ -178,6 +218,7 @@ def _seed_repo(base_url: str, db_path: str) -> None:
     """Push Webhook을 시뮬레이션해 Repository를 DB에 등록하고, E2E 사용자에게 소유권을 부여한다."""
     payload = json.dumps({
         "ref": "refs/heads/main",
+        "after": "abc1234567890abc1234567890abc1234567890ab",
         "repository": {"full_name": "owner/testrepo"},
         "head_commit": {
             "id": "abc1234567890abc1234567890abc1234567890ab",
