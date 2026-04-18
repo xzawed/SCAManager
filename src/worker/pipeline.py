@@ -166,6 +166,7 @@ def _build_notify_tasks(  # pylint: disable=too-many-positional-arguments
             commit_sha=commit_sha,
             pr_number=pr_number,
             score_result=score_result,
+            n8n_secret=settings.n8n_webhook_secret,
         ))
         names.append("n8n")
 
