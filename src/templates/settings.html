@@ -43,6 +43,16 @@
   .hdr-hook   { background:var(--grad-hook); }
   .s-card-body { padding:1.1rem; }
 
+  /* 카드 내 섹션 구분 */
+  .s-divider { height:1px; background:var(--border); margin:1rem 0; opacity:.6; }
+  .s-section-label {
+    font-size:11px; font-weight:700; color:var(--text-muted);
+    letter-spacing:.06em; text-transform:uppercase; margin-bottom:.65rem;
+  }
+
+  /* Progressive Disclosure */
+  .is-hidden { display:none !important; }
+
   /* Gate 모드 버튼 */
   .gate-btns { display:grid; grid-template-columns:repeat(3,1fr); gap:.4rem; margin-bottom:1rem; }
   .gate-mode-btn {
@@ -91,6 +101,7 @@
 
   /* 토글 스위치 */
   .toggle-row { display:flex; align-items:center; justify-content:space-between; gap:1rem; }
+  .toggle-row + .toggle-row { margin-top:.85rem; }
   .toggle-info .t-title { font-size:13px; font-weight:600; margin-bottom:.2rem; }
   .toggle-info .t-desc  { font-size:11px; color:var(--text-muted); line-height:1.4; }
   .toggle-switch { position:relative; display:inline-flex; align-items:center; flex-shrink:0; }
@@ -108,23 +119,26 @@
   .toggle-switch input:checked + .toggle-track::after { transform:translateX(20px); }
 
   /* 입력 필드 */
-  .field-row { display:flex; flex-direction:column; gap:6px; margin-bottom:.7rem; }
+  .field-row { display:flex; flex-direction:column; gap:5px; margin-bottom:.6rem; }
   .field-row:last-child { margin-bottom:0; }
-  .field-label { font-size:13px; font-weight:600; color:var(--text-primary); display:flex; align-items:center; gap:6px; }
+  .field-label { font-size:12px; font-weight:600; color:var(--text-primary); display:flex; align-items:center; gap:6px; }
   .field-tag {
     font-size:10px; font-weight:600; padding:2px 6px; border-radius:4px;
     background:rgba(99,102,241,.12); color:var(--accent); letter-spacing:.04em;
   }
-  .field-hint { font-size:12px; color:var(--text-muted); }
+  .field-hint { font-size:11px; color:var(--text-muted); }
   .field-input {
-    width:100%; padding:.6rem .875rem; border-radius:8px;
+    width:100%; padding:.55rem .875rem; border-radius:8px;
     border:1.5px solid var(--border); background:var(--bg-input);
-    color:var(--text-primary); font-size:13px; font-family:'Menlo','Consolas',monospace;
+    color:var(--text-primary); font-size:12px; font-family:'Menlo','Consolas',monospace;
     transition:border-color var(--transition), background var(--transition), box-shadow var(--transition);
     outline:none;
   }
   .field-input:focus { border-color:var(--border-focus); background:var(--bg-input-focus); box-shadow:0 0 0 3px rgba(99,102,241,.15); }
   .field-input::placeholder { color:var(--text-muted); opacity:.7; }
+
+  /* 알림 채널 2-컬럼 */
+  .channel-grid { display:grid; grid-template-columns:1fr 1fr; gap:.5rem .9rem; }
 
   /* Hook 카드 */
   .hook-code {
@@ -144,6 +158,16 @@
   }
   .hook-alert.ok   { background:#d1fae5; color:#065f46; }
   .hook-alert.fail { background:#fee2e2; color:#991b1b; }
+
+  /* 위험 구역 details */
+  .danger-summary {
+    font-size:12px; font-weight:700; color:var(--danger);
+    cursor:pointer; user-select:none; outline:none;
+    list-style:none; display:flex; align-items:center; gap:.4rem;
+  }
+  .danger-summary::-webkit-details-marker { display:none; }
+  .danger-summary::before { content:'▶'; font-size:10px; transition:transform var(--transition); }
+  details[open] .danger-summary::before { transform:rotate(90deg); }
 
   /* 저장 버튼 */
   .save-bar {
@@ -177,6 +201,7 @@
   /* 반응형 */
   @media(max-width:640px) {
     .settings-grid { grid-template-columns:1fr; }
+    .channel-grid  { grid-template-columns:1fr; }
     .repo-badge { display:none; }
     .settings-wrap { padding:1rem .75rem 5rem; }
   }
@@ -207,17 +232,20 @@
 
     <div class="settings-grid">
 
-      <!-- ① Review Comment -->
+      <!-- ① PR 동작 -->
       <div class="s-card">
         <div class="s-card-hdr hdr-gate">
-          <span class="hdr-icon">💬</span>
-          <span class="hdr-title">PR 코드리뷰 댓글</span>
+          <span class="hdr-icon">⚡</span>
+          <span class="hdr-title">PR 동작</span>
+          <span class="hdr-badge" id="approveBadge">{{ config.approve_mode }}</span>
         </div>
         <div class="s-card-body">
+
+          <!-- PR 코드리뷰 댓글 -->
           <div class="toggle-row">
             <div class="toggle-info">
-              <div class="t-title">PR에 AI 리뷰 댓글 발송</div>
-              <div class="t-desc">분석 완료 시 점수·AI 피드백·개선 제안을<br>PR 댓글로 자동 발송합니다.</div>
+              <div class="t-title">PR 코드리뷰 댓글</div>
+              <div class="t-desc">분석 완료 시 AI 리뷰를 PR 댓글로 자동 발송</div>
             </div>
             <label class="toggle-switch">
               <input type="checkbox" name="pr_review_comment" value="on"
@@ -225,17 +253,11 @@
               <span class="toggle-track"></span>
             </label>
           </div>
-        </div>
-      </div>
 
-      <!-- ② Approve -->
-      <div class="s-card">
-        <div class="s-card-hdr hdr-gate">
-          <span class="hdr-icon">⚡</span>
-          <span class="hdr-title">Approve</span>
-          <span class="hdr-badge" id="approveBadge">{{ config.approve_mode }}</span>
-        </div>
-        <div class="s-card-body">
+          <div class="s-divider"></div>
+          <div class="s-section-label">Approve 자동화</div>
+
+          <!-- Approve 3-way -->
           <div class="gate-btns">
             <div class="gate-mode-btn {% if config.approve_mode == 'disabled' %}active{% endif %}"
                  data-mode="disabled" onclick="setApproveMode('disabled')">
@@ -251,140 +273,67 @@
             </div>
           </div>
 
-          <div class="threshold-row">
-            <div class="threshold-label">
-              <span>승인 기준점</span>
-              <span style="color:var(--success);font-size:11px;font-weight:600;">이상 → 승인</span>
+          <!-- 기준점 슬라이더 (disabled 시 숨김) -->
+          <div id="approveThresholds" class="{% if config.approve_mode == 'disabled' %}is-hidden{% endif %}">
+            <div class="threshold-row">
+              <div class="threshold-label">
+                <span>승인 기준점</span>
+                <span style="color:var(--success);font-size:11px;font-weight:600;">이상 → 승인</span>
+              </div>
+              <div class="threshold-ctrl">
+                <input type="range" class="approve-range" name="approve_threshold"
+                       min="0" max="100" value="{{ config.approve_threshold }}"
+                       oninput="document.getElementById('approveVal').value=this.value">
+                <input type="number" id="approveVal" class="num-input"
+                       min="0" max="100" value="{{ config.approve_threshold }}"
+                       oninput="this.previousElementSibling.value=this.value">
+              </div>
             </div>
-            <div class="threshold-ctrl">
-              <input type="range" class="approve-range" name="approve_threshold"
-                     min="0" max="100" value="{{ config.approve_threshold }}"
-                     oninput="document.getElementById('approveVal').value=this.value">
-              <input type="number" id="approveVal" class="num-input"
-                     min="0" max="100" value="{{ config.approve_threshold }}"
-                     oninput="this.previousElementSibling.value=this.value">
+            <div class="threshold-row" style="margin-bottom:0">
+              <div class="threshold-label">
+                <span>반려 기준점</span>
+                <span style="color:var(--danger);font-size:11px;font-weight:600;">미만 → 반려</span>
+              </div>
+              <div class="threshold-ctrl">
+                <input type="range" class="reject-range" name="reject_threshold"
+                       min="0" max="100" value="{{ config.reject_threshold }}"
+                       oninput="document.getElementById('rejectVal').value=this.value">
+                <input type="number" id="rejectVal" class="num-input danger"
+                       min="0" max="100" value="{{ config.reject_threshold }}"
+                       oninput="this.previousElementSibling.value=this.value">
+              </div>
+            </div>
+            <div class="range-hint">
+              💡 <strong>{{ config.approve_threshold }}점 이상</strong> 자동 승인 ·
+                 <strong>{{ config.reject_threshold }}점 미만</strong> 자동 반려 · 그 사이 스킵
             </div>
           </div>
 
-          <div class="threshold-row" style="margin-bottom:0">
-            <div class="threshold-label">
-              <span>반려 기준점</span>
-              <span style="color:var(--danger);font-size:11px;font-weight:600;">미만 → 반려</span>
-            </div>
-            <div class="threshold-ctrl">
-              <input type="range" class="reject-range" name="reject_threshold"
-                     min="0" max="100" value="{{ config.reject_threshold }}"
-                     oninput="document.getElementById('rejectVal').value=this.value">
-              <input type="number" id="rejectVal" class="num-input danger"
-                     min="0" max="100" value="{{ config.reject_threshold }}"
-                     oninput="this.previousElementSibling.value=this.value">
+          <!-- Telegram Chat ID (semi-auto 선택 시에만 표시) -->
+          <div id="telegramChatRow" class="{% if config.approve_mode != 'semi-auto' %}is-hidden{% endif %}" style="margin-top:.75rem;">
+            <div class="field-row" style="margin-bottom:0">
+              <label class="field-label">Telegram Chat ID <span class="field-tag">반자동 전용</span></label>
+              <span class="field-hint">반자동 Approve 승인 요청을 보낼 채팅 ID</span>
+              <input class="field-input" type="text" name="notify_chat_id"
+                     value="{{ config.notify_chat_id or '' }}" placeholder="-100xxxxxxxxx">
             </div>
           </div>
 
-          <div class="range-hint">
-            💡 <strong>{{ config.approve_threshold }}점 이상</strong> 자동 승인 ·
-               <strong>{{ config.reject_threshold }}점 미만</strong> 자동 반려 · 그 사이 스킵
-          </div>
         </div>
       </div>
 
-      <!-- ③ 알림 채널 -->
-      <div class="s-card">
-        <div class="s-card-hdr hdr-notify">
-          <span class="hdr-icon">🔔</span>
-          <span class="hdr-title">알림 채널</span>
-        </div>
-        <div class="s-card-body">
-          <div class="field-row">
-            <label class="field-label">Telegram Chat ID <span class="field-tag">반자동 Approve</span></label>
-            <span class="field-hint">반자동 Approve에서 승인 요청을 보낼 채팅 ID</span>
-            <input class="field-input" type="text" name="notify_chat_id"
-                   value="{{ config.notify_chat_id or '' }}" placeholder="-100xxxxxxxxx">
-          </div>
-          <div class="field-row">
-            <label class="field-label">Discord Webhook <span class="field-tag">선택</span></label>
-            <input class="field-input" type="url" name="discord_webhook_url"
-                   value="{{ config.discord_webhook_url or '' }}"
-                   placeholder="https://discord.com/api/webhooks/...">
-          </div>
-          <div class="field-row">
-            <label class="field-label">Slack Webhook <span class="field-tag">선택</span></label>
-            <input class="field-input" type="url" name="slack_webhook_url"
-                   value="{{ config.slack_webhook_url or '' }}"
-                   placeholder="https://hooks.slack.com/services/...">
-          </div>
-          <div class="field-row">
-            <label class="field-label">Email 수신자 <span class="field-tag">선택</span></label>
-            <span class="field-hint">쉼표로 구분 (SMTP 환경변수 필요)</span>
-            <input class="field-input" type="text" name="email_recipients"
-                   value="{{ config.email_recipients or '' }}"
-                   placeholder="admin@example.com, dev@example.com">
-          </div>
-          <div class="field-row">
-            <label class="field-label">Custom Webhook <span class="field-tag">선택</span></label>
-            <input class="field-input" type="url" name="custom_webhook_url"
-                   value="{{ config.custom_webhook_url or '' }}"
-                   placeholder="https://example.com/webhook/...">
-          </div>
-          <div class="field-row">
-            <label class="field-label">n8n Webhook <span class="field-tag">선택</span></label>
-            <input class="field-input" type="url" name="n8n_webhook_url"
-                   value="{{ config.n8n_webhook_url or '' }}"
-                   placeholder="https://n8n.example.com/webhook/...">
-          </div>
-        </div>
-      </div>
-
-      <!-- ④ 자동 Merge -->
+      <!-- ② Push 동작 -->
       <div class="s-card">
         <div class="s-card-hdr hdr-merge">
-          <span class="hdr-icon">🔀</span>
-          <span class="hdr-title">Auto Merge</span>
-        </div>
-        <div class="s-card-body">
-          <div class="toggle-row" style="margin-bottom:.85rem">
-            <div class="toggle-info">
-              <div class="t-title">자동 Merge</div>
-              <div class="t-desc">점수가 Merge 임계값 이상이면 즉시 squash merge.<br>
-                Approve 설정과 완전 독립 동작.<br>
-                <code style="font-size:11px;">pull_requests: write</code> 권한 필요</div>
-            </div>
-            <label class="toggle-switch">
-              <input type="checkbox" name="auto_merge" value="on"
-                     {% if config.auto_merge %}checked{% endif %}>
-              <span class="toggle-track"></span>
-            </label>
-          </div>
-
-          <div class="threshold-row" style="margin-bottom:0">
-            <div class="threshold-label">
-              <span>Merge 임계값</span>
-              <span style="color:var(--success);font-size:11px;font-weight:600;">이상 → Merge</span>
-            </div>
-            <div class="threshold-ctrl">
-              <input type="range" class="approve-range" name="merge_threshold"
-                     min="0" max="100" value="{{ config.merge_threshold }}"
-                     oninput="document.getElementById('mergeVal').value=this.value">
-              <input type="number" id="mergeVal" class="num-input"
-                     min="0" max="100" value="{{ config.merge_threshold }}"
-                     oninput="this.previousElementSibling.value=this.value">
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ⑤ Push 분석 알림 -->
-      <div class="s-card">
-        <div class="s-card-hdr hdr-notify">
           <span class="hdr-icon">📌</span>
-          <span class="hdr-title">Push 분석 알림</span>
+          <span class="hdr-title">Push 동작</span>
         </div>
         <div class="s-card-body">
-          <div class="toggle-row" style="margin-bottom:.85rem">
+
+          <div class="toggle-row">
             <div class="toggle-info">
               <div class="t-title">커밋 코멘트</div>
-              <div class="t-desc">Push 커밋에 AI 리뷰 결과를 GitHub<br>
-                커밋 코멘트로 자동 게시합니다.</div>
+              <div class="t-desc">Push 커밋에 AI 리뷰 결과를<br>GitHub 커밋 코멘트로 게시</div>
             </div>
             <label class="toggle-switch">
               <input type="checkbox" name="commit_comment" value="on"
@@ -392,12 +341,11 @@
               <span class="toggle-track"></span>
             </label>
           </div>
+
           <div class="toggle-row">
             <div class="toggle-info">
               <div class="t-title">이슈 자동 생성</div>
-              <div class="t-desc">점수 미달(<strong>반려 기준 미만</strong>) 또는<br>
-                보안 HIGH 이슈 발견 시 GitHub Issue를<br>
-                자동으로 생성합니다.</div>
+              <div class="t-desc">점수 미달 또는 보안 HIGH 발견 시<br>GitHub Issue 자동 생성</div>
             </div>
             <label class="toggle-switch">
               <input type="checkbox" name="create_issue" value="on"
@@ -405,26 +353,85 @@
               <span class="toggle-track"></span>
             </label>
           </div>
+
+          <div class="s-divider"></div>
+          <div class="s-section-label">Auto Merge</div>
+
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="t-title">자동 Merge</div>
+              <div class="t-desc">점수 이상 시 squash merge.<br>
+                <code style="font-size:10px;">pull_requests: write</code> 권한 필요</div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="autoMergeChk" name="auto_merge" value="on"
+                     {% if config.auto_merge %}checked{% endif %}
+                     onchange="toggleMergeThreshold(this.checked)">
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+
+          <!-- Merge 임계값 (auto_merge OFF 시 숨김) -->
+          <div id="mergeThresholdRow" class="{% if not config.auto_merge %}is-hidden{% endif %}" style="margin-top:.75rem;">
+            <div class="threshold-row" style="margin-bottom:0">
+              <div class="threshold-label">
+                <span>Merge 임계값</span>
+                <span style="color:var(--success);font-size:11px;font-weight:600;">이상 → Merge</span>
+              </div>
+              <div class="threshold-ctrl">
+                <input type="range" class="approve-range" name="merge_threshold"
+                       min="0" max="100" value="{{ config.merge_threshold }}"
+                       oninput="document.getElementById('mergeVal').value=this.value">
+                <input type="number" id="mergeVal" class="num-input"
+                       min="0" max="100" value="{{ config.merge_threshold }}"
+                       oninput="this.previousElementSibling.value=this.value">
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
 
-      <!-- ⑥ CLI Hook -->
-      <div class="s-card">
-        <div class="s-card-hdr hdr-hook">
-          <span class="hdr-icon">🔧</span>
-          <span class="hdr-title">CLI Hook</span>
+      <!-- ③ 알림 채널 (전폭) -->
+      <div class="s-card" style="grid-column:span 2;">
+        <div class="s-card-hdr hdr-notify">
+          <span class="hdr-icon">🔔</span>
+          <span class="hdr-title">알림 채널</span>
+          <span class="hdr-badge">선택</span>
         </div>
         <div class="s-card-body">
-          {% if hook_ok %}
-          <div class="hook-alert ok">✅ <strong>.scamanager/</strong> 파일이 Repo에 커밋됐습니다.</div>
-          {% endif %}
-          {% if hook_fail %}
-          <div class="hook-alert fail">❌ 파일 커밋 실패. GitHub 토큰 권한(repo 스코프)을 확인하세요.</div>
-          {% endif %}
-          <div class="hook-code">git pull &amp;&amp; bash .scamanager/install-hook.sh</div>
-          <div class="hook-btns">
-            <button type="submit" class="hook-btn" form="reinstall_hook_form">🔄 훅 파일 재커밋</button>
-            <button type="submit" class="hook-btn" form="reinstall_webhook_form">🔗 Webhook 재등록</button>
+          <div class="channel-grid">
+            <div class="field-row">
+              <label class="field-label">Discord Webhook</label>
+              <input class="field-input" type="url" name="discord_webhook_url"
+                     value="{{ config.discord_webhook_url or '' }}"
+                     placeholder="https://discord.com/api/webhooks/...">
+            </div>
+            <div class="field-row">
+              <label class="field-label">Slack Webhook</label>
+              <input class="field-input" type="url" name="slack_webhook_url"
+                     value="{{ config.slack_webhook_url or '' }}"
+                     placeholder="https://hooks.slack.com/services/...">
+            </div>
+            <div class="field-row">
+              <label class="field-label">Email 수신자 <span class="field-tag">SMTP 필요</span></label>
+              <span class="field-hint">쉼표로 구분</span>
+              <input class="field-input" type="text" name="email_recipients"
+                     value="{{ config.email_recipients or '' }}"
+                     placeholder="admin@example.com, dev@example.com">
+            </div>
+            <div class="field-row">
+              <label class="field-label">Custom Webhook</label>
+              <input class="field-input" type="url" name="custom_webhook_url"
+                     value="{{ config.custom_webhook_url or '' }}"
+                     placeholder="https://example.com/webhook/...">
+            </div>
+            <div class="field-row">
+              <label class="field-label">n8n Webhook</label>
+              <input class="field-input" type="url" name="n8n_webhook_url"
+                     value="{{ config.n8n_webhook_url or '' }}"
+                     placeholder="https://n8n.example.com/webhook/...">
+            </div>
           </div>
         </div>
       </div>
@@ -437,35 +444,58 @@
 
   </form>
 
-  <!-- CLI Hook 재설치/Webhook 재등록 form — 버튼은 카드 ⑤ 안에서 form="..." 으로 연결 -->
+  <!-- ④ 시스템 (CLI Hook + 위험 구역 — 메인 form 외부) -->
+  <div class="s-card" style="margin-bottom:1rem;">
+    <div class="s-card-hdr hdr-hook">
+      <span class="hdr-icon">🔧</span>
+      <span class="hdr-title">시스템</span>
+    </div>
+    <div class="s-card-body">
+
+      <div class="s-section-label">CLI Hook</div>
+      {% if hook_ok %}
+      <div class="hook-alert ok">✅ <strong>.scamanager/</strong> 파일이 Repo에 커밋됐습니다.</div>
+      {% endif %}
+      {% if hook_fail %}
+      <div class="hook-alert fail">❌ 파일 커밋 실패. GitHub 토큰 권한(repo 스코프)을 확인하세요.</div>
+      {% endif %}
+      <div class="hook-code">git pull &amp;&amp; bash .scamanager/install-hook.sh</div>
+      <div class="hook-btns">
+        <button type="submit" class="hook-btn" form="reinstall_hook_form">🔄 훅 파일 재커밋</button>
+        <button type="submit" class="hook-btn" form="reinstall_webhook_form">🔗 Webhook 재등록</button>
+      </div>
+
+      <div class="s-divider"></div>
+
+      <details>
+        <summary class="danger-summary">⚠️ 위험 구역</summary>
+        <div style="margin-top:.75rem;">
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="t-title" style="color:var(--danger);">리포지토리 삭제</div>
+              <div class="t-desc">SCAManager에서 이 리포지토리를 제거합니다.<br>
+                GitHub Webhook과 모든 분석 이력이 영구 삭제됩니다.</div>
+            </div>
+            <form method="post" action="/repos/{{ repo_name }}/delete"
+                  onsubmit="return confirm('정말 「{{ repo_name }}」 리포지토리를 삭제하시겠습니까?\n\n모든 분석 이력과 GitHub Webhook이 영구 삭제됩니다.');">
+              <button type="submit" style="background:var(--danger);color:#fff;border:none;border-radius:8px;padding:.6rem 1.1rem;font-weight:600;cursor:pointer;">
+                🗑️ 삭제
+              </button>
+            </form>
+          </div>
+        </div>
+      </details>
+
+    </div>
+  </div>
+
+  <!-- CLI Hook / Webhook 재등록 hidden form -->
   <form id="reinstall_hook_form" method="post"
         action="/repos/{{ repo_name }}/reinstall-hook" style="display:none"></form>
   <form id="reinstall_webhook_form" method="post"
         action="/repos/{{ repo_name }}/reinstall-webhook" style="display:none"
         onsubmit="return confirm('GitHub Webhook을 재등록합니다.\n기존 Webhook이 삭제되고 새로 생성됩니다.')"></form>
 
-  <!-- 위험 구역 (메인 form 외부) -->
-  <div class="s-card" style="border:1px solid var(--danger);margin-top:1.5rem;">
-    <div class="s-card-hdr" style="background:rgba(220,53,69,.08);color:var(--danger);">
-      <span class="hdr-icon">⚠️</span>
-      <span class="hdr-title">위험 구역</span>
-    </div>
-    <div class="s-card-body">
-      <div class="toggle-row">
-        <div class="toggle-info">
-          <div class="t-title">리포지토리 삭제</div>
-          <div class="t-desc">SCAManager에서 이 리포지토리를 제거합니다.<br>
-            GitHub Webhook과 모든 분석 이력이 영구 삭제됩니다.</div>
-        </div>
-        <form method="post" action="/repos/{{ repo_name }}/delete"
-              onsubmit="return confirm('정말 「{{ repo_name }}」 리포지토리를 삭제하시겠습니까?\n\n모든 분석 이력과 GitHub Webhook이 영구 삭제됩니다.');">
-          <button type="submit" style="background:var(--danger);color:#fff;border:none;border-radius:8px;padding:.6rem 1.1rem;font-weight:600;cursor:pointer;">
-            🗑️ 삭제
-          </button>
-        </form>
-      </div>
-    </div>
-  </div>
 </div>
 
 <script>
@@ -476,14 +506,22 @@
     });
     const badge = document.getElementById('approveBadge');
     if (badge) badge.textContent = mode;
+
+    // Progressive Disclosure: 기준점 슬라이더
+    document.getElementById('approveThresholds').classList.toggle('is-hidden', mode === 'disabled');
+    // Progressive Disclosure: Telegram Chat ID (반자동 전용)
+    document.getElementById('telegramChatRow').classList.toggle('is-hidden', mode !== 'semi-auto');
   }
 
-  // 토스트 클릭 시 즉시 닫기
+  function toggleMergeThreshold(checked) {
+    document.getElementById('mergeThresholdRow').classList.toggle('is-hidden', !checked);
+  }
+
+  // 토스트 클릭 시 즉시 닫기 + URL 쿼리 제거
   const toast = document.getElementById('saveToast');
   if (toast) {
     toast.style.cursor = 'pointer';
     toast.addEventListener('click', () => { toast.style.display = 'none'; });
-    // URL에서 ?saved=1 / ?save_error=1 제거 (뒤로가기 재노출 방지)
     if (history.replaceState) {
       const url = new URL(location.href);
       url.searchParams.delete('saved');
