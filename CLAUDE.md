@@ -336,6 +336,7 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 - **Telegram HTML 파싱**: `parse_mode: "HTML"` 사용 — 모든 동적 콘텐츠에 `html.escape()` 적용 필수. `_build_message()`가 4096자 초과 시 자동 절단.
 - **기존 Webhook 등록 리포**: `user_id = NULL` 리포는 모든 로그인 사용자에게 표시됨. `/repos/add`로 동일 리포 재등록 시 `user_id=NULL`이면 현재 사용자 소유 이전, 이미 소유자 있으면 에러.
 - **리포 추가 Webhook URL**: `_webhook_base_url(request)` 헬퍼가 `APP_BASE_URL` 설정 시 HTTPS URL 강제. Railway 배포 시 반드시 `APP_BASE_URL` 설정 — 미설정 시 `http://`로 등록되어 Webhook 전달 실패.
+- **settings.html 구조 규약**: 프리셋 3버튼 카드(🌱 최소·⚙️ 표준·🛡️ 엄격) + 4카드 그리드(① PR 동작 / ② Push 동작 / ③ 알림 채널 / ④ 시스템). Progressive Disclosure는 `setApproveMode()`, `toggleMergeThreshold()`, `applyPreset()`, `_setPair()`, `_showPresetToast()` JS 헬퍼로 구현. 알림 채널 URL은 프리셋이 건드리지 않음. 백엔드 필드명(pr_review_comment, approve_mode 등) 불변 원칙 — 4-way 동기화 체크리스트(ORM→dataclass→API body→폼) 적용 대상.
 
 ### 배포
 
