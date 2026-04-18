@@ -42,7 +42,7 @@ async def create_webhook(token: str, repo_full_name: str, webhook_url: str, secr
             json={
                 "name": "web",
                 "active": True,
-                "events": ["push", "pull_request"],
+                "events": ["push", "pull_request", "issues"],
                 "config": {
                     "url": webhook_url,
                     "content_type": "json",
