@@ -245,6 +245,36 @@
   @keyframes toastIn  { from { opacity:0; transform:translateX(-50%) translateY(-10px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
   @keyframes toastOut { from { opacity:1; } to { opacity:0; pointer-events:none; } }
 
+  /* 고급 설정 아코디언 */
+  .advanced-details {
+    margin-bottom:1rem;
+    border:1.5px solid var(--border); border-radius:var(--radius-card);
+    background:var(--bg-card); box-shadow:var(--shadow-card); overflow:hidden;
+    transition:border-color var(--transition), box-shadow var(--transition);
+  }
+  .advanced-details[open] {
+    border-color:var(--accent);
+    box-shadow:0 0 0 3px rgba(99,102,241,.1), var(--shadow-card);
+  }
+  body[data-theme="glass"] .advanced-details { backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px); }
+  .advanced-summary {
+    list-style:none; cursor:pointer; user-select:none;
+    padding:.8rem 1.1rem; display:flex; align-items:center; gap:.55rem;
+    font-size:13px; font-weight:700; color:var(--text-primary);
+    transition:background var(--transition);
+  }
+  .advanced-summary::-webkit-details-marker { display:none; }
+  .advanced-summary .adv-icon { font-size:16px; }
+  .advanced-summary .adv-hint { font-size:11px; font-weight:500; color:var(--text-muted); margin-left:.5rem; }
+  .advanced-summary::after {
+    content:'▼'; font-size:10px; color:var(--text-muted);
+    margin-left:auto; transition:transform var(--transition);
+  }
+  .advanced-details[open] .advanced-summary::after { transform:rotate(180deg); }
+  .advanced-summary:hover { background:rgba(99,102,241,.05); }
+  .advanced-body { padding:1rem; border-top:1px solid var(--border); }
+  .advanced-body .settings-grid { margin-bottom:0; }
+
   /* 마스킹 필드 */
   .masked-field { position:relative; display:flex; align-items:center; }
   .masked-field .field-input { padding-right:44px; flex:1; }
@@ -387,7 +417,15 @@
       </div>
     </div>
 
-    <div class="settings-grid">
+    <!-- 고급 설정 (프리셋 외 세부 조정) -->
+    <details class="advanced-details">
+      <summary class="advanced-summary">
+        <span class="adv-icon">⚙️</span>
+        <span>고급 설정</span>
+        <span class="adv-hint">프리셋 외 세부 조정이 필요할 때만 펼치세요</span>
+      </summary>
+      <div class="advanced-body">
+        <div class="settings-grid">
 
       <!-- ① PR 동작 -->
       <div class="s-card">
@@ -545,7 +583,12 @@
         </div>
       </div>
 
-      <!-- ③ 알림 채널 (640px+ 에서 전폭) -->
+        </div><!-- /.settings-grid -->
+      </div><!-- /.advanced-body -->
+    </details><!-- /.advanced-details -->
+
+    <!-- ③ 알림 채널 (항상 표시 — 고급 설정 아코디언 밖) -->
+    <div class="settings-grid">
       <div class="s-card notify-full">
         <div class="s-card-hdr hdr-notify">
           <span class="hdr-icon">🔔</span>
