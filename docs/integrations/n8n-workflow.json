@@ -80,12 +80,11 @@
     {
       "id": "node_exec",
       "name": "Execute claude_fix.sh",
-      "type": "n8n-nodes-base.executeCommand",
+      "type": "n8n-nodes-base.code",
       "typeVersion": 1,
       "position": [1250, 200],
       "parameters": {
-        "command": "/opt/claude-runner/claude_fix.sh",
-        "cwd": "/tmp"
+        "jsCode": "const { execFileSync } = require('child_process');\n\nconst item = items[0].json;\nconst env = Object.assign({}, process.env, {\n  REPO:              String(item.repo || ''),\n  ISSUE_NUMBER:      String(item.issue_number || ''),\n  ISSUE_TITLE:       String(item.issue_title || ''),\n  ISSUE_BODY:        String(item.issue_body || ''),\n  GH_TOKEN:          String(item.repo_token || ''),\n  ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',\n});\n\nlet exitCode = 0;\nlet stdout = '';\nlet stderr = '';\n\ntry {\n  stdout = execFileSync('/opt/claude-runner/claude_fix.sh', [], {\n    env,\n    timeout: 960000,\n    maxBuffer: 1024 * 1024 * 10,\n  }).toString();\n} catch (e) {\n  exitCode = typeof e.status === 'number' ? e.status : 1;\n  stdout = e.stdout ? e.stdout.toString() : '';\n  stderr = e.stderr ? e.stderr.toString().slice(0, 2000) : '';\n}\n\nreturn [{ json: { exitCode, stdout, stderr } }];"
       }
     },
     {
