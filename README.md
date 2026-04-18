@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🛡️ SCAM
+# 🛡️ SCAManage
 
 **GitHub Push / PR 이벤트 기반 자동 코드 품질 분석 · AI 리뷰 · Gate 서비스**
 
