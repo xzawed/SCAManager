@@ -41,9 +41,11 @@ async def test_notify_n8n_posts_to_webhook():
     url = call_args.args[0] if call_args.args else call_args.kwargs.get("url")
     assert url == "https://n8n.example.com/webhook/abc"
     payload = call_args.kwargs.get("json") or (call_args.args[1] if len(call_args.args) > 1 else {})
+    assert payload["event_type"] == "analysis"
     assert payload["repo"] == "owner/repo"
-    assert payload["score"] == 82
-    assert payload["grade"] == "B"
+    data = payload["data"]
+    assert data["score"] == 82
+    assert data["grade"] == "B"
 
 
 async def test_notify_n8n_skips_when_no_url():

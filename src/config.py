@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     # GitHub OAuth 토큰 Fernet 암호화 키 (없으면 평문 저장 — 운영환경 필수 설정)
     # 생성: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     token_encryption_key: str = ""
+    n8n_webhook_secret: str = ""  # n8n 전송 HMAC 서명 시크릿 (빈 문자열이면 서명 생략)
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_user: str = ""

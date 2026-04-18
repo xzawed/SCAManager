@@ -16,6 +16,7 @@ from src.models.analysis import Analysis
 from src.models.repository import Repository
 from src.database import SessionLocal
 from src.constants import HANDLED_EVENTS, PR_HANDLED_ACTIONS
+from src.notifier.n8n import notify_n8n_issue
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +71,42 @@ async def github_webhook(
         if action not in HANDLED_PR_ACTIONS:
             return {"status": "ignored"}
 
+    if x_github_event == "issues":
+        return await _handle_issues_event(data, background_tasks)
+
     background_tasks.add_task(run_analysis_pipeline, x_github_event, data)
+    return {"status": "accepted"}
+
+
+async def _handle_issues_event(data: dict, background_tasks: BackgroundTasks) -> dict:
+    """GitHub Issues 이벤트를 n8n으로 릴레이한다."""
+    repo_name = data.get("repository", {}).get("full_name", "")
+    if not repo_name:
+        return {"status": "ignored"}
+
+    n8n_url = None
+    try:
+        with SessionLocal() as db:
+            config = get_repo_config(db, repo_name)
+            n8n_url = config.n8n_webhook_url
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("issues relay: repo config lookup failed for %s: %s", repo_name, exc)
+
+    if not n8n_url:
+        return {"status": "ignored"}
+
+    action = data.get("action", "")
+    issue = data.get("issue", {})
+    sender = data.get("sender", {})
+    background_tasks.add_task(
+        notify_n8n_issue,
+        webhook_url=n8n_url,
+        repo_full_name=repo_name,
+        action=action,
+        issue=issue,
+        sender=sender,
+        n8n_secret=settings.n8n_webhook_secret,
+    )
     return {"status": "accepted"}
 
 
