@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     telegram_chat_id: str
     telegram_webhook_secret: str = ""  # Telegram setWebhook secret_token — 설정 시 헤더 검증
     anthropic_api_key: str = ""  # 빈 문자열이면 AI 리뷰 건너뜀
+    claude_review_model: str = "claude-sonnet-4-6"  # AI 코드리뷰 모델 (환경변수 CLAUDE_REVIEW_MODEL로 오버라이드)
     api_key: str = ""  # 빈 문자열이면 인증 건너뜀
     github_client_id: str = ""
     github_client_secret: str = ""

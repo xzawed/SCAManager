@@ -89,9 +89,10 @@ async def review_code(
         return _default_result("empty_diff")
 
     try:
+        from src.config import settings  # noqa: PLC0415
         client = anthropic.AsyncAnthropic(api_key=api_key)
         response = await client.messages.create(
-            model="claude-haiku-4-5",
+            model=settings.claude_review_model,
             max_tokens=1500,
             messages=[{
                 "role": "user",
