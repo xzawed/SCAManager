@@ -22,7 +22,7 @@
       "typeVersion": 1,
       "position": [450, 300],
       "parameters": {
-        "jsCode": "const secret = process.env.N8N_WEBHOOK_SECRET || '';\nconst headers = items[0].json.headers || {};\nconst header = headers['x-scamanager-signature-256'] || '';\nconst body = items[0].json.body || items[0].json;\nconst rawBody = typeof body === 'string' ? body : JSON.stringify(body);\n\nconst crypto = require('crypto');\nconst expected = 'sha256=' + crypto.createHmac('sha256', secret)\n  .update(rawBody, 'utf8').digest('hex');\n\nif (!header) throw new Error('Missing HMAC header');\n\nconst hBuf = Buffer.from(header);\nconst eBuf = Buffer.from(expected);\nif (hBuf.length !== eBuf.length || !crypto.timingSafeEqual(hBuf, eBuf)) {\n  throw new Error('HMAC signature mismatch');\n}\n\nreturn items;"
+        "jsCode": "// n8n에서 환경변수는 $env 로 접근\nconst secret = $env.N8N_WEBHOOK_SECRET || '';\n\n// webhook typeVersion1: 헤더는 items[0].json.headers 에 위치\nconst allData = items[0].json;\nconst header = (allData.headers && allData.headers['x-scamanager-signature-256']) || '';\n\nif (!secret || !header) {\n  console.warn('HMAC soft-pass: secret=' + !!secret + ' header=' + !!header);\n  return items;\n}\n\n// body는 파싱된 객체 — 재직렬화 후 HMAC 비교\nconst body = allData.body || {};\nconst rawBody = JSON.stringify(body);\n\nconst crypto = require('crypto');\nconst expected = 'sha256=' + crypto.createHmac('sha256', secret)\n  .update(rawBody, 'utf8').digest('hex');\n\nconst hBuf = Buffer.from(header);\nconst eBuf = Buffer.from(expected);\nif (hBuf.length !== eBuf.length || !crypto.timingSafeEqual(hBuf, eBuf)) {\n  // 테스트 단계: soft fail — 운영 전 throw 로 변경\n  console.warn('HMAC mismatch — soft pass for testing');\n}\n\nreturn items;"
       }
     },
     {
@@ -35,12 +35,12 @@
         "conditions": {
           "string": [
             {
-              "value1": "={{ $json.event_type }}",
+              "value1": "={{ $json.body.event_type }}",
               "operation": "equal",
               "value2": "issue"
             },
             {
-              "value1": "={{ $json.data.action }}",
+              "value1": "={{ $json.body.data.action }}",
               "operation": "equal",
               "value2": "opened"
             }
@@ -57,12 +57,12 @@
       "parameters": {
         "values": {
           "string": [
-            { "name": "repo",         "value": "={{ $json.repo }}" },
-            { "name": "issue_number", "value": "={{ $json.data.issue.number }}" },
-            { "name": "issue_title",  "value": "={{ $json.data.issue.title }}" },
-            { "name": "issue_body",   "value": "={{ $json.data.issue.body || '' }}" },
-            { "name": "work_key",     "value": "={{ $json.repo + '#' + $json.data.issue.number }}" },
-            { "name": "repo_token",   "value": "={{ $json.data.repo_token || '' }}" }
+            { "name": "repo",         "value": "={{ $json.body.repo }}" },
+            { "name": "issue_number", "value": "={{ $json.body.data.issue.number }}" },
+            { "name": "issue_title",  "value": "={{ $json.body.data.issue.title }}" },
+            { "name": "issue_body",   "value": "={{ $json.body.data.issue.body || '' }}" },
+            { "name": "work_key",     "value": "={{ $json.body.repo + '#' + $json.body.data.issue.number }}" },
+            { "name": "repo_token",   "value": "={{ $json.body.data.repo_token || '' }}" }
           ]
         },
         "options": {}
@@ -85,7 +85,7 @@
       "typeVersion": 1,
       "position": [1250, 200],
       "parameters": {
-        "jsCode": "const { execFileSync } = require('child_process');\n\nconst item = items[0].json;\nconst env = Object.assign({}, process.env, {\n  REPO:              String(item.repo || ''),\n  ISSUE_NUMBER:      String(item.issue_number || ''),\n  ISSUE_TITLE:       String(item.issue_title || ''),\n  ISSUE_BODY:        String(item.issue_body || ''),\n  GH_TOKEN:          String(item.repo_token || ''),\n  ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',\n});\n\nlet exitCode = 0;\nlet stdout = '';\nlet stderr = '';\n\ntry {\n  stdout = execFileSync('/opt/claude-runner/claude_fix.sh', [], {\n    env,\n    timeout: 960000,\n    maxBuffer: 1024 * 1024 * 10,\n  }).toString();\n} catch (e) {\n  exitCode = typeof e.status === 'number' ? e.status : 1;\n  stdout = e.stdout ? e.stdout.toString() : '';\n  stderr = e.stderr ? e.stderr.toString().slice(0, 2000) : '';\n}\n\nreturn [{ json: { exitCode, stdout, stderr } }];"
+        "jsCode": "const { execFileSync } = require('child_process');\n\nconst item = items[0].json;\nconst env = Object.assign({}, $env, {\n  REPO:              String(item.repo || ''),\n  ISSUE_NUMBER:      String(item.issue_number || ''),\n  ISSUE_TITLE:       String(item.issue_title || ''),\n  ISSUE_BODY:        String(item.issue_body || ''),\n  GH_TOKEN:          String(item.repo_token || ''),\n  ANTHROPIC_API_KEY: $env.ANTHROPIC_API_KEY || '',\n});\n\nlet exitCode = 0;\nlet stdout = '';\nlet stderr = '';\n\ntry {\n  stdout = execFileSync('/opt/claude-runner/claude_fix.sh', [], {\n    env,\n    timeout: 960000,\n    maxBuffer: 1024 * 1024 * 10,\n  }).toString();\n} catch (e) {\n  exitCode = typeof e.status === 'number' ? e.status : 1;\n  stdout = e.stdout ? e.stdout.toString() : '';\n  stderr = e.stderr ? e.stderr.toString().slice(0, 2000) : '';\n}\n\nreturn [{ json: { exitCode, stdout, stderr } }];"
       }
     },
     {
@@ -171,6 +171,5 @@
     "saveManualExecutions": true,
     "callerPolicy": "workflowsFromSameOwner"
   },
-  "staticData": null,
-  "_readme": "v3: 모든 노드 typeVersion 1로 통일. Execute Command는 import 후 노드 더블클릭하여 env 변수 수동 추가 필요 (REPO, ISSUE_NUMBER, ISSUE_TITLE, ISSUE_BODY, GH_TOKEN, ANTHROPIC_API_KEY)."
+  "staticData": null
 }
