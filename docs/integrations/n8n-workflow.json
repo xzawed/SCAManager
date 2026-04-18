@@ -1,0 +1,173 @@
+{
+  "name": "SCAManager Issue Auto-Fix",
+  "nodes": [
+    {
+      "id": "1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "parameters": {
+        "path": "scamanager-issue",
+        "httpMethod": "POST",
+        "responseMode": "lastNode",
+        "options": {
+          "rawBody": true
+        }
+      }
+    },
+    {
+      "id": "2",
+      "name": "HMAC 검증",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300],
+      "parameters": {
+        "jsCode": "const secret = process.env.N8N_WEBHOOK_SECRET || '';\nconst header = ($input.first().headers || {})['x-scamanager-signature-256'] || '';\nconst rawBody = $input.first().json._rawBody ||\n  JSON.stringify($input.first().json);\n\nconst crypto = require('crypto');\nconst expected = 'sha256=' + crypto.createHmac('sha256', secret)\n  .update(rawBody, 'utf8').digest('hex');\n\nif (!header || header.length !== expected.length) {\n  throw new Error('HMAC verification failed');\n}\n\nconst hBuf = Buffer.from(header);\nconst eBuf = Buffer.from(expected);\nif (!crypto.timingSafeEqual(hBuf, eBuf)) {\n  throw new Error('HMAC signature mismatch — rejecting webhook');\n}\n\nreturn $input.all();"
+      }
+    },
+    {
+      "id": "3",
+      "name": "이벤트 필터",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [650, 300],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.event_type }}",
+              "rightValue": "issue",
+              "operator": { "type": "string", "operation": "equals" }
+            },
+            {
+              "leftValue": "={{ $json.data.action }}",
+              "rightValue": "opened",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "4",
+      "name": "작업 변수 세팅",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [850, 200],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "name": "repo",         "value": "={{ $json.repo }}", "type": "string" },
+            { "name": "issue_number", "value": "={{ $json.data.issue.number }}", "type": "string" },
+            { "name": "issue_title",  "value": "={{ $json.data.issue.title }}", "type": "string" },
+            { "name": "issue_body",   "value": "={{ $json.data.issue.body || '' }}", "type": "string" },
+            { "name": "work_key",     "value": "={{ $json.repo + '#' + $json.data.issue.number }}", "type": "string" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "5",
+      "name": "세마포어 락",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 200],
+      "parameters": {
+        "jsCode": "const key = $json.work_key;\nconst store = $getWorkflowStaticData('node');\nconst TTL_MS = 20 * 60 * 1000; // 20분\n\nif (store[key] && Date.now() - store[key] < TTL_MS) {\n  // 동일 이슈 이미 처리 중 — 중복 실행 포기\n  return [];\n}\n\nstore[key] = Date.now();\nreturn $input.all();"
+      }
+    },
+    {
+      "id": "6",
+      "name": "Execute claude_fix.sh",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [1250, 200],
+      "parameters": {
+        "command": "/opt/claude-runner/claude_fix.sh",
+        "cwd": "/tmp",
+        "env": {
+          "REPO":              "={{ $json.repo }}",
+          "ISSUE_NUMBER":      "={{ $json.issue_number }}",
+          "ISSUE_TITLE":       "={{ $json.issue_title }}",
+          "ISSUE_BODY":        "={{ $json.issue_body }}",
+          "GH_TOKEN":          "={{ $credentials.githubPat.token }}",
+          "ANTHROPIC_API_KEY": "={{ $credentials.anthropicApi.apiKey }}"
+        }
+      }
+    },
+    {
+      "id": "7",
+      "name": "Exit Code 분기",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1450, 200],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "rules": [
+            { "conditions": { "conditions": [{ "leftValue": "={{ $json.exitCode }}", "rightValue": "0", "operator": { "type": "string", "operation": "equals" } } ] }, "outputKey": "success" },
+            { "conditions": { "conditions": [{ "leftValue": "={{ $json.exitCode }}", "rightValue": "1", "operator": { "type": "string", "operation": "equals" } } ] }, "outputKey": "no_change" },
+            { "conditions": { "conditions": [{ "leftValue": "={{ $json.exitCode }}", "rightValue": "2", "operator": { "type": "string", "operation": "equals" } } ] }, "outputKey": "claude_fail" },
+            { "conditions": { "conditions": [{ "leftValue": "={{ $json.exitCode }}", "rightValue": "3", "operator": { "type": "string", "operation": "equals" } } ] }, "outputKey": "push_fail" }
+          ]
+        },
+        "fallbackOutput": "timeout"
+      }
+    },
+    {
+      "id": "8",
+      "name": "GitHub Issue Comment",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1,
+      "position": [1650, 300],
+      "parameters": {
+        "operation": "createComment",
+        "repository": "={{ $('작업 변수 세팅').item.json.repo.split('/')[1] }}",
+        "owner":      "={{ $('작업 변수 세팅').item.json.repo.split('/')[0] }}",
+        "issueNumber": "={{ $('작업 변수 세팅').item.json.issue_number }}",
+        "body":        "={{ $json._comment_body }}"
+      }
+    },
+    {
+      "id": "9",
+      "name": "Telegram 알림",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1650, 450],
+      "parameters": {
+        "chatId":    "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text":      "={{ $json._telegram_text }}",
+        "parseMode": "Markdown"
+      }
+    }
+  ],
+  "connections": {
+    "Webhook":            { "main": [[{ "node": "HMAC 검증",         "type": "main", "index": 0 }]] },
+    "HMAC 검증":          { "main": [[{ "node": "이벤트 필터",       "type": "main", "index": 0 }]] },
+    "이벤트 필터":        { "main": [
+      [{ "node": "작업 변수 세팅",    "type": "main", "index": 0 }],
+      []
+    ]},
+    "작업 변수 세팅":     { "main": [[{ "node": "세마포어 락",        "type": "main", "index": 0 }]] },
+    "세마포어 락":        { "main": [[{ "node": "Execute claude_fix.sh", "type": "main", "index": 0 }]] },
+    "Execute claude_fix.sh": { "main": [[{ "node": "Exit Code 분기", "type": "main", "index": 0 }]] },
+    "Exit Code 분기": {
+      "success":     [],
+      "no_change":   [{ "node": "GitHub Issue Comment", "type": "main", "index": 0 }],
+      "claude_fail": [{ "node": "GitHub Issue Comment", "type": "main", "index": 0 }],
+      "push_fail":   [{ "node": "GitHub Issue Comment", "type": "main", "index": 0 }],
+      "timeout":     [{ "node": "Telegram 알림",        "type": "main", "index": 0 }]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "_readme": "이 파일은 n8n workflow 참조 JSON입니다. n8n UI의 [워크플로 메뉴] > [Import from file]로 가져오거나, 직접 노드를 생성하세요. n8n 버전에 따라 노드 typeVersion이 다를 수 있으므로 가져온 후 경고 노드를 수동 확인하세요. 상세 구성은 n8n-auto-fix.md를 참고하세요."
+}
