@@ -85,10 +85,14 @@ async def _handle_issues_event(data: dict, background_tasks: BackgroundTasks) ->
         return {"status": "ignored"}
 
     n8n_url = None
+    repo_token = ""
     try:
         with SessionLocal() as db:
             config = get_repo_config(db, repo_name)
             n8n_url = config.n8n_webhook_url
+            repo = db.query(Repository).filter(Repository.full_name == repo_name).first()
+            if repo and repo.owner:
+                repo_token = repo.owner.plaintext_token or ""
     except Exception as exc:  # noqa: BLE001
         logger.warning("issues relay: repo config lookup failed for %s: %s", repo_name, exc)
 
@@ -106,6 +110,7 @@ async def _handle_issues_event(data: dict, background_tasks: BackgroundTasks) ->
         issue=issue,
         sender=sender,
         n8n_secret=settings.n8n_webhook_secret,
+        repo_token=repo_token,
     )
     return {"status": "accepted"}
 

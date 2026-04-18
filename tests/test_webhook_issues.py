@@ -213,3 +213,54 @@ def test_issues_event_in_handled_events():
     from src.constants import HANDLED_EVENTS
     assert "issues" in HANDLED_EVENTS, \
         f'"issues"가 HANDLED_EVENTS에 없음: {HANDLED_EVENTS}'
+
+
+# ── repo_token 전달 테스트 (Red phase) ─────────────────────────────────────────
+
+def test_issues_event_passes_repo_token_to_notify():
+    # issues 이벤트 수신 시 DB에서 owner.plaintext_token을 읽어 notify_n8n_issue에 repo_token으로 전달해야 한다
+    payload = _issues_payload()
+    repo_config = _mock_repo_config(n8n_webhook_url="https://n8n.example.com/webhook/abc")
+
+    # Repository ORM mock: owner.plaintext_token = "ghp_owner_token"
+    mock_owner = MagicMock()
+    mock_owner.plaintext_token = "ghp_owner_token"
+    mock_repo_obj = MagicMock()
+    mock_repo_obj.full_name = "owner/repo"
+    mock_repo_obj.owner = mock_owner
+    mock_repo_obj.webhook_secret = None  # 전역 시크릿 사용 (MagicMock이 되면 HMAC 실패)
+
+    # DB mock: query(Repository).filter(...).first() → mock_repo_obj
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = mock_repo_obj
+    mock_db.__enter__ = MagicMock(return_value=mock_db)
+    mock_db.__exit__ = MagicMock(return_value=None)
+
+    captured_kwargs = {}
+
+    def _capture_add_task(func, *args, **kwargs):
+        # notify_n8n_issue 관련 task의 kwargs를 캡처한다
+        func_name = getattr(func, "__name__", "") or str(func)
+        if "notify_n8n_issue" in func_name or "issue" in func_name.lower():
+            captured_kwargs.update(kwargs)
+
+    with patch("src.webhook.router.settings") as mock_settings, \
+         patch("src.webhook.router.SessionLocal", return_value=mock_db), \
+         patch("src.webhook.router.get_repo_config", return_value=repo_config):
+        mock_settings.github_webhook_secret = SECRET
+        mock_settings.n8n_webhook_secret = ""
+        with patch("fastapi.BackgroundTasks.add_task", side_effect=_capture_add_task):
+            resp = client.post(
+                "/webhooks/github",
+                content=payload,
+                headers={
+                    "X-Hub-Signature-256": _sign(payload),
+                    "X-GitHub-Event": "issues",
+                },
+            )
+
+    assert resp.status_code == 202
+    assert "repo_token" in captured_kwargs, \
+        f"notify_n8n_issue 호출 시 repo_token kwarg가 전달되지 않음. 실제 kwargs: {captured_kwargs}"
+    assert captured_kwargs["repo_token"] == "ghp_owner_token", \
+        f"repo_token이 'ghp_owner_token'이어야 하지만 실제 값: {captured_kwargs.get('repo_token')!r}"
