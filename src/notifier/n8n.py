@@ -75,6 +75,7 @@ async def notify_n8n_issue(
     issue: dict,
     sender: dict,
     n8n_secret: str = "",
+    repo_token: str = "",
 ) -> None:
     """GitHub Issue 이벤트를 n8n Webhook으로 릴레이한다 (envelope 구조)."""
     if not webhook_url:
@@ -98,6 +99,7 @@ async def notify_n8n_issue(
             "issue": issue,
             "sender": sender,
             "body_truncated": body_truncated,
+            "repo_token": repo_token,
         },
     )
     await _post_to_n8n(webhook_url, payload, n8n_secret)
