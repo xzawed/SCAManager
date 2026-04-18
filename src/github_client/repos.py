@@ -56,6 +56,17 @@ async def create_webhook(token: str, repo_full_name: str, webhook_url: str, secr
         return resp.json()["id"]
 
 
+async def list_webhooks(token: str, repo_full_name: str) -> list[dict]:
+    """리포의 모든 GitHub 웹훅 목록을 반환한다."""
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{GITHUB_API}/repos/{repo_full_name}/hooks",
+            headers=_auth_headers(token),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
 async def delete_webhook(token: str, repo_full_name: str, webhook_id: int) -> bool:
     """Webhook 삭제. 성공(204) 시 True, 그 외 False 반환."""
     async with httpx.AsyncClient() as client:

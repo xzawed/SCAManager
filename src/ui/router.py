@@ -13,7 +13,7 @@ from src.models.repo_config import RepoConfig
 from src.models.gate_decision import GateDecision
 from src.auth.session import require_login, CurrentUser
 from src.config_manager.manager import get_repo_config, upsert_repo_config, RepoConfigData
-from src.github_client.repos import list_user_repos, create_webhook, delete_webhook, commit_scamanager_files
+from src.github_client.repos import list_user_repos, create_webhook, delete_webhook, list_webhooks, commit_scamanager_files
 
 logger = logging.getLogger(__name__)
 templates = Jinja2Templates(directory="src/templates")
@@ -308,16 +308,25 @@ async def reinstall_webhook(
     repo_name: str,
     current_user: CurrentUser = Depends(require_login),
 ):
-    """GitHub Webhook을 삭제하고 새 URL(HTTPS)로 재등록한다."""
+    """GitHub Webhook을 삭제하고 새 URL(HTTPS)로 재등록한다. 중복 웹훅도 모두 정리한다."""
     with SessionLocal() as db:
         repo = _get_accessible_repo(db, repo_name, current_user)
         token = current_user.plaintext_token or ""
 
-        if repo.webhook_id:
-            await delete_webhook(token, repo_name, repo.webhook_id)
+        webhook_url = _webhook_base_url(request) + "/webhooks/github"
+
+        # GitHub에서 전체 웹훅 목록 조회 후 동일 URL 웹훅 전부 삭제 (중복 제거)
+        try:
+            all_hooks = await list_webhooks(token, repo_name)
+            for hook in all_hooks:
+                hook_url = hook.get("config", {}).get("url", "")
+                if "/webhooks/github" in hook_url:
+                    await delete_webhook(token, repo_name, hook["id"])
+                    logger.info("Deleted duplicate webhook id=%d url=%s", hook["id"], hook_url)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Webhook cleanup failed, proceeding with reinstall: %s", exc)
 
         new_secret = secrets.token_hex(32)
-        webhook_url = _webhook_base_url(request) + "/webhooks/github"
         new_id = await create_webhook(token, repo_name, webhook_url, new_secret)
 
         repo.webhook_id = new_id
