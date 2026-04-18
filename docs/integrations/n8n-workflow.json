@@ -1,175 +1,169 @@
 {
-  "id": "scamanager-issue-autofix",
   "name": "SCAManager Issue Auto-Fix",
   "nodes": [
     {
-      "id": "node_webhook",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "scamanager-issue",
+        "options": {}
+      },
+      "id": "9fa4ddaa-ecb8-491c-b9ad-afa5d595989a",
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
-      "position": [250, 300],
-      "parameters": {
-        "path": "scamanager-issue",
-        "httpMethod": "POST",
-        "responseMode": "onReceived",
-        "options": {}
-      }
+      "position": [-96, -272],
+      "webhookId": "7392ee6f-452e-4c16-83a1-3fee6b723d18"
     },
     {
-      "id": "node_env_capture",
-      "name": "환경변수 캡처",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 1,
-      "position": [450, 300],
       "parameters": {
-        "values": {
-          "string": [
-            { "name": "webhook_secret",   "value": "={{ $env.N8N_WEBHOOK_SECRET || '' }}" },
-            { "name": "anthropic_api_key","value": "={{ $env.ANTHROPIC_API_KEY || '' }}" }
-          ]
-        },
-        "options": { "keepOnlySet": false }
-      }
-    },
-    {
-      "id": "node_hmac",
+        "jsCode": "const fs = require('fs');\nconst crypto = require('crypto');\n\nconst secret = fs.readFileSync('/etc/n8n-secrets/hmac_secret', 'utf8').trim();\nconst all = items[0].json;\nconst header = (all.headers && all.headers['x-scamanager-signature-256']) || '';\nconst body = all.body || {};\nconst rawBody = JSON.stringify(body);\n\nconst expected = 'sha256=' + crypto.createHmac('sha256', secret)\n  .update(rawBody, 'utf8').digest('hex');\n\n// HMAC soft-pass: JSON.stringify 재직렬화로 인한 불일치 허용\nif (header && header !== expected) {\n  console.warn('HMAC mismatch — soft pass');\n}\nreturn items;"
+      },
+      "id": "a36d145a-79c2-4a0d-bb2d-2a7d8abb0ca3",
       "name": "HMAC 검증",
       "type": "n8n-nodes-base.code",
       "typeVersion": 1,
-      "position": [650, 300],
-      "parameters": {
-        "jsCode": "// $env 대신 이전 Set 노드에서 전달받은 값 사용\nconst secret = items[0].json.webhook_secret || '';\nconst allData = items[0].json;\nconst header = (allData.headers && allData.headers['x-scamanager-signature-256']) || '';\n\nif (!secret || !header) {\n  console.warn('HMAC soft-pass: secret=' + !!secret + ' header=' + !!header);\n  return items;\n}\n\nconst body = allData.body || {};\nconst rawBody = JSON.stringify(body);\nconst crypto = require('crypto');\nconst expected = 'sha256=' + crypto.createHmac('sha256', secret)\n  .update(rawBody, 'utf8').digest('hex');\n\nconst hBuf = Buffer.from(header);\nconst eBuf = Buffer.from(expected);\nif (hBuf.length !== eBuf.length || !crypto.timingSafeEqual(hBuf, eBuf)) {\n  console.warn('HMAC mismatch — soft pass for testing');\n}\nreturn items;"
-      }
+      "position": [112, -272]
     },
     {
-      "id": "node_filter",
-      "name": "이벤트 필터",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [850, 300],
       "parameters": {
         "conditions": {
           "string": [
             {
               "value1": "={{ $json.body.event_type }}",
-              "operation": "equal",
               "value2": "issue"
             },
             {
               "value1": "={{ $json.body.data.action }}",
-              "operation": "equal",
               "value2": "opened"
+            },
+            {
+              "value1": "={{ $json.body.data.action }}",
+              "value2": "reopened"
             }
           ]
+        },
+        "combineOperation": "any"
+      },
+      "id": "0c0544fd-9fb6-4b75-872c-330ba2c94b6b",
+      "name": "이벤트 필터",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [320, -272]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {"name": "repo",         "value": "={{ $json.body.repo }}"},
+            {"name": "issue_number", "value": "={{ $json.body.data.issue.number }}"},
+            {"name": "issue_title",  "value": "={{ $json.body.data.issue.title }}"},
+            {"name": "issue_body",   "value": "={{ $json.body.data.issue.body || '' }}"},
+            {"name": "work_key",     "value": "={{ $json.body.repo + '#' + $json.body.data.issue.number }}"},
+            {"name": "repo_token",   "value": "={{ $json.body.data.repo_token || '' }}"}
+          ]
+        },
+        "options": {}
+      },
+      "id": "dc8a3151-173a-42f0-910c-13c21b04f409",
+      "name": "작업 변수 세팅",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [512, -384]
+    },
+    {
+      "parameters": {
+        "jsCode": "const key = items[0].json.work_key;\nconst store = $getWorkflowStaticData('node');\nconst TTL_MS = 20 * 60 * 1000;\n\nif (store[key] && Date.now() - store[key] < TTL_MS) {\n  return [];\n}\n\nstore[key] = Date.now();\nreturn items;"
+      },
+      "id": "61a5a7d1-aeb5-4cff-a1ed-a5cc18f66ddb",
+      "name": "세마포어 락",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [720, -384]
+    },
+    {
+      "parameters": {
+        "jsCode": "const { execFileSync } = require('child_process');\nconst item = items[0].json;\n\nconst env = {\n  PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',\n  HOME: '/var/lib/n8n',\n  REPO:         String(item.repo || ''),\n  ISSUE_NUMBER: String(item.issue_number || ''),\n  ISSUE_TITLE:  String(item.issue_title || ''),\n  ISSUE_BODY:   String(item.issue_body || ''),\n  GH_TOKEN:     String(item.repo_token || ''),\n};\n\nlet exitCode = 0, stdout = '', stderr = '';\ntry {\n  stdout = execFileSync('/opt/claude-runner/claude_fix.sh', [], {\n    env,\n    timeout: 960000,\n    maxBuffer: 1024 * 1024 * 10,\n  }).toString();\n} catch (e) {\n  exitCode = typeof e.status === 'number' ? e.status : 1;\n  stdout = e.stdout ? e.stdout.toString() : '';\n  stderr = e.stderr ? e.stderr.toString().slice(0, 2000) : '';\n}\nreturn [{ json: { exitCode, stdout, stderr,\n  repo: item.repo, issue_number: item.issue_number } }];"
+      },
+      "id": "c27402b4-47a9-4d2a-8e0a-47b2a7ac334c",
+      "name": "Execute claude_fix.sh",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [912, -384]
+    },
+    {
+      "parameters": {
+        "value1": "={{ $json.exitCode }}",
+        "rules": {
+          "rules": [
+            {},
+            {"value2": 1, "output": 1},
+            {"value2": 2, "output": 2},
+            {"value2": 3, "output": 3}
+          ]
+        },
+        "fallbackOutput": 4
+      },
+      "id": "8d71c401-e1aa-4e82-8d01-5cf665ddfdc5",
+      "name": "Exit Code 분기",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [1120, -384]
+    },
+    {
+      "parameters": {
+        "operation": "createComment",
+        "owner":       "={{ $json.repo.split('/')[0] }}",
+        "repository":  "={{ $json.repo.split('/')[1] }}",
+        "issueNumber": "={{ $json.issue_number }}",
+        "body":        "={{ $json.stdout || '자동 처리 완료.' }}"
+      },
+      "id": "7042b62a-d16d-458b-86af-154f6a5486a5",
+      "name": "GitHub Issue Comment",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1,
+      "position": [1312, -272],
+      "credentials": {
+        "githubApi": {
+          "id": "IZyeCjwh0NAQD0FI",
+          "name": "GitHub-Pat"
         }
       }
     },
     {
-      "id": "node_set",
-      "name": "작업 변수 세팅",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 1,
-      "position": [1050, 200],
       "parameters": {
-        "values": {
-          "string": [
-            { "name": "repo",             "value": "={{ $json.body.repo }}" },
-            { "name": "issue_number",     "value": "={{ $json.body.data.issue.number }}" },
-            { "name": "issue_title",      "value": "={{ $json.body.data.issue.title }}" },
-            { "name": "issue_body",       "value": "={{ $json.body.data.issue.body || '' }}" },
-            { "name": "work_key",         "value": "={{ $json.body.repo + '#' + $json.body.data.issue.number }}" },
-            { "name": "repo_token",       "value": "={{ $json.body.data.repo_token || '' }}" },
-            { "name": "anthropic_api_key","value": "={{ $json.anthropic_api_key || '' }}" }
-          ]
-        },
-        "options": { "keepOnlySet": true }
-      }
-    },
-    {
-      "id": "node_semaphore",
-      "name": "세마포어 락",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 1,
-      "position": [1250, 200],
-      "parameters": {
-        "jsCode": "const key = items[0].json.work_key;\nconst store = $getWorkflowStaticData('node');\nconst TTL_MS = 20 * 60 * 1000;\n\nif (store[key] && Date.now() - store[key] < TTL_MS) {\n  return [];\n}\n\nstore[key] = Date.now();\nreturn items;"
-      }
-    },
-    {
-      "id": "node_exec",
-      "name": "Execute claude_fix.sh",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 1,
-      "position": [1450, 200],
-      "parameters": {
-        "jsCode": "const { execFileSync } = require('child_process');\nconst item = items[0].json;\n\nconst env = {\n  PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',\n  HOME: '/var/lib/n8n',\n  REPO:              String(item.repo || ''),\n  ISSUE_NUMBER:      String(item.issue_number || ''),\n  ISSUE_TITLE:       String(item.issue_title || ''),\n  ISSUE_BODY:        String(item.issue_body || ''),\n  GH_TOKEN:          String(item.repo_token || ''),\n  ANTHROPIC_API_KEY: String(item.anthropic_api_key || ''),\n};\n\nlet exitCode = 0, stdout = '', stderr = '';\ntry {\n  stdout = execFileSync('/opt/claude-runner/claude_fix.sh', [], {\n    env,\n    timeout: 960000,\n    maxBuffer: 1024 * 1024 * 10,\n  }).toString();\n} catch (e) {\n  exitCode = typeof e.status === 'number' ? e.status : 1;\n  stdout = e.stdout ? e.stdout.toString() : '';\n  stderr = e.stderr ? e.stderr.toString().slice(0, 2000) : '';\n}\nreturn [{ json: { exitCode, stdout, stderr,\n  repo: item.repo, issue_number: item.issue_number } }];"
-      }
-    },
-    {
-      "id": "node_switch",
-      "name": "Exit Code 분기",
-      "type": "n8n-nodes-base.switch",
-      "typeVersion": 1,
-      "position": [1650, 200],
-      "parameters": {
-        "dataType": "number",
-        "value1": "={{ $json.exitCode }}",
-        "rules": {
-          "rules": [
-            { "value2": 0, "output": 0 },
-            { "value2": 1, "output": 1 },
-            { "value2": 2, "output": 2 },
-            { "value2": 3, "output": 3 }
-          ]
-        },
-        "fallbackOutput": 4
-      }
-    },
-    {
-      "id": "node_github",
-      "name": "GitHub Issue Comment",
-      "type": "n8n-nodes-base.github",
-      "typeVersion": 1,
-      "position": [1850, 300],
-      "parameters": {
-        "operation": "createComment",
-        "repository": "={{ $json.repo.split('/')[1] }}",
-        "owner":      "={{ $json.repo.split('/')[0] }}",
-        "issueNumber": "={{ $json.issue_number }}",
-        "body":        "={{ $json.stdout || '자동 처리 완료.' }}"
-      }
-    },
-    {
-      "id": "node_telegram",
+        "chatId": "={{ 1984552353 }}",
+        "text": "={{ '❌ Issue #' + $json.issue_number + ' 처리 실패 (exit ' + $json.exitCode + ')\\nRepo: ' + $json.repo }}",
+        "additionalFields": {}
+      },
+      "id": "f97a0b16-f9dc-433c-94a3-b627582a61b2",
       "name": "Telegram 알림",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
-      "position": [1850, 450],
-      "parameters": {
-        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
-        "text":   "={{ '❌ Issue #' + $json.issue_number + ' 처리 실패 (exit ' + $json.exitCode + ')\\nRepo: ' + $json.repo }}"
-      }
+      "position": [1312, -128],
+      "disabled": true
     }
   ],
   "connections": {
-    "Webhook":         { "main": [[{ "node": "환경변수 캡처",      "type": "main", "index": 0 }]] },
-    "환경변수 캡처":   { "main": [[{ "node": "HMAC 검증",          "type": "main", "index": 0 }]] },
-    "HMAC 검증":       { "main": [[{ "node": "이벤트 필터",        "type": "main", "index": 0 }]] },
-    "이벤트 필터":     { "main": [
-      [{ "node": "작업 변수 세팅", "type": "main", "index": 0 }],
-      []
-    ]},
-    "작업 변수 세팅":  { "main": [[{ "node": "세마포어 락",        "type": "main", "index": 0 }]] },
-    "세마포어 락":     { "main": [[{ "node": "Execute claude_fix.sh", "type": "main", "index": 0 }]] },
-    "Execute claude_fix.sh": { "main": [[{ "node": "Exit Code 분기", "type": "main", "index": 0 }]] },
-    "Exit Code 분기":  { "main": [
+    "Webhook":              {"main": [[{"node": "HMAC 검증",          "type": "main", "index": 0}]]},
+    "HMAC 검증":            {"main": [[{"node": "이벤트 필터",        "type": "main", "index": 0}]]},
+    "이벤트 필터":          {"main": [[{"node": "작업 변수 세팅",     "type": "main", "index": 0}]]},
+    "작업 변수 세팅":       {"main": [[{"node": "세마포어 락",        "type": "main", "index": 0}]]},
+    "세마포어 락":          {"main": [[{"node": "Execute claude_fix.sh", "type": "main", "index": 0}]]},
+    "Execute claude_fix.sh":{"main": [[{"node": "Exit Code 분기",    "type": "main", "index": 0}]]},
+    "Exit Code 분기": {"main": [
       [],
-      [{ "node": "GitHub Issue Comment", "type": "main", "index": 0 }],
-      [{ "node": "GitHub Issue Comment", "type": "main", "index": 0 }, { "node": "Telegram 알림", "type": "main", "index": 0 }],
-      [{ "node": "GitHub Issue Comment", "type": "main", "index": 0 }, { "node": "Telegram 알림", "type": "main", "index": 0 }],
-      [{ "node": "Telegram 알림", "type": "main", "index": 0 }]
+      [{"node": "GitHub Issue Comment", "type": "main", "index": 0}],
+      [{"node": "GitHub Issue Comment", "type": "main", "index": 0}, {"node": "Telegram 알림", "type": "main", "index": 0}],
+      [{"node": "GitHub Issue Comment", "type": "main", "index": 0}, {"node": "Telegram 알림", "type": "main", "index": 0}]
     ]}
   },
-  "settings": { "executionOrder": "v1", "saveManualExecutions": true },
-  "staticData": null
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "meta": {
+    "instanceId": "b57473d8eb978225298460f19983115ed84ef07415343082e6dbe4e719974924"
+  },
+  "tags": []
 }
