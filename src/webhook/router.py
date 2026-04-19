@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import json
 import logging
+import re
 import httpx
 from fastapi import APIRouter, Request, HTTPException, BackgroundTasks, Header
 from sqlalchemy.exc import SQLAlchemyError
@@ -17,12 +18,74 @@ from src.models.repository import Repository
 from src.database import SessionLocal
 from src.constants import HANDLED_EVENTS, PR_HANDLED_ACTIONS
 from src.notifier.n8n import notify_n8n_issue
+from src.github_client.issues import close_issue
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 HANDLED_PR_ACTIONS = PR_HANDLED_ACTIONS  # 하위 호환 별칭
+
+_CLOSING_KEYWORDS = re.compile(r"(?i)\b(?:closes|fixes|resolves)\s*:?\s*#(\d+)")
+
+
+def _extract_closing_issue_numbers(body: str | None) -> list[int]:
+    """PR body 에서 'Closes|Fixes|Resolves #N' 키워드를 파싱해 이슈 번호 목록 반환."""
+    if not body:
+        return []
+    seen: set[int] = set()
+    result: list[int] = []
+    for match in _CLOSING_KEYWORDS.finditer(body):
+        n = int(match.group(1))
+        if n not in seen:
+            seen.add(n)
+            result.append(n)
+    return result
+
+
+async def _handle_merged_pr_event(data: dict) -> dict:
+    """pull_request.closed + merged=true 시 PR body 의 Closes #N 키워드로 Issue 를 close."""
+    pr = data.get("pull_request") or {}
+    if not pr.get("merged"):
+        return {"status": "ignored"}
+
+    body = pr.get("body") or ""
+    numbers = _extract_closing_issue_numbers(body)
+    if not numbers:
+        return {"status": "ignored"}
+
+    repo_name = data.get("repository", {}).get("full_name", "")
+    if not repo_name:
+        return {"status": "ignored"}
+
+    token = ""
+    try:
+        with SessionLocal() as db:
+            repo = db.query(Repository).filter(Repository.full_name == repo_name).first()
+            if repo and repo.owner:
+                token = repo.owner.plaintext_token or ""
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("merged-pr issue close: repo lookup failed for %s: %s", repo_name, exc)
+
+    token = token or settings.github_token
+    if not token:
+        logger.info("merged-pr issue close: no token available for %s — skipped", repo_name)
+        return {"status": "ignored"}
+
+    for issue_number in numbers:
+        try:
+            await close_issue(
+                token=token,
+                repo_full_name=repo_name,
+                issue_number=issue_number,
+            )
+            logger.info("Auto-closed issue #%d on %s (PR merge)", issue_number, repo_name)
+        except httpx.HTTPError as exc:
+            logger.warning(
+                "Auto-close failed (repo=%s, issue=%d): %s", repo_name, issue_number, exc
+            )
+
+    return {"status": "accepted"}
 
 
 @router.post("/webhooks/github", status_code=202)
@@ -70,6 +133,8 @@ async def github_webhook(
         action = data.get("action")
         if action not in HANDLED_PR_ACTIONS:
             return {"status": "ignored"}
+        if action == "closed":
+            return await _handle_merged_pr_event(data)
 
     if x_github_event == "issues":
         return await _handle_issues_event(data, background_tasks)
