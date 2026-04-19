@@ -141,6 +141,38 @@ async def test_telegram_post_message_connect_error_propagates():
             )
 
 
+# ---------------------------------------------------------------------------
+# 보안: HTML injection 방어 (html.escape)
+# ---------------------------------------------------------------------------
+
+def test_build_message_escapes_html_in_ai_summary():
+    """AI 요약에 HTML 태그가 있으면 이스케이프되어 raw 태그가 출력되지 않는다."""
+    ai = _make_ai(summary="<script>alert('xss')</script>")
+    msg = _build_message(
+        repo_name="owner/repo",
+        commit_sha="abc1234",
+        score_result=_make_score(),
+        analysis_results=[],
+        pr_number=None,
+        ai_review=ai,
+    )
+    assert "<script>" not in msg
+    assert "&lt;script&gt;" in msg
+
+
+def test_build_message_escapes_html_in_repo_name():
+    """repo_name에 HTML 특수문자가 있으면 이스케이프된다."""
+    msg = _build_message(
+        repo_name="<b>evil</b>",
+        commit_sha="abc1234",
+        score_result=_make_score(),
+        analysis_results=[],
+        pr_number=None,
+    )
+    assert "<b>evil</b>" not in msg
+    assert "&lt;b&gt;" in msg
+
+
 async def test_telegram_post_message_sends_correct_chat_id():
     """telegram_post_message가 지정된 chat_id로 POST 요청을 전송한다."""
     mock_response = MagicMock()

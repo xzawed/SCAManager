@@ -318,3 +318,32 @@ def test_callback_display_name_falls_back_to_login_when_name_empty():
 
     assert captured.get("user") is not None
     assert captured["user"].display_name == "emptyname"
+
+
+# ---------------------------------------------------------------------------
+# 보안: OAuth CSRF state 검증
+# ---------------------------------------------------------------------------
+
+def test_callback_without_prior_auth_session_fails():
+    """/auth/github를 먼저 거치지 않은(state 없는) 직접 콜백 요청은 성공하지 않아야 한다.
+
+    Authlib은 authorize_access_token() 내부에서 session state와 query state를 비교한다.
+    prior /auth/github 없이 직접 /auth/callback에 접근하면 MismatchingStateError 등의 예외가 발생,
+    500으로 응답해야 하며 절대로 302(/)로 성공 응답하면 안 된다.
+    """
+    no_raise_client = TestClient(app, raise_server_exceptions=False)
+    r = no_raise_client.get(
+        "/auth/callback?code=legit_code&state=forged_state",
+        follow_redirects=False,
+    )
+    # 성공(302 to /)이어서는 안 된다.
+    assert not (r.status_code == 302 and r.headers.get("location") == "/"), (
+        "CSRF 방어 실패: state 없는 직접 콜백이 성공 리다이렉트를 반환했다"
+    )
+
+
+def test_jinja2_autoescape_enabled():
+    """FastAPI Jinja2Templates 인스턴스의 autoescape가 True여야 한다."""
+    from fastapi.templating import Jinja2Templates
+    t = Jinja2Templates(directory="src/templates")
+    assert t.env.autoescape is True, "Jinja2 autoescape가 비활성화되어 있어 XSS 위험이 있다"
