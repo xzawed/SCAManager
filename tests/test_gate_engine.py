@@ -59,7 +59,7 @@ async def test_review_comment_on_calls_post_pr_comment():
             with patch("src.gate.engine.post_github_review", new_callable=AsyncMock):
                 with patch("src.gate.engine.merge_pr", new_callable=AsyncMock):
                     with patch("src.gate.engine.send_gate_request", new_callable=AsyncMock):
-                        with patch("src.gate.engine._save_gate_decision"):
+                        with patch("src.gate.engine.save_gate_decision"):
                             await run_gate_check(
                                 repo_name="owner/repo",
                                 pr_number=1,
@@ -77,7 +77,7 @@ async def test_review_comment_off_skips_post_pr_comment():
     config = _config(pr_review_comment=False, approve_mode="disabled")
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock) as mock_comment:
-            with patch("src.gate.engine._save_gate_decision"):
+            with patch("src.gate.engine.save_gate_decision"):
                 await run_gate_check(
                     repo_name="owner/repo",
                     pr_number=1,
@@ -99,7 +99,7 @@ async def test_auto_approve_high_score():
     config = _config(approve_mode="auto", approve_threshold=75, reject_threshold=50)
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock) as mock_review:
-            with patch("src.gate.engine._save_gate_decision"):
+            with patch("src.gate.engine.save_gate_decision"):
                 with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
                     with patch("src.gate.engine.merge_pr", new_callable=AsyncMock):
                         await run_gate_check(
@@ -123,7 +123,7 @@ async def test_auto_reject_low_score():
     config = _config(approve_mode="auto", approve_threshold=75, reject_threshold=50)
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock) as mock_review:
-            with patch("src.gate.engine._save_gate_decision"):
+            with patch("src.gate.engine.save_gate_decision"):
                 with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
                     with patch("src.gate.engine.merge_pr", new_callable=AsyncMock):
                         await run_gate_check(
@@ -146,7 +146,7 @@ async def test_auto_skip_middle_score():
     config = _config(approve_mode="auto", approve_threshold=75, reject_threshold=50)
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock) as mock_review:
-            with patch("src.gate.engine._save_gate_decision"):
+            with patch("src.gate.engine.save_gate_decision"):
                 with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
                     with patch("src.gate.engine.merge_pr", new_callable=AsyncMock):
                         await run_gate_check(
@@ -171,7 +171,7 @@ async def test_semi_auto_sends_telegram():
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.send_gate_request", new_callable=AsyncMock) as mock_send:
             with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
-                with patch("src.gate.engine._save_gate_decision"):
+                with patch("src.gate.engine.save_gate_decision"):
                     await run_gate_check(
                         repo_name="owner/repo",
                         pr_number=7,
@@ -196,7 +196,7 @@ async def test_approve_disabled_no_review():
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock) as mock_review:
             with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
-                with patch("src.gate.engine._save_gate_decision"):
+                with patch("src.gate.engine.save_gate_decision"):
                     await run_gate_check(
                         repo_name="owner/repo",
                         pr_number=1,
@@ -227,7 +227,7 @@ async def test_auto_merge_independent_of_approve_mode():
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
             with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
-                with patch("src.gate.engine._save_gate_decision"):
+                with patch("src.gate.engine.save_gate_decision"):
                     mock_merge.return_value = (True, None)
                     await run_gate_check(
                         repo_name="owner/repo",
@@ -254,7 +254,7 @@ async def test_auto_merge_with_auto_approve():
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock) as mock_review:
             with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
                 with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
-                    with patch("src.gate.engine._save_gate_decision"):
+                    with patch("src.gate.engine.save_gate_decision"):
                         mock_merge.return_value = (True, None)
                         await run_gate_check(
                             repo_name="owner/repo",
@@ -280,7 +280,7 @@ async def test_auto_merge_below_threshold():
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
             with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
-                with patch("src.gate.engine._save_gate_decision"):
+                with patch("src.gate.engine.save_gate_decision"):
                     await run_gate_check(
                         repo_name="owner/repo",
                         pr_number=3,
@@ -306,7 +306,7 @@ async def test_auto_merge_false_no_merge():
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock):
             with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
                 with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
-                    with patch("src.gate.engine._save_gate_decision"):
+                    with patch("src.gate.engine.save_gate_decision"):
                         await run_gate_check(
                             repo_name="owner/repo",
                             pr_number=5,
@@ -338,7 +338,7 @@ async def test_push_event_no_gate_actions():
             with patch("src.gate.engine.post_github_review", new_callable=AsyncMock) as mock_review:
                 with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
                     with patch("src.gate.engine.send_gate_request", new_callable=AsyncMock) as mock_send:
-                        with patch("src.gate.engine._save_gate_decision"):
+                        with patch("src.gate.engine.save_gate_decision"):
                             await run_gate_check(
                                 repo_name="owner/repo",
                                 pr_number=None,  # push 이벤트
@@ -357,13 +357,13 @@ async def test_push_event_no_gate_actions():
 # 하위 호환성 — 기존 동작 유지 확인
 # ---------------------------------------------------------------------------
 
-async def test_save_gate_decision_called_on_approve():
-    """auto approve 시 _save_gate_decision이 'approve'로 호출되어야 한다."""
+async def testsave_gate_decision_called_on_approve():
+    """auto approve 시 save_gate_decision이 'approve'로 호출되어야 한다."""
     mock_db = MagicMock()
     config = _config(approve_mode="auto", approve_threshold=75, reject_threshold=50)
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock):
-            with patch("src.gate.engine._save_gate_decision") as mock_save:
+            with patch("src.gate.engine.save_gate_decision") as mock_save:
                 with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
                     with patch("src.gate.engine.merge_pr", new_callable=AsyncMock):
                         await run_gate_check(
@@ -377,13 +377,13 @@ async def test_save_gate_decision_called_on_approve():
                         mock_save.assert_called_once_with(mock_db, 42, "approve", "auto")
 
 
-async def test_save_gate_decision_called_on_reject():
-    """auto reject 시 _save_gate_decision이 'reject'로 호출되어야 한다."""
+async def testsave_gate_decision_called_on_reject():
+    """auto reject 시 save_gate_decision이 'reject'로 호출되어야 한다."""
     mock_db = MagicMock()
     config = _config(approve_mode="auto", approve_threshold=75, reject_threshold=50)
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock):
-            with patch("src.gate.engine._save_gate_decision") as mock_save:
+            with patch("src.gate.engine.save_gate_decision") as mock_save:
                 with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
                     with patch("src.gate.engine.merge_pr", new_callable=AsyncMock):
                         await run_gate_check(
@@ -397,13 +397,13 @@ async def test_save_gate_decision_called_on_reject():
                         mock_save.assert_called_once_with(mock_db, 43, "reject", "auto")
 
 
-async def test_save_gate_decision_skip_on_middle_score():
-    """중간 점수에서 _save_gate_decision이 'skip'으로 호출되어야 한다."""
+async def testsave_gate_decision_skip_on_middle_score():
+    """중간 점수에서 save_gate_decision이 'skip'으로 호출되어야 한다."""
     mock_db = MagicMock()
     config = _config(approve_mode="auto", approve_threshold=75, reject_threshold=50)
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock):
-            with patch("src.gate.engine._save_gate_decision") as mock_save:
+            with patch("src.gate.engine.save_gate_decision") as mock_save:
                 with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
                     with patch("src.gate.engine.merge_pr", new_callable=AsyncMock):
                         await run_gate_check(
@@ -429,7 +429,7 @@ async def test_merge_pr_failure_does_not_raise():
     )
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock):
-            with patch("src.gate.engine._save_gate_decision") as mock_save:
+            with patch("src.gate.engine.save_gate_decision") as mock_save:
                 with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
                     with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
                         with patch("src.gate.engine.telegram_post_message", new_callable=AsyncMock):
@@ -458,7 +458,7 @@ async def test_post_pr_comment_exception_does_not_abort_gate():
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock, side_effect=httpx.ConnectError("comment failed")):
             with patch("src.gate.engine.post_github_review", new_callable=AsyncMock) as mock_review:
-                with patch("src.gate.engine._save_gate_decision"):
+                with patch("src.gate.engine.save_gate_decision"):
                     with patch("src.gate.engine.merge_pr", new_callable=AsyncMock):
                         await run_gate_check(
                             repo_name="owner/repo", pr_number=1, analysis_id=1,
@@ -474,7 +474,7 @@ async def test_post_github_review_exception_does_not_crash():
     config = _config(approve_mode="auto", approve_threshold=75, reject_threshold=50, pr_review_comment=False)
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock, side_effect=httpx.ConnectError("GitHub API error")):
-            with patch("src.gate.engine._save_gate_decision"):
+            with patch("src.gate.engine.save_gate_decision"):
                 with patch("src.gate.engine.merge_pr", new_callable=AsyncMock):
                     with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
                         # 예외 없이 완료되어야 한다
@@ -491,7 +491,7 @@ async def test_merge_pr_exception_does_not_crash():
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.merge_pr", new_callable=AsyncMock, side_effect=httpx.ConnectError("merge error")):
             with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
-                with patch("src.gate.engine._save_gate_decision"):
+                with patch("src.gate.engine.save_gate_decision"):
                     await run_gate_check(
                         repo_name="owner/repo", pr_number=3, analysis_id=10,
                         result={"score": 90, "grade": "A"}, github_token="tok", db=mock_db,
@@ -505,7 +505,7 @@ async def test_semi_auto_no_notify_chat_id_skips_telegram():
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.send_gate_request", new_callable=AsyncMock) as mock_send:
             with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
-                with patch("src.gate.engine._save_gate_decision"):
+                with patch("src.gate.engine.save_gate_decision"):
                     await run_gate_check(
                         repo_name="owner/repo", pr_number=1, analysis_id=1,
                         result={"score": 70, "grade": "C"}, github_token="tok", db=mock_db,
@@ -520,7 +520,7 @@ async def test_send_gate_request_exception_does_not_crash():
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.send_gate_request", new_callable=AsyncMock, side_effect=httpx.ConnectError("Telegram error")):
             with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
-                with patch("src.gate.engine._save_gate_decision"):
+                with patch("src.gate.engine.save_gate_decision"):
                     await run_gate_check(
                         repo_name="owner/repo", pr_number=1, analysis_id=1,
                         result={"score": 70, "grade": "C"}, github_token="tok", db=mock_db,
@@ -537,7 +537,7 @@ async def test_config_none_calls_get_repo_config():
     config = _config(pr_review_comment=False, approve_mode="disabled", auto_merge=False)
     with patch("src.gate.engine.get_repo_config", return_value=config) as mock_get:
         with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
-            with patch("src.gate.engine._save_gate_decision"):
+            with patch("src.gate.engine.save_gate_decision"):
                 await run_gate_check(
                     repo_name="owner/repo",
                     pr_number=1,
@@ -556,7 +556,7 @@ async def test_config_provided_skips_get_repo_config():
     config = _config(pr_review_comment=False, approve_mode="disabled", auto_merge=False)
     with patch("src.gate.engine.get_repo_config") as mock_get:
         with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
-            with patch("src.gate.engine._save_gate_decision"):
+            with patch("src.gate.engine.save_gate_decision"):
                 await run_gate_check(
                     repo_name="owner/repo",
                     pr_number=1,
@@ -610,7 +610,7 @@ async def test_approve_at_exact_threshold():
     config = _config(approve_mode="auto", approve_threshold=75, reject_threshold=50)
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock) as mock_review:
-            with patch("src.gate.engine._save_gate_decision"):
+            with patch("src.gate.engine.save_gate_decision"):
                 with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
                     with patch("src.gate.engine.merge_pr", new_callable=AsyncMock):
                         await run_gate_check(
@@ -628,7 +628,7 @@ async def test_reject_threshold_boundary_is_excluded():
     config = _config(approve_mode="auto", approve_threshold=75, reject_threshold=50)
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock) as mock_review:
-            with patch("src.gate.engine._save_gate_decision") as mock_save:
+            with patch("src.gate.engine.save_gate_decision") as mock_save:
                 with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
                     with patch("src.gate.engine.merge_pr", new_callable=AsyncMock):
                         await run_gate_check(
@@ -646,7 +646,7 @@ async def test_merge_at_exact_threshold():
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
             with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
-                with patch("src.gate.engine._save_gate_decision"):
+                with patch("src.gate.engine.save_gate_decision"):
                     mock_merge.return_value = (True, None)
                     await run_gate_check(
                         repo_name="owner/repo", pr_number=1, analysis_id=1,
@@ -667,7 +667,7 @@ async def test_post_pr_comment_keyerror_does_not_abort_gate():
         with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock,
                    side_effect=KeyError("missing_field")):
             with patch("src.gate.engine.post_github_review", new_callable=AsyncMock) as mock_review:
-                with patch("src.gate.engine._save_gate_decision"):
+                with patch("src.gate.engine.save_gate_decision"):
                     with patch("src.gate.engine.merge_pr", new_callable=AsyncMock):
                         await run_gate_check(
                             repo_name="owner/repo", pr_number=1, analysis_id=1,
@@ -683,7 +683,7 @@ async def test_post_github_review_keyerror_does_not_crash():
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock,
                    side_effect=KeyError("pr_number")):
-            with patch("src.gate.engine._save_gate_decision"):
+            with patch("src.gate.engine.save_gate_decision"):
                 with patch("src.gate.engine.merge_pr", new_callable=AsyncMock):
                     with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
                         await run_gate_check(
@@ -710,7 +710,7 @@ async def test_auto_merge_success_no_telegram():
         with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
             with patch("src.gate.engine.telegram_post_message", new_callable=AsyncMock) as mock_tg:
                 with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
-                    with patch("src.gate.engine._save_gate_decision"):
+                    with patch("src.gate.engine.save_gate_decision"):
                         # merge 성공 → (True, None)
                         mock_merge.return_value = (True, None)
                         await run_gate_check(
@@ -740,7 +740,7 @@ async def test_auto_merge_failure_sends_telegram():
             with patch("src.gate.engine.telegram_post_message", new_callable=AsyncMock) as mock_tg:
                 with patch("src.gate.engine.settings") as mock_settings:
                     with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
-                        with patch("src.gate.engine._save_gate_decision"):
+                        with patch("src.gate.engine.save_gate_decision"):
                             mock_settings.telegram_bot_token = "123:ABC"
                             mock_settings.telegram_chat_id = ""
                             # merge 실패 → (False, "forbidden: Resource not accessible")
@@ -780,7 +780,7 @@ async def test_auto_merge_failure_no_chat_id_only_logs():
             with patch("src.gate.engine.telegram_post_message", new_callable=AsyncMock) as mock_tg:
                 with patch("src.gate.engine.settings") as mock_settings:
                     with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
-                        with patch("src.gate.engine._save_gate_decision"):
+                        with patch("src.gate.engine.save_gate_decision"):
                             mock_settings.telegram_bot_token = "123:ABC"
                             mock_settings.telegram_chat_id = ""  # global chat_id도 없음
                             mock_merge.return_value = (False, "forbidden: no permission")
@@ -811,7 +811,7 @@ async def test_auto_merge_failure_global_fallback_chat_id():
             with patch("src.gate.engine.telegram_post_message", new_callable=AsyncMock) as mock_tg:
                 with patch("src.gate.engine.settings") as mock_settings:
                     with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
-                        with patch("src.gate.engine._save_gate_decision"):
+                        with patch("src.gate.engine.save_gate_decision"):
                             mock_settings.telegram_bot_token = "123:ABC"
                             mock_settings.telegram_chat_id = "-100999"  # global fallback 존재
                             mock_merge.return_value = (False, "forbidden: no permission")

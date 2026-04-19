@@ -27,7 +27,7 @@ from sqlalchemy.exc import SQLAlchemyError
 logger = logging.getLogger(__name__)
 
 
-def _build_result_dict(
+def build_analysis_result_dict(
     ai_review,
     score_result,
     analysis_results: list,
@@ -78,7 +78,7 @@ async def _run_static_analysis(files: list[ChangedFile]) -> list[StaticAnalysisR
     )
 
 
-def _build_notify_tasks(  # pylint: disable=too-many-positional-arguments,too-many-arguments
+def build_notification_tasks(  # pylint: disable=too-many-positional-arguments,too-many-arguments
     repo_config,
     repo_name, commit_sha, pr_number,
     owner_token, score_result, analysis_results, ai_review,
@@ -299,7 +299,7 @@ async def _save_and_gate(
             return get_repo_config(db, repo_name), None, None
         except (SQLAlchemyError, KeyError):
             return None, None, None
-    result_dict = _build_result_dict(
+    result_dict = build_analysis_result_dict(
         ai_review, score_result, analysis_results,
         source="pr" if pr_number else "push",
     )
@@ -350,7 +350,7 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
         3. asyncio.gather — 정적분석(pylint·flake8·bandit) + AI 리뷰 병렬 실행
         4. 점수·등급 계산 → Analysis DB 저장
         5. run_gate_check (PR 이벤트만) — Review Comment·Approve·Auto Merge
-        6. _build_notify_tasks → Telegram·Discord·Slack·Webhook·Email·n8n 알림
+        6. build_notification_tasks → Telegram·Discord·Slack·Webhook·Email·n8n 알림
     """
     try:
         repo_name, commit_sha, commit_message, pr_number = _extract_event_metadata(event, data)
@@ -389,7 +389,7 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
                 owner_token, analysis_results, ai_review, score_result,
             )
 
-        notify_tasks, task_names = _build_notify_tasks(
+        notify_tasks, task_names = build_notification_tasks(
             repo_config=repo_config,
             repo_name=repo_name,
             commit_sha=commit_sha,

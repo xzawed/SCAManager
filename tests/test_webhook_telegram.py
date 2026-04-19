@@ -76,7 +76,7 @@ async def test_handle_gate_callback_approve_with_auto_merge():
     config = RepoConfigData(repo_full_name="owner/repo", auto_merge=True, merge_threshold=75)
     with patch("src.webhook.router.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.webhook.router.post_github_review", new_callable=AsyncMock):
-            with patch("src.webhook.router._save_gate_decision"):
+            with patch("src.webhook.router.save_gate_decision"):
                 with patch("src.webhook.router.get_repo_config", return_value=config):
                     with patch("src.webhook.router.merge_pr", new_callable=AsyncMock) as mock_merge:
                         mock_merge.return_value = (True, None)
@@ -97,7 +97,7 @@ async def test_handle_gate_callback_approve_without_auto_merge():
     config = RepoConfigData(repo_full_name="owner/repo", auto_merge=False)
     with patch("src.webhook.router.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.webhook.router.post_github_review", new_callable=AsyncMock):
-            with patch("src.webhook.router._save_gate_decision"):
+            with patch("src.webhook.router.save_gate_decision"):
                 with patch("src.webhook.router.get_repo_config", return_value=config):
                     with patch("src.webhook.router.merge_pr", new_callable=AsyncMock) as mock_merge:
                         await handle_gate_callback(analysis_id=42, decision="approve",
@@ -117,7 +117,7 @@ async def test_handle_gate_callback_reject_does_not_merge():
     config = RepoConfigData(repo_full_name="owner/repo", auto_merge=True)
     with patch("src.webhook.router.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.webhook.router.post_github_review", new_callable=AsyncMock):
-            with patch("src.webhook.router._save_gate_decision"):
+            with patch("src.webhook.router.save_gate_decision"):
                 with patch("src.webhook.router.get_repo_config", return_value=config):
                     with patch("src.webhook.router.merge_pr", new_callable=AsyncMock) as mock_merge:
                         await handle_gate_callback(analysis_id=42, decision="reject",
@@ -137,7 +137,7 @@ async def test_handle_gate_callback_merge_failure_does_not_propagate():
     config = RepoConfigData(repo_full_name="owner/repo", auto_merge=True)
     with patch("src.webhook.router.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.webhook.router.post_github_review", new_callable=AsyncMock):
-            with patch("src.webhook.router._save_gate_decision") as mock_save:
+            with patch("src.webhook.router.save_gate_decision") as mock_save:
                 with patch("src.webhook.router.get_repo_config", return_value=config):
                     with patch("src.webhook.router.merge_pr", new_callable=AsyncMock) as mock_merge:
                         mock_merge.return_value = (False, "forbidden: no permission")

@@ -1,7 +1,7 @@
 """Integration tests: HTTP webhook → BackgroundTask → pipeline → gate.
 
 실제로 실행하는 것: run_analysis_pipeline, _regate_pr_if_needed, DB(SQLite), 서명 검증
-Mock 대상: get_pr_files/get_push_files, review_code, analyze_file, run_gate_check, _build_notify_tasks
+Mock 대상: get_pr_files/get_push_files, review_code, analyze_file, run_gate_check, build_notification_tasks
 """
 import hashlib
 import hmac
@@ -76,7 +76,7 @@ def mock_deps(monkeypatch):
     )
     gate_mock = AsyncMock()
     monkeypatch.setattr("src.worker.pipeline.run_gate_check", gate_mock)
-    monkeypatch.setattr("src.worker.pipeline._build_notify_tasks", lambda *a, **kw: ([], []))
+    monkeypatch.setattr("src.worker.pipeline.build_notification_tasks", lambda *a, **kw: ([], []))
     return gate_mock
 
 
