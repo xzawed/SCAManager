@@ -11,11 +11,11 @@
 [![Railway](https://img.shields.io/badge/Deploy-Railway-0B0D0E?style=flat-square&logo=railway&logoColor=white)](https://railway.app/)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
-[![Tests](https://img.shields.io/badge/Tests-634_passing-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-689_passing-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
 [![E2E](https://img.shields.io/badge/E2E-38_passing-brightgreen?style=flat-square&logo=playwright&logoColor=white)](e2e/)
-[![pylint](https://img.shields.io/badge/pylint-9.72%2F10-brightgreen?style=flat-square&logo=python&logoColor=white)](src/)
+[![pylint](https://img.shields.io/badge/pylint-9.77%2F10-brightgreen?style=flat-square&logo=python&logoColor=white)](src/)
 [![bandit](https://img.shields.io/badge/bandit-HIGH_0-brightgreen?style=flat-square&logo=security&logoColor=white)](src/)
-[![Coverage](https://img.shields.io/badge/Coverage-92%25-brightgreen?style=flat-square&logo=codecov&logoColor=white)](tests/)
+[![Coverage](https://img.shields.io/badge/Coverage-96.2%25-brightgreen?style=flat-square&logo=codecov&logoColor=white)](tests/)
 
 </div>
 
