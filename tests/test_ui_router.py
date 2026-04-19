@@ -1208,3 +1208,217 @@ def test_analysis_detail_single_analysis_no_siblings():
     assert "next_id" in captured_context, "next_id가 template context에 없음 — 미구현 상태"
     assert captured_context["prev_id"] is None
     assert captured_context["next_id"] is None
+
+
+# ── P3 커버리지 보강 테스트 ──────────────────────────
+
+def test_webhook_base_url_uses_app_base_url_when_set():
+    """APP_BASE_URL 설정 시 _webhook_base_url이 해당 URL을 반환해야 한다 (line 33)."""
+    with patch("src.ui.router.settings") as mock_settings:
+        mock_settings.app_base_url = "https://myapp.railway.app"
+        from src.ui.router import _webhook_base_url
+        fake_request = MagicMock()
+        result = _webhook_base_url(fake_request)
+    assert result == "https://myapp.railway.app"
+
+
+def test_delete_repo_with_analyses_deletes_gate_decisions():
+    """분석 기록이 있는 리포 삭제 시 GateDecision도 cascade 삭제되어야 한다 (line 63)."""
+    from unittest.mock import AsyncMock, patch
+
+    mock_repo = MagicMock(id=1, full_name="owner/repo", user_id=1, webhook_id=None)
+    mock_analysis_row = MagicMock()
+    mock_analysis_row.id = 42
+
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = mock_repo
+    mock_db.query.return_value.filter.return_value.all.return_value = [mock_analysis_row]
+
+    with patch("src.ui.router.delete_webhook", new_callable=AsyncMock):
+        with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+            r = client.post("/repos/owner%2Frepo/delete", follow_redirects=False)
+
+    assert r.status_code == 303
+    # GateDecision.delete 호출 확인 (synchronize_session=False)
+    mock_db.query.return_value.filter.return_value.delete.assert_called()
+
+
+def test_add_repo_empty_name_returns_400():
+    """repo_full_name이 빈 문자열이면 400 에러가 반환되어야 한다 (line 105)."""
+    r = client.post("/repos/add", data={"repo_full_name": ""}, follow_redirects=False)
+    assert r.status_code == 400
+
+
+def test_add_repo_missing_name_returns_400():
+    """repo_full_name 필드 자체가 없으면 400 에러가 반환되어야 한다 (line 105)."""
+    r = client.post("/repos/add", data={}, follow_redirects=False)
+    assert r.status_code == 400
+
+
+def test_add_repo_ownership_transfer_when_user_id_null():
+    """user_id=NULL인 기존 리포 → 현재 사용자 소유로 이전 후 리다이렉트 (line 118-120)."""
+    from unittest.mock import patch
+    from src.models.repository import Repository
+
+    existing = MagicMock(spec=Repository)
+    existing.full_name = "owner/legacy-repo"
+    existing.user_id = None  # 레거시 리포, 소유자 없음
+
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = existing
+
+    with patch("src.ui.router.SessionLocal") as mock_sl:
+        mock_sl.return_value.__enter__.return_value = mock_db
+        r = client.post(
+            "/repos/add",
+            data={"repo_full_name": "owner/legacy-repo"},
+            follow_redirects=False,
+        )
+
+    assert r.status_code == 303
+    assert "/repos/owner/legacy-repo" in r.headers["location"]
+    assert existing.user_id == 1  # _test_user.id
+
+
+def test_add_repo_updates_existing_config_hook_token():
+    """리포 등록 시 RepoConfig가 이미 있으면 hook_token만 업데이트해야 한다 (line 149)."""
+    from unittest.mock import AsyncMock, patch
+
+    existing_config = MagicMock()
+    existing_config.hook_token = "old-token"
+
+    call_count = [0]
+
+    def fake_first():
+        call_count[0] += 1
+        if call_count[0] == 1:
+            return None  # Repository가 없음 (새 리포)
+        return existing_config  # RepoConfig가 이미 있음
+
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.side_effect = lambda: fake_first()
+
+    with patch("src.ui.router.create_webhook", new_callable=AsyncMock, return_value=12345):
+        with patch("src.ui.router.commit_scamanager_files", new_callable=AsyncMock, return_value=True):
+            with patch("src.ui.router.SessionLocal") as mock_sl:
+                mock_sl.return_value.__enter__.return_value = mock_db
+                r = client.post(
+                    "/repos/add",
+                    data={"repo_full_name": "owner/new-repo"},
+                    follow_redirects=False,
+                )
+
+    assert r.status_code == 303
+    # hook_token이 새 값으로 업데이트되어야 한다
+    assert existing_config.hook_token != "old-token"
+
+
+def test_post_settings_invalid_threshold_redirects_with_error():
+    """threshold에 비정수 값 전송 시 ?save_error=1 리다이렉트해야 한다 (line 271-273)."""
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
+        id=1, full_name="owner/repo", user_id=None
+    )
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.ui.router.upsert_repo_config"):
+            r = client.post(
+                "/repos/owner%2Frepo/settings",
+                data={
+                    "approve_mode": "auto",
+                    "approve_threshold": "not-a-number",
+                    "reject_threshold": "50",
+                },
+                follow_redirects=False,
+            )
+    assert r.status_code == 303
+    assert "save_error=1" in r.headers["location"]
+
+
+def test_reinstall_hook_creates_config_when_none_exists():
+    """RepoConfig가 없을 때 reinstall_hook이 새 config를 생성해야 한다 (line 286-311)."""
+    from unittest.mock import AsyncMock, patch
+
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.side_effect = [
+        MagicMock(id=1, full_name="owner/repo", user_id=None),  # _get_accessible_repo
+        None,  # RepoConfig 없음
+    ]
+
+    with patch("src.ui.router.commit_scamanager_files", new_callable=AsyncMock, return_value=True):
+        with patch("src.ui.router.SessionLocal") as mock_sl:
+            mock_sl.return_value.__enter__.return_value = mock_db
+            r = client.post("/repos/owner%2Frepo/reinstall-hook", follow_redirects=False)
+
+    assert r.status_code == 303
+    assert "hook_ok=1" in r.headers["location"]
+    mock_db.add.assert_called()
+
+
+def test_reinstall_hook_generates_token_when_missing():
+    """기존 config의 hook_token이 없으면 새 토큰을 생성해야 한다 (line 297-298)."""
+    from unittest.mock import AsyncMock, patch
+
+    existing_config = MagicMock()
+    existing_config.hook_token = None  # 토큰 없음
+
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.side_effect = [
+        MagicMock(id=1, full_name="owner/repo", user_id=None),
+        existing_config,
+    ]
+
+    with patch("src.ui.router.commit_scamanager_files", new_callable=AsyncMock, return_value=True):
+        with patch("src.ui.router.SessionLocal") as mock_sl:
+            mock_sl.return_value.__enter__.return_value = mock_db
+            r = client.post("/repos/owner%2Frepo/reinstall-hook", follow_redirects=False)
+
+    assert r.status_code == 303
+    assert existing_config.hook_token is not None
+
+
+def test_reinstall_hook_fail_returns_hook_fail_redirect():
+    """commit_scamanager_files 실패 시 ?hook_fail=1 리다이렉트해야 한다 (line 310-311)."""
+    from unittest.mock import AsyncMock, patch
+
+    existing_config = MagicMock()
+    existing_config.hook_token = "existing-token"
+
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.side_effect = [
+        MagicMock(id=1, full_name="owner/repo", user_id=None),
+        existing_config,
+    ]
+
+    with patch("src.ui.router.commit_scamanager_files", new_callable=AsyncMock, return_value=False):
+        with patch("src.ui.router.SessionLocal") as mock_sl:
+            mock_sl.return_value.__enter__.return_value = mock_db
+            r = client.post("/repos/owner%2Frepo/reinstall-hook", follow_redirects=False)
+
+    assert r.status_code == 303
+    assert "hook_fail=1" in r.headers["location"]
+
+
+def test_reinstall_webhook_deletes_matching_hooks():
+    """기존 Webhook 중 /webhooks/github URL이 포함된 것은 삭제되어야 한다 (line 333-337)."""
+    from unittest.mock import AsyncMock, patch
+
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
+        id=1, full_name="owner/repo", user_id=None, webhook_id=None
+    )
+
+    existing_hooks = [
+        {"id": 111, "config": {"url": "https://old.example.com/webhooks/github"}},
+        {"id": 222, "config": {"url": "https://old.example.com/webhooks/github"}},
+        {"id": 333, "config": {"url": "https://unrelated.example.com/something-else"}},
+    ]
+
+    with patch("src.ui.router.list_webhooks", new_callable=AsyncMock, return_value=existing_hooks):
+        with patch("src.ui.router.delete_webhook", new_callable=AsyncMock, return_value=True) as mock_del:
+            with patch("src.ui.router.create_webhook", new_callable=AsyncMock, return_value=99999):
+                with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+                    r = client.post("/repos/owner%2Frepo/reinstall-webhook", follow_redirects=False)
+
+    assert r.status_code == 303
+    # /webhooks/github URL 포함 2개만 삭제, 나머지 1개(unrelated)는 스킵
+    assert mock_del.call_count == 2
