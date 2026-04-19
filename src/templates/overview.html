@@ -91,7 +91,6 @@
         <tr>
           <th>리포지토리</th>
           <th>분석</th>
-          <th>최근 점수</th>
           <th>평균 점수</th>
           <th>등급</th>
           <th></th>
@@ -105,15 +104,6 @@
         </td>
         <td><span class="analysis-count">{{ item.analysis_count }}회</span></td>
         <td>
-          {% if item.latest_score is not none %}
-          <span class="score-cell {% if item.latest_score >= 75 %}score-high{% elif item.latest_score >= 50 %}score-mid{% else %}score-low{% endif %}">
-            {{ item.latest_score }}
-          </span>
-          {% else %}
-          <span style="color:var(--text-muted)">—</span>
-          {% endif %}
-        </td>
-        <td>
           {% if item.avg_score %}
           <span class="score-cell {% if item.avg_score >= 75 %}score-high{% elif item.avg_score >= 50 %}score-mid{% else %}score-low{% endif %}">
             {{ item.avg_score }}
@@ -123,8 +113,8 @@
           {% endif %}
         </td>
         <td>
-          {% if item.latest_grade %}
-          <span class="grade grade-{{ item.latest_grade }}">{{ item.latest_grade }}</span>
+          {% if item.avg_grade %}
+          <span class="grade grade-{{ item.avg_grade }}">{{ item.avg_grade }}</span>
           {% endif %}
         </td>
         <td><a class="settings-link" href="/repos/{{ item.full_name }}/settings">⚙️ 설정</a></td>
