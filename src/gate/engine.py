@@ -1,5 +1,6 @@
 """Gate Engine — 3개 독립 옵션: Review Comment / Approve / Auto Merge."""
 import logging
+from html import escape
 
 import httpx
 from sqlalchemy.orm import Session
@@ -8,6 +9,7 @@ from src.config_manager.manager import get_repo_config, RepoConfigData
 from src.gate.github_review import post_github_review, merge_pr
 from src.gate.telegram_gate import send_gate_request
 from src.notifier.github_comment import post_pr_comment_from_result as post_pr_comment
+from src.notifier.telegram import telegram_post_message
 from src.models.gate_decision import GateDecision
 from src.scorer.calculator import ScoreResult
 
@@ -104,11 +106,51 @@ async def run_gate_check(
     # 3. Auto Merge (독립 — approve_mode 무관)
     if config.auto_merge and score >= config.merge_threshold:
         try:
-            merged = await merge_pr(github_token, repo_name, pr_number)
-            if merged:
+            ok, reason = await merge_pr(github_token, repo_name, pr_number)
+            if ok:
                 logger.info("PR #%d auto-merged: %s", pr_number, repo_name)
+            else:
+                logger.warning(
+                    "PR #%d auto-merge 실패 (repo=%s): %s", pr_number, repo_name, reason
+                )
+                await _notify_merge_failure(
+                    repo_name=repo_name,
+                    pr_number=pr_number,
+                    score=score,
+                    threshold=config.merge_threshold,
+                    reason=reason or "unknown",
+                    chat_id=config.notify_chat_id or settings.telegram_chat_id,
+                )
         except (httpx.HTTPError, KeyError) as exc:
             logger.error("Auto Merge 실패: %s", exc)
+
+
+async def _notify_merge_failure(
+    *,
+    repo_name: str,
+    pr_number: int,
+    score: int,
+    threshold: int,
+    reason: str,
+    chat_id: str | None,
+) -> None:
+    """auto_merge 실패를 Telegram 으로 알린다. chat_id 없으면 스킵."""
+    if not chat_id or not settings.telegram_bot_token:
+        return
+    text = (
+        "⚠️ <b>Auto Merge 실패</b>\n"
+        f"📁 <code>{escape(repo_name)}</code> — PR #{pr_number}\n"
+        f"점수: {score}점 (기준 {threshold}점 이상)\n"
+        f"사유: <code>{escape(reason)}</code>"
+    )
+    try:
+        await telegram_post_message(
+            settings.telegram_bot_token,
+            chat_id,
+            {"text": text, "parse_mode": "HTML"},
+        )
+    except httpx.HTTPError as exc:
+        logger.warning("Telegram merge-failure 알림 실패: %s", exc)
 
 
 def _save_gate_decision(

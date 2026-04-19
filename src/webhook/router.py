@@ -209,10 +209,15 @@ async def handle_gate_callback(
             result_dict = analysis.result if isinstance(analysis.result, dict) else {}
             score = result_dict.get("score", analysis.score or 0)
             if config.auto_merge and score >= config.merge_threshold:
-                merged = await merge_pr(github_token, repo.full_name, analysis.pr_number)
-                if merged:
+                ok, reason = await merge_pr(github_token, repo.full_name, analysis.pr_number)
+                if ok:
                     logger.info("PR #%d manual-approved+auto-merged: %s",
                                 analysis.pr_number, repo.full_name)
+                else:
+                    logger.warning(
+                        "PR #%d manual-approved but auto-merge 실패: %s",
+                        analysis.pr_number, reason,
+                    )
         except (httpx.HTTPError, KeyError, ValueError, SQLAlchemyError) as exc:
             logger.error("Gate callback failed: %s", exc)
 

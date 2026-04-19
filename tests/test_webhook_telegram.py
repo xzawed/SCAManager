@@ -79,7 +79,7 @@ async def test_handle_gate_callback_approve_with_auto_merge():
             with patch("src.webhook.router._save_gate_decision"):
                 with patch("src.webhook.router.get_repo_config", return_value=config):
                     with patch("src.webhook.router.merge_pr", new_callable=AsyncMock) as mock_merge:
-                        mock_merge.return_value = True
+                        mock_merge.return_value = (True, None)
                         await handle_gate_callback(analysis_id=42, decision="approve",
                                                    decided_by="john")
                         mock_merge.assert_called_once()
@@ -140,7 +140,7 @@ async def test_handle_gate_callback_merge_failure_does_not_propagate():
             with patch("src.webhook.router._save_gate_decision") as mock_save:
                 with patch("src.webhook.router.get_repo_config", return_value=config):
                     with patch("src.webhook.router.merge_pr", new_callable=AsyncMock) as mock_merge:
-                        mock_merge.return_value = False
+                        mock_merge.return_value = (False, "forbidden: no permission")
                         # 예외 없이 완료되어야 함
                         await handle_gate_callback(analysis_id=42, decision="approve",
                                                    decided_by="john")
