@@ -52,4 +52,4 @@ STATIC_ANALYSIS_TIMEOUT = 30  # subprocess 타임아웃 (초)
 
 # ── 파이프라인 이벤트 필터 ─────────────────────────────────────────────────
 HANDLED_EVENTS: frozenset[str] = frozenset({"push", "pull_request", "issues"})
-PR_HANDLED_ACTIONS: frozenset[str] = frozenset({"opened", "synchronize", "reopened"})
+PR_HANDLED_ACTIONS: frozenset[str] = frozenset({"opened", "synchronize", "reopened", "closed"})
