@@ -6,11 +6,12 @@
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **586개** | `make test` |
-| E2E 테스트 | **26개** | `make test-e2e` |
-| pylint | **9.70/10** | `make lint` |
-| 커버리지 | **92%** | `make test-cov` |
-| bandit HIGH | **0개** | 유지 기준 |
+| 단위 테스트 | **634개** | `make test` |
+| E2E 테스트 | **26개** | `make test-e2e` (17→26 복구) |
+| pylint | **9.72/10** | `make lint` |
+| 커버리지 | **92%+** | `make test-cov` (static+crypto 보강) |
+| bandit HIGH | **0개** | 실측 확인 (1.9.4 Python 3.14 대응) |
+| flake8 | **0건** | `flake8 src/` |
 
 ## Phase 이력
 
@@ -28,6 +29,7 @@
 | P3 보안 심층 | HTML injection(email 2+telegram 2), OAuth CSRF state, Jinja2 autoescape 검증 (+6) | 2026-04-19 |
 | P3 CLAUDE.md 정비 | 주의사항 빈도 기반 재정렬, psycopg2·N+1·Supabase SSL 3항목 제거, 보안 2항목 추가 | 2026-04-19 |
 | 품질 감사 7라운드 | 정상성/커버리지/결정성/격리성/pylint/flake8/bandit+E2E 다각도 검증. 보고서: docs/reports/2026-04-19-code-quality-audit.md | 2026-04-19 |
+| 감사 결과 수정 | P0 bandit 1.9.4(Python 3.14 대응), P1 E2E 26/26 복구+payload.py 제거, P2 lint 0건, P3 +48 테스트(634총) | 2026-04-19 |
 
 ## 갱신 방법
 
