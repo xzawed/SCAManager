@@ -48,8 +48,36 @@ GRADE_COLOR_ANSI: dict[str, int] = {
     "A": 32, "B": 34, "C": 33, "D": 33, "F": 31,
 }
 
+# ── AI 스코어 raw 범위 (Claude 반환 범위 — 스케일링 기준) ──────────────────
+AI_RAW_COMMIT_MAX = 20      # commit_score raw 범위 상한 (0-20)
+AI_RAW_DIRECTION_MAX = 20   # ai_score raw 범위 상한 (0-20)
+AI_RAW_TEST_MAX = 10        # test_score raw 범위 상한 (0-10)
+
+# ── 알림 채널 표시 한도 ─────────────────────────────────────────────────────
+COMMIT_SHA_DISPLAY_LENGTH = 7    # 커밋 SHA 표시 자릿수 (short hash)
+NOTIFIER_MAX_ISSUES_SHORT = 5    # Telegram·Discord·Slack 이슈 표시 상한
+NOTIFIER_MAX_ISSUES_LONG = 10    # Email·GitHub Comment 이슈 표시 상한
+NOTIFIER_MESSAGE_TRUNCATE = 80   # 이슈 메시지 1건 최대 길이 (문자 수)
+
+# ── 채널별 메시지 크기 한도 ─────────────────────────────────────────────────
+TELEGRAM_MAX_MESSAGE_LENGTH = 4096    # Telegram API sendMessage text 최대 길이
+DISCORD_EMBED_DESC_MAX_LENGTH = 4096  # Discord embed description 최대 길이
+N8N_BODY_MAX_BYTES = 8192            # n8n relay 시 issue body 최대 바이트
+
+# ── HTTP 클라이언트 설정 ─────────────────────────────────────────────────────
+HTTP_CLIENT_TIMEOUT = 10.0  # 외부 API 호출 타임아웃 (초)
+
+# ── 언어 가이드 임계값 (review_prompt._select_guide_modes) ─────────────────
+LANG_GUIDE_ALL_FULL_MAX = 3    # N<=3: 모든 언어 full 모드
+LANG_GUIDE_TIER1_FULL_MAX = 6  # 4<=N<=6: Tier1 full, 나머지 compact
+LANG_GUIDE_TOP3_FULL_MAX = 10  # 7<=N<=10: 상위 3개 full, 나머지 compact
+LANG_GUIDE_COMPACT_LIMIT = 5   # N>10: 상위 5개만 compact, 나머지 이름만
+
 # ── 분석 도구 설정 ─────────────────────────────────────────────────────────
 STATIC_ANALYSIS_TIMEOUT = 30  # subprocess 타임아웃 (초)
+
+# ── Webhook 시크릿 캐시 설정 ─────────────────────────────────────────────────
+WEBHOOK_SECRET_CACHE_TTL = 300  # per-repo webhook secret 캐시 TTL (초, 5분)
 
 # ── 파이프라인 이벤트 필터 ─────────────────────────────────────────────────
 HANDLED_EVENTS: frozenset[str] = frozenset({"push", "pull_request", "issues"})

@@ -22,6 +22,7 @@ def _build_issue_body(
     commit_sha: str,
     analysis_id: int,
     result: dict,
+    high_issues: list[dict],
 ) -> str:
     """Issue body — AI 요약, 보안 HIGH 이슈, 분석 상세 링크."""
     score = result.get("score", 0)
@@ -41,7 +42,6 @@ def _build_issue_body(
     if summary:
         lines += ["", "### 요약", summary]
 
-    high_issues = _bandit_high_issues(result)
     if high_issues:
         lines += ["", "### 보안 이슈 (HIGH)"]
         for issue in high_issues[:10]:
@@ -72,12 +72,13 @@ async def create_low_score_issue(
         생성된 Issue 번호, 실패 시 None.
     """
     score = result.get("score", 0)
+    high_issues = _bandit_high_issues(result)
     labels = ["scamanager", "code-quality"]
-    if _bandit_high_issues(result):
+    if high_issues:
         labels.append("security")
 
     title = f"[SCAManager] 점수 낮은 커밋: {commit_sha[:7]} ({score}점)"
-    body = _build_issue_body(repo_name, commit_sha, analysis_id, result)
+    body = _build_issue_body(repo_name, commit_sha, analysis_id, result, high_issues)
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:

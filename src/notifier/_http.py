@@ -6,10 +6,11 @@ from urllib.parse import urlparse
 
 import httpx
 
+from src.constants import HTTP_CLIENT_TIMEOUT
+
 logger = logging.getLogger(__name__)
 
 _ALLOWED_SCHEMES = {"https"}
-_TIMEOUT = 10.0
 
 
 def _is_dangerous_ip(addr: str) -> bool:
@@ -80,4 +81,4 @@ def build_safe_client() -> httpx.AsyncClient:
     - timeout=10 seconds for all operations
     - follow_redirects=False to prevent redirect-based SSRF
     """
-    return httpx.AsyncClient(timeout=_TIMEOUT, follow_redirects=False)
+    return httpx.AsyncClient(timeout=HTTP_CLIENT_TIMEOUT, follow_redirects=False)

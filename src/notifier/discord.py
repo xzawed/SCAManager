@@ -2,13 +2,16 @@
 import logging
 
 from src.notifier._http import build_safe_client, validate_external_url
-from src.constants import GRADE_EMOJI, GRADE_COLOR_DISCORD
+from src.constants import (
+    GRADE_EMOJI, GRADE_COLOR_DISCORD,
+    DISCORD_EMBED_DESC_MAX_LENGTH, NOTIFIER_MAX_ISSUES_SHORT,
+)
 from src.scorer.calculator import ScoreResult
 from src.analyzer.static import StaticAnalysisResult
 from src.analyzer.ai_review import AiReviewResult
+from src.notifier._common import format_ref, get_all_issues, truncate_message, truncate_issue_msg
 
 logger = logging.getLogger(__name__)
-_EMBED_DESC_MAX = 4096
 
 
 def _build_embed(  # pylint: disable=too-many-positional-arguments
@@ -20,7 +23,7 @@ def _build_embed(  # pylint: disable=too-many-positional-arguments
     ai_review: AiReviewResult | None = None,
 ) -> dict:
     grade_emoji = GRADE_EMOJI.get(score_result.grade, "⚪")
-    ref = f"PR #{pr_number}" if pr_number else f"커밋 {commit_sha[:7]}"
+    ref = format_ref(commit_sha, pr_number)
     bd = score_result.breakdown
 
     lines = [
@@ -30,15 +33,13 @@ def _build_embed(  # pylint: disable=too-many-positional-arguments
     if ai_review and ai_review.summary:
         lines.append(f"\n**AI 요약:** {ai_review.summary}")
 
-    all_issues = [i for r in analysis_results for i in r.issues]
+    all_issues = get_all_issues(analysis_results)
     if all_issues:
         lines.append(f"\n**정적 분석 이슈:** {len(all_issues)}건")
-        for issue in all_issues[:5]:
-            lines.append(f"- [{issue.tool}] {issue.message[:80]}")
+        for issue in all_issues[:NOTIFIER_MAX_ISSUES_SHORT]:
+            lines.append(f"- [{issue.tool}] {truncate_issue_msg(issue.message)}")
 
-    desc = "\n".join(lines)
-    if len(desc) > _EMBED_DESC_MAX:
-        desc = desc[:_EMBED_DESC_MAX - 3] + "..."
+    desc = truncate_message("\n".join(lines), DISCORD_EMBED_DESC_MAX_LENGTH)
 
     fields = [
         {"name": "코드 품질", "value": f"{bd.get('code_quality', '-')}/25", "inline": True},

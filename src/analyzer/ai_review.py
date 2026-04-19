@@ -8,6 +8,7 @@ import anthropic
 
 from src.analyzer.review_prompt import build_review_prompt
 from src.config import settings
+from src.constants import AI_DEFAULT_COMMIT_RAW, AI_DEFAULT_DIRECTION_RAW, AI_RAW_COMMIT_MAX, AI_RAW_DIRECTION_MAX
 
 logger = logging.getLogger(__name__)
 
@@ -82,8 +83,8 @@ def _parse_response(text: str) -> AiReviewResult:
             cleaned = block_match.group(1)
         data = json.loads(cleaned)
         return AiReviewResult(
-            commit_score=max(0, min(20, int(data.get("commit_message_score", 17)))),
-            ai_score=max(0, min(20, int(data.get("direction_score", 17)))),
+            commit_score=max(0, min(AI_RAW_COMMIT_MAX, int(data.get("commit_message_score", AI_DEFAULT_COMMIT_RAW)))),
+            ai_score=max(0, min(AI_RAW_DIRECTION_MAX, int(data.get("direction_score", AI_DEFAULT_DIRECTION_RAW)))),
             test_score=_extract_test_score(data),
             summary=str(data.get("summary", "")),
             suggestions=[str(s) for s in data.get("suggestions", [])],

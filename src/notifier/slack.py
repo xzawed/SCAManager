@@ -2,10 +2,11 @@
 import logging
 
 from src.notifier._http import build_safe_client, validate_external_url
-from src.constants import GRADE_COLOR_HTML
+from src.constants import GRADE_COLOR_HTML, NOTIFIER_MAX_ISSUES_SHORT
 from src.scorer.calculator import ScoreResult
 from src.analyzer.static import StaticAnalysisResult
 from src.analyzer.ai_review import AiReviewResult
+from src.notifier._common import format_ref, get_all_issues, truncate_issue_msg
 
 logger = logging.getLogger(__name__)
 
@@ -27,24 +28,22 @@ def _build_payload(  # pylint: disable=too-many-positional-arguments,too-many-lo
     ai_review: AiReviewResult | None = None,
 ) -> dict:
     grade_emoji = _SLACK_GRADE_EMOJI.get(score_result.grade, ":white_circle:")
-    ref = f"PR #{pr_number}" if pr_number else f"커밋 {commit_sha[:7]}"
+    ref = format_ref(commit_sha, pr_number)
     bd = score_result.breakdown
 
     text = f"{grade_emoji} *SCA 분석 — {repo_name}* ({ref})"
-
     fallback = f"SCA: {repo_name} — {score_result.total}/100 ({score_result.grade})"
-
     pretext = f"*총점: {score_result.total}/100* (등급 {score_result.grade})"
 
     blocks = []
     if ai_review and ai_review.summary:
         blocks.append(ai_review.summary)
 
-    all_issues = [i for r in analysis_results for i in r.issues]
+    all_issues = get_all_issues(analysis_results)
     if all_issues:
         blocks.append(f"*정적 분석 이슈:* {len(all_issues)}건")
-        for issue in all_issues[:5]:
-            blocks.append(f"• [{issue.tool}] {issue.message[:80]}")
+        for issue in all_issues[:NOTIFIER_MAX_ISSUES_SHORT]:
+            blocks.append(f"• [{issue.tool}] {truncate_issue_msg(issue.message)}")
 
     footer_text = "\n".join(blocks) if blocks else ""
 

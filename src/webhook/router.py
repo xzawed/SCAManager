@@ -4,6 +4,7 @@ import hmac
 import json
 import logging
 import re
+import time
 import httpx
 from fastapi import APIRouter, Request, HTTPException, BackgroundTasks, Header
 from sqlalchemy.exc import SQLAlchemyError
@@ -15,7 +16,7 @@ from src.gate.github_review import post_github_review, merge_pr
 from src.config_manager.manager import get_repo_config
 from src.database import SessionLocal
 from src.repositories import repository_repo, analysis_repo
-from src.constants import HANDLED_EVENTS, PR_HANDLED_ACTIONS
+from src.constants import HANDLED_EVENTS, PR_HANDLED_ACTIONS, WEBHOOK_SECRET_CACHE_TTL
 from src.notifier.n8n import notify_n8n_issue
 from src.github_client.issues import close_issue
 
@@ -24,6 +25,27 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 HANDLED_PR_ACTIONS = PR_HANDLED_ACTIONS  # 하위 호환 별칭
+
+# {full_name: (secret, expiry_monotonic)}
+_webhook_secret_cache: dict[str, tuple[str, float]] = {}
+
+
+def _get_webhook_secret(full_name: str) -> str:
+    """per-repo webhook secret을 DB에서 조회한다 (TTL 캐시 적용)."""
+    now = time.monotonic()
+    cached = _webhook_secret_cache.get(full_name)
+    if cached and now < cached[1]:
+        return cached[0]
+    secret = settings.github_webhook_secret
+    try:
+        with SessionLocal() as db:
+            repo = repository_repo.find_by_full_name(db, full_name)
+            if repo and repo.webhook_secret:
+                secret = repo.webhook_secret
+    except (SQLAlchemyError, KeyError, AttributeError) as exc:
+        logger.warning("Per-repo webhook secret lookup failed, using global secret: %s", exc)
+    _webhook_secret_cache[full_name] = (secret, now + WEBHOOK_SECRET_CACHE_TTL)
+    return secret
 
 _CLOSING_KEYWORDS = re.compile(r"(?i)\b(?:closes|fixes|resolves)\s*:?\s*#(\d+)")
 
@@ -105,16 +127,8 @@ async def github_webhook(
     except (json.JSONDecodeError, AttributeError):
         data = {}
 
-    # 리포별 시크릿 조회 → 없으면 전역 시크릿 fallback
-    secret = settings.github_webhook_secret
-    if full_name:
-        try:
-            with SessionLocal() as db:
-                repo = repository_repo.find_by_full_name(db, full_name)
-                if repo and repo.webhook_secret:
-                    secret = repo.webhook_secret
-        except (SQLAlchemyError, KeyError, AttributeError) as exc:
-            logger.warning("Per-repo webhook secret lookup failed, using global secret: %s", exc)
+    # 리포별 시크릿 조회 → 없으면 전역 시크릿 fallback (TTL 캐시)
+    secret = _get_webhook_secret(full_name) if full_name else settings.github_webhook_secret
 
     if not secret:
         raise HTTPException(status_code=401, detail="Webhook secret not configured")

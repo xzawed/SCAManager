@@ -9,6 +9,7 @@ import logging
 import subprocess  # nosec B404
 
 from src.analyzer.registry import AnalyzeContext, AnalysisIssue, register
+from src.constants import STATIC_ANALYSIS_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ class _PylintAnalyzer:
             r = subprocess.run(  # nosec B603 B607
                 ["pylint", ctx.tmp_path, "--output-format=json",
                  f"--disable={disable}"],
-                capture_output=True, text=True, timeout=30, check=False,
+                capture_output=True, text=True, timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
             items = json.loads(r.stdout) if r.stdout.strip().startswith("[") else []
             return [
@@ -82,7 +83,7 @@ class _Flake8Analyzer:
         try:
             r = subprocess.run(  # nosec B603 B607
                 cmd,
-                capture_output=True, text=True, timeout=30, check=False,
+                capture_output=True, text=True, timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
             issues = []
             for line in r.stdout.strip().splitlines():
@@ -125,7 +126,7 @@ class _BanditAnalyzer:
         try:
             r = subprocess.run(  # nosec B603 B607
                 ["bandit", "-f", "json", "-q", ctx.tmp_path],
-                capture_output=True, text=True, timeout=30, check=False,
+                capture_output=True, text=True, timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
             data = json.loads(r.stdout) if r.stdout.strip().startswith("{") else {}
             return [

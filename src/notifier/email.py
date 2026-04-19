@@ -9,8 +9,8 @@ import aiosmtplib
 from src.scorer.calculator import ScoreResult
 from src.analyzer.static import StaticAnalysisResult
 from src.analyzer.ai_review import AiReviewResult
-
-from src.constants import GRADE_COLOR_HTML
+from src.constants import GRADE_COLOR_HTML, NOTIFIER_MAX_ISSUES_LONG
+from src.notifier._common import format_ref, get_all_issues, truncate_issue_msg
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ def _build_html_body(  # pylint: disable=too-many-positional-arguments
     pr_number: int | None,
     ai_review: AiReviewResult | None = None,
 ) -> str:
-    ref = f"PR #{pr_number}" if pr_number else f"커밋 {commit_sha[:7]}"
+    ref = format_ref(commit_sha, pr_number)
     bd = score_result.breakdown
     color = GRADE_COLOR_HTML.get(score_result.grade, "#6366f1")
 
@@ -44,11 +44,11 @@ def _build_html_body(  # pylint: disable=too-many-positional-arguments
         ai_section = f"<p><b>AI 요약:</b> {escape(ai_review.summary)}</p>"
 
     issues_section = ""
-    all_issues = [i for r in analysis_results for i in r.issues]
+    all_issues = get_all_issues(analysis_results)
     if all_issues:
         issue_items = "".join(
-            f"<li>[{escape(i.tool)}] {escape(i.message[:80])}</li>"
-            for i in all_issues[:10]
+            f"<li>[{escape(i.tool)}] {escape(truncate_issue_msg(i.message))}</li>"
+            for i in all_issues[:NOTIFIER_MAX_ISSUES_LONG]
         )
         issues_section = f"<p><b>정적 분석 이슈 ({len(all_issues)}건):</b></p><ul>{issue_items}</ul>"
 
