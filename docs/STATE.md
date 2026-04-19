@@ -2,14 +2,14 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-19, P0 리팩토링 갱신)
+## 현재 수치 (2026-04-19, P2+P3 커버리지 보강)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **661개** | `make test` |
+| 단위 테스트 | **689개** | `make test` |
 | E2E 테스트 | **38개** | `make test-e2e` (Chromium Playwright) |
-| pylint | **9.73/10** | `make lint` |
-| 커버리지 | **92%+** | `make test-cov` (static+crypto 보강) |
+| pylint | **9.77/10** | `make lint` |
+| 커버리지 | **96.2%** | `make test-cov` (database.py 100%, ui/router.py 99.4%) |
 | bandit HIGH | **0개** | 실측 확인 (1.9.4 Python 3.14 대응) |
 | flake8 | **0건** | `flake8 src/` |
 
@@ -36,6 +36,10 @@
 | P0-2 Notifier 레지스트리 | NotifyContext dataclass + Notifier Protocol + REGISTRY + build_notification_tasks 루프 축약 | 2026-04-19 |
 | P0-3 Repository 계층 | repository_repo/analysis_repo 신설 + pipeline·router db.query 직접 사용 교체 | 2026-04-19 |
 | P0-1 RepoConfig 동기화 해소 | dataclass fields 루프 + model_dump() — 새 채널 추가 시 7곳→4곳 | 2026-04-19 |
+| P1 RuntimeWarning 수정 | test_pipeline.py MagicMock→RepoConfigData 교체 (coroutine never awaited 제거) | 2026-04-19 |
+| P2 docstring 보강 | ui/router.py 8개 + config.py 1개 함수 docstring 추가 (pylint 9.73→9.77) | 2026-04-19 |
+| P2 database.py 커버리지 | FailoverSessionFactory 예외경로·probe루프·get_db 제너레이터 (+16 테스트, 75%→100%) | 2026-04-19 |
+| P3 ui/router.py 커버리지 | app_base_url/GateDecision cascade/add_repo 분기/reinstall_hook/reinstall_webhook 분기 (+11 테스트, 83.9%→99.4%) | 2026-04-19 |
 
 ## 갱신 방법
 
