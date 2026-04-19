@@ -1,0 +1,166 @@
+[main]	INFO	profile include tests: None
+[main]	INFO	profile exclude tests: None
+[main]	INFO	cli include tests: None
+[main]	INFO	cli exclude tests: None
+[main]	INFO	running on Python 3.14.2
+[manager]	ERROR	Exception occurred when executing tests against src/analyzer\ai_review.py.
+[manager]	ERROR	Run "bandit --debug src/analyzer\ai_review.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/analyzer\static.py.
+[manager]	ERROR	Run "bandit --debug src/analyzer\static.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/api\auth.py.
+[manager]	ERROR	Run "bandit --debug src/api\auth.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/api\deps.py.
+[manager]	ERROR	Run "bandit --debug src/api\deps.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/api\hook.py.
+[manager]	ERROR	Run "bandit --debug src/api\hook.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/api\repos.py.
+[manager]	ERROR	Run "bandit --debug src/api\repos.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/api\stats.py.
+[manager]	ERROR	Run "bandit --debug src/api\stats.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/auth\github.py.
+[manager]	ERROR	Run "bandit --debug src/auth\github.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/auth\session.py.
+[manager]	ERROR	Run "bandit --debug src/auth\session.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/cli\__main__.py.
+[manager]	ERROR	Run "bandit --debug src/cli\__main__.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/cli\formatter.py.
+[manager]	ERROR	Run "bandit --debug src/cli\formatter.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/cli\git_diff.py.
+[manager]	ERROR	Run "bandit --debug src/cli\git_diff.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/config.py.
+[manager]	ERROR	Run "bandit --debug src/config.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/config_manager\manager.py.
+[manager]	ERROR	Run "bandit --debug src/config_manager\manager.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/constants.py.
+[manager]	ERROR	Run "bandit --debug src/constants.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/crypto.py.
+[manager]	ERROR	Run "bandit --debug src/crypto.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/database.py.
+[manager]	ERROR	Run "bandit --debug src/database.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/gate\engine.py.
+[manager]	ERROR	Run "bandit --debug src/gate\engine.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/gate\github_review.py.
+[manager]	ERROR	Run "bandit --debug src/gate\github_review.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/gate\telegram_gate.py.
+[manager]	ERROR	Run "bandit --debug src/gate\telegram_gate.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/github_client\diff.py.
+[manager]	ERROR	Run "bandit --debug src/github_client\diff.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/github_client\helpers.py.
+[manager]	ERROR	Run "bandit --debug src/github_client\helpers.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/github_client\models.py.
+[manager]	ERROR	Run "bandit --debug src/github_client\models.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/github_client\repos.py.
+[manager]	ERROR	Run "bandit --debug src/github_client\repos.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/main.py.
+[manager]	ERROR	Run "bandit --debug src/main.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/models\analysis.py.
+[manager]	ERROR	Run "bandit --debug src/models\analysis.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/models\gate_decision.py.
+[manager]	ERROR	Run "bandit --debug src/models\gate_decision.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/models\repo_config.py.
+[manager]	ERROR	Run "bandit --debug src/models\repo_config.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/models\repository.py.
+[manager]	ERROR	Run "bandit --debug src/models\repository.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/models\user.py.
+[manager]	ERROR	Run "bandit --debug src/models\user.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/notifier\_http.py.
+[manager]	ERROR	Run "bandit --debug src/notifier\_http.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/notifier\discord.py.
+[manager]	ERROR	Run "bandit --debug src/notifier\discord.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/notifier\email.py.
+[manager]	ERROR	Run "bandit --debug src/notifier\email.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/notifier\github_comment.py.
+[manager]	ERROR	Run "bandit --debug src/notifier\github_comment.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/notifier\github_commit_comment.py.
+[manager]	ERROR	Run "bandit --debug src/notifier\github_commit_comment.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/notifier\github_issue.py.
+[manager]	ERROR	Run "bandit --debug src/notifier\github_issue.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/notifier\n8n.py.
+[manager]	ERROR	Run "bandit --debug src/notifier\n8n.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/notifier\payload.py.
+[manager]	ERROR	Run "bandit --debug src/notifier\payload.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/notifier\slack.py.
+[manager]	ERROR	Run "bandit --debug src/notifier\slack.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/notifier\telegram.py.
+[manager]	ERROR	Run "bandit --debug src/notifier\telegram.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/notifier\webhook.py.
+[manager]	ERROR	Run "bandit --debug src/notifier\webhook.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/scorer\calculator.py.
+[manager]	ERROR	Run "bandit --debug src/scorer\calculator.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/ui\router.py.
+[manager]	ERROR	Run "bandit --debug src/ui\router.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/webhook\router.py.
+[manager]	ERROR	Run "bandit --debug src/webhook\router.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/webhook\validator.py.
+[manager]	ERROR	Run "bandit --debug src/webhook\validator.py" to see the full traceback.
+[manager]	ERROR	Exception occurred when executing tests against src/worker\pipeline.py.
+[manager]	ERROR	Run "bandit --debug src/worker\pipeline.py" to see the full traceback.
+Working... ---------------------------------------- 100% 0:00:00
+Run started:2026-04-19 02:41:04.974021
+
+Test results:
+	No issues identified.
+
+Code scanned:
+	Total lines of code: 3702
+	Total lines skipped (#nosec): 0
+	Total potential issues skipped due to specifically being disabled (e.g., #nosec BXXX): 0
+
+Run metrics:
+	Total issues (by severity):
+		Undefined: 0
+		Low: 0
+		Medium: 0
+		High: 0
+	Total issues (by confidence):
+		Undefined: 0
+		Low: 0
+		Medium: 0
+		High: 0
+Files skipped (46):
+	src/analyzer\ai_review.py (exception while scanning file)
+	src/analyzer\static.py (exception while scanning file)
+	src/api\auth.py (exception while scanning file)
+	src/api\deps.py (exception while scanning file)
+	src/api\hook.py (exception while scanning file)
+	src/api\repos.py (exception while scanning file)
+	src/api\stats.py (exception while scanning file)
+	src/auth\github.py (exception while scanning file)
+	src/auth\session.py (exception while scanning file)
+	src/cli\__main__.py (exception while scanning file)
+	src/cli\formatter.py (exception while scanning file)
+	src/cli\git_diff.py (exception while scanning file)
+	src/config.py (exception while scanning file)
+	src/config_manager\manager.py (exception while scanning file)
+	src/constants.py (exception while scanning file)
+	src/crypto.py (exception while scanning file)
+	src/database.py (exception while scanning file)
+	src/gate\engine.py (exception while scanning file)
+	src/gate\github_review.py (exception while scanning file)
+	src/gate\telegram_gate.py (exception while scanning file)
+	src/github_client\diff.py (exception while scanning file)
+	src/github_client\helpers.py (exception while scanning file)
+	src/github_client\models.py (exception while scanning file)
+	src/github_client\repos.py (exception while scanning file)
+	src/main.py (exception while scanning file)
+	src/models\analysis.py (exception while scanning file)
+	src/models\gate_decision.py (exception while scanning file)
+	src/models\repo_config.py (exception while scanning file)
+	src/models\repository.py (exception while scanning file)
+	src/models\user.py (exception while scanning file)
+	src/notifier\_http.py (exception while scanning file)
+	src/notifier\discord.py (exception while scanning file)
+	src/notifier\email.py (exception while scanning file)
+	src/notifier\github_comment.py (exception while scanning file)
+	src/notifier\github_commit_comment.py (exception while scanning file)
+	src/notifier\github_issue.py (exception while scanning file)
+	src/notifier\n8n.py (exception while scanning file)
+	src/notifier\payload.py (exception while scanning file)
+	src/notifier\slack.py (exception while scanning file)
+	src/notifier\telegram.py (exception while scanning file)
+	src/notifier\webhook.py (exception while scanning file)
+	src/scorer\calculator.py (exception while scanning file)
+	src/ui\router.py (exception while scanning file)
+	src/webhook\router.py (exception while scanning file)
+	src/webhook\validator.py (exception while scanning file)
+	src/worker\pipeline.py (exception while scanning file)
