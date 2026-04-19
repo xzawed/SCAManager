@@ -36,6 +36,7 @@ def analyze_file(filename: str, content: str) -> StaticAnalysisResult:
 
     from src.analyzer.registry import REGISTRY, AnalyzeContext  # noqa: PLC0415
     import src.analyzer.tools.python  # noqa: PLC0415,F401 — 모듈 로드 시 자동 등록
+    import src.analyzer.tools.semgrep  # noqa: PLC0415,F401 — 모듈 로드 시 자동 등록
 
     language = detect_language(filename, content)
     is_test = is_test_file(filename, language)
