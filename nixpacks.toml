@@ -2,7 +2,7 @@ providers = ["python"]
 
 [phases.setup]
 aptPkgs = ["shellcheck"]
-nixPkgs = ["nodejs_20"]
+nixPkgs = ["nodejs"]
 
 [phases.install]
 cmds = [
