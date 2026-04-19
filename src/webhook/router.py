@@ -47,6 +47,7 @@ def _get_webhook_secret(full_name: str) -> str:
     _webhook_secret_cache[full_name] = (secret, now + WEBHOOK_SECRET_CACHE_TTL)
     return secret
 
+
 _CLOSING_KEYWORDS = re.compile(r"(?i)\b(?:closes|fixes|resolves)\s*:?\s*#(\d+)")
 
 
