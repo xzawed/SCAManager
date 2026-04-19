@@ -4,17 +4,18 @@
 
 **GitHub Push / PR 이벤트 기반 자동 코드 품질 분석 · AI 리뷰 · Gate 서비스**
 
-[![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.14-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-SQLAlchemy_2-336791?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Claude AI](https://img.shields.io/badge/Claude_AI-Haiku_4.5-CC6600?style=flat-square&logo=anthropic&logoColor=white)](https://www.anthropic.com/)
 [![Railway](https://img.shields.io/badge/Deploy-Railway-0B0D0E?style=flat-square&logo=railway&logoColor=white)](https://railway.app/)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
-[![Tests](https://img.shields.io/badge/Tests-504_passing-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
-[![pylint](https://img.shields.io/badge/pylint-9.70%2F10-brightgreen?style=flat-square&logo=python&logoColor=white)](src/)
+[![Tests](https://img.shields.io/badge/Tests-634_passing-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
+[![E2E](https://img.shields.io/badge/E2E-38_passing-brightgreen?style=flat-square&logo=playwright&logoColor=white)](e2e/)
+[![pylint](https://img.shields.io/badge/pylint-9.72%2F10-brightgreen?style=flat-square&logo=python&logoColor=white)](src/)
 [![bandit](https://img.shields.io/badge/bandit-HIGH_0-brightgreen?style=flat-square&logo=security&logoColor=white)](src/)
-[![Coverage](https://img.shields.io/badge/Coverage-94%25-brightgreen?style=flat-square&logo=codecov&logoColor=white)](tests/)
+[![Coverage](https://img.shields.io/badge/Coverage-92%25-brightgreen?style=flat-square&logo=codecov&logoColor=white)](tests/)
 
 </div>
 
@@ -303,7 +304,7 @@ git push origin main
 
 | 분류 | 기술 |
 |------|------|
-| **언어** | Python 3.13 |
+| **언어** | Python 3.14 |
 | **웹 프레임워크** | FastAPI + Uvicorn |
 | **인증** | GitHub OAuth2 (authlib) + Starlette SessionMiddleware |
 | **데이터베이스** | PostgreSQL · SQLAlchemy 2 · Alembic · FailoverSessionFactory |
@@ -322,7 +323,7 @@ git push origin main
 
 ### 📋 요구사항
 
-- Python **3.13** 이상
+- Python **3.14** 이상
 - PostgreSQL
 - GitHub OAuth App (Client ID / Client Secret)
 - (선택) Telegram Bot Token · SMTP 서버 · ANTHROPIC_API_KEY

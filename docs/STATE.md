@@ -7,7 +7,7 @@
 | 지표 | 값 | 비고 |
 |------|-----|------|
 | 단위 테스트 | **634개** | `make test` |
-| E2E 테스트 | **26개** | `make test-e2e` (17→26 복구) |
+| E2E 테스트 | **38개** | `make test-e2e` (Chromium Playwright) |
 | pylint | **9.72/10** | `make lint` |
 | 커버리지 | **92%+** | `make test-cov` (static+crypto 보강) |
 | bandit HIGH | **0개** | 실측 확인 (1.9.4 Python 3.14 대응) |

@@ -3,6 +3,10 @@
 > **목적**: 직전 Phase(P1~P3) 완료 후 베이스라인 수치(단위 586 / E2E 26 / pylint 9.70 / 커버리지 92%)가 실측으로도 유효한지, 숨은 flakiness·lint drift·보안 회귀가 없는지 7라운드 다각도 감사.
 > **범위**: Audit only — 발견된 문제는 이 보고서에 기록. 수정은 별도 Phase로 분리.
 
+> **📋 후속 수정 완료 (2026-04-19)**: 감사 발견 사항 C1·M1·M2·m1·m2 모두 수정 완료.
+> 수정 커밋: `fix(audit): 2026-04-19 감사 결과 수정 — bandit/E2E/payload/lint/coverage`
+> 수정 후 수치: 단위 634 / E2E 38 / pylint 9.72 / flake8 0건 / bandit 실측 HIGH 0
+
 ---
 
 ## Executive Summary
@@ -235,37 +239,42 @@ docs/reports/artifacts/2026-04-19/
 
 ### 🔴 Critical (즉시 대응 필요)
 
-| # | 항목 | 위치 | 제안 |
-|---|------|------|------|
-| C1 | **bandit Python 3.14 비호환** | `requirements.txt` | `bandit>=2.0.0` 업그레이드 또는 Semgrep/Ruff 보안 룰셋 도입 |
+| # | 항목 | 위치 | 제안 | 상태 |
+|---|------|------|------|------|
+| C1 | **bandit Python 3.14 비호환** | `requirements.txt` | `bandit>=1.9.4` 업그레이드 | ✅ **해결** — bandit 1.9.4 설치, 실측 HIGH 0 확인 |
 
 ### 🟠 Major (다음 Phase에서 처리)
 
-| # | 항목 | 위치 | 제안 |
-|---|------|------|------|
-| M1 | **settings E2E 9건 실패** | `e2e/test_settings.py` | settings UI 재설계 이후 셀렉터 전면 업데이트 필요. 9개 테스트 모두 `test_settings.py`에 집중 |
-| M2 | **`notifier/payload.py` 커버리지 0%** | `src/notifier/payload.py` | 파일 전체(2–21)가 테스트 없음 — 단위 테스트 추가 또는 dead code 확인 |
+| # | 항목 | 위치 | 제안 | 상태 |
+|---|------|------|------|------|
+| M1 | **settings E2E 9건 실패** | `e2e/test_settings.py` | settings UI 재설계 이후 셀렉터 전면 업데이트 필요. 9개 테스트 모두 `test_settings.py`에 집중 | ✅ **해결** — `_expand_advanced()` 헬퍼 추가, E2E 38/38 통과 |
+| M2 | **`notifier/payload.py` 커버리지 0%** | `src/notifier/payload.py` | 파일 전체(2–21)가 테스트 없음 — 단위 테스트 추가 또는 dead code 확인 | ✅ **해결** — 사용처 0 확인 후 파일 삭제 |
 
 ### 🟡 Minor (여유 시 개선)
 
-| # | 항목 | 위치 | 제안 |
-|---|------|------|------|
-| m1 | flake8 E501 1건 | `src/ui/router.py:16` | 줄 분리 (3자 초과) — 1분 Quick-fix |
-| m2 | pylint E1102 false-positive | `src/ui/router.py:170` | `# pylint: disable=not-callable` 주석 추가 |
-| m3 | `analyzer/static.py` 71% | Windows/Linux 경로 분기 미커버 | subprocess 경로 테스트 추가 |
-| m4 | `crypto.py` 71% | 암호화 키 없는 경우·복호화 실패 미커버 | 엣지 케이스 테스트 추가 |
-| m5 | W0718 × 9 | `except Exception` 남용 | 개별 예외 타입 세분화 검토 |
-| m6 | `pytest-randomly` 미설치 | `requirements-dev.txt` | `pytest-randomly>=3.15` 추가 — 자동 순서 무작위화 |
+| # | 항목 | 위치 | 제안 | 상태 |
+|---|------|------|------|------|
+| m1 | flake8 E501 1건 | `src/ui/router.py:16` | 줄 분리 (3자 초과) — 1분 Quick-fix | ✅ **해결** — 멀티라인 import, flake8 0건 달성 |
+| m2 | pylint E1102 false-positive | `src/ui/router.py:170` | `# pylint: disable=not-callable` 주석 추가 | ✅ **해결** — 3곳 disable 추가, pylint 9.72 상승 |
+| m3 | `analyzer/static.py` 71% | Windows/Linux 경로 분기 미커버 | subprocess 경로 테스트 추가 | ✅ **해결** — 38개 테스트 추가 |
+| m4 | `crypto.py` 71% | 암호화 키 없는 경우·복호화 실패 미커버 | 엣지 케이스 테스트 추가 | ✅ **해결** — 22개 테스트 추가 |
+| m5 | W0718 × 9 | `except Exception` 남용 | 개별 예외 타입 세분화 검토 | ⏸ **보류** — best-effort 알림 파이프라인 의도적 설계 |
+| m6 | `pytest-randomly` 미설치 | `requirements-dev.txt` | `pytest-randomly>=3.15` 추가 — 자동 순서 무작위화 | ⏸ **보류** — 후속 Phase로 분리 |
 
-### 요약 권장 우선순위
+### 요약 수정 결과 (2026-04-19 감사 후 즉시 처리)
 
 ```
-P0 (즉시): bandit 업그레이드 → requirements.txt bandit>=2.0.0
-P1 (다음 Phase): e2e/test_settings.py 셀렉터 업데이트 (9건 복구)
-P2: notifier/payload.py 테스트 추가 또는 제거 결정
-P3: flake8 E501 + pylint E1102 Quick-fix (1–2분)
+✅ C1: bandit 1.9.4 업그레이드 → Python 3.14 AttributeError 해소, 실측 HIGH 0
+✅ M1: e2e/_expand_advanced 헬퍼 추가 → E2E 17→38 통과 (38/38)
+✅ M2: payload.py 삭제 (dead code)
+✅ m1: router.py 멀티라인 import → flake8 0건
+✅ m2: router.py func.* not-callable disable x3 → pylint 9.72
+✅ m3: static_analyzer +38 테스트
+✅ m4: crypto +22 테스트 → 단위 634개 총합
+⏸ m5: W0718 의도적 유지
+⏸ m6: pytest-randomly 후속 Phase
 ```
 
 ---
 
-*감사 수행: 2026-04-19 | 7라운드 완료 + Appendix B E2E | 도구: pytest 8.3.3 / pylint 3.3.1 / flake8 7.1.1 / bandit 1.8.0(비가용) / Playwright 1.44+*
+*감사 수행: 2026-04-19 | 7라운드 완료 + Appendix B E2E | 도구: pytest 8.3.3 / pylint 3.3.1 / flake8 7.1.1 / bandit 1.8.0(비가용→1.9.4로 업그레이드) / Playwright 1.44+*
