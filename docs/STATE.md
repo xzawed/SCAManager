@@ -12,6 +12,10 @@
 | 커버리지 | **96.2%** | `make test-cov` (database.py 100%, ui/router.py 99.4%) |
 | bandit HIGH | **0개** | 실측 확인 (1.9.4 Python 3.14 대응) |
 | flake8 | **0건** | `flake8 src/` |
+| 지원 언어 (AI 리뷰) | **50개** | language.py 감지, Tier1/2/3 가이드 |
+| 지원 언어 (정적분석) | **34개+** | Semgrep 23 + ESLint 2 + ShellCheck 1 + Python 3도구 |
+
+**다언어 확장 프로젝트 (Phase 0~C) 완료** — 회고 문서: [docs/reports/2026-04-19-multilang-expansion-retrospective.md](reports/2026-04-19-multilang-expansion-retrospective.md)
 
 ## Phase 이력
 
@@ -66,7 +70,20 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 | ~~P1~~ | ~~`auth/github.py` OAuth 보안 분기~~ **완료** (+7, app_base_url·display_name·500경로) |
 | ~~P2~~ | ~~웹훅→gate 통합 테스트~~ (`tests/integration/test_webhook_to_gate.py`) **완료** |
 | ~~P2~~ | ~~`github_client/repos.py` commit_scamanager_files 테스트~~ **완료** (+6) |
-| **P3** | 보안 심층 (OAuth state, HTML injection) |
 | ~~P3~~ | ~~알림 엣지 케이스 (Telegram 4096자, SMTP 타임아웃)~~ **완료** (+11) |
 | ~~P3~~ | ~~보안 심층 (OAuth CSRF, HTML injection, Jinja2 autoescape)~~ **완료** (+6) |
 | ~~P3~~ | ~~CLAUDE.md 주의사항 빈도 기반 재정렬·축소~~ **완료** |
+| **P4** | Phase D — Tier 1 전용 정적분석 도구 (운영 리스크 검토 필요, 도구별 별도 승인) |
+
+### Phase D 대상 (우선순위순)
+
+| 우선순위 | 도구 | 언어 | 리스크 | 비고 |
+|---------|-----|-----|-------|------|
+| D.1 | cppcheck | C/C++ | 🟢 낮음 (+30MB, apt) | 즉시 착수 가능 |
+| D.2 | slither | Solidity | 🟢 낮음 (+100MB, pip) | 수요 확인 후 |
+| D.3 | RuboCop | Ruby | 🟡 중간 (+80MB, gem) | — |
+| D.4 | golangci-lint | Go | 🟡 중간 (+200MB, go.mod 자동생성) | — |
+| D.5 | PHPStan | PHP | 🟠 높음 (+150MB, PHP 런타임) | 수요 확인 후 |
+| D.6 | detekt | Kotlin | 🟠 높음 (+350MB, JDK 필요) | Docker 전환 후 |
+| D.7 | PMD | Java | 🔴 최상위 (+300MB, JVM cold start) | Docker 전환 후 |
+| D.8 | cargo clippy | Rust | 🔴 최상위 (+700MB, crate 단위 분석) | 아키텍처 변경 필요 |
