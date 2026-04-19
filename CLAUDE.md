@@ -35,7 +35,7 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 src/
 ├── main.py                     # FastAPI 앱, lifespan(DB 마이그레이션), 전체 라우터 등록
 ├── config.py                   # pydantic-settings 환경변수 관리, postgres:// URL 자동 변환
-├── constants.py                # GRADE_EMOJI, GRADE_COLOR_* 상수 단일 출처
+├── constants.py                # 전역 상수 단일 출처 — 점수배점/감점가중치/AI기본값/등급/알림한도/HTTP타임아웃/캐시TTL
 ├── crypto.py                   # encrypt_token()/decrypt_token() — TOKEN_ENCRYPTION_KEY
 ├── database.py                 # SQLAlchemy engine, Base, FailoverSessionFactory
 ├── auth/
@@ -60,7 +60,10 @@ src/
 │   ├── static.py               # analyze_file — Registry 위임. AnalysisIssue(category/language 필드)
 │   ├── tools/
 │   │   ├── __init__.py         # 빈 패키지
-│   │   └── python.py           # _PylintAnalyzer, _Flake8Analyzer, _BanditAnalyzer (모듈 로드 시 자동 등록)
+│   │   ├── python.py           # _PylintAnalyzer, _Flake8Analyzer, _BanditAnalyzer (모듈 로드 시 자동 등록)
+│   │   ├── semgrep.py          # _SemgrepAnalyzer — 23개 언어, graceful degradation
+│   │   ├── eslint.py           # _ESLintAnalyzer — JS/TS, flat config
+│   │   └── shellcheck.py       # _ShellCheckAnalyzer — shell 스크립트
 │   ├── language.py             # detect_language(filename, content) — 50개 언어 감지. is_test_file()
 │   ├── review_prompt.py        # build_review_prompt() — 언어별 가이드 조립 + 토큰 예산 관리(8000)
 │   ├── review_guides/          # 언어별 리뷰 체크리스트 (get_guide(lang, mode))
@@ -78,8 +81,11 @@ src/
 │   ├── github_review.py        # post_github_review(), merge_pr()
 │   └── telegram_gate.py        # send_gate_request() — 인라인 키보드 메시지
 ├── notifier/
+│   ├── _common.py              # 공통 헬퍼 — format_ref, get_all_issues, truncate_message, truncate_issue_msg
+│   ├── _http.py                # build_safe_client() — HTTP_CLIENT_TIMEOUT 적용 httpx 클라이언트
 │   ├── telegram.py             # send_analysis_result(), telegram_post_message() 공용 헬퍼
 │   ├── github_comment.py       # post_pr_comment_from_result() — result dict 기반
+│   ├── github_issue.py         # create_low_score_issue() — 낮은 점수 GitHub Issue 자동 생성
 │   ├── discord.py, slack.py, webhook.py, email.py, n8n.py
 ├── api/
 │   ├── auth.py                 # require_api_key Depends (X-API-Key 헤더)
@@ -94,8 +100,9 @@ src/
 │   ├── __main__.py             # python -m src.cli review
 │   ├── git_diff.py             # 로컬 git diff 수집
 │   └── formatter.py            # 터미널 출력 포맷 (ANSI 색상)
+├── repositories/               # DB 접근 계층 — repository_repo, analysis_repo
 └── worker/
-    └── pipeline.py             # run_analysis_pipeline, _build_result_dict
+    └── pipeline.py             # run_analysis_pipeline, build_analysis_result_dict
 ```
 
 ### 핵심 데이터 흐름
@@ -161,8 +168,8 @@ CLI Hook (로컬 pre-push 자동 코드리뷰):
 
 | 항목 | 배점 | 도구 | 감점 규칙 |
 |------|------|------|----------|
-| 코드 품질 | 25점 | pylint + flake8 | error -3, warning -1 (pylint 15개·flake8 10개 cap) |
-| 보안 | 20점 | bandit | HIGH -7, LOW/MED -2 |
+| 코드 품질 | 25점 | pylint + flake8 + semgrep(code_quality) | error -3, warning -1 (CQ_WARNING_CAP=25 통합 cap) |
+| 보안 | 20점 | bandit + semgrep(security) | HIGH -7, LOW/MED -2 |
 | 커밋 메시지 품질 | 15점 | Claude AI (0-20 → 0-15 스케일링) | — |
 | 구현 방향성 | 25점 | Claude AI (0-20 → 0-25 스케일링) | — |
 | 테스트 | 15점 | Claude AI (0-10 → 0-15 스케일링, 비-코드 파일 면제) | — |
@@ -296,6 +303,7 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 - **E2E 격리**: `e2e/`를 최상위 별도 디렉토리로 분리 (`tests/` 아래 금지) — `tests/e2e/`가 있으면 `asyncio_mode=auto`와 `sys.modules` 삭제가 충돌해 단위 테스트 98개 실패. E2E 서버는 `uvicorn.Server.serve()`를 `asyncio.new_event_loop()` + `loop.run_until_complete()`로 실행.
 - **require_login 우회**: `tests/test_ui_router.py`는 `app.dependency_overrides[require_login] = lambda: _test_user`로 의존성 override. 신규 UI 라우트 테스트 작성 시 동일 패턴 사용.
 - **Mock side_effect 재귀**: `mock.add.side_effect = fn` 설정 후 fn 내에서 `original_add(obj)` 호출 시 재귀 발생. side_effect 함수에서는 원본 mock을 호출하지 말 것 — 캡처만 하고 return None.
+- **모듈 레벨 캐시 격리**: `src/webhook/router.py`의 `_webhook_secret_cache`는 모듈 레벨 dict. `tests/conftest.py`의 `_clear_webhook_secret_cache` autouse fixture가 테스트마다 자동 클리어. 신규 모듈 레벨 캐시 추가 시 동일한 autouse fixture 패턴 적용 필수 — 미적용 시 테스트 순서 의존성 버그 발생.
 
 ### DB / 마이그레이션
 
@@ -320,6 +328,9 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 - **커밋 메시지 추출**: `_extract_commit_message()`는 PR 이벤트 시 `title + "\n\n" + body`, Push 이벤트 시 `head_commit["message"]` 우선 사용.
 - **CLI Hook 인증/점수**: `GET /api/hook/verify`, `POST /api/hook/result`는 `hook_token` 파라미터로 인증(X-API-Key 불필요). pre-push 훅은 정적 분석 없이 AI 리뷰만 실행 → `calculate_score([], ai_review)` 호출 (code_quality=25, security=20 만점 적용).
 - **분석 source 필드**: `pipeline.py`가 result JSON에 `"source": "pr"|"push"` 저장. 기존 레코드 대응으로 `result.get("source") or ("pr" if pr_number else "push")` fallback 파생.
+- **GateDecision upsert**: `save_gate_decision()`은 동일 `analysis_id`로 이미 레코드가 있으면 UPDATE, 없으면 INSERT. 재시도·반자동 재승인 시 중복 INSERT가 없다.
+- **Analyzer tools 자동 등록**: `tools/semgrep.py`, `tools/eslint.py`, `tools/shellcheck.py`는 `analyze_file()`에서 해당 모듈을 import할 때 자동으로 `register()` 호출. 새 도구 추가 시 (1) `tools/` 아래 클래스 작성 + `register()` 호출, (2) `analyze_file()`에서 import, (3) SUPPORTED_LANGUAGES에 지원 언어 선언 세 단계 필수.
+- **`_build_issue_body()` 시그니처**: `high_issues: list[dict]` 파라미터가 추가되어 있음 — 호출처(`create_low_score_issue`)에서 `_bandit_high_issues(result)`를 1회만 계산한 뒤 전달. 직접 호출 시 반드시 high_issues 인자 포함.
 
 ### API / 알림 채널
 
@@ -335,6 +346,8 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 - **telegram_post_message**: `src/notifier/telegram.py`의 공용 헬퍼. `src/gate/telegram_gate.py`도 이 헬퍼 사용 — `httpx` 직접 import 금지.
 - **get_repo_or_404**: `src/api/deps.py`의 `get_repo_or_404(repo_name, db)` 사용. 신규 API 엔드포인트에서 Repository 조회 시 동일 패턴 사용.
 - **auto_merge GitHub 권한**: `merge_pr()`은 `repo` 스코프 또는 Fine-grained `pull_requests: write` 권한 필요 — 권한 부족 시 False 반환(파이프라인 미중단). Branch Protection Rules가 있으면 APPROVE 후에도 Merge 실패 가능.
+- **notifier 공통 헬퍼**: `src/notifier/_common.py`의 `format_ref()`, `get_all_issues()`, `get_issue_samples()`, `truncate_message()`, `truncate_issue_msg()`를 사용. 각 notifier 모듈에 이슈 수집 루프나 메시지 절단 로직 직접 작성 금지.
+- **webhook secret TTL 캐시**: `_get_webhook_secret(full_name)` 함수가 `_webhook_secret_cache` dict에 5분(WEBHOOK_SECRET_CACHE_TTL=300초) TTL로 per-repo 시크릿을 캐시. 리포 시크릿 변경 후 최대 5분간 구 시크릿으로 검증 — 인지하고 있을 것.
 
 ### 보안
 
@@ -367,4 +380,4 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 
 ## 현재 상태
 
-최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1074개 | E2E 38개 | pylint 9.77 | 커버리지 96.2%
+최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1074개 | E2E 38개 | pylint 10.00 | 커버리지 96.2%
