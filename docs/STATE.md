@@ -27,6 +27,7 @@
 | P3 알림 엣지 케이스 | Telegram 4096자 절단 4종 + HTTP오류 전파 3종, SMTP 연결/인증 에러·From 기본값·Subject 검증 4종 | 2026-04-19 |
 | P3 보안 심층 | HTML injection(email 2+telegram 2), OAuth CSRF state, Jinja2 autoescape 검증 (+6) | 2026-04-19 |
 | P3 CLAUDE.md 정비 | 주의사항 빈도 기반 재정렬, psycopg2·N+1·Supabase SSL 3항목 제거, 보안 2항목 추가 | 2026-04-19 |
+| 품질 감사 7라운드 | 정상성/커버리지/결정성/격리성/pylint/flake8/bandit+E2E 다각도 검증. 보고서: docs/reports/2026-04-19-code-quality-audit.md | 2026-04-19 |
 
 ## 갱신 방법
 

@@ -1,0 +1,494 @@
+C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pytest_asyncio\plugin.py:208: PytestDeprecationWarning: The configuration option "asyncio_default_fixture_loop_scope" is unset.
+The event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixture loop scopes are: "function", "class", "module", "package", "session"
+
+  warnings.warn(PytestDeprecationWarning(_DEFAULT_FIXTURE_LOOP_SCOPE_UNSET))
+........................................................................ [ 12%]
+........................................................................ [ 24%]
+........................................................................ [ 36%]
+........................................................................ [ 49%]
+........................................................................ [ 61%]
+........................................................................ [ 73%]
+........................................................................ [ 86%]
+........................................................................ [ 98%]
+..........                                                               [100%]
+============================== warnings summary ===============================
+C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\starlette\formparsers.py:12
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\starlette\formparsers.py:12: PendingDeprecationWarning: Please use `import python_multipart` instead.
+    import multipart
+
+C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\fastapi\routing.py:233: 52 warnings
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\fastapi\routing.py:233: DeprecationWarning: 'asyncio.iscoroutinefunction' is deprecated and slated for removal in Python 3.16; use inspect.iscoroutinefunction() instead
+    is_coroutine = asyncio.iscoroutinefunction(dependant.call)
+
+C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\starlette\_utils.py:40: 78 warnings
+tests/integration/test_webhook_to_gate.py: 10 warnings
+tests/test_api_auth.py: 2 warnings
+tests/test_api_repos.py: 3 warnings
+tests/test_api_stats.py: 1 warning
+tests/test_auth_github.py: 8 warnings
+tests/test_failover.py: 6 warnings
+tests/test_hook_api.py: 7 warnings
+tests/test_main.py: 14 warnings
+tests/test_ui_router.py: 8 warnings
+tests/test_webhook_issues.py: 2 warnings
+tests/test_webhook_router.py: 9 warnings
+tests/test_webhook_telegram.py: 5 warnings
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\starlette\_utils.py:40: DeprecationWarning: 'asyncio.iscoroutinefunction' is deprecated and slated for removal in Python 3.16; use inspect.iscoroutinefunction() instead
+    return asyncio.iscoroutinefunction(obj) or (callable(obj) and asyncio.iscoroutinefunction(obj.__call__))
+
+C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pytest_asyncio\plugin.py:179: 55357 warnings
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pytest_asyncio\plugin.py:179: DeprecationWarning: 'asyncio.iscoroutinefunction' is deprecated and slated for removal in Python 3.16; use inspect.iscoroutinefunction() instead
+    return asyncio.iscoroutinefunction(obj) or inspect.isasyncgenfunction(obj)
+
+C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pytest_asyncio\plugin.py:450: 586 warnings
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pytest_asyncio\plugin.py:450: DeprecationWarning: 'asyncio.iscoroutinefunction' is deprecated and slated for removal in Python 3.16; use inspect.iscoroutinefunction() instead
+    return asyncio.iscoroutinefunction(func)
+
+tests/integration/test_webhook_to_gate.py::test_push_then_pr_regate
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pytest_asyncio\plugin.py:1056: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    return asyncio.get_event_loop_policy()
+
+tests/test_ai_review.py: 8 warnings
+tests/test_discord_notifier.py: 2 warnings
+tests/test_email_notifier.py: 7 warnings
+tests/test_gate_engine.py: 28 warnings
+tests/test_generic_webhook.py: 2 warnings
+tests/test_github_client_repos.py: 6 warnings
+tests/test_github_comment.py: 4 warnings
+tests/test_github_commit_comment_notifier.py: 5 warnings
+tests/test_github_issue_notifier.py: 8 warnings
+tests/test_github_repos.py: 8 warnings
+tests/test_github_review.py: 7 warnings
+tests/test_n8n_envelope.py: 18 warnings
+tests/test_n8n_notifier.py: 5 warnings
+tests/test_notifier_telegram.py: 1 warning
+tests/test_pipeline.py: 42 warnings
+tests/test_pipeline_pr_regate.py: 3 warnings
+tests/test_slack_notifier.py: 2 warnings
+tests/test_telegram_gate.py: 2 warnings
+tests/test_telegram_notifier.py: 3 warnings
+tests/test_webhook_telegram.py: 6 warnings
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pytest_asyncio\plugin.py:773: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    _restore_event_loop_policy(asyncio.get_event_loop_policy()),
+
+tests/test_ai_review.py: 8 warnings
+tests/test_discord_notifier.py: 2 warnings
+tests/test_email_notifier.py: 7 warnings
+tests/test_gate_engine.py: 28 warnings
+tests/test_generic_webhook.py: 2 warnings
+tests/test_github_client_repos.py: 6 warnings
+tests/test_github_comment.py: 4 warnings
+tests/test_github_commit_comment_notifier.py: 5 warnings
+tests/test_github_issue_notifier.py: 8 warnings
+tests/test_github_repos.py: 8 warnings
+tests/test_github_review.py: 7 warnings
+tests/test_n8n_envelope.py: 18 warnings
+tests/test_n8n_notifier.py: 5 warnings
+tests/test_notifier_telegram.py: 1 warning
+tests/test_pipeline.py: 42 warnings
+tests/test_pipeline_pr_regate.py: 3 warnings
+tests/test_slack_notifier.py: 2 warnings
+tests/test_telegram_gate.py: 2 warnings
+tests/test_telegram_notifier.py: 3 warnings
+tests/test_webhook_telegram.py: 6 warnings
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pytest_asyncio\plugin.py:1028: DeprecationWarning: 'asyncio.set_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    asyncio.set_event_loop_policy(new_loop_policy)
+
+tests/test_ai_review.py: 8 warnings
+tests/test_discord_notifier.py: 2 warnings
+tests/test_email_notifier.py: 7 warnings
+tests/test_gate_engine.py: 28 warnings
+tests/test_generic_webhook.py: 2 warnings
+tests/test_github_client_repos.py: 6 warnings
+tests/test_github_comment.py: 4 warnings
+tests/test_github_commit_comment_notifier.py: 5 warnings
+tests/test_github_issue_notifier.py: 8 warnings
+tests/test_github_repos.py: 8 warnings
+tests/test_github_review.py: 7 warnings
+tests/test_n8n_envelope.py: 18 warnings
+tests/test_n8n_notifier.py: 5 warnings
+tests/test_notifier_telegram.py: 1 warning
+tests/test_pipeline.py: 42 warnings
+tests/test_pipeline_pr_regate.py: 3 warnings
+tests/test_slack_notifier.py: 2 warnings
+tests/test_telegram_gate.py: 2 warnings
+tests/test_telegram_notifier.py: 3 warnings
+tests/test_webhook_telegram.py: 6 warnings
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pytest_asyncio\plugin.py:1029: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+
+tests/test_ai_review.py: 8 warnings
+tests/test_discord_notifier.py: 2 warnings
+tests/test_email_notifier.py: 7 warnings
+tests/test_gate_engine.py: 28 warnings
+tests/test_generic_webhook.py: 2 warnings
+tests/test_github_client_repos.py: 6 warnings
+tests/test_github_comment.py: 4 warnings
+tests/test_github_commit_comment_notifier.py: 5 warnings
+tests/test_github_issue_notifier.py: 8 warnings
+tests/test_github_repos.py: 8 warnings
+tests/test_github_review.py: 7 warnings
+tests/test_n8n_envelope.py: 18 warnings
+tests/test_n8n_notifier.py: 5 warnings
+tests/test_notifier_telegram.py: 1 warning
+tests/test_pipeline.py: 42 warnings
+tests/test_pipeline_pr_regate.py: 3 warnings
+tests/test_slack_notifier.py: 2 warnings
+tests/test_telegram_gate.py: 2 warnings
+tests/test_telegram_notifier.py: 3 warnings
+tests/test_webhook_telegram.py: 6 warnings
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pytest_asyncio\plugin.py:788: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    policy = asyncio.get_event_loop_policy()
+
+tests/test_ai_review.py: 8 warnings
+tests/test_discord_notifier.py: 2 warnings
+tests/test_email_notifier.py: 7 warnings
+tests/test_gate_engine.py: 28 warnings
+tests/test_generic_webhook.py: 2 warnings
+tests/test_github_client_repos.py: 6 warnings
+tests/test_github_comment.py: 4 warnings
+tests/test_github_commit_comment_notifier.py: 5 warnings
+tests/test_github_issue_notifier.py: 8 warnings
+tests/test_github_repos.py: 8 warnings
+tests/test_github_review.py: 7 warnings
+tests/test_n8n_envelope.py: 18 warnings
+tests/test_n8n_notifier.py: 5 warnings
+tests/test_notifier_telegram.py: 1 warning
+tests/test_pipeline.py: 42 warnings
+tests/test_pipeline_pr_regate.py: 3 warnings
+tests/test_slack_notifier.py: 2 warnings
+tests/test_telegram_gate.py: 2 warnings
+tests/test_telegram_notifier.py: 3 warnings
+tests/test_webhook_telegram.py: 6 warnings
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pytest_asyncio\plugin.py:833: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    policy = asyncio.get_event_loop_policy()
+
+tests/test_ai_review.py: 8 warnings
+tests/test_discord_notifier.py: 2 warnings
+tests/test_email_notifier.py: 7 warnings
+tests/test_gate_engine.py: 28 warnings
+tests/test_generic_webhook.py: 2 warnings
+tests/test_github_client_repos.py: 6 warnings
+tests/test_github_comment.py: 4 warnings
+tests/test_github_commit_comment_notifier.py: 5 warnings
+tests/test_github_issue_notifier.py: 8 warnings
+tests/test_github_repos.py: 8 warnings
+tests/test_github_review.py: 7 warnings
+tests/test_n8n_envelope.py: 18 warnings
+tests/test_n8n_notifier.py: 5 warnings
+tests/test_notifier_telegram.py: 1 warning
+tests/test_pipeline.py: 42 warnings
+tests/test_pipeline_pr_regate.py: 3 warnings
+tests/test_slack_notifier.py: 2 warnings
+tests/test_telegram_gate.py: 2 warnings
+tests/test_telegram_notifier.py: 3 warnings
+tests/test_webhook_telegram.py: 6 warnings
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pytest_asyncio\plugin.py:857: DeprecationWarning: 'asyncio.set_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    asyncio.set_event_loop_policy(previous_policy)
+
+tests/test_ai_review.py: 8 warnings
+tests/test_discord_notifier.py: 2 warnings
+tests/test_email_notifier.py: 7 warnings
+tests/test_gate_engine.py: 28 warnings
+tests/test_generic_webhook.py: 2 warnings
+tests/test_github_client_repos.py: 6 warnings
+tests/test_github_comment.py: 4 warnings
+tests/test_github_commit_comment_notifier.py: 5 warnings
+tests/test_github_issue_notifier.py: 8 warnings
+tests/test_github_repos.py: 8 warnings
+tests/test_github_review.py: 7 warnings
+tests/test_n8n_envelope.py: 18 warnings
+tests/test_n8n_notifier.py: 5 warnings
+tests/test_notifier_telegram.py: 1 warning
+tests/test_pipeline.py: 42 warnings
+tests/test_pipeline_pr_regate.py: 3 warnings
+tests/test_slack_notifier.py: 2 warnings
+tests/test_telegram_gate.py: 2 warnings
+tests/test_telegram_notifier.py: 3 warnings
+tests/test_webhook_telegram.py: 6 warnings
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pytest_asyncio\plugin.py:869: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    policy = asyncio.get_event_loop_policy()
+
+tests/test_api_auth.py::test_api_key_empty_string_allows_access
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py:1308: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000001389EE171F0>
+    def _make_invoke_excepthook():
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_api_auth.py::test_api_key_empty_string_allows_access
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py:1308: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000001389EC54C70>
+    def _make_invoke_excepthook():
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_api_auth.py::test_api_key_empty_string_allows_access
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py:1308: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000001389EC547C0>
+    def _make_invoke_excepthook():
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_pipeline.py::test_pipeline_calls_gate_for_pr
+tests/test_pipeline.py::test_pipeline_skips_gate_for_push
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\_pytest\stash.py:108: RuntimeWarning: coroutine 'send_email_notification' was never awaited
+    del self._storage[key]
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_pipeline.py::test_pipeline_calls_gate_for_pr
+tests/test_pipeline.py::test_pipeline_skips_gate_for_push
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\_pytest\stash.py:108: RuntimeWarning: coroutine 'send_webhook_notification' was never awaited
+    del self._storage[key]
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_pipeline.py::test_pipeline_calls_gate_for_pr
+tests/test_pipeline.py::test_pipeline_skips_gate_for_push
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\_pytest\stash.py:108: RuntimeWarning: coroutine 'send_slack_notification' was never awaited
+    del self._storage[key]
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_pipeline.py::test_pipeline_calls_gate_for_pr
+tests/test_pipeline.py::test_pipeline_skips_gate_for_push
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\_pytest\stash.py:108: RuntimeWarning: coroutine 'send_discord_notification' was never awaited
+    del self._storage[key]
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_pipeline.py::test_pipeline_calls_gate_for_pr
+tests/test_pipeline.py::test_pipeline_skips_gate_for_push
+tests/test_pipeline.py::test_gate_check_exception_still_saves_analysis
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\_pytest\stash.py:108: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    del self._storage[key]
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_pipeline.py::test_pipeline_skips_gate_for_push
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\_pytest\stash.py:108: RuntimeWarning: coroutine 'post_commit_comment' was never awaited
+    del self._storage[key]
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_ui_router.py::test_settings_no_nested_forms
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:2252: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000138A37E07C0>
+    def __init__(self, name, parent):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_ui_router.py::test_settings_no_nested_forms
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:2252: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000138A37E22F0>
+    def __init__(self, name, parent):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_ui_router.py::test_settings_no_nested_forms
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:2252: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000138A39398A0>
+    def __init__(self, name, parent):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_ui_router.py::test_settings_no_nested_forms
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:2252: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000138A393B6A0>
+    def __init__(self, name, parent):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_ui_router.py::test_settings_no_nested_forms
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:2252: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000138A393B970>
+    def __init__(self, name, parent):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_ui_router.py::test_settings_no_nested_forms
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:2252: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000138A399D120>
+    def __init__(self, name, parent):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_ui_router.py::test_settings_no_nested_forms
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:2252: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000138A39D4A90>
+    def __init__(self, name, parent):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_ui_router.py::test_settings_no_nested_forms
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:2252: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000138A39D4F40>
+    def __init__(self, name, parent):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_ui_router.py::test_settings_no_nested_forms
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:2252: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000138A39D6D40>
+    def __init__(self, name, parent):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_ui_router.py::test_settings_no_nested_forms
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:2252: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000138A39FC7C0>
+    def __init__(self, name, parent):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_ui_router.py::test_settings_no_nested_forms
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:2252: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000138A3A38220>
+    def __init__(self, name, parent):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_ui_router.py::test_settings_no_nested_forms
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:2252: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000138A3A39E40>
+    def __init__(self, name, parent):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_ui_router.py::test_settings_no_nested_forms
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:2252: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000138A3A384F0>
+    def __init__(self, name, parent):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_ui_router.py::test_settings_no_nested_forms
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:2252: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000138A3AD17B0>
+    def __init__(self, name, parent):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_ui_router.py::test_settings_no_nested_forms
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:2252: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000138A3AD34C0>
+    def __init__(self, name, parent):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_ui_router.py::test_settings_no_nested_forms
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:2252: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000138A3B38F40>
+    def __init__(self, name, parent):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_ui_router.py::test_settings_no_nested_forms
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:2252: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000138A3B39120>
+    def __init__(self, name, parent):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_ui_router.py::test_settings_no_nested_forms
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:2252: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000138A3B3B010>
+    def __init__(self, name, parent):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_ui_router.py::test_settings_no_nested_forms
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:2252: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000138A3B662F0>
+    def __init__(self, name, parent):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_ui_router.py::test_settings_no_nested_forms
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:2252: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000138A3B663E0>
+    def __init__(self, name, parent):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_ui_router.py::test_settings_no_nested_forms
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:2252: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000138A58DC6D0>
+    def __init__(self, name, parent):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_ui_router.py::test_settings_no_nested_forms
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:2252: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000138A5B3FD30>
+    def __init__(self, name, parent):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_ui_router.py::test_settings_no_nested_forms
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:2252: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000138A6F0C040>
+    def __init__(self, name, parent):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_ui_router.py::test_settings_no_nested_forms
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:2252: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000138A6F0DC60>
+    def __init__(self, name, parent):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_ui_router.py::test_settings_no_nested_forms
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:2252: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000138A6F0F970>
+    def __init__(self, name, parent):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_webhook_telegram.py::test_handle_gate_callback_reject_does_not_merge
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:503: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000138A80B7C40>
+    _safe_super(NonCallableMock, self).__init__(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_webhook_telegram.py::test_handle_gate_callback_reject_does_not_merge
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:503: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000001389F23BA60>
+    _safe_super(NonCallableMock, self).__init__(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_webhook_telegram.py::test_handle_gate_callback_reject_does_not_merge
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:503: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000001389F23B970>
+    _safe_super(NonCallableMock, self).__init__(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_webhook_telegram.py::test_handle_gate_callback_reject_does_not_merge
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:503: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000001389F238E50>
+    _safe_super(NonCallableMock, self).__init__(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_webhook_telegram.py::test_handle_gate_callback_reject_does_not_merge
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:503: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000001389D5626B0>
+    _safe_super(NonCallableMock, self).__init__(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_webhook_telegram.py::test_handle_gate_callback_reject_does_not_merge
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:503: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000001389D563010>
+    _safe_super(NonCallableMock, self).__init__(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=============================== tests coverage ================================
+_______________ coverage: platform win32, python 3.14.2-final-0 _______________
+
+Name                         Stmts   Miss  Cover   Missing
+----------------------------------------------------------
+src\analyzer\static.py          77     22    71%   68, 84-89, 97, 113-114, 116-121, 140-145
+src\api\hook.py                 47      1    98%   85
+src\api\repos.py                62      1    98%   133
+src\api\stats.py                23      1    96%   37
+src\cli\__main__.py             48      6    88%   36-37, 47-49, 80
+src\cli\git_diff.py             54      2    96%   52, 57
+src\config.py                   65      4    94%   66-71, 73, 85
+src\crypto.py                   34     10    71%   30-32, 39, 43, 53-58
+src\database.py                129     24    81%   27, 33-34, 39-41, 134-136, 150-152, 159-161, 170-172, 192-193, 203-207
+src\gate\engine.py              61      4    93%   122-126
+src\gate\github_review.py       28      2    93%   51-52
+src\github_client\repos.py      46      1    98%   67
+src\main.py                     45      3    93%   25-26, 33
+src\notifier\_http.py           43      3    93%   26-27, 50
+src\notifier\discord.py         35      2    94%   73-74
+src\notifier\n8n.py             44      2    95%   54-55
+src\notifier\payload.py          9      9     0%   2-21
+src\notifier\slack.py           39      2    95%   85-86
+src\notifier\webhook.py         20      2    90%   53-54
+src\ui\router.py               180     29    84%   27, 57, 96, 109-111, 140, 259-261, 274-299, 321-325
+src\webhook\router.py          134     10    93%   42-43, 59, 64, 96-97, 131, 183, 186-187
+src\worker\pipeline.py         172     15    91%   245, 252-255, 258, 270-271, 293-294, 297-301
+----------------------------------------------------------
+TOTAL                         2052    155    92%
+
+38 files skipped due to complete coverage.
+586 passed, 57365 warnings in 96.83s (0:01:36)
+<sys>:0: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000138A5A40040>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<sys>:0: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000138A4007B50>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback

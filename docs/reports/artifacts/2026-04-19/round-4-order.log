@@ -1,0 +1,255 @@
+C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pytest_asyncio\plugin.py:208: PytestDeprecationWarning: The configuration option "asyncio_default_fixture_loop_scope" is unset.
+The event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixture loop scopes are: "function", "class", "module", "package", "session"
+
+  warnings.warn(PytestDeprecationWarning(_DEFAULT_FIXTURE_LOOP_SCOPE_UNSET))
+........................................................................ [ 12%]
+........................................................................ [ 24%]
+........................................................................ [ 36%]
+........................................................................ [ 49%]
+........................................................................ [ 61%]
+........................................................................ [ 73%]
+........................................................................ [ 86%]
+........................................................................ [ 98%]
+..........                                                               [100%]
+============================== warnings summary ===============================
+C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\starlette\formparsers.py:12
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\starlette\formparsers.py:12: PendingDeprecationWarning: Please use `import python_multipart` instead.
+    import multipart
+
+C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\fastapi\routing.py:233: 52 warnings
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\fastapi\routing.py:233: DeprecationWarning: 'asyncio.iscoroutinefunction' is deprecated and slated for removal in Python 3.16; use inspect.iscoroutinefunction() instead
+    is_coroutine = asyncio.iscoroutinefunction(dependant.call)
+
+C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\starlette\_utils.py:40: 78 warnings
+tests/test_webhook_telegram.py: 5 warnings
+tests/test_webhook_router.py: 9 warnings
+tests/test_webhook_issues.py: 2 warnings
+tests/test_ui_router.py: 8 warnings
+tests/test_main.py: 14 warnings
+tests/test_hook_api.py: 7 warnings
+tests/test_failover.py: 6 warnings
+tests/test_auth_github.py: 8 warnings
+tests/test_api_stats.py: 1 warning
+tests/test_api_repos.py: 3 warnings
+tests/test_api_auth.py: 2 warnings
+tests/integration/test_webhook_to_gate.py: 10 warnings
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\starlette\_utils.py:40: DeprecationWarning: 'asyncio.iscoroutinefunction' is deprecated and slated for removal in Python 3.16; use inspect.iscoroutinefunction() instead
+    return asyncio.iscoroutinefunction(obj) or (callable(obj) and asyncio.iscoroutinefunction(obj.__call__))
+
+C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pytest_asyncio\plugin.py:179: 53194 warnings
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pytest_asyncio\plugin.py:179: DeprecationWarning: 'asyncio.iscoroutinefunction' is deprecated and slated for removal in Python 3.16; use inspect.iscoroutinefunction() instead
+    return asyncio.iscoroutinefunction(obj) or inspect.isasyncgenfunction(obj)
+
+C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pytest_asyncio\plugin.py:450: 586 warnings
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pytest_asyncio\plugin.py:450: DeprecationWarning: 'asyncio.iscoroutinefunction' is deprecated and slated for removal in Python 3.16; use inspect.iscoroutinefunction() instead
+    return asyncio.iscoroutinefunction(func)
+
+tests/test_webhook_validator.py::test_valid_signature
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pytest_asyncio\plugin.py:1056: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    return asyncio.get_event_loop_policy()
+
+tests/test_webhook_telegram.py: 6 warnings
+tests/test_telegram_notifier.py: 3 warnings
+tests/test_telegram_gate.py: 2 warnings
+tests/test_slack_notifier.py: 2 warnings
+tests/test_pipeline_pr_regate.py: 3 warnings
+tests/test_pipeline.py: 42 warnings
+tests/test_notifier_telegram.py: 1 warning
+tests/test_n8n_notifier.py: 5 warnings
+tests/test_n8n_envelope.py: 18 warnings
+tests/test_github_review.py: 7 warnings
+tests/test_github_repos.py: 8 warnings
+tests/test_github_issue_notifier.py: 8 warnings
+tests/test_github_commit_comment_notifier.py: 5 warnings
+tests/test_github_comment.py: 4 warnings
+tests/test_github_client_repos.py: 6 warnings
+tests/test_generic_webhook.py: 2 warnings
+tests/test_gate_engine.py: 28 warnings
+tests/test_email_notifier.py: 7 warnings
+tests/test_discord_notifier.py: 2 warnings
+tests/test_ai_review.py: 8 warnings
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pytest_asyncio\plugin.py:773: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    _restore_event_loop_policy(asyncio.get_event_loop_policy()),
+
+tests/test_webhook_telegram.py: 6 warnings
+tests/test_telegram_notifier.py: 3 warnings
+tests/test_telegram_gate.py: 2 warnings
+tests/test_slack_notifier.py: 2 warnings
+tests/test_pipeline_pr_regate.py: 3 warnings
+tests/test_pipeline.py: 42 warnings
+tests/test_notifier_telegram.py: 1 warning
+tests/test_n8n_notifier.py: 5 warnings
+tests/test_n8n_envelope.py: 18 warnings
+tests/test_github_review.py: 7 warnings
+tests/test_github_repos.py: 8 warnings
+tests/test_github_issue_notifier.py: 8 warnings
+tests/test_github_commit_comment_notifier.py: 5 warnings
+tests/test_github_comment.py: 4 warnings
+tests/test_github_client_repos.py: 6 warnings
+tests/test_generic_webhook.py: 2 warnings
+tests/test_gate_engine.py: 28 warnings
+tests/test_email_notifier.py: 7 warnings
+tests/test_discord_notifier.py: 2 warnings
+tests/test_ai_review.py: 8 warnings
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pytest_asyncio\plugin.py:1028: DeprecationWarning: 'asyncio.set_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    asyncio.set_event_loop_policy(new_loop_policy)
+
+tests/test_webhook_telegram.py: 6 warnings
+tests/test_telegram_notifier.py: 3 warnings
+tests/test_telegram_gate.py: 2 warnings
+tests/test_slack_notifier.py: 2 warnings
+tests/test_pipeline_pr_regate.py: 3 warnings
+tests/test_pipeline.py: 42 warnings
+tests/test_notifier_telegram.py: 1 warning
+tests/test_n8n_notifier.py: 5 warnings
+tests/test_n8n_envelope.py: 18 warnings
+tests/test_github_review.py: 7 warnings
+tests/test_github_repos.py: 8 warnings
+tests/test_github_issue_notifier.py: 8 warnings
+tests/test_github_commit_comment_notifier.py: 5 warnings
+tests/test_github_comment.py: 4 warnings
+tests/test_github_client_repos.py: 6 warnings
+tests/test_generic_webhook.py: 2 warnings
+tests/test_gate_engine.py: 28 warnings
+tests/test_email_notifier.py: 7 warnings
+tests/test_discord_notifier.py: 2 warnings
+tests/test_ai_review.py: 8 warnings
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pytest_asyncio\plugin.py:1029: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+
+tests/test_webhook_telegram.py: 6 warnings
+tests/test_telegram_notifier.py: 3 warnings
+tests/test_telegram_gate.py: 2 warnings
+tests/test_slack_notifier.py: 2 warnings
+tests/test_pipeline_pr_regate.py: 3 warnings
+tests/test_pipeline.py: 42 warnings
+tests/test_notifier_telegram.py: 1 warning
+tests/test_n8n_notifier.py: 5 warnings
+tests/test_n8n_envelope.py: 18 warnings
+tests/test_github_review.py: 7 warnings
+tests/test_github_repos.py: 8 warnings
+tests/test_github_issue_notifier.py: 8 warnings
+tests/test_github_commit_comment_notifier.py: 5 warnings
+tests/test_github_comment.py: 4 warnings
+tests/test_github_client_repos.py: 6 warnings
+tests/test_generic_webhook.py: 2 warnings
+tests/test_gate_engine.py: 28 warnings
+tests/test_email_notifier.py: 7 warnings
+tests/test_discord_notifier.py: 2 warnings
+tests/test_ai_review.py: 8 warnings
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pytest_asyncio\plugin.py:788: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    policy = asyncio.get_event_loop_policy()
+
+tests/test_webhook_telegram.py: 6 warnings
+tests/test_telegram_notifier.py: 3 warnings
+tests/test_telegram_gate.py: 2 warnings
+tests/test_slack_notifier.py: 2 warnings
+tests/test_pipeline_pr_regate.py: 3 warnings
+tests/test_pipeline.py: 42 warnings
+tests/test_notifier_telegram.py: 1 warning
+tests/test_n8n_notifier.py: 5 warnings
+tests/test_n8n_envelope.py: 18 warnings
+tests/test_github_review.py: 7 warnings
+tests/test_github_repos.py: 8 warnings
+tests/test_github_issue_notifier.py: 8 warnings
+tests/test_github_commit_comment_notifier.py: 5 warnings
+tests/test_github_comment.py: 4 warnings
+tests/test_github_client_repos.py: 6 warnings
+tests/test_generic_webhook.py: 2 warnings
+tests/test_gate_engine.py: 28 warnings
+tests/test_email_notifier.py: 7 warnings
+tests/test_discord_notifier.py: 2 warnings
+tests/test_ai_review.py: 8 warnings
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pytest_asyncio\plugin.py:833: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    policy = asyncio.get_event_loop_policy()
+
+tests/test_webhook_telegram.py: 6 warnings
+tests/test_telegram_notifier.py: 3 warnings
+tests/test_telegram_gate.py: 2 warnings
+tests/test_slack_notifier.py: 2 warnings
+tests/test_pipeline_pr_regate.py: 3 warnings
+tests/test_pipeline.py: 42 warnings
+tests/test_notifier_telegram.py: 1 warning
+tests/test_n8n_notifier.py: 5 warnings
+tests/test_n8n_envelope.py: 18 warnings
+tests/test_github_review.py: 7 warnings
+tests/test_github_repos.py: 8 warnings
+tests/test_github_issue_notifier.py: 8 warnings
+tests/test_github_commit_comment_notifier.py: 5 warnings
+tests/test_github_comment.py: 4 warnings
+tests/test_github_client_repos.py: 6 warnings
+tests/test_generic_webhook.py: 2 warnings
+tests/test_gate_engine.py: 28 warnings
+tests/test_email_notifier.py: 7 warnings
+tests/test_discord_notifier.py: 2 warnings
+tests/test_ai_review.py: 8 warnings
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pytest_asyncio\plugin.py:857: DeprecationWarning: 'asyncio.set_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    asyncio.set_event_loop_policy(previous_policy)
+
+tests/test_webhook_telegram.py: 6 warnings
+tests/test_telegram_notifier.py: 3 warnings
+tests/test_telegram_gate.py: 2 warnings
+tests/test_slack_notifier.py: 2 warnings
+tests/test_pipeline_pr_regate.py: 3 warnings
+tests/test_pipeline.py: 42 warnings
+tests/test_notifier_telegram.py: 1 warning
+tests/test_n8n_notifier.py: 5 warnings
+tests/test_n8n_envelope.py: 18 warnings
+tests/test_github_review.py: 7 warnings
+tests/test_github_repos.py: 8 warnings
+tests/test_github_issue_notifier.py: 8 warnings
+tests/test_github_commit_comment_notifier.py: 5 warnings
+tests/test_github_comment.py: 4 warnings
+tests/test_github_client_repos.py: 6 warnings
+tests/test_generic_webhook.py: 2 warnings
+tests/test_gate_engine.py: 28 warnings
+tests/test_email_notifier.py: 7 warnings
+tests/test_discord_notifier.py: 2 warnings
+tests/test_ai_review.py: 8 warnings
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pytest_asyncio\plugin.py:869: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    policy = asyncio.get_event_loop_policy()
+
+tests/test_pipeline.py::test_pipeline_calls_gate_for_pr
+tests/test_pipeline.py::test_pipeline_skips_gate_for_push
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\_pytest\stash.py:108: RuntimeWarning: coroutine 'send_email_notification' was never awaited
+    del self._storage[key]
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_pipeline.py::test_pipeline_calls_gate_for_pr
+tests/test_pipeline.py::test_pipeline_skips_gate_for_push
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\_pytest\stash.py:108: RuntimeWarning: coroutine 'send_webhook_notification' was never awaited
+    del self._storage[key]
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_pipeline.py::test_pipeline_calls_gate_for_pr
+tests/test_pipeline.py::test_pipeline_skips_gate_for_push
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\_pytest\stash.py:108: RuntimeWarning: coroutine 'send_slack_notification' was never awaited
+    del self._storage[key]
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_pipeline.py::test_pipeline_calls_gate_for_pr
+tests/test_pipeline.py::test_pipeline_skips_gate_for_push
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\_pytest\stash.py:108: RuntimeWarning: coroutine 'send_discord_notification' was never awaited
+    del self._storage[key]
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_pipeline.py::test_pipeline_calls_gate_for_pr
+tests/test_pipeline.py::test_pipeline_skips_gate_for_push
+tests/test_pipeline.py::test_gate_check_exception_still_saves_analysis
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\_pytest\stash.py:108: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    del self._storage[key]
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_pipeline.py::test_pipeline_skips_gate_for_push
+  C:\Users\dirtc\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\_pytest\stash.py:108: RuntimeWarning: coroutine 'post_commit_comment' was never awaited
+    del self._storage[key]
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+586 passed, 55168 warnings in 92.62s (0:01:32)
