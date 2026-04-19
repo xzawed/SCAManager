@@ -1,5 +1,5 @@
 """Repository configuration manager — get and upsert RepoConfig records."""
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from sqlalchemy.orm import Session
 from src.models.repo_config import RepoConfig
 
@@ -25,28 +25,18 @@ class RepoConfigData:
     create_issue: bool = False
 
 
+def _config_field_names() -> list[str]:
+    """RepoConfigData의 필드명 목록 (repo_full_name 제외). 새 채널은 RepoConfigData에만 추가."""
+    return [f.name for f in fields(RepoConfigData) if f.name != "repo_full_name"]
+
+
 def get_repo_config(db: Session, repo_full_name: str) -> RepoConfigData:
     """DB에서 RepoConfig를 조회하여 RepoConfigData로 반환. 미존재 시 기본값 반환."""
     record = db.query(RepoConfig).filter_by(repo_full_name=repo_full_name).first()
     if record is None:
         return RepoConfigData(repo_full_name=repo_full_name)
-    return RepoConfigData(
-        repo_full_name=record.repo_full_name,
-        pr_review_comment=record.pr_review_comment,
-        approve_mode=record.approve_mode,
-        approve_threshold=record.approve_threshold,
-        reject_threshold=record.reject_threshold,
-        notify_chat_id=record.notify_chat_id,
-        n8n_webhook_url=record.n8n_webhook_url,
-        discord_webhook_url=record.discord_webhook_url,
-        slack_webhook_url=record.slack_webhook_url,
-        custom_webhook_url=record.custom_webhook_url,
-        email_recipients=record.email_recipients,
-        auto_merge=record.auto_merge,
-        merge_threshold=record.merge_threshold,
-        commit_comment=record.commit_comment,
-        create_issue=record.create_issue,
-    )
+    kwargs = {name: getattr(record, name) for name in _config_field_names()}
+    return RepoConfigData(repo_full_name=record.repo_full_name, **kwargs)
 
 
 def upsert_repo_config(db: Session, data: RepoConfigData) -> RepoConfig:
@@ -60,41 +50,15 @@ def upsert_repo_config(db: Session, data: RepoConfigData) -> RepoConfig:
             f"approve_threshold({data.approve_threshold})는 "
             f"reject_threshold({data.reject_threshold}) 이상이어야 합니다"
         )
+    field_names = _config_field_names()
     record = db.query(RepoConfig).filter_by(repo_full_name=data.repo_full_name).first()
     if record is None:
-        record = RepoConfig(
-            repo_full_name=data.repo_full_name,
-            pr_review_comment=data.pr_review_comment,
-            approve_mode=data.approve_mode,
-            approve_threshold=data.approve_threshold,
-            reject_threshold=data.reject_threshold,
-            notify_chat_id=data.notify_chat_id,
-            n8n_webhook_url=data.n8n_webhook_url,
-            discord_webhook_url=data.discord_webhook_url,
-            slack_webhook_url=data.slack_webhook_url,
-            custom_webhook_url=data.custom_webhook_url,
-            email_recipients=data.email_recipients,
-            auto_merge=data.auto_merge,
-            merge_threshold=data.merge_threshold,
-            commit_comment=data.commit_comment,
-            create_issue=data.create_issue,
-        )
+        kwargs = {name: getattr(data, name) for name in field_names}
+        record = RepoConfig(repo_full_name=data.repo_full_name, **kwargs)
         db.add(record)
     else:
-        record.pr_review_comment = data.pr_review_comment
-        record.approve_mode = data.approve_mode
-        record.approve_threshold = data.approve_threshold
-        record.reject_threshold = data.reject_threshold
-        record.notify_chat_id = data.notify_chat_id
-        record.n8n_webhook_url = data.n8n_webhook_url
-        record.discord_webhook_url = data.discord_webhook_url
-        record.slack_webhook_url = data.slack_webhook_url
-        record.custom_webhook_url = data.custom_webhook_url
-        record.email_recipients = data.email_recipients
-        record.auto_merge = data.auto_merge
-        record.merge_threshold = data.merge_threshold
-        record.commit_comment = data.commit_comment
-        record.create_issue = data.create_issue
+        for name in field_names:
+            setattr(record, name, getattr(data, name))
     db.commit()
     db.refresh(record)
     return record
