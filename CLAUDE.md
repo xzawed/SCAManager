@@ -216,6 +216,7 @@ requirements-dev.txt  ← 로컬 개발 환경 — pytest, playwright 포함 (-r
 - **TDD 우선**: 구현 코드 작성 전 반드시 `test-writer` 에이전트로 테스트를 먼저 작성한다.
 - **Hook 신뢰**: `src/` 파일 편집 후 PostToolUse Hook이 자동 실행하는 pytest 결과를 확인한다. 실패 시 다음 단계로 진행하지 않는다.
 - **Phase 완료 조건**: 테스트 전체 통과 + `/lint` 통과 + (파이프라인 변경 시 `pipeline-reviewer` 승인) 세 조건이 모두 충족될 때만 Phase 완료를 선언한다.
+- **완료 시 필수 3-step**: 작업이 완료되면 반드시 ① 커밋 → ② `git push` → ③ `docs/STATE.md` 수치 갱신을 순서대로 수행한다. 예외 없음.
 
 ### 모바일 환경 보호 — 수정 금지 파일
 
