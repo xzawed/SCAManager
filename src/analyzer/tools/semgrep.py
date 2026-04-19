@@ -10,8 +10,7 @@ import logging
 import shutil
 import subprocess  # nosec B404
 
-from src.analyzer.registry import AnalyzeContext
-from src.analyzer.static import AnalysisIssue
+from src.analyzer.registry import AnalyzeContext, AnalysisIssue, register
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +78,6 @@ class _SemgrepAnalyzer:
 
 
 def _register_semgrep_analyzers() -> None:
-    from src.analyzer.registry import register  # noqa: PLC0415
     register(_SemgrepAnalyzer())
 
 

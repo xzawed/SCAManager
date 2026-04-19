@@ -15,7 +15,7 @@ from src.constants import GRADE_COLOR_HTML
 logger = logging.getLogger(__name__)
 
 
-def _build_html_body(
+def _build_html_body(  # pylint: disable=too-many-positional-arguments
     repo_name: str,
     commit_sha: str,
     score_result: ScoreResult,
@@ -70,7 +70,7 @@ def _build_html_body(
 </div>"""
 
 
-async def send_email_notification(
+async def send_email_notification(  # pylint: disable=too-many-arguments
     *,
     recipients: str | None,
     repo_name: str,

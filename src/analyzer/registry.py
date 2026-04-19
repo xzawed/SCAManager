@@ -15,12 +15,21 @@ Usage:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
-
-if TYPE_CHECKING:
-    from src.analyzer.static import AnalysisIssue
+from typing import Literal, Protocol, runtime_checkable
 
 Category = Literal["code_quality", "security"]
+
+
+@dataclass
+class AnalysisIssue:
+    """A single issue reported by a static analysis tool."""
+
+    tool: str
+    severity: str       # "error" | "warning"
+    message: str
+    line: int = 0
+    category: str = "code_quality"  # "code_quality" | "security"
+    language: str = ""              # detect_language() 반환값
 
 
 @dataclass

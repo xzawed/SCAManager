@@ -60,11 +60,11 @@ def _build_connect_args(url: str) -> dict:
     return args
 
 
-class Base(DeclarativeBase):
-    pass
+class Base(DeclarativeBase):  # pylint: disable=too-few-public-methods
+    """SQLAlchemy declarative base for all ORM models."""
 
 
-class FailoverSessionFactory:
+class FailoverSessionFactory:  # pylint: disable=too-many-instance-attributes
     """Primary DB 장애 시 Fallback DB로 자동 전환하는 세션 팩토리.
 
     SessionLocal = FailoverSessionFactory(primary_url, fallback_url)
@@ -189,7 +189,7 @@ class FailoverSessionFactory:
                 with self._lock:
                     if self._active == "fallback":
                         self._switch_to("primary")
-            except Exception:  # noqa: BLE001 — probe 실패는 무시
+            except Exception:  # noqa: BLE001 — probe 실패는 무시  # pylint: disable=broad-exception-caught
                 pass
 
 

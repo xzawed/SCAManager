@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 import anthropic
 
 from src.analyzer.review_prompt import build_review_prompt
+from src.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,6 @@ async def review_code(
         return _default_result("empty_diff")
 
     try:
-        from src.config import settings  # noqa: PLC0415
         client = anthropic.AsyncAnthropic(api_key=api_key)
         response = await client.messages.create(
             model=settings.claude_review_model,
@@ -61,7 +61,7 @@ async def review_code(
         result = _parse_response(response.content[0].text)
         result.detected_languages = languages
         return result
-    except Exception:  # noqa: BLE001 — anthropic 라이브러리는 다양한 예외를 발생시킬 수 있음
+    except Exception:  # noqa: BLE001 — anthropic/httpx는 다양한 예외를 발생시킬 수 있음  # pylint: disable=broad-exception-caught
         logger.exception("AI review failed, using default scores")
         return _default_result("api_error")
 

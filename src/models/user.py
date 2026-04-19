@@ -5,6 +5,7 @@ from sqlalchemy.orm import relationship
 from src.database import Base
 
 
+# pylint: disable=too-few-public-methods
 class User(Base):
     """GitHub OAuth 로그인 사용자 테이블."""
 

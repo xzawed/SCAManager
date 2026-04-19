@@ -63,7 +63,7 @@ async def _handle_merged_pr_event(data: dict) -> dict:
             repo = repository_repo.find_by_full_name(db, repo_name)
             if repo and repo.owner:
                 token = repo.owner.plaintext_token or ""
-    except Exception as exc:  # noqa: BLE001
+    except (SQLAlchemyError, KeyError, AttributeError) as exc:
         logger.warning("merged-pr issue close: repo lookup failed for %s: %s", repo_name, exc)
 
     token = token or settings.github_token
@@ -113,7 +113,7 @@ async def github_webhook(
                 repo = repository_repo.find_by_full_name(db, full_name)
                 if repo and repo.webhook_secret:
                     secret = repo.webhook_secret
-        except Exception as exc:  # noqa: BLE001
+        except (SQLAlchemyError, KeyError, AttributeError) as exc:
             logger.warning("Per-repo webhook secret lookup failed, using global secret: %s", exc)
 
     if not secret:
@@ -176,6 +176,35 @@ async def _handle_issues_event(data: dict, background_tasks: BackgroundTasks) ->
         repo_token=repo_token,
     )
     return {"status": "accepted"}
+
+
+def _parse_gate_callback(data: str) -> "tuple[str, int, str] | None":
+    """Telegram 콜백 data 문자열을 파싱하고 HMAC 토큰을 검증한다.
+
+    Returns:
+        (decision, analysis_id, callback_token) 또는 검증 실패 시 None.
+    """
+    if not data.startswith("gate:"):
+        return None
+    parts = data.split(":")
+    if len(parts) != 4:
+        return None
+    _, decision, analysis_id_str, callback_token = parts
+    if decision not in ("approve", "reject"):
+        return None
+    try:
+        analysis_id = int(analysis_id_str)
+    except ValueError:
+        return None
+    expected = hmac.new(
+        settings.telegram_bot_token.encode(),
+        str(analysis_id).encode(),
+        digestmod=hashlib.sha256,
+    ).hexdigest()[:32]
+    if not hmac.compare_digest(expected, callback_token):
+        logger.warning("Telegram gate callback: invalid token for analysis_id=%d", analysis_id)
+        return None
+    return decision, analysis_id, callback_token
 
 
 async def handle_gate_callback(
@@ -241,27 +270,11 @@ async def telegram_webhook(
     callback_query = payload.get("callback_query")
     if not callback_query:
         return {"status": "ok"}
-    data = callback_query.get("data", "")
-    if not data.startswith("gate:"):
+    callback_data = callback_query.get("data", "")
+    parsed = _parse_gate_callback(callback_data)
+    if parsed is None:
         return {"status": "ok"}
-    parts = data.split(":")
-    if len(parts) != 4:
-        return {"status": "ok"}
-    _, decision, analysis_id_str, callback_token = parts
-    if decision not in ("approve", "reject"):
-        return {"status": "ok"}
-    try:
-        analysis_id = int(analysis_id_str)
-    except ValueError:
-        return {"status": "ok"}
-    expected = hmac.new(
-        settings.telegram_bot_token.encode(),
-        str(analysis_id).encode(),
-        digestmod=hashlib.sha256,
-    ).hexdigest()[:32]
-    if not hmac.compare_digest(expected, callback_token):
-        logger.warning("Telegram gate callback: invalid token for analysis_id=%d", analysis_id)
-        return {"status": "ok"}
+    decision, analysis_id, _ = parsed
     from_data = callback_query.get("from", {})
     user_id = from_data.get("id", "unknown")
     username = from_data.get("username", "")

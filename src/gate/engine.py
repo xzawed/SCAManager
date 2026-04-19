@@ -28,7 +28,7 @@ def _score_from_result(result: dict) -> ScoreResult:
     )
 
 
-async def run_gate_check(
+async def run_gate_check(  # pylint: disable=too-many-positional-arguments,too-many-branches
     repo_name: str,
     pr_number: int | None,
     analysis_id: int,

@@ -5,6 +5,7 @@ from sqlalchemy.orm import relationship
 from src.database import Base
 
 
+# pylint: disable=too-few-public-methods
 class Repository(Base):
     """GitHub 리포지토리 테이블 — Webhook 등록 정보 및 소유 User FK."""
 

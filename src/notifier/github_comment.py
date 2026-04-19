@@ -35,7 +35,7 @@ def _build_comment_body(
     return _build_comment_from_result(result)
 
 
-async def post_pr_comment(
+async def post_pr_comment(  # pylint: disable=too-many-positional-arguments
     github_token: str,
     repo_name: str,
     pr_number: int,

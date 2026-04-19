@@ -18,7 +18,7 @@ _SLACK_GRADE_EMOJI = {
 }
 
 
-def _build_payload(
+def _build_payload(  # pylint: disable=too-many-positional-arguments,too-many-locals
     repo_name: str,
     commit_sha: str,
     score_result: ScoreResult,

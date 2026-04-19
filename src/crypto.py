@@ -28,7 +28,7 @@ def _get_fernet() -> "Fernet | None":
             _fernet = None
         else:
             _fernet = Fernet(key.encode() if isinstance(key, str) else key)
-    except Exception:  # noqa: BLE001 — 설정 로딩 실패 시 암호화 비활성
+    except (ValueError, ImportError, OSError, AttributeError, TypeError):
         _fernet = None
     return _fernet  # type: ignore[return-value]
 
