@@ -296,7 +296,8 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 
 ### 파이프라인 / 비즈니스 로직
 
-- **멱등성**: `run_analysis_pipeline`은 commit SHA로 중복 체크 — 같은 SHA는 재분석 건너뜀.
+- **멱등성**: `run_analysis_pipeline`은 commit SHA로 중복 체크 — 같은 SHA는 재분석 건너뜀. 단, push 이벤트 먼저 처리 후 PR 이벤트 도착 시(`pr_number=None` Analysis 존재) `_regate_pr_if_needed()`가 `pr_number`만 업데이트하고 `run_gate_check` 재실행 — 알림 재발송 없음.
+- **봇 PR `create_issue` 루프 방지**: `pr_head_ref`가 `claude-fix/`로 시작하면 `create_issue`를 건너뜀 — n8n 자동 생성 PR이 저점을 받을 때 Issue 재생성 → 무한 루프 방지.
 - **AI 리뷰 JSON 파싱**: Claude가 JSON 앞에 설명 텍스트를 붙이는 경우 `re.search`로 코드 블록 내 JSON만 추출.
 - **AI 점수 스케일링**: Claude는 commit 0-20, direction 0-20, test 0-10으로 반환 → calculator가 commit 0-15, direction 0-25, test 0-15로 스케일링. `round()` 사용으로 banker's rounding 적용.
 - **PR action 필터링**: `pull_request` 이벤트 중 `opened`/`synchronize`/`reopened`만 처리, `closed`/`labeled` 등은 무시.
@@ -349,4 +350,4 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 
 ## 현재 상태
 
-단위 테스트 434개 | E2E 26개 | pylint 9.66 | 커버리지 94%
+단위 테스트 543개 | E2E 26개 | pylint 9.53 | 커버리지 94%
