@@ -185,3 +185,33 @@ async def test_send_email_subject_contains_score_and_grade():
     msg = mock_smtp.send.call_args[0][0]
     assert "91" in msg["Subject"]
     assert "A" in msg["Subject"]
+
+
+# ---------------------------------------------------------------------------
+# 보안: HTML injection 방어 (html.escape)
+# ---------------------------------------------------------------------------
+
+def test_build_html_escapes_xss_in_repo_name():
+    """repo_name에 XSS 페이로드가 있어도 HTML body에 raw 태그가 출력되지 않는다."""
+    html = _build_html_body(
+        "<script>alert('xss')</script>",
+        "abc1234",
+        _make_score(),
+        _make_analysis(),
+        None,
+    )
+    assert "<script>" not in html
+    assert "&lt;script&gt;" in html
+
+
+def test_build_html_escapes_xss_in_ai_summary():
+    """AI 요약에 HTML 특수문자가 있으면 이스케이프되어 출력된다."""
+    ai = AiReviewResult(
+        commit_score=14, ai_score=18, test_score=9,
+        summary="<img src=x onerror=alert(1)> & 'quotes'",
+        suggestions=[],
+    )
+    html = _build_html_body("owner/repo", "abc1234", _make_score(), _make_analysis(), None, ai_review=ai)
+    assert "<img" not in html
+    assert "&lt;img" in html
+    assert "&amp;" in html
