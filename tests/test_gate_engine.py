@@ -228,7 +228,7 @@ async def test_auto_merge_independent_of_approve_mode():
         with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
             with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
                 with patch("src.gate.engine._save_gate_decision"):
-                    mock_merge.return_value = True
+                    mock_merge.return_value = (True, None)
                     await run_gate_check(
                         repo_name="owner/repo",
                         pr_number=3,
@@ -255,7 +255,7 @@ async def test_auto_merge_with_auto_approve():
             with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
                 with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
                     with patch("src.gate.engine._save_gate_decision"):
-                        mock_merge.return_value = True
+                        mock_merge.return_value = (True, None)
                         await run_gate_check(
                             repo_name="owner/repo",
                             pr_number=5,
@@ -432,18 +432,19 @@ async def test_merge_pr_failure_does_not_raise():
             with patch("src.gate.engine._save_gate_decision") as mock_save:
                 with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
                     with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
-                        mock_merge.return_value = False
-                        # 예외 없이 완료되어야 한다
-                        await run_gate_check(
-                            repo_name="owner/repo",
-                            pr_number=5,
-                            analysis_id=50,
-                            result={"score": 80, "grade": "B"},
-                            github_token="tok",
-                            db=mock_db,
-                        )
-                        # GateDecision은 merge_pr 결과와 무관하게 저장된다
-                        mock_save.assert_called_once_with(mock_db, 50, "approve", "auto")
+                        with patch("src.gate.engine.telegram_post_message", new_callable=AsyncMock):
+                            mock_merge.return_value = (False, "forbidden: no permission")
+                            # 예외 없이 완료되어야 한다
+                            await run_gate_check(
+                                repo_name="owner/repo",
+                                pr_number=5,
+                                analysis_id=50,
+                                result={"score": 80, "grade": "B"},
+                                github_token="tok",
+                                db=mock_db,
+                            )
+                            # GateDecision은 merge_pr 결과와 무관하게 저장된다
+                            mock_save.assert_called_once_with(mock_db, 50, "approve", "auto")
 
 
 # ---------------------------------------------------------------------------
@@ -646,7 +647,7 @@ async def test_merge_at_exact_threshold():
         with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
             with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
                 with patch("src.gate.engine._save_gate_decision"):
-                    mock_merge.return_value = True
+                    mock_merge.return_value = (True, None)
                     await run_gate_check(
                         repo_name="owner/repo", pr_number=1, analysis_id=1,
                         result={"score": 75}, github_token="tok", db=mock_db,
@@ -689,3 +690,141 @@ async def test_post_github_review_keyerror_does_not_crash():
                             repo_name="owner/repo", pr_number=1, analysis_id=1,
                             result={"score": 80}, github_token="tok", db=mock_db,
                         )
+
+
+# ---------------------------------------------------------------------------
+# Auto Merge tuple 반환 — Telegram 알림 분기 테스트
+# ---------------------------------------------------------------------------
+
+async def test_auto_merge_success_no_telegram():
+    """merge_pr → (True, None) 이면 telegram_post_message 미호출."""
+    mock_db = MagicMock()
+    config = _config(
+        approve_mode="disabled",
+        auto_merge=True,
+        merge_threshold=75,
+        pr_review_comment=False,
+        notify_chat_id="-100123",
+    )
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
+            with patch("src.gate.engine.telegram_post_message", new_callable=AsyncMock) as mock_tg:
+                with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
+                    with patch("src.gate.engine._save_gate_decision"):
+                        # merge 성공 → (True, None)
+                        mock_merge.return_value = (True, None)
+                        await run_gate_check(
+                            repo_name="owner/repo",
+                            pr_number=3,
+                            analysis_id=10,
+                            result={"score": 80, "grade": "B"},
+                            github_token="tok",
+                            db=mock_db,
+                        )
+                        # merge 성공 시 Telegram 알림 없음
+                        mock_tg.assert_not_called()
+
+
+async def test_auto_merge_failure_sends_telegram():
+    """merge_pr → (False, "forbidden: ...") 이면 Telegram 1회 호출, text에 repo·PR번호·사유 포함."""
+    mock_db = MagicMock()
+    config = _config(
+        approve_mode="disabled",
+        auto_merge=True,
+        merge_threshold=75,
+        pr_review_comment=False,
+        notify_chat_id="-100123",
+    )
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
+            with patch("src.gate.engine.telegram_post_message", new_callable=AsyncMock) as mock_tg:
+                with patch("src.gate.engine.settings") as mock_settings:
+                    with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
+                        with patch("src.gate.engine._save_gate_decision"):
+                            mock_settings.telegram_bot_token = "123:ABC"
+                            mock_settings.telegram_chat_id = ""
+                            # merge 실패 → (False, "forbidden: Resource not accessible")
+                            mock_merge.return_value = (False, "forbidden: Resource not accessible")
+                            await run_gate_check(
+                                repo_name="owner/repo",
+                                pr_number=3,
+                                analysis_id=10,
+                                result={"score": 80, "grade": "B"},
+                                github_token="tok",
+                                db=mock_db,
+                            )
+                            # Telegram 1회 호출
+                            mock_tg.assert_called_once()
+                            call_args = mock_tg.call_args
+                            # positional 3번째 인자가 payload dict
+                            payload = call_args.args[2]
+                            text = payload.get("text", "")
+                            # repo 이름, PR 번호, 실패 사유 모두 포함
+                            assert "owner/repo" in text
+                            assert "3" in text
+                            assert "forbidden" in text
+
+
+async def test_auto_merge_failure_no_chat_id_only_logs():
+    """notify_chat_id=None + global chat_id="" → merge 실패해도 Telegram 미호출."""
+    mock_db = MagicMock()
+    config = _config(
+        approve_mode="disabled",
+        auto_merge=True,
+        merge_threshold=75,
+        pr_review_comment=False,
+        notify_chat_id=None,  # repo 전용 chat_id 없음
+    )
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
+            with patch("src.gate.engine.telegram_post_message", new_callable=AsyncMock) as mock_tg:
+                with patch("src.gate.engine.settings") as mock_settings:
+                    with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
+                        with patch("src.gate.engine._save_gate_decision"):
+                            mock_settings.telegram_bot_token = "123:ABC"
+                            mock_settings.telegram_chat_id = ""  # global chat_id도 없음
+                            mock_merge.return_value = (False, "forbidden: no permission")
+                            await run_gate_check(
+                                repo_name="owner/repo",
+                                pr_number=3,
+                                analysis_id=10,
+                                result={"score": 80, "grade": "B"},
+                                github_token="tok",
+                                db=mock_db,
+                            )
+                            # chat_id가 없으므로 Telegram 미호출
+                            mock_tg.assert_not_called()
+
+
+async def test_auto_merge_failure_global_fallback_chat_id():
+    """notify_chat_id=None + global chat_id 존재 → global chat_id로 Telegram 전송."""
+    mock_db = MagicMock()
+    config = _config(
+        approve_mode="disabled",
+        auto_merge=True,
+        merge_threshold=75,
+        pr_review_comment=False,
+        notify_chat_id=None,  # repo 전용 chat_id 없음
+    )
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
+            with patch("src.gate.engine.telegram_post_message", new_callable=AsyncMock) as mock_tg:
+                with patch("src.gate.engine.settings") as mock_settings:
+                    with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
+                        with patch("src.gate.engine._save_gate_decision"):
+                            mock_settings.telegram_bot_token = "123:ABC"
+                            mock_settings.telegram_chat_id = "-100999"  # global fallback 존재
+                            mock_merge.return_value = (False, "forbidden: no permission")
+                            await run_gate_check(
+                                repo_name="owner/repo",
+                                pr_number=3,
+                                analysis_id=10,
+                                result={"score": 80, "grade": "B"},
+                                github_token="tok",
+                                db=mock_db,
+                            )
+                            # global chat_id로 전송
+                            mock_tg.assert_called_once()
+                            call_args = mock_tg.call_args
+                            # positional 2번째 인자가 chat_id
+                            assert call_args.args[1] == "-100999"
