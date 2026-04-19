@@ -12,6 +12,7 @@ import shutil
 import subprocess  # nosec B404
 
 from src.analyzer.registry import AnalyzeContext, AnalysisIssue, register
+from src.constants import STATIC_ANALYSIS_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ class _ESLintAnalyzer:
             r = subprocess.run(  # nosec B603 B607
                 ["eslint", "--format=json", "--no-eslintrc",
                  "-c", _CONFIG_PATH, ctx.tmp_path],
-                capture_output=True, text=True, timeout=30, check=False,
+                capture_output=True, text=True, timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
             if not r.stdout.strip().startswith("["):
                 return []

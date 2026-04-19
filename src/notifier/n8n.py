@@ -7,10 +7,9 @@ from datetime import datetime, timezone
 
 from src.notifier._http import build_safe_client, validate_external_url
 from src.scorer.calculator import ScoreResult
+from src.constants import N8N_BODY_MAX_BYTES
 
 logger = logging.getLogger(__name__)
-
-_BODY_TRUNCATE_BYTES = 8192
 
 
 def _build_envelope(event_type: str, repo: str, data: dict) -> dict:
@@ -86,9 +85,9 @@ async def notify_n8n_issue(
 
     body = issue.get("body") or ""
     body_bytes = body.encode()
-    body_truncated = len(body_bytes) > _BODY_TRUNCATE_BYTES
+    body_truncated = len(body_bytes) > N8N_BODY_MAX_BYTES
     if body_truncated:
-        body = body_bytes[:_BODY_TRUNCATE_BYTES].decode(errors="replace")
+        body = body_bytes[:N8N_BODY_MAX_BYTES].decode(errors="replace")
         issue = {**issue, "body": body}
 
     payload = _build_envelope(

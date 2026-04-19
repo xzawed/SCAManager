@@ -14,6 +14,14 @@ os.environ.setdefault("GITHUB_CLIENT_SECRET", "test-github-client-secret")
 os.environ.setdefault("SESSION_SECRET", "test-session-secret-32-chars-long!")
 
 from src.main import app
+from src.webhook import router as webhook_router
+
+
+@pytest.fixture(autouse=True)
+def _clear_webhook_secret_cache():
+    webhook_router._webhook_secret_cache.clear()
+    yield
+    webhook_router._webhook_secret_cache.clear()
 
 
 @pytest.fixture

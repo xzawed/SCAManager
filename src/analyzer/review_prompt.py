@@ -12,6 +12,12 @@ from __future__ import annotations
 
 from src.analyzer.language import detect_language, is_test_file
 from src.analyzer.review_guides import get_guide, get_tier
+from src.constants import (
+    LANG_GUIDE_ALL_FULL_MAX,
+    LANG_GUIDE_TIER1_FULL_MAX,
+    LANG_GUIDE_TOP3_FULL_MAX,
+    LANG_GUIDE_COMPACT_LIMIT,
+)
 
 MAX_DIFF_CHARS = 16000
 _FIXED_TOKEN_OVERHEAD = 3000
@@ -80,14 +86,14 @@ def detect_languages_from_patches(
 def _select_guide_modes(languages: list[str]) -> dict[str, str]:
     """언어 목록에서 각 언어의 가이드 모드를 결정한다 (full / compact / __rest__)."""
     n = len(languages)
-    if n <= 3:
+    if n <= LANG_GUIDE_ALL_FULL_MAX:
         return {lang: "full" for lang in languages}
-    if n <= 6:
+    if n <= LANG_GUIDE_TIER1_FULL_MAX:
         return {lang: ("full" if get_tier(lang) == 1 else "compact") for lang in languages}
-    if n <= 10:
+    if n <= LANG_GUIDE_TOP3_FULL_MAX:
         return {lang: ("full" if i < 3 else "compact") for i, lang in enumerate(languages)}
-    modes = {lang: "compact" for lang in languages[:5]}
-    rest = languages[5:]
+    modes = {lang: "compact" for lang in languages[:LANG_GUIDE_COMPACT_LIMIT]}
+    rest = languages[LANG_GUIDE_COMPACT_LIMIT:]
     if rest:
         modes["__rest__"] = ", ".join(rest)
     return modes

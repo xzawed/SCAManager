@@ -2,12 +2,11 @@
 from html import escape
 
 import httpx
-from src.constants import GRADE_EMOJI
+from src.constants import GRADE_EMOJI, TELEGRAM_MAX_MESSAGE_LENGTH, NOTIFIER_MAX_ISSUES_SHORT
 from src.scorer.calculator import ScoreResult
 from src.analyzer.static import StaticAnalysisResult
 from src.analyzer.ai_review import AiReviewResult
-
-_TELEGRAM_MAX_LEN = 4096
+from src.notifier._common import format_ref, get_all_issues, truncate_message, truncate_issue_msg
 
 
 async def telegram_post_message(bot_token: str, chat_id: str, payload: dict) -> None:
@@ -32,13 +31,12 @@ def _build_message(  # pylint: disable=too-many-positional-arguments
     pr_number: int | None,
     ai_review: AiReviewResult | None = None,
 ) -> str:
-    ref = f"PR #{pr_number}" if pr_number else f"커밋 {commit_sha[:7]}"
-    total_issues = sum(len(r.issues) for r in analysis_results)
+    ref = format_ref(commit_sha, pr_number)
+    all_issues = get_all_issues(analysis_results)
     top_issues = [
-        f"- [{escape(i.tool)}] {escape(i.message[:80])}"
-        for r in analysis_results
-        for i in r.issues
-    ][:5]
+        f"- [{escape(i.tool)}] {escape(truncate_issue_msg(i.message))}"
+        for i in all_issues[:NOTIFIER_MAX_ISSUES_SHORT]
+    ]
 
     grade_emoji = GRADE_EMOJI.get(score_result.grade, "⚪")  # type: ignore[union-attr]
     issues_text = "\n".join(top_issues) if top_issues else "이슈 없음"
@@ -69,14 +67,11 @@ def _build_message(  # pylint: disable=too-many-positional-arguments
     if top_issues:
         lines += [
             "",
-            f"<b>정적 분석 이슈:</b> {total_issues}건",
+            f"<b>정적 분석 이슈:</b> {len(all_issues)}건",
             issues_text,
         ]
 
-    msg = "\n".join(lines)
-    if len(msg) > _TELEGRAM_MAX_LEN:
-        msg = msg[:_TELEGRAM_MAX_LEN - 3] + "..."
-    return msg
+    return truncate_message("\n".join(lines), TELEGRAM_MAX_MESSAGE_LENGTH)
 
 
 async def send_analysis_result(

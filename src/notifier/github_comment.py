@@ -1,7 +1,7 @@
 """GitHub pull request comment notifier using the GitHub Issues API."""
 import httpx
 
-from src.constants import GRADE_EMOJI
+from src.constants import GRADE_EMOJI, NOTIFIER_MAX_ISSUES_LONG, HTTP_CLIENT_TIMEOUT
 from src.github_client.helpers import github_api_headers
 from src.scorer.calculator import ScoreResult
 from src.analyzer.static import StaticAnalysisResult
@@ -46,7 +46,7 @@ async def post_pr_comment(  # pylint: disable=too-many-positional-arguments
     """Post a formatted analysis result comment on a GitHub pull request."""
     body = _build_comment_body(score_result, analysis_results, ai_review)
     url = f"https://api.github.com/repos/{repo_name}/issues/{pr_number}/comments"
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=HTTP_CLIENT_TIMEOUT) as client:
         r = await client.post(
             url,
             json={"body": body},
@@ -106,8 +106,8 @@ def _build_comment_from_result(result: dict) -> str:
             lines.append(f"- {s}")
 
     if result.get("issues"):
-        lines += ["", "### 정적 분석 이슈 (상위 10건)"]
-        for issue in result["issues"][:10]:
+        lines += ["", f"### 정적 분석 이슈 (상위 {NOTIFIER_MAX_ISSUES_LONG}건)"]
+        for issue in result["issues"][:NOTIFIER_MAX_ISSUES_LONG]:
             lines.append(
                 f"- **[{issue.get('tool', '?')}]** {issue.get('message', '')} "
                 f"(line {issue.get('line', '?')})"
@@ -125,7 +125,7 @@ async def post_pr_comment_from_result(
     """Post a formatted analysis result comment from a stored result dict."""
     body = _build_comment_from_result(result)
     url = f"https://api.github.com/repos/{repo_name}/issues/{pr_number}/comments"
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=HTTP_CLIENT_TIMEOUT) as client:
         r = await client.post(
             url,
             json={"body": body},

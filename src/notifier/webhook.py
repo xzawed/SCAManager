@@ -6,6 +6,7 @@ from src.notifier._http import build_safe_client, validate_external_url
 from src.scorer.calculator import ScoreResult
 from src.analyzer.static import StaticAnalysisResult
 from src.analyzer.ai_review import AiReviewResult
+from src.notifier._common import get_all_issues
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,7 @@ def _build_payload(  # pylint: disable=too-many-positional-arguments
     pr_number: int | None,
     ai_review: AiReviewResult | None = None,
 ) -> dict:
-    all_issues = [i for r in analysis_results for i in r.issues]
+    all_issues = get_all_issues(analysis_results)
     return {
         "event": "analysis_complete",
         "repo": repo_name,

@@ -160,9 +160,15 @@ def save_gate_decision(
     mode: str,
     decided_by: str | None = None,
 ) -> GateDecision:
-    """GateDecision 레코드를 저장하고 반환한다."""
-    record = GateDecision(analysis_id=analysis_id, decision=decision,
-                          mode=mode, decided_by=decided_by)
-    db.add(record)
+    """GateDecision 레코드를 저장하고 반환한다 (재시도 시 upsert)."""
+    record = db.query(GateDecision).filter(GateDecision.analysis_id == analysis_id).first()
+    if record:
+        record.decision = decision
+        record.mode = mode
+        record.decided_by = decided_by
+    else:
+        record = GateDecision(analysis_id=analysis_id, decision=decision,
+                              mode=mode, decided_by=decided_by)
+        db.add(record)
     db.commit()
     return record
