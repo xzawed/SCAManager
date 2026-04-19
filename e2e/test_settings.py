@@ -4,6 +4,21 @@ import pytest
 SETTINGS_URL = "/repos/owner%2Ftestrepo/settings"
 
 
+def _expand_advanced(page):
+    """고급 설정 아코디언이 접혀 있으면 펼친다 (멱등).
+
+    UI 리디자인(a1aedd1)으로 Gate 모드 버튼·임계값 슬라이더가
+    <details class="advanced-details"> 안으로 이동해 기본 상태에서 invisible.
+    click() 이 필요한 테스트는 이 헬퍼를 먼저 호출해야 한다.
+    """
+    is_open = page.evaluate(
+        "document.querySelector('.advanced-details')?.open ?? false"
+    )
+    if not is_open:
+        page.locator(".advanced-details > summary").click()
+        page.wait_for_timeout(200)
+
+
 def test_settings_page_loads(seeded_page, base_url):
     """설정 페이지가 정상적으로 로드되어야 한다."""
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
@@ -92,6 +107,7 @@ def test_gate_mode_disabled_is_default(seeded_page, base_url):
 def test_gate_mode_auto_button_click(seeded_page, base_url):
     """자동 모드 버튼 클릭 시 active 클래스와 hidden input 값이 변경되어야 한다."""
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
+    _expand_advanced(seeded_page)
     seeded_page.click('[data-mode="auto"]')
     # hidden input 값 확인 (현재 필드명: approveModeValue)
     assert seeded_page.input_value("#approveModeValue") == "auto"
@@ -106,6 +122,7 @@ def test_gate_mode_auto_button_click(seeded_page, base_url):
 def test_gate_mode_semi_auto_button_click(seeded_page, base_url):
     """반자동 모드 버튼 클릭이 동작해야 한다."""
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
+    _expand_advanced(seeded_page)
     seeded_page.click('[data-mode="semi-auto"]')
     assert seeded_page.input_value("#approveModeValue") == "semi-auto"
     cls = seeded_page.get_attribute('[data-mode="semi-auto"]', "class") or ""
@@ -115,6 +132,8 @@ def test_gate_mode_semi_auto_button_click(seeded_page, base_url):
 def test_approve_slider_updates_number_input(seeded_page, base_url):
     """승인 임계값 슬라이더 조작 시 숫자 인풋이 업데이트되어야 한다."""
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
+    # 고급 설정 아코디언 펼치기 (Gate 모드 버튼이 내부에 있어 기본 상태에서 invisible)
+    _expand_advanced(seeded_page)
     # disabled 모드에서는 슬라이더가 숨겨져 있으므로 먼저 auto로 전환
     seeded_page.click('[data-mode="auto"]')
     seeded_page.evaluate(
@@ -130,6 +149,7 @@ def test_approve_slider_updates_number_input(seeded_page, base_url):
 def test_reject_slider_updates_number_input(seeded_page, base_url):
     """반려 임계값 슬라이더 조작 시 숫자 인풋이 업데이트되어야 한다."""
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
+    _expand_advanced(seeded_page)
     seeded_page.click('[data-mode="auto"]')
     seeded_page.evaluate(
         """() => {
@@ -144,6 +164,7 @@ def test_reject_slider_updates_number_input(seeded_page, base_url):
 def test_approve_threshold_hidden_when_disabled(seeded_page, base_url):
     """Approve 모드 비활성 시 임계값 슬라이더 영역이 숨겨져야 한다."""
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
+    _expand_advanced(seeded_page)
     seeded_page.click('[data-mode="disabled"]')
     is_hidden = seeded_page.evaluate(
         "document.getElementById('approveThresholds').classList.contains('is-hidden')"
@@ -154,6 +175,7 @@ def test_approve_threshold_hidden_when_disabled(seeded_page, base_url):
 def test_approve_threshold_visible_when_auto(seeded_page, base_url):
     """Approve 모드 자동 선택 시 임계값 슬라이더 영역이 표시되어야 한다."""
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
+    _expand_advanced(seeded_page)
     seeded_page.click('[data-mode="auto"]')
     is_hidden = seeded_page.evaluate(
         "document.getElementById('approveThresholds').classList.contains('is-hidden')"
@@ -161,18 +183,23 @@ def test_approve_threshold_visible_when_auto(seeded_page, base_url):
     assert not is_hidden
 
 
-def test_telegram_chat_row_visible_only_semi_auto(seeded_page, base_url):
-    """반자동 모드 선택 시에만 Telegram Chat ID 입력 필드가 노출되어야 한다."""
+def test_semi_auto_hint_visible_only_when_semi_auto(seeded_page, base_url):
+    """반자동 모드 선택 시에만 반자동 안내 힌트(#semiAutoHint)가 노출되어야 한다.
+
+    UI 리디자인(a1aedd1) 이후 Telegram Chat ID 는 ③ 알림 채널 카드로 이동했으므로
+    telegramChatRow 대신 semiAutoHint 가시성으로 검증한다.
+    """
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
-    # 기본(disabled): 숨김
+    _expand_advanced(seeded_page)
+    # 기본(disabled): semiAutoHint 숨김
     hidden_default = seeded_page.evaluate(
-        "document.getElementById('telegramChatRow').classList.contains('is-hidden')"
+        "document.getElementById('semiAutoHint').classList.contains('is-hidden')"
     )
     assert hidden_default
-    # semi-auto: 노출
+    # semi-auto: semiAutoHint 노출
     seeded_page.click('[data-mode="semi-auto"]')
     hidden_semi = seeded_page.evaluate(
-        "document.getElementById('telegramChatRow').classList.contains('is-hidden')"
+        "document.getElementById('semiAutoHint').classList.contains('is-hidden')"
     )
     assert not hidden_semi
 
@@ -190,6 +217,7 @@ def test_merge_threshold_hidden_when_auto_merge_off(seeded_page, base_url):
 def test_settings_form_submit_redirects(seeded_page, base_url):
     """설정 저장 후 같은 설정 페이지로 리다이렉트되어야 한다."""
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
+    _expand_advanced(seeded_page)
     seeded_page.click('[data-mode="auto"]')
     seeded_page.locator('.btn-save-new').click()
     seeded_page.wait_for_load_state("networkidle", timeout=5000)
@@ -199,9 +227,12 @@ def test_settings_form_submit_redirects(seeded_page, base_url):
 def test_gate_mode_persists_after_save(seeded_page, base_url):
     """저장한 Gate 모드가 리로드 후에도 유지되어야 한다."""
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
+    _expand_advanced(seeded_page)
     seeded_page.click('[data-mode="auto"]')
     seeded_page.locator('.btn-save-new').click()
     seeded_page.wait_for_load_state("networkidle", timeout=5000)
+    # 리로드 후에도 advanced-details 펼쳐야 버튼 class 를 읽을 수 있음
+    _expand_advanced(seeded_page)
     cls = seeded_page.get_attribute('[data-mode="auto"]', "class") or ""
     assert "active" in cls
 
