@@ -6,7 +6,7 @@
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **563개** | `make test` |
+| 단위 테스트 | **569개** | `make test` |
 | E2E 테스트 | **26개** | `make test-e2e` |
 | pylint | **9.70/10** | `make lint` |
 | 커버리지 | **92%** | `make test-cov` |
@@ -23,6 +23,7 @@
 | 회고 및 인프라 정비 | PostToolUse 훅 경로 수정, .gitattributes, docs 정비 | 2026-04-19 |
 | P2 통합 테스트 | webhook→gate end-to-end 3 시나리오 (StaticPool SQLite + 이중 SessionLocal patch) | 2026-04-19 |
 | P1 테스트 보강 | gate/engine.py 에러경로 8개 + breakdown=None 버그 수정, auth/github.py OAuth 분기 7개 | 2026-04-19 |
+| P2 테스트 보강 | github_client/repos.py commit_scamanager_files 6개 (신규/기존파일, HTTP오류, config내용, trailing slash, 인증헤더) | 2026-04-19 |
 
 ## 갱신 방법
 
@@ -44,6 +45,6 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 | ~~P1~~ | ~~`gate/engine.py` 에러 경로~~ **완료** (+8, breakdown=None 버그 수정 포함) |
 | ~~P1~~ | ~~`auth/github.py` OAuth 보안 분기~~ **완료** (+7, app_base_url·display_name·500경로) |
 | ~~P2~~ | ~~웹훅→gate 통합 테스트~~ (`tests/integration/test_webhook_to_gate.py`) **완료** |
-| **P2** | `github_client/repos.py` commit_scamanager_files 테스트 |
+| ~~P2~~ | ~~`github_client/repos.py` commit_scamanager_files 테스트~~ **완료** (+6) |
 | **P3** | 보안 심층 (OAuth state, HTML injection) |
 | **P3** | 알림 엣지 케이스 (Telegram 4096자, SMTP 타임아웃) |
