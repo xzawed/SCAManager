@@ -2,7 +2,7 @@
 description: SCAManager 테스트 실행 — 전체 또는 특정 모듈
 ---
 
-프로젝트 루트 `D:/Source/SCAManager`에서 pytest를 실행한다.
+프로젝트 루트에서 pytest를 실행한다.
 
 ## 인자 없이 호출 (`/test`)
 

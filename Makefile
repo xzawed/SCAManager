@@ -1,4 +1,4 @@
-.PHONY: install test test-v test-cov lint run migrate review install-playwright test-e2e test-e2e-headed
+.PHONY: install test test-v test-cov test-file lint gate run migrate revision review install-playwright test-e2e test-e2e-headed
 
 # 의존성 설치 (개발 환경 — 테스트/E2E 포함)
 install:
@@ -22,6 +22,13 @@ test-file:
 
 # 코드 품질 검사
 lint:
+	pylint src/ || true
+	flake8 src/ || true
+	bandit -r src/ -q || true
+
+# Phase 완료 게이트 — 테스트 + 정적 분석 한번에
+gate:
+	python -m pytest tests/ -q
 	pylint src/ || true
 	flake8 src/ || true
 	bandit -r src/ -q || true

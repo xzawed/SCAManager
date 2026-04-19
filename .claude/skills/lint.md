@@ -7,8 +7,6 @@ description: SCAManager 코드 품질 검사 — pylint, flake8, bandit 실행
 ## 실행 순서
 
 ```bash
-cd D:/Source/SCAManager
-
 # 1. pylint (코드 품질, 오류)
 pylint src/ --output-format=text
 
