@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 def _score_from_result(result: dict) -> ScoreResult:
     """result dict에서 최소한의 ScoreResult를 재구성한다."""
-    bd = result.get("breakdown", {})
+    bd = result.get("breakdown") or {}
     return ScoreResult(
         total=result.get("score", 0),
         grade=result.get("grade", "F"),
