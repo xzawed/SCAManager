@@ -82,14 +82,15 @@ def calculate_score(
 
     return ScoreResult(
         total=total,
-        grade=_grade(total),
+        grade=calculate_grade(total),
         code_quality_score=code_quality_score,
         security_score=security_score,
         breakdown=breakdown,
     )
 
 
-def _grade(score: int) -> str:
+def calculate_grade(score: int) -> str:
+    """점수(0–100)를 등급 문자열(A/B/C/D/F)로 변환한다."""
     for grade, threshold in GRADE_THRESHOLDS.items():
         if score >= threshold:
             return grade

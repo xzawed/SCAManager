@@ -363,6 +363,7 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 - **Telegram HTML 파싱**: `parse_mode: "HTML"` 사용 — 모든 동적 콘텐츠에 `html.escape()` 적용 필수. `_build_message()`가 4096자 초과 시 자동 절단.
 - **analysis_detail 템플릿 context**: `current_user`를 반드시 포함해야 함 — 누락 시 nav 사용자명·로그아웃 버튼 미표시. `analysis.result or {}` 패턴은 None → `{}` 변환으로 `{% if r %}` falsy 평가 → 모든 AI 섹션 숨김 버그 — `{% else %}` 분기로 fallback 처리 필수.
 - **settings.html 구조 규약**: 프리셋 3버튼 카드(🌱 최소·⚙️ 표준·🛡️ 엄격) + 4카드 그리드(① PR 동작 / ② Push 동작 / ③ 알림 채널 / ④ 시스템). Progressive Disclosure는 `setApproveMode()`, `toggleMergeThreshold()`, `applyPreset()`, `_setPair()`, `_showPresetToast()` JS 헬퍼로 구현. 알림 채널 URL은 프리셋이 건드리지 않음. 백엔드 필드명(pr_review_comment, approve_mode 등) 불변 원칙 — 4-way 동기화 체크리스트(ORM→dataclass→API body→폼) 적용 대상.
+- **overview 등급 산출**: `calculate_grade(avg_score)` 사용 (`src/scorer/calculator.py`). 최신 분석 grade가 아닌 평균 점수 기반 — 평균 점수 컬럼과 등급 컬럼이 항상 동일 기준. `latest_id_subq`/`latest_map` 배치 조회는 제거됨.
 - **analysis_detail trend_data**: `trend_data`·`prev_id`·`next_id`를 template context에 추가 전달. `trend_data`는 같은 리포 최근 30건 `{id, score, label}` 리스트. `trend_data|length > 1`일 때만 차트 렌더링. `analysis_detail.html`은 Chart.js CDN을 직접 로드.
 - **repo_detail 차트 동기화**: `buildChart(data)` 함수는 `data` 인자가 있으면 `_chartData`에 캐시, 없으면 캐시된 데이터 재사용. `applyFilters()` 호출마다 차트를 필터 결과와 동기화. `themechange` 이벤트는 `buildChart()` (인자 없음)으로 색상만 재빌드.
 - **리포 추가 Webhook URL**: `_webhook_base_url(request)` 헬퍼가 `APP_BASE_URL` 설정 시 HTTPS URL 강제. Railway 배포 시 반드시 `APP_BASE_URL` 설정 — 미설정 시 `http://`로 등록되어 Webhook 전달 실패.

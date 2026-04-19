@@ -1422,3 +1422,48 @@ def test_reinstall_webhook_deletes_matching_hooks():
     assert r.status_code == 303
     # /webhooks/github URL 포함 2개만 삭제, 나머지 1개(unrelated)는 스킵
     assert mock_del.call_count == 2
+
+
+# ── overview 컬럼 리디자인 TDD 테스트 (Red 단계) ──────────────────────────
+
+def test_overview_does_not_show_latest_score_column():
+    """GET / 응답 HTML에 '최근 점수' 문자열이 없어야 한다.
+    변경 예정: 최근 점수 컬럼 제거 — 구현 전까지 이 테스트는 실패(Red).
+    """
+    mock_db = MagicMock()
+    mock_repo = MagicMock(id=1, full_name="owner/repo", user_id=1, created_at="2026-01-01")
+    mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [mock_repo]
+    # count_map, avg_map → 빈 결과
+    mock_db.query.return_value.filter.return_value.group_by.return_value.all.return_value = []
+    mock_db.query.return_value.filter.return_value.all.return_value = []
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        r = client.get("/")
+    assert r.status_code == 200
+    assert "최근 점수" not in r.text
+
+
+def test_overview_grade_derived_from_avg_score():
+    """avg_map에 {1: 92.0} 반환 시 등급 뱃지 'grade-A'가 HTML에 포함되어야 한다.
+    변경 예정: 등급 컬럼을 최신 grade가 아닌 평균 점수 기반 calculate_grade(avg_score)로 변경.
+    평균 92점 → GRADE_THRESHOLDS A≥90 → 'grade-A' CSS 클래스.
+    구현 전에는 avg 기반 grade 렌더링이 없으므로 이 테스트는 실패(Red).
+    """
+    mock_db = MagicMock()
+    mock_repo = MagicMock(id=1, full_name="owner/repo", user_id=1, created_at="2026-01-01")
+    mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [mock_repo]
+
+    # count_map → [(repo_id=1, count=1)], avg_map → [(repo_id=1, avg=92.0)]
+    # .group_by().all() 호출이 count_map, avg_map 순서로 발생
+    mock_db.query.return_value.filter.return_value.group_by.return_value.all.side_effect = [
+        [(1, 1)],     # count_map: [(repo_id, count)]
+        [(1, 92.0)],  # avg_map: [(repo_id, avg_score)]
+    ]
+    # latest_id_subq / latest_map 조회는 제거 예정 — 포함하지 않음
+    mock_db.query.return_value.filter.return_value.all.return_value = []
+
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        r = client.get("/")
+    assert r.status_code == 200
+    # 평균 92점 → grade A → 템플릿에서 <span class="grade grade-A"> 뱃지 스팬으로 렌더
+    # 현재 구현(latest_grade 기반)에서는 latest_map이 비어 있어 이 스팬이 없음 → Red
+    assert '<span class="grade grade-A">' in r.text

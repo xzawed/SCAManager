@@ -14,6 +14,7 @@ from src.models.repo_config import RepoConfig
 from src.models.gate_decision import GateDecision
 from src.auth.session import require_login, CurrentUser
 from src.config_manager.manager import get_repo_config, upsert_repo_config, RepoConfigData
+from src.scorer.calculator import calculate_grade
 from src.github_client.repos import (
     list_user_repos,
     create_webhook,
@@ -192,26 +193,14 @@ def overview(request: Request, current_user: CurrentUser = Depends(require_login
                 .all()
             )
 
-            # 리포별 최신 분석 배치 조회
-            latest_id_subq = (
-                db.query(func.max(Analysis.id))  # pylint: disable=not-callable
-                .filter(Analysis.repo_id.in_(repo_ids))
-                .group_by(Analysis.repo_id)
-                .subquery()
-            )
-            latest_map = {
-                a.repo_id: a
-                for a in db.query(Analysis).filter(Analysis.id.in_(latest_id_subq)).all()
-            }
-
             for r in repos:
-                latest = latest_map.get(r.id)
+                count = count_map.get(r.id, 0)
+                avg = round(avg_map.get(r.id) or 0)
                 repo_data.append({
                     "full_name": r.full_name,
-                    "analysis_count": count_map.get(r.id, 0),
-                    "avg_score": round(avg_map.get(r.id) or 0),
-                    "latest_score": latest.score if latest else None,
-                    "latest_grade": latest.grade if latest else None,
+                    "analysis_count": count,
+                    "avg_score": avg,
+                    "avg_grade": calculate_grade(avg) if count > 0 else None,
                 })
     return templates.TemplateResponse(request, "overview.html", {
         "repos": repo_data,
