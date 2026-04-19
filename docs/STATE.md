@@ -2,13 +2,13 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-19, 품질 감사 후 수정)
+## 현재 수치 (2026-04-19, 구조적 코드품질 개선 후)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
 | 단위 테스트 | **1074개** | pytest (0 failed, 1 warning) |
 | E2E 테스트 | **38개** | `make test-e2e` (Chromium Playwright) |
-| pylint | **9.77/10** | `python -m pylint src/` |
+| pylint | **10.00/10** | `python -m pylint src/` — 순환 import·분기수·로컬변수 전면 개선 |
 | 커버리지 | **96.2%** | `make test-cov` (database.py 100%, ui/router.py 99.4%) |
 | bandit HIGH | **0개** | 실측 확인 (1.9.4 Python 3.14 대응) |
 | flake8 | **0건** | `flake8 src/` |
@@ -51,6 +51,7 @@
 | Phase C ESLint+ShellCheck | tools/eslint.py(JS/TS) + tools/shellcheck.py(shell) + eslint.config.json(flat config) + nixpacks.toml(nodejs_20+shellcheck) + railway.toml buildCommand 제거 (+70 테스트, 1074 총) | 2026-04-19 |
 | Railway 빌드 수정 | nixPkgs 명시 시 Python provider 완전 교체 버그 + [phases.build] cmds로 npm run build 억제 불가 확인. 해결: aptPkgs로 Node.js 설치 + buildCommand에 eslint 설치 명령 이전 | 2026-04-19 |
 | 품질 감사 수정 | flake8 4건→0건, pylint 9.65→9.77 (+0.12), DeprecationWarning 126,815→1건. Protocol `...`→반환값, docstring 보강, import order, 예외 세분화, pytest-asyncio 1.3.0 업그레이드 | 2026-04-19 |
+| 구조적 코드품질 전면 개선 | 순환 import 해소(AnalysisIssue 이동), language.py dispatch dict, _AnalysisSaveParams, _select_guide_modes 추출, notifier R0917/R0913 disable, pylint 9.77→10.00, flake8 클린, 1074 테스트 전체 통과 | 2026-04-19 |
 
 ## 갱신 방법
 
