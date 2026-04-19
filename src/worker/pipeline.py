@@ -23,6 +23,7 @@ from src.notifier.webhook import send_webhook_notification
 from src.notifier.email import send_email_notification
 from src.config_manager.manager import get_repo_config
 from src.notifier.registry import NotifyContext, REGISTRY, register
+from src.repositories import repository_repo, analysis_repo
 from sqlalchemy.exc import SQLAlchemyError
 
 logger = logging.getLogger(__name__)
@@ -294,14 +295,15 @@ def _extract_event_metadata(event: str, data: dict) -> tuple[str, str, str, int 
 def _ensure_repo(db: Session, repo_name: str, commit_sha: str) -> tuple[Repository, str] | None:
     """리포를 조회·등록하고 owner token을 결정한다. SHA 중복이면 None을 반환한다."""
     owner_token: str = settings.github_token
-    repo = db.query(Repository).filter_by(full_name=repo_name).first()
+    repo = repository_repo.find_by_full_name(db, repo_name)
     if not repo:
-        repo = Repository(full_name=repo_name, telegram_chat_id=settings.telegram_chat_id)
-        db.add(repo)
+        repo = repository_repo.save_new(
+            db, Repository(full_name=repo_name, telegram_chat_id=settings.telegram_chat_id)
+        )
         db.commit()
     if repo.owner and repo.owner.plaintext_token:
         owner_token = repo.owner.plaintext_token
-    if db.query(Analysis).filter_by(commit_sha=commit_sha, repo_id=repo.id).first():
+    if analysis_repo.find_by_sha(db, commit_sha, repo.id):
         logger.info("Commit %s already analyzed, skipping", commit_sha)
         return None
     return repo, owner_token
@@ -316,10 +318,10 @@ async def _regate_pr_if_needed(
     PR 이벤트 수신 시 분석을 재실행하지 않고 gate 경로만 진입한다.
     pr_number가 이미 같으면 아무 작업도 하지 않는다.
     """
-    repo = db.query(Repository).filter_by(full_name=repo_name).first()
+    repo = repository_repo.find_by_full_name(db, repo_name)
     if repo is None:
         return
-    existing = db.query(Analysis).filter_by(commit_sha=commit_sha, repo_id=repo.id).first()
+    existing = analysis_repo.find_by_sha(db, commit_sha, repo.id)
     if existing is None or existing.pr_number == pr_number:
         return
     try:
@@ -364,12 +366,12 @@ async def _save_and_gate(
         (repo_config, analysis_id, result_dict) 튜플.
         중복 커밋이면 (repo_config_or_None, None, None).
     """
-    repo = db.query(Repository).filter_by(full_name=repo_name).first()
+    repo = repository_repo.find_by_full_name(db, repo_name)
     if repo is None:
         logger.warning("Repository not found in second session: %s", repo_name)
         return None, None, None
     # 멱등성 재확인 — 동시 Webhook 전달로 인한 중복 Analysis 삽입 방지 (TOCTOU 완화)
-    if db.query(Analysis).filter_by(commit_sha=commit_sha, repo_id=repo.id).first():
+    if analysis_repo.find_by_sha(db, commit_sha, repo.id):
         logger.info("Commit %s already saved (concurrent insert detected), skipping", commit_sha)
         try:
             return get_repo_config(db, repo_name), None, None
@@ -379,7 +381,7 @@ async def _save_and_gate(
         ai_review, score_result, analysis_results,
         source="pr" if pr_number else "push",
     )
-    analysis = Analysis(
+    analysis = analysis_repo.save_new(db, Analysis(
         repo_id=repo.id,
         commit_sha=commit_sha,
         commit_message=commit_message,
@@ -387,10 +389,7 @@ async def _save_and_gate(
         score=score_result.total,
         grade=score_result.grade,
         result=result_dict,
-    )
-    db.add(analysis)
-    db.commit()
-    db.refresh(analysis)
+    ))
     analysis_id = analysis.id
     try:
         repo_config = get_repo_config(db, repo_name)

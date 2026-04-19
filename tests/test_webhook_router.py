@@ -131,6 +131,7 @@ def test_webhook_uses_repo_specific_secret(client):
     mock_repo.webhook_secret = repo_secret
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = mock_repo
+    mock_db.query.return_value.filter_by.return_value.first.return_value = mock_repo
     mock_db.__enter__ = MagicMock(return_value=mock_db)
     mock_db.__exit__ = MagicMock(return_value=None)
 
@@ -161,6 +162,7 @@ def test_webhook_falls_back_to_global_secret_for_legacy_repo(client):
     mock_repo.webhook_secret = None   # 레거시 리포
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = mock_repo
+    mock_db.query.return_value.filter_by.return_value.first.return_value = mock_repo
     mock_db.__enter__ = MagicMock(return_value=mock_db)
     mock_db.__exit__ = MagicMock(return_value=None)
 
