@@ -15,7 +15,7 @@ from src.models.repo_config import RepoConfig
 from src.models.repository import Repository
 from src.analyzer.ai_review import AiReviewResult
 from src.scorer.calculator import calculate_score
-from src.worker.pipeline import _build_result_dict
+from src.worker.pipeline import build_analysis_result_dict
 from src.constants import AI_DEFAULT_COMMIT_RAW, AI_DEFAULT_DIRECTION_RAW, AI_DEFAULT_TEST_RAW
 
 logger = logging.getLogger(__name__)
@@ -119,7 +119,7 @@ def save_hook_result(body: HookResultRequest):
             pr_number=None,
             score=score_result.total,
             grade=score_result.grade,
-            result=_build_result_dict(ai_review, score_result, [], "cli"),
+            result=build_analysis_result_dict(ai_review, score_result, [], "cli"),
         )
 
         db.add(analysis)

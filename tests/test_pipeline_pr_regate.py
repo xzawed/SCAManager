@@ -132,7 +132,7 @@ async def test_scenario_a_pr_regate_updates_pr_number_and_calls_gate(
         patch("src.worker.pipeline.review_code", new_callable=AsyncMock, return_value=mock_ai_result),
         patch("src.worker.pipeline.calculate_score", return_value=mock_score_result),
         patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock) as mock_gate,
-        patch("src.worker.pipeline._build_notify_tasks", return_value=([], [])) as mock_notify,
+        patch("src.worker.pipeline.build_notification_tasks", return_value=([], [])) as mock_notify,
         patch("src.worker.pipeline.settings") as mock_settings,
     ):
         mock_settings.github_token = "ghp_test"
@@ -156,7 +156,7 @@ async def test_scenario_a_pr_regate_updates_pr_number_and_calls_gate(
     assert gate_kwargs["analysis_id"] == existing_id
     assert gate_kwargs["repo_name"] == "owner/testrepo"
 
-    # Then: _build_notify_tasks는 호출되지 않아야 한다 (중복 알림 방지)
+    # Then: build_notification_tasks는 호출되지 않아야 한다 (중복 알림 방지)
     mock_notify.assert_not_called()
 
 
@@ -257,7 +257,7 @@ async def test_scenario_c_same_sha_same_pr_number_skips_gate(
         patch("src.worker.pipeline.review_code", new_callable=AsyncMock, return_value=mock_ai_result),
         patch("src.worker.pipeline.calculate_score", return_value=mock_score_result),
         patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock) as mock_gate,
-        patch("src.worker.pipeline._build_notify_tasks", return_value=([], [])) as mock_notify,
+        patch("src.worker.pipeline.build_notification_tasks", return_value=([], [])) as mock_notify,
         patch("src.worker.pipeline.settings") as mock_settings,
     ):
         mock_settings.github_token = "ghp_test"

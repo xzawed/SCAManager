@@ -75,14 +75,14 @@ async def run_gate_check(
             decision = "reject"
             body = f"❌ 자동 반려: 점수 {score}점 (기준: {config.reject_threshold}점 미만)"
         else:
-            _save_gate_decision(db, analysis_id, "skip", "auto")
+            save_gate_decision(db, analysis_id, "skip", "auto")
             decision = None
             body = None
 
         if decision in ("approve", "reject"):
             try:
                 await post_github_review(github_token, repo_name, pr_number, decision, body)
-                _save_gate_decision(db, analysis_id, decision, "auto")
+                save_gate_decision(db, analysis_id, decision, "auto")
             except (httpx.HTTPError, KeyError) as exc:
                 logger.error("GitHub Review 실패: %s", exc)
 
@@ -153,7 +153,7 @@ async def _notify_merge_failure(
         logger.warning("Telegram merge-failure 알림 실패: %s", exc)
 
 
-def _save_gate_decision(
+def save_gate_decision(
     db: Session,
     analysis_id: int,
     decision: str,

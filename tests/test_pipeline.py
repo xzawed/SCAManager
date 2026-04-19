@@ -445,13 +445,13 @@ async def test_push_head_commit_preferred(mock_deps):
 # ---------------------------------------------------------------------------
 # PR Gate 3-옵션 분리 재설계 — pipeline 관련 테스트 (Red)
 #
-# 신규 설계에서는 post_pr_comment가 pipeline._build_notify_tasks에서 제거되고
+# 신규 설계에서는 post_pr_comment가 pipeline.build_notification_tasks에서 제거되고
 # gate engine(run_gate_check) 내부로 이동한다.
 # pipeline은 pr_review_comment 옵션 판단을 gate engine에 위임한다.
 # ---------------------------------------------------------------------------
 
 async def test_pipeline_pr_review_comment_not_in_notify_tasks(mock_deps):
-    """신규 설계에서 _build_notify_tasks는 post_pr_comment를 포함하지 않는다.
+    """신규 설계에서 build_notification_tasks는 post_pr_comment를 포함하지 않는다.
 
     gate engine이 pr_review_comment 옵션을 처리하므로, pipeline의
     notify tasks에서 post_pr_comment는 제거되어야 한다.
@@ -555,9 +555,9 @@ async def test_sha_duplicate_skips_before_file_fetch(mock_deps):
 
 
 async def test_result_dict_contains_ai_review_status(mock_deps):
-    """_build_result_dict() 결과에 ai_review_status 키가 포함되어야 한다.
+    """build_analysis_result_dict() 결과에 ai_review_status 키가 포함되어야 한다.
 
-    현재 _build_result_dict는 ai_review_status를 반환하지 않으므로 Red 상태다.
+    현재 build_analysis_result_dict는 ai_review_status를 반환하지 않으므로 Red 상태다.
     구현 후: ai_review.status 값을 result dict에 포함하면 Green이 된다.
     """
     from src.worker.pipeline import run_analysis_pipeline
@@ -569,7 +569,7 @@ async def test_result_dict_contains_ai_review_status(mock_deps):
 
 
 # ---------------------------------------------------------------------------
-# 알림 디스패처(_build_notify_tasks) 조합 검증
+# 알림 디스패처(build_notification_tasks) 조합 검증
 # discord / slack / n8n 채널 설정 여부에 따른 호출 분기,
 # repo_config 로드 실패 시 Telegram 전용 fallback,
 # gate 예외 발생 시 Analysis DB 저장 보장
