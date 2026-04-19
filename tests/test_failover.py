@@ -417,3 +417,272 @@ class TestProbeInterval:
         import src.config as cfg
         importlib.reload(cfg)
         assert cfg.settings.db_failover_probe_interval == 45
+
+
+# ---------------------------------------------------------------------------
+# 테스트 10: _ipv4_connect_args 엣지 케이스 (line 27, 33-34, 39-41)
+# ---------------------------------------------------------------------------
+
+class TestIpv4ConnectArgsEdgeCases:
+    """_ipv4_connect_args의 예외 경로를 검증한다."""
+
+    def test_sqlite_url_returns_empty_dict(self, monkeypatch):
+        # hostname이 None(SQLite)이면 빈 dict를 반환해야 한다 (line 27)
+        db_mod = _reload_db_module(monkeypatch, fallback_url="")
+        result = db_mod._ipv4_connect_args("sqlite:///:memory:")
+        assert result == {}
+
+    def test_gaierror_returns_empty_dict(self, monkeypatch):
+        # socket.getaddrinfo가 gaierror를 발생시키면 빈 dict를 반환해야 한다 (line 33-34)
+        import socket
+        db_mod = _reload_db_module(monkeypatch, fallback_url="")
+        with patch("socket.getaddrinfo", side_effect=socket.gaierror("name resolution failed")):
+            result = db_mod._ipv4_connect_args("postgresql://u:p@some-host:5432/db")
+        assert result == {}
+
+    def test_timeout_returns_empty_dict(self, monkeypatch):
+        # DNS 조회 timeout 시 빈 dict를 반환해야 한다 (line 33-34)
+        import concurrent.futures
+        db_mod = _reload_db_module(monkeypatch, fallback_url="")
+        with patch("socket.getaddrinfo", side_effect=concurrent.futures.TimeoutError()):
+            result = db_mod._ipv4_connect_args("postgresql://u:p@some-host:5432/db")
+        assert result == {}
+
+    def test_empty_addrinfo_returns_empty_dict(self, monkeypatch):
+        # getaddrinfo가 빈 리스트를 반환하면 빈 dict를 반환해야 한다 (line 41)
+        db_mod = _reload_db_module(monkeypatch, fallback_url="")
+        with patch("socket.getaddrinfo", return_value=[]):
+            result = db_mod._ipv4_connect_args("postgresql://u:p@some-host:5432/db")
+        assert result == {}
+
+    def test_invalid_port_returns_empty_dict(self, monkeypatch):
+        # 포트가 비정수(ValueError)이면 빈 dict를 반환해야 한다 (line 39-40)
+        db_mod = _reload_db_module(monkeypatch, fallback_url="")
+        # urlparse는 비정수 포트를 parsed.port 접근 시 ValueError 발생시킴
+        result = db_mod._ipv4_connect_args("postgresql://u:p@host:notaport/db")
+        assert result == {}
+
+
+# ---------------------------------------------------------------------------
+# 테스트 11: _current_maker() (line 134-136)
+# ---------------------------------------------------------------------------
+
+class TestCurrentMaker:
+    """_current_maker()가 active 상태에 따라 올바른 maker를 반환하는지 검증한다."""
+
+    def test_current_maker_returns_fallback_when_active_fallback(self, monkeypatch):
+        # active == "fallback" 이고 fallback_maker가 있으면 fallback_maker를 반환해야 한다
+        db_mod = _reload_db_module(monkeypatch, fallback_url="sqlite:///:memory:")
+        factory = db_mod.FailoverSessionFactory(
+            db_mod.engine, fallback_url="sqlite:///:memory:"
+        )
+        factory._active = "fallback"
+        assert factory._current_maker() is factory._fallback_maker
+
+    def test_current_maker_returns_primary_when_active_primary(self, monkeypatch):
+        # active == "primary" 이면 primary_maker를 반환해야 한다
+        db_mod = _reload_db_module(monkeypatch, fallback_url="sqlite:///:memory:")
+        factory = db_mod.FailoverSessionFactory(
+            db_mod.engine, fallback_url="sqlite:///:memory:"
+        )
+        factory._active = "primary"
+        assert factory._current_maker() is factory._primary_maker
+
+    def test_current_maker_returns_primary_when_no_fallback_maker(self, monkeypatch):
+        # fallback_maker가 None이면 active에 관계없이 primary_maker를 반환해야 한다
+        db_mod = _reload_db_module(monkeypatch, fallback_url="")
+        factory = db_mod.FailoverSessionFactory(db_mod.engine, fallback_url="")
+        factory._active = "fallback"  # fallback_maker 없는 상태에서 강제 설정
+        assert factory._current_maker() is factory._primary_maker
+
+
+# ---------------------------------------------------------------------------
+# 테스트 12: __call__ 예외 경로 (line 150-152, 159-161, 170-172)
+# ---------------------------------------------------------------------------
+
+class TestCallExceptionPaths:
+    """__call__() 내부 예외 경로를 검증한다."""
+
+    def test_fallback_mode_session_execute_fails_raises(self, monkeypatch):
+        # 이미 fallback 모드에서 session.execute()가 실패하면 예외가 전파되어야 한다 (line 150-152)
+        from sqlalchemy.exc import OperationalError
+        db_mod = _reload_db_module(monkeypatch, fallback_url="sqlite:///:memory:")
+        factory = db_mod.FailoverSessionFactory(
+            db_mod.engine, fallback_url="sqlite:///:memory:"
+        )
+        factory._active = "fallback"
+
+        failing_session = MagicMock()
+        failing_session.execute.side_effect = OperationalError("fallback down", None, None)
+        factory._fallback_maker = MagicMock(return_value=failing_session)
+
+        with pytest.raises(OperationalError):
+            factory()
+
+        failing_session.close.assert_called_once()
+
+    def test_primary_session_execute_fails_switches_to_fallback(self, monkeypatch):
+        # primary session.execute()에서 OperationalError → fallback으로 전환 (line 159-161)
+        from sqlalchemy.exc import OperationalError
+        db_mod = _reload_db_module(monkeypatch, fallback_url="sqlite:///:memory:")
+        factory = db_mod.FailoverSessionFactory(
+            db_mod.engine, fallback_url="sqlite:///:memory:"
+        )
+
+        failing_primary_session = MagicMock()
+        failing_primary_session.execute.side_effect = OperationalError("primary exec fail", None, None)
+        fallback_session = MagicMock()
+
+        factory._primary_maker = MagicMock(return_value=failing_primary_session)
+        factory._fallback_maker = MagicMock(return_value=fallback_session)
+
+        result = factory()
+        assert factory.active_db == "fallback"
+        assert result is fallback_session
+        failing_primary_session.close.assert_called_once()
+
+    def test_fallback_session_execute_fails_after_primary_failure_raises(self, monkeypatch):
+        # primary 실패 후 fallback session.execute()도 실패하면 예외 전파 (line 170-172)
+        from sqlalchemy.exc import OperationalError
+        db_mod = _reload_db_module(monkeypatch, fallback_url="sqlite:///:memory:")
+        factory = db_mod.FailoverSessionFactory(
+            db_mod.engine, fallback_url="sqlite:///:memory:"
+        )
+
+        failing_primary_session = MagicMock()
+        failing_primary_session.execute.side_effect = OperationalError("primary fail", None, None)
+        failing_fallback_session = MagicMock()
+        failing_fallback_session.execute.side_effect = Exception("fallback also down")
+
+        factory._primary_maker = MagicMock(return_value=failing_primary_session)
+        factory._fallback_maker = MagicMock(return_value=failing_fallback_session)
+
+        with pytest.raises(Exception, match="fallback also down"):
+            factory()
+
+        failing_fallback_session.close.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# 테스트 13: _probe_primary_loop (line 184-193)
+# ---------------------------------------------------------------------------
+
+class TestProbePrimaryLoop:
+    """_probe_primary_loop가 primary 복구 시 자동 복귀하는지 검증한다."""
+
+    def test_probe_loop_switches_back_to_primary_on_recovery(self, monkeypatch):
+        # fallback 상태에서 primary engine 연결 성공 시 active_db가 "primary"로 복귀해야 한다
+        db_mod = _reload_db_module(monkeypatch, fallback_url="sqlite:///:memory:", probe_interval=1)
+        factory = db_mod.FailoverSessionFactory(
+            db_mod.engine, fallback_url="sqlite:///:memory:"
+        )
+        factory._active = "fallback"
+
+        call_count = 0
+        def fake_sleep(_):
+            nonlocal call_count
+            call_count += 1
+            if call_count > 1:
+                raise SystemExit("stop loop")
+
+        with patch("src.database.time.sleep", fake_sleep):
+            with patch.object(factory._primary_engine, "connect") as mock_connect:
+                mock_conn = MagicMock()
+                mock_connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
+                mock_connect.return_value.__exit__ = MagicMock(return_value=False)
+                try:
+                    factory._probe_primary_loop()
+                except SystemExit:
+                    pass
+
+        assert factory.active_db == "primary"
+
+    def test_probe_loop_stays_fallback_when_primary_still_down(self, monkeypatch):
+        # fallback 상태에서 primary engine 연결 실패 시 active_db가 "fallback"을 유지해야 한다
+        db_mod = _reload_db_module(monkeypatch, fallback_url="sqlite:///:memory:", probe_interval=1)
+        factory = db_mod.FailoverSessionFactory(
+            db_mod.engine, fallback_url="sqlite:///:memory:"
+        )
+        factory._active = "fallback"
+
+        call_count = 0
+        def fake_sleep(_):
+            nonlocal call_count
+            call_count += 1
+            if call_count > 1:
+                raise SystemExit("stop loop")
+
+        with patch("src.database.time.sleep", fake_sleep):
+            with patch.object(factory._primary_engine, "connect", side_effect=Exception("still down")):
+                try:
+                    factory._probe_primary_loop()
+                except SystemExit:
+                    pass
+
+        assert factory.active_db == "fallback"
+
+    def test_probe_loop_skips_when_active_is_primary(self, monkeypatch):
+        # active == "primary" 이면 연결 시도 없이 sleep만 반복해야 한다
+        db_mod = _reload_db_module(monkeypatch, fallback_url="sqlite:///:memory:", probe_interval=1)
+        factory = db_mod.FailoverSessionFactory(
+            db_mod.engine, fallback_url="sqlite:///:memory:"
+        )
+        factory._active = "primary"
+
+        call_count = 0
+        def fake_sleep(_):
+            nonlocal call_count
+            call_count += 1
+            if call_count > 1:
+                raise SystemExit("stop loop")
+
+        with patch("src.database.time.sleep", fake_sleep):
+            with patch.object(factory._primary_engine, "connect") as mock_connect:
+                try:
+                    factory._probe_primary_loop()
+                except SystemExit:
+                    pass
+                mock_connect.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# 테스트 14: get_db() 제너레이터 (line 203-207)
+# ---------------------------------------------------------------------------
+
+class TestGetDb:
+    """get_db() FastAPI dependency 제너레이터를 검증한다."""
+
+    def test_get_db_yields_session(self, monkeypatch):
+        # get_db()는 Session 객체를 yield해야 한다
+        db_mod = _reload_db_module(monkeypatch, fallback_url="")
+        mock_session = MagicMock()
+        with patch.object(db_mod, "SessionLocal", return_value=mock_session):
+            gen = db_mod.get_db()
+            session = next(gen)
+        assert session is mock_session
+
+    def test_get_db_closes_session_on_exit(self, monkeypatch):
+        # get_db() 제너레이터가 종료되면 session.close()가 호출되어야 한다
+        db_mod = _reload_db_module(monkeypatch, fallback_url="")
+        mock_session = MagicMock()
+        with patch.object(db_mod, "SessionLocal", return_value=mock_session):
+            gen = db_mod.get_db()
+            next(gen)
+            try:
+                next(gen)
+            except StopIteration:
+                pass
+        mock_session.close.assert_called_once()
+
+    def test_get_db_closes_session_on_exception(self, monkeypatch):
+        # get_db() 내에서 예외 발생 시에도 session.close()가 호출되어야 한다
+        db_mod = _reload_db_module(monkeypatch, fallback_url="")
+        mock_session = MagicMock()
+        with patch.object(db_mod, "SessionLocal", return_value=mock_session):
+            gen = db_mod.get_db()
+            next(gen)
+            try:
+                gen.throw(RuntimeError("test error"))
+            except RuntimeError:
+                pass
+        mock_session.close.assert_called_once()
