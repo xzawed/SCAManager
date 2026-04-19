@@ -23,12 +23,15 @@ class _ShellCheckAnalyzer:
     SUPPORTED_LANGUAGES: frozenset[str] = frozenset({"shell"})
 
     def supports(self, ctx: AnalyzeContext) -> bool:
+        """Shell 파일 여부 확인."""
         return ctx.language in self.SUPPORTED_LANGUAGES
 
     def is_enabled(self, ctx: AnalyzeContext) -> bool:  # pylint: disable=unused-argument
+        """shellcheck 바이너리 설치 여부 확인."""
         return shutil.which("shellcheck") is not None
 
     def run(self, ctx: AnalyzeContext) -> list[AnalysisIssue]:
+        """shellcheck JSON 출력을 파싱해 이슈 목록 반환."""
         try:
             r = subprocess.run(  # nosec B603 B607
                 ["shellcheck", "-f", "json", ctx.tmp_path],

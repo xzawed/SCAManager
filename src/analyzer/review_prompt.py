@@ -74,7 +74,7 @@ def detect_languages_from_patches(
         lang = detect_language(fname)
         if lang != "unknown":
             freq[lang] = freq.get(lang, 0) + 1
-    return sorted(freq, key=lambda l: -freq[l])
+    return sorted(freq, key=lambda lang: -freq[lang])
 
 
 def _build_lang_guides(languages: list[str], budget_chars: int) -> str:

@@ -19,12 +19,15 @@ class _PylintAnalyzer:
     category = "code_quality"
 
     def supports(self, ctx: AnalyzeContext) -> bool:
+        """Python 파일 여부 확인."""
         return ctx.language == "python"
 
     def is_enabled(self, ctx: AnalyzeContext) -> bool:  # pylint: disable=unused-argument
+        """항상 활성화 (pylint는 pip 의존성으로 항상 설치됨)."""
         return True
 
     def run(self, ctx: AnalyzeContext) -> list[AnalysisIssue]:
+        """pylint JSON 출력을 파싱해 AnalysisIssue 목록 반환."""
         disable = (
             "C0114,C0115,C0116,C0301,C0411,"
             "E0401,"
@@ -64,12 +67,15 @@ class _Flake8Analyzer:
     category = "code_quality"
 
     def supports(self, ctx: AnalyzeContext) -> bool:
+        """Python 파일 여부 확인."""
         return ctx.language == "python"
 
     def is_enabled(self, ctx: AnalyzeContext) -> bool:  # pylint: disable=unused-argument
+        """항상 활성화 (flake8는 pip 의존성으로 항상 설치됨)."""
         return True
 
     def run(self, ctx: AnalyzeContext) -> list[AnalysisIssue]:
+        """flake8 출력을 파싱해 AnalysisIssue 목록 반환."""
         cmd = ["flake8", ctx.tmp_path, "--max-line-length=120",
                "--format=%(row)d:%(col)d: %(text)s"]
         if ctx.is_test:
@@ -108,12 +114,15 @@ class _BanditAnalyzer:
     category = "security"
 
     def supports(self, ctx: AnalyzeContext) -> bool:
+        """Python 파일 여부 확인."""
         return ctx.language == "python"
 
     def is_enabled(self, ctx: AnalyzeContext) -> bool:
+        """테스트 파일 제외 (bandit은 프로덕션 코드에만 적용)."""
         return not ctx.is_test
 
     def run(self, ctx: AnalyzeContext) -> list[AnalysisIssue]:
+        """bandit JSON 출력을 파싱해 보안 이슈 목록 반환."""
         try:
             r = subprocess.run(  # nosec B603 B607
                 ["bandit", "-f", "json", "-q", ctx.tmp_path],

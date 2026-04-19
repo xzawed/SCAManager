@@ -50,6 +50,7 @@ def verify_hook(repo: str, token: str):
 # ---------------------------------------------------------------------------
 
 class HookResultRequest(BaseModel):
+    """pre-push 훅이 POST /api/hook/result 에 전송하는 요청 바디."""
     repo: str
     token: str
     commit_sha: str

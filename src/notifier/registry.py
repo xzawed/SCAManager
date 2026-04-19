@@ -27,11 +27,11 @@ class Notifier(Protocol):
 
     def is_enabled(self, ctx: NotifyContext) -> bool:
         """이 채널이 현재 컨텍스트에서 실행되어야 하는지 반환."""
-        ...
+        return False  # pragma: no cover
 
     async def send(self, ctx: NotifyContext) -> None:
         """알림을 전송한다."""
-        ...
+        return  # pragma: no cover
 
 
 REGISTRY: list[Notifier] = []

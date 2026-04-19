@@ -42,15 +42,15 @@ class Analyzer(Protocol):
 
     def supports(self, ctx: AnalyzeContext) -> bool:
         """이 파일/언어를 분석할 수 있는지 여부."""
-        ...
+        return False  # pragma: no cover
 
     def is_enabled(self, ctx: AnalyzeContext) -> bool:
         """실행 조건 충족 여부 (도구 설치 여부, is_test 등)."""
-        ...
+        return False  # pragma: no cover
 
     def run(self, ctx: AnalyzeContext) -> list[AnalysisIssue]:
         """분석 실행 후 이슈 목록 반환."""
-        ...
+        return []  # pragma: no cover
 
 
 REGISTRY: list[Analyzer] = []

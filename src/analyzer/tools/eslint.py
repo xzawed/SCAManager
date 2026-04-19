@@ -28,12 +28,15 @@ class _ESLintAnalyzer:
     SUPPORTED_LANGUAGES: frozenset[str] = frozenset({"javascript", "typescript"})
 
     def supports(self, ctx: AnalyzeContext) -> bool:
+        """JS/TS 파일 여부 확인."""
         return ctx.language in self.SUPPORTED_LANGUAGES
 
     def is_enabled(self, ctx: AnalyzeContext) -> bool:  # pylint: disable=unused-argument
+        """eslint 바이너리 설치 여부 확인."""
         return shutil.which("eslint") is not None
 
     def run(self, ctx: AnalyzeContext) -> list[AnalysisIssue]:
+        """eslint JSON 출력을 파싱해 AnalysisIssue 목록 반환."""
         try:
             r = subprocess.run(  # nosec B603 B607
                 ["eslint", "--format=json", "--no-eslintrc",

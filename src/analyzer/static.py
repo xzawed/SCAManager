@@ -76,6 +76,7 @@ def _is_test_file(filename: str, language: str = "python") -> bool:
     """Deprecated: use is_test_file() from src.analyzer.language. Kept for backward compatibility."""
     return is_test_file(filename, language)
 
+
 def _run_pylint(path: str, is_test: bool = False) -> list[AnalysisIssue]:
     """Deprecated: use Registry pattern. Kept for backward compatibility."""
     from src.analyzer.tools.python import _PylintAnalyzer  # noqa: PLC0415

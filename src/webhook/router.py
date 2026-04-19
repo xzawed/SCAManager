@@ -94,6 +94,7 @@ async def github_webhook(
     x_hub_signature_256: str = Header(None),
     x_github_event: str = Header(None),
 ):
+    """GitHub Webhook 수신 엔드포인트 — HMAC 서명 검증 후 이벤트를 파이프라인에 위임한다."""
     payload = await request.body()
 
     # payload에서 리포 이름 파싱 (per-repo 시크릿 조회용)
@@ -155,7 +156,7 @@ async def _handle_issues_event(data: dict, background_tasks: BackgroundTasks) ->
             repo = repository_repo.find_by_full_name(db, repo_name)
             if repo and repo.owner:
                 repo_token = repo.owner.plaintext_token or ""
-    except Exception as exc:  # noqa: BLE001
+    except (SQLAlchemyError, KeyError, AttributeError) as exc:
         logger.warning("issues relay: repo config lookup failed for %s: %s", repo_name, exc)
 
     if not n8n_url:
@@ -182,6 +183,7 @@ async def handle_gate_callback(
     decision: str,
     decided_by: str,
 ) -> None:
+    """Telegram 인라인 키보드 콜백을 처리해 GitHub Review 결정을 실행한다."""
     with SessionLocal() as db:
         try:
             analysis = analysis_repo.find_by_id(db, analysis_id)
