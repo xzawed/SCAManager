@@ -217,6 +217,7 @@ requirements-dev.txt  ← 로컬 개발 환경 — pytest, playwright 포함 (-r
 - **Hook 신뢰**: `src/` 파일 편집 후 PostToolUse Hook이 자동 실행하는 pytest 결과를 확인한다. 실패 시 다음 단계로 진행하지 않는다.
 - **Phase 완료 조건**: 테스트 전체 통과 + `/lint` 통과 + (파이프라인 변경 시 `pipeline-reviewer` 승인) 세 조건이 모두 충족될 때만 Phase 완료를 선언한다.
 - **완료 시 필수 3-step**: 작업이 완료되면 반드시 ① 커밋 → ② `git push` → ③ `docs/STATE.md` 수치 갱신을 순서대로 수행한다. 예외 없음.
+- **README.md 배지 동기화**: 테스트 수·pylint·커버리지 수치가 바뀌면 `README.md` 14~18줄 배지도 함께 갱신한다. 수치 출처는 항상 `docs/STATE.md`.
 
 ### 모바일 환경 보호 — 수정 금지 파일
 
@@ -350,4 +351,4 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 
 ## 현재 상태
 
-최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 586개 | E2E 26개 | pylint 9.70 | 커버리지 92%
+최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 634개 | E2E 38개 | pylint 9.72 | 커버리지 92%
