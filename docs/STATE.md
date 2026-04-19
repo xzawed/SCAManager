@@ -52,6 +52,7 @@
 | Railway 빌드 수정 | nixPkgs 명시 시 Python provider 완전 교체 버그 + [phases.build] cmds로 npm run build 억제 불가 확인. 해결: aptPkgs로 Node.js 설치 + buildCommand에 eslint 설치 명령 이전 | 2026-04-19 |
 | 품질 감사 수정 | flake8 4건→0건, pylint 9.65→9.77 (+0.12), DeprecationWarning 126,815→1건. Protocol `...`→반환값, docstring 보강, import order, 예외 세분화, pytest-asyncio 1.3.0 업그레이드 | 2026-04-19 |
 | 구조적 코드품질 전면 개선 | 순환 import 해소(AnalysisIssue 이동), language.py dispatch dict, _AnalysisSaveParams, _select_guide_modes 추출, notifier R0917/R0913 disable, pylint 9.77→10.00, flake8 클린, 1074 테스트 전체 통과 | 2026-04-19 |
+| 하드코딩 제거 + 효율화 전체 검수 | constants.py 16개 상수화, notifier/_common.py 공통 헬퍼, GateDecision upsert, webhook secret TTL 캐시 5분, github_issue.py 중복 계산 제거, conftest autouse 캐시 클리어 | 2026-04-19 |
 
 ## 갱신 방법
 
