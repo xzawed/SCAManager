@@ -80,38 +80,9 @@ def update_repo_config(repo_name: str, body: RepoConfigUpdate):
     with SessionLocal() as db:
         record = upsert_repo_config(db, RepoConfigData(
             repo_full_name=repo_name,
-            pr_review_comment=body.pr_review_comment,
-            approve_mode=body.approve_mode,
-            approve_threshold=body.approve_threshold,
-            reject_threshold=body.reject_threshold,
-            notify_chat_id=body.notify_chat_id,
-            n8n_webhook_url=body.n8n_webhook_url,
-            discord_webhook_url=body.discord_webhook_url,
-            slack_webhook_url=body.slack_webhook_url,
-            custom_webhook_url=body.custom_webhook_url,
-            email_recipients=body.email_recipients,
-            auto_merge=body.auto_merge,
-            merge_threshold=body.merge_threshold,
-            commit_comment=body.commit_comment,
-            create_issue=body.create_issue,
+            **body.model_dump(),
         ))
-        return {
-            "repo_full_name": record.repo_full_name,
-            "pr_review_comment": record.pr_review_comment,
-            "approve_mode": record.approve_mode,
-            "approve_threshold": record.approve_threshold,
-            "reject_threshold": record.reject_threshold,
-            "notify_chat_id": record.notify_chat_id,
-            "n8n_webhook_url": record.n8n_webhook_url,
-            "discord_webhook_url": record.discord_webhook_url,
-            "slack_webhook_url": record.slack_webhook_url,
-            "custom_webhook_url": record.custom_webhook_url,
-            "email_recipients": record.email_recipients,
-            "auto_merge": record.auto_merge,
-            "merge_threshold": record.merge_threshold,
-            "commit_comment": record.commit_comment,
-            "create_issue": record.create_issue,
-        }
+        return {"repo_full_name": record.repo_full_name, **body.model_dump()}
 
 
 @router.delete("/repos/{repo_name:path}")
