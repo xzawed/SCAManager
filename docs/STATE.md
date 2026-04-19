@@ -6,7 +6,7 @@
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1074개** | pytest (0 failed) |
+| 단위 테스트 | **1076개** | pytest (0 failed) |
 | E2E 테스트 | **38개** | `make test-e2e` (Chromium Playwright) |
 | pylint | **10.00/10** | `python -m pylint src/` — 만점 |
 | 커버리지 | **96.2%** | `make test-cov` (database.py 100%, ui/router.py 99.4%) |
