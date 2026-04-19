@@ -2,13 +2,13 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-19, Phase A — Static Analyzer Registry 인프라)
+## 현재 수치 (2026-04-19, Phase B — Semgrep 30+ 언어 baseline)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **943개** | `make test` (+47 from Phase A) |
+| 단위 테스트 | **1004개** | `make test` (+61 from Phase B) |
 | E2E 테스트 | **38개** | `make test-e2e` (Chromium Playwright) |
-| pylint | **9.92/10** | `make lint` (+0.13 from Phase A) |
+| pylint | **9.91/10** | `make lint` |
 | 커버리지 | **96.2%** | `make test-cov` (database.py 100%, ui/router.py 99.4%) |
 | bandit HIGH | **0개** | 실측 확인 (1.9.4 Python 3.14 대응) |
 | flake8 | **0건** | `flake8 src/` |
@@ -42,6 +42,7 @@
 | P3 ui/router.py 커버리지 | app_base_url/GateDecision cascade/add_repo 분기/reinstall_hook/reinstall_webhook 분기 (+11 테스트, 83.9%→99.4%) | 2026-04-19 |
 | Phase 0 다언어 AI 리뷰 | language.py(50언어 감지) + review_guides(Tier1×10/Tier2×20/Tier3×20) + review_prompt.py(토큰 예산) + ai_review.py 통합 (+207 테스트, pylint 9.77→9.79) | 2026-04-19 |
 | Phase A Registry 인프라 | registry.py + tools/python.py(Analyzer Protocol) + analyze_file Registry 위임 + .py 필터 제거 + CQ_WARNING_CAP 단일 cap + 중복 등록 방지 (+47 테스트, pylint 9.79→9.92) | 2026-04-19 |
+| Phase B Semgrep | tools/semgrep.py — 23개 언어 SUPPORTED_LANGUAGES, metadata.category security 자동 분류, graceful degradation, requirements.txt semgrep>=1.80 (+61 테스트, 1004 총) | 2026-04-19 |
 
 ## 갱신 방법
 
