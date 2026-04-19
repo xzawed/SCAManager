@@ -57,7 +57,14 @@ src/
 │   └── repos.py                # list_user_repos(), create_webhook(), delete_webhook(), commit_scamanager_files()
 ├── analyzer/
 │   ├── static.py               # analyze_file — pylint/flake8/bandit (.py만, 테스트 bandit 제외)
-│   └── ai_review.py            # review_code() — Claude API, AiReviewResult
+│   ├── language.py             # detect_language(filename, content) — 50개 언어 감지. is_test_file()
+│   ├── review_prompt.py        # build_review_prompt() — 언어별 가이드 조립 + 토큰 예산 관리(8000)
+│   ├── review_guides/          # 언어별 리뷰 체크리스트 (get_guide(lang, mode))
+│   │   ├── tier1/              # python/js/ts/java/go/rust/c/cpp/csharp/ruby (상세)
+│   │   ├── tier2/              # php/swift/kotlin/scala/shell ... fsharp (20개)
+│   │   ├── tier3/              # erlang/ocaml/.../json_schema (20개 경량)
+│   │   └── generic.py          # 알 수 없는 언어 fallback
+│   └── ai_review.py            # review_code() — Claude API, AiReviewResult (detected_languages 포함)
 ├── scorer/
 │   └── calculator.py           # calculate_score(ai_review), ScoreResult, _grade
 ├── config_manager/
@@ -100,7 +107,7 @@ GitHub Push/PR
       → get_pr_files / get_push_files (모든 변경 파일 수집)
       → asyncio.gather() 병렬 실행:
           ├─ analyze_file() × N  (.py만 정적 분석, 테스트 파일은 bandit 제외)
-          └─ review_code()       (Claude AI — 모든 파일의 diff + 파일명 분석)
+          └─ review_code()       (Claude AI — 50개 언어 체크리스트 + 토큰 예산 관리)
       → calculate_score(ai_review)
           (코드품질25 + 보안20 + 커밋15 + AI방향성25 + 테스트15)
       → DB 저장 (Analysis 레코드)
@@ -299,7 +306,8 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 - **PR action 필터링**: `pull_request` 이벤트 중 `opened`/`synchronize`/`reopened`만 처리, `closed`/`labeled` 등은 무시.
 - **AI 점수 스케일링**: Claude는 commit 0-20, direction 0-20, test 0-10으로 반환 → calculator가 commit 0-15, direction 0-25, test 0-15로 스케일링. `round()` 사용으로 banker's rounding 적용.
 - **commit_scamanager_files**: GitHub Contents API `PUT /repos/{owner}/{repo}/contents/{path}` 사용. 파일 이미 있으면 GET으로 sha 조회 후 body에 포함해야 200 성공 (sha 누락 시 422 에러).
-- **비-Python 파일 AI 리뷰**: `.md`, `.cfg`, `.yml` 등도 AI 리뷰 대상 — 정적 분석은 `.py`만 실행, 비-코드 파일만 변경 시 테스트 점수 면제(test_score=10 → 15/15).
+- **다언어 AI 리뷰**: `language.py`가 50개 언어를 감지(확장자·shebang·파일명), `review_prompt.py`가 언어별 체크리스트를 토큰 예산(8000 토큰) 내에서 조립. 정적 분석은 `.py`만 실행, 비-코드 파일만 변경 시 테스트 점수 면제(test_score=10 → 15/15).
+- **review_guides 구조**: `get_guide(lang, "full"|"compact")` — Tier1 full ~500토큰, compact 1줄. N≤3 전체 full, N≤6 Tier1 full+나머지 compact, N>10 상위 5개 compact만.
 - **AI 리뷰 JSON 파싱**: Claude가 JSON 앞에 설명 텍스트를 붙이는 경우 `re.search`로 코드 블록 내 JSON만 추출.
 - **봇 PR `create_issue` 루프 방지**: `pr_head_ref`가 `claude-fix/`로 시작하면 `create_issue`를 건너뜀 — n8n 자동 생성 PR이 저점을 받을 때 Issue 재생성 → 무한 루프 방지.
 - **커밋 메시지 추출**: `_extract_commit_message()`는 PR 이벤트 시 `title + "\n\n" + body`, Push 이벤트 시 `head_commit["message"]` 우선 사용.
@@ -351,4 +359,4 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 
 ## 현재 상태
 
-최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 634개 | E2E 38개 | pylint 9.72 | 커버리지 92%
+최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 896개 | E2E 38개 | pylint 9.79 | 커버리지 96.2%
