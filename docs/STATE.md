@@ -6,7 +6,7 @@
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **580개** | `make test` |
+| 단위 테스트 | **586개** | `make test` |
 | E2E 테스트 | **26개** | `make test-e2e` |
 | pylint | **9.70/10** | `make lint` |
 | 커버리지 | **92%** | `make test-cov` |
@@ -25,6 +25,8 @@
 | P1 테스트 보강 | gate/engine.py 에러경로 8개 + breakdown=None 버그 수정, auth/github.py OAuth 분기 7개 | 2026-04-19 |
 | P2 테스트 보강 | github_client/repos.py commit_scamanager_files 6개 (신규/기존파일, HTTP오류, config내용, trailing slash, 인증헤더) | 2026-04-19 |
 | P3 알림 엣지 케이스 | Telegram 4096자 절단 4종 + HTTP오류 전파 3종, SMTP 연결/인증 에러·From 기본값·Subject 검증 4종 | 2026-04-19 |
+| P3 보안 심층 | HTML injection(email 2+telegram 2), OAuth CSRF state, Jinja2 autoescape 검증 (+6) | 2026-04-19 |
+| P3 CLAUDE.md 정비 | 주의사항 빈도 기반 재정렬, psycopg2·N+1·Supabase SSL 3항목 제거, 보안 2항목 추가 | 2026-04-19 |
 
 ## 갱신 방법
 
@@ -49,3 +51,5 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 | ~~P2~~ | ~~`github_client/repos.py` commit_scamanager_files 테스트~~ **완료** (+6) |
 | **P3** | 보안 심층 (OAuth state, HTML injection) |
 | ~~P3~~ | ~~알림 엣지 케이스 (Telegram 4096자, SMTP 타임아웃)~~ **완료** (+11) |
+| ~~P3~~ | ~~보안 심층 (OAuth CSRF, HTML injection, Jinja2 autoescape)~~ **완료** (+6) |
+| ~~P3~~ | ~~CLAUDE.md 주의사항 빈도 기반 재정렬·축소~~ **완료** |
