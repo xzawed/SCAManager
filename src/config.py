@@ -88,6 +88,7 @@ class Settings(BaseSettings):
     @field_validator("database_url")
     @classmethod
     def fix_postgres_url(cls, v: str) -> str:
+        """DATABASE_URL의 postgres:// 스킴을 postgresql://로 변환한다."""
         return cls._normalize_pg_url(v)
 
     @field_validator("database_url_fallback")

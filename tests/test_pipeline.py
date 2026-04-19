@@ -258,9 +258,10 @@ async def test_pipeline_calls_gate_for_pr(mock_deps):
     ]
     mock_db.refresh = MagicMock()
 
+    from src.config_manager.manager import RepoConfigData
     with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock) as mock_gate:
         with patch("src.worker.pipeline.get_repo_config",
-                   return_value=MagicMock(n8n_webhook_url=None)):
+                   return_value=RepoConfigData(repo_full_name="owner/repo")):
             await run_analysis_pipeline("pull_request", PR_DATA)
             mock_gate.assert_called_once()
 
@@ -310,8 +311,9 @@ async def test_pipeline_skips_gate_for_push(mock_deps):
     ]
     mock_db.refresh = MagicMock()
 
+    from src.config_manager.manager import RepoConfigData
     with patch("src.worker.pipeline.get_repo_config",
-               return_value=MagicMock(n8n_webhook_url=None)):
+               return_value=RepoConfigData(repo_full_name="owner/repo")):
         with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock) as mock_gate:
             await run_analysis_pipeline("push", PUSH_DATA)
             mock_gate.assert_not_called()
@@ -677,6 +679,7 @@ async def test_gate_check_exception_still_saves_analysis(mock_deps):
     """gate check 예외가 발생해도 Analysis DB 저장은 이미 완료되어야 한다."""
     from src.worker.pipeline import run_analysis_pipeline
     from src.models.analysis import Analysis
+    from src.config_manager.manager import RepoConfigData
 
     mock_repo = MagicMock(id=1)
     mock_deps["db"].query.return_value.filter_by.return_value.first.side_effect = [
@@ -686,14 +689,8 @@ async def test_gate_check_exception_still_saves_analysis(mock_deps):
 
     with patch("src.worker.pipeline.run_gate_check",
                new_callable=AsyncMock, side_effect=Exception("gate error")):
-        with patch("src.worker.pipeline.get_repo_config", return_value=MagicMock(
-            discord_webhook_url=None,
-            slack_webhook_url=None,
-            custom_webhook_url=None,
-            email_recipients=None,
-            n8n_webhook_url=None,
-            notify_chat_id=None,
-        )):
+        with patch("src.worker.pipeline.get_repo_config",
+                   return_value=RepoConfigData(repo_full_name="owner/repo")):
             await run_analysis_pipeline("pull_request", PR_DATA)
 
     # gate 예외 이전에 db.add(analysis) + db.commit()이 이미 호출됨
