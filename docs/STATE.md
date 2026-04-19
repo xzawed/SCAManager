@@ -89,12 +89,21 @@
 | webhook secret 캐시 | _get_webhook_secret() — DB 조회 5분 TTL 캐시 |
 | 테스트 격리 | conftest.py autouse fixture — _webhook_secret_cache 테스트 간 클리어 |
 
+### 그룹 6 — UI 개선 (2026-04-19)
+
+| 작업 | 주요 내용 | 테스트 증분 |
+|------|----------|-----------|
+| overview 최근 점수 제거 | "최근 점수" 컬럼 제거 → `리포지토리\|분석\|평균 점수\|등급` 4컬럼 | +2 |
+| 등급 평균 기반 전환 | `calculate_grade(avg_score)` — 최신 분석 grade 아닌 평균 점수 기반 | — |
+| `_grade` 공개화 | `calculate_grade(score)` 공개 함수 (ui/router.py 재사용) | — |
+| DB 쿼리 최적화 | `latest_id_subq`/`latest_map` 배치 조회 제거 (쿼리 1개 감소) | — |
+
 ## 갱신 방법
 
 ```bash
-make test          # 1074 유지 확인
+make test          # 1076 유지 확인
 make lint          # pylint 10.00 + flake8 0건 + bandit HIGH 0개
-make test-cov      # 96.2% 유지 확인
+make test-cov      # 96.2% 유지 확인 (소폭 변동 가능)
 
 git add docs/STATE.md
 git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
