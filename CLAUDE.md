@@ -350,4 +350,4 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 
 ## 현재 상태
 
-단위 테스트 543개 | E2E 26개 | pylint 9.53 | 커버리지 94%
+최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 543개 | E2E 26개 | pylint 9.70 | 커버리지 92%
