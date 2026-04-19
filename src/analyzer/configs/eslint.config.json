@@ -1,0 +1,31 @@
+[
+  {
+    "languageOptions": {
+      "ecmaVersion": "latest",
+      "sourceType": "module",
+      "globals": {
+        "console": "readonly",
+        "process": "readonly",
+        "window": "readonly",
+        "document": "readonly",
+        "require": "readonly",
+        "module": "readonly",
+        "exports": "readonly",
+        "__dirname": "readonly",
+        "__filename": "readonly"
+      }
+    },
+    "rules": {
+      "no-unused-vars": "warn",
+      "no-eval": "error",
+      "no-implied-eval": "error",
+      "no-new-func": "error",
+      "no-console": "warn",
+      "eqeqeq": "warn",
+      "no-var": "warn",
+      "prefer-const": "warn",
+      "no-undef": "warn",
+      "no-redeclare": "error"
+    }
+  }
+]
