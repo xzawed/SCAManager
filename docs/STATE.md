@@ -6,7 +6,7 @@
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **649개** | `make test` |
+| 단위 테스트 | **661개** | `make test` |
 | E2E 테스트 | **38개** | `make test-e2e` (Chromium Playwright) |
 | pylint | **9.73/10** | `make lint` |
 | 커버리지 | **92%+** | `make test-cov` (static+crypto 보강) |
@@ -31,6 +31,7 @@
 | 품질 감사 7라운드 | 정상성/커버리지/결정성/격리성/pylint/flake8/bandit+E2E 다각도 검증. 보고서: docs/reports/2026-04-19-code-quality-audit.md | 2026-04-19 |
 | 감사 결과 수정 | P0 bandit 1.9.4(Python 3.14 대응), P1 E2E 26/26 복구+payload.py 제거, P2 lint 0건, P3 +48 테스트(634총) | 2026-04-19 |
 | n8n Phase 3: Issue 자동 close | PR merge 시 Closes #N 키워드 파싱 → Issues API close (SCAManager-side 방어적 보장) | 2026-04-19 |
+| auto_merge 견고성 강화 | merge_pr tuple 반환 + mergeable_state 재시도 + Telegram 실패 알림 (+12 테스트) | 2026-04-19 |
 
 ## 갱신 방법
 
