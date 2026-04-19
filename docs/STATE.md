@@ -2,13 +2,13 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-19)
+## 현재 수치 (2026-04-19, n8n Phase 3 갱신)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **634개** | `make test` |
+| 단위 테스트 | **649개** | `make test` |
 | E2E 테스트 | **38개** | `make test-e2e` (Chromium Playwright) |
-| pylint | **9.72/10** | `make lint` |
+| pylint | **9.73/10** | `make lint` |
 | 커버리지 | **92%+** | `make test-cov` (static+crypto 보강) |
 | bandit HIGH | **0개** | 실측 확인 (1.9.4 Python 3.14 대응) |
 | flake8 | **0건** | `flake8 src/` |
@@ -30,6 +30,7 @@
 | P3 CLAUDE.md 정비 | 주의사항 빈도 기반 재정렬, psycopg2·N+1·Supabase SSL 3항목 제거, 보안 2항목 추가 | 2026-04-19 |
 | 품질 감사 7라운드 | 정상성/커버리지/결정성/격리성/pylint/flake8/bandit+E2E 다각도 검증. 보고서: docs/reports/2026-04-19-code-quality-audit.md | 2026-04-19 |
 | 감사 결과 수정 | P0 bandit 1.9.4(Python 3.14 대응), P1 E2E 26/26 복구+payload.py 제거, P2 lint 0건, P3 +48 테스트(634총) | 2026-04-19 |
+| n8n Phase 3: Issue 자동 close | PR merge 시 Closes #N 키워드 파싱 → Issues API close (SCAManager-side 방어적 보장) | 2026-04-19 |
 
 ## 갱신 방법
 
