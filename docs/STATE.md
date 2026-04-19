@@ -2,93 +2,127 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-19, 구조적 코드품질 개선 후)
+## 현재 수치 (2026-04-19 기준 — 코드 전면 검수 완료)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1074개** | pytest (0 failed, 1 warning) |
+| 단위 테스트 | **1074개** | pytest (0 failed) |
 | E2E 테스트 | **38개** | `make test-e2e` (Chromium Playwright) |
-| pylint | **10.00/10** | `python -m pylint src/` — 순환 import·분기수·로컬변수 전면 개선 |
+| pylint | **10.00/10** | `python -m pylint src/` — 만점 |
 | 커버리지 | **96.2%** | `make test-cov` (database.py 100%, ui/router.py 99.4%) |
-| bandit HIGH | **0개** | 실측 확인 (1.9.4 Python 3.14 대응) |
+| bandit HIGH | **0개** | bandit 1.9.4 (Python 3.14 대응) |
 | flake8 | **0건** | `flake8 src/` |
-| 지원 언어 (AI 리뷰) | **50개** | language.py 감지, Tier1/2/3 가이드 |
-| 지원 언어 (정적분석) | **34개+** | Semgrep 23 + ESLint 2 + ShellCheck 1 + Python 3도구 |
-| pytest-asyncio | **1.3.0** | Python 3.14 DeprecationWarning 126,815건→1건 |
+| 지원 언어 (AI 리뷰) | **50개** | language.py — Tier1/2/3 가이드 |
+| 지원 언어 (정적분석) | **34개+** | Semgrep 23 + ESLint 2 + ShellCheck 1 + Python 3 도구 |
+| pytest-asyncio | **1.3.0** | Python 3.14 DeprecationWarning 제거 완료 |
 
-**다언어 확장 프로젝트 (Phase 0~C) 완료** — 회고 문서: [docs/reports/2026-04-19-multilang-expansion-retrospective.md](reports/2026-04-19-multilang-expansion-retrospective.md)
+## 주요 파일 역할 (빠른 참조)
 
-## Phase 이력
+| 파일 | 역할 |
+|------|------|
+| `src/constants.py` | 전역 상수 단일 출처 — 점수배점·감점·AI기본값·등급·알림한도·TTL·타임아웃 |
+| `src/analyzer/registry.py` | Analyzer Protocol + REGISTRY + register() + AnalyzeContext + AnalysisIssue |
+| `src/analyzer/tools/*.py` | 개별 분석기 — 모듈 로드 시 자동 register() 호출 |
+| `src/notifier/_common.py` | notifier 공통 헬퍼 — format_ref, get_all_issues, truncate_message |
+| `src/notifier/_http.py` | HTTP_CLIENT_TIMEOUT 적용 httpx 클라이언트 빌더 |
+| `src/webhook/router.py` | GitHub Webhook 수신 + per-repo secret TTL 캐시(5분) |
+| `src/gate/engine.py` | 3-옵션 Gate + GateDecision upsert (중복 INSERT 방지) |
+| `src/repositories/` | DB 접근 계층 — repository_repo, analysis_repo |
+| `src/worker/pipeline.py` | 분석 파이프라인 + build_analysis_result_dict |
+| `tests/conftest.py` | 환경변수 주입 + _webhook_secret_cache autouse 클리어 |
 
-| Phase | 내용 | 완료일 |
-|-------|------|--------|
-| 스코어 버그 수정 | 89점 고정 문제 (SHA 이동 + AI status) | 2026-04-12 |
-| 테스트 갭 분석 | P0~P3 우선순위 49개 식별 (당시 360개) | 2026-04-12 |
-| n8n Phase 1 | Issue → claude_fix.sh → PR 자동화 | 2026-04-17 |
-| n8n Phase 2 | 봇 PR auto_merge 누락 수정 (re-gate + 무한루프 가드) | 2026-04-19 |
-| 회고 및 인프라 정비 | PostToolUse 훅 경로 수정, .gitattributes, docs 정비 | 2026-04-19 |
-| P2 통합 테스트 | webhook→gate end-to-end 3 시나리오 (StaticPool SQLite + 이중 SessionLocal patch) | 2026-04-19 |
-| P1 테스트 보강 | gate/engine.py 에러경로 8개 + breakdown=None 버그 수정, auth/github.py OAuth 분기 7개 | 2026-04-19 |
-| P2 테스트 보강 | github_client/repos.py commit_scamanager_files 6개 (신규/기존파일, HTTP오류, config내용, trailing slash, 인증헤더) | 2026-04-19 |
-| P3 알림 엣지 케이스 | Telegram 4096자 절단 4종 + HTTP오류 전파 3종, SMTP 연결/인증 에러·From 기본값·Subject 검증 4종 | 2026-04-19 |
-| P3 보안 심층 | HTML injection(email 2+telegram 2), OAuth CSRF state, Jinja2 autoescape 검증 (+6) | 2026-04-19 |
-| P3 CLAUDE.md 정비 | 주의사항 빈도 기반 재정렬, psycopg2·N+1·Supabase SSL 3항목 제거, 보안 2항목 추가 | 2026-04-19 |
-| 품질 감사 7라운드 | 정상성/커버리지/결정성/격리성/pylint/flake8/bandit+E2E 다각도 검증. 보고서: docs/reports/2026-04-19-code-quality-audit.md | 2026-04-19 |
-| 감사 결과 수정 | P0 bandit 1.9.4(Python 3.14 대응), P1 E2E 26/26 복구+payload.py 제거, P2 lint 0건, P3 +48 테스트(634총) | 2026-04-19 |
-| n8n Phase 3: Issue 자동 close | PR merge 시 Closes #N 키워드 파싱 → Issues API close (SCAManager-side 방어적 보장) | 2026-04-19 |
-| auto_merge 견고성 강화 | merge_pr tuple 반환 + mergeable_state 재시도 + Telegram 실패 알림 (+12 테스트) | 2026-04-19 |
-| P0-4 private→public | _build_result_dict→build_analysis_result_dict, _save_gate_decision→save_gate_decision, _build_notify_tasks→build_notification_tasks | 2026-04-19 |
-| P0-2 Notifier 레지스트리 | NotifyContext dataclass + Notifier Protocol + REGISTRY + build_notification_tasks 루프 축약 | 2026-04-19 |
-| P0-3 Repository 계층 | repository_repo/analysis_repo 신설 + pipeline·router db.query 직접 사용 교체 | 2026-04-19 |
-| P0-1 RepoConfig 동기화 해소 | dataclass fields 루프 + model_dump() — 새 채널 추가 시 7곳→4곳 | 2026-04-19 |
-| P1 RuntimeWarning 수정 | test_pipeline.py MagicMock→RepoConfigData 교체 (coroutine never awaited 제거) | 2026-04-19 |
-| P2 docstring 보강 | ui/router.py 8개 + config.py 1개 함수 docstring 추가 (pylint 9.73→9.77) | 2026-04-19 |
-| P2 database.py 커버리지 | FailoverSessionFactory 예외경로·probe루프·get_db 제너레이터 (+16 테스트, 75%→100%) | 2026-04-19 |
-| P3 ui/router.py 커버리지 | app_base_url/GateDecision cascade/add_repo 분기/reinstall_hook/reinstall_webhook 분기 (+11 테스트, 83.9%→99.4%) | 2026-04-19 |
-| Phase 0 다언어 AI 리뷰 | language.py(50언어 감지) + review_guides(Tier1×10/Tier2×20/Tier3×20) + review_prompt.py(토큰 예산) + ai_review.py 통합 (+207 테스트, pylint 9.77→9.79) | 2026-04-19 |
-| Phase A Registry 인프라 | registry.py + tools/python.py(Analyzer Protocol) + analyze_file Registry 위임 + .py 필터 제거 + CQ_WARNING_CAP 단일 cap + 중복 등록 방지 (+47 테스트, pylint 9.79→9.92) | 2026-04-19 |
-| Phase B Semgrep | tools/semgrep.py — 23개 언어 SUPPORTED_LANGUAGES, metadata.category security 자동 분류, graceful degradation, requirements.txt semgrep>=1.80 (+61 테스트, 1004 총) | 2026-04-19 |
-| Phase C ESLint+ShellCheck | tools/eslint.py(JS/TS) + tools/shellcheck.py(shell) + eslint.config.json(flat config) + nixpacks.toml(nodejs_20+shellcheck) + railway.toml buildCommand 제거 (+70 테스트, 1074 총) | 2026-04-19 |
-| Railway 빌드 수정 | nixPkgs 명시 시 Python provider 완전 교체 버그 + [phases.build] cmds로 npm run build 억제 불가 확인. 해결: aptPkgs로 Node.js 설치 + buildCommand에 eslint 설치 명령 이전 | 2026-04-19 |
-| 품질 감사 수정 | flake8 4건→0건, pylint 9.65→9.77 (+0.12), DeprecationWarning 126,815→1건. Protocol `...`→반환값, docstring 보강, import order, 예외 세분화, pytest-asyncio 1.3.0 업그레이드 | 2026-04-19 |
-| 구조적 코드품질 전면 개선 | 순환 import 해소(AnalysisIssue 이동), language.py dispatch dict, _AnalysisSaveParams, _select_guide_modes 추출, notifier R0917/R0913 disable, pylint 9.77→10.00, flake8 클린, 1074 테스트 전체 통과 | 2026-04-19 |
-| 하드코딩 제거 + 효율화 전체 검수 | constants.py 16개 상수화, notifier/_common.py 공통 헬퍼, GateDecision upsert, webhook secret TTL 캐시 5분, github_issue.py 중복 계산 제거, conftest autouse 캐시 클리어 | 2026-04-19 |
+## 작업 이력 (그룹별)
+
+### 그룹 1 — 핵심 기능 구축 (2026-04-05 ~ 04-12)
+
+| 작업 | 주요 내용 |
+|------|----------|
+| 초기 설계 | FastAPI + PostgreSQL + GitHub OAuth + Webhook + 점수 체계 + Telegram 알림 |
+| Gate 시스템 | 3-옵션(PR 댓글·Auto Approve·Telegram 반자동) 완전 독립 처리 |
+| 웹 대시보드 | 리포 현황·점수 차트·분석 상세·설정 UI |
+| CLI Hook | pre-push hook → AI 리뷰 → 대시보드 반영 |
+| 스코어 버그 수정 | 89점 고정 문제 해소 (SHA 이동 + AI status 필드) |
+
+### 그룹 2 — n8n 자동화 (2026-04-17 ~ 04-19)
+
+| 작업 | 주요 내용 |
+|------|----------|
+| n8n Phase 1 | 저점 Issue 감지 → claude_fix.sh 실행 → PR 자동 생성 |
+| n8n Phase 2 | 봇 PR auto_merge 누락 수정 (re-gate + `claude-fix/` 무한루프 가드) |
+| n8n Phase 3 | PR merge 시 `Closes #N` 키워드 파싱 → GitHub Issues API 자동 close |
+| auto_merge 견고성 | merge_pr tuple 반환 + mergeable_state 재시도 + Telegram 실패 알림 (+12 테스트) |
+
+### 그룹 3 — 코드 품질 / 아키텍처 리팩터 (2026-04-19)
+
+| 작업 | 주요 내용 | 테스트 증분 |
+|------|----------|-----------|
+| 리포지토리 계층 신설 | repository_repo/analysis_repo — pipeline·router db.query 직접 사용 교체 | — |
+| Notifier 레지스트리 | NotifyContext + Notifier Protocol + REGISTRY + 루프 축약 | — |
+| RepoConfig 동기화 해소 | dataclass fields 루프 + model_dump() — 채널 추가 시 7곳→4곳 | — |
+| private→public 리네임 | _build_result_dict→build_analysis_result_dict 등 3개 함수 공개 | — |
+| DB/커버리지 보강 | database.py FailoverSessionFactory 예외경로 (+16, 75%→100%) | +16 |
+| UI 커버리지 보강 | ui/router.py 분기 (+11, 83.9%→99.4%) | +11 |
+| 통합 테스트 | webhook→gate end-to-end 3 시나리오 | +3 |
+| 테스트 엣지케이스 | gate/engine.py·auth/github.py·github_client/repos.py·알림·보안 | +28 |
+| 품질 감사 7라운드 | 정상성·커버리지·결정성·격리성·pylint·flake8·bandit+E2E | — |
+
+### 그룹 4 — 다언어 AI 리뷰 + 정적분석 확장 (Phase 0~C, 2026-04-19)
+
+| Phase | 주요 내용 | 테스트 누계 |
+|-------|----------|-----------|
+| Phase 0 | language.py(50언어) + review_guides(Tier1×10/Tier2×20/Tier3×20) + review_prompt.py(토큰 예산) | 896 |
+| Phase A | registry.py + tools/python.py(Analyzer Protocol) + CQ_WARNING_CAP 단일 cap | 943 |
+| Phase B | tools/semgrep.py — 23개 언어, security 자동 분류, graceful degradation | 1004 |
+| Phase C | tools/eslint.py(JS/TS) + tools/shellcheck.py(shell) + nixpacks 빌드 수정 | **1074** |
+
+> Phase 0~C 통합 회고: [docs/reports/2026-04-19-multilang-expansion-retrospective.md](reports/2026-04-19-multilang-expansion-retrospective.md)
+
+### 그룹 5 — 구조적 코드품질 전면 개선 (2026-04-19)
+
+| 작업 | 주요 내용 |
+|------|----------|
+| 순환 import 해소 | AnalysisIssue를 registry.py로 이동 — static.py↔tools/*.py 순환 제거 |
+| pylint 10.00 달성 | dispatch dict(language.py), _AnalysisSaveParams, _select_guide_modes 추출 |
+| 하드코딩 제거 | constants.py에 16개 상수 추가 (AI 점수 범위·알림 한도·캐시 TTL·타임아웃) |
+| notifier 공통화 | _common.py 신설 — 6개 알림 모듈의 이슈 수집·절단 로직 통합 |
+| GateDecision upsert | save_gate_decision() — 재시도 시 중복 INSERT 방지 |
+| webhook secret 캐시 | _get_webhook_secret() — DB 조회 5분 TTL 캐시 |
+| 테스트 격리 | conftest.py autouse fixture — _webhook_secret_cache 테스트 간 클리어 |
 
 ## 갱신 방법
 
-Phase 완료 후:
 ```bash
-# 수치 확인
-make gate          # pytest + pylint + flake8 + bandit 한번에
-make test-cov      # 커버리지
+make test          # 1074 유지 확인
+make lint          # pylint 10.00 + flake8 0건 + bandit HIGH 0개
+make test-cov      # 96.2% 유지 확인
 
-# 이 파일 수치 업데이트 후 커밋
 git add docs/STATE.md
 git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 ```
 
-## 잔여 갭 (우선순위순)
+## 잔여 과제
 
-| 우선순위 | 항목 |
-|---------|------|
-| ~~P1~~ | ~~`gate/engine.py` 에러 경로~~ **완료** (+8, breakdown=None 버그 수정 포함) |
-| ~~P1~~ | ~~`auth/github.py` OAuth 보안 분기~~ **완료** (+7, app_base_url·display_name·500경로) |
-| ~~P2~~ | ~~웹훅→gate 통합 테스트~~ (`tests/integration/test_webhook_to_gate.py`) **완료** |
-| ~~P2~~ | ~~`github_client/repos.py` commit_scamanager_files 테스트~~ **완료** (+6) |
-| ~~P3~~ | ~~알림 엣지 케이스 (Telegram 4096자, SMTP 타임아웃)~~ **완료** (+11) |
-| ~~P3~~ | ~~보안 심층 (OAuth CSRF, HTML injection, Jinja2 autoescape)~~ **완료** (+6) |
-| ~~P3~~ | ~~CLAUDE.md 주의사항 빈도 기반 재정렬·축소~~ **완료** |
-| **P4** | Phase D — Tier 1 전용 정적분석 도구 (운영 리스크 검토 필요, 도구별 별도 승인) |
+| 우선순위 | 항목 | 비고 |
+|---------|------|------|
+| **P4 — Phase D** | Tier 1 전용 정적분석 도구 확장 | 도구별 별도 승인 필요 (운영 리스크) |
 
-### Phase D 대상 (우선순위순)
+### Phase D 착수 전 결정 사항
 
-| 우선순위 | 도구 | 언어 | 리스크 | 비고 |
-|---------|-----|-----|-------|------|
-| D.1 | cppcheck | C/C++ | 🟢 낮음 (+30MB, apt) | 즉시 착수 가능 |
-| D.2 | slither | Solidity | 🟢 낮음 (+100MB, pip) | 수요 확인 후 |
-| D.3 | RuboCop | Ruby | 🟡 중간 (+80MB, gem) | — |
-| D.4 | golangci-lint | Go | 🟡 중간 (+200MB, go.mod 자동생성) | — |
-| D.5 | PHPStan | PHP | 🟠 높음 (+150MB, PHP 런타임) | 수요 확인 후 |
-| D.6 | detekt | Kotlin | 🟠 높음 (+350MB, JDK 필요) | Docker 전환 후 |
-| D.7 | PMD | Java | 🔴 최상위 (+300MB, JVM cold start) | Docker 전환 후 |
-| D.8 | cargo clippy | Rust | 🔴 최상위 (+700MB, crate 단위 분석) | 아키텍처 변경 필요 |
+1. **도구별 GO/NO-GO 승인** — 한 번에 묶어서 승인 금지, 도구 1개씩 확인
+2. **Docker 전환 여부** — JVM/Rust 계열 포함 시 이미지 2GB+ → 전환 필요
+3. **우선 착수 언어 선택** — 아래 표 참고
+
+### Phase D 도구 목록
+
+| 우선순위 | 도구 | 언어 | 이미지 증가 | 리스크 | 비고 |
+|---------|-----|-----|------------|-------|------|
+| D.1 | cppcheck | C/C++ | +30MB | 🟢 낮음 | apt 단순 설치, 즉시 착수 가능 |
+| D.2 | slither | Solidity | +100MB | 🟢 낮음 | pip install, 수요 확인 후 |
+| D.3 | RuboCop | Ruby | +80MB | 🟡 중간 | gem install |
+| D.4 | golangci-lint | Go | +200MB | 🟡 중간 | go.mod 자동생성 로직 필요 |
+| D.5 | PHPStan | PHP | +150MB | 🟠 높음 | PHP 런타임 추가, 수요 확인 후 |
+| D.6 | detekt | Kotlin | +350MB | 🟠 높음 | JDK 필요, Docker 전환 후 |
+| D.7 | PMD | Java | +300MB | 🔴 최상위 | JVM cold start, Docker 전환 후 |
+| D.8 | cargo clippy | Rust | +700MB | 🔴 최상위 | crate 단위 분석 — 아키텍처 변경 필요 |
+
+> 상세 계획: [계획 문서](../../.claude/plans/sunny-inventing-deer.md) Part 2 참조
