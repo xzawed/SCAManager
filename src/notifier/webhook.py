@@ -10,7 +10,7 @@ from src.analyzer.ai_review import AiReviewResult
 logger = logging.getLogger(__name__)
 
 
-def _build_payload(
+def _build_payload(  # pylint: disable=too-many-positional-arguments
     repo_name: str,
     commit_sha: str,
     score_result: ScoreResult,

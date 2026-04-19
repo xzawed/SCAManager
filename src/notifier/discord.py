@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 _EMBED_DESC_MAX = 4096
 
 
-def _build_embed(
+def _build_embed(  # pylint: disable=too-many-positional-arguments
     repo_name: str,
     commit_sha: str,
     score_result: ScoreResult,

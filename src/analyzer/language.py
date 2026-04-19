@@ -8,6 +8,7 @@ Priority:
 """
 import os
 import re
+from collections.abc import Callable
 from pathlib import PurePosixPath
 
 # Extension → language mapping (lowercase extension)
@@ -157,57 +158,54 @@ def _normalize_path(filename: str) -> PurePosixPath:
     return PurePosixPath(filename.replace("\\", "/"))
 
 
+def _is_python_test(path: PurePosixPath) -> bool:
+    name = path.name
+    parts = path.parts
+    return name.startswith("test_") or name.endswith("_test.py") or "tests" in parts
+
+
+def _is_js_test(path: PurePosixPath) -> bool:
+    stem = path.name.rsplit(".", 1)[0]  # strip final extension
+    return stem.endswith(".test") or stem.endswith(".spec") or "__tests__" in path.parts
+
+
+def _is_go_test(path: PurePosixPath) -> bool:
+    return path.name.endswith("_test.go")
+
+
+def _is_java_test(path: PurePosixPath) -> bool:
+    name = path.name
+    if not name.endswith(".java"):
+        return False
+    stem = name[:-5]  # strip ".java"
+    return stem.endswith("Test") or stem.endswith("Tests") or "test" in path.parts
+
+
+def _is_ruby_test(path: PurePosixPath) -> bool:
+    name = path.name
+    return name.endswith("_spec.rb") or name.endswith("_test.rb") or "spec" in path.parts
+
+
+def _is_shell_test(path: PurePosixPath) -> bool:
+    stem = path.name.rsplit(".", 1)[0]
+    return stem.endswith(".test") or "tests" in path.parts
+
+
+_TEST_CHECKERS: dict[str, Callable[[PurePosixPath], bool]] = {
+    "python": _is_python_test,
+    "javascript": _is_js_test,
+    "typescript": _is_js_test,
+    "go": _is_go_test,
+    "java": _is_java_test,
+    "ruby": _is_ruby_test,
+    "shell": _is_shell_test,
+}
+
+
 def is_test_file(filename: str, language: str) -> bool:
     """언어별 테스트 파일 규칙."""
     path = _normalize_path(filename)
-    basename = path.name
-    parts = path.parts
-
-    if language == "python":
-        if basename.startswith("test_") and basename.endswith(".py"):
-            return True
-        if basename.endswith("_test.py"):
-            return True
-        if "tests" in parts:
-            return True
+    checker = _TEST_CHECKERS.get(language)
+    if checker is None:
         return False
-
-    if language in ("javascript", "typescript"):
-        stem = basename.rsplit(".", 1)[0]  # strip final extension
-        # foo.test.ts, foo.spec.tsx — stem ends with .test or .spec
-        if stem.endswith(".test") or stem.endswith(".spec"):
-            return True
-        if "__tests__" in parts:
-            return True
-        return False
-
-    if language == "go":
-        return basename.endswith("_test.go")
-
-    if language == "java":
-        if not basename.endswith(".java"):
-            return False
-        name = basename[:-5]  # strip ".java"
-        if name.endswith("Test") or name.endswith("Tests"):
-            return True
-        if "test" in parts:  # src/test/java/...
-            return True
-        return False
-
-    if language == "ruby":
-        if basename.endswith("_spec.rb") or basename.endswith("_test.rb"):
-            return True
-        if "spec" in parts:
-            return True
-        return False
-
-    if language == "shell":
-        stem = basename.rsplit(".", 1)[0]
-        if stem.endswith(".test"):
-            return True
-        if "tests" in parts:
-            return True
-        return False
-
-    # Generic / unknown languages — no reliable test convention
-    return False
+    return checker(path)

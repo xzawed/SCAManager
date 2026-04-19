@@ -77,29 +77,28 @@ def detect_languages_from_patches(
     return sorted(freq, key=lambda lang: -freq[lang])
 
 
+def _select_guide_modes(languages: list[str]) -> dict[str, str]:
+    """언어 목록에서 각 언어의 가이드 모드를 결정한다 (full / compact / __rest__)."""
+    n = len(languages)
+    if n <= 3:
+        return {lang: "full" for lang in languages}
+    if n <= 6:
+        return {lang: ("full" if get_tier(lang) == 1 else "compact") for lang in languages}
+    if n <= 10:
+        return {lang: ("full" if i < 3 else "compact") for i, lang in enumerate(languages)}
+    modes = {lang: "compact" for lang in languages[:5]}
+    rest = languages[5:]
+    if rest:
+        modes["__rest__"] = ", ".join(rest)
+    return modes
+
+
 def _build_lang_guides(languages: list[str], budget_chars: int) -> str:
     """토큰 예산 내에서 언어별 가이드 섹션을 조립한다."""
-    n = len(languages)
-    if n == 0:
+    if not languages:
         return ""
 
-    if n <= 3:
-        modes = {lang: "full" for lang in languages}
-    elif n <= 6:
-        modes = {}
-        for lang in languages:
-            modes[lang] = "full" if get_tier(lang) == 1 else "compact"
-    elif n <= 10:
-        modes = {}
-        for i, lang in enumerate(languages):
-            modes[lang] = "full" if i < 3 else "compact"
-    else:
-        # 상위 5개만 compact, 나머지는 이름만
-        modes = {lang: "compact" for lang in languages[:5]}
-        rest = languages[5:]
-        if rest:
-            modes["__rest__"] = ", ".join(rest)
-
+    modes = _select_guide_modes(languages)
     parts: list[str] = []
     used_chars = 0
 
@@ -110,7 +109,6 @@ def _build_lang_guides(languages: list[str], budget_chars: int) -> str:
             snippet = get_guide(lang, mode) + "\n"
 
         if used_chars + len(snippet) > budget_chars:
-            # 예산 초과 시 compact로 다운그레이드
             if mode == "full":
                 snippet = get_guide(lang, "compact") + "\n"
             if used_chars + len(snippet) > budget_chars:

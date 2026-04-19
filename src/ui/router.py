@@ -1,6 +1,7 @@
 """Web UI router — Jinja2 dashboard pages for repos, analyses, and settings."""
 import logging
 import secrets
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -219,7 +220,7 @@ def overview(request: Request, current_user: CurrentUser = Depends(require_login
 
 
 @router.get("/repos/{repo_name:path}/settings", response_class=HTMLResponse)
-def repo_settings(
+def repo_settings(  # pylint: disable=too-many-positional-arguments
     request: Request,
     repo_name: str,
     hook_ok: int = 0,
@@ -335,7 +336,7 @@ async def reinstall_webhook(
                 if "/webhooks/github" in hook_url:
                     await delete_webhook(token, repo_name, hook["id"])
                     logger.info("Deleted duplicate webhook id=%d url=%s", hook["id"], hook_url)
-        except Exception as exc:  # noqa: BLE001
+        except (httpx.HTTPError, KeyError, ValueError, OSError) as exc:
             logger.warning("Webhook cleanup failed, proceeding with reinstall: %s", exc)
 
         new_secret = secrets.token_hex(32)

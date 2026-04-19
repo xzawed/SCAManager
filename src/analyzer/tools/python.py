@@ -8,8 +8,7 @@ import json
 import logging
 import subprocess  # nosec B404
 
-from src.analyzer.registry import AnalyzeContext
-from src.analyzer.static import AnalysisIssue
+from src.analyzer.registry import AnalyzeContext, AnalysisIssue, register
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +149,6 @@ class _BanditAnalyzer:
 
 # 모듈 로드 시 자동 등록
 def _register_python_analyzers() -> None:
-    from src.analyzer.registry import register  # noqa: PLC0415
     register(_PylintAnalyzer())
     register(_Flake8Analyzer())
     register(_BanditAnalyzer())

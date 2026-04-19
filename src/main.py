@@ -45,7 +45,7 @@ async def lifespan(_app: FastAPI):
         logger.info("DB migration completed")
     except asyncio.TimeoutError:
         logger.error("DB migration timed out after 30s — starting app anyway")
-    except Exception as exc:  # noqa: BLE001 — 마이그레이션 실패가 앱 시작을 막아선 안 됨
+    except (OSError, RuntimeError, ValueError, ImportError) as exc:
         logger.error("DB migration failed: %s", exc)
     yield
 

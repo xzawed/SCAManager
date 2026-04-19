@@ -5,7 +5,7 @@ from src.models.repo_config import RepoConfig
 
 
 @dataclass
-class RepoConfigData:
+class RepoConfigData:  # pylint: disable=too-many-instance-attributes
     """RepoConfig ORM 레코드를 Python 데이터클래스로 표현한다 (단일 출처)."""
 
     repo_full_name: str

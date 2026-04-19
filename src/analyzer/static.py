@@ -4,21 +4,15 @@ import os
 import tempfile
 from dataclasses import dataclass, field
 
+import src.analyzer.tools.eslint  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
+import src.analyzer.tools.python  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
+import src.analyzer.tools.semgrep  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
+import src.analyzer.tools.shellcheck  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
 from src.analyzer.language import detect_language, is_test_file
+from src.analyzer.registry import REGISTRY, AnalyzeContext, AnalysisIssue
+from src.analyzer.tools.python import _BanditAnalyzer, _Flake8Analyzer, _PylintAnalyzer
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class AnalysisIssue:
-    """A single issue reported by a static analysis tool."""
-
-    tool: str
-    severity: str       # "error" | "warning"
-    message: str
-    line: int = 0
-    category: str = "code_quality"  # "code_quality" | "security"
-    language: str = ""              # detect_language() 반환값
 
 
 @dataclass
@@ -33,12 +27,6 @@ def analyze_file(filename: str, content: str) -> StaticAnalysisResult:
     """Run all applicable registered analyzers on a single file."""
     if not content.strip():
         return StaticAnalysisResult(filename=filename)
-
-    from src.analyzer.registry import REGISTRY, AnalyzeContext  # noqa: PLC0415
-    import src.analyzer.tools.python  # noqa: PLC0415,F401 — 모듈 로드 시 자동 등록
-    import src.analyzer.tools.semgrep  # noqa: PLC0415,F401 — 모듈 로드 시 자동 등록
-    import src.analyzer.tools.eslint  # noqa: PLC0415,F401 — 모듈 로드 시 자동 등록
-    import src.analyzer.tools.shellcheck  # noqa: PLC0415,F401 — 모듈 로드 시 자동 등록
 
     language = detect_language(filename, content)
     is_test = is_test_file(filename, language)
@@ -79,8 +67,6 @@ def _is_test_file(filename: str, language: str = "python") -> bool:
 
 def _run_pylint(path: str, is_test: bool = False) -> list[AnalysisIssue]:
     """Deprecated: use Registry pattern. Kept for backward compatibility."""
-    from src.analyzer.tools.python import _PylintAnalyzer  # noqa: PLC0415
-    from src.analyzer.registry import AnalyzeContext  # noqa: PLC0415
     ctx = AnalyzeContext(filename=path, content="", language="python",
                          is_test=is_test, tmp_path=path)
     return _PylintAnalyzer().run(ctx)
@@ -88,8 +74,6 @@ def _run_pylint(path: str, is_test: bool = False) -> list[AnalysisIssue]:
 
 def _run_flake8(path: str, is_test: bool = False) -> list[AnalysisIssue]:
     """Deprecated: use Registry pattern. Kept for backward compatibility."""
-    from src.analyzer.tools.python import _Flake8Analyzer  # noqa: PLC0415
-    from src.analyzer.registry import AnalyzeContext  # noqa: PLC0415
     ctx = AnalyzeContext(filename=path, content="", language="python",
                          is_test=is_test, tmp_path=path)
     return _Flake8Analyzer().run(ctx)
@@ -97,8 +81,6 @@ def _run_flake8(path: str, is_test: bool = False) -> list[AnalysisIssue]:
 
 def _run_bandit(path: str) -> list[AnalysisIssue]:
     """Deprecated: use Registry pattern. Kept for backward compatibility."""
-    from src.analyzer.tools.python import _BanditAnalyzer  # noqa: PLC0415
-    from src.analyzer.registry import AnalyzeContext  # noqa: PLC0415
     ctx = AnalyzeContext(filename=path, content="", language="python",
                          is_test=False, tmp_path=path)
     return _BanditAnalyzer().run(ctx)

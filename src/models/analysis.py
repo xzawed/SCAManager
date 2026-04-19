@@ -5,6 +5,7 @@ from sqlalchemy.orm import relationship
 from src.database import Base
 
 
+# pylint: disable=too-few-public-methods
 class Analysis(Base):
     """Push/PR 분석 이력 테이블 — commit_sha별 점수·등급·AI 리뷰 결과 저장."""
 

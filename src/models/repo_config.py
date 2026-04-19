@@ -4,6 +4,7 @@ from sqlalchemy import Column, Integer, String, DateTime, Boolean
 from src.database import Base
 
 
+# pylint: disable=too-few-public-methods
 class RepoConfig(Base):
     """리포별 Gate·알림 설정 테이블 (approve_mode·auto_merge·채널 설정 포함)."""
 

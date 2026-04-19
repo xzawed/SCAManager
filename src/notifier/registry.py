@@ -5,7 +5,7 @@ from typing import Any, Protocol, runtime_checkable
 
 
 @dataclass
-class NotifyContext:
+class NotifyContext:  # pylint: disable=too-many-instance-attributes
     """알림 채널이 필요로 하는 모든 컨텍스트를 담는 데이터 클래스."""
     repo_name: str
     commit_sha: str

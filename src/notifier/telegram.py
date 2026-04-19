@@ -24,7 +24,7 @@ async def telegram_post_message(bot_token: str, chat_id: str, payload: dict) -> 
         r.raise_for_status()
 
 
-def _build_message(
+def _build_message(  # pylint: disable=too-many-positional-arguments
     repo_name: str,
     commit_sha: str,
     score_result: ScoreResult,

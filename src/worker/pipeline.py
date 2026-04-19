@@ -1,6 +1,7 @@
 """Analysis pipeline — orchestrates static analysis, AI review, scoring, and notifications."""
 import asyncio
 import logging
+from dataclasses import dataclass
 
 import httpx
 from sqlalchemy.exc import SQLAlchemyError
@@ -28,6 +29,20 @@ from src.notifier.registry import NotifyContext, REGISTRY, register
 from src.repositories import repository_repo, analysis_repo
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class _AnalysisSaveParams:  # pylint: disable=too-many-instance-attributes
+    """_save_and_gate에 전달하는 분석 저장 파라미터 묶음."""
+
+    repo_name: str
+    commit_sha: str
+    commit_message: str
+    pr_number: int | None
+    owner_token: str
+    analysis_results: list
+    ai_review: object  # AiReviewResult
+    score_result: object  # ScoreResult
 
 
 # ---------------------------------------------------------------------------
@@ -349,72 +364,85 @@ async def _regate_pr_if_needed(
         logger.error("Re-gate check failed: %s", exc)
 
 
-async def _save_and_gate(
-    db: Session,
-    repo_name: str,
-    commit_sha: str,
-    commit_message: str,
-    pr_number: int | None,
-    owner_token: str,
-    analysis_results: list,
-    ai_review,
-    score_result,
-):
+async def _save_and_gate(db: Session, params: _AnalysisSaveParams):
     """Analysis를 DB에 저장하고 Gate Engine을 실행한다.
 
     Returns:
         (repo_config, analysis_id, result_dict) 튜플.
         중복 커밋이면 (repo_config_or_None, None, None).
     """
-    repo = repository_repo.find_by_full_name(db, repo_name)
+    repo = repository_repo.find_by_full_name(db, params.repo_name)
     if repo is None:
-        logger.warning("Repository not found in second session: %s", repo_name)
+        logger.warning("Repository not found in second session: %s", params.repo_name)
         return None, None, None
     # 멱등성 재확인 — 동시 Webhook 전달로 인한 중복 Analysis 삽입 방지 (TOCTOU 완화)
-    if analysis_repo.find_by_sha(db, commit_sha, repo.id):
-        logger.info("Commit %s already saved (concurrent insert detected), skipping", commit_sha)
+    if analysis_repo.find_by_sha(db, params.commit_sha, repo.id):
+        logger.info("Commit %s already saved (concurrent insert detected), skipping", params.commit_sha)
         try:
-            return get_repo_config(db, repo_name), None, None
+            return get_repo_config(db, params.repo_name), None, None
         except (SQLAlchemyError, KeyError):
             return None, None, None
     result_dict = build_analysis_result_dict(
-        ai_review, score_result, analysis_results,
-        source="pr" if pr_number else "push",
+        params.ai_review, params.score_result, params.analysis_results,
+        source="pr" if params.pr_number else "push",
     )
     analysis = analysis_repo.save_new(db, Analysis(
         repo_id=repo.id,
-        commit_sha=commit_sha,
-        commit_message=commit_message,
-        pr_number=pr_number,
-        score=score_result.total,
-        grade=score_result.grade,
+        commit_sha=params.commit_sha,
+        commit_message=params.commit_message,
+        pr_number=params.pr_number,
+        score=params.score_result.total,
+        grade=params.score_result.grade,
         result=result_dict,
     ))
     analysis_id = analysis.id
     try:
-        repo_config = get_repo_config(db, repo_name)
+        repo_config = get_repo_config(db, params.repo_name)
     except (SQLAlchemyError, KeyError):
-        logger.warning("Failed to load repo config for %s, using defaults", repo_name)
+        logger.warning("Failed to load repo config for %s, using defaults", params.repo_name)
         repo_config = None
-    if pr_number is not None:
+    if params.pr_number is not None:
         try:
             await run_gate_check(
-                repo_name=repo_name,
-                pr_number=pr_number,
+                repo_name=params.repo_name,
+                pr_number=params.pr_number,
                 analysis_id=analysis_id,
                 result=result_dict,
-                github_token=owner_token,
+                github_token=params.owner_token,
                 db=db,
                 config=repo_config,
             )
         except (httpx.HTTPError, SQLAlchemyError, KeyError, ValueError, OSError) as exc:
             logger.error("Gate check failed: %s", exc)
-        except Exception as exc:  # noqa: BLE001 — 예기치 못한 예외 최상위 방어
+        except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
             logger.error("Gate check unexpected error: %s", exc, exc_info=True)
     return repo_config, analysis_id, result_dict
 
 
-async def run_analysis_pipeline(event: str, data: dict) -> None:
+def _collect_files(
+    event: str,
+    owner_token: str,
+    repo_name: str,
+    commit_sha: str,
+    pr_number: int | None,
+) -> list:
+    """이벤트 타입에 따라 변경 파일 목록을 수집한다."""
+    if event == "pull_request":
+        return get_pr_files(owner_token, repo_name, pr_number)
+    return get_push_files(owner_token, repo_name, commit_sha)
+
+
+async def _send_notifications(notify_tasks: list, task_names: list[str]) -> None:
+    """알림 채널들을 병렬 실행하고 실패를 로그로 기록한다."""
+    results = await asyncio.gather(*notify_tasks, return_exceptions=True)
+    for idx, exc in enumerate(results):
+        if isinstance(exc, Exception):
+            name = task_names[idx] if idx < len(task_names) else "unknown"
+            logger.error("Notification [%s] failed: %s", name, exc,
+                         exc_info=(type(exc), exc, exc.__traceback__))
+
+
+async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disable=too-many-locals
     """Webhook 이벤트를 받아 정적분석 + AI 리뷰 → 점수 → Gate → 알림 파이프라인을 실행한다.
 
     Args:
@@ -437,17 +465,14 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
         )
 
         with SessionLocal() as db:
-            result = _ensure_repo(db, repo_name, commit_sha)
-            if result is None:
+            ensure_result = _ensure_repo(db, repo_name, commit_sha)
+            if ensure_result is None:
                 if event == "pull_request" and pr_number is not None:
                     await _regate_pr_if_needed(db, repo_name, commit_sha, pr_number)
                 return
-            _, owner_token = result
+            _, owner_token = ensure_result
 
-        if event == "pull_request":
-            files = get_pr_files(owner_token, repo_name, pr_number)
-        else:
-            files = get_push_files(owner_token, repo_name, commit_sha)
+        files = _collect_files(event, owner_token, repo_name, commit_sha, pr_number)
 
         if not files:
             logger.info("No changed files in %s @ %s", repo_name, commit_sha)
@@ -460,11 +485,18 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
         )
         score_result = calculate_score(analysis_results, ai_review=ai_review)
 
+        save_params = _AnalysisSaveParams(
+            repo_name=repo_name,
+            commit_sha=commit_sha,
+            commit_message=commit_message,
+            pr_number=pr_number,
+            owner_token=owner_token,
+            analysis_results=analysis_results,
+            ai_review=ai_review,
+            score_result=score_result,
+        )
         with SessionLocal() as db:
-            repo_config, analysis_id, result_dict = await _save_and_gate(
-                db, repo_name, commit_sha, commit_message, pr_number,
-                owner_token, analysis_results, ai_review, score_result,
-            )
+            repo_config, analysis_id, result_dict = await _save_and_gate(db, save_params)
 
         notify_tasks, task_names = build_notification_tasks(
             repo_config=repo_config,
@@ -479,12 +511,7 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
             result_dict=result_dict,
             pr_head_ref=pr_head_ref,
         )
-        results = await asyncio.gather(*notify_tasks, return_exceptions=True)
-        for idx, exc in enumerate(results):
-            if isinstance(exc, Exception):
-                name = task_names[idx] if idx < len(task_names) else "unknown"
-                logger.error("Notification [%s] failed: %s", name, exc,
-                             exc_info=(type(exc), exc, exc.__traceback__))
+        await _send_notifications(notify_tasks, task_names)
 
-    except Exception:  # noqa: BLE001 — 파이프라인 최상위 방어 — 모든 예외를 로그로 기록하고 종료
+    except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
         logger.exception("Analysis pipeline failed for event=%s", event)
