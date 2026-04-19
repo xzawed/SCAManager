@@ -44,6 +44,18 @@ async def merge_pr(
             )
             r.raise_for_status()
             return True
+    except httpx.HTTPStatusError as exc:
+        gh_msg = ""
+        try:
+            gh_msg = exc.response.json().get("message", "")
+        except (ValueError, AttributeError):
+            pass
+        logger.warning(
+            "PR Merge 실패 (repo=%s, pr=%d): HTTP %d — %s",
+            repo_full_name, pr_number, exc.response.status_code,
+            gh_msg or str(exc),
+        )
+        return False
     except httpx.HTTPError as exc:
         logger.warning("PR Merge 실패 (repo=%s, pr=%d): %s", repo_full_name, pr_number, exc)
         return False

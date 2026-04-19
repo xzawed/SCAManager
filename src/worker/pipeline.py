@@ -78,11 +78,12 @@ async def _run_static_analysis(files: list[ChangedFile]) -> list[StaticAnalysisR
     )
 
 
-def _build_notify_tasks(  # pylint: disable=too-many-positional-arguments
+def _build_notify_tasks(  # pylint: disable=too-many-positional-arguments,too-many-arguments
     repo_config,
     repo_name, commit_sha, pr_number,
     owner_token, score_result, analysis_results, ai_review,
     analysis_id=None, result_dict=None,
+    pr_head_ref=None,
 ):
     """Build coroutine task list for all active notification channels."""
     tasks = []
@@ -181,7 +182,9 @@ def _build_notify_tasks(  # pylint: disable=too-many-positional-arguments
         names.append("commit_comment")
 
     # GitHub Issue (낮은 점수 OR bandit HIGH — 두 조건 중 하나라도 충족 시 1건)
-    if repo_config and repo_config.create_issue and result_dict:
+    # 봇 자동화 브랜치(claude-fix/*)는 이슈 생성 제외 — 무한 루프 방지
+    is_bot_pr = pr_head_ref and pr_head_ref.startswith("claude-fix/")
+    if repo_config and repo_config.create_issue and result_dict and not is_bot_pr:
         has_bandit_high = any(
             i.get("severity") == "HIGH" and i.get("tool") == "bandit"
             for i in (result_dict.get("issues") or [])
@@ -226,6 +229,46 @@ def _ensure_repo(db: Session, repo_name: str, commit_sha: str) -> tuple[Reposito
         logger.info("Commit %s already analyzed, skipping", commit_sha)
         return None
     return repo, owner_token
+
+
+async def _regate_pr_if_needed(
+    db: Session, repo_name: str, commit_sha: str, pr_number: int
+) -> None:
+    """push 이후 도착한 PR 이벤트에서 기존 Analysis에 pr_number를 부여하고 gate만 재실행한다.
+
+    동일 SHA Analysis가 pr_number=None으로 저장된 경우(push 이벤트가 PR보다 먼저 도착),
+    PR 이벤트 수신 시 분석을 재실행하지 않고 gate 경로만 진입한다.
+    pr_number가 이미 같으면 아무 작업도 하지 않는다.
+    """
+    repo = db.query(Repository).filter_by(full_name=repo_name).first()
+    if repo is None:
+        return
+    existing = db.query(Analysis).filter_by(commit_sha=commit_sha, repo_id=repo.id).first()
+    if existing is None or existing.pr_number == pr_number:
+        return
+    try:
+        existing.pr_number = pr_number
+        db.commit()
+    except SQLAlchemyError as exc:
+        logger.error("pr_number update failed (sha=%s, pr=#%d): %s", commit_sha, pr_number, exc)
+        db.rollback()
+        return
+    owner_token: str = settings.github_token
+    if repo.owner and repo.owner.plaintext_token:
+        owner_token = repo.owner.plaintext_token
+    try:
+        await run_gate_check(
+            repo_name=repo_name,
+            pr_number=pr_number,
+            analysis_id=existing.id,
+            result=existing.result,
+            github_token=owner_token,
+            db=db,
+        )
+        logger.info("Re-gated PR #%d for existing Analysis %d (sha=%s)",
+                    pr_number, existing.id, commit_sha[:8])
+    except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+        logger.error("Re-gate check failed: %s", exc)
 
 
 async def _save_and_gate(
@@ -311,10 +354,16 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
     """
     try:
         repo_name, commit_sha, commit_message, pr_number = _extract_event_metadata(event, data)
+        pr_head_ref = (
+            data.get("pull_request", {}).get("head", {}).get("ref")
+            if event == "pull_request" else None
+        )
 
         with SessionLocal() as db:
             result = _ensure_repo(db, repo_name, commit_sha)
             if result is None:
+                if event == "pull_request" and pr_number is not None:
+                    await _regate_pr_if_needed(db, repo_name, commit_sha, pr_number)
                 return
             _, owner_token = result
 
@@ -351,6 +400,7 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:
             ai_review=ai_review,
             analysis_id=analysis_id,
             result_dict=result_dict,
+            pr_head_ref=pr_head_ref,
         )
         results = await asyncio.gather(*notify_tasks, return_exceptions=True)
         for idx, exc in enumerate(results):
