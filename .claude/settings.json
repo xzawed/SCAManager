@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python -c \"import sys,json; d=json.load(sys.stdin); f=d.get('tool_input',{}).get('file_path',''); exit(0 if 'SCAManager/src/' in f else 1)\" && cd D:/Source/SCAManager && python -m pytest tests/ -x -q 2>&1 | tail -8 || true",
+            "command": "python -c \"import sys,json; d=json.load(sys.stdin); f=d.get('tool_input',{}).get('file_path',''); exit(0 if 'SCAManager/src/' in f else 1)\" && cd \"f:/DEVELOPMENT/SOURCE/CLAUDE/SCAManager\" && python -m pytest tests/ -x -q 2>&1 | tail -8 || true",
             "timeout": 60
           }
         ]

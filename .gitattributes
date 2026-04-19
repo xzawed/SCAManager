@@ -1,0 +1,11 @@
+# Force LF line endings in repository; suppress CRLF conversion warnings on Windows
+* text=auto eol=lf
+
+# Binaries — no EOL conversion
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.db binary
