@@ -78,6 +78,7 @@ def _mock_db(repo: MagicMock | None = None) -> MagicMock:
         repo = _mock_repo()
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = repo
+    mock_db.query.return_value.filter_by.return_value.first.return_value = repo
     mock_db.__enter__ = MagicMock(return_value=mock_db)
     mock_db.__exit__ = MagicMock(return_value=None)
     return mock_db
@@ -230,9 +231,10 @@ def test_issues_event_passes_repo_token_to_notify():
     mock_repo_obj.owner = mock_owner
     mock_repo_obj.webhook_secret = None  # 전역 시크릿 사용 (MagicMock이 되면 HMAC 실패)
 
-    # DB mock: query(Repository).filter(...).first() → mock_repo_obj
+    # DB mock: query(Repository).filter/filter_by(...).first() → mock_repo_obj
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = mock_repo_obj
+    mock_db.query.return_value.filter_by.return_value.first.return_value = mock_repo_obj
     mock_db.__enter__ = MagicMock(return_value=mock_db)
     mock_db.__exit__ = MagicMock(return_value=None)
 

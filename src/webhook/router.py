@@ -13,9 +13,8 @@ from src.worker.pipeline import run_analysis_pipeline
 from src.gate.engine import save_gate_decision
 from src.gate.github_review import post_github_review, merge_pr
 from src.config_manager.manager import get_repo_config
-from src.models.analysis import Analysis
-from src.models.repository import Repository
 from src.database import SessionLocal
+from src.repositories import repository_repo, analysis_repo
 from src.constants import HANDLED_EVENTS, PR_HANDLED_ACTIONS
 from src.notifier.n8n import notify_n8n_issue
 from src.github_client.issues import close_issue
@@ -61,7 +60,7 @@ async def _handle_merged_pr_event(data: dict) -> dict:
     token = ""
     try:
         with SessionLocal() as db:
-            repo = db.query(Repository).filter(Repository.full_name == repo_name).first()
+            repo = repository_repo.find_by_full_name(db, repo_name)
             if repo and repo.owner:
                 token = repo.owner.plaintext_token or ""
     except Exception as exc:  # noqa: BLE001
@@ -110,9 +109,7 @@ async def github_webhook(
     if full_name:
         try:
             with SessionLocal() as db:
-                repo = db.query(Repository).filter(
-                    Repository.full_name == full_name
-                ).first()
+                repo = repository_repo.find_by_full_name(db, full_name)
                 if repo and repo.webhook_secret:
                     secret = repo.webhook_secret
         except Exception as exc:  # noqa: BLE001
@@ -155,7 +152,7 @@ async def _handle_issues_event(data: dict, background_tasks: BackgroundTasks) ->
         with SessionLocal() as db:
             config = get_repo_config(db, repo_name)
             n8n_url = config.n8n_webhook_url
-            repo = db.query(Repository).filter(Repository.full_name == repo_name).first()
+            repo = repository_repo.find_by_full_name(db, repo_name)
             if repo and repo.owner:
                 repo_token = repo.owner.plaintext_token or ""
     except Exception as exc:  # noqa: BLE001
@@ -187,11 +184,11 @@ async def handle_gate_callback(
 ) -> None:
     with SessionLocal() as db:
         try:
-            analysis = db.query(Analysis).filter_by(id=analysis_id).first()
+            analysis = analysis_repo.find_by_id(db, analysis_id)
             if not analysis:
                 logger.warning("handle_gate_callback: analysis %d not found", analysis_id)
                 return
-            repo = db.query(Repository).filter_by(id=analysis.repo_id).first()
+            repo = repository_repo.find_by_id(db, analysis.repo_id)
             if not repo:
                 return
             github_token = (
