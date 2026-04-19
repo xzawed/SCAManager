@@ -15,6 +15,7 @@ from src.constants import (
 
 @dataclass
 class ScoreResult:
+    """분석 점수 결과 (총점·등급·항목별 세부 점수)."""
     total: int
     grade: str
     code_quality_score: int
@@ -41,9 +42,9 @@ def calculate_score(
     all_issues = [issue for r in analysis_results for issue in r.issues]
 
     # category 기반 집계 — tool 이름에 무관하게 미래 도구(Semgrep 등)도 동일하게 처리
-    cq_errors   = sum(1 for i in all_issues if i.category == "code_quality" and i.severity == "error")
+    cq_errors = sum(1 for i in all_issues if i.category == "code_quality" and i.severity == "error")
     cq_warnings = sum(1 for i in all_issues if i.category == "code_quality" and i.severity == "warning")
-    sec_errors  = sum(1 for i in all_issues if i.category == "security" and i.severity == "error")
+    sec_errors = sum(1 for i in all_issues if i.category == "security" and i.severity == "error")
     sec_warnings = sum(1 for i in all_issues if i.category == "security" and i.severity == "warning")
 
     code_quality_score = max(0, CODE_QUALITY_MAX

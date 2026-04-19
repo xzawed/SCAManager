@@ -2,6 +2,8 @@
 import asyncio
 import logging
 
+import httpx
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.database import SessionLocal
@@ -24,7 +26,6 @@ from src.notifier.email import send_email_notification
 from src.config_manager.manager import get_repo_config
 from src.notifier.registry import NotifyContext, REGISTRY, register
 from src.repositories import repository_repo, analysis_repo
-from sqlalchemy.exc import SQLAlchemyError
 
 logger = logging.getLogger(__name__)
 
@@ -406,8 +407,10 @@ async def _save_and_gate(
                 db=db,
                 config=repo_config,
             )
-        except Exception as exc:  # noqa: BLE001 — gate check는 httpx·DB·기타 다양한 예외 발생 가능
+        except (httpx.HTTPError, SQLAlchemyError, KeyError, ValueError, OSError) as exc:
             logger.error("Gate check failed: %s", exc)
+        except Exception as exc:  # noqa: BLE001 — 예기치 못한 예외 최상위 방어
+            logger.error("Gate check unexpected error: %s", exc, exc_info=True)
     return repo_config, analysis_id, result_dict
 
 

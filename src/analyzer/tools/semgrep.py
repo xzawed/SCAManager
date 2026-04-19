@@ -32,12 +32,15 @@ class _SemgrepAnalyzer:
     })
 
     def supports(self, ctx: AnalyzeContext) -> bool:
+        """Semgrep 지원 언어 여부 확인."""
         return ctx.language in self.SUPPORTED_LANGUAGES
 
     def is_enabled(self, ctx: AnalyzeContext) -> bool:  # pylint: disable=unused-argument
+        """semgrep 바이너리 설치 여부 확인."""
         return shutil.which("semgrep") is not None
 
     def run(self, ctx: AnalyzeContext) -> list[AnalysisIssue]:
+        """semgrep auto 룰셋으로 분석 후 이슈 목록 반환."""
         try:
             r = subprocess.run(  # nosec B603 B607
                 ["semgrep", "scan", "--config=auto", "--json",

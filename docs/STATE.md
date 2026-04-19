@@ -2,18 +2,19 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-19, Phase C — ESLint + ShellCheck)
+## 현재 수치 (2026-04-19, 품질 감사 후 수정)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1074개** | `make test` (+70 from Phase C) |
+| 단위 테스트 | **1074개** | pytest (0 failed, 1 warning) |
 | E2E 테스트 | **38개** | `make test-e2e` (Chromium Playwright) |
-| pylint | **9.89/10** | `make lint` |
+| pylint | **9.77/10** | `python -m pylint src/` |
 | 커버리지 | **96.2%** | `make test-cov` (database.py 100%, ui/router.py 99.4%) |
 | bandit HIGH | **0개** | 실측 확인 (1.9.4 Python 3.14 대응) |
 | flake8 | **0건** | `flake8 src/` |
 | 지원 언어 (AI 리뷰) | **50개** | language.py 감지, Tier1/2/3 가이드 |
 | 지원 언어 (정적분석) | **34개+** | Semgrep 23 + ESLint 2 + ShellCheck 1 + Python 3도구 |
+| pytest-asyncio | **1.3.0** | Python 3.14 DeprecationWarning 126,815건→1건 |
 
 **다언어 확장 프로젝트 (Phase 0~C) 완료** — 회고 문서: [docs/reports/2026-04-19-multilang-expansion-retrospective.md](reports/2026-04-19-multilang-expansion-retrospective.md)
 
@@ -49,6 +50,7 @@
 | Phase B Semgrep | tools/semgrep.py — 23개 언어 SUPPORTED_LANGUAGES, metadata.category security 자동 분류, graceful degradation, requirements.txt semgrep>=1.80 (+61 테스트, 1004 총) | 2026-04-19 |
 | Phase C ESLint+ShellCheck | tools/eslint.py(JS/TS) + tools/shellcheck.py(shell) + eslint.config.json(flat config) + nixpacks.toml(nodejs_20+shellcheck) + railway.toml buildCommand 제거 (+70 테스트, 1074 총) | 2026-04-19 |
 | Railway 빌드 수정 | nixPkgs 명시 시 Python provider 완전 교체 버그 + [phases.build] cmds로 npm run build 억제 불가 확인. 해결: aptPkgs로 Node.js 설치 + buildCommand에 eslint 설치 명령 이전 | 2026-04-19 |
+| 품질 감사 수정 | flake8 4건→0건, pylint 9.65→9.77 (+0.12), DeprecationWarning 126,815→1건. Protocol `...`→반환값, docstring 보강, import order, 예외 세분화, pytest-asyncio 1.3.0 업그레이드 | 2026-04-19 |
 
 ## 갱신 방법
 
