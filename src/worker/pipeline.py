@@ -22,9 +22,183 @@ from src.notifier.slack import send_slack_notification
 from src.notifier.webhook import send_webhook_notification
 from src.notifier.email import send_email_notification
 from src.config_manager.manager import get_repo_config
+from src.notifier.registry import NotifyContext, REGISTRY, register
 from sqlalchemy.exc import SQLAlchemyError
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# 알림 채널 구현체 — Notifier 프로토콜 구현 + 레지스트리 등록
+# 새 채널 추가: 클래스 하나 작성 후 register() 호출만으로 완성.
+# ---------------------------------------------------------------------------
+# pylint: disable=missing-function-docstring
+
+class _TelegramChannel:
+    name = "telegram"
+
+    def is_enabled(self, ctx: NotifyContext) -> bool:  # pylint: disable=unused-argument
+        return True  # 항상 활성 (global fallback 포함)
+
+    async def send(self, ctx: NotifyContext) -> None:
+        chat_id = (ctx.config.notify_chat_id if ctx.config else None) or settings.telegram_chat_id
+        await send_analysis_result(
+            bot_token=settings.telegram_bot_token,
+            chat_id=chat_id,
+            repo_name=ctx.repo_name,
+            commit_sha=ctx.commit_sha,
+            score_result=ctx.score_result,
+            analysis_results=ctx.analysis_results,
+            pr_number=ctx.pr_number,
+            ai_review=ctx.ai_review,
+        )
+
+
+class _DiscordChannel:
+    name = "discord"
+
+    def is_enabled(self, ctx: NotifyContext) -> bool:
+        return bool(ctx.config and ctx.config.discord_webhook_url)
+
+    async def send(self, ctx: NotifyContext) -> None:
+        await send_discord_notification(
+            webhook_url=ctx.config.discord_webhook_url,
+            repo_name=ctx.repo_name,
+            commit_sha=ctx.commit_sha,
+            score_result=ctx.score_result,
+            analysis_results=ctx.analysis_results,
+            pr_number=ctx.pr_number,
+            ai_review=ctx.ai_review,
+        )
+
+
+class _SlackChannel:
+    name = "slack"
+
+    def is_enabled(self, ctx: NotifyContext) -> bool:
+        return bool(ctx.config and ctx.config.slack_webhook_url)
+
+    async def send(self, ctx: NotifyContext) -> None:
+        await send_slack_notification(
+            webhook_url=ctx.config.slack_webhook_url,
+            repo_name=ctx.repo_name,
+            commit_sha=ctx.commit_sha,
+            score_result=ctx.score_result,
+            analysis_results=ctx.analysis_results,
+            pr_number=ctx.pr_number,
+            ai_review=ctx.ai_review,
+        )
+
+
+class _WebhookChannel:
+    name = "webhook"
+
+    def is_enabled(self, ctx: NotifyContext) -> bool:
+        return bool(ctx.config and ctx.config.custom_webhook_url)
+
+    async def send(self, ctx: NotifyContext) -> None:
+        await send_webhook_notification(
+            webhook_url=ctx.config.custom_webhook_url,
+            repo_name=ctx.repo_name,
+            commit_sha=ctx.commit_sha,
+            score_result=ctx.score_result,
+            analysis_results=ctx.analysis_results,
+            pr_number=ctx.pr_number,
+            ai_review=ctx.ai_review,
+        )
+
+
+class _EmailChannel:
+    name = "email"
+
+    def is_enabled(self, ctx: NotifyContext) -> bool:
+        return bool(ctx.config and ctx.config.email_recipients and settings.smtp_host)
+
+    async def send(self, ctx: NotifyContext) -> None:
+        await send_email_notification(
+            recipients=ctx.config.email_recipients,
+            repo_name=ctx.repo_name,
+            commit_sha=ctx.commit_sha,
+            score_result=ctx.score_result,
+            analysis_results=ctx.analysis_results,
+            pr_number=ctx.pr_number,
+            ai_review=ctx.ai_review,
+            smtp_host=settings.smtp_host,
+            smtp_port=settings.smtp_port,
+            smtp_user=settings.smtp_user,
+            smtp_pass=settings.smtp_pass,
+        )
+
+
+class _N8nChannel:
+    name = "n8n"
+
+    def is_enabled(self, ctx: NotifyContext) -> bool:
+        return bool(ctx.config and ctx.config.n8n_webhook_url)
+
+    async def send(self, ctx: NotifyContext) -> None:
+        await notify_n8n(
+            webhook_url=ctx.config.n8n_webhook_url,
+            repo_full_name=ctx.repo_name,
+            commit_sha=ctx.commit_sha,
+            pr_number=ctx.pr_number,
+            score_result=ctx.score_result,
+            n8n_secret=settings.n8n_webhook_secret,
+        )
+
+
+class _CommitCommentChannel:
+    name = "commit_comment"
+
+    def is_enabled(self, ctx: NotifyContext) -> bool:
+        return bool(
+            ctx.config and ctx.config.commit_comment
+            and ctx.pr_number is None  # push 이벤트 전용
+            and ctx.result_dict
+        )
+
+    async def send(self, ctx: NotifyContext) -> None:
+        await post_commit_comment(
+            github_token=ctx.owner_token,
+            repo_name=ctx.repo_name,
+            commit_sha=ctx.commit_sha,
+            result=ctx.result_dict,
+        )
+
+
+class _IssueChannel:
+    name = "create_issue"
+
+    def is_enabled(self, ctx: NotifyContext) -> bool:
+        if not (ctx.config and ctx.config.create_issue and ctx.result_dict):
+            return False
+        is_bot_pr = ctx.pr_head_ref and ctx.pr_head_ref.startswith("claude-fix/")
+        if is_bot_pr:
+            return False
+        has_bandit_high = any(
+            i.get("severity") == "HIGH" and i.get("tool") == "bandit"
+            for i in (ctx.result_dict.get("issues") or [])
+        )
+        return ctx.score_result.total < ctx.config.reject_threshold or has_bandit_high
+
+    async def send(self, ctx: NotifyContext) -> None:
+        await create_low_score_issue(
+            github_token=ctx.owner_token,
+            repo_name=ctx.repo_name,
+            commit_sha=ctx.commit_sha,
+            analysis_id=ctx.analysis_id,
+            result=ctx.result_dict,
+        )
+
+
+# 모듈 로드 시 채널 등록 (순서 = 우선순위)
+for _ch in [
+    _TelegramChannel(), _DiscordChannel(), _SlackChannel(),
+    _WebhookChannel(), _EmailChannel(), _N8nChannel(),
+    _CommitCommentChannel(), _IssueChannel(),
+]:
+    register(_ch)
+del _ch  # 루프 변수 cleanup
 
 
 def build_analysis_result_dict(
@@ -85,120 +259,22 @@ def build_notification_tasks(  # pylint: disable=too-many-positional-arguments,t
     analysis_id=None, result_dict=None,
     pr_head_ref=None,
 ):
-    """Build coroutine task list for all active notification channels."""
+    """Build coroutine task list for all active notification channels.
+
+    채널을 추가하려면 Notifier 프로토콜을 구현하고 register()를 호출하면 됩니다.
+    """
+    ctx = NotifyContext(
+        repo_name=repo_name, commit_sha=commit_sha, pr_number=pr_number,
+        score_result=score_result, analysis_results=analysis_results, ai_review=ai_review,
+        owner_token=owner_token, analysis_id=analysis_id, result_dict=result_dict,
+        pr_head_ref=pr_head_ref, config=repo_config,
+    )
     tasks = []
     names = []
-
-    # Telegram (리포 설정 우선, 없으면 global fallback)
-    tg_chat_id = (repo_config.notify_chat_id if repo_config else None) or settings.telegram_chat_id
-    tasks.append(send_analysis_result(
-        bot_token=settings.telegram_bot_token,
-        chat_id=tg_chat_id,
-        repo_name=repo_name,
-        commit_sha=commit_sha,
-        score_result=score_result,
-        analysis_results=analysis_results,
-        pr_number=pr_number,
-        ai_review=ai_review,
-    ))
-    names.append("telegram")
-
-    # Discord
-    if repo_config and repo_config.discord_webhook_url:
-        tasks.append(send_discord_notification(
-            webhook_url=repo_config.discord_webhook_url,
-            repo_name=repo_name,
-            commit_sha=commit_sha,
-            score_result=score_result,
-            analysis_results=analysis_results,
-            pr_number=pr_number,
-            ai_review=ai_review,
-        ))
-        names.append("discord")
-
-    # Slack
-    if repo_config and repo_config.slack_webhook_url:
-        tasks.append(send_slack_notification(
-            webhook_url=repo_config.slack_webhook_url,
-            repo_name=repo_name,
-            commit_sha=commit_sha,
-            score_result=score_result,
-            analysis_results=analysis_results,
-            pr_number=pr_number,
-            ai_review=ai_review,
-        ))
-        names.append("slack")
-
-    # Generic Webhook
-    if repo_config and repo_config.custom_webhook_url:
-        tasks.append(send_webhook_notification(
-            webhook_url=repo_config.custom_webhook_url,
-            repo_name=repo_name,
-            commit_sha=commit_sha,
-            score_result=score_result,
-            analysis_results=analysis_results,
-            pr_number=pr_number,
-            ai_review=ai_review,
-        ))
-        names.append("webhook")
-
-    # Email
-    if repo_config and repo_config.email_recipients and settings.smtp_host:
-        tasks.append(send_email_notification(
-            recipients=repo_config.email_recipients,
-            repo_name=repo_name,
-            commit_sha=commit_sha,
-            score_result=score_result,
-            analysis_results=analysis_results,
-            pr_number=pr_number,
-            ai_review=ai_review,
-            smtp_host=settings.smtp_host,
-            smtp_port=settings.smtp_port,
-            smtp_user=settings.smtp_user,
-            smtp_pass=settings.smtp_pass,
-        ))
-        names.append("email")
-
-    # n8n
-    if repo_config and repo_config.n8n_webhook_url:
-        tasks.append(notify_n8n(
-            webhook_url=repo_config.n8n_webhook_url,
-            repo_full_name=repo_name,
-            commit_sha=commit_sha,
-            pr_number=pr_number,
-            score_result=score_result,
-            n8n_secret=settings.n8n_webhook_secret,
-        ))
-        names.append("n8n")
-
-    # GitHub Commit Comment (Push 이벤트 전용)
-    if repo_config and repo_config.commit_comment and pr_number is None and result_dict:
-        tasks.append(post_commit_comment(
-            github_token=owner_token,
-            repo_name=repo_name,
-            commit_sha=commit_sha,
-            result=result_dict,
-        ))
-        names.append("commit_comment")
-
-    # GitHub Issue (낮은 점수 OR bandit HIGH — 두 조건 중 하나라도 충족 시 1건)
-    # 봇 자동화 브랜치(claude-fix/*)는 이슈 생성 제외 — 무한 루프 방지
-    is_bot_pr = pr_head_ref and pr_head_ref.startswith("claude-fix/")
-    if repo_config and repo_config.create_issue and result_dict and not is_bot_pr:
-        has_bandit_high = any(
-            i.get("severity") == "HIGH" and i.get("tool") == "bandit"
-            for i in (result_dict.get("issues") or [])
-        )
-        if score_result.total < repo_config.reject_threshold or has_bandit_high:
-            tasks.append(create_low_score_issue(
-                github_token=owner_token,
-                repo_name=repo_name,
-                commit_sha=commit_sha,
-                analysis_id=analysis_id,
-                result=result_dict,
-            ))
-            names.append("create_issue")
-
+    for notifier in REGISTRY:
+        if notifier.is_enabled(ctx):
+            tasks.append(notifier.send(ctx))
+            names.append(notifier.name)
     return tasks, names
 
 
