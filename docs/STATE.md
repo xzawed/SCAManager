@@ -35,6 +35,7 @@
 | P0-4 private→public | _build_result_dict→build_analysis_result_dict, _save_gate_decision→save_gate_decision, _build_notify_tasks→build_notification_tasks | 2026-04-19 |
 | P0-2 Notifier 레지스트리 | NotifyContext dataclass + Notifier Protocol + REGISTRY + build_notification_tasks 루프 축약 | 2026-04-19 |
 | P0-3 Repository 계층 | repository_repo/analysis_repo 신설 + pipeline·router db.query 직접 사용 교체 | 2026-04-19 |
+| P0-1 RepoConfig 동기화 해소 | dataclass fields 루프 + model_dump() — 새 채널 추가 시 7곳→4곳 | 2026-04-19 |
 
 ## 갱신 방법
 
