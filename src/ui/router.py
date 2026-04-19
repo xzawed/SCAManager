@@ -13,7 +13,13 @@ from src.models.repo_config import RepoConfig
 from src.models.gate_decision import GateDecision
 from src.auth.session import require_login, CurrentUser
 from src.config_manager.manager import get_repo_config, upsert_repo_config, RepoConfigData
-from src.github_client.repos import list_user_repos, create_webhook, delete_webhook, list_webhooks, commit_scamanager_files
+from src.github_client.repos import (
+    list_user_repos,
+    create_webhook,
+    delete_webhook,
+    list_webhooks,
+    commit_scamanager_files,
+)
 
 logger = logging.getLogger(__name__)
 templates = Jinja2Templates(directory="src/templates")
@@ -167,7 +173,7 @@ def overview(request: Request, current_user: CurrentUser = Depends(require_login
 
             # 분석 수 배치 조회 (N+1 방지)
             count_map = dict(
-                db.query(Analysis.repo_id, func.count(Analysis.id))
+                db.query(Analysis.repo_id, func.count(Analysis.id))  # pylint: disable=not-callable
                 .filter(Analysis.repo_id.in_(repo_ids))
                 .group_by(Analysis.repo_id)
                 .all()
@@ -175,7 +181,7 @@ def overview(request: Request, current_user: CurrentUser = Depends(require_login
 
             # 평균 점수 배치 조회
             avg_map = dict(
-                db.query(Analysis.repo_id, func.avg(Analysis.score))
+                db.query(Analysis.repo_id, func.avg(Analysis.score))  # pylint: disable=not-callable
                 .filter(Analysis.repo_id.in_(repo_ids))
                 .group_by(Analysis.repo_id)
                 .all()
@@ -183,7 +189,7 @@ def overview(request: Request, current_user: CurrentUser = Depends(require_login
 
             # 리포별 최신 분석 배치 조회
             latest_id_subq = (
-                db.query(func.max(Analysis.id))
+                db.query(func.max(Analysis.id))  # pylint: disable=not-callable
                 .filter(Analysis.repo_id.in_(repo_ids))
                 .group_by(Analysis.repo_id)
                 .subquery()
