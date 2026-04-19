@@ -8,13 +8,14 @@ AI_REVIEW_MAX = 25          # Claude AI 0-20 → 0-25 스케일링
 TEST_COVERAGE_MAX = 15      # Claude AI 0-10 → 0-15 스케일링
 
 # ── 정적 분석 감점 가중치 ────────────────────────────────────────────────
-PYLINT_ERROR_PENALTY = 3    # pylint error 1건당 감점
-PYLINT_WARNING_PENALTY = 1  # pylint warning 1건당 감점
-PYLINT_WARNING_CAP = 15     # warning 감점 상한 (건수 기준)
-FLAKE8_WARNING_PENALTY = 1  # flake8 경고 1건당 감점
-FLAKE8_WARNING_CAP = 10     # flake8 감점 상한 (건수 기준)
-BANDIT_HIGH_PENALTY = 7     # bandit HIGH severity 1건당 감점
-BANDIT_LOW_PENALTY = 2      # bandit LOW/MEDIUM severity 1건당 감점
+PYLINT_ERROR_PENALTY = 3    # code_quality error 1건당 감점
+PYLINT_WARNING_PENALTY = 1  # code_quality warning 1건당 감점
+PYLINT_WARNING_CAP = 15     # (deprecated) 구 pylint warning 상한 — CQ_WARNING_CAP 사용 권장
+FLAKE8_WARNING_PENALTY = 1  # (deprecated) 구 flake8 경고 감점 — PYLINT_WARNING_PENALTY와 동일
+FLAKE8_WARNING_CAP = 10     # (deprecated) 구 flake8 상한 — CQ_WARNING_CAP 사용 권장
+CQ_WARNING_CAP = 25         # code_quality warning 감점 상한 (PYLINT_WARNING_CAP+FLAKE8_WARNING_CAP 합산)
+BANDIT_HIGH_PENALTY = 7     # security error 1건당 감점
+BANDIT_LOW_PENALTY = 2      # security warning 1건당 감점
 
 # ── AI 기본값 (API 미설정·실패·empty_diff 시) ─────────────────────────
 AI_DEFAULT_COMMIT = 13      # commit_score 기본값 (스케일링 후)

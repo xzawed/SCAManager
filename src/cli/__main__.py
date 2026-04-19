@@ -54,9 +54,8 @@ def main(argv: list[str] | None = None) -> None:
 
     commit_message = get_commit_message(args.base)
 
-    # static analysis (Python files only)
-    python_files = [f for f in files if f.filename.endswith(".py")]
-    analysis_results = [analyze_file(f.filename, f.content) for f in python_files]
+    # static analysis — Registry가 언어별 필터링 처리
+    analysis_results = [analyze_file(f.filename, f.content) for f in files]
 
     # AI review
     api_key = "" if args.no_ai else os.environ.get("ANTHROPIC_API_KEY", "")
