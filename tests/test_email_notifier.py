@@ -1,4 +1,8 @@
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import aiosmtplib
+import pytest
+
 from src.notifier.email import send_email_notification, _build_html_body
 from src.scorer.calculator import ScoreResult
 from src.analyzer.static import StaticAnalysisResult, AnalysisIssue
@@ -107,3 +111,77 @@ async def test_send_email_calls_smtp():
     assert "a@test.com" in msg["To"]
     assert "b@test.com" in msg["To"]
     assert "SCA" in msg["Subject"]
+
+
+# ---------------------------------------------------------------------------
+# SMTP 에러 엣지 케이스
+# ---------------------------------------------------------------------------
+
+async def test_send_email_smtp_connect_error_propagates():
+    """SMTP 연결 실패(SMTPConnectError)는 예외로 전파된다(미처리 문서화)."""
+    with patch("src.notifier.email.aiosmtplib") as mock_smtp:
+        mock_smtp.send = AsyncMock(
+            side_effect=aiosmtplib.SMTPConnectError("Connection refused")
+        )
+        with pytest.raises(aiosmtplib.SMTPConnectError):
+            await send_email_notification(
+                recipients="a@test.com",
+                repo_name="owner/repo",
+                commit_sha="abc1234",
+                score_result=_make_score(),
+                analysis_results=_make_analysis(),
+                smtp_host="smtp.test.com",
+            )
+
+
+async def test_send_email_smtp_auth_error_propagates():
+    """SMTP 인증 실패(SMTPAuthenticationError)는 예외로 전파된다."""
+    with patch("src.notifier.email.aiosmtplib") as mock_smtp:
+        mock_smtp.send = AsyncMock(
+            side_effect=aiosmtplib.SMTPAuthenticationError(535, "Authentication failed")
+        )
+        with pytest.raises(aiosmtplib.SMTPAuthenticationError):
+            await send_email_notification(
+                recipients="a@test.com",
+                repo_name="owner/repo",
+                commit_sha="abc1234",
+                score_result=_make_score(),
+                analysis_results=_make_analysis(),
+                smtp_host="smtp.test.com",
+                smtp_user="bad_user",
+                smtp_pass="bad_pass",
+            )
+
+
+async def test_send_email_from_defaults_to_localhost_when_no_user():
+    """smtp_user=None 이면 From 헤더가 'sca@localhost'로 설정된다."""
+    with patch("src.notifier.email.aiosmtplib") as mock_smtp:
+        mock_smtp.send = AsyncMock()
+        await send_email_notification(
+            recipients="a@test.com",
+            repo_name="owner/repo",
+            commit_sha="abc1234",
+            score_result=_make_score(),
+            analysis_results=_make_analysis(),
+            smtp_host="smtp.test.com",
+            smtp_user=None,
+        )
+    msg = mock_smtp.send.call_args[0][0]
+    assert msg["From"] == "sca@localhost"
+
+
+async def test_send_email_subject_contains_score_and_grade():
+    """Subject 헤더에 점수와 등급이 포함된다."""
+    with patch("src.notifier.email.aiosmtplib") as mock_smtp:
+        mock_smtp.send = AsyncMock()
+        await send_email_notification(
+            recipients="a@test.com",
+            repo_name="owner/repo",
+            commit_sha="abc1234",
+            score_result=_make_score(total=91, grade="A"),
+            analysis_results=_make_analysis(),
+            smtp_host="smtp.test.com",
+        )
+    msg = mock_smtp.send.call_args[0][0]
+    assert "91" in msg["Subject"]
+    assert "A" in msg["Subject"]
