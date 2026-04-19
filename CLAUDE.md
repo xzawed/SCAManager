@@ -210,7 +210,8 @@ Railway 대시보드 설정:
 | 3 | `nixpacks.toml`의 `providers` | NIXPACKS 언어 감지 오버라이드 |
 | 4 | NIXPACKS 자동 감지 | `requirements.txt`, `package.json` 등 파일 기반 |
 
-현재: `railway.toml`에 `buildCommand = "echo 'Python project — no build step'"` 설정됨.
+현재: `railway.toml`에 `buildCommand = "npm install -g eslint@9 @typescript-eslint/parser @typescript-eslint/eslint-plugin"` 설정됨.
+Node.js는 `nixpacks.toml` aptPkgs로 설치, eslint 전역 설치는 buildCommand에서 수행.
 
 ```
 requirements.txt      ← Railway(프로덕션) 전용 — pytest/playwright 제외
@@ -356,7 +357,8 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 
 ### 배포
 
-- **NIXPACKS npm 오탐**: NIXPACKS가 Python 프로젝트를 Node.js로 오인해 `npm run build` 자동 추가. `nixpacks.toml`의 `providers = ["python"]`만으로는 불충분 — `railway.toml`에 `buildCommand = "echo 'no build'"` 최상위 오버라이드 필수.
+- **NIXPACKS npm run build 자동 추가**: npm이 환경에 존재하면 `nixpacks.toml [phases.build] cmds` 명시 여부와 무관하게 `npm run build`를 자동 추가. 억제 유일 수단: `railway.toml`의 `buildCommand` (최상위 오버라이드). eslint 등 npm 전역 설치가 필요하면 buildCommand에 직접 작성.
+- **NIXPACKS nixPkgs 오버라이드 함정**: `nixpacks.toml`에 `nixPkgs = ["nodejs"]` 등을 명시하면 Python provider의 nix 자동 설치(python3 + pip 포함)를 **완전히 교체**한다. Python+Node.js 공존 패턴: `nixPkgs` 사용 금지, `aptPkgs = ["nodejs", "npm"]`으로 Node.js 설치, pip install은 Python provider 자동 처리.
 - **APP_BASE_URL**: Railway 리버스 프록시 환경 필수 설정. **OAuth redirect_uri**와 **GitHub Webhook 등록 URL** 양쪽에 HTTPS URL 강제 적용 — 미설정 시 `http://`로 등록.
 - **Railway 빌드 검증 필수**: `git push` 성공 ≠ Railway 빌드 성공. `railway.toml`, `nixpacks.toml`, `requirements.txt` 변경 후 Railway 대시보드 빌드 로그 직접 확인 후 완료 선언.
 - **requirements.txt 분리**: `requirements.txt`(프로덕션 — Railway 자동 감지)와 `requirements-dev.txt`(개발 — `-r requirements.txt` 포함 + pytest/playwright) 분리. `pytest`, `playwright`는 `requirements-dev.txt`에만 유지.

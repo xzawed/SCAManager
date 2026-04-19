@@ -48,6 +48,7 @@
 | Phase A Registry 인프라 | registry.py + tools/python.py(Analyzer Protocol) + analyze_file Registry 위임 + .py 필터 제거 + CQ_WARNING_CAP 단일 cap + 중복 등록 방지 (+47 테스트, pylint 9.79→9.92) | 2026-04-19 |
 | Phase B Semgrep | tools/semgrep.py — 23개 언어 SUPPORTED_LANGUAGES, metadata.category security 자동 분류, graceful degradation, requirements.txt semgrep>=1.80 (+61 테스트, 1004 총) | 2026-04-19 |
 | Phase C ESLint+ShellCheck | tools/eslint.py(JS/TS) + tools/shellcheck.py(shell) + eslint.config.json(flat config) + nixpacks.toml(nodejs_20+shellcheck) + railway.toml buildCommand 제거 (+70 테스트, 1074 총) | 2026-04-19 |
+| Railway 빌드 수정 | nixPkgs 명시 시 Python provider 완전 교체 버그 + [phases.build] cmds로 npm run build 억제 불가 확인. 해결: aptPkgs로 Node.js 설치 + buildCommand에 eslint 설치 명령 이전 | 2026-04-19 |
 
 ## 갱신 방법
 
