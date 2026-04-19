@@ -6,8 +6,7 @@ from src.analyzer.ai_review import AiReviewResult
 from src.constants import (
     CODE_QUALITY_MAX, SECURITY_MAX,
     COMMIT_MSG_MAX, AI_REVIEW_MAX, TEST_COVERAGE_MAX,
-    PYLINT_ERROR_PENALTY, PYLINT_WARNING_PENALTY, PYLINT_WARNING_CAP,
-    FLAKE8_WARNING_PENALTY, FLAKE8_WARNING_CAP,
+    PYLINT_ERROR_PENALTY, PYLINT_WARNING_PENALTY, CQ_WARNING_CAP,
     BANDIT_HIGH_PENALTY, BANDIT_LOW_PENALTY,
     AI_DEFAULT_COMMIT, AI_DEFAULT_DIRECTION, AI_DEFAULT_TEST,
     GRADE_THRESHOLDS,
@@ -41,19 +40,18 @@ def calculate_score(
     """
     all_issues = [issue for r in analysis_results for issue in r.issues]
 
-    pylint_errors = sum(1 for i in all_issues if i.tool == "pylint" and i.severity == "error")
-    pylint_warnings = sum(1 for i in all_issues if i.tool == "pylint" and i.severity == "warning")
-    flake8_warnings = sum(1 for i in all_issues if i.tool == "flake8")
-    bandit_errors = sum(1 for i in all_issues if i.tool == "bandit" and i.severity == "error")
-    bandit_warnings = sum(1 for i in all_issues if i.tool == "bandit" and i.severity == "warning")
+    # category 기반 집계 — tool 이름에 무관하게 미래 도구(Semgrep 등)도 동일하게 처리
+    cq_errors   = sum(1 for i in all_issues if i.category == "code_quality" and i.severity == "error")
+    cq_warnings = sum(1 for i in all_issues if i.category == "code_quality" and i.severity == "warning")
+    sec_errors  = sum(1 for i in all_issues if i.category == "security" and i.severity == "error")
+    sec_warnings = sum(1 for i in all_issues if i.category == "security" and i.severity == "warning")
 
     code_quality_score = max(0, CODE_QUALITY_MAX
-                             - pylint_errors * PYLINT_ERROR_PENALTY
-                             - min(pylint_warnings, PYLINT_WARNING_CAP) * PYLINT_WARNING_PENALTY
-                             - min(flake8_warnings, FLAKE8_WARNING_CAP) * FLAKE8_WARNING_PENALTY)
+                             - cq_errors * PYLINT_ERROR_PENALTY
+                             - min(cq_warnings, CQ_WARNING_CAP) * PYLINT_WARNING_PENALTY)
     security_score = max(0, SECURITY_MAX
-                         - bandit_errors * BANDIT_HIGH_PENALTY
-                         - bandit_warnings * BANDIT_LOW_PENALTY)
+                         - sec_errors * BANDIT_HIGH_PENALTY
+                         - sec_warnings * BANDIT_LOW_PENALTY)
 
     ai_defaults_applied = False
     if ai_review is not None and ai_review.status == "success":

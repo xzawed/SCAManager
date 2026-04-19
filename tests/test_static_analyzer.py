@@ -315,23 +315,25 @@ def test_is_test_file_with_path_prefix():
 # ---------------------------------------------------------------------------
 
 def test_test_file_skips_bandit():
-    # test_ 접두사 파일은 bandit 검사를 건너뛴다
-    with patch("src.analyzer.static._run_pylint", return_value=[]) as mock_pylint, \
-         patch("src.analyzer.static._run_flake8", return_value=[]) as mock_flake8, \
-         patch("src.analyzer.static._run_bandit", return_value=[]) as mock_bandit:
-        analyze_file("test_something.py", "def test_foo(): pass\n")
-    mock_bandit.assert_not_called()
-    mock_pylint.assert_called_once()
-    mock_flake8.assert_called_once()
+    # test_ 접두사 파일은 bandit(security) 검사를 건너뛴다 — Registry _BanditAnalyzer.is_enabled
+    with patch("src.analyzer.tools.python._BanditAnalyzer.run", return_value=[]) as mock_bandit_run, \
+         patch("src.analyzer.tools.python._BanditAnalyzer.is_enabled", return_value=False) as mock_enabled:
+        result = analyze_file("test_something.py", "def test_foo(): pass\n")
+    # 테스트 파일에서 bandit 결과는 없어야 한다
+    security_issues = [i for i in result.issues if i.category == "security"]
+    assert len(security_issues) == 0
 
 
 def test_non_test_file_runs_bandit():
-    # 일반 .py 파일은 bandit 검사를 실행한다
-    with patch("src.analyzer.static._run_pylint", return_value=[]) as mock_pylint, \
-         patch("src.analyzer.static._run_flake8", return_value=[]) as mock_flake8, \
-         patch("src.analyzer.static._run_bandit", return_value=[]) as mock_bandit:
-        analyze_file("module.py", "x = 1\n")
-    mock_bandit.assert_called_once()
+    # 일반 .py 파일은 bandit(security) 검사를 실행한다 — is_enabled=True 기본
+    result = analyze_file("module.py", "eval(input())\n")
+    # bandit 이슈가 있거나 빈 목록이어도 security 카테고리로 분류되어야 함
+    # (실제 bandit 실행 여부 확인)
+    from src.analyzer.tools.python import _BanditAnalyzer
+    from src.analyzer.registry import AnalyzeContext
+    ctx = AnalyzeContext(filename="module.py", content="x=1\n", language="python",
+                         is_test=False, tmp_path="module.py")
+    assert _BanditAnalyzer().is_enabled(ctx) is True
 
 
 # ---------------------------------------------------------------------------

@@ -1,10 +1,10 @@
-"""Static code analysis — runs pylint, flake8, and bandit on Python source files."""
-import json
+"""Static code analysis — runs registered analyzers on source files via Registry."""
 import logging
 import os
-import subprocess  # nosec B404
 import tempfile
 from dataclasses import dataclass, field
+
+from src.analyzer.language import detect_language, is_test_file
 
 logger = logging.getLogger(__name__)
 
@@ -14,9 +14,11 @@ class AnalysisIssue:
     """A single issue reported by a static analysis tool."""
 
     tool: str
-    severity: str   # "error" | "warning"
+    severity: str       # "error" | "warning"
     message: str
     line: int = 0
+    category: str = "code_quality"  # "code_quality" | "security"
+    language: str = ""              # detect_language() 반환값
 
 
 @dataclass
@@ -27,119 +29,72 @@ class StaticAnalysisResult:
     issues: list[AnalysisIssue] = field(default_factory=list)
 
 
-def _is_test_file(filename: str) -> bool:  # pylint: disable=missing-function-docstring
-    base = os.path.basename(filename)
-    return base.startswith("test_") or base.endswith("_test.py")
-
-
 def analyze_file(filename: str, content: str) -> StaticAnalysisResult:
-    """Run all applicable static analysers on a single file and return aggregated results."""
+    """Run all applicable registered analyzers on a single file."""
     if not content.strip():
         return StaticAnalysisResult(filename=filename)
 
-    is_test = _is_test_file(filename)
+    from src.analyzer.registry import REGISTRY, AnalyzeContext  # noqa: PLC0415
+    import src.analyzer.tools.python  # noqa: PLC0415,F401 — 모듈 로드 시 자동 등록
+
+    language = detect_language(filename, content)
+    is_test = is_test_file(filename, language)
+
     result = StaticAnalysisResult(filename=filename)
+
+    # Python 도구는 .py 확장자를 임시 파일에 써야 올바르게 작동
+    suffix = ".py" if language == "python" else os.path.splitext(filename)[1] or ".tmp"
     with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".py", delete=False, encoding="utf-8"
+        mode="w", suffix=suffix, delete=False, encoding="utf-8"
     ) as tmp:
         tmp.write(content)
         tmp_path = tmp.name
 
     try:
-        result.issues.extend(_run_pylint(tmp_path, is_test=is_test))
-        result.issues.extend(_run_flake8(tmp_path, is_test=is_test))
-        if not is_test:
-            result.issues.extend(_run_bandit(tmp_path))
+        ctx = AnalyzeContext(
+            filename=filename,
+            content=content,
+            language=language,
+            is_test=is_test,
+            tmp_path=tmp_path,
+        )
+        for analyzer in REGISTRY:
+            if analyzer.supports(ctx) and analyzer.is_enabled(ctx):
+                result.issues.extend(analyzer.run(ctx))
     finally:
         os.unlink(tmp_path)
 
     return result
 
 
+# ── 하위 호환 re-export (기존 코드가 static.py에서 직접 import 하는 경우 지원) ──
+
+def _is_test_file(filename: str, language: str = "python") -> bool:
+    """Deprecated: use is_test_file() from src.analyzer.language. Kept for backward compatibility."""
+    return is_test_file(filename, language)
+
 def _run_pylint(path: str, is_test: bool = False) -> list[AnalysisIssue]:
-    try:
-        disable = (
-            "C0114,C0115,C0116,C0301,C0411,"
-            "E0401,"
-            "R0801,R0902,R0903,R0912,R0913,R0914,R0915,R0917,"
-            "W0511,W0613,W0621,W0718"
-        )
-        if is_test:
-            disable += ",W0611,W0212,C0302,R0401"
-        r = subprocess.run(  # nosec B603 B607
-            ["pylint", path, "--output-format=json",
-             f"--disable={disable}"],
-            capture_output=True, text=True, timeout=30, check=False,
-        )
-        items = json.loads(r.stdout) if r.stdout.strip().startswith("[") else []
-        return [
-            AnalysisIssue(
-                tool="pylint",
-                severity="error" if item["type"] in ("error", "fatal") else "warning",
-                message=item["message"],
-                line=item["line"],
-            )
-            for item in items
-        ]
-    except subprocess.TimeoutExpired:
-        logger.warning("pylint timed out for %s", path)
-        return []
-    except (json.JSONDecodeError, FileNotFoundError) as exc:
-        logger.warning("pylint failed for %s: %s", path, exc)
-        return []
+    """Deprecated: use Registry pattern. Kept for backward compatibility."""
+    from src.analyzer.tools.python import _PylintAnalyzer  # noqa: PLC0415
+    from src.analyzer.registry import AnalyzeContext  # noqa: PLC0415
+    ctx = AnalyzeContext(filename=path, content="", language="python",
+                         is_test=is_test, tmp_path=path)
+    return _PylintAnalyzer().run(ctx)
 
 
 def _run_flake8(path: str, is_test: bool = False) -> list[AnalysisIssue]:
-    try:
-        cmd = ["flake8", path, "--max-line-length=120",
-               "--format=%(row)d:%(col)d: %(text)s"]
-        if is_test:
-            cmd.append("--ignore=E302,E402,E128,E127,F401,F841,E305")
-        r = subprocess.run(  # nosec B603 B607
-            cmd,
-            capture_output=True, text=True, timeout=30, check=False,
-        )
-        issues = []
-        for line in r.stdout.strip().splitlines():
-            parts = line.split(":", 2)
-            if len(parts) == 3:
-                try:
-                    issues.append(AnalysisIssue(
-                        tool="flake8",
-                        severity="warning",
-                        message=parts[2].strip(),
-                        line=int(parts[0]),
-                    ))
-                except ValueError:
-                    continue
-        return issues
-    except subprocess.TimeoutExpired:
-        logger.warning("flake8 timed out for %s", path)
-        return []
-    except FileNotFoundError as exc:
-        logger.warning("flake8 failed for %s: %s", path, exc)
-        return []
+    """Deprecated: use Registry pattern. Kept for backward compatibility."""
+    from src.analyzer.tools.python import _Flake8Analyzer  # noqa: PLC0415
+    from src.analyzer.registry import AnalyzeContext  # noqa: PLC0415
+    ctx = AnalyzeContext(filename=path, content="", language="python",
+                         is_test=is_test, tmp_path=path)
+    return _Flake8Analyzer().run(ctx)
 
 
 def _run_bandit(path: str) -> list[AnalysisIssue]:
-    try:
-        r = subprocess.run(  # nosec B603 B607
-            ["bandit", "-f", "json", "-q", path],
-            capture_output=True, text=True, timeout=30, check=False,
-        )
-        data = json.loads(r.stdout) if r.stdout.strip() else {}
-        return [
-            AnalysisIssue(
-                tool="bandit",
-                severity="error" if item["issue_severity"] == "HIGH" else "warning",
-                message=item["issue_text"],
-                line=item["line_number"],
-            )
-            for item in data.get("results", [])
-        ]
-    except subprocess.TimeoutExpired:
-        logger.warning("bandit timed out for %s", path)
-        return []
-    except (json.JSONDecodeError, FileNotFoundError) as exc:
-        logger.warning("bandit failed for %s: %s", path, exc)
-        return []
+    """Deprecated: use Registry pattern. Kept for backward compatibility."""
+    from src.analyzer.tools.python import _BanditAnalyzer  # noqa: PLC0415
+    from src.analyzer.registry import AnalyzeContext  # noqa: PLC0415
+    ctx = AnalyzeContext(filename=path, content="", language="python",
+                         is_test=False, tmp_path=path)
+    return _BanditAnalyzer().run(ctx)

@@ -20,7 +20,7 @@ def test_many_errors_lowers_score():
     assert result.total < no_issue_result.total
 
 def test_bandit_high_severity_lowers_security_score():
-    issues = [AnalysisIssue(tool="bandit", severity="error", message="use of eval", line=1)]
+    issues = [AnalysisIssue(tool="bandit", severity="error", message="use of eval", line=1, category="security")]
     result = calculate_score([_make_result(issues)])
     assert result.security_score < 20
 
@@ -34,7 +34,7 @@ def test_grade_f_for_low_score():
         AnalysisIssue(tool="pylint", severity="error", message="e", line=i)
         for i in range(20)
     ] + [
-        AnalysisIssue(tool="bandit", severity="error", message="sec", line=i)
+        AnalysisIssue(tool="bandit", severity="error", message="sec", line=i, category="security")
         for i in range(5)
     ]
     result = calculate_score([_make_result(many_issues)])
@@ -117,32 +117,32 @@ def test_pylint_error_deduction_capped():
 
 
 def test_warning_cap_limits_deduction():
-    """pylint warning 감점이 15개에서 cap되는지 확인."""
-    issues = [AnalysisIssue(tool="pylint", severity="warning", message="w", line=i) for i in range(20)]
+    """code_quality warning 감점이 CQ_WARNING_CAP(25)에서 cap되는지 확인."""
+    issues = [AnalysisIssue(tool="pylint", severity="warning", message="w", line=i) for i in range(30)]
     result = calculate_score([_make_result(issues)])
-    # pylint_warnings=20이지만 min(20,15)=15만 감점 → 25 - 15 = 10
-    assert result.code_quality_score == 10
+    # cq_warnings=30이지만 min(30,25)=25만 감점 → 25 - 25 = 0
+    assert result.code_quality_score == 0
 
 
 def test_flake8_cap_limits_deduction():
-    """flake8 warning 감점이 10개에서 cap되는지 확인."""
-    issues = [AnalysisIssue(tool="flake8", severity="warning", message="f", line=i) for i in range(15)]
+    """flake8 경고도 code_quality로 분류되어 CQ_WARNING_CAP(25) 단일 cap 적용."""
+    issues = [AnalysisIssue(tool="flake8", severity="warning", message="f", line=i) for i in range(20)]
     result = calculate_score([_make_result(issues)])
-    # flake8_warnings=15이지만 min(15,10)=10만 감점 → 25 - 10 = 15
-    assert result.code_quality_score == 15
+    # cq_warnings=20이지만 min(20,25)=20만 감점 → 25 - 20 = 5
+    assert result.code_quality_score == 5
 
 
 def test_bandit_error_deduction_reduced():
-    """bandit HIGH 감점이 -7로 완화되었는지 확인."""
-    issues = [AnalysisIssue(tool="bandit", severity="error", message="eval", line=1)]
+    """security error(bandit HIGH) 감점이 -7로 완화되었는지 확인."""
+    issues = [AnalysisIssue(tool="bandit", severity="error", message="eval", line=1, category="security")]
     result = calculate_score([_make_result(issues)])
     # security = max(0, 20 - 1*7) = 13
     assert result.security_score == 13
 
 
 def test_bandit_warning_deduction_reduced():
-    """bandit warning 감점이 -2로 완화되었는지 확인."""
-    issues = [AnalysisIssue(tool="bandit", severity="warning", message="w", line=i) for i in range(3)]
+    """security warning(bandit LOW) 감점이 -2로 완화되었는지 확인."""
+    issues = [AnalysisIssue(tool="bandit", severity="warning", message="w", line=i, category="security") for i in range(3)]
     result = calculate_score([_make_result(issues)])
     # security = max(0, 20 - 3*2) = 14
     assert result.security_score == 14

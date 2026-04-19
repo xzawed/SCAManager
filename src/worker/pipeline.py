@@ -246,10 +246,9 @@ def _extract_commit_message(event: str, data: dict) -> str:
 
 
 async def _run_static_analysis(files: list[ChangedFile]) -> list[StaticAnalysisResult]:
-    """Run pylint/flake8/bandit on Python files; returns empty list for non-Python repos."""
-    python_files = [f for f in files if f.filename.endswith(".py")]
+    """Run registered analyzers on all changed files; each Analyzer filters by language."""
     return await asyncio.to_thread(
-        lambda: [analyze_file(f.filename, f.content) for f in python_files]
+        lambda: [analyze_file(f.filename, f.content) for f in files]
     )
 
 
