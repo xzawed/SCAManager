@@ -1,14 +1,9 @@
 providers = ["python"]
 
 [phases.setup]
-aptPkgs = ["shellcheck"]
-nixPkgs = ["nodejs"]
-
-[phases.install]
-cmds = [
-  "npm install -g eslint@9 @typescript-eslint/parser @typescript-eslint/eslint-plugin",
-  "pip3 install -r requirements.txt"
-]
+aptPkgs = ["shellcheck", "nodejs", "npm"]
 
 [phases.build]
-cmds = []
+cmds = [
+  "npm install -g eslint@9 @typescript-eslint/parser @typescript-eslint/eslint-plugin"
+]
