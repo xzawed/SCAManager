@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-19, n8n Phase 3 갱신)
+## 현재 수치 (2026-04-19, P0 리팩토링 갱신)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
@@ -32,6 +32,9 @@
 | 감사 결과 수정 | P0 bandit 1.9.4(Python 3.14 대응), P1 E2E 26/26 복구+payload.py 제거, P2 lint 0건, P3 +48 테스트(634총) | 2026-04-19 |
 | n8n Phase 3: Issue 자동 close | PR merge 시 Closes #N 키워드 파싱 → Issues API close (SCAManager-side 방어적 보장) | 2026-04-19 |
 | auto_merge 견고성 강화 | merge_pr tuple 반환 + mergeable_state 재시도 + Telegram 실패 알림 (+12 테스트) | 2026-04-19 |
+| P0-4 private→public | _build_result_dict→build_analysis_result_dict, _save_gate_decision→save_gate_decision, _build_notify_tasks→build_notification_tasks | 2026-04-19 |
+| P0-2 Notifier 레지스트리 | NotifyContext dataclass + Notifier Protocol + REGISTRY + build_notification_tasks 루프 축약 | 2026-04-19 |
+| P0-3 Repository 계층 | repository_repo/analysis_repo 신설 + pipeline·router db.query 직접 사용 교체 | 2026-04-19 |
 
 ## 갱신 방법
 
