@@ -296,7 +296,7 @@ async def test_regate_pr_if_needed_rolls_back_on_commit_error(caplog):
 
     repo = MagicMock()
     repo.id = 1
-    repo.owner = None
+    repo.owner = None  # error path returns before owner_token branch
 
     with patch.object(pipeline_mod.repository_repo, "find_by_full_name", return_value=repo), \
          patch.object(pipeline_mod.analysis_repo, "find_by_sha", return_value=existing), \
@@ -307,5 +307,6 @@ async def test_regate_pr_if_needed_rolls_back_on_commit_error(caplog):
         )
 
     db.rollback.assert_called_once()
+    db.commit.assert_called_once()
     run_gate.assert_not_called()
     assert any("pr_number update failed" in r.message for r in caplog.records)
