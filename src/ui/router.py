@@ -222,11 +222,22 @@ def repo_settings(  # pylint: disable=too-many-positional-arguments
     with SessionLocal() as db:
         _get_accessible_repo(db, repo_name, current_user)
         config = get_repo_config(db, repo_name)
+        config_orm = db.query(RepoConfig).filter(
+            RepoConfig.repo_full_name == repo_name
+        ).first()
+        railway_webhook_token = config_orm.railway_webhook_token if config_orm else None
+        railway_api_token_set = bool(config_orm and config_orm.railway_api_token)
+    railway_webhook_url = ""
+    if railway_webhook_token:
+        base = _webhook_base_url(request)
+        railway_webhook_url = f"{base}/webhooks/railway/{railway_webhook_token}"
     return templates.TemplateResponse(request, "settings.html", {
         "repo_name": repo_name, "config": config,
         "hook_ok": bool(hook_ok), "hook_fail": bool(hook_fail),
         "saved": bool(saved), "save_error": bool(save_error),
         "current_user": current_user,
+        "railway_webhook_url": railway_webhook_url,
+        "railway_api_token_set": railway_api_token_set,
     })
 
 
@@ -257,7 +268,20 @@ async def update_repo_settings(
                 merge_threshold=int(form.get("merge_threshold", 75)),
                 commit_comment=form.get("commit_comment") == "on",
                 create_issue=form.get("create_issue") == "on",
+                railway_deploy_alerts=form.get("railway_deploy_alerts") == "on",
             ))
+            # railway_webhook_token, railway_api_token — RepoConfigData 외부 관리 (hook_token 동일 패턴)
+            config_orm = db.query(RepoConfig).filter(
+                RepoConfig.repo_full_name == repo_name
+            ).first()
+            if config_orm and not config_orm.railway_webhook_token:
+                config_orm.railway_webhook_token = secrets.token_hex(32)
+            new_api_token = form.get("railway_api_token", "")
+            if config_orm and new_api_token and new_api_token != "****":
+                from src.crypto import encrypt_token  # pylint: disable=import-outside-toplevel
+                config_orm.railway_api_token = encrypt_token(new_api_token)
+            if config_orm:
+                db.commit()
         except ValueError:
             logger.warning("Invalid threshold values for %s, settings not saved", repo_name)
             return RedirectResponse(
