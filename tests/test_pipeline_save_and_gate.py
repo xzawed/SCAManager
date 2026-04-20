@@ -1,17 +1,9 @@
-import os
-os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
-os.environ.setdefault("GITHUB_WEBHOOK_SECRET", "s")
-os.environ.setdefault("TELEGRAM_BOT_TOKEN", "1:abc")
-os.environ.setdefault("TELEGRAM_CHAT_ID", "-1")
-
 import logging
-import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 from src.worker import pipeline as pipeline_mod
 from src.worker.pipeline import _AnalysisSaveParams
 
 
-@pytest.mark.asyncio
 async def test_save_and_gate_skips_on_concurrent_duplicate(caplog):
     """find_by_sha 가 이미 존재를 리턴하면 run_gate_check 는 건너뛰고 (config, None, None) 반환."""
     db = MagicMock()
