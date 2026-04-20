@@ -26,6 +26,9 @@ class RepoConfig(Base):
     commit_comment = Column(Boolean, default=False, nullable=False)
     create_issue = Column(Boolean, default=False, nullable=False)
     hook_token = Column(String, nullable=True, unique=True)
+    railway_deploy_alerts = Column(Boolean, default=False, nullable=False)
+    railway_webhook_token = Column(String(64), nullable=True, unique=True)
+    railway_api_token = Column(String, nullable=True)  # Fernet 암호화 저장
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
@@ -39,4 +42,5 @@ class RepoConfig(Base):
         kwargs.setdefault("merge_threshold", 75)
         kwargs.setdefault("commit_comment", False)
         kwargs.setdefault("create_issue", False)
+        kwargs.setdefault("railway_deploy_alerts", False)
         super().__init__(**kwargs)
