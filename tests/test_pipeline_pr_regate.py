@@ -274,3 +274,38 @@ async def test_scenario_c_same_sha_same_pr_number_skips_gate(
     # Then: Analysis.pr_number는 그대로 42여야 한다
     sqlite_db.refresh(existing_analysis)
     assert existing_analysis.pr_number == 42
+
+
+# ---------------------------------------------------------------------------
+# 시나리오 D: pr_number UPDATE 중 SQLAlchemyError 발생 → rollback 후 조용히 return
+# ---------------------------------------------------------------------------
+
+async def test_regate_pr_if_needed_rolls_back_on_commit_error(caplog):
+    """pr_number UPDATE 에서 SQLAlchemyError 발생 시 rollback 후 조용히 return."""
+    import logging
+    from sqlalchemy.exc import SQLAlchemyError
+    from src.worker import pipeline as pipeline_mod
+
+    db = MagicMock()
+    db.commit.side_effect = SQLAlchemyError("db down")
+
+    existing = MagicMock()
+    existing.pr_number = None
+    existing.id = 42
+    existing.result = {"score": 80}
+
+    repo = MagicMock()
+    repo.id = 1
+    repo.owner = None
+
+    with patch.object(pipeline_mod.repository_repo, "find_by_full_name", return_value=repo), \
+         patch.object(pipeline_mod.analysis_repo, "find_by_sha", return_value=existing), \
+         patch.object(pipeline_mod, "run_gate_check", new=AsyncMock()) as run_gate, \
+         caplog.at_level(logging.ERROR, logger="src.worker.pipeline"):
+        await pipeline_mod._regate_pr_if_needed(
+            db=db, repo_name="o/r", commit_sha="deadbeef", pr_number=7,
+        )
+
+    db.rollback.assert_called_once()
+    run_gate.assert_not_called()
+    assert any("pr_number update failed" in r.message for r in caplog.records)
