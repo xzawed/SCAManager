@@ -331,6 +331,8 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 - **GateDecision upsert**: `save_gate_decision()`은 동일 `analysis_id`로 이미 레코드가 있으면 UPDATE, 없으면 INSERT. 재시도·반자동 재승인 시 중복 INSERT가 없다.
 - **Analyzer tools 자동 등록**: `tools/semgrep.py`, `tools/eslint.py`, `tools/shellcheck.py`는 `analyze_file()`에서 해당 모듈을 import할 때 자동으로 `register()` 호출. 새 도구 추가 시 (1) `tools/` 아래 클래스 작성 + `register()` 호출, (2) `analyze_file()`에서 import, (3) SUPPORTED_LANGUAGES에 지원 언어 선언 세 단계 필수.
 - **`_build_issue_body()` 시그니처**: `high_issues: list[dict]` 파라미터가 추가되어 있음 — 호출처(`create_low_score_issue`)에서 `_bandit_high_issues(result)`를 1회만 계산한 뒤 전달. 직접 호출 시 반드시 high_issues 인자 포함.
+- **Railway Webhook 토큰 인증**: `POST /webhooks/railway/{token}` 엔드포인트는 DB에서 `railway_webhook_token == token` 조회 후 `config is None → 404` 처리. `railway_api_token`은 Fernet 암호화 저장 — `decrypt_token()`으로 백그라운드 핸들러에 전달.
+- **5-way 동기화 Railway 확장**: `railway_deploy_alerts`가 ORM/RepoConfigData/API body/settings 폼/PRESETS 5-way 동기화 적용 대상. `railway_webhook_token`·`railway_api_token`은 `hook_token` 동일 패턴으로 ORM 직접 관리 (RepoConfigData 미포함).
 
 ### API / 알림 채널
 
