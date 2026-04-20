@@ -6,7 +6,7 @@
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1076개** | pytest (0 failed) |
+| 단위 테스트 | **1102개** | pytest (0 failed) |
 | E2E 테스트 | **38개** | `make test-e2e` (Chromium Playwright) |
 | pylint | **10.00/10** | `python -m pylint src/` — 만점 |
 | 커버리지 | **96.2%** | `make test-cov` (database.py 100%, ui/router.py 99.4%) |
@@ -98,12 +98,22 @@
 | `_grade` 공개화 | `calculate_grade(score)` 공개 함수 (ui/router.py 재사용) | — |
 | DB 쿼리 최적화 | `latest_id_subq`/`latest_map` 배치 조회 제거 (쿼리 1개 감소) | — |
 
+### 그룹 7 — Railway 배포 실패 → GitHub Issue 자동 등록 (2026-04-20)
+
+| 작업 | 주요 내용 | 테스트 증분 |
+|------|----------|-----------|
+| ORM 필드 추가 | `RepoConfig`에 `railway_deploy_alerts`/`railway_webhook_token`/`railway_api_token` + Alembic 0012 | +2 |
+| railway_client 패키지 | `RailwayDeployEvent` dataclass + `parse_railway_payload()` + `fetch_deployment_logs()` | +9 |
+| railway_issue notifier | `create_deploy_failure_issue()` — Search API dedup + Issue 생성 | +7 |
+| Webhook 엔드포인트 | `POST /webhooks/railway/{token}` + BackgroundTask 핸들러 | +5 |
+| Settings UI | 카드 ⑤ Railway 알림 + PRESETS 3개 블록 + GET/POST 핸들러 | +3 (RepoConfigData/API) |
+
 ## 갱신 방법
 
 ```bash
-make test          # 1076 유지 확인
+make test          # 1102 유지 확인
 make lint          # pylint 10.00 + flake8 0건 + bandit HIGH 0개
-make test-cov      # 96.2% 유지 확인 (소폭 변동 가능)
+make test-cov      # 96%+ 유지 확인 (소폭 변동 가능)
 
 git add docs/STATE.md
 git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
