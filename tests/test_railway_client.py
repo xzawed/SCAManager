@@ -112,3 +112,63 @@ def test_parse_missing_optional_fields():
     assert event is not None
     assert event.project_name == ""
     assert event.commit_sha is None
+
+
+import pytest
+from unittest.mock import AsyncMock, patch, MagicMock
+from src.railway_client.logs import fetch_deployment_logs, RailwayLogFetchError
+
+
+@pytest.mark.asyncio
+async def test_fetch_deployment_logs_success():
+    """정상 응답 시 로그 줄을 합쳐서 반환해야 한다."""
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status = MagicMock()
+    mock_resp.json.return_value = {
+        "data": {
+            "deploymentLogs": [
+                {"message": "Installing dependencies", "severity": "INFO"},
+                {"message": "Build failed: exit code 1", "severity": "ERROR"},
+            ]
+        }
+    }
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=mock_resp)
+
+    with patch("src.railway_client.logs.httpx.AsyncClient") as mock_cls:
+        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        result = await fetch_deployment_logs("tok", "deploy-123")
+
+    assert "Installing dependencies" in result
+    assert "Build failed" in result
+
+
+@pytest.mark.asyncio
+async def test_fetch_deployment_logs_http_error():
+    """HTTP 오류 시 RailwayLogFetchError 를 raise 해야 한다."""
+    import httpx as _httpx
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(side_effect=_httpx.RequestError("timeout"))
+
+    with patch("src.railway_client.logs.httpx.AsyncClient") as mock_cls:
+        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        with pytest.raises(RailwayLogFetchError):
+            await fetch_deployment_logs("tok", "deploy-123")
+
+
+@pytest.mark.asyncio
+async def test_fetch_deployment_logs_graphql_error():
+    """GraphQL errors 필드 존재 시 RailwayLogFetchError 를 raise 해야 한다."""
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status = MagicMock()
+    mock_resp.json.return_value = {"errors": [{"message": "Unauthorized"}]}
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=mock_resp)
+
+    with patch("src.railway_client.logs.httpx.AsyncClient") as mock_cls:
+        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        with pytest.raises(RailwayLogFetchError):
+            await fetch_deployment_logs("tok", "deploy-123")
