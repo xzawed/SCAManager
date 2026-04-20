@@ -874,14 +874,14 @@ def test_save_gate_decision_updates_existing_record():
     """동일 analysis_id 재호출 시 INSERT 가 아닌 UPDATE 가 일어난다."""
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
-    from src.database import Base
     from src.models.repository import Repository
     from src.models.analysis import Analysis
     from src.models.gate_decision import GateDecision
     from src.gate.engine import save_gate_decision
 
     engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
+    # src.database 가 reload 되더라도 모델 클래스가 등록된 실제 메타데이터를 사용
+    Repository.metadata.create_all(engine)
     Session = sessionmaker(engine)
 
     with Session() as db:
