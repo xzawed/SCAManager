@@ -41,3 +41,74 @@ def test_repo_config_webhook_token_not_in_config_data():
     field_names = {f.name for f in dataclasses.fields(RepoConfigData)}
     assert "railway_webhook_token" not in field_names
     assert "railway_api_token" not in field_names
+
+
+from src.railway_client.webhook import parse_railway_payload  # noqa: E402
+
+
+_VALID_PAYLOAD = {
+    "type": "DEPLOY",
+    "status": "BUILD_FAILED",
+    "timestamp": "2026-04-20T10:00:00Z",
+    "deployment": {
+        "id": "deploy-abc123",
+        "meta": {
+            "commitSha": "deadbeef1234567890abcdef",
+            "commitMessage": "feat: add feature",
+            "repo": "owner/repo",
+        },
+    },
+    "project": {"id": "proj-123", "name": "my-project"},
+    "environment": {"name": "production"},
+}
+
+
+def test_parse_valid_build_failed():
+    """BUILD_FAILED 이벤트는 RailwayDeployEvent 를 반환해야 한다."""
+    event = parse_railway_payload(_VALID_PAYLOAD)
+    assert event is not None
+    assert event.deployment_id == "deploy-abc123"
+    assert event.status == "BUILD_FAILED"
+    assert event.commit_sha == "deadbeef1234567890abcdef"
+    assert event.repo_full_name == "owner/repo"
+
+
+def test_parse_failed_status():
+    """FAILED 상태도 유효 이벤트로 파싱되어야 한다."""
+    payload = dict(_VALID_PAYLOAD, status="FAILED")
+    event = parse_railway_payload(payload)
+    assert event is not None
+    assert event.status == "FAILED"
+
+
+def test_parse_success_returns_none():
+    """SUCCESS 상태는 None 을 반환해야 한다."""
+    payload = dict(_VALID_PAYLOAD, status="SUCCESS")
+    assert parse_railway_payload(payload) is None
+
+
+def test_parse_non_deploy_type_returns_none():
+    """type != DEPLOY 이면 None 을 반환해야 한다."""
+    payload = dict(_VALID_PAYLOAD, type="BUILD")
+    assert parse_railway_payload(payload) is None
+
+
+def test_parse_missing_deployment_id_returns_none():
+    """deployment.id 누락 시 None 을 반환해야 한다."""
+    payload = dict(_VALID_PAYLOAD)
+    payload["deployment"] = {}
+    assert parse_railway_payload(payload) is None
+
+
+def test_parse_missing_optional_fields():
+    """project/commit 정보 없어도 파싱은 성공해야 한다."""
+    payload = {
+        "type": "DEPLOY",
+        "status": "FAILED",
+        "timestamp": "2026-04-20T10:00:00Z",
+        "deployment": {"id": "deploy-xyz"},
+    }
+    event = parse_railway_payload(payload)
+    assert event is not None
+    assert event.project_name == ""
+    assert event.commit_sha is None
