@@ -864,3 +864,41 @@ async def test_notify_merge_failure_skipped_when_no_chat_id():
             reason="x", chat_id=None,
         )
     m.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# save_gate_decision UPDATE 분기 테스트
+# ---------------------------------------------------------------------------
+
+def test_save_gate_decision_updates_existing_record():
+    """동일 analysis_id 재호출 시 INSERT 가 아닌 UPDATE 가 일어난다."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from src.database import Base
+    from src.models.repository import Repository
+    from src.models.analysis import Analysis
+    from src.models.gate_decision import GateDecision
+    from src.gate.engine import save_gate_decision
+
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine, future=True)
+
+    with Session() as db:
+        repo = Repository(full_name="o/r", webhook_secret="s")
+        db.add(repo)
+        db.commit()
+        a = Analysis(repo_id=repo.id, commit_sha="deadbeef", score=80, grade="B", result={})
+        db.add(a)
+        db.commit()
+        aid = a.id
+
+        r1 = save_gate_decision(db, aid, "approve", "auto")
+        r2 = save_gate_decision(db, aid, "reject", "manual", decided_by="user@x")
+
+        assert r1.id == r2.id, "동일 analysis_id 면 같은 row 유지"
+        count = db.query(GateDecision).filter(GateDecision.analysis_id == aid).count()
+        assert count == 1
+        assert r2.decision == "reject"
+        assert r2.mode == "manual"
+        assert r2.decided_by == "user@x"
