@@ -6,6 +6,7 @@ os.environ.setdefault("TELEGRAM_BOT_TOKEN", "123:ABC")
 os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 os.environ.setdefault("ANTHROPIC_API_KEY", "")
 
+import pytest
 import httpx
 from unittest.mock import AsyncMock, MagicMock, patch
 from src.gate.engine import run_gate_check
@@ -828,3 +829,36 @@ async def test_auto_merge_failure_global_fallback_chat_id():
                             call_args = mock_tg.call_args
                             # positional 2번째 인자가 chat_id
                             assert call_args.args[1] == "-100999"
+
+
+# ---------------------------------------------------------------------------
+# _notify_merge_failure 함수 테스트
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_notify_merge_failure_logs_warning_on_httpx_error(caplog):
+    """telegram_post_message 가 HTTPError 를 던져도 예외가 전파되지 않고 warning 으로 기록된다."""
+    from src.gate.engine import _notify_merge_failure
+
+    with patch(
+        "src.gate.engine.telegram_post_message",
+        new=AsyncMock(side_effect=httpx.ConnectError("boom")),
+    ):
+        await _notify_merge_failure(
+            repo_name="o/r", pr_number=7, score=55, threshold=80,
+            reason="conflict", chat_id="123",
+        )
+    assert any("Telegram merge-failure" in r.message for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_notify_merge_failure_skipped_when_no_chat_id():
+    """chat_id=None 이면 telegram_post_message 호출 안 됨."""
+    from src.gate.engine import _notify_merge_failure
+
+    with patch("src.gate.engine.telegram_post_message", new=AsyncMock()) as m:
+        await _notify_merge_failure(
+            repo_name="o/r", pr_number=7, score=55, threshold=80,
+            reason="x", chat_id=None,
+        )
+    m.assert_not_called()
