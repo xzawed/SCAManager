@@ -6,6 +6,7 @@ os.environ.setdefault("TELEGRAM_BOT_TOKEN", "123:ABC")
 os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 os.environ.setdefault("ANTHROPIC_API_KEY", "")
 
+import logging
 import pytest
 import httpx
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -840,14 +841,15 @@ async def test_notify_merge_failure_logs_warning_on_httpx_error(caplog):
     """telegram_post_message 가 HTTPError 를 던져도 예외가 전파되지 않고 warning 으로 기록된다."""
     from src.gate.engine import _notify_merge_failure
 
-    with patch(
-        "src.gate.engine.telegram_post_message",
-        new=AsyncMock(side_effect=httpx.ConnectError("boom")),
-    ):
-        await _notify_merge_failure(
-            repo_name="o/r", pr_number=7, score=55, threshold=80,
-            reason="conflict", chat_id="123",
-        )
+    with caplog.at_level(logging.WARNING, logger="src.gate.engine"):
+        with patch(
+            "src.gate.engine.telegram_post_message",
+            new=AsyncMock(side_effect=httpx.ConnectError("boom")),
+        ):
+            await _notify_merge_failure(
+                repo_name="o/r", pr_number=7, score=55, threshold=80,
+                reason="conflict", chat_id="123",
+            )
     assert any("Telegram merge-failure" in r.message for r in caplog.records)
 
 
