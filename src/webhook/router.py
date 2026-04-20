@@ -22,6 +22,7 @@ from src.notifier.n8n import notify_n8n_issue
 from src.github_client.issues import close_issue
 from src.railway_client.webhook import parse_railway_payload
 from src.railway_client.logs import fetch_deployment_logs, RailwayLogFetchError
+from src.railway_client.models import RailwayDeployEvent
 from src.notifier.railway_issue import create_deploy_failure_issue
 from src.models.repo_config import RepoConfig
 from src.models.repository import Repository
@@ -327,12 +328,10 @@ async def railway_webhook(
         config = db.query(RepoConfig).filter(
             RepoConfig.railway_webhook_token == token
         ).first()
-        if config is None or not hmac.compare_digest(config.railway_webhook_token or "", token):
+        if config is None:
             raise HTTPException(status_code=404, detail="Not Found")
 
-        if not config.railway_deploy_alerts:
-            return JSONResponse({"status": "ignored"}, status_code=200)
-
+        deploy_alerts = config.railway_deploy_alerts
         # 세션 종료 전 필요 값 추출 (lazy-load 금지 — CLAUDE.md 규약)
         repo_full_name = config.repo_full_name
         decrypted_api_token = (
@@ -348,9 +347,12 @@ async def railway_webhook(
             if user:
                 github_token = user.plaintext_token or github_token
 
+    if not deploy_alerts:
+        return {"status": "ignored"}
+
     event = parse_railway_payload(body)
     if event is None:
-        return JSONResponse({"status": "ignored"}, status_code=200)
+        return {"status": "ignored"}
 
     background_tasks.add_task(
         _handle_railway_deploy_failure,
@@ -365,7 +367,7 @@ async def railway_webhook(
 async def _handle_railway_deploy_failure(
     *,
     repo_full_name: str,
-    event,
+    event: RailwayDeployEvent,
     decrypted_api_token: str | None,
     github_token: str,
 ) -> None:
