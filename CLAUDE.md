@@ -354,7 +354,7 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 ### 보안
 
 - **hook_token 비교**: `!=` 연산자는 타이밍 공격에 취약. `hmac.compare_digest(config.hook_token or "", token)` 사용 필수.
-- **Telegram 게이트 콜백 HMAC 인증**: 콜백 데이터 형식 `gate:{decision}:{id}:{token}` — token은 `hmac(bot_token, str(analysis_id), sha256)[:16]`. `telegram_gate.py`의 `_gate_callback_token()` 참조. 테스트 시 HMAC 토큰을 직접 계산해 픽스처에 포함해야 함.
+- **Telegram 게이트 콜백 HMAC 인증**: 콜백 데이터 형식 `gate:{decision}:{id}:{token}` — token은 `hmac(bot_token, str(analysis_id), sha256).hexdigest()[:32]` (128-bit). `telegram_gate.py`의 `_gate_callback_token()` 참조. 테스트 시 HMAC 토큰을 직접 계산해 픽스처에 포함해야 함.
 - **GitHub Access Token 암호화**: `src/crypto.py`의 `encrypt_token()`/`decrypt_token()` — `TOKEN_ENCRYPTION_KEY` 미설정 시 평문 저장. `User.plaintext_token` property가 DB 읽기 시 자동 복호화. `user.github_access_token` 직접 사용 금지 — `user.plaintext_token` 사용.
 - **SESSION_SECRET 강도**: `warn_weak_session_secret` validator가 32자 미만 또는 기본값이면 WARNING 출력. 프로덕션에서는 32자 이상 랜덤 문자열 필수.
 - **Jinja2 autoescape**: `Jinja2Templates`는 `.html` 파일에 대해 autoescape=True(기본값). 템플릿 변수는 자동 이스케이프됨 — `| safe` 필터 사용 금지. notifier HTML 출력엔 `html.escape()` 직접 적용 필수.
