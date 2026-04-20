@@ -1,6 +1,7 @@
 """Railway 빌드 실패 시 GitHub Issue 자동 생성."""
 import logging
 import httpx
+from src.constants import HTTP_CLIENT_TIMEOUT
 from src.github_client.helpers import github_api_headers
 from src.railway_client.models import RailwayDeployEvent
 
@@ -57,7 +58,7 @@ async def create_deploy_failure_issue(
     headers = github_api_headers(github_token)
 
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with httpx.AsyncClient(timeout=HTTP_CLIENT_TIMEOUT) as client:
             # 중복 체크
             search_url = f"{GITHUB_API}/search/issues"
             search_resp = await client.get(
