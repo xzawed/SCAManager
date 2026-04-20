@@ -7,6 +7,7 @@ import re
 import time
 import httpx
 from fastapi import APIRouter, Request, HTTPException, BackgroundTasks, Header
+from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 from src.config import settings
 from src.webhook.validator import verify_github_signature
@@ -19,6 +20,13 @@ from src.repositories import repository_repo, analysis_repo
 from src.constants import HANDLED_EVENTS, PR_HANDLED_ACTIONS, WEBHOOK_SECRET_CACHE_TTL
 from src.notifier.n8n import notify_n8n_issue
 from src.github_client.issues import close_issue
+from src.railway_client.webhook import parse_railway_payload
+from src.railway_client.logs import fetch_deployment_logs, RailwayLogFetchError
+from src.notifier.railway_issue import create_deploy_failure_issue
+from src.models.repo_config import RepoConfig
+from src.models.repository import Repository
+from src.models.user import User as UserModel
+from src.crypto import decrypt_token
 
 logger = logging.getLogger(__name__)
 
@@ -301,3 +309,78 @@ async def telegram_webhook(
         decided_by=decided_by,
     )
     return {"status": "ok"}
+
+
+@router.post("/webhooks/railway/{token}")
+async def railway_webhook(
+    token: str,
+    request: Request,
+    background_tasks: BackgroundTasks,
+):
+    """Railway 빌드 실패 Webhook 수신 → BackgroundTask 로 GitHub Issue 생성."""
+    try:
+        body = await request.json()
+    except Exception:  # pylint: disable=broad-except
+        body = {}
+
+    with SessionLocal() as db:
+        config = db.query(RepoConfig).filter(
+            RepoConfig.railway_webhook_token == token
+        ).first()
+        if config is None or not hmac.compare_digest(config.railway_webhook_token or "", token):
+            raise HTTPException(status_code=404, detail="Not Found")
+
+        if not config.railway_deploy_alerts:
+            return JSONResponse({"status": "ignored"}, status_code=200)
+
+        # 세션 종료 전 필요 값 추출 (lazy-load 금지 — CLAUDE.md 규약)
+        repo_full_name = config.repo_full_name
+        decrypted_api_token = (
+            decrypt_token(config.railway_api_token) if config.railway_api_token else None
+        )
+
+        repo = db.query(Repository).filter(
+            Repository.full_name == repo_full_name
+        ).first()
+        github_token = settings.github_token or ""
+        if repo and repo.user_id:
+            user = db.query(UserModel).filter(UserModel.id == repo.user_id).first()
+            if user:
+                github_token = user.plaintext_token or github_token
+
+    event = parse_railway_payload(body)
+    if event is None:
+        return JSONResponse({"status": "ignored"}, status_code=200)
+
+    background_tasks.add_task(
+        _handle_railway_deploy_failure,
+        repo_full_name=repo_full_name,
+        event=event,
+        decrypted_api_token=decrypted_api_token,
+        github_token=github_token,
+    )
+    return JSONResponse({"status": "accepted"}, status_code=202)
+
+
+async def _handle_railway_deploy_failure(
+    *,
+    repo_full_name: str,
+    event,
+    decrypted_api_token: str | None,
+    github_token: str,
+) -> None:
+    """Railway 빌드 실패 이벤트를 처리하고 GitHub Issue 를 생성한다."""
+    logs_tail: str | None = None
+    if decrypted_api_token:
+        try:
+            logs_tail = await fetch_deployment_logs(decrypted_api_token, event.deployment_id)
+        except RailwayLogFetchError as exc:
+            logger.warning("Railway 로그 조회 실패 (%s): %s", event.deployment_id, exc)
+            logs_tail = f"로그 조회 실패: {exc}"
+
+    await create_deploy_failure_issue(
+        github_token=github_token,
+        repo_full_name=repo_full_name,
+        event=event,
+        logs_tail=logs_tail,
+    )
