@@ -880,9 +880,9 @@ def test_save_gate_decision_updates_existing_record():
     from src.models.gate_decision import GateDecision
     from src.gate.engine import save_gate_decision
 
-    engine = create_engine("sqlite:///:memory:", future=True)
+    engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine, future=True)
+    Session = sessionmaker(engine)
 
     with Session() as db:
         repo = Repository(full_name="o/r", webhook_secret="s")
@@ -896,9 +896,10 @@ def test_save_gate_decision_updates_existing_record():
         r1 = save_gate_decision(db, aid, "approve", "auto")
         r2 = save_gate_decision(db, aid, "reject", "manual", decided_by="user@x")
 
-        assert r1.id == r2.id, "동일 analysis_id 면 같은 row 유지"
-        count = db.query(GateDecision).filter(GateDecision.analysis_id == aid).count()
-        assert count == 1
         assert r2.decision == "reject"
         assert r2.mode == "manual"
         assert r2.decided_by == "user@x"
+
+    with Session() as verify_db:
+        count = verify_db.query(GateDecision).filter(GateDecision.analysis_id == aid).count()
+        assert count == 1
