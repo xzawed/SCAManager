@@ -1,11 +1,14 @@
+import dataclasses
 import os
+
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("GITHUB_WEBHOOK_SECRET", "test_secret")
 os.environ.setdefault("GITHUB_TOKEN", "ghp_test")
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "123:ABC")
 os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 
-from src.models.repo_config import RepoConfig
+from src.config_manager.manager import RepoConfigData  # noqa: E402
+from src.models.repo_config import RepoConfig  # noqa: E402
 
 
 def test_repo_config_has_railway_fields():
@@ -19,9 +22,6 @@ def test_repo_config_railway_alerts_default():
     """RepoConfig 기본값 — railway_deploy_alerts=False."""
     config = RepoConfig(repo_full_name="owner/repo")
     assert config.railway_deploy_alerts is False
-
-
-from src.config_manager.manager import RepoConfigData
 
 
 def test_repo_config_data_has_railway_alerts():
@@ -38,7 +38,6 @@ def test_repo_config_data_railway_alerts_settable():
 
 def test_repo_config_webhook_token_not_in_config_data():
     """railway_webhook_token 은 RepoConfigData 에 포함되지 않아야 한다 (ORM 직접 관리)."""
-    import dataclasses
     field_names = {f.name for f in dataclasses.fields(RepoConfigData)}
     assert "railway_webhook_token" not in field_names
     assert "railway_api_token" not in field_names
