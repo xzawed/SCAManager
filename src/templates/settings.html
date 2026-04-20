@@ -665,6 +665,57 @@
 
     </div><!-- /settings-grid -->
 
+    <!-- ⑤ Railway 배포 알림 -->
+    <div class="s-card" style="margin-top:1rem">
+      <div class="s-card-hdr" style="background:linear-gradient(135deg,#7c3aed,#db2777)">
+        <span class="hdr-icon">🚂</span>
+        <span class="hdr-title">Railway 배포 알림</span>
+      </div>
+      <div class="s-card-body">
+        <label class="toggle-row">
+          <div class="toggle-info">
+            <span class="toggle-label">빌드 실패 시 GitHub Issue 자동 생성</span>
+            <span class="toggle-desc">Railway 빌드 실패 이벤트 수신 시 해당 리포에 로그 포함 Issue 를 자동으로 생성합니다.</span>
+          </div>
+          <input type="checkbox" name="railway_deploy_alerts" id="railway_deploy_alerts"
+            {% if config.railway_deploy_alerts %}checked{% endif %}>
+        </label>
+
+        <div class="s-divider"></div>
+
+        <div class="s-section-label">Railway API 토큰 (로그 조회용)</div>
+        <input
+          type="password"
+          name="railway_api_token"
+          class="form-control"
+          style="margin-bottom:.65rem"
+          placeholder="railway_api_token (설정 시 빌드 로그 200줄 포함)"
+          value="{{ '****' if railway_api_token_set else '' }}"
+          autocomplete="off"
+        >
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:1rem">
+          Railway 대시보드 → Account Settings → Tokens 에서 발급. 변경하지 않으려면 그대로 두세요.
+        </p>
+
+        {% if railway_webhook_url %}
+        <div class="s-section-label">Railway Webhook URL</div>
+        <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.5rem">
+          <input type="text" readonly class="form-control" id="railway-webhook-url"
+            value="{{ railway_webhook_url }}" style="font-family:monospace;font-size:12px">
+          <button type="button" class="btn btn--sm"
+            onclick="navigator.clipboard.writeText(document.getElementById('railway-webhook-url').value)">📋</button>
+        </div>
+        <p style="font-size:12px;color:var(--text-muted)">
+          Railway Project Settings → Webhooks 에 위 URL 을 추가하세요.
+        </p>
+        {% else %}
+        <p style="font-size:12px;color:var(--text-muted)">
+          설정 저장 후 Railway Webhook URL 이 자동 생성됩니다.
+        </p>
+        {% endif %}
+      </div>
+    </div>
+
     <div class="save-bar">
       <button type="submit" class="btn-save-new">💾 설정 저장</button>
     </div>
@@ -732,6 +783,7 @@
       pr_review_comment: true,
       commit_comment: false,
       create_issue: false,
+      railway_deploy_alerts: false,
       approve_mode: 'disabled',
       auto_merge: false,
       approve_threshold: 75,
@@ -742,6 +794,7 @@
       pr_review_comment: true,
       commit_comment: true,
       create_issue: false,
+      railway_deploy_alerts: true,
       approve_mode: 'auto',
       auto_merge: false,
       approve_threshold: 75,
@@ -752,6 +805,7 @@
       pr_review_comment: true,
       commit_comment: true,
       create_issue: true,
+      railway_deploy_alerts: true,
       approve_mode: 'auto',
       auto_merge: true,
       approve_threshold: 85,
@@ -780,6 +834,8 @@
     document.querySelector('input[name="commit_comment"]').checked = p.commit_comment;
     document.querySelector('input[name="create_issue"]').checked = p.create_issue;
     document.querySelector('input[name="auto_merge"]').checked = p.auto_merge;
+    const railwayAlertEl = document.querySelector('input[name="railway_deploy_alerts"]');
+    if (railwayAlertEl) railwayAlertEl.checked = p.railway_deploy_alerts;
 
     // 슬라이더 + 숫자 동기화
     _setPair('approve_threshold', 'approveVal', p.approve_threshold);
