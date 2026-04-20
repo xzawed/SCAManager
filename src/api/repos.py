@@ -31,6 +31,7 @@ class RepoConfigUpdate(BaseModel):
     merge_threshold: int = Field(75, ge=0, le=100)
     commit_comment: bool = False
     create_issue: bool = False
+    railway_deploy_alerts: bool = False
 
     @model_validator(mode="after")
     def validate_thresholds(self) -> "RepoConfigUpdate":
