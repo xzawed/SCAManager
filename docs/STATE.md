@@ -6,7 +6,7 @@
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1102개** | pytest (0 failed) |
+| 단위 테스트 | **1107개** | pytest (0 failed) |
 | E2E 테스트 | **38개** | `make test-e2e` (Chromium Playwright) |
 | pylint | **10.00/10** | `python -m pylint src/` — 만점 |
 | 커버리지 | **96.2%** | `make test-cov` (database.py 100%, ui/router.py 99.4%) |
@@ -108,10 +108,20 @@
 | Webhook 엔드포인트 | `POST /webhooks/railway/{token}` + BackgroundTask 핸들러 | +5 |
 | Settings UI | 카드 ⑤ Railway 알림 + PRESETS 3개 블록 + GET/POST 핸들러 | +3 (RepoConfigData/API) |
 
+### 그룹 8 — 5-Round 감사 후속 테스트 보강 (2026-04-21)
+
+| 작업 | 주요 내용 | 테스트 증분 |
+|------|----------|-----------|
+| _notify_merge_failure 커버리지 | Telegram HTTPError 예외·skip 경로 고정 + caplog.at_level 안정화 | +2 |
+| save_gate_decision UPDATE 분기 | upsert 재사용 경로 + SQLAlchemy 2.x 호환 + 교차 세션 count | +1 |
+| _regate_pr_if_needed rollback | SQLAlchemyError 시 rollback + gate skip + 오류 로그 | +1 |
+| _save_and_gate TOCTOU 감지 | 동시 삽입 감지 경로 고정 (신규 test_pipeline_save_and_gate.py) | +1 |
+| CLAUDE.md HMAC 주석 정정 | [:16] → [:32] (128-bit) 문서 오기 수정 | — |
+
 ## 갱신 방법
 
 ```bash
-make test          # 1102 유지 확인
+make test          # 1107 유지 확인
 make lint          # pylint 10.00 + flake8 0건 + bandit HIGH 0개
 make test-cov      # 96%+ 유지 확인 (소폭 변동 가능)
 
