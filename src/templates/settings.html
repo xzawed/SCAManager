@@ -548,14 +548,15 @@
         </div>
       </div>
 
-      <!-- ② Push 동작 (Task 3 에서 '이벤트 후 피드백'으로 재편 예정) -->
+      <!-- ② 이벤트 후 피드백 -->
       <div class="s-card">
         <div class="s-card-hdr hdr-merge">
-          <span class="hdr-icon">📌</span>
-          <span class="hdr-title">Push 동작</span>
+          <span class="hdr-icon">📬</span>
+          <span class="hdr-title">이벤트 후 피드백</span>
         </div>
         <div class="s-card-body">
 
+          <div class="s-section-label">Push 이후</div>
           <div class="toggle-row">
             <div class="toggle-info">
               <div class="t-title">커밋 코멘트</div>
@@ -568,6 +569,8 @@
             </label>
           </div>
 
+          <div class="s-divider"></div>
+          <div class="s-section-label">점수 미달 시</div>
           <div class="toggle-row">
             <div class="toggle-info">
               <div class="t-title">이슈 자동 생성</div>
@@ -576,6 +579,20 @@
             <label class="toggle-switch">
               <input type="checkbox" name="create_issue" value="on"
                      {% if config.create_issue %}checked{% endif %}>
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+
+          <div class="s-divider"></div>
+          <div class="s-section-label">Railway 빌드 실패 시</div>
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="t-title">GitHub Issue 자동 생성</div>
+              <div class="t-desc">Railway 빌드 실패 이벤트 수신 시<br>해당 리포에 로그 포함 Issue 자동 생성</div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" name="railway_deploy_alerts" id="railway_deploy_alerts" value="on"
+                     {% if config.railway_deploy_alerts %}checked{% endif %}>
               <span class="toggle-track"></span>
             </label>
           </div>
@@ -665,24 +682,13 @@
 
     </div><!-- /settings-grid -->
 
-    <!-- ⑤ Railway 배포 알림 -->
+    <!-- ⑤ Railway 토큰/Webhook (Task 4 에서 시스템 카드로 통합 예정) -->
     <div class="s-card" style="margin-top:1rem">
       <div class="s-card-hdr" style="background:linear-gradient(135deg,#7c3aed,#db2777)">
         <span class="hdr-icon">🚂</span>
-        <span class="hdr-title">Railway 배포 알림</span>
+        <span class="hdr-title">Railway 통합</span>
       </div>
       <div class="s-card-body">
-        <label class="toggle-row">
-          <div class="toggle-info">
-            <span class="toggle-label">빌드 실패 시 GitHub Issue 자동 생성</span>
-            <span class="toggle-desc">Railway 빌드 실패 이벤트 수신 시 해당 리포에 로그 포함 Issue 를 자동으로 생성합니다.</span>
-          </div>
-          <input type="checkbox" name="railway_deploy_alerts" id="railway_deploy_alerts"
-            {% if config.railway_deploy_alerts %}checked{% endif %}>
-        </label>
-
-        <div class="s-divider"></div>
-
         <div class="s-section-label">Railway API 토큰 (로그 조회용)</div>
         <input
           type="password"
