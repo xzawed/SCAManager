@@ -30,6 +30,10 @@ env/
 .coverage
 htmlcov/
 
+# SQLite 로컬/E2E DB
+*.db
+*.sqlite3
+
 # Worktrees
 .worktrees/
 
