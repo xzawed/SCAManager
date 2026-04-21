@@ -741,10 +741,18 @@
       <span class="field-hint">설정 저장 후 Railway Webhook URL 이 자동 생성됩니다.</span>
       {% endif %}
 
-      <div class="s-divider"></div>
+    </div>
+  </div>
 
-      <details>
-        <summary class="danger-summary">⚠️ 위험 구역</summary>
+  <!-- ⑥ 위험 구역 (메인 form 외부, 페이지 최하단) -->
+  <div class="s-card" style="margin-bottom:2rem;">
+    <div class="s-card-hdr" style="background:linear-gradient(135deg,#991b1b,#dc2626)">
+      <span class="hdr-icon">⚠️</span>
+      <span class="hdr-title">위험 구역</span>
+    </div>
+    <div class="s-card-body">
+      <details class="danger-summary-wrap">
+        <summary class="danger-summary">⚠️ 위험한 작업 펼치기</summary>
         <div style="margin-top:.75rem;">
           <div class="toggle-row">
             <div class="toggle-info">
@@ -761,7 +769,6 @@
           </div>
         </div>
       </details>
-
     </div>
   </div>
 
