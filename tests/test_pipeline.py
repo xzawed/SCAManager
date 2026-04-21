@@ -26,6 +26,9 @@ def mock_deps():
         patch("src.worker.pipeline.send_analysis_result", new_callable=AsyncMock) as mock_telegram,
         patch("src.worker.pipeline.SessionLocal") as mock_session_cls,
         patch("src.worker.pipeline.settings") as mock_settings,
+        # 정적분석 subprocess(Semgrep 등) 실행 차단 — 테스트당 ~7s 절약
+        patch("src.worker.pipeline._run_static_analysis",
+              new_callable=AsyncMock, return_value=[]),
     ):
         from src.scorer.calculator import ScoreResult
         from src.github_client.diff import ChangedFile

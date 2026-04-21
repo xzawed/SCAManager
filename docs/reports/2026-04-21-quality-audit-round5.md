@@ -311,3 +311,67 @@ run_pytest e2e/ -q > docs/reports/artifacts/2026-04-21/r5_e2e.log
 - **차기 감사**: Phase D.2 또는 major refactor 발생 시 재실행
 
 감사 완료. Analyzer/API/UI 코드 수정 **전혀 없음**. 순수 감사·문서 작업만 반영.
+
+---
+
+## Follow-up (2026-04-21) — 권고사항 즉시 해소
+
+감사 제출 직후 3개 후속 조사 에이전트(P/Q/R)를 병렬 launch 하여 R1 에서 검출된 회귀 신호의 **원인 분석 + 수정 반영**까지 완료.
+
+### 후속 조사 에이전트 결론
+
+| 에이전트 | 조사 대상 | 확정 원인 |
+|----------|----------|----------|
+| **Agent P** | `test_db_result_stores_source_pr` 14.57s 단일 (+482%) | `mock_deps` fixture 가 `_run_static_analysis` 를 mock 안 함 → Semgrep subprocess (6~7s/파일) 실행 |
+| **Agent Q** | `test_issues_event_with_valid_signature_returns_202` 15.02s (+35%) | `patch("src.notifier.n8n.notify_n8n_issue")` 가 router 의 import-시점 로컬 참조를 못 바꿈 → BackgroundTask 가 실제 `notify_n8n_issue` 실행 → `socket.getaddrinfo` DNS 블로킹. +35% 는 회귀가 아닌 DNS resolver 변동 노이즈 |
+| **Agent R** | pipeline 계열 7건 +200% 공통 원인 | P 와 동일 — `_run_static_analysis` 공통 mock 누락. 2026-04-19 `c35f8ee` (Phase B Semgrep) 커밋 이후 REGISTRY 에 자동 등록된 Semgrep 이 모든 pipeline 테스트에서 실제 subprocess 실행 |
+
+3 에이전트 교차 확인: P+R 동일 공통 원인 / Q 는 독립적 DNS 버그.
+
+### 적용 수정 (테스트 코드 3파일, Production 0 변경)
+
+| # | 파일 | 변경 | 효과 |
+|---|------|------|------|
+| 1 | `tests/test_pipeline.py` | `mock_deps` fixture 에 `patch("src.worker.pipeline._run_static_analysis", new_callable=AsyncMock, return_value=[])` 추가 | pipeline 테스트 ~30건 |
+| 2 | `tests/test_pipeline_pr_regate.py` | 시나리오 A/B/C 각 `with (...)` 블록에 동일 mock 추가 | pr_regate 4건 |
+| 3 | `tests/test_webhook_issues.py:97` | `patch("src.notifier.n8n.notify_n8n_issue")` → `patch("src.webhook.router.notify_n8n_issue")` | DNS 블로킹 차단 |
+
+### Quick Win 동시 반영 (감사 권고사항 §🟡 1·2 해소)
+
+| # | 파일 | 변경 |
+|---|------|------|
+| 1 | `requirements-dev.txt` | `pytest-cov>=5.0.0` 추가 (R2 재현성 확보) |
+| 2 | `pytest.ini` | `asyncio_default_fixture_loop_scope = function` 추가 (E2E warnings 1건 제거) |
+
+### 측정 효과
+
+**전체 pytest 실행 시간**: 326.88s → **70.81s** (**78% 단축, 5.5분 → 1.2분**)
+
+Top 10 slowest 변화 ([`artifacts/2026-04-21/r1_pytest_after_fix.log`](artifacts/2026-04-21/r1_pytest_after_fix.log)):
+
+| 수정 전 | 수정 후 |
+|---------|---------|
+| `test_db_result_stores_source_pr` 14.57s | `test_clean_code_has_no_errors` 8.73s (test_static_analyzer — **의도된 통합 테스트**) |
+| `test_issues_event...` 15.02s | `test_bandit_detects_eval` 8.08s (test_static_analyzer) |
+| pipeline 7건 +200% 회귀 집중 | pipeline 전부 0.76s 이하로 급락 |
+
+pipeline 7건 회귀 완전 해소. `test_webhook_issues` 도 상위 10 밖으로 이탈 (DNS 블로킹 차단 성공).
+
+### 권고사항 해소 상태 갱신
+
+| 권고 | 상태 |
+|------|------|
+| 🟡 1. `requirements-dev.txt` pytest-cov 추가 | ✅ 해소 |
+| 🟡 2. `pytest.ini asyncio_default_fixture_loop_scope` | ✅ 해소 |
+| 🟡 3. `test_db_result_stores_source_pr` 14.57s 조사 | ✅ **해소 (근본 원인 확정 + 수정)** |
+| 🟡 4. pipeline 모듈 fixture 재사용 | ✅ 해소 (공통 mock 주입으로 더 근본적 해결) |
+| 🟢 5. `RailwayDeployEvent` sub-dataclass 분리 | 대기 (별도 Phase) |
+| 🟢 6. PyGithub `auth=` 마이그레이션 | 대기 (별도 기술부채) |
+| 🟢 7. pytest-cov devcontainer 이미지 갱신 | 부분 (requirements-dev.txt 추가로 설치 경로 확보) |
+| 🟢 8. `_ALEMBIC_HEAD` 자동 추출 | 대기 |
+
+### 영향 범위 재확인
+
+- **테스트 결과**: 1126 passed, 0 failed 유지 (회귀 0)
+- **Production 코드**: 변경 0
+- **새 회귀 신호**: `test_static_analyzer.py` 8건이 상위에 노출 — 이 파일은 `analyze_file` 실제 subprocess 를 검증하는 **의도된 통합 테스트**. Agent R §4 권고(`tests/integration/` 분리 + `@pytest.mark.slow` 마킹)를 별도 Phase 백로그에 추가.

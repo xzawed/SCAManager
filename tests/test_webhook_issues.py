@@ -91,10 +91,14 @@ def test_issues_event_with_valid_signature_returns_202():
     payload = _issues_payload()
     repo_config = _mock_repo_config(n8n_webhook_url="https://n8n.example.com/webhook/abc")
 
+    # router.py 가 line 21 에서 `from src.notifier.n8n import notify_n8n_issue` 로
+    # 심볼을 직접 import 하므로, 모듈 네임스페이스(src.notifier.n8n)가 아닌
+    # router 가 잡은 로컬 참조(src.webhook.router)를 patch 해야 BackgroundTask 가
+    # mock 을 타고 실 DNS 조회를 회피한다.
     with patch("src.webhook.router.settings") as mock_settings, \
          patch("src.webhook.router.SessionLocal", return_value=_mock_db()), \
          patch("src.webhook.router.get_repo_config", return_value=repo_config), \
-         patch("src.notifier.n8n.notify_n8n_issue") as mock_notify:
+         patch("src.webhook.router.notify_n8n_issue") as mock_notify:
         mock_settings.github_webhook_secret = SECRET
         mock_settings.n8n_webhook_secret = ""
         resp = client.post(
