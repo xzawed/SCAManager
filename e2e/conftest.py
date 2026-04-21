@@ -21,7 +21,7 @@ BASE_URL = f"http://localhost:{E2E_PORT}"
 _E2E_USER_ID = 1
 
 # Alembic head revision — E2E DB 스탬핑용 (alembic/versions/ 최신 revision)
-_ALEMBIC_HEAD = "0011ccandissue"
+_ALEMBIC_HEAD = "0012railwayfields"
 
 
 # ── E2E DB 스키마 직접 생성 (Alembic SQLite 호환 문제 우회) ──────────────

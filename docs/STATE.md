@@ -7,7 +7,7 @@
 | 지표 | 값 | 비고 |
 |------|-----|------|
 | 단위 테스트 | **1110개** | pytest (0 failed) |
-| E2E 테스트 | **38개** | `make test-e2e` (Chromium Playwright) |
+| E2E 테스트 | **49개** | `make test-e2e` (Chromium Playwright) |
 | pylint | **10.00/10** | `python -m pylint src/` — 만점 |
 | 커버리지 | **96.2%** | `make test-cov` (database.py 100%, ui/router.py 99.4%) |
 | bandit HIGH | **0개** | bandit 1.9.4 (Python 3.14 대응) |
@@ -131,6 +131,7 @@
 | 프리셋 P2 적용 하이라이트 | flashPresetChanges(changedFields) 신규 + @keyframes preset-flash 2.5s 애니메이션 (box-shadow glow + background fade) | — |
 | 저장 오류 UX | ?save_error=1 쿼리 감지 시 .advanced-details.open = true 자동 펼침 (문제 필드 접근성) | — |
 | 백엔드 불변 | ORM·RepoConfigData·POST 핸들러·PRESETS 9개 필드·JS 헬퍼 5종 시그니처 전부 불변 | — |
+| E2E 자동 검증 | 8단계 Verification 자동화 — 6카드·P1 diff·P2 하이라이트·mask-toggle·save_error 아코디언·auto_merge 위치·위험구역 분리 + 기존 3개 preset 적용 방식 업데이트 | E2E +11 (38→49) |
 
 ## 갱신 방법
 
