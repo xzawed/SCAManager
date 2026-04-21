@@ -1,16 +1,24 @@
-.PHONY: install test test-v test-cov test-file lint gate run migrate revision review install-playwright test-e2e test-e2e-headed
+.PHONY: install test test-v test-fast test-slow test-cov test-file lint gate run migrate revision review install-playwright test-e2e test-e2e-headed
 
 # 의존성 설치 (개발 환경 — 테스트/E2E 포함)
 install:
 	pip install -r requirements-dev.txt
 
-# 테스트 (빠른 실행)
+# 테스트 (빠른 실행, 전체)
 test:
 	python -m pytest tests/ -q
 
 # 테스트 (상세 출력)
 test-v:
 	python -m pytest tests/ -v
+
+# 빠른 단위 테스트만 (tests/integration/ 의 실 subprocess 테스트 제외)
+test-fast:
+	python -m pytest tests/ -m "not slow" -q
+
+# 통합 테스트만 (tests/integration/ — pylint/flake8/bandit/semgrep 실제 실행)
+test-slow:
+	python -m pytest tests/ -m "slow" -q
 
 # 테스트 + 커버리지
 test-cov:
