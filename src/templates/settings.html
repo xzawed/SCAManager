@@ -1064,6 +1064,17 @@
     document.getElementById('mergeThresholdRow').classList.toggle('is-hidden', !checked);
   }
 
+  // 저장 오류 시 고급설정 아코디언 자동 펼침 — 문제 필드
+  // (approve_threshold / reject_threshold) 가 접힌 아코디언 안에 있어
+  // 사용자가 오류 원인을 즉시 볼 수 없던 페인 포인트 해결.
+  (function() {
+    const params = new URLSearchParams(location.search);
+    if (params.get('save_error') === '1') {
+      const adv = document.querySelector('.advanced-details');
+      if (adv) adv.open = true;
+    }
+  })();
+
   // 토스트 클릭 시 즉시 닫기 + URL 쿼리 제거
   const toast = document.getElementById('saveToast');
   if (toast) {
