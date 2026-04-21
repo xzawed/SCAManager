@@ -1,4 +1,4 @@
 providers = ["python"]
 
 [phases.setup]
-aptPkgs = ["shellcheck", "nodejs", "npm"]
+aptPkgs = ["shellcheck", "nodejs", "npm", "cppcheck"]
