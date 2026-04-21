@@ -1467,3 +1467,75 @@ def test_overview_grade_derived_from_avg_score():
     # 평균 92점 → grade A → 템플릿에서 <span class="grade grade-A"> 뱃지 스팬으로 렌더
     # 현재 구현(latest_grade 기반)에서는 latest_map이 비어 있어 이 스팬이 없음 → Red
     assert '<span class="grade grade-A">' in r.text
+
+
+# ── Settings 페이지 재설계 스모크 테스트 (2026-04-21) ──────────────────────────
+
+def test_settings_form_fields_preserved():
+    """settings.html 리팩토링 후 16개 form name= 속성이 모두 보존되는지 확인."""
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
+        id=1, full_name="owner/repo", user_id=None
+    )
+    from src.config_manager.manager import RepoConfigData
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.ui.router.get_repo_config",
+                   return_value=RepoConfigData(repo_full_name="owner/repo")):
+            r = client.get("/repos/owner%2Frepo/settings")
+    assert r.status_code == 200
+    body = r.text
+    required_names = [
+        "pr_review_comment", "approve_mode", "approve_threshold", "reject_threshold",
+        "commit_comment", "create_issue", "auto_merge", "merge_threshold",
+        "railway_deploy_alerts", "railway_api_token",
+        "notify_chat_id", "discord_webhook_url", "slack_webhook_url",
+        "email_recipients", "custom_webhook_url", "n8n_webhook_url",
+    ]
+    for name in required_names:
+        assert f'name="{name}"' in body, f"Missing form field: {name}"
+
+
+def test_settings_railway_alerts_uses_toggle_switch():
+    """railway_deploy_alerts 체크박스가 toggle-switch 클래스 label 안에 있어야 한다."""
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
+        id=1, full_name="owner/repo", user_id=None
+    )
+    from src.config_manager.manager import RepoConfigData
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.ui.router.get_repo_config",
+                   return_value=RepoConfigData(repo_full_name="owner/repo")):
+            r = client.get("/repos/owner%2Frepo/settings")
+    assert r.status_code == 200
+    import re
+    # 동일 <label class="toggle-switch"> 내부에 railway_deploy_alerts input 이 있어야 함.
+    # 음수 lookahead 로 중간에 </label> 이 끼어들면 매치 실패 → 다른 toggle-switch
+    # label 안에 있는 경우를 걸러낸다.
+    pattern = re.compile(
+        r'<label[^>]*class="[^"]*toggle-switch[^"]*"[^>]*>'
+        r'(?:(?!</label>)[\s\S])*?'
+        r'name="railway_deploy_alerts"',
+        re.MULTILINE,
+    )
+    assert pattern.search(r.text), (
+        "railway_deploy_alerts must be wrapped in a .toggle-switch label "
+        "for UX consistency with other toggles"
+    )
+
+
+def test_settings_has_preset_details_elements():
+    """프리셋 3종 모두 <details id='preset-*'> 요소 + JS 헬퍼 3종이 존재해야 한다."""
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
+        id=1, full_name="owner/repo", user_id=None
+    )
+    from src.config_manager.manager import RepoConfigData
+    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.ui.router.get_repo_config",
+                   return_value=RepoConfigData(repo_full_name="owner/repo")):
+            r = client.get("/repos/owner%2Frepo/settings")
+    assert r.status_code == 200
+    for preset in ("minimal", "standard", "strict"):
+        assert f'id="preset-{preset}"' in r.text, f"Missing <details id=preset-{preset}>"
+    for fn in ("onPresetToggle", "renderPresetDiff", "flashPresetChanges"):
+        assert fn in r.text, f"Missing JS helper: {fn}"
