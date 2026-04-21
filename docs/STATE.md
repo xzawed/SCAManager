@@ -6,7 +6,7 @@
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1107개** | pytest (0 failed) |
+| 단위 테스트 | **1110개** | pytest (0 failed) |
 | E2E 테스트 | **38개** | `make test-e2e` (Chromium Playwright) |
 | pylint | **10.00/10** | `python -m pylint src/` — 만점 |
 | 커버리지 | **96.2%** | `make test-cov` (database.py 100%, ui/router.py 99.4%) |
@@ -117,6 +117,20 @@
 | _regate_pr_if_needed rollback | SQLAlchemyError 시 rollback + gate skip + 오류 로그 | +1 |
 | _save_and_gate TOCTOU 감지 | 동시 삽입 감지 경로 고정 (신규 test_pipeline_save_and_gate.py) | +1 |
 | CLAUDE.md HMAC 주석 정정 | [:16] → [:32] (128-bit) 문서 오기 수정 | — |
+
+### 그룹 9 — Settings 페이지 재설계 (2026-04-21)
+
+| 작업 | 주요 내용 | 테스트 증분 |
+|------|----------|-----------|
+| 스모크 테스트 3종 (TDD Red) | form 필드 16개 보존 · railway_deploy_alerts toggle-switch · 프리셋 `<details>` + 신규 JS 헬퍼 3종 | +3 |
+| PR 카드 재편 (①) | 헤더 '⚡ PR 동작' → '📋 PR 들어왔을 때', auto_merge + merge_threshold 를 Push 카드에서 이동 | — |
+| 이벤트 후 피드백 카드 통합 (②) | commit_comment / create_issue / railway_deploy_alerts 3종을 트리거별 소제목(Push 이후 / 점수 미달 시 / Railway 빌드 실패 시) 그룹핑 + raw checkbox → toggle-switch 통일 | — |
+| 시스템 & 토큰 카드 통합 (⑤) | CLI Hook + Webhook 재등록 + Railway API 토큰(.masked-field + 👁️) + Railway Webhook URL 통합. 메인 `<form id="settingsForm">` + `form="settingsForm"` 바깥 필드 바인딩 | — |
+| 위험 구역 카드 ⑥ 분리 | 리포 삭제 `<details>` 를 독립 카드(빨간 그라디언트)로 최하단 분리 | — |
+| 프리셋 P1 diff 미리보기 | onPresetToggle 재정의 + renderPresetDiff(name) 신규 — 현재값 vs 프리셋값 9 필드 diff 테이블, 변경 필드는 var(--accent) 색상 · 불변 필드는 opacity:.45 | — |
+| 프리셋 P2 적용 하이라이트 | flashPresetChanges(changedFields) 신규 + @keyframes preset-flash 2.5s 애니메이션 (box-shadow glow + background fade) | — |
+| 저장 오류 UX | ?save_error=1 쿼리 감지 시 .advanced-details.open = true 자동 펼침 (문제 필드 접근성) | — |
+| 백엔드 불변 | ORM·RepoConfigData·POST 핸들러·PRESETS 9개 필드·JS 헬퍼 5종 시그니처 전부 불변 | — |
 
 ## 갱신 방법
 
