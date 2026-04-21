@@ -20,8 +20,42 @@ BASE_URL = f"http://localhost:{E2E_PORT}"
 # E2E 테스트용 고정 사용자 ID
 _E2E_USER_ID = 1
 
-# Alembic head revision — E2E DB 스탬핑용 (alembic/versions/ 최신 revision)
-_ALEMBIC_HEAD = "0012railwayfields"
+
+def _get_alembic_head() -> str:
+    """alembic/versions/ 디렉토리에서 head revision 자동 추출.
+
+    모든 revision 중 down_revision 으로 참조되지 않는 것이 head. 선형 DAG 가정.
+    분기 상태(head 가 여러 개)면 즉시 실패해 DAG 오류를 조기 포착한다.
+    """
+    import re
+    versions_dir = os.path.join(
+        os.path.dirname(__file__), "..", "alembic", "versions"
+    )
+    revisions: set[str] = set()
+    down_revisions: set[str] = set()
+    rev_re = re.compile(r"^revision\s*(?::\s*str)?\s*=\s*['\"]([^'\"]+)['\"]", re.MULTILINE)
+    down_re = re.compile(r"^down_revision\s*(?::[^=]*)?=\s*['\"]([^'\"]+)['\"]", re.MULTILINE)
+    for fname in os.listdir(versions_dir):
+        if not fname.endswith(".py") or fname.startswith("_"):
+            continue
+        with open(os.path.join(versions_dir, fname), encoding="utf-8") as f:
+            text = f.read()
+        m = rev_re.search(text)
+        if m:
+            revisions.add(m.group(1))
+        m = down_re.search(text)
+        if m:
+            down_revisions.add(m.group(1))
+    heads = revisions - down_revisions
+    if len(heads) != 1:
+        raise RuntimeError(
+            f"Expected single alembic head, got {sorted(heads)}. Check migration DAG."
+        )
+    return heads.pop()
+
+
+# Alembic head revision — E2E DB 스탬핑용 (DAG 파싱 자동 추출 → 신규 마이그레이션 자동 반영)
+_ALEMBIC_HEAD = _get_alembic_head()
 
 
 # ── E2E DB 스키마 직접 생성 (Alembic SQLite 호환 문제 우회) ──────────────
