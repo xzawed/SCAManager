@@ -156,7 +156,14 @@
 
 주요 권고 (차기 Phase 반영): `requirements-dev.txt` 에 pytest-cov 추가, `test_db_result_stores_source_pr` 14.57s 조사, `RailwayDeployEvent` sub-dataclass 분리, PyGithub `auth=` 마이그레이션.
 
-상세: [docs/reports/2026-04-21-quality-audit-round5.md](reports/2026-04-21-quality-audit-round5.md)
+**후속 해소 (동일일 2026-04-21)** — 3 에이전트(P/Q/R) 병렬 회귀 조사 → 근본 원인 확정 + 테스트 3파일 수정:
+- `_run_static_analysis` mock 누락 (pipeline 7건 +200% 회귀 공통 원인) — `mock_deps` fixture + `test_pipeline_pr_regate.py` 시나리오 3개 모두 mock 추가
+- `patch("src.notifier.n8n.notify_n8n_issue")` 경로 오류 (webhook_issues BackgroundTask DNS 블로킹) — `src.webhook.router.notify_n8n_issue` 로 변경
+- Quick Win 2건 동시 반영: `pytest-cov>=5.0.0` 추가, `asyncio_default_fixture_loop_scope = function` 설정
+
+**측정 효과**: 전체 pytest 시간 **326.88s → 70.81s (78% 단축)**. 1126 passed 유지, Production 코드 변경 0.
+
+상세: [docs/reports/2026-04-21-quality-audit-round5.md](reports/2026-04-21-quality-audit-round5.md) 의 `Follow-up` 섹션
 
 ## 갱신 방법
 

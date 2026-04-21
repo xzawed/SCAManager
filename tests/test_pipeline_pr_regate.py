@@ -134,6 +134,8 @@ async def test_scenario_a_pr_regate_updates_pr_number_and_calls_gate(
         patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock) as mock_gate,
         patch("src.worker.pipeline.build_notification_tasks", return_value=([], [])) as mock_notify,
         patch("src.worker.pipeline.settings") as mock_settings,
+        patch("src.worker.pipeline._run_static_analysis",
+              new_callable=AsyncMock, return_value=[]),
     ):
         mock_settings.github_token = "ghp_test"
         mock_settings.telegram_bot_token = "123:ABC"
@@ -190,6 +192,8 @@ async def test_scenario_b_new_sha_pr_event_creates_analysis_and_calls_gate(
         patch("src.worker.pipeline.calculate_score", return_value=mock_score_result),
         patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock) as mock_gate,
         patch("src.worker.pipeline.settings") as mock_settings,
+        patch("src.worker.pipeline._run_static_analysis",
+              new_callable=AsyncMock, return_value=[]),
     ):
         mock_settings.github_token = "ghp_test"
         mock_settings.telegram_bot_token = "123:ABC"
@@ -259,6 +263,8 @@ async def test_scenario_c_same_sha_same_pr_number_skips_gate(
         patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock) as mock_gate,
         patch("src.worker.pipeline.build_notification_tasks", return_value=([], [])) as mock_notify,
         patch("src.worker.pipeline.settings") as mock_settings,
+        patch("src.worker.pipeline._run_static_analysis",
+              new_callable=AsyncMock, return_value=[]),
     ):
         mock_settings.github_token = "ghp_test"
         mock_settings.telegram_bot_token = "123:ABC"
