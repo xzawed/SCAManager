@@ -165,6 +165,14 @@
 
 상세: [docs/reports/2026-04-21-quality-audit-round5.md](reports/2026-04-21-quality-audit-round5.md) 의 `Follow-up` 섹션
 
+**잔여 권고 해소 (동일일 2026-04-21, 3건 연속)**:
+- **#8** `e2e/conftest.py` `_ALEMBIC_HEAD` 자동 추출 — DAG 파싱으로 교체, 신규 마이그레이션 추가 시 수동 수정 불필요
+- **#9** `tests/test_static_analyzer.py` → `tests/integration/` 이동 + `pytest.ini markers.slow` 선언 + `integration/conftest.py` 자동 마킹 (37 slow / 1089 fast / 총 1126)
+- **#6** PyGithub `login_or_token` → `Auth.Token` 마이그레이션 (src/github_client/diff.py) — E2E warnings **41 → 4** (37건 제거)
+
+**보류 (별도 Phase)**:
+- **#5** `RailwayDeployEvent` sub-dataclass 분리 — 6 파일 / 25+ 참조 수정 필요. 현재 R0902 는 informational only (pylint 10.00/10 유지) 라 점수 영향 없음. 스펙 작성 필요.
+
 ## 갱신 방법
 
 ```bash
