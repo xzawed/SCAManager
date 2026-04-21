@@ -567,3 +567,30 @@ class TestCalculatorCategoryBased:
         result = calculate_score([])
         expected_total = 25 + 20 + AI_DEFAULT_COMMIT + AI_DEFAULT_DIRECTION + AI_DEFAULT_TEST
         assert result.total == min(expected_total, 100)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Phase D.1 — cppcheck Analyzer Registry 등록 검증
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestCppCheckAnalyzerRegistration:
+    def test_registry_contains_cppcheck_after_register_call(self):
+        """_register_cppcheck_analyzers() 호출 시 REGISTRY 에 cppcheck 이 포함된다.
+
+        autouse fixture(_clear_registry) 가 REGISTRY 를 비우고 python 모듈만 복원하므로,
+        cppcheck 등록을 검증하려면 register 함수를 명시적으로 호출해야 한다.
+        """
+        from src.analyzer.tools.cppcheck import _register_cppcheck_analyzers
+        from src.analyzer.registry import REGISTRY
+        _register_cppcheck_analyzers()
+        assert any(a.name == "cppcheck" for a in REGISTRY), (
+            "REGISTRY 에 cppcheck 이 없음 — _register_cppcheck_analyzers() 실행 실패"
+        )
+
+    def test_cppcheck_analyzer_has_correct_attributes(self):
+        """_CppCheckAnalyzer 의 name/category/SUPPORTED_LANGUAGES 확인."""
+        from src.analyzer.tools.cppcheck import _CppCheckAnalyzer
+        a = _CppCheckAnalyzer()
+        assert a.name == "cppcheck"
+        assert a.category == "code_quality"
+        assert a.SUPPORTED_LANGUAGES == frozenset({"c", "cpp"})
