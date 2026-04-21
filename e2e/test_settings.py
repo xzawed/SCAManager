@@ -43,24 +43,32 @@ def test_preset_cards_collapsed_by_default(seeded_page, base_url):
         assert not is_open, f"{preset_id} 는 초기에 접혀 있어야 합니다"
 
 
-def test_preset_minimal_expand_applies_settings(seeded_page, base_url):
-    """최소 프리셋 카드 펼침 시 설정이 자동 적용되어야 한다."""
+def test_preset_minimal_apply_button_applies_settings(seeded_page, base_url):
+    """최소 프리셋 카드 펼침 → '이 프리셋 적용 →' 버튼 클릭 시 설정이 적용되어야 한다.
+
+    P1 재설계(renderPresetDiff): 펼침 시 diff 미리보기만 렌더, 버튼 클릭으로 적용.
+    """
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
     seeded_page.locator("#preset-minimal summary").click()
     seeded_page.wait_for_timeout(300)
-    # PR 코드리뷰 댓글 활성, 커밋 코멘트 비활성 확인
+    # 펼침 직후에는 아직 적용되지 않음 — diff 미리보기만 렌더
+    assert seeded_page.locator("#preset-diff-minimal tr").count() == 9
+    # Apply 버튼 클릭 → 적용
+    seeded_page.locator("#preset-minimal .preset-apply-btn").click()
+    seeded_page.wait_for_timeout(300)
     assert seeded_page.locator('input[name="pr_review_comment"]').is_checked()
     assert not seeded_page.locator('input[name="commit_comment"]').is_checked()
-    # Approve mode = disabled
     assert seeded_page.input_value("#approveModeValue") == "disabled"
-    # 적용됨 레이블 표시
     assert seeded_page.locator("#pt-label-minimal").is_visible()
 
 
-def test_preset_standard_expand_applies_settings(seeded_page, base_url):
-    """표준 프리셋 카드 펼침 시 설정이 자동 적용되어야 한다."""
+def test_preset_standard_apply_button_applies_settings(seeded_page, base_url):
+    """표준 프리셋 카드 펼침 → Apply 버튼 클릭 시 설정이 적용되어야 한다."""
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
     seeded_page.locator("#preset-standard summary").click()
+    seeded_page.wait_for_timeout(300)
+    assert seeded_page.locator("#preset-diff-standard tr").count() == 9
+    seeded_page.locator("#preset-standard .preset-apply-btn").click()
     seeded_page.wait_for_timeout(300)
     assert seeded_page.locator('input[name="pr_review_comment"]').is_checked()
     assert seeded_page.locator('input[name="commit_comment"]').is_checked()
@@ -69,15 +77,17 @@ def test_preset_standard_expand_applies_settings(seeded_page, base_url):
     assert seeded_page.locator("#pt-label-standard").is_visible()
 
 
-def test_preset_strict_expand_applies_settings(seeded_page, base_url):
-    """엄격 프리셋 카드 펼침 시 설정이 자동 적용되어야 한다."""
+def test_preset_strict_apply_button_applies_settings(seeded_page, base_url):
+    """엄격 프리셋 카드 펼침 → Apply 버튼 클릭 시 설정이 적용되어야 한다."""
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
     seeded_page.locator("#preset-strict summary").click()
+    seeded_page.wait_for_timeout(300)
+    assert seeded_page.locator("#preset-diff-strict tr").count() == 9
+    seeded_page.locator("#preset-strict .preset-apply-btn").click()
     seeded_page.wait_for_timeout(300)
     assert seeded_page.locator('input[name="create_issue"]').is_checked()
     assert seeded_page.locator('input[name="auto_merge"]').is_checked()
     assert seeded_page.input_value("#approveModeValue") == "auto"
-    # 엄격 임계값 확인
     assert seeded_page.input_value('input[name="approve_threshold"]') == "85"
     assert seeded_page.input_value('input[name="reject_threshold"]') == "60"
     assert seeded_page.locator("#pt-label-strict").is_visible()
@@ -219,7 +229,7 @@ def test_settings_form_submit_redirects(seeded_page, base_url):
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
     _expand_advanced(seeded_page)
     seeded_page.click('[data-mode="auto"]')
-    seeded_page.locator('.btn-save-new').click()
+    seeded_page.locator('button[type="submit"].btn-save-new').click()
     seeded_page.wait_for_load_state("networkidle", timeout=5000)
     assert "/settings" in seeded_page.url
 
@@ -229,7 +239,7 @@ def test_gate_mode_persists_after_save(seeded_page, base_url):
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
     _expand_advanced(seeded_page)
     seeded_page.click('[data-mode="auto"]')
-    seeded_page.locator('.btn-save-new').click()
+    seeded_page.locator('button[type="submit"].btn-save-new').click()
     seeded_page.wait_for_load_state("networkidle", timeout=5000)
     # 리로드 후에도 advanced-details 펼쳐야 버튼 class 를 읽을 수 있음
     _expand_advanced(seeded_page)
@@ -238,11 +248,13 @@ def test_gate_mode_persists_after_save(seeded_page, base_url):
 
 
 def test_preset_standard_persists_after_save(seeded_page, base_url):
-    """표준 프리셋 적용 후 저장하면 리로드 후에도 값이 유지되어야 한다."""
+    """표준 프리셋 Apply 버튼 클릭 후 저장하면 리로드 후에도 값이 유지되어야 한다."""
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
     seeded_page.locator("#preset-standard summary").click()
     seeded_page.wait_for_timeout(300)
-    seeded_page.locator('.btn-save-new').click()
+    seeded_page.locator("#preset-standard .preset-apply-btn").click()
+    seeded_page.wait_for_timeout(300)
+    seeded_page.locator('button[type="submit"].btn-save-new').click()
     seeded_page.wait_for_load_state("networkidle", timeout=5000)
     # 저장 후 approve_mode=auto 확인
     cls = seeded_page.get_attribute('[data-mode="auto"]', "class") or ""
@@ -270,3 +282,161 @@ def test_two_column_layout_on_desktop(seeded_page, base_url):
     # 2열: 값 사이에 공백이 있어야 함 (예: "430px 430px")
     parts = columns.strip().split()
     assert len(parts) == 2, f"데스크탑에서 2열이어야 하는데 '{columns}' 반환됨"
+
+
+# ── Settings 재설계 E2E 테스트 (2026-04-21) ──────────────────────────
+
+def test_six_card_titles_present(seeded_page, base_url):
+    """6 카드 의도 기반 제목이 모두 렌더링되어야 한다."""
+    seeded_page.goto(f"{base_url}{SETTINGS_URL}")
+    body = seeded_page.content()
+    # ① 빠른 설정 제목은 기존 유지 — 개별 프리셋 카드로 대체
+    assert "PR 들어왔을 때" in body, "카드 ② PR 들어왔을 때 누락"
+    assert "이벤트 후 피드백" in body, "카드 ③ 이벤트 후 피드백 누락"
+    assert "시스템 &amp; 토큰" in body or "시스템 & 토큰" in body, "카드 ⑤ 시스템 & 토큰 누락"
+    assert "위험 구역" in body, "카드 ⑥ 위험 구역 누락"
+
+
+def test_preset_diff_preview_has_nine_rows(seeded_page, base_url):
+    """프리셋 카드 펼침 시 9개 필드 diff 테이블이 렌더링되어야 한다.
+
+    P1: renderPresetDiff() — 펼침 이벤트에 diff 테이블 채움 (자동 적용 아님).
+    """
+    seeded_page.goto(f"{base_url}{SETTINGS_URL}")
+    seeded_page.locator("#preset-minimal summary").click()
+    seeded_page.wait_for_timeout(300)
+    rows = seeded_page.locator("#preset-diff-minimal tr").count()
+    assert rows == 9, f"프리셋 diff 행 9개 기대, 실제 {rows}"
+
+
+def test_preset_diff_has_unchanged_fields_dimmed(seeded_page, base_url):
+    """현재값과 같은 필드는 opacity:.45 로 흐리게 표시되어야 한다.
+
+    P1: 초기 상태(기본값) 에서 minimal 프리셋 대부분이 불변 → 여러 행이 흐림.
+    """
+    seeded_page.goto(f"{base_url}{SETTINGS_URL}")
+    seeded_page.locator("#preset-minimal summary").click()
+    seeded_page.wait_for_timeout(300)
+    dim_count = seeded_page.evaluate(
+        """() => {
+            const rows = document.querySelectorAll('#preset-diff-minimal tr');
+            let n = 0;
+            rows.forEach(r => {
+                if ((r.getAttribute('style') || '').includes('opacity:.45')) n++;
+            });
+            return n;
+        }"""
+    )
+    # 기본 config 는 minimal 에 가까워 최소 3개 이상 불변 필드 존재
+    assert dim_count >= 3, f"흐린(opacity:.45) 행 3개 이상 기대, 실제 {dim_count}"
+
+
+def test_p2_highlight_applied_on_apply(seeded_page, base_url):
+    """프리셋 Apply 버튼 클릭 시 변경된 필드에 .preset-just-applied 클래스가 부착되어야 한다.
+
+    P2: flashPresetChanges() + @keyframes preset-flash 2.5s.
+    """
+    seeded_page.goto(f"{base_url}{SETTINGS_URL}")
+    # strict 프리셋 — 현재(기본)와 차이가 많아 하이라이트 대상 다수
+    seeded_page.locator("#preset-strict summary").click()
+    seeded_page.wait_for_timeout(200)
+    seeded_page.locator("#preset-strict .preset-apply-btn").click()
+    # 클릭 직후 곧바로 클래스 존재 확인 (2.5초 타이머 전)
+    seeded_page.wait_for_timeout(100)
+    highlighted = seeded_page.evaluate(
+        "document.querySelectorAll('.preset-just-applied').length"
+    )
+    assert highlighted >= 1, f"preset-just-applied 클래스 1개 이상 기대, 실제 {highlighted}"
+
+
+def test_railway_alerts_toggle_switch_visible(seeded_page, base_url):
+    """railway_deploy_alerts 가 toggle-switch label 안에 있고 보여야 한다."""
+    seeded_page.goto(f"{base_url}{SETTINGS_URL}")
+    is_in_toggle_switch = seeded_page.evaluate(
+        """() => {
+            const input = document.querySelector('input[name="railway_deploy_alerts"]');
+            if (!input) return false;
+            const parent = input.closest('label');
+            return parent ? parent.classList.contains('toggle-switch') : false;
+        }"""
+    )
+    assert is_in_toggle_switch, "railway_deploy_alerts 가 toggle-switch label 내부에 없음"
+
+
+def test_railway_api_token_mask_toggle(seeded_page, base_url):
+    """Railway API 토큰 👁️ mask-toggle 버튼으로 password ↔ text 전환."""
+    seeded_page.goto(f"{base_url}{SETTINGS_URL}")
+    token_input = seeded_page.locator('input[name="railway_api_token"]')
+    # 초기 password 타입
+    assert token_input.get_attribute("type") == "password"
+    # mask-toggle 버튼 클릭 → text 전환
+    seeded_page.evaluate(
+        """() => {
+            const input = document.querySelector('input[name="railway_api_token"]');
+            const btn = input.nextElementSibling;
+            btn.click();
+        }"""
+    )
+    seeded_page.wait_for_timeout(100)
+    assert token_input.get_attribute("type") == "text"
+
+
+def test_railway_api_token_in_main_form(seeded_page, base_url):
+    """Railway API 토큰 input 이 form='settingsForm' 속성으로 메인 폼에 바인딩되어야 한다."""
+    seeded_page.goto(f"{base_url}{SETTINGS_URL}")
+    form_attr = seeded_page.get_attribute('input[name="railway_api_token"]', "form")
+    assert form_attr == "settingsForm", f"railway_api_token form 속성이 'settingsForm' 이어야 하는데 {form_attr!r}"
+
+
+def test_save_error_opens_advanced_accordion(seeded_page, base_url):
+    """?save_error=1 쿼리로 접근 시 고급설정 아코디언이 자동 펼쳐져야 한다."""
+    seeded_page.goto(f"{base_url}{SETTINGS_URL}?save_error=1")
+    seeded_page.wait_for_timeout(300)
+    is_open = seeded_page.evaluate(
+        "document.querySelector('.advanced-details')?.open"
+    )
+    assert is_open is True, "save_error=1 쿼리 시 .advanced-details 가 펼쳐져야 함"
+
+
+def test_save_success_keeps_advanced_accordion_closed(seeded_page, base_url):
+    """?saved=1 (성공) 쿼리로 접근 시 고급설정 아코디언은 펼쳐지지 않아야 한다."""
+    seeded_page.goto(f"{base_url}{SETTINGS_URL}?saved=1")
+    seeded_page.wait_for_timeout(300)
+    is_open = seeded_page.evaluate(
+        "document.querySelector('.advanced-details')?.open"
+    )
+    assert not is_open, "saved=1 쿼리 시 .advanced-details 는 기본 접힘 유지"
+
+
+def test_auto_merge_in_pr_card_not_push_card(seeded_page, base_url):
+    """auto_merge 체크박스가 PR 카드('PR 들어왔을 때') 안에 있어야 한다 (Push 카드 아님)."""
+    seeded_page.goto(f"{base_url}{SETTINGS_URL}")
+    # auto_merge input 의 가장 가까운 s-card 헤더 타이틀 확인
+    card_title = seeded_page.evaluate(
+        """() => {
+            const input = document.querySelector('input[name="auto_merge"]');
+            if (!input) return null;
+            const card = input.closest('.s-card');
+            if (!card) return null;
+            const title = card.querySelector('.hdr-title');
+            return title ? title.textContent.trim() : null;
+        }"""
+    )
+    assert card_title == "PR 들어왔을 때", (
+        f"auto_merge 의 상위 카드 타이틀이 'PR 들어왔을 때' 여야 하는데 '{card_title}' 임"
+    )
+
+
+def test_danger_zone_outside_main_form(seeded_page, base_url):
+    """위험 구역(리포 삭제 form)이 메인 <form id='settingsForm'> 바깥에 있어야 한다."""
+    seeded_page.goto(f"{base_url}{SETTINGS_URL}")
+    outside = seeded_page.evaluate(
+        """() => {
+            const main = document.getElementById('settingsForm');
+            if (!main) return false;
+            const dangerBtn = document.querySelector('form[action$="/delete"] button[type="submit"]');
+            if (!dangerBtn) return false;
+            return !main.contains(dangerBtn);
+        }"""
+    )
+    assert outside, "위험 구역 삭제 버튼이 메인 폼 바깥에 있어야 함"
