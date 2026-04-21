@@ -320,7 +320,7 @@
     <div class="repo-badge">{{ repo_name }}</div>
   </div>
 
-  <form method="post" action="/repos/{{ repo_name }}/settings">
+  <form id="settingsForm" method="post" action="/repos/{{ repo_name }}/settings">
     <input type="hidden" name="approve_mode" id="approveModeValue" value="{{ config.approve_mode }}">
 
     <!-- 🚀 빠른 설정 (프리셋) -->
@@ -682,57 +682,17 @@
 
     </div><!-- /settings-grid -->
 
-    <!-- ⑤ Railway 토큰/Webhook (Task 4 에서 시스템 카드로 통합 예정) -->
-    <div class="s-card" style="margin-top:1rem">
-      <div class="s-card-hdr" style="background:linear-gradient(135deg,#7c3aed,#db2777)">
-        <span class="hdr-icon">🚂</span>
-        <span class="hdr-title">Railway 통합</span>
-      </div>
-      <div class="s-card-body">
-        <div class="s-section-label">Railway API 토큰 (로그 조회용)</div>
-        <input
-          type="password"
-          name="railway_api_token"
-          class="form-control"
-          style="margin-bottom:.65rem"
-          placeholder="railway_api_token (설정 시 빌드 로그 200줄 포함)"
-          value="{{ '****' if railway_api_token_set else '' }}"
-          autocomplete="off"
-        >
-        <p style="font-size:12px;color:var(--text-muted);margin-bottom:1rem">
-          Railway 대시보드 → Account Settings → Tokens 에서 발급. 변경하지 않으려면 그대로 두세요.
-        </p>
-
-        {% if railway_webhook_url %}
-        <div class="s-section-label">Railway Webhook URL</div>
-        <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.5rem">
-          <input type="text" readonly class="form-control" id="railway-webhook-url"
-            value="{{ railway_webhook_url }}" style="font-family:monospace;font-size:12px">
-          <button type="button" class="btn btn--sm"
-            onclick="navigator.clipboard.writeText(document.getElementById('railway-webhook-url').value)">📋</button>
-        </div>
-        <p style="font-size:12px;color:var(--text-muted)">
-          Railway Project Settings → Webhooks 에 위 URL 을 추가하세요.
-        </p>
-        {% else %}
-        <p style="font-size:12px;color:var(--text-muted)">
-          설정 저장 후 Railway Webhook URL 이 자동 생성됩니다.
-        </p>
-        {% endif %}
-      </div>
-    </div>
-
     <div class="save-bar">
       <button type="submit" class="btn-save-new">💾 설정 저장</button>
     </div>
 
   </form>
 
-  <!-- ④ 시스템 (CLI Hook + 위험 구역 — 메인 form 외부) -->
+  <!-- ⑤ 시스템 & 토큰 (CLI Hook + Webhook + Railway API 토큰 + 위험 구역 — 메인 form 외부) -->
   <div class="s-card" style="margin-bottom:1rem;">
     <div class="s-card-hdr hdr-hook">
       <span class="hdr-icon">🔧</span>
-      <span class="hdr-title">시스템</span>
+      <span class="hdr-title">시스템 &amp; 토큰</span>
     </div>
     <div class="s-card-body">
 
@@ -748,6 +708,38 @@
         <button type="submit" class="hook-btn" form="reinstall_hook_form">🔄 훅 파일 재커밋</button>
         <button type="submit" class="hook-btn" form="reinstall_webhook_form">🔗 Webhook 재등록</button>
       </div>
+
+      <div class="s-divider"></div>
+
+      <div class="s-section-label">Railway API 토큰 <span class="field-hint" style="font-weight:400;text-transform:none;letter-spacing:0;">로그 조회용</span></div>
+      <div class="field-row">
+        <div class="masked-field">
+          <input class="field-input" type="password" name="railway_api_token"
+                 form="settingsForm"
+                 placeholder="railway_api_token (설정 시 빌드 로그 200줄 포함)"
+                 value="{{ '****' if railway_api_token_set else '' }}"
+                 autocomplete="off">
+          <button type="button" class="mask-toggle" onclick="toggleFieldMask(this)"
+                  aria-label="값 보이기/숨기기">👁️</button>
+        </div>
+        <span class="field-hint">Railway 대시보드 → Account Settings → Tokens 에서 발급. 변경하지 않으려면 그대로 두세요.</span>
+      </div>
+
+      {% if railway_webhook_url %}
+      <div class="s-section-label" style="margin-top:.85rem">Railway Webhook URL</div>
+      <div class="field-row">
+        <div style="display:flex;gap:.5rem;align-items:center">
+          <input type="text" readonly class="field-input" id="railway-webhook-url"
+                 value="{{ railway_webhook_url }}" style="font-family:monospace;font-size:12px;flex:1">
+          <button type="button" class="hook-btn"
+                  onclick="navigator.clipboard.writeText(document.getElementById('railway-webhook-url').value)">📋</button>
+        </div>
+        <span class="field-hint">Railway Project Settings → Webhooks 에 위 URL 을 추가하세요.</span>
+      </div>
+      {% else %}
+      <div class="s-section-label" style="margin-top:.85rem">Railway Webhook URL</div>
+      <span class="field-hint">설정 저장 후 Railway Webhook URL 이 자동 생성됩니다.</span>
+      {% endif %}
 
       <div class="s-divider"></div>
 
