@@ -188,7 +188,11 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 
 | 우선순위 | 항목 | 비고 |
 |---------|------|------|
-| **P4 — Phase D (진행 중)** | Tier 1 전용 정적분석 도구 확장 | D.1 cppcheck ✅ 완료 (그룹 10, 2026-04-21) / D.2~D.8 도구별 별도 승인 필요 |
+| **P3 (스펙 대기)** | RailwayDeployEvent sub-dataclass 분리 | 스펙 + 플랜 작성 완료 (2026-04-21). 구현 승인 대기 — [spec](superpowers/specs/2026-04-21-railway-event-refactor-design.md) / [plan](superpowers/plans/2026-04-21-railway-event-refactor.md) |
+| **P4 — Phase D.2 (스펙 대기)** | slither (Solidity) 정적분석 추가 | 스펙 + 플랜 작성 완료 (2026-04-21). GO/NO-GO 승인 대기 — [spec](superpowers/specs/2026-04-21-slither-design.md) / [plan](superpowers/plans/2026-04-21-slither.md) |
+| **P4 — Phase D (D.3~D.8)** | Tier 1 정적분석 도구 확장 | D.1 ✅ / D.2 스펙 작성됨 / D.3~D.8 도구별 승인 필요 |
+| **P5 (외부 의존 작업)** | Railway 프로덕션 cppcheck 실증 검증 | 실제 C/C++ 파일 PR 로 `slither` tool 이슈 포함 확인 (외부 테스트 리포 필요) |
+| **P5 (외부 의존 작업)** | pytest-cov devcontainer 이미지 사전 캐싱 | DNS 제약 환경에서도 R2 커버리지 재현 가능하도록 wheel 사전 포함. devcontainer.json + 이미지 rebuild 필요 |
 
 ### Phase D 착수 전 결정 사항
 
@@ -201,7 +205,7 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 | 우선순위 | 도구 | 언어 | 이미지 증가 | 리스크 | 비고 |
 |---------|-----|-----|------------|-------|------|
 | D.1 | cppcheck | C/C++ | +30MB | ✅ 완료 | 그룹 10 (2026-04-21) — apt 단순 설치 |
-| D.2 | slither | Solidity | +100MB | 🟢 낮음 | pip install, 수요 확인 후 |
+| D.2 | slither | Solidity | +100MB | 🟢 낮음 | 스펙·플랜 작성 완료, 구현 승인 대기 |
 | D.3 | RuboCop | Ruby | +80MB | 🟡 중간 | gem install |
 | D.4 | golangci-lint | Go | +200MB | 🟡 중간 | go.mod 자동생성 로직 필요 |
 | D.5 | PHPStan | PHP | +150MB | 🟠 높음 | PHP 런타임 추가, 수요 확인 후 |

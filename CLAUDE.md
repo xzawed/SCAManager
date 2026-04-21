@@ -18,6 +18,8 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 | `make install` | 의존성 설치 |
 | `make test` | 전체 테스트 (빠른 출력) |
 | `make test-v` | 전체 테스트 (상세 출력) |
+| `make test-fast` | 빠른 단위 테스트만 (`tests/integration/` 제외, `-m "not slow"`) |
+| `make test-slow` | 통합 테스트만 (`tests/integration/` — 실 subprocess 실행) |
 | `make test-cov` | 테스트 + 커버리지 |
 | `make test-file f=tests/test_pipeline.py` | 특정 파일 테스트 |
 | `make lint` | pylint + flake8 + bandit 검사 |
