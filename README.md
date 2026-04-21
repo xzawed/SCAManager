@@ -11,8 +11,8 @@
 [![Railway](https://img.shields.io/badge/Deploy-Railway-0B0D0E?style=flat-square&logo=railway&logoColor=white)](https://railway.app/)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
-[![Tests](https://img.shields.io/badge/Tests-1107_passing-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
-[![E2E](https://img.shields.io/badge/E2E-38_passing-brightgreen?style=flat-square&logo=playwright&logoColor=white)](e2e/)
+[![Tests](https://img.shields.io/badge/Tests-1126_passing-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
+[![E2E](https://img.shields.io/badge/E2E-49_passing-brightgreen?style=flat-square&logo=playwright&logoColor=white)](e2e/)
 [![pylint](https://img.shields.io/badge/pylint-10.00%2F10-brightgreen?style=flat-square&logo=python&logoColor=white)](src/)
 [![bandit](https://img.shields.io/badge/bandit-HIGH_0-brightgreen?style=flat-square&logo=security&logoColor=white)](src/)
 [![Coverage](https://img.shields.io/badge/Coverage-96.2%25-brightgreen?style=flat-square&logo=codecov&logoColor=white)](tests/)
@@ -27,7 +27,7 @@
 
 **SCAManager** automatically manages code quality for your GitHub repositories.
 
-On every Push or PR event, it runs **static analysis** (pylint · flake8 · bandit · Semgrep · ESLint · ShellCheck) and **Claude AI review** in parallel, producing a score out of 100 and a grade from A to F.
+On every Push or PR event, it runs **static analysis** (pylint · flake8 · bandit · Semgrep · ESLint · ShellCheck · cppcheck) and **Claude AI review** in parallel, producing a score out of 100 and a grade from A to F.
 
 Results are delivered instantly via **Telegram · GitHub · Discord · Slack · Email · n8n**, and PRs can be automatically approved, rejected, or squash-merged based on the score.
 
@@ -41,7 +41,7 @@ For teams that push directly to `main`, it also supports **automatic commit comm
 
 | Analysis | Tools | Target |
 |----------|-------|--------|
-| Code Quality | pylint + flake8 + Semgrep | `.py` (Python-specific) + **34+ languages** (Semgrep) |
+| Code Quality | pylint + flake8 + Semgrep + cppcheck | `.py` + C/C++ (cppcheck) + **35+ languages** (Semgrep) |
 | Security | bandit + Semgrep | `.py` files (tests excluded) + multi-language security rules |
 | JS/TS Quality | ESLint (flat config) | `.js` `.mjs` `.ts` `.tsx` |
 | Shell Quality | ShellCheck | `.sh` `.bash` and other shell scripts |
@@ -188,7 +188,7 @@ git push origin main
 | **Database** | PostgreSQL · SQLAlchemy 2 · Alembic · FailoverSessionFactory |
 | **AI (Server)** | Anthropic Claude API (claude-haiku-4-5) |
 | **AI (Local Hook)** | Claude Code CLI (`claude -p`) |
-| **Static Analysis** | pylint · flake8 · bandit (Python) + Semgrep (34+) + ESLint (JS/TS) + ShellCheck (shell) |
+| **Static Analysis** | pylint · flake8 · bandit (Python) + Semgrep (23+) + ESLint (JS/TS) + ShellCheck (shell) + cppcheck (C/C++) |
 | **Testing** | pytest · pytest-asyncio · httpx TestClient |
 | **E2E Testing** | Playwright (Chromium) |
 | **Web UI** | Jinja2 · Chart.js · CSS Variables (3 themes) |
@@ -370,7 +370,7 @@ GitHub Push/PR
             ├─ get_pr_files / get_push_files
             │
             ├─ asyncio.gather() ── parallel execution
-            │    ├─ analyze_file() × N  (pylint · flake8 · bandit · semgrep · eslint · shellcheck)
+            │    ├─ analyze_file() × N  (pylint · flake8 · bandit · semgrep · eslint · shellcheck · cppcheck)
             │    └─ review_code()       (Claude AI — 50-language checklists, token budget 8000)
             │
             ├─ calculate_score()  →  score · grade
