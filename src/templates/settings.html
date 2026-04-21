@@ -350,13 +350,23 @@
             </summary>
             <div class="preset-detail-body">
               <table class="preset-table">
-                <tr><td>PR 코드리뷰 댓글</td><td>✅ 활성</td></tr>
-                <tr><td>커밋 코멘트</td><td>⬜ 비활성</td></tr>
-                <tr><td>이슈 자동 생성</td><td>⬜ 비활성</td></tr>
-                <tr><td>Approve 모드</td><td>🚫 비활성</td></tr>
-                <tr><td>Auto Merge</td><td>⬜ 비활성</td></tr>
-                <tr><td>승인 / 반려 임계값</td><td>75 / 50</td></tr>
+                <thead>
+                  <tr style="font-size:11px;color:var(--text-muted);font-weight:600;">
+                    <td style="width:48%">필드</td>
+                    <td style="text-align:center;width:18%">현재값</td>
+                    <td style="text-align:center;width:6%"></td>
+                    <td style="text-align:right;width:28%">프리셋값</td>
+                  </tr>
+                </thead>
+                <tbody id="preset-diff-minimal"></tbody>
               </table>
+              <p style="font-size:11px;color:var(--text-muted);margin-top:.5rem;line-height:1.5;">
+                알림 채널 URL은 이 프리셋이 변경하지 않습니다.
+              </p>
+              <button type="button" class="btn-save-new" style="margin-top:.65rem;padding:.5rem;"
+                      onclick="applyPreset('minimal', document.getElementById('preset-minimal'))">
+                이 프리셋 적용 →
+              </button>
               <div class="pt-applied-label" id="pt-label-minimal" style="display:none">
                 ✅ 적용됨 — 저장 버튼을 눌러주세요
               </div>
@@ -375,13 +385,23 @@
             </summary>
             <div class="preset-detail-body">
               <table class="preset-table">
-                <tr><td>PR 코드리뷰 댓글</td><td>✅ 활성</td></tr>
-                <tr><td>커밋 코멘트</td><td>✅ 활성</td></tr>
-                <tr><td>이슈 자동 생성</td><td>⬜ 비활성</td></tr>
-                <tr><td>Approve 모드</td><td>⚡ 자동</td></tr>
-                <tr><td>Auto Merge</td><td>⬜ 비활성</td></tr>
-                <tr><td>승인 / 반려 임계값</td><td>75 / 50</td></tr>
+                <thead>
+                  <tr style="font-size:11px;color:var(--text-muted);font-weight:600;">
+                    <td style="width:48%">필드</td>
+                    <td style="text-align:center;width:18%">현재값</td>
+                    <td style="text-align:center;width:6%"></td>
+                    <td style="text-align:right;width:28%">프리셋값</td>
+                  </tr>
+                </thead>
+                <tbody id="preset-diff-standard"></tbody>
               </table>
+              <p style="font-size:11px;color:var(--text-muted);margin-top:.5rem;line-height:1.5;">
+                알림 채널 URL은 이 프리셋이 변경하지 않습니다.
+              </p>
+              <button type="button" class="btn-save-new" style="margin-top:.65rem;padding:.5rem;"
+                      onclick="applyPreset('standard', document.getElementById('preset-standard'))">
+                이 프리셋 적용 →
+              </button>
               <div class="pt-applied-label" id="pt-label-standard" style="display:none">
                 ✅ 적용됨 — 저장 버튼을 눌러주세요
               </div>
@@ -400,13 +420,23 @@
             </summary>
             <div class="preset-detail-body">
               <table class="preset-table">
-                <tr><td>PR 코드리뷰 댓글</td><td>✅ 활성</td></tr>
-                <tr><td>커밋 코멘트</td><td>✅ 활성</td></tr>
-                <tr><td>이슈 자동 생성</td><td>✅ 활성</td></tr>
-                <tr><td>Approve 모드</td><td>⚡ 자동</td></tr>
-                <tr><td>Auto Merge</td><td>✅ 활성</td></tr>
-                <tr><td>승인 / 반려 / Merge</td><td>85 / 60 / 85</td></tr>
+                <thead>
+                  <tr style="font-size:11px;color:var(--text-muted);font-weight:600;">
+                    <td style="width:48%">필드</td>
+                    <td style="text-align:center;width:18%">현재값</td>
+                    <td style="text-align:center;width:6%"></td>
+                    <td style="text-align:right;width:28%">프리셋값</td>
+                  </tr>
+                </thead>
+                <tbody id="preset-diff-strict"></tbody>
               </table>
+              <p style="font-size:11px;color:var(--text-muted);margin-top:.5rem;line-height:1.5;">
+                알림 채널 URL은 이 프리셋이 변경하지 않습니다.
+              </p>
+              <button type="button" class="btn-save-new" style="margin-top:.65rem;padding:.5rem;"
+                      onclick="applyPreset('strict', document.getElementById('preset-strict'))">
+                이 프리셋 적용 →
+              </button>
               <div class="pt-applied-label" id="pt-label-strict" style="display:none">
                 ✅ 적용됨 — 저장 버튼을 눌러주세요
               </div>
@@ -820,14 +850,72 @@
   };
   const PRESET_LABELS = { minimal: '최소', standard: '표준', strict: '엄격' };
 
-  // 아코디언 토글 — 펼치면 자동 적용, 다른 카드는 닫힘
+  // 아코디언 토글 — 펼치면 diff 미리보기(자동 적용 아님), 다른 카드는 닫힘
   function onPresetToggle(el, name) {
     if (!el.open) return;
-    // 나머지 프리셋 닫기
     document.querySelectorAll('.preset-details').forEach(function(d) {
       if (d !== el) d.open = false;
     });
-    applyPreset(name, el);
+    renderPresetDiff(name, el);
+  }
+
+  // 현재 폼 값 vs 프리셋 값 diff 를 테이블에 렌더 (P1)
+  function renderPresetDiff(name) {
+    const p = PRESETS[name];
+    if (!p) return;
+    const tbody = document.getElementById('preset-diff-' + name);
+    if (!tbody) return;
+
+    const labels = {
+      pr_review_comment: 'PR 코드리뷰 댓글',
+      commit_comment: '커밋 코멘트',
+      create_issue: '이슈 자동 생성',
+      railway_deploy_alerts: 'Railway 빌드 실패 Issue',
+      approve_mode: 'Approve 모드',
+      auto_merge: '자동 Merge',
+      approve_threshold: '승인 기준점',
+      reject_threshold: '반려 기준점',
+      merge_threshold: 'Merge 임계값',
+    };
+
+    function curVal(key) {
+      if (key === 'approve_mode') {
+        return document.getElementById('approveModeValue').value;
+      }
+      const el2 = document.querySelector('input[name="' + key + '"]');
+      if (!el2) return '—';
+      if (el2.type === 'checkbox') return el2.checked;
+      return el2.value;
+    }
+
+    function fmt(val) {
+      if (val === true) return '✅';
+      if (val === false) return '⬜';
+      if (val === 'disabled') return '🚫';
+      if (val === 'auto') return '⚡ 자동';
+      if (val === 'semi-auto') return '📱 반자동';
+      return String(val);
+    }
+
+    let html = '';
+    Object.keys(labels).forEach(function(key) {
+      const cur = curVal(key);
+      const next = p[key];
+      const curNorm = (cur === 'true') ? true : (cur === 'false') ? false :
+                      (!isNaN(cur) && cur !== '' && typeof cur === 'string') ? Number(cur) : cur;
+      const changed = String(curNorm) !== String(next);
+      const arrow = changed ? '→' : '=';
+      const rowStyle = changed ? '' : 'opacity:.45;';
+      const nextStyle = changed ? 'font-weight:700;color:var(--accent);' : '';
+      html +=
+        '<tr style="' + rowStyle + '">' +
+          '<td>' + labels[key] + '</td>' +
+          '<td style="text-align:center">' + fmt(curNorm) + '</td>' +
+          '<td style="text-align:center;font-weight:600;color:var(--text-muted)">' + arrow + '</td>' +
+          '<td style="text-align:right;' + nextStyle + '">' + fmt(next) + '</td>' +
+        '</tr>';
+    });
+    tbody.innerHTML = html;
   }
 
   function applyPreset(name, el) {
