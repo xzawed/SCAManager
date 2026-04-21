@@ -427,11 +427,11 @@
       <div class="advanced-body">
         <div class="settings-grid">
 
-      <!-- ① PR 동작 -->
+      <!-- ① PR 들어왔을 때 -->
       <div class="s-card">
         <div class="s-card-hdr hdr-gate">
-          <span class="hdr-icon">⚡</span>
-          <span class="hdr-title">PR 동작</span>
+          <span class="hdr-icon">📋</span>
+          <span class="hdr-title">PR 들어왔을 때</span>
           <span class="hdr-badge" id="approveBadge">{{ config.approve_mode }}</span>
         </div>
         <div class="s-card-body">
@@ -510,43 +510,8 @@
             💡 반자동 Approve는 <strong>③ 알림 채널의 Telegram Chat ID</strong>로 전송됩니다.
           </div>
 
-        </div>
-      </div>
-
-      <!-- ② Push 동작 -->
-      <div class="s-card">
-        <div class="s-card-hdr hdr-merge">
-          <span class="hdr-icon">📌</span>
-          <span class="hdr-title">Push 동작</span>
-        </div>
-        <div class="s-card-body">
-
-          <div class="toggle-row">
-            <div class="toggle-info">
-              <div class="t-title">커밋 코멘트</div>
-              <div class="t-desc">Push 커밋에 AI 리뷰 결과를<br>GitHub 커밋 코멘트로 게시</div>
-            </div>
-            <label class="toggle-switch">
-              <input type="checkbox" name="commit_comment" value="on"
-                     {% if config.commit_comment %}checked{% endif %}>
-              <span class="toggle-track"></span>
-            </label>
-          </div>
-
-          <div class="toggle-row">
-            <div class="toggle-info">
-              <div class="t-title">이슈 자동 생성</div>
-              <div class="t-desc">점수 미달 또는 보안 HIGH 발견 시<br>GitHub Issue 자동 생성</div>
-            </div>
-            <label class="toggle-switch">
-              <input type="checkbox" name="create_issue" value="on"
-                     {% if config.create_issue %}checked{% endif %}>
-              <span class="toggle-track"></span>
-            </label>
-          </div>
-
           <div class="s-divider"></div>
-          <div class="s-section-label">Auto Merge</div>
+          <div class="s-section-label">자동 Merge</div>
 
           <div class="toggle-row">
             <div class="toggle-info">
@@ -578,6 +543,41 @@
                        oninput="this.previousElementSibling.value=this.value">
               </div>
             </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ② Push 동작 (Task 3 에서 '이벤트 후 피드백'으로 재편 예정) -->
+      <div class="s-card">
+        <div class="s-card-hdr hdr-merge">
+          <span class="hdr-icon">📌</span>
+          <span class="hdr-title">Push 동작</span>
+        </div>
+        <div class="s-card-body">
+
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="t-title">커밋 코멘트</div>
+              <div class="t-desc">Push 커밋에 AI 리뷰 결과를<br>GitHub 커밋 코멘트로 게시</div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" name="commit_comment" value="on"
+                     {% if config.commit_comment %}checked{% endif %}>
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="t-title">이슈 자동 생성</div>
+              <div class="t-desc">점수 미달 또는 보안 HIGH 발견 시<br>GitHub Issue 자동 생성</div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" name="create_issue" value="on"
+                     {% if config.create_issue %}checked{% endif %}>
+              <span class="toggle-track"></span>
+            </label>
           </div>
 
         </div>
