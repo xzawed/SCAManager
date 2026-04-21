@@ -143,6 +143,21 @@
 | nixpacks.toml aptPkgs | cppcheck 바이너리를 Railway 배포 이미지에 포함 (+30MB, Docker 전환 불필요) | — |
 | 백엔드 불변 | Analyzer Protocol · REGISTRY · `analyze_file()` 로직 · `AnalysisIssue` · `calculator.py` · `language.py` 전부 그대로 | — |
 
+### 그룹 11 — 5라운드 다중 에이전트 합의 품질 감사 (2026-04-21)
+
+| 라운드 | 렌즈 | 점수 | 비고 |
+|-------|------|------|------|
+| R1 | 정상성 | 20/20 | 1126 passed, 0 failed, 326.88s |
+| R2 | 커버리지 | 15/20 | pytest-cov 설치 불가(DNS 제약), STATE.md 96.2% 참조. 절차적 페널티 -5 |
+| R3 | 결정성·격리성 | 20/20 | 3회 반복 + 역순 모두 1126 passed. CoV 3.5%. Agent B·C 합의 |
+| R4 | 보안·Lint | 20/20 | pylint 10.00 / flake8 0 / bandit HIGH 0. LOW 7건 전부 false positive |
+| R5 | 통합·E2E | 20/20 | 49 passed, 38.72s. Settings 재설계 E2E 커버리지 실효적 검증 |
+| **합계** | **A 등급** | **95/100** | 3 에이전트 합의, ±3 초과 편차 0건 |
+
+주요 권고 (차기 Phase 반영): `requirements-dev.txt` 에 pytest-cov 추가, `test_db_result_stores_source_pr` 14.57s 조사, `RailwayDeployEvent` sub-dataclass 분리, PyGithub `auth=` 마이그레이션.
+
+상세: [docs/reports/2026-04-21-quality-audit-round5.md](reports/2026-04-21-quality-audit-round5.md)
+
 ## 갱신 방법
 
 ```bash
