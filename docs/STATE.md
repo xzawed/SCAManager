@@ -6,14 +6,14 @@
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1110개** | pytest (0 failed) |
+| 단위 테스트 | **1126개** | pytest (0 failed) |
 | E2E 테스트 | **49개** | `make test-e2e` (Chromium Playwright) |
 | pylint | **10.00/10** | `python -m pylint src/` — 만점 |
 | 커버리지 | **96.2%** | `make test-cov` (database.py 100%, ui/router.py 99.4%) |
 | bandit HIGH | **0개** | bandit 1.9.4 (Python 3.14 대응) |
 | flake8 | **0건** | `flake8 src/` |
 | 지원 언어 (AI 리뷰) | **50개** | language.py — Tier1/2/3 가이드 |
-| 지원 언어 (정적분석) | **34개+** | Semgrep 23 + ESLint 2 + ShellCheck 1 + Python 3 도구 |
+| 지원 언어 (정적분석) | **35개+** | Semgrep 23 + ESLint 2 + ShellCheck 1 + cppcheck 1 + Python 3 도구 |
 | pytest-asyncio | **1.3.0** | Python 3.14 DeprecationWarning 제거 완료 |
 
 ## 주요 파일 역할 (빠른 참조)
@@ -133,6 +133,16 @@
 | 백엔드 불변 | ORM·RepoConfigData·POST 핸들러·PRESETS 9개 필드·JS 헬퍼 5종 시그니처 전부 불변 | — |
 | E2E 자동 검증 | 8단계 Verification 자동화 — 6카드·P1 diff·P2 하이라이트·mask-toggle·save_error 아코디언·auto_merge 위치·위험구역 분리 + 기존 3개 preset 적용 방식 업데이트 | E2E +11 (38→49) |
 
+### 그룹 10 — Phase D.1 cppcheck 도구 추가 (2026-04-21)
+
+| 작업 | 주요 내용 | 테스트 증분 |
+|------|----------|-----------|
+| 단위 테스트 선작성 (TDD Red) | supports(c/cpp/other)·is_enabled binary·XML 파싱 엣지케이스·subprocess timeout/OSError/ParseError | +14 |
+| `_CppCheckAnalyzer` 구현 | Analyzer Protocol · XML v2 stderr 파싱 · `--enable=warning,style,performance,portability` · category='code_quality' · `_parse_cppcheck_xml` 분리(mock 없이 검증 가능) | — |
+| Registry 등록 검증 | `_register_cppcheck_analyzers()` 명시 호출 후 REGISTRY 확인 + 속성(name/category/SUPPORTED_LANGUAGES) | +2 |
+| nixpacks.toml aptPkgs | cppcheck 바이너리를 Railway 배포 이미지에 포함 (+30MB, Docker 전환 불필요) | — |
+| 백엔드 불변 | Analyzer Protocol · REGISTRY · `analyze_file()` 로직 · `AnalysisIssue` · `calculator.py` · `language.py` 전부 그대로 | — |
+
 ## 갱신 방법
 
 ```bash
@@ -148,7 +158,7 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 
 | 우선순위 | 항목 | 비고 |
 |---------|------|------|
-| **P4 — Phase D** | Tier 1 전용 정적분석 도구 확장 | 도구별 별도 승인 필요 (운영 리스크) |
+| **P4 — Phase D (진행 중)** | Tier 1 전용 정적분석 도구 확장 | D.1 cppcheck ✅ 완료 (그룹 10, 2026-04-21) / D.2~D.8 도구별 별도 승인 필요 |
 
 ### Phase D 착수 전 결정 사항
 
@@ -160,7 +170,7 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 
 | 우선순위 | 도구 | 언어 | 이미지 증가 | 리스크 | 비고 |
 |---------|-----|-----|------------|-------|------|
-| D.1 | cppcheck | C/C++ | +30MB | 🟢 낮음 | apt 단순 설치, 즉시 착수 가능 |
+| D.1 | cppcheck | C/C++ | +30MB | ✅ 완료 | 그룹 10 (2026-04-21) — apt 단순 설치 |
 | D.2 | slither | Solidity | +100MB | 🟢 낮음 | pip install, 수요 확인 후 |
 | D.3 | RuboCop | Ruby | +80MB | 🟡 중간 | gem install |
 | D.4 | golangci-lint | Go | +200MB | 🟡 중간 | go.mod 자동생성 로직 필요 |

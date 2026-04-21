@@ -29,8 +29,8 @@
 | 4 | Java | `.java` | Full | semgrep | PMD 🔴 |
 | 5 | Go | `.go` | Full | semgrep | golangci-lint 🟡 |
 | 6 | Rust | `.rs` | Full | semgrep (실험) | cargo clippy 🔴 |
-| 7 | C | `.c` `.h` | Full | semgrep | cppcheck 🟢 |
-| 8 | C++ | `.cpp` `.cc` `.cxx` `.hpp` `.hxx` | Full | semgrep | cppcheck 🟢 |
+| 7 | C | `.c` `.h` | Full | semgrep, **cppcheck** | — (Phase D.1 완료) |
+| 8 | C++ | `.cpp` `.cc` `.cxx` `.hpp` `.hxx` | Full | semgrep, **cppcheck** | — (Phase D.1 완료) |
 | 9 | C# | `.cs` | Full | semgrep | — |
 | 10 | Ruby | `.rb` `Rakefile` `Gemfile` | Full | semgrep | RuboCop 🟡 |
 
@@ -116,7 +116,7 @@
 
 | 리스크 | 도구 | 이미지 증가 |
 |-------|-----|----------|
-| 🟢 낮음 | cppcheck (C/C++), slither (Solidity) | +30~100MB |
+| 🟢 낮음 | ~~cppcheck (C/C++)~~ ✅ 완료, slither (Solidity) | +30~100MB |
 | 🟡 중간 | golangci-lint (Go), RuboCop (Ruby) | +80~200MB |
 | 🟠 높음 | detekt (Kotlin), PHPStan (PHP) | +150~350MB |
 | 🔴 최상위 | PMD (Java), cargo clippy (Rust) | +300~700MB, Docker 전환 필요 |
