@@ -1,6 +1,6 @@
 # RailwayDeployEvent sub-dataclass 분리 Implementation Plan
 
-> **Status:** 📝 **계획 수립 완료** (2026-04-21). 스펙 [docs/superpowers/specs/2026-04-21-railway-event-refactor-design.md](../specs/2026-04-21-railway-event-refactor-design.md) 승인 후 TDD 순서로 구현.
+> **Status:** ✅ **완료** (2026-04-22). STATE.md 그룹 12 참조.
 >
 > **실행 환경**: `make test` 정상 실행 환경. pytest 호출 시 `.env` stash + env unset 래퍼 사용.
 
