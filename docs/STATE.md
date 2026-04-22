@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-22 기준 — 그룹 13 Phase D.2 slither 도구 추가 완료)
+## 현재 수치 (2026-04-22 기준 — 6렌즈 감사 권고 #1~8 일괄 반영 완료)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1146개** | pytest (0 failed) |
+| 단위 테스트 | **1168개** | pytest (0 failed) — 6렌즈 후속 +22 |
 | E2E 테스트 | **49개** | `make test-e2e` (Chromium Playwright) |
 | pylint | **10.00/10** | `python -m pylint src/` — 만점 |
 | 커버리지 | **96.2%** | `make test-cov` (database.py 100%, ui/router.py 99.4%) |
@@ -183,6 +183,23 @@
 | 테스트 fixture 재작성 | `test_railway_client.py`(2곳) + `test_railway_issue_notifier.py`(`_EVENT` fixture nested 재작성) | — |
 | 외부 API 불변 | `parse_railway_payload` · `create_deploy_failure_issue` 시그니처 · Webhook payload 스키마 · DB 전부 그대로 | — |
 
+### 그룹 14 — 6렌즈 품질 감사 권고 #1~8 일괄 반영 (2026-04-22)
+
+10개 커밋 (`f7e80f7` → `110cd7e`) 으로 감사 결과 B+ (505/600) → 후속 해소. [보고서 §Follow-up](reports/2026-04-22-quality-audit-6lens.md#follow-up-2026-04-22--후속-실행-결과).
+
+| 작업 | 주요 내용 | 테스트 증분 |
+|------|----------|-----------|
+| #1 GITHUB_API 상수 승격 | 5중 중복 정의 제거 + `constants.py` 단일 출처 | — |
+| #2 build_safe_client | 감사 오류 정정 — n8n/discord/slack/webhook 4곳 이미 채택 상태 | — |
+| #3 Category/Severity StrEnum | registry.py StrEnum 도입 + 9 클래스 변수 + 7 리터럴 치환, 호환성 검증 | +2 |
+| #4 CLAUDE.md 트리 최신화 | railway_client · notifier/registry · notifier 2모듈 · analyzer/tools 2모듈 + rename | — |
+| #5 STATE.md 순서 교정 | 그룹 12 ↔ 13 시간순 재배치 | — |
+| #6 env-vars.md 3필드 | CLAUDE_REVIEW_MODEL · TELEGRAM_WEBHOOK_SECRET · N8N_WEBHOOK_SECRET | — |
+| #7 Repository 확충 | user_repo / repo_config_repo / gate_decision_repo 신설 + 10곳 `db.query` 치환 | +11 |
+| #8a GateAction 스캐폴딩 | registry.py + actions/ 3모듈 (engine.py 는 기존 유지 — 향후 전환 대기) | +5 |
+| #8b http_client 스캐폴딩 | lifespan 싱글톤 + init/close + BackgroundTasks 안전 | +4 |
+| pipeline-reviewer 권고 반영 | `_score_from_result` 중복 정의 → `src/gate/_common.py` 단일화 | — |
+
 ### 그룹 13 — Phase D.2 slither 도구 추가 (2026-04-22)
 
 | 작업 | 주요 내용 | 테스트 증분 |
@@ -209,7 +226,8 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 | 우선순위 | 항목 | 비고 |
 |---------|------|------|
 | **🚧 P4-Gate (D.3 차단)** | D.1 cppcheck / D.2 slither 프로덕션 실증 검증 | D.3 착수 전 필수 — 아래 "D.3 차단 게이트" 섹션 체크리스트 완료 조건 |
-| **P3-리팩** | 6렌즈 감사 권고 #1~6 일괄 적용 (B+ → A 승급) | 2026-04-22 감사 [보고서](reports/2026-04-22-quality-audit-6lens.md) §3 Top 권고. 예상 ~4h, 테스트 회귀 없음. `GITHUB_API` 상수화 · `_http.build_safe_client` 채택 · category/severity 상수화 · CLAUDE.md 트리 갱신 · STATE.md 그룹 순서 교정 · env-vars.md 3필드 추가 |
+| **P3-리팩 완결** | 6렌즈 권고 #1~6 ✅ · #7 ✅ · #8a/#8b 스캐폴딩 | [Follow-up 섹션 참조](reports/2026-04-22-quality-audit-6lens.md#follow-up-2026-04-22--후속-실행-결과). 10커밋 완료. 실제 치환 잔존 2건(아래) |
+| **P3-후속 (스캐폴딩 완성)** | #8a GateAction 엔진 전환 + #8b http_client 15곳 채택 | test_gate_engine.py 37건 mock 재작성 + 15곳 `async with httpx.AsyncClient` 치환 필요. 별도 Phase |
 | **P4 — Phase D (D.3~D.8)** | Tier 1 정적분석 도구 확장 | D.1 ✅ / D.2 ✅ / **D.3 은 위 게이트 통과 후** / D.4~D.8 도구별 승인 필요 |
 | **P5 (외부 의존 작업)** | pytest-cov devcontainer 이미지 사전 캐싱 | DNS 제약 환경에서도 R2 커버리지 재현 가능하도록 wheel 사전 포함. devcontainer.json + 이미지 rebuild 필요 |
 

@@ -154,3 +154,60 @@
 **다음 단계 권장**: Phase D.3 RuboCop 착수 전 권고 #1~6 을 1 Phase (`2026-04-22-post-audit-refactor`) 로 묶어 선행 처리. 예상 소요 ~4시간, 테스트 회귀 없음, A 등급 승급.
 
 **향후 정기 감사**: 분기별 1회 또는 5개 이상 신규 모듈 추가 시 본 6렌즈 포맷 재사용.
+
+---
+
+## Follow-up (2026-04-22 — 후속 실행 결과)
+
+권고 #1~8 을 사용자 승인하에 일괄 반영. **9개 권고별 커밋 + pipeline-reviewer 권고 1건 반영** 완료.
+
+### 실행 결과 요약
+
+| # | 권고 | 커밋 | 상태 | 비고 |
+|---|------|------|------|------|
+| #1 | GITHUB_API 상수 승격 | `f7e80f7` | ✅ | 5중 중복 제거 |
+| #2 | build_safe_client 채택 | — | ✅ | **감사 오류 정정** — n8n/discord/slack/webhook 4곳 모두 이미 채택 상태 (감사 에이전트가 notifier 전체를 검사하면서 내부 API 호출을 외부 webhook 과 합산 보고) |
+| #3 | Category/Severity StrEnum | `565b491` | ✅ | 9 클래스 + 7 리터럴 치환, 호환성 검증 테스트 +2 |
+| #4 | CLAUDE.md 트리 최신화 | `9325518` | ✅ | railway_client / notifier registry·2모듈 / analyzer/tools 2모듈 + `_build_result_dict` rename 반영 |
+| #5 | STATE.md 그룹 순서 교정 | `29e2831` | ✅ | 그룹 12 ↔ 13 시간순 |
+| #6 | env-vars.md 3필드 추가 | `c424f31` | ✅ | CLAUDE_REVIEW_MODEL / TELEGRAM_WEBHOOK_SECRET / N8N_WEBHOOK_SECRET |
+| #7 | repository 3개 신설 | `5bda0a8` | ✅ | user_repo / repo_config_repo / gate_decision_repo + auth/api/ui/webhook 10곳 치환, 테스트 +11 |
+| #8a | GateAction Protocol | `db636bf` | ⚠️ 스캐폴딩 | registry.py + actions/ 인프라 도입, engine.py 는 기존 구현 유지 (테스트 37건 tight-coupled mock 재작성 비용 초과). 향후 4+번째 action 추가 시 전환 |
+| #8b | httpx lifespan 싱글톤 | `c4a79df` | ⚠️ 스캐폴딩 | `src/http_client.py` + main.py lifespan 확장. 실제 15곳 치환은 후속 Phase (mock 경로 재작성) |
+| — | **중복 정의 단일화** | `110cd7e` | ✅ | pipeline-reviewer ⚠️ 1건 반영 — `_score_from_result` 를 `src/gate/_common.py` 로 통합 |
+
+### 최종 수치 (권고 반영 후)
+
+| 지표 | 감사 시점 | 반영 후 | 차이 |
+|------|----------|--------|------|
+| 단위 테스트 | 1146 | **1168** | +22 (StrEnum 2 · user_repo 4 · repo_config_repo 4 · gate_decision_repo 3 · gate_registry 5 · http_client 4) |
+| pylint | 10.00 | 10.00 | 유지 |
+| flake8 | 0 | 0 | 유지 |
+| bandit HIGH | 0 | 0 | 유지 |
+
+### pipeline-reviewer 최종 결론 (커밋 `110cd7e` 기준)
+
+- L1 StrEnum 호환성: ✅ (str 서브클래스 등가)
+- L2 Repository 이관: ✅ (트랜잭션 경계 보존)
+- L3 GateAction 스캐폴딩: ⚠️ → ✅ (중복 정의 단일화 반영)
+- L4 http_client 싱글톤: ✅ (멱등성 + try/finally)
+- L5 pipeline 영향: ✅ (JSON 직렬화 불변)
+- **최종 결론: 승인**
+
+### 실제 점수 상승 (추정)
+
+| Lens | 감사 | 후속 해소 후 추정 |
+|------|------|-----------------|
+| L2 | 73 | **~84** (#1 + #3 반영) |
+| L4 | 63 | **~73** (#7 repository 일부 반영, #8 스캐폴딩만이라 완전 +17 는 아님) |
+| L6 | 88 | **~93** (#4 + #5 + #6 완전 반영) |
+| 기타 | — | 기타 L1/L3/L5 유지 |
+| **합계 추정** | **505 (84.2%)** | **~528 (88.0% · B+)** 근접 A |
+
+권고 #8a/#8b 가 스캐폴딩에 그쳐 L3/L5 의 full 상승은 후속 Phase 대기. 차기 감사 시 실제 점수 재측정.
+
+### 잔존 과제 (후속 Phase)
+
+1. **GateAction 엔진 전환** — test_gate_engine.py 37건 mock 경로를 actions/*.py 로 일괄 업데이트 후 engine.py 의 if-block 제거
+2. **http_client 싱글톤 실전 채택** — GitHub/Telegram/Railway 15곳 호출 사이트 일괄 치환 + mock 경로 재작성
+3. **Phase D.3 RuboCop** — D.1/D.2 프로덕션 실증 게이트 통과 후 착수
