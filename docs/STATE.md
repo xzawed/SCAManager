@@ -173,16 +173,6 @@
 **후속 해소 (2026-04-22)**:
 - **#5** `RailwayDeployEvent` sub-dataclass 분리 — 그룹 12 참조. 3-그룹 nested(`RailwayProjectInfo`/`RailwayCommitInfo`/top-level) 로 재구조화 완료. pylint R0902 informational 제거, 외부 API 불변.
 
-### 그룹 13 — Phase D.2 slither 도구 추가 (2026-04-22)
-
-| 작업 | 주요 내용 | 테스트 증분 |
-|------|----------|-----------|
-| 단위 테스트 선작성 (TDD Red) | supports(solidity)·is_enabled binary·JSON 파싱·impact 매핑·`_SECURITY_DETECTORS` 분류·compilation failure skip·subprocess timeout/OSError/JSONDecodeError·스키마 변형(results list) 처리 | +18 |
-| `_SlitherAnalyzer` 구현 | Analyzer Protocol · stdout JSON 파싱 (`--json -`) · detector impact High/Medium → error, Low/Informational → warning · mixed-category (security/code_quality) · `_parse_slither_json` 분리로 mock 없이 검증 가능 | — |
-| Registry 등록 검증 | `_register_slither_analyzers()` 명시 호출 + 속성(name/category/SUPPORTED_LANGUAGES) 확인 | +2 |
-| `requirements.txt` | `slither-analyzer>=0.10.0` 추가 (+100MB, nixpacks 변경 없음) — Python provider 자동 설치 | — |
-| 백엔드 불변 | Analyzer Protocol · REGISTRY · `analyze_file()` · AnalysisIssue · calculator · language.py 전부 그대로 | — |
-
 ### 그룹 12 — RailwayDeployEvent sub-dataclass 리팩토링 (2026-04-22)
 
 | 작업 | 주요 내용 | 테스트 증분 |
@@ -192,6 +182,16 @@
 | notifier 접근 체인 | `railway_issue.py` 11곳 nested 접근(`event.project.*`/`event.commit.*`)으로 업데이트 (출력 문자열 불변) | — |
 | 테스트 fixture 재작성 | `test_railway_client.py`(2곳) + `test_railway_issue_notifier.py`(`_EVENT` fixture nested 재작성) | — |
 | 외부 API 불변 | `parse_railway_payload` · `create_deploy_failure_issue` 시그니처 · Webhook payload 스키마 · DB 전부 그대로 | — |
+
+### 그룹 13 — Phase D.2 slither 도구 추가 (2026-04-22)
+
+| 작업 | 주요 내용 | 테스트 증분 |
+|------|----------|-----------|
+| 단위 테스트 선작성 (TDD Red) | supports(solidity)·is_enabled binary·JSON 파싱·impact 매핑·`_SECURITY_DETECTORS` 분류·compilation failure skip·subprocess timeout/OSError/JSONDecodeError·스키마 변형(results list) 처리 | +18 |
+| `_SlitherAnalyzer` 구현 | Analyzer Protocol · stdout JSON 파싱 (`--json -`) · detector impact High/Medium → error, Low/Informational → warning · mixed-category (security/code_quality) · `_parse_slither_json` 분리로 mock 없이 검증 가능 | — |
+| Registry 등록 검증 | `_register_slither_analyzers()` 명시 호출 + 속성(name/category/SUPPORTED_LANGUAGES) 확인 | +2 |
+| `requirements.txt` | `slither-analyzer>=0.10.0` 추가 (+100MB, nixpacks 변경 없음) — Python provider 자동 설치 | — |
+| 백엔드 불변 | Analyzer Protocol · REGISTRY · `analyze_file()` · AnalysisIssue · calculator · language.py 전부 그대로 | — |
 
 ## 갱신 방법
 
