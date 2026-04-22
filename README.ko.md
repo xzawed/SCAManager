@@ -11,6 +11,13 @@
 [![Railway](https://img.shields.io/badge/Deploy-Railway-0B0D0E?style=flat-square&logo=railway&logoColor=white)](https://railway.app/)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
+[![CI](https://github.com/xzawed/SCAManager/actions/workflows/ci.yml/badge.svg)](https://github.com/xzawed/SCAManager/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/xzawed/SCAManager/actions/workflows/codeql.yml/badge.svg)](https://github.com/xzawed/SCAManager/actions/workflows/codeql.yml)
+[![codecov](https://codecov.io/gh/xzawed/SCAManager/branch/main/graph/badge.svg)](https://codecov.io/gh/xzawed/SCAManager)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=xzawed_SCAManager&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=xzawed_SCAManager)
+[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=xzawed_SCAManager&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=xzawed_SCAManager)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=xzawed_SCAManager&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=xzawed_SCAManager)
+
 [![Tests](https://img.shields.io/badge/Tests-1168_passing-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
 [![E2E](https://img.shields.io/badge/E2E-49_passing-brightgreen?style=flat-square&logo=playwright&logoColor=white)](e2e/)
 [![pylint](https://img.shields.io/badge/pylint-10.00%2F10-brightgreen?style=flat-square&logo=python&logoColor=white)](src/)
