@@ -59,7 +59,9 @@ class _SlitherAnalyzer:
         except subprocess.TimeoutExpired:
             logger.warning("slither timed out for %s", ctx.tmp_path)
             return []
-        except (OSError, json.JSONDecodeError) as exc:
+        except (OSError, json.JSONDecodeError, ValueError,
+                AttributeError, TypeError) as exc:
+            # slither JSON 스키마 변형(results 가 list 등)에 대비한 방어
             logger.warning("slither failed for %s: %s", ctx.tmp_path, exc)
             return []
 
