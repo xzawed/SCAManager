@@ -8,7 +8,7 @@ import json
 import logging
 import subprocess  # nosec B404
 
-from src.analyzer.registry import AnalyzeContext, AnalysisIssue, register
+from src.analyzer.registry import AnalyzeContext, AnalysisIssue, Category, Severity, register
 from src.constants import STATIC_ANALYSIS_TIMEOUT
 
 logger = logging.getLogger(__name__)
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 class _PylintAnalyzer:
     name = "pylint"
-    category = "code_quality"
+    category = Category.CODE_QUALITY
 
     def supports(self, ctx: AnalyzeContext) -> bool:
         """Python 파일 여부 확인."""
@@ -46,7 +46,7 @@ class _PylintAnalyzer:
             return [
                 AnalysisIssue(
                     tool="pylint",
-                    severity="error" if item["type"] in ("error", "fatal") else "warning",
+                    severity=Severity.ERROR if item["type"] in ("error", "fatal") else Severity.WARNING,
                     message=item["message"],
                     line=item["line"],
                     category=self.category,
@@ -64,7 +64,7 @@ class _PylintAnalyzer:
 
 class _Flake8Analyzer:
     name = "flake8"
-    category = "code_quality"
+    category = Category.CODE_QUALITY
 
     def supports(self, ctx: AnalyzeContext) -> bool:
         """Python 파일 여부 확인."""
@@ -92,7 +92,7 @@ class _Flake8Analyzer:
                     try:
                         issues.append(AnalysisIssue(
                             tool="flake8",
-                            severity="warning",
+                            severity=Severity.WARNING,
                             message=parts[2].strip(),
                             line=int(parts[0]),
                             category=self.category,
@@ -111,7 +111,7 @@ class _Flake8Analyzer:
 
 class _BanditAnalyzer:
     name = "bandit"
-    category = "security"
+    category = Category.SECURITY
 
     def supports(self, ctx: AnalyzeContext) -> bool:
         """Python 파일 여부 확인."""
@@ -132,7 +132,7 @@ class _BanditAnalyzer:
             return [
                 AnalysisIssue(
                     tool="bandit",
-                    severity="error" if item["issue_severity"] == "HIGH" else "warning",
+                    severity=Severity.ERROR if item["issue_severity"] == "HIGH" else Severity.WARNING,
                     message=item["issue_text"],
                     line=item["line_number"],
                     category=self.category,

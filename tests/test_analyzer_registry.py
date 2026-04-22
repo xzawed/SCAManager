@@ -621,3 +621,34 @@ class TestSlitherAnalyzerRegistration:
         assert a.name == "slither"
         assert a.category == "security"
         assert a.SUPPORTED_LANGUAGES == frozenset({"solidity"})
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 권고 #3 — Category / Severity StrEnum 격상 호환성 검증
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestCategorySeverityStrEnum:
+    def test_category_strenum_equals_legacy_string(self):
+        """StrEnum 값이 기존 문자열과 `==` 비교에서 동등해야 한다 (소비자 코드 회귀 방지)."""
+        from src.analyzer.registry import Category, Severity
+        assert Category.CODE_QUALITY == "code_quality"
+        assert Category.SECURITY == "security"
+        assert Severity.ERROR == "error"
+        assert Severity.WARNING == "warning"
+
+    def test_severity_json_dumps_as_string(self):
+        """StrEnum 이 json.dumps 에서 자연 문자열로 직렬화되어야 한다 (pipeline.py 결과 저장 경로)."""
+        import json
+        from src.analyzer.registry import AnalysisIssue, Category, Severity
+        issue = AnalysisIssue(
+            tool="t",
+            severity=Severity.ERROR,
+            message="m",
+            line=1,
+            category=Category.SECURITY,
+            language="python",
+        )
+        from dataclasses import asdict
+        dumped = json.dumps(asdict(issue))
+        assert '"severity": "error"' in dumped
+        assert '"category": "security"' in dumped

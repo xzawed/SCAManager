@@ -10,7 +10,7 @@ import logging
 import shutil
 import subprocess  # nosec B404
 
-from src.analyzer.registry import AnalyzeContext, AnalysisIssue, register
+from src.analyzer.registry import AnalyzeContext, AnalysisIssue, Category, Severity, register
 from src.constants import STATIC_ANALYSIS_TIMEOUT
 
 logger = logging.getLogger(__name__)
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 class _ShellCheckAnalyzer:
     name = "shellcheck"
-    category = "code_quality"
+    category = Category.CODE_QUALITY
 
     SUPPORTED_LANGUAGES: frozenset[str] = frozenset({"shell"})
 
@@ -43,13 +43,13 @@ class _ShellCheckAnalyzer:
             issues = []
             for item in data:
                 level = item.get("level", "warning")
-                severity = "error" if level == "error" else "warning"
+                severity = Severity.ERROR if level == "error" else Severity.WARNING
                 issues.append(AnalysisIssue(
                     tool="shellcheck",
                     severity=severity,
                     message=item.get("message", ""),
                     line=item.get("line", 0),
-                    category="code_quality",
+                    category=Category.CODE_QUALITY,
                     language=ctx.language,
                 ))
             return issues
