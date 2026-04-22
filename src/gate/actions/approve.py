@@ -6,25 +6,13 @@ import logging
 import httpx
 
 from src.config import settings
+from src.gate._common import score_from_result
 from src.gate.github_review import post_github_review
 from src.gate.registry import GateContext, register
 from src.gate.telegram_gate import send_gate_request
 from src.repositories import gate_decision_repo
-from src.scorer.calculator import ScoreResult
 
 logger = logging.getLogger(__name__)
-
-
-def _score_from_result(result: dict) -> ScoreResult:
-    """result dict 에서 최소한의 ScoreResult 를 재구성한다."""
-    bd = result.get("breakdown") or {}
-    return ScoreResult(
-        total=result.get("score", 0),
-        grade=result.get("grade", "F"),
-        code_quality_score=bd.get("code_quality", 0),
-        security_score=bd.get("security", 0),
-        breakdown=bd,
-    )
 
 
 class _ApproveAction:  # pylint: disable=too-few-public-methods
@@ -70,7 +58,7 @@ class _ApproveAction:  # pylint: disable=too-few-public-methods
             logger.warning("semi-auto 모드이나 notify_chat_id 미설정: %s", ctx.repo_name)
             return
         try:
-            score_result = _score_from_result(ctx.result)
+            score_result = score_from_result(ctx.result)
             await send_gate_request(
                 bot_token=settings.telegram_bot_token,
                 chat_id=config.notify_chat_id,
