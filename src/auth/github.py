@@ -9,6 +9,7 @@ from src.config import settings
 from src.crypto import encrypt_token
 from src.database import SessionLocal
 from src.models.user import User
+from src.repositories import user_repo
 from src.auth.session import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -68,7 +69,7 @@ async def auth_callback(request: Request):
     display_name = user_info.get("name") or github_login
 
     with SessionLocal() as db:
-        user = db.query(User).filter(User.github_id == github_id).first()
+        user = user_repo.find_by_github_id(db, github_id)
         if not user:
             user = User(
                 github_id=github_id,

@@ -19,3 +19,10 @@ def save_new(db: Session, analysis: Analysis) -> Analysis:
     db.commit()
     db.refresh(analysis)
     return analysis
+
+
+def delete_by_repo_id(db: Session, repo_id: int) -> int:
+    """Repository FK 기반 Analysis 전체 삭제. 삭제된 행 수 반환. 호출자가 commit."""
+    return db.query(Analysis).filter_by(repo_id=repo_id).delete(
+        synchronize_session=False
+    )

@@ -11,8 +11,8 @@ from pydantic import BaseModel
 
 from src.database import SessionLocal
 from src.models.analysis import Analysis
-from src.models.repo_config import RepoConfig
 from src.models.repository import Repository
+from src.repositories import repo_config_repo
 from src.analyzer.ai_review import AiReviewResult
 from src.scorer.calculator import calculate_score
 from src.worker.pipeline import build_analysis_result_dict
@@ -35,9 +35,7 @@ def verify_hook(repo: str, token: str):
     불일치 또는 미등록 → 404
     """
     with SessionLocal() as db:
-        config = db.query(RepoConfig).filter(
-            RepoConfig.repo_full_name == repo
-        ).first()
+        config = repo_config_repo.find_by_full_name(db, repo)
 
     if config is None or not hmac.compare_digest(config.hook_token or "", token):
         raise HTTPException(status_code=404, detail="등록되지 않은 리포 또는 유효하지 않은 토큰")
@@ -65,9 +63,7 @@ def save_hook_result(body: HookResultRequest):
     토큰 검증 후 Analysis 레코드를 저장하고 점수를 반환한다.
     """
     with SessionLocal() as db:
-        config = db.query(RepoConfig).filter(
-            RepoConfig.repo_full_name == body.repo
-        ).first()
+        config = repo_config_repo.find_by_full_name(db, body.repo)
 
         if config is None or not hmac.compare_digest(config.hook_token or "", body.token):
             raise HTTPException(status_code=403, detail="유효하지 않은 토큰")
