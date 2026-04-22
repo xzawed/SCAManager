@@ -208,11 +208,23 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 
 | 우선순위 | 항목 | 비고 |
 |---------|------|------|
-| **P4 — Phase D (D.3~D.8)** | Tier 1 정적분석 도구 확장 | D.1 ✅ / D.2 ✅ / D.3~D.8 도구별 승인 필요 |
-| **P5 (외부 의존 작업)** | Railway 프로덕션 cppcheck 실증 검증 | 실제 C/C++ 파일 PR 로 `slither` tool 이슈 포함 확인 (외부 테스트 리포 필요) |
+| **🚧 P4-Gate (D.3 차단)** | D.1 cppcheck / D.2 slither 프로덕션 실증 검증 | D.3 착수 전 필수 — 아래 "D.3 차단 게이트" 섹션 체크리스트 완료 조건 |
+| **P4 — Phase D (D.3~D.8)** | Tier 1 정적분석 도구 확장 | D.1 ✅ / D.2 ✅ / **D.3 은 위 게이트 통과 후** / D.4~D.8 도구별 승인 필요 |
 | **P5 (외부 의존 작업)** | pytest-cov devcontainer 이미지 사전 캐싱 | DNS 제약 환경에서도 R2 커버리지 재현 가능하도록 wheel 사전 포함. devcontainer.json + 이미지 rebuild 필요 |
 
-### Phase D 착수 전 결정 사항
+### D.3 차단 게이트 — D.1/D.2 프로덕션 실증 체크리스트
+
+로컬 devcontainer 에서는 cppcheck/slither 바이너리가 없어 `is_enabled()=False` 경로만 검증됨. Railway 실제 이미지에서 도구가 정상 동작하는지 확인되지 않은 상태로 D.3 을 추가하면 실패 표면이 중첩되어 원인 추적이 어려워진다. 아래 5가지 항목 **모두** 통과해야 D.3 RuboCop 착수.
+
+1. [ ] **Railway 빌드 로그 확인** — 최근 배포에서 `pip install slither-analyzer` 성공 + `cppcheck` apt 설치 성공 로그 확인 (Railway 대시보드 Deployments → 해당 빌드 → Build Logs)
+2. [ ] **cppcheck 실증 PR** — 외부 테스트 리포에 의도적 결함(`char buf[10]; strcpy(buf, long_str);` 등) 포함한 `.c` 파일 PR 생성 → 분석 결과의 `result.static_issues` 에 `tool="cppcheck"` 이슈 포함 확인
+3. [ ] **slither 실증 PR** — 외부 테스트 리포에 reentrancy 버그 포함한 `.sol` PR 생성(플랜 문서 §Task 7 샘플 코드 재사용) → `tool="slither"` + `category="security"` + `check="reentrancy-eth"` 이슈 포함 확인
+4. [ ] **solc 런타임 다운로드 타임아웃 확인** — slither 첫 실행 시 `STATIC_ANALYSIS_TIMEOUT=30` 내에 solc 다운로드 + 분석 완료되는지 확인. 초과 시 `src/constants.py` 의 `STATIC_ANALYSIS_TIMEOUT` 상향 조정 필요
+5. [ ] **점수 반영 확인** — 실증 PR 의 최종 점수에서 해당 도구 이슈가 `code_quality` 또는 `security` 감점으로 올바르게 반영됐는지(기존 규칙 `error=-3`, `warning=-1`, `SEC_ERROR=-7`) 검증
+
+**게이트 통과 조건**: 5개 모두 ✅. 실패 항목이 있으면 해당 항목을 별도 Phase 작업으로 올려 수정 후 재검증.
+
+### Phase D 착수 전 결정 사항 (D.4 이후)
 
 1. **도구별 GO/NO-GO 승인** — 한 번에 묶어서 승인 금지, 도구 1개씩 확인
 2. **Docker 전환 여부** — JVM/Rust 계열 포함 시 이미지 2GB+ → 전환 필요
@@ -224,7 +236,7 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 |---------|-----|-----|------------|-------|------|
 | D.1 | cppcheck | C/C++ | +30MB | ✅ 완료 | 그룹 10 (2026-04-21) — apt 단순 설치 |
 | D.2 | slither | Solidity | +100MB | ✅ 완료 | 그룹 13 (2026-04-22) — pip 단순 설치 |
-| D.3 | RuboCop | Ruby | +80MB | 🟡 중간 | gem install |
+| D.3 | RuboCop | Ruby | +80MB | 🟡 중간 | gem install — **D.1/D.2 실증 게이트 통과 후** |
 | D.4 | golangci-lint | Go | +200MB | 🟡 중간 | go.mod 자동생성 로직 필요 |
 | D.5 | PHPStan | PHP | +150MB | 🟠 높음 | PHP 런타임 추가, 수요 확인 후 |
 | D.6 | detekt | Kotlin | +350MB | 🟠 높음 | JDK 필요, Docker 전환 후 |
