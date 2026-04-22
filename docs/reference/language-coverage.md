@@ -55,7 +55,7 @@
 | 25 | Groovy | `.groovy` `.gradle` | Standard | — | Gradle |
 | 26 | HTML | `.html` `.htm` | Standard | semgrep (XSS) | — |
 | 27 | CSS/SCSS | `.css` `.scss` `.sass` `.less` | Standard | — | — |
-| 28 | Solidity | `.sol` | Standard | semgrep | slither 🟢 Phase D |
+| 28 | Solidity | `.sol` | Standard | semgrep, **slither** | — (Phase D.2 완료) |
 | 29 | Objective-C | `.m` `.mm` | Standard | — | — |
 | 30 | F# | `.fs` `.fsi` | Standard | — | .NET |
 
@@ -116,7 +116,7 @@
 
 | 리스크 | 도구 | 이미지 증가 |
 |-------|-----|----------|
-| 🟢 낮음 | ~~cppcheck (C/C++)~~ ✅ 완료, slither (Solidity) | +30~100MB |
+| 🟢 낮음 | ~~cppcheck (C/C++)~~ ✅ 완료, ~~slither (Solidity)~~ ✅ 완료 | +30~100MB |
 | 🟡 중간 | golangci-lint (Go), RuboCop (Ruby) | +80~200MB |
 | 🟠 높음 | detekt (Kotlin), PHPStan (PHP) | +150~350MB |
 | 🔴 최상위 | PMD (Java), cargo clippy (Rust) | +300~700MB, Docker 전환 필요 |

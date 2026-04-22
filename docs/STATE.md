@@ -2,18 +2,18 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-22 기준 — 그룹 12 RailwayDeployEvent nested 리팩토링 완료)
+## 현재 수치 (2026-04-22 기준 — 그룹 13 Phase D.2 slither 도구 추가 완료)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1126개** | pytest (0 failed) |
+| 단위 테스트 | **1145개** | pytest (0 failed) |
 | E2E 테스트 | **49개** | `make test-e2e` (Chromium Playwright) |
 | pylint | **10.00/10** | `python -m pylint src/` — 만점 |
 | 커버리지 | **96.2%** | `make test-cov` (database.py 100%, ui/router.py 99.4%) |
 | bandit HIGH | **0개** | bandit 1.9.4 (Python 3.14 대응) |
 | flake8 | **0건** | `flake8 src/` |
 | 지원 언어 (AI 리뷰) | **50개** | language.py — Tier1/2/3 가이드 |
-| 지원 언어 (정적분석) | **35개+** | Semgrep 23 + ESLint 2 + ShellCheck 1 + cppcheck 1 + Python 3 도구 |
+| 지원 언어 (정적분석) | **36개+** | Semgrep 23 + ESLint 2 + ShellCheck 1 + cppcheck 1 + slither 1 + Python 3 도구 |
 | pytest-asyncio | **1.3.0** | Python 3.14 DeprecationWarning 제거 완료 |
 
 ## 주요 파일 역할 (빠른 참조)
@@ -173,6 +173,16 @@
 **후속 해소 (2026-04-22)**:
 - **#5** `RailwayDeployEvent` sub-dataclass 분리 — 그룹 12 참조. 3-그룹 nested(`RailwayProjectInfo`/`RailwayCommitInfo`/top-level) 로 재구조화 완료. pylint R0902 informational 제거, 외부 API 불변.
 
+### 그룹 13 — Phase D.2 slither 도구 추가 (2026-04-22)
+
+| 작업 | 주요 내용 | 테스트 증분 |
+|------|----------|-----------|
+| 단위 테스트 선작성 (TDD Red) | supports(solidity)·is_enabled binary·JSON 파싱·impact 매핑·`_SECURITY_DETECTORS` 분류·compilation failure skip·subprocess timeout/OSError/JSONDecodeError 처리 | +17 |
+| `_SlitherAnalyzer` 구현 | Analyzer Protocol · stdout JSON 파싱 (`--json -`) · detector impact High/Medium → error, Low/Informational → warning · mixed-category (security/code_quality) · `_parse_slither_json` 분리로 mock 없이 검증 가능 | — |
+| Registry 등록 검증 | `_register_slither_analyzers()` 명시 호출 + 속성(name/category/SUPPORTED_LANGUAGES) 확인 | +2 |
+| `requirements.txt` | `slither-analyzer>=0.10.0` 추가 (+100MB, nixpacks 변경 없음) — Python provider 자동 설치 | — |
+| 백엔드 불변 | Analyzer Protocol · REGISTRY · `analyze_file()` · AnalysisIssue · calculator · language.py 전부 그대로 | — |
+
 ### 그룹 12 — RailwayDeployEvent sub-dataclass 리팩토링 (2026-04-22)
 
 | 작업 | 주요 내용 | 테스트 증분 |
@@ -198,8 +208,7 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 
 | 우선순위 | 항목 | 비고 |
 |---------|------|------|
-| **P4 — Phase D.2 (스펙 대기)** | slither (Solidity) 정적분석 추가 | 스펙 + 플랜 작성 완료 (2026-04-21). GO/NO-GO 승인 대기 — [spec](superpowers/specs/2026-04-21-slither-design.md) / [plan](superpowers/plans/2026-04-21-slither.md) |
-| **P4 — Phase D (D.3~D.8)** | Tier 1 정적분석 도구 확장 | D.1 ✅ / D.2 스펙 작성됨 / D.3~D.8 도구별 승인 필요 |
+| **P4 — Phase D (D.3~D.8)** | Tier 1 정적분석 도구 확장 | D.1 ✅ / D.2 ✅ / D.3~D.8 도구별 승인 필요 |
 | **P5 (외부 의존 작업)** | Railway 프로덕션 cppcheck 실증 검증 | 실제 C/C++ 파일 PR 로 `slither` tool 이슈 포함 확인 (외부 테스트 리포 필요) |
 | **P5 (외부 의존 작업)** | pytest-cov devcontainer 이미지 사전 캐싱 | DNS 제약 환경에서도 R2 커버리지 재현 가능하도록 wheel 사전 포함. devcontainer.json + 이미지 rebuild 필요 |
 
@@ -214,7 +223,7 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 | 우선순위 | 도구 | 언어 | 이미지 증가 | 리스크 | 비고 |
 |---------|-----|-----|------------|-------|------|
 | D.1 | cppcheck | C/C++ | +30MB | ✅ 완료 | 그룹 10 (2026-04-21) — apt 단순 설치 |
-| D.2 | slither | Solidity | +100MB | 🟢 낮음 | 스펙·플랜 작성 완료, 구현 승인 대기 |
+| D.2 | slither | Solidity | +100MB | ✅ 완료 | 그룹 13 (2026-04-22) — pip 단순 설치 |
 | D.3 | RuboCop | Ruby | +80MB | 🟡 중간 | gem install |
 | D.4 | golangci-lint | Go | +200MB | 🟡 중간 | go.mod 자동생성 로직 필요 |
 | D.5 | PHPStan | PHP | +150MB | 🟠 높음 | PHP 런타임 추가, 수요 확인 후 |
