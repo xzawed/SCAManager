@@ -9,6 +9,7 @@ import src.analyzer.tools.eslint  # noqa: F401 — 모듈 로드 시 자동 등�
 import src.analyzer.tools.python  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
 import src.analyzer.tools.semgrep  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
 import src.analyzer.tools.shellcheck  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
+import src.analyzer.tools.slither  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
 from src.analyzer.language import detect_language, is_test_file
 from src.analyzer.registry import REGISTRY, AnalyzeContext, AnalysisIssue
 from src.analyzer.tools.python import _BanditAnalyzer, _Flake8Analyzer, _PylintAnalyzer
