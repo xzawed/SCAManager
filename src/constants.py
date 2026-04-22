@@ -66,6 +66,7 @@ N8N_BODY_MAX_BYTES = 8192            # n8n relay 시 issue body 최대 바이트
 
 # ── HTTP 클라이언트 설정 ─────────────────────────────────────────────────────
 HTTP_CLIENT_TIMEOUT = 10.0  # 외부 API 호출 타임아웃 (초)
+GITHUB_API = "https://api.github.com"  # GitHub REST API 기본 URL (단일 출처)
 
 # ── 언어 가이드 임계값 (review_prompt._select_guide_modes) ─────────────────
 LANG_GUIDE_ALL_FULL_MAX = 3    # N<=3: 모든 언어 full 모드

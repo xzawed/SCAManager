@@ -4,11 +4,10 @@ import logging
 import httpx
 
 from src.config import settings
+from src.constants import GITHUB_API
 from src.github_client.helpers import github_api_headers
 
 logger = logging.getLogger(__name__)
-
-GITHUB_API = "https://api.github.com"
 
 
 def _bandit_high_issues(result: dict) -> list[dict]:
