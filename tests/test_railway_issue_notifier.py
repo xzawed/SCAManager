@@ -7,20 +7,28 @@ os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
-from src.railway_client.models import RailwayDeployEvent
+from src.railway_client.models import (
+    RailwayDeployEvent,
+    RailwayProjectInfo,
+    RailwayCommitInfo,
+)
 from src.notifier.railway_issue import create_deploy_failure_issue, _build_issue_body
 
 
 _EVENT = RailwayDeployEvent(
     deployment_id="deploy-abc",
-    project_id="proj-123",
-    project_name="my-project",
-    environment_name="production",
     status="BUILD_FAILED",
-    commit_sha="deadbeef1234567890abcdef",
-    commit_message="feat: add feature",
-    repo_full_name="owner/repo",
     timestamp="2026-04-20T10:00:00Z",
+    project=RailwayProjectInfo(
+        project_id="proj-123",
+        project_name="my-project",
+        environment_name="production",
+    ),
+    commit=RailwayCommitInfo(
+        commit_sha="deadbeef1234567890abcdef",
+        commit_message="feat: add feature",
+        repo_full_name="owner/repo",
+    ),
 )
 
 

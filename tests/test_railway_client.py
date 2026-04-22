@@ -64,13 +64,16 @@ _VALID_PAYLOAD = {
 
 
 def test_parse_valid_build_failed():
-    """BUILD_FAILED 이벤트는 RailwayDeployEvent 를 반환해야 한다."""
+    """BUILD_FAILED 이벤트는 nested RailwayDeployEvent 를 반환해야 한다."""
     event = parse_railway_payload(_VALID_PAYLOAD)
     assert event is not None
     assert event.deployment_id == "deploy-abc123"
     assert event.status == "BUILD_FAILED"
-    assert event.commit_sha == "deadbeef1234567890abcdef"
-    assert event.repo_full_name == "owner/repo"
+    assert event.project.project_id == "proj-123"
+    assert event.project.project_name == "my-project"
+    assert event.project.environment_name == "production"
+    assert event.commit.commit_sha == "deadbeef1234567890abcdef"
+    assert event.commit.repo_full_name == "owner/repo"
 
 
 def test_parse_failed_status():
@@ -110,8 +113,8 @@ def test_parse_missing_optional_fields():
     }
     event = parse_railway_payload(payload)
     assert event is not None
-    assert event.project_name == ""
-    assert event.commit_sha is None
+    assert event.project.project_name == ""
+    assert event.commit.commit_sha is None
 
 
 import pytest
