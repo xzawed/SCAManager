@@ -10,7 +10,7 @@ import logging
 import shutil
 import subprocess  # nosec B404
 
-from src.analyzer.registry import AnalyzeContext, AnalysisIssue, register
+from src.analyzer.registry import AnalyzeContext, AnalysisIssue, Category, Severity, register
 from src.constants import STATIC_ANALYSIS_TIMEOUT
 
 logger = logging.getLogger(__name__)
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 class _SemgrepAnalyzer:
     name = "semgrep"
-    category = "code_quality"
+    category = Category.CODE_QUALITY
 
     SUPPORTED_LANGUAGES: frozenset[str] = frozenset({
         # Tier 1
@@ -55,11 +55,11 @@ class _SemgrepAnalyzer:
                 extra = item.get("extra", {})
                 metadata = extra.get("metadata", {})
                 raw_severity = extra.get("severity", "WARNING").upper()
-                severity = "error" if raw_severity == "ERROR" else "warning"
+                severity = Severity.ERROR if raw_severity == "ERROR" else Severity.WARNING
                 category = (
-                    "security"
+                    Category.SECURITY
                     if metadata.get("category") == "security"
-                    else "code_quality"
+                    else Category.CODE_QUALITY
                 )
                 issues.append(AnalysisIssue(
                     tool="semgrep",

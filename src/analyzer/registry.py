@@ -1,11 +1,11 @@
 """Analyzer Registry — Protocol + REGISTRY + register().
 
 Usage:
-    from src.analyzer.registry import register, REGISTRY, AnalyzeContext
+    from src.analyzer.registry import register, REGISTRY, AnalyzeContext, Category
 
     class MyAnalyzer:
         name = "my-tool"
-        category = "code_quality"
+        category = Category.CODE_QUALITY
         def supports(self, ctx): return ctx.language == "go"
         def is_enabled(self, ctx): return True
         def run(self, ctx): return []
@@ -14,10 +14,23 @@ Usage:
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Literal, Protocol, runtime_checkable
+from dataclasses import dataclass, field
+from enum import StrEnum
+from typing import Protocol, runtime_checkable
 
-Category = Literal["code_quality", "security"]
+
+class Category(StrEnum):
+    """AnalysisIssue.category 의 허용 값 (str 서브클래스 — 기존 문자열 비교 호환)."""
+
+    CODE_QUALITY = "code_quality"
+    SECURITY = "security"
+
+
+class Severity(StrEnum):
+    """AnalysisIssue.severity 의 허용 값 (str 서브클래스 — 기존 문자열 비교 호환)."""
+
+    ERROR = "error"
+    WARNING = "warning"
 
 
 @dataclass
@@ -25,10 +38,10 @@ class AnalysisIssue:
     """A single issue reported by a static analysis tool."""
 
     tool: str
-    severity: str       # "error" | "warning"
+    severity: Severity
     message: str
     line: int = 0
-    category: str = "code_quality"  # "code_quality" | "security"
+    category: Category = field(default=Category.CODE_QUALITY)
     language: str = ""              # detect_language() 반환값
 
 

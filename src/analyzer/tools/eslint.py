@@ -11,7 +11,7 @@ import os
 import shutil
 import subprocess  # nosec B404
 
-from src.analyzer.registry import AnalyzeContext, AnalysisIssue, register
+from src.analyzer.registry import AnalyzeContext, AnalysisIssue, Category, Severity, register
 from src.constants import STATIC_ANALYSIS_TIMEOUT
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ _CONFIG_PATH = os.path.abspath(os.path.join(
 
 class _ESLintAnalyzer:
     name = "eslint"
-    category = "code_quality"
+    category = Category.CODE_QUALITY
 
     SUPPORTED_LANGUAGES: frozenset[str] = frozenset({"javascript", "typescript"})
 
@@ -49,13 +49,13 @@ class _ESLintAnalyzer:
             issues = []
             for file_result in data:
                 for msg in file_result.get("messages", []):
-                    severity = "error" if msg.get("severity", 1) == 2 else "warning"
+                    severity = Severity.ERROR if msg.get("severity", 1) == 2 else Severity.WARNING
                     issues.append(AnalysisIssue(
                         tool="eslint",
                         severity=severity,
                         message=msg.get("message", ""),
                         line=msg.get("line", 0),
-                        category="code_quality",
+                        category=Category.CODE_QUALITY,
                         language=ctx.language,
                     ))
             return issues

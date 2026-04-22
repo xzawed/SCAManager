@@ -15,7 +15,7 @@ import logging
 import shutil
 import subprocess  # nosec B404
 
-from src.analyzer.registry import AnalyzeContext, AnalysisIssue, register
+from src.analyzer.registry import AnalyzeContext, AnalysisIssue, Category, Severity, register
 from src.constants import STATIC_ANALYSIS_TIMEOUT
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ _SECURITY_DETECTORS: frozenset[str] = frozenset({
 
 class _SlitherAnalyzer:
     name = "slither"
-    category = "security"  # 기본 security, detector 별로 override
+    category = Category.SECURITY  # 기본 security, detector 별로 override
 
     SUPPORTED_LANGUAGES: frozenset[str] = frozenset({"solidity"})
 
@@ -80,8 +80,8 @@ def _parse_slither_json(json_text: str, language: str) -> list[AnalysisIssue]:
     for det in detectors:
         check = det.get("check", "")
         impact = det.get("impact", "Informational")
-        severity = "error" if impact in ("High", "Medium") else "warning"
-        category = "security" if check in _SECURITY_DETECTORS else "code_quality"
+        severity = Severity.ERROR if impact in ("High", "Medium") else Severity.WARNING
+        category = Category.SECURITY if check in _SECURITY_DETECTORS else Category.CODE_QUALITY
         message = det.get("description", "").strip().split("\n")[0] or check
         line = 0
         elements = det.get("elements", []) or []

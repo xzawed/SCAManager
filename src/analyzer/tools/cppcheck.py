@@ -12,7 +12,7 @@ import shutil
 import subprocess  # nosec B404
 import xml.etree.ElementTree as ET
 
-from src.analyzer.registry import AnalyzeContext, AnalysisIssue, register
+from src.analyzer.registry import AnalyzeContext, AnalysisIssue, Category, Severity, register
 from src.constants import STATIC_ANALYSIS_TIMEOUT
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 class _CppCheckAnalyzer:
     name = "cppcheck"
-    category = "code_quality"
+    category = Category.CODE_QUALITY
 
     SUPPORTED_LANGUAGES: frozenset[str] = frozenset({"c", "cpp"})
 
@@ -72,7 +72,7 @@ def _parse_cppcheck_xml(xml_text: str, language: str) -> list[AnalysisIssue]:
     issues: list[AnalysisIssue] = []
     for err in root.findall(".//error"):
         sev = err.get("severity", "warning")
-        severity = "error" if sev == "error" else "warning"
+        severity = Severity.ERROR if sev == "error" else Severity.WARNING
         message = err.get("msg", "") or err.get("verbose", "") or err.get("id", "")
         line = 0
         loc = err.find("location")
@@ -86,7 +86,7 @@ def _parse_cppcheck_xml(xml_text: str, language: str) -> list[AnalysisIssue]:
             severity=severity,
             message=message,
             line=line,
-            category="code_quality",
+            category=Category.CODE_QUALITY,
             language=language,
         ))
     return issues
