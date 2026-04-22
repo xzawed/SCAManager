@@ -6,7 +6,7 @@
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1145개** | pytest (0 failed) |
+| 단위 테스트 | **1146개** | pytest (0 failed) |
 | E2E 테스트 | **49개** | `make test-e2e` (Chromium Playwright) |
 | pylint | **10.00/10** | `python -m pylint src/` — 만점 |
 | 커버리지 | **96.2%** | `make test-cov` (database.py 100%, ui/router.py 99.4%) |
@@ -177,7 +177,7 @@
 
 | 작업 | 주요 내용 | 테스트 증분 |
 |------|----------|-----------|
-| 단위 테스트 선작성 (TDD Red) | supports(solidity)·is_enabled binary·JSON 파싱·impact 매핑·`_SECURITY_DETECTORS` 분류·compilation failure skip·subprocess timeout/OSError/JSONDecodeError 처리 | +17 |
+| 단위 테스트 선작성 (TDD Red) | supports(solidity)·is_enabled binary·JSON 파싱·impact 매핑·`_SECURITY_DETECTORS` 분류·compilation failure skip·subprocess timeout/OSError/JSONDecodeError·스키마 변형(results list) 처리 | +18 |
 | `_SlitherAnalyzer` 구현 | Analyzer Protocol · stdout JSON 파싱 (`--json -`) · detector impact High/Medium → error, Low/Informational → warning · mixed-category (security/code_quality) · `_parse_slither_json` 분리로 mock 없이 검증 가능 | — |
 | Registry 등록 검증 | `_register_slither_analyzers()` 명시 호출 + 속성(name/category/SUPPORTED_LANGUAGES) 확인 | +2 |
 | `requirements.txt` | `slither-analyzer>=0.10.0` 추가 (+100MB, nixpacks 변경 없음) — Python provider 자동 설치 | — |

@@ -215,6 +215,18 @@ def test_run_returns_empty_on_json_decode_error():
         assert _SlitherAnalyzer().run(_ctx()) == []
 
 
+def test_run_returns_empty_on_schema_variant_results_list():
+    """slither JSON 스키마가 변형되어 results 가 list 면 AttributeError → []."""
+    mock_result = MagicMock()
+    mock_result.stdout = '{"success": true, "results": ["unexpected list shape"]}'
+    mock_result.stderr = ""
+    with patch(
+        "src.analyzer.tools.slither.subprocess.run",
+        return_value=mock_result,
+    ):
+        assert _SlitherAnalyzer().run(_ctx()) == []
+
+
 def test_run_empty_stdout_returns_empty():
     mock_result = MagicMock()
     mock_result.stdout = ""
