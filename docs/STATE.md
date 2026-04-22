@@ -209,6 +209,7 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 | 우선순위 | 항목 | 비고 |
 |---------|------|------|
 | **🚧 P4-Gate (D.3 차단)** | D.1 cppcheck / D.2 slither 프로덕션 실증 검증 | D.3 착수 전 필수 — 아래 "D.3 차단 게이트" 섹션 체크리스트 완료 조건 |
+| **P3-리팩** | 6렌즈 감사 권고 #1~6 일괄 적용 (B+ → A 승급) | 2026-04-22 감사 [보고서](reports/2026-04-22-quality-audit-6lens.md) §3 Top 권고. 예상 ~4h, 테스트 회귀 없음. `GITHUB_API` 상수화 · `_http.build_safe_client` 채택 · category/severity 상수화 · CLAUDE.md 트리 갱신 · STATE.md 그룹 순서 교정 · env-vars.md 3필드 추가 |
 | **P4 — Phase D (D.3~D.8)** | Tier 1 정적분석 도구 확장 | D.1 ✅ / D.2 ✅ / **D.3 은 위 게이트 통과 후** / D.4~D.8 도구별 승인 필요 |
 | **P5 (외부 의존 작업)** | pytest-cov devcontainer 이미지 사전 캐싱 | DNS 제약 환경에서도 R2 커버리지 재현 가능하도록 wheel 사전 포함. devcontainer.json + 이미지 rebuild 필요 |
 
