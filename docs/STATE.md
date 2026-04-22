@@ -216,13 +216,14 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 
 로컬 devcontainer 에서는 cppcheck/slither 바이너리가 없어 `is_enabled()=False` 경로만 검증됨. Railway 실제 이미지에서 도구가 정상 동작하는지 확인되지 않은 상태로 D.3 을 추가하면 실패 표면이 중첩되어 원인 추적이 어려워진다. 아래 5가지 항목 **모두** 통과해야 D.3 RuboCop 착수.
 
-1. [ ] **Railway 빌드 로그 확인** — 최근 배포에서 `pip install slither-analyzer` 성공 + `cppcheck` apt 설치 성공 로그 확인 (Railway 대시보드 Deployments → 해당 빌드 → Build Logs)
-2. [ ] **cppcheck 실증 PR** — 외부 테스트 리포에 의도적 결함(`char buf[10]; strcpy(buf, long_str);` 등) 포함한 `.c` 파일 PR 생성 → 분석 결과의 `result.static_issues` 에 `tool="cppcheck"` 이슈 포함 확인
-3. [ ] **slither 실증 PR** — 외부 테스트 리포에 reentrancy 버그 포함한 `.sol` PR 생성(플랜 문서 §Task 7 샘플 코드 재사용) → `tool="slither"` + `category="security"` + `check="reentrancy-eth"` 이슈 포함 확인
-4. [ ] **solc 런타임 다운로드 타임아웃 확인** — slither 첫 실행 시 `STATIC_ANALYSIS_TIMEOUT=30` 내에 solc 다운로드 + 분석 완료되는지 확인. 초과 시 `src/constants.py` 의 `STATIC_ANALYSIS_TIMEOUT` 상향 조정 필요
-5. [ ] **점수 반영 확인** — 실증 PR 의 최종 점수에서 해당 도구 이슈가 `code_quality` 또는 `security` 감점으로 올바르게 반영됐는지(기존 규칙 `error=-3`, `warning=-1`, `SEC_ERROR=-7`) 검증
+1. [ ] **Railway 빌드 로그 확인** — 최근 배포에서 `pip install slither-analyzer` 성공 + `cppcheck` apt 설치 성공 + `solc-select install 0.8.20 && solc-select use 0.8.20` 빌드 커맨드 성공 로그 확인 (Railway 대시보드 Deployments → 해당 빌드 → Build Logs)
+2. [ ] **solc 사전 설치 검증** — 배포 컨테이너에서 `which solc && solc --version` 이 성공하고 0.8.20 반환 확인. 실패 시 buildCommand 의 solc-select 체인 재점검
+3. [ ] **cppcheck 실증 PR** — 외부 테스트 리포에 의도적 결함(`char buf[10]; strcpy(buf, long_str);` 등) 포함한 `.c` 파일 PR 생성 → 분석 결과의 `result.static_issues` 에 `tool="cppcheck"` 이슈 포함 확인
+4. [ ] **slither 실증 PR** — 외부 테스트 리포에 reentrancy 버그 포함한 `.sol` PR 생성(플랜 문서 §Task 7 샘플 코드 재사용, pragma `^0.8.0`) → `tool="slither"` + `category="security"` + `check="reentrancy-eth"` 이슈 포함 확인
+5. [ ] **첫 분석 타임아웃 확인** — slither 첫 실행이 `STATIC_ANALYSIS_TIMEOUT=30` 내 완료 확인. 초과 시 (a) buildCommand 의 solc 버전을 pragma 와 더 잘 맞추거나 (b) `src/constants.py` 의 `STATIC_ANALYSIS_TIMEOUT` 상향 조정
+6. [ ] **점수 반영 확인** — 실증 PR 의 최종 점수에서 해당 도구 이슈가 `code_quality` 또는 `security` 감점으로 올바르게 반영됐는지(기존 규칙 `error=-3`, `warning=-1`, `SEC_ERROR=-7`) 검증
 
-**게이트 통과 조건**: 5개 모두 ✅. 실패 항목이 있으면 해당 항목을 별도 Phase 작업으로 올려 수정 후 재검증.
+**게이트 통과 조건**: 6개 모두 ✅. 실패 항목이 있으면 해당 항목을 별도 Phase 작업으로 올려 수정 후 재검증.
 
 ### Phase D 착수 전 결정 사항 (D.4 이후)
 
