@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-and-analyze:
+    name: pytest + Codecov + SonarCloud
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (with full history for SonarCloud)
+        uses: actions/checkout@v4
+        with:
+          # SonarCloud 가 새 파일/변경 이력을 제대로 분석하려면 shallow-clone 금지
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install system dependencies (정적분석 도구)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck cppcheck
+
+      - name: Install Node.js (eslint)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install global eslint
+        run: npm install -g eslint@9 @typescript-eslint/parser @typescript-eslint/eslint-plugin
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run pytest with coverage (XML for Codecov + SonarCloud)
+        env:
+          # conftest.py 에서 setdefault 되지만 CI 환경이라 중복 안전
+          DATABASE_URL: "sqlite:///:memory:"
+          GITHUB_WEBHOOK_SECRET: "test_secret"
+          TELEGRAM_BOT_TOKEN: "123:ABC"
+          TELEGRAM_CHAT_ID: "-100123"
+          SESSION_SECRET: "test-session-secret-32-chars-long!"
+        run: |
+          python -m pytest tests/ \
+            --cov=src \
+            --cov-report=xml:coverage.xml \
+            --cov-report=term-missing \
+            --junitxml=pytest-results.xml \
+            -q
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: SonarCloud scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

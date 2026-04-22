@@ -183,6 +183,21 @@
 | 테스트 fixture 재작성 | `test_railway_client.py`(2곳) + `test_railway_issue_notifier.py`(`_EVENT` fixture nested 재작성) | — |
 | 외부 API 불변 | `parse_railway_payload` · `create_deploy_failure_issue` 시그니처 · Webhook payload 스키마 · DB 전부 그대로 | — |
 
+### 그룹 15 — 외부 공신력 품질 서비스 연동 (2026-04-22)
+
+README 배지를 Claude/자체 산출 수치가 아닌 **외부 SaaS 가 직접 측정한 결과** 로 전환.
+
+| 작업 | 주요 내용 | 비고 |
+|------|----------|------|
+| CI 워크플로 | `.github/workflows/ci.yml` 신설 — pytest + coverage.xml + Codecov 업로드 + SonarCloud scan 단일 job | 공개 저장소 무료 |
+| CodeQL 워크플로 | `.github/workflows/codeql.yml` — security-extended + security-and-quality 쿼리팩, 주 1회 cron 스캔 | GitHub 내장 |
+| SonarCloud 설정 | `sonar-project.properties` — org=xzawed, projectKey=xzawed_SCAManager, python 3.12, coverage.xml 연동 | `SONAR_TOKEN` secret 필요 |
+| Codecov 정책 | `codecov.yml` — 전체 95% target, 2% 하락 시 실패, PR diff 80% | `CODECOV_TOKEN` secret 권장 |
+| README 배지 6종 | CI · CodeQL · codecov · SonarCloud (Quality Gate · Maintainability · Security) | README.md / README.ko.md 동기화 |
+| 연동 가이드 문서 | `docs/integrations/external-quality-services.md` — 초기 설정 + 트러블슈팅 + 삭제/교체 SOP | — |
+
+**사용자 외부 설정 필수 (1회)**: SonarCloud GitHub 연결 + SONAR_TOKEN, Codecov GitHub 연결 + CODECOV_TOKEN. 상세는 [integrations 문서](integrations/external-quality-services.md) 참조.
+
 ### 그룹 14 — 6렌즈 품질 감사 권고 #1~8 일괄 반영 (2026-04-22)
 
 10개 커밋 (`f7e80f7` → `110cd7e`) 으로 감사 결과 B+ (505/600) → 후속 해소. [보고서 §Follow-up](reports/2026-04-22-quality-audit-6lens.md#follow-up-2026-04-22--후속-실행-결과).
