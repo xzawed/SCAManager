@@ -7,8 +7,8 @@ from src.api.deps import get_repo_or_404
 from src.database import SessionLocal
 from src.models.repository import Repository
 from src.models.analysis import Analysis
-from src.models.repo_config import RepoConfig
 from src.models.gate_decision import GateDecision
+from src.repositories import repo_config_repo
 from src.config_manager.manager import upsert_repo_config, RepoConfigData
 
 router = APIRouter(prefix="/api", dependencies=[require_api_key])
@@ -106,9 +106,7 @@ def delete_repo_api(repo_name: str):
                 GateDecision.analysis_id.in_(analysis_ids)
             ).delete(synchronize_session=False)
         db.query(Analysis).filter(Analysis.repo_id == repo.id).delete(synchronize_session=False)
-        db.query(RepoConfig).filter(
-            RepoConfig.repo_full_name == full_name
-        ).delete(synchronize_session=False)
+        repo_config_repo.delete_by_full_name(db, full_name)
         db.delete(repo)
         db.commit()
 

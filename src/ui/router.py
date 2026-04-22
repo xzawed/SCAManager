@@ -13,6 +13,7 @@ from src.models.analysis import Analysis
 from src.models.repo_config import RepoConfig
 from src.models.gate_decision import GateDecision
 from src.auth.session import require_login, CurrentUser
+from src.repositories import repo_config_repo
 from src.config_manager.manager import get_repo_config, upsert_repo_config, RepoConfigData
 from src.scorer.calculator import calculate_grade
 from src.github_client.repos import (
@@ -70,9 +71,7 @@ async def _delete_repo_cascade(db, repo: Repository, github_token: str) -> None:
     db.query(Analysis).filter(Analysis.repo_id == repo.id).delete(synchronize_session=False)
 
     # 4. RepoConfig 삭제 (FK 아님 — full_name 기반)
-    db.query(RepoConfig).filter(
-        RepoConfig.repo_full_name == repo.full_name
-    ).delete(synchronize_session=False)
+    repo_config_repo.delete_by_full_name(db, repo.full_name)
 
     # 5. Repository 삭제
     db.delete(repo)
@@ -141,9 +140,7 @@ async def add_repo(request: Request, current_user: CurrentUser = Depends(require
         db.add(repo)
         db.commit()
 
-        config = db.query(RepoConfig).filter(
-            RepoConfig.repo_full_name == repo_full_name
-        ).first()
+        config = repo_config_repo.find_by_full_name(db, repo_full_name)
         if config is None:
             config = RepoConfig(repo_full_name=repo_full_name, hook_token=hook_token)
             db.add(config)
@@ -222,9 +219,7 @@ def repo_settings(  # pylint: disable=too-many-positional-arguments
     with SessionLocal() as db:
         _get_accessible_repo(db, repo_name, current_user)
         config = get_repo_config(db, repo_name)
-        config_orm = db.query(RepoConfig).filter(
-            RepoConfig.repo_full_name == repo_name
-        ).first()
+        config_orm = repo_config_repo.find_by_full_name(db, repo_name)
         railway_webhook_token = config_orm.railway_webhook_token if config_orm else None
         railway_api_token_set = bool(config_orm and config_orm.railway_api_token)
     railway_webhook_url = ""
@@ -271,9 +266,7 @@ async def update_repo_settings(
                 railway_deploy_alerts=form.get("railway_deploy_alerts") == "on",
             ))
             # railway_webhook_token, railway_api_token — RepoConfigData 외부 관리 (hook_token 동일 패턴)
-            config_orm = db.query(RepoConfig).filter(
-                RepoConfig.repo_full_name == repo_name
-            ).first()
+            config_orm = repo_config_repo.find_by_full_name(db, repo_name)
             if config_orm and not config_orm.railway_webhook_token:
                 config_orm.railway_webhook_token = secrets.token_hex(32)
             new_api_token = form.get("railway_api_token", "")
@@ -299,9 +292,7 @@ async def reinstall_hook(
     """기존 등록 리포에 .scamanager/ 파일을 재커밋한다."""
     with SessionLocal() as db:
         _get_accessible_repo(db, repo_name, current_user)
-        config = db.query(RepoConfig).filter(
-            RepoConfig.repo_full_name == repo_name
-        ).first()
+        config = repo_config_repo.find_by_full_name(db, repo_name)
         if config is None:
             config = RepoConfig(
                 repo_full_name=repo_name,

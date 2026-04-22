@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 from fastapi import Request, HTTPException
 from src.database import SessionLocal
-from src.models.user import User
+from src.repositories import user_repo
 
 
 @dataclass
@@ -24,7 +24,7 @@ def get_current_user(request: Request) -> CurrentUser | None:
     if not user_id:
         return None
     with SessionLocal() as db:
-        user = db.query(User).filter(User.id == user_id).first()
+        user = user_repo.find_by_id(db, user_id)
         if not user:
             return None
         return CurrentUser(

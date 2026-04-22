@@ -11,6 +11,7 @@ from src.gate.telegram_gate import send_gate_request
 from src.notifier.github_comment import post_pr_comment_from_result as post_pr_comment
 from src.notifier.telegram import telegram_post_message
 from src.models.gate_decision import GateDecision
+from src.repositories import gate_decision_repo
 from src.scorer.calculator import ScoreResult
 
 logger = logging.getLogger(__name__)
@@ -160,15 +161,9 @@ def save_gate_decision(
     mode: str,
     decided_by: str | None = None,
 ) -> GateDecision:
-    """GateDecision 레코드를 저장하고 반환한다 (재시도 시 upsert)."""
-    record = db.query(GateDecision).filter(GateDecision.analysis_id == analysis_id).first()
-    if record:
-        record.decision = decision
-        record.mode = mode
-        record.decided_by = decided_by
-    else:
-        record = GateDecision(analysis_id=analysis_id, decision=decision,
-                              mode=mode, decided_by=decided_by)
-        db.add(record)
-    db.commit()
-    return record
+    """GateDecision 레코드를 저장하고 반환한다 (재시도 시 upsert).
+
+    Thin wrapper — 실제 구현은 `src/repositories/gate_decision_repo.py::upsert`.
+    외부 호출자(webhook/router.py 의 /api/webhook/telegram 등) 시그니처 유지.
+    """
+    return gate_decision_repo.upsert(db, analysis_id, decision, mode, decided_by)

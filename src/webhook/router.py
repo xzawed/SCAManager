@@ -24,7 +24,7 @@ from src.railway_client.webhook import parse_railway_payload
 from src.railway_client.logs import fetch_deployment_logs, RailwayLogFetchError
 from src.railway_client.models import RailwayDeployEvent
 from src.notifier.railway_issue import create_deploy_failure_issue
-from src.models.repo_config import RepoConfig
+from src.repositories import repo_config_repo
 from src.models.repository import Repository
 from src.models.user import User as UserModel
 from src.crypto import decrypt_token
@@ -325,9 +325,7 @@ async def railway_webhook(
         body = {}
 
     with SessionLocal() as db:
-        config = db.query(RepoConfig).filter(
-            RepoConfig.railway_webhook_token == token
-        ).first()
+        config = repo_config_repo.find_by_railway_webhook_token(db, token)
         if config is None:
             raise HTTPException(status_code=404, detail="Not Found")
 
