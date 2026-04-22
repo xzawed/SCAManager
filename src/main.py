@@ -10,6 +10,7 @@ from alembic.config import Config
 
 from src.config import settings
 from src.database import SessionLocal
+from src.http_client import close_http_client, init_http_client
 from src.webhook.router import router as webhook_router
 from src.api.repos import router as api_repos_router
 from src.api.stats import router as api_stats_router
@@ -47,7 +48,11 @@ async def lifespan(_app: FastAPI):
         logger.error("DB migration timed out after 30s — starting app anyway")
     except (OSError, RuntimeError, ValueError, ImportError) as exc:
         logger.error("DB migration failed: %s", exc)
-    yield
+    await init_http_client()
+    try:
+        yield
+    finally:
+        await close_http_client()
 
 
 app = FastAPI(title="SCAManager", version="0.1.0", lifespan=lifespan)
