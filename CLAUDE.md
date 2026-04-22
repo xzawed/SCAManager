@@ -56,16 +56,24 @@ src/
 │   ├── models.py               # ChangedFile dataclass 단일 출처
 │   ├── helpers.py              # github_api_headers() 공용 헬퍼
 │   ├── diff.py                 # get_pr_files, get_push_files
+│   ├── issues.py               # close_issue() — Issue 종료 API
 │   └── repos.py                # list_user_repos(), create_webhook(), delete_webhook(), commit_scamanager_files()
+├── railway_client/
+│   ├── models.py               # RailwayDeployEvent (3-그룹 nested) + RailwayProjectInfo + RailwayCommitInfo
+│   ├── webhook.py              # parse_railway_payload() — deploy 실패 이벤트 파싱
+│   └── logs.py                 # fetch_deployment_logs() — Railway GraphQL 로그 조회
 ├── analyzer/
-│   ├── registry.py             # AnalyzeContext + Analyzer Protocol + REGISTRY + register() (중복 등록 방지)
+│   ├── registry.py             # AnalyzeContext + Analyzer Protocol + REGISTRY + register() + Category/Severity StrEnum
 │   ├── static.py               # analyze_file — Registry 위임. AnalysisIssue(category/language 필드)
 │   ├── tools/
 │   │   ├── __init__.py         # 빈 패키지
 │   │   ├── python.py           # _PylintAnalyzer, _Flake8Analyzer, _BanditAnalyzer (모듈 로드 시 자동 등록)
 │   │   ├── semgrep.py          # _SemgrepAnalyzer — 23개 언어, graceful degradation
 │   │   ├── eslint.py           # _ESLintAnalyzer — JS/TS, flat config
-│   │   └── shellcheck.py       # _ShellCheckAnalyzer — shell 스크립트
+│   │   ├── shellcheck.py       # _ShellCheckAnalyzer — shell 스크립트
+│   │   ├── cppcheck.py         # _CppCheckAnalyzer — C/C++, XML v2 stderr 파싱
+│   │   └── slither.py          # _SlitherAnalyzer — Solidity, stdout JSON, mixed-category
+│   ├── configs/                # eslint.config.json 등 외부 도구 설정 파일
 │   ├── language.py             # detect_language(filename, content) — 50개 언어 감지. is_test_file()
 │   ├── review_prompt.py        # build_review_prompt() — 언어별 가이드 조립 + 토큰 예산 관리(8000)
 │   ├── review_guides/          # 언어별 리뷰 체크리스트 (get_guide(lang, mode))
@@ -84,10 +92,13 @@ src/
 │   └── telegram_gate.py        # send_gate_request() — 인라인 키보드 메시지
 ├── notifier/
 │   ├── _common.py              # 공통 헬퍼 — format_ref, get_all_issues, truncate_message, truncate_issue_msg
-│   ├── _http.py                # build_safe_client() — HTTP_CLIENT_TIMEOUT 적용 httpx 클라이언트
+│   ├── _http.py                # build_safe_client() — HTTP_CLIENT_TIMEOUT + follow_redirects=False (SSRF 방어)
+│   ├── registry.py             # NotifyContext + Notifier Protocol + REGISTRY + register() (채널 확장)
 │   ├── telegram.py             # send_analysis_result(), telegram_post_message() 공용 헬퍼
 │   ├── github_comment.py       # post_pr_comment_from_result() — result dict 기반
+│   ├── github_commit_comment.py # post_commit_comment() — Push 이벤트 커밋 댓글
 │   ├── github_issue.py         # create_low_score_issue() — 낮은 점수 GitHub Issue 자동 생성
+│   ├── railway_issue.py        # create_deploy_failure_issue() — Railway 빌드 실패 Issue (dedup)
 │   ├── discord.py, slack.py, webhook.py, email.py, n8n.py
 ├── api/
 │   ├── auth.py                 # require_api_key Depends (X-API-Key 헤더)
@@ -345,7 +356,7 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 - **Webhook 서명**: `X-Hub-Signature-256` 헤더 없거나 서명 불일치 시 401 반환 — 로컬 테스트 시 서명 생성 필요. 빈 시크릿(`GITHUB_WEBHOOK_SECRET` 미설정)이면 즉시 401.
 - **알림 독립성**: `_build_notify_tasks()` 디스패처, `asyncio.gather(return_exceptions=True)`로 실행 — 한 채널 실패해도 나머지 채널은 정상 전송. `repo_config` 로드 실패 시에도 Telegram은 global fallback으로 항상 발송.
 - **PR Gate 3-옵션 독립**: `pr_review_comment`·`approve_mode`·`auto_merge+merge_threshold` 완전 독립. `post_pr_comment_from_result(result: dict, ...)` 사용 — `AiReviewResult` 객체 불필요. `run_gate_check` 시그니처: `(repo_name, pr_number, analysis_id, result, github_token, db)`.
-- **_build_result_dict**: `src/worker/pipeline.py` 모듈 레벨 함수. pipeline과 hook.py 두 곳에서 Analysis.result dict를 생성할 때 사용. `score`·`grade` 필드 포함 — gate engine이 이를 기반으로 결정.
+- **build_analysis_result_dict**: `src/worker/pipeline.py` 모듈 레벨 함수. pipeline과 hook.py 두 곳에서 Analysis.result dict를 생성할 때 사용. `score`·`grade` 필드 포함 — gate engine이 이를 기반으로 결정.
 - **GRADE 상수 단일 출처**: `src/constants.py`에 `GRADE_EMOJI`, `GRADE_COLOR_DISCORD`, `GRADE_COLOR_HTML`, `GRADE_COLOR_ANSI` 정의. 각 모듈에 로컬 정의 금지.
 - **ChangedFile / github_api_headers 단일 출처**: `src/github_client/models.py`가 ChangedFile 정의 출처. `src/github_client/helpers.py`의 `github_api_headers(token)` 사용 — 새 GitHub API 호출 시 직접 dict를 만들지 말 것.
 - **telegram_post_message**: `src/notifier/telegram.py`의 공용 헬퍼. `src/gate/telegram_gate.py`도 이 헬퍼 사용 — `httpx` 직접 import 금지.
