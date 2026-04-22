@@ -594,3 +594,30 @@ class TestCppCheckAnalyzerRegistration:
         assert a.name == "cppcheck"
         assert a.category == "code_quality"
         assert a.SUPPORTED_LANGUAGES == frozenset({"c", "cpp"})
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Phase D.2 — slither Analyzer Registry 등록 검증
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestSlitherAnalyzerRegistration:
+    def test_registry_contains_slither_after_register_call(self):
+        """_register_slither_analyzers() 호출 시 REGISTRY 에 slither 가 포함된다.
+
+        autouse fixture(_clear_registry) 가 REGISTRY 를 비우고 python 모듈만 복원하므로,
+        slither 등록을 검증하려면 register 함수를 명시적으로 호출해야 한다.
+        """
+        from src.analyzer.tools.slither import _register_slither_analyzers
+        from src.analyzer.registry import REGISTRY
+        _register_slither_analyzers()
+        assert any(a.name == "slither" for a in REGISTRY), (
+            "REGISTRY 에 slither 가 없음 — _register_slither_analyzers() 실행 실패"
+        )
+
+    def test_slither_analyzer_has_correct_attributes(self):
+        """_SlitherAnalyzer 의 name/category/SUPPORTED_LANGUAGES 확인."""
+        from src.analyzer.tools.slither import _SlitherAnalyzer
+        a = _SlitherAnalyzer()
+        assert a.name == "slither"
+        assert a.category == "security"
+        assert a.SUPPORTED_LANGUAGES == frozenset({"solidity"})
