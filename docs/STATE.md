@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-19 기준 — 코드 전면 검수 완료)
+## 현재 수치 (2026-04-22 기준 — 그룹 12 RailwayDeployEvent nested 리팩토링 완료)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
@@ -170,8 +170,18 @@
 - **#9** `tests/test_static_analyzer.py` → `tests/integration/` 이동 + `pytest.ini markers.slow` 선언 + `integration/conftest.py` 자동 마킹 (37 slow / 1089 fast / 총 1126)
 - **#6** PyGithub `login_or_token` → `Auth.Token` 마이그레이션 (src/github_client/diff.py) — E2E warnings **41 → 4** (37건 제거)
 
-**보류 (별도 Phase)**:
-- **#5** `RailwayDeployEvent` sub-dataclass 분리 — 6 파일 / 25+ 참조 수정 필요. 현재 R0902 는 informational only (pylint 10.00/10 유지) 라 점수 영향 없음. 스펙 작성 필요.
+**후속 해소 (2026-04-22)**:
+- **#5** `RailwayDeployEvent` sub-dataclass 분리 — 그룹 12 참조. 3-그룹 nested(`RailwayProjectInfo`/`RailwayCommitInfo`/top-level) 로 재구조화 완료. pylint R0902 informational 제거, 외부 API 불변.
+
+### 그룹 12 — RailwayDeployEvent sub-dataclass 리팩토링 (2026-04-22)
+
+| 작업 | 주요 내용 | 테스트 증분 |
+|------|----------|-----------|
+| models.py 재구조화 | `RailwayProjectInfo`(3) + `RailwayCommitInfo`(3) + top-level(3) nested dataclass — pylint R0902 informational (9/7) 제거 | — |
+| parser 내부 변경 | `parse_railway_payload` 시그니처 불변, sub-dataclass 생성자 호출로 내부만 전환 | — |
+| notifier 접근 체인 | `railway_issue.py` 11곳 nested 접근(`event.project.*`/`event.commit.*`)으로 업데이트 (출력 문자열 불변) | — |
+| 테스트 fixture 재작성 | `test_railway_client.py`(2곳) + `test_railway_issue_notifier.py`(`_EVENT` fixture nested 재작성) | — |
+| 외부 API 불변 | `parse_railway_payload` · `create_deploy_failure_issue` 시그니처 · Webhook payload 스키마 · DB 전부 그대로 | — |
 
 ## 갱신 방법
 
@@ -188,7 +198,6 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 
 | 우선순위 | 항목 | 비고 |
 |---------|------|------|
-| **P3 (스펙 대기)** | RailwayDeployEvent sub-dataclass 분리 | 스펙 + 플랜 작성 완료 (2026-04-21). 구현 승인 대기 — [spec](superpowers/specs/2026-04-21-railway-event-refactor-design.md) / [plan](superpowers/plans/2026-04-21-railway-event-refactor.md) |
 | **P4 — Phase D.2 (스펙 대기)** | slither (Solidity) 정적분석 추가 | 스펙 + 플랜 작성 완료 (2026-04-21). GO/NO-GO 승인 대기 — [spec](superpowers/specs/2026-04-21-slither-design.md) / [plan](superpowers/plans/2026-04-21-slither.md) |
 | **P4 — Phase D (D.3~D.8)** | Tier 1 정적분석 도구 확장 | D.1 ✅ / D.2 스펙 작성됨 / D.3~D.8 도구별 승인 필요 |
 | **P5 (외부 의존 작업)** | Railway 프로덕션 cppcheck 실증 검증 | 실제 C/C++ 파일 PR 로 `slither` tool 이슈 포함 확인 (외부 테스트 리포 필요) |
