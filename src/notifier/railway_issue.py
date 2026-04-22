@@ -1,13 +1,12 @@
 """Railway 빌드 실패 시 GitHub Issue 자동 생성."""
 import logging
 import httpx
-from src.constants import HTTP_CLIENT_TIMEOUT
+from src.constants import GITHUB_API, HTTP_CLIENT_TIMEOUT
 from src.github_client.helpers import github_api_headers
 from src.railway_client.models import RailwayDeployEvent
 
 logger = logging.getLogger(__name__)
 
-GITHUB_API = "https://api.github.com"
 ISSUE_LABELS = ["scamanager", "deploy-failure", "railway"]
 
 

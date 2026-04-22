@@ -5,9 +5,10 @@ import logging
 
 import httpx
 
+from src.constants import GITHUB_API
+
 logger = logging.getLogger(__name__)
 
-GITHUB_API = "https://api.github.com"
 _HEADERS = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
 
 
