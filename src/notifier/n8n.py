@@ -102,3 +102,34 @@ async def notify_n8n_issue(
         },
     )
     await _post_to_n8n(webhook_url, payload, n8n_secret)
+
+
+# ---------------------------------------------------------------------------
+# Notifier Protocol 구현체 (Phase S.3-E) — pipeline.py 에서 이관
+# ---------------------------------------------------------------------------
+from src.config import settings  # noqa: E402  pylint: disable=wrong-import-position
+from src.notifier.registry import NotifyContext, register  # noqa: E402  pylint: disable=wrong-import-position
+
+
+class _N8nNotifier:
+    """n8n 워크플로우 릴레이 채널 — n8n_webhook_url 설정 시 활성."""
+
+    name = "n8n"
+
+    def is_enabled(self, ctx: NotifyContext) -> bool:
+        """채널 활성화 여부를 반환한다."""
+        return bool(ctx.config and ctx.config.n8n_webhook_url)
+
+    async def send(self, ctx: NotifyContext) -> None:
+        """알림을 전송한다."""
+        await notify_n8n(
+            webhook_url=ctx.config.n8n_webhook_url,
+            repo_full_name=ctx.repo_name,
+            commit_sha=ctx.commit_sha,
+            pr_number=ctx.pr_number,
+            score_result=ctx.score_result,
+            n8n_secret=settings.n8n_webhook_secret,
+        )
+
+
+register(_N8nNotifier())

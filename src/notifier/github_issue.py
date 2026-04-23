@@ -91,3 +91,41 @@ async def create_low_score_issue(
     except httpx.HTTPError as exc:
         logger.warning("create_low_score_issue 실패 (%s@%s): %s", repo_name, commit_sha, exc)
         return None
+
+
+# ---------------------------------------------------------------------------
+# Notifier Protocol 구현체 (Phase S.3-E) — pipeline.py 에서 이관
+# ---------------------------------------------------------------------------
+from src.notifier.registry import NotifyContext, register  # noqa: E402  pylint: disable=wrong-import-position
+
+
+class _IssueNotifier:
+    """GitHub Issue 자동 생성 채널 — 저점 OR bandit HIGH 시 활성. bot PR 제외."""
+
+    name = "create_issue"
+
+    def is_enabled(self, ctx: NotifyContext) -> bool:
+        """채널 활성화 여부를 반환한다."""
+        if not (ctx.config and ctx.config.create_issue and ctx.result_dict):
+            return False
+        is_bot_pr = ctx.pr_head_ref and ctx.pr_head_ref.startswith("claude-fix/")
+        if is_bot_pr:
+            return False
+        has_bandit_high = any(
+            i.get("severity") == "HIGH" and i.get("tool") == "bandit"
+            for i in (ctx.result_dict.get("issues") or [])
+        )
+        return ctx.score_result.total < ctx.config.reject_threshold or has_bandit_high
+
+    async def send(self, ctx: NotifyContext) -> None:
+        """알림을 전송한다."""
+        await create_low_score_issue(
+            github_token=ctx.owner_token,
+            repo_name=ctx.repo_name,
+            commit_sha=ctx.commit_sha,
+            analysis_id=ctx.analysis_id,
+            result=ctx.result_dict,
+        )
+
+
+register(_IssueNotifier())

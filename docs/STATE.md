@@ -188,6 +188,27 @@
 | 테스트 fixture 재작성 | `test_railway_client.py`(2곳) + `test_railway_issue_notifier.py`(`_EVENT` fixture nested 재작성) | — |
 | 외부 API 불변 | `parse_railway_payload` · `create_deploy_failure_issue` 시그니처 · Webhook payload 스키마 · DB 전부 그대로 | — |
 
+### 그룹 21 — Phase S.3 구조 정리 5단계 (2026-04-23)
+
+3-에이전트 감사 잔여 개선 항목을 5단계로 체계 수행. S.3-A/B/C/E 완료, S.3-D 보류.
+
+| 세부 | 커밋 | 내용 |
+|------|------|------|
+| **S.3-A** Service 스캐폴딩 | `60839ac` | `src/services/__init__.py` 신설 — 신규 use case 위치 명시 (기존 3파일 유지) |
+| **S.3-B** Analyzer pure/io | `daab76b` | `src/analyzer/{pure,io}/` 분리 — 7파일 이동 + review_guides 이동 + import 경로 119곳 치환 + mock 문자열 경로 치환 |
+| **S.3-C** tests/unit 계층화 | `bf83a61` | `tests/unit/` + 21 서브디렉토리 — 65 파일 git mv (src/ 미러링) + `__init__.py` 39개 추가 (파일명 중복 해소) |
+| **S.3-D** get_repo_or_404 확산 | 보류 | `repository_repo.find_by_full_name` 을 `filter` 로 전환 시 pipeline test mock 12곳 회귀 (S.1-4 + S.3-D 2회 확정). pipeline test mock 구조 근본 재설계 (filter_by 체인 분리) 가 선행되어야 가능 — Phase S.4 로 분리 |
+| **S.3-E** Notifier 8클래스 이동 | 이 커밋 | pipeline.py 내 익명 클래스 8개 → `src/notifier/*.py` 로 이동 + `src/notifier/__init__.py` auto-register 트리거 + pipeline.py 축약 (200줄 감소). mock 경로 15곳 치환 |
+
+**최종 수치**: 1170 passed · pylint 10.00 · flake8 0 · bandit HIGH 0 · SonarCloud QG OK · 3종 Rating A.
+
+**구조 변화 요약**:
+- `src/services/` 신설 (빈 패키지, SOP 명시)
+- `src/analyzer/{pure,io}/` 분리 (단방향 의존성)
+- `tests/unit/` 21 서브디렉토리 미러링
+- `src/notifier/__init__.py` 자동 등록 트리거 (analyzer/tools 선례)
+- `src/worker/pipeline.py` 200줄 감소 (임시 클래스 8개 삭제)
+
 ### 그룹 20 — Phase S.2 UI/Webhook router 서브패키지 분할 (2026-04-23)
 
 [3-에이전트 진단](reports/2026-04-23-structure-audit-3agent.md) Phase S.2 원안 수행. mock 경로 193곳 일괄 재작성 포함.
@@ -332,7 +353,8 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 | **✅ Phase Q.1~Q.6 완료 (SonarCloud 청산)** | Quality Gate OK + 3종 Rating A 달성 | [Follow-up 섹션](reports/2026-04-23-sonarcloud-baseline.md#follow-up--phase-q1q6-전체-실행-결과-2026-04-23-세션). Bugs/Vuln/Hotspots/BLOCKER 0, Code Smells 78→58 |
 | **Phase Q.7 (선택적 · 대기)** | CRITICAL 5건 Cognitive Complexity 해소 | 전부 `python:S3776`. Rating 영향 없음. `gate/engine.py:20` 최대 (+16 초과). 실제 함수 분할 리팩토링 필요 + pipeline-reviewer 승인 |
 | **✅ Phase S.2 완료 (UI/Webhook router 분할)** | UI router → `src/ui/routes/` 5 모듈 · Webhook router → `src/webhook/providers/` 3 provider | 그룹 20 참조. mock 경로 193곳 재작성 완료, 1170 passed 유지 |
-| **Phase S.3 (큰 리팩토링 · 별도 세션)** | Notifier Protocol 전환 + Service 계층 + Analyzer pure/io + tests/unit 계층화 + get_repo_or_404 확산 | 4개 큰 리팩토링. 테스트 mock 대규모 재작성 필요. pipeline-reviewer 승인 필수. 예상 ~5~10h |
+| **✅ Phase S.3 완료 (구조 정리 5단계)** | S.3-A Service 스캐폴딩 + S.3-B Analyzer pure/io + S.3-C tests/unit + S.3-E Notifier 8클래스 이동 | 그룹 21 참조. S.3-D (repository_repo filter 전환) 는 pipeline test mock 재설계 선행 필요로 보류. |
+| **Phase S.4 (별도 세션 · 대기)** | pipeline test mock 구조 근본 재설계 (filter_by 체인 분리) → S.3-D 재착수 | 현재 pipeline test 12곳이 `filter_by.return_value.first.side_effect` 단일 체인으로 repo+analysis 조회를 묶음. repository_repo.find_by_full_name 자체를 patch 하도록 재설계하면 S.3-D 확산 가능. |
 | **🚧 P4-Gate (D.3 차단)** | D.1 cppcheck / D.2 slither 프로덕션 실증 검증 | D.3 착수 전 필수 — 아래 "D.3 차단 게이트" 섹션 체크리스트 완료 조건 |
 | **P3-리팩 완결** | 6렌즈 권고 #1~6 ✅ · #7 ✅ · #8a/#8b 스캐폴딩 | [Follow-up 섹션 참조](reports/2026-04-22-quality-audit-6lens.md#follow-up-2026-04-22--후속-실행-결과). 10커밋 완료. 실제 치환 잔존 2건(아래) |
 | **P3-후속 (스캐폴딩 완성)** | #8a GateAction 엔진 전환 + #8b http_client 15곳 채택 | test_gate_engine.py 37건 mock 재작성 + 15곳 `async with httpx.AsyncClient` 치환 필요. 별도 Phase |

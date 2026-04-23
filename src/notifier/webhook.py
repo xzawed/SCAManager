@@ -57,3 +57,34 @@ async def send_webhook_notification(
     async with build_safe_client() as client:
         r = await client.post(webhook_url, json=payload)
         r.raise_for_status()
+
+
+# ---------------------------------------------------------------------------
+# Notifier Protocol 구현체 (Phase S.3-E) — pipeline.py 에서 이관
+# ---------------------------------------------------------------------------
+from src.notifier.registry import NotifyContext, register  # noqa: E402  pylint: disable=wrong-import-position
+
+
+class _WebhookNotifier:
+    """Generic HTTP webhook 알림 채널 — custom_webhook_url 설정 시 활성."""
+
+    name = "webhook"
+
+    def is_enabled(self, ctx: NotifyContext) -> bool:
+        """채널 활성화 여부를 반환한다."""
+        return bool(ctx.config and ctx.config.custom_webhook_url)
+
+    async def send(self, ctx: NotifyContext) -> None:
+        """알림을 전송한다."""
+        await send_webhook_notification(
+            webhook_url=ctx.config.custom_webhook_url,
+            repo_name=ctx.repo_name,
+            commit_sha=ctx.commit_sha,
+            score_result=ctx.score_result,
+            analysis_results=ctx.analysis_results,
+            pr_number=ctx.pr_number,
+            ai_review=ctx.ai_review,
+        )
+
+
+register(_WebhookNotifier())
