@@ -223,6 +223,6 @@ Agent C 추천: **시나리오 B**.
 
 **잔여 작업 (별도 세션)**:
 1. **Railway 2차 실증 (P4-Gate-2)** — rubocop/golangci-lint 가 배포 이미지에서 동작하는지 `.rb`·`.go` 샘플 PR 로 확인
-2. **AI 리뷰 파싱 실패** — 분석 #543 에서 "AI 응답 파싱 실패 → 기본값 적용" 경고 관찰. `src/analyzer/io/ai_review.py` 조사 대상. P4-Gate 와 무관.
+2. ~~**AI 리뷰 파싱 실패**~~ ✅ **해소 (2026-04-23)** — `_extract_json_payload()` 분리 + preamble/uppercase/trailing text 3가지 실패 모드 해소. +4 tests. `re.IGNORECASE` + 첫 `{` ~ 마지막 `}` fallback.
 3. **Phase D.5~D.8** (PHPStan/detekt/PMD/clippy) — 수요 확인 또는 Docker 전환 선행 필요
 4. **P3-후속** — #8a GateAction 엔진 전환 + #8b http_client 15곳 채택 (별도 Phase)
