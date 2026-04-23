@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-23 기준 — Phase Q.7 + S.4 + S.3-D 완료)
+## 현재 수치 (2026-04-23 기준 — Phase Q.7 + S.4 + D.3 + D.4 완료)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1170개** | pytest (0 failed) — Phase Q.7/S.4 회귀 없음 |
+| 단위 테스트 | **1188개** | pytest (0 failed) — D.3 +9, D.4 +9 신규 |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
@@ -18,7 +18,8 @@
 | bandit HIGH | **0개** | bandit 1.9.4 (Python 3.14 대응) |
 | flake8 | **0건** | `flake8 src/` |
 | 지원 언어 (AI 리뷰) | **50개** | language.py — Tier1/2/3 가이드 |
-| 지원 언어 (정적분석) | **36개+** | Semgrep 23 + ESLint 2 + ShellCheck 1 + cppcheck 1 + slither 1 + Python 3 도구 |
+| 지원 언어 (정적분석) | **38개+** | Semgrep 23 + ESLint 2 + ShellCheck 1 + cppcheck 1 + slither 1 + rubocop 1 + golangci-lint 1 + Python 3 도구 |
+| Tier1 정적분석 도구 | **10종** | pylint·flake8·bandit·semgrep·eslint·shellcheck·cppcheck·slither·**rubocop**·**golangci-lint** |
 | pytest-asyncio | **1.3.0** | Python 3.14 DeprecationWarning 제거 완료 |
 
 ## 주요 파일 역할 (빠른 참조)
@@ -187,6 +188,20 @@
 | notifier 접근 체인 | `railway_issue.py` 11곳 nested 접근(`event.project.*`/`event.commit.*`)으로 업데이트 (출력 문자열 불변) | — |
 | 테스트 fixture 재작성 | `test_railway_client.py`(2곳) + `test_railway_issue_notifier.py`(`_EVENT` fixture nested 재작성) | — |
 | 외부 API 불변 | `parse_railway_payload` · `create_deploy_failure_issue` 시그니처 · Webhook payload 스키마 · DB 전부 그대로 | — |
+
+### 그룹 23 — Phase D.3 + D.4 — Ruby·Go 정적분석 확장 (2026-04-23)
+
+시나리오 B 10-step 중 Step 9~10 완료. P4-Gate 실증 통과 (분석 #543) 로 해금된 후 즉시 착수. 두 도구 모두 TDD 로 9개 테스트 선작성 → 구현 9/9 Green → Railway 빌드 설정 추가 순서.
+
+| Step | 커밋 | 내용 |
+|------|------|------|
+| 9 (D.3) | `2eb0ef0` | `src/analyzer/io/tools/rubocop.py` — Ruby RuboCop 분석기 + 9개 테스트. Security/ cop → category=SECURITY, severity: error/fatal→ERROR. nixpacks `ruby-full`·buildCommand `gem install rubocop --no-document`. |
+| 10 (D.4) | `d78b449` | `src/analyzer/io/tools/golangci_lint.py` — Go golangci-lint 분석기 + 9개 테스트. **`_ensure_go_mod` 자동생성 로직** (단일 .go 파일 분석 대응). FromLinter=gosec → SECURITY+ERROR. nixpacks `golang-go`·buildCommand golangci-lint v1.55.2 installer. |
+
+**최종 수치**: 1170 → **1188 passed** (+18) · pylint 10.00 · CRITICAL 0 · Tier1 정적분석 도구 **10종**.
+
+**대기 작업 (Railway 프로덕션 2차 실증)**:
+- `xzawed/SCAManager-test-samples` 에 `.rb` · `.go` 샘플 푸시 후 rubocop/golangci-lint 실제 동작 확인 (D.1/D.2 와 동일한 절차).
 
 ### 그룹 22 — Phase Q.7 + S.4 + S.3-D 완결 + P4-Gate 재료 (2026-04-23)
 
