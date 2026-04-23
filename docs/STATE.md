@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-23 기준 — Phase Q.7 + S.4 + D.3 + D.4 + AI parser 견고화 + Railway 빌드 안정화 완료)
+## 현재 수치 (2026-04-23 기준 — Phase E.2 Observability 완료)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1192개** | pytest (0 failed) — AI 파서 견고화 +4 (preamble/uppercase/trailing/nested) |
+| 단위 테스트 | **1213개** | pytest (0 failed) — Phase E.2 +21 (Sentry 9 skip CI + Claude metrics 14 + stage metrics 7) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
@@ -188,6 +188,28 @@
 | notifier 접근 체인 | `railway_issue.py` 11곳 nested 접근(`event.project.*`/`event.commit.*`)으로 업데이트 (출력 문자열 불변) | — |
 | 테스트 fixture 재작성 | `test_railway_client.py`(2곳) + `test_railway_issue_notifier.py`(`_EVENT` fixture nested 재작성) | — |
 | 외부 API 불변 | `parse_railway_payload` · `create_deploy_failure_issue` 시그니처 · Webhook payload 스키마 · DB 전부 그대로 | — |
+
+### 그룹 25 — Phase E.2 Observability 기반 구축 (2026-04-23)
+
+Path A (서비스화) 로드맵 두 번째 단계. 프로덕션 관측 가시성 확보 — 예외 수집·
+Claude API 비용 추적·파이프라인 단계별 지연 측정.
+
+| 세부 | 커밋 | 내용 |
+|------|------|------|
+| **E.2a** Sentry SDK 통합 | `91abcba` | `src/shared/observability.py::init_sentry()` — SENTRY_DSN 설정 시만 활성, 미설정 / sentry-sdk 미설치 / init 예외 모두 graceful no-op. FastApiIntegration 자동. lifespan 시작 시 호출. +9 tests (CI 전용 `importorskip`) |
+| **E.2b** Claude API 계측 | `ad951d0` | `src/shared/claude_metrics.py` — `estimate_claude_cost_usd` (Opus/Sonnet/Haiku 가격) · `extract_anthropic_usage` · `log_claude_api_call` (extra dict 구조화 로그). ai_review.py 에 time.perf_counter() + success/error 양쪽 경로 계측. +14 tests |
+| **E.2c** Pipeline 단계 타이밍 | 이 커밋 | `src/shared/stage_metrics.py::stage_timer` context manager — duration_ms + status + extra_fields + ctx 병합. pipeline.py 에 5개 단계 (pipeline_total/collect_files/analyze/score_and_save/notify) 적용. +7 tests |
+
+**최종 수치**: 1192 → **1213 passed** (+21) · 1 skipped · pylint 10.00 · flake8 0.
+
+**관찰 가능해진 지표** (로그로 자동 기록, structured log shipper 가 파싱 가능):
+- 분석 1건당 Claude API cost (USD, 모델별 가격 추정)
+- Claude API latency (p50/p95/p99 산출 가능)
+- Claude API 성공/실패율 + 에러 타입
+- 파이프라인 5단계 각각의 duration_ms + 파일 수·이슈 수·점수·채널 수
+- FastAPI 경로별 예외 + request context (Sentry DSN 설정 시)
+
+**사용자 조치 (선택)**: [Sentry 무료 플랜](https://sentry.io) 가입 → DSN 을 Railway Variables `SENTRY_DSN` 에 추가. 미설정 시 로그만 남고 앱은 정상 동작.
 
 ### 그룹 24 — Railway 빌드 안정화 (rubocop/prism 의존성 트랩 해소) (2026-04-23)
 

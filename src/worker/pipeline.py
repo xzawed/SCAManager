@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from src.database import SessionLocal
 from src.config import settings
+from src.shared.stage_metrics import stage_timer
 from src.github_client.diff import get_pr_files, get_push_files, ChangedFile
 from src.analyzer.io.static import analyze_file, StaticAnalysisResult
 from src.analyzer.io.ai_review import review_code
@@ -286,62 +287,74 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
         4. 점수·등급 계산 → Analysis DB 저장
         5. run_gate_check (PR 이벤트만) — Review Comment·Approve·Auto Merge
         6. build_notification_tasks → Telegram·Discord·Slack·Webhook·Email·n8n 알림
+
+    Phase E.2c — 주요 단계에 `stage_timer` 추가. 구조화된 duration_ms/status 로그로
+    실측 지연 추적.
     """
     try:
-        repo_name, commit_sha, commit_message, pr_number = _extract_event_metadata(event, data)
-        pr_head_ref = (
-            data.get("pull_request", {}).get("head", {}).get("ref")
-            if event == "pull_request" else None
-        )
+        with stage_timer("pipeline_total", event=event):
+            repo_name, commit_sha, commit_message, pr_number = _extract_event_metadata(event, data)
+            pr_head_ref = (
+                data.get("pull_request", {}).get("head", {}).get("ref")
+                if event == "pull_request" else None
+            )
 
-        with SessionLocal() as db:
-            ensure_result = _ensure_repo(db, repo_name, commit_sha)
-            if ensure_result is None:
-                if event == "pull_request" and pr_number is not None:
-                    await _regate_pr_if_needed(db, repo_name, commit_sha, pr_number)
+            with SessionLocal() as db:
+                ensure_result = _ensure_repo(db, repo_name, commit_sha)
+                if ensure_result is None:
+                    if event == "pull_request" and pr_number is not None:
+                        await _regate_pr_if_needed(db, repo_name, commit_sha, pr_number)
+                    return
+                _, owner_token = ensure_result
+
+            with stage_timer("collect_files", repo=repo_name) as ctx:
+                files = _collect_files(event, owner_token, repo_name, commit_sha, pr_number)
+                ctx["file_count"] = len(files)
+
+            if not files:
+                logger.info("No changed files in %s @ %s", repo_name, commit_sha)
                 return
-            _, owner_token = ensure_result
 
-        files = _collect_files(event, owner_token, repo_name, commit_sha, pr_number)
+            patches = [(f.filename, f.patch) for f in files if f.patch]
+            with stage_timer("analyze", repo=repo_name) as ctx:
+                analysis_results, ai_review = await asyncio.gather(
+                    _run_static_analysis(files),
+                    review_code(settings.anthropic_api_key, commit_message, patches),
+                )
+                ctx["issue_count"] = len(analysis_results)
 
-        if not files:
-            logger.info("No changed files in %s @ %s", repo_name, commit_sha)
-            return
+            with stage_timer("score_and_save", repo=repo_name) as ctx:
+                score_result = calculate_score(analysis_results, ai_review=ai_review)
+                ctx["score"] = score_result.total
+                save_params = _AnalysisSaveParams(
+                    repo_name=repo_name,
+                    commit_sha=commit_sha,
+                    commit_message=commit_message,
+                    pr_number=pr_number,
+                    owner_token=owner_token,
+                    analysis_results=analysis_results,
+                    ai_review=ai_review,
+                    score_result=score_result,
+                )
+                with SessionLocal() as db:
+                    repo_config, analysis_id, result_dict = await _save_and_gate(db, save_params)
 
-        patches = [(f.filename, f.patch) for f in files if f.patch]
-        analysis_results, ai_review = await asyncio.gather(
-            _run_static_analysis(files),
-            review_code(settings.anthropic_api_key, commit_message, patches),
-        )
-        score_result = calculate_score(analysis_results, ai_review=ai_review)
-
-        save_params = _AnalysisSaveParams(
-            repo_name=repo_name,
-            commit_sha=commit_sha,
-            commit_message=commit_message,
-            pr_number=pr_number,
-            owner_token=owner_token,
-            analysis_results=analysis_results,
-            ai_review=ai_review,
-            score_result=score_result,
-        )
-        with SessionLocal() as db:
-            repo_config, analysis_id, result_dict = await _save_and_gate(db, save_params)
-
-        notify_tasks, task_names = build_notification_tasks(
-            repo_config=repo_config,
-            repo_name=repo_name,
-            commit_sha=commit_sha,
-            pr_number=pr_number,
-            owner_token=owner_token,
-            score_result=score_result,
-            analysis_results=analysis_results,
-            ai_review=ai_review,
-            analysis_id=analysis_id,
-            result_dict=result_dict,
-            pr_head_ref=pr_head_ref,
-        )
-        await _send_notifications(notify_tasks, task_names)
+            with stage_timer("notify", repo=repo_name) as ctx:
+                notify_tasks, task_names = build_notification_tasks(
+                    repo_config=repo_config,
+                    repo_name=repo_name,
+                    commit_sha=commit_sha,
+                    pr_number=pr_number,
+                    owner_token=owner_token,
+                    score_result=score_result,
+                    analysis_results=analysis_results,
+                    ai_review=ai_review,
+                    analysis_id=analysis_id,
+                    result_dict=result_dict,
+                    pr_head_ref=pr_head_ref,
+                )
+                ctx["channel_count"] = len(task_names)
+                await _send_notifications(notify_tasks, task_names)
 
     except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
         logger.exception("Analysis pipeline failed for event=%s", event)

@@ -25,6 +25,23 @@
 | `TELEGRAM_WEBHOOK_SECRET` | Telegram `setWebhook` 시크릿 토큰 (미설정 시 헤더 검증 생략) | 빈 문자열 (기본) |
 | `N8N_WEBHOOK_SECRET` | n8n 전송 HMAC 서명 시크릿 (미설정 시 서명 생략) | 빈 문자열 (기본) |
 
+## Observability (선택, Phase E.2)
+
+| 변수 | 설명 | 예시 |
+|------|------|------|
+| `SENTRY_DSN` | Sentry 프로젝트 DSN — 미설정 시 Sentry 비활성 (graceful no-op) | `https://abc@o1.ingest.sentry.io/123` |
+| `SENTRY_ENVIRONMENT` | Sentry 에 기록될 환경 태그 | `production` (기본) / `staging` / `development` |
+| `SENTRY_TRACES_SAMPLE_RATE` | Performance tracing 샘플링 비율 (0.0~1.0) | `0.1` (기본, 10%) |
+
+Sentry 설정 방법:
+1. [Sentry 무료 플랜](https://sentry.io) 에서 Python 프로젝트 생성
+2. DSN 을 Railway Variables 의 `SENTRY_DSN` 에 추가
+3. 배포 후 이벤트 자동 수집 시작
+
+Claude API 메트릭 (자동, env 설정 불필요):
+- 분석 1건당 `claude_api_call` 로그 자동 기록 — model / duration_ms / input_tokens / output_tokens / cost_usd / status
+- 파이프라인 단계별 `pipeline_stage` 로그 자동 기록 — collect_files / analyze / score_and_save / notify / pipeline_total
+
 ## 알림 채널 (선택)
 
 | 변수 | 설명 |
