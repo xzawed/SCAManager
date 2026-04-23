@@ -11,6 +11,7 @@ from src.auth.session import CurrentUser, require_login
 from src.database import SessionLocal
 from src.models.analysis import Analysis
 from src.models.repository import Repository
+from src.repositories import analysis_feedback_repo
 from src.scorer.calculator import calculate_grade
 from src.ui._helpers import templates
 
@@ -53,7 +54,11 @@ def overview(
                     "avg_score": avg,
                     "avg_grade": calculate_grade(avg) if count > 0 else None,
                 })
+
+        # Phase E.3-d — AI 점수 정합도 지표 (전역)
+        calibration = analysis_feedback_repo.get_calibration_by_score_range(db)
     return templates.TemplateResponse(request, "overview.html", {
         "repos": repo_data,
         "current_user": current_user,
+        "calibration": calibration,
     })

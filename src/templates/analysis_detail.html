@@ -276,6 +276,88 @@
 </div>
 {% endif %}
 
+<!-- Phase E.3 — 이 점수가 맞나요? thumbs up/down 피드백 -->
+<div class="card feedback-card" id="feedbackCard"
+     data-analysis-id="{{ analysis.id }}"
+     data-repo="{{ repo_name }}"
+     data-current-thumbs="{{ user_feedback.thumbs if user_feedback and user_feedback.thumbs else '' }}">
+  <div class="feedback-prompt">
+    <span class="feedback-label">이 점수가 맞다고 생각하시나요?</span>
+    <span class="feedback-hint">(Claude AI 정합도 개선에 사용됩니다)</span>
+  </div>
+  <div class="feedback-buttons">
+    <button type="button" class="fb-btn fb-up" data-value="1" title="맞습니다">
+      👍 <span class="fb-btn-label">맞음</span>
+    </button>
+    <button type="button" class="fb-btn fb-down" data-value="-1" title="아닙니다">
+      👎 <span class="fb-btn-label">아님</span>
+    </button>
+    <span class="fb-status" id="fbStatus"></span>
+  </div>
+</div>
+<style>
+  .feedback-card { padding: 1rem 1.2rem; display: flex; align-items: center;
+                   justify-content: space-between; flex-wrap: wrap; gap: 0.8rem; }
+  .feedback-prompt { display: flex; flex-direction: column; }
+  .feedback-label { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+  .feedback-hint  { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  .feedback-buttons { display: flex; gap: 0.5rem; align-items: center; }
+  .fb-btn { padding: 0.5rem 1rem; border-radius: 8px; border: 1px solid var(--border);
+            background: var(--bg-card); cursor: pointer; font-size: 14px;
+            transition: all 0.15s ease; display: inline-flex; align-items: center; gap: 0.3rem; }
+  .fb-btn:hover { background: var(--bg-hover); transform: translateY(-1px); }
+  .fb-btn.active.fb-up   { background: #10b98122; border-color: #10b981; color: #10b981; }
+  .fb-btn.active.fb-down { background: #ef444422; border-color: #ef4444; color: #ef4444; }
+  .fb-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .fb-status { font-size: 12px; color: var(--text-muted); margin-left: 0.5rem; }
+  .fb-status.ok    { color: #10b981; }
+  .fb-status.error { color: #ef4444; }
+</style>
+<script>
+(function() {
+  const card = document.getElementById('feedbackCard');
+  if (!card) return;
+  const analysisId = card.dataset.analysisId;
+  const repo = card.dataset.repo;
+  const current = card.dataset.currentThumbs;
+  const status = document.getElementById('fbStatus');
+  const btns = card.querySelectorAll('.fb-btn');
+
+  // 초기 상태 복원
+  if (current) {
+    const match = card.querySelector(`.fb-btn[data-value="${current}"]`);
+    if (match) match.classList.add('active');
+  }
+
+  btns.forEach(btn => btn.addEventListener('click', async () => {
+    const thumbs = parseInt(btn.dataset.value, 10);
+    btns.forEach(b => b.disabled = true);
+    status.textContent = '저장 중...';
+    status.className = 'fb-status';
+    try {
+      const url = `/repos/${encodeURIComponent(repo)}/analyses/${analysisId}/feedback`;
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        credentials: 'same-origin',
+        body: JSON.stringify({thumbs}),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      btns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      status.textContent = '감사합니다!';
+      status.className = 'fb-status ok';
+      setTimeout(() => { status.textContent = ''; }, 2500);
+    } catch (err) {
+      status.textContent = `저장 실패: ${err.message}`;
+      status.className = 'fb-status error';
+    } finally {
+      btns.forEach(b => b.disabled = false);
+    }
+  }));
+})();
+</script>
+
 {% set r = analysis.result %}
 
 <!-- 점수 추이 트렌드 차트 -->
