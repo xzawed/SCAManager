@@ -430,4 +430,4 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 
 ## 현재 상태
 
-최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1230개 | E2E 49개 | pylint 10.00 | 커버리지 96.2% | SonarCloud QG OK · Security A · Reliability A · Maintainability A · Tier1 정적분석 10종 · Observability (Sentry + Claude metrics + stage timing) · AI 점수 피드백 루프 · Settings Minimal Mode
+최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1232개 | E2E 49개 | pylint 10.00 | 커버리지 96.2% | SonarCloud QG OK · Security A · Reliability A · Maintainability A · Tier1 정적분석 10종 · Observability (Sentry + Claude metrics + stage timing) · AI 점수 피드백 루프 · Settings Minimal Mode · Onboarding 3단계 튜토리얼

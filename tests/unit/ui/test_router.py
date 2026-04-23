@@ -114,6 +114,37 @@ def test_settings_returns_html():
     assert r.status_code == 200
 
 
+# Phase E.5 — Onboarding 튜토리얼
+
+def test_overview_empty_state_shows_3_step_tutorial():
+    """Phase E.5 — 리포 0개일 때 '3단계' 튜토리얼 섹션 노출."""
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
+    with patch("src.ui.routes.overview.SessionLocal", return_value=_ctx(mock_db)):
+        r = client.get("/")
+    assert r.status_code == 200
+    html = r.text
+    # 튜토리얼 핵심 마커 — 3단계 구성과 CTA 버튼
+    assert "get-started" in html or "3단계" in html or "Get Started" in html, \
+        "3단계 튜토리얼 섹션이 empty-state 에 있어야 함"
+    # CTA 링크는 여전히 /repos/add
+    assert "/repos/add" in html
+
+
+def test_overview_with_repos_does_not_show_tutorial():
+    """Phase E.5 — 리포가 있으면 튜토리얼 숨김 (empty-state 분기 미진입)."""
+    mock_db = MagicMock()
+    mock_repo = MagicMock(id=1, full_name="owner/repo", created_at=MagicMock(isoformat=MagicMock(return_value="2026-04-23")))
+    mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [mock_repo]
+    # count/avg maps 는 빈 dict 로 반환되어도 무방
+    mock_db.query.return_value.filter.return_value.group_by.return_value.all.return_value = []
+    with patch("src.ui.routes.overview.SessionLocal", return_value=_ctx(mock_db)):
+        r = client.get("/")
+    assert r.status_code == 200
+    # 튜토리얼 마커가 없어야 함
+    assert "get-started-tutorial" not in r.text
+
+
 # Phase E.4 — Minimal Mode (Simple/Advanced 토글)
 
 def _settings_html(default_mode="simple"):

@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-23 기준 — Phase E.2 + E.3 + E.4 완료)
+## 현재 수치 (2026-04-23 기준 — Phase E (E.1~E.5) 전체 완료 — Path A 완결)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1230개** | pytest (0 failed) — Phase E.4 +3 (Minimal Mode 토글) |
+| 단위 테스트 | **1232개** | pytest (0 failed) — Phase E.5 +2 (Onboarding 3단계 튜토리얼) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
@@ -188,6 +188,37 @@
 | notifier 접근 체인 | `railway_issue.py` 11곳 nested 접근(`event.project.*`/`event.commit.*`)으로 업데이트 (출력 문자열 불변) | — |
 | 테스트 fixture 재작성 | `test_railway_client.py`(2곳) + `test_railway_issue_notifier.py`(`_EVENT` fixture nested 재작성) | — |
 | 외부 API 불변 | `parse_railway_payload` · `create_deploy_failure_issue` 시그니처 · Webhook payload 스키마 · DB 전부 그대로 | — |
+
+### 그룹 28 — Phase E.5 Onboarding 튜토리얼 (2026-04-23)
+
+Path A (서비스화) 로드맵 **최종 단계**. 첫 방문자가 리포 등록까지의 경로를 명확하게
+보여주는 3단계 튜토리얼 카드.
+
+**변경 내용**:
+- overview.html 의 기존 empty-state (리포 0개 분기) 를 3단계 튜토리얼 카드로 교체
+  · 1️⃣ GitHub 리포 선택 — `+ 리포 추가` CTA 버튼
+  · 2️⃣ 기본 설정 (Simple 모드) — Phase E.4 에서 만든 Simple 모드 기본값 설명
+  · 3️⃣ 첫 Push/PR — 자동 분석 + 👍/👎 피드백 (Phase E.3 연결)
+- footer hint: `ANTHROPIC_API_KEY` 없이도 최대 89점(B등급) 가능 안내
+- 인라인 CSS — 번호 원형 배지, 단계 카드 hover-bg, footer 파란 강조 박스
+- +2 tests (empty-state 시 튜토리얼 노출 / 리포 있을 때 숨김)
+
+**최종 수치**: 1230 → **1232 passed** (+2) · 1 skipped · pylint 10.00 · flake8 0.
+
+## Phase E 전체 완결 — Path A (서비스화) 목표 달성
+
+2026-04-23 하루에 E.1~E.5 5단계를 모두 완료. Phase D (언어 breadth 확장) 에서 Phase E
+(서비스 성숙도) 로의 방향 전환이 코드에 반영됨.
+
+| Phase | 목적 | 성과 |
+|-------|------|------|
+| E.1 | Phase D.5~D.8 공식 중단 | 백로그 정리 (4개 도구 영구 보류 + 재개 3조건) |
+| E.2 | Observability 기반 | Sentry + Claude API 메트릭 + Pipeline 5단계 타이밍 (+21 tests) |
+| E.3 | AI 점수 피드백 루프 | Thumbs up/down + 정합도 대시보드 (+14 tests) |
+| E.4 | Minimal Mode | Settings UI Simple/Advanced 토글 (+3 tests) |
+| E.5 | Onboarding 튜토리얼 | empty-state → 3단계 카드 (+2 tests) |
+
+**총 증분**: 1188 → 1232 passed (+44). 모든 변경은 pylint 10.00 / flake8 0 / 회귀 없음.
 
 ### 그룹 27 — Phase E.4 Minimal Mode (Settings UI Simple/Advanced 토글) (2026-04-23)
 

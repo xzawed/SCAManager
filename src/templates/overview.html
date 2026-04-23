@@ -125,13 +125,75 @@
   </div>
 </div>
 {% else %}
-<div class="card">
-  <div class="empty-state">
-    <div class="empty-icon">🔗</div>
-    <p>등록된 리포지토리가 없습니다.<br>
-      <a href="/repos/add">리포 추가</a>를 클릭해 GitHub 리포를 등록하세요.</p>
+{# Phase E.5 — Onboarding 3단계 튜토리얼 (리포 0개일 때만 노출) #}
+<div class="card get-started-tutorial">
+  <div class="gst-header">
+    <h2 class="gst-title">🚀 3단계로 시작하기</h2>
+    <p class="gst-subtitle">GitHub 리포를 연결하면 Push/PR 시 자동 분석이 시작됩니다</p>
+  </div>
+  <div class="gst-steps">
+    <div class="gst-step">
+      <div class="gst-step-num">1</div>
+      <div class="gst-step-body">
+        <div class="gst-step-title">GitHub 리포 선택</div>
+        <div class="gst-step-desc">OAuth 로 연결한 리포 중 하나를 선택하면 Webhook 이 자동 생성됩니다.</div>
+        <a href="/repos/add" class="btn btn-primary btn--sm gst-cta">+ 리포 추가</a>
+      </div>
+    </div>
+    <div class="gst-step">
+      <div class="gst-step-num">2</div>
+      <div class="gst-step-body">
+        <div class="gst-step-title">기본 설정 (Simple 모드)</div>
+        <div class="gst-step-desc">
+          등록 후 설정 페이지에서 <strong>🚀 빠른 설정 프리셋</strong> 중 하나 선택.
+          Simple 모드 기본값은 Python 분석 + Telegram 알림 + PR 코멘트입니다.
+        </div>
+      </div>
+    </div>
+    <div class="gst-step">
+      <div class="gst-step-num">3</div>
+      <div class="gst-step-body">
+        <div class="gst-step-title">첫 Push 또는 PR</div>
+        <div class="gst-step-desc">
+          코드를 푸시하면 자동으로 분석 결과가 대시보드에 쌓입니다.
+          점수가 맞는지 👍/👎 피드백을 주시면 정합도 지표가 개선됩니다.
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="gst-footer">
+    <div class="gst-footer-hint">
+      💡 <strong>팁</strong> — <code>ANTHROPIC_API_KEY</code> 없이도 최대 89점(B등급)까지 분석 가능합니다.
+    </div>
   </div>
 </div>
+<style>
+  .get-started-tutorial { padding: 1.4rem 1.6rem; }
+  .gst-header { margin-bottom: 1.2rem; }
+  .gst-title { margin: 0 0 0.3rem; font-size: 20px; }
+  .gst-subtitle { margin: 0; color: var(--text-muted); font-size: 14px; }
+  .gst-steps { display: flex; flex-direction: column; gap: 0.9rem; }
+  .gst-step { display: flex; gap: 1rem; align-items: flex-start;
+              padding: 1rem 1.1rem; background: var(--bg-hover);
+              border-radius: 10px; border: 1px solid var(--border); }
+  .gst-step-num { flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%;
+                  background: var(--accent); color: white; display: flex;
+                  align-items: center; justify-content: center;
+                  font-weight: 700; font-size: 16px; }
+  .gst-step-body { flex: 1; }
+  .gst-step-title { font-size: 15px; font-weight: 700; color: var(--text-primary);
+                    margin-bottom: 0.25rem; }
+  .gst-step-desc { font-size: 13px; color: var(--text-muted); line-height: 1.5; }
+  .gst-step-desc code { background: var(--bg-card); padding: 0.1rem 0.35rem;
+                        border-radius: 3px; font-size: 12px; }
+  .gst-cta { margin-top: 0.5rem; }
+  .gst-footer { margin-top: 1rem; padding: 0.7rem 0.9rem;
+                background: rgba(59,130,246,0.08); border-radius: 6px;
+                border-left: 3px solid #3b82f6; }
+  .gst-footer-hint { font-size: 12px; color: var(--text-primary); }
+  .gst-footer-hint code { background: var(--bg-card); padding: 0.1rem 0.35rem;
+                          border-radius: 3px; font-size: 12px; }
+</style>
 {% endif %}
 
 {# Phase E.3-d — AI 점수 정합도 지표 (피드백 1건 이상 있을 때만 노출) #}
