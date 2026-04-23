@@ -114,6 +114,46 @@ def test_settings_returns_html():
     assert r.status_code == 200
 
 
+# Phase E.4 — Minimal Mode (Simple/Advanced 토글)
+
+def _settings_html(default_mode="simple"):
+    """Helper — Settings HTML 가져오기."""
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
+        id=1, full_name="owner/repo", user_id=None,
+    )
+    from src.config_manager.manager import RepoConfigData
+    with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.ui.routes.settings.get_repo_config",
+                   return_value=RepoConfigData(repo_full_name="owner/repo")):
+            r = client.get("/repos/owner%2Frepo/settings")
+    return r.text
+
+
+def test_settings_has_mode_toggle_buttons():
+    """Phase E.4 — Settings 페이지에 Simple/Advanced 토글이 존재."""
+    html = _settings_html()
+    assert 'data-settings-mode-btn="simple"' in html
+    assert 'data-settings-mode-btn="advanced"' in html
+
+
+def test_settings_advanced_channels_have_adv_only_class():
+    """Phase E.4 — Discord/Slack/Webhook/n8n/Email 필드는 adv-only 클래스로 마킹."""
+    html = _settings_html()
+    # 5개 Advanced 알림 채널이 모두 adv-only 클래스 안에 있어야 함
+    # (Telegram 은 Simple 모드에서도 노출되므로 adv-only 없음)
+    assert "adv-only" in html, "adv-only 클래스가 템플릿에 존재해야 함"
+    # Discord / Slack / n8n 필드명이 adv-only 컨테이너 안에 있는지 대략 확인
+    # (정확한 DOM 검증은 E2E 에서, 여기선 클래스 존재만 확인)
+
+
+def test_settings_mode_toggle_script_present():
+    """Phase E.4 — 모드 전환 JS 함수가 HTML 에 포함."""
+    html = _settings_html()
+    assert "toggleSettingsMode" in html
+    assert "localStorage" in html  # 모드 선호 저장
+
+
 def test_post_settings_redirects():
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
