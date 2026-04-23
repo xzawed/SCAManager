@@ -1,4 +1,4 @@
 providers = ["python"]
 
 [phases.setup]
-aptPkgs = ["shellcheck", "nodejs", "npm", "cppcheck", "ruby-full"]
+aptPkgs = ["shellcheck", "nodejs", "npm", "cppcheck", "ruby-full", "golang-go"]
