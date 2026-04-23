@@ -40,13 +40,15 @@ def stage_timer(stage: str, **extra_fields: object) -> Iterator[dict]:
         yield ctx
     except Exception as exc:
         duration_ms = (time.perf_counter() - start) * 1000
+        # 예약 키(pipeline_stage / duration_ms / status / error_type) 는 마지막에 병합해
+        # extra_fields 나 ctx 가 덮어쓸 수 없게 한다 — 로그 인젝션 방어.
         extra = {
+            **extra_fields,
+            **ctx,
             "pipeline_stage": stage,
             "duration_ms": duration_ms,
             "status": "error",
             "error_type": type(exc).__name__,
-            **extra_fields,
-            **ctx,
         }
         logger.warning(
             "pipeline_stage stage=%s duration_ms=%.0f status=error error_type=%s",
@@ -57,11 +59,11 @@ def stage_timer(stage: str, **extra_fields: object) -> Iterator[dict]:
     else:
         duration_ms = (time.perf_counter() - start) * 1000
         extra = {
+            **extra_fields,
+            **ctx,
             "pipeline_stage": stage,
             "duration_ms": duration_ms,
             "status": "success",
-            **extra_fields,
-            **ctx,
         }
         logger.info(
             "pipeline_stage stage=%s duration_ms=%.0f status=success",

@@ -17,9 +17,12 @@ router = APIRouter()
 
 
 class FeedbackRequest(BaseModel):
-    """Phase E.3 — 피드백 upsert 본문."""
+    """Phase E.3 — 피드백 upsert 본문.
+
+    comment 최대 길이 2000자 — DB 행 크기 폭주/거대 payload 방어.
+    """
     thumbs: Literal[1, -1] = Field(..., description="+1=up, -1=down")
-    comment: str | None = None
+    comment: str | None = Field(default=None, max_length=2000)
 
 
 def _serialize_feedback(fb: object | None) -> dict:
