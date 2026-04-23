@@ -9,7 +9,7 @@ os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 
 import pytest
 
-from src import http_client
+from src.shared import http_client
 
 
 @pytest.mark.asyncio

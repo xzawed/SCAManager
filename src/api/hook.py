@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from src.database import SessionLocal
-from src.log_safety import sanitize_for_log
+from src.shared.log_safety import sanitize_for_log
 from src.models.analysis import Analysis
 from src.models.repository import Repository
 from src.repositories import repo_config_repo

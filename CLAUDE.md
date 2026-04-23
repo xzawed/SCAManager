@@ -35,11 +35,14 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 
 ```
 src/
-├── main.py                     # FastAPI 앱, lifespan(DB 마이그레이션), 전체 라우터 등록
+├── main.py                     # FastAPI 앱, lifespan(DB 마이그레이션 + http_client), 전체 라우터 등록
 ├── config.py                   # pydantic-settings 환경변수 관리, postgres:// URL 자동 변환
 ├── constants.py                # 전역 상수 단일 출처 — 점수배점/감점가중치/AI기본값/등급/알림한도/HTTP타임아웃/캐시TTL
 ├── crypto.py                   # encrypt_token()/decrypt_token() — TOKEN_ENCRYPTION_KEY
 ├── database.py                 # SQLAlchemy engine, Base, FailoverSessionFactory
+├── shared/
+│   ├── http_client.py          # httpx.AsyncClient lifespan 싱글톤 (내부 신뢰 API 용)
+│   └── log_safety.py           # sanitize_for_log() — 로그 인젝션 방지
 ├── auth/
 │   ├── session.py              # get_current_user() + require_login Depends
 │   └── github.py               # /login, /auth/github, /auth/callback, /auth/logout
@@ -87,7 +90,8 @@ src/
 ├── config_manager/
 │   └── manager.py              # get_repo_config(), upsert_repo_config(), RepoConfigData
 ├── gate/
-│   ├── engine.py               # run_gate_check() — 3-옵션 독립 처리
+│   ├── _common.py              # score_from_result() 공용 헬퍼 (engine 과 향후 actions 공유)
+│   ├── engine.py               # run_gate_check() — 3-옵션 독립 처리 (직접 구현)
 │   ├── github_review.py        # post_github_review(), merge_pr()
 │   └── telegram_gate.py        # send_gate_request() — 인라인 키보드 메시지
 ├── notifier/
@@ -402,4 +406,4 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 
 ## 현재 상태
 
-최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1175개 | E2E 49개 | pylint 10.00 | 커버리지 96.2% | SonarCloud QG OK · Security A · Reliability A · Maintainability A
+최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1170개 | E2E 49개 | pylint 10.00 | 커버리지 96.2% | SonarCloud QG OK · Security A · Reliability A · Maintainability A
