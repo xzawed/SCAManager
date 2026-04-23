@@ -399,11 +399,11 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 
 ## 잔여 과제
 
-> 👤 **사용자 수행 가이드 (2026-04-23)**: 사용자가 직접 수행해야 하는 4가지 잔여 작업을 상세히 설명한 종합 가이드 → [`guides/user-actions-remaining.md`](guides/user-actions-remaining.md). P4-Gate-2 Railway 실증 + Phase D.5~D.8 결정 + P3-후속 결정 + P5 devcontainer 캐싱 포함.
+> 🎯 **방향 전환 (2026-04-23)**: Path A (서비스화) 공식 선택 → Phase E 로드맵 가동. Phase D.5~D.8 **영구 보류**. 상세: [`reports/2026-04-23-phase-e-service-pivot-decision.md`](reports/2026-04-23-phase-e-service-pivot-decision.md).
 
-> 🧭 **종합 로드맵 (2026-04-23)**: 3-에이전트 논의 결과 → [`reports/2026-04-23-remaining-roadmap-3agent.md`](reports/2026-04-23-remaining-roadmap-3agent.md). Phase Q.7 / S.4 / D.3~D.8 / P4-Gate 전체 잔여 과제를 시나리오 A/B/C 로 비교, **시나리오 B (균형형)** 를 권고안으로 결정. 10-step 실행 순서 포함.
+> 👤 **사용자 수행 가이드**: P4-Gate-2 Railway 실증 (rubocop/golangci-lint) 만 남음 → [`guides/user-actions-remaining.md`](guides/user-actions-remaining.md). 기타 잔여 항목은 Phase E 내부 작업으로 흡수됨.
 
-> 🚀 **시나리오 B 진행 현황 (2026-04-23 세션)**: Step 1~6 · 8 완료 (커밋 `f678222` / `e551839` / `6ec93f4` / `842ea1d`). Step 7 (P4-Gate 실증) 사용자 대기 → 이후 Step 9 (D.3 RuboCop) · 10 (D.4 golangci-lint) 해금.
+> 🧭 **과거 로드맵 (이전 방향, 2026-04-23 이전)**: [`reports/2026-04-23-remaining-roadmap-3agent.md`](reports/2026-04-23-remaining-roadmap-3agent.md). 시나리오 B 기준으로 완료된 단계들은 유효하나, **D.5~D.8 부분은 Phase E 결정으로 폐기**. 역사 문서로 보존.
 
 | 우선순위 | 항목 | 비고 |
 |---------|------|------|
@@ -416,9 +416,10 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 | **✅ AI 리뷰 파싱 실패 해소 (2026-04-23)** | `_extract_json_payload()` 분리 + 3가지 실패 모드 해소 | 분석 #543 경고 원인 — (1) preamble + 순수 JSON, (2) 대문자 ` ```JSON `, (3) JSON 뒤 trailing text. `re.IGNORECASE` + 첫 `{` ~ 마지막 `}` fallback. +4 tests (1188→1192). |
 | **P3-리팩 완결** | 6렌즈 권고 #1~6 ✅ · #7 ✅ · #8a/#8b 스캐폴딩 | [Follow-up 섹션 참조](reports/2026-04-22-quality-audit-6lens.md#follow-up-2026-04-22--후속-실행-결과). 10커밋 완료. 실제 치환 잔존 2건(아래) |
 | **P4-Gate 재료 준비 완료 (2026-04-23)** | 샘플 C/Solidity + 가이드 + 검증 스크립트 | [docs/guides/p4-gate-verification.md](guides/p4-gate-verification.md). 사용자가 외부 테스트 리포에 샘플을 넣어 PR 제출 → 6항목 체크 후 D.3 해금. |
-| **P3-후속 (스캐폴딩 완성)** | #8a GateAction 엔진 전환 + #8b http_client 15곳 채택 | test_gate_engine.py 37건 mock 재작성 + 15곳 `async with httpx.AsyncClient` 치환 필요. 별도 Phase |
-| **P4 — Phase D (D.3~D.8)** | Tier 1 정적분석 도구 확장 | D.1 ✅ / D.2 ✅ / **D.3 ✅ / D.4 ✅** (2026-04-23 그룹 23) / D.5~D.8 도구별 승인 필요 |
-| **P5 (외부 의존 작업)** | pytest-cov devcontainer 이미지 사전 캐싱 | DNS 제약 환경에서도 R2 커버리지 재현 가능하도록 wheel 사전 포함. devcontainer.json + 이미지 rebuild 필요 |
+| **⏸️ P3-후속 (보류)** | #8a GateAction 엔진 전환 + #8b http_client 15곳 채택 | Phase E 완결 후 재검토. 현재 엔진은 기능상 정상 동작, 순수 리팩토링이므로 서비스화 우선. |
+| **⏸️ Phase D.5~D.8 (영구 보류, 2026-04-23)** | PHPStan / detekt / PMD / cargo clippy | Phase E 결정으로 보류. [결정 문서](reports/2026-04-23-phase-e-service-pivot-decision.md) 참조. 재개 기준: 해당 언어 PR 월 5건 이상 + E.2 완료 + Docker 전환 결정. |
+| **⏸️ P5 (보류)** | pytest-cov devcontainer 이미지 캐싱 | Phase E 완결 후 재검토. 현재 CI 의 커버리지 측정으로 수치 유지 가능. |
+| **🚀 Phase E.1~E.5 (활성)** | Path A 서비스화 로드맵 | E.1 (D.5~D.8 공식 중단) · E.2 (Observability) · E.3 (AI 점수 피드백) · E.4 (Minimal mode) · E.5 (Onboarding). [로드맵 문서](reports/2026-04-23-phase-e-service-pivot-decision.md). |
 
 ### D.3 차단 게이트 — ✅ 통과 (2026-04-23)
 
@@ -447,9 +448,10 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 | D.2 | slither | Solidity | +100MB | ✅ 완료 | 그룹 13 (2026-04-22) — pip 단순 설치 |
 | D.3 | RuboCop | Ruby | +80MB | ✅ 완료 | 그룹 23 (2026-04-23) — `gem install rubocop --no-document`, Security/ cop 분류 |
 | D.4 | golangci-lint | Go | +200MB | ✅ 완료 | 그룹 23 (2026-04-23) — v1.55.2 installer, `_ensure_go_mod` 자동생성 |
-| D.5 | PHPStan | PHP | +150MB | 🟠 높음 | PHP 런타임 추가, 수요 확인 후 |
-| D.6 | detekt | Kotlin | +350MB | 🟠 높음 | JDK 필요, Docker 전환 후 |
-| D.7 | PMD | Java | +300MB | 🔴 최상위 | JVM cold start, Docker 전환 후 |
-| D.8 | cargo clippy | Rust | +700MB | 🔴 최상위 | crate 단위 분석 — 아키텍처 변경 필요 |
+| D.5 | PHPStan | PHP | +150MB | ⏸️ **영구 보류 (2026-04-23)** | Phase E 결정 — Semgrep 중복, PR 수요 미확인 |
+| D.6 | detekt | Kotlin | +350MB | ⏸️ **영구 보류 (2026-04-23)** | Phase E 결정 — JDK + Docker 전환 필요, 수요 없음 |
+| D.7 | PMD | Java | +300MB | ⏸️ **영구 보류 (2026-04-23)** | Phase E 결정 — JVM cold start 위험 |
+| D.8 | cargo clippy | Rust | +700MB | ⏸️ **영구 보류 (2026-04-23)** | Phase E 결정 — crate 단위 분석, 아키텍처 불일치 |
 
-> 상세 계획: [계획 문서](../../.claude/plans/sunny-inventing-deer.md) Part 2 참조
+> **재개 기준 (D.5~D.8)**: 3조건 **모두** 충족 시 재검토 — (1) 해당 언어 PR 월 5건 이상, (2) Phase E.2 Observability 완료, (3) Docker 전환/아키텍처 변경 별도 결정.
+> 상세 계획: [Phase E 서비스화 결정 문서](reports/2026-04-23-phase-e-service-pivot-decision.md)
