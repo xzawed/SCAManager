@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     # DB Failover 설정 (빈 문자열이면 failover 비활성)
     database_url_fallback: str = ""
     db_failover_probe_interval: int = 30  # Primary 복구 확인 주기(초)
+    # Observability (Phase E.2) — sentry_dsn 빈 문자열이면 Sentry 비활성
+    sentry_dsn: str = ""
+    sentry_environment: str = "production"  # "production" | "staging" | "development"
+    sentry_traces_sample_rate: float = 0.1  # 0.0~1.0, performance tracing 샘플링
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 

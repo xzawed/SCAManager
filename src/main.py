@@ -11,6 +11,7 @@ from alembic.config import Config
 from src.config import settings
 from src.database import SessionLocal
 from src.shared.http_client import close_http_client, init_http_client
+from src.shared.observability import init_sentry
 from src.webhook.router import router as webhook_router
 from src.api.repos import router as api_repos_router
 from src.api.stats import router as api_stats_router
@@ -41,6 +42,7 @@ async def lifespan(_app: FastAPI):
             "모든 분석이 기본값(89/B)으로 fallback 됩니다. "
             "Railway Variables 또는 .env 에 키를 설정하세요."
         )
+    init_sentry()  # Sentry SDK — SENTRY_DSN 설정 시만 활성
     try:
         await asyncio.wait_for(asyncio.to_thread(_run_migrations), timeout=30)
         logger.info("DB migration completed")
