@@ -55,14 +55,13 @@ async def post_pr_comment(  # pylint: disable=too-many-positional-arguments
         r.raise_for_status()
 
 
-def _build_comment_from_result(result: dict) -> str:
-    """Build a formatted PR comment body from a stored analysis result dict."""
+def _header_lines(result: dict) -> list[str]:
+    """헤더(등급/총점/점수표) 라인 생성."""
     score = result.get("score", 0)
     grade = result.get("grade", "F")
     breakdown = result.get("breakdown", {})
     grade_emoji = GRADE_EMOJI.get(grade, "⚪")
-
-    lines = [
+    return [
         f"## {grade_emoji} SCAManager 분석 결과",
         "",
         f"**총점: {score}/100** (등급 {grade})",
@@ -77,9 +76,14 @@ def _build_comment_from_result(result: dict) -> str:
         f"| 테스트 | {breakdown.get('test_coverage', '-')} | 15 |",
     ]
 
-    if result.get("ai_summary"):
-        lines += ["", "### AI 요약", result["ai_summary"]]
 
+def _ai_summary_lines(result: dict) -> list[str]:
+    """AI 요약 섹션."""
+    return ["", "### AI 요약", result["ai_summary"]] if result.get("ai_summary") else []
+
+
+def _category_feedback_lines(result: dict) -> list[str]:
+    """카테고리별 피드백 섹션. 전체 피드백이 비어있으면 빈 목록."""
     feedback_items = [
         ("커밋 메시지", result.get("commit_message_feedback")),
         ("코드 품질", result.get("code_quality_feedback")),
@@ -87,33 +91,57 @@ def _build_comment_from_result(result: dict) -> str:
         ("구현 방향성", result.get("direction_feedback")),
         ("테스트", result.get("test_feedback")),
     ]
-    if any(fb for _, fb in feedback_items):
-        lines += ["", "### 카테고리별 피드백"]
-        for label, fb in feedback_items:
-            if fb:
-                lines.append(f"- **{label}**: {fb}")
+    if not any(fb for _, fb in feedback_items):
+        return []
+    lines = ["", "### 카테고리별 피드백"]
+    for label, fb in feedback_items:
+        if fb:
+            lines.append(f"- **{label}**: {fb}")
+    return lines
 
-    if result.get("file_feedbacks"):
-        lines += ["", "### 파일별 피드백"]
-        for ff in result["file_feedbacks"]:
-            lines.append(f"#### `{ff.get('file', '?')}`")
-            for issue in ff.get("issues", []):
-                lines.append(f"- {issue}")
 
-    if result.get("ai_suggestions"):
-        lines += ["", "### 개선 제안"]
-        for s in result["ai_suggestions"]:
-            lines.append(f"- {s}")
+def _file_feedback_lines(result: dict) -> list[str]:
+    """파일별 피드백 섹션."""
+    if not result.get("file_feedbacks"):
+        return []
+    lines = ["", "### 파일별 피드백"]
+    for ff in result["file_feedbacks"]:
+        lines.append(f"#### `{ff.get('file', '?')}`")
+        for issue in ff.get("issues", []):
+            lines.append(f"- {issue}")
+    return lines
 
-    if result.get("issues"):
-        lines += ["", f"### 정적 분석 이슈 (상위 {NOTIFIER_MAX_ISSUES_LONG}건)"]
-        for issue in result["issues"][:NOTIFIER_MAX_ISSUES_LONG]:
-            lines.append(
-                f"- **[{issue.get('tool', '?')}]** {issue.get('message', '')} "
-                f"(line {issue.get('line', '?')})"
-            )
 
-    return "\n".join(lines)
+def _ai_suggestions_lines(result: dict) -> list[str]:
+    """AI 개선 제안 섹션."""
+    if not result.get("ai_suggestions"):
+        return []
+    return ["", "### 개선 제안"] + [f"- {s}" for s in result["ai_suggestions"]]
+
+
+def _static_issues_lines(result: dict) -> list[str]:
+    """정적 분석 이슈 섹션 (상위 N건)."""
+    if not result.get("issues"):
+        return []
+    lines = ["", f"### 정적 분석 이슈 (상위 {NOTIFIER_MAX_ISSUES_LONG}건)"]
+    for issue in result["issues"][:NOTIFIER_MAX_ISSUES_LONG]:
+        lines.append(
+            f"- **[{issue.get('tool', '?')}]** {issue.get('message', '')} "
+            f"(line {issue.get('line', '?')})"
+        )
+    return lines
+
+
+def _build_comment_from_result(result: dict) -> str:
+    """Build a formatted PR comment body from a stored analysis result dict."""
+    return "\n".join(
+        _header_lines(result)
+        + _ai_summary_lines(result)
+        + _category_feedback_lines(result)
+        + _file_feedback_lines(result)
+        + _ai_suggestions_lines(result)
+        + _static_issues_lines(result)
+    )
 
 
 async def post_pr_comment_from_result(

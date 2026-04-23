@@ -64,19 +64,26 @@ def _format_breakdown(score: ScoreResult, use_color: bool) -> list[str]:
     return lines
 
 
-def _format_ai_review(ai_review: AiReviewResult, use_color: bool) -> list[str]:
-    """AI 리뷰 섹션 (요약·제안·카테고리 피드백·파일 피드백) 줄 생성."""
-    lines: list[str] = []
+def _ai_summary_section(ai_review: AiReviewResult, use_color: bool) -> list[str]:
+    """AI 요약 섹션."""
+    if not ai_review.summary:
+        return []
+    return [_bold("  AI Summary:", use_color), f"    {ai_review.summary}", ""]
 
-    if ai_review.summary:
-        lines += [_bold("  AI Summary:", use_color), f"    {ai_review.summary}", ""]
 
-    if ai_review.suggestions:
-        lines.append(_bold("  Suggestions:", use_color))
-        for s in ai_review.suggestions:
-            lines.append(f"    - {s}")
-        lines.append("")
+def _ai_suggestions_section(ai_review: AiReviewResult, use_color: bool) -> list[str]:
+    """AI 개선 제안 섹션."""
+    if not ai_review.suggestions:
+        return []
+    return (
+        [_bold("  Suggestions:", use_color)]
+        + [f"    - {s}" for s in ai_review.suggestions]
+        + [""]
+    )
 
+
+def _ai_category_feedback_section(ai_review: AiReviewResult, use_color: bool) -> list[str]:
+    """카테고리별 피드백 섹션."""
     fb_items = [
         ("Commit Message", ai_review.commit_message_feedback),
         ("Code Quality", ai_review.code_quality_feedback),
@@ -84,22 +91,35 @@ def _format_ai_review(ai_review: AiReviewResult, use_color: bool) -> list[str]:
         ("Direction", ai_review.direction_feedback),
         ("Test", ai_review.test_feedback),
     ]
-    if any(fb for _, fb in fb_items):
-        lines.append(_bold("  Category Feedback:", use_color))
-        for label, fb in fb_items:
-            if fb:
-                lines.append(f"    [{label}] {fb}")
-        lines.append("")
-
-    if ai_review.file_feedbacks:
-        lines.append(_bold("  File Feedback:", use_color))
-        for ff in ai_review.file_feedbacks:
-            lines.append(f"    {ff.get('file', '?')}:")
-            for issue in ff.get("issues", []):
-                lines.append(f"      - {issue}")
-        lines.append("")
-
+    if not any(fb for _, fb in fb_items):
+        return []
+    lines = [_bold("  Category Feedback:", use_color)]
+    lines += [f"    [{label}] {fb}" for label, fb in fb_items if fb]
+    lines.append("")
     return lines
+
+
+def _ai_file_feedback_section(ai_review: AiReviewResult, use_color: bool) -> list[str]:
+    """파일별 피드백 섹션."""
+    if not ai_review.file_feedbacks:
+        return []
+    lines = [_bold("  File Feedback:", use_color)]
+    for ff in ai_review.file_feedbacks:
+        lines.append(f"    {ff.get('file', '?')}:")
+        for issue in ff.get("issues", []):
+            lines.append(f"      - {issue}")
+    lines.append("")
+    return lines
+
+
+def _format_ai_review(ai_review: AiReviewResult, use_color: bool) -> list[str]:
+    """AI 리뷰 섹션 (요약·제안·카테고리 피드백·파일 피드백) 줄 생성."""
+    return (
+        _ai_summary_section(ai_review, use_color)
+        + _ai_suggestions_section(ai_review, use_color)
+        + _ai_category_feedback_section(ai_review, use_color)
+        + _ai_file_feedback_section(ai_review, use_color)
+    )
 
 
 def _format_static_issues(
