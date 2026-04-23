@@ -4,26 +4,28 @@
 >
 > 1차 가이드: [P4-Gate 1차 (cppcheck + slither)](p4-gate-verification.md) — 이미 통과.
 
+> ✅ **Railway 빌드 안정화 완료 (2026-04-23)** — 커밋 [`8042f12`](../../commit/8042f12) 로 prism 네이티브 확장 의존성 문제 해소. 아래 **1단계 (빌드 로그 확인)** 는 이미 통과된 상태입니다. **2단계 (바이너리 확인)** 부터 진행하면 됩니다. 배경 설명: [회고 문서](../reports/2026-04-23-railway-rubocop-prism-retrospective.md).
+
 ---
 
 ## 왜 필요한가
 
 로컬 devcontainer 에는 rubocop/golangci-lint 바이너리가 없어 `is_enabled()=False` 경로만 단위 테스트(9+9 건)로 검증된다. Railway 빌드에서 `gem install rubocop` + `golangci-lint installer` 가 정상 설치되고 런타임에서 실제 분석이 실행되는지 프로덕션 확인이 필요하다.
 
-**특히 주의할 점** — 직전 커밋 [6aaa268](https://github.com/xzawed/SCAManager/commit/6aaa268) 에서 **rubocop 1.9.0 prism native ext 빌드 실패**를 `build-essential + libyaml-dev` 추가 + `rubocop 1.57.2 핀` 으로 우회 조치했다. 이 수정이 실제로 Railway 에서 성공하는지 눈으로 확인해야 한다.
+**특히 주의할 점** — 직전 커밋 [6aaa268](https://github.com/xzawed/SCAManager/commit/6aaa268) 에서 **rubocop prism native ext 빌드 실패**를 `build-essential + libyaml-dev` 추가로 해결 시도했으나 재실패. 커밋 [8042f12](https://github.com/xzawed/SCAManager/commit/8042f12) 에서 **`rubocop-ast 1.36.2` 명시 핀** 으로 transitive prism 의존성 자체를 제거하여 최종 해결. 상세 경위: [회고 문서](../reports/2026-04-23-railway-rubocop-prism-retrospective.md).
 
 ---
 
-## 사용자 역할 분담 (예상 소요 30~45분)
+## 사용자 역할 분담 (예상 소요 20~30분 — 빌드 성공 확인됨)
 
-| # | 항목 | 담당 | 소요 | 선행 조건 |
-|---|------|------|------|---------|
-| 1 | Railway 빌드 로그 확인 | 사용자 | 5분 | 없음 (최근 배포 확인) |
-| 2 | rubocop 바이너리 존재 확인 | 사용자 | 3분 | 빌드 성공 |
-| 3 | golangci-lint 바이너리 존재 확인 | 사용자 | 3분 | 빌드 성공 |
-| 4 | rubocop 실증 PR 제출 | 사용자 | 10분 | 2번 통과 |
-| 5 | golangci-lint 실증 PR 제출 | 사용자 | 10분 | 3번 통과 |
-| 6 | 타임아웃 + 점수 반영 확인 | 사용자 | 5분 | 4/5 완료 |
+| # | 항목 | 담당 | 소요 | 선행 조건 | 상태 |
+|---|------|------|------|---------|------|
+| 1 | Railway 빌드 로그 확인 | 사용자 | 5분 | 없음 | ✅ **완료** (2026-04-23) |
+| 2 | rubocop 바이너리 존재 확인 | 사용자 | 3분 | 빌드 성공 | 대기 |
+| 3 | golangci-lint 바이너리 존재 확인 | 사용자 | 3분 | 빌드 성공 | 대기 |
+| 4 | rubocop 실증 PR 제출 | 사용자 | 10분 | 2번 통과 | 대기 |
+| 5 | golangci-lint 실증 PR 제출 | 사용자 | 10분 | 3번 통과 | 대기 |
+| 6 | 타임아웃 + 점수 반영 확인 | 사용자 | 5분 | 4/5 완료 | 대기 |
 
 ---
 
