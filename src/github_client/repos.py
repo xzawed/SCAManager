@@ -2,6 +2,7 @@
 import base64
 import json
 import logging
+from urllib.parse import quote
 
 import httpx
 
@@ -14,6 +15,14 @@ _HEADERS = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "20
 
 def _auth_headers(token: str) -> dict:
     return {**_HEADERS, "Authorization": f"Bearer {token}"}
+
+
+def _repo_path(full_name: str) -> str:
+    """owner/repo 를 URL 안전하게 인코딩 (슬래시는 유지).
+
+    GitHub 저장소 이름은 신뢰 입력이지만 방어적 인코딩으로 path injection 차단.
+    """
+    return quote(full_name, safe="/")
 
 
 async def list_user_repos(token: str) -> list[dict]:
@@ -39,7 +48,7 @@ async def create_webhook(token: str, repo_full_name: str, webhook_url: str, secr
     """Webhook 생성 → webhook_id 반환."""
     async with httpx.AsyncClient() as client:
         resp = await client.post(
-            f"{GITHUB_API}/repos/{repo_full_name}/hooks",
+            f"{GITHUB_API}/repos/{_repo_path(repo_full_name)}/hooks",
             json={
                 "name": "web",
                 "active": True,
@@ -61,7 +70,7 @@ async def list_webhooks(token: str, repo_full_name: str) -> list[dict]:
     """리포의 모든 GitHub 웹훅 목록을 반환한다."""
     async with httpx.AsyncClient() as client:
         resp = await client.get(
-            f"{GITHUB_API}/repos/{repo_full_name}/hooks",
+            f"{GITHUB_API}/repos/{_repo_path(repo_full_name)}/hooks",
             headers=_auth_headers(token),
         )
         resp.raise_for_status()
@@ -72,7 +81,7 @@ async def delete_webhook(token: str, repo_full_name: str, webhook_id: int) -> bo
     """Webhook 삭제. 성공(204) 시 True, 그 외 False 반환."""
     async with httpx.AsyncClient() as client:
         resp = await client.delete(
-            f"{GITHUB_API}/repos/{repo_full_name}/hooks/{webhook_id}",
+            f"{GITHUB_API}/repos/{_repo_path(repo_full_name)}/hooks/{webhook_id}",
             headers=_auth_headers(token),
         )
         return resp.status_code == 204
@@ -204,7 +213,8 @@ async def commit_scamanager_files(
     try:
         async with httpx.AsyncClient() as client:
             for path, content in files.items():
-                url = f"{GITHUB_API}/repos/{repo_full_name}/contents/{path}"
+                # path 는 module-level 딕셔너리 키(상수) 이지만 방어적 인코딩 적용
+                url = f"{GITHUB_API}/repos/{_repo_path(repo_full_name)}/contents/{quote(path)}"
                 # 기존 파일 sha 조회
                 get_resp = await client.get(url, headers=_auth_headers(token))
                 body: dict = {

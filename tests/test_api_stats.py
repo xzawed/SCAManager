@@ -8,6 +8,8 @@ os.environ.setdefault("ANTHROPIC_API_KEY", "")
 os.environ.setdefault("API_KEY", "")
 
 from unittest.mock import MagicMock, patch
+
+import pytest  # noqa: E402 — 환경변수 setdefault 이후 import
 from fastapi.testclient import TestClient
 from src.main import app
 
@@ -54,6 +56,6 @@ def test_get_repo_stats():
         r = client.get("/api/repos/owner%2Frepo/stats")
     assert r.status_code == 200
     data = r.json()
-    assert data["average_score"] == 77.5
+    assert data["average_score"] == pytest.approx(77.5)
     assert data["total_analyses"] == 2
     assert len(data["trend"]) == 2

@@ -57,7 +57,9 @@ def _get_webhook_secret(full_name: str) -> str:
     return secret
 
 
-_CLOSING_KEYWORDS = re.compile(r"(?i)\b(?:closes|fixes|resolves)\s*:?\s*#(\d+)")
+# ReDoS 방지: `\s*:?\s*` 의 ambiguous matching 제거 — `[\s:]*` 단일 class 로 통합.
+# 동일 입력 매칭 동작 유지 ("closes #1" / "closes: #1" / "closes:#1" 모두 match).
+_CLOSING_KEYWORDS = re.compile(r"(?i)\b(?:closes|fixes|resolves)[\s:]*#(\d+)")
 
 
 def _extract_closing_issue_numbers(body: str | None) -> list[int]:
