@@ -2,6 +2,8 @@
 
 > 🎯 **2026-04-23 업데이트** — Path A (서비스화) 방향 확정. 기존 4가지 항목 중 **3개는 Phase E 결정으로 해결** (D.5~D.8 영구 보류 · P3-후속 Phase E 완결 후 재검토 · P5 현 CI 로 대체). **P4-Gate-2 Railway 실증만 남음**.
 >
+> ✅ **Phase E (E.1~E.5) 전체 완료 (2026-04-23)** — Path A 목표 달성. SCAManager 는 이제 Observability + AI 점수 피드백 루프 + Settings Minimal Mode + 3단계 튜토리얼 을 갖춘 서비스. 상세: [Phase E 결정 문서](../reports/2026-04-23-phase-e-service-pivot-decision.md).
+>
 > 최신 로드맵: [docs/reports/2026-04-23-phase-e-service-pivot-decision.md](../reports/2026-04-23-phase-e-service-pivot-decision.md)
 > 현재 상태: [docs/STATE.md](../STATE.md)
 
