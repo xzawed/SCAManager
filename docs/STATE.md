@@ -377,25 +377,26 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 | **✅ Phase S.2 완료 (UI/Webhook router 분할)** | UI router → `src/ui/routes/` 5 모듈 · Webhook router → `src/webhook/providers/` 3 provider | 그룹 20 참조. mock 경로 193곳 재작성 완료, 1170 passed 유지 |
 | **✅ Phase S.3 완료 (구조 정리 5단계)** | S.3-A Service 스캐폴딩 + S.3-B Analyzer pure/io + S.3-C tests/unit + S.3-E Notifier 8클래스 이동 + S.3-D UI/webhook repository_repo 확산 | 그룹 21 참조. S.3-D 는 S.4 완료와 함께 커밋 `f678222` 에 포함. |
 | **✅ Phase S.4 완료 (pipeline test mock 재설계)** | test_pipeline.py fixture 를 Option A (repository_repo / analysis_repo / get_repo_config 직접 patch) 로 전환 + repository_repo.find_by_full_name 내부 filter_by → filter 전환 | 커밋 `f678222`. 1170 passed. S.1-4 · S.3-D 2회 실패의 근본 원인 해소. |
-| **🚧 P4-Gate (D.3 차단 · 사용자 실증 필요)** | D.1 cppcheck / D.2 slither 프로덕션 실증 검증 | 샘플·가이드·검증 스크립트 준비 완료 ([docs/guides/p4-gate-verification.md](guides/p4-gate-verification.md) · [docs/samples/p4-gate/](samples/p4-gate/)). 사용자 실증 PR 제출 + 6항목 체크 필요. |
+| **✅ P4-Gate 통과 (2026-04-23)** | D.1 cppcheck / D.2 slither 프로덕션 실증 — 6/6 통과 | `xzawed/SCAManager-test-samples` 리포 분석 #543: cppcheck 4건 (L12 buffer·L18 scanf·L23/24 uninitvar) + slither 3건 (reentrancy-eth L13 포함). 코드품질 -10, 보안 -7 감점 반영 확인. D.3 RuboCop 해금. |
+| **⚠️ 별도 Issue: AI 리뷰 파싱 실패** | 분석 #543 에서 "AI 응답 파싱에 실패하여 기본값이 적용되었습니다" 경고 | P4-Gate 와 무관한 별개 이슈. D.3/D.4 이후 조사 예정. 가능 원인: ANTHROPIC_API_KEY 미설정 · JSON 앞 설명 텍스트 · 토큰 한도 초과. |
 | **P3-리팩 완결** | 6렌즈 권고 #1~6 ✅ · #7 ✅ · #8a/#8b 스캐폴딩 | [Follow-up 섹션 참조](reports/2026-04-22-quality-audit-6lens.md#follow-up-2026-04-22--후속-실행-결과). 10커밋 완료. 실제 치환 잔존 2건(아래) |
 | **P4-Gate 재료 준비 완료 (2026-04-23)** | 샘플 C/Solidity + 가이드 + 검증 스크립트 | [docs/guides/p4-gate-verification.md](guides/p4-gate-verification.md). 사용자가 외부 테스트 리포에 샘플을 넣어 PR 제출 → 6항목 체크 후 D.3 해금. |
 | **P3-후속 (스캐폴딩 완성)** | #8a GateAction 엔진 전환 + #8b http_client 15곳 채택 | test_gate_engine.py 37건 mock 재작성 + 15곳 `async with httpx.AsyncClient` 치환 필요. 별도 Phase |
 | **P4 — Phase D (D.3~D.8)** | Tier 1 정적분석 도구 확장 | D.1 ✅ / D.2 ✅ / **D.3 은 위 게이트 통과 후** / D.4~D.8 도구별 승인 필요 |
 | **P5 (외부 의존 작업)** | pytest-cov devcontainer 이미지 사전 캐싱 | DNS 제약 환경에서도 R2 커버리지 재현 가능하도록 wheel 사전 포함. devcontainer.json + 이미지 rebuild 필요 |
 
-### D.3 차단 게이트 — D.1/D.2 프로덕션 실증 체크리스트
+### D.3 차단 게이트 — ✅ 통과 (2026-04-23)
 
-로컬 devcontainer 에서는 cppcheck/slither 바이너리가 없어 `is_enabled()=False` 경로만 검증됨. Railway 실제 이미지에서 도구가 정상 동작하는지 확인되지 않은 상태로 D.3 을 추가하면 실패 표면이 중첩되어 원인 추적이 어려워진다. 아래 5가지 항목 **모두** 통과해야 D.3 RuboCop 착수.
+`xzawed/SCAManager-test-samples` 리포 분석 #543 (commit `a5ff800`) 으로 6/6 항목 전체 통과.
 
-1. [ ] **Railway 빌드 로그 확인** — 최근 배포에서 `pip install slither-analyzer` 성공 + `cppcheck` apt 설치 성공 + `solc-select install 0.8.20 && solc-select use 0.8.20` 빌드 커맨드 성공 로그 확인 (Railway 대시보드 Deployments → 해당 빌드 → Build Logs)
-2. [ ] **solc 사전 설치 검증** — 배포 컨테이너에서 `which solc && solc --version` 이 성공하고 0.8.20 반환 확인. 실패 시 buildCommand 의 solc-select 체인 재점검
-3. [ ] **cppcheck 실증 PR** — 외부 테스트 리포에 의도적 결함(`char buf[10]; strcpy(buf, long_str);` 등) 포함한 `.c` 파일 PR 생성 → 분석 결과의 `result.static_issues` 에 `tool="cppcheck"` 이슈 포함 확인
-4. [ ] **slither 실증 PR** — 외부 테스트 리포에 reentrancy 버그 포함한 `.sol` PR 생성(플랜 문서 §Task 7 샘플 코드 재사용, pragma `^0.8.0`) → `tool="slither"` + `category="security"` + `check="reentrancy-eth"` 이슈 포함 확인
-5. [ ] **첫 분석 타임아웃 확인** — slither 첫 실행이 `STATIC_ANALYSIS_TIMEOUT=30` 내 완료 확인. 초과 시 (a) buildCommand 의 solc 버전을 pragma 와 더 잘 맞추거나 (b) `src/constants.py` 의 `STATIC_ANALYSIS_TIMEOUT` 상향 조정
-6. [ ] **점수 반영 확인** — 실증 PR 의 최종 점수에서 해당 도구 이슈가 `code_quality` 또는 `security` 감점으로 올바르게 반영됐는지(기존 규칙 `error=-3`, `warning=-1`, `SEC_ERROR=-7`) 검증
+1. [x] **Railway 빌드 로그 확인** — cppcheck/slither/solc 전부 런타임 동작 확인 (간접 증거: 분석 결과에 이슈 감지)
+2. [x] **solc 사전 설치 검증** — slither 결과에 `../tmp/tmpdx9ucu1a.sol#13-18` 경로 매핑 → 컴파일 성공
+3. [x] **cppcheck 실증** — 4건 감지 (L12 buffer · L18 scanf · L23 unassigned · L24 uninitvar)
+4. [x] **slither 실증** — 3건 감지 — L13 **reentrancy-eth** (security) · L8 solc-version · L13 low-level-calls
+5. [x] **타임아웃** — 분석 완료, timeout warning 부재
+6. [x] **점수 반영** — 코드품질 25→15 (-10) · 보안 20→13 (-7) 감점 확인
 
-**게이트 통과 조건**: 6개 모두 ✅. 실패 항목이 있으면 해당 항목을 별도 Phase 작업으로 올려 수정 후 재검증.
+**게이트 통과 — D.3 RuboCop 해금**.
 
 ### Phase D 착수 전 결정 사항 (D.4 이후)
 
