@@ -1,4 +1,4 @@
-.PHONY: install test test-v test-fast test-slow test-cov test-file lint gate run migrate revision review install-playwright test-e2e test-e2e-headed
+.PHONY: install test test-v test-fast test-slow test-cov test-file test-isolated lint gate run migrate revision review install-playwright test-e2e test-e2e-headed
 
 # 의존성 설치 (개발 환경 — 테스트/E2E 포함)
 install:
@@ -27,6 +27,17 @@ test-cov:
 # 특정 파일 테스트 (예: make test-file f=tests/test_pipeline.py)
 test-file:
 	python -m pytest $(f) -v
+
+# 환경변수 격리 테스트 — .env stash + 관련 env vars unset 후 실행 (로컬 devcontainer 용)
+# 프로덕션 자격증명이 있는 .env 가 conftest 기본값을 덮어써 7~10개 테스트 실패하는 경우 해결.
+test-isolated:
+	@( trap 'mv -f .env.test-stash .env 2>/dev/null' EXIT; \
+	   mv .env .env.test-stash 2>/dev/null; \
+	   unset GITHUB_TOKEN TELEGRAM_BOT_TOKEN GITHUB_WEBHOOK_SECRET DATABASE_URL \
+	         ANTHROPIC_API_KEY TELEGRAM_CHAT_ID API_KEY GITHUB_CLIENT_ID \
+	         GITHUB_CLIENT_SECRET SESSION_SECRET APP_BASE_URL \
+	         DATABASE_URL_FALLBACK N8N_WEBHOOK_SECRET; \
+	   python -m pytest tests/ -q )
 
 # 코드 품질 검사
 lint:
