@@ -223,14 +223,14 @@
 
 ### 그룹 21 — Phase S.3 구조 정리 5단계 (2026-04-23)
 
-3-에이전트 감사 잔여 개선 항목을 5단계로 체계 수행. S.3-A/B/C/E 완료, S.3-D 보류.
+3-에이전트 감사 잔여 개선 항목을 5단계로 체계 수행. S.3-A/B/C/E 완료, S.3-D 보류 → **이후 그룹 22 에서 완결** (커밋 `f678222`).
 
 | 세부 | 커밋 | 내용 |
 |------|------|------|
 | **S.3-A** Service 스캐폴딩 | `60839ac` | `src/services/__init__.py` 신설 — 신규 use case 위치 명시 (기존 3파일 유지) |
 | **S.3-B** Analyzer pure/io | `daab76b` | `src/analyzer/{pure,io}/` 분리 — 7파일 이동 + review_guides 이동 + import 경로 119곳 치환 + mock 문자열 경로 치환 |
 | **S.3-C** tests/unit 계층화 | `bf83a61` | `tests/unit/` + 21 서브디렉토리 — 65 파일 git mv (src/ 미러링) + `__init__.py` 39개 추가 (파일명 중복 해소) |
-| **S.3-D** get_repo_or_404 확산 | 보류 | `repository_repo.find_by_full_name` 을 `filter` 로 전환 시 pipeline test mock 12곳 회귀 (S.1-4 + S.3-D 2회 확정). pipeline test mock 구조 근본 재설계 (filter_by 체인 분리) 가 선행되어야 가능 — Phase S.4 로 분리 |
+| **S.3-D** get_repo_or_404 확산 | 이후 `f678222` | 당시 보류: `repository_repo.find_by_full_name` 을 `filter` 로 전환 시 pipeline test mock 12곳 회귀 (S.1-4 + S.3-D 2회 확정). **그룹 22 (2026-04-23 Step 1+2) 에서 Phase S.4 pipeline test mock Option A 재설계와 함께 완결**. |
 | **S.3-E** Notifier 8클래스 이동 | 이 커밋 | pipeline.py 내 익명 클래스 8개 → `src/notifier/*.py` 로 이동 + `src/notifier/__init__.py` auto-register 트리거 + pipeline.py 축약 (200줄 감소). mock 경로 15곳 치환 |
 
 **최종 수치**: 1170 passed · pylint 10.00 · flake8 0 · bandit HIGH 0 · SonarCloud QG OK · 3종 Rating A.
@@ -397,7 +397,7 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 | **P3-리팩 완결** | 6렌즈 권고 #1~6 ✅ · #7 ✅ · #8a/#8b 스캐폴딩 | [Follow-up 섹션 참조](reports/2026-04-22-quality-audit-6lens.md#follow-up-2026-04-22--후속-실행-결과). 10커밋 완료. 실제 치환 잔존 2건(아래) |
 | **P4-Gate 재료 준비 완료 (2026-04-23)** | 샘플 C/Solidity + 가이드 + 검증 스크립트 | [docs/guides/p4-gate-verification.md](guides/p4-gate-verification.md). 사용자가 외부 테스트 리포에 샘플을 넣어 PR 제출 → 6항목 체크 후 D.3 해금. |
 | **P3-후속 (스캐폴딩 완성)** | #8a GateAction 엔진 전환 + #8b http_client 15곳 채택 | test_gate_engine.py 37건 mock 재작성 + 15곳 `async with httpx.AsyncClient` 치환 필요. 별도 Phase |
-| **P4 — Phase D (D.3~D.8)** | Tier 1 정적분석 도구 확장 | D.1 ✅ / D.2 ✅ / **D.3 은 위 게이트 통과 후** / D.4~D.8 도구별 승인 필요 |
+| **P4 — Phase D (D.3~D.8)** | Tier 1 정적분석 도구 확장 | D.1 ✅ / D.2 ✅ / **D.3 ✅ / D.4 ✅** (2026-04-23 그룹 23) / D.5~D.8 도구별 승인 필요 |
 | **P5 (외부 의존 작업)** | pytest-cov devcontainer 이미지 사전 캐싱 | DNS 제약 환경에서도 R2 커버리지 재현 가능하도록 wheel 사전 포함. devcontainer.json + 이미지 rebuild 필요 |
 
 ### D.3 차단 게이트 — ✅ 통과 (2026-04-23)
@@ -425,8 +425,8 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 |---------|-----|-----|------------|-------|------|
 | D.1 | cppcheck | C/C++ | +30MB | ✅ 완료 | 그룹 10 (2026-04-21) — apt 단순 설치 |
 | D.2 | slither | Solidity | +100MB | ✅ 완료 | 그룹 13 (2026-04-22) — pip 단순 설치 |
-| D.3 | RuboCop | Ruby | +80MB | 🟡 중간 | gem install — **D.1/D.2 실증 게이트 통과 후** |
-| D.4 | golangci-lint | Go | +200MB | 🟡 중간 | go.mod 자동생성 로직 필요 |
+| D.3 | RuboCop | Ruby | +80MB | ✅ 완료 | 그룹 23 (2026-04-23) — `gem install rubocop --no-document`, Security/ cop 분류 |
+| D.4 | golangci-lint | Go | +200MB | ✅ 완료 | 그룹 23 (2026-04-23) — v1.55.2 installer, `_ensure_go_mod` 자동생성 |
 | D.5 | PHPStan | PHP | +150MB | 🟠 높음 | PHP 런타임 추가, 수요 확인 후 |
 | D.6 | detekt | Kotlin | +350MB | 🟠 높음 | JDK 필요, Docker 전환 후 |
 | D.7 | PMD | Java | +300MB | 🔴 최상위 | JVM cold start, Docker 전환 후 |

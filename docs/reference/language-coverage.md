@@ -27,12 +27,12 @@
 | 2 | JavaScript | `.js` `.mjs` `.cjs` `.jsx` | Full | eslint, semgrep | — (완전) |
 | 3 | TypeScript | `.ts` `.tsx` | Full | eslint, semgrep | — (완전) |
 | 4 | Java | `.java` | Full | semgrep | PMD 🔴 |
-| 5 | Go | `.go` | Full | semgrep | golangci-lint 🟡 |
+| 5 | Go | `.go` | Full | semgrep, **golangci-lint** | — (Phase D.4 완료 2026-04-23) |
 | 6 | Rust | `.rs` | Full | semgrep (실험) | cargo clippy 🔴 |
 | 7 | C | `.c` `.h` | Full | semgrep, **cppcheck** | — (Phase D.1 완료) |
 | 8 | C++ | `.cpp` `.cc` `.cxx` `.hpp` `.hxx` | Full | semgrep, **cppcheck** | — (Phase D.1 완료) |
 | 9 | C# | `.cs` | Full | semgrep | — |
-| 10 | Ruby | `.rb` `Rakefile` `Gemfile` | Full | semgrep | RuboCop 🟡 |
+| 10 | Ruby | `.rb` `Rakefile` `Gemfile` | Full | semgrep, **RuboCop** | — (Phase D.3 완료 2026-04-23) |
 
 ### Tier 2 — 표준 체크리스트 + Semgrep (가능 시)
 
@@ -117,6 +117,6 @@
 | 리스크 | 도구 | 이미지 증가 |
 |-------|-----|----------|
 | 🟢 낮음 | ~~cppcheck (C/C++)~~ ✅ 완료, ~~slither (Solidity)~~ ✅ 완료 | +30~100MB |
-| 🟡 중간 | golangci-lint (Go), RuboCop (Ruby) | +80~200MB |
+| 🟡 중간 | ~~golangci-lint (Go)~~ ✅ 완료 (2026-04-23), ~~RuboCop (Ruby)~~ ✅ 완료 (2026-04-23) | +80~200MB |
 | 🟠 높음 | detekt (Kotlin), PHPStan (PHP) | +150~350MB |
 | 🔴 최상위 | PMD (Java), cargo clippy (Rust) | +300~700MB, Docker 전환 필요 |

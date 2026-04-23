@@ -34,7 +34,7 @@
 
 **SCAManager** automatically manages code quality for your GitHub repositories.
 
-On every Push or PR event, it runs **static analysis** (pylint · flake8 · bandit · Semgrep · ESLint · ShellCheck · cppcheck) and **Claude AI review** in parallel, producing a score out of 100 and a grade from A to F.
+On every Push or PR event, it runs **static analysis** (pylint · flake8 · bandit · Semgrep · ESLint · ShellCheck · cppcheck · slither · rubocop · golangci-lint) and **Claude AI review** in parallel, producing a score out of 100 and a grade from A to F.
 
 Results are delivered instantly via **Telegram · GitHub · Discord · Slack · Email · n8n**, and PRs can be automatically approved, rejected, or squash-merged based on the score.
 
@@ -48,10 +48,13 @@ For teams that push directly to `main`, it also supports **automatic commit comm
 
 | Analysis | Tools | Target |
 |----------|-------|--------|
-| Code Quality | pylint + flake8 + Semgrep + cppcheck | `.py` + C/C++ (cppcheck) + **35+ languages** (Semgrep) |
-| Security | bandit + Semgrep | `.py` files (tests excluded) + multi-language security rules |
+| Code Quality | pylint + flake8 + Semgrep + cppcheck + RuboCop + golangci-lint | `.py` + C/C++ (cppcheck) + `.rb` (RuboCop) + `.go` (golangci-lint) + **35+ languages** (Semgrep) |
+| Security | bandit + Semgrep + slither + RuboCop Security cops + gosec (via golangci-lint) | `.py` files (tests excluded) + Solidity (slither) + Ruby / Go security rules |
 | JS/TS Quality | ESLint (flat config) | `.js` `.mjs` `.ts` `.tsx` |
 | Shell Quality | ShellCheck | `.sh` `.bash` and other shell scripts |
+| Solidity | slither | `.sol` — reentrancy · tx.origin · weak-prng · Category-aware |
+| Ruby | RuboCop | `.rb` — Security cops detected separately |
+| Go | golangci-lint | `.go` — meta-linter (gosec / errcheck / staticcheck / unused, auto `go.mod`) |
 | AI Review | Claude Haiku 4.5 | **50 languages** with language-specific checklists |
 | Commit Message | Claude AI | Push / PR messages |
 
@@ -195,7 +198,7 @@ git push origin main
 | **Database** | PostgreSQL · SQLAlchemy 2 · Alembic · FailoverSessionFactory |
 | **AI (Server)** | Anthropic Claude API (claude-haiku-4-5) |
 | **AI (Local Hook)** | Claude Code CLI (`claude -p`) |
-| **Static Analysis** | pylint · flake8 · bandit (Python) + Semgrep (23+) + ESLint (JS/TS) + ShellCheck (shell) + cppcheck (C/C++) |
+| **Static Analysis** | pylint · flake8 · bandit (Python) + Semgrep (23+) + ESLint (JS/TS) + ShellCheck (shell) + cppcheck (C/C++) + slither (Solidity) + RuboCop (Ruby) + golangci-lint (Go) |
 | **Testing** | pytest · pytest-asyncio · httpx TestClient |
 | **E2E Testing** | Playwright (Chromium) |
 | **Web UI** | Jinja2 · Chart.js · CSS Variables (3 themes) |
@@ -377,7 +380,7 @@ GitHub Push/PR
             ├─ get_pr_files / get_push_files
             │
             ├─ asyncio.gather() ── parallel execution
-            │    ├─ analyze_file() × N  (pylint · flake8 · bandit · semgrep · eslint · shellcheck · cppcheck)
+            │    ├─ analyze_file() × N  (pylint · flake8 · bandit · semgrep · eslint · shellcheck · cppcheck · slither · rubocop · golangci-lint)
             │    └─ review_code()       (Claude AI — 50-language checklists, token budget 8000)
             │
             ├─ calculate_score()  →  score · grade

@@ -195,3 +195,34 @@ Agent C 추천: **시나리오 B**.
 1. 🟢 즉시 착수: S.4 + Q.7-2/3/4/5 (낮은 리스크, 3~4시간)
 2. 🟡 사용자 준비 필요: P4-Gate 실증 (외부 리포 + Railway 접근)
 3. 🟢 D.3~D.4 (P4-Gate 통과 후)
+
+---
+
+## 9. 실행 결과 (2026-04-23 세션 — 최종 갱신)
+
+사용자 승인 후 시나리오 B 10-step 전체 수행 완료. 커밋 순서는 계획과 일치.
+
+| # | Step | 커밋 | 상태 |
+|---|------|------|------|
+| 1+2 | S.4 + S.3-D | `f678222` | ✅ |
+| 3~5 | Q.7-2~5 Cognitive 4건 | `e551839` | ✅ |
+| 6 | P4-Gate 재료 | `6ec93f4` | ✅ |
+| 8 | Q.7-1 run_gate_check 분할 (pipeline-reviewer 승인) | `842ea1d` | ✅ |
+| STATE 중간 | 그룹 22 반영 | `8880df3` | ✅ |
+| 7 | P4-Gate 실증 통과 (분석 #543, xzawed/SCAManager-test-samples) | `39b0583` | ✅ |
+| 9 | D.3 RuboCop 추가 | `2eb0ef0` | ✅ |
+| 10 | D.4 golangci-lint 추가 | `d78b449` | ✅ |
+| 최종 | STATE/CLAUDE/README 동기화 | `430b2da` | ✅ |
+
+**최종 수치**: 1170 → **1188 passed** (+18) · pylint 10.00 · CRITICAL 0 · Quality Gate OK · Tier1 정적분석 **10종** (pylint/flake8/bandit/semgrep/eslint/shellcheck/cppcheck/slither/**rubocop**/**golangci-lint**).
+
+**P4-Gate 실증 결과 요약**:
+- cppcheck 4건 감지 (L12 buffer · L18 scanf · L23/24 uninitvar)
+- slither 3건 감지 — L13 **reentrancy-eth (security)** · L8 solc-version · L13 low-level-calls
+- 점수 반영 확인: 코드품질 25→15 (-10), 보안 20→13 (-7)
+
+**잔여 작업 (별도 세션)**:
+1. **Railway 2차 실증 (P4-Gate-2)** — rubocop/golangci-lint 가 배포 이미지에서 동작하는지 `.rb`·`.go` 샘플 PR 로 확인
+2. **AI 리뷰 파싱 실패** — 분석 #543 에서 "AI 응답 파싱 실패 → 기본값 적용" 경고 관찰. `src/analyzer/io/ai_review.py` 조사 대상. P4-Gate 와 무관.
+3. **Phase D.5~D.8** (PHPStan/detekt/PMD/clippy) — 수요 확인 또는 Docker 전환 선행 필요
+4. **P3-후속** — #8a GateAction 엔진 전환 + #8b http_client 15곳 채택 (별도 Phase)
