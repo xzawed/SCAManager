@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-23 기준 — Phase Q.7 + S.4 + D.3 + D.4 완료)
+## 현재 수치 (2026-04-23 기준 — Phase Q.7 + S.4 + D.3 + D.4 + AI parser 견고화 완료)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1188개** | pytest (0 failed) — D.3 +9, D.4 +9 신규 |
+| 단위 테스트 | **1192개** | pytest (0 failed) — AI 파서 견고화 +4 (preamble/uppercase/trailing/nested) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
@@ -393,7 +393,7 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 | **✅ Phase S.3 완료 (구조 정리 5단계)** | S.3-A Service 스캐폴딩 + S.3-B Analyzer pure/io + S.3-C tests/unit + S.3-E Notifier 8클래스 이동 + S.3-D UI/webhook repository_repo 확산 | 그룹 21 참조. S.3-D 는 S.4 완료와 함께 커밋 `f678222` 에 포함. |
 | **✅ Phase S.4 완료 (pipeline test mock 재설계)** | test_pipeline.py fixture 를 Option A (repository_repo / analysis_repo / get_repo_config 직접 patch) 로 전환 + repository_repo.find_by_full_name 내부 filter_by → filter 전환 | 커밋 `f678222`. 1170 passed. S.1-4 · S.3-D 2회 실패의 근본 원인 해소. |
 | **✅ P4-Gate 통과 (2026-04-23)** | D.1 cppcheck / D.2 slither 프로덕션 실증 — 6/6 통과 | `xzawed/SCAManager-test-samples` 리포 분석 #543: cppcheck 4건 (L12 buffer·L18 scanf·L23/24 uninitvar) + slither 3건 (reentrancy-eth L13 포함). 코드품질 -10, 보안 -7 감점 반영 확인. D.3 RuboCop 해금. |
-| **⚠️ 별도 Issue: AI 리뷰 파싱 실패** | 분석 #543 에서 "AI 응답 파싱에 실패하여 기본값이 적용되었습니다" 경고 | P4-Gate 와 무관한 별개 이슈. D.3/D.4 이후 조사 예정. 가능 원인: ANTHROPIC_API_KEY 미설정 · JSON 앞 설명 텍스트 · 토큰 한도 초과. |
+| **✅ AI 리뷰 파싱 실패 해소 (2026-04-23)** | `_extract_json_payload()` 분리 + 3가지 실패 모드 해소 | 분석 #543 경고 원인 — (1) preamble + 순수 JSON, (2) 대문자 ` ```JSON `, (3) JSON 뒤 trailing text. `re.IGNORECASE` + 첫 `{` ~ 마지막 `}` fallback. +4 tests (1188→1192). |
 | **P3-리팩 완결** | 6렌즈 권고 #1~6 ✅ · #7 ✅ · #8a/#8b 스캐폴딩 | [Follow-up 섹션 참조](reports/2026-04-22-quality-audit-6lens.md#follow-up-2026-04-22--후속-실행-결과). 10커밋 완료. 실제 치환 잔존 2건(아래) |
 | **P4-Gate 재료 준비 완료 (2026-04-23)** | 샘플 C/Solidity + 가이드 + 검증 스크립트 | [docs/guides/p4-gate-verification.md](guides/p4-gate-verification.md). 사용자가 외부 테스트 리포에 샘플을 넣어 PR 제출 → 6항목 체크 후 D.3 해금. |
 | **P3-후속 (스캐폴딩 완성)** | #8a GateAction 엔진 전환 + #8b http_client 15곳 채택 | test_gate_engine.py 37건 mock 재작성 + 15곳 `async with httpx.AsyncClient` 치환 필요. 별도 Phase |

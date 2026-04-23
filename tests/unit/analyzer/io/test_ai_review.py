@@ -189,6 +189,68 @@ async def test_review_code_api_error_returns_api_error_status():
     assert result.status == "api_error"
 
 
+# ---------------------------------------------------------------------------
+# Task 2 (2026-04-23) — _parse_response 견고화
+# 실제 프로덕션 분석 #543 에서 "AI 응답 파싱 실패" 경고가 관찰됨.
+# Claude 가 종종 (1) preamble + 순수 JSON, (2) 대문자 언어 태그,
+# (3) JSON 뒤 trailing text 형태로 응답 — 현재 파서는 이 3가지에서 실패.
+# ---------------------------------------------------------------------------
+
+def test_parse_response_preamble_without_code_block():
+    """Preamble 텍스트 뒤 순수 JSON (코드 블록 없음) — 가장 흔한 실패 패턴."""
+    text = (
+        "분석 결과는 다음과 같습니다:\n\n"
+        '{"commit_message_score": 18, "direction_score": 15, '
+        '"test_score": 8, "summary": "OK", "suggestions": []}'
+    )
+    result = _parse_response(text)
+    assert result.status == "success"
+    assert result.commit_score == 18
+    assert result.ai_score == 15
+    assert result.test_score == 8
+
+
+def test_parse_response_uppercase_json_language_tag():
+    """```JSON (대문자) 코드 블록도 정상 파싱되어야 함."""
+    text = (
+        "```JSON\n"
+        '{"commit_message_score": 17, "direction_score": 19, '
+        '"test_score": 9, "summary": "ok", "suggestions": []}\n'
+        "```"
+    )
+    result = _parse_response(text)
+    assert result.status == "success"
+    assert result.commit_score == 17
+    assert result.ai_score == 19
+
+
+def test_parse_response_trailing_text_after_json():
+    """JSON 뒤에 설명 텍스트가 붙는 경우 — 코드 블록 없음."""
+    text = (
+        '{"commit_message_score": 16, "direction_score": 14, '
+        '"test_score": 7, "summary": "ok", "suggestions": []}\n\n'
+        "추가 의견: 테스트 커버리지를 더 높여주세요."
+    )
+    result = _parse_response(text)
+    assert result.status == "success"
+    assert result.commit_score == 16
+    assert result.test_score == 7
+
+
+def test_parse_response_preamble_with_nested_file_feedbacks():
+    """Preamble + 중첩된 file_feedbacks 배열도 정상 파싱되어야 함."""
+    text = (
+        "다음은 리뷰 결과입니다:\n"
+        '{"commit_message_score": 18, "direction_score": 16, '
+        '"test_score": 8, "summary": "Good", "suggestions": ["tip1"], '
+        '"file_feedbacks": [{"file": "a.py", "issues": ["L10"]}]}'
+    )
+    result = _parse_response(text)
+    assert result.status == "success"
+    assert len(result.file_feedbacks) == 1
+    assert result.file_feedbacks[0]["file"] == "a.py"
+
+
 async def test_successful_review_has_success_status():
     # 정상적으로 파싱된 결과는 status == "success" 이어야 한다
     import json as _json

@@ -74,14 +74,31 @@ def _extract_test_score(data: dict) -> int:
     return 10 if data.get("has_tests", False) else 0
 
 
+def _extract_json_payload(text: str) -> str:
+    """Claude 응답에서 JSON 페이로드만 추출.
+
+    우선순위: (1) ```json/```JSON 코드 블록 → (2) 첫 `{` ~ 마지막 `}` 구간.
+    Claude 가 종종 preamble 또는 trailing text 를 붙이거나 언어 태그 대소문자를
+    섞어 응답 — 프로덕션 분석 #543 "parse_error" 원인.
+    """
+    cleaned = text.strip()
+    block_match = re.search(
+        r"```(?:json)?\s*(\{.*?\})\s*```",
+        cleaned,
+        re.DOTALL | re.IGNORECASE,
+    )
+    if block_match:
+        return block_match.group(1)
+    first = cleaned.find("{")
+    last = cleaned.rfind("}")
+    if first != -1 and last > first:
+        return cleaned[first:last + 1]
+    return cleaned
+
+
 def _parse_response(text: str) -> AiReviewResult:
     try:
-        cleaned = text.strip()
-        # 마크다운 코드 블록 내 JSON 추출 (앞에 설명 텍스트가 있어도 처리)
-        block_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", cleaned, re.DOTALL)
-        if block_match:
-            cleaned = block_match.group(1)
-        data = json.loads(cleaned)
+        data = json.loads(_extract_json_payload(text))
         return AiReviewResult(
             commit_score=max(0, min(AI_RAW_COMMIT_MAX, int(data.get("commit_message_score", AI_DEFAULT_COMMIT_RAW)))),
             ai_score=max(0, min(AI_RAW_DIRECTION_MAX, int(data.get("direction_score", AI_DEFAULT_DIRECTION_RAW)))),
