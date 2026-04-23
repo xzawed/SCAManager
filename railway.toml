@@ -1,6 +1,6 @@
 [build]
 builder = "NIXPACKS"
-buildCommand = "npm install -g eslint@9 @typescript-eslint/parser @typescript-eslint/eslint-plugin && solc-select install 0.8.20 && solc-select use 0.8.20"
+buildCommand = "npm install -g eslint@9 @typescript-eslint/parser @typescript-eslint/eslint-plugin && solc-select install 0.8.20 && solc-select use 0.8.20 && gem install rubocop --no-document"
 
 [deploy]
 startCommand = "uvicorn src.main:app --host 0.0.0.0 --port $PORT --proxy-headers"
