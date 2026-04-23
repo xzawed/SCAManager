@@ -123,7 +123,8 @@ def save_hook_result(body: HookResultRequest):
         db.commit()
         db.refresh(analysis)
 
-        logger.info("CLI hook result saved: repo=%s sha=%s score=%d",
+        # 로그 인젝션 방지: 사용자 입력(body.repo, body.commit_sha)은 %r 로 repr 변환
+        logger.info("CLI hook result saved: repo=%r sha=%r score=%d",
                     body.repo, body.commit_sha, score_result.total)
 
         return {

@@ -362,10 +362,10 @@
               <table class="preset-table">
                 <thead>
                   <tr style="font-size:11px;color:var(--text-muted);font-weight:600;">
-                    <td style="width:48%">필드</td>
-                    <td style="text-align:center;width:18%">현재값</td>
-                    <td style="text-align:center;width:6%"></td>
-                    <td style="text-align:right;width:28%">프리셋값</td>
+                    <th scope="col" style="width:48%;text-align:left;">필드</th>
+                    <th scope="col" style="text-align:center;width:18%">현재값</th>
+                    <th scope="col" style="text-align:center;width:6%"><span class="sr-only">비교</span></th>
+                    <th scope="col" style="text-align:right;width:28%">프리셋값</th>
                   </tr>
                 </thead>
                 <tbody id="preset-diff-minimal"></tbody>
@@ -397,10 +397,10 @@
               <table class="preset-table">
                 <thead>
                   <tr style="font-size:11px;color:var(--text-muted);font-weight:600;">
-                    <td style="width:48%">필드</td>
-                    <td style="text-align:center;width:18%">현재값</td>
-                    <td style="text-align:center;width:6%"></td>
-                    <td style="text-align:right;width:28%">프리셋값</td>
+                    <th scope="col" style="width:48%;text-align:left;">필드</th>
+                    <th scope="col" style="text-align:center;width:18%">현재값</th>
+                    <th scope="col" style="text-align:center;width:6%"><span class="sr-only">비교</span></th>
+                    <th scope="col" style="text-align:right;width:28%">프리셋값</th>
                   </tr>
                 </thead>
                 <tbody id="preset-diff-standard"></tbody>
@@ -432,10 +432,10 @@
               <table class="preset-table">
                 <thead>
                   <tr style="font-size:11px;color:var(--text-muted);font-weight:600;">
-                    <td style="width:48%">필드</td>
-                    <td style="text-align:center;width:18%">현재값</td>
-                    <td style="text-align:center;width:6%"></td>
-                    <td style="text-align:right;width:28%">프리셋값</td>
+                    <th scope="col" style="width:48%;text-align:left;">필드</th>
+                    <th scope="col" style="text-align:center;width:18%">현재값</th>
+                    <th scope="col" style="text-align:center;width:6%"><span class="sr-only">비교</span></th>
+                    <th scope="col" style="text-align:right;width:28%">프리셋값</th>
                   </tr>
                 </thead>
                 <tbody id="preset-diff-strict"></tbody>
@@ -495,15 +495,21 @@
           <!-- Approve 3-way -->
           <div class="gate-btns">
             <div class="gate-mode-btn {% if config.approve_mode == 'disabled' %}active{% endif %}"
-                 data-mode="disabled" onclick="setApproveMode('disabled')">
+                 data-mode="disabled" role="button" tabindex="0"
+                 onclick="setApproveMode('disabled')"
+                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();setApproveMode('disabled');}">
               <span class="gm-icon">🚫</span>비활성
             </div>
             <div class="gate-mode-btn {% if config.approve_mode == 'auto' %}active{% endif %}"
-                 data-mode="auto" onclick="setApproveMode('auto')">
+                 data-mode="auto" role="button" tabindex="0"
+                 onclick="setApproveMode('auto')"
+                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();setApproveMode('auto');}">
               <span class="gm-icon">⚡</span>자동
             </div>
             <div class="gate-mode-btn {% if config.approve_mode == 'semi-auto' %}active{% endif %}"
-                 data-mode="semi-auto" onclick="setApproveMode('semi-auto')">
+                 data-mode="semi-auto" role="button" tabindex="0"
+                 onclick="setApproveMode('semi-auto')"
+                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();setApproveMode('semi-auto');}">
               <span class="gm-icon">📱</span>반자동
             </div>
           </div>
@@ -866,7 +872,7 @@
     document.querySelectorAll('.preset-details').forEach(function(d) {
       if (d !== el) d.open = false;
     });
-    renderPresetDiff(name, el);
+    renderPresetDiff(name);
   }
 
   // 현재 폼 값 vs 프리셋 값 diff 를 테이블에 렌더 (P1)

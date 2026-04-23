@@ -183,6 +183,19 @@
 | 테스트 fixture 재작성 | `test_railway_client.py`(2곳) + `test_railway_issue_notifier.py`(`_EVENT` fixture nested 재작성) | — |
 | 외부 API 불변 | `parse_railway_payload` · `create_deploy_failure_issue` 시그니처 · Webhook payload 스키마 · DB 전부 그대로 | — |
 
+### 그룹 17 — Phase Q.1~Q.4 SonarCloud 청산 일괄 반영 (2026-04-23)
+
+[2026-04-23 진단 보고서](reports/2026-04-23-sonarcloud-baseline.md) §5 계획에 따라 4개 Phase 를 연속 실행. 테스트 1168 passed 유지, pylint 10.00 유지.
+
+| Phase | 범위 | 예상 효과 |
+|-------|------|----------|
+| Q.1 | `sonar-project.properties` 에 `sonar.issue.ignore.multicriteria` 4 규칙 추가 — python:S6418 (tests/e2e), python:S930 (tests), Web:S5725 (templates CDN SRI) | BLOCKER 14→7, Vuln 7→4, Bugs 8→4 |
+| Q.2 | `src/github_client/repos.py` — `_repo_path()` 헬퍼 + `urllib.parse.quote()` 로 URL path 방어적 인코딩 5곳 | Vuln pythonsecurity:S7044 5건 해소 예상 |
+| Q.3 | `<td>` → `<th scope>` 변환 (settings.html 3곳 + analysis_detail.html 1곳), `<div>` click 에 `role/tabindex/onkeydown` 추가 3곳, `.sr-only` 유틸 클래스 base.html 에 정의 | Bugs Web:S5256 4건 + MouseEventWithoutKeyboard 3건 해소 |
+| Q.4 | JS renderPresetDiff 인자 수 정정 (2→1), HMAC regex `[\s:]*` 로 ReDoS 완화, float 비교를 `pytest.approx()` 로 교체, logger 포맷 `%s` → `%r` 로 인젝션 차단 2곳 | BLOCKER 잔존 0 + Hotspot 1건 해소 |
+
+다음 CI 실행 후 SonarCloud 재분석 결과로 실제 Rating 변동 확인 예정 (목표: Maintainability A + Reliability A + Security A).
+
 ### 그룹 16 — SonarCloud 1차 분석 결과 확보 (2026-04-23)
 
 2026-04-22 push 후 SONAR_TOKEN/CODECOV_TOKEN 등록 → CI #2 `1106242` 성공 → 첫 분석 완료.
@@ -255,7 +268,7 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 
 | 우선순위 | 항목 | 비고 |
 |---------|------|------|
-| **🔴 Phase Q (SonarCloud 청산)** | Bugs 8 / Vulns 7 / Hotspots 4 / Smells 78 청산 | [2026-04-23 진단 보고서](reports/2026-04-23-sonarcloud-baseline.md). 4개 Phase(Q.1~Q.4) 계획 수립, 승인 대기. 최종 Rating A·A·A 달성 목표 (~7h) |
+| **✅ Phase Q.1~Q.4 완료 (SonarCloud 청산)** | FP suppress + URL 인코딩 + HTML 접근성 + 정밀 검토 | [2026-04-23 진단](reports/2026-04-23-sonarcloud-baseline.md) 기반 4 Phase 모두 반영. 다음 CI 재분석 후 Rating 변동 관찰 예정 |
 | **🚧 P4-Gate (D.3 차단)** | D.1 cppcheck / D.2 slither 프로덕션 실증 검증 | D.3 착수 전 필수 — 아래 "D.3 차단 게이트" 섹션 체크리스트 완료 조건 |
 | **P3-리팩 완결** | 6렌즈 권고 #1~6 ✅ · #7 ✅ · #8a/#8b 스캐폴딩 | [Follow-up 섹션 참조](reports/2026-04-22-quality-audit-6lens.md#follow-up-2026-04-22--후속-실행-결과). 10커밋 완료. 실제 치환 잔존 2건(아래) |
 | **P3-후속 (스캐폴딩 완성)** | #8a GateAction 엔진 전환 + #8b http_client 15곳 채택 | test_gate_engine.py 37건 mock 재작성 + 15곳 `async with httpx.AsyncClient` 치환 필요. 별도 Phase |

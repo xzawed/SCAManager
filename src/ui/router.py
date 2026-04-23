@@ -276,7 +276,8 @@ async def update_repo_settings(
             if config_orm:
                 db.commit()
         except ValueError:
-            logger.warning("Invalid threshold values for %s, settings not saved", repo_name)
+            # 로그 인젝션 방지: %r 로 repr 변환 (CR/LF 등 특수문자 이스케이프)
+            logger.warning("Invalid threshold values for %r, settings not saved", repo_name)
             return RedirectResponse(
                 url=f"/repos/{repo_name}/settings?save_error=1", status_code=303
             )

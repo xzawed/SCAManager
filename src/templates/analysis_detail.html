@@ -313,12 +313,19 @@
 <div class="card ad-breakdown">
   <div class="ad-section-title">📊 점수 상세</div>
   <table>
+    <thead class="sr-only">
+      <tr>
+        <th scope="col">항목</th>
+        <th scope="col">점수</th>
+        <th scope="col">비율</th>
+      </tr>
+    </thead>
     <tbody>
     {% for label, key, mx in [('코드 품질','code_quality',25),('보안','security',20),('커밋 메시지','commit_message',15),('구현 방향성','ai_review',25),('테스트','test_coverage',15)] %}
     {% set val = bd.get(key, 0) %}
     {% set pct = (val / mx * 100) if mx else 0 %}
     <tr>
-      <td style="width:110px;font-size:13px;padding:6px 8px;color:var(--text-muted)">{{ label }}</td>
+      <th scope="row" style="width:110px;font-size:13px;padding:6px 8px;color:var(--text-muted);text-align:left;font-weight:normal;">{{ label }}</th>
       <td style="font-size:14px;font-weight:700;padding:6px 4px;width:60px;text-align:right">{{ val }}/{{ mx }}</td>
       <td class="ad-bar-cell" style="padding:6px 8px">
         <div class="ad-bar-wrap">
