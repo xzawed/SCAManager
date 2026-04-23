@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from src.database import SessionLocal
+from src.log_safety import sanitize_for_log
 from src.models.analysis import Analysis
 from src.models.repository import Repository
 from src.repositories import repo_config_repo
@@ -123,9 +124,13 @@ def save_hook_result(body: HookResultRequest):
         db.commit()
         db.refresh(analysis)
 
-        # 로그 인젝션 방지: 사용자 입력(body.repo, body.commit_sha)은 %r 로 repr 변환
-        logger.info("CLI hook result saved: repo=%r sha=%r score=%d",
-                    body.repo, body.commit_sha, score_result.total)
+        # 로그 인젝션 방지: sanitize_for_log() 로 사용자 입력 정제
+        logger.info(
+            "CLI hook result saved: repo=%s sha=%s score=%d",
+            sanitize_for_log(body.repo),
+            sanitize_for_log(body.commit_sha),
+            score_result.total,
+        )
 
         return {
             "status": "saved",

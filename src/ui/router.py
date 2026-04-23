@@ -1,6 +1,8 @@
 """Web UI router — Jinja2 dashboard pages for repos, analyses, and settings."""
 import logging
 import secrets
+from typing import Annotated
+
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -13,6 +15,7 @@ from src.models.analysis import Analysis
 from src.models.repo_config import RepoConfig
 from src.models.gate_decision import GateDecision
 from src.auth.session import require_login, CurrentUser
+from src.log_safety import sanitize_for_log
 from src.repositories import repo_config_repo
 from src.config_manager.manager import get_repo_config, upsert_repo_config, RepoConfigData
 from src.scorer.calculator import calculate_grade
@@ -79,13 +82,13 @@ async def _delete_repo_cascade(db, repo: Repository, github_token: str) -> None:
 
 
 @router.get("/repos/add", response_class=HTMLResponse)
-async def add_repo_page(request: Request, current_user: CurrentUser = Depends(require_login)):
+async def add_repo_page(request: Request, current_user: Annotated[CurrentUser, Depends(require_login)]):
     """리포 추가 페이지를 렌더링한다."""
     return templates.TemplateResponse(request, "add_repo.html", {"current_user": current_user})
 
 
 @router.get("/api/github/repos")
-async def github_repos_list(current_user: CurrentUser = Depends(require_login)):
+async def github_repos_list(current_user: Annotated[CurrentUser, Depends(require_login)]):
     """사용자의 GitHub 리포 목록 중 미등록 리포만 반환한다."""
     with SessionLocal() as db:
         existing_names = {
@@ -98,7 +101,7 @@ async def github_repos_list(current_user: CurrentUser = Depends(require_login)):
 
 
 @router.post("/repos/add")
-async def add_repo(request: Request, current_user: CurrentUser = Depends(require_login)):
+async def add_repo(request: Request, current_user: Annotated[CurrentUser, Depends(require_login)]):
     """리포를 등록하고 GitHub Webhook을 생성한다."""
     form = await request.form()
     repo_full_name = (form.get("repo_full_name") or "").strip()
@@ -164,7 +167,7 @@ async def add_repo(request: Request, current_user: CurrentUser = Depends(require
 
 
 @router.get("/", response_class=HTMLResponse)
-def overview(request: Request, current_user: CurrentUser = Depends(require_login)):
+def overview(request: Request, current_user: Annotated[CurrentUser, Depends(require_login)]):
     """전체 리포 현황 대시보드를 렌더링한다."""
     with SessionLocal() as db:
         repos = db.query(Repository).filter(
@@ -209,11 +212,11 @@ def overview(request: Request, current_user: CurrentUser = Depends(require_login
 def repo_settings(  # pylint: disable=too-many-positional-arguments
     request: Request,
     repo_name: str,
+    current_user: Annotated[CurrentUser, Depends(require_login)],
     hook_ok: int = 0,
     hook_fail: int = 0,
     saved: int = 0,
     save_error: int = 0,
-    current_user: CurrentUser = Depends(require_login),
 ):
     """리포 Gate·알림 설정 페이지를 렌더링한다."""
     with SessionLocal() as db:
@@ -240,7 +243,7 @@ def repo_settings(  # pylint: disable=too-many-positional-arguments
 async def update_repo_settings(
     request: Request,
     repo_name: str,
-    current_user: CurrentUser = Depends(require_login),  # pylint: disable=unused-argument
+    current_user: Annotated[CurrentUser, Depends(require_login)],  # pylint: disable=unused-argument
 ):
     """폼 데이터로 리포 Gate·알림 설정을 저장한다."""
     form = await request.form()
@@ -276,8 +279,11 @@ async def update_repo_settings(
             if config_orm:
                 db.commit()
         except ValueError:
-            # 로그 인젝션 방지: %r 로 repr 변환 (CR/LF 등 특수문자 이스케이프)
-            logger.warning("Invalid threshold values for %r, settings not saved", repo_name)
+            # 로그 인젝션 방지: sanitize_for_log() 로 CR/LF 제거 + 길이 제한
+            logger.warning(
+                "Invalid threshold values for %s, settings not saved",
+                sanitize_for_log(repo_name),
+            )
             return RedirectResponse(
                 url=f"/repos/{repo_name}/settings?save_error=1", status_code=303
             )
@@ -288,7 +294,7 @@ async def update_repo_settings(
 async def reinstall_hook(
     request: Request,
     repo_name: str,
-    current_user: CurrentUser = Depends(require_login),
+    current_user: Annotated[CurrentUser, Depends(require_login)],
 ):
     """기존 등록 리포에 .scamanager/ 파일을 재커밋한다."""
     with SessionLocal() as db:
@@ -324,7 +330,7 @@ async def reinstall_hook(
 async def reinstall_webhook(
     request: Request,
     repo_name: str,
-    current_user: CurrentUser = Depends(require_login),
+    current_user: Annotated[CurrentUser, Depends(require_login)],
 ):
     """GitHub Webhook을 삭제하고 새 URL(HTTPS)로 재등록한다. 중복 웹훅도 모두 정리한다."""
     with SessionLocal() as db:
@@ -360,7 +366,7 @@ async def reinstall_webhook(
 @router.post("/repos/{repo_name:path}/delete")
 async def delete_repo(
     repo_name: str,
-    current_user: CurrentUser = Depends(require_login),
+    current_user: Annotated[CurrentUser, Depends(require_login)],
 ):
     """리포지토리 + 연관 데이터(Webhook, Analysis, GateDecision, RepoConfig)를 삭제한다."""
     with SessionLocal() as db:
@@ -372,7 +378,7 @@ async def delete_repo(
 @router.get("/repos/{repo_name:path}/analyses/{analysis_id}", response_class=HTMLResponse)
 def analysis_detail(
     request: Request, repo_name: str, analysis_id: int,
-    current_user: CurrentUser = Depends(require_login),
+    current_user: Annotated[CurrentUser, Depends(require_login)],
 ):
     """분석 상세 페이지(AI 리뷰·점수·피드백)를 렌더링한다."""
     with SessionLocal() as db:
@@ -421,8 +427,8 @@ def analysis_detail(
 def repo_detail(  # pylint: disable=too-many-positional-arguments
     request: Request,
     repo_name: str,
+    current_user: Annotated[CurrentUser, Depends(require_login)],
     hook_installed: int = 0,
-    current_user: CurrentUser = Depends(require_login),
 ):
     """리포 분석 이력 및 점수 차트 페이지를 렌더링한다."""
     with SessionLocal() as db:
