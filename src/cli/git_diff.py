@@ -32,46 +32,42 @@ def _git(*args: str, check: bool = True) -> subprocess.CompletedProcess:
         raise GitError(f"git command failed: {exc.stderr or exc}") from exc
 
 
+def _collect_file(
+    line: str, base: str, staged: bool
+) -> ChangedFile | None:
+    """`--name-status` 한 줄을 ChangedFile 로 변환. 바이너리·스킵 케이스는 None."""
+    parts = line.split("\t", 1)
+    if len(parts) < 2:
+        return None
+    status, filename = parts[0], parts[1]
+
+    patch_args = ("diff", "--cached", "--", filename) if staged else ("diff", base, "--", filename)
+    patch = _git(*patch_args, check=False).stdout
+    if _BINARY_PATTERN.search(patch):
+        return None
+
+    content = ""
+    if status != "D":
+        content_result = _git("show", "HEAD:" + filename, check=False)
+        if content_result.returncode == 0:
+            content = content_result.stdout
+
+    return ChangedFile(filename=filename, content=content, patch=patch)
+
+
 def get_diff_files(
     base: str = "HEAD~1", staged: bool = False
 ) -> list[ChangedFile]:
     """로컬 git diff로 변경 파일 목록과 패치를 수집한다."""
-    if staged:
-        result = _git("diff", "--cached", "--name-status", check=False)
-    else:
-        result = _git("diff", "--name-status", base, check=False)
-
+    name_status_args = ("diff", "--cached", "--name-status") if staged else ("diff", "--name-status", base)
+    result = _git(*name_status_args, check=False)
     lines = [ln for ln in result.stdout.strip().splitlines() if ln.strip()]
-    if not lines:
-        return []
 
     files: list[ChangedFile] = []
     for line in lines:
-        parts = line.split("\t", 1)
-        if len(parts) < 2:
-            continue
-        status, filename = parts[0], parts[1]
-
-        # get patch
-        if staged:
-            patch_result = _git("diff", "--cached", "--", filename, check=False)
-        else:
-            patch_result = _git("diff", base, "--", filename, check=False)
-        patch = patch_result.stdout
-
-        # skip binary files
-        if _BINARY_PATTERN.search(patch):
-            continue
-
-        # get file content (empty for deleted files)
-        content = ""
-        if status != "D":
-            content_result = _git("show", "HEAD:" + filename, check=False)
-            if content_result.returncode == 0:
-                content = content_result.stdout
-
-        files.append(ChangedFile(filename=filename, content=content, patch=patch))
-
+        changed = _collect_file(line, base, staged)
+        if changed is not None:
+            files.append(changed)
     return files
 
 

@@ -66,6 +66,30 @@ class _SlitherAnalyzer:
             return []
 
 
+def _map_severity(impact: str) -> Severity:
+    """slither impact 문자열을 Severity enum 으로 매핑."""
+    return Severity.ERROR if impact in ("High", "Medium") else Severity.WARNING
+
+
+def _map_category(check: str) -> Category:
+    """slither detector 이름 기준 category 매핑 (security vs code_quality)."""
+    return Category.SECURITY if check in _SECURITY_DETECTORS else Category.CODE_QUALITY
+
+
+def _extract_line_number(elements: list) -> int:
+    """slither detector elements 에서 첫 line 번호 추출. 실패 시 0."""
+    if not elements:
+        return 0
+    source = elements[0].get("source_mapping", {}) or {}
+    lines = source.get("lines", []) or []
+    if not lines:
+        return 0
+    try:
+        return int(lines[0])
+    except (TypeError, ValueError):
+        return 0
+
+
 def _parse_slither_json(json_text: str, language: str) -> list[AnalysisIssue]:
     """slither JSON 결과를 AnalysisIssue 목록으로 변환한다.
 
@@ -79,26 +103,13 @@ def _parse_slither_json(json_text: str, language: str) -> list[AnalysisIssue]:
     issues: list[AnalysisIssue] = []
     for det in detectors:
         check = det.get("check", "")
-        impact = det.get("impact", "Informational")
-        severity = Severity.ERROR if impact in ("High", "Medium") else Severity.WARNING
-        category = Category.SECURITY if check in _SECURITY_DETECTORS else Category.CODE_QUALITY
         message = det.get("description", "").strip().split("\n")[0] or check
-        line = 0
-        elements = det.get("elements", []) or []
-        if elements:
-            source = elements[0].get("source_mapping", {}) or {}
-            lines = source.get("lines", []) or []
-            if lines:
-                try:
-                    line = int(lines[0])
-                except (TypeError, ValueError):
-                    line = 0
         issues.append(AnalysisIssue(
             tool="slither",
-            severity=severity,
+            severity=_map_severity(det.get("impact", "Informational")),
             message=message,
-            line=line,
-            category=category,
+            line=_extract_line_number(det.get("elements", []) or []),
+            category=_map_category(check),
             language=language,
         ))
     return issues
