@@ -348,6 +348,8 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 
 ## 잔여 과제
 
+> 🧭 **종합 로드맵 (2026-04-23)**: 3-에이전트 논의 결과 → [`reports/2026-04-23-remaining-roadmap-3agent.md`](reports/2026-04-23-remaining-roadmap-3agent.md). Phase Q.7 / S.4 / D.3~D.8 / P4-Gate 전체 잔여 과제를 시나리오 A/B/C 로 비교, **시나리오 B (균형형)** 를 권고안으로 결정. 10-step 실행 순서 포함.
+
 | 우선순위 | 항목 | 비고 |
 |---------|------|------|
 | **✅ Phase Q.1~Q.6 완료 (SonarCloud 청산)** | Quality Gate OK + 3종 Rating A 달성 | [Follow-up 섹션](reports/2026-04-23-sonarcloud-baseline.md#follow-up--phase-q1q6-전체-실행-결과-2026-04-23-세션). Bugs/Vuln/Hotspots/BLOCKER 0, Code Smells 78→58 |
