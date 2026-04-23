@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-23 기준 — Phase Q.7 + S.4 + D.3 + D.4 + AI parser 견고화 완료)
+## 현재 수치 (2026-04-23 기준 — Phase Q.7 + S.4 + D.3 + D.4 + AI parser 견고화 + Railway 빌드 안정화 완료)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
@@ -189,6 +189,23 @@
 | 테스트 fixture 재작성 | `test_railway_client.py`(2곳) + `test_railway_issue_notifier.py`(`_EVENT` fixture nested 재작성) | — |
 | 외부 API 불변 | `parse_railway_payload` · `create_deploy_failure_issue` 시그니처 · Webhook payload 스키마 · DB 전부 그대로 | — |
 
+### 그룹 24 — Railway 빌드 안정화 (rubocop/prism 의존성 트랩 해소) (2026-04-23)
+
+Phase D.3 배포 후 Railway 빌드 **2회 연속 실패** → 3차 수정 성공. 상세 경위: [회고 문서](reports/2026-04-23-railway-rubocop-prism-retrospective.md).
+
+| 시도 | 커밋 | 접근 | 결과 |
+|-----|------|------|------|
+| 1차 수정 | `6aaa268` | `build-essential + libyaml-dev` 추가 + rubocop 1.57.2 핀 | ❌ 동일 prism 오류 재발 (nix/apt PATH 혼재로 gcc 미작동) |
+| 근본 원인 분석 | — | 로그 상세 분석: `rubocop-ast` transitive prism 의존성 추적 | — |
+| 2차 수정 (최종) | `8042f12` | **`gem install rubocop-ast -v 1.36.2`** 를 rubocop 설치 전에 명시 삽입 | ✅ 배포 성공 (2026-04-23) |
+
+**핵심 통찰**:
+- rubocop 1.57.2 는 pure Ruby 이지만 `rubocop-ast (>= 1.28.1, < 2.0)` 제약이 **시간이 지나 prism 을 필요로 하는 최신 버전(1.43+)** 으로 떠올랐음
+- "버전 고정"과 "재현 가능 빌드" 는 다르다 — transitive 의존성을 명시 고정해야 진정한 재현성
+- P4-Gate 제도의 가치: 로컬 mock 테스트만으로는 프로덕션 환경 (nixpacks + apt + nix) 에서의 gem 설치 동작을 보장 못함
+
+**재발 방지**: Ruby 도구 추가 시 transitive 의존성을 미리 점검. `rubocop-ast 1.36.2` 고정은 향후 rubocop 업데이트에도 유효 (rubocop 1.57.2 제약 만족).
+
 ### 그룹 23 — Phase D.3 + D.4 — Ruby·Go 정적분석 확장 (2026-04-23)
 
 시나리오 B 10-step 중 Step 9~10 완료. P4-Gate 실증 통과 (분석 #543) 로 해금된 후 즉시 착수. 두 도구 모두 TDD 로 9개 테스트 선작성 → 구현 9/9 Green → Railway 빌드 설정 추가 순서.
@@ -201,7 +218,8 @@
 **최종 수치**: 1170 → **1188 passed** (+18) · pylint 10.00 · CRITICAL 0 · Tier1 정적분석 도구 **10종**.
 
 **대기 작업 (Railway 프로덕션 2차 실증)**:
-- `xzawed/SCAManager-test-samples` 에 `.rb` · `.go` 샘플 푸시 후 rubocop/golangci-lint 실제 동작 확인 (D.1/D.2 와 동일한 절차).
+- ✅ **Railway 빌드 성공 (2026-04-23)** — 그룹 24 참조. 이제 바이너리 동작 확인부터 진행 가능.
+- `xzawed/SCAManager-test-samples` 에 `.rb` · `.go` 샘플 푸시 후 rubocop/golangci-lint 실제 동작 확인 → [P4-Gate-2 가이드](guides/p4-gate-2-verification.md) 2단계부터.
 
 ### 그룹 22 — Phase Q.7 + S.4 + S.3-D 완결 + P4-Gate 재료 (2026-04-23)
 
