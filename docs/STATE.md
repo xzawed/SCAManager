@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-23 기준 — Phase E.2 Observability 완료)
+## 현재 수치 (2026-04-23 기준 — Phase E.2 + E.3 완료)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1213개** | pytest (0 failed) — Phase E.2 +21 (Sentry 9 skip CI + Claude metrics 14 + stage metrics 7) |
+| 단위 테스트 | **1227개** | pytest (0 failed) — Phase E.3 +14 (feedback repo 7 + feedback routes 7) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
@@ -188,6 +188,25 @@
 | notifier 접근 체인 | `railway_issue.py` 11곳 nested 접근(`event.project.*`/`event.commit.*`)으로 업데이트 (출력 문자열 불변) | — |
 | 테스트 fixture 재작성 | `test_railway_client.py`(2곳) + `test_railway_issue_notifier.py`(`_EVENT` fixture nested 재작성) | — |
 | 외부 API 불변 | `parse_railway_payload` · `create_deploy_failure_issue` 시그니처 · Webhook payload 스키마 · DB 전부 그대로 | — |
+
+### 그룹 26 — Phase E.3 AI 점수 피드백 루프 (2026-04-23)
+
+Path A (서비스화) 로드맵 세 번째 단계. Claude 점수 vs 사람 판단의 정합도를 측정해
+auto-merge 결정의 신뢰 기반 구축.
+
+| 세부 | 내용 |
+|------|------|
+| **E.3-a** ORM + Migration + Repository | `AnalysisFeedback` ORM (analysis_id + user_id FK CASCADE, thumbs +1/-1, comment, timestamps). Alembic 0013. `analysis_feedback_repo` 3함수 (upsert / find / get_calibration_by_score_range). UniqueConstraint 로 (사용자, 분석) 당 1개 강제. +7 tests |
+| **E.3-b** 피드백 엔드포인트 | `POST /repos/{name}/analyses/{id}/feedback` (세션 기반 require_login, Pydantic Literal[1,-1] 검증) + `GET .../feedback` (UI 상태 복원용) + `analysis_detail` context 에 `user_feedback` 추가. +7 tests |
+| **E.3-c** analysis_detail UI | 점수 배너 아래 "이 점수가 맞나요?" 피드백 카드 — 👍/👎 버튼 + fetch POST + 초기 상태 복원. 카드 CSS + 인라인 JS (약 70줄) |
+| **E.3-d** 정합도 대시보드 | overview.py 에서 `get_calibration_by_score_range` 호출 → 5구간 표 (피드백 수·👍 비율·bar chart). 피드백 1건 이상 있을 때만 노출 |
+
+**최종 수치**: 1213 → **1227 passed** (+14) · 1 skipped · pylint 10.00 · flake8 0.
+
+**얻게 된 것**:
+- auto-merge threshold 를 조정할 근거 데이터 — 3개월 뒤부터 점수 범위별 👍 비율 분석 가능
+- Claude 프롬프트 개선 대상 식별 — 👍 비율 낮은 구간의 분석 케이스 리뷰
+- 사용자가 실제로 받는 가치 지표 — 점수가 쓸모없으면 👎 비율 상승
 
 ### 그룹 25 — Phase E.2 Observability 기반 구축 (2026-04-23)
 

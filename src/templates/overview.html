@@ -133,4 +133,56 @@
   </div>
 </div>
 {% endif %}
+
+{# Phase E.3-d — AI 점수 정합도 지표 (피드백 1건 이상 있을 때만 노출) #}
+{% set cal_total = calibration.values() | map(attribute='count') | sum %}
+{% if calibration and cal_total > 0 %}
+<div class="card calibration-card">
+  <div class="calibration-header">
+    <h3>📊 AI 점수 정합도</h3>
+    <span class="calibration-hint">Claude 가 매긴 점수가 사람 판단과 얼마나 일치하는지 — 점수 범위별 👍 비율</span>
+  </div>
+  <table class="calibration-table">
+    <thead>
+      <tr>
+        <th>점수 범위</th>
+        <th>피드백 수</th>
+        <th>👍 비율</th>
+        <th>시각화</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for range_name, data in calibration.items() %}
+      {% if data.count > 0 %}
+      <tr>
+        <td><strong>{{ range_name }}</strong></td>
+        <td>{{ data.count }}</td>
+        <td>{{ "%.1f"|format(data.up_ratio * 100) }}%</td>
+        <td>
+          <div class="cal-bar">
+            <div class="cal-bar-fill" style="width: {{ (data.up_ratio * 100) | round(1) }}%"></div>
+          </div>
+        </td>
+      </tr>
+      {% endif %}
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<style>
+  .calibration-card { margin-top: 1.5rem; padding: 1.2rem 1.4rem; }
+  .calibration-header { margin-bottom: 0.8rem; }
+  .calibration-header h3 { margin: 0 0 0.3rem; font-size: 16px; }
+  .calibration-hint { font-size: 12px; color: var(--text-muted); }
+  .calibration-table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
+  .calibration-table th, .calibration-table td { padding: 0.5rem 0.75rem; text-align: left;
+                                                  border-bottom: 1px solid var(--border); }
+  .calibration-table th { font-size: 12px; color: var(--text-muted); font-weight: 600; }
+  .cal-bar { width: 160px; height: 8px; background: var(--bg-hover); border-radius: 4px;
+             overflow: hidden; }
+  .cal-bar-fill { height: 100%; background: linear-gradient(90deg, #10b981, #34d399);
+                  transition: width 0.3s ease; }
+</style>
+{% endif %}
+
 {% endblock %}

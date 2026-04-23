@@ -1,17 +1,37 @@
 """리포 분석 이력 + 분석 상세 페이지 — catch-all `/repos/{name}` 는 마지막에 include."""
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel, Field
 
 from src.auth.session import CurrentUser, require_login
 from src.database import SessionLocal
 from src.models.analysis import Analysis
+from src.repositories import analysis_feedback_repo
 from src.ui._helpers import get_accessible_repo, templates
 
 router = APIRouter()
+
+
+class FeedbackRequest(BaseModel):
+    """Phase E.3 — 피드백 upsert 본문."""
+    thumbs: Literal[1, -1] = Field(..., description="+1=up, -1=down")
+    comment: str | None = None
+
+
+def _serialize_feedback(fb: object | None) -> dict:
+    """Feedback ORM → JSON 직렬화 헬퍼."""
+    if fb is None:
+        return {"thumbs": None, "comment": None, "updated_at": None}
+    updated_at = getattr(fb, "updated_at", None)
+    return {
+        "thumbs": getattr(fb, "thumbs", None),
+        "comment": getattr(fb, "comment", None),
+        "updated_at": updated_at.isoformat() if updated_at else None,
+    }
 
 
 @router.get("/repos/{repo_name:path}/analyses/{analysis_id}", response_class=HTMLResponse)
@@ -54,10 +74,59 @@ def analysis_detail(
         next_id = (db.query(Analysis.id)
                    .filter(Analysis.repo_id == repo.id, Analysis.id > analysis_id)
                    .order_by(Analysis.id.asc()).limit(1).scalar())
+        user_feedback = analysis_feedback_repo.find_by_analysis_and_user(
+            db, analysis_id=analysis_id, user_id=current_user.id,
+        )
     return templates.TemplateResponse(request, "analysis_detail.html", {
         "repo_name": repo_name, "analysis": data, "current_user": current_user,
         "trend_data": trend_data, "prev_id": prev_id, "next_id": next_id,
+        "user_feedback": _serialize_feedback(user_feedback),
     })
+
+
+@router.post("/repos/{repo_name:path}/analyses/{analysis_id}/feedback")
+def post_analysis_feedback(
+    repo_name: str,
+    analysis_id: int,
+    body: FeedbackRequest,
+    current_user: Annotated[CurrentUser, Depends(require_login)],
+):
+    """분석에 thumbs up/down 피드백을 upsert — Phase E.3."""
+    with SessionLocal() as db:
+        repo = get_accessible_repo(db, repo_name, current_user)
+        analysis = db.query(Analysis).filter(
+            Analysis.id == analysis_id, Analysis.repo_id == repo.id,
+        ).first()
+        if not analysis:
+            raise HTTPException(status_code=404, detail="Analysis not found")
+        fb = analysis_feedback_repo.upsert_feedback(
+            db,
+            analysis_id=analysis_id,
+            user_id=current_user.id,
+            thumbs=body.thumbs,
+            comment=body.comment,
+        )
+    return _serialize_feedback(fb)
+
+
+@router.get("/repos/{repo_name:path}/analyses/{analysis_id}/feedback")
+def get_analysis_feedback(
+    repo_name: str,
+    analysis_id: int,
+    current_user: Annotated[CurrentUser, Depends(require_login)],
+):
+    """현재 사용자의 분석 피드백 조회 — UI 상태 복원용."""
+    with SessionLocal() as db:
+        repo = get_accessible_repo(db, repo_name, current_user)
+        analysis = db.query(Analysis).filter(
+            Analysis.id == analysis_id, Analysis.repo_id == repo.id,
+        ).first()
+        if not analysis:
+            raise HTTPException(status_code=404, detail="Analysis not found")
+        fb = analysis_feedback_repo.find_by_analysis_and_user(
+            db, analysis_id=analysis_id, user_id=current_user.id,
+        )
+    return _serialize_feedback(fb)
 
 
 @router.get("/repos/{repo_name:path}", response_class=HTMLResponse)
