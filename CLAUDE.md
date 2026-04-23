@@ -422,6 +422,8 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 - **NIXPACKS nixPkgs 오버라이드 함정**: `nixpacks.toml`에 `nixPkgs = ["nodejs"]` 등을 명시하면 Python provider의 nix 자동 설치(python3 + pip 포함)를 **완전히 교체**한다. Python+Node.js 공존 패턴: `nixPkgs` 사용 금지, `aptPkgs = ["nodejs", "npm"]`으로 Node.js 설치, pip install은 Python provider 자동 처리.
 - **APP_BASE_URL**: Railway 리버스 프록시 환경 필수 설정. **OAuth redirect_uri**와 **GitHub Webhook 등록 URL** 양쪽에 HTTPS URL 강제 적용 — 미설정 시 `http://`로 등록.
 - **Railway 빌드 검증 필수**: `git push` 성공 ≠ Railway 빌드 성공. `railway.toml`, `nixpacks.toml`, `requirements.txt` 변경 후 Railway 대시보드 빌드 로그 직접 확인 후 완료 선언.
+- **빌드 실패는 로그 우선, 추측 수정 금지**: Railway/CI 빌드 실패 보고를 받으면 즉각 수정 PR 을 작성하지 말 것. 전체 빌드 로그(실패 구간 위아래 30줄)를 먼저 받아 근본 원인을 특정한 뒤 수정. 2026-04-23 rubocop/prism 사건에서 "추측 기반 1차 수정 → 2차 재실패 → 로그 분석 후 3차 성공" 패턴으로 1시간 낭비 실적 있음. 상세: [회고](docs/reports/2026-04-23-railway-rubocop-prism-retrospective.md).
+- **gem/npm transitive 의존성 핀**: Ruby gem 또는 npm 패키지의 **직접 의존성만 버전 고정해도 transitive 의존성은 시간에 따라 바뀐다**. rubocop 1.57.2 는 pure Ruby 지만 transitive `rubocop-ast` 가 2024년 이후 prism 네이티브 확장을 필수로 요구하게 변경됨 → Railway 빌드 실패. 해결책은 `gem install rubocop-ast -v 1.36.2` (prism-free 마지막 버전) 를 rubocop 설치 **이전에** 명시 핀. 새 Ruby 도구 추가 시 동일 패턴 주의.
 - **requirements.txt 분리**: `requirements.txt`(프로덕션 — Railway 자동 감지)와 `requirements-dev.txt`(개발 — `-r requirements.txt` 포함 + pytest/playwright) 분리. `pytest`, `playwright`는 `requirements-dev.txt`에만 유지.
 - **SMTP_PORT 빈 문자열**: Railway 환경에서 `SMTP_PORT=""`로 설정 시 pydantic ValidationError 크래시. Railway Variables에서 SMTP_PORT 값을 삭제하거나 숫자로 설정.
 - **postgres:// URL**: Railway PostgreSQL이 `postgres://`로 제공하는 경우 `config.py`에서 `postgresql://`로 자동 변환.
