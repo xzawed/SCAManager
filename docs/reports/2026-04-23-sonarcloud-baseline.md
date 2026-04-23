@@ -248,3 +248,86 @@ UI 에서만 "Safe" / "Fixed" / "At Risk" 마크 가능:
 5. **D.3 RuboCop 게이트 실증 우선** — SonarCloud 청산은 후순위
 
 권장: **4 → 3 → 2 → 1** 순. CodeQL 결과로 계획을 보정한 뒤 낮은 리스크부터 점진 착수.
+
+---
+
+## Follow-up — Phase Q.1~Q.6 전체 실행 결과 (2026-04-23 세션)
+
+사용자 결정 "바로 수행" 에 따라 Phase Q.1~Q.4 를 일괄 실행하고, CI 재분석 결과로 드러난 잔존 이슈를 Q.5~Q.6 로 후속 해소. 최종 **Quality Gate OK + 3종 Rating A** 달성.
+
+### 실행 커밋 (3건)
+
+| 커밋 | Phase | 내용 |
+|------|-------|------|
+| `80d9c57` | **Q.1~Q.4** | FP suppress + URL 인코딩 + HTML 접근성 + JS/regex/float/log |
+| `42a83f6` | **Q.5** | `sanitize_for_log()` 헬퍼 + Annotated 11곳 + `<button>` 전환 3곳 |
+| `4eea901` | **Q.6** | Header Annotated 2곳 + NOSONAR suppress 2곳 + 중복 문자열 상수화 + `void` 제거 |
+
+### CI #4 → #5 → #6 단계별 Rating 변화
+
+| 지표 | 초기 | CI #4 (Q.1~Q.4) | CI #5 (Q.5) | **CI #6 (Q.6)** |
+|------|------|-----------------|-------------|----------------|
+| Quality Gate | OK(new) | ERROR | ERROR | **OK** ✅ |
+| Security Rating | C (3.0) | B (2.0) | B (2.0) | **A (1.0)** ✅ |
+| Reliability Rating | D (4.0) | A (1.0) | A (1.0) | **A (1.0)** ✅ |
+| Maintainability Rating | A (1.0) | A | A | **A (1.0)** ✅ |
+| Bugs | 8 | 0 | 0 | **0** ✅ |
+| Vulnerabilities | 7 | 2 | 2 | **0** ✅ |
+| Security Hotspots | 4 | 0 | 0 | **0** ✅ |
+| Code Smells | 78 | 78 | 63 | **58** (-20) |
+| BLOCKER | 14 | 14 (신규 S8410 감지) | 2 | **0** ✅ |
+| CRITICAL | 9 | 8 | 8 | **5** |
+
+### 각 Phase 가 해소한 이슈 (누적)
+
+- **Q.1** FP suppress → BLOCKER 7건 (testsecret 3 + testargs 4) · CDN SRI 3 hotspot
+- **Q.2** URL 인코딩 (`_repo_path()` + `urllib.parse.quote()`) → pythonsecurity:S7044 5건 (Vuln)
+- **Q.3** HTML 접근성 (`<th scope>` 4 + keyboard 3 + `.sr-only` 유틸) → Web:S5256 4건 · MouseEvent 3건 (Bugs)
+- **Q.4** JS 인자 정정 + regex `[\s:]*` + `pytest.approx` + logger `%r` → BLOCKER JS 1 · regex ReDoS 1 · float 1 · log 준비
+- **Q.5** `sanitize_for_log()` + `Annotated[...]` 11곳 + `<button>` 3곳 → S8410 9건 · 초기 Annotated 패턴 · S6819 button 역효과 해소
+- **Q.6** 놓친 Header 2 + NOSONAR 2 + `_GITHUB_WEBHOOK_PATH` / `_HEALTH_QUERY` 상수 + `void` 제거 → 마지막 BLOCKER 2 · Vuln 2 · CRITICAL S1192 2 · S3735 1
+
+### 신규 검출 규칙 (1차 분석 후 감지)
+
+분석 진행 중 SonarCloud 가 추가 감지한 규칙들 — Q.5~Q.6 에서 해소:
+
+- `python:S8410` 11건 — FastAPI `Annotated[...]` 타입 힌트 권고
+- `Web:S6819` 3건 — `<div role="button">` 대신 실제 `<button>` 요소 사용 (Q.3 수정이 역효과)
+- `python:S1192` 2건 — 중복 문자열 상수화 (`"/webhooks/github"` × 3 + `"SELECT 1"` × 4)
+- `javascript:S3735` 1건 — `void` 연산자 제거
+
+### 잔존 CRITICAL 5건 (Phase Q.7 예정)
+
+전부 `python:S3776` Cognitive Complexity 초과 — 실제 함수 분할 리팩토링 필요, Quality Gate 영향 없음:
+
+| 위치 | 복잡도 | 초과 |
+|------|--------|------|
+| `src/gate/engine.py:20` `run_gate_check` | 31→15 | **+16** 최대 |
+| `src/analyzer/tools/slither.py:69` `_parse_slither_json` | 20→15 | +5 |
+| `src/notifier/github_comment.py:58` | 19→15 | +4 |
+| `src/cli/formatter.py:67` | 16→15 | +1 |
+| `src/cli/git_diff.py:35` | 16→15 | +1 |
+
+### 파생 산출물
+
+- `src/log_safety.py` 신설 — `sanitize_for_log()` 헬퍼 (CR/LF/TAB/NUL 제거 + 길이 제한)
+- `tests/test_log_safety.py` — 7 단위 테스트
+- `src/github_client/repos.py::_repo_path()` — URL 방어적 인코딩 헬퍼
+- `src/ui/router.py::_GITHUB_WEBHOOK_PATH` / `src/database.py::_HEALTH_QUERY` — 중복 문자열 상수화
+- `src/templates/base.html` — `.sr-only` 접근성 유틸 클래스 추가
+
+### 최종 수치
+
+| 지표 | 값 |
+|------|-----|
+| 단위 테스트 | **1175 passed** (1168 + 7 log_safety) |
+| pylint | **10.00/10** 유지 |
+| flake8 | **0** |
+| bandit HIGH | **0** |
+| SonarCloud Quality Gate | **OK** |
+| SonarCloud Security / Reliability / Maintainability | **A / A / A** |
+| Coverage (내부) | 96.2% · Codecov 95.58% · SonarCloud 95.1% |
+
+### 결론
+
+2026-04-22~23 감사 전 과정 (6렌즈 → 외부 3서비스 도입 → 1차 SonarCloud 93건 감지 → Phase Q.1~Q.6 청산) 을 통해 **모든 급한 품질 목표 달성**. 남은 것은 Cognitive Complexity 5건의 유지보수성 개선만이며 이는 Rating 영향 없는 별도 Phase.

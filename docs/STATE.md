@@ -2,11 +2,16 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-22 기준 — 6렌즈 감사 권고 #1~8 일괄 반영 완료)
+## 현재 수치 (2026-04-23 기준 — SonarCloud Quality Gate OK + 3종 Rating A 달성)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1168개** | pytest (0 failed) — 6렌즈 후속 +22 |
+| 단위 테스트 | **1175개** | pytest (0 failed) — Phase Q 후속 +7 (log_safety) |
+| SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
+| SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
+| SonarCloud Reliability Rating | **A** | Bugs 0 |
+| SonarCloud Maintainability Rating | **A** | Code Smells 58 (-20 from 78) |
+| SonarCloud BLOCKER / CRITICAL | **0 / 5** | 잔존 CRITICAL 전부 S3776 Cognitive Complexity — Phase Q.7 예정 |
 | E2E 테스트 | **49개** | `make test-e2e` (Chromium Playwright) |
 | pylint | **10.00/10** | `python -m pylint src/` — 만점 |
 | 커버리지 | **96.2%** | `make test-cov` (database.py 100%, ui/router.py 99.4%) |
@@ -183,6 +188,22 @@
 | 테스트 fixture 재작성 | `test_railway_client.py`(2곳) + `test_railway_issue_notifier.py`(`_EVENT` fixture nested 재작성) | — |
 | 외부 API 불변 | `parse_railway_payload` · `create_deploy_failure_issue` 시그니처 · Webhook payload 스키마 · DB 전부 그대로 | — |
 
+### 그룹 18 — Phase Q.5~Q.6 SonarCloud 잔존 이슈 해소 (2026-04-23)
+
+CI #4 재분석 결과 드러난 신규 BLOCKER/Vuln 을 Q.5~Q.6 후속 2커밋으로 해소. **CI #6 에서 Quality Gate OK + 3종 Rating A 달성**.
+
+| Phase | 커밋 | 주요 내용 |
+|-------|------|----------|
+| Q.5 | `42a83f6` | `src/log_safety.py::sanitize_for_log()` 신설 (+7 단위 테스트) + FastAPI `Annotated[Type, Depends()]` 패턴 11곳 + `<div role="button">` → `<button type="button">` 3곳 |
+| Q.6 | `4eea901` | `github_webhook` Header 2곳 Annotated + log S5145 NOSONAR 주석 2곳 (커스텀 sanitizer 를 SonarCloud 가 인식 못 하는 한계) + `_GITHUB_WEBHOOK_PATH` / `_HEALTH_QUERY` 상수화 + JS `void` 제거 |
+| **최종** | — | BLOCKER 14→0 · Vuln 2→0 · Quality Gate OK · Security B→A |
+
+**주요 규약 (CLAUDE.md 반영 필요)**:
+- `src/log_safety.py::sanitize_for_log()` — user-controlled 입력을 로거에 전달하기 전 반드시 경유. `%r` 포맷만으로는 SonarCloud taint analysis 통과 못 함.
+- `src/github_client/repos.py::_repo_path()` — GitHub API URL 에 repo_full_name 삽입 시 `urllib.parse.quote(safe='/')` 방어적 인코딩.
+- FastAPI 핸들러는 `Annotated[Type, Depends(...)]` 또는 `Annotated[Type, Header()] = default` 패턴 사용 (Python 3.9+ 권장).
+- 커스텀 sanitizer 를 SonarCloud 가 인식 못 할 때 `# NOSONAR <rule>` 주석 + 이유 코멘트로 명시적 suppress.
+
 ### 그룹 17 — Phase Q.1~Q.4 SonarCloud 청산 일괄 반영 (2026-04-23)
 
 [2026-04-23 진단 보고서](reports/2026-04-23-sonarcloud-baseline.md) §5 계획에 따라 4개 Phase 를 연속 실행. 테스트 1168 passed 유지, pylint 10.00 유지.
@@ -268,7 +289,8 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 
 | 우선순위 | 항목 | 비고 |
 |---------|------|------|
-| **✅ Phase Q.1~Q.4 완료 (SonarCloud 청산)** | FP suppress + URL 인코딩 + HTML 접근성 + 정밀 검토 | [2026-04-23 진단](reports/2026-04-23-sonarcloud-baseline.md) 기반 4 Phase 모두 반영. 다음 CI 재분석 후 Rating 변동 관찰 예정 |
+| **✅ Phase Q.1~Q.6 완료 (SonarCloud 청산)** | Quality Gate OK + 3종 Rating A 달성 | [Follow-up 섹션](reports/2026-04-23-sonarcloud-baseline.md#follow-up--phase-q1q6-전체-실행-결과-2026-04-23-세션). Bugs/Vuln/Hotspots/BLOCKER 0, Code Smells 78→58 |
+| **Phase Q.7 (선택적 · 대기)** | CRITICAL 5건 Cognitive Complexity 해소 | 전부 `python:S3776`. Rating 영향 없음. `gate/engine.py:20` 최대 (+16 초과). 실제 함수 분할 리팩토링 필요 + pipeline-reviewer 승인 |
 | **🚧 P4-Gate (D.3 차단)** | D.1 cppcheck / D.2 slither 프로덕션 실증 검증 | D.3 착수 전 필수 — 아래 "D.3 차단 게이트" 섹션 체크리스트 완료 조건 |
 | **P3-리팩 완결** | 6렌즈 권고 #1~6 ✅ · #7 ✅ · #8a/#8b 스캐폴딩 | [Follow-up 섹션 참조](reports/2026-04-22-quality-audit-6lens.md#follow-up-2026-04-22--후속-실행-결과). 10커밋 완료. 실제 치환 잔존 2건(아래) |
 | **P3-후속 (스캐폴딩 완성)** | #8a GateAction 엔진 전환 + #8b http_client 15곳 채택 | test_gate_engine.py 37건 mock 재작성 + 15곳 `async with httpx.AsyncClient` 치환 필요. 별도 Phase |
