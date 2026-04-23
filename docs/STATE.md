@@ -381,6 +381,8 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 
 ## 잔여 과제
 
+> 👤 **사용자 수행 가이드 (2026-04-23)**: 사용자가 직접 수행해야 하는 4가지 잔여 작업을 상세히 설명한 종합 가이드 → [`guides/user-actions-remaining.md`](guides/user-actions-remaining.md). P4-Gate-2 Railway 실증 + Phase D.5~D.8 결정 + P3-후속 결정 + P5 devcontainer 캐싱 포함.
+
 > 🧭 **종합 로드맵 (2026-04-23)**: 3-에이전트 논의 결과 → [`reports/2026-04-23-remaining-roadmap-3agent.md`](reports/2026-04-23-remaining-roadmap-3agent.md). Phase Q.7 / S.4 / D.3~D.8 / P4-Gate 전체 잔여 과제를 시나리오 A/B/C 로 비교, **시나리오 B (균형형)** 를 권고안으로 결정. 10-step 실행 순서 포함.
 
 > 🚀 **시나리오 B 진행 현황 (2026-04-23 세션)**: Step 1~6 · 8 완료 (커밋 `f678222` / `e551839` / `6ec93f4` / `842ea1d`). Step 7 (P4-Gate 실증) 사용자 대기 → 이후 Step 9 (D.3 RuboCop) · 10 (D.4 golangci-lint) 해금.
