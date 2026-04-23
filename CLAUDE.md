@@ -43,6 +43,7 @@ src/
 ├── shared/
 │   ├── http_client.py          # httpx.AsyncClient lifespan 싱글톤 (내부 신뢰 API 용)
 │   └── log_safety.py           # sanitize_for_log() — 로그 인젝션 방지
+├── services/                   # use case 계층 — 신규 오케스트레이션 모듈의 배치 장소 (기존 pipeline/engine/manager 는 도메인 위치 유지)
 ├── auth/
 │   ├── session.py              # get_current_user() + require_login Depends
 │   └── github.py               # /login, /auth/github, /auth/callback, /auth/logout
