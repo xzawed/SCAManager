@@ -90,7 +90,9 @@ src/
 │   │       ├── eslint.py       # _ESLintAnalyzer — JS/TS, flat config
 │   │       ├── shellcheck.py   # _ShellCheckAnalyzer — shell 스크립트
 │   │       ├── cppcheck.py     # _CppCheckAnalyzer — C/C++, XML v2 stderr 파싱
-│   │       └── slither.py      # _SlitherAnalyzer — Solidity, stdout JSON, mixed-category
+│   │       ├── slither.py      # _SlitherAnalyzer — Solidity, stdout JSON, mixed-category
+│   │       ├── rubocop.py      # _RuboCopAnalyzer — Ruby, Security/ cop → security
+│   │       └── golangci_lint.py # _GolangciLintAnalyzer — Go, go.mod 자동생성, gosec → security
 │   └── configs/                # eslint.config.json 등 외부 도구 설정 파일 (런타임 리소스)
 ├── scorer/
 │   └── calculator.py           # calculate_score(ai_review), ScoreResult, _grade
@@ -365,7 +367,8 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 - **CLI Hook 인증/점수**: `GET /api/hook/verify`, `POST /api/hook/result`는 `hook_token` 파라미터로 인증(X-API-Key 불필요). pre-push 훅은 정적 분석 없이 AI 리뷰만 실행 → `calculate_score([], ai_review)` 호출 (code_quality=25, security=20 만점 적용).
 - **분석 source 필드**: `pipeline.py`가 result JSON에 `"source": "pr"|"push"` 저장. 기존 레코드 대응으로 `result.get("source") or ("pr" if pr_number else "push")` fallback 파생.
 - **GateDecision upsert**: `save_gate_decision()`은 동일 `analysis_id`로 이미 레코드가 있으면 UPDATE, 없으면 INSERT. 재시도·반자동 재승인 시 중복 INSERT가 없다.
-- **Analyzer tools 자동 등록**: `tools/semgrep.py`, `tools/eslint.py`, `tools/shellcheck.py`, `tools/cppcheck.py`, `tools/slither.py`는 `analyze_file()`에서 해당 모듈을 import할 때 자동으로 `register()` 호출. 새 도구 추가 시 (1) `tools/` 아래 클래스 작성 + `register()` 호출, (2) `analyze_file()`에서 import, (3) SUPPORTED_LANGUAGES에 지원 언어 선언 세 단계 필수.
+- **Analyzer tools 자동 등록**: `tools/semgrep.py`, `tools/eslint.py`, `tools/shellcheck.py`, `tools/cppcheck.py`, `tools/slither.py`, `tools/rubocop.py`, `tools/golangci_lint.py`는 `analyze_file()`에서 해당 모듈을 import할 때 자동으로 `register()` 호출. 새 도구 추가 시 (1) `tools/` 아래 클래스 작성 + `register()` 호출, (2) `analyze_file()`에서 import, (3) SUPPORTED_LANGUAGES에 지원 언어 선언 세 단계 필수.
+- **golangci-lint go.mod 자동생성**: `_GolangciLintAnalyzer.run()` 은 tmp_path 디렉토리에 `go.mod` 가 없으면 `_ensure_go_mod()` 로 최소 모듈 정의 (`module tempmod\ngo 1.21\n`) 를 자동 생성. 단일 `.go` 파일 분석 시 "no Go files" 오류 회피.
 - **`_build_issue_body()` 시그니처**: `high_issues: list[dict]` 파라미터가 추가되어 있음 — 호출처(`create_low_score_issue`)에서 `_bandit_high_issues(result)`를 1회만 계산한 뒤 전달. 직접 호출 시 반드시 high_issues 인자 포함.
 - **Railway Webhook 토큰 인증**: `POST /webhooks/railway/{token}` 엔드포인트는 DB에서 `railway_webhook_token == token` 조회 후 `config is None → 404` 처리. `railway_api_token`은 Fernet 암호화 저장 — `decrypt_token()`으로 백그라운드 핸들러에 전달.
 - **5-way 동기화 Railway 확장**: `railway_deploy_alerts`가 ORM/RepoConfigData/API body/settings 폼/PRESETS 5-way 동기화 적용 대상. `railway_webhook_token`·`railway_api_token`은 `hook_token` 동일 패턴으로 ORM 직접 관리 (RepoConfigData 미포함).
@@ -425,4 +428,4 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 
 ## 현재 상태
 
-최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1170개 | E2E 49개 | pylint 10.00 | 커버리지 96.2% | SonarCloud QG OK · Security A · Reliability A · Maintainability A
+최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1188개 | E2E 49개 | pylint 10.00 | 커버리지 96.2% | SonarCloud QG OK · Security A · Reliability A · Maintainability A · Tier1 정적분석 10종
