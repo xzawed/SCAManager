@@ -494,24 +494,21 @@
 
           <!-- Approve 3-way -->
           <div class="gate-btns">
-            <div class="gate-mode-btn {% if config.approve_mode == 'disabled' %}active{% endif %}"
-                 data-mode="disabled" role="button" tabindex="0"
-                 onclick="setApproveMode('disabled')"
-                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();setApproveMode('disabled');}">
+            <button type="button"
+                    class="gate-mode-btn {% if config.approve_mode == 'disabled' %}active{% endif %}"
+                    data-mode="disabled" onclick="setApproveMode('disabled')">
               <span class="gm-icon">🚫</span>비활성
-            </div>
-            <div class="gate-mode-btn {% if config.approve_mode == 'auto' %}active{% endif %}"
-                 data-mode="auto" role="button" tabindex="0"
-                 onclick="setApproveMode('auto')"
-                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();setApproveMode('auto');}">
+            </button>
+            <button type="button"
+                    class="gate-mode-btn {% if config.approve_mode == 'auto' %}active{% endif %}"
+                    data-mode="auto" onclick="setApproveMode('auto')">
               <span class="gm-icon">⚡</span>자동
-            </div>
-            <div class="gate-mode-btn {% if config.approve_mode == 'semi-auto' %}active{% endif %}"
-                 data-mode="semi-auto" role="button" tabindex="0"
-                 onclick="setApproveMode('semi-auto')"
-                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();setApproveMode('semi-auto');}">
+            </button>
+            <button type="button"
+                    class="gate-mode-btn {% if config.approve_mode == 'semi-auto' %}active{% endif %}"
+                    data-mode="semi-auto" onclick="setApproveMode('semi-auto')">
               <span class="gm-icon">📱</span>반자동
-            </div>
+            </button>
           </div>
 
           <!-- 기준점 슬라이더 (disabled 시 숨김) -->

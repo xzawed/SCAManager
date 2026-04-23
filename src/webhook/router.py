@@ -6,6 +6,8 @@ import logging
 import re
 import time
 import httpx
+from typing import Annotated
+
 from fastapi import APIRouter, Request, HTTPException, BackgroundTasks, Header
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
@@ -280,7 +282,7 @@ async def handle_gate_callback(
 async def telegram_webhook(
     request: Request,
     background_tasks: BackgroundTasks,
-    x_telegram_bot_api_secret_token: str | None = Header(default=None),
+    x_telegram_bot_api_secret_token: Annotated[str | None, Header()] = None,
 ):
     """Telegram 게이트 콜백 수신 엔드포인트.
 
