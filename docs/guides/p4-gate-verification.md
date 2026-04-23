@@ -1,4 +1,8 @@
-# P4-Gate 프로덕션 실증 가이드
+# P4-Gate 프로덕션 실증 가이드 (1차 — cppcheck + slither)
+
+> ✅ **상태**: 2026-04-23 `xzawed/SCAManager-test-samples` 분석 #543 으로 **통과 완료**. Phase D.3 (RuboCop) 해금됨.
+>
+> 후속 도구 (rubocop / golangci-lint) 실증은 **[P4-Gate-2 가이드](p4-gate-2-verification.md)** 참조.
 
 > Phase D.1 (cppcheck) + D.2 (slither) 가 Railway 프로덕션 환경에서 실제 동작하는지 확인하기 위한 6항목 체크리스트와 재료. Phase D.3 (RuboCop) 착수 전에 통과해야 한다.
 
