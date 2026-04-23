@@ -46,3 +46,6 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+
+# Claude Code 런타임 상태 파일
+.claude/scheduled_tasks.lock
