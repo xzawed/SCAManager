@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from src.database import SessionLocal
 from src.config import settings
+from src.shared.log_safety import sanitize_for_log
 from src.shared.stage_metrics import stage_timer
 from src.github_client.diff import get_pr_files, get_push_files, ChangedFile
 from src.analyzer.io.static import analyze_file, StaticAnalysisResult
@@ -294,6 +295,8 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
     try:
         with stage_timer("pipeline_total", event=event):
             repo_name, commit_sha, commit_message, pr_number = _extract_event_metadata(event, data)
+            # user-controlled webhook 입력이므로 로그 인젝션 방어 (CLAUDE.md 규약)
+            repo_log = sanitize_for_log(repo_name)
             pr_head_ref = (
                 data.get("pull_request", {}).get("head", {}).get("ref")
                 if event == "pull_request" else None
@@ -307,23 +310,23 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
                     return
                 _, owner_token = ensure_result
 
-            with stage_timer("collect_files", repo=repo_name) as ctx:
+            with stage_timer("collect_files", repo=repo_log) as ctx:
                 files = _collect_files(event, owner_token, repo_name, commit_sha, pr_number)
                 ctx["file_count"] = len(files)
 
             if not files:
-                logger.info("No changed files in %s @ %s", repo_name, commit_sha)
+                logger.info("No changed files in %s @ %s", repo_log, commit_sha)
                 return
 
             patches = [(f.filename, f.patch) for f in files if f.patch]
-            with stage_timer("analyze", repo=repo_name) as ctx:
+            with stage_timer("analyze", repo=repo_log) as ctx:
                 analysis_results, ai_review = await asyncio.gather(
                     _run_static_analysis(files),
                     review_code(settings.anthropic_api_key, commit_message, patches),
                 )
                 ctx["issue_count"] = len(analysis_results)
 
-            with stage_timer("score_and_save", repo=repo_name) as ctx:
+            with stage_timer("score_and_save", repo=repo_log) as ctx:
                 score_result = calculate_score(analysis_results, ai_review=ai_review)
                 ctx["score"] = score_result.total
                 save_params = _AnalysisSaveParams(
@@ -339,7 +342,7 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
                 with SessionLocal() as db:
                     repo_config, analysis_id, result_dict = await _save_and_gate(db, save_params)
 
-            with stage_timer("notify", repo=repo_name) as ctx:
+            with stage_timer("notify", repo=repo_log) as ctx:
                 notify_tasks, task_names = build_notification_tasks(
                     repo_config=repo_config,
                     repo_name=repo_name,

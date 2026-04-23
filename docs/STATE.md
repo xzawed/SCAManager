@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-23 기준 — Phase E (E.1~E.5) 전체 완료 — Path A 완결)
+## 현재 수치 (2026-04-23 기준 — Phase E 완료 + 3-에이전트 감사 후속 수정)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1232개** | pytest (0 failed) — Phase E.5 +2 (Onboarding 3단계 튜토리얼) |
+| 단위 테스트 | **1234개** | pytest (0 failed) — 감사 후속 +2 (comment max_length 경계값) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
@@ -188,6 +188,36 @@
 | notifier 접근 체인 | `railway_issue.py` 11곳 nested 접근(`event.project.*`/`event.commit.*`)으로 업데이트 (출력 문자열 불변) | — |
 | 테스트 fixture 재작성 | `test_railway_client.py`(2곳) + `test_railway_issue_notifier.py`(`_EVENT` fixture nested 재작성) | — |
 | 외부 API 불변 | `parse_railway_payload` · `create_deploy_failure_issue` 시그니처 · Webhook payload 스키마 · DB 전부 그대로 | — |
+
+### 그룹 29 — 3-에이전트 감사 후속 수정 (2026-04-23)
+
+Phase E 완결 직후 **3개 병렬 에이전트** (Code/Architecture · Documentation · Security)
+로 전체 감사 수행. 발견된 🔴 Critical 3건 + 🟠 Major 4건 중 즉시 수정 가능한 항목
+일괄 반영. Rate limit / service layer / 쿼리 최적화 등은 별도 후속 Phase 로 연기.
+
+| 심각도 | 위치 | 수정 내용 |
+|--------|------|----------|
+| 🔴 | `src/shared/stage_metrics.py` | 예약 키 (pipeline_stage/duration_ms/status/error_type) 를 extra_fields·ctx 뒤에 병합해 덮어쓰기 방지 — 로그 인젝션 방어 |
+| 🔴 | `src/worker/pipeline.py` | `repo=repo_name` 4곳에 `sanitize_for_log()` 적용 — CLAUDE.md 규약 준수 |
+| 🔴 | `src/shared/observability.py` | Sentry `before_send` 훅 추가 — URL query / cookies / Authorization 헤더 스크러빙으로 PII 누수 방어 + `send_default_pii=False` 명시 |
+| 🔴 | `CLAUDE.md` | 아키텍처 트리에 Phase E 신규 5개 파일 추가 (observability.py · claude_metrics.py · stage_metrics.py · analysis_feedback.py · analysis_feedback_repo) |
+| 🟠 | `src/ui/routes/detail.py` | FeedbackRequest.comment 에 `max_length=2000` — DB 행 크기 폭주 방어 + 경계값 2건 테스트 |
+| 🟠 | `src/shared/claude_metrics.py` | docstring 에 "2026-04 기준" + "분기별 재확인 필수" + "±10% 오차" 명시 |
+| 🟠 | `src/models/analysis_feedback.py` | CASCADE 삭제 의도 docstring 추가 — 추후 GDPR/계정삭제 대비 SET NULL 전환 가능성 명시 |
+| 🟠 | `docs/STATE.md` | 잔여 과제 표의 "P4-Gate 통과" 를 "P4-Gate-1 통과 (완료) / P4-Gate-2 대기 (rubocop/golangci-lint 실증 필요)" 로 분리 |
+
+**보류 (별도 후속 Phase)**:
+- Rate limiting (POST /feedback) — 공개 배포 확대 시 slowapi 도입
+- detail.py 서비스 레이어 추출 — 현 규모에서는 과도한 리팩토링
+- get_calibration SQL 최적화 — 피드백 수 5000+ 도달 시 CASE WHEN 전환
+- AnalysisFeedback 데이터 보존 정책 — 테이블 1M 행 도달 시 TTL 배치
+
+**최종 수치**: 1232 → **1234 passed** (+2) · pylint 10.00 · flake8 0. 회귀 없음.
+
+**감사 과정 평가**: 3 에이전트 합의로 발견된 실제 이슈 8건 중 6건 즉시 수정, 2건 문서화된
+후속 과제. Agent 1 의 **잘못된 지적 2건** (POST /feedback 테스트 부재 · ai_review 타이머
+중복) 은 반박 + 무시. 다중 에이전트 감사의 효용 재확인 — 각각 독립적 렌즈로 본 결과가
+보완적 (Agent 2 의 문서 불일치는 Agent 1/3 이 놓친 영역).
 
 ### 그룹 28 — Phase E.5 Onboarding 튜토리얼 (2026-04-23)
 
@@ -515,7 +545,8 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 | **✅ Phase S.2 완료 (UI/Webhook router 분할)** | UI router → `src/ui/routes/` 5 모듈 · Webhook router → `src/webhook/providers/` 3 provider | 그룹 20 참조. mock 경로 193곳 재작성 완료, 1170 passed 유지 |
 | **✅ Phase S.3 완료 (구조 정리 5단계)** | S.3-A Service 스캐폴딩 + S.3-B Analyzer pure/io + S.3-C tests/unit + S.3-E Notifier 8클래스 이동 + S.3-D UI/webhook repository_repo 확산 | 그룹 21 참조. S.3-D 는 S.4 완료와 함께 커밋 `f678222` 에 포함. |
 | **✅ Phase S.4 완료 (pipeline test mock 재설계)** | test_pipeline.py fixture 를 Option A (repository_repo / analysis_repo / get_repo_config 직접 patch) 로 전환 + repository_repo.find_by_full_name 내부 filter_by → filter 전환 | 커밋 `f678222`. 1170 passed. S.1-4 · S.3-D 2회 실패의 근본 원인 해소. |
-| **✅ P4-Gate 통과 (2026-04-23)** | D.1 cppcheck / D.2 slither 프로덕션 실증 — 6/6 통과 | `xzawed/SCAManager-test-samples` 리포 분석 #543: cppcheck 4건 (L12 buffer·L18 scanf·L23/24 uninitvar) + slither 3건 (reentrancy-eth L13 포함). 코드품질 -10, 보안 -7 감점 반영 확인. D.3 RuboCop 해금. |
+| **✅ P4-Gate-1 통과 (2026-04-23)** | D.1 cppcheck / D.2 slither 프로덕션 실증 — 6/6 통과 | `xzawed/SCAManager-test-samples` 분석 #543: cppcheck 4건 + slither 3건. 코드품질 -10, 보안 -7 감점 반영. D.3 RuboCop 해금 계기. |
+| **⏳ P4-Gate-2 대기 (2026-04-23)** | D.3 rubocop / D.4 golangci-lint Railway 실증 필요 | Railway 빌드 성공 (커밋 `8042f12`) 후 사용자 샘플 PR 제출 대기. 상세: [가이드](guides/p4-gate-2-verification.md). |
 | **✅ AI 리뷰 파싱 실패 해소 (2026-04-23)** | `_extract_json_payload()` 분리 + 3가지 실패 모드 해소 | 분석 #543 경고 원인 — (1) preamble + 순수 JSON, (2) 대문자 ` ```JSON `, (3) JSON 뒤 trailing text. `re.IGNORECASE` + 첫 `{` ~ 마지막 `}` fallback. +4 tests (1188→1192). |
 | **P3-리팩 완결** | 6렌즈 권고 #1~6 ✅ · #7 ✅ · #8a/#8b 스캐폴딩 | [Follow-up 섹션 참조](reports/2026-04-22-quality-audit-6lens.md#follow-up-2026-04-22--후속-실행-결과). 10커밋 완료. 실제 치환 잔존 2건(아래) |
 | **P4-Gate 재료 준비 완료 (2026-04-23)** | 샘플 C/Solidity + 가이드 + 검증 스크립트 | [docs/guides/p4-gate-verification.md](guides/p4-gate-verification.md). 사용자가 외부 테스트 리포에 샘플을 넣어 PR 제출 → 6항목 체크 후 D.3 해금. |

@@ -20,6 +20,34 @@ except ImportError:  # pragma: no cover — DNS 제약 dev env 전용 경로
     _SENTRY_AVAILABLE = False
 
 
+def _before_send(event: dict, _hint: dict) -> dict:
+    """Sentry 이벤트 전송 전 민감 데이터 스크러빙 — PII/secret 누수 방어.
+
+    GitHub webhook 처리 중 발생한 예외는 request body·URL query·headers 에
+    토큰/시크릿/사용자 입력이 포함될 수 있다. Sentry 기본 수집 범위를 명시적으로
+    제한해 외부 SaaS 에 민감 정보가 유출되지 않도록 한다.
+    """
+    request = event.get("request") or {}
+    # URL query string 제거 — ?token=xxx, ?api_key=yyy 등 유출 방지
+    url = request.get("url")
+    if isinstance(url, str) and "?" in url:
+        request["url"] = url.split("?", 1)[0]
+    # Cookies 제거 — 세션 쿠키가 그대로 Sentry 에 가는 것 방어
+    if "cookies" in request:
+        request["cookies"] = {}
+    # Authorization 헤더 등 민감 헤더 제거
+    headers = request.get("headers") or {}
+    if isinstance(headers, dict):
+        for key in list(headers.keys()):
+            if key.lower() in ("authorization", "x-api-key", "x-hub-signature-256", "cookie"):
+                headers[key] = "[Filtered]"
+    event["request"] = request
+    # body 는 Sentry 기본값이 이미 제외하지만 명시적으로 제거
+    if "data" in request:
+        request["data"] = "[Filtered]"
+    return event
+
+
 def init_sentry() -> bool:
     """Sentry SDK 를 초기화. 조건 미충족 시 no-op.
 
@@ -42,6 +70,8 @@ def init_sentry() -> bool:
             environment=settings.sentry_environment,
             traces_sample_rate=settings.sentry_traces_sample_rate,
             integrations=[FastApiIntegration()],
+            before_send=_before_send,  # PII/secret 스크러빙
+            send_default_pii=False,    # 기본값이지만 명시적 방어
         )
         logger.info("Sentry initialized (env=%s)", settings.sentry_environment)
         return True

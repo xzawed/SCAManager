@@ -121,6 +121,37 @@ def test_post_feedback_404_for_other_users_repo():
     assert r.status_code == 404
 
 
+def test_post_feedback_rejects_comment_over_2000_chars():
+    """Phase E.3 후속 — comment 2000자 초과 시 422 (payload 폭주 방어)."""
+    mock_db = MagicMock()
+    _setup_repo_and_analysis(mock_db)
+    long_comment = "x" * 2001
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
+        r = client.post(
+            "/repos/owner%2Frepo/analyses/42/feedback",
+            json={"thumbs": 1, "comment": long_comment},
+        )
+    assert r.status_code == 422
+
+
+def test_post_feedback_accepts_comment_at_2000_chars():
+    """경계값 — 정확히 2000자는 허용."""
+    mock_db = MagicMock()
+    _setup_repo_and_analysis(mock_db)
+    mock_fb = MagicMock(
+        thumbs=1, comment="x" * 2000,
+        updated_at=MagicMock(isoformat=MagicMock(return_value="2026-04-23T12:00:00")),
+    )
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)), \
+         patch("src.ui.routes.detail.analysis_feedback_repo.upsert_feedback",
+               return_value=mock_fb):
+        r = client.post(
+            "/repos/owner%2Frepo/analyses/42/feedback",
+            json={"thumbs": 1, "comment": "x" * 2000},
+        )
+    assert r.status_code == 200
+
+
 def test_post_feedback_comment_optional():
     """comment 없이도 정상 (comment=None)."""
     mock_db = MagicMock()

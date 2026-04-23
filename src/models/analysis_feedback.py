@@ -2,6 +2,14 @@
 
 Phase E.3 — AI 점수 정합도 측정 기반. (user, analysis) 조합당 1개 레코드만 존재.
 사용자가 재피드백 시 기존 레코드를 UPDATE (upsert 패턴 — repository 에서 처리).
+
+**CASCADE 삭제 의도 (중요)**:
+  - `analysis_id ondelete=CASCADE`: Analysis 삭제(리포 삭제) 시 관련 피드백 자동 삭제.
+    정합도 지표는 현존 Analysis 기준이므로 고아 레코드 방지가 우선.
+  - `user_id ondelete=CASCADE`: 사용자 계정 삭제 시 피드백 동반 삭제.
+    **현재 계정 삭제 기능이 없어 실제 삭제는 발생하지 않으나**, 추후 GDPR 대비
+    사용자 삭제 기능 추가 시 피드백 손실을 동반함을 인지할 것. 감사 추적이
+    중요해지면 `SET NULL` + 익명화 전환 검토.
 """
 from datetime import datetime, timezone
 

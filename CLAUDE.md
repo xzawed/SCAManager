@@ -42,7 +42,10 @@ src/
 ├── database.py                 # SQLAlchemy engine, Base, FailoverSessionFactory
 ├── shared/
 │   ├── http_client.py          # httpx.AsyncClient lifespan 싱글톤 (내부 신뢰 API 용)
-│   └── log_safety.py           # sanitize_for_log() — 로그 인젝션 방지
+│   ├── log_safety.py           # sanitize_for_log() — 로그 인젝션 방지
+│   ├── observability.py        # init_sentry() — Sentry SDK (Phase E.2a), before_send 로 PII 스크러빙
+│   ├── claude_metrics.py       # Claude API 비용/latency 계측 — log_claude_api_call (Phase E.2b)
+│   └── stage_metrics.py        # stage_timer context manager — pipeline 단계 타이밍 (Phase E.2c)
 ├── services/                   # use case 계층 — 신규 오케스트레이션 모듈의 배치 장소 (기존 pipeline/engine/manager 는 도메인 위치 유지)
 ├── auth/
 │   ├── session.py              # get_current_user() + require_login Depends
@@ -50,6 +53,7 @@ src/
 ├── models/
 │   ├── repository.py           # Repository ORM (user_id FK nullable)
 │   ├── analysis.py             # Analysis ORM (commit_message 포함)
+│   ├── analysis_feedback.py    # AnalysisFeedback ORM (thumbs +1/-1, comment, Phase E.3)
 │   ├── repo_config.py          # RepoConfig ORM (pr_review_comment, approve_mode, approve/reject_threshold, auto_merge, merge_threshold, hook_token)
 │   ├── gate_decision.py        # GateDecision ORM
 │   └── user.py                 # User ORM (github_id, github_login, github_access_token, email, display_name)
@@ -138,7 +142,7 @@ src/
 │   ├── __main__.py             # python -m src.cli review
 │   ├── git_diff.py             # 로컬 git diff 수집
 │   └── formatter.py            # 터미널 출력 포맷 (ANSI 색상)
-├── repositories/               # DB 접근 계층 — repository_repo, analysis_repo
+├── repositories/               # DB 접근 계층 — repository_repo, analysis_repo, analysis_feedback_repo (Phase E.3)
 └── worker/
     └── pipeline.py             # run_analysis_pipeline, build_analysis_result_dict
 ```
@@ -430,4 +434,4 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 
 ## 현재 상태
 
-최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1232개 | E2E 49개 | pylint 10.00 | 커버리지 96.2% | SonarCloud QG OK · Security A · Reliability A · Maintainability A · Tier1 정적분석 10종 · Observability (Sentry + Claude metrics + stage timing) · AI 점수 피드백 루프 · Settings Minimal Mode · Onboarding 3단계 튜토리얼
+최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1234개 | E2E 49개 | pylint 10.00 | 커버리지 96.2% | SonarCloud QG OK · Security A · Reliability A · Maintainability A · Tier1 정적분석 10종 · Observability (Sentry + Claude metrics + stage timing) · AI 점수 피드백 루프 · Settings Minimal Mode · Onboarding 3단계 튜토리얼 · 3-에이전트 감사 통과

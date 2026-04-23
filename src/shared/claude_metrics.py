@@ -1,11 +1,17 @@
 """Claude API 호출 메트릭 — 비용 추정 + 구조화 로깅.
 
 Phase E.2b — Claude API cost/latency/token 추적 기반.
-Anthropic API 가격 정책 (USD per 1M tokens):
+
+Anthropic API 가격 정책 (USD per 1M tokens, **2026-04 기준**):
   - Opus : $15 input / $75 output
   - Sonnet: $3 input / $15 output  ← 기본값 (claude-sonnet-4-6 등)
   - Haiku : $1 input / $5 output
-정확한 가격은 주기적 재확인 필요 — 추세 추적용 추정이므로 ±10% 오차 허용.
+
+⚠️ **정확도 경고**:
+  - 가격은 Anthropic 측 변경 가능 — **분기별 (3개월) 재확인 필수**.
+  - 추세 추적용 추정이므로 실제 청구 대비 ±10% 오차 허용.
+  - 월별 실제 청구액 vs 본 모듈 합계 차이 10% 초과 시 즉시 가격표 갱신.
+  - 미지의 모델 이름은 sonnet 요율로 fallback — typo 시 과소/과대 추정 가능.
 """
 import logging
 
