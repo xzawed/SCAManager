@@ -13,13 +13,12 @@ from fastapi.responses import JSONResponse
 from src.config import settings
 from src.crypto import decrypt_token
 from src.database import SessionLocal
-from src.models.repository import Repository
 from src.models.user import User as UserModel
 from src.notifier.railway_issue import create_deploy_failure_issue
 from src.railway_client.logs import RailwayLogFetchError, fetch_deployment_logs
 from src.railway_client.models import RailwayDeployEvent
 from src.railway_client.webhook import parse_railway_payload
-from src.repositories import repo_config_repo
+from src.repositories import repo_config_repo, repository_repo
 
 logger = logging.getLogger(__name__)
 
@@ -50,9 +49,7 @@ async def railway_webhook(
             decrypt_token(config.railway_api_token) if config.railway_api_token else None
         )
 
-        repo = db.query(Repository).filter(
-            Repository.full_name == repo_full_name
-        ).first()
+        repo = repository_repo.find_by_full_name(db, repo_full_name)
         github_token = settings.github_token or ""
         if repo and repo.user_id:
             user = db.query(UserModel).filter(UserModel.id == repo.user_id).first()

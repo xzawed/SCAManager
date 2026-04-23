@@ -16,7 +16,7 @@ from src.github_client.repos import (
 )
 from src.models.repo_config import RepoConfig
 from src.models.repository import Repository
-from src.repositories import repo_config_repo
+from src.repositories import repo_config_repo, repository_repo
 from src.ui._helpers import GITHUB_WEBHOOK_PATH, templates, webhook_base_url
 
 router = APIRouter()
@@ -58,9 +58,7 @@ async def add_repo(
         raise HTTPException(status_code=400, detail="리포 이름이 필요합니다")
 
     with SessionLocal() as db:
-        existing = db.query(Repository).filter(
-            Repository.full_name == repo_full_name
-        ).first()
+        existing = repository_repo.find_by_full_name(db, repo_full_name)
         if existing:
             if existing.user_id is not None:
                 return RedirectResponse(
