@@ -101,16 +101,21 @@ src/
 │   ├── engine.py               # run_gate_check() — 3-옵션 독립 처리 (직접 구현)
 │   ├── github_review.py        # post_github_review(), merge_pr()
 │   └── telegram_gate.py        # send_gate_request() — 인라인 키보드 메시지
-├── notifier/
+├── notifier/                   # `__init__.py` 가 import 시 각 채널 모듈 자동 로드 → REGISTRY 등록 (Phase S.3-E)
+│   ├── __init__.py             # 8개 notifier 모듈 import (등록 순서 = 발송 우선순위)
 │   ├── _common.py              # 공통 헬퍼 — format_ref, get_all_issues, truncate_message, truncate_issue_msg
 │   ├── _http.py                # build_safe_client() — HTTP_CLIENT_TIMEOUT + follow_redirects=False (SSRF 방어)
 │   ├── registry.py             # NotifyContext + Notifier Protocol + REGISTRY + register() (채널 확장)
-│   ├── telegram.py             # send_analysis_result(), telegram_post_message() 공용 헬퍼
-│   ├── github_comment.py       # post_pr_comment_from_result() — result dict 기반
-│   ├── github_commit_comment.py # post_commit_comment() — Push 이벤트 커밋 댓글
-│   ├── github_issue.py         # create_low_score_issue() — 낮은 점수 GitHub Issue 자동 생성
-│   ├── railway_issue.py        # create_deploy_failure_issue() — Railway 빌드 실패 Issue (dedup)
-│   ├── discord.py, slack.py, webhook.py, email.py, n8n.py
+│   ├── telegram.py             # send_analysis_result() + _TelegramNotifier (항상 활성, global chat_id fallback)
+│   ├── discord.py              # send_discord_notification() + _DiscordNotifier (discord_webhook_url 설정 시)
+│   ├── slack.py                # send_slack_notification() + _SlackNotifier (slack_webhook_url 설정 시)
+│   ├── webhook.py              # send_webhook_notification() + _WebhookNotifier (custom_webhook_url 설정 시)
+│   ├── email.py                # send_email_notification() + _EmailNotifier (SMTP 설정 시)
+│   ├── n8n.py                  # notify_n8n() + _N8nNotifier (n8n_webhook_url 설정 시)
+│   ├── github_comment.py       # post_pr_comment_from_result() — result dict 기반 (PR 전용, gate/engine 에서 호출)
+│   ├── github_commit_comment.py # post_commit_comment() + _CommitCommentNotifier (Push 전용)
+│   ├── github_issue.py         # create_low_score_issue() + _IssueNotifier (저점 OR bandit HIGH 시)
+│   └── railway_issue.py        # create_deploy_failure_issue() — Railway 빌드 실패 Issue (dedup, webhook 경유)
 ├── api/
 │   ├── auth.py                 # require_api_key Depends (X-API-Key 헤더)
 │   ├── deps.py                 # get_repo_or_404(repo_name, db) 공용 헬퍼

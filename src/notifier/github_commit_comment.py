@@ -32,3 +32,35 @@ async def post_commit_comment(
             resp.raise_for_status()
     except httpx.HTTPError as exc:
         logger.warning("post_commit_comment 실패 (%s@%s): %s", repo_name, commit_sha, exc)
+
+
+# ---------------------------------------------------------------------------
+# Notifier Protocol 구현체 (Phase S.3-E) — pipeline.py 에서 이관
+# ---------------------------------------------------------------------------
+from src.notifier.registry import NotifyContext, register  # noqa: E402  pylint: disable=wrong-import-position
+
+
+class _CommitCommentNotifier:
+    """GitHub Commit Comment 채널 — push 이벤트 전용 (pr_number is None)."""
+
+    name = "commit_comment"
+
+    def is_enabled(self, ctx: NotifyContext) -> bool:
+        """채널 활성화 여부를 반환한다."""
+        return bool(
+            ctx.config and ctx.config.commit_comment
+            and ctx.pr_number is None
+            and ctx.result_dict
+        )
+
+    async def send(self, ctx: NotifyContext) -> None:
+        """알림을 전송한다."""
+        await post_commit_comment(
+            github_token=ctx.owner_token,
+            repo_name=ctx.repo_name,
+            commit_sha=ctx.commit_sha,
+            result=ctx.result_dict,
+        )
+
+
+register(_CommitCommentNotifier())

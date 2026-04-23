@@ -13,19 +13,13 @@ from src.github_client.diff import get_pr_files, get_push_files, ChangedFile
 from src.analyzer.io.static import analyze_file, StaticAnalysisResult
 from src.analyzer.io.ai_review import review_code
 from src.scorer.calculator import calculate_score
-from src.notifier.telegram import send_analysis_result
-from src.notifier.github_commit_comment import post_commit_comment
-from src.notifier.github_issue import create_low_score_issue
 from src.models.repository import Repository
 from src.models.analysis import Analysis
 from src.gate.engine import run_gate_check
-from src.notifier.n8n import notify_n8n
-from src.notifier.discord import send_discord_notification
-from src.notifier.slack import send_slack_notification
-from src.notifier.webhook import send_webhook_notification
-from src.notifier.email import send_email_notification
 from src.config_manager.manager import get_repo_config
-from src.notifier.registry import NotifyContext, REGISTRY, register
+# src.notifier 임포트 시 각 채널 모듈이 자동으로 REGISTRY 에 등록됨
+import src.notifier  # noqa: F401 — 자동 등록 트리거  # pylint: disable=unused-import
+from src.notifier.registry import NotifyContext, REGISTRY
 from src.repositories import repository_repo, analysis_repo
 
 logger = logging.getLogger(__name__)
@@ -46,176 +40,12 @@ class _AnalysisSaveParams:  # pylint: disable=too-many-instance-attributes
 
 
 # ---------------------------------------------------------------------------
-# 알림 채널 구현체 — Notifier 프로토콜 구현 + 레지스트리 등록
-# 새 채널 추가: 클래스 하나 작성 후 register() 호출만으로 완성.
+# Notifier 채널 구현체는 Phase S.3-E 이후 src/notifier/*.py 로 이관됨.
+# `import src.notifier` 가 모듈 로드 시 각 채널의 `register()` 를 트리거해
+# REGISTRY 에 자동 등록된다. 새 채널 추가 시:
+#   1. src/notifier/<channel>.py 에 클래스 작성 + register() 호출
+#   2. src/notifier/__init__.py 에 `import src.notifier.<channel>` 1줄
 # ---------------------------------------------------------------------------
-# pylint: disable=missing-function-docstring
-
-class _TelegramChannel:
-    name = "telegram"
-
-    def is_enabled(self, ctx: NotifyContext) -> bool:  # pylint: disable=unused-argument
-        return True  # 항상 활성 (global fallback 포함)
-
-    async def send(self, ctx: NotifyContext) -> None:
-        chat_id = (ctx.config.notify_chat_id if ctx.config else None) or settings.telegram_chat_id
-        await send_analysis_result(
-            bot_token=settings.telegram_bot_token,
-            chat_id=chat_id,
-            repo_name=ctx.repo_name,
-            commit_sha=ctx.commit_sha,
-            score_result=ctx.score_result,
-            analysis_results=ctx.analysis_results,
-            pr_number=ctx.pr_number,
-            ai_review=ctx.ai_review,
-        )
-
-
-class _DiscordChannel:
-    name = "discord"
-
-    def is_enabled(self, ctx: NotifyContext) -> bool:
-        return bool(ctx.config and ctx.config.discord_webhook_url)
-
-    async def send(self, ctx: NotifyContext) -> None:
-        await send_discord_notification(
-            webhook_url=ctx.config.discord_webhook_url,
-            repo_name=ctx.repo_name,
-            commit_sha=ctx.commit_sha,
-            score_result=ctx.score_result,
-            analysis_results=ctx.analysis_results,
-            pr_number=ctx.pr_number,
-            ai_review=ctx.ai_review,
-        )
-
-
-class _SlackChannel:
-    name = "slack"
-
-    def is_enabled(self, ctx: NotifyContext) -> bool:
-        return bool(ctx.config and ctx.config.slack_webhook_url)
-
-    async def send(self, ctx: NotifyContext) -> None:
-        await send_slack_notification(
-            webhook_url=ctx.config.slack_webhook_url,
-            repo_name=ctx.repo_name,
-            commit_sha=ctx.commit_sha,
-            score_result=ctx.score_result,
-            analysis_results=ctx.analysis_results,
-            pr_number=ctx.pr_number,
-            ai_review=ctx.ai_review,
-        )
-
-
-class _WebhookChannel:
-    name = "webhook"
-
-    def is_enabled(self, ctx: NotifyContext) -> bool:
-        return bool(ctx.config and ctx.config.custom_webhook_url)
-
-    async def send(self, ctx: NotifyContext) -> None:
-        await send_webhook_notification(
-            webhook_url=ctx.config.custom_webhook_url,
-            repo_name=ctx.repo_name,
-            commit_sha=ctx.commit_sha,
-            score_result=ctx.score_result,
-            analysis_results=ctx.analysis_results,
-            pr_number=ctx.pr_number,
-            ai_review=ctx.ai_review,
-        )
-
-
-class _EmailChannel:
-    name = "email"
-
-    def is_enabled(self, ctx: NotifyContext) -> bool:
-        return bool(ctx.config and ctx.config.email_recipients and settings.smtp_host)
-
-    async def send(self, ctx: NotifyContext) -> None:
-        await send_email_notification(
-            recipients=ctx.config.email_recipients,
-            repo_name=ctx.repo_name,
-            commit_sha=ctx.commit_sha,
-            score_result=ctx.score_result,
-            analysis_results=ctx.analysis_results,
-            pr_number=ctx.pr_number,
-            ai_review=ctx.ai_review,
-            smtp_host=settings.smtp_host,
-            smtp_port=settings.smtp_port,
-            smtp_user=settings.smtp_user,
-            smtp_pass=settings.smtp_pass,
-        )
-
-
-class _N8nChannel:
-    name = "n8n"
-
-    def is_enabled(self, ctx: NotifyContext) -> bool:
-        return bool(ctx.config and ctx.config.n8n_webhook_url)
-
-    async def send(self, ctx: NotifyContext) -> None:
-        await notify_n8n(
-            webhook_url=ctx.config.n8n_webhook_url,
-            repo_full_name=ctx.repo_name,
-            commit_sha=ctx.commit_sha,
-            pr_number=ctx.pr_number,
-            score_result=ctx.score_result,
-            n8n_secret=settings.n8n_webhook_secret,
-        )
-
-
-class _CommitCommentChannel:
-    name = "commit_comment"
-
-    def is_enabled(self, ctx: NotifyContext) -> bool:
-        return bool(
-            ctx.config and ctx.config.commit_comment
-            and ctx.pr_number is None  # push 이벤트 전용
-            and ctx.result_dict
-        )
-
-    async def send(self, ctx: NotifyContext) -> None:
-        await post_commit_comment(
-            github_token=ctx.owner_token,
-            repo_name=ctx.repo_name,
-            commit_sha=ctx.commit_sha,
-            result=ctx.result_dict,
-        )
-
-
-class _IssueChannel:
-    name = "create_issue"
-
-    def is_enabled(self, ctx: NotifyContext) -> bool:
-        if not (ctx.config and ctx.config.create_issue and ctx.result_dict):
-            return False
-        is_bot_pr = ctx.pr_head_ref and ctx.pr_head_ref.startswith("claude-fix/")
-        if is_bot_pr:
-            return False
-        has_bandit_high = any(
-            i.get("severity") == "HIGH" and i.get("tool") == "bandit"
-            for i in (ctx.result_dict.get("issues") or [])
-        )
-        return ctx.score_result.total < ctx.config.reject_threshold or has_bandit_high
-
-    async def send(self, ctx: NotifyContext) -> None:
-        await create_low_score_issue(
-            github_token=ctx.owner_token,
-            repo_name=ctx.repo_name,
-            commit_sha=ctx.commit_sha,
-            analysis_id=ctx.analysis_id,
-            result=ctx.result_dict,
-        )
-
-
-# 모듈 로드 시 채널 등록 (순서 = 우선순위)
-for _ch in [
-    _TelegramChannel(), _DiscordChannel(), _SlackChannel(),
-    _WebhookChannel(), _EmailChannel(), _N8nChannel(),
-    _CommitCommentChannel(), _IssueChannel(),
-]:
-    register(_ch)
-del _ch  # 루프 변수 cleanup
 
 
 def build_analysis_result_dict(

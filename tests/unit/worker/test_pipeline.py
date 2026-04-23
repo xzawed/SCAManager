@@ -23,7 +23,7 @@ def mock_deps():
         patch("src.worker.pipeline.get_pr_files") as mock_pr,
         patch("src.worker.pipeline.review_code", new_callable=AsyncMock) as mock_ai,
         patch("src.worker.pipeline.calculate_score") as mock_score,
-        patch("src.worker.pipeline.send_analysis_result", new_callable=AsyncMock) as mock_telegram,
+        patch("src.notifier.telegram.send_analysis_result", new_callable=AsyncMock) as mock_telegram,
         patch("src.worker.pipeline.SessionLocal") as mock_session_cls,
         patch("src.worker.pipeline.settings") as mock_settings,
         # 정적분석 subprocess(Semgrep 등) 실행 차단 — 테스트당 ~7s 절약
@@ -290,7 +290,7 @@ async def test_pipeline_calls_n8n_when_url_set(mock_deps):
     with patch("src.worker.pipeline.get_repo_config",
                return_value=RepoConfigData(repo_full_name="owner/repo",
                                            n8n_webhook_url="https://n8n.test/webhook/x")):
-        with patch("src.worker.pipeline.notify_n8n", new_callable=AsyncMock) as mock_n8n:
+        with patch("src.notifier.n8n.notify_n8n", new_callable=AsyncMock) as mock_n8n:
             with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
                 await run_analysis_pipeline("push", PUSH_DATA)
                 mock_n8n.assert_called_once()
@@ -597,7 +597,7 @@ async def test_discord_notifier_called_when_configured(mock_deps):
         discord_webhook_url="https://discord.com/api/webhooks/test",
     )
     with patch("src.worker.pipeline.get_repo_config", return_value=config):
-        with patch("src.worker.pipeline.send_discord_notification",
+        with patch("src.notifier.discord.send_discord_notification",
                    new_callable=AsyncMock) as mock_discord:
             with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
                 await run_analysis_pipeline("push", PUSH_DATA)
@@ -619,7 +619,7 @@ async def test_discord_notifier_not_called_when_not_configured(mock_deps):
     # discord_webhook_url 미설정
     config = RepoConfigData(repo_full_name="owner/repo")
     with patch("src.worker.pipeline.get_repo_config", return_value=config):
-        with patch("src.worker.pipeline.send_discord_notification",
+        with patch("src.notifier.discord.send_discord_notification",
                    new_callable=AsyncMock) as mock_discord:
             with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
                 await run_analysis_pipeline("push", PUSH_DATA)
@@ -643,7 +643,7 @@ async def test_slack_notifier_called_when_configured(mock_deps):
         slack_webhook_url="https://hooks.slack.com/services/T000/B000/xxx",
     )
     with patch("src.worker.pipeline.get_repo_config", return_value=config):
-        with patch("src.worker.pipeline.send_slack_notification",
+        with patch("src.notifier.slack.send_slack_notification",
                    new_callable=AsyncMock) as mock_slack:
             with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
                 await run_analysis_pipeline("push", PUSH_DATA)
@@ -664,9 +664,9 @@ async def test_repo_config_none_sends_only_telegram(mock_deps):
     # get_repo_config 예외 → pipeline이 repo_config=None으로 fallback
     from sqlalchemy.exc import SQLAlchemyError
     with patch("src.worker.pipeline.get_repo_config", side_effect=SQLAlchemyError("config error")):
-        with patch("src.worker.pipeline.send_discord_notification",
+        with patch("src.notifier.discord.send_discord_notification",
                    new_callable=AsyncMock) as mock_discord:
-            with patch("src.worker.pipeline.send_slack_notification",
+            with patch("src.notifier.slack.send_slack_notification",
                        new_callable=AsyncMock) as mock_slack:
                 with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
                     await run_analysis_pipeline("push", PUSH_DATA)
@@ -718,7 +718,7 @@ async def test_n8n_notifier_called_when_configured(mock_deps):
         n8n_webhook_url="https://n8n.example.com/webhook/test",
     )
     with patch("src.worker.pipeline.get_repo_config", return_value=config):
-        with patch("src.worker.pipeline.notify_n8n", new_callable=AsyncMock) as mock_n8n:
+        with patch("src.notifier.n8n.notify_n8n", new_callable=AsyncMock) as mock_n8n:
             with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
                 await run_analysis_pipeline("push", PUSH_DATA)
 
@@ -742,7 +742,7 @@ async def test_commit_comment_called_on_push_when_enabled(mock_deps):
 
     config = RepoConfigData(repo_full_name="owner/repo", commit_comment=True)
     with patch("src.worker.pipeline.get_repo_config", return_value=config):
-        with patch("src.worker.pipeline.post_commit_comment",
+        with patch("src.notifier.github_commit_comment.post_commit_comment",
                    new_callable=AsyncMock) as mock_cc:
             with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
                 await run_analysis_pipeline("push", PUSH_DATA)
@@ -763,7 +763,7 @@ async def test_commit_comment_not_called_on_pr_event(mock_deps):
 
     config = RepoConfigData(repo_full_name="owner/repo", commit_comment=True)
     with patch("src.worker.pipeline.get_repo_config", return_value=config):
-        with patch("src.worker.pipeline.post_commit_comment",
+        with patch("src.notifier.github_commit_comment.post_commit_comment",
                    new_callable=AsyncMock) as mock_cc:
             with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
                 await run_analysis_pipeline("pull_request", PR_DATA)
@@ -784,7 +784,7 @@ async def test_commit_comment_not_called_when_disabled(mock_deps):
 
     config = RepoConfigData(repo_full_name="owner/repo", commit_comment=False)
     with patch("src.worker.pipeline.get_repo_config", return_value=config):
-        with patch("src.worker.pipeline.post_commit_comment",
+        with patch("src.notifier.github_commit_comment.post_commit_comment",
                    new_callable=AsyncMock) as mock_cc:
             with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
                 await run_analysis_pipeline("push", PUSH_DATA)
@@ -818,7 +818,7 @@ async def test_create_issue_called_on_low_score(mock_deps):
         reject_threshold=50,
     )
     with patch("src.worker.pipeline.get_repo_config", return_value=config):
-        with patch("src.worker.pipeline.create_low_score_issue",
+        with patch("src.notifier.github_issue.create_low_score_issue",
                    new_callable=AsyncMock) as mock_issue:
             with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
                 await run_analysis_pipeline("push", PUSH_DATA)
@@ -853,7 +853,7 @@ async def test_create_issue_called_on_security_high_even_when_score_high(mock_de
     with patch("src.worker.pipeline._run_static_analysis",
                new_callable=AsyncMock, return_value=[high_issue_result]):
         with patch("src.worker.pipeline.get_repo_config", return_value=config):
-            with patch("src.worker.pipeline.create_low_score_issue",
+            with patch("src.notifier.github_issue.create_low_score_issue",
                        new_callable=AsyncMock) as mock_issue:
                 with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
                     await run_analysis_pipeline("push", PUSH_DATA)
@@ -894,7 +894,7 @@ async def test_create_issue_called_only_once_when_both_conditions_match(mock_dep
     with patch("src.worker.pipeline._run_static_analysis",
                new_callable=AsyncMock, return_value=[high_issue_result]):
         with patch("src.worker.pipeline.get_repo_config", return_value=config):
-            with patch("src.worker.pipeline.create_low_score_issue",
+            with patch("src.notifier.github_issue.create_low_score_issue",
                        new_callable=AsyncMock) as mock_issue:
                 with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
                     await run_analysis_pipeline("push", PUSH_DATA)
@@ -923,7 +923,7 @@ async def test_create_issue_not_called_when_disabled(mock_deps):
 
     config = RepoConfigData(repo_full_name="owner/repo", create_issue=False)
     with patch("src.worker.pipeline.get_repo_config", return_value=config):
-        with patch("src.worker.pipeline.create_low_score_issue",
+        with patch("src.notifier.github_issue.create_low_score_issue",
                    new_callable=AsyncMock) as mock_issue:
             with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
                 await run_analysis_pipeline("push", PUSH_DATA)

@@ -88,3 +88,37 @@ async def send_analysis_result(
     """분석 결과를 Telegram HTML 메시지로 전송한다."""
     text = _build_message(repo_name, commit_sha, score_result, analysis_results, pr_number, ai_review=ai_review)
     await telegram_post_message(bot_token, chat_id, {"text": text, "parse_mode": "HTML"})
+
+
+# ---------------------------------------------------------------------------
+# Notifier Protocol 구현체 (Phase S.3-E) — pipeline.py 에서 이관
+# ---------------------------------------------------------------------------
+from src.config import settings  # noqa: E402  pylint: disable=wrong-import-position
+from src.notifier.registry import NotifyContext, register  # noqa: E402  pylint: disable=wrong-import-position
+
+
+class _TelegramNotifier:
+    """Telegram 알림 채널 — 항상 활성 (global fallback chat_id 사용)."""
+
+    name = "telegram"
+
+    def is_enabled(self, ctx: NotifyContext) -> bool:  # pylint: disable=unused-argument
+        """채널 활성화 여부를 반환한다."""
+        return True
+
+    async def send(self, ctx: NotifyContext) -> None:
+        """알림을 전송한다."""
+        chat_id = (ctx.config.notify_chat_id if ctx.config else None) or settings.telegram_chat_id
+        await send_analysis_result(
+            bot_token=settings.telegram_bot_token,
+            chat_id=chat_id,
+            repo_name=ctx.repo_name,
+            commit_sha=ctx.commit_sha,
+            score_result=ctx.score_result,
+            analysis_results=ctx.analysis_results,
+            pr_number=ctx.pr_number,
+            ai_review=ctx.ai_review,
+        )
+
+
+register(_TelegramNotifier())

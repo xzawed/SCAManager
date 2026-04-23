@@ -104,3 +104,39 @@ async def send_email_notification(  # pylint: disable=too-many-arguments
         password=smtp_pass,
         use_tls=True,
     )
+
+
+# ---------------------------------------------------------------------------
+# Notifier Protocol 구현체 (Phase S.3-E) — pipeline.py 에서 이관
+# ---------------------------------------------------------------------------
+from src.config import settings  # noqa: E402  pylint: disable=wrong-import-position
+from src.notifier.registry import NotifyContext, register  # noqa: E402  pylint: disable=wrong-import-position
+
+
+class _EmailNotifier:
+    """SMTP 이메일 알림 채널 — email_recipients + SMTP 설정 시 활성."""
+
+    name = "email"
+
+    def is_enabled(self, ctx: NotifyContext) -> bool:
+        """채널 활성화 여부를 반환한다."""
+        return bool(ctx.config and ctx.config.email_recipients and settings.smtp_host)
+
+    async def send(self, ctx: NotifyContext) -> None:
+        """알림을 전송한다."""
+        await send_email_notification(
+            recipients=ctx.config.email_recipients,
+            repo_name=ctx.repo_name,
+            commit_sha=ctx.commit_sha,
+            score_result=ctx.score_result,
+            analysis_results=ctx.analysis_results,
+            pr_number=ctx.pr_number,
+            ai_review=ctx.ai_review,
+            smtp_host=settings.smtp_host,
+            smtp_port=settings.smtp_port,
+            smtp_user=settings.smtp_user,
+            smtp_pass=settings.smtp_pass,
+        )
+
+
+register(_EmailNotifier())
