@@ -31,6 +31,9 @@ logger = logging.getLogger(__name__)
 templates = Jinja2Templates(directory="src/templates")
 router = APIRouter()
 
+# GitHub Webhook 수신 경로 — 본 모듈에서 3곳 사용 (상수화로 중복 제거)
+_GITHUB_WEBHOOK_PATH = "/webhooks/github"
+
 
 def _webhook_base_url(request: Request) -> str:
     """APP_BASE_URL 설정 시 해당 URL 우선 사용 (Railway HTTPS 보장)."""
@@ -125,7 +128,7 @@ async def add_repo(request: Request, current_user: Annotated[CurrentUser, Depend
 
     webhook_secret = secrets.token_hex(32)
     hook_token = secrets.token_hex(32)
-    webhook_url = _webhook_base_url(request) + "/webhooks/github"
+    webhook_url = _webhook_base_url(request) + _GITHUB_WEBHOOK_PATH
     webhook_id = await create_webhook(
         current_user.plaintext_token or "",
         repo_full_name,
@@ -280,7 +283,9 @@ async def update_repo_settings(
                 db.commit()
         except ValueError:
             # 로그 인젝션 방지: sanitize_for_log() 로 CR/LF 제거 + 길이 제한
-            logger.warning(
+            # NOSONAR 이유: SonarCloud taint analysis 가 str.replace 기반 커스텀
+            # sanitizer 를 인식하지 못함 — log_safety 모듈에서 실제 방어 완료.
+            logger.warning(  # NOSONAR python:S5145 — sanitized via log_safety
                 "Invalid threshold values for %s, settings not saved",
                 sanitize_for_log(repo_name),
             )
@@ -337,14 +342,14 @@ async def reinstall_webhook(
         repo = _get_accessible_repo(db, repo_name, current_user)
         token = current_user.plaintext_token or ""
 
-        webhook_url = _webhook_base_url(request) + "/webhooks/github"
+        webhook_url = _webhook_base_url(request) + _GITHUB_WEBHOOK_PATH
 
         # GitHub에서 전체 웹훅 목록 조회 후 동일 URL 웹훅 전부 삭제 (중복 제거)
         try:
             all_hooks = await list_webhooks(token, repo_name)
             for hook in all_hooks:
                 hook_url = hook.get("config", {}).get("url", "")
-                if "/webhooks/github" in hook_url:
+                if _GITHUB_WEBHOOK_PATH in hook_url:
                     await delete_webhook(token, repo_name, hook["id"])
                     logger.info("Deleted duplicate webhook id=%d url=%s", hook["id"], hook_url)
         except (httpx.HTTPError, KeyError, ValueError, OSError) as exc:

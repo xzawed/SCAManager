@@ -1012,7 +1012,8 @@
       if (!el) return;
       const target = el.closest('.toggle-row, .threshold-row, .gate-btns') || el;
       target.classList.remove('preset-just-applied');
-      void target.offsetWidth;  // 리플로우 강제 → 애니메이션 재시작
+      // 리플로우 강제 → 애니메이션 재시작 (offsetWidth 읽기만 하면 됨)
+      target.offsetWidth;  // eslint-disable-line no-unused-expressions
       target.classList.add('preset-just-applied');
       setTimeout(function() {
         target.classList.remove('preset-just-applied');
