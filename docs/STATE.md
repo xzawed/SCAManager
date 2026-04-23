@@ -2,16 +2,16 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-23 기준 — 구조 감사 Phase S.1 반영 후)
+## 현재 수치 (2026-04-23 기준 — Phase Q.7 + S.4 + S.3-D 완료)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1170개** | pytest (0 failed) — Phase S.1 `tests/test_gate_registry.py` 5건 삭제 (죽은 코드 정리) |
+| 단위 테스트 | **1170개** | pytest (0 failed) — Phase Q.7/S.4 회귀 없음 |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
 | SonarCloud Maintainability Rating | **A** | Code Smells 58 (-20 from 78) |
-| SonarCloud BLOCKER / CRITICAL | **0 / 5** | 잔존 CRITICAL 전부 S3776 Cognitive Complexity — Phase Q.7 예정 |
+| SonarCloud BLOCKER / CRITICAL | **0 / 0** | Phase Q.7 완료 — 5건 Cognitive Complexity 전부 해소 |
 | E2E 테스트 | **49개** | `make test-e2e` (Chromium Playwright) |
 | pylint | **10.00/10** | `python -m pylint src/` — 만점 |
 | 커버리지 | **96.2%** | `make test-cov` (database.py 100%, ui/router.py 99.4%) |
@@ -188,6 +188,24 @@
 | 테스트 fixture 재작성 | `test_railway_client.py`(2곳) + `test_railway_issue_notifier.py`(`_EVENT` fixture nested 재작성) | — |
 | 외부 API 불변 | `parse_railway_payload` · `create_deploy_failure_issue` 시그니처 · Webhook payload 스키마 · DB 전부 그대로 | — |
 
+### 그룹 22 — Phase Q.7 + S.4 + S.3-D 완결 + P4-Gate 재료 (2026-04-23)
+
+3-에이전트 논의 로드맵([reports/2026-04-23-remaining-roadmap-3agent.md](reports/2026-04-23-remaining-roadmap-3agent.md)) 시나리오 B (균형형) 실행. Step 1~6·8 완료. Step 7 (P4-Gate 실증) 사용자 대기, Step 9~10 (D.3/D.4) 게이트 통과 후 해금.
+
+| Step | 커밋 | 내용 |
+|------|------|------|
+| 1+2 (S.4 + S.3-D) | `f678222` | `test_pipeline.py` fixture 를 Option A (함수 단위 patch) 로 재설계 + `repository_repo.find_by_full_name` 내부 `filter_by → filter` 전환 + UI/webhook 4파일 `repository_repo` 경유 확산 (deps.py · _helpers.py · add_repo.py · railway.py). S.1-4·S.3-D 2회 실패의 근본 원인 해소. |
+| 3~5 (Q.7-2~5) | `e551839` | Cognitive Complexity CRITICAL 4건 해소 — slither 3 헬퍼 · github_comment 6 헬퍼 · formatter 4 헬퍼 · git_diff 1 헬퍼 추출. 모두 순수 함수, 외부 API 불변. |
+| 6 (P4-Gate 재료) | `6ec93f4` | `docs/guides/p4-gate-verification.md` + `docs/samples/p4-gate/{buffer_overflow.c, reentrancy.sol, verify_tool_hits.sh}` — 사용자 실증 PR 재료. |
+| 8 (Q.7-1) | `842ea1d` | `run_gate_check` CC 31 → ≤15 — 5 헬퍼 분할 (`_run_review_comment` · `_run_approve_decision` → `_run_auto_approve`/`_run_semi_auto_approve` · `_run_auto_merge`). pipeline-reviewer 승인. |
+
+**최종 수치**: 1170 passed · pylint 10.00 · flake8 0 · bandit HIGH 0 · **CRITICAL 0** · SonarCloud QG OK · 3종 Rating A.
+
+**대기 작업 (사용자)**:
+1. 외부 테스트 리포에 `docs/samples/p4-gate/` 샘플 2개 배치
+2. PR 제출 후 Railway 빌드 로그 + 분석 결과 확인
+3. 6항목 체크리스트 통과 확인 후 본 세션 재개 → D.3 RuboCop (Step 9) + D.4 golangci-lint (Step 10) 자동 해금
+
 ### 그룹 21 — Phase S.3 구조 정리 5단계 (2026-04-23)
 
 3-에이전트 감사 잔여 개선 항목을 5단계로 체계 수행. S.3-A/B/C/E 완료, S.3-D 보류.
@@ -350,15 +368,18 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 
 > 🧭 **종합 로드맵 (2026-04-23)**: 3-에이전트 논의 결과 → [`reports/2026-04-23-remaining-roadmap-3agent.md`](reports/2026-04-23-remaining-roadmap-3agent.md). Phase Q.7 / S.4 / D.3~D.8 / P4-Gate 전체 잔여 과제를 시나리오 A/B/C 로 비교, **시나리오 B (균형형)** 를 권고안으로 결정. 10-step 실행 순서 포함.
 
+> 🚀 **시나리오 B 진행 현황 (2026-04-23 세션)**: Step 1~6 · 8 완료 (커밋 `f678222` / `e551839` / `6ec93f4` / `842ea1d`). Step 7 (P4-Gate 실증) 사용자 대기 → 이후 Step 9 (D.3 RuboCop) · 10 (D.4 golangci-lint) 해금.
+
 | 우선순위 | 항목 | 비고 |
 |---------|------|------|
 | **✅ Phase Q.1~Q.6 완료 (SonarCloud 청산)** | Quality Gate OK + 3종 Rating A 달성 | [Follow-up 섹션](reports/2026-04-23-sonarcloud-baseline.md#follow-up--phase-q1q6-전체-실행-결과-2026-04-23-세션). Bugs/Vuln/Hotspots/BLOCKER 0, Code Smells 78→58 |
-| **Phase Q.7 (선택적 · 대기)** | CRITICAL 5건 Cognitive Complexity 해소 | 전부 `python:S3776`. Rating 영향 없음. `gate/engine.py:20` 최대 (+16 초과). 실제 함수 분할 리팩토링 필요 + pipeline-reviewer 승인 |
+| **✅ Phase Q.7 완료 (CRITICAL 5건 해소)** | run_gate_check 5 헬퍼 · slither 3 헬퍼 · github_comment 6 헬퍼 · formatter 4 헬퍼 · git_diff 1 헬퍼 추출 | 커밋 `e551839` (Q.7-2~5) · `842ea1d` (Q.7-1). pipeline-reviewer 승인. 1170 passed · pylint 10.00 유지. CRITICAL 5→0. |
 | **✅ Phase S.2 완료 (UI/Webhook router 분할)** | UI router → `src/ui/routes/` 5 모듈 · Webhook router → `src/webhook/providers/` 3 provider | 그룹 20 참조. mock 경로 193곳 재작성 완료, 1170 passed 유지 |
-| **✅ Phase S.3 완료 (구조 정리 5단계)** | S.3-A Service 스캐폴딩 + S.3-B Analyzer pure/io + S.3-C tests/unit + S.3-E Notifier 8클래스 이동 | 그룹 21 참조. S.3-D (repository_repo filter 전환) 는 pipeline test mock 재설계 선행 필요로 보류. |
-| **Phase S.4 (별도 세션 · 대기)** | pipeline test mock 구조 근본 재설계 (filter_by 체인 분리) → S.3-D 재착수 | 현재 pipeline test 12곳이 `filter_by.return_value.first.side_effect` 단일 체인으로 repo+analysis 조회를 묶음. repository_repo.find_by_full_name 자체를 patch 하도록 재설계하면 S.3-D 확산 가능. |
-| **🚧 P4-Gate (D.3 차단)** | D.1 cppcheck / D.2 slither 프로덕션 실증 검증 | D.3 착수 전 필수 — 아래 "D.3 차단 게이트" 섹션 체크리스트 완료 조건 |
+| **✅ Phase S.3 완료 (구조 정리 5단계)** | S.3-A Service 스캐폴딩 + S.3-B Analyzer pure/io + S.3-C tests/unit + S.3-E Notifier 8클래스 이동 + S.3-D UI/webhook repository_repo 확산 | 그룹 21 참조. S.3-D 는 S.4 완료와 함께 커밋 `f678222` 에 포함. |
+| **✅ Phase S.4 완료 (pipeline test mock 재설계)** | test_pipeline.py fixture 를 Option A (repository_repo / analysis_repo / get_repo_config 직접 patch) 로 전환 + repository_repo.find_by_full_name 내부 filter_by → filter 전환 | 커밋 `f678222`. 1170 passed. S.1-4 · S.3-D 2회 실패의 근본 원인 해소. |
+| **🚧 P4-Gate (D.3 차단 · 사용자 실증 필요)** | D.1 cppcheck / D.2 slither 프로덕션 실증 검증 | 샘플·가이드·검증 스크립트 준비 완료 ([docs/guides/p4-gate-verification.md](guides/p4-gate-verification.md) · [docs/samples/p4-gate/](samples/p4-gate/)). 사용자 실증 PR 제출 + 6항목 체크 필요. |
 | **P3-리팩 완결** | 6렌즈 권고 #1~6 ✅ · #7 ✅ · #8a/#8b 스캐폴딩 | [Follow-up 섹션 참조](reports/2026-04-22-quality-audit-6lens.md#follow-up-2026-04-22--후속-실행-결과). 10커밋 완료. 실제 치환 잔존 2건(아래) |
+| **P4-Gate 재료 준비 완료 (2026-04-23)** | 샘플 C/Solidity + 가이드 + 검증 스크립트 | [docs/guides/p4-gate-verification.md](guides/p4-gate-verification.md). 사용자가 외부 테스트 리포에 샘플을 넣어 PR 제출 → 6항목 체크 후 D.3 해금. |
 | **P3-후속 (스캐폴딩 완성)** | #8a GateAction 엔진 전환 + #8b http_client 15곳 채택 | test_gate_engine.py 37건 mock 재작성 + 15곳 `async with httpx.AsyncClient` 치환 필요. 별도 Phase |
 | **P4 — Phase D (D.3~D.8)** | Tier 1 정적분석 도구 확장 | D.1 ✅ / D.2 ✅ / **D.3 은 위 게이트 통과 후** / D.4~D.8 도구별 승인 필요 |
 | **P5 (외부 의존 작업)** | pytest-cov devcontainer 이미지 사전 캐싱 | DNS 제약 환경에서도 R2 커버리지 재현 가능하도록 wheel 사전 포함. devcontainer.json + 이미지 rebuild 필요 |
