@@ -19,3 +19,5 @@ semgrep>=1.80
 slither-analyzer>=0.10.0
 jinja2==3.1.6
 python-multipart==0.0.22
+# Observability (Phase E.2) — SENTRY_DSN 미설정 시 no-op
+sentry-sdk[fastapi]>=2.0.0
