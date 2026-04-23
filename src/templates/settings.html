@@ -330,6 +330,37 @@
     <div class="repo-badge">{{ repo_name }}</div>
   </div>
 
+  <!-- Phase E.4 — Simple/Advanced 모드 토글 -->
+  <div class="mode-toggle-bar" id="modeToggleBar">
+    <span class="mode-toggle-label">보기 모드:</span>
+    <button type="button" class="mode-toggle-btn active" data-settings-mode-btn="simple">
+      ✨ Simple <span class="mode-toggle-hint">(필수 항목만)</span>
+    </button>
+    <button type="button" class="mode-toggle-btn" data-settings-mode-btn="advanced">
+      ⚙️ Advanced <span class="mode-toggle-hint">(전체 설정)</span>
+    </button>
+  </div>
+  <style>
+    .mode-toggle-bar { display: flex; align-items: center; gap: 0.6rem;
+                       margin: 0 0 1rem; padding: 0.6rem 0.9rem;
+                       background: var(--bg-card); border-radius: 8px;
+                       border: 1px solid var(--border); flex-wrap: wrap; }
+    .mode-toggle-label { font-size: 13px; color: var(--text-muted); font-weight: 600; }
+    .mode-toggle-btn { padding: 0.4rem 0.9rem; border-radius: 6px;
+                       border: 1px solid var(--border); background: transparent;
+                       cursor: pointer; font-size: 13px; color: var(--text-primary);
+                       transition: all 0.15s ease; }
+    .mode-toggle-btn:hover { background: var(--bg-hover); }
+    .mode-toggle-btn.active { background: var(--accent); color: white;
+                              border-color: var(--accent); }
+    .mode-toggle-hint { font-size: 11px; opacity: 0.7; margin-left: 0.2rem; }
+    /* Simple 모드: adv-only 섹션 자체와 advanced-details 숨김 */
+    body[data-settings-mode="simple"] .adv-only,
+    main[data-settings-mode="simple"] .adv-only { display: none !important; }
+    body[data-settings-mode="simple"] details.advanced-details,
+    main[data-settings-mode="simple"] details.advanced-details { display: none !important; }
+  </style>
+
   <form id="settingsForm" method="post" action="/repos/{{ repo_name }}/settings">
     <input type="hidden" name="approve_mode" id="approveModeValue" value="{{ config.approve_mode }}">
 
@@ -668,7 +699,7 @@
                         aria-label="값 보이기/숨기기">👁️</button>
               </div>
             </div>
-            <div class="field-row">
+            <div class="field-row adv-only">
               <label class="field-label">Discord Webhook</label>
               <div class="masked-field">
                 <input class="field-input" type="password" name="discord_webhook_url"
@@ -678,7 +709,7 @@
                         aria-label="값 보이기/숨기기">👁️</button>
               </div>
             </div>
-            <div class="field-row">
+            <div class="field-row adv-only">
               <label class="field-label">Slack Webhook</label>
               <div class="masked-field">
                 <input class="field-input" type="password" name="slack_webhook_url"
@@ -688,7 +719,7 @@
                         aria-label="값 보이기/숨기기">👁️</button>
               </div>
             </div>
-            <div class="field-row">
+            <div class="field-row adv-only">
               <label class="field-label">Email 수신자 <span class="field-tag">SMTP 필요</span></label>
               <span class="field-hint">쉼표로 구분</span>
               <div class="masked-field">
@@ -699,7 +730,7 @@
                         aria-label="값 보이기/숨기기">👁️</button>
               </div>
             </div>
-            <div class="field-row">
+            <div class="field-row adv-only">
               <label class="field-label">Custom Webhook</label>
               <div class="masked-field">
                 <input class="field-input" type="password" name="custom_webhook_url"
@@ -709,7 +740,7 @@
                         aria-label="값 보이기/숨기기">👁️</button>
               </div>
             </div>
-            <div class="field-row">
+            <div class="field-row adv-only">
               <label class="field-label">n8n Webhook</label>
               <div class="masked-field">
                 <input class="field-input" type="password" name="n8n_webhook_url"
@@ -1091,5 +1122,33 @@
       history.replaceState(null, '', url.pathname + (url.search || ''));
     }
   }
+
+  // Phase E.4 — Simple/Advanced 모드 토글 (localStorage 에 영속, ?mode= 쿼리 오버라이드)
+  const SETTINGS_MODE_KEY = 'scamanager_settings_mode';
+  function toggleSettingsMode(mode) {
+    if (mode !== 'simple' && mode !== 'advanced') mode = 'simple';
+    document.body.setAttribute('data-settings-mode', mode);
+    try { localStorage.setItem(SETTINGS_MODE_KEY, mode); } catch (_) { /* private mode */ }
+    document.querySelectorAll('[data-settings-mode-btn]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.settingsModeBtn === mode);
+    });
+    // Advanced 로 전환 시 고급 설정 details 자동 펼침 (UX)
+    if (mode === 'advanced') {
+      document.querySelectorAll('details.advanced-details').forEach(d => d.open = true);
+    }
+  }
+  // 초기 모드 결정: ?mode= 쿼리 > localStorage > 기본값 simple
+  (function initSettingsMode() {
+    const params = new URLSearchParams(location.search);
+    const urlMode = params.get('mode');
+    let stored = null;
+    try { stored = localStorage.getItem(SETTINGS_MODE_KEY); } catch (_) { /* ignore */ }
+    const initial = urlMode || stored || 'simple';
+    toggleSettingsMode(initial);
+  })();
+  // 토글 버튼 바인딩
+  document.querySelectorAll('[data-settings-mode-btn]').forEach(btn => {
+    btn.addEventListener('click', () => toggleSettingsMode(btn.dataset.settingsModeBtn));
+  });
 </script>
 {% endblock %}

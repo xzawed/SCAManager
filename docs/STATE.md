@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-23 기준 — Phase E.2 + E.3 완료)
+## 현재 수치 (2026-04-23 기준 — Phase E.2 + E.3 + E.4 완료)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1227개** | pytest (0 failed) — Phase E.3 +14 (feedback repo 7 + feedback routes 7) |
+| 단위 테스트 | **1230개** | pytest (0 failed) — Phase E.4 +3 (Minimal Mode 토글) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
@@ -188,6 +188,37 @@
 | notifier 접근 체인 | `railway_issue.py` 11곳 nested 접근(`event.project.*`/`event.commit.*`)으로 업데이트 (출력 문자열 불변) | — |
 | 테스트 fixture 재작성 | `test_railway_client.py`(2곳) + `test_railway_issue_notifier.py`(`_EVENT` fixture nested 재작성) | — |
 | 외부 API 불변 | `parse_railway_payload` · `create_deploy_failure_issue` 시그니처 · Webhook payload 스키마 · DB 전부 그대로 | — |
+
+### 그룹 27 — Phase E.4 Minimal Mode (Settings UI Simple/Advanced 토글) (2026-04-23)
+
+Path A (서비스화) 로드맵 네 번째 단계. 신규 사용자 onboarding friction 감소 —
+기본 Simple 모드는 Python + Telegram + PR comment 핵심 설정만 노출.
+
+**구현 전략 — 순수 클라이언트 측 UI 전환** (백엔드 영향 0, DB 마이그레이션 없음):
+- localStorage 에 사용자 선호 영속 (`scamanager_settings_mode`)
+- `?mode=simple|advanced` 쿼리 오버라이드 지원
+- `data-settings-mode="simple|advanced"` body 속성 + CSS `.adv-only { display:none }` 로 토글
+- 기존 설정 값은 그대로 저장, 숨김만 전환
+
+**변경 내용**:
+- settings.html 헤더 하단에 Simple/Advanced 토글 바 추가 (inline CSS + JS, 의존성 없음)
+- 알림 채널 ③ 카드에서 Discord/Slack/Email/Webhook/n8n 필드에 `adv-only` 클래스 적용 (Telegram 만 Simple 노출)
+- 기존 `<details class="advanced-details">` 도 Simple 모드에서 자동 숨김 (PR gate·Feedback 카드)
+- Advanced 전환 시 details 자동 펼침 (UX)
+- +3 tests (모드 토글 버튼 / adv-only 클래스 / JS 함수 존재)
+
+**Simple 모드에서 보이는 것**:
+- 빠른 설정 프리셋 (🚀)
+- 알림 채널 중 Telegram 만
+- 시스템 & 토큰 (⑤)
+- 위험 구역 (⑥)
+
+**Advanced 모드에서 추가로 보이는 것**:
+- PR 들어왔을 때 (Gate/Approve/Merge — ①)
+- 이벤트 후 피드백 (commit comment/issue/Railway — ②)
+- 알림 채널 중 Discord/Slack/Email/Webhook/n8n
+
+**최종 수치**: 1227 → **1230 passed** (+3) · 1 skipped · pylint 10.00 · flake8 0.
 
 ### 그룹 26 — Phase E.3 AI 점수 피드백 루프 (2026-04-23)
 
