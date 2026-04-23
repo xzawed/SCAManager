@@ -183,6 +183,21 @@
 | 테스트 fixture 재작성 | `test_railway_client.py`(2곳) + `test_railway_issue_notifier.py`(`_EVENT` fixture nested 재작성) | — |
 | 외부 API 불변 | `parse_railway_payload` · `create_deploy_failure_issue` 시그니처 · Webhook payload 스키마 · DB 전부 그대로 | — |
 
+### 그룹 16 — SonarCloud 1차 분석 결과 확보 (2026-04-23)
+
+2026-04-22 push 후 SONAR_TOKEN/CODECOV_TOKEN 등록 → CI #2 `1106242` 성공 → 첫 분석 완료.
+
+| 항목 | 결과 |
+|------|------|
+| CI workflow | ✅ success (pytest 1168 + Codecov 3s + SonarCloud 58s) |
+| Codecov | ✅ 95.58% (125 files, 3656/3825 hits) |
+| SonarCloud Quality Gate | ✅ OK (new code 기준) |
+| SonarCloud 전체 이슈 | 🔴 93건 (Bugs 8 · Vuln 7 · Hotspots 4 · Smells 78) |
+| SonarCloud Rating | Maintainability **A** · Reliability **D** · Security **C** |
+| CodeQL | ✅ success (사용자 수동 확인 필요 — GitHub Security 탭) |
+
+**중요 발견**: 내부 pylint 10.00 + bandit HIGH 0 + flake8 0 을 통과했음에도 SonarCloud 는 JS/Web/pythonsecurity 규칙셋으로 93건 감지. 외부 공신력 도입의 가치 증명. 상세 청산 계획은 [2026-04-23 진단 보고서](reports/2026-04-23-sonarcloud-baseline.md) §5 Phase Q.1~Q.4.
+
 ### 그룹 15 — 외부 공신력 품질 서비스 연동 (2026-04-22)
 
 README 배지를 Claude/자체 산출 수치가 아닌 **외부 SaaS 가 직접 측정한 결과** 로 전환.
@@ -240,6 +255,7 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 
 | 우선순위 | 항목 | 비고 |
 |---------|------|------|
+| **🔴 Phase Q (SonarCloud 청산)** | Bugs 8 / Vulns 7 / Hotspots 4 / Smells 78 청산 | [2026-04-23 진단 보고서](reports/2026-04-23-sonarcloud-baseline.md). 4개 Phase(Q.1~Q.4) 계획 수립, 승인 대기. 최종 Rating A·A·A 달성 목표 (~7h) |
 | **🚧 P4-Gate (D.3 차단)** | D.1 cppcheck / D.2 slither 프로덕션 실증 검증 | D.3 착수 전 필수 — 아래 "D.3 차단 게이트" 섹션 체크리스트 완료 조건 |
 | **P3-리팩 완결** | 6렌즈 권고 #1~6 ✅ · #7 ✅ · #8a/#8b 스캐폴딩 | [Follow-up 섹션 참조](reports/2026-04-22-quality-audit-6lens.md#follow-up-2026-04-22--후속-실행-결과). 10커밋 완료. 실제 치환 잔존 2건(아래) |
 | **P3-후속 (스캐폴딩 완성)** | #8a GateAction 엔진 전환 + #8b http_client 15곳 채택 | test_gate_engine.py 37건 mock 재작성 + 15곳 `async with httpx.AsyncClient` 치환 필요. 별도 Phase |
