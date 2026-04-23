@@ -75,7 +75,8 @@ async def review_code(
         result = _parse_response(response.content[0].text)
         result.detected_languages = languages
         return result
-    except Exception as exc:  # noqa: BLE001 — anthropic/httpx는 다양한 예외를 발생시킬 수 있음  # pylint: disable=broad-exception-caught
+    except Exception as exc:  # pylint: disable=broad-exception-caught  # noqa: BLE001
+        # anthropic/httpx 는 다양한 예외를 발생시킬 수 있음 — 모두 graceful fallback
         duration_ms = (time.perf_counter() - start) * 1000
         log_claude_api_call(
             model=model,
