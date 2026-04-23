@@ -2,6 +2,7 @@
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass, field
 
 import anthropic
@@ -9,6 +10,7 @@ import anthropic
 from src.analyzer.pure.review_prompt import build_review_prompt
 from src.config import settings
 from src.constants import AI_DEFAULT_COMMIT_RAW, AI_DEFAULT_DIRECTION_RAW, AI_RAW_COMMIT_MAX, AI_RAW_DIRECTION_MAX
+from src.shared.claude_metrics import extract_anthropic_usage, log_claude_api_call
 
 logger = logging.getLogger(__name__)
 
@@ -52,17 +54,37 @@ async def review_code(
     if not diff_text.strip():
         return _default_result("empty_diff")
 
+    client = anthropic.AsyncAnthropic(api_key=api_key)
+    model = settings.claude_review_model
+    start = time.perf_counter()
     try:
-        client = anthropic.AsyncAnthropic(api_key=api_key)
         response = await client.messages.create(
-            model=settings.claude_review_model,
+            model=model,
             max_tokens=1500,
             messages=[{"role": "user", "content": prompt}],
+        )
+        duration_ms = (time.perf_counter() - start) * 1000
+        input_tokens, output_tokens = extract_anthropic_usage(response)
+        log_claude_api_call(
+            model=model,
+            duration_ms=duration_ms,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            status="success",
         )
         result = _parse_response(response.content[0].text)
         result.detected_languages = languages
         return result
-    except Exception:  # noqa: BLE001 — anthropic/httpx는 다양한 예외를 발생시킬 수 있음  # pylint: disable=broad-exception-caught
+    except Exception as exc:  # noqa: BLE001 — anthropic/httpx는 다양한 예외를 발생시킬 수 있음  # pylint: disable=broad-exception-caught
+        duration_ms = (time.perf_counter() - start) * 1000
+        log_claude_api_call(
+            model=model,
+            duration_ms=duration_ms,
+            input_tokens=0,
+            output_tokens=0,
+            status="error",
+            error_type=type(exc).__name__,
+        )
         logger.exception("AI review failed, using default scores")
         return _default_result("api_error")
 
