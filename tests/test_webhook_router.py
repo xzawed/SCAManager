@@ -27,9 +27,10 @@ def patch_settings(monkeypatch):
 
 def test_valid_push_event_returns_202():
     payload = json.dumps({"repository": {"full_name": "owner/repo"}, "after": "abc123"}).encode()
-    with patch("src.webhook.router.settings") as mock_settings:
+    with patch("src.webhook.providers.github.settings") as mock_settings, patch("src.webhook._helpers.settings") as mock_helpers_settings:
+        mock_helpers_settings.github_webhook_secret = SECRET
         mock_settings.github_webhook_secret = SECRET
-        with patch("src.webhook.router.run_analysis_pipeline"):
+        with patch("src.webhook.providers.github.run_analysis_pipeline"):
             resp = client.post(
                 "/webhooks/github",
                 content=payload,
@@ -44,7 +45,8 @@ def test_valid_push_event_returns_202():
 
 def test_invalid_signature_returns_401():
     payload = b'{"test": true}'
-    with patch("src.webhook.router.settings") as mock_settings:
+    with patch("src.webhook.providers.github.settings") as mock_settings, patch("src.webhook._helpers.settings") as mock_helpers_settings:
+        mock_helpers_settings.github_webhook_secret = SECRET
         mock_settings.github_webhook_secret = SECRET
         resp = client.post(
             "/webhooks/github",
@@ -59,7 +61,8 @@ def test_invalid_signature_returns_401():
 
 def test_ignored_event_returns_200():
     payload = json.dumps({"action": "labeled"}).encode()
-    with patch("src.webhook.router.settings") as mock_settings:
+    with patch("src.webhook.providers.github.settings") as mock_settings, patch("src.webhook._helpers.settings") as mock_helpers_settings:
+        mock_helpers_settings.github_webhook_secret = SECRET
         mock_settings.github_webhook_secret = SECRET
         resp = client.post(
             "/webhooks/github",
@@ -80,9 +83,10 @@ def test_closed_pr_action_ignored():
         "number": 1,
         "pull_request": {"head": {"sha": "abc123"}},
     }).encode()
-    with patch("src.webhook.router.settings") as mock_settings:
+    with patch("src.webhook.providers.github.settings") as mock_settings, patch("src.webhook._helpers.settings") as mock_helpers_settings:
+        mock_helpers_settings.github_webhook_secret = SECRET
         mock_settings.github_webhook_secret = SECRET
-        with patch("src.webhook.router.run_analysis_pipeline") as mock_pipeline:
+        with patch("src.webhook.providers.github.run_analysis_pipeline") as mock_pipeline:
             resp = client.post(
                 "/webhooks/github",
                 content=payload,
@@ -103,9 +107,10 @@ def test_opened_pr_action_accepted():
         "number": 1,
         "pull_request": {"head": {"sha": "abc123"}},
     }).encode()
-    with patch("src.webhook.router.settings") as mock_settings:
+    with patch("src.webhook.providers.github.settings") as mock_settings, patch("src.webhook._helpers.settings") as mock_helpers_settings:
+        mock_helpers_settings.github_webhook_secret = SECRET
         mock_settings.github_webhook_secret = SECRET
-        with patch("src.webhook.router.run_analysis_pipeline"):
+        with patch("src.webhook.providers.github.run_analysis_pipeline"):
             resp = client.post(
                 "/webhooks/github",
                 content=payload,
@@ -135,8 +140,8 @@ def test_webhook_uses_repo_specific_secret(client):
     mock_db.__enter__ = MagicMock(return_value=mock_db)
     mock_db.__exit__ = MagicMock(return_value=None)
 
-    with patch("src.webhook.router.SessionLocal", return_value=mock_db):
-        with patch("src.webhook.router.run_analysis_pipeline"):
+    with patch("src.webhook._helpers.SessionLocal", return_value=mock_db):
+        with patch("src.webhook.providers.github.run_analysis_pipeline"):
             r = client.post(
                 "/webhooks/github",
                 content=payload,
@@ -166,8 +171,8 @@ def test_webhook_falls_back_to_global_secret_for_legacy_repo(client):
     mock_db.__enter__ = MagicMock(return_value=mock_db)
     mock_db.__exit__ = MagicMock(return_value=None)
 
-    with patch("src.webhook.router.SessionLocal", return_value=mock_db):
-        with patch("src.webhook.router.run_analysis_pipeline"):
+    with patch("src.webhook._helpers.SessionLocal", return_value=mock_db):
+        with patch("src.webhook.providers.github.run_analysis_pipeline"):
             r = client.post(
                 "/webhooks/github",
                 content=payload,

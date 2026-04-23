@@ -32,12 +32,12 @@ def _ctx(db_mock):
 
 
 def test_approve_returns_200():
-    with patch("src.webhook.router.handle_gate_callback", new_callable=AsyncMock):
+    with patch("src.webhook.providers.telegram.handle_gate_callback", new_callable=AsyncMock):
         r = client.post("/api/webhook/telegram", json=APPROVE)
     assert r.status_code == 200
 
 def test_reject_returns_200():
-    with patch("src.webhook.router.handle_gate_callback", new_callable=AsyncMock):
+    with patch("src.webhook.providers.telegram.handle_gate_callback", new_callable=AsyncMock):
         r = client.post("/api/webhook/telegram", json=REJECT)
     assert r.status_code == 200
 
@@ -50,7 +50,7 @@ def test_no_callback_query_returns_200():
     assert r.status_code == 200
 
 def test_gate_callback_called_with_correct_args():
-    with patch("src.webhook.router.handle_gate_callback", new_callable=AsyncMock) as mock_h:
+    with patch("src.webhook.providers.telegram.handle_gate_callback", new_callable=AsyncMock) as mock_h:
         client.post("/api/webhook/telegram", json=APPROVE)
     mock_h.assert_called_once()
     kw = mock_h.call_args.kwargs
@@ -74,11 +74,11 @@ async def test_handle_gate_callback_approve_with_auto_merge():
         mock_analysis, mock_repo
     ]
     config = RepoConfigData(repo_full_name="owner/repo", auto_merge=True, merge_threshold=75)
-    with patch("src.webhook.router.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.webhook.router.post_github_review", new_callable=AsyncMock):
-            with patch("src.webhook.router.save_gate_decision"):
-                with patch("src.webhook.router.get_repo_config", return_value=config):
-                    with patch("src.webhook.router.merge_pr", new_callable=AsyncMock) as mock_merge:
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock):
+            with patch("src.webhook.providers.telegram.save_gate_decision"):
+                with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
+                    with patch("src.webhook.providers.telegram.merge_pr", new_callable=AsyncMock) as mock_merge:
                         mock_merge.return_value = (True, None)
                         await handle_gate_callback(analysis_id=42, decision="approve",
                                                    decided_by="john")
@@ -95,11 +95,11 @@ async def test_handle_gate_callback_approve_without_auto_merge():
         mock_analysis, mock_repo
     ]
     config = RepoConfigData(repo_full_name="owner/repo", auto_merge=False)
-    with patch("src.webhook.router.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.webhook.router.post_github_review", new_callable=AsyncMock):
-            with patch("src.webhook.router.save_gate_decision"):
-                with patch("src.webhook.router.get_repo_config", return_value=config):
-                    with patch("src.webhook.router.merge_pr", new_callable=AsyncMock) as mock_merge:
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock):
+            with patch("src.webhook.providers.telegram.save_gate_decision"):
+                with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
+                    with patch("src.webhook.providers.telegram.merge_pr", new_callable=AsyncMock) as mock_merge:
                         await handle_gate_callback(analysis_id=42, decision="approve",
                                                    decided_by="john")
                         mock_merge.assert_not_called()
@@ -115,11 +115,11 @@ async def test_handle_gate_callback_reject_does_not_merge():
         mock_analysis, mock_repo
     ]
     config = RepoConfigData(repo_full_name="owner/repo", auto_merge=True)
-    with patch("src.webhook.router.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.webhook.router.post_github_review", new_callable=AsyncMock):
-            with patch("src.webhook.router.save_gate_decision"):
-                with patch("src.webhook.router.get_repo_config", return_value=config):
-                    with patch("src.webhook.router.merge_pr", new_callable=AsyncMock) as mock_merge:
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock):
+            with patch("src.webhook.providers.telegram.save_gate_decision"):
+                with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
+                    with patch("src.webhook.providers.telegram.merge_pr", new_callable=AsyncMock) as mock_merge:
                         await handle_gate_callback(analysis_id=42, decision="reject",
                                                    decided_by="john")
                         mock_merge.assert_not_called()
@@ -135,11 +135,11 @@ async def test_handle_gate_callback_merge_failure_does_not_propagate():
         mock_analysis, mock_repo
     ]
     config = RepoConfigData(repo_full_name="owner/repo", auto_merge=True)
-    with patch("src.webhook.router.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.webhook.router.post_github_review", new_callable=AsyncMock):
-            with patch("src.webhook.router.save_gate_decision") as mock_save:
-                with patch("src.webhook.router.get_repo_config", return_value=config):
-                    with patch("src.webhook.router.merge_pr", new_callable=AsyncMock) as mock_merge:
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock):
+            with patch("src.webhook.providers.telegram.save_gate_decision") as mock_save:
+                with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
+                    with patch("src.webhook.providers.telegram.merge_pr", new_callable=AsyncMock) as mock_merge:
                         mock_merge.return_value = (False, "forbidden: no permission")
                         # 예외 없이 완료되어야 함
                         await handle_gate_callback(analysis_id=42, decision="approve",
@@ -173,7 +173,7 @@ BAD_PARTS_PAYLOAD = {
 
 def test_invalid_hmac_token_does_not_call_callback():
     # HMAC 토큰이 잘못된 경우 handle_gate_callback이 호출되지 않아야 한다
-    with patch("src.webhook.router.handle_gate_callback", new_callable=AsyncMock) as mock_h:
+    with patch("src.webhook.providers.telegram.handle_gate_callback", new_callable=AsyncMock) as mock_h:
         r = client.post("/api/webhook/telegram", json=INVALID_TOKEN_PAYLOAD)
     assert r.status_code == 200
     mock_h.assert_not_called()
@@ -181,7 +181,7 @@ def test_invalid_hmac_token_does_not_call_callback():
 
 def test_malformed_callback_data_no_crash():
     # 콜백 data가 gate:로 시작하지만 파트 수가 4개 미만이면 200 반환, callback 미호출
-    with patch("src.webhook.router.handle_gate_callback", new_callable=AsyncMock) as mock_h:
+    with patch("src.webhook.providers.telegram.handle_gate_callback", new_callable=AsyncMock) as mock_h:
         r = client.post("/api/webhook/telegram", json=BAD_PARTS_PAYLOAD)
     assert r.status_code == 200
     mock_h.assert_not_called()
@@ -191,8 +191,8 @@ def test_malformed_callback_data_no_crash():
 
 def test_secret_token_valid_passes():
     """TELEGRAM_WEBHOOK_SECRET 설정 + 올바른 헤더 → 정상 처리."""
-    with patch("src.webhook.router.settings.telegram_webhook_secret", "mysecret"):
-        with patch("src.webhook.router.handle_gate_callback", new_callable=AsyncMock):
+    with patch("src.webhook.providers.telegram.settings.telegram_webhook_secret", "mysecret"):
+        with patch("src.webhook.providers.telegram.handle_gate_callback", new_callable=AsyncMock):
             r = client.post(
                 "/api/webhook/telegram",
                 json=APPROVE,
@@ -203,8 +203,8 @@ def test_secret_token_valid_passes():
 
 def test_secret_token_invalid_skips_callback():
     """TELEGRAM_WEBHOOK_SECRET 설정 + 잘못된 헤더 → callback 미호출."""
-    with patch("src.webhook.router.settings.telegram_webhook_secret", "mysecret"):
-        with patch("src.webhook.router.handle_gate_callback", new_callable=AsyncMock) as mock_h:
+    with patch("src.webhook.providers.telegram.settings.telegram_webhook_secret", "mysecret"):
+        with patch("src.webhook.providers.telegram.handle_gate_callback", new_callable=AsyncMock) as mock_h:
             r = client.post(
                 "/api/webhook/telegram",
                 json=APPROVE,
@@ -216,8 +216,8 @@ def test_secret_token_invalid_skips_callback():
 
 def test_secret_token_not_configured_skips_check():
     """TELEGRAM_WEBHOOK_SECRET 미설정 → 헤더 없어도 정상 처리."""
-    with patch("src.webhook.router.settings.telegram_webhook_secret", ""):
-        with patch("src.webhook.router.handle_gate_callback", new_callable=AsyncMock) as mock_h:
+    with patch("src.webhook.providers.telegram.settings.telegram_webhook_secret", ""):
+        with patch("src.webhook.providers.telegram.handle_gate_callback", new_callable=AsyncMock) as mock_h:
             r = client.post("/api/webhook/telegram", json=APPROVE)
     assert r.status_code == 200
     mock_h.assert_called_once()
@@ -228,8 +228,8 @@ async def test_handle_gate_callback_analysis_not_found():
     from src.webhook.router import handle_gate_callback
     mock_db = MagicMock()
     mock_db.query.return_value.filter_by.return_value.first.return_value = None
-    with patch("src.webhook.router.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.webhook.router.post_github_review", new_callable=AsyncMock) as mock_review:
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock) as mock_review:
             await handle_gate_callback(analysis_id=999, decision="approve", decided_by="user")
             mock_review.assert_not_called()
 
@@ -244,9 +244,9 @@ async def test_handle_gate_callback_exception_does_not_propagate():
         mock_analysis, mock_repo
     ]
     config = RepoConfigData(repo_full_name="owner/repo", auto_merge=False)
-    with patch("src.webhook.router.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.webhook.router.post_github_review",
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.webhook.providers.telegram.post_github_review",
                    new_callable=AsyncMock, side_effect=httpx.ConnectError("GitHub API down")):
-            with patch("src.webhook.router.get_repo_config", return_value=config):
+            with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
                 # 예외가 전파되지 않아야 한다
                 await handle_gate_callback(analysis_id=42, decision="approve", decided_by="user")

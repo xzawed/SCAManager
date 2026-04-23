@@ -49,7 +49,7 @@ def test_overview_returns_html():
     """로그인 후 / 는 200 HTML을 반환한다."""
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.overview.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/")
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
@@ -63,7 +63,7 @@ def test_overview_with_repos_shows_avg_score():
     # count_map, avg_map → dict([]) = {}, latest_map → {}
     mock_db.query.return_value.filter.return_value.group_by.return_value.all.return_value = []
     mock_db.query.return_value.filter.return_value.all.return_value = []
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.overview.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/")
     assert r.status_code == 200
     assert "평균 점수" in r.text
@@ -76,7 +76,7 @@ def test_repo_detail_returns_html():
         id=1, full_name="owner/repo", user_id=None
     )
     mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/repos/owner%2Frepo")
     assert r.status_code == 200
 
@@ -85,7 +85,7 @@ def test_repo_detail_404():
     """존재하지 않는 리포 접근 시 404."""
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = None
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/repos/nope%2Frepo")
     assert r.status_code == 404
 
@@ -96,7 +96,7 @@ def test_repo_detail_404_for_other_users_repo():
     mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
         id=2, full_name="owner/repo", user_id=2
     )
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/repos/owner%2Frepo")
     assert r.status_code == 404
 
@@ -107,8 +107,8 @@ def test_settings_returns_html():
         id=1, full_name="owner/repo", user_id=None
     )
     from src.config_manager.manager import RepoConfigData
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.ui.router.get_repo_config",
+    with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.ui.routes.settings.get_repo_config",
                    return_value=RepoConfigData(repo_full_name="owner/repo")):
             r = client.get("/repos/owner%2Frepo/settings")
     assert r.status_code == 200
@@ -119,8 +119,8 @@ def test_post_settings_redirects():
     mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
         id=1, full_name="owner/repo", user_id=None
     )
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.ui.router.upsert_repo_config") as mock_upsert:
+    with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.ui.routes.settings.upsert_repo_config") as mock_upsert:
             r = client.post(
                 "/repos/owner%2Frepo/settings",
                 data={
@@ -147,8 +147,8 @@ def test_post_settings_empty_optional_fields():
     mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
         id=1, full_name="owner/repo", user_id=None
     )
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.ui.router.upsert_repo_config") as mock_upsert:
+    with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.ui.routes.settings.upsert_repo_config") as mock_upsert:
             r = client.post(
                 "/repos/owner%2Frepo/settings",
                 data={
@@ -177,8 +177,8 @@ def test_post_settings_with_auto_merge_checked():
     mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
         id=1, full_name="owner/repo", user_id=None
     )
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.ui.router.upsert_repo_config") as mock_upsert:
+    with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.ui.routes.settings.upsert_repo_config") as mock_upsert:
             r = client.post(
                 "/repos/owner%2Frepo/settings",
                 data={
@@ -204,8 +204,8 @@ def test_post_settings_without_auto_merge_checkbox():
     mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
         id=1, full_name="owner/repo", user_id=None
     )
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.ui.router.upsert_repo_config") as mock_upsert:
+    with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.ui.routes.settings.upsert_repo_config") as mock_upsert:
             r = client.post(
                 "/repos/owner%2Frepo/settings",
                 data={
@@ -236,8 +236,8 @@ def test_settings_no_nested_forms():
         id=1, full_name="owner/repo", user_id=None
     )
     from src.config_manager.manager import RepoConfigData
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.ui.router.get_repo_config",
+    with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.ui.routes.settings.get_repo_config",
                    return_value=RepoConfigData(repo_full_name="owner/repo")):
             r = client.get("/repos/owner%2Frepo/settings")
     assert r.status_code == 200
@@ -273,8 +273,8 @@ def _render_settings(config=None):
     )
     from src.config_manager.manager import RepoConfigData
     cfg = config or RepoConfigData(repo_full_name="owner/repo")
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.ui.router.get_repo_config", return_value=cfg):
+    with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.ui.routes.settings.get_repo_config", return_value=cfg):
             r = client.get("/repos/owner%2Frepo/settings")
     assert r.status_code == 200
     return r.text
@@ -429,8 +429,8 @@ def test_api_github_repos_returns_json():
         {"full_name": "owner/repo-b", "private": True, "description": "Private"},
     ]
 
-    with patch("src.ui.router.list_user_repos", new_callable=AsyncMock, return_value=mock_repos):
-        with patch("src.ui.router.SessionLocal") as mock_sl:
+    with patch("src.ui.routes.add_repo.list_user_repos", new_callable=AsyncMock, return_value=mock_repos):
+        with patch("src.ui.routes.add_repo.SessionLocal") as mock_sl:
             mock_db = MagicMock()
             mock_db.query.return_value.filter.return_value.all.return_value = []
             mock_sl.return_value.__enter__.return_value = mock_db
@@ -454,8 +454,8 @@ def test_api_github_repos_excludes_already_registered():
     existing_repo = MagicMock(spec=Repository)
     existing_repo.full_name = "owner/already-registered"
 
-    with patch("src.ui.router.list_user_repos", new_callable=AsyncMock, return_value=mock_repos):
-        with patch("src.ui.router.SessionLocal") as mock_sl:
+    with patch("src.ui.routes.add_repo.list_user_repos", new_callable=AsyncMock, return_value=mock_repos):
+        with patch("src.ui.routes.add_repo.SessionLocal") as mock_sl:
             mock_db = MagicMock()
             mock_db.query.return_value.filter.return_value.all.return_value = [existing_repo]
             mock_sl.return_value.__enter__.return_value = mock_db
@@ -472,8 +472,8 @@ def test_add_repo_post_creates_repo_and_webhook():
     """POST /repos/add는 리포를 DB에 저장하고 Webhook을 생성한 후 리다이렉트한다."""
     from unittest.mock import AsyncMock, patch, MagicMock
 
-    with patch("src.ui.router.create_webhook", new_callable=AsyncMock, return_value=77777):
-        with patch("src.ui.router.SessionLocal") as mock_sl:
+    with patch("src.ui.routes.add_repo.create_webhook", new_callable=AsyncMock, return_value=77777):
+        with patch("src.ui.routes.add_repo.SessionLocal") as mock_sl:
             mock_db = MagicMock()
             mock_db.query.return_value.filter.return_value.first.return_value = None  # 미등록
             mock_sl.return_value.__enter__.return_value = mock_db
@@ -498,7 +498,7 @@ def test_add_repo_post_rejects_duplicate():
     existing.full_name = "owner/already-registered"
     existing.user_id = 999  # 다른 사용자가 소유
 
-    with patch("src.ui.router.SessionLocal") as mock_sl:
+    with patch("src.ui.routes.add_repo.SessionLocal") as mock_sl:
         mock_db = MagicMock()
         mock_db.query.return_value.filter.return_value.first.return_value = existing
         mock_sl.return_value.__enter__.return_value = mock_db
@@ -531,7 +531,7 @@ def test_analysis_detail_returns_html():
         MagicMock(id=1, full_name="owner/repo", user_id=None),
         mock_analysis,
     ]
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/repos/owner%2Frepo/analyses/42")
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
@@ -544,7 +544,7 @@ def test_analysis_detail_404_when_not_found():
         MagicMock(id=1, full_name="owner/repo", user_id=None),
         None,  # analysis not found
     ]
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/repos/owner%2Frepo/analyses/999")
     assert r.status_code == 404
 
@@ -555,7 +555,7 @@ def test_analysis_detail_404_for_other_users_repo():
     mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
         id=2, full_name="owner/repo", user_id=999  # 다른 사용자
     )
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/repos/owner%2Frepo/analyses/42")
     assert r.status_code == 404
 
@@ -573,7 +573,7 @@ def test_analysis_detail_shows_commit_message():
         MagicMock(id=1, full_name="owner/repo", user_id=None),
         mock_analysis,
     ]
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/repos/owner%2Frepo/analyses/42")
     assert r.status_code == 200
     assert "feat: add login page" in r.text
@@ -592,7 +592,7 @@ def test_analysis_detail_shows_fallback_when_no_commit_message():
         MagicMock(id=1, full_name="owner/repo", user_id=None),
         mock_analysis,
     ]
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/repos/owner%2Frepo/analyses/42")
     assert r.status_code == 200
     assert "커밋 메시지 없음" in r.text
@@ -611,7 +611,7 @@ def test_analysis_detail_shows_score_when_result_empty():
         MagicMock(id=1, full_name="owner/repo", user_id=None),
         mock_analysis,
     ]
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/repos/owner%2Frepo/analyses/42")
     assert r.status_code == 200
     assert "65" in r.text
@@ -631,7 +631,7 @@ def test_analysis_detail_shows_source_indicator():
         MagicMock(id=1, full_name="owner/repo", user_id=None),
         mock_analysis,
     ]
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/repos/owner%2Frepo/analyses/42")
     assert r.status_code == 200
     assert "CLI" in r.text
@@ -650,7 +650,7 @@ def test_analysis_detail_shows_full_datetime():
         MagicMock(id=1, full_name="owner/repo", user_id=None),
         mock_analysis,
     ]
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/repos/owner%2Frepo/analyses/42")
     assert r.status_code == 200
     assert "2026-04-08 14:30" in r.text
@@ -668,7 +668,7 @@ def test_repo_detail_shows_commit_message():
         created_at=MagicMock(isoformat=MagicMock(return_value="2026-04-08T10:00:00")),
     )
     mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [mock_analysis]
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/repos/owner%2Frepo")
     assert r.status_code == 200
     assert "feat: new feature" in r.text
@@ -683,9 +683,9 @@ def test_reinstall_webhook_deletes_and_recreates():
     mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
         id=1, full_name="owner/repo", user_id=None, webhook_id=999
     )
-    with patch("src.ui.router.delete_webhook", new_callable=AsyncMock, return_value=True):
-        with patch("src.ui.router.create_webhook", new_callable=AsyncMock, return_value=12345):
-            with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.settings.delete_webhook", new_callable=AsyncMock, return_value=True):
+        with patch("src.ui.routes.settings.create_webhook", new_callable=AsyncMock, return_value=12345):
+            with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
                 r = client.post("/repos/owner%2Frepo/reinstall-webhook", follow_redirects=False)
     assert r.status_code == 303
     assert "hook_ok=1" in r.headers["location"]
@@ -697,7 +697,7 @@ def test_reinstall_webhook_404_for_other_user():
     mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
         id=2, full_name="owner/repo", user_id=999
     )
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
         r = client.post("/repos/owner%2Frepo/reinstall-webhook", follow_redirects=False)
     assert r.status_code == 404
 
@@ -709,9 +709,9 @@ def test_reinstall_webhook_no_existing_webhook():
     mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
         id=1, full_name="owner/repo", user_id=None, webhook_id=None
     )
-    with patch("src.ui.router.delete_webhook", new_callable=AsyncMock) as mock_del:
-        with patch("src.ui.router.create_webhook", new_callable=AsyncMock, return_value=99999):
-            with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.settings.delete_webhook", new_callable=AsyncMock) as mock_del:
+        with patch("src.ui.routes.settings.create_webhook", new_callable=AsyncMock, return_value=99999):
+            with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
                 r = client.post("/repos/owner%2Frepo/reinstall-webhook", follow_redirects=False)
     mock_del.assert_not_called()  # webhook_id None → 삭제 스킵
     assert r.status_code == 303
@@ -728,8 +728,8 @@ def test_delete_repo_success():
     # Analysis.id 조회 시 빈 결과
     mock_db.query.return_value.filter.return_value.all.return_value = []
 
-    with patch("src.ui.router.delete_webhook", new_callable=AsyncMock, return_value=True) as mock_del:
-        with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui._helpers.delete_webhook", new_callable=AsyncMock, return_value=True) as mock_del:
+        with patch("src.ui.routes.actions.SessionLocal", return_value=_ctx(mock_db)):
             r = client.post("/repos/owner%2Frepo/delete", follow_redirects=False)
 
     assert r.status_code == 303
@@ -746,8 +746,8 @@ def test_delete_repo_404_for_other_user():
     mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
         id=2, full_name="owner/repo", user_id=99, webhook_id=None
     )
-    with patch("src.ui.router.delete_webhook", new_callable=AsyncMock) as mock_del:
-        with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui._helpers.delete_webhook", new_callable=AsyncMock) as mock_del:
+        with patch("src.ui.routes.actions.SessionLocal", return_value=_ctx(mock_db)):
             r = client.post("/repos/owner%2Frepo/delete", follow_redirects=False)
 
     assert r.status_code == 404
@@ -760,8 +760,8 @@ def test_delete_repo_404_not_found():
     from unittest.mock import AsyncMock, patch
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = None
-    with patch("src.ui.router.delete_webhook", new_callable=AsyncMock):
-        with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui._helpers.delete_webhook", new_callable=AsyncMock):
+        with patch("src.ui.routes.actions.SessionLocal", return_value=_ctx(mock_db)):
             r = client.post("/repos/nope%2Frepo/delete", follow_redirects=False)
     assert r.status_code == 404
 
@@ -774,9 +774,9 @@ def test_delete_repo_webhook_failure_still_deletes_db():
     mock_db.query.return_value.filter.return_value.first.return_value = mock_repo
     mock_db.query.return_value.filter.return_value.all.return_value = []
 
-    with patch("src.ui.router.delete_webhook", new_callable=AsyncMock,
+    with patch("src.ui._helpers.delete_webhook", new_callable=AsyncMock,
                side_effect=RuntimeError("github api down")):
-        with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.ui.routes.actions.SessionLocal", return_value=_ctx(mock_db)):
             r = client.post("/repos/owner%2Frepo/delete", follow_redirects=False)
 
     assert r.status_code == 303
@@ -792,8 +792,8 @@ def test_delete_repo_skips_webhook_when_none():
     mock_db.query.return_value.filter.return_value.first.return_value = mock_repo
     mock_db.query.return_value.filter.return_value.all.return_value = []
 
-    with patch("src.ui.router.delete_webhook", new_callable=AsyncMock) as mock_del:
-        with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui._helpers.delete_webhook", new_callable=AsyncMock) as mock_del:
+        with patch("src.ui.routes.actions.SessionLocal", return_value=_ctx(mock_db)):
             r = client.post("/repos/owner%2Frepo/delete", follow_redirects=False)
 
     assert r.status_code == 303
@@ -807,7 +807,7 @@ def test_overview_shows_display_name_in_nav():
     """로그인 후 nav에 display_name이 표시된다."""
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.overview.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/")
     assert r.status_code == 200
     assert "Test User" in r.text
@@ -817,7 +817,7 @@ def test_overview_shows_logout_button_in_nav():
     """로그인 후 nav에 로그아웃 버튼과 action URL이 표시된다."""
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.overview.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/")
     assert r.status_code == 200
     assert "로그아웃" in r.text
@@ -834,7 +834,7 @@ def test_nav_user_fallback_to_github_login():
     try:
         mock_db = MagicMock()
         mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
-        with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.ui.routes.overview.SessionLocal", return_value=_ctx(mock_db)):
             r = client.get("/")
         assert r.status_code == 200
         assert "fallback_user" in r.text
@@ -851,7 +851,7 @@ def test_repo_detail_queries_limit_100():
         id=1, full_name="owner/repo", user_id=None
     )
     mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
         client.get("/repos/owner%2Frepo")
     call_args = mock_db.query.return_value.filter.return_value.order_by.return_value.limit.call_args
     assert call_args is not None
@@ -870,7 +870,7 @@ def test_repo_detail_source_pr():
         created_at=MagicMock(isoformat=MagicMock(return_value="2026-04-09T10:00:00")),
     )
     mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [mock_analysis]
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/repos/owner%2Frepo")
     assert r.status_code == 200
     assert '"source"' in r.text
@@ -889,7 +889,7 @@ def test_repo_detail_source_push_fallback():
         created_at=MagicMock(isoformat=MagicMock(return_value="2026-04-09T11:00:00")),
     )
     mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [mock_analysis]
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/repos/owner%2Frepo")
     assert '"push"' in r.text
 
@@ -906,7 +906,7 @@ def test_repo_detail_source_cli_from_result():
         created_at=MagicMock(isoformat=MagicMock(return_value="2026-04-09T12:00:00")),
     )
     mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [mock_analysis]
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/repos/owner%2Frepo")
     assert '"cli"' in r.text
 
@@ -918,7 +918,7 @@ def test_repo_detail_filter_bar_rendered():
         id=1, full_name="owner/repo", user_id=None
     )
     mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/repos/owner%2Frepo")
     assert r.status_code == 200
     assert 'id="searchInput"' in r.text
@@ -935,7 +935,7 @@ def test_repo_detail_date_filter_rendered():
         id=1, full_name="owner/repo", user_id=None
     )
     mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/repos/owner%2Frepo")
     assert r.status_code == 200
     assert 'id="dateFilter"' in r.text
@@ -971,7 +971,7 @@ def test_analysis_detail_result_none_shows_fallback():
         MagicMock(id=1, full_name="owner/repo", user_id=None),
         mock_analysis,
     ]
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/repos/owner%2Frepo/analyses/10")
     # 200 반환
     assert r.status_code == 200
@@ -1004,7 +1004,7 @@ def test_analysis_detail_result_empty_dict_shows_fallback():
         MagicMock(id=1, full_name="owner/repo", user_id=None),
         mock_analysis,
     ]
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/repos/owner%2Frepo/analyses/11")
     # 200 반환
     assert r.status_code == 200
@@ -1033,7 +1033,7 @@ def test_analysis_detail_with_current_user_shows_nav():
         MagicMock(id=1, full_name="owner/repo", user_id=None),
         mock_analysis,
     ]
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/repos/owner%2Frepo/analyses/12")
     assert r.status_code == 200
     # _test_user의 display_name="Test User"가 nav에 표시되어야 함
@@ -1100,8 +1100,8 @@ def test_analysis_detail_trend_data_returned():
         from fastapi.responses import HTMLResponse
         return HTMLResponse(content="<html>ok</html>")
 
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.ui.router.templates.TemplateResponse", side_effect=fake_template_response):
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.ui.routes.detail.templates.TemplateResponse", side_effect=fake_template_response):
             r = client.get("/repos/owner%2Frepo/analyses/1")
 
     assert r.status_code == 200
@@ -1153,8 +1153,8 @@ def test_analysis_detail_prev_next_navigation():
         from fastapi.responses import HTMLResponse
         return HTMLResponse(content="<html>ok</html>")
 
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.ui.router.templates.TemplateResponse", side_effect=fake_template_response):
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.ui.routes.detail.templates.TemplateResponse", side_effect=fake_template_response):
             r = client.get("/repos/owner%2Frepo/analyses/2")
 
     assert r.status_code == 200
@@ -1194,8 +1194,8 @@ def test_analysis_detail_single_analysis_no_siblings():
         from fastapi.responses import HTMLResponse
         return HTMLResponse(content="<html>ok</html>")
 
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.ui.router.templates.TemplateResponse", side_effect=fake_template_response):
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.ui.routes.detail.templates.TemplateResponse", side_effect=fake_template_response):
             r = client.get("/repos/owner%2Frepo/analyses/5")
 
     assert r.status_code == 200
@@ -1214,11 +1214,11 @@ def test_analysis_detail_single_analysis_no_siblings():
 
 def test_webhook_base_url_uses_app_base_url_when_set():
     """APP_BASE_URL 설정 시 _webhook_base_url이 해당 URL을 반환해야 한다 (line 33)."""
-    with patch("src.ui.router.settings") as mock_settings:
+    with patch("src.ui._helpers.settings") as mock_settings:
         mock_settings.app_base_url = "https://myapp.railway.app"
-        from src.ui.router import _webhook_base_url
+        from src.ui._helpers import webhook_base_url
         fake_request = MagicMock()
-        result = _webhook_base_url(fake_request)
+        result = webhook_base_url(fake_request)
     assert result == "https://myapp.railway.app"
 
 
@@ -1234,8 +1234,8 @@ def test_delete_repo_with_analyses_deletes_gate_decisions():
     mock_db.query.return_value.filter.return_value.first.return_value = mock_repo
     mock_db.query.return_value.filter.return_value.all.return_value = [mock_analysis_row]
 
-    with patch("src.ui.router.delete_webhook", new_callable=AsyncMock):
-        with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui._helpers.delete_webhook", new_callable=AsyncMock):
+        with patch("src.ui.routes.actions.SessionLocal", return_value=_ctx(mock_db)):
             r = client.post("/repos/owner%2Frepo/delete", follow_redirects=False)
 
     assert r.status_code == 303
@@ -1267,7 +1267,7 @@ def test_add_repo_ownership_transfer_when_user_id_null():
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = existing
 
-    with patch("src.ui.router.SessionLocal") as mock_sl:
+    with patch("src.ui.routes.add_repo.SessionLocal") as mock_sl:
         mock_sl.return_value.__enter__.return_value = mock_db
         r = client.post(
             "/repos/add",
@@ -1298,9 +1298,9 @@ def test_add_repo_updates_existing_config_hook_token():
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.side_effect = lambda: fake_first()
 
-    with patch("src.ui.router.create_webhook", new_callable=AsyncMock, return_value=12345):
-        with patch("src.ui.router.commit_scamanager_files", new_callable=AsyncMock, return_value=True):
-            with patch("src.ui.router.SessionLocal") as mock_sl:
+    with patch("src.ui.routes.add_repo.create_webhook", new_callable=AsyncMock, return_value=12345):
+        with patch("src.ui.routes.add_repo.commit_scamanager_files", new_callable=AsyncMock, return_value=True):
+            with patch("src.ui.routes.add_repo.SessionLocal") as mock_sl:
                 mock_sl.return_value.__enter__.return_value = mock_db
                 r = client.post(
                     "/repos/add",
@@ -1319,8 +1319,8 @@ def test_post_settings_invalid_threshold_redirects_with_error():
     mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
         id=1, full_name="owner/repo", user_id=None
     )
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.ui.router.upsert_repo_config"):
+    with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.ui.routes.settings.upsert_repo_config"):
             r = client.post(
                 "/repos/owner%2Frepo/settings",
                 data={
@@ -1344,8 +1344,8 @@ def test_reinstall_hook_creates_config_when_none_exists():
         None,  # RepoConfig 없음
     ]
 
-    with patch("src.ui.router.commit_scamanager_files", new_callable=AsyncMock, return_value=True):
-        with patch("src.ui.router.SessionLocal") as mock_sl:
+    with patch("src.ui.routes.settings.commit_scamanager_files", new_callable=AsyncMock, return_value=True):
+        with patch("src.ui.routes.settings.SessionLocal") as mock_sl:
             mock_sl.return_value.__enter__.return_value = mock_db
             r = client.post("/repos/owner%2Frepo/reinstall-hook", follow_redirects=False)
 
@@ -1367,8 +1367,8 @@ def test_reinstall_hook_generates_token_when_missing():
         existing_config,
     ]
 
-    with patch("src.ui.router.commit_scamanager_files", new_callable=AsyncMock, return_value=True):
-        with patch("src.ui.router.SessionLocal") as mock_sl:
+    with patch("src.ui.routes.settings.commit_scamanager_files", new_callable=AsyncMock, return_value=True):
+        with patch("src.ui.routes.settings.SessionLocal") as mock_sl:
             mock_sl.return_value.__enter__.return_value = mock_db
             r = client.post("/repos/owner%2Frepo/reinstall-hook", follow_redirects=False)
 
@@ -1389,8 +1389,8 @@ def test_reinstall_hook_fail_returns_hook_fail_redirect():
         existing_config,
     ]
 
-    with patch("src.ui.router.commit_scamanager_files", new_callable=AsyncMock, return_value=False):
-        with patch("src.ui.router.SessionLocal") as mock_sl:
+    with patch("src.ui.routes.settings.commit_scamanager_files", new_callable=AsyncMock, return_value=False):
+        with patch("src.ui.routes.settings.SessionLocal") as mock_sl:
             mock_sl.return_value.__enter__.return_value = mock_db
             r = client.post("/repos/owner%2Frepo/reinstall-hook", follow_redirects=False)
 
@@ -1413,10 +1413,10 @@ def test_reinstall_webhook_deletes_matching_hooks():
         {"id": 333, "config": {"url": "https://unrelated.example.com/something-else"}},
     ]
 
-    with patch("src.ui.router.list_webhooks", new_callable=AsyncMock, return_value=existing_hooks):
-        with patch("src.ui.router.delete_webhook", new_callable=AsyncMock, return_value=True) as mock_del:
-            with patch("src.ui.router.create_webhook", new_callable=AsyncMock, return_value=99999):
-                with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.settings.list_webhooks", new_callable=AsyncMock, return_value=existing_hooks):
+        with patch("src.ui.routes.settings.delete_webhook", new_callable=AsyncMock, return_value=True) as mock_del:
+            with patch("src.ui.routes.settings.create_webhook", new_callable=AsyncMock, return_value=99999):
+                with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
                     r = client.post("/repos/owner%2Frepo/reinstall-webhook", follow_redirects=False)
 
     assert r.status_code == 303
@@ -1436,7 +1436,7 @@ def test_overview_does_not_show_latest_score_column():
     # count_map, avg_map → 빈 결과
     mock_db.query.return_value.filter.return_value.group_by.return_value.all.return_value = []
     mock_db.query.return_value.filter.return_value.all.return_value = []
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.overview.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/")
     assert r.status_code == 200
     assert "최근 점수" not in r.text
@@ -1461,7 +1461,7 @@ def test_overview_grade_derived_from_avg_score():
     # latest_id_subq / latest_map 조회는 제거 예정 — 포함하지 않음
     mock_db.query.return_value.filter.return_value.all.return_value = []
 
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.overview.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/")
     assert r.status_code == 200
     # 평균 92점 → grade A → 템플릿에서 <span class="grade grade-A"> 뱃지 스팬으로 렌더
@@ -1478,8 +1478,8 @@ def test_settings_form_fields_preserved():
         id=1, full_name="owner/repo", user_id=None
     )
     from src.config_manager.manager import RepoConfigData
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.ui.router.get_repo_config",
+    with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.ui.routes.settings.get_repo_config",
                    return_value=RepoConfigData(repo_full_name="owner/repo")):
             r = client.get("/repos/owner%2Frepo/settings")
     assert r.status_code == 200
@@ -1502,8 +1502,8 @@ def test_settings_railway_alerts_uses_toggle_switch():
         id=1, full_name="owner/repo", user_id=None
     )
     from src.config_manager.manager import RepoConfigData
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.ui.router.get_repo_config",
+    with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.ui.routes.settings.get_repo_config",
                    return_value=RepoConfigData(repo_full_name="owner/repo")):
             r = client.get("/repos/owner%2Frepo/settings")
     assert r.status_code == 200
@@ -1530,8 +1530,8 @@ def test_settings_has_preset_details_elements():
         id=1, full_name="owner/repo", user_id=None
     )
     from src.config_manager.manager import RepoConfigData
-    with patch("src.ui.router.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.ui.router.get_repo_config",
+    with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.ui.routes.settings.get_repo_config",
                    return_value=RepoConfigData(repo_full_name="owner/repo")):
             r = client.get("/repos/owner%2Frepo/settings")
     assert r.status_code == 200

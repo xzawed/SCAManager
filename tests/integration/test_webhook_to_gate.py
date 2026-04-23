@@ -57,7 +57,7 @@ def integration_db():
     factory = FailoverSessionFactory(engine)  # Engine 객체 직접 전달
 
     with patch("src.worker.pipeline.SessionLocal", factory), \
-         patch("src.webhook.router.SessionLocal", factory):
+         patch("src.webhook.providers.github.SessionLocal", factory):
         yield factory._primary_maker  # 테스트 assertions용 sessionmaker 반환
 
 

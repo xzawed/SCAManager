@@ -62,7 +62,7 @@ def test_invalid_token_returns_404():
     """토큰 불일치 시 404 를 반환해야 한다."""
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = None
-    with patch("src.webhook.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.webhook.providers.railway.SessionLocal", return_value=_ctx(mock_db)):
         resp = client.post("/webhooks/railway/wrongtoken", content=_PAYLOAD)
     assert resp.status_code == 404
 
@@ -70,7 +70,7 @@ def test_invalid_token_returns_404():
 def test_alerts_disabled_returns_200_ignored():
     """`railway_deploy_alerts=False` 이면 200 ignored 를 반환해야 한다."""
     mock_db = _db_with_config(_mock_config(alerts=False))
-    with patch("src.webhook.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.webhook.providers.railway.SessionLocal", return_value=_ctx(mock_db)):
         resp = client.post(f"/webhooks/railway/{_TOKEN}", content=_PAYLOAD)
     assert resp.status_code == 200
     assert resp.json()["status"] == "ignored"
@@ -84,7 +84,7 @@ def test_success_status_returns_200_ignored():
         "project": {}, "environment": {},
     }).encode()
     mock_db = _db_with_config(_mock_config())
-    with patch("src.webhook.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.webhook.providers.railway.SessionLocal", return_value=_ctx(mock_db)):
         resp = client.post(f"/webhooks/railway/{_TOKEN}", content=payload)
     assert resp.status_code == 200
     assert resp.json()["status"] == "ignored"
@@ -93,8 +93,8 @@ def test_success_status_returns_200_ignored():
 def test_build_failed_returns_202_accepted():
     """빌드 실패 이벤트는 202 accepted 를 반환해야 한다."""
     mock_db = _db_with_config(_mock_config())
-    with patch("src.webhook.router.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.webhook.router._handle_railway_deploy_failure", new_callable=AsyncMock):
+    with patch("src.webhook.providers.railway.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.webhook.providers.railway._handle_railway_deploy_failure", new_callable=AsyncMock):
             resp = client.post(f"/webhooks/railway/{_TOKEN}", content=_PAYLOAD)
     assert resp.status_code == 202
     assert resp.json()["status"] == "accepted"
@@ -104,7 +104,7 @@ def test_non_deploy_type_returns_200_ignored():
     """type != DEPLOY 이면 200 ignored."""
     payload = json.dumps({"type": "BUILD", "status": "FAILED"}).encode()
     mock_db = _db_with_config(_mock_config())
-    with patch("src.webhook.router.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.webhook.providers.railway.SessionLocal", return_value=_ctx(mock_db)):
         resp = client.post(f"/webhooks/railway/{_TOKEN}", content=payload)
     assert resp.status_code == 200
     assert resp.json()["status"] == "ignored"

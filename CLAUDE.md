@@ -53,8 +53,13 @@ src/
 │   ├── gate_decision.py        # GateDecision ORM
 │   └── user.py                 # User ORM (github_id, github_login, github_access_token, email, display_name)
 ├── webhook/
+│   ├── _helpers.py             # get_webhook_secret() + _webhook_secret_cache (TTL 300초)
 │   ├── validator.py            # HMAC-SHA256 서명 검증
-│   └── router.py               # POST /webhooks/github, POST /api/webhook/telegram
+│   ├── router.py               # aggregator — providers 3개 include (+ 하위 호환 re-export)
+│   └── providers/
+│       ├── github.py           # POST /webhooks/github + merged-PR / issues 핸들러
+│       ├── telegram.py         # POST /api/webhook/telegram + gate callback
+│       └── railway.py          # POST /webhooks/railway/{token}
 ├── github_client/
 │   ├── models.py               # ChangedFile dataclass 단일 출처
 │   ├── helpers.py              # github_api_headers() 공용 헬퍼
@@ -111,7 +116,14 @@ src/
 │   ├── stats.py                # GET /api/analyses/{id}, /api/repos/{repo}/stats
 │   └── hook.py                 # GET /api/hook/verify, POST /api/hook/result (hook_token 인증)
 ├── ui/
-│   └── router.py               # Jinja2 Web UI — require_login + user_id 필터
+│   ├── _helpers.py             # get_accessible_repo · webhook_base_url · delete_repo_cascade · templates
+│   ├── router.py               # aggregator — routes 5개 include (catch-all `/repos/{name}` 마지막)
+│   └── routes/
+│       ├── overview.py         # GET /
+│       ├── add_repo.py         # /repos/add (GET/POST) · /api/github/repos
+│       ├── settings.py         # /repos/{name}/settings · reinstall-hook · reinstall-webhook
+│       ├── actions.py          # /repos/{name}/delete
+│       └── detail.py           # /repos/{name}/analyses/{id} · /repos/{name}
 ├── templates/                  # add_repo, base, login, overview, repo_detail, analysis_detail, settings
 ├── cli/
 │   ├── __main__.py             # python -m src.cli review
