@@ -13,6 +13,9 @@ from src.config import settings
 
 logger = logging.getLogger(__name__)
 
+# DB liveness probe — 가장 가벼운 쿼리, 4곳에서 사용
+_HEALTH_QUERY = text("SELECT 1")
+
 
 def _ipv4_connect_args(url: str) -> dict:
     """Railway 컨테이너에서 IPv6 아웃바운드 차단 문제 해결.
@@ -145,7 +148,7 @@ class FailoverSessionFactory:  # pylint: disable=too-many-instance-attributes
         if self._active == "fallback":
             session = self._fallback_maker()
             try:
-                session.execute(text("SELECT 1"))
+                session.execute(_HEALTH_QUERY)
                 return session
             except Exception:
                 session.close()
@@ -154,7 +157,7 @@ class FailoverSessionFactory:  # pylint: disable=too-many-instance-attributes
         try:
             session = self._primary_maker()
             try:
-                session.execute(text("SELECT 1"))
+                session.execute(_HEALTH_QUERY)
                 return session
             except OperationalError:
                 session.close()
@@ -165,7 +168,7 @@ class FailoverSessionFactory:  # pylint: disable=too-many-instance-attributes
                     self._switch_to("fallback")
             session = self._fallback_maker()
             try:
-                session.execute(text("SELECT 1"))
+                session.execute(_HEALTH_QUERY)
                 return session
             except Exception:
                 session.close()
@@ -185,7 +188,7 @@ class FailoverSessionFactory:  # pylint: disable=too-many-instance-attributes
                 continue
             try:
                 with self._primary_engine.connect() as conn:
-                    conn.execute(text("SELECT 1"))
+                    conn.execute(_HEALTH_QUERY)
                 with self._lock:
                     if self._active == "fallback":
                         self._switch_to("primary")

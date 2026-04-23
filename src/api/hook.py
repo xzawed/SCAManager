@@ -125,7 +125,9 @@ def save_hook_result(body: HookResultRequest):
         db.refresh(analysis)
 
         # 로그 인젝션 방지: sanitize_for_log() 로 사용자 입력 정제
-        logger.info(
+        # NOSONAR 이유: SonarCloud taint analysis 가 str.replace 기반 커스텀
+        # sanitizer 를 인식하지 못함 — log_safety 모듈에서 실제 방어 완료.
+        logger.info(  # NOSONAR python:S5145 — sanitized via log_safety
             "CLI hook result saved: repo=%s sha=%s score=%d",
             sanitize_for_log(body.repo),
             sanitize_for_log(body.commit_sha),

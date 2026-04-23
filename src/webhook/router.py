@@ -127,8 +127,8 @@ async def _handle_merged_pr_event(data: dict) -> dict:
 async def github_webhook(
     request: Request,
     background_tasks: BackgroundTasks,
-    x_hub_signature_256: str = Header(None),
-    x_github_event: str = Header(None),
+    x_hub_signature_256: Annotated[str | None, Header()] = None,
+    x_github_event: Annotated[str | None, Header()] = None,
 ):
     """GitHub Webhook 수신 엔드포인트 — HMAC 서명 검증 후 이벤트를 파이프라인에 위임한다."""
     payload = await request.body()
