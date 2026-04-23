@@ -12,8 +12,8 @@ os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 import subprocess  # noqa: E402
 from unittest.mock import MagicMock, patch  # noqa: E402
 
-from src.analyzer.registry import AnalyzeContext  # noqa: E402
-from src.analyzer.tools.slither import (  # noqa: E402
+from src.analyzer.pure.registry import AnalyzeContext  # noqa: E402
+from src.analyzer.io.tools.slither import (  # noqa: E402
     _SlitherAnalyzer,
     _parse_slither_json,
 )
@@ -118,13 +118,13 @@ def test_supports_rejects_other_languages():
 
 
 def test_is_enabled_when_binary_missing():
-    with patch("src.analyzer.tools.slither.shutil.which", return_value=None):
+    with patch("src.analyzer.io.tools.slither.shutil.which", return_value=None):
         assert _SlitherAnalyzer().is_enabled(_ctx()) is False
 
 
 def test_is_enabled_when_binary_present():
     with patch(
-        "src.analyzer.tools.slither.shutil.which",
+        "src.analyzer.io.tools.slither.shutil.which",
         return_value="/usr/local/bin/slither",
     ):
         assert _SlitherAnalyzer().is_enabled(_ctx()) is True
@@ -190,7 +190,7 @@ def test_parse_json_returns_empty_when_compilation_failed():
 
 def test_run_returns_empty_on_timeout():
     with patch(
-        "src.analyzer.tools.slither.subprocess.run",
+        "src.analyzer.io.tools.slither.subprocess.run",
         side_effect=subprocess.TimeoutExpired(cmd="slither", timeout=30),
     ):
         assert _SlitherAnalyzer().run(_ctx()) == []
@@ -198,7 +198,7 @@ def test_run_returns_empty_on_timeout():
 
 def test_run_returns_empty_on_oserror():
     with patch(
-        "src.analyzer.tools.slither.subprocess.run",
+        "src.analyzer.io.tools.slither.subprocess.run",
         side_effect=OSError("not found"),
     ):
         assert _SlitherAnalyzer().run(_ctx()) == []
@@ -209,7 +209,7 @@ def test_run_returns_empty_on_json_decode_error():
     mock_result.stdout = "not valid json {{{"
     mock_result.stderr = ""
     with patch(
-        "src.analyzer.tools.slither.subprocess.run",
+        "src.analyzer.io.tools.slither.subprocess.run",
         return_value=mock_result,
     ):
         assert _SlitherAnalyzer().run(_ctx()) == []
@@ -221,7 +221,7 @@ def test_run_returns_empty_on_schema_variant_results_list():
     mock_result.stdout = '{"success": true, "results": ["unexpected list shape"]}'
     mock_result.stderr = ""
     with patch(
-        "src.analyzer.tools.slither.subprocess.run",
+        "src.analyzer.io.tools.slither.subprocess.run",
         return_value=mock_result,
     ):
         assert _SlitherAnalyzer().run(_ctx()) == []
@@ -232,7 +232,7 @@ def test_run_empty_stdout_returns_empty():
     mock_result.stdout = ""
     mock_result.stderr = ""
     with patch(
-        "src.analyzer.tools.slither.subprocess.run",
+        "src.analyzer.io.tools.slither.subprocess.run",
         return_value=mock_result,
     ):
         assert _SlitherAnalyzer().run(_ctx()) == []

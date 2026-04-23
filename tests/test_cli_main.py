@@ -3,8 +3,8 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from src.cli.git_diff import ChangedFile
-from src.analyzer.static import StaticAnalysisResult
-from src.analyzer.ai_review import AiReviewResult
+from src.analyzer.io.static import StaticAnalysisResult
+from src.analyzer.io.ai_review import AiReviewResult
 from src.scorer.calculator import ScoreResult
 
 

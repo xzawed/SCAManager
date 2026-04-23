@@ -1,7 +1,7 @@
 """Language-specific review guide registry.
 
 Usage:
-    from src.analyzer.review_guides import get_guide
+    from src.analyzer.pure.review_guides import get_guide
     guide = get_guide("python")          # full guide (default)
     guide = get_guide("go", "compact")   # compact one-liner
 
@@ -76,7 +76,7 @@ _GUIDE_MAP: dict[str, tuple[str, str]] = {
     "json_schema": ("tier3", "json_schema"),
 }
 
-_BASE = "src.analyzer.review_guides"
+_BASE = "src.analyzer.pure.review_guides"
 
 
 def get_guide(language: str, mode: str = "full") -> str:

@@ -1,7 +1,7 @@
 """Analyzer Registry — Protocol + REGISTRY + register().
 
 Usage:
-    from src.analyzer.registry import register, REGISTRY, AnalyzeContext, Category
+    from src.analyzer.pure.registry import register, REGISTRY, AnalyzeContext, Category
 
     class MyAnalyzer:
         name = "my-tool"

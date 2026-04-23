@@ -12,8 +12,8 @@ os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 import subprocess  # noqa: E402
 from unittest.mock import MagicMock, patch  # noqa: E402
 
-from src.analyzer.registry import AnalyzeContext  # noqa: E402
-from src.analyzer.tools.cppcheck import _CppCheckAnalyzer, _parse_cppcheck_xml  # noqa: E402
+from src.analyzer.pure.registry import AnalyzeContext  # noqa: E402
+from src.analyzer.io.tools.cppcheck import _CppCheckAnalyzer, _parse_cppcheck_xml  # noqa: E402
 
 
 _XML_TWO_ERRORS = """<?xml version="1.0" encoding="UTF-8"?>
@@ -63,12 +63,12 @@ def test_supports_rejects_other_languages():
 
 
 def test_is_enabled_when_binary_missing():
-    with patch("src.analyzer.tools.cppcheck.shutil.which", return_value=None):
+    with patch("src.analyzer.io.tools.cppcheck.shutil.which", return_value=None):
         assert _CppCheckAnalyzer().is_enabled(_ctx()) is False
 
 
 def test_is_enabled_when_binary_present():
-    with patch("src.analyzer.tools.cppcheck.shutil.which", return_value="/usr/bin/cppcheck"):
+    with patch("src.analyzer.io.tools.cppcheck.shutil.which", return_value="/usr/bin/cppcheck"):
         assert _CppCheckAnalyzer().is_enabled(_ctx()) is True
 
 
@@ -115,7 +115,7 @@ def test_run_parses_stderr_xml():
     mock_result = MagicMock()
     mock_result.stderr = _XML_TWO_ERRORS
     mock_result.stdout = ""
-    with patch("src.analyzer.tools.cppcheck.subprocess.run", return_value=mock_result):
+    with patch("src.analyzer.io.tools.cppcheck.subprocess.run", return_value=mock_result):
         issues = _CppCheckAnalyzer().run(_ctx("c"))
     assert len(issues) == 2
     assert issues[0].tool == "cppcheck"
@@ -123,7 +123,7 @@ def test_run_parses_stderr_xml():
 
 def test_run_returns_empty_on_timeout():
     with patch(
-        "src.analyzer.tools.cppcheck.subprocess.run",
+        "src.analyzer.io.tools.cppcheck.subprocess.run",
         side_effect=subprocess.TimeoutExpired(cmd="cppcheck", timeout=30),
     ):
         assert _CppCheckAnalyzer().run(_ctx()) == []
@@ -131,7 +131,7 @@ def test_run_returns_empty_on_timeout():
 
 def test_run_returns_empty_on_oserror():
     with patch(
-        "src.analyzer.tools.cppcheck.subprocess.run",
+        "src.analyzer.io.tools.cppcheck.subprocess.run",
         side_effect=OSError("not found"),
     ):
         assert _CppCheckAnalyzer().run(_ctx()) == []
@@ -141,7 +141,7 @@ def test_run_returns_empty_on_xml_parse_error():
     mock_result = MagicMock()
     mock_result.stderr = "not xml at all <<<"
     mock_result.stdout = ""
-    with patch("src.analyzer.tools.cppcheck.subprocess.run", return_value=mock_result):
+    with patch("src.analyzer.io.tools.cppcheck.subprocess.run", return_value=mock_result):
         assert _CppCheckAnalyzer().run(_ctx()) == []
 
 
@@ -149,5 +149,5 @@ def test_run_empty_stderr_returns_empty():
     mock_result = MagicMock()
     mock_result.stderr = ""
     mock_result.stdout = ""
-    with patch("src.analyzer.tools.cppcheck.subprocess.run", return_value=mock_result):
+    with patch("src.analyzer.io.tools.cppcheck.subprocess.run", return_value=mock_result):
         assert _CppCheckAnalyzer().run(_ctx()) == []

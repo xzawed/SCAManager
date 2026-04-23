@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session
 from src.database import SessionLocal
 from src.config import settings
 from src.github_client.diff import get_pr_files, get_push_files, ChangedFile
-from src.analyzer.static import analyze_file, StaticAnalysisResult
-from src.analyzer.ai_review import review_code
+from src.analyzer.io.static import analyze_file, StaticAnalysisResult
+from src.analyzer.io.ai_review import review_code
 from src.scorer.calculator import calculate_score
 from src.notifier.telegram import send_analysis_result
 from src.notifier.github_commit_comment import post_commit_comment

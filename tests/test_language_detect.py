@@ -1,7 +1,7 @@
 """Phase 0.1 tests for src/analyzer/language.py — language detection covering 50 languages."""
 import pytest
 
-from src.analyzer.language import detect_language, is_test_file
+from src.analyzer.pure.language import detect_language, is_test_file
 
 
 class TestExtensionMappingTier1:

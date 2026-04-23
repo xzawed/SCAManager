@@ -4,8 +4,8 @@ import httpx
 from src.constants import GRADE_EMOJI, NOTIFIER_MAX_ISSUES_LONG, HTTP_CLIENT_TIMEOUT
 from src.github_client.helpers import github_api_headers
 from src.scorer.calculator import ScoreResult
-from src.analyzer.static import StaticAnalysisResult
-from src.analyzer.ai_review import AiReviewResult
+from src.analyzer.io.static import StaticAnalysisResult
+from src.analyzer.io.ai_review import AiReviewResult
 
 
 def _build_comment_body(

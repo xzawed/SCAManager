@@ -4,8 +4,8 @@ import logging
 from src.notifier._http import build_safe_client, validate_external_url
 from src.constants import GRADE_COLOR_HTML, NOTIFIER_MAX_ISSUES_SHORT
 from src.scorer.calculator import ScoreResult
-from src.analyzer.static import StaticAnalysisResult
-from src.analyzer.ai_review import AiReviewResult
+from src.analyzer.io.static import StaticAnalysisResult
+from src.analyzer.io.ai_review import AiReviewResult
 from src.notifier._common import format_ref, get_all_issues, truncate_issue_msg
 
 logger = logging.getLogger(__name__)

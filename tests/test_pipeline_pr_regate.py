@@ -23,7 +23,7 @@ from src.database import Base
 from src.models.repository import Repository
 from src.models.analysis import Analysis
 from src.scorer.calculator import ScoreResult
-from src.analyzer.ai_review import AiReviewResult
+from src.analyzer.io.ai_review import AiReviewResult
 from src.github_client.diff import ChangedFile
 
 

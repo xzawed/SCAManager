@@ -7,8 +7,8 @@ from html import escape
 import aiosmtplib
 
 from src.scorer.calculator import ScoreResult
-from src.analyzer.static import StaticAnalysisResult
-from src.analyzer.ai_review import AiReviewResult
+from src.analyzer.io.static import StaticAnalysisResult
+from src.analyzer.io.ai_review import AiReviewResult
 from src.constants import GRADE_COLOR_HTML, NOTIFIER_MAX_ISSUES_LONG
 from src.notifier._common import format_ref, get_all_issues, truncate_issue_msg
 

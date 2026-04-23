@@ -8,8 +8,8 @@ import asyncio
 import os
 import sys
 
-from src.analyzer.static import analyze_file
-from src.analyzer.ai_review import review_code
+from src.analyzer.io.static import analyze_file
+from src.analyzer.io.ai_review import review_code
 from src.scorer.calculator import calculate_score
 from src.cli.git_diff import get_diff_files, get_commit_message, GitError
 from src.cli.formatter import format_result, format_json

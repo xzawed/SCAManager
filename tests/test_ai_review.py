@@ -1,7 +1,7 @@
 # tests/test_ai_review.py
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
-from src.analyzer.ai_review import (
+from src.analyzer.io.ai_review import (
     AiReviewResult, review_code, _parse_response, _default_result, _extract_test_score
 )
 
@@ -112,7 +112,7 @@ async def test_review_code_calls_anthropic_and_parses():
                             "test_score": 10, "summary": "ok", "suggestions": []})
     mock_response.content = [MagicMock(text=mock_text)]
 
-    with patch("src.analyzer.ai_review.anthropic.AsyncAnthropic") as mock_cls:
+    with patch("src.analyzer.io.ai_review.anthropic.AsyncAnthropic") as mock_cls:
         mock_client = AsyncMock()
         mock_client.messages.create = AsyncMock(return_value=mock_response)
         mock_cls.return_value = mock_client
@@ -125,7 +125,7 @@ async def test_review_code_calls_anthropic_and_parses():
 
 
 async def test_review_code_returns_default_on_api_exception():
-    with patch("src.analyzer.ai_review.anthropic.AsyncAnthropic") as mock_cls:
+    with patch("src.analyzer.io.ai_review.anthropic.AsyncAnthropic") as mock_cls:
         mock_client = AsyncMock()
         mock_client.messages.create = AsyncMock(side_effect=Exception("API error"))
         mock_cls.return_value = mock_client
@@ -179,7 +179,7 @@ async def test_review_code_empty_diff_returns_empty_diff_status():
 
 async def test_review_code_api_error_returns_api_error_status():
     # API 호출 중 예외 발생 시 status == "api_error" 이어야 한다
-    with patch("src.analyzer.ai_review.anthropic.AsyncAnthropic") as mock_cls:
+    with patch("src.analyzer.io.ai_review.anthropic.AsyncAnthropic") as mock_cls:
         mock_client = AsyncMock()
         mock_client.messages.create = AsyncMock(side_effect=Exception("network error"))
         mock_cls.return_value = mock_client
@@ -199,7 +199,7 @@ async def test_successful_review_has_success_status():
     })
     mock_response.content = [MagicMock(text=mock_text)]
 
-    with patch("src.analyzer.ai_review.anthropic.AsyncAnthropic") as mock_cls:
+    with patch("src.analyzer.io.ai_review.anthropic.AsyncAnthropic") as mock_cls:
         mock_client = AsyncMock()
         mock_client.messages.create = AsyncMock(return_value=mock_response)
         mock_cls.return_value = mock_client

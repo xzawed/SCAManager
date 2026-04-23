@@ -4,15 +4,15 @@ import os
 import tempfile
 from dataclasses import dataclass, field
 
-import src.analyzer.tools.cppcheck  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
-import src.analyzer.tools.eslint  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
-import src.analyzer.tools.python  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
-import src.analyzer.tools.semgrep  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
-import src.analyzer.tools.shellcheck  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
-import src.analyzer.tools.slither  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
-from src.analyzer.language import detect_language, is_test_file
-from src.analyzer.registry import REGISTRY, AnalyzeContext, AnalysisIssue
-from src.analyzer.tools.python import _BanditAnalyzer, _Flake8Analyzer, _PylintAnalyzer
+import src.analyzer.io.tools.cppcheck  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
+import src.analyzer.io.tools.eslint  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
+import src.analyzer.io.tools.python  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
+import src.analyzer.io.tools.semgrep  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
+import src.analyzer.io.tools.shellcheck  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
+import src.analyzer.io.tools.slither  # noqa: F401 — 모듈 로드 시 자동 등록  # pylint: disable=unused-import
+from src.analyzer.pure.language import detect_language, is_test_file
+from src.analyzer.pure.registry import REGISTRY, AnalyzeContext, AnalysisIssue
+from src.analyzer.io.tools.python import _BanditAnalyzer, _Flake8Analyzer, _PylintAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ def analyze_file(filename: str, content: str) -> StaticAnalysisResult:
 # ── 하위 호환 re-export (기존 코드가 static.py에서 직접 import 하는 경우 지원) ──
 
 def _is_test_file(filename: str, language: str = "python") -> bool:
-    """Deprecated: use is_test_file() from src.analyzer.language. Kept for backward compatibility."""
+    """Deprecated: use is_test_file() from src.analyzer.pure.language. Kept for backward compatibility."""
     return is_test_file(filename, language)
 
 

@@ -1,8 +1,8 @@
 """Tests for review guide loading (Phase 0.2-0.4) and review_prompt builder (Phase 0.5)."""
 import pytest
 
-from src.analyzer.review_guides import get_guide, get_tier, supported_languages
-from src.analyzer.review_prompt import (
+from src.analyzer.pure.review_guides import get_guide, get_tier, supported_languages
+from src.analyzer.pure.review_prompt import (
     build_review_prompt,
     detect_languages_from_patches,
     has_test_files,

@@ -10,8 +10,8 @@ Token budget strategy:
 """
 from __future__ import annotations
 
-from src.analyzer.language import detect_language, is_test_file
-from src.analyzer.review_guides import get_guide, get_tier
+from src.analyzer.pure.language import detect_language, is_test_file
+from src.analyzer.pure.review_guides import get_guide, get_tier
 from src.constants import (
     LANG_GUIDE_ALL_FULL_MAX,
     LANG_GUIDE_TIER1_FULL_MAX,

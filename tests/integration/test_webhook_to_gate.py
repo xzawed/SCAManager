@@ -14,7 +14,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.analyzer.ai_review import AiReviewResult
+from src.analyzer.io.ai_review import AiReviewResult
 from src.database import Base, FailoverSessionFactory
 from src.github_client.diff import ChangedFile
 from src.main import app
@@ -71,7 +71,7 @@ def mock_deps(monkeypatch):
     monkeypatch.setattr(
         "src.worker.pipeline.analyze_file",
         lambda filename, content: __import__(
-            "src.analyzer.static", fromlist=["StaticAnalysisResult"]
+            "src.analyzer.io.static", fromlist=["StaticAnalysisResult"]
         ).StaticAnalysisResult(filename=filename),
     )
     gate_mock = AsyncMock()

@@ -32,7 +32,7 @@ def mock_deps():
     ):
         from src.scorer.calculator import ScoreResult
         from src.github_client.diff import ChangedFile
-        from src.analyzer.ai_review import AiReviewResult
+        from src.analyzer.io.ai_review import AiReviewResult
 
         mock_settings.github_token = "ghp_test"
         mock_settings.telegram_bot_token = "123:ABC"
@@ -202,7 +202,7 @@ async def test_pr_title_used_as_commit_message(mock_deps):
 
 async def test_ai_review_result_passed_to_scorer(mock_deps):
     from src.worker.pipeline import run_analysis_pipeline
-    from src.analyzer.ai_review import AiReviewResult
+    from src.analyzer.io.ai_review import AiReviewResult
     await run_analysis_pipeline("push", PUSH_DATA)
 
     score_call = mock_deps["score"].call_args
@@ -246,7 +246,7 @@ async def test_db_result_stores_source_pr(mock_deps):
 
 async def test_pipeline_calls_gate_for_pr(mock_deps):
     from src.worker.pipeline import run_analysis_pipeline
-    from src.analyzer.ai_review import AiReviewResult
+    from src.analyzer.io.ai_review import AiReviewResult
     from src.scorer.calculator import ScoreResult
 
     mock_deps["pr"].return_value = [MagicMock(filename="a.py", content="x=1", patch="@@ +1")]
@@ -271,7 +271,7 @@ async def test_pipeline_calls_gate_for_pr(mock_deps):
 
 async def test_pipeline_calls_n8n_when_url_set(mock_deps):
     from src.worker.pipeline import run_analysis_pipeline
-    from src.analyzer.ai_review import AiReviewResult
+    from src.analyzer.io.ai_review import AiReviewResult
     from src.scorer.calculator import ScoreResult
 
     mock_deps["push"].return_value = [MagicMock(filename="a.py", content="x=1", patch="@@ +1")]
@@ -299,7 +299,7 @@ async def test_pipeline_calls_n8n_when_url_set(mock_deps):
 
 async def test_pipeline_skips_gate_for_push(mock_deps):
     from src.worker.pipeline import run_analysis_pipeline
-    from src.analyzer.ai_review import AiReviewResult
+    from src.analyzer.io.ai_review import AiReviewResult
     from src.scorer.calculator import ScoreResult
 
     mock_deps["push"].return_value = [MagicMock(filename="a.py", content="x=1", patch="@@ +1")]
@@ -830,7 +830,7 @@ async def test_create_issue_called_on_security_high_even_when_score_high(mock_de
     """create_issue=True + bandit HIGH 존재 → 점수가 높아도 Issue 생성."""
     from src.worker.pipeline import run_analysis_pipeline
     from src.config_manager.manager import RepoConfigData
-    from src.analyzer.static import StaticAnalysisResult, AnalysisIssue
+    from src.analyzer.io.static import StaticAnalysisResult, AnalysisIssue
 
     # 점수 높게 유지 (85) → 보안 HIGH만으로 트리거돼야 함
     high_issue_result = StaticAnalysisResult(
@@ -866,7 +866,7 @@ async def test_create_issue_called_only_once_when_both_conditions_match(mock_dep
     from src.worker.pipeline import run_analysis_pipeline
     from src.config_manager.manager import RepoConfigData
     from src.scorer.calculator import ScoreResult
-    from src.analyzer.static import StaticAnalysisResult, AnalysisIssue
+    from src.analyzer.io.static import StaticAnalysisResult, AnalysisIssue
 
     mock_deps["score"].return_value = ScoreResult(
         total=30, grade="F",
