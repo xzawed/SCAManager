@@ -1,5 +1,5 @@
 """log_safety.sanitize_for_log 단위 테스트."""
-from src.log_safety import sanitize_for_log
+from src.shared.log_safety import sanitize_for_log
 
 
 def test_sanitize_strips_cr_lf():

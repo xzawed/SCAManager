@@ -10,7 +10,7 @@ from alembic.config import Config
 
 from src.config import settings
 from src.database import SessionLocal
-from src.http_client import close_http_client, init_http_client
+from src.shared.http_client import close_http_client, init_http_client
 from src.webhook.router import router as webhook_router
 from src.api.repos import router as api_repos_router
 from src.api.stats import router as api_stats_router

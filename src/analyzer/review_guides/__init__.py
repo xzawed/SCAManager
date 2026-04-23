@@ -4,6 +4,18 @@ Usage:
     from src.analyzer.review_guides import get_guide
     guide = get_guide("python")          # full guide (default)
     guide = get_guide("go", "compact")   # compact one-liner
+
+Tier 분류 기준 (신규 언어 추가 시 참조):
+    Tier 1 — 업계 점유율 상위 (~10개): 상용/오픈소스 정적분석 도구 3+ 지원,
+             체크리스트를 full + compact 두 모드로 상세 제공.
+             python · javascript · typescript · java · go · rust · c · cpp · csharp · ruby
+    Tier 2 — 니치/응용 언어 (~20개): 정적분석 도구 1~2개, 특정 도메인 (모바일·
+             백엔드·스크립트) 에서 중요. Tier 1 보다 간결한 가이드.
+             php · swift · kotlin · scala · shell · dart · solidity 등
+    Tier 3 — 레퍼런스/마이너 언어 (~20개): 도구 1개 미만, 경량 일반 가이드.
+             erlang · ocaml · julia · zig · dockerfile 등
+
+새 언어 추가 시: `tier{N}/{language}.py` 파일 생성 + `_GUIDE_MAP` 에 1줄 등록.
 """
 from importlib import import_module
 

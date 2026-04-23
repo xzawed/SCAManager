@@ -15,7 +15,7 @@ from src.models.analysis import Analysis
 from src.models.repo_config import RepoConfig
 from src.models.gate_decision import GateDecision
 from src.auth.session import require_login, CurrentUser
-from src.log_safety import sanitize_for_log
+from src.shared.log_safety import sanitize_for_log
 from src.repositories import repo_config_repo
 from src.config_manager.manager import get_repo_config, upsert_repo_config, RepoConfigData
 from src.scorer.calculator import calculate_grade

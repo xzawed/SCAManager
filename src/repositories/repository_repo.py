@@ -1,4 +1,9 @@
-"""RepositoryRepo — Repository ORM 쿼리 단일 출처."""
+"""RepositoryRepo — Repository ORM 쿼리 단일 출처.
+
+Note: filter() 기반 — 기존 mock 패턴 (`db.query(...).filter(...).first()`) 호환
+유지. api/deps.py 의 `get_repo_or_404()` 가 404 처리를 감싸는 HTTP 레이어 헬퍼.
+UI/webhook 은 본 모듈 직접 호출 (각자 에러 처리 방식 상이).
+"""
 from sqlalchemy.orm import Session
 from src.models.repository import Repository
 

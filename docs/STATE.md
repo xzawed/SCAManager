@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-23 기준 — SonarCloud Quality Gate OK + 3종 Rating A 달성)
+## 현재 수치 (2026-04-23 기준 — 구조 감사 Phase S.1 반영 후)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1175개** | pytest (0 failed) — Phase Q 후속 +7 (log_safety) |
+| 단위 테스트 | **1170개** | pytest (0 failed) — Phase S.1 `tests/test_gate_registry.py` 5건 삭제 (죽은 코드 정리) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
@@ -188,6 +188,19 @@
 | 테스트 fixture 재작성 | `test_railway_client.py`(2곳) + `test_railway_issue_notifier.py`(`_EVENT` fixture nested 재작성) | — |
 | 외부 API 불변 | `parse_railway_payload` · `create_deploy_failure_issue` 시그니처 · Webhook payload 스키마 · DB 전부 그대로 | — |
 
+### 그룹 19 — 프로젝트 구조 3-에이전트 감사 · Phase S.1 (2026-04-23)
+
+3개 Explore 에이전트 (A: Python 표준 · B: 확장성 · C: 도메인 경계) 병렬 감사 → 합의된 이슈만 S.1~S.3 로 단계 분류. [진단 보고서](reports/2026-04-23-structure-audit-3agent.md).
+
+| 세부 작업 | 변경 내용 |
+|----------|----------|
+| S.1-1 `src/shared/` 패키지 신설 | `http_client.py` · `log_safety.py` 이동 (git mv 로 이력 보존) + import 경로 4곳 업데이트 |
+| S.1-2 Gate 스캐폴딩 삭제 | `src/gate/actions/` 4 파일 + `src/gate/registry.py` + `tests/test_gate_registry.py` 제거 (engine.py 에서 호출 안 되던 죽은 코드 ~250줄 + 테스트 5개 제거) + engine.py docstring 의 Note 정리 |
+| S.1-3 Tier 기준 주석 | `src/analyzer/review_guides/__init__.py` 에 Tier 1/2/3 분류 기준 docstring (신규 언어 추가 시 참조용) |
+| S.1-4 보류 | `get_repo_or_404` UI/webhook 확산 시도 → 기존 mock 패턴 (`filter` 직접 호출) 과 `repository_repo.find_by_full_name` (`filter_by` 기반) 의 불호환으로 55개 테스트 회귀 → 원복. **Phase S.3 (테스트 mock 일괄 재작성) 로 연기**. |
+
+**결과**: pylint 10.00 / flake8 0 / SonarCloud QG OK 유지. 1175 → 1170 passed (삭제된 test_gate_registry 5건 반영).
+
 ### 그룹 18 — Phase Q.5~Q.6 SonarCloud 잔존 이슈 해소 (2026-04-23)
 
 CI #4 재분석 결과 드러난 신규 BLOCKER/Vuln 을 Q.5~Q.6 후속 2커밋으로 해소. **CI #6 에서 Quality Gate OK + 3종 Rating A 달성**.
@@ -291,6 +304,8 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 |---------|------|------|
 | **✅ Phase Q.1~Q.6 완료 (SonarCloud 청산)** | Quality Gate OK + 3종 Rating A 달성 | [Follow-up 섹션](reports/2026-04-23-sonarcloud-baseline.md#follow-up--phase-q1q6-전체-실행-결과-2026-04-23-세션). Bugs/Vuln/Hotspots/BLOCKER 0, Code Smells 78→58 |
 | **Phase Q.7 (선택적 · 대기)** | CRITICAL 5건 Cognitive Complexity 해소 | 전부 `python:S3776`. Rating 영향 없음. `gate/engine.py:20` 최대 (+16 초과). 실제 함수 분할 리팩토링 필요 + pipeline-reviewer 승인 |
+| **Phase S.2 (중간 리스크 · 승인 대기)** | UI/Webhook router 서브패키지 분리 + Repository 네이밍 정리 | [3-에이전트 진단](reports/2026-04-23-structure-audit-3agent.md) §3 S.2. `src/ui/routes/`, `src/webhook/providers/` 신설 + main.py include 재작성. 예상 ~3h |
+| **Phase S.3 (큰 리팩토링 · 별도 세션)** | Notifier Protocol 전환 + Service 계층 + Analyzer pure/io + tests/unit 계층화 + get_repo_or_404 확산 | 4개 큰 리팩토링. 테스트 mock 대규모 재작성 필요. pipeline-reviewer 승인 필수. 예상 ~5~10h |
 | **🚧 P4-Gate (D.3 차단)** | D.1 cppcheck / D.2 slither 프로덕션 실증 검증 | D.3 착수 전 필수 — 아래 "D.3 차단 게이트" 섹션 체크리스트 완료 조건 |
 | **P3-리팩 완결** | 6렌즈 권고 #1~6 ✅ · #7 ✅ · #8a/#8b 스캐폴딩 | [Follow-up 섹션 참조](reports/2026-04-22-quality-audit-6lens.md#follow-up-2026-04-22--후속-실행-결과). 10커밋 완료. 실제 치환 잔존 2건(아래) |
 | **P3-후속 (스캐폴딩 완성)** | #8a GateAction 엔진 전환 + #8b http_client 15곳 채택 | test_gate_engine.py 37건 mock 재작성 + 15곳 `async with httpx.AsyncClient` 치환 필요. 별도 Phase |
