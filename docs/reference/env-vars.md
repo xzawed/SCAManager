@@ -29,18 +29,31 @@
 
 | 변수 | 설명 | 예시 |
 |------|------|------|
-| `SENTRY_DSN` | Sentry 프로젝트 DSN — 미설정 시 Sentry 비활성 (graceful no-op) | `https://abc@o1.ingest.sentry.io/123` |
-| `SENTRY_ENVIRONMENT` | Sentry 에 기록될 환경 태그 | `production` (기본) / `staging` / `development` |
+| `SENTRY_DSN` | Sentry-compatible DSN — 미설정 시 비활성 (graceful no-op) | `https://abc@o1.ingest.sentry.io/123` |
+| `SENTRY_ENVIRONMENT` | 환경 태그 | `production` (기본) / `staging` / `development` |
 | `SENTRY_TRACES_SAMPLE_RATE` | Performance tracing 샘플링 비율 (0.0~1.0) | `0.1` (기본, 10%) |
 
-Sentry 설정 방법:
-1. [Sentry 무료 플랜](https://sentry.io) 에서 Python 프로젝트 생성
-2. DSN 을 Railway Variables 의 `SENTRY_DSN` 에 추가
-3. 배포 후 이벤트 자동 수집 시작
+### 현재 권장 — 연동 보류
 
-Claude API 메트릭 (자동, env 설정 불필요):
-- 분석 1건당 `claude_api_call` 로그 자동 기록 — model / duration_ms / input_tokens / output_tokens / cost_usd / status
-- 파이프라인 단계별 `pipeline_stage` 로그 자동 기록 — collect_files / analyze / score_and_save / notify / pipeline_total
+Sentry 의 Developer 무료 플랜이 14일 Trial 로 확인됨 (2026-04-23 사용자 검증).
+Phase E.2b/c 의 Claude API 메트릭 + 파이프라인 타이밍은 **Sentry 없이도 Railway
+로그에 자동 기록**되므로 당분간 `SENTRY_DSN` 빈 문자열 유지 권장.
+
+### 원할 때 활성화 방안
+
+`sentry-sdk` 는 DSN 형식 호환 서비스라면 어느 것이든 받아들임. 즉 **코드 변경
+없이** DSN 만 Railway Variables 에 추가하면 즉시 활성화:
+
+- **GlitchTip** ([glitchtip.com](https://glitchtip.com)) — Sentry-compatible API,
+  소규모 프로젝트 영구 무료. 추천.
+- **Self-hosted Sentry** — Docker Compose 로 자체 호스팅 가능, 기능 전부 무료.
+- **Sentry 유료** — 필요 시.
+
+### 자동 로깅 (env 설정 불필요)
+
+- `claude_api_call` 로그 — model / duration_ms / input_tokens / output_tokens / cost_usd / status
+- `pipeline_stage` 로그 — collect_files / analyze / score_and_save / notify / pipeline_total
+- Railway Logs 에서 grep / filter 로 조회 가능 (structured log shipper 미연동 상태)
 
 ## 알림 채널 (선택)
 
