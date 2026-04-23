@@ -1,5 +1,7 @@
 # Phase E 전환 결정 — Path A (서비스화) 로드맵 (2026-04-23)
 
+> ✅ **2026-04-23 전체 완결** — E.1~E.5 5단계 모두 동일 일자에 완료. 총 +40 테스트, pylint 10.00 / flake8 0 유지. 상세: [STATE.md 그룹 25~28](../STATE.md#그룹-28--phase-e5-onboarding-튜토리얼-2026-04-23).
+
 > SCAManager 방향 분기점에서 **Path A (서비스화)** 를 공식 선택. Phase D (Tier1 정적분석 도구 확장) 를 잠정 종료하고 Phase E (서비스 성숙화) 로 전환.
 
 ## 배경
@@ -45,9 +47,9 @@
 
 ## Phase E 로드맵
 
-### E.1 — 본 문서 (Phase D 공식 중단) ✅ 진행 중
+### E.1 — Phase D 공식 중단 ✅ **완료** (커밋 `bc6f32b`)
 
-### E.2 — Observability 기반 구축 (최우선 실행)
+### E.2 — Observability 기반 구축 ✅ **완료** (커밋 `91abcba` · `ad951d0` · `b5ea179`)
 
 **목적**: 운영 가시성 확보. Phase E 나머지의 효과 측정 전제 조건.
 
@@ -62,7 +64,7 @@
 
 **성공 기준**: production 에서 에러 발생 시 Sentry 이벤트 확인 가능 + 분석당 Claude API cost 집계 확인 가능.
 
-### E.3 — AI 점수 피드백 루프
+### E.3 — AI 점수 피드백 루프 ✅ **완료** (커밋 `f20f331` · `c70f2fa`)
 
 **목적**: auto-merge 의 신뢰 기반 구축. Claude 점수가 사람 판단과 일치하는지 측정.
 
@@ -72,7 +74,7 @@
 - 대시보드에 정합도 지표 — Claude 점수 분포 vs. thumbs up 비율
 - 점수별 thumbs up 비율이 낮은 구간 식별 → 프롬프트 개선 재료
 
-### E.4 — Minimal Mode (사용자 onboarding 간소화)
+### E.4 — Minimal Mode (사용자 onboarding 간소화) ✅ **완료** (커밋 `a32a040`)
 
 **목적**: 신규 사용자의 첫 repo 등록까지 friction 최소화.
 
@@ -82,7 +84,7 @@
 - Advanced 모드: 기존 6채널 + 10언어 + Gate 3옵션 전부 노출
 - Simple → Advanced 전환 시 기존 설정 보존
 
-### E.5 — Onboarding 튜토리얼
+### E.5 — Onboarding 튜토리얼 ✅ **완료** (커밋 `f502bb9`)
 
 **목적**: 첫 repo 등록까지의 경로 최적화.
 
