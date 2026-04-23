@@ -209,7 +209,7 @@ Claude API 비용 추적·파이프라인 단계별 지연 측정.
 - 파이프라인 5단계 각각의 duration_ms + 파일 수·이슈 수·점수·채널 수
 - FastAPI 경로별 예외 + request context (Sentry DSN 설정 시)
 
-**사용자 조치 (선택)**: [Sentry 무료 플랜](https://sentry.io) 가입 → DSN 을 Railway Variables `SENTRY_DSN` 에 추가. 미설정 시 로그만 남고 앱은 정상 동작.
+**사용자 조치 (현재 권장: 보류)**: Sentry Developer 플랜이 14일 Trial 로 확인됨 (2026-04-23). Claude API 메트릭 + 파이프라인 타이밍은 Sentry 없이도 Railway 로그에 자동 기록되므로 `SENTRY_DSN` 빈 상태 유지. 필요 시 [GlitchTip](https://glitchtip.com) (Sentry-compatible, 영구 무료) DSN 만 추가하면 **코드 변경 없이** 즉시 활성화. 상세: [env-vars.md](reference/env-vars.md#observability-선택-phase-e2).
 
 ### 그룹 24 — Railway 빌드 안정화 (rubocop/prism 의존성 트랩 해소) (2026-04-23)
 
