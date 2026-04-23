@@ -105,9 +105,10 @@ def test_merged_pr_with_closes_keyword_closes_issue():
     """'Closes #42' 키워드를 가진 merged PR 이벤트 수신 시 close_issue(issue_number=42)를 호출한다."""
     payload = _merged_pr_payload("Closes #42")
 
-    with patch("src.webhook.router.settings") as mock_settings:
+    with patch("src.webhook.providers.github.settings") as mock_settings, patch("src.webhook._helpers.settings") as mock_helpers_settings:
+        mock_helpers_settings.github_webhook_secret = SECRET
         mock_settings.github_webhook_secret = SECRET
-        with patch("src.webhook.router.close_issue", new_callable=AsyncMock) as mock_close:
+        with patch("src.webhook.providers.github.close_issue", new_callable=AsyncMock) as mock_close:
             resp = client.post(
                 "/webhooks/github",
                 content=payload,
@@ -128,9 +129,10 @@ def test_merged_pr_fixes_keyword_case_insensitive():
     """소문자 'fixes #7' 키워드도 이슈 7을 닫도록 close_issue를 호출한다."""
     payload = _merged_pr_payload("fixes #7")
 
-    with patch("src.webhook.router.settings") as mock_settings:
+    with patch("src.webhook.providers.github.settings") as mock_settings, patch("src.webhook._helpers.settings") as mock_helpers_settings:
+        mock_helpers_settings.github_webhook_secret = SECRET
         mock_settings.github_webhook_secret = SECRET
-        with patch("src.webhook.router.close_issue", new_callable=AsyncMock) as mock_close:
+        with patch("src.webhook.providers.github.close_issue", new_callable=AsyncMock) as mock_close:
             resp = client.post(
                 "/webhooks/github",
                 content=payload,
@@ -149,9 +151,10 @@ def test_merged_pr_resolves_keyword_uppercase():
     """대문자 'RESOLVES #99' 키워드도 이슈 99를 닫도록 close_issue를 호출한다."""
     payload = _merged_pr_payload("RESOLVES #99")
 
-    with patch("src.webhook.router.settings") as mock_settings:
+    with patch("src.webhook.providers.github.settings") as mock_settings, patch("src.webhook._helpers.settings") as mock_helpers_settings:
+        mock_helpers_settings.github_webhook_secret = SECRET
         mock_settings.github_webhook_secret = SECRET
-        with patch("src.webhook.router.close_issue", new_callable=AsyncMock) as mock_close:
+        with patch("src.webhook.providers.github.close_issue", new_callable=AsyncMock) as mock_close:
             resp = client.post(
                 "/webhooks/github",
                 content=payload,
@@ -170,9 +173,10 @@ def test_merged_pr_without_merged_flag_is_ignored():
     """merged=False인 closed 이벤트는 close_issue를 호출하지 않는다."""
     payload = _merged_pr_payload("Closes #1", merged=False)
 
-    with patch("src.webhook.router.settings") as mock_settings:
+    with patch("src.webhook.providers.github.settings") as mock_settings, patch("src.webhook._helpers.settings") as mock_helpers_settings:
+        mock_helpers_settings.github_webhook_secret = SECRET
         mock_settings.github_webhook_secret = SECRET
-        with patch("src.webhook.router.close_issue", new_callable=AsyncMock) as mock_close:
+        with patch("src.webhook.providers.github.close_issue", new_callable=AsyncMock) as mock_close:
             resp = client.post(
                 "/webhooks/github",
                 content=payload,
@@ -190,9 +194,10 @@ def test_merged_pr_without_keyword_is_ignored():
     """closing 키워드 없는 merged PR은 close_issue를 호출하지 않는다."""
     payload = _merged_pr_payload("just a cleanup")
 
-    with patch("src.webhook.router.settings") as mock_settings:
+    with patch("src.webhook.providers.github.settings") as mock_settings, patch("src.webhook._helpers.settings") as mock_helpers_settings:
+        mock_helpers_settings.github_webhook_secret = SECRET
         mock_settings.github_webhook_secret = SECRET
-        with patch("src.webhook.router.close_issue", new_callable=AsyncMock) as mock_close:
+        with patch("src.webhook.providers.github.close_issue", new_callable=AsyncMock) as mock_close:
             resp = client.post(
                 "/webhooks/github",
                 content=payload,
@@ -210,9 +215,10 @@ def test_merged_pr_closes_multiple_issues():
     """'Closes #1, fixes #2' body에서 close_issue가 이슈 1과 2 각각 호출된다."""
     payload = _merged_pr_payload("Closes #1, fixes #2")
 
-    with patch("src.webhook.router.settings") as mock_settings:
+    with patch("src.webhook.providers.github.settings") as mock_settings, patch("src.webhook._helpers.settings") as mock_helpers_settings:
+        mock_helpers_settings.github_webhook_secret = SECRET
         mock_settings.github_webhook_secret = SECRET
-        with patch("src.webhook.router.close_issue", new_callable=AsyncMock) as mock_close:
+        with patch("src.webhook.providers.github.close_issue", new_callable=AsyncMock) as mock_close:
             resp = client.post(
                 "/webhooks/github",
                 content=payload,
@@ -234,10 +240,11 @@ def test_merged_pr_close_api_failure_does_not_raise():
     """close_issue가 HTTPError를 발생시켜도 webhook은 202를 반환한다 (best-effort)."""
     payload = _merged_pr_payload("Closes #5")
 
-    with patch("src.webhook.router.settings") as mock_settings:
+    with patch("src.webhook.providers.github.settings") as mock_settings, patch("src.webhook._helpers.settings") as mock_helpers_settings:
+        mock_helpers_settings.github_webhook_secret = SECRET
         mock_settings.github_webhook_secret = SECRET
         with patch(
-            "src.webhook.router.close_issue",
+            "src.webhook.providers.github.close_issue",
             new_callable=AsyncMock,
             side_effect=httpx.HTTPError("connection failed"),
         ):

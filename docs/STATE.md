@@ -188,6 +188,33 @@
 | 테스트 fixture 재작성 | `test_railway_client.py`(2곳) + `test_railway_issue_notifier.py`(`_EVENT` fixture nested 재작성) | — |
 | 외부 API 불변 | `parse_railway_payload` · `create_deploy_failure_issue` 시그니처 · Webhook payload 스키마 · DB 전부 그대로 | — |
 
+### 그룹 20 — Phase S.2 UI/Webhook router 서브패키지 분할 (2026-04-23)
+
+[3-에이전트 진단](reports/2026-04-23-structure-audit-3agent.md) Phase S.2 원안 수행. mock 경로 193곳 일괄 재작성 포함.
+
+**UI router (458줄 → aggregator 24줄 + 6 모듈)**:
+- `src/ui/_helpers.py` (신설) — `get_accessible_repo` · `webhook_base_url` · `delete_repo_cascade` · `GITHUB_WEBHOOK_PATH` · `templates` · `logger`
+- `src/ui/routes/overview.py` — `GET /`
+- `src/ui/routes/add_repo.py` — `GET /repos/add` · `GET /api/github/repos` · `POST /repos/add`
+- `src/ui/routes/settings.py` — `GET/POST /repos/{name}/settings` · `POST .../reinstall-hook` · `POST .../reinstall-webhook`
+- `src/ui/routes/actions.py` — `POST /repos/{name}/delete`
+- `src/ui/routes/detail.py` — `GET /repos/{name}/analyses/{id}` · `GET /repos/{name}` (catch-all, 마지막 include)
+- `src/ui/router.py` — aggregator (sub-routers include)
+
+**Webhook router (390줄 → aggregator 40줄 + 4 모듈)**:
+- `src/webhook/_helpers.py` (신설) — `_webhook_secret_cache` · `get_webhook_secret` (TTL 캐시)
+- `src/webhook/providers/github.py` — `POST /webhooks/github` + `_handle_merged_pr_event` + `_handle_issues_event` + `_extract_closing_issue_numbers`
+- `src/webhook/providers/telegram.py` — `POST /api/webhook/telegram` + `_parse_gate_callback` + `handle_gate_callback`
+- `src/webhook/providers/railway.py` — `POST /webhooks/railway/{token}` + `_handle_railway_deploy_failure`
+- `src/webhook/router.py` — aggregator + 하위 호환 re-export (conftest autouse 용 `_webhook_secret_cache` 등)
+
+**테스트 mock 경로 재작성 193곳**:
+- `test_ui_router.py` 의 `src.ui.router.X` → 각 route 모듈 경로 (SessionLocal 61곳 · delete_webhook · create_webhook · get_repo_config 등)
+- webhook 5개 테스트 파일의 `src.webhook.router.X` → provider 별 경로 (`.github`, `.telegram`, `.railway`)
+- 일부 헬퍼 경로는 `src.ui._helpers.X` / `src.webhook._helpers.X`
+
+**수치**: 1170 passed 유지, pylint 10.00, flake8 0, bandit HIGH 0, SonarCloud QG OK 유지.
+
 ### 그룹 19 — 프로젝트 구조 3-에이전트 감사 · Phase S.1 (2026-04-23)
 
 3개 Explore 에이전트 (A: Python 표준 · B: 확장성 · C: 도메인 경계) 병렬 감사 → 합의된 이슈만 S.1~S.3 로 단계 분류. [진단 보고서](reports/2026-04-23-structure-audit-3agent.md).
@@ -304,7 +331,7 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 |---------|------|------|
 | **✅ Phase Q.1~Q.6 완료 (SonarCloud 청산)** | Quality Gate OK + 3종 Rating A 달성 | [Follow-up 섹션](reports/2026-04-23-sonarcloud-baseline.md#follow-up--phase-q1q6-전체-실행-결과-2026-04-23-세션). Bugs/Vuln/Hotspots/BLOCKER 0, Code Smells 78→58 |
 | **Phase Q.7 (선택적 · 대기)** | CRITICAL 5건 Cognitive Complexity 해소 | 전부 `python:S3776`. Rating 영향 없음. `gate/engine.py:20` 최대 (+16 초과). 실제 함수 분할 리팩토링 필요 + pipeline-reviewer 승인 |
-| **Phase S.2 (중간 리스크 · 승인 대기)** | UI/Webhook router 서브패키지 분리 + Repository 네이밍 정리 | [3-에이전트 진단](reports/2026-04-23-structure-audit-3agent.md) §3 S.2. `src/ui/routes/`, `src/webhook/providers/` 신설 + main.py include 재작성. 예상 ~3h |
+| **✅ Phase S.2 완료 (UI/Webhook router 분할)** | UI router → `src/ui/routes/` 5 모듈 · Webhook router → `src/webhook/providers/` 3 provider | 그룹 20 참조. mock 경로 193곳 재작성 완료, 1170 passed 유지 |
 | **Phase S.3 (큰 리팩토링 · 별도 세션)** | Notifier Protocol 전환 + Service 계층 + Analyzer pure/io + tests/unit 계층화 + get_repo_or_404 확산 | 4개 큰 리팩토링. 테스트 mock 대규모 재작성 필요. pipeline-reviewer 승인 필수. 예상 ~5~10h |
 | **🚧 P4-Gate (D.3 차단)** | D.1 cppcheck / D.2 slither 프로덕션 실증 검증 | D.3 착수 전 필수 — 아래 "D.3 차단 게이트" 섹션 체크리스트 완료 조건 |
 | **P3-리팩 완결** | 6렌즈 권고 #1~6 ✅ · #7 ✅ · #8a/#8b 스캐폴딩 | [Follow-up 섹션 참조](reports/2026-04-22-quality-audit-6lens.md#follow-up-2026-04-22--후속-실행-결과). 10커밋 완료. 실제 치환 잔존 2건(아래) |
