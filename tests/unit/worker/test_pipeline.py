@@ -29,10 +29,19 @@ def mock_deps():
         # 정적분석 subprocess(Semgrep 등) 실행 차단 — 테스트당 ~7s 절약
         patch("src.worker.pipeline._run_static_analysis",
               new_callable=AsyncMock, return_value=[]),
+        # Phase S.4 — repository/analysis/config 조회를 함수 단위로 직접 patch.
+        # 기존 `filter_by.return_value.first.side_effect` 단일 체인이 repo/analysis
+        # 두 쿼리를 묶어서 mock 하던 방식은 `repository_repo.find_by_full_name`
+        # 내부를 `filter` 기반으로 바꾸면 체인이 분리되어 회귀 (Phase S.1-4, S.3-D 실패).
+        # 아래 3개 patch 는 내부 ORM 구현과 무관하게 동작하므로 S.3-D 전환 가능.
+        patch("src.worker.pipeline.repository_repo.find_by_full_name") as mock_find_repo,
+        patch("src.worker.pipeline.analysis_repo.find_by_sha") as mock_find_analysis,
+        patch("src.worker.pipeline.get_repo_config") as mock_get_config,
     ):
         from src.scorer.calculator import ScoreResult
         from src.github_client.diff import ChangedFile
         from src.analyzer.io.ai_review import AiReviewResult
+        from src.config_manager.manager import RepoConfigData
 
         mock_settings.github_token = "ghp_test"
         mock_settings.telegram_bot_token = "123:ABC"
@@ -56,12 +65,12 @@ def mock_deps():
 
         mock_db = MagicMock()
         mock_repo = MagicMock(id=1)
-        # Call sequence: 1) repo creation (None→create), 2) dup check (None),
-        # 3) repo lookup in second session (found), 4) TOCTOU re-check (None),
-        # 5) get_repo_config RepoConfig query (None→defaults)
-        mock_db.query.return_value.filter_by.return_value.first.side_effect = [
-            None, None, mock_repo, None, None,
-        ]
+        # 기본 동작: 1차 조회 None (생성) → 2차 조회 mock_repo (발견). 중복 없음.
+        # 각 테스트에서 mock_deps["find_repo"].side_effect 등으로 override.
+        mock_find_repo.side_effect = [None, mock_repo]
+        mock_find_analysis.return_value = None
+        mock_get_config.return_value = RepoConfigData(repo_full_name="owner/repo")
+
         mock_db.flush = MagicMock()
         mock_db.commit = MagicMock()
         # Support both SessionLocal() and `with SessionLocal() as db:` patterns
@@ -74,6 +83,10 @@ def mock_deps():
             "ai": mock_ai, "score": mock_score,
             "telegram": mock_telegram,
             "db": mock_db,
+            "find_repo": mock_find_repo,
+            "find_analysis": mock_find_analysis,
+            "get_config": mock_get_config,
+            "mock_repo": mock_repo,
         }
 
 
@@ -174,10 +187,9 @@ async def test_repo_created_even_when_api_fails(mock_deps):
 
 async def test_duplicate_commit_is_skipped(mock_deps):
     existing = MagicMock()
-    mock_deps["db"].query.return_value.filter_by.return_value.first.side_effect = [
-        None,
-        existing,
-    ]
+    # 1차 repo 조회에서 이미 존재 → dup 감지 시 analysis 조회가 existing 반환
+    mock_deps["find_repo"].side_effect = [mock_deps["mock_repo"]]
+    mock_deps["find_analysis"].return_value = existing
     from src.worker.pipeline import run_analysis_pipeline
     await run_analysis_pipeline("push", PUSH_DATA)
 
@@ -337,8 +349,6 @@ async def test_pipeline_uses_owner_github_token():
     repo.owner = owner
 
     mock_db = MagicMock()
-    # 순서: 첫 번째 세션 repo 조회 → SHA 중복 체크(None=중복 없음) → (파일 없어 조기 종료)
-    mock_db.query.return_value.filter_by.return_value.first.side_effect = [repo, None]
     mock_db.__enter__ = MagicMock(return_value=mock_db)
     mock_db.__exit__ = MagicMock(return_value=None)
 
@@ -349,9 +359,13 @@ async def test_pipeline_uses_owner_github_token():
     }
 
     from src.worker.pipeline import run_analysis_pipeline
-    with patch("src.worker.pipeline.SessionLocal", return_value=mock_db):
-        with patch("src.worker.pipeline.get_pr_files", return_value=[]) as mock_get_files:
-            await run_analysis_pipeline("pull_request", event_data)
+    with (
+        patch("src.worker.pipeline.SessionLocal", return_value=mock_db),
+        patch("src.worker.pipeline.repository_repo.find_by_full_name", return_value=repo),
+        patch("src.worker.pipeline.analysis_repo.find_by_sha", return_value=None),
+        patch("src.worker.pipeline.get_pr_files", return_value=[]) as mock_get_files,
+    ):
+        await run_analysis_pipeline("pull_request", event_data)
 
     # owner 토큰이 사용됐는지 확인
     mock_get_files.assert_called_once()
@@ -370,8 +384,6 @@ async def test_pipeline_falls_back_to_settings_token_when_no_owner():
     repo.owner = None  # 소유자 없는 레거시 리포
 
     mock_db = MagicMock()
-    # 순서: 첫 번째 세션 repo 조회 → SHA 중복 체크(None=중복 없음) → (파일 없어 조기 종료)
-    mock_db.query.return_value.filter_by.return_value.first.side_effect = [repo, None]
     mock_db.__enter__ = MagicMock(return_value=mock_db)
     mock_db.__exit__ = MagicMock(return_value=None)
 
@@ -382,9 +394,13 @@ async def test_pipeline_falls_back_to_settings_token_when_no_owner():
     }
 
     from src.worker.pipeline import run_analysis_pipeline
-    with patch("src.worker.pipeline.SessionLocal", return_value=mock_db):
-        with patch("src.worker.pipeline.get_push_files", return_value=[]) as mock_get_files:
-            await run_analysis_pipeline("push", event_data)
+    with (
+        patch("src.worker.pipeline.SessionLocal", return_value=mock_db),
+        patch("src.worker.pipeline.repository_repo.find_by_full_name", return_value=repo),
+        patch("src.worker.pipeline.analysis_repo.find_by_sha", return_value=None),
+        patch("src.worker.pipeline.get_push_files", return_value=[]) as mock_get_files,
+    ):
+        await run_analysis_pipeline("push", event_data)
 
     mock_get_files.assert_called_once()
     assert mock_get_files.call_args[0][0] == "ghp_test"  # conftest의 GITHUB_TOKEN
@@ -530,12 +546,10 @@ async def test_sha_duplicate_skips_before_review_code(mock_deps):
     현재 구현은 review_code 호출 후 DB 저장 직전에 중복 체크하므로 이 테스트는 Red 상태다.
     구현 후: SHA 중복 체크를 repo 등록 직후, 파일 fetch 전으로 이동하면 Green이 된다.
     """
-    # 첫 번째 first(): repo 없음(생성), 두 번째 first(): repo 조회 성공, 세 번째 first(): 중복 SHA 발견
+    # 첫 번째 세션: repo 없음 → 생성, analysis 조회 시 existing 감지 (파일 fetch 전 조기 종료)
     existing_analysis = MagicMock()
-    mock_deps["db"].query.return_value.filter_by.return_value.first.side_effect = [
-        None,             # 첫 번째 세션: repo 없음 → 생성
-        existing_analysis,  # 첫 번째 세션: SHA 중복 감지 (파일 fetch 전에 조기 종료)
-    ]
+    mock_deps["find_repo"].side_effect = [None, mock_deps["mock_repo"]]
+    mock_deps["find_analysis"].return_value = existing_analysis
 
     from src.worker.pipeline import run_analysis_pipeline
     await run_analysis_pipeline("push", PUSH_DATA)
@@ -547,10 +561,8 @@ async def test_sha_duplicate_skips_before_review_code(mock_deps):
 async def test_sha_duplicate_skips_before_file_fetch(mock_deps):
     """중복 SHA가 감지되면 get_push_files / get_pr_files가 호출되지 않아야 한다."""
     existing_analysis = MagicMock()
-    mock_deps["db"].query.return_value.filter_by.return_value.first.side_effect = [
-        None,             # 첫 번째 세션: repo 없음 → 생성
-        existing_analysis,  # 첫 번째 세션: SHA 중복 감지 (파일 fetch 전에 조기 종료)
-    ]
+    mock_deps["find_repo"].side_effect = [None, mock_deps["mock_repo"]]
+    mock_deps["find_analysis"].return_value = existing_analysis
 
     from src.worker.pipeline import run_analysis_pipeline
     await run_analysis_pipeline("push", PUSH_DATA)

@@ -11,15 +11,13 @@ from src.models.repository import Repository
 def find_by_full_name(db: Session, full_name: str) -> Repository | None:
     """리포 전체 이름(owner/repo)으로 조회.
 
-    Note: filter_by() 기반 — test_pipeline.py 12곳 이상이 단일
-    `.filter_by.return_value.first.side_effect` 체인으로 repo+analysis
-    조회를 묶어서 mock 한다. 본 함수를 `filter` 기반으로 바꾸면 해당
-    체인이 분리되어 12+ 테스트 회귀 (Phase S.1-4 + S.3-D 2회 실패로
-    확정). pipeline test mock 구조 근본 재설계 (repo 조회를 본 함수
-    자체 patch 로 분리) 가 선행되어야 `filter` 기반 전환 가능 — 별도
-    Phase 대상.
+    Note: Phase S.4 (test_pipeline.py mock 재설계) 완료 이후 `filter()` 기반으로
+    전환됨. 과거 `filter_by` 는 `test_pipeline.py` 의 `filter_by.return_value
+    .first.side_effect` 단일 체인 mock 과 결합되어 있어 내부 구현 변경이
+    12+ 회귀를 유발했다. 현재 테스트는 `repository_repo.find_by_full_name`
+    자체를 직접 patch 하므로 내부 ORM 구현과 독립적이다.
     """
-    return db.query(Repository).filter_by(full_name=full_name).first()
+    return db.query(Repository).filter(Repository.full_name == full_name).first()
 
 
 def find_by_id(db: Session, repo_id: int) -> Repository | None:

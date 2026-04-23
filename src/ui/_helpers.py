@@ -17,7 +17,7 @@ from src.github_client.repos import delete_webhook
 from src.models.analysis import Analysis
 from src.models.gate_decision import GateDecision
 from src.models.repository import Repository
-from src.repositories import repo_config_repo
+from src.repositories import repo_config_repo, repository_repo
 
 logger = logging.getLogger("src.ui")
 templates = Jinja2Templates(directory="src/templates")
@@ -35,7 +35,7 @@ def webhook_base_url(request: Request) -> str:
 
 def get_accessible_repo(db: Session, repo_name: str, current_user: CurrentUser) -> Repository:
     """로그인 사용자가 접근 가능한 리포를 반환. 없거나 권한 없으면 404."""
-    repo = db.query(Repository).filter(Repository.full_name == repo_name).first()
+    repo = repository_repo.find_by_full_name(db, repo_name)
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
     if repo.user_id is not None and repo.user_id != current_user.id:
