@@ -72,25 +72,26 @@ src/
 │   ├── webhook.py              # parse_railway_payload() — deploy 실패 이벤트 파싱
 │   └── logs.py                 # fetch_deployment_logs() — Railway GraphQL 로그 조회
 ├── analyzer/
-│   ├── registry.py             # AnalyzeContext + Analyzer Protocol + REGISTRY + register() + Category/Severity StrEnum
-│   ├── static.py               # analyze_file — Registry 위임. AnalysisIssue(category/language 필드)
-│   ├── tools/
-│   │   ├── __init__.py         # 빈 패키지
-│   │   ├── python.py           # _PylintAnalyzer, _Flake8Analyzer, _BanditAnalyzer (모듈 로드 시 자동 등록)
-│   │   ├── semgrep.py          # _SemgrepAnalyzer — 23개 언어, graceful degradation
-│   │   ├── eslint.py           # _ESLintAnalyzer — JS/TS, flat config
-│   │   ├── shellcheck.py       # _ShellCheckAnalyzer — shell 스크립트
-│   │   ├── cppcheck.py         # _CppCheckAnalyzer — C/C++, XML v2 stderr 파싱
-│   │   └── slither.py          # _SlitherAnalyzer — Solidity, stdout JSON, mixed-category
-│   ├── configs/                # eslint.config.json 등 외부 도구 설정 파일
-│   ├── language.py             # detect_language(filename, content) — 50개 언어 감지. is_test_file()
-│   ├── review_prompt.py        # build_review_prompt() — 언어별 가이드 조립 + 토큰 예산 관리(8000)
-│   ├── review_guides/          # 언어별 리뷰 체크리스트 (get_guide(lang, mode))
-│   │   ├── tier1/              # python/js/ts/java/go/rust/c/cpp/csharp/ruby (상세)
-│   │   ├── tier2/              # php/swift/kotlin/scala/shell ... fsharp (20개)
-│   │   ├── tier3/              # erlang/ocaml/.../json_schema (20개 경량)
-│   │   └── generic.py          # 알 수 없는 언어 fallback
-│   └── ai_review.py            # review_code() — Claude API, AiReviewResult (detected_languages 포함)
+│   ├── pure/                   # 순수 함수·데이터 (DB/HTTP 의존 없음 — 단위 테스트 고속)
+│   │   ├── registry.py         # AnalyzeContext + Analyzer Protocol + REGISTRY + register() + Category/Severity StrEnum
+│   │   ├── language.py         # detect_language(filename, content) — 50개 언어 감지. is_test_file()
+│   │   ├── review_prompt.py    # build_review_prompt() — 언어별 가이드 조립 + 토큰 예산 관리(8000)
+│   │   └── review_guides/      # 언어별 리뷰 체크리스트 (get_guide(lang, mode))
+│   │       ├── tier1/          # python/js/ts/java/go/rust/c/cpp/csharp/ruby (상세)
+│   │       ├── tier2/          # php/swift/kotlin/scala/shell ... fsharp (20개)
+│   │       ├── tier3/          # erlang/ocaml/.../json_schema (20개 경량)
+│   │       └── generic.py      # 알 수 없는 언어 fallback
+│   ├── io/                     # I/O 바운드 (tempfile·subprocess·Claude API)
+│   │   ├── static.py           # analyze_file — Registry 위임. AnalysisIssue(category/language 필드)
+│   │   ├── ai_review.py        # review_code() — Claude API, AiReviewResult (detected_languages 포함)
+│   │   └── tools/
+│   │       ├── python.py       # _PylintAnalyzer, _Flake8Analyzer, _BanditAnalyzer (모듈 로드 시 자동 등록)
+│   │       ├── semgrep.py      # _SemgrepAnalyzer — 23개 언어, graceful degradation
+│   │       ├── eslint.py       # _ESLintAnalyzer — JS/TS, flat config
+│   │       ├── shellcheck.py   # _ShellCheckAnalyzer — shell 스크립트
+│   │       ├── cppcheck.py     # _CppCheckAnalyzer — C/C++, XML v2 stderr 파싱
+│   │       └── slither.py      # _SlitherAnalyzer — Solidity, stdout JSON, mixed-category
+│   └── configs/                # eslint.config.json 등 외부 도구 설정 파일 (런타임 리소스)
 ├── scorer/
 │   └── calculator.py           # calculate_score(ai_review), ScoreResult, _grade
 ├── config_manager/

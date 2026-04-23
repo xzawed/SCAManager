@@ -4,8 +4,8 @@ from datetime import datetime, timezone
 
 from src.notifier._http import build_safe_client, validate_external_url
 from src.scorer.calculator import ScoreResult
-from src.analyzer.static import StaticAnalysisResult
-from src.analyzer.ai_review import AiReviewResult
+from src.analyzer.io.static import StaticAnalysisResult
+from src.analyzer.io.ai_review import AiReviewResult
 from src.notifier._common import get_all_issues
 
 logger = logging.getLogger(__name__)

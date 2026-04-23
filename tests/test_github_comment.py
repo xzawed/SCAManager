@@ -6,8 +6,8 @@ from src.notifier.github_comment import (
     post_pr_comment_from_result,
 )
 from src.scorer.calculator import ScoreResult
-from src.analyzer.static import StaticAnalysisResult, AnalysisIssue
-from src.analyzer.ai_review import AiReviewResult
+from src.analyzer.io.static import StaticAnalysisResult, AnalysisIssue
+from src.analyzer.io.ai_review import AiReviewResult
 
 
 def _make_score(total=82, grade="B"):

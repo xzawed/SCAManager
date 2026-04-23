@@ -3,8 +3,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from src.notifier.slack import send_slack_notification, _build_payload
 from src.constants import GRADE_COLOR_HTML as GRADE_COLORS
 from src.scorer.calculator import ScoreResult
-from src.analyzer.static import StaticAnalysisResult, AnalysisIssue
-from src.analyzer.ai_review import AiReviewResult
+from src.analyzer.io.static import StaticAnalysisResult, AnalysisIssue
+from src.analyzer.io.ai_review import AiReviewResult
 
 
 def _make_score(total=82, grade="B"):

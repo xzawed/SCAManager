@@ -2,8 +2,8 @@ import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from src.notifier.telegram import send_analysis_result, _build_message
 from src.scorer.calculator import ScoreResult
-from src.analyzer.static import StaticAnalysisResult, AnalysisIssue
-from src.analyzer.ai_review import AiReviewResult
+from src.analyzer.io.static import StaticAnalysisResult, AnalysisIssue
+from src.analyzer.io.ai_review import AiReviewResult
 
 
 def _make_score(total=80, grade="B") -> ScoreResult:

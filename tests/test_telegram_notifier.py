@@ -11,8 +11,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from src.analyzer.ai_review import AiReviewResult
-from src.analyzer.static import StaticAnalysisResult
+from src.analyzer.io.ai_review import AiReviewResult
+from src.analyzer.io.static import StaticAnalysisResult
 from src.notifier.telegram import _build_message, telegram_post_message
 from src.scorer.calculator import ScoreResult
 

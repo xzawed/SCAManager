@@ -1,5 +1,5 @@
 from src.scorer.calculator import calculate_score
-from src.analyzer.static import StaticAnalysisResult, AnalysisIssue
+from src.analyzer.io.static import StaticAnalysisResult, AnalysisIssue
 
 
 def _make_result(issues: list[AnalysisIssue]) -> StaticAnalysisResult:
@@ -49,7 +49,7 @@ def test_breakdown_keys_present():
     assert "test_coverage" in result.breakdown
 
 
-from src.analyzer.ai_review import AiReviewResult
+from src.analyzer.io.ai_review import AiReviewResult
 
 
 def _make_ai_review(commit_score=18, ai_score=17, test_score=10):

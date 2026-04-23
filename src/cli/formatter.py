@@ -1,7 +1,7 @@
 """Terminal output formatting for CLI code review results."""
 import json
-from src.analyzer.static import StaticAnalysisResult
-from src.analyzer.ai_review import AiReviewResult
+from src.analyzer.io.static import StaticAnalysisResult
+from src.analyzer.io.ai_review import AiReviewResult
 from src.scorer.calculator import ScoreResult
 from src.constants import GRADE_EMOJI as _GRADE_EMOJI, GRADE_COLOR_ANSI as _GRADE_COLOR
 

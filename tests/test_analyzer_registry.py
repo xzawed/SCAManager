@@ -22,7 +22,7 @@ os.environ.setdefault("GITHUB_CLIENT_SECRET", "test-github-client-secret")
 os.environ.setdefault("SESSION_SECRET", "test-session-secret-32-chars-long!")
 
 import pytest
-from src.analyzer.static import AnalysisIssue, StaticAnalysisResult
+from src.analyzer.io.static import AnalysisIssue, StaticAnalysisResult
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -34,8 +34,8 @@ def _clear_registry():
     """테스트 간 REGISTRY 오염 방지 — 테스트 전후 REGISTRY를 비운다."""
     try:
         # 실제 analyzers를 먼저 등록한 뒤 snapshot — 복원 후 다른 파일 테스트도 정상 동작
-        import src.analyzer.tools.python  # noqa: F401 — 실제 등록 트리거
-        from src.analyzer.registry import REGISTRY
+        import src.analyzer.io.tools.python  # noqa: F401 — 실제 등록 트리거
+        from src.analyzer.pure.registry import REGISTRY
         original = list(REGISTRY)
         REGISTRY.clear()
         yield
@@ -53,7 +53,7 @@ def _clear_registry():
 class TestAnalyzeContext:
     def test_analyzecontext_creates_with_required_fields(self):
         # AnalyzeContext가 필수 필드(filename, content, language, is_test, tmp_path)로 생성된다
-        from src.analyzer.registry import AnalyzeContext
+        from src.analyzer.pure.registry import AnalyzeContext
         ctx = AnalyzeContext(
             filename="foo.py",
             content="print('hello')",
@@ -69,7 +69,7 @@ class TestAnalyzeContext:
 
     def test_analyzecontext_repo_config_defaults_to_none(self):
         # repo_config 필드는 기본값 None으로 생성된다
-        from src.analyzer.registry import AnalyzeContext
+        from src.analyzer.pure.registry import AnalyzeContext
         ctx = AnalyzeContext(
             filename="bar.py",
             content="x = 1",
@@ -81,7 +81,7 @@ class TestAnalyzeContext:
 
     def test_analyzecontext_repo_config_can_be_set(self):
         # repo_config에 임의 객체를 전달할 수 있다
-        from src.analyzer.registry import AnalyzeContext
+        from src.analyzer.pure.registry import AnalyzeContext
         sentinel = object()
         ctx = AnalyzeContext(
             filename="baz.py",
@@ -101,7 +101,7 @@ class TestAnalyzeContext:
 class TestAnalyzerProtocol:
     def test_class_with_protocol_methods_is_instance_of_analyzer(self):
         # supports/is_enabled/run/name을 모두 구현한 클래스는 isinstance(obj, Analyzer) True
-        from src.analyzer.registry import Analyzer, AnalyzeContext
+        from src.analyzer.pure.registry import Analyzer, AnalyzeContext
 
         class MockAnalyzer:
             name = "mock"
@@ -121,7 +121,7 @@ class TestAnalyzerProtocol:
 
     def test_class_missing_run_method_is_not_instance_of_analyzer(self):
         # run() 없는 클래스는 Analyzer Protocol을 충족하지 못한다
-        from src.analyzer.registry import Analyzer, AnalyzeContext
+        from src.analyzer.pure.registry import Analyzer, AnalyzeContext
 
         class IncompleteAnalyzer:
             name = "incomplete"
@@ -139,7 +139,7 @@ class TestAnalyzerProtocol:
 
     def test_class_missing_supports_method_is_not_instance_of_analyzer(self):
         # supports() 없는 클래스는 Analyzer Protocol을 충족하지 못한다
-        from src.analyzer.registry import Analyzer, AnalyzeContext
+        from src.analyzer.pure.registry import Analyzer, AnalyzeContext
 
         class NoSupports:
             name = "no_supports"
@@ -162,17 +162,17 @@ class TestAnalyzerProtocol:
 class TestRegistry:
     def test_registry_is_list(self):
         # REGISTRY는 list 타입이어야 한다
-        from src.analyzer.registry import REGISTRY
+        from src.analyzer.pure.registry import REGISTRY
         assert isinstance(REGISTRY, list)
 
     def test_registry_starts_empty_after_fixture_clear(self):
         # autouse fixture가 REGISTRY를 비운 상태로 각 테스트를 시작한다
-        from src.analyzer.registry import REGISTRY
+        from src.analyzer.pure.registry import REGISTRY
         assert len(REGISTRY) == 0
 
     def test_register_adds_analyzer_to_registry(self):
         # register() 호출 후 REGISTRY 길이가 1 증가한다
-        from src.analyzer.registry import REGISTRY, register, AnalyzeContext
+        from src.analyzer.pure.registry import REGISTRY, register, AnalyzeContext
 
         class MockAnalyzer:
             name = "mock"
@@ -194,7 +194,7 @@ class TestRegistry:
 
     def test_register_same_name_twice_deduplicates(self):
         # 동일 name의 Analyzer를 두 번 등록하면 첫 번째만 유지된다 (중복 방지)
-        from src.analyzer.registry import REGISTRY, register, AnalyzeContext
+        from src.analyzer.pure.registry import REGISTRY, register, AnalyzeContext
 
         class MockAnalyzer:
             name = "dup"
@@ -216,7 +216,7 @@ class TestRegistry:
 
     def test_registry_analyzer_run_is_callable(self):
         # REGISTRY에 등록된 Analyzer의 run()을 호출할 수 있다
-        from src.analyzer.registry import REGISTRY, register, AnalyzeContext
+        from src.analyzer.pure.registry import REGISTRY, register, AnalyzeContext
 
         class MockAnalyzer:
             name = "callable"
@@ -291,7 +291,7 @@ class TestPythonAnalyzers:
     @pytest.fixture
     def py_ctx(self):
         """일반 Python 파일 컨텍스트."""
-        from src.analyzer.registry import AnalyzeContext
+        from src.analyzer.pure.registry import AnalyzeContext
         return AnalyzeContext(
             filename="src/main.py",
             content="x = 1\n",
@@ -303,7 +303,7 @@ class TestPythonAnalyzers:
     @pytest.fixture
     def js_ctx(self):
         """JavaScript 파일 컨텍스트 — Python 도구가 지원하지 않아야 한다."""
-        from src.analyzer.registry import AnalyzeContext
+        from src.analyzer.pure.registry import AnalyzeContext
         return AnalyzeContext(
             filename="app.js",
             content="const x = 1;",
@@ -315,7 +315,7 @@ class TestPythonAnalyzers:
     @pytest.fixture
     def test_py_ctx(self):
         """테스트 파일 Python 컨텍스트 — bandit은 비활성화되어야 한다."""
-        from src.analyzer.registry import AnalyzeContext
+        from src.analyzer.pure.registry import AnalyzeContext
         return AnalyzeContext(
             filename="tests/test_foo.py",
             content="def test_x(): pass\n",
@@ -326,77 +326,77 @@ class TestPythonAnalyzers:
 
     def test_pylint_analyzer_supports_python_file(self, py_ctx):
         # _PylintAnalyzer.supports()는 language="python" 컨텍스트에서 True를 반환한다
-        from src.analyzer.tools.python import _PylintAnalyzer
+        from src.analyzer.io.tools.python import _PylintAnalyzer
         assert _PylintAnalyzer().supports(py_ctx) is True
 
     def test_pylint_analyzer_does_not_support_javascript_file(self, js_ctx):
         # _PylintAnalyzer.supports()는 language="javascript" 컨텍스트에서 False를 반환한다
-        from src.analyzer.tools.python import _PylintAnalyzer
+        from src.analyzer.io.tools.python import _PylintAnalyzer
         assert _PylintAnalyzer().supports(js_ctx) is False
 
     def test_flake8_analyzer_supports_python_file(self, py_ctx):
         # _Flake8Analyzer.supports()는 language="python" 컨텍스트에서 True를 반환한다
-        from src.analyzer.tools.python import _Flake8Analyzer
+        from src.analyzer.io.tools.python import _Flake8Analyzer
         assert _Flake8Analyzer().supports(py_ctx) is True
 
     def test_flake8_analyzer_does_not_support_javascript_file(self, js_ctx):
         # _Flake8Analyzer.supports()는 language="javascript" 컨텍스트에서 False를 반환한다
-        from src.analyzer.tools.python import _Flake8Analyzer
+        from src.analyzer.io.tools.python import _Flake8Analyzer
         assert _Flake8Analyzer().supports(js_ctx) is False
 
     def test_bandit_analyzer_is_enabled_for_normal_python_file(self, py_ctx):
         # _BanditAnalyzer.is_enabled()는 일반(비-테스트) Python 파일에서 True를 반환한다
-        from src.analyzer.tools.python import _BanditAnalyzer
+        from src.analyzer.io.tools.python import _BanditAnalyzer
         assert _BanditAnalyzer().is_enabled(py_ctx) is True
 
     def test_bandit_analyzer_is_disabled_for_test_file(self, test_py_ctx):
         # _BanditAnalyzer.is_enabled()는 is_test=True 컨텍스트에서 False를 반환한다
-        from src.analyzer.tools.python import _BanditAnalyzer
+        from src.analyzer.io.tools.python import _BanditAnalyzer
         assert _BanditAnalyzer().is_enabled(test_py_ctx) is False
 
     def test_flake8_analyzer_category_is_code_quality(self):
         # _Flake8Analyzer.category는 "code_quality"이다
-        from src.analyzer.tools.python import _Flake8Analyzer
+        from src.analyzer.io.tools.python import _Flake8Analyzer
         assert _Flake8Analyzer().category == "code_quality"
 
     def test_pylint_analyzer_category_is_code_quality(self):
         # _PylintAnalyzer.category는 "code_quality"이다
-        from src.analyzer.tools.python import _PylintAnalyzer
+        from src.analyzer.io.tools.python import _PylintAnalyzer
         assert _PylintAnalyzer().category == "code_quality"
 
     def test_bandit_analyzer_category_is_security(self):
         # _BanditAnalyzer.category는 "security"이다
-        from src.analyzer.tools.python import _BanditAnalyzer
+        from src.analyzer.io.tools.python import _BanditAnalyzer
         assert _BanditAnalyzer().category == "security"
 
     def test_pylint_analyzer_name(self):
         # _PylintAnalyzer.name은 "pylint"이다
-        from src.analyzer.tools.python import _PylintAnalyzer
+        from src.analyzer.io.tools.python import _PylintAnalyzer
         assert _PylintAnalyzer().name == "pylint"
 
     def test_flake8_analyzer_name(self):
         # _Flake8Analyzer.name은 "flake8"이다
-        from src.analyzer.tools.python import _Flake8Analyzer
+        from src.analyzer.io.tools.python import _Flake8Analyzer
         assert _Flake8Analyzer().name == "flake8"
 
     def test_bandit_analyzer_name(self):
         # _BanditAnalyzer.name은 "bandit"이다
-        from src.analyzer.tools.python import _BanditAnalyzer
+        from src.analyzer.io.tools.python import _BanditAnalyzer
         assert _BanditAnalyzer().name == "bandit"
 
     def test_pylint_analyzer_is_enabled_always_true_for_python(self, py_ctx):
         # _PylintAnalyzer.is_enabled()는 Python 파일에서 항상 True이다
-        from src.analyzer.tools.python import _PylintAnalyzer
+        from src.analyzer.io.tools.python import _PylintAnalyzer
         assert _PylintAnalyzer().is_enabled(py_ctx) is True
 
     def test_bandit_analyzer_supports_python_file(self, py_ctx):
         # _BanditAnalyzer.supports()는 language="python" 컨텍스트에서 True를 반환한다
-        from src.analyzer.tools.python import _BanditAnalyzer
+        from src.analyzer.io.tools.python import _BanditAnalyzer
         assert _BanditAnalyzer().supports(py_ctx) is True
 
     def test_bandit_analyzer_does_not_support_javascript_file(self, js_ctx):
         # _BanditAnalyzer.supports()는 language="javascript" 컨텍스트에서 False를 반환한다
-        from src.analyzer.tools.python import _BanditAnalyzer
+        from src.analyzer.io.tools.python import _BanditAnalyzer
         assert _BanditAnalyzer().supports(js_ctx) is False
 
 
@@ -407,42 +407,42 @@ class TestPythonAnalyzers:
 class TestAnalyzeFileRegistry:
     def test_python_file_returns_static_analysis_result(self):
         # .py 파일 분석 시 StaticAnalysisResult가 반환된다
-        from src.analyzer.static import analyze_file
+        from src.analyzer.io.static import analyze_file
         result = analyze_file("hello.py", "x = 1\n")
         assert isinstance(result, StaticAnalysisResult)
         assert result.filename == "hello.py"
 
     def test_go_file_returns_empty_issues_when_no_go_analyzer_registered(self):
         # REGISTRY에 Go analyzer가 없으면 .go 파일은 빈 issues를 반환한다
-        from src.analyzer.static import analyze_file
+        from src.analyzer.io.static import analyze_file
         result = analyze_file("main.go", "package main\nfunc main() {}\n")
         assert isinstance(result, StaticAnalysisResult)
         assert result.issues == []
 
     def test_markdown_file_returns_empty_issues(self):
         # .md 파일은 Python 도구가 지원하지 않으므로 issues가 비어 있다
-        from src.analyzer.static import analyze_file
+        from src.analyzer.io.static import analyze_file
         result = analyze_file("README.md", "# Hello\n")
         assert isinstance(result, StaticAnalysisResult)
         assert result.issues == []
 
     def test_empty_content_returns_empty_result(self):
         # content가 빈 문자열이면 issues 없이 StaticAnalysisResult를 반환한다
-        from src.analyzer.static import analyze_file
+        from src.analyzer.io.static import analyze_file
         result = analyze_file("empty.py", "")
         assert isinstance(result, StaticAnalysisResult)
         assert result.issues == []
 
     def test_whitespace_only_content_returns_empty_result(self):
         # 공백만 있는 content도 빈 결과로 처리된다
-        from src.analyzer.static import analyze_file
+        from src.analyzer.io.static import analyze_file
         result = analyze_file("blank.py", "   \n  \n")
         assert isinstance(result, StaticAnalysisResult)
         assert result.issues == []
 
     def test_issues_have_category_field(self):
         # analyze_file 결과 issues에 category 필드가 있다
-        from src.analyzer.static import analyze_file
+        from src.analyzer.io.static import analyze_file
         # 실제 pylint/flake8 가 이슈를 찾을 수 있는 코드
         result = analyze_file("sample.py", "import os\nimport sys\nx=1\n")
         for issue in result.issues:
@@ -450,7 +450,7 @@ class TestAnalyzeFileRegistry:
 
     def test_issues_have_language_field(self):
         # analyze_file 결과 issues에 language 필드가 있다
-        from src.analyzer.static import analyze_file
+        from src.analyzer.io.static import analyze_file
         result = analyze_file("sample.py", "import os\nx=1\n")
         for issue in result.issues:
             assert hasattr(issue, "language")
@@ -580,8 +580,8 @@ class TestCppCheckAnalyzerRegistration:
         autouse fixture(_clear_registry) 가 REGISTRY 를 비우고 python 모듈만 복원하므로,
         cppcheck 등록을 검증하려면 register 함수를 명시적으로 호출해야 한다.
         """
-        from src.analyzer.tools.cppcheck import _register_cppcheck_analyzers
-        from src.analyzer.registry import REGISTRY
+        from src.analyzer.io.tools.cppcheck import _register_cppcheck_analyzers
+        from src.analyzer.pure.registry import REGISTRY
         _register_cppcheck_analyzers()
         assert any(a.name == "cppcheck" for a in REGISTRY), (
             "REGISTRY 에 cppcheck 이 없음 — _register_cppcheck_analyzers() 실행 실패"
@@ -589,7 +589,7 @@ class TestCppCheckAnalyzerRegistration:
 
     def test_cppcheck_analyzer_has_correct_attributes(self):
         """_CppCheckAnalyzer 의 name/category/SUPPORTED_LANGUAGES 확인."""
-        from src.analyzer.tools.cppcheck import _CppCheckAnalyzer
+        from src.analyzer.io.tools.cppcheck import _CppCheckAnalyzer
         a = _CppCheckAnalyzer()
         assert a.name == "cppcheck"
         assert a.category == "code_quality"
@@ -607,8 +607,8 @@ class TestSlitherAnalyzerRegistration:
         autouse fixture(_clear_registry) 가 REGISTRY 를 비우고 python 모듈만 복원하므로,
         slither 등록을 검증하려면 register 함수를 명시적으로 호출해야 한다.
         """
-        from src.analyzer.tools.slither import _register_slither_analyzers
-        from src.analyzer.registry import REGISTRY
+        from src.analyzer.io.tools.slither import _register_slither_analyzers
+        from src.analyzer.pure.registry import REGISTRY
         _register_slither_analyzers()
         assert any(a.name == "slither" for a in REGISTRY), (
             "REGISTRY 에 slither 가 없음 — _register_slither_analyzers() 실행 실패"
@@ -616,7 +616,7 @@ class TestSlitherAnalyzerRegistration:
 
     def test_slither_analyzer_has_correct_attributes(self):
         """_SlitherAnalyzer 의 name/category/SUPPORTED_LANGUAGES 확인."""
-        from src.analyzer.tools.slither import _SlitherAnalyzer
+        from src.analyzer.io.tools.slither import _SlitherAnalyzer
         a = _SlitherAnalyzer()
         assert a.name == "slither"
         assert a.category == "security"
@@ -630,7 +630,7 @@ class TestSlitherAnalyzerRegistration:
 class TestCategorySeverityStrEnum:
     def test_category_strenum_equals_legacy_string(self):
         """StrEnum 값이 기존 문자열과 `==` 비교에서 동등해야 한다 (소비자 코드 회귀 방지)."""
-        from src.analyzer.registry import Category, Severity
+        from src.analyzer.pure.registry import Category, Severity
         assert Category.CODE_QUALITY == "code_quality"
         assert Category.SECURITY == "security"
         assert Severity.ERROR == "error"
@@ -639,7 +639,7 @@ class TestCategorySeverityStrEnum:
     def test_severity_json_dumps_as_string(self):
         """StrEnum 이 json.dumps 에서 자연 문자열로 직렬화되어야 한다 (pipeline.py 결과 저장 경로)."""
         import json
-        from src.analyzer.registry import AnalysisIssue, Category, Severity
+        from src.analyzer.pure.registry import AnalysisIssue, Category, Severity
         issue = AnalysisIssue(
             tool="t",
             severity=Severity.ERROR,

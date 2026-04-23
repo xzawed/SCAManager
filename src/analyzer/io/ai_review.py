@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 import anthropic
 
-from src.analyzer.review_prompt import build_review_prompt
+from src.analyzer.pure.review_prompt import build_review_prompt
 from src.config import settings
 from src.constants import AI_DEFAULT_COMMIT_RAW, AI_DEFAULT_DIRECTION_RAW, AI_RAW_COMMIT_MAX, AI_RAW_DIRECTION_MAX
 

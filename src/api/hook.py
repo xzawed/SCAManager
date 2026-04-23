@@ -14,7 +14,7 @@ from src.shared.log_safety import sanitize_for_log
 from src.models.analysis import Analysis
 from src.models.repository import Repository
 from src.repositories import repo_config_repo
-from src.analyzer.ai_review import AiReviewResult
+from src.analyzer.io.ai_review import AiReviewResult
 from src.scorer.calculator import calculate_score
 from src.worker.pipeline import build_analysis_result_dict
 from src.constants import AI_DEFAULT_COMMIT_RAW, AI_DEFAULT_DIRECTION_RAW, AI_DEFAULT_TEST_RAW

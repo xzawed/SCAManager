@@ -1,8 +1,8 @@
 """Tests for src.cli.formatter — terminal output formatting."""
 import json
 
-from src.analyzer.static import StaticAnalysisResult, AnalysisIssue
-from src.analyzer.ai_review import AiReviewResult
+from src.analyzer.io.static import StaticAnalysisResult, AnalysisIssue
+from src.analyzer.io.ai_review import AiReviewResult
 from src.scorer.calculator import ScoreResult
 from src.cli.formatter import format_result, format_json
 

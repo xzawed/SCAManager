@@ -1,8 +1,8 @@
 """Score calculator — converts static analysis and AI review results into a 0–100 score."""
 from __future__ import annotations
 from dataclasses import dataclass
-from src.analyzer.static import StaticAnalysisResult
-from src.analyzer.ai_review import AiReviewResult
+from src.analyzer.io.static import StaticAnalysisResult
+from src.analyzer.io.ai_review import AiReviewResult
 from src.constants import (
     CODE_QUALITY_MAX, SECURITY_MAX,
     COMMIT_MSG_MAX, AI_REVIEW_MAX, TEST_COVERAGE_MAX,

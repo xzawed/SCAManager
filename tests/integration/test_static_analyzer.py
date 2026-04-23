@@ -1,7 +1,7 @@
 import subprocess
 from unittest.mock import patch, MagicMock
 
-from src.analyzer.static import (
+from src.analyzer.io.static import (
     analyze_file,
     StaticAnalysisResult,
     AnalysisIssue,
@@ -66,9 +66,9 @@ def test_empty_content_returns_no_issues():
 
 def test_non_python_md_file_returns_empty_issues():
     # .md 파일을 analyze_file 에 넘기면 pylint/bandit 없이 빈 이슈 목록을 반환한다
-    with patch("src.analyzer.static._run_pylint") as mock_pylint, \
-         patch("src.analyzer.static._run_flake8") as mock_flake8, \
-         patch("src.analyzer.static._run_bandit") as mock_bandit:
+    with patch("src.analyzer.io.static._run_pylint") as mock_pylint, \
+         patch("src.analyzer.io.static._run_flake8") as mock_flake8, \
+         patch("src.analyzer.io.static._run_bandit") as mock_bandit:
         mock_pylint.return_value = []
         mock_flake8.return_value = []
         mock_bandit.return_value = []
@@ -81,9 +81,9 @@ def test_non_python_md_file_returns_empty_issues():
 
 def test_non_python_yml_file_with_mocked_tools_returns_no_issues():
     # .yml 파일 분석 시 도구들이 이슈를 반환하지 않으면 빈 결과를 반환한다
-    with patch("src.analyzer.static._run_pylint", return_value=[]), \
-         patch("src.analyzer.static._run_flake8", return_value=[]), \
-         patch("src.analyzer.static._run_bandit", return_value=[]):
+    with patch("src.analyzer.io.static._run_pylint", return_value=[]), \
+         patch("src.analyzer.io.static._run_flake8", return_value=[]), \
+         patch("src.analyzer.io.static._run_bandit", return_value=[]):
         result = analyze_file("config.yml", "key: value\n")
     assert len(result.issues) == 0
     assert result.filename == "config.yml"
@@ -91,9 +91,9 @@ def test_non_python_yml_file_with_mocked_tools_returns_no_issues():
 
 def test_non_python_json_file_with_mocked_tools_returns_no_issues():
     # .json 파일 분석 시 이슈 없이 StaticAnalysisResult 를 반환한다
-    with patch("src.analyzer.static._run_pylint", return_value=[]), \
-         patch("src.analyzer.static._run_flake8", return_value=[]), \
-         patch("src.analyzer.static._run_bandit", return_value=[]):
+    with patch("src.analyzer.io.static._run_pylint", return_value=[]), \
+         patch("src.analyzer.io.static._run_flake8", return_value=[]), \
+         patch("src.analyzer.io.static._run_bandit", return_value=[]):
         result = analyze_file("package.json", '{"name": "test"}\n')
     assert isinstance(result, StaticAnalysisResult)
     assert result.filename == "package.json"
@@ -113,7 +113,7 @@ def test_pylint_file_not_found_returns_empty_list():
 
 def test_analyze_file_pylint_binary_missing_returns_result():
     # pylint 바이너리 없을 때 analyze_file 은 크래시 없이 StaticAnalysisResult 반환한다
-    with patch("src.analyzer.static._run_pylint", side_effect=FileNotFoundError):
+    with patch("src.analyzer.io.static._run_pylint", side_effect=FileNotFoundError):
         # _run_pylint 자체가 FileNotFoundError 를 내부에서 처리하므로
         # analyze_file 은 _run_pylint 가 [] 를 반환한다고 가정
         pass
@@ -316,8 +316,8 @@ def test_is_test_file_with_path_prefix():
 
 def test_test_file_skips_bandit():
     # test_ 접두사 파일은 bandit(security) 검사를 건너뛴다 — Registry _BanditAnalyzer.is_enabled
-    with patch("src.analyzer.tools.python._BanditAnalyzer.run", return_value=[]) as mock_bandit_run, \
-         patch("src.analyzer.tools.python._BanditAnalyzer.is_enabled", return_value=False) as mock_enabled:
+    with patch("src.analyzer.io.tools.python._BanditAnalyzer.run", return_value=[]) as mock_bandit_run, \
+         patch("src.analyzer.io.tools.python._BanditAnalyzer.is_enabled", return_value=False) as mock_enabled:
         result = analyze_file("test_something.py", "def test_foo(): pass\n")
     # 테스트 파일에서 bandit 결과는 없어야 한다
     security_issues = [i for i in result.issues if i.category == "security"]
@@ -329,8 +329,8 @@ def test_non_test_file_runs_bandit():
     result = analyze_file("module.py", "eval(input())\n")
     # bandit 이슈가 있거나 빈 목록이어도 security 카테고리로 분류되어야 함
     # (실제 bandit 실행 여부 확인)
-    from src.analyzer.tools.python import _BanditAnalyzer
-    from src.analyzer.registry import AnalyzeContext
+    from src.analyzer.io.tools.python import _BanditAnalyzer
+    from src.analyzer.pure.registry import AnalyzeContext
     ctx = AnalyzeContext(filename="module.py", content="x=1\n", language="python",
                          is_test=False, tmp_path="module.py")
     assert _BanditAnalyzer().is_enabled(ctx) is True

@@ -32,8 +32,8 @@ from unittest.mock import patch, MagicMock
 def _isolate_registry():
     """테스트 간 REGISTRY 오염 방지 — 테스트 전후 REGISTRY를 격리한다."""
     try:
-        import src.analyzer.tools.python  # noqa: F401 — Python 도구 먼저 등록
-        from src.analyzer.registry import REGISTRY
+        import src.analyzer.io.tools.python  # noqa: F401 — Python 도구 먼저 등록
+        from src.analyzer.pure.registry import REGISTRY
         original = list(REGISTRY)
         REGISTRY.clear()
         yield
@@ -143,7 +143,7 @@ SAMPLE_OUTPUT_ALL_LEVELS = json.dumps([
 @pytest.fixture
 def make_ctx():
     """언어와 파일명을 받아 AnalyzeContext를 생성하는 팩토리 픽스처."""
-    from src.analyzer.registry import AnalyzeContext
+    from src.analyzer.pure.registry import AnalyzeContext
 
     def _factory(language: str, filename: str = "test_script.sh",
                  is_test: bool = False, tmp_path: str = "/tmp/test_script.sh"):
@@ -164,22 +164,22 @@ def make_ctx():
 class TestShellCheckAnalyzerAttributes:
     def test_name_is_shellcheck(self):
         # _ShellCheckAnalyzer.name은 "shellcheck"이어야 한다
-        from src.analyzer.tools.shellcheck import _ShellCheckAnalyzer
+        from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         assert _ShellCheckAnalyzer().name == "shellcheck"
 
     def test_category_is_code_quality(self):
         # _ShellCheckAnalyzer.category는 "code_quality"이어야 한다
-        from src.analyzer.tools.shellcheck import _ShellCheckAnalyzer
+        from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         assert _ShellCheckAnalyzer().category == "code_quality"
 
     def test_supported_languages_is_frozenset(self):
         # SUPPORTED_LANGUAGES는 frozenset 타입이어야 한다
-        from src.analyzer.tools.shellcheck import _ShellCheckAnalyzer
+        from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         assert isinstance(_ShellCheckAnalyzer.SUPPORTED_LANGUAGES, frozenset)
 
     def test_supported_languages_contains_shell(self):
         # SUPPORTED_LANGUAGES에 "shell"이 포함되어야 한다
-        from src.analyzer.tools.shellcheck import _ShellCheckAnalyzer
+        from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         assert "shell" in _ShellCheckAnalyzer.SUPPORTED_LANGUAGES
 
 
@@ -190,7 +190,7 @@ class TestShellCheckAnalyzerAttributes:
 class TestShellCheckSupports:
     def test_supports_returns_true_for_shell(self, make_ctx):
         # shell 파일에서 supports()는 True를 반환해야 한다
-        from src.analyzer.tools.shellcheck import _ShellCheckAnalyzer
+        from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         ctx = make_ctx(language="shell")
         assert _ShellCheckAnalyzer().supports(ctx) is True
 
@@ -199,7 +199,7 @@ class TestShellCheckSupports:
     ])
     def test_supports_returns_false_for_non_shell_languages(self, language, make_ctx):
         # shell 외 언어에서 supports()는 False를 반환해야 한다
-        from src.analyzer.tools.shellcheck import _ShellCheckAnalyzer
+        from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         ctx = make_ctx(language=language)
         assert _ShellCheckAnalyzer().supports(ctx) is False
 
@@ -211,21 +211,21 @@ class TestShellCheckSupports:
 class TestShellCheckIsEnabled:
     def test_is_enabled_returns_true_when_shellcheck_binary_exists(self, make_ctx):
         # shutil.which("shellcheck")이 경로를 반환하면 is_enabled()는 True를 반환한다
-        from src.analyzer.tools.shellcheck import _ShellCheckAnalyzer
+        from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         ctx = make_ctx(language="shell")
         with patch("shutil.which", return_value="/usr/bin/shellcheck"):
             assert _ShellCheckAnalyzer().is_enabled(ctx) is True
 
     def test_is_enabled_returns_false_when_shellcheck_binary_missing(self, make_ctx):
         # shutil.which("shellcheck")이 None을 반환하면 is_enabled()는 False를 반환한다
-        from src.analyzer.tools.shellcheck import _ShellCheckAnalyzer
+        from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         ctx = make_ctx(language="shell")
         with patch("shutil.which", return_value=None):
             assert _ShellCheckAnalyzer().is_enabled(ctx) is False
 
     def test_is_enabled_checks_shellcheck_binary_specifically(self, make_ctx):
         # is_enabled()가 shutil.which를 "shellcheck" 인자로 호출하는지 검증한다
-        from src.analyzer.tools.shellcheck import _ShellCheckAnalyzer
+        from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         ctx = make_ctx(language="shell")
         with patch("shutil.which", return_value="/usr/bin/shellcheck") as mock_which:
             _ShellCheckAnalyzer().is_enabled(ctx)
@@ -239,7 +239,7 @@ class TestShellCheckIsEnabled:
 class TestShellCheckRunSubprocessCall:
     def test_run_includes_format_json_flag(self, make_ctx):
         # shellcheck 실행 시 "-f" "json" 플래그가 포함되어야 한다
-        from src.analyzer.tools.shellcheck import _ShellCheckAnalyzer
+        from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         ctx = make_ctx(language="shell", tmp_path="/tmp/script.sh")
         with patch("subprocess.run", return_value=_mock_shellcheck_proc(SAMPLE_OUTPUT_EMPTY)) as mock_run:
             _ShellCheckAnalyzer().run(ctx)
@@ -252,7 +252,7 @@ class TestShellCheckRunSubprocessCall:
 
     def test_run_passes_tmp_path_to_shellcheck(self, make_ctx):
         # shellcheck 실행 시 ctx.tmp_path가 인자에 포함되어야 한다
-        from src.analyzer.tools.shellcheck import _ShellCheckAnalyzer
+        from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         ctx = make_ctx(language="shell", tmp_path="/tmp/specific_script.sh")
         with patch("subprocess.run", return_value=_mock_shellcheck_proc(SAMPLE_OUTPUT_EMPTY)) as mock_run:
             _ShellCheckAnalyzer().run(ctx)
@@ -267,7 +267,7 @@ class TestShellCheckRunSubprocessCall:
 class TestShellCheckRunOutputParsing:
     def test_run_maps_level_error_to_severity_error(self, make_ctx):
         # ShellCheck level "error"는 AnalysisIssue.severity="error"로 매핑되어야 한다
-        from src.analyzer.tools.shellcheck import _ShellCheckAnalyzer
+        from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         ctx = make_ctx(language="shell", tmp_path="/tmp/deploy.sh")
         with patch("subprocess.run", return_value=_mock_shellcheck_proc(SAMPLE_OUTPUT_ERROR_ONLY)):
             issues = _ShellCheckAnalyzer().run(ctx)
@@ -276,7 +276,7 @@ class TestShellCheckRunOutputParsing:
 
     def test_run_maps_level_warning_to_severity_warning(self, make_ctx):
         # ShellCheck level "warning"은 AnalysisIssue.severity="warning"으로 매핑되어야 한다
-        from src.analyzer.tools.shellcheck import _ShellCheckAnalyzer
+        from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         ctx = make_ctx(language="shell", tmp_path="/tmp/setup.sh")
         with patch("subprocess.run", return_value=_mock_shellcheck_proc(SAMPLE_OUTPUT_WARNING_ONLY)):
             issues = _ShellCheckAnalyzer().run(ctx)
@@ -285,7 +285,7 @@ class TestShellCheckRunOutputParsing:
 
     def test_run_maps_level_info_to_severity_warning(self, make_ctx):
         # ShellCheck level "info"는 AnalysisIssue.severity="warning"으로 하향 매핑되어야 한다
-        from src.analyzer.tools.shellcheck import _ShellCheckAnalyzer
+        from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         ctx = make_ctx(language="shell", tmp_path="/tmp/check.sh")
         with patch("subprocess.run", return_value=_mock_shellcheck_proc(SAMPLE_OUTPUT_INFO)):
             issues = _ShellCheckAnalyzer().run(ctx)
@@ -294,7 +294,7 @@ class TestShellCheckRunOutputParsing:
 
     def test_run_maps_level_style_to_severity_warning(self, make_ctx):
         # ShellCheck level "style"은 AnalysisIssue.severity="warning"으로 하향 매핑되어야 한다
-        from src.analyzer.tools.shellcheck import _ShellCheckAnalyzer
+        from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         ctx = make_ctx(language="shell", tmp_path="/tmp/script.sh")
         with patch("subprocess.run", return_value=_mock_shellcheck_proc(SAMPLE_OUTPUT_STYLE)):
             issues = _ShellCheckAnalyzer().run(ctx)
@@ -303,7 +303,7 @@ class TestShellCheckRunOutputParsing:
 
     def test_run_parses_multiple_issues_correctly(self, make_ctx):
         # 복수 이슈가 포함된 출력에서 모든 이슈를 반환해야 한다
-        from src.analyzer.tools.shellcheck import _ShellCheckAnalyzer
+        from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         ctx = make_ctx(language="shell", tmp_path="/tmp/test.sh")
         with patch("subprocess.run", return_value=_mock_shellcheck_proc(SAMPLE_SHELLCHECK_OUTPUT)):
             issues = _ShellCheckAnalyzer().run(ctx)
@@ -314,7 +314,7 @@ class TestShellCheckRunOutputParsing:
 
     def test_run_returns_empty_list_for_empty_array_output(self, make_ctx):
         # shellcheck가 [] (빈 배열) 출력 → 빈 이슈 목록을 반환해야 한다
-        from src.analyzer.tools.shellcheck import _ShellCheckAnalyzer
+        from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         ctx = make_ctx(language="shell", tmp_path="/tmp/clean.sh")
         with patch("subprocess.run", return_value=_mock_shellcheck_proc(SAMPLE_OUTPUT_EMPTY)):
             issues = _ShellCheckAnalyzer().run(ctx)
@@ -322,7 +322,7 @@ class TestShellCheckRunOutputParsing:
 
     def test_run_returns_empty_list_for_empty_stdout(self, make_ctx):
         # stdout이 빈 문자열이면 빈 이슈 목록을 반환해야 한다
-        from src.analyzer.tools.shellcheck import _ShellCheckAnalyzer
+        from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         ctx = make_ctx(language="shell", tmp_path="/tmp/script.sh")
         with patch("subprocess.run", return_value=_mock_shellcheck_proc("")):
             issues = _ShellCheckAnalyzer().run(ctx)
@@ -330,7 +330,7 @@ class TestShellCheckRunOutputParsing:
 
     def test_run_sets_tool_name_to_shellcheck(self, make_ctx):
         # 모든 AnalysisIssue.tool 값은 "shellcheck"이어야 한다
-        from src.analyzer.tools.shellcheck import _ShellCheckAnalyzer
+        from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         ctx = make_ctx(language="shell", tmp_path="/tmp/deploy.sh")
         with patch("subprocess.run", return_value=_mock_shellcheck_proc(SAMPLE_OUTPUT_ERROR_ONLY)):
             issues = _ShellCheckAnalyzer().run(ctx)
@@ -338,7 +338,7 @@ class TestShellCheckRunOutputParsing:
 
     def test_run_sets_language_from_ctx(self, make_ctx):
         # AnalysisIssue.language는 ctx.language 값("shell")으로 설정되어야 한다
-        from src.analyzer.tools.shellcheck import _ShellCheckAnalyzer
+        from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         ctx = make_ctx(language="shell", tmp_path="/tmp/deploy.sh")
         with patch("subprocess.run", return_value=_mock_shellcheck_proc(SAMPLE_OUTPUT_ERROR_ONLY)):
             issues = _ShellCheckAnalyzer().run(ctx)
@@ -346,7 +346,7 @@ class TestShellCheckRunOutputParsing:
 
     def test_run_sets_category_to_code_quality(self, make_ctx):
         # 모든 ShellCheck 이슈의 category는 "code_quality"이어야 한다
-        from src.analyzer.tools.shellcheck import _ShellCheckAnalyzer
+        from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         ctx = make_ctx(language="shell", tmp_path="/tmp/test.sh")
         with patch("subprocess.run", return_value=_mock_shellcheck_proc(SAMPLE_SHELLCHECK_OUTPUT)):
             issues = _ShellCheckAnalyzer().run(ctx)
@@ -355,7 +355,7 @@ class TestShellCheckRunOutputParsing:
 
     def test_run_sets_line_number_from_output(self, make_ctx):
         # AnalysisIssue.line은 shellcheck JSON의 line 필드에서 가져와야 한다
-        from src.analyzer.tools.shellcheck import _ShellCheckAnalyzer
+        from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         ctx = make_ctx(language="shell", tmp_path="/tmp/deploy.sh")
         with patch("subprocess.run", return_value=_mock_shellcheck_proc(SAMPLE_OUTPUT_ERROR_ONLY)):
             issues = _ShellCheckAnalyzer().run(ctx)
@@ -363,7 +363,7 @@ class TestShellCheckRunOutputParsing:
 
     def test_run_all_four_levels_produce_correct_severities(self, make_ctx):
         # error→error, warning/info/style→warning 레벨 매핑이 한 번에 검증된다
-        from src.analyzer.tools.shellcheck import _ShellCheckAnalyzer
+        from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         ctx = make_ctx(language="shell", tmp_path="/tmp/all.sh")
         with patch("subprocess.run", return_value=_mock_shellcheck_proc(SAMPLE_OUTPUT_ALL_LEVELS)):
             issues = _ShellCheckAnalyzer().run(ctx)
@@ -384,7 +384,7 @@ class TestShellCheckRunOutputParsing:
 class TestShellCheckRunGracefulDegradation:
     def test_run_returns_empty_on_file_not_found_error(self, make_ctx):
         # shellcheck 바이너리가 없어서 FileNotFoundError 발생 → 빈 이슈 목록 반환 (파이프라인 미중단)
-        from src.analyzer.tools.shellcheck import _ShellCheckAnalyzer
+        from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         ctx = make_ctx(language="shell", tmp_path="/tmp/script.sh")
         with patch("subprocess.run", side_effect=FileNotFoundError("shellcheck not found")):
             issues = _ShellCheckAnalyzer().run(ctx)
@@ -392,7 +392,7 @@ class TestShellCheckRunGracefulDegradation:
 
     def test_run_returns_empty_on_timeout_expired(self, make_ctx):
         # shellcheck subprocess가 TimeoutExpired → 빈 이슈 목록 반환 (파이프라인 미중단)
-        from src.analyzer.tools.shellcheck import _ShellCheckAnalyzer
+        from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         ctx = make_ctx(language="shell", tmp_path="/tmp/script.sh")
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="shellcheck", timeout=30)):
             issues = _ShellCheckAnalyzer().run(ctx)
@@ -400,7 +400,7 @@ class TestShellCheckRunGracefulDegradation:
 
     def test_run_returns_empty_on_json_decode_error(self, make_ctx):
         # stdout이 유효하지 않은 JSON → JSONDecodeError → 빈 이슈 목록 반환
-        from src.analyzer.tools.shellcheck import _ShellCheckAnalyzer
+        from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         ctx = make_ctx(language="shell", tmp_path="/tmp/script.sh")
         with patch("subprocess.run", return_value=_mock_shellcheck_proc("{broken json")):
             issues = _ShellCheckAnalyzer().run(ctx)
@@ -413,26 +413,26 @@ class TestShellCheckRunGracefulDegradation:
 
 class TestShellCheckRegistration:
     def test_module_import_registers_shellcheck_in_registry(self):
-        # src.analyzer.tools.shellcheck 임포트 시 REGISTRY에 _ShellCheckAnalyzer가 자동 등록된다
+        # src.analyzer.io.tools.shellcheck 임포트 시 REGISTRY에 _ShellCheckAnalyzer가 자동 등록된다
         import importlib
-        from src.analyzer.registry import REGISTRY
-        import src.analyzer.tools.shellcheck  # noqa: F401
-        importlib.reload(src.analyzer.tools.shellcheck)
+        from src.analyzer.pure.registry import REGISTRY
+        import src.analyzer.io.tools.shellcheck  # noqa: F401
+        importlib.reload(src.analyzer.io.tools.shellcheck)
         names = [a.name for a in REGISTRY]
         assert "shellcheck" in names
 
     def test_double_import_does_not_duplicate_registry_entry(self):
         # 동일 모듈을 두 번 로드해도 REGISTRY에 "shellcheck"이 중복 등록되지 않아야 한다
         import importlib
-        from src.analyzer.registry import REGISTRY
-        import src.analyzer.tools.shellcheck  # noqa: F401
-        importlib.reload(src.analyzer.tools.shellcheck)
-        importlib.reload(src.analyzer.tools.shellcheck)
+        from src.analyzer.pure.registry import REGISTRY
+        import src.analyzer.io.tools.shellcheck  # noqa: F401
+        importlib.reload(src.analyzer.io.tools.shellcheck)
+        importlib.reload(src.analyzer.io.tools.shellcheck)
         shellcheck_entries = [a for a in REGISTRY if a.name == "shellcheck"]
         assert len(shellcheck_entries) == 1
 
     def test_shellcheck_analyzer_satisfies_analyzer_protocol(self):
         # _ShellCheckAnalyzer 인스턴스가 Analyzer Protocol을 충족하는지 검증한다
-        from src.analyzer.registry import Analyzer
-        from src.analyzer.tools.shellcheck import _ShellCheckAnalyzer
+        from src.analyzer.pure.registry import Analyzer
+        from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         assert isinstance(_ShellCheckAnalyzer(), Analyzer)

@@ -4,8 +4,8 @@ from html import escape
 import httpx
 from src.constants import GRADE_EMOJI, TELEGRAM_MAX_MESSAGE_LENGTH, NOTIFIER_MAX_ISSUES_SHORT
 from src.scorer.calculator import ScoreResult
-from src.analyzer.static import StaticAnalysisResult
-from src.analyzer.ai_review import AiReviewResult
+from src.analyzer.io.static import StaticAnalysisResult
+from src.analyzer.io.ai_review import AiReviewResult
 from src.notifier._common import format_ref, get_all_issues, truncate_message, truncate_issue_msg
 
 
