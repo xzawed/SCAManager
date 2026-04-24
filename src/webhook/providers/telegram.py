@@ -20,6 +20,7 @@ from src.database import SessionLocal
 from src.gate.engine import save_gate_decision
 from src.gate.github_review import merge_pr, post_github_review
 from src.repositories import analysis_repo, repository_repo
+from src.shared.merge_metrics import log_merge_attempt
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,22 @@ async def handle_gate_callback(
             score = result_dict.get("score", analysis.score or 0)
             if config.auto_merge and score >= config.merge_threshold:
                 ok, reason = await merge_pr(github_token, repo.full_name, analysis.pr_number)
+                try:
+                    log_merge_attempt(
+                        db,
+                        analysis_id=analysis_id,
+                        repo_name=repo.full_name,
+                        pr_number=analysis.pr_number,
+                        score=score,
+                        threshold=config.merge_threshold,
+                        success=ok,
+                        reason=reason,
+                    )
+                except Exception as log_exc:  # pylint: disable=broad-except
+                    logger.warning(
+                        "merge_attempt 기록 실패 (pr=%d): %s",
+                        analysis.pr_number, log_exc,
+                    )
                 if ok:
                     logger.info("PR #%d manual-approved+auto-merged: %s",
                                 analysis.pr_number, repo.full_name)

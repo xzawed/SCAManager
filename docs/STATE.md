@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-24 기준 — Phase F Quick Win + F.1 관측 완료 · Phase F.3 실패 어드바이저 완료 · G.2 수치 동기화 · Phase G 완료 · P2 이슈 수정 완료)
+## 현재 수치 (2026-04-25 기준 — Phase F Quick Win + F.1 관측 완료 · Phase F.3 실패 어드바이저 완료 · G.2 수치 동기화 · Phase G 완료 · P2 이슈 수정 완료 · Phase H 착수 (F.2 관측 완료))
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
@@ -43,6 +43,17 @@
 | `tests/conftest.py` | 환경변수 주입 + _webhook_secret_cache autouse 클리어 |
 
 ## 작업 이력 (그룹별)
+
+### 그룹 37 (2026-04-25 · Phase H 착수 — F.2 관측 + 메모리 갱신)
+
+- **H.1**: `project_test_gap_analysis.md` 메모리 1287+ 기준 재작성 — 통합 테스트 P2 갭 해소 반영, 잔여 갭 재정의
+- **H.2**: Phase F.2 — `handle_gate_callback` 반자동 merge 관측 완료
+  - `src/webhook/providers/telegram.py`: `log_merge_attempt` import + merge_pr 직후 nested try/except 삽입
+  - `tests/unit/webhook/test_telegram_provider.py`: 기존 2개 보강 + 신규 3개 추가 (+5 테스트)
+  - `CLAUDE.md` F.2 "범위 제한" 문구 제거
+  - `docs/reports/2026-04-24-comprehensive-audit.md` P2 Phase F.2 ✅ 마킹
+
+**테스트 증분**: +5 (telegram_provider 신규 3 + 기존 2 보강)
 
 ### 그룹 36 (2026-04-24 · P2 이슈 수정 + settings.html 번호 교정)
 
