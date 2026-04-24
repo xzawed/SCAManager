@@ -49,7 +49,7 @@ Email notifier 지원 변수 5종이 .env.example 에 없음. docs/reference/env
 - ~~DB 유니크 제약 부재: `(analyses.repo_id, commit_sha)` race window~~ → **✅ 그룹 36 수정** (Migration 0016 + IntegrityError 안전망)
 - `src/database.py:160-172` SELECT 1 — `pool_pre_ping` 과 다른 Failover 전용 역할, 의도적 유지
 - ~~settings.html ④ 번호 라벨 누락~~ → **✅ 그룹 36 수정**
-- Phase F.2 반자동 merge 콜백 관측 미구현 (의도적 연기)
+- ~~Phase F.2 반자동 merge 콜백 관측 미구현~~ → **✅ 그룹 37 수정** (`handle_gate_callback` + `log_merge_attempt` nested try/except)
 
 ## P3 — 낮음
 
