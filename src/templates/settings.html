@@ -364,7 +364,7 @@
   <form id="settingsForm" method="post" action="/repos/{{ repo_name }}/settings">
     <input type="hidden" name="approve_mode" id="approveModeValue" value="{{ config.approve_mode }}">
 
-    <!-- 🚀 빠른 설정 (프리셋) -->
+    <!-- ① 빠른 설정 (프리셋) -->
     <div class="s-card" style="margin-bottom:1rem;">
       <div class="s-card-hdr hdr-preset">
         <span class="hdr-icon">🚀</span>
@@ -498,7 +498,7 @@
       <div class="advanced-body">
         <div class="settings-grid">
 
-      <!-- ① PR 들어왔을 때 -->
+      <!-- ② PR 들어왔을 때 -->
       <div class="s-card">
         <div class="s-card-hdr hdr-gate">
           <span class="hdr-icon">📋</span>
@@ -578,10 +578,10 @@
             </div>
           </div>
 
-          <!-- semi-auto 안내 힌트 (Telegram Chat ID는 ③ 알림 채널에서 설정) -->
+          <!-- semi-auto 안내 힌트 (Telegram Chat ID는 ④ 알림 채널에서 설정) -->
           <div id="semiAutoHint" class="{% if config.approve_mode != 'semi-auto' %}is-hidden{% endif %}"
                style="margin-top:.75rem;padding:.5rem .75rem;background:var(--hint-bg);border:1px solid var(--hint-border);border-radius:7px;font-size:11px;color:var(--text-muted);line-height:1.6;">
-            💡 반자동 Approve는 <strong>③ 알림 채널의 Telegram Chat ID</strong>로 전송됩니다.
+            💡 반자동 Approve는 <strong>④ 알림 채널의 Telegram Chat ID</strong>로 전송됩니다.
           </div>
 
           <div class="s-divider"></div>
@@ -637,7 +637,7 @@
         </div>
       </div>
 
-      <!-- ② 이벤트 후 피드백 -->
+      <!-- ③ 이벤트 후 피드백 -->
       <div class="s-card">
         <div class="s-card-hdr hdr-merge">
           <span class="hdr-icon">📬</span>
@@ -693,7 +693,7 @@
       </div><!-- /.advanced-body -->
     </details><!-- /.advanced-details -->
 
-    <!-- ③ 알림 채널 (항상 표시 — 고급 설정 아코디언 밖) -->
+    <!-- ④ 알림 채널 (항상 표시 — 고급 설정 아코디언 밖) -->
     <div class="settings-grid">
       <div class="s-card notify-full">
         <div class="s-card-hdr hdr-notify">
