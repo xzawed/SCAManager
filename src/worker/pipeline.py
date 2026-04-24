@@ -324,7 +324,8 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
                     _run_static_analysis(files),
                     review_code(settings.anthropic_api_key, commit_message, patches),
                 )
-                ctx["issue_count"] = len(analysis_results)
+                ctx["file_count"] = len(analysis_results)
+                ctx["issue_count"] = sum(len(r.issues) for r in analysis_results)
 
             with stage_timer("score_and_save", repo=repo_log) as ctx:
                 score_result = calculate_score(analysis_results, ai_review=ai_review)
