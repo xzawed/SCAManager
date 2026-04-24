@@ -1,6 +1,6 @@
 """Analysis ORM 모델 — 분석 이력(정적 분석 + AI 리뷰 점수) 저장."""
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, JSON, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, JSON, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from src.database import Base
 
@@ -10,6 +10,7 @@ class Analysis(Base):
     """Push/PR 분석 이력 테이블 — commit_sha별 점수·등급·AI 리뷰 결과 저장."""
 
     __tablename__ = "analyses"
+    __table_args__ = (UniqueConstraint("repo_id", "commit_sha", name="uq_analyses_repo_sha"),)
 
     id = Column(Integer, primary_key=True, index=True)
     repo_id = Column(Integer, ForeignKey("repositories.id"), nullable=False)
