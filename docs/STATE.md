@@ -189,6 +189,36 @@
 | 테스트 fixture 재작성 | `test_railway_client.py`(2곳) + `test_railway_issue_notifier.py`(`_EVENT` fixture nested 재작성) | — |
 | 외부 API 불변 | `parse_railway_payload` · `create_deploy_failure_issue` 시그니처 · Webhook payload 스키마 · DB 전부 그대로 | — |
 
+### 그룹 32 — Auto-merge 실패 진단 3-에이전트 + Phase F 로드맵 (2026-04-24)
+
+사용자 보고: 일부 Repo 에서 PR auto-merge 가 실패. 3개 병렬 에이전트 (A: 현재 구현 분석
+· B: GitHub 실패 시나리오 · C: 재발 방지 로드맵) 독립 조사 + 종합.
+
+**핵심 결론**:
+- 🔴 **P0 버그**: `mergeable_state == "unstable"` 이 `_MERGEABLE_BLOCK` 에 없음 → BPR
+  "Require status checks" 설정 repo 에서 merge 시도 후 405 실패. 사용자 보고 현상의 주요 원인.
+- 🟡 **가시성 공백**: auto-merge 실패가 DB (`GateDecision`) 에 기록 안 됨 → 추적 불가.
+- 🟡 **재시도 부족**: unknown 상태 9초 재시도, 대규모 PR 은 20초+ 소요 가능.
+- 🟡 **권장 조치 부재**: Telegram 알림에 사유는 있으나 해결 방법 없음.
+
+**Phase F 로드맵 제안** (5단계, 총 5세션):
+- F.1 관측 — `MergeAttempt` ORM + failure_reason enum
+- F.2 사전 체크 보강 + unstable 추가 + exponential backoff
+- F.3 실패 알림 고도화 + GitHub Issue 자동 생성 옵션
+- F.4 대시보드 Auto-merge History 탭
+- F.5 Settings UI BPR 호환성 체크 + 권한 dry-run
+
+**Quick Win 5건** (Phase F 착수 전 즉시 적용 가능, 소요 ~90분):
+1. `_MERGEABLE_BLOCK` 에 `"unstable"` 추가 (P0 버그)
+2. unknown 재시도 파라미터 settings 외부화
+3. Telegram 알림에 PR 링크 추가
+4. `_run_auto_merge` except 확장
+5. `_interpret_merge_error` label 을 `src/gate/merge_reasons.py` 상수로 추출
+
+**상세 보고서**: [reports/2026-04-24-auto-merge-failure-analysis-3agent.md](reports/2026-04-24-auto-merge-failure-analysis-3agent.md).
+
+**사용자 승인 대기**: Option A (Quick Win만) / B (Quick Win + F.1 관측, 권장) / C (Phase F 전체).
+
 ### 그룹 31 — 5-렌즈 감사 Minor 이슈 후속 개선 (2026-04-24)
 
 2026-04-23 5-렌즈 감사 (91/100 A) 의 Minor 4건 중 3건 반영 + Agent R5 의 잘못된
