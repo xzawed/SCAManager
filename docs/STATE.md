@@ -32,8 +32,11 @@
 | `src/notifier/_common.py` | notifier 공통 헬퍼 — format_ref, get_all_issues, truncate_message |
 | `src/notifier/_http.py` | HTTP_CLIENT_TIMEOUT 적용 httpx 클라이언트 빌더 |
 | `src/webhook/router.py` | GitHub Webhook 수신 + per-repo secret TTL 캐시(5분) |
-| `src/gate/engine.py` | 3-옵션 Gate + GateDecision upsert (중복 INSERT 방지) |
-| `src/repositories/` | DB 접근 계층 — repository_repo, analysis_repo |
+| `src/gate/engine.py` | 3-옵션 Gate + GateDecision upsert (중복 INSERT 방지) + MergeAttempt 관측(Phase F.1) |
+| `src/gate/merge_reasons.py` | auto-merge 실패 사유 정규 태그 상수 (Phase F QW5) |
+| `src/models/merge_attempt.py` | MergeAttempt ORM — score/threshold 스냅샷 + failure_reason 태그 (Phase F.1, append-only) |
+| `src/shared/merge_metrics.py` | parse_reason_tag + log_merge_attempt — DB INSERT + 구조화 로그 (Phase F.1) |
+| `src/repositories/` | DB 접근 계층 7종 — repository_repo, analysis_repo, analysis_feedback_repo, merge_attempt_repo, gate_decision_repo, repo_config_repo, user_repo |
 | `src/worker/pipeline.py` | 분석 파이프라인 + build_analysis_result_dict |
 | `tests/conftest.py` | 환경변수 주입 + _webhook_secret_cache autouse 클리어 |
 

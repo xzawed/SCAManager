@@ -7,7 +7,7 @@
 [![Python](https://img.shields.io/badge/Python-3.14-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-SQLAlchemy_2-336791?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![Claude AI](https://img.shields.io/badge/Claude_AI-Haiku_4.5-CC6600?style=flat-square&logo=anthropic&logoColor=white)](https://www.anthropic.com/)
+[![Claude AI](https://img.shields.io/badge/Claude_AI-Sonnet_4.6_(default)-CC6600?style=flat-square&logo=anthropic&logoColor=white)](https://www.anthropic.com/)
 [![Railway](https://img.shields.io/badge/Deploy-Railway-0B0D0E?style=flat-square&logo=railway&logoColor=white)](https://railway.app/)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
@@ -127,6 +127,21 @@ Analysis complete
 | `approve_mode="auto"` | Auto Approve / Request Changes by threshold |
 | `approve_mode="semi-auto"` | Manual decision via Telegram buttons |
 | `auto_merge=true` | Squash merge when threshold is met |
+
+---
+
+### 📊 Observability
+
+Production-grade instrumentation for diagnostics and cost control.
+
+| Layer | Module | What it captures |
+|-------|--------|------------------|
+| Exception tracking | `src/shared/observability.py` (Sentry) | Unhandled exceptions with PII scrubbing via `before_send` hook. Activated when `SENTRY_DSN` is set. |
+| Claude API cost | `src/shared/claude_metrics.py` | Per-call model · input/output tokens · USD cost estimate · latency (structured log). |
+| Pipeline timing | `src/shared/stage_metrics.py` | `stage_timer` context manager emits `duration_ms` + `status` per pipeline stage. |
+| Auto-merge attempts | `src/shared/merge_metrics.py` + `merge_attempts` table | Every auto-merge attempt (success or failure) is persisted with `failure_reason` normalized tag (`branch_protection_blocked`, `unstable_ci`, `permission_denied`, …) + `score`/`threshold` snapshot. Phase F.1. |
+
+All layers are optional — Sentry is skipped when `SENTRY_DSN` is empty, and the other three emit structured logs unconditionally so any log shipper (Datadog, CloudWatch, Grafana Loki) can parse them.
 
 ---
 
@@ -501,4 +516,4 @@ ANTHROPIC_API_KEY=sk-ant-... python -m src.cli review
 
 ## 📄 License
 
-[MIT License](LICENSE) © 2024 xzawed31
+[MIT License](LICENSE) © 2026 xzawed31

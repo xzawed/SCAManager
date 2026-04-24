@@ -7,7 +7,7 @@
 [![Python](https://img.shields.io/badge/Python-3.14-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-SQLAlchemy_2-336791?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![Claude AI](https://img.shields.io/badge/Claude_AI-Haiku_4.5-CC6600?style=flat-square&logo=anthropic&logoColor=white)](https://www.anthropic.com/)
+[![Claude AI](https://img.shields.io/badge/Claude_AI-Sonnet_4.6_(default)-CC6600?style=flat-square&logo=anthropic&logoColor=white)](https://www.anthropic.com/)
 [![Railway](https://img.shields.io/badge/Deploy-Railway-0B0D0E?style=flat-square&logo=railway&logoColor=white)](https://railway.app/)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
@@ -18,7 +18,7 @@
 [![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=xzawed_SCAManager&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=xzawed_SCAManager)
 [![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=xzawed_SCAManager&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=xzawed_SCAManager)
 
-[![Tests](https://img.shields.io/badge/Tests-1251_passing-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-1275_passing-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
 [![E2E](https://img.shields.io/badge/E2E-49_passing-brightgreen?style=flat-square&logo=playwright&logoColor=white)](e2e/)
 [![pylint](https://img.shields.io/badge/pylint-10.00%2F10-brightgreen?style=flat-square&logo=python&logoColor=white)](src/)
 [![bandit](https://img.shields.io/badge/bandit-HIGH_0-brightgreen?style=flat-square&logo=security&logoColor=white)](src/)
@@ -199,6 +199,21 @@ PR 분석 완료
 | `approve_mode="auto"` | 임계값 기준 자동 Approve / Request Changes |
 | `approve_mode="semi-auto"` | Telegram 버튼으로 수동 결정 |
 | `auto_merge=true` | 임계값 통과 시 squash merge 자동 실행 |
+
+---
+
+### 📊 Observability (관측)
+
+운영 중 문제 진단과 비용 관리를 위한 4단 계측 레이어.
+
+| 레이어 | 모듈 | 포착 내용 |
+|--------|------|-----------|
+| 예외 추적 | `src/shared/observability.py` (Sentry) | 처리되지 않은 예외 — `before_send` 훅으로 PII 스크러빙. `SENTRY_DSN` 설정 시 활성화 |
+| Claude API 비용 | `src/shared/claude_metrics.py` | 호출별 모델 · 입출력 토큰 · USD 비용 추정 · latency (구조화 로그) |
+| 파이프라인 타이밍 | `src/shared/stage_metrics.py` | `stage_timer` context manager — 단계별 `duration_ms` + `status` |
+| Auto-merge 시도 | `src/shared/merge_metrics.py` + `merge_attempts` 테이블 | 모든 auto-merge 시도(성공·실패) DB 기록 — `failure_reason` 정규 태그(`branch_protection_blocked`, `unstable_ci`, `permission_denied` 등) + 시도 시점 `score`/`threshold` 스냅샷. Phase F.1 |
+
+네 레이어 모두 선택적이며, Sentry 는 `SENTRY_DSN` 빈 문자열 시 스킵되고 나머지 셋은 구조화 로그로 항상 emit — 어떤 로그 집계 시스템(Datadog, CloudWatch, Grafana Loki)이든 파싱 가능합니다.
 
 ---
 
@@ -573,4 +588,4 @@ ANTHROPIC_API_KEY=sk-ant-... python -m src.cli review
 
 ## 📄 라이선스
 
-[MIT License](LICENSE) © 2024 xzawed31
+[MIT License](LICENSE) © 2026 xzawed31
