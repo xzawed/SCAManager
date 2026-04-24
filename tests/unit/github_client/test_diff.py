@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock, patch
 from src.github_client.diff import get_pr_files, get_push_files, ChangedFile
+from src.constants import HTTP_CLIENT_TIMEOUT
 
 
 def _make_mock_file(filename, patch_text, content_bytes):
@@ -27,6 +28,7 @@ def test_get_pr_files_returns_all_file_types():
     with patch("src.github_client.diff.Github") as MockGithub:
         MockGithub.return_value.get_repo.return_value = mock_repo
         result = get_pr_files("token", "owner/repo", 1)
+    assert MockGithub.call_args.kwargs.get("timeout") == int(HTTP_CLIENT_TIMEOUT)
     assert len(result) == 2
     assert result[0].filename == "src/app.py"
     assert result[1].filename == "README.md"
@@ -43,6 +45,7 @@ def test_get_push_files_returns_all_file_types():
     with patch("src.github_client.diff.Github") as MockGithub:
         MockGithub.return_value.get_repo.return_value = mock_repo
         result = get_push_files("token", "owner/repo", "abc123")
+    assert MockGithub.call_args.kwargs.get("timeout") == int(HTTP_CLIENT_TIMEOUT)
     assert len(result) == 2
     assert result[0].filename == "utils.py"
     assert result[1].filename == "app.js"

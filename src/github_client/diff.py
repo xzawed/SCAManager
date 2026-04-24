@@ -3,14 +3,19 @@ import logging
 
 from github import Auth, Github, GithubException
 
+from src.constants import HTTP_CLIENT_TIMEOUT
 from src.github_client.models import ChangedFile
 
 logger = logging.getLogger(__name__)
 
 
+def _make_github_client(token: str) -> Github:
+    return Github(auth=Auth.Token(token), timeout=int(HTTP_CLIENT_TIMEOUT))
+
+
 def get_pr_files(github_token: str, repo_name: str, pr_number: int) -> list[ChangedFile]:
     """Fetch all changed files for a given pull request."""
-    g = Github(auth=Auth.Token(github_token))
+    g = _make_github_client(github_token)
     repo = g.get_repo(repo_name)
     pr = repo.get_pull(pr_number)
     return _collect_changed_files(repo, pr.get_files(), pr.head.sha)
@@ -18,7 +23,7 @@ def get_pr_files(github_token: str, repo_name: str, pr_number: int) -> list[Chan
 
 def get_push_files(github_token: str, repo_name: str, commit_sha: str) -> list[ChangedFile]:
     """Fetch all changed files for a given push commit SHA."""
-    g = Github(auth=Auth.Token(github_token))
+    g = _make_github_client(github_token)
     repo = g.get_repo(repo_name)
     commit = repo.get_commit(commit_sha)
     return _collect_changed_files(repo, commit.files, commit_sha)
