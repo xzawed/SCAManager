@@ -57,7 +57,7 @@ async def lifespan(_app: FastAPI):
         logger.info("DB migration completed")
     except asyncio.TimeoutError:
         logger.error("DB migration timed out after 30s — starting app anyway")
-    except (OSError, RuntimeError, ValueError, ImportError) as exc:
+    except Exception as exc:
         logger.error("DB migration failed: %s", exc)
     await init_http_client()
     try:
