@@ -12,6 +12,7 @@
 | 2026-04-23 | [phase-e-quality-audit-5lens](2026-04-23-phase-e-quality-audit-5lens.md) | Phase E 완결 시점 5-렌즈 감사 (91/100 A) |
 | 2026-04-23 | [sonarcloud-baseline](2026-04-23-sonarcloud-baseline.md) | 외부 공신력 서비스(SonarCloud) 1차 분석 + 청산 계획 |
 | 2026-04-23 | [structure-audit-3agent](2026-04-23-structure-audit-3agent.md) | 프로젝트 구조 3-에이전트 감사 |
+| 2026-04-24 | [comprehensive-audit](2026-04-24-comprehensive-audit.md) | 14 에이전트 × 3 Round 전면 감사 (P1 7건 확정, G Phase 착수) |
 
 ## 회고 (문제 → 원인 → 교훈)
 
