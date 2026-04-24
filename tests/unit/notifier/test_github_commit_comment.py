@@ -36,10 +36,9 @@ def _mock_client():
 
 async def test_post_commit_comment_calls_correct_url():
     from src.notifier.github_commit_comment import post_commit_comment
-    with patch("src.notifier.github_commit_comment.httpx.AsyncClient") as mock_cls:
+    with patch("src.notifier.github_commit_comment.get_http_client") as mock_get:
         mock_client = _mock_client()
-        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+        mock_get.return_value = mock_client
 
         await post_commit_comment(
             github_token="ghp_test",
@@ -54,10 +53,9 @@ async def test_post_commit_comment_calls_correct_url():
 
 async def test_post_commit_comment_body_uses_shared_formatter():
     from src.notifier.github_commit_comment import post_commit_comment
-    with patch("src.notifier.github_commit_comment.httpx.AsyncClient") as mock_cls:
+    with patch("src.notifier.github_commit_comment.get_http_client") as mock_get:
         mock_client = _mock_client()
-        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+        mock_get.return_value = mock_client
 
         await post_commit_comment(
             github_token="ghp_test",
@@ -73,10 +71,9 @@ async def test_post_commit_comment_body_uses_shared_formatter():
 
 async def test_post_commit_comment_auth_header():
     from src.notifier.github_commit_comment import post_commit_comment
-    with patch("src.notifier.github_commit_comment.httpx.AsyncClient") as mock_cls:
+    with patch("src.notifier.github_commit_comment.get_http_client") as mock_get:
         mock_client = _mock_client()
-        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+        mock_get.return_value = mock_client
 
         await post_commit_comment(
             github_token="ghp_TOKEN",
@@ -92,11 +89,10 @@ async def test_post_commit_comment_auth_header():
 async def test_post_commit_comment_httpx_error_swallowed():
     """HTTPError 시 재raise하지 않고 조용히 반환한다 (파이프라인 미중단)."""
     from src.notifier.github_commit_comment import post_commit_comment
-    with patch("src.notifier.github_commit_comment.httpx.AsyncClient") as mock_cls:
+    with patch("src.notifier.github_commit_comment.get_http_client") as mock_get:
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(side_effect=httpx.HTTPError("boom"))
-        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+        mock_get.return_value = mock_client
 
         await post_commit_comment(
             github_token="ghp_test",

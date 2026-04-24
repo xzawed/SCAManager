@@ -22,9 +22,8 @@ async def test_create_merge_failure_issue_success():
     mock_client.get = AsyncMock(return_value=search_resp)
     mock_client.post = AsyncMock(return_value=create_resp)
 
-    with patch("src.notifier.merge_failure_issue.httpx.AsyncClient") as mock_cls:
-        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+    with patch("src.notifier.merge_failure_issue.get_http_client") as mock_get:
+        mock_get.return_value = mock_client
 
         result = await create_merge_failure_issue(
             github_token="tok",
@@ -48,9 +47,8 @@ async def test_create_merge_failure_issue_dedup_skip():
     mock_client = AsyncMock()
     mock_client.get = AsyncMock(return_value=search_resp)
 
-    with patch("src.notifier.merge_failure_issue.httpx.AsyncClient") as mock_cls:
-        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+    with patch("src.notifier.merge_failure_issue.get_http_client") as mock_get:
+        mock_get.return_value = mock_client
 
         result = await create_merge_failure_issue(
             github_token="tok",
@@ -73,9 +71,8 @@ async def test_create_merge_failure_issue_http_error_returns_none():
     mock_client = AsyncMock()
     mock_client.get = AsyncMock(side_effect=httpx.NetworkError("연결 실패"))
 
-    with patch("src.notifier.merge_failure_issue.httpx.AsyncClient") as mock_cls:
-        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+    with patch("src.notifier.merge_failure_issue.get_http_client") as mock_get:
+        mock_get.return_value = mock_client
 
         result = await create_merge_failure_issue(
             github_token="tok",
