@@ -45,7 +45,8 @@ src/
 │   ├── log_safety.py           # sanitize_for_log() — 로그 인젝션 방지
 │   ├── observability.py        # init_sentry() — Sentry SDK (Phase E.2a), before_send 로 PII 스크러빙
 │   ├── claude_metrics.py       # Claude API 비용/latency 계측 — log_claude_api_call (Phase E.2b)
-│   └── stage_metrics.py        # stage_timer context manager — pipeline 단계 타이밍 (Phase E.2c)
+│   ├── stage_metrics.py        # stage_timer context manager — pipeline 단계 타이밍 (Phase E.2c)
+│   └── merge_metrics.py        # parse_reason_tag + log_merge_attempt — auto-merge 관측 (Phase F.1)
 ├── services/                   # use case 계층 — 신규 오케스트레이션 모듈의 배치 장소 (기존 pipeline/engine/manager 는 도메인 위치 유지)
 ├── auth/
 │   ├── session.py              # get_current_user() + require_login Depends
@@ -56,6 +57,7 @@ src/
 │   ├── analysis_feedback.py    # AnalysisFeedback ORM (thumbs +1/-1, comment, Phase E.3)
 │   ├── repo_config.py          # RepoConfig ORM (pr_review_comment, approve_mode, approve/reject_threshold, auto_merge, merge_threshold, hook_token)
 │   ├── gate_decision.py        # GateDecision ORM
+│   ├── merge_attempt.py        # MergeAttempt ORM — score/threshold 스냅샷 + failure_reason 정규 태그 (Phase F.1, append-only)
 │   └── user.py                 # User ORM (github_id, github_login, github_access_token, email, display_name)
 ├── webhook/
 │   ├── _helpers.py             # get_webhook_secret() + _webhook_secret_cache (TTL 300초)
@@ -142,7 +144,7 @@ src/
 │   ├── __main__.py             # python -m src.cli review
 │   ├── git_diff.py             # 로컬 git diff 수집
 │   └── formatter.py            # 터미널 출력 포맷 (ANSI 색상)
-├── repositories/               # DB 접근 계층 — repository_repo, analysis_repo, analysis_feedback_repo (Phase E.3)
+├── repositories/               # DB 접근 계층 — repository_repo, analysis_repo, analysis_feedback_repo (Phase E.3), merge_attempt_repo (Phase F.1)
 └── worker/
     └── pipeline.py             # run_analysis_pipeline, build_analysis_result_dict
 ```
@@ -392,6 +394,7 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 - **telegram_post_message**: `src/notifier/telegram.py`의 공용 헬퍼. `src/gate/telegram_gate.py`도 이 헬퍼 사용 — `httpx` 직접 import 금지.
 - **get_repo_or_404**: `src/api/deps.py`의 `get_repo_or_404(repo_name, db)` 사용. 신규 API 엔드포인트에서 Repository 조회 시 동일 패턴 사용.
 - **auto_merge GitHub 권한**: `merge_pr()`은 `repo` 스코프 또는 Fine-grained `pull_requests: write` 권한 필요 — 권한 부족 시 False 반환(파이프라인 미중단). Branch Protection Rules가 있으면 APPROVE 후에도 Merge 실패 가능.
+- **MergeAttempt 관측 (Phase F.1)**: `src/gate/engine.py::_run_auto_merge`가 `merge_pr` 직후 `log_merge_attempt()`(`src/shared/merge_metrics.py`)로 모든 시도(성공·실패)를 DB에 기록. `failure_reason`은 `src/gate/merge_reasons.py`의 정규 태그(`branch_protection_blocked`, `unstable_ci`, `permission_denied` 등). 관측 실패는 notify 경로를 막지 않도록 nested try/except로 격리 — DB 오류 시 rollback 후 WARNING + None. **범위 제한**: `webhook/providers/telegram.py::handle_gate_callback`의 반자동 merge 경로는 미관측(Phase F.2 예정).
 - **notifier 공통 헬퍼**: `src/notifier/_common.py`의 `format_ref()`, `get_all_issues()`, `get_issue_samples()`, `truncate_message()`, `truncate_issue_msg()`를 사용. 각 notifier 모듈에 이슈 수집 루프나 메시지 절단 로직 직접 작성 금지.
 - **webhook secret TTL 캐시**: `_get_webhook_secret(full_name)` 함수가 `_webhook_secret_cache` dict에 5분(WEBHOOK_SECRET_CACHE_TTL=300초) TTL로 per-repo 시크릿을 캐시. 리포 시크릿 변경 후 최대 5분간 구 시크릿으로 검증 — 인지하고 있을 것.
 
