@@ -24,6 +24,7 @@ class RepoConfigData:  # pylint: disable=too-many-instance-attributes
     commit_comment: bool = False
     create_issue: bool = False
     railway_deploy_alerts: bool = False
+    auto_merge_issue_on_failure: bool = False
 
 
 def _config_field_names() -> list[str]:
