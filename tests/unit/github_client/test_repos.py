@@ -39,10 +39,8 @@ def _make_client(get_responses: list, put_responses: list) -> AsyncMock:
 
 
 def _patch_client(mock_client):
-    patcher = patch("src.github_client.repos.httpx.AsyncClient")
-    mock_cls = patcher.start()
-    mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+    patcher = patch("src.github_client.repos.get_http_client", return_value=mock_client)
+    patcher.start()
     return patcher
 
 
@@ -199,6 +197,5 @@ async def test_auth_header_included_in_requests():
         assert headers.get("Authorization") == f"Bearer {TOKEN}"
 
     for put_call in client.put.call_args_list:
-        body = put_call.kwargs.get("json") or {}
         headers = put_call.kwargs.get("headers") or {}
         assert headers.get("Authorization") == f"Bearer {TOKEN}"

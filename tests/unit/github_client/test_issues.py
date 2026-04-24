@@ -36,7 +36,7 @@ async def test_close_issue_sends_patch_with_state_closed():
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
     mock_client.__aexit__ = AsyncMock(return_value=None)
 
-    with patch("src.github_client.issues.httpx.AsyncClient", return_value=mock_client):
+    with patch("src.github_client.issues.get_http_client", return_value=mock_client):
         await close_issue("token", "owner/repo", 42)
 
     mock_client.patch.assert_called_once()
@@ -65,7 +65,7 @@ async def test_close_issue_uses_bearer_token_via_helper():
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
     mock_client.__aexit__ = AsyncMock(return_value=None)
 
-    with patch("src.github_client.issues.httpx.AsyncClient", return_value=mock_client):
+    with patch("src.github_client.issues.get_http_client", return_value=mock_client):
         await close_issue("mytoken", "owner/repo", 7)
 
     call_kwargs = mock_client.patch.call_args
@@ -97,6 +97,6 @@ async def test_close_issue_http_error_raises():
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
     mock_client.__aexit__ = AsyncMock(return_value=None)
 
-    with patch("src.github_client.issues.httpx.AsyncClient", return_value=mock_client):
+    with patch("src.github_client.issues.get_http_client", return_value=mock_client):
         with pytest.raises(httpx.HTTPStatusError):
             await close_issue("token", "owner/repo", 99)

@@ -7,6 +7,7 @@ import httpx
 from src.config import settings
 from src.gate import merge_reasons
 from src.github_client.helpers import github_api_headers
+from src.shared.http_client import get_http_client
 
 logger = logging.getLogger(__name__)
 
@@ -25,13 +26,13 @@ async def post_github_review(
     """Post an APPROVE or REQUEST_CHANGES review on a GitHub pull request."""
     event = "APPROVE" if decision == "approve" else "REQUEST_CHANGES"
     url = f"https://api.github.com/repos/{repo_full_name}/pulls/{pr_number}/reviews"
-    async with httpx.AsyncClient() as client:
-        r = await client.post(
-            url,
-            json={"body": body, "event": event},
-            headers=github_api_headers(github_token),
-        )
-        r.raise_for_status()
+    client = get_http_client()  # 싱글톤
+    r = await client.post(
+        url,
+        json={"body": body, "event": event},
+        headers=github_api_headers(github_token),
+    )
+    r.raise_for_status()
 
 
 async def get_pr_mergeable_state(
@@ -41,10 +42,10 @@ async def get_pr_mergeable_state(
 ) -> str:
     """GET pulls/{N} 에서 mergeable_state 조회. 실패 시 'unknown' 반환."""
     url = f"https://api.github.com/repos/{repo_full_name}/pulls/{pr_number}"
-    async with httpx.AsyncClient() as client:
-        r = await client.get(url, headers=github_api_headers(github_token))
-        r.raise_for_status()
-        return r.json().get("mergeable_state", "unknown")
+    client = get_http_client()  # 싱글톤
+    r = await client.get(url, headers=github_api_headers(github_token))
+    r.raise_for_status()
+    return r.json().get("mergeable_state", "unknown")
 
 
 def _interpret_merge_error(exc: httpx.HTTPStatusError) -> str:
@@ -96,14 +97,14 @@ async def merge_pr(
 
     url = f"https://api.github.com/repos/{repo_full_name}/pulls/{pr_number}/merge"
     try:
-        async with httpx.AsyncClient() as client:
-            r = await client.put(
-                url,
-                json={"merge_method": merge_method},
-                headers=github_api_headers(github_token),
-            )
-            r.raise_for_status()
-            return (True, None)
+        client = get_http_client()  # 싱글톤
+        r = await client.put(
+            url,
+            json={"merge_method": merge_method},
+            headers=github_api_headers(github_token),
+        )
+        r.raise_for_status()
+        return (True, None)
     except httpx.HTTPStatusError as exc:
         reason = _interpret_merge_error(exc)
         logger.warning(

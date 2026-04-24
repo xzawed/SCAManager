@@ -1,18 +1,19 @@
-"""httpx.AsyncClient lifespan 싱글톤 — 내부 신뢰 API 호출용.
+"""HTTP client lifespan singleton — 신뢰 API 전용.
+
+허용 도메인: api.github.com, api.telegram.org, backboard.railway.app.
+외부 untrusted webhook (Discord / Slack / 사용자 정의 / n8n) 은
+src/notifier/_http.py::build_safe_client() 를 사용해야 한다 (SSRF 방어).
 
 FastAPI lifespan 에서 `init_http_client()` 로 초기화되고 `close_http_client()`
 로 정리된다. BackgroundTasks 에서도 접근 가능하도록 모듈 전역 변수를 사용
 (request.app.state 경로는 background 실행 시 없을 수 있음).
 
-주의 — 용도 구분:
+용도 구분:
+- **내부 신뢰 API** (GitHub/Telegram/Railway): 본 모듈의 `get_http_client()`
+  사용 (connection pooling, 매 요청 재사용)
 - **외부 untrusted webhook** (n8n/discord/slack/custom): `src/notifier/_http.py`
   의 `build_safe_client()` 사용 (SSRF 방어, `follow_redirects=False`, 매
   호출 신규)
-- **내부 신뢰 API** (GitHub/Telegram/Railway): 본 모듈의 `get_http_client()`
-  사용 (connection pooling, 매 요청 재사용)
-
-현재는 인프라만 제공하며 실제 호출 사이트 치환은 후속 Phase 에서 단계적
-진행 (15곳 mock 경로 재작성 필요).
 """
 from __future__ import annotations
 
