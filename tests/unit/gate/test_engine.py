@@ -903,3 +903,112 @@ def test_save_gate_decision_updates_existing_record():
     with Session() as verify_db:
         count = verify_db.query(GateDecision).filter(GateDecision.analysis_id == aid).count()
         assert count == 1
+
+
+# ---------------------------------------------------------------------------
+# Phase F.1 — _run_auto_merge 가 log_merge_attempt 로 시도를 기록한다
+# ---------------------------------------------------------------------------
+
+async def test_run_auto_merge_records_successful_merge_attempt():
+    """merge_pr → (True, None) 경로에서 log_merge_attempt(success=True, reason=None) 호출."""
+    mock_db = MagicMock()
+    config = _config(
+        approve_mode="disabled",
+        auto_merge=True,
+        merge_threshold=75,
+        pr_review_comment=False,
+        notify_chat_id="-100123",
+    )
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
+            with patch("src.gate.engine.log_merge_attempt") as mock_log:
+                with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
+                    with patch("src.gate.engine.save_gate_decision"):
+                        mock_merge.return_value = (True, None)
+                        await run_gate_check(
+                            repo_name="owner/repo",
+                            pr_number=3,
+                            analysis_id=10,
+                            result={"score": 80, "grade": "B"},
+                            github_token="tok",
+                            db=mock_db,
+                        )
+                        # log_merge_attempt 가 호출되어야 함
+                        mock_log.assert_called_once()
+                        call = mock_log.call_args
+                        # db 는 positional 또는 keyword
+                        # keyword 인자 기준으로 검증
+                        assert call.kwargs.get("success") is True
+                        assert call.kwargs.get("reason") is None
+                        assert call.kwargs.get("analysis_id") == 10
+                        assert call.kwargs.get("repo_name") == "owner/repo"
+                        assert call.kwargs.get("pr_number") == 3
+                        assert call.kwargs.get("score") == 80
+                        assert call.kwargs.get("threshold") == 75
+
+
+async def test_run_auto_merge_records_failed_merge_attempt_with_reason_tag():
+    """merge_pr → (False, '<reason>') 경로에서 log_merge_attempt(success=False, reason=<full>) 호출."""
+    mock_db = MagicMock()
+    config = _config(
+        approve_mode="disabled",
+        auto_merge=True,
+        merge_threshold=75,
+        pr_review_comment=False,
+        notify_chat_id="-100123",
+    )
+    full_reason = "branch_protection_blocked: 머지 조건 미충족 (state=blocked)"
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
+            with patch("src.gate.engine.log_merge_attempt") as mock_log:
+                with patch("src.gate.engine.telegram_post_message", new_callable=AsyncMock):
+                    with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
+                        with patch("src.gate.engine.save_gate_decision"):
+                            mock_merge.return_value = (False, full_reason)
+                            await run_gate_check(
+                                repo_name="owner/repo",
+                                pr_number=3,
+                                analysis_id=10,
+                                result={"score": 80, "grade": "B"},
+                                github_token="tok",
+                                db=mock_db,
+                            )
+                            mock_log.assert_called_once()
+                            call = mock_log.call_args
+                            assert call.kwargs.get("success") is False
+                            # 전체 reason 문자열을 그대로 전달 — log_merge_attempt 내부에서 태그 추출
+                            assert call.kwargs.get("reason") == full_reason
+                            assert call.kwargs.get("analysis_id") == 10
+
+
+async def test_run_auto_merge_log_merge_attempt_db_failure_does_not_block_notification():
+    """log_merge_attempt 가 예외를 던져도 _notify_merge_failure (Telegram 알림) 는 실행된다."""
+    mock_db = MagicMock()
+    config = _config(
+        approve_mode="disabled",
+        auto_merge=True,
+        merge_threshold=75,
+        pr_review_comment=False,
+        notify_chat_id="-100123",
+    )
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge:
+            with patch("src.gate.engine.log_merge_attempt", side_effect=RuntimeError("DB down")):
+                with patch("src.gate.engine.telegram_post_message", new_callable=AsyncMock) as mock_tg:
+                    with patch("src.gate.engine.settings") as mock_settings:
+                        with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
+                            with patch("src.gate.engine.save_gate_decision"):
+                                mock_settings.telegram_bot_token = "123:ABC"
+                                mock_settings.telegram_chat_id = ""
+                                mock_merge.return_value = (False, "forbidden: no permission")
+                                # log_merge_attempt 가 RuntimeError 를 던져도 전체는 중단 없이 완료
+                                await run_gate_check(
+                                    repo_name="owner/repo",
+                                    pr_number=3,
+                                    analysis_id=10,
+                                    result={"score": 80, "grade": "B"},
+                                    github_token="tok",
+                                    db=mock_db,
+                                )
+                                # Telegram 알림은 여전히 발송되어야 함
+                                mock_tg.assert_called_once()
