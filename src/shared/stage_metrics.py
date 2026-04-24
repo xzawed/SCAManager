@@ -56,17 +56,16 @@ def stage_timer(stage: str, **extra_fields: object) -> Iterator[dict]:
             extra=extra,
         )
         raise
-    else:
-        duration_ms = (time.perf_counter() - start) * 1000
-        extra = {
-            **extra_fields,
-            **ctx,
-            "pipeline_stage": stage,
-            "duration_ms": duration_ms,
-            "status": "success",
-        }
-        logger.info(
-            "pipeline_stage stage=%s duration_ms=%.0f status=success",
-            stage, duration_ms,
-            extra=extra,
-        )
+    duration_ms = (time.perf_counter() - start) * 1000
+    extra = {
+        **extra_fields,
+        **ctx,
+        "pipeline_stage": stage,
+        "duration_ms": duration_ms,
+        "status": "success",
+    }
+    logger.info(
+        "pipeline_stage stage=%s duration_ms=%.0f status=success",
+        stage, duration_ms,
+        extra=extra,
+    )

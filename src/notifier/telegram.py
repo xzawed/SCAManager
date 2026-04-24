@@ -1,7 +1,6 @@
 """Telegram notifier — sends HTML-formatted analysis results via Bot API."""
 from html import escape
 
-import httpx
 from src.constants import GRADE_EMOJI, TELEGRAM_MAX_MESSAGE_LENGTH, NOTIFIER_MAX_ISSUES_SHORT
 from src.shared.http_client import get_http_client
 from src.scorer.calculator import ScoreResult
