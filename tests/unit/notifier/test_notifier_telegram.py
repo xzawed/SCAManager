@@ -95,12 +95,13 @@ def test_build_message_includes_score_breakdown():
 
 @pytest.mark.asyncio
 async def test_send_analysis_result_uses_html_parse_mode():
-    with patch("src.notifier.telegram.httpx.AsyncClient") as MockClient:
+    with patch("src.notifier.telegram.get_http_client") as mock_get:
         mock_response = MagicMock()
         mock_response.raise_for_status = MagicMock()
+        mock_client = AsyncMock()
+        mock_get.return_value = mock_client
         mock_post = AsyncMock(return_value=mock_response)
-        MockClient.return_value.__aenter__ = AsyncMock(return_value=MagicMock(post=mock_post))
-        MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = mock_post
 
         await send_analysis_result(
             bot_token="123:ABC",

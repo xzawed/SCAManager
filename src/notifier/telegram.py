@@ -3,6 +3,7 @@ from html import escape
 
 import httpx
 from src.constants import GRADE_EMOJI, TELEGRAM_MAX_MESSAGE_LENGTH, NOTIFIER_MAX_ISSUES_SHORT
+from src.shared.http_client import get_http_client
 from src.scorer.calculator import ScoreResult
 from src.analyzer.io.static import StaticAnalysisResult
 from src.analyzer.io.ai_review import AiReviewResult
@@ -18,9 +19,9 @@ async def telegram_post_message(bot_token: str, chat_id: str, payload: dict) -> 
         payload:   sendMessage JSON 페이로드 (text, parse_mode 등)
     """
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    async with httpx.AsyncClient() as client:
-        r = await client.post(url, json={"chat_id": chat_id, **payload})
-        r.raise_for_status()
+    client = get_http_client()  # 싱글톤
+    r = await client.post(url, json={"chat_id": chat_id, **payload})
+    r.raise_for_status()
 
 
 def _build_message(  # pylint: disable=too-many-positional-arguments

@@ -27,12 +27,10 @@ async def test_list_user_repos_returns_repo_list():
     mock_resp.json.return_value = mock_response_data
     mock_resp.raise_for_status = MagicMock()
 
-    with patch("httpx.AsyncClient") as mock_client_cls:
+    with patch("src.github_client.repos.get_http_client") as mock_get:
         mock_client = AsyncMock()
+        mock_get.return_value = mock_client
         mock_client.get = AsyncMock(return_value=mock_resp)
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client_cls.return_value = mock_client
 
         result = await list_user_repos("gho_test_token")
 
@@ -52,18 +50,17 @@ async def test_create_webhook_returns_webhook_id():
     mock_resp.json.return_value = {"id": 12345678}
     mock_resp.raise_for_status = MagicMock()
 
-    with patch("httpx.AsyncClient") as mock_client_cls:
+    with patch("src.github_client.repos.get_http_client") as mock_get:
         mock_client = AsyncMock()
+        mock_get.return_value = mock_client
         mock_client.post = AsyncMock(return_value=mock_resp)
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client_cls.return_value = mock_client
 
+        webhook_secret = "random_secret_hex"  # NOSONAR python:S6418 — test fixture, not a real secret
         result = await create_webhook(
             token="gho_test_token",
             repo_full_name="owner/test-repo",
             webhook_url="https://example.com/webhooks/github",
-            secret="random_secret_hex",
+            secret=webhook_secret,
         )
 
     assert result == 12345678
@@ -74,7 +71,7 @@ async def test_create_webhook_returns_webhook_id():
     assert "push" in posted_json["events"]
     assert "pull_request" in posted_json["events"]
     assert posted_json["config"]["url"] == "https://example.com/webhooks/github"
-    assert posted_json["config"]["secret"] == "random_secret_hex"
+    assert posted_json["config"]["secret"] == webhook_secret
 
 
 @pytest.mark.asyncio
@@ -85,12 +82,10 @@ async def test_delete_webhook_returns_true_on_204():
     mock_resp = MagicMock()
     mock_resp.status_code = 204
 
-    with patch("httpx.AsyncClient") as mock_client_cls:
+    with patch("src.github_client.repos.get_http_client") as mock_get:
         mock_client = AsyncMock()
+        mock_get.return_value = mock_client
         mock_client.delete = AsyncMock(return_value=mock_resp)
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client_cls.return_value = mock_client
 
         result = await delete_webhook(
             token="gho_test_token",
@@ -109,12 +104,10 @@ async def test_delete_webhook_returns_false_on_error():
     mock_resp = MagicMock()
     mock_resp.status_code = 404
 
-    with patch("httpx.AsyncClient") as mock_client_cls:
+    with patch("src.github_client.repos.get_http_client") as mock_get:
         mock_client = AsyncMock()
+        mock_get.return_value = mock_client
         mock_client.delete = AsyncMock(return_value=mock_resp)
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client_cls.return_value = mock_client
 
         result = await delete_webhook(
             token="gho_test_token",
@@ -144,15 +137,13 @@ async def test_commit_scamanager_files_creates_new():
     mock_put_resp.status_code = 201
     mock_put_resp.raise_for_status = MagicMock()
 
-    with patch("httpx.AsyncClient") as mock_client_cls:
+    with patch("src.github_client.repos.get_http_client") as mock_get:
         mock_client = AsyncMock()
+        mock_get.return_value = mock_client
         mock_client.get = AsyncMock(return_value=mock_get_resp)
         mock_client.put = AsyncMock(return_value=mock_put_resp)
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client_cls.return_value = mock_client
 
-        result = await commit_scamanager_files(
+        await commit_scamanager_files(
             token="gho_test_token",
             repo_full_name="owner/test-repo",
             server_url="https://scamanager.example.com",
@@ -181,13 +172,11 @@ async def test_commit_scamanager_files_updates_existing():
     mock_put_resp.status_code = 200
     mock_put_resp.raise_for_status = MagicMock()
 
-    with patch("httpx.AsyncClient") as mock_client_cls:
+    with patch("src.github_client.repos.get_http_client") as mock_get:
         mock_client = AsyncMock()
+        mock_get.return_value = mock_client
         mock_client.get = AsyncMock(return_value=mock_get_resp)
         mock_client.put = AsyncMock(return_value=mock_put_resp)
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client_cls.return_value = mock_client
 
         await commit_scamanager_files(
             token="gho_test_token",
@@ -216,13 +205,11 @@ async def test_commit_scamanager_files_returns_true_on_success():
     mock_put_resp.status_code = 201
     mock_put_resp.raise_for_status = MagicMock()
 
-    with patch("httpx.AsyncClient") as mock_client_cls:
+    with patch("src.github_client.repos.get_http_client") as mock_get:
         mock_client = AsyncMock()
+        mock_get.return_value = mock_client
         mock_client.get = AsyncMock(return_value=mock_get_resp)
         mock_client.put = AsyncMock(return_value=mock_put_resp)
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client_cls.return_value = mock_client
 
         result = await commit_scamanager_files(
             token="gho_test_token",
@@ -238,14 +225,14 @@ async def test_commit_scamanager_files_returns_true_on_success():
 async def test_commit_scamanager_files_returns_false_on_error():
     # PUT 요청 중 예외 발생(httpx.HTTPStatusError 등) 시 False 반환
     from src.github_client.repos import commit_scamanager_files
-    import httpx
 
     mock_get_resp = MagicMock()
     mock_get_resp.status_code = 404
     mock_get_resp.json.return_value = {}
 
-    with patch("httpx.AsyncClient") as mock_client_cls:
+    with patch("src.github_client.repos.get_http_client") as mock_get:
         mock_client = AsyncMock()
+        mock_get.return_value = mock_client
         mock_client.get = AsyncMock(return_value=mock_get_resp)
         mock_client.put = AsyncMock(
             side_effect=httpx.HTTPStatusError(
@@ -254,9 +241,6 @@ async def test_commit_scamanager_files_returns_false_on_error():
                 response=MagicMock(status_code=422),
             )
         )
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client_cls.return_value = mock_client
 
         result = await commit_scamanager_files(
             token="gho_test_token",

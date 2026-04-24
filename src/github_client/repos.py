@@ -7,6 +7,7 @@ from urllib.parse import quote
 import httpx
 
 from src.constants import GITHUB_API
+from src.shared.http_client import get_http_client
 
 logger = logging.getLogger(__name__)
 
@@ -27,64 +28,64 @@ def _repo_path(full_name: str) -> str:
 
 async def list_user_repos(token: str) -> list[dict]:
     """사용자가 접근 가능한 리포 목록 반환 (public + private, per_page=100, sort=updated)."""
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(
-            f"{GITHUB_API}/user/repos",
-            params={"per_page": 100, "sort": "updated", "affiliation": "owner,collaborator"},
-            headers=_auth_headers(token),
-        )
-        resp.raise_for_status()
-        return [
-            {
-                "full_name": r["full_name"],
-                "private": r["private"],
-                "description": r.get("description") or "",
-            }
-            for r in resp.json()
-        ]
+    client = get_http_client()  # 싱글톤
+    resp = await client.get(
+        f"{GITHUB_API}/user/repos",
+        params={"per_page": 100, "sort": "updated", "affiliation": "owner,collaborator"},
+        headers=_auth_headers(token),
+    )
+    resp.raise_for_status()
+    return [
+        {
+            "full_name": r["full_name"],
+            "private": r["private"],
+            "description": r.get("description") or "",
+        }
+        for r in resp.json()
+    ]
 
 
 async def create_webhook(token: str, repo_full_name: str, webhook_url: str, secret: str) -> int:
     """Webhook 생성 → webhook_id 반환."""
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            f"{GITHUB_API}/repos/{_repo_path(repo_full_name)}/hooks",
-            json={
-                "name": "web",
-                "active": True,
-                "events": ["push", "pull_request", "issues"],
-                "config": {
-                    "url": webhook_url,
-                    "content_type": "json",
-                    "secret": secret,
-                    "insecure_ssl": "0",
-                },
+    client = get_http_client()  # 싱글톤
+    resp = await client.post(
+        f"{GITHUB_API}/repos/{_repo_path(repo_full_name)}/hooks",
+        json={
+            "name": "web",
+            "active": True,
+            "events": ["push", "pull_request", "issues"],
+            "config": {
+                "url": webhook_url,
+                "content_type": "json",
+                "secret": secret,
+                "insecure_ssl": "0",
             },
-            headers=_auth_headers(token),
-        )
-        resp.raise_for_status()
-        return resp.json()["id"]
+        },
+        headers=_auth_headers(token),
+    )
+    resp.raise_for_status()
+    return resp.json()["id"]
 
 
 async def list_webhooks(token: str, repo_full_name: str) -> list[dict]:
     """리포의 모든 GitHub 웹훅 목록을 반환한다."""
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(
-            f"{GITHUB_API}/repos/{_repo_path(repo_full_name)}/hooks",
-            headers=_auth_headers(token),
-        )
-        resp.raise_for_status()
-        return resp.json()
+    client = get_http_client()  # 싱글톤
+    resp = await client.get(
+        f"{GITHUB_API}/repos/{_repo_path(repo_full_name)}/hooks",
+        headers=_auth_headers(token),
+    )
+    resp.raise_for_status()
+    return resp.json()
 
 
 async def delete_webhook(token: str, repo_full_name: str, webhook_id: int) -> bool:
     """Webhook 삭제. 성공(204) 시 True, 그 외 False 반환."""
-    async with httpx.AsyncClient() as client:
-        resp = await client.delete(
-            f"{GITHUB_API}/repos/{_repo_path(repo_full_name)}/hooks/{webhook_id}",
-            headers=_auth_headers(token),
-        )
-        return resp.status_code == 204
+    client = get_http_client()  # 싱글톤
+    resp = await client.delete(
+        f"{GITHUB_API}/repos/{_repo_path(repo_full_name)}/hooks/{webhook_id}",
+        headers=_auth_headers(token),
+    )
+    return resp.status_code == 204
 
 
 _INSTALL_HOOK_SH = """\
@@ -211,21 +212,21 @@ async def commit_scamanager_files(
     }
 
     try:
-        async with httpx.AsyncClient() as client:
-            for path, content in files.items():
-                # path 는 module-level 딕셔너리 키(상수) 이지만 방어적 인코딩 적용
-                url = f"{GITHUB_API}/repos/{_repo_path(repo_full_name)}/contents/{quote(path)}"
-                # 기존 파일 sha 조회
-                get_resp = await client.get(url, headers=_auth_headers(token))
-                body: dict = {
-                    "message": f"chore: SCAManager hook 설정 추가 ({path})",
-                    "content": base64.b64encode(content.encode()).decode(),
-                }
-                if get_resp.status_code == 200:
-                    body["sha"] = get_resp.json().get("sha", "")
+        client = get_http_client()  # 싱글톤 — 루프 밖에서 1회만 호출
+        for path, content in files.items():
+            # path 는 module-level 딕셔너리 키(상수) 이지만 방어적 인코딩 적용
+            url = f"{GITHUB_API}/repos/{_repo_path(repo_full_name)}/contents/{quote(path)}"
+            # 기존 파일 sha 조회
+            get_resp = await client.get(url, headers=_auth_headers(token))
+            body: dict = {
+                "message": f"chore: SCAManager hook 설정 추가 ({path})",
+                "content": base64.b64encode(content.encode()).decode(),
+            }
+            if get_resp.status_code == 200:
+                body["sha"] = get_resp.json().get("sha", "")
 
-                put_resp = await client.put(url, json=body, headers=_auth_headers(token))
-                put_resp.raise_for_status()
+            put_resp = await client.put(url, json=body, headers=_auth_headers(token))
+            put_resp.raise_for_status()
 
         return True
     except httpx.HTTPError as exc:

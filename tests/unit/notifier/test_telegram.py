@@ -109,12 +109,10 @@ async def test_telegram_post_message_raises_on_http_error():
     mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
         "403 Forbidden", request=MagicMock(), response=MagicMock()
     )
-    with patch("src.notifier.telegram.httpx.AsyncClient") as mock_cls:
+    with patch("src.notifier.telegram.get_http_client") as mock_get:
         mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_get.return_value = mock_client
         mock_client.post = AsyncMock(return_value=mock_response)
-        mock_cls.return_value = mock_client
 
         with pytest.raises(httpx.HTTPStatusError):
             await telegram_post_message(
@@ -126,12 +124,10 @@ async def test_telegram_post_message_raises_on_http_error():
 
 async def test_telegram_post_message_connect_error_propagates():
     """네트워크 연결 실패 시 ConnectError가 전파된다."""
-    with patch("src.notifier.telegram.httpx.AsyncClient") as mock_cls:
+    with patch("src.notifier.telegram.get_http_client") as mock_get:
         mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_get.return_value = mock_client
         mock_client.post = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
-        mock_cls.return_value = mock_client
 
         with pytest.raises(httpx.ConnectError):
             await telegram_post_message(
@@ -177,12 +173,10 @@ async def test_telegram_post_message_sends_correct_chat_id():
     """telegram_post_message가 지정된 chat_id로 POST 요청을 전송한다."""
     mock_response = MagicMock()
     mock_response.raise_for_status = MagicMock()
-    with patch("src.notifier.telegram.httpx.AsyncClient") as mock_cls:
+    with patch("src.notifier.telegram.get_http_client") as mock_get:
         mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_get.return_value = mock_client
         mock_client.post = AsyncMock(return_value=mock_response)
-        mock_cls.return_value = mock_client
 
         await telegram_post_message(
             bot_token="123:ABC",

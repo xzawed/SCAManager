@@ -15,12 +15,10 @@ from src.gate.github_review import post_github_review, merge_pr
 async def test_post_github_review_approve():
     mock_response = MagicMock()
     mock_response.raise_for_status = MagicMock()
-    with patch("src.gate.github_review.httpx.AsyncClient") as mock_cls:
+    with patch("src.gate.github_review.get_http_client") as mock_get:
         mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_get.return_value = mock_client
         mock_client.post = AsyncMock(return_value=mock_response)
-        mock_cls.return_value = mock_client
         await post_github_review("token", "owner/repo", 5, "approve", "LGTM")
         call_str = str(mock_client.post.call_args)
         assert "APPROVE" in call_str
@@ -29,24 +27,20 @@ async def test_post_github_review_approve():
 async def test_post_github_review_reject():
     mock_response = MagicMock()
     mock_response.raise_for_status = MagicMock()
-    with patch("src.gate.github_review.httpx.AsyncClient") as mock_cls:
+    with patch("src.gate.github_review.get_http_client") as mock_get:
         mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_get.return_value = mock_client
         mock_client.post = AsyncMock(return_value=mock_response)
-        mock_cls.return_value = mock_client
         await post_github_review("token", "owner/repo", 5, "reject", "Needs work")
         assert "REQUEST_CHANGES" in str(mock_client.post.call_args)
 
 async def test_post_github_review_raises_on_error():
-    with patch("src.gate.github_review.httpx.AsyncClient") as mock_cls:
+    with patch("src.gate.github_review.get_http_client") as mock_get:
         mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_get.return_value = mock_client
         mock_response = MagicMock()
         mock_response.raise_for_status.side_effect = Exception("GitHub API error")
         mock_client.post = AsyncMock(return_value=mock_response)
-        mock_cls.return_value = mock_client
         with pytest.raises(Exception, match="GitHub API error"):
             await post_github_review("token", "owner/repo", 5, "approve", "OK")
 
@@ -64,13 +58,11 @@ async def test_merge_pr_success():
     put_response = MagicMock()
     put_response.raise_for_status = MagicMock()
 
-    with patch("src.gate.github_review.httpx.AsyncClient") as mock_cls:
+    with patch("src.gate.github_review.get_http_client") as mock_get:
         mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_get.return_value = mock_client
         mock_client.get = AsyncMock(return_value=get_response)
         mock_client.put = AsyncMock(return_value=put_response)
-        mock_cls.return_value = mock_client
         result = await merge_pr("token", "owner/repo", 5)
 
     assert result == (True, None)
@@ -89,13 +81,11 @@ async def test_merge_pr_custom_method():
     put_response = MagicMock()
     put_response.raise_for_status = MagicMock()
 
-    with patch("src.gate.github_review.httpx.AsyncClient") as mock_cls:
+    with patch("src.gate.github_review.get_http_client") as mock_get:
         mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_get.return_value = mock_client
         mock_client.get = AsyncMock(return_value=get_response)
         mock_client.put = AsyncMock(return_value=put_response)
-        mock_cls.return_value = mock_client
         result = await merge_pr("token", "owner/repo", 5, merge_method="merge")
 
     assert result == (True, None)
@@ -117,13 +107,11 @@ async def test_merge_pr_returns_false_on_http_error():
         "405 Method Not Allowed", request=mock_request, response=put_response
     )
 
-    with patch("src.gate.github_review.httpx.AsyncClient") as mock_cls:
+    with patch("src.gate.github_review.get_http_client") as mock_get:
         mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_get.return_value = mock_client
         mock_client.get = AsyncMock(return_value=get_response)
         mock_client.put = AsyncMock(return_value=put_response)
-        mock_cls.return_value = mock_client
         result = await merge_pr("token", "owner/repo", 5)
 
     assert result[0] is False
@@ -132,11 +120,10 @@ async def test_merge_pr_returns_false_on_http_error():
 
 async def test_merge_pr_returns_false_on_connection_error():
     # 연결 오류 발생 시 (False, str) 반환 — 예외 전파 없음
-    with patch("src.gate.github_review.httpx.AsyncClient") as mock_cls:
+    with patch("src.gate.github_review.get_http_client") as mock_get:
         mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
-        mock_client.__aexit__ = AsyncMock(return_value=False)
-        mock_cls.return_value = mock_client
+        mock_get.return_value = mock_client
+        mock_client.get = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
         result = await merge_pr("token", "owner/repo", 5)
 
     assert result[0] is False
@@ -155,12 +142,10 @@ async def test_get_pr_mergeable_state_returns_state_string():
     get_response.raise_for_status = MagicMock()
     get_response.json.return_value = {"mergeable_state": "clean"}
 
-    with patch("src.gate.github_review.httpx.AsyncClient") as mock_cls:
+    with patch("src.gate.github_review.get_http_client") as mock_get:
         mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_get.return_value = mock_client
         mock_client.get = AsyncMock(return_value=get_response)
-        mock_cls.return_value = mock_client
 
         state = await get_pr_mergeable_state("token", "owner/repo", 5)
 
@@ -183,13 +168,11 @@ async def test_merge_pr_pre_checks_mergeable_state_clean():
     put_response = MagicMock()
     put_response.raise_for_status = MagicMock()
 
-    with patch("src.gate.github_review.httpx.AsyncClient") as mock_cls:
+    with patch("src.gate.github_review.get_http_client") as mock_get:
         mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_get.return_value = mock_client
         mock_client.get = AsyncMock(return_value=get_response)
         mock_client.put = AsyncMock(return_value=put_response)
-        mock_cls.return_value = mock_client
 
         result = await merge_pr("token", "owner/repo", 7)
 
@@ -205,13 +188,11 @@ async def test_merge_pr_skips_on_dirty_state():
     get_response.raise_for_status = MagicMock()
     get_response.json.return_value = {"mergeable_state": "dirty"}
 
-    with patch("src.gate.github_review.httpx.AsyncClient") as mock_cls:
+    with patch("src.gate.github_review.get_http_client") as mock_get:
         mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_get.return_value = mock_client
         mock_client.get = AsyncMock(return_value=get_response)
         mock_client.put = AsyncMock()
-        mock_cls.return_value = mock_client
 
         result = await merge_pr("token", "owner/repo", 7)
 
@@ -237,14 +218,12 @@ async def test_merge_pr_retries_on_unknown_state():
     put_response.raise_for_status = MagicMock()
 
     with patch("src.gate.github_review.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
-        with patch("src.gate.github_review.httpx.AsyncClient") as mock_cls:
+        with patch("src.gate.github_review.get_http_client") as mock_get:
             mock_client = AsyncMock()
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_get.return_value = mock_client
             # 첫 번째 GET → unknown, 두 번째 GET → clean
             mock_client.get = AsyncMock(side_effect=[unknown_response, clean_response])
             mock_client.put = AsyncMock(return_value=put_response)
-            mock_cls.return_value = mock_client
 
             result = await merge_pr("token", "owner/repo", 7)
 
@@ -274,13 +253,11 @@ async def test_merge_pr_405_not_mergeable():
         "405", request=MagicMock(), response=put_response
     )
 
-    with patch("src.gate.github_review.httpx.AsyncClient") as mock_cls:
+    with patch("src.gate.github_review.get_http_client") as mock_get:
         mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_get.return_value = mock_client
         mock_client.get = AsyncMock(return_value=get_response)
         mock_client.put = AsyncMock(return_value=put_response)
-        mock_cls.return_value = mock_client
 
         result = await merge_pr("token", "owner/repo", 7)
 
@@ -302,13 +279,11 @@ async def test_merge_pr_403_forbidden():
         "403", request=MagicMock(), response=put_response
     )
 
-    with patch("src.gate.github_review.httpx.AsyncClient") as mock_cls:
+    with patch("src.gate.github_review.get_http_client") as mock_get:
         mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_get.return_value = mock_client
         mock_client.get = AsyncMock(return_value=get_response)
         mock_client.put = AsyncMock(return_value=put_response)
-        mock_cls.return_value = mock_client
 
         result = await merge_pr("token", "owner/repo", 7)
 
@@ -330,13 +305,11 @@ async def test_merge_pr_422_unprocessable():
         "422", request=MagicMock(), response=put_response
     )
 
-    with patch("src.gate.github_review.httpx.AsyncClient") as mock_cls:
+    with patch("src.gate.github_review.get_http_client") as mock_get:
         mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_get.return_value = mock_client
         mock_client.get = AsyncMock(return_value=get_response)
         mock_client.put = AsyncMock(return_value=put_response)
-        mock_cls.return_value = mock_client
 
         result = await merge_pr("token", "owner/repo", 7)
 
@@ -358,13 +331,11 @@ async def test_merge_pr_409_conflict():
         "409", request=MagicMock(), response=put_response
     )
 
-    with patch("src.gate.github_review.httpx.AsyncClient") as mock_cls:
+    with patch("src.gate.github_review.get_http_client") as mock_get:
         mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_get.return_value = mock_client
         mock_client.get = AsyncMock(return_value=get_response)
         mock_client.put = AsyncMock(return_value=put_response)
-        mock_cls.return_value = mock_client
 
         result = await merge_pr("token", "owner/repo", 7)
 

@@ -544,15 +544,16 @@ def test_add_repo_post_creates_repo_and_webhook():
     from unittest.mock import AsyncMock, patch, MagicMock
 
     with patch("src.ui.routes.add_repo.create_webhook", new_callable=AsyncMock, return_value=77777):
-        with patch("src.ui.routes.add_repo.SessionLocal") as mock_sl:
-            mock_db = MagicMock()
-            mock_db.query.return_value.filter.return_value.first.return_value = None  # 미등록
-            mock_sl.return_value.__enter__.return_value = mock_db
-            r = client.post(
-                "/repos/add",
-                data={"repo_full_name": "owner/new-repo"},
-                follow_redirects=False,
-            )
+        with patch("src.ui.routes.add_repo.commit_scamanager_files", new_callable=AsyncMock, return_value=True):
+            with patch("src.ui.routes.add_repo.SessionLocal") as mock_sl:
+                mock_db = MagicMock()
+                mock_db.query.return_value.filter.return_value.first.return_value = None  # 미등록
+                mock_sl.return_value.__enter__.return_value = mock_db
+                r = client.post(
+                    "/repos/add",
+                    data={"repo_full_name": "owner/new-repo"},
+                    follow_redirects=False,
+                )
 
     assert r.status_code == 303
     assert "/repos/owner/new-repo" in r.headers["location"]
@@ -754,10 +755,11 @@ def test_reinstall_webhook_deletes_and_recreates():
     mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
         id=1, full_name="owner/repo", user_id=None, webhook_id=999
     )
-    with patch("src.ui.routes.settings.delete_webhook", new_callable=AsyncMock, return_value=True):
-        with patch("src.ui.routes.settings.create_webhook", new_callable=AsyncMock, return_value=12345):
-            with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
-                r = client.post("/repos/owner%2Frepo/reinstall-webhook", follow_redirects=False)
+    with patch("src.ui.routes.settings.list_webhooks", new_callable=AsyncMock, return_value=[]):
+        with patch("src.ui.routes.settings.delete_webhook", new_callable=AsyncMock, return_value=True):
+            with patch("src.ui.routes.settings.create_webhook", new_callable=AsyncMock, return_value=12345):
+                with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
+                    r = client.post("/repos/owner%2Frepo/reinstall-webhook", follow_redirects=False)
     assert r.status_code == 303
     assert "hook_ok=1" in r.headers["location"]
 
@@ -780,10 +782,11 @@ def test_reinstall_webhook_no_existing_webhook():
     mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
         id=1, full_name="owner/repo", user_id=None, webhook_id=None
     )
-    with patch("src.ui.routes.settings.delete_webhook", new_callable=AsyncMock) as mock_del:
-        with patch("src.ui.routes.settings.create_webhook", new_callable=AsyncMock, return_value=99999):
-            with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
-                r = client.post("/repos/owner%2Frepo/reinstall-webhook", follow_redirects=False)
+    with patch("src.ui.routes.settings.list_webhooks", new_callable=AsyncMock, return_value=[]):
+        with patch("src.ui.routes.settings.delete_webhook", new_callable=AsyncMock) as mock_del:
+            with patch("src.ui.routes.settings.create_webhook", new_callable=AsyncMock, return_value=99999):
+                with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
+                    r = client.post("/repos/owner%2Frepo/reinstall-webhook", follow_redirects=False)
     mock_del.assert_not_called()  # webhook_id None → 삭제 스킵
     assert r.status_code == 303
 

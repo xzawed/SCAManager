@@ -16,12 +16,10 @@ async def test_send_gate_request_calls_telegram_api():
     mock_response = MagicMock()
     mock_response.raise_for_status = MagicMock()
     # telegram_gate는 notifier.telegram.telegram_post_message를 사용
-    with patch("src.notifier.telegram.httpx.AsyncClient") as mock_cls:
+    with patch("src.notifier.telegram.get_http_client") as mock_get:
         mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_get.return_value = mock_client
         mock_client.post = AsyncMock(return_value=mock_response)
-        mock_cls.return_value = mock_client
         await send_gate_request(
             bot_token="123:ABC",
             chat_id="-100999",
@@ -41,12 +39,10 @@ async def test_send_gate_request_includes_analysis_id_in_callback():
     score_result = ScoreResult(total=60, grade="C", code_quality_score=20, security_score=15, breakdown={})
     mock_response = MagicMock()
     mock_response.raise_for_status = MagicMock()
-    with patch("src.notifier.telegram.httpx.AsyncClient") as mock_cls:
+    with patch("src.notifier.telegram.get_http_client") as mock_get:
         mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_get.return_value = mock_client
         mock_client.post = AsyncMock(return_value=mock_response)
-        mock_cls.return_value = mock_client
         await send_gate_request(
             bot_token="123:ABC",
             chat_id="-100999",
