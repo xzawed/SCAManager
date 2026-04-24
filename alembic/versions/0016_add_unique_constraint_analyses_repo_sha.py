@@ -14,6 +14,15 @@ depends_on = None
 
 def upgrade() -> None:
     """Add DB-level unique constraint to prevent duplicate analysis rows on race condition."""
+    # Remove duplicate (repo_id, commit_sha) rows keeping the highest id before adding constraint
+    op.execute("""
+        DELETE FROM analyses
+        WHERE id NOT IN (
+            SELECT MAX(id)
+            FROM analyses
+            GROUP BY repo_id, commit_sha
+        )
+    """)
     op.create_unique_constraint(
         "uq_analyses_repo_sha",
         "analyses",
