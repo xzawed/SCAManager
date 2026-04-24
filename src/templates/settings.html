@@ -619,6 +619,21 @@
             </div>
           </div>
 
+          <!-- Auto-merge 실패 시 Issue 생성 (auto_merge OFF 시 숨김) -->
+          <div id="mergeIssueRow" class="{% if not config.auto_merge %}is-hidden{% endif %}" style="margin-top:.75rem;">
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <div class="t-title">실패 시 Issue 자동 생성</div>
+                <div class="t-desc">Auto-merge 실패 시 권장 조치를 담은<br>GitHub Issue 자동 생성</div>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" name="auto_merge_issue_on_failure" value="on"
+                       {% if config.auto_merge_issue_on_failure %}checked{% endif %}>
+                <span class="toggle-track"></span>
+              </label>
+            </div>
+          </div>
+
         </div>
       </div>
 
@@ -1095,8 +1110,14 @@
     btn.setAttribute('aria-label', isHidden ? '값 숨기기' : '값 보이기');
   }
 
+  function toggleMergeIssueOption(show) {
+    const row = document.getElementById('mergeIssueRow');
+    if (row) row.classList.toggle('is-hidden', !show);
+  }
+
   function toggleMergeThreshold(checked) {
     document.getElementById('mergeThresholdRow').classList.toggle('is-hidden', !checked);
+    toggleMergeIssueOption(checked);
   }
 
   // 저장 오류 시 고급설정 아코디언 자동 펼침 — 문제 필드
