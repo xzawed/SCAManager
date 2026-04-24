@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-24 기준 — Phase F Quick Win + F.1 관측 완료 · Phase F.3 실패 어드바이저 완료)
+## 현재 수치 (2026-04-24 기준 — Phase F Quick Win + F.1 관측 완료 · Phase F.3 실패 어드바이저 완료 · G.2 수치 동기화)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1247개** | pytest (0 failed) — Phase F.3 +9 (advisor·merge_failure_issue·engine F.3 경로) |
+| 단위 테스트 | **1293개** | pytest (0 failed) — CI #24889251990 (2026-04-24 12:24 UTC) 실측 |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
@@ -43,6 +43,12 @@
 | `tests/conftest.py` | 환경변수 주입 + _webhook_secret_cache autouse 클리어 |
 
 ## 작업 이력 (그룹별)
+
+### 그룹 35 (2026-04-24 · Phase G.0~G.4 감사 후속)
+
+- **G.0**: 14 에이전트 × 3 Round 전면 감사 보고서 아카이브 (`docs/reports/2026-04-24-comprehensive-audit.md`)
+- **G.1**: P1-1 `issue_count` → `file_count` + `issue_count` 분리 (`src/worker/pipeline.py:327`)
+- **G.2**: 테스트 수치 1293 으로 3-way 동기화 (README/STATE/CLAUDE) + `.env.example` SMTP 블록 추가
 
 ### 그룹 34 — Phase F.3 실패 어드바이저 + GitHub Issue 생성 (2026-04-24)
 

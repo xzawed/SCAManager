@@ -201,8 +201,8 @@ def test_secret_token_valid_passes():
     assert r.status_code == 200
 
 
-def test_secret_token_invalid_skips_callback():
-    """TELEGRAM_WEBHOOK_SECRET 설정 + 잘못된 헤더 → callback 미호출."""
+def test_secret_token_invalid_returns_401():
+    """TELEGRAM_WEBHOOK_SECRET 설정 + 잘못된 헤더 → 401 반환, callback 미호출."""
     with patch("src.webhook.providers.telegram.settings.telegram_webhook_secret", "mysecret"):
         with patch("src.webhook.providers.telegram.handle_gate_callback", new_callable=AsyncMock) as mock_h:
             r = client.post(
@@ -210,7 +210,7 @@ def test_secret_token_invalid_skips_callback():
                 json=APPROVE,
                 headers={"X-Telegram-Bot-Api-Secret-Token": "wrong"},
             )
-    assert r.status_code == 200
+    assert r.status_code == 401
     mock_h.assert_not_called()
 
 
