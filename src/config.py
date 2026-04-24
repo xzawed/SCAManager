@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     sentry_dsn: str = ""
     sentry_environment: str = "production"  # "production" | "staging" | "development"
     sentry_traces_sample_rate: float = 0.1  # 0.0~1.0, performance tracing 샘플링
+    # Auto-merge unknown 상태 재시도 (Phase F Quick Win) — 운영 중 튜닝용
+    merge_unknown_retry_limit: int = 3        # 기본 3회
+    merge_unknown_retry_delay: float = 3.0    # 기본 3초 간격 (총 최대 9초)
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 

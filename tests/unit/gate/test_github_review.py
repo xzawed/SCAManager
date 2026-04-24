@@ -290,7 +290,7 @@ async def test_merge_pr_405_not_mergeable():
 
 
 async def test_merge_pr_403_forbidden():
-    """HTTP 403 → (False, "forbidden:...") 반환."""
+    """HTTP 403 → (False, "permission_denied:...") 반환."""
     get_response = MagicMock()
     get_response.raise_for_status = MagicMock()
     get_response.json.return_value = {"mergeable_state": "clean"}
@@ -314,7 +314,7 @@ async def test_merge_pr_403_forbidden():
 
     assert result[0] is False
     assert isinstance(result[1], str)
-    assert result[1].startswith("forbidden:")
+    assert result[1].startswith("permission_denied:")
 
 
 async def test_merge_pr_422_unprocessable():
@@ -346,7 +346,7 @@ async def test_merge_pr_422_unprocessable():
 
 
 async def test_merge_pr_409_conflict():
-    """HTTP 409 → (False, "conflict:...") 반환."""
+    """HTTP 409 → (False, "conflict_sha_changed:...") 반환."""
     get_response = MagicMock()
     get_response.raise_for_status = MagicMock()
     get_response.json.return_value = {"mergeable_state": "clean"}
@@ -370,4 +370,4 @@ async def test_merge_pr_409_conflict():
 
     assert result[0] is False
     assert isinstance(result[1], str)
-    assert result[1].startswith("conflict:")
+    assert result[1].startswith("conflict_sha_changed:")

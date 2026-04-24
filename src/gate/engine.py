@@ -190,8 +190,9 @@ async def _run_auto_merge(
             reason=reason or "unknown",
             chat_id=config.notify_chat_id or settings.telegram_chat_id,
         )
-    except (httpx.HTTPError, KeyError) as exc:
-        logger.error("Auto Merge 실패: %s", exc)
+    # Phase F QW4: RuntimeError/ValueError 도 포착해 알림 스킵 방지
+    except (httpx.HTTPError, KeyError, RuntimeError, ValueError) as exc:
+        logger.error("Auto Merge 실패 (repo=%s, pr=%d): %s", repo_name, pr_number, exc)
 
 
 async def _notify_merge_failure(
@@ -206,11 +207,14 @@ async def _notify_merge_failure(
     """auto_merge 실패를 Telegram 으로 알린다. chat_id 없으면 스킵."""
     if not chat_id or not settings.telegram_bot_token:
         return
+    # Phase F QW3: GitHub PR 링크 추가 — 사용자 즉시 접근
+    pr_url = f"https://github.com/{repo_name}/pull/{pr_number}"
     text = (
         "⚠️ <b>Auto Merge 실패</b>\n"
         f"📁 <code>{escape(repo_name)}</code> — PR #{pr_number}\n"
         f"점수: {score}점 (기준 {threshold}점 이상)\n"
-        f"사유: <code>{escape(reason)}</code>"
+        f"사유: <code>{escape(reason)}</code>\n"
+        f"🔗 <a href=\"{escape(pr_url)}\">GitHub 에서 보기</a>"
     )
     try:
         await telegram_post_message(
