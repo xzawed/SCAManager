@@ -443,4 +443,4 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 
 ## 현재 상태
 
-최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1293개 | E2E 49개 | pylint 10.00 | 커버리지 96.2% | SonarCloud QG OK · Security A · Reliability A · Maintainability A · Tier1 정적분석 10종 · Observability (Sentry + Claude metrics + stage timing + MergeAttempt) · AI 점수 피드백 루프 · Settings Minimal Mode · Onboarding 3단계 튜토리얼 · 5-렌즈 감사 95+ 통과 · Phase F Quick Win + F.1 관측 완료 · Phase F.3 실패 어드바이저 완료
+최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1293개 | E2E 49개 | pylint 10.00 | 커버리지 96.2% | SonarCloud QG OK · Security A · Reliability A · Maintainability A · Tier1 정적분석 10종 · Observability (Sentry + Claude metrics + stage timing + MergeAttempt) · AI 점수 피드백 루프 · Settings Minimal Mode · Onboarding 3단계 튜토리얼 · 5-렌즈 감사 95+ 통과 · Phase F Quick Win + F.1 관측 완료 · Phase F.3 실패 어드바이저 완료 · Phase G 완료 (P1-5건 수정)
