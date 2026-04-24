@@ -138,9 +138,7 @@ async def test_fetch_deployment_logs_success():
     mock_client = AsyncMock()
     mock_client.post = AsyncMock(return_value=mock_resp)
 
-    with patch("src.railway_client.logs.httpx.AsyncClient") as mock_cls:
-        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+    with patch("src.railway_client.logs.get_http_client", return_value=mock_client):
         result = await fetch_deployment_logs("tok", "deploy-123")
 
     assert "Installing dependencies" in result
@@ -154,9 +152,7 @@ async def test_fetch_deployment_logs_http_error():
     mock_client = AsyncMock()
     mock_client.post = AsyncMock(side_effect=_httpx.RequestError("timeout"))
 
-    with patch("src.railway_client.logs.httpx.AsyncClient") as mock_cls:
-        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+    with patch("src.railway_client.logs.get_http_client", return_value=mock_client):
         with pytest.raises(RailwayLogFetchError):
             await fetch_deployment_logs("tok", "deploy-123")
 
@@ -170,8 +166,6 @@ async def test_fetch_deployment_logs_graphql_error():
     mock_client = AsyncMock()
     mock_client.post = AsyncMock(return_value=mock_resp)
 
-    with patch("src.railway_client.logs.httpx.AsyncClient") as mock_cls:
-        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+    with patch("src.railway_client.logs.get_http_client", return_value=mock_client):
         with pytest.raises(RailwayLogFetchError):
             await fetch_deployment_logs("tok", "deploy-123")
