@@ -1,6 +1,4 @@
 """GitHub Issues API helpers."""
-import httpx
-
 from src.constants import GITHUB_API
 from src.github_client.helpers import github_api_headers
 from src.shared.http_client import get_http_client
