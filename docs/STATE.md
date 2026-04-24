@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-24 기준 — Phase F Quick Win + F.1 관측 완료)
+## 현재 수치 (2026-04-24 기준 — Phase F Quick Win + F.1 관측 완료 · Phase F.3 실패 어드바이저 완료)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1275개** | pytest (0 failed) — Phase F.1 +24 (MergeAttempt ORM·repo·shared·engine) |
+| 단위 테스트 | **1247개** | pytest (0 failed) — Phase F.3 +9 (advisor·merge_failure_issue·engine F.3 경로) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
@@ -34,6 +34,8 @@
 | `src/webhook/router.py` | GitHub Webhook 수신 + per-repo secret TTL 캐시(5분) |
 | `src/gate/engine.py` | 3-옵션 Gate + GateDecision upsert (중복 INSERT 방지) + MergeAttempt 관측(Phase F.1) |
 | `src/gate/merge_reasons.py` | auto-merge 실패 사유 정규 태그 상수 (Phase F QW5) |
+| `src/gate/merge_failure_advisor.py` | `get_advice(reason)` — reason tag → 권장 조치 텍스트 (Phase F.3, 순수 함수) |
+| `src/notifier/merge_failure_issue.py` | `create_merge_failure_issue()` — auto-merge 실패 GitHub Issue (Phase F.3, dedup 24h) |
 | `src/models/merge_attempt.py` | MergeAttempt ORM — score/threshold 스냅샷 + failure_reason 태그 (Phase F.1, append-only) |
 | `src/shared/merge_metrics.py` | parse_reason_tag + log_merge_attempt — DB INSERT + 구조화 로그 (Phase F.1) |
 | `src/repositories/` | DB 접근 계층 7종 — repository_repo, analysis_repo, analysis_feedback_repo, merge_attempt_repo, gate_decision_repo, repo_config_repo, user_repo |
@@ -41,6 +43,25 @@
 | `tests/conftest.py` | 환경변수 주입 + _webhook_secret_cache autouse 클리어 |
 
 ## 작업 이력 (그룹별)
+
+### 그룹 34 — Phase F.3 실패 어드바이저 + GitHub Issue 생성 (2026-04-24)
+
+`count_failures_by_reason` 조기 조회 결과 + F.1 로드맵에 따라 F.3 (실패 알림 고도화) 착수 및 완료.
+
+**신규 모듈**:
+
+| 모듈 | 역할 |
+|------|------|
+| `src/gate/merge_failure_advisor.py` | `get_advice(reason)` — reason tag → 권장 조치 텍스트 (순수 함수, Phase F.3) |
+| `src/notifier/merge_failure_issue.py` | `create_merge_failure_issue()` — auto-merge 실패 GitHub Issue 생성 (dedup 24h) |
+
+**수정 모듈**:
+- `src/gate/engine.py::_run_auto_merge` — 실패 시 `get_advice()` 호출 + `auto_merge_issue_on_failure` 설정 시 `create_merge_failure_issue()` 조건부 실행
+- `src/config_manager/manager.py` + ORM + API body + 설정 폼 — `auto_merge_issue_on_failure` 필드 5-way sync
+- `src/templates/settings.html` — `toggleMergeIssueOption` JS 헬퍼 + merge issue 토글 UI
+
+**테스트 증분**: +9 (advisor 3 + merge_failure_issue 3 + engine F.3 경로 3) — 1247 passed.
+**품질**: pylint 10.00 · bandit HIGH 0 · 회귀 없음.
 
 ### 그룹 33 — Phase F Quick Win + F.1 관측 기반 구축 (2026-04-24)
 
@@ -75,7 +96,7 @@
 **테스트 증분**: +24 (models 4 + repo 5 + shared 12 + engine 3) — 1251 → **1275 passed**.
 **품질**: pylint 10.00 · bandit 0 issue (B110 rollback 블록 nosec + 사유 명시).
 
-**Phase F.2~F.5 착수 대기 (2026-04-24 결정)**: 원본 보고서 로직에 따라 **F.1 실측 데이터 축적 후 재평가**. MergeAttempt 배포 직후이므로 실제 실패 분포(`failure_reason` 카운트)가 아직 0 건. 2~4주 운영 후 `count_failures_by_reason(since=...)` 결과로 F.2(사전 체크)·F.3(실패 advisor)·F.4(대시보드)·F.5(BPR 체크) 중 임팩트 큰 항목부터 선정. 조기 착수 시 "데이터 없는 최적화" 가 되어 Claude 권장(Option B)에 위배.
+**Phase F.2~F.5 착수 대기 (2026-04-24 결정)**: 원본 보고서 로직에 따라 **F.1 실측 데이터 축적 후 재평가**. MergeAttempt 배포 직후이므로 실제 실패 분포(`failure_reason` 카운트)가 아직 0 건. 2~4주 운영 후 `count_failures_by_reason(since=...)` 결과로 F.2(사전 체크)·F.4(대시보드)·F.5(BPR 체크) 중 임팩트 큰 항목부터 선정. **F.3 완료 (그룹 34)** — 실패 어드바이저 + GitHub Issue 생성. 조기 착수 시 "데이터 없는 최적화" 가 되어 Claude 권장(Option B)에 위배.
 
 ### 그룹 32 — Auto-merge 실패 진단 3-에이전트 + Phase F 로드맵 (2026-04-24)
 

@@ -108,7 +108,8 @@ src/
 │   ├── _common.py              # score_from_result() 공용 헬퍼 (engine 과 향후 actions 공유)
 │   ├── engine.py               # run_gate_check() — 3-옵션 독립 처리 (직접 구현)
 │   ├── github_review.py        # post_github_review(), merge_pr()
-│   └── telegram_gate.py        # send_gate_request() — 인라인 키보드 메시지
+│   ├── telegram_gate.py        # send_gate_request() — 인라인 키보드 메시지
+│   └── merge_failure_advisor.py # get_advice(reason) — reason tag → 권장 조치 텍스트 (Phase F.3, 순수 함수)
 ├── notifier/                   # `__init__.py` 가 import 시 각 채널 모듈 자동 로드 → REGISTRY 등록 (Phase S.3-E)
 │   ├── __init__.py             # 8개 notifier 모듈 import (등록 순서 = 발송 우선순위)
 │   ├── _common.py              # 공통 헬퍼 — format_ref, get_all_issues, truncate_message, truncate_issue_msg
@@ -123,7 +124,8 @@ src/
 │   ├── github_comment.py       # post_pr_comment_from_result() — result dict 기반 (PR 전용, gate/engine 에서 호출)
 │   ├── github_commit_comment.py # post_commit_comment() + _CommitCommentNotifier (Push 전용)
 │   ├── github_issue.py         # create_low_score_issue() + _IssueNotifier (저점 OR bandit HIGH 시)
-│   └── railway_issue.py        # create_deploy_failure_issue() — Railway 빌드 실패 Issue (dedup, webhook 경유)
+│   ├── railway_issue.py        # create_deploy_failure_issue() — Railway 빌드 실패 Issue (dedup, webhook 경유)
+│   └── merge_failure_issue.py  # create_merge_failure_issue() — auto-merge 실패 GitHub Issue (Phase F.3, dedup 24h)
 ├── api/
 │   ├── auth.py                 # require_api_key Depends (X-API-Key 헤더)
 │   ├── deps.py                 # get_repo_or_404(repo_name, db) 공용 헬퍼
@@ -394,7 +396,7 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 - **telegram_post_message**: `src/notifier/telegram.py`의 공용 헬퍼. `src/gate/telegram_gate.py`도 이 헬퍼 사용 — `httpx` 직접 import 금지.
 - **get_repo_or_404**: `src/api/deps.py`의 `get_repo_or_404(repo_name, db)` 사용. 신규 API 엔드포인트에서 Repository 조회 시 동일 패턴 사용.
 - **auto_merge GitHub 권한**: `merge_pr()`은 `repo` 스코프 또는 Fine-grained `pull_requests: write` 권한 필요 — 권한 부족 시 False 반환(파이프라인 미중단). Branch Protection Rules가 있으면 APPROVE 후에도 Merge 실패 가능.
-- **MergeAttempt 관측 (Phase F.1)**: `src/gate/engine.py::_run_auto_merge`가 `merge_pr` 직후 `log_merge_attempt()`(`src/shared/merge_metrics.py`)로 모든 시도(성공·실패)를 DB에 기록. `failure_reason`은 `src/gate/merge_reasons.py`의 정규 태그(`branch_protection_blocked`, `unstable_ci`, `permission_denied` 등). 관측 실패는 notify 경로를 막지 않도록 nested try/except로 격리 — DB 오류 시 rollback 후 WARNING + None. **범위 제한**: `webhook/providers/telegram.py::handle_gate_callback`의 반자동 merge 경로는 미관측(Phase F.2 예정).
+- **MergeAttempt 관측 (Phase F.1)**: `src/gate/engine.py::_run_auto_merge`가 `merge_pr` 직후 `log_merge_attempt()`(`src/shared/merge_metrics.py`)로 모든 시도(성공·실패)를 DB에 기록. `failure_reason`은 `src/gate/merge_reasons.py`의 정규 태그(`branch_protection_blocked`, `unstable_ci`, `permission_denied` 등). 관측 실패는 notify 경로를 막지 않도록 nested try/except로 격리 — DB 오류 시 rollback 후 WARNING + None. **범위 제한**: `webhook/providers/telegram.py::handle_gate_callback`의 반자동 merge 경로는 미관측(Phase F.2 예정). **Phase F.3**: `engine.py::_run_auto_merge` 실패 시 `get_advice(reason)` + 조건부 `create_merge_failure_issue()` 호출 — `auto_merge_issue_on_failure` 필드(5-way sync 적용)로 Issue 생성 제어.
 - **notifier 공통 헬퍼**: `src/notifier/_common.py`의 `format_ref()`, `get_all_issues()`, `get_issue_samples()`, `truncate_message()`, `truncate_issue_msg()`를 사용. 각 notifier 모듈에 이슈 수집 루프나 메시지 절단 로직 직접 작성 금지.
 - **webhook secret TTL 캐시**: `_get_webhook_secret(full_name)` 함수가 `_webhook_secret_cache` dict에 5분(WEBHOOK_SECRET_CACHE_TTL=300초) TTL로 per-repo 시크릿을 캐시. 리포 시크릿 변경 후 최대 5분간 구 시크릿으로 검증 — 인지하고 있을 것.
 
@@ -415,7 +417,7 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 
 - **Telegram HTML 파싱**: `parse_mode: "HTML"` 사용 — 모든 동적 콘텐츠에 `html.escape()` 적용 필수. `_build_message()`가 4096자 초과 시 자동 절단.
 - **analysis_detail 템플릿 context**: `current_user`를 반드시 포함해야 함 — 누락 시 nav 사용자명·로그아웃 버튼 미표시. `analysis.result or {}` 패턴은 None → `{}` 변환으로 `{% if r %}` falsy 평가 → 모든 AI 섹션 숨김 버그 — `{% else %}` 분기로 fallback 처리 필수.
-- **settings.html 구조 규약**: 의도 기반 6 카드 구성 — ① 빠른 설정(프리셋 3종 diff 미리보기) / ② PR 들어왔을 때(pr_review_comment·approve_mode·approve/reject_threshold·auto_merge·merge_threshold) / ③ 이벤트 후 피드백(commit_comment·create_issue·railway_deploy_alerts, 트리거별 소제목 + toggle-switch 통일) / ④ 알림 채널(masked-field 6종) / ⑤ 시스템 & 토큰(CLI Hook + Webhook 재등록 + Railway API 토큰 + Railway Webhook URL) / ⑥ 위험 구역(리포 삭제, 기본 접힘). Progressive Disclosure 기존 JS 헬퍼 5종(`setApproveMode`·`toggleMergeThreshold`·`applyPreset`·`_setPair`·`_showPresetToast`) 시그니처 불변 + 신규 헬퍼 3종(`onPresetToggle`·`renderPresetDiff`·`flashPresetChanges`). 프리셋 P1 = 펼침 diff 미리보기, P2 = 적용 하이라이트(@keyframes preset-flash 2.5s). 메인 `<form id="settingsForm">` + Railway API 토큰은 form 바깥에서 `form="settingsForm"` 속성으로 메인 폼에 포함. 알림 채널 URL은 프리셋이 건드리지 않음. 저장 오류 시 `?save_error=1` 쿼리 감지 → 고급설정 `<details open>` 자동 토글. 백엔드 필드명(pr_review_comment, approve_mode 등 14개) 및 PRESETS 9개 필드 구성 불변 원칙 — 5-way 동기화 체크리스트(ORM → dataclass → API body → 폼 → PRESETS) 적용 대상.
+- **settings.html 구조 규약**: 의도 기반 6 카드 구성 — ① 빠른 설정(프리셋 3종 diff 미리보기) / ② PR 들어왔을 때(pr_review_comment·approve_mode·approve/reject_threshold·auto_merge·merge_threshold) / ③ 이벤트 후 피드백(commit_comment·create_issue·railway_deploy_alerts, 트리거별 소제목 + toggle-switch 통일) / ④ 알림 채널(masked-field 6종) / ⑤ 시스템 & 토큰(CLI Hook + Webhook 재등록 + Railway API 토큰 + Railway Webhook URL) / ⑥ 위험 구역(리포 삭제, 기본 접힘). Progressive Disclosure 기존 JS 헬퍼 5종(`setApproveMode`·`toggleMergeThreshold`·`applyPreset`·`_setPair`·`_showPresetToast`) 시그니처 불변 + 신규 헬퍼 4종(`onPresetToggle`·`renderPresetDiff`·`flashPresetChanges`·`toggleMergeIssueOption`). 프리셋 P1 = 펼침 diff 미리보기, P2 = 적용 하이라이트(@keyframes preset-flash 2.5s). 메인 `<form id="settingsForm">` + Railway API 토큰은 form 바깥에서 `form="settingsForm"` 속성으로 메인 폼에 포함. 알림 채널 URL은 프리셋이 건드리지 않음. 저장 오류 시 `?save_error=1` 쿼리 감지 → 고급설정 `<details open>` 자동 토글. 백엔드 필드명(pr_review_comment, approve_mode 등 14개) 및 PRESETS 9개 필드 구성 불변 원칙 — 5-way 동기화 체크리스트(ORM → dataclass → API body → 폼 → PRESETS) 적용 대상.
 - **overview 등급 산출**: `calculate_grade(avg_score)` 사용 (`src/scorer/calculator.py`). 최신 분석 grade가 아닌 평균 점수 기반 — 평균 점수 컬럼과 등급 컬럼이 항상 동일 기준. `latest_id_subq`/`latest_map` 배치 조회는 제거됨.
 - **analysis_detail trend_data**: `trend_data`·`prev_id`·`next_id`를 template context에 추가 전달. `trend_data`는 같은 리포 최근 30건 `{id, score, label}` 리스트. `trend_data|length > 1`일 때만 차트 렌더링. `analysis_detail.html`은 Chart.js CDN을 직접 로드.
 - **repo_detail 차트 동기화**: `buildChart(data)` 함수는 `data` 인자가 있으면 `_chartData`에 캐시, 없으면 캐시된 데이터 재사용. `applyFilters()` 호출마다 차트를 필터 결과와 동기화. `themechange` 이벤트는 `buildChart()` (인자 없음)으로 색상만 재빌드.
@@ -437,4 +439,4 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 
 ## 현재 상태
 
-최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1275개 | E2E 49개 | pylint 10.00 | 커버리지 96.2% | SonarCloud QG OK · Security A · Reliability A · Maintainability A · Tier1 정적분석 10종 · Observability (Sentry + Claude metrics + stage timing + MergeAttempt) · AI 점수 피드백 루프 · Settings Minimal Mode · Onboarding 3단계 튜토리얼 · 5-렌즈 감사 95+ 통과 · Phase F Quick Win + F.1 관측 완료
+최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1275개 | E2E 49개 | pylint 10.00 | 커버리지 96.2% | SonarCloud QG OK · Security A · Reliability A · Maintainability A · Tier1 정적분석 10종 · Observability (Sentry + Claude metrics + stage timing + MergeAttempt) · AI 점수 피드백 루프 · Settings Minimal Mode · Onboarding 3단계 튜토리얼 · 5-렌즈 감사 95+ 통과 · Phase F Quick Win + F.1 관측 완료 · Phase F.3 실패 어드바이저 완료
