@@ -1,0 +1,111 @@
+name: Claude CI Analyzer
+
+# SonarCloud QG 또는 Codecov check run 이 실패로 완료될 때 PR 에 한국어 분석 댓글 작성.
+# workflow_run 이 아닌 check_run 을 사용하는 이유:
+#   SonarCloud/Codecov 는 CI 워크플로 완료 후 비동기로 별도 check run 을 게시한다.
+#   qualitygate.wait=true 없이도 동작하도록 check_run 이벤트를 직접 수신한다.
+on:
+  check_run:
+    types: [completed]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  analyze:
+    name: CI 실패 분석 (SonarCloud / Codecov)
+    # SonarCloud 또는 Codecov check run 이 failure 일 때만 실행
+    if: |
+      github.event.check_run.conclusion == 'failure' &&
+      (github.event.check_run.app.slug == 'sonarcloud' ||
+       github.event.check_run.app.slug == 'codecov')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: PR 번호 수집 및 봇 브랜치 필터
+        id: ctx
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.check_run.head_sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          # 헤드 커밋에 연결된 PR 번호 (없으면 빈 문자열 → 스킵)
+          PR=$(gh api "repos/$REPO/commits/$HEAD_SHA/pulls" \
+            --jq '.[0].number // ""' 2>/dev/null || echo "")
+          echo "pr_number=$PR" >> "$GITHUB_OUTPUT"
+
+          # PR 브랜치명 (봇 자동 생성 브랜치 필터용)
+          BRANCH=$(gh api "repos/$REPO/commits/$HEAD_SHA/pulls" \
+            --jq '.[0].head.ref // ""' 2>/dev/null || echo "")
+          echo "head_branch=$BRANCH" >> "$GITHUB_OUTPUT"
+
+          # PR이 있고 봇 브랜치가 아닐 때만 분석
+          if [ -n "$PR" ] && [[ "$BRANCH" != claude-fix/* ]]; then
+            echo "should_analyze=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_analyze=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout (변경 파일 읽기용)
+        if: steps.ctx.outputs.should_analyze == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.check_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Claude CI 실패 분석
+        if: steps.ctx.outputs.should_analyze == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # 분석 전용 — Write/Edit/커밋/푸시 도구는 의도적으로 제외
+          claude_args: '--model claude-opus-4-7 --allowedTools "Read,Glob,Grep,Bash(gh:*),Bash(git:*)"'
+          prompt: |
+            PR #${{ steps.ctx.outputs.pr_number }} 의 CI 검사 실패를 분석해 주세요.
+
+            **실패한 검사:** ${{ github.event.check_run.name }}
+            **앱:** ${{ github.event.check_run.app.slug }}
+            **상세 URL:** ${{ github.event.check_run.details_url }}
+            **헤드 SHA:** ${{ github.event.check_run.head_sha }}
+            **리포지토리:** ${{ github.repository }}
+
+            **분석 절차 (순서대로 수행):**
+            1. `gh pr diff ${{ steps.ctx.outputs.pr_number }} --name-only` 로 변경 파일 목록 확인
+            2. 변경된 파일을 Read/Grep 도구로 읽어 코드 내용 파악
+
+            3. **SonarCloud 실패인 경우** (app: sonarcloud):
+               - 변경 파일에서 코드 품질·보안 이슈 패턴 탐색
+                 (미사용 import, 복잡도 과다, 하드코딩 시크릿, SQL 인젝션, XSS 취약점 등)
+               - `gh api repos/${{ github.repository }}/commits/${{ github.event.check_run.head_sha }}/check-runs \
+                 --jq '.check_runs[] | select(.app.slug == "sonarcloud") | {name, conclusion, details_url}'` 로 결과 URL 추가 확인
+
+            4. **Codecov 실패인 경우** (app: codecov):
+               - 변경된 소스 파일에 대응하는 테스트 파일 유무 파악
+               - `Grep "def test_" tests/ -r` 로 기존 테스트 구조 확인
+               - 커버리지 갭이 있는 함수/클래스 특정
+
+            5. 분석 완료 후 아래 형식으로 PR 에 댓글 작성:
+               `gh pr comment ${{ steps.ctx.outputs.pr_number }} --body "댓글 내용"`
+
+            **댓글 형식 (한국어 Markdown):**
+            ```
+            ## 🤖 CI 실패 분석 — [검사명]
+
+            ### 실패 원인
+            <!-- 파일·라인 수준 원인. 구체적일수록 좋음 -->
+
+            ### 수정 제안
+            <!-- 코드 수준 제안. 가능하면 수정 전/후 스니펫 포함 -->
+
+            ### 참고 링크
+            - [상세 결과 보기](${{ github.event.check_run.details_url }})
+
+            ---
+            *Claude CI Analyzer — 자동 분석 | 코드 수정 없음*
+            ```
+
+            **엄격한 제약사항:**
+            - 코드를 직접 수정하거나 커밋/푸시하지 마세요.
+            - Write, Edit 도구는 사용 금지입니다.
+            - 분석과 PR 댓글 작성(`gh pr comment`)만 수행하세요.
