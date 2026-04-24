@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-24 기준 — 5-렌즈 감사 95+ 개선 적용)
+## 현재 수치 (2026-04-24 기준 — Phase F Quick Win + F.1 관측 완료)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1251개** | pytest (0 failed) — 5-렌즈 감사 Minor 후속 +17 (_before_send 스크러빙 검증) |
+| 단위 테스트 | **1275개** | pytest (0 failed) — Phase F.1 +24 (MergeAttempt ORM·repo·shared·engine) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
@@ -188,6 +188,39 @@
 | notifier 접근 체인 | `railway_issue.py` 11곳 nested 접근(`event.project.*`/`event.commit.*`)으로 업데이트 (출력 문자열 불변) | — |
 | 테스트 fixture 재작성 | `test_railway_client.py`(2곳) + `test_railway_issue_notifier.py`(`_EVENT` fixture nested 재작성) | — |
 | 외부 API 불변 | `parse_railway_payload` · `create_deploy_failure_issue` 시그니처 · Webhook payload 스키마 · DB 전부 그대로 | — |
+
+### 그룹 33 — Phase F Quick Win + F.1 관측 기반 구축 (2026-04-24)
+
+그룹 32 의 3-에이전트 로드맵에서 **Option B** (Quick Win + F.1) 승인 → 일괄 반영.
+
+**Quick Win 5건 (46ec124)** — auto-merge 안정성 즉시 개선:
+
+| 항목 | 변경 | 효과 |
+|------|------|------|
+| QW1 | `_MERGEABLE_BLOCK` 에 `"unstable"` 추가 | P0 — BPR 설정 repo 에서 CI 일부 실패 시 사전 차단 |
+| QW2 | `merge_unknown_retry_limit` / `delay` 를 `Settings` 로 외부화 | 운영 중 환경변수로 튜닝 가능 |
+| QW3 | Telegram 실패 알림에 GitHub PR 링크 추가 | 사용자 1-click 이동 (UX) |
+| QW4 | `_run_auto_merge` except 에 `RuntimeError`/`ValueError` 확장 | 예상외 예외도 Telegram 알림 스킵 방지 |
+| QW5 | `src/gate/merge_reasons.py` 정규 태그 상수 모듈화 | Phase F.1 `MergeAttempt.failure_reason` enum 과 네이밍 통일 (forbidden→permission_denied, conflict→conflict_sha_changed) |
+
+**Phase F.1 관측 기반 (20790cc)** — MergeAttempt ORM + 집계 + 구조화 로깅:
+
+| 신규 모듈 | 역할 |
+|-----------|------|
+| `src/models/merge_attempt.py` | MergeAttempt ORM — score/threshold 스냅샷 + failure_reason 정규 태그 + detail_message 원문, analyses CASCADE, append-only |
+| `src/repositories/merge_attempt_repo.py` | `create` / `list_by_repo` / `count_failures_by_reason(since=?)` — Phase F.3 advisor 진입점 |
+| `src/shared/merge_metrics.py` | `parse_reason_tag` + `log_merge_attempt` (DB INSERT + INFO 구조화 로그). DB 오류 시 rollback + None 반환 |
+| `alembic/versions/0014_add_merge_attempts.py` | merge_attempts 테이블 + 인덱스 2개 (analysis_id, repo_name) |
+
+**수정 모듈**:
+- `src/gate/engine.py::_run_auto_merge` — `analysis_id` + `db` 키워드 파라미터 추가, `merge_pr` 직후 `log_merge_attempt` 호출 (nested try/except 로 격리 — 관측 실패가 notify 를 막지 않음)
+
+**pipeline-reviewer Blocker 해소**: `log_merge_attempt` 의 `commit()` 실패 경로에 `db.rollback()` 추가 (SQLAlchemy `PendingRollbackError` 방지). 회귀 테스트 2건 추가.
+
+**범위 제한 (의도적)**: `webhook/providers/telegram.py::handle_gate_callback` 의 반자동 merge 는 Phase F.2 범위 — Phase F.1 은 auto-merge 경로만 관측.
+
+**테스트 증분**: +24 (models 4 + repo 5 + shared 12 + engine 3) — 1251 → **1275 passed**.
+**품질**: pylint 10.00 · bandit 0 issue (B110 rollback 블록 nosec + 사유 명시).
 
 ### 그룹 32 — Auto-merge 실패 진단 3-에이전트 + Phase F 로드맵 (2026-04-24)
 
