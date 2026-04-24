@@ -42,6 +42,15 @@ async def lifespan(_app: FastAPI):
             "모든 분석이 기본값(89/B)으로 fallback 됩니다. "
             "Railway Variables 또는 .env 에 키를 설정하세요."
         )
+    is_prod_like = settings.app_base_url.startswith("https")
+    if is_prod_like and not (settings.token_encryption_key or "").strip():
+        logger.warning(
+            "SECURITY: TOKEN_ENCRYPTION_KEY is not set in production "
+            "(APP_BASE_URL=%s). GitHub OAuth tokens will be stored in plaintext. "
+            "Generate with: python -c \"from cryptography.fernet import Fernet; "
+            "print(Fernet.generate_key().decode())\"",
+            settings.app_base_url,
+        )
     init_sentry()  # Sentry SDK — SENTRY_DSN 설정 시만 활성
     try:
         await asyncio.wait_for(asyncio.to_thread(_run_migrations), timeout=30)

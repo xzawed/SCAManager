@@ -78,6 +78,8 @@ def test_lifespan_warns_when_anthropic_key_missing(caplog):
          patch("src.main.settings") as mock_settings:
         mock_settings.session_secret = "test-session-secret-32-chars-long!"
         mock_settings.anthropic_api_key = ""
+        mock_settings.app_base_url = ""
+        mock_settings.token_encryption_key = ""
         with caplog.at_level(_logging.WARNING, logger="src.main"):
             with TestClient(app):
                 pass
@@ -92,8 +94,60 @@ def test_lifespan_no_warning_when_anthropic_key_set(caplog):
          patch("src.main.settings") as mock_settings:
         mock_settings.session_secret = "test-session-secret-32-chars-long!"
         mock_settings.anthropic_api_key = "sk-ant-test-key"
+        mock_settings.app_base_url = ""
+        mock_settings.token_encryption_key = ""
         with caplog.at_level(_logging.WARNING, logger="src.main"):
             with TestClient(app):
                 pass
     assert not any("ANTHROPIC_API_KEY" in rec.message for rec in caplog.records), \
         "키가 설정되어 있는데도 경고 로그가 남았습니다"
+
+
+# --- TOKEN_ENCRYPTION_KEY 부재 경고 (prod 환경) ---
+
+def test_lifespan_warns_token_encryption_key_missing_in_prod(caplog):
+    """prod 환경(https URL)에서 TOKEN_ENCRYPTION_KEY 미설정 시 SECURITY 경고 출력."""
+    import logging as _logging
+    with patch("src.main._run_migrations"), \
+         patch("src.main.settings") as mock_settings:
+        mock_settings.session_secret = "test-session-secret-32-chars-long!"
+        mock_settings.anthropic_api_key = "sk-ant-test-key"
+        mock_settings.app_base_url = "https://scamanager.example.com"
+        mock_settings.token_encryption_key = ""
+        with caplog.at_level(_logging.WARNING, logger="src.main"):
+            with TestClient(app):
+                pass
+    assert any("TOKEN_ENCRYPTION_KEY" in rec.message for rec in caplog.records), \
+        "prod 환경에서 TOKEN_ENCRYPTION_KEY 부재 경고가 로그에 남지 않았습니다"
+
+
+def test_lifespan_no_warning_token_encryption_key_set_in_prod(caplog):
+    """prod 환경이라도 TOKEN_ENCRYPTION_KEY 가 설정되어 있으면 경고 없음."""
+    import logging as _logging
+    with patch("src.main._run_migrations"), \
+         patch("src.main.settings") as mock_settings:
+        mock_settings.session_secret = "test-session-secret-32-chars-long!"
+        mock_settings.anthropic_api_key = "sk-ant-test-key"
+        mock_settings.app_base_url = "https://scamanager.example.com"
+        mock_settings.token_encryption_key = "some-valid-fernet-key-value"
+        with caplog.at_level(_logging.WARNING, logger="src.main"):
+            with TestClient(app):
+                pass
+    assert not any("TOKEN_ENCRYPTION_KEY" in rec.message for rec in caplog.records), \
+        "키가 설정되어 있는데도 TOKEN_ENCRYPTION_KEY 경고가 남았습니다"
+
+
+def test_lifespan_no_warning_token_encryption_key_dev_env(caplog):
+    """dev 환경(http URL 또는 빈 URL)에서는 키가 없어도 경고 없음."""
+    import logging as _logging
+    with patch("src.main._run_migrations"), \
+         patch("src.main.settings") as mock_settings:
+        mock_settings.session_secret = "test-session-secret-32-chars-long!"
+        mock_settings.anthropic_api_key = "sk-ant-test-key"
+        mock_settings.app_base_url = "http://localhost:8000"
+        mock_settings.token_encryption_key = ""
+        with caplog.at_level(_logging.WARNING, logger="src.main"):
+            with TestClient(app):
+                pass
+    assert not any("TOKEN_ENCRYPTION_KEY" in rec.message for rec in caplog.records), \
+        "dev(http) 환경에서 TOKEN_ENCRYPTION_KEY 경고가 남았습니다"
