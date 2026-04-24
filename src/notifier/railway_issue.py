@@ -1,9 +1,10 @@
 """Railway 빌드 실패 시 GitHub Issue 자동 생성."""
 import logging
 import httpx
-from src.constants import GITHUB_API, HTTP_CLIENT_TIMEOUT
+from src.constants import GITHUB_API
 from src.github_client.helpers import github_api_headers
 from src.railway_client.models import RailwayDeployEvent
+from src.shared.http_client import get_http_client
 
 logger = logging.getLogger(__name__)
 
@@ -62,29 +63,29 @@ async def create_deploy_failure_issue(
     headers = github_api_headers(github_token)
 
     try:
-        async with httpx.AsyncClient(timeout=HTTP_CLIENT_TIMEOUT) as client:
-            # 중복 체크
-            search_url = f"{GITHUB_API}/search/issues"
-            search_resp = await client.get(
-                search_url,
-                params={"q": f'repo:{repo_full_name} "{marker}" in:body is:issue'},
-                headers=headers,
-            )
-            search_resp.raise_for_status()
-            if search_resp.json().get("total_count", 0) > 0:
-                logger.info("Railway Issue 이미 존재 (deployment_id=%s)", event.deployment_id)
-                return None
+        client = get_http_client()
+        # 중복 체크
+        search_url = f"{GITHUB_API}/search/issues"
+        search_resp = await client.get(
+            search_url,
+            params={"q": f'repo:{repo_full_name} "{marker}" in:body is:issue'},
+            headers=headers,
+        )
+        search_resp.raise_for_status()
+        if search_resp.json().get("total_count", 0) > 0:
+            logger.info("Railway Issue 이미 존재 (deployment_id=%s)", event.deployment_id)
+            return None
 
-            # Issue 생성
-            create_resp = await client.post(
-                f"{GITHUB_API}/repos/{repo_full_name}/issues",
-                json={"title": title, "body": body, "labels": ISSUE_LABELS},
-                headers=headers,
-            )
-            create_resp.raise_for_status()
-            number = create_resp.json().get("number")
-            logger.info("Railway Issue 생성 완료 #%s (%s)", number, repo_full_name)
-            return number
+        # Issue 생성
+        create_resp = await client.post(
+            f"{GITHUB_API}/repos/{repo_full_name}/issues",
+            json={"title": title, "body": body, "labels": ISSUE_LABELS},
+            headers=headers,
+        )
+        create_resp.raise_for_status()
+        number = create_resp.json().get("number")
+        logger.info("Railway Issue 생성 완료 #%s (%s)", number, repo_full_name)
+        return number
     except httpx.HTTPError as exc:
         logger.error("create_deploy_failure_issue 실패 (%s): %s", repo_full_name, exc)
         return None

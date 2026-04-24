@@ -1,7 +1,7 @@
 """Railway GraphQL API 로 deployment 로그를 조회한다."""
 import logging
 import httpx
-from src.constants import HTTP_CLIENT_TIMEOUT
+from src.shared.http_client import get_http_client
 
 logger = logging.getLogger(__name__)
 
@@ -41,10 +41,10 @@ async def fetch_deployment_logs(
         "variables": {"deploymentId": deployment_id, "limit": tail_lines},
     }
     try:
-        async with httpx.AsyncClient(timeout=HTTP_CLIENT_TIMEOUT) as client:
-            resp = await client.post(RAILWAY_GRAPHQL_URL, json=payload, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
+        client = get_http_client()
+        resp = await client.post(RAILWAY_GRAPHQL_URL, json=payload, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
     except httpx.HTTPError as exc:
         raise RailwayLogFetchError(f"HTTP 오류: {exc}") from exc
 

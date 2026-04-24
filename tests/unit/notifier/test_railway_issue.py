@@ -71,9 +71,7 @@ async def test_create_deploy_failure_issue_creates_issue():
     mock_client.get = AsyncMock(return_value=search_resp)
     mock_client.post = AsyncMock(return_value=create_resp)
 
-    with patch("src.notifier.railway_issue.httpx.AsyncClient") as mock_cls:
-        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+    with patch("src.notifier.railway_issue.get_http_client", return_value=mock_client):
         result = await create_deploy_failure_issue(
             github_token="ghp_test",
             repo_full_name="owner/repo",
@@ -97,9 +95,7 @@ async def test_create_deploy_failure_issue_dedup():
     mock_client = AsyncMock()
     mock_client.get = AsyncMock(return_value=search_resp)
 
-    with patch("src.notifier.railway_issue.httpx.AsyncClient") as mock_cls:
-        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+    with patch("src.notifier.railway_issue.get_http_client", return_value=mock_client):
         result = await create_deploy_failure_issue(
             github_token="ghp_test",
             repo_full_name="owner/repo",
@@ -125,9 +121,7 @@ async def test_create_deploy_failure_issue_github_error_returns_none():
         "403", request=MagicMock(), response=MagicMock()
     ))
 
-    with patch("src.notifier.railway_issue.httpx.AsyncClient") as mock_cls:
-        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+    with patch("src.notifier.railway_issue.get_http_client", return_value=mock_client):
         result = await create_deploy_failure_issue(
             github_token="ghp_test",
             repo_full_name="owner/repo",
