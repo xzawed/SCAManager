@@ -13,6 +13,7 @@ from src.notifier.github_comment import post_pr_comment_from_result as post_pr_c
 from src.notifier.telegram import telegram_post_message
 from src.models.gate_decision import GateDecision
 from src.repositories import gate_decision_repo
+from src.shared.merge_metrics import log_merge_attempt
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,10 @@ async def run_gate_check(  # pylint: disable=too-many-positional-arguments
         score=score,
         result=result,
     )
-    await _run_auto_merge(config, github_token, repo_name, pr_number, score)
+    await _run_auto_merge(
+        config, github_token, repo_name, pr_number, score,
+        analysis_id=analysis_id, db=db,
+    )
 
 
 async def _run_review_comment(
@@ -164,18 +168,46 @@ async def _run_semi_auto_approve(
         logger.error("Telegram Gate 요청 실패: %s", exc)
 
 
-async def _run_auto_merge(
+async def _run_auto_merge(  # pylint: disable=too-many-arguments
     config: RepoConfigData,
     github_token: str,
     repo_name: str,
     pr_number: int,
     score: int,
+    *,
+    analysis_id: int | None = None,
+    db: Session | None = None,
 ) -> None:
-    """Auto Merge 옵션 (approve_mode 무관하게 독립)."""
+    """Auto Merge 옵션 (approve_mode 무관하게 독립).
+
+    Phase F.1: `log_merge_attempt` 로 모든 시도(성공·실패)를 DB 에 기록한다.
+    analysis_id/db 가 None 이면 기록을 생략 — 레거시 호출부 호환.
+    """
     if not (config.auto_merge and score >= config.merge_threshold):
         return
     try:
         ok, reason = await merge_pr(github_token, repo_name, pr_number)
+
+        # Phase F.1: 모든 시도 DB 기록 — 관측 실패가 파이프라인을 중단시키지 않도록
+        # log_merge_attempt 자체 오류는 독립 try/except 로 격리.
+        if analysis_id is not None and db is not None:
+            try:
+                log_merge_attempt(
+                    db,
+                    analysis_id=analysis_id,
+                    repo_name=repo_name,
+                    pr_number=pr_number,
+                    score=score,
+                    threshold=config.merge_threshold,
+                    success=ok,
+                    reason=reason,
+                )
+            except Exception as log_exc:  # pylint: disable=broad-except
+                logger.warning(
+                    "merge_attempt 기록 실패 (repo=%s, pr=%d): %s",
+                    repo_name, pr_number, log_exc,
+                )
+
         if ok:
             logger.info("PR #%d auto-merged: %s", pr_number, repo_name)
             return
