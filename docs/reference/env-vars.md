@@ -16,8 +16,8 @@
 | 변수 | 설명 | 예시 |
 |------|------|------|
 | `GITHUB_WEBHOOK_SECRET` | GitHub Webhook HMAC 서명 시크릿 (Phase 8B 이후 선택적) | `your-secret-here` |
-| `GITHUB_TOKEN` | GitHub API Personal Access Token (레거시 리포 fallback) | `ghp_xxxx` |
-| `ANTHROPIC_API_KEY` | Claude AI 리뷰 API 키 (없으면 AI 항목 기본값 적용) | `sk-ant-xxxx` |
+| `GITHUB_TOKEN` | GitHub API Personal Access Token (레거시 리포 fallback) | `your-github-token` |
+| `ANTHROPIC_API_KEY` | Claude AI 리뷰 API 키 (없으면 AI 항목 기본값 적용) | `your-anthropic-api-key` |
 | `API_KEY` | Dashboard REST API 인증 키 (없으면 인증 생략) | `any-secret-string` |
 | `APP_BASE_URL` | Railway 등 리버스 프록시에서 HTTPS redirect_uri 강제 지정 | `https://your-app.railway.app` |
 | `TOKEN_ENCRYPTION_KEY` | GitHub Access Token 암호화 키 (미설정 시 평문 저장) | `32자 이상 랜덤` |
@@ -29,7 +29,7 @@
 
 | 변수 | 설명 | 예시 |
 |------|------|------|
-| `SENTRY_DSN` | Sentry-compatible DSN — 미설정 시 비활성 (graceful no-op) | `https://abc@o1.ingest.sentry.io/123` |
+| `SENTRY_DSN` | Sentry-compatible DSN — 미설정 시 비활성 (graceful no-op) | `your-sentry-dsn` |
 | `SENTRY_ENVIRONMENT` | 환경 태그 | `production` (기본) / `staging` / `development` |
 | `SENTRY_TRACES_SAMPLE_RATE` | Performance tracing 샘플링 비율 (0.0~1.0) | `0.1` (기본, 10%) |
 
