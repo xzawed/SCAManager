@@ -228,7 +228,7 @@ async def _run_auto_merge(  # pylint: disable=too-many-arguments
             advice=advice,
             chat_id=config.notify_chat_id or settings.telegram_chat_id,
         )
-        if getattr(config, "auto_merge_issue_on_failure", False):
+        if config.auto_merge_issue_on_failure:
             try:
                 await create_merge_failure_issue(
                     github_token=github_token,
