@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-23 기준 — Phase E 완료 + 3-에이전트 감사 후속 수정)
+## 현재 수치 (2026-04-24 기준 — 5-렌즈 감사 95+ 개선 적용)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1234개** | pytest (0 failed) — 감사 후속 +2 (comment max_length 경계값) |
+| 단위 테스트 | **1251개** | pytest (0 failed) — 5-렌즈 감사 Minor 후속 +17 (_before_send 스크러빙 검증) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
@@ -188,6 +188,23 @@
 | notifier 접근 체인 | `railway_issue.py` 11곳 nested 접근(`event.project.*`/`event.commit.*`)으로 업데이트 (출력 문자열 불변) | — |
 | 테스트 fixture 재작성 | `test_railway_client.py`(2곳) + `test_railway_issue_notifier.py`(`_EVENT` fixture nested 재작성) | — |
 | 외부 API 불변 | `parse_railway_payload` · `create_deploy_failure_issue` 시그니처 · Webhook payload 스키마 · DB 전부 그대로 | — |
+
+### 그룹 31 — 5-렌즈 감사 Minor 이슈 후속 개선 (2026-04-24)
+
+2026-04-23 5-렌즈 감사 (91/100 A) 의 Minor 4건 중 3건 반영 + Agent R5 의 잘못된
+지적 1건 반박 (README.ko.md 점수 체계 표는 L139-158 에 이미 존재).
+
+| 수정 | 위치 | 효과 |
+|------|------|------|
+| 피드백 버튼 aria-label + role="group" + aria-live status | `analysis_detail.html` | 스크린리더 접근성 확보 (R5 +1 예상) |
+| env-vars.md 토큰 형식 "your-github-token" 등 | `docs/reference/env-vars.md` | 토큰 형식 누출 방지 (R4 +1 예상) |
+| .env.example 동일 형식 + Observability 섹션 추가 | `.env.example` | 신규 사용자 혼동 방지 |
+| `_before_send` 단위 테스트 17건 (독립 파일) | `tests/unit/shared/test_sentry_scrubbing.py` | 보안 함수 검증 (R2 +0.5 예상) |
+
+**예상 감사 재점수**: 91 → **~94~95/100**.
+
+**Agent R5 오류 정정**: README.ko.md L139-158 에 점수 체계 표 (5행) + 등급 기준 표 (5행) 가
+이미 존재. 영문판과 동일 구조 유지. R5 의 "구조 불일치 -1" 감점은 잘못된 지적.
 
 ### 그룹 30 — Phase E 완결 5-렌즈 품질 감사 (2026-04-23)
 

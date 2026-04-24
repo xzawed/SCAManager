@@ -285,14 +285,16 @@
     <span class="feedback-label">이 점수가 맞다고 생각하시나요?</span>
     <span class="feedback-hint">(Claude AI 정합도 개선에 사용됩니다)</span>
   </div>
-  <div class="feedback-buttons">
-    <button type="button" class="fb-btn fb-up" data-value="1" title="맞습니다">
-      👍 <span class="fb-btn-label">맞음</span>
+  <div class="feedback-buttons" role="group" aria-label="점수 정합도 피드백">
+    <button type="button" class="fb-btn fb-up" data-value="1"
+            title="맞습니다" aria-label="이 점수가 맞다고 피드백 (Thumbs up)">
+      <span aria-hidden="true">👍</span> <span class="fb-btn-label">맞음</span>
     </button>
-    <button type="button" class="fb-btn fb-down" data-value="-1" title="아닙니다">
-      👎 <span class="fb-btn-label">아님</span>
+    <button type="button" class="fb-btn fb-down" data-value="-1"
+            title="아닙니다" aria-label="이 점수가 맞지 않다고 피드백 (Thumbs down)">
+      <span aria-hidden="true">👎</span> <span class="fb-btn-label">아님</span>
     </button>
-    <span class="fb-status" id="fbStatus"></span>
+    <span class="fb-status" id="fbStatus" role="status" aria-live="polite"></span>
   </div>
 </div>
 <style>
