@@ -75,6 +75,8 @@
 **테스트 증분**: +24 (models 4 + repo 5 + shared 12 + engine 3) — 1251 → **1275 passed**.
 **품질**: pylint 10.00 · bandit 0 issue (B110 rollback 블록 nosec + 사유 명시).
 
+**Phase F.2~F.5 착수 대기 (2026-04-24 결정)**: 원본 보고서 로직에 따라 **F.1 실측 데이터 축적 후 재평가**. MergeAttempt 배포 직후이므로 실제 실패 분포(`failure_reason` 카운트)가 아직 0 건. 2~4주 운영 후 `count_failures_by_reason(since=...)` 결과로 F.2(사전 체크)·F.3(실패 advisor)·F.4(대시보드)·F.5(BPR 체크) 중 임팩트 큰 항목부터 선정. 조기 착수 시 "데이터 없는 최적화" 가 되어 Claude 권장(Option B)에 위배.
+
 ### 그룹 32 — Auto-merge 실패 진단 3-에이전트 + Phase F 로드맵 (2026-04-24)
 
 사용자 보고: 일부 Repo 에서 PR auto-merge 가 실패. 3개 병렬 에이전트 (A: 현재 구현 분석
