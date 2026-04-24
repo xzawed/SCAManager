@@ -10,7 +10,7 @@ import logging
 import pytest
 import httpx
 from unittest.mock import AsyncMock, MagicMock, patch
-from src.gate.engine import run_gate_check
+from src.gate.engine import run_gate_check, _run_auto_merge, _notify_merge_failure
 from src.scorer.calculator import ScoreResult
 from src.config_manager.manager import RepoConfigData
 
@@ -848,7 +848,7 @@ async def test_notify_merge_failure_logs_warning_on_httpx_error(caplog):
         ):
             await _notify_merge_failure(
                 repo_name="o/r", pr_number=7, score=55, threshold=80,
-                reason="conflict", chat_id="123",
+                reason="conflict", advice="", chat_id="123",
             )
     assert any("Telegram merge-failure" in r.message for r in caplog.records)
 
@@ -861,7 +861,7 @@ async def test_notify_merge_failure_skipped_when_no_chat_id():
     with patch("src.gate.engine.telegram_post_message", new=AsyncMock()) as m:
         await _notify_merge_failure(
             repo_name="o/r", pr_number=7, score=55, threshold=80,
-            reason="x", chat_id=None,
+            reason="x", advice="", chat_id=None,
         )
     m.assert_not_called()
 
@@ -1012,3 +1012,67 @@ async def test_run_auto_merge_log_merge_attempt_db_failure_does_not_block_notifi
                                 )
                                 # Telegram 알림은 여전히 발송되어야 함
                                 mock_tg.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Phase F.3 테스트 ────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+
+
+async def test_run_auto_merge_creates_issue_when_enabled():
+    """auto_merge_issue_on_failure=True 이면 merge 실패 시 create_merge_failure_issue 호출."""
+    config = _config(
+        auto_merge=True,
+        merge_threshold=75,
+        auto_merge_issue_on_failure=True,
+        notify_chat_id=None,
+    )
+    with (
+        patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge,
+        patch("src.gate.engine.create_merge_failure_issue", new_callable=AsyncMock) as mock_issue,
+        patch("src.gate.engine.log_merge_attempt"),
+        patch("src.gate.engine._notify_merge_failure", new_callable=AsyncMock),
+    ):
+        mock_merge.return_value = (False, "branch_protection_blocked: blocked")
+        mock_issue.return_value = 42
+        await _run_auto_merge(
+            config, "tok", "owner/repo", 1, 80, analysis_id=1, db=MagicMock()
+        )
+    mock_issue.assert_awaited_once()
+
+
+async def test_run_auto_merge_skips_issue_when_disabled():
+    """auto_merge_issue_on_failure=False 이면 merge 실패해도 create_merge_failure_issue 미호출."""
+    config = _config(
+        auto_merge=True,
+        merge_threshold=75,
+        auto_merge_issue_on_failure=False,
+        notify_chat_id=None,
+    )
+    with (
+        patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge,
+        patch("src.gate.engine.create_merge_failure_issue", new_callable=AsyncMock) as mock_issue,
+        patch("src.gate.engine.log_merge_attempt"),
+        patch("src.gate.engine._notify_merge_failure", new_callable=AsyncMock),
+    ):
+        mock_merge.return_value = (False, "branch_protection_blocked: blocked")
+        await _run_auto_merge(
+            config, "tok", "owner/repo", 1, 80, analysis_id=1, db=MagicMock()
+        )
+    mock_issue.assert_not_awaited()
+
+
+async def test_notify_merge_failure_includes_advice_in_telegram():
+    """_notify_merge_failure 가 Telegram 메시지에 advice 텍스트를 포함한다."""
+    with patch("src.gate.engine.telegram_post_message", new_callable=AsyncMock) as mock_tg:
+        await _notify_merge_failure(
+            repo_name="owner/repo",
+            pr_number=1,
+            score=60,
+            threshold=75,
+            reason="dirty_conflict: 충돌",
+            advice="충돌을 해소하세요",
+            chat_id="123",
+        )
+    sent_text = mock_tg.call_args[0][2]["text"]
+    assert "충돌을 해소하세요" in sent_text
