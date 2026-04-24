@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-24 기준 — Phase F Quick Win + F.1 관측 완료 · Phase F.3 실패 어드바이저 완료 · G.2 수치 동기화 · Phase G 완료)
+## 현재 수치 (2026-04-24 기준 — Phase F Quick Win + F.1 관측 완료 · Phase F.3 실패 어드바이저 완료 · G.2 수치 동기화 · Phase G 완료 · P2 이슈 수정 완료)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
@@ -43,6 +43,15 @@
 | `tests/conftest.py` | 환경변수 주입 + _webhook_secret_cache autouse 클리어 |
 
 ## 작업 이력 (그룹별)
+
+### 그룹 36 (2026-04-24 · P2 이슈 수정 + settings.html 번호 교정)
+
+- **PyGithub 타임아웃**: `diff.py::_make_github_client()` 헬퍼 신설, `timeout=int(HTTP_CLIENT_TIMEOUT)` 적용 (P2)
+- **settings.html ①~⑥ 번호**: 빠른 설정 카드에 ① 누락으로 ②→⑤ 1씩 밀림 수정 + 인라인 힌트 참조 ③→④ 교정
+- **analyses UniqueConstraint**: `(repo_id, commit_sha)` DB 수준 중복 방지 + `IntegrityError` 처리 안전망 + Migration 0016 + 테스트 4개 신규 (P2)
+- **계획 파일**: `docs/superpowers/plans/2026-04-24-auto-merge-f3-advisor.md` untracked 커밋
+
+**테스트 증분**: +6 (diff 타임아웃 assert 2 + analysis_repo 4)
 
 ### 그룹 35 (2026-04-24 · Phase G.0~G.5 완료)
 

@@ -44,11 +44,11 @@ Email notifier 지원 변수 5종이 .env.example 에 없음. docs/reference/env
 
 ## P2 — 중간
 
-- Alembic 0005/0006: `batch_alter_table` (SQLite 전용 패턴, PG 무해)
-- PyGithub 블로킹: `src/github_client/diff.py` 타임아웃 미설정
-- DB 유니크 제약 부재: `(analyses.repo_id, commit_sha)` race window
-- `src/database.py:160-172` SELECT 1 redundant (`pool_pre_ping=True` 와 중복)
-- settings.html ④ 번호 라벨 누락
+- Alembic 0005/0006: `batch_alter_table` (SQLite 전용 패턴, PG 무해) — 기존 마이그레이션이므로 수정 불가·무해
+- ~~PyGithub 블로킹: `src/github_client/diff.py` 타임아웃 미설정~~ → **✅ 그룹 36 수정** (`_make_github_client` + `timeout=HTTP_CLIENT_TIMEOUT`)
+- ~~DB 유니크 제약 부재: `(analyses.repo_id, commit_sha)` race window~~ → **✅ 그룹 36 수정** (Migration 0016 + IntegrityError 안전망)
+- `src/database.py:160-172` SELECT 1 — `pool_pre_ping` 과 다른 Failover 전용 역할, 의도적 유지
+- ~~settings.html ④ 번호 라벨 누락~~ → **✅ 그룹 36 수정**
 - Phase F.2 반자동 merge 콜백 관측 미구현 (의도적 연기)
 
 ## P3 — 낮음
