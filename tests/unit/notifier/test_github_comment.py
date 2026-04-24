@@ -81,13 +81,12 @@ def test_comment_body_limits_issues_to_10():
 
 
 async def test_post_pr_comment_calls_github_api():
-    with patch("src.notifier.github_comment.httpx.AsyncClient") as mock_cls:
+    with patch("src.notifier.github_comment.get_http_client") as mock_get:
         mock_client = AsyncMock()
         mock_response = MagicMock()
         mock_response.raise_for_status = MagicMock()
         mock_client.post = AsyncMock(return_value=mock_response)
-        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+        mock_get.return_value = mock_client
 
         await post_pr_comment(
             github_token="ghp_test",
@@ -127,13 +126,12 @@ def test_comment_body_includes_category_feedback():
 
 
 async def test_post_pr_comment_sets_auth_header():
-    with patch("src.notifier.github_comment.httpx.AsyncClient") as mock_cls:
+    with patch("src.notifier.github_comment.get_http_client") as mock_get:
         mock_client = AsyncMock()
         mock_response = MagicMock()
         mock_response.raise_for_status = MagicMock()
         mock_client.post = AsyncMock(return_value=mock_response)
-        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+        mock_get.return_value = mock_client
 
         await post_pr_comment(
             github_token="ghp_test",
@@ -235,13 +233,12 @@ def test_build_comment_from_result_grade_f():
 # ── post_pr_comment_from_result 테스트 (164-172 커버) ───────────────────────
 
 async def test_post_pr_comment_from_result_calls_api():
-    with patch("src.notifier.github_comment.httpx.AsyncClient") as mock_cls:
+    with patch("src.notifier.github_comment.get_http_client") as mock_get:
         mock_client = AsyncMock()
         mock_response = MagicMock()
         mock_response.raise_for_status = MagicMock()
         mock_client.post = AsyncMock(return_value=mock_response)
-        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+        mock_get.return_value = mock_client
 
         await post_pr_comment_from_result(
             github_token="ghp_test",
@@ -296,13 +293,12 @@ def test_build_comment_body_and_from_result_produce_same_output():
 
 
 async def test_post_pr_comment_from_result_sends_auth_header():
-    with patch("src.notifier.github_comment.httpx.AsyncClient") as mock_cls:
+    with patch("src.notifier.github_comment.get_http_client") as mock_get:
         mock_client = AsyncMock()
         mock_response = MagicMock()
         mock_response.raise_for_status = MagicMock()
         mock_client.post = AsyncMock(return_value=mock_response)
-        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+        mock_get.return_value = mock_client
 
         await post_pr_comment_from_result(
             github_token="ghp_secret",

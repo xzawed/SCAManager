@@ -6,6 +6,7 @@ import httpx
 from src.config import settings
 from src.constants import GITHUB_API
 from src.github_client.helpers import github_api_headers
+from src.shared.http_client import get_http_client
 
 logger = logging.getLogger(__name__)
 
@@ -80,14 +81,14 @@ async def create_low_score_issue(
     body = _build_issue_body(repo_name, commit_sha, analysis_id, result, high_issues)
 
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(
-                f"{GITHUB_API}/repos/{repo_name}/issues",
-                json={"title": title, "body": body, "labels": labels},
-                headers=github_api_headers(github_token),
-            )
-            resp.raise_for_status()
-            return resp.json().get("number")
+        client = get_http_client()
+        resp = await client.post(
+            f"{GITHUB_API}/repos/{repo_name}/issues",
+            json={"title": title, "body": body, "labels": labels},
+            headers=github_api_headers(github_token),
+        )
+        resp.raise_for_status()
+        return resp.json().get("number")
     except httpx.HTTPError as exc:
         logger.warning("create_low_score_issue 실패 (%s@%s): %s", repo_name, commit_sha, exc)
         return None

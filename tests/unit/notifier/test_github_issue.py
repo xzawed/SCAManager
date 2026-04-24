@@ -42,10 +42,9 @@ def _mock_httpx_post(status=201, number=42):
 
 async def test_create_low_score_issue_success():
     from src.notifier.github_issue import create_low_score_issue
-    with patch("src.notifier.github_issue.httpx.AsyncClient") as mock_cls:
+    with patch("src.notifier.github_issue.get_http_client") as mock_get:
         mock_client = _mock_httpx_post(number=42)
-        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+        mock_get.return_value = mock_client
 
         number = await create_low_score_issue(
             github_token="ghp_test",
@@ -63,10 +62,9 @@ async def test_create_low_score_issue_success():
 
 async def test_create_low_score_issue_title_format():
     from src.notifier.github_issue import create_low_score_issue
-    with patch("src.notifier.github_issue.httpx.AsyncClient") as mock_cls:
+    with patch("src.notifier.github_issue.get_http_client") as mock_get:
         mock_client = _mock_httpx_post()
-        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+        mock_get.return_value = mock_client
 
         await create_low_score_issue(
             github_token="ghp_test",
@@ -84,10 +82,9 @@ async def test_create_low_score_issue_title_format():
 
 async def test_create_low_score_issue_body_has_analysis_link():
     from src.notifier.github_issue import create_low_score_issue
-    with patch("src.notifier.github_issue.httpx.AsyncClient") as mock_cls:
+    with patch("src.notifier.github_issue.get_http_client") as mock_get:
         mock_client = _mock_httpx_post()
-        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+        mock_get.return_value = mock_client
 
         await create_low_score_issue(
             github_token="ghp_test",
@@ -103,10 +100,9 @@ async def test_create_low_score_issue_body_has_analysis_link():
 
 async def test_create_low_score_issue_labels_default():
     from src.notifier.github_issue import create_low_score_issue
-    with patch("src.notifier.github_issue.httpx.AsyncClient") as mock_cls:
+    with patch("src.notifier.github_issue.get_http_client") as mock_get:
         mock_client = _mock_httpx_post()
-        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+        mock_get.return_value = mock_client
 
         await create_low_score_issue(
             github_token="ghp_test",
@@ -124,10 +120,9 @@ async def test_create_low_score_issue_labels_default():
 
 async def test_create_low_score_issue_security_label_when_high():
     from src.notifier.github_issue import create_low_score_issue
-    with patch("src.notifier.github_issue.httpx.AsyncClient") as mock_cls:
+    with patch("src.notifier.github_issue.get_http_client") as mock_get:
         mock_client = _mock_httpx_post()
-        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+        mock_get.return_value = mock_client
 
         await create_low_score_issue(
             github_token="ghp_test",
@@ -143,10 +138,9 @@ async def test_create_low_score_issue_security_label_when_high():
 
 async def test_create_low_score_issue_auth_header():
     from src.notifier.github_issue import create_low_score_issue
-    with patch("src.notifier.github_issue.httpx.AsyncClient") as mock_cls:
+    with patch("src.notifier.github_issue.get_http_client") as mock_get:
         mock_client = _mock_httpx_post()
-        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+        mock_get.return_value = mock_client
 
         await create_low_score_issue(
             github_token="ghp_MY_TOKEN",
@@ -162,11 +156,10 @@ async def test_create_low_score_issue_auth_header():
 
 async def test_create_low_score_issue_httpx_error_returns_none():
     from src.notifier.github_issue import create_low_score_issue
-    with patch("src.notifier.github_issue.httpx.AsyncClient") as mock_cls:
+    with patch("src.notifier.github_issue.get_http_client") as mock_get:
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(side_effect=httpx.HTTPError("boom"))
-        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+        mock_get.return_value = mock_client
 
         number = await create_low_score_issue(
             github_token="ghp_test",

@@ -1,8 +1,9 @@
 """Auto-merge 실패 시 GitHub Issue 자동 생성 — Phase F.3."""
 import logging
 import httpx
-from src.constants import GITHUB_API, HTTP_CLIENT_TIMEOUT
+from src.constants import GITHUB_API
 from src.github_client.helpers import github_api_headers
+from src.shared.http_client import get_http_client
 
 logger = logging.getLogger(__name__)
 
@@ -64,31 +65,31 @@ async def create_merge_failure_issue(
     headers = github_api_headers(github_token)
 
     try:
-        async with httpx.AsyncClient(timeout=HTTP_CLIENT_TIMEOUT) as client:
-            search_resp = await client.get(
-                f"{GITHUB_API}/search/issues",
-                params={
-                    "q": (
-                        f'repo:{repo_name} "{dedup_marker}" in:body '
-                        f"label:auto-merge-failure is:open"
-                    )
-                },
-                headers=headers,
-            )
-            search_resp.raise_for_status()
-            if search_resp.json().get("total_count", 0) > 0:
-                logger.info("Auto-merge failure Issue 이미 존재 (pr=%d)", pr_number)
-                return None
+        client = get_http_client()
+        search_resp = await client.get(
+            f"{GITHUB_API}/search/issues",
+            params={
+                "q": (
+                    f'repo:{repo_name} "{dedup_marker}" in:body '
+                    f"label:auto-merge-failure is:open"
+                )
+            },
+            headers=headers,
+        )
+        search_resp.raise_for_status()
+        if search_resp.json().get("total_count", 0) > 0:
+            logger.info("Auto-merge failure Issue 이미 존재 (pr=%d)", pr_number)
+            return None
 
-            create_resp = await client.post(
-                f"{GITHUB_API}/repos/{repo_name}/issues",
-                json={"title": title, "body": body, "labels": ISSUE_LABELS},
-                headers=headers,
-            )
-            create_resp.raise_for_status()
-            number = create_resp.json().get("number")
-            logger.info("Auto-merge failure Issue 생성 완료 #%s (pr=%d)", number, pr_number)
-            return number
+        create_resp = await client.post(
+            f"{GITHUB_API}/repos/{repo_name}/issues",
+            json={"title": title, "body": body, "labels": ISSUE_LABELS},
+            headers=headers,
+        )
+        create_resp.raise_for_status()
+        number = create_resp.json().get("number")
+        logger.info("Auto-merge failure Issue 생성 완료 #%s (pr=%d)", number, pr_number)
+        return number
     except httpx.HTTPError as exc:
         logger.error("create_merge_failure_issue 실패 (%s, pr=%d): %s", repo_name, pr_number, exc)
         return None

@@ -1,8 +1,7 @@
 """GitHub pull request comment notifier using the GitHub Issues API."""
-import httpx
-
-from src.constants import GRADE_EMOJI, NOTIFIER_MAX_ISSUES_LONG, HTTP_CLIENT_TIMEOUT
+from src.constants import GRADE_EMOJI, NOTIFIER_MAX_ISSUES_LONG
 from src.github_client.helpers import github_api_headers
+from src.shared.http_client import get_http_client
 from src.scorer.calculator import ScoreResult
 from src.analyzer.io.static import StaticAnalysisResult
 from src.analyzer.io.ai_review import AiReviewResult
@@ -46,13 +45,13 @@ async def post_pr_comment(  # pylint: disable=too-many-positional-arguments
     """Post a formatted analysis result comment on a GitHub pull request."""
     body = _build_comment_body(score_result, analysis_results, ai_review)
     url = f"https://api.github.com/repos/{repo_name}/issues/{pr_number}/comments"
-    async with httpx.AsyncClient(timeout=HTTP_CLIENT_TIMEOUT) as client:
-        r = await client.post(
-            url,
-            json={"body": body},
-            headers=github_api_headers(github_token),
-        )
-        r.raise_for_status()
+    client = get_http_client()
+    r = await client.post(
+        url,
+        json={"body": body},
+        headers=github_api_headers(github_token),
+    )
+    r.raise_for_status()
 
 
 def _header_lines(result: dict) -> list[str]:
@@ -153,10 +152,10 @@ async def post_pr_comment_from_result(
     """Post a formatted analysis result comment from a stored result dict."""
     body = _build_comment_from_result(result)
     url = f"https://api.github.com/repos/{repo_name}/issues/{pr_number}/comments"
-    async with httpx.AsyncClient(timeout=HTTP_CLIENT_TIMEOUT) as client:
-        r = await client.post(
-            url,
-            json={"body": body},
-            headers=github_api_headers(github_token),
-        )
-        r.raise_for_status()
+    client = get_http_client()
+    r = await client.post(
+        url,
+        json={"body": body},
+        headers=github_api_headers(github_token),
+    )
+    r.raise_for_status()

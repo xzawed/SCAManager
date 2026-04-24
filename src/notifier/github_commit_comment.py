@@ -6,6 +6,7 @@ import httpx
 from src.constants import GITHUB_API
 from src.github_client.helpers import github_api_headers
 from src.notifier.github_comment import _build_comment_from_result
+from src.shared.http_client import get_http_client
 
 logger = logging.getLogger(__name__)
 
@@ -23,13 +24,13 @@ async def post_commit_comment(
     """
     body = _build_comment_from_result(result)
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(
-                f"{GITHUB_API}/repos/{repo_name}/commits/{commit_sha}/comments",
-                json={"body": body},
-                headers=github_api_headers(github_token),
-            )
-            resp.raise_for_status()
+        client = get_http_client()
+        resp = await client.post(
+            f"{GITHUB_API}/repos/{repo_name}/commits/{commit_sha}/comments",
+            json={"body": body},
+            headers=github_api_headers(github_token),
+        )
+        resp.raise_for_status()
     except httpx.HTTPError as exc:
         logger.warning("post_commit_comment 실패 (%s@%s): %s", repo_name, commit_sha, exc)
 
