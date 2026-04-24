@@ -32,6 +32,7 @@ class RepoConfigUpdate(BaseModel):
     commit_comment: bool = False
     create_issue: bool = False
     railway_deploy_alerts: bool = False
+    auto_merge_issue_on_failure: bool = False
 
     @model_validator(mode="after")
     def validate_thresholds(self) -> "RepoConfigUpdate":
