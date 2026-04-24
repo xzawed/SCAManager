@@ -389,6 +389,7 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 - **RepoConfig 필드명**: `approve_mode`(구 `gate_mode`), `approve_threshold`(구 `auto_approve_threshold`), `reject_threshold`(구 `auto_reject_threshold`) — 구 필드명 사용 시 AttributeError.
 - **알림 채널 추가 체크리스트**: `RepoConfig` ORM → `RepoConfigData` dataclass → `RepoConfigUpdate` API body → UI 폼 4곳 반드시 동기화. 누락 시 REST API 업데이트 시 해당 필드가 NULL로 덮어써지는 버그 발생.
 - **Webhook 서명**: `X-Hub-Signature-256` 헤더 없거나 서명 불일치 시 401 반환 — 로컬 테스트 시 서명 생성 필요. 빈 시크릿(`GITHUB_WEBHOOK_SECRET` 미설정)이면 즉시 401.
+- **Webhook 서명 실패 일관성**: GitHub / Telegram webhook 모두 서명 불일치 시 `HTTPException(401)` 반환. 200 OK 반환 금지 — 공격자에게 성공 응답 노출 방지 (2026-04-24 P1-4 정정).
 - **알림 독립성**: `_build_notify_tasks()` 디스패처, `asyncio.gather(return_exceptions=True)`로 실행 — 한 채널 실패해도 나머지 채널은 정상 전송. `repo_config` 로드 실패 시에도 Telegram은 global fallback으로 항상 발송.
 - **PR Gate 3-옵션 독립**: `pr_review_comment`·`approve_mode`·`auto_merge+merge_threshold` 완전 독립. `post_pr_comment_from_result(result: dict, ...)` 사용 — `AiReviewResult` 객체 불필요. `run_gate_check` 시그니처: `(repo_name, pr_number, analysis_id, result, github_token, db)`.
 - **build_analysis_result_dict**: `src/worker/pipeline.py` 모듈 레벨 함수. pipeline과 hook.py 두 곳에서 Analysis.result dict를 생성할 때 사용. `score`·`grade` 필드 포함 — gate engine이 이를 기반으로 결정.
@@ -407,6 +408,7 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 - **Telegram 게이트 콜백 HMAC 인증**: 콜백 데이터 형식 `gate:{decision}:{id}:{token}` — token은 `hmac(bot_token, str(analysis_id), sha256).hexdigest()[:32]` (128-bit). `telegram_gate.py`의 `_gate_callback_token()` 참조. 테스트 시 HMAC 토큰을 직접 계산해 픽스처에 포함해야 함.
 - **GitHub Access Token 암호화**: `src/crypto.py`의 `encrypt_token()`/`decrypt_token()` — `TOKEN_ENCRYPTION_KEY` 미설정 시 평문 저장. `User.plaintext_token` property가 DB 읽기 시 자동 복호화. `user.github_access_token` 직접 사용 금지 — `user.plaintext_token` 사용.
 - **SESSION_SECRET 강도**: `warn_weak_session_secret` validator가 32자 미만 또는 기본값이면 WARNING 출력. 프로덕션에서는 32자 이상 랜덤 문자열 필수.
+- **TOKEN_ENCRYPTION_KEY prod 감지**: lifespan startup 에서 `APP_BASE_URL` 이 https:// 로 시작하고 키가 비어있으면 WARNING 배너 출력. dev 환경(http 또는 빈 URL)에서는 침묵. 키 생성 명령은 로그 메시지에 포함 (2026-04-24 P1-5).
 - **Jinja2 autoescape**: `Jinja2Templates`는 `.html` 파일에 대해 autoescape=True(기본값). 템플릿 변수는 자동 이스케이프됨 — `| safe` 필터 사용 금지. notifier HTML 출력엔 `html.escape()` 직접 적용 필수.
 - **OAuth CSRF state**: Authlib `authorize_access_token()`이 session state 검증을 내부 처리. `/auth/github`를 거치지 않은 직접 콜백(`/auth/callback`) 접근은 에러(500)로 차단됨 — 정상 동작.
 - **로그 인젝션 방어 (`sanitize_for_log`)**: `src/log_safety.py`의 `sanitize_for_log(value, max_len=200)` 헬퍼로 user-controlled 입력을 logger 에 전달하기 전 반드시 경유. CR/LF/TAB/NUL 제거 + 길이 제한. `%r` 포맷만으로는 SonarCloud `pythonsecurity:S5145` taint analysis 를 통과 못 함 — 명시적 함수 호출 필요. 예: `logger.info("...%s...", sanitize_for_log(body.repo))`.
@@ -440,4 +442,4 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 
 ## 현재 상태
 
-최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1247개 | E2E 49개 | pylint 10.00 | 커버리지 96.2% | SonarCloud QG OK · Security A · Reliability A · Maintainability A · Tier1 정적분석 10종 · Observability (Sentry + Claude metrics + stage timing + MergeAttempt) · AI 점수 피드백 루프 · Settings Minimal Mode · Onboarding 3단계 튜토리얼 · 5-렌즈 감사 95+ 통과 · Phase F Quick Win + F.1 관측 완료 · Phase F.3 실패 어드바이저 완료
+최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1293개 | E2E 49개 | pylint 10.00 | 커버리지 96.2% | SonarCloud QG OK · Security A · Reliability A · Maintainability A · Tier1 정적분석 10종 · Observability (Sentry + Claude metrics + stage timing + MergeAttempt) · AI 점수 피드백 루프 · Settings Minimal Mode · Onboarding 3단계 튜토리얼 · 5-렌즈 감사 95+ 통과 · Phase F Quick Win + F.1 관측 완료 · Phase F.3 실패 어드바이저 완료

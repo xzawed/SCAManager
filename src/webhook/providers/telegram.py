@@ -11,7 +11,7 @@ import logging
 from typing import Annotated
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, Header, Request
+from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.config import settings
@@ -98,7 +98,7 @@ async def handle_gate_callback(
             logger.error("Gate callback failed: %s", exc)
 
 
-@router.post("/api/webhook/telegram")
+@router.post("/api/webhook/telegram", responses={401: {"description": "Invalid secret token"}})
 async def telegram_webhook(
     request: Request,
     background_tasks: BackgroundTasks,
@@ -112,7 +112,7 @@ async def telegram_webhook(
         provided = x_telegram_bot_api_secret_token or ""
         if not hmac.compare_digest(provided, settings.telegram_webhook_secret):
             logger.warning("Telegram webhook: invalid or missing secret token")
-            return {"status": "ok"}
+            raise HTTPException(status_code=401, detail="Invalid secret token")
 
     payload = await request.json()
     callback_query = payload.get("callback_query")
