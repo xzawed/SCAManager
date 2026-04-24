@@ -52,8 +52,11 @@
   - `tests/unit/webhook/test_telegram_provider.py`: 기존 2개 보강 + 신규 3개 추가 (+5 테스트)
   - `CLAUDE.md` F.2 "범위 제한" 문구 제거
   - `docs/reports/2026-04-24-comprehensive-audit.md` P2 Phase F.2 ✅ 마킹
+- **H.3**: 통합 테스트 2건 보강 (`tests/integration/test_webhook_to_gate.py`)
+  - `test_pr_synchronize_updates_analysis`: synchronize 이벤트로 새 SHA 도착 시 두 번째 Analysis 생성 검증
+  - `test_gate_block_triggers_notifier`: gate check 후 `build_notification_tasks` 항상 호출 검증 + `repo_name`/`pr_number` 인자 확인
 
-**테스트 증분**: +5 (telegram_provider 신규 3 + 기존 2 보강)
+**테스트 증분**: +7 (H.2 +5, H.3 +2)
 
 ### 그룹 36 (2026-04-24 · P2 이슈 수정 + settings.html 번호 교정)
 

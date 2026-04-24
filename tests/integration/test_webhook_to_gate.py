@@ -214,3 +214,75 @@ def test_invalid_signature_returns_401(integration_db, mock_deps):
         assert count == 0, "서명 실패 시 Analysis가 생성되면 안 됨"
     finally:
         session.close()
+
+
+# ---------------------------------------------------------------------------
+# 시나리오 4: synchronize 이벤트 — 새 SHA 도착 시 두 번째 Analysis 생성
+# ---------------------------------------------------------------------------
+
+def test_pr_synchronize_updates_analysis(integration_db, mock_deps):
+    """synchronize 이벤트(새 SHA)가 도착하면 두 번째 Analysis 행이 생성된다."""
+    repo = "owner/repo-sync"
+    sha1 = "sha_first_0000001"
+    sha2 = "sha_second_000002"
+    pr_num = 99
+
+    client = TestClient(app)
+
+    # 1. PR opened (sha1)
+    _post_webhook(client, "pull_request", _pr_payload(repo, sha1, pr_num, action="opened"))
+
+    session = integration_db()
+    try:
+        db_repo = session.query(Repository).filter_by(full_name=repo).first()
+        assert db_repo is not None
+        analyses = session.query(Analysis).filter_by(repo_id=db_repo.id).all()
+        assert len(analyses) == 1
+        assert analyses[0].commit_sha == sha1
+    finally:
+        session.close()
+
+    # 2. PR synchronize (sha2) → 새 Analysis 행 생성
+    _post_webhook(client, "pull_request", _pr_payload(repo, sha2, pr_num, action="synchronize"))
+
+    session = integration_db()
+    try:
+        db_repo = session.query(Repository).filter_by(full_name=repo).first()
+        analyses = (
+            session.query(Analysis)
+            .filter_by(repo_id=db_repo.id)
+            .order_by(Analysis.id)
+            .all()
+        )
+        assert len(analyses) == 2, "synchronize 이벤트는 새 SHA 에 대해 새 Analysis 를 생성해야 함"
+        shas = {a.commit_sha for a in analyses}
+        assert sha1 in shas and sha2 in shas
+        second = next(a for a in analyses if a.commit_sha == sha2)
+        assert second.pr_number == pr_num
+    finally:
+        session.close()
+
+    assert mock_deps.call_count == 2, "각 이벤트마다 run_gate_check 1회 — 총 2회"
+
+
+# ---------------------------------------------------------------------------
+# 시나리오 5: gate block — build_notification_tasks 는 gate 결과와 무관하게 호출
+# ---------------------------------------------------------------------------
+
+def test_gate_block_triggers_notifier(integration_db, mock_deps):
+    """gate check 실행 후 build_notification_tasks 가 항상 호출되는지 검증."""
+    repo = "owner/repo-notifier"
+    sha = "sha_notifier_test0"
+    pr_num = 55
+
+    client = TestClient(app)
+    notify_mock = MagicMock(return_value=([], []))
+
+    with patch("src.worker.pipeline.build_notification_tasks", notify_mock):
+        _post_webhook(client, "pull_request", _pr_payload(repo, sha, pr_num))
+
+    mock_deps.assert_called_once()
+    notify_mock.assert_called_once()
+    _, kw = notify_mock.call_args
+    assert kw["repo_name"] == repo
+    assert kw["pr_number"] == pr_num
