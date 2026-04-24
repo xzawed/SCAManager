@@ -8,6 +8,8 @@ from src.config import settings
 from src.config_manager.manager import get_repo_config, RepoConfigData
 from src.gate._common import score_from_result as _score_from_result
 from src.gate.github_review import post_github_review, merge_pr
+from src.gate.merge_failure_advisor import get_advice
+from src.notifier.merge_failure_issue import create_merge_failure_issue
 from src.gate.telegram_gate import send_gate_request
 from src.notifier.github_comment import post_pr_comment_from_result as post_pr_comment
 from src.notifier.telegram import telegram_post_message
@@ -211,6 +213,9 @@ async def _run_auto_merge(  # pylint: disable=too-many-arguments
         if ok:
             logger.info("PR #%d auto-merged: %s", pr_number, repo_name)
             return
+
+        advice = get_advice(reason)
+
         logger.warning(
             "PR #%d auto-merge 실패 (repo=%s): %s", pr_number, repo_name, reason
         )
@@ -220,8 +225,24 @@ async def _run_auto_merge(  # pylint: disable=too-many-arguments
             score=score,
             threshold=config.merge_threshold,
             reason=reason or "unknown",
+            advice=advice,
             chat_id=config.notify_chat_id or settings.telegram_chat_id,
         )
+        if getattr(config, "auto_merge_issue_on_failure", False):
+            try:
+                await create_merge_failure_issue(
+                    github_token=github_token,
+                    repo_name=repo_name,
+                    pr_number=pr_number,
+                    score=score,
+                    threshold=config.merge_threshold,
+                    reason=reason or "unknown",
+                    advice=advice,
+                )
+            except Exception as exc:  # pylint: disable=broad-except
+                logger.warning(
+                    "create_merge_failure_issue 실패 (pr=%d): %s", pr_number, exc
+                )
     # Phase F QW4: RuntimeError/ValueError 도 포착해 알림 스킵 방지
     except (httpx.HTTPError, KeyError, RuntimeError, ValueError) as exc:
         logger.error("Auto Merge 실패 (repo=%s, pr=%d): %s", repo_name, pr_number, exc)
@@ -234,6 +255,7 @@ async def _notify_merge_failure(
     score: int,
     threshold: int,
     reason: str,
+    advice: str,
     chat_id: str | None,
 ) -> None:
     """auto_merge 실패를 Telegram 으로 알린다. chat_id 없으면 스킵."""
@@ -246,6 +268,7 @@ async def _notify_merge_failure(
         f"📁 <code>{escape(repo_name)}</code> — PR #{pr_number}\n"
         f"점수: {score}점 (기준 {threshold}점 이상)\n"
         f"사유: <code>{escape(reason)}</code>\n"
+        f"💡 {escape(advice)}\n"
         f"🔗 <a href=\"{escape(pr_url)}\">GitHub 에서 보기</a>"
     )
     try:
