@@ -13,6 +13,7 @@
 | 2026-04-23 | [sonarcloud-baseline](2026-04-23-sonarcloud-baseline.md) | 외부 공신력 서비스(SonarCloud) 1차 분석 + 청산 계획 |
 | 2026-04-23 | [structure-audit-3agent](2026-04-23-structure-audit-3agent.md) | 프로젝트 구조 3-에이전트 감사 |
 | 2026-04-24 | [comprehensive-audit](2026-04-24-comprehensive-audit.md) | 14 에이전트 × 3 Round 전면 감사 (P1 7건 확정, G Phase 착수) |
+| 2026-04-25 | [static-analysis-baseline](2026-04-25-static-analysis-baseline.md) | G.6 병렬화 Go/No-Go 기준선 (BORDERLINE — Railway 실측 후 재판정) |
 
 ## 회고 (문제 → 원인 → 교훈)
 
