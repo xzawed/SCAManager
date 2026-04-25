@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-25 기준 — Phase F Quick Win + F.1 관측 완료 · Phase F.3 실패 어드바이저 완료 · G.2 수치 동기화 · Phase G 완료 · P2 이슈 수정 완료 · Phase H 착수 (F.2 관측 완료) · 이중언어 주석 마이그레이션 완료)
+## 현재 수치 (2026-04-25 기준 — Phase F Quick Win + F.1 관측 완료 · Phase F.3 실패 어드바이저 완료 · G.2 수치 동기화 · Phase G 완료 · P2 이슈 수정 완료 · Phase H 착수 (F.2 관측 완료) · 이중언어 주석 마이그레이션 완료 · 보안 강화 그룹 39 완료)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1296개** | pytest (0 failed) — 2026-04-25 로컬 실측 (이중언어 마이그레이션 후 회귀 없음) |
+| 단위 테스트 | **1300개** | pytest 9.0.3 (0 failed) — 2026-04-25 로컬 실측 (보안 강화 후 회귀 없음) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
@@ -43,6 +43,32 @@
 | `tests/conftest.py` | 환경변수 주입 + _webhook_secret_cache autouse 클리어 |
 
 ## 작업 이력 (그룹별)
+
+### 그룹 39 (2026-04-25 · 보안 강화 — GitHub 봇 클론 사고 대응)
+
+**배경**: GitHub 봇이 프로젝트 리포를 클론하고 있다는 보고에 따라 5개 병렬 에이전트(비밀정보·인증·입력검증·의존성CVE·공격면) 전면 감사 후 12개 보안 이슈 수정 완료.
+
+**수정 내역**:
+
+| # | 영역 | 수정 내용 | 심각도 |
+|---|------|---------|--------|
+| 1 | `src/main.py` | `SecurityHeadersMiddleware` 추가 — X-Content-Type-Options, X-Frame-Options, HSTS(prod) | HIGH |
+| 2 | `src/main.py` | 프로덕션(HTTPS)에서 `/docs` `/redoc` `/openapi.json` 비활성화 | HIGH |
+| 3 | `src/main.py` | `/health/tools` 디버그 엔드포인트 제거 — 도구 경로 노출 차단 | HIGH |
+| 4 | `src/main.py` | `/health` 응답에서 `active_db` 필드 제거 — 내부 DB 상태 노출 차단 | MEDIUM |
+| 5 | `src/auth/github.py` | Session Fixation 방어 — `session.clear()` before `user_id` 저장 | HIGH |
+| 6 | `src/analyzer/io/static.py` | TOCTOU tempfile 수정 — `NamedTemporaryFile` → `TemporaryDirectory` | MEDIUM |
+| 7 | `src/ui/routes/settings.py` | SSRF 방어 — `_is_safe_webhook_url()` + `_BLOCKED_HOSTS` (사설 IP·메타데이터 차단) | HIGH |
+| 8 | `src/gate/telegram_gate.py` + `telegram.py` | HMAC 128-bit 절단 명시 문서화 — Telegram 64바이트 한도 준수 | MEDIUM |
+| 9 | `src/api/auth.py` | 운영환경 API_KEY 미설정 시 503 차단 (개발환경은 경고+통과 유지) | HIGH |
+| 10 | `src/github_client/repos.py` | Pre-push 훅 heredoc 주입 수정 — `cat << PROMPT` → python3 env var 방식 | MEDIUM |
+| 11 | `src/gate/engine.py` + `github.py` | 예외 로깅 정보 노출 — `exc` → `type(exc).__name__` | MEDIUM |
+| 12 | `requirements.txt` | CVE 의존성 업그레이드 — authlib≥1.6.11, starlette≥0.47.2, python-multipart≥0.0.26, cryptography≥46.0.7 | HIGH |
+| 13 | `requirements-dev.txt` | CVE-2025-71176 — pytest 8.3.3 → ≥9.0.3 (tmpdir race condition) | MEDIUM |
+
+**테스트 증분**: +4 (security headers, /health/tools removed, API key prod-503, API key dev-200)
+
+**Dependabot 알림**: 2건 (CVE-2025-71176 pytest) — 패치 후 수동 dismiss 완료.
 
 ### 그룹 38 (2026-04-25 · 이중언어 주석 마이그레이션 완료)
 
