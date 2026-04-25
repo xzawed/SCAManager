@@ -2,12 +2,17 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Write|Edit",
+        "matcher": "Write|Edit|MultiEdit",
         "hooks": [
           {
             "type": "command",
             "command": "python .claude/hooks/check_edit_allowed.py",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "python .claude/hooks/doc_review_gate.py",
+            "timeout": 60
           }
         ]
       }
