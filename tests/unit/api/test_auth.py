@@ -133,3 +133,26 @@ def test_api_key_empty_logs_warning(monkeypatch):
     monkeypatch.setattr(_auth_mod, "logger", mock_logger, raising=False)
     client.get("/protected")
     mock_logger.warning.assert_called()
+
+
+# ---------------------------------------------------------------------------
+# 테스트 8: 운영환경(HTTPS URL)에서 API_KEY 미설정 시 503 반환
+# Test 8: production (https APP_BASE_URL) + no API_KEY → 503.
+# ---------------------------------------------------------------------------
+
+def test_api_key_empty_prod_returns_503(monkeypatch):
+    # 운영환경(APP_BASE_URL=https://)에서 API_KEY 미설정 시 모든 요청 차단 → 503
+    # In production (https APP_BASE_URL) without API_KEY, all requests must be blocked.
+    monkeypatch.setattr("src.api.auth.settings.api_key", "")
+    monkeypatch.setattr("src.api.auth.settings.app_base_url", "https://scamanager.example.com")
+    r = client.get("/protected")
+    assert r.status_code == 503
+
+
+def test_api_key_empty_dev_http_allows_access(monkeypatch):
+    # 개발환경(http URL)에서 API_KEY 미설정 시 경고 후 통과 — 기존 동작 유지
+    # In development (http URL) without API_KEY, requests pass through with a warning.
+    monkeypatch.setattr("src.api.auth.settings.api_key", "")
+    monkeypatch.setattr("src.api.auth.settings.app_base_url", "http://localhost:8000")
+    r = client.get("/protected")
+    assert r.status_code == 200

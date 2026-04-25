@@ -131,24 +131,29 @@ fi
 COMMIT_MSG=$(git log --format="%B" -1 "${LOCAL_SHA}" 2>/dev/null)
 echo "\\n🔍 [SCAManager] 코드리뷰 실행 중..."
 
-# 프롬프트를 파일에 기록 후 stdin으로 전달 — argv 주입 차단
-# Write prompt to a temp file and pass via stdin — prevents argv injection.
+# 환경변수로 값 전달 후 python3 로 프롬프트 파일 생성 — heredoc 주입 완전 차단
+# Build prompt file via python3 with env vars — eliminates heredoc delimiter injection
+# (COMMIT_MSG/DIFF could contain the heredoc terminator on its own line).
 TMPFILE=$(mktemp /tmp/scamanager_review.XXXXXX)
-cat > "${TMPFILE}" << PROMPT
-다음 변경사항을 분석하고 아래 JSON 형식으로만 응답하세요. 다른 텍스트는 포함하지 마세요.
-
-커밋 메시지: ${COMMIT_MSG}
-
-변경사항:
-${DIFF}
-
-채점 유의사항:
-- 일반적으로 양호한 코드는 15~18점 범위입니다.
-- 명확한 문제가 없다면 최소 12점 이상을 부여하세요.
-
-다음 JSON만 응답:
-{"commit_message_score":<0-20>,"direction_score":<0-20>,"test_score":<0-10>,"summary":"요약","suggestions":["제안"],"commit_message_feedback":"피드백","code_quality_feedback":"피드백","security_feedback":"피드백","direction_feedback":"피드백","test_feedback":"피드백","file_feedbacks":[]}
-PROMPT
+SCA_COMMIT_MSG="${COMMIT_MSG}" SCA_DIFF="${DIFF}" python3 -c "
+import os, sys
+commit_msg = os.environ.get('SCA_COMMIT_MSG', '')
+diff_content = os.environ.get('SCA_DIFF', '')
+prompt = (
+    '다음 변경사항을 분석하고 아래 JSON 형식으로만 응답하세요. 다른 텍스트는 포함하지 마세요.\n\n'
+    '코밋 메시지: ' + commit_msg + '\n\n'
+    '변경사항:\n' + diff_content + '\n\n'
+    '채점 유의사항:\n'
+    '- 일반적으로 양호한 코드는 15~18점 범위입니다.\n'
+    '- 명확한 문제가 없다면 최소 12점 이상을 부여하세요.\n\n'
+    '다음 JSON만 응답:\n'
+    '{\"commit_message_score\":<0-20>,\"direction_score\":<0-20>,\"test_score\":<0-10>,'
+    '\"summary\":\"요약\",\"suggestions\":[\"제안\"],\"commit_message_feedback\":\"피드백\",'
+    '\"code_quality_feedback\":\"피드백\",\"security_feedback\":\"피드백\",'
+    '\"direction_feedback\":\"피드백\",\"test_feedback\":\"피드백\",\"file_feedbacks\":[]}'
+)
+sys.stdout.write(prompt)
+" > "${TMPFILE}"
 
 # claude -p 에 프롬프트를 stdin으로 전달 (argv 주입 차단)
 RESULT=$(claude -p < "${TMPFILE}" 2>/dev/null) || true
