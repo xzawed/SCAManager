@@ -1,0 +1,9 @@
+# SCAManager — git blame ignore list
+# i18n(comments) 마이그레이션 커밋 SHA를 여기에 추가한다.
+# Add SHA of i18n(comments) migration commits here so `git blame` skips them.
+#
+# 사용법 / Usage:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# P0 도구 커밋 SHA는 작업 완료 후 추가 예정
+# Phase commit SHAs will be added after each phase completes

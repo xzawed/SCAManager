@@ -84,14 +84,16 @@ app.include_router(ui_router)
 
 @app.get("/health")
 def health():
-    """Liveness probe — active_db 필드로 현재 연결 중인 DB를 표시한다."""
+    """Liveness probe — active_db 필드로 현재 연결 중인 DB를 표시한다.
+    Liveness probe — shows the currently connected DB via the active_db field."""
     active = getattr(SessionLocal, "active_db", "primary")
     return {"status": "ok", "active_db": active}
 
 
 @app.get("/health/tools")
 def health_tools():
-    """임시 디버그 엔드포인트 — 정적분석 도구 바이너리 경로 확인용. 확인 후 제거 예정."""
+    """임시 디버그 엔드포인트 — 정적분석 도구 바이너리 경로 확인용. 확인 후 제거 예정.
+    Temporary debug endpoint — verifies static analysis tool binary paths. Remove after confirmation."""
     import shutil  # pylint: disable=import-outside-toplevel
     return {
         "rubocop": shutil.which("rubocop"),

@@ -22,7 +22,14 @@ def _ipv4_connect_args(url: str) -> dict:
     Python socket으로 IPv4 주소를 조회한 뒤 psycopg2 hostaddr에 전달.
     libpq는 hostaddr로 직접 TCP 연결하고, SSL 인증서는 host(hostname)로 검증.
     SQLite는 hostaddr를 지원하지 않으므로 건너뜀.
-    DNS 조회 hang 방지: executor.shutdown(wait=False)로 스레드 완료 대기 없이 반환."""
+    DNS 조회 hang 방지: executor.shutdown(wait=False)로 스레드 완료 대기 없이 반환.
+
+    Resolves IPv6 outbound blocking in Railway containers.
+    Resolves the hostname to an IPv4 address via Python socket, then passes it as
+    psycopg2 hostaddr. libpq connects directly via hostaddr while validating the SSL
+    certificate against host (hostname). Skipped for SQLite (no hostaddr support).
+    DNS hang prevention: returns without waiting for thread via executor.shutdown(wait=False).
+    """
     try:
         parsed = urlparse(url)
         hostname = parsed.hostname
@@ -49,7 +56,14 @@ def _build_connect_args(url: str) -> dict:
     - db_force_ipv4=True: Railway IPv4 강제 (Supabase/Railway 환경)
     - db_sslmode: SSL 모드 명시 설정 (온프레미스 PostgreSQL 등)
     - URL query에 sslmode가 이미 포함된 경우 connect_args에 중복 설정하지 않음
-    SQLite URL은 hostaddr/sslmode 모두 미적용."""
+    SQLite URL은 hostaddr/sslmode 모두 미적용.
+
+    Builds connection arguments from environment variables.
+    - db_force_ipv4=True: Force IPv4 on Railway/Supabase environments.
+    - db_sslmode: Explicit SSL mode for on-premises PostgreSQL etc.
+    - Skips adding sslmode to connect_args if the URL query already contains it.
+    SQLite URLs: neither hostaddr nor sslmode is applied.
+    """
     args: dict = {}
     parsed = urlparse(url)
     if not parsed.hostname:  # SQLite
@@ -75,6 +89,14 @@ class FailoverSessionFactory:  # pylint: disable=too-many-instance-attributes
         ...
 
     fallback_url이 None이면 단일 엔진 모드로 동작 (기존과 동일).
+
+    Session factory that automatically fails over to a fallback DB on primary failure.
+
+    SessionLocal = FailoverSessionFactory(primary_url, fallback_url)
+    with SessionLocal() as db:  # works identically to existing code
+        ...
+
+    If fallback_url is None, operates in single-engine mode (identical to the original).
     """
 
     def __init__(self, primary_url, fallback_url: str | None = None):
@@ -121,27 +143,32 @@ class FailoverSessionFactory:  # pylint: disable=too-many-instance-attributes
         return create_engine(url, **kwargs)
 
     def _start_probe_thread(self) -> None:
-        """Primary 복구 감지용 daemon 스레드를 시작한다."""
+        """Primary 복구 감지용 daemon 스레드를 시작한다.
+        Starts a daemon thread that monitors primary DB recovery."""
         self._probe_thread = threading.Thread(
             target=self._probe_primary_loop, daemon=True, name="db-failover-probe"
         )
         self._probe_thread.start()
 
     def _switch_to(self, target: str) -> None:
-        """활성 maker를 전환한다. 호출 전 self._lock 획득 필요."""
+        """활성 maker를 전환한다. 호출 전 self._lock 획득 필요.
+        Switches the active session maker. Caller must hold self._lock."""
         self._active = target
         logger.warning("DB failover: switched to %s", target)
 
     def _current_maker(self):
-        """현재 활성 maker를 반환한다."""
+        """현재 활성 maker를 반환한다.
+        Returns the currently active session maker."""
         if self._active == "fallback" and self._fallback_maker is not None:
             return self._fallback_maker
         return self._primary_maker
 
     def __call__(self) -> Session:
-        """세션을 반환한다. Fallback 설정 시 연결 실패에 대해 자동 전환한다."""
+        """세션을 반환한다. Fallback 설정 시 연결 실패에 대해 자동 전환한다.
+        Returns a session. Automatically switches to fallback on connection failure when configured."""
         if self._fallback_maker is None:
             # 단일 엔진 모드 — 기존 동작과 동일
+            # Single-engine mode — identical to original behavior
             return self._primary_maker()
 
         # 이미 fallback 모드면 primary 시도 없이 바로 fallback 사용
@@ -176,11 +203,13 @@ class FailoverSessionFactory:  # pylint: disable=too-many-instance-attributes
 
     @property
     def active_db(self) -> str:
-        """현재 활성 DB: "primary" 또는 "fallback"."""
+        """현재 활성 DB: "primary" 또는 "fallback".
+        Currently active DB: "primary" or "fallback"."""
         return self._active
 
     def _probe_primary_loop(self) -> None:
-        """Fallback 중에 Primary 복구를 주기적으로 확인하고 자동 복귀한다."""
+        """Fallback 중에 Primary 복구를 주기적으로 확인하고 자동 복귀한다.
+        Periodically probes primary DB recovery during fallback and auto-returns when healthy."""
         interval = settings.db_failover_probe_interval
         while True:
             time.sleep(interval)
@@ -202,7 +231,8 @@ engine = SessionLocal._primary_engine  # pylint: disable=protected-access  # ale
 
 
 def get_db():
-    """FastAPI dependency injection용 세션 제너레이터."""
+    """FastAPI dependency injection용 세션 제너레이터.
+    Session generator for FastAPI dependency injection."""
     db: Session = SessionLocal()
     try:
         yield db
