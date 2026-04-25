@@ -20,6 +20,7 @@ from src.ui.routes import (
 router = APIRouter()
 
 # 구체 경로 → 일반 경로 순
+# Specific routes first, catch-all route last.
 router.include_router(overview.router)       # GET /
 router.include_router(add_repo.router)       # GET/POST /repos/add, /api/github/repos
 router.include_router(settings.router)       # /repos/{name}/settings, reinstall-*

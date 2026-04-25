@@ -58,11 +58,13 @@ def calculate_score(
     ai_defaults_applied = False
     if ai_review is not None and ai_review.status == "success":
         # AI 점수를 새 배점으로 스케일링 (raw → 배점)
+        # Scale AI raw scores to the configured point allocation (raw → weighted).
         commit_score = round(ai_review.commit_score * COMMIT_MSG_MAX / AI_RAW_COMMIT_MAX)
         ai_score = round(ai_review.ai_score * AI_REVIEW_MAX / AI_RAW_DIRECTION_MAX)
         test_score = round(ai_review.test_score * TEST_COVERAGE_MAX / AI_RAW_TEST_MAX)
     else:
         # AI 리뷰 없거나 기본값 적용 시 중립적 기본값
+        # No AI review or failed call — fall back to neutral defaults.
         commit_score = AI_DEFAULT_COMMIT
         ai_score = AI_DEFAULT_DIRECTION
         test_score = AI_DEFAULT_TEST

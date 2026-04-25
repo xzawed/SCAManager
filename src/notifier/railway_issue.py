@@ -65,6 +65,7 @@ async def create_deploy_failure_issue(
     try:
         client = get_http_client()
         # 중복 체크
+        # Deduplication check — skip creation if an issue with this marker already exists.
         search_url = f"{GITHUB_API}/search/issues"
         search_resp = await client.get(
             search_url,
