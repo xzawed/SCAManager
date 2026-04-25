@@ -39,8 +39,8 @@ _LOW_RISK = [
 
 
 def _normalise(path: str) -> str:
-    """경로를 소문자 슬래시로 정규화하고 프로젝트 루트 접두사를 제거한다.
-    Normalise path to lowercase forward-slashes and strip project root prefix."""
+    """경로를 슬래시로 정규화하고 프로젝트 루트 접두사를 제거한다.
+    Normalise path to forward-slashes and strip project root prefix."""
     p = path.replace("\\", "/")
     lower = p.lower()
     for prefix in _PROJECT_PREFIXES:
@@ -55,10 +55,6 @@ def classify_file_grade(file_path: str) -> str:
     Returns one of: critical, important, low_risk, skip."""
     p = _normalise(file_path)
 
-    for pattern in _LOW_RISK:
-        if re.search(pattern, p, re.IGNORECASE):
-            return "low_risk"
-
     for pattern in _CRITICAL:
         if re.match(pattern, p, re.IGNORECASE):
             return "critical"
@@ -66,6 +62,10 @@ def classify_file_grade(file_path: str) -> str:
     for pattern in _IMPORTANT:
         if re.match(pattern, p, re.IGNORECASE):
             return "important"
+
+    for pattern in _LOW_RISK:
+        if re.match(pattern, p, re.IGNORECASE):
+            return "low_risk"
 
     return "skip"
 
