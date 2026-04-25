@@ -14,9 +14,10 @@ from src.config_manager.manager import RepoConfigData
 
 client = TestClient(app)
 
-# HMAC token for analysis_id=42, bot_token="123:ABC" (64자, SHA-256 전체 — 256-bit)
-# Updated from 32-char (128-bit) to 64-char (256-bit) per security hardening.
-_TOKEN_42 = "d9939856ed07d33d8689614fcb1a7dffbda410637e6103e50c12b5f6b35d8197"
+# HMAC-SHA256[:32] token for analysis_id=42, bot_token="123:ABC" — 32자 hex (128-bit)
+# Telegram callback_data 64-byte 한도로 인해 32자 절단 유지 (NIST SP 800-107 충족).
+# 32-char truncation is required by Telegram's 64-byte callback_data limit (meets NIST SP 800-107).
+_TOKEN_42 = "d9939856ed07d33d8689614fcb1a7dff"
 APPROVE = {"update_id": 1, "callback_query": {"id": "c1", "from": {"id": 1, "username": "john"},
             "data": f"gate:approve:42:{_TOKEN_42}", "message": {"message_id": 1, "chat": {"id": -1}}}}
 REJECT = {"update_id": 2, "callback_query": {"id": "c2", "from": {"id": 1, "username": "john"},

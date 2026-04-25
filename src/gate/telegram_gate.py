@@ -7,11 +7,18 @@ from src.scorer.calculator import ScoreResult
 
 
 def _gate_callback_token(bot_token: str, analysis_id: int) -> str:
-    """콜백 데이터 위변조 방지용 HMAC 토큰 (SHA-256 전체 hex, 256-bit).
-    Full SHA-256 hex HMAC token for callback integrity verification (256-bit)."""
+    """콜백 데이터 위변조 방지용 HMAC-SHA256 토큰 — 32자 hex (128-bit 절단).
+    HMAC-SHA256 callback integrity token truncated to 32 hex chars (128-bit).
+
+    Telegram callback_data 한도 64바이트 준수:
+    "gate:approve:<id>:<32-char-token>" 최대 ~51바이트 (id≤99999 기준).
+    Telegram callback_data 64-byte limit compliance:
+    "gate:approve:<id>:<32-char-token>" is at most ~51 bytes (id≤99999).
+    128-bit HMAC 절단은 NIST SP 800-107 기준 충분한 보안 강도 제공.
+    128-bit HMAC truncation provides sufficient security per NIST SP 800-107."""
     return hmac.new(
         bot_token.encode(), str(analysis_id).encode(), digestmod=hashlib.sha256
-    ).hexdigest()  # 전체 64자 사용 — 앞 32자만 쓰는 128-bit 절단에서 256-bit 로 강화
+    ).hexdigest()[:32]  # 32자(128-bit) — Telegram 64-byte 한도 준수 필수
 
 
 async def send_gate_request(
