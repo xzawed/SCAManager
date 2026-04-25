@@ -2,18 +2,18 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-25 기준 — Phase F Quick Win + F.1 관측 완료 · Phase F.3 실패 어드바이저 완료 · G.2 수치 동기화 · Phase G 완료 · P2 이슈 수정 완료 · Phase H 착수 (F.2 관측 완료) · 이중언어 주석 마이그레이션 완료 · 보안 강화 그룹 39 완료)
+## 현재 수치 (2026-04-25 기준 — Phase F Quick Win + F.1 관측 완료 · Phase F.3 실패 어드바이저 완료 · G.2 수치 동기화 · Phase G 완료 · P2 이슈 수정 완료 · Phase H 착수 (F.2 관측 완료) · 이중언어 주석 마이그레이션 완료 · 보안 강화 그룹 39 완료 · lint 회귀 수정)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1300개** | pytest 9.0.3 (0 failed) — 2026-04-25 로컬 실측 (보안 강화 후 회귀 없음) |
+| 단위 테스트 | **1300개** | pytest 9.0.3 (0 failed) — 2026-04-25 로컬 실측 (보안 강화 + lint 수정 후 회귀 없음) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
 | SonarCloud Maintainability Rating | **A** | Code Smells 58 (-20 from 78) |
 | SonarCloud BLOCKER / CRITICAL | **0 / 0** | Phase Q.7 완료 — 5건 Cognitive Complexity 전부 해소 |
 | E2E 테스트 | **49개** | `make test-e2e` (Chromium Playwright) |
-| pylint | **10.00/10** | `python -m pylint src/` — 만점 |
+| pylint | **10.00/10** | `python -m pylint src/` — 만점 복원 (보안 강화 회귀 3건 수정) |
 | 커버리지 | **96.2%** | `make test-cov` (database.py 100%, ui/router.py 99.4%) |
 | bandit HIGH | **0개** | bandit 1.9.4 (Python 3.14 대응) |
 | flake8 | **0건** | `flake8 src/` |
