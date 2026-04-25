@@ -303,6 +303,7 @@ class TestShellCheckRunOutputParsing:
 
     def test_run_parses_multiple_issues_correctly(self, make_ctx):
         # 복수 이슈가 포함된 출력에서 모든 이슈를 반환해야 한다
+        # All issues must be returned when the output contains multiple findings.
         from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         ctx = make_ctx(language="shell", tmp_path="/tmp/test.sh")
         with patch("subprocess.run", return_value=_mock_shellcheck_proc(SAMPLE_SHELLCHECK_OUTPUT)):
@@ -322,6 +323,7 @@ class TestShellCheckRunOutputParsing:
 
     def test_run_returns_empty_list_for_empty_stdout(self, make_ctx):
         # stdout이 빈 문자열이면 빈 이슈 목록을 반환해야 한다
+        # Empty stdout must return an empty issue list.
         from src.analyzer.io.tools.shellcheck import _ShellCheckAnalyzer
         ctx = make_ctx(language="shell", tmp_path="/tmp/script.sh")
         with patch("subprocess.run", return_value=_mock_shellcheck_proc("")):

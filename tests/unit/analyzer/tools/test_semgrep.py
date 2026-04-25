@@ -351,6 +351,7 @@ class TestSemgrepRunOutputParsing:
 
     def test_run_returns_empty_list_for_empty_stdout(self, make_ctx):
         # stdout이 빈 문자열이면 빈 이슈 목록을 반환해야 한다
+        # Empty stdout must return an empty issue list.
         from src.analyzer.io.tools.semgrep import _SemgrepAnalyzer
         ctx = make_ctx(language="python", tmp_path="/tmp/test.py")
         with patch("subprocess.run", return_value=_mock_semgrep_proc("")):
@@ -359,6 +360,7 @@ class TestSemgrepRunOutputParsing:
 
     def test_run_returns_multiple_issues_from_mixed_output(self, make_ctx):
         # 복수 이슈가 포함된 출력에서 모든 이슈를 반환해야 한다
+        # All issues must be returned when the output contains multiple findings.
         from src.analyzer.io.tools.semgrep import _SemgrepAnalyzer
         ctx = make_ctx(language="java", filename="App.java", tmp_path="/tmp/App.java")
         with patch("subprocess.run", return_value=_mock_semgrep_proc(SAMPLE_OUTPUT_MIXED)):
@@ -417,6 +419,7 @@ class TestSemgrepRunGracefulDegradation:
 
     def test_run_does_not_raise_on_nonzero_returncode(self, make_ctx):
         # semgrep이 비정상 종료코드 반환 시에도 예외 없이 파싱된 이슈를 반환해야 한다
+        # Even with a non-zero exit code, semgrep must return parsed issues without raising.
         from src.analyzer.io.tools.semgrep import _SemgrepAnalyzer
         ctx = make_ctx(language="python", tmp_path="/tmp/test.py")
         # returncode=1이어도 stdout에 유효한 JSON이 있으면 정상 파싱

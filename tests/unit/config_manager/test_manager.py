@@ -28,6 +28,7 @@ def db():
 
 # ---------------------------------------------------------------------------
 # 기존 동작 유지 테스트
+# Tests verifying that existing behaviour is preserved.
 # ---------------------------------------------------------------------------
 
 def test_get_repo_config_returns_default_when_not_found(db):
@@ -119,6 +120,7 @@ def test_get_repo_config_default_auto_merge_is_false(db):
 
 # ---------------------------------------------------------------------------
 # 신규 필드 저장/조회 테스트 (Red: DB 컬럼 미존재)
+# Tests for new field persistence (Red phase: DB column does not exist yet).
 # ---------------------------------------------------------------------------
 
 def test_get_repo_config_returns_new_fields(db):

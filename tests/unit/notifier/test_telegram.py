@@ -71,6 +71,7 @@ def test_build_message_not_truncated_when_under_limit():
 def test_build_message_exactly_at_limit_not_truncated():
     """메시지가 정확히 4096자이면 절단하지 않아야 한다."""
     # 반복 테스트: 다양한 길이로 절단 경계값 확인
+    # Parametrised test: verify truncation boundary for various lengths.
     short_msg = _build_message(
         repo_name="x",
         commit_sha="0" * 7,
@@ -79,6 +80,7 @@ def test_build_message_exactly_at_limit_not_truncated():
         pr_number=None,
     )
     # 절단된 메시지는 반드시 "..."로 끝나야 함
+    # A truncated message must end with "...".
     if len(short_msg) > _MAX:
         assert short_msg.endswith("...")
     else:

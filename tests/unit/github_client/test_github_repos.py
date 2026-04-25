@@ -128,11 +128,13 @@ async def test_commit_scamanager_files_creates_new():
     from src.github_client.repos import commit_scamanager_files
 
     # GET 파일 존재 여부 조회 → 404 (파일 없음)
+    # GET to check file existence → 404 (file not found).
     mock_get_resp = MagicMock()
     mock_get_resp.status_code = 404
     mock_get_resp.json.return_value = {}
 
     # PUT 성공 응답
+    # PUT success response.
     mock_put_resp = MagicMock()
     mock_put_resp.status_code = 201
     mock_put_resp.raise_for_status = MagicMock()
@@ -160,6 +162,7 @@ async def test_commit_scamanager_files_creates_new():
 @pytest.mark.asyncio
 async def test_commit_scamanager_files_updates_existing():
     # 파일이 이미 존재할 때(GET → 200 + sha) PUT 요청에 sha가 포함됨
+    # When file already exists (GET → 200 + sha), sha must be included in the PUT request.
     from src.github_client.repos import commit_scamanager_files
 
     existing_sha = "existingsha1234567890"

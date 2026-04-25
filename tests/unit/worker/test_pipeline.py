@@ -368,6 +368,7 @@ async def test_pipeline_uses_owner_github_token():
         await run_analysis_pipeline("pull_request", event_data)
 
     # owner 토큰이 사용됐는지 확인
+    # Verify the owner token was used.
     mock_get_files.assert_called_once()
     assert mock_get_files.call_args[0][0] == "gho_owner_token"
 
@@ -528,6 +529,7 @@ async def test_pipeline_passes_new_gate_signature(mock_deps):
     call_kwargs = mock_gate.call_args.kwargs
     assert "telegram_bot_token" not in call_kwargs
     # 새 시그니처 필수 인자 확인
+    # Verify mandatory arguments of the new signature.
     assert "repo_name" in call_kwargs or len(mock_gate.call_args.args) > 0
     assert "pr_number" in call_kwargs or len(mock_gate.call_args.args) > 1
     # config가 이미 로드된 RepoConfigData로 전달되어야 한다 (중복 DB 조회 방지)
@@ -811,6 +813,7 @@ async def test_create_issue_called_on_low_score(mock_deps):
     from src.scorer.calculator import ScoreResult
 
     # 낮은 점수로 덮어쓰기
+    # Overwrite with a low score.
     mock_deps["score"].return_value = ScoreResult(
         total=30, grade="F",
         code_quality_score=10, security_score=10,
@@ -845,6 +848,7 @@ async def test_create_issue_called_on_security_high_even_when_score_high(mock_de
     from src.analyzer.io.static import StaticAnalysisResult, AnalysisIssue
 
     # 점수 높게 유지 (85) → 보안 HIGH만으로 트리거돼야 함
+    # Keep score high (85) → issue creation must be triggered by bandit HIGH alone.
     high_issue_result = StaticAnalysisResult(
         filename="app.py",
         issues=[AnalysisIssue(tool="bandit", severity="HIGH",

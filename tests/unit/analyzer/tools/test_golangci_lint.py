@@ -357,6 +357,7 @@ def test_golangci_lint_creates_go_mod_if_missing(make_ctx):
         with open(go_file, "w", encoding="utf-8") as f:
             f.write("package main\n\nfunc main() {}\n")
         # 사전 조건: go.mod 가 아직 없다
+        # Precondition: go.mod does not exist yet.
         go_mod_path = os.path.join(d, "go.mod")
         assert not os.path.exists(go_mod_path)
 
@@ -368,6 +369,7 @@ def test_golangci_lint_creates_go_mod_if_missing(make_ctx):
             _GolangciLintAnalyzer().run(ctx)
 
         # run() 호출 후 go.mod 가 생성되었어야 한다
+        # After run(), go.mod must have been created.
         assert os.path.exists(go_mod_path), "go.mod 파일이 자동 생성되지 않았다"
         content = open(go_mod_path, encoding="utf-8").read()
         assert "module" in content, "go.mod 에 module 지시어가 없다"

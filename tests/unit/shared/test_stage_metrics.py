@@ -59,6 +59,7 @@ class TestStageTimerException:
                 with stage_metrics.stage_timer("faulty_stage"):
                     raise ValueError("boom")
         # 예외 경로도 로그 발생
+        # The exception path must also emit a log entry.
         assert len(caplog.records) >= 1
         record = caplog.records[-1]
         assert getattr(record, "status", None) == "error"
@@ -67,6 +68,7 @@ class TestStageTimerException:
 
     def test_propagates_original_exception(self):
         # 예외는 반드시 전파되어야 함 (swallow 금지)
+        # The exception must propagate — swallowing it is forbidden.
         with pytest.raises(RuntimeError, match="test-exc"):
             with stage_metrics.stage_timer("stage"):
                 raise RuntimeError("test-exc")

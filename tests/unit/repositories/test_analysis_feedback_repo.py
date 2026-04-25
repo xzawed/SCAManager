@@ -76,6 +76,7 @@ class TestUpsertFeedback:
 
     def test_update_existing_feedback(self, db, fixture_data):
         # 첫 번째 피드백 (up)
+        # First feedback (up).
         analysis_feedback_repo.upsert_feedback(
             db,
             analysis_id=fixture_data["analysis"].id,
@@ -163,6 +164,7 @@ class TestCalibrationByScoreRange:
         # 60-74 범위: 1 up, 1 down → 0.5
         self._create_analysis_with_feedback(db, 65, [1, -1], repo_id, user_id)
         # 75-89 범위: 2 up → 1.0
+        # Score range 75-89: 2 up votes → 1.0.
         self._create_analysis_with_feedback(db, 80, [1, 1], repo_id, user_id)
 
         calibration = analysis_feedback_repo.get_calibration_by_score_range(db)

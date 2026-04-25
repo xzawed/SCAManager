@@ -30,6 +30,7 @@ def test_github_api_headers_version():
 
 def test_github_api_headers_returns_dict():
     # 반환값이 dict 타입인지 검증
+    # Verify that the return value is of type dict.
     result = github_api_headers("anytoken")
     assert isinstance(result, dict)
 

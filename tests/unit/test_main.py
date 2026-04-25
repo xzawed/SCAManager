@@ -30,6 +30,7 @@ def test_health_returns_status_ok(client):
 
 
 # --- 라우트 등록 검증 ---
+# --- Route registration verification ---
 
 def test_health_route_is_registered():
     # /health 경로가 app.routes 에 등록되어 있는지 검증

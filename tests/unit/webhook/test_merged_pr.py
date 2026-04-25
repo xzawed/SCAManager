@@ -32,6 +32,7 @@ from src.webhook.router import _extract_closing_issue_numbers  # 구현 전 → 
 
 # ---------------------------------------------------------------------------
 # 공통 픽스처
+# Shared fixtures.
 # ---------------------------------------------------------------------------
 
 SECRET = "test_webhook_secret"
@@ -232,6 +233,7 @@ def test_merged_pr_closes_multiple_issues():
     assert mock_close.await_count == 2
 
     # 호출된 이슈 번호 집합이 {1, 2}와 일치해야 한다
+    # The set of called issue numbers must match {1, 2}.
     called_numbers = {call.kwargs.get("issue_number") for call in mock_close.call_args_list}
     assert called_numbers == {1, 2}
 

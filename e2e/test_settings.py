@@ -52,6 +52,7 @@ def test_preset_minimal_apply_button_applies_settings(seeded_page, base_url):
     seeded_page.locator("#preset-minimal summary").click()
     seeded_page.wait_for_timeout(300)
     # 펼침 직후에는 아직 적용되지 않음 — diff 미리보기만 렌더
+    # Immediately after expanding, it is not yet applied — only the diff preview is rendered.
     assert seeded_page.locator("#preset-diff-minimal tr").count() == 9
     # Apply 버튼 클릭 → 적용
     seeded_page.locator("#preset-minimal .preset-apply-btn").click()
@@ -97,10 +98,12 @@ def test_preset_accordion_closes_others(seeded_page, base_url):
     """한 프리셋 카드를 열면 다른 카드는 닫혀야 한다 (아코디언)."""
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
     # 최소 먼저 펼침
+    # Expand minimal preset first.
     seeded_page.locator("#preset-minimal summary").click()
     seeded_page.wait_for_timeout(200)
     assert seeded_page.evaluate("document.getElementById('preset-minimal').open")
     # 표준 펼침 → 최소가 닫혀야 함
+    # Expand standard → minimal must collapse.
     seeded_page.locator("#preset-standard summary").click()
     seeded_page.wait_for_timeout(200)
     assert seeded_page.evaluate("document.getElementById('preset-standard').open")
@@ -125,6 +128,7 @@ def test_gate_mode_auto_button_click(seeded_page, base_url):
     cls = seeded_page.get_attribute('[data-mode="auto"]', "class") or ""
     assert "active" in cls
     # 다른 버튼에는 active 없어야 함
+    # Other buttons must not have the active class.
     cls_disabled = seeded_page.get_attribute('[data-mode="disabled"]', "class") or ""
     assert "active" not in cls_disabled
 
@@ -143,8 +147,10 @@ def test_approve_slider_updates_number_input(seeded_page, base_url):
     """승인 임계값 슬라이더 조작 시 숫자 인풋이 업데이트되어야 한다."""
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
     # 고급 설정 아코디언 펼치기 (Gate 모드 버튼이 내부에 있어 기본 상태에서 invisible)
+    # Expand the advanced settings accordion (Gate mode buttons are inside and invisible by default).
     _expand_advanced(seeded_page)
     # disabled 모드에서는 슬라이더가 숨겨져 있으므로 먼저 auto로 전환
+    # In disabled mode the slider is hidden, so switch to auto first.
     seeded_page.click('[data-mode="auto"]')
     seeded_page.evaluate(
         """() => {
@@ -269,6 +275,7 @@ def test_single_column_layout_on_mobile(seeded_page, base_url):
         "getComputedStyle(document.querySelector('.settings-grid')).gridTemplateColumns"
     )
     # 1열이면 단일 값(예: "860px" 또는 "375px" 등 하나의 값)
+    # Single column: one value (e.g. "860px" or "375px").
     assert columns.count(" ") == 0 or columns.strip().split() == [columns.strip().split()[0]]
 
 
@@ -280,6 +287,7 @@ def test_two_column_layout_on_desktop(seeded_page, base_url):
         "getComputedStyle(document.querySelector('.settings-grid')).gridTemplateColumns"
     )
     # 2열: 값 사이에 공백이 있어야 함 (예: "430px 430px")
+    # Two columns: values must be space-separated (e.g. "430px 430px").
     parts = columns.strip().split()
     assert len(parts) == 2, f"데스크탑에서 2열이어야 하는데 '{columns}' 반환됨"
 
@@ -291,6 +299,7 @@ def test_six_card_titles_present(seeded_page, base_url):
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
     body = seeded_page.content()
     # ① 빠른 설정 제목은 기존 유지 — 개별 프리셋 카드로 대체
+    # ① Quick settings heading is preserved — replaced by individual preset cards.
     assert "PR 들어왔을 때" in body, "카드 ② PR 들어왔을 때 누락"
     assert "이벤트 후 피드백" in body, "카드 ③ 이벤트 후 피드백 누락"
     assert "시스템 &amp; 토큰" in body or "시스템 & 토큰" in body, "카드 ⑤ 시스템 & 토큰 누락"
@@ -338,10 +347,12 @@ def test_p2_highlight_applied_on_apply(seeded_page, base_url):
     """
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
     # strict 프리셋 — 현재(기본)와 차이가 많아 하이라이트 대상 다수
+    # strict preset — many differences from the current (default) state → many highlighted fields.
     seeded_page.locator("#preset-strict summary").click()
     seeded_page.wait_for_timeout(200)
     seeded_page.locator("#preset-strict .preset-apply-btn").click()
     # 클릭 직후 곧바로 클래스 존재 확인 (2.5초 타이머 전)
+    # Verify class presence immediately after click (before the 2.5s timer fires).
     seeded_page.wait_for_timeout(100)
     highlighted = seeded_page.evaluate(
         "document.querySelectorAll('.preset-just-applied').length"

@@ -115,6 +115,7 @@ async def test_send_email_calls_smtp():
 
 # ---------------------------------------------------------------------------
 # SMTP 에러 엣지 케이스
+# SMTP error edge cases.
 # ---------------------------------------------------------------------------
 
 async def test_send_email_smtp_connect_error_propagates():

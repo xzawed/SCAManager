@@ -104,6 +104,7 @@ def test_list_by_repo_returns_latest_first(db_session):
     a = _seed_analysis(db_session)
     base = datetime(2026, 4, 24, 10, 0, 0, tzinfo=timezone.utc)
     # 오래된 시도
+    # Old attempt.
     old = MergeAttempt(
         analysis_id=a.id, repo_name="owner/repo", pr_number=1,
         score=70, threshold=75, success=False, failure_reason="unknown",
@@ -123,6 +124,7 @@ def test_list_by_repo_returns_latest_first(db_session):
     db_session.commit()
 
     # 다른 리포의 시도는 포함되지 않아야 함
+    # Attempts from a different repo must not be included.
     other_repo = Repository(full_name="other/repo")
     db_session.add(other_repo)
     db_session.commit()
@@ -156,6 +158,7 @@ def test_count_failures_by_reason_aggregates(db_session):
 
     attempts = [
         # 최근 실패들
+        # Recent failures.
         MergeAttempt(
             analysis_id=a.id, repo_name="owner/repo", pr_number=1,
             score=70, threshold=75, success=False,
@@ -175,12 +178,14 @@ def test_count_failures_by_reason_aggregates(db_session):
             attempted_at=base - timedelta(hours=2),
         ),
         # 성공 — 집계 제외
+        # Success — excluded from failure aggregation.
         MergeAttempt(
             analysis_id=a.id, repo_name="owner/repo", pr_number=4,
             score=90, threshold=75, success=True,
             attempted_at=base,
         ),
         # 예전 실패 — since 파라미터로 제외되어야 함
+        # Old failure — must be excluded by the since parameter.
         MergeAttempt(
             analysis_id=a.id, repo_name="owner/repo", pr_number=5,
             score=60, threshold=75, success=False,
@@ -197,6 +202,7 @@ def test_count_failures_by_reason_aggregates(db_session):
     assert all_counts.get("dirty_conflict") == 1
     assert all_counts.get("unknown") == 1
     # 성공은 키로 나타나지 않음
+    # Successes must not appear as keys.
     assert "success" not in all_counts
     assert None not in all_counts
 
@@ -207,6 +213,7 @@ def test_count_failures_by_reason_aggregates(db_session):
     assert recent_counts.get("branch_protection_blocked") == 2
     assert recent_counts.get("dirty_conflict") == 1
     # 7일 전 실패는 제외
+    # Failures older than 7 days must be excluded.
     assert "unknown" not in recent_counts
 
 

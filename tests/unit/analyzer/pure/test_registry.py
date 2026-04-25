@@ -133,6 +133,7 @@ class TestAnalyzerProtocol:
             def is_enabled(self, ctx: AnalyzeContext) -> bool:
                 return True
             # run() 없음
+            # No run() method.
 
         obj = IncompleteAnalyzer()
         assert not isinstance(obj, Analyzer)
@@ -435,6 +436,7 @@ class TestAnalyzeFileRegistry:
 
     def test_whitespace_only_content_returns_empty_result(self):
         # 공백만 있는 content도 빈 결과로 처리된다
+        # Content consisting only of whitespace should also yield an empty result.
         from src.analyzer.io.static import analyze_file
         result = analyze_file("blank.py", "   \n  \n")
         assert isinstance(result, StaticAnalysisResult)

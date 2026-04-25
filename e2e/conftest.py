@@ -18,6 +18,7 @@ E2E_PORT = 8001
 BASE_URL = f"http://localhost:{E2E_PORT}"
 
 # E2E 테스트용 고정 사용자 ID
+# Fixed user ID for E2E tests.
 _E2E_USER_ID = 1
 
 
@@ -86,6 +87,7 @@ def _setup_e2e_db(db_path: str) -> None:
 
 
 # ── 서버 시작/종료 ──────────────────────────────────────────────────────
+# ── Server start/stop ──────────────────────────────────────────────────────
 
 
 def _start_uvicorn(db_path: str) -> tuple:
@@ -164,6 +166,7 @@ def live_server(tmp_path_factory):
     server, thread = _start_uvicorn(db_path)
 
     # 서버가 200을 반환할 때까지 대기 (최대 30초)
+    # Wait until the server returns 200 (up to 30 seconds).
     ready = False
     for _ in range(60):
         try:
@@ -218,6 +221,7 @@ def page(browser_instance, base_url):  # noqa: F811
 
 
 # ── 테스트 데이터 시드 ────────────────────────────────────────────────
+# ── Test data seeding ────────────────────────────────────────────────────
 
 
 def _build_sig(payload: str, secret: str) -> str:
@@ -293,6 +297,7 @@ def seeded_page(browser_instance, live_server, tmp_path_factory):
     # db_path를 tmp_path_factory에서 재구성하는 대신, live_server fixture에서 전달받은 경로 활용
     # live_server가 세션 scope이므로 DB 경로를 세션 레벨에서 공유해야 함
     # 간단히: 같은 tmpdir 패턴으로 추정하는 대신, 환경변수에서 읽음
+    # Simplified: read from the environment variable instead of guessing the tmpdir pattern.
     db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
     _seed_repo(live_server, db_path)
     context = browser_instance.new_context(base_url=live_server)
