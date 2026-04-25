@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-25 기준 — Phase F Quick Win + F.1 관측 완료 · Phase F.3 실패 어드바이저 완료 · G.2 수치 동기화 · Phase G 완료 · P2 이슈 수정 완료 · Phase H 착수 (F.2 관측 완료))
+## 현재 수치 (2026-04-25 기준 — Phase F Quick Win + F.1 관측 완료 · Phase F.3 실패 어드바이저 완료 · G.2 수치 동기화 · Phase G 완료 · P2 이슈 수정 완료 · Phase H 착수 (F.2 관측 완료) · 이중언어 주석 마이그레이션 완료)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1293개** | pytest (0 failed) — CI #24889251990 (2026-04-24 12:24 UTC) 실측 |
+| 단위 테스트 | **1296개** | pytest (0 failed) — 2026-04-25 로컬 실측 (이중언어 마이그레이션 후 회귀 없음) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
@@ -43,6 +43,45 @@
 | `tests/conftest.py` | 환경변수 주입 + _webhook_secret_cache autouse 클리어 |
 
 ## 작업 이력 (그룹별)
+
+### 그룹 38 (2026-04-25 · 이중언어 주석 마이그레이션 완료)
+
+**목적**: 영어권 컨트리뷰터·외부 감사·CodeRabbit/SonarCloud 같은 외부 검토 도구가 코드 의도를 이해할 수 있도록 전 코드베이스 한글 주석에 영어 번역을 병행. CLAUDE.md 이중언어 규칙(신규 코드 기준)을 기존 코드에 소급 적용하는 1회성 마이그레이션.
+
+**대상 규모**:
+| 영역 | 파일 | 한글 라인 |
+|------|-----|----------|
+| `src/` (Python) | ~145 | ~750 |
+| `tests/` + `e2e/` | ~81 | ~170 |
+| Makefile, CI, scripts, codecov, sonar | ~7 | ~80 |
+| `src/templates/*.html` 개발자 주석 | 3 | 41 |
+
+**제외 영역**: `.claude/`, `alembic/versions/`, `src/templates/*.html` UI 카피, `src/analyzer/pure/review_prompt.py` (LLM 프롬프트), `src/analyzer/pure/review_guides/` (LLM 체크리스트), `docs/`
+
+**Phase별 완료**:
+
+| Phase | 범위 | 처리 방식 |
+|-------|-----|---------|
+| P0 | 자동화 도구 작성 | `check_bilingual.py` 검증기 + `glossary.md` + `manifest.json` |
+| P1 | 핵심 설정·런타임 5파일 (constants.py, config.py, database.py, main.py, alembic/env.py) | 수작업 |
+| P2 | src/ TOP 20 모듈 (crypto.py, formatter.py, repos.py, calculator.py, ...) | 수작업 |
+| P3 | src/ 잔여 ~125 파일 | 수작업 (일괄 패치 스크립트 활용) |
+| P4 | tests/ + e2e/ ~81 파일 | `_apply_test_translations.py` 배치 스크립트 (166쌍) |
+| P5 | Makefile, CI yml, codecov, sonar, benchmark_static_analysis.py, HTML 41건 | 수작업 + `_apply_html_translations.py` |
+
+**자동화 도구** (`scripts/i18n_comments/`):
+- `check_bilingual.py` — 한글-only 잔존 라인 검증기 (KOREAN_RE + 4가지 이중언어 판정 기준)
+- `_apply_test_translations.py` — tests/e2e 166쌍 배치 변환 (1회성)
+- `_apply_html_translations.py` — HTML <!-- --> 41건 슬래시 포맷 변환 (1회성)
+- `glossary.md` — 30개 도메인 용어 사전
+
+**주석 포맷 규칙**:
+- 단독 `#` 라인: `# 한글\n# English` (두 줄 분리)
+- 인라인 `# 한글`: `# 한글 / English` (슬래시 형식)
+- docstring: 한글 줄 + 빈 줄 + English 줄
+- HTML 주석: `<!-- 한글 / English -->`
+
+**회귀 없음**: 1296 passed (마이그레이션 전후 동일, 주석-only 변경).
 
 ### 그룹 37 (2026-04-25 · Phase H 착수 — F.2 관측 + 메모리 갱신)
 
