@@ -3,7 +3,8 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from alembic import command
 from alembic.config import Config
@@ -20,6 +21,24 @@ from src.ui.router import router as ui_router
 from src.auth.github import router as auth_router
 
 logger = logging.getLogger(__name__)
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """보안 응답 헤더를 모든 응답에 추가한다.
+    Adds security response headers to all responses."""
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        if settings.app_base_url.startswith("https"):
+            response.headers["Strict-Transport-Security"] = (
+                "max-age=31536000; includeSubDomains"
+            )
+        return response
 
 
 def _run_migrations() -> None:
@@ -66,11 +85,23 @@ async def lifespan(_app: FastAPI):
         await close_http_client()
 
 
-app = FastAPI(title="SCAManager", version="0.1.0", lifespan=lifespan)
+_is_prod = settings.app_base_url.startswith("https")
+
+app = FastAPI(
+    title="SCAManager",
+    version="0.1.0",
+    lifespan=lifespan,
+    # /docs, /redoc 프로덕션 환경에서 비활성화 — API 구조 정보 노출 방지
+    # Disable /docs and /redoc in production to prevent API structure disclosure.
+    docs_url=None if _is_prod else "/docs",
+    redoc_url=None if _is_prod else "/redoc",
+    openapi_url=None if _is_prod else "/openapi.json",
+)
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.session_secret,
-    https_only=settings.app_base_url.startswith("https"),
+    https_only=_is_prod,
     same_site="lax",
     max_age=60 * 60 * 24 * 7,  # 7 days
 )
@@ -84,22 +115,6 @@ app.include_router(ui_router)
 
 @app.get("/health")
 def health():
-    """Liveness probe — active_db 필드로 현재 연결 중인 DB를 표시한다.
-    Liveness probe — shows the currently connected DB via the active_db field."""
-    active = getattr(SessionLocal, "active_db", "primary")
-    return {"status": "ok", "active_db": active}
-
-
-@app.get("/health/tools")
-def health_tools():
-    """임시 디버그 엔드포인트 — 정적분석 도구 바이너리 경로 확인용. 확인 후 제거 예정.
-    Temporary debug endpoint — verifies static analysis tool binary paths. Remove after confirmation."""
-    import shutil  # pylint: disable=import-outside-toplevel
-    return {
-        "rubocop": shutil.which("rubocop"),
-        "golangci-lint": shutil.which("golangci-lint"),
-        "cppcheck": shutil.which("cppcheck"),
-        "slither": shutil.which("slither"),
-        "semgrep": shutil.which("semgrep"),
-        "shellcheck": shutil.which("shellcheck"),
-    }
+    """Liveness probe — Railway/infra 헬스체크용. 내부 구현 세부사항은 노출하지 않는다.
+    Liveness probe for Railway/infra health checks. Does not expose implementation details."""
+    return {"status": "ok"}

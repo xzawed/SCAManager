@@ -81,7 +81,9 @@ async def _run_review_comment(
             result=result,
         )
     except (httpx.HTTPError, KeyError) as exc:
-        logger.error("PR Review Comment 실패: %s", exc)
+        # 예외 타입만 기록 — exc 본문에 HTTP 응답 바디가 포함되어 내부 구조 노출 위험
+        # Log only the exception type — exc body may contain HTTP response details.
+        logger.error("PR Review Comment 실패: %s", type(exc).__name__)
 
 
 async def _run_approve_decision(  # pylint: disable=too-many-arguments
@@ -141,7 +143,7 @@ async def _run_auto_approve(  # pylint: disable=too-many-arguments
         await post_github_review(github_token, repo_name, pr_number, decision, body)
         save_gate_decision(db, analysis_id, decision, "auto")
     except (httpx.HTTPError, KeyError) as exc:
-        logger.error("GitHub Review 실패: %s", exc)
+        logger.error("GitHub Review 실패: %s", type(exc).__name__)
 
 
 async def _run_semi_auto_approve(
@@ -167,7 +169,7 @@ async def _run_semi_auto_approve(
             score_result=score_result,
         )
     except (httpx.HTTPError, KeyError) as exc:
-        logger.error("Telegram Gate 요청 실패: %s", exc)
+        logger.error("Telegram Gate 요청 실패: %s", type(exc).__name__)
 
 
 async def _run_auto_merge(  # pylint: disable=too-many-arguments
@@ -246,8 +248,12 @@ async def _run_auto_merge(  # pylint: disable=too-many-arguments
                     "create_merge_failure_issue 실패 (pr=%d): %s", pr_number, exc
                 )
     # Phase F QW4: RuntimeError/ValueError 도 포착해 알림 스킵 방지
+    # Phase F QW4: also catch RuntimeError/ValueError to prevent notification skip.
     except (httpx.HTTPError, KeyError, RuntimeError, ValueError) as exc:
-        logger.error("Auto Merge 실패 (repo=%s, pr=%d): %s", repo_name, pr_number, exc)
+        logger.error(
+            "Auto Merge 실패 (repo=%s, pr=%d): %s",
+            repo_name, pr_number, type(exc).__name__,
+        )
 
 
 async def _notify_merge_failure(

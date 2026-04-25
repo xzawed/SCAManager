@@ -1,6 +1,7 @@
 """Static code analysis — runs registered analyzers on source files via Registry."""
 import logging
 import os
+import re
 import tempfile
 from dataclasses import dataclass, field
 
@@ -39,14 +40,20 @@ def analyze_file(filename: str, content: str) -> StaticAnalysisResult:
 
     # Python 도구는 .py 확장자를 임시 파일에 써야 올바르게 작동
     # Python tools require the .py extension on the temp file to function correctly.
-    suffix = ".py" if language == "python" else os.path.splitext(filename)[1] or ".tmp"
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=suffix, delete=False, encoding="utf-8"
-    ) as tmp:
-        tmp.write(content)
-        tmp_path = tmp.name
+    # 확장자 정제: 최대 10자, 영숫자·점·하이픈만 허용 — 경로 탐색/확장자 인젝션 방지
+    # Sanitise extension: max 10 chars, alphanumeric/dot/hyphen only — prevent path traversal.
+    raw_ext = os.path.splitext(filename)[1]
+    safe_ext = re.sub(r"[^a-zA-Z0-9._-]", "", raw_ext)[:10] or ".tmp"
+    suffix = ".py" if language == "python" else safe_ext
 
-    try:
+    # TemporaryDirectory 사용 — delete=False + 수동 unlink 방식의 TOCTOU 경합 조건을 제거.
+    # Use TemporaryDirectory to eliminate the TOCTOU race condition present with
+    # NamedTemporaryFile(delete=False) + manual os.unlink().
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = os.path.join(tmpdir, f"analyze{suffix}")
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            f.write(content)
+
         ctx = AnalyzeContext(
             filename=filename,
             content=content,
@@ -57,8 +64,6 @@ def analyze_file(filename: str, content: str) -> StaticAnalysisResult:
         for analyzer in REGISTRY:
             if analyzer.supports(ctx) and analyzer.is_enabled(ctx):
                 result.issues.extend(analyzer.run(ctx))
-    finally:
-        os.unlink(tmp_path)
 
     return result
 
