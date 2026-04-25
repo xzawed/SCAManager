@@ -184,8 +184,8 @@ async def _call_single_agent(
             parsed["agent"] = agent
             return parsed
         return {"agent": agent, "decision": "approve", "reason": "JSON 파싱 실패 — 통과", "detail": text[:200]}
-    except Exception:  # pylint: disable=broad-exception-caught
-        return {"agent": agent, "decision": "warn", "reason": "에이전트 호출 실패", "detail": ""}
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        return {"agent": agent, "decision": "warn", "reason": "에이전트 호출 실패", "detail": str(exc)}
 
 
 async def call_agents_parallel(grade: str, diff: str, context: str) -> list[dict]:
