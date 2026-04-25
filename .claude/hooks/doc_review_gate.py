@@ -70,7 +70,58 @@ def classify_file_grade(file_path: str) -> str:
     return "skip"
 
 
-# apply_veto_matrix placeholder — Task 2에서 구현됨
-# Placeholder — implemented in Task 2
-def apply_veto_matrix(grade: str, results: list) -> tuple:
-    raise NotImplementedError("Task 2에서 구현")
+# ─── 거부권 매트릭스 ──────────────────────────────────────────────────────────
+# Veto matrix
+
+
+def apply_veto_matrix(
+    grade: str,
+    results: list[dict],
+) -> tuple[str, list[str]]:
+    """에이전트 결과와 파일 등급을 조합해 최종 결정을 반환한다.
+    Combines agent results and file grade to return the final decision.
+
+    Returns (decision, reasons):
+      decision — "block" | "warn" | "approve"
+      reasons  — 사람이 읽을 수 있는 사유 목록 / human-readable reason list
+    """
+    block_reasons: list[str] = []
+    warn_reasons: list[str] = []
+
+    for r in results:
+        agent = r.get("agent", "unknown")
+        decision = r.get("decision", "approve")
+        reason = r.get("reason", "")
+
+        if decision not in ("warn", "block"):
+            continue
+
+        if decision == "block":
+            if agent == "impact":
+                # impact-analyzer: 모든 등급 차단 / blocks every grade
+                block_reasons.append(f"[impact-analyzer] {reason}")
+            elif agent == "consistency" and grade == "critical":
+                # consistency-reviewer: critical 등급에서만 차단 / blocks only for critical
+                block_reasons.append(f"[consistency-reviewer] {reason}")
+            else:
+                # 그 외: 경고로 강등 / demote to warning
+                warn_reasons.append(f"[{_agent_label(agent)}] {reason}")
+        else:  # warn
+            warn_reasons.append(f"[{_agent_label(agent)}] {reason}")
+
+    if block_reasons:
+        return "block", block_reasons + warn_reasons
+    if warn_reasons:
+        return "warn", warn_reasons
+    return "approve", []
+
+
+def _agent_label(agent: str) -> str:
+    """에이전트 이름을 표시용 라벨로 변환한다.
+    Convert agent name to display label."""
+    labels = {
+        "impact": "impact-analyzer",
+        "consistency": "consistency-reviewer",
+        "quality": "quality-reviewer",
+    }
+    return labels.get(agent, agent)
