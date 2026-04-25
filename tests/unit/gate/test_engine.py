@@ -17,6 +17,7 @@ from src.config_manager.manager import RepoConfigData
 
 # ---------------------------------------------------------------------------
 # 공용 헬퍼
+# Shared helpers.
 # ---------------------------------------------------------------------------
 
 def _score(total):
@@ -357,6 +358,7 @@ async def test_push_event_no_gate_actions():
 
 # ---------------------------------------------------------------------------
 # 하위 호환성 — 기존 동작 유지 확인
+# Backward compatibility — verify existing behaviour is preserved.
 # ---------------------------------------------------------------------------
 
 async def testsave_gate_decision_called_on_approve():
@@ -437,6 +439,7 @@ async def test_merge_pr_failure_does_not_raise():
                         with patch("src.gate.engine.telegram_post_message", new_callable=AsyncMock):
                             mock_merge.return_value = (False, "forbidden: no permission")
                             # 예외 없이 완료되어야 한다
+                            # Must complete without raising an exception.
                             await run_gate_check(
                                 repo_name="owner/repo",
                                 pr_number=5,
@@ -451,6 +454,7 @@ async def test_merge_pr_failure_does_not_raise():
 
 # ---------------------------------------------------------------------------
 # 예외 내성 — 각 단계 예외가 다음 단계를 중단시키지 않아야 한다
+# Exception resilience — an exception in one stage must not abort the next.
 # ---------------------------------------------------------------------------
 
 async def test_post_pr_comment_exception_does_not_abort_gate():
@@ -480,6 +484,7 @@ async def test_post_github_review_exception_does_not_crash():
                 with patch("src.gate.engine.merge_pr", new_callable=AsyncMock):
                     with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
                         # 예외 없이 완료되어야 한다
+                        # Must complete without raising an exception.
                         await run_gate_check(
                             repo_name="owner/repo", pr_number=1, analysis_id=1,
                             result={"score": 80, "grade": "B"}, github_token="tok", db=mock_db,
@@ -1011,6 +1016,7 @@ async def test_run_auto_merge_log_merge_attempt_db_failure_does_not_block_notifi
                                     db=mock_db,
                                 )
                                 # Telegram 알림은 여전히 발송되어야 함
+                                # Telegram notification must still be sent.
                                 mock_tg.assert_called_once()
 
 

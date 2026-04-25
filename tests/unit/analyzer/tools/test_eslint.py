@@ -286,6 +286,7 @@ class TestESLintRunOutputParsing:
 
     def test_run_parses_multiple_messages_correctly(self, make_ctx):
         # 복수 messages가 있는 출력에서 모든 이슈를 반환해야 한다
+        # All issues must be returned when the output contains multiple messages.
         from src.analyzer.io.tools.eslint import _ESLintAnalyzer
         ctx = make_ctx(language="javascript", tmp_path="/tmp/test.js")
         with patch("subprocess.run", return_value=_mock_eslint_proc(SAMPLE_OUTPUT_MIXED)):
@@ -297,6 +298,7 @@ class TestESLintRunOutputParsing:
 
     def test_run_returns_empty_list_for_empty_messages(self, make_ctx):
         # messages 배열이 비어 있으면 빈 이슈 목록을 반환해야 한다
+        # An empty messages array must return an empty issue list.
         from src.analyzer.io.tools.eslint import _ESLintAnalyzer
         ctx = make_ctx(language="javascript", tmp_path="/tmp/clean.js")
         with patch("subprocess.run", return_value=_mock_eslint_proc(SAMPLE_OUTPUT_NO_MESSAGES)):
@@ -305,6 +307,7 @@ class TestESLintRunOutputParsing:
 
     def test_run_returns_empty_list_for_empty_stdout(self, make_ctx):
         # stdout이 빈 문자열이면 빈 이슈 목록을 반환해야 한다
+        # Empty stdout must return an empty issue list.
         from src.analyzer.io.tools.eslint import _ESLintAnalyzer
         ctx = make_ctx(language="javascript", tmp_path="/tmp/app.js")
         with patch("subprocess.run", return_value=_mock_eslint_proc("")):
@@ -401,6 +404,7 @@ class TestESLintRunGracefulDegradation:
 
     def test_run_returns_empty_on_non_json_output(self, make_ctx):
         # stdout이 JSON이 아닌 일반 텍스트로 시작하는 경우 빈 이슈 목록 반환
+        # stdout starting with plain text (not JSON) must return an empty issue list.
         from src.analyzer.io.tools.eslint import _ESLintAnalyzer
         ctx = make_ctx(language="javascript", tmp_path="/tmp/app.js")
         with patch("subprocess.run", return_value=_mock_eslint_proc("Oops, something went wrong")):

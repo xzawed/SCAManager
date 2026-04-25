@@ -186,6 +186,7 @@ def test_new_pr_analysis_and_gate(integration_db, mock_deps):
 
 # ---------------------------------------------------------------------------
 # 시나리오 3: 잘못된 서명 → 401, 파이프라인 미실행
+# Scenario 3: invalid signature → 401, pipeline must not run.
 # ---------------------------------------------------------------------------
 
 def test_invalid_signature_returns_401(integration_db, mock_deps):

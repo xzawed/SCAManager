@@ -43,6 +43,7 @@ async def test_close_issue_sends_patch_with_state_closed():
     call_kwargs = mock_client.patch.call_args
 
     # 첫 번째 위치 인자 = URL
+    # First positional argument = URL.
     called_url = call_kwargs.args[0] if call_kwargs.args else call_kwargs.kwargs.get("url")
     assert called_url == "https://api.github.com/repos/owner/repo/issues/42"
 

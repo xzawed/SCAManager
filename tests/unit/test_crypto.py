@@ -52,6 +52,7 @@ class TestEncryptTokenNoKey:
 
     def test_encrypt_empty_string_returns_empty_string(self, monkeypatch):
         # 빈 문자열 입력은 암호화 여부와 무관하게 빈 문자열을 반환한다
+        # Empty string input must return an empty string regardless of encryption state.
         monkeypatch.setattr("src.config.settings.token_encryption_key", None)
         _reset_fernet_cache()
         from src.crypto import encrypt_token
@@ -66,6 +67,7 @@ class TestEncryptTokenNoKey:
 
     def test_decrypt_empty_string_returns_empty_string(self, monkeypatch):
         # 빈 문자열 입력은 복호화 여부와 무관하게 빈 문자열을 반환한다
+        # Empty string input must return an empty string regardless of decryption state.
         monkeypatch.setattr("src.config.settings.token_encryption_key", None)
         _reset_fernet_cache()
         from src.crypto import decrypt_token
@@ -84,6 +86,7 @@ class TestEncryptTokenWithKey:
 
     def test_encrypt_produces_different_value_from_plaintext(self, monkeypatch):
         # 유효한 키가 있을 때 encrypt_token 은 원문과 다른 값을 반환한다(암호화됨)
+        # With a valid key, encrypt_token must return a value different from the plaintext (encrypted).
         key = _valid_fernet_key()
         monkeypatch.setattr("src.config.settings.token_encryption_key", key)
         _reset_fernet_cache()
@@ -114,6 +117,7 @@ class TestEncryptTokenWithKey:
 
     def test_roundtrip_with_special_characters(self, monkeypatch):
         # 특수문자가 포함된 토큰도 암호화→복호화 후 원본과 동일하다
+        # Tokens containing special characters must be identical to the original after encrypt→decrypt.
         key = _valid_fernet_key()
         monkeypatch.setattr("src.config.settings.token_encryption_key", key)
         _reset_fernet_cache()
@@ -125,6 +129,7 @@ class TestEncryptTokenWithKey:
 
     def test_encrypted_value_is_not_empty(self, monkeypatch):
         # 암호화된 값은 빈 문자열이 아니다
+        # The encrypted value must not be an empty string.
         key = _valid_fernet_key()
         monkeypatch.setattr("src.config.settings.token_encryption_key", key)
         _reset_fernet_cache()
@@ -134,6 +139,7 @@ class TestEncryptTokenWithKey:
 
     def test_encrypt_same_value_twice_produces_different_ciphertexts(self, monkeypatch):
         # Fernet 은 nonce 를 사용하므로 동일한 평문도 암호화할 때마다 다른 값을 생성한다
+        # Fernet uses a nonce, so the same plaintext produces a different ciphertext each time.
         key = _valid_fernet_key()
         monkeypatch.setattr("src.config.settings.token_encryption_key", key)
         _reset_fernet_cache()
@@ -143,6 +149,7 @@ class TestEncryptTokenWithKey:
         _reset_fernet_cache()
         # 같은 키로 다시 encrypt — Fernet 은 timestamp+nonce 포함이므로 결과가 다를 수 있음
         # 여기서는 최소한 둘 다 평문과 다른지만 확인
+        # Here we only verify that both ciphertexts differ from the plaintext.
         monkeypatch.setattr("src.config.settings.token_encryption_key", key)
         from src.crypto import encrypt_token as enc2
         encrypted2 = enc2(plaintext)
@@ -162,7 +169,9 @@ class TestDecryptTokenFallback:
 
     def test_decrypt_wrong_key_returns_ciphertext_as_is(self, monkeypatch):
         # 잘못된 키로 복호화하면 예외를 발생시키지 않고 입력값을 그대로 반환한다(fallback)
+        # Decrypting with a wrong key must not raise — it must return the input as-is (fallback).
         # 먼저 key_a 로 암호화
+        # First, encrypt with key_a.
         key_a = _valid_fernet_key()
         monkeypatch.setattr("src.config.settings.token_encryption_key", key_a)
         _reset_fernet_cache()
@@ -170,6 +179,7 @@ class TestDecryptTokenFallback:
         encrypted = encrypt_token("original_token")
 
         # key_b(다른 키)로 복호화 시도
+        # Attempt decryption with key_b (a different key).
         key_b = _valid_fernet_key()
         monkeypatch.setattr("src.config.settings.token_encryption_key", key_b)
         _reset_fernet_cache()
@@ -180,6 +190,7 @@ class TestDecryptTokenFallback:
 
     def test_decrypt_plaintext_value_returns_plaintext(self, monkeypatch):
         # 암호화 전 평문값(레거시 토큰)을 복호화하면 InvalidToken → 원문 그대로 반환한다
+        # Decrypting a plaintext value stored before encryption was introduced → InvalidToken → return as-is.
         key = _valid_fernet_key()
         monkeypatch.setattr("src.config.settings.token_encryption_key", key)
         _reset_fernet_cache()
@@ -198,12 +209,14 @@ class TestDecryptTokenFallback:
         try:
             result = decrypt_token("this_is_not_valid_fernet_ciphertext")
             # 예외 없이 반환되어야 함
+            # Must return without raising an exception.
             assert isinstance(result, str)
         except Exception as exc:  # noqa: BLE001
             pytest.fail(f"decrypt_token raised an unexpected exception: {exc}")
 
     def test_decrypt_empty_string_with_key_returns_empty(self, monkeypatch):
         # 키가 설정된 상태에서도 빈 문자열 입력은 빈 문자열을 반환한다
+        # Even with a key configured, empty string input must return an empty string.
         key = _valid_fernet_key()
         monkeypatch.setattr("src.config.settings.token_encryption_key", key)
         _reset_fernet_cache()
@@ -240,6 +253,7 @@ class TestGetFernet:
 
     def test_get_fernet_caches_result(self, monkeypatch):
         # _get_fernet() 은 두 번째 호출에서 캐시된 인스턴스를 반환한다(동일 객체)
+        # _get_fernet() must return the cached instance on the second call (same object).
         key = _valid_fernet_key()
         monkeypatch.setattr("src.config.settings.token_encryption_key", key)
         _reset_fernet_cache()
@@ -257,6 +271,7 @@ class TestGetFernet:
         with mock.patch("src.config.settings", side_effect=Exception("settings load failed")):
             # settings 자체가 patch 되지 않으므로 _get_fernet 내부 try/except 경로 확인
             # 대신 직접 settings 모듈 속성을 제거하는 방식 사용
+            # Instead, remove the settings module attribute directly.
             pass
         # 정상 경로 검증으로 대체 — settings 로드 실패 시 None fallback은 코드 주석으로 문서화됨
         monkeypatch.setattr("src.config.settings.token_encryption_key", None)

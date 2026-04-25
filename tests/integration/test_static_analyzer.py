@@ -25,10 +25,12 @@ eval(input())
 
 # ---------------------------------------------------------------------------
 # 기존 테스트
+# Legacy tests (baseline coverage).
 # ---------------------------------------------------------------------------
 
 def test_clean_code_has_no_errors():
     # 정상 Python 코드는 error 심각도 이슈를 생성하지 않는다
+    # Clean Python code should not produce error-severity issues.
     result = analyze_file("clean.py", CLEAN_CODE)
     assert isinstance(result, StaticAnalysisResult)
     errors = [i for i in result.issues if i.severity == "error"]
@@ -37,6 +39,7 @@ def test_clean_code_has_no_errors():
 
 def test_bad_code_detects_issues():
     # 문제 있는 Python 코드는 이슈를 1개 이상 생성한다
+    # Problematic Python code should produce at least one issue.
     result = analyze_file("bad.py", BAD_CODE)
     assert len(result.issues) > 0
 
@@ -81,6 +84,7 @@ def test_non_python_md_file_returns_empty_issues():
 
 def test_non_python_yml_file_with_mocked_tools_returns_no_issues():
     # .yml 파일 분석 시 도구들이 이슈를 반환하지 않으면 빈 결과를 반환한다
+    # Analyzing a .yml file should return an empty result when no tool fires.
     with patch("src.analyzer.io.static._run_pylint", return_value=[]), \
          patch("src.analyzer.io.static._run_flake8", return_value=[]), \
          patch("src.analyzer.io.static._run_bandit", return_value=[]):
@@ -102,10 +106,12 @@ def test_non_python_json_file_with_mocked_tools_returns_no_issues():
 
 # ---------------------------------------------------------------------------
 # pylint FileNotFoundError (바이너리 없음) 처리
+# pylint FileNotFoundError handling (binary not found).
 # ---------------------------------------------------------------------------
 
 def test_pylint_file_not_found_returns_empty_list():
     # pylint 바이너리가 없을 때 FileNotFoundError → 빈 이슈 목록 반환
+    # When pylint binary is missing, FileNotFoundError → return empty issue list.
     with patch("subprocess.run", side_effect=FileNotFoundError("pylint not found")):
         result = _run_pylint("/tmp/fake.py")
     assert result == []
@@ -113,6 +119,7 @@ def test_pylint_file_not_found_returns_empty_list():
 
 def test_analyze_file_pylint_binary_missing_returns_result():
     # pylint 바이너리 없을 때 analyze_file 은 크래시 없이 StaticAnalysisResult 반환한다
+    # analyze_file must return StaticAnalysisResult without crashing when pylint is absent.
     with patch("src.analyzer.io.static._run_pylint", side_effect=FileNotFoundError):
         # _run_pylint 자체가 FileNotFoundError 를 내부에서 처리하므로
         # analyze_file 은 _run_pylint 가 [] 를 반환한다고 가정
@@ -151,6 +158,7 @@ def test_bandit_timeout_returns_empty_list():
 
 def test_pylint_timeout_returns_empty_list():
     # pylint subprocess 가 TimeoutExpired 를 발생시키면 빈 이슈 목록을 반환한다
+    # When pylint subprocess raises TimeoutExpired, return an empty issue list.
     with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="pylint", timeout=30)):
         result = _run_pylint("/tmp/fake.py")
     assert result == []
@@ -165,10 +173,12 @@ def test_flake8_timeout_returns_empty_list():
 
 # ---------------------------------------------------------------------------
 # pylint JSON 파싱 실패 처리
+# pylint JSON parsing failure handling.
 # ---------------------------------------------------------------------------
 
 def test_pylint_json_decode_error_returns_empty_list():
     # pylint stdout 이 유효하지 않은 JSON 이면 JSONDecodeError → 빈 이슈 목록 반환
+    # Invalid JSON from pylint stdout → JSONDecodeError → return empty issue list.
     mock_proc = MagicMock()
     mock_proc.stdout = "this is not valid json at all"
     mock_proc.returncode = 0
@@ -180,6 +190,7 @@ def test_pylint_json_decode_error_returns_empty_list():
 
 def test_pylint_stdout_starts_with_bracket_but_invalid_json_returns_empty():
     # pylint stdout 이 "[" 로 시작하지만 파싱 불가능한 JSON 이면 빈 이슈 목록 반환
+    # stdout starting with "[" but unparseable JSON → return empty issue list.
     mock_proc = MagicMock()
     mock_proc.stdout = "[invalid json content}"
     mock_proc.returncode = 0
@@ -200,10 +211,12 @@ def test_bandit_invalid_json_returns_empty_list():
 
 # ---------------------------------------------------------------------------
 # pylint 정상 파싱 — AnalysisIssue 생성 검증
+# pylint normal parsing — verify AnalysisIssue creation.
 # ---------------------------------------------------------------------------
 
 def test_pylint_error_type_maps_to_error_severity():
     # pylint 가 type="error" 인 항목을 반환하면 severity="error" 로 매핑된다
+    # pylint items with type="error" must map to severity="error".
     mock_proc = MagicMock()
     mock_proc.stdout = '[{"type": "error", "message": "undefined variable", "line": 5}]'
     mock_proc.returncode = 1
@@ -217,6 +230,7 @@ def test_pylint_error_type_maps_to_error_severity():
 
 def test_pylint_warning_type_maps_to_warning_severity():
     # pylint 가 type="warning" 인 항목을 반환하면 severity="warning" 으로 매핑된다
+    # pylint items with type="warning" must map to severity="warning".
     mock_proc = MagicMock()
     mock_proc.stdout = '[{"type": "warning", "message": "unused import", "line": 2}]'
     mock_proc.returncode = 4
@@ -228,6 +242,7 @@ def test_pylint_warning_type_maps_to_warning_severity():
 
 def test_pylint_fatal_type_maps_to_error_severity():
     # pylint 가 type="fatal" 인 항목을 반환하면 severity="error" 로 매핑된다
+    # pylint items with type="fatal" must map to severity="error".
     mock_proc = MagicMock()
     mock_proc.stdout = '[{"type": "fatal", "message": "syntax error", "line": 1}]'
     mock_proc.returncode = 1
@@ -291,27 +306,32 @@ def test_bandit_empty_stdout_returns_empty_list():
 
 def test_is_test_file_detects_test_prefix():
     # test_ 로 시작하는 파일명을 테스트 파일로 감지한다
+    # Filenames starting with test_ should be detected as test files.
     assert _is_test_file("test_something.py") is True
 
 
 def test_is_test_file_detects_test_suffix():
     # _test.py 로 끝나는 파일명을 테스트 파일로 감지한다
+    # Filenames ending with _test.py should be detected as test files.
     assert _is_test_file("something_test.py") is True
 
 
 def test_is_test_file_normal_file_returns_false():
     # 일반 파일명은 테스트 파일로 감지하지 않는다
+    # Regular filenames should not be detected as test files.
     assert _is_test_file("my_module.py") is False
 
 
 def test_is_test_file_with_path_prefix():
     # 경로가 포함된 경우에도 basename 기준으로 테스트 파일 여부를 판단한다
+    # Test file detection must use the basename even when a full path is given.
     assert _is_test_file("tests/test_analyzer.py") is True
     assert _is_test_file("src/analyzer/static.py") is False
 
 
 # ---------------------------------------------------------------------------
 # 테스트 파일에서 bandit 비실행 검증
+# Verify bandit is not run on test files.
 # ---------------------------------------------------------------------------
 
 def test_test_file_skips_bandit():
@@ -320,6 +340,7 @@ def test_test_file_skips_bandit():
          patch("src.analyzer.io.tools.python._BanditAnalyzer.is_enabled", return_value=False) as mock_enabled:
         result = analyze_file("test_something.py", "def test_foo(): pass\n")
     # 테스트 파일에서 bandit 결과는 없어야 한다
+    # bandit must not produce results on test files.
     security_issues = [i for i in result.issues if i.category == "security"]
     assert len(security_issues) == 0
 
@@ -328,6 +349,7 @@ def test_non_test_file_runs_bandit():
     # 일반 .py 파일은 bandit(security) 검사를 실행한다 — is_enabled=True 기본
     result = analyze_file("module.py", "eval(input())\n")
     # bandit 이슈가 있거나 빈 목록이어도 security 카테고리로 분류되어야 함
+    # bandit issues (or an empty list) must be classified under the security category.
     # (실제 bandit 실행 여부 확인)
     from src.analyzer.io.tools.python import _BanditAnalyzer
     from src.analyzer.pure.registry import AnalyzeContext

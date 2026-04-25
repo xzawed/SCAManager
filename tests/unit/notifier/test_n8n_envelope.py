@@ -27,6 +27,7 @@ from src.scorer.calculator import ScoreResult
 
 
 # ── 공용 픽스처 ─────────────────────────────────────────────────────────────
+# ── Shared fixtures ────────────────────────────────────────────────────────────
 
 def _score() -> ScoreResult:
     return ScoreResult(
@@ -113,6 +114,7 @@ async def test_notify_n8n_payload_has_delivered_at_iso8601():
     delivered_at = payload.get("delivered_at")
     assert delivered_at is not None, "delivered_at 필드가 없음"
     # ISO8601 파싱 가능 여부 검증
+    # Verify the timestamp is parseable as ISO 8601.
     dt = datetime.fromisoformat(delivered_at.replace("Z", "+00:00"))
     assert dt.tzinfo is not None, "delivered_at에 timezone 정보가 없음"
 
@@ -407,6 +409,7 @@ async def test_notify_n8n_skips_when_no_url():
 
 async def test_notify_n8n_raises_on_http_error():
     # HTTP 오류 발생 시 예외가 전파되어야 한다
+    # An HTTP error must propagate as an exception.
     mock_response = MagicMock()
     mock_response.raise_for_status.side_effect = Exception("Connection error")
     mock_client = _mock_client(post_response=mock_response)

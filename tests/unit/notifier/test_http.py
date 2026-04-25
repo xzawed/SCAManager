@@ -1,6 +1,7 @@
 import os
 
 # src 임포트 전 환경변수 주입 필수
+# Environment variables must be injected before src imports.
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("GITHUB_WEBHOOK_SECRET", "test_secret")
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "123:ABC")
@@ -25,21 +26,25 @@ from src.notifier._http import validate_external_url, build_safe_client
 
 def test_validate_blocks_loopback_ipv4():
     # 127.0.0.1 루프백 주소는 반드시 차단
+    # 127.0.0.1 loopback address must be blocked.
     assert validate_external_url("http://127.0.0.1/hook") is False
 
 
 def test_validate_blocks_loopback_ipv6():
     # IPv6 루프백 ::1 도 차단
+    # IPv6 loopback ::1 must also be blocked.
     assert validate_external_url("http://[::1]/hook") is False
 
 
 def test_validate_blocks_private_10_range():
     # RFC 1918 10.x.x.x 사설 대역 차단
+    # RFC 1918 10.x.x.x private range must be blocked.
     assert validate_external_url("https://10.0.0.1/hook") is False
 
 
 def test_validate_blocks_private_192_range():
     # RFC 1918 192.168.x.x 사설 대역 차단
+    # RFC 1918 192.168.x.x private range must be blocked.
     assert validate_external_url("https://192.168.1.1/hook") is False
 
 
@@ -63,6 +68,7 @@ def test_validate_allows_https_public_url():
 
 def test_validate_hostname_resolves_to_private_ip_blocked():
     # DNS가 사설 IP를 반환하는 외부처럼 보이는 도메인 차단 (DNS 리바인딩 방어)
+    # Block seemingly external domains whose DNS resolves to private IPs (DNS rebinding defence).
     fake_addrinfo = [(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("10.0.0.1", 0))]
     with patch("socket.getaddrinfo", return_value=fake_addrinfo):
         assert validate_external_url("https://evil.example.com/hook") is False
@@ -99,12 +105,14 @@ def test_build_safe_client_timeout():
 
 def test_build_safe_client_no_follow_redirects():
     # 리다이렉트를 따라가지 않아야 한다 (SSRF 방어)
+    # Must not follow redirects (SSRF defence).
     client = build_safe_client()
     assert client.follow_redirects is False
 
 
 # ---------------------------------------------------------------------------
 # 경고 로그 테스트
+# Warning log tests.
 # ---------------------------------------------------------------------------
 
 

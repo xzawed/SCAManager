@@ -46,6 +46,7 @@ def _patch_client(mock_client):
 
 # ---------------------------------------------------------------------------
 # 시나리오 1: 신규 파일 (GET 404) → PUT에 sha 없이 커밋
+# Scenario 1: new file (GET 404) → commit via PUT without sha.
 # ---------------------------------------------------------------------------
 
 async def test_new_files_put_without_sha():
@@ -64,6 +65,7 @@ async def test_new_files_put_without_sha():
 
     assert result is True
     # 두 PUT 호출 모두 sha 없이 전송
+    # Both PUT calls must be sent without a sha.
     for put_call in client.put.call_args_list:
         body = put_call.kwargs.get("json") or put_call.args[1]
         assert "sha" not in body, "신규 파일 PUT에는 sha가 없어야 한다"
@@ -71,6 +73,7 @@ async def test_new_files_put_without_sha():
 
 # ---------------------------------------------------------------------------
 # 시나리오 2: 기존 파일 (GET 200 + sha) → PUT에 sha 포함
+# Scenario 2: existing file (GET 200 + sha) → PUT request must include sha.
 # ---------------------------------------------------------------------------
 
 async def test_existing_files_put_with_sha():

@@ -200,6 +200,7 @@ async def test_merge_pr_skips_on_dirty_state():
     assert isinstance(result[1], str)
     assert "dirty" in result[1]
     # PUT은 호출되지 않아야 한다
+    # PUT must not be called.
     mock_client.put.assert_not_called()
 
 
@@ -229,10 +230,13 @@ async def test_merge_pr_retries_on_unknown_state():
 
     assert result == (True, None)
     # sleep이 1회 이상 호출되어야 한다 (재시도 대기)
+    # sleep must be called at least once (retry wait).
     mock_sleep.assert_called()
     # GET은 2회 호출 (최초 + 재시도)
+    # GET must be called twice (initial + retry).
     assert mock_client.get.call_count == 2
     # PUT은 1회 호출
+    # PUT must be called exactly once.
     mock_client.put.assert_called_once()
 
 

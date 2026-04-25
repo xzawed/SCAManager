@@ -258,6 +258,7 @@ async def test_handle_gate_callback_exception_does_not_propagate():
                    new_callable=AsyncMock, side_effect=httpx.ConnectError("GitHub API down")):
             with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
                 # 예외가 전파되지 않아야 한다
+                # The exception must not propagate.
                 await handle_gate_callback(analysis_id=42, decision="approve", decided_by="user")
 
 

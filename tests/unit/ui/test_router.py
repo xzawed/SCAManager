@@ -31,6 +31,7 @@ def _ctx(db_mock):
 
 
 # ── 비로그인 리다이렉트 테스트 ──────────────────────────
+# ── Unauthenticated redirect tests ──────────────────────────
 
 def test_overview_redirects_when_not_logged_in():
     """비로그인 상태에서 / 접근 시 /login 으로 302 리다이렉트."""
@@ -44,6 +45,7 @@ def test_overview_redirects_when_not_logged_in():
 
 
 # ── 로그인 상태 기존 테스트 ──
+# ── Logged-in state baseline tests ──
 
 def test_overview_returns_html():
     """로그인 후 / 는 200 HTML을 반환한다."""
@@ -125,6 +127,7 @@ def test_overview_empty_state_shows_3_step_tutorial():
     assert r.status_code == 200
     html = r.text
     # 튜토리얼 핵심 마커 — 3단계 구성과 CTA 버튼
+    # Tutorial key markers — 3-step structure and CTA button.
     assert "get-started" in html or "3단계" in html or "Get Started" in html, \
         "3단계 튜토리얼 섹션이 empty-state 에 있어야 함"
     # CTA 링크는 여전히 /repos/add
@@ -142,6 +145,7 @@ def test_overview_with_repos_does_not_show_tutorial():
         r = client.get("/")
     assert r.status_code == 200
     # 튜토리얼 마커가 없어야 함
+    # Tutorial markers must not be present.
     assert "get-started-tutorial" not in r.text
 
 
@@ -176,6 +180,7 @@ def test_settings_advanced_channels_have_adv_only_class():
     assert "adv-only" in html, "adv-only 클래스가 템플릿에 존재해야 함"
     # Discord / Slack / n8n 필드명이 adv-only 컨테이너 안에 있는지 대략 확인
     # (정확한 DOM 검증은 E2E 에서, 여기선 클래스 존재만 확인)
+    # (Precise DOM validation is done in E2E; here we only verify class presence.)
 
 
 def test_settings_mode_toggle_script_present():
@@ -585,6 +590,7 @@ def test_add_repo_post_rejects_duplicate():
 
 
 # ── 분석 상세 페이지 테스트 ──────────────────────────
+# ── Analysis detail page tests ──────────────────────────
 
 def test_analysis_detail_returns_html():
     """분석 상세 페이지는 200 HTML을 반환한다."""
@@ -792,6 +798,7 @@ def test_reinstall_webhook_no_existing_webhook():
 
 
 # ── 리포 삭제 엔드포인트 테스트 ──────────────────────────
+# ── Repository delete endpoint tests ──────────────────────────
 
 def test_delete_repo_success():
     """소유자 삭제 시 webhook 삭제 + DB cascade 후 303 /?deleted=1."""
@@ -876,6 +883,7 @@ def test_delete_repo_skips_webhook_when_none():
 
 
 # ── 네비게이션 사용자 UI 테스트 ──────────────────────────
+# ── Navigation user UI tests ──────────────────────────
 
 def test_overview_shows_display_name_in_nav():
     """로그인 후 nav에 display_name이 표시된다."""
@@ -917,6 +925,7 @@ def test_nav_user_fallback_to_github_login():
 
 
 # ── 이력 페이지 조회 강화 테스트 ──────────────────────────
+# ── Analysis history page enhanced tests ──────────────────────────
 
 def test_repo_detail_queries_limit_100():
     """repo_detail은 최근 100건을 조회한다."""
@@ -1024,6 +1033,7 @@ def test_repo_detail_date_filter_rendered():
 
 
 # ── 분석 상세 버그 수정 TDD 테스트 ──────────────────────────
+# ── Analysis detail bug-fix TDD tests ──────────────────────────
 
 def test_analysis_detail_result_none_shows_fallback():
     """result=None, score=75, grade='B' 분석 조회 시:
@@ -1048,8 +1058,10 @@ def test_analysis_detail_result_none_shows_fallback():
     with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/repos/owner%2Frepo/analyses/10")
     # 200 반환
+    # Must return 200.
     assert r.status_code == 200
     # 점수 배너 표시
+    # Score banner must be displayed.
     assert "75" in r.text
     assert "/100" in r.text
     # fallback 메시지 포함 (result 데이터 없음을 안내)
@@ -1081,13 +1093,16 @@ def test_analysis_detail_result_empty_dict_shows_fallback():
     with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/repos/owner%2Frepo/analyses/11")
     # 200 반환
+    # Must return 200.
     assert r.status_code == 200
     # 점수 배너 표시
+    # Score banner must be displayed.
     assert "80" in r.text
     assert "/100" in r.text
     # fallback 메시지 포함
     assert "분석 결과 데이터가 없습니다" in r.text or "상세 데이터가 없습니다" in r.text
     # AI 요약 섹션 없음
+    # AI summary section must not be present.
     assert "AI 요약" not in r.text
 
 
@@ -1113,6 +1128,7 @@ def test_analysis_detail_with_current_user_shows_nav():
     # _test_user의 display_name="Test User"가 nav에 표시되어야 함
     assert "Test User" in r.text
     # 로그아웃 버튼 및 URL이 포함되어야 함
+    # Logout button and URL must be present.
     assert "로그아웃" in r.text
     assert "/auth/logout" in r.text
 
@@ -1171,6 +1187,7 @@ def test_analysis_detail_trend_data_returned():
     def fake_template_response(request, template_name, context):
         captured_context.update(context)
         # 실제 응답 대신 간단한 HTML 반환
+        # Return simple HTML instead of the real response.
         from fastapi.responses import HTMLResponse
         return HTMLResponse(content="<html>ok</html>")
 
@@ -1183,6 +1200,7 @@ def test_analysis_detail_trend_data_returned():
     assert "trend_data" in captured_context, "trend_data가 template context에 없음 — 미구현 상태"
     trend = captured_context["trend_data"]
     # 3건 반환
+    # Must return 3 items.
     assert len(trend) == 3
     # 오름차순 (가장 오래된 것이 index 0)
     assert trend[0]["id"] == 1
@@ -1285,6 +1303,7 @@ def test_analysis_detail_single_analysis_no_siblings():
 
 
 # ── P3 커버리지 보강 테스트 ──────────────────────────
+# ── P3 coverage enhancement tests ──────────────────────────
 
 def test_webhook_base_url_uses_app_base_url_when_set():
     """APP_BASE_URL 설정 시 _webhook_base_url이 해당 URL을 반환해야 한다 (line 33)."""
@@ -1384,6 +1403,7 @@ def test_add_repo_updates_existing_config_hook_token():
 
     assert r.status_code == 303
     # hook_token이 새 값으로 업데이트되어야 한다
+    # hook_token must be updated to the new value.
     assert existing_config.hook_token != "old-token"
 
 
@@ -1585,6 +1605,7 @@ def test_settings_railway_alerts_uses_toggle_switch():
     # 동일 <label class="toggle-switch"> 내부에 railway_deploy_alerts input 이 있어야 함.
     # 음수 lookahead 로 중간에 </label> 이 끼어들면 매치 실패 → 다른 toggle-switch
     # label 안에 있는 경우를 걸러낸다.
+    # Filters out items that are inside a label.
     pattern = re.compile(
         r'<label[^>]*class="[^"]*toggle-switch[^"]*"[^>]*>'
         r'(?:(?!</label>)[\s\S])*?'

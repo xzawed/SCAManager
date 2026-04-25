@@ -254,6 +254,7 @@ async def test_post_pr_comment_from_result_calls_api():
 
 
 # P2-11 — 두 빌더의 출력이 동일한지 확인 (통합 회귀)
+# P2-11 — verify both builders produce identical output (integration regression).
 
 def test_build_comment_body_and_from_result_produce_same_output():
     """_build_comment_body와 _build_comment_from_result이 동일한 마크다운을 생성해야 한다."""

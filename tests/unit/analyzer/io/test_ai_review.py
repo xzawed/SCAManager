@@ -192,6 +192,7 @@ async def test_review_code_api_error_returns_api_error_status():
 # ---------------------------------------------------------------------------
 # Task 2 (2026-04-23) — _parse_response 견고화
 # 실제 프로덕션 분석 #543 에서 "AI 응답 파싱 실패" 경고가 관찰됨.
+# "AI response parsing failure" warning was observed in production analysis #543.
 # Claude 가 종종 (1) preamble + 순수 JSON, (2) 대문자 언어 태그,
 # (3) JSON 뒤 trailing text 형태로 응답 — 현재 파서는 이 3가지에서 실패.
 # ---------------------------------------------------------------------------

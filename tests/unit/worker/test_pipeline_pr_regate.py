@@ -29,6 +29,7 @@ from src.github_client.diff import ChangedFile
 
 # ---------------------------------------------------------------------------
 # 공용 픽스처
+# Shared fixtures.
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
@@ -164,6 +165,7 @@ async def test_scenario_a_pr_regate_updates_pr_number_and_calls_gate(
 
 # ---------------------------------------------------------------------------
 # 시나리오 B: PR 이벤트가 신규 SHA로 직접 도착 — 기존 정상 경로 유지
+# Scenario B: PR event arrives directly with a new SHA — existing happy path preserved.
 # ---------------------------------------------------------------------------
 
 async def test_scenario_b_new_sha_pr_event_creates_analysis_and_calls_gate(

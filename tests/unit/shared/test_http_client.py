@@ -16,6 +16,7 @@ from src.shared import http_client
 async def test_get_http_client_raises_before_init():
     """init_http_client() 전에 get_http_client() 호출 시 RuntimeError."""
     # 사전 상태 보장 — 다른 테스트가 초기화한 상태를 정리
+    # Ensure a clean slate — tear down any state initialised by other tests.
     await http_client.close_http_client()
     with pytest.raises(RuntimeError, match="not initialized"):
         http_client.get_http_client()

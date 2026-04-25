@@ -39,6 +39,7 @@ _TEST_KEY = "s3cr3t-k3y"
 
 # ---------------------------------------------------------------------------
 # 테스트 1: 올바른 API 키로 요청 시 200 반환
+# Test 1: correct API key → 200 response.
 # ---------------------------------------------------------------------------
 
 def test_api_key_valid_passes(monkeypatch):
@@ -50,6 +51,7 @@ def test_api_key_valid_passes(monkeypatch):
 
 # ---------------------------------------------------------------------------
 # 테스트 2: 잘못된 API 키로 요청 시 401 반환
+# Test 2: wrong API key → 401 response.
 # ---------------------------------------------------------------------------
 
 def test_api_key_invalid_returns_401(monkeypatch):
@@ -62,6 +64,7 @@ def test_api_key_invalid_returns_401(monkeypatch):
 
 # ---------------------------------------------------------------------------
 # 테스트 3: API_KEY 설정됐는데 헤더 없으면 401
+# Test 3: API_KEY configured but header absent → 401.
 # ---------------------------------------------------------------------------
 
 def test_api_key_missing_when_required_returns_401(monkeypatch):
@@ -73,6 +76,7 @@ def test_api_key_missing_when_required_returns_401(monkeypatch):
 
 # ---------------------------------------------------------------------------
 # 테스트 4: API_KEY 미설정(빈 문자열)이면 키 없어도 200 (기존 동작 유지)
+# Test 4: API_KEY not set (empty string) → 200 even without a key (preserve existing behaviour).
 # ---------------------------------------------------------------------------
 
 def test_api_key_empty_string_allows_access(monkeypatch):

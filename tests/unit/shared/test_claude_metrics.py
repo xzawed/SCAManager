@@ -92,6 +92,7 @@ class TestLogClaudeApiCall:
         record = caplog.records[-1]
         msg = record.getMessage()
         # 핵심 필드 모두 포함
+        # All essential fields must be present.
         assert "claude-sonnet-4-6" in msg
         assert "1234" in msg or "1235" in msg  # duration ms
         assert "8000" in msg  # input tokens

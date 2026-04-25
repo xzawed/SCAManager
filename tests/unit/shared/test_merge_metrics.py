@@ -232,6 +232,7 @@ def test_log_merge_attempt_db_failure_returns_none_and_warns(caplog):
 
     assert rec is None
     # WARNING 레벨의 로그가 최소 1건 기록되어야 함
+    # At least one WARNING-level log entry must be recorded.
     warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
     assert len(warnings) >= 1
 

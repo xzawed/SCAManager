@@ -92,6 +92,7 @@ class TestHeaderScrubbing:
         event = {"request": {"headers": [("Authorization", "Bearer x")]}}
         result = _before_send(event, {})
         # list 형식은 필터링하지 않되 크래시하지 않음
+        # List-typed headers must not be filtered but also must not crash.
         assert isinstance(result, dict)
 
 
@@ -135,14 +136,17 @@ class TestCompleteScrubbing:
         # Cookies 클리어
         assert req["cookies"] == {}
         # 민감 헤더 필터
+        # Sensitive headers must be filtered.
         assert req["headers"]["X-Hub-Signature-256"] == "[Filtered]"
         assert req["headers"]["Authorization"] == "[Filtered]"
         # 안전 헤더 보존
+        # Safe headers must be preserved.
         assert req["headers"]["Content-Type"] == "application/json"
         assert req["headers"]["User-Agent"] == "GitHub-Hookshot/abc"
         # body 필터
         assert req["data"] == "[Filtered]"
         # 예외 정보는 보존
+        # Exception information must be preserved.
         assert result["exception"]["values"][0]["type"] == "ValueError"
 
     def test_returns_same_event_object(self):

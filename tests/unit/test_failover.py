@@ -19,7 +19,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
 
 # conftest.py 가 이미 환경변수를 주입하므로 추가 설정 불필요.
+# conftest.py already injects environment variables, so no additional setup is needed.
 # 단, Settings 직접 인스턴스화 테스트에서는 필요한 필드만 명시적으로 전달한다.
+# However, tests that instantiate Settings directly must pass only the required fields explicitly.
 
 
 # ---------------------------------------------------------------------------
@@ -68,6 +70,7 @@ class TestSingleEngineNoFallback:
         factory = db_mod.FailoverSessionFactory(db_mod.engine, fallback_url="")
         daemon_after = {t.ident for t in threading.enumerate() if t.daemon}
         # probe 스레드가 추가되지 않았는지 확인 (생성 전후 daemon 스레드 수 변화 없음)
+        # Verify no probe thread was added (daemon thread count must not change before/after creation).
         assert factory._probe_thread is None
 
     def test_call_returns_primary_session_directly(self, monkeypatch):
@@ -386,6 +389,7 @@ class TestFailoverSessionFactoryImport:
 
     def test_failover_session_factory_active_db_type_is_str(self):
         # active_db 속성값은 문자열 타입이어야 한다
+        # The active_db property value must be of type str.
         from src.database import FailoverSessionFactory, engine
         factory = FailoverSessionFactory(engine, fallback_url="")
         assert isinstance(factory.active_db, str)

@@ -39,6 +39,7 @@ def _reload_settings(monkeypatch, extra: dict | None = None) -> "Settings":
 
 def test_db_sslmode_default_empty(monkeypatch):
     # db_sslmode 필드는 기본값이 빈 문자열이어야 한다
+    # db_sslmode field default must be an empty string.
     s = _reload_settings(monkeypatch)
     assert s.db_sslmode == ""
 
@@ -75,6 +76,7 @@ def test_db_pool_recycle_default_1800(monkeypatch):
 
 def test_db_sslmode_reads_from_env(monkeypatch):
     # DB_SSLMODE 환경변수 설정 시 해당 값이 반영되어야 한다
+    # When DB_SSLMODE env var is set, that value must be reflected.
     s = _reload_settings(monkeypatch, extra={"DB_SSLMODE": "require"})
     assert s.db_sslmode == "require"
 
@@ -87,12 +89,14 @@ def test_db_force_ipv4_reads_from_env(monkeypatch):
 
 def test_db_pool_size_reads_from_env(monkeypatch):
     # DB_POOL_SIZE 환경변수 설정 시 해당 정수값이 반영되어야 한다
+    # When DB_POOL_SIZE env var is set, the integer value must be reflected.
     s = _reload_settings(monkeypatch, extra={"DB_POOL_SIZE": "20"})
     assert s.db_pool_size == 20
 
 
 def test_non_supabase_url_no_ssl_added(monkeypatch):
     # 일반 온프레미스 URL에는 sslmode가 자동으로 추가되지 않아야 한다
+    # A plain on-premises URL must not have sslmode added automatically.
     s = _reload_settings(
         monkeypatch,
         extra={"DATABASE_URL": "postgresql://u:p@localhost/db"},

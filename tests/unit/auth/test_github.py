@@ -119,6 +119,7 @@ def test_callback_updates_existing_user_and_redirects():
 
 # ---------------------------------------------------------------------------
 # 라우트 등록 확인 — OAuth 외부 연결 없이 라우트 존재 여부만 검증
+# Verify route registration — only checks route existence, no OAuth external calls.
 # ---------------------------------------------------------------------------
 
 def test_auth_github_route_exists():
@@ -160,6 +161,7 @@ def test_callback_no_primary_email_uses_fallback():
 
     def capture_add(obj):
         # add된 User 객체를 캡처만 하고 반환하지 않는다 (재귀 방지)
+        # Capture the added User object but do not return it (prevents recursion).
         if isinstance(obj, User):
             captured["user"] = obj
 
@@ -337,6 +339,7 @@ def test_callback_without_prior_auth_session_fails():
         follow_redirects=False,
     )
     # 성공(302 to /)이어서는 안 된다.
+    # Must not be a success redirect (302 to /).
     assert not (r.status_code == 302 and r.headers.get("location") == "/"), (
         "CSRF 방어 실패: state 없는 직접 콜백이 성공 리다이렉트를 반환했다"
     )

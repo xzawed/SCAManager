@@ -13,6 +13,7 @@ def test_overview_empty_state(page, base_url):
     page.goto(base_url)
     # 레포가 없는 경우 empty-state 표시 (seeded_page 미사용)
     # 또는 테이블이 있는 경우 테이블이 표시
+    # Or a table is shown when repositories are present.
     content = page.content()
     assert "SCAManager" in content
 

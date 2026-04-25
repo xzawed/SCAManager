@@ -56,6 +56,7 @@ def test_active_class_on_selected_theme(page, base_url):
     page.click("#themeToggle")
     page.click('.theme-option[data-theme="light"]')
     # 드롭다운 다시 열기
+    # Re-open the dropdown.
     page.click("#themeToggle")
     cls = page.get_attribute('.theme-option[data-theme="light"]', "class") or ""
     assert "active" in cls
@@ -67,5 +68,6 @@ def test_dropdown_closes_on_outside_click(page, base_url):
     page.click("#themeToggle")
     page.wait_for_selector(".theme-switcher.open", timeout=2000)
     # 외부 영역 클릭
+    # Click outside the dropdown.
     page.click("h2, .overview-header h2, body", position={"x": 10, "y": 10})
     assert not page.is_visible(".theme-switcher.open")
