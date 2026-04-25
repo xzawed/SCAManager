@@ -67,6 +67,7 @@ def run_migrations_online() -> None:
     """
     url = config.get_main_option("sqlalchemy.url", "")
     # db_force_ipv4/db_sslmode 설정을 동일하게 적용, connect_timeout=10으로 hang 방지
+    # Apply db_force_ipv4/db_sslmode settings identically; connect_timeout=10 prevents hangs
     if url.startswith("postgresql"):
         connect_args = _build_connect_args(url)
         connect_args["connect_timeout"] = 10
