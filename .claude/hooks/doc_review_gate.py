@@ -14,7 +14,6 @@ from pathlib import Path
 
 _PROJECT_PREFIXES = (
     "f:/development/source/claude/scamanager/",
-    "f:\\development\\source\\claude\\scamanager\\",
 )
 
 _CRITICAL = [
@@ -178,12 +177,16 @@ async def _call_single_agent(
             timeout=_AGENT_TIMEOUT,
         )
         text = msg.content[0].text
-        match = re.search(r"\{[^{}]*\}", text, re.DOTALL)
-        if match:
-            parsed = json.loads(match.group())
+        # 코드 블록 추출 우선, 없으면 전체 텍스트에서 JSON 파싱 시도
+        # Prefer code block extraction; fall back to parsing the full text
+        code_match = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
+        candidate = code_match.group(1).strip() if code_match else text.strip()
+        try:
+            parsed = json.loads(candidate)
             parsed["agent"] = agent
             return parsed
-        return {"agent": agent, "decision": "approve", "reason": "JSON 파싱 실패 — 통과", "detail": text[:200]}
+        except (json.JSONDecodeError, ValueError):
+            return {"agent": agent, "decision": "approve", "reason": "JSON 파싱 실패 — 통과", "detail": text[:200]}
     except Exception as exc:  # pylint: disable=broad-exception-caught
         return {"agent": agent, "decision": "warn", "reason": "에이전트 호출 실패", "detail": str(exc)}
 
@@ -193,14 +196,8 @@ async def call_agents_parallel(grade: str, diff: str, context: str) -> list[dict
     Calls all three agents in parallel and returns a list of result dicts."""
     client = anthropic.AsyncAnthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
     tasks = [_call_single_agent(client, agent, diff, context) for agent in _AGENT_NAMES]
-    raw = await asyncio.gather(*tasks, return_exceptions=True)
-    results = []
-    for agent, r in zip(_AGENT_NAMES, raw):
-        if isinstance(r, Exception):
-            results.append({"agent": agent, "decision": "warn", "reason": f"오류: {r}", "detail": ""})
-        else:
-            results.append(r)
-    return results
+    raw = await asyncio.gather(*tasks, return_exceptions=False)
+    return list(raw)
 
 
 # ─── 컨텍스트 로드 ────────────────────────────────────────────────────────────

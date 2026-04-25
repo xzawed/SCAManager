@@ -2,6 +2,7 @@
 import io
 import json
 import sys
+import pytest
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -226,21 +227,25 @@ class TestHookMain:
             ]
         return fake_parallel
 
-    def test_low_risk_file_exits_zero_immediately(self, capsys):
+    def test_low_risk_file_exits_zero_immediately(self):
         from doc_review_gate import main
         payload = self._stdin_payload("docs/reports/artifacts/foo.log")
         with patch("sys.stdin", io.StringIO(payload)):
-            with patch("sys.exit") as mock_exit:
-                main()
-        mock_exit.assert_called_with(0)
+            with patch("doc_review_gate.call_agents_parallel") as mock_agents:
+                with pytest.raises(SystemExit) as exc:
+                    main()
+        assert exc.value.code == 0
+        assert not mock_agents.called  # 에이전트 호출 없이 조기 종료 / exits before calling agents
 
-    def test_python_file_skipped(self, capsys):
+    def test_python_file_skipped(self):
         from doc_review_gate import main
         payload = self._stdin_payload("src/main.py")
         with patch("sys.stdin", io.StringIO(payload)):
-            with patch("sys.exit") as mock_exit:
-                main()
-        mock_exit.assert_called_with(0)
+            with patch("doc_review_gate.call_agents_parallel") as mock_agents:
+                with pytest.raises(SystemExit) as exc:
+                    main()
+        assert exc.value.code == 0
+        assert not mock_agents.called  # 에이전트 호출 없이 조기 종료 / exits before calling agents
 
     def test_critical_impact_block_outputs_deny(self, capsys):
         from doc_review_gate import main
@@ -279,5 +284,6 @@ class TestHookMain:
                     with patch("sys.exit") as mock_exit:
                         main()
         output = capsys.readouterr().out
-        assert "[문서 심의]" in output or "quality" in output
+        assert "[문서 심의]" in output
+        assert "quality" in output
         mock_exit.assert_called_with(0)
