@@ -588,4 +588,4 @@ ANTHROPIC_API_KEY=sk-ant-... python -m src.cli review
 
 ## 📄 라이선스
 
-[MIT License](LICENSE) © 2026 xzawed31
+[MIT License](LICENSE) © 2026 xzawed

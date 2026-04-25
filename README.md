@@ -42,6 +42,25 @@ For teams that push directly to `main`, it also supports **automatic commit comm
 
 ---
 
+## 🎯 Why SCAManager?
+
+Most code review tools make you choose between static analysis precision and AI understanding. SCAManager runs both in parallel and combines the results into a single score — then acts on it automatically.
+
+| | SCAManager | CodeRabbit | SonarCloud | GitHub Copilot Review |
+|---|---|---|---|---|
+| **Self-hosted** | ✅ Your infrastructure | ❌ SaaS only | ❌ SaaS only | ❌ GitHub-managed |
+| **Static + AI combined** | ✅ 10 tools + Claude AI | AI only | Static only | AI only |
+| **Score-based PR Gate** | ✅ Auto / Semi / Manual | ❌ | ❌ | ❌ |
+| **Approve from phone** | ✅ Telegram inline buttons | ❌ | ❌ | ❌ |
+| **Push event analysis** | ✅ Auto Issue + Commit comment | ❌ PR only | ❌ | ❌ |
+| **50-language AI review** | ✅ Language-specific checklists | ✅ | ❌ | ✅ |
+| **DB failover** | ✅ Built-in | ❌ | ❌ | ❌ |
+| **Cost** | API usage only | Paid SaaS | Freemium | GitHub plan |
+
+**Best for:** Solo developers and small teams who want full control over their code quality pipeline without vendor lock-in.
+
+---
+
 ## ✨ Features
 
 ### 🔍 Automated Code Analysis
@@ -516,4 +535,4 @@ ANTHROPIC_API_KEY=sk-ant-... python -m src.cli review
 
 ## 📄 License
 
-[MIT License](LICENSE) © 2026 xzawed31
+[MIT License](LICENSE) © 2026 xzawed
