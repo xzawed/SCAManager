@@ -201,3 +201,106 @@ async def call_agents_parallel(grade: str, diff: str, context: str) -> list[dict
         else:
             results.append(r)
     return results
+
+
+# ─── 컨텍스트 로드 ────────────────────────────────────────────────────────────
+# Context loading
+
+def _load_context() -> str:
+    """CLAUDE.md 와 STATE.md 앞부분을 에이전트 컨텍스트로 읽는다.
+    Loads the front portion of CLAUDE.md and STATE.md as agent context."""
+    project_root = _HOOKS_DIR.parent.parent
+    parts = []
+    for rel in ("CLAUDE.md", "docs/STATE.md"):
+        path = project_root / rel
+        if path.exists():
+            content = path.read_text(encoding="utf-8")
+            parts.append(f"=== {rel} (앞 3000자) ===\n{content[:3000]}")
+    return "\n\n".join(parts)
+
+
+# ─── 출력 포맷 ────────────────────────────────────────────────────────────────
+# Output formatting
+
+def _format_block(file_path: str, results: list[dict], reasons: list[str]) -> str:
+    """차단 시 표시할 메시지를 조립한다.
+    Assembles the block message shown when a change is denied."""
+    lines = [
+        f"[문서 심의] {Path(file_path).name} — 차단",
+        "",
+    ]
+    for r in results:
+        if r["decision"] == "block":
+            icon = "[X]"
+        elif r["decision"] == "warn":
+            icon = "[!]"
+        else:
+            icon = "[OK]"
+        lines.append(f"  {icon} {_agent_label(r['agent'])}: {r['reason']}")
+    lines += ["", "차단 사유:"]
+    for reason in reasons:
+        lines.append(f"  • {reason}")
+    lines += ["", "수정 방향을 조정한 후 다시 시도하세요."]
+    return "\n".join(lines)
+
+
+def _format_warn(file_path: str, results: list[dict], reasons: list[str]) -> str:
+    """경고 시 표시할 메시지를 조립한다.
+    Assembles the warning message shown before proceeding."""
+    lines = [
+        f"[문서 심의] {Path(file_path).name} — 경고 후 진행",
+        "",
+    ]
+    for r in results:
+        icon = "[!]" if r["decision"] == "warn" else "[OK]"
+        lines.append(f"  {icon} {_agent_label(r['agent'])}: {r['reason']}")
+    return "\n".join(lines)
+
+
+# ─── Hook 진입점 ─────────────────────────────────────────────────────────────
+# Hook entry point
+
+def main() -> None:
+    """PreToolUse Hook 진입점 — stdin에서 payload 읽고 심의 결과 출력.
+    PreToolUse hook entry point — reads payload from stdin and outputs review result."""
+    try:
+        data = json.load(sys.stdin)
+    except Exception:  # pylint: disable=broad-exception-caught
+        sys.exit(0)
+
+    tool_input = data.get("tool_input", {})
+    file_path = (tool_input.get("file_path", "") or "").replace("\\", "/")
+
+    if not file_path:
+        sys.exit(0)
+
+    grade = classify_file_grade(file_path)
+    if grade in ("skip", "low_risk"):
+        sys.exit(0)
+
+    # diff 구성 / Build diff
+    old = tool_input.get("old_string", "") or ""
+    new = tool_input.get("new_string", "") or tool_input.get("content", "") or ""
+    diff = f"파일: {file_path}\n\n--- 이전 ---\n{old}\n\n+++ 이후 +++\n{new}"
+
+    context = _load_context()
+    results = asyncio.run(call_agents_parallel(grade, diff, context))
+    decision, reasons = apply_veto_matrix(grade, results)
+
+    if decision == "block":
+        hook_output = {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": _format_block(file_path, results, reasons),
+            }
+        }
+        print(json.dumps(hook_output, ensure_ascii=False))
+    elif decision == "warn":
+        print(_format_warn(file_path, results, reasons))
+
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
