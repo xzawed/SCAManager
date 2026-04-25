@@ -1,4 +1,7 @@
 providers = ["python"]
 
 [phases.setup]
-aptPkgs = ["shellcheck", "nodejs", "npm", "cppcheck", "ruby-full", "golang-go", "build-essential", "libyaml-dev"]
+aptPkgs = ["shellcheck", "cppcheck", "ruby-full", "golang-go", "build-essential", "libyaml-dev"]
+cmds = [
+  "curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs"
+]
