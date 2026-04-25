@@ -7,6 +7,7 @@ on:
     branches: [main]
   schedule:
     # 매주 월요일 09:00 UTC 주기 스캔 (의존성 CVE 감지 목적)
+    # Weekly scan every Monday at 09:00 UTC (for dependency CVE detection).
     - cron: "0 9 * * 1"
 
 jobs:
