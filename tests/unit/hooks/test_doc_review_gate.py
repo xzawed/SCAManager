@@ -1,4 +1,5 @@
 """doc_review_gate.py 단위 테스트."""
+import io
 import json
 import sys
 from pathlib import Path
@@ -202,3 +203,81 @@ class TestCallAgentsParallel:
 
         for r in results:
             assert r["decision"] in ("approve", "warn")
+
+
+class TestHookMain:
+    """main() 통합 테스트 — stdin 시뮬레이션."""
+
+    def _stdin_payload(self, file_path: str, old: str = "", new: str = "") -> str:
+        return json.dumps({
+            "tool_input": {
+                "file_path": file_path,
+                "old_string": old,
+                "new_string": new,
+            }
+        })
+
+    def _mock_agents(self, decisions: dict):
+        """{'impact': 'approve', 'consistency': 'block', 'quality': 'warn'} 형태."""
+        async def fake_parallel(grade, diff, context):
+            return [
+                {"agent": a, "decision": d, "reason": f"{a} 사유", "detail": ""}
+                for a, d in decisions.items()
+            ]
+        return fake_parallel
+
+    def test_low_risk_file_exits_zero_immediately(self, capsys):
+        from doc_review_gate import main
+        payload = self._stdin_payload("docs/reports/artifacts/foo.log")
+        with patch("sys.stdin", io.StringIO(payload)):
+            with patch("sys.exit") as mock_exit:
+                main()
+        mock_exit.assert_called_with(0)
+
+    def test_python_file_skipped(self, capsys):
+        from doc_review_gate import main
+        payload = self._stdin_payload("src/main.py")
+        with patch("sys.stdin", io.StringIO(payload)):
+            with patch("sys.exit") as mock_exit:
+                main()
+        mock_exit.assert_called_with(0)
+
+    def test_critical_impact_block_outputs_deny(self, capsys):
+        from doc_review_gate import main
+        payload = self._stdin_payload("CLAUDE.md", old="기존 규칙", new="삭제됨")
+        decisions = {"impact": "block", "consistency": "approve", "quality": "approve"}
+        with patch("sys.stdin", io.StringIO(payload)):
+            with patch("doc_review_gate.call_agents_parallel", self._mock_agents(decisions)):
+                with patch("doc_review_gate._load_context", return_value=""):
+                    with patch("sys.exit") as mock_exit:
+                        main()
+        output = capsys.readouterr().out
+        parsed = json.loads(output)
+        assert parsed["hookSpecificOutput"]["permissionDecision"] == "deny"
+        mock_exit.assert_called_with(0)
+
+    def test_all_approve_exits_zero_silently(self, capsys):
+        from doc_review_gate import main
+        payload = self._stdin_payload("CLAUDE.md", old="구 내용", new="신 내용")
+        decisions = {"impact": "approve", "consistency": "approve", "quality": "approve"}
+        with patch("sys.stdin", io.StringIO(payload)):
+            with patch("doc_review_gate.call_agents_parallel", self._mock_agents(decisions)):
+                with patch("doc_review_gate._load_context", return_value=""):
+                    with patch("sys.exit") as mock_exit:
+                        main()
+        output = capsys.readouterr().out
+        assert output.strip() == ""
+        mock_exit.assert_called_with(0)
+
+    def test_warn_only_outputs_warning_text(self, capsys):
+        from doc_review_gate import main
+        payload = self._stdin_payload("docs/design/foo.md", old="전", new="후")
+        decisions = {"impact": "approve", "consistency": "approve", "quality": "warn"}
+        with patch("sys.stdin", io.StringIO(payload)):
+            with patch("doc_review_gate.call_agents_parallel", self._mock_agents(decisions)):
+                with patch("doc_review_gate._load_context", return_value=""):
+                    with patch("sys.exit") as mock_exit:
+                        main()
+        output = capsys.readouterr().out
+        assert "[문서 심의]" in output or "quality" in output
+        mock_exit.assert_called_with(0)
