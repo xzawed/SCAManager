@@ -10,7 +10,6 @@ from alembic import command
 from alembic.config import Config
 
 from src.config import settings
-from src.database import SessionLocal
 from src.shared.http_client import close_http_client, init_http_client
 from src.shared.observability import init_sentry
 from src.webhook.router import router as webhook_router
@@ -23,7 +22,7 @@ from src.auth.github import router as auth_router
 logger = logging.getLogger(__name__)
 
 
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-methods
     """보안 응답 헤더를 모든 응답에 추가한다.
     Adds security response headers to all responses."""
 
@@ -76,7 +75,7 @@ async def lifespan(_app: FastAPI):
         logger.info("DB migration completed")
     except asyncio.TimeoutError:
         logger.error("DB migration timed out after 30s — starting app anyway")
-    except Exception as exc:
+    except Exception as exc:  # pylint: disable=broad-exception-caught
         logger.error("DB migration failed: %s", exc)
     await init_http_client()
     try:

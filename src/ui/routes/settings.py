@@ -43,9 +43,12 @@ _BLOCKED_HOSTS = frozenset({
 })
 
 
-def _is_safe_webhook_url(url: str | None) -> bool:
+def _is_safe_webhook_url(url: str | None) -> bool:  # pylint: disable=too-many-return-statements
     """사용자 제공 URL이 SSRF 공격에 안전한지 검증한다.
-    Validates that a user-supplied URL is safe against SSRF attacks."""
+    Validates that a user-supplied URL is safe against SSRF attacks.
+
+    반환값 7개는 SSRF 방어 경로 각각이 명확한 실패 사유를 나타내므로 의도적.
+    7 return statements are intentional — each guards a distinct SSRF failure path."""
     if not url:
         return True
     try:
