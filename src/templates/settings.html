@@ -312,7 +312,7 @@
 
 <div class="settings-wrap">
 
-  <!-- 저장 결과 토스트 -->
+  <!-- 저장 결과 토스트 / Save result toast -->
   {% if saved %}
   <div class="save-toast save-toast-ok" id="saveToast">
     ✅ 설정이 저장되었습니다.
@@ -323,14 +323,14 @@
   </div>
   {% endif %}
 
-  <!-- 헤더 -->
+  <!-- 헤더 / Header -->
   <div class="settings-header">
     <a class="back-btn" href="/repos/{{ repo_name }}">← 상세</a>
     <h1 class="settings-title">리포지토리 설정</h1>
     <div class="repo-badge">{{ repo_name }}</div>
   </div>
 
-  <!-- Phase E.4 — Simple/Advanced 모드 토글 -->
+  <!-- Phase E.4 — Simple/Advanced 모드 토글 / Simple/Advanced mode toggle -->
   <div class="mode-toggle-bar" id="modeToggleBar">
     <span class="mode-toggle-label">보기 모드:</span>
     <button type="button" class="mode-toggle-btn active" data-settings-mode-btn="simple">
@@ -364,7 +364,7 @@
   <form id="settingsForm" method="post" action="/repos/{{ repo_name }}/settings">
     <input type="hidden" name="approve_mode" id="approveModeValue" value="{{ config.approve_mode }}">
 
-    <!-- ① 빠른 설정 (프리셋) -->
+    <!-- ① 빠른 설정 (프리셋) / Quick settings (presets) -->
     <div class="s-card" style="margin-bottom:1rem;">
       <div class="s-card-hdr hdr-preset">
         <span class="hdr-icon">🚀</span>
@@ -379,7 +379,7 @@
         </div>
         <div class="preset-cards" id="presetCards">
 
-          <!-- 🌱 최소 -->
+          <!-- 🌱 최소 / Minimal -->
           <details class="preset-details" id="preset-minimal"
                    ontoggle="onPresetToggle(this,'minimal')">
             <summary class="preset-summary">
@@ -414,7 +414,7 @@
             </div>
           </details>
 
-          <!-- ⚙️ 표준 -->
+          <!-- ⚙️ 표준 / Standard -->
           <details class="preset-details" id="preset-standard"
                    ontoggle="onPresetToggle(this,'standard')">
             <summary class="preset-summary">
@@ -449,7 +449,7 @@
             </div>
           </details>
 
-          <!-- 🛡️ 엄격 -->
+          <!-- 🛡️ 엄격 / Strict -->
           <details class="preset-details" id="preset-strict"
                    ontoggle="onPresetToggle(this,'strict')">
             <summary class="preset-summary">
@@ -488,7 +488,7 @@
       </div>
     </div>
 
-    <!-- 고급 설정 (프리셋 외 세부 조정) -->
+    <!-- 고급 설정 (프리셋 외 세부 조정) / Advanced settings (fine-tuning beyond presets) -->
     <details class="advanced-details">
       <summary class="advanced-summary">
         <span class="adv-icon">⚙️</span>
@@ -498,7 +498,7 @@
       <div class="advanced-body">
         <div class="settings-grid">
 
-      <!-- ② PR 들어왔을 때 -->
+      <!-- ② PR 들어왔을 때 / When a PR arrives -->
       <div class="s-card">
         <div class="s-card-hdr hdr-gate">
           <span class="hdr-icon">📋</span>
@@ -507,7 +507,7 @@
         </div>
         <div class="s-card-body">
 
-          <!-- PR 코드리뷰 댓글 -->
+          <!-- PR 코드리뷰 댓글 / PR code review comment -->
           <div class="toggle-row">
             <div class="toggle-info">
               <div class="t-title">PR 코드리뷰 댓글</div>
@@ -542,7 +542,7 @@
             </button>
           </div>
 
-          <!-- 기준점 슬라이더 (disabled 시 숨김) -->
+          <!-- 기준점 슬라이더 (disabled 시 숨김) / Threshold slider (hidden when disabled) -->
           <div id="approveThresholds" class="{% if config.approve_mode == 'disabled' %}is-hidden{% endif %}">
             <div class="threshold-row">
               <div class="threshold-label">
@@ -578,7 +578,7 @@
             </div>
           </div>
 
-          <!-- semi-auto 안내 힌트 (Telegram Chat ID는 ④ 알림 채널에서 설정) -->
+          <!-- semi-auto 안내 힌트 (Telegram Chat ID는 ④ 알림 채널에서 설정) / semi-auto hint (Telegram Chat ID configured in ④ notification channels) -->
           <div id="semiAutoHint" class="{% if config.approve_mode != 'semi-auto' %}is-hidden{% endif %}"
                style="margin-top:.75rem;padding:.5rem .75rem;background:var(--hint-bg);border:1px solid var(--hint-border);border-radius:7px;font-size:11px;color:var(--text-muted);line-height:1.6;">
             💡 반자동 Approve는 <strong>④ 알림 채널의 Telegram Chat ID</strong>로 전송됩니다.
@@ -601,7 +601,7 @@
             </label>
           </div>
 
-          <!-- Merge 임계값 (auto_merge OFF 시 숨김) -->
+          <!-- Merge 임계값 (auto_merge OFF 시 숨김) / Merge threshold (hidden when auto_merge is OFF) -->
           <div id="mergeThresholdRow" class="{% if not config.auto_merge %}is-hidden{% endif %}" style="margin-top:.75rem;">
             <div class="threshold-row" style="margin-bottom:0">
               <div class="threshold-label">
@@ -619,7 +619,7 @@
             </div>
           </div>
 
-          <!-- Auto-merge 실패 시 Issue 생성 (auto_merge OFF 시 숨김) -->
+          <!-- Auto-merge 실패 시 Issue 생성 (auto_merge OFF 시 숨김) / Create issue on auto-merge failure (hidden when auto_merge is OFF) -->
           <div id="mergeIssueRow" class="{% if not config.auto_merge %}is-hidden{% endif %}" style="margin-top:.75rem;">
             <div class="toggle-row">
               <div class="toggle-info">
@@ -637,7 +637,7 @@
         </div>
       </div>
 
-      <!-- ③ 이벤트 후 피드백 -->
+      <!-- ③ 이벤트 후 피드백 / Post-event feedback -->
       <div class="s-card">
         <div class="s-card-hdr hdr-merge">
           <span class="hdr-icon">📬</span>
@@ -693,7 +693,7 @@
       </div><!-- /.advanced-body -->
     </details><!-- /.advanced-details -->
 
-    <!-- ④ 알림 채널 (항상 표시 — 고급 설정 아코디언 밖) -->
+    <!-- ④ 알림 채널 (항상 표시 — 고급 설정 아코디언 밖) / Notification channels (always visible — outside advanced settings accordion) -->
     <div class="settings-grid">
       <div class="s-card notify-full">
         <div class="s-card-hdr hdr-notify">
@@ -777,7 +777,7 @@
 
   </form>
 
-  <!-- ⑤ 시스템 & 토큰 (CLI Hook + Webhook + Railway API 토큰 + 위험 구역 — 메인 form 외부) -->
+  <!-- ⑤ 시스템 & 토큰 (CLI Hook + Webhook + Railway API 토큰 + 위험 구역 — 메인 form 외부) / System & tokens (CLI Hook + Webhook + Railway API token + danger zone — outside main form) -->
   <div class="s-card" style="margin-bottom:1rem;">
     <div class="s-card-hdr hdr-hook">
       <span class="hdr-icon">🔧</span>
@@ -833,7 +833,7 @@
     </div>
   </div>
 
-  <!-- ⑥ 위험 구역 (메인 form 외부, 페이지 최하단) -->
+  <!-- ⑥ 위험 구역 (메인 form 외부, 페이지 최하단) / Danger zone (outside main form, page bottom) -->
   <div class="s-card" style="margin-bottom:2rem;">
     <div class="s-card-hdr" style="background:linear-gradient(135deg,#991b1b,#dc2626)">
       <span class="hdr-icon">⚠️</span>
@@ -861,7 +861,7 @@
     </div>
   </div>
 
-  <!-- CLI Hook / Webhook 재등록 hidden form -->
+  <!-- CLI Hook / Webhook 재등록 hidden form / CLI Hook / Webhook re-registration hidden form -->
   <form id="reinstall_hook_form" method="post"
         action="/repos/{{ repo_name }}/reinstall-hook" style="display:none"></form>
   <form id="reinstall_webhook_form" method="post"

@@ -206,7 +206,7 @@
 </div>
 {% endif %}
 
-<!-- 헤더 -->
+<!-- 헤더 / Header -->
 <div class="detail-header">
   <a class="back-btn" href="/">← 목록</a>
   <div class="detail-header-text">
@@ -215,20 +215,20 @@
   <a class="settings-btn" href="/repos/{{ repo_name }}/settings">⚙️ 설정</a>
 </div>
 
-<!-- 점수 차트 -->
+<!-- 점수 차트 / Score chart -->
 <div class="card chart-card">
   <div class="chart-label">점수 추이</div>
   <canvas id="scoreChart" height="80"></canvas>
 </div>
 
-<!-- 분석 이력 -->
+<!-- 분석 이력 / Analysis history -->
 <div class="card" style="padding:1.25rem 1.5rem;">
   <div class="history-header">
     <h3>분석 이력</h3>
     <span class="history-count" id="historyCount">최근 {{ analyses | length }}건</span>
   </div>
 
-  <!-- 필터 바 -->
+  <!-- 필터 바 / Filter bar -->
   <div class="filter-bar">
     <input type="search" class="filter-search" id="searchInput"
       placeholder="커밋 메시지 또는 SHA 검색…" autocomplete="off">

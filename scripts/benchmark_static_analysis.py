@@ -1,13 +1,18 @@
 """G.6 Go/No-Go 벤치마크 — _run_static_analysis 직렬 기준선 측정.
+G.6 Go/No-Go benchmark — serial baseline measurement for _run_static_analysis.
 
 실행 방법:
     python scripts/benchmark_static_analysis.py
 
 출력: 콘솔 요약 + docs/reports/YYYY-MM-DD-static-analysis-baseline.md
+Output: console summary + docs/reports/YYYY-MM-DD-static-analysis-baseline.md
 
 Go 조건  : 평균 ≥ 60s → Phase I(G.6 병렬화) 착수
+Go condition : mean ≥ 60s → proceed to Phase I (G.6 parallelisation)
 No-Go 조건: 평균 < 20s → Phase I 불필요
+No-Go condition: mean < 20s → parallelisation unnecessary
 중간 (20-60s): ROI 계산 후 재판정
+Borderline (20-60s): recalculate ROI before deciding.
 """
 from __future__ import annotations
 
@@ -20,6 +25,7 @@ from datetime import datetime
 from pathlib import Path
 
 # src 패키지를 찾을 수 있도록 프로젝트 루트를 경로에 추가
+# Add the project root to sys.path so the src package can be found.
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
@@ -34,7 +40,7 @@ import psutil  # noqa: E402 — 환경변수 주입 이후
 from src.github_client.diff import ChangedFile  # noqa: E402
 from src.worker.pipeline import _run_static_analysis  # noqa: E402
 
-RUNS = 3  # 페이로드당 반복 횟수
+RUNS = 3  # 페이로드당 반복 횟수 / Repetitions per payload
 
 PYTHON_FILE = """\
 import os
@@ -111,7 +117,9 @@ def _sample_rss_until(stop_event: threading.Event, samples: list[int]) -> None:
 
 
 async def _measure_one(files: list[ChangedFile]) -> tuple[float, int]:
-    """단일 실행: (elapsed_seconds, peak_rss_mb)."""
+    """단일 실행: (elapsed_seconds, peak_rss_mb).
+    Single run: returns (elapsed_seconds, peak_rss_mb).
+    """
     stop = threading.Event()
     rss_samples: list[int] = []
     sampler = threading.Thread(target=_sample_rss_until, args=(stop, rss_samples), daemon=True)

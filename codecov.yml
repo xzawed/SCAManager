@@ -3,12 +3,15 @@ coverage:
     project:
       default:
         # 전체 커버리지 95% 유지 목표 (현재 STATE.md 기준 96.2%)
+        # Target: maintain overall coverage at 95%+ (current baseline 96.2% per STATE.md).
         target: 95%
         # 2% 이상 하락 시 CI 실패
+        # CI fails if coverage drops by more than 2%.
         threshold: 2%
     patch:
       default:
         # PR 에서 추가된 라인의 커버리지 목표
+        # Target coverage for lines added in a PR.
         target: 80%
 
 comment:
@@ -17,6 +20,7 @@ comment:
   require_changes: false
 
 # 무시 경로 (테스트·마이그레이션·문서)
+# Ignored paths (tests, migrations, docs).
 ignore:
   - "tests/"
   - "e2e/"

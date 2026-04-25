@@ -217,14 +217,14 @@
   }
 </style>
 
-<!-- 헤더 -->
+<!-- 헤더 / Header -->
 <div class="ad-header">
   <a class="back-btn" href="/repos/{{ repo_name }}">← 이력</a>
   <h2>{{ repo_name }}</h2>
   <span class="grade grade-{{ analysis.grade }}" style="margin-left:auto">{{ analysis.grade }}</span>
 </div>
 
-<!-- 이전/다음 내비게이션 -->
+<!-- 이전/다음 내비게이션 / Prev/Next navigation -->
 <div class="analysis-nav">
   {% if prev_id %}
     <a href="/repos/{{ repo_name }}/analyses/{{ prev_id }}" class="nav-btn">◀ 이전</a>
@@ -239,7 +239,7 @@
   {% endif %}
 </div>
 
-<!-- 메타 정보 -->
+<!-- 메타 정보 / Meta info -->
 <div class="ad-meta">
   <span>📅 {{ analysis.created_at[:16].replace('T', ' ') if analysis.created_at else "—" }}</span>
   <span>🔗 <code style="font-size:12px" title="{{ analysis.commit_sha }}">{{ analysis.commit_sha[:7] }}</code></span>
@@ -254,13 +254,13 @@
   </span>
 </div>
 
-<!-- 커밋 메시지 -->
+<!-- 커밋 메시지 / Commit message -->
 <div class="card ad-section">
   <div class="ad-section-title">📝 커밋 메시지</div>
   <div class="commit-msg-text">{{ analysis.commit_message or "(커밋 메시지 없음)" }}</div>
 </div>
 
-<!-- 점수 배너 -->
+<!-- 점수 배너 / Score banner -->
 {% if analysis.score is not none %}
 <div class="card ad-score-banner">
   <div>
@@ -276,7 +276,7 @@
 </div>
 {% endif %}
 
-<!-- Phase E.3 — 이 점수가 맞나요? thumbs up/down 피드백 -->
+<!-- Phase E.3 — 이 점수가 맞나요? thumbs up/down 피드백 / Is this score accurate? thumbs up/down feedback -->
 <div class="card feedback-card" id="feedbackCard"
      data-analysis-id="{{ analysis.id }}"
      data-repo="{{ repo_name }}"
@@ -362,7 +362,7 @@
 
 {% set r = analysis.result %}
 
-<!-- 점수 추이 트렌드 차트 -->
+<!-- 점수 추이 트렌드 차트 / Score trend chart -->
 {% if trend_data is defined and trend_data|length > 1 %}
 <div class="card trend-section">
   <div class="trend-section-title">📈 점수 추이 (최근 {{ trend_data|length }}건)</div>
@@ -370,7 +370,7 @@
 </div>
 {% endif %}
 
-<!-- AI 기본값 적용 경고 배너 -->
+<!-- AI 기본값 적용 경고 배너 / AI defaults applied warning banner -->
 {% set ai_status = r.get('ai_review_status', 'success') if r else 'success' %}
 {% if ai_status != 'success' %}
 <div class="card ad-section" style="border-left:4px solid #f59e0b;background:rgba(245,158,11,0.06)">
@@ -391,7 +391,7 @@
 </div>
 {% endif %}
 
-<!-- 점수 상세 -->
+<!-- 점수 상세 / Score breakdown -->
 {% set bd = r.get('breakdown', {}) if r else {} %}
 {% if bd %}
 <div class="card ad-breakdown">
@@ -424,7 +424,7 @@
 {% endif %}
 
 {% if r %}
-<!-- AI 요약 -->
+<!-- AI 요약 / AI summary -->
 {% if r.get('ai_summary') %}
 <div class="card ad-section">
   <div class="ad-section-title">🤖 AI 요약</div>
@@ -432,7 +432,7 @@
 </div>
 {% endif %}
 
-<!-- 개선 제안 -->
+<!-- 개선 제안 / Improvement suggestions -->
 {% if r.get('ai_suggestions') %}
 <div class="card ad-section">
   <div class="ad-section-title">💡 개선 제안</div>
@@ -444,7 +444,7 @@
 </div>
 {% endif %}
 
-<!-- 카테고리별 피드백 -->
+<!-- 카테고리별 피드백 / Category feedback -->
 {% set feedbacks = [
   ('커밋 메시지', r.get('commit_message_feedback', '')),
   ('코드 품질', r.get('code_quality_feedback', '')),
@@ -467,7 +467,7 @@
 </div>
 {% endif %}
 
-<!-- 파일별 피드백 -->
+<!-- 파일별 피드백 / Per-file feedback -->
 {% if r.get('file_feedbacks') %}
 <div class="card ad-section">
   <div class="ad-section-title">📁 파일별 피드백</div>
@@ -484,7 +484,7 @@
 </div>
 {% endif %}
 
-<!-- 정적 분석 이슈 -->
+<!-- 정적 분석 이슈 / Static analysis issues -->
 {% set issues = r.get('issues', []) %}
 {% if issues %}
 <div class="card ad-section">
@@ -499,7 +499,7 @@
 </div>
 {% endif %}
 
-<!-- result는 있지만 모든 AI 필드가 비어있는 경우 -->
+<!-- result는 있지만 모든 AI 필드가 비어있는 경우 / result exists but all AI fields are empty -->
 {% if not (r.get('ai_summary') or r.get('ai_suggestions') or has_fb or r.get('file_feedbacks') or r.get('issues')) %}
 <div class="card">
   <div class="ad-empty">
@@ -510,9 +510,9 @@
 {% endif %}
 
 {% else %}
-<!-- result가 없는 경우 -->
+<!-- result가 없는 경우 / result is missing -->
 {% if analysis.score is none %}
-<!-- result도 없고 score도 없는 구버전 분석 -->
+<!-- result도 없고 score도 없는 구버전 분석 / legacy analysis with no result and no score -->
 <div class="card">
   <div class="ad-empty">
     <div style="font-size:2rem;margin-bottom:.75rem;opacity:0.5">📭</div>
@@ -520,7 +520,7 @@
   </div>
 </div>
 {% else %}
-<!-- score는 있지만 result가 없는 경우 -->
+<!-- score는 있지만 result가 없는 경우 / score exists but result is missing -->
 <div class="card">
   <div class="ad-empty">
     <div style="font-size:2rem;margin-bottom:.75rem;opacity:0.5">📭</div>

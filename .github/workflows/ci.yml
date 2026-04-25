@@ -15,6 +15,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           # SonarCloud 가 새 파일/변경 이력을 제대로 분석하려면 shallow-clone 금지
+          # Full history required so SonarCloud can analyse new files and change history correctly.
           fetch-depth: 0
 
       - name: Set up Python 3.12
@@ -44,6 +45,7 @@ jobs:
       - name: Run pytest with coverage (XML for Codecov + SonarCloud)
         env:
           # conftest.py 에서 setdefault 되지만 CI 환경이라 중복 안전
+          # Also set by conftest.py via setdefault, but harmlessly redundant in CI.
           DATABASE_URL: "sqlite:///:memory:"
           GITHUB_WEBHOOK_SECRET: "test_secret"
           TELEGRAM_BOT_TOKEN: "123:ABC"
