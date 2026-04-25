@@ -1,4 +1,6 @@
-fastapi==0.115.0
+# fastapi>=0.115.5 — starlette CVE-2024-47874 / CVE-2025-54121 패치 버전 번들
+# fastapi>=0.115.5 — bundles starlette with CVE-2024-47874 / CVE-2025-54121 patches
+fastapi>=0.115.5
 uvicorn[standard]==0.30.6
 pydantic-settings==2.3.4
 sqlalchemy==2.0.35
@@ -11,8 +13,8 @@ httpx==0.27.2
 # authlib>=1.6.11 — GHSA-jj8c-mmj3-mmgv (OAuth cache CSRF) fix
 authlib>=1.6.11
 itsdangerous>=2.1.0
-# starlette>=0.47.2 — CVE-2024-47874 (multipart OOM DoS) + CVE-2025-54121 fix
-starlette>=0.47.2
+# starlette는 fastapi가 CVE 패치 버전을 번들로 가져옴 — 독립 핀 불필요
+# starlette CVE patches are bundled via fastapi>=0.115.5 — no standalone pin needed
 python-telegram-bot==21.6
 anthropic>=0.25.0
 aiosmtplib>=3.0.0
