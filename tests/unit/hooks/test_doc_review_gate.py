@@ -56,3 +56,75 @@ class TestClassifyFileGrade:
             "f:\\DEVELOPMENT\\SOURCE\\CLAUDE\\SCAManager\\.claude\\agents\\test-writer.md"
         )
         assert grade == "critical"
+
+
+class TestApplyVetoMatrix:
+    """거부권 매트릭스 — 등급 × 에이전트 결과 → 최종 결정."""
+
+    def _r(self, agent, decision, reason="사유"):
+        return {"agent": agent, "decision": decision, "reason": reason, "detail": ""}
+
+    # impact-analyzer는 모든 등급에서 차단
+    def test_impact_blocks_critical(self):
+        results = [self._r("impact", "block", "행동 변화 위험")]
+        decision, reasons = apply_veto_matrix("critical", results)
+        assert decision == "block"
+        assert any("impact-analyzer" in r for r in reasons)
+
+    def test_impact_blocks_important(self):
+        results = [self._r("impact", "block", "행동 변화 위험")]
+        decision, _ = apply_veto_matrix("important", results)
+        assert decision == "block"
+
+    # consistency-reviewer는 critical에서만 차단
+    def test_consistency_blocks_critical(self):
+        results = [self._r("consistency", "block", "수치 불일치")]
+        decision, _ = apply_veto_matrix("critical", results)
+        assert decision == "block"
+
+    def test_consistency_warns_important(self):
+        results = [self._r("consistency", "block", "수치 불일치")]
+        decision, _ = apply_veto_matrix("important", results)
+        assert decision == "warn"
+
+    # quality-reviewer는 항상 경고만
+    def test_quality_warns_critical(self):
+        results = [self._r("quality", "block", "모호한 표현")]
+        decision, _ = apply_veto_matrix("critical", results)
+        assert decision == "warn"
+
+    def test_quality_warns_important(self):
+        results = [self._r("quality", "block", "모호한 표현")]
+        decision, _ = apply_veto_matrix("important", results)
+        assert decision == "warn"
+
+    # 전원 승인
+    def test_all_approve_returns_approve(self):
+        results = [
+            self._r("impact", "approve"),
+            self._r("consistency", "approve"),
+            self._r("quality", "approve"),
+        ]
+        decision, reasons = apply_veto_matrix("critical", results)
+        assert decision == "approve"
+        assert reasons == []
+
+    # 복합 케이스
+    def test_impact_block_overrides_others(self):
+        results = [
+            self._r("impact", "block", "규칙 삭제"),
+            self._r("consistency", "approve"),
+            self._r("quality", "warn", "모호함"),
+        ]
+        decision, _ = apply_veto_matrix("critical", results)
+        assert decision == "block"
+
+    def test_warn_only_when_no_block(self):
+        results = [
+            self._r("impact", "approve"),
+            self._r("consistency", "approve"),
+            self._r("quality", "warn", "모호함"),
+        ]
+        decision, reasons = apply_veto_matrix("critical", results)
+        assert decision == "warn"
+        assert len(reasons) == 1
