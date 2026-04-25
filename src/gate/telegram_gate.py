@@ -7,10 +7,11 @@ from src.scorer.calculator import ScoreResult
 
 
 def _gate_callback_token(bot_token: str, analysis_id: int) -> str:
-    """콜백 데이터 위변조 방지용 HMAC 토큰 (앞 32자, 128-bit)."""
+    """콜백 데이터 위변조 방지용 HMAC 토큰 (SHA-256 전체 hex, 256-bit).
+    Full SHA-256 hex HMAC token for callback integrity verification (256-bit)."""
     return hmac.new(
         bot_token.encode(), str(analysis_id).encode(), digestmod=hashlib.sha256
-    ).hexdigest()[:32]
+    ).hexdigest()  # 전체 64자 사용 — 앞 32자만 쓰는 128-bit 절단에서 256-bit 로 강화
 
 
 async def send_gate_request(

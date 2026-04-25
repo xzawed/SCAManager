@@ -45,11 +45,13 @@ def _parse_gate_callback(data: str) -> "tuple[str, int, str] | None":
         analysis_id = int(analysis_id_str)
     except ValueError:
         return None
+    # 전체 SHA-256 hex 사용 (64자, 256-bit) — 128-bit 절단 제거로 보안 강화
+    # Use full SHA-256 hex (64 chars, 256-bit) — removed 128-bit truncation for security.
     expected = hmac.new(
         settings.telegram_bot_token.encode(),
         str(analysis_id).encode(),
         digestmod=hashlib.sha256,
-    ).hexdigest()[:32]
+    ).hexdigest()
     if not hmac.compare_digest(expected, callback_token):
         logger.warning("Telegram gate callback: invalid token for analysis_id=%d", analysis_id)
         return None

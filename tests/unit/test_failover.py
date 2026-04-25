@@ -191,31 +191,35 @@ class TestActivePrimaryByDefault:
 # ---------------------------------------------------------------------------
 
 class TestHealthEndpointActiveDb:
-    """GET /health 응답에 active_db 키가 포함되어야 한다."""
+    """GET /health 응답은 status=ok 만 반환하고 내부 DB 상태를 노출하지 않아야 한다.
+    GET /health must return status=ok only and must NOT expose internal DB state."""
 
-    def test_health_returns_active_db_key(self):
-        # GET /health 응답 JSON에 "active_db" 키가 존재해야 한다
-        from src.main import app
-        client = TestClient(app)
-        response = client.get("/health")
-        assert response.status_code == 200
-        assert "active_db" in response.json()
-
-    def test_health_status_is_ok(self):
-        # GET /health 응답에 "status": "ok" 가 포함되어야 한다
+    def test_health_returns_status_ok(self):
+        # GET /health 응답 JSON에 "status": "ok" 가 포함되어야 한다
+        # GET /health response JSON must contain "status": "ok".
         from src.main import app
         client = TestClient(app)
         response = client.get("/health")
         assert response.status_code == 200
         assert response.json()["status"] == "ok"
 
+    def test_health_does_not_expose_active_db(self):
+        # 보안 강화: active_db 필드는 내부 DB 상태를 노출하므로 응답에서 제거
+        # Security hardening: active_db exposes internal DB failover state — removed from response.
+        from src.main import app
+        client = TestClient(app)
+        response = client.get("/health")
+        assert response.status_code == 200
+        assert "active_db" not in response.json()
+
     def test_health_active_db_is_primary_or_fallback(self):
-        # active_db 값은 "primary" 또는 "fallback" 중 하나이어야 한다
+        # 내부 DB 상태 노출 제거로 active_db 키는 존재하지 않음 (None 반환)
+        # active_db key no longer exists after security hardening (returns None).
         from src.main import app
         client = TestClient(app)
         response = client.get("/health")
         active_db = response.json().get("active_db")
-        assert active_db in ("primary", "fallback")
+        assert active_db is None
 
 
 # ---------------------------------------------------------------------------

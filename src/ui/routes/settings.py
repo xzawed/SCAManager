@@ -1,11 +1,13 @@
 """리포 설정 관련 페이지/폼/webhook 재설치 엔드포인트."""
 from __future__ import annotations
 
+import ipaddress
 import secrets
 from typing import Annotated
+from urllib.parse import urlparse
 
 import httpx
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from src.auth.session import CurrentUser, require_login
@@ -29,6 +31,58 @@ from src.ui._helpers import (
 )
 
 router = APIRouter()
+
+# SSRF 방어: 내부 네트워크 및 클라우드 메타데이터 주소 차단
+# SSRF defence: block internal network and cloud metadata addresses.
+_BLOCKED_HOSTS = frozenset({
+    "localhost", "127.0.0.1", "::1",
+    "0.0.0.0",  # noqa: S104
+    "169.254.169.254",  # AWS/GCP IMDS
+    "metadata.google.internal",  # GCP metadata
+    "fd00::ec2",  # AWS IPv6 IMDS
+})
+
+
+def _is_safe_webhook_url(url: str | None) -> bool:
+    """사용자 제공 URL이 SSRF 공격에 안전한지 검증한다.
+    Validates that a user-supplied URL is safe against SSRF attacks."""
+    if not url:
+        return True
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return False
+        host = (parsed.hostname or "").lower()
+        if not host:
+            return False
+        if host in _BLOCKED_HOSTS:
+            return False
+        # 사설 IP 대역, 루프백, 링크-로컬 주소 차단
+        # Block private/loopback/link-local IP ranges.
+        try:
+            ip = ipaddress.ip_address(host)
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                return False
+        except ValueError:
+            pass  # 호스트명(도메인)은 IP 파싱 실패가 정상 / Domain names will fail IP parsing — that is fine.
+        return True
+    except Exception:  # pylint: disable=broad-except
+        return False
+
+
+def _validate_webhook_urls(form) -> None:
+    """폼의 모든 webhook URL을 검증한다. 안전하지 않으면 HTTPException(400)."""
+    webhook_fields = (
+        "n8n_webhook_url", "discord_webhook_url",
+        "slack_webhook_url", "custom_webhook_url",
+    )
+    for field in webhook_fields:
+        url = form.get(field) or ""
+        if url and not _is_safe_webhook_url(url):
+            raise HTTPException(
+                status_code=400,
+                detail=f"유효하지 않은 URL: {field}. 내부 네트워크 주소는 사용할 수 없습니다.",
+            )
 
 
 @router.get("/repos/{repo_name:path}/settings", response_class=HTMLResponse)
@@ -62,7 +116,10 @@ def repo_settings(  # pylint: disable=too-many-positional-arguments
     })
 
 
-@router.post("/repos/{repo_name:path}/settings")
+@router.post(
+    "/repos/{repo_name:path}/settings",
+    responses={400: {"description": "Invalid webhook URL (SSRF blocked)"}},
+)
 async def update_repo_settings(
     request: Request,
     repo_name: str,
@@ -70,6 +127,9 @@ async def update_repo_settings(
 ):
     """폼 데이터로 리포 Gate·알림 설정을 저장한다."""
     form = await request.form()
+    # SSRF 방어: webhook URL 사전 검증 — 내부 네트워크 요청 차단
+    # SSRF defence: validate webhook URLs before saving — blocks internal network requests.
+    _validate_webhook_urls(form)
     with SessionLocal() as db:
         get_accessible_repo(db, repo_name, current_user)
         try:

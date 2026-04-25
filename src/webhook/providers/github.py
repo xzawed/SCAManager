@@ -86,8 +86,11 @@ async def _handle_merged_pr_event(data: dict) -> dict:
             )
             logger.info("Auto-closed issue #%d on %s (PR merge)", issue_number, repo_name)
         except httpx.HTTPError as exc:
+            # exc 본문에 GitHub API 응답 세부사항이 포함될 수 있으므로 타입명만 기록
+            # Log only the exception type — exc body may contain GitHub API response details.
             logger.warning(
-                "Auto-close failed (repo=%s, issue=%d): %s", repo_name, issue_number, exc
+                "Auto-close failed (repo=%s, issue=%d): %s",
+                repo_name, issue_number, type(exc).__name__,
             )
 
     return {"status": "accepted"}

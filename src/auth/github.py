@@ -86,7 +86,13 @@ async def auth_callback(request: Request):
             user.github_login = github_login
             user.display_name = display_name
             db.commit()
-        request.session["user_id"] = user.id  # 세션 닫히기 전에 id 저장
+
+        # 세션 고정(Session Fixation) 공격 방어: 인증 완료 후 이전 세션 데이터를 초기화하고
+        # 새 세션 ID로 user_id를 저장한다. 공격자가 미리 확보한 세션 ID를 무력화한다.
+        # Session Fixation defence: clear any pre-auth session data before storing the
+        # authenticated user_id, so an attacker-supplied session token is invalidated.
+        request.session.clear()
+        request.session["user_id"] = user.id
 
     return RedirectResponse(url="/", status_code=302)
 

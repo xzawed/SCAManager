@@ -22,11 +22,27 @@ def test_health_returns_200(client):
 
 
 def test_health_returns_status_ok(client):
-    # GET /health 응답 body 가 status=ok + active_db 필드를 포함하는지 검증
+    # GET /health 응답 body 가 status=ok 를 포함하고 내부 구현 필드(active_db)는 노출하지 않는지 검증
+    # Verify /health returns status=ok and does NOT expose internal fields (active_db).
     response = client.get("/health")
     data = response.json()
     assert data["status"] == "ok"
-    assert "active_db" in data
+    assert "active_db" not in data  # 정보 노출 방지 — internal DB state must not be exposed
+
+
+def test_health_security_headers(client):
+    # 보안 헤더 미들웨어가 모든 응답에 X-Content-Type-Options 를 추가하는지 검증
+    # Verify SecurityHeadersMiddleware adds X-Content-Type-Options to all responses.
+    response = client.get("/health")
+    assert response.headers.get("x-content-type-options") == "nosniff"
+    assert response.headers.get("x-frame-options") == "DENY"
+
+
+def test_health_tools_removed(client):
+    # /health/tools 디버그 엔드포인트가 제거되어 404 를 반환하는지 검증
+    # Verify the /health/tools debug endpoint is removed and returns 404.
+    response = client.get("/health/tools")
+    assert response.status_code == 404
 
 
 # --- 라우트 등록 검증 ---
