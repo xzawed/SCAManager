@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """문서 변경 다중 에이전트 심의 Hook — PreToolUse (Edit/Write/MultiEdit).
 Multi-agent review gate for document changes — PreToolUse hook."""
+import anthropic
 import asyncio
 import json
 import os
@@ -125,3 +126,78 @@ def _agent_label(agent: str) -> str:
         "quality": "quality-reviewer",
     }
     return labels.get(agent, agent)
+
+
+# ─── Claude API 병렬 호출 ─────────────────────────────────────────────────────
+# Parallel Claude API calls
+
+_HOOKS_DIR = Path(__file__).parent
+_AGENTS_DIR = _HOOKS_DIR.parent / "agents"
+_HAIKU_MODEL = "claude-haiku-4-5-20251001"
+_AGENT_NAMES = ("impact", "consistency", "quality")
+_AGENT_TIMEOUT = 25  # seconds per agent
+
+
+def _read_agent_prompt(agent: str) -> str:
+    """에이전트 .md 파일에서 시스템 프롬프트를 읽는다 (YAML frontmatter 제거).
+    Reads system prompt from agent .md file, stripping YAML frontmatter."""
+    suffix = "analyzer" if agent == "impact" else "reviewer"
+    md_file = _AGENTS_DIR / f"doc-{agent}-{suffix}.md"
+    if not md_file.exists():
+        return f"당신은 문서 {agent} 검토자입니다. JSON {{decision, reason, detail}}으로 응답하세요."
+    content = md_file.read_text(encoding="utf-8")
+    if content.startswith("---"):
+        end = content.find("---", 3)
+        if end != -1:
+            content = content[end + 3:].strip()
+    return content
+
+
+async def _call_single_agent(
+    client,
+    agent: str,
+    diff: str,
+    context: str,
+) -> dict:
+    """에이전트 한 개를 호출하고 JSON 결과를 반환한다.
+    Calls a single agent and returns a JSON result dict."""
+    system_prompt = _read_agent_prompt(agent)
+    user_msg = (
+        f"## 변경 내용 (diff)\n{diff[:4000]}\n\n"
+        f"## 참조 컨텍스트 (CLAUDE.md / STATE.md)\n{context[:3000]}\n\n"
+        "위 변경을 검토하고 JSON으로만 응답하세요."
+    )
+    try:
+        msg = await asyncio.wait_for(
+            client.messages.create(
+                model=_HAIKU_MODEL,
+                max_tokens=512,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_msg}],
+            ),
+            timeout=_AGENT_TIMEOUT,
+        )
+        text = msg.content[0].text
+        match = re.search(r"\{[^{}]*\}", text, re.DOTALL)
+        if match:
+            parsed = json.loads(match.group())
+            parsed["agent"] = agent
+            return parsed
+        return {"agent": agent, "decision": "approve", "reason": "JSON 파싱 실패 — 통과", "detail": text[:200]}
+    except Exception:  # pylint: disable=broad-exception-caught
+        return {"agent": agent, "decision": "warn", "reason": "에이전트 호출 실패", "detail": ""}
+
+
+async def call_agents_parallel(grade: str, diff: str, context: str) -> list[dict]:
+    """3개 에이전트를 병렬로 호출하고 결과 목록을 반환한다.
+    Calls all three agents in parallel and returns a list of result dicts."""
+    client = anthropic.AsyncAnthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
+    tasks = [_call_single_agent(client, agent, diff, context) for agent in _AGENT_NAMES]
+    raw = await asyncio.gather(*tasks, return_exceptions=True)
+    results = []
+    for agent, r in zip(_AGENT_NAMES, raw):
+        if isinstance(r, Exception):
+            results.append({"agent": agent, "decision": "warn", "reason": f"오류: {r}", "detail": ""})
+        else:
+            results.append(r)
+    return results

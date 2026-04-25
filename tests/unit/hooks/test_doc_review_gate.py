@@ -1,6 +1,8 @@
 """doc_review_gate.py 단위 테스트."""
+import json
 import sys
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # 훅 파일 직접 임포트 (src/ 외부)
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / ".claude" / "hooks"))
@@ -128,3 +130,75 @@ class TestApplyVetoMatrix:
         decision, reasons = apply_veto_matrix("critical", results)
         assert decision == "warn"
         assert len(reasons) == 1
+
+
+class TestCallAgentsParallel:
+    """Anthropic API 병렬 호출 — 모킹으로 검증."""
+
+    def _make_mock_client(self, responses: list[str]):
+        """agents 순서(impact, consistency, quality)에 맞게 응답 반환하는 mock client."""
+        mock_client = MagicMock()
+        mock_create = AsyncMock(side_effect=[
+            MagicMock(content=[MagicMock(text=r)]) for r in responses
+        ])
+        mock_client.messages.create = mock_create
+        return mock_client
+
+    async def test_parallel_calls_three_agents(self):
+        from doc_review_gate import call_agents_parallel
+
+        responses = [
+            '{"decision": "approve", "reason": "문제없음", "detail": ""}',
+            '{"decision": "approve", "reason": "일관성OK", "detail": ""}',
+            '{"decision": "warn", "reason": "모호함", "detail": "개선필요"}',
+        ]
+        mock_client = self._make_mock_client(responses)
+
+        with patch("doc_review_gate.anthropic.AsyncAnthropic", return_value=mock_client):
+            results = await call_agents_parallel("critical", "diff 내용", "컨텍스트")
+
+        assert len(results) == 3
+        agents = {r["agent"] for r in results}
+        assert agents == {"impact", "consistency", "quality"}
+
+    async def test_agent_names_assigned_correctly(self):
+        from doc_review_gate import call_agents_parallel
+
+        responses = [
+            '{"decision": "block", "reason": "위험", "detail": ""}',
+            '{"decision": "approve", "reason": "OK", "detail": ""}',
+            '{"decision": "approve", "reason": "OK", "detail": ""}',
+        ]
+        mock_client = self._make_mock_client(responses)
+
+        with patch("doc_review_gate.anthropic.AsyncAnthropic", return_value=mock_client):
+            results = await call_agents_parallel("critical", "diff", "ctx")
+
+        impact = next(r for r in results if r["agent"] == "impact")
+        assert impact["decision"] == "block"
+
+    async def test_api_failure_returns_warn_not_block(self):
+        """API 호출 실패 시 차단이 아닌 경고로 graceful degradation."""
+        from doc_review_gate import call_agents_parallel
+
+        mock_client = MagicMock()
+        mock_client.messages.create = AsyncMock(side_effect=Exception("API 오류"))
+
+        with patch("doc_review_gate.anthropic.AsyncAnthropic", return_value=mock_client):
+            results = await call_agents_parallel("critical", "diff", "ctx")
+
+        for r in results:
+            assert r["decision"] == "warn", f"실패 시 warn 이어야 함: {r}"
+
+    async def test_malformed_json_returns_approve(self):
+        """JSON 파싱 실패 시 approve로 fallback — 작업 차단하지 않음."""
+        from doc_review_gate import call_agents_parallel
+
+        responses = ["JSON 아님", "JSON 아님", "JSON 아님"]
+        mock_client = self._make_mock_client(responses)
+
+        with patch("doc_review_gate.anthropic.AsyncAnthropic", return_value=mock_client):
+            results = await call_agents_parallel("critical", "diff", "ctx")
+
+        for r in results:
+            assert r["decision"] in ("approve", "warn")
