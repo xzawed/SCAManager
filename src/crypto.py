@@ -1,4 +1,5 @@
 """토큰 암호화/복호화 유틸리티 — Fernet 대칭 암호화.
+Token encryption/decryption utility — Fernet symmetric encryption.
 
 TOKEN_ENCRYPTION_KEY 환경변수가 설정된 경우 Fernet으로 암호화/복호화.
 미설정 시 no-op(평문 반환) — 개발/테스트 환경 하위 호환.
@@ -13,6 +14,7 @@ from cryptography.fernet import Fernet, InvalidToken
 logger = logging.getLogger(__name__)
 
 # settings가 아직 초기화되지 않은 시점에서 import될 수 있으므로 지연 로딩
+# Lazy-loaded: this module may be imported before settings is initialized.
 _fernet: "Fernet | None | bool" = False  # False = 미초기화 sentinel
 
 
@@ -54,5 +56,6 @@ def decrypt_token(ciphertext: str) -> str:
         return f.decrypt(ciphertext.encode()).decode()
     except (InvalidToken, ValueError):
         # 암호화 키 도입 전 평문 저장된 레거시 토큰 — 그대로 반환
+        # Legacy token stored in plaintext before encryption key was introduced — return as-is.
         logger.warning("Token decryption failed — returning as plaintext (legacy token?)")
         return ciphertext

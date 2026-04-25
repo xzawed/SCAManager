@@ -25,6 +25,7 @@ UNPROCESSABLE = "unprocessable"           # HTTP 422
 CONFLICT_SHA_CHANGED = "conflict_sha_changed"  # HTTP 409
 
 # --- 네트워크 / 기타 --------------------------------------------------------
+# --- Network / other --------------------------------------------------------
 NETWORK_ERROR = "network_error"           # httpx.HTTPError (non-status)
 UNKNOWN = "unknown"                       # 분류 불가
 

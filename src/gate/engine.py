@@ -191,7 +191,9 @@ async def _run_auto_merge(  # pylint: disable=too-many-arguments
         ok, reason = await merge_pr(github_token, repo_name, pr_number)
 
         # Phase F.1: 모든 시도 DB 기록 — 관측 실패가 파이프라인을 중단시키지 않도록
+        # Phase F.1: Record every attempt in DB — observability failures must not interrupt the pipeline.
         # log_merge_attempt 자체 오류는 독립 try/except 로 격리.
+        # Errors from log_merge_attempt are isolated in their own try/except block.
         if analysis_id is not None and db is not None:
             try:
                 log_merge_attempt(

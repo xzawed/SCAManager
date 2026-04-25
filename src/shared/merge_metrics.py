@@ -79,6 +79,7 @@ def log_merge_attempt(
         except Exception:  # nosec B110 — pylint: disable=broad-except
             # rollback 실패는 의도적으로 무시: 이미 commit 단계에서 세션이
             # 손상됐고, 후속 로그·반환값이 최우선이므로 2차 예외로 덮이면 안 됨.
+            # Session is corrupt; logging and return value take priority — don't let a secondary exception mask them.
             pass
         logger.warning(
             "merge_attempt DB 기록 실패 (repo=%s, pr=%d): %s",

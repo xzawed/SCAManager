@@ -149,6 +149,7 @@ class _BanditAnalyzer:
 
 
 # 모듈 로드 시 자동 등록
+# Auto-registered when this module is imported.
 def _register_python_analyzers() -> None:
     register(_PylintAnalyzer())
     register(_Flake8Analyzer())

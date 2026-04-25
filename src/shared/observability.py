@@ -43,6 +43,7 @@ def _before_send(event: dict, _hint: dict) -> dict:
                 headers[key] = "[Filtered]"
     event["request"] = request
     # body 는 Sentry 기본값이 이미 제외하지만 명시적으로 제거
+    # Body is excluded by Sentry's defaults, but removed explicitly for defence in depth.
     if "data" in request:
         request["data"] = "[Filtered]"
     return event

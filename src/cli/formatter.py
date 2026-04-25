@@ -29,6 +29,7 @@ def _bold(text: str, enabled: bool) -> str:
 
 
 # ── 섹션별 헬퍼 ───────────────────────────────────────────────────────────
+# ── Section helpers ────────────────────────────────────────────────────────
 
 
 def _format_header(score: ScoreResult, use_color: bool) -> list[str]:
@@ -140,6 +141,7 @@ def _format_static_issues(
 
 
 # ── 공개 API ─────────────────────────────────────────────────────────────
+# ── Public API ───────────────────────────────────────────────────────────
 
 
 def format_result(

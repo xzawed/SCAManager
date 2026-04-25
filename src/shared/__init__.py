@@ -1,4 +1,5 @@
 """공용 인프라 유틸리티.
+Shared infrastructure utilities.
 
 - `http_client`: FastAPI lifespan 관리 httpx.AsyncClient 싱글톤 (내부 신뢰 API 용)
 - `log_safety`: 로그 인젝션 방지 sanitizer (CR/LF 제거 + 길이 제한)

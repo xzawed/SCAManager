@@ -38,6 +38,7 @@ def analyze_file(filename: str, content: str) -> StaticAnalysisResult:
     result = StaticAnalysisResult(filename=filename)
 
     # Python 도구는 .py 확장자를 임시 파일에 써야 올바르게 작동
+    # Python tools require the .py extension on the temp file to function correctly.
     suffix = ".py" if language == "python" else os.path.splitext(filename)[1] or ".tmp"
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=suffix, delete=False, encoding="utf-8"

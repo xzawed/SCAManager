@@ -132,6 +132,7 @@ COMMIT_MSG=$(git log --format="%B" -1 "${LOCAL_SHA}" 2>/dev/null)
 echo "\\n🔍 [SCAManager] 코드리뷰 실행 중..."
 
 # 프롬프트를 파일에 기록 후 stdin으로 전달 — argv 주입 차단
+# Write prompt to a temp file and pass via stdin — prevents argv injection.
 TMPFILE=$(mktemp /tmp/scamanager_review.XXXXXX)
 cat > "${TMPFILE}" << PROMPT
 다음 변경사항을 분석하고 아래 JSON 형식으로만 응답하세요. 다른 텍스트는 포함하지 마세요.
@@ -217,6 +218,7 @@ async def commit_scamanager_files(
             # path 는 module-level 딕셔너리 키(상수) 이지만 방어적 인코딩 적용
             url = f"{GITHUB_API}/repos/{_repo_path(repo_full_name)}/contents/{quote(path)}"
             # 기존 파일 sha 조회
+            # Retrieve the existing file sha (required for updates).
             get_resp = await client.get(url, headers=_auth_headers(token))
             body: dict = {
                 "message": f"chore: SCAManager hook 설정 추가 ({path})",

@@ -49,6 +49,7 @@ EXCLUDE_DIRS = {
     ".pytest_cache",
     "node_modules",
     ".git",
+    "review_guides",  # LLM review checklist content — not developer comments
 }
 EXCLUDE_FILES = {
     "review_prompt.py",  # LLM prompt strings — score regression risk
