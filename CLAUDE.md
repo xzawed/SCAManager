@@ -3,6 +3,19 @@
 > **문서 작성 원칙**: 이 프로젝트의 모든 문서는 Claude가 가장 읽기 쉽고 이해하기 편한 구조로 작성한다.
 > 새 문서를 작성하거나 기존 문서를 수정할 때 이 원칙을 반드시 따른다.
 
+> **코드 주석 원칙 (이중 언어)**: 모든 코드 주석은 **한국어와 영어를 병행**하여 작성한다.
+> 한국어를 먼저 쓰고, 바로 다음 줄에 영어를 추가한다.
+> 신규 코드 작성 시 즉시 적용하고, 기존 파일은 해당 파일을 수정할 때 함께 갱신한다.
+> 예외: `# TODO`, `# FIXME`, `# type: ignore` 등 단어 하나짜리 표준 태그는 영어 단독 사용 허용.
+>
+> ```python
+> # 레이트 리밋 초과 시 재시도
+> # Retry on rate limit exceeded
+>
+> # 같은 SHA가 이미 분석된 경우 건너뜀 (멱등성 보장)
+> # Skip if the same SHA was already analyzed (idempotency guard)
+> ```
+
 GitHub Push/PR 이벤트 시 정적 분석 + AI 코드 리뷰를 자동 수행하고, 점수와 개선사항을 Telegram·GitHub PR Comment·Discord·Slack·Email·n8n으로 전달하며, 점수 기반 PR 자동/반자동 Gate(Approve + 자동 Merge 포함)와 웹 대시보드를 제공하는 서비스. `git push` 시 Claude Code CLI 기반 자동 코드리뷰(pre-push hook)도 지원한다.
 
 ## 핵심 명령
