@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-25 기준 — Phase F Quick Win + F.1 관측 완료 · Phase F.3 실패 어드바이저 완료 · G.2 수치 동기화 · Phase G 완료 · P2 이슈 수정 완료 · Phase H 착수 (F.2 관측 완료) · 이중언어 주석 마이그레이션 완료 · 보안 강화 그룹 39 완료 · lint 회귀 수정)
+## 현재 수치 (2026-04-26 기준 — Phase F Quick Win + F.1 관측 완료 · Phase F.3 실패 어드바이저 완료 · G.2 수치 동기화 · Phase G 완료 · P2 이슈 수정 완료 · Phase H 착수 (F.2 관측 완료) · 이중언어 주석 마이그레이션 완료 · 보안 강화 그룹 39 완료 · lint 회귀 수정 · 문서 다중 에이전트 심의 시스템 완료)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1300개** | pytest 9.0.3 (0 failed) — 2026-04-25 로컬 실측 (보안 강화 + lint 수정 후 회귀 없음) |
+| 단위 테스트 | **1332개** | pytest 9.0.3 (0 failed) — 2026-04-26 로컬 실측 (doc_review_gate 32개 추가) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
@@ -43,6 +43,28 @@
 | `tests/conftest.py` | 환경변수 주입 + _webhook_secret_cache autouse 클리어 |
 
 ## 작업 이력 (그룹별)
+
+### 그룹 40 (2026-04-26 · 문서 다중 에이전트 심의 시스템)
+
+**배경**: Claude가 중요 문서(CLAUDE.md·STATE.md·에이전트·스킬 정의)를 수정할 때 단일 관점으로 인한 맹점을 방지하기 위해 3개 전문 에이전트가 병렬 심의하는 PreToolUse Hook 시스템 구축. 사용자 가시성보다 Claude 판단 정확성 확보가 핵심 목적.
+
+**신규 파일**:
+
+| 파일 | 역할 |
+|------|------|
+| `.claude/hooks/doc_review_gate.py` | PreToolUse Hook 진입점 — 등급 분류→병렬 에이전트 호출→거부권 적용→차단/경고/통과 |
+| `.claude/agents/doc-impact-analyzer.md` | 행동 변화 감지 에이전트 — 규칙 삭제·조건 변경·예외 추가 검출 (Critical+Important 차단) |
+| `.claude/agents/doc-consistency-reviewer.md` | 교차 문서 일관성 검토 에이전트 — 수치 불일치·모순 규칙 검출 (Critical만 차단) |
+| `.claude/agents/doc-quality-reviewer.md` | 문서 품질 검토 에이전트 — 모호한 표현·이중 해석 감지 (경고만, 차단 없음) |
+| `tests/unit/hooks/test_doc_review_gate.py` | 32개 단위 테스트 — 등급 분류 14 + 거부권 매트릭스 9 + API 병렬 호출 4 + main() 통합 5 |
+| `docs/superpowers/specs/2026-04-26-doc-review-gate-design.md` | 설계 문서 |
+| `docs/superpowers/plans/2026-04-26-doc-review-gate.md` | 구현 계획 문서 |
+
+**주요 설계 결정**:
+- Anthropic Haiku 4.5 병렬 호출 (`asyncio.gather`) → 목표 20초 이내
+- API 실패 시 차단 금지 (graceful degradation) — 심의 시스템이 단일 장애점이 되지 않도록
+- JSON 코드 블록 우선 파싱 + json.loads fallback — 에이전트 응답에 중괄호 포함 시 파싱 실패 방어
+- `.claude/settings.json`에 `doc_review_gate.py` 60초 타임아웃으로 등록 (matcher: Write|Edit|MultiEdit)
 
 ### 그룹 39 (2026-04-25 · 보안 강화 — GitHub 봇 클론 사고 대응)
 
