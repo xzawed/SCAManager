@@ -41,7 +41,7 @@ def _build_issue_body(
     ])
 
 
-async def create_merge_failure_issue(
+async def create_merge_failure_issue(  # pylint: disable=too-many-locals
     *,
     github_token: str,
     repo_name: str,
