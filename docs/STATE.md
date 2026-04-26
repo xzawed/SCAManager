@@ -6,7 +6,7 @@
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1708개** | pytest 9.0.3 (0 failed, 5 skipped — 3 Postgres-gated + 2 pre-existing) — 2026-04-27 로컬 실측 |
+| 단위 테스트 | **1709개** | pytest 9.0.3 (0 failed, 5 skipped — 3 Postgres-gated + 2 pre-existing) — 2026-04-27 로컬 실측 |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
@@ -89,7 +89,7 @@
 - `src/repositories/__init__.py` — `merge_retry_repo` export
 - `railway.toml` — `*/5 * * * *` retry sweep cronJob 추가
 
-**테스트 증분**: 1495 → **1708** passed (5 skipped — 3 Postgres-gated + 2 pre-existing)
+**테스트 증분**: 1495 → **1709** passed (5 skipped — 3 Postgres-gated + 2 pre-existing)
 **품질**: pylint 10.00 · bandit HIGH 0 · 커버리지 ~95%
 
 ---
