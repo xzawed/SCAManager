@@ -98,3 +98,102 @@ def test_settings_no_banner_when_check_suite_present():
     # 배너가 없어야 함 — 배너 element id 가 HTML에 없어야 함
     # Banner must be absent — banner element id should not appear in HTML
     assert "webhookStaleBanner" not in resp.text
+
+
+# ── 온보딩 배너 테스트 ────────────────────────────────────────────────────────
+
+def _settings_get_custom(
+    stale: bool = False,
+    notify_chat_id: str | None = None,
+    telegram_connected: bool = False,
+):
+    """알림 채널 설정 + Telegram 연결 여부를 커스터마이즈한 헬퍼.
+    Helper to customise notification channel settings and Telegram link state.
+    """
+    from src.config_manager.manager import RepoConfigData  # pylint: disable=import-outside-toplevel
+    from src.models.user import User as UserModel  # pylint: disable=import-outside-toplevel
+
+    config = RepoConfigData(repo_full_name="owner/repo", notify_chat_id=notify_chat_id)
+    custom_user = UserModel(
+        id=99,
+        github_id="99999",
+        github_login="customuser",
+        github_access_token="gho_custom",
+        telegram_user_id="tg_123" if telegram_connected else None,
+    )
+    app.dependency_overrides[require_login] = lambda: custom_user
+    resp = None
+    try:
+        with patch("src.ui.routes.settings.SessionLocal", return_value=_make_db_ctx()), \
+             patch("src.ui.routes.settings.get_repo_config", return_value=config), \
+             patch("src.repositories.repo_config_repo.find_by_full_name",
+                   return_value=_make_config_orm()), \
+             patch(
+                 "src.ui.routes.settings._detect_stale_webhook",
+                 new_callable=AsyncMock,
+                 return_value=stale,
+             ):
+            resp = client.get("/repos/owner%2Frepo/settings")
+    finally:
+        app.dependency_overrides[require_login] = lambda: _test_user
+    return resp
+
+
+def test_settings_shows_onboarding_banner_when_no_channel():
+    """알림 채널 미설정 + Telegram 미연결 → 온보딩 배너 표시.
+    Shows onboarding banner when no notification channel is configured and Telegram is not linked.
+    """
+    resp = _settings_get_custom(notify_chat_id=None, telegram_connected=False)
+    assert resp.status_code == 200
+    assert "onboardingBanner" in resp.text
+
+
+def test_settings_no_onboarding_banner_when_notify_chat_id_set():
+    """notify_chat_id 설정 시 → 온보딩 배너 미표시.
+    No onboarding banner when notify_chat_id is configured.
+    """
+    resp = _settings_get_custom(notify_chat_id="-100123456", telegram_connected=False)
+    assert resp.status_code == 200
+    assert "onboardingBanner" not in resp.text
+
+
+def test_settings_no_onboarding_banner_when_telegram_connected():
+    """Telegram 연결 완료 시 → 온보딩 배너 미표시.
+    No onboarding banner when Telegram account is linked.
+    """
+    resp = _settings_get_custom(notify_chat_id=None, telegram_connected=True)
+    assert resp.status_code == 200
+    assert "onboardingBanner" not in resp.text
+
+
+def test_settings_new_card_structure_present():
+    """새 카드 헤더 텍스트 확인 + 구 카드 헤더 부재 확인.
+    Verify new card header text is present and old card headers are gone.
+    """
+    resp = _settings_get(stale=False)
+    assert resp.status_code == 200
+    # 새 카드 이름이 있어야 함
+    assert "분석 동작 규칙" in resp.text
+    assert "알림 발신 채널" in resp.text
+    assert "통합 &amp; 연결" in resp.text
+    # 구 카드 이름이 없어야 함
+    assert "이벤트 후 피드백" not in resp.text
+    assert "시스템 &amp; 토큰" not in resp.text
+
+
+def test_settings_all_form_fields_present_after_restructure():
+    """구조 개편 후 모든 폼 필드가 유지되는지 회귀 테스트.
+    Regression: all form field names must survive the card restructure.
+    """
+    resp = _settings_get(stale=False)
+    assert resp.status_code == 200
+    required_fields = [
+        "pr_review_comment", "auto_merge", "merge_threshold",
+        "approve_threshold", "reject_threshold", "commit_comment",
+        "create_issue", "railway_deploy_alerts", "notify_chat_id",
+        "discord_webhook_url", "slack_webhook_url", "n8n_webhook_url",
+        "custom_webhook_url", "email_recipients", "leaderboard_opt_in",
+        "auto_merge_issue_on_failure",
+    ]
+    for field in required_fields:
+        assert field in resp.text, f"Missing form field: {field}"
