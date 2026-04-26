@@ -21,12 +21,19 @@ os.environ.setdefault("GITHUB_CLIENT_ID", "test-github-client-id")
 os.environ.setdefault("GITHUB_CLIENT_SECRET", "test-github-client-secret")
 os.environ.setdefault("SESSION_SECRET", "test-session-secret-32-chars-long!")
 
+from contextlib import contextmanager  # noqa: E402
 from unittest.mock import MagicMock, patch  # noqa: E402
 
 from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy.orm import Session  # noqa: E402
+from sqlalchemy.pool import StaticPool  # noqa: E402
 
 from src.main import app  # noqa: E402
 from src.auth.session import CurrentUser, require_login  # noqa: E402
+from src.database import Base  # noqa: E402
+from src.models.repository import Repository  # noqa: E402
+from src.models.user import User  # noqa: E402
 
 # 로그인 사용자 픽스처 — CurrentUser dataclass 사용 (User ORM 모델 아님)
 # Test user fixture — use CurrentUser dataclass (not the User ORM model)
@@ -254,6 +261,57 @@ def test_insights_page_with_repos_param_returns_200():
             app.dependency_overrides[require_login] = _prev_login
         else:
             app.dependency_overrides.pop(require_login, None)
+
+
+def test_insights_page_no_ormattr_error_on_real_db():
+    """/insights 가 실제 SQLite 세션을 사용할 때 AttributeError 없이 200 을 반환해야 한다.
+    /insights must return 200 without AttributeError when using a real SQLite session.
+
+    Repository.config 같은 존재하지 않는 ORM 속성 접근을 방지하는 회귀 테스트.
+    Regression guard: prevents accessing non-existent ORM attributes like Repository.config.
+    """
+    # in-memory SQLite 엔진 — StaticPool + check_same_thread=False 로 TestClient 스레드 안전 보장
+    # StaticPool + check_same_thread=False ensures the same connection is shared across threads
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as seed_db:
+        u = User(github_id=42, github_login="testuser", email="t@x.com", display_name="T")
+        seed_db.add(u)
+        seed_db.commit()
+        seed_db.refresh(u)
+        r = Repository(full_name="owner/test-repo", user_id=u.id)
+        seed_db.add(r)
+        seed_db.commit()
+
+    @contextmanager
+    def _real_session():
+        with Session(engine) as s:
+            yield s
+
+    _prev_login = app.dependency_overrides.get(require_login)
+    app.dependency_overrides[require_login] = lambda: _test_user
+    try:
+        client = TestClient(app)
+        with patch("src.ui.routes.insights.SessionLocal", side_effect=_real_session), \
+             patch("src.ui.routes.insights.templates.TemplateResponse") as mock_tr:
+            from fastapi.responses import HTMLResponse
+            mock_tr.return_value = HTMLResponse(content="<html>ok</html>", status_code=200)
+            response = client.get("/insights")
+
+        assert response.status_code == 200, (
+            f"Expected 200, got {response.status_code} — ORM 속성 오류 또는 DB 쿼리 실패 가능성"
+        )
+    finally:
+        if _prev_login is not None:
+            app.dependency_overrides[require_login] = _prev_login
+        else:
+            app.dependency_overrides.pop(require_login, None)
+        engine.dispose()
 
 
 def test_insights_comparison_context_includes_leaderboard():
