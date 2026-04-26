@@ -346,7 +346,14 @@ def test_callback_without_prior_auth_session_fails():
 
 
 def test_jinja2_autoescape_enabled():
-    """FastAPI Jinja2Templates 인스턴스의 autoescape가 True여야 한다."""
+    """FastAPI Jinja2Templates 인스턴스의 autoescape가 활성화되어야 한다.
+    starlette 버전에 따라 True 또는 callable을 반환할 수 있다.
+    """
     from fastapi.templating import Jinja2Templates
     t = Jinja2Templates(directory="src/templates")
-    assert t.env.autoescape is True, "Jinja2 autoescape가 비활성화되어 있어 XSS 위험이 있다"
+    autoescape = t.env.autoescape
+    # 최신 starlette는 callable(select_autoescape)을 반환, 구버전은 True 반환
+    # Newer starlette returns callable(select_autoescape); older versions return True
+    assert autoescape is True or callable(autoescape), (
+        "Jinja2 autoescape가 비활성화되어 있어 XSS 위험이 있다"
+    )
