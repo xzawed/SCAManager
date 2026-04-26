@@ -18,6 +18,27 @@
 
 GitHub Push/PR 이벤트 시 정적 분석 + AI 코드 리뷰를 자동 수행하고, 점수와 개선사항을 Telegram·GitHub PR Comment·Discord·Slack·Email·n8n으로 전달하며, 점수 기반 PR 자동/반자동 Gate(Approve + 자동 Merge 포함)와 웹 대시보드를 제공하는 서비스. `git push` 시 Claude Code CLI 기반 자동 코드리뷰(pre-push hook)도 지원한다.
 
+---
+
+## 🧭 이 문서 탐색 가이드
+
+| 상황 | 바로 가기 |
+|------|----------|
+| **작업 착수 전 (항상 30초)** | → [작업 시작 전 필수 체크리스트](#작업-시작-전-필수-체크리스트-매-작업마다) |
+| **src/ 수정 후** | → [필수 원칙 — Hook 신뢰](#필수-원칙) |
+| **Phase 완료 직전** | → [필수 원칙 — 완료 5-step · CLAUDE.md 동기화](#필수-원칙) |
+| **ORM 컬럼 추가 시** | → [DB/마이그레이션 주의사항](#db--마이그레이션) |
+| **새 파일 추가 시** | → [CLAUDE.md 아키텍처 동기화 체크리스트](#필수-원칙) |
+| **아키텍처 파악** | → [src/ 트리](#아키텍처) · [핵심 데이터 흐름](#핵심-데이터-흐름) |
+| **규칙 전체 열람** | → [주의사항 카테고리별](#주의사항-카테고리별) |
+
+> **🔴 가장 빈번하게 놓치는 규칙 3가지**
+> 1. ORM 컬럼 추가 후 `make revision` 마이그레이션 파일 미생성 → 운영 500 에러 (DB/마이그레이션 참조)
+> 2. Phase 완료 후 CLAUDE.md 아키텍처 섹션 미갱신 → 다음 Claude 세션 혼란 (필수 원칙 참조)
+> 3. 경로 없이 `python -m pytest` 실행 시 e2e 혼입 → 446건 false failure (testpaths=tests로 방어됨)
+
+---
+
 ## 핵심 명령
 
 ```bash
@@ -296,23 +317,6 @@ requirements-dev.txt  ← 로컬 개발 환경 — pytest, playwright 포함 (-r
 모든 AI 에이전트(Claude Code 및 서브에이전트)는 SCAManager 작업 시 아래 규칙을 **반드시** 따른다.
 `.claude/` 디렉토리에 정의된 스킬과 에이전트는 선택이 아닌 의무적 도구다.
 
-### 필수 원칙
-
-- **TDD 우선**: 구현 코드 작성 전 반드시 `test-writer` 에이전트로 테스트를 먼저 작성한다.
-- **Hook 신뢰**: `src/` 파일 편집 후 PostToolUse Hook이 자동 실행하는 pytest 결과를 확인한다. 실패 시 다음 단계로 진행하지 않는다.
-- **Phase 완료 조건**: 테스트 전체 통과 + `/lint` 통과 + (파이프라인 변경 시 `pipeline-reviewer` 승인) 세 조건이 모두 충족될 때만 Phase 완료를 선언한다.
-- **완료 시 필수 5-step**: 작업이 완료되면 반드시 ① 커밋 → ② PR 생성(`gh pr create`) → ③ `git push` → ④ `docs/STATE.md` 수치 갱신 → ⑤ **CLAUDE.md 아키텍처 섹션 동기화** (신규 파일 추가·삭제·이름 변경 시 `src/` 트리와 `### 핵심 데이터 흐름` 내 언급 갱신) 를 순서대로 수행한다. 예외 없음.
-- **README.md 배지 동기화**: 테스트 수·pylint·커버리지 수치가 바뀌면 `README.md` 14~18줄 배지도 함께 갱신한다. 수치 출처는 항상 `docs/STATE.md`.
-- **CLAUDE.md 아키텍처 동기화 체크리스트**: `src/` 하위에 파일 추가 시 아래 항목을 순서대로 확인한다. 누락 시 다음 Phase 착수 전 반드시 보완한다. (전례: Phase 11에서 6개 파일 추가 후 CLAUDE.md에 5개 누락 → 3-에이전트 감사에서 발견, PR #73)
-
-  | 위치 | 확인 사항 |
-  |------|----------|
-  | `src/` 트리 블록 | 신규 파일 한 줄 항목(경로 + 짧은 역할 설명) 추가 |
-  | `templates/` 한 줄 | 신규 템플릿 파일명 목록에 추가 |
-  | `repositories/` 한 줄 | 신규 repo 파일 "N종" 카운트 + 목록 갱신 |
-  | `services/` 한 줄 | 신규 service 함수 목록 갱신 |
-  | `### 핵심 데이터 흐름` | 신규 경로가 흐름도에 포함되어야 하면 추가 |
-
 ### 작업 시작 전 필수 체크리스트 (매 작업마다)
 
 모든 작업 착수 전 아래 세 가지를 순서대로 확인한다. 30초면 충분하다.
@@ -333,6 +337,23 @@ git checkout -b <브랜치명>   # 브랜치 생성 (main 직접 커밋 금지)
 | `docs/` | 문서 전용 변경 |
 
 **예외 없음** — `.claude/` 내부 파일(Hook·에이전트·스킬), `CLAUDE.md`, `docs/` 변경도 모두 브랜치 + PR 방식으로 진행한다.
+
+### 필수 원칙
+
+- **TDD 우선**: 구현 코드 작성 전 반드시 `test-writer` 에이전트로 테스트를 먼저 작성한다.
+- **Hook 신뢰**: `src/` 파일 편집 후 PostToolUse Hook이 자동 실행하는 pytest 결과를 확인한다. 실패 시 다음 단계로 진행하지 않는다.
+- **Phase 완료 조건**: 테스트 전체 통과 + `/lint` 통과 + (파이프라인 변경 시 `pipeline-reviewer` 승인) 세 조건이 모두 충족될 때만 Phase 완료를 선언한다.
+- **완료 시 필수 5-step**: 작업이 완료되면 반드시 ① 커밋 → ② PR 생성(`gh pr create`) → ③ `git push` → ④ `docs/STATE.md` 수치 갱신 → ⑤ **CLAUDE.md 아키텍처 섹션 동기화** (신규 파일 추가·삭제·이름 변경 시 `src/` 트리와 `### 핵심 데이터 흐름` 내 언급 갱신) 를 순서대로 수행한다. 예외 없음.
+- **README.md 배지 동기화**: 테스트 수·pylint·커버리지 수치가 바뀌면 `README.md` 14~18줄 배지도 함께 갱신한다. 수치 출처는 항상 `docs/STATE.md`.
+- **CLAUDE.md 아키텍처 동기화 체크리스트**: `src/` 하위에 파일 추가 시 아래 항목을 순서대로 확인한다. 누락 시 다음 Phase 착수 전 반드시 보완한다. (전례: Phase 11에서 6개 파일 추가 후 CLAUDE.md에 5개 누락 → 3-에이전트 감사에서 발견, PR #73)
+
+  | 위치 | 확인 사항 |
+  |------|----------|
+  | `src/` 트리 블록 | 신규 파일 한 줄 항목(경로 + 짧은 역할 설명) 추가 |
+  | `templates/` 한 줄 | 신규 템플릿 파일명 목록에 추가 |
+  | `repositories/` 한 줄 | 신규 repo 파일 "N종" 카운트 + 목록 갱신 |
+  | `services/` 한 줄 | 신규 service 함수 목록 갱신 |
+  | `### 핵심 데이터 흐름` | 신규 경로가 흐름도에 포함되어야 하면 추가 |
 
 ### 모바일 환경 보호 — 수정 금지 파일
 
@@ -392,9 +413,11 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 
 ## 주의사항 (카테고리별)
 
+> 아래 섹션은 카테고리별 상세 규칙이다. 전체를 매번 읽을 필요는 없다 — **상황에 맞는 섹션만 열람**한다. 🔴 표시는 과거 사고로 검증된 고위험 규칙이다.
+
 ### 테스트
 
-- **asyncio_mode = auto**: `pytest.ini`의 `asyncio_mode = auto` 필수 — 없으면 모든 async 테스트가 경고 없이 실패.
+- 🔴 **asyncio_mode = auto**: `pytest.ini`의 `asyncio_mode = auto` 필수 — 없으면 모든 async 테스트가 경고 없이 실패.
 - **테스트 환경 변수**: `tests/conftest.py`가 `os.environ.setdefault`로 환경변수를 주입함. src 모듈은 import 시점에 `Settings()`를 인스턴스화하므로 conftest가 반드시 먼저 실행되어야 함.
 - **E2E 격리**: `e2e/`를 최상위 별도 디렉토리로 분리 (`tests/` 아래 금지) — `tests/e2e/`가 있으면 `asyncio_mode=auto`와 `sys.modules` 삭제가 충돌해 단위 테스트 98개 실패. E2E 서버는 `uvicorn.Server.serve()`를 `asyncio.new_event_loop()` + `loop.run_until_complete()`로 실행.
 - **require_login 우회**: `tests/test_ui_router.py`는 `app.dependency_overrides[require_login] = lambda: _test_user`로 의존성 override. 신규 UI 라우트 테스트 작성 시 동일 패턴 사용.
@@ -404,13 +427,13 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 
 ### DB / 마이그레이션
 
-- **Alembic batch_alter_table 금지**: SQLite 전용 패턴. PostgreSQL에서는 `op.create_unique_constraint('이름', '테이블', ['컬럼'])` 직접 사용. 잘못 사용 시 lifespan 마이그레이션 실패 → Railway 헬스체크 실패. **예외**: `0005_add_users_and_user_id.py`, `0006_phase8b_github_oauth.py`는 이미 프로덕션에 적용된 이력 마이그레이션이므로 수정 금지 — `alembic downgrade` 경로 파괴 위험. 신규 마이그레이션(0007 이후)에만 이 규칙을 적용한다.
+- 🔴 **Alembic batch_alter_table 금지**: SQLite 전용 패턴. PostgreSQL에서는 `op.create_unique_constraint('이름', '테이블', ['컬럼'])` 직접 사용. 잘못 사용 시 lifespan 마이그레이션 실패 → Railway 헬스체크 실패. **예외**: `0005_add_users_and_user_id.py`, `0006_phase8b_github_oauth.py`는 이미 프로덕션에 적용된 이력 마이그레이션이므로 수정 금지 — `alembic downgrade` 경로 파괴 위험. 신규 마이그레이션(0007 이후)에만 이 규칙을 적용한다.
 - **FailoverSessionFactory**: `DATABASE_URL_FALLBACK` 설정 시 Primary `OperationalError` → Fallback DB 자동 전환. `_probe_primary_loop` daemon 스레드가 복구 확인 후 자동 복귀. 미설정 시 단일 엔진 모드(probe 스레드 없음). 소비자 코드(`SessionLocal()`)는 변경 없이 그대로 사용. `engine = SessionLocal._primary_engine`으로 alembic/env.py 호환성 유지.
 - **DB 세션 expunge**: `get_current_user()`는 `db.expunge(user)` 후 세션 반환 — 세션 종료 후에도 컬럼 속성 안전하게 접근 가능. 관계 lazy-load 사용 금지.
 - **ThreadPoolExecutor with 블록 금지**: `with` 문은 `shutdown(wait=True)` 호출 → DNS hang 시 무기한 블록. `try/finally` + `executor.shutdown(wait=False)` 패턴 사용 (database.py 참조).
 - **SQLite hostaddr 제외**: `_ipv4_connect_args`는 hostname이 None(SQLite URL)이면 빈 dict 반환 — 그렇지 않으면 `sqlite3.connect(hostaddr=...)` TypeError 발생.
 - **`Analysis.author_login` NULL 정책**: 신규 컬럼은 backfill 없이 NULL 허용. 모든 집계는 `WHERE author_login IS NOT NULL` 적용. backfill 필요 시 `scripts/backfill_author.py` 별도 실행. PR 이벤트 = `pull_request.user.login`, Push 이벤트 = `head_commit.author.username`.
-- **ORM 컬럼 추가 시 마이그레이션 필수 동반**: `models/*.py`에 `Column(...)` 추가 후 반드시 `make revision m="설명"` 으로 마이그레이션 파일을 함께 생성해야 한다. 단위 테스트는 in-memory SQLite(`Base.metadata.create_all`)로 ORM 정의 그대로 테이블을 만들기 때문에 마이그레이션 파일이 없어도 테스트가 통과한다. 그러나 실제 DB(PostgreSQL/Railway)에는 컬럼이 생성되지 않아 운영 환경에서 500 에러가 발생한다. 전례: `leaderboard_opt_in` 컬럼 (PR #72·#74, 2026-04-26).
+- 🔴 **ORM 컬럼 추가 시 마이그레이션 필수 동반**: `models/*.py`에 `Column(...)` 추가 후 반드시 `make revision m="설명"` 으로 마이그레이션 파일을 함께 생성해야 한다. 단위 테스트는 in-memory SQLite(`Base.metadata.create_all`)로 ORM 정의 그대로 테이블을 만들기 때문에 마이그레이션 파일이 없어도 테스트가 통과한다. 그러나 실제 DB(PostgreSQL/Railway)에는 컬럼이 생성되지 않아 운영 환경에서 500 에러가 발생한다. 전례: `leaderboard_opt_in` 컬럼 (PR #72·#74, 2026-04-26).
 
 ### 파이프라인 / 비즈니스 로직
 
@@ -462,7 +485,7 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 
 ### 보안
 
-- **hook_token 비교**: `!=` 연산자는 타이밍 공격에 취약. `hmac.compare_digest(config.hook_token or "", token)` 사용 필수.
+- 🔴 **hook_token 비교**: `!=` 연산자는 타이밍 공격에 취약. `hmac.compare_digest(config.hook_token or "", token)` 사용 필수.
 - **Telegram 게이트 콜백 HMAC 인증**: 콜백 데이터 형식 `gate:{decision}:{id}:{token}` — token은 `hmac(bot_token, str(analysis_id), sha256).hexdigest()[:32]` (128-bit). `telegram_gate.py`의 `_gate_callback_token()` 참조. 테스트 시 HMAC 토큰을 직접 계산해 픽스처에 포함해야 함.
 - **GitHub Access Token 암호화**: `src/crypto.py`의 `encrypt_token()`/`decrypt_token()` — `TOKEN_ENCRYPTION_KEY` 미설정 시 평문 저장. `User.plaintext_token` property가 DB 읽기 시 자동 복호화. `user.github_access_token` 직접 사용 금지 — `user.plaintext_token` 사용.
 - **SESSION_SECRET 강도**: `warn_weak_session_secret` validator가 32자 미만 또는 기본값이면 WARNING 출력. 프로덕션에서는 32자 이상 랜덤 문자열 필수.
@@ -501,4 +524,4 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 
 ## 현재 상태
 
-최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1448개 | E2E 53개 | pylint 10.00 | 커버리지 95% | SonarCloud QG OK · Security A · Reliability A · Maintainability A · Tier1 정적분석 10종 · Observability (Sentry + Claude metrics + stage timing + MergeAttempt) · AI 점수 피드백 루프 · Settings Minimal Mode · Onboarding 3단계 튜토리얼 · 5-렌즈 감사 95+ 통과 · Phase F Quick Win + F.1/F.3 완료 · Phase G 완료 (P1-5건 수정) · Phase 9 자기 분석 루프 방지 완료 · Phase 10 Telegram 확장 완료 (cron + /stats·/connect 명령) · Phase 11 팀/멀티 리포 인사이트 완료 (author_trend + leaderboard + /insights 대시보드)
+최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1515개 | E2E 53개 | pylint 10.00 | 커버리지 95% | SonarCloud QG OK · Security A · Reliability A · Maintainability A · Tier1 정적분석 10종 · Observability (Sentry + Claude metrics + stage timing + MergeAttempt) · AI 점수 피드백 루프 · Settings Minimal Mode · Onboarding 3단계 튜토리얼 · 5-렌즈 감사 95+ 통과 · Phase F Quick Win + F.1/F.3 완료 · Phase G 완료 (P1-5건 수정) · Phase 9 자기 분석 루프 방지 완료 · Phase 10 Telegram 확장 완료 (cron + /stats·/connect 명령) · Phase 11 팀/멀티 리포 인사이트 완료 (author_trend + leaderboard + /insights 대시보드) · 툴링 안전장치 (testpaths + ORM-마이그레이션 완전성 검사 67개)
