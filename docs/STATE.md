@@ -14,11 +14,11 @@
 | SonarCloud BLOCKER / CRITICAL | **0 / 0** | Phase Q.7 완료 — 5건 Cognitive Complexity 전부 해소 |
 | E2E 테스트 | **49개** | `make test-e2e` (Chromium Playwright) |
 | pylint | **10.00/10** | `python -m pylint src/` — 만점 복원 (보안 강화 회귀 3건 수정) |
-| 커버리지 | **96.2%** | `make test-cov` (database.py 100%, ui/router.py 99.4%) |
+| 커버리지 | **96.5%** | `make test-cov` (database.py 100%, ui/router.py 99.4%) |
 | bandit HIGH | **0개** | bandit 1.9.4 (Python 3.14 대응) |
 | flake8 | **0건** | `flake8 src/` |
 | 지원 언어 (AI 리뷰) | **50개** | language.py — Tier1/2/3 가이드 |
-| 지원 언어 (정적분석) | **38개+** | Semgrep 23 + ESLint 2 + ShellCheck 1 + cppcheck 1 + slither 1 + rubocop 1 + golangci-lint 1 + Python 3 도구 |
+| 지원 언어 (정적분석) | **37개+** | Semgrep 22 + ESLint 2 + ShellCheck 1 + cppcheck 1 + slither 1 + rubocop 1 + golangci-lint 1 + Python 3 도구 |
 | Tier1 정적분석 도구 | **10종** | pylint·flake8·bandit·semgrep·eslint·shellcheck·cppcheck·slither·**rubocop**·**golangci-lint** |
 | pytest-asyncio | **1.3.0** | Python 3.14 DeprecationWarning 제거 완료 |
 
@@ -31,7 +31,8 @@
 | `src/analyzer/tools/*.py` | 개별 분석기 — 모듈 로드 시 자동 register() 호출 |
 | `src/notifier/_common.py` | notifier 공통 헬퍼 — format_ref, get_all_issues, truncate_message |
 | `src/notifier/_http.py` | HTTP_CLIENT_TIMEOUT 적용 httpx 클라이언트 빌더 |
-| `src/webhook/router.py` | GitHub Webhook 수신 + per-repo secret TTL 캐시(5분) |
+| `src/webhook/_helpers.py` | `get_webhook_secret()` + `_webhook_secret_cache` per-repo TTL 캐시(5분) |
+| `src/webhook/router.py` | Webhook 라우터 aggregator — providers 3개 include |
 | `src/gate/engine.py` | 3-옵션 Gate + GateDecision upsert (중복 INSERT 방지) + MergeAttempt 관측(Phase F.1) |
 | `src/gate/merge_reasons.py` | auto-merge 실패 사유 정규 태그 상수 (Phase F QW5) |
 | `src/gate/merge_failure_advisor.py` | `get_advice(reason)` — reason tag → 권장 조치 텍스트 (Phase F.3, 순수 함수) |
@@ -43,6 +44,42 @@
 | `tests/conftest.py` | 환경변수 주입 + _webhook_secret_cache autouse 클리어 |
 
 ## 작업 이력 (그룹별)
+
+### 그룹 42 (2026-04-26 · Phase 10 Telegram 확장 완료 — PR #64)
+
+**목표**: 주간 리포트 cron + 트렌드 알림 + Telegram 인라인 명령 (`/stats`, `/settings`, `/connect`) + OTP 연결 흐름.
+
+**신규 파일**:
+
+| 파일 | 역할 |
+|------|------|
+| `src/services/analytics_service.py` | 집계 단일 출처 — `weekly_summary`, `moving_average`, `top_issues`, `resolve_chat_id` |
+| `src/services/cron_service.py` | 주기적 실행 — `run_weekly_reports`, `run_trend_check` |
+| `src/api/internal_cron.py` | `POST /api/internal/cron/weekly|trend` — `INTERNAL_CRON_API_KEY` 전용 인증 |
+| `src/api/users.py` | `POST /api/users/me/telegram-otp` — 6자리 OTP 발급 (5분 만료) |
+| `src/notifier/telegram_commands.py` | `/stats`, `/settings`, `/connect` 명령 처리 + OTP 검증 |
+| `alembic/versions/0017_add_user_telegram_id.py` | `users.telegram_user_id UNIQUE` + `telegram_otp` + `telegram_otp_expires_at` |
+
+**수정 파일**: `src/webhook/providers/telegram.py` (message.text / cmd: 분기), `src/gate/telegram_gate.py` (`_make_callback_token` scope 일반화), `src/models/user.py`, `src/repositories/user_repo.py`, `src/main.py` (라우터 등록), `src/config.py` (`internal_cron_api_key`), `railway.toml` (cron 2개), `src/templates/settings.html` (OTP 카드 ⑤)
+
+**테스트 증분**: +73 (1344 → **1417** passed)
+**품질**: pylint 10.00 · bandit HIGH 0 · 커버리지 96.5%
+
+### 그룹 41 (2026-04-26 · Phase 9 자기 분석 루프 방지 완료 — PR #62)
+
+**목표**: SCAManager 자체 리포를 등록해 dogfooding하면서 봇 발신/자기 분석 무한 루프를 3-layer 방어로 차단.
+
+**신규 파일**:
+
+| 파일 | 역할 |
+|------|------|
+| `src/webhook/loop_guard.py` | `is_bot_sender()` + `has_skip_marker()` + `BotInteractionLimiter` (시간당 6회 상한) |
+| `docs/runbooks/self-analysis.md` | 자기 분석 활성화/비활성화 운영 가이드 |
+
+**수정 파일**: `src/webhook/providers/github.py` (`_loop_guard_check()` 삽입 — Kill-switch + BOT_LOGIN_WHITELIST 체크)
+
+**테스트 증분**: +29 (1315 → **1344** passed)
+**품질**: pylint 10.00 · bandit HIGH 0
 
 ### 그룹 40 (2026-04-26 · 문서 다중 에이전트 심의 시스템)
 
@@ -630,7 +667,7 @@ README 배지를 Claude/자체 산출 수치가 아닌 **외부 SaaS 가 직접 
 ## 갱신 방법
 
 ```bash
-make test          # 1107 유지 확인
+make test          # 1417 통과 확인
 make lint          # pylint 10.00 + flake8 0건 + bandit HIGH 0개
 make test-cov      # 96%+ 유지 확인 (소폭 변동 가능)
 
