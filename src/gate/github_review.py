@@ -39,13 +39,27 @@ async def get_pr_mergeable_state(
     github_token: str,
     repo_full_name: str,
     pr_number: int,
-) -> str:
-    """GET pulls/{N} 에서 mergeable_state 조회. 실패 시 'unknown' 반환."""
+) -> tuple[str, str]:
+    """GET pulls/{N} 에서 mergeable_state 와 head SHA 를 함께 반환.
+    Returns mergeable_state and head commit SHA from GET pulls/{N}.
+
+    Returns:
+        (state, head_sha) — state 는 GitHub mergeable_state 문자열,
+        head_sha 는 PR head commit SHA (HEAD 변경 감지용).
+        state, head_sha — state is the GitHub mergeable_state string,
+        head_sha is the PR head commit SHA (for HEAD change detection).
+
+    실패 시 ('unknown', '') 반환 — raise_for_status 호출.
+    Returns ('unknown', '') on failure — calls raise_for_status.
+    """
     url = f"https://api.github.com/repos/{repo_full_name}/pulls/{pr_number}"
     client = get_http_client()  # 싱글톤
     r = await client.get(url, headers=github_api_headers(github_token))
     r.raise_for_status()
-    return r.json().get("mergeable_state", "unknown")
+    data = r.json()
+    state = data.get("mergeable_state", "unknown")
+    head_sha = data.get("head", {}).get("sha", "")
+    return (state, head_sha)
 
 
 def _interpret_merge_error(exc: httpx.HTTPStatusError) -> str:
@@ -62,28 +76,40 @@ def _interpret_merge_error(exc: httpx.HTTPStatusError) -> str:
     return f"{reason_tag}: {gh_msg or str(exc)}"
 
 
-async def merge_pr(
+async def merge_pr(  # pylint: disable=too-many-locals
     github_token: str,
     repo_full_name: str,
     pr_number: int,
     merge_method: str = "squash",
-) -> tuple[bool, str | None]:
+    *,
+    expected_sha: str | None = None,
+) -> tuple[bool, str | None, str]:
     """Squash-merge a pull request.
 
+    SHA atomicity guard (Phase 12 D1): expected_sha 를 PUT /merge 에 전달 →
+    GitHub 이 HEAD 불일치 시 409 반환해 force-push 코드의 의도치 않은 머지 차단.
+    SHA atomicity guard (Phase 12 D1): pass expected_sha to PUT /merge →
+    GitHub returns 409 on HEAD mismatch, preventing accidental merge of force-pushed code.
+
     Returns:
-        (True, None) on success.
-        (False, reason) on failure — reason 은 user-facing 사유 문자열.
+        (True, None, head_sha) on success.
+        (False, reason, head_sha) on failure.
+        head_sha 는 mergeable_state 조회 시점의 PR HEAD SHA.
+        head_sha is the PR HEAD SHA observed during mergeable_state check.
     """
     # mergeable_state 사전 확인 + unknown 재시도 (Phase F QW2: settings 로 파라미터 외부화)
+    # mergeable_state pre-check + unknown retry (Phase F QW2: settings-externalised params)
     retry_limit = max(1, settings.merge_unknown_retry_limit)
     retry_delay = max(0.0, settings.merge_unknown_retry_delay)
     state = "unknown"
+    head_sha = ""
     for attempt in range(retry_limit):
         try:
-            state = await get_pr_mergeable_state(github_token, repo_full_name, pr_number)
+            state, head_sha = await get_pr_mergeable_state(github_token, repo_full_name, pr_number)
         except httpx.HTTPError as exc:
             logger.warning("mergeable_state 조회 실패 (pr=%d): %s", pr_number, exc)
             state = "unknown"
+            head_sha = ""
         if state != "unknown":
             break
         if attempt < retry_limit - 1:
@@ -91,28 +117,33 @@ async def merge_pr(
 
     if state in _MERGEABLE_BLOCK:
         reason_tag = merge_reasons.mergeable_state_to_reason(state)
-        return (False, f"{reason_tag}: 머지 조건 미충족 (state={state})")
+        return (False, f"{reason_tag}: 머지 조건 미충족 (state={state})", head_sha)
     if state == "unknown":
-        return (False, f"{merge_reasons.UNKNOWN_STATE_TIMEOUT}: GitHub mergeable 계산 미완료")
+        return (False, f"{merge_reasons.UNKNOWN_STATE_TIMEOUT}: GitHub mergeable 계산 미완료", head_sha)
 
     url = f"https://api.github.com/repos/{repo_full_name}/pulls/{pr_number}/merge"
     try:
         client = get_http_client()  # 싱글톤
+        # SHA atomicity guard — expected_sha 전달 시 PUT body 에 포함
+        # SHA atomicity guard — include expected_sha in PUT body when provided
+        # HEAD 변경 시 GitHub 409 반환 — force-push 코드 머지 방지
+        # GitHub returns 409 if HEAD changed — prevents merging force-pushed code
+        put_body = {"merge_method": merge_method, **({} if expected_sha is None else {"sha": expected_sha})}
         r = await client.put(
             url,
-            json={"merge_method": merge_method},
+            json=put_body,
             headers=github_api_headers(github_token),
         )
         r.raise_for_status()
-        return (True, None)
+        return (True, None, head_sha)
     except httpx.HTTPStatusError as exc:
         reason = _interpret_merge_error(exc)
         logger.warning(
             "PR Merge 실패 (repo=%s, pr=%d): HTTP %d — %s",
             repo_full_name, pr_number, exc.response.status_code, reason,
         )
-        return (False, reason)
+        return (False, reason, head_sha)
     except httpx.HTTPError as exc:
         reason = f"{merge_reasons.NETWORK_ERROR}: {exc}"
         logger.warning("PR Merge 실패 (repo=%s, pr=%d): %s", repo_full_name, pr_number, reason)
-        return (False, reason)
+        return (False, reason, head_sha)

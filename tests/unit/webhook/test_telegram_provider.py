@@ -82,7 +82,7 @@ async def test_handle_gate_callback_approve_with_auto_merge():
                 with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
                     with patch("src.webhook.providers.telegram.merge_pr", new_callable=AsyncMock) as mock_merge:
                         with patch("src.webhook.providers.telegram.log_merge_attempt") as mock_log:
-                            mock_merge.return_value = (True, None)
+                            mock_merge.return_value = (True, None, "abc123")
                             await handle_gate_callback(analysis_id=42, decision="approve",
                                                        decided_by="john")
                             mock_merge.assert_called_once()
@@ -149,7 +149,7 @@ async def test_handle_gate_callback_merge_failure_does_not_propagate():
                 with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
                     with patch("src.webhook.providers.telegram.merge_pr", new_callable=AsyncMock) as mock_merge:
                         with patch("src.webhook.providers.telegram.log_merge_attempt") as mock_log:
-                            mock_merge.return_value = (False, "forbidden: no permission")
+                            mock_merge.return_value = (False, "forbidden: no permission", "abc123")
                             await handle_gate_callback(analysis_id=42, decision="approve",
                                                        decided_by="john")
                             mock_save.assert_called_once()
@@ -282,7 +282,7 @@ async def test_log_merge_attempt_called_on_auto_merge_success():
             with patch("src.webhook.providers.telegram.save_gate_decision"):
                 with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
                     with patch("src.webhook.providers.telegram.merge_pr",
-                               new_callable=AsyncMock, return_value=(True, None)):
+                               new_callable=AsyncMock, return_value=(True, None, "abc123")):
                         with patch("src.webhook.providers.telegram.log_merge_attempt") as mock_log:
                             await handle_gate_callback(
                                 analysis_id=42, decision="approve", decided_by="alice"
@@ -314,7 +314,7 @@ async def test_log_merge_attempt_called_on_auto_merge_failure():
                 with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
                     with patch("src.webhook.providers.telegram.merge_pr",
                                new_callable=AsyncMock,
-                               return_value=(False, "branch_protection_blocked: required status check")):
+                               return_value=(False, "branch_protection_blocked: required status check", "abc123")):
                         with patch("src.webhook.providers.telegram.log_merge_attempt") as mock_log:
                             await handle_gate_callback(
                                 analysis_id=55, decision="approve", decided_by="bob"
@@ -341,7 +341,7 @@ async def test_log_merge_attempt_exception_does_not_abort_callback():
             with patch("src.webhook.providers.telegram.save_gate_decision"):
                 with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
                     with patch("src.webhook.providers.telegram.merge_pr",
-                               new_callable=AsyncMock, return_value=(True, None)):
+                               new_callable=AsyncMock, return_value=(True, None, "abc123")):
                         with patch("src.webhook.providers.telegram.log_merge_attempt",
                                    side_effect=RuntimeError("DB connection lost")):
                             # 예외가 전파되지 않아야 한다 (nested try/except 격리)

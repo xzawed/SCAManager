@@ -190,7 +190,7 @@ async def _run_auto_merge(  # pylint: disable=too-many-arguments
     if not (config.auto_merge and score >= config.merge_threshold):
         return
     try:
-        ok, reason = await merge_pr(github_token, repo_name, pr_number)
+        ok, reason, _head_sha = await merge_pr(github_token, repo_name, pr_number)
 
         # Phase F.1: 모든 시도 DB 기록 — 관측 실패가 파이프라인을 중단시키지 않도록
         # Phase F.1: Record every attempt in DB — observability failures must not interrupt the pipeline.
