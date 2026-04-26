@@ -21,6 +21,7 @@
 |------|------|------|
 | 2026-04-19 | [multilang-expansion-retrospective](2026-04-19-multilang-expansion-retrospective.md) | 다언어 코드리뷰·정적분석 확장 회고 (Phase 0~C) |
 | 2026-04-23 | [railway-rubocop-prism-retrospective](2026-04-23-railway-rubocop-prism-retrospective.md) | Railway 빌드 실패 — rubocop/prism transitive 의존성 트랩 |
+| 2026-04-26 | [quality-audit-and-tooling-retrospective](2026-04-26-quality-audit-and-tooling-retrospective.md) | 3-에이전트 교차 감사 + 500 에러 진단 + 툴링 안전장치 |
 
 ## 로드맵·결정
 
