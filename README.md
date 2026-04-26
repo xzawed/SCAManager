@@ -46,18 +46,16 @@ For teams that push directly to `main`, it also supports **automatic commit comm
 
 Most code review tools make you choose between static analysis precision and AI understanding. SCAManager runs both in parallel and combines the results into a single score — then acts on it automatically.
 
-| | SCAManager | CodeRabbit | SonarCloud | GitHub Copilot Review |
-|---|---|---|---|---|
-| **Self-hosted** | ✅ Your infrastructure | ⚠️ Enterprise only (500+ seats) | ❌ SaaS only (SonarQube = separate self-hosted product) | ❌ GitHub-managed |
-| **Static + AI combined** | ✅ 10 tools + Claude AI | AI + 50 linter integrations | Static + AI CodeFix (2024+) | AI + ESLint/PMD/CodeQL (Nov 2025+) |
-| **Score-based PR Gate** | ✅ Auto / Semi / Manual | ❌ | ❌ (pass/fail quality gate only) | ❌ |
-| **Approve from phone** | ✅ Telegram inline buttons | ❌ | ❌ | ❌ |
-| **Push event analysis** | ✅ Auto Issue + Commit comment | ❌ PR only | ⚠️ Main branch only (free); all branches (Team+) | ❌ PR only |
-| **50-language AI review** | ✅ Language-specific checklists | ✅ | ❌ AI fixes: 8 languages only | ✅ All languages |
-| **DB failover** | ✅ Built-in | ❌ | ❌ | ❌ |
-| **Cost** | API usage only | Freemium (free for public repos) | Freemium | GitHub Copilot plan |
+**What makes it different:**
 
-**Best for:** Solo developers and small teams who want full control over their code quality pipeline without vendor lock-in.
+- **Self-hosted** — runs entirely on your own infrastructure; no vendor lock-in, no data leaves your environment
+- **Static + AI in one pipeline** — 10 linters/analyzers run alongside Claude AI review; results feed into a single score
+- **Score-based PR Gate** — automatically approve, reject, or request human decision via Telegram based on numeric thresholds
+- **Approve from phone** — Telegram inline buttons let you review and merge PRs from anywhere, no laptop required
+- **Push + PR analysis** — not just PRs; bare pushes also trigger analysis, auto-create GitHub Issues, and post commit comments
+- **50-language AI review** — language-specific checklists for every supported language, not a generic prompt
+
+**Best for:** Solo developers and small teams who want full control over their code quality pipeline.
 
 ---
 
