@@ -10,7 +10,6 @@ os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 os.environ.setdefault("ANTHROPIC_API_KEY", "")
 
 from unittest.mock import AsyncMock, MagicMock, patch, call
-import pytest
 
 from src.gate.engine import _run_auto_merge
 from src.config_manager.manager import RepoConfigData
