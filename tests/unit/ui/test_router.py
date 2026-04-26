@@ -10,7 +10,7 @@ os.environ.setdefault("GITHUB_CLIENT_ID", "test-github-client-id")
 os.environ.setdefault("GITHUB_CLIENT_SECRET", "test-github-client-secret")
 os.environ.setdefault("SESSION_SECRET", "test-session-secret")
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 from src.main import app
 from src.auth.session import require_login
@@ -109,10 +109,12 @@ def test_settings_returns_html():
         id=1, full_name="owner/repo", user_id=None
     )
     from src.config_manager.manager import RepoConfigData
-    with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.ui.routes.settings.get_repo_config",
-                   return_value=RepoConfigData(repo_full_name="owner/repo")):
-            r = client.get("/repos/owner%2Frepo/settings")
+    with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)), \
+         patch("src.ui.routes.settings.get_repo_config",
+               return_value=RepoConfigData(repo_full_name="owner/repo")), \
+         patch("src.ui.routes.settings._detect_stale_webhook",
+               new_callable=AsyncMock, return_value=False):
+        r = client.get("/repos/owner%2Frepo/settings")
     assert r.status_code == 200
 
 
@@ -152,16 +154,20 @@ def test_overview_with_repos_does_not_show_tutorial():
 # Phase E.4 — Minimal Mode (Simple/Advanced 토글)
 
 def _settings_html(default_mode="simple"):
-    """Helper — Settings HTML 가져오기."""
+    """Helper — Settings HTML 가져오기.
+    Patches _detect_stale_webhook so the async GitHub API call is avoided in unit tests.
+    """
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
         id=1, full_name="owner/repo", user_id=None,
     )
     from src.config_manager.manager import RepoConfigData
-    with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.ui.routes.settings.get_repo_config",
-                   return_value=RepoConfigData(repo_full_name="owner/repo")):
-            r = client.get("/repos/owner%2Frepo/settings")
+    with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)), \
+         patch("src.ui.routes.settings.get_repo_config",
+               return_value=RepoConfigData(repo_full_name="owner/repo")), \
+         patch("src.ui.routes.settings._detect_stale_webhook",
+               new_callable=AsyncMock, return_value=False):
+        r = client.get("/repos/owner%2Frepo/settings")
     return r.text
 
 
@@ -312,10 +318,12 @@ def test_settings_no_nested_forms():
         id=1, full_name="owner/repo", user_id=None
     )
     from src.config_manager.manager import RepoConfigData
-    with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.ui.routes.settings.get_repo_config",
-                   return_value=RepoConfigData(repo_full_name="owner/repo")):
-            r = client.get("/repos/owner%2Frepo/settings")
+    with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)), \
+         patch("src.ui.routes.settings.get_repo_config",
+               return_value=RepoConfigData(repo_full_name="owner/repo")), \
+         patch("src.ui.routes.settings._detect_stale_webhook",
+               new_callable=AsyncMock, return_value=False):
+        r = client.get("/repos/owner%2Frepo/settings")
     assert r.status_code == 200
 
     class _NestingChecker(HTMLParser):
@@ -342,16 +350,20 @@ def test_settings_no_nested_forms():
 
 
 def _render_settings(config=None):
-    """설정 페이지 HTML을 렌더링해 반환하는 헬퍼."""
+    """설정 페이지 HTML을 렌더링해 반환하는 헬퍼.
+    Patches _detect_stale_webhook so the async GitHub API call is avoided in unit tests.
+    """
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
         id=1, full_name="owner/repo", user_id=None
     )
     from src.config_manager.manager import RepoConfigData
     cfg = config or RepoConfigData(repo_full_name="owner/repo")
-    with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.ui.routes.settings.get_repo_config", return_value=cfg):
-            r = client.get("/repos/owner%2Frepo/settings")
+    with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)), \
+         patch("src.ui.routes.settings.get_repo_config", return_value=cfg), \
+         patch("src.ui.routes.settings._detect_stale_webhook",
+               new_callable=AsyncMock, return_value=False):
+        r = client.get("/repos/owner%2Frepo/settings")
     assert r.status_code == 200
     return r.text
 
@@ -1572,10 +1584,12 @@ def test_settings_form_fields_preserved():
         id=1, full_name="owner/repo", user_id=None
     )
     from src.config_manager.manager import RepoConfigData
-    with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.ui.routes.settings.get_repo_config",
-                   return_value=RepoConfigData(repo_full_name="owner/repo")):
-            r = client.get("/repos/owner%2Frepo/settings")
+    with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)), \
+         patch("src.ui.routes.settings.get_repo_config",
+               return_value=RepoConfigData(repo_full_name="owner/repo")), \
+         patch("src.ui.routes.settings._detect_stale_webhook",
+               new_callable=AsyncMock, return_value=False):
+        r = client.get("/repos/owner%2Frepo/settings")
     assert r.status_code == 200
     body = r.text
     required_names = [
@@ -1596,10 +1610,12 @@ def test_settings_railway_alerts_uses_toggle_switch():
         id=1, full_name="owner/repo", user_id=None
     )
     from src.config_manager.manager import RepoConfigData
-    with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.ui.routes.settings.get_repo_config",
-                   return_value=RepoConfigData(repo_full_name="owner/repo")):
-            r = client.get("/repos/owner%2Frepo/settings")
+    with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)), \
+         patch("src.ui.routes.settings.get_repo_config",
+               return_value=RepoConfigData(repo_full_name="owner/repo")), \
+         patch("src.ui.routes.settings._detect_stale_webhook",
+               new_callable=AsyncMock, return_value=False):
+        r = client.get("/repos/owner%2Frepo/settings")
     assert r.status_code == 200
     import re
     # 동일 <label class="toggle-switch"> 내부에 railway_deploy_alerts input 이 있어야 함.
@@ -1625,10 +1641,12 @@ def test_settings_has_preset_details_elements():
         id=1, full_name="owner/repo", user_id=None
     )
     from src.config_manager.manager import RepoConfigData
-    with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.ui.routes.settings.get_repo_config",
-                   return_value=RepoConfigData(repo_full_name="owner/repo")):
-            r = client.get("/repos/owner%2Frepo/settings")
+    with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)), \
+         patch("src.ui.routes.settings.get_repo_config",
+               return_value=RepoConfigData(repo_full_name="owner/repo")), \
+         patch("src.ui.routes.settings._detect_stale_webhook",
+               new_callable=AsyncMock, return_value=False):
+        r = client.get("/repos/owner%2Frepo/settings")
     assert r.status_code == 200
     for preset in ("minimal", "standard", "strict"):
         assert f'id="preset-{preset}"' in r.text, f"Missing <details id=preset-{preset}>"
@@ -1650,10 +1668,12 @@ def test_telegram_otp_section_renders_when_not_connected():
         id=1, full_name="owner/repo", user_id=None
     )
     from src.config_manager.manager import RepoConfigData
-    with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.ui.routes.settings.get_repo_config",
-                   return_value=RepoConfigData(repo_full_name="owner/repo")):
-            r = client.get("/repos/owner%2Frepo/settings")
+    with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)), \
+         patch("src.ui.routes.settings.get_repo_config",
+               return_value=RepoConfigData(repo_full_name="owner/repo")), \
+         patch("src.ui.routes.settings._detect_stale_webhook",
+               new_callable=AsyncMock, return_value=False):
+        r = client.get("/repos/owner%2Frepo/settings")
     assert r.status_code == 200
     html = r.text
     # '연결 코드 발급' 버튼이 렌더링되어야 한다
@@ -1687,10 +1707,12 @@ def test_telegram_connected_status_hides_otp_button():
             id=1, full_name="owner/repo", user_id=None
         )
         from src.config_manager.manager import RepoConfigData
-        with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
-            with patch("src.ui.routes.settings.get_repo_config",
-                       return_value=RepoConfigData(repo_full_name="owner/repo")):
-                r = client.get("/repos/owner%2Frepo/settings")
+        with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)), \
+             patch("src.ui.routes.settings.get_repo_config",
+                   return_value=RepoConfigData(repo_full_name="owner/repo")), \
+             patch("src.ui.routes.settings._detect_stale_webhook",
+                   new_callable=AsyncMock, return_value=False):
+            r = client.get("/repos/owner%2Frepo/settings")
         assert r.status_code == 200
         html = r.text
         # 연결 완료 메시지가 있어야 한다

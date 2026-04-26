@@ -94,7 +94,7 @@ async def handle_gate_callback(
             result_dict = analysis.result if isinstance(analysis.result, dict) else {}
             score = result_dict.get("score", analysis.score or 0)
             if config.auto_merge and score >= config.merge_threshold:
-                ok, reason = await merge_pr(github_token, repo.full_name, analysis.pr_number)
+                ok, reason, *_ = await merge_pr(github_token, repo.full_name, analysis.pr_number)
                 try:
                     log_merge_attempt(
                         db,

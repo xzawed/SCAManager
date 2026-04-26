@@ -95,7 +95,9 @@ WEBHOOK_SECRET_CACHE_TTL = 300  # per-repo webhook secret 캐시 TTL (초, 5분)
 
 # ── 파이프라인 이벤트 필터 ─────────────────────────────────────────────────
 # ── Pipeline event filter ─────────────────────────────────────────────────
-HANDLED_EVENTS: frozenset[str] = frozenset({"push", "pull_request", "issues"})
+HANDLED_EVENTS: frozenset[str] = frozenset({"push", "pull_request", "issues", "check_suite"})
+# check_suite: CI-aware Auto Merge 재시도 트리거 (Phase 12)
+# check_suite: Trigger for CI-aware Auto Merge retry (Phase 12)
 PR_HANDLED_ACTIONS: frozenset[str] = frozenset({"opened", "synchronize", "reopened", "closed"})
 
 # ── 봇 발신 / 자기 분석 루프 방지 상수 ────────────────────────────────────

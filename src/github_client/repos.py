@@ -13,6 +13,10 @@ logger = logging.getLogger(__name__)
 
 _HEADERS = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
 
+# 이 서비스가 구독해야 하는 웹훅 이벤트 목록 (단일 출처)
+# The webhook event list this service subscribes to (single source of truth)
+WEBHOOK_EVENTS = ["push", "pull_request", "issues", "check_suite"]
+
 
 def _auth_headers(token: str) -> dict:
     return {**_HEADERS, "Authorization": f"Bearer {token}"}
@@ -53,7 +57,9 @@ async def create_webhook(token: str, repo_full_name: str, webhook_url: str, secr
         json={
             "name": "web",
             "active": True,
-            "events": ["push", "pull_request", "issues"],
+            # check_suite: CI 완료 감지 → 자동 머지 재시도 트리거 (Phase 12)
+            # check_suite: detect CI completion → trigger auto-merge retry (Phase 12)
+            "events": WEBHOOK_EVENTS,
             "config": {
                 "url": webhook_url,
                 "content_type": "json",
@@ -86,6 +92,28 @@ async def delete_webhook(token: str, repo_full_name: str, webhook_id: int) -> bo
         headers=_auth_headers(token),
     )
     return resp.status_code == 204
+
+
+async def update_webhook_events(
+    token: str,
+    repo_full_name: str,
+    webhook_id: int,
+    events: list[str],
+) -> bool:
+    """기존 웹훅의 이벤트 구독 목록을 갱신한다 (PATCH /hooks/{id}).
+    Update the event subscription list of an existing webhook (PATCH /hooks/{id}).
+
+    Returns True on success (200), False otherwise.
+    이미 최신 이벤트 목록을 구독 중이라면 GitHub 이 멱등하게 처리함.
+    GitHub handles this idempotently if the events list is already current.
+    """
+    client = get_http_client()  # 싱글톤
+    resp = await client.patch(
+        f"{GITHUB_API}/repos/{_repo_path(repo_full_name)}/hooks/{webhook_id}",
+        json={"events": events},
+        headers=_auth_headers(token),
+    )
+    return resp.status_code == 200
 
 
 _INSTALL_HOOK_SH = """\
