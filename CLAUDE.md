@@ -61,7 +61,7 @@ src/
 │   ├── stage_metrics.py        # stage_timer context manager — pipeline 단계 타이밍 (Phase E.2c)
 │   └── merge_metrics.py        # parse_reason_tag + log_merge_attempt — auto-merge 관측 (Phase F.1)
 ├── services/                   # use case 계층 — 신규 오케스트레이션 모듈의 배치 장소 (기존 pipeline/engine/manager 는 도메인 위치 유지)
-│   ├── analytics_service.py    # 집계 단일 출처 — weekly_summary, moving_average, top_issues, resolve_chat_id
+│   ├── analytics_service.py    # 집계 단일 출처 — weekly_summary, moving_average, top_issues, resolve_chat_id, author_trend, repo_comparison, leaderboard
 │   └── cron_service.py         # 주기적 실행 — run_weekly_reports, run_trend_check
 ├── auth/
 │   ├── session.py              # get_current_user() + require_login Depends
@@ -147,22 +147,26 @@ src/
 │   ├── deps.py                 # get_repo_or_404(repo_name, db) 공용 헬퍼
 │   ├── repos.py                # GET/PUT /api/repos, /api/repos/{repo}/analyses, /config
 │   ├── stats.py                # GET /api/analyses/{id}, /api/repos/{repo}/stats
-│   └── hook.py                 # GET /api/hook/verify, POST /api/hook/result (hook_token 인증)
+│   ├── hook.py                 # GET /api/hook/verify, POST /api/hook/result (hook_token 인증)
+│   ├── users.py                # POST /api/users/me/telegram-otp — 6자리 OTP 발급 (5분 만료)
+│   ├── internal_cron.py        # POST /api/internal/cron/weekly|trend — INTERNAL_CRON_API_KEY 전용
+│   └── insights.py             # GET /api/insights/authors/{login}/trend, /repos/compare, /leaderboard — require_api_key
 ├── ui/
 │   ├── _helpers.py             # get_accessible_repo · webhook_base_url · delete_repo_cascade · templates
-│   ├── router.py               # aggregator — routes 5개 include (catch-all `/repos/{name}` 마지막)
+│   ├── router.py               # aggregator — routes 6개 include (catch-all `/repos/{name}` 마지막)
 │   └── routes/
 │       ├── overview.py         # GET /
+│       ├── insights.py         # GET /insights (멀티 리포 비교), GET /insights/me (개인 추세)
 │       ├── add_repo.py         # /repos/add (GET/POST) · /api/github/repos
 │       ├── settings.py         # /repos/{name}/settings · reinstall-hook · reinstall-webhook
 │       ├── actions.py          # /repos/{name}/delete
 │       └── detail.py           # /repos/{name}/analyses/{id} · /repos/{name}
-├── templates/                  # add_repo, base, login, overview, repo_detail, analysis_detail, settings
+├── templates/                  # add_repo, base, login, overview, repo_detail, analysis_detail, settings, insights, insights_me
 ├── cli/
 │   ├── __main__.py             # python -m src.cli review
 │   ├── git_diff.py             # 로컬 git diff 수집
 │   └── formatter.py            # 터미널 출력 포맷 (ANSI 색상)
-├── repositories/               # DB 접근 계층 — repository_repo, analysis_repo, analysis_feedback_repo (Phase E.3), merge_attempt_repo (Phase F.1)
+├── repositories/               # DB 접근 계층 7종 — repository_repo, analysis_repo, analysis_feedback_repo, merge_attempt_repo, gate_decision_repo, repo_config_repo, user_repo
 └── worker/
     └── pipeline.py             # run_analysis_pipeline, build_analysis_result_dict
 ```
@@ -487,4 +491,4 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 
 ## 현재 상태
 
-최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1293개 | E2E 49개 | pylint 10.00 | 커버리지 96.2% | SonarCloud QG OK · Security A · Reliability A · Maintainability A · Tier1 정적분석 10종 · Observability (Sentry + Claude metrics + stage timing + MergeAttempt) · AI 점수 피드백 루프 · Settings Minimal Mode · Onboarding 3단계 튜토리얼 · 5-렌즈 감사 95+ 통과 · Phase F Quick Win + F.1 관측 완료 · Phase F.3 실패 어드바이저 완료 · Phase G 완료 (P1-5건 수정)
+최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1448개 | E2E 53개 | pylint 10.00 | 커버리지 95% | SonarCloud QG OK · Security A · Reliability A · Maintainability A · Tier1 정적분석 10종 · Observability (Sentry + Claude metrics + stage timing + MergeAttempt) · AI 점수 피드백 루프 · Settings Minimal Mode · Onboarding 3단계 튜토리얼 · 5-렌즈 감사 95+ 통과 · Phase F Quick Win + F.1/F.3 완료 · Phase G 완료 (P1-5건 수정) · Phase 9 자기 분석 루프 방지 완료 · Phase 10 Telegram 확장 완료 (cron + /stats·/connect 명령) · Phase 11 팀/멀티 리포 인사이트 완료 (author_trend + leaderboard + /insights 대시보드)
