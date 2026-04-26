@@ -15,6 +15,7 @@ from fastapi.security import APIKeyHeader
 from src.config import settings
 from src.database import SessionLocal
 from src.services.cron_service import run_trend_check, run_weekly_reports
+from src.services.merge_retry_service import process_pending_retries
 
 logger = logging.getLogger(__name__)
 
@@ -91,3 +92,22 @@ async def trigger_trend_check() -> dict:
         alerted = await run_trend_check(db)
     logger.info("trend_check: alerted=%d", alerted)
     return {"status": "ok", "alerted": alerted}
+
+
+@router.post("/retry-pending-merges", status_code=200)
+async def trigger_retry_pending_merges() -> dict:
+    """CI-aware Auto Merge 재시도 큐 처리 cron 트리거.
+    Trigger processing of the pending CI-aware auto-merge retry queue.
+
+    Returns:
+        {"status": "ok", "counts": {...}} — 처리 결과 카운트
+        {"status": "ok", "counts": {...}} — processing result counts
+    """
+    # SessionLocal() context manager로 DB 세션 획득 — 함수 종료 시 자동 반환
+    # Acquire DB session via SessionLocal() context manager — auto-released on exit
+    with SessionLocal() as db:
+        counts = await process_pending_retries(
+            db, limit=settings.merge_retry_worker_batch_size
+        )
+    logger.info("retry_pending_merges: counts=%s", counts)
+    return {"status": "ok", "counts": counts}
