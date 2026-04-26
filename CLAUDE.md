@@ -401,6 +401,7 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 - **ThreadPoolExecutor with 블록 금지**: `with` 문은 `shutdown(wait=True)` 호출 → DNS hang 시 무기한 블록. `try/finally` + `executor.shutdown(wait=False)` 패턴 사용 (database.py 참조).
 - **SQLite hostaddr 제외**: `_ipv4_connect_args`는 hostname이 None(SQLite URL)이면 빈 dict 반환 — 그렇지 않으면 `sqlite3.connect(hostaddr=...)` TypeError 발생.
 - **`Analysis.author_login` NULL 정책**: 신규 컬럼은 backfill 없이 NULL 허용. 모든 집계는 `WHERE author_login IS NOT NULL` 적용. backfill 필요 시 `scripts/backfill_author.py` 별도 실행. PR 이벤트 = `pull_request.user.login`, Push 이벤트 = `head_commit.author.username`.
+- **ORM 컬럼 추가 시 마이그레이션 필수 동반**: `models/*.py`에 `Column(...)` 추가 후 반드시 `make revision m="설명"` 으로 마이그레이션 파일을 함께 생성해야 한다. 단위 테스트는 in-memory SQLite(`Base.metadata.create_all`)로 ORM 정의 그대로 테이블을 만들기 때문에 마이그레이션 파일이 없어도 테스트가 통과한다. 그러나 실제 DB(PostgreSQL/Railway)에는 컬럼이 생성되지 않아 운영 환경에서 500 에러가 발생한다. 전례: `leaderboard_opt_in` 컬럼 (PR #72·#74, 2026-04-26).
 
 ### 파이프라인 / 비즈니스 로직
 

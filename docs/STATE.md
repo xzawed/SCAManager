@@ -86,6 +86,14 @@
 **테스트 증분**: +31 (1417 → **1448** passed)
 **품질**: pylint 10.00 · bandit HIGH 0 · 커버리지 95% (신규 파일 전체 100%)
 
+### 그룹 44 (2026-04-26 · hotfix — 설정 페이지 500 에러 수정 PR #74)
+
+**원인**: Phase 11(PR #72)에서 `RepoConfig` ORM에 `leaderboard_opt_in` 컬럼을 추가했으나 Alembic 마이그레이션 파일이 누락됨. 단위 테스트는 in-memory SQLite로 ORM 정의에서 직접 테이블을 생성하기 때문에 테스트 통과 → 그러나 운영 DB에는 컬럼 미생성 → `GET /repos/{name}/settings` 500 Internal Server Error.
+
+**수정**: `alembic/versions/0019_add_repo_config_leaderboard_opt_in.py` 신규 작성 (`server_default='0'`).
+
+**재발 방지**: CLAUDE.md "DB / 마이그레이션" 섹션에 **ORM 컬럼 추가 시 마이그레이션 필수 동반** 규칙 명시.
+
 ### 그룹 42 (2026-04-26 · Phase 10 Telegram 확장 완료 — PR #64)
 
 **목표**: 주간 리포트 cron + 트렌드 알림 + Telegram 인라인 명령 (`/stats`, `/settings`, `/connect`) + OTP 연결 흐름.
