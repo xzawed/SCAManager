@@ -239,6 +239,7 @@ async def _handle_pr_synchronize(data: dict) -> None:  # NOSONAR python:S7503 â€
     Force-push guard â€” old-SHA retries are no longer relevant after head changed.
     """
     repo_full_name = data.get("repository", {}).get("full_name", "")
+    safe_repo_full_name = sanitize_for_log(repo_full_name)
     pr_number = data.get("number") or (data.get("pull_request") or {}).get("number", 0)
     new_sha = ((data.get("pull_request") or {}).get("head") or {}).get("sha", "")
 
@@ -261,12 +262,12 @@ async def _handle_pr_synchronize(data: dict) -> None:  # NOSONAR python:S7503 â€
             if count:
                 logger.info(
                     "synchronize: abandoned %d stale retry rows for pr=%d repo=%s",
-                    count, safe_pr_number, repo_full_name,
+                    count, safe_pr_number, safe_repo_full_name,
                 )
     except (SQLAlchemyError, KeyError, AttributeError) as exc:
         logger.warning(
             "synchronize: abandon_stale_for_pr failed (repo=%s, pr=%d): %s",
-            repo_full_name, safe_pr_number, type(exc).__name__,
+            safe_repo_full_name, safe_pr_number, type(exc).__name__,
         )
 
 
