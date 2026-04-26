@@ -830,6 +830,75 @@
       <span class="field-hint">설정 저장 후 Railway Webhook URL 이 자동 생성됩니다.</span>
       {% endif %}
 
+      <div class="s-divider"></div>
+
+      <!-- Telegram 연결 서브섹션 / Telegram Connection subsection -->
+      <div class="s-section-label">Telegram 연결 / Telegram Connection</div>
+      <div class="mb-4" id="telegram-connect-section">
+        {% if current_user.is_telegram_connected %}
+        <p class="text-success mb-2" style="font-size:13px;">✅ Telegram 계정이 연결되어 있습니다.</p>
+        {% else %}
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:.6rem;">
+          Telegram 봇에서 /connect 명령으로 계정을 연결하세요.
+        </p>
+        <button type="button" class="hook-btn" id="issueTelegramOtp">
+          🔗 연결 코드 발급 / Issue Code
+        </button>
+        <div id="telegramOtpDisplay" style="display:none;margin-top:.65rem;">
+          <code id="telegramOtpCode" style="font-size:1.4rem;font-weight:700;letter-spacing:.12em;"></code>
+          <span style="font-size:12px;color:var(--text-muted);margin-left:.5rem;">
+            (<span id="telegramOtpCountdown">5:00</span> 후 만료)
+          </span>
+          <p style="font-size:11px;color:var(--text-muted);margin-top:.35rem;margin-bottom:0;">
+            이전 코드는 무효화됩니다. / Previous codes are invalidated.
+          </p>
+        </div>
+
+        <script>
+          // Telegram OTP 발급 버튼 클릭 핸들러 — 미연결 상태에서만 렌더링
+          // Click handler for Telegram OTP issuance — rendered only when not connected.
+          (function () {
+            var btn = document.getElementById('issueTelegramOtp');
+            if (!btn) { return; }
+            btn.addEventListener('click', async function () {
+              btn.disabled = true;
+              try {
+                var resp = await fetch('/api/users/me/telegram-otp', { method: 'POST' });
+                if (!resp.ok) { btn.disabled = false; return; }
+                var data = await resp.json();
+                // OTP 코드 표시
+                // Display the issued OTP code.
+                document.getElementById('telegramOtpCode').textContent = data.otp;
+                document.getElementById('telegramOtpDisplay').style.display = '';
+
+                // 카운트다운 타이머 (5분) — Countdown timer (5 minutes).
+                var remaining = data.ttl_minutes * 60;
+                var cd = document.getElementById('telegramOtpCountdown');
+                var timer = setInterval(function () {
+                  remaining -= 1;
+                  var m = Math.floor(remaining / 60);
+                  var s = remaining % 60;
+                  cd.textContent = m + ':' + (s < 10 ? '0' : '') + s;
+                  if (remaining <= 0) {
+                    clearInterval(timer);
+                    // 만료 시 OTP 표시 영역 숨김 및 버튼 재활성화
+                    // Hide OTP display and re-enable button upon expiry.
+                    document.getElementById('telegramOtpDisplay').style.display = 'none';
+                    btn.disabled = false;
+                  }
+                }, 1000);
+              } catch (e) {
+                // 네트워크 오류 등 예외 발생 시 버튼을 재활성화하여 재시도 허용
+                // Re-enable button on network or other errors so the user can retry.
+                console.error('Telegram OTP issuance failed:', e);
+                btn.disabled = false;
+              }
+            });
+          }());
+        </script>
+        {% endif %}
+      </div>
+
     </div>
   </div>
 

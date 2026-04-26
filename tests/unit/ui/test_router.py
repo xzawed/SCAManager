@@ -1634,3 +1634,72 @@ def test_settings_has_preset_details_elements():
         assert f'id="preset-{preset}"' in r.text, f"Missing <details id=preset-{preset}>"
     for fn in ("onPresetToggle", "renderPresetDiff", "flashPresetChanges"):
         assert fn in r.text, f"Missing JS helper: {fn}"
+
+
+# ── T9: Telegram 연결 서브섹션 렌더링 테스트 ──
+# ── T9: Telegram connection subsection rendering tests ──
+
+def test_telegram_otp_section_renders_when_not_connected():
+    """미연결 user → settings 페이지에 '연결 코드 발급' 버튼이 포함된다.
+    When Telegram is not connected, the settings page shows the 'Issue Code' button.
+    """
+    # _test_user는 파일 상단에서 is_telegram_connected=False 기본값으로 설정됨
+    # _test_user at the top of this file has is_telegram_connected=False by default.
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
+        id=1, full_name="owner/repo", user_id=None
+    )
+    from src.config_manager.manager import RepoConfigData
+    with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.ui.routes.settings.get_repo_config",
+                   return_value=RepoConfigData(repo_full_name="owner/repo")):
+            r = client.get("/repos/owner%2Frepo/settings")
+    assert r.status_code == 200
+    html = r.text
+    # '연결 코드 발급' 버튼이 렌더링되어야 한다
+    # The 'Issue Code' button must be rendered.
+    assert "issueTelegramOtp" in html
+    assert "Issue Code" in html or "연결 코드 발급" in html
+    # 'Telegram 연결' 서브섹션 제목이 존재해야 한다
+    # The 'Telegram Connection' subsection title must be present.
+    assert "Telegram" in html and "connect" in html.lower()
+
+
+def test_telegram_connected_status_hides_otp_button():
+    """연결된 user → settings 페이지에 OTP 버튼 없이 '연결됨' 메시지를 표시한다.
+    When Telegram is connected, shows 'connected' message without the OTP button.
+    """
+    from src.auth.session import CurrentUser as CU
+    # is_telegram_connected=True 인 사용자로 의존성 오버라이드
+    # Override dependency with a user that has is_telegram_connected=True.
+    connected_user = CU(
+        id=99,
+        github_login="connected_user",
+        email="connected@example.com",
+        display_name="Connected User",
+        plaintext_token="gho_connected",
+        is_telegram_connected=True,
+    )
+    app.dependency_overrides[require_login] = lambda: connected_user
+    try:
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
+            id=1, full_name="owner/repo", user_id=None
+        )
+        from src.config_manager.manager import RepoConfigData
+        with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
+            with patch("src.ui.routes.settings.get_repo_config",
+                       return_value=RepoConfigData(repo_full_name="owner/repo")):
+                r = client.get("/repos/owner%2Frepo/settings")
+        assert r.status_code == 200
+        html = r.text
+        # 연결 완료 메시지가 있어야 한다
+        # The 'connected' status message must be present.
+        assert "연결되어 있습니다" in html or "connected" in html.lower()
+        # OTP 발급 버튼은 없어야 한다
+        # The OTP issuance button must not be present.
+        assert "issueTelegramOtp" not in html
+    finally:
+        # 다른 테스트에 영향을 주지 않도록 오버라이드 복원
+        # Restore the override so other tests are not affected.
+        app.dependency_overrides[require_login] = lambda: _test_user
