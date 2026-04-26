@@ -17,7 +17,7 @@ import pytest
 from sqlalchemy import create_engine, inspect
 
 from src.database import Base
-from src.models.merge_retry import MergeRetryQueue  # noqa: F401  # pylint: disable=unused-import
+import src.models.merge_retry  # ensure model is registered on Base.metadata
 
 
 def test_orm_creates_merge_retry_queue_table():
