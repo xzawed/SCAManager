@@ -735,13 +735,14 @@
 
     <!-- ④ 알림 채널 (항상 표시 — 고급 설정 아코디언 밖) / Notification channels (always visible — outside advanced settings accordion) -->
     <div class="settings-grid">
-      <div class="s-card notify-full">
+      <div class="s-card notify-full" id="notifyCard">
         <div class="s-card-hdr hdr-notify">
           <span class="hdr-icon">🔔</span>
-          <span class="hdr-title">알림 채널</span>
-          <span class="hdr-badge">선택</span>
+          <span class="hdr-title">알림 발신 채널</span>
+          <span class="hdr-badge">SCAManager → 외부</span>
         </div>
         <div class="s-card-body">
+          <div class="s-section-label">메신저 / 이메일</div>
           <div class="channel-grid">
             <div class="field-row">
               <label class="field-label">Telegram Chat ID</label>
@@ -754,6 +755,67 @@
                         aria-label="값 보이기/숨기기">👁️</button>
               </div>
             </div>
+
+            <!-- Telegram 계정 연결 OTP (⑤에서 이동) / Telegram account linking OTP (moved from system card) -->
+            <div class="field-row">
+              <label class="field-label">Telegram 계정 연결</label>
+              <div id="telegram-connect-section-notify">
+                {% if current_user.is_telegram_connected %}
+                <p class="text-success" style="font-size:13px;margin:0;">✅ Telegram 계정이 연결되어 있습니다.</p>
+                {% else %}
+                <p style="font-size:13px;color:var(--text-muted);margin-bottom:.5rem;">
+                  Telegram 봇에서 /connect 명령으로 계정을 연결하세요.
+                </p>
+                <button type="button" class="hook-btn" id="issueTelegramOtp">
+                  🔗 연결 코드 발급 / Issue Code
+                </button>
+                <div id="telegramOtpDisplay" style="display:none;margin-top:.65rem;">
+                  <code id="telegramOtpCode" style="font-size:1.4rem;font-weight:700;letter-spacing:.12em;"></code>
+                  <span style="font-size:12px;color:var(--text-muted);margin-left:.5rem;">
+                    (<span id="telegramOtpCountdown">5:00</span> 후 만료)
+                  </span>
+                  <p style="font-size:11px;color:var(--text-muted);margin-top:.35rem;margin-bottom:0;">
+                    이전 코드는 무효화됩니다. / Previous codes are invalidated.
+                  </p>
+                </div>
+                <script>
+                  // Telegram OTP 발급 버튼 — 알림 발신 채널 카드로 이동 (B+A 리디자인)
+                  // Telegram OTP button — moved to notification channel card (B+A redesign)
+                  (function () {
+                    var btn = document.getElementById('issueTelegramOtp');
+                    if (!btn) { return; }
+                    btn.addEventListener('click', async function () {
+                      btn.disabled = true;
+                      try {
+                        var resp = await fetch('/api/users/me/telegram-otp', { method: 'POST' });
+                        if (!resp.ok) { btn.disabled = false; return; }
+                        var data = await resp.json();
+                        document.getElementById('telegramOtpCode').textContent = data.otp;
+                        document.getElementById('telegramOtpDisplay').style.display = '';
+                        var remaining = data.ttl_minutes * 60;
+                        var cd = document.getElementById('telegramOtpCountdown');
+                        var timer = setInterval(function () {
+                          remaining -= 1;
+                          var m = Math.floor(remaining / 60);
+                          var s = remaining % 60;
+                          cd.textContent = m + ':' + (s < 10 ? '0' : '') + s;
+                          if (remaining <= 0) {
+                            clearInterval(timer);
+                            document.getElementById('telegramOtpDisplay').style.display = 'none';
+                            btn.disabled = false;
+                          }
+                        }, 1000);
+                      } catch (e) {
+                        console.error('Telegram OTP issuance failed:', e);
+                        btn.disabled = false;
+                      }
+                    });
+                  }());
+                </script>
+                {% endif %}
+              </div>
+            </div>
+
             <div class="field-row adv-only">
               <label class="field-label">Discord Webhook</label>
               <div class="masked-field">
@@ -794,6 +856,9 @@
                 <button type="button" class="mask-toggle" onclick="toggleFieldMask(this)"
                         aria-label="값 보이기/숨기기">👁️</button>
               </div>
+            </div>
+            <div class="field-row adv-only">
+              <div class="s-section-label" style="grid-column:1/-1;margin-bottom:.25rem;">자동화 연동 Webhook (발신)</div>
             </div>
             <div class="field-row adv-only">
               <label class="field-label">n8n Webhook</label>
