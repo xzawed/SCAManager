@@ -22,7 +22,7 @@
 [![E2E](https://img.shields.io/badge/E2E-49_passing-brightgreen?style=flat-square&logo=playwright&logoColor=white)](e2e/)
 [![pylint](https://img.shields.io/badge/pylint-10.00%2F10-brightgreen?style=flat-square&logo=python&logoColor=white)](src/)
 [![bandit](https://img.shields.io/badge/bandit-HIGH_0-brightgreen?style=flat-square&logo=security&logoColor=white)](src/)
-[![Coverage](https://img.shields.io/badge/Coverage-96.2%25-brightgreen?style=flat-square&logo=codecov&logoColor=white)](tests/)
+[![Coverage](https://img.shields.io/badge/Coverage-96.5%25-brightgreen?style=flat-square&logo=codecov&logoColor=white)](tests/)
 
 [🇰🇷 한국어](README.ko.md)
 
@@ -49,13 +49,13 @@ Most code review tools make you choose between static analysis precision and AI 
 | | SCAManager | CodeRabbit | SonarCloud | GitHub Copilot Review |
 |---|---|---|---|---|
 | **Self-hosted** | ✅ Your infrastructure | ❌ SaaS only | ❌ SaaS only | ❌ GitHub-managed |
-| **Static + AI combined** | ✅ 10 tools + Claude AI | AI only | Static only | AI only |
+| **Static + AI combined** | ✅ 10 tools + Claude AI | AI + linter integrations | Static + AI CodeFix (2024+) | AI only |
 | **Score-based PR Gate** | ✅ Auto / Semi / Manual | ❌ | ❌ | ❌ |
 | **Approve from phone** | ✅ Telegram inline buttons | ❌ | ❌ | ❌ |
 | **Push event analysis** | ✅ Auto Issue + Commit comment | ❌ PR only | ❌ | ❌ |
 | **50-language AI review** | ✅ Language-specific checklists | ✅ | ❌ | ✅ |
 | **DB failover** | ✅ Built-in | ❌ | ❌ | ❌ |
-| **Cost** | API usage only | Paid SaaS | Freemium | GitHub plan |
+| **Cost** | API usage only | Freemium (free for public repos) | Freemium | GitHub plan |
 
 **Best for:** Solo developers and small teams who want full control over their code quality pipeline without vendor lock-in.
 
@@ -74,7 +74,7 @@ Most code review tools make you choose between static analysis precision and AI 
 | Solidity | slither | `.sol` — reentrancy · tx.origin · weak-prng · Category-aware |
 | Ruby | RuboCop | `.rb` — Security cops detected separately |
 | Go | golangci-lint | `.go` — meta-linter (gosec / errcheck / staticcheck / unused, auto `go.mod`) |
-| AI Review | Claude Haiku 4.5 | **50 languages** with language-specific checklists |
+| AI Review | Claude Sonnet 4.6 | **50 languages** with language-specific checklists |
 | Commit Message | Claude AI | Push / PR messages |
 
 - Handles `push` and PR (`opened` / `synchronize` / `reopened`) events automatically
@@ -230,9 +230,9 @@ git push origin main
 | **Web Framework** | FastAPI + Uvicorn |
 | **Auth** | GitHub OAuth2 (authlib) + Starlette SessionMiddleware |
 | **Database** | PostgreSQL · SQLAlchemy 2 · Alembic · FailoverSessionFactory |
-| **AI (Server)** | Anthropic Claude API (claude-haiku-4-5) |
+| **AI (Server)** | Anthropic Claude API (claude-sonnet-4-6) |
 | **AI (Local Hook)** | Claude Code CLI (`claude -p`) |
-| **Static Analysis** | pylint · flake8 · bandit (Python) + Semgrep (23+) + ESLint (JS/TS) + ShellCheck (shell) + cppcheck (C/C++) + slither (Solidity) + RuboCop (Ruby) + golangci-lint (Go) |
+| **Static Analysis** | pylint · flake8 · bandit (Python) + Semgrep (22+) + ESLint (JS/TS) + ShellCheck (shell) + cppcheck (C/C++) + slither (Solidity) + RuboCop (Ruby) + golangci-lint (Go) |
 | **Testing** | pytest · pytest-asyncio · httpx TestClient |
 | **E2E Testing** | Playwright (Chromium) |
 | **Web UI** | Jinja2 · Chart.js · CSS Variables (3 themes) |
@@ -377,6 +377,7 @@ POST /repos/{repo}/delete            Delete repo (including Webhook + history)
 ```
 POST /webhooks/github                GitHub Webhook (HMAC-SHA256 verified)
 POST /api/webhook/telegram           Telegram Gate callback (HMAC auth)
+POST /webhooks/railway/{token}       Railway deploy event (token auth)
 ```
 
 **REST API** (X-API-Key header required)
@@ -395,9 +396,20 @@ GET  /api/hook/verify                Verify hook registration
 POST /api/hook/result                Save code review result
 ```
 
+**User API** (OAuth session required)
+```
+POST /api/users/me/telegram-otp      Issue 6-digit OTP for Telegram /connect linking
+```
+
+**Internal Cron** (INTERNAL_CRON_API_KEY required)
+```
+POST /api/internal/cron/weekly       Trigger weekly Telegram summary report
+POST /api/internal/cron/trend        Trigger trend alert check (7-day moving avg)
+```
+
 **Health Check**
 ```
-GET  /health                         {"status":"ok","active_db":"primary"|"fallback"}
+GET  /health                         {"status":"ok"}
 ```
 
 </details>
