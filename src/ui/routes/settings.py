@@ -151,6 +151,13 @@ async def repo_settings(  # pylint: disable=too-many-positional-arguments,too-ma
         webhook_id=repo_webhook_id,
     )
 
+    # 알림 채널 미설정 + Telegram 미연결 → 온보딩 배너 표시
+    # Show onboarding banner when no notification channel is configured and Telegram is not linked.
+    onboarding_needed = (
+        not config.notify_chat_id and
+        not current_user.is_telegram_connected
+    )
+
     return templates.TemplateResponse(request, "settings.html", {
         "repo_name": repo_name, "config": config,
         "hook_ok": bool(hook_ok), "hook_fail": bool(hook_fail),
@@ -159,6 +166,7 @@ async def repo_settings(  # pylint: disable=too-many-positional-arguments,too-ma
         "railway_webhook_url": railway_webhook_url,
         "railway_api_token_set": railway_api_token_set,
         "webhook_stale": webhook_stale,
+        "onboarding_needed": onboarding_needed,
     })
 
 

@@ -364,6 +364,29 @@
   <form id="settingsForm" method="post" action="/repos/{{ repo_name }}/settings">
     <input type="hidden" name="approve_mode" id="approveModeValue" value="{{ config.approve_mode }}">
 
+    {% if onboarding_needed %}
+    <!-- 온보딩 배너 — 알림 채널 미설정 + Telegram 미연결 시 표시 -->
+    <!-- Onboarding banner — shown when no notification channel and Telegram not linked -->
+    <div class="s-card" id="onboardingBanner" style="margin-bottom:1rem;border:1.5px solid var(--accent);">
+      <div class="s-card-hdr" style="background:linear-gradient(135deg,#6366f1,#8b5cf6)">
+        <span class="hdr-icon">🚀</span>
+        <span class="hdr-title">빠른 시작</span>
+        <span class="hdr-badge">알림 채널 미설정</span>
+      </div>
+      <div class="s-card-body">
+        <p style="font-size:13px;color:var(--text-muted);margin:0 0 .75rem;">분석 결과를 받으려면 아래 단계를 완료하세요.</p>
+        <div style="display:flex;flex-direction:column;gap:.45rem;font-size:13px;">
+          <a href="#notifyCard" style="color:var(--accent);font-weight:600;">
+            ① 알림 채널 설정 → 아래 <strong>알림 발신 채널</strong>에서 Telegram 또는 다른 채널을 연결하세요
+          </a>
+          <span style="color:var(--text-muted);">
+            ② 리뷰 수준 결정 → 위 <strong>빠른 설정</strong>에서 프리셋을 선택하세요 (선택 사항)
+          </span>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
     {% if webhook_stale %}
     <div class="alert alert-warning alert-dismissible d-flex align-items-center mb-4" role="alert" id="webhookStaleBanner">
       <span class="me-2">⚠️</span>
@@ -371,12 +394,12 @@
         <strong>Webhook 재등록 필요</strong> — <code>check_suite</code> 이벤트가 누락되어 자동 머지 재시도가 지연될 수 있습니다. Webhook을 재등록하면 CI 완료 즉시 머지를 재시도합니다.
         <br><small class="text-muted">Auto-merge retry may be delayed: <code>check_suite</code> event not subscribed. Reinstall webhook to enable immediate CI-triggered retries.</small>
       </div>
-      <button type="button" onclick="document.querySelector('[data-reinstall-webhook]')?.click();" class="btn btn-sm btn-warning ms-auto">Webhook 재등록</button>
+      <button type="button" onclick="document.querySelector('[data-reinstall-webhook]')?.click();" class="btn btn-sm btn-warning ms-auto">GitHub 수신 Webhook 재등록</button>
     </div>
     {% endif %}
 
     <!-- ① 빠른 설정 (프리셋) / Quick settings (presets) -->
-    <div class="s-card" style="margin-bottom:1rem;">
+    <div class="s-card" id="presetCard" style="margin-bottom:1rem;">
       <div class="s-card-hdr hdr-preset">
         <span class="hdr-icon">🚀</span>
         <span class="hdr-title">빠른 설정</span>
@@ -509,15 +532,16 @@
       <div class="advanced-body">
         <div class="settings-grid">
 
-      <!-- ② PR 들어왔을 때 / When a PR arrives -->
+      <!-- ② 분석 동작 규칙 / Analysis behavior rules -->
       <div class="s-card">
         <div class="s-card-hdr hdr-gate">
-          <span class="hdr-icon">📋</span>
-          <span class="hdr-title">PR 들어왔을 때</span>
+          <span class="hdr-icon">⚡</span>
+          <span class="hdr-title">분석 동작 규칙</span>
           <span class="hdr-badge" id="approveBadge">{{ config.approve_mode }}</span>
         </div>
         <div class="s-card-body">
 
+          <div class="s-section-label">PR 이벤트</div>
           <!-- PR 코드리뷰 댓글 / PR code review comment -->
           <div class="toggle-row">
             <div class="toggle-info">
@@ -648,15 +672,16 @@
         </div>
       </div>
 
-      <!-- ③ 이벤트 후 피드백 / Post-event feedback -->
+      <!-- Push / 배포 이벤트 & 팀 설정 카드 / Push/deploy events & team settings card -->
       <div class="s-card">
         <div class="s-card-hdr hdr-merge">
-          <span class="hdr-icon">📬</span>
-          <span class="hdr-title">이벤트 후 피드백</span>
+          <span class="hdr-icon">🚀</span>
+          <span class="hdr-title">Push / 배포 이벤트</span>
+          <span class="hdr-badge">Push · Railway</span>
         </div>
         <div class="s-card-body">
 
-          <div class="s-section-label">Push 이후</div>
+          <div class="s-section-label">Push 이벤트</div>
           <div class="toggle-row">
             <div class="toggle-info">
               <div class="t-title">커밋 코멘트</div>
@@ -670,7 +695,6 @@
           </div>
 
           <div class="s-divider"></div>
-          <div class="s-section-label">점수 미달 시</div>
           <div class="toggle-row">
             <div class="toggle-info">
               <div class="t-title">이슈 자동 생성</div>
@@ -684,10 +708,9 @@
           </div>
 
           <div class="s-divider"></div>
-          <div class="s-section-label">Railway 빌드 실패 시</div>
           <div class="toggle-row">
             <div class="toggle-info">
-              <div class="t-title">GitHub Issue 자동 생성</div>
+              <div class="t-title">Railway 빌드 실패 알림</div>
               <div class="t-desc">Railway 빌드 실패 이벤트 수신 시<br>해당 리포에 로그 포함 Issue 자동 생성</div>
             </div>
             <label class="toggle-switch">
@@ -697,8 +720,10 @@
             </label>
           </div>
 
+          <div class="s-divider"></div>
+          <div class="s-section-label">팀 설정</div>
           <!-- 팀 인사이트 리더보드 옵트인 (기본 비활성) / Team Insights leaderboard opt-in (disabled by default) -->
-          <div class="toggle-row" style="margin-top:.75rem;">
+          <div class="toggle-row">
             <div class="toggle-info">
               <div class="t-title">팀 리더보드 공개</div>
               <div class="t-desc">이 리포를 팀 인사이트 리더보드에 포함<br>
@@ -721,13 +746,14 @@
 
     <!-- ④ 알림 채널 (항상 표시 — 고급 설정 아코디언 밖) / Notification channels (always visible — outside advanced settings accordion) -->
     <div class="settings-grid">
-      <div class="s-card notify-full">
+      <div class="s-card notify-full" id="notifyCard">
         <div class="s-card-hdr hdr-notify">
           <span class="hdr-icon">🔔</span>
-          <span class="hdr-title">알림 채널</span>
-          <span class="hdr-badge">선택</span>
+          <span class="hdr-title">알림 발신 채널</span>
+          <span class="hdr-badge">SCAManager → 외부</span>
         </div>
         <div class="s-card-body">
+          <div class="s-section-label">메신저 / 이메일</div>
           <div class="channel-grid">
             <div class="field-row">
               <label class="field-label">Telegram Chat ID</label>
@@ -740,6 +766,67 @@
                         aria-label="값 보이기/숨기기">👁️</button>
               </div>
             </div>
+
+            <!-- Telegram 계정 연결 OTP (⑤에서 이동) / Telegram account linking OTP (moved from system card) -->
+            <div class="field-row">
+              <label class="field-label">Telegram 계정 연결</label>
+              <div id="telegram-connect-section-notify">
+                {% if current_user.is_telegram_connected %}
+                <p class="text-success" style="font-size:13px;margin:0;">✅ Telegram 계정이 연결되어 있습니다.</p>
+                {% else %}
+                <p style="font-size:13px;color:var(--text-muted);margin-bottom:.5rem;">
+                  Telegram 봇에서 /connect 명령으로 계정을 연결하세요.
+                </p>
+                <button type="button" class="hook-btn" id="issueTelegramOtp">
+                  🔗 연결 코드 발급 / Issue Code
+                </button>
+                <div id="telegramOtpDisplay" style="display:none;margin-top:.65rem;">
+                  <code id="telegramOtpCode" style="font-size:1.4rem;font-weight:700;letter-spacing:.12em;"></code>
+                  <span style="font-size:12px;color:var(--text-muted);margin-left:.5rem;">
+                    (<span id="telegramOtpCountdown">5:00</span> 후 만료)
+                  </span>
+                  <p style="font-size:11px;color:var(--text-muted);margin-top:.35rem;margin-bottom:0;">
+                    이전 코드는 무효화됩니다. / Previous codes are invalidated.
+                  </p>
+                </div>
+                <script>
+                  // Telegram OTP 발급 버튼 — 알림 발신 채널 카드로 이동 (B+A 리디자인)
+                  // Telegram OTP button — moved to notification channel card (B+A redesign)
+                  (function () {
+                    var btn = document.getElementById('issueTelegramOtp');
+                    if (!btn) { return; }
+                    btn.addEventListener('click', async function () {
+                      btn.disabled = true;
+                      try {
+                        var resp = await fetch('/api/users/me/telegram-otp', { method: 'POST' });
+                        if (!resp.ok) { btn.disabled = false; return; }
+                        var data = await resp.json();
+                        document.getElementById('telegramOtpCode').textContent = data.otp;
+                        document.getElementById('telegramOtpDisplay').style.display = '';
+                        var remaining = data.ttl_minutes * 60;
+                        var cd = document.getElementById('telegramOtpCountdown');
+                        var timer = setInterval(function () {
+                          remaining -= 1;
+                          var m = Math.floor(remaining / 60);
+                          var s = remaining % 60;
+                          cd.textContent = m + ':' + (s < 10 ? '0' : '') + s;
+                          if (remaining <= 0) {
+                            clearInterval(timer);
+                            document.getElementById('telegramOtpDisplay').style.display = 'none';
+                            btn.disabled = false;
+                          }
+                        }, 1000);
+                      } catch (e) {
+                        console.error('Telegram OTP issuance failed:', e);
+                        btn.disabled = false;
+                      }
+                    });
+                  }());
+                </script>
+                {% endif %}
+              </div>
+            </div>
+
             <div class="field-row adv-only">
               <label class="field-label">Discord Webhook</label>
               <div class="masked-field">
@@ -782,6 +869,9 @@
               </div>
             </div>
             <div class="field-row adv-only">
+              <div class="s-section-label" style="grid-column:1/-1;margin-bottom:.25rem;">자동화 연동 Webhook (발신)</div>
+            </div>
+            <div class="field-row adv-only">
               <label class="field-label">n8n Webhook</label>
               <div class="masked-field">
                 <input class="field-input" type="password" name="n8n_webhook_url"
@@ -803,14 +893,22 @@
 
   </form>
 
-  <!-- ⑤ 시스템 & 토큰 (CLI Hook + Webhook + Railway API 토큰 + 위험 구역 — 메인 form 외부) / System & tokens (CLI Hook + Webhook + Railway API token + danger zone — outside main form) -->
+  <!-- ⑤ 통합 & 연결 (GitHub 수신 Webhook + CLI Hook + Railway API 토큰 + 위험 구역 — 메인 form 외부) / Integration & connections (GitHub inbound webhook + CLI Hook + Railway API token + danger zone — outside main form) -->
   <div class="s-card" style="margin-bottom:1rem;">
     <div class="s-card-hdr hdr-hook">
-      <span class="hdr-icon">🔧</span>
-      <span class="hdr-title">시스템 &amp; 토큰</span>
+      <span class="hdr-icon">🔗</span>
+      <span class="hdr-title">통합 &amp; 연결</span>
     </div>
     <div class="s-card-body">
 
+      <div class="s-section-label">GitHub 수신 Webhook</div>
+      <div class="hook-btns" style="margin-bottom:.5rem;">
+        <button type="submit" class="hook-btn" form="reinstall_webhook_form"
+                data-reinstall-webhook>🔗 GitHub 수신 Webhook 재등록</button>
+      </div>
+      <span class="field-hint">GitHub이 SCAManager로 push·PR·check_suite 이벤트를 전송합니다.</span>
+
+      <div class="s-divider"></div>
       <div class="s-section-label">CLI Hook</div>
       {% if hook_ok %}
       <div class="hook-alert ok">✅ <strong>.scamanager/</strong> 파일이 Repo에 커밋됐습니다.</div>
@@ -821,12 +919,12 @@
       <div class="hook-code">git pull &amp;&amp; bash .scamanager/install-hook.sh</div>
       <div class="hook-btns">
         <button type="submit" class="hook-btn" form="reinstall_hook_form">🔄 훅 파일 재커밋</button>
-        <button type="submit" class="hook-btn" form="reinstall_webhook_form">🔗 Webhook 재등록</button>
       </div>
 
       <div class="s-divider"></div>
 
-      <div class="s-section-label">Railway API 토큰 <span class="field-hint" style="font-weight:400;text-transform:none;letter-spacing:0;">로그 조회용</span></div>
+      <div class="s-section-label">Railway 연동</div>
+      <div class="s-section-label" style="font-size:10px;text-transform:none;letter-spacing:0;color:var(--text-muted);margin-top:-.4rem;margin-bottom:.6rem;">API 토큰 (로그 조회용)</div>
       <div class="field-row">
         <div class="masked-field">
           <input class="field-input" type="password" name="railway_api_token"
@@ -856,74 +954,6 @@
       <span class="field-hint">설정 저장 후 Railway Webhook URL 이 자동 생성됩니다.</span>
       {% endif %}
 
-      <div class="s-divider"></div>
-
-      <!-- Telegram 연결 서브섹션 / Telegram Connection subsection -->
-      <div class="s-section-label">Telegram 연결 / Telegram Connection</div>
-      <div class="mb-4" id="telegram-connect-section">
-        {% if current_user.is_telegram_connected %}
-        <p class="text-success mb-2" style="font-size:13px;">✅ Telegram 계정이 연결되어 있습니다.</p>
-        {% else %}
-        <p style="font-size:13px;color:var(--text-muted);margin-bottom:.6rem;">
-          Telegram 봇에서 /connect 명령으로 계정을 연결하세요.
-        </p>
-        <button type="button" class="hook-btn" id="issueTelegramOtp">
-          🔗 연결 코드 발급 / Issue Code
-        </button>
-        <div id="telegramOtpDisplay" style="display:none;margin-top:.65rem;">
-          <code id="telegramOtpCode" style="font-size:1.4rem;font-weight:700;letter-spacing:.12em;"></code>
-          <span style="font-size:12px;color:var(--text-muted);margin-left:.5rem;">
-            (<span id="telegramOtpCountdown">5:00</span> 후 만료)
-          </span>
-          <p style="font-size:11px;color:var(--text-muted);margin-top:.35rem;margin-bottom:0;">
-            이전 코드는 무효화됩니다. / Previous codes are invalidated.
-          </p>
-        </div>
-
-        <script>
-          // Telegram OTP 발급 버튼 클릭 핸들러 — 미연결 상태에서만 렌더링
-          // Click handler for Telegram OTP issuance — rendered only when not connected.
-          (function () {
-            var btn = document.getElementById('issueTelegramOtp');
-            if (!btn) { return; }
-            btn.addEventListener('click', async function () {
-              btn.disabled = true;
-              try {
-                var resp = await fetch('/api/users/me/telegram-otp', { method: 'POST' });
-                if (!resp.ok) { btn.disabled = false; return; }
-                var data = await resp.json();
-                // OTP 코드 표시
-                // Display the issued OTP code.
-                document.getElementById('telegramOtpCode').textContent = data.otp;
-                document.getElementById('telegramOtpDisplay').style.display = '';
-
-                // 카운트다운 타이머 (5분) — Countdown timer (5 minutes).
-                var remaining = data.ttl_minutes * 60;
-                var cd = document.getElementById('telegramOtpCountdown');
-                var timer = setInterval(function () {
-                  remaining -= 1;
-                  var m = Math.floor(remaining / 60);
-                  var s = remaining % 60;
-                  cd.textContent = m + ':' + (s < 10 ? '0' : '') + s;
-                  if (remaining <= 0) {
-                    clearInterval(timer);
-                    // 만료 시 OTP 표시 영역 숨김 및 버튼 재활성화
-                    // Hide OTP display and re-enable button upon expiry.
-                    document.getElementById('telegramOtpDisplay').style.display = 'none';
-                    btn.disabled = false;
-                  }
-                }, 1000);
-              } catch (e) {
-                // 네트워크 오류 등 예외 발생 시 버튼을 재활성화하여 재시도 허용
-                // Re-enable button on network or other errors so the user can retry.
-                console.error('Telegram OTP issuance failed:', e);
-                btn.disabled = false;
-              }
-            });
-          }());
-        </script>
-        {% endif %}
-      </div>
 
     </div>
   </div>
