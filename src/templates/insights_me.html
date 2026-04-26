@@ -2,44 +2,164 @@
 {% block title %}내 추세 — SCAManager{% endblock %}
 {% block content %}
 <style>
-  .insights-header { display:flex; align-items:center; gap:1rem; margin-bottom:1.5rem; }
-  .insights-title { font-size:1.4rem; font-weight:700; }
-  .day-selector { display:flex; gap:.5rem; margin-bottom:1.5rem; }
-  .day-selector a { padding:.35rem .8rem; border:1px solid var(--c-border); border-radius:6px; font-size:.88rem; text-decoration:none; color:var(--c-text); }
-  .day-selector a.active, .day-selector a:hover { background:var(--c-accent); color:#fff; border-color:var(--c-accent); }
-  .trend-table { width:100%; border-collapse:collapse; margin-top:1rem; }
-  .trend-table th, .trend-table td { padding:.65rem .9rem; text-align:left; border-bottom:1px solid var(--c-border); }
-  .trend-table th { font-size:.8rem; text-transform:uppercase; letter-spacing:.04em; opacity:.7; }
-  .score-bar { display:inline-block; height:8px; border-radius:4px; background:var(--c-accent); vertical-align:middle; margin-right:.5rem; }
-  .empty-state { text-align:center; padding:2.5rem 1rem; opacity:.6; }
-  .insights-links { display:flex; gap:1rem; margin-bottom:1.5rem; }
-  .insights-links a { padding:.35rem .85rem; border:1px solid var(--c-border); border-radius:6px; font-size:.88rem; text-decoration:none; color:var(--c-text); }
-  .insights-links a:hover { background:var(--c-bg2); }
+  /* ─── KPI 카드 그리드 / KPI card grid ─── */
+  .kpi-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:.75rem; margin-bottom:1.5rem; }
+  .kpi-card {
+    background:var(--bg-card); border:1px solid var(--border); border-radius:10px;
+    padding:1rem 1.1rem; box-shadow:var(--shadow-card);
+  }
+  .kpi-label { font-size:.75rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); margin-bottom:.3rem; }
+  .kpi-value { font-size:1.55rem; font-weight:700; font-variant-numeric:tabular-nums; }
+  .kpi-sub { font-size:.78rem; color:var(--text-muted); margin-top:.15rem; }
+  .delta-pos { color:var(--grade-a); }
+  .delta-neg { color:var(--grade-f); }
+  .delta-neu { color:var(--text-muted); }
+
+  /* ─── 등급 뱃지 / Grade badge ─── */
+  .grade-badge {
+    display:inline-block; width:1.9rem; text-align:center;
+    padding:.1rem 0; border-radius:5px; font-size:.9rem; font-weight:700;
+  }
+
+  /* ─── 기간 선택 / Days selector ─── */
+  .day-selector { display:flex; gap:.4rem; margin-bottom:1.25rem; }
+  .day-selector a {
+    padding:.32rem .75rem; border:1px solid var(--border); border-radius:6px;
+    font-size:.86rem; text-decoration:none; color:var(--text-muted);
+    transition:background .15s, color .15s, border-color .15s;
+  }
+  .day-selector a.active,
+  .day-selector a:hover { background:var(--accent); color:#fff; border-color:var(--accent); }
+
+  /* ─── 차트 컨테이너 / Chart container ─── */
+  .chart-wrap { position:relative; height:240px; margin-bottom:1.5rem; }
+
+  /* ─── 추세 테이블 / Trend table ─── */
+  .trend-table { width:100%; border-collapse:collapse; margin-bottom:1.5rem; }
+  .trend-table th, .trend-table td { padding:.6rem .9rem; text-align:left; border-bottom:1px solid var(--border); }
+  .trend-table th { font-size:.78rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); }
+  .trend-table tr:hover td { background:var(--bg-input); }
+
+  /* ─── 점수 바 / Score bar ─── */
+  .score-bar-track { display:inline-block; width:80px; height:5px; border-radius:3px; background:var(--bg-input); vertical-align:middle; margin-right:.4rem; overflow:hidden; }
+  .score-bar-fill { height:100%; border-radius:3px; background:var(--accent-grad); }
+
+  /* ─── 이슈 섹션 / Issues section ─── */
+  .issues-section { margin-top:.5rem; }
+  .issues-title { font-size:.88rem; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:.6rem; }
+  .issue-item { display:flex; align-items:center; gap:.6rem; padding:.45rem 0; border-bottom:1px solid var(--border); }
+  .issue-item:last-child { border-bottom:none; }
+  .issue-count { min-width:2rem; text-align:center; font-size:.78rem; font-weight:700; background:rgba(94,106,210,.12); color:var(--accent); border-radius:4px; padding:.1rem .3rem; }
+  .issue-msg { font-size:.85rem; color:var(--text-primary); word-break:break-all; }
+
+  /* ─── 빈 상태 / Empty state ─── */
+  .empty-state { text-align:center; padding:3rem 1rem; color:var(--text-muted); }
+
+  /* ─── 섹션 구분선 / Section divider ─── */
+  .section-divider { height:1px; background:var(--border); margin:1.5rem 0; }
+
+  /* ─── 백링크 / Back link ─── */
+  .back-row { display:flex; align-items:center; gap:1rem; margin-bottom:1.25rem; }
+  .back-row a { font-size:.86rem; color:var(--text-muted); text-decoration:none; }
+  .back-row a:hover { color:var(--accent); }
+  .page-title { font-size:1.15rem; font-weight:700; }
 </style>
 
-<div class="insights-header">
-  <div class="insights-title">내 점수 추세 — {{ current_user.github_login }}</div>
+<div class="back-row">
+  <a href="/insights">← 리포 비교</a>
+  <span class="page-title">내 추세 — {{ current_user.github_login }}</span>
 </div>
 
-<div class="insights-links">
-  <a href="/insights">리포 비교</a>
-  <a href="/insights/me">내 추세</a>
-</div>
-
+<!-- ── 기간 선택 / Days selector ── -->
 <div class="day-selector">
   {% for d in [7, 14, 30, 90] %}
-  <a href="/insights/me?days={{ d }}" {% if d == days %}class="active"{% endif %}>최근 {{ d }}일</a>
+  <a href="/insights/me?days={{ d }}" {% if d == days %}class="active"{% endif %}>{{ d }}일</a>
   {% endfor %}
 </div>
 
-{% if trend %}
-<!-- 추세 차트 (Chart.js) / Trend chart -->
-<canvas id="trendChart" style="max-height:260px; margin-bottom:1.5rem;"></canvas>
+<!-- ── KPI 카드 / KPI cards ── -->
+{% if kpi and kpi.avg is not none %}
+<div class="kpi-grid">
+  <div class="kpi-card">
+    <div class="kpi-label">평균 점수</div>
+    <div class="kpi-value">{{ kpi.avg }}</div>
+    <div class="kpi-sub">최근 {{ days }}일</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">등급</div>
+    <div class="kpi-value">
+      <span class="grade-badge grade-{{ kpi.grade }}">{{ kpi.grade }}</span>
+    </div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">추세 (전반 대비)</div>
+    <div class="kpi-value
+      {% if kpi.delta is not none %}
+        {% if kpi.delta > 0 %} delta-pos{% elif kpi.delta < 0 %} delta-neg{% else %} delta-neu{% endif %}
+      {% else %} delta-neu{% endif %}">
+      {% if kpi.delta is not none %}
+        {% if kpi.delta > 0 %}+{% endif %}{{ kpi.delta }}
+      {% else %}—{% endif %}
+    </div>
+    <div class="kpi-sub">점 변화</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">총 분석 건수</div>
+    <div class="kpi-value">{{ kpi.count }}</div>
+    <div class="kpi-sub">최근 {{ days }}일</div>
+  </div>
+</div>
+{% endif %}
+
+{% if trend and trend | length > 1 %}
+<!-- ── 추세 차트 / Trend chart ── -->
+<div class="chart-wrap">
+  <canvas id="trendChart"></canvas>
+</div>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script>
 (function(){
-  var labels = {{ trend | map(attribute='date') | list | tojson }};
-  var scores = {{ trend | map(attribute='avg_score') | list | tojson }};
+  var labels  = {{ trend | map(attribute='date') | list | tojson }};
+  var scores  = {{ trend | map(attribute='avg_score') | list | tojson }};
+  var accent  = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#5e6ad2';
+  var textMuted = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#73737c';
+
+  /* 등급 경계선 플러그인 / Grade boundary lines plugin */
+  var gradeBoundaries = {
+    id: 'gradeBoundaries',
+    beforeDraw: function(chart) {
+      var ctx = chart.ctx;
+      var yAxis = chart.scales.y;
+      var xLeft = chart.chartArea.left;
+      var xRight = chart.chartArea.right;
+      var thresholds = [
+        { val: 90, label: 'A', color: '#4ade80' },
+        { val: 75, label: 'B', color: '#60a5fa' },
+        { val: 60, label: 'C', color: '#fbbf24' },
+        { val: 45, label: 'D', color: '#fb923c' }
+      ];
+      ctx.save();
+      thresholds.forEach(function(t) {
+        var y = yAxis.getPixelForValue(t.val);
+        ctx.beginPath();
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = t.color;
+        ctx.globalAlpha = 0.45;
+        ctx.lineWidth = 1;
+        ctx.moveTo(xLeft, y);
+        ctx.lineTo(xRight, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 0.65;
+        ctx.fillStyle = t.color;
+        ctx.font = '10px system-ui';
+        ctx.fillText(t.label, xRight + 4, y + 3);
+        ctx.globalAlpha = 1;
+      });
+      ctx.restore();
+    }
+  };
+
   new Chart(document.getElementById('trendChart'), {
     type: 'line',
     data: {
@@ -47,20 +167,49 @@
       datasets: [{
         label: '일별 평균 점수',
         data: scores,
-        borderColor: 'var(--c-accent)',
-        backgroundColor: 'rgba(99,102,241,.15)',
+        borderColor: accent,
+        backgroundColor: accent + '26',
         tension: 0.3,
         fill: true,
+        pointRadius: labels.length <= 14 ? 4 : 2,
+        pointHoverRadius: 6,
       }]
     },
     options: {
-      scales: { y: { min: 0, max: 100 } },
-      plugins: { legend: { display: false } }
-    }
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: { padding: { right: 24 } },
+      scales: {
+        y: {
+          min: 0, max: 100,
+          ticks: { color: textMuted, stepSize: 20 },
+          grid:  { color: textMuted + '22' }
+        },
+        x: {
+          ticks: { color: textMuted, maxRotation: 45 },
+          grid:  { display: false }
+        }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) { return '점수: ' + ctx.parsed.y; }
+          }
+        }
+      }
+    },
+    plugins: [gradeBoundaries]
   });
 })();
 </script>
 
+{% elif trend %}
+<p style="color:var(--text-muted); font-size:.88rem; margin-bottom:1.5rem;">데이터가 2건 이상이면 차트가 표시됩니다.</p>
+{% endif %}
+
+<!-- ── 추세 테이블 / Trend table ── -->
+{% if trend %}
 <table class="trend-table">
   <thead>
     <tr>
@@ -70,12 +219,19 @@
     </tr>
   </thead>
   <tbody>
-    {% for item in trend %}
+    {% for item in trend | reverse %}
+    {% set g = item.avg_score %}
+    {% if g >= 90 %}{% set grade = 'A' %}
+    {% elif g >= 75 %}{% set grade = 'B' %}
+    {% elif g >= 60 %}{% set grade = 'C' %}
+    {% elif g >= 45 %}{% set grade = 'D' %}
+    {% else %}{% set grade = 'F' %}{% endif %}
     <tr>
       <td>{{ item.date }}</td>
       <td>
-        <span class="score-bar" style="width:{{ (item.avg_score / 100 * 80)|int }}px;"></span>
-        {{ item.avg_score }}
+        <span class="score-bar-track"><span class="score-bar-fill" style="width:{{ g }}%"></span></span>
+        <span class="grade-badge grade-{{ grade }}" style="font-size:.75rem; width:1.4rem;">{{ grade }}</span>
+        <span style="font-variant-numeric:tabular-nums;">{{ item.avg_score }}</span>
       </td>
       <td>{{ item.count }}</td>
     </tr>
@@ -85,7 +241,22 @@
 {% else %}
 <div class="empty-state">
   최근 {{ days }}일간 분석 데이터가 없습니다.<br>
-  <small>push 또는 PR 이벤트가 처리되면 여기에 표시됩니다.</small>
+  <small style="margin-top:.4rem; display:block;">push 또는 PR 이벤트가 처리되면 여기에 표시됩니다.</small>
 </div>
 {% endif %}
+
+<!-- ── 자주 발생하는 이슈 / Top issues ── -->
+{% if top_issues %}
+<div class="section-divider"></div>
+<div class="issues-section">
+  <div class="issues-title">자주 발생하는 이슈 (최근 {{ days }}일)</div>
+  {% for issue in top_issues %}
+  <div class="issue-item">
+    <span class="issue-count">{{ issue.count }}</span>
+    <span class="issue-msg">{{ issue.message }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
 {% endblock %}
