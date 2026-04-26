@@ -1,0 +1,390 @@
+"""analytics_service 팀 인사이트 함수 TDD Red 단계 테스트.
+TDD Red-phase tests for team-insights functions in analytics_service.
+
+대상 함수 (아직 미구현 — ImportError/AttributeError 발생):
+Target functions (not yet implemented — will raise ImportError/AttributeError):
+  - author_trend(db, login, days=30, *, now=None) -> list[dict]
+  - repo_comparison(db, repo_ids, days=30, *, now=None) -> list[dict]
+  - leaderboard(db, days=30, opted_in_repo_ids=None, *, now=None) -> list[dict]
+
+In-memory SQLite + Base.metadata.create_all 자체 fixture 사용.
+Uses in-memory SQLite with Base.metadata.create_all — no shared conftest dependency.
+"""
+# pylint: disable=redefined-outer-name
+from datetime import datetime, timezone, timedelta
+
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+
+from src.database import Base
+from src.models.analysis import Analysis
+from src.models.repository import Repository
+from src.models.user import User
+
+
+# ---------------------------------------------------------------------------
+# Fixtures — in-memory SQLite DB (per-file pattern, no shared conftest)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def db():
+    """모든 ORM 테이블이 생성된 in-memory SQLite 세션을 제공한다.
+    Provide an in-memory SQLite session with all ORM tables created.
+    """
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        yield session
+    engine.dispose()
+
+
+@pytest.fixture()
+def user(db):
+    """테스트용 User 레코드를 생성하고 반환한다.
+    Create and return a test User record.
+    """
+    u = User(github_id=99, github_login="tester", email="t@x.com", display_name="Tester")
+    db.add(u)
+    db.commit()
+    db.refresh(u)
+    return u
+
+
+@pytest.fixture()
+def repo(db, user):
+    """테스트용 Repository 레코드를 생성하고 반환한다.
+    Create and return a test Repository record.
+    """
+    r = Repository(full_name="owner/repo-a", user_id=user.id)
+    db.add(r)
+    db.commit()
+    db.refresh(r)
+    return r
+
+
+@pytest.fixture()
+def repo2(db, user):
+    """두 번째 테스트용 Repository 레코드를 생성하고 반환한다.
+    Create and return a second test Repository record.
+    """
+    r = Repository(full_name="owner/repo-b", user_id=user.id)
+    db.add(r)
+    db.commit()
+    db.refresh(r)
+    return r
+
+
+def _make_analysis(
+    db: Session,
+    repo_id: int,
+    score: int | None,
+    *,
+    author_login: str | None = None,
+    created_at: datetime | None = None,
+    offset_hours: int = 0,
+) -> Analysis:
+    """테스트용 Analysis 레코드를 생성하는 헬퍼 함수.
+    Helper to create a test Analysis record.
+
+    created_at이 주어지면 그대로 사용하고, 없으면 offset_hours만큼 과거 시각을 계산한다.
+    Use the provided created_at directly; otherwise compute past time via offset_hours.
+    """
+    ts = created_at or (datetime.now(timezone.utc) - timedelta(hours=offset_hours))
+    analysis = Analysis(
+        repo_id=repo_id,
+        commit_sha=f"sha-{repo_id}-{score}-{offset_hours}-{id(object())}",
+        score=score,
+        grade="B",
+        author_login=author_login,
+        created_at=ts,
+    )
+    db.add(analysis)
+    db.commit()
+    db.refresh(analysis)
+    return analysis
+
+
+# ---------------------------------------------------------------------------
+# Test: author_trend
+# ---------------------------------------------------------------------------
+
+
+class TestAuthorTrend:
+    """author_trend — 작성자별 일별 평균 점수 추세 함수 테스트.
+    Tests for per-author daily average score trend.
+    """
+
+    def test_author_trend_returns_daily_averages(self, db, repo):
+        """3개 분석을 2일에 분산 — 날짜별 평균 점수와 건수가 올바르게 집계된다.
+        3 analyses spread across 2 days → 2 entries with correct avg_score and count.
+        """
+        # 구현 전 import 시 AttributeError 발생 — Red 상태 확인
+        # AttributeError expected before implementation — confirms Red state
+        from src.services.analytics_service import author_trend  # noqa: F401
+
+        now = datetime(2026, 4, 26, 12, 0, 0, tzinfo=timezone.utc)
+
+        # day1: 2026-04-25 — 2개 분석 (alice): 점수 80, 90 → 평균 85
+        # day1: 2026-04-25 — 2 analyses (alice): scores 80, 90 → avg 85
+        day1 = datetime(2026, 4, 25, 10, 0, 0, tzinfo=timezone.utc)
+        _make_analysis(db, repo.id, 80, author_login="alice", created_at=day1)
+        _make_analysis(db, repo.id, 90, author_login="alice",
+                       created_at=day1.replace(hour=14))
+
+        # day2: 2026-04-26 — 1개 분석 (alice): 점수 70
+        # day2: 2026-04-26 — 1 analysis (alice): score 70
+        day2 = datetime(2026, 4, 26, 8, 0, 0, tzinfo=timezone.utc)
+        _make_analysis(db, repo.id, 70, author_login="alice", created_at=day2)
+
+        result = author_trend(db, "alice", days=30, now=now)
+
+        # 2일치 항목이 날짜 오름차순으로 반환되어야 한다
+        # 2 daily entries returned in ascending date order
+        assert len(result) == 2
+
+        # 날짜 오름차순 검증 (첫 항목이 더 이른 날짜)
+        # Verify ascending date order (first entry is the earlier date)
+        assert result[0]["date"] < result[1]["date"]
+
+        # 각 항목에 date, avg_score, count 키가 존재해야 한다
+        # Each entry must have date, avg_score, count keys
+        for entry in result:
+            assert "date" in entry
+            assert "avg_score" in entry
+            assert "count" in entry
+
+        # 첫 날 (2026-04-25): count=2, avg=85.0
+        # First day (2026-04-25): count=2, avg=85.0
+        assert result[0]["count"] == 2
+        assert result[0]["avg_score"] == pytest.approx(85.0, abs=0.1)
+
+        # 두 번째 날 (2026-04-26): count=1, avg=70.0
+        # Second day (2026-04-26): count=1, avg=70.0
+        assert result[1]["count"] == 1
+        assert result[1]["avg_score"] == pytest.approx(70.0, abs=0.1)
+
+    def test_author_trend_filters_by_login(self, db, repo):
+        """alice와 bob의 분석이 섞여 있을 때 author_trend("alice")는 alice 데이터만 반환한다.
+        With analyses for "alice" and "bob", author_trend("alice") returns only alice's data.
+        """
+        from src.services.analytics_service import author_trend  # noqa: F401
+
+        now = datetime(2026, 4, 26, 12, 0, 0, tzinfo=timezone.utc)
+        ts = datetime(2026, 4, 25, 10, 0, 0, tzinfo=timezone.utc)
+
+        _make_analysis(db, repo.id, 80, author_login="alice", created_at=ts)
+        _make_analysis(db, repo.id, 60, author_login="bob",
+                       created_at=ts.replace(hour=11))
+
+        result = author_trend(db, "alice", days=30, now=now)
+
+        # bob의 분석은 포함되지 않아야 한다
+        # Bob's analyses must not appear
+        assert len(result) == 1
+        assert result[0]["avg_score"] == pytest.approx(80.0, abs=0.1)
+
+    def test_author_trend_empty_when_no_data(self, db, repo):
+        """분석 레코드가 없으면 빈 리스트를 반환한다.
+        Return an empty list when no analyses exist.
+        """
+        from src.services.analytics_service import author_trend  # noqa: F401
+
+        now = datetime(2026, 4, 26, 12, 0, 0, tzinfo=timezone.utc)
+        result = author_trend(db, "alice", days=30, now=now)
+
+        assert result == []
+
+    def test_author_trend_respects_days_window(self, db, repo):
+        """days 윈도우보다 오래된 분석은 결과에서 제외된다.
+        Analyses older than the days window are excluded from the result.
+        """
+        from src.services.analytics_service import author_trend  # noqa: F401
+
+        now = datetime(2026, 4, 26, 12, 0, 0, tzinfo=timezone.utc)
+
+        # 윈도우 내 (10일 전) — 포함 대상
+        # Within window (10 days ago) — should be included
+        inside_ts = now - timedelta(days=10)
+        _make_analysis(db, repo.id, 85, author_login="alice", created_at=inside_ts)
+
+        # 윈도우 밖 (40일 전) — 제외 대상
+        # Outside window (40 days ago) — should be excluded
+        outside_ts = now - timedelta(days=40)
+        _make_analysis(db, repo.id, 50, author_login="alice", created_at=outside_ts)
+
+        result = author_trend(db, "alice", days=30, now=now)
+
+        # 윈도우 내 1개만 반환되어야 한다
+        # Only the 1 entry within the window must be returned
+        assert len(result) == 1
+        assert result[0]["avg_score"] == pytest.approx(85.0, abs=0.1)
+
+
+# ---------------------------------------------------------------------------
+# Test: repo_comparison
+# ---------------------------------------------------------------------------
+
+
+class TestRepoComparison:
+    """repo_comparison — 리포 간 평균 점수 비교 함수 테스트.
+    Tests for cross-repo average score comparison.
+    """
+
+    def test_repo_comparison_returns_per_repo_stats(self, db, repo, repo2):
+        """2개 리포에 다른 평균 점수 — 두 항목 모두 avg_score 내림차순으로 반환된다.
+        2 repos with different avg scores → both appear, sorted by avg_score descending.
+        """
+        from src.services.analytics_service import repo_comparison  # noqa: F401
+
+        now = datetime(2026, 4, 26, 12, 0, 0, tzinfo=timezone.utc)
+        ts = now - timedelta(days=5)
+
+        # repo: 점수 80, 90 → 평균 85
+        # repo: scores 80, 90 → avg 85
+        _make_analysis(db, repo.id, 80, created_at=ts)
+        _make_analysis(db, repo.id, 90, created_at=ts.replace(hour=11))
+
+        # repo2: 점수 60, 70 → 평균 65
+        # repo2: scores 60, 70 → avg 65
+        _make_analysis(db, repo2.id, 60, created_at=ts)
+        _make_analysis(db, repo2.id, 70, created_at=ts.replace(hour=11))
+
+        result = repo_comparison(db, [repo.id, repo2.id], days=30, now=now)
+
+        # 두 리포 모두 반환되어야 한다
+        # Both repos must be returned
+        assert len(result) == 2
+
+        # 각 항목에 repo_id, avg_score, count 키가 존재해야 한다
+        # Each entry must have repo_id, avg_score, count keys
+        for entry in result:
+            assert "repo_id" in entry
+            assert "avg_score" in entry
+            assert "count" in entry
+
+        # avg_score 내림차순 정렬 검증 — repo(85) > repo2(65)
+        # Verify descending avg_score order — repo(85) > repo2(65)
+        assert result[0]["repo_id"] == repo.id
+        assert result[0]["avg_score"] == pytest.approx(85.0, abs=0.1)
+        assert result[0]["count"] == 2
+
+        assert result[1]["repo_id"] == repo2.id
+        assert result[1]["avg_score"] == pytest.approx(65.0, abs=0.1)
+        assert result[1]["count"] == 2
+
+    def test_repo_comparison_empty_when_no_repo_ids(self, db):
+        """repo_ids가 빈 리스트이면 빈 리스트를 반환한다 (안전 가드).
+        Return an empty list when repo_ids is an empty list (safety guard).
+        """
+        from src.services.analytics_service import repo_comparison  # noqa: F401
+
+        now = datetime(2026, 4, 26, 12, 0, 0, tzinfo=timezone.utc)
+        result = repo_comparison(db, [], days=30, now=now)
+
+        # 빈 repo_ids → 빈 결과
+        # Empty repo_ids → empty result
+        assert result == []
+
+
+# ---------------------------------------------------------------------------
+# Test: leaderboard
+# ---------------------------------------------------------------------------
+
+
+class TestLeaderboard:
+    """leaderboard — opted-in 리포 기준 작성자별 순위표 함수 테스트.
+    Tests for per-author leaderboard filtered to opted-in repos.
+    """
+
+    def test_leaderboard_returns_sorted_by_score(self, db, repo):
+        """3명 작성자의 분석이 있을 때 avg_score 내림차순으로 정렬된다.
+        With analyses from 3 authors, entries are sorted by avg_score descending.
+        """
+        from src.services.analytics_service import leaderboard  # noqa: F401
+
+        now = datetime(2026, 4, 26, 12, 0, 0, tzinfo=timezone.utc)
+        ts = now - timedelta(days=5)
+
+        # alice: 평균 90, bob: 평균 75, carol: 평균 60
+        # alice: avg 90, bob: avg 75, carol: avg 60
+        _make_analysis(db, repo.id, 90, author_login="alice", created_at=ts)
+        _make_analysis(db, repo.id, 75, author_login="bob",
+                       created_at=ts.replace(hour=11))
+        _make_analysis(db, repo.id, 60, author_login="carol",
+                       created_at=ts.replace(hour=12))
+
+        result = leaderboard(db, days=30, opted_in_repo_ids=[repo.id], now=now)
+
+        # 3명 모두 반환되어야 한다
+        # All 3 authors must be returned
+        assert len(result) == 3
+
+        # 각 항목에 author_login, avg_score, count 키가 존재해야 한다
+        # Each entry must have author_login, avg_score, count keys
+        for entry in result:
+            assert "author_login" in entry
+            assert "avg_score" in entry
+            assert "count" in entry
+
+        # avg_score 내림차순 정렬 검증
+        # Verify descending avg_score order
+        assert result[0]["author_login"] == "alice"
+        assert result[0]["avg_score"] == pytest.approx(90.0, abs=0.1)
+
+        assert result[1]["author_login"] == "bob"
+        assert result[1]["avg_score"] == pytest.approx(75.0, abs=0.1)
+
+        assert result[2]["author_login"] == "carol"
+        assert result[2]["avg_score"] == pytest.approx(60.0, abs=0.1)
+
+    def test_leaderboard_empty_when_no_opted_in_repos(self, db, repo):
+        """opted_in_repo_ids가 None 또는 빈 리스트이면 빈 리스트를 반환한다 (안전 가드).
+        Return an empty list when opted_in_repo_ids is None or [] (safety guard).
+        """
+        from src.services.analytics_service import leaderboard  # noqa: F401
+
+        now = datetime(2026, 4, 26, 12, 0, 0, tzinfo=timezone.utc)
+        ts = now - timedelta(days=5)
+        _make_analysis(db, repo.id, 85, author_login="alice", created_at=ts)
+
+        # opted_in_repo_ids=None — 아무도 opt-in 하지 않음
+        # opted_in_repo_ids=None — no one has opted in
+        result_none = leaderboard(db, days=30, opted_in_repo_ids=None, now=now)
+        assert result_none == []
+
+        # opted_in_repo_ids=[] — 빈 opt-in 목록
+        # opted_in_repo_ids=[] — empty opt-in list
+        result_empty = leaderboard(db, days=30, opted_in_repo_ids=[], now=now)
+        assert result_empty == []
+
+    def test_leaderboard_filters_to_opted_in_repos(self, db, repo, repo2):
+        """repo1만 opt-in 했을 때 repo2의 분석은 리더보드에 나타나지 않는다.
+        When only repo1 is opted in, repo2's analyses must not appear in the leaderboard.
+        """
+        from src.services.analytics_service import leaderboard  # noqa: F401
+
+        now = datetime(2026, 4, 26, 12, 0, 0, tzinfo=timezone.utc)
+        ts = now - timedelta(days=5)
+
+        # alice는 repo1에서 분석 (opt-in 대상) → 포함
+        # alice has analyses in repo1 (opted in) → should appear
+        _make_analysis(db, repo.id, 90, author_login="alice", created_at=ts)
+
+        # bob은 repo2에서 분석 (opt-in 미대상) → 제외
+        # bob has analyses in repo2 (not opted in) → should be excluded
+        _make_analysis(db, repo2.id, 95, author_login="bob",
+                       created_at=ts.replace(hour=11))
+
+        # repo1만 opt-in — bob이 더 높은 점수지만 제외되어야 한다
+        # Only repo1 is opted in — bob has higher score but must be excluded
+        result = leaderboard(db, days=30, opted_in_repo_ids=[repo.id], now=now)
+
+        author_logins = [entry["author_login"] for entry in result]
+
+        # alice만 반환되어야 한다
+        # Only alice must be returned
+        assert "alice" in author_logins
+        assert "bob" not in author_logins
+        assert len(result) == 1

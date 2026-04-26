@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Insights — SCAManager{% endblock %}
+{% block content %}
+<style>
+  .insights-header { display:flex; align-items:center; gap:1rem; margin-bottom:1.5rem; }
+  .insights-title { font-size:1.4rem; font-weight:700; }
+  .repo-selector { display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:1.5rem; }
+  .repo-selector input[type=text] { flex:1; min-width:220px; padding:.45rem .7rem; border:1px solid var(--c-border); border-radius:6px; background:var(--c-bg2); color:var(--c-text); font-size:.9rem; }
+  .repo-selector button { padding:.45rem 1rem; border-radius:6px; background:var(--c-accent); color:#fff; border:none; cursor:pointer; font-size:.9rem; }
+  .comparison-table { width:100%; border-collapse:collapse; margin-top:1rem; }
+  .comparison-table th, .comparison-table td { padding:.65rem .9rem; text-align:left; border-bottom:1px solid var(--c-border); }
+  .comparison-table th { font-size:.8rem; text-transform:uppercase; letter-spacing:.04em; opacity:.7; }
+  .score-bar { display:inline-block; height:8px; border-radius:4px; background:var(--c-accent); vertical-align:middle; margin-right:.5rem; }
+  .empty-state { text-align:center; padding:2.5rem 1rem; opacity:.6; }
+  .insights-links { display:flex; gap:1rem; margin-bottom:1.5rem; }
+  .insights-links a { padding:.35rem .85rem; border:1px solid var(--c-border); border-radius:6px; font-size:.88rem; text-decoration:none; color:var(--c-text); }
+  .insights-links a:hover { background:var(--c-bg2); }
+</style>
+
+<div class="insights-header">
+  <div class="insights-title">팀 인사이트</div>
+</div>
+
+<div class="insights-links">
+  <a href="/insights">리포 비교</a>
+  <a href="/insights/me">내 추세</a>
+</div>
+
+<!-- 리포 선택 폼 / Repo selector form -->
+<form method="get" action="/insights" class="repo-selector">
+  <input type="text" name="repos" placeholder="owner/repo1, owner/repo2, ..." value="{{ repos|join(', ') }}">
+  <select name="days" style="padding:.45rem .6rem; border:1px solid var(--c-border); border-radius:6px; background:var(--c-bg2); color:var(--c-text);">
+    {% for d in [7, 14, 30, 90] %}
+    <option value="{{ d }}" {% if d == days %}selected{% endif %}>최근 {{ d }}일</option>
+    {% endfor %}
+  </select>
+  <button type="submit">비교</button>
+</form>
+
+{% if comparison %}
+<table class="comparison-table">
+  <thead>
+    <tr>
+      <th>리포지토리</th>
+      <th>평균 점수</th>
+      <th>분석 건수</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for item in comparison %}
+    <tr>
+      <td><a href="/repos/{{ item.full_name }}">{{ item.full_name }}</a></td>
+      <td>
+        <span class="score-bar" style="width:{{ (item.avg_score / 100 * 80)|int }}px;"></span>
+        {{ item.avg_score }}
+      </td>
+      <td>{{ item.count }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty-state">
+  {% if repos %}
+  선택한 리포의 분석 데이터가 없습니다.
+  {% else %}
+  위 입력란에 비교할 리포지토리를 입력하세요 (예: owner/repo1, owner/repo2).
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- 전체 리포 빠른 선택 / Quick-pick all repos -->
+{% if all_repos %}
+<details style="margin-top:1.5rem;">
+  <summary style="cursor:pointer; font-size:.88rem; opacity:.7;">등록된 리포 목록 보기</summary>
+  <div style="display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.6rem;">
+    {% for r in all_repos %}
+    <a href="/insights?repos={{ r.full_name }}&days={{ days }}" style="font-size:.82rem; padding:.2rem .55rem; border:1px solid var(--c-border); border-radius:4px; text-decoration:none; color:var(--c-text);">{{ r.full_name }}</a>
+    {% endfor %}
+  </div>
+</details>
+{% endif %}
+{% endblock %}
