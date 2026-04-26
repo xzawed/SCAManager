@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-26 기준 — Phase 9 자기 분석 완료 · Phase 10 Telegram 확장 완료 · 기술 부채 정리 완료 · **Phase 11 팀/멀티 리포 인사이트 완료 — PR #72 머지**)
+## 현재 수치 (2026-04-26 기준 — Phase 9 자기 분석 완료 · Phase 10 Telegram 확장 완료 · 기술 부채 정리 완료 · Phase 11 팀/멀티 리포 인사이트 완료 — PR #72 머지)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1409개** | pytest 9.0.3 (0 failed) — 2026-04-26 로컬 실측 (Phase 11: +31 테스트) |
+| 단위 테스트 | **1448개** | pytest 9.0.3 (0 failed) — 2026-04-26 로컬 실측 (Phase 11 완료 후 최종) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
@@ -44,6 +44,47 @@
 | `tests/conftest.py` | 환경변수 주입 + _webhook_secret_cache autouse 클리어 |
 
 ## 작업 이력 (그룹별)
+
+### 그룹 43 (2026-04-26 · Phase 11 팀/멀티 리포 인사이트 완료 — PR #72)
+
+**목표**: 개발자별 점수 추세 + 멀티 리포 비교 뷰 + 옵트인 리더보드. Phase 10 `analytics_service.py` 확장.
+
+**신규 파일**:
+
+| 파일 | 역할 |
+|------|------|
+| `alembic/versions/0018_add_analysis_author.py` | `analyses.author_login String NULL` + 인덱스 — backfill 없음 |
+| `src/api/insights.py` | `GET /api/insights/authors/{login}/trend`, `/repos/compare`, `/leaderboard` — `require_api_key` |
+| `src/ui/routes/insights.py` | `GET /insights` (리포 비교), `GET /insights/me` (본인 추세) |
+| `src/templates/insights.html` | 멀티 리포 비교 페이지 — 리포 셀렉터 + 비교 표 |
+| `src/templates/insights_me.html` | 개인 추세 대시보드 — Chart.js 라인 차트 + 추세 표 |
+| `tests/unit/services/test_analytics_service_insights.py` | 9 테스트 — author_trend 4 + repo_comparison 2 + leaderboard 3 |
+| `tests/unit/api/test_insights_api.py` | 9 테스트 — 엔드포인트 3종 + 인증 + 빈 파라미터 분기 |
+| `tests/unit/ui/test_insights_routes.py` | 5 테스트 — save/restore require_login 격리 패턴 |
+| `tests/unit/worker/test_extract_author_login.py` | 8 테스트 — PR/push/None 경계 케이스 |
+
+**수정 파일**:
+- `src/models/analysis.py` — `author_login = Column(String, nullable=True, index=True)` 추가
+- `src/worker/pipeline.py` — `_extract_author_login()` 추가 + Analysis 저장 시 author_login 설정
+- `src/services/analytics_service.py` — `author_trend`, `repo_comparison`, `leaderboard` 함수 추가 (Phase 10 산출물 확장)
+- `src/models/repo_config.py` — `leaderboard_opt_in: bool = False` 컬럼 추가
+- `src/config_manager/manager.py` — `RepoConfigData.leaderboard_opt_in` 추가
+- `src/api/repos.py` — `RepoConfigUpdate.leaderboard_opt_in` 추가
+- `src/ui/routes/settings.py` — `leaderboard_opt_in` 폼 처리 추가
+- `src/templates/settings.html` — 카드 ③ `leaderboard_opt_in` 토글 추가 (PRESETS 제외)
+- `src/templates/base.html` — nav "Insights" 링크 추가
+- `src/ui/router.py` — `insights.router` 등록 (routes 5 → 6개)
+- `src/main.py` — `api_insights_router` 등록
+
+**핵심 설계 결정**:
+- `leaderboard_opt_in`: 기본 False, PRESETS 9개 제외 — 팀 합의 후 명시 옵트인 필요
+- `Analysis.author_login` NULL 정책: backfill 없음. 모든 집계 `WHERE author_login IS NOT NULL`
+- leaderboard 안전 가드: `opted_in_repo_ids` None 또는 빈 리스트면 즉시 `[]` 반환 — 의도치 않은 게이미피케이션 방지
+- RepoConfig → repo_id 해결: RepoConfig에 `repo_id` FK 없음 → 2-query lookup (RepoConfig → full_name → Repository → id)
+- 테스트 격리 버그 수정: `test_insights_routes.py`가 `require_login` override 저장/복원 패턴으로 `test_router.py` 영구 override 삭제 방지
+
+**테스트 증분**: +31 (1417 → **1448** passed)
+**품질**: pylint 10.00 · bandit HIGH 0 · 커버리지 95% (신규 파일 전체 100%)
 
 ### 그룹 42 (2026-04-26 · Phase 10 Telegram 확장 완료 — PR #64)
 
