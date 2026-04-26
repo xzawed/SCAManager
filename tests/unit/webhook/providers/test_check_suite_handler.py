@@ -38,7 +38,7 @@ async def test_check_suite_completed_accepted():
     """check_suite.completed 이벤트 → 'accepted' 반환, background task 등록.
     check_suite.completed event → returns 'accepted', schedules background task.
     """
-    from src.webhook.providers.github import _handle_check_suite_completed  # pylint: disable=import-outside-toplevel
+    import src.webhook.providers.github as gh_module  # pylint: disable=import-outside-toplevel
 
     data = {
         "action": "completed",
@@ -46,7 +46,7 @@ async def test_check_suite_completed_accepted():
         "repository": {"full_name": "owner/repo"},
     }
     bt = _make_background_tasks()
-    result = await _handle_check_suite_completed(data, bt)
+    result = await gh_module._handle_check_suite_completed(data, bt)
     assert result["status"] == "accepted"
     assert len(bt.tasks) == 1
 
@@ -55,7 +55,7 @@ async def test_check_suite_non_completed_ignored():
     """check_suite.requested 이벤트 → 'ignored' 반환, task 없음.
     check_suite.requested event → 'ignored', no background task.
     """
-    from src.webhook.providers.github import _handle_check_suite_completed  # pylint: disable=import-outside-toplevel
+    import src.webhook.providers.github as gh_module  # pylint: disable=import-outside-toplevel
 
     data = {
         "action": "requested",
@@ -63,7 +63,7 @@ async def test_check_suite_non_completed_ignored():
         "repository": {"full_name": "owner/repo"},
     }
     bt = _make_background_tasks()
-    result = await _handle_check_suite_completed(data, bt)
+    result = await gh_module._handle_check_suite_completed(data, bt)
     assert result["status"] == "ignored"
     assert len(bt.tasks) == 0
 
@@ -72,7 +72,7 @@ async def test_check_suite_missing_sha_ignored():
     """head_sha 없는 check_suite 이벤트 → 'ignored'.
     check_suite event with missing head_sha → 'ignored'.
     """
-    from src.webhook.providers.github import _handle_check_suite_completed  # pylint: disable=import-outside-toplevel
+    import src.webhook.providers.github as gh_module  # pylint: disable=import-outside-toplevel
 
     data = {
         "action": "completed",
@@ -80,7 +80,7 @@ async def test_check_suite_missing_sha_ignored():
         "repository": {"full_name": "owner/repo"},
     }
     bt = _make_background_tasks()
-    result = await _handle_check_suite_completed(data, bt)
+    result = await gh_module._handle_check_suite_completed(data, bt)
     assert result["status"] == "ignored"
 
 
