@@ -246,22 +246,27 @@ async def _handle_pr_synchronize(data: dict) -> None:  # NOSONAR python:S7503 â€
         return
 
     try:
+        safe_pr_number = int(pr_number)
+    except (TypeError, ValueError):
+        return
+
+    try:
         with SessionLocal() as db:
             count = merge_retry_repo.abandon_stale_for_pr(
                 db,
                 repo_full_name=repo_full_name,
-                pr_number=pr_number,
+                pr_number=safe_pr_number,
                 current_sha=new_sha,
             )
             if count:
                 logger.info(
                     "synchronize: abandoned %d stale retry rows for pr=%d repo=%s",
-                    count, pr_number, repo_full_name,
+                    count, safe_pr_number, repo_full_name,
                 )
     except (SQLAlchemyError, KeyError, AttributeError) as exc:
         logger.warning(
             "synchronize: abandon_stale_for_pr failed (repo=%s, pr=%d): %s",
-            repo_full_name, pr_number, type(exc).__name__,
+            repo_full_name, safe_pr_number, type(exc).__name__,
         )
 
 
