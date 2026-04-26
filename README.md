@@ -124,6 +124,54 @@ All channels run independently via `asyncio.gather(return_exceptions=True)` — 
 
 ---
 
+### 📡 Telegram Insights (Phase 10)
+
+Beyond real-time push/PR alerts, SCAManager's Telegram integration provides scheduled reports, trend detection, and interactive bot commands.
+
+#### Weekly Report
+Every Monday at 09:00 KST, SCAManager sends a weekly summary to each repo's configured Telegram chat:
+
+```
+📊 Weekly Report — owner/myrepo
+Period: Apr 21 – Apr 27
+
+Analyses: 12  |  Avg score: 81.4 (B)
+High: 94 (A)  |  Low: 62 (C)
+
+Top issues this week:
+  · security: 8 occurrences
+  · code_quality: 14 occurrences
+```
+
+#### Trend Alert
+Every day at 12:00 KST, SCAManager checks the 7-day moving average. If it drops **10+ points** below the prior period (minimum 5 analyses required), a trend alert is sent automatically:
+
+```
+⚠️ Score trend alert — owner/myrepo
+7-day moving avg dropped: 83.2 → 71.5 (−11.7)
+Recent low-score analyses may need attention.
+```
+
+#### Bot Commands
+After linking your Telegram account (see below), send these commands to the bot:
+
+| Command | Description |
+|---------|-------------|
+| `/stats <repo>` | Weekly avg score, analysis count, top issues for the repo |
+| `/settings <repo>` | Current gate mode, thresholds, and notification settings |
+| `/connect <OTP>` | Link your Telegram account to your SCAManager profile |
+
+#### Linking Your Telegram Account (`/connect` OTP flow)
+
+1. Go to **Settings → Card ⑤ → Telegram Connection** and click **"🔗 Issue Code"**
+2. A 6-digit OTP appears (valid for 5 minutes)
+3. Send `/connect 123456` to the SCAManager bot in Telegram
+4. The bot replies "✅ Account linked" — bot commands are now available
+
+> Each new OTP immediately invalidates the previous one. The link is per-user, not per-repo.
+
+---
+
 ### ⚡ PR Gate Engine
 
 Score-based PR automation.
