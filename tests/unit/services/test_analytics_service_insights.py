@@ -388,3 +388,63 @@ class TestLeaderboard:
         assert "alice" in author_logins
         assert "bob" not in author_logins
         assert len(result) == 1
+
+
+# ---------------------------------------------------------------------------
+# Test: repo_comparison — min_score / max_score 포함 (Phase A+B 추가)
+# Test: repo_comparison — includes min_score / max_score (added in Phase A+B)
+# ---------------------------------------------------------------------------
+
+
+class TestRepoComparisonMinMax:
+    """repo_comparison이 min_score와 max_score를 반환해야 한다.
+    repo_comparison must include min_score and max_score in its output.
+    """
+
+    def test_repo_comparison_includes_min_max(self, db, repo):
+        """점수가 다른 여러 분석이 있을 때 min/max가 정확하게 포함되어야 한다.
+        With multiple analyses of different scores, min/max must be included accurately.
+        """
+        from src.services.analytics_service import repo_comparison  # noqa: F401
+
+        now = datetime(2026, 4, 26, 12, 0, 0, tzinfo=timezone.utc)
+        ts_base = now - timedelta(days=5)
+
+        _make_analysis(db, repo.id, 60, created_at=ts_base)
+        _make_analysis(db, repo.id, 80, created_at=ts_base.replace(hour=13))
+        _make_analysis(db, repo.id, 90, created_at=ts_base.replace(hour=14))
+
+        result = repo_comparison(db, [repo.id], days=30, now=now)
+
+        assert len(result) == 1
+        item = result[0]
+
+        # avg_score 검증
+        # Verify avg_score
+        assert item["avg_score"] == round((60 + 80 + 90) / 3, 1)
+
+        # min_score / max_score 키가 존재하고 정확해야 한다
+        # min_score / max_score keys must exist and be accurate
+        assert "min_score" in item, "min_score 키가 결과에 없음 / min_score key missing from result"
+        assert "max_score" in item, "max_score 키가 결과에 없음 / max_score key missing from result"
+        assert item["min_score"] == 60
+        assert item["max_score"] == 90
+
+    def test_repo_comparison_single_analysis_min_equals_max(self, db, repo):
+        """분석이 1건이면 min_score == max_score == avg_score가 되어야 한다.
+        With a single analysis, min_score == max_score == avg_score.
+        """
+        from src.services.analytics_service import repo_comparison  # noqa: F401
+
+        now = datetime(2026, 4, 26, 12, 0, 0, tzinfo=timezone.utc)
+        ts = now - timedelta(days=3)
+
+        _make_analysis(db, repo.id, 75, created_at=ts)
+
+        result = repo_comparison(db, [repo.id], days=30, now=now)
+
+        assert len(result) == 1
+        item = result[0]
+        assert item["min_score"] == 75
+        assert item["max_score"] == 75
+        assert item["avg_score"] == pytest.approx(75.0)

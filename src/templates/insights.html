@@ -1,83 +1,237 @@
 {% extends "base.html" %}
-{% block title %}Insights — SCAManager{% endblock %}
+{% block title %}팀 인사이트 — SCAManager{% endblock %}
 {% block content %}
 <style>
-  .insights-header { display:flex; align-items:center; gap:1rem; margin-bottom:1.5rem; }
-  .insights-title { font-size:1.4rem; font-weight:700; }
-  .repo-selector { display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:1.5rem; }
-  .repo-selector input[type=text] { flex:1; min-width:220px; padding:.45rem .7rem; border:1px solid var(--c-border); border-radius:6px; background:var(--c-bg2); color:var(--c-text); font-size:.9rem; }
-  .repo-selector button { padding:.45rem 1rem; border-radius:6px; background:var(--c-accent); color:#fff; border:none; cursor:pointer; font-size:.9rem; }
-  .comparison-table { width:100%; border-collapse:collapse; margin-top:1rem; }
-  .comparison-table th, .comparison-table td { padding:.65rem .9rem; text-align:left; border-bottom:1px solid var(--c-border); }
-  .comparison-table th { font-size:.8rem; text-transform:uppercase; letter-spacing:.04em; opacity:.7; }
-  .score-bar { display:inline-block; height:8px; border-radius:4px; background:var(--c-accent); vertical-align:middle; margin-right:.5rem; }
-  .empty-state { text-align:center; padding:2.5rem 1rem; opacity:.6; }
-  .insights-links { display:flex; gap:1rem; margin-bottom:1.5rem; }
-  .insights-links a { padding:.35rem .85rem; border:1px solid var(--c-border); border-radius:6px; font-size:.88rem; text-decoration:none; color:var(--c-text); }
-  .insights-links a:hover { background:var(--c-bg2); }
+  /* ─── 탭 네비게이션 / Tab navigation ─── */
+  .ins-tabs { display:flex; gap:.25rem; margin-bottom:1.5rem; border-bottom:1px solid var(--border); }
+  .ins-tab {
+    padding:.5rem 1.1rem; border:none; background:none; cursor:pointer;
+    font-size:.9rem; color:var(--text-muted); border-bottom:2px solid transparent;
+    margin-bottom:-1px; transition:color .15s, border-color .15s;
+  }
+  .ins-tab.active { color:var(--accent); border-bottom-color:var(--accent); font-weight:600; }
+  .ins-tab:hover:not(.active) { color:var(--text-primary); }
+
+  /* ─── 리포 셀렉터 (체크박스 칩) / Repo selector chips ─── */
+  .chip-wrap { display:flex; flex-wrap:wrap; gap:.4rem; margin-bottom:1rem; }
+  .chip-label {
+    display:inline-flex; align-items:center; gap:.35rem;
+    padding:.3rem .7rem; border:1px solid var(--border); border-radius:999px;
+    font-size:.82rem; cursor:pointer; transition:background .15s, border-color .15s;
+    color:var(--text-primary);
+  }
+  .chip-label:hover { border-color:var(--accent); }
+  .chip-label input[type=checkbox] { display:none; }
+  .chip-label.checked { background:rgba(94,106,210,.15); border-color:var(--accent); color:var(--accent); font-weight:600; }
+
+  /* ─── 기간 선택 + 비교 버튼 행 / Days selector + compare row ─── */
+  .selector-row { display:flex; align-items:center; gap:.6rem; margin-bottom:1.25rem; flex-wrap:wrap; }
+  .days-select {
+    padding:.38rem .6rem; border:1px solid var(--border); border-radius:6px;
+    background:var(--bg-input); color:var(--text-primary); font-size:.88rem;
+  }
+  .compare-btn {
+    padding:.38rem 1rem; border-radius:6px; background:var(--accent);
+    color:#fff; border:none; cursor:pointer; font-size:.88rem; font-weight:600;
+  }
+  .compare-btn:hover { background:var(--accent-hover); }
+
+  /* ─── 비교 테이블 / Comparison table ─── */
+  .cmp-table { width:100%; border-collapse:collapse; }
+  .cmp-table th, .cmp-table td { padding:.65rem .9rem; text-align:left; border-bottom:1px solid var(--border); }
+  .cmp-table th { font-size:.78rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); }
+  .cmp-table tr:hover td { background:var(--bg-input); }
+  .cmp-table td:first-child a { font-weight:500; }
+
+  /* ─── 점수 바 + 범위 / Score bar + range ─── */
+  .score-bar-wrap { display:flex; align-items:center; gap:.5rem; }
+  .score-bar-track { flex:1; max-width:120px; height:6px; border-radius:3px; background:var(--bg-input); overflow:hidden; }
+  .score-bar-fill { height:100%; border-radius:3px; background:var(--accent-grad); }
+  .score-val { font-weight:600; font-variant-numeric:tabular-nums; }
+  .score-range { font-size:.78rem; color:var(--text-muted); }
+
+  /* ─── 등급 뱃지 / Grade badge ─── */
+  .grade-badge {
+    display:inline-block; width:1.7rem; text-align:center;
+    padding:.1rem 0; border-radius:4px; font-size:.82rem; font-weight:700;
+  }
+
+  /* ─── 빈 상태 / Empty state ─── */
+  .empty-state { text-align:center; padding:3rem 1rem; color:var(--text-muted); }
+
+  /* ─── 리더보드 / Leaderboard ─── */
+  .lb-table { width:100%; border-collapse:collapse; }
+  .lb-table th, .lb-table td { padding:.6rem .9rem; text-align:left; border-bottom:1px solid var(--border); }
+  .lb-table th { font-size:.78rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); }
+  .lb-rank { width:2.2rem; text-align:center; font-weight:700; color:var(--text-muted); }
+  .lb-table tr:hover td { background:var(--bg-input); }
+
+  /* ─── 탭 패널 / Tab panels ─── */
+  .tab-panel { display:none; }
+  .tab-panel.active { display:block; }
+
+  /* ─── 정보 알림 / Info notice ─── */
+  .lb-notice { font-size:.82rem; color:var(--text-muted); margin-bottom:1rem; }
 </style>
 
-<div class="insights-header">
-  <div class="insights-title">팀 인사이트</div>
+<!-- 탭 헤더 / Tab header -->
+<div class="ins-tabs" role="tablist">
+  <button class="ins-tab" id="tab-compare" role="tab" aria-selected="true" onclick="switchTab('compare')">리포 비교</button>
+  <button class="ins-tab" id="tab-leaderboard" role="tab" aria-selected="false" onclick="switchTab('leaderboard')">리더보드</button>
+  <a href="/insights/me" style="margin-left:auto; padding:.5rem .85rem; font-size:.88rem; color:var(--text-muted); text-decoration:none; align-self:center;">내 추세 →</a>
 </div>
 
-<div class="insights-links">
-  <a href="/insights">리포 비교</a>
-  <a href="/insights/me">내 추세</a>
-</div>
+<!-- ══════════════════ 리포 비교 패널 / Comparison panel ══════════════════ -->
+<div class="tab-panel" id="panel-compare">
+  <form id="insightsForm" method="get" action="/insights">
+    <!-- 체크박스 칩으로 리포 선택 / Checkbox chips for repo selection -->
+    {% if all_repos %}
+    <div class="chip-wrap" id="chipWrap">
+      {% for r in all_repos %}
+      <label class="chip-label {% if r.full_name in repos %}checked{% endif %}" id="chip-{{ loop.index }}">
+        <input type="checkbox" value="{{ r.full_name }}"
+               {% if r.full_name in repos %}checked{% endif %}
+               onchange="syncChips()">
+        {{ r.full_name }}
+      </label>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-state">등록된 리포지토리가 없습니다. <a href="/repos/add">리포 추가</a></p>
+    {% endif %}
 
-<!-- 리포 선택 폼 / Repo selector form -->
-<form method="get" action="/insights" class="repo-selector">
-  <input type="text" name="repos" placeholder="owner/repo1, owner/repo2, ..." value="{{ repos|join(', ') }}">
-  <select name="days" style="padding:.45rem .6rem; border:1px solid var(--c-border); border-radius:6px; background:var(--c-bg2); color:var(--c-text);">
-    {% for d in [7, 14, 30, 90] %}
-    <option value="{{ d }}" {% if d == days %}selected{% endif %}>최근 {{ d }}일</option>
-    {% endfor %}
-  </select>
-  <button type="submit">비교</button>
-</form>
+    <!-- 숨김 input — 선택된 리포 전달 / Hidden input to carry selected repos -->
+    <input type="hidden" name="repos" id="reposInput" value="{{ repos|join(',') }}">
 
-{% if comparison %}
-<table class="comparison-table">
-  <thead>
-    <tr>
-      <th>리포지토리</th>
-      <th>평균 점수</th>
-      <th>분석 건수</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for item in comparison %}
-    <tr>
-      <td><a href="/repos/{{ item.full_name }}">{{ item.full_name }}</a></td>
-      <td>
-        <span class="score-bar" style="width:{{ (item.avg_score / 100 * 80)|int }}px;"></span>
-        {{ item.avg_score }}
-      </td>
-      <td>{{ item.count }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-{% else %}
-<div class="empty-state">
-  {% if repos %}
-  선택한 리포의 분석 데이터가 없습니다.
+    <div class="selector-row">
+      <select name="days" class="days-select" onchange="this.form.submit()">
+        {% for d in [7, 14, 30, 90] %}
+        <option value="{{ d }}" {% if d == days %}selected{% endif %}>최근 {{ d }}일</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="compare-btn">비교</button>
+      {% if repos %}
+      <a href="/insights" style="font-size:.84rem; color:var(--text-muted);">초기화</a>
+      {% endif %}
+    </div>
+  </form>
+
+  {% if comparison %}
+  <table class="cmp-table">
+    <thead>
+      <tr>
+        <th>리포지토리</th>
+        <th>등급</th>
+        <th>평균 점수</th>
+        <th>분석 건수</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in comparison %}
+      {% set g = item.avg_score %}
+      {% if g >= 90 %}{% set grade = 'A' %}
+      {% elif g >= 75 %}{% set grade = 'B' %}
+      {% elif g >= 60 %}{% set grade = 'C' %}
+      {% elif g >= 45 %}{% set grade = 'D' %}
+      {% else %}{% set grade = 'F' %}{% endif %}
+      <tr>
+        <td><a href="/repos/{{ item.full_name }}">{{ item.full_name }}</a></td>
+        <td><span class="grade-badge grade-{{ grade }}">{{ grade }}</span></td>
+        <td>
+          <div class="score-bar-wrap">
+            <div class="score-bar-track">
+              <div class="score-bar-fill" style="width:{{ g }}%"></div>
+            </div>
+            <span class="score-val">{{ item.avg_score }}</span>
+            {% if item.min_score is not none and item.max_score is not none and item.min_score != item.max_score %}
+            <span class="score-range">{{ item.min_score }}–{{ item.max_score }}</span>
+            {% endif %}
+          </div>
+        </td>
+        <td>{{ item.count }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% elif repos %}
+  <div class="empty-state">선택한 리포의 분석 데이터가 없습니다.</div>
   {% else %}
-  위 입력란에 비교할 리포지토리를 입력하세요 (예: owner/repo1, owner/repo2).
+  <div class="empty-state">위에서 리포지토리를 선택하면 점수를 비교할 수 있습니다.</div>
   {% endif %}
 </div>
-{% endif %}
 
-<!-- 전체 리포 빠른 선택 / Quick-pick all repos -->
-{% if all_repos %}
-<details style="margin-top:1.5rem;">
-  <summary style="cursor:pointer; font-size:.88rem; opacity:.7;">등록된 리포 목록 보기</summary>
-  <div style="display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.6rem;">
-    {% for r in all_repos %}
-    <a href="/insights?repos={{ r.full_name }}&days={{ days }}" style="font-size:.82rem; padding:.2rem .55rem; border:1px solid var(--c-border); border-radius:4px; text-decoration:none; color:var(--c-text);">{{ r.full_name }}</a>
-    {% endfor %}
+<!-- ══════════════════ 리더보드 패널 / Leaderboard panel ══════════════════ -->
+<div class="tab-panel" id="panel-leaderboard">
+  {% if leaderboard %}
+  <p class="lb-notice">리포 설정에서 "리더보드 참여"를 활성화한 리포의 개발자만 표시됩니다.</p>
+  <table class="lb-table">
+    <thead>
+      <tr>
+        <th class="lb-rank">#</th>
+        <th>개발자</th>
+        <th>평균 점수</th>
+        <th>분석 건수</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for entry in leaderboard %}
+      {% set g = entry.avg_score %}
+      {% if g >= 90 %}{% set grade = 'A' %}
+      {% elif g >= 75 %}{% set grade = 'B' %}
+      {% elif g >= 60 %}{% set grade = 'C' %}
+      {% elif g >= 45 %}{% set grade = 'D' %}
+      {% else %}{% set grade = 'F' %}{% endif %}
+      <tr>
+        <td class="lb-rank">{{ loop.index }}</td>
+        <td>
+          <a href="https://github.com/{{ entry.author_login }}" target="_blank" rel="noopener noreferrer">{{ entry.author_login }}</a>
+        </td>
+        <td>
+          <span class="grade-badge grade-{{ grade }}">{{ grade }}</span>
+          <span style="margin-left:.4rem; font-variant-numeric:tabular-nums;">{{ entry.avg_score }}</span>
+        </td>
+        <td>{{ entry.count }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <p>리더보드에 표시할 데이터가 없습니다.</p>
+    <p style="font-size:.84rem; margin-top:.5rem;">리포 설정 → <strong>이벤트 후 피드백</strong> 카드에서 "리더보드 참여"를 켜주세요.</p>
   </div>
-</details>
-{% endif %}
+  {% endif %}
+</div>
+
+<script>
+/* ── 탭 전환 / Tab switching ── */
+function switchTab(name) {
+  document.querySelectorAll('.ins-tab').forEach(t => { t.classList.remove('active'); t.setAttribute('aria-selected','false'); });
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  document.getElementById('tab-' + name).setAttribute('aria-selected','true');
+  document.getElementById('panel-' + name).classList.add('active');
+  history.replaceState(null,'', location.pathname + location.search + '#' + name);
+}
+
+/* ── 체크박스 칩 → 숨김 input 동기화 / Sync checkbox chips to hidden input ── */
+function syncChips() {
+  const chips = document.querySelectorAll('#chipWrap input[type=checkbox]');
+  const selected = [];
+  chips.forEach(cb => {
+    cb.parentElement.classList.toggle('checked', cb.checked);
+    if (cb.checked) selected.push(cb.value);
+  });
+  document.getElementById('reposInput').value = selected.join(',');
+}
+
+/* ── 초기 탭 선택 (URL hash 기반) / Initial tab from URL hash ── */
+(function init() {
+  const hash = location.hash.replace('#','');
+  const valid = ['compare','leaderboard'];
+  switchTab(valid.includes(hash) ? hash : 'compare');
+  /* 현재 선택된 칩 스타일 초기화 / Re-sync chip styles on load */
+  syncChips();
+})();
+</script>
 {% endblock %}

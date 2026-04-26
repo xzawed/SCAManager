@@ -143,10 +143,12 @@ def test_insights_me_returns_200():
             {"date": "2026-04-02", "avg_score": 88.5, "count": 2},
         ]
 
-        with patch(
-            "src.ui.routes.insights.analytics_service.author_trend",
-            return_value=fake_trend,
-        ) as mock_trend, \
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.all.return_value = []
+
+        with patch("src.ui.routes.insights.SessionLocal", return_value=_ctx(mock_db)), \
+             patch("src.ui.routes.insights.analytics_service.author_trend", return_value=fake_trend), \
+             patch("src.ui.routes.insights.analytics_service.top_issues", return_value=[]), \
              patch("src.ui.routes.insights.templates.TemplateResponse") as mock_tr:
             from fastapi.responses import HTMLResponse
             mock_tr.return_value = HTMLResponse(content="<html>me</html>", status_code=200)
@@ -177,10 +179,12 @@ def test_insights_me_respects_days_param():
     try:
         client = TestClient(app)
 
-        with patch(
-            "src.ui.routes.insights.analytics_service.author_trend",
-            return_value=[],
-        ) as mock_trend, \
+        mock_db2 = MagicMock()
+        mock_db2.query.return_value.filter.return_value.all.return_value = []
+
+        with patch("src.ui.routes.insights.SessionLocal", return_value=_ctx(mock_db2)), \
+             patch("src.ui.routes.insights.analytics_service.author_trend", return_value=[]) as mock_trend, \
+             patch("src.ui.routes.insights.analytics_service.top_issues", return_value=[]), \
              patch("src.ui.routes.insights.templates.TemplateResponse") as mock_tr:
             from fastapi.responses import HTMLResponse
             mock_tr.return_value = HTMLResponse(content="<html>me</html>", status_code=200)
@@ -195,11 +199,12 @@ def test_insights_me_respects_days_param():
             call_kwargs = mock_trend.call_args
             # positional 또는 keyword 인자 중 days=7 확인
             # days=7 must appear as positional or keyword argument
-            days_passed = (
-                call_kwargs.kwargs.get("days")
-                if call_kwargs.kwargs
-                else (call_kwargs.args[2] if len(call_kwargs.args) > 2 else None)
-            )
+            if call_kwargs.kwargs:
+                days_passed = call_kwargs.kwargs.get("days")
+            elif len(call_kwargs.args) > 2:
+                days_passed = call_kwargs.args[2]
+            else:
+                days_passed = None
             assert days_passed == 7, f"Expected days=7, got {days_passed}"
         else:
             # Red 단계 — 라우트가 없으면 404 로 실패 (의도된 동작)
@@ -244,6 +249,122 @@ def test_insights_page_with_repos_param_returns_200():
             response = client.get("/insights?repos=owner%2Fmyrepo")
 
         assert response.status_code == 200
+    finally:
+        if _prev_login is not None:
+            app.dependency_overrides[require_login] = _prev_login
+        else:
+            app.dependency_overrides.pop(require_login, None)
+
+
+def test_insights_comparison_context_includes_leaderboard():
+    """/insights 응답 컨텍스트에 leaderboard 키가 포함되어야 한다.
+    The /insights template context must include a 'leaderboard' key.
+    """
+    _prev_login = app.dependency_overrides.get(require_login)
+    app.dependency_overrides[require_login] = lambda: _test_user
+    try:
+        client = TestClient(app)
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.all.return_value = []
+        mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
+
+        fake_leaderboard = [{"author_login": "alice", "avg_score": 88.0, "count": 3}]
+
+        captured_context: dict = {}
+
+        def _capture_response(request, template_name, context, **kwargs):
+            captured_context.update(context)
+            from fastapi.responses import HTMLResponse
+            return HTMLResponse(content="<html>ok</html>", status_code=200)
+
+        with patch("src.ui.routes.insights.SessionLocal", return_value=_ctx(mock_db)), \
+             patch("src.ui.routes.insights.analytics_service.repo_comparison", return_value=[]), \
+             patch("src.ui.routes.insights.analytics_service.leaderboard", return_value=fake_leaderboard), \
+             patch("src.ui.routes.insights.templates.TemplateResponse", side_effect=_capture_response):
+            response = client.get("/insights")
+
+        assert response.status_code == 200
+        assert "leaderboard" in captured_context, (
+            "'leaderboard' 키가 템플릿 컨텍스트에 없음 / 'leaderboard' key missing from template context"
+        )
+        assert captured_context["leaderboard"] == fake_leaderboard
+    finally:
+        if _prev_login is not None:
+            app.dependency_overrides[require_login] = _prev_login
+        else:
+            app.dependency_overrides.pop(require_login, None)
+
+
+def test_insights_me_context_includes_top_issues():
+    """/insights/me 응답 컨텍스트에 top_issues 키가 포함되어야 한다.
+    The /insights/me template context must include a 'top_issues' key.
+    """
+    _prev_login = app.dependency_overrides.get(require_login)
+    app.dependency_overrides[require_login] = lambda: _test_user
+    try:
+        client = TestClient(app)
+        mock_db = MagicMock()
+
+        fake_trend = [{"date": "2026-04-20", "avg_score": 82.0, "count": 2}]
+
+        captured_context: dict = {}
+
+        def _capture_response(request, template_name, context, **kwargs):
+            captured_context.update(context)
+            from fastapi.responses import HTMLResponse
+            return HTMLResponse(content="<html>ok</html>", status_code=200)
+
+        with patch("src.ui.routes.insights.SessionLocal", return_value=_ctx(mock_db)), \
+             patch("src.ui.routes.insights.analytics_service.author_trend", return_value=fake_trend), \
+             patch("src.ui.routes.insights.analytics_service.top_issues", return_value=[]), \
+             patch("src.ui.routes.insights.templates.TemplateResponse", side_effect=_capture_response):
+            response = client.get("/insights/me")
+
+        assert response.status_code == 200
+        assert "top_issues" in captured_context, (
+            "'top_issues' 키가 템플릿 컨텍스트에 없음 / 'top_issues' key missing from template context"
+        )
+        assert isinstance(captured_context["top_issues"], list)
+    finally:
+        if _prev_login is not None:
+            app.dependency_overrides[require_login] = _prev_login
+        else:
+            app.dependency_overrides.pop(require_login, None)
+
+
+def test_insights_me_context_includes_kpi():
+    """/insights/me 응답 컨텍스트에 kpi 키가 포함되어야 한다.
+    The /insights/me template context must include a 'kpi' key with delta/avg/grade.
+    """
+    _prev_login = app.dependency_overrides.get(require_login)
+    app.dependency_overrides[require_login] = lambda: _test_user
+    try:
+        client = TestClient(app)
+        mock_db = MagicMock()
+
+        fake_trend = [{"date": "2026-04-20", "avg_score": 82.0, "count": 2}]
+
+        captured_context: dict = {}
+
+        def _capture_response(request, template_name, context, **kwargs):
+            captured_context.update(context)
+            from fastapi.responses import HTMLResponse
+            return HTMLResponse(content="<html>ok</html>", status_code=200)
+
+        with patch("src.ui.routes.insights.SessionLocal", return_value=_ctx(mock_db)), \
+             patch("src.ui.routes.insights.analytics_service.author_trend", return_value=fake_trend), \
+             patch("src.ui.routes.insights.analytics_service.top_issues", return_value=[]), \
+             patch("src.ui.routes.insights.templates.TemplateResponse", side_effect=_capture_response):
+            response = client.get("/insights/me")
+
+        assert response.status_code == 200
+        assert "kpi" in captured_context, (
+            "'kpi' 키가 템플릿 컨텍스트에 없음 / 'kpi' key missing from template context"
+        )
+        kpi = captured_context["kpi"]
+        assert "avg" in kpi, "'kpi.avg' 없음 / 'kpi.avg' missing"
+        assert "grade" in kpi, "'kpi.grade' 없음 / 'kpi.grade' missing"
+        assert "delta" in kpi, "'kpi.delta' 없음 / 'kpi.delta' missing"
     finally:
         if _prev_login is not None:
             app.dependency_overrides[require_login] = _prev_login
