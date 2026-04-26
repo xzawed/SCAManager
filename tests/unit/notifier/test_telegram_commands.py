@@ -368,7 +368,7 @@ def test_unknown_command_returns_help(db):
     """알 수 없는 명령은 도움말 메시지를 반환해야 한다.
     Unknown command must return a help message.
     """
-    user = _make_user(db, telegram_user_id="tg-unknown-cmd")
+    _make_user(db, telegram_user_id="tg-unknown-cmd")
     result = handle_message_command(db, "tg-unknown-cmd", "/unknown")
     assert "/stats" in result
     assert "/settings" in result
