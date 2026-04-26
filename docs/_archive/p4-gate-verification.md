@@ -1,3 +1,5 @@
+> ⚠️ **ARCHIVED — 2026-04-27**: 이 문서는 해당 시점에 완료된 작업을 기록한 것으로, 현재 코드베이스와 일치하지 않을 수 있습니다. 현재 상태는 [docs/STATE.md](../STATE.md)를 참조하세요.
+
 # P4-Gate 프로덕션 실증 가이드 (1차 — cppcheck + slither)
 
 > ✅ **상태**: 2026-04-23 `xzawed/SCAManager-test-samples` 분석 #543 으로 **통과 완료**. Phase D.3 (RuboCop) 해금됨.

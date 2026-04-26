@@ -1,3 +1,5 @@
+> ⚠️ **ARCHIVED — 2026-04-27**: 이 문서는 해당 시점에 완료된 작업을 기록한 것으로, 현재 코드베이스와 일치하지 않을 수 있습니다. 현재 상태는 [docs/STATE.md](../STATE.md)를 참조하세요.
+
 # RailwayDeployEvent sub-dataclass 분리 Implementation Plan
 
 > **Status:** ✅ **완료** (2026-04-22). STATE.md 그룹 12 참조.

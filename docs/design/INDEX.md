@@ -14,3 +14,7 @@ SCAManager 의 주요 설계 문서 목록. 파일명 날짜 순.
 | 2026-04-19 | [analyzer-registry-design](2026-04-19-analyzer-registry-design.md) | Analyzer Registry (Phase A) — pure/io 분리 |
 
 > 각 문서는 당시 설계 시점의 결정을 반영하며, 이후 변경이 있다면 [docs/STATE.md](../STATE.md) 그룹 이력과 코드가 최우선 출처입니다.
+
+---
+
+> **Phase 12 이후 신규 설계**: CI-aware Auto Merge Retry는 설계 문서 없이 TDD 기반으로 구현되었습니다. 구현 세부 사항은 `src/services/merge_retry_service.py`, `src/gate/retry_policy.py`, `docs/runbooks/merge-retry.md`를 참조하세요.

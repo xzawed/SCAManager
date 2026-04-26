@@ -1,6 +1,0 @@
-************* Module src.railway_client.models
-src/railway_client/models.py:9:0: R0902: Too many instance attributes (9/7) (too-many-instance-attributes)
-
---------------------------------------------------------------------
-Your code has been rated at 10.00/10 (previous run: 10.00/10, +0.00)
-
