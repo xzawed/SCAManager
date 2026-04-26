@@ -14,6 +14,7 @@ from src.auth.session import CurrentUser, require_login
 from src.config_manager.manager import RepoConfigData, get_repo_config, upsert_repo_config
 from src.database import SessionLocal
 from src.github_client.repos import (
+    WEBHOOK_EVENTS,
     commit_scamanager_files,
     create_webhook,
     delete_webhook,
@@ -88,8 +89,37 @@ def _validate_webhook_urls(form) -> None:
             )
 
 
+async def _detect_stale_webhook(
+    token: str,
+    repo_full_name: str,
+    webhook_id: int | None,
+) -> bool:
+    """등록된 webhook 이 check_suite 이벤트를 구독하지 않으면 True 를 반환한다.
+    Returns True if the registered webhook is missing the check_suite event subscription.
+
+    조회 실패 시 False 반환 — 배너를 오 표시하지 않도록 실패 시 안전 기본값 사용.
+    Returns False on any error — fail-safe default avoids false banner display.
+    """
+    if not webhook_id or not token:
+        return False
+    try:
+        hooks = await list_webhooks(token, repo_full_name)
+        for hook in hooks:
+            if hook.get("id") == webhook_id:
+                hook_events = hook.get("events", [])
+                # WEBHOOK_EVENTS 에 포함된 이벤트 중 누락된 것이 있으면 stale
+                # Stale if any event from WEBHOOK_EVENTS is missing from the registered hook
+                return any(ev not in hook_events for ev in WEBHOOK_EVENTS)
+        # webhook_id 와 일치하는 훅 없음 → 배너 표시 불필요
+        # No hook matching webhook_id — no banner needed
+        return False
+    except (httpx.HTTPError, KeyError, ValueError) as exc:
+        logger.debug("_detect_stale_webhook: API call failed for %s: %s", repo_full_name, exc)
+        return False
+
+
 @router.get("/repos/{repo_name:path}/settings", response_class=HTMLResponse)
-def repo_settings(  # pylint: disable=too-many-positional-arguments
+async def repo_settings(  # pylint: disable=too-many-positional-arguments,too-many-locals
     request: Request,
     repo_name: str,
     current_user: Annotated[CurrentUser, Depends(require_login)],
@@ -100,15 +130,26 @@ def repo_settings(  # pylint: disable=too-many-positional-arguments
 ):
     """리포 Gate·알림 설정 페이지를 렌더링한다."""
     with SessionLocal() as db:
-        get_accessible_repo(db, repo_name, current_user)
+        repo = get_accessible_repo(db, repo_name, current_user)
         config = get_repo_config(db, repo_name)
         config_orm = repo_config_repo.find_by_full_name(db, repo_name)
         railway_webhook_token = config_orm.railway_webhook_token if config_orm else None
         railway_api_token_set = bool(config_orm and config_orm.railway_api_token)
+        repo_webhook_id = repo.webhook_id
+
     railway_webhook_url = ""
     if railway_webhook_token:
         base = webhook_base_url(request)
         railway_webhook_url = f"{base}/webhooks/railway/{railway_webhook_token}"
+
+    # check_suite 이벤트 구독 여부 확인 — 없으면 재등록 배너 표시 (Phase 12)
+    # Check whether check_suite is subscribed — show reinstall banner if missing (Phase 12)
+    webhook_stale = await _detect_stale_webhook(
+        token=current_user.plaintext_token or "",
+        repo_full_name=repo_name,
+        webhook_id=repo_webhook_id,
+    )
+
     return templates.TemplateResponse(request, "settings.html", {
         "repo_name": repo_name, "config": config,
         "hook_ok": bool(hook_ok), "hook_fail": bool(hook_fail),
@@ -116,6 +157,7 @@ def repo_settings(  # pylint: disable=too-many-positional-arguments
         "current_user": current_user,
         "railway_webhook_url": railway_webhook_url,
         "railway_api_token_set": railway_api_token_set,
+        "webhook_stale": webhook_stale,
     })
 
 
