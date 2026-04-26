@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-27 기준 — Phase 12 CI-aware Auto Merge 재시도 완료)
+## 현재 수치 (2026-04-27 기준 — Settings UI/UX 리디자인 완료)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1709개** | pytest 9.0.3 (0 failed, 5 skipped — 3 Postgres-gated + 2 pre-existing) — 2026-04-27 로컬 실측 |
+| 단위 테스트 | **1714개** | pytest 9.0.3 (0 failed, 5 skipped — 3 Postgres-gated + 2 pre-existing) — 2026-04-27 로컬 실측 |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
@@ -49,6 +49,32 @@
 | `tests/conftest.py` | 환경변수 주입 + _webhook_secret_cache autouse 클리어 |
 
 ## 작업 이력 (그룹별)
+
+### 그룹 51 (2026-04-27 · Settings UI/UX 리디자인 — B+A 하이브리드 — PR #89)
+
+**목표**: 설정 페이지 6개 카드를 데이터 흐름 방향(수신/발신) 기준으로 재구성. "웹훅"이 GitHub 수신·알림 발신·Railway 세 맥락에서 혼용되던 혼란 해소. 신규 사용자 온보딩 배너 추가.
+
+**변경 내용**:
+
+| 파일 | 변경 |
+|------|------|
+| `src/ui/routes/settings.py` | `onboarding_needed` 플래그 추가 (알림 채널 미설정 + Telegram 미연결 조건) |
+| `src/templates/settings.html` | 카드 구조 재편 — ② 분석 동작 규칙·③ 알림 발신 채널·④ 통합 & 연결·온보딩 배너 |
+| `tests/unit/ui/test_settings_webhook_banner.py` | 온보딩 배너 조건 3종 + 카드 구조 헤더 검증 + 폼 필드 회귀 5개 테스트 추가 |
+
+**새 카드 구조**:
+
+| Before | After |
+|--------|-------|
+| ② PR 들어왔을 때 + ③ 이벤트 후 피드백 | ② 분석 동작 규칙 (PR 이벤트 + Push/배포 + 팀 설정 서브섹션) |
+| ④ 알림 채널 | ③ 알림 발신 채널 (SCAManager → 외부), Telegram OTP 이동 |
+| ⑤ 시스템 & 토큰 | ④ 통합 & 연결 (GitHub 수신 Webhook 섹션 명시, Telegram OTP 제거) |
+| — | [온보딩 배너] 조건부 표시 신규 추가 |
+
+**테스트 증분**: 1709 → **1714** passed
+**품질**: pylint 10.00 · bandit HIGH 0 · 폼 필드 16개 전부 유지
+
+---
 
 ### 그룹 50 (2026-04-27 · SonarCloud 마이그레이션 + 전체 문서 정비 + docs 구조 재편)
 
