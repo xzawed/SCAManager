@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-26 기준 — Phase F Quick Win + F.1 관측 완료 · Phase F.3 실패 어드바이저 완료 · G.2 수치 동기화 · Phase G 완료 · P2 이슈 수정 완료 · Phase H 착수 (F.2 관측 완료) · 이중언어 주석 마이그레이션 완료 · 보안 강화 그룹 39 완료 · lint 회귀 수정 · 문서 다중 에이전트 심의 시스템 완료 · Phase 9 자기 분석 루프 방지 완료 · **Phase 10 Telegram 확장 완료**)
+## 현재 수치 (2026-04-26 기준 — Phase F Quick Win + F.1 관측 완료 · Phase F.3 실패 어드바이저 완료 · G.2 수치 동기화 · Phase G 완료 · P2 이슈 수정 완료 · Phase H 착수 (F.2 관측 완료) · 이중언어 주석 마이그레이션 완료 · 보안 강화 그룹 39 완료 · lint 회귀 수정 · 문서 다중 에이전트 심의 시스템 완료 · Phase 9 자기 분석 루프 방지 완료 · Phase 10 Telegram 확장 완료 · **기술 부채 정리 — Telegram 카드 E2E +4 · CLAUDE.md batch_alter_table 예외 명시**)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
@@ -12,7 +12,7 @@
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
 | SonarCloud Maintainability Rating | **A** | Code Smells 58 (-20 from 78) |
 | SonarCloud BLOCKER / CRITICAL | **0 / 0** | Phase Q.7 완료 — 5건 Cognitive Complexity 전부 해소 |
-| E2E 테스트 | **49개** | `make test-e2e` (Chromium Playwright) |
+| E2E 테스트 | **53개** | `make test-e2e` (Chromium Playwright) — Telegram 카드 +4 |
 | pylint | **10.00/10** | `python -m pylint src/` — 만점 복원 (보안 강화 회귀 3건 수정) |
 | 커버리지 | **96.5%** | `make test-cov` (database.py 100%, ui/router.py 99.4%) |
 | bandit HIGH | **0개** | bandit 1.9.4 (Python 3.14 대응) |
