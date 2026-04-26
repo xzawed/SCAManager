@@ -252,9 +252,7 @@ class TestRunTrendCheck:
         # moving_average return values: first call=current(70), second=prev(80)
         mock_ma.side_effect = [70.0, 80.0]
 
-        from src.services.cron_service import run_trend_check
-
-        alerted = await run_trend_check(db, now=now)
+        alerted = await cs.run_trend_check(db, now=now)
 
         # drop=80-70=10 ≥ _TREND_DROP_THRESHOLD=10 → 알림 발송
         # drop=80-70=10 >= _TREND_DROP_THRESHOLD=10 → alert sent
