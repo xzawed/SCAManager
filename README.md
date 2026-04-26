@@ -48,14 +48,14 @@ Most code review tools make you choose between static analysis precision and AI 
 
 | | SCAManager | CodeRabbit | SonarCloud | GitHub Copilot Review |
 |---|---|---|---|---|
-| **Self-hosted** | ✅ Your infrastructure | ❌ SaaS only | ❌ SaaS only | ❌ GitHub-managed |
-| **Static + AI combined** | ✅ 10 tools + Claude AI | AI + linter integrations | Static + AI CodeFix (2024+) | AI only |
-| **Score-based PR Gate** | ✅ Auto / Semi / Manual | ❌ | ❌ | ❌ |
+| **Self-hosted** | ✅ Your infrastructure | ⚠️ Enterprise only (500+ seats) | ❌ SaaS only (SonarQube = separate self-hosted product) | ❌ GitHub-managed |
+| **Static + AI combined** | ✅ 10 tools + Claude AI | AI + 50 linter integrations | Static + AI CodeFix (2024+) | AI + ESLint/PMD/CodeQL (Nov 2025+) |
+| **Score-based PR Gate** | ✅ Auto / Semi / Manual | ❌ | ❌ (pass/fail quality gate only) | ❌ |
 | **Approve from phone** | ✅ Telegram inline buttons | ❌ | ❌ | ❌ |
-| **Push event analysis** | ✅ Auto Issue + Commit comment | ❌ PR only | ❌ | ❌ |
-| **50-language AI review** | ✅ Language-specific checklists | ✅ | ❌ | ✅ |
+| **Push event analysis** | ✅ Auto Issue + Commit comment | ❌ PR only | ⚠️ Main branch only (free); all branches (Team+) | ❌ PR only |
+| **50-language AI review** | ✅ Language-specific checklists | ✅ | ❌ AI fixes: 8 languages only | ✅ All languages |
 | **DB failover** | ✅ Built-in | ❌ | ❌ | ❌ |
-| **Cost** | API usage only | Freemium (free for public repos) | Freemium | GitHub plan |
+| **Cost** | API usage only | Freemium (free for public repos) | Freemium | GitHub Copilot plan |
 
 **Best for:** Solo developers and small teams who want full control over their code quality pipeline without vendor lock-in.
 
