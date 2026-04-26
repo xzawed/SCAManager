@@ -83,7 +83,8 @@ src/
 │   └── merge_metrics.py        # parse_reason_tag + log_merge_attempt — auto-merge 관측 (Phase F.1)
 ├── services/                   # use case 계층 — 신규 오케스트레이션 모듈의 배치 장소 (기존 pipeline/engine/manager 는 도메인 위치 유지)
 │   ├── analytics_service.py    # 집계 단일 출처 — weekly_summary, moving_average, top_issues, resolve_chat_id, author_trend, repo_comparison, leaderboard
-│   └── cron_service.py         # 주기적 실행 — run_weekly_reports, run_trend_check
+│   ├── cron_service.py         # 주기적 실행 — run_weekly_reports, run_trend_check
+│   └── merge_retry_service.py  # process_pending_retries 워커 (CI-aware Auto Merge 재시도)
 ├── auth/
 │   ├── session.py              # get_current_user() + require_login Depends
 │   └── github.py               # /login, /auth/github, /auth/callback, /auth/logout
@@ -94,6 +95,7 @@ src/
 │   ├── repo_config.py          # RepoConfig ORM (pr_review_comment, approve_mode, approve/reject_threshold, auto_merge, merge_threshold, hook_token)
 │   ├── gate_decision.py        # GateDecision ORM
 │   ├── merge_attempt.py        # MergeAttempt ORM — score/threshold 스냅샷 + failure_reason 정규 태그 (Phase F.1, append-only)
+│   ├── merge_retry.py          # MergeRetryQueue ORM (재시도 큐, append-only claim 패턴)
 │   └── user.py                 # User ORM (github_id, github_login, github_access_token, email, display_name)
 ├── webhook/
 │   ├── _helpers.py             # get_webhook_secret() + _webhook_secret_cache (TTL 300초)
@@ -108,7 +110,8 @@ src/
 │   ├── helpers.py              # github_api_headers() 공용 헬퍼
 │   ├── diff.py                 # get_pr_files, get_push_files
 │   ├── issues.py               # close_issue() — Issue 종료 API
-│   └── repos.py                # list_user_repos(), create_webhook(), delete_webhook(), commit_scamanager_files()
+│   ├── repos.py                # list_user_repos(), create_webhook(), delete_webhook(), commit_scamanager_files()
+│   └── checks.py               # get_ci_status, get_required_check_contexts (5분 TTL 캐시, D2+D8 페이지네이션)
 ├── railway_client/
 │   ├── models.py               # RailwayDeployEvent (3-그룹 nested) + RailwayProjectInfo + RailwayCommitInfo
 │   ├── webhook.py              # parse_railway_payload() — deploy 실패 이벤트 파싱
@@ -145,7 +148,8 @@ src/
 │   ├── engine.py               # run_gate_check() — 3-옵션 독립 처리 (직접 구현)
 │   ├── github_review.py        # post_github_review(), merge_pr()
 │   ├── telegram_gate.py        # send_gate_request() — 인라인 키보드 메시지
-│   └── merge_failure_advisor.py # get_advice(reason) — reason tag → 권장 조치 텍스트 (Phase F.3, 순수 함수)
+│   ├── merge_failure_advisor.py # get_advice(reason) — reason tag → 권장 조치 텍스트 (Phase F.3, 순수 함수)
+│   └── retry_policy.py         # 순수 함수: parse_reason_tag, should_retry, compute_next_retry_at, is_expired, mergeable_state_terminality
 ├── notifier/                   # `__init__.py` 가 import 시 각 채널 모듈 자동 로드 → REGISTRY 등록 (Phase S.3-E)
 │   ├── __init__.py             # 8개 notifier 모듈 import (등록 순서 = 발송 우선순위)
 │   ├── _common.py              # 공통 헬퍼 — format_ref, get_all_issues, get_issue_samples, truncate_message, truncate_issue_msg
@@ -187,7 +191,7 @@ src/
 │   ├── __main__.py             # python -m src.cli review
 │   ├── git_diff.py             # 로컬 git diff 수집
 │   └── formatter.py            # 터미널 출력 포맷 (ANSI 색상)
-├── repositories/               # DB 접근 계층 7종 — repository_repo, analysis_repo, analysis_feedback_repo, merge_attempt_repo, gate_decision_repo, repo_config_repo, user_repo
+├── repositories/               # DB 접근 계층 8종 — repository_repo, analysis_repo, analysis_feedback_repo, merge_attempt_repo, gate_decision_repo, repo_config_repo, user_repo, merge_retry_repo
 └── worker/
     └── pipeline.py             # run_analysis_pipeline, build_analysis_result_dict
 ```
@@ -434,6 +438,7 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 - **SQLite hostaddr 제외**: `_ipv4_connect_args`는 hostname이 None(SQLite URL)이면 빈 dict 반환 — 그렇지 않으면 `sqlite3.connect(hostaddr=...)` TypeError 발생.
 - **`Analysis.author_login` NULL 정책**: 신규 컬럼은 backfill 없이 NULL 허용. 모든 집계는 `WHERE author_login IS NOT NULL` 적용. backfill 필요 시 `scripts/backfill_author.py` 별도 실행. PR 이벤트 = `pull_request.user.login`, Push 이벤트 = `head_commit.author.username`.
 - 🔴 **ORM 컬럼 추가 시 마이그레이션 필수 동반**: `models/*.py`에 `Column(...)` 추가 후 반드시 `make revision m="설명"` 으로 마이그레이션 파일을 함께 생성해야 한다. 단위 테스트는 in-memory SQLite(`Base.metadata.create_all`)로 ORM 정의 그대로 테이블을 만들기 때문에 마이그레이션 파일이 없어도 테스트가 통과한다. 그러나 실제 DB(PostgreSQL/Railway)에는 컬럼이 생성되지 않아 운영 환경에서 500 에러가 발생한다. 전례: `leaderboard_opt_in` 컬럼 (PR #72·#74, 2026-04-26).
+- **`merge_retry_queue` 클레임 패턴**: `claim_batch` 은 단일 SQL `UPDATE … WHERE claimed_at IS NULL RETURNING (attempts_count = 1) AS is_first` 로 원자적 클레임 + 첫-지연 알림 결정 동시 수행. Postgres 는 `FOR UPDATE SKIP LOCKED`, SQLite 는 dialect 분기. 재배포 중 stale claim 은 5분 후 재클레임. 신규 큐 도입 시 동일 패턴 권장.
 
 ### 파이프라인 / 비즈니스 로직
 
@@ -482,6 +487,9 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 - **Telegram 콜백 도메인 분리**: `_make_callback_token(bot_token, scope, payload_id)`이 `scope ∈ {"gate","cmd"}`별 다른 HMAC 생성. 신규 명령 추가 시 `cmd:<verb>:<id>:<token>` 준수, 64-byte 한도 검증 (numeric id). `_gate_callback_token()`은 `_make_callback_token(..., "gate", analysis_id)` thin wrapper. `test_callback_data_within_64_bytes_all_commands` 단위 테스트 강제.
 - **Cron 엔드포인트 인증**: `POST /api/internal/cron/*`는 `INTERNAL_CRON_API_KEY` 전용 (admin key와 분리). Railway `[[deploy.cronJobs]]` 트리거. `hmac.compare_digest` 타이밍 안전 비교. `INTERNAL_CRON_API_KEY` 미설정 시 503 반환.
 - **Telegram chat_id 라우팅 우선순위**: cron 알림의 chat_id 결정은 `analytics_service.resolve_chat_id(repo, config)` 단일 헬퍼 — `RepoConfig.notify_chat_id` → `Repository.telegram_chat_id` → `settings.telegram_chat_id` → None(skip + WARNING).
+- **CI-aware Auto Merge 재시도**: `mergeable_state=unstable`+CI running 또는 `unknown` 상태일 때 단일 실패가 아닌 `merge_retry_queue` 큐잉. `check_suite.completed` 웹훅 또는 5분 cron 으로 재시도. 트리거: `src/services/merge_retry_service.py::process_pending_retries`. 첫 지연 시 Telegram 1회, 최종 성공/실패 시 1회. 중간 재시도는 무음.
+- **`merge_pr` SHA atomicity**: `merge_pr(..., expected_sha=...)` 는 `PUT /pulls/{n}/merge` 에 `sha` 파라미터를 포함해 force-push 된 코드의 의도치 않은 머지를 GitHub 측에서 차단. 신규 호출 시 항상 head SHA 전달.
+- **Webhook 이벤트 구독 갱신**: `create_webhook` 이벤트 목록은 `["push","pull_request","issues","check_suite"]`. 기존 등록 리포는 settings 페이지의 "Webhook 재등록" 버튼으로 갱신 — 미갱신 시 자동 재시도 기능 미동작 (cron fallback 으로 5분 지연 동작).
 
 ### 보안
 
@@ -524,4 +532,4 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 
 ## 현재 상태
 
-최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1515개 | E2E 53개 | pylint 10.00 | 커버리지 95% | SonarCloud QG OK · Security A · Reliability A · Maintainability A · Tier1 정적분석 10종 · Observability (Sentry + Claude metrics + stage timing + MergeAttempt) · AI 점수 피드백 루프 · Settings Minimal Mode · Onboarding 3단계 튜토리얼 · 5-렌즈 감사 95+ 통과 · Phase F Quick Win + F.1/F.3 완료 · Phase G 완료 (P1-5건 수정) · Phase 9 자기 분석 루프 방지 완료 · Phase 10 Telegram 확장 완료 (cron + /stats·/connect 명령) · Phase 11 팀/멀티 리포 인사이트 완료 (author_trend + leaderboard + /insights 대시보드) · 툴링 안전장치 (testpaths + ORM-마이그레이션 완전성 검사 67개)
+최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1708개 | E2E 53개 | pylint 10.00 | 커버리지 95% | SonarCloud QG OK · Security A · Reliability A · Maintainability A · Tier1 정적분석 10종 · Observability (Sentry + Claude metrics + stage timing + MergeAttempt) · AI 점수 피드백 루프 · Settings Minimal Mode · Onboarding 3단계 튜토리얼 · 5-렌즈 감사 95+ 통과 · Phase F Quick Win + F.1/F.3 완료 · Phase G 완료 (P1-5건 수정) · Phase 9 자기 분석 루프 방지 완료 · Phase 10 Telegram 확장 완료 (cron + /stats·/connect 명령) · Phase 11 팀/멀티 리포 인사이트 완료 (author_trend + leaderboard + /insights 대시보드) · 툴링 안전장치 (testpaths + ORM-마이그레이션 완전성 검사 67개) · Phase 12 CI-aware Auto Merge 재시도 완료 (merge_retry_queue + check_suite 웹훅 + 5분 cron + 1708 단위 테스트)
