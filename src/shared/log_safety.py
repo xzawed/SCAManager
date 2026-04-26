@@ -14,6 +14,7 @@ def sanitize_for_log(value: object, max_len: int = _MAX_LOG_LEN) -> str:
 
     - CR/LF 제거 (로그 라인 삽입 방지)
     - TAB → 공백, NUL 제거
+    - repr 기반 이스케이프 적용(제어문자 가시화)
     - 최대 길이 max_len 으로 절단
     """
     if value is None:
@@ -21,6 +22,7 @@ def sanitize_for_log(value: object, max_len: int = _MAX_LOG_LEN) -> str:
     text = str(value)
     for bad, good in _UNSAFE_CHARS.items():
         text = text.replace(bad, good)
+    text = repr(text)[1:-1]
     if len(text) > max_len:
         text = text[:max_len] + "…"
     return text
