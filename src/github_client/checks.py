@@ -152,9 +152,11 @@ def _classify_check_runs(check_runs: list[dict]) -> str:
             return "running"
 
     # 모두 completed — conclusion 확인 / All completed — check conclusions
+    # 성공 집합에 없는 conclusion은 실패/미확인으로 처리 (안전 기본값)
+    # Conclusions not in the success set are treated as failure/unknown (safe default)
     for run in check_runs:
         conclusion = run.get("conclusion") or ""
-        if conclusion in _FAILURE_CONCLUSIONS:
+        if conclusion not in _SUCCESS_CONCLUSIONS:
             return "failed"
 
     return "passed"

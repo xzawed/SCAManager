@@ -67,14 +67,11 @@ async def test_get_ci_status_running_when_check_in_progress():
         "check_runs": [_check_run("CI / test", "in_progress", None)],
         "total_count": 1,
     }
-    # 레거시 상태는 비어있음 / Legacy status is empty.
-    legacy_body = {"state": "pending", "statuses": []}
 
     mock_client = AsyncMock()
     mock_client.get = AsyncMock(
         side_effect=[
-            _resp(200, check_runs_body),   # check-runs 1페이지
-            _resp(200, legacy_body),        # legacy status
+            _resp(200, check_runs_body),   # check-runs 1페이지 / check-runs page 1
         ]
     )
 
@@ -82,6 +79,32 @@ async def test_get_ci_status_running_when_check_in_progress():
         result = await get_ci_status(TOKEN, REPO, SHA)
 
     assert result == "running"
+    # check-runs 1회만 호출 — 레거시 API 미호출 / Only check-runs called — no legacy API call.
+    assert mock_client.get.call_count == 1
+
+
+async def test_get_ci_status_running_when_check_queued():
+    """queued 상태 체크런이 있으면 'running' 반환.
+    Returns 'running' when any check run is queued.
+    """
+    check_runs_body = {
+        "check_runs": [_check_run("CI / test", "queued", None)],
+        "total_count": 1,
+    }
+
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(
+        side_effect=[
+            _resp(200, check_runs_body),   # check-runs 1페이지 / check-runs page 1
+        ]
+    )
+
+    with patch("src.github_client.checks.get_http_client", return_value=mock_client):
+        result = await get_ci_status(TOKEN, REPO, SHA)
+
+    assert result == "running"
+    # check-runs 1회만 호출 — 레거시 API 미호출 / Only check-runs called — no legacy API call.
+    assert mock_client.get.call_count == 1
 
 
 async def test_get_ci_status_passed_when_all_success():
@@ -96,13 +119,11 @@ async def test_get_ci_status_passed_when_all_success():
         ],
         "total_count": 3,
     }
-    legacy_body = {"state": "success", "statuses": []}
 
     mock_client = AsyncMock()
     mock_client.get = AsyncMock(
         side_effect=[
             _resp(200, check_runs_body),
-            _resp(200, legacy_body),
         ]
     )
 
@@ -110,6 +131,8 @@ async def test_get_ci_status_passed_when_all_success():
         result = await get_ci_status(TOKEN, REPO, SHA)
 
     assert result == "passed"
+    # check-runs 1회만 호출 — 레거시 API 미호출 / Only check-runs called — no legacy API call.
+    assert mock_client.get.call_count == 1
 
 
 async def test_get_ci_status_failed_when_any_failed():
@@ -123,13 +146,11 @@ async def test_get_ci_status_failed_when_any_failed():
         ],
         "total_count": 2,
     }
-    legacy_body = {"state": "failure", "statuses": []}
 
     mock_client = AsyncMock()
     mock_client.get = AsyncMock(
         side_effect=[
             _resp(200, check_runs_body),
-            _resp(200, legacy_body),
         ]
     )
 
@@ -137,6 +158,8 @@ async def test_get_ci_status_failed_when_any_failed():
         result = await get_ci_status(TOKEN, REPO, SHA)
 
     assert result == "failed"
+    # check-runs 1회만 호출 — 레거시 API 미호출 / Only check-runs called — no legacy API call.
+    assert mock_client.get.call_count == 1
 
 
 async def test_get_ci_status_unknown_when_no_checks():
