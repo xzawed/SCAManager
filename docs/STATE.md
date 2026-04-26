@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-26 기준 — Phase 9·10·11 완료 · 툴링 안전장치 + 사고 전 방어 테스트 추가 — PR #77)
+## 현재 수치 (2026-04-26 기준 — Phase A+B Insights UX 고도화 — PR #80)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1528개** | pytest 9.0.3 (0 failed) — 2026-04-26 로컬 실측 (5-way sync + stage_timer 방어 13개 추가) |
+| 단위 테스트 | **1533개** | pytest 9.0.3 (0 failed) — 2026-04-26 로컬 실측 (Insights Phase A+B 신규 5개) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
@@ -44,6 +44,26 @@
 | `tests/conftest.py` | 환경변수 주입 + _webhook_secret_cache autouse 클리어 |
 
 ## 작업 이력 (그룹별)
+
+### 그룹 47 (2026-04-26 · Insights Phase A+B UX 고도화 — PR #80)
+
+**배경**: 사용자가 Insights 탭의 UX를 개선 요청. 여러 에이전트 협의로 Phase A(빠른 개선)+B(중간 백엔드) 통합 구현.
+
+**변경 내용**:
+
+| 파일 | 변경 | 역할 |
+|------|------|------|
+| `src/services/analytics_service.py` | `repo_comparison()`에 `min_score/max_score` 추가 | 점수 분산 노출 |
+| `src/ui/routes/insights.py` | leaderboard·top_issues·kpi dict 컨텍스트 추가, `_compute_kpi()` 헬퍼 | 페이지 데이터 풍부화 |
+| `src/api/insights.py` | `/repos/compare` 응답에 `min_score/max_score` 포함 | API 일관성 |
+| `src/templates/insights.html` | 체크박스 칩 리포 선택, JS 탭(리포 비교/리더보드), 등급 뱃지, min-max 범위 | UX 개선 |
+| `src/templates/insights_me.html` | KPI 카드 4종, grade-boundary Chart.js 플러그인, top-5 이슈 섹션 | UX 개선 |
+| `tests/unit/services/test_analytics_service_insights.py` | min/max 검증 2개 신규 | 회귀 방어 |
+| `tests/unit/ui/test_insights_routes.py` | 라우트 컨텍스트 3개 신규 + 기존 2개 업데이트 | 회귀 방어 |
+
+**결과**: 단위 테스트 1528→1533 (+5) · pylint 10.00/10 유지
+
+---
 
 ### 그룹 46 (2026-04-26 · 문서 구조 개선 + 사고 전 방어 테스트 2종 — PR #77)
 

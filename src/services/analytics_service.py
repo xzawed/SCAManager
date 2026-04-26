@@ -248,8 +248,8 @@ def repo_comparison(
         now: 현재 시각 주입용 (테스트 고정 지원) / Injected current time (for test pinning)
 
     Returns:
-        {"repo_id": int, "avg_score": float, "count": int} 리스트 (avg_score 내림차순)
-        List of {"repo_id": int, "avg_score": float, "count": int} sorted by avg_score descending.
+        {"repo_id", "avg_score", "count", "min_score", "max_score"} 딕셔너리 리스트 (avg_score 내림차순)
+        List of dicts with repo_id/avg_score/count/min_score/max_score sorted by avg_score desc.
     """
     # 빈 목록이면 즉시 반환 — 불필요한 쿼리 방지
     # Return early on empty list to avoid unnecessary queries
@@ -266,6 +266,8 @@ def repo_comparison(
             Analysis.repo_id,
             func.count(Analysis.id).label("count"),  # pylint: disable=not-callable
             func.avg(Analysis.score).label("avg_score"),  # pylint: disable=not-callable
+            func.min(Analysis.score).label("min_score"),  # pylint: disable=not-callable
+            func.max(Analysis.score).label("max_score"),  # pylint: disable=not-callable
         )
         .where(Analysis.repo_id.in_(repo_ids))
         .where(Analysis.score.isnot(None))
@@ -278,6 +280,8 @@ def repo_comparison(
             "repo_id": row.repo_id,
             "avg_score": round(float(row.avg_score), 1),
             "count": row.count,
+            "min_score": row.min_score,
+            "max_score": row.max_score,
         }
         for row in rows
     ]

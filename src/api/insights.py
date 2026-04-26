@@ -47,14 +47,16 @@ def get_repo_comparison(repos: str = "", days: int = 30):
         repo_ids = list(id_to_name.keys())
         comparison_raw = analytics_service.repo_comparison(db, repo_ids, days)
 
-    # repo_id → full_name 으로 변환하여 응답에 포함
-    # Enrich comparison items with full_name
+    # repo_id → full_name 으로 변환하여 응답에 포함, min/max 도 전달
+    # Enrich comparison items with full_name and pass through min/max
     comparison = [
         {
             "repo_id": item["repo_id"],
             "full_name": id_to_name.get(item["repo_id"], ""),
             "avg_score": item["avg_score"],
             "count": item["count"],
+            "min_score": item.get("min_score"),
+            "max_score": item.get("max_score"),
         }
         for item in comparison_raw
     ]
