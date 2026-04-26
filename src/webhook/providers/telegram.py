@@ -2,6 +2,8 @@
 
 반자동 Gate 모드에서 Telegram 인라인 키보드 버튼 클릭 콜백을 수신.
 HMAC 으로 서명된 callback token 을 검증하고 GitHub Review 를 실행한다.
+Semi-auto gate mode: receives Telegram inline-keyboard button callbacks,
+validates HMAC-signed callback token, and executes GitHub Review.
 """
 from __future__ import annotations
 
@@ -19,6 +21,8 @@ from src.config_manager.manager import get_repo_config
 from src.database import SessionLocal
 from src.gate.engine import save_gate_decision
 from src.gate.github_review import merge_pr, post_github_review
+from src.notifier.telegram import telegram_post_message
+from src.notifier.telegram_commands import handle_message_command, parse_cmd_callback
 from src.repositories import analysis_repo, repository_repo
 from src.shared.merge_metrics import log_merge_attempt
 
@@ -119,15 +123,63 @@ async def handle_gate_callback(
             logger.error("Gate callback failed: %s", exc)
 
 
+def _handle_message(
+    data: dict,
+    background_tasks: BackgroundTasks,
+    bot_token: str,
+) -> dict:
+    """Telegram message 이벤트를 처리한다.
+    Handle a Telegram message event (text commands).
+
+    텍스트 명령(/start, /connect, /stats, /settings)을 수신해
+    handle_message_command로 위임하고 응답을 background에서 전송한다.
+    Receives text commands and delegates to handle_message_command,
+    sending the reply in background.
+    """
+    message = data.get("message") or {}
+    text = message.get("text") or ""
+    # 텍스트 없으면 처리 불필요
+    # No text — nothing to process
+    if not text:
+        return {"status": "ok"}
+
+    sender = message.get("from") or {}
+    sender_id = str(sender.get("id", ""))
+    chat = message.get("chat") or {}
+    chat_id = str(chat.get("id", ""))
+
+    # 발신자 또는 채팅 ID 없으면 처리 불필요
+    # Missing sender or chat ID — skip
+    if not sender_id or not chat_id:
+        return {"status": "ok"}
+
+    with SessionLocal() as db:
+        # 텍스트 명령 처리 후 응답 텍스트 반환
+        # Process text command and obtain reply text
+        reply = handle_message_command(db=db, telegram_user_id=sender_id, text=text)
+
+    # 응답 메시지 비동기 전송 (background)
+    # Send reply message asynchronously in background
+    background_tasks.add_task(
+        telegram_post_message,
+        bot_token,
+        chat_id,
+        {"text": reply, "parse_mode": "HTML"},
+    )
+    return {"status": "ok"}
+
+
 @router.post("/api/webhook/telegram", responses={401: {"description": "Invalid secret token"}})
 async def telegram_webhook(
     request: Request,
     background_tasks: BackgroundTasks,
     x_telegram_bot_api_secret_token: Annotated[str | None, Header()] = None,
 ):
-    """Telegram 게이트 콜백 수신 엔드포인트.
+    """Telegram 게이트 콜백 + 텍스트 명령 수신 엔드포인트.
+    Telegram gate callback and text command receiver endpoint.
 
     TELEGRAM_WEBHOOK_SECRET 설정 시 X-Telegram-Bot-Api-Secret-Token 헤더를 검증한다.
+    Validates X-Telegram-Bot-Api-Secret-Token header when TELEGRAM_WEBHOOK_SECRET is set.
     """
     if settings.telegram_webhook_secret:
         provided = x_telegram_bot_api_secret_token or ""
@@ -136,10 +188,32 @@ async def telegram_webhook(
             raise HTTPException(status_code=401, detail="Invalid secret token")
 
     payload = await request.json()
+
+    # message.text 분기: 텍스트 명령 처리
+    # message.text branch: handle text commands
+    if payload.get("message"):
+        return _handle_message(payload, background_tasks, settings.telegram_bot_token)
+
     callback_query = payload.get("callback_query")
     if not callback_query:
+        # message도 callback_query도 없는 알 수 없는 페이로드 — 무시
+        # Unknown payload with neither key — ignore gracefully
         return {"status": "ok"}
+
     callback_data = callback_query.get("data", "")
+
+    # cmd: 접두사 콜백 위임
+    # cmd: prefix callback dispatch
+    if callback_data.startswith("cmd:"):
+        cmd = parse_cmd_callback(callback_data)
+        if cmd is not None:
+            # 향후 cmd 동작 처리 자리 (현재: 기능 준비 중)
+            # Placeholder for future cmd action handling (currently: feature in progress)
+            logger.debug("cmd: callback received — verb=%s, payload_id=%s", cmd.verb, cmd.payload_id)
+        return {"status": "ok"}
+
+    # gate: 접두사 콜백 처리 (기존 로직 완전 보존)
+    # gate: prefix callback handling (existing logic fully preserved)
     parsed = _parse_gate_callback(callback_data)
     if parsed is None:
         return {"status": "ok"}
