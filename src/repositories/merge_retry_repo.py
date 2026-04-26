@@ -81,6 +81,28 @@ def get_by_sha(
     )
 
 
+def find_pending_by_sha(
+    db: Session,
+    *,
+    repo_full_name: str,
+    commit_sha: str,
+) -> list[MergeRetryQueue]:
+    """(repo_full_name, commit_sha) 로 pending 상태 행 전체를 조회한다.
+
+    check_suite.completed 트리거 시 재시도 대상 행 목록 조회에 사용.
+    Used to look up all retry-eligible rows when check_suite.completed arrives.
+    """
+    return (
+        db.query(MergeRetryQueue)
+        .filter(
+            MergeRetryQueue.repo_full_name == repo_full_name,
+            MergeRetryQueue.commit_sha == commit_sha,
+            MergeRetryQueue.status == "pending",
+        )
+        .all()
+    )
+
+
 def delete_all_for_repo(
     db: Session,
     *,
