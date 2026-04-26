@@ -532,15 +532,16 @@
       <div class="advanced-body">
         <div class="settings-grid">
 
-      <!-- ② PR 들어왔을 때 / When a PR arrives -->
+      <!-- ② 분석 동작 규칙 / Analysis behavior rules -->
       <div class="s-card">
         <div class="s-card-hdr hdr-gate">
-          <span class="hdr-icon">📋</span>
-          <span class="hdr-title">PR 들어왔을 때</span>
+          <span class="hdr-icon">⚡</span>
+          <span class="hdr-title">분석 동작 규칙</span>
           <span class="hdr-badge" id="approveBadge">{{ config.approve_mode }}</span>
         </div>
         <div class="s-card-body">
 
+          <div class="s-section-label">PR 이벤트</div>
           <!-- PR 코드리뷰 댓글 / PR code review comment -->
           <div class="toggle-row">
             <div class="toggle-info">
@@ -668,18 +669,8 @@
             </div>
           </div>
 
-        </div>
-      </div>
-
-      <!-- ③ 이벤트 후 피드백 / Post-event feedback -->
-      <div class="s-card">
-        <div class="s-card-hdr hdr-merge">
-          <span class="hdr-icon">📬</span>
-          <span class="hdr-title">이벤트 후 피드백</span>
-        </div>
-        <div class="s-card-body">
-
-          <div class="s-section-label">Push 이후</div>
+          <div class="s-divider"></div>
+          <div class="s-section-label">Push / 배포 이벤트</div>
           <div class="toggle-row">
             <div class="toggle-info">
               <div class="t-title">커밋 코멘트</div>
@@ -693,7 +684,6 @@
           </div>
 
           <div class="s-divider"></div>
-          <div class="s-section-label">점수 미달 시</div>
           <div class="toggle-row">
             <div class="toggle-info">
               <div class="t-title">이슈 자동 생성</div>
@@ -707,10 +697,9 @@
           </div>
 
           <div class="s-divider"></div>
-          <div class="s-section-label">Railway 빌드 실패 시</div>
           <div class="toggle-row">
             <div class="toggle-info">
-              <div class="t-title">GitHub Issue 자동 생성</div>
+              <div class="t-title">Railway 빌드 실패 알림</div>
               <div class="t-desc">Railway 빌드 실패 이벤트 수신 시<br>해당 리포에 로그 포함 Issue 자동 생성</div>
             </div>
             <label class="toggle-switch">
@@ -720,8 +709,10 @@
             </label>
           </div>
 
+          <div class="s-divider"></div>
+          <div class="s-section-label">팀 설정</div>
           <!-- 팀 인사이트 리더보드 옵트인 (기본 비활성) / Team Insights leaderboard opt-in (disabled by default) -->
-          <div class="toggle-row" style="margin-top:.75rem;">
+          <div class="toggle-row">
             <div class="toggle-info">
               <div class="t-title">팀 리더보드 공개</div>
               <div class="t-desc">이 리포를 팀 인사이트 리더보드에 포함<br>
