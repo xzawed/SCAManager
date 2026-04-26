@@ -57,3 +57,15 @@
 이 파일은 **무엇이 있는지** 목록을 제공한다. 두 파일이 서로 보완 관계다.
 
 > **갱신 방법**: 새 에이전트·스킬 추가 시 이 파일과 CLAUDE.md "도구 사용 시점 요약" 표를 동기화한다.
+
+---
+
+## Phase 12 이후 신규 서비스 모듈 (에이전트 없음, 직접 구현)
+
+| 모듈 | 역할 |
+|------|------|
+| `src/services/merge_retry_service.py` | CI-aware Auto Merge 재시도 워커 (`process_pending_retries`) |
+| `src/gate/retry_policy.py` | 재시도 정책 순수 함수 (`should_retry`, `compute_next_retry_at`, `is_expired`) |
+| `src/models/merge_retry.py` | MergeRetryQueue ORM (append-only claim 패턴) |
+
+> 최종 갱신: 2026-04-27 (Phase 12 완료 후)
