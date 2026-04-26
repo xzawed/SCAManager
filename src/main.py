@@ -16,6 +16,8 @@ from src.webhook.router import router as webhook_router
 from src.api.repos import router as api_repos_router
 from src.api.stats import router as api_stats_router
 from src.api.hook import router as api_hook_router
+from src.api.users import router as api_users_router
+from src.api.internal_cron import router as api_internal_cron_router
 from src.ui.router import router as ui_router
 from src.auth.github import router as auth_router
 
@@ -109,6 +111,8 @@ app.include_router(webhook_router)
 app.include_router(api_repos_router)
 app.include_router(api_stats_router)
 app.include_router(api_hook_router)
+app.include_router(api_users_router)
+app.include_router(api_internal_cron_router)
 app.include_router(ui_router)
 
 
