@@ -284,9 +284,7 @@ class TestRunTrendCheck:
         # current_avg=None → triggers the min_samples insufficient branch
         mock_ma.return_value = None
 
-        from src.services.cron_service import run_trend_check
-
-        alerted = await run_trend_check(db, now=now)
+        alerted = await cs.run_trend_check(db, now=now)
 
         # min_samples 미충족 → Telegram 호출 없음
         # Below min_samples → no Telegram call
@@ -310,9 +308,7 @@ class TestRunTrendCheck:
         # moving_average return values: current=71, prev=80 → drop=9
         mock_ma.side_effect = [71.0, 80.0]
 
-        from src.services.cron_service import run_trend_check
-
-        alerted = await run_trend_check(db, now=now)
+        alerted = await cs.run_trend_check(db, now=now)
 
         # drop=9 < _TREND_DROP_THRESHOLD=10 → 알림 없음
         # drop=9 < _TREND_DROP_THRESHOLD=10 → no alert
