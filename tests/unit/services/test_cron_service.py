@@ -130,9 +130,7 @@ class TestRunWeeklyReports:
         for i in range(5):
             _make_analysis(db, repo.id, score=75, offset_hours=i * 10)
 
-        from src.services.cron_service import run_weekly_reports
-
-        sent = await run_weekly_reports(db, now=now)
+        sent = await cs.run_weekly_reports(db, now=now)
 
         # telegram_post_message 가 호출되어야 한다
         # telegram_post_message must have been called
@@ -159,9 +157,7 @@ class TestRunWeeklyReports:
         for i in range(5):
             _make_analysis(db, repo_no_chat.id, score=80, offset_hours=i * 5)
 
-        from src.services.cron_service import run_weekly_reports
-
-        sent = await run_weekly_reports(db, now=now)
+        sent = await cs.run_weekly_reports(db, now=now)
 
         # chat_id 없으므로 전송하지 않아야 한다
         # Must not send since chat_id is absent
