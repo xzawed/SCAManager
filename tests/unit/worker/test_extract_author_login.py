@@ -17,7 +17,6 @@ os.environ.setdefault("GITHUB_CLIENT_ID", "test-github-client-id")
 os.environ.setdefault("GITHUB_CLIENT_SECRET", "test-github-client-secret")
 os.environ.setdefault("SESSION_SECRET", "test-session-secret-32-chars-long!")
 
-import pytest  # noqa: E402
 from src.worker.pipeline import _extract_author_login  # noqa: E402
 
 
