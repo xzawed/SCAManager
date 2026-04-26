@@ -193,6 +193,16 @@ Analysis complete
 | `approve_mode="semi-auto"` | Manual decision via Telegram buttons |
 | `auto_merge=true` | Squash merge when threshold is met |
 
+#### ♻️ CI-aware Auto Merge Retry (Phase 12)
+
+When `auto_merge=true` and the merge fails because CI is still running (`mergeable_state=unstable` or `unknown`), SCAManager queues the PR for retry instead of giving up:
+
+- First queue: Telegram "⏳ merge queued" notification (1×)
+- Up to 30 retries over 24 hours via `check_suite.completed` webhook or 5-min cron
+- Final result: Telegram success/failure notification (1×)
+
+> **Existing repos** need Webhook re-registration (Settings → Card ⑤ → "Reinstall Webhook") to subscribe to `check_suite` events.
+
 ---
 
 ### 📊 Observability
