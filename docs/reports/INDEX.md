@@ -12,7 +12,7 @@
 | 단위 테스트 수·커버리지·pylint | [STATE.md 헤더](../STATE.md) |
 | 아키텍처·작업 규칙·주의사항 | [CLAUDE.md](../../CLAUDE.md) |
 | README 배지 | [README.md L21-25](../../README.md) |
-| 최신 작업 이력 | [STATE.md 그룹 45](../STATE.md) |
+| 최신 작업 이력 | [STATE.md 그룹 46](../STATE.md) |
 
 ---
 
