@@ -10,6 +10,7 @@ from fastapi.responses import HTMLResponse
 
 from src.auth.session import CurrentUser, require_login
 from src.database import SessionLocal
+from src.models.repo_config import RepoConfig
 from src.models.repository import Repository
 from src.scorer.calculator import calculate_grade
 from src.services import analytics_service
@@ -96,20 +97,16 @@ def insights_comparison(
                 for item in raw
             ]
 
-        # 옵트인 리포의 리더보드 — leaderboard_opt_in=True 리포 ID 수집
-        # Leaderboard for opted-in repos — collect repo IDs with leaderboard_opt_in=True
-        opted_in_repos = (
-            db.query(Repository)
-            .filter(
-                (Repository.user_id == current_user.id) | (Repository.user_id.is_(None))
-            )
+        # 옵트인 리포의 리더보드 — RepoConfig.leaderboard_opt_in=True 리포 이름 조회 후 ID 변환
+        # Leaderboard: query RepoConfig for opted-in repos, then resolve to repo IDs
+        opted_in_names = {
+            cfg.repo_full_name
+            for cfg in db.query(RepoConfig)
+            .filter(RepoConfig.leaderboard_opt_in.is_(True))
             .all()
-        )
-        # repo_config 에서 opt-in 여부 확인 — 설정이 없으면 False (기본 비활성)
-        # Check opt-in via repo_config — default False if no config
+        }
         opted_in_ids = [
-            r.id for r in opted_in_repos
-            if r.config and getattr(r.config, "leaderboard_opt_in", False)
+            r.id for r in all_repos if r.full_name in opted_in_names
         ]
         lb = analytics_service.leaderboard(db, days=days, opted_in_repo_ids=opted_in_ids)
 
