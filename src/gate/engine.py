@@ -7,14 +7,17 @@ from sqlalchemy.orm import Session
 from src.config import settings
 from src.config_manager.manager import get_repo_config, RepoConfigData
 from src.gate._common import score_from_result as _score_from_result
-from src.gate.github_review import post_github_review, merge_pr
+from src.gate.github_review import post_github_review, merge_pr, get_pr_mergeable_state
 from src.gate.merge_failure_advisor import get_advice
+from src.gate.merge_reasons import UNSTABLE_CI, UNKNOWN_STATE_TIMEOUT, DEFERRED
+from src.gate.retry_policy import parse_reason_tag, should_retry
+from src.github_client.checks import get_ci_status, get_required_check_contexts
 from src.notifier.merge_failure_issue import create_merge_failure_issue
 from src.gate.telegram_gate import send_gate_request
 from src.notifier.github_comment import post_pr_comment_from_result as post_pr_comment
 from src.notifier.telegram import telegram_post_message
 from src.models.gate_decision import GateDecision
-from src.repositories import gate_decision_repo
+from src.repositories import gate_decision_repo, merge_retry_repo
 from src.shared.merge_metrics import log_merge_attempt
 
 logger = logging.getLogger(__name__)
@@ -172,7 +175,7 @@ async def _run_semi_auto_approve(
         logger.error("Telegram Gate 요청 실패: %s", type(exc).__name__)
 
 
-async def _run_auto_merge(  # pylint: disable=too-many-arguments
+async def _run_auto_merge(  # pylint: disable=too-many-arguments,too-many-locals
     config: RepoConfigData,
     github_token: str,
     repo_name: str,
@@ -184,11 +187,228 @@ async def _run_auto_merge(  # pylint: disable=too-many-arguments
 ) -> None:
     """Auto Merge 옵션 (approve_mode 무관하게 독립).
 
+    Phase 12: merge_retry_enabled=True 시 retriable 실패를 큐에 등록해 재시도.
+    Phase 12: When merge_retry_enabled=True, retriable failures are enqueued for retry.
+
     Phase F.1: `log_merge_attempt` 로 모든 시도(성공·실패)를 DB 에 기록한다.
     analysis_id/db 가 None 이면 기록을 생략 — 레거시 호출부 호환.
     """
     if not (config.auto_merge and score >= config.merge_threshold):
         return
+
+    # 레거시 경로: 재시도 비활성화 시 단일 시도 동작
+    # Legacy path: fall back to single-attempt behavior when retry is disabled.
+    if not settings.merge_retry_enabled:
+        await _run_auto_merge_legacy(
+            config, github_token, repo_name, pr_number, score,
+            analysis_id=analysis_id, db=db,
+        )
+        return
+
+    # --- Phase 12 재시도 인식 경로 — 복잡도 분산을 위해 헬퍼에 위임 ---
+    # --- Phase 12 retry-aware path — delegate to helper to distribute complexity ---
+    try:
+        await _run_auto_merge_retry(
+            config, github_token, repo_name, pr_number, score,
+            analysis_id=analysis_id, db=db,
+        )
+    # Phase F QW4: RuntimeError/ValueError 도 포착해 알림 스킵 방지
+    # Phase F QW4: also catch RuntimeError/ValueError to prevent notification skip.
+    except (httpx.HTTPError, KeyError, RuntimeError, ValueError) as exc:
+        logger.error(
+            "Auto Merge 실패 (repo=%s, pr=%d): %s",
+            repo_name, pr_number, type(exc).__name__,
+        )
+
+
+async def _run_auto_merge_retry(  # pylint: disable=too-many-arguments,too-many-locals
+    config: RepoConfigData,
+    github_token: str,
+    repo_name: str,
+    pr_number: int,
+    score: int,
+    *,
+    analysis_id: int | None = None,
+    db: Session | None = None,
+) -> None:
+    """Phase 12 재시도 경로의 핵심 로직 — _run_auto_merge 에서 위임받음.
+    Core logic of the Phase 12 retry path — delegated from _run_auto_merge.
+
+    1. PR mergeable_state + head_sha 조회
+    2. merge_pr 즉시 시도 (SHA 원자성 가드 포함)
+    3. 성공 → 기록 후 반환
+    4. 실패 태그 분류 → 터미널이면 _handle_terminal_merge_failure
+    5. CI 상태 판별 → 재시도 불가면 터미널 처리
+    6. 재시도 가능 → 큐 등록 + 최초 지연 알림
+    """
+    # 1. PR 상태 + head_sha 조회
+    # 1. Get PR state + head_sha
+    try:
+        _state, head_sha = await get_pr_mergeable_state(github_token, repo_name, pr_number)
+    except httpx.HTTPError as exc:
+        logger.warning("get_pr_mergeable_state 실패 (pr=%d): %s", pr_number, exc)
+        head_sha = ""
+
+    # 2. SHA 원자성 가드와 함께 즉시 머지 시도
+    # 2. Try merge immediately with SHA atomicity guard
+    ok, reason, observed_sha = await merge_pr(
+        github_token, repo_name, pr_number, expected_sha=head_sha or None
+    )
+
+    # observed_sha (merge_pr 내부 조회) 우선 사용, 없으면 head_sha
+    # Prefer observed_sha (from merge_pr's internal call), fall back to head_sha
+    effective_sha = observed_sha or head_sha
+
+    # 3. 성공 — 기록 후 반환
+    # 3. Success — log and return
+    if ok:
+        if analysis_id is not None and db is not None:
+            try:
+                log_merge_attempt(
+                    db, analysis_id=analysis_id, repo_name=repo_name,
+                    pr_number=pr_number, score=score,
+                    threshold=config.merge_threshold, success=True, reason=None,
+                )
+            except Exception as log_exc:  # pylint: disable=broad-except
+                logger.warning("merge_attempt 기록 실패: %s", log_exc)
+        logger.info("PR #%d auto-merged: %s", pr_number, repo_name)
+        return
+
+    # 4. 실패 분류 — 터미널이면 즉시 처리
+    # 4. Classify failure — handle terminal immediately
+    reason_tag = parse_reason_tag(reason)
+    if reason_tag not in (UNSTABLE_CI, UNKNOWN_STATE_TIMEOUT):
+        await _handle_terminal_merge_failure(
+            config=config, github_token=github_token, repo_name=repo_name,
+            pr_number=pr_number, score=score, reason=reason, reason_tag=reason_tag,
+            analysis_id=analysis_id, db=db,
+        )
+        return
+
+    # 5. CI 상태 추가 판별 (D2)
+    # 5. Disambiguate CI state (D2)
+    ci_status = await _get_ci_status_safe(github_token, repo_name, effective_sha)
+
+    if not should_retry(reason_tag, ci_status):
+        # CI 실제 실패 또는 판별 후 터미널 상태
+        # CI actually failed or state is terminal after disambiguation
+        await _handle_terminal_merge_failure(
+            config=config, github_token=github_token, repo_name=repo_name,
+            pr_number=pr_number, score=score, reason=reason, reason_tag=reason_tag,
+            analysis_id=analysis_id, db=db,
+        )
+        return
+
+    # 6. 재시도 큐 등록 (D4, D5, D6)
+    # 6. Enqueue for retry (D4, D5, D6)
+    await _enqueue_merge_retry(
+        config=config, repo_name=repo_name, pr_number=pr_number, score=score,
+        effective_sha=effective_sha, reason_tag=reason_tag, ci_status=ci_status,
+        analysis_id=analysis_id, db=db,
+    )
+
+
+async def _get_ci_status_safe(
+    github_token: str,
+    repo_name: str,
+    commit_sha: str,
+) -> str:
+    """CI 상태를 안전하게 조회한다 — 오류 시 'unknown' 반환.
+    Safely fetch CI status — returns 'unknown' on error.
+    """
+    try:
+        # 기본 브랜치 조회 — 현재는 "main" 기본값 사용 (향후 PR 정보에서 추출 가능)
+        # Get default branch — currently defaults to "main" (can be extracted from PR info later)
+        required = await get_required_check_contexts(github_token, repo_name, "main")
+    except httpx.HTTPError:
+        required = None  # None 이면 모든 체크 고려 / None means "consider all checks"
+
+    try:
+        return await get_ci_status(
+            github_token, repo_name, commit_sha,
+            required_contexts=required,
+        )
+    except httpx.HTTPError:
+        return "unknown"
+
+
+async def _enqueue_merge_retry(  # pylint: disable=too-many-arguments
+    *,
+    config: RepoConfigData,
+    repo_name: str,
+    pr_number: int,
+    score: int,
+    effective_sha: str,
+    reason_tag: str,
+    ci_status: str,
+    analysis_id: int | None,
+    db: Session | None,
+) -> None:
+    """재시도 큐에 등록하고 최초 지연 시 Telegram 알림을 전송한다.
+    Enqueue for merge retry and send Telegram notification on first deferral.
+    """
+    if analysis_id is None or db is None:
+        logger.info(
+            "PR #%d auto-merge 지연 (analysis_id/db 없음, 재시도 큐 생략)",
+            pr_number,
+        )
+        return
+
+    try:
+        log_merge_attempt(
+            db, analysis_id=analysis_id, repo_name=repo_name,
+            pr_number=pr_number, score=score,
+            threshold=config.merge_threshold, success=False,
+            reason=f"{reason_tag}:{DEFERRED}",
+        )
+    except Exception as log_exc:  # pylint: disable=broad-except
+        logger.warning("merge_attempt 기록 실패 (deferred): %s", log_exc)
+
+    try:
+        enqueued = merge_retry_repo.enqueue_or_bump(
+            db,
+            repo_full_name=repo_name,
+            pr_number=pr_number,
+            analysis_id=analysis_id,
+            commit_sha=effective_sha or "",
+            score=score,
+            threshold_at_enqueue=config.merge_threshold,
+            notify_chat_id=config.notify_chat_id,
+            max_attempts=settings.merge_retry_max_attempts,
+            initial_next_retry_seconds=settings.merge_retry_initial_backoff_seconds,
+        )
+        if enqueued.is_first_deferral:
+            await _notify_merge_deferred(
+                repo_name=repo_name,
+                pr_number=pr_number,
+                score=score,
+                threshold=config.merge_threshold,
+                reason_tag=reason_tag,
+                ci_status=ci_status,
+                chat_id=config.notify_chat_id or settings.telegram_chat_id,
+            )
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.warning(
+            "merge_retry_repo.enqueue_or_bump 실패 (pr=%d): %s", pr_number, exc
+        )
+
+
+async def _run_auto_merge_legacy(  # pylint: disable=too-many-arguments
+    config: RepoConfigData,
+    github_token: str,
+    repo_name: str,
+    pr_number: int,
+    score: int,
+    *,
+    analysis_id: int | None = None,
+    db: Session | None = None,
+) -> None:
+    """Auto Merge 레거시 경로 — 재시도 없이 단일 시도.
+
+    merge_retry_enabled=False 일 때 _run_auto_merge 가 이 함수로 위임한다.
+    Legacy Auto Merge path — single attempt without retry.
+    _run_auto_merge delegates here when merge_retry_enabled=False.
+    """
     try:
         ok, reason, _head_sha = await merge_pr(github_token, repo_name, pr_number)
 
@@ -256,6 +476,64 @@ async def _run_auto_merge(  # pylint: disable=too-many-arguments
         )
 
 
+async def _handle_terminal_merge_failure(  # pylint: disable=too-many-arguments
+    *,
+    config: RepoConfigData,
+    github_token: str,
+    repo_name: str,
+    pr_number: int,
+    score: int,
+    reason: str | None,
+    reason_tag: str,
+    analysis_id: int | None,
+    db: Session | None,
+) -> None:
+    """터미널 머지 실패: MergeAttempt 기록 + 알림 + 선택적 GitHub Issue 생성.
+    Terminal merge failure: log MergeAttempt + notify + optionally create GitHub issue.
+    """
+    if analysis_id is not None and db is not None:
+        try:
+            log_merge_attempt(
+                db,
+                analysis_id=analysis_id,
+                repo_name=repo_name,
+                pr_number=pr_number,
+                score=score,
+                threshold=config.merge_threshold,
+                success=False,
+                reason=reason,
+            )
+        except Exception as log_exc:  # pylint: disable=broad-except
+            logger.warning("merge_attempt 기록 실패: %s", log_exc)
+
+    advice = get_advice(reason_tag)
+    logger.warning("PR #%d auto-merge 실패 (repo=%s): %s", pr_number, repo_name, reason)
+    await _notify_merge_failure(
+        repo_name=repo_name,
+        pr_number=pr_number,
+        score=score,
+        threshold=config.merge_threshold,
+        reason=reason or "unknown",
+        advice=advice,
+        chat_id=config.notify_chat_id or settings.telegram_chat_id,
+    )
+    if config.auto_merge_issue_on_failure:
+        try:
+            await create_merge_failure_issue(
+                github_token=github_token,
+                repo_name=repo_name,
+                pr_number=pr_number,
+                score=score,
+                threshold=config.merge_threshold,
+                reason=reason or "unknown",
+                advice=advice,
+            )
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.warning(
+                "create_merge_failure_issue 실패 (pr=%d): %s", pr_number, exc
+            )
+
+
 async def _notify_merge_failure(
     *,
     repo_name: str,
@@ -287,6 +565,38 @@ async def _notify_merge_failure(
         )
     except httpx.HTTPError as exc:
         logger.warning("Telegram merge-failure 알림 실패: %s", exc)
+
+
+async def _notify_merge_deferred(
+    *,
+    repo_name: str,
+    pr_number: int,
+    score: int,
+    threshold: int,
+    reason_tag: str,
+    ci_status: str,
+    chat_id: str | None,
+) -> None:
+    """CI 대기 중임을 사용자에게 알린다 (최초 지연 1회).
+    Notify user that merge is deferred while waiting for CI (first deferral only).
+    """
+    if not chat_id or not settings.telegram_bot_token:
+        return
+    msg = (
+        "⏳ <b>자동 머지 대기 중</b>\n"
+        f"📁 <code>{escape(repo_name)}</code> — PR #{pr_number}\n"
+        f"점수: {score}점 (기준: {threshold}점)\n"
+        f"사유: CI {ci_status} ({escape(reason_tag)})\n"
+        "<i>CI 완료 후 자동으로 머지를 재시도합니다.</i>"
+    )
+    try:
+        await telegram_post_message(
+            settings.telegram_bot_token,
+            chat_id,
+            {"text": msg, "parse_mode": "HTML"},
+        )
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.warning("_notify_merge_deferred 전송 실패: %s", type(exc).__name__)
 
 
 def save_gate_decision(
