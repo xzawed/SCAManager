@@ -97,3 +97,17 @@ WEBHOOK_SECRET_CACHE_TTL = 300  # per-repo webhook secret 캐시 TTL (초, 5분)
 # ── Pipeline event filter ─────────────────────────────────────────────────
 HANDLED_EVENTS: frozenset[str] = frozenset({"push", "pull_request", "issues"})
 PR_HANDLED_ACTIONS: frozenset[str] = frozenset({"opened", "synchronize", "reopened", "closed"})
+
+# ── 봇 발신 / 자기 분석 루프 방지 상수 ────────────────────────────────────
+# ── Bot sender / self-analysis loop guard constants ────────────────────────
+BOT_LOGIN_WHITELIST: frozenset[str] = frozenset({"github-actions[bot]", "dependabot[bot]"})
+# 허용 봇 로그인 목록 — 분석 skip 제외 (CI/CD 봇은 정상 동작)
+# Whitelisted bot logins — exempt from analysis skip (CI/CD bots operate normally)
+
+MAX_BOT_EVENTS_PER_HOUR: int = 6
+# 리포당 1시간 내 최대 허용 봇 이벤트 수 — 초과 시 분석 skip
+# Max bot events per repo per hour — exceeded events are skipped
+
+SKIP_CI_MARKERS: tuple[str, ...] = ("[skip ci]", "[skip-sca]", "[ci skip]")
+# 커밋 메시지에 이 문자열이 포함되면 분석 skip
+# If any of these strings appear in a commit message, analysis is skipped

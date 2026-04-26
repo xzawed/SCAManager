@@ -10,6 +10,10 @@ from src.shared.http_client import get_http_client
 
 logger = logging.getLogger(__name__)
 
+# 봇 PR 헤드 ref 패턴 — Issue 생성 시 해당 PR은 제외한다
+# Bot PR head ref prefixes — skip Issue creation for these automation PRs
+_BOT_PR_PREFIXES: tuple[str, ...] = ("claude-fix/", "bot/", "renovate/", "dependabot/")
+
 
 def _bandit_high_issues(result: dict) -> list[dict]:
     """result["issues"]에서 bandit HIGH severity 이슈만 추출한다."""
@@ -109,7 +113,11 @@ class _IssueNotifier:
         """채널 활성화 여부를 반환한다."""
         if not (ctx.config and ctx.config.create_issue and ctx.result_dict):
             return False
-        is_bot_pr = ctx.pr_head_ref and ctx.pr_head_ref.startswith("claude-fix/")
+        # 봇 PR 제외 — claude-fix/ 및 기타 자동화 PR 헤드 ref 패턴
+        # Exclude bot PRs — claude-fix/ and other automation PR head ref patterns
+        is_bot_pr = ctx.pr_head_ref and any(
+            ctx.pr_head_ref.startswith(prefix) for prefix in _BOT_PR_PREFIXES
+        )
         if is_bot_pr:
             return False
         has_bandit_high = any(
