@@ -50,6 +50,34 @@
 
 ## 작업 이력 (그룹별)
 
+### 그룹 50 (2026-04-27 · SonarCloud 마이그레이션 + 전체 문서 정비 + docs 구조 재편)
+
+**목표**: Phase 12 머지 후 CI 도구 현행화, 전체 문서 Phase 12 동기화, docs/ 디렉토리 구조 정비.
+
+**변경 내용**:
+
+| PR | 파일 | 변경 |
+|----|------|------|
+| #84 | `.github/workflows/ci.yml` | deprecated `sonarcloud-github-action@master` → `sonarqube-scan-action@v5` + `SONAR_HOST_URL` |
+| #86 | `CLAUDE.md` | 핵심 데이터 흐름에 재시도 경로 추가, 단위 테스트 수 1709 반영 |
+| #86 | `docs/STATE.md` | repositories 8종 카운트, Phase 12 파일 5개 역할 추가 |
+| #86 | `README.md` | Phase 12 CI-aware Auto Merge Retry 섹션 추가 |
+| #86 | `docs/reference/env-vars.md` | Phase 12 환경변수 7개 섹션 신규 추가 |
+| #86 | `docs/guides/github-integration-guide.md` | check_suite 구독 확인 섹션 추가 |
+| #86 | `docs/runbooks/merge-retry.md` | `MERGE_RETRY_CHECK_SUITE_WEBHOOK_ENABLED` + Stale Claim 복구 절차 추가 |
+| #87 | `docs/_archive/` | 완료된 plan 7개·spec 7개·guide 3개·history 1개 → _archive 이동 (총 18개) |
+| #87 | `docs/reports/artifacts/` | 재현 가능한 로그/JSON 19개 삭제 |
+| #87 | `docs/design/INDEX.md`, `docs/agents-index.md` | Phase 12 항목 추가 |
+| #87 | `docs/_archive/README.md` | 아카이브 기준 및 탐색 가이드 신규 작성 |
+
+**닫은 PR**: #85 Dependabot `sonarqube-scan-action` v5→v6 — v6 BREAKING CHANGE("Project not found") 확인 후 닫음.
+
+**추가된 규칙**: CLAUDE.md `### 병렬 에이전트 — 브랜치 충돌 방지` 섹션 (2026-04-27 세션 사고 교훈).
+
+회고: [2026-04-27-phase12-docs-overhaul-retrospective](reports/2026-04-27-phase12-docs-overhaul-retrospective.md)
+
+---
+
 ### 그룹 49 (2026-04-27 · Phase 12 CI-aware Auto Merge 재시도 완료 — T15 문서화)
 
 **목표**: PR 자동 머지 시 `mergeable_state=unstable`(CI 진행 중) 또는 `unknown` 상태에서 단일 실패 대신 `merge_retry_queue`에 큐잉하여 최대 24시간 자동 재시도. `check_suite.completed` 웹훅 즉각 트리거 + 5분 cron fallback 이중 보장.

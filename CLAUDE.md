@@ -405,6 +405,24 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 2. `/phase-next` → 브레인스토밍 및 설계 시작
 3. 설계 문서 작성 후 `test-writer` 에이전트로 Phase 첫 테스트 작성
 
+### 병렬 에이전트 — 브랜치 충돌 방지
+
+독립 브랜치 + PR이 필요한 병렬 에이전트를 디스패치할 때 아래 세 가지를 반드시 지킨다.
+(전례: 2026-04-27 PR-A·B·C 병렬 작업에서 3개 에이전트 모두 같은 브랜치에 커밋 → PR 3개 대신 1개 생성)
+
+1. **`isolation: worktree` 전원 적용** — 독립 브랜치가 필요한 모든 에이전트에 예외 없이 적용.
+2. **프롬프트 첫 단계에서 고유 브랜치명 명시** — 아래 형식을 프롬프트 Step 1로 고정.
+   ```
+   1. git checkout -b docs/phase12-state-readme  (이미 있으면 switch)
+   ```
+3. **완료 기준에 "PR URL 반환" 포함** — 에이전트가 분석만 하고 멈추는 사고 방지.
+   ```
+   완료 조건: gh pr create 성공 후 PR URL 반환
+   ```
+
+> **나쁜 방식** → 에이전트 프롬프트: "PR-B 작업을 수행해주세요"
+> **좋은 방식** → 프롬프트 Step 1에 `git checkout -b docs/<고유-이름>` 명시 + `isolation: worktree` 설정
+
 ### 도구 사용 시점 요약
 
 | 도구 | 사용 시점 | 통과 기준 |
