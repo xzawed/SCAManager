@@ -12,7 +12,8 @@
 4. [CLI Hook 설치 (로컬 pre-push 자동 코드리뷰)](#4-cli-hook-설치-로컬-pre-push-자동-코드리뷰)
 5. [Gate 모드 및 임계값 설정](#5-gate-모드-및-임계값-설정)
 6. [연동 확인](#6-연동-확인)
-7. [문제 해결](#7-문제-해결)
+7. [Phase 12 — check_suite 이벤트 구독 확인](#7-phase-12--check_suite-이벤트-구독-확인)
+8. [문제 해결](#8-문제-해결)
 
 ---
 
@@ -259,7 +260,21 @@ Pull Request를 생성하면:
 
 ---
 
-## 7. 문제 해결
+## 7. Phase 12 — check_suite 이벤트 구독 확인
+
+**Phase 12 이후 신규 등록 리포**는 `check_suite` 이벤트가 자동으로 포함된다.
+
+**기존 등록 리포 (Phase 12 이전에 추가한 리포)**는 다음 절차로 업데이트해야 CI-aware 자동 재시도가 동작한다:
+
+1. SCAManager 대시보드 → 해당 리포 **Settings**
+2. Card ⑤ (시스템 & 토큰) → **"Webhook 재등록"** 버튼 클릭
+3. GitHub 리포 **Settings → Webhooks** 에서 이벤트 목록에 `Check suites` 포함 여부 확인
+
+> `check_suite` 미구독 상태에서도 5분 cron fallback으로 재시도가 동작하지만, 즉각 트리거가 비활성화되어 최대 5분 지연이 발생한다.
+
+---
+
+## 8. 문제 해결
 
 ### Webhook 수신 후 반응 없음
 
@@ -336,6 +351,7 @@ curl https://your-domain/api/hook/verify?repo=owner/repo&token=TOKEN
 □ 6. GET /health → {"status":"ok","active_db":"primary"} 확인
 □ 7. (선택) 로컬 클론에서 bash .scamanager/install-hook.sh 실행
 □ 8. (선택) 설정 탭에서 PR 리뷰 댓글 · Gate 모드 · Auto Merge 설정
+□ 9. (기존 리포) Webhook 재등록 → check_suite 이벤트 구독 확인 (Phase 12 check_suite 섹션 참조)
 ```
 
 ### 방법 B (레거시)

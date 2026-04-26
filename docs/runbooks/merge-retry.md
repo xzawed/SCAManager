@@ -24,6 +24,7 @@ When auto-merging a PR, if `mergeable_state=unstable` (CI running) or `unknown`,
 - `MERGE_RETRY_INITIAL_BACKOFF_SECONDS=60` — 첫 재시도 백오프
 - `MERGE_RETRY_MAX_BACKOFF_SECONDS=600` — 최대 백오프
 - `MERGE_RETRY_WORKER_BATCH_SIZE=50` — cron sweep 1회 처리 최대 행 수
+- `MERGE_RETRY_CHECK_SUITE_WEBHOOK_ENABLED=true` — check_suite 웹훅 즉각 트리거 활성화
 
 ## Webhook 구독 확인 / Webhook Subscription Check
 
@@ -44,6 +45,28 @@ LIMIT 20;
 ```
 
 ## 수동 재시도 트리거 / Manual Retry Trigger
+
+```bash
+curl -X POST -H "X-API-Key: $INTERNAL_CRON_API_KEY" \
+  https://<app-url>/api/internal/cron/retry-pending-merges
+```
+
+## Stale Claim 복구 / Stale Claim Recovery
+
+워커가 비정상 종료되면 `claimed_at IS NOT NULL`이지만 처리가 멈춘 행이 생길 수 있다.
+5분 이상 지난 claim은 다음 cron 실행 시 자동 재클레임된다.
+
+수동으로 확인하려면:
+
+```sql
+SELECT id, repo_full_name, pr_number, claimed_at, attempts_count
+FROM merge_retry_queue
+WHERE claimed_at IS NOT NULL
+  AND claimed_at < NOW() - INTERVAL '5 minutes'
+  AND status = 'pending';
+```
+
+발견 시 cron 수동 트리거로 재처리:
 
 ```bash
 curl -X POST -H "X-API-Key: $INTERNAL_CRON_API_KEY" \
