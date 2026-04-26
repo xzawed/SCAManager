@@ -275,10 +275,21 @@ def main() -> None:
     if grade in ("skip", "low_risk"):
         sys.exit(0)
 
-    # diff 구성 / Build diff
-    old = tool_input.get("old_string", "") or ""
-    new = tool_input.get("new_string", "") or tool_input.get("content", "") or ""
-    diff = f"파일: {file_path}\n\n--- 이전 ---\n{old}\n\n+++ 이후 +++\n{new}"
+    # diff 구성 — Edit/Write 단일 변경 또는 MultiEdit 배열 모두 처리
+    # Build diff — handles both single Edit/Write and MultiEdit edits[] array
+    edits = tool_input.get("edits")
+    if edits:
+        chunks = []
+        for i, e in enumerate(edits, 1):
+            chunks.append(
+                f"[편집 {i}]\n--- 이전 ---\n{e.get('old_string', '')}"
+                f"\n+++ 이후 +++\n{e.get('new_string', '')}"
+            )
+        diff = f"파일: {file_path}\n\n" + "\n\n".join(chunks)
+    else:
+        old = tool_input.get("old_string", "") or ""
+        new = tool_input.get("new_string", "") or tool_input.get("content", "") or ""
+        diff = f"파일: {file_path}\n\n--- 이전 ---\n{old}\n\n+++ 이후 +++\n{new}"
 
     context = _load_context()
     results = asyncio.run(call_agents_parallel(grade, diff, context))
