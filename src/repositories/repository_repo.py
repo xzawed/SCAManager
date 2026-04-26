@@ -8,6 +8,13 @@ from sqlalchemy.orm import Session
 from src.models.repository import Repository
 
 
+def find_all(db: Session) -> list[Repository]:
+    """모든 Repository 레코드를 반환한다.
+    Return all Repository records.
+    """
+    return db.query(Repository).all()
+
+
 def find_by_full_name(db: Session, full_name: str) -> Repository | None:
     """리포 전체 이름(owner/repo)으로 조회.
 

@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-26 기준 — Phase F Quick Win + F.1 관측 완료 · Phase F.3 실패 어드바이저 완료 · G.2 수치 동기화 · Phase G 완료 · P2 이슈 수정 완료 · Phase H 착수 (F.2 관측 완료) · 이중언어 주석 마이그레이션 완료 · 보안 강화 그룹 39 완료 · lint 회귀 수정 · 문서 다중 에이전트 심의 시스템 완료 · **Phase 9 자기 분석 루프 방지 완료**)
+## 현재 수치 (2026-04-26 기준 — Phase F Quick Win + F.1 관측 완료 · Phase F.3 실패 어드바이저 완료 · G.2 수치 동기화 · Phase G 완료 · P2 이슈 수정 완료 · Phase H 착수 (F.2 관측 완료) · 이중언어 주석 마이그레이션 완료 · 보안 강화 그룹 39 완료 · lint 회귀 수정 · 문서 다중 에이전트 심의 시스템 완료 · Phase 9 자기 분석 루프 방지 완료 · **Phase 10 Telegram 확장 완료**)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1344개** | pytest 9.0.3 (0 failed) — 2026-04-26 로컬 실측 (Phase 9 self-analysis loop_guard 12개 추가) |
+| 단위 테스트 | **1417개** | pytest 9.0.3 (0 failed) — 2026-04-26 로컬 실측 (Phase 10: +73 테스트) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |

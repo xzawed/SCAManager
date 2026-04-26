@@ -348,3 +348,100 @@ async def test_log_merge_attempt_exception_does_not_abort_callback():
                             await handle_gate_callback(
                                 analysis_id=77, decision="approve", decided_by="carol"
                             )
+
+
+# ---------------------------------------------------------------------------
+# Phase 10 T6: message.text 처리 + cmd: callback 위임 테스트
+# Phase 10 T6: message.text handling + cmd: callback dispatch tests
+# ---------------------------------------------------------------------------
+
+def test_message_text_routes_to_commands_handler():
+    """message.text가 있으면 handle_message_command가 호출된다.
+    message.text payload routes to handle_message_command.
+    """
+    # 실제 DB 세션을 mock SessionLocal로 대체한다
+    # Replace real DB session with mock SessionLocal
+    mock_db = MagicMock()
+    payload = {
+        "message": {
+            "text": "/stats owner/repo",
+            "from": {"id": 123},
+            "chat": {"id": 456},
+        }
+    }
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
+        with patch(
+            "src.webhook.providers.telegram.handle_message_command",
+            return_value="응답 텍스트",
+        ) as mock_cmd:
+            with patch(
+                "src.webhook.providers.telegram.telegram_post_message",
+                new_callable=AsyncMock,
+            ):
+                r = client.post("/api/webhook/telegram", json=payload)
+    assert r.status_code == 200
+    assert r.json() == {"status": "ok"}
+    # handle_message_command가 sender_id="123", text="/stats owner/repo" 로 호출됐는지 확인
+    # handle_message_command must be called with sender_id="123" and correct text
+    mock_cmd.assert_called_once()
+    _, kw = mock_cmd.call_args
+    assert kw["telegram_user_id"] == "123"
+    assert kw["text"] == "/stats owner/repo"
+
+
+def test_callback_query_gate_prefix_unchanged():
+    """gate: callback은 기존 gate 처리 로직으로 간다.
+    gate: callbacks are handled by the existing gate logic.
+    """
+    # gate: 콜백은 parse_cmd_callback을 거치지 않고 handle_gate_callback으로 라우팅돼야 한다
+    # gate: callbacks must route to handle_gate_callback, not parse_cmd_callback
+    with patch("src.webhook.providers.telegram.handle_gate_callback",
+               new_callable=AsyncMock) as mock_gate:
+        with patch("src.webhook.providers.telegram.parse_cmd_callback") as mock_cmd:
+            r = client.post("/api/webhook/telegram", json=APPROVE)
+    assert r.status_code == 200
+    mock_gate.assert_called_once()
+    # parse_cmd_callback은 gate: 접두사 데이터로 호출되지 않아야 한다
+    # parse_cmd_callback must NOT be called for gate: prefixed data
+    mock_cmd.assert_not_called()
+
+
+def test_callback_query_cmd_prefix_dispatched():
+    """cmd: callback은 parse_cmd_callback으로 위임된다.
+    cmd: callbacks are dispatched to parse_cmd_callback.
+    """
+    # cmd: 접두사 콜백이 들어올 때 parse_cmd_callback이 호출되고 handle_gate_callback은 호출 안됨
+    # When cmd: prefixed callback arrives, parse_cmd_callback is called, gate_callback is not
+    cmd_payload = {
+        "update_id": 99,
+        "callback_query": {
+            "id": "c99",
+            "from": {"id": 7, "username": "testuser"},
+            "data": "cmd:stats:42:abc123",
+            "message": {"message_id": 1, "chat": {"id": -1}},
+        },
+    }
+    with patch("src.webhook.providers.telegram.parse_cmd_callback",
+               return_value=None) as mock_cmd:
+        with patch("src.webhook.providers.telegram.handle_gate_callback",
+                   new_callable=AsyncMock) as mock_gate:
+            r = client.post("/api/webhook/telegram", json=cmd_payload)
+    assert r.status_code == 200
+    assert r.json() == {"status": "ok"}
+    # parse_cmd_callback이 cmd: 데이터로 호출됐는지 확인
+    # parse_cmd_callback must be called with the cmd: data string
+    mock_cmd.assert_called_once_with("cmd:stats:42:abc123")
+    # gate 콜백은 호출되지 않아야 한다
+    # Gate callback must not be triggered
+    mock_gate.assert_not_called()
+
+
+def test_unknown_payload_returns_ok():
+    """message도 callback_query도 없으면 {"status": "ok"} 반환.
+    Payloads without message or callback_query return {"status": "ok"}.
+    """
+    # 알 수 없는 형식의 페이로드 — 두 키 모두 없음
+    # Unknown payload format — neither key is present
+    r = client.post("/api/webhook/telegram", json={"update_id": 1, "unknown_key": "value"})
+    assert r.status_code == 200
+    assert r.json() == {"status": "ok"}

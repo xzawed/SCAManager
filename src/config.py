@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""  # 빈 문자열이면 AI 리뷰 건너뜀
     claude_review_model: str = "claude-sonnet-4-6"  # AI 코드리뷰 모델 (환경변수 CLAUDE_REVIEW_MODEL로 오버라이드)
     api_key: str = ""  # 빈 문자열이면 인증 건너뜀
+    internal_cron_api_key: str = ""  # 내부 cron 엔드포인트 전용 키 (admin api_key와 분리)
+    # Internal cron endpoint key — separate from admin api_key
     github_client_id: str = ""
     github_client_secret: str = ""
     session_secret: str = "dev-secret-change-in-production"
