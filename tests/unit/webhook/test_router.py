@@ -30,6 +30,7 @@ def test_valid_push_event_returns_202():
     with patch("src.webhook.providers.github.settings") as mock_settings, patch("src.webhook._helpers.settings") as mock_helpers_settings:
         mock_helpers_settings.github_webhook_secret = SECRET
         mock_settings.github_webhook_secret = SECRET
+        mock_settings.scamanager_self_analysis_disabled = False
         with patch("src.webhook.providers.github.run_analysis_pipeline"):
             resp = client.post(
                 "/webhooks/github",
@@ -110,6 +111,7 @@ def test_opened_pr_action_accepted():
     with patch("src.webhook.providers.github.settings") as mock_settings, patch("src.webhook._helpers.settings") as mock_helpers_settings:
         mock_helpers_settings.github_webhook_secret = SECRET
         mock_settings.github_webhook_secret = SECRET
+        mock_settings.scamanager_self_analysis_disabled = False
         with patch("src.webhook.providers.github.run_analysis_pipeline"):
             resp = client.post(
                 "/webhooks/github",
@@ -183,3 +185,88 @@ def test_webhook_falls_back_to_global_secret_for_legacy_repo(client):
                 },
             )
     assert r.status_code == 202
+
+
+def test_bot_sender_push_is_skipped():
+    """봇 발신(sender.type == Bot) push → 202 skipped (bot_sender)."""
+    data = {
+        "repository": {"full_name": "owner/repo"},
+        "sender": {"type": "Bot", "login": "renovate[bot]"},
+        "after": "abc123",
+    }
+    payload = json.dumps(data).encode()
+    with patch("src.webhook.providers.github.settings") as mock_settings, \
+         patch("src.webhook._helpers.settings") as mock_helpers_settings:
+        mock_helpers_settings.github_webhook_secret = SECRET
+        mock_settings.github_webhook_secret = SECRET
+        mock_settings.scamanager_self_analysis_disabled = False
+        with patch("src.webhook.providers.github.run_analysis_pipeline") as mock_pipeline:
+            resp = client.post(
+                "/webhooks/github",
+                content=payload,
+                headers={
+                    "X-Hub-Signature-256": _sign(payload),
+                    "X-GitHub-Event": "push",
+                },
+            )
+    assert resp.status_code == 202
+    assert resp.json()["status"] == "skipped"
+    assert resp.json()["reason"] == "bot_sender"
+    mock_pipeline.assert_not_called()
+
+
+def test_skip_ci_marker_push_is_skipped():
+    """커밋 메시지에 [skip ci] 마커가 있으면 → 202 skipped (skip_marker)."""
+    data = {
+        "repository": {"full_name": "owner/repo"},
+        "sender": {"type": "User", "login": "developer"},
+        "head_commit": {"message": "chore: update deps [skip ci]"},
+        "after": "abc123",
+    }
+    payload = json.dumps(data).encode()
+    with patch("src.webhook.providers.github.settings") as mock_settings, \
+         patch("src.webhook._helpers.settings") as mock_helpers_settings:
+        mock_helpers_settings.github_webhook_secret = SECRET
+        mock_settings.github_webhook_secret = SECRET
+        mock_settings.scamanager_self_analysis_disabled = False
+        with patch("src.webhook.providers.github.run_analysis_pipeline") as mock_pipeline:
+            resp = client.post(
+                "/webhooks/github",
+                content=payload,
+                headers={
+                    "X-Hub-Signature-256": _sign(payload),
+                    "X-GitHub-Event": "push",
+                },
+            )
+    assert resp.status_code == 202
+    assert resp.json()["status"] == "skipped"
+    assert resp.json()["reason"] == "skip_marker"
+    mock_pipeline.assert_not_called()
+
+
+def test_self_analysis_disabled_skips_all():
+    """scamanager_self_analysis_disabled=True 킬 스위치 → 202 skipped (self_analysis_disabled)."""
+    data = {
+        "repository": {"full_name": "owner/repo"},
+        "sender": {"type": "User", "login": "developer"},
+        "after": "abc123",
+    }
+    payload = json.dumps(data).encode()
+    with patch("src.webhook.providers.github.settings") as mock_settings, \
+         patch("src.webhook._helpers.settings") as mock_helpers_settings:
+        mock_helpers_settings.github_webhook_secret = SECRET
+        mock_settings.github_webhook_secret = SECRET
+        mock_settings.scamanager_self_analysis_disabled = True
+        with patch("src.webhook.providers.github.run_analysis_pipeline") as mock_pipeline:
+            resp = client.post(
+                "/webhooks/github",
+                content=payload,
+                headers={
+                    "X-Hub-Signature-256": _sign(payload),
+                    "X-GitHub-Event": "push",
+                },
+            )
+    assert resp.status_code == 202
+    assert resp.json()["status"] == "skipped"
+    assert resp.json()["reason"] == "self_analysis_disabled"
+    mock_pipeline.assert_not_called()

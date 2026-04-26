@@ -350,7 +350,7 @@ def test_jinja2_autoescape_enabled():
     Jinja2Templates autoescape must be enabled (XSS protection).
 
     starlette >= 0.21 returns select_autoescape callable instead of True;
-    # both forms are valid — callable means HTML/XML files are autoescaped.
+    both forms are valid — callable means HTML/XML files are autoescaped.
     """
     from fastapi.templating import Jinja2Templates
     t = Jinja2Templates(directory="src/templates")
