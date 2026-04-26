@@ -211,9 +211,7 @@ class TestRunWeeklyReports:
             None,
         ]
 
-        from src.services.cron_service import run_weekly_reports
-
-        sent = await run_weekly_reports(db, now=now)
+        sent = await cs.run_weekly_reports(db, now=now)
 
         # 두 번 호출 — 첫 번째 실패, 두 번째 성공 → sent=1
         # Called twice — first fails, second succeeds → sent=1
