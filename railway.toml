@@ -21,6 +21,12 @@ command = "curl -s -X POST -H 'X-API-Key: $INTERNAL_CRON_API_KEY' http://localho
 schedule = "0 3 * * *"
 command = "curl -s -X POST -H 'X-API-Key: $INTERNAL_CRON_API_KEY' http://localhost:$PORT/api/internal/cron/trend"
 
+# CI-aware Auto Merge 재시도 — 5분마다 pending 큐 처리 (Phase 12 cron fallback)
+# CI-aware Auto Merge retry — process pending queue every 5 min (Phase 12 cron fallback)
+[[deploy.cronJobs]]
+schedule = "*/5 * * * *"
+command = "curl -s -X POST -H 'X-API-Key: $INTERNAL_CRON_API_KEY' http://localhost:$PORT/api/internal/cron/retry-pending-merges"
+
 # Fallback B (Railway native cron 제한 시): cron-job.org 외부 → curl
 # Fallback B (if Railway native cron is unavailable): use cron-job.org with:
 #   POST https://<APP_BASE_URL>/api/internal/cron/weekly   (Header: X-API-Key: $INTERNAL_CRON_API_KEY)

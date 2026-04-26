@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-26 기준 — Insights 버그 수정 + 회귀 테스트 — PR #81)
+## 현재 수치 (2026-04-27 기준 — Phase 12 CI-aware Auto Merge 재시도 완료)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1495개** | pytest 9.0.3 (0 failed, 1 skipped) — 2026-04-26 로컬 실측 |
+| 단위 테스트 | **1709개** | pytest 9.0.3 (0 failed, 5 skipped — 3 Postgres-gated + 2 pre-existing) — 2026-04-27 로컬 실측 |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
@@ -44,6 +44,55 @@
 | `tests/conftest.py` | 환경변수 주입 + _webhook_secret_cache autouse 클리어 |
 
 ## 작업 이력 (그룹별)
+
+### 그룹 49 (2026-04-27 · Phase 12 CI-aware Auto Merge 재시도 완료 — T15 문서화)
+
+**목표**: PR 자동 머지 시 `mergeable_state=unstable`(CI 진행 중) 또는 `unknown` 상태에서 단일 실패 대신 `merge_retry_queue`에 큐잉하여 최대 24시간 자동 재시도. `check_suite.completed` 웹훅 즉각 트리거 + 5분 cron fallback 이중 보장.
+
+**신규 파일 (구현)**:
+
+| 파일 | 역할 |
+|------|------|
+| `alembic/versions/0020_add_merge_retry_queue.py` | `merge_retry_queue` 테이블 DDL |
+| `src/models/merge_retry.py` | `MergeRetryQueue` ORM |
+| `src/repositories/merge_retry_repo.py` | `enqueue_or_bump`, `claim_batch`, `release_claim`, `mark_succeeded`, `mark_terminal`, `mark_abandoned`, `mark_expired`, `abandon_stale_for_pr`, `find_pending_by_sha` |
+| `src/gate/retry_policy.py` | 순수 함수: `parse_reason_tag`, `should_retry`, `compute_next_retry_at`, `is_expired`, `mergeable_state_terminality` |
+| `src/github_client/checks.py` | `get_ci_status`, `get_required_check_contexts` (5분 TTL 캐시, D2+D8 페이지네이션) |
+| `src/services/merge_retry_service.py` | `process_pending_retries` 워커 |
+| `docs/runbooks/merge-retry.md` | 운영 가이드 (T15 문서화) |
+
+**신규 테스트 파일**:
+- `tests/unit/gate/test_retry_policy.py`
+- `tests/unit/github_client/test_checks.py`
+- `tests/unit/services/test_merge_retry_service.py`
+- `tests/unit/repositories/test_merge_retry_repo.py`
+- `tests/unit/api/test_internal_cron_retry.py`
+- `tests/unit/webhook/providers/test_check_suite_handler.py`
+- `tests/unit/github_client/test_repos_webhook_events.py`
+- `tests/unit/gate/test_auto_merge_enqueue.py`
+- `tests/unit/ui/test_settings_webhook_banner.py`
+- `tests/integration/test_retry_end_to_end.py`
+- `tests/integration/test_retry_concurrency_postgres.py` (Postgres-gated, 3 skipped)
+- `tests/unit/migrations/test_0020_round_trip.py`
+
+**주요 수정 파일**:
+- `src/constants.py` — `HANDLED_EVENTS`에 `"check_suite"` 추가
+- `src/config.py` — retry 설정 7개 필드 추가
+- `src/gate/engine.py` — retriable 실패 시 즉시 terminal 대신 큐잉
+- `src/gate/github_review.py` — `merge_pr(expected_sha=...)` SHA atomicity (D1)
+- `src/gate/merge_reasons.py` — 8-state taxonomy 확장 (D11)
+- `src/github_client/repos.py` — `"check_suite"` WEBHOOK_EVENTS 추가, `update_webhook_events()`, `list_webhooks()` 헬퍼
+- `src/api/internal_cron.py` — `POST /api/internal/cron/retry-pending-merges` 엔드포인트
+- `src/webhook/providers/github.py` — `check_suite.completed` 핸들러 + `pull_request.synchronize` abandon-stale hook + 30초 디바운스
+- `src/ui/routes/settings.py` — stale webhook 감지 (`_detect_stale_webhook`)
+- `src/templates/settings.html` — `check_suite` 구독 누락 시 경고 배너
+- `src/repositories/__init__.py` — `merge_retry_repo` export
+- `railway.toml` — `*/5 * * * *` retry sweep cronJob 추가
+
+**테스트 증분**: 1495 → **1709** passed (5 skipped — 3 Postgres-gated + 2 pre-existing)
+**품질**: pylint 10.00 · bandit HIGH 0 · 커버리지 ~95%
+
+---
 
 ### 그룹 48 (2026-04-26 · Insights 버그 수정 — PR #81)
 

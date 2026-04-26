@@ -20,6 +20,7 @@ from src.models.repository import Repository  # noqa: F401
 from src.models.analysis import Analysis      # noqa: F401
 from src.models.repo_config import RepoConfig  # noqa: F401
 from src.models.gate_decision import GateDecision  # noqa: F401
+from src.models.merge_retry import MergeRetryQueue  # noqa: F401
 from src.database import Base, _build_connect_args
 from src.config import settings
 
