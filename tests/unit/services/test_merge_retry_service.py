@@ -599,6 +599,34 @@ class TestProcessPendingRetries:
         assert result["terminal"] == 1
         mock_issue.assert_called_once()
 
+    # T9-13: max_attempts 초과 행 → abandoned 처리
+    # T9-13: Row exceeding max_attempts → abandoned
+    async def test_process_max_attempts_exhausted_is_abandoned(self, db_session):
+        """max_attempts 초과 시 abandoned 처리됨을 검증한다.
+        Verify that rows exceeding max_attempts are marked abandoned.
+        """
+        row = _seed_queue_row(db_session, score=80)
+        # 초과 상태 시뮬레이션 — attempts_count를 max_attempts와 같게 설정
+        # Simulate exhaustion — set attempts_count equal to max_attempts
+        row.attempts_count = row.max_attempts
+        db_session.commit()
+
+        with patch(
+            "src.services.merge_retry_service._resolve_github_token",
+            return_value="ghp_token",
+        ):
+            result = await process_pending_retries(
+                db_session,
+                now=datetime(2030, 1, 1, tzinfo=timezone.utc),
+                only_ids=[row.id],
+            )
+
+        assert result["abandoned"] == 1
+        assert result["succeeded"] == 0
+        db_session.refresh(row)
+        assert row.status == "abandoned"
+        assert row.last_failure_reason == "max_attempts_exceeded"
+
     # T9-12: 여러 행 처리 — 1개 성공, 1개 terminal, 1개 released
     # T9-12: Multiple rows processed — 1 success, 1 terminal, 1 released
     async def test_process_multiple_rows_all_processed(self, db_session):

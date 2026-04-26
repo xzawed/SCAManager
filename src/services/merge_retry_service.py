@@ -91,6 +91,15 @@ async def process_pending_retries(  # pylint: disable=too-many-locals,too-many-s
                 counts["released"] += 1
                 continue
 
+            # ── b-0. 최대 시도 횟수 초과 검사 ────────────────────────────────────────
+            # ── b-0. Max attempts exhaustion check ─────────────────────────────────
+            if row.attempts_count >= row.max_attempts:
+                merge_retry_repo.mark_abandoned(
+                    db, row.id, reason="max_attempts_exceeded"
+                )
+                counts["abandoned"] += 1
+                continue
+
             # ── b. 설정 재확인 (D5) ────────────────────────────────────────
             # ── b. Re-read live config (D5) ───────────────────────────────
             cfg = get_repo_config(db, row.repo_full_name)

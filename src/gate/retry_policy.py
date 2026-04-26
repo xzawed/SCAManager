@@ -131,7 +131,7 @@ def compute_next_retry_at(
 
     # ±25% 균등 분포 지터 적용 — 동시 재시도 충돌 방지 (thundering-herd 완화)
     # Apply ±25% uniform jitter — prevents thundering-herd on simultaneous retries
-    jitter = random.uniform(-0.25 * base, 0.25 * base)
+    jitter = random.uniform(-0.25 * base, 0.25 * base)  # nosec B311
 
     # 최소 1초 보장 — 극단적 지터 시 음수 방지
     # Guarantee at least 1 second — prevents non-positive delay under extreme jitter

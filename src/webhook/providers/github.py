@@ -275,6 +275,18 @@ async def _handle_check_suite_completed(  # NOSONAR python:S7503 — caller awai
     D9 debounce: 동일 (repo, sha) 30초 내 중복 처리 방지.
     D9 debounce: prevents duplicate processing of the same (repo, sha) within 30s.
     """
+    # 설정으로 check_suite 웹훅 처리 비활성화 시 즉시 반환
+    # Return immediately if check_suite webhook processing is disabled via config
+    if not settings.merge_retry_check_suite_webhook_enabled:
+        return {"status": "disabled"}
+
+    # 캐시 스테일 항목 정리 — 메모리 누수 방지
+    # Evict stale entries from debounce cache to prevent unbounded growth
+    _now = time.monotonic()
+    stale_keys = [k for k, v in _check_suite_debounce.items() if _now - v >= _CHECK_SUITE_DEBOUNCE_TTL]
+    for k in stale_keys:
+        _check_suite_debounce.pop(k, None)
+
     action = data.get("action", "")
     # check_suite.completed 만 처리 — requested/rerequested 무시
     # Only handle check_suite.completed — ignore requested/rerequested
