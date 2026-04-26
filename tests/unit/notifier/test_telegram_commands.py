@@ -184,7 +184,7 @@ def test_handle_connect_accepts_valid_otp(db):
     /connect with a valid OTP must return a success message.
     """
     future = datetime.now(timezone.utc) + timedelta(minutes=10)
-    user = _make_user(
+    _make_user(
         db,
         github_id="gh-otp",
         email="otp@example.com",
