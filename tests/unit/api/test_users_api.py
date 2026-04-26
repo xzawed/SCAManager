@@ -126,8 +126,9 @@ def test_post_telegram_otp_requires_login():
     """비인증 상태에서 호출 시 302 리다이렉트 또는 401을 반환한다.
     Returns 302 redirect or 401 when called without authentication.
     """
-    # 의존성 오버라이드를 일시적으로 제거하여 비인증 상태 시뮬레이션
-    # Temporarily remove the override to simulate unauthenticated state.
+    # 현재 오버라이드를 저장하여 다른 테스트 모듈의 전역 상태를 보존한다
+    # Save the current override to preserve global state across test modules.
+    _saved = app.dependency_overrides.get(require_login)
     del app.dependency_overrides[require_login]
     try:
         r = client.post("/api/users/me/telegram-otp", follow_redirects=False)
@@ -135,9 +136,10 @@ def test_post_telegram_otp_requires_login():
         # require_login raises 302 (Location: /login) or 401.
         assert r.status_code in (302, 401)
     finally:
-        # 다른 테스트에 영향을 주지 않도록 오버라이드 복원
-        # Restore the override so other tests are not affected.
-        app.dependency_overrides[require_login] = lambda: _FAKE_USER
+        # 저장된 오버라이드로 복원 — 이 파일 외부의 모듈이 설정한 오버라이드도 보존
+        # Restore the saved override — preserves overrides set by other test modules.
+        if _saved is not None:
+            app.dependency_overrides[require_login] = _saved
 
 
 def test_post_telegram_otp_uses_secrets_for_randomness():
