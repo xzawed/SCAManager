@@ -177,6 +177,68 @@ def test_reject_slider_updates_number_input(seeded_page, base_url):
     assert seeded_page.input_value("#rejectVal") == "30"
 
 
+# ── Telegram 연결 카드 E2E 테스트 ──────────────────────────────────────
+# ── Telegram connect card E2E tests ──────────────────────────────────────
+
+
+def test_telegram_connect_section_visible(seeded_page, base_url):
+    """카드 ⑤ 내 Telegram 연결 서브섹션이 설정 페이지에 렌더링되어야 한다.
+    Telegram connection subsection must render inside card ⑤ of the settings page.
+    """
+    seeded_page.goto(f"{base_url}{SETTINGS_URL}")
+    assert seeded_page.locator("#telegram-connect-section").count() == 1
+    assert seeded_page.locator("#telegram-connect-section").is_visible()
+
+
+def test_telegram_otp_button_visible_when_not_connected(seeded_page, base_url):
+    """미연결 사용자에게는 '연결 코드 발급' 버튼이 표시되어야 한다.
+    The 'Issue Code' button must be visible for a user without a linked Telegram account.
+
+    E2E 시드 사용자는 telegram_user_id = NULL 이므로 미연결 상태.
+    The E2E seeded user has telegram_user_id = NULL, so it is in the unlinked state.
+    """
+    seeded_page.goto(f"{base_url}{SETTINGS_URL}")
+    btn = seeded_page.locator("#issueTelegramOtp")
+    assert btn.count() == 1
+    assert btn.is_visible()
+    assert not btn.is_disabled()
+
+
+def test_telegram_otp_issue_shows_six_digit_code(seeded_page, base_url):
+    """'연결 코드 발급' 버튼 클릭 시 6자리 숫자 OTP가 화면에 표시되어야 한다.
+    Clicking 'Issue Code' must display a 6-digit numeric OTP on screen.
+    """
+    seeded_page.goto(f"{base_url}{SETTINGS_URL}")
+    # OTP 표시 영역은 초기에 숨겨져 있어야 한다 / OTP display must be hidden initially.
+    assert seeded_page.evaluate(
+        "document.getElementById('telegramOtpDisplay').style.display === 'none' || "
+        "!document.getElementById('telegramOtpDisplay')"
+    )
+    seeded_page.locator("#issueTelegramOtp").click()
+    # OTP API 응답 및 DOM 업데이트 대기 / Wait for OTP API response and DOM update.
+    seeded_page.wait_for_selector("#telegramOtpDisplay", state="visible", timeout=5000)
+    otp_text = seeded_page.locator("#telegramOtpCode").inner_text()
+    # 6자리 숫자 문자열이어야 한다 / Must be a 6-digit numeric string.
+    assert len(otp_text) == 6, f"OTP 길이 오류: {otp_text!r}"
+    assert otp_text.isdigit(), f"OTP에 비숫자 문자 포함: {otp_text!r}"
+
+
+def test_telegram_otp_button_disabled_while_timer_runs(seeded_page, base_url):
+    """OTP 발급 후 타이머 실행 중에는 버튼이 비활성화되어야 한다.
+    The issue button must be disabled while the countdown timer is running.
+    """
+    seeded_page.goto(f"{base_url}{SETTINGS_URL}")
+    seeded_page.locator("#issueTelegramOtp").click()
+    seeded_page.wait_for_selector("#telegramOtpDisplay", state="visible", timeout=5000)
+    # 타이머 실행 중이므로 버튼은 비활성화 상태여야 한다
+    # Button must be disabled while the timer is running.
+    assert seeded_page.locator("#issueTelegramOtp").is_disabled()
+    # 카운트다운 텍스트가 "4:" 또는 "5:" 로 시작해야 한다 (5분 이내)
+    # Countdown text must start with "4:" or "5:" (within 5 minutes).
+    countdown = seeded_page.locator("#telegramOtpCountdown").inner_text()
+    assert countdown.startswith(("5:", "4:")), f"카운트다운 형식 오류: {countdown!r}"
+
+
 def test_approve_threshold_hidden_when_disabled(seeded_page, base_url):
     """Approve 모드 비활성 시 임계값 슬라이더 영역이 숨겨져야 한다."""
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
