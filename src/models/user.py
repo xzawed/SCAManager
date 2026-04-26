@@ -54,3 +54,9 @@ class User(Base):
         Returns True when this user has a linked Telegram account.
         """
         return self.telegram_user_id is not None
+
+    def __repr__(self) -> str:
+        """OTP 및 토큰 필드를 제외한 User 표현.
+        User representation excluding OTP and token fields.
+        """
+        return f"<User id={self.id!r} github_login={self.github_login!r}>"

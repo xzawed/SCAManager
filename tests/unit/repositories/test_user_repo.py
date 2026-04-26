@@ -168,3 +168,80 @@ def test_is_telegram_connected_property(db_session):
     db_session.refresh(user)
 
     assert user.is_telegram_connected is True
+
+
+def test_clear_otp_nullifies_fields(db_session):
+    """clear_otp가 OTP 있는 사용자의 otp/expires_at을 None으로 만든다.
+    clear_otp nullifies telegram_otp and telegram_otp_expires_at.
+    """
+    # OTP가 설정된 사용자 생성
+    # Create a user with an active OTP.
+    future = datetime.now(timezone.utc) + timedelta(minutes=10)
+    user = User(
+        github_id="tg_clear1",
+        github_login="hank",
+        email="h@i.com",
+        display_name="H",
+        telegram_otp="CLEAR01",
+        telegram_otp_expires_at=future,
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+
+    # clear_otp 호출 후 두 필드가 None이어야 한다
+    # Both fields must be None after clear_otp.
+    user_repo.clear_otp(db_session, user.id)
+    db_session.refresh(user)
+
+    assert user.telegram_otp is None
+    assert user.telegram_otp_expires_at is None
+
+
+def test_clear_otp_on_user_without_otp_is_noop(db_session):
+    """clear_otp는 OTP가 없는 사용자에 대해 예외 없이 처리된다.
+    clear_otp is a no-op when the user has no OTP.
+    """
+    # OTP가 없는 사용자 생성
+    # Create a user with no OTP set.
+    user = User(
+        github_id="tg_clear2",
+        github_login="iris",
+        email="i@j.com",
+        display_name="I",
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+
+    # 예외 없이 통과해야 한다
+    # Must complete without raising any exception.
+    user_repo.clear_otp(db_session, user.id)
+    db_session.refresh(user)
+
+    assert user.telegram_otp is None
+    assert user.telegram_otp_expires_at is None
+
+
+def test_find_by_otp_returns_none_for_wrong_code(db_session):
+    """만료되지 않았지만 OTP 코드가 틀리면 None을 반환한다.
+    Returns None when the OTP code is incorrect even if not expired.
+    """
+    # 유효한 OTP를 가진 사용자 생성
+    # Create a user with a valid, unexpired OTP.
+    future = datetime.now(timezone.utc) + timedelta(minutes=10)
+    user = User(
+        github_id="tg_wrong",
+        github_login="jake",
+        email="j@k.com",
+        display_name="J",
+        telegram_otp="CORRECT",
+        telegram_otp_expires_at=future,
+    )
+    db_session.add(user)
+    db_session.commit()
+
+    # 다른 코드로 조회하면 None을 반환해야 한다
+    # Querying with a different code must return None.
+    found = user_repo.find_by_otp(db_session, "WRONGCODE")
+    assert found is None
