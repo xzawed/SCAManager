@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-26 기준 — Phase 9·10·11 완료 · 툴링 안전장치 추가 — PR #76)
+## 현재 수치 (2026-04-26 기준 — Phase 9·10·11 완료 · 툴링 안전장치 + 사고 전 방어 테스트 추가 — PR #77)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1515개** | pytest 9.0.3 (0 failed) — 2026-04-26 로컬 실측 (ORM-마이그레이션 완전성 검사 67개 추가) |
+| 단위 테스트 | **1528개** | pytest 9.0.3 (0 failed) — 2026-04-26 로컬 실측 (5-way sync + stage_timer 방어 13개 추가) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
@@ -44,6 +44,31 @@
 | `tests/conftest.py` | 환경변수 주입 + _webhook_secret_cache autouse 클리어 |
 
 ## 작업 이력 (그룹별)
+
+### 그룹 46 (2026-04-26 · 문서 구조 개선 + 사고 전 방어 테스트 2종 — PR #77)
+
+**배경**: 3-에이전트 협의로 도출한 "사고 이전 방어" 접근법. 5-way sync 누락과 로그 인젝션 방어 회귀를 CI에서 자동 감지.
+
+**변경 내용**:
+
+| 파일 | 변경 | 역할 |
+|------|------|------|
+| `CLAUDE.md` | 🧭 탐색 가이드 + 🔴 고위험 규칙 강조 + 섹션 순서 재정렬 | 작업 워크플로 일치 + 빠른 규칙 탐색 |
+| `docs/reports/INDEX.md` | "현재 상태 바로가기" 섹션 + 누락 회고 2건 추가 | 문서 탐색 진입점 개선 |
+| `tests/unit/test_repo_config_sync.py` | 신규 (3 tests) | RepoConfigData ↔ RepoConfigUpdate ↔ ORM 3-way 필드 완전 일치 정적 검사 |
+| `tests/unit/shared/test_stage_metrics_robustness.py` | 신규 (10 tests) | stage_timer 예약 키 보호 + 엣지 케이스 — 로그 인젝션 방어 회귀 게이트 |
+
+**CLAUDE.md 핵심 변경**:
+- **🧭 탐색 가이드**: 상단에 상황→섹션 링크 테이블 추가 (신규 기능·파이프라인·Webhook·Phase 착수 등)
+- **🔴 상위 3대 위반 박스**: asyncio_mode / batch_alter_table / ORM 컬럼 마이그레이션 누락
+- **섹션 순서 재정렬**: 체크리스트 → 필수 원칙 (실제 워크플로 순서 반영)
+- **완료 5-step**: ①커밋 ②PR ③push ④STATE.md ⑤CLAUDE.md 아키텍처 동기화
+- **CLAUDE.md 동기화 체크리스트**: 신규 파일·ORM·API·메트릭 추가 시 갱신 항목 테이블
+
+**테스트 증분**: +13 (1515 → **1528** passed)
+**품질**: pylint 10.00 · bandit HIGH 0
+
+---
 
 ### 그룹 45 (2026-04-26 · 툴링 안전장치 — PR #76)
 
