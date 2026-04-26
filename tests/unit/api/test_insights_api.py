@@ -24,6 +24,7 @@ import pytest  # noqa: E402
 from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 from src.main import app
+from src.api import auth as _auth_mod
 from src.api.auth import require_api_key  # require_api_key dependency — dependency_overrides 키로 사용
 
 client = TestClient(app)
@@ -105,7 +106,6 @@ def test_author_trend_requires_api_key():
     # autouse fixture sets the override; explicitly remove it for this test
     app.dependency_overrides.pop(require_api_key, None)
 
-    import src.api.auth as _auth_mod
     # API_KEY 환경변수를 설정하고 settings를 패치하여 강제로 인증 실패를 유도한다
     # Patch settings.api_key to a non-empty value to force authentication check
     _original = _auth_mod.settings.api_key
