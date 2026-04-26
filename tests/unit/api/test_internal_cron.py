@@ -15,7 +15,6 @@ os.environ.setdefault("API_KEY", "")
 
 from unittest.mock import AsyncMock, patch  # noqa: E402
 
-import pytest  # noqa: E402
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
