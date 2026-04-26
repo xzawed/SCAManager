@@ -122,6 +122,7 @@ def _settings_get_custom(
         telegram_user_id="tg_123" if telegram_connected else None,
     )
     app.dependency_overrides[require_login] = lambda: custom_user
+    resp = None
     try:
         with patch("src.ui.routes.settings.SessionLocal", return_value=_make_db_ctx()), \
              patch("src.ui.routes.settings.get_repo_config", return_value=config), \
@@ -132,9 +133,10 @@ def _settings_get_custom(
                  new_callable=AsyncMock,
                  return_value=stale,
              ):
-            return client.get("/repos/owner%2Frepo/settings")
+            resp = client.get("/repos/owner%2Frepo/settings")
     finally:
         app.dependency_overrides[require_login] = lambda: _test_user
+    return resp
 
 
 def test_settings_shows_onboarding_banner_when_no_channel():
