@@ -480,8 +480,7 @@ ANTHROPIC_API_KEY     = sk-ant-...                       ← recommended
 uvicorn src.main:app --host 0.0.0.0 --port 8000 --proxy-headers
 ```
 
-**DB Failover** — Set `DATABASE_URL_FALLBACK` to a secondary DB URL for automatic failover on primary failure.
-Status: `GET /health` → `{"active_db": "primary" | "fallback"}`
+**DB Failover** — Set `DATABASE_URL_FALLBACK` to a secondary DB URL for automatic failover on primary failure. The `/health` endpoint returns `{"status": "ok"}` regardless of which DB is active.
 
 See the [on-premises migration guide](docs/guides/onpremise-migration-guide.md) for details.
 
