@@ -364,6 +364,29 @@
   <form id="settingsForm" method="post" action="/repos/{{ repo_name }}/settings">
     <input type="hidden" name="approve_mode" id="approveModeValue" value="{{ config.approve_mode }}">
 
+    {% if onboarding_needed %}
+    <!-- 온보딩 배너 — 알림 채널 미설정 + Telegram 미연결 시 표시 -->
+    <!-- Onboarding banner — shown when no notification channel and Telegram not linked -->
+    <div class="s-card" id="onboardingBanner" style="margin-bottom:1rem;border:1.5px solid var(--accent);">
+      <div class="s-card-hdr" style="background:linear-gradient(135deg,#6366f1,#8b5cf6)">
+        <span class="hdr-icon">🚀</span>
+        <span class="hdr-title">빠른 시작</span>
+        <span class="hdr-badge">알림 채널 미설정</span>
+      </div>
+      <div class="s-card-body">
+        <p style="font-size:13px;color:var(--text-muted);margin:0 0 .75rem;">분석 결과를 받으려면 아래 단계를 완료하세요.</p>
+        <div style="display:flex;flex-direction:column;gap:.45rem;font-size:13px;">
+          <a href="#notifyCard" style="color:var(--accent);font-weight:600;">
+            ① 알림 채널 설정 → 아래 <strong>알림 발신 채널</strong>에서 Telegram 또는 다른 채널을 연결하세요
+          </a>
+          <span style="color:var(--text-muted);">
+            ② 리뷰 수준 결정 → 위 <strong>빠른 설정</strong>에서 프리셋을 선택하세요 (선택 사항)
+          </span>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
     {% if webhook_stale %}
     <div class="alert alert-warning alert-dismissible d-flex align-items-center mb-4" role="alert" id="webhookStaleBanner">
       <span class="me-2">⚠️</span>
@@ -376,7 +399,7 @@
     {% endif %}
 
     <!-- ① 빠른 설정 (프리셋) / Quick settings (presets) -->
-    <div class="s-card" style="margin-bottom:1rem;">
+    <div class="s-card" id="presetCard" style="margin-bottom:1rem;">
       <div class="s-card-hdr hdr-preset">
         <span class="hdr-icon">🚀</span>
         <span class="hdr-title">빠른 설정</span>
