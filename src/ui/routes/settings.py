@@ -154,6 +154,7 @@ async def update_repo_settings(
                 create_issue=form.get("create_issue") == "on",
                 railway_deploy_alerts=form.get("railway_deploy_alerts") == "on",
                 auto_merge_issue_on_failure=form.get("auto_merge_issue_on_failure") == "on",
+                leaderboard_opt_in=form.get("leaderboard_opt_in") == "on",
             ))
             # railway_webhook_token, railway_api_token — RepoConfigData 외부 관리
             config_orm = repo_config_repo.find_by_full_name(db, repo_name)

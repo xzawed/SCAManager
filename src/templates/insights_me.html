@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}내 추세 — SCAManager{% endblock %}
+{% block content %}
+<style>
+  .insights-header { display:flex; align-items:center; gap:1rem; margin-bottom:1.5rem; }
+  .insights-title { font-size:1.4rem; font-weight:700; }
+  .day-selector { display:flex; gap:.5rem; margin-bottom:1.5rem; }
+  .day-selector a { padding:.35rem .8rem; border:1px solid var(--c-border); border-radius:6px; font-size:.88rem; text-decoration:none; color:var(--c-text); }
+  .day-selector a.active, .day-selector a:hover { background:var(--c-accent); color:#fff; border-color:var(--c-accent); }
+  .trend-table { width:100%; border-collapse:collapse; margin-top:1rem; }
+  .trend-table th, .trend-table td { padding:.65rem .9rem; text-align:left; border-bottom:1px solid var(--c-border); }
+  .trend-table th { font-size:.8rem; text-transform:uppercase; letter-spacing:.04em; opacity:.7; }
+  .score-bar { display:inline-block; height:8px; border-radius:4px; background:var(--c-accent); vertical-align:middle; margin-right:.5rem; }
+  .empty-state { text-align:center; padding:2.5rem 1rem; opacity:.6; }
+  .insights-links { display:flex; gap:1rem; margin-bottom:1.5rem; }
+  .insights-links a { padding:.35rem .85rem; border:1px solid var(--c-border); border-radius:6px; font-size:.88rem; text-decoration:none; color:var(--c-text); }
+  .insights-links a:hover { background:var(--c-bg2); }
+</style>
+
+<div class="insights-header">
+  <div class="insights-title">내 점수 추세 — {{ current_user.github_login }}</div>
+</div>
+
+<div class="insights-links">
+  <a href="/insights">리포 비교</a>
+  <a href="/insights/me">내 추세</a>
+</div>
+
+<div class="day-selector">
+  {% for d in [7, 14, 30, 90] %}
+  <a href="/insights/me?days={{ d }}" {% if d == days %}class="active"{% endif %}>최근 {{ d }}일</a>
+  {% endfor %}
+</div>
+
+{% if trend %}
+<!-- 추세 차트 (Chart.js) / Trend chart -->
+<canvas id="trendChart" style="max-height:260px; margin-bottom:1.5rem;"></canvas>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+(function(){
+  var labels = {{ trend | map(attribute='date') | list | tojson }};
+  var scores = {{ trend | map(attribute='avg_score') | list | tojson }};
+  new Chart(document.getElementById('trendChart'), {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: '일별 평균 점수',
+        data: scores,
+        borderColor: 'var(--c-accent)',
+        backgroundColor: 'rgba(99,102,241,.15)',
+        tension: 0.3,
+        fill: true,
+      }]
+    },
+    options: {
+      scales: { y: { min: 0, max: 100 } },
+      plugins: { legend: { display: false } }
+    }
+  });
+})();
+</script>
+
+<table class="trend-table">
+  <thead>
+    <tr>
+      <th>날짜</th>
+      <th>평균 점수</th>
+      <th>분석 건수</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for item in trend %}
+    <tr>
+      <td>{{ item.date }}</td>
+      <td>
+        <span class="score-bar" style="width:{{ (item.avg_score / 100 * 80)|int }}px;"></span>
+        {{ item.avg_score }}
+      </td>
+      <td>{{ item.count }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty-state">
+  최근 {{ days }}일간 분석 데이터가 없습니다.<br>
+  <small>push 또는 PR 이벤트가 처리되면 여기에 표시됩니다.</small>
+</div>
+{% endif %}
+{% endblock %}
