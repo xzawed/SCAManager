@@ -177,6 +177,171 @@ def top_issues(
     return [{"message": msg, "count": cnt} for msg, cnt in sorted_issues[:n]]
 
 
+def author_trend(
+    db: Session,
+    login: str,
+    days: int = 30,
+    *,
+    now: datetime | None = None,
+) -> list[dict[str, Any]]:
+    """개발자별 일별 평균 점수 추세를 반환한다.
+    Return the per-day average score trend for an author login.
+
+    Args:
+        db: SQLAlchemy 세션 / SQLAlchemy session
+        login: GitHub 로그인 ID / GitHub login
+        days: 집계 기간(일) / Aggregation period in days
+        now: 현재 시각 주입용 (테스트 고정 지원) / Injected current time (for test pinning)
+
+    Returns:
+        {"date": "YYYY-MM-DD", "avg_score": float, "count": int} 리스트 (날짜 오름차순)
+        List of {"date": "YYYY-MM-DD", "avg_score": float, "count": int} sorted ascending by date.
+    """
+    # now 기본값 설정 — 테스트에서 고정 시각 주입 가능
+    # Default now — allows injecting a fixed time in tests
+    _now = now or datetime.now(timezone.utc)
+    since = _now - timedelta(days=days)
+
+    analyses = db.scalars(
+        select(Analysis)
+        .where(Analysis.author_login == login)
+        .where(Analysis.author_login.isnot(None))
+        .where(Analysis.score.isnot(None))
+        .where(Analysis.created_at >= since)
+        .order_by(Analysis.created_at.asc())
+    ).all()
+
+    # Python-side 날짜별 그룹화 — SQLite/PG 날짜 함수 불일치 회피
+    # Group by date on the Python side to avoid SQLite/PG date function divergence
+    daily: dict[str, list[int]] = {}
+    for analysis in analyses:
+        date_str = analysis.created_at.strftime("%Y-%m-%d") if analysis.created_at else ""
+        if date_str:
+            daily.setdefault(date_str, []).append(analysis.score)
+
+    # 날짜 오름차순 정렬 후 반환
+    # Return sorted ascending by date
+    return [
+        {
+            "date": date_str,
+            "avg_score": round(sum(scores) / len(scores), 1),
+            "count": len(scores),
+        }
+        for date_str, scores in sorted(daily.items())
+    ]
+
+
+def repo_comparison(
+    db: Session,
+    repo_ids: list[int],
+    days: int = 30,
+    *,
+    now: datetime | None = None,
+) -> list[dict[str, Any]]:
+    """멀티 리포 평균 점수를 비교하여 반환한다.
+    Return average score comparison across multiple repositories.
+
+    Args:
+        db: SQLAlchemy 세션 / SQLAlchemy session
+        repo_ids: 비교할 리포지토리 PK 목록 / List of repository PKs to compare
+        days: 집계 기간(일) / Aggregation period in days
+        now: 현재 시각 주입용 (테스트 고정 지원) / Injected current time (for test pinning)
+
+    Returns:
+        {"repo_id": int, "avg_score": float, "count": int} 리스트 (avg_score 내림차순)
+        List of {"repo_id": int, "avg_score": float, "count": int} sorted by avg_score descending.
+    """
+    # 빈 목록이면 즉시 반환 — 불필요한 쿼리 방지
+    # Return early on empty list to avoid unnecessary queries
+    if not repo_ids:
+        return []
+
+    # now 기본값 설정 — 테스트에서 고정 시각 주입 가능
+    # Default now — allows injecting a fixed time in tests
+    _now = now or datetime.now(timezone.utc)
+    since = _now - timedelta(days=days)
+
+    rows = db.execute(
+        select(
+            Analysis.repo_id,
+            func.count(Analysis.id).label("count"),  # pylint: disable=not-callable
+            func.avg(Analysis.score).label("avg_score"),  # pylint: disable=not-callable
+        )
+        .where(Analysis.repo_id.in_(repo_ids))
+        .where(Analysis.score.isnot(None))
+        .where(Analysis.created_at >= since)
+        .group_by(Analysis.repo_id)
+    ).all()
+
+    results = [
+        {
+            "repo_id": row.repo_id,
+            "avg_score": round(float(row.avg_score), 1),
+            "count": row.count,
+        }
+        for row in rows
+    ]
+
+    # avg_score 내림차순 정렬 후 반환
+    # Sort by avg_score descending
+    results.sort(key=lambda x: x["avg_score"], reverse=True)
+    return results
+
+
+def leaderboard(
+    db: Session,
+    days: int = 30,
+    opted_in_repo_ids: list[int] | None = None,
+    *,
+    now: datetime | None = None,
+) -> list[dict[str, Any]]:
+    """옵트인 리포의 개발자별 점수 리더보드를 반환한다.
+    Return per-author score leaderboard for opted-in repositories.
+
+    Args:
+        db: SQLAlchemy 세션 / SQLAlchemy session
+        days: 집계 기간(일) / Aggregation period in days
+        opted_in_repo_ids: 리더보드 옵트인 리포 PK 목록 / Opted-in repository PK list
+        now: 현재 시각 주입용 (테스트 고정 지원) / Injected current time (for test pinning)
+
+    Returns:
+        {"author_login": str, "avg_score": float, "count": int} 리스트 (avg_score 내림차순)
+        List of {"author_login": str, "avg_score": float, "count": int} sorted by avg_score desc.
+    """
+    # 옵트인 리포 없으면 빈 리스트 즉시 반환 — 의도치 않은 게이미피케이션 방지
+    # Return empty list when no repos opted in — prevents unintended gamification exposure
+    if not opted_in_repo_ids:
+        return []
+
+    # now 기본값 설정 — 테스트에서 고정 시각 주입 가능
+    # Default now — allows injecting a fixed time in tests
+    _now = now or datetime.now(timezone.utc)
+    since = _now - timedelta(days=days)
+
+    rows = db.execute(
+        select(
+            Analysis.author_login,
+            func.count(Analysis.id).label("count"),  # pylint: disable=not-callable
+            func.avg(Analysis.score).label("avg_score"),  # pylint: disable=not-callable
+        )
+        .where(Analysis.author_login.isnot(None))
+        .where(Analysis.score.isnot(None))
+        .where(Analysis.repo_id.in_(opted_in_repo_ids))
+        .where(Analysis.created_at >= since)
+        .group_by(Analysis.author_login)
+        .order_by(func.avg(Analysis.score).desc())  # pylint: disable=not-callable
+    ).all()
+
+    return [
+        {
+            "author_login": row.author_login,
+            "avg_score": round(float(row.avg_score), 1),
+            "count": row.count,
+        }
+        for row in rows
+    ]
+
+
 def resolve_chat_id(repo: Repository, config: RepoConfig | None) -> str | None:
     """chat_id 우선순위에 따라 Telegram 채팅 ID를 반환한다.
     Resolve the Telegram chat_id with priority:

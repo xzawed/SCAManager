@@ -396,6 +396,7 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 - **DB 세션 expunge**: `get_current_user()`는 `db.expunge(user)` 후 세션 반환 — 세션 종료 후에도 컬럼 속성 안전하게 접근 가능. 관계 lazy-load 사용 금지.
 - **ThreadPoolExecutor with 블록 금지**: `with` 문은 `shutdown(wait=True)` 호출 → DNS hang 시 무기한 블록. `try/finally` + `executor.shutdown(wait=False)` 패턴 사용 (database.py 참조).
 - **SQLite hostaddr 제외**: `_ipv4_connect_args`는 hostname이 None(SQLite URL)이면 빈 dict 반환 — 그렇지 않으면 `sqlite3.connect(hostaddr=...)` TypeError 발생.
+- **`Analysis.author_login` NULL 정책**: 신규 컬럼은 backfill 없이 NULL 허용. 모든 집계는 `WHERE author_login IS NOT NULL` 적용. backfill 필요 시 `scripts/backfill_author.py` 별도 실행. PR 이벤트 = `pull_request.user.login`, Push 이벤트 = `head_commit.author.username`.
 
 ### 파이프라인 / 비즈니스 로직
 
@@ -469,6 +470,7 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 - **repo_detail 차트 동기화**: `buildChart(data)` 함수는 `data` 인자가 있으면 `_chartData`에 캐시, 없으면 캐시된 데이터 재사용. `applyFilters()` 호출마다 차트를 필터 결과와 동기화. `themechange` 이벤트는 `buildChart()` (인자 없음)으로 색상만 재빌드.
 - **리포 추가 Webhook URL**: `_webhook_base_url(request)` 헬퍼가 `APP_BASE_URL` 설정 시 HTTPS URL 강제. Railway 배포 시 반드시 `APP_BASE_URL` 설정 — 미설정 시 `http://`로 등록되어 Webhook 전달 실패.
 - **기존 Webhook 등록 리포**: `user_id = NULL` 리포는 모든 로그인 사용자에게 표시됨. `/repos/add`로 동일 리포 재등록 시 `user_id=NULL`이면 현재 사용자 소유 이전, 이미 소유자 있으면 에러.
+- **insights 차트 재사용**: `insights_me.html`은 `analysis_detail.html`과 동일한 Chart.js CDN 직접 로드 패턴 사용. `leaderboard_opt_in`은 PRESETS 9개 필드에 포함하지 않음 — 사용자가 명시 옵트인해야 하는 선택적 기능. 설정 카드 ③(이벤트 후 피드백)에 토글 배치.
 
 ### 배포
 

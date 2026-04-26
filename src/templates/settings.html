@@ -686,6 +686,21 @@
             </label>
           </div>
 
+          <!-- 팀 인사이트 리더보드 옵트인 (기본 비활성) / Team Insights leaderboard opt-in (disabled by default) -->
+          <div class="toggle-row" style="margin-top:.75rem;">
+            <div class="toggle-info">
+              <div class="t-title">팀 리더보드 공개</div>
+              <div class="t-desc">이 리포를 팀 인사이트 리더보드에 포함<br>
+                <span style="color:var(--c-warning,#f59e0b);font-size:.78rem;">옵션 기능 — 팀 합의 후 활성화 권장</span>
+              </div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" name="leaderboard_opt_in" value="on"
+                     {% if config.leaderboard_opt_in %}checked{% endif %}>
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+
         </div>
       </div>
 

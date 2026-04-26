@@ -20,6 +20,9 @@ class Analysis(Base):
     score = Column(Integer, nullable=True)
     grade = Column(String(1), nullable=True)
     result = Column(JSON, nullable=True)
+    # 커밋 작성자 GitHub 로그인 — 신규 레코드만 채움 (기존 NULL 허용)
+    # GitHub login of the commit author — populated for new records only (existing rows NULL).
+    author_login = Column(String, nullable=True, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     repository = relationship("Repository", back_populates="analyses")

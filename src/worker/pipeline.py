@@ -39,6 +39,7 @@ class _AnalysisSaveParams:  # pylint: disable=too-many-instance-attributes
     analysis_results: list
     ai_review: object  # AiReviewResult
     score_result: object  # ScoreResult
+    author_login: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -91,6 +92,21 @@ def _extract_commit_message(event: str, data: dict) -> str:
         return head.get("message", "")
     commits = data.get("commits", [])
     return commits[-1]["message"] if commits else ""
+
+
+def _extract_author_login(event_type: str, data: dict) -> str | None:
+    """Webhook 페이로드에서 커밋 작성자 GitHub 로그인을 추출한다.
+    Extract the commit author's GitHub login from the webhook payload.
+
+    PR: data["pull_request"]["user"]["login"]
+    push: data["head_commit"]["author"]["username"]
+    키 누락 시 None 반환 — 조용히 실패.
+    On missing keys, returns None silently.
+    """
+    if event_type == "pull_request":
+        return (data.get("pull_request") or {}).get("user", {}).get("login")
+    head = data.get("head_commit") or {}
+    return (head.get("author") or {}).get("username")
 
 
 async def _run_static_analysis(files: list[ChangedFile]) -> list[StaticAnalysisResult]:
@@ -226,6 +242,7 @@ async def _save_and_gate(db: Session, params: _AnalysisSaveParams):
         score=params.score_result.total,
         grade=params.score_result.grade,
         result=result_dict,
+        author_login=params.author_login,
     ))
     analysis_id = analysis.id
     try:
@@ -339,6 +356,7 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
                     analysis_results=analysis_results,
                     ai_review=ai_review,
                     score_result=score_result,
+                    author_login=_extract_author_login(event, data),
                 )
                 with SessionLocal() as db:
                     repo_config, analysis_id, result_dict = await _save_and_gate(db, save_params)

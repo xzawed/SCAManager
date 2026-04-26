@@ -33,6 +33,7 @@ class RepoConfigUpdate(BaseModel):
     create_issue: bool = False
     railway_deploy_alerts: bool = False
     auto_merge_issue_on_failure: bool = False
+    leaderboard_opt_in: bool = False
 
     @model_validator(mode="after")
     def validate_thresholds(self) -> "RepoConfigUpdate":
