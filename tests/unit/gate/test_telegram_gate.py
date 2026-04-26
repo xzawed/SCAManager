@@ -7,7 +7,11 @@ os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 os.environ.setdefault("ANTHROPIC_API_KEY", "")
 
 from unittest.mock import AsyncMock, patch, MagicMock
-from src.gate.telegram_gate import send_gate_request
+from src.gate.telegram_gate import (
+    send_gate_request,
+    _gate_callback_token,
+    _make_callback_token,
+)
 from src.scorer.calculator import ScoreResult
 
 
@@ -54,3 +58,48 @@ async def test_send_gate_request_includes_analysis_id_in_callback():
         call_args = mock_client.post.call_args
         payload = call_args.kwargs.get("json") or call_args.args[1]
         assert "99" in str(payload.get("reply_markup", ""))
+
+
+def test_make_callback_token_scope_isolation():
+    """다른 scope는 다른 HMAC을 생성한다 (도메인 격리).
+    Different scopes produce different HMACs (domain isolation).
+    """
+    # "gate" 와 "cmd" scope 가 동일 payload_id 에서 서로 다른 토큰을 만들어야 함
+    # "gate" and "cmd" scopes must produce different tokens for the same payload_id
+    token_gate = _make_callback_token("bot_secret", "gate", 123)
+    token_cmd = _make_callback_token("bot_secret", "cmd", 123)
+    assert token_gate != token_cmd
+
+
+def test_legacy_gate_wrapper_backwards_compatible():
+    """_gate_callback_token 은 _make_callback_token("gate", id) 와 동일한 결과를 반환한다.
+    _gate_callback_token returns the same result as _make_callback_token("gate", id).
+    """
+    # 기존 호출 코드(webhook/providers/telegram.py 등)가 영향받지 않아야 함
+    # Existing callers (webhook/providers/telegram.py etc.) must not be affected
+    bot_token = "test_bot_token"
+    analysis_id = 456
+    assert _gate_callback_token(bot_token, analysis_id) == _make_callback_token(
+        bot_token, "gate", analysis_id
+    )
+
+
+def test_callback_data_within_64_bytes_all_commands():
+    """모든 cmd: callback_data 가 Telegram 64-byte 한계 내에 있다.
+    All cmd: callback_data strings stay within Telegram's 64-byte limit.
+    """
+    # Telegram callback_data 최대 64 바이트 — 이를 초과하면 sendMessage API 가 오류를 반환함
+    # Telegram callback_data max is 64 bytes — exceeding it causes sendMessage API error
+    bot_token = "any_token"
+    repo_id = 9999  # 최대 4자리 숫자 가정 / assume max 4-digit repo id
+    token = _make_callback_token(bot_token, "cmd", repo_id)
+    candidates = [
+        f"cmd:set:{repo_id}:{token}",
+        f"cmd:stats:{repo_id}:{token}",
+        f"cmd:settings:{repo_id}:{token}",
+        f"cmd:connect:{token}",
+    ]
+    for data in candidates:
+        assert len(data.encode()) <= 64, (
+            f"callback_data too long: {data!r} ({len(data.encode())} bytes)"
+        )
