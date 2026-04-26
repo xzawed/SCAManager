@@ -114,7 +114,8 @@ async def _detect_stale_webhook(
         # No hook matching webhook_id — no banner needed
         return False
     except (httpx.HTTPError, KeyError, ValueError) as exc:
-        logger.debug("_detect_stale_webhook: API call failed for %s: %s", repo_full_name, exc)
+        safe_repo_full_name = sanitize_for_log(repo_full_name)
+        logger.debug("_detect_stale_webhook: API call failed for %s: %s", safe_repo_full_name, exc)
         return False
 
 
