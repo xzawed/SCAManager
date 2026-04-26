@@ -77,6 +77,15 @@ def set_telegram_user_id(
         raise ValueError(f"telegram_user_id already mapped: {telegram_user_id}") from exc
 
 
+def find_by_telegram_user_id(db: Session, telegram_user_id: str) -> "User | None":
+    """Telegram user_id로 사용자를 조회한다.
+    Find a user by Telegram user_id.
+    """
+    # telegram_user_id unique 인덱스 컬럼으로 단건 조회
+    # Single-row lookup via the unique-indexed telegram_user_id column
+    return db.scalar(select(User).where(User.telegram_user_id == telegram_user_id))
+
+
 def clear_otp(db: Session, user_id: int) -> None:
     """OTP를 무효화한다.
     Nullify the OTP fields (e.g. on timeout or explicit cancellation).
