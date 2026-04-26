@@ -88,7 +88,7 @@ async def test_check_suite_debounce_suppresses_duplicate():
     """동일 (repo, sha) 30초 내 두 번째 호출 → 'debounced'.
     Second call for same (repo, sha) within 30s → 'debounced'.
     """
-    from src.webhook.providers.github import _handle_check_suite_completed  # pylint: disable=import-outside-toplevel
+    import src.webhook.providers.github as gh_module  # pylint: disable=import-outside-toplevel
 
     data = {
         "action": "completed",
@@ -96,11 +96,11 @@ async def test_check_suite_debounce_suppresses_duplicate():
         "repository": {"full_name": "owner/repo"},
     }
     bt1 = _make_background_tasks()
-    r1 = await _handle_check_suite_completed(data, bt1)
+    r1 = await gh_module._handle_check_suite_completed(data, bt1)
     assert r1["status"] == "accepted"
 
     bt2 = _make_background_tasks()
-    r2 = await _handle_check_suite_completed(data, bt2)
+    r2 = await gh_module._handle_check_suite_completed(data, bt2)
     assert r2["status"] == "debounced"
     assert len(bt2.tasks) == 0
 
