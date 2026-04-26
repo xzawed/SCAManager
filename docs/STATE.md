@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-26 기준 — Phase A+B Insights UX 고도화 — PR #80)
+## 현재 수치 (2026-04-26 기준 — Insights 버그 수정 + 회귀 테스트 — PR #81)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1533개** | pytest 9.0.3 (0 failed) — 2026-04-26 로컬 실측 (Insights Phase A+B 신규 5개) |
+| 단위 테스트 | **1495개** | pytest 9.0.3 (0 failed, 1 skipped) — 2026-04-26 로컬 실측 |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
@@ -44,6 +44,21 @@
 | `tests/conftest.py` | 환경변수 주입 + _webhook_secret_cache autouse 클리어 |
 
 ## 작업 이력 (그룹별)
+
+### 그룹 48 (2026-04-26 · Insights 버그 수정 — PR #81)
+
+**배경**: PR #80 머지 후 `/insights` 접근 시 500 에러 발생. `Repository.config` 속성이 존재하지 않음.
+
+**변경 내용**:
+
+| 파일 | 변경 |
+|------|------|
+| `src/ui/routes/insights.py` | `r.config` 접근 제거 → `RepoConfig` 직접 쿼리로 교체 |
+| `tests/unit/ui/test_insights_routes.py` | StaticPool 실제 SQLite 회귀 테스트 추가 — ORM 속성 오류 감지 |
+
+**교훈**: SessionLocal Mock 기반 테스트는 ORM 속성 오류를 감지하지 못함 → 핵심 라우트에 실 DB 경로 테스트 필요.
+
+---
 
 ### 그룹 47 (2026-04-26 · Insights Phase A+B UX 고도화 — PR #80)
 
