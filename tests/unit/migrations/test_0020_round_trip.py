@@ -14,10 +14,10 @@ os.environ.setdefault("TELEGRAM_BOT_TOKEN", "123:ABC")
 os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 
 import pytest
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, inspect
 
 from src.database import Base
-from src.models.merge_retry import MergeRetryQueue  # noqa: F401 — registers table in metadata
+from src.models.merge_retry import MergeRetryQueue  # noqa: F401  # pylint: disable=unused-import
 
 
 def test_orm_creates_merge_retry_queue_table():
@@ -93,13 +93,11 @@ def test_migration_alembic_round_trip():
     Note: Legacy migrations (e.g. 0009) use ALTER TABLE UNIQUE which SQLite does not support,
     so full history replay is not possible on SQLite. This test runs on PostgreSQL only.
     """
-    import os as _os
-    db_url = _os.environ.get("DATABASE_URL", "sqlite:///:memory:")
+    db_url = os.environ.get("DATABASE_URL", "sqlite:///:memory:")
 
     # SQLite 환경(로컬 단위 테스트)에서는 건너뜀 — PostgreSQL CI/프로덕션에서만 실행
     # Skip on SQLite (local unit tests) — run only on PostgreSQL CI/production.
     if db_url.startswith("sqlite"):
-        import pytest
         pytest.skip(
             "Alembic full-history replay requires PostgreSQL "
             "(SQLite does not support ALTER TABLE UNIQUE constraint)"
@@ -115,9 +113,8 @@ def test_migration_alembic_round_trip():
     # Upgrade to 0020mergeretryqueue.
     alembic_command.upgrade(cfg, "0020mergeretryqueue")
 
-    from sqlalchemy import create_engine as _ce, inspect as _inspect
-    eng = _ce(db_url)
-    tables = _inspect(eng).get_table_names()
+    eng = create_engine(db_url)
+    tables = inspect(eng).get_table_names()
     eng.dispose()
     assert "merge_retry_queue" in tables, "업그레이드 후 테이블이 존재해야 한다 / Table must exist after upgrade"
 
@@ -125,8 +122,8 @@ def test_migration_alembic_round_trip():
     # Downgrade back to 0019leaderboardoptin.
     alembic_command.downgrade(cfg, "0019leaderboardoptin")
 
-    eng2 = _ce(db_url)
-    tables2 = _inspect(eng2).get_table_names()
+    eng2 = create_engine(db_url)
+    tables2 = inspect(eng2).get_table_names()
     eng2.dispose()
     assert "merge_retry_queue" not in tables2, (
         "다운그레이드 후 테이블이 제거되어야 한다 / Table must be gone after downgrade"

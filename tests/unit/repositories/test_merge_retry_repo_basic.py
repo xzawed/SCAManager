@@ -70,7 +70,7 @@ def _seed_analysis(db_session, commit_sha: str = "abc123") -> Analysis:
     return analysis
 
 
-def _make_queue_row(
+def _make_queue_row(  # pylint: disable=too-many-arguments
     db_session,
     *,
     analysis_id: int,

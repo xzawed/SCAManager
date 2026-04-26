@@ -64,7 +64,7 @@ def get_by_sha(
         .filter(
             MergeRetryQueue.repo_full_name == repo_full_name,
             MergeRetryQueue.commit_sha == commit_sha,
-            MergeRetryQueue.status.in_(list(_NON_TERMINAL_STATUSES)),
+            MergeRetryQueue.status.in_(_NON_TERMINAL_STATUSES),
         )
         .first()
     )

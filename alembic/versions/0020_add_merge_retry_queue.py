@@ -83,8 +83,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # 부분 유일 인덱스 먼저 제거 (외래 키 제약 전에 제거)
-    # Drop the partial unique index first (before foreign key constraints).
+    # 부분 유일 인덱스 먼저 제거 (일반 인덱스 전에 제거)
+    # Drop the partial unique index first (before regular indexes).
     op.execute("DROP INDEX IF EXISTS uq_merge_retry_queue_active")
 
     # 일반 인덱스 제거
