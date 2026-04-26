@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-26 기준 — Phase 9 자기 분석 완료 · Phase 10 Telegram 확장 완료 · 기술 부채 정리 완료 · Phase 11 팀/멀티 리포 인사이트 완료 — PR #72 머지)
+## 현재 수치 (2026-04-26 기준 — Phase 9·10·11 완료 · 툴링 안전장치 추가 — PR #76)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1448개** | pytest 9.0.3 (0 failed) — 2026-04-26 로컬 실측 (Phase 11 완료 후 최종) |
+| 단위 테스트 | **1515개** | pytest 9.0.3 (0 failed) — 2026-04-26 로컬 실측 (ORM-마이그레이션 완전성 검사 67개 추가) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
@@ -44,6 +44,25 @@
 | `tests/conftest.py` | 환경변수 주입 + _webhook_secret_cache autouse 클리어 |
 
 ## 작업 이력 (그룹별)
+
+### 그룹 45 (2026-04-26 · 툴링 안전장치 — PR #76)
+
+**배경**: PR #74(leaderboard_opt_in 500 에러)와 PR #75(pytest e2e 혼입 446건 실패) 발견 사항의 **재발 방지** 자동화.
+
+**변경 내용**:
+
+| 파일 | 변경 | 역할 |
+|------|------|------|
+| `pytest.ini` | `testpaths = tests` 추가 | 경로 없이 `python -m pytest` 실행 시 `e2e/` 수집 방지 |
+| `tests/unit/test_migration_completeness.py` | 신규 (67 parametrized) | ORM 컬럼 전수 검사 — Alembic 마이그레이션 파일에 컬럼명 존재 여부 정적 확인 |
+
+**migration completeness 테스트 동작 원리**:
+1. 7개 ORM 모델 import → `Base.metadata` 테이블/컬럼 등록
+2. `alembic/versions/*.py` 전체 읽어 단일 검색 텍스트로 합침
+3. `(테이블명, 컬럼명)` 쌍마다 정규식 검색 (`'column'` 또는 `\bcolumn\b`)
+4. 누락 시 `make revision m="설명"` 안내 메시지와 함께 실패
+
+**테스트 증분**: +67 (1448 → **1515** passed)
 
 ### 그룹 43 (2026-04-26 · Phase 11 팀/멀티 리포 인사이트 완료 — PR #72)
 
