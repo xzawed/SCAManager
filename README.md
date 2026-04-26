@@ -46,18 +46,16 @@ For teams that push directly to `main`, it also supports **automatic commit comm
 
 Most code review tools make you choose between static analysis precision and AI understanding. SCAManager runs both in parallel and combines the results into a single score — then acts on it automatically.
 
-| | SCAManager | CodeRabbit | SonarCloud | GitHub Copilot Review |
-|---|---|---|---|---|
-| **Self-hosted** | ✅ Your infrastructure | ❌ SaaS only | ❌ SaaS only | ❌ GitHub-managed |
-| **Static + AI combined** | ✅ 10 tools + Claude AI | AI + linter integrations | Static + AI CodeFix (2024+) | AI only |
-| **Score-based PR Gate** | ✅ Auto / Semi / Manual | ❌ | ❌ | ❌ |
-| **Approve from phone** | ✅ Telegram inline buttons | ❌ | ❌ | ❌ |
-| **Push event analysis** | ✅ Auto Issue + Commit comment | ❌ PR only | ❌ | ❌ |
-| **50-language AI review** | ✅ Language-specific checklists | ✅ | ❌ | ✅ |
-| **DB failover** | ✅ Built-in | ❌ | ❌ | ❌ |
-| **Cost** | API usage only | Freemium (free for public repos) | Freemium | GitHub plan |
+**What makes it different:**
 
-**Best for:** Solo developers and small teams who want full control over their code quality pipeline without vendor lock-in.
+- **Self-hosted** — runs entirely on your own infrastructure; no vendor lock-in, no data leaves your environment
+- **Static + AI in one pipeline** — 10 linters/analyzers run alongside Claude AI review; results feed into a single score
+- **Score-based PR Gate** — automatically approve, reject, or request human decision via Telegram based on numeric thresholds
+- **Approve from phone** — Telegram inline buttons let you review and merge PRs from anywhere, no laptop required
+- **Push + PR analysis** — not just PRs; bare pushes also trigger analysis, auto-create GitHub Issues, and post commit comments
+- **50-language AI review** — language-specific checklists for every supported language, not a generic prompt
+
+**Best for:** Solo developers and small teams who want full control over their code quality pipeline.
 
 ---
 
