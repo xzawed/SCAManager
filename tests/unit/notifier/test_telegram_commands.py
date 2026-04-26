@@ -280,7 +280,7 @@ def test_handle_stats_requires_repo_argument(db):
     """/stats에 리포 인수가 없으면 사용법 안내를 반환해야 한다.
     /stats without repo argument must return usage instructions.
     """
-    user = _make_user(db, telegram_user_id="tg-norepo")
+    _make_user(db, telegram_user_id="tg-norepo")
     result = handle_message_command(db, "tg-norepo", "/stats")
     assert "사용법" in result or "Usage" in result
 
