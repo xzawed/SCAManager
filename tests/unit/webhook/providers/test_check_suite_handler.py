@@ -110,7 +110,6 @@ async def test_check_suite_debounce_allows_after_ttl(monkeypatch):
     Same (repo, sha) after 30s TTL → 'accepted' again.
     """
     import src.webhook.providers.github as gh_module  # pylint: disable=import-outside-toplevel
-    from src.webhook.providers.github import _handle_check_suite_completed  # pylint: disable=import-outside-toplevel
 
     data = {
         "action": "completed",
@@ -121,7 +120,7 @@ async def test_check_suite_debounce_allows_after_ttl(monkeypatch):
     # 첫 번째 호출 — accepted
     # First call — accepted
     bt1 = _make_background_tasks()
-    r1 = await _handle_check_suite_completed(data, bt1)
+    r1 = await gh_module._handle_check_suite_completed(data, bt1)
     assert r1["status"] == "accepted"
 
     # 캐시의 타임스탬프를 31초 전으로 되돌림 (TTL 만료 시뮬레이션)
@@ -130,7 +129,7 @@ async def test_check_suite_debounce_allows_after_ttl(monkeypatch):
     gh_module._check_suite_debounce[key] -= 31.0
 
     bt2 = _make_background_tasks()
-    r2 = await _handle_check_suite_completed(data, bt2)
+    r2 = await gh_module._handle_check_suite_completed(data, bt2)
     assert r2["status"] == "accepted"
 
 
