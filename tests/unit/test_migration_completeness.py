@@ -43,7 +43,11 @@ _MIGRATIONS_DIR = os.path.join(
 def _load_migration_text() -> str:
     pattern = os.path.join(_MIGRATIONS_DIR, "*.py")
     files = glob.glob(pattern)
-    return "\n".join(open(f, encoding="utf-8").read() for f in sorted(files))
+    contents = []
+    for f in sorted(files):
+        with open(f, encoding="utf-8") as migration_file:
+            contents.append(migration_file.read())
+    return "\n".join(contents)
 
 
 _MIGRATION_TEXT: str = _load_migration_text()
