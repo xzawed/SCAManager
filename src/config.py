@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     # Auto-merge unknown 상태 재시도 (Phase F Quick Win) — 운영 중 튜닝용
     merge_unknown_retry_limit: int = 3        # 기본 3회
     merge_unknown_retry_delay: float = 3.0    # 기본 3초 간격 (총 최대 9초)
+    # 자기 분석 무한 루프 킬 스위치 — True 시 모든 webhook 분석 skip (Phase 9)
+    # Kill-switch to disable self-analysis entirely — skips all webhook pipeline (Phase 9)
+    scamanager_self_analysis_disabled: bool = False
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 

@@ -21,11 +21,17 @@ from src.database import SessionLocal
 from src.github_client.issues import close_issue
 from src.notifier.n8n import notify_n8n_issue
 from src.repositories import repository_repo
+from src.shared.log_safety import sanitize_for_log
 from src.webhook._helpers import get_webhook_secret
+from src.webhook.loop_guard import BotInteractionLimiter, has_skip_marker, is_bot_sender
 from src.webhook.validator import verify_github_signature
 from src.worker.pipeline import run_analysis_pipeline
 
 logger = logging.getLogger(__name__)
+
+# 프로세스 전역 봇 상호작용 리미터 — 모듈 레벨 싱글톤
+# Process-wide bot interaction limiter — module-level singleton
+_bot_limiter = BotInteractionLimiter()
 
 router = APIRouter()
 
@@ -133,6 +139,69 @@ async def _handle_issues_event(data: dict, background_tasks: BackgroundTasks) ->
     return {"status": "accepted"}
 
 
+def _loop_guard_check(data: dict) -> dict | None:
+    """자기 분석 무한 루프 방지 3-layer 체크 — skip 이유 dict 또는 None 반환.
+    Three-layer loop guard: returns a skip-reason dict when the event should be
+    suppressed, or None when the pipeline should proceed normally.
+
+    Layer 1: kill-switch (scamanager_self_analysis_disabled)
+    Layer 2: bot sender detection
+    Layer 3: skip marker in commit/PR message + per-repo rate limit
+    """
+    # 레이어 1: 킬 스위치 — 전체 self-analysis 비활성화
+    # Layer 1: kill-switch — disable all self-analysis pipeline
+    if settings.scamanager_self_analysis_disabled:
+        return {"status": "skipped", "reason": "self_analysis_disabled"}
+
+    full_name = data.get("repository", {}).get("full_name", "")
+    commit_msg = (
+        data.get("head_commit", {}).get("message", "")
+        or data.get("pull_request", {}).get("title", "")
+        or ""
+    )
+
+    # 레이어 2: 봇 발신자 감지
+    # Layer 2: bot sender detection
+    if is_bot_sender(data):
+        logger.warning(
+            "loop_guard: bot sender skipped repo=%s",
+            sanitize_for_log(full_name),
+        )
+        return {"status": "skipped", "reason": "bot_sender"}
+
+    # 레이어 3-a: 커밋 메시지 skip 마커 감지
+    # Layer 3-a: skip marker in commit message
+    if has_skip_marker(commit_msg):
+        logger.info(
+            "loop_guard: skip marker detected repo=%s",
+            sanitize_for_log(full_name),
+        )
+        return {"status": "skipped", "reason": "skip_marker"}
+
+    # 레이어 3-b: 리포별 봇 이벤트 슬라이딩 윈도우 레이트 리밋
+    # Layer 3-b: per-repo sliding-window bot event rate limit
+    if not _bot_limiter.allow(full_name):
+        logger.warning(
+            "loop_guard: bot rate limit exceeded repo=%s",
+            sanitize_for_log(full_name),
+        )
+        return {"status": "skipped", "reason": "bot_rate_limit"}
+
+    return None
+
+
+def _run_pipeline(
+    background_tasks: BackgroundTasks,
+    x_github_event: str | None,
+    data: dict,
+) -> dict:
+    """분석 파이프라인을 백그라운드 태스크로 등록하고 accepted 응답을 반환한다.
+    Schedule the analysis pipeline as a background task and return accepted response.
+    """
+    background_tasks.add_task(run_analysis_pipeline, x_github_event, data)
+    return {"status": "accepted"}
+
+
 @router.post("/webhooks/github", status_code=202)
 async def github_webhook(
     request: Request,
@@ -173,5 +242,4 @@ async def github_webhook(
     if x_github_event == "issues":
         return await _handle_issues_event(data, background_tasks)
 
-    background_tasks.add_task(run_analysis_pipeline, x_github_event, data)
-    return {"status": "accepted"}
+    return _loop_guard_check(data) or _run_pipeline(background_tasks, x_github_event, data)
