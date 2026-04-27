@@ -929,9 +929,10 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 | **✅ P4-Gate-1 통과 (2026-04-23)** | D.1 cppcheck / D.2 slither 프로덕션 실증 — 6/6 통과 | `xzawed/SCAManager-test-samples` 분석 #543: cppcheck 4건 + slither 3건. 코드품질 -10, 보안 -7 감점 반영. D.3 RuboCop 해금 계기. |
 | **⏳ P4-Gate-2 대기 (2026-04-23)** | D.3 rubocop / D.4 golangci-lint Railway 실증 필요 | Railway 빌드 성공 (커밋 `8042f12`) 후 사용자 샘플 PR 제출 대기. 상세: [가이드](_archive/p4-gate-2-verification.md) (archived). |
 | **✅ AI 리뷰 파싱 실패 해소 (2026-04-23)** | `_extract_json_payload()` 분리 + 3가지 실패 모드 해소 | 분석 #543 경고 원인 — (1) preamble + 순수 JSON, (2) 대문자 ` ```JSON `, (3) JSON 뒤 trailing text. `re.IGNORECASE` + 첫 `{` ~ 마지막 `}` fallback. +4 tests (1188→1192). |
-| **P3-리팩 완결** | 6렌즈 권고 #1~6 ✅ · #7 ✅ · #8a/#8b 스캐폴딩 | [Follow-up 섹션 참조](reports/2026-04-22-quality-audit-6lens.md#follow-up-2026-04-22--후속-실행-결과). 10커밋 완료. 실제 치환 잔존 2건(아래) |
+| **P3-리팩 완결** | 6렌즈 권고 #1~6 ✅ · #7 ✅ · #8a/#8b 스캐폴딩 | [Follow-up 섹션 참조](reports/2026-04-22-quality-audit-6lens.md#follow-up-2026-04-22--후속-실행-결과). 10커밋 완료. 실제 치환 잔존 1건 (#8a, 아래 참조) |
 | **P4-Gate 재료 준비 완료 (2026-04-23)** | 샘플 C/Solidity + 가이드 + 검증 스크립트 | [docs/guides/p4-gate-verification.md](guides/p4-gate-verification.md). 사용자가 외부 테스트 리포에 샘플을 넣어 PR 제출 → 6항목 체크 후 D.3 해금. |
-| **⏸️ P3-후속 (보류)** | #8a GateAction 엔진 전환 + #8b http_client 15곳 채택 | Phase E 완결 후 재검토. 현재 엔진은 기능상 정상 동작, 순수 리팩토링이므로 서비스화 우선. |
+| **✅ #8b http_client 채택 완료** | `src/shared/http_client.get_http_client()` 전사 적용 — `src/` 안 직접 `httpx.AsyncClient()` 호출 **0건** (외부 untrusted URL 만 `_http.build_safe_client()` 사용) | 2026-04-27 grep 실측 |
+| **⏸️ P3-후속 #8a (보류)** | GateAction 엔진 전환 — 현재 `src/gate/actions/` 스캐폴딩은 빈 상태, 엔진 직접 구현으로 충분 | 신규 액션 도메인 추가 또는 엔진 분기 폭증 시 재검토. Phase E~F 완결 후 우선순위 낮음 |
 | **⏸️ Phase D.5~D.8 (영구 보류, 2026-04-23)** | PHPStan / detekt / PMD / cargo clippy | Phase E 결정으로 보류. [결정 문서](reports/2026-04-23-phase-e-service-pivot-decision.md) 참조. 재개 기준: 해당 언어 PR 월 5건 이상 + E.2 완료 + Docker 전환 결정. |
 | **⏸️ P5 (보류)** | pytest-cov devcontainer 이미지 캐싱 | Phase E 완결 후 재검토. 현재 CI 의 커버리지 측정으로 수치 유지 가능. |
 | **🚀 Phase E.1~E.5 (활성)** | Path A 서비스화 로드맵 | E.1 (D.5~D.8 공식 중단) · E.2 (Observability) · E.3 (AI 점수 피드백) · E.4 (Minimal mode) · E.5 (Onboarding). [로드맵 문서](reports/2026-04-23-phase-e-service-pivot-decision.md). |
