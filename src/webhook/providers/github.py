@@ -25,7 +25,12 @@ from src.repositories import merge_retry_repo, repository_repo
 from src.services.merge_retry_service import process_pending_retries
 from src.shared.log_safety import sanitize_for_log
 from src.webhook._helpers import get_webhook_secret
-from src.webhook.loop_guard import BotInteractionLimiter, has_skip_marker, is_bot_sender
+from src.webhook.loop_guard import (
+    BotInteractionLimiter,
+    has_skip_marker,
+    is_bot_sender,
+    is_whitelisted_bot,
+)
 from src.webhook.validator import verify_github_signature
 from src.worker.pipeline import run_analysis_pipeline
 
@@ -186,11 +191,18 @@ def _loop_guard_check(data: dict) -> dict | None:
         )
         return {"status": "skipped", "reason": "skip_marker"}
 
-    # 레이어 3-b: 리포별 봇 이벤트 슬라이딩 윈도우 레이트 리밋
-    # Layer 3-b: per-repo sliding-window bot event rate limit
-    if not _bot_limiter.allow(full_name):
+    # 레이어 3-b: 리포별 화이트리스트 봇 이벤트 슬라이딩 윈도우 레이트 리밋
+    # Layer 3-b: per-repo sliding-window rate limit for whitelisted bots only
+    #
+    # 사람 발신과 sender 누락 이벤트는 무한 통과 — Phase 9 loop vector 분석 결과
+    # 사람·OAuth 토큰 기반 자기 액션은 HANDLED_EVENTS (push/pull_request/issues/
+    # check_suite) 를 재트리거하지 않으므로 SHA dedup 만으로 충분.
+    # Human senders and missing-sender events pass freely — Phase 9 loop-vector
+    # analysis showed user/OAuth-token self-actions do not re-trigger HANDLED_EVENTS,
+    # so SHA dedup alone suffices.
+    if is_whitelisted_bot(data) and not _bot_limiter.allow(full_name):
         logger.warning(
-            "loop_guard: bot rate limit exceeded repo=%s",
+            "loop_guard: whitelisted bot rate limit exceeded repo=%s",
             sanitize_for_log(full_name),
         )
         return {"status": "skipped", "reason": "bot_rate_limit"}
