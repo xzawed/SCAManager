@@ -713,3 +713,37 @@ class TestProcessPendingRetries:
         assert result["released"] == 1
         assert result["abandoned"] == 0
         assert result["skipped"] == 0
+
+
+# ---------------------------------------------------------------------------
+# _get_ci_status_safe — 빈 set fallback 방어층 (engine.py 와 일관)
+# _get_ci_status_safe — empty-set fallback defense layer (consistent with engine)
+# ---------------------------------------------------------------------------
+
+
+async def test_worker_get_ci_status_safe_converts_empty_set_to_none():
+    """워커 측 _get_ci_status_safe 도 빈 set 을 None 으로 변환한다.
+
+    Phase 12 — engine.py::_get_ci_status_safe 와 동일 패턴 적용.
+    BPR Required Status Checks 미설정 시 빈 set 이 반환되는데, 그대로
+    get_ci_status 에 전달하면 호출 측이 'failed' 라 오해할 위험이 있어
+    None 으로 통일 (모든 체크 고려 의미).
+    """
+    from src.services.merge_retry_service import _get_ci_status_safe
+
+    with patch(
+        "src.services.merge_retry_service.get_required_check_contexts",
+        new_callable=AsyncMock,
+    ) as mock_required, patch(
+        "src.services.merge_retry_service.get_ci_status",
+        new_callable=AsyncMock,
+    ) as mock_ci:
+        mock_required.return_value = set()  # 빈 set — BPR 미설정 시나리오
+        mock_ci.return_value = "running"
+
+        result = await _get_ci_status_safe("token", "owner/repo", "sha123")
+
+    assert result == "running"
+    # 핵심 검증 — required_contexts 가 None 으로 전달되어야 함
+    call_kwargs = mock_ci.call_args.kwargs
+    assert call_kwargs.get("required_contexts") is None

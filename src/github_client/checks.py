@@ -67,18 +67,20 @@ async def get_ci_status(
     required_contexts:
     - None → 모든 체크 고려 / consider ALL checks
     - set (비어 있어도) → 해당 이름의 체크만 고려 / only consider checks in the set
-    - 빈 set → 필수 체크 없음 = 즉시 'failed' 반환 (선택적 체크 실패는 대기 불필요)
-      Empty set → no required checks = immediately return 'failed'
-      (optional-only failures are terminal, no point waiting)
+    - 빈 set → BPR Required Status Checks 미설정 → None 으로 fallback 후 모든 체크 고려
+      Empty set → no required status checks under BPR → fall back to None (consider all checks)
+      (이전 동작은 즉시 'failed' 였으나, BPR 미설정 Repo 가 일반적이고 그 경우 사용자
+       의도는 "informational 체크의 진행 상태로 판단" 이므로 fallback 으로 변경)
     """
-    # 빈 set: 필수 체크 없음 → 즉시 terminal 처리 / Empty set: no required checks → terminal immediately
+    # 빈 set: BPR Required Status Checks 미설정 → 모든 체크 고려 fallback
+    # Empty set: no required status checks under BPR → fall back to considering all checks
     if required_contexts is not None and len(required_contexts) == 0:
         logger.debug(
-            "required_contexts는 빈 set — 필수 체크 없음, 즉시 'failed' 반환 (%s %s)"
-            " / required_contexts is empty set — no required checks, returning 'failed' immediately (%s %s)",
+            "required_contexts는 빈 set — BPR Required 미설정, 모든 체크 고려 fallback (%s %s)"
+            " / required_contexts is empty set — no BPR required checks, falling back to all checks (%s %s)",
             repo_full_name, commit_sha, repo_full_name, commit_sha,
         )
-        return "failed"
+        required_contexts = None
 
     client = get_http_client()
 
