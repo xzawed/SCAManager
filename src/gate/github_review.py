@@ -62,6 +62,33 @@ async def get_pr_mergeable_state(
     return (state, head_sha)
 
 
+async def get_pr_base_ref(
+    github_token: str,
+    repo_full_name: str,
+    pr_number: int,
+    fallback: str = "main",
+) -> str:
+    """PR 의 base 브랜치 이름을 조회한다 — 실패 시 fallback 반환.
+    Fetch the base branch ref for a PR — returns fallback on failure.
+
+    F1: BPR Required Status Checks 조회 시 main 하드코딩 대신 PR 실제 base 브랜치
+    사용. develop / staging 등 다양한 base 브랜치 환경에서 정확한 BPR 조회 가능.
+
+    F1: replaces hardcoded "main" with actual PR base ref so BPR checks resolve
+    correctly for develop/staging/etc. base branches.
+    """
+    url = f"https://api.github.com/repos/{repo_full_name}/pulls/{pr_number}"
+    try:
+        client = get_http_client()
+        r = await client.get(url, headers=github_api_headers(github_token))
+        r.raise_for_status()
+        return r.json().get("base", {}).get("ref", fallback) or fallback
+    except httpx.HTTPError:
+        # 네트워크 / HTTP 오류 시 fallback (이전 동작 유지)
+        # Fall back on network/HTTP error (preserves prior behavior).
+        return fallback
+
+
 def _interpret_merge_error(exc: httpx.HTTPStatusError) -> str:
     """HTTP 코드와 GitHub 메시지를 정규 reason tag + user-facing 사유로 변환.
 

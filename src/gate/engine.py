@@ -7,7 +7,9 @@ from sqlalchemy.orm import Session
 from src.config import settings
 from src.config_manager.manager import get_repo_config, RepoConfigData
 from src.gate._common import score_from_result as _score_from_result
-from src.gate.github_review import post_github_review, merge_pr, get_pr_mergeable_state
+from src.gate.github_review import (
+    post_github_review, merge_pr, get_pr_mergeable_state, get_pr_base_ref,
+)
 from src.gate.merge_failure_advisor import get_advice
 from src.gate.merge_reasons import UNSTABLE_CI, UNKNOWN_STATE_TIMEOUT, DEFERRED
 from src.gate.retry_policy import parse_reason_tag, should_retry
@@ -285,9 +287,12 @@ async def _run_auto_merge_retry(  # pylint: disable=too-many-arguments,too-many-
         )
         return
 
-    # 5. CI 상태 추가 판별 (D2)
-    # 5. Disambiguate CI state (D2)
-    ci_status = await _get_ci_status_safe(github_token, repo_name, effective_sha)
+    # 5. CI 상태 추가 판별 (D2) — F1: PR base 브랜치 동적 사용
+    # 5. Disambiguate CI state (D2) — F1: use actual PR base ref
+    base_ref = await get_pr_base_ref(github_token, repo_name, pr_number)
+    ci_status = await _get_ci_status_safe(
+        github_token, repo_name, effective_sha, base_ref=base_ref,
+    )
 
     if not should_retry(reason_tag, ci_status):
         # CI 실제 실패 또는 판별 후 터미널 상태
@@ -312,14 +317,17 @@ async def _get_ci_status_safe(
     github_token: str,
     repo_name: str,
     commit_sha: str,
+    *,
+    base_ref: str = "main",
 ) -> str:
     """CI 상태를 안전하게 조회한다 — 오류 시 'unknown' 반환.
     Safely fetch CI status — returns 'unknown' on error.
+
+    F1: base_ref 파라미터로 PR 의 실제 base 브랜치 BPR 조회 — develop/staging 등
+    main 이 아닌 base 에서도 정확. 호출자가 모르면 "main" 기본값 사용.
     """
     try:
-        # 기본 브랜치 조회 — 현재는 "main" 기본값 사용 (향후 PR 정보에서 추출 가능)
-        # Get default branch — currently defaults to "main" (can be extracted from PR info later)
-        required = await get_required_check_contexts(github_token, repo_name, "main")
+        required = await get_required_check_contexts(github_token, repo_name, base_ref)
     except httpx.HTTPError:
         required = None  # None 이면 모든 체크 고려 / None means "consider all checks"
 

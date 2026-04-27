@@ -189,6 +189,66 @@ async def test_get_pr_mergeable_state_missing_head_sha():
 
 
 # ---------------------------------------------------------------------------
+# F1: get_pr_base_ref — PR base 브랜치 동적 추출
+# F1: get_pr_base_ref — dynamic base ref extraction
+# ---------------------------------------------------------------------------
+
+
+async def test_get_pr_base_ref_returns_actual_base():
+    """GET pulls/{N} → base.ref 정상 반환 — develop 같은 main 외 브랜치 인식."""
+    from src.gate.github_review import get_pr_base_ref
+
+    get_response = MagicMock()
+    get_response.raise_for_status = MagicMock()
+    get_response.json.return_value = {"base": {"ref": "develop"}}
+
+    with patch("src.gate.github_review.get_http_client") as mock_get:
+        mock_client = AsyncMock()
+        mock_get.return_value = mock_client
+        mock_client.get = AsyncMock(return_value=get_response)
+
+        result = await get_pr_base_ref("token", "owner/repo", 7)
+
+    assert result == "develop"
+
+
+async def test_get_pr_base_ref_falls_back_on_http_error():
+    """네트워크/HTTP 오류 → fallback("main") 반환, 예외 전파 안 함.
+    Returns fallback on HTTP error without raising.
+    """
+    from src.gate.github_review import get_pr_base_ref
+
+    with patch("src.gate.github_review.get_http_client") as mock_get:
+        mock_client = AsyncMock()
+        mock_get.return_value = mock_client
+        mock_client.get = AsyncMock(side_effect=httpx.ConnectError("DNS"))
+
+        result = await get_pr_base_ref("token", "owner/repo", 7)
+
+    assert result == "main"
+
+
+async def test_get_pr_base_ref_falls_back_on_missing_base_key():
+    """응답에 base 키 누락 시 fallback("main") 반환.
+    Falls back to default when base key is missing in response.
+    """
+    from src.gate.github_review import get_pr_base_ref
+
+    get_response = MagicMock()
+    get_response.raise_for_status = MagicMock()
+    get_response.json.return_value = {}  # base 누락
+
+    with patch("src.gate.github_review.get_http_client") as mock_get:
+        mock_client = AsyncMock()
+        mock_get.return_value = mock_client
+        mock_client.get = AsyncMock(return_value=get_response)
+
+        result = await get_pr_base_ref("token", "owner/repo", 7, fallback="staging")
+
+    assert result == "staging"
+
+
+# ---------------------------------------------------------------------------
 # merge_pr() mergeable_state 사전 확인 테스트
 # merge_pr() mergeable_state pre-check tests
 # ---------------------------------------------------------------------------
