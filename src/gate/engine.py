@@ -355,9 +355,14 @@ async def _enqueue_merge_retry(  # pylint: disable=too-many-arguments
     Enqueue for merge retry and send Telegram notification on first deferral.
     """
     if analysis_id is None or db is None:
-        logger.info(
-            "PR #%d auto-merge 지연 (analysis_id/db 없음, 재시도 큐 생략)",
+        # F3: warning 격상 — 큐잉 미수행은 정상 동작이 아닌 호출 누락 신호
+        # F3: elevated to warning — missing queue is not normal, indicates caller omission
+        logger.warning(
+            "PR #%d auto-merge 큐잉 생략 (analysis_id=%s, db=%s) — "
+            "레거시 호출 또는 인자 누락. 재시도 추적 불가.",
             pr_number,
+            "set" if analysis_id is not None else "None",
+            "set" if db is not None else "None",
         )
         return
 
