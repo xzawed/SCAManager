@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-27 기준 — Settings UI/UX 리디자인 완료)
+## 현재 수치 (2026-04-27 기준 — Loop Guard 봇 한정 정책 완료)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1714개** | pytest 9.0.3 (0 failed, 5 skipped — 3 Postgres-gated + 2 pre-existing) — 2026-04-27 로컬 실측 |
+| 단위 테스트 | **1732개** | pytest 9.0.3 (0 failed, 5 skipped — 3 Postgres-gated + 2 pre-existing) — 2026-04-27 로컬 실측. PR #93/#95/#96/#97/#98/#100 누적 +18 |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
