@@ -187,19 +187,84 @@ async def test_get_ci_status_unknown_when_no_checks():
 # ── required_contexts filtering ──────────────────────────────────────────
 
 
-async def test_get_ci_status_terminal_when_required_contexts_empty_set():
-    """required_contexts=set() 이면 API 호출 없이 즉시 'failed' 반환.
-    Returns 'failed' immediately (no API calls) when required_contexts is empty set.
+async def test_get_ci_status_empty_set_falls_back_to_all_checks():
+    """required_contexts=set() 이면 None 처럼 모든 체크를 고려해 평가한다.
+    Empty required_contexts falls back to evaluating all checks (treated as None).
+
+    BPR Required Status Checks 미설정 Repo 에서 빈 set 이 반환될 때,
+    이전 동작은 즉시 'failed' 였으나 사용자 의도(CI 진행 상태로 판단) 와 어긋남.
+    이제는 None 으로 fallback 하여 실제 체크 상태로 평가한다.
+    Previous behavior returned 'failed' immediately for empty set, which mismatched
+    user intent (PR with running CI shouldn't be marked failed). Now falls back
+    to None and evaluates actual check state via API.
     """
+    check_runs_body = {
+        "check_runs": [_check_run("CI / test", "in_progress", None)],
+        "total_count": 1,
+    }
     mock_client = AsyncMock()
-    mock_client.get = AsyncMock()
+    mock_client.get = AsyncMock(side_effect=[_resp(200, check_runs_body)])
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("src.github_client.checks.get_http_client", return_value=mock_client):
+        result = await get_ci_status(TOKEN, REPO, SHA, required_contexts=set())
+
+    # 빈 set 이어도 API 호출 후 실제 상태로 판단 / Even with empty set, API is called.
+    assert result == "running"
+    mock_client.get.assert_called()
+
+
+async def test_get_ci_status_empty_set_with_all_passed():
+    """빈 set + 모든 체크 통과 → 'passed' 반환 (fallback 동작).
+    Empty set + all checks success → 'passed' (fallback behavior verified).
+    """
+    check_runs_body = {
+        "check_runs": [
+            _check_run("SonarQube", "completed", "success"),
+            _check_run("Codecov", "completed", "success"),
+        ],
+        "total_count": 2,
+    }
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(side_effect=[_resp(200, check_runs_body)])
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("src.github_client.checks.get_http_client", return_value=mock_client):
+        result = await get_ci_status(TOKEN, REPO, SHA, required_contexts=set())
+
+    assert result == "passed"
+
+
+async def test_get_ci_status_empty_set_with_failed_check():
+    """빈 set + 실제 체크 실패 → 'failed' 반환 (fallback 후에도 정확).
+    Empty set + actually failed check → 'failed' (fallback still detects real failures).
+
+    이 테스트는 결과 값(`failed`)뿐 아니라 fallback 경로를 실제로 거쳤는지
+    (= API 가 호출되었는지) 도 함께 검증한다. 옛 동작은 API 호출 없이 즉시
+    'failed' 를 반환했으므로 mock_client.get 이 호출되지 않았다.
+    Asserts API was actually called (fallback path), not just the result value.
+    Old behavior returned 'failed' without any API call — this distinguishes them.
+    """
+    check_runs_body = {
+        "check_runs": [
+            _check_run("SonarQube", "completed", "failure"),
+        ],
+        "total_count": 1,
+    }
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(side_effect=[_resp(200, check_runs_body)])
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
 
     with patch("src.github_client.checks.get_http_client", return_value=mock_client):
         result = await get_ci_status(TOKEN, REPO, SHA, required_contexts=set())
 
     assert result == "failed"
-    # 빈 set은 필수 체크 없음 → API 호출 불필요 / No API call needed for empty required set.
-    mock_client.get.assert_not_called()
+    # fallback 경로 검증 — API 가 실제로 호출되어야 함 (옛 동작은 즉시 반환)
+    # Verify fallback path — API must have been called (old behavior returned immediately).
+    mock_client.get.assert_called()
 
 
 async def test_get_ci_status_ignores_non_required_checks():

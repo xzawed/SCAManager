@@ -284,6 +284,13 @@ async def _get_ci_status_safe(
         required = await get_required_check_contexts(token, repo_full_name, "main")
     except httpx.HTTPError:
         required = None
+
+    # 방어층: BPR Required 미설정으로 빈 set 이 반환되면 None 으로 통일
+    # engine.py::_get_ci_status_safe 와 동일 패턴 — 단일/워커 경로 일관성 확보
+    # Defense layer: unify empty set to None for consistency with engine path
+    if not required:
+        required = None
+
     try:
         return await get_ci_status(
             token,
