@@ -49,3 +49,6 @@ Thumbs.db
 
 # Claude Code 런타임 상태 파일
 .claude/scheduled_tasks.lock
+
+# superpowers plan/spec working dir (완료된 plan은 docs/_archive/ 로 수동 이동)
+docs/superpowers/
