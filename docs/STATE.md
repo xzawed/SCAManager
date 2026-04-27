@@ -106,7 +106,7 @@
 
 ### 그룹 49 (2026-04-27 · Phase 12 CI-aware Auto Merge 재시도 완료 — T15 문서화)
 
-**목표**: PR 자동 머지 시 `mergeable_state=unstable`(CI 진행 중) 또는 `unknown` 상태에서 단일 실패 대신 `merge_retry_queue`에 큐잉하여 최대 24시간 자동 재시도. `check_suite.completed` 웹훅 즉각 트리거 + 5분 cron fallback 이중 보장.
+**목표**: PR 자동 머지 시 `mergeable_state=unstable`(CI 진행 중) 또는 `unknown` 상태에서 단일 실패 대신 `merge_retry_queue`에 큐잉하여 최대 24시간 자동 재시도. `check_suite.completed` 웹훅 즉각 트리거 + 1분 cron fallback 이중 보장 (2026-04-27 5분→1분 단축).
 
 **신규 파일 (구현)**:
 

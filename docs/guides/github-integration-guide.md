@@ -270,7 +270,7 @@ Pull Request를 생성하면:
 2. Card ⑤ (시스템 & 토큰) → **"Webhook 재등록"** 버튼 클릭
 3. GitHub 리포 **Settings → Webhooks** 에서 이벤트 목록에 `Check suites` 포함 여부 확인
 
-> `check_suite` 미구독 상태에서도 5분 cron fallback으로 재시도가 동작하지만, 즉각 트리거가 비활성화되어 최대 5분 지연이 발생한다.
+> `check_suite` 미구독 상태에서도 1분 cron fallback으로 재시도가 동작하지만, 즉각 트리거가 비활성화되어 최대 1분 지연이 발생한다.
 
 ---
 
