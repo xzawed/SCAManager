@@ -323,6 +323,13 @@ async def _get_ci_status_safe(
     except httpx.HTTPError:
         required = None  # None 이면 모든 체크 고려 / None means "consider all checks"
 
+    # 방어층: BPR Required 미설정으로 빈 set 이 반환되면 None 으로 통일
+    # checks.py 의 fallback 과 이중 안전 — 호출 측에서도 명시적으로 처리
+    # Defense layer: unify empty set (no BPR required checks) to None
+    # — double safety with checks.py fallback, explicit handling at call site
+    if not required:
+        required = None
+
     try:
         return await get_ci_status(
             github_token, repo_name, commit_sha,

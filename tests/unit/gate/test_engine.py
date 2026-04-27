@@ -1103,3 +1103,40 @@ async def test_notify_merge_failure_includes_advice_in_telegram():
         )
     sent_text = mock_tg.call_args[0][2]["text"]
     assert "충돌을 해소하세요" in sent_text
+
+
+# ---------------------------------------------------------------------------
+# _get_ci_status_safe — 빈 set 방어층 (옵션 3)
+# _get_ci_status_safe — empty set defense layer (option 3)
+# ---------------------------------------------------------------------------
+
+async def test_get_ci_status_safe_converts_empty_set_to_none():
+    """_get_ci_status_safe 가 빈 set 을 None 으로 변환해 get_ci_status 에 전달한다.
+    _get_ci_status_safe must convert empty set to None before passing to get_ci_status.
+
+    옵션 3 방어층 — checks.py 변경과 무관하게 호출 측에서도 안전하게 처리.
+    BPR Required Status Checks 미설정 Repo 에서 빈 set 이 반환되더라도
+    하위 get_ci_status 호출 시점에는 항상 None 으로 통일되어 모든 체크 평가.
+    Defense layer (option 3) — caller-side safety regardless of checks.py change.
+    Empty set returned by branch-protection lookup must be normalized to None
+    so get_ci_status falls back to evaluating all checks.
+    """
+    from src.gate.engine import _get_ci_status_safe  # 지역 import / local import
+
+    with patch(
+        "src.gate.engine.get_required_check_contexts",
+        new_callable=AsyncMock,
+    ) as mock_required, patch(
+        "src.gate.engine.get_ci_status",
+        new_callable=AsyncMock,
+    ) as mock_ci:
+        mock_required.return_value = set()  # 빈 set / empty set
+        mock_ci.return_value = "running"
+
+        result = await _get_ci_status_safe("token", "owner/repo", "sha123")
+
+    assert result == "running"
+    # 핵심 검증 — required_contexts 가 None 으로 전달되어야 함
+    # Core assertion — required_contexts must be passed as None (not empty set).
+    call_kwargs = mock_ci.call_args.kwargs
+    assert call_kwargs.get("required_contexts") is None
