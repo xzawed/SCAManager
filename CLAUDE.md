@@ -220,7 +220,7 @@ GitHub Push/PR
           [approve_mode=semi]    → Telegram 인라인 키보드 전송 → POST /api/webhook/telegram 콜백 수신
           [auto_merge=on, score ≥ merge_threshold] → squash merge (approve_mode 무관)
           [auto_merge=on, mergeable_state=unstable/unknown] → merge_retry_queue 큐잉
-              → check_suite.completed 웹훅 즉각 트리거 OR 5분 cron fallback
+              → check_suite.completed 웹훅 즉각 트리거 OR 1분 cron fallback
               → process_pending_retries() → 조건 충족 시 재시도 (최대 30회, 24h)
       → _build_notify_tasks() — RepoConfig 기반 채널 디스패처
       → asyncio.gather(return_exceptions=True):
@@ -508,7 +508,7 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 - **Telegram 콜백 도메인 분리**: `_make_callback_token(bot_token, scope, payload_id)`이 `scope ∈ {"gate","cmd"}`별 다른 HMAC 생성. 신규 명령 추가 시 `cmd:<verb>:<id>:<token>` 준수, 64-byte 한도 검증 (numeric id). `_gate_callback_token()`은 `_make_callback_token(..., "gate", analysis_id)` thin wrapper. `test_callback_data_within_64_bytes_all_commands` 단위 테스트 강제.
 - **Cron 엔드포인트 인증**: `POST /api/internal/cron/*`는 `INTERNAL_CRON_API_KEY` 전용 (admin key와 분리). Railway `[[deploy.cronJobs]]` 트리거. `hmac.compare_digest` 타이밍 안전 비교. `INTERNAL_CRON_API_KEY` 미설정 시 503 반환.
 - **Telegram chat_id 라우팅 우선순위**: cron 알림의 chat_id 결정은 `analytics_service.resolve_chat_id(repo, config)` 단일 헬퍼 — `RepoConfig.notify_chat_id` → `Repository.telegram_chat_id` → `settings.telegram_chat_id` → None(skip + WARNING).
-- **CI-aware Auto Merge 재시도**: `mergeable_state=unstable`+CI running 또는 `unknown` 상태일 때 단일 실패가 아닌 `merge_retry_queue` 큐잉. `check_suite.completed` 웹훅 또는 5분 cron 으로 재시도. 트리거: `src/services/merge_retry_service.py::process_pending_retries`. 첫 지연 시 Telegram 1회, 최종 성공/실패 시 1회. 중간 재시도는 무음.
+- **CI-aware Auto Merge 재시도**: `mergeable_state=unstable`+CI running 또는 `unknown` 상태일 때 단일 실패가 아닌 `merge_retry_queue` 큐잉. `check_suite.completed` 웹훅 또는 1분 cron 으로 재시도. 트리거: `src/services/merge_retry_service.py::process_pending_retries`. 첫 지연 시 Telegram 1회, 최종 성공/실패 시 1회. 중간 재시도는 무음.
 - **`merge_pr` SHA atomicity**: `merge_pr(..., expected_sha=...)` 는 `PUT /pulls/{n}/merge` 에 `sha` 파라미터를 포함해 force-push 된 코드의 의도치 않은 머지를 GitHub 측에서 차단. 신규 호출 시 항상 head SHA 전달.
 - **Webhook 이벤트 구독 갱신**: `create_webhook` 이벤트 목록은 `["push","pull_request","issues","check_suite"]`. 기존 등록 리포는 settings 페이지의 "Webhook 재등록" 버튼으로 갱신 — 미갱신 시 자동 재시도 기능 미동작 (cron fallback 으로 5분 지연 동작).
 
@@ -553,4 +553,4 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 
 ## 현재 상태
 
-최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1714개 | E2E 53개 | pylint 10.00 | 커버리지 95% | SonarCloud QG OK · Security A · Reliability A · Maintainability A · Tier1 정적분석 10종 · Observability (Sentry + Claude metrics + stage timing + MergeAttempt) · AI 점수 피드백 루프 · Settings Minimal Mode · Onboarding 3단계 튜토리얼 · 5-렌즈 감사 95+ 통과 · Phase F Quick Win + F.1/F.3 완료 · Phase G 완료 (P1-5건 수정) · Phase 9 자기 분석 루프 방지 완료 · Phase 10 Telegram 확장 완료 (cron + /stats·/connect 명령) · Phase 11 팀/멀티 리포 인사이트 완료 (author_trend + leaderboard + /insights 대시보드) · 툴링 안전장치 (testpaths + ORM-마이그레이션 완전성 검사 67개) · Phase 12 CI-aware Auto Merge 재시도 완료 (merge_retry_queue + check_suite 웹훅 + 5분 cron) · Settings UI/UX 리디자인 완료 (수신/발신 웹훅 분리 + 온보딩 배너 + 1714 단위 테스트)
+최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1714개 | E2E 53개 | pylint 10.00 | 커버리지 95% | SonarCloud QG OK · Security A · Reliability A · Maintainability A · Tier1 정적분석 10종 · Observability (Sentry + Claude metrics + stage timing + MergeAttempt) · AI 점수 피드백 루프 · Settings Minimal Mode · Onboarding 3단계 튜토리얼 · 5-렌즈 감사 95+ 통과 · Phase F Quick Win + F.1/F.3 완료 · Phase G 완료 (P1-5건 수정) · Phase 9 자기 분석 루프 방지 완료 · Phase 10 Telegram 확장 완료 (cron + /stats·/connect 명령) · Phase 11 팀/멀티 리포 인사이트 완료 (author_trend + leaderboard + /insights 대시보드) · 툴링 안전장치 (testpaths + ORM-마이그레이션 완전성 검사 67개) · Phase 12 CI-aware Auto Merge 재시도 완료 (merge_retry_queue + check_suite 웹훅 + 1분 cron) · Settings UI/UX 리디자인 완료 (수신/발신 웹훅 분리 + 온보딩 배너 + 1714 단위 테스트)
