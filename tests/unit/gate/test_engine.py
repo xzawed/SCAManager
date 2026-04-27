@@ -1140,3 +1140,54 @@ async def test_get_ci_status_safe_converts_empty_set_to_none():
     # Core assertion — required_contexts must be passed as None (not empty set).
     call_kwargs = mock_ci.call_args.kwargs
     assert call_kwargs.get("required_contexts") is None
+
+
+async def test_get_ci_status_safe_uses_provided_base_ref():
+    """F1: base_ref 파라미터를 get_required_check_contexts 에 전달한다.
+
+    이전엔 "main" 하드코딩이었으나 이제 PR 의 실제 base 브랜치 사용.
+    F1: base_ref param is forwarded so develop/staging BPRs resolve correctly.
+    """
+    from src.gate.engine import _get_ci_status_safe
+
+    with patch(
+        "src.gate.engine.get_required_check_contexts",
+        new_callable=AsyncMock,
+    ) as mock_required, patch(
+        "src.gate.engine.get_ci_status",
+        new_callable=AsyncMock,
+    ) as mock_ci:
+        mock_required.return_value = {"sonarcloud"}
+        mock_ci.return_value = "passed"
+
+        await _get_ci_status_safe(
+            "token", "owner/repo", "sha123", base_ref="develop",
+        )
+
+    args = mock_required.call_args
+    # positional 또는 keyword 둘 다 허용
+    branch_arg = args.args[2] if len(args.args) >= 3 else args.kwargs.get("branch")
+    assert branch_arg == "develop"
+
+
+async def test_get_ci_status_safe_default_base_ref_is_main():
+    """F1: base_ref 미지정 시 기본값 "main" 사용 (하위 호환).
+    F1: defaults to "main" when base_ref not provided (backward compat).
+    """
+    from src.gate.engine import _get_ci_status_safe
+
+    with patch(
+        "src.gate.engine.get_required_check_contexts",
+        new_callable=AsyncMock,
+    ) as mock_required, patch(
+        "src.gate.engine.get_ci_status",
+        new_callable=AsyncMock,
+    ) as mock_ci:
+        mock_required.return_value = set()
+        mock_ci.return_value = "passed"
+
+        await _get_ci_status_safe("token", "owner/repo", "sha123")
+
+    args = mock_required.call_args
+    branch_arg = args.args[2] if len(args.args) >= 3 else args.kwargs.get("branch")
+    assert branch_arg == "main"
