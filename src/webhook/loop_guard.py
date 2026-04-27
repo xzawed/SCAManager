@@ -38,6 +38,26 @@ def is_bot_sender(data: dict) -> bool:
     return login not in BOT_LOGIN_WHITELIST
 
 
+def is_whitelisted_bot(data: dict) -> bool:
+    """화이트리스트 봇 발신 여부 — sender.type == "Bot" 이고 BOT_LOGIN_WHITELIST 에 포함.
+    Whitelisted bot sender — sender.type == "Bot" AND login is in BOT_LOGIN_WHITELIST.
+
+    Layer 3-b 레이트 리미터를 화이트리스트 봇 한정으로 적용하기 위한 헬퍼.
+    Helper used to scope the Layer 3-b rate limiter to whitelisted bots only.
+    Phase 9 가이드: 사람 발신과 sender 누락은 무한 통과, 비-화이트리스트 봇은
+    이미 Layer 2 (`is_bot_sender`) 에서 차단된다.
+    Per Phase 9: human senders and missing-sender events pass freely; non-whitelisted
+    bots are already blocked at Layer 2 (`is_bot_sender`).
+    """
+    sender = data.get("sender")
+    if not sender:
+        return False
+    if sender.get("type") != "Bot":
+        return False
+    login = sender.get("login", "")
+    return login in BOT_LOGIN_WHITELIST
+
+
 def has_skip_marker(commit_message: str) -> bool:
     """커밋 메시지에 분석 skip 마커가 포함되어 있는지 확인 (대소문자 무시).
     Check whether a commit message contains any analysis skip marker (case-insensitive).
