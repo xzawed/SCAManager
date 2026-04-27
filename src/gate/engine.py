@@ -8,10 +8,11 @@ from src.config import settings
 from src.config_manager.manager import get_repo_config, RepoConfigData
 from src.gate._common import score_from_result as _score_from_result
 from src.gate.github_review import (
-    post_github_review, merge_pr, get_pr_mergeable_state, get_pr_base_ref,
+    post_github_review, get_pr_mergeable_state, get_pr_base_ref,
 )
 from src.gate.merge_failure_advisor import get_advice
 from src.gate.merge_reasons import UNSTABLE_CI, UNKNOWN_STATE_TIMEOUT, DEFERRED
+from src.gate.native_automerge import enable_or_fallback as native_enable_or_fallback
 from src.gate.retry_policy import parse_reason_tag, should_retry
 from src.github_client.checks import get_ci_status, get_required_check_contexts
 from src.notifier.merge_failure_issue import create_merge_failure_issue
@@ -251,9 +252,9 @@ async def _run_auto_merge_retry(  # pylint: disable=too-many-arguments,too-many-
         logger.warning("get_pr_mergeable_state 실패 (pr=%d): %s", pr_number, exc)
         head_sha = ""
 
-    # 2. SHA 원자성 가드와 함께 즉시 머지 시도
-    # 2. Try merge immediately with SHA atomicity guard
-    ok, reason, observed_sha = await merge_pr(
+    # 2. Native auto-merge enable 시도 — 실패 시 REST merge_pr 폴백 (Tier 3 PR-A)
+    # 2. Try native auto-merge enable; fall back to REST merge_pr on failure (Tier 3 PR-A)
+    ok, reason, observed_sha = await native_enable_or_fallback(
         github_token, repo_name, pr_number, expected_sha=head_sha or None
     )
 
@@ -430,7 +431,11 @@ async def _run_auto_merge_legacy(  # pylint: disable=too-many-arguments
     _run_auto_merge delegates here when merge_retry_enabled=False.
     """
     try:
-        ok, reason, _head_sha = await merge_pr(github_token, repo_name, pr_number)
+        # Tier 3 PR-A: native auto-merge 우선 시도, 실패 시 REST merge_pr 폴백
+        # Tier 3 PR-A: try native auto-merge first, fall back to REST merge_pr on failure
+        ok, reason, _head_sha = await native_enable_or_fallback(
+            github_token, repo_name, pr_number,
+        )
 
         # Phase F.1: 모든 시도 DB 기록 — 관측 실패가 파이프라인을 중단시키지 않도록
         # Phase F.1: Record every attempt in DB — observability failures must not interrupt the pipeline.

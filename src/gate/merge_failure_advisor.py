@@ -1,5 +1,11 @@
-"""Auto-merge 실패 사유별 권장 조치 텍스트 — Phase F.3."""
+"""Auto-merge 실패 사유별 권장 조치 텍스트 — Phase F.3 + Tier 3 PR-A."""
 from src.gate import merge_reasons
+from src.github_client.graphql import (
+    ENABLE_API_ERROR,
+    ENABLE_DISABLED_IN_REPO,
+    ENABLE_FORCE_PUSHED,
+    ENABLE_PERMISSION_DENIED,
+)
 
 _ADVICE: dict[str, str] = {
     merge_reasons.BRANCH_PROTECTION_BLOCKED: (
@@ -34,6 +40,24 @@ _ADVICE: dict[str, str] = {
     ),
     merge_reasons.NETWORK_ERROR: (
         "GitHub API 네트워크 오류 — 일시적 문제일 수 있습니다. PR 페이지에서 직접 Merge를 시도하세요."
+    ),
+    # Tier 3 PR-A — native auto-merge enable 단계 분류 사유
+    # Tier 3 PR-A — classifications from the native auto-merge enable stage
+    ENABLE_DISABLED_IN_REPO: (
+        "리포 Settings → General → 'Allow auto-merge' 토글이 OFF 입니다. "
+        "GitHub 리포 설정에서 활성화하면 다음 PR 부터 native auto-merge 가 동작합니다."
+    ),
+    ENABLE_PERMISSION_DENIED: (
+        "GitHub 토큰에 GraphQL `enablePullRequestAutoMerge` 권한이 없습니다. "
+        "OAuth 사용자 토큰의 `repo` 스코프 또는 GitHub App `pull_requests: write` 권한을 확인하세요."
+    ),
+    ENABLE_FORCE_PUSHED: (
+        "PR head SHA 가 enable 시점과 달라 force-push 가 감지됐습니다. "
+        "새 SHA 도착 시 자동 재분석 + 재시도가 수행됩니다 (사용자 액션 불필요)."
+    ),
+    ENABLE_API_ERROR: (
+        "GitHub GraphQL API 에러로 native auto-merge 활성화 실패. "
+        "PR 페이지에서 직접 'Enable auto-merge' 버튼을 눌러 시도하거나 잠시 후 재시도하세요."
     ),
 }
 
