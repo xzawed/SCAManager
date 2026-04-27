@@ -440,20 +440,98 @@ async def test_get_required_check_contexts_returns_contexts():
     assert result == {"CI / test", "CI / lint"}
 
 
-async def test_get_required_check_contexts_returns_empty_on_404():
-    """브랜치 보호가 없으면(404) 빈 set 반환.
-    Returns empty set when branch has no protection rules (404).
+async def test_get_required_check_contexts_returns_empty_on_404(caplog):
+    """브랜치 보호가 없으면(404) 빈 set 반환 + debug 레벨 로그.
+    Returns empty set + debug log when no branch protection (404).
     """
+    import logging
+    import httpx as _httpx
+
     mock_resp = _resp(404, {"message": "Branch not protected"})
-    mock_resp.raise_for_status.side_effect = Exception("404 Not Found")
+    mock_resp.status_code = 404
+    mock_resp.raise_for_status.side_effect = _httpx.HTTPStatusError(
+        "404 Not Found", request=MagicMock(), response=mock_resp,
+    )
 
     mock_client = AsyncMock()
     mock_client.get = AsyncMock(return_value=mock_resp)
 
-    with patch("src.github_client.checks.get_http_client", return_value=mock_client):
+    # m1: 404 는 정상 — warning/error 레벨 로그가 없어야 함
+    with patch("src.github_client.checks.get_http_client", return_value=mock_client), \
+         caplog.at_level(logging.WARNING, logger="src.github_client.checks"):
         result = await get_required_check_contexts(TOKEN, REPO, BRANCH)
 
     assert result == set()
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+async def test_get_required_check_contexts_returns_empty_on_403_with_warning(caplog):
+    """권한 부족(403) — 빈 set + warning 로그.
+    Permission denied (403) — empty set + warning log.
+    """
+    import logging
+    import httpx as _httpx
+
+    mock_resp = _resp(403, {"message": "Resource not accessible by integration"})
+    mock_resp.status_code = 403
+    mock_resp.raise_for_status.side_effect = _httpx.HTTPStatusError(
+        "403 Forbidden", request=MagicMock(), response=mock_resp,
+    )
+
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(return_value=mock_resp)
+
+    with patch("src.github_client.checks.get_http_client", return_value=mock_client), \
+         caplog.at_level(logging.WARNING, logger="src.github_client.checks"):
+        result = await get_required_check_contexts(TOKEN, REPO, "branch-403")
+
+    assert result == set()
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("권한" in r.getMessage() or "unauthorized" in r.getMessage() for r in warnings)
+
+
+async def test_get_required_check_contexts_returns_empty_on_429_with_warning(caplog):
+    """rate limit(429) — 빈 set + warning 로그.
+    Rate limit (429) — empty set + warning log.
+    """
+    import logging
+    import httpx as _httpx
+
+    mock_resp = _resp(429, {"message": "API rate limit exceeded"})
+    mock_resp.status_code = 429
+    mock_resp.raise_for_status.side_effect = _httpx.HTTPStatusError(
+        "429 Too Many Requests", request=MagicMock(), response=mock_resp,
+    )
+
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(return_value=mock_resp)
+
+    with patch("src.github_client.checks.get_http_client", return_value=mock_client), \
+         caplog.at_level(logging.WARNING, logger="src.github_client.checks"):
+        result = await get_required_check_contexts(TOKEN, REPO, "branch-429")
+
+    assert result == set()
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("rate limit" in r.getMessage().lower() for r in warnings)
+
+
+async def test_get_required_check_contexts_returns_empty_on_network_error(caplog):
+    """네트워크 오류(ConnectError 등) — 빈 set + warning 로그.
+    Network error — empty set + warning log.
+    """
+    import logging
+    import httpx as _httpx
+
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(side_effect=_httpx.ConnectError("DNS failure"))
+
+    with patch("src.github_client.checks.get_http_client", return_value=mock_client), \
+         caplog.at_level(logging.WARNING, logger="src.github_client.checks"):
+        result = await get_required_check_contexts(TOKEN, REPO, "branch-net")
+
+    assert result == set()
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("네트워크" in r.getMessage() or "network" in r.getMessage() for r in warnings)
 
 
 async def test_get_required_check_contexts_caches_result():

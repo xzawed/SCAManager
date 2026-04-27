@@ -5,6 +5,8 @@ import logging
 import re
 import time
 
+import httpx
+
 from src.constants import GITHUB_API
 from src.shared.http_client import get_http_client
 from src.shared.log_safety import sanitize_for_log
@@ -179,6 +181,54 @@ def _legacy_state_to_ci_status(state: str) -> str:
     return "unknown"
 
 
+def _classify_bpr_http_error(
+    exc: httpx.HTTPStatusError,
+    repo_full_name: str,
+    branch: str,
+) -> set[str]:
+    """BPR 조회 HTTP 오류를 코드별로 분류해 로깅하고 빈 set 반환.
+
+    - 404: 정상 — BPR 미설정. debug 로그.
+    - 401/403: 토큰 권한 부족. warning — auto-merge 진단 어려움 신호.
+    - 429: GitHub rate limit. warning — 잠시 후 캐시 만료 시 재시도.
+    - 그 외: 예상치 못한 응답. error.
+
+    Classify BPR-fetch HTTP errors and log accordingly. Always returns empty set
+    so callers proceed with the "no required checks" semantics (which now means
+    "consider all checks" after the empty-set fallback).
+    """
+    code = exc.response.status_code
+    safe_repo = sanitize_for_log(repo_full_name)
+    safe_branch = sanitize_for_log(branch)
+    if code == 404:
+        # 가장 흔한 정상 경로 — BPR 자체가 없거나 Required Status Checks 미설정
+        # Most common normal case — no BPR or no Required Status Checks
+        logger.debug(
+            "BPR 미설정 (404) — 빈 set 반환 (%s/%s)"
+            " / no BPR configured (404) — returning empty set",
+            safe_repo, safe_branch,
+        )
+    elif code in (401, 403):
+        logger.warning(
+            "BPR 조회 권한 부족 (HTTP %d) — 토큰 점검 필요 (%s/%s)"
+            " / BPR fetch unauthorized — token review needed",
+            code, safe_repo, safe_branch,
+        )
+    elif code == 429:
+        logger.warning(
+            "BPR 조회 rate limit (HTTP 429) — 빈 set 반환, 캐시 TTL 후 재조회 (%s/%s)"
+            " / BPR fetch rate-limited — returning empty set",
+            safe_repo, safe_branch,
+        )
+    else:
+        logger.error(
+            "BPR 조회 HTTP 오류 (HTTP %d) — 예상치 못한 응답 (%s/%s)"
+            " / BPR fetch unexpected HTTP status",
+            code, safe_repo, safe_branch,
+        )
+    return set()
+
+
 async def get_required_check_contexts(
     token: str,
     repo_full_name: str,
@@ -214,8 +264,19 @@ async def get_required_check_contexts(
         resp.raise_for_status()
         data = resp.json()
         contexts: set[str] = set(data.get("contexts") or [])
-    except Exception:  # pylint: disable=broad-except
-        # 404 또는 기타 오류: 브랜치 보호 없음 / 404 or other error: no branch protection
+    except httpx.HTTPStatusError as exc:
+        # HTTP 오류 분류 — 운영 진단을 위해 로그 레벨 분리
+        # Classify HTTP error — separate log levels for ops diagnostics
+        contexts = _classify_bpr_http_error(exc, repo_full_name, branch)
+    except httpx.HTTPError as exc:
+        # 네트워크/연결 오류 (DNS, timeout, ConnectError 등)
+        # Network/connection error (DNS, timeout, ConnectError, etc.)
+        logger.warning(
+            "BPR 조회 네트워크 오류 (%s) — 빈 set 반환 (%s/%s)"
+            " / BPR fetch network error — returning empty set",
+            type(exc).__name__,
+            sanitize_for_log(repo_full_name), sanitize_for_log(branch),
+        )
         contexts = set()
 
     # 결과 캐시 저장 / Store result in cache
