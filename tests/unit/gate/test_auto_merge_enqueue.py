@@ -60,7 +60,7 @@ async def test_run_auto_merge_enqueues_when_ci_running():
     enqueue_result = _make_enqueue_result(is_first_deferral=True)
 
     with patch("src.gate.engine.settings") as mock_settings, \
-         patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge, \
+         patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
          patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main") as mock_base_ref, \
          patch("src.gate.engine.get_required_check_contexts", new_callable=AsyncMock) as mock_required, \
@@ -112,7 +112,7 @@ async def test_run_auto_merge_terminal_when_ci_failed():
     config = _config()
 
     with patch("src.gate.engine.settings") as mock_settings, \
-         patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge, \
+         patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
          patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main") as mock_base_ref, \
          patch("src.gate.engine.get_required_check_contexts", new_callable=AsyncMock) as mock_required, \
@@ -160,7 +160,7 @@ async def test_run_auto_merge_success_no_enqueue():
     config = _config()
 
     with patch("src.gate.engine.settings") as mock_settings, \
-         patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge, \
+         patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
          patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main") as mock_base_ref, \
          patch("src.gate.engine.get_required_check_contexts", new_callable=AsyncMock) as mock_required, \
@@ -199,7 +199,7 @@ async def test_run_auto_merge_terminal_on_dirty_conflict():
     config = _config()
 
     with patch("src.gate.engine.settings") as mock_settings, \
-         patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge, \
+         patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
          patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main") as mock_base_ref, \
          patch("src.gate.engine.merge_retry_repo") as mock_repo, \
@@ -241,7 +241,7 @@ async def test_run_auto_merge_deferred_no_notify_on_bump():
     enqueue_result = _make_enqueue_result(is_first_deferral=False)
 
     with patch("src.gate.engine.settings") as mock_settings, \
-         patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge, \
+         patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
          patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main") as mock_base_ref, \
          patch("src.gate.engine.get_required_check_contexts", new_callable=AsyncMock) as mock_required, \
@@ -285,7 +285,7 @@ async def test_run_auto_merge_skips_when_score_below_threshold():
     config = _config(auto_merge=True, merge_threshold=75)
 
     with patch("src.gate.engine.settings") as mock_settings, \
-         patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge, \
+         patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.merge_retry_repo") as mock_repo:
 
         mock_settings.merge_retry_enabled = True
@@ -312,7 +312,7 @@ async def test_run_auto_merge_skips_when_auto_merge_disabled():
     config = _config(auto_merge=False, merge_threshold=75)
 
     with patch("src.gate.engine.settings") as mock_settings, \
-         patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge, \
+         patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.merge_retry_repo") as mock_repo:
 
         mock_settings.merge_retry_enabled = True
@@ -371,7 +371,7 @@ async def test_run_auto_merge_terminal_when_ci_status_unknown():
     config = _config()
 
     with patch("src.gate.engine.settings") as mock_settings, \
-         patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge, \
+         patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
          patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main") as mock_base_ref, \
          patch("src.gate.engine.get_required_check_contexts", new_callable=AsyncMock) as mock_required, \
@@ -414,7 +414,7 @@ async def test_run_auto_merge_no_analysis_id_skips_enqueue():
     config = _config()
 
     with patch("src.gate.engine.settings") as mock_settings, \
-         patch("src.gate.engine.merge_pr", new_callable=AsyncMock) as mock_merge, \
+         patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
          patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main") as mock_base_ref, \
          patch("src.gate.engine.get_required_check_contexts", new_callable=AsyncMock) as mock_required, \
