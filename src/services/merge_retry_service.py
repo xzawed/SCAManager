@@ -173,8 +173,11 @@ async def process_pending_retries(  # pylint: disable=too-many-locals,too-many-s
             # ── f. 실패 분류 ──────────────────────────────────────────────
             # ── f. Classify failure ───────────────────────────────────────
             reason_tag = parse_reason_tag(reason)
+            # F1: pr_data 에 이미 base.ref 가 있으므로 추가 호출 없이 활용
+            # F1: pr_data already contains base.ref — reuse without extra API call
+            base_ref = pr_data.get("base", {}).get("ref", "main")
             ci_status = await _get_ci_status_safe(
-                token, row.repo_full_name, row.commit_sha
+                token, row.repo_full_name, row.commit_sha, base_ref=base_ref,
             )
 
             expired = is_expired(row, now=now, max_age_hours=settings.merge_retry_max_age_hours)
@@ -275,13 +278,15 @@ async def _get_pr_data(
 
 
 async def _get_ci_status_safe(
-    token: str, repo_full_name: str, commit_sha: str
+    token: str, repo_full_name: str, commit_sha: str, *, base_ref: str = "main"
 ) -> str:
     """CI 상태를 안전하게 조회한다 — 오류 시 'unknown' 반환.
     Safely fetch CI status — returns 'unknown' on error.
+
+    F1: base_ref 파라미터로 PR 의 실제 base 브랜치 BPR 조회.
     """
     try:
-        required = await get_required_check_contexts(token, repo_full_name, "main")
+        required = await get_required_check_contexts(token, repo_full_name, base_ref)
     except httpx.HTTPError:
         required = None
 
