@@ -7,6 +7,7 @@ import time
 
 from src.constants import GITHUB_API
 from src.shared.http_client import get_http_client
+from src.shared.log_safety import sanitize_for_log
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +79,8 @@ async def get_ci_status(
         logger.debug(
             "required_contexts는 빈 set — BPR Required 미설정, 모든 체크 고려 fallback (%s %s)"
             " / required_contexts is empty set — no BPR required checks, falling back to all checks (%s %s)",
-            repo_full_name, commit_sha, repo_full_name, commit_sha,
+            sanitize_for_log(repo_full_name), sanitize_for_log(commit_sha),
+            sanitize_for_log(repo_full_name), sanitize_for_log(commit_sha),
         )
         required_contexts = None
 
@@ -99,8 +101,8 @@ async def get_ci_status(
             logger.warning(
                 "체크런 페이지 %d 초과 — 결과 불확실, 'unknown' 반환 (%s %s)"
                 " / check-run page count exceeded %d — returning 'unknown' (%s %s)",
-                _MAX_PAGES, repo_full_name, commit_sha,
-                _MAX_PAGES, repo_full_name, commit_sha,
+                _MAX_PAGES, sanitize_for_log(repo_full_name), sanitize_for_log(commit_sha),
+                _MAX_PAGES, sanitize_for_log(repo_full_name), sanitize_for_log(commit_sha),
             )
             return "unknown"
 
