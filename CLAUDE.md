@@ -100,6 +100,7 @@ src/
 ├── webhook/
 │   ├── _helpers.py             # get_webhook_secret() + _webhook_secret_cache (TTL 300초)
 │   ├── validator.py            # HMAC-SHA256 서명 검증
+│   ├── loop_guard.py           # is_bot_sender, is_whitelisted_bot (PR #100), has_skip_marker, BotInteractionLimiter
 │   ├── router.py               # aggregator — providers 3개 include (+ 하위 호환 re-export)
 │   └── providers/
 │       ├── github.py           # POST /webhooks/github + merged-PR / issues 핸들러
@@ -111,7 +112,8 @@ src/
 │   ├── diff.py                 # get_pr_files, get_push_files
 │   ├── issues.py               # close_issue() — Issue 종료 API
 │   ├── repos.py                # list_user_repos(), create_webhook(), delete_webhook(), commit_scamanager_files()
-│   └── checks.py               # get_ci_status, get_required_check_contexts (5분 TTL 캐시, D2+D8 페이지네이션)
+│   ├── checks.py               # get_ci_status, get_required_check_contexts (5분 TTL 캐시, D2+D8 페이지네이션)
+│   └── graphql.py              # GraphQL POST 래퍼 + enablePullRequestAutoMerge mutation + EnableAutoMergeResult 분류 (Tier 3 PR-A)
 ├── railway_client/
 │   ├── models.py               # RailwayDeployEvent (3-그룹 nested) + RailwayProjectInfo + RailwayCommitInfo
 │   ├── webhook.py              # parse_railway_payload() — deploy 실패 이벤트 파싱
@@ -146,9 +148,11 @@ src/
 ├── gate/
 │   ├── _common.py              # score_from_result() 공용 헬퍼 (engine 과 향후 actions 공유)
 │   ├── engine.py               # run_gate_check() — 3-옵션 독립 처리 (직접 구현)
-│   ├── github_review.py        # post_github_review(), merge_pr()
+│   ├── github_review.py        # post_github_review(), merge_pr() (REST 폴백 경로)
+│   ├── native_automerge.py     # enable_or_fallback() — GraphQL enablePullRequestAutoMerge 우선 + REST merge_pr 폴백 (Tier 3 PR-A)
+│   ├── merge_reasons.py        # auto-merge 실패 사유 정규 태그 상수 (Phase F QW5) — branch_protection_blocked, unstable_ci, permission_denied 등
 │   ├── telegram_gate.py        # send_gate_request() — 인라인 키보드 메시지
-│   ├── merge_failure_advisor.py # get_advice(reason) — reason tag → 권장 조치 텍스트 (Phase F.3, 순수 함수)
+│   ├── merge_failure_advisor.py # get_advice(reason) — reason tag → 권장 조치 텍스트 (Phase F.3 + Tier 3 PR-A enable reason 4종)
 │   └── retry_policy.py         # 순수 함수: parse_reason_tag, should_retry, compute_next_retry_at, is_expired, mergeable_state_terminality
 ├── notifier/                   # `__init__.py` 가 import 시 각 채널 모듈 자동 로드 → REGISTRY 등록 (Phase S.3-E)
 │   ├── __init__.py             # 8개 notifier 모듈 import (등록 순서 = 발송 우선순위)
@@ -218,7 +222,12 @@ GitHub Push/PR
           [approve_mode=auto]    → score ≥ approve_threshold → GitHub APPROVE
                                    score < reject_threshold → GitHub REQUEST_CHANGES
           [approve_mode=semi]    → Telegram 인라인 키보드 전송 → POST /api/webhook/telegram 콜백 수신
-          [auto_merge=on, score ≥ merge_threshold] → squash merge (approve_mode 무관)
+          [auto_merge=on, score ≥ merge_threshold] → native_enable_or_fallback() (Tier 3 PR-A)
+              ├─ enable_pull_request_auto_merge GraphQL mutation (우선 시도)
+              │     → 성공 시 GitHub 가 CI 통과 후 자동 squash merge 수행
+              │     → ENABLE_FORCE_PUSHED → 즉시 실패 (폴백 X)
+              ├─ ENABLE_DISABLED_IN_REPO / ENABLE_PERMISSION_DENIED → REST merge_pr 폴백
+              └─ ENABLE_API_ERROR (분류 외) → REST merge_pr 폴백
           [auto_merge=on, mergeable_state=unstable/unknown] → merge_retry_queue 큐잉
               → check_suite.completed 웹훅 즉각 트리거 OR 1분 cron fallback
               → process_pending_retries() → 조건 충족 시 재시도 (최대 30회, 24h)
@@ -235,7 +244,7 @@ Telegram 반자동 콜백:
   → POST /api/webhook/telegram
   → gate:{decision}:{id}:{token} 파싱 (HMAC 인증 포함)
   → post_github_review() + GateDecision DB 저장
-  → auto_merge=on, score ≥ merge_threshold → squash merge (approve_mode 무관하게 독립 동작)
+  → auto_merge=on, score ≥ merge_threshold → native_enable_or_fallback() (approve_mode 무관하게 독립 동작)
 
 대시보드:
   → GET /                              (리포 현황 Web UI)
@@ -473,7 +482,7 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 - **review_guides 구조**: `get_guide(lang, "full"|"compact")` — Tier1 full ~500토큰, compact 1줄. N≤3 전체 full, N≤6 Tier1 full+나머지 compact, N>10 상위 5개 compact만.
 - **AI 리뷰 JSON 파싱**: Claude가 JSON 앞에 설명 텍스트를 붙이는 경우 `re.search`로 코드 블록 내 JSON만 추출.
 - **봇 PR `create_issue` 루프 방지**: `pr_head_ref`가 `_BOT_PR_PREFIXES` (`claude-fix/`, `bot/`, `renovate/`, `dependabot/`) 중 하나로 시작하면 `create_issue`를 건너뜀 — n8n 자동 생성 PR이 저점을 받을 때 Issue 재생성 → 무한 루프 방지.
-- **봇 발신 / 자기 분석 루프 방지**: `src/webhook/providers/github.py::_loop_guard_check()`가 3-layer 체크 적용 — (1) Kill-switch `SCAMANAGER_SELF_ANALYSIS_DISABLED=1`, (2) `loop_guard.is_bot_sender()` + BOT_LOGIN_WHITELIST 비포함, (3) skip marker (`[skip ci]`, `[skip-sca]`, `[ci skip]`) + `BotInteractionLimiter` 시간당 6회 상한. `github-actions[bot]`, `dependabot[bot]`은 whitelist로 분석 진행. 새 자동화 봇 추가 시 `BOT_LOGIN_WHITELIST` 갱신 검토. 운영 runbook: `docs/runbooks/self-analysis.md`.
+- **봇 발신 / 자기 분석 루프 방지**: `src/webhook/providers/github.py::_loop_guard_check()`가 3-layer 체크 적용 — (1) Kill-switch `SCAMANAGER_SELF_ANALYSIS_DISABLED=1`, (2) `loop_guard.is_bot_sender()` + BOT_LOGIN_WHITELIST 비포함 → 즉시 차단, (3) skip marker (`[skip ci]`, `[skip-sca]`, `[ci skip]`) + `BotInteractionLimiter` **화이트리스트 봇 한정** 시간당 6회 상한 (PR #100 — `is_whitelisted_bot()` 분기, **사람 발신 / 비-화이트리스트 봇 / sender 누락은 limiter 미적용 = 무제한 통과**). `github-actions[bot]`, `dependabot[bot]`은 whitelist로 분석 진행. 새 자동화 봇 추가 시 `BOT_LOGIN_WHITELIST` 갱신 검토. 운영 runbook: `docs/runbooks/self-analysis.md`.
 - **stage_metrics 필드 규약**: `issue_count` = 전체 이슈 합계 (`sum(len(r.issues))`), `file_count` = 분석 파일 수. 두 필드를 혼동하지 말 것 (2026-04-24 P1-1 정정).
 - **커밋 메시지 추출**: `_extract_commit_message()`는 PR 이벤트 시 `title + "\n\n" + body`, Push 이벤트 시 `head_commit["message"]` 우선 사용.
 - **CLI Hook 인증/점수**: `GET /api/hook/verify`, `POST /api/hook/result`는 `hook_token` 파라미터로 인증(X-API-Key 불필요). pre-push 훅은 정적 분석 없이 AI 리뷰만 실행 → `calculate_score([], ai_review)` 호출 (code_quality=25, security=20 만점 적용).
@@ -553,4 +562,4 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 
 ## 현재 상태
 
-최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1732개 | E2E 53개 | pylint 10.00 | 커버리지 95% | SonarCloud QG OK · Security A · Reliability A · Maintainability A · Tier1 정적분석 10종 · Observability (Sentry + Claude metrics + stage timing + MergeAttempt) · AI 점수 피드백 루프 · Settings Minimal Mode · Onboarding 3단계 튜토리얼 · 5-렌즈 감사 95+ 통과 · Phase F Quick Win + F.1/F.3 완료 · Phase G 완료 (P1-5건 수정) · Phase 9 자기 분석 루프 방지 완료 · Phase 10 Telegram 확장 완료 (cron + /stats·/connect 명령) · Phase 11 팀/멀티 리포 인사이트 완료 (author_trend + leaderboard + /insights 대시보드) · 툴링 안전장치 (testpaths + ORM-마이그레이션 완전성 검사 67개) · Phase 12 CI-aware Auto Merge 재시도 완료 (merge_retry_queue + check_suite 웹훅 + 1분 cron) · Settings UI/UX 리디자인 완료 (수신/발신 웹훅 분리 + 온보딩 배너) · Loop Guard Layer 3-b 화이트리스트 봇 한정 (PR #100 — `is_whitelisted_bot()` 헬퍼 + 사람 발신 무제한 통과)
+최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1757개 | E2E 53개 | pylint 10.00 | 커버리지 95% | SonarCloud QG OK · Security A · Reliability A · Maintainability A · Tier1 정적분석 10종 · Observability (Sentry + Claude metrics + stage timing + MergeAttempt) · AI 점수 피드백 루프 · Settings Minimal Mode · Onboarding 3단계 튜토리얼 · 5-렌즈 감사 95+ 통과 · Phase F Quick Win + F.1/F.3 완료 · Phase G 완료 (P1-5건 수정) · Phase 9 자기 분석 루프 방지 완료 · Phase 10 Telegram 확장 완료 (cron + /stats·/connect 명령) · Phase 11 팀/멀티 리포 인사이트 완료 (author_trend + leaderboard + /insights 대시보드) · 툴링 안전장치 (testpaths + ORM-마이그레이션 완전성 검사 67개) · Phase 12 CI-aware Auto Merge 재시도 완료 (merge_retry_queue + check_suite 웹훅 + 1분 cron) · Settings UI/UX 리디자인 완료 (수신/발신 웹훅 분리 + 온보딩 배너) · Loop Guard Layer 3-b 화이트리스트 봇 한정 (PR #100 — `is_whitelisted_bot()` 헬퍼 + 사람 발신 무제한 통과) · **Tier 3 PR-A 완료 (PR #103) — `enablePullRequestAutoMerge` GraphQL mutation + REST 폴백 (`src/gate/native_automerge.py`, `src/github_client/graphql.py`); 1주일 dogfooding 후 PR-B 에서 `merge_retry_service` 폐기 평가**
