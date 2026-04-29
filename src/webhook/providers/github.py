@@ -150,7 +150,7 @@ async def _record_actual_merge(repo_name: str, pr_number: int) -> None:
             if updated:
                 logger.info(
                     "merge_attempt %d: enabled_pending_merge → actually_merged (repo=%s, pr=%d)",
-                    latest.id, repo_name, pr_number,
+                    latest.id, sanitize_for_log(repo_name), pr_number,
                 )
     except (SQLAlchemyError, KeyError, AttributeError) as exc:
         # 관측 실패가 webhook 응답을 막지 않도록 격리 — Phase 3 PR-B1
