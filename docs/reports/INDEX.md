@@ -43,6 +43,7 @@
 | 2026-04-26 | [quality-audit-and-tooling-retrospective](2026-04-26-quality-audit-and-tooling-retrospective.md) | 3-에이전트 교차 감사 + 500 에러 진단 + 툴링 안전장치 |
 | 2026-04-27 | [phase12-docs-overhaul-retrospective](2026-04-27-phase12-docs-overhaul-retrospective.md) | Phase 12 완료 + 문서 정비 — 병렬 에이전트 브랜치 충돌 교훈 |
 | 2026-04-29 | [phase4-test-coverage-retrospective](2026-04-29-phase4-test-coverage-retrospective.md) | Phase 4 Critical 테스트 갭 5 PR 회고 — +197 tests, src/ 변경 0, Quality Gate 5연속 OK |
+| 2026-04-29 | [phase4-meta-retrospective](2026-04-29-phase4-meta-retrospective.md) | Phase 4 메타 회고 — 3-에이전트 병렬 검증으로 누락 9건 발견·수정 + PR-B3 정량 평가 기준 추가 |
 
 ---
 
