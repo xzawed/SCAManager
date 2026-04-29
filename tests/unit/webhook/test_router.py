@@ -270,3 +270,43 @@ def test_self_analysis_disabled_skips_all():
     assert resp.json()["status"] == "skipped"
     assert resp.json()["reason"] == "self_analysis_disabled"
     mock_pipeline.assert_not_called()
+
+
+def test_loop_guard_handles_head_commit_none_without_npe():
+    """Phase 4 회고 — head_commit=None 페이로드 시 _loop_guard_check 가
+    AttributeError 던지지 않고 graceful 진행 (회귀 방지).
+
+    GitHub 의 일부 push 이벤트(브랜치 삭제 등)에서 head_commit 키 값이 None 으로
+    내려오는 사례가 있었으며, 기존 `data.get("head_commit", {}).get(...)` 체이닝은
+    값이 None 이면 NPE. pull_request 키도 동일 패턴 보호 필요.
+    """
+    data = {
+        "repository": {"full_name": "owner/repo"},
+        "sender": {"type": "User", "login": "developer"},
+        "after": "abc123",
+        "head_commit": None,         # NPE 트리거 (회고 §발견된 잔여 결함)
+        "pull_request": None,         # 두 번째 분기 동일 보호 검증
+    }
+    payload = json.dumps(data).encode()
+    with patch("src.webhook.providers.github.settings") as mock_settings, \
+         patch("src.webhook._helpers.settings") as mock_helpers_settings:
+        mock_helpers_settings.github_webhook_secret = SECRET
+        mock_settings.github_webhook_secret = SECRET
+        mock_settings.scamanager_self_analysis_disabled = False
+        with patch("src.webhook.providers.github.run_analysis_pipeline") as mock_pipeline:
+            resp = client.post(
+                "/webhooks/github",
+                content=payload,
+                headers={
+                    "X-Hub-Signature-256": _sign(payload),
+                    "X-GitHub-Event": "push",
+                },
+            )
+    # NPE 가 났다면 500 응답 — 200/202 범위면 graceful 진행
+    # 정확한 status 는 후속 분기에 따라 다르나 5xx 는 회귀 신호
+    assert resp.status_code < 500, (
+        f"head_commit=None NPE 회귀 — got {resp.status_code}: {resp.text}"
+    )
+    # 정상 흐름이면 파이프라인이 등록되어야 함 (skip 마커 없음)
+    if resp.status_code == 202 and resp.json().get("status") == "accepted":
+        mock_pipeline.assert_called_once()
