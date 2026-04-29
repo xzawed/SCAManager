@@ -154,6 +154,24 @@ def _classify_graphql_errors(errors: list[dict]) -> EnableAutoMergeResult:
     err_msg = err.get("message") or ""
     msg_lower = err_msg.lower()
 
+    # Phase 3 PR-B2 — 이중 enable 가드: 이미 enabled 인 PR 에 mutation 재호출 시
+    # GitHub 가 "already" 류 메시지로 응답. 이 경우 ENABLE_OK 로 처리해 폴백을
+    # 차단 — 폴백이 일어나면 REST PUT/merge 가 405 (Not Mergeable) 로 실패하여
+    # 잘못된 advice 와 Issue 가 사용자에게 발송됨 (14-에이전트 감사 R2-C 식별).
+    # Phase 3 PR-B2 — double-enable guard: when GitHub returns an "already enabled"
+    # message for a PR that already has auto-merge active, classify as ENABLE_OK
+    # to skip fallback. Otherwise the REST PUT/merge fallback returns 405 and we
+    # surface a misleading "Auto Merge 실패" alert (audit R2-C).
+    if "already" in msg_lower and (
+        "auto merge" in msg_lower
+        or "auto-merge" in msg_lower
+        or "merge state" in msg_lower
+    ):
+        return EnableAutoMergeResult(
+            ENABLE_OK,
+            f"idempotent: already enabled — {err_msg}",
+        )
+
     # "Auto merge is not allowed for this repository"
     if "auto merge is not allowed" in msg_lower or "auto-merge is not allowed" in msg_lower:
         return EnableAutoMergeResult(ENABLE_DISABLED_IN_REPO, err_msg)
