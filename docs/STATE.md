@@ -33,6 +33,7 @@
 | `src/notifier/_common.py` | notifier 공통 헬퍼 — format_ref, get_all_issues, truncate_message |
 | `src/notifier/_http.py` | HTTP_CLIENT_TIMEOUT 적용 httpx 클라이언트 빌더 |
 | `src/webhook/_helpers.py` | `get_webhook_secret()` + `_webhook_secret_cache` per-repo TTL 캐시(5분) |
+| `src/webhook/loop_guard.py` | 자기 분석 루프 방지 3-layer (kill switch / bot sender / skip marker + rate limit). `is_whitelisted_bot()` 헬퍼로 화이트리스트 봇만 BotInteractionLimiter 적용 |
 | `src/webhook/router.py` | Webhook 라우터 aggregator — providers 3개 include |
 | `src/gate/engine.py` | 3-옵션 Gate + GateDecision upsert (중복 INSERT 방지) + MergeAttempt 관측(Phase F.1) |
 | `src/gate/merge_reasons.py` | auto-merge 실패 사유 정규 태그 상수 (Phase F QW5) |
@@ -66,6 +67,8 @@
 | **PR-T5** | `test/phase4-t5-e2e-integration` | +25 통합 (e2e_pipeline_scenarios — webhook→pipeline→gate 25 시나리오) | 통합 47 → 72 |
 | **합계** | | **+197** | **2003 (단위 1931 + 통합 72)** |
 
+> **누적 산수 주의**: PR-T1~T4 단위 누적이 1864→2036(+172)이지만 최종 STATE 헤더 단위 수치는 **1931** 이다. 차이 105건은 Phase 4 진행 중 별도 머지된 정리 PR 들(중복/대체 테스트 제거 + 모듈 재구성으로 인한 일부 테스트 흡수)에서 발생. 회귀 테스트 baseline 은 **1931** 단일 출처를 사용하고, +197 은 **신규 추가** 카운트로 해석.
+
 **검증 영역** (PR별 핵심 시나리오):
 - PR-T1: pylint/flake8/bandit subprocess 호출, AI review httpx ConnectError/Timeout/RuntimeError 폴백, _extract_json_payload codeblock/preamble, _parse_response clamp, calculate_grade 모든 경계(44/45/59/60/74/75/89/90), CQ_WARNING_CAP=25 경계
 - PR-T2: get_pr_mergeable_state HTTPError → head_sha="" 폴백, RuntimeError/ValueError outer catch, _enqueue_merge_retry 의 db=None 가드, log_merge_attempt 격리, _notify_merge_deferred chat_id/bot_token/HTML escape, _extract_commit_message 11개 분기
@@ -84,7 +87,12 @@
 - **`fix/loop-guard-head-commit-none`** (머지 완료): `src/webhook/providers/github.py:281-289` 의 `_loop_guard_check` 가 `data.get("head_commit", {}).get("message")` 패턴 사용 — head_commit 키 값이 None 일 때 (브랜치 삭제 push 등) AttributeError. `(data.get("head_commit") or {}).get(...)` 으로 None 정규화. 회귀 방지 테스트 1건 추가, pylint 10.00 유지.
 
 **잔여 후속**:
-- **PR-B3**: 1주일 dogfooding 후 (~2026-05-06) `merge_retry_service` 폐기 평가. native auto-merge enable 후 GitHub 비동기 머지 신뢰성이 충분하면 retry queue 단순화 가능.
+- **PR-B3 (~2026-05-06)**: `merge_retry_service` 폐기 평가. **정량 합격 기준**:
+  - `enabled_pending_merge` → `actually_merged` 전이 도달률 ≥ 95% (1주일 누적, 측정 SQL: `SELECT 100.0 * COUNT(*) FILTER (WHERE state='actually_merged') / NULLIF(COUNT(*) FILTER (WHERE state IN ('actually_merged','enabled_pending_merge','disabled_externally')), 0) FROM merge_attempts WHERE enabled_at > NOW() - INTERVAL '7 days'`)
+  - `enabled_at` → `merged_at` 평균 latency ≤ 30분 (CI 평균 + α)
+  - `disabled_externally` 발생 ≤ 5건/주 (전체 머지 성공 건의 5% 미만)
+  - REST 폴백 (`PATH_REST_FALLBACK`) 사용 비율 ≤ 10%
+  - 기준 4개 모두 충족 → 폐기 진행 (~500줄 코드 감소). 1개 미충족 → PR-A + retry 양립 유지.
 
 ---
 

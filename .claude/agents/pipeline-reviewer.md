@@ -21,8 +21,9 @@ description: SCAManager 파이프라인 코드 리뷰 에이전트. src/worker/p
 - 비동기 처리가 올바르게 사용되는가 (`async/await`, `BackgroundTasks`)
 
 ### 4. 점수 계산 일관성
-- `calculate_score()`가 항목별 배점(코드30 + 보안20 + 테스트10 + 커밋20 + 방향20)을 정확히 합산하는가
-- `_grade()` 함수가 A/B/C/D/F 등급을 올바르게 반환하는가
+- `calculate_score()`가 항목별 배점(코드25 + 보안20 + 커밋15 + AI방향25 + 테스트15 = 100)을 정확히 합산하는가
+- 배점 출처는 `src/constants.py` 상수(`CODE_QUALITY_MAX`/`SECURITY_MAX`/`COMMIT_MSG_MAX`/`AI_REVIEW_MAX`/`TEST_COVERAGE_MAX`)이며 변경 시 해당 상수도 함께 갱신되어야 한다
+- `calculate_grade()` 함수가 GRADE_THRESHOLDS(A 90 / B 75 / C 60 / D 45 / F 미만)에 따라 등급을 올바르게 반환하는가
 
 ### 5. DB 저장
 - Analysis 레코드가 실패 없이 저장되는가
