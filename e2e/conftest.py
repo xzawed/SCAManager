@@ -68,13 +68,18 @@ def _setup_e2e_db(db_path: str) -> None:
     Alembic 0009/0010 마이그레이션이 SQLite에서 NotImplementedError를 발생시키므로
     Base.metadata.create_all()로 스키마를 생성한 뒤 버전만 수동 삽입한다.
     """
+    import importlib
+    import pkgutil
+
     from sqlalchemy import create_engine, text
     from src.database import Base
-    import src.models.repository  # noqa: F401
-    import src.models.analysis    # noqa: F401
-    import src.models.repo_config  # noqa: F401
-    import src.models.gate_decision  # noqa: F401
-    import src.models.user  # noqa: F401
+    import src.models as _models_pkg
+
+    # 모든 ORM 모델을 자동 import — Base.metadata.tables 에 등록되어야 create_all 이 모든 테이블 생성
+    # Auto-import every ORM model so Base.metadata.tables is fully populated before create_all
+    # (Phase 1 PR — overview 페이지가 analysis_feedback_repo 사용, 신규 모델 추가 시 누락 방지)
+    for _, _name, _ in pkgutil.iter_modules(_models_pkg.__path__):
+        importlib.import_module(f"src.models.{_name}")
 
     engine = create_engine(f"sqlite:///{db_path}")
     Base.metadata.create_all(engine)

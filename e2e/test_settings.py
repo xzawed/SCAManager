@@ -7,10 +7,27 @@ SETTINGS_URL = "/repos/owner%2Ftestrepo/settings"
 def _expand_advanced(page):
     """고급 설정 아코디언이 접혀 있으면 펼친다 (멱등).
 
-    UI 리디자인(a1aedd1)으로 Gate 모드 버튼·임계값 슬라이더가
+    UI 리디자인(a1aedd1 + PR #89)으로 Gate 모드 버튼·임계값 슬라이더가
     <details class="advanced-details"> 안으로 이동해 기본 상태에서 invisible.
-    click() 이 필요한 테스트는 이 헬퍼를 먼저 호출해야 한다.
+    또한 Settings UI/UX 리디자인 후 'simple/advanced' 모드 토글이 추가되어
+    기본값이 'simple' 일 때 advanced-details 가 CSS `display:none !important` —
+    Playwright actionability check 에서 30s timeout 발생.
+
+    헬퍼는 두 단계 보정:
+      1) data-settings-mode 를 'advanced' 로 설정 + localStorage 영속화
+      2) <details> 가 닫혀있으면 summary 클릭으로 펼침
     """
+    # 1단계 — Simple/Advanced 모드 토글: Simple 이 기본이면 advanced-details 가
+    # display:none 이라 클릭 자체 불가능. 직접 attribute 설정으로 강제 advanced.
+    # Step 1 — Force advanced mode so .advanced-details becomes visible
+    page.evaluate(
+        "document.body.setAttribute('data-settings-mode','advanced'); "
+        "(document.querySelector('main')||{}).setAttribute"
+        "&&document.querySelector('main').setAttribute('data-settings-mode','advanced'); "
+        "try{localStorage.setItem('sca-settings-mode','advanced')}catch(e){}"
+    )
+    # 2단계 — <details> 펼침
+    # Step 2 — Open the <details> if collapsed
     is_open = page.evaluate(
         "document.querySelector('.advanced-details')?.open ?? false"
     )
@@ -186,8 +203,10 @@ def test_telegram_connect_section_visible(seeded_page, base_url):
     Telegram connection subsection must render inside card ⑤ of the settings page.
     """
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
-    assert seeded_page.locator("#telegram-connect-section").count() == 1
-    assert seeded_page.locator("#telegram-connect-section").is_visible()
+    # Settings UI/UX 리디자인 (PR #89) 으로 id 가 -notify suffix 로 갱신됨
+    # Settings UI/UX redesign (PR #89) renamed the section id with `-notify` suffix
+    assert seeded_page.locator("#telegram-connect-section-notify").count() == 1
+    assert seeded_page.locator("#telegram-connect-section-notify").is_visible()
 
 
 def test_telegram_otp_button_visible_when_not_connected(seeded_page, base_url):
@@ -362,9 +381,11 @@ def test_six_card_titles_present(seeded_page, base_url):
     body = seeded_page.content()
     # ① 빠른 설정 제목은 기존 유지 — 개별 프리셋 카드로 대체
     # ① Quick settings heading is preserved — replaced by individual preset cards.
-    assert "PR 들어왔을 때" in body, "카드 ② PR 들어왔을 때 누락"
-    assert "이벤트 후 피드백" in body, "카드 ③ 이벤트 후 피드백 누락"
-    assert "시스템 &amp; 토큰" in body or "시스템 & 토큰" in body, "카드 ⑤ 시스템 & 토큰 누락"
+    # PR #89 카드명 변경 — 의도 기반 명칭으로 갱신
+    # PR #89 renamed cards to intent-based labels
+    assert "분석 동작 규칙" in body, "카드 ② 분석 동작 규칙 누락"
+    assert "Push / 배포 이벤트" in body, "카드 ③ Push / 배포 이벤트 누락"
+    assert "통합 &amp; 연결" in body or "통합 & 연결" in body, "카드 ⑤ 통합 & 연결 누락"
     assert "위험 구역" in body, "카드 ⑥ 위험 구역 누락"
 
 
@@ -482,7 +503,11 @@ def test_save_success_keeps_advanced_accordion_closed(seeded_page, base_url):
 
 
 def test_auto_merge_in_pr_card_not_push_card(seeded_page, base_url):
-    """auto_merge 체크박스가 PR 카드('PR 들어왔을 때') 안에 있어야 한다 (Push 카드 아님)."""
+    """auto_merge 체크박스가 PR 카드('분석 동작 규칙') 안에 있어야 한다 (Push 카드 아님).
+
+    PR #89 Settings UI/UX 리디자인으로 카드명이 의도 기반('분석 동작 규칙') 으로 갱신됨.
+    PR #89 renamed the card to intent-based '분석 동작 규칙'.
+    """
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
     # auto_merge input 의 가장 가까운 s-card 헤더 타이틀 확인
     card_title = seeded_page.evaluate(
@@ -495,8 +520,8 @@ def test_auto_merge_in_pr_card_not_push_card(seeded_page, base_url):
             return title ? title.textContent.trim() : null;
         }"""
     )
-    assert card_title == "PR 들어왔을 때", (
-        f"auto_merge 의 상위 카드 타이틀이 'PR 들어왔을 때' 여야 하는데 '{card_title}' 임"
+    assert card_title == "분석 동작 규칙", (
+        f"auto_merge 의 상위 카드 타이틀이 '분석 동작 규칙' 여야 하는데 '{card_title}' 임"
     )
 
 
