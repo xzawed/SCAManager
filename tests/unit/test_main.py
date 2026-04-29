@@ -168,3 +168,49 @@ def test_lifespan_no_warning_token_encryption_key_dev_env(caplog):
                 pass
     assert not any("TOKEN_ENCRYPTION_KEY" in rec.message for rec in caplog.records), \
         "dev(http) 환경에서 TOKEN_ENCRYPTION_KEY 경고가 남았습니다"
+
+
+# --- Phase 2: GitHub API warmup ping ---
+
+def test_lifespan_warmup_ping_logs_success(caplog):
+    """Phase 2: lifespan warmup ping 성공 시 INFO 로그.
+    Phase 2: lifespan warmup ping logs INFO on success.
+    """
+    import logging as _logging
+    from unittest.mock import AsyncMock
+
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock()  # 성공
+    with patch("src.main._run_migrations"), \
+         patch("src.shared.http_client.get_http_client", return_value=mock_client):
+        with caplog.at_level(_logging.INFO, logger="src.main"):
+            with TestClient(app):
+                pass
+    assert any(
+        "GitHub API warm-up ping succeeded" in rec.message
+        for rec in caplog.records
+    ), "warmup 성공 INFO 로그가 남지 않았습니다"
+    mock_client.get.assert_awaited()
+
+
+def test_lifespan_warmup_ping_handles_failure_silently(caplog):
+    """Phase 2: lifespan warmup ping 실패 시 INFO 로그 + 앱 정상 기동 (best-effort).
+    Phase 2: warmup failure logs INFO and the app still starts up normally.
+    """
+    import logging as _logging
+    from unittest.mock import AsyncMock
+
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(side_effect=RuntimeError("network unreachable"))
+    with patch("src.main._run_migrations"), \
+         patch("src.shared.http_client.get_http_client", return_value=mock_client):
+        with caplog.at_level(_logging.INFO, logger="src.main"):
+            with TestClient(app) as c:
+                resp = c.get("/health")
+    # 앱 정상 기동
+    assert resp.status_code == 200
+    # warmup 스킵 INFO 로그
+    assert any(
+        "GitHub API warm-up ping skipped" in rec.message
+        for rec in caplog.records
+    ), "warmup 실패 INFO 로그가 남지 않았습니다"
