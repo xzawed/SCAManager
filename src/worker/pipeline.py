@@ -208,8 +208,16 @@ async def _regate_pr_if_needed(
         )
         logger.info("Re-gated PR #%d for existing Analysis %d (sha=%s)",
                     pr_number, existing.id, commit_sha[:8])
-    except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
-        logger.error("Re-gate check failed: %s", exc)
+    except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+        # Phase 2: logger.exception 으로 stack trace 보존 — PR #105 silent skip
+        # 사고에서 line 211 의 `logger.error(... %s, exc)` 가 메시지만 남겨 Sentry/
+        # Railway 로그에서 원인 추적 불가능했던 문제 해결.
+        # Phase 2: use logger.exception so the full traceback is captured in Sentry/
+        # Railway logs (the previous `logger.error` only left the exc message,
+        # making the PR #105 silent-skip incident unreproducible from logs).
+        logger.exception(
+            "Re-gate check failed (pr=#%d, sha=%s)", pr_number, commit_sha[:8],
+        )
 
 
 async def _save_and_gate(db: Session, params: _AnalysisSaveParams):
@@ -224,12 +232,55 @@ async def _save_and_gate(db: Session, params: _AnalysisSaveParams):
         logger.warning("Repository not found in second session: %s", params.repo_name)
         return None, None, None
     # 멱등성 재확인 — 동시 Webhook 전달로 인한 중복 Analysis 삽입 방지 (TOCTOU 완화)
-    if analysis_repo.find_by_sha(db, params.commit_sha, repo.id):
+    # Idempotency re-check — defends against concurrent webhooks racing past the first dedup.
+    existing = analysis_repo.find_by_sha(db, params.commit_sha, repo.id)
+    if existing is not None:
         logger.info("Commit %s already saved (concurrent insert detected), skipping", params.commit_sha)
+        # Phase 2 race fix (PR #105 silent skip 사고 대응):
+        # push 이벤트가 먼저 통과해 pr_number=None 으로 저장되고, 그 사이 이 PR
+        # 이벤트가 도착하면 1차 dedup → _regate_pr_if_needed 경로로 진입한다.
+        # 그러나 두 이벤트가 거의 동시에 도착해 둘 다 1차 dedup 통과 → 분석을
+        # 실행 → 2차 dedup 에서 PR 이벤트만 여기로 진입할 수 있다. 이때 gate 가
+        # 실행되지 않으면 PR #105 처럼 코멘트/머지 모두 누락된다 (silent skip).
+        # 보정: pr_number 가 비어있는 기존 Analysis 에 현재 PR 번호 부여 후 gate
+        # 재실행. _regate_pr_if_needed 와 동일한 의미론.
+        # Race fix: when an existing Analysis lacks pr_number and this is a PR event,
+        # patch pr_number then re-run the gate (matches `_regate_pr_if_needed`).
         try:
-            return get_repo_config(db, params.repo_name), None, None
+            repo_config = get_repo_config(db, params.repo_name)
         except (SQLAlchemyError, KeyError):
-            return None, None, None
+            repo_config = None
+        if params.pr_number is not None and existing.pr_number is None:
+            try:
+                existing.pr_number = params.pr_number
+                db.commit()
+                await run_gate_check(
+                    repo_name=params.repo_name,
+                    pr_number=params.pr_number,
+                    analysis_id=existing.id,
+                    result=existing.result,
+                    github_token=params.owner_token,
+                    db=db,
+                    config=repo_config,
+                )
+                logger.info(
+                    "Race-recovered: PR #%d re-gated on concurrent existing Analysis %d (sha=%s)",
+                    params.pr_number, existing.id, params.commit_sha[:8],
+                )
+            except SQLAlchemyError as exc:
+                logger.error(
+                    "Race-recovery pr_number commit failed (sha=%s, pr=#%d): %s",
+                    params.commit_sha, params.pr_number, exc,
+                )
+                db.rollback()
+            except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+                # logger.exception 으로 stack trace 보존 — Sentry/Railway 로그에서 진짜 원인 추적 가능
+                # logger.exception preserves the stack trace for Sentry/Railway log triage
+                logger.exception(
+                    "Race-recovery gate check failed (pr=#%d, sha=%s)",
+                    params.pr_number, params.commit_sha[:8],
+                )
+        return repo_config, None, None
     result_dict = build_analysis_result_dict(
         params.ai_review, params.score_result, params.analysis_results,
         source="pr" if params.pr_number else "push",
