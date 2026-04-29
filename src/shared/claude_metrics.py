@@ -64,6 +64,8 @@ def log_claude_api_call(
     output_tokens: int,
     status: str,
     error_type: str = "",
+    cache_read_tokens: int = 0,
+    cache_creation_tokens: int = 0,
 ) -> None:
     """Claude API 호출 1건의 구조화된 메트릭 로그.
 
@@ -76,6 +78,12 @@ def log_claude_api_call(
         input_tokens / output_tokens: 입력/출력 토큰 수 (에러 시 0)
         status: "success" | "error" | "timeout"
         error_type: 에러 타입 이름 (status=="error" 일 때)
+        cache_read_tokens: prompt cache 에서 읽은 토큰 수 (기본 0).
+            Anthropic 정가 대비 1/10 비용으로 청구됨.
+            Cached tokens read from prompt cache (10× cheaper than fresh input).
+        cache_creation_tokens: prompt cache 생성 토큰 수 (기본 0).
+            정가 대비 1.25× 비용 (캐시 등록 비용 — 5분 TTL 내 재사용 시 절감 회수).
+            Tokens written to prompt cache (1.25× normal cost; recouped on hits).
     """
     cost_usd = estimate_claude_cost_usd(
         model=model, input_tokens=input_tokens, output_tokens=output_tokens,
@@ -87,6 +95,8 @@ def log_claude_api_call(
         "output_tokens": output_tokens,
         "cost_usd": cost_usd,
         "status": status,
+        "cache_read_tokens": cache_read_tokens,
+        "cache_creation_tokens": cache_creation_tokens,
     }
     if error_type:
         extra["error_type"] = error_type
@@ -94,8 +104,9 @@ def log_claude_api_call(
     if status == "success":
         logger.info(
             "claude_api_call model=%s duration_ms=%.0f input_tokens=%d output_tokens=%d "
-            "cost_usd=%.4f status=%s",
-            model, duration_ms, input_tokens, output_tokens, cost_usd, status,
+            "cache_read=%d cache_creation=%d cost_usd=%.4f status=%s",
+            model, duration_ms, input_tokens, output_tokens,
+            cache_read_tokens, cache_creation_tokens, cost_usd, status,
             extra=extra,
         )
     else:
