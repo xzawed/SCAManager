@@ -11,7 +11,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from src.database import Base
-import src.models  # noqa: F401 — 모든 모델 등록
 from src.gate import _merge_attempt_states as _states
 from src.models.analysis import Analysis
 from src.models.merge_attempt import MergeAttempt
