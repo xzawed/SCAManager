@@ -112,6 +112,32 @@ async def test_enable_returns_ok_on_successful_response():
     assert result.detail is None
 
 
+async def test_enable_classifies_already_enabled_as_ok():
+    """Phase 3 PR-B2 idempotency 가드 — "already in auto merge state" → ENABLE_OK.
+
+    GitHub 이 이미 enabled 된 PR 에 mutation 재호출 시 응답하는 메시지를
+    ENABLE_OK 로 처리. 폴백 차단 (REST PUT/merge → 405 거짓 실패 회피).
+    Phase 3 PR-B2 idempotency guard — when GitHub responds "already in auto
+    merge state", classify as ENABLE_OK to skip fallback (avoiding the false
+    405 failure that would surface a misleading alert).
+    """
+    test_messages = [
+        "Pull request is already in auto merge state",
+        "Auto-merge is already enabled for this PR",
+        "auto merge already requested",
+    ]
+    for msg in test_messages:
+        err_body = {"errors": [{"message": msg}]}
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=_make_response(err_body))
+        with patch("src.github_client.graphql.get_http_client", return_value=mock_client):
+            result = await enable_pull_request_auto_merge(TOKEN, NODE_ID)
+        assert result.status == "ok", (
+            f"메시지 {msg!r} 가 ENABLE_OK 로 분류되어야 함 — 실제 {result.status!r}"
+        )
+        assert "idempotent: already enabled" in (result.detail or "")
+
+
 async def test_enable_classifies_disabled_in_repo():
     """리포 settings 에 auto-merge 미활성 메시지 → ENABLE_DISABLED_IN_REPO.
     Message "Auto merge is not allowed for this repository" → ENABLE_DISABLED_IN_REPO.
