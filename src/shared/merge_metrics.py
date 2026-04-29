@@ -11,11 +11,16 @@ emit. Phase F.3 의 merge_failure_advisor, Phase F.4 의 대시보드가 이 데
 DB 오류 내성: `log_merge_attempt` 는 어떤 예외도 파이프라인 밖으로 전파하지
 않는다 — WARNING 로그만 남기고 None 반환. auto-merge 파이프라인이 관측 실패로
 중단되는 것을 방지.
+
+Phase 3 PR-B1: state/enabled_at 파라미터 추가 — native auto-merge lifecycle
+추적용 (enable success → enabled_pending_merge → actually_merged 전이).
 """
 import logging
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
+from src.gate import _merge_attempt_states as _states
 from src.models.merge_attempt import MergeAttempt
 from src.repositories import merge_attempt_repo
 
@@ -35,7 +40,7 @@ def parse_reason_tag(reason: str | None) -> str | None:
     return head or None
 
 
-def log_merge_attempt(
+def log_merge_attempt(  # pylint: disable=too-many-arguments
     db: Session,
     *,
     analysis_id: int,
@@ -45,12 +50,19 @@ def log_merge_attempt(
     threshold: int,
     success: bool,
     reason: str | None = None,
+    state: str = _states.LEGACY,
+    enabled_at: datetime | None = None,
 ) -> MergeAttempt | None:
     """MergeAttempt 를 DB 에 기록하고 구조화된 INFO 로그를 낸다.
 
     - success=True 면 failure_reason/detail_message 는 None 으로 저장
     - success=False 면 reason 을 파싱해 태그만 failure_reason 에, 전체를 detail_message 에
     - DB 오류 시 WARNING 로그만 남기고 None 반환 (파이프라인 중단 금지)
+
+    Phase 3 PR-B1 신규 파라미터:
+    - state: 머지 라이프사이클 상태 (legacy/enabled_pending_merge/direct_merged 등)
+    - enabled_at: native enable 시점 (state=enabled_pending_merge 일 때만 유효)
+    Both default to legacy/None for backwards compatibility with existing callers.
     """
     failure_reason: str | None = None
     detail_message: str | None = None
@@ -70,6 +82,8 @@ def log_merge_attempt(
             success=success,
             failure_reason=failure_reason,
             detail_message=detail_message,
+            state=state,
+            enabled_at=enabled_at,
         )
     except Exception as exc:  # pylint: disable=broad-except
         # SQLAlchemy 는 commit 실패 후 세션을 invalid 로 표시 — rollback 하지 않으면
@@ -96,10 +110,11 @@ def log_merge_attempt(
         "repo_name": repo_name,
         "pr_number": pr_number,
         "analysis_id": analysis_id,
+        "state": state,
     }
     logger.info(
-        "merge_attempt repo=%s pr=%d result=%s reason=%s score=%d threshold=%d",
-        repo_name, pr_number, merge_result, failure_reason or "-", score, threshold,
+        "merge_attempt repo=%s pr=%d result=%s state=%s reason=%s score=%d threshold=%d",
+        repo_name, pr_number, merge_result, state, failure_reason or "-", score, threshold,
         extra=extra,
     )
     return record

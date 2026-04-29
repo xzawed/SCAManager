@@ -46,3 +46,25 @@ class MergeAttempt(Base):
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
+    # Phase 3 PR-B1 — Tier 3 PR-A 후속: 머지 라이프사이클 추적
+    # state 의미:
+    #   - "legacy" — 0022 마이그레이션 이전 모든 행 (backfill 기본값)
+    #   - "enabled_pending_merge" — native enablePullRequestAutoMerge 성공,
+    #     GitHub 측 비동기 머지 대기 (실제 머지는 미발생)
+    #   - "actually_merged" — pull_request.closed merged=true webhook 수신 →
+    #     state 전이됨 (enabled_pending_merge 행만 갱신)
+    #   - "disabled_externally" — pull_request.auto_merge_disabled webhook
+    #     (force-push, check 실패, 사용자 수동 해제 등)
+    #   - "direct_merged" — REST merge_pr() 즉시 성공 (폴백 또는 legacy 경로)
+    #
+    # Phase 3 PR-B1 — Tier 3 PR-A follow-up: track auto-merge lifecycle.
+    # state semantics:
+    #   - "legacy"               — pre-0022 rows (backfill default)
+    #   - "enabled_pending_merge" — native enable success, GitHub will merge async
+    #   - "actually_merged"      — pull_request.closed merged=true webhook
+    #   - "disabled_externally"  — pull_request.auto_merge_disabled webhook
+    #   - "direct_merged"        — REST merge_pr() immediate success (fallback/legacy)
+    state = Column(String, nullable=False, server_default="legacy")
+    enabled_at = Column(DateTime, nullable=True)
+    merged_at = Column(DateTime, nullable=True)
+    disabled_at = Column(DateTime, nullable=True)

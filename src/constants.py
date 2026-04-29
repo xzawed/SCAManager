@@ -98,7 +98,14 @@ WEBHOOK_SECRET_CACHE_TTL = 300  # per-repo webhook secret 캐시 TTL (초, 5분)
 HANDLED_EVENTS: frozenset[str] = frozenset({"push", "pull_request", "issues", "check_suite"})
 # check_suite: CI-aware Auto Merge 재시도 트리거 (Phase 12)
 # check_suite: Trigger for CI-aware Auto Merge retry (Phase 12)
-PR_HANDLED_ACTIONS: frozenset[str] = frozenset({"opened", "synchronize", "reopened", "closed"})
+PR_HANDLED_ACTIONS: frozenset[str] = frozenset({
+    "opened", "synchronize", "reopened", "closed",
+    # Phase 3 PR-B1 — Tier 3 native auto-merge lifecycle 추적용
+    # GitHub 가 force-push, required check 실패, 사용자 수동 해제 시 발사
+    # Phase 3 PR-B1 — for tracking Tier 3 native auto-merge lifecycle
+    # GitHub fires this on force-push, required check failure, or manual disable
+    "auto_merge_disabled",
+})
 
 # ── 봇 발신 / 자기 분석 루프 방지 상수 ────────────────────────────────────
 # ── Bot sender / self-analysis loop guard constants ────────────────────────
