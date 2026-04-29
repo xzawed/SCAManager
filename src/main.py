@@ -97,6 +97,22 @@ async def lifespan(_app: FastAPI):
     except Exception as exc:  # pylint: disable=broad-exception-caught
         logger.error("DB migration failed: %s", exc)
     await init_http_client()
+
+    # Phase 2 — GitHub API warm-up ping. PR #105 silent skip 사고 분석에서 cold
+    # start 의 첫 요청 PyGithub Auth + DNS resolve + TLS handshake 지연이 실패
+    # vector 의 일부로 식별됨. lifespan startup 마지막에 무해한 zen API 1회
+    # 호출로 connection pool / DNS 캐시 워밍업. 실패는 silent — best-effort.
+    # Phase 2 — GitHub API warm-up ping. The PR #105 silent-skip post-mortem
+    # flagged the first-request PyGithub auth + DNS + TLS as part of the failure
+    # vector. A harmless `/zen` GET pre-warms the pool. Failures are ignored.
+    try:
+        from src.shared.http_client import get_http_client  # pylint: disable=import-outside-toplevel
+        warmup_client = get_http_client()
+        await warmup_client.get("https://api.github.com/zen", timeout=3.0)
+        logger.info("GitHub API warm-up ping succeeded")
+    except Exception as warmup_exc:  # pylint: disable=broad-exception-caught
+        logger.info("GitHub API warm-up ping skipped: %s", type(warmup_exc).__name__)
+
     try:
         yield
     finally:
