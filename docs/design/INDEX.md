@@ -12,7 +12,7 @@ SCAManager 의 주요 설계 문서 목록. 파일명 날짜 순.
 | 2026-04-12 | [score-history-chart-design](2026-04-12-score-history-chart-design.md) | 점수 이력 차트 + 분석 상세 트렌드 |
 | 2026-04-17 | [settings-preset-disclosure-design](2026-04-17-settings-preset-disclosure-design.md) | Settings UI v2 — 프리셋 + Progressive Disclosure |
 | 2026-04-19 | [analyzer-registry-design](2026-04-19-analyzer-registry-design.md) | Analyzer Registry (Phase A) — pure/io 분리 |
-| 2026-04-27 | [tier3-native-automerge-design](2026-04-27-tier3-native-automerge-design.md) | **Tier 3 (계획안)** — GitHub native `enablePullRequestAutoMerge` 통합으로 `merge_retry_service` 폐기 (~600 줄 감소) |
+| 2026-04-27 | [tier3-native-automerge-design](2026-04-27-tier3-native-automerge-design.md) | Tier 3 — GitHub native `enablePullRequestAutoMerge` 통합 — **PR-A 완료 (PR #103)** / **PR-B1 대기** (auto_merge_disabled webhook + MergeAttempt.state 컬럼) / **PR-B2 대기** (이중 enable 가드) / **PR-B3 대기** (1주 dogfooding 후 `merge_retry_service` 폐기 평가, ~600 줄 감소) |
 
 > 각 문서는 당시 설계 시점의 결정을 반영하며, 이후 변경이 있다면 [docs/STATE.md](../STATE.md) 그룹 이력과 코드가 최우선 출처입니다.
 
