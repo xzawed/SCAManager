@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-27 기준 — Loop Guard 봇 한정 정책 완료)
+## 현재 수치 (2026-04-29 기준 — Tier 3 PR-A native auto-merge 완료 + 14-에이전트 감사)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1732개** | pytest 9.0.3 (0 failed, 5 skipped — 3 Postgres-gated + 2 pre-existing) — 2026-04-27 로컬 실측. PR #93/#95/#96/#97/#98/#100 누적 +18 |
+| 단위 테스트 | **1757개** | pytest 9.0.3 (0 failed, 5 skipped — 3 Postgres-gated + 2 pre-existing) — 2026-04-29 로컬 실측. PR #103 (Tier 3 PR-A) +25 추가 (test_graphql 15 + test_native_automerge 10) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
@@ -49,6 +49,63 @@
 | `tests/conftest.py` | 환경변수 주입 + _webhook_secret_cache autouse 클리어 |
 
 ## 작업 이력 (그룹별)
+
+### 그룹 52 (2026-04-29 · Tier 3 PR-A native auto-merge + Loop Guard 봇 한정 + 14-에이전트 감사 — PR #98/#100/#102/#103/#106)
+
+**목표**: GitHub `enablePullRequestAutoMerge` GraphQL mutation 도입으로 머지 책임을 GitHub 에 위임 + Loop Guard limiter 사람 발신 차단 사고 해결 + 시스템 전반 다각도 감사로 P1 Critical 8건 식별.
+
+**선행 사고**:
+- **PR #98 (2026-04-27)**: SonarSource scan action v5 → v6 — CI 단발성 실패 (exit code 3) + 보안 경고 해소.
+- **PR #100 (2026-04-27)**: Loop Guard Layer 3-b 가 사람 발신을 시간당 6회로 차단하던 사고 해결. `is_whitelisted_bot()` 헬퍼 추가, 화이트리스트 봇 (`github-actions[bot]`, `dependabot[bot]`) 만 limiter 적용, 사람·sender 누락은 무제한 통과.
+
+**Tier 3 PR-A 구현 (PR #102 설계 + PR #103 구현)**:
+- `src/github_client/graphql.py` (~200줄) — GraphQL POST 래퍼 + `enable_pull_request_auto_merge` mutation + `EnableAutoMergeResult` 분류 (5종: ENABLE_OK / DISABLED_IN_REPO / FORCE_PUSHED / PERMISSION_DENIED / API_ERROR)
+- `src/gate/native_automerge.py` (~140줄) — `enable_or_fallback()` orchestration. `merge_pr()` 와 동일 시그니처(drop-in). 폴백 status: DISABLED_IN_REPO + PERMISSION_DENIED → REST merge_pr 폴백. NO_FALLBACK status: FORCE_PUSHED.
+- `src/gate/engine.py`: `_run_auto_merge_retry`, `_run_auto_merge_legacy` 양쪽 경로의 `merge_pr()` 호출 → `native_enable_or_fallback()` 로 교체.
+- `src/gate/merge_failure_advisor.py`: 신규 reason 4개 advice 텍스트.
+
+**14-에이전트 다각도 감사 결과** (Round 1-3):
+- 정합성: 82/100 (Critical 5건 — loop_guard.py 트리 누락, native auto-merge 흐름 미반영, runbook 5분/1분 모순 등)
+- 테스트 커버리지: 66/100 (PR-A 분기 9/9 = 100%, python tool 0건, AI review 에러 케이스 부족)
+- 파이프라인 견고성: 82/100 (시나리오 3 — enable 후 머지 미발생 감지 부재 — 가장 큰 위험)
+- 보안: 인증 88, 일반 78 (CSRF 부재, rate limit 부재, TOKEN 평문 fallback)
+- E2E 커버리지: 35/100 (UI 만, webhook→merge 종단간 zero coverage)
+- 동시성 안전: 74/100 (claim_batch dialect 분기 부재 — 문서 vs 코드 불일치)
+- 성능/확장성: 72/100 (Claude prompt caching 미사용 — 비용 70-90% 절감 기회)
+- DB 무결성: 78/100 (merge_retry_queue partial unique index ORM 미정의)
+- production 안정성: 67/100
+
+**실측 (2026-04-29)**:
+- 단위 테스트: 1713 passed / 0 failed (CLAUDE.md 1732 에는 통합 포함)
+- 통합 테스트: 44 passed / 3 skipped (PostgreSQL gated)
+- E2E: 29 passed / 24 failed (24건 모두 fixable — 모델 import 누락 + Simple Mode 토글 + 카드명 변경)
+- pylint 10.00 / bandit 0 HIGH
+
+**실제 PR 롤트립 검증 (Round 5, 3회 반복)**:
+- PR #105 (10:51:40): silent skip — 분석/머지 모두 누락 (push 이벤트 race + `_regate_pr_if_needed` 의 line 211 `except Exception` silent fail 가능성 유력)
+- PR #106 (10:55:34): ✅ 완전 성공 — 분석 score 82/B + auto-merge (2.5분 소요)
+- PR #107 (10:55:49): dirty (PR #106 머지 충돌, 분석 미수행)
+- 측정 성공률: 1/3 = 33%
+
+**식별된 P1 Critical 8건** (즉시 조치 권장):
+1. native enable 후 머지 추적 부재 (auto_merge_disabled webhook 미핸들) — Tier 3 PR-B 범위
+2. 이중 enable 시 405 오분류 — `_classify_graphql_errors` 에 "already" 패턴 한 줄 추가로 차단 가능
+3. claim_batch dialect 분기 부재 — CLAUDE.md 주장 vs 실제 plain SELECT/UPDATE
+4. PR #105 silent skip 재현 (push/PR race + regate 예외 흡수)
+5. Claude prompt caching 미사용 (월 $135 → $15-40 절감)
+6. CSRF 토큰 부재 (lax 1차 보호)
+7. HTTP rate limiting 부재
+8. TOKEN_ENCRYPTION_KEY prod 평문 fallback (warning 만)
+
+**4-Phase 수행 계획 (60h, 10 PR)**:
+- Phase 1: Quick Wins (4h) — 문서 정합성 + E2E 100% + Claude caching
+- Phase 2: PR #105 사고 직접 해결 + 운영 안정성 (6h)
+- Phase 3: Tier 3 PR-B (8h + 1주 dogfooding)
+- Phase 4: 테스트 갭 폐쇄 (27h, 단위 테스트 +149)
+
+**관련 PR**: #98, #99 (cron 5분→1분), #100, #101, #102, #103, #106. PR #104·#105·#107 은 close (audit 산출물).
+
+---
 
 ### 그룹 51 (2026-04-27 · Settings UI/UX 리디자인 — B+A 하이브리드 — PR #89)
 

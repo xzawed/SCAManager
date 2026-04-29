@@ -13,7 +13,7 @@ When auto-merging a PR, if `mergeable_state=unstable` (CI running) or `unknown`,
 | 트리거 | 지연 | 설명 |
 |--------|------|------|
 | `check_suite.completed` 웹훅 | 즉시 (30초 디바운스) | CI 완료 시 즉각 재시도 |
-| cron (`*/5 * * * *`) | 최대 5분 | 웹훅 미전달 시 fallback |
+| cron (`* * * * *`) | 최대 1분 | 웹훅 미전달 시 fallback (PR #99 — 5분→1분 단축) |
 
 ## 설정 / Configuration
 
@@ -28,8 +28,8 @@ When auto-merging a PR, if `mergeable_state=unstable` (CI running) or `unknown`,
 
 ## Webhook 구독 확인 / Webhook Subscription Check
 
-기존 등록 리포가 `check_suite` 이벤트를 수신하지 못하면 cron fallback(5분 지연)으로만 동작한다.
-If an existing repo does not receive `check_suite` events, only the cron fallback (5 min delay) will work.
+기존 등록 리포가 `check_suite` 이벤트를 수신하지 못하면 cron fallback(1분 지연)으로만 동작한다.
+If an existing repo does not receive `check_suite` events, only the cron fallback (1 min delay) will work.
 
 확인 방법: Settings 페이지에서 ⚠️ 배너 확인 → "Webhook 재등록" 버튼 클릭.
 Check: Look for ⚠️ banner on the Settings page → click "Webhook 재등록" button.
