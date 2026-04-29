@@ -96,7 +96,7 @@ with patch("shutil.which", return_value=None):
     assert not analyzer.is_enabled(ctx)
 ```
 
-실제 바이너리 없어도 단위 테스트 1074개 전부 통과 — `make test`로 확인.
+실제 바이너리 없어도 단위 테스트 전부 통과 — 최신 수치는 [docs/STATE.md](../STATE.md) 헤더 참조. `make test-isolated` 로 .env 격리 환경 확인 권장.
 
 ---
 

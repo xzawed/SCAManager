@@ -10,6 +10,9 @@
 |---------|----------|----------|
 | `test-writer` | **모든 신규 기능·모듈 구현 착수 전** (TDD Red) | conftest 패턴·mock 전략 숙지, 테스트 파일 먼저 작성 |
 | `pipeline-reviewer` | `src/worker/pipeline.py`, `src/analyzer/`, `src/scorer/` 변경 후 | 파이프라인 무결성·멱등성·오류 처리 검토 |
+| `doc-consistency-reviewer` | CLAUDE.md / STATE.md / README / 다른 문서 변경 후 | 문서 간 수치·규칙·인용 정합성 교차 검증 |
+| `doc-impact-analyzer` | 문서 수정이 Claude 행동에 영향을 줄 가능성 있을 때 | 문서 변경이 의도하지 않은 행동 변화를 유발하는지 판단 |
+| `doc-quality-reviewer` | 회고·STATE·CLAUDE 갱신 직후 | 미래 세션이 오해할 수 있는 모호한 표현 식별 |
 
 ---
 
@@ -64,8 +67,8 @@
 
 | 모듈 | 역할 |
 |------|------|
-| `src/services/merge_retry_service.py` | CI-aware Auto Merge 재시도 워커 (`process_pending_retries`) |
+| `src/services/merge_retry_service.py` | CI-aware Auto Merge 재시도 워커 (`process_pending_retries`) — **PR-B3(~2026-05-06) 폐기 평가 대상**: Tier 3 PR-A 의 native auto-merge enable 신뢰성이 정량 기준 충족 시 retry queue 단순화 가능. 평가 기준은 STATE.md 그룹 53 §잔여 후속 참조. |
 | `src/gate/retry_policy.py` | 재시도 정책 순수 함수 (`should_retry`, `compute_next_retry_at`, `is_expired`) |
 | `src/models/merge_retry.py` | MergeRetryQueue ORM (append-only claim 패턴) |
 
-> 최종 갱신: 2026-04-27 (Phase 12 완료 후)
+> 최종 갱신: 2026-04-29 (Phase 4 + Tier 3 PR-A 후 doc agents 등재)
