@@ -10,6 +10,7 @@ import logging
 import pytest
 import httpx
 from unittest.mock import AsyncMock, MagicMock, patch
+from src.gate.native_automerge import MergeOutcome, PATH_REST_FALLBACK
 from src.gate.engine import run_gate_check, _run_auto_merge, _notify_merge_failure
 from src.scorer.calculator import ScoreResult
 from src.config_manager.manager import RepoConfigData
@@ -60,7 +61,7 @@ async def test_review_comment_on_calls_post_pr_comment():
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock) as mock_comment:
             with patch("src.gate.engine.post_github_review", new_callable=AsyncMock):
-                with patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock):
+                with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
                     with patch("src.gate.engine.send_gate_request", new_callable=AsyncMock):
                         with patch("src.gate.engine.save_gate_decision"):
                             await run_gate_check(
@@ -104,7 +105,7 @@ async def test_auto_approve_high_score():
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock) as mock_review:
             with patch("src.gate.engine.save_gate_decision"):
                 with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
-                    with patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock):
+                    with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
                         await run_gate_check(
                             repo_name="owner/repo",
                             pr_number=1,
@@ -128,7 +129,7 @@ async def test_auto_reject_low_score():
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock) as mock_review:
             with patch("src.gate.engine.save_gate_decision"):
                 with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
-                    with patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock):
+                    with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
                         await run_gate_check(
                             repo_name="owner/repo",
                             pr_number=1,
@@ -151,7 +152,7 @@ async def test_auto_skip_middle_score():
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock) as mock_review:
             with patch("src.gate.engine.save_gate_decision"):
                 with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
-                    with patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock):
+                    with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
                         await run_gate_check(
                             repo_name="owner/repo",
                             pr_number=1,
@@ -228,12 +229,12 @@ async def test_auto_merge_independent_of_approve_mode():
         pr_review_comment=False,
     )
     with patch("src.gate.engine.get_repo_config", return_value=config):
-        with patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge:
+        with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge:
             with patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state:
                 with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
                     with patch("src.gate.engine.save_gate_decision"):
                         mock_state.return_value = ("clean", "abc123")
-                        mock_merge.return_value = (True, None, "abc123")
+                        mock_merge.return_value = MergeOutcome(ok=True, reason=None, head_sha="abc123", path=PATH_REST_FALLBACK)
                         await run_gate_check(
                             repo_name="owner/repo",
                             pr_number=3,
@@ -257,12 +258,12 @@ async def test_auto_merge_with_auto_approve():
     )
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock) as mock_review:
-            with patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge:
+            with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge:
                 with patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state:
                     with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
                         with patch("src.gate.engine.save_gate_decision"):
                             mock_state.return_value = ("clean", "abc123")
-                            mock_merge.return_value = (True, None, "abc123")
+                            mock_merge.return_value = MergeOutcome(ok=True, reason=None, head_sha="abc123", path=PATH_REST_FALLBACK)
                             await run_gate_check(
                                 repo_name="owner/repo",
                                 pr_number=5,
@@ -285,7 +286,7 @@ async def test_auto_merge_below_threshold():
         pr_review_comment=False,
     )
     with patch("src.gate.engine.get_repo_config", return_value=config):
-        with patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge:
+        with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge:
             with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
                 with patch("src.gate.engine.save_gate_decision"):
                     await run_gate_check(
@@ -311,7 +312,7 @@ async def test_auto_merge_false_no_merge():
     )
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock):
-            with patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge:
+            with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge:
                 with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
                     with patch("src.gate.engine.save_gate_decision"):
                         await run_gate_check(
@@ -343,7 +344,7 @@ async def test_push_event_no_gate_actions():
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock) as mock_comment:
             with patch("src.gate.engine.post_github_review", new_callable=AsyncMock) as mock_review:
-                with patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge:
+                with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge:
                     with patch("src.gate.engine.send_gate_request", new_callable=AsyncMock) as mock_send:
                         with patch("src.gate.engine.save_gate_decision"):
                             await run_gate_check(
@@ -373,7 +374,7 @@ async def testsave_gate_decision_called_on_approve():
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock):
             with patch("src.gate.engine.save_gate_decision") as mock_save:
                 with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
-                    with patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock):
+                    with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
                         await run_gate_check(
                             repo_name="owner/repo",
                             pr_number=1,
@@ -393,7 +394,7 @@ async def testsave_gate_decision_called_on_reject():
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock):
             with patch("src.gate.engine.save_gate_decision") as mock_save:
                 with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
-                    with patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock):
+                    with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
                         await run_gate_check(
                             repo_name="owner/repo",
                             pr_number=1,
@@ -413,7 +414,7 @@ async def testsave_gate_decision_skip_on_middle_score():
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock):
             with patch("src.gate.engine.save_gate_decision") as mock_save:
                 with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
-                    with patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock):
+                    with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
                         await run_gate_check(
                             repo_name="owner/repo",
                             pr_number=1,
@@ -439,9 +440,9 @@ async def test_merge_pr_failure_does_not_raise():
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock):
             with patch("src.gate.engine.save_gate_decision") as mock_save:
                 with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
-                    with patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge:
+                    with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge:
                         with patch("src.gate.engine.telegram_post_message", new_callable=AsyncMock):
-                            mock_merge.return_value = (False, "forbidden: no permission", "abc123")
+                            mock_merge.return_value = MergeOutcome(ok=False, reason="forbidden: no permission", head_sha="abc123", path=PATH_REST_FALLBACK)
                             # 예외 없이 완료되어야 한다
                             # Must complete without raising an exception.
                             await run_gate_check(
@@ -469,7 +470,7 @@ async def test_post_pr_comment_exception_does_not_abort_gate():
         with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock, side_effect=httpx.ConnectError("comment failed")):
             with patch("src.gate.engine.post_github_review", new_callable=AsyncMock) as mock_review:
                 with patch("src.gate.engine.save_gate_decision"):
-                    with patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock):
+                    with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
                         await run_gate_check(
                             repo_name="owner/repo", pr_number=1, analysis_id=1,
                             result={"score": 80, "grade": "B"}, github_token="tok", db=mock_db,
@@ -485,7 +486,7 @@ async def test_post_github_review_exception_does_not_crash():
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock, side_effect=httpx.ConnectError("GitHub API error")):
             with patch("src.gate.engine.save_gate_decision"):
-                with patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock):
+                with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
                     with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
                         # 예외 없이 완료되어야 한다
                         # Must complete without raising an exception.
@@ -500,7 +501,7 @@ async def test_merge_pr_exception_does_not_crash():
     mock_db = MagicMock()
     config = _config(approve_mode="disabled", auto_merge=True, merge_threshold=75, pr_review_comment=False)
     with patch("src.gate.engine.get_repo_config", return_value=config):
-        with patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock, side_effect=httpx.ConnectError("merge error")):
+        with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock, side_effect=httpx.ConnectError("merge error")):
             with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
                 with patch("src.gate.engine.save_gate_decision"):
                     await run_gate_check(
@@ -623,7 +624,7 @@ async def test_approve_at_exact_threshold():
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock) as mock_review:
             with patch("src.gate.engine.save_gate_decision"):
                 with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
-                    with patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock):
+                    with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
                         await run_gate_check(
                             repo_name="owner/repo", pr_number=1, analysis_id=1,
                             result={"score": 75}, github_token="tok", db=mock_db,
@@ -641,7 +642,7 @@ async def test_reject_threshold_boundary_is_excluded():
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock) as mock_review:
             with patch("src.gate.engine.save_gate_decision") as mock_save:
                 with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
-                    with patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock):
+                    with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
                         await run_gate_check(
                             repo_name="owner/repo", pr_number=1, analysis_id=1,
                             result={"score": 50}, github_token="tok", db=mock_db,
@@ -655,12 +656,12 @@ async def test_merge_at_exact_threshold():
     mock_db = MagicMock()
     config = _config(approve_mode="disabled", auto_merge=True, merge_threshold=75, pr_review_comment=False)
     with patch("src.gate.engine.get_repo_config", return_value=config):
-        with patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge:
+        with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge:
             with patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state:
                 with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
                     with patch("src.gate.engine.save_gate_decision"):
                         mock_state.return_value = ("clean", "abc123")
-                        mock_merge.return_value = (True, None, "abc123")
+                        mock_merge.return_value = MergeOutcome(ok=True, reason=None, head_sha="abc123", path=PATH_REST_FALLBACK)
                         await run_gate_check(
                             repo_name="owner/repo", pr_number=1, analysis_id=1,
                             result={"score": 75}, github_token="tok", db=mock_db,
@@ -681,7 +682,7 @@ async def test_post_pr_comment_keyerror_does_not_abort_gate():
                    side_effect=KeyError("missing_field")):
             with patch("src.gate.engine.post_github_review", new_callable=AsyncMock) as mock_review:
                 with patch("src.gate.engine.save_gate_decision"):
-                    with patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock):
+                    with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
                         await run_gate_check(
                             repo_name="owner/repo", pr_number=1, analysis_id=1,
                             result={"score": 80}, github_token="tok", db=mock_db,
@@ -697,7 +698,7 @@ async def test_post_github_review_keyerror_does_not_crash():
         with patch("src.gate.engine.post_github_review", new_callable=AsyncMock,
                    side_effect=KeyError("pr_number")):
             with patch("src.gate.engine.save_gate_decision"):
-                with patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock):
+                with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
                     with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
                         await run_gate_check(
                             repo_name="owner/repo", pr_number=1, analysis_id=1,
@@ -720,12 +721,12 @@ async def test_auto_merge_success_no_telegram():
         notify_chat_id="-100123",
     )
     with patch("src.gate.engine.get_repo_config", return_value=config):
-        with patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge:
+        with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge:
             with patch("src.gate.engine.telegram_post_message", new_callable=AsyncMock) as mock_tg:
                 with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
                     with patch("src.gate.engine.save_gate_decision"):
                         # merge 성공 → (True, None)
-                        mock_merge.return_value = (True, None, "abc123")
+                        mock_merge.return_value = MergeOutcome(ok=True, reason=None, head_sha="abc123", path=PATH_REST_FALLBACK)
                         await run_gate_check(
                             repo_name="owner/repo",
                             pr_number=3,
@@ -749,7 +750,7 @@ async def test_auto_merge_failure_sends_telegram():
         notify_chat_id="-100123",
     )
     with patch("src.gate.engine.get_repo_config", return_value=config):
-        with patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge:
+        with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge:
             with patch("src.gate.engine.telegram_post_message", new_callable=AsyncMock) as mock_tg:
                 with patch("src.gate.engine.settings") as mock_settings:
                     with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
@@ -760,7 +761,7 @@ async def test_auto_merge_failure_sends_telegram():
                             # Use legacy path — get_pr_mergeable_state not needed
                             mock_settings.merge_retry_enabled = False
                             # merge 실패 → (False, "forbidden: Resource not accessible")
-                            mock_merge.return_value = (False, "forbidden: Resource not accessible", "abc123")
+                            mock_merge.return_value = MergeOutcome(ok=False, reason="forbidden: Resource not accessible", head_sha="abc123", path=PATH_REST_FALLBACK)
                             await run_gate_check(
                                 repo_name="owner/repo",
                                 pr_number=3,
@@ -792,14 +793,14 @@ async def test_auto_merge_failure_no_chat_id_only_logs():
         notify_chat_id=None,  # repo 전용 chat_id 없음
     )
     with patch("src.gate.engine.get_repo_config", return_value=config):
-        with patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge:
+        with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge:
             with patch("src.gate.engine.telegram_post_message", new_callable=AsyncMock) as mock_tg:
                 with patch("src.gate.engine.settings") as mock_settings:
                     with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
                         with patch("src.gate.engine.save_gate_decision"):
                             mock_settings.telegram_bot_token = "123:ABC"
                             mock_settings.telegram_chat_id = ""  # global chat_id도 없음
-                            mock_merge.return_value = (False, "forbidden: no permission", "abc123")
+                            mock_merge.return_value = MergeOutcome(ok=False, reason="forbidden: no permission", head_sha="abc123", path=PATH_REST_FALLBACK)
                             await run_gate_check(
                                 repo_name="owner/repo",
                                 pr_number=3,
@@ -823,7 +824,7 @@ async def test_auto_merge_failure_global_fallback_chat_id():
         notify_chat_id=None,  # repo 전용 chat_id 없음
     )
     with patch("src.gate.engine.get_repo_config", return_value=config):
-        with patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge:
+        with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge:
             with patch("src.gate.engine.telegram_post_message", new_callable=AsyncMock) as mock_tg:
                 with patch("src.gate.engine.settings") as mock_settings:
                     with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
@@ -833,7 +834,7 @@ async def test_auto_merge_failure_global_fallback_chat_id():
                             # 레거시 경로 사용 — get_pr_mergeable_state 불필요
                             # Use legacy path — get_pr_mergeable_state not needed
                             mock_settings.merge_retry_enabled = False
-                            mock_merge.return_value = (False, "forbidden: no permission", "abc123")
+                            mock_merge.return_value = MergeOutcome(ok=False, reason="forbidden: no permission", head_sha="abc123", path=PATH_REST_FALLBACK)
                             await run_gate_check(
                                 repo_name="owner/repo",
                                 pr_number=3,
@@ -937,13 +938,13 @@ async def test_run_auto_merge_records_successful_merge_attempt():
         notify_chat_id="-100123",
     )
     with patch("src.gate.engine.get_repo_config", return_value=config):
-        with patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge:
+        with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge:
             with patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state:
                 with patch("src.gate.engine.log_merge_attempt") as mock_log:
                     with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
                         with patch("src.gate.engine.save_gate_decision"):
                             mock_state.return_value = ("clean", "abc123")
-                            mock_merge.return_value = (True, None, "abc123")
+                            mock_merge.return_value = MergeOutcome(ok=True, reason=None, head_sha="abc123", path=PATH_REST_FALLBACK)
                             await run_gate_check(
                                 repo_name="owner/repo",
                                 pr_number=3,
@@ -978,14 +979,17 @@ async def test_run_auto_merge_records_failed_merge_attempt_with_reason_tag():
     )
     full_reason = "branch_protection_blocked: 머지 조건 미충족 (state=blocked)"
     with patch("src.gate.engine.get_repo_config", return_value=config):
-        with patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge:
+        with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge:
             with patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state:
                 with patch("src.gate.engine.log_merge_attempt") as mock_log:
                     with patch("src.gate.engine.telegram_post_message", new_callable=AsyncMock):
                         with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
                             with patch("src.gate.engine.save_gate_decision"):
                                 mock_state.return_value = ("clean", "abc123")
-                                mock_merge.return_value = (False, full_reason, "abc123")
+                                mock_merge.return_value = MergeOutcome(
+                                    ok=False, reason=full_reason,
+                                    head_sha="abc123", path=PATH_REST_FALLBACK,
+                                )
                                 await run_gate_check(
                                     repo_name="owner/repo",
                                     pr_number=3,
@@ -1013,7 +1017,7 @@ async def test_run_auto_merge_log_merge_attempt_db_failure_does_not_block_notifi
         notify_chat_id="-100123",
     )
     with patch("src.gate.engine.get_repo_config", return_value=config):
-        with patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge:
+        with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge:
             with patch("src.gate.engine.log_merge_attempt", side_effect=RuntimeError("DB down")):
                 with patch("src.gate.engine.telegram_post_message", new_callable=AsyncMock) as mock_tg:
                     with patch("src.gate.engine.settings") as mock_settings:
@@ -1024,7 +1028,7 @@ async def test_run_auto_merge_log_merge_attempt_db_failure_does_not_block_notifi
                                 # 레거시 경로 사용 — get_pr_mergeable_state 불필요
                                 # Use legacy path — get_pr_mergeable_state not needed
                                 mock_settings.merge_retry_enabled = False
-                                mock_merge.return_value = (False, "forbidden: no permission", "abc123")
+                                mock_merge.return_value = MergeOutcome(ok=False, reason="forbidden: no permission", head_sha="abc123", path=PATH_REST_FALLBACK)
                                 # log_merge_attempt 가 RuntimeError 를 던져도 전체는 중단 없이 완료
                                 await run_gate_check(
                                     repo_name="owner/repo",
@@ -1053,14 +1057,14 @@ async def test_run_auto_merge_creates_issue_when_enabled():
         notify_chat_id=None,
     )
     with (
-        patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge,
+        patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge,
         patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state,
         patch("src.gate.engine.create_merge_failure_issue", new_callable=AsyncMock) as mock_issue,
         patch("src.gate.engine.log_merge_attempt"),
         patch("src.gate.engine._notify_merge_failure", new_callable=AsyncMock),
     ):
         mock_state.return_value = ("clean", "abc123")
-        mock_merge.return_value = (False, "branch_protection_blocked: blocked", "abc123")
+        mock_merge.return_value = MergeOutcome(ok=False, reason="branch_protection_blocked: blocked", head_sha="abc123", path=PATH_REST_FALLBACK)
         mock_issue.return_value = 42
         await _run_auto_merge(
             config, "tok", "owner/repo", 1, 80, analysis_id=1, db=MagicMock()
@@ -1077,12 +1081,12 @@ async def test_run_auto_merge_skips_issue_when_disabled():
         notify_chat_id=None,
     )
     with (
-        patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge,
+        patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge,
         patch("src.gate.engine.create_merge_failure_issue", new_callable=AsyncMock) as mock_issue,
         patch("src.gate.engine.log_merge_attempt"),
         patch("src.gate.engine._notify_merge_failure", new_callable=AsyncMock),
     ):
-        mock_merge.return_value = (False, "branch_protection_blocked: blocked", "abc123")
+        mock_merge.return_value = MergeOutcome(ok=False, reason="branch_protection_blocked: blocked", head_sha="abc123", path=PATH_REST_FALLBACK)
         await _run_auto_merge(
             config, "tok", "owner/repo", 1, 80, analysis_id=1, db=MagicMock()
         )
@@ -1191,3 +1195,147 @@ async def test_get_ci_status_safe_default_base_ref_is_main():
     args = mock_required.call_args
     branch_arg = args.args[2] if len(args.args) >= 3 else args.kwargs.get("branch")
     assert branch_arg == "main"
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 PR-B1 — engine.py state 라벨링 분기
+# Phase 3 PR-B1 — engine.py state labeling branches
+# ---------------------------------------------------------------------------
+
+
+async def test_run_auto_merge_retry_native_enable_records_pending_state():
+    """Phase 3 PR-B1: outcome.path=PATH_NATIVE_ENABLE → state=enabled_pending_merge."""
+    from src.gate import _merge_attempt_states as _states
+    from src.gate.native_automerge import (
+        MergeOutcome, PATH_NATIVE_ENABLE,
+    )
+
+    mock_db = MagicMock()
+    config = _config(
+        approve_mode="disabled", auto_merge=True, merge_threshold=75,
+        pr_review_comment=False, notify_chat_id="-100123",
+    )
+    with patch("src.gate.engine.get_repo_config", return_value=config), \
+         patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_native, \
+         patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
+         patch("src.gate.engine.log_merge_attempt") as mock_log, \
+         patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock), \
+         patch("src.gate.engine.save_gate_decision"):
+        mock_state.return_value = ("clean", "abc123")
+        mock_native.return_value = MergeOutcome(
+            ok=True, reason=None, head_sha="abc123", path=PATH_NATIVE_ENABLE,
+        )
+        await run_gate_check(
+            repo_name="owner/repo", pr_number=3, analysis_id=10,
+            result={"score": 80, "grade": "B"},
+            github_token="tok", db=mock_db,
+        )
+    # log_merge_attempt 가 enabled_pending_merge state + enabled_at 으로 호출됨
+    mock_log.assert_called_once()
+    call_kwargs = mock_log.call_args.kwargs
+    assert call_kwargs["state"] == _states.ENABLED_PENDING_MERGE
+    assert call_kwargs["enabled_at"] is not None
+    assert call_kwargs["success"] is True
+
+
+async def test_run_auto_merge_retry_rest_fallback_records_direct_merged_state():
+    """Phase 3 PR-B1: outcome.path=PATH_REST_FALLBACK → state=direct_merged."""
+    from src.gate import _merge_attempt_states as _states
+    from src.gate.native_automerge import (
+        MergeOutcome, PATH_REST_FALLBACK,
+    )
+
+    mock_db = MagicMock()
+    config = _config(
+        approve_mode="disabled", auto_merge=True, merge_threshold=75,
+        pr_review_comment=False, notify_chat_id="-100123",
+    )
+    with patch("src.gate.engine.get_repo_config", return_value=config), \
+         patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_native, \
+         patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
+         patch("src.gate.engine.log_merge_attempt") as mock_log, \
+         patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock), \
+         patch("src.gate.engine.save_gate_decision"):
+        mock_state.return_value = ("clean", "abc123")
+        mock_native.return_value = MergeOutcome(
+            ok=True, reason=None, head_sha="abc123", path=PATH_REST_FALLBACK,
+        )
+        await run_gate_check(
+            repo_name="owner/repo", pr_number=3, analysis_id=10,
+            result={"score": 80, "grade": "B"},
+            github_token="tok", db=mock_db,
+        )
+    call_kwargs = mock_log.call_args.kwargs
+    assert call_kwargs["state"] == _states.DIRECT_MERGED
+    assert call_kwargs["enabled_at"] is None  # direct_merged 는 enabled_at 없음
+
+
+async def test_run_auto_merge_legacy_native_enable_records_pending_state():
+    """Phase 3 PR-B1: legacy 경로에서도 native enable → enabled_pending_merge."""
+    from src.gate import _merge_attempt_states as _states
+    from src.gate.native_automerge import (
+        MergeOutcome, PATH_NATIVE_ENABLE,
+    )
+
+    mock_db = MagicMock()
+    config = _config(
+        approve_mode="disabled", auto_merge=True, merge_threshold=75,
+        pr_review_comment=False, notify_chat_id="-100123",
+    )
+    with patch("src.gate.engine.get_repo_config", return_value=config), \
+         patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_native, \
+         patch("src.gate.engine.log_merge_attempt") as mock_log, \
+         patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock), \
+         patch("src.gate.engine.save_gate_decision"), \
+         patch("src.gate.engine.settings") as mock_settings:
+        mock_settings.merge_retry_enabled = False  # legacy 경로 강제
+        mock_settings.telegram_bot_token = ""
+        mock_settings.telegram_chat_id = ""
+        mock_native.return_value = MergeOutcome(
+            ok=True, reason=None, head_sha="abc123", path=PATH_NATIVE_ENABLE,
+        )
+        await run_gate_check(
+            repo_name="owner/repo", pr_number=3, analysis_id=10,
+            result={"score": 80, "grade": "B"},
+            github_token="tok", db=mock_db,
+        )
+    call_kwargs = mock_log.call_args.kwargs
+    assert call_kwargs["state"] == _states.ENABLED_PENDING_MERGE
+    assert call_kwargs["enabled_at"] is not None
+
+
+async def test_run_auto_merge_legacy_failure_records_legacy_state():
+    """Phase 3 PR-B1: legacy 경로 실패 시 state=legacy (실패는 분류 의미 없음)."""
+    from src.gate import _merge_attempt_states as _states
+    from src.gate.native_automerge import (
+        MergeOutcome, PATH_REST_FALLBACK,
+    )
+
+    mock_db = MagicMock()
+    config = _config(
+        approve_mode="disabled", auto_merge=True, merge_threshold=75,
+        pr_review_comment=False, notify_chat_id=None,
+    )
+    with patch("src.gate.engine.get_repo_config", return_value=config), \
+         patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_native, \
+         patch("src.gate.engine.log_merge_attempt") as mock_log, \
+         patch("src.gate.engine.create_merge_failure_issue", new_callable=AsyncMock), \
+         patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock), \
+         patch("src.gate.engine.save_gate_decision"), \
+         patch("src.gate.engine.settings") as mock_settings:
+        mock_settings.merge_retry_enabled = False
+        mock_settings.telegram_bot_token = ""
+        mock_settings.telegram_chat_id = ""
+        mock_native.return_value = MergeOutcome(
+            ok=False, reason="forbidden: no perms",
+            head_sha="abc123", path=PATH_REST_FALLBACK,
+        )
+        await run_gate_check(
+            repo_name="owner/repo", pr_number=3, analysis_id=10,
+            result={"score": 80, "grade": "B"},
+            github_token="tok", db=mock_db,
+        )
+    call_kwargs = mock_log.call_args.kwargs
+    assert call_kwargs["state"] == _states.LEGACY
+    assert call_kwargs["enabled_at"] is None
+    assert call_kwargs["success"] is False

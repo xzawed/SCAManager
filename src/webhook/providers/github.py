@@ -9,6 +9,7 @@ import json
 import logging
 import re
 import time
+from datetime import datetime, timezone
 from typing import Annotated
 
 import httpx
@@ -21,7 +22,7 @@ from src.constants import HANDLED_EVENTS, PR_HANDLED_ACTIONS
 from src.database import SessionLocal
 from src.github_client.issues import close_issue
 from src.notifier.n8n import notify_n8n_issue
-from src.repositories import merge_retry_repo, repository_repo
+from src.repositories import merge_attempt_repo, merge_retry_repo, repository_repo
 from src.services.merge_retry_service import process_pending_retries
 from src.shared.log_safety import sanitize_for_log
 from src.webhook._helpers import get_webhook_secret
@@ -68,19 +69,33 @@ def _extract_closing_issue_numbers(body: str | None) -> list[int]:
 
 
 async def _handle_merged_pr_event(data: dict) -> dict:
-    """pull_request.closed + merged=true 시 PR body 의 Closes #N 키워드로 Issue 를 close."""
+    """pull_request.closed + merged=true 시 두 작업 수행:
+    1) PR body 의 Closes #N 키워드로 Issue 를 close (기존 동작).
+    2) Phase 3 PR-B1: MergeAttempt 의 state 를 enabled_pending_merge → actually_merged 로 전이.
+
+    Phase 3 PR-B1: When a PR closes with merged=true:
+      1) Auto-close referenced issues (existing behavior).
+      2) Transition MergeAttempt state from enabled_pending_merge → actually_merged
+         so dashboards/stats reflect the actual merge completion.
+    """
     pr = data.get("pull_request") or {}
     if not pr.get("merged"):
-        return {"status": "ignored"}
-
-    body = pr.get("body") or ""
-    numbers = _extract_closing_issue_numbers(body)
-    if not numbers:
         return {"status": "ignored"}
 
     repo_name = data.get("repository", {}).get("full_name", "")
     if not repo_name:
         return {"status": "ignored"}
+
+    pr_number = pr.get("number")
+    # Phase 3 PR-B1: MergeAttempt lifecycle 전이 (Issue close 와 독립적으로 시도)
+    # Phase 3 PR-B1: MergeAttempt lifecycle transition (independent of issue close).
+    if pr_number is not None:
+        await _record_actual_merge(repo_name, int(pr_number))
+
+    body = pr.get("body") or ""
+    numbers = _extract_closing_issue_numbers(body)
+    if not numbers:
+        return {"status": "accepted"}
 
     token = ""
     try:
@@ -94,7 +109,7 @@ async def _handle_merged_pr_event(data: dict) -> dict:
     token = token or settings.github_token
     if not token:
         logger.info("merged-pr issue close: no token available for %s — skipped", repo_name)
-        return {"status": "ignored"}
+        return {"status": "accepted"}
 
     for issue_number in numbers:
         try:
@@ -111,6 +126,99 @@ async def _handle_merged_pr_event(data: dict) -> dict:
                 "Auto-close failed (repo=%s, issue=%d): %s",
                 repo_name, issue_number, type(exc).__name__,
             )
+
+    return {"status": "accepted"}
+
+
+async def _record_actual_merge(repo_name: str, pr_number: int) -> None:
+    """Phase 3 PR-B1: MergeAttempt state 를 actually_merged 로 전이.
+    Phase 3 PR-B1: transition MergeAttempt state to actually_merged.
+
+    enabled_pending_merge 행만 갱신 (mark_actually_merged 의 WHERE 절 가드).
+    legacy / direct_merged / 기존 actually_merged 행은 idempotent no-op.
+    Only updates rows currently in enabled_pending_merge (idempotent).
+    """
+    try:
+        with SessionLocal() as db:
+            latest = merge_attempt_repo.find_latest_for_pr(db, repo_name, pr_number)
+            if latest is None:
+                return
+            updated = merge_attempt_repo.mark_actually_merged(
+                db, attempt_id=latest.id,
+                merged_at=datetime.now(timezone.utc),
+            )
+            if updated:
+                logger.info(
+                    "merge_attempt %d: enabled_pending_merge → actually_merged (repo=%s, pr=%d)",
+                    latest.id, sanitize_for_log(repo_name), pr_number,
+                )
+    except (SQLAlchemyError, KeyError, AttributeError) as exc:
+        # 관측 실패가 webhook 응답을 막지 않도록 격리 — Phase 3 PR-B1
+        # Isolated so observability failure doesn't block the webhook response
+        logger.warning(
+            "actually_merged 전이 실패 (repo=%s, pr=%d): %s",
+            sanitize_for_log(repo_name), pr_number, type(exc).__name__,
+        )
+
+
+async def _handle_auto_merge_disabled_event(data: dict) -> dict:
+    """Phase 3 PR-B1: pull_request.auto_merge_disabled webhook 핸들러.
+
+    GitHub 이 force-push, required check 실패, 사용자 수동 해제 등으로
+    auto-merge 를 자동 비활성화할 때 발사. MergeAttempt state 를
+    enabled_pending_merge → disabled_externally 로 전이.
+
+    Phase 3 PR-B1: handler for pull_request.auto_merge_disabled webhook.
+    GitHub fires this on force-push, required check failure, or manual disable;
+    we transition MergeAttempt state from enabled_pending_merge → disabled_externally.
+    """
+    repo_name = data.get("repository", {}).get("full_name", "")
+    pr = data.get("pull_request") or {}
+    pr_number = pr.get("number")
+    if not repo_name or pr_number is None:
+        return {"status": "ignored"}
+    try:
+        pr_number_int = int(pr_number)
+    except (TypeError, ValueError):
+        return {"status": "ignored"}
+
+    # GitHub payload 에 명시적 reason 필드 없음 — sender 기반 추론
+    # GitHub payload has no explicit reason — infer from sender.
+    sender_login = (data.get("sender") or {}).get("login")
+    sender_type = (data.get("sender") or {}).get("type")
+    if sender_type == "Bot":
+        inferred_reason = "auto_merge_disabled_by_check_or_force_push"
+    elif sender_login:
+        inferred_reason = "auto_merge_disabled_by_user"
+    else:
+        inferred_reason = "auto_merge_disabled_external"
+
+    try:
+        with SessionLocal() as db:
+            latest = merge_attempt_repo.find_latest_for_pr(db, repo_name, pr_number_int)
+            if latest is None:
+                logger.info(
+                    "auto_merge_disabled: no MergeAttempt row for %s pr=%d (skipped)",
+                    sanitize_for_log(repo_name), pr_number_int,
+                )
+                return {"status": "ignored"}
+            updated = merge_attempt_repo.mark_disabled_externally(
+                db, attempt_id=latest.id,
+                disabled_at=datetime.now(timezone.utc),
+                reason=inferred_reason,
+            )
+            if updated:
+                logger.warning(
+                    "merge_attempt %d: enabled_pending_merge → disabled_externally "
+                    "(repo=%s, pr=%d, reason=%s)",
+                    latest.id, sanitize_for_log(repo_name), pr_number_int, inferred_reason,
+                )
+    except (SQLAlchemyError, KeyError, AttributeError) as exc:
+        logger.warning(
+            "auto_merge_disabled 전이 실패 (repo=%s, pr=%d): %s",
+            sanitize_for_log(repo_name), pr_number_int, type(exc).__name__,
+        )
+        return {"status": "ignored"}
 
     return {"status": "accepted"}
 
@@ -234,6 +342,12 @@ async def _preprocess_pull_request(data: dict) -> dict | None:
         return {"status": "ignored"}
     if action == "closed":
         return await _handle_merged_pr_event(data)
+    # Phase 3 PR-B1 — Tier 3 native auto-merge lifecycle 추적
+    # GitHub 가 auto-merge 를 자동 비활성화 시 MergeAttempt state 전이
+    # Phase 3 PR-B1 — track Tier 3 native auto-merge lifecycle.
+    # When GitHub auto-disables auto-merge, transition MergeAttempt state.
+    if action == "auto_merge_disabled":
+        return await _handle_auto_merge_disabled_event(data)
     # force-push 감지: synchronize 시 이전 SHA pending 행 포기 처리
     # Force-push guard: abandon stale pending rows on synchronize
     if action == "synchronize":

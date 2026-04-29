@@ -273,3 +273,147 @@ async def test_fallback_failure_returns_rest_reason():
     assert result == rest_failure
     assert result[0] is False
     assert result[1] == "branch_protection_blocked: required check missing"
+
+
+# ── Phase 3 PR-B1: enable_or_fallback_with_path() — path-aware version ────
+
+
+async def test_enable_with_path_native_success_returns_native_enable_path():
+    """Phase 3 PR-B1: enable 성공 → MergeOutcome(path=PATH_NATIVE_ENABLE)."""
+    from src.gate.native_automerge import (
+        PATH_NATIVE_ENABLE, MergeOutcome, enable_or_fallback_with_path,
+    )
+
+    p_enable, p_merge, p_node, p_state, _, _, _, _ = _patch_native(
+        enable_result=EnableAutoMergeResult(ENABLE_OK),
+    )
+    with p_enable, p_merge, p_node, p_state:
+        outcome = await enable_or_fallback_with_path(
+            TOKEN, REPO, PR, expected_sha=HEAD_SHA,
+        )
+
+    assert isinstance(outcome, MergeOutcome)
+    assert outcome.ok is True
+    assert outcome.reason is None
+    assert outcome.head_sha == HEAD_SHA
+    assert outcome.path == PATH_NATIVE_ENABLE
+
+
+async def test_enable_with_path_disabled_in_repo_falls_back_returns_rest_path():
+    """Phase 3 PR-B1: ENABLE_DISABLED_IN_REPO → 폴백 → path=PATH_REST_FALLBACK."""
+    from src.gate.native_automerge import (
+        PATH_REST_FALLBACK, enable_or_fallback_with_path,
+    )
+
+    p_enable, p_merge, p_node, p_state, _, mock_merge, _, _ = _patch_native(
+        enable_result=EnableAutoMergeResult(ENABLE_DISABLED_IN_REPO, "off"),
+        merge_result=(True, None, HEAD_SHA),
+    )
+    with p_enable, p_merge, p_node, p_state:
+        outcome = await enable_or_fallback_with_path(
+            TOKEN, REPO, PR, expected_sha=HEAD_SHA,
+        )
+
+    assert outcome.ok is True
+    assert outcome.path == PATH_REST_FALLBACK
+    mock_merge.assert_awaited_once()
+
+
+async def test_enable_with_path_force_pushed_returns_no_attempt_path():
+    """Phase 3 PR-B1: ENABLE_FORCE_PUSHED → 폴백 미시도 → path=PATH_NO_ATTEMPT."""
+    from src.gate.native_automerge import (
+        PATH_NO_ATTEMPT, enable_or_fallback_with_path,
+    )
+
+    p_enable, p_merge, p_node, p_state, _, mock_merge, _, _ = _patch_native(
+        enable_result=EnableAutoMergeResult(ENABLE_FORCE_PUSHED, "head sha mismatch"),
+    )
+    with p_enable, p_merge, p_node, p_state:
+        outcome = await enable_or_fallback_with_path(
+            TOKEN, REPO, PR, expected_sha=HEAD_SHA,
+        )
+
+    assert outcome.ok is False
+    assert outcome.path == PATH_NO_ATTEMPT
+    assert "force_pushed" in (outcome.reason or "")
+    mock_merge.assert_not_called()
+
+
+async def test_enable_with_path_node_id_failure_falls_back():
+    """Phase 3 PR-B1: get_pr_node_id=None → 즉시 폴백 → path=PATH_REST_FALLBACK."""
+    from src.gate.native_automerge import (
+        PATH_REST_FALLBACK, enable_or_fallback_with_path,
+    )
+
+    p_enable, p_merge, p_node, p_state, mock_enable, _, _, _ = _patch_native(
+        enable_result=EnableAutoMergeResult(ENABLE_OK),  # 호출 안 됨
+        node_id=None,  # 조회 실패
+        merge_result=(True, None, HEAD_SHA),
+    )
+    with p_enable, p_merge, p_node, p_state:
+        outcome = await enable_or_fallback_with_path(
+            TOKEN, REPO, PR, expected_sha=HEAD_SHA,
+        )
+
+    assert outcome.ok is True
+    assert outcome.path == PATH_REST_FALLBACK
+    # node_id None 이므로 enable 자체 호출 안 됨
+    mock_enable.assert_not_called()
+
+
+async def test_enable_with_path_unclassified_status_falls_back():
+    """Phase 3 PR-B1: ENABLE_API_ERROR (분류 외) → 폴백 → path=PATH_REST_FALLBACK."""
+    from src.gate.native_automerge import (
+        PATH_REST_FALLBACK, enable_or_fallback_with_path,
+    )
+
+    p_enable, p_merge, p_node, p_state, _, _, _, _ = _patch_native(
+        enable_result=EnableAutoMergeResult(ENABLE_API_ERROR, "weird"),
+        merge_result=(True, None, HEAD_SHA),
+    )
+    with p_enable, p_merge, p_node, p_state:
+        outcome = await enable_or_fallback_with_path(
+            TOKEN, REPO, PR, expected_sha=HEAD_SHA,
+        )
+
+    assert outcome.ok is True
+    assert outcome.path == PATH_REST_FALLBACK
+
+
+async def test_enable_with_path_fallback_failure_propagates_reason():
+    """Phase 3 PR-B1: 폴백 머지 실패 시 reason 그대로 + path=PATH_REST_FALLBACK."""
+    from src.gate.native_automerge import (
+        PATH_REST_FALLBACK, enable_or_fallback_with_path,
+    )
+
+    p_enable, p_merge, p_node, p_state, _, _, _, _ = _patch_native(
+        enable_result=EnableAutoMergeResult(ENABLE_PERMISSION_DENIED, "no perms"),
+        merge_result=(False, "branch_protection_blocked: ...", HEAD_SHA),
+    )
+    with p_enable, p_merge, p_node, p_state:
+        outcome = await enable_or_fallback_with_path(
+            TOKEN, REPO, PR, expected_sha=HEAD_SHA,
+        )
+
+    assert outcome.ok is False
+    assert outcome.reason == "branch_protection_blocked: ..."
+    assert outcome.path == PATH_REST_FALLBACK
+
+
+async def test_enable_with_path_handles_get_pr_state_failure():
+    """Phase 3 PR-B1: get_pr_mergeable_state 실패 → head_sha="" 로 진행."""
+    from src.gate.native_automerge import (
+        PATH_NATIVE_ENABLE, enable_or_fallback_with_path,
+    )
+
+    p_enable, p_merge, p_node, p_state, _, _, _, _ = _patch_native(
+        enable_result=EnableAutoMergeResult(ENABLE_OK),
+        state_result=httpx.HTTPError("network down"),
+    )
+    with p_enable, p_merge, p_node, p_state:
+        # expected_sha 미전달 → 자체 조회 → HTTPError → head_sha="" 로 진행
+        outcome = await enable_or_fallback_with_path(TOKEN, REPO, PR)
+
+    assert outcome.ok is True
+    assert outcome.path == PATH_NATIVE_ENABLE
+    assert outcome.head_sha == ""
