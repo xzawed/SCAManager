@@ -1,5 +1,6 @@
 """Gate Engine — 3개 독립 옵션: Review Comment / Approve / Auto Merge."""
 import logging
+from datetime import datetime, timezone
 from html import escape
 
 import httpx
@@ -10,9 +11,13 @@ from src.gate._common import score_from_result as _score_from_result
 from src.gate.github_review import (
     post_github_review, get_pr_mergeable_state, get_pr_base_ref,
 )
+from src.gate import _merge_attempt_states as _states
 from src.gate.merge_failure_advisor import get_advice
 from src.gate.merge_reasons import UNSTABLE_CI, UNKNOWN_STATE_TIMEOUT, DEFERRED
-from src.gate.native_automerge import enable_or_fallback as native_enable_or_fallback
+from src.gate.native_automerge import (
+    PATH_NATIVE_ENABLE,
+    enable_or_fallback_with_path as native_enable_with_path,
+)
 from src.gate.retry_policy import parse_reason_tag, should_retry
 from src.github_client.checks import get_ci_status, get_required_check_contexts
 from src.notifier.merge_failure_issue import create_merge_failure_issue
@@ -253,28 +258,44 @@ async def _run_auto_merge_retry(  # pylint: disable=too-many-arguments,too-many-
         head_sha = ""
 
     # 2. Native auto-merge enable 시도 — 실패 시 REST merge_pr 폴백 (Tier 3 PR-A)
-    # 2. Try native auto-merge enable; fall back to REST merge_pr on failure (Tier 3 PR-A)
-    ok, reason, observed_sha = await native_enable_or_fallback(
+    # Phase 3 PR-B1: enable_or_fallback_with_path 사용 — outcome.path 로 state 라벨링
+    # Phase 3 PR-B1: use enable_or_fallback_with_path so outcome.path drives state
+    outcome = await native_enable_with_path(
         github_token, repo_name, pr_number, expected_sha=head_sha or None
     )
+    ok, reason, observed_sha = outcome.ok, outcome.reason, outcome.head_sha
 
     # observed_sha (merge_pr 내부 조회) 우선 사용, 없으면 head_sha
     # Prefer observed_sha (from merge_pr's internal call), fall back to head_sha
     effective_sha = observed_sha or head_sha
 
-    # 3. 성공 — 기록 후 반환
-    # 3. Success — log and return
+    # 3. 성공 — 기록 후 반환 (Phase 3 PR-B1: path 기반 state 라벨링)
+    # 3. Success — log and return (Phase 3 PR-B1: state derived from path)
     if ok:
+        # native enable 성공 → enabled_pending_merge (GitHub 비동기 머지 대기)
+        # REST 폴백 즉시 성공 → direct_merged (이미 머지됨)
+        # native enable success → enabled_pending_merge (awaiting GitHub async merge)
+        # REST fallback immediate success → direct_merged (already merged)
+        if outcome.path == PATH_NATIVE_ENABLE:
+            new_state = _states.ENABLED_PENDING_MERGE
+            enabled_at = datetime.now(timezone.utc)
+        else:
+            new_state = _states.DIRECT_MERGED
+            enabled_at = None
+
         if analysis_id is not None and db is not None:
             try:
                 log_merge_attempt(
                     db, analysis_id=analysis_id, repo_name=repo_name,
                     pr_number=pr_number, score=score,
                     threshold=config.merge_threshold, success=True, reason=None,
+                    state=new_state, enabled_at=enabled_at,
                 )
             except Exception as log_exc:  # pylint: disable=broad-except
                 logger.warning("merge_attempt 기록 실패: %s", log_exc)
-        logger.info("PR #%d auto-merged: %s", pr_number, repo_name)
+        logger.info(
+            "PR #%d auto-merged (state=%s): %s", pr_number, new_state, repo_name,
+        )
         return
 
     # 4. 실패 분류 — 터미널이면 즉시 처리
@@ -432,10 +453,25 @@ async def _run_auto_merge_legacy(  # pylint: disable=too-many-arguments
     """
     try:
         # Tier 3 PR-A: native auto-merge 우선 시도, 실패 시 REST merge_pr 폴백
-        # Tier 3 PR-A: try native auto-merge first, fall back to REST merge_pr on failure
-        ok, reason, _head_sha = await native_enable_or_fallback(
+        # Phase 3 PR-B1: with_path 버전 사용 → outcome.path 로 state 라벨링
+        # Tier 3 PR-A: try native auto-merge first, fall back to REST merge_pr.
+        # Phase 3 PR-B1: use with_path so state can be derived from outcome.path.
+        outcome = await native_enable_with_path(
             github_token, repo_name, pr_number,
         )
+        ok, reason = outcome.ok, outcome.reason
+
+        # Phase 3 PR-B1: native enable success → enabled_pending_merge,
+        # REST 폴백 즉시 성공 → direct_merged. 실패는 state="legacy" 기본값 유지.
+        if ok and outcome.path == PATH_NATIVE_ENABLE:
+            new_state = _states.ENABLED_PENDING_MERGE
+            enabled_at = datetime.now(timezone.utc)
+        elif ok:
+            new_state = _states.DIRECT_MERGED
+            enabled_at = None
+        else:
+            new_state = _states.LEGACY  # 실패 — state 분류 의미 없음
+            enabled_at = None
 
         # Phase F.1: 모든 시도 DB 기록 — 관측 실패가 파이프라인을 중단시키지 않도록
         # Phase F.1: Record every attempt in DB — observability failures must not interrupt the pipeline.
@@ -452,6 +488,8 @@ async def _run_auto_merge_legacy(  # pylint: disable=too-many-arguments
                     threshold=config.merge_threshold,
                     success=ok,
                     reason=reason,
+                    state=new_state,
+                    enabled_at=enabled_at,
                 )
             except Exception as log_exc:  # pylint: disable=broad-except
                 logger.warning(

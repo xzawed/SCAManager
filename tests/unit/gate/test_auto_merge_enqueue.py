@@ -10,6 +10,7 @@ os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 os.environ.setdefault("ANTHROPIC_API_KEY", "")
 
 from unittest.mock import AsyncMock, MagicMock, patch
+from src.gate.native_automerge import MergeOutcome, PATH_REST_FALLBACK
 
 from src.gate.engine import _run_auto_merge
 from src.config_manager.manager import RepoConfigData
@@ -60,7 +61,7 @@ async def test_run_auto_merge_enqueues_when_ci_running():
     enqueue_result = _make_enqueue_result(is_first_deferral=True)
 
     with patch("src.gate.engine.settings") as mock_settings, \
-         patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge, \
+         patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
          patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main") as mock_base_ref, \
          patch("src.gate.engine.get_required_check_contexts", new_callable=AsyncMock) as mock_required, \
@@ -75,7 +76,7 @@ async def test_run_auto_merge_enqueues_when_ci_running():
         mock_settings.merge_retry_initial_backoff_seconds = 60
         mock_settings.telegram_chat_id = "-100123"
         mock_state.return_value = ("unknown", "sha123")
-        mock_merge.return_value = (False, "unstable_ci: state=unstable", "sha123")
+        mock_merge.return_value = MergeOutcome(ok=False, reason="unstable_ci: state=unstable", head_sha="sha123", path=PATH_REST_FALLBACK)
         mock_required.return_value = {"ci/test"}
         mock_ci.return_value = "running"
         mock_repo.enqueue_or_bump.return_value = enqueue_result
@@ -112,7 +113,7 @@ async def test_run_auto_merge_terminal_when_ci_failed():
     config = _config()
 
     with patch("src.gate.engine.settings") as mock_settings, \
-         patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge, \
+         patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
          patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main") as mock_base_ref, \
          patch("src.gate.engine.get_required_check_contexts", new_callable=AsyncMock) as mock_required, \
@@ -128,7 +129,7 @@ async def test_run_auto_merge_terminal_when_ci_failed():
         mock_settings.telegram_chat_id = "-100123"
         mock_settings.telegram_bot_token = "123:ABC"
         mock_state.return_value = ("unknown", "sha123")
-        mock_merge.return_value = (False, "unstable_ci: state=unstable", "sha123")
+        mock_merge.return_value = MergeOutcome(ok=False, reason="unstable_ci: state=unstable", head_sha="sha123", path=PATH_REST_FALLBACK)
         mock_required.return_value = {"ci/test"}
         mock_ci.return_value = "failed"
 
@@ -160,7 +161,7 @@ async def test_run_auto_merge_success_no_enqueue():
     config = _config()
 
     with patch("src.gate.engine.settings") as mock_settings, \
-         patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge, \
+         patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
          patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main") as mock_base_ref, \
          patch("src.gate.engine.get_required_check_contexts", new_callable=AsyncMock) as mock_required, \
@@ -173,7 +174,7 @@ async def test_run_auto_merge_success_no_enqueue():
         mock_settings.merge_retry_enabled = True
         mock_settings.telegram_chat_id = "-100123"
         mock_state.return_value = ("clean", "sha123")
-        mock_merge.return_value = (True, None, "sha123")
+        mock_merge.return_value = MergeOutcome(ok=True, reason=None, head_sha="sha123", path=PATH_REST_FALLBACK)
 
         await _run_auto_merge(
             config, "ghp_token", "owner/repo", 42, 80,
@@ -199,7 +200,7 @@ async def test_run_auto_merge_terminal_on_dirty_conflict():
     config = _config()
 
     with patch("src.gate.engine.settings") as mock_settings, \
-         patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge, \
+         patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
          patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main") as mock_base_ref, \
          patch("src.gate.engine.merge_retry_repo") as mock_repo, \
@@ -214,7 +215,7 @@ async def test_run_auto_merge_terminal_on_dirty_conflict():
         mock_state.return_value = ("dirty", "sha123")
         # dirty_conflict 는 merge_pr 사전 차단 경로에서 직접 반환됨
         # dirty_conflict is returned directly from the merge_pr pre-check path
-        mock_merge.return_value = (False, "dirty_conflict: 머지 조건 미충족 (state=dirty)", "sha123")
+        mock_merge.return_value = MergeOutcome(ok=False, reason="dirty_conflict: 머지 조건 미충족 (state=dirty)", head_sha="sha123", path=PATH_REST_FALLBACK)
 
         await _run_auto_merge(
             config, "ghp_token", "owner/repo", 42, 80,
@@ -241,7 +242,7 @@ async def test_run_auto_merge_deferred_no_notify_on_bump():
     enqueue_result = _make_enqueue_result(is_first_deferral=False)
 
     with patch("src.gate.engine.settings") as mock_settings, \
-         patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge, \
+         patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
          patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main") as mock_base_ref, \
          patch("src.gate.engine.get_required_check_contexts", new_callable=AsyncMock) as mock_required, \
@@ -256,7 +257,7 @@ async def test_run_auto_merge_deferred_no_notify_on_bump():
         mock_settings.merge_retry_initial_backoff_seconds = 60
         mock_settings.telegram_chat_id = "-100123"
         mock_state.return_value = ("unknown", "sha123")
-        mock_merge.return_value = (False, "unstable_ci: state=unstable", "sha123")
+        mock_merge.return_value = MergeOutcome(ok=False, reason="unstable_ci: state=unstable", head_sha="sha123", path=PATH_REST_FALLBACK)
         mock_required.return_value = {"ci/test"}
         mock_ci.return_value = "running"
         mock_repo.enqueue_or_bump.return_value = enqueue_result  # is_first_deferral=False
@@ -285,7 +286,7 @@ async def test_run_auto_merge_skips_when_score_below_threshold():
     config = _config(auto_merge=True, merge_threshold=75)
 
     with patch("src.gate.engine.settings") as mock_settings, \
-         patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge, \
+         patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.merge_retry_repo") as mock_repo:
 
         mock_settings.merge_retry_enabled = True
@@ -312,7 +313,7 @@ async def test_run_auto_merge_skips_when_auto_merge_disabled():
     config = _config(auto_merge=False, merge_threshold=75)
 
     with patch("src.gate.engine.settings") as mock_settings, \
-         patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge, \
+         patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.merge_retry_repo") as mock_repo:
 
         mock_settings.merge_retry_enabled = True
@@ -371,7 +372,7 @@ async def test_run_auto_merge_terminal_when_ci_status_unknown():
     config = _config()
 
     with patch("src.gate.engine.settings") as mock_settings, \
-         patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge, \
+         patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
          patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main") as mock_base_ref, \
          patch("src.gate.engine.get_required_check_contexts", new_callable=AsyncMock) as mock_required, \
@@ -385,7 +386,7 @@ async def test_run_auto_merge_terminal_when_ci_status_unknown():
         mock_settings.telegram_chat_id = "-100123"
         mock_settings.telegram_bot_token = "123:ABC"
         mock_state.return_value = ("unknown", "sha123")
-        mock_merge.return_value = (False, "unstable_ci: state=unstable", "sha123")
+        mock_merge.return_value = MergeOutcome(ok=False, reason="unstable_ci: state=unstable", head_sha="sha123", path=PATH_REST_FALLBACK)
         mock_required.return_value = {"ci/test"}
         # CI 상태를 알 수 없음 → should_retry(unstable_ci, "unknown") = False
         # CI status unknown → should_retry(unstable_ci, "unknown") = False
@@ -414,7 +415,7 @@ async def test_run_auto_merge_no_analysis_id_skips_enqueue():
     config = _config()
 
     with patch("src.gate.engine.settings") as mock_settings, \
-         patch("src.gate.engine.native_enable_or_fallback", new_callable=AsyncMock) as mock_merge, \
+         patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
          patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main") as mock_base_ref, \
          patch("src.gate.engine.get_required_check_contexts", new_callable=AsyncMock) as mock_required, \
@@ -425,7 +426,7 @@ async def test_run_auto_merge_no_analysis_id_skips_enqueue():
 
         mock_settings.merge_retry_enabled = True
         mock_state.return_value = ("unknown", "sha123")
-        mock_merge.return_value = (False, "unstable_ci: CI 진행 중", "sha123")
+        mock_merge.return_value = MergeOutcome(ok=False, reason="unstable_ci: CI 진행 중", head_sha="sha123", path=PATH_REST_FALLBACK)
         mock_required.return_value = {"ci/test"}
         mock_ci.return_value = "running"
 
