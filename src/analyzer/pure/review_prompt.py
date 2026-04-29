@@ -24,21 +24,9 @@ _FIXED_TOKEN_OVERHEAD = 3000
 _CHARS_PER_TOKEN = 4  # rough approximation
 
 
-_PROMPT_HEADER = """\
-다음 변경사항(코드, 문서, 설정 파일 등)과 커밋 메시지를 분석하고 아래 JSON 형식으로만 응답하세요. 다른 텍스트는 포함하지 마세요.
-
-커밋 메시지:
-{commit_message}
-
-변경된 파일 목록:
-{filenames}
-
-감지된 언어:
-{detected_langs}
-
-{lang_guides}
-변경사항:
-{diff_text}
+_SYSTEM_PROMPT = """\
+당신은 GitHub 코드 변경사항을 평가하는 시니어 코드 리뷰 시스템입니다.
+사용자가 제공하는 커밋 메시지·파일 목록·diff 를 분석하고 아래 JSON 형식으로만 응답하세요. 다른 텍스트는 포함하지 마세요.
 
 채점 유의사항:
 - 일반적으로 양호한 코드/커밋은 15~18점 범위에 해당합니다.
@@ -46,8 +34,8 @@ _PROMPT_HEADER = """\
 - 0~5점은 명백히 잘못된 경우에만 부여하세요.
 - 점수를 지나치게 보수적으로 낮추지 마세요.
 
-다음 JSON만 응답 (추가 텍스트 없이):
-{{
+응답 JSON 형식 (추가 텍스트 없이):
+{
   "commit_message_score": <0~20 정수, 컨벤션 준수/명확성/변경범위 일치성>,
   "direction_score": <0~20 정수, 구현 방향성/패턴/설계 적합성>,
   "test_score": <0~10 정수, 아래 채점 기준 참고>,
@@ -59,9 +47,9 @@ _PROMPT_HEADER = """\
   "direction_feedback": "<구현 방향성 평가: 설계 패턴, 아키텍처 적합성, 확장성에 대한 피드백>",
   "test_feedback": "<테스트 평가: 테스트 존재 여부, 커버리지 충분성, 엣지케이스 포함 여부>",
   "file_feedbacks": [
-    {{"file": "<파일명>", "issues": ["<라인 N: 구체적 문제 설명과 수정 방법>"]}}
+    {"file": "<파일명>", "issues": ["<라인 N: 구체적 문제 설명과 수정 방법>"]}
   ]
-}}
+}
 
 test_score 채점 기준:
 - 10: 테스트 불필요 파일만 변경됨(.md, .cfg, .toml, .yml, .html, .json, Dockerfile, LICENSE 등) 또는 충분한 테스트 포함
@@ -69,6 +57,21 @@ test_score 채점 기준:
 - 4~6: 테스트 파일 수정이 있으나 새로운 코드에 대한 커버리지 부족
 - 1~3: 테스트가 필요하지만 미포함 (단순한 변경이라 심각하지 않음)
 - 0: 테스트가 반드시 필요한 코드 변경인데 테스트 전무"""
+
+
+_USER_PROMPT_TEMPLATE = """\
+커밋 메시지:
+{commit_message}
+
+변경된 파일 목록:
+{filenames}
+
+감지된 언어:
+{detected_langs}
+
+{lang_guides}
+변경사항:
+{diff_text}"""
 
 
 def detect_languages_from_patches(
@@ -128,15 +131,33 @@ def _build_lang_guides(languages: list[str], budget_chars: int) -> str:
     return "## 언어별 검토 기준\n" + "".join(parts) + "\n"
 
 
+def get_system_prompt() -> str:
+    """캐시 가능한 시스템 프롬프트 (정적, 모든 요청에 동일).
+
+    Anthropic prompt caching 의 cache_control 대상. ~600-800 tokens 으로
+    1024 token 최소 캐시 한도에 미달할 수 있어 ai_review.py 에서
+    cache_control 적용 시 길이 검증 권장 (현재는 시도 후 graceful fallback).
+    """
+    return _SYSTEM_PROMPT
+
+
 def build_review_prompt(
     commit_message: str,
     patches: list[tuple[str, str]],
     budget_tokens: int = 8000,
 ) -> tuple[str, list[str]]:
-    """언어-aware AI 리뷰 프롬프트를 생성한다.
+    """언어-aware AI 리뷰 사용자 프롬프트를 생성한다 (시스템 프롬프트 제외).
 
     Returns:
-        (prompt_str, detected_languages)
+        (user_prompt_str, detected_languages)
+
+    참고: 시스템 프롬프트(채점 가이드 + JSON 형식 명세)는 `get_system_prompt()` 로
+    별도 조회. ai_review.py 가 system 파라미터에 cache_control 을 적용하면
+    매 요청 시 ~600-800 tokens 의 입력 토큰 비용을 캐시 read 로 대체 가능
+    (정가 대비 90% 절감, Anthropic 가격 정책 기준).
+    Note: System prompt is fetched separately via `get_system_prompt()` so it
+    can be sent with `cache_control`, replacing ~600-800 input tokens with
+    cache reads at 1/10 the cost.
     """
     diff_text = "\n".join(
         f"--- {fname}\n{patch}" for fname, patch in patches
@@ -150,14 +171,14 @@ def build_review_prompt(
 
     detected_display = ", ".join(languages) if languages else "감지 안 됨"
 
-    prompt = _PROMPT_HEADER.format(
+    user_prompt = _USER_PROMPT_TEMPLATE.format(
         commit_message=commit_message or "(없음)",
         filenames=filenames or "(없음)",
         detected_langs=detected_display,
         lang_guides=lang_guides,
         diff_text=diff_text,
     )
-    return prompt, languages
+    return user_prompt, languages
 
 
 def has_test_files(patches: list[tuple[str, str]]) -> bool:
