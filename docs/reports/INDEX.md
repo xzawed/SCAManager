@@ -12,7 +12,7 @@
 | 단위 테스트 수·커버리지·pylint | [STATE.md 헤더](../STATE.md) |
 | 아키텍처·작업 규칙·주의사항 | [CLAUDE.md](../../CLAUDE.md) |
 | README 배지 | [README.md L21-25](../../README.md) |
-| 최신 작업 이력 | [STATE.md 그룹 51](../STATE.md) |
+| 최신 작업 이력 | [STATE.md 그룹 53](../STATE.md) |
 
 ---
 
@@ -42,6 +42,7 @@
 | 2026-04-26 | [doc-review-gate-retrospective](2026-04-26-doc-review-gate-retrospective.md) | 문서 심의 게이트 설계 결정 회고 |
 | 2026-04-26 | [quality-audit-and-tooling-retrospective](2026-04-26-quality-audit-and-tooling-retrospective.md) | 3-에이전트 교차 감사 + 500 에러 진단 + 툴링 안전장치 |
 | 2026-04-27 | [phase12-docs-overhaul-retrospective](2026-04-27-phase12-docs-overhaul-retrospective.md) | Phase 12 완료 + 문서 정비 — 병렬 에이전트 브랜치 충돌 교훈 |
+| 2026-04-29 | [phase4-test-coverage-retrospective](2026-04-29-phase4-test-coverage-retrospective.md) | Phase 4 Critical 테스트 갭 5 PR 회고 — +197 tests, src/ 변경 0, Quality Gate 5연속 OK |
 
 ---
 
