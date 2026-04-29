@@ -1,4 +1,14 @@
-"""AI code review using the Anthropic Claude API."""
+"""AI code review using the Anthropic Claude API.
+
+Tier 3 PR-A 후속 (Phase 1 PR #3) — Anthropic prompt caching 도입:
+시스템 프롬프트(채점 가이드 + JSON 형식 명세, ~600-800 tokens) 를
+`cache_control={"type": "ephemeral"}` 로 마크해 5분 캐시. 동일 시스템
+프롬프트가 5분 내 재사용되면 input 토큰 비용이 1/10 (cache read).
+
+Anthropic prompt caching adopted: the system prompt (~600-800 tokens)
+is marked `cache_control={"type": "ephemeral"}` so input cost drops 10× on
+cache hit (5-minute TTL).
+"""
 import json
 import logging
 import re
@@ -7,7 +17,7 @@ from dataclasses import dataclass, field
 
 import anthropic
 
-from src.analyzer.pure.review_prompt import build_review_prompt
+from src.analyzer.pure.review_prompt import build_review_prompt, get_system_prompt
 from src.config import settings
 from src.constants import AI_DEFAULT_COMMIT_RAW, AI_DEFAULT_DIRECTION_RAW, AI_RAW_COMMIT_MAX, AI_RAW_DIRECTION_MAX
 from src.shared.claude_metrics import extract_anthropic_usage, log_claude_api_call
@@ -56,21 +66,41 @@ async def review_code(
 
     client = anthropic.AsyncAnthropic(api_key=api_key)
     model = settings.claude_review_model
+    system_text = get_system_prompt()
     start = time.perf_counter()
     try:
+        # 시스템 프롬프트에 cache_control 적용 — 5분 ephemeral 캐시.
+        # 캐시 히트 시 입력 토큰 비용이 1/10. 동일 시스템 프롬프트가 5분 내
+        # 재사용되면 cache_read_input_tokens 로 카운트되어 큰 비용 절감.
+        # System prompt is marked with cache_control (ephemeral, 5-min TTL).
+        # On cache hit, input cost drops 10×; reuse within 5 min reads from cache.
         response = await client.messages.create(
             model=model,
             max_tokens=1500,
+            system=[
+                {
+                    "type": "text",
+                    "text": system_text,
+                    "cache_control": {"type": "ephemeral"},
+                },
+            ],
             messages=[{"role": "user", "content": prompt}],
         )
         duration_ms = (time.perf_counter() - start) * 1000
         input_tokens, output_tokens = extract_anthropic_usage(response)
+        # 캐시 토큰 추출 — 관측성용 (Anthropic 응답에 cache_*_input_tokens 필드 존재 시)
+        # Extract cache token counts when present in the response (observability)
+        usage = getattr(response, "usage", None)
+        cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
+        cache_creation = getattr(usage, "cache_creation_input_tokens", 0) or 0
         log_claude_api_call(
             model=model,
             duration_ms=duration_ms,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             status="success",
+            cache_read_tokens=cache_read,
+            cache_creation_tokens=cache_creation,
         )
         result = _parse_response(response.content[0].text)
         result.detected_languages = languages
