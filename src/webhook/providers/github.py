@@ -177,6 +177,10 @@ async def _handle_auto_merge_disabled_event(data: dict) -> dict:
     pr_number = pr.get("number")
     if not repo_name or pr_number is None:
         return {"status": "ignored"}
+    try:
+        pr_number_int = int(pr_number)
+    except (TypeError, ValueError):
+        return {"status": "ignored"}
 
     # GitHub payload 에 명시적 reason 필드 없음 — sender 기반 추론
     # GitHub payload has no explicit reason — infer from sender.
@@ -191,11 +195,11 @@ async def _handle_auto_merge_disabled_event(data: dict) -> dict:
 
     try:
         with SessionLocal() as db:
-            latest = merge_attempt_repo.find_latest_for_pr(db, repo_name, int(pr_number))
+            latest = merge_attempt_repo.find_latest_for_pr(db, repo_name, pr_number_int)
             if latest is None:
                 logger.info(
                     "auto_merge_disabled: no MergeAttempt row for %s pr=%d (skipped)",
-                    sanitize_for_log(repo_name), pr_number,
+                    sanitize_for_log(repo_name), pr_number_int,
                 )
                 return {"status": "ignored"}
             updated = merge_attempt_repo.mark_disabled_externally(
@@ -207,12 +211,12 @@ async def _handle_auto_merge_disabled_event(data: dict) -> dict:
                 logger.warning(
                     "merge_attempt %d: enabled_pending_merge → disabled_externally "
                     "(repo=%s, pr=%d, reason=%s)",
-                    latest.id, sanitize_for_log(repo_name), pr_number, inferred_reason,
+                    latest.id, sanitize_for_log(repo_name), pr_number_int, inferred_reason,
                 )
     except (SQLAlchemyError, KeyError, AttributeError) as exc:
         logger.warning(
             "auto_merge_disabled 전이 실패 (repo=%s, pr=%d): %s",
-            sanitize_for_log(repo_name), pr_number, type(exc).__name__,
+            sanitize_for_log(repo_name), pr_number_int, type(exc).__name__,
         )
         return {"status": "ignored"}
 
