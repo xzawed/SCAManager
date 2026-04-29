@@ -33,7 +33,6 @@ import httpx
 from src.gate.native_automerge import (
     PATH_NATIVE_ENABLE,
     PATH_NO_ATTEMPT,
-    PATH_REST_FALLBACK,
     enable_or_fallback,
     enable_or_fallback_with_path,
 )
