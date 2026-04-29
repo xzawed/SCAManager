@@ -111,7 +111,8 @@ src/
 │   ├── diff.py                 # get_pr_files, get_push_files
 │   ├── issues.py               # close_issue() — Issue 종료 API
 │   ├── repos.py                # list_user_repos(), create_webhook(), delete_webhook(), commit_scamanager_files()
-│   └── checks.py               # get_ci_status, get_required_check_contexts (5분 TTL 캐시, D2+D8 페이지네이션)
+│   ├── checks.py               # get_ci_status, get_required_check_contexts (5분 TTL 캐시, D2+D8 페이지네이션)
+│   └── graphql.py              # GraphQL POST 래퍼 + enablePullRequestAutoMerge mutation + EnableAutoMergeResult 분류 (Tier 3 PR-A)
 ├── railway_client/
 │   ├── models.py               # RailwayDeployEvent (3-그룹 nested) + RailwayProjectInfo + RailwayCommitInfo
 │   ├── webhook.py              # parse_railway_payload() — deploy 실패 이벤트 파싱
@@ -145,10 +146,11 @@ src/
 │   └── manager.py              # get_repo_config(), upsert_repo_config(), RepoConfigData
 ├── gate/
 │   ├── _common.py              # score_from_result() 공용 헬퍼 (engine 과 향후 actions 공유)
-│   ├── engine.py               # run_gate_check() — 3-옵션 독립 처리 (직접 구현)
-│   ├── github_review.py        # post_github_review(), merge_pr()
+│   ├── engine.py               # run_gate_check() — 3-옵션 독립 처리. Tier 3 PR-A 후 native_enable_or_fallback() 위임
+│   ├── github_review.py        # post_github_review(), merge_pr() (REST 폴백 경로)
+│   ├── native_automerge.py     # enable_or_fallback() — GraphQL enablePullRequestAutoMerge 우선 + REST merge_pr 폴백 (Tier 3 PR-A)
 │   ├── telegram_gate.py        # send_gate_request() — 인라인 키보드 메시지
-│   ├── merge_failure_advisor.py # get_advice(reason) — reason tag → 권장 조치 텍스트 (Phase F.3, 순수 함수)
+│   ├── merge_failure_advisor.py # get_advice(reason) — reason tag → 권장 조치 텍스트 (Phase F.3 + Tier 3 PR-A enable reason 4종)
 │   └── retry_policy.py         # 순수 함수: parse_reason_tag, should_retry, compute_next_retry_at, is_expired, mergeable_state_terminality
 ├── notifier/                   # `__init__.py` 가 import 시 각 채널 모듈 자동 로드 → REGISTRY 등록 (Phase S.3-E)
 │   ├── __init__.py             # 8개 notifier 모듈 import (등록 순서 = 발송 우선순위)
@@ -553,4 +555,4 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 
 ## 현재 상태
 
-최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1732개 | E2E 53개 | pylint 10.00 | 커버리지 95% | SonarCloud QG OK · Security A · Reliability A · Maintainability A · Tier1 정적분석 10종 · Observability (Sentry + Claude metrics + stage timing + MergeAttempt) · AI 점수 피드백 루프 · Settings Minimal Mode · Onboarding 3단계 튜토리얼 · 5-렌즈 감사 95+ 통과 · Phase F Quick Win + F.1/F.3 완료 · Phase G 완료 (P1-5건 수정) · Phase 9 자기 분석 루프 방지 완료 · Phase 10 Telegram 확장 완료 (cron + /stats·/connect 명령) · Phase 11 팀/멀티 리포 인사이트 완료 (author_trend + leaderboard + /insights 대시보드) · 툴링 안전장치 (testpaths + ORM-마이그레이션 완전성 검사 67개) · Phase 12 CI-aware Auto Merge 재시도 완료 (merge_retry_queue + check_suite 웹훅 + 1분 cron) · Settings UI/UX 리디자인 완료 (수신/발신 웹훅 분리 + 온보딩 배너) · Loop Guard Layer 3-b 화이트리스트 봇 한정 (PR #100 — `is_whitelisted_bot()` 헬퍼 + 사람 발신 무제한 통과)
+최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1757개 | E2E 53개 | pylint 10.00 | 커버리지 95% | SonarCloud QG OK · Security A · Reliability A · Maintainability A · Tier1 정적분석 10종 · Observability (Sentry + Claude metrics + stage timing + MergeAttempt) · AI 점수 피드백 루프 · Settings Minimal Mode · Onboarding 3단계 튜토리얼 · 5-렌즈 감사 95+ 통과 · Phase F Quick Win + F.1/F.3 완료 · Phase G 완료 (P1-5건 수정) · Phase 9 자기 분석 루프 방지 완료 · Phase 10 Telegram 확장 완료 (cron + /stats·/connect 명령) · Phase 11 팀/멀티 리포 인사이트 완료 (author_trend + leaderboard + /insights 대시보드) · 툴링 안전장치 (testpaths + ORM-마이그레이션 완전성 검사 67개) · Phase 12 CI-aware Auto Merge 재시도 완료 (merge_retry_queue + check_suite 웹훅 + 1분 cron) · Settings UI/UX 리디자인 완료 (수신/발신 웹훅 분리 + 온보딩 배너) · Loop Guard Layer 3-b 화이트리스트 봇 한정 (PR #100 — `is_whitelisted_bot()` 헬퍼 + 사람 발신 무제한 통과) · **Tier 3 PR-A 완료 (PR #103) — `enablePullRequestAutoMerge` GraphQL mutation + REST 폴백 (`src/gate/native_automerge.py`, `src/github_client/graphql.py`); 1주일 dogfooding 후 PR-B 에서 `merge_retry_service` 폐기 평가**
