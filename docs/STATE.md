@@ -80,6 +80,9 @@
 - pylint 10.00/10 유지, bandit HIGH 0
 - SonarCloud QG OK 유지 (테스트만 추가)
 
+**후속 fix (PR-T5 작성 중 발견)**:
+- **`fix/loop-guard-head-commit-none`** (머지 완료): `src/webhook/providers/github.py:281-289` 의 `_loop_guard_check` 가 `data.get("head_commit", {}).get("message")` 패턴 사용 — head_commit 키 값이 None 일 때 (브랜치 삭제 push 등) AttributeError. `(data.get("head_commit") or {}).get(...)` 으로 None 정규화. 회귀 방지 테스트 1건 추가, pylint 10.00 유지.
+
 **잔여 후속**:
 - **PR-B3**: 1주일 dogfooding 후 (~2026-05-06) `merge_retry_service` 폐기 평가. native auto-merge enable 후 GitHub 비동기 머지 신뢰성이 충분하면 retry queue 단순화 가능.
 
