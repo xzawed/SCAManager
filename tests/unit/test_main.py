@@ -131,6 +131,9 @@ def test_lifespan_warns_token_encryption_key_missing_in_prod(caplog):
         mock_settings.anthropic_api_key = "sk-ant-test-key"
         mock_settings.app_base_url = "https://scamanager.example.com"
         mock_settings.token_encryption_key = ""
+        # Phase 2: strict 모드 비활성 (기본값) — warning 만 출력
+        # Phase 2: strict mode disabled (default) — emits warning only
+        mock_settings.strict_token_encryption = False
         with caplog.at_level(_logging.WARNING, logger="src.main"):
             with TestClient(app):
                 pass
@@ -147,6 +150,7 @@ def test_lifespan_no_warning_token_encryption_key_set_in_prod(caplog):
         mock_settings.anthropic_api_key = "sk-ant-test-key"
         mock_settings.app_base_url = "https://scamanager.example.com"
         mock_settings.token_encryption_key = "some-valid-fernet-key-value"
+        mock_settings.strict_token_encryption = False
         with caplog.at_level(_logging.WARNING, logger="src.main"):
             with TestClient(app):
                 pass
@@ -163,8 +167,53 @@ def test_lifespan_no_warning_token_encryption_key_dev_env(caplog):
         mock_settings.anthropic_api_key = "sk-ant-test-key"
         mock_settings.app_base_url = "http://localhost:8000"
         mock_settings.token_encryption_key = ""
+        mock_settings.strict_token_encryption = False
         with caplog.at_level(_logging.WARNING, logger="src.main"):
             with TestClient(app):
                 pass
     assert not any("TOKEN_ENCRYPTION_KEY" in rec.message for rec in caplog.records), \
         "dev(http) 환경에서 TOKEN_ENCRYPTION_KEY 경고가 남았습니다"
+
+
+def test_lifespan_strict_mode_raises_when_key_missing_in_prod():
+    """Phase 2: STRICT_TOKEN_ENCRYPTION=true 이고 prod (https) + 키 미설정 시 lifespan 차단.
+    Phase 2: lifespan refuses to start when strict mode is on, prod env, and key empty.
+    """
+    import pytest
+    with patch("src.main._run_migrations"), \
+         patch("src.main.settings") as mock_settings:
+        mock_settings.session_secret = "test-session-secret-32-chars-long!"
+        mock_settings.anthropic_api_key = "sk-ant-test-key"
+        mock_settings.app_base_url = "https://scamanager.example.com"
+        mock_settings.token_encryption_key = ""
+        mock_settings.strict_token_encryption = True  # 신규 모드 활성
+        with pytest.raises(RuntimeError, match="STRICT_TOKEN_ENCRYPTION"):
+            with TestClient(app):
+                pass
+
+
+def test_lifespan_strict_mode_skipped_in_dev_env():
+    """Phase 2: dev (http) 환경에서는 strict 모드여도 차단 안 함 (prod 한정)."""
+    with patch("src.main._run_migrations"), \
+         patch("src.main.settings") as mock_settings:
+        mock_settings.session_secret = "test-session-secret-32-chars-long!"
+        mock_settings.anthropic_api_key = "sk-ant-test-key"
+        mock_settings.app_base_url = "http://localhost:8000"
+        mock_settings.token_encryption_key = ""
+        mock_settings.strict_token_encryption = True
+        # 차단 없이 정상 진행
+        with TestClient(app):
+            pass
+
+
+def test_lifespan_strict_mode_passes_when_key_set():
+    """Phase 2: strict 모드여도 키가 설정되어 있으면 정상 진행."""
+    with patch("src.main._run_migrations"), \
+         patch("src.main.settings") as mock_settings:
+        mock_settings.session_secret = "test-session-secret-32-chars-long!"
+        mock_settings.anthropic_api_key = "sk-ant-test-key"
+        mock_settings.app_base_url = "https://scamanager.example.com"
+        mock_settings.token_encryption_key = "valid-fernet-key"
+        mock_settings.strict_token_encryption = True
+        with TestClient(app):
+            pass

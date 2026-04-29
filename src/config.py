@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     # GitHub OAuth 토큰 Fernet 암호화 키 (없으면 평문 저장 — 운영환경 필수 설정)
     # 생성: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     token_encryption_key: str = ""
+    # 강한 모드 (Phase 2): True 면 prod (HTTPS) 환경에서 token_encryption_key 미설정 시
+    # lifespan startup 차단. False(기본) 는 backwards compatible warning 만 출력.
+    # Strict mode (Phase 2): when True, refuses to start in prod (HTTPS) without
+    # a token_encryption_key. Defaults to False for backwards-compatible warnings.
+    strict_token_encryption: bool = False
     n8n_webhook_secret: str = ""  # n8n 전송 HMAC 서명 시크릿 (빈 문자열이면 서명 생략)
     smtp_host: str = ""
     smtp_port: int = 587

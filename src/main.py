@@ -65,13 +65,29 @@ async def lifespan(_app: FastAPI):
         )
     is_prod_like = settings.app_base_url.startswith("https")
     if is_prod_like and not (settings.token_encryption_key or "").strip():
-        logger.warning(
+        # Phase 2 — opt-in fail-fast: 14-에이전트 감사에서 P1 보안 위험으로 식별
+        # (DB 유출 시 모든 GitHub OAuth token + Railway API token 평문 노출).
+        # 기본값은 backwards compatible warning 유지. 운영자가 명시적으로
+        # `STRICT_TOKEN_ENCRYPTION=true` 설정 시 lifespan startup 차단.
+        # Phase 2 — opt-in fail-fast: flagged P1 by the 14-agent audit (DB leak
+        # would expose every OAuth token in plaintext). Default behavior keeps
+        # the legacy warning for backwards compatibility; setting
+        # `STRICT_TOKEN_ENCRYPTION=true` makes lifespan startup abort instead.
+        warning_msg = (
             "SECURITY: TOKEN_ENCRYPTION_KEY is not set in production "
-            "(APP_BASE_URL=%s). GitHub OAuth tokens will be stored in plaintext. "
-            "Generate with: python -c \"from cryptography.fernet import Fernet; "
-            "print(Fernet.generate_key().decode())\"",
-            settings.app_base_url,
+            f"(APP_BASE_URL={settings.app_base_url}). GitHub OAuth tokens will be "
+            "stored in plaintext. Generate with: python -c \"from cryptography.fernet "
+            "import Fernet; print(Fernet.generate_key().decode())\""
         )
+        if settings.strict_token_encryption:
+            logger.error(
+                "STRICT_TOKEN_ENCRYPTION=true and TOKEN_ENCRYPTION_KEY is missing — "
+                "refusing to start. %s", warning_msg,
+            )
+            raise RuntimeError(
+                "TOKEN_ENCRYPTION_KEY required when STRICT_TOKEN_ENCRYPTION=true"
+            )
+        logger.warning("%s", warning_msg)
     init_sentry()  # Sentry SDK — SENTRY_DSN 설정 시만 활성
     try:
         await asyncio.wait_for(asyncio.to_thread(_run_migrations), timeout=30)
