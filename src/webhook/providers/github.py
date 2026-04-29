@@ -275,9 +275,15 @@ def _loop_guard_check(data: dict) -> dict | None:
         return {"status": "skipped", "reason": "self_analysis_disabled"}
 
     full_name = data.get("repository", {}).get("full_name", "")
+    # GitHub 페이로드의 head_commit / pull_request 키가 존재하면서 값이 None 일 수
+    # 있다 (예: 브랜치 삭제 push). 이때 .get(default) 는 None 을 반환하므로 후행
+    # .get(...) 체이닝이 NPE — `or {}` 로 None 을 빈 dict 로 정규화.
+    # GitHub may send head_commit / pull_request as None (e.g. branch-delete push).
+    # `.get(default)` returns None in that case, so `.get(...)` chaining NPEs.
+    # Normalize None to an empty dict via `or {}`.
     commit_msg = (
-        data.get("head_commit", {}).get("message", "")
-        or data.get("pull_request", {}).get("title", "")
+        (data.get("head_commit") or {}).get("message", "")
+        or (data.get("pull_request") or {}).get("title", "")
         or ""
     )
 
