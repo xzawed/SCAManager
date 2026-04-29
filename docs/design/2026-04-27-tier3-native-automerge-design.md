@@ -249,3 +249,6 @@ ORM 변경:
 - [GraphQL Mutation `enablePullRequestAutoMerge`](https://docs.github.com/en/graphql/reference/mutations#enablepullrequestautomerge)
 - 사고 회고: PR #98/#100 (Loop Guard 사고 → Tier 분석 → Tier 3 도출)
 - 선행 PR: #93 (BPR 미설정 큐잉), #97 (BPR base ref 동적), #100 (Loop Guard 봇 한정)
+
+> **Audit roundtrip test 2** (2026-04-29) — 자동 처리 일관성 검증.
+
