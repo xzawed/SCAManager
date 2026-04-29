@@ -2,11 +2,12 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-29 기준 — Tier 3 PR-A native auto-merge 완료 + 14-에이전트 감사)
+## 현재 수치 (2026-04-29 기준 — Phase 4 Critical 테스트 갭 5 PR 완료)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1757개** | pytest 9.0.3 (0 failed, 5 skipped — 3 Postgres-gated + 2 pre-existing) — 2026-04-29 로컬 실측. PR #103 (Tier 3 PR-A) +25 추가 (test_graphql 15 + test_native_automerge 10) |
+| 단위 테스트 | **1931개** | pytest 9.0.3 (0 failed, 5 skipped) — Phase 4 PR-T1~T4 +172 (analyzer/tools 55 + ai_review_errors 20 + scorer_edges 31 + engine_guards 15 + pipeline_helpers 11 + merge_retry_helpers 16 + pr_a_scenarios 24) |
+| 통합 테스트 | **72개** | tests/integration/ — Phase 4 PR-T5 +25 (e2e_pipeline_scenarios — webhook→pipeline→gate 종단간) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
@@ -49,6 +50,40 @@
 | `tests/conftest.py` | 환경변수 주입 + _webhook_secret_cache autouse 클리어 |
 
 ## 작업 이력 (그룹별)
+
+### 그룹 53 (2026-04-29 · Phase 4 Critical 테스트 갭 5 PR — 14-에이전트 감사 R1-B 후속)
+
+**목표**: 14-에이전트 감사 R1-B 가 식별한 "단위 테스트 커버리지 사각지대" 8개 영역(분석기/AI review 에러/scorer 엣지/엔진 가드/파이프라인 헬퍼/services 헬퍼/PR-A 시나리오/E2E 통합) 에 대해 5개 PR 시리즈로 테스트를 보강.
+
+**5개 PR 결과**:
+
+| PR | 브랜치 | 신규 테스트 | 누적 단위 |
+|----|----|----|----|
+| **PR-T1** | `test/phase4-t1-critical-coverage` | +106 (analyzer/tools/python 55 + ai_review_errors 20 + scorer/calculator_edges 31) | 1864 → 1970 |
+| **PR-T2** | `test/phase4-t2-defensive-guards` | +26 (engine_defensive_guards 15 + pipeline_extract_helpers 11) | 1970 → 1996 |
+| **PR-T3** | `test/phase4-t3-merge-retry-service` | +16 (merge_retry_service_helpers — _resolve_github_token, _get_pr_data, _notify_*, _create_failure_issue_safe) | 1996 → 2012 |
+| **PR-T4** | `test/phase4-t4-pr-a-scenarios` | +24 (pr_a_scenarios — 이중 enable PR-B2 가드 / force-push detail rstrip / merge_method 전파) | 2012 → 2036 |
+| **PR-T5** | `test/phase4-t5-e2e-integration` | +25 통합 (e2e_pipeline_scenarios — webhook→pipeline→gate 25 시나리오) | 통합 47 → 72 |
+| **합계** | | **+197** | **2003 (단위 1931 + 통합 72)** |
+
+**검증 영역** (PR별 핵심 시나리오):
+- PR-T1: pylint/flake8/bandit subprocess 호출, AI review httpx ConnectError/Timeout/RuntimeError 폴백, _extract_json_payload codeblock/preamble, _parse_response clamp, calculate_grade 모든 경계(44/45/59/60/74/75/89/90), CQ_WARNING_CAP=25 경계
+- PR-T2: get_pr_mergeable_state HTTPError → head_sha="" 폴백, RuntimeError/ValueError outer catch, _enqueue_merge_retry 의 db=None 가드, log_merge_attempt 격리, _notify_merge_deferred chat_id/bot_token/HTML escape, _extract_commit_message 11개 분기
+- PR-T3: _resolve_github_token user 토큰 우선 / settings fallback / 빈 토큰 fallback, _get_pr_data success / ConnectError / 4xx, _get_ci_status_safe HTTPError 분기, 알림 헬퍼 chat_id/bot_token guard + HTML escape
+- PR-T4: _classify_graphql_errors 빈 errors / type-only / 대소문자 / 'already' 단독은 NOT idempotent / first error only, REBASE/MERGE method, 401/422 분류, errors+data 동시 → errors 우선, 이중 enable 시 merge_pr 미호출 (PR-B2 핵심), force-push detail=None rstrip, expected_sha="" → get_pr_mergeable_state
+- PR-T5: PR closed/labeled/reopened 분기, 알 수 없는 봇 차단, [skip ci]/[skip-sca] 마커, author_login PR/push 양 경로, result dict 키 모두 / source 'pr'/'push', empty body title-only, 동일 SHA 멱등성, multi-repo 독립 처리, 헤더 누락 401, malformed JSON, synchronize 새 SHA → 새 Analysis, pr_head_ref 전달
+
+**검증 (2026-04-29)**:
+- `make test-isolated` → 1999 passed, 5 skipped (env 격리 환경)
+- 신규 테스트 파일 8종 (단위 7 + 통합 1) — src/ 변경 0
+- 사전 실패 3건은 main 동일 (PR-T2 PR-T4 외 무관)
+- pylint 10.00/10 유지, bandit HIGH 0
+- SonarCloud QG OK 유지 (테스트만 추가)
+
+**잔여 후속**:
+- **PR-B3**: 1주일 dogfooding 후 (~2026-05-06) `merge_retry_service` 폐기 평가. native auto-merge enable 후 GitHub 비동기 머지 신뢰성이 충분하면 retry queue 단순화 가능.
+
+---
 
 ### 그룹 52 (2026-04-29 · Tier 3 PR-A native auto-merge + Loop Guard 봇 한정 + 14-에이전트 감사 — PR #98/#100/#102/#103/#106)
 
