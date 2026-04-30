@@ -28,6 +28,7 @@
 | 2026-04-23 | [sonarcloud-baseline](2026-04-23-sonarcloud-baseline.md) | SonarCloud 1차 분석 + 청산 계획 |
 | 2026-04-23 | [structure-audit-3agent](2026-04-23-structure-audit-3agent.md) | 프로젝트 구조 3-에이전트 감사 |
 | 2026-04-24 | [comprehensive-audit](2026-04-24-comprehensive-audit.md) | 14 에이전트 × 3 Round 전면 감사 (P1 7건, G Phase 착수) |
+| 2026-04-30 | [12agent-comprehensive-audit](2026-04-30-12agent-comprehensive-audit.md) | 12 에이전트 × 2 Round 종합 감사 (Critical 10건, Phase H+I 6 PR / 36h 로드맵) |
 | 2026-04-25 | [static-analysis-baseline](2026-04-25-static-analysis-baseline.md) | G.6 병렬화 Go/No-Go 기준선 |
 | 2026-04-26 | 3-에이전트 교차 감사 (PR #73) | 문서 불일치 9건 수정 — STATE.md 그룹 44 참조 |
 
