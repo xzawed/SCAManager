@@ -64,7 +64,11 @@ async def review_code(
     if not diff_text.strip():
         return _default_result("empty_diff")
 
-    client = anthropic.AsyncAnthropic(api_key=api_key)
+    # Anthropic SDK 기본 timeout=600s 는 BackgroundTask 슬롯을 10분 점유 위험.
+    # HTTP_CLIENT_TIMEOUT 보다 여유 두고 60s 로 설정 — 평균 응답 5-15s 대비 충분.
+    # Default SDK timeout (600s) can occupy a BackgroundTask slot for 10 min.
+    # Set 60s — well above the typical 5-15s response, far below SDK default.
+    client = anthropic.AsyncAnthropic(api_key=api_key, timeout=60.0)
     model = settings.claude_review_model
     system_text = get_system_prompt()
     start = time.perf_counter()

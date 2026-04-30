@@ -279,3 +279,36 @@ def test_default_result_neutral_scores():
         assert result.ai_score == 17
         assert result.test_score == 7
         assert result.summary  # 비어있지 않음
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# 회귀 방지 — Phase H PR-1A: anthropic.AsyncAnthropic timeout 명시 전달
+# Regression guard — Phase H PR-1A: AsyncAnthropic timeout kwarg passed
+# ──────────────────────────────────────────────────────────────────────────
+
+
+async def test_review_code_passes_explicit_timeout_to_anthropic_client():
+    """Anthropic SDK hang 방어 — AsyncAnthropic 인스턴스화 시 timeout 명시.
+
+    SDK 기본 timeout=600초 — Claude API hang 시 BackgroundTask 슬롯 10분
+    점유 → 다른 webhook 분석 큐잉 정체. 명시적 timeout 으로 차단.
+    """
+    response_obj = MagicMock()
+    response_obj.content = [MagicMock(text='{"summary": "ok"}')]
+    response_obj.usage = MagicMock(input_tokens=10, output_tokens=20)
+    fake_client = MagicMock()
+    fake_client.messages.create = AsyncMock(return_value=response_obj)
+
+    captured_kwargs = {}
+
+    def _capture_init(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+        return fake_client
+
+    with patch("src.analyzer.io.ai_review.anthropic.AsyncAnthropic", side_effect=_capture_init):
+        await review_code("sk-test", "feat: x", [("a.py", "+ x = 1")])
+
+    assert "timeout" in captured_kwargs, "AsyncAnthropic 인스턴스화에 timeout 인자 필수"
+    timeout_val = captured_kwargs["timeout"]
+    assert isinstance(timeout_val, (int, float))
+    assert 0 < timeout_val <= 120  # SDK 600초 default 보다 훨씬 짧아야 함
