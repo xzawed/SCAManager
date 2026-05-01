@@ -265,3 +265,37 @@ def test_lifespan_warmup_ping_handles_failure_silently(caplog):
         "GitHub API warm-up ping skipped" in rec.message
         for rec in caplog.records
     ), "warmup 실패 INFO 로그가 남지 않았습니다"
+
+
+# --- PR-4 G1: StaticFiles `/static/vendor/chart.umd.min.js` 200 응답 가드 ---
+# UI 감사 Step C 회귀 가드 — Chart.js vendoring 이 정상 마운트됐는지 확인
+# UI audit Step C regression guard — verify Chart.js is correctly mounted
+
+def test_static_chartjs_returns_200(client):
+    """StaticFiles `/static/vendor/chart.umd.min.js` 가 200 + JS Content-Type 반환.
+    Verify vendored Chart.js is served successfully.
+
+    회귀 위험: src/main.py 의 app.mount('/static', StaticFiles(...)) 가 실수로
+    제거되거나 src/static/vendor/chart.umd.min.js 가 git history 에서 사라질 때 차단.
+    Regression guard: blocks accidental removal of mount or vendored asset.
+    """
+    response = client.get("/static/vendor/chart.umd.min.js")
+    assert response.status_code == 200, (
+        f"Chart.js vendored 자원 응답 실패: {response.status_code} "
+        f"— src/main.py StaticFiles mount 또는 src/static/vendor/chart.umd.min.js 누락"
+    )
+    # 파일 크기 sanity check (Chart.js 4.4.0 UMD min 약 200KB)
+    # File size sanity check (~200KB for Chart.js 4.4.0 UMD min)
+    assert len(response.content) > 100_000, (
+        f"Chart.js 파일 크기 비정상: {len(response.content)} bytes (200KB+ 기대)"
+    )
+    # UMD 시그니처 확인 — 첫 부분에 Chart.js 라이선스 주석 포함
+    # UMD signature check — Chart.js license header in the first bytes
+    head = response.content[:200]
+    assert b"Chart.js" in head, "Chart.js UMD 시그니처 누락 — 다른 파일이 마운트됨"
+
+
+def test_static_missing_file_returns_404(client):
+    """존재하지 않는 static 자원은 404 반환 (graceful)."""
+    response = client.get("/static/vendor/nonexistent.js")
+    assert response.status_code == 404
