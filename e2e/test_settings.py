@@ -1,5 +1,4 @@
 """E2E — 설정 페이지 테스트."""
-import pytest
 
 SETTINGS_URL = "/repos/owner%2Ftestrepo/settings"
 
