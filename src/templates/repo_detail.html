@@ -15,14 +15,14 @@
     color: var(--text-primary);
     font-family: 'Menlo', 'Consolas', monospace;
   }
-  /* Step E (E2): chart-card 명시 height — maintainAspectRatio:false 와 페어
-     Step E (E2): explicit height paired with maintainAspectRatio:false (no mobile squish) */
+  /* Step E (E2) + PR-3 F1: chart-card 명시 height — viewport 비례 clamp 로 데스크탑/모바일 양쪽 적정
+     Step E + PR-3 F1: viewport-relative clamp keeps chart legible on both desktop and mobile */
   .chart-card {
     padding: 1.25rem 1.5rem;
   }
   .chart-card .chart-wrap-inner {
     position: relative;
-    height: 200px;
+    height: clamp(200px, 30vw, 320px);
   }
   .chart-label {
     font-size: 11px;
@@ -322,7 +322,11 @@
     const accent  = s.getPropertyValue('--accent').trim()  || '#6366f1';
     const muted   = s.getPropertyValue('--text-muted').trim() || '#64748b';
     const border  = s.getPropertyValue('--border').trim()  || '#2d3748';
-    return { accent, muted, border };
+    /* PR-3 F3: tooltip 색을 테마 토큰에서 동적 read — 라이트/claude-dark 부조화 해소
+       PR-3 F3: dynamic tooltip colors from theme tokens (light + claude-dark harmony) */
+    const tipBg   = s.getPropertyValue('--bg-card').trim() || '#1c1c23';
+    const tipText = s.getPropertyValue('--text-primary').trim() || '#e2e2e8';
+    return { accent, muted, border, tipBg, tipText };
   }
 
   let chart;
@@ -368,9 +372,11 @@
         plugins: {
           legend: { display: false },
           tooltip: {
-            backgroundColor: 'rgba(0,0,0,0.75)',
-            titleColor: '#fff',
-            bodyColor: '#e2e8f0',
+            backgroundColor: getThemeColors().tipBg,
+            titleColor: getThemeColors().tipText,
+            bodyColor: getThemeColors().tipText,
+            borderColor: getThemeColors().border,
+            borderWidth: 1,
             padding: 10,
             cornerRadius: 8
           }
