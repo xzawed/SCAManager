@@ -8,6 +8,7 @@ import httpx
 
 from src.constants import GITHUB_API
 from src.shared.http_client import get_http_client
+from src.shared.log_safety import sanitize_for_log
 
 logger = logging.getLogger(__name__)
 
@@ -265,5 +266,8 @@ async def commit_scamanager_files(
 
         return True
     except httpx.HTTPError as exc:
-        logger.warning("commit_scamanager_files 실패 (%s): %s", repo_full_name, exc)
+        logger.warning(
+            "commit_scamanager_files 실패 (%s): %s",
+            sanitize_for_log(repo_full_name), exc,
+        )
         return False
