@@ -1748,3 +1748,145 @@ def test_telegram_connected_status_hides_otp_button():
         # 다른 테스트에 영향을 주지 않도록 오버라이드 복원
         # Restore the override so other tests are not affected.
         app.dependency_overrides[require_login] = lambda: _test_user
+
+
+# ── PR-4 G2/G3: UI 감사 사이클 회귀 가드 ──────────────────────────────
+# Step A~E 핵심 변경이 향후 회귀로 사라지지 않도록 source-grep 어셔션 추가
+# Source-grep guards so Step A~E key changes don't silently regress
+
+from pathlib import Path  # noqa: E402
+
+_TEMPLATES_DIR = Path(__file__).resolve().parents[3] / "src" / "templates"
+
+
+def _read_template(name: str) -> str:
+    """템플릿 파일 내용 반환 — grep 기반 회귀 가드 헬퍼."""
+    return (_TEMPLATES_DIR / name).read_text(encoding="utf-8")
+
+
+def test_phantom_token_aliases_in_root():
+    """PR #169 cleanup 회귀 가드 — :root 에 환각 토큰 alias 5종 보존.
+
+    --bg-hover / --card-bg / --text (Step A) +
+    --accent-blue / --c-warning (PR-1 cleanup) 이 base.html :root 에 정의돼야.
+    """
+    base = _read_template("base.html")
+    for token in ("--bg-hover:", "--card-bg:", "--text:", "--accent-blue:", "--c-warning:"):
+        assert token in base, f"환각 토큰 alias {token} 가 base.html :root 에서 누락"
+
+
+def test_warning_token_defined_in_all_themes():
+    """PR #167 회귀 가드 — --warning 토큰이 4-테마 모두에 정의."""
+    base = _read_template("base.html")
+    assert base.count("--warning:") >= 3, (
+        f"--warning 토큰 정의가 부족 (3개 이상 기대 — dark/light/glass): "
+        f"{base.count('--warning:')}회"
+    )
+
+
+def test_claude_dark_settings_tokens_defined():
+    """PR #169 cleanup 회귀 가드 — claude-dark 의 settings 페이지 토큰 8종.
+
+    --grad-gate/merge/notify/hook + --title-gradient + --btn-gate-active-* +
+    --save-btn-* + --hint-* + --hook-btn-* 가 claude-dark 블록에 있어야.
+    """
+    base = _read_template("base.html")
+    # claude-dark 블록 안에서 --grad-gate 정의 확인
+    cd_idx = base.find('body[data-theme="claude-dark"]')
+    assert cd_idx != -1, "claude-dark 블록 누락"
+    cd_block_end = base.find("}", cd_idx + 100)  # 대략적 블록 끝
+    cd_block = base[cd_idx:cd_block_end + 200]  # 약간 여유
+    for token in ("--grad-gate:", "--save-btn-bg:", "--hint-bg:", "--hook-btn-tx:"):
+        assert token in cd_block, (
+            f"claude-dark 블록에 {token} 누락 — settings 페이지 시각 깨짐 위험"
+        )
+
+
+def test_chart_vendoring_no_jsdelivr_chartjs():
+    """PR #166 회귀 가드 — Chart.js CDN 참조가 어떤 템플릿에도 잔존하지 않아야."""
+    for tpl in ("repo_detail.html", "analysis_detail.html", "insights_me.html"):
+        content = _read_template(tpl)
+        assert "cdn.jsdelivr.net/npm/chart.js" not in content, (
+            f"{tpl} 에 jsdelivr Chart.js CDN 잔존 — vendoring 회귀"
+        )
+        assert "/static/vendor/chart.umd.min.js" in content, (
+            f"{tpl} 에 vendored Chart.js 참조 누락"
+        )
+
+
+def test_chart_aspect_ratio_false():
+    """PR #168 + PR-3 회귀 가드 — Chart.js maintainAspectRatio:false + chart-wrap-inner."""
+    for tpl in ("repo_detail.html", "analysis_detail.html"):
+        content = _read_template(tpl)
+        assert "maintainAspectRatio: false" in content, (
+            f"{tpl} 의 maintainAspectRatio:false 회귀"
+        )
+        assert "chart-wrap-inner" in content, (
+            f"{tpl} 의 chart-wrap-inner 컨테이너 누락"
+        )
+        assert "clamp(200px" in content, (
+            f"{tpl} 의 chart-wrap-inner clamp 회귀 (PR-3 F1)"
+        )
+
+
+def test_nav_login_guard():
+    """PR #168 E1 회귀 가드 — base.html nav 햄버거 + 링크가 {% if current_user %} 안.
+
+    비로그인 시 햄버거/Overview/Insights 링크 시각 노출 회피.
+    """
+    base = _read_template("base.html")
+    # 햄버거 버튼 마크업 (CSS 정의가 아닌 실제 <button id="navHamburger">) 직전에 가드
+    # Hamburger button markup (not the CSS rule) must be wrapped in {% if current_user %}
+    ham_idx = base.find('id="navHamburger"')
+    assert ham_idx != -1, "navHamburger 마크업 누락"
+    preceding = base[max(0, ham_idx - 300):ham_idx]
+    assert "{% if current_user %}" in preceding, (
+        "navHamburger 마크업 직전에 {% if current_user %} 가드 누락 — 비로그인 시 노출"
+    )
+
+
+def test_chip_a11y_sr_only_pattern():
+    """PR #168 E4 회귀 가드 — insights chip 의 sr-only 패턴 + focus-within outline."""
+    insights = _read_template("insights.html")
+    # display:none 이 chip-label input 에 잔존하면 안 됨
+    assert ".chip-label input[type=checkbox] { display:none" not in insights, (
+        "chip-label input 에 display:none 회귀 (a11y 깨짐)"
+    )
+    # sr-only 패턴 (position:absolute + opacity:0) 와 focus-within outline 존재
+    assert "position: absolute;" in insights and "clip: rect(0 0 0 0)" in insights, (
+        "chip-label sr-only 패턴 누락"
+    )
+    assert ".chip-label:focus-within" in insights, (
+        "chip-label focus-within outline 누락"
+    )
+
+
+def test_btn_disabled_extended_selectors():
+    """PR-3 F2 회귀 가드 — .btn:disabled selector 가 자체 button 클래스 커버."""
+    base = _read_template("base.html")
+    for cls in ("button:disabled.fb-btn", "button:disabled.nav-btn",
+                "button:disabled.gate-mode-btn", "button:disabled.hook-btn"):
+        assert cls in base, (
+            f".btn:disabled selector 에서 {cls} 누락 — disabled 시각 비일관"
+        )
+
+
+def test_safe_area_inset_in_nav_and_container():
+    """Step A S4 회귀 가드 — nav / .container 에 safe-area-inset 적용."""
+    base = _read_template("base.html")
+    assert "env(safe-area-inset-left)" in base, "safe-area-inset-left 미사용"
+    assert "env(safe-area-inset-right)" in base, "safe-area-inset-right 미사용"
+    assert "env(safe-area-inset-bottom" in base, "safe-area-inset-bottom 미사용"
+
+
+def test_settings_field_input_mobile_16px():
+    """PR #169 C4 회귀 가드 — settings.html 모바일 .field-input { font-size: 16px } (iOS 줌인 방지)."""
+    settings = _read_template("settings.html")
+    # 모바일 분기 안에 .field-input 16px 정의 존재
+    mobile_idx = settings.find("@media(max-width:639px)")
+    assert mobile_idx != -1, "모바일 분기 (@media max-width:639px) 누락"
+    block_end = settings.find("@media(min-width:640px)", mobile_idx)
+    mobile_block = settings[mobile_idx:block_end if block_end != -1 else mobile_idx + 1000]
+    assert ".field-input { font-size: 16px;" in mobile_block, (
+        "settings.html 모바일 분기에 .field-input 16px 누락 (iOS Safari 줌인 방지)"
+    )
