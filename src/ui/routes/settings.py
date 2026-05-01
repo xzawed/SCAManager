@@ -10,6 +10,8 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from dataclasses import fields as dataclass_fields
+
 from src.auth.session import CurrentUser, require_login
 from src.config_manager.manager import RepoConfigData, get_repo_config, upsert_repo_config
 from src.database import SessionLocal
@@ -119,6 +121,33 @@ async def _detect_stale_webhook(
         return False
 
 
+# 단순 모드에서 그대로 노출되는 핵심 필드 4개 (+ Telegram OTP 는 user 글로벌이라 별도)
+# 4 core fields exposed in simple mode (Telegram OTP is user-global, handled separately)
+_SIMPLE_MODE_FIELDS = frozenset({
+    "notify_chat_id", "pr_review_comment", "auto_merge", "merge_threshold",
+})
+
+
+def _detect_initial_mode(config: RepoConfigData, railway_api_token_set: bool) -> str:
+    """단순 모드 노출 5개 핵심 필드 외에 사용자가 한 번이라도 비-기본값으로 저장한 흔적이 있으면 'advanced' 반환.
+    Return 'advanced' when any non-simple-mode field carries a non-default value.
+
+    이 신호는 클라이언트의 localStorage 가 비어있을 때만 사용되는 server fallback.
+    `data-initial-mode` 속성으로 템플릿에 내려가고, JS `initSettingsMode()` 가 우선순위를
+    localStorage > data-initial-mode > 'simple' 순으로 적용한다.
+    """
+    default = RepoConfigData(repo_full_name=config.repo_full_name)
+    for field in dataclass_fields(RepoConfigData):
+        name = field.name
+        if name == "repo_full_name" or name in _SIMPLE_MODE_FIELDS:
+            continue
+        if getattr(config, name) != getattr(default, name):
+            return "advanced"
+    if railway_api_token_set:
+        return "advanced"
+    return "simple"
+
+
 @router.get("/repos/{repo_name:path}/settings", response_class=HTMLResponse)
 async def repo_settings(  # pylint: disable=too-many-positional-arguments,too-many-locals
     request: Request,
@@ -158,6 +187,10 @@ async def repo_settings(  # pylint: disable=too-many-positional-arguments,too-ma
         not current_user.is_telegram_connected
     )
 
+    # 사용자 신호 기반 초기 모드 판정 — localStorage 가 비어있을 때만 fallback 으로 사용됨
+    # User-signal initial-mode detection — used as fallback only when localStorage is empty
+    initial_mode = _detect_initial_mode(config, railway_api_token_set)
+
     return templates.TemplateResponse(request, "settings.html", {
         "repo_name": repo_name, "config": config,
         "hook_ok": bool(hook_ok), "hook_fail": bool(hook_fail),
@@ -167,6 +200,7 @@ async def repo_settings(  # pylint: disable=too-many-positional-arguments,too-ma
         "railway_api_token_set": railway_api_token_set,
         "webhook_stale": webhook_stale,
         "onboarding_needed": onboarding_needed,
+        "initial_mode": initial_mode,
     })
 
 

@@ -170,21 +170,24 @@ def test_settings_new_card_structure_present():
     """새 카드 헤더 텍스트 확인 + 구 카드 헤더 부재 확인.
     Verify new card header text is present and old card headers are gone.
 
-    Phase 2A Step A: 카드 ③ Push/배포 + ④ 알림 채널 → '알림 & 배포' 단일 카드 통합.
-    Phase 2A Step A: cards ③ Push/Deploy + ④ Notify channels merged into 'Notify & Deploy'.
+    Phase 2A Progressive 재설계: 카드명 의도 기반 갱신 (W2 수신/발신 분리 명시).
+    Phase 2A Progressive redesign: card names updated (W2 inbound/outbound split).
     """
     resp = _settings_get(stale=False)
     assert resp.status_code == 200
-    # 새 카드 이름이 있어야 함
-    assert "분석 동작 규칙" in resp.text
-    assert "알림 &amp; 배포" in resp.text
-    assert "통합 &amp; 연결" in resp.text
-    # 구 카드 이름이 없어야 함
+    # 새 카드 이름이 있어야 함 / New card names must be present
+    assert "PR 동작 규칙" in resp.text
+    assert "알림 채널 (발신)" in resp.text
+    assert "이벤트 후 자동화" in resp.text
+    assert "통합 &amp; 인증 (수신)" in resp.text
+    assert "위험 구역" in resp.text
+    # 구 카드명은 더 이상 존재하지 않아야 함 / Old card names must be gone
+    assert "분석 동작 규칙" not in resp.text
+    assert "알림 발신 채널" not in resp.text
+    assert "통합 &amp; 연결" not in resp.text
+    assert "Push / 배포 이벤트" not in resp.text
     assert "이벤트 후 피드백" not in resp.text
     assert "시스템 &amp; 토큰" not in resp.text
-    # Phase 2A Step A 통합 후 사라져야 할 구 카드명 / Old card names removed by Step A merge
-    assert "알림 발신 채널" not in resp.text
-    assert "Push / 배포 이벤트" not in resp.text
 
 
 def test_settings_all_form_fields_present_after_restructure():

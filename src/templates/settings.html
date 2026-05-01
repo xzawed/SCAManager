@@ -245,35 +245,8 @@
   @keyframes toastIn  { from { opacity:0; transform:translateX(-50%) translateY(-10px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
   @keyframes toastOut { from { opacity:1; } to { opacity:0; pointer-events:none; } }
 
-  /* 고급 설정 아코디언 */
-  .advanced-details {
-    margin-bottom:1rem;
-    border:1.5px solid var(--border); border-radius:var(--radius-card);
-    background:var(--bg-card); box-shadow:var(--shadow-card); overflow:hidden;
-    transition:border-color var(--transition), box-shadow var(--transition);
-  }
-  .advanced-details[open] {
-    border-color:var(--accent);
-    box-shadow:0 0 0 3px rgba(99,102,241,.1), var(--shadow-card);
-  }
-  body[data-theme="glass"] .advanced-details { backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px); }
-  .advanced-summary {
-    list-style:none; cursor:pointer; user-select:none;
-    padding:.8rem 1.1rem; display:flex; align-items:center; gap:.55rem;
-    font-size:13px; font-weight:700; color:var(--text-primary);
-    transition:background var(--transition);
-  }
-  .advanced-summary::-webkit-details-marker { display:none; }
-  .advanced-summary .adv-icon { font-size:16px; }
-  .advanced-summary .adv-hint { font-size:11px; font-weight:500; color:var(--text-muted); margin-left:.5rem; }
-  .advanced-summary::after {
-    content:'▼'; font-size:10px; color:var(--text-muted);
-    margin-left:auto; transition:transform var(--transition);
-  }
-  .advanced-details[open] .advanced-summary::after { transform:rotate(180deg); }
-  .advanced-summary:hover { background:rgba(99,102,241,.05); }
-  .advanced-body { padding:1rem; border-top:1px solid var(--border); }
-  .advanced-body .settings-grid { margin-bottom:0; }
+  /* (Phase 2A Progressive 재설계: 별도 아코디언 제거 — .adv-only 클래스로 단순/고급 분리)
+     Phase 2A Progressive: dedicated accordion removed — replaced by .adv-only class-based split */
 
   /* 마스킹 필드 */
   .masked-field { position:relative; display:flex; align-items:center; }
@@ -330,35 +303,61 @@
     <div class="repo-badge">{{ repo_name }}</div>
   </div>
 
-  <!-- Phase E.4 — Simple/Advanced 모드 토글 / Simple/Advanced mode toggle -->
-  <div class="mode-toggle-bar" id="modeToggleBar">
-    <span class="mode-toggle-label">보기 모드:</span>
-    <button type="button" class="mode-toggle-btn active" data-settings-mode-btn="simple">
-      ✨ Simple <span class="mode-toggle-hint">(필수 항목만)</span>
-    </button>
-    <button type="button" class="mode-toggle-btn" data-settings-mode-btn="advanced">
-      ⚙️ Advanced <span class="mode-toggle-hint">(전체 설정)</span>
-    </button>
+  <!-- Simple/Advanced 모드 토글 — 시각 강화 (Progressive Mode 재설계) -->
+  <!-- Simple/Advanced mode toggle — visually strengthened segmented control (Progressive Mode redesign) -->
+  <div class="mode-toggle-bar" id="modeToggleBar"
+       data-initial-mode="{{ initial_mode or 'simple' }}">
+    <span class="mode-toggle-label">보기 모드</span>
+    <div class="mode-toggle-segment">
+      <button type="button" class="mode-toggle-btn active" data-settings-mode-btn="simple">
+        ✨ Simple <span class="mode-toggle-hint">필수 항목만</span>
+      </button>
+      <button type="button" class="mode-toggle-btn" data-settings-mode-btn="advanced">
+        ⚙️ Advanced <span class="mode-toggle-hint">전체 설정</span>
+      </button>
+    </div>
+    <span class="mode-toggle-counter" id="modeToggleCounter"></span>
   </div>
   <style>
-    .mode-toggle-bar { display: flex; align-items: center; gap: 0.6rem;
-                       margin: 0 0 1rem; padding: 0.6rem 0.9rem;
-                       background: var(--bg-card); border-radius: 8px;
-                       border: 1px solid var(--border); flex-wrap: wrap; }
-    .mode-toggle-label { font-size: 13px; color: var(--text-muted); font-weight: 600; }
-    .mode-toggle-btn { padding: 0.4rem 0.9rem; border-radius: 6px;
-                       border: 1px solid var(--border); background: transparent;
+    /* 강화된 segmented control — 시각 무게 ↑, 경계 명확 / Strengthened segmented control */
+    .mode-toggle-bar { display: flex; align-items: center; gap: 0.75rem;
+                       margin: 0 0 1.25rem; padding: 0.55rem 0.85rem;
+                       background: var(--bg-card); border-radius: 10px;
+                       border: 2px solid var(--border); flex-wrap: wrap;
+                       transition: border-color 0.2s ease; }
+    .mode-toggle-bar:hover { border-color: var(--accent); }
+    .mode-toggle-label { font-size: 12px; color: var(--text-muted);
+                         font-weight: 700; text-transform: uppercase;
+                         letter-spacing: 0.05em; }
+    .mode-toggle-segment { display: inline-flex; gap: 2px; padding: 3px;
+                           background: var(--bg-input); border-radius: 8px; }
+    .mode-toggle-btn { padding: 0.4rem 0.95rem; border-radius: 6px;
+                       border: 1px solid transparent; background: transparent;
                        cursor: pointer; font-size: 13px; color: var(--text-primary);
-                       transition: all 0.15s ease; }
-    .mode-toggle-btn:hover { background: var(--bg-hover); }
+                       font-weight: 500; transition: all 0.15s ease;
+                       display: inline-flex; align-items: center; gap: 0.35rem; }
+    .mode-toggle-btn:hover:not(.active) { background: var(--bg-hover); }
     .mode-toggle-btn.active { background: var(--accent); color: white;
-                              border-color: var(--accent); }
-    .mode-toggle-hint { font-size: 11px; opacity: 0.7; margin-left: 0.2rem; }
-    /* Simple 모드: adv-only 섹션 자체와 advanced-details 숨김 */
+                              border-color: var(--accent); font-weight: 600;
+                              transform: scale(1.02);
+                              box-shadow: 0 2px 8px rgba(99,102,241,0.25); }
+    .mode-toggle-hint { font-size: 11px; opacity: 0.85; margin-left: 0.15rem; }
+    .mode-toggle-counter { margin-left: auto; font-size: 11px; color: var(--text-muted);
+                           font-weight: 600; }
+
+    /* Simple 모드: .adv-only 숨김 / Simple mode hides .adv-only */
     body[data-settings-mode="simple"] .adv-only,
     main[data-settings-mode="simple"] .adv-only { display: none !important; }
-    body[data-settings-mode="simple"] details.advanced-details,
-    main[data-settings-mode="simple"] details.advanced-details { display: none !important; }
+    /* Simple 모드 전용 안내 — 고급 모드에선 숨김 / Simple-only hint hidden in advanced mode */
+    body[data-settings-mode="advanced"] .simple-only-hint { display: none !important; }
+
+    /* ●○ 연결 상태 점 / Connection status dot */
+    .conn-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+                vertical-align: middle; margin-right: 6px;
+                box-shadow: 0 0 0 1.5px rgba(255,255,255,0.6); }
+    .conn-dot.is-on  { background: var(--success, #10b981); }
+    .conn-dot.is-off { background: var(--text-muted, #9ca3af); opacity: 0.55; }
+    .conn-status-text { font-size: 11px; color: var(--text-muted); font-weight: 500; }
   </style>
 
   <form id="settingsForm" method="post" action="/repos/{{ repo_name }}/settings">
@@ -377,7 +376,7 @@
         <p style="font-size:13px;color:var(--text-muted);margin:0 0 .75rem;">분석 결과를 받으려면 아래 단계를 완료하세요.</p>
         <div style="display:flex;flex-direction:column;gap:.45rem;font-size:13px;">
           <a href="#notifyCard" style="color:var(--accent);font-weight:600;">
-            ① 알림 채널 설정 → 아래 <strong>알림 &amp; 배포</strong> 카드에서 Telegram 또는 다른 채널을 연결하세요
+            ① 알림 채널 설정 → 아래 <strong>알림 채널 (발신)</strong> 카드에서 Telegram 또는 다른 채널을 연결하세요
           </a>
           <span style="color:var(--text-muted);">
             ② 리뷰 수준 결정 → 위 <strong>빠른 설정</strong>에서 프리셋을 선택하세요 (선택 사항)
@@ -522,27 +521,18 @@
       </div>
     </div>
 
-    <!-- 고급 설정 (프리셋 외 세부 조정) / Advanced settings (fine-tuning beyond presets) -->
-    <details class="advanced-details">
-      <summary class="advanced-summary">
-        <span class="adv-icon">⚙️</span>
-        <span>고급 설정</span>
-        <span class="adv-hint">프리셋 외 세부 조정이 필요할 때만 펼치세요</span>
-      </summary>
-      <div class="advanced-body">
-        <div class="settings-grid">
-
-      <!-- ② 분석 동작 규칙 / Analysis behavior rules -->
+    <!-- ② PR 동작 규칙 — 단순 모드에선 핵심 3 필드(pr_review_comment, auto_merge, merge_threshold)만 노출 -->
+    <!-- ② PR Behavior Rules — simple mode shows only 3 core fields; rest is .adv-only -->
+    <div class="settings-grid">
       <div class="s-card">
         <div class="s-card-hdr hdr-gate">
           <span class="hdr-icon">⚡</span>
-          <span class="hdr-title">분석 동작 규칙</span>
+          <span class="hdr-title">PR 동작 규칙</span>
           <span class="hdr-badge" id="approveBadge">{{ config.approve_mode }}</span>
         </div>
         <div class="s-card-body">
 
-          <div class="s-section-label">PR 이벤트</div>
-          <!-- PR 코드리뷰 댓글 / PR code review comment -->
+          <!-- 단순 모드 노출: PR 코멘트 / Always-visible: PR comment -->
           <div class="toggle-row">
             <div class="toggle-info">
               <div class="t-title">PR 코드리뷰 댓글</div>
@@ -555,73 +545,8 @@
             </label>
           </div>
 
+          <!-- 단순 모드 노출: 자동 Merge + 임계값 / Always-visible: auto-merge + threshold -->
           <div class="s-divider"></div>
-          <div class="s-section-label">Approve 자동화</div>
-
-          <!-- Approve 3-way -->
-          <div class="gate-btns">
-            <button type="button"
-                    class="gate-mode-btn {% if config.approve_mode == 'disabled' %}active{% endif %}"
-                    data-mode="disabled" onclick="setApproveMode('disabled')">
-              <span class="gm-icon">🚫</span>비활성
-            </button>
-            <button type="button"
-                    class="gate-mode-btn {% if config.approve_mode == 'auto' %}active{% endif %}"
-                    data-mode="auto" onclick="setApproveMode('auto')">
-              <span class="gm-icon">⚡</span>자동
-            </button>
-            <button type="button"
-                    class="gate-mode-btn {% if config.approve_mode == 'semi-auto' %}active{% endif %}"
-                    data-mode="semi-auto" onclick="setApproveMode('semi-auto')">
-              <span class="gm-icon">📱</span>반자동
-            </button>
-          </div>
-
-          <!-- 기준점 슬라이더 (disabled 시 숨김) / Threshold slider (hidden when disabled) -->
-          <div id="approveThresholds" class="{% if config.approve_mode == 'disabled' %}is-hidden{% endif %}">
-            <div class="threshold-row">
-              <div class="threshold-label">
-                <span>승인 기준점</span>
-                <span style="color:var(--success);font-size:11px;font-weight:600;">이상 → 승인</span>
-              </div>
-              <div class="threshold-ctrl">
-                <input type="range" class="approve-range" name="approve_threshold"
-                       min="0" max="100" value="{{ config.approve_threshold }}"
-                       oninput="document.getElementById('approveVal').value=this.value">
-                <input type="number" id="approveVal" class="num-input"
-                       min="0" max="100" value="{{ config.approve_threshold }}"
-                       oninput="this.previousElementSibling.value=this.value">
-              </div>
-            </div>
-            <div class="threshold-row" style="margin-bottom:0">
-              <div class="threshold-label">
-                <span>반려 기준점</span>
-                <span style="color:var(--danger);font-size:11px;font-weight:600;">미만 → 반려</span>
-              </div>
-              <div class="threshold-ctrl">
-                <input type="range" class="reject-range" name="reject_threshold"
-                       min="0" max="100" value="{{ config.reject_threshold }}"
-                       oninput="document.getElementById('rejectVal').value=this.value">
-                <input type="number" id="rejectVal" class="num-input danger"
-                       min="0" max="100" value="{{ config.reject_threshold }}"
-                       oninput="this.previousElementSibling.value=this.value">
-              </div>
-            </div>
-            <div class="range-hint">
-              💡 <strong>{{ config.approve_threshold }}점 이상</strong> 자동 승인 ·
-                 <strong>{{ config.reject_threshold }}점 미만</strong> 자동 반려 · 그 사이 스킵
-            </div>
-          </div>
-
-          <!-- semi-auto 안내 힌트 (Telegram Chat ID는 알림 & 배포 카드에서 설정) / semi-auto hint (Telegram Chat ID configured in Notify & Deploy card) -->
-          <div id="semiAutoHint" class="{% if config.approve_mode != 'semi-auto' %}is-hidden{% endif %}"
-               style="margin-top:.75rem;padding:.5rem .75rem;background:var(--hint-bg);border:1px solid var(--hint-border);border-radius:7px;font-size:11px;color:var(--text-muted);line-height:1.6;">
-            💡 반자동 Approve는 <a href="#notifyCard" style="color:var(--accent);font-weight:600;">알림 &amp; 배포 카드의 Telegram Chat ID</a>로 전송됩니다.
-          </div>
-
-          <div class="s-divider"></div>
-          <div class="s-section-label">자동 Merge</div>
-
           <div class="toggle-row">
             <div class="toggle-info">
               <div class="t-title">자동 Merge</div>
@@ -636,7 +561,6 @@
             </label>
           </div>
 
-          <!-- Merge 임계값 (auto_merge OFF 시 숨김) / Merge threshold (hidden when auto_merge is OFF) -->
           <div id="mergeThresholdRow" class="{% if not config.auto_merge %}is-hidden{% endif %}" style="margin-top:.75rem;">
             <div class="threshold-row" style="margin-bottom:0">
               <div class="threshold-label">
@@ -654,36 +578,98 @@
             </div>
           </div>
 
-          <!-- Auto-merge 실패 시 Issue 생성 (auto_merge OFF 시 숨김) / Create issue on auto-merge failure (hidden when auto_merge is OFF) -->
-          <div id="mergeIssueRow" class="{% if not config.auto_merge %}is-hidden{% endif %}" style="margin-top:.75rem;">
-            <div class="toggle-row">
-              <div class="toggle-info">
-                <div class="t-title">실패 시 Issue 자동 생성</div>
-                <div class="t-desc">Auto-merge 실패 시 권장 조치를 담은<br>GitHub Issue 자동 생성</div>
-              </div>
-              <label class="toggle-switch">
-                <input type="checkbox" name="auto_merge_issue_on_failure" value="on"
-                       {% if config.auto_merge_issue_on_failure %}checked{% endif %}>
-                <span class="toggle-track"></span>
-              </label>
+          <!-- 고급 모드 전용: Approve 3-way + 기준점 슬라이더 / Advanced-only: approve 3-way + thresholds -->
+          <div class="adv-only">
+            <div class="s-divider"></div>
+            <div class="s-section-label">Approve 자동화 (고급)</div>
+
+            <div class="gate-btns">
+              <button type="button"
+                      class="gate-mode-btn {% if config.approve_mode == 'disabled' %}active{% endif %}"
+                      data-mode="disabled" onclick="setApproveMode('disabled')">
+                <span class="gm-icon">🚫</span>비활성
+              </button>
+              <button type="button"
+                      class="gate-mode-btn {% if config.approve_mode == 'auto' %}active{% endif %}"
+                      data-mode="auto" onclick="setApproveMode('auto')">
+                <span class="gm-icon">⚡</span>자동
+              </button>
+              <button type="button"
+                      class="gate-mode-btn {% if config.approve_mode == 'semi-auto' %}active{% endif %}"
+                      data-mode="semi-auto" onclick="setApproveMode('semi-auto')">
+                <span class="gm-icon">📱</span>반자동
+              </button>
             </div>
-          </div>
+
+            <div id="approveThresholds" class="{% if config.approve_mode == 'disabled' %}is-hidden{% endif %}">
+              <div class="threshold-row">
+                <div class="threshold-label">
+                  <span>승인 기준점</span>
+                  <span style="color:var(--success);font-size:11px;font-weight:600;">이상 → 승인</span>
+                </div>
+                <div class="threshold-ctrl">
+                  <input type="range" class="approve-range" name="approve_threshold"
+                         min="0" max="100" value="{{ config.approve_threshold }}"
+                         oninput="document.getElementById('approveVal').value=this.value">
+                  <input type="number" id="approveVal" class="num-input"
+                         min="0" max="100" value="{{ config.approve_threshold }}"
+                         oninput="this.previousElementSibling.value=this.value">
+                </div>
+              </div>
+              <div class="threshold-row" style="margin-bottom:0">
+                <div class="threshold-label">
+                  <span>반려 기준점</span>
+                  <span style="color:var(--danger);font-size:11px;font-weight:600;">미만 → 반려</span>
+                </div>
+                <div class="threshold-ctrl">
+                  <input type="range" class="reject-range" name="reject_threshold"
+                         min="0" max="100" value="{{ config.reject_threshold }}"
+                         oninput="document.getElementById('rejectVal').value=this.value">
+                  <input type="number" id="rejectVal" class="num-input danger"
+                         min="0" max="100" value="{{ config.reject_threshold }}"
+                         oninput="this.previousElementSibling.value=this.value">
+                </div>
+              </div>
+              <div class="range-hint">
+                💡 <strong>{{ config.approve_threshold }}점 이상</strong> 자동 승인 ·
+                   <strong>{{ config.reject_threshold }}점 미만</strong> 자동 반려 · 그 사이 스킵
+              </div>
+            </div>
+
+            <!-- semi-auto 힌트 (Telegram Chat ID는 알림 채널 카드에서 설정) / semi-auto hint -->
+            <div id="semiAutoHint" class="{% if config.approve_mode != 'semi-auto' %}is-hidden{% endif %}"
+                 style="margin-top:.75rem;padding:.5rem .75rem;background:var(--hint-bg);border:1px solid var(--hint-border);border-radius:7px;font-size:11px;color:var(--text-muted);line-height:1.6;">
+              💡 반자동 Approve는 <a href="#notifyCard" style="color:var(--accent);font-weight:600;">알림 채널 카드의 Telegram Chat ID</a>로 전송됩니다.
+            </div>
+
+            <!-- Auto-merge 실패 시 Issue 생성 (auto_merge OFF 시 숨김 — 고급 모드에서만 의미) -->
+            <div id="mergeIssueRow" class="{% if not config.auto_merge %}is-hidden{% endif %}" style="margin-top:.75rem;">
+              <div class="toggle-row">
+                <div class="toggle-info">
+                  <div class="t-title">Auto-merge 실패 시 Issue 자동 생성</div>
+                  <div class="t-desc">실패 사유 + 권장 조치를 담은<br>GitHub Issue 자동 생성</div>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" name="auto_merge_issue_on_failure" value="on"
+                         {% if config.auto_merge_issue_on_failure %}checked{% endif %}>
+                  <span class="toggle-track"></span>
+                </label>
+              </div>
+            </div>
+          </div><!-- /.adv-only -->
 
         </div>
       </div>
+    </div>
 
-        </div><!-- /.settings-grid -->
-      </div><!-- /.advanced-body -->
-    </details><!-- /.advanced-details -->
-
-    <!-- ③ 알림 & 배포 (Push/배포 토글 + 팀 설정 + 알림 채널 통합 — Phase 2A Step A) -->
-    <!-- ③ Notify & Deploy (push/deploy toggles + team settings + notification channels merged — Phase 2A Step A) -->
-    <div class="settings-grid">
-      <div class="s-card notify-full" id="notifyCard">
-        <div class="s-card-hdr hdr-notify">
-          <span class="hdr-icon">🔔</span>
-          <span class="hdr-title">알림 &amp; 배포</span>
-          <span class="hdr-badge">이벤트 · 채널</span>
+    <!-- ⑤ 이벤트 후 자동화 (Push 이벤트 + Railway 배포 + 팀 리더보드) — 전체 .adv-only 카드 -->
+    <!-- ⑤ Post-event Automation (push events + Railway deploy + team leaderboard) — entire card .adv-only -->
+    <div class="settings-grid adv-only">
+      <div class="s-card">
+        <div class="s-card-hdr hdr-merge">
+          <span class="hdr-icon">🛠</span>
+          <span class="hdr-title">이벤트 후 자동화</span>
+          <span class="hdr-badge">Push · Railway · 팀</span>
         </div>
         <div class="s-card-body">
 
@@ -703,7 +689,7 @@
           <div class="s-divider"></div>
           <div class="toggle-row">
             <div class="toggle-info">
-              <div class="t-title">이슈 자동 생성</div>
+              <div class="t-title">점수 미달 시 Issue 생성</div>
               <div class="t-desc">점수 미달 또는 보안 HIGH 발견 시<br>GitHub Issue 자동 생성</div>
             </div>
             <label class="toggle-switch">
@@ -729,7 +715,6 @@
 
           <div class="s-divider"></div>
           <div class="s-section-label">팀 설정</div>
-          <!-- 팀 인사이트 리더보드 옵트인 (기본 비활성) / Team Insights leaderboard opt-in (disabled by default) -->
           <div class="toggle-row">
             <div class="toggle-info">
               <div class="t-title">팀 리더보드 공개</div>
@@ -744,11 +729,27 @@
             </label>
           </div>
 
-          <div class="s-divider"></div>
-          <div class="s-section-label">메신저 / 이메일</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ③ 📤 알림 채널 (발신) — Telegram 항상 노출, 외부 채널은 .adv-only -->
+    <!-- ③ 📤 Outbound Channels — Telegram always visible, external channels .adv-only -->
+    <div class="settings-grid">
+      <div class="s-card notify-full" id="notifyCard">
+        <div class="s-card-hdr hdr-notify">
+          <span class="hdr-icon">📤</span>
+          <span class="hdr-title">알림 채널 (발신)</span>
+          <span class="hdr-badge">→ 외부</span>
+        </div>
+        <div class="s-card-body">
+          <div class="s-section-label">Telegram</div>
           <div class="channel-grid">
             <div class="field-row">
-              <label class="field-label">Telegram Chat ID</label>
+              <label class="field-label">
+                <span class="conn-dot {% if config.notify_chat_id %}is-on{% else %}is-off{% endif %}"></span>
+                Telegram Chat ID
+              </label>
               <span class="field-hint">미설정 시 전역 Chat ID 사용 · 반자동 Approve에도 사용</span>
               <div class="masked-field">
                 <input class="field-input" type="password" name="notify_chat_id"
@@ -782,8 +783,8 @@
                   </p>
                 </div>
                 <script>
-                  // Telegram OTP 발급 버튼 — 알림 & 배포 카드 (Phase 2A Step A 통합)
-                  // Telegram OTP button — Notify & Deploy card (Phase 2A Step A merge)
+                  // Telegram OTP 발급 버튼 — 알림 채널 (발신) 카드 (Phase 2A Progressive 재설계)
+                  // Telegram OTP button — Outbound channel card (Phase 2A Progressive redesign)
                   (function () {
                     var btn = document.getElementById('issueTelegramOtp');
                     if (!btn) { return; }
@@ -820,7 +821,13 @@
             </div>
 
             <div class="field-row adv-only">
-              <label class="field-label">Discord Webhook</label>
+              <div class="s-section-label" style="grid-column:1/-1;margin:.6rem 0 .25rem;">메신저 / 이메일</div>
+            </div>
+            <div class="field-row adv-only">
+              <label class="field-label">
+                <span class="conn-dot {% if config.discord_webhook_url %}is-on{% else %}is-off{% endif %}"></span>
+                Discord Webhook
+              </label>
               <div class="masked-field">
                 <input class="field-input" type="password" name="discord_webhook_url"
                        value="{{ config.discord_webhook_url or '' }}"
@@ -830,7 +837,10 @@
               </div>
             </div>
             <div class="field-row adv-only">
-              <label class="field-label">Slack Webhook</label>
+              <label class="field-label">
+                <span class="conn-dot {% if config.slack_webhook_url %}is-on{% else %}is-off{% endif %}"></span>
+                Slack Webhook
+              </label>
               <div class="masked-field">
                 <input class="field-input" type="password" name="slack_webhook_url"
                        value="{{ config.slack_webhook_url or '' }}"
@@ -840,7 +850,10 @@
               </div>
             </div>
             <div class="field-row adv-only">
-              <label class="field-label">Email 수신자 <span class="field-tag">SMTP 필요</span></label>
+              <label class="field-label">
+                <span class="conn-dot {% if config.email_recipients %}is-on{% else %}is-off{% endif %}"></span>
+                Email 수신자 <span class="field-tag">SMTP 필요</span>
+              </label>
               <span class="field-hint">쉼표로 구분</span>
               <div class="masked-field">
                 <input class="field-input" type="password" name="email_recipients"
@@ -851,7 +864,10 @@
               </div>
             </div>
             <div class="field-row adv-only">
-              <label class="field-label">Custom Webhook</label>
+              <label class="field-label">
+                <span class="conn-dot {% if config.custom_webhook_url %}is-on{% else %}is-off{% endif %}"></span>
+                Custom Webhook
+              </label>
               <div class="masked-field">
                 <input class="field-input" type="password" name="custom_webhook_url"
                        value="{{ config.custom_webhook_url or '' }}"
@@ -861,10 +877,13 @@
               </div>
             </div>
             <div class="field-row adv-only">
-              <div class="s-section-label" style="grid-column:1/-1;margin-bottom:.25rem;">자동화 연동 Webhook (발신)</div>
+              <div class="s-section-label" style="grid-column:1/-1;margin:.6rem 0 .25rem;">자동화 연동 (발신)</div>
             </div>
             <div class="field-row adv-only">
-              <label class="field-label">n8n Webhook</label>
+              <label class="field-label">
+                <span class="conn-dot {% if config.n8n_webhook_url %}is-on{% else %}is-off{% endif %}"></span>
+                n8n Webhook
+              </label>
               <div class="masked-field">
                 <input class="field-input" type="password" name="n8n_webhook_url"
                        value="{{ config.n8n_webhook_url or '' }}"
@@ -879,17 +898,25 @@
 
     </div><!-- /settings-grid -->
 
+    <!-- 단순 모드 안내 — 고급 모드에선 숨김 (modal-toggle CSS) / Simple-mode hint (hidden in advanced mode) -->
+    <p class="simple-only-hint" style="text-align:center;font-size:12px;color:var(--text-muted);margin:.5rem 0 1rem;line-height:1.6;">
+      ⚙️ 더 정밀한 제어 (Approve 임계값 · Discord/Slack/Email · CLI Hook · 리포 삭제 등) 가 필요하면
+      상단의 <strong>Advanced</strong> 토글을 눌러주세요.
+    </p>
+
     <div class="save-bar">
       <button type="submit" class="btn-save-new">💾 설정 저장</button>
     </div>
 
   </form>
 
-  <!-- ⑤ 통합 & 연결 (GitHub 수신 Webhook + CLI Hook + Railway API 토큰 + 위험 구역 — 메인 form 외부) / Integration & connections (GitHub inbound webhook + CLI Hook + Railway API token + danger zone — outside main form) -->
-  <div class="s-card" style="margin-bottom:1rem;">
+  <!-- ⑥ 📥 통합 & 인증 (수신) — GitHub Webhook 재등록 + CLI Hook + Railway API 토큰 + Webhook URL — 전체 .adv-only -->
+  <!-- ⑥ 📥 Inbound Integration & Auth — entire card .adv-only -->
+  <div class="s-card adv-only" style="margin-bottom:1rem;">
     <div class="s-card-hdr hdr-hook">
-      <span class="hdr-icon">🔗</span>
-      <span class="hdr-title">통합 &amp; 연결</span>
+      <span class="hdr-icon">📥</span>
+      <span class="hdr-title">통합 &amp; 인증 (수신)</span>
+      <span class="hdr-badge">외부 → SCAManager</span>
     </div>
     <div class="s-card-body">
 
@@ -901,7 +928,7 @@
       <span class="field-hint">GitHub이 SCAManager로 push·PR·check_suite 이벤트를 전송합니다.</span>
 
       <div class="s-divider"></div>
-      <div class="s-section-label">CLI Hook</div>
+      <div class="s-section-label">CLI Hook (pre-push)</div>
       {% if hook_ok %}
       <div class="hook-alert ok">✅ <strong>.scamanager/</strong> 파일이 Repo에 커밋됐습니다.</div>
       {% endif %}
@@ -915,8 +942,10 @@
 
       <div class="s-divider"></div>
 
-      <div class="s-section-label">Railway 연동</div>
-      <div class="s-section-label" style="font-size:10px;text-transform:none;letter-spacing:0;color:var(--text-muted);margin-top:-.4rem;margin-bottom:.6rem;">API 토큰 (로그 조회용)</div>
+      <div class="s-section-label">
+        <span class="conn-dot {% if railway_api_token_set %}is-on{% else %}is-off{% endif %}"></span>
+        Railway API 토큰
+      </div>
       <div class="field-row">
         <div class="masked-field">
           <input class="field-input" type="password" name="railway_api_token"
@@ -930,8 +959,11 @@
         <span class="field-hint">Railway 대시보드 → Account Settings → Tokens 에서 발급. 변경하지 않으려면 그대로 두세요.</span>
       </div>
 
+      <div class="s-section-label" style="margin-top:.85rem">
+        <span class="conn-dot {% if railway_webhook_url %}is-on{% else %}is-off{% endif %}"></span>
+        Railway Webhook URL
+      </div>
       {% if railway_webhook_url %}
-      <div class="s-section-label" style="margin-top:.85rem">Railway Webhook URL</div>
       <div class="field-row">
         <div style="display:flex;gap:.5rem;align-items:center">
           <input type="text" readonly class="field-input" id="railway-webhook-url"
@@ -942,16 +974,14 @@
         <span class="field-hint">Railway Project Settings → Webhooks 에 위 URL 을 추가하세요.</span>
       </div>
       {% else %}
-      <div class="s-section-label" style="margin-top:.85rem">Railway Webhook URL</div>
       <span class="field-hint">설정 저장 후 Railway Webhook URL 이 자동 생성됩니다.</span>
       {% endif %}
-
 
     </div>
   </div>
 
-  <!-- ⑥ 위험 구역 (메인 form 외부, 페이지 최하단) / Danger zone (outside main form, page bottom) -->
-  <div class="s-card" style="margin-bottom:2rem;">
+  <!-- ⑦ 위험 구역 (전체 .adv-only) / Danger zone (entire card .adv-only) -->
+  <div class="s-card adv-only" style="margin-bottom:2rem;">
     <div class="s-card-hdr" style="background:linear-gradient(135deg,#991b1b,#dc2626)">
       <span class="hdr-icon">⚠️</span>
       <span class="hdr-title">위험 구역</span>
@@ -1237,16 +1267,9 @@
     toggleMergeIssueOption(checked);
   }
 
-  // 저장 오류 시 고급설정 아코디언 자동 펼침 — 문제 필드
-  // (approve_threshold / reject_threshold) 가 접힌 아코디언 안에 있어
-  // 사용자가 오류 원인을 즉시 볼 수 없던 페인 포인트 해결.
-  (function() {
-    const params = new URLSearchParams(location.search);
-    if (params.get('save_error') === '1') {
-      const adv = document.querySelector('.advanced-details');
-      if (adv) adv.open = true;
-    }
-  })();
+  // 저장 오류 시 — 모드 전환은 initSettingsMode() 가 ?save_error=1 을 감지해
+  // 자동으로 advanced 로 전환한다 (Phase 2A Progressive 재설계).
+  // Save-error advanced switch is handled by initSettingsMode() via ?save_error=1 detection.
 
   // 토스트 클릭 시 즉시 닫기 + URL 쿼리 제거
   const toast = document.getElementById('saveToast');
@@ -1261,7 +1284,8 @@
     }
   }
 
-  // Phase E.4 — Simple/Advanced 모드 토글 (localStorage 에 영속, ?mode= 쿼리 오버라이드)
+  // Simple/Advanced 모드 토글 (localStorage 에 영속, ?mode= 쿼리 오버라이드, 서버 신호 fallback)
+  // Mode toggle — localStorage persistent, ?mode= override, server signal fallback
   const SETTINGS_MODE_KEY = 'scamanager_settings_mode';
   function toggleSettingsMode(mode) {
     if (mode !== 'simple' && mode !== 'advanced') mode = 'simple';
@@ -1270,18 +1294,23 @@
     document.querySelectorAll('[data-settings-mode-btn]').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.settingsModeBtn === mode);
     });
-    // Advanced 로 전환 시 고급 설정 details 자동 펼침 (UX)
-    if (mode === 'advanced') {
-      document.querySelectorAll('details.advanced-details').forEach(d => d.open = true);
-    }
   }
-  // 초기 모드 결정: ?mode= 쿼리 > localStorage > 기본값 simple
+  // 초기 모드 결정 우선순위 / Initial mode priority:
+  //   1) ?mode= URL 쿼리 (가장 명시적 / most explicit)
+  //   2) ?save_error=1 → 강제 advanced (사용자가 숨은 필드 오류를 볼 수 있어야 함)
+  //   3) localStorage (사용자의 마지막 선택)
+  //   4) data-initial-mode (서버 신호 — DB 의 비-기본값 존재 시 'advanced')
+  //   5) 'simple' (default)
   (function initSettingsMode() {
     const params = new URLSearchParams(location.search);
     const urlMode = params.get('mode');
+    const saveErr = params.get('save_error');
     let stored = null;
     try { stored = localStorage.getItem(SETTINGS_MODE_KEY); } catch (_) { /* ignore */ }
-    const initial = urlMode || stored || 'simple';
+    const bar = document.getElementById('modeToggleBar');
+    const serverHint = bar ? (bar.dataset.initialMode || '') : '';
+    const initial = urlMode || (saveErr === '1' ? 'advanced' : null)
+                            || stored || serverHint || 'simple';
     toggleSettingsMode(initial);
   })();
   // 토글 버튼 바인딩
