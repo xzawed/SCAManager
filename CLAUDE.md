@@ -364,7 +364,7 @@ git checkout -b <브랜치명>   # 브랜치 생성 (main 직접 커밋 금지)
 - **Phase 완료 조건**: 테스트 전체 통과 + `/lint` 통과 + (파이프라인 변경 시 `pipeline-reviewer` 승인) 세 조건이 모두 충족될 때만 Phase 완료를 선언한다.
 - **완료 시 필수 5-step**: 작업이 완료되면 반드시 ① 커밋 → ② PR 생성(`gh pr create`) → ③ `git push` → ④ `docs/STATE.md` 수치 갱신 → ⑤ **CLAUDE.md 아키텍처 섹션 동기화** (신규 파일 추가·삭제·이름 변경 시 `src/` 트리와 `### 핵심 데이터 흐름` 내 언급 갱신) 를 순서대로 수행한다. 예외 없음.
 - **README.md 배지 동기화**: 테스트 수·pylint·커버리지 수치가 바뀌면 `README.md` 14~18줄 배지도 함께 갱신한다. 수치 출처는 항상 `docs/STATE.md`.
-- **CLAUDE.md 아키텍처 동기화 체크리스트**: `src/` 하위에 파일 추가 시 아래 항목을 순서대로 확인한다. 누락 시 다음 Phase 착수 전 반드시 보완한다. (전례: Phase 11에서 6개 파일 추가 후 CLAUDE.md에 5개 누락 → 3-에이전트 감사에서 발견, PR #73)
+- **CLAUDE.md 아키텍처 동기화 체크리스트**: `src/` 하위에 파일 추가 시 아래 항목을 순서대로 확인한다. 누락 시 다음 Phase 착수 전 반드시 보완한다. **전례 2건**: (1) Phase 11에서 6개 파일 추가 후 CLAUDE.md에 5개 누락 → 3-에이전트 감사에서 발견, PR #73. (2) 2026-05-01 UI 감사 cleanup PR-D1 — `_merge_attempt_states.py` (Phase 3 PR-B1 도입분) + `static/vendor/chart.umd.min.js` (UI 감사 Step C) 트리 누락 → 5-에이전트 정합성 감사에서 발견.
 
   | 위치 | 확인 사항 |
   |------|----------|

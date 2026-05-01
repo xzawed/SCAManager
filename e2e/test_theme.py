@@ -71,3 +71,21 @@ def test_dropdown_closes_on_outside_click(page, base_url):
     # Click outside the dropdown.
     page.click("h2, .overview-header h2, body", position={"x": 10, "y": 10})
     assert not page.is_visible(".theme-switcher.open")
+
+
+def test_claude_dark_theme_switch(page, base_url):
+    """PR-D5 회귀 가드 — claude-dark 테마 옵션 (Phase 1B 도입) 클릭 + 적용 검증.
+
+    이전 e2e 는 dark/light/glass 만 검증 → claude-dark 누락. PR #150 신규 4번째 옵션.
+    Previous e2e covered dark/light/glass only; claude-dark (PR #150) was missing.
+    """
+    page.goto(base_url)
+    page.click("#themeToggle")
+    page.wait_for_selector(".theme-switcher.open", timeout=2000)
+    # claude-dark 옵션 존재 + 클릭 가능
+    # claude-dark option must exist + be clickable
+    page.click('.theme-option[data-theme="claude-dark"]')
+    assert page.get_attribute("body", "data-theme") == "claude-dark"
+    # 드롭다운 자동 닫힘
+    # Dropdown auto-closes
+    assert not page.is_visible(".theme-switcher.open")

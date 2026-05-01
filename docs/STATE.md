@@ -22,6 +22,7 @@
 | 지원 언어 (정적분석) | **37개+** | Semgrep 22 + ESLint 2 + ShellCheck 1 + cppcheck 1 + slither 1 + rubocop 1 + golangci-lint 1 + Python 3 도구 |
 | Tier1 정적분석 도구 | **10종** | pylint·flake8·bandit·semgrep·eslint·shellcheck·cppcheck·slither·**rubocop**·**golangci-lint** |
 | pytest-asyncio | **1.3.0** | Python 3.14 DeprecationWarning 제거 완료 |
+| CodeQL | **✅ pass** | `.github/workflows/codeql.yml` — 주 1회 실행. 본 README 배지 (L15) 와 페어 |
 
 ## 주요 파일 역할 (빠른 참조)
 
@@ -48,7 +49,10 @@
 | `src/gate/retry_policy.py` | 순수 함수: should_retry · compute_next_retry_at · is_expired · mergeable_state_terminality |
 | `src/github_client/checks.py` | get_ci_status · get_required_check_contexts (5분 TTL 캐시) |
 | `src/services/merge_retry_service.py` | process_pending_retries — CI-aware 재시도 워커 |
-| `src/static/vendor/chart.umd.min.js` | Chart.js 4.4.0 UMD min vendoring (UI 감사 Step C) — CDN 차단/오프라인 환경에서 빈 차트 회피. `src/main.py` 의 StaticFiles `/static` mount 로 노출. 사용 페이지: repo_detail / analysis_detail / insights_me |
+| `src/gate/native_automerge.py` | enable_or_fallback() — GraphQL `enablePullRequestAutoMerge` 우선 + REST `merge_pr` 폴백 (Tier 3 PR-A, 그룹 52) |
+| `src/gate/_merge_attempt_states.py` | MergeAttempt.state lifecycle 정규 상수 (LEGACY/ENABLED_PENDING_MERGE/ACTUALLY_MERGED/DISABLED_EXTERNALLY) — Phase 3 PR-B1 도입 |
+| `src/github_client/graphql.py` | GraphQL POST 래퍼 + `enablePullRequestAutoMerge` mutation + `EnableAutoMergeResult` 분류 + 5xx 자동 재시도 (Phase H PR-1B-2, `_GRAPHQL_*` 상수) |
+| `src/static/vendor/chart.umd.min.js` | Chart.js 4.4.0 UMD min vendoring (UI 감사 Step C) — CDN 차단/오프라인 환경에서 빈 차트 회피. `src/main.py` 의 StaticFiles `/static` mount 로 노출. 사용 페이지: repo_detail / analysis_detail / insights_me. 운영 가이드: `docs/runbooks/static-assets.md` (PR-D4) |
 | `tests/conftest.py` | 환경변수 주입 + _webhook_secret_cache autouse 클리어 |
 
 ## 작업 이력 (그룹별)
