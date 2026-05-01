@@ -52,6 +52,28 @@
 
 ## 작업 이력 (그룹별)
 
+### 그룹 55 (2026-05-01 · Settings UI/UX Phase 2A Progressive 재설계 + 카드 통합 — PR #152, #153)
+
+**목표**: 사용자 피드백 "설정 패널과 웹훅 내용이 너무 어지럽다, 설명 없이는 사용 어렵다" 해소. 다중 에이전트 5명 (정찰 1 + 디자인 안건 3 + 웹훅 전담 1) 분석 → 사용자 결정: **일괄 적용 + 안건 B (Progressive Mode 강화) + 웹훅 W2 (수신/발신 분리) + 사용자 신호 기반 첫 진입**.
+
+**변경 내용**:
+
+| PR | 핵심 변경 |
+|----|----------|
+| **#152** Step A | 카드 ③ Push/배포 + ④ 알림 발신 → 단일 카드 '알림 & 배포' 통합 (6→5 카드, PRESETS 영향 0) |
+| **#153** Progressive 재설계 | `<details class="advanced-details">` 아코디언 제거 → `.adv-only` 클래스 평탄화. W2 분리: PR 동작 규칙 / 알림 채널 (발신) / 이벤트 후 자동화 / 통합 & 인증 (수신) / 위험 구역 5 카드. 단순 모드 노출 5 핵심 필드만 (`notify_chat_id`, Telegram OTP, `pr_review_comment`, `auto_merge`, `merge_threshold`). `_detect_initial_mode()` 신규 — DB 비-기본값 1개라도 있으면 `data-initial-mode="advanced"` 서버 신호 fallback. 모드 토글 시각 강화 (segmented control + scale + shadow). ●○ 점 상태 표시 8종 (Telegram/Discord/Slack/Email/Custom/n8n/Railway 토큰/Webhook URL). save_error 자동 advanced 전환 |
+
+**JS 모드 우선순위 (재설계)**: `?mode=` > `?save_error=1` > localStorage > `data-initial-mode` (서버 신호) > `simple`
+
+**5-way sync 보존**: form 필드명 14종 + PRESETS 9 필드 + JS 헬퍼 12종 시그니처 + 백엔드 핸들러 모두 불변.
+
+**테스트**: 1968 유지 (test_router.py +1 신규 + 2 삭제 + 2 갱신 / test_settings_webhook_banner.py + e2e/test_settings.py 어셔션 갱신).
+**품질**: pylint 10.00/10 · UI 회귀 0건 · 16 form field 회귀 가드 통과.
+
+**관련 문서**: 기획 [docs/design/2026-05-01-ui-redesign-claude-linear-hybrid.md](design/2026-05-01-ui-redesign-claude-linear-hybrid.md) (Phase 2A 권장안 1: A+D 하이브리드 → 옵션 D 시범 → Progressive 종합안).
+
+---
+
 ### 그룹 54 (2026-05-01 · Phase H+I — 12-에이전트 감사 Critical 10건 100% 처리)
 
 **목표**: 2026-04-30 12-에이전트 종합 감사가 식별한 Critical 10건 + 외부 API hardening + cross-cutting 개선을 안전성 우선 분할 PR 시리즈로 처리.
@@ -248,6 +270,8 @@
 
 **테스트 증분**: 1709 → **1714** passed
 **품질**: pylint 10.00 · bandit HIGH 0 · 폼 필드 16개 전부 유지
+
+> **후속 (그룹 55, 2026-05-01)**: 본 그룹의 카드 구조는 그룹 55 의 Phase 2A Progressive 재설계 (PR #152, #153) 로 추가 진화 — `<details class="advanced-details">` 아코디언 제거 + `.adv-only` 평탄화 + W2 분리 ('알림 채널 (발신)' / '이벤트 후 자동화' / '통합 & 인증 (수신)') + 단순 모드 5 핵심 필드만 노출. 5-way sync 는 그대로 보존. 자세한 내용은 그룹 55 참조.
 
 ---
 
