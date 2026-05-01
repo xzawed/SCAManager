@@ -8,6 +8,7 @@ from src.config import settings
 from src.gate import merge_reasons
 from src.github_client.helpers import github_api_headers
 from src.shared.http_client import get_http_client
+from src.shared.log_safety import sanitize_for_log
 
 logger = logging.getLogger(__name__)
 
@@ -172,5 +173,8 @@ async def merge_pr(  # pylint: disable=too-many-locals
         return (False, reason, head_sha)
     except httpx.HTTPError as exc:
         reason = f"{merge_reasons.NETWORK_ERROR}: {exc}"
-        logger.warning("PR Merge 실패 (repo=%s, pr=%d): %s", repo_full_name, pr_number, reason)
+        logger.warning(
+            "PR Merge 실패 (repo=%s, pr=%d): %s",
+            sanitize_for_log(repo_full_name), pr_number, sanitize_for_log(reason),
+        )
         return (False, reason, head_sha)

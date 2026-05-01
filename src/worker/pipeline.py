@@ -232,7 +232,10 @@ async def _save_and_gate(db: Session, params: _AnalysisSaveParams):
     """
     repo = repository_repo.find_by_full_name(db, params.repo_name)
     if repo is None:
-        logger.warning("Repository not found in second session: %s", params.repo_name)
+        logger.warning(
+            "Repository not found in second session: %s",
+            sanitize_for_log(params.repo_name),
+        )
         return None, None, None
     # 멱등성 재확인 — 동시 Webhook 전달로 인한 중복 Analysis 삽입 방지 (TOCTOU 완화)
     # Idempotency re-check — defends against concurrent webhooks racing past the first dedup.
@@ -303,7 +306,10 @@ async def _save_and_gate(db: Session, params: _AnalysisSaveParams):
     try:
         repo_config = get_repo_config(db, params.repo_name)
     except (SQLAlchemyError, KeyError):
-        logger.warning("Failed to load repo config for %s, using defaults", params.repo_name)
+        logger.warning(
+            "Failed to load repo config for %s, using defaults",
+            sanitize_for_log(params.repo_name),
+        )
         repo_config = None
     if params.pr_number is not None:
         try:
