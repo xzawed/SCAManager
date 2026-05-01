@@ -122,6 +122,9 @@
       --accent-grad:    linear-gradient(135deg, #5e6ad2, #8d95e0);
       --success:        #4ade80;
       --danger:         #f87171;
+      /* Step D: --warning 토큰 신규 — 이전엔 페이지마다 #f59e0b/#fbbf24 하드코딩
+         Step D: new --warning token — was hardcoded as #f59e0b in 5+ places */
+      --warning:        #f59e0b;
       --shadow:         0 4px 24px rgba(0,0,0,.5);
       --shadow-card:    0 1px 3px rgba(0,0,0,.25), 0 0 0 1px rgba(255,255,255,.04);
       --table-head:     #1a1a21;
@@ -165,6 +168,8 @@
       --accent-grad:    linear-gradient(135deg, #5e6ad2, #4a57c4);
       --success:        #16a34a;
       --danger:         #dc2626;
+      /* Step D: --warning 라이트 테마 — Tailwind amber-600 */
+      --warning:        #d97706;
       --shadow:         0 2px 8px rgba(0,0,0,.07), 0 0 0 1px rgba(0,0,0,.04);
       --shadow-card:    0 1px 3px rgba(0,0,0,.05), 0 0 0 1px rgba(0,0,0,.05);
       --table-head:     #f9f9fb;
@@ -206,6 +211,8 @@
       --accent-grad:    linear-gradient(135deg, #5e6ad2, #ec4899);
       --success:        #4ade80;
       --danger:         #f87171;
+      /* Step D: --warning 글래스 테마 — 다크와 동일 hex */
+      --warning:        #f59e0b;
       --shadow:         0 8px 32px rgba(0,0,0,.5);
       --shadow-card:    0 4px 20px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.06);
       --table-head:     rgba(255,255,255,0.04);
@@ -279,6 +286,10 @@
       --grade-c: var(--claude-grade-c);  /* sand #D4A574 */
       --grade-d: var(--claude-grade-d);  /* terracotta #C8895E */
       --grade-f: var(--claude-grade-f);  /* muted red #C84E3F */
+      /* Step D: claude-dark 의 --warning 도 sand 톤으로 alias */
+      --warning: var(--claude-warning);  /* sand #DDB585 */
+      --success: var(--claude-success);  /* sage #A8BA94 */
+      --danger:  var(--claude-danger);   /* muted red #D45F50 */
     }
 
     /* ── 네비게이션 ───────────────────────────── */

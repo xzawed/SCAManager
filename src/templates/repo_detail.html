@@ -467,8 +467,10 @@ document.getElementById('scoreMax').addEventListener('input', function() {
 });
 
 // ── 렌더 테이블 ──────────────────────────────────────
+// Step D: 소스 배지 시맨틱 토큰화 — push=success / cli=warning / pr=accent (모두 var)
+// Step D: source badge semantic tokens — auto across 4 themes
 function renderSourceBadge(src) {
-  const m = { pr: ['PR','#3b82f6'], push: ['Push','var(--success)'], cli: ['CLI','#f59e0b'] };
+  const m = { pr: ['PR','var(--accent)'], push: ['Push','var(--success)'], cli: ['CLI','var(--warning)'] };
   const [label, color] = m[src] || [src || '—', 'var(--text-muted)'];
   return '<span style="font-size:11px;font-weight:600;color:' + color + '">' + label + '</span>';
 }
