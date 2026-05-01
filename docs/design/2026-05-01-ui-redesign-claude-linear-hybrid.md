@@ -164,6 +164,12 @@
 | Settings P0 핫픽스 | #156 | 4-에이전트 감사 P0 5건 |
 | Settings P1·P2 polish | #159, #160 | P1 8건 + P2 7건 |
 | 7-페이지 4-에이전트 감사 → Step A~E | #163~#168 | 환각 토큰 alias, safe-area, WCAG, Chart.js vendoring, 색 의미 통일, nav 가드 등 65건 |
-| 5-에이전트 정합성 cleanup | #169~ (진행 중) | claude-dark 누락 토큰, Step B/D 누락분, 문서 동기화 |
+| 5-에이전트 정합성 cleanup PR-1 | #169 | claude-dark 누락 토큰 8종 + 환각 alias 2종 + Step B/D 누락 4건 |
+| cleanup PR-2 (docs sync) | #170 | STATE 그룹 57 + CLAUDE.md 트리/주의사항 7건/현재상태 + 본 기획서 진화 기록 신설 |
+| cleanup PR-3 (P1 polish) | #171/#172 (중복 머지) | chart-wrap-inner clamp + .btn:disabled selector 확장 + Chart.js tooltip 시맨틱 토큰화 |
+| cleanup PR-4 (회귀 가드) | #173 | StaticFiles 200 + 환각 토큰 / claude-dark / nav guard / chip a11y / chart aspect / safe-area / iOS 줌인 12건 |
+| cleanup PR-5 (정합성 후속 sync) | (본 PR) | 1968→1980 수치 동기화 + cleanup 시리즈 PR 번호 확정 |
 
 **Phase 2B (Cmd+K 명령 팔레트) 와 Phase 3 (TV mode / PWA) 는 미진행** — 시각 결함 대응 우선. 향후 시범 운영 결과에 따라 결정.
+
+**잔여 (이월)**: F4 — analysis_detail 9 카드 데스크탑 2-col 레이아웃 (마크업 변경 큼, 사용자 결정 후 별도 PR).
