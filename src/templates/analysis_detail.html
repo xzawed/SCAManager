@@ -181,15 +181,15 @@
   .nav-btn.disabled { opacity: 0.38; cursor: default; pointer-events: none; }
   .nav-label { font-size: 0.82rem; color: var(--text-muted); flex: 1; text-align: center; }
   /* 트렌드 차트 섹션 */
-  /* Step E (E2): 차트 컨테이너 명시 height — maintainAspectRatio:false 와 페어
-     Step E (E2): explicit height paired with maintainAspectRatio:false */
+  /* Step E (E2) + PR-3 F1: 차트 컨테이너 viewport 비례 clamp — 데스크탑 빈약 시각 회피
+     Step E + PR-3 F1: viewport-relative clamp avoids desktop chart squish */
   .trend-section {
     margin-bottom: 1.25rem;
     padding: 1rem 1.25rem;
   }
   .trend-section .chart-wrap-inner {
     position: relative;
-    height: 200px;
+    height: clamp(200px, 30vw, 320px);
   }
   .trend-section-title {
     font-size: 13px;
@@ -568,6 +568,9 @@
   var accent = s.getPropertyValue('--accent').trim() || '#6366f1';
   var muted  = s.getPropertyValue('--text-muted').trim() || '#64748b';
   var border = s.getPropertyValue('--border').trim() || '#2d3748';
+  /* PR-3 F3: tooltip 색을 테마 토큰에서 동적 read — 라이트/claude-dark 부조화 해소 */
+  var tipBg   = s.getPropertyValue('--bg-card').trim() || '#1c1c23';
+  var tipText = s.getPropertyValue('--text-primary').trim() || '#e2e2e8';
   /* Step D: 현재 분석 강조 색을 var(--danger) 에서 읽기 (3-테마 + claude-dark 호환)
      Step D: read current-point highlight from var(--danger) for theme harmony */
   var dangerColor = s.getPropertyValue('--danger').trim() || '#ef4444';
@@ -618,9 +621,11 @@
       plugins: {
         legend: { display: false },
         tooltip: {
-          backgroundColor: 'rgba(0,0,0,0.75)',
-          titleColor: '#fff',
-          bodyColor: '#e2e8f0',
+          backgroundColor: tipBg,
+          titleColor: tipText,
+          bodyColor: tipText,
+          borderColor: border,
+          borderWidth: 1,
           padding: 8,
           cornerRadius: 6,
           callbacks: {
