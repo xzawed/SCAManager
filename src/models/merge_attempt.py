@@ -16,7 +16,7 @@ upsert 가 아닌 순수 append-only 이력.
 """
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String
 
 from src.database import Base
 
@@ -26,6 +26,12 @@ class MergeAttempt(Base):
     """auto-merge 시도 1회 기록 — 성공·실패 모두 저장."""
 
     __tablename__ = "merge_attempts"
+    # Phase H PR-4A — Phase F.4 dashboard 시계열 쿼리용 단일 인덱스
+    # `WHERE attempted_at >= NOW() - INTERVAL '7 days'` 풀스캔 → 인덱스 스캔.
+    # Phase H PR-4A — single index for Phase F.4 dashboard time-series queries.
+    __table_args__ = (
+        Index("ix_merge_attempts_attempted_at", "attempted_at"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     analysis_id = Column(
