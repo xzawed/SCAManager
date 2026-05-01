@@ -312,3 +312,30 @@ async def test_review_code_passes_explicit_timeout_to_anthropic_client():
     timeout_val = captured_kwargs["timeout"]
     assert isinstance(timeout_val, (int, float))
     assert 0 < timeout_val <= 120  # SDK 600초 default 보다 훨씬 짧아야 함
+
+
+async def test_review_code_passes_explicit_max_retries_to_anthropic_client():
+    """Anthropic SDK 5xx/timeout 재시도 정책 명시 — Phase H PR-1B-1 회귀 가드.
+
+    SDK 기본 max_retries=2 (현재 동작 중이지만 명시되지 않음). SDK 업그레이드
+    시 default 변경되면 운영 영향 — 명시적 인자로 면역 + 미래 검증 가능.
+    """
+    response_obj = MagicMock()
+    response_obj.content = [MagicMock(text='{"summary": "ok"}')]
+    response_obj.usage = MagicMock(input_tokens=10, output_tokens=20)
+    fake_client = MagicMock()
+    fake_client.messages.create = AsyncMock(return_value=response_obj)
+
+    captured_kwargs = {}
+
+    def _capture_init(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+        return fake_client
+
+    with patch("src.analyzer.io.ai_review.anthropic.AsyncAnthropic", side_effect=_capture_init):
+        await review_code("sk-test", "feat: x", [("a.py", "+ x = 1")])
+
+    assert "max_retries" in captured_kwargs, "AsyncAnthropic 인스턴스화에 max_retries 명시 필수"
+    retries = captured_kwargs["max_retries"]
+    assert isinstance(retries, int)
+    assert 1 <= retries <= 5  # 합리적 범위 (무한 재시도 차단)
