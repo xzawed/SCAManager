@@ -53,7 +53,7 @@
 
 ## 작업 이력 (그룹별)
 
-### 그룹 57 (2026-05-01 · UI 감사 사이클 12 PR + 정합성 cleanup — PR #158, #159, #160, #161~#168, #169)
+### 그룹 57 (2026-05-01 · UI 감사 사이클 12 PR + 정합성 cleanup — PR #158, #159, #160, #161~#168, #169~#173 + 후속 메타 sync 시리즈 PR-D1~D5)
 
 **목표**: 그룹 56 (Settings P0 5건 핫픽스) 머지 후 (a) Settings 잔여 P1·P2 polish, (b) 7-페이지 4-에이전트 감사로 디자인 시스템 root cause 결함 식별·해소, (c) 5-에이전트 종합 정합성 감사 후 누락 코드 결함 cleanup. 단일 작업일 12 PR 시리즈.
 
@@ -1168,7 +1168,7 @@ README 배지를 Claude/자체 산출 수치가 아닌 **외부 SaaS 가 직접 
 ## 갱신 방법
 
 ```bash
-make test          # 1417 통과 확인
+make test          # 단위 1980+ 통과 확인 (UI 감사 사이클 cleanup PR-D2 가드 +5 후 1985)
 make lint          # pylint 10.00 + flake8 0건 + bandit HIGH 0개
 make test-cov      # 96%+ 유지 확인 (소폭 변동 가능)
 
