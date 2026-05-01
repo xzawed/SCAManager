@@ -166,6 +166,32 @@
 - "여기까지 합시다" / "오늘은 그만" — 명시 종료
 - 신호 없으면 Claude 가 사이클 끝마다 "다음 단계 진행할까요?" 명시 확인
 
+### 정책 6 (보조): **다중 에이전트 디스패치 시 `line:span` 인용 의무**
+
+본 사이클 검증 — 인용 없는 보고는 false-positive 80% 발생. 모든 에이전트 프롬프트 강제 조건.
+
+### 정책 7: **모든 작업은 PR 단위 (main 직접 작업 지양)**
+
+사용자 발화: *"작업 단위를 PR 로 수행해주시길 권장합니다. 가급적 main 에 직접 작업은 지양해 주셨으면 합니다."*
+
+**default 작업 흐름**:
+1. `git checkout main && git pull origin main`
+2. `git checkout -b <type>/<scope>-<short-desc>`
+3. 작업 + commit
+4. `git push -u origin <branch>` → PR 생성
+
+**예외 0** — docs only / typo / 사소한 정정 모두 PR. 예외 만들면 정책 일관성 깨짐.
+
+**위반 시 회복** (main 에 실수 commit 시):
+```bash
+git branch <type>/<scope>-<desc>     # 새 브랜치로 commit 이동
+git reset --hard origin/main         # main reset
+git checkout <type>/<scope>-<desc>
+git push -u origin <branch>
+```
+
+(2026-05-01 본 사이클은 모든 작업이 PR 로 진행됐으나, 본 정책 명시로 향후 세션 이탈 차단.)
+
 ---
 
 ## 7. 학습된 기술 패턴 (다음 세션 재사용 Top 5)

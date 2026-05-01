@@ -390,6 +390,47 @@ requirements-dev.txt  ← 로컬 개발 환경 — pytest, playwright 포함 (-r
 
 본 사이클 검증 — 인용 없는 보고는 false-positive 80% 발생. 모든 에이전트 프롬프트에 강제 조건으로 명시.
 
+#### 정책 7: **모든 작업은 PR 단위 (main 직접 작업 지양)**
+
+사용자 발화 (2026-05-01): *"작업 단위를 PR 로 수행해주시길 권장합니다. 가급적 main 에 직접 작업은 지양해 주셨으면 합니다."*
+
+**default 작업 흐름** (예외 없음):
+1. `git checkout main && git pull origin main` — 최신 동기화
+2. `git checkout -b <type>/<scope>-<short-desc>` — 새 브랜치 생성
+3. 작업 + commit
+4. `git push -u origin <branch>` — 원격 push
+5. PR 생성 (또는 GitHub 웹 URL 안내) — 사용자 머지
+
+**금지 행동**:
+- ❌ `git push origin main` (main 에 직접 push)
+- ❌ `git commit` 후 `main` 브랜치 그대로 두고 다음 작업 진행
+- ❌ "사소한 docs 정정이라 main 에 직접" 같은 예외 적용
+
+**예외 0**: 신규 파일 추가 / 단순 정정 / docs only / typo 수정 모두 PR 단위. 예외 만들면 `.claude/` 정책 일관성 깨짐 (이미 CLAUDE.md L348 "예외 없음" 명시 있음 — 본 정책은 그 강화).
+
+**브랜치 명명 규칙** (이미 CLAUDE.md L353 표 있음):
+- `feat/` 새 기능
+- `fix/` 버그 수정
+- `chore/` 설정·문서·툴링
+- `docs/` 문서 전용
+- `test/` 테스트 전용
+- `perf/` 성능 개선
+- `refactor/` 리팩터
+
+**위반 시 회복**:
+실수로 main 에 commit 했을 때:
+```bash
+# 1. 새 브랜치로 commit 이동
+git branch <type>/<scope>-<desc>
+# 2. main 을 origin/main 으로 reset
+git reset --hard origin/main
+# 3. 새 브랜치로 checkout 후 push
+git checkout <type>/<scope>-<desc>
+git push -u origin <branch>
+```
+
+(2026-05-01 본 사이클은 모든 작업이 브랜치 + PR 로 진행됐으나, 본 정책으로 명시화 + 강화하여 향후 세션에서 이탈 차단.)
+
 ---
 
 ### 작업 시작 전 필수 체크리스트 (매 작업마다)
