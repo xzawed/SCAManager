@@ -379,7 +379,16 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
                 _, owner_token = ensure_result
 
             with stage_timer("collect_files", repo=repo_log) as ctx:
-                files = _collect_files(event, owner_token, repo_name, commit_sha, pr_number)
+                # Phase H PR-3A: PyGithub 동기 I/O 를 별도 스레드로 격리
+                # _collect_files 내부의 PyGithub 호출은 sync HTTP I/O — async
+                # 컨텍스트에서 직접 실행 시 이벤트 루프 블록 (20파일 PR 시 5-15s).
+                # asyncio.to_thread 로 wrap 해 다른 BackgroundTask 처리를 막지 않음.
+                # Phase H PR-3A: offload PyGithub sync I/O to a worker thread.
+                # Direct calls block the event loop (~5-15s on 20-file PRs);
+                # asyncio.to_thread keeps other BackgroundTasks responsive.
+                files = await asyncio.to_thread(
+                    _collect_files, event, owner_token, repo_name, commit_sha, pr_number,
+                )
                 ctx["file_count"] = len(files)
 
             if not files:
