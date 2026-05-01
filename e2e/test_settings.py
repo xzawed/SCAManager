@@ -376,17 +376,25 @@ def test_two_column_layout_on_desktop(seeded_page, base_url):
 # ── Settings 재설계 E2E 테스트 (2026-04-21) ──────────────────────────
 
 def test_six_card_titles_present(seeded_page, base_url):
-    """6 카드 의도 기반 제목이 모두 렌더링되어야 한다."""
+    """카드 의도 기반 제목이 모두 렌더링되어야 한다.
+
+    Phase 2A Step A: 카드 ③ Push/배포 + ④ 알림 채널 → '알림 & 배포' 단일 카드 통합.
+    Phase 2A Step A: cards ③ Push/Deploy + ④ Notify channels merged into a single 'Notify & Deploy' card.
+    """
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
     body = seeded_page.content()
     # ① 빠른 설정 제목은 기존 유지 — 개별 프리셋 카드로 대체
     # ① Quick settings heading is preserved — replaced by individual preset cards.
-    # PR #89 카드명 변경 — 의도 기반 명칭으로 갱신
-    # PR #89 renamed cards to intent-based labels
     assert "분석 동작 규칙" in body, "카드 ② 분석 동작 규칙 누락"
-    assert "Push / 배포 이벤트" in body, "카드 ③ Push / 배포 이벤트 누락"
+    assert "알림 &amp; 배포" in body or "알림 & 배포" in body, (
+        "통합 카드 '알림 & 배포' 누락 (Phase 2A Step A)"
+    )
     assert "통합 &amp; 연결" in body or "통합 & 연결" in body, "카드 ⑤ 통합 & 연결 누락"
     assert "위험 구역" in body, "카드 ⑥ 위험 구역 누락"
+    # 구 카드 제목은 더 이상 존재하지 않아야 함
+    # Old card titles must no longer exist
+    assert "Push / 배포 이벤트" not in body, "구 카드 'Push / 배포 이벤트' 잔존"
+    assert "알림 발신 채널" not in body, "구 카드 '알림 발신 채널' 잔존"
 
 
 def test_preset_diff_preview_has_nine_rows(seeded_page, base_url):

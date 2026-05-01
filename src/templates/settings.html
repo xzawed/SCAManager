@@ -377,7 +377,7 @@
         <p style="font-size:13px;color:var(--text-muted);margin:0 0 .75rem;">분석 결과를 받으려면 아래 단계를 완료하세요.</p>
         <div style="display:flex;flex-direction:column;gap:.45rem;font-size:13px;">
           <a href="#notifyCard" style="color:var(--accent);font-weight:600;">
-            ① 알림 채널 설정 → 아래 <strong>알림 발신 채널</strong>에서 Telegram 또는 다른 채널을 연결하세요
+            ① 알림 채널 설정 → 아래 <strong>알림 &amp; 배포</strong> 카드에서 Telegram 또는 다른 채널을 연결하세요
           </a>
           <span style="color:var(--text-muted);">
             ② 리뷰 수준 결정 → 위 <strong>빠른 설정</strong>에서 프리셋을 선택하세요 (선택 사항)
@@ -613,10 +613,10 @@
             </div>
           </div>
 
-          <!-- semi-auto 안내 힌트 (Telegram Chat ID는 ④ 알림 채널에서 설정) / semi-auto hint (Telegram Chat ID configured in ④ notification channels) -->
+          <!-- semi-auto 안내 힌트 (Telegram Chat ID는 알림 & 배포 카드에서 설정) / semi-auto hint (Telegram Chat ID configured in Notify & Deploy card) -->
           <div id="semiAutoHint" class="{% if config.approve_mode != 'semi-auto' %}is-hidden{% endif %}"
                style="margin-top:.75rem;padding:.5rem .75rem;background:var(--hint-bg);border:1px solid var(--hint-border);border-radius:7px;font-size:11px;color:var(--text-muted);line-height:1.6;">
-            💡 반자동 Approve는 <strong>④ 알림 채널의 Telegram Chat ID</strong>로 전송됩니다.
+            💡 반자동 Approve는 <a href="#notifyCard" style="color:var(--accent);font-weight:600;">알림 &amp; 배포 카드의 Telegram Chat ID</a>로 전송됩니다.
           </div>
 
           <div class="s-divider"></div>
@@ -672,12 +672,18 @@
         </div>
       </div>
 
-      <!-- Push / 배포 이벤트 & 팀 설정 카드 / Push/deploy events & team settings card -->
-      <div class="s-card">
-        <div class="s-card-hdr hdr-merge">
-          <span class="hdr-icon">🚀</span>
-          <span class="hdr-title">Push / 배포 이벤트</span>
-          <span class="hdr-badge">Push · Railway</span>
+        </div><!-- /.settings-grid -->
+      </div><!-- /.advanced-body -->
+    </details><!-- /.advanced-details -->
+
+    <!-- ③ 알림 & 배포 (Push/배포 토글 + 팀 설정 + 알림 채널 통합 — Phase 2A Step A) -->
+    <!-- ③ Notify & Deploy (push/deploy toggles + team settings + notification channels merged — Phase 2A Step A) -->
+    <div class="settings-grid">
+      <div class="s-card notify-full" id="notifyCard">
+        <div class="s-card-hdr hdr-notify">
+          <span class="hdr-icon">🔔</span>
+          <span class="hdr-title">알림 &amp; 배포</span>
+          <span class="hdr-badge">이벤트 · 채널</span>
         </div>
         <div class="s-card-body">
 
@@ -708,6 +714,7 @@
           </div>
 
           <div class="s-divider"></div>
+          <div class="s-section-label">Railway 배포</div>
           <div class="toggle-row">
             <div class="toggle-info">
               <div class="t-title">Railway 빌드 실패 알림</div>
@@ -737,22 +744,7 @@
             </label>
           </div>
 
-        </div>
-      </div>
-
-        </div><!-- /.settings-grid -->
-      </div><!-- /.advanced-body -->
-    </details><!-- /.advanced-details -->
-
-    <!-- ④ 알림 채널 (항상 표시 — 고급 설정 아코디언 밖) / Notification channels (always visible — outside advanced settings accordion) -->
-    <div class="settings-grid">
-      <div class="s-card notify-full" id="notifyCard">
-        <div class="s-card-hdr hdr-notify">
-          <span class="hdr-icon">🔔</span>
-          <span class="hdr-title">알림 발신 채널</span>
-          <span class="hdr-badge">SCAManager → 외부</span>
-        </div>
-        <div class="s-card-body">
+          <div class="s-divider"></div>
           <div class="s-section-label">메신저 / 이메일</div>
           <div class="channel-grid">
             <div class="field-row">
@@ -790,8 +782,8 @@
                   </p>
                 </div>
                 <script>
-                  // Telegram OTP 발급 버튼 — 알림 발신 채널 카드로 이동 (B+A 리디자인)
-                  // Telegram OTP button — moved to notification channel card (B+A redesign)
+                  // Telegram OTP 발급 버튼 — 알림 & 배포 카드 (Phase 2A Step A 통합)
+                  // Telegram OTP button — Notify & Deploy card (Phase 2A Step A merge)
                   (function () {
                     var btn = document.getElementById('issueTelegramOtp');
                     if (!btn) { return; }
