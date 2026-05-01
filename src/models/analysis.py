@@ -1,6 +1,8 @@
 """Analysis ORM 모델 — 분석 이력(정적 분석 + AI 리뷰 점수) 저장."""
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, JSON, DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy import (
+    Column, Integer, String, JSON, DateTime, ForeignKey, UniqueConstraint, Index,
+)
 from sqlalchemy.orm import relationship
 from src.database import Base
 
@@ -10,7 +12,17 @@ class Analysis(Base):
     """Push/PR 분석 이력 테이블 — commit_sha별 점수·등급·AI 리뷰 결과 저장."""
 
     __tablename__ = "analyses"
-    __table_args__ = (UniqueConstraint("repo_id", "commit_sha", name="uq_analyses_repo_sha"),)
+    # Phase H PR-4A — 복합 인덱스 2종:
+    #   (repo_id, created_at) — `WHERE repo_id=X ORDER BY created_at DESC LIMIT N`
+    #     analytics_service.weekly_summary / moving_average / repo_detail 차트
+    #   (repo_id, author_login) — leaderboard / author_trend 집계
+    # 단일 컬럼 created_at/author_login 인덱스는 다른 쿼리(전역 추세 등) 용으로 유지.
+    # Phase H PR-4A — composite indexes for repo-scoped sort/group queries.
+    __table_args__ = (
+        UniqueConstraint("repo_id", "commit_sha", name="uq_analyses_repo_sha"),
+        Index("ix_analyses_repo_id_created_at", "repo_id", "created_at"),
+        Index("ix_analyses_repo_id_author_login", "repo_id", "author_login"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     repo_id = Column(Integer, ForeignKey("repositories.id"), nullable=False)
