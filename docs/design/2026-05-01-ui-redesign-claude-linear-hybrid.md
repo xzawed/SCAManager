@@ -147,3 +147,23 @@
 ## 다음 단계
 
 본 PR (Phase 1A) 머지 후 → Phase 1B (다크 모드 + 마이크로카피) → Phase 1C → Phase 2A → Phase 2B 순차 진행. 각 PR 마다 회귀 가드 + pylint + e2e 검증.
+
+---
+
+## 진화 기록 (2026-05-01 사후 갱신)
+
+본 기획서의 단계별 로드맵 (Phase 1A → 2B) 은 **Phase 1A/1B/1C/2A 까지 순차 머지 후, 사용자 피드백을 받아 **4-에이전트 감사 + Step A~E cleanup 사이클** 로 진화**. 실제 진행:
+
+| 단계 | PR | 핵심 |
+|------|-----|------|
+| Phase 1A | #149 | 디자인 토큰 정의만 |
+| Phase 1B | #150 | 폰트 로딩 + Claude 다크 토글 + 마이크로카피 |
+| Phase 1C | #151 | claude-dark 등급 색 alias |
+| Phase 2A Step A | #152 | Settings 6→5 카드 (③+④ 통합) |
+| Phase 2A Progressive 재설계 | #153 | `<details>` 아코디언 제거 + W2 분리 + 단순/고급 모드 강화 + ●○ 점 |
+| Settings P0 핫픽스 | #156 | 4-에이전트 감사 P0 5건 |
+| Settings P1·P2 polish | #159, #160 | P1 8건 + P2 7건 |
+| 7-페이지 4-에이전트 감사 → Step A~E | #163~#168 | 환각 토큰 alias, safe-area, WCAG, Chart.js vendoring, 색 의미 통일, nav 가드 등 65건 |
+| 5-에이전트 정합성 cleanup | #169~ (진행 중) | claude-dark 누락 토큰, Step B/D 누락분, 문서 동기화 |
+
+**Phase 2B (Cmd+K 명령 팔레트) 와 Phase 3 (TV mode / PWA) 는 미진행** — 시각 결함 대응 우선. 향후 시범 운영 결과에 따라 결정.

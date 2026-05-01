@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-01 기준 — Phase H+I Critical 10건 100% 완료)
+## 현재 수치 (2026-05-01 기준 — Phase H+I + UI 감사 사이클 (12 PR + cleanup) 완료)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
@@ -48,9 +48,49 @@
 | `src/gate/retry_policy.py` | 순수 함수: should_retry · compute_next_retry_at · is_expired · mergeable_state_terminality |
 | `src/github_client/checks.py` | get_ci_status · get_required_check_contexts (5분 TTL 캐시) |
 | `src/services/merge_retry_service.py` | process_pending_retries — CI-aware 재시도 워커 |
+| `src/static/vendor/chart.umd.min.js` | Chart.js 4.4.0 UMD min vendoring (UI 감사 Step C) — CDN 차단/오프라인 환경에서 빈 차트 회피. `src/main.py` 의 StaticFiles `/static` mount 로 노출. 사용 페이지: repo_detail / analysis_detail / insights_me |
 | `tests/conftest.py` | 환경변수 주입 + _webhook_secret_cache autouse 클리어 |
 
 ## 작업 이력 (그룹별)
+
+### 그룹 57 (2026-05-01 · UI 감사 사이클 12 PR + 정합성 cleanup — PR #158, #159, #160, #161~#168, #169)
+
+**목표**: 그룹 56 (Settings P0 5건 핫픽스) 머지 후 (a) Settings 잔여 P1·P2 polish, (b) 7-페이지 4-에이전트 감사로 디자인 시스템 root cause 결함 식별·해소, (c) 5-에이전트 종합 정합성 감사 후 누락 코드 결함 cleanup. 단일 작업일 12 PR 시리즈.
+
+**시간순 진행** (모두 2026-05-01):
+
+| PR | 단계 | 핵심 변경 |
+|----|------|---------|
+| **#158** | code scan | CodeQL alert no.317 unused import 정리 |
+| **#159** | Settings P1·P2 polish 12건 (Step 2) | mode toggle wrap, gate-btns WCAG, channel-grid placeholder, mode toggle 시각, toggle-row baseline, Bootstrap 클래스, conn-dot ring, conn-dot section-label 정렬, preset 높이, safe-area, range thumb, simple-only-hint 위치 |
+| **#160** | Settings P1 위험 마무리 (Step 3) | `--grad-merge` cyan/teal 토큰 신설 (--success 와 색 의미 분리) + ⑥/⑦ 카드 동작 안내 박스 |
+| **#161/#162** | scripts SyntaxError | `scripts/i18n_comments/translate_comments.py` SYSTEM_PROMPT triple-quote escape (동일 작업 중복 머지) |
+| **#163/#164** | UI 감사 Step A — 디자인 시스템 root cause | 환각(phantom) 토큰 alias 패턴 (`--bg-hover`/`--card-bg`/`--text`) + nav/container/메뉴 safe-area-inset + WCAG 2.5.5 모바일 클릭영역 ≥44px + login.html 모바일 분기 (동일 PR 중복 머지) |
+| **#165** | UI 감사 Step B — 모바일 전용 | iOS Safari focus zoom 방지 (input ≥16px) + insights/insights_me 모바일 분기 신규 + overview 테이블 헤더 세로 wrap 방지 + repo_detail 모바일 슬라이더 thumb |
+| **#166** | UI 감사 Step C — Chart.js vendoring | **신규 자원** `src/static/vendor/chart.umd.min.js` (204KB) + **신규 mount** `src/main.py` `app.mount("/static", StaticFiles(...))` + 3 페이지 CDN→로컬 + insights_me claude-dark 차트 등급 색 동적 읽기 (`getComputedStyle` + `themechange`) |
+| **#167** | UI 감사 Step D — 색 의미 토큰 통일 | `--warning` 토큰 신규 (4-테마) + claude-dark 의 `--success`/`--danger` 명시 alias + analysis_detail 7곳 + overview cal-bar + repo_detail JS 소스 배지 hex→토큰 |
+| **#168** | UI 감사 Step E — 페이지별 polish | nav `{% if current_user %}` 가드 + Chart.js maintainAspectRatio:false + .btn:disabled 시각 강화 + insights chip a11y (sr-only + focus-within) + overview gst-steps 데스크탑 3-col |
+| **#169** | UI 감사 사이클 cleanup PR-1 (5-에이전트 정합성 감사 후속) | (a) claude-dark 누락 토큰 8종 정의 (`--grad-*`, `--title-gradient`, `--btn-gate-active-*`, `--save-btn-*`, `--hint-*`, `--hook-btn-*`) — settings 페이지 claude-dark 깨짐 해소, (b) 환각 토큰 alias 2종 추가 (`--accent-blue`, `--c-warning`), (c) Step D PR #167 누락 3건 (settings.html slider thumb + 온보딩 배너 헤더 + 옵션 안내 텍스트), (d) Step B PR #165 누락 1건 (settings.html `.field-input` 모바일 16px iOS 줌인 방지) |
+
+**4-에이전트 감사 결과**: 7 페이지 P0 32 + P1 18 + P2 15 = 65건 식별 → Step A~E 시리즈로 거의 전부 처리.
+
+**5-에이전트 정합성 감사 결과** (Step E 머지 후): 코드 결함 4건 (PR #169 처리) + P1 후속 3건 (PR-3 예정) + 문서 정합성 4건 (본 PR-2 처리) + 기타 follow-up 식별.
+
+**5-way sync 영향**: 0 — 모두 템플릿/CSS/JS/정적 자원 + scripts 1건 + main.py 8줄. ORM·dataclass·API body·폼 필드명·PRESETS 모두 불변.
+
+**테스트**: 1968 유지 (UI 회귀 0건). pylint src/ 10.00/10.
+
+**신규 인프라**:
+- `src/static/vendor/chart.umd.min.js` (204KB Chart.js 4.4.0 UMD min) — CDN 차단/오프라인 환경 호환
+- `src/main.py` `app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")` — 조건부 mount
+
+**관련 PR (cleanup 시리즈)**:
+- PR-1 (#169): 코드 결함 cleanup ✅
+- PR-2 (본 docs PR): 문서 동기화
+- PR-3 (예정): P1 polish (chart-wrap-inner 모바일 분기, .btn:disabled 확장, tooltip 토큰화)
+- PR-4 (예정): analysis_detail 9 카드 데스크탑 2-col + 회귀 가드
+
+---
 
 ### 그룹 56 (2026-05-01 · Settings 화면 P0 시각 결함 5건 핫픽스 — PR #156)
 
