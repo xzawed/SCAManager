@@ -539,7 +539,8 @@
 
 {% block scripts %}
 {% if trend_data is defined and trend_data|length > 1 %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<!-- Step C: Chart.js vendoring — CDN 차단/오프라인 환경에서 빈 차트 회피 / Vendored Chart.js -->
+<script src="/static/vendor/chart.umd.min.js"></script>
 <script>
 (function() {
   var TREND = {{ trend_data | tojson }};

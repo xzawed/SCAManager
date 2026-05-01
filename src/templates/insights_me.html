@@ -136,91 +136,115 @@
 <div class="chart-wrap">
   <canvas id="trendChart"></canvas>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<!-- Step C: Chart.js vendoring — CDN 차단/오프라인 환경에서 빈 차트 회피 / Vendored Chart.js -->
+<script src="/static/vendor/chart.umd.min.js"></script>
 <script>
 (function(){
   var labels  = {{ trend | map(attribute='date') | list | tojson }};
   var scores  = {{ trend | map(attribute='avg_score') | list | tojson }};
-  var accent  = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#5e6ad2';
-  var textMuted = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#73737c';
+  var canvas  = document.getElementById('trendChart');
+  var chart   = null;
 
-  /* 등급 경계선 플러그인 / Grade boundary lines plugin */
-  var gradeBoundaries = {
-    id: 'gradeBoundaries',
-    beforeDraw: function(chart) {
-      var ctx = chart.ctx;
-      var yAxis = chart.scales.y;
-      var xLeft = chart.chartArea.left;
-      var xRight = chart.chartArea.right;
-      var thresholds = [
-        { val: 90, label: 'A', color: '#4ade80' },
-        { val: 75, label: 'B', color: '#60a5fa' },
-        { val: 60, label: 'C', color: '#fbbf24' },
-        { val: 45, label: 'D', color: '#fb923c' }
-      ];
-      ctx.save();
-      thresholds.forEach(function(t) {
-        var y = yAxis.getPixelForValue(t.val);
-        ctx.beginPath();
-        ctx.setLineDash([4, 4]);
-        ctx.strokeStyle = t.color;
-        ctx.globalAlpha = 0.45;
-        ctx.lineWidth = 1;
-        ctx.moveTo(xLeft, y);
-        ctx.lineTo(xRight, y);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.globalAlpha = 0.65;
-        ctx.fillStyle = t.color;
-        ctx.font = '10px system-ui';
-        ctx.fillText(t.label, xRight + 4, y + 3);
-        ctx.globalAlpha = 1;
-      });
-      ctx.restore();
-    }
-  };
+  /* Step C (C4): 등급 색을 CSS var(--grade-*) 에서 읽기 — claude-dark 등 다른 테마에서
+     차트와 표의 등급 색이 갈리던 문제 해소.
+     Step C (C4): read grade colors from CSS vars to keep chart in sync with grade badges
+     across all themes (especially claude-dark sage/sand/muted-red). */
+  function readVar(name, fallback) {
+    var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || fallback;
+  }
 
-  new Chart(document.getElementById('trendChart'), {
-    type: 'line',
-    data: {
-      labels: labels,
-      datasets: [{
-        label: '일별 평균 점수',
-        data: scores,
-        borderColor: accent,
-        backgroundColor: accent + '26',
-        tension: 0.3,
-        fill: true,
-        pointRadius: labels.length <= 14 ? 4 : 2,
-        pointHoverRadius: 6,
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      layout: { padding: { right: 24 } },
-      scales: {
-        y: {
-          min: 0, max: 100,
-          ticks: { color: textMuted, stepSize: 20 },
-          grid:  { color: textMuted + '22' }
-        },
-        x: {
-          ticks: { color: textMuted, maxRotation: 45 },
-          grid:  { display: false }
-        }
+  function buildChart() {
+    if (chart) { chart.destroy(); }
+    var accent    = readVar('--accent', '#5e6ad2');
+    var textMuted = readVar('--text-muted', '#73737c');
+    var gradeA    = readVar('--grade-a', '#4ade80');
+    var gradeB    = readVar('--grade-b', '#60a5fa');
+    var gradeC    = readVar('--grade-c', '#fbbf24');
+    var gradeD    = readVar('--grade-d', '#fb923c');
+
+    var gradeBoundaries = {
+      id: 'gradeBoundaries',
+      beforeDraw: function(c) {
+        var ctx = c.ctx;
+        var yAxis = c.scales.y;
+        var xLeft = c.chartArea.left;
+        var xRight = c.chartArea.right;
+        var thresholds = [
+          { val: 90, label: 'A', color: gradeA },
+          { val: 75, label: 'B', color: gradeB },
+          { val: 60, label: 'C', color: gradeC },
+          { val: 45, label: 'D', color: gradeD }
+        ];
+        ctx.save();
+        thresholds.forEach(function(t) {
+          var y = yAxis.getPixelForValue(t.val);
+          ctx.beginPath();
+          ctx.setLineDash([4, 4]);
+          ctx.strokeStyle = t.color;
+          ctx.globalAlpha = 0.45;
+          ctx.lineWidth = 1;
+          ctx.moveTo(xLeft, y);
+          ctx.lineTo(xRight, y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.globalAlpha = 0.65;
+          ctx.fillStyle = t.color;
+          ctx.font = '10px system-ui';
+          ctx.fillText(t.label, xRight + 4, y + 3);
+          ctx.globalAlpha = 1;
+        });
+        ctx.restore();
+      }
+    };
+
+    chart = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: '일별 평균 점수',
+          data: scores,
+          borderColor: accent,
+          backgroundColor: accent + '26',
+          tension: 0.3,
+          fill: true,
+          pointRadius: labels.length <= 14 ? 4 : 2,
+          pointHoverRadius: 6,
+        }]
       },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: function(ctx) { return '점수: ' + ctx.parsed.y; }
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        layout: { padding: { right: 24 } },
+        scales: {
+          y: {
+            min: 0, max: 100,
+            ticks: { color: textMuted, stepSize: 20 },
+            grid:  { color: textMuted + '22' }
+          },
+          x: {
+            ticks: { color: textMuted, maxRotation: 45 },
+            grid:  { display: false }
+          }
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function(ctx) { return '점수: ' + ctx.parsed.y; }
+            }
           }
         }
-      }
-    },
-    plugins: [gradeBoundaries]
-  });
+      },
+      plugins: [gradeBoundaries]
+    });
+  }
+
+  buildChart();
+  /* Step C (C4): themechange 시 차트 재빌드 — 테마 전환 후 stale 색 회피
+     Step C (C4): rebuild on themechange to avoid stale colors after theme switch */
+  document.addEventListener('themechange', buildChart);
 })();
 </script>
 
