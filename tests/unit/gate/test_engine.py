@@ -1339,3 +1339,78 @@ async def test_run_auto_merge_legacy_failure_records_legacy_state():
     assert call_kwargs["state"] == _states.LEGACY
     assert call_kwargs["enabled_at"] is None
     assert call_kwargs["success"] is False
+
+
+# ---------------------------------------------------------------------------
+# Phase H PR-2C — run_gate_check 3-옵션 병렬 실행
+# 12-에이전트 감사 개선 권장 #B5 — 3 옵션이 직렬 await 라 평균 1-3초씩 합산 →
+# webhook 응답 지연. CLAUDE.md 명시 "PR Gate 3-옵션 독립" 이므로 gather 가능.
+# ---------------------------------------------------------------------------
+
+
+async def test_run_gate_check_unexpected_exception_in_one_option_does_not_block_others():
+    """한 옵션의 예상 외 예외가 다른 옵션 실행을 막지 않는다 (gather 병렬 보장).
+
+    직렬 await 패턴은 첫 번째 옵션이 catch 못 한 예외를 던지면 나머지 옵션이
+    실행되지 않는다. asyncio.gather(return_exceptions=True) 로 각 옵션 격리.
+    """
+    mock_db = MagicMock()
+    config = _config(
+        pr_review_comment=True,
+        approve_mode="auto",
+        approve_threshold=75,
+        auto_merge=True,
+        merge_threshold=75,
+    )
+
+    with patch("src.gate.engine.get_repo_config", return_value=config), \
+         patch(
+             "src.gate.engine._run_review_comment",
+             new=AsyncMock(side_effect=RuntimeError("unexpected boom")),
+         ), \
+         patch("src.gate.engine._run_approve_decision", new_callable=AsyncMock) as mock_approve, \
+         patch("src.gate.engine._run_auto_merge", new_callable=AsyncMock) as mock_merge:
+        await run_gate_check(
+            repo_name="owner/repo",
+            pr_number=1,
+            analysis_id=1,
+            result={"score": 80, "grade": "B"},
+            github_token="tok",
+            db=mock_db,
+        )
+
+    # 핵심: 첫 옵션 예외에도 두 번째·세 번째 옵션은 실행됨
+    mock_approve.assert_awaited_once()
+    mock_merge.assert_awaited_once()
+
+
+async def test_run_gate_check_runs_three_options_via_gather():
+    """3 옵션이 모두 호출됨 (asyncio.gather 병렬 실행) — 한 옵션의 sync side-effect
+    가 다른 옵션 호출 전에 실행되지 않음을 통한 간접 검증."""
+    mock_db = MagicMock()
+    config = _config(pr_review_comment=True, approve_mode="auto", auto_merge=True)
+    call_order: list[str] = []
+
+    mock_review = AsyncMock(side_effect=lambda *a, **kw: call_order.append("review"))
+    mock_approve = AsyncMock(side_effect=lambda *a, **kw: call_order.append("approve"))
+    mock_merge = AsyncMock(side_effect=lambda *a, **kw: call_order.append("merge"))
+
+    with patch("src.gate.engine.get_repo_config", return_value=config), \
+         patch("src.gate.engine._run_review_comment", new=mock_review), \
+         patch("src.gate.engine._run_approve_decision", new=mock_approve), \
+         patch("src.gate.engine._run_auto_merge", new=mock_merge):
+        await run_gate_check(
+            repo_name="owner/repo",
+            pr_number=1,
+            analysis_id=1,
+            result={"score": 80, "grade": "B"},
+            github_token="tok",
+            db=mock_db,
+        )
+
+    # 3 옵션 모두 호출됨 (gather 가 모두 schedule + await)
+    assert set(call_order) == {"review", "approve", "merge"}
+    mock_review.assert_awaited_once()
+    mock_approve.assert_awaited_once()
+    mock_merge.assert_awaited_once()
+
