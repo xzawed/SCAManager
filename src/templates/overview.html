@@ -197,7 +197,13 @@
   .gst-header { margin-bottom: 1.2rem; }
   .gst-title { margin: 0 0 0.3rem; font-size: 20px; }
   .gst-subtitle { margin: 0; color: var(--text-muted); font-size: 14px; }
+  /* Step E (E5): 데스크탑 ≥1024px 에서 3-col grid (튜토리얼 카드 가로 펼침)
+     모바일은 1-col 유지 (col 너비 부족). 빈 상태 카드 가독성 향상.
+     Step E (E5): 3-col grid on desktop ≥1024px; 1-col stack on mobile */
   .gst-steps { display: flex; flex-direction: column; gap: 0.9rem; }
+  @media (min-width: 1024px) {
+    .gst-steps { display: grid; grid-template-columns: repeat(3, 1fr); align-items: stretch; }
+  }
   .gst-step { display: flex; gap: 1rem; align-items: flex-start;
               padding: 1rem 1.1rem; background: var(--bg-hover);
               border-radius: 10px; border: 1px solid var(--border); }
