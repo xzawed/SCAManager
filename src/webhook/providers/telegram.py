@@ -49,13 +49,17 @@ def _parse_gate_callback(data: str) -> "tuple[str, int, str] | None":
         analysis_id = int(analysis_id_str)
     except ValueError:
         return None
-    # 32자 hex (128-bit) — telegram_gate.py 의 발신 토큰과 동일 절단 길이 유지
-    # 32 hex chars (128-bit) — matches the truncation length in telegram_gate._gate_callback_token.
-    # Telegram callback_data 64-byte 한도로 인해 [:32] 절단이 필수 (NIST SP 800-107 충족).
-    # [:32] truncation is required by Telegram's 64-byte callback_data limit (meets NIST SP 800-107).
+    # Phase H PR-5C — 발신측 (telegram_gate._make_callback_token) 과 동일한
+    # HMAC msg 형식 사용 — `f"gate:{analysis_id}"`. 이전 구현은 `str(analysis_id)`
+    # 만 HMAC 해 발신 토큰과 불일치 → 모든 semi-auto 콜백이 401 거부되던
+    # functional bug. 12-에이전트 감사 Critical C10 직접 수정.
+    # cmd 도메인 (cmd:N) 과의 격리도 본 변경으로 보장 — cross-replay 차단.
+    # Phase H PR-5C: align HMAC msg with sender (`f"gate:{id}"` not `str(id)`) —
+    # mismatch had caused all semi-auto callbacks to fail with 401. Also restores
+    # cmd-domain isolation (Critical C10 from 2026-04-30 audit).
     expected = hmac.new(
         settings.telegram_bot_token.encode(),
-        str(analysis_id).encode(),
+        f"gate:{analysis_id}".encode(),
         digestmod=hashlib.sha256,
     ).hexdigest()[:32]
     if not hmac.compare_digest(expected, callback_token):
