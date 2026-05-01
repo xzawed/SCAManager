@@ -15,8 +15,14 @@
     color: var(--text-primary);
     font-family: 'Menlo', 'Consolas', monospace;
   }
+  /* Step E (E2): chart-card 명시 height — maintainAspectRatio:false 와 페어
+     Step E (E2): explicit height paired with maintainAspectRatio:false (no mobile squish) */
   .chart-card {
     padding: 1.25rem 1.5rem;
+  }
+  .chart-card .chart-wrap-inner {
+    position: relative;
+    height: 200px;
   }
   .chart-label {
     font-size: 11px;
@@ -224,10 +230,12 @@
   <a class="settings-btn" href="/repos/{{ repo_name }}/settings">⚙️ 설정</a>
 </div>
 
-<!-- 점수 차트 / Score chart -->
+<!-- 점수 차트 / Score chart — Step E (E2): canvas 명시 height 컨테이너로 감싸 모바일 압착 회피 -->
 <div class="card chart-card">
   <div class="chart-label">점수 추이</div>
-  <canvas id="scoreChart" height="80"></canvas>
+  <div class="chart-wrap-inner">
+    <canvas id="scoreChart"></canvas>
+  </div>
 </div>
 
 <!-- 분석 이력 / Analysis history -->
@@ -368,7 +376,10 @@
           }
         },
         responsive: true,
-        maintainAspectRatio: true
+        /* Step E (E2): false 로 변경 — chart-wrap-inner 컨테이너 height(200px) 가
+           폭과 무관하게 보장되어 모바일 압착 + canvas height attr 깜빡임 회피.
+           Step E (E2): false → no width-driven height resize → no mobile squish */
+        maintainAspectRatio: false
       }
     });
   }

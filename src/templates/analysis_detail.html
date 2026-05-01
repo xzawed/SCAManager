@@ -181,9 +181,15 @@
   .nav-btn.disabled { opacity: 0.38; cursor: default; pointer-events: none; }
   .nav-label { font-size: 0.82rem; color: var(--text-muted); flex: 1; text-align: center; }
   /* 트렌드 차트 섹션 */
+  /* Step E (E2): 차트 컨테이너 명시 height — maintainAspectRatio:false 와 페어
+     Step E (E2): explicit height paired with maintainAspectRatio:false */
   .trend-section {
     margin-bottom: 1.25rem;
     padding: 1rem 1.25rem;
+  }
+  .trend-section .chart-wrap-inner {
+    position: relative;
+    height: 200px;
   }
   .trend-section-title {
     font-size: 13px;
@@ -372,11 +378,13 @@
 
 {% set r = analysis.result %}
 
-<!-- 점수 추이 트렌드 차트 / Score trend chart -->
+<!-- 점수 추이 트렌드 차트 / Score trend chart — Step E (E2): canvas wrap container -->
 {% if trend_data is defined and trend_data|length > 1 %}
 <div class="card trend-section">
   <div class="trend-section-title">📈 점수 추이 (최근 {{ trend_data|length }}건)</div>
-  <canvas id="trendChart" height="100"></canvas>
+  <div class="chart-wrap-inner">
+    <canvas id="trendChart"></canvas>
+  </div>
 </div>
 {% endif %}
 
@@ -625,7 +633,9 @@
         }
       },
       responsive: true,
-      maintainAspectRatio: true
+      /* Step E (E2): false — chart-wrap-inner 컨테이너 height(200px) 가
+         폭과 무관하게 보장. 모바일 압착 + canvas height attr 깜빡임 회피. */
+      maintainAspectRatio: false
     }
   });
 })();
