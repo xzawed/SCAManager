@@ -20,6 +20,7 @@ os.environ.setdefault("ANTHROPIC_API_KEY", "sk-test-key")
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
+import pytest
 
 from src.github_client.graphql import (
     ENABLE_API_ERROR,
@@ -379,3 +380,76 @@ async def test_graphql_request_returns_parsed_json():
     # variables 미전달 시 payload 에 키 없음 / no variables key when omitted.
     payload = mock_client.post.call_args.kwargs["json"]
     assert "variables" not in payload
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Phase H PR-1B-2 — 5xx 자동 재시도 (exponential backoff)
+# 12-에이전트 감사 High C1 — GitHub GraphQL 일시 5xx 시 단발 실패 → 호출자
+# 가 ENABLE_API_ERROR 폴백 → REST 405 → 운영 알림 noise. 5xx 재시도로 80%+
+# 자동 회복.
+# ──────────────────────────────────────────────────────────────────────────
+
+
+async def test_graphql_request_retries_on_5xx_then_succeeds():
+    """첫 응답 502 → 두 번째 200 — 자동 재시도로 정상 회복."""
+    success_body = {"data": {"viewer": {"login": "octocat"}}}
+    mock_client = AsyncMock()
+    # 첫 호출 502, 두 번째 호출 200
+    mock_client.post = AsyncMock(side_effect=[
+        _make_status_response({}, 502), _make_response(success_body),
+    ])
+
+    with patch("src.github_client.graphql.get_http_client", return_value=mock_client), \
+         patch("src.github_client.graphql.asyncio.sleep", new_callable=AsyncMock):
+        result = await graphql_request(TOKEN, "{ viewer { login } }")
+
+    assert result == success_body
+    # 두 번 호출됨 — 재시도 동작 확인
+    assert mock_client.post.call_count == 2
+
+
+async def test_graphql_request_does_not_retry_on_4xx():
+    """401/403/422 등 4xx 는 즉시 전파 — 재시도 무의미."""
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=_make_status_response({}, 403))
+
+    with patch("src.github_client.graphql.get_http_client", return_value=mock_client), \
+         patch("src.github_client.graphql.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        with pytest.raises(httpx.HTTPStatusError):
+            await graphql_request(TOKEN, "{ viewer { login } }")
+
+    # 정확히 1회 시도 (재시도 X)
+    assert mock_client.post.call_count == 1
+    mock_sleep.assert_not_called()
+
+
+async def test_graphql_request_gives_up_after_max_attempts_on_persistent_5xx():
+    """모든 시도가 5xx → 무한 루프 차단, 마지막 5xx 전파."""
+    mock_client = AsyncMock()
+    # 항상 503
+    mock_client.post = AsyncMock(return_value=_make_status_response({}, 503))
+
+    with patch("src.github_client.graphql.get_http_client", return_value=mock_client), \
+         patch("src.github_client.graphql.asyncio.sleep", new_callable=AsyncMock):
+        with pytest.raises(httpx.HTTPStatusError):
+            await graphql_request(TOKEN, "{ viewer { login } }")
+
+    # 무한 루프 방지 — 합리적 상한 (3회 이내)
+    assert 1 < mock_client.post.call_count <= 5
+
+
+async def test_graphql_request_retries_on_network_error():
+    """ConnectError / TimeoutException 등 transient 네트워크 오류도 재시도."""
+    success_body = {"data": {"viewer": {"login": "octocat"}}}
+    mock_client = AsyncMock()
+    # 첫 호출 ConnectError, 두 번째 200
+    mock_client.post = AsyncMock(side_effect=[
+        httpx.ConnectError("DNS"), _make_response(success_body),
+    ])
+
+    with patch("src.github_client.graphql.get_http_client", return_value=mock_client), \
+         patch("src.github_client.graphql.asyncio.sleep", new_callable=AsyncMock):
+        result = await graphql_request(TOKEN, "{ viewer { login } }")
+
+    assert result == success_body
+    assert mock_client.post.call_count == 2
