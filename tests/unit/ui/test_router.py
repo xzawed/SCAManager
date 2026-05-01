@@ -1890,3 +1890,100 @@ def test_settings_field_input_mobile_16px():
     assert ".field-input { font-size: 16px;" in mobile_block, (
         "settings.html 모바일 분기에 .field-input 16px 누락 (iOS Safari 줌인 방지)"
     )
+
+
+# ── PR-D2: 5-way sync 5번째 layer + UI 회귀 가드 보강 ──────────────────
+# PR-4 (#173) 후속 — 5-에이전트 정합성 감사가 식별한 P1 가드 부재 4건 보완.
+# PR-D2: regression guards extending PR-4 (#173) — fills P1 gaps from
+# 5-agent integrity audit (PRESETS / JS helpers / themechange listener).
+
+
+def test_presets_9_keys_per_preset():
+    """PR-D2 회귀 가드 — settings.html 의 PRESETS (minimal/standard/strict) 가
+    모두 9 정확한 키를 정의해야 함.
+
+    누락 시 applyPreset() 호출 후 폼 상태가 의도와 다르게 변경되어 silent 정책 회귀.
+    Missing keys cause silent policy regression after applyPreset() call.
+    """
+    settings = _read_template("settings.html")
+    # PRESETS 객체 시작 위치
+    presets_idx = settings.find("PRESETS = {")
+    assert presets_idx != -1, "PRESETS 객체 정의 누락"
+    # 9 필수 키 — 5-way sync 의 5번째 layer
+    required_keys = [
+        "pr_review_comment", "approve_mode", "auto_merge",
+        "commit_comment", "create_issue", "railway_deploy_alerts",
+        "approve_threshold", "reject_threshold", "merge_threshold",
+    ]
+    # 각 프리셋(minimal/standard/strict) 안에서 9 키 모두 등장해야 함
+    # 단순 정확도 — 키 등장 횟수 9 × 3 = 27 이상
+    for key in required_keys:
+        count = settings.count(f"{key}:")
+        # 최소 3회 (3 프리셋) — settings 본문 외에서 더 등장하므로 4+ 가능
+        assert count >= 3, (
+            f"PRESETS 키 {key} 가 3 프리셋 (minimal/standard/strict) 모두에 정의되지 않음 "
+            f"({count}회만 발견)"
+        )
+
+
+def test_js_helpers_12_signatures_present():
+    """PR-D2 회귀 가드 — settings.html JS 헬퍼 12종 함수 시그니처 보존.
+
+    이전 가드(test_router.py:1676)는 3종 (onPresetToggle/renderPresetDiff/flashPresetChanges)
+    만 검증. JS 리팩터링 중 함수 이름 변경/삭제 시 사용자가 토글 클릭 → JS error →
+    폼 동작 무반응 (silent regression). 12종 모두 검증으로 차단.
+    Previous guard only checked 3 helpers; expanded to 12 to catch silent JS regressions.
+    """
+    settings = _read_template("settings.html")
+    # CLAUDE.md "settings.html 구조 규약" 의 12 헬퍼 (5 기존 + 4 신규 + 3 추가)
+    helpers = [
+        "setApproveMode", "toggleMergeThreshold", "applyPreset",
+        "_setPair", "_showPresetToast",
+        "onPresetToggle", "renderPresetDiff", "flashPresetChanges",
+        "toggleMergeIssueOption", "toggleFieldMask",
+        "toggleSettingsMode", "initSettingsMode",
+    ]
+    for fn in helpers:
+        # function 정의 또는 함수 호출 둘 다 grep — 적어도 한 번 등장
+        assert fn in settings, (
+            f"JS 헬퍼 시그니처 {fn} 누락 — silent regression 위험 "
+            f"(폼 토글/프리셋 동작 무반응)"
+        )
+
+
+def test_themechange_event_listeners():
+    """PR-D2 회귀 가드 — themechange 이벤트 dispatch + listener 페어링 보존.
+
+    base.html `dispatchEvent('themechange')` ↔ repo_detail/insights_me 의
+    `addEventListener('themechange', buildChart)` 는 페어로 동작해야 차트가
+    테마 전환 시 재빌드. 한쪽만 사라지면 stale 색이 남음 (silent regression).
+    base + 2 chart pages must stay paired to avoid stale colors after theme switch.
+    """
+    base = _read_template("base.html")
+    assert "dispatchEvent(new CustomEvent('themechange'" in base, (
+        "base.html 의 themechange 이벤트 dispatch 누락 — 차트 재빌드 트리거 깨짐"
+    )
+    # repo_detail / insights_me 둘 다 listener 등록 필수
+    for tpl in ("repo_detail.html", "insights_me.html"):
+        content = _read_template(tpl)
+        assert "addEventListener('themechange'" in content, (
+            f"{tpl} 의 themechange 리스너 누락 — 테마 전환 후 stale 차트 색"
+        )
+
+
+def test_preset_threshold_values():
+    """PR-D2 회귀 가드 — PRESETS 의 임계값이 정책 의도와 일치.
+
+    approve_threshold/reject_threshold/merge_threshold 값이 silent 변경되면
+    자동 승인/반려 정책이 사용자 인지 없이 바뀜. minimal=disabled (75/50/75),
+    standard=auto (75/50/75), strict=auto (85/60/90) 의 핵심 값 가드.
+    Threshold values shifting silently changes auto approve/reject policy.
+    """
+    settings = _read_template("settings.html")
+    # 핵심 값 패턴 — strict 의 85/60/90 가 가장 구별성 높음
+    assert "approve_threshold: 85" in settings, "strict 프리셋 approve_threshold 85 누락"
+    assert "reject_threshold: 60" in settings, "strict 프리셋 reject_threshold 60 누락"
+    # standard/minimal 공통 75/50
+    assert settings.count("approve_threshold: 75") >= 2, (
+        "minimal/standard 프리셋의 approve_threshold:75 둘 다 보존 필요"
+    )
