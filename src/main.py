@@ -2,8 +2,10 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from alembic import command
@@ -141,6 +143,12 @@ app.add_middleware(
     same_site="lax",
     max_age=60 * 60 * 24 * 7,  # 7 days
 )
+# Step C (UI 감사): Chart.js vendoring 정적 마운트 — CDN 차단/오프라인 시 빈 차트 회피
+# Step C: vendored Chart.js for offline/CDN-blocked environments (avoid empty chart frames)
+_STATIC_DIR = Path(__file__).resolve().parent / "static"
+if _STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+
 app.include_router(auth_router)
 app.include_router(webhook_router)
 app.include_router(api_repos_router)
