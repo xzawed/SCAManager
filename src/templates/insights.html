@@ -21,7 +21,20 @@
     color:var(--text-primary);
   }
   .chip-label:hover { border-color:var(--accent); }
-  .chip-label input[type=checkbox] { display:none; }
+  /* Step E (E4): a11y — 키보드 포커스 가시화 (display:none input 은 포커스 불가)
+     Step E (E4): keyboard a11y — input visible to AT but visually hidden,
+     focus state shown on parent .chip-label via :focus-within */
+  .chip-label input[type=checkbox] {
+    position: absolute;
+    opacity: 0;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .chip-label:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
   .chip-label.checked { background:rgba(94,106,210,.15); border-color:var(--accent); color:var(--accent); font-weight:600; }
 
   /* ─── 기간 선택 + 비교 버튼 행 / Days selector + compare row ─── */

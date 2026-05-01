@@ -564,6 +564,21 @@
       box-shadow: 0 3px 12px rgba(94,106,210,.4);
       text-decoration: none;
     }
+    /* Step E (E3): 모든 버튼 disabled 시각 명확화 — 클릭 불가 인지 안 되던 결함 해소
+       Step E (E3): clear visual disabled state — was visually identical to enabled */
+    .btn:disabled, .btn[disabled],
+    .btn-primary:disabled, .btn--primary:disabled,
+    .btn-ghost:disabled, .btn--ghost:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+    .btn:disabled:hover, .btn[disabled]:hover {
+      background: inherit;
+      transform: none;
+      box-shadow: none;
+    }
     /* Ghost — 기존 .btn-ghost + 새 .btn--ghost */
     .btn-ghost, .btn--ghost {
       background: transparent;
@@ -734,11 +749,16 @@
       <div class="nav-logo-icon">⚡</div>
       <strong>SCAManager</strong>
     </a>
+    {# Step E (E1): nav 햄버거 + Overview/Insights 링크는 로그인 후에만 노출.
+       비로그인 상태에서 클릭 시 /login 으로 리다이렉트되므로 시각 노출 자체가 무의미.
+       Step E (E1): Hamburger + nav links shown only when authenticated. #}
+    {% if current_user %}
     <button class="nav-hamburger" id="navHamburger" aria-label="메뉴" aria-expanded="false">☰</button>
     <div class="nav-links" id="navLinks">
       <a class="nav-link" href="/">Overview</a>
       <a class="nav-link" href="/insights">Insights</a>
     </div>
+    {% endif %}
     <div class="nav-spacer"></div>
     {% if current_user %}
     <div class="nav-user">
