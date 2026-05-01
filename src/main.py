@@ -94,8 +94,10 @@ async def lifespan(_app: FastAPI):
         logger.info("DB migration completed")
     except asyncio.TimeoutError:
         logger.error("DB migration timed out after 30s — starting app anyway")
-    except Exception as exc:  # pylint: disable=broad-exception-caught
-        logger.error("DB migration failed: %s", exc)
+    except Exception:  # pylint: disable=broad-exception-caught  # noqa: BLE001
+        # Phase H PR-6A: logger.exception 으로 stack trace 보존
+        # Sentry/Railway 로그에서 마이그레이션 실패 원인 추적 가능
+        logger.exception("DB migration failed")
     await init_http_client()
 
     # Phase 2 — GitHub API warm-up ping. PR #105 silent skip 사고 분석에서 cold

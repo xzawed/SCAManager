@@ -87,6 +87,7 @@ async def create_deploy_failure_issue(
         number = create_resp.json().get("number")
         logger.info("Railway Issue 생성 완료 #%s (%s)", number, repo_full_name)
         return number
-    except httpx.HTTPError as exc:
-        logger.error("create_deploy_failure_issue 실패 (%s): %s", repo_full_name, exc)
+    except httpx.HTTPError:
+        # Phase H PR-6A: logger.exception 으로 stack trace 보존
+        logger.exception("create_deploy_failure_issue 실패 (%s)", repo_full_name)
         return None

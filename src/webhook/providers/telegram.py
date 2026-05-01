@@ -119,8 +119,9 @@ async def handle_gate_callback(
                         "PR #%d manual-approved but auto-merge 실패: %s",
                         analysis.pr_number, reason,
                     )
-        except (httpx.HTTPError, KeyError, ValueError, SQLAlchemyError) as exc:
-            logger.error("Gate callback failed: %s", exc)
+        except (httpx.HTTPError, KeyError, ValueError, SQLAlchemyError):
+            # Phase H PR-6A: logger.exception 으로 stack trace 보존
+            logger.exception("Gate callback failed")
 
 
 def _handle_message(
