@@ -4,11 +4,13 @@
 
 {% block content %}
 <style>
+  /* Step A (S2/L3): 100dvh 사용 — iOS Safari 동적 툴바 점프 회피
+     Step A (S2/L3): use 100dvh to avoid iOS Safari URL-bar bounce */
   .login-wrap {
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: calc(100vh - 52px);
+    min-height: calc(100dvh - 52px);
     padding: var(--space-6);
   }
   .login-card {
@@ -17,6 +19,12 @@
     text-align: center;
     padding: 3rem 2.5rem;
     border-radius: 14px;
+  }
+  /* Step A (S2): 모바일 분기 — wrap 좌우 0 (이중 패딩 해소) + card padding 축소
+     Step A (S2): mobile breakpoint — wrap zero horizontal, card padding shrunk */
+  @media (max-width: 480px) {
+    .login-wrap { padding: var(--space-4) 0; }
+    .login-card { padding: 2rem 1.5rem; max-width: 100%; }
   }
   .login-logo {
     width: 60px;
