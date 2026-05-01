@@ -325,8 +325,8 @@ Primary 장애 감지 (OperationalError)
   → Fallback DB(Supabase)로 자동 전환
   → probe thread가 30초마다 Primary 복구 확인
   → Primary 복구 감지 시 자동 복귀
-  → /health → {"status":"ok","active_db":"fallback"} (장애 중)
-              {"status":"ok","active_db":"primary"}  (정상)
+  → /health → {"status":"ok"} (active 분기 무관 — 보안상 내부 DB 상태 미노출)
+  → 실제 failover 발생/복구는 logger.warning 로그로 추적 (Sentry/Railway logs)
 ```
 
 `DATABASE_URL_FALLBACK`이 비어 있으면 Failover 비활성 — 단일 엔진 모드로 동작합니다.
@@ -356,11 +356,20 @@ DATABASE_URL="postgresql://...supabase.co/postgres?sslmode=require" make migrate
 
 ```bash
 curl http://localhost:8000/health
-# 정상: {"status":"ok","active_db":"primary"}
-# 장애: {"status":"ok","active_db":"fallback"}
+# 정상/장애 무관: {"status":"ok"}
 ```
 
-`active_db`가 `"fallback"`이면 Primary DB 장애 상태입니다. 모니터링 도구(Uptime Kuma, Prometheus 등)에서 이 필드를 감시해 경보를 설정하세요.
+`/health` 는 liveness probe 전용 — DB failover 등 내부 상태는 보안상 노출하지
+않습니다 (정보 노출 방지). DB failover 발생/복구는 다음 경로로 추적합니다:
+
+1. **로그 모니터링** (권장) — `src/database.py::_probe_primary_loop` 가
+   `logger.warning("DB failover: primary → fallback")` / `logger.info(
+   "DB failover: fallback → primary recovered")` 로 기록.
+   Sentry / Railway / Loki 등 로그 수집기에서 위 패턴을 알림 규칙으로 설정.
+2. **Sentry 메트릭** — `init_sentry()` 가 동일 로그 메시지를 자동 캡처.
+
+> 인증된 운영자 대시보드에서 active_db 상태가 필요하면 별도 엔드포인트
+> 신설 권장 — `INTERNAL_CRON_API_KEY` 또는 admin key 기반.
 
 ### 동작 방식 상세
 
@@ -378,7 +387,7 @@ curl http://localhost:8000/health
 
 ```
 □ curl https://your-domain/health
-      → {"status":"ok","active_db":"primary"} 응답 확인
+      → {"status":"ok"} 응답 확인 (active_db 등 내부 상태는 의도적 미노출)
 
 □ GitHub OAuth 로그인
       → https://your-domain/login → GitHub으로 로그인
@@ -407,5 +416,5 @@ curl http://localhost:8000/health
 | `SESSION_SECRET` 경고 | `.env`에서 세션 시크릿 미설정 또는 기본값 사용 | `python -c "import secrets; print(secrets.token_hex(32))"` 로 새 값 생성 |
 | Webhook ping 실패 | nginx `X-Forwarded-Proto` 미설정 → HTTP URL 등록 | nginx 설정에 `proxy_set_header X-Forwarded-Proto $scheme` 추가 + `APP_BASE_URL` 확인 |
 | `DB_FORCE_IPV4=true` 오류 | Railway 전용 옵션이 온프레미스에서 DNS hang 유발 | `.env`에서 `DB_FORCE_IPV4=false` 로 변경 |
-| `active_db: "fallback"` 지속 | Primary DB 연결 복구 안 됨 | `DATABASE_URL` 연결 확인 (포트 방화벽·PostgreSQL 기동 상태) |
+| 로그에 `DB failover: primary → fallback` 지속 | Primary DB 연결 복구 안 됨 | `DATABASE_URL` 연결 확인 (포트 방화벽·PostgreSQL 기동 상태). `/health` 는 상태 노출 안 함 — Sentry/Railway 로그 모니터링 |
 | Supabase Fallback 연결 실패 | SSL 설정 불일치 | `DATABASE_URL_FALLBACK`에 `?sslmode=require` 포함 확인 |

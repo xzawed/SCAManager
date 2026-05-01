@@ -72,7 +72,7 @@
 | **C6** | `claim_batch` SKIP LOCKED | CLAUDE.md vs 코드 불일치, 수평 확장 시 더블-클레임 |
 | **C7** | `gate_decisions.analysis_id` ON DELETE CASCADE | 누락 시 FK 위반 잠재 |
 | **C8** | `_get_ci_status_safe` 중복 | engine.py + merge_retry_service.py 한쪽 수정 시 분기 깨짐 |
-| **C9** | `/health` `active_db` 누락 | CLAUDE.md 와 불일치 → 외부 모니터링이 failover 미감지 |
+| **C9** | `/health` `active_db` 누락 | ~~CLAUDE.md 와 불일치~~ → **PR-5B 해결 (문서 정정)**: `/health` 의 `active_db` 미노출은 의도적 보안 결정 (`tests/unit/test_main.py::test_health_returns_status_ok` 가 회귀 차단). CLAUDE.md + 가이드 5곳 갱신해 코드 = 단일 진실 소스 정합성 확보. failover 모니터링은 logger 로그 (Sentry/Railway) 경로로 대체. |
 | **C10** | Telegram gate 콜백 토큰 도메인 격리 비대칭 | `_make_callback_token` vs `_parse_gate_callback` HMAC 비대칭 |
 
 ---
