@@ -27,6 +27,7 @@ from src.notifier.github_comment import post_pr_comment_from_result as post_pr_c
 from src.notifier.telegram import telegram_post_message
 from src.models.gate_decision import GateDecision
 from src.repositories import gate_decision_repo, merge_retry_repo
+from src.shared.log_safety import sanitize_for_log
 from src.shared.merge_metrics import log_merge_attempt
 
 logger = logging.getLogger(__name__)
@@ -189,7 +190,9 @@ async def _run_semi_auto_approve(
 ) -> None:
     """Semi-auto Approve 분기 — Telegram 인라인 키보드 발송."""
     if not config.notify_chat_id:
-        logger.warning("semi-auto 모드이나 notify_chat_id 미설정: %s", repo_name)
+        logger.warning(
+            "semi-auto 모드이나 notify_chat_id 미설정: %s", sanitize_for_log(repo_name),
+        )
         return
     try:
         score_result = _score_from_result(result)
@@ -527,7 +530,7 @@ async def _run_auto_merge_legacy(  # pylint: disable=too-many-arguments
                 )
 
         if ok:
-            logger.info("PR #%d auto-merged: %s", pr_number, repo_name)
+            logger.info("PR #%d auto-merged: %s", pr_number, sanitize_for_log(repo_name))
             return
 
         advice = get_advice(reason)
@@ -599,7 +602,10 @@ async def _handle_terminal_merge_failure(  # pylint: disable=too-many-arguments
             logger.warning("merge_attempt 기록 실패: %s", log_exc)
 
     advice = get_advice(reason_tag)
-    logger.warning("PR #%d auto-merge 실패 (repo=%s): %s", pr_number, repo_name, reason)
+    logger.warning(
+        "PR #%d auto-merge 실패 (repo=%s): %s",
+        pr_number, sanitize_for_log(repo_name), sanitize_for_log(reason),
+    )
     await _notify_merge_failure(
         repo_name=repo_name,
         pr_number=pr_number,

@@ -104,11 +104,17 @@ async def _handle_merged_pr_event(data: dict) -> dict:
             if repo and repo.owner:
                 token = repo.owner.plaintext_token or ""
     except (SQLAlchemyError, KeyError, AttributeError) as exc:
-        logger.warning("merged-pr issue close: repo lookup failed for %s: %s", repo_name, exc)
+        logger.warning(
+            "merged-pr issue close: repo lookup failed for %s: %s",
+            sanitize_for_log(repo_name), exc,
+        )
 
     token = token or settings.github_token
     if not token:
-        logger.info("merged-pr issue close: no token available for %s — skipped", repo_name)
+        logger.info(
+            "merged-pr issue close: no token available for %s — skipped",
+            sanitize_for_log(repo_name),
+        )
         return {"status": "accepted"}
 
     for issue_number in numbers:
@@ -118,7 +124,10 @@ async def _handle_merged_pr_event(data: dict) -> dict:
                 repo_full_name=repo_name,
                 issue_number=issue_number,
             )
-            logger.info("Auto-closed issue #%d on %s (PR merge)", issue_number, repo_name)
+            logger.info(
+                "Auto-closed issue #%d on %s (PR merge)",
+                issue_number, sanitize_for_log(repo_name),
+            )
         except httpx.HTTPError as exc:
             # exc 본문에 GitHub API 응답 세부사항이 포함될 수 있으므로 타입명만 기록
             # Log only the exception type — exc body may contain GitHub API response details.
@@ -239,7 +248,10 @@ async def _handle_issues_event(data: dict, background_tasks: BackgroundTasks) ->
             if repo and repo.owner:
                 repo_token = repo.owner.plaintext_token or ""
     except (SQLAlchemyError, KeyError, AttributeError) as exc:
-        logger.warning("issues relay: repo config lookup failed for %s: %s", repo_name, exc)
+        logger.warning(
+            "issues relay: repo config lookup failed for %s: %s",
+            sanitize_for_log(repo_name), exc,
+        )
 
     if not n8n_url:
         return {"status": "ignored"}

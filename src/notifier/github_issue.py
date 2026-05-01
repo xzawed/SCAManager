@@ -7,6 +7,7 @@ from src.config import settings
 from src.constants import GITHUB_API
 from src.github_client.helpers import github_api_headers
 from src.shared.http_client import get_http_client
+from src.shared.log_safety import sanitize_for_log
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +95,10 @@ async def create_low_score_issue(
         resp.raise_for_status()
         return resp.json().get("number")
     except httpx.HTTPError as exc:
-        logger.warning("create_low_score_issue 실패 (%s@%s): %s", repo_name, commit_sha, exc)
+        logger.warning(
+            "create_low_score_issue 실패 (%s@%s): %s",
+            sanitize_for_log(repo_name), sanitize_for_log(commit_sha), exc,
+        )
         return None
 
 
