@@ -89,3 +89,31 @@ curl -X POST -H "X-API-Key: $INTERNAL_CRON_API_KEY" \
 - **첫 지연 시**: "자동 머지 대기 중 — CI 완료 후 재시도합니다" Telegram 1회
 - **성공 시**: "자동 머지 성공 (재시도) — N회 시도" Telegram 1회
 - **terminal 실패 시**: "자동 머지 최종 실패 — [사유] [권장 조치]" Telegram 1회 + 선택적 GitHub Issue
+
+## Phase H+I 운영 영향 (2026-05-01)
+
+본 섹션은 Phase H+I 16 PR 머지 후 운영자 인지가 필요한 변경사항 정리.
+
+### PR-2A — race-recovery 시 notify skip
+- 동시 webhook (push + PR opened) 으로 두 번째 이벤트가 race-recovery 진입 시 notify 단계 명시적 skip (중복 알림 방지).
+- INFO 로그: `"Race-recovery or repo missing for {repo} @ {sha} — skipping notify stage"` 출력. 운영자가 "어, 알림이 안 왔네?" 의문 시 이 로그 grep.
+
+### PR-1B-2 — GitHub GraphQL 5xx 자동 재시도
+- `enable_pull_request_auto_merge` 등 GraphQL mutation 의 일시 5xx + transient network error 는 **자동 3회 재시도** (exponential backoff 1s → 2s).
+- 운영자가 "1회 실패 후 즉시 fallback" 가정 갖지 않도록 주의 — 실제는 ~7초 retry 후 fallback 또는 성공.
+- WARNING 로그: `"GraphQL <ErrorType> (attempt N/3), retrying in Xs"` — 빈도 모니터링.
+
+### PR-4A — DB 복합 인덱스 3종 (alembic 0023)
+- 새 인덱스: `ix_analyses_repo_id_created_at`, `ix_analyses_repo_id_author_login`, `ix_merge_attempts_attempted_at`.
+- `make migrate` 자동 적용. PostgreSQL `CREATE INDEX` online (락 최소).
+- repo_detail / leaderboard / Phase F.4 dashboard 쿼리 P95 latency 개선 — 모니터링 baseline 갱신 필요.
+- 검증 SQL (PG): `\d+ analyses` / `\d+ merge_attempts` 로 인덱스 존재 확인.
+
+### C7 — gate_decisions ON DELETE CASCADE (alembic 0024)
+- `gate_decisions.analysis_id` FK 가 이제 CASCADE — Analysis 삭제 시 GateDecision 자동 삭제 (이전: FK violation 위험).
+- admin script 로 Analysis 직접 삭제 안전성 ↑.
+
+### PR-5C — Telegram semi-auto 콜백 동작 복원 (Critical functional bug fix)
+- 이전: 모든 semi-auto Telegram 콜백 (인라인 키보드 승인/반려) 가 401 거부됐음 — 발신/수신 HMAC msg 형식 불일치.
+- PR-5C 머지 후: 정상 동작.
+- 운영자가 semi-auto 모드 처음 활성화 시 콜백 정상 동작함을 확인 (이전 운영에서는 작동 불가).

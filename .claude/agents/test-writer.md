@@ -48,6 +48,28 @@ async def test_async_function():
 - **모듈 레벨 캐시 격리**: `_webhook_secret_cache` 같은 모듈 dict 는 `tests/conftest.py` 의 autouse fixture 로 클리어. 신규 모듈 캐시 추가 시 동일 패턴 적용.
 - **DB**: SQLite in-memory + StaticPool — 단일 connection 공유로 세션 간 가시성 보장 (예: `tests/integration/test_webhook_to_gate.py::integration_db` fixture).
 
+### Mock 전략 — Phase H+I 학습 사항
+- **`asyncio.to_thread` spy 패턴 (PR-3A)**: sync I/O 가 `asyncio.to_thread` 로 wrap 됐는지 검증. 직접 patch 시 동작 깨짐 → spy wrapper 권장:
+  ```python
+  real_to_thread = asyncio.to_thread
+  to_thread_calls = []
+  async def _spy(fn, *args, **kwargs):
+      to_thread_calls.append(getattr(fn, "__name__", str(fn)))
+      return await real_to_thread(fn, *args, **kwargs)
+  with patch("src.worker.pipeline.asyncio.to_thread", side_effect=_spy):
+      ...
+  assert "_collect_files" in to_thread_calls
+  ```
+- **`asyncio.sleep` patch (PR-1B-2/2B)**: retry/backoff 검증 시 실제 sleep 으로 테스트 시간 낭비 방지:
+  ```python
+  with patch("src.notifier.telegram.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+      ...
+  mock_sleep.assert_awaited_once()
+  assert mock_sleep.await_args.args[0] == expected_seconds
+  ```
+- 🔴 **PARITY GUARD 회귀 가드 패턴 (PR-5A)**: 의도적 중복 함수 (`_get_ci_status_safe` 같은) 의 시그니처 + 행동 동등성 검증. `tests/unit/test_ci_status_safe_parity.py` 참조 — 시그니처 (`inspect.signature`) + parametrize 로 입력 셋 동일 출력 검증 + HTTPError fallback 동일성 + base_ref 전파 동일성.
+- 🔴 **HMAC scope 격리 검증 (PR-5C 사례)**: 새 HMAC 토큰 도입 시 발신/수신 동일 msg 형식 단위 테스트 의무. `tests/unit/webhook/test_telegram_provider.py::test_sender_receiver_hmac_token_parity` 참조 — 발신 함수가 만든 토큰을 수신 함수가 검증 통과해야 함. 하드코딩 토큰 (`_TOKEN_42`) 만 사용하면 receiver pattern 받아쓰기로 functional bug 우회 위험 (PR-5C 직전 운영 사고 사례).
+
 ## 작성 원칙
 
 1. **Red-Green-Refactor**: 실패하는 테스트 먼저, 그 다음 최소 구현
