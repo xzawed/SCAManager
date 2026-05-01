@@ -945,3 +945,37 @@ async def test_create_issue_not_called_when_disabled(mock_deps):
                 await run_analysis_pipeline("push", PUSH_DATA)
 
     mock_issue.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Phase H PR-3A — PyGithub blocking I/O 가 asyncio.to_thread 로 wrap 됨
+# 12-에이전트 감사 Critical C3 — sync PyGithub 가 async 컨텍스트에서 직접
+# 호출되어 이벤트 루프 블록. _collect_files 호출 시 asyncio.to_thread 로 wrap.
+# ---------------------------------------------------------------------------
+
+
+async def test_collect_files_wrapped_in_asyncio_to_thread(mock_deps):
+    """_collect_files (PyGithub sync I/O) 가 asyncio.to_thread 경유로 호출된다.
+
+    sync 호출이 이벤트 루프를 블록하면 같은 BackgroundTask 슬롯에서 다른
+    webhook 처리가 정체. asyncio.to_thread 로 별도 스레드에서 실행해야 안전.
+    """
+    from src.worker.pipeline import run_analysis_pipeline
+    from unittest.mock import AsyncMock, patch
+
+    # asyncio.to_thread 호출 횟수 추적
+    real_to_thread = __import__("asyncio").to_thread
+    to_thread_calls = []
+
+    async def _spy_to_thread(fn, *args, **kwargs):
+        to_thread_calls.append(getattr(fn, "__name__", str(fn)))
+        return await real_to_thread(fn, *args, **kwargs)
+
+    with patch("src.worker.pipeline.asyncio.to_thread", side_effect=_spy_to_thread), \
+         patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
+        await run_analysis_pipeline("push", PUSH_DATA)
+
+    # _collect_files 가 to_thread 경유 호출됨
+    assert "_collect_files" in to_thread_calls, (
+        f"_collect_files 미호출 — to_thread 호출 목록: {to_thread_calls}"
+    )
