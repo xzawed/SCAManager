@@ -6,7 +6,7 @@
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1968개** | pytest 9.0.3 (0 failed, 5 skipped) — Phase H+I 15 PR 신규 +37 (timeout/race-recovery/Telegram 429/gate parallel/PyGithub async/joinedload/parity/HMAC parity/composite indexes/cascade 등) |
+| 단위 테스트 | **1980개** | pytest 9.0.3 (0 failed, 5 skipped) — Phase H+I 15 PR 신규 +37 + UI 감사 cleanup PR-4 회귀 가드 +12 (StaticFiles vendoring + 환각 토큰 / claude-dark / nav guard / chip a11y / chart aspect / safe-area / iOS 줌인) |
 | 통합 테스트 | **72개** | tests/integration/ — Phase 4 PR-T5 +25 (e2e_pipeline_scenarios — webhook→pipeline→gate 종단간) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
@@ -78,17 +78,19 @@
 
 **5-way sync 영향**: 0 — 모두 템플릿/CSS/JS/정적 자원 + scripts 1건 + main.py 8줄. ORM·dataclass·API body·폼 필드명·PRESETS 모두 불변.
 
-**테스트**: 1968 유지 (UI 회귀 0건). pylint src/ 10.00/10.
+**테스트**: 1968 → **1980** (cleanup PR-4 가드 +12 — StaticFiles 200 / 환각 토큰 alias / claude-dark 토큰 / Chart vendoring CDN 잔존 0 / nav 가드 / chip sr-only / .btn:disabled 확장 / chart-wrap-inner clamp / safe-area-inset / settings .field-input 16px). UI 회귀 0건. pylint src/ 10.00/10.
 
 **신규 인프라**:
 - `src/static/vendor/chart.umd.min.js` (204KB Chart.js 4.4.0 UMD min) — CDN 차단/오프라인 환경 호환
 - `src/main.py` `app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")` — 조건부 mount
 
-**관련 PR (cleanup 시리즈)**:
-- PR-1 (#169): 코드 결함 cleanup ✅
-- PR-2 (본 docs PR): 문서 동기화
-- PR-3 (예정): P1 polish (chart-wrap-inner 모바일 분기, .btn:disabled 확장, tooltip 토큰화)
-- PR-4 (예정): analysis_detail 9 카드 데스크탑 2-col + 회귀 가드
+**관련 PR (cleanup 시리즈)** — 모두 머지 완료:
+- PR-1 (#169): 코드 결함 cleanup (claude-dark 토큰 + 환각 alias + Step B/D 누락) ✅
+- PR-2 (#170): 문서 동기화 (그룹 57 + CLAUDE.md 트리/주의사항 7건 + 기획서 진화) ✅
+- PR-3 (#171, #172 중복 머지): P1 polish (chart-wrap clamp + .btn:disabled selector 확장 + Chart.js tooltip 시맨틱 토큰화) ✅
+- PR-4 (#173): 회귀 가드 12건 (StaticFiles + 환각 토큰 / claude-dark / nav guard / chip a11y / chart aspect / safe-area / iOS 줌인) ✅
+- PR-5 (본 docs PR): 정합성 후속 동기화 (1968→1980 + cleanup 시리즈 PR 번호 확정 + CLAUDE.md/README/기획서 일괄)
+- (이월) F4 — analysis_detail 9 카드 데스크탑 2-col 레이아웃: 마크업 변경 큼 + 카드 콘텐츠 폭 가정 검증 필요 → 별도 PR 권장 (사용자 결정 후)
 
 ---
 
