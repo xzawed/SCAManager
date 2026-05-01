@@ -103,7 +103,7 @@ Given a JSON list of Korean comment or docstring lines (with line numbers), retu
 mapping each line number to its English translation.
 
 STRICT RULES:
-1. Translate ONLY the Korean text. Keep code, symbols (#, """, ''', variable names) unchanged.
+1. Translate ONLY the Korean text. Keep code, symbols (#, \"\"\", ''', variable names) unchanged.
 2. Use the domain glossary below — do NOT substitute synonyms.
 3. Match the tone: concise technical English (not verbose, no "This function...").
 4. For inline comments with "# 한글", output only the translated text (no leading #).
