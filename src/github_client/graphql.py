@@ -18,6 +18,7 @@ unlike REST `PUT /merge` which is synchronous.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from typing import Any
@@ -30,6 +31,14 @@ from src.shared.http_client import get_http_client
 logger = logging.getLogger(__name__)
 
 GITHUB_GRAPHQL_URL = "https://api.github.com/graphql"
+
+# Phase H PR-1B-2 — 5xx 재시도 정책 (의존성 추가 없이 직접 helper)
+# GitHub GraphQL 일시 5xx (502/503/504) + transient network error 재시도.
+# 4xx 는 즉시 전파 (재시도 무의미). exponential backoff (1s, 2s, 4s).
+# Phase H PR-1B-2 — 5xx retry policy (no external retry library):
+# retry on 5xx + transient network errors; propagate 4xx immediately.
+_GRAPHQL_MAX_ATTEMPTS = 3
+_GRAPHQL_INITIAL_BACKOFF_SECONDS = 1.0
 
 # GraphQL 응답에서 분류 가능한 결과 코드
 # Result codes for classifying GraphQL responses
@@ -67,26 +76,58 @@ async def graphql_request(
     query: str,
     variables: dict | None = None,
 ) -> dict[str, Any]:
-    """GitHub GraphQL POST — 응답 JSON 반환.
-    POST a GraphQL query to GitHub — return parsed JSON.
+    """GitHub GraphQL POST — 응답 JSON 반환. 5xx/network 시 자동 재시도.
+    POST a GraphQL query to GitHub. Auto-retries on 5xx and network errors.
 
-    HTTPStatusError 는 호출자에게 전파. GraphQL-level errors 는 응답 dict 의
-    "errors" 키에 포함되므로 호출자가 검사해야 한다.
-    HTTPStatusError propagates to the caller. GraphQL-level errors are present
-    under the "errors" key of the response and must be inspected by the caller.
+    Phase H PR-1B-2 재시도 정책:
+      - 5xx (502/503/504 등) → exponential backoff (1s, 2s) 후 재시도
+      - httpx.ConnectError / TimeoutException → 동일 재시도
+      - 4xx (401/403/422 등) → 즉시 전파 (재시도 무의미)
+      - 최대 3회 시도 후 마지막 예외 전파 (무한 루프 차단)
+
+    HTTPStatusError (4xx) 는 호출자에게 전파. GraphQL-level errors 는 응답
+    dict 의 "errors" 키에 포함되므로 호출자가 검사해야 한다.
     """
     payload: dict[str, Any] = {"query": query}
     if variables:
         payload["variables"] = variables
 
     client = get_http_client()  # 싱글톤 / singleton
-    r = await client.post(
-        GITHUB_GRAPHQL_URL,
-        json=payload,
-        headers=github_api_headers(token),
-    )
-    r.raise_for_status()
-    return r.json()
+    headers = github_api_headers(token)
+
+    last_exc: Exception | None = None
+    for attempt in range(_GRAPHQL_MAX_ATTEMPTS):
+        try:
+            r = await client.post(GITHUB_GRAPHQL_URL, json=payload, headers=headers)
+            # 5xx 는 raise_for_status() 가 던지면 except 블록에서 재시도 판정
+            # 4xx 는 즉시 전파 (인증/권한/요청 형식 오류 — 재시도 무의미)
+            # 5xx raises and is retried by the except block; 4xx propagates immediately.
+            r.raise_for_status()
+            return r.json()
+        except httpx.HTTPStatusError as exc:
+            last_exc = exc
+            # 4xx 는 즉시 전파 — 재시도 무의미
+            # 4xx propagates immediately — retry would not help
+            if exc.response.status_code < 500:
+                raise
+        except (httpx.ConnectError, httpx.TimeoutException, httpx.NetworkError) as exc:
+            last_exc = exc
+
+        # 마지막 시도 였으면 예외 전파, 아니면 backoff 후 재시도
+        # If last attempt, propagate; otherwise back off and retry
+        if attempt == _GRAPHQL_MAX_ATTEMPTS - 1:
+            assert last_exc is not None
+            raise last_exc
+        backoff = _GRAPHQL_INITIAL_BACKOFF_SECONDS * (2 ** attempt)
+        logger.warning(
+            "GraphQL %s (attempt %d/%d), retrying in %.1fs",
+            type(last_exc).__name__, attempt + 1, _GRAPHQL_MAX_ATTEMPTS, backoff,
+        )
+        await asyncio.sleep(backoff)
+
+    # 도달 불가 — for 루프가 항상 return 또는 raise
+    assert last_exc is not None  # pragma: no cover
+    raise last_exc  # pragma: no cover
 
 
 async def get_pr_node_id(
