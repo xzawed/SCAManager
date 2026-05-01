@@ -412,6 +412,26 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
                 with SessionLocal() as db:
                     repo_config, analysis_id, result_dict = await _save_and_gate(db, save_params)
 
+            # Phase H PR-2A: race-recovery 또는 repo 누락 시 notify skip
+            # `_save_and_gate` 가 result_dict=None 을 반환하면 두 가지 경우다:
+            #   (1) repo 가 두 번째 세션에서 사라짐 — 알림 의미 없음
+            #   (2) 동시 webhook race 로 기존 Analysis 가 이미 알림을 발송함 —
+            #       중복 알림 방지 + result_dict=None 으로 인한 silent KeyError 차단
+            # `analysis_id` 는 실 운영에서 항상 int 이지만 단위 테스트의 mock db
+            # 에서는 refresh() 가 동작하지 않아 None 일 수 있음 — race-recovery
+            # 시그널은 두 값 동시 None 인 `result_dict is None` 으로 판정.
+            # Phase H PR-2A: skip notify on race-recovery or missing repo.
+            # `result_dict is None` is the canonical race-recovery signal — only
+            # set when `_save_and_gate` early-returned without building the dict.
+            # `analysis_id is None` cannot be used alone because mock-DB tests
+            # leave it None (refresh() no-op) even on the normal path.
+            if result_dict is None:
+                logger.info(
+                    "Race-recovery or repo missing for %s @ %s — skipping notify stage",
+                    repo_log, commit_sha,
+                )
+                return
+
             with stage_timer("notify", repo=repo_log) as ctx:
                 notify_tasks, task_names = build_notification_tasks(
                     repo_config=repo_config,

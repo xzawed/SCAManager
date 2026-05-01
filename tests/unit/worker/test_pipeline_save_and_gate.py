@@ -324,3 +324,45 @@ async def test_regate_pr_if_needed_logs_exception_with_traceback(caplog):
         r for r in error_records if "Re-gate check failed" in r.message
     )
     assert re_gate_record.exc_info is not None
+
+
+# ---------------------------------------------------------------------------
+# Phase H PR-2A — race-recovery 시 run_analysis_pipeline 의 notify 단계 skip
+# 12-에이전트 감사 Critical C2 — race-recovery 가 (cfg, None, None) 반환 시
+# build_notification_tasks 가 result_dict=None 으로 호출돼 silent KeyError 위험.
+# 호출자 측에서 analysis_id is None 을 race-recovery 시그널로 인식하고 notify skip.
+# ---------------------------------------------------------------------------
+
+
+async def test_pipeline_skips_notify_when_save_returns_no_analysis_id(caplog):
+    """_save_and_gate 가 (cfg, None, None) 반환 시 run_analysis_pipeline 은
+    notify 단계를 건너뛴다 — 원본 webhook 이 이미 알림을 발송했음을 가정.
+    """
+    push_data = {
+        "repository": {"full_name": "owner/repo"},
+        "after": "racesha000000",
+        "head_commit": {"id": "racesha000000", "message": "feat: race"},
+        "commits": [{"id": "racesha000000", "message": "feat: race"}],
+        "sender": {"login": "alice", "type": "User"},
+    }
+    repo_config = MagicMock()
+
+    # _save_and_gate 가 race-recovery 반환 (cfg, None, None) 시뮬레이션
+    save_mock = AsyncMock(return_value=(repo_config, None, None))
+
+    with patch.object(pipeline_mod, "_extract_event_metadata",
+                      return_value=("owner/repo", "racesha000000", "feat: race", None)), \
+         patch.object(pipeline_mod, "_ensure_repo", return_value=(MagicMock(), "ghp_test")), \
+         patch.object(pipeline_mod, "_collect_files",
+                      return_value=[MagicMock(filename="a.py", patch="+x=1")]), \
+         patch.object(pipeline_mod, "_run_static_analysis",
+                      new=AsyncMock(return_value=[])), \
+         patch.object(pipeline_mod, "review_code", new=AsyncMock()), \
+         patch.object(pipeline_mod, "calculate_score", return_value=MagicMock(total=80, grade="B")), \
+         patch.object(pipeline_mod, "_save_and_gate", new=save_mock), \
+         patch.object(pipeline_mod, "build_notification_tasks") as mock_notify_build, \
+         caplog.at_level(logging.INFO, logger="src.worker.pipeline"):
+        await pipeline_mod.run_analysis_pipeline("push", push_data)
+
+    # 핵심 검증: race-recovery 시 build_notification_tasks 는 호출되지 않아야 함
+    mock_notify_build.assert_not_called()
