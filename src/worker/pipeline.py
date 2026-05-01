@@ -190,8 +190,11 @@ async def _regate_pr_if_needed(
     try:
         existing.pr_number = pr_number
         db.commit()
-    except SQLAlchemyError as exc:
-        logger.error("pr_number update failed (sha=%s, pr=#%d): %s", commit_sha, pr_number, exc)
+    except SQLAlchemyError:
+        # Phase H PR-6A: logger.exception 으로 stack trace 보존
+        logger.exception(
+            "pr_number update failed (sha=%s, pr=#%d)", commit_sha, pr_number,
+        )
         db.rollback()
         return
     owner_token: str = settings.github_token
@@ -267,10 +270,11 @@ async def _save_and_gate(db: Session, params: _AnalysisSaveParams):
                     "Race-recovered: PR #%d re-gated on concurrent existing Analysis %d (sha=%s)",
                     params.pr_number, existing.id, params.commit_sha[:8],
                 )
-            except SQLAlchemyError as exc:
-                logger.error(
-                    "Race-recovery pr_number commit failed (sha=%s, pr=#%d): %s",
-                    params.commit_sha, params.pr_number, exc,
+            except SQLAlchemyError:
+                # Phase H PR-6A: logger.exception 으로 stack trace 보존
+                logger.exception(
+                    "Race-recovery pr_number commit failed (sha=%s, pr=#%d)",
+                    params.commit_sha, params.pr_number,
                 )
                 db.rollback()
             except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
@@ -312,8 +316,9 @@ async def _save_and_gate(db: Session, params: _AnalysisSaveParams):
                 db=db,
                 config=repo_config,
             )
-        except (httpx.HTTPError, SQLAlchemyError, KeyError, ValueError, OSError) as exc:
-            logger.error("Gate check failed: %s", exc)
+        except (httpx.HTTPError, SQLAlchemyError, KeyError, ValueError, OSError):
+            # Phase H PR-6A: logger.exception 으로 stack trace 보존
+            logger.exception("Gate check failed")
         except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
             logger.error("Gate check unexpected error: %s", exc, exc_info=True)
     return repo_config, analysis_id, result_dict
