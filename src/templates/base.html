@@ -6,6 +6,11 @@
   <title>{% block title %}SCAManager{% endblock %}</title>
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" crossorigin="anonymous">
+  <!-- Phase 1B (UI 개편): Claude × Linear 폰트 — Crimson Pro (serif H) + Inter (body) + JetBrains Mono (code).
+       토큰 정의는 base.html :root --claude-font-* 참조. 적용은 본 PR 의 일부 마이크로카피 + 후속 Phase 1C/2 에서 점진. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
   <style>
     /* ── 공통 변수 (이전 버전 호환 유지) ───────── */
     :root {
@@ -230,6 +235,24 @@
     body[data-theme="glass"] {
       background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0c0e1a 100%);
       background-attachment: fixed;
+    }
+    /* Phase 1B (UI 개편): Claude 다크 — claude-* 토큰을 기존 토큰에 alias.
+     * 기존 페이지 마크업/클래스 무변경으로 즉시 적용. 본 PR 시점에는 토글
+     * 옵션만 추가 — 사용자가 명시적으로 선택했을 때만 활성. */
+    body[data-theme="claude-dark"] {
+      --bg-page:        var(--claude-bg-base);
+      --bg-card:        var(--claude-bg-surface);
+      --bg-nav:         var(--claude-bg-base);
+      --bg-input:       var(--claude-bg-elevated);
+      --bg-input-focus: var(--claude-accent-soft);
+      --border:         var(--claude-border);
+      --border-focus:   var(--claude-accent);
+      --text-primary:   var(--claude-text-primary);
+      --text-muted:     var(--claude-text-muted);
+      --text-nav:       var(--claude-text-muted);
+      --accent:         var(--claude-accent);
+      --accent-hover:   #F09578;  /* claude-accent 의 라이트 변형 */
+      --accent-grad:    linear-gradient(135deg, #D97757, #F09578);
     }
 
     /* ── 네비게이션 ───────────────────────────── */
@@ -685,6 +708,7 @@
         <div class="theme-option" data-theme="dark"  role="menuitem" tabindex="0">🌙 다크 대시보드</div>
         <div class="theme-option" data-theme="light" role="menuitem" tabindex="0">☀️ 클린 카드</div>
         <div class="theme-option" data-theme="glass" role="menuitem" tabindex="0">✨ 글래스모피즘</div>
+        <div class="theme-option" data-theme="claude-dark" role="menuitem" tabindex="0">📚 Claude 다크 (베타)</div>
       </div>
     </div>
   </nav>
@@ -694,7 +718,10 @@
     const THEMES = {
       dark:  { icon: '🌙', name: '다크' },
       light: { icon: '☀️', name: '클린' },
-      glass: { icon: '✨', name: '글래스' }
+      glass: { icon: '✨', name: '글래스' },
+      // Phase 1B (UI 개편): Claude 다크 — warm black + sage/sand 등급 색상.
+      // 본 PR 은 토글 옵션 추가만 — 실제 페이지 적용은 Phase 1C/2 에서 점진.
+      'claude-dark': { icon: '📚', name: 'Claude' }
     };
     function applyTheme(theme) {
       if (!THEMES[theme]) theme = 'dark';
