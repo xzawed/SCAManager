@@ -1011,9 +1011,18 @@
     <div class="s-card-hdr hdr-hook">
       <span class="hdr-icon">📥</span>
       <span class="hdr-title">통합 &amp; 인증 (수신)</span>
-      <span class="hdr-badge">외부 → SCAManager</span>
+      <span class="hdr-badge">⚡ + 💾 혼합</span>
     </div>
     <div class="s-card-body">
+
+      <!-- P1-2: 카드 동작 안내 — 사용자 인식 격차 해소 (form 구조 변경 없이 라벨만 추가)
+           P1-2: Card behaviour notice — closes the perception gap without changing form structure -->
+      <p style="font-size:12px;color:var(--text-muted);margin:0 0 1rem;padding:.5rem .75rem;
+                background:var(--hint-bg);border-left:3px solid var(--accent);border-radius:6px;line-height:1.55;">
+        💡 <strong>각 항목 동작 방식이 다릅니다</strong> —
+        🔗 GitHub Webhook 재등록 / 🔄 CLI Hook 재커밋 버튼은 <strong>클릭 시 즉시 실행</strong>됩니다.
+        Railway API 토큰만 페이지 하단의 <strong>💾 설정 저장</strong> 버튼으로 적용됩니다.
+      </p>
 
       <div class="s-section-label">GitHub 수신 Webhook</div>
       <div class="hook-btns" style="margin-bottom:.5rem;">
@@ -1080,8 +1089,15 @@
     <div class="s-card-hdr" style="background:linear-gradient(135deg,#991b1b,#dc2626)">
       <span class="hdr-icon">⚠️</span>
       <span class="hdr-title">위험 구역</span>
+      <span class="hdr-badge">⚡ 즉시 실행</span>
     </div>
     <div class="s-card-body">
+      <!-- P1-2: 카드 동작 안내 — 삭제는 저장 버튼과 무관하게 즉시 실행됨을 명시
+           P1-2: Behaviour notice — delete is independent of the save button -->
+      <p style="font-size:12px;color:var(--text-muted);margin:0 0 1rem;padding:.5rem .75rem;
+                background:rgba(220,38,38,.08);border-left:3px solid var(--danger);border-radius:6px;line-height:1.55;">
+        💡 이 카드의 작업은 <strong>버튼 클릭 시 즉시 실행</strong>됩니다 (저장 불필요).
+      </p>
       <details class="danger-summary-wrap">
         <summary class="danger-summary">⚠️ 위험한 작업 펼치기</summary>
         <div style="margin-top:.75rem;">
