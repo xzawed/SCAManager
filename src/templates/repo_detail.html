@@ -183,6 +183,15 @@
     .filter-divider { display: none; }
     .custom-date-wrap { flex-wrap: wrap; }
     .date-input { width: 110px; }
+    /* Step B (B1): iOS Safari 자동 줌인 방지 — focus 시 16px 미만이면 zoom
+       Step B (B1): prevent iOS Safari focus zoom (any input <16px triggers it) */
+    .filter-search { font-size: 16px; }
+    .date-input { font-size: 16px; }
+    /* Step B (B1): filter-btn / page-btn 클릭 영역 보강 (WCAG 2.5.5) — Step A 의 .btn 분기 보완 */
+    .filter-btn { min-height: 40px; padding: .55rem .85rem; font-size: 13px; }
+    .page-btn { min-width: 44px; min-height: 44px; }
+    /* Step B (B1): 슬라이더 thumb 모바일 24px (settings P2-6 패턴 재적용) */
+    .dual-slider-track input[type=range]::-webkit-slider-thumb { width: 24px; height: 24px; }
   }
   @media (max-width: 480px) {
     .commit-msg-preview { display: none; }

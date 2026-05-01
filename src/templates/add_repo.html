@@ -31,6 +31,8 @@
     text-transform: uppercase;
     letter-spacing: .05em;
   }
+  /* Step B (B1): font-size 16px — iOS Safari 자동 줌인 방지 (16px 미만 input focus 시 zoom)
+     Step B (B1): 16px to prevent iOS Safari zoom on focus (any <16px triggers it) */
   .form-select {
     width: 100%;
     padding: .625rem 1rem;
@@ -38,10 +40,16 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-btn);
     color: var(--text-primary);
-    font-size: 14px;
+    font-size: 16px;
     transition: border-color var(--transition), background var(--transition);
     appearance: none;
     cursor: pointer;
+    /* B1 보조: chevron SVG 추가 — appearance:none 으로 기본 화살표 사라진 것 보강
+       B1 supplement: chevron SVG since appearance:none removed the native arrow */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='none' stroke='%2373737c' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    padding-right: 36px;
   }
   .form-select:focus {
     outline: none;
