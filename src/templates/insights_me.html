@@ -59,10 +59,30 @@
   .section-divider { height:1px; background:var(--border); margin:1.5rem 0; }
 
   /* ─── 백링크 / Back link ─── */
-  .back-row { display:flex; align-items:center; gap:1rem; margin-bottom:1.25rem; }
+  .back-row { display:flex; align-items:center; gap:1rem; margin-bottom:1.25rem; flex-wrap:wrap; }
   .back-row a { font-size:.86rem; color:var(--text-muted); text-decoration:none; }
   .back-row a:hover { color:var(--accent); }
   .page-title { font-size:1.15rem; font-weight:700; }
+
+  /* Step B (B3): 모바일 분기 신규 — 이전엔 미디어쿼리 0개 / Mobile breakpoint added */
+  @media (max-width: 768px) {
+    /* KPI 카드 — 4×1 stack 회피 (auto-fit minmax 140 → 160 으로 2×2 권장)
+       Avoid 4×1 stack by raising minmax to 160px → forces 2×2 on narrow viewports */
+    .kpi-grid { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+    /* WCAG 2.5.5 — day-selector 클릭 영역 + Settings P2-7 같은 안내 hint 정렬 */
+    .day-selector a { padding: .55rem 1rem; font-size: 14px; min-height: 40px; display: inline-flex; align-items: center; }
+    /* B3: 추세 테이블 가로 스크롤 + 셀 nowrap */
+    .trend-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .trend-table th, .trend-table td { white-space: nowrap; }
+    .trend-table th { font-size: 12px; }
+    /* 차트 모바일 높이 축소 (240 → clamp) — viewport 33% 차지 회피 */
+    .chart-wrap { height: clamp(180px, 40vh, 240px); }
+    /* 백링크 row — 좁은 화면에서 page-title wrap 시각 안정화 */
+    .back-row { gap: .5rem; }
+    /* B1: KPI/이슈 글자 가독성 */
+    .kpi-value { font-size: 1.4rem; }
+    .issue-msg { word-break: break-word; overflow-wrap: anywhere; }
+  }
 </style>
 
 <div class="back-row">

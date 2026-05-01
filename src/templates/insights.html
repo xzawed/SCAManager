@@ -72,6 +72,24 @@
 
   /* ─── 정보 알림 / Info notice ─── */
   .lb-notice { font-size:.82rem; color:var(--text-muted); margin-bottom:1rem; }
+
+  /* Step B (B2): 모바일 분기 신규 — 이전엔 미디어쿼리 0개 / Mobile breakpoint added (was missing) */
+  @media (max-width: 768px) {
+    /* B1: iOS Safari 자동 줌인 방지 / iOS focus zoom prevention */
+    .days-select { font-size: 16px; min-height: 40px; padding: .45rem .7rem; }
+    .compare-btn { font-size: 14px; min-height: 40px; padding: .55rem 1rem; }
+    /* WCAG 2.5.5 — 칩 클릭 영역 ≥40px / Chip touch target */
+    .chip-label { padding: .55rem .9rem; font-size: 13px; min-height: 40px; }
+    /* 탭 클릭 영역 + flex-wrap 시 "내 추세 →" 우측 정렬 reset (margin-left:auto 제거) */
+    .ins-tabs { flex-wrap: wrap; }
+    .ins-tab { padding: .65rem 1rem; min-height: 44px; }
+    .ins-tabs > a[style*="margin-left:auto"] { margin-left: 0 !important; min-height: 40px; padding: .55rem .85rem; display: inline-flex; align-items: center; }
+    /* B2: 테이블 가로 스크롤 처리 / Table horizontal overflow */
+    .cmp-table, .lb-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .cmp-table th, .cmp-table td,
+    .lb-table th, .lb-table td { white-space: nowrap; }
+    .score-bar-track { max-width: 100px; }
+  }
 </style>
 
 <!-- 탭 헤더 / Tab header -->
