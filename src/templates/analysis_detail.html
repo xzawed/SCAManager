@@ -271,7 +271,12 @@
   </div>
   <div>
     <div style="font-size:15px;font-weight:700;color:var(--text-primary)">등급 {{ analysis.grade }}</div>
-    <div class="ad-score-label">종합 점수</div>
+    {# Phase 1B (UI 개편) — 친근한 의미 라벨 (대화체). 등급별 짧은 코멘트 1줄. #}
+    <div class="ad-score-label">
+      {% if analysis.score >= 90 %}모범적이에요{% elif analysis.score >= 75 %}견고한 PR이에요
+      {% elif analysis.score >= 60 %}양호하지만 개선 여지가 있어요{% elif analysis.score >= 45 %}살펴볼 부분이 있어요
+      {% else %}꼭 확인이 필요해요{% endif %}
+    </div>
   </div>
 </div>
 {% endif %}

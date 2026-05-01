@@ -74,7 +74,13 @@
 </style>
 
 <div class="overview-header">
-  <h2 class="overview-title">리포지토리 현황</h2>
+  <div>
+    {# Phase 1B (UI 개편) — 친근한 환영 인사 (current_user 있을 때만) #}
+    {% if current_user %}
+    <p class="overview-greeting">안녕하세요, {{ current_user.display_name or current_user.github_login }}님 👋</p>
+    {% endif %}
+    <h2 class="overview-title">{% if repos %}오늘의 분석{% else %}리포지토리 현황{% endif %}</h2>
+  </div>
   <div class="overview-actions">
     {% if repos %}
     <span class="repo-count">{{ repos | length }}개 리포</span>
@@ -82,6 +88,15 @@
     <a href="/repos/add" class="btn btn-primary btn--sm">+ 리포 추가</a>
   </div>
 </div>
+<style>
+  /* Phase 1B (UI 개편) — 환영 인사 스타일 (Claude 톤). 본 PR 만의 한정 CSS. */
+  .overview-greeting {
+    margin: 0 0 var(--space-2);
+    font-size: var(--fs-sm);
+    color: var(--text-muted);
+    font-weight: 400;
+  }
+</style>
 
 {% if repos %}
 <div class="s-card" style="margin-bottom:0">
