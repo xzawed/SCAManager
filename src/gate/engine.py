@@ -1,4 +1,5 @@
 """Gate Engine — 3개 독립 옵션: Review Comment / Approve / Auto Merge."""
+import asyncio
 import logging
 from datetime import datetime, timezone
 from html import escape
@@ -57,21 +58,42 @@ async def run_gate_check(  # pylint: disable=too-many-positional-arguments
         config = get_repo_config(db, repo_name)
     score = result.get("score", 0)
 
-    await _run_review_comment(config, github_token, repo_name, pr_number, result)
-    await _run_approve_decision(
-        config=config,
-        db=db,
-        analysis_id=analysis_id,
-        github_token=github_token,
-        repo_name=repo_name,
-        pr_number=pr_number,
-        score=score,
-        result=result,
+    # Phase H PR-2C: 3 옵션 병렬 실행 (asyncio.gather + return_exceptions=True)
+    # CLAUDE.md 규약 — pr_review_comment·approve_mode·auto_merge 완전 독립.
+    # 직렬 await 시 옵션마다 1-3초 latency 합산 → webhook 응답 지연.
+    # gather 로 병렬화하면 평균 latency 가 가장 느린 옵션 1개 = ~3s 로 단축.
+    # return_exceptions=True 는 한 옵션의 예상 외 예외가 다른 옵션을 cancel
+    # 하지 않도록 보장 (각 옵션 내부에서 이미 try/except 처리하므로 추가 안전망).
+    # Phase H PR-2C: run 3 options in parallel with asyncio.gather. Per CLAUDE.md
+    # contract the options are fully independent; serial await wastes 1-3s each.
+    # `return_exceptions=True` keeps unexpected errors from cancelling siblings.
+    results = await asyncio.gather(
+        _run_review_comment(config, github_token, repo_name, pr_number, result),
+        _run_approve_decision(
+            config=config,
+            db=db,
+            analysis_id=analysis_id,
+            github_token=github_token,
+            repo_name=repo_name,
+            pr_number=pr_number,
+            score=score,
+            result=result,
+        ),
+        _run_auto_merge(
+            config, github_token, repo_name, pr_number, score,
+            analysis_id=analysis_id, db=db,
+        ),
+        return_exceptions=True,
     )
-    await _run_auto_merge(
-        config, github_token, repo_name, pr_number, score,
-        analysis_id=analysis_id, db=db,
-    )
+    # 옵션별 예상 외 예외 로깅 — 옵션 내부 try/except 가 못 잡은 케이스만
+    # Log unexpected exceptions per option — only those not caught internally.
+    for option_name, outcome in zip(("review_comment", "approve", "auto_merge"), results):
+        if isinstance(outcome, BaseException):
+            logger.error(
+                "Gate option [%s] unexpected exception: %s",
+                option_name, type(outcome).__name__,
+                exc_info=(type(outcome), outcome, outcome.__traceback__),
+            )
 
 
 async def _run_review_comment(
