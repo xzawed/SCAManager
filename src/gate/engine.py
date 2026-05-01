@@ -369,6 +369,13 @@ async def _get_ci_status_safe(
 
     F1: base_ref 파라미터로 PR 의 실제 base 브랜치 BPR 조회 — develop/staging 등
     main 이 아닌 base 에서도 정확. 호출자가 모르면 "main" 기본값 사용.
+
+    🔴 **PARITY GUARD**: 본 함수는 `src/services/merge_retry_service.py::
+    _get_ci_status_safe` 와 의도적 동일 구현 (단일/워커 경로 일관성). 한쪽만
+    수정하면 두 경로의 CI 상태 판정이 발산해 운영 사고. 변경 시 양쪽 동시
+    수정 필수 + `tests/unit/test_ci_status_safe_parity.py` 회귀 가드 통과 확인.
+    Phase H PR-5A-2 (예정) 에서 `src/shared/ci_utils.py` 로 통합 예정.
+    INTENTIONAL DUPLICATE — keep both copies in sync; parity test enforces.
     """
     try:
         required = await get_required_check_contexts(github_token, repo_name, base_ref)
