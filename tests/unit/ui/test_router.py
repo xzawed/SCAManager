@@ -456,47 +456,59 @@ def test_advanced_settings_default_closed():
 
 
 def test_pr_and_push_cards_inside_advanced():
-    """① PR 동작(hdr-gate) / ② Push 동작(hdr-merge) 카드는 고급 설정 <details> 안에 위치해야 한다."""
+    """① PR 동작(hdr-gate) 카드는 고급 설정 <details> 안에 위치해야 한다.
+
+    Phase 2A Step A: Push/배포 카드는 알림 카드와 통합되어 <details> 바깥으로 이동.
+    Phase 2A Step A: Push/Deploy card was merged into the notify card outside <details>.
+    """
     html = _render_settings()
     adv_open_idx = html.find('class="advanced-details')
     adv_close_idx = html.find("</details>", adv_open_idx)
     assert adv_open_idx != -1, "advanced-details 시작 태그 없음"
     assert adv_close_idx != -1, "advanced-details 닫기 태그 없음"
     gate_idx = html.find("s-card-hdr hdr-gate")
-    merge_idx = html.find("s-card-hdr hdr-merge")
     assert adv_open_idx < gate_idx < adv_close_idx, (
         "① PR 동작 카드가 고급 설정 <details> 안에 없음"
-    )
-    assert adv_open_idx < merge_idx < adv_close_idx, (
-        "② Push 동작 카드가 고급 설정 <details> 안에 없음"
     )
 
 
 def test_notify_channel_outside_advanced():
-    """③ 알림 채널은 고급 설정 <details> 바깥에 있어야 한다 (항상 표시)."""
+    """알림 & 배포 카드(hdr-notify)는 고급 설정 <details> 바깥에 있어야 한다 (항상 표시).
+
+    Phase 2A Step A: Push 토글 + 배포 알림 + 채널이 단일 '알림 & 배포' 카드로 통합됨.
+    Phase 2A Step A: push toggles + deploy alerts + channels merged into single 'Notify & Deploy'.
+    """
     html = _render_settings()
     adv_open_idx = html.find('class="advanced-details')
     adv_close_idx = html.find("</details>", adv_open_idx)
     notify_idx = html.find("s-card-hdr hdr-notify")
-    assert notify_idx != -1, "③ 알림 채널 카드 없음"
+    assert notify_idx != -1, "알림 & 배포 카드 없음"
     assert notify_idx > adv_close_idx, (
-        "③ 알림 채널이 고급 설정 <details> 바깥에 없음 — 항상 표시되어야 함"
+        "알림 & 배포 카드가 고급 설정 <details> 바깥에 없음 — 항상 표시되어야 함"
     )
+    # 통합된 토글들이 새 카드 안에 함께 존재해야 함 / Merged toggles must coexist in the new card
+    assert 'name="commit_comment"' in html
+    assert 'name="railway_deploy_alerts"' in html
+    assert 'name="notify_chat_id"' in html
 
 
 def test_semi_auto_hint_in_pr_card():
-    """semi-auto 모드에서 ① PR 동작 카드에 hint 텍스트가 노출되어야 한다."""
+    """semi-auto 모드에서 ① PR 동작 카드(hdr-gate) 안에 hint 텍스트가 노출되어야 한다.
+
+    Phase 2A Step A 이후 Push/배포 카드가 통합 카드로 흡수되었으므로,
+    힌트는 PR 동작 카드 헤더와 카드 종료(notify 카드 시작) 사이에 있어야 한다.
+    Phase 2A Step A: Push/Deploy card merged; hint must sit between hdr-gate and hdr-notify.
+    """
     from src.config_manager.manager import RepoConfigData
     cfg = RepoConfigData(repo_full_name="owner/repo", approve_mode="semi-auto")
     html = _render_settings(cfg)
     assert "semiAutoHint" in html, "semiAutoHint 엘리먼트가 없음"
-    # PR 동작 카드(s-card-hdr hdr-gate div) 이후, Push 동작 카드(s-card-hdr hdr-merge) 이전에 hint가 있어야 함
     gate_card_idx = html.find('s-card-hdr hdr-gate')
-    merge_card_idx = html.find('s-card-hdr hdr-merge')
+    notify_card_idx = html.find('s-card-hdr hdr-notify')
     hint_idx = html.find("semiAutoHint")
     assert gate_card_idx != -1, "s-card-hdr hdr-gate 카드 헤더가 없음"
-    assert merge_card_idx != -1, "s-card-hdr hdr-merge 카드 헤더가 없음"
-    assert gate_card_idx < hint_idx < merge_card_idx, (
+    assert notify_card_idx != -1, "s-card-hdr hdr-notify 카드 헤더가 없음"
+    assert gate_card_idx < hint_idx < notify_card_idx, (
         "semiAutoHint가 ① PR 동작 카드 안에 없음"
     )
 
