@@ -36,6 +36,57 @@
 
       /* 컨테이너 너비 */
       --container-lg: 1200px; --container-md: 860px; --container-sm: 560px;
+
+      /* ── Phase 1A (UI 개편): Claude × Linear 하이브리드 토큰 ─────────────
+       *  설계서: docs/design/2026-05-01-ui-redesign-claude-linear-hybrid.md
+       *  본 PR 은 신규 토큰 정의만 추가 — 적용은 Phase 1B 부터 (회귀 위험 0).
+       *  기존 토큰 (--bg-page / --grade-* 등) 은 호환성 유지 — Phase 1C 에서
+       *  alias 로 재정의 예정.
+       *  Phase 1A: define new tokens (no consumers yet) — zero regression. */
+
+      /* 따뜻한 베이지/오렌지 (Claude 톤) — 채도 -20%, 도서관 분위기 */
+      --claude-bg-base:      #F5F1E8;  /* warm cream */
+      --claude-bg-surface:   #FAF7F0;  /* card */
+      --claude-bg-elevated:  #FFFFFF;  /* modal/popover */
+      --claude-text-primary: #1F1E1B;  /* warm black */
+      --claude-text-muted:   #6B6862;
+      --claude-accent:       #D97757;  /* Anthropic-inspired orange */
+      --claude-accent-soft:  #E8C5A8;  /* hover/active bg */
+      --claude-border:       #E5E1D5;  /* 1px hairline */
+
+      /* 의미 색상 — 등급/상태 (채도 -20%) */
+      --claude-success:      #9CAF88;  /* sage — A등급/성공 */
+      --claude-warning:      #D4A574;  /* sand — C등급/주의 */
+      --claude-danger:       #C84E3F;  /* muted red — F등급/실패 */
+      --claude-grade-a:      #9CAF88;
+      --claude-grade-b:      #A8A595;
+      --claude-grade-c:      #D4A574;
+      --claude-grade-d:      #C8895E;
+      --claude-grade-f:      #C84E3F;
+
+      /* 타이포그래피 — Crimson Pro (serif H) + Inter (body) + JetBrains Mono
+       * 폰트 import 는 Phase 1B 적용 시점에 <link> 추가 — 본 PR 은 fallback 만 */
+      --claude-font-heading: 'Crimson Pro', Charter, Georgia, serif;
+      --claude-font-body:    'Inter', system-ui, -apple-system, sans-serif;
+      --claude-font-mono:    'JetBrains Mono', Menlo, Consolas, monospace;
+      --claude-line-height:  1.65;
+    }
+
+    /* ── Phase 1A: Claude 톤 다크 모드 토큰 (warm black) ──────────────────
+     *  data-theme="claude-dark" 시 활성. 기존 [data-theme="dark"] 와 별도 —
+     *  Phase 1B 에서 토글 UI 추가 후 운영 시작. 본 PR 은 정의만. */
+    [data-theme="claude-dark"] {
+      --claude-bg-base:      #1F1E1B;  /* warm black */
+      --claude-bg-surface:   #2A2825;
+      --claude-bg-elevated:  #33302C;
+      --claude-text-primary: #F5F1E8;
+      --claude-text-muted:   #A8A29A;
+      --claude-accent:       #E08968;
+      --claude-accent-soft:  #5C3D2E;
+      --claude-border:       #3D3A35;
+      --claude-success:      #A8BA94;
+      --claude-warning:      #DDB585;
+      --claude-danger:       #D45F50;
     }
 
     /* ── 다크 테마 (Linear 스타일) ─────────────── */
