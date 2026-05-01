@@ -43,7 +43,7 @@
 | C4 | Telegram 429 retry-after 미처리 | PR-2B — 단일 재시도 + cap 30s |
 | C5 | `_check_suite_debounce` + `_required_contexts_cache` 무제한 성장 | (TTL 청소 검증 — 이미 동작) |
 | C6 | claim_batch SKIP LOCKED 미구현 (CLAUDE.md 와 불일치) | PR-5A parity guard (실제 SKIP LOCKED 는 단일 워커 환경에서 미필요 — 확인) |
-| C7 | gate_decisions ON DELETE CASCADE 누락 | C7 본 그룹 마지막 PR |
+| C7 | gate_decisions ON DELETE CASCADE 누락 | C7 본 그룹 마지막 PR (alembic 0024 + 4 child 모델 일관성 매트릭스 = CLAUDE.md "DB / 마이그레이션" 섹션, PR-α 에서 표 추가) |
 | C8 | `_get_ci_status_safe` 중복 (engine + service) | PR-5A — parity guard (실제 dedup 후속) |
 | C9 | `/health` `active_db` 누락 (CLAUDE.md 와 불일치) | PR-5B — **문서 정정** (보안 결정 보존) |
 | C10 | Telegram 콜백 토큰 도메인 격리 비대칭 | PR-5C — **functional bug fix** (운영 영향 확정) |
@@ -69,13 +69,18 @@ hmac.new(bot, b"42", sha256).hexdigest()[:32]
 ```
 
 **확정된 운영 영향**:
-- 발신 토큰 ≠ 수신 검증 토큰 → 모든 semi-auto Telegram 콜백 401 거부
-- 단위 테스트가 receiver pattern 토큰을 하드코딩해 우회 → 자동 검증 통과
-- 사용자 보고 부재 → semi-auto 모드 미사용 또는 무음 실패
+- ⚠️ **이전 운영 환경의 모든 semi-auto Telegram 콜백 (인라인 키보드 승인/반려) 가 401 거부됐음** — Telegram bot 측 응답 실패. 사용자가 버튼을 눌러도 SCA 시스템이 인증 거부.
+- 단위 테스트가 receiver pattern 토큰 (`_TOKEN_42 = "d9939856..."`) 을 하드코딩해 우회 → CI 자동 검증 통과 (mock 테스트 한계 노출).
+- 사용자 보고 부재의 원인 추정: ① semi-auto 모드 미사용 (대부분 사용자 auto 또는 disabled 모드), ② Telegram bot 측 401 응답을 사용자가 인지 못함 (무음 실패), ③ 운영 모니터링이 401 빈도를 추적하지 않음.
 
-**Fix**: 수신측 HMAC msg 를 발신측과 동일 (`f"gate:{id}"`) 으로 통일. PR-5C 머지 후 처음으로 정상 동작.
+**Fix**: 수신측 HMAC msg 를 발신측과 동일 (`f"gate:{analysis_id}"`) 으로 통일. **PR-5C 머지 후 처음으로 정상 동작** — 운영 환경에서 semi-auto 콜백을 활성화하면 이번 fix 부터 정상 동작 보장.
 
-**교훈**: 정량화된 다각도 감사 없이는 발견 불가능했던 functional bug. 12-에이전트 감사의 가치 입증.
+**관련 docs 갱신**:
+- CLAUDE.md "보안" 섹션 — Telegram HMAC 정의 정정 (L528, PR-α 에서 처리)
+- docs/runbooks/merge-retry.md "Phase H+I 운영 영향" — semi-auto 콜백 동작 복원 명시 (PR-β 에서 처리)
+- tests/unit/webhook/test_telegram_provider.py — `_TOKEN_42` 하드코딩 갱신 + parity 회귀 가드 3건 추가
+
+**교훈**: 정량화된 다각도 감사 없이는 발견 불가능했던 functional bug. 12-에이전트 감사의 가치 입증. 미래 Claude 가 다른 감사 결과를 처리할 때 단위 테스트 통과만으로 검증 완료 단정 금지 — CLAUDE.md "테스트" 섹션에 규약 추가됨 (PR-α).
 
 ---
 

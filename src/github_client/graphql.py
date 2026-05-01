@@ -37,6 +37,15 @@ GITHUB_GRAPHQL_URL = "https://api.github.com/graphql"
 # 4xx 는 즉시 전파 (재시도 무의미). exponential backoff (1s, 2s, 4s).
 # Phase H PR-1B-2 — 5xx retry policy (no external retry library):
 # retry on 5xx + transient network errors; propagate 4xx immediately.
+#
+# **다른 채널 재사용 시 통합 힌트**:
+# 본 retry 패턴은 현재 GraphQL 전용이지만 동일 정책이 다른 신뢰 API
+# (Discord/Slack/n8n 은 untrusted 라 제외 — CLAUDE.md 규약 참조) 에 적용 가능.
+# 신규 채널 추가 시 다음 옵션 검토:
+#   1. 작은 채널 (1-2 호출) — 본 모듈 패턴 inline 복제 (의존성 0 유지)
+#   2. 3+ 채널 — `src/shared/retry_helper.py` 에 `retry_on_5xx(coro_fn, *,
+#      max_attempts, initial_backoff)` 추출 — 본 모듈도 wrapper 로 전환
+# 통합 시점: GraphQL 외 2번째 채널 도입 시. 단일 패턴 = 한곳 사용 정책.
 _GRAPHQL_MAX_ATTEMPTS = 3
 _GRAPHQL_INITIAL_BACKOFF_SECONDS = 1.0
 

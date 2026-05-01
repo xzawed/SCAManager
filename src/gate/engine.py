@@ -377,7 +377,19 @@ async def _get_ci_status_safe(
     _get_ci_status_safe` 와 의도적 동일 구현 (단일/워커 경로 일관성). 한쪽만
     수정하면 두 경로의 CI 상태 판정이 발산해 운영 사고. 변경 시 양쪽 동시
     수정 필수 + `tests/unit/test_ci_status_safe_parity.py` 회귀 가드 통과 확인.
-    Phase H PR-5A-2 (예정) 에서 `src/shared/ci_utils.py` 로 통합 예정.
+
+    **PR-5A-2 마이그레이션 가이드** (실제 dedup 진행 시):
+      1. `src/shared/ci_utils.py` 신규 — `get_ci_status_safe()` 단일 출처
+      2. 본 함수와 worker 측 함수를 shared 모듈 호출 wrapper 로 변경
+      3. **테스트 patch 경로 마이그레이션 필수**:
+         - `src.gate.engine.get_required_check_contexts` → `src.shared.ci_utils.get_required_check_contexts`
+         - `src.gate.engine.get_ci_status` → `src.shared.ci_utils.get_ci_status`
+         - `src.services.merge_retry_service.get_required_check_contexts` → 동일
+         - `src.services.merge_retry_service.get_ci_status` → 동일
+      4. `tests/unit/gate/test_engine.py` + `test_auto_merge_enqueue.py` +
+         `tests/integration/test_retry_*.py` 의 patch 대상 일괄 grep+replace
+      5. parity 회귀 가드는 단일 함수 검증으로 단순화 (8 tests → 4 tests 추정)
+
     INTENTIONAL DUPLICATE — keep both copies in sync; parity test enforces.
     """
     try:
