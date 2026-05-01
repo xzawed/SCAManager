@@ -24,9 +24,11 @@ bash .scamanager/install-hook.sh
 | 1. Kill-switch | `SCAMANAGER_SELF_ANALYSIS_DISABLED=1` 환경변수 | 202 skipped (self_analysis_disabled) |
 | 2. 봇 발신 감지 | `sender.type == "Bot"` + BOT_LOGIN_WHITELIST 비포함 | 202 skipped (bot_sender) |
 | 3-a. Skip 마커 | 커밋 메시지에 `[skip ci]`, `[skip-sca]`, `[ci skip]` 포함 | 202 skipped (skip_marker) |
-| 3-b. Rate limit | 같은 리포에서 1시간 내 6회 초과 | 202 skipped (bot_rate_limit) |
+| 3-b. Rate limit | **화이트리스트 봇 한정** — 같은 리포에서 1시간 내 6회 초과 시 202 skipped (bot_rate_limit). **사람 발신 / 비-화이트리스트 봇 / sender 누락은 limiter 미적용 = 무제한 통과** | 202 skipped (bot_rate_limit) |
 
 **허용 봇 (분석 진행)**: `github-actions[bot]`, `dependabot[bot]` (BOT_LOGIN_WHITELIST)
+
+> **🔴 PR #100 변경**: `is_whitelisted_bot()` 헬퍼가 화이트리스트 봇만 BotInteractionLimiter 적용. 사람 발신을 차단하려면 별도 GitHub Webhook 비활성화 또는 Layer 1 Kill-switch (`SCAMANAGER_SELF_ANALYSIS_DISABLED=1`) 사용 — Layer 3-b 만으로는 사람 트래픽 차단 불가능.
 
 ## Kill-Switch 즉시 차단
 
