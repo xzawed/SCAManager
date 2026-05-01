@@ -589,17 +589,29 @@
       box-shadow: 0 3px 12px rgba(94,106,210,.4);
       text-decoration: none;
     }
-    /* Step E (E3): 모든 버튼 disabled 시각 명확화 — 클릭 불가 인지 안 되던 결함 해소
-       Step E (E3): clear visual disabled state — was visually identical to enabled */
+    /* Step E (E3) + PR-3 F2: 모든 버튼 disabled 시각 명확화 — 자체 클래스까지 확장
+       Step E + PR-3 F2: clear disabled state across all button variants */
     .btn:disabled, .btn[disabled],
     .btn-primary:disabled, .btn--primary:disabled,
-    .btn-ghost:disabled, .btn--ghost:disabled {
+    .btn-ghost:disabled, .btn--ghost:disabled,
+    .btn--danger:disabled,
+    button:disabled.fb-btn, button:disabled.nav-btn,
+    button:disabled.page-btn, button:disabled.gate-mode-btn,
+    button:disabled.hook-btn, button:disabled.btn-save-new,
+    button:disabled.btn-warning, button:disabled.compare-btn,
+    button:disabled.mode-toggle-btn, button:disabled.filter-btn,
+    button:disabled.settings-link {
       opacity: .45;
       cursor: not-allowed;
       transform: none;
       box-shadow: none;
     }
-    .btn:disabled:hover, .btn[disabled]:hover {
+    .btn:disabled:hover, .btn[disabled]:hover,
+    button:disabled.fb-btn:hover, button:disabled.nav-btn:hover,
+    button:disabled.page-btn:hover, button:disabled.gate-mode-btn:hover,
+    button:disabled.hook-btn:hover, button:disabled.btn-save-new:hover,
+    button:disabled.btn-warning:hover, button:disabled.compare-btn:hover,
+    button:disabled.mode-toggle-btn:hover, button:disabled.filter-btn:hover {
       background: inherit;
       transform: none;
       box-shadow: none;

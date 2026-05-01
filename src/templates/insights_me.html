@@ -162,6 +162,10 @@
     var gradeB    = readVar('--grade-b', '#60a5fa');
     var gradeC    = readVar('--grade-c', '#fbbf24');
     var gradeD    = readVar('--grade-d', '#fb923c');
+    /* PR-3 F3: tooltip 색을 테마 토큰에서 동적 read */
+    var tipBg     = readVar('--bg-card', '#1c1c23');
+    var tipText   = readVar('--text-primary', '#e2e2e8');
+    var border    = readVar('--border', '#2c2c38');
 
     var gradeBoundaries = {
       id: 'gradeBoundaries',
@@ -231,6 +235,13 @@
         plugins: {
           legend: { display: false },
           tooltip: {
+            backgroundColor: tipBg,
+            titleColor: tipText,
+            bodyColor: tipText,
+            borderColor: border,
+            borderWidth: 1,
+            padding: 8,
+            cornerRadius: 6,
             callbacks: {
               label: function(ctx) { return '점수: ' + ctx.parsed.y; }
             }
