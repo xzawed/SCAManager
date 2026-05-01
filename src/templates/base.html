@@ -253,6 +253,16 @@
       --accent:         var(--claude-accent);
       --accent-hover:   #F09578;  /* claude-accent 의 라이트 변형 */
       --accent-grad:    linear-gradient(135deg, #D97757, #F09578);
+
+      /* Phase 1C (UI 개편) — claude-dark 테마에서 등급 색상 alias.
+       * 기존 토큰 (--grade-a 등) 을 claude 톤 (sage/sand/muted red) 로 재정의.
+       * .grade-a/.grade-b/... 클래스 + Chart.js 의 var(--grade-*) 참조 모두
+       * 자동 적용 (마크업 무변경). 기본 다크/라이트 테마는 영향 0. */
+      --grade-a: var(--claude-grade-a);  /* sage #9CAF88 */
+      --grade-b: var(--claude-grade-b);  /* taupe #A8A595 */
+      --grade-c: var(--claude-grade-c);  /* sand #D4A574 */
+      --grade-d: var(--claude-grade-d);  /* terracotta #C8895E */
+      --grade-f: var(--claude-grade-f);  /* muted red #C84E3F */
     }
 
     /* ── 네비게이션 ───────────────────────────── */
