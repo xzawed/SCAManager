@@ -2,7 +2,9 @@
 {% block title %}설정 — {{ repo_name }}{% endblock %}
 {% block content %}
 <style>
-  .settings-wrap { max-width: 860px; margin: 0 auto; padding: 1.5rem 1rem 5rem; }
+  /* P0-3: padding-bottom 6rem 으로 sticky save-bar 가 form 마지막 카드를 가리지 않게
+     P0-3: 6rem bottom padding so sticky save-bar never overlaps the last card */
+  .settings-wrap { max-width: 860px; margin: 0 auto; padding: 1.5rem 1rem 6rem; }
 
   /* 페이지 헤더 */
   .settings-header { display:flex; align-items:center; gap:.75rem; margin-bottom:1.75rem; }
@@ -216,11 +218,14 @@
   .danger-summary::before { content:'▶'; font-size:10px; transition:transform var(--transition); }
   details[open] .danger-summary::before { transform:rotate(90deg); }
 
-  /* 저장 버튼 */
+  /* 저장 버튼 — P0-3: 단색 배경 + box-shadow 로 본문과 명확히 분리
+     Save bar — P0-3: solid bg + box-shadow so the bar is clearly above content */
   .save-bar {
     position:sticky; bottom:0;
-    padding:.75rem 0 .5rem;
-    background:linear-gradient(transparent, var(--bg-page) 45%);
+    padding:.75rem 0 .85rem;
+    background: var(--bg-page);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -8px 16px -8px rgba(0,0,0,.18);
   }
   .btn-save-new {
     width:100%; padding:.72rem; border-radius:9px; border:none;
@@ -270,16 +275,26 @@
     border-radius: 8px;
   }
 
-  /* 반응형 — 640px 이상에서 2컬럼 전환 */
+  /* 반응형 — 640px 이상에서 2컬럼 전환 / Responsive: 2-col at ≥640px */
   @media(max-width:639px) {
     .repo-badge { display:none; }
-    .settings-wrap { padding:1rem .75rem 5rem; }
+    /* P0-5: .container 가 좌우 패딩 담당 → settings-wrap 좌우 0 (이중 패딩 해소)
+       P0-5: .container handles horizontal padding → settings-wrap is 0 (avoid double-pad) */
+    .settings-wrap { padding:1rem 0 6rem; }
   }
   @media(min-width:640px) {
     .settings-grid { grid-template-columns:1fr 1fr; }
     .channel-grid  { grid-template-columns:1fr 1fr; }
     .preset-cards  { display:grid; grid-template-columns:repeat(3,1fr); gap:.6rem; }
-    .notify-full   { grid-column:span 2; }
+    .notify-full   { grid-column:1/-1; }
+    /* P0-1: 자식 카드가 1개뿐인 settings-grid 는 자동 1컬럼 (우측 빈공간 해소)
+       P0-1: settings-grid with a single child card auto-collapses to 1 col */
+    .settings-grid:has(> .s-card:only-child) { grid-template-columns: 1fr; }
+  }
+  /* P0-2: 데스크탑 ≥1024px 에서 페이지 폭 확장 (양옆 빈여백 해소)
+     P0-2: Widen page at ≥1024px to remove desktop dead space */
+  @media(min-width:1024px) {
+    .settings-wrap { max-width: 1140px; }
   }
 </style>
 
@@ -364,12 +379,12 @@
     <input type="hidden" name="approve_mode" id="approveModeValue" value="{{ config.approve_mode }}">
 
     {% if onboarding_needed %}
-    <!-- 온보딩 배너 — 알림 채널 미설정 + Telegram 미연결 시 표시 -->
-    <!-- Onboarding banner — shown when no notification channel and Telegram not linked -->
-    <div class="s-card" id="onboardingBanner" style="margin-bottom:1rem;border:1.5px solid var(--accent);">
-      <div class="s-card-hdr" style="background:linear-gradient(135deg,#6366f1,#8b5cf6)">
-        <span class="hdr-icon">🚀</span>
-        <span class="hdr-title">빠른 시작</span>
+    <!-- 온보딩 배너 — 알림 채널 미설정 + Telegram 미연결 시 표시 (P0-4: 빠른 설정 카드와 색/아이콘 분리) -->
+    <!-- Onboarding banner — visually distinct from preset card (P0-4: amber + 👋 vs preset's purple + 🚀) -->
+    <div class="s-card" id="onboardingBanner" style="margin-bottom:1rem;border:1.5px solid var(--c-warning,#f59e0b);">
+      <div class="s-card-hdr" style="background:linear-gradient(135deg,#f59e0b,#d97706)">
+        <span class="hdr-icon">👋</span>
+        <span class="hdr-title">시작하세요</span>
         <span class="hdr-badge">알림 채널 미설정</span>
       </div>
       <div class="s-card-body">
