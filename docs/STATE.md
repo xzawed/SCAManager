@@ -52,6 +52,30 @@
 
 ## 작업 이력 (그룹별)
 
+### 그룹 56 (2026-05-01 · Settings 화면 P0 시각 결함 5건 핫픽스 — PR #156)
+
+**목표**: Phase 2A Progressive 재설계 (그룹 55) 머지 후 사용자 피드백 "데스크탑/모바일 양쪽 규격이 안 맞다" 에 대해 4-에이전트 감사 (실제 Playwright 캡처 + 데스크탑/모바일/일관성 코드 분석) 후 P0 5건만 핫픽스로 우선 해결.
+
+**4-에이전트 감사 결과**: P0 5건 + P1 8건 + P2/P3 7건 = 총 20건 식별. 본 PR 은 P0 만 처리 — 나머지는 별도 PR 시리즈.
+
+**P0 핫픽스 5건**:
+
+| # | 결함 | 해결 |
+|---|------|------|
+| P0-1 | 데스크탑 카드가 우측 50% 만 차지 (각 카드 별도 settings-grid wrap, 자식 1개라 2-col 무용) | `.settings-grid:has(> .s-card:only-child) { grid-template-columns: 1fr }` 자동 폴백 |
+| P0-2 | 1280px 화면 양옆 ~210px 빈여백 | `@media(min-width:1024px) .settings-wrap { max-width: 1140px }` |
+| P0-3 | sticky `save-bar` 가 카드 본문 (자동 Merge 토글) 가림 | 단색 배경 + border-top + box-shadow + padding-bottom 5rem→6rem |
+| P0-4 | 빠른 시작(온보딩) ↔ 빠른 설정(프리셋) 헤더 시각 중복 | 온보딩: 보라+🚀 → amber+👋 + amber border 로 분리 |
+| P0-5 | 모바일 좌우 패딩 누적 ~30~40px (`.container` + `.settings-wrap` 이중) | `@media(max-width:639px) .settings-wrap { padding: 1rem 0 6rem }` (좌우 0) |
+
+**변경 범위**: `src/templates/settings.html` 단일 파일, +28/-13 줄. 5-way sync 보존 (form 필드명 14종 + PRESETS 9 + JS 헬퍼 12종 시그니처 모두 불변).
+
+**테스트**: tests/unit/ui/ 106 PASS (회귀 0건). `:has()` 셀렉터 호환 Chrome 105+ / Safari 15.4+ / Firefox 121+.
+
+**잔여 (별도 PR)**: P1 8건 (모바일 mode-toggle wrap, ⑥/⑦ form 분리, gate-btns WCAG 클릭영역, channel-grid placeholder 잘림, --grad-merge↔--success 색 충돌, mode-toggle 시각 무게, toggle-row baseline, Bootstrap 클래스 미정의). P2/P3 7건 (conn-dot ring, 인라인 그라디언트 토큰화, preset 높이 비대칭, safe-area-inset, range thumb 크기, simple-only-hint 위치).
+
+---
+
 ### 그룹 55 (2026-05-01 · Settings UI/UX Phase 2A Progressive 재설계 + 카드 통합 — PR #152, #153)
 
 **목표**: 사용자 피드백 "설정 패널과 웹훅 내용이 너무 어지럽다, 설명 없이는 사용 어렵다" 해소. 다중 에이전트 5명 (정찰 1 + 디자인 안건 3 + 웹훅 전담 1) 분석 → 사용자 결정: **일괄 적용 + 안건 B (Progressive Mode 강화) + 웹훅 W2 (수신/발신 분리) + 사용자 신호 기반 첫 진입**.
