@@ -9,7 +9,7 @@ import aiosmtplib
 from src.scorer.calculator import ScoreResult
 from src.analyzer.io.static import StaticAnalysisResult
 from src.analyzer.io.ai_review import AiReviewResult
-from src.constants import GRADE_COLOR_HTML, NOTIFIER_MAX_ISSUES_LONG
+from src.constants import GRADE_COLOR_HTML, HTTP_CLIENT_TIMEOUT, NOTIFIER_MAX_ISSUES_LONG
 from src.notifier._common import format_ref, get_all_issues, truncate_issue_msg
 
 logger = logging.getLogger(__name__)
@@ -96,6 +96,10 @@ async def send_email_notification(  # pylint: disable=too-many-arguments
     msg["To"] = recipients
     msg.attach(MIMEText(html, "html"))
 
+    # SMTP hang 방어: aiosmtplib 기본 timeout=60s 가 길어 운영 hang 시
+    # BackgroundTask 슬롯 점유 위험. HTTP_CLIENT_TIMEOUT(=10s) 과 동일 정책.
+    # SMTP hang guard: aiosmtplib's default 60s timeout is too long; align to
+    # HTTP_CLIENT_TIMEOUT to avoid BackgroundTask slot exhaustion.
     await aiosmtplib.send(
         msg,
         hostname=smtp_host,
@@ -103,6 +107,7 @@ async def send_email_notification(  # pylint: disable=too-many-arguments
         username=smtp_user,
         password=smtp_pass,
         use_tls=True,
+        timeout=HTTP_CLIENT_TIMEOUT,
     )
 
 
