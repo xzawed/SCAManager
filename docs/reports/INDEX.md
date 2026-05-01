@@ -13,6 +13,7 @@
 | 아키텍처·작업 규칙·주의사항 | [CLAUDE.md](../../CLAUDE.md) |
 | README 배지 | [README.md L21-25](../../README.md) |
 | 최신 작업 이력 | [STATE.md 그룹 57](../STATE.md) |
+| **사용자 협업 정책** | [collaboration-retrospective.md](2026-05-01-collaboration-retrospective.md) (다음 세션 default) |
 
 ---
 
@@ -47,6 +48,7 @@
 | 2026-04-29 | [phase4-meta-retrospective](2026-04-29-phase4-meta-retrospective.md) | Phase 4 메타 회고 — 3-에이전트 병렬 검증으로 누락 9건 발견·수정 + PR-B3 정량 평가 기준 추가 |
 | 2026-05-01 | [phase-h-i-completion-retrospective](2026-05-01-phase-h-i-completion-retrospective.md) | Phase H+I 15 PR 완료 회고 — 12-에이전트 감사 Critical 10건 100% 처리, 외부 의존성 추가 0, Functional bug 1건 발견 (Telegram HMAC) |
 | 2026-05-01 | [ui-audit-cycle-retrospective](2026-05-01-ui-audit-cycle-retrospective.md) | UI 감사 사이클 (그룹 55~57) 회고 — 4-에이전트 화면 감사 65건 → Step A~E 분할 → 5-에이전트 정합성 cleanup 4 PR + 메타 sync PR-D1~D5 모델 + 환각 토큰 발견 패턴 + claude-dark 테마 토큰 매트릭스 |
+| 2026-05-01 | [collaboration-retrospective](2026-05-01-collaboration-retrospective.md) | 사용자 ↔ Claude 협업 회고 — 25 PR 시리즈 후 신뢰 모델 평가 + 사용자 합의 정책 5건 (옵션 장단점 명시 / PR 검증 미완료 섹션 / 자율 판단 보고 / 단언+가드 묶음 / 사이클 종료 신호) — **다음 세션 default 정책** |
 
 ---
 
