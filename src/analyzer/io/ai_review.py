@@ -66,9 +66,14 @@ async def review_code(
 
     # Anthropic SDK 기본 timeout=600s 는 BackgroundTask 슬롯을 10분 점유 위험.
     # HTTP_CLIENT_TIMEOUT 보다 여유 두고 60s 로 설정 — 평균 응답 5-15s 대비 충분.
+    # max_retries=2 — SDK 기본값 명시화. 5xx / connection error / timeout 시 SDK 가
+    # exponential backoff 으로 자동 재시도. SDK 업그레이드로 기본값 변경되면
+    # 운영 영향 — 명시적 인자로 면역. tests/unit/analyzer/io/test_ai_review_errors.py
+    # ::test_review_code_passes_explicit_max_retries_to_anthropic_client 회귀 가드.
     # Default SDK timeout (600s) can occupy a BackgroundTask slot for 10 min.
-    # Set 60s — well above the typical 5-15s response, far below SDK default.
-    client = anthropic.AsyncAnthropic(api_key=api_key, timeout=60.0)
+    # Set 60s — well above typical 5-15s response, far below SDK default.
+    # max_retries=2 — explicit so SDK upgrades cannot silently change retry behavior.
+    client = anthropic.AsyncAnthropic(api_key=api_key, timeout=60.0, max_retries=2)
     model = settings.claude_review_model
     system_text = get_system_prompt()
     start = time.perf_counter()
