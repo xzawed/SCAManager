@@ -16,8 +16,9 @@ client = TestClient(app)
 
 # HMAC-SHA256[:32] token for analysis_id=42, bot_token="123:ABC" — 32자 hex (128-bit)
 # Telegram callback_data 64-byte 한도로 인해 32자 절단 유지 (NIST SP 800-107 충족).
-# 32-char truncation is required by Telegram's 64-byte callback_data limit (meets NIST SP 800-107).
-_TOKEN_42 = "d9939856ed07d33d8689614fcb1a7dff"
+# Phase H PR-5C — HMAC msg = `f"gate:{analysis_id}"` (발신측과 동일 — scope 격리)
+# Computed: hmac("123:ABC", "gate:42", sha256).hexdigest()[:32]
+_TOKEN_42 = "2e3450af594e60ff0c34543790c58342"
 APPROVE = {"update_id": 1, "callback_query": {"id": "c1", "from": {"id": 1, "username": "john"},
             "data": f"gate:approve:42:{_TOKEN_42}", "message": {"message_id": 1, "chat": {"id": -1}}}}
 REJECT = {"update_id": 2, "callback_query": {"id": "c2", "from": {"id": 1, "username": "john"},
@@ -445,3 +446,67 @@ def test_unknown_payload_returns_ok():
     r = client.post("/api/webhook/telegram", json={"update_id": 1, "unknown_key": "value"})
     assert r.status_code == 200
     assert r.json() == {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Phase H PR-5C — sender ↔ receiver HMAC PARITY 회귀 가드
+# 12-에이전트 감사 Critical C10 — 이전에는 발신측 (gate.telegram_gate) 의
+# `f"gate:{id}"` 와 수신측의 `str(id)` 가 달라 모든 semi-auto 콜백이 401.
+# 본 테스트는 두 토큰이 정확히 동일함을 영구 가드.
+# ---------------------------------------------------------------------------
+
+
+def test_sender_receiver_hmac_token_parity():
+    """발신측 _gate_callback_token() 이 만든 토큰을 수신측이 검증 통과해야 한다."""
+    from src.gate.telegram_gate import _gate_callback_token  # pylint: disable=import-outside-toplevel
+    from src.webhook.providers.telegram import _parse_gate_callback  # pylint: disable=import-outside-toplevel
+
+    bot_token = "123:ABC"  # conftest 환경변수와 일치
+    analysis_id = 99
+    sender_token = _gate_callback_token(bot_token, analysis_id)
+
+    # 수신측은 settings.telegram_bot_token 사용 — patch 로 주입
+    with patch("src.webhook.providers.telegram.settings") as mock_settings:
+        mock_settings.telegram_bot_token = bot_token
+        callback_data = f"gate:approve:{analysis_id}:{sender_token}"
+        parsed = _parse_gate_callback(callback_data)
+
+    assert parsed is not None, (
+        "PARITY 위반: 발신측 토큰이 수신측 검증을 통과해야 함 — "
+        "HMAC msg 형식이 양쪽 동일해야 한다"
+    )
+    decision, parsed_id, parsed_token = parsed
+    assert decision == "approve"
+    assert parsed_id == analysis_id
+    assert parsed_token == sender_token
+
+
+def test_receiver_rejects_legacy_str_id_token():
+    """레거시 패턴 (HMAC msg = str(id)) 토큰은 수신 거부 — 보안 가드."""
+    import hashlib  # pylint: disable=import-outside-toplevel
+    import hmac as _hmac  # pylint: disable=import-outside-toplevel
+    bot_token = "123:ABC"
+    legacy_token = _hmac.new(
+        bot_token.encode(), b"42", digestmod=hashlib.sha256,
+    ).hexdigest()[:32]
+
+    with patch("src.webhook.providers.telegram.settings") as mock_settings:
+        mock_settings.telegram_bot_token = bot_token
+        from src.webhook.providers.telegram import _parse_gate_callback  # pylint: disable=import-outside-toplevel
+        parsed = _parse_gate_callback(f"gate:approve:42:{legacy_token}")
+
+    assert parsed is None, "구 패턴 토큰은 거부되어야 함 (Critical C10 가드)"
+
+
+def test_cmd_scope_token_does_not_validate_as_gate():
+    """cmd 도메인 토큰을 gate 콜백에 재사용 시도 → 거부 (cross-replay 차단)."""
+    from src.gate.telegram_gate import _make_callback_token  # pylint: disable=import-outside-toplevel
+    bot_token = "123:ABC"
+    cmd_token = _make_callback_token(bot_token, "cmd", 42)
+
+    with patch("src.webhook.providers.telegram.settings") as mock_settings:
+        mock_settings.telegram_bot_token = bot_token
+        from src.webhook.providers.telegram import _parse_gate_callback  # pylint: disable=import-outside-toplevel
+        parsed = _parse_gate_callback(f"gate:approve:42:{cmd_token}")
+
+    assert parsed is None, "cmd 도메인 토큰을 gate 로 재사용 시도 차단 필요"
