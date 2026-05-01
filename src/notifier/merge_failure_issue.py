@@ -90,6 +90,9 @@ async def create_merge_failure_issue(  # pylint: disable=too-many-locals
         number = create_resp.json().get("number")
         logger.info("Auto-merge failure Issue 생성 완료 #%s (pr=%d)", number, pr_number)
         return number
-    except httpx.HTTPError as exc:
-        logger.error("create_merge_failure_issue 실패 (%s, pr=%d): %s", repo_name, pr_number, exc)
+    except httpx.HTTPError:
+        # Phase H PR-6A: logger.exception 으로 stack trace 보존
+        logger.exception(
+            "create_merge_failure_issue 실패 (%s, pr=%d)", repo_name, pr_number,
+        )
         return None
