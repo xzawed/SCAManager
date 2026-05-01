@@ -129,8 +129,10 @@
     border-radius: 4px;
     flex-shrink: 0;
   }
-  .ad-issue-tool.error { background: rgba(239,68,68,0.15); color: #ef4444; }
-  .ad-issue-tool.warning { background: rgba(245,158,11,0.15); color: #f59e0b; }
+  /* Step D: 시맨틱 토큰화 — #ef4444/#f59e0b → var(--danger)/var(--warning)
+     Step D: semantic tokenization — claude-dark 테마 sage/sand/muted-red 자동 적용 */
+  .ad-issue-tool.error { background: rgba(239,68,68,0.15); color: var(--danger); }
+  .ad-issue-tool.warning { background: rgba(245,158,11,0.15); color: var(--warning); }
   .ad-issue-line {
     font-size: 12px;
     color: var(--text-muted);
@@ -313,12 +315,15 @@
             background: var(--bg-card); cursor: pointer; font-size: 14px;
             transition: all 0.15s ease; display: inline-flex; align-items: center; gap: 0.3rem; }
   .fb-btn:hover { background: var(--bg-hover); transform: translateY(-1px); }
-  .fb-btn.active.fb-up   { background: #10b98122; border-color: #10b981; color: #10b981; }
-  .fb-btn.active.fb-down { background: #ef444422; border-color: #ef4444; color: #ef4444; }
+  /* Step D: 피드백 버튼 시맨틱 토큰화 (3-테마 + claude-dark 자동 적용)
+     Step D: feedback button semantic tokens — auto across 4 themes */
+  .fb-btn.active.fb-up   { background: rgba(74,222,128,.13); border-color: var(--success); color: var(--success); }
+  .fb-btn.active.fb-down { background: rgba(248,113,113,.13); border-color: var(--danger); color: var(--danger); }
   .fb-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .fb-status { font-size: 12px; color: var(--text-muted); margin-left: 0.5rem; }
-  .fb-status.ok    { color: #10b981; }
-  .fb-status.error { color: #ef4444; }
+  /* Step D: 피드백 상태 토큰화 / Feedback status semantic tokens */
+  .fb-status.ok    { color: var(--success); }
+  .fb-status.error { color: var(--danger); }
 </style>
 <script>
 (function() {
@@ -378,11 +383,12 @@
 <!-- AI 기본값 적용 경고 배너 / AI defaults applied warning banner -->
 {% set ai_status = r.get('ai_review_status', 'success') if r else 'success' %}
 {% if ai_status != 'success' %}
-<div class="card ad-section" style="border-left:4px solid #f59e0b;background:rgba(245,158,11,0.06)">
+<!-- Step D: AI 기본값 안내 배너 시맨틱 토큰화 / AI defaults notice — semantic warning tokens -->
+<div class="card ad-section" style="border-left:4px solid var(--warning);background:rgba(245,158,11,0.08)">
   <div style="display:flex;align-items:center;gap:.6rem">
     <span style="font-size:1.1rem">⚠️</span>
     <div>
-      <div style="font-size:13px;font-weight:700;color:#f59e0b;margin-bottom:2px">AI 리뷰 기본값 적용</div>
+      <div style="font-size:13px;font-weight:700;color:var(--warning);margin-bottom:2px">AI 리뷰 기본값 적용</div>
       <div style="font-size:13px;color:var(--text-primary)">
         {% if ai_status == 'no_api_key' %}ANTHROPIC_API_KEY가 설정되지 않아 AI 점수에 중립적 기본값이 적용되었습니다.
         {% elif ai_status == 'api_error' %}AI API 호출에 실패하여 기본값이 적용되었습니다. 서버 로그를 확인하세요.
@@ -554,8 +560,11 @@
   var accent = s.getPropertyValue('--accent').trim() || '#6366f1';
   var muted  = s.getPropertyValue('--text-muted').trim() || '#64748b';
   var border = s.getPropertyValue('--border').trim() || '#2d3748';
+  /* Step D: 현재 분석 강조 색을 var(--danger) 에서 읽기 (3-테마 + claude-dark 호환)
+     Step D: read current-point highlight from var(--danger) for theme harmony */
+  var dangerColor = s.getPropertyValue('--danger').trim() || '#ef4444';
 
-  var pointColors  = TREND.map(function(t) { return t.id === CURRENT_ID ? '#ef4444' : accent; });
+  var pointColors  = TREND.map(function(t) { return t.id === CURRENT_ID ? dangerColor : accent; });
   var pointRadii   = TREND.map(function(t) { return t.id === CURRENT_ID ? 7 : 3; });
   var pointBorders = TREND.map(function(t) { return t.id === CURRENT_ID ? '#fff' : accent; });
 
