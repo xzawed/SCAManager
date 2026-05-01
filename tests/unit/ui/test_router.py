@@ -436,68 +436,91 @@ def test_mask_toggle_buttons_present():
     )
 
 
-def test_advanced_settings_accordion_exists():
-    """①·② 카드는 '고급 설정' <details>로 감싸져야 한다."""
+def test_advanced_details_removed_in_progressive_redesign():
+    """Progressive Mode 재설계 후 advanced-details <details> 아코디언은 제거되어야 한다.
+
+    Phase 2A 재설계: 카드 평탄화 + .adv-only 클래스 기반 단순/고급 분리.
+    Phase 2A redesign: cards flattened; simple/advanced split via .adv-only class.
+    """
     html = _render_settings()
-    assert "advanced-details" in html, "advanced-details 클래스가 없음"
-    assert "고급 설정" in html, "'고급 설정' summary 텍스트가 없음"
+    assert "advanced-details" not in html, (
+        "advanced-details 클래스가 잔존 — Progressive Mode 재설계 후 제거되어야 함"
+    )
+    # .adv-only 클래스 다수 존재 확인 (단순/고급 분리는 카드/필드 단위 .adv-only 로 처리)
+    # Verify .adv-only is used as the new simple/advanced split mechanism.
+    assert html.count('adv-only') >= 5, (
+        f".adv-only 클래스가 부족: {html.count('adv-only')}회 (5회 이상 기대)"
+    )
 
 
-def test_advanced_settings_default_closed():
-    """고급 설정 <details>는 기본 닫힘 상태여야 한다 (open 속성 없음)."""
+def test_pr_card_simple_fields_outside_adv_only():
+    """단순 모드 노출 핵심 필드(pr_review_comment / auto_merge / merge_threshold) 는
+    .adv-only 영역 바깥에 있어야 한다.
+
+    Phase 2A: 단순 모드 = 5개 핵심 필드만 노출 + Telegram (notify_chat_id + OTP).
+    Phase 2A: simple mode exposes only 5 core fields + Telegram.
+    """
     html = _render_settings()
-    # advanced-details 엘리먼트에 open 속성이 없어야 함
+    # PR 동작 카드(hdr-gate)는 카드 자체에 .adv-only 가 없어야 함 (단순 모드 노출)
+    # PR Behavior card (hdr-gate) must NOT have .adv-only on the card wrapper itself.
     import re
-    match = re.search(r'<details[^>]*class="[^"]*advanced-details[^"]*"[^>]*>', html)
-    assert match, "advanced-details <details> 엘리먼트를 찾지 못함"
-    assert " open" not in match.group(0), (
-        f"고급 설정이 기본 열림 상태: {match.group(0)}"
+    pr_card_match = re.search(
+        r'<div class="s-card[^"]*">\s*<div class="s-card-hdr hdr-gate">', html,
     )
+    assert pr_card_match, "PR 동작 카드(hdr-gate) 를 찾지 못함"
+    # 단순 모드 핵심 필드 3종은 카드 안에 존재
+    # 3 simple-mode core fields must exist
+    for name in ("pr_review_comment", "auto_merge", "merge_threshold"):
+        assert f'name="{name}"' in html, f"단순 모드 필드 누락: {name}"
 
 
-def test_pr_and_push_cards_inside_advanced():
-    """① PR 동작(hdr-gate) / ② Push 동작(hdr-merge) 카드는 고급 설정 <details> 안에 위치해야 한다."""
+def test_notify_card_always_visible():
+    """알림 채널 카드(hdr-notify)는 .adv-only 클래스 없이 항상 노출되어야 한다.
+
+    Phase 2A: notify_chat_id 와 Telegram OTP 는 단순 모드 핵심 필드.
+    Phase 2A: notify_chat_id and Telegram OTP are simple-mode core fields.
+    """
     html = _render_settings()
-    adv_open_idx = html.find('class="advanced-details')
-    adv_close_idx = html.find("</details>", adv_open_idx)
-    assert adv_open_idx != -1, "advanced-details 시작 태그 없음"
-    assert adv_close_idx != -1, "advanced-details 닫기 태그 없음"
-    gate_idx = html.find("s-card-hdr hdr-gate")
-    merge_idx = html.find("s-card-hdr hdr-merge")
-    assert adv_open_idx < gate_idx < adv_close_idx, (
-        "① PR 동작 카드가 고급 설정 <details> 안에 없음"
-    )
-    assert adv_open_idx < merge_idx < adv_close_idx, (
-        "② Push 동작 카드가 고급 설정 <details> 안에 없음"
-    )
-
-
-def test_notify_channel_outside_advanced():
-    """③ 알림 채널은 고급 설정 <details> 바깥에 있어야 한다 (항상 표시)."""
-    html = _render_settings()
-    adv_open_idx = html.find('class="advanced-details')
-    adv_close_idx = html.find("</details>", adv_open_idx)
     notify_idx = html.find("s-card-hdr hdr-notify")
-    assert notify_idx != -1, "③ 알림 채널 카드 없음"
-    assert notify_idx > adv_close_idx, (
-        "③ 알림 채널이 고급 설정 <details> 바깥에 없음 — 항상 표시되어야 함"
+    assert notify_idx != -1, "알림 채널 카드 없음"
+    # notifyCard 카드 자체 wrapper 에 .adv-only 가 없어야 함
+    # The notifyCard wrapper itself must NOT carry .adv-only.
+    notify_wrapper_start = html.rfind('<div class="s-card', 0, notify_idx)
+    notify_wrapper_open_tag = html[notify_wrapper_start:notify_idx]
+    assert "adv-only" not in notify_wrapper_open_tag, (
+        f"알림 채널 카드 wrapper 에 .adv-only 클래스 부착됨: {notify_wrapper_open_tag}"
     )
 
 
-def test_semi_auto_hint_in_pr_card():
-    """semi-auto 모드에서 ① PR 동작 카드에 hint 텍스트가 노출되어야 한다."""
+def test_semi_auto_hint_inside_adv_only_block():
+    """semi-auto 안내 hint 는 PR 동작 카드의 .adv-only 영역 안에 있어야 한다.
+
+    Phase 2A: approve_mode 3-way 와 threshold 슬라이더는 고급 모드 전용.
+    Phase 2A: approve_mode 3-way and threshold sliders are advanced-only.
+    """
     from src.config_manager.manager import RepoConfigData
     cfg = RepoConfigData(repo_full_name="owner/repo", approve_mode="semi-auto")
     html = _render_settings(cfg)
     assert "semiAutoHint" in html, "semiAutoHint 엘리먼트가 없음"
-    # PR 동작 카드(s-card-hdr hdr-gate div) 이후, Push 동작 카드(s-card-hdr hdr-merge) 이전에 hint가 있어야 함
     gate_card_idx = html.find('s-card-hdr hdr-gate')
-    merge_card_idx = html.find('s-card-hdr hdr-merge')
+    notify_card_idx = html.find('s-card-hdr hdr-notify')
     hint_idx = html.find("semiAutoHint")
-    assert gate_card_idx != -1, "s-card-hdr hdr-gate 카드 헤더가 없음"
-    assert merge_card_idx != -1, "s-card-hdr hdr-merge 카드 헤더가 없음"
-    assert gate_card_idx < hint_idx < merge_card_idx, (
-        "semiAutoHint가 ① PR 동작 카드 안에 없음"
+    assert gate_card_idx != -1, "s-card-hdr hdr-gate 카드 헤더 없음"
+    assert notify_card_idx != -1, "s-card-hdr hdr-notify 카드 헤더 없음"
+    assert gate_card_idx < hint_idx < notify_card_idx, (
+        "semiAutoHint 가 PR 동작 카드 안 (다음 알림 카드 이전) 에 위치해야 함"
+    )
+
+
+def test_initial_mode_data_attribute_present():
+    """모드 토글 바에 data-initial-mode 속성(서버 신호) 이 있어야 한다.
+
+    Phase 2A: localStorage 가 비어있을 때 서버 신호로 advanced 진입.
+    Phase 2A: server signal triggers advanced mode when localStorage is empty.
+    """
+    html = _render_settings()
+    assert 'data-initial-mode="' in html, (
+        "data-initial-mode 속성이 모드 토글 바에 없음 — 서버 신호 fallback 깨짐"
     )
 
 

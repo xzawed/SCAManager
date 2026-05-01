@@ -5,35 +5,21 @@ SETTINGS_URL = "/repos/owner%2Ftestrepo/settings"
 
 
 def _expand_advanced(page):
-    """고급 설정 아코디언이 접혀 있으면 펼친다 (멱등).
+    """단순 모드를 강제로 'advanced' 로 전환한다 (멱등).
 
-    UI 리디자인(a1aedd1 + PR #89)으로 Gate 모드 버튼·임계값 슬라이더가
-    <details class="advanced-details"> 안으로 이동해 기본 상태에서 invisible.
-    또한 Settings UI/UX 리디자인 후 'simple/advanced' 모드 토글이 추가되어
-    기본값이 'simple' 일 때 advanced-details 가 CSS `display:none !important` —
-    Playwright actionability check 에서 30s timeout 발생.
+    Phase 2A Progressive 재설계 후 advanced-details <details> 아코디언은 제거되고,
+    카드 평탄화 + .adv-only 클래스로 단순/고급 분리. 따라서 advanced 필드(approve_mode 3-way,
+    threshold 슬라이더, Discord/Slack 등) 에 도달하려면 data-settings-mode='advanced' 만
+    설정하면 된다 (별도 <details> 펼침 불필요).
 
-    헬퍼는 두 단계 보정:
-      1) data-settings-mode 를 'advanced' 로 설정 + localStorage 영속화
-      2) <details> 가 닫혀있으면 summary 클릭으로 펼침
+    Phase 2A: advanced-details accordion removed; cards flattened with .adv-only.
+    To reach advanced fields, only data-settings-mode='advanced' is needed.
     """
-    # 1단계 — Simple/Advanced 모드 토글: Simple 이 기본이면 advanced-details 가
-    # display:none 이라 클릭 자체 불가능. 직접 attribute 설정으로 강제 advanced.
-    # Step 1 — Force advanced mode so .advanced-details becomes visible
     page.evaluate(
         "document.body.setAttribute('data-settings-mode','advanced'); "
-        "(document.querySelector('main')||{}).setAttribute"
-        "&&document.querySelector('main').setAttribute('data-settings-mode','advanced'); "
-        "try{localStorage.setItem('sca-settings-mode','advanced')}catch(e){}"
+        "try{localStorage.setItem('scamanager_settings_mode','advanced')}catch(e){}"
     )
-    # 2단계 — <details> 펼침
-    # Step 2 — Open the <details> if collapsed
-    is_open = page.evaluate(
-        "document.querySelector('.advanced-details')?.open ?? false"
-    )
-    if not is_open:
-        page.locator(".advanced-details > summary").click()
-        page.wait_for_timeout(200)
+    page.wait_for_timeout(100)
 
 
 def test_settings_page_loads(seeded_page, base_url):
@@ -328,7 +314,8 @@ def test_gate_mode_persists_after_save(seeded_page, base_url):
     seeded_page.click('[data-mode="auto"]')
     seeded_page.locator('button[type="submit"].btn-save-new').click()
     seeded_page.wait_for_load_state("networkidle", timeout=5000)
-    # 리로드 후에도 advanced-details 펼쳐야 버튼 class 를 읽을 수 있음
+    # 리로드 후 advanced 모드로 전환해야 approve_mode 버튼이 보임
+    # After reload, switch to advanced mode so approve_mode button is visible
     _expand_advanced(seeded_page)
     cls = seeded_page.get_attribute('[data-mode="auto"]', "class") or ""
     assert "active" in cls
@@ -381,12 +368,18 @@ def test_six_card_titles_present(seeded_page, base_url):
     body = seeded_page.content()
     # ① 빠른 설정 제목은 기존 유지 — 개별 프리셋 카드로 대체
     # ① Quick settings heading is preserved — replaced by individual preset cards.
-    # PR #89 카드명 변경 — 의도 기반 명칭으로 갱신
-    # PR #89 renamed cards to intent-based labels
-    assert "분석 동작 규칙" in body, "카드 ② 분석 동작 규칙 누락"
-    assert "Push / 배포 이벤트" in body, "카드 ③ Push / 배포 이벤트 누락"
-    assert "통합 &amp; 연결" in body or "통합 & 연결" in body, "카드 ⑤ 통합 & 연결 누락"
-    assert "위험 구역" in body, "카드 ⑥ 위험 구역 누락"
+    # Phase 2A Progressive 재설계 — 카드 평탄화 + W2 수신/발신 분리 + 의도 기반 명명
+    # Phase 2A Progressive redesign — cards flattened + W2 inbound/outbound split + intent-based names
+    assert "PR 동작 규칙" in body, "카드 'PR 동작 규칙' 누락"
+    assert "알림 채널 (발신)" in body, "카드 '알림 채널 (발신)' 누락"
+    assert "이벤트 후 자동화" in body, "카드 '이벤트 후 자동화' 누락"
+    assert "통합 &amp; 인증 (수신)" in body or "통합 & 인증 (수신)" in body, "카드 '통합 & 인증 (수신)' 누락"
+    assert "위험 구역" in body, "카드 '위험 구역' 누락"
+    # 구 카드명 잔존 부재 가드 / Old card names must not linger
+    assert "분석 동작 규칙" not in body, "구 카드명 '분석 동작 규칙' 잔존"
+    assert "Push / 배포 이벤트" not in body, "구 카드명 'Push / 배포 이벤트' 잔존"
+    assert "알림 발신 채널" not in body, "구 카드명 '알림 발신 채널' 잔존"
+    assert "통합 &amp; 연결" not in body, "구 카드명 '통합 & 연결' 잔존"
 
 
 def test_preset_diff_preview_has_nine_rows(seeded_page, base_url):
@@ -482,34 +475,42 @@ def test_railway_api_token_in_main_form(seeded_page, base_url):
     assert form_attr == "settingsForm", f"railway_api_token form 속성이 'settingsForm' 이어야 하는데 {form_attr!r}"
 
 
-def test_save_error_opens_advanced_accordion(seeded_page, base_url):
-    """?save_error=1 쿼리로 접근 시 고급설정 아코디언이 자동 펼쳐져야 한다."""
+def test_save_error_forces_advanced_mode(seeded_page, base_url):
+    """?save_error=1 쿼리로 접근 시 자동으로 advanced 모드로 전환되어야 한다.
+
+    Phase 2A Progressive 재설계: advanced-details 제거, save_error → data-settings-mode='advanced' 강제.
+    Phase 2A Progressive: advanced-details removed; save_error forces data-settings-mode='advanced'.
+    """
     seeded_page.goto(f"{base_url}{SETTINGS_URL}?save_error=1")
     seeded_page.wait_for_timeout(300)
-    is_open = seeded_page.evaluate(
-        "document.querySelector('.advanced-details')?.open"
+    mode = seeded_page.evaluate(
+        "document.body.getAttribute('data-settings-mode')"
     )
-    assert is_open is True, "save_error=1 쿼리 시 .advanced-details 가 펼쳐져야 함"
+    assert mode == "advanced", f"save_error=1 시 data-settings-mode='advanced' 기대, 실제 {mode!r}"
 
 
-def test_save_success_keeps_advanced_accordion_closed(seeded_page, base_url):
-    """?saved=1 (성공) 쿼리로 접근 시 고급설정 아코디언은 펼쳐지지 않아야 한다."""
+def test_save_success_keeps_simple_mode(seeded_page, base_url):
+    """?saved=1 (성공) 쿼리로 접근 시 모드는 유지 (강제 전환 없음).
+
+    Phase 2A: localStorage 또는 서버 신호 또는 simple default — saved 는 강제 전환 사유 아님.
+    """
     seeded_page.goto(f"{base_url}{SETTINGS_URL}?saved=1")
     seeded_page.wait_for_timeout(300)
-    is_open = seeded_page.evaluate(
-        "document.querySelector('.advanced-details')?.open"
+    mode = seeded_page.evaluate(
+        "document.body.getAttribute('data-settings-mode')"
     )
-    assert not is_open, "saved=1 쿼리 시 .advanced-details 는 기본 접힘 유지"
+    # 기본값은 simple (localStorage 비어있고 서버 신호 없음 — 시드 리포는 기본 설정)
+    # Default is simple when localStorage empty and server signals no advanced fields.
+    assert mode == "simple", f"saved=1 시 simple 모드 유지 기대, 실제 {mode!r}"
 
 
-def test_auto_merge_in_pr_card_not_push_card(seeded_page, base_url):
-    """auto_merge 체크박스가 PR 카드('분석 동작 규칙') 안에 있어야 한다 (Push 카드 아님).
+def test_auto_merge_in_pr_card(seeded_page, base_url):
+    """auto_merge 체크박스가 PR 동작 규칙 카드 안에 있어야 한다 (이벤트 후 자동화 카드 아님).
 
-    PR #89 Settings UI/UX 리디자인으로 카드명이 의도 기반('분석 동작 규칙') 으로 갱신됨.
-    PR #89 renamed the card to intent-based '분석 동작 규칙'.
+    Phase 2A Progressive 재설계: 카드명이 'PR 동작 규칙' 으로 갱신.
+    Phase 2A: card renamed to 'PR 동작 규칙'.
     """
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
-    # auto_merge input 의 가장 가까운 s-card 헤더 타이틀 확인
     card_title = seeded_page.evaluate(
         """() => {
             const input = document.querySelector('input[name="auto_merge"]');
@@ -520,8 +521,8 @@ def test_auto_merge_in_pr_card_not_push_card(seeded_page, base_url):
             return title ? title.textContent.trim() : null;
         }"""
     )
-    assert card_title == "분석 동작 규칙", (
-        f"auto_merge 의 상위 카드 타이틀이 '분석 동작 규칙' 여야 하는데 '{card_title}' 임"
+    assert card_title == "PR 동작 규칙", (
+        f"auto_merge 의 상위 카드 타이틀이 'PR 동작 규칙' 여야 하는데 '{card_title}' 임"
     )
 
 
