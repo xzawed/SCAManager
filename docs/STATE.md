@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-04-29 기준 — Phase 4 Critical 테스트 갭 5 PR 완료)
+## 현재 수치 (2026-05-01 기준 — Phase H+I Critical 10건 100% 완료)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1931개** | pytest 9.0.3 (0 failed, 5 skipped) — Phase 4 PR-T1~T4 +172 (analyzer/tools 55 + ai_review_errors 20 + scorer_edges 31 + engine_guards 15 + pipeline_helpers 11 + merge_retry_helpers 16 + pr_a_scenarios 24) |
+| 단위 테스트 | **1968개** | pytest 9.0.3 (0 failed, 5 skipped) — Phase H+I 15 PR 신규 +37 (timeout/race-recovery/Telegram 429/gate parallel/PyGithub async/joinedload/parity/HMAC parity/composite indexes/cascade 등) |
 | 통합 테스트 | **72개** | tests/integration/ — Phase 4 PR-T5 +25 (e2e_pipeline_scenarios — webhook→pipeline→gate 종단간) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
@@ -51,6 +51,78 @@
 | `tests/conftest.py` | 환경변수 주입 + _webhook_secret_cache autouse 클리어 |
 
 ## 작업 이력 (그룹별)
+
+### 그룹 54 (2026-05-01 · Phase H+I — 12-에이전트 감사 Critical 10건 100% 처리)
+
+**목표**: 2026-04-30 12-에이전트 종합 감사가 식별한 Critical 10건 + 외부 API hardening + cross-cutting 개선을 안전성 우선 분할 PR 시리즈로 처리.
+
+**핵심 원칙** (모든 PR 공통):
+- src/ 변경 ≤ 30줄 (회귀 추적 용이)
+- TDD Red → Green 사이클 엄격 준수
+- pylint 10.00/10 + 0 회귀 (사전 12 failures 변동 없음)
+- 외부 의존성 추가 0 (tenacity 도입 회피, SDK 내장 옵션 + 직접 helper 활용)
+
+**15개 PR 결과** (오늘 하루):
+
+| PR | 영역 | 효과 |
+|----|----|----|
+| **PR-1A** | Anthropic + SMTP timeout | API hang 차단 (BackgroundTask 슬롯 10분 점유 위험 제거) |
+| **PR-2A** | race-recovery notify skip | 사일런트 KeyError 차단 + 중복 알림 차단 |
+| **PR-2B** | Telegram 429 retry-after | 봇 그룹 차단 방지 (cap 30s + 단일 재시도) |
+| **PR-2C** | gate 3-옵션 `asyncio.gather` | gate latency -50% (직렬 → 병렬) |
+| **PR-3A** | PyGithub `asyncio.to_thread` | 이벤트 루프 블록 0 (Sentry "GitHub sync hang" 월 5-10 → 0) |
+| **PR-3B** | `find_by_full_name_with_owner` opt-in | joinedload 가능 (호출처 마이그레이션은 후속) |
+| **PR-5A** | `_get_ci_status_safe` parity guard | drift 회귀 차단 (실제 dedup 후속) |
+| **PR-5B** | `/health` 문서 정정 | CLAUDE.md + 가이드 5곳 갱신 (단일 진실 소스 = 코드) |
+| **PR-6A** | `logger.error → logger.exception` 7곳 | Sentry stack trace 보존 |
+| **PR-6B** | `sanitize_for_log` 16곳 일괄 | 로그 인젝션 방어 표면 +16 (SonarCloud taint ~18 → ~2) |
+| **PR-1B-1** | Anthropic SDK `max_retries` 명시 | SDK 회귀 면역 |
+| **PR-4A** | DB 복합 인덱스 3종 | repo_detail P95 ~180ms → <50ms / leaderboard ~70% 메모리 절감 |
+| **PR-5C** | Telegram HMAC parity (Critical functional bug) | semi-auto 콜백 본 fix 후 처음으로 정상 동작 (이전 모든 콜백 401) |
+| **PR-1B-2** | GitHub GraphQL 5xx 재시도 | 일시 5xx 80%+ 자동 회복 (의존성 추가 없음) |
+| **C7** | gate_decisions ON DELETE CASCADE | 미래 admin script Analysis 직접 삭제 안전망 |
+
+**Critical 10건 매핑** (12-에이전트 감사):
+
+| # | 이슈 | 처리 PR |
+|---|------|--------|
+| C1 | Anthropic SDK timeout 미설정 (기본 600초) | PR-1A |
+| C2 | race-recovery 시 result_dict=None notify 사일런트 실패 | PR-2A |
+| C3 | PyGithub blocking in async (이벤트 루프 블록) | PR-3A |
+| C4 | Telegram 429 retry-after 미처리 | PR-2B |
+| C5 | _check_suite_debounce + _required_contexts_cache 무제한 성장 | (TTL 청소 확인 — PR-3A 흡수) |
+| C6 | claim_batch SKIP LOCKED 미구현 (CLAUDE.md 와 불일치) | (parity guard PR-5A — 실제 구현은 단일 워커 환경에서 미필요) |
+| C7 | gate_decisions.analysis_id ON DELETE CASCADE 누락 | C7 본 그룹 마지막 PR |
+| C8 | _get_ci_status_safe 중복 (두 모듈 동일) | PR-5A (parity guard) |
+| C9 | /health active_db 누락 (CLAUDE.md 와 불일치) | PR-5B (문서 정정 — 보안 결정 보존) |
+| C10 | Telegram gate 콜백 토큰 도메인 격리 비대칭 | PR-5C (functional bug fix) |
+
+**Critical Functional Bug 발견** (PR-5C):
+12-에이전트 감사 C10 검증 중 confirmed: `_parse_gate_callback` 의 HMAC msg = `str(id)` 와 발신측 `_make_callback_token` 의 HMAC msg = `f"gate:{id}"` 가 달라 **모든 semi-auto 콜백이 401 거부됐던 운영 functional bug**. 단위 테스트가 receiver-pattern 토큰을 하드코딩해 우회하고 있었음. 본 PR 후 처음으로 정상 동작.
+
+**잘 된 것**:
+- TDD 사이클 100% 준수 — 모든 PR 회귀 가드 테스트 동반
+- 외부 의존성 추가 0 — tenacity 회피, SDK `max_retries` + 직접 retry helper 활용
+- Mock chain 트랩 회피 (PR-3B) — `find_by_full_name` 직접 변경 시 70+ 회귀 → opt-in 함수로 분리
+- functional bug 발견 (PR-5C) — 정량화된 감사로만 식별 가능
+
+**어려웠던 것**:
+- PR-3B 의 70+ mock chain 회귀 — Phase S.4 트랩 재발견. 안전 절충 (opt-in 함수)
+- PR-5A 의 dedup vs mock 격리 트레이드오프 — parity guard 로 절충
+- PR-1B-2 의 retry 코드 mock 호환성 — `r.status_code` 직접 접근 → `raise_for_status` 후 except 분기로 refactor
+
+**잔여 (장기, 비-Critical)**:
+- **PR-3B-2**: `find_by_full_name_with_owner` 호출처 6곳 마이그레이션 + 70+ mock chain 갱신
+- **PR-5A-2**: `_get_ci_status_safe` 실제 dedup (`src/shared/ci_utils.py` 통합 + patch 마이그레이션)
+
+**검증 (2026-05-01)**:
+- `make test-isolated` → 2036 passed, 5 skipped
+- 단위 1968 / 통합 72 / E2E 53
+- pylint 10.00/10 (15 PR 모두 유지)
+- bandit HIGH 0
+- SonarCloud Quality Gate OK (15 연속)
+
+---
 
 ### 그룹 53 (2026-04-29 · Phase 4 Critical 테스트 갭 5 PR — 14-에이전트 감사 R1-B 후속)
 

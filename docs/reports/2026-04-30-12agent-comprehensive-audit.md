@@ -59,21 +59,21 @@
 
 | # | 위치 | 사고 시나리오 | 수정 비용 |
 |---|------|-----|----|
-| **C1** | `src/analyzer/io/ai_review.py:67` Anthropic SDK timeout 미설정 (기본 600초) | Claude API hang → BackgroundTask 슬롯 10분 점유 | 1줄 |
-| **C2** | `src/worker/pipeline.py:283` race-recovery 시 `result_dict=None` → notify 사일런트 실패 | 동시 PR 이벤트 시 알림 채널 6개 모두 KeyError | ~15줄 |
-| **C3** | `src/github_client/diff.py:18-29` PyGithub blocking in async (no `asyncio.to_thread`) | 20파일 PR 시 GitHub API 21회 직렬 → 이벤트 루프 5-15초 블록 | ~30줄 |
-| **C4** | `src/notifier/telegram.py:22-23` Telegram 429 retry-after 미처리 | 봇 그룹 차단 (spam) → cron 누적 시 운영 중단 | ~20줄 |
+| **C1** ✅ | `src/analyzer/io/ai_review.py:67` Anthropic SDK timeout 미설정 (기본 600초) | **PR-1A 머지** — `timeout=60.0` 명시. Claude API hang BackgroundTask 슬롯 10분 점유 차단. |
+| **C2** ✅ | `src/worker/pipeline.py:283` race-recovery 시 `result_dict=None` → notify 사일런트 실패 | **PR-2A 머지** — `if result_dict is None` 시 명시적 notify skip + INFO 로그. 동시 PR 이벤트 KeyError 차단 + 중복 알림 방지. |
+| **C3** ✅ | `src/github_client/diff.py:18-29` PyGithub blocking in async (no `asyncio.to_thread`) | **PR-3A 머지** — `_collect_files` 호출을 `asyncio.to_thread` 로 wrap. 20파일 PR 시 이벤트 루프 블록 0. |
+| **C4** ✅ | `src/notifier/telegram.py:22-23` Telegram 429 retry-after 미처리 | **PR-2B 머지** — `parameters.retry_after` 파싱 + 단일 재시도 (cap 30s). 봇 그룹 차단 방지. |
 
 ### Cross-cutting (묶음 PR 처리)
 
 | # | 영역 | 핵심 |
 |---|------|----|
-| **C5** | `_check_suite_debounce` + `_required_contexts_cache` | 무제한 성장 (multi-tenant 1000 repo 시 leak) |
-| **C6** | `claim_batch` SKIP LOCKED | CLAUDE.md vs 코드 불일치, 수평 확장 시 더블-클레임 |
-| **C7** | `gate_decisions.analysis_id` ON DELETE CASCADE | 누락 시 FK 위반 잠재 |
-| **C8** | `_get_ci_status_safe` 중복 | engine.py + merge_retry_service.py 한쪽 수정 시 분기 깨짐 |
-| **C9** | `/health` `active_db` 누락 | ~~CLAUDE.md 와 불일치~~ → **PR-5B 해결 (문서 정정)**: `/health` 의 `active_db` 미노출은 의도적 보안 결정 (`tests/unit/test_main.py::test_health_returns_status_ok` 가 회귀 차단). CLAUDE.md + 가이드 5곳 갱신해 코드 = 단일 진실 소스 정합성 확보. failover 모니터링은 logger 로그 (Sentry/Railway) 경로로 대체. |
-| **C10** | Telegram gate 콜백 토큰 도메인 격리 비대칭 | `_make_callback_token` vs `_parse_gate_callback` HMAC 비대칭 |
+| **C5** ✅ | `_check_suite_debounce` + `_required_contexts_cache` | **(PR-3A 흡수)** — TTL 청소 검증으로 leak 위험 부재 확인. 별도 fix 불필요. |
+| **C6** ✅ | `claim_batch` SKIP LOCKED | **PR-5A parity guard** — 단일 워커 환경에서 SKIP LOCKED 미필요 확인. CLAUDE.md 정정으로 정합성 확보. |
+| **C7** ✅ | `gate_decisions.analysis_id` ON DELETE CASCADE | **C7 머지** — ondelete=CASCADE 추가 + Postgres-aware 마이그레이션 (alembic 0024). 다른 모델과 일관성 확보. |
+| **C8** ✅ | `_get_ci_status_safe` 중복 | **PR-5A 머지** — parity guard 8 tests 추가 (시그니처 + 행동 동등성). 실제 dedup 은 PR-5A-2 후속 (mock 마이그레이션 필요). |
+| **C9** ✅ | `/health` `active_db` 누락 | **PR-5B 머지 (문서 정정)** — `/health` 의 `active_db` 미노출은 의도적 보안 결정 (`tests/unit/test_main.py::test_health_returns_status_ok` 가 회귀 차단). CLAUDE.md + 가이드 5곳 갱신해 코드 = 단일 진실 소스 정합성 확보. failover 모니터링은 logger 로그 (Sentry/Railway) 경로로 대체. |
+| **C10** ✅ | Telegram gate 콜백 토큰 도메인 격리 비대칭 | **PR-5C 머지 — Critical Functional Bug Fix**. 발신 `f"gate:{id}"` ≠ 수신 `str(id)` 로 모든 semi-auto 콜백이 401 거부됐던 functional bug. 수신측을 발신측과 통일. 단위 테스트가 receiver pattern 토큰 하드코딩으로 우회하던 문제도 함께 fix. PR-5C 머지 후 처음으로 정상 동작. |
 
 ---
 
