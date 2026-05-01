@@ -41,7 +41,7 @@
 | `src/notifier/merge_failure_issue.py` | `create_merge_failure_issue()` — auto-merge 실패 GitHub Issue (Phase F.3, dedup 24h) |
 | `src/models/merge_attempt.py` | MergeAttempt ORM — score/threshold 스냅샷 + failure_reason 태그 (Phase F.1, append-only) |
 | `src/shared/merge_metrics.py` | parse_reason_tag + log_merge_attempt — DB INSERT + 구조화 로그 (Phase F.1) |
-| `src/repositories/` | DB 접근 계층 8종 — repository_repo, analysis_repo, analysis_feedback_repo, merge_attempt_repo, gate_decision_repo, repo_config_repo, user_repo, merge_retry_repo |
+| `src/repositories/` | DB 접근 계층 8종 — repository_repo (`find_by_full_name` + Phase H 신규 `find_by_full_name_with_owner` opt-in joinedload), analysis_repo, analysis_feedback_repo, merge_attempt_repo, gate_decision_repo, repo_config_repo, user_repo, merge_retry_repo |
 | `src/worker/pipeline.py` | 분석 파이프라인 + build_analysis_result_dict |
 | `src/models/merge_retry.py` | MergeRetryQueue ORM — 재시도 큐 (append-only claim 패턴) |
 | `src/repositories/merge_retry_repo.py` | enqueue_or_bump · claim_batch · mark_succeeded/terminal/expired — 원자적 SKIP LOCKED 클레임 |
@@ -77,10 +77,10 @@
 | **PR-6A** | `logger.error → logger.exception` 7곳 | Sentry stack trace 보존 |
 | **PR-6B** | `sanitize_for_log` 16곳 일괄 | 로그 인젝션 방어 표면 +16 (SonarCloud taint ~18 → ~2) |
 | **PR-1B-1** | Anthropic SDK `max_retries` 명시 | SDK 회귀 면역 |
-| **PR-4A** | DB 복합 인덱스 3종 | repo_detail P95 ~180ms → <50ms / leaderboard ~70% 메모리 절감 |
+| **PR-4A** | DB 복합 인덱스 3종 (alembic **0023**: `ix_analyses_repo_id_created_at`, `ix_analyses_repo_id_author_login`, `ix_merge_attempts_attempted_at`) | repo_detail P95 ~180ms → <50ms / leaderboard ~70% 메모리 절감 |
 | **PR-5C** | Telegram HMAC parity (Critical functional bug) | semi-auto 콜백 본 fix 후 처음으로 정상 동작 (이전 모든 콜백 401) |
 | **PR-1B-2** | GitHub GraphQL 5xx 재시도 | 일시 5xx 80%+ 자동 회복 (의존성 추가 없음) |
-| **C7** | gate_decisions ON DELETE CASCADE | 미래 admin script Analysis 직접 삭제 안전망 |
+| **C7** | gate_decisions ON DELETE CASCADE (alembic **0024**: dialect 분기 — Postgres ALTER, SQLite skip) | 미래 admin script Analysis 직접 삭제 안전망 (다른 child 모델 4종과 일관성 확보) |
 
 **Critical 10건 매핑** (12-에이전트 감사):
 
@@ -90,8 +90,8 @@
 | C2 | race-recovery 시 result_dict=None notify 사일런트 실패 | PR-2A |
 | C3 | PyGithub blocking in async (이벤트 루프 블록) | PR-3A |
 | C4 | Telegram 429 retry-after 미처리 | PR-2B |
-| C5 | _check_suite_debounce + _required_contexts_cache 무제한 성장 | (TTL 청소 확인 — PR-3A 흡수) |
-| C6 | claim_batch SKIP LOCKED 미구현 (CLAUDE.md 와 불일치) | (parity guard PR-5A — 실제 구현은 단일 워커 환경에서 미필요) |
+| C5 | _check_suite_debounce + _required_contexts_cache 무제한 성장 | **(검증/문서화로 처리)** TTL 청소 코드 검증 결과 leak 부재 — 별도 fix 불필요. PR-3A 흡수. |
+| C6 | claim_batch SKIP LOCKED 미구현 (CLAUDE.md 와 불일치) | **(검증/문서화로 처리)** 단일 워커 환경에서 SKIP LOCKED 미필요 확인. PR-5A parity guard 로 미래 drift 방지. |
 | C7 | gate_decisions.analysis_id ON DELETE CASCADE 누락 | C7 본 그룹 마지막 PR |
 | C8 | _get_ci_status_safe 중복 (두 모듈 동일) | PR-5A (parity guard) |
 | C9 | /health active_db 누락 (CLAUDE.md 와 불일치) | PR-5B (문서 정정 — 보안 결정 보존) |
@@ -1087,6 +1087,10 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 ```
 
 ## 잔여 과제
+
+> 🎯 **Phase H+I 후속 (2026-05-01 — 추가)**: Critical 10건은 처리 완료. 다음 2건은 mock chain 마이그레이션 필요로 별도 PR 예정.
+> - **PR-3B-2** (~4-6h): `find_by_full_name_with_owner` 호출처 6곳 마이그레이션 + 70+ 단위 테스트 mock chain 갱신. 효과: 분석 1회당 ~5-15ms 절약 (Railway PG).
+> - **PR-5A-2** (~3-4h): `_get_ci_status_safe` 실제 dedup — `src/shared/ci_utils.py` 통합 + 테스트 patch 경로 마이그레이션. 효과: 코드 ~30줄 감소 + drift 위험 0.
 
 > 🎯 **방향 전환 (2026-04-23)**: Path A (서비스화) 공식 선택 → Phase E 로드맵 가동. Phase D.5~D.8 **영구 보류**. 상세: [`reports/2026-04-23-phase-e-service-pivot-decision.md`](reports/2026-04-23-phase-e-service-pivot-decision.md).
 
