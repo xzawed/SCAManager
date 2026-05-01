@@ -216,3 +216,37 @@ def test_build_html_escapes_xss_in_ai_summary():
     assert "<img" not in html
     assert "&lt;img" in html
     assert "&amp;" in html
+
+
+# ---------------------------------------------------------------------------
+# 회귀 방지 — Phase H PR-1A: aiosmtplib timeout 인자 전달 검증
+# Regression guard — Phase H PR-1A: aiosmtplib timeout kwarg passed
+# ---------------------------------------------------------------------------
+
+
+async def test_send_email_passes_explicit_timeout_to_aiosmtplib():
+    """SMTP hang 방어 — aiosmtplib.send 호출 시 timeout 인자가 명시적으로 전달.
+
+    aiosmtplib 기본 timeout 은 60초로 길어 운영 hang 시 BackgroundTask 슬롯
+    점유 위험. HTTP_CLIENT_TIMEOUT 과 동일 값으로 통일.
+    """
+    with patch("src.notifier.email.aiosmtplib") as mock_smtp:
+        mock_smtp.send = AsyncMock()
+
+        await send_email_notification(
+            recipients="a@test.com",
+            repo_name="owner/repo",
+            commit_sha="abc1234",
+            score_result=_make_score(),
+            analysis_results=_make_analysis(),
+            smtp_host="smtp.test.com",
+            smtp_port=587,
+            smtp_user="user",
+            smtp_pass="pass",
+        )
+
+    mock_smtp.send.assert_called_once()
+    call_kwargs = mock_smtp.send.call_args.kwargs
+    assert "timeout" in call_kwargs, "aiosmtplib.send 호출에 timeout 인자 필수"
+    assert isinstance(call_kwargs["timeout"], (int, float))
+    assert 0 < call_kwargs["timeout"] <= 30  # 보수적 상한
