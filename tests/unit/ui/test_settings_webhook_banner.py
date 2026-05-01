@@ -196,6 +196,10 @@ def test_settings_all_form_fields_present_after_restructure():
     """
     resp = _settings_get(stale=False)
     assert resp.status_code == 200
+    # PR-D2: 18 form 필드 전수 가드 — 이전엔 16/18 만 검증 (approve_mode +
+    # railway_api_token 누락) 으로 silent 회귀 위험. 5-way sync 5번째 layer 보강.
+    # PR-D2: full 18-form-field guard — was 16/18 (missing approve_mode +
+    # railway_api_token) leading to silent regression risk.
     required_fields = [
         "pr_review_comment", "auto_merge", "merge_threshold",
         "approve_threshold", "reject_threshold", "commit_comment",
@@ -203,6 +207,9 @@ def test_settings_all_form_fields_present_after_restructure():
         "discord_webhook_url", "slack_webhook_url", "n8n_webhook_url",
         "custom_webhook_url", "email_recipients", "leaderboard_opt_in",
         "auto_merge_issue_on_failure",
+        # PR-D2 추가 — 5-way sync 핵심 필드
+        "approve_mode",        # 구 gate_mode — Approve 자동/반자동 핫키
+        "railway_api_token",   # form 바깥에서 form="settingsForm" 으로 연결되는 특수 필드
     ]
     for field in required_fields:
         assert field in resp.text, f"Missing form field: {field}"
