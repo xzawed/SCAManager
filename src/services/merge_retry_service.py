@@ -289,7 +289,10 @@ async def _get_ci_status_safe(
     의도적 동일 구현 (단일/워커 경로 일관성). 한쪽만 수정하면 두 경로의 CI
     상태 판정이 발산해 운영 사고. 변경 시 양쪽 동시 수정 필수 +
     `tests/unit/test_ci_status_safe_parity.py` 회귀 가드 통과 확인.
-    Phase H PR-5A-2 (예정) 에서 `src/shared/ci_utils.py` 로 통합 예정.
+
+    **PR-5A-2 마이그레이션 가이드**: engine.py 측 동일 함수 docstring 의 §PR-5A-2
+    마이그레이션 가이드 참조 — 양쪽 동시 적용 필수.
+
     INTENTIONAL DUPLICATE — keep both copies in sync; parity test enforces.
     """
     try:

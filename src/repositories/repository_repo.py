@@ -43,6 +43,16 @@ def find_by_full_name_with_owner(db: Session, full_name: str) -> Repository | No
     `db.query.return_value.options.return_value.filter.return_value.first` 로
     갱신 — 별도 PR (PR-3B-2) 로 점진 진행.
 
+    **마이그레이션 후보 (호출처 6곳)** — 모두 `repo.owner.plaintext_token` 참조:
+      - `src/worker/pipeline.py::_ensure_repo` (167-168)
+      - `src/worker/pipeline.py::_regate_pr_if_needed` (201-202)
+      - `src/webhook/providers/github.py::_handle_merged_pr_event` (105)
+      - `src/webhook/providers/github.py::_handle_issues_event` (249)
+      - `src/webhook/providers/telegram.py::handle_gate_callback` (87-88)
+        — 단, 이 callsite 는 `find_by_id` 사용 → `find_by_id_with_owner` 별도
+        함수 추가 필요 (본 PR 범위 밖, PR-3B-3 후보)
+      - 신규 callsite 추가 시 본 함수 사용 권장 (mock chain 갱신 비용 발생 인지)
+
     Currently available but un-adopted to avoid breaking 70+ mock chains
     (Phase S.4 lesson). Migrate callsites one-by-one in a follow-up PR,
     updating each test's mock chain to include `.options.return_value`.
