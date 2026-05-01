@@ -195,7 +195,7 @@ src/
 │   ├── __main__.py             # python -m src.cli review
 │   ├── git_diff.py             # 로컬 git diff 수집
 │   └── formatter.py            # 터미널 출력 포맷 (ANSI 색상)
-├── repositories/               # DB 접근 계층 8종 — repository_repo, analysis_repo, analysis_feedback_repo, merge_attempt_repo, gate_decision_repo, repo_config_repo, user_repo, merge_retry_repo
+├── repositories/               # DB 접근 계층 8종 — repository_repo (find_by_full_name + Phase H 신규 find_by_full_name_with_owner opt-in joinedload), analysis_repo, analysis_feedback_repo, merge_attempt_repo, gate_decision_repo, repo_config_repo, user_repo, merge_retry_repo
 └── worker/
     └── pipeline.py             # run_analysis_pipeline, build_analysis_result_dict
 ```
@@ -458,6 +458,9 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 - **Mock side_effect 재귀**: `mock.add.side_effect = fn` 설정 후 fn 내에서 `original_add(obj)` 호출 시 재귀 발생. side_effect 함수에서는 원본 mock을 호출하지 말 것 — 캡처만 하고 return None.
 - **모듈 레벨 캐시 격리**: `src/webhook/_helpers.py`의 `_webhook_secret_cache`는 모듈 레벨 dict. `tests/conftest.py`의 `_clear_webhook_secret_cache` autouse fixture가 테스트마다 자동 클리어. 신규 모듈 레벨 캐시 추가 시 동일한 autouse fixture 패턴 적용 필수 — 미적용 시 테스트 순서 의존성 버그 발생.
 - **`services/analytics_service.py` 테스트 패턴**: `db: Session` 인자 + `now: datetime | None = None` 의존성 주입(freezegun 미사용). 각 테스트 파일은 자체 in-memory SQLite engine fixture (`tests/unit/repositories/test_analysis_feedback_repo.py:20-58` 참조). `func.count/avg/min/max` 호출 시 `# pylint: disable=not-callable` 인라인 주석 필수 (E1102 false positive).
+- 🔴 **감사 식별 Critical 항목은 단순 hardening 단정 금지 (Phase H PR-5C 교훈)**: 12-에이전트 감사 등이 식별한 Critical 항목을 처리할 때 단위 테스트 통과만으로 검증 완료 단정 금지. `_TOKEN_42` 같은 하드코딩 fixture 가 receiver pattern 을 받아쓰기 (사이드웨이) 로 우회해 functional bug 를 가릴 수 있음 — PR-5C 사례 (모든 semi-auto Telegram 콜백이 실제 운영에서 401 거부됐으나 테스트는 통과). TDD Red 단계에서 "기존 테스트가 왜 통과하는가" 자문 의무.
+- 🔴 **`find_by_full_name` 같은 hot-path repository 함수 시그니처 변경 금지 (Phase H PR-3B)**: 70+ 단위 테스트가 `db.query.return_value.filter.return_value.first` mock chain 사용. `.options(joinedload(...))` 같은 메서드 추가 시 chain 깨짐 → 70+ 회귀 (Phase S.4 트랩 재발견). 신규 옵션은 별도 함수 (`find_by_full_name_with_owner` 패턴) 로 분리 — 기존 시그니처 불변.
+- 🔴 **의도적 중복 코드의 PARITY GUARD 패턴 (Phase H PR-5A)**: 두 모듈에 의도적으로 동일 함수가 있는 경우 (예: `_get_ci_status_safe` engine + service), 양쪽 docstring 에 `🔴 **PARITY GUARD**` 표지 + 변경 시 동시 수정 의무 명시 + parity 회귀 가드 테스트 (시그니처 + 행동 동등성) 의무. drift 즉시 검출. 통합 PR 은 mock patch 경로 마이그레이션 동반 필요로 별도 진행 권장.
 
 ### DB / 마이그레이션
 
@@ -469,6 +472,17 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 - **`Analysis.author_login` NULL 정책**: 신규 컬럼은 backfill 없이 NULL 허용. 모든 집계는 `WHERE author_login IS NOT NULL` 적용. backfill 필요 시 `scripts/backfill_author.py` 별도 실행. PR 이벤트 = `pull_request.user.login`, Push 이벤트 = `head_commit.author.username`.
 - 🔴 **ORM 컬럼 추가 시 마이그레이션 필수 동반**: `models/*.py`에 `Column(...)` 추가 후 반드시 `make revision m="설명"` 으로 마이그레이션 파일을 함께 생성해야 한다. 단위 테스트는 in-memory SQLite(`Base.metadata.create_all`)로 ORM 정의 그대로 테이블을 만들기 때문에 마이그레이션 파일이 없어도 테스트가 통과한다. 그러나 실제 DB(PostgreSQL/Railway)에는 컬럼이 생성되지 않아 운영 환경에서 500 에러가 발생한다. 전례: `leaderboard_opt_in` 컬럼 (PR #72·#74, 2026-04-26).
 - **`merge_retry_queue` 클레임 패턴**: `claim_batch` 은 단일 SQL `UPDATE … WHERE claimed_at IS NULL RETURNING (attempts_count = 1) AS is_first` 로 원자적 클레임 + 첫-지연 알림 결정 동시 수행. Postgres 는 `FOR UPDATE SKIP LOCKED`, SQLite 는 dialect 분기. 재배포 중 stale claim 은 5분 후 재클레임. 신규 큐 도입 시 동일 패턴 권장.
+- 🔴 **DB 인덱스 정의 — ORM `__table_args__` + alembic 양쪽 의무 (Phase H PR-4A)**: 신규 인덱스 추가 시 `models/*.py` 의 `__table_args__ = (Index(...), ...)` 와 `alembic/versions/NNNN_*.py` 의 `op.create_index(...)` 양쪽 정의 필수. ORM-only 정의는 단위 테스트 (in-memory SQLite `create_all`) 에서는 인식되지만 운영 PG 에 미반영 → 인덱스 활용 실패. 회귀 가드 테스트는 SQLAlchemy `inspect()` 로 인덱스 컬럼 검증 (`tests/unit/migrations/test_0023_composite_indexes.py` 참조).
+- 🔴 **FK ondelete CASCADE 일관성 매트릭스 (Phase H C7)**: child 테이블의 `ForeignKey("parent.id")` 추가 시 다른 child 모델의 `ondelete` 정책 일관성 검토 의무. 현재 `analyses.id` 를 참조하는 child 4종 모두 CASCADE 통일:
+
+  | child 모델 | FK 컬럼 | ondelete | 도입 시점 |
+  |------|------|------|------|
+  | `MergeAttempt.analysis_id` | analyses.id | **CASCADE** | Phase F.1 |
+  | `MergeRetryQueue.analysis_id` | analyses.id | **CASCADE** | Phase 12 |
+  | `AnalysisFeedback.analysis_id` | analyses.id | **CASCADE** | Phase E.3 |
+  | `GateDecision.analysis_id` | analyses.id | **CASCADE** | Phase H C7 (alembic 0024) |
+
+  신규 child 추가 시 동일 CASCADE 적용 (default), 다른 정책 (RESTRICT/SET NULL) 채택 시 회고에 사유 명시. application-level `delete_repo_cascade` (`ui/_helpers.py`) 는 admin script 우회 경로 보완 — DB 레벨 CASCADE 가 1차 안전망.
 
 ### 파이프라인 / 비즈니스 로직
 
@@ -521,11 +535,16 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 - **CI-aware Auto Merge 재시도**: `mergeable_state=unstable`+CI running 또는 `unknown` 상태일 때 단일 실패가 아닌 `merge_retry_queue` 큐잉. `check_suite.completed` 웹훅 또는 1분 cron 으로 재시도. 트리거: `src/services/merge_retry_service.py::process_pending_retries`. 첫 지연 시 Telegram 1회, 최종 성공/실패 시 1회. 중간 재시도는 무음.
 - **`merge_pr` SHA atomicity**: `merge_pr(..., expected_sha=...)` 는 `PUT /pulls/{n}/merge` 에 `sha` 파라미터를 포함해 force-push 된 코드의 의도치 않은 머지를 GitHub 측에서 차단. 신규 호출 시 항상 head SHA 전달.
 - **Webhook 이벤트 구독 갱신**: `create_webhook` 이벤트 목록은 `["push","pull_request","issues","check_suite"]`. 기존 등록 리포는 settings 페이지의 "Webhook 재등록" 버튼으로 갱신 — 미갱신 시 자동 재시도 기능 미동작 (cron fallback 으로 5분 지연 동작).
+- 🔴 **외부 SDK timeout/max_retries 명시 의무 (Phase H PR-1A/1B-1)**: 새 외부 SDK (Anthropic/aiosmtplib/유사) 클라이언트 인스턴스화 시 `timeout` 명시 (60s 권장, `HTTP_CLIENT_TIMEOUT` 정렬), `max_retries` 명시 (SDK 기본값과 동일 값이라도 명시). SDK 업그레이드로 default 변경 시 silent regression 차단. 회귀 가드 테스트 동반.
+- 🔴 **5xx 자동 재시도 — 신뢰 API 한정 (Phase H PR-1B-2/2B)**: GitHub/Telegram/Anthropic/Railway 등 신뢰 API 의 일시 5xx + transient network error 는 자동 재시도 (exponential backoff, max 3회). Telegram 429 는 `retry_after` 파싱 + cap 30s. **외부 untrusted webhook (Discord/Slack/n8n/custom_webhook) 는 재시도 금지** — idempotency 보장 불가, 중복 발송 부작용. 재시도 helper 신규 채널 적용 시 `src/shared/retry_helper.py` 통합 검토.
+- 🔴 **PyGithub 등 sync I/O 는 `asyncio.to_thread` wrap 의무 (Phase H PR-3A)**: async 컨텍스트(BackgroundTask, lifespan 등) 내부에서 sync HTTP 클라이언트 (PyGithub, requests) 호출 시 반드시 `asyncio.to_thread(fn, ...)` 로 wrap. 직접 호출 시 이벤트 루프 블록 → 다른 webhook/cron 정체 (월 5-10건 Sentry "sync hang" 사고 차단 — PR-3A 결과).
+- 🔴 **race-recovery 시그널 컨벤션 (Phase H PR-2A)**: 파이프라인 내 race recovery 분기는 `result_dict is None` 을 시그널로 사용. 호출자는 `if result_dict is None: skip notify` 로 명시적 처리 — 중복 알림 + silent KeyError 동시 차단.
 
 ### 보안
 
 - 🔴 **hook_token 비교**: `!=` 연산자는 타이밍 공격에 취약. `hmac.compare_digest(config.hook_token or "", token)` 사용 필수.
-- **Telegram 게이트 콜백 HMAC 인증**: 콜백 데이터 형식 `gate:{decision}:{id}:{token}` — token은 `hmac(bot_token, str(analysis_id), sha256).hexdigest()[:32]` (128-bit). `telegram_gate.py`의 `_gate_callback_token()` 참조. 테스트 시 HMAC 토큰을 직접 계산해 픽스처에 포함해야 함.
+- 🔴 **Telegram 게이트 콜백 HMAC 인증 (Phase H PR-5C 후 정정)**: 콜백 데이터 형식 `gate:{decision}:{id}:{token}` — token 은 `hmac(bot_token, f"gate:{analysis_id}", sha256).hexdigest()[:32]` (128-bit). 발신측 (`telegram_gate._make_callback_token(scope="gate", id)`) 과 수신측 (`webhook/providers/telegram._parse_gate_callback`) 모두 동일 msg 형식 (`f"gate:{id}"`) 사용 의무 — 한쪽만 수정 시 모든 semi-auto 콜백 401 거부 (PR-5C 직전 functional bug 사례). 신규 HMAC 토큰 도입 시 발신/수신 동일 msg 형식 + scope prefix 단위 테스트 강제.
+- 🔴 **`/health` 응답 내부 상태 미노출 (Phase H PR-5B)**: liveness probe 전용 — `active_db` / DB 연결 정보 등 내부 상태 추가 금지. `tests/unit/test_main.py::test_health_returns_status_ok` 가 회귀 차단. failover 모니터링은 logger 로그 (Sentry/Railway) 경유. 인증된 운영 대시보드 필요 시 별도 엔드포인트 (`INTERNAL_CRON_API_KEY` 기반) 신설.
 - **GitHub Access Token 암호화**: `src/crypto.py`의 `encrypt_token()`/`decrypt_token()` — `TOKEN_ENCRYPTION_KEY` 미설정 시 평문 저장. `User.plaintext_token` property가 DB 읽기 시 자동 복호화. `user.github_access_token` 직접 사용 금지 — `user.plaintext_token` 사용.
 - **SESSION_SECRET 강도**: `warn_weak_session_secret` validator가 32자 미만 또는 기본값이면 WARNING 출력. 프로덕션에서는 32자 이상 랜덤 문자열 필수.
 - **TOKEN_ENCRYPTION_KEY prod 감지**: lifespan startup 에서 `APP_BASE_URL` 이 https:// 로 시작하고 키가 비어있으면 WARNING 배너 출력. dev 환경(http 또는 빈 URL)에서는 침묵. 키 생성 명령은 로그 메시지에 포함 (2026-04-24 P1-5).
@@ -563,4 +582,4 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 
 ## 현재 상태
 
-최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1968개 | 통합 72개 | E2E 53개 | pylint 10.00 | 커버리지 95% | SonarCloud QG OK · Security A · Reliability A · Maintainability A · Tier1 정적분석 10종 · Observability (Sentry + Claude metrics + stage timing + MergeAttempt) · AI 점수 피드백 루프 · Settings Minimal Mode · Onboarding 3단계 튜토리얼 · 5-렌즈 감사 95+ 통과 · Phase F Quick Win + F.1/F.3 완료 · Phase G 완료 (P1-5건 수정) · Phase 9 자기 분석 루프 방지 완료 · Phase 10 Telegram 확장 완료 (cron + /stats·/connect 명령) · Phase 11 팀/멀티 리포 인사이트 완료 (author_trend + leaderboard + /insights 대시보드) · 툴링 안전장치 (testpaths + ORM-마이그레이션 완전성 검사 67개) · Phase 12 CI-aware Auto Merge 재시도 완료 (merge_retry_queue + check_suite 웹훅 + 1분 cron) · Settings UI/UX 리디자인 완료 (수신/발신 웹훅 분리 + 온보딩 배너) · Loop Guard Layer 3-b 화이트리스트 봇 한정 (PR #100 — `is_whitelisted_bot()` 헬퍼 + 사람 발신 무제한 통과) · Tier 3 PR-A 완료 (PR #103) — `enablePullRequestAutoMerge` GraphQL mutation + REST 폴백 · Phase 4 Critical 테스트 갭 5 PR 완료 (PR-T1~T5, +197 tests) — analyzer/tools, ai_review_errors, scorer_edges, engine_guards, pipeline_helpers, merge_retry_helpers, pr_a_scenarios, e2e_pipeline_scenarios · **Phase H+I 15 PR 완료 (12-에이전트 감사 Critical 10건 100% 처리) — timeout/race-recovery/Telegram 429/gate parallel/PyGithub async/joinedload opt-in/parity guard/HMAC parity (functional bug)/composite indexes/cascade ; 외부 의존성 추가 0**
+최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1968개 | 통합 72개 | E2E 53개 | pylint 10.00 | 커버리지 95% | SonarCloud QG OK · Security A · Reliability A · Maintainability A · Tier1 정적분석 10종 · Observability (Sentry + Claude metrics + stage timing + MergeAttempt) · AI 점수 피드백 루프 · Settings Minimal Mode · Onboarding 3단계 튜토리얼 · 5-렌즈 감사 95+ 통과 · Phase F Quick Win + F.1/F.3 완료 · Phase G 완료 (P1-5건 수정) · Phase 9 자기 분석 루프 방지 완료 · Phase 10 Telegram 확장 완료 (cron + /stats·/connect 명령) · Phase 11 팀/멀티 리포 인사이트 완료 (author_trend + leaderboard + /insights 대시보드) · 툴링 안전장치 (testpaths + ORM-마이그레이션 완전성 검사 67개) · Phase 12 CI-aware Auto Merge 재시도 완료 (merge_retry_queue + check_suite 웹훅 + 1분 cron) · Settings UI/UX 리디자인 완료 (수신/발신 웹훅 분리 + 온보딩 배너) · Loop Guard Layer 3-b 화이트리스트 봇 한정 (PR #100 — `is_whitelisted_bot()` 헬퍼 + 사람 발신 무제한 통과) · Tier 3 PR-A 완료 (PR #103) — `enablePullRequestAutoMerge` GraphQL mutation + REST 폴백 · Phase 4 Critical 테스트 갭 5 PR 완료 (PR-T1~T5, +197 tests) — analyzer/tools, ai_review_errors, scorer_edges, engine_guards, pipeline_helpers, merge_retry_helpers, pr_a_scenarios, e2e_pipeline_scenarios · **Phase H+I 15 PR 완료 + 회고/문서 동기화 1 PR = 16 PR 머지 (12-에이전트 감사 Critical 10건 100% 처리) — timeout/race-recovery/Telegram 429/gate parallel/PyGithub async/joinedload opt-in/parity guard/HMAC parity (이전 모든 semi-auto 콜백 401 거부 functional bug 해소)/composite indexes/cascade ; 외부 의존성 추가 0**

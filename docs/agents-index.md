@@ -71,4 +71,17 @@
 | `src/gate/retry_policy.py` | 재시도 정책 순수 함수 (`should_retry`, `compute_next_retry_at`, `is_expired`) |
 | `src/models/merge_retry.py` | MergeRetryQueue ORM (append-only claim 패턴) |
 
-> 최종 갱신: 2026-04-29 (Phase 4 + Tier 3 PR-A 후 doc agents 등재)
+---
+
+## Phase H+I 신규 함수/패턴 (2026-05-01)
+
+| 항목 | 위치 | 비고 |
+|------|------|------|
+| `find_by_full_name_with_owner` | `src/repositories/repository_repo.py` | opt-in joinedload — Phase H PR-3B 신규. 호출처 마이그레이션은 PR-3B-2 후속 (mock chain 70+ 갱신 필요). |
+| `_GRAPHQL_MAX_ATTEMPTS` + retry helper | `src/github_client/graphql.py` | GitHub GraphQL 5xx + network error 자동 재시도 (의존성 추가 0). 다른 채널 적용 시 `src/shared/retry_helper.py` 통합 검토. |
+| `TELEGRAM_RETRY_AFTER_MAX_SECONDS=30` | `src/notifier/telegram.py` | Telegram 429 retry-after cap (단일 재시도). |
+| 🔴 PARITY GUARD docstring 패턴 | `src/gate/engine.py::_get_ci_status_safe` + `src/services/merge_retry_service.py::_get_ci_status_safe` | 의도적 중복 코드 drift 방지 — 양쪽 동시 수정 의무. PR-5A-2 후속에서 실제 dedup 예정. |
+| 복합 인덱스 3종 (alembic 0023) | `src/models/analysis.py` + `src/models/merge_attempt.py` `__table_args__` | `ix_analyses_repo_id_created_at`, `ix_analyses_repo_id_author_login`, `ix_merge_attempts_attempted_at`. ORM `__table_args__` 와 alembic 양쪽 정의 의무. |
+| FK ondelete CASCADE 일관성 | `src/models/gate_decision.py` (alembic 0024) | child 모델 4종 모두 CASCADE — 신규 child 모델 추가 시 동일 정책 적용 권장. |
+
+> 최종 갱신: 2026-05-01 (Phase H+I 16 PR + 회고/문서 동기화 후)
