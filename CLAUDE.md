@@ -309,7 +309,7 @@ Railway 대시보드 설정:
 - **Variables** 탭에서 나머지 환경변수 설정 (`${{Postgres.DATABASE_URL}}`)
 - `APP_BASE_URL` 반드시 설정 — OAuth redirect_uri HTTPS 보장
 
-헬스체크: `GET /health` → `{"status":"ok","active_db":"primary"|"fallback"}` (timeout: 60초)
+헬스체크: `GET /health` → `{"status":"ok"}` (timeout: 60초). **`active_db` 등 내부 상태는 의도적으로 미노출** — 정보 노출 방지 (`tests/unit/test_main.py::test_health_returns_status_ok` 가 회귀 보장). DB failover 모니터링이 필요하면 별도 인증 엔드포인트 (`INTERNAL_CRON_API_KEY` 또는 admin key 기반) 신설 권장.
 
 ### NIXPACKS 빌드 설정 우선순위
 

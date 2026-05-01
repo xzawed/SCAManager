@@ -348,7 +348,7 @@ curl https://your-domain/api/hook/verify?repo=owner/repo&token=TOKEN
 □ 3. 웹 UI에서 GitHub 로그인
 □ 4. 리포지토리 추가 → Webhook 자동 생성 확인
 □ 5. 테스트 Push → Telegram 알림 + 대시보드 확인
-□ 6. GET /health → {"status":"ok","active_db":"primary"} 확인
+□ 6. GET /health → {"status":"ok"} 확인 (active_db 등 내부 상태는 의도적 미노출 — 보안)
 □ 7. (선택) 로컬 클론에서 bash .scamanager/install-hook.sh 실행
 □ 8. (선택) 설정 탭에서 PR 리뷰 댓글 · Gate 모드 · Auto Merge 설정
 □ 9. (기존 리포) Webhook 재등록 → check_suite 이벤트 구독 확인 (Phase 12 check_suite 섹션 참조)
