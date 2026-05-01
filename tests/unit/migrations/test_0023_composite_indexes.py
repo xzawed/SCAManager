@@ -19,7 +19,6 @@ os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 # pylint: disable=wrong-import-position
 import pytest
 from sqlalchemy import create_engine, inspect
-from sqlalchemy.orm import sessionmaker
 
 from src.database import Base
 
