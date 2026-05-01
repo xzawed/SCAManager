@@ -12,7 +12,7 @@
 | 단위 테스트 수·커버리지·pylint | [STATE.md 헤더](../STATE.md) |
 | 아키텍처·작업 규칙·주의사항 | [CLAUDE.md](../../CLAUDE.md) |
 | README 배지 | [README.md L21-25](../../README.md) |
-| 최신 작업 이력 | [STATE.md 그룹 53](../STATE.md) |
+| 최신 작업 이력 | [STATE.md 그룹 54](../STATE.md) |
 
 ---
 
@@ -45,6 +45,7 @@
 | 2026-04-27 | [phase12-docs-overhaul-retrospective](2026-04-27-phase12-docs-overhaul-retrospective.md) | Phase 12 완료 + 문서 정비 — 병렬 에이전트 브랜치 충돌 교훈 |
 | 2026-04-29 | [phase4-test-coverage-retrospective](2026-04-29-phase4-test-coverage-retrospective.md) | Phase 4 Critical 테스트 갭 5 PR 회고 — +197 tests, src/ 변경 0, Quality Gate 5연속 OK |
 | 2026-04-29 | [phase4-meta-retrospective](2026-04-29-phase4-meta-retrospective.md) | Phase 4 메타 회고 — 3-에이전트 병렬 검증으로 누락 9건 발견·수정 + PR-B3 정량 평가 기준 추가 |
+| 2026-05-01 | [phase-h-i-completion-retrospective](2026-05-01-phase-h-i-completion-retrospective.md) | Phase H+I 15 PR 완료 회고 — 12-에이전트 감사 Critical 10건 100% 처리, 외부 의존성 추가 0, Functional bug 1건 발견 (Telegram HMAC) |
 
 ---
 
