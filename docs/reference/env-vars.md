@@ -25,6 +25,15 @@
 | `TELEGRAM_WEBHOOK_SECRET` | Telegram `setWebhook` 시크릿 토큰 (미설정 시 헤더 검증 생략) | 빈 문자열 (기본) |
 | `N8N_WEBHOOK_SECRET` | n8n 전송 HMAC 서명 시크릿 (미설정 시 서명 생략) | 빈 문자열 (기본) |
 
+## 내부 인증 (cron · admin · loop guard)
+
+| 변수 | 설명 | 예시 |
+|------|------|------|
+| `INTERNAL_CRON_API_KEY` | **`POST /api/internal/cron/*` 전용 인증 키** (admin key 와 분리). Railway `[[deploy.cronJobs]]` 트리거. `hmac.compare_digest` 타이밍 안전 비교. **미설정 시 503 반환** — Phase 10 cron (weekly_summary, trend_check) 전부 비활성화. | `cron-internal-key-xxx` |
+| `SCAMANAGER_SELF_ANALYSIS_DISABLED` | **Loop Guard kill-switch** — `1` 설정 시 모든 webhook 분석 즉시 중단 (202 skipped). Phase 9 자기-분석 루프 사고 발생 시 즉각 차단용. | `0` (기본) / `1` (긴급 중단) |
+
+> **🔴 운영 안전**: 두 변수는 운영 사고 발생 시 즉시 사용해야 하므로 Railway Variables 에 미리 배치 권장. `INTERNAL_CRON_API_KEY` 미설정 시 cron job 이 silent 503 으로 실패해 weekly_summary 등이 발송 안 됨 — 운영자 인지 어려움.
+
 ## Observability (선택, Phase E.2)
 
 | 변수 | 설명 | 예시 |

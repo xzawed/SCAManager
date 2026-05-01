@@ -29,7 +29,7 @@
 |------|------|
 | `src/constants.py` | 전역 상수 단일 출처 — 점수배점·감점·AI기본값·등급·알림한도·TTL·타임아웃 |
 | `src/analyzer/pure/registry.py` | Analyzer Protocol + REGISTRY + register() + AnalyzeContext + AnalysisIssue + Category/Severity StrEnum |
-| `src/analyzer/tools/*.py` | 개별 분석기 — 모듈 로드 시 자동 register() 호출 |
+| `src/analyzer/io/tools/*.py` | 개별 분석기 — 모듈 로드 시 자동 register() 호출 (Phase S.3-B 이후 `pure/` vs `io/` 분리) |
 | `src/notifier/_common.py` | notifier 공통 헬퍼 — format_ref, get_all_issues, truncate_message |
 | `src/notifier/_http.py` | HTTP_CLIENT_TIMEOUT 적용 httpx 클라이언트 빌더 |
 | `src/webhook/_helpers.py` | `get_webhook_secret()` + `_webhook_secret_cache` per-repo TTL 캐시(5분) |
@@ -1197,7 +1197,7 @@ git commit -m "docs(state): Phase X 완료 — 테스트 NNN개, pylint X.XX"
 | **⏳ P4-Gate-2 대기 (2026-04-23)** | D.3 rubocop / D.4 golangci-lint Railway 실증 필요 | Railway 빌드 성공 (커밋 `8042f12`) 후 사용자 샘플 PR 제출 대기. 상세: [가이드](_archive/p4-gate-2-verification.md) (archived). |
 | **✅ AI 리뷰 파싱 실패 해소 (2026-04-23)** | `_extract_json_payload()` 분리 + 3가지 실패 모드 해소 | 분석 #543 경고 원인 — (1) preamble + 순수 JSON, (2) 대문자 ` ```JSON `, (3) JSON 뒤 trailing text. `re.IGNORECASE` + 첫 `{` ~ 마지막 `}` fallback. +4 tests (1188→1192). |
 | **P3-리팩 완결** | 6렌즈 권고 #1~6 ✅ · #7 ✅ · #8a/#8b 스캐폴딩 | [Follow-up 섹션 참조](reports/2026-04-22-quality-audit-6lens.md#follow-up-2026-04-22--후속-실행-결과). 10커밋 완료. 실제 치환 잔존 1건 (#8a, 아래 참조) |
-| **P4-Gate 재료 준비 완료 (2026-04-23)** | 샘플 C/Solidity + 가이드 + 검증 스크립트 | [docs/guides/p4-gate-verification.md](guides/p4-gate-verification.md). 사용자가 외부 테스트 리포에 샘플을 넣어 PR 제출 → 6항목 체크 후 D.3 해금. |
+| **P4-Gate 재료 준비 완료 (2026-04-23)** | 샘플 C/Solidity + 가이드 + 검증 스크립트 | [docs/_archive/p4-gate-verification.md](_archive/p4-gate-verification.md) (archived). 사용자가 외부 테스트 리포에 샘플을 넣어 PR 제출 → 6항목 체크 후 D.3 해금. |
 | **✅ #8b http_client 채택 완료** | `src/shared/http_client.get_http_client()` 전사 적용 — `src/` 안 직접 `httpx.AsyncClient()` 호출 **0건** (외부 untrusted URL 만 `_http.build_safe_client()` 사용) | 2026-04-27 grep 실측 |
 | **⏸️ P3-후속 #8a (보류)** | GateAction 엔진 전환 — 현재 `src/gate/actions/` 스캐폴딩은 빈 상태, 엔진 직접 구현으로 충분 | 신규 액션 도메인 추가 또는 엔진 분기 폭증 시 재검토. Phase E~F 완결 후 우선순위 낮음 |
 | **⏸️ Phase D.5~D.8 (영구 보류, 2026-04-23)** | PHPStan / detekt / PMD / cargo clippy | Phase E 결정으로 보류. [결정 문서](reports/2026-04-23-phase-e-service-pivot-decision.md) 참조. 재개 기준: 해당 언어 PR 월 5건 이상 + E.2 완료 + Docker 전환 결정. |

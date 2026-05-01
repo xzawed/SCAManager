@@ -156,7 +156,8 @@ src/
 │   ├── merge_reasons.py        # auto-merge 실패 사유 정규 태그 상수 (Phase F QW5) — branch_protection_blocked, unstable_ci, permission_denied 등
 │   ├── telegram_gate.py        # send_gate_request() — 인라인 키보드 메시지
 │   ├── merge_failure_advisor.py # get_advice(reason) — reason tag → 권장 조치 텍스트 (Phase F.3 + Tier 3 PR-A enable reason 4종)
-│   └── retry_policy.py         # 순수 함수: parse_reason_tag, should_retry, compute_next_retry_at, is_expired, mergeable_state_terminality
+│   ├── retry_policy.py         # 순수 함수: parse_reason_tag, should_retry, compute_next_retry_at, is_expired, mergeable_state_terminality
+│   └── _merge_attempt_states.py # MergeAttempt.state lifecycle 정규 상수 (LEGACY/ENABLED_PENDING_MERGE/ACTUALLY_MERGED/DISABLED_EXTERNALLY) — Phase 3 PR-B1 도입
 ├── notifier/                   # `__init__.py` 가 import 시 각 채널 모듈 자동 로드 → REGISTRY 등록 (Phase S.3-E)
 │   ├── __init__.py             # 8개 notifier 모듈 import (등록 순서 = 발송 우선순위)
 │   ├── _common.py              # 공통 헬퍼 — format_ref, get_all_issues, get_issue_samples, truncate_message, truncate_issue_msg
