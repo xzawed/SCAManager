@@ -189,3 +189,91 @@ async def test_telegram_post_message_sends_correct_chat_id():
         call_json = mock_client.post.call_args.kwargs.get("json") or {}
         assert call_json["chat_id"] == "-999888"
         assert call_json["text"] == "hello"
+
+
+# ---------------------------------------------------------------------------
+# Phase H PR-2B — Telegram 429 (Too Many Requests) retry_after 처리
+# 12-에이전트 감사 Critical C4 — 429 미처리 시 raise_for_status 가
+# HTTPStatusError 전파 → cron 누적 시 봇 그룹 차단(spam) → 운영 중단.
+# 단일 재시도: parameters.retry_after 만큼 sleep (cap 30s) 후 1회 재시도.
+# ---------------------------------------------------------------------------
+
+
+def _make_429_response(retry_after: int) -> MagicMock:
+    """429 응답 mock — parameters.retry_after 포함."""
+    resp = MagicMock()
+    resp.status_code = 429
+    resp.json = MagicMock(return_value={
+        "ok": False, "error_code": 429,
+        "description": f"Too Many Requests: retry after {retry_after}",
+        "parameters": {"retry_after": retry_after},
+    })
+    resp.raise_for_status = MagicMock()  # 호출되어도 무시 (재시도 후 200 가정)
+    return resp
+
+
+def _make_200_response() -> MagicMock:
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.json = MagicMock(return_value={"ok": True, "result": {}})
+    resp.raise_for_status = MagicMock()
+    return resp
+
+
+async def test_telegram_post_message_retries_on_429_then_succeeds():
+    """첫 응답 429 + retry_after=2 → asyncio.sleep 호출 후 재시도 → 200."""
+    with patch("src.notifier.telegram.get_http_client") as mock_get, \
+         patch("src.notifier.telegram.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        mock_client = AsyncMock()
+        mock_get.return_value = mock_client
+        # 첫 호출 429 → 두 번째 호출 200
+        mock_client.post = AsyncMock(side_effect=[_make_429_response(2), _make_200_response()])
+
+        await telegram_post_message(
+            bot_token="123:ABC", chat_id="-100", payload={"text": "x"},
+        )
+
+    # 두 번 호출됨 — 429 후 retry
+    assert mock_client.post.call_count == 2
+    # asyncio.sleep 가 retry_after 만큼 호출됨
+    mock_sleep.assert_awaited_once()
+    sleep_arg = mock_sleep.await_args.args[0]
+    assert sleep_arg == 2  # retry_after 그대로
+
+
+async def test_telegram_post_message_caps_retry_after_at_max():
+    """retry_after=999 (Telegram 악의적 응답 가정) → cap 적용 (≤ 30s)."""
+    with patch("src.notifier.telegram.get_http_client") as mock_get, \
+         patch("src.notifier.telegram.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        mock_client = AsyncMock()
+        mock_get.return_value = mock_client
+        mock_client.post = AsyncMock(side_effect=[_make_429_response(999), _make_200_response()])
+
+        await telegram_post_message(
+            bot_token="123:ABC", chat_id="-100", payload={"text": "x"},
+        )
+
+    sleep_arg = mock_sleep.await_args.args[0]
+    assert sleep_arg <= 30  # cap 적용 — 무한 sleep 차단
+
+
+async def test_telegram_post_message_raises_on_second_429():
+    """재시도 후에도 429 → HTTPStatusError 전파 (무한 루프 방지)."""
+    second_429 = _make_429_response(1)
+    second_429.raise_for_status = MagicMock(side_effect=httpx.HTTPStatusError(
+        "429 Too Many Requests", request=MagicMock(), response=second_429,
+    ))
+
+    with patch("src.notifier.telegram.get_http_client") as mock_get, \
+         patch("src.notifier.telegram.asyncio.sleep", new_callable=AsyncMock):
+        mock_client = AsyncMock()
+        mock_get.return_value = mock_client
+        mock_client.post = AsyncMock(side_effect=[_make_429_response(1), second_429])
+
+        with pytest.raises(httpx.HTTPStatusError):
+            await telegram_post_message(
+                bot_token="123:ABC", chat_id="-100", payload={"text": "x"},
+            )
+
+    # 정확히 2회 시도 후 포기
+    assert mock_client.post.call_count == 2

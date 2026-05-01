@@ -1,4 +1,6 @@
 """Telegram notifier — sends HTML-formatted analysis results via Bot API."""
+import asyncio
+import logging
 from html import escape
 
 from src.constants import GRADE_EMOJI, TELEGRAM_MAX_MESSAGE_LENGTH, NOTIFIER_MAX_ISSUES_SHORT
@@ -8,9 +10,21 @@ from src.analyzer.io.static import StaticAnalysisResult
 from src.analyzer.io.ai_review import AiReviewResult
 from src.notifier._common import format_ref, get_all_issues, truncate_message, truncate_issue_msg
 
+logger = logging.getLogger(__name__)
+
+# Phase H PR-2B — Telegram 429 재시도 정책
+# 12-에이전트 감사 Critical C4 — Bot API 429 응답의 retry_after 미처리 시
+# 봇 그룹 차단(spam) → cron 누적 시 운영 중단. 단일 재시도 + cap 으로 보호.
+# Phase H PR-2B — Telegram 429 retry policy: respect retry_after with cap,
+# single retry only to avoid infinite loop. Critical C4 from 2026-04-30 audit.
+TELEGRAM_RETRY_AFTER_MAX_SECONDS = 30
+
 
 async def telegram_post_message(bot_token: str, chat_id: str, payload: dict) -> None:
     """Telegram Bot API sendMessage 엔드포인트에 JSON 페이로드를 POST한다.
+
+    429 Too Many Requests 응답 시 `parameters.retry_after` 만큼 sleep 후 1회 재시도.
+    cap 30s — 악의적 응답으로 인한 무기한 sleep 방지.
 
     Args:
         bot_token: Telegram Bot API 토큰
@@ -19,8 +33,29 @@ async def telegram_post_message(bot_token: str, chat_id: str, payload: dict) -> 
     """
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     client = get_http_client()  # 싱글톤
-    r = await client.post(url, json={"chat_id": chat_id, **payload})
+    body = {"chat_id": chat_id, **payload}
+    r = await client.post(url, json=body)
+
+    # 429 처리 — retry_after 파싱 후 1회 재시도
+    # Handle 429 — parse retry_after and retry once
+    if r.status_code == 429:
+        retry_after = _parse_retry_after(r)
+        logger.warning(
+            "Telegram 429 received, sleeping %ds before single retry", retry_after,
+        )
+        await asyncio.sleep(retry_after)
+        r = await client.post(url, json=body)
+
     r.raise_for_status()
+
+
+def _parse_retry_after(response) -> int:
+    """429 응답에서 retry_after 추출 — cap 적용. 파싱 실패 시 1초 fallback."""
+    try:
+        retry_after = int(response.json().get("parameters", {}).get("retry_after", 1))
+    except (ValueError, KeyError, AttributeError):
+        retry_after = 1
+    return min(max(retry_after, 1), TELEGRAM_RETRY_AFTER_MAX_SECONDS)
 
 
 def _build_message(  # pylint: disable=too-many-positional-arguments
