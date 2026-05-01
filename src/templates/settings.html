@@ -144,8 +144,10 @@
       width:24px; height:24px;
     }
   }
-  .approve-range::-webkit-slider-thumb { background:linear-gradient(135deg,#10b981,#34d399); box-shadow:0 2px 6px rgba(16,185,129,.4); }
-  .reject-range::-webkit-slider-thumb  { background:linear-gradient(135deg,#ef4444,#f87171); box-shadow:0 2px 6px rgba(239,68,68,.4); }
+  /* PR-1 C3 (Step D 누락분): 슬라이더 thumb 시맨틱 토큰화 — claude-dark sage/muted-red 자동 적용
+     PR-1 C3 (Step D missed): semantic tokens for slider thumbs */
+  .approve-range::-webkit-slider-thumb { background:var(--success); box-shadow:0 2px 6px rgba(74,222,128,.35); }
+  .reject-range::-webkit-slider-thumb  { background:var(--danger);  box-shadow:0 2px 6px rgba(248,113,113,.35); }
   .num-input {
     width:50px; background:var(--bg-input); border:1.5px solid var(--success);
     border-radius:6px; color:var(--success); text-align:center;
@@ -297,6 +299,9 @@
     /* P0-5 + P2-5: 모바일 좌우 0 (이중 패딩 해소) + iOS safe-area-inset
        P0-5 + P2-5: zero horizontal pad on mobile + iOS safe-area-inset */
     .settings-wrap { padding:1rem 0 calc(6rem + env(safe-area-inset-bottom, 0px)); }
+    /* PR-1 C4 (Step B 누락분): 모바일 input font-size 16px — iOS Safari focus zoom 회피
+       PR-1 C4: 16px on mobile prevents iOS Safari focus zoom (notify_chat_id, all webhook URLs) */
+    .field-input { font-size: 16px; }
   }
   @media(min-width:640px) {
     .settings-grid { grid-template-columns:1fr 1fr; }
@@ -467,8 +472,10 @@
     {% if onboarding_needed %}
     <!-- 온보딩 배너 — 알림 채널 미설정 + Telegram 미연결 시 표시 (P0-4: 빠른 설정 카드와 색/아이콘 분리) -->
     <!-- Onboarding banner — visually distinct from preset card (P0-4: amber + 👋 vs preset's purple + 🚀) -->
-    <div class="s-card" id="onboardingBanner" style="margin-bottom:1rem;border:1.5px solid var(--c-warning,#f59e0b);">
-      <div class="s-card-hdr" style="background:linear-gradient(135deg,#f59e0b,#d97706)">
+    <!-- PR-1 C3 (Step D 누락분): --c-warning → --warning + 온보딩 배너 헤더 시맨틱 토큰화
+         PR-1 C3: --c-warning → --warning + onboarding banner header semantic tokens -->
+    <div class="s-card" id="onboardingBanner" style="margin-bottom:1rem;border:1.5px solid var(--warning);">
+      <div class="s-card-hdr" style="background:var(--grad-notify)">
         <span class="hdr-icon">👋</span>
         <span class="hdr-title">시작하세요</span>
         <span class="hdr-badge">알림 채널 미설정</span>
@@ -820,7 +827,7 @@
             <div class="toggle-info">
               <div class="t-title">팀 리더보드 공개</div>
               <div class="t-desc">이 리포를 팀 인사이트 리더보드에 포함<br>
-                <span style="color:var(--c-warning,#f59e0b);font-size:.78rem;">옵션 기능 — 팀 합의 후 활성화 권장</span>
+                <span style="color:var(--warning);font-size:.78rem;">옵션 기능 — 팀 합의 후 활성화 권장</span>
               </div>
             </div>
             <label class="toggle-switch">

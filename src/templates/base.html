@@ -86,6 +86,10 @@
       --bg-hover: var(--table-row-hover);
       --card-bg:  var(--bg-card);
       --text:     var(--text-primary);
+      /* PR-1 C2: 후속 환각 토큰 alias 2종 — repo_detail / settings 잔존 참조 흡수
+         PR-1 C2: additional phantom-token aliases for repo_detail / settings */
+      --accent-blue: var(--accent);   /* repo_detail.html CLI Hook 안내 배너 */
+      --c-warning:   var(--warning);  /* settings.html 잔존 토큰명 (legacy) */
     }
 
     /* ── Phase 1A: Claude 톤 다크 모드 토큰 (warm black) ──────────────────
@@ -290,6 +294,27 @@
       --warning: var(--claude-warning);  /* sand #DDB585 */
       --success: var(--claude-success);  /* sage #A8BA94 */
       --danger:  var(--claude-danger);   /* muted red #D45F50 */
+
+      /* PR-1 C1: settings 페이지가 사용하는 토큰 8종 — claude-dark 미정의 시
+       * 카드 헤더 / 저장 버튼 / hint 패널 / hook 버튼이 통째로 깨졌음. 모든 그라디언트는
+       * claude warm 톤 (terracotta / sage / sand / orange) 으로 재정의.
+       * PR-1 C1: 8 settings-page tokens — without these, claude-dark broke
+       * settings card headers, save button, hint panels, hook buttons. */
+      --grad-gate:           linear-gradient(135deg, #D97757, #B85A3D);  /* claude orange */
+      --grad-merge:          linear-gradient(135deg, #A8BA94, #8AA476);  /* claude sage */
+      --grad-notify:         linear-gradient(135deg, #DDB585, #C49566);  /* claude sand */
+      --grad-hook:           linear-gradient(135deg, #C8895E, #A86F46);  /* claude terracotta */
+      --title-gradient:      linear-gradient(135deg, #D97757, #DDB585);  /* claude orange→sand */
+      --btn-gate-active-bg:  rgba(217,119,87,.15);
+      --btn-gate-active-bd:  var(--claude-accent);
+      --btn-gate-active-tx:  var(--claude-accent);
+      --save-btn-bg:         linear-gradient(135deg, #D97757, #B85A3D);
+      --save-btn-shadow:     rgba(217,119,87,.4);
+      --hint-bg:             rgba(217,119,87,.05);
+      --hint-border:         rgba(217,119,87,.15);
+      --hook-btn-bg:         rgba(200,137,94,.10);
+      --hook-btn-bd:         rgba(200,137,94,.30);
+      --hook-btn-tx:         #C8895E;  /* claude terracotta */
     }
 
     /* ── 네비게이션 ───────────────────────────── */
