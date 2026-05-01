@@ -46,6 +46,7 @@
 | 2026-04-29 | [phase4-test-coverage-retrospective](2026-04-29-phase4-test-coverage-retrospective.md) | Phase 4 Critical 테스트 갭 5 PR 회고 — +197 tests, src/ 변경 0, Quality Gate 5연속 OK |
 | 2026-04-29 | [phase4-meta-retrospective](2026-04-29-phase4-meta-retrospective.md) | Phase 4 메타 회고 — 3-에이전트 병렬 검증으로 누락 9건 발견·수정 + PR-B3 정량 평가 기준 추가 |
 | 2026-05-01 | [phase-h-i-completion-retrospective](2026-05-01-phase-h-i-completion-retrospective.md) | Phase H+I 15 PR 완료 회고 — 12-에이전트 감사 Critical 10건 100% 처리, 외부 의존성 추가 0, Functional bug 1건 발견 (Telegram HMAC) |
+| 2026-05-01 | [ui-audit-cycle-retrospective](2026-05-01-ui-audit-cycle-retrospective.md) | UI 감사 사이클 (그룹 55~57) 회고 — 4-에이전트 화면 감사 65건 → Step A~E 분할 → 5-에이전트 정합성 cleanup 4 PR + 메타 sync PR-D1~D5 모델 + 환각 토큰 발견 패턴 + claude-dark 테마 토큰 매트릭스 |
 
 ---
 
