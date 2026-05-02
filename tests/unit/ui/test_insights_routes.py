@@ -1,5 +1,8 @@
-"""TDD Red — GET /insights 및 GET /insights/me UI 라우트 테스트.
-TDD Red — Tests for GET /insights and GET /insights/me UI routes.
+"""GET /insights UI 라우트 테스트 (compare + leaderboard 패널).
+Tests for GET /insights UI route (compare + leaderboard panels).
+
+Note: GET /insights/me 라우트는 Phase 1 PR 2 (2026-05-02) 에서 폐기.
+회귀 가드는 tests/unit/services/test_analytics_service_deprecations.py 참조.
 
 src/ui/routes/insights.py 는 아직 존재하지 않으므로,
 이 테스트 모음은 전부 실패해야 한다 (ImportError 또는 404).
@@ -133,96 +136,9 @@ def test_insights_page_returns_200():
             app.dependency_overrides.pop(require_login, None)
 
 
-def test_insights_me_returns_200():
-    """로그인 상태 + mock analytics_service.author_trend → GET /insights/me 는 200을 반환해야 한다.
-    With login override and mocked author_trend → GET /insights/me returns 200.
-
-    TemplateResponse 를 모킹하여 templates/insights_me.html 없이도 동작 검증.
-    Mock TemplateResponse so insights_me.html template absence does not block validation.
-    """
-    _prev_login = app.dependency_overrides.get(require_login)
-    app.dependency_overrides[require_login] = lambda: _test_user
-    try:
-        client = TestClient(app)
-
-        fake_trend = [
-            {"date": "2026-04-01", "avg_score": 82.0, "count": 3},
-            {"date": "2026-04-02", "avg_score": 88.5, "count": 2},
-        ]
-
-        mock_db = MagicMock()
-        mock_db.query.return_value.filter.return_value.all.return_value = []
-
-        with patch("src.ui.routes.insights.SessionLocal", return_value=_ctx(mock_db)), \
-             patch("src.ui.routes.insights.analytics_service.author_trend", return_value=fake_trend), \
-             patch("src.ui.routes.insights.templates.TemplateResponse") as mock_tr:
-            from fastapi.responses import HTMLResponse
-            mock_tr.return_value = HTMLResponse(content="<html>me</html>", status_code=200)
-            response = client.get("/insights/me")
-
-        # Red 단계 — 라우트 미구현 시 404 로 실패
-        # Red phase — 404 expected until route is implemented
-        assert response.status_code == 200, (
-            f"Expected 200 after implementation, got {response.status_code} "
-            f"(route not yet implemented — this test must FAIL in Red phase)"
-        )
-    finally:
-        if _prev_login is not None:
-            app.dependency_overrides[require_login] = _prev_login
-        else:
-            app.dependency_overrides.pop(require_login, None)
-
-
-def test_insights_me_respects_days_param():
-    """GET /insights/me?days=7 → analytics_service.author_trend 가 days=7 로 호출되어야 한다.
-    GET /insights/me?days=7 must call analytics_service.author_trend with days=7.
-
-    days 쿼리 파라미터가 서비스 계층까지 올바르게 전달되는지 검증.
-    Verifies that the days query param is correctly forwarded to the service layer.
-    """
-    _prev_login = app.dependency_overrides.get(require_login)
-    app.dependency_overrides[require_login] = lambda: _test_user
-    try:
-        client = TestClient(app)
-
-        mock_db2 = MagicMock()
-        mock_db2.query.return_value.filter.return_value.all.return_value = []
-
-        with patch("src.ui.routes.insights.SessionLocal", return_value=_ctx(mock_db2)), \
-             patch("src.ui.routes.insights.analytics_service.author_trend", return_value=[]) as mock_trend, \
-             patch("src.ui.routes.insights.templates.TemplateResponse") as mock_tr:
-            from fastapi.responses import HTMLResponse
-            mock_tr.return_value = HTMLResponse(content="<html>me</html>", status_code=200)
-            response = client.get("/insights/me?days=7")
-
-        # days=7 파라미터가 author_trend 에 전달됐는지 확인
-        # Verify days=7 was forwarded to author_trend
-        if response.status_code == 200:
-            # 라우트 구현 후 검증: author_trend 호출 인자에 days=7 포함
-            # After implementation: assert author_trend was called with days=7
-            assert mock_trend.called, "author_trend must be called"
-            call_kwargs = mock_trend.call_args
-            # positional 또는 keyword 인자 중 days=7 확인
-            # days=7 must appear as positional or keyword argument
-            if call_kwargs.kwargs:
-                days_passed = call_kwargs.kwargs.get("days")
-            elif len(call_kwargs.args) > 2:
-                days_passed = call_kwargs.args[2]
-            else:
-                days_passed = None
-            assert days_passed == 7, f"Expected days=7, got {days_passed}"
-        else:
-            # Red 단계 — 라우트가 없으면 404 로 실패 (의도된 동작)
-            # Red phase — 404 means route is not implemented yet (expected failure)
-            assert response.status_code == 200, (
-                f"Route not implemented yet — expected failure in Red phase, "
-                f"got {response.status_code}"
-            )
-    finally:
-        if _prev_login is not None:
-            app.dependency_overrides[require_login] = _prev_login
-        else:
-            app.dependency_overrides.pop(require_login, None)
+# ─── /insights/me (insights_me) — 폐기 (Phase 1 PR 2, 2026-05-02) ──────────
+# 회귀 가드는 tests/unit/services/test_analytics_service_deprecations.py 참조.
+# Removed in Phase 1 PR 2; regression guard moved to test_analytics_service_deprecations.py.
 
 
 def test_insights_page_with_repos_param_returns_200():
@@ -351,40 +267,6 @@ def test_insights_comparison_context_includes_leaderboard():
             app.dependency_overrides.pop(require_login, None)
 
 
-def test_insights_me_context_includes_kpi():
-    """/insights/me 응답 컨텍스트에 kpi 키가 포함되어야 한다.
-    The /insights/me template context must include a 'kpi' key with delta/avg/grade.
-    """
-    _prev_login = app.dependency_overrides.get(require_login)
-    app.dependency_overrides[require_login] = lambda: _test_user
-    try:
-        client = TestClient(app)
-        mock_db = MagicMock()
-
-        fake_trend = [{"date": "2026-04-20", "avg_score": 82.0, "count": 2}]
-
-        captured_context: dict = {}
-
-        def _capture_response(request, template_name, context, **kwargs):
-            captured_context.update(context)
-            from fastapi.responses import HTMLResponse
-            return HTMLResponse(content="<html>ok</html>", status_code=200)
-
-        with patch("src.ui.routes.insights.SessionLocal", return_value=_ctx(mock_db)), \
-             patch("src.ui.routes.insights.analytics_service.author_trend", return_value=fake_trend), \
-             patch("src.ui.routes.insights.templates.TemplateResponse", side_effect=_capture_response):
-            response = client.get("/insights/me")
-
-        assert response.status_code == 200
-        assert "kpi" in captured_context, (
-            "'kpi' 키가 템플릿 컨텍스트에 없음 / 'kpi' key missing from template context"
-        )
-        kpi = captured_context["kpi"]
-        assert "avg" in kpi, "'kpi.avg' 없음 / 'kpi.avg' missing"
-        assert "grade" in kpi, "'kpi.grade' 없음 / 'kpi.grade' missing"
-        assert "delta" in kpi, "'kpi.delta' 없음 / 'kpi.delta' missing"
-    finally:
-        if _prev_login is not None:
-            app.dependency_overrides[require_login] = _prev_login
-        else:
-            app.dependency_overrides.pop(require_login, None)
+# test_insights_me_context_includes_kpi — 폐기 (Phase 1 PR 2)
+# /insights/me 라우트 자체가 폐기되어 kpi context 검증 불필요.
+# Removed in Phase 1 PR 2; route gone, regression guard covers route 404.

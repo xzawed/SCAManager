@@ -11,14 +11,10 @@ from src.services import analytics_service
 router = APIRouter(prefix="/api/insights", dependencies=[require_api_key])
 
 
-@router.get("/authors/{login}/trend")
-def get_author_trend(login: str, days: int = 30):
-    """개발자별 일별 평균 점수 추세를 반환한다.
-    Return the per-day average score trend for a GitHub login.
-    """
-    with SessionLocal() as db:
-        trend = analytics_service.author_trend(db, login, days)
-    return {"login": login, "days": days, "trend": trend}
+# ─── GET /authors/{login}/trend ─────────────────────────────────────────────
+# Phase 1 PR 2 (2026-05-02): 폐기. /dashboard (PR 4) 가 후속.
+# Removed in Phase 1 PR 2; superseded by /dashboard endpoints (PR 4).
+# Regression guard: tests/unit/services/test_analytics_service_deprecations.py
 
 
 @router.get("/repos/compare")

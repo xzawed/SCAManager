@@ -45,81 +45,10 @@ def _override_api_key():
 
 
 # ---------------------------------------------------------------------------
-# Author Trend — 3 tests
+# Author Trend — 폐기 (Phase 1 PR 2, 2026-05-02)
+# 회귀 가드는 tests/unit/services/test_analytics_service_deprecations.py 참조.
+# Removed in Phase 1 PR 2; regression guard moved to test_analytics_service_deprecations.py.
 # ---------------------------------------------------------------------------
-
-def test_author_trend_returns_data():
-    """analytics_service.author_trend 가 샘플 목록을 반환할 때 200 + 올바른 JSON 구조를 확인한다.
-    When author_trend returns sample data, expect 200 and correct JSON shape."""
-    sample_trend = [
-        {"date": "2026-04-01", "avg_score": 82.5, "count": 3},
-        {"date": "2026-04-02", "avg_score": 88.0, "count": 2},
-    ]
-    with patch("src.api.insights.analytics_service.author_trend", return_value=sample_trend):
-        with patch("src.api.insights.SessionLocal") as mock_session_cls:
-            mock_db = MagicMock()
-            ctx = MagicMock()
-            ctx.__enter__ = MagicMock(return_value=mock_db)
-            ctx.__exit__ = MagicMock(return_value=False)
-            mock_session_cls.return_value = ctx
-
-            r = client.get("/api/insights/authors/octocat/trend?days=30")
-
-    assert r.status_code == 200
-    data = r.json()
-    # 응답에 login, days, trend 키가 있어야 한다
-    # Response must contain login, days, trend keys
-    assert data["login"] == "octocat"
-    assert data["days"] == 30
-    assert data["trend"] == sample_trend
-
-
-def test_author_trend_respects_days_param():
-    """?days=7 쿼리 파라미터가 author_trend 호출 시 days=7 로 전달되는지 확인한다.
-    Verify days=7 query param is forwarded correctly to author_trend call."""
-    with patch("src.api.insights.analytics_service.author_trend", return_value=[]) as mock_trend:
-        with patch("src.api.insights.SessionLocal") as mock_session_cls:
-            mock_db = MagicMock()
-            ctx = MagicMock()
-            ctx.__enter__ = MagicMock(return_value=mock_db)
-            ctx.__exit__ = MagicMock(return_value=False)
-            mock_session_cls.return_value = ctx
-
-            r = client.get("/api/insights/authors/devuser/trend?days=7")
-
-    assert r.status_code == 200
-    # author_trend가 days=7 로 호출됐는지 keyword 인자 검증
-    # Verify author_trend was called with days=7 (keyword argument)
-    _call_kwargs = mock_trend.call_args
-    assert _call_kwargs is not None
-    # days 인자 위치 또는 키워드로 7이 전달되어야 함
-    # days value 7 must appear either positionally or as a keyword
-    args, kwargs = _call_kwargs
-    days_value = kwargs.get("days") if "days" in kwargs else (args[2] if len(args) > 2 else None)
-    assert days_value == 7
-
-
-def test_author_trend_requires_api_key():
-    """require_api_key override 없이 요청 시 401 또는 503을 반환해야 한다.
-    Without the api-key override, request must be rejected with 401 or 503."""
-    # autouse fixture가 override를 걸었으므로, 여기서 명시적으로 제거한다
-    # autouse fixture sets the override; explicitly remove it for this test
-    app.dependency_overrides.pop(require_api_key, None)
-
-    # API_KEY 환경변수를 설정하고 settings를 패치하여 강제로 인증 실패를 유도한다
-    # Patch settings.api_key to a non-empty value to force authentication check
-    _original = _auth_mod.settings.api_key
-    try:
-        _auth_mod.settings.api_key = "required-secret"
-        r = client.get("/api/insights/authors/octocat/trend")
-        # X-API-Key 헤더 없이 요청했으므로 401이어야 한다
-        # No X-API-Key header → must return 401
-        assert r.status_code == 401
-    finally:
-        _auth_mod.settings.api_key = _original
-        # autouse fixture의 teardown이 다시 override를 제거하므로 여기서는 복원만 한다
-        # autouse fixture teardown will clean up; only restore the key here
-        app.dependency_overrides[require_api_key] = lambda: None
 
 
 # ---------------------------------------------------------------------------

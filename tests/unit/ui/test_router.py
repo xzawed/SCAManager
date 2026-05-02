@@ -1803,8 +1803,11 @@ def test_claude_dark_settings_tokens_defined():
 
 
 def test_chart_vendoring_no_jsdelivr_chartjs():
-    """PR #166 회귀 가드 — Chart.js CDN 참조가 어떤 템플릿에도 잔존하지 않아야."""
-    for tpl in ("repo_detail.html", "analysis_detail.html", "insights_me.html"):
+    """PR #166 회귀 가드 — Chart.js CDN 참조가 어떤 템플릿에도 잔존하지 않아야.
+
+    Note: insights_me.html 은 Phase 1 PR 2 (2026-05-02) 에서 폐기. 본 가드 대상에서 제외.
+    """
+    for tpl in ("repo_detail.html", "analysis_detail.html"):
         content = _read_template(tpl)
         assert "cdn.jsdelivr.net/npm/chart.js" not in content, (
             f"{tpl} 에 jsdelivr Chart.js CDN 잔존 — vendoring 회귀"
@@ -1954,17 +1957,18 @@ def test_js_helpers_12_signatures_present():
 def test_themechange_event_listeners():
     """PR-D2 회귀 가드 — themechange 이벤트 dispatch + listener 페어링 보존.
 
-    base.html `dispatchEvent('themechange')` ↔ repo_detail/insights_me 의
+    base.html `dispatchEvent('themechange')` ↔ repo_detail 차트 페이지의
     `addEventListener('themechange', buildChart)` 는 페어로 동작해야 차트가
     테마 전환 시 재빌드. 한쪽만 사라지면 stale 색이 남음 (silent regression).
-    base + 2 chart pages must stay paired to avoid stale colors after theme switch.
+
+    Note: insights_me.html 은 Phase 1 PR 2 (2026-05-02) 에서 폐기. 본 가드 대상에서 제외.
     """
     base = _read_template("base.html")
     assert "dispatchEvent(new CustomEvent('themechange'" in base, (
         "base.html 의 themechange 이벤트 dispatch 누락 — 차트 재빌드 트리거 깨짐"
     )
-    # repo_detail / insights_me 둘 다 listener 등록 필수
-    for tpl in ("repo_detail.html", "insights_me.html"):
+    # repo_detail 차트 페이지 listener 등록 필수
+    for tpl in ("repo_detail.html",):
         content = _read_template(tpl)
         assert "addEventListener('themechange'" in content, (
             f"{tpl} 의 themechange 리스너 누락 — 테마 전환 후 stale 차트 색"
