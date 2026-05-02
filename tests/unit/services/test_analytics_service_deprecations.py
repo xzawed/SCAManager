@@ -70,19 +70,20 @@ def test_author_trend_import_raises() -> None:
 
 
 def test_insights_me_route_removed() -> None:
-    """GET /insights/me 라우트가 폐기되어 404 응답을 반환해야 한다.
+    """GET /insights/me 페이지 라우트가 폐기되어 직접 응답을 반환하지 않아야 한다.
 
-    페이지 자체와 라우트 함수 (`insights_me`) + 헬퍼 (`_compute_kpi`) 폐기.
-    `/dashboard` (PR 4) 가 후속.
+    Phase 1 PR 5 (2026-05-02) 부터 301 → /dashboard redirect 로 전환.
+    핵심 검증: 페이지 200 응답 X (북마크 사용자에게 폐기 신호).
+    상세 redirect 검증은 tests/unit/ui/test_dashboard_redirects.py 에 위임.
     """
     # pylint: disable=import-outside-toplevel
     from fastapi.testclient import TestClient
     from src.main import app
 
-    client = TestClient(app)
+    client = TestClient(app, follow_redirects=False)
     response = client.get("/insights/me")
-    assert response.status_code == 404, (
-        f"/insights/me 라우트는 폐기됨 — 404 기대, 실제: {response.status_code}"
+    assert response.status_code != 200, (
+        f"/insights/me 페이지는 폐기됨 — 200 응답 금지, 실제: {response.status_code}"
     )
 
 
@@ -145,18 +146,20 @@ def test_leaderboard_import_raises() -> None:
 
 
 def test_insights_compare_route_removed() -> None:
-    """GET /insights (compare + leaderboard 페이지) 가 폐기되어 404 응답.
+    """GET /insights (compare + leaderboard 페이지) 가 폐기되어 직접 응답을 반환하지 않아야 한다.
 
-    `/dashboard` (PR 4) 가 후속. PR 5 에서 `/insights` → `/dashboard` 301 redirect 신설 예정.
+    Phase 1 PR 5 (2026-05-02) 부터 301 → /dashboard redirect 로 전환.
+    핵심 검증: 페이지 200 응답 X (북마크 사용자에게 폐기 신호).
+    상세 redirect 검증은 tests/unit/ui/test_dashboard_redirects.py 에 위임.
     """
     # pylint: disable=import-outside-toplevel
     from fastapi.testclient import TestClient
     from src.main import app
 
-    client = TestClient(app)
+    client = TestClient(app, follow_redirects=False)
     response = client.get("/insights")
-    assert response.status_code == 404, (
-        f"/insights 라우트는 폐기됨 — 404 기대, 실제: {response.status_code}"
+    assert response.status_code != 200, (
+        f"/insights 페이지는 폐기됨 — 200 응답 금지, 실제: {response.status_code}"
     )
 
 
