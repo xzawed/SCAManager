@@ -21,6 +21,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from src.models.analysis import Analysis
+from src.models.analysis_feedback import AnalysisFeedback
 from src.models.merge_attempt import MergeAttempt
 from src.models.repository import Repository
 from src.scorer.calculator import calculate_grade
@@ -340,3 +341,40 @@ def merge_failure_distribution(
         }
         for reason, cnt in sorted_items[:n]
     ]
+
+
+# ─── Phase 2 PR 2: feedback CTA ────────────────────────────────────────────
+
+
+def feedback_status(db: Session, *, threshold: int = 10) -> dict[str, Any]:
+    """Dashboard CTA 카드 데이터 — feedback 누적 부족 시 사용자 행동 유도.
+
+    운영 데이터 (MCP 검증, 2026-05-02): analysis_feedbacks row=0
+    → CTA 카드로 thumbs +/- 클릭 유도. count >= threshold 시 자동 숨김.
+
+    Returns:
+        {
+          "show_cta": bool,
+          "count": int,
+          "recent_analysis": {"id": int, "repo_full_name": str} | None,
+        }
+    """
+    count = db.scalar(
+        select(func.count(AnalysisFeedback.id))  # pylint: disable=not-callable
+    ) or 0
+
+    recent: dict[str, Any] | None = None
+    row = db.execute(
+        select(Analysis.id, Repository.full_name)
+        .join(Repository, Analysis.repo_id == Repository.id)
+        .order_by(Analysis.created_at.desc())
+        .limit(1)
+    ).first()
+    if row is not None:
+        recent = {"id": row.id, "repo_full_name": row.full_name}
+
+    return {
+        "show_cta": count < threshold,
+        "count": int(count),
+        "recent_analysis": recent,
+    }

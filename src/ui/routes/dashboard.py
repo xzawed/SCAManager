@@ -44,9 +44,11 @@ def dashboard(
         kpi = dashboard_service.dashboard_kpi(db, days=days)
         trend = dashboard_service.dashboard_trend(db, days=days)
         frequent_issues = dashboard_service.frequent_issues_v2(db, days=days, n=5)
-        # Phase 2 PR 1 (2026-05-02): Auto-merge KPI + 실패 분포 (운영 데이터 기반).
+        # Phase 2 PR 1: Auto-merge KPI + 실패 분포.
         auto_merge = dashboard_service.auto_merge_kpi(db, days=days)
         merge_failures = dashboard_service.merge_failure_distribution(db, days=days, n=5)
+        # Phase 2 PR 2 (2026-05-02): feedback CTA — 운영 row=0 → 사용자 행동 유도.
+        feedback = dashboard_service.feedback_status(db)
 
     return templates.TemplateResponse(
         request,
@@ -58,6 +60,7 @@ def dashboard(
             "frequent_issues": frequent_issues,
             "auto_merge": auto_merge,
             "merge_failures": merge_failures,
+            "feedback": feedback,
             "days": days,
         },
     )
