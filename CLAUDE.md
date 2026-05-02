@@ -519,8 +519,19 @@ git push -u origin <branch>
 | 🅒 **사용자 수동** | 위 둘 다 불가 시만 | URL 안내 — **최후 폴백** |
 
 **금지**:
-- ❌ 옵션 🅒 를 default 로 사용 — 사용자 부담 증가
 - ❌ "PR 생성은 사용자가 직접" 위임 (정책 7 PR 단위와 모순)
+- ⚠️ 옵션 🅒 (URL 폴백) 는 환경 한계 시 일시 default 가능 — 단, 매 사이클 시작 시 환경 fix 시도 의무
+
+**현재 SCAManager 환경 상태 (2026-05-02 사용자 결정 반영)**:
+- gh CLI: 부재 (apt install 시 DNS 차단)
+- GITHUB_TOKEN 환경변수: GitHub OAuth 앱 client_secret 추정 — **API `Bad credentials 401`** (PR 생성/머지 불가)
+- **사용자 결정 (2026-05-02): GitHub PAT 발급 현행 유지** — 별도 PAT 환경변수 추가 안 함
+- → **정책 10 옵션 🅒 (URL 폴백) 가 사실상 default 운영** — 본 환경 한정. 환경 변경 시 자동 옵션 🅐 또는 🅑 로 전환
+
+**다음 세션 Claude 행동 지침**:
+1. 새 PR push 후 옵션 🅐 / 🅑 시도 (gh / API)
+2. 401 또는 부재 시 즉시 옵션 🅒 (URL 안내) — 매번 환경 fix 시도 비효율 회피
+3. 사용자가 향후 PAT 발급 결정 시 본 섹션 갱신 의무
 
 **SCAManager 기본 PR body 템플릿** (자동 채움):
 ```markdown
@@ -800,4 +811,4 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 
 ## 현재 상태
 
-최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1980개 | 통합 72개 | E2E 53개 | pylint 10.00 | 커버리지 95% | SonarCloud QG OK · Security A · Reliability A · Maintainability A · Tier1 정적분석 10종 · Observability (Sentry + Claude metrics + stage timing + MergeAttempt) · AI 점수 피드백 루프 · Settings Minimal Mode · Onboarding 3단계 튜토리얼 · 5-렌즈 감사 95+ 통과 · Phase F Quick Win + F.1/F.3 완료 · Phase G 완료 (P1-5건 수정) · Phase 9 자기 분석 루프 방지 완료 · Phase 10 Telegram 확장 완료 (cron + /stats·/connect 명령) · Phase 11 팀/멀티 리포 인사이트 완료 (author_trend + leaderboard + /insights 대시보드) · 툴링 안전장치 (testpaths + ORM-마이그레이션 완전성 검사 67개) · Phase 12 CI-aware Auto Merge 재시도 완료 (merge_retry_queue + check_suite 웹훅 + 1분 cron) · Settings UI/UX 리디자인 완료 (수신/발신 웹훅 분리 + 온보딩 배너) → Phase 2A Progressive 재설계 완료 (PR #152, #153) — `<details>` 아코디언 제거 + `.adv-only` 평탄화 + W2 분리 5 카드 + 단순 모드 5 핵심 필드 + 사용자 신호 기반 첫 진입 (`_detect_initial_mode`) + ●○ 점 상태 표시 8종 → **UI 감사 사이클 12 PR (#156, #159, #160, #163~#168) + 5-에이전트 정합성 cleanup 5 PR (#169, #170, #172, #173 + 본 sync PR) 완료** — Settings P0 핫픽스 (5건) + 7-페이지 4-에이전트 감사 (P0 32+P1 18+P2 15=65건) → Step A~E 시리즈로 root cause 처리 (환각 토큰 alias / safe-area-inset / WCAG 2.5.5 / Chart.js vendoring `src/static/vendor/` + StaticFiles `/static` mount / claude-dark 차트 색 동적 read / 색 의미 토큰 통일 `--warning` 신규 / nav 비로그인 가드 / chip a11y) → cleanup 4 PR 로 코드 결함 (claude-dark 토큰 8종 + 환각 alias 2종 + Step B/D 누락) + 문서 동기화 + P1 polish (chart-wrap clamp + .btn:disabled 확장 + tooltip 토큰화) + 회귀 가드 12건 · Loop Guard Layer 3-b 화이트리스트 봇 한정 (PR #100 — `is_whitelisted_bot()` 헬퍼 + 사람 발신 무제한 통과) · Tier 3 PR-A 완료 (PR #103) — `enablePullRequestAutoMerge` GraphQL mutation + REST 폴백 · Phase 4 Critical 테스트 갭 5 PR 완료 (PR-T1~T5, +197 tests) — analyzer/tools, ai_review_errors, scorer_edges, engine_guards, pipeline_helpers, merge_retry_helpers, pr_a_scenarios, e2e_pipeline_scenarios · **Phase H+I 15 PR 완료 + 회고/문서 동기화 1 PR = 16 PR 머지 (12-에이전트 감사 Critical 10건 100% 처리) — timeout/race-recovery/Telegram 429/gate parallel/PyGithub async/joinedload opt-in/parity guard/HMAC parity (이전 모든 semi-auto 콜백 401 거부 functional bug 해소)/composite indexes/cascade ; 외부 의존성 추가 0**
+최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 1984개 | 통합 72개 | E2E 53개 | pylint 10.00 | 커버리지 95% | SonarCloud QG OK · Security A · Reliability A · Maintainability A · Tier1 정적분석 10종 · Observability (Sentry + Claude metrics + stage timing + MergeAttempt) · AI 점수 피드백 루프 · Settings Minimal Mode · Onboarding 3단계 튜토리얼 · 5-렌즈 감사 95+ 통과 · Phase F Quick Win + F.1/F.3 완료 · Phase G 완료 (P1-5건 수정) · Phase 9 자기 분석 루프 방지 완료 · Phase 10 Telegram 확장 완료 (cron + /stats·/connect 명령) · Phase 11 팀/멀티 리포 인사이트 완료 (author_trend + leaderboard + /insights 대시보드) · 툴링 안전장치 (testpaths + ORM-마이그레이션 완전성 검사 67개) · Phase 12 CI-aware Auto Merge 재시도 완료 (merge_retry_queue + check_suite 웹훅 + 1분 cron) · Settings UI/UX 리디자인 완료 (수신/발신 웹훅 분리 + 온보딩 배너) → Phase 2A Progressive 재설계 완료 (PR #152, #153) — `<details>` 아코디언 제거 + `.adv-only` 평탄화 + W2 분리 5 카드 + 단순 모드 5 핵심 필드 + 사용자 신호 기반 첫 진입 (`_detect_initial_mode`) + ●○ 점 상태 표시 8종 → **UI 감사 사이클 12 PR (#156, #159, #160, #163~#168) + 5-에이전트 정합성 cleanup 5 PR (#169, #170, #172, #173 + 본 sync PR) 완료** — Settings P0 핫픽스 (5건) + 7-페이지 4-에이전트 감사 (P0 32+P1 18+P2 15=65건) → Step A~E 시리즈로 root cause 처리 (환각 토큰 alias / safe-area-inset / WCAG 2.5.5 / Chart.js vendoring `src/static/vendor/` + StaticFiles `/static` mount / claude-dark 차트 색 동적 read / 색 의미 토큰 통일 `--warning` 신규 / nav 비로그인 가드 / chip a11y) → cleanup 4 PR 로 코드 결함 (claude-dark 토큰 8종 + 환각 alias 2종 + Step B/D 누락) + 문서 동기화 + P1 polish (chart-wrap clamp + .btn:disabled 확장 + tooltip 토큰화) + 회귀 가드 12건 · Loop Guard Layer 3-b 화이트리스트 봇 한정 (PR #100 — `is_whitelisted_bot()` 헬퍼 + 사람 발신 무제한 통과) · Tier 3 PR-A 완료 (PR #103) — `enablePullRequestAutoMerge` GraphQL mutation + REST 폴백 · Phase 4 Critical 테스트 갭 5 PR 완료 (PR-T1~T5, +197 tests) — analyzer/tools, ai_review_errors, scorer_edges, engine_guards, pipeline_helpers, merge_retry_helpers, pr_a_scenarios, e2e_pipeline_scenarios · **Phase H+I 15 PR 완료 + 회고/문서 동기화 1 PR = 16 PR 머지 (12-에이전트 감사 Critical 10건 100% 처리) — timeout/race-recovery/Telegram 429/gate parallel/PyGithub async/joinedload opt-in/parity guard/HMAC parity (이전 모든 semi-auto 콜백 401 거부 functional bug 해소)/composite indexes/cascade ; 외부 의존성 추가 0**

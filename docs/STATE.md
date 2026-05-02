@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-01 기준 — Phase H+I + UI 감사 사이클 (12 PR + cleanup) 완료)
+## 현재 수치 (2026-05-02 기준 — 그룹 58: 협업 정책 1~10 + Insight Dashboard 근본 재설계 기획 완료)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1980개** | pytest 9.0.3 (0 failed, 5 skipped) — Phase H+I 15 PR 신규 +37 + UI 감사 cleanup PR-4 회귀 가드 +12 (StaticFiles vendoring + 환각 토큰 / claude-dark / nav guard / chip a11y / chart aspect / safe-area / iOS 줌인) |
+| 단위 테스트 | **1984개** | pytest 9.0.3 (0 failed, 5 skipped) — Phase H+I 15 PR 신규 +37 + UI 감사 cleanup PR-4 회귀 가드 +12 + cleanup PR-D2 5-way sync 5번째 layer 가드 +5 (StaticFiles vendoring + 환각 토큰 / claude-dark / nav guard / chip a11y / chart aspect / safe-area / iOS 줌인 / PRESETS 9 키 / JS 헬퍼 12종 / themechange 페어) |
 | 통합 테스트 | **72개** | tests/integration/ — Phase 4 PR-T5 +25 (e2e_pipeline_scenarios — webhook→pipeline→gate 종단간) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
@@ -56,6 +56,48 @@
 | `tests/conftest.py` | 환경변수 주입 + _webhook_secret_cache autouse 클리어 |
 
 ## 작업 이력 (그룹별)
+
+### 그룹 58 (2026-05-02 · 협업 정책 6건 + Insight Dashboard 근본 재설계 기획 — PR #180, #181, #182)
+
+**목표**: 그룹 57 (UI 감사 사이클 cleanup) 머지 후 단일 작업일에 (a) 사용자 ↔ Claude 협업 회고 → 정책 5건 합의 → 정책 추가 4건 → 총 정책 1~10 default 적용, (b) 사용자 발화 *"프로젝트 사활"* 으로 Insight Dashboard 근본 재설계 5-에이전트 기획 + 시각 목업 2종.
+
+**관련 PR**:
+
+| PR | 핵심 변경 |
+|----|---------|
+| **#180** Docs/collaboration retrospective and policy | 5-에이전트 협업 회고 (`docs/reports/2026-05-01-collaboration-retrospective.md` 신규) + CLAUDE.md "사용자 협업 정책 (2026-05-01 합의)" 섹션 신설 — 정책 1~9 본문 (장단점 명시 / PR 검증 미완료 섹션 / 자율 판단 보고 / 단언+가드 묶음 / 사이클 종료 신호 / line:span 인용 / PR 단위 / 다중 에이전트 회고 / 자유 발언) |
+| **#181** Docs/design insight dashboard rework | 5-에이전트 기획서 (`docs/design/2026-05-02-insight-dashboard-rework.md`) — 데이터 자산 정찰 + 사용자 가치 매트릭스 + 컨셉 5건 비교 + 경쟁 벤치마크 15 제품 + MVP 4 옵션 매트릭스 + 5-Phase 로드맵. 시각 목업 2건 (`docs/design/mockups/2026-05-02-dashboard-concept-c-stripe.html` Stripe-style + `e-ai-note.html` Claude 톤). 폐기 대상: `analytics_service.author_trend` / `repo_comparison` / `leaderboard` / **`top_issues`** (사용자 결정 — 미사용/보류 코드 0 원칙) |
+| **#182** Docs/collaboration retrospective and policy (정책 10 추가) | CLAUDE.md 정책 10 — **PR 직접 생성 의무** (gh CLI 또는 GitHub API, URL 폴백은 최후) + 헬퍼 스크립트 신규 `scripts/dev/create_pr.sh` (GitHub API + curl + jq 패턴) |
+
+**5-에이전트 협업 회고 결과** (PR #180):
+- 사이클 정량: 25+ PR / 92 결함 / 회귀 0 / **사용자 거부 0건**
+- 위험 신호: revert 0 = 검토 안 됐을 가능성, 결함 6 PR 후 발견 (claude-dark) = 시각 smoke test 부재
+- 사용자 합의 5건 → 정책 1, 7, 8, 9 + 보조 6 (총 5건 + 보조 1)
+- 추가 정책 (사용자 후속 발화) 정책 10 (PR 직접 생성)
+
+**5-에이전트 dashboard 기획 결과** (PR #181):
+- 폐기 LOC 880 (`author_trend`/`repo_comparison`/`leaderboard`/`top_issues` + 페이지 2 + 라우트 2 + 테스트 3)
+- 권장 MVP-B (Pulse + Trend, 1~2일, 신규 ~450 LOC, 순 -430 LOC)
+- 권장 컨셉: C (Stripe) + E (AI 노트) 모드 토글 — 사활 결정 단일 베팅 위험 회피
+- 5-Phase 로드맵 (총 6~9일)
+
+**정책 10 환경 한계** (PR #182):
+- gh CLI 부재 + apt install DNS 차단 + GITHUB_TOKEN 401 (OAuth secret 추정)
+- 사용자 결정 (2026-05-02 사후): **PAT 발급 현행 유지** → 정책 10 옵션 🅒 (URL 폴백) 사실상 default
+- 본 그룹의 `Conflict 발생 → 해결` 흐름: PR #180 머지 후 정책 10 추가 commit 의 동일 영역 conflict (CLAUDE.md + 회고 본문) → `--ours` 채택 (정책 10 본문 보존) → merge commit `91683c8` → #182 로 머지
+
+**5-way sync 영향**: 0 (모두 docs + 신규 헬퍼 스크립트)
+
+**테스트**: 1984 유지 (cleanup PR-4 +12 + cleanup PR-D2 +5 = 1980 → 1984, 본 그룹 코드 변경 0)
+**품질**: pylint 10.00/10 유지
+
+**잔여 follow-up** (다음 사이클):
+- dashboard 컨셉 결정 (Q5 컨셉 / Q6 default 모드 / Q7 자주 발생 이슈 카드 처리) — 사용자 시각 목업 검토 후
+- 정책 10 본문 갱신 (PAT 현행 유지 결정 반영, 본문 ↔ 환경 일관성)
+- `Analysis.result["issues"]` JSON 직렬화 보강 (`category/language/rule_id` 추가, 1줄 fix)
+- 미매핑 PR 17건 메타 sync (월 1회 정기 sync 권장 — 보류 유지)
+
+---
 
 ### 그룹 57 (2026-05-01 · UI 감사 사이클 12 PR + 정합성 cleanup — PR #158, #159, #160, #161~#168, #169~#173 + 후속 메타 sync 시리즈 PR-D1~D5)
 
@@ -1172,7 +1214,7 @@ README 배지를 Claude/자체 산출 수치가 아닌 **외부 SaaS 가 직접 
 ## 갱신 방법
 
 ```bash
-make test          # 단위 1980+ 통과 확인 (UI 감사 사이클 cleanup PR-D2 가드 +5 후 1985)
+make test          # 단위 1980+ 통과 확인 (UI 감사 사이클 cleanup PR-D2 가드 +5 후 1984)
 make lint          # pylint 10.00 + flake8 0건 + bandit HIGH 0개
 make test-cov      # 96%+ 유지 확인 (소폭 변동 가능)
 
