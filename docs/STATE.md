@@ -7,13 +7,13 @@
 | 지표 | 값 | 비고 |
 |------|-----|------|
 | 단위 테스트 | **2010개** | pytest 9.0.3 — 그룹 60+61 누적 +24 (Phase 1 +1 + Phase 2 +17 + P0 OAuth +4 + leaderboard 폐기 +2) **= 2010 collected / 2009 passed / 2 skipped / 0 failed** |
-| 통합 테스트 | **72개** | tests/integration/ — Phase 4 PR-T5 +25 (e2e_pipeline_scenarios — webhook→pipeline→gate 종단간) |
+| 통합 테스트 | **82개** | tests/integration/ — 그룹 61 PR #208 (정책 13 강화) +10 (test_oauth_flow_smoke — smoke check 3 + 인증 flow 4 endpoint 3 + insights redirect 3 + 성능 1) |
+| E2E 테스트 | **65개** | `make test-e2e` (Chromium Playwright) — 그룹 61 PR #208 +14 (test_dashboard — 페이지 로드 + KPI 5 카드 + range toggle + chart vendoring + JS 런타임 + insights redirect + nav Dashboard 링크) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
 | SonarCloud Maintainability Rating | **A** | Code Smells 58 (-20 from 78) |
 | SonarCloud BLOCKER / CRITICAL | **0 / 0** | Phase Q.7 완료 — 5건 Cognitive Complexity 전부 해소 |
-| E2E 테스트 | **53개** | `make test-e2e` (Chromium Playwright) — Telegram 카드 +4 |
 | pylint | **10.00/10** | `python -m pylint src/` — 만점 유지 |
 | 커버리지 | **95%** | `make test-cov` — 신규 파일 100% (analytics_service, api/insights, ui/routes/insights) |
 | bandit HIGH | **0개** | bandit 1.9.4 (Python 3.14 대응) |
@@ -75,7 +75,8 @@
 | PR | 핵심 변경 |
 |----|---------|
 | **#206** Chore/remove leaderboard feature completely | **🔴 Q3 정정 — 리더보드 기능 완전 폐기** (사용자 명시 요청). Alembic 0025 + ORM/dataclass/API/UI/핸들러 5-way sync. 회귀 가드 +2 (column/dataclass 부재). 기존 가드 정정 ("Q3 보존" → "Q3 정정 폐기") |
-| **#207 (진행 중)** Docs/cycle-61 final stale sync | **그룹 60+61 종료 후 stale 일괄 정리** — 5 에이전트 병렬 회고 결과 P0 9 / P1 5 / P2 5 처리. (a) STATE.md 수치 정정 (2009→2010) + 그룹 60/61 PR # 마감 표기 + 그룹 59 "진행 중" 잔존 정리 (b) `docs/design/2026-05-02-insight-dashboard-rework.md` Q3 정정 명시 (c) `docs/design/INDEX.md` 결정 완료 표기 (d) `docs/runbooks/static-assets.md` insights_me → dashboard.html (e) `docs/runbooks/merge-retry.md` leaderboard 정정 (f) `docs/reports/2026-05-01-collaboration-retrospective.md` 헤더 1줄 주석 |
+| **#207** Docs/cycle-61 final stale sync | **그룹 60+61 종료 후 stale 일괄 정리** — 5 에이전트 병렬 검증 결과 P0 9 / P1 5 / P2 5 처리. STATE 수치 정정 + design rework Q3 정정 + INDEX 결정 완료 + static-assets `insights_me` → `dashboard.html` + merge-retry `leaderboard` 정정 + collaboration retro 헤더 1줄 + CLAUDE.md L90 KPI 4↔5 명확화 |
+| **#208 (진행 중)** Feat/policy-13 e2e + integration guards | **정책 13 강화 종단간 자동화 가드 신설** (회고 P0 #5 검증 환류 갭 + P0 OAuth 사고 후속). (a) `tests/integration/test_oauth_flow_smoke.py` (+10) — smoke check 3 + 인증 flow 4 endpoint 3 + insights redirect 3 + 성능 1. (b) `e2e/test_dashboard.py` (+14) — 페이지 로드 + KPI 5 카드 + range toggle + chart vendoring + JS 런타임 + insights redirect + nav Dashboard 링크 (Playwright). 통합/E2E 가 운영 endpoint smoke check 자동 실행 → 다음 OAuth/redirect_uri 같은 외부 변경 사고 즉시 발견 가능 |
 
 **5-way sync 영향**: 5/5 모두 적용 (정책 7 강화 응집 단위 — "리더보드 완전 폐기")
 
