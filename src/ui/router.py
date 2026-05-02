@@ -12,6 +12,7 @@ from fastapi import APIRouter
 from src.ui.routes import (
     actions,
     add_repo,
+    dashboard,
     detail,
     overview,
     settings,
@@ -22,8 +23,7 @@ router = APIRouter()
 # 구체 경로 → 일반 경로 순
 # Specific routes first, catch-all route last.
 router.include_router(overview.router)       # GET /
-# NOTE: GET /insights (compare + leaderboard) removed in Phase 1 PR 3 (2026-05-02).
-# /dashboard (PR 4) supersedes; PR 5 will add /insights → /dashboard 301 redirect.
+router.include_router(dashboard.router)      # GET /dashboard (Phase 1 PR 4 — MVP-B; supersedes /insights)
 router.include_router(add_repo.router)       # GET/POST /repos/add, /api/github/repos
 router.include_router(settings.router)       # /repos/{name}/settings, reinstall-*
 router.include_router(actions.router)        # /repos/{name}/delete
