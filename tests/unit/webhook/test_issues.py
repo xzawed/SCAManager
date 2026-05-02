@@ -96,6 +96,7 @@ def test_issues_event_with_valid_signature_returns_202():
     # router 가 잡은 로컬 참조(src.webhook.router)를 patch 해야 BackgroundTask 가
     # mock 을 타고 실 DNS 조회를 회피한다.
     with patch("src.webhook.providers.github.settings") as mock_settings, \
+         patch("src.webhook.providers.github.get_webhook_secret", return_value=SECRET), \
          patch("src.webhook.providers.github.SessionLocal", return_value=_mock_db()), \
          patch("src.webhook.providers.github.get_repo_config", return_value=repo_config), \
          patch("src.webhook.providers.github.notify_n8n_issue") as mock_notify:
@@ -124,6 +125,7 @@ def test_issues_event_registers_background_task_when_n8n_url_present():
         registered_tasks.append(func)
 
     with patch("src.webhook.providers.github.settings") as mock_settings, \
+         patch("src.webhook.providers.github.get_webhook_secret", return_value=SECRET), \
          patch("src.webhook.providers.github.SessionLocal", return_value=_mock_db()), \
          patch("src.webhook.providers.github.get_repo_config", return_value=repo_config):
         mock_settings.github_webhook_secret = SECRET
@@ -157,6 +159,7 @@ def test_issues_event_ignored_when_no_n8n_webhook_url():
         registered_tasks.append(func)
 
     with patch("src.webhook.providers.github.settings") as mock_settings, \
+         patch("src.webhook.providers.github.get_webhook_secret", return_value=SECRET), \
          patch("src.webhook.providers.github.SessionLocal", return_value=_mock_db()), \
          patch("src.webhook.providers.github.get_repo_config", return_value=repo_config):
         mock_settings.github_webhook_secret = SECRET
@@ -199,6 +202,7 @@ def test_unknown_event_returns_ignored():
     # 알 수 없는 이벤트 타입 → {"status": "ignored"} 반환
     payload = json.dumps({"repository": {"full_name": "owner/repo"}}).encode()
     with patch("src.webhook.providers.github.settings") as mock_settings, \
+         patch("src.webhook.providers.github.get_webhook_secret", return_value=SECRET), \
          patch("src.webhook.providers.github.SessionLocal", return_value=_mock_db()):
         mock_settings.github_webhook_secret = SECRET
         resp = client.post(
@@ -251,6 +255,7 @@ def test_issues_event_passes_repo_token_to_notify():
             captured_kwargs.update(kwargs)
 
     with patch("src.webhook.providers.github.settings") as mock_settings, \
+         patch("src.webhook.providers.github.get_webhook_secret", return_value=SECRET), \
          patch("src.webhook.providers.github.SessionLocal", return_value=mock_db), \
          patch("src.webhook.providers.github.get_repo_config", return_value=repo_config):
         mock_settings.github_webhook_secret = SECRET
