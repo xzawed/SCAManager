@@ -106,7 +106,7 @@ curl -X POST -H "X-API-Key: $INTERNAL_CRON_API_KEY" \
 ### PR-4A — DB 복합 인덱스 3종 (alembic 0023)
 - 새 인덱스: `ix_analyses_repo_id_created_at`, `ix_analyses_repo_id_author_login`, `ix_merge_attempts_attempted_at`.
 - `make migrate` 자동 적용. PostgreSQL `CREATE INDEX` online (락 최소).
-- repo_detail / leaderboard / Phase F.4 dashboard 쿼리 P95 latency 개선 — 모니터링 baseline 갱신 필요.
+- repo_detail / dashboard 쿼리 P95 latency 개선 — 모니터링 baseline 갱신 필요. (~~leaderboard~~ 그룹 60 PR 3 폐기 + 그룹 61 alembic 0025 컬럼 폐기)
 - 검증 SQL (PG): `\d+ analyses` / `\d+ merge_attempts` 로 인덱스 존재 확인.
 
 ### C7 — gate_decisions ON DELETE CASCADE (alembic 0024)

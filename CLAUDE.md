@@ -87,7 +87,7 @@ src/
 ├── services/                   # use case 계층 — 신규 오케스트레이션 모듈의 배치 장소 (기존 pipeline/engine/manager 는 도메인 위치 유지)
 │   ├── analytics_service.py    # 집계 단일 출처 — weekly_summary, moving_average, resolve_chat_id (top_issues / author_trend / repo_comparison / leaderboard 는 Phase 1 PR 1~3 폐기)
 │   ├── cron_service.py         # 주기적 실행 — run_weekly_reports, run_trend_check
-│   ├── dashboard_service.py    # /dashboard (Phase 1 PR 4 + Phase 2 PR 1+2) — dashboard_kpi (KPI 4), dashboard_trend (라인 차트), frequent_issues_v2 (Q7), auto_merge_kpi (단순+retry-aware), merge_failure_distribution (실패 사유 Top N), feedback_status (CTA banner — analysis_feedbacks count<threshold 시 표시)
+│   ├── dashboard_service.py    # /dashboard (Phase 1 PR 4 + Phase 2 PR 1+2) — 6 함수: dashboard_kpi (KPI 4 — avg_score/analysis_count/high_security/active_repos), dashboard_trend (라인 차트), frequent_issues_v2 (Q7), auto_merge_kpi (KPI 5번째 카드 — 단순+retry-aware), merge_failure_distribution (실패 사유 Top N), feedback_status (CTA banner — analysis_feedbacks count<threshold 시 표시). UI 카드 = 5종 (KPI 4 함수 + auto_merge_kpi 1)
 │   └── merge_retry_service.py  # process_pending_retries 워커 (CI-aware Auto Merge 재시도)
 ├── auth/
 │   ├── session.py              # get_current_user() + require_login Depends
