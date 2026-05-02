@@ -300,7 +300,9 @@ CLI Hook (로컬 pre-push 자동 코드리뷰):
 
 전체 환경변수 목록: `docs/reference/env-vars.md`
 
-## Railway 배포
+## Railway 배포 + 운영 DB 환경
+
+**운영 DB (2026-05-02 기준)**: Supabase PostgreSQL + 온프레미스 PostgreSQL 이중 setup. Railway PostgreSQL 도 호환 (legacy 또는 staging). 모든 환경에 동일 alembic 마이그레이션 적용 — schema 일관성 보장. 운영 SQL 검증 도구 `scripts/dev/verify_phase2_data.sql` + runbook `docs/runbooks/phase2-data-readiness.md` 가 4 환경 (Supabase Dashboard / Supabase MCP / 온프레미스 psql / Railway) 모두 호환 (`\echo` meta-command 미사용 + `section` 라벨 컬럼).
 
 ```bash
 # 시작 명령 (railway.toml에 설정됨 — --proxy-headers 포함)

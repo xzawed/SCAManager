@@ -6,7 +6,7 @@
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **2004개** | pytest 9.0.3 — Phase 2 PR 2 (feedback_status 6 신규) **= 2004 passed / 0 failed** |
+| 단위 테스트 | **2004개** | pytest 9.0.3 — Phase 2 PR 1 + PR 2 + Supabase 호환 fix PR (docs only, 코드 변경 0) **= 2004 passed / 0 failed** |
 | 통합 테스트 | **72개** | tests/integration/ — Phase 4 PR-T5 +25 (e2e_pipeline_scenarios — webhook→pipeline→gate 종단간) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
@@ -81,7 +81,10 @@
 | **#194** Docs/phase1 retro policy 11 evolution | **정책 11 신설** (UI/시각 변경 PR 본문 최상단 "🚨 Claude 시각 검증 불가" 8 조합 체크리스트 의무) + **정책 2 진화** (Phase 종료 시 일괄 회신 묶음) + **정책 3 진화** (자율 판단 보고 PR 본문 Summary 직후 + 이의 가능성 ≥ 중 강조) + **정책 7 강화** (PR 단위 = 응집 단위 분할 — nav/redirect/라우트 동일 PR 의무). 회고 정리 문서 신규 (`docs/reports/2026-05-02-phase1-retrospective.md`) |
 | **#195** Chore/preexisting 7 fail triage (B-1) | **pre-existing 7 fail 분류 + 5건 fix** — origin 일관 = `src.webhook.providers.github.get_webhook_secret` mock 누락 (PR 1~5 무관, 이전 사이클부터 잔존). test_issues.py 5 케이스에 `patch("src.webhook.providers.github.get_webhook_secret", return_value=SECRET)` 1줄 추가 → 5/7 통과. 남은 2건 = 별도 PR B-2 분리 |
 | **#196** Chore/preexisting 2 fail fix B-2 | **남은 2 fail 깊은 fix** — 근본 원인: 환경 의존성 (`GITHUB_WEBHOOK_SECRET=dev_secret` + `GITHUB_TOKEN=''` 가 일부 환경에 export 되어 conftest 의 setdefault 무효). fix: (a) test_pipeline.py — `patch("src.worker.pipeline.settings")` 직접 mock + github_token 주입 (b) test_router.py — `patch("src.webhook._helpers.repository_repo.find_by_full_name")` 직접 mock + `_helpers.settings` 직접 mock. **결과: 1985→1987 passed / 0 failed** (pre-existing 7 fail 완전 해소). Phase 2 진입 전 환경 의존성 정리 완료 |
-| **#197 (진행 중)** Chore/phase2 data readiness verification (PR C) | **Phase 2 진입 전 데이터 검증 도구** — 기획서 §6.1 Q4 (사용자 승인) 후속. 신규 `scripts/dev/verify_phase2_data.sql` (5건 SELECT — analysis_feedbacks / merge_attempts / failure_reason 분포 / analyses / author_login) + `docs/runbooks/phase2-data-readiness.md` (결과 해석 매트릭스 + Phase 2 진입 4 옵션 결정). 실행 = 사용자 운영 DB (Railway PostgreSQL) — 결과 회신 후 Claude 가 Phase 2 PR 시리즈 자율 판단 결정 |
+| **#197** Chore/phase2 data readiness verification (PR C) | **Phase 2 진입 전 데이터 검증 도구** — 기획서 §6.1 Q4 (사용자 승인) 후속. 신규 `scripts/dev/verify_phase2_data.sql` (5건 SELECT) + runbook (Railway only 옵션 3종) |
+| **Phase 2 PR 1** Feat/phase2 auto-merge KPI card | **Auto-merge KPI + 실패 사유 카드** (운영 데이터 16.6% / unstable_ci 79% 반영). 신규 service 2종 (`auto_merge_kpi` 단순+retry-aware, `merge_failure_distribution` Top N + 비율). KPI 그리드 4→5 + 보조 카드 1. 신규 테스트 +11. **결과: 1987→1998 passed** |
+| **Phase 2 PR 2** Feat/phase2 feedback CTA banner | **feedback CTA banner** (analysis_feedbacks row=0 운영 데이터 대응). 신규 service `feedback_status` (조건부 CTA, count<10 시만 표시) + `#feedbackCard` anchor 링크. 신규 테스트 +6. **결과: 1998→2004 passed** |
+| **Supabase 호환 fix PR (진행 중)** Chore/supabase-compat-sql-runbook-claudemd | **PR #197 본체 후속** — `\echo` meta-command 제거 + 각 SELECT 첫 컬럼 `section` 라벨 → Supabase Dashboard SQL Editor 호환. runbook 4 옵션 확장 (Supabase Dashboard / Supabase MCP / 온프레미스 psql / Railway). CLAUDE.md L303 운영 DB 환경 정보 갱신 (Railway only → Supabase + 온프레미스 + Railway 이중/삼중 setup) |
 
 **5-way sync 영향**: 0 (docs only)
 
