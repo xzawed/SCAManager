@@ -174,17 +174,27 @@
 3. **MVP-B 는 차별 가치 + 검증 가능성 균형** — Chart.js vendoring 재사용 (UI 감사 Step C 자산 활용)
 4. **AI 정합도 / Auto-merge 성공률 은 Phase 2 차별 KPI 로 분리** — 데이터 부족 위험 (FB row 수 미상) 을 Phase 1 의존성에서 제외
 
-### 5.3 5-Phase 로드맵
+### 5.3 5-Phase 로드맵 (2026-05-02 사용자 회신 후 갱신)
 
-| Phase | 목표 | 핵심 변경 | 예상 PR | 시간 |
-|-------|------|---------|--------|------|
-| **Phase 1** | MVP-B 출시 | 신규 `/dashboard` + 폐기 자원 정리 + 회귀 가드 + telemetry 1줄 | 2~3 | **1~2일** |
-| Phase 2 | 차별 KPI 추가 | Auto-merge 성공률 + AI 정합도 카드 (FB row 수 ≥10 검증 후) | 2 | 1~2일 |
-| Phase 3 | 모드 토글 (Claude 톤) | 데이터 모드 ↔ 노트 모드 (Anthropic SDK + caching) | 2 | 2일 |
-| Phase 4 | 모바일 우월 + 단축키 | scroll-snap + 키보드 (`g d`, `?`) | 2 | 1~2일 |
-| Phase 5 | Telegram 미러링 | `/dashboard` Telegram 명령 (`_handle_stats` 패턴 차용) | 1 | 1일 |
+| Phase | 상태 | 목표 | 핵심 변경 | 예상 PR | 시간 |
+|-------|-----|------|---------|--------|------|
+| **Phase 1** | ✅ 완료 (그룹 60) | MVP-B 출시 | 신규 `/dashboard` + 폐기 자원 정리 + 회귀 가드 + telemetry 1줄 | 5 PR | 단일 작업일 |
+| **Phase 2** | ✅ 완료 (그룹 60) | 차별 KPI + CTA | Auto-merge 성공률 (단순+retry-aware) + 실패 사유 + feedback CTA banner | 3 PR (Auto-merge + CTA + Supabase 호환) | 단일 작업일 |
+| **Phase 3 (갱신)** | 진입 의무 | **SaaS 전환 토대 + Insight 모드 + caching** | (a) Anthropic prompt caching (Sonnet input 90% 절감) (b) 모드 토글 📊/💬 (c) Insight 모드 (Claude 톤 노트 — 사용자별 분기 토대) (d) RLS / 멀티 테넌트 권한 모델 (Supabase RLS 차용) | **6~8 PR** | **3~5일** |
+| Phase 4 | 보류 | 모바일 우월 + 단축키 | scroll-snap + 키보드 (`g d`, `?`) | 2 | 1~2일 |
+| Phase 5 | 보류 | Telegram 미러링 | `/dashboard` Telegram 명령 (`_handle_stats` 패턴 차용) | 1 | 1일 |
 
-**총 합계**: 9~10 PR · **6~9 작업일**
+**총 합계 (Phase 3 갱신 후)**: ~16 PR · ~5~9 작업일 (Phase 1+2 완료 = 8 PR / 1일 = 진행 ↑)
+
+**Phase 3 PR 분할 안 (응집 단위 — 정책 7 강화)**:
+| PR # | 응집 단위 | 시간 |
+|------|---------|-----|
+| Phase 3 PR 1 | **Anthropic prompt caching 인프라** — `src/analyzer/io/ai_review.py` + `src/services/dashboard_service.py` (Insight 모드 함수 신설 시) Sonnet system prompt + few-shot caching 적용 | 1~2시간 |
+| Phase 3 PR 2 | **Insight 모드 service** — `dashboard_service::insight_narrative(db, user_id, days, *, now)` (Claude API + caching + ✨ 잘한 것 / 🔍 신경 쓸 것 / 📊 숫자 / 💬 다음 4 카드) | 2~3시간 |
+| Phase 3 PR 3 | **Insight 모드 라우트 + 템플릿** — `/dashboard?mode=insight` + `dashboard.html` 모드 토글 (📊/💬) + Insight 노트 카드 4종 + 차트 cache 보존 (모드 전환 시 재요청 X) | 1~2시간 |
+| Phase 3 PR 4 | **사용자 신호 기반 default 모드** — `_detect_initial_mode` 헬퍼 (settings 패턴 차용) + `?mode` URL 파라미터 + localStorage persist | 1시간 |
+| Phase 3 PR 5 | **SaaS 전환 토대 — RLS 권한 모델** (Supabase RLS 또는 SQLAlchemy session-level filter) — `Repository.user_id` 기반 dashboard 격리 | 2~3시간 |
+| Phase 3 PR 6 | **Insight 모드 회귀 가드 + 통합/E2E** — Claude API mock + caching mock + 모드 토글 e2e | 1~2시간 |
 
 ---
 
@@ -351,10 +361,34 @@ open docs/design/mockups/2026-05-02-dashboard-v2-overview.html
 
 ## 8. 다음 단계
 
-1. **본 기획 PR 머지** — 사용자 결정 반영
-2. **Phase 1 PR 시리즈 착수** — TDD Red → Green → Refactor (CLAUDE.md L583)
-3. **Phase 1 출시 후 회고** — 정책 8 (다중 에이전트) + 정책 9 (Claude 자유 발언) 적용
-4. **Phase 2~5 결정** — 회고 결과로 우선순위 조정
+### 8.1 Phase 1+2 완료 (2026-05-02 그룹 60+61) ✅
+
+- **본 기획 PR 머지** ✅
+- **Phase 1 PR 시리즈** = 5 PR 머지 완료 (그룹 60 #188~#193)
+- **Phase 1 회고** = 5 에이전트 병렬 회고 + Claude 자유 발언 → 정책 11/12 신설 + 정책 2/3/7 진화
+- **Phase 2** = Auto-merge KPI + feedback CTA + Supabase 호환 (3 PR 머지)
+- **Phase 1+2 통합 회고** = 정책 13 신설 + 정책 11 강화 (P0 OAuth 사고 후속)
+- **그룹 61 후속** = leaderboard Q3 정정 폐기 + stale sync + 종단간 가드 + integration 24 fail 정리
+
+### 8.2 사용자 회신 (2026-05-02 Phase 1+2 종료 직후)
+
+| 정보 | 회신 | 영향 |
+|------|------|------|
+| Anthropic API 비용 | ~$25 (집중 사용 시) / Sonnet 4.6 주, Opus 4.7 보조 | caching 우선 (90% 절감) |
+| 트래픽 / 사용자 수 | "저 혼자" (1인 운영) | dashboard_view 빈도 ↓ |
+| 운영 모델 | **"SaaS 했으면 좋겠습니다"** | **Phase 3 우선순위 대전환 — SaaS 전환 토대** |
+| 신규 요청 | **"팀 리더보드 기능 삭제"** | Q3 정정 폐기 (그룹 61 #206) |
+
+### 8.3 Phase 3 진입 의무 (다음 사이클)
+
+1. **Anthropic prompt caching 적용 패턴 확정** — 본 기획서 §5.3 Phase 3 PR 1 의 caching 전략. Sonnet system prompt + few-shot 예시 + (가능 시) tool definitions 모두 cache.
+2. **Insight 모드 카드 4종 디자인 결정** — v2 목업 (`docs/design/mockups/2026-05-02-dashboard-v2-insight.html`) 의 ✨ 잘한 것 / 🔍 신경 쓸 것 / 📊 숫자 / 💬 다음 4 카드 그대로 운영 적용 vs 디자인 정정
+3. **모드 토글 default 결정** — 사용자 신호 기반 (`_detect_initial_mode` 차용) 또는 단순 URL `?mode=insight` 기반
+4. **RLS 권한 모델 결정** — Supabase RLS (DB level) vs SQLAlchemy session-level filter (app level) — single-tenant → multi-tenant 전환 토대
+
+### 8.4 Phase 3 후 Phase 4/5
+
+Phase 4 (모바일 우월) + Phase 5 (Telegram 미러링) — Phase 3 SaaS 전환 후 우선순위 재논의 (멀티 사용자 시 Telegram 봇 = 사용자별 인증 필요 등).
 
 ---
 
