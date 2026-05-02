@@ -86,6 +86,9 @@ def test_dashboard_returns_200():
          patch("src.ui.routes.dashboard.dashboard_service.dashboard_kpi", return_value=fake_kpi), \
          patch("src.ui.routes.dashboard.dashboard_service.dashboard_trend", return_value=fake_trend), \
          patch("src.ui.routes.dashboard.dashboard_service.frequent_issues_v2", return_value=fake_issues), \
+         patch("src.ui.routes.dashboard.dashboard_service.auto_merge_kpi", return_value={}), \
+         patch("src.ui.routes.dashboard.dashboard_service.merge_failure_distribution", return_value=[]), \
+         patch("src.ui.routes.dashboard.dashboard_service.feedback_status", return_value={"show_cta": False, "count": 0, "recent_analysis": None}), \
          patch("src.ui.routes.dashboard.templates.TemplateResponse") as mock_tr:
         from fastapi.responses import HTMLResponse
         mock_tr.return_value = HTMLResponse(content="<html>dashboard</html>", status_code=200)
@@ -105,6 +108,7 @@ def test_dashboard_default_days_is_7():
          patch("src.ui.routes.dashboard.dashboard_service.frequent_issues_v2", return_value=[]), \
          patch("src.ui.routes.dashboard.dashboard_service.auto_merge_kpi", return_value={}), \
          patch("src.ui.routes.dashboard.dashboard_service.merge_failure_distribution", return_value=[]), \
+         patch("src.ui.routes.dashboard.dashboard_service.feedback_status", return_value={"show_cta": False, "count": 0, "recent_analysis": None}), \
          patch("src.ui.routes.dashboard.templates.TemplateResponse") as mock_tr:
         from fastapi.responses import HTMLResponse
         mock_tr.return_value = HTMLResponse(content="<html>x</html>", status_code=200)
@@ -127,6 +131,7 @@ def test_dashboard_respects_days_param():
          patch("src.ui.routes.dashboard.dashboard_service.frequent_issues_v2", return_value=[]), \
          patch("src.ui.routes.dashboard.dashboard_service.auto_merge_kpi", return_value={}), \
          patch("src.ui.routes.dashboard.dashboard_service.merge_failure_distribution", return_value=[]), \
+         patch("src.ui.routes.dashboard.dashboard_service.feedback_status", return_value={"show_cta": False, "count": 0, "recent_analysis": None}), \
          patch("src.ui.routes.dashboard.templates.TemplateResponse") as mock_tr:
         from fastapi.responses import HTMLResponse
         mock_tr.return_value = HTMLResponse(content="<html>x</html>", status_code=200)
@@ -155,11 +160,12 @@ def test_dashboard_context_includes_kpi_trend_issues():
          patch("src.ui.routes.dashboard.dashboard_service.frequent_issues_v2", return_value=[]), \
          patch("src.ui.routes.dashboard.dashboard_service.auto_merge_kpi", return_value={"value": 16.6}), \
          patch("src.ui.routes.dashboard.dashboard_service.merge_failure_distribution", return_value=[{"reason": "unstable_ci", "count": 5, "share_pct": 79.0}]), \
+         patch("src.ui.routes.dashboard.dashboard_service.feedback_status", return_value={"show_cta": True, "count": 0, "recent_analysis": None}), \
          patch("src.ui.routes.dashboard.templates.TemplateResponse", side_effect=_capture):
         response = client.get("/dashboard")
 
     assert response.status_code == 200
     # Phase 1 + Phase 2 PR 1 신규 키
     for key in ("kpi", "trend", "frequent_issues", "days", "current_user",
-                "auto_merge", "merge_failures"):
+                "auto_merge", "merge_failures", "feedback"):
         assert key in captured, f"context 에 {key} 누락"
