@@ -286,26 +286,64 @@ open docs/design/mockups/2026-05-02-dashboard-concept-e-ai-note.html
 
 목업 데이터는 가짜 — 실제 동작 시뮬레이션 아님. 시각 컨셉 확인 전용.
 
-### 6.5 추가 결정 항목 (목업 검토 후)
+### 6.5 추가 결정 항목 (목업 검토 후 — 2026-05-02 사용자 응답)
 
-| Q | 항목 | 옵션 |
-|---|------|------|
-| 5 | 컨셉 최종 결정 | 🅐 C 단독 / 🅑 E 단독 / 🅒 C+E 모드 토글 (Claude 권장) / 🅓 다른 안 (목업 보고 발견) |
-| 6 | (Q5=C+E 채택 시) default 모드 | 🅐 C (데이터) default / 🅑 E (노트) default / 🅒 사용자 신호 기반 (settings 의 `_detect_initial_mode` 패턴 차용) |
-| 7 | Phase 2 "자주 발생 이슈" 카드 처리 | 🅐 신규 함수 작성 / 🅑 항목 제외 |
+| Q | 항목 | 사용자 결정 (2026-05-02) | 사용자 발화 인용 |
+|---|------|----------------------|------------------|
+| 5 | 컨셉 최종 결정 | **🅒 C+E 모드 토글 채택** ✅ | *"둘다 필요해 보입니다. 하나는 사용자가 한눈에 확인하고 판단할수 있는 내용이고 하나는 AI가 흐름을 분석하여 제안하는 내용이기에 두 페이지 모두 같은 정보를 다른 용도로 각각 서비스 하는 내용입니다."* |
+| 6 | (Q5=C+E 채택 시) default 모드 | **🅒 사용자 신호 기반** ✅ (settings `_detect_initial_mode` 패턴 차용) | *"그외 제게 제안주신 내용이나 방향은 모두 승인합니다."* |
+| 7 | Phase 2 "자주 발생 이슈" 카드 처리 | **🅐 신규 함수 작성** ✅ (`frequent_issues_v2()`) | (동일 — 모두 승인) |
+
+**추가 사용자 디자인 방향**:
+> *"컨셉은 심플하고 모던하고 요즘 느낌이 많이 나야 합니다. 클로드 디자인이 여기에 개입하여 좀더 디자인이 고도화 되는 방안이 되었습니다."*
+
+→ v1 목업 (concept-c-stripe / concept-e-ai-note) 은 base 디자인 시연용으로 보존, **v2 목업** (`-v2-overview` / `-v2-insight`) 에 Claude × Linear 하이브리드 디자인 시스템 적용 (그룹 55 토큰 기반 — warm beige + Anthropic orange + Crimson Pro serif heading + 채도 -20% sage/sand/muted-red 시맨틱 + claude-light/claude-dark 4-테마 정합).
+
+### 6.6 v2 목업 (Claude × Linear 디자인 시스템)
+
+| 파일 | 역할 | 특징 |
+|------|------|------|
+| `docs/design/mockups/2026-05-02-dashboard-v2-overview.html` | Overview 모드 (📊) | Stripe-style 4 KPI (숫자+delta+sparkline) + 메인 차트 (3 리포 비교) + 보조 카드 2종 |
+| `docs/design/mockups/2026-05-02-dashboard-v2-insight.html` | Insight 모드 (💬) | Claude 톤 인사 + 4 카드 (✨ 잘한 것 / 🔍 신경 쓸 것 / 📊 숫자 / 💬 CTA) + mini chart 인용 |
+
+**공통 디자인 토큰**:
+- 배경: `#F5F1E8` warm cream (Anthropic-inspired)
+- 액센트: `#D97757` orange
+- 의미색: sage (`#9CAF88`) / sand (`#D4A574`) / muted-red (`#C84E3F`) — 채도 -20%
+- 폰트: Crimson Pro (serif heading) + Inter (body) + JetBrains Mono (code)
+- 모드 토글: 양 페이지 topbar 에 `[📊 Overview / 💬 Insight]` 토글 (서로 링크)
+- 테마 토글: claude-light / claude-dark (Chart.js 색 동적 read + themechange 재빌드)
+- 모바일 반응형: 4 KPI → 2×2 → 1, WCAG 2.5.5 (≥44px) 준수
+
+**확인 방법**:
+```bash
+# 로컬 HTTP 서버 (앞서 띄워둔 8765 포트 활용)
+open http://localhost:8765/2026-05-02-dashboard-v2-overview.html
+open http://localhost:8765/2026-05-02-dashboard-v2-insight.html
+
+# 또는 직접 브라우저로
+open docs/design/mockups/2026-05-02-dashboard-v2-overview.html
+```
+
+목업 데이터는 모두 가짜. 컨셉 v2 시각 확인 전용.
 
 ---
 
 ## 7. 사용자 검증 필요 (정책 2 — PR 본문 의무)
 
-본 기획 PR 머지 전 결정:
+본 기획 PR 머지 전 결정 — **2026-05-02 사용자 응답 반영**:
 
-- [ ] Q1 MVP 옵션 (🅐/🅑/🅒/🅓) — 권장 🅑
-- [ ] Q2 URL 정책 (🅐/🅑/🅒) — 권장 🅒
-- [ ] Q3 leaderboard_opt_in 처리 (🅐/🅑) — 권장 🅐
-- [ ] Q4 Phase 2 데이터 검증 의무 동의 여부
-- [ ] 별도 PR — `Analysis.result["issues"]` JSON 에 `category/language/rule_id` 직렬화 (1줄 fix, 데이터 손실 방지)
-- [ ] `top_issues` 함수 보존 결정 (자율 판단 항목 1)
+- [x] Q1 MVP 옵션 — **🅑 MVP-B 채택** (사용자 승인)
+- [x] Q2 URL 정책 — **🅒 `/dashboard` 신설 + `/insights` 301 redirect 채택** (사용자 승인)
+- [x] Q3 leaderboard_opt_in 처리 — **🅐 컬럼 보존 채택** (사용자 승인)
+- [x] Q4 Phase 2 데이터 검증 의무 — **동의** (사용자 승인)
+- [x] 별도 PR (`category/language` 직렬화) — **PR #185 머지 완료** ✅
+- [x] `top_issues` 함수 보존 결정 — **폐기 확정** (사용자 명확 거부)
+- [x] Q5 컨셉 — **🅒 C+E 모드 토글 채택**
+- [x] Q6 default 모드 — **🅒 사용자 신호 기반**
+- [x] Q7 자주 발생 이슈 카드 — **🅐 신규 함수 작성 (`frequent_issues_v2()`)**
+- [x] **v2 목업** (Claude × Linear) 작성 — `docs/design/mockups/2026-05-02-dashboard-v2-{overview,insight}.html`
+- [ ] **사용자 시각 검증** — 로컬 브라우저 새로고침 후 v2 목업 2종 확인 (대기 중)
 
 ---
 
