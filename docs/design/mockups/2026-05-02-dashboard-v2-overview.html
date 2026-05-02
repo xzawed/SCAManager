@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<!--
+  Dashboard v2 — Overview 모드 (한눈에 확인 + 판단)
+  Claude × Linear 하이브리드 디자인 시스템 (그룹 55 토큰 적극 활용).
+  warm 베이지/오렌지 + Crimson Pro serif heading + Inter body + 채도 -20%.
+  목업 데이터 가짜. 컨셉 v2 시각 확인 전용.
+-->
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Dashboard — Overview · SCAManager</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    /* ────────────────────────────────────────────────────────────────
+       Claude × Linear Hybrid Design Tokens (그룹 55 채택)
+       채도 -20% (도서관/회의실 분위기)
+       ──────────────────────────────────────────────────────────────── */
+    :root, [data-theme="claude-light"] {
+      /* 따뜻한 베이지 */
+      --bg-base:        #F5F1E8;  /* warm cream */
+      --bg-surface:     #FAF7F0;  /* card */
+      --bg-elevated:    #FFFFFF;
+      --bg-subtle:      #EDE7D9;
+      --bg-input:       #F2EDE0;
+
+      /* 텍스트 */
+      --text-primary:   #1F1E1B;  /* warm black */
+      --text-muted:     #6B6862;
+      --text-subtle:    #9A968E;
+
+      /* 액센트 — Anthropic-inspired orange */
+      --accent:         #D97757;
+      --accent-hover:   #C25E3D;
+      --accent-soft:    #E8C5A8;
+      --accent-faint:   rgba(217,119,87,.08);
+
+      /* 보더 */
+      --border:         #E5E1D5;
+      --border-strong:  #D4CFC0;
+
+      /* 의미 색 (sage / sand / muted red — 채도 -20%) */
+      --success:        #9CAF88;  /* sage */
+      --warning:        #D4A574;  /* sand */
+      --danger:         #C84E3F;  /* muted red */
+
+      /* 등급 */
+      --grade-a: #9CAF88; --grade-b: #A8A595; --grade-c: #D4A574;
+      --grade-d: #C8895E; --grade-f: #C84E3F;
+
+      /* 그림자 (Linear 영향, 부드러움) */
+      --shadow-sm:      0 1px 2px rgba(31,30,27,.04);
+      --shadow-md:      0 2px 8px rgba(31,30,27,.06), 0 1px 2px rgba(31,30,27,.04);
+      --shadow-lg:      0 8px 24px rgba(31,30,27,.10), 0 2px 6px rgba(31,30,27,.06);
+
+      /* 타이포 */
+      --font-heading:   'Crimson Pro', Charter, Georgia, serif;
+      --font-body:      'Inter', system-ui, -apple-system, sans-serif;
+      --font-mono:      'JetBrains Mono', Menlo, Consolas, monospace;
+    }
+
+    [data-theme="claude-dark"] {
+      --bg-base:        #1F1E1B;
+      --bg-surface:     #2A2825;
+      --bg-elevated:    #33302C;
+      --bg-subtle:      #25231F;
+      --bg-input:       #33302C;
+      --text-primary:   #F5F1E8;
+      --text-muted:     #A8A29A;
+      --text-subtle:    #7A766F;
+      --accent:         #E08968;
+      --accent-hover:   #F09578;
+      --accent-soft:    #5C3D2E;
+      --accent-faint:   rgba(224,137,104,.12);
+      --border:         #3D3A35;
+      --border-strong:  #4A453F;
+      --success:        #A8BA94;
+      --warning:        #DDB585;
+      --danger:         #D45F50;
+      --grade-a: #A8BA94; --grade-b: #B8B5A5; --grade-c: #DDB585;
+      --grade-d: #D89A6E; --grade-f: #D45F50;
+      --shadow-sm:      0 1px 2px rgba(0,0,0,.20);
+      --shadow-md:      0 2px 8px rgba(0,0,0,.30), 0 1px 2px rgba(0,0,0,.20);
+      --shadow-lg:      0 8px 24px rgba(0,0,0,.40), 0 2px 6px rgba(0,0,0,.20);
+    }
+
+    /* ────────────────────────────────────────────────────────────────
+       Reset + Base
+       ──────────────────────────────────────────────────────────────── */
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      background: var(--bg-base);
+      color: var(--text-primary);
+      font-family: var(--font-body);
+      font-size: 15px;
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+      transition: background .25s ease, color .25s ease;
+    }
+
+    /* ────────────────────────────────────────────────────────────────
+       Top Bar (Linear-style — 좌측 로고 + 우측 사용자)
+       ──────────────────────────────────────────────────────────────── */
+    .topbar {
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 32px;
+      height: 56px;
+      display: flex; align-items: center; gap: 16px;
+      position: sticky; top: 0; z-index: 50;
+    }
+    .topbar-logo {
+      font-family: var(--font-heading);
+      font-size: 18px; font-weight: 600;
+      letter-spacing: -.01em;
+      color: var(--text-primary);
+      text-decoration: none;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .topbar-logo-mark {
+      width: 28px; height: 28px;
+      background: var(--accent);
+      border-radius: 8px;
+      display: inline-flex; align-items: center; justify-content: center;
+      color: #fff;
+      font-size: 14px; font-weight: 700;
+    }
+    .topbar-nav {
+      display: flex; gap: 4px; margin-left: 12px;
+    }
+    .topbar-nav a {
+      padding: 6px 12px;
+      font-size: 13px; font-weight: 500;
+      color: var(--text-muted); text-decoration: none;
+      border-radius: 6px;
+      transition: all .15s ease;
+    }
+    .topbar-nav a.active { color: var(--text-primary); background: var(--accent-faint); }
+    .topbar-nav a:hover:not(.active) { color: var(--text-primary); background: var(--bg-subtle); }
+    .topbar-spacer { flex: 1; }
+    .topbar-mode {
+      display: inline-flex; gap: 2px; padding: 3px;
+      background: var(--bg-subtle); border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    .topbar-mode a {
+      padding: 5px 12px;
+      font-size: 12px; font-weight: 500;
+      color: var(--text-muted); text-decoration: none;
+      border-radius: 5px;
+      display: inline-flex; align-items: center; gap: 4px;
+      transition: all .15s ease;
+    }
+    .topbar-mode a.active {
+      background: var(--bg-elevated); color: var(--text-primary);
+      box-shadow: var(--shadow-sm);
+      font-weight: 600;
+    }
+    .topbar-theme {
+      background: transparent; border: 1px solid var(--border);
+      color: var(--text-muted); cursor: pointer;
+      padding: 5px 10px; border-radius: 6px;
+      font-size: 12px;
+      transition: all .15s ease;
+    }
+    .topbar-theme:hover { border-color: var(--accent); color: var(--text-primary); }
+    .topbar-user {
+      width: 32px; height: 32px; border-radius: 50%;
+      background: var(--accent-soft); color: var(--accent);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 600;
+    }
+
+    /* ────────────────────────────────────────────────────────────────
+       Page Layout
+       ──────────────────────────────────────────────────────────────── */
+    .page {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 48px 32px 80px;
+    }
+
+    .page-header {
+      display: flex; align-items: flex-end; justify-content: space-between;
+      margin-bottom: 40px; gap: 16px; flex-wrap: wrap;
+    }
+    .page-title {
+      font-family: var(--font-heading);
+      font-size: 36px; font-weight: 600;
+      letter-spacing: -.02em;
+      margin: 0 0 6px;
+      color: var(--text-primary);
+    }
+    .page-subtitle {
+      font-size: 14px; color: var(--text-muted);
+      margin: 0;
+    }
+
+    .range-toggle {
+      display: inline-flex; gap: 1px; padding: 3px;
+      background: var(--bg-subtle); border-radius: 9px;
+      border: 1px solid var(--border);
+    }
+    .range-toggle button {
+      padding: 7px 14px; border: none; background: transparent;
+      color: var(--text-muted); cursor: pointer;
+      font-size: 13px; font-weight: 500; border-radius: 6px;
+      font-family: var(--font-body);
+      transition: all .15s ease;
+    }
+    .range-toggle button.active {
+      background: var(--bg-elevated); color: var(--text-primary);
+      font-weight: 600; box-shadow: var(--shadow-sm);
+    }
+
+    /* ────────────────────────────────────────────────────────────────
+       KPI Grid (Stripe-style 3-요소: 숫자 + delta + sparkline)
+       ──────────────────────────────────────────────────────────────── */
+    .kpi-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+      margin-bottom: 32px;
+    }
+    .kpi {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px;
+      transition: border-color .2s ease, transform .2s ease;
+      cursor: default;
+      /* 카드 내부 flex 컬럼 — sparkline 을 항상 하단 고정 (4 카드 정합) */
+      display: flex; flex-direction: column;
+      min-height: 168px;
+    }
+    .kpi:hover {
+      border-color: var(--border-strong);
+      transform: translateY(-1px);
+    }
+    .kpi-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-weight: 500;
+      letter-spacing: 0;
+      margin-bottom: 12px;
+      display: flex; align-items: center; gap: 6px;
+      min-height: 18px;  /* 라벨 1줄 고정 */
+    }
+    .kpi-value-row {
+      display: flex; align-items: baseline; gap: 8px;
+      margin-bottom: 8px;
+      min-height: 38px;  /* 숫자 영역 고정 */
+    }
+    .kpi-value {
+      font-family: var(--font-heading);
+      font-size: 38px; font-weight: 600;
+      letter-spacing: -.02em; line-height: 1;
+      color: var(--text-primary);
+    }
+    .kpi-grade {
+      font-size: 14px; font-weight: 600;
+      color: var(--text-muted);
+    }
+    .kpi-grade.A { color: var(--grade-a); }
+    .kpi-grade.B { color: var(--grade-b); }
+    .kpi-grade.C { color: var(--grade-c); }
+
+    .kpi-delta {
+      font-size: 12px; font-weight: 500;
+      display: inline-flex; align-items: center; gap: 4px;
+      margin-bottom: 0;
+      min-height: 16px;  /* delta 영역 고정 */
+    }
+    .kpi-delta.up { color: var(--success); }
+    .kpi-delta.down { color: var(--danger); }
+    .kpi-delta.neu { color: var(--text-muted); }
+    .kpi-delta-arrow {
+      font-size: 10px; opacity: .8;
+    }
+    .kpi-sub {
+      font-size: 11px; color: var(--text-subtle);
+    }
+    .kpi-sparkline {
+      height: 40px;
+      margin-top: auto;  /* 항상 카드 하단 정렬 */
+      padding-top: 12px;
+      position: relative;
+    }
+
+    /* ────────────────────────────────────────────────────────────────
+       Main Chart Card
+       ──────────────────────────────────────────────────────────────── */
+    .chart-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 28px;
+      margin-bottom: 24px;
+    }
+    .chart-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 24px; gap: 12px; flex-wrap: wrap;
+    }
+    .chart-title {
+      font-family: var(--font-heading);
+      font-size: 20px; font-weight: 600;
+      letter-spacing: -.01em;
+      margin: 0;
+      color: var(--text-primary);
+    }
+    .series-toggles { display: flex; gap: 4px; flex-wrap: wrap; }
+    .series-btn {
+      padding: 5px 12px;
+      border: 1px solid var(--border); background: transparent;
+      color: var(--text-muted);
+      border-radius: 6px; font-size: 11px; cursor: pointer;
+      font-family: var(--font-body); font-weight: 500;
+      transition: all .15s ease;
+      display: inline-flex; align-items: center; gap: 5px;
+    }
+    .series-btn::before {
+      content: ''; width: 8px; height: 8px; border-radius: 50%;
+      background: currentColor;
+    }
+    .series-btn.active {
+      color: var(--text-primary); border-color: var(--text-primary);
+      font-weight: 600;
+    }
+    .chart-wrap-inner {
+      position: relative;
+      /* 메인 차트 높이 — 데스크탑 320px 고정 (KPI 카드 4 폭과 비례 유지) */
+      height: 320px;
+    }
+    @media (max-width: 768px) {
+      .chart-wrap-inner { height: 240px; }
+    }
+
+    /* ────────────────────────────────────────────────────────────────
+       Secondary Cards (반응형 grid + 두 카드 동일 높이)
+       ──────────────────────────────────────────────────────────────── */
+    .sec-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+      align-items: stretch;  /* 두 카드 같은 높이 */
+    }
+    .sec-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px;
+      display: flex; flex-direction: column;  /* 내부 row 고정 정렬 */
+    }
+    .sec-card-title {
+      font-family: var(--font-heading);
+      font-size: 16px; font-weight: 600;
+      letter-spacing: -.01em;
+      margin: 0 0 16px;
+      color: var(--text-primary);
+      display: flex; align-items: center; gap: 8px;
+      min-height: 24px;
+    }
+
+    .row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+      min-height: 56px;  /* row 높이 고정 — 두 카드 정합 */
+    }
+    .row:last-child { border-bottom: none; }
+    .row-label {
+      font-family: var(--font-mono);
+      font-size: 13px; color: var(--text-primary);
+    }
+    .row-meta {
+      font-size: 11px; color: var(--text-subtle);
+      margin-top: 2px;
+    }
+    .row-value {
+      font-size: 12px; font-weight: 600;
+      display: inline-flex; align-items: center; gap: 4px;
+    }
+    .row-value.up { color: var(--success); }
+    .row-value.down { color: var(--danger); }
+    .row-value.neu { color: var(--text-muted); }
+    .row-badge {
+      padding: 3px 10px; border-radius: 12px;
+      background: var(--bg-subtle);
+      font-size: 11px; font-weight: 600;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+
+    /* ────────────────────────────────────────────────────────────────
+       Mobile (< 768px)
+       ──────────────────────────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .topbar { padding: 0 16px; gap: 8px; }
+      .topbar-nav { gap: 0; }
+      .topbar-nav a { padding: 6px 8px; font-size: 12px; }
+      .topbar-mode { display: none; }  /* 모바일에선 별도 컨트롤 */
+      .page { padding: 24px 16px 64px; }
+      .page-title { font-size: 28px; }
+      .kpi-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
+      .kpi { padding: 18px; }
+      .kpi-value { font-size: 32px; }
+      .sec-grid { grid-template-columns: 1fr; }
+      .chart-card { padding: 20px; }
+    }
+    @media (max-width: 480px) {
+      .kpi-grid { grid-template-columns: 1fr; }
+      .range-toggle button { padding: 9px 12px; font-size: 13px; min-height: 40px; }
+    }
+
+    /* ────────────────────────────────────────────────────────────────
+       Mockup banner
+       ──────────────────────────────────────────────────────────────── */
+    .mockup-banner {
+      background: var(--accent);
+      color: #fff; padding: 8px 16px; text-align: center;
+      font-size: 12px; font-weight: 500;
+      letter-spacing: .01em;
+    }
+    .mockup-banner button {
+      margin-left: 12px;
+      background: rgba(255,255,255,.18); color: #fff; border: none;
+      padding: 3px 10px; border-radius: 4px; cursor: pointer;
+      font-size: 11px; font-weight: 600;
+    }
+    .mockup-banner a {
+      color: #fff; text-decoration: underline; margin-left: 8px;
+    }
+  </style>
+</head>
+<body data-theme="claude-light">
+  <div class="mockup-banner">
+    🎨 v2 목업 — Claude × Linear 디자인 (Overview 모드, 가짜 데이터)
+    <button onclick="toggleTheme()">🌗 라이트/다크</button>
+    <a href="2026-05-02-dashboard-v2-insight.html">→ Insight 모드 보기</a>
+  </div>
+
+  <!-- Top Bar -->
+  <div class="topbar">
+    <a href="#" class="topbar-logo">
+      <span class="topbar-logo-mark">⚡</span>
+      SCAManager
+    </a>
+    <div class="topbar-nav">
+      <a href="#">Repos</a>
+      <a href="#" class="active">Dashboard</a>
+      <a href="#">Settings</a>
+    </div>
+    <div class="topbar-spacer"></div>
+    <div class="topbar-mode">
+      <a href="#" class="active">📊 Overview</a>
+      <a href="2026-05-02-dashboard-v2-insight.html">💬 Insight</a>
+    </div>
+    <button class="topbar-theme">🌗</button>
+    <div class="topbar-user">U</div>
+  </div>
+
+  <!-- Page -->
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Dashboard</h1>
+        <p class="page-subtitle">우리 코드는 어떻게 흘러가고 있나요</p>
+      </div>
+      <div class="range-toggle">
+        <button>1d</button>
+        <button class="active">7d</button>
+        <button>30d</button>
+        <button>90d</button>
+      </div>
+    </div>
+
+    <!-- KPI 4 카드 -->
+    <div class="kpi-grid">
+      <div class="kpi">
+        <div class="kpi-label">평균 점수</div>
+        <div class="kpi-value-row">
+          <span class="kpi-value">82.3</span>
+          <span class="kpi-grade B">B+</span>
+        </div>
+        <div class="kpi-delta up">
+          <span class="kpi-delta-arrow">▲</span> +3.1 vs 지난 7일
+        </div>
+        <div class="kpi-sparkline"><canvas id="spark1"></canvas></div>
+      </div>
+
+      <div class="kpi">
+        <div class="kpi-label">자동 머지 성공률</div>
+        <div class="kpi-value-row">
+          <span class="kpi-value">87<span style="font-size:24px;color:var(--text-muted);">%</span></span>
+        </div>
+        <div class="kpi-delta up">
+          <span class="kpi-delta-arrow">▲</span> +5% vs 지난 7일
+        </div>
+        <div class="kpi-sparkline"><canvas id="spark2"></canvas></div>
+      </div>
+
+      <div class="kpi">
+        <div class="kpi-label">보안 이슈 (HIGH)</div>
+        <div class="kpi-value-row">
+          <span class="kpi-value">3</span>
+        </div>
+        <div class="kpi-delta down">
+          <span class="kpi-delta-arrow">▼</span> -2 vs 지난 7일
+        </div>
+        <div class="kpi-sparkline"><canvas id="spark3"></canvas></div>
+      </div>
+
+      <div class="kpi">
+        <div class="kpi-label">활성 리포</div>
+        <div class="kpi-value-row">
+          <span class="kpi-value">12</span>
+          <span class="kpi-grade">/ 15</span>
+        </div>
+        <div class="kpi-delta neu">
+          <span class="kpi-delta-arrow">—</span> 변동 없음
+        </div>
+        <div class="kpi-sparkline"><canvas id="spark4"></canvas></div>
+      </div>
+    </div>
+
+    <!-- 메인 차트 -->
+    <div class="chart-card">
+      <div class="chart-header">
+        <h2 class="chart-title">점수 추이</h2>
+        <div class="series-toggles">
+          <button class="series-btn active" style="color:#8E8479;">전체 평균</button>
+          <button class="series-btn" style="color:#9CAF88;">acme/api</button>
+          <button class="series-btn" style="color:#D4A574;">acme/web</button>
+          <button class="series-btn" style="color:#A8A595;">acme/cli</button>
+        </div>
+      </div>
+      <div class="chart-wrap-inner">
+        <canvas id="trendChart"></canvas>
+      </div>
+    </div>
+
+    <!-- 보조 카드 2개 -->
+    <div class="sec-grid">
+      <div class="sec-card">
+        <h3 class="sec-card-title">📈 점수 변화 큰 리포</h3>
+        <div class="row">
+          <div>
+            <div class="row-label">acme/api</div>
+            <div class="row-meta">86 → 94 (8건 분석)</div>
+          </div>
+          <div class="row-value up">+8.2 ↗</div>
+        </div>
+        <div class="row">
+          <div>
+            <div class="row-label">acme/web</div>
+            <div class="row-meta">76 → 72 (12건 분석)</div>
+          </div>
+          <div class="row-value down">-4.1 ↘</div>
+        </div>
+        <div class="row">
+          <div>
+            <div class="row-label">acme/cli</div>
+            <div class="row-meta">83 → 84 (5건 분석)</div>
+          </div>
+          <div class="row-value neu">+1.0 —</div>
+        </div>
+        <div class="row">
+          <div>
+            <div class="row-label">acme/data</div>
+            <div class="row-meta">79 → 82 (3건 분석)</div>
+          </div>
+          <div class="row-value up">+3.1 ↗</div>
+        </div>
+      </div>
+
+      <div class="sec-card">
+        <h3 class="sec-card-title">⚠️ 자주 발생하는 이슈</h3>
+        <div class="row">
+          <div>
+            <div class="row-label">unused-import</div>
+            <div class="row-meta">pylint · python · code_quality</div>
+          </div>
+          <span class="row-badge">24</span>
+        </div>
+        <div class="row">
+          <div>
+            <div class="row-label">B608 SQL string</div>
+            <div class="row-meta">bandit · python · security</div>
+          </div>
+          <span class="row-badge">18</span>
+        </div>
+        <div class="row">
+          <div>
+            <div class="row-label">no-unused-vars</div>
+            <div class="row-meta">eslint · javascript · code_quality</div>
+          </div>
+          <span class="row-badge">15</span>
+        </div>
+        <div class="row">
+          <div>
+            <div class="row-label">missing-docstring</div>
+            <div class="row-meta">pylint · python · code_quality</div>
+          </div>
+          <span class="row-badge">12</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function toggleTheme() {
+      const cur = document.body.getAttribute('data-theme') || 'claude-light';
+      document.body.setAttribute('data-theme', cur === 'claude-light' ? 'claude-dark' : 'claude-light');
+      buildAllCharts();  /* 차트 색 재빌드 */
+    }
+
+    /* CSS 변수에서 색 동적 추출 (UI 감사 Step C 패턴) */
+    function readVar(name, fallback) {
+      const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      return v || fallback;
+    }
+
+    let chartInstances = [];
+    function destroyAll() {
+      chartInstances.forEach(c => c.destroy());
+      chartInstances = [];
+    }
+
+    function makeSparkline(id, data, colorVar) {
+      const canvas = document.getElementById(id);
+      if (!canvas) return;
+      const color = readVar(colorVar, '#9CAF88');
+      const ch = new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels: data.map((_, i) => i),
+          datasets: [{
+            data: data, borderColor: color, backgroundColor: color + '22',
+            tension: 0.4, fill: true, pointRadius: 0, borderWidth: 2,
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          scales: { x: { display: false }, y: { display: false } },
+          plugins: { legend: { display: false }, tooltip: { enabled: false } }
+        }
+      });
+      chartInstances.push(ch);
+    }
+
+    function buildMainChart() {
+      const ctx = document.getElementById('trendChart');
+      if (!ctx) return;
+      const accent = readVar('--accent', '#D97757');
+      const success = readVar('--success', '#9CAF88');
+      const warning = readVar('--warning', '#D4A574');
+      const muted = readVar('--text-muted', '#6B6862');
+      const subtle = readVar('--text-subtle', '#9A968E');
+      const border = readVar('--border', '#E5E1D5');
+      const tipBg = readVar('--bg-elevated', '#FFFFFF');
+      const tipText = readVar('--text-primary', '#1F1E1B');
+      const ch = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: ['4/3','4/6','4/9','4/12','4/15','4/18','4/21','4/24','4/27','4/30'],
+          datasets: [
+            { label: 'acme/api', data: [76,78,79,80,82,81,83,85,86,88],
+              borderColor: success, backgroundColor: success + '22',
+              tension: 0.35, fill: false, pointRadius: 3, pointHoverRadius: 5, borderWidth: 2 },
+            { label: 'acme/web', data: [85,84,82,81,80,78,77,76,74,72],
+              borderColor: warning, backgroundColor: warning + '22',
+              tension: 0.35, fill: false, pointRadius: 3, pointHoverRadius: 5, borderWidth: 2 },
+            { label: 'acme/cli', data: [82,82,83,82,84,83,85,84,85,84],
+              borderColor: muted, backgroundColor: muted + '22',
+              tension: 0.35, fill: false, pointRadius: 3, pointHoverRadius: 5, borderWidth: 2,
+              borderDash: [4,3] },
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          scales: {
+            y: { min: 60, max: 100,
+                 ticks: { color: subtle, stepSize: 10, font: { size: 11 } },
+                 grid: { color: border, drawTicks: false } },
+            x: { ticks: { color: subtle, font: { size: 11 } },
+                 grid: { display: false } }
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: tipBg, titleColor: tipText, bodyColor: tipText,
+              borderColor: border, borderWidth: 1, padding: 10,
+              cornerRadius: 8, displayColors: true,
+              titleFont: { family: "'Inter'", size: 12, weight: '600' },
+              bodyFont: { family: "'Inter'", size: 12 }
+            }
+          }
+        }
+      });
+      chartInstances.push(ch);
+    }
+
+    function buildAllCharts() {
+      destroyAll();
+      makeSparkline('spark1', [78, 79, 78, 80, 81, 82, 82.3], '--success');
+      makeSparkline('spark2', [82, 83, 85, 84, 86, 87, 87], '--success');
+      makeSparkline('spark3', [5, 5, 4, 4, 3, 3, 3], '--danger');
+      makeSparkline('spark4', [12, 12, 11, 12, 12, 12, 12], '--text-muted');
+      buildMainChart();
+    }
+
+    buildAllCharts();
+  </script>
+</body>
+</html>
