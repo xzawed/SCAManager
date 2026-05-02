@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-02 기준 — 그룹 59: 대시보드 v2 목업 + Phase 1 PR 1~4 (MVP-B `/dashboard` 신설 완료))
+## 현재 수치 (2026-05-02 기준 — 그룹 59: 대시보드 v2 목업 + Phase 1 PR 1~5 완료 = MVP-B 출시)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1984개** | pytest 9.0.3 — 그룹 59 PR 1~4 진행 중 변동: PR 1 (-3) + PR 2 (-6) + PR 3 (-12) + PR 4 (+19) = -2, 총 1984 → 1982 (집계 시점에 따라 1984 ± 환경 fail 7건 동일 pre-existing) |
+| 단위 테스트 | **1987개** | pytest 9.0.3 — 그룹 59 Phase 1 5 PR 누적 변동: PR 1 (-3) + PR 2 (-6) + PR 3 (-12) + PR 4 (+19) + PR 5 (+3) = +1, 총 1986 → 1987 (환경 fail 7건 pre-existing 동일) |
 | 통합 테스트 | **72개** | tests/integration/ — Phase 4 PR-T5 +25 (e2e_pipeline_scenarios — webhook→pipeline→gate 종단간) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
@@ -70,7 +70,8 @@
 | **#188** Chore/insights cleanup top issues | Phase 1 PR 1 — `analytics_service.top_issues` 함수 + `/insights/me` 라우트 호출처 + `templates/insights_me.html` 자주 발생 이슈 블록 + `tests/unit/services/test_analytics_service.py::TestTopIssues` 4 + `tests/unit/ui/test_insights_routes.py` mock 3 + 통합 테스트 1 폐기. 회귀 가드 신규 `tests/unit/services/test_analytics_service_deprecations.py` (+2) — `hasattr(svc, "top_issues") == False` + `pytest.raises(ImportError)` 패턴 |
 | **#189** Chore/insights cleanup me page | Phase 1 PR 2 — `analytics_service.author_trend` 함수 + `src/api/insights.py::get_author_trend` REST 엔드포인트 + `src/ui/routes/insights.py::insights_me` 라우트 + `_compute_kpi` 헬퍼 + **`templates/insights_me.html` 파일 통째 삭제** + `templates/insights.html` "내 추세 →" 링크 + 관련 테스트 10건 (TestAuthorTrend 4 + test_insights_api author_trend 3 + test_insights_routes me 3) 폐기. 회귀 가드 +4 (`test_author_trend_function_removed/import_raises`, `test_insights_me_route_removed`, `test_get_author_trend_api_removed`). themechange / chart vendoring 가드 (test_router.py) `insights_me.html` 참조 제거 |
 | **#190** Chore/insights cleanup compare page | Phase 1 PR 3 — `analytics_service.{repo_comparison, leaderboard}` 함수 + `src/api/insights.py` 파일 통째 삭제 (router 비어 — main.py L23/L158 정리) + `src/ui/routes/insights.py` 파일 통째 삭제 (ui/router.py L16/L26 정리) + **`templates/insights.html` 파일 통째 삭제** + 테스트 파일 3종 통째 삭제 (`test_analytics_service_insights.py`, `test_insights_api.py`, `test_insights_routes.py` — 총 22 테스트). 회귀 가드 +7 (`{repo_comparison,leaderboard}_function_removed/import_raises`, `insights_compare_route_removed`, `get_{repo_compare,leaderboard}_api_removed`). chip a11y 가드 폐기 (insights.html 부재) |
-| **#191 (진행 중)** Feat/dashboard mvp-b route | Phase 1 PR 4 — **신규 `/dashboard` MVP-B 라우트** (사용자 결정 Q1=🅑/Q5=C+E/Q6=사용자 신호/Q7=신규 함수 모두 적용). 신규 service 모듈 `src/services/dashboard_service.py` (3 함수: `dashboard_kpi` KPI 4 카드 [평균 점수/분석 건수/보안 HIGH/활성 리포] + delta vs 직전 윈도우, `dashboard_trend` 날짜별 평균, `frequent_issues_v2` Q7 신규 — category/language/tool 보존). 신규 라우트 `src/ui/routes/dashboard.py` + 템플릿 `src/templates/dashboard.html` (Claude × Linear scoped 디자인 — `.dashboard-page` wrapper, base.html 4-테마 공존, Crimson Pro 시스템 serif fallback). Chart.js vendoring 재사용 + themechange 페어. 신규 단위 테스트 +19 (service 14 + 라우트 5). chart vendoring + themechange 가드에 `dashboard.html` 추가 |
+| **#191 / #192** Feat/dashboard mvp-b route | Phase 1 PR 4 — **신규 `/dashboard` MVP-B 라우트** (사용자 결정 Q1=🅑/Q5=C+E/Q6=사용자 신호/Q7=신규 함수 모두 적용). 신규 service 모듈 `src/services/dashboard_service.py` (3 함수: `dashboard_kpi` KPI 4 카드 [평균 점수/분석 건수/보안 HIGH/활성 리포] + delta vs 직전 윈도우, `dashboard_trend` 날짜별 평균, `frequent_issues_v2` Q7 신규 — category/language/tool 보존). 신규 라우트 `src/ui/routes/dashboard.py` + 템플릿 `src/templates/dashboard.html` (Claude × Linear scoped 디자인 — `.dashboard-page` wrapper, base.html 4-테마 공존, Crimson Pro 시스템 serif fallback). Chart.js vendoring 재사용 + themechange 페어. 신규 단위 테스트 +19 (service 14 + 라우트 5). chart vendoring + themechange 가드에 `dashboard.html` 추가 |
+| **#193 (진행 중)** Feat/dashboard redirect nav telemetry | Phase 1 PR 5 — **`/insights` + `/insights/me` → 301 `/dashboard` redirect** (북마크 사용자 보호, 쿼리 파라미터 보존). `base.html` nav 링크 `/insights` → `/dashboard` 변경. `src/ui/routes/dashboard.py` 안에 `redirect_insights` + `redirect_insights_me` 추가 + telemetry 1줄 (자율 판단, `dashboard_view user_id=N days=N` — 비식별 + sanitize_for_log). 회귀 가드 +3 (`tests/unit/ui/test_dashboard_redirects.py`). PR 1/2 의 `_route_removed` 가드 의미 갱신 (404 → "non-200 응답" 으로 완화 — 중복 검증은 redirect 가드에 위임) |
 
 **Phase 1 PR 분할 계획** (사용자 승인 — 5 PR):
 1. **PR 1 (#188 진행 중)**: `top_issues` 폐기
