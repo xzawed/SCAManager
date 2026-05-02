@@ -186,16 +186,18 @@
       background: var(--bg-surface);
       border: 1px solid var(--border);
       border-radius: 16px;
-      padding: 28px 32px;
+      padding: 28px 32px;  /* 4 카드 동일 padding (정합) */
       margin-bottom: 20px;
       transition: border-color .2s ease;
       position: relative;
+      box-sizing: border-box;
     }
     .insight-card:hover { border-color: var(--border-strong); }
 
     .insight-head {
-      display: flex; align-items: baseline; gap: 12px;
+      display: flex; align-items: center; gap: 12px;  /* baseline → center 로 아이콘/태그 수직 정렬 통일 */
       margin-bottom: 18px;
+      min-height: 28px;  /* 헤더 영역 높이 4 카드 통일 */
     }
     .insight-icon {
       font-size: 22px; line-height: 1;
@@ -203,13 +205,14 @@
     .insight-title {
       font-family: var(--font-heading);
       font-size: 22px; font-weight: 600;
-      letter-spacing: -.01em;
+      letter-spacing: -.01em; line-height: 1.2;
       margin: 0; color: var(--text-primary);
     }
     .insight-tag {
       margin-left: auto;
       font-size: 11px; color: var(--text-subtle);
       font-family: var(--font-mono);
+      white-space: nowrap;
     }
 
     .insight-body {
@@ -242,7 +245,7 @@
     .insight-card.data     { border-left: 4px solid var(--accent); }
     .insight-card.cta      { border-left: 4px solid var(--text-primary); background: var(--bg-elevated); }
 
-    /* CTA (follow-up) 카드 — 액션 버튼 강조 */
+    /* CTA (follow-up) 카드 — 액션 버튼 강조 + 사이즈 정합 */
     .cta-actions {
       display: flex; gap: 10px; flex-wrap: wrap;
       margin-top: 18px;
@@ -251,7 +254,7 @@
       padding: 10px 16px;
       border-radius: 8px;
       font-size: 13px; font-weight: 500;
-      font-family: var(--font-body);
+      font-family: var(--font-body); line-height: 1.2;
       text-decoration: none;
       cursor: pointer;
       transition: all .15s ease;
@@ -259,6 +262,8 @@
       background: var(--bg-surface);
       color: var(--text-primary);
       display: inline-flex; align-items: center; gap: 6px;
+      min-height: 40px;  /* 모든 CTA 버튼 동일 높이 */
+      box-sizing: border-box;
     }
     .cta-btn:hover {
       border-color: var(--accent);
@@ -271,22 +276,29 @@
       background: var(--accent-hover); color: #fff;
     }
 
-    /* 데이터 인용 (mini chart) */
+    /* 데이터 인용 (mini chart) — 카드 폭 대비 황금비 (5:2) 유지 */
     .mini-chart {
       margin-top: 18px;
       padding: 16px;
       background: var(--bg-base);
       border-radius: 10px;
       border: 1px solid var(--border);
+      box-sizing: border-box;
     }
     .mini-chart-title {
       font-size: 12px; color: var(--text-muted);
-      margin-bottom: 8px;
+      margin-bottom: 10px;
       font-weight: 500;
+      min-height: 16px;
     }
     .mini-chart-wrap {
       position: relative;
-      height: 100px;
+      /* 카드 폭 (≈ 816px in 880px page) 대비 5:2 비율 → 데스크탑 140px 고정.
+         본 mockup 의 다른 정합 요소들과 맞추기 위해 고정값 유지. */
+      height: 140px;
+    }
+    @media (max-width: 768px) {
+      .mini-chart-wrap { height: 120px; }
     }
 
     /* 강조 인용 박스 (특정 PR / 이슈) */

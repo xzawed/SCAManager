@@ -231,6 +231,9 @@
       padding: 24px;
       transition: border-color .2s ease, transform .2s ease;
       cursor: default;
+      /* 카드 내부 flex 컬럼 — sparkline 을 항상 하단 고정 (4 카드 정합) */
+      display: flex; flex-direction: column;
+      min-height: 168px;
     }
     .kpi:hover {
       border-color: var(--border-strong);
@@ -243,10 +246,12 @@
       letter-spacing: 0;
       margin-bottom: 12px;
       display: flex; align-items: center; gap: 6px;
+      min-height: 18px;  /* 라벨 1줄 고정 */
     }
     .kpi-value-row {
       display: flex; align-items: baseline; gap: 8px;
       margin-bottom: 8px;
+      min-height: 38px;  /* 숫자 영역 고정 */
     }
     .kpi-value {
       font-family: var(--font-heading);
@@ -265,7 +270,8 @@
     .kpi-delta {
       font-size: 12px; font-weight: 500;
       display: inline-flex; align-items: center; gap: 4px;
-      margin-bottom: 12px;
+      margin-bottom: 0;
+      min-height: 16px;  /* delta 영역 고정 */
     }
     .kpi-delta.up { color: var(--success); }
     .kpi-delta.down { color: var(--danger); }
@@ -277,7 +283,9 @@
       font-size: 11px; color: var(--text-subtle);
     }
     .kpi-sparkline {
-      height: 36px; margin-top: 12px;
+      height: 40px;
+      margin-top: auto;  /* 항상 카드 하단 정렬 */
+      padding-top: 12px;
       position: relative;
     }
 
@@ -322,35 +330,43 @@
     }
     .chart-wrap-inner {
       position: relative;
-      height: clamp(220px, 30vw, 340px);
+      /* 메인 차트 높이 — 데스크탑 320px 고정 (KPI 카드 4 폭과 비례 유지) */
+      height: 320px;
+    }
+    @media (max-width: 768px) {
+      .chart-wrap-inner { height: 240px; }
     }
 
     /* ────────────────────────────────────────────────────────────────
-       Secondary Cards (반응형 grid)
+       Secondary Cards (반응형 grid + 두 카드 동일 높이)
        ──────────────────────────────────────────────────────────────── */
     .sec-grid {
       display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+      align-items: stretch;  /* 두 카드 같은 높이 */
     }
     .sec-card {
       background: var(--bg-surface);
       border: 1px solid var(--border);
       border-radius: 14px;
       padding: 24px;
+      display: flex; flex-direction: column;  /* 내부 row 고정 정렬 */
     }
     .sec-card-title {
       font-family: var(--font-heading);
       font-size: 16px; font-weight: 600;
       letter-spacing: -.01em;
-      margin: 0 0 20px;
+      margin: 0 0 16px;
       color: var(--text-primary);
       display: flex; align-items: center; gap: 8px;
+      min-height: 24px;
     }
 
     .row {
       display: flex; align-items: center; justify-content: space-between;
-      padding: 12px 0;
+      padding: 0 0;
       border-bottom: 1px solid var(--border);
       font-size: 13px;
+      min-height: 56px;  /* row 높이 고정 — 두 카드 정합 */
     }
     .row:last-child { border-bottom: none; }
     .row-label {
@@ -548,6 +564,13 @@
             <div class="row-meta">83 → 84 (5건 분석)</div>
           </div>
           <div class="row-value neu">+1.0 —</div>
+        </div>
+        <div class="row">
+          <div>
+            <div class="row-label">acme/data</div>
+            <div class="row-meta">79 → 82 (3건 분석)</div>
+          </div>
+          <div class="row-value up">+3.1 ↗</div>
         </div>
       </div>
 
