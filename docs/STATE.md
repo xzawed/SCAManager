@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-02 기준 — 그룹 60: Phase 1 회고 + 정책 11 신설 + 정책 2/3/7 진화)
+## 현재 수치 (2026-05-02 기준 — 그룹 60: Phase 1+2 12 PR 완료 + 회고 + 정책 11 신설 + 정책 2/3/7/12 진화/신설)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
@@ -84,7 +84,8 @@
 | **#197** Chore/phase2 data readiness verification (PR C) | **Phase 2 진입 전 데이터 검증 도구** — 기획서 §6.1 Q4 (사용자 승인) 후속. 신규 `scripts/dev/verify_phase2_data.sql` (5건 SELECT) + runbook (Railway only 옵션 3종) |
 | **Phase 2 PR 1** Feat/phase2 auto-merge KPI card | **Auto-merge KPI + 실패 사유 카드** (운영 데이터 16.6% / unstable_ci 79% 반영). 신규 service 2종 (`auto_merge_kpi` 단순+retry-aware, `merge_failure_distribution` Top N + 비율). KPI 그리드 4→5 + 보조 카드 1. 신규 테스트 +11. **결과: 1987→1998 passed** |
 | **Phase 2 PR 2** Feat/phase2 feedback CTA banner | **feedback CTA banner** (analysis_feedbacks row=0 운영 데이터 대응). 신규 service `feedback_status` (조건부 CTA, count<10 시만 표시) + `#feedbackCard` anchor 링크. 신규 테스트 +6. **결과: 1998→2004 passed** |
-| **Supabase 호환 fix PR (진행 중)** Chore/supabase-compat-sql-runbook-claudemd | **PR #197 본체 후속** — `\echo` meta-command 제거 + 각 SELECT 첫 컬럼 `section` 라벨 → Supabase Dashboard SQL Editor 호환. runbook 4 옵션 확장 (Supabase Dashboard / Supabase MCP / 온프레미스 psql / Railway). CLAUDE.md L303 운영 DB 환경 정보 갱신 (Railway only → Supabase + 온프레미스 + Railway 이중/삼중 setup) |
+| **#200** Chore/supabase-compat-sql-runbook-claudemd | **PR #197 본체 후속** — `\echo` meta-command 제거 + 각 SELECT 첫 컬럼 `section` 라벨 → Supabase Dashboard SQL Editor 호환. runbook 4 옵션 확장 (Supabase Dashboard / Supabase MCP / 온프레미스 psql / Railway). CLAUDE.md L303 운영 DB 환경 정보 갱신 (Railway only → Supabase + 온프레미스 + Railway 이중/삼중 setup) |
+| **(진행 중)** Docs/phase1-2 retro policy 12 + 7 strengthen | **Phase 1+2 12 PR 회고 + 정책 진화** — 5-에이전트 병렬 회고 (P0 5 / P1 5 / P2 4) + Claude 자유 발언 (자성 3 / 정보 비대칭 3 / 수정 6) + 사용자 응답 *"회고 OK"* (정책 2 진화 첫 검증 ✅). **정책 7 강화 본문 갱신** ("응집 = URL + 화면 + 데이터 3종 동시 묶음" + Phase 2 응집 사례). **정책 3 강화 신설** (MCP 자율 실행 결과 §"MCP 자율 실행 결과" 별도 섹션 의무). **정책 12 신설** (MCP scope 제한 — SELECT-only 자율, INSERT/DELETE/PII 사전 승인). 회고 문서 신규 (`docs/reports/2026-05-02-phase1-2-retrospective.md`) |
 
 **5-way sync 영향**: 0 (docs only)
 
