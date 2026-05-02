@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-02 기준 — **그룹 61 진행 중**: 사용자 회신 후속 — leaderboard 기능 완전 폐기 + Phase 3 SaaS 전환 토대)
+## 현재 수치 (2026-05-02 기준 — **그룹 60+61 완료**: 18 PR 단일 작업일 — Phase 1+2 + 회고 + 정책 진화 7건 + P0 OAuth + leaderboard 완전 폐기 + Phase 3 SaaS 전환 토대)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **2009개** | pytest 9.0.3 — 그룹 61 leaderboard 폐기 + 회귀 가드 신규 +1 (column/dataclass 부재) **= 2009 passed / 2 skipped / 0 failed** |
+| 단위 테스트 | **2010개** | pytest 9.0.3 — 그룹 60+61 누적 +24 (Phase 1 +1 + Phase 2 +17 + P0 OAuth +4 + leaderboard 폐기 +2) **= 2010 collected / 2009 passed / 2 skipped / 0 failed** |
 | 통합 테스트 | **72개** | tests/integration/ — Phase 4 PR-T5 +25 (e2e_pipeline_scenarios — webhook→pipeline→gate 종단간) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
@@ -57,7 +57,7 @@
 
 ## 작업 이력 (그룹별)
 
-### 그룹 61 (2026-05-02 · 사용자 회신 후속 — leaderboard 폐기 + Phase 3 SaaS 토대 — PR 진행 중)
+### 그룹 61 (2026-05-02 · 사용자 회신 후속 — leaderboard 완전 폐기 + Phase 3 SaaS 토대 — PR #206 + #207 + 본 sync PR)
 
 **목표**: 그룹 60 (Phase 1+2 17 PR) 종료 후 사용자 정보 비대칭 3건 회신:
 1. Anthropic API 비용 = 본 사이클 ~$25 (Sonnet 4.6 주, Opus 4.7 보조). caching 전략 우선순위 ↑↑ (90% 절감)
@@ -74,7 +74,8 @@
 
 | PR | 핵심 변경 |
 |----|---------|
-| **(진행 중)** Chore/remove leaderboard feature completely | **🔴 Q3 정정 — 리더보드 기능 완전 폐기** (사용자 명시 요청). Alembic 0025 (`drop_repo_config_leaderboard_opt_in`) + ORM 컬럼 + dataclass + API body + Settings UI 폼 + 백엔드 핸들러 5-way sync 적용. 회귀 가드 신규 (`test_leaderboard_opt_in_column_removed/dataclass_field_removed`) + 기존 가드 정정 (Phase 1 PR 3 의 "Q3 보존" → "Q3 정정 폐기"). CLAUDE.md 주의사항 정정. SaaS 전환 시 별도 멀티 사용자 인사이트 모델 신설 결정 |
+| **#206** Chore/remove leaderboard feature completely | **🔴 Q3 정정 — 리더보드 기능 완전 폐기** (사용자 명시 요청). Alembic 0025 + ORM/dataclass/API/UI/핸들러 5-way sync. 회귀 가드 +2 (column/dataclass 부재). 기존 가드 정정 ("Q3 보존" → "Q3 정정 폐기") |
+| **#207 (진행 중)** Docs/cycle-61 final stale sync | **그룹 60+61 종료 후 stale 일괄 정리** — 5 에이전트 병렬 회고 결과 P0 9 / P1 5 / P2 5 처리. (a) STATE.md 수치 정정 (2009→2010) + 그룹 60/61 PR # 마감 표기 + 그룹 59 "진행 중" 잔존 정리 (b) `docs/design/2026-05-02-insight-dashboard-rework.md` Q3 정정 명시 (c) `docs/design/INDEX.md` 결정 완료 표기 (d) `docs/runbooks/static-assets.md` insights_me → dashboard.html (e) `docs/runbooks/merge-retry.md` leaderboard 정정 (f) `docs/reports/2026-05-01-collaboration-retrospective.md` 헤더 1줄 주석 |
 
 **5-way sync 영향**: 5/5 모두 적용 (정책 7 강화 응집 단위 — "리더보드 완전 폐기")
 
@@ -111,7 +112,8 @@
 | **#201** Docs/phase1-2 retro policy 12 + 7 strengthen | **Phase 1+2 12 PR 회고 + 정책 진화** — 5-에이전트 병렬 회고 + Claude 자유 발언 + 사용자 응답 *"회고 OK"* (정책 2 진화 첫 검증 ✅). 정책 7 강화 본문 갱신 + 정책 3 강화 신설 + 정책 12 신설. 회고 문서 신규 |
 | **#202** Fix/claude hook python path | **Hook fix** — `check_edit_allowed.py` 의 `sys.executable` → `shutil.which("python") fallback`. Claude Code 가 hook 을 `/usr/bin/python3` (시스템 minimal — pytest 미설치) 로 호출 시 false positive 100% 차단 발생. PATH 의 python (= make test 동일) 검증으로 해소. 모든 보호 파일 (templates/migrations/railway 등) 수정 차단 false positive 해소 |
 | **#203** Fix/auto-merge KPI main-sub swap (P0 #3) | Auto-merge KPI 메인/서브 값 swap — 메인 = `final_success_rate_pct` (PR 기준 retry-aware), sub-text = `value` (단순 시도). 운영 16.6% 부정 인상 해소 |
-| **(진행 중)** Feat/p0 OAuth incident response | **🔴 P0 운영 사고 (OAuth redirect_uri mismatch) 사후 대응 통합 PR (옵션 D)** — 사용자 로그인 시 GitHub "Be careful! redirect_uri is not associated" 에러. 진단: SCAManager 측 100% 정상 (코드/환경변수/redirect_uri 정합), GitHub OAuth App callback URL mismatch (외부 변경). 본 PR = 재발 방지 통합: (a) 신규 회고 문서 `docs/reports/2026-05-02-oauth-redirect-uri-incident.md` (b) **정책 13 신설** (운영 endpoint smoke check 의무 — 매 사이클 종료 시 3-endpoint) (c) **정책 11 강화** (인증 flow 4 endpoint 종단간 검증) (d) 신규 runbook `docs/runbooks/operational-smoke-checks.md` (e) **회귀 가드 신규** `tests/unit/auth/test_oauth_redirect_uri_smoke.py` (+4 tests — redirect_uri 정확성 + trailing slash + fallback + 라우트 name 가드). **회고 P0 #4 자기 예언 ("운영 사고 0 = 운") 검증 사례** — 본 PR 후속 가드 0건 P0 정정 |
+| **#204** Feat/p0 OAuth incident response | **🔴 P0 운영 사고 (OAuth redirect_uri mismatch) 사후 대응 통합 PR (옵션 D)** — SCAManager 측 100% 정상 진단, GitHub OAuth App callback URL mismatch (외부 변경). 재발 방지: 회고 문서 + 정책 13 신설 + 정책 11 강화 + runbook + 회귀 가드 +4 |
+| **#205** Docs/cycle-60 final sync | 그룹 60 (17 PR) 종료 후 전체 문서 sync (STATE + CLAUDE.md + README + MEMORY) |
 
 **5-way sync 영향**: 0 (docs only)
 
@@ -123,7 +125,7 @@
 
 ---
 
-### 그룹 59 (2026-05-02 · 대시보드 v2 목업 + Phase 1 PR 1 — PR #186, #187, #188 진행 중)
+### 그룹 59 (2026-05-02 · 대시보드 v2 목업 + Phase 1 PR 1 — PR #186, #187, #188 머지 완료)
 
 **목표**: 그룹 58 의 Insight Dashboard 기획 (PR #181) 후속 — 사용자 응답 (Q5 C+E 채택 / Q6 사용자 신호 기반 / Q7 신규 함수) 반영한 시각 목업 v2 (Claude × Linear 디자인) 완성 + Phase 1 의 첫 폐기 PR 착수.
 
@@ -137,7 +139,7 @@
 | **#189** Chore/insights cleanup me page | Phase 1 PR 2 — `analytics_service.author_trend` 함수 + `src/api/insights.py::get_author_trend` REST 엔드포인트 + `src/ui/routes/insights.py::insights_me` 라우트 + `_compute_kpi` 헬퍼 + **`templates/insights_me.html` 파일 통째 삭제** + `templates/insights.html` "내 추세 →" 링크 + 관련 테스트 10건 (TestAuthorTrend 4 + test_insights_api author_trend 3 + test_insights_routes me 3) 폐기. 회귀 가드 +4 (`test_author_trend_function_removed/import_raises`, `test_insights_me_route_removed`, `test_get_author_trend_api_removed`). themechange / chart vendoring 가드 (test_router.py) `insights_me.html` 참조 제거 |
 | **#190** Chore/insights cleanup compare page | Phase 1 PR 3 — `analytics_service.{repo_comparison, leaderboard}` 함수 + `src/api/insights.py` 파일 통째 삭제 (router 비어 — main.py L23/L158 정리) + `src/ui/routes/insights.py` 파일 통째 삭제 (ui/router.py L16/L26 정리) + **`templates/insights.html` 파일 통째 삭제** + 테스트 파일 3종 통째 삭제 (`test_analytics_service_insights.py`, `test_insights_api.py`, `test_insights_routes.py` — 총 22 테스트). 회귀 가드 +7 (`{repo_comparison,leaderboard}_function_removed/import_raises`, `insights_compare_route_removed`, `get_{repo_compare,leaderboard}_api_removed`). chip a11y 가드 폐기 (insights.html 부재) |
 | **#191 / #192** Feat/dashboard mvp-b route | Phase 1 PR 4 — **신규 `/dashboard` MVP-B 라우트** (사용자 결정 Q1=🅑/Q5=C+E/Q6=사용자 신호/Q7=신규 함수 모두 적용). 신규 service 모듈 `src/services/dashboard_service.py` (3 함수: `dashboard_kpi` KPI 4 카드 [평균 점수/분석 건수/보안 HIGH/활성 리포] + delta vs 직전 윈도우, `dashboard_trend` 날짜별 평균, `frequent_issues_v2` Q7 신규 — category/language/tool 보존). 신규 라우트 `src/ui/routes/dashboard.py` + 템플릿 `src/templates/dashboard.html` (Claude × Linear scoped 디자인 — `.dashboard-page` wrapper, base.html 4-테마 공존, Crimson Pro 시스템 serif fallback). Chart.js vendoring 재사용 + themechange 페어. 신규 단위 테스트 +19 (service 14 + 라우트 5). chart vendoring + themechange 가드에 `dashboard.html` 추가 |
-| **#193 (진행 중)** Feat/dashboard redirect nav telemetry | Phase 1 PR 5 — **`/insights` + `/insights/me` → 301 `/dashboard` redirect** (북마크 사용자 보호, 쿼리 파라미터 보존). `base.html` nav 링크 `/insights` → `/dashboard` 변경. `src/ui/routes/dashboard.py` 안에 `redirect_insights` + `redirect_insights_me` 추가 + telemetry 1줄 (자율 판단, `dashboard_view user_id=N days=N` — 비식별 + sanitize_for_log). 회귀 가드 +3 (`tests/unit/ui/test_dashboard_redirects.py`). PR 1/2 의 `_route_removed` 가드 의미 갱신 (404 → "non-200 응답" 으로 완화 — 중복 검증은 redirect 가드에 위임) |
+| **#193** Feat/dashboard redirect nav telemetry | Phase 1 PR 5 — **`/insights` + `/insights/me` → 301 `/dashboard` redirect** (북마크 사용자 보호, 쿼리 파라미터 보존). `base.html` nav 링크 `/insights` → `/dashboard` 변경. `src/ui/routes/dashboard.py` 안에 `redirect_insights` + `redirect_insights_me` 추가 + telemetry 1줄 (자율 판단, `dashboard_view user_id=N days=N` — 비식별 + sanitize_for_log). 회귀 가드 +3 (`tests/unit/ui/test_dashboard_redirects.py`). PR 1/2 의 `_route_removed` 가드 의미 갱신 (404 → "non-200 응답" 으로 완화 — 중복 검증은 redirect 가드에 위임) |
 
 **Phase 1 PR 분할 계획** (사용자 승인 — 5 PR):
 1. **PR 1 (#188 진행 중)**: `top_issues` 폐기

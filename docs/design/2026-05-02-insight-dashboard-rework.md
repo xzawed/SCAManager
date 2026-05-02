@@ -137,7 +137,7 @@
 |----------|------|------|
 | 6+ KPI 카드 default 노출 | SonarCloud | 신규 사용자 압도 |
 | 위젯 자유 배치 dashboard builder | Datadog | 우리 사용자는 dashboard 빌더가 아님 |
-| 개인별 productivity surveillance | GitPrime | 팀 단위 + opt-in 만 (이미 `leaderboard_opt_in` 으로 처리 중) |
+| 개인별 productivity surveillance | GitPrime | ~~팀 단위 + opt-in (`leaderboard_opt_in`)~~ → 그룹 61 폐기. SaaS 전환 시 별도 멀티 사용자 인사이트 모델 신설 (RLS 기반 권한) |
 | dashboard 약함, PR 인라인 중심 | CodeRabbit | 우리는 dashboard 가 본질 |
 
 ### 4.3 발명할 패턴 (SCAManager 만의 차별)
@@ -213,10 +213,12 @@
 
 #### Q3: `leaderboard_opt_in` 컬럼 처리
 
+> **🔴 결정 정정 (그룹 61 / 2026-05-02)**: 본 사이클 머지 후 사용자 명시 요청 *"팀 리더보드 기능 삭제"* + SaaS 전환 의도로 **🅑 (drop) 으로 정정** (alembic 0025). 아래 옵션 표는 결정 시점 보존, **현재 결정은 🅑**.
+
 | 옵션 | 장점 | 단점 | 위험 |
 |------|------|------|------|
-| 🅐 **컬럼 보존 ★** | downgrade 위험 0, Phase 5 재개 가능 | 미사용 컬럼 잔존 | **저** |
-| 🅑 0025 마이그레이션 drop | 스키마 정리 | downgrade 손실 + 5-way sync 동기화 의무 | 중 |
+| 🅐 ~~컬럼 보존 ★~~ (정정 폐기) | downgrade 위험 0, Phase 5 재개 가능 | 미사용 컬럼 잔존 | **저** |
+| 🅑 **alembic 0025 drop ★ (정정 채택)** | 스키마 정리 + SaaS 전환 시 별도 멀티 사용자 모델 신설 | downgrade 손실 + 5-way sync 동기화 의무 | 중 |
 
 **고려했으나 제시 안 한 안**: "soft-deprecate (코멘트만 추가, 향후 drop)" — 결정 미루는 패턴.
 
@@ -335,7 +337,7 @@ open docs/design/mockups/2026-05-02-dashboard-v2-overview.html
 
 - [x] Q1 MVP 옵션 — **🅑 MVP-B 채택** (사용자 승인)
 - [x] Q2 URL 정책 — **🅒 `/dashboard` 신설 + `/insights` 301 redirect 채택** (사용자 승인)
-- [x] Q3 leaderboard_opt_in 처리 — **🅐 컬럼 보존 채택** (사용자 승인)
+- [x] Q3 leaderboard_opt_in 처리 — ~~🅐 컬럼 보존 채택~~ → **🅑 컬럼 폐기로 정정** (그룹 61 / 2026-05-02 사용자 명시 요청 *"팀 리더보드 기능 삭제"* + SaaS 전환 의도. alembic 0025 + 5-way sync. 회귀 가드 = `tests/unit/services/test_analytics_service_deprecations.py::test_leaderboard_opt_in_column_removed`)
 - [x] Q4 Phase 2 데이터 검증 의무 — **동의** (사용자 승인)
 - [x] 별도 PR (`category/language` 직렬화) — **PR #185 머지 완료** ✅
 - [x] `top_issues` 함수 보존 결정 — **폐기 확정** (사용자 명확 거부)
