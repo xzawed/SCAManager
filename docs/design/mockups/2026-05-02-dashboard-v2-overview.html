@@ -108,10 +108,16 @@
     .topbar {
       background: var(--bg-surface);
       border-bottom: 1px solid var(--border);
-      padding: 0 32px;
       height: 56px;
-      display: flex; align-items: center; gap: 16px;
       position: sticky; top: 0; z-index: 50;
+    }
+    /* topbar 내부 컨텐츠 max-width 1200 + 중앙 정렬 — page 와 좌우 정렬 통일 */
+    .topbar-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 32px;
+      height: 100%;
+      display: flex; align-items: center; gap: 16px;
     }
     .topbar-logo {
       font-family: var(--font-heading);
@@ -296,7 +302,7 @@
       background: var(--bg-surface);
       border: 1px solid var(--border);
       border-radius: 14px;
-      padding: 28px;
+      padding: 24px;  /* KPI/sec-card 와 동일 padding (정합) */
       margin-bottom: 24px;
     }
     .chart-header {
@@ -330,11 +336,11 @@
     }
     .chart-wrap-inner {
       position: relative;
-      /* 메인 차트 높이 — 데스크탑 320px 고정 (KPI 카드 4 폭과 비례 유지) */
-      height: 320px;
+      /* 메인 차트 높이 — 데스크탑 380px (종횡비 약 2.8:1, Stripe/Linear 표준) */
+      height: 380px;
     }
     @media (max-width: 768px) {
-      .chart-wrap-inner { height: 240px; }
+      .chart-wrap-inner { height: 260px; }
     }
 
     /* ────────────────────────────────────────────────────────────────
@@ -396,7 +402,7 @@
        Mobile (< 768px)
        ──────────────────────────────────────────────────────────────── */
     @media (max-width: 768px) {
-      .topbar { padding: 0 16px; gap: 8px; }
+      .topbar-inner { padding: 0 16px; gap: 8px; }
       .topbar-nav { gap: 0; }
       .topbar-nav a { padding: 6px 8px; font-size: 12px; }
       .topbar-mode { display: none; }  /* 모바일에선 별도 컨트롤 */
@@ -442,22 +448,24 @@
 
   <!-- Top Bar -->
   <div class="topbar">
-    <a href="#" class="topbar-logo">
-      <span class="topbar-logo-mark">⚡</span>
-      SCAManager
-    </a>
-    <div class="topbar-nav">
-      <a href="#">Repos</a>
-      <a href="#" class="active">Dashboard</a>
-      <a href="#">Settings</a>
+    <div class="topbar-inner">
+      <a href="#" class="topbar-logo">
+        <span class="topbar-logo-mark">⚡</span>
+        SCAManager
+      </a>
+      <div class="topbar-nav">
+        <a href="#">Repos</a>
+        <a href="#" class="active">Dashboard</a>
+        <a href="#">Settings</a>
+      </div>
+      <div class="topbar-spacer"></div>
+      <div class="topbar-mode">
+        <a href="#" class="active">📊 Overview</a>
+        <a href="2026-05-02-dashboard-v2-insight.html">💬 Insight</a>
+      </div>
+      <button class="topbar-theme">🌗</button>
+      <div class="topbar-user">U</div>
     </div>
-    <div class="topbar-spacer"></div>
-    <div class="topbar-mode">
-      <a href="#" class="active">📊 Overview</a>
-      <a href="2026-05-02-dashboard-v2-insight.html">💬 Insight</a>
-    </div>
-    <button class="topbar-theme">🌗</button>
-    <div class="topbar-user">U</div>
   </div>
 
   <!-- Page -->

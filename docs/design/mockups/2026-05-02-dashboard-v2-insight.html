@@ -89,10 +89,18 @@
     .topbar {
       background: var(--bg-surface);
       border-bottom: 1px solid var(--border);
-      padding: 0 32px;
       height: 56px;
-      display: flex; align-items: center; gap: 16px;
       position: sticky; top: 0; z-index: 50;
+    }
+    /* topbar 내부 max-width — Insight 페이지 (max-width 880) 와 다른 1200 사용:
+       두 모드 (Overview 1200 / Insight 880) topbar 정렬은 동일 max-width 1200 으로 통일.
+       이렇게 하면 Overview ↔ Insight 모드 전환 시 topbar 컨텐츠 위치가 안 바뀜. */
+    .topbar-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 32px;
+      height: 100%;
+      display: flex; align-items: center; gap: 16px;
     }
     .topbar-logo {
       font-family: var(--font-heading);
@@ -335,7 +343,7 @@
        Mobile (< 768px)
        ──────────────────────────────────────────────────────────────── */
     @media (max-width: 768px) {
-      .topbar { padding: 0 16px; gap: 8px; }
+      .topbar-inner { padding: 0 16px; gap: 8px; }
       .topbar-nav { gap: 0; }
       .topbar-nav a { padding: 6px 8px; font-size: 12px; }
       .topbar-mode { display: none; }
@@ -382,22 +390,24 @@
 
   <!-- Top Bar -->
   <div class="topbar">
-    <a href="#" class="topbar-logo">
-      <span class="topbar-logo-mark">⚡</span>
-      SCAManager
-    </a>
-    <div class="topbar-nav">
-      <a href="#">Repos</a>
-      <a href="#" class="active">Dashboard</a>
-      <a href="#">Settings</a>
+    <div class="topbar-inner">
+      <a href="#" class="topbar-logo">
+        <span class="topbar-logo-mark">⚡</span>
+        SCAManager
+      </a>
+      <div class="topbar-nav">
+        <a href="#">Repos</a>
+        <a href="#" class="active">Dashboard</a>
+        <a href="#">Settings</a>
+      </div>
+      <div class="topbar-spacer"></div>
+      <div class="topbar-mode">
+        <a href="2026-05-02-dashboard-v2-overview.html">📊 Overview</a>
+        <a href="#" class="active">💬 Insight</a>
+      </div>
+      <button class="topbar-theme">🌗</button>
+      <div class="topbar-user">U</div>
     </div>
-    <div class="topbar-spacer"></div>
-    <div class="topbar-mode">
-      <a href="2026-05-02-dashboard-v2-overview.html">📊 Overview</a>
-      <a href="#" class="active">💬 Insight</a>
-    </div>
-    <button class="topbar-theme">🌗</button>
-    <div class="topbar-user">U</div>
   </div>
 
   <!-- Page -->
