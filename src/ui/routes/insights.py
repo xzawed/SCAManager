@@ -136,23 +136,6 @@ def insights_me(
     with SessionLocal() as db:
         trend = analytics_service.author_trend(db, current_user.github_login, days)
 
-        # top_issues: 사용자가 기여한 리포들을 대상으로 집계
-        # top_issues: aggregate across repos where the user has contributions
-        user_repos = (
-            db.query(Repository)
-            .filter(Repository.user_id == current_user.id)
-            .all()
-        )
-        # 리포별 top_issues를 모두 합산하여 상위 5개 추출
-        # Merge top_issues across all user repos and return top 5
-        issue_counter: dict[str, int] = {}
-        for repo in user_repos:
-            for issue in analytics_service.top_issues(db, repo.id, days=days, n=20):
-                key = issue["message"]
-                issue_counter[key] = issue_counter.get(key, 0) + issue["count"]
-        top = sorted(issue_counter.items(), key=lambda x: x[1], reverse=True)
-        top_issues_merged = [{"message": msg, "count": cnt} for msg, cnt in top[:5]]
-
     kpi = _compute_kpi(trend)
 
     return templates.TemplateResponse(
@@ -162,7 +145,6 @@ def insights_me(
             "current_user": current_user,
             "trend": trend,
             "days": days,
-            "top_issues": top_issues_merged,
             "kpi": kpi,
         },
     )

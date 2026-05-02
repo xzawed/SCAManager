@@ -300,18 +300,4 @@
 </div>
 {% endif %}
 
-<!-- ── 자주 발생하는 이슈 / Top issues ── -->
-{% if top_issues %}
-<div class="section-divider"></div>
-<div class="issues-section">
-  <div class="issues-title">자주 발생하는 이슈 (최근 {{ days }}일)</div>
-  {% for issue in top_issues %}
-  <div class="issue-item">
-    <span class="issue-count">{{ issue.count }}</span>
-    <span class="issue-msg">{{ issue.message }}</span>
-  </div>
-  {% endfor %}
-</div>
-{% endif %}
-
 {% endblock %}

@@ -121,62 +121,6 @@ def moving_average(
     return round(sum(rows) / len(rows), 1)
 
 
-def top_issues(
-    db: Session,
-    repo_id: int,
-    days: int = 30,
-    n: int = 5,
-    *,
-    now: datetime | None = None,
-) -> list[dict[str, Any]]:
-    """최근 N일간 가장 자주 발생한 이슈 상위 n개를 반환한다.
-    Return the top-n most frequent issues from the last `days` days.
-
-    Parses the Analysis.result JSON on the Python side for SQLite/PG compatibility.
-
-    Args:
-        db: SQLAlchemy 세션 / SQLAlchemy session
-        repo_id: 대상 리포지토리 PK / Target repository PK
-        days: 집계 기간(일) / Aggregation period in days
-        n: 반환할 최대 이슈 수 / Maximum number of issues to return
-        now: 현재 시각 주입용 (테스트 고정 지원) / Injected current time (for test pinning)
-
-    Returns:
-        {"message": str, "count": int} dict 리스트 (빈도 내림차순)
-        List of {"message": str, "count": int} dicts sorted by frequency descending.
-    """
-    # now 기본값 설정 — 테스트에서 고정 시각 주입 가능
-    # Default now — allows injecting a fixed time in tests
-    _now = now or datetime.now(timezone.utc)
-    since = _now - timedelta(days=days)
-
-    analyses = db.scalars(
-        select(Analysis)
-        .where(Analysis.repo_id == repo_id)
-        .where(Analysis.created_at >= since)
-        .where(Analysis.result.isnot(None))
-    ).all()
-
-    # result JSON에서 이슈를 Python-side 파싱 (SQLite/PG 호환)
-    # Parse issues from result JSON on the Python side for SQLite/PG compatibility
-    counter: dict[str, int] = {}
-    for analysis in analyses:
-        result = analysis.result or {}
-        issues = result.get("issues", [])
-        for issue in issues:
-            if isinstance(issue, dict):
-                # "message" 키 우선, 없으면 "code" 키 사용
-                # Prefer "message" key, fall back to "code" key
-                key = issue.get("message", "") or issue.get("code", "")
-                if key:
-                    counter[key] = counter.get(key, 0) + 1
-
-    # 빈도 내림차순 정렬 후 상위 n개 반환
-    # Sort by frequency descending and return top-n items
-    sorted_issues = sorted(counter.items(), key=lambda x: x[1], reverse=True)
-    return [{"message": msg, "count": cnt} for msg, cnt in sorted_issues[:n]]
-
-
 def author_trend(
     db: Session,
     login: str,
