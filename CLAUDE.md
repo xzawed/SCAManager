@@ -497,6 +497,51 @@ git push -u origin <branch>
 
 (2026-05-01 본 사이클의 자유 발언 효과 검증 — 사용자 발화: *"Claude 의 회고 내용에 공감합니다. 특히 권장 내용을 별도 검토 없이 수행 처리한 것은 인정합니다."* → 정책 1, 7, 8, 9 모두 본 자유 발언에서 도출.)
 
+#### 정책 10: **PR 직접 생성 의무** (URL 안내 X, 자동 생성 ○)
+
+사용자 발화 (2026-05-02): *"앞으로의 작업은 PR 을 직접 생성을 부탁드립니다."*
+
+**default 작업 흐름** (정책 7 의 5-step 확장):
+
+1. `git checkout main && git pull origin main`
+2. `git checkout -b <type>/<scope>-<short-desc>`
+3. 작업 + commit
+4. `git push -u origin <branch>`
+5. **PR 직접 생성** (gh CLI 또는 GitHub API) ← 본 정책 신설
+6. PR URL 사용자에게 보고
+
+**구현 옵션** (환경별):
+
+| 옵션 | 사용 시점 | 명령 |
+|------|----------|------|
+| 🅐 **gh CLI** | gh 설치 환경 (선호) | `gh pr create --title "..." --body "..."` |
+| 🅑 **GitHub API + curl** | gh 부재 + GITHUB_TOKEN 존재 | `curl -X POST -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/{owner}/{repo}/pulls -d '{...}'` |
+| 🅒 **사용자 수동** | 위 둘 다 불가 시만 | URL 안내 — **최후 폴백** |
+
+**금지**:
+- ❌ 옵션 🅒 를 default 로 사용 — 사용자 부담 증가
+- ❌ "PR 생성은 사용자가 직접" 위임 (정책 7 PR 단위와 모순)
+
+**SCAManager 기본 PR body 템플릿** (자동 채움):
+```markdown
+## Summary
+{commit message 첫 줄 요약}
+
+## 🔍 사용자 검증 필요 (정책 2)
+- [ ] {시각 검증 항목 1}
+- [ ] {운영 검증 항목 2}
+
+## 자율 판단 보고 (정책 3)
+{Claude 가 결정한 항목 + 사유 — 없으면 "없음" 명시}
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+```
+
+**위반 시 회복**:
+gh / API 호출 실패 시 → 에러 사용자에게 즉시 공유 → URL 폴백 → 다음 사이클 시작 전 환경 fix.
+
+(2026-05-02 본 사이클 이전까지는 사용자 수동 PR 생성. 본 정책 적용 후 모든 PR 자동 생성.)
+
 ---
 
 ### 작업 시작 전 필수 체크리스트 (매 작업마다)
