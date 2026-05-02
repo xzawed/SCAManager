@@ -3,7 +3,7 @@ Team/multi-repo insights UI routes — multi-repo comparison and personal trend 
 """
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
@@ -12,41 +12,10 @@ from src.auth.session import CurrentUser, require_login
 from src.database import SessionLocal
 from src.models.repo_config import RepoConfig
 from src.models.repository import Repository
-from src.scorer.calculator import calculate_grade
 from src.services import analytics_service
 from src.ui._helpers import templates
 
 router = APIRouter()
-
-
-def _compute_kpi(trend: list[dict[str, Any]]) -> dict[str, Any]:
-    """추세 데이터에서 KPI (평균·등급·델타) 를 계산한다.
-    Compute KPI (avg, grade, delta) from trend data.
-
-    delta는 앞 절반과 뒷 절반의 평균 차이 — 양수면 개선, 음수면 하락.
-    delta is the difference between the second and first halves of the period.
-    """
-    if not trend:
-        return {"avg": None, "grade": None, "delta": None, "count": 0}
-
-    scores = [item["avg_score"] for item in trend]
-    avg = round(sum(scores) / len(scores), 1)
-    grade = calculate_grade(int(avg))
-
-    # delta: 뒷 절반 평균 - 앞 절반 평균 (최소 2개 데이터 필요)
-    # delta: second-half avg minus first-half avg (need at least 2 data points)
-    delta: float | None = None
-    if len(scores) >= 2:
-        mid = len(scores) // 2
-        first_half = scores[:mid]
-        second_half = scores[mid:]
-        delta = round(
-            sum(second_half) / len(second_half) - sum(first_half) / len(first_half),
-            1,
-        )
-
-    total_count = sum(item["count"] for item in trend)
-    return {"avg": avg, "grade": grade, "delta": delta, "count": total_count}
 
 
 @router.get("/insights", response_class=HTMLResponse)
@@ -124,27 +93,7 @@ def insights_comparison(
     )
 
 
-@router.get("/insights/me", response_class=HTMLResponse)
-def insights_me(
-    request: Request,
-    current_user: Annotated[CurrentUser, Depends(require_login)],
-    days: int = 30,
-):
-    """개인 개발자 점수 추세 페이지.
-    Personal developer score trend page.
-    """
-    with SessionLocal() as db:
-        trend = analytics_service.author_trend(db, current_user.github_login, days)
-
-    kpi = _compute_kpi(trend)
-
-    return templates.TemplateResponse(
-        request,
-        "insights_me.html",
-        {
-            "current_user": current_user,
-            "trend": trend,
-            "days": days,
-            "kpi": kpi,
-        },
-    )
+# ─── GET /insights/me — 폐기 (Phase 1 PR 2, 2026-05-02) ────────────────────
+# Personal developer trend page removed; superseded by /dashboard (PR 4).
+# Helper `_compute_kpi` 도 본 PR 에서 함께 폐기 (호출처 0).
+# Regression guard: tests/unit/services/test_analytics_service_deprecations.py
