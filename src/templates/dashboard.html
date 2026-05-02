@@ -75,9 +75,9 @@
     box-shadow: 0 1px 2px rgba(0,0,0,.06);
   }
 
-  /* KPI 4 카드 — 동일 높이 정합 (목업 v2 정합성 PR #187 패턴) */
+  /* KPI 5 카드 — Phase 2 PR 1 (Auto-merge 추가). 동일 높이 정합 (PR #187 패턴) */
   .dash-kpi-grid {
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px;
     margin-bottom: 24px;
   }
   .dash-kpi {
@@ -175,7 +175,10 @@
     color: var(--text-muted); font-size: 14px;
   }
 
-  /* 모바일 (< 768px) */
+  /* 모바일 — KPI 5 → 데스크탑 5 / tablet 3 / 모바일 2 / xs 1 */
+  @media (max-width: 1024px) {
+    .dash-kpi-grid { grid-template-columns: repeat(3, 1fr); }
+  }
   @media (max-width: 768px) {
     .dashboard-page { padding: 24px 12px 64px; }
     .dash-title { font-size: 26px; }
@@ -267,6 +270,37 @@
         <div class="dash-kpi-delta neu">— 변동 없음</div>
       {% endif %}
     </div>
+
+    {# Phase 2 PR 1 — Auto-merge KPI (단순 + retry-aware 양쪽 표시) #}
+    <div class="dash-kpi" title="단순 시도 기준 success rate. retry-aware 결과는 sub-text 참고.">
+      <div class="dash-kpi-label">자동 머지 성공률</div>
+      <div class="dash-kpi-row">
+        <span class="dash-kpi-value">
+          {%- if auto_merge.value is not none -%}
+            {{ auto_merge.value }}<span style="font-size:.5em;color:var(--text-muted);">%</span>
+          {%- else -%}
+            —
+          {%- endif -%}
+        </span>
+      </div>
+      {% if auto_merge.delta is not none %}
+        {% if auto_merge.delta > 0 %}
+          <div class="dash-kpi-delta up">▲ +{{ auto_merge.delta }} vs 직전 {{ days }}일</div>
+        {% elif auto_merge.delta < 0 %}
+          <div class="dash-kpi-delta down">▼ {{ auto_merge.delta }} vs 직전 {{ days }}일</div>
+        {% else %}
+          <div class="dash-kpi-delta neu">— 변동 없음</div>
+        {% endif %}
+      {% else %}
+        <div class="dash-kpi-delta neu">
+          {%- if auto_merge.final_success_rate_pct is not none -%}
+            PR 기준 최종 {{ auto_merge.final_success_rate_pct }}% ({{ auto_merge.final_success_prs }}/{{ auto_merge.distinct_prs }})
+          {%- else -%}
+            — 비교 데이터 없음
+          {%- endif -%}
+        </div>
+      {% endif %}
+    </div>
   </div>
 
   {# 점수 추세 라인 차트 #}
@@ -302,6 +336,24 @@
       <div class="dash-empty-state">최근 {{ days }}일간 발견된 이슈가 없습니다.</div>
     {% endif %}
   </div>
+
+  {# Phase 2 PR 1 — 자동 머지 실패 사유 분포 (운영 신호: unstable_ci 우세) #}
+  {% if merge_failures %}
+  <div class="dash-issues-card" style="margin-top: 16px;">
+    <h2 class="dash-section-title">자동 머지 실패 사유 (최근 {{ days }}일)</h2>
+    {% for fail in merge_failures %}
+    <div class="dash-issue-row">
+      <div>
+        <div class="dash-issue-msg">{{ fail.reason }}</div>
+        <div class="dash-issue-meta">
+          비율 {{ fail.share_pct }}% · {{ fail.count }}건
+        </div>
+      </div>
+      <span class="dash-issue-badge">{{ fail.count }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
 </div>
 {% endblock %}
 
