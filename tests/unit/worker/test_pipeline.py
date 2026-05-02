@@ -394,17 +394,24 @@ async def test_pipeline_falls_back_to_settings_token_when_no_owner():
         "commits": [{"message": "fix: legacy"}],
     }
 
+    # settings.github_token 을 직접 mock — conftest 의 GITHUB_TOKEN 환경변수가
+    # 빈 문자열로 이미 export 된 환경에서는 setdefault 가 작동 안 함.
+    # PR B-2 (2026-05-02): 환경 의존성 제거.
     from src.worker.pipeline import run_analysis_pipeline
     with (
+        patch("src.worker.pipeline.settings") as mock_settings,
         patch("src.worker.pipeline.SessionLocal", return_value=mock_db),
         patch("src.worker.pipeline.repository_repo.find_by_full_name", return_value=repo),
         patch("src.worker.pipeline.analysis_repo.find_by_sha", return_value=None),
         patch("src.worker.pipeline.get_push_files", return_value=[]) as mock_get_files,
     ):
+        mock_settings.github_token = "ghp_test"
+        mock_settings.telegram_chat_id = ""  # _ensure_repo path 에서 사용
+        mock_settings.anthropic_api_key = ""
         await run_analysis_pipeline("push", event_data)
 
     mock_get_files.assert_called_once()
-    assert mock_get_files.call_args[0][0] == "ghp_test"  # conftest의 GITHUB_TOKEN
+    assert mock_get_files.call_args[0][0] == "ghp_test"  # mock 으로 주입한 token
 
 
 async def test_pr_body_included_in_commit_message(mock_deps):

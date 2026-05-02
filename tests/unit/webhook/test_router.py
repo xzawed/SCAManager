@@ -157,33 +157,36 @@ def test_webhook_uses_repo_specific_secret(client):
 
 
 def test_webhook_falls_back_to_global_secret_for_legacy_repo(client):
-    """webhook_secret이 없는 레거시 리포는 전역 시크릿으로 검증한다."""
+    """webhook_secret이 없는 레거시 리포는 전역 시크릿으로 검증한다.
+
+    PR B-2 (2026-05-02): 환경 의존성 제거 — repository_repo + settings 직접 mock.
+    근본 원인: 일부 환경 (devcontainer 등) 에 `GITHUB_WEBHOOK_SECRET=dev_secret` 이
+    export 되어 있어 conftest 의 `setdefault('test_secret')` 가 작동 안 함.
+    fix: `_helpers.settings` 직접 mock 으로 환경 무관 secret 주입.
+    """
     import hmac, hashlib
     from unittest.mock import patch, MagicMock
 
     payload = b'{"repository": {"full_name": "owner/legacy-repo"}, "ref": "refs/heads/main", "after": "abc123", "commits": []}'
-    global_secret = "test_secret"  # conftest.py의 GITHUB_WEBHOOK_SECRET
+    global_secret = "test_secret"
     sig = "sha256=" + hmac.new(global_secret.encode(), payload, hashlib.sha256).hexdigest()
 
     mock_repo = MagicMock()
-    mock_repo.webhook_secret = None   # 레거시 리포
-    mock_db = MagicMock()
-    mock_db.query.return_value.filter.return_value.first.return_value = mock_repo
-    mock_db.query.return_value.filter_by.return_value.first.return_value = mock_repo
-    mock_db.__enter__ = MagicMock(return_value=mock_db)
-    mock_db.__exit__ = MagicMock(return_value=None)
+    mock_repo.webhook_secret = None   # 레거시 리포 — fallback 경로 진입
 
-    with patch("src.webhook._helpers.SessionLocal", return_value=mock_db):
-        with patch("src.webhook.providers.github.run_analysis_pipeline"):
-            r = client.post(
-                "/webhooks/github",
-                content=payload,
-                headers={
-                    "X-Hub-Signature-256": sig,
-                    "X-GitHub-Event": "push",
-                    "Content-Type": "application/json",
-                },
-            )
+    with patch("src.webhook._helpers.repository_repo.find_by_full_name", return_value=mock_repo), \
+         patch("src.webhook._helpers.settings") as mock_helpers_settings, \
+         patch("src.webhook.providers.github.run_analysis_pipeline"):
+        mock_helpers_settings.github_webhook_secret = global_secret
+        r = client.post(
+            "/webhooks/github",
+            content=payload,
+            headers={
+                "X-Hub-Signature-256": sig,
+                "X-GitHub-Event": "push",
+                "Content-Type": "application/json",
+            },
+        )
     assert r.status_code == 202
 
 
