@@ -77,7 +77,8 @@
 | **#206** Chore/remove leaderboard feature completely | **🔴 Q3 정정 — 리더보드 기능 완전 폐기** (사용자 명시 요청). Alembic 0025 + ORM/dataclass/API/UI/핸들러 5-way sync. 회귀 가드 +2 (column/dataclass 부재). 기존 가드 정정 ("Q3 보존" → "Q3 정정 폐기") |
 | **#207** Docs/cycle-61 final stale sync | **그룹 60+61 종료 후 stale 일괄 정리** — 5 에이전트 병렬 검증 결과 P0 9 / P1 5 / P2 5 처리. STATE 수치 정정 + design rework Q3 정정 + INDEX 결정 완료 + static-assets `insights_me` → `dashboard.html` + merge-retry `leaderboard` 정정 + collaboration retro 헤더 1줄 + CLAUDE.md L90 KPI 4↔5 명확화 |
 | **#208** Feat/policy-13 e2e + integration guards | **정책 13 강화 종단간 자동화 가드 신설** — `test_oauth_flow_smoke.py` +10 + `e2e/test_dashboard.py` +14 |
-| **(진행 중)** Chore/integration pre-existing 24 fail triage | **🎯 24 fail 일괄 해소** (conftest autouse 1건). 근본 원인 = 그룹 60 PR B-1/B-2 와 동일 패턴 (devcontainer 등 환경의 `GITHUB_WEBHOOK_SECRET=dev_secret` export → conftest setdefault 무효 → settings 의 secret 으로 HMAC 검증 401). fix = `tests/integration/conftest.py` 에 autouse fixture 추가 — `patch("src.webhook.providers.github.get_webhook_secret", return_value="test_secret")` 일괄 적용. **24 fail → 0 fail** (test_e2e_pipeline_scenarios 20 + test_webhook_to_gate 4 모두 해소). 신규 webhook integration test 도 자동 적용 — 환경 의존성 영구 격리 |
+| **#209** Chore/integration pre-existing 24 fail triage | **🎯 24 fail 일괄 해소** (conftest autouse 1건) — 그룹 60 PR B-1/B-2 와 동일 패턴 (`get_webhook_secret` mock 누락). **24 → 0 fail**. 환경 의존성 영구 격리 |
+| **(진행 중)** Docs/phase3-spec-update-saas-caching | **Phase 3 기획서 갱신** (사용자 회신 반영) — §5.3 5-Phase 로드맵 진화: Phase 1+2 완료 표기 + **Phase 3 = SaaS 전환 토대 + Insight 모드 + caching** 우선순위 대전환 (이전 단순 "모드 토글" → 지금 6 PR 분할 안: caching 인프라 / Insight service / 모드 토글 / default 모드 / RLS 권한 / 회귀 가드). §8 신설: 사용자 회신 표 (Anthropic 비용 ~$25 / single-tenant → SaaS / leaderboard 폐기) + Phase 3 진입 의무 4건 (caching 패턴 / Insight 카드 4종 / 모드 토글 default / RLS 모델 결정) |
 
 **5-way sync 영향**: 5/5 모두 적용 (정책 7 강화 응집 단위 — "리더보드 완전 폐기")
 
