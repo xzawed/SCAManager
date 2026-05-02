@@ -1805,9 +1805,10 @@ def test_claude_dark_settings_tokens_defined():
 def test_chart_vendoring_no_jsdelivr_chartjs():
     """PR #166 회귀 가드 — Chart.js CDN 참조가 어떤 템플릿에도 잔존하지 않아야.
 
-    Note: insights_me.html 은 Phase 1 PR 2 (2026-05-02) 에서 폐기. 본 가드 대상에서 제외.
+    Note: insights_me.html 은 Phase 1 PR 2 (2026-05-02) 에서 폐기.
+    Phase 1 PR 4 의 dashboard.html 도 vendoring 의무 (UI 감사 Step C 통일).
     """
-    for tpl in ("repo_detail.html", "analysis_detail.html"):
+    for tpl in ("repo_detail.html", "analysis_detail.html", "dashboard.html"):
         content = _read_template(tpl)
         assert "cdn.jsdelivr.net/npm/chart.js" not in content, (
             f"{tpl} 에 jsdelivr Chart.js CDN 잔존 — vendoring 회귀"
@@ -1957,8 +1958,8 @@ def test_themechange_event_listeners():
     assert "dispatchEvent(new CustomEvent('themechange'" in base, (
         "base.html 의 themechange 이벤트 dispatch 누락 — 차트 재빌드 트리거 깨짐"
     )
-    # repo_detail 차트 페이지 listener 등록 필수
-    for tpl in ("repo_detail.html",):
+    # repo_detail / dashboard 차트 페이지 listener 등록 필수
+    for tpl in ("repo_detail.html", "dashboard.html"):
         content = _read_template(tpl)
         assert "addEventListener('themechange'" in content, (
             f"{tpl} 의 themechange 리스너 누락 — 테마 전환 후 stale 차트 색"

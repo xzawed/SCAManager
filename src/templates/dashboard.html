@@ -1,0 +1,370 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · SCAManager{% endblock %}
+
+{# Phase 1 PR 4 — MVP-B 신규 페이지. /insights (PR 1~3 폐기) 후속. #}
+{# Claude × Linear 디자인 시스템 부분 적용 (scoped — 다른 페이지 영향 0). #}
+
+{% block content %}
+<style>
+  /* ────────────────────────────────────────────────────────────────
+     Dashboard 전용 scoped 토큰 — 다른 페이지 영향 X.
+     v2 목업 (docs/design/mockups/2026-05-02-dashboard-v2-overview.html) 디자인 시스템 일부.
+     운영 base.html 의 4-테마 (dark/light/glass/claude-dark) 와 공존.
+     Crimson Pro 는 시스템 serif fallback (Phase 4 에서 base 통합 시 Google Fonts 추가 결정).
+     ──────────────────────────────────────────────────────────────── */
+  .dashboard-page {
+    --d-accent: #D97757;
+    --d-accent-soft: rgba(217, 119, 87, 0.08);
+    --d-success: #9CAF88;
+    --d-warning: #D4A574;
+    --d-danger: #C84E3F;
+    --d-grade-a: #9CAF88;
+    --d-grade-b: #A8A595;
+    --d-grade-c: #D4A574;
+    --d-grade-d: #C8895E;
+    --d-grade-f: #C84E3F;
+    --d-font-heading: Charter, Georgia, 'Crimson Pro', serif;
+  }
+  body[data-theme="claude-dark"] .dashboard-page {
+    --d-accent: #E08968;
+    --d-success: #A8BA94;
+    --d-warning: #DDB585;
+    --d-danger: #D45F50;
+  }
+
+  .dashboard-page {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 32px 16px 64px;
+  }
+
+  .dash-header {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    margin-bottom: 32px; gap: 16px; flex-wrap: wrap;
+  }
+  .dash-title {
+    font-family: var(--d-font-heading);
+    font-size: 32px; font-weight: 600;
+    letter-spacing: -.02em;
+    margin: 0 0 4px;
+    color: var(--text-primary);
+  }
+  .dash-subtitle {
+    font-size: 14px; color: var(--text-muted);
+    margin: 0;
+  }
+
+  .dash-range-toggle {
+    display: inline-flex; gap: 1px; padding: 3px;
+    background: var(--bg-elevated, var(--card-bg, rgba(255,255,255,.04)));
+    border-radius: 9px;
+    border: 1px solid var(--border, rgba(255,255,255,.08));
+  }
+  .dash-range-toggle a {
+    padding: 7px 14px; border-radius: 6px;
+    font-size: 13px; font-weight: 500;
+    color: var(--text-muted); text-decoration: none;
+    min-height: 40px; box-sizing: border-box;
+    display: inline-flex; align-items: center;
+    transition: all .15s ease;
+  }
+  .dash-range-toggle a.active {
+    background: var(--bg-elevated, var(--card-bg, #fff));
+    color: var(--text-primary);
+    font-weight: 600;
+    box-shadow: 0 1px 2px rgba(0,0,0,.06);
+  }
+
+  /* KPI 4 카드 — 동일 높이 정합 (목업 v2 정합성 PR #187 패턴) */
+  .dash-kpi-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+    margin-bottom: 24px;
+  }
+  .dash-kpi {
+    background: var(--card-bg, var(--bg-surface, rgba(255,255,255,.04)));
+    border: 1px solid var(--border, rgba(255,255,255,.08));
+    border-radius: 14px;
+    padding: 20px;
+    display: flex; flex-direction: column;
+    min-height: 152px;
+    transition: border-color .2s ease;
+  }
+  .dash-kpi:hover { border-color: var(--d-accent); }
+  .dash-kpi-label {
+    font-size: 12px; color: var(--text-muted); font-weight: 500;
+    margin-bottom: 12px; min-height: 18px;
+  }
+  .dash-kpi-row {
+    display: flex; align-items: baseline; gap: 8px;
+    margin-bottom: 8px; min-height: 38px;
+  }
+  .dash-kpi-value {
+    font-family: var(--d-font-heading);
+    font-size: 36px; font-weight: 600;
+    letter-spacing: -.02em; line-height: 1;
+    color: var(--text-primary);
+  }
+  .dash-kpi-grade { font-size: 14px; font-weight: 600; color: var(--text-muted); }
+  .dash-kpi-grade.A { color: var(--d-grade-a); }
+  .dash-kpi-grade.B { color: var(--d-grade-b); }
+  .dash-kpi-grade.C { color: var(--d-grade-c); }
+  .dash-kpi-grade.D { color: var(--d-grade-d); }
+  .dash-kpi-grade.F { color: var(--d-grade-f); }
+  .dash-kpi-delta {
+    font-size: 12px; font-weight: 500;
+    display: inline-flex; align-items: center; gap: 4px;
+    margin-top: auto;  /* 항상 카드 하단 고정 */
+    min-height: 16px;
+  }
+  .dash-kpi-delta.up { color: var(--d-success); }
+  .dash-kpi-delta.down { color: var(--d-danger); }
+  .dash-kpi-delta.neu { color: var(--text-muted); }
+
+  /* Chart card */
+  .dash-chart-card {
+    background: var(--card-bg, var(--bg-surface, rgba(255,255,255,.04)));
+    border: 1px solid var(--border, rgba(255,255,255,.08));
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 24px;
+  }
+  .dash-section-title {
+    font-family: var(--d-font-heading);
+    font-size: 18px; font-weight: 600;
+    letter-spacing: -.01em;
+    margin: 0 0 16px;
+    color: var(--text-primary);
+  }
+  .dash-chart-wrap {
+    position: relative;
+    height: 320px;
+  }
+
+  /* 자주 발생 이슈 카드 */
+  .dash-issues-card {
+    background: var(--card-bg, var(--bg-surface, rgba(255,255,255,.04)));
+    border: 1px solid var(--border, rgba(255,255,255,.08));
+    border-radius: 14px;
+    padding: 20px;
+  }
+  .dash-issue-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0;
+    border-bottom: 1px solid var(--border, rgba(255,255,255,.08));
+    min-height: 56px;
+  }
+  .dash-issue-row:last-child { border-bottom: none; }
+  .dash-issue-msg {
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 13px; color: var(--text-primary);
+  }
+  .dash-issue-meta {
+    font-size: 11px; color: var(--text-subtle, var(--text-muted));
+    margin-top: 2px;
+  }
+  .dash-issue-badge {
+    padding: 3px 10px; border-radius: 12px;
+    background: var(--bg-input, rgba(255,255,255,.04));
+    font-size: 11px; font-weight: 600;
+    color: var(--text-muted);
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  }
+
+  .dash-empty-state {
+    padding: 32px; text-align: center;
+    color: var(--text-muted); font-size: 14px;
+  }
+
+  /* 모바일 (< 768px) */
+  @media (max-width: 768px) {
+    .dashboard-page { padding: 24px 12px 64px; }
+    .dash-title { font-size: 26px; }
+    .dash-kpi-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
+    .dash-kpi { padding: 16px; min-height: 132px; }
+    .dash-kpi-value { font-size: 28px; }
+    .dash-chart-wrap { height: 240px; }
+  }
+  @media (max-width: 480px) {
+    .dash-kpi-grid { grid-template-columns: 1fr; }
+    .dash-range-toggle a { min-height: 44px; }
+  }
+</style>
+
+<div class="dashboard-page">
+  <div class="dash-header">
+    <div>
+      <h1 class="dash-title">Dashboard</h1>
+      <p class="dash-subtitle">우리 코드는 어떻게 흘러가고 있나요</p>
+    </div>
+    <nav class="dash-range-toggle" aria-label="기간 선택 / Period selector">
+      <a href="/dashboard?days=1" {% if days == 1 %}class="active"{% endif %}>1d</a>
+      <a href="/dashboard?days=7" {% if days == 7 %}class="active"{% endif %}>7d</a>
+      <a href="/dashboard?days=30" {% if days == 30 %}class="active"{% endif %}>30d</a>
+      <a href="/dashboard?days=90" {% if days == 90 %}class="active"{% endif %}>90d</a>
+    </nav>
+  </div>
+
+  {# KPI 4 카드 #}
+  <div class="dash-kpi-grid">
+    <div class="dash-kpi">
+      <div class="dash-kpi-label">평균 점수</div>
+      <div class="dash-kpi-row">
+        <span class="dash-kpi-value">{{ kpi.avg_score.value if kpi.avg_score.value is not none else '—' }}</span>
+        {% if kpi.avg_score.grade %}<span class="dash-kpi-grade {{ kpi.avg_score.grade }}">{{ kpi.avg_score.grade }}</span>{% endif %}
+      </div>
+      {% if kpi.avg_score.delta is not none %}
+        {% if kpi.avg_score.delta > 0 %}
+          <div class="dash-kpi-delta up">▲ +{{ kpi.avg_score.delta }} vs 직전 {{ days }}일</div>
+        {% elif kpi.avg_score.delta < 0 %}
+          <div class="dash-kpi-delta down">▼ {{ kpi.avg_score.delta }} vs 직전 {{ days }}일</div>
+        {% else %}
+          <div class="dash-kpi-delta neu">— 변동 없음</div>
+        {% endif %}
+      {% else %}
+        <div class="dash-kpi-delta neu">— 비교 데이터 없음</div>
+      {% endif %}
+    </div>
+
+    <div class="dash-kpi">
+      <div class="dash-kpi-label">분석 건수</div>
+      <div class="dash-kpi-row">
+        <span class="dash-kpi-value">{{ kpi.analysis_count.value }}</span>
+      </div>
+      {% if kpi.analysis_count.delta > 0 %}
+        <div class="dash-kpi-delta up">▲ +{{ kpi.analysis_count.delta }} vs 직전 {{ days }}일</div>
+      {% elif kpi.analysis_count.delta < 0 %}
+        <div class="dash-kpi-delta down">▼ {{ kpi.analysis_count.delta }} vs 직전 {{ days }}일</div>
+      {% else %}
+        <div class="dash-kpi-delta neu">— 변동 없음</div>
+      {% endif %}
+    </div>
+
+    <div class="dash-kpi">
+      <div class="dash-kpi-label">보안 이슈 (HIGH)</div>
+      <div class="dash-kpi-row">
+        <span class="dash-kpi-value">{{ kpi.high_security_issues.value }}</span>
+      </div>
+      {% if kpi.high_security_issues.delta > 0 %}
+        <div class="dash-kpi-delta down">▲ +{{ kpi.high_security_issues.delta }} (악화)</div>
+      {% elif kpi.high_security_issues.delta < 0 %}
+        <div class="dash-kpi-delta up">▼ {{ kpi.high_security_issues.delta }} (개선)</div>
+      {% else %}
+        <div class="dash-kpi-delta neu">— 변동 없음</div>
+      {% endif %}
+    </div>
+
+    <div class="dash-kpi">
+      <div class="dash-kpi-label">활성 리포</div>
+      <div class="dash-kpi-row">
+        <span class="dash-kpi-value">{{ kpi.active_repos.value }}</span>
+        <span class="dash-kpi-grade">/ {{ kpi.active_repos.total }}</span>
+      </div>
+      {% if kpi.active_repos.delta > 0 %}
+        <div class="dash-kpi-delta up">▲ +{{ kpi.active_repos.delta }} vs 직전 {{ days }}일</div>
+      {% elif kpi.active_repos.delta < 0 %}
+        <div class="dash-kpi-delta down">▼ {{ kpi.active_repos.delta }} vs 직전 {{ days }}일</div>
+      {% else %}
+        <div class="dash-kpi-delta neu">— 변동 없음</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# 점수 추세 라인 차트 #}
+  <div class="dash-chart-card">
+    <h2 class="dash-section-title">점수 추세 ({{ days }}일)</h2>
+    {% if trend %}
+      <div class="dash-chart-wrap">
+        <canvas id="dashTrendChart"></canvas>
+      </div>
+    {% else %}
+      <div class="dash-empty-state">
+        최근 {{ days }}일간 분석 데이터가 없습니다.
+      </div>
+    {% endif %}
+  </div>
+
+  {# 자주 발생 이슈 #}
+  <div class="dash-issues-card">
+    <h2 class="dash-section-title">자주 발생 이슈 (최근 {{ days }}일)</h2>
+    {% if frequent_issues %}
+      {% for issue in frequent_issues %}
+      <div class="dash-issue-row">
+        <div>
+          <div class="dash-issue-msg">{{ issue.message }}</div>
+          <div class="dash-issue-meta">
+            {{ issue.tool or '—' }} · {{ issue.language or '—' }} · {{ issue.category or '—' }}
+          </div>
+        </div>
+        <span class="dash-issue-badge">{{ issue.count }}</span>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="dash-empty-state">최근 {{ days }}일간 발견된 이슈가 없습니다.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if trend %}
+<script src="/static/vendor/chart.umd.min.js"></script>
+<script>
+  // 추세 데이터 (서버 주입) — autoescape 안전
+  // Trend data (server-injected) — autoescape safe
+  const trendData = {{ trend | tojson }};
+
+  function readVar(name, fallback) {
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || fallback;
+  }
+
+  let dashChart = null;
+  function buildDashChart() {
+    const ctx = document.getElementById('dashTrendChart');
+    if (!ctx) return;
+    if (dashChart) dashChart.destroy();
+
+    const accent = readVar('--d-accent', '#D97757') || '#D97757';
+    const muted = readVar('--text-muted', '#888');
+    const subtle = readVar('--text-subtle', muted);
+    const border = readVar('--border', 'rgba(255,255,255,.08)');
+
+    dashChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: trendData.map(d => d.date),
+        datasets: [{
+          label: '평균 점수',
+          data: trendData.map(d => d.avg_score),
+          borderColor: accent,
+          backgroundColor: accent + '22',
+          tension: 0.35,
+          pointRadius: 3,
+          pointHoverRadius: 5,
+          borderWidth: 2,
+          fill: true,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: { min: 0, max: 100,
+               ticks: { color: subtle, stepSize: 25, font: { size: 11 } },
+               grid: { color: border, drawTicks: false } },
+          x: { ticks: { color: subtle, font: { size: 11 } }, grid: { display: false } }
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: { enabled: true, padding: 10, cornerRadius: 8 }
+        }
+      }
+    });
+  }
+
+  buildDashChart();
+  // base.html dispatchEvent('themechange') ↔ dashboard 차트 재빌드 (UI 감사 Step C 패턴 통일)
+  document.addEventListener('themechange', buildDashChart);
+</script>
+{% endif %}
+{% endblock %}
