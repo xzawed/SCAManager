@@ -6,7 +6,7 @@
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **2004개** | pytest 9.0.3 — Phase 2 PR 1 + PR 2 + Supabase 호환 fix PR (docs only, 코드 변경 0) **= 2004 passed / 0 failed** |
+| 단위 테스트 | **2008개** | pytest 9.0.3 — Phase 2 + 후속 + P0 OAuth incident response (+4 OAuth redirect_uri 회귀 가드) **= 2008 passed / 0 failed** |
 | 통합 테스트 | **72개** | tests/integration/ — Phase 4 PR-T5 +25 (e2e_pipeline_scenarios — webhook→pipeline→gate 종단간) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
@@ -87,7 +87,8 @@
 | **#200** Chore/supabase-compat-sql-runbook-claudemd | **PR #197 본체 후속** — `\echo` meta-command 제거 + 각 SELECT 첫 컬럼 `section` 라벨 → Supabase Dashboard SQL Editor 호환. runbook 4 옵션 확장 (Supabase Dashboard / Supabase MCP / 온프레미스 psql / Railway). CLAUDE.md L303 운영 DB 환경 정보 갱신 (Railway only → Supabase + 온프레미스 + Railway 이중/삼중 setup) |
 | **#201** Docs/phase1-2 retro policy 12 + 7 strengthen | **Phase 1+2 12 PR 회고 + 정책 진화** — 5-에이전트 병렬 회고 + Claude 자유 발언 + 사용자 응답 *"회고 OK"* (정책 2 진화 첫 검증 ✅). 정책 7 강화 본문 갱신 + 정책 3 강화 신설 + 정책 12 신설. 회고 문서 신규 |
 | **#202** Fix/claude hook python path | **Hook fix** — `check_edit_allowed.py` 의 `sys.executable` → `shutil.which("python") fallback`. Claude Code 가 hook 을 `/usr/bin/python3` (시스템 minimal — pytest 미설치) 로 호출 시 false positive 100% 차단 발생. PATH 의 python (= make test 동일) 검증으로 해소. 모든 보호 파일 (templates/migrations/railway 등) 수정 차단 false positive 해소 |
-| **(진행 중)** Fix/auto-merge KPI main-sub swap (P0 #3) | **Auto-merge KPI 메인/서브 값 swap** (회고 P0 #3 후속) — `dashboard.html` L333~L362 카드 markup 수정. 메인 (36px 큰 폰트) = `final_success_rate_pct` (PR 기준 retry-aware 결과) / sub-text (12px) = `value` (단순 시도 success rate). 사유: 단순 시도 16.6% (운영 데이터) 가 큰 폰트로 노출 시 부정 인상. retry-aware final 이 사용자 가치 ("내 PR 결국 머지됐나") 에 더 가까움. 단순 시도는 sub-text 보존 (운영 신호 정확성). distinct PR 카운트 라벨 (`{ok}/{total} PR`) 추가 |
+| **#203** Fix/auto-merge KPI main-sub swap (P0 #3) | Auto-merge KPI 메인/서브 값 swap — 메인 = `final_success_rate_pct` (PR 기준 retry-aware), sub-text = `value` (단순 시도). 운영 16.6% 부정 인상 해소 |
+| **(진행 중)** Feat/p0 OAuth incident response | **🔴 P0 운영 사고 (OAuth redirect_uri mismatch) 사후 대응 통합 PR (옵션 D)** — 사용자 로그인 시 GitHub "Be careful! redirect_uri is not associated" 에러. 진단: SCAManager 측 100% 정상 (코드/환경변수/redirect_uri 정합), GitHub OAuth App callback URL mismatch (외부 변경). 본 PR = 재발 방지 통합: (a) 신규 회고 문서 `docs/reports/2026-05-02-oauth-redirect-uri-incident.md` (b) **정책 13 신설** (운영 endpoint smoke check 의무 — 매 사이클 종료 시 3-endpoint) (c) **정책 11 강화** (인증 flow 4 endpoint 종단간 검증) (d) 신규 runbook `docs/runbooks/operational-smoke-checks.md` (e) **회귀 가드 신규** `tests/unit/auth/test_oauth_redirect_uri_smoke.py` (+4 tests — redirect_uri 정확성 + trailing slash + fallback + 라우트 name 가드). **회고 P0 #4 자기 예언 ("운영 사고 0 = 운") 검증 사례** — 본 PR 후속 가드 0건 P0 정정 |
 
 **5-way sync 영향**: 0 (docs only)
 
