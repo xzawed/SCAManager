@@ -103,3 +103,86 @@ def test_get_author_trend_api_removed() -> None:
         f"/api/insights/authors/{{login}}/trend 라우트는 폐기됨 — "
         f"non-200 기대, 실제: {response.status_code}"
     )
+
+
+# ─── PR 3: repo_comparison + leaderboard + /insights (compare/leaderboard) 페이지 ──
+
+
+def test_repo_comparison_function_removed() -> None:
+    """analytics_service.repo_comparison 가 모듈에서 제거되었음을 검증."""
+    import src.services.analytics_service as svc  # pylint: disable=import-outside-toplevel
+
+    assert not hasattr(svc, "repo_comparison"), (
+        "repo_comparison 는 Phase 1 PR 3 에서 폐기됨 — 부활 차단."
+    )
+
+
+def test_repo_comparison_import_raises() -> None:
+    """deprecated symbol 접근 시 실패하는지 검증."""
+    with pytest.raises(AttributeError):
+        svc = importlib.import_module("src.services.analytics_service")
+        _ = svc.repo_comparison
+
+
+def test_leaderboard_function_removed() -> None:
+    """analytics_service.leaderboard 가 모듈에서 제거되었음을 검증.
+
+    Note: leaderboard_opt_in 컬럼은 사용자 결정 (Q3) 으로 보존 — 함수만 폐기.
+    """
+    import src.services.analytics_service as svc  # pylint: disable=import-outside-toplevel
+
+    assert not hasattr(svc, "leaderboard"), (
+        "leaderboard 는 Phase 1 PR 3 에서 폐기됨 — 부활 차단. "
+        "leaderboard_opt_in 컬럼은 보존 (Q3 사용자 결정)."
+    )
+
+
+def test_leaderboard_import_raises() -> None:
+    """deprecated symbol 접근 시 실패하는지 검증."""
+    with pytest.raises(AttributeError):
+        svc = importlib.import_module("src.services.analytics_service")
+        _ = svc.leaderboard
+
+
+def test_insights_compare_route_removed() -> None:
+    """GET /insights (compare + leaderboard 페이지) 가 폐기되어 404 응답.
+
+    `/dashboard` (PR 4) 가 후속. PR 5 에서 `/insights` → `/dashboard` 301 redirect 신설 예정.
+    """
+    # pylint: disable=import-outside-toplevel
+    from fastapi.testclient import TestClient
+    from src.main import app
+
+    client = TestClient(app)
+    response = client.get("/insights")
+    assert response.status_code == 404, (
+        f"/insights 라우트는 폐기됨 — 404 기대, 실제: {response.status_code}"
+    )
+
+
+def test_get_repo_compare_api_removed() -> None:
+    """GET /api/insights/repos/compare 엔드포인트가 폐기되어야 한다."""
+    # pylint: disable=import-outside-toplevel
+    from fastapi.testclient import TestClient
+    from src.main import app
+
+    client = TestClient(app)
+    response = client.get("/api/insights/repos/compare?repos=acme/api")
+    assert response.status_code != 200, (
+        f"/api/insights/repos/compare 라우트는 폐기됨 — "
+        f"non-200 기대, 실제: {response.status_code}"
+    )
+
+
+def test_get_leaderboard_api_removed() -> None:
+    """GET /api/insights/leaderboard 엔드포인트가 폐기되어야 한다."""
+    # pylint: disable=import-outside-toplevel
+    from fastapi.testclient import TestClient
+    from src.main import app
+
+    client = TestClient(app)
+    response = client.get("/api/insights/leaderboard")
+    assert response.status_code != 200, (
+        f"/api/insights/leaderboard 라우트는 폐기됨 — "
+        f"non-200 기대, 실제: {response.status_code}"
+    )

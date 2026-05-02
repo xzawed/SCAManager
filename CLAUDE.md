@@ -85,7 +85,7 @@ src/
 │   ├── stage_metrics.py        # stage_timer context manager — pipeline 단계 타이밍 (Phase E.2c)
 │   └── merge_metrics.py        # parse_reason_tag + log_merge_attempt — auto-merge 관측 (Phase F.1)
 ├── services/                   # use case 계층 — 신규 오케스트레이션 모듈의 배치 장소 (기존 pipeline/engine/manager 는 도메인 위치 유지)
-│   ├── analytics_service.py    # 집계 단일 출처 — weekly_summary, moving_average, top_issues, resolve_chat_id, author_trend, repo_comparison, leaderboard
+│   ├── analytics_service.py    # 집계 단일 출처 — weekly_summary, moving_average, resolve_chat_id (top_issues / author_trend / repo_comparison / leaderboard 는 Phase 1 PR 1~3 폐기)
 │   ├── cron_service.py         # 주기적 실행 — run_weekly_reports, run_trend_check
 │   └── merge_retry_service.py  # process_pending_retries 워커 (CI-aware Auto Merge 재시도)
 ├── auth/
@@ -182,19 +182,17 @@ src/
 │   ├── stats.py                # GET /api/analyses/{id}, /api/repos/{repo}/stats
 │   ├── hook.py                 # GET /api/hook/verify, POST /api/hook/result (hook_token 인증)
 │   ├── users.py                # POST /api/users/me/telegram-otp — 6자리 OTP 발급 (5분 만료)
-│   ├── internal_cron.py        # POST /api/internal/cron/weekly|trend — INTERNAL_CRON_API_KEY 전용
-│   └── insights.py             # GET /api/insights/authors/{login}/trend, /repos/compare, /leaderboard — require_api_key
+│   └── internal_cron.py        # POST /api/internal/cron/weekly|trend — INTERNAL_CRON_API_KEY 전용
 ├── ui/
 │   ├── _helpers.py             # get_accessible_repo · webhook_base_url · delete_repo_cascade · templates
-│   ├── router.py               # aggregator — routes 6개 include (catch-all `/repos/{name}` 마지막)
+│   ├── router.py               # aggregator — routes 5개 include (Phase 1 PR 3 에서 insights 폐기, catch-all `/repos/{name}` 마지막)
 │   └── routes/
 │       ├── overview.py         # GET /
-│       ├── insights.py         # GET /insights (멀티 리포 비교), GET /insights/me (개인 추세)
 │       ├── add_repo.py         # /repos/add (GET/POST) · /api/github/repos
 │       ├── settings.py         # /repos/{name}/settings · reinstall-hook · reinstall-webhook
 │       ├── actions.py          # /repos/{name}/delete
 │       └── detail.py           # /repos/{name}/analyses/{id} · /repos/{name}
-├── templates/                  # add_repo, base, login, overview, repo_detail, analysis_detail, settings, insights
+├── templates/                  # add_repo, base, login, overview, repo_detail, analysis_detail, settings (insights / insights_me 는 Phase 1 PR 2~3 폐기)
 ├── cli/
 │   ├── __main__.py             # python -m src.cli review
 │   ├── git_diff.py             # 로컬 git diff 수집
