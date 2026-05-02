@@ -227,13 +227,72 @@
 | `analysis_feedbacks` row 수 | `SELECT COUNT(*) FROM analysis_feedbacks` 1회 | < 10 시 Phase 2 보류, Phase 3 (Claude narrative) 우선 |
 | `merge_attempts WHERE state != 'legacy'` 수 | 동일 | < 20 시 "Auto-merge 성공률" 카드 가치 ↓ |
 
-### 6.2 자율 판단 보고 (정책 3)
+### 6.2 자율 판단 보고 (정책 3) + 사용자 응답 (2026-05-02)
 
-본 기획 작성 중 Claude 가 자율 판단한 항목:
+본 기획 작성 중 Claude 가 자율 판단한 항목 + 사용자 응답:
 
-1. **`top_issues` 함수 보존 권장** — 사용자가 명시 폐기 대상 3개만 지정. `top_issues` 는 폐기 페이지에서만 사용되지만 신규 dashboard 의 Phase 2 입력으로 가치 있음. **이의 있으시면 알려주세요.**
-2. **C+E 모드 토글 권장** — 사용자가 단일 컨셉 요청했으나 "사활 결정" 명시로 단일 베팅 위험 회피. **단일 C 만 채택도 가능.**
-3. **Phase 1 에 telemetry 1줄 의무 추가 권장** — `logger.info("dashboard_view ...")` 만으로 Phase 2 우선순위 결정 가능. 신설 비용 0.
+| # | Claude 자율 판단 | 사용자 응답 (2026-05-02) | 결정 |
+|---|----------------|----------------------|------|
+| 1 | `top_issues` 함수 보존 권장 | *"코드 내 사용을 하지 않거나 보류의 내용은 없었으면 합니다 — 폐기하기를 바랍니다"* | **폐기 확정** ✅ |
+| 2 | C+E 모드 토글 권장 | *"컨셉의 경우 목업 디자인이 있었으면 합니다 — 확인 후 결정 가능"* | **목업 검토 후 재결정** 🔄 |
+| 3 | Phase 1 telemetry 1줄 의무 추가 | (응답 보류 — 컨셉 결정 후) | 보류 |
+
+### 6.3 사용자 결정 사항 반영 (2026-05-02 응답)
+
+**원칙**: "근본적인 재설계 작업이기에 코드 내 사용하지 않거나 보류의 내용은 없었으면 합니다."
+
+#### 폐기 결정 함수 4종 (확정)
+- `analytics_service.author_trend` (L180-231)
+- `analytics_service.repo_comparison` (L234-292)
+- `analytics_service.leaderboard` (L295-346)
+- **`analytics_service.top_issues` (L124-177)** ← 추가 결정 ✅
+
+#### 폐기 보존 함수 (cron / Telegram 명령 의존성으로 유지)
+- `analytics_service.weekly_summary` (L21-76) — `cron_service.run_weekly_reports`, `telegram_commands._handle_stats` 의존
+- `analytics_service.moving_average` (L79-121) — `cron_service.run_trend_check` 의존
+- `analytics_service.resolve_chat_id` (L349-382) — `cron_service` 다수 의존
+> 위 3 함수는 **dashboard 외 운영 파이프라인 의존성** 으로 폐기 시 cron + Telegram 사망. 보존이 사용자 원칙 위반이 아님 (실제 사용 중).
+
+#### 폐기 LOC 갱신
+- 기존: 826 LOC (3 함수 + 2 페이지 + 2 라우트 + 3 테스트)
+- **갱신: 880 LOC** (+`top_issues` 54 LOC + 관련 테스트)
+- 신규 dashboard MVP-B 신규 LOC ~450 → 순 LOC **-430**
+
+#### Phase 2 의존성 변경
+**`top_issues` 폐기로 Phase 2 의 "자주 발생 이슈 Top N" 카드 입력 부재** → 신규 함수 작성 의무 또는 Phase 2 KPI 항목에서 제외 결정 필요.
+
+옵션:
+| 옵션 | 장점 | 단점 | 위험 |
+|------|------|------|------|
+| 🅐 Phase 2 에서 신규 `frequent_issues_v2()` 함수 작성 | dashboard 차별 KPI 보존 | Phase 2 작업량 +1 함수 | 저 |
+| 🅑 Phase 2 KPI 에서 "자주 발생 이슈" 항목 제외 | Phase 2 단순화 | 잠재 사용자 가치 감소 | 저 |
+
+### 6.4 목업 디자인 첨부 (사용자 요청)
+
+사용자 발화: *"컨셉의 경우 목업 디자인이 있었으면 합니다"*
+
+본 PR 에 시각 목업 HTML 2개 첨부:
+- `docs/design/mockups/2026-05-02-dashboard-concept-c-stripe.html` — Stripe-style KPI 카드 + 차트
+- `docs/design/mockups/2026-05-02-dashboard-concept-e-ai-note.html` — AI 노트 모드 (Claude 톤)
+
+**확인 방법**:
+```bash
+# 로컬에서 브라우저로 직접 열기
+open docs/design/mockups/2026-05-02-dashboard-concept-c-stripe.html
+open docs/design/mockups/2026-05-02-dashboard-concept-e-ai-note.html
+```
+
+또는 GitHub PR 페이지에서 raw view + HTML preview 가능.
+
+목업 데이터는 가짜 — 실제 동작 시뮬레이션 아님. 시각 컨셉 확인 전용.
+
+### 6.5 추가 결정 항목 (목업 검토 후)
+
+| Q | 항목 | 옵션 |
+|---|------|------|
+| 5 | 컨셉 최종 결정 | 🅐 C 단독 / 🅑 E 단독 / 🅒 C+E 모드 토글 (Claude 권장) / 🅓 다른 안 (목업 보고 발견) |
+| 6 | (Q5=C+E 채택 시) default 모드 | 🅐 C (데이터) default / 🅑 E (노트) default / 🅒 사용자 신호 기반 (settings 의 `_detect_initial_mode` 패턴 차용) |
+| 7 | Phase 2 "자주 발생 이슈" 카드 처리 | 🅐 신규 함수 작성 / 🅑 항목 제외 |
 
 ---
 
