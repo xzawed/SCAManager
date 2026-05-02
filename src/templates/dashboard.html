@@ -330,30 +330,38 @@
       {% endif %}
     </div>
 
-    {# Phase 2 PR 1 — Auto-merge KPI (단순 + retry-aware 양쪽 표시) #}
-    <div class="dash-kpi" title="단순 시도 기준 success rate. retry-aware 결과는 sub-text 참고.">
-      <div class="dash-kpi-label">자동 머지 성공률</div>
+    {# Phase 1+2 회고 P0 #3 swap (2026-05-02) — 메인=PR 기준 최종, sub=단순 시도.
+       사유: 단순 시도 16.6% 가 큰 폰트로 노출 시 부정 인상. retry-aware final 이
+       사용자 가치 (내 PR 결국 머지됐나) 에 더 가까움. 단순 시도는 sub-text 보존
+       (운영 신호 정확성 — fallback 으로 단순 표시 시 retry-aware 데이터 부재 환경 호환). #}
+    <div class="dash-kpi" title="PR 기준 최종 success rate (retry 후 결과). 단순 시도 success rate 는 sub-text 참고.">
+      <div class="dash-kpi-label">자동 머지 성공률 (PR 기준)</div>
       <div class="dash-kpi-row">
         <span class="dash-kpi-value">
-          {%- if auto_merge.value is not none -%}
+          {%- if auto_merge.final_success_rate_pct is not none -%}
+            {{ auto_merge.final_success_rate_pct }}<span style="font-size:.5em;color:var(--text-muted);">%</span>
+          {%- elif auto_merge.value is not none -%}
             {{ auto_merge.value }}<span style="font-size:.5em;color:var(--text-muted);">%</span>
           {%- else -%}
             —
           {%- endif -%}
         </span>
+        {% if auto_merge.distinct_prs %}
+          <span class="dash-kpi-grade">{{ auto_merge.final_success_prs }}/{{ auto_merge.distinct_prs }} PR</span>
+        {% endif %}
       </div>
       {% if auto_merge.delta is not none %}
         {% if auto_merge.delta > 0 %}
-          <div class="dash-kpi-delta up">▲ +{{ auto_merge.delta }} vs 직전 {{ days }}일</div>
+          <div class="dash-kpi-delta up">시도 ▲ +{{ auto_merge.delta }}% vs 직전 {{ days }}일</div>
         {% elif auto_merge.delta < 0 %}
-          <div class="dash-kpi-delta down">▼ {{ auto_merge.delta }} vs 직전 {{ days }}일</div>
+          <div class="dash-kpi-delta down">시도 ▼ {{ auto_merge.delta }}% vs 직전 {{ days }}일</div>
         {% else %}
-          <div class="dash-kpi-delta neu">— 변동 없음</div>
+          <div class="dash-kpi-delta neu">시도 — 변동 없음</div>
         {% endif %}
       {% else %}
         <div class="dash-kpi-delta neu">
-          {%- if auto_merge.final_success_rate_pct is not none -%}
-            PR 기준 최종 {{ auto_merge.final_success_rate_pct }}% ({{ auto_merge.final_success_prs }}/{{ auto_merge.distinct_prs }})
+          {%- if auto_merge.value is not none -%}
+            시도 기준 {{ auto_merge.value }}% ({{ auto_merge.success_count }}/{{ auto_merge.total_attempts }})
           {%- else -%}
             — 비교 데이터 없음
           {%- endif -%}
