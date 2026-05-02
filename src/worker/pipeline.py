@@ -73,7 +73,16 @@ def build_analysis_result_dict(
         "test_feedback": ai_review.test_feedback,
         "file_feedbacks": ai_review.file_feedbacks,
         "issues": [
-            {"tool": i.tool, "severity": i.severity, "message": i.message, "line": i.line}
+            # category / language 추가 — 향후 dashboard 에서 언어별·카테고리별 사후 분석 가능
+            # category / language added so future dashboards can slice by language/category
+            {
+                "tool": i.tool,
+                "severity": i.severity,
+                "message": i.message,
+                "line": i.line,
+                "category": i.category,
+                "language": i.language,
+            }
             for r in analysis_results
             for i in r.issues
         ],
