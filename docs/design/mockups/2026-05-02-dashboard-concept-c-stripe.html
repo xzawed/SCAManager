@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<!--
+  컨셉 C — Stripe-style 깔끔 KPI 카드 + 시계열
+  목업 (mockup) 파일. 실제 동작 X — 시각 컨셉 확인 전용.
+  데이터 모두 가짜. 4-테마 토큰 inline 정의 (dark + light 만).
+  CDN: Chart.js — 오프라인 환경에서 차트 빈 박스 가능 (실제 vendor 경로 사용 예정).
+-->
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>컨셉 C — Stripe-style Dashboard 목업</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    /* ── 4-테마 토큰 (dark default + light) ── */
+    :root, [data-theme="dark"] {
+      --bg-page: #111118;
+      --bg-card: #1c1c23;
+      --bg-input: #2a2a34;
+      --border: #2c2c38;
+      --text-primary: #e2e2e8;
+      --text-muted: #73737c;
+      --accent: #5e6ad2;
+      --accent-hover: #8d95e0;
+      --success: #4ade80;
+      --warning: #f59e0b;
+      --danger: #f87171;
+      --grade-a: #4ade80; --grade-b: #60a5fa; --grade-c: #fbbf24;
+      --grade-d: #fb923c; --grade-f: #f87171;
+    }
+    [data-theme="light"] {
+      --bg-page: #f5f5f7; --bg-card: #ffffff; --bg-input: #f5f5f7;
+      --border: #e5e5e8; --text-primary: #111118; --text-muted: #8a8a96;
+      --accent: #5e6ad2; --accent-hover: #4a57c4;
+      --success: #16a34a; --warning: #d97706; --danger: #dc2626;
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0; min-height: 100vh;
+      background: var(--bg-page); color: var(--text-primary);
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      font-size: 14px; line-height: 1.5;
+    }
+
+    /* nav */
+    nav {
+      background: #000; color: #fff; padding: 0 1.5rem;
+      display: flex; align-items: center; gap: 1rem; height: 52px;
+      border-bottom: 1px solid #1a1a21;
+    }
+    nav .logo { font-weight: 700; font-size: 16px; }
+    nav .links { display: flex; gap: 4px; margin-left: auto; }
+    nav .links a {
+      color: #a8a8b2; text-decoration: none; padding: 6px 12px;
+      border-radius: 6px; font-size: 13px;
+    }
+    nav .links a.active { background: rgba(255,255,255,.1); color: #fff; }
+    nav .theme-btn {
+      background: rgba(255,255,255,.06); color: #e2e2e8; border: 1px solid #2c2c38;
+      border-radius: 6px; padding: 4px 12px; font-size: 12px; cursor: pointer;
+    }
+
+    /* page */
+    .page { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
+    .page-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 28px; flex-wrap: wrap; gap: 12px;
+    }
+    .page-title {
+      font-size: 24px; font-weight: 700; letter-spacing: -.01em;
+      margin: 0;
+    }
+    .page-subtitle {
+      font-size: 13px; color: var(--text-muted); margin: 4px 0 0;
+    }
+
+    /* time range selector */
+    .range-toggle {
+      display: inline-flex; gap: 2px; padding: 3px;
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .range-toggle button {
+      padding: 6px 14px; border: none; background: transparent;
+      color: var(--text-muted); cursor: pointer; font-size: 13px;
+      font-weight: 500; border-radius: 5px;
+      transition: all .15s ease;
+    }
+    .range-toggle button.active {
+      background: var(--accent); color: #fff; font-weight: 600;
+    }
+    .range-toggle button:hover:not(.active) {
+      background: var(--bg-input); color: var(--text-primary);
+    }
+
+    /* KPI grid */
+    .kpi-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+      margin-bottom: 28px;
+    }
+    .kpi-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 20px;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .kpi-label {
+      font-size: 12px; color: var(--text-muted); text-transform: uppercase;
+      letter-spacing: .05em; font-weight: 600;
+    }
+    .kpi-value {
+      font-size: 36px; font-weight: 700; letter-spacing: -.02em;
+      line-height: 1;
+    }
+    .kpi-value .grade {
+      font-size: 16px; font-weight: 600; color: var(--grade-b);
+      margin-left: 6px;
+    }
+    .kpi-delta {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 12px; font-weight: 600;
+    }
+    .kpi-delta.up { color: var(--success); }
+    .kpi-delta.down { color: var(--danger); }
+    .kpi-delta.neu { color: var(--text-muted); }
+    .kpi-sparkline {
+      height: 32px; margin-top: 4px; position: relative;
+    }
+    .kpi-sub {
+      font-size: 11px; color: var(--text-muted);
+    }
+
+    /* chart card */
+    .chart-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 24px; margin-bottom: 20px;
+    }
+    .chart-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .chart-title { font-size: 14px; font-weight: 600; margin: 0; }
+    .series-toggles { display: flex; gap: 6px; }
+    .series-btn {
+      padding: 4px 10px; border: 1px solid var(--border);
+      background: transparent; color: var(--text-muted);
+      border-radius: 6px; font-size: 11px; cursor: pointer;
+    }
+    .series-btn.active { color: var(--text-primary); border-color: var(--accent); }
+    .chart-wrap-inner {
+      position: relative; height: clamp(200px, 30vw, 320px);
+    }
+
+    /* secondary cards */
+    .sec-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+    }
+    .sec-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 20px;
+    }
+    .sec-card-title {
+      font-size: 12px; color: var(--text-muted); text-transform: uppercase;
+      letter-spacing: .05em; font-weight: 600; margin: 0 0 12px;
+    }
+    .repo-row, .issue-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 0; border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .repo-row:last-child, .issue-row:last-child { border-bottom: none; }
+    .repo-name, .issue-msg {
+      font-family: 'JetBrains Mono', Menlo, Consolas, monospace;
+      color: var(--text-primary);
+    }
+    .repo-delta { font-size: 12px; font-weight: 600; }
+    .repo-delta.up { color: var(--success); }
+    .repo-delta.down { color: var(--danger); }
+    .repo-delta.neu { color: var(--text-muted); }
+    .issue-count {
+      background: var(--bg-input); padding: 2px 8px; border-radius: 12px;
+      font-size: 11px; font-weight: 600; color: var(--text-muted);
+    }
+
+    /* mobile */
+    @media (max-width: 768px) {
+      .page { padding: 16px; }
+      .page-title { font-size: 20px; }
+      .kpi-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
+      .kpi-value { font-size: 28px; }
+      .sec-grid { grid-template-columns: 1fr; }
+      nav { padding: 0 12px; }
+      nav .links a { padding: 6px 8px; font-size: 12px; }
+    }
+    @media (max-width: 480px) {
+      .kpi-grid { grid-template-columns: 1fr; }
+      .range-toggle button { padding: 8px 10px; font-size: 12px; min-height: 40px; }
+      .kpi-value { font-size: 32px; }
+    }
+
+    /* mockup banner */
+    .mockup-banner {
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: #fff; padding: 8px 16px; text-align: center;
+      font-size: 12px; font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="mockup-banner">
+    🎨 컨셉 C 목업 — Stripe-style (가짜 데이터, 시각 확인 전용)
+    <button onclick="toggleTheme()" style="margin-left:12px;background:rgba(255,255,255,.2);color:#fff;border:none;padding:2px 10px;border-radius:4px;cursor:pointer;">🌗 테마 토글</button>
+  </div>
+
+  <nav>
+    <span class="logo">⚡ SCAManager</span>
+    <div class="links">
+      <a href="#">Overview</a>
+      <a href="#" class="active">Dashboard</a>
+      <a href="#">Settings</a>
+    </div>
+    <button class="theme-btn">🌙 다크</button>
+    <span style="color:#a8a8b2;font-size:12px;margin-left:8px;">user-a</span>
+  </nav>
+
+  <div class="page">
+    <!-- ─── Page header ─── -->
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Dashboard</h1>
+        <p class="page-subtitle">우리 코드는 어떻게 흘러가고 있나요</p>
+      </div>
+      <div class="range-toggle">
+        <button>1d</button>
+        <button class="active">7d</button>
+        <button>30d</button>
+        <button>90d</button>
+      </div>
+    </div>
+
+    <!-- ─── KPI 카드 4개 ─── -->
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <span class="kpi-label">평균 점수</span>
+        <div class="kpi-value">82.3<span class="grade">B+</span></div>
+        <span class="kpi-delta up">▲ +3.1 (4.0%)</span>
+        <div class="kpi-sparkline"><canvas id="spark1"></canvas></div>
+        <span class="kpi-sub">vs 지난 7일</span>
+      </div>
+
+      <div class="kpi-card">
+        <span class="kpi-label">자동 머지 성공률</span>
+        <div class="kpi-value">87%</div>
+        <span class="kpi-delta up">▲ +5.0%</span>
+        <div class="kpi-sparkline"><canvas id="spark2"></canvas></div>
+        <span class="kpi-sub">12 시도 / 10.4 성공</span>
+      </div>
+
+      <div class="kpi-card">
+        <span class="kpi-label">보안 HIGH 신규</span>
+        <div class="kpi-value">3</div>
+        <span class="kpi-delta down">▼ -2</span>
+        <div class="kpi-sparkline"><canvas id="spark3"></canvas></div>
+        <span class="kpi-sub">bandit + Semgrep 결합</span>
+      </div>
+
+      <div class="kpi-card">
+        <span class="kpi-label">활성 리포</span>
+        <div class="kpi-value">12 <span style="font-size:18px;color:var(--text-muted);">/ 15</span></div>
+        <span class="kpi-delta neu">— 변동 없음</span>
+        <div class="kpi-sparkline"><canvas id="spark4"></canvas></div>
+        <span class="kpi-sub">최근 7일 push 발생</span>
+      </div>
+    </div>
+
+    <!-- ─── 메인 차트 ─── -->
+    <div class="chart-card">
+      <div class="chart-header">
+        <h2 class="chart-title">📊 점수 추이 (최근 30일)</h2>
+        <div class="series-toggles">
+          <button class="series-btn active">전체</button>
+          <button class="series-btn">acme/api</button>
+          <button class="series-btn">acme/web</button>
+          <button class="series-btn">acme/cli</button>
+        </div>
+      </div>
+      <div class="chart-wrap-inner">
+        <canvas id="trendChart"></canvas>
+      </div>
+    </div>
+
+    <!-- ─── 보조 카드 2개 ─── -->
+    <div class="sec-grid">
+      <div class="sec-card">
+        <h3 class="sec-card-title">🔥 점수 변화 큰 리포 Top 3</h3>
+        <div class="repo-row">
+          <span class="repo-name">acme/api</span>
+          <span class="repo-delta up">+8.2 ↗</span>
+        </div>
+        <div class="repo-row">
+          <span class="repo-name">acme/web</span>
+          <span class="repo-delta down">-4.1 ↘</span>
+        </div>
+        <div class="repo-row">
+          <span class="repo-name">acme/cli</span>
+          <span class="repo-delta neu">+1.0 —</span>
+        </div>
+      </div>
+
+      <div class="sec-card">
+        <h3 class="sec-card-title">⚠️ 자주 발생 이슈 Top 5</h3>
+        <div class="issue-row">
+          <span class="issue-msg">unused-import</span>
+          <span class="issue-count">24</span>
+        </div>
+        <div class="issue-row">
+          <span class="issue-msg">B608: SQL string</span>
+          <span class="issue-count">18</span>
+        </div>
+        <div class="issue-row">
+          <span class="issue-msg">no-unused-vars</span>
+          <span class="issue-count">15</span>
+        </div>
+        <div class="issue-row">
+          <span class="issue-msg">missing-docstring</span>
+          <span class="issue-count">12</span>
+        </div>
+        <div class="issue-row">
+          <span class="issue-msg">line-too-long</span>
+          <span class="issue-count">9</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function toggleTheme() {
+      const cur = document.body.getAttribute('data-theme') || 'dark';
+      document.body.setAttribute('data-theme', cur === 'dark' ? 'light' : 'dark');
+    }
+
+    // sparkline 생성 (가짜 데이터)
+    function makeSparkline(id, data, color) {
+      const canvas = document.getElementById(id);
+      if (!canvas) return;
+      new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels: data.map((_, i) => i),
+          datasets: [{
+            data: data, borderColor: color, backgroundColor: color + '22',
+            tension: 0.3, fill: true, pointRadius: 0, borderWidth: 2,
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          scales: { x: { display: false }, y: { display: false } },
+          plugins: { legend: { display: false }, tooltip: { enabled: false } }
+        }
+      });
+    }
+
+    // 가짜 sparkline 데이터
+    makeSparkline('spark1', [78, 79, 78, 80, 81, 82, 82.3], '#4ade80');
+    makeSparkline('spark2', [82, 83, 85, 84, 86, 87, 87], '#4ade80');
+    makeSparkline('spark3', [5, 5, 4, 4, 3, 3, 3], '#f87171');
+    makeSparkline('spark4', [12, 12, 11, 12, 12, 12, 12], '#73737c');
+
+    // 메인 차트
+    const ctx = document.getElementById('trendChart');
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: ['4/3','4/6','4/9','4/12','4/15','4/18','4/21','4/24','4/27','4/30'],
+        datasets: [
+          {
+            label: 'acme/api',
+            data: [76, 78, 79, 80, 82, 81, 83, 85, 86, 88],
+            borderColor: '#5e6ad2', backgroundColor: '#5e6ad222',
+            tension: 0.3, fill: false, pointRadius: 4,
+          },
+          {
+            label: 'acme/web',
+            data: [85, 84, 82, 81, 80, 78, 77, 76, 74, 72],
+            borderColor: '#f87171', backgroundColor: '#f8717122',
+            tension: 0.3, fill: false, pointRadius: 4,
+          },
+          {
+            label: 'acme/cli',
+            data: [82, 82, 83, 82, 84, 83, 85, 84, 85, 84],
+            borderColor: '#fbbf24', backgroundColor: '#fbbf2422',
+            tension: 0.3, fill: false, pointRadius: 4,
+          },
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: {
+          y: {
+            min: 60, max: 100,
+            ticks: { color: '#73737c', stepSize: 10 },
+            grid: { color: '#73737c22' }
+          },
+          x: {
+            ticks: { color: '#73737c' },
+            grid: { display: false }
+          }
+        },
+        plugins: {
+          legend: { position: 'bottom', labels: { color: '#e2e2e8', font: { size: 12 } } },
+          tooltip: {
+            backgroundColor: '#1c1c23', titleColor: '#e2e2e8', bodyColor: '#e2e2e8',
+            borderColor: '#2c2c38', borderWidth: 1, padding: 10, cornerRadius: 8
+          }
+        }
+      }
+    });
+  </script>
+</body>
+</html>
