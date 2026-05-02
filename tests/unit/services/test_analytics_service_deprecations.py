@@ -15,6 +15,8 @@ the single source of regression guards for those removals.
 """
 from __future__ import annotations
 
+import importlib
+
 import pytest
 
 
@@ -35,13 +37,13 @@ def test_top_issues_function_removed() -> None:
 
 
 def test_top_issues_import_raises() -> None:
-    """`from src.services.analytics_service import top_issues` 가 ImportError 발생.
+    """deprecated symbol 접근 시 실패하는지 검증.
 
-    호출처가 새로 추가되는 것을 import 단계에서 차단.
+    호출처가 새로 추가되는 것을 import/attribute 접근 단계에서 차단.
     """
-    with pytest.raises(ImportError):
-        # pylint: disable=import-outside-toplevel,no-name-in-module,unused-import
-        from src.services.analytics_service import top_issues  # noqa: F401  # type: ignore[attr-defined]
+    with pytest.raises(AttributeError):
+        svc = importlib.import_module("src.services.analytics_service")
+        _ = svc.top_issues
 
 
 # ─── PR 2: author_trend + /insights/me 페이지 + GET /api/insights/authors/.../trend 폐기 ──
@@ -61,10 +63,10 @@ def test_author_trend_function_removed() -> None:
 
 
 def test_author_trend_import_raises() -> None:
-    """`from src.services.analytics_service import author_trend` 가 ImportError 발생."""
-    with pytest.raises(ImportError):
-        # pylint: disable=import-outside-toplevel,no-name-in-module,unused-import
-        from src.services.analytics_service import author_trend  # noqa: F401  # type: ignore[attr-defined]
+    """deprecated symbol 접근 시 실패하는지 검증."""
+    with pytest.raises(AttributeError):
+        svc = importlib.import_module("src.services.analytics_service")
+        _ = svc.author_trend
 
 
 def test_insights_me_route_removed() -> None:
