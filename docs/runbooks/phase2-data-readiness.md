@@ -87,23 +87,32 @@ psql "$DATABASE_URL" -f scripts/dev/verify_phase2_data.sql
 
 ---
 
-## 부록 — Railway 운영 환경 접근 방법
+## 부록 — 운영 DB 접근 방법
 
-### 옵션 A: Railway Dashboard
-1. Railway 프로젝트 → Database (PostgreSQL) → Query 탭
-2. SQL 내용 paste + Run
-3. 결과 표 회신
+SCAManager 운영 DB (2026-05-02 기준): **Supabase + 온프레미스 PostgreSQL 이중 setup** + Railway 호환.
+SQL 본체는 모든 환경에서 동일 동작 (PR 갱신 — `\echo` meta-command 제거).
 
-### 옵션 B: psql CLI
+### 옵션 A: Supabase Dashboard SQL Editor ★ 권장 (이중 setup 의 주 환경)
+1. Supabase 프로젝트 → SQL Editor
+2. `scripts/dev/verify_phase2_data.sql` 전체 내용 paste + Run
+3. 5건 결과 (각 SELECT 별 결과 표) 회신
+
+### 옵션 B: Supabase MCP (Claude 직접 실행) ★ 자동화
+- Claude 가 `mcp__claude_ai_Supabase__execute_sql` 도구로 직접 실행
+- 사용자가 project ID 공유 + 인증 OK 시 → 결과 분석 + 다음 단계 즉시 진행 (수동 실행 부담 0)
+- 본 사이클 검증 완료 (project: `qaoirpyhldlkeoyppfwq`)
+
+### 옵션 C: 온프레미스 PostgreSQL psql CLI
 ```bash
-# Railway DATABASE_URL 가져오기
-railway variables --service Postgres
-# 또는 Railway 대시보드 Variables 탭에서 복사
-
 psql "$DATABASE_URL" -f scripts/dev/verify_phase2_data.sql > phase2_results.txt
 cat phase2_results.txt  # 회신 내용
 ```
 
-### 옵션 C: Claude Code (Bash via SCAManager DEV 환경)
-- `.env` 의 `DATABASE_URL` 이 운영 DB 인 경우만 가능
-- 일반적으로 dev 환경 = 별도 DB → 의미 있는 결과 안 나옴 (옵션 A/B 권장)
+### 옵션 D: Railway PostgreSQL Dashboard
+1. Railway 프로젝트 → Database (PostgreSQL) → Query 탭
+2. SQL paste + Run
+3. 결과 회신
+
+### 옵션 E: Claude Code (Bash via SCAManager DEV 환경)
+- `.env` 의 `DATABASE_URL` 이 운영 DB 인 경우만 의미 있음
+- 일반적으로 dev 환경 = 별도 DB → 옵션 A/B/C/D 권장
