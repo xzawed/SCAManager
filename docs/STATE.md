@@ -7,7 +7,7 @@
 | 지표 | 값 | 비고 |
 |------|-----|------|
 | 단위 테스트 | **2010개** | pytest 9.0.3 — 그룹 60+61 누적 +24 (Phase 1 +1 + Phase 2 +17 + P0 OAuth +4 + leaderboard 폐기 +2) **= 2010 collected / 2009 passed / 2 skipped / 0 failed** |
-| 통합 테스트 | **82개** | tests/integration/ — 그룹 61 PR #208 (정책 13 강화) +10 (test_oauth_flow_smoke — smoke check 3 + 인증 flow 4 endpoint 3 + insights redirect 3 + 성능 1) |
+| 통합 테스트 | **82개** | tests/integration/ — 그룹 61 PR #208 (정책 13 강화) +10 + PR #209 (24 fail 해소 — conftest autouse) **= 79 passed / 3 skipped / 0 failed** |
 | E2E 테스트 | **65개** | `make test-e2e` (Chromium Playwright) — 그룹 61 PR #208 +14 (test_dashboard — 페이지 로드 + KPI 5 카드 + range toggle + chart vendoring + JS 런타임 + insights redirect + nav Dashboard 링크) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
@@ -76,7 +76,8 @@
 |----|---------|
 | **#206** Chore/remove leaderboard feature completely | **🔴 Q3 정정 — 리더보드 기능 완전 폐기** (사용자 명시 요청). Alembic 0025 + ORM/dataclass/API/UI/핸들러 5-way sync. 회귀 가드 +2 (column/dataclass 부재). 기존 가드 정정 ("Q3 보존" → "Q3 정정 폐기") |
 | **#207** Docs/cycle-61 final stale sync | **그룹 60+61 종료 후 stale 일괄 정리** — 5 에이전트 병렬 검증 결과 P0 9 / P1 5 / P2 5 처리. STATE 수치 정정 + design rework Q3 정정 + INDEX 결정 완료 + static-assets `insights_me` → `dashboard.html` + merge-retry `leaderboard` 정정 + collaboration retro 헤더 1줄 + CLAUDE.md L90 KPI 4↔5 명확화 |
-| **#208 (진행 중)** Feat/policy-13 e2e + integration guards | **정책 13 강화 종단간 자동화 가드 신설** (회고 P0 #5 검증 환류 갭 + P0 OAuth 사고 후속). (a) `tests/integration/test_oauth_flow_smoke.py` (+10) — smoke check 3 + 인증 flow 4 endpoint 3 + insights redirect 3 + 성능 1. (b) `e2e/test_dashboard.py` (+14) — 페이지 로드 + KPI 5 카드 + range toggle + chart vendoring + JS 런타임 + insights redirect + nav Dashboard 링크 (Playwright). 통합/E2E 가 운영 endpoint smoke check 자동 실행 → 다음 OAuth/redirect_uri 같은 외부 변경 사고 즉시 발견 가능 |
+| **#208** Feat/policy-13 e2e + integration guards | **정책 13 강화 종단간 자동화 가드 신설** — `test_oauth_flow_smoke.py` +10 + `e2e/test_dashboard.py` +14 |
+| **(진행 중)** Chore/integration pre-existing 24 fail triage | **🎯 24 fail 일괄 해소** (conftest autouse 1건). 근본 원인 = 그룹 60 PR B-1/B-2 와 동일 패턴 (devcontainer 등 환경의 `GITHUB_WEBHOOK_SECRET=dev_secret` export → conftest setdefault 무효 → settings 의 secret 으로 HMAC 검증 401). fix = `tests/integration/conftest.py` 에 autouse fixture 추가 — `patch("src.webhook.providers.github.get_webhook_secret", return_value="test_secret")` 일괄 적용. **24 fail → 0 fail** (test_e2e_pipeline_scenarios 20 + test_webhook_to_gate 4 모두 해소). 신규 webhook integration test 도 자동 적용 — 환경 의존성 영구 격리 |
 
 **5-way sync 영향**: 5/5 모두 적용 (정책 7 강화 응집 단위 — "리더보드 완전 폐기")
 
