@@ -25,7 +25,7 @@ class RepoConfigData:  # pylint: disable=too-many-instance-attributes
     create_issue: bool = False
     railway_deploy_alerts: bool = False
     auto_merge_issue_on_failure: bool = False
-    leaderboard_opt_in: bool = False
+    # leaderboard_opt_in 폐기 (그룹 60 사용자 결정 정정 — alembic 0025)
 
 
 def _config_field_names() -> list[str]:

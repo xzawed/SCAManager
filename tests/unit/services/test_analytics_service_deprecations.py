@@ -128,13 +128,47 @@ def test_repo_comparison_import_raises() -> None:
 def test_leaderboard_function_removed() -> None:
     """analytics_service.leaderboard 가 모듈에서 제거되었음을 검증.
 
-    Note: leaderboard_opt_in 컬럼은 사용자 결정 (Q3) 으로 보존 — 함수만 폐기.
+    Note: leaderboard_opt_in 컬럼은 그룹 60 사용자 결정 정정 (2026-05-02) 으로
+    함께 폐기 — alembic 0025 + ORM/dataclass/API/UI 5-way sync 적용.
+    Q3 결정 (보존) → 정정 폐기. 사용자 *"코드 내 사용 안 함 또는 보류"* 정신 일치.
     """
     import src.services.analytics_service as svc  # pylint: disable=import-outside-toplevel
 
     assert not hasattr(svc, "leaderboard"), (
         "leaderboard 는 Phase 1 PR 3 에서 폐기됨 — 부활 차단. "
-        "leaderboard_opt_in 컬럼은 보존 (Q3 사용자 결정)."
+        "leaderboard_opt_in 컬럼도 그룹 60 정정으로 폐기 (alembic 0025)."
+    )
+
+
+def test_leaderboard_opt_in_column_removed() -> None:
+    """RepoConfig.leaderboard_opt_in 컬럼이 ORM 에서 제거되었음을 검증.
+
+    그룹 60 사용자 결정 정정 (2026-05-02) — Q3 결정 (보존) → 정정 폐기.
+    alembic 0025 마이그레이션 + ORM 컬럼 제거 + 5-way sync (dataclass/API/UI/핸들러).
+    재도입 금지 — 부활 시 사용자 재논의 의무.
+    """
+    # pylint: disable=import-outside-toplevel
+    from src.models.repo_config import RepoConfig
+
+    assert not hasattr(RepoConfig, "leaderboard_opt_in"), (
+        "leaderboard_opt_in 컬럼은 그룹 60 정정으로 폐기됨 — 부활 차단. "
+        "재도입 필요 시 사용자 재논의 (SaaS 전환 시 별도 멀티 사용자 인사이트 모델 신설)."
+    )
+
+
+def test_leaderboard_opt_in_dataclass_field_removed() -> None:
+    """RepoConfigData.leaderboard_opt_in 필드가 dataclass 에서 제거되었음을 검증.
+
+    5-way sync 검증 — ORM/dataclass 양쪽 모두 폐기.
+    """
+    # pylint: disable=import-outside-toplevel
+    from dataclasses import fields
+    from src.config_manager.manager import RepoConfigData
+
+    field_names = {f.name for f in fields(RepoConfigData)}
+    assert "leaderboard_opt_in" not in field_names, (
+        "RepoConfigData.leaderboard_opt_in 필드는 그룹 60 정정으로 폐기됨. "
+        f"현재 필드: {sorted(field_names)}"
     )
 
 
