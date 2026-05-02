@@ -23,7 +23,7 @@
 
 | 파일 | 버전 | 크기 | 용도 |
 |------|------|------|------|
-| `src/static/vendor/chart.umd.min.js` | Chart.js 4.4.0 UMD min | 약 204 KB | `repo_detail`/`analysis_detail`/`insights_me` 페이지 차트 |
+| `src/static/vendor/chart.umd.min.js` | Chart.js 4.4.0 UMD min | 약 204 KB | `repo_detail`/`analysis_detail`/`dashboard` 페이지 차트 (`insights_me` 폐기 — 그룹 60 Phase 1 PR 2) |
 
 > **주의**: 다른 외부 자원 (Pretendard 폰트, Crimson Pro, Google Fonts) 은 현재 CDN 의존 유지. 후속 단계에서 vendoring 검토.
 
@@ -56,7 +56,7 @@ if _STATIC_DIR.exists():
 ### 템플릿 참조
 
 ```html
-<!-- repo_detail.html / analysis_detail.html / insights_me.html -->
+<!-- repo_detail.html / analysis_detail.html / dashboard.html (insights_me.html 폐기 — 그룹 60) -->
 <script src="/static/vendor/chart.umd.min.js"></script>
 ```
 
