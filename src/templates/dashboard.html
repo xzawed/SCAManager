@@ -140,6 +140,43 @@
     height: 320px;
   }
 
+  /* Phase 2 PR 2 — feedback CTA banner (조건부) */
+  .dash-cta-banner {
+    background: linear-gradient(135deg, var(--accent-faint, rgba(217,119,87,.08)) 0%, transparent 100%);
+    border: 1px solid var(--d-accent);
+    border-radius: 14px;
+    padding: 16px 20px;
+    margin-bottom: 24px;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; flex-wrap: wrap;
+  }
+  .dash-cta-text {
+    flex: 1; min-width: 220px;
+  }
+  .dash-cta-title {
+    font-family: var(--d-font-heading);
+    font-size: 16px; font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 4px;
+  }
+  .dash-cta-meta {
+    font-size: 13px; color: var(--text-muted);
+    margin: 0;
+  }
+  .dash-cta-btn {
+    padding: 10px 18px; min-height: 40px;
+    border-radius: 8px; font-size: 13px; font-weight: 600;
+    text-decoration: none; box-sizing: border-box;
+    background: var(--d-accent); color: #fff; border: 1px solid var(--d-accent);
+    display: inline-flex; align-items: center; gap: 6px;
+    transition: all .15s ease;
+  }
+  .dash-cta-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+  @media (max-width: 480px) {
+    .dash-cta-banner { padding: 14px; }
+    .dash-cta-btn { width: 100%; justify-content: center; min-height: 44px; }
+  }
+
   /* 자주 발생 이슈 카드 */
   .dash-issues-card {
     background: var(--card-bg, var(--bg-surface, rgba(255,255,255,.04)));
@@ -207,7 +244,29 @@
     </nav>
   </div>
 
-  {# KPI 4 카드 #}
+  {# Phase 2 PR 2 — feedback CTA banner (조건부, count < threshold 시만 표시) #}
+  {% if feedback and feedback.show_cta %}
+  <div class="dash-cta-banner" role="region" aria-label="피드백 요청">
+    <div class="dash-cta-text">
+      <p class="dash-cta-title">📝 AI 점수에 피드백을 남겨주세요</p>
+      <p class="dash-cta-meta">
+        {% if feedback.count == 0 %}
+          분석 결과 페이지의 👍 / 👎 버튼으로 점수 정합도를 알려주시면 AI 정확도가 개선됩니다.
+        {% else %}
+          현재까지 {{ feedback.count }}건의 피드백이 있습니다 — 더 정확한 AI 정합도 측정을 위해 피드백을 남겨주세요.
+        {% endif %}
+      </p>
+    </div>
+    {% if feedback.recent_analysis %}
+    <a class="dash-cta-btn"
+       href="/repos/{{ feedback.recent_analysis.repo_full_name }}/analyses/{{ feedback.recent_analysis.id }}#feedbackCard">
+      → 최근 분석 보기
+    </a>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {# KPI 5 카드 (Phase 1 4 + Phase 2 Auto-merge) #}
   <div class="dash-kpi-grid">
     <div class="dash-kpi">
       <div class="dash-kpi-label">평균 점수</div>

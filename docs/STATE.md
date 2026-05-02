@@ -6,7 +6,7 @@
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1998개** | pytest 9.0.3 — Phase 2 PR 1 (auto_merge_kpi 6 + merge_failure_distribution 5 = +11 신규) **= 1998 passed / 0 failed** |
+| 단위 테스트 | **2004개** | pytest 9.0.3 — Phase 2 PR 2 (feedback_status 6 신규) **= 2004 passed / 0 failed** |
 | 통합 테스트 | **72개** | tests/integration/ — Phase 4 PR-T5 +25 (e2e_pipeline_scenarios — webhook→pipeline→gate 종단간) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
