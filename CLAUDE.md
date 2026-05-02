@@ -72,7 +72,7 @@ src/
 ├── main.py                     # FastAPI 앱, lifespan(DB 마이그레이션 + http_client), 전체 라우터 등록 + StaticFiles `/static` mount (UI 감사 Step C)
 ├── static/
 │   └── vendor/
-│       └── chart.umd.min.js    # Chart.js 4.4.0 UMD min vendoring — CDN 차단/오프라인 환경 호환 (UI 감사 Step C). 사용처: repo_detail / analysis_detail / insights_me
+│       └── chart.umd.min.js    # Chart.js 4.4.0 UMD min vendoring — CDN 차단/오프라인 환경 호환 (UI 감사 Step C). 사용처: repo_detail / analysis_detail
 ├── config.py                   # pydantic-settings 환경변수 관리, postgres:// URL 자동 변환
 ├── constants.py                # 전역 상수 단일 출처 — 점수배점/감점가중치/AI기본값/등급/알림한도/HTTP타임아웃/캐시TTL
 ├── crypto.py                   # encrypt_token()/decrypt_token() — TOKEN_ENCRYPTION_KEY
@@ -194,7 +194,7 @@ src/
 │       ├── settings.py         # /repos/{name}/settings · reinstall-hook · reinstall-webhook
 │       ├── actions.py          # /repos/{name}/delete
 │       └── detail.py           # /repos/{name}/analyses/{id} · /repos/{name}
-├── templates/                  # add_repo, base, login, overview, repo_detail, analysis_detail, settings, insights, insights_me
+├── templates/                  # add_repo, base, login, overview, repo_detail, analysis_detail, settings, insights
 ├── cli/
 │   ├── __main__.py             # python -m src.cli review
 │   ├── git_diff.py             # 로컬 git diff 수집

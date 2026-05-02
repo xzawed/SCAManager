@@ -121,60 +121,6 @@ def moving_average(
     return round(sum(rows) / len(rows), 1)
 
 
-def author_trend(
-    db: Session,
-    login: str,
-    days: int = 30,
-    *,
-    now: datetime | None = None,
-) -> list[dict[str, Any]]:
-    """개발자별 일별 평균 점수 추세를 반환한다.
-    Return the per-day average score trend for an author login.
-
-    Args:
-        db: SQLAlchemy 세션 / SQLAlchemy session
-        login: GitHub 로그인 ID / GitHub login
-        days: 집계 기간(일) / Aggregation period in days
-        now: 현재 시각 주입용 (테스트 고정 지원) / Injected current time (for test pinning)
-
-    Returns:
-        {"date": "YYYY-MM-DD", "avg_score": float, "count": int} 리스트 (날짜 오름차순)
-        List of {"date": "YYYY-MM-DD", "avg_score": float, "count": int} sorted ascending by date.
-    """
-    # now 기본값 설정 — 테스트에서 고정 시각 주입 가능
-    # Default now — allows injecting a fixed time in tests
-    _now = now or datetime.now(timezone.utc)
-    since = _now - timedelta(days=days)
-
-    analyses = db.scalars(
-        select(Analysis)
-        .where(Analysis.author_login == login)
-        .where(Analysis.author_login.isnot(None))
-        .where(Analysis.score.isnot(None))
-        .where(Analysis.created_at >= since)
-        .order_by(Analysis.created_at.asc())
-    ).all()
-
-    # Python-side 날짜별 그룹화 — SQLite/PG 날짜 함수 불일치 회피
-    # Group by date on the Python side to avoid SQLite/PG date function divergence
-    daily: dict[str, list[int]] = {}
-    for analysis in analyses:
-        date_str = analysis.created_at.strftime("%Y-%m-%d") if analysis.created_at else ""
-        if date_str:
-            daily.setdefault(date_str, []).append(analysis.score)
-
-    # 날짜 오름차순 정렬 후 반환
-    # Return sorted ascending by date
-    return [
-        {
-            "date": date_str,
-            "avg_score": round(sum(scores) / len(scores), 1),
-            "count": len(scores),
-        }
-        for date_str, scores in sorted(daily.items())
-    ]
-
-
 def repo_comparison(
     db: Session,
     repo_ids: list[int],
