@@ -770,8 +770,9 @@
       </div>
     </div>
 
-    <!-- ⑤ 이벤트 후 자동화 (Push 이벤트 + Railway 배포 + 팀 리더보드) — 전체 .adv-only 카드 -->
-    <!-- ⑤ Post-event Automation (push events + Railway deploy + team leaderboard) — entire card .adv-only -->
+    <!-- ⑤ 이벤트 후 자동화 (Push 이벤트 + Railway 배포) — 전체 .adv-only 카드 -->
+    <!-- ⑤ Post-event Automation (push events + Railway deploy) — entire card .adv-only -->
+    <!-- 그룹 60 (2026-05-02) 사용자 결정 정정: 팀 리더보드 기능 폐기 (alembic 0025) -->
     <div class="settings-grid adv-only">
       <div class="s-card">
         <div class="s-card-hdr hdr-merge">
@@ -821,21 +822,9 @@
             </label>
           </div>
 
-          <div class="s-divider"></div>
-          <div class="s-section-label">팀 설정</div>
-          <div class="toggle-row">
-            <div class="toggle-info">
-              <div class="t-title">팀 리더보드 공개</div>
-              <div class="t-desc">이 리포를 팀 인사이트 리더보드에 포함<br>
-                <span style="color:var(--warning);font-size:.78rem;">옵션 기능 — 팀 합의 후 활성화 권장</span>
-              </div>
-            </div>
-            <label class="toggle-switch">
-              <input type="checkbox" name="leaderboard_opt_in" value="on"
-                     {% if config.leaderboard_opt_in %}checked{% endif %}>
-              <span class="toggle-track"></span>
-            </label>
-          </div>
+          {# 팀 리더보드 공개 — 그룹 60 사용자 결정 정정 (2026-05-02) 으로 폐기.
+             leaderboard() 함수 (Phase 1 PR 3) + leaderboard_opt_in 컬럼 (alembic 0025) 모두 폐기.
+             1인 운영 → SaaS 전환 의도 (Phase 3) 시점에 별도 멀티 사용자 인사이트 모델 신설 결정. #}
 
         </div>
       </div>

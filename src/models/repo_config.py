@@ -30,9 +30,8 @@ class RepoConfig(Base):
     railway_webhook_token = Column(String(64), nullable=True, unique=True)
     railway_api_token = Column(String, nullable=True)  # Fernet 암호화 저장
     auto_merge_issue_on_failure = Column(Boolean, default=False, nullable=False)
-    # 리더보드 공개 옵트인 — 기본 비활성 (팀 합의 후 활성화 권장)
-    # Leaderboard opt-in — disabled by default (recommended to enable after team agreement)
-    leaderboard_opt_in = Column(Boolean, default=False, nullable=False)
+    # leaderboard_opt_in 컬럼 — 그룹 60 사용자 결정 정정 (2026-05-02) 으로 폐기.
+    # alembic 0025 에서 컬럼 drop. 회귀 가드: tests/unit/services/test_analytics_service_deprecations.py
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
@@ -48,5 +47,4 @@ class RepoConfig(Base):
         kwargs.setdefault("create_issue", False)
         kwargs.setdefault("railway_deploy_alerts", False)
         kwargs.setdefault("auto_merge_issue_on_failure", False)
-        kwargs.setdefault("leaderboard_opt_in", False)
         super().__init__(**kwargs)
