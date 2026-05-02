@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-02 기준 — 그룹 60: Phase 1+2 12 PR 완료 + 회고 + 정책 11 신설 + 정책 2/3/7/12 진화/신설)
+## 현재 수치 (2026-05-02 기준 — **그룹 60 완료**: 17 PR 단일 작업일 — Phase 1+2 + 회고 + 정책 11/12/13 신설 + 정책 2/3/7/11 진화/강화 + P0 OAuth 사고 후속)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **2008개** | pytest 9.0.3 — Phase 2 + 후속 + P0 OAuth incident response (+4 OAuth redirect_uri 회귀 가드) **= 2008 passed / 0 failed** |
+| 단위 테스트 | **2008개** | pytest 9.0.3 — 그룹 60 누적 +22 (Phase 1 -3+19+3 + Phase 2 +17 + P0 OAuth +4, pre-existing 7 fail 모두 해소) **= 2008 passed / 2 skipped / 0 failed** |
 | 통합 테스트 | **72개** | tests/integration/ — Phase 4 PR-T5 +25 (e2e_pipeline_scenarios — webhook→pipeline→gate 종단간) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
@@ -57,7 +57,7 @@
 
 ## 작업 이력 (그룹별)
 
-### 그룹 60 (2026-05-02 · Phase 1 회고 + 정책 11 신설 + 정책 2/3/7 진화 — PR 진행 중)
+### 그룹 60 (2026-05-02 · 17 PR 단일 작업일 — Phase 1+2 + 회고 + 정책 진화 7건 + P0 OAuth 사고 후속 — PR #188 ~ #204)
 
 **목표**: Phase 1 (그룹 59) 5 PR 시리즈 머지 완료 후 정책 8 (다중 에이전트 회고) + 정책 9 (Claude 자유 발언) 의무 적용. 회고 결과를 CLAUDE.md 정책 본문에 진화 반영.
 
