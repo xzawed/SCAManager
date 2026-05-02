@@ -155,7 +155,6 @@ def test_insights_me_returns_200():
 
         with patch("src.ui.routes.insights.SessionLocal", return_value=_ctx(mock_db)), \
              patch("src.ui.routes.insights.analytics_service.author_trend", return_value=fake_trend), \
-             patch("src.ui.routes.insights.analytics_service.top_issues", return_value=[]), \
              patch("src.ui.routes.insights.templates.TemplateResponse") as mock_tr:
             from fastapi.responses import HTMLResponse
             mock_tr.return_value = HTMLResponse(content="<html>me</html>", status_code=200)
@@ -191,7 +190,6 @@ def test_insights_me_respects_days_param():
 
         with patch("src.ui.routes.insights.SessionLocal", return_value=_ctx(mock_db2)), \
              patch("src.ui.routes.insights.analytics_service.author_trend", return_value=[]) as mock_trend, \
-             patch("src.ui.routes.insights.analytics_service.top_issues", return_value=[]), \
              patch("src.ui.routes.insights.templates.TemplateResponse") as mock_tr:
             from fastapi.responses import HTMLResponse
             mock_tr.return_value = HTMLResponse(content="<html>me</html>", status_code=200)
@@ -353,43 +351,6 @@ def test_insights_comparison_context_includes_leaderboard():
             app.dependency_overrides.pop(require_login, None)
 
 
-def test_insights_me_context_includes_top_issues():
-    """/insights/me 응답 컨텍스트에 top_issues 키가 포함되어야 한다.
-    The /insights/me template context must include a 'top_issues' key.
-    """
-    _prev_login = app.dependency_overrides.get(require_login)
-    app.dependency_overrides[require_login] = lambda: _test_user
-    try:
-        client = TestClient(app)
-        mock_db = MagicMock()
-
-        fake_trend = [{"date": "2026-04-20", "avg_score": 82.0, "count": 2}]
-
-        captured_context: dict = {}
-
-        def _capture_response(request, template_name, context, **kwargs):
-            captured_context.update(context)
-            from fastapi.responses import HTMLResponse
-            return HTMLResponse(content="<html>ok</html>", status_code=200)
-
-        with patch("src.ui.routes.insights.SessionLocal", return_value=_ctx(mock_db)), \
-             patch("src.ui.routes.insights.analytics_service.author_trend", return_value=fake_trend), \
-             patch("src.ui.routes.insights.analytics_service.top_issues", return_value=[]), \
-             patch("src.ui.routes.insights.templates.TemplateResponse", side_effect=_capture_response):
-            response = client.get("/insights/me")
-
-        assert response.status_code == 200
-        assert "top_issues" in captured_context, (
-            "'top_issues' 키가 템플릿 컨텍스트에 없음 / 'top_issues' key missing from template context"
-        )
-        assert isinstance(captured_context["top_issues"], list)
-    finally:
-        if _prev_login is not None:
-            app.dependency_overrides[require_login] = _prev_login
-        else:
-            app.dependency_overrides.pop(require_login, None)
-
-
 def test_insights_me_context_includes_kpi():
     """/insights/me 응답 컨텍스트에 kpi 키가 포함되어야 한다.
     The /insights/me template context must include a 'kpi' key with delta/avg/grade.
@@ -411,7 +372,6 @@ def test_insights_me_context_includes_kpi():
 
         with patch("src.ui.routes.insights.SessionLocal", return_value=_ctx(mock_db)), \
              patch("src.ui.routes.insights.analytics_service.author_trend", return_value=fake_trend), \
-             patch("src.ui.routes.insights.analytics_service.top_issues", return_value=[]), \
              patch("src.ui.routes.insights.templates.TemplateResponse", side_effect=_capture_response):
             response = client.get("/insights/me")
 

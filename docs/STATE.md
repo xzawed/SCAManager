@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-02 기준 — 그룹 58: 협업 정책 1~10 + Insight Dashboard 근본 재설계 기획 완료)
+## 현재 수치 (2026-05-02 기준 — 그룹 59: 대시보드 v2 목업 + Phase 1 PR 1 (top_issues 폐기) 진행 중)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
@@ -56,6 +56,37 @@
 | `tests/conftest.py` | 환경변수 주입 + _webhook_secret_cache autouse 클리어 |
 
 ## 작업 이력 (그룹별)
+
+### 그룹 59 (2026-05-02 · 대시보드 v2 목업 + Phase 1 PR 1 — PR #186, #187, #188 진행 중)
+
+**목표**: 그룹 58 의 Insight Dashboard 기획 (PR #181) 후속 — 사용자 응답 (Q5 C+E 채택 / Q6 사용자 신호 기반 / Q7 신규 함수) 반영한 시각 목업 v2 (Claude × Linear 디자인) 완성 + Phase 1 의 첫 폐기 PR 착수.
+
+**관련 PR**:
+
+| PR | 핵심 변경 |
+|----|---------|
+| **#186** Docs/design dashboard mockups v2 claude linear | 시각 목업 v2 2종 — `2026-05-02-dashboard-v2-overview.html` (Stripe-style KPI 4 + 차트) + `-v2-insight.html` (Claude 톤 4 카드 노트). Claude × Linear 하이브리드 디자인 (warm cream + Anthropic orange + Crimson Pro serif + sage/sand/muted-red 채도 -20% + claude-light/claude-dark) + 모드 토글 (📊 ↔ 💬) + Chart.js 동적 색 추출. 기획서 §6.5/6.6 갱신 (Q5/Q6/Q7 사용자 결정 반영) |
+| **#187** Fix dashboard v2 mockup width alignment | 가로폭 정합성 3건 — topbar 풀폭 vs page 1200 어긋남 (`.topbar-inner` wrapper, max-width 1200) + chart-card padding 28→24 (모든 카드 동일) + 차트 종횡비 3.4:1 → 2.8:1 (height 320→380, 모바일 240→260). Overview ↔ Insight topbar 위치 통일 |
+| **#188 (진행 중)** Chore/insights cleanup top issues | Phase 1 PR 1 — `analytics_service.top_issues` 함수 + `/insights/me` 라우트 호출처 + `templates/insights_me.html` 자주 발생 이슈 블록 + `tests/unit/services/test_analytics_service.py::TestTopIssues` 4 + `tests/unit/ui/test_insights_routes.py` mock 3 + 통합 테스트 1 폐기. 회귀 가드 신규 `tests/unit/services/test_analytics_service_deprecations.py` (+2) — `hasattr(svc, "top_issues") == False` + `pytest.raises(ImportError)` 패턴 |
+
+**Phase 1 PR 분할 계획** (사용자 승인 — 5 PR):
+1. **PR 1 (#188 진행 중)**: `top_issues` 폐기
+2. PR 2: `/insights/me` 페이지 + `author_trend()` + `templates/insights_me.html` 폐기
+3. PR 3: `/insights` (compare) + `repo_comparison()` + `leaderboard()` 폐기 (`leaderboard_opt_in` 컬럼은 Q3 결정으로 보존)
+4. PR 4: 신규 `/dashboard` 라우트 + view + KPI 4 + 라인 차트 (MVP-B 핵심)
+5. PR 5: `/insights` → `/dashboard` 301 redirect + telemetry 1줄
+
+**디자인 토큰 변동**:
+- 목업 전용 신규 토큰 (운영 base.html 미반영) — PR 4 (신규 dashboard 라우트) 시점에 base.html alias 흡수 결정 의무
+
+**5-way sync 영향**:
+- PR #186/#187: 0 (목업 HTML, 운영 무영향)
+- PR #188: 0 (폐기 함수 — 외부 API/dataclass/PRESETS 미접촉)
+
+**테스트**: 1984 유지 (PR #188 — 5건 폐기 + 2건 회귀 가드 추가 = -3, 총 변동 1981 → 환경 7건 pre-existing fail 반영 시 collect 1984 동일)
+**품질**: pylint 9.12/10 (회귀 가드 negative test 본질상 disable 디렉티브 일부 — CLAUDE.md 8.0+ 통과)
+
+---
 
 ### 그룹 58 (2026-05-02 · 협업 정책 6건 + Insight Dashboard 근본 재설계 기획 — PR #180, #181, #182)
 
