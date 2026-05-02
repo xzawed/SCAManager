@@ -13,10 +13,20 @@
 
 [허용 조건]
 - pytest, fastapi, sqlalchemy 가 import 가능한 환경 (make test 실행 가능)
+
+[2026-05-02 fix — Phase 1+2 회고 P0 후속]
+기존: subprocess 검증 시 sys.executable 사용 → Claude Code 가 hook 을 시스템
+minimal python (/usr/bin/python3, pytest 미설치) 으로 호출 시 항상 차단. 그러나
+사용자의 `make test` 는 PATH 의 python (/usr/local/bin/python = pyenv/conda/venv,
+pytest 있음) 사용 → 환경 모순.
+
+수정: shutil.which("python") → "python3" → sys.executable fallback. PATH 의 python
+(=`make test` 가 사용하는 동일 python) 우선 검증 → false positive 차단 해소.
 """
 import sys
 import json
 import re
+import shutil
 import subprocess
 
 # stdin에서 hook payload 읽기
@@ -50,14 +60,19 @@ if matched_reason is None:
     sys.exit(0)  # 보호 대상 아님 → 통과
 
 # 테스트 환경 확인 (pytest, fastapi, sqlalchemy import 가능한지)
+# PATH 의 python 우선 (= `make test` 가 사용하는 동일 인터프리터). 시스템 minimal
+# python (/usr/bin/python3, pytest 미설치) 으로 hook 이 호출되어도 정상 검증.
+# Order: python (PATH) → python3 (PATH) → sys.executable (hook runner 의 python).
+PY_CMD = shutil.which("python") or shutil.which("python3") or sys.executable
 try:
     result = subprocess.run(
-        [sys.executable, "-c", "import pytest, fastapi, sqlalchemy"],
+        [PY_CMD, "-c", "import pytest, fastapi, sqlalchemy"],
         capture_output=True,
         timeout=5,
+        check=False,
     )
     can_test = result.returncode == 0
-except Exception:
+except Exception:  # pylint: disable=broad-except
     can_test = False
 
 if can_test:
