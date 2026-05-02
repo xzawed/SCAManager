@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-02 기준 — **그룹 60 완료**: 17 PR 단일 작업일 — Phase 1+2 + 회고 + 정책 11/12/13 신설 + 정책 2/3/7/11 진화/강화 + P0 OAuth 사고 후속)
+## 현재 수치 (2026-05-02 기준 — **그룹 61 진행 중**: 사용자 회신 후속 — leaderboard 기능 완전 폐기 + Phase 3 SaaS 전환 토대)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **2008개** | pytest 9.0.3 — 그룹 60 누적 +22 (Phase 1 -3+19+3 + Phase 2 +17 + P0 OAuth +4, pre-existing 7 fail 모두 해소) **= 2008 passed / 2 skipped / 0 failed** |
+| 단위 테스트 | **2009개** | pytest 9.0.3 — 그룹 61 leaderboard 폐기 + 회귀 가드 신규 +1 (column/dataclass 부재) **= 2009 passed / 2 skipped / 0 failed** |
 | 통합 테스트 | **72개** | tests/integration/ — Phase 4 PR-T5 +25 (e2e_pipeline_scenarios — webhook→pipeline→gate 종단간) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
@@ -56,6 +56,29 @@
 | `tests/conftest.py` | 환경변수 주입 + _webhook_secret_cache autouse 클리어 |
 
 ## 작업 이력 (그룹별)
+
+### 그룹 61 (2026-05-02 · 사용자 회신 후속 — leaderboard 폐기 + Phase 3 SaaS 토대 — PR 진행 중)
+
+**목표**: 그룹 60 (Phase 1+2 17 PR) 종료 후 사용자 정보 비대칭 3건 회신:
+1. Anthropic API 비용 = 본 사이클 ~$25 (Sonnet 4.6 주, Opus 4.7 보조). caching 전략 우선순위 ↑↑ (90% 절감)
+2. 트래픽 = "저 혼자" (single-tenant 1인 운영)
+3. **single-tenant vs SaaS = "SaaS 했으면 좋겠습니다"** ⭐ Phase 3 우선순위 대전환
+4. **신규 요청**: 팀 리더보드 기능 완전 삭제 — Q3 결정 (보존) 정정
+
+**Phase 3 우선순위 갱신**:
+- single-tenant 가정 폐기 → SaaS 전환 토대 작업 우선
+- 모드 토글 (📊/💬) + 사용자별 Insight 노트 + 멀티 테넌트 가치 ↑↑↑
+- caching 전략 = Phase 3 Day 1 의무 (Sonnet input 90% 절감)
+
+**관련 PR**:
+
+| PR | 핵심 변경 |
+|----|---------|
+| **(진행 중)** Chore/remove leaderboard feature completely | **🔴 Q3 정정 — 리더보드 기능 완전 폐기** (사용자 명시 요청). Alembic 0025 (`drop_repo_config_leaderboard_opt_in`) + ORM 컬럼 + dataclass + API body + Settings UI 폼 + 백엔드 핸들러 5-way sync 적용. 회귀 가드 신규 (`test_leaderboard_opt_in_column_removed/dataclass_field_removed`) + 기존 가드 정정 (Phase 1 PR 3 의 "Q3 보존" → "Q3 정정 폐기"). CLAUDE.md 주의사항 정정. SaaS 전환 시 별도 멀티 사용자 인사이트 모델 신설 결정 |
+
+**5-way sync 영향**: 5/5 모두 적용 (정책 7 강화 응집 단위 — "리더보드 완전 폐기")
+
+---
 
 ### 그룹 60 (2026-05-02 · 17 PR 단일 작업일 — Phase 1+2 + 회고 + 정책 진화 7건 + P0 OAuth 사고 후속 — PR #188 ~ #204)
 

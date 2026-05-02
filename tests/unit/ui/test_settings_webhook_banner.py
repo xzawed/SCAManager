@@ -205,7 +205,8 @@ def test_settings_all_form_fields_present_after_restructure():
         "approve_threshold", "reject_threshold", "commit_comment",
         "create_issue", "railway_deploy_alerts", "notify_chat_id",
         "discord_webhook_url", "slack_webhook_url", "n8n_webhook_url",
-        "custom_webhook_url", "email_recipients", "leaderboard_opt_in",
+        "custom_webhook_url", "email_recipients",
+        # leaderboard_opt_in 폐기 (그룹 60 사용자 결정 정정 — alembic 0025)
         "auto_merge_issue_on_failure",
         # PR-D2 추가 — 5-way sync 핵심 필드
         "approve_mode",        # 구 gate_mode — Approve 자동/반자동 핫키
@@ -213,3 +214,9 @@ def test_settings_all_form_fields_present_after_restructure():
     ]
     for field in required_fields:
         assert field in resp.text, f"Missing form field: {field}"
+
+    # leaderboard_opt_in 부재 가드 (그룹 60 정정)
+    assert "leaderboard_opt_in" not in resp.text, (
+        "leaderboard_opt_in 폼 필드는 그룹 60 사용자 결정 정정으로 폐기됨 — "
+        "재도입 금지. (5-way sync: ORM/dataclass/API/UI/핸들러 모두 폐기 적용)"
+    )
