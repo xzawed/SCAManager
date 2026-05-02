@@ -6,7 +6,7 @@
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **1987개** | pytest 9.0.3 — 그룹 59 Phase 1 5 PR 누적 변동: PR 1 (-3) + PR 2 (-6) + PR 3 (-12) + PR 4 (+19) + PR 5 (+3) = +1, 총 1986 → 1987 (환경 fail 7건 pre-existing 동일) |
+| 단위 테스트 | **1987개** | pytest 9.0.3 — Phase 1 (그룹 59) +1 → 그룹 60 PR B-1 (mock fix 5/7) 환경 fail 7→2 = **1980 → 1985 passed** (Phase 1 진입 시점과 동일 수치, fail 만 감소) |
 | 통합 테스트 | **72개** | tests/integration/ — Phase 4 PR-T5 +25 (e2e_pipeline_scenarios — webhook→pipeline→gate 종단간) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
@@ -78,7 +78,8 @@
 
 | PR | 핵심 변경 |
 |----|---------|
-| **#194 (진행 중)** Docs/phase1 retro policy 11 evolution | **정책 11 신설** (UI/시각 변경 PR 본문 최상단 "🚨 Claude 시각 검증 불가" 8 조합 체크리스트 의무) + **정책 2 진화** (Phase 종료 시 일괄 회신 묶음) + **정책 3 진화** (자율 판단 보고 PR 본문 Summary 직후 + 이의 가능성 ≥ 중 강조) + **정책 7 강화** (PR 단위 = 응집 단위 분할 — nav/redirect/라우트 동일 PR 의무). 회고 정리 문서 신규 (`docs/reports/2026-05-02-phase1-retrospective.md`) |
+| **#194** Docs/phase1 retro policy 11 evolution | **정책 11 신설** (UI/시각 변경 PR 본문 최상단 "🚨 Claude 시각 검증 불가" 8 조합 체크리스트 의무) + **정책 2 진화** (Phase 종료 시 일괄 회신 묶음) + **정책 3 진화** (자율 판단 보고 PR 본문 Summary 직후 + 이의 가능성 ≥ 중 강조) + **정책 7 강화** (PR 단위 = 응집 단위 분할 — nav/redirect/라우트 동일 PR 의무). 회고 정리 문서 신규 (`docs/reports/2026-05-02-phase1-retrospective.md`) |
+| **#195 (진행 중)** Chore/preexisting 7 fail triage (B-1) | **pre-existing 7 fail 분류 + 5건 fix** — origin 일관 = `src.webhook.providers.github.get_webhook_secret` mock 누락 (PR 1~5 무관, 이전 사이클부터 잔존). test_issues.py 5 케이스에 `patch("src.webhook.providers.github.get_webhook_secret", return_value=SECRET)` 1줄 추가 → 5/7 통과. **남은 2건 (test_router.py 의 fallback 동작 검증, test_pipeline.py 의 settings.github_token import 시점) 은 origin 다름 (fallback 의도 자체 검증 + settings instance lazy issue) → 별도 PR (B-2) 분리 의무**. 본 PR 후 환경 fail = 1985 passed / 2 failed |
 
 **5-way sync 영향**: 0 (docs only)
 
