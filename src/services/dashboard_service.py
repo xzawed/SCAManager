@@ -1,15 +1,16 @@
-"""Dashboard service — Phase 1 PR 4 (MVP-B 신규 함수).
-Dashboard service for the new /dashboard route (replaces deprecated /insights/*).
+"""Dashboard service — Phase 1 PR 4 + Phase 2 PR 1 (MVP-B + Auto-merge KPI).
+Dashboard service for the /dashboard route.
 
-함수 3종:
-- dashboard_kpi(db, days, *, now) -> KPI 4 카드 (평균 점수 / 분석 건수 / 보안 HIGH / 활성 리포)
-- dashboard_trend(db, days, *, now) -> 날짜별 평균 점수 추세 (라인 차트)
-- frequent_issues_v2(db, days, *, n, now) -> global 자주 발생 이슈 (Q7 신규 — category/language/tool 포함)
+Phase 1 함수 (MVP-B):
+- dashboard_kpi — KPI 4 카드 (평균 점수 / 분석 건수 / 보안 HIGH / 활성 리포)
+- dashboard_trend — 날짜별 평균 점수 추세 (라인 차트)
+- frequent_issues_v2 — global 자주 발생 이슈 (Q7 신규 · category/language/tool)
 
-기존 analytics_service 의 (top_issues / author_trend / repo_comparison / leaderboard) 폐기 4종을 대체하는
-새 데이터 모델. now 인자 의존성 주입 패턴 (analytics_service 와 동일) — freezegun 미사용.
+Phase 2 함수 (운영 데이터 기반 — MCP 검증 결과: success_rate 16.6% / unstable_ci 79%):
+- auto_merge_kpi — Auto-merge 시도 success rate (단순 + retry-aware distinct PR 기준)
+- merge_failure_distribution — 실패 사유 Top N + 비율 (운영 신호: unstable_ci 압도적)
 
-Replaces deprecated analytics_service.{top_issues,author_trend,repo_comparison,leaderboard}.
+now 인자 의존성 주입 패턴 (analytics_service 와 동일).
 """
 from __future__ import annotations
 
@@ -20,6 +21,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from src.models.analysis import Analysis
+from src.models.merge_attempt import MergeAttempt
 from src.models.repository import Repository
 from src.scorer.calculator import calculate_grade
 
@@ -222,4 +224,119 @@ def frequent_issues_v2(
             "tool": meta[msg]["tool"],
         }
         for msg, cnt in sorted_items[:n]
+    ]
+
+
+# ─── Phase 2: Auto-merge KPI ────────────────────────────────────────────────
+
+
+def auto_merge_kpi(
+    db: Session,
+    days: int = 7,
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Auto-merge 성공률 카드 데이터.
+
+    운영 데이터 (MCP 검증, 2026-05-02): single-attempt success rate 16.6%, unstable_ci 79%
+    → 단순 시도 기준 외 distinct PR 의 final success rate 도 함께 반환 (retry queue 영향 보정).
+    """
+    _now = now or datetime.now(timezone.utc)
+    cur_since = _now - timedelta(days=days)
+    prev_since = _now - timedelta(days=days * 2)
+
+    cur = list(db.scalars(
+        select(MergeAttempt)
+        .where(MergeAttempt.attempted_at >= cur_since)
+        .where(MergeAttempt.attempted_at <= _now)
+    ).all())
+    prev = list(db.scalars(
+        select(MergeAttempt)
+        .where(MergeAttempt.attempted_at >= prev_since)
+        .where(MergeAttempt.attempted_at < cur_since)
+    ).all())
+
+    return {
+        **_simple_success(cur, prev),
+        **_retry_aware_success(cur),
+    }
+
+
+def _simple_success(cur: list[MergeAttempt], prev: list[MergeAttempt]) -> dict[str, Any]:
+    """단순 시도 기준 success rate + delta + count breakdown."""
+    cur_success = [a for a in cur if a.success]
+    cur_value = round(100.0 * len(cur_success) / len(cur), 1) if cur else None
+    prev_value = (
+        round(100.0 * sum(1 for a in prev if a.success) / len(prev), 1) if prev else None
+    )
+    delta = (
+        round(cur_value - prev_value, 1)
+        if (cur_value is not None and prev_value is not None)
+        else None
+    )
+    return {
+        "value": cur_value,
+        "total_attempts": len(cur),
+        "success_count": len(cur_success),
+        "failure_count": len(cur) - len(cur_success),
+        "delta": delta,
+    }
+
+
+def _retry_aware_success(cur: list[MergeAttempt]) -> dict[str, Any]:
+    """retry-aware: distinct (repo_name, pr_number) 기준 final success."""
+    pr_keys = {(a.repo_name, a.pr_number) for a in cur}
+    success_pr_keys = {(a.repo_name, a.pr_number) for a in cur if a.success}
+    distinct_prs = len(pr_keys)
+    final_success = len(success_pr_keys)
+    return {
+        "distinct_prs": distinct_prs,
+        "final_success_prs": final_success,
+        "final_success_rate_pct": (
+            round(100.0 * final_success / distinct_prs, 1) if distinct_prs else None
+        ),
+    }
+
+
+def merge_failure_distribution(
+    db: Session,
+    days: int = 7,
+    *,
+    n: int = 5,
+    now: datetime | None = None,
+) -> list[dict[str, Any]]:
+    """실패 사유 Top N + 비율.
+
+    운영 신호: unstable_ci 가 79% 점유 — Phase 3 advisor 의 우선 처리 사유 식별.
+
+    Returns:
+        [{"reason": str, "count": int, "share_pct": float}, ...]
+        count 내림차순, 최대 n 개. share_pct = count / total_failure × 100.
+    """
+    _now = now or datetime.now(timezone.utc)
+    since = _now - timedelta(days=days)
+
+    failures = list(db.scalars(
+        select(MergeAttempt)
+        .where(MergeAttempt.attempted_at >= since)
+        .where(MergeAttempt.success.is_(False))
+    ).all())
+
+    if not failures:
+        return []
+
+    counter: dict[str, int] = {}
+    for f in failures:
+        key = f.failure_reason or "(none)"
+        counter[key] = counter.get(key, 0) + 1
+
+    total = len(failures)
+    sorted_items = sorted(counter.items(), key=lambda x: x[1], reverse=True)
+    return [
+        {
+            "reason": reason,
+            "count": cnt,
+            "share_pct": round(100.0 * cnt / total, 1),
+        }
+        for reason, cnt in sorted_items[:n]
     ]
