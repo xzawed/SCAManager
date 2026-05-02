@@ -1848,20 +1848,10 @@ def test_nav_login_guard():
     )
 
 
-def test_chip_a11y_sr_only_pattern():
-    """PR #168 E4 회귀 가드 — insights chip 의 sr-only 패턴 + focus-within outline."""
-    insights = _read_template("insights.html")
-    # display:none 이 chip-label input 에 잔존하면 안 됨
-    assert ".chip-label input[type=checkbox] { display:none" not in insights, (
-        "chip-label input 에 display:none 회귀 (a11y 깨짐)"
-    )
-    # sr-only 패턴 (position:absolute + opacity:0) 와 focus-within outline 존재
-    assert "position: absolute;" in insights and "clip: rect(0 0 0 0)" in insights, (
-        "chip-label sr-only 패턴 누락"
-    )
-    assert ".chip-label:focus-within" in insights, (
-        "chip-label focus-within outline 누락"
-    )
+# test_chip_a11y_sr_only_pattern — 폐기 (Phase 1 PR 3, 2026-05-02)
+# insights.html 템플릿 폐기에 따라 본 가드 제거. 신규 dashboard 페이지 (PR 4) 에
+# chip 컴포넌트 도입 시 동일 a11y 패턴 (sr-only + focus-within outline) 적용 의무.
+# Removed in PR 3; reapply same a11y pattern when chip components are added to /dashboard (PR 4).
 
 
 def test_btn_disabled_extended_selectors():

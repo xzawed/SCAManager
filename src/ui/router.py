@@ -13,7 +13,6 @@ from src.ui.routes import (
     actions,
     add_repo,
     detail,
-    insights,
     overview,
     settings,
 )
@@ -23,7 +22,8 @@ router = APIRouter()
 # 구체 경로 → 일반 경로 순
 # Specific routes first, catch-all route last.
 router.include_router(overview.router)       # GET /
-router.include_router(insights.router)       # GET /insights (compare + leaderboard)
+# NOTE: GET /insights (compare + leaderboard) removed in Phase 1 PR 3 (2026-05-02).
+# /dashboard (PR 4) supersedes; PR 5 will add /insights → /dashboard 301 redirect.
 router.include_router(add_repo.router)       # GET/POST /repos/add, /api/github/repos
 router.include_router(settings.router)       # /repos/{name}/settings, reinstall-*
 router.include_router(actions.router)        # /repos/{name}/delete
