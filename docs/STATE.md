@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-04 기준 — **Phase 3 100% 완료 + 다중 에이전트 회고**: 33 PR #188~#225 — Phase 1+2 + 회고 + 정책 진화 7건 + 정책 14 신설 + P0 OAuth + leaderboard 완전 폐기 + Phase 3 SaaS 전환 토대 6 PR 100% 머지 (caching + insight service + 라우트/UI + 사용자 신호 default + Supabase RLS + 회귀 가드) + 종단간 가드 + 사이클 64 5+1 에이전트 회고)
+## 현재 수치 (2026-05-04 기준 — **Phase 3 100% + postlude 4 PR + 사이클 65~67 cleanup 완료**: 38 PR #188~#230 — Phase 1+2 + 회고 + 정책 진화 9건 + 정책 14 신설 + P0 OAuth + leaderboard 완전 폐기 + Phase 3 SaaS 전환 토대 6 PR + RLS 운영 활성화 미들웨어 (#228) + legacy NULL backfill (#229) + pre-existing 5 fail 완전 해소 (#227) + 5+1 에이전트 회고 2회 + 5 P1 cleanup 묶음 (#230))
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **2041개** | pytest 9.0.3 — 사이클 65 정밀 재실측 (`pytest tests/unit --collect-only -q` = 2041). 사이클 64 sync 의 "2121" 산식은 80건 과대 표기 (PR 신규 카운트 누적 산식 오류 — 본 사이클 cleanup PR 정정). Phase 3 PR 1~6 신규 +25 (PR 1 caching +6 / PR 2 insight +6 / PR 3 mode +5 / PR 4 detection +4 / PR 5 RLS +10) + PR 6 회귀 가드는 e2e/integration 영역 (단위 영향 0). **= 2041 collected / 2036 passed / 5 skipped / 0 failed** (pre-existing 5 fail = gate/engine 2 + telegram_provider 3, CI 환경 PASS — 별도 사이클 정밀 조사) |
+| 단위 테스트 | **2055개** | pytest 9.0.3 — 사이클 65~67 누적 +14 신규 (RLS middleware #228 +9 — A 5 + B 4 / backfill #229 +5 — pure resolve). pre-existing 5 fail 완전 해소 (#227 — conftest setdefault → 직접 set, .env export 트랩 차단). **= 2055 collected / 2050 passed / 5 skipped / 0 failed** (`make test` 3회 결정적 검증 완료 — 사이클 64 누적 4 사이클 보류 종료) |
 | 통합 테스트 | **84개** | tests/integration/ — Phase 3 PR 6 +2 (test_insight_caching — caching helper spy + user_id 격리) **= 81 passed / 3 skipped / 0 failed** |
 | E2E 테스트 | **82개** | `make test-e2e` (Chromium Playwright) — Phase 3 PR 6 +7 (test_dashboard_insight — 페이지 로드 4 + localStorage persist 3) **= 80 passed / 0 failed / 2 pre-existing fail (test_settings 2건, 본 사이클 무관)**. ⚠️ e2e ↔ tests/integration 동시 실행 금지 — `e2e/pytest.ini` 의도적 asyncio_mode 미설정, 분리 실행 default (`make test-e2e` vs CI command `pytest tests/`) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
@@ -84,6 +84,21 @@
 | **#215** Docs/cycle-62 multi-agent stale cleanup | **사이클 62 — 5+1 에이전트 정합성 검증 결과 P0 4 + P1 4 처리 + 정책 14 신설 (사용자 요청 후속)**. (a) STATE.md L11 E2E 65→75 + 비고 PR #212 (b) STATE.md L5 헤더 23→25 PR (c) STATE.md 본 표 #211 머지 + #212 행 추가 (d) README.md L21~22 배지 (Tests 72→82 + E2E 53→75) (e) CLAUDE.md L972 E2E 65→75 (f) CLAUDE.md L688~692 자동화 가드 ↔ manual smoke 페어 모호성 1줄 강화 (g) phase1-2 retro tail 표 PR #211/#212 행 + 누적 65→73 정정 (h) oauth-incident L100 PR #212 e2e 가드 1줄 (i) operational-smoke runbook §8.5 신설 (test_theme_mobile_guards 7건) (j) **정책 14 신설** (사용자 발화 *"시큐리티에서 감지하는 내용도 앞으로 프로젝트 운영시 체크사항으로 부탁드립니다"*) — GitHub Security 탭 등록 알림 (Code Scanning open alert) 운영 체크 의무 (작업 시작 전 30초 체크리스트 1줄 + runbook §9 신설 + alert 분류 처리 3 카테고리 a/b/c). **2차 cross-verify false-positive 차단 2건**: smoke-runbook L202 "e2e 14" 라인 grep 미발견 + phase2-data-readiness "검증 완료" 이미 ✅ 동의 표시. **참조 메타 Issue #213/#214** 는 단순 추적 수단 — Security 탭 자체가 단일 진실 소스 |
 | **#216** Docs/policy-14 clarify Security alerts | **정책 14 표현 명료화 (사용자 요청 정정)** — "Issue 발생 내용" 추적 메타 표현 → "GitHub Security 탭 등록 alert" 본질 표현 (사용자 발화 *"정책중 Issue발생 내용이 아닌 Security에 등록된 내용 반영으로 변경"*). CLAUDE.md L717~725 (정책 14 본문 회고 배경 + default 의무 3건) + runbook §9 헤더/§9.4 사이클 62 사례/§9.5 매트릭스 (각각 'Issue 추적 수단 의존 X — Security 탭 단일 진실 소스' 명시) + STATE.md 사이클 62 행 (j) 표현. 행동 영향 = 다음 Claude 세션의 alert 처리 흐름이 Security 탭 직접 확인 중심으로 정착 (Issue 보조 수단 격하) |
 | **#217** Fix/codeql-325 unused import e2e dashboard | **Code Scanning Alert #325 (`py/unused-import`) 해소 — 정책 14 분류 (a) 실제 위반**. `e2e/test_dashboard.py:16` `import pytest` 제거 (전체 grep 0 사용). 14 PASS 회귀 0. 정책 14 첫 적용 사례 — alert 분류 처리 (a/b/c) 흐름 검증 |
+
+---
+
+### 사이클 65~67 — Phase 3 회고 P1 100% 처리 (2026-05-04 · PR #226 ~ #230 + 본 sync PR)
+
+사이클 64 회고 §3.2 잔여 7 P1 + cleanup 12 P0 = 누적 19항목 100% 처리 완료. 본 sync PR 페어로 단위 카운트 정밀 갱신 (2041 → 2055 = +14 신규).
+
+| PR # | 제목 | 핵심 |
+|------|------|------|
+| **#226** Docs/cycle-65 multi-agent consistency cleanup | **5+1 에이전트 정합성 검증 P0 12건 처리** — 단위 카운트 80건 과대 정정 (STATE/CLAUDE/README) + Phase 3 누락 5건 (anthropic_caching 트리 + dashboard_service 7 함수 + alembic 0026 + DISABLE_PROMPT_CACHE env + mode 흐름도) + 정책 본문 4건 (정책 8 cross-verify type + 정책 11 누적 회신 + 정책 14 마지막 확인 시점 + 30초 체크리스트 메모리 grep) + env-vars.md + runbook §8.6/§8.7 신설 |
+| **#227** Fix/conftest pre-existing 5 fail | **🎯 4 사이클 누적 보류 종료** — `tests/conftest.py` `setdefault` → 직접 set (`.env` export 환경에서 무시 트랩 차단). `make test` 3/3 결정적 PASS 검증 (사이클 62~65 누적 fail 완전 해소) |
+| **#228** Feat/phase3-postlude RLS runtime activation | **🔴 RLS 운영 활성화 미들웨어** — `src/shared/rls_context.py` (contextvars) + `src/middleware/rls_session.py` (ASGI middleware — BaseHTTPMiddleware 우회) + `src/database.py` event listener (`SET LOCAL app.user_id` PG only). LIFO 등록 순서 (RLS inner / SessionMiddleware outer). 신규 단위 9. 2-layer 격리 완전 활성화 |
+| **#229** Feat/legacy NULL backfill script | **legacy `Repository.user_id` backfill (옵션 🅐-2 author_login JOIN)** — `scripts/backfill_repository_user_id.py` 신설. dry-run default + `--apply` 명시 의무. `_resolve_user_id_for_repo` pure 함수 + 4 카운터 (resolved/skipped_no_analysis/skipped_no_author/skipped_no_user). 신규 단위 5. **사용자 결정 영역 보호** (실제 적용 = `--apply` 의무) |
+| **#230** Docs/cycle-67 P1 cleanup bundle | **잔여 5 P1 묶음** — caching docstring user-invariant 의무 (Medium) + 정책 9 회고 질문 default + 정책 10 fix-up commit format + R0914 결정 트리 (CLAUDE.md 테스트) + dialect helper 보류 사유 (사용처 1~2건만). 사이클 64 회고 P1 8건 → 7건 처리 + 1건 보류 명시 |
+| **(진행 중)** Docs/cycle-67 end state sync | **사이클 67 종료 sync** — 단위 2041→2055 정밀 실측 갱신 + 사이클 65~67 행 신설 + CLAUDE.md L1014 + README 배지 + 메모리 갱신 (RLS 운영 활성화 완료 표시 + Phase 3 100% 영향 확장). 사이클 64 회고 §3.2 잔여 작업 100% 처리 종결 PR |
 
 ---
 
