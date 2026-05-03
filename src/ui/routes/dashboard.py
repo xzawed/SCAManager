@@ -18,6 +18,7 @@ from src.auth.session import CurrentUser, require_login
 from src.config import settings
 from src.database import SessionLocal
 from src.models.analysis import Analysis
+from src.models.repository import Repository
 from src.services import dashboard_service
 from src.shared.log_safety import sanitize_for_log
 from src.ui._helpers import templates
@@ -36,24 +37,26 @@ _VALID_MODES = ("overview", "insight")
 _INSIGHT_AUTO_DEFAULT_THRESHOLD = 5
 
 
-def _detect_initial_dashboard_mode(db: Session) -> str:
+def _detect_initial_dashboard_mode(db: Session, user_id: int | None = None) -> str:
     """URL ?mode= 부재 + localStorage 비어있을 때 서버 fallback default 모드.
 
     Server fallback when URL `?mode=` is absent and localStorage is empty.
+    Phase 3 PR 5: `user_id` 명시 시 사용자별 분석 count 기준 (RLS 정합).
 
     시그널 우선순위:
     1. settings.anthropic_api_key 미설정 → 'overview' (Insight 모드 비가용)
-    2. Analysis count < _INSIGHT_AUTO_DEFAULT_THRESHOLD → 'overview' (narrative 컨텍스트 부족)
+    2. (user_id 격리된) Analysis count < _INSIGHT_AUTO_DEFAULT_THRESHOLD → 'overview'
     3. 그 외 → 'insight' (사용자가 AI 가치 즉시 체험)
-
-    Signals:
-    1. anthropic_api_key empty → 'overview' (Insight unavailable)
-    2. Analysis count below threshold → 'overview' (insufficient context)
-    3. Otherwise → 'insight' (give the user the AI benefit on first visit)
     """
     if not settings.anthropic_api_key:
         return "overview"
-    count = db.scalar(select(func.count(Analysis.id))) or 0  # pylint: disable=not-callable
+    count_q = select(func.count(Analysis.id))  # pylint: disable=not-callable
+    if user_id is not None:
+        # PR 5 — Repository.user_id 기반 사용자별 분석 count (legacy NULL 호환)
+        count_q = count_q.join(Repository, Analysis.repo_id == Repository.id).where(
+            (Repository.user_id == user_id) | (Repository.user_id.is_(None))
+        )
+    count = db.scalar(count_q) or 0
     if int(count) < _INSIGHT_AUTO_DEFAULT_THRESHOLD:
         return "overview"
     return "insight"
@@ -81,7 +84,7 @@ async def dashboard(
         if mode in _VALID_MODES:
             effective_mode = mode
         else:
-            effective_mode = _detect_initial_dashboard_mode(db)
+            effective_mode = _detect_initial_dashboard_mode(db, user_id=current_user.id)
 
         # Telemetry — Phase 1 PR 5 자율 판단 (정책 3) + Phase 3 PR 3/4 mode 추가, 비식별.
         # Telemetry: log usage frequency (user.id + days + effective_mode + url_mode flag — no PII).
@@ -94,9 +97,11 @@ async def dashboard(
         )
 
         if effective_mode == "insight":
-            # Phase 3 PR 2 — Claude AI 4 카드 narrative (caching 적용).
-            # Phase 3 PR 2 — Claude AI 4-card narrative (with caching).
-            insight = await dashboard_service.insight_narrative(db, days=days)
+            # Phase 3 PR 2 — Claude AI 4 카드 narrative (caching 적용) + PR 5 user_id 격리.
+            # Phase 3 PR 2 — Claude AI 4-card narrative (with caching) + PR 5 user_id isolation.
+            insight = await dashboard_service.insight_narrative(
+                db, days=days, user_id=current_user.id
+            )
             return templates.TemplateResponse(
                 request,
                 "dashboard.html",
@@ -109,14 +114,15 @@ async def dashboard(
                 },
             )
 
-        # effective_mode == "overview" — 기존 동작 보존
-        # effective_mode == "overview" — preserves prior behavior
-        kpi = dashboard_service.dashboard_kpi(db, days=days)
-        trend = dashboard_service.dashboard_trend(db, days=days)
-        frequent_issues = dashboard_service.frequent_issues_v2(db, days=days, n=5)
+        # effective_mode == "overview" — 기존 동작 보존 + PR 5 user_id 격리
+        # effective_mode == "overview" — preserves prior behavior + PR 5 user_id isolation
+        _uid = current_user.id
+        kpi = dashboard_service.dashboard_kpi(db, days=days, user_id=_uid)
+        trend = dashboard_service.dashboard_trend(db, days=days, user_id=_uid)
+        frequent_issues = dashboard_service.frequent_issues_v2(db, days=days, n=5, user_id=_uid)
         # Phase 2 PR 1: Auto-merge KPI + 실패 분포.
-        auto_merge = dashboard_service.auto_merge_kpi(db, days=days)
-        merge_failures = dashboard_service.merge_failure_distribution(db, days=days, n=5)
+        auto_merge = dashboard_service.auto_merge_kpi(db, days=days, user_id=_uid)
+        merge_failures = dashboard_service.merge_failure_distribution(db, days=days, n=5, user_id=_uid)
         # Phase 2 PR 2 (2026-05-02): feedback CTA — 운영 row=0 → 사용자 행동 유도.
         feedback = dashboard_service.feedback_status(db)
 

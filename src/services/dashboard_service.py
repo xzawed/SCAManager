@@ -44,13 +44,49 @@ logger = logging.getLogger(__name__)
 # ─── KPI ──────────────────────────────────────────────────────────────────
 
 
-def dashboard_kpi(
+def _apply_analysis_user_filter(query, user_id: int | None):
+    """Phase 3 PR 5 — Analysis 쿼리에 Repository.user_id 기반 권한 필터 적용.
+
+    Phase 3 PR 5 — apply Repository.user_id-based permission filter to Analysis queries.
+
+    user_id is None → 필터 미적용 (admin / legacy 호환).
+    user_id 명시 → Repository.user_id == user_id OR Repository.user_id IS NULL (legacy 리포 호환).
+
+    Pattern matches `src/ui/routes/overview.py:29` for app-level isolation.
+    DB-level RLS policy (alembic 0026) provides 2nd layer for PG/Supabase environments.
+    """
+    if user_id is None:
+        return query
+    return query.join(Repository, Analysis.repo_id == Repository.id).where(
+        (Repository.user_id == user_id) | (Repository.user_id.is_(None))
+    )
+
+
+def _apply_merge_attempt_user_filter(query, user_id: int | None):
+    """Phase 3 PR 5 — MergeAttempt 쿼리에 Repository.full_name 기반 권한 필터 적용.
+
+    MergeAttempt 는 repo_name (Repository.full_name) 으로 간접 격리.
+    """
+    if user_id is None:
+        return query
+    return query.join(Repository, MergeAttempt.repo_name == Repository.full_name).where(
+        (Repository.user_id == user_id) | (Repository.user_id.is_(None))
+    )
+
+
+def dashboard_kpi(  # pylint: disable=too-many-locals
     db: Session,
     days: int = 7,
     *,
     now: datetime | None = None,
+    user_id: int | None = None,
 ) -> dict[str, Any]:
     """KPI 4 카드 데이터 — 현재 days 윈도우 + 직전 동일 days 윈도우 비교 (delta).
+
+    Phase 3 PR 5: `user_id` 명시 시 Repository.user_id 기반 격리 + legacy NULL 호환.
+    user_id=None (default) 시 모든 리포 (admin / 단위 테스트 호환).
+    pylint too-many-locals — Phase 3 PR 5 user_id 필터 추가로 16/15. cur/prev/total
+    3 윈도우 페어 (각 query + 결과) = 6 + delta calc + KPI 4 카드 빌더 = 본 한도 자연.
 
     Returns:
         {
@@ -59,27 +95,26 @@ def dashboard_kpi(
           "high_security_issues": {"value": int, "delta": int},
           "active_repos": {"value": int, "total": int, "delta": int},
         }
-
-    delta = 현재 윈도우 - 직전 윈도우 (양수 = 개선, 단 high_security_issues 는 음수가 개선).
     """
     _now = now or datetime.now(timezone.utc)
     cur_since = _now - timedelta(days=days)
     prev_since = _now - timedelta(days=days * 2)
 
-    # 현재 + 직전 윈도우 분석 (delta 비교용)
-    # Pull current and previous window analyses (for delta comparison)
-    cur_analyses = list(db.scalars(
-        select(Analysis)
-        .where(Analysis.created_at >= cur_since)
-        .where(Analysis.created_at <= _now)
-    ).all())
-    prev_analyses = list(db.scalars(
-        select(Analysis)
-        .where(Analysis.created_at >= prev_since)
-        .where(Analysis.created_at < cur_since)
-    ).all())
+    # 현재 + 직전 윈도우 분석 (delta 비교용) + user_id 권한 필터
+    # Pull current and previous window analyses (for delta) + user_id permission filter
+    cur_q = select(Analysis).where(Analysis.created_at >= cur_since).where(Analysis.created_at <= _now)
+    prev_q = select(Analysis).where(Analysis.created_at >= prev_since).where(Analysis.created_at < cur_since)
+    cur_analyses = list(db.scalars(_apply_analysis_user_filter(cur_q, user_id)).all())
+    prev_analyses = list(db.scalars(_apply_analysis_user_filter(prev_q, user_id)).all())
 
-    total_repos = db.scalar(select(func.count(Repository.id)))  # pylint: disable=not-callable
+    # 활성 리포 total — user_id 기준
+    # Active repos total — by user_id
+    total_q = select(func.count(Repository.id))  # pylint: disable=not-callable
+    if user_id is not None:
+        total_q = total_q.where(
+            (Repository.user_id == user_id) | (Repository.user_id.is_(None))
+        )
+    total_repos = db.scalar(total_q)
 
     return {
         "avg_score": _kpi_avg(cur_analyses, prev_analyses),
@@ -147,8 +182,9 @@ def dashboard_trend(
     days: int = 7,
     *,
     now: datetime | None = None,
+    user_id: int | None = None,
 ) -> list[dict[str, Any]]:
-    """날짜별 평균 점수 추세 (라인 차트용).
+    """날짜별 평균 점수 추세 (라인 차트용). Phase 3 PR 5: user_id 권한 필터.
 
     Returns:
         [{"date": "YYYY-MM-DD", "avg_score": float, "count": int}, ...]
@@ -157,12 +193,13 @@ def dashboard_trend(
     _now = now or datetime.now(timezone.utc)
     since = _now - timedelta(days=days)
 
-    analyses = db.scalars(
+    base = (
         select(Analysis)
         .where(Analysis.created_at >= since)
         .where(Analysis.score.isnot(None))
         .order_by(Analysis.created_at.asc())
-    ).all()
+    )
+    analyses = db.scalars(_apply_analysis_user_filter(base, user_id)).all()
 
     # Python-side 날짜별 그룹화 — SQLite/PG 날짜 함수 불일치 회피
     daily: dict[str, list[int]] = {}
@@ -184,18 +221,15 @@ def dashboard_trend(
 # ─── 자주 발생 이슈 (Q7 신규) ─────────────────────────────────────────────
 
 
-def frequent_issues_v2(
+def frequent_issues_v2(  # pylint: disable=too-many-locals
     db: Session,
     days: int = 7,
     *,
     n: int = 5,
     now: datetime | None = None,
+    user_id: int | None = None,
 ) -> list[dict[str, Any]]:
-    """global 자주 발생 이슈 — category/language/tool 보존.
-
-    폐기된 top_issues 와 차이:
-    - repo_id 인자 제거 (global 집계)
-    - category/language/tool 필드 반환
+    """global 자주 발생 이슈 — category/language/tool 보존. Phase 3 PR 5: user_id 권한 필터.
 
     Returns:
         [{"message": str, "count": int, "category": str, "language": str, "tool": str}, ...]
@@ -204,11 +238,12 @@ def frequent_issues_v2(
     _now = now or datetime.now(timezone.utc)
     since = _now - timedelta(days=days)
 
-    analyses = db.scalars(
+    base = (
         select(Analysis)
         .where(Analysis.created_at >= since)
         .where(Analysis.result.isnot(None))
-    ).all()
+    )
+    analyses = db.scalars(_apply_analysis_user_filter(base, user_id)).all()
 
     # message 키로 카운트 + 첫 번째 발견 시점의 category/language/tool 저장
     counter: dict[str, int] = {}
@@ -250,8 +285,9 @@ def auto_merge_kpi(
     days: int = 7,
     *,
     now: datetime | None = None,
+    user_id: int | None = None,
 ) -> dict[str, Any]:
-    """Auto-merge 성공률 카드 데이터.
+    """Auto-merge 성공률 카드 데이터. Phase 3 PR 5: user_id 권한 필터.
 
     운영 데이터 (MCP 검증, 2026-05-02): single-attempt success rate 16.6%, unstable_ci 79%
     → 단순 시도 기준 외 distinct PR 의 final success rate 도 함께 반환 (retry queue 영향 보정).
@@ -260,16 +296,18 @@ def auto_merge_kpi(
     cur_since = _now - timedelta(days=days)
     prev_since = _now - timedelta(days=days * 2)
 
-    cur = list(db.scalars(
+    cur_q = (
         select(MergeAttempt)
         .where(MergeAttempt.attempted_at >= cur_since)
         .where(MergeAttempt.attempted_at <= _now)
-    ).all())
-    prev = list(db.scalars(
+    )
+    prev_q = (
         select(MergeAttempt)
         .where(MergeAttempt.attempted_at >= prev_since)
         .where(MergeAttempt.attempted_at < cur_since)
-    ).all())
+    )
+    cur = list(db.scalars(_apply_merge_attempt_user_filter(cur_q, user_id)).all())
+    prev = list(db.scalars(_apply_merge_attempt_user_filter(prev_q, user_id)).all())
 
     return {
         **_simple_success(cur, prev),
@@ -319,8 +357,9 @@ def merge_failure_distribution(
     *,
     n: int = 5,
     now: datetime | None = None,
+    user_id: int | None = None,
 ) -> list[dict[str, Any]]:
-    """실패 사유 Top N + 비율.
+    """실패 사유 Top N + 비율. Phase 3 PR 5: user_id 권한 필터.
 
     운영 신호: unstable_ci 가 79% 점유 — Phase 3 advisor 의 우선 처리 사유 식별.
 
@@ -331,11 +370,12 @@ def merge_failure_distribution(
     _now = now or datetime.now(timezone.utc)
     since = _now - timedelta(days=days)
 
-    failures = list(db.scalars(
+    base = (
         select(MergeAttempt)
         .where(MergeAttempt.attempted_at >= since)
         .where(MergeAttempt.success.is_(False))
-    ).all())
+    )
+    failures = list(db.scalars(_apply_merge_attempt_user_filter(base, user_id)).all())
 
     if not failures:
         return []
@@ -559,17 +599,20 @@ async def insight_narrative(
     *,
     now: datetime | None = None,
     api_key: str | None = None,
+    user_id: int | None = None,
 ) -> dict[str, Any]:
-    """Claude AI 기반 4 카드 인사이트 narrative — Phase 3 PR 2.
+    """Claude AI 기반 4 카드 인사이트 narrative — Phase 3 PR 2 + PR 5 (user_id 격리).
 
     Generates a 4-card narrative (positive / focus / metrics / next) using Claude AI.
     Reuses the PR 1 `build_cached_system_param` helper for 5-minute system prompt caching.
+    Phase 3 PR 5: `user_id` 명시 시 4 dashboard 헬퍼에 전파해 사용자별 격리 컨텍스트 사용.
 
     Args:
         db: SQLAlchemy 세션. SQLAlchemy session.
         days: 윈도우 일수 (default 7). Window size in days.
         now: 의존성 주입용 — None 시 현재 시각. Injection point — defaults to now.
         api_key: None 시 settings.anthropic_api_key 사용. Defaults to settings on None.
+        user_id: PR 5 — 사용자별 데이터 격리. None 시 모든 리포 (admin/legacy 호환).
 
     Returns:
         {
@@ -590,12 +633,12 @@ async def insight_narrative(
 
     _now = now or datetime.now(timezone.utc)
 
-    # 4 dashboard 헬퍼 호출로 컨텍스트 수집
-    # Collect context by invoking the 4 dashboard helpers
-    kpi = dashboard_kpi(db, days, now=_now)
-    trend = dashboard_trend(db, days, now=_now)
-    frequent = frequent_issues_v2(db, days, now=_now)
-    auto_merge = auto_merge_kpi(db, days, now=_now)
+    # 4 dashboard 헬퍼 호출로 컨텍스트 수집 + Phase 3 PR 5 user_id 격리
+    # Collect context by invoking the 4 dashboard helpers + PR 5 user_id isolation
+    kpi = dashboard_kpi(db, days, now=_now, user_id=user_id)
+    trend = dashboard_trend(db, days, now=_now, user_id=user_id)
+    frequent = frequent_issues_v2(db, days, now=_now, user_id=user_id)
+    auto_merge = auto_merge_kpi(db, days, now=_now, user_id=user_id)
 
     # 데이터 0건이면 Claude API 호출 비용 발생 안 시킴 (cost-saver early return)
     # Skip Claude API call when there's no data (cost-saver early return)

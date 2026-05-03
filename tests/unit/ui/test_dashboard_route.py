@@ -605,3 +605,80 @@ def test_dashboard_no_mode_param_uses_detection():
     # initial_mode key in context — for client-side JS data-initial-mode signal
     assert captured.get("initial_mode") == "insight", \
         f"context['initial_mode']='insight' 기대, 실제: {captured.get('initial_mode')!r}"
+
+
+# ─── Phase 3 PR 5 (2026-05-04) — user_id RLS 격리 ─────────────────────────
+# Phase 3 PR 5 (2026-05-04) — user_id RLS isolation.
+#
+# 라우트가 모든 dashboard_service 함수 호출 시 current_user.id 를 user_id 인자로
+# 전달해 user-scoped 데이터만 집계하도록 한다 (Supabase RLS 앱 filter 측).
+#
+# The route MUST forward current_user.id as the user_id kwarg to every
+# dashboard_service function so aggregation is scoped to the logged-in user
+# (the application-side filter half of the Supabase RLS pair).
+
+
+def test_dashboard_passes_current_user_id_to_service(mock_insight_success):
+    """B.1 — GET /dashboard 호출 시 모든 service 함수에 user_id=current_user.id 전달.
+
+    B.1 — GET /dashboard MUST pass user_id=current_user.id to every service function.
+
+    검증 — overview 분기 (5 동기 함수) + insight 분기 (1 async) 양쪽 모두 user_id 전달:
+    - dashboard_kpi
+    - dashboard_trend
+    - frequent_issues_v2
+    - auto_merge_kpi
+    - merge_failure_distribution
+    - insight_narrative
+
+    user_id 인자 미전달 시 mock.call_args.kwargs.get("user_id") == None → fail (Red).
+
+    feedback_status 는 사용자 무관 global CTA 카드이므로 검증 대상 외.
+    feedback_status is a global CTA, not user-scoped — out of scope.
+    """
+    client = TestClient(app)
+    mock_db = MagicMock()
+
+    # overview 분기 — 5 동기 service 함수 호출 검증
+    # Overview branch — verify 5 sync service function calls
+    with patch("src.ui.routes.dashboard.SessionLocal", return_value=_ctx(mock_db)), \
+         patch("src.ui.routes.dashboard.dashboard_service.dashboard_kpi", return_value={}) as mock_kpi, \
+         patch("src.ui.routes.dashboard.dashboard_service.dashboard_trend", return_value=[]) as mock_trend, \
+         patch("src.ui.routes.dashboard.dashboard_service.frequent_issues_v2", return_value=[]) as mock_freq, \
+         patch("src.ui.routes.dashboard.dashboard_service.auto_merge_kpi", return_value={}) as mock_am, \
+         patch("src.ui.routes.dashboard.dashboard_service.merge_failure_distribution", return_value=[]) as mock_mfd, \
+         patch("src.ui.routes.dashboard.dashboard_service.feedback_status",
+               return_value={"show_cta": False, "count": 0, "recent_analysis": None}), \
+         patch("src.ui.routes.dashboard.templates.TemplateResponse") as mock_tr:
+        from fastapi.responses import HTMLResponse
+        mock_tr.return_value = HTMLResponse(content="<html>x</html>", status_code=200)
+        # mode=overview 명시 — 분기 안정 (server fallback 회피)
+        # Explicit mode=overview — stable branch (avoids server fallback)
+        client.get("/dashboard?mode=overview")
+
+    # 5 동기 함수 모두 user_id=_TEST_USER.id 전달 검증
+    # Verify all 5 sync functions receive user_id=_TEST_USER.id
+    for mock_fn in (mock_kpi, mock_trend, mock_freq, mock_am, mock_mfd):
+        assert mock_fn.called, f"{mock_fn} 호출 안 됨 (overview 분기 누락)"
+        kwargs = mock_fn.call_args.kwargs
+        assert kwargs.get("user_id") == _TEST_USER.id, (
+            f"{mock_fn._mock_name or mock_fn} user_id 인자 누락 또는 불일치 — "
+            f"기대: {_TEST_USER.id}, 실제: {kwargs.get('user_id')!r}"
+        )
+
+    # insight 분기 — async insight_narrative 도 user_id 전달 검증
+    # Insight branch — verify async insight_narrative also receives user_id
+    with patch("src.ui.routes.dashboard.SessionLocal", return_value=_ctx(mock_db)), \
+         patch("src.ui.routes.dashboard.templates.TemplateResponse") as mock_tr:
+        from fastapi.responses import HTMLResponse
+        mock_tr.return_value = HTMLResponse(content="<html>x</html>", status_code=200)
+        client.get("/dashboard?mode=insight")
+
+    # mock_insight_success fixture 가 patch 한 insight_narrative 호출 인자 검증
+    # Verify the insight_narrative invocation captured by the mock_insight_success fixture
+    assert mock_insight_success.await_count >= 1, "insight_narrative 호출 누락"
+    insight_kwargs = mock_insight_success.call_args.kwargs
+    assert insight_kwargs.get("user_id") == _TEST_USER.id, (
+        f"insight_narrative user_id 인자 누락 또는 불일치 — "
+        f"기대: {_TEST_USER.id}, 실제: {insight_kwargs.get('user_id')!r}"
+    )
