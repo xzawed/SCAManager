@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     telegram_webhook_secret: str = ""  # Telegram setWebhook secret_token — 설정 시 헤더 검증
     anthropic_api_key: str = ""  # 빈 문자열이면 AI 리뷰 건너뜀
     claude_review_model: str = "claude-sonnet-4-6"  # AI 코드리뷰 모델 (환경변수 CLAUDE_REVIEW_MODEL로 오버라이드)
+    # 운영 opt-out — Anthropic prompt caching (5분 ephemeral) 비활성화 (default-on)
+    # Operational opt-out — disables Anthropic prompt caching (default-on, 5-min ephemeral)
+    disable_prompt_cache: bool = False
     api_key: str = ""  # 빈 문자열이면 인증 건너뜀
     internal_cron_api_key: str = ""  # 내부 cron 엔드포인트 전용 키 (admin api_key와 분리)
     # Internal cron endpoint key — separate from admin api_key
