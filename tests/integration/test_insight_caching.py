@@ -16,7 +16,6 @@ ORM import 모듈 최상단 의무 — auto-memory pytest-fixture-lazy-orm-impor
 # pylint: disable=redefined-outer-name
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
