@@ -6,7 +6,7 @@
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **2121개** | pytest 9.0.3 — Phase 3 PR 1~6 누적 +90 (PR 1 caching 헬퍼 +6 / PR 2 insight_narrative +6 / PR 3 mode 분기 +5 / PR 4 detection 헬퍼 +4 / PR 5 user_id filter +6 + alembic 0026 가드 +3 + 라우트 +1) **= 2121 collected / 2116 passed / 5 skipped / 0 failed** (pre-existing 5 fail = gate/engine 2 + telegram_provider 3, CI 환경에서는 PASS — 정밀 조사 별도 사이클 보류) |
+| 단위 테스트 | **2041개** | pytest 9.0.3 — 사이클 65 정밀 재실측 (`pytest tests/unit --collect-only -q` = 2041). 사이클 64 sync 의 "2121" 산식은 80건 과대 표기 (PR 신규 카운트 누적 산식 오류 — 본 사이클 cleanup PR 정정). Phase 3 PR 1~6 신규 +25 (PR 1 caching +6 / PR 2 insight +6 / PR 3 mode +5 / PR 4 detection +4 / PR 5 RLS +10) + PR 6 회귀 가드는 e2e/integration 영역 (단위 영향 0). **= 2041 collected / 2036 passed / 5 skipped / 0 failed** (pre-existing 5 fail = gate/engine 2 + telegram_provider 3, CI 환경 PASS — 별도 사이클 정밀 조사) |
 | 통합 테스트 | **84개** | tests/integration/ — Phase 3 PR 6 +2 (test_insight_caching — caching helper spy + user_id 격리) **= 81 passed / 3 skipped / 0 failed** |
 | E2E 테스트 | **82개** | `make test-e2e` (Chromium Playwright) — Phase 3 PR 6 +7 (test_dashboard_insight — 페이지 로드 4 + localStorage persist 3) **= 80 passed / 0 failed / 2 pre-existing fail (test_settings 2건, 본 사이클 무관)**. ⚠️ e2e ↔ tests/integration 동시 실행 금지 — `e2e/pytest.ini` 의도적 asyncio_mode 미설정, 분리 실행 default (`make test-e2e` vs CI command `pytest tests/`) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
