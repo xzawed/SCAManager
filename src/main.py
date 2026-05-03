@@ -135,6 +135,17 @@ app = FastAPI(
     openapi_url=None if _is_prod else "/openapi.json",
 )
 app.add_middleware(SecurityHeadersMiddleware)
+# Phase 3 postlude — RLS 운영 활성화 미들웨어. Starlette LIFO 미들웨어 스택:
+# add_middleware 마지막 호출이 outer (request 먼저 처리). 원하는 흐름 = SessionMiddleware → RLSSessionMiddleware → route
+# 따라서 RLS 먼저 등록 (inner), SessionMiddleware 나중 등록 (outer — RLS 보다 먼저 호출).
+# Phase 3 postlude — RLS runtime activation. Starlette LIFO middleware stack:
+# Last add_middleware becomes outer (called first). Desired flow: SessionMiddleware → RLSSessionMiddleware → route
+# Therefore register RLS first (inner) so that SessionMiddleware (outer) populates session before RLS reads it.
+# alembic 0026 RLS policy + database.py event listener 페어 — 본 미들웨어 부재 시
+# RLS = "deny-all + legacy admin only 모드" 동작 (운영 사고 위험).
+from src.middleware.rls_session import RLSSessionMiddleware  # noqa: E402  # pylint: disable=wrong-import-position
+
+app.add_middleware(RLSSessionMiddleware)
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.session_secret,
