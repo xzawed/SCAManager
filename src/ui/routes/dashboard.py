@@ -23,24 +23,56 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+_VALID_MODES = ("overview", "insight")
+
+
 @router.get("/dashboard", response_class=HTMLResponse)
-def dashboard(
+async def dashboard(
     request: Request,
     current_user: Annotated[CurrentUser, Depends(require_login)],
     days: int = 7,
+    mode: str = "overview",
 ):
-    """대시보드 — KPI 4 카드 + 점수 추세 차트 + 자주 발생 이슈.
-    Dashboard — KPI 4 cards + score trend chart + frequent issues.
+    """대시보드 — Phase 3 PR 3 mode 분기 (overview default + insight 추가).
+
+    Dashboard with Phase 3 PR 3 mode branch (overview default + insight added).
+
+    - mode=overview (default): KPI 5 카드 + 점수 추세 + 자주 발생 이슈 + Auto-merge + feedback CTA
+    - mode=insight: Claude AI 4 카드 narrative (✨ positive / 🔍 focus / 📊 metrics / 💬 next)
+    - whitelist 외 값은 overview 로 fallback (URL 파라미터 변조 방어)
     """
-    # Telemetry — Phase 1 PR 5 자율 판단 (정책 3): 사용 빈도 측정 1줄, 비식별 (user.id + days).
-    # Telemetry: log usage frequency (user.id + days only — no PII).
+    # whitelist — URL 파라미터 변조 방어 (?mode=foo → overview fallback)
+    # Whitelist — defends against URL param tampering (?mode=foo → overview fallback)
+    if mode not in _VALID_MODES:
+        mode = "overview"
+
+    # Telemetry — Phase 1 PR 5 자율 판단 (정책 3) + Phase 3 PR 3 mode 추가, 비식별.
+    # Telemetry: log usage frequency (user.id + days + mode only — no PII).
     logger.info(
-        "dashboard_view user_id=%d days=%s",
+        "dashboard_view user_id=%d days=%s mode=%s",
         current_user.id,
         sanitize_for_log(str(days), max_len=10),
+        sanitize_for_log(mode, max_len=20),
     )
 
     with SessionLocal() as db:
+        if mode == "insight":
+            # Phase 3 PR 2 — Claude AI 4 카드 narrative (caching 적용).
+            # Phase 3 PR 2 — Claude AI 4-card narrative (with caching).
+            insight = await dashboard_service.insight_narrative(db, days=days)
+            return templates.TemplateResponse(
+                request,
+                "dashboard.html",
+                {
+                    "current_user": current_user,
+                    "mode": "insight",
+                    "insight": insight,
+                    "days": days,
+                },
+            )
+
+        # mode == "overview" — 기존 동작 보존
+        # mode == "overview" — preserves prior behavior
         kpi = dashboard_service.dashboard_kpi(db, days=days)
         trend = dashboard_service.dashboard_trend(db, days=days)
         frequent_issues = dashboard_service.frequent_issues_v2(db, days=days, n=5)
@@ -55,6 +87,7 @@ def dashboard(
         "dashboard.html",
         {
             "current_user": current_user,
+            "mode": "overview",
             "kpi": kpi,
             "trend": trend,
             "frequent_issues": frequent_issues,

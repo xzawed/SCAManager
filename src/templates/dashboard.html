@@ -212,6 +212,85 @@
     color: var(--text-muted); font-size: 14px;
   }
 
+  /* Phase 3 PR 3 — 모드 토글 (Overview / Insight). dash-range-toggle 와 동일 디자인 패턴 */
+  /* Phase 3 PR 3 — mode toggle (Overview / Insight). Same pattern as dash-range-toggle */
+  .dash-mode-toggle {
+    display: inline-flex; gap: 1px; padding: 3px;
+    background: var(--bg-elevated, var(--card-bg, rgba(255,255,255,.04)));
+    border-radius: 9px;
+    border: 1px solid var(--border, rgba(255,255,255,.08));
+    margin-right: 8px;
+  }
+  .dash-mode-toggle a {
+    padding: 7px 14px; border-radius: 6px;
+    font-size: 13px; font-weight: 500;
+    color: var(--text-muted); text-decoration: none;
+    min-height: 40px; box-sizing: border-box;
+    display: inline-flex; align-items: center; gap: 4px;
+    transition: all .15s ease;
+  }
+  .dash-mode-toggle a.active {
+    background: var(--bg-elevated, var(--card-bg, #fff));
+    color: var(--text-primary);
+    font-weight: 600;
+    box-shadow: 0 1px 2px rgba(0,0,0,.06);
+  }
+
+  /* Phase 3 PR 3 — Insight 4 카드 grid (✨ positive / 🔍 focus / 📊 metrics / 💬 next) */
+  /* Phase 3 PR 3 — Insight 4-card grid (✨ positive / 🔍 focus / 📊 metrics / 💬 next) */
+  .dash-insight-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+    margin-bottom: 24px;
+  }
+  .dash-insight-card {
+    background: var(--card-bg, var(--bg-surface, rgba(255,255,255,.04)));
+    border: 1px solid var(--border, rgba(255,255,255,.08));
+    border-radius: 14px;
+    padding: 20px 22px;
+    min-height: 200px;
+  }
+  .dash-insight-title {
+    font-family: var(--d-font-heading);
+    font-size: 16px; font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 14px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .dash-insight-list {
+    list-style: none; padding: 0; margin: 0;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .dash-insight-list li {
+    font-size: 14px; line-height: 1.5;
+    color: var(--text-primary);
+    padding-left: 16px; position: relative;
+  }
+  .dash-insight-list li::before {
+    content: "·"; position: absolute; left: 4px; top: -2px;
+    color: var(--d-accent); font-weight: 700; font-size: 16px;
+  }
+  .dash-insight-metric {
+    display: flex; align-items: baseline; justify-content: space-between;
+    padding: 8px 0; border-bottom: 1px solid var(--border, rgba(255,255,255,.06));
+  }
+  .dash-insight-metric:last-child { border-bottom: none; }
+  .dash-insight-metric-label { font-size: 13px; color: var(--text-muted); }
+  .dash-insight-metric-value {
+    font-family: var(--d-font-heading);
+    font-size: 18px; font-weight: 600; color: var(--text-primary);
+  }
+  .dash-insight-metric-delta {
+    font-size: 12px; margin-left: 8px; color: var(--text-muted);
+  }
+  .dash-insight-status {
+    text-align: center; padding: 32px;
+    color: var(--text-muted); font-size: 14px;
+    background: var(--card-bg, var(--bg-surface, rgba(255,255,255,.04)));
+    border: 1px dashed var(--border, rgba(255,255,255,.08));
+    border-radius: 14px;
+    margin-bottom: 24px;
+  }
+
   /* 모바일 — KPI 5 → 데스크탑 5 / tablet 3 / 모바일 2 / xs 1 */
   @media (max-width: 1024px) {
     .dash-kpi-grid { grid-template-columns: repeat(3, 1fr); }
@@ -223,6 +302,9 @@
     .dash-kpi { padding: 16px; min-height: 132px; }
     .dash-kpi-value { font-size: 28px; }
     .dash-chart-wrap { height: 240px; }
+    .dash-insight-grid { grid-template-columns: 1fr; }
+    .dash-insight-card { min-height: auto; padding: 18px; }
+    .dash-mode-toggle a { min-height: 44px; }
   }
   @media (max-width: 480px) {
     .dash-kpi-grid { grid-template-columns: 1fr; }
@@ -236,13 +318,78 @@
       <h1 class="dash-title">Dashboard</h1>
       <p class="dash-subtitle">우리 코드는 어떻게 흘러가고 있나요</p>
     </div>
-    <nav class="dash-range-toggle" aria-label="기간 선택 / Period selector">
-      <a href="/dashboard?days=1" {% if days == 1 %}class="active"{% endif %}>1d</a>
-      <a href="/dashboard?days=7" {% if days == 7 %}class="active"{% endif %}>7d</a>
-      <a href="/dashboard?days=30" {% if days == 30 %}class="active"{% endif %}>30d</a>
-      <a href="/dashboard?days=90" {% if days == 90 %}class="active"{% endif %}>90d</a>
-    </nav>
+    <div style="display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
+      {# Phase 3 PR 3 — 모드 토글 (Overview default + Insight 신규) #}
+      {# Phase 3 PR 3 — mode toggle (Overview default + Insight new) #}
+      <nav class="dash-mode-toggle" aria-label="대시보드 모드 / Dashboard mode">
+        <a href="/dashboard?mode=overview&days={{ days }}"
+           data-mode="overview"
+           {% if mode == 'overview' %}class="active"{% endif %}>📊 Overview</a>
+        <a href="/dashboard?mode=insight&days={{ days }}"
+           data-mode="insight"
+           {% if mode == 'insight' %}class="active"{% endif %}>💬 Insight</a>
+      </nav>
+      <nav class="dash-range-toggle" aria-label="기간 선택 / Period selector">
+        <a href="/dashboard?mode={{ mode }}&days=1" {% if days == 1 %}class="active"{% endif %}>1d</a>
+        <a href="/dashboard?mode={{ mode }}&days=7" {% if days == 7 %}class="active"{% endif %}>7d</a>
+        <a href="/dashboard?mode={{ mode }}&days=30" {% if days == 30 %}class="active"{% endif %}>30d</a>
+        <a href="/dashboard?mode={{ mode }}&days=90" {% if days == 90 %}class="active"{% endif %}>90d</a>
+      </nav>
+    </div>
   </div>
+
+  {# Phase 3 PR 3 — Insight 모드: Claude AI 4 카드. Overview 분기는 그대로 보존 #}
+  {# Phase 3 PR 3 — Insight mode: Claude AI 4 cards. Overview branch is preserved as-is #}
+  {% if mode == 'insight' %}
+    {% if insight and insight.status == 'success' %}
+    <div class="dash-insight-grid" role="region" aria-label="AI Insight 4 카드">
+      <div class="dash-insight-card">
+        <h2 class="dash-insight-title">✨ 잘한 것</h2>
+        <ul class="dash-insight-list">
+          {% for item in insight.positive_highlights %}<li>{{ item }}</li>{% endfor %}
+        </ul>
+      </div>
+      <div class="dash-insight-card">
+        <h2 class="dash-insight-title">🔍 신경 쓸 것</h2>
+        <ul class="dash-insight-list">
+          {% for item in insight.focus_areas %}<li>{{ item }}</li>{% endfor %}
+        </ul>
+      </div>
+      <div class="dash-insight-card">
+        <h2 class="dash-insight-title">📊 숫자</h2>
+        <div>
+          {% for m in insight.key_metrics %}
+          <div class="dash-insight-metric">
+            <span class="dash-insight-metric-label">{{ m.label }}</span>
+            <span>
+              <span class="dash-insight-metric-value">{{ m.value }}</span>
+              {% if m.delta %}<span class="dash-insight-metric-delta">{{ m.delta }}</span>{% endif %}
+            </span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="dash-insight-card">
+        <h2 class="dash-insight-title">💬 다음</h2>
+        <ul class="dash-insight-list">
+          {% for item in insight.next_actions %}<li>{{ item }}</li>{% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% elif insight and insight.status == 'no_api_key' %}
+    <div class="dash-insight-status">
+      🔑 ANTHROPIC_API_KEY 미설정 — Insight 모드는 AI 분석이 필요합니다. Railway Variables 에서 키를 설정해주세요.
+    </div>
+    {% elif insight and insight.status == 'no_data' %}
+    <div class="dash-insight-status">
+      📭 최근 {{ days }}일 분석 데이터가 부족합니다 — 분석 결과가 누적된 후 다시 시도해주세요.
+    </div>
+    {% else %}
+    <div class="dash-insight-status">
+      ⚠️ AI Insight 생성 실패 ({{ insight.status if insight else 'unknown' }}) — 잠시 후 다시 시도해주세요.
+    </div>
+    {% endif %}
+  {% else %}
 
   {# Phase 2 PR 2 — feedback CTA banner (조건부, count < threshold 시만 표시) #}
   {% if feedback and feedback.show_cta %}
@@ -421,11 +568,15 @@
     {% endfor %}
   </div>
   {% endif %}
+
+  {% endif %}{# end of mode == 'overview' branch (Phase 3 PR 3) #}
 </div>
 {% endblock %}
 
 {% block scripts %}
-{% if trend %}
+{# Phase 3 PR 3 — Insight 모드는 차트 미사용 (4 카드 narrative). overview 모드 + trend 데이터 있을 때만 차트 #}
+{# Phase 3 PR 3 — Insight mode skips the chart (4-card narrative). Chart only when overview mode + trend data exists #}
+{% if mode != 'insight' and trend %}
 <script src="/static/vendor/chart.umd.min.js"></script>
 <script>
   // 추세 데이터 (서버 주입) — autoescape 안전
