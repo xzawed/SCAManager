@@ -2,13 +2,13 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-03 기준 — **그룹 60+61+사이클 62+Phase 3 PR 1~4 완료**: 30 PR #188~#221 — Phase 1+2 + 회고 + 정책 진화 7건 + P0 OAuth + leaderboard 완전 폐기 + Phase 3 SaaS 전환 토대 시작 (caching 인프라 + insight service + 라우트 + 모드 토글 + 사용자 신호 default + localStorage) + 종단간 가드 + 정책 14 신설 + CI fix)
+## 현재 수치 (2026-05-04 기준 — **Phase 3 100% 완료 + 다중 에이전트 회고**: 33 PR #188~#225 — Phase 1+2 + 회고 + 정책 진화 7건 + 정책 14 신설 + P0 OAuth + leaderboard 완전 폐기 + Phase 3 SaaS 전환 토대 6 PR 100% 머지 (caching + insight service + 라우트/UI + 사용자 신호 default + Supabase RLS + 회귀 가드) + 종단간 가드 + 사이클 64 5+1 에이전트 회고)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **2031개** | pytest 9.0.3 — Phase 3 PR 1~4 누적 +21 (PR 1 caching 헬퍼 +6 / PR 2 insight_narrative +6 / PR 3 mode 분기 +5 / PR 4 detection 헬퍼 +4) **= 2031 collected / 2026 passed / 5 skipped / 0 failed** (CI fix 후 pre-existing 5 fail 도 본 환경에서 PASS — 다음 사이클 재검증 필요) |
-| 통합 테스트 | **82개** | tests/integration/ — 변화 없음 (Phase 3 PR 1~4 영역 외) **= 79 passed / 3 skipped / 0 failed** |
-| E2E 테스트 | **75개** | `make test-e2e` (Chromium Playwright) — 변화 없음 (PR 3 e2e dashboard URL 형식만 갱신, 카운트 변동 X) **= 73 passed / 0 failed / 2 pre-existing fail (test_settings 2건, 본 사이클 무관)** |
+| 단위 테스트 | **2121개** | pytest 9.0.3 — Phase 3 PR 1~6 누적 +90 (PR 1 caching 헬퍼 +6 / PR 2 insight_narrative +6 / PR 3 mode 분기 +5 / PR 4 detection 헬퍼 +4 / PR 5 user_id filter +6 + alembic 0026 가드 +3 + 라우트 +1) **= 2121 collected / 2116 passed / 5 skipped / 0 failed** (pre-existing 5 fail = gate/engine 2 + telegram_provider 3, CI 환경에서는 PASS — 정밀 조사 별도 사이클 보류) |
+| 통합 테스트 | **84개** | tests/integration/ — Phase 3 PR 6 +2 (test_insight_caching — caching helper spy + user_id 격리) **= 81 passed / 3 skipped / 0 failed** |
+| E2E 테스트 | **82개** | `make test-e2e` (Chromium Playwright) — Phase 3 PR 6 +7 (test_dashboard_insight — 페이지 로드 4 + localStorage persist 3) **= 80 passed / 0 failed / 2 pre-existing fail (test_settings 2건, 본 사이클 무관)**. ⚠️ e2e ↔ tests/integration 동시 실행 금지 — `e2e/pytest.ini` 의도적 asyncio_mode 미설정, 분리 실행 default (`make test-e2e` vs CI command `pytest tests/`) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
@@ -87,9 +87,21 @@
 
 ---
 
-### 사이클 63 — Phase 3 SaaS 토대 시작 (2026-05-03 · PR #218 ~ #221, 4 PR 머지 완료 — PR 5/6 다음 세션 대기)
+### 사이클 64 — Phase 3 100% 완료 + 다중 에이전트 회고 (2026-05-04 · PR #223 ~ #225)
 
-**Phase 3 PR 6 분할 안 진행도 (4/6 완료)** — 사용자 결정 4번 (RLS 모델) 회신 대기 후 PR 5 시작.
+**Phase 3 PR 6 분할 안 100% 완료** — RLS + 회귀 가드 머지 + 5+1 에이전트 회고 + STATE/CLAUDE/README sync.
+
+| PR # | 제목 | 핵심 |
+|------|------|------|
+| **#223** Feat/phase3-pr5 supabase-rls-permission-model | **Supabase RLS 권한 모델 (단일 PR — 사용자 명시 결정)**. dashboard_service 6 함수 user_id 인자 + 격리 헬퍼 2건 (`_apply_analysis_user_filter` / `_apply_merge_attempt_user_filter`) + 라우트 current_user.id 전달 + alembic 0026 RLS policy (PG 전용, dialect 분기) — repositories/analyses/merge_attempts 3 테이블. 신규 단위 10 (filter 6 + alembic 가드 3 + 라우트 1). R0914 inline disable + 사유. 1008 추가 / 62 삭제. **사용자 결정 4번 (RLS) = 🅐 Supabase RLS** ★ + **단일 PR 일관성 명시** |
+| **#224** Test/phase3-pr6 insight-regression-guards | **Insight 회귀 가드 — e2e 7 + integration 2** (구현 변경 0). e2e 신규: A 페이지 로드 + status fallback (4) + B localStorage persist + URL 우선순위 (3). integration 신규: caching helper 1회 호출 spy (PR 1+2 페어) + user_id 격리 in Claude context (PR 5 페어). 9/9 PASS. 분리 실행 default (e2e ↔ integration asyncio_mode 충돌) |
+| **(진행 중)** Docs/phase3-end-multi-agent-retrospective-and-sync | **사이클 64 종료 — 5+1 에이전트 회고 + sync** (정책 8 default). P0 7 + P1 8 + P2 4. 즉시 처리: STATE/CLAUDE/README 누적 sync (단위 2031→2121, 통합 82→84, E2E 75→82) + CLAUDE.md 테스트 섹션 e2e/integration 동시 실행 1줄 추가 + 메모리 3건 (회고 default + RLS 운영 활성화 의무 + 사용자 결정 사전 확인). 별도 PR 권장: 🔴 RLS 미들웨어 (관점 4 P0 — 운영 활성화 의무) / pre-existing 5 fail 정밀 조사 / legacy NULL backfill. 회고 보고서 = `docs/reports/2026-05-04-phase3-end-multi-agent-retrospective.md` 신설 |
+
+---
+
+### 사이클 63 — Phase 3 SaaS 토대 시작 (2026-05-03 · PR #218 ~ #222, 5 PR 머지 완료)
+
+**Phase 3 PR 6 분할 안 진행도 (4/6 완료)** — 사용자 결정 4번 (RLS 모델) 회신 후 사이클 64 에서 PR 5/6 진행.
 
 | PR # | 제목 | 핵심 |
 |------|------|------|
