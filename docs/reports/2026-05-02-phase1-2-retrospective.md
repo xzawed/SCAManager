@@ -139,6 +139,8 @@
 | #208 | 정책 13 강화 종단간 가드 (`tests/integration/test_oauth_flow_smoke.py` +10 + `e2e/test_dashboard.py` +14) — 회고 P0 #5 검증 환류 갭 + P0 OAuth 사고 후속 |
 | #209 | pre-existing 통합 24 fail 일괄 해소 (conftest autouse fixture — 그룹 60 PR B-1/B-2 패턴 차용) |
 | #210 | Phase 3 기획서 갱신 (사용자 회신 SaaS 전환 + caching 반영, Phase 3 PR 6분할 안 신설) |
+| #211 | docs sync v2 — 7-에이전트 (1차 5 + 2차 1 cross-verify) 정합성 검증 결과 P0 4 + P1 5 처리 (CLAUDE.md L965 / STATE.md / OAuth incident L97 / runbook §8 / 본 retro tail) |
+| #212 | 7-에이전트 검증 P1 #5 후속 — `e2e/test_theme_mobile_guards.py` +7 (claude-dark 토큰 회귀 가드 3 + WCAG 2.5.5 모바일 클릭 영역 가드 4) |
 
-**그룹 61 추가 누적**: 단위 +0 / 통합 +10 (oauth_smoke) + 24 fail 해소 = 79 passed / E2E +14 (test_dashboard) = 65 passed / 0 fail (모두).
+**그룹 61 + 사이클 62 추가 누적**: 단위 +0 / 통합 +10 (oauth_smoke) + 24 fail 해소 = 79 passed / E2E +14 (test_dashboard) + +7 (test_theme_mobile_guards) = 73 passed (75 collected, 2 pre-existing fail 본 사이클 무관) / 0 fail (그룹 60+61+사이클 62 신규).
 **다음 사이클**: Phase 3 진입 의무 4건 (caching 패턴 / Insight 카드 4종 / 모드 토글 default / RLS 모델) 사용자 회신 후 PR 6분할 시작.

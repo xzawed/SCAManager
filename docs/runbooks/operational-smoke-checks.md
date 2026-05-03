@@ -199,8 +199,8 @@ make test-e2e
 
 ### 8.4 정책 13 본문 (CLAUDE.md L660~) 자동화 가드 인용 정합
 
-manual smoke (3-endpoint) ↔ 자동화 가드 (integration 10 + e2e 14) 상호 보완 관계:
-| 영역 | manual (정책 13 default) | 자동화 (PR #208) |
+manual smoke (3-endpoint) ↔ 자동화 가드 (integration 10 + e2e 21 = test_dashboard 14 + test_theme_mobile_guards 7) 상호 보완 관계:
+| 영역 | manual (정책 13 default) | 자동화 (PR #208 + #212) |
 |------|----------------------|----------------|
 | /health | curl | TestSmokeCheckMinimal |
 | /auth/github redirect_uri | curl + decode | TestAuthFlowEndpoints |
@@ -209,4 +209,111 @@ manual smoke (3-endpoint) ↔ 자동화 가드 (integration 10 + e2e 14) 상호 
 | /webhooks/github 401 | curl + 서명 누락 | TestAuthFlowEndpoints |
 | /insights → /dashboard 301 | curl | TestInsightsRedirect + e2e |
 | /dashboard 페이지 시각 (KPI 5 / chart / nav) | 사용자 시각 검증 | e2e/test_dashboard.py |
+| claude-dark 토큰 정의 (8 + 등급 alias) | 사용자 시각 검증 | e2e/test_theme_mobile_guards.py §A |
+| WCAG 2.5.5 모바일 클릭 영역 (.btn / .nav-hamburger) | iOS / 안드 실기 | e2e/test_theme_mobile_guards.py §B |
 | 외부 의존 (GitHub OAuth App callback URL) | **사용자만 가능** | (자동화 불가) |
+
+### 8.5 E2E 테마 + 모바일 회귀 가드 — `e2e/test_theme_mobile_guards.py` (7건, 사이클 62 PR #212)
+- **A. claude-dark 토큰 회귀 가드** (cleanup PR #169 사고 차단):
+  - claude-dark settings 8 토큰 정의 (`--grad-gate/merge/notify/hook`, `--title-gradient`, `--save-btn-bg`, `--hint-bg`, `--hook-btn-bg`)
+  - claude-dark dashboard body 비-투명 (—bg-page 미정의 회귀)
+  - claude-dark 등급 alias (`--grade-a/b/c/d/f`) 정의
+- **B. WCAG 2.5.5 모바일 클릭 영역 가드** (UI 감사 Step A):
+  - 모바일 .btn (375px) min-height ≥44px
+  - 모바일 .btn--sm (375px) min-height ≥40px
+  - 모바일 .nav-hamburger (375px) ≥44x44
+  - 데스크탑 .btn (1024px) min-height < 44px (모바일 분기 누수 회귀)
+- **핵심 패턴**:
+  - claude-dark 토큰은 `body[data-theme="claude-dark"]` 스코프 → `getComputedStyle(document.body).getPropertyValue(...)` 조회 (`document.documentElement` 는 :root 만 노출 — 빈 문자열 false-positive)
+  - Playwright `page.evaluate()` 다중 statement → arrow function `() => { ... }` wrap 의무
+  - DOM 주입 헬퍼 (`_measure_injected_btn_min_height`) — 정적 셀렉터 의존도 감소
+
+```bash
+# 로컬 실행
+pytest e2e/test_theme_mobile_guards.py -v
+```
+
+---
+
+## 9. GitHub Code Scanning 알림 운영 체크 (정책 14)
+
+**기획 근거**: GitHub Code Scanning Alert #324 (`'break'/'return' in finally`) + #325 (`Unused import`) 가 추적용 메타 Issue #213 / #214 로 발견 (사이클 62, 2026-05-03). SCAManager 자체 lint (pylint / flake8 / bandit) 통과 ≠ Security 탭 0 alert. 두 영역 합집합 검토 의무.
+
+**정책 14 default 의무**:
+- 작업 시작 전 30초 체크리스트 (CLAUDE.md L715~) 에 open alert 카운트 1줄
+- 매 사이클 종료 시 정책 13 smoke check 와 페어로 Code Scanning open alert 검토
+- 신규 alert 발견 시 분류 처리 1회 의무 (a/b/c — fix / dismiss / suppress)
+
+---
+
+### 9.1 open alert 카운트 조회
+
+#### 옵션 🅐 (gh CLI + 인증 토큰 가용 시)
+```bash
+gh api repos/xzawed/SCAManager/code-scanning/alerts \
+  --jq '[.[] | select(.state=="open")] | {number, severity: .rule.security_severity_level // .rule.severity, rule: .rule.id, path: .most_recent_instance.location.path}'
+```
+
+#### 옵션 🅑 (curl + PAT)
+```bash
+curl -s -H "Authorization: token $GITHUB_PAT" \
+  https://api.github.com/repos/xzawed/SCAManager/code-scanning/alerts?state=open \
+  | jq '[.[] | {number, rule: .rule.id, path: .most_recent_instance.location.path}]'
+```
+
+#### 옵션 🅒 (사용자 GitHub Web — gh / PAT 부재 시 default)
+1. https://github.com/xzawed/SCAManager/security/code-scanning
+2. Filter: `is:open`
+3. open 카운트 + alert 제목 목록 Claude 에 공유
+
+> SCAManager 환경 default = 옵션 🅒 (CLAUDE.md L379 사용자 결정 PAT 발급 현행 유지). 환경 변경 시 자동 옵션 🅐/🅑 전환.
+
+---
+
+### 9.2 alert 분류 처리 (3 카테고리)
+
+| 카테고리 | 조건 | 처리 절차 | 예시 |
+|---------|------|----------|------|
+| (a) **실제 위반** | 룰 본문 + 코드 위치 확인 후 진짜 결함 | 코드 fix PR (정책 7 단위) + 회귀 가드 동반 (정책 4) | bandit HIGH + pylint W0150 같은 실제 결함 |
+| (b) **false-positive** | 룰 본문 vs 코드 의도 불일치 | GitHub Security 탭 → Dismiss → 사유 (`won't fix` / `false positive`) 기록 | 의도된 dispatch 패턴이 unused 로 오판 |
+| (c) **의도된 패턴** | 의도적이지만 룰셋 일관성 위해 룰 자체 suppress | suppress 룰 PR (`# noqa: E501` / `# nosec` / `.codeqlignore`) + 회고에 사유 명시 | E2E fixture 의 의도된 unused import |
+
+---
+
+### 9.3 PR 본문 §"Code Scanning open alert 결과" 섹션 default 형식
+
+인증/외부 통합 변경 PR 외에는 **사이클 종료 PR 일괄 회신 OK** (정책 2 진화 패턴):
+
+```markdown
+## Code Scanning open alert (정책 14)
+- ✅ open 0건
+
+(또는)
+
+## Code Scanning open alert (정책 14)
+- 🟡 open 2건
+  - #324 — 'break'/'return' in finally → (a) 코드 fix PR #NNN 동반
+  - #325 — Unused import → (b) false-positive dismiss (사유: ...)
+```
+
+---
+
+### 9.4 사이클 62 사례 (2026-05-03 시점) — 본 정책 신설 트리거
+
+- **Alert #324** (`break/return in finally`): SCAManager src/ 코드 위반 0건 검증 완료 (`make lint` + AST scan). → (b) **false-positive 추정** — alert 본문 인증 차단으로 직접 확인 불가, 다음 사이클에 사용자 GitHub Web 공유 후 dismiss/suppress 결정
+- **Alert #325** (`Unused import`): 동일 — flake8 F401 + pylint W0611 모두 0건. → (b) false-positive 추정
+- **메타 Issue**: #213 (#324 추적) + #214 (#325 추적) — 본 PR 머지 후에도 alert 자체 dismiss 처리되기 전까지 보존
+
+---
+
+### 9.5 SCAManager 자체 lint ↔ GitHub Code Scanning 상호 보완 매트릭스
+
+| 검사 영역 | SCAManager 자체 | GitHub Code Scanning | 사용자 의무 |
+|----------|----------------|---------------------|------------|
+| Python 스타일/오류 | pylint 10.00 + flake8 0건 | CodeQL python 룰셋 | 양쪽 둘다 0 |
+| 보안 정적분석 | bandit HIGH 0 | CodeQL 보안 룰 | 양쪽 둘다 0 |
+| Secret leak | (자체 가드 X) | CodeQL secret-scanning | GitHub Security 탭 |
+| Dependency CVE | (자체 가드 X) | Dependabot alerts | GitHub Security 탭 |
+| 의존성 그래프 | (자체 가드 X) | CodeQL dataflow | GitHub Security 탭 |
+
+두 영역 모두 0 alert = 진정한 "Security A" 상태.
