@@ -233,6 +233,33 @@ manual smoke (3-endpoint) ↔ 자동화 가드 (integration 10 + e2e 21 = test_d
 pytest e2e/test_theme_mobile_guards.py -v
 ```
 
+### 8.6 E2E Insight 모드 + caching + RLS 격리 회귀 가드 — Phase 3 PR 6 (#224, 사이클 64)
+
+**E2E** — `e2e/test_dashboard_insight.py` (7건):
+- **A. 페이지 로드 + status fallback** (4): `?mode=insight` 200 + `.dash-insight-status` (no_api_key) + 모드 토글 양쪽 링크 + `?mode=insight` active 상태 + canvas 미존재 (narrative only)
+- **B. localStorage persist + URL 우선순위** (3): 토글 클릭 → `localStorage.sca-dashboard-mode` 저장 + URL no mode + localStorage='insight' → 1회 redirect + URL 명시 우선 (insight redirect X)
+
+**Integration** — `tests/integration/test_insight_caching.py` (2건):
+- **C.1** `test_insight_narrative_calls_caching_helper` — `build_cached_system_param` 1회 호출 spy + Anthropic system 인자 list[dict] + cache_control ephemeral (PR 1+2 페어)
+- **C.2** `test_insight_narrative_user_id_isolation_in_claude_context` — 다중 사용자 seed (User A 점수 80~90 / User B 50~60) + `user_id=user_a.id` 호출 → prompt JSON 의 analysis_count == 3 (User A 만 노출, User B 6 합산 미노출 — PR 5 RLS 격리 회귀 가드)
+
+```bash
+# 로컬 실행 — e2e ↔ tests/integration 동시 실행 금지 (e2e/pytest.ini 의도적 asyncio_mode 미설정 — CLAUDE.md L832~ 참조)
+pytest e2e/test_dashboard_insight.py -v
+pytest tests/integration/test_insight_caching.py -v
+```
+
+### 8.7 자동화 가드 매트릭스 — manual smoke ↔ 자동화 페어 (Phase 3 100% 종료 시점 갱신)
+
+| 영역 | manual (정책 13 default) | 자동화 (Phase 3 누적) |
+|------|----------------------|----------------|
+| /dashboard?mode=insight 페이지 | 사용자 시각 검증 | e2e/test_dashboard_insight.py §A |
+| 모드 토글 + localStorage persist | 사용자 시각 + DevTools | e2e/test_dashboard_insight.py §B |
+| Anthropic prompt caching 적용 | Sentry/Railway 로그 `cache_*_tokens` | tests/integration/test_insight_caching.py C.1 |
+| user_id 격리 (Claude API context) | 다중 사용자 운영 검증 | tests/integration/test_insight_caching.py C.2 |
+| Supabase RLS policy 적용 | Supabase Dashboard `SELECT * FROM pg_policies` | (자동화 미적용 — 운영 환경 별도 검증) |
+| RLS 운영 활성화 (`SET LOCAL app.user_id`) | 사용자 별도 PR 의무 (메모리 `phase3-rls-runtime-activation-pending.md`) | (미들웨어 PR 진행 시 동시 추가) |
+
 ---
 
 ## 9. GitHub Security 탭 등록 알림 운영 체크 (정책 14)
