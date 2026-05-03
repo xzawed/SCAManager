@@ -59,28 +59,34 @@ def test_dashboard_kpi_labels_present(page, base_url):
 
 
 def test_dashboard_range_toggle_present(page, base_url):
-    """1d / 7d / 30d / 90d 토글 4 링크 모두 존재."""
+    """1d / 7d / 30d / 90d 토글 4 링크 모두 존재.
+
+    Phase 3 PR 3 — URL 형식이 `?mode={mode}&days={n}` 으로 변경 (모드 토글 페어 보존).
+    range toggle 4 links present (URL format updated to `?mode=...&days=...` in Phase 3 PR 3).
+    """
     page.goto(f"{base_url}/dashboard")
     for days in (1, 7, 30, 90):
-        link = page.locator(f'.dash-range-toggle a[href="/dashboard?days={days}"]')
+        link = page.locator(
+            f'.dash-range-toggle a[href="/dashboard?mode=overview&days={days}"]'
+        )
         assert link.count() == 1, f"days={days} 링크 누락"
 
 
 def test_dashboard_default_range_7_active(page, base_url):
-    """default = days=7 — active 표시."""
+    """default = days=7 — active 표시. Phase 3 PR 3: href 에 mode=overview 포함."""
     page.goto(f"{base_url}/dashboard")
     active = page.locator('.dash-range-toggle a.active')
     assert active.count() == 1
-    assert active.first.get_attribute("href") == "/dashboard?days=7"
+    assert active.first.get_attribute("href") == "/dashboard?mode=overview&days=7"
 
 
 def test_dashboard_30d_range_navigates(page, base_url):
-    """30d 클릭 시 /dashboard?days=30 으로 이동 + active 갱신."""
+    """30d 클릭 시 /dashboard?mode=overview&days=30 이동 + active 갱신 (Phase 3 PR 3)."""
     page.goto(f"{base_url}/dashboard")
-    page.click('.dash-range-toggle a[href="/dashboard?days=30"]')
-    page.wait_for_url(f"{base_url}/dashboard?days=30")
+    page.click('.dash-range-toggle a[href="/dashboard?mode=overview&days=30"]')
+    page.wait_for_url(f"{base_url}/dashboard?mode=overview&days=30")
     active = page.locator('.dash-range-toggle a.active')
-    assert active.first.get_attribute("href") == "/dashboard?days=30"
+    assert active.first.get_attribute("href") == "/dashboard?mode=overview&days=30"
 
 
 # ─── chart vendoring (회고 P0 #5 검증) ─────────────────────────────────
