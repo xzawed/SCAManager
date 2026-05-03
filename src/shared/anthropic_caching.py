@@ -25,9 +25,17 @@ def build_cached_system_param(
     Build a list for the Anthropic Messages API `system` parameter with optional
     `cache_control` (ephemeral, 5-min TTL).
 
+    🔴 system text 는 user-invariant 의무 — Anthropic prompt cache key = system text hash.
+    `f"user {uid} 데이터..."` 같은 사용자별 변수 삽입 시 cache hit rate 0% 폭락 (사이클 64
+    회고 P1 학습). 사용자별 데이터는 `messages` user role 에 전달, system 은 task 명세 + 형식만.
+    🔴 system text MUST be user-invariant — Anthropic cache key = system text hash.
+    Embedding `f"user {uid} ..."` collapses cache hit rate to 0%. Put per-user data
+    into `messages` user role; keep system to task spec + output format only.
+
     Args:
         text: system prompt 본문 (caller 가 길이 검증 책임 — Anthropic 권장 ≥1024 토큰).
               system prompt body (caller validates length — Anthropic recommends ≥1024 tokens).
+              **user-invariant 의무 (위 docstring 참조)**.
         disable_cache: True 시 cache_control 미적용 (인자 우선).
                        None (default) 시 settings.disable_prompt_cache 따름.
                        True omits cache_control (arg wins).

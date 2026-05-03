@@ -503,6 +503,17 @@ git push -u origin <branch>
 - **구체적 제안** — "더 잘 협업합시다" 같은 추상 발언 X, "PR 본문 검증 섹션 추가" 같은 구체 제안 ○
 - **사용자 발화 인용 보존** — 정책 변경의 근거 명시 (본 정책 1, 7, 8, 9 모두 사용자 발화 인용)
 
+**Phase 종료 시 회고 질문 default (사이클 64 회고 P1 학습)** — 사용자 위임 패턴 시 권장 default 100% 일치 = 정확 캐치 vs 사용자 검토 부족 양면성. Claude 가 회고 자유 발언에 다음 1줄 의무 추가:
+
+```markdown
+## 🔍 회고 질문 (사용자 회신 의무)
+**Phase 본 권장 default N건 (caching/카드/RLS/...) 중 다른 결정 했을 만한 항목 있었나?**
+- 사용자가 표 자체 검토 안 하고 권장 OK 가능성 검증
+- 다음 사이클 사전 확인 정책 (`feedback-architecture-decision-pre-confirm.md`) 페어
+```
+
+회신 패턴: `[x] 모두 OK / [!] N번 다시 검토 필요 (사유) / [ ] 미수행 (다음 사이클)`. 회신 부재 시 다음 사이클 진입 보류 또는 자율 판단 보고 (정책 3 강화).
+
 **금지**:
 - ❌ 회고 종합 보고 후 자유 발언 생략 (사용자가 명시 요청)
 - ❌ "감사합니다" 같은 의례 발언만 (실질 피드백 X)
@@ -564,6 +575,13 @@ git push -u origin <branch>
 gh / API 호출 실패 시 → 에러 사용자에게 즉시 공유 → URL 폴백 → 다음 사이클 시작 전 환경 fix.
 
 (2026-05-02 본 사이클 이전까지는 사용자 수동 PR 생성. 본 정책 적용 후 모든 PR 자동 생성.)
+
+**fix-up commit 형식 default (사이클 64 회고 P1 학습 — Phase 3 PR 4 CI #428 사례)**:
+- PR 머지 전 CI fail / 회귀 발견 시 = **동일 PR 브랜치 추가 commit** (별도 PR X — 정책 7 강화 응집 단위 부합)
+- commit message prefix = `fix(<feature>-ci):` 또는 `fix(<feature>-<area>):` (예: `fix(phase3-pr4-ci): isolated_db fixture lazy import → 모듈 최상단`)
+- PR body §"자율 판단 보고" (정책 3) 에 fix-up commit 사실 + 사유 명시 의무
+- 머지 후 발견 시 = 별도 fix PR (`fix/<feature>-<bug>` 브랜치 — 회고 추적성 우선)
+- 검증된 사례: PR 4 (#221) e093660 — `isolated_db` fixture lazy ORM import → 모듈 최상단 fix (메모리 `pytest-fixture-lazy-orm-import-trap.md` 페어)
 
 #### 정책 11: **UI/시각 변경 PR 본문에 "Claude 시각 검증 불가" 의무 명시**
 
@@ -893,10 +911,15 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 - 🔴 **감사 식별 Critical 항목은 단순 hardening 단정 금지 (Phase H PR-5C 교훈)**: 12-에이전트 감사 등이 식별한 Critical 항목을 처리할 때 단위 테스트 통과만으로 검증 완료 단정 금지. `_TOKEN_42` 같은 하드코딩 fixture 가 receiver pattern 을 받아쓰기 (사이드웨이) 로 우회해 functional bug 를 가릴 수 있음 — PR-5C 사례 (모든 semi-auto Telegram 콜백이 실제 운영에서 401 거부됐으나 테스트는 통과). TDD Red 단계에서 "기존 테스트가 왜 통과하는가" 자문 의무.
 - 🔴 **`find_by_full_name` 같은 hot-path repository 함수 시그니처 변경 금지 (Phase H PR-3B)**: 70+ 단위 테스트가 `db.query.return_value.filter.return_value.first` mock chain 사용. `.options(joinedload(...))` 같은 메서드 추가 시 chain 깨짐 → 70+ 회귀 (Phase S.4 트랩 재발견). 신규 옵션은 별도 함수 (`find_by_full_name_with_owner` 패턴) 로 분리 — 기존 시그니처 불변.
 - 🔴 **의도적 중복 코드의 PARITY GUARD 패턴 (Phase H PR-5A)**: 두 모듈에 의도적으로 동일 함수가 있는 경우 (예: `_get_ci_status_safe` engine + service), 양쪽 docstring 에 `🔴 **PARITY GUARD**` 표지 + 변경 시 동시 수정 의무 명시 + parity 회귀 가드 테스트 (시그니처 + 행동 동등성) 의무. drift 즉시 검출. 통합 PR 은 mock patch 경로 마이그레이션 동반 필요로 별도 진행 권장.
+- **R0914 too-many-locals cleanup 결정 트리 (사이클 64 회고 P1 학습)**: pylint R0914 발생 시 두 패턴 중 선택:
+  1. **헬퍼 추출 default** — 신규 함수 작성 시 (예: Phase 3 PR 2 `insight_narrative` → `_call_insight_claude_api` + `_parse_insight_cards` 분리). 단일 책임 원칙 + 테스트 격리 + 향후 재사용 가능성 시 default.
+  2. **inline `# pylint: disable=too-many-locals` + 사유 주석** — 기존 함수 시그니처 확장 시 (예: Phase 3 PR 5 `dashboard_kpi`/`frequent_issues_v2` user_id 인자 추가). 함수 자체의 응집 단위 보호 + 헬퍼 추출이 응집 깨뜨릴 때.
+  현재 inline disable 사용처 (5건): `gate/github_review.py:107` (merge_pr) / `notifier/merge_failure_issue.py:44` / `services/merge_retry_service.py:41` / `services/dashboard_service.py:77` (dashboard_kpi) + `:224` (frequent_issues_v2). 모두 시그니처 확장 사례 — 패턴 정합.
 
 ### DB / 마이그레이션
 
-- 🔴 **Supabase RLS 권한 모델 + 운영 활성화 미들웨어 의무 (Phase 3 PR 5 — alembic 0026)**: `alembic/versions/0026_supabase_rls_policies.py` 가 3 테이블 (`repositories`, `analyses`, `merge_attempts`) 에 RLS policy 적용 (PG 전용 + dialect 분기 — SQLite 단위 테스트 자동 skip). 세션 컨텍스트 변수 = `current_setting('app.user_id', true)` 패턴 (Supabase Auth `auth.uid()` 미사용 — GitHub OAuth 정합). **🔴 운영 환경에서 `SET LOCAL app.user_id = '<id>'` 미들웨어 미구현 시 RLS = "deny-all + legacy admin only 모드" 동작 위험** — request middleware 또는 SQLAlchemy event listener 신설 별도 PR 의무 (메모리 `phase3-rls-runtime-activation-pending.md` 참조). 1차 안전망 = 앱 레벨 filter (`src/services/dashboard_service.py::_apply_*_user_filter`) — SQLite/PG 호환. 2차 안전망 = RLS policy (PG/Supabase 전용 — 미들웨어 활성화 후 효과).
+- 🔴 **Supabase RLS 권한 모델 + 운영 활성화 미들웨어 (Phase 3 PR 5 #223 + postlude #228)**: `alembic/versions/0026_supabase_rls_policies.py` 가 3 테이블 (`repositories`, `analyses`, `merge_attempts`) 에 RLS policy 적용 (PG 전용 + dialect 분기 — SQLite 단위 테스트 자동 skip). 세션 컨텍스트 변수 = `current_setting('app.user_id', true)` 패턴 (Supabase Auth `auth.uid()` 미사용 — GitHub OAuth 정합). 운영 활성화 = `src/middleware/rls_session.py` (request 시작 시 `scope["session"]["user_id"]` → contextvars) + `src/database.py::_set_rls_user_id_per_query` event listener (매 query 직전 `SET LOCAL app.user_id = '<id>'` 발화). 1차 안전망 = 앱 레벨 filter (`src/services/dashboard_service.py::_apply_*_user_filter`, SQLite/PG 호환). 2차 안전망 = RLS policy (PG/Supabase 전용). **🔴 ASGI middleware 의무** (BaseHTTPMiddleware 우회 — Starlette `dispatch` 가 별도 anyio task 에서 `call_next` 호출해 contextvars 전파 X). middleware 등록 순서 = LIFO (RLS inner / SessionMiddleware outer — 후자가 먼저 호출).
+- **dialect 분기 helper 추출 보류 (사이클 64 회고 P1 — 사용처 ≥3 시점에 결정)**: 현재 `if conn.dialect.name != "postgresql": return` 패턴 사용처 = 2건 (`alembic/versions/0026_supabase_rls_policies.py::upgrade` + `src/database.py::_set_rls_user_id_per_query`). 임계값 (≥3) 미달 — 헬퍼 (`src/shared/alembic_dialect.py::pg_only(op)`) 추출 over-engineering 위험. 신규 PG-only 기능 도입 시 사용처 카운트 재검증 후 결정.
 - 🔴 **Alembic batch_alter_table 금지**: SQLite 전용 패턴. PostgreSQL에서는 `op.create_unique_constraint('이름', '테이블', ['컬럼'])` 직접 사용. 잘못 사용 시 lifespan 마이그레이션 실패 → Railway 헬스체크 실패. **예외**: `0005_add_users_and_user_id.py`, `0006_phase8b_github_oauth.py`는 이미 프로덕션에 적용된 이력 마이그레이션이므로 수정 금지 — `alembic downgrade` 경로 파괴 위험. 신규 마이그레이션(0007 이후)에만 이 규칙을 적용한다.
 - **FailoverSessionFactory**: `DATABASE_URL_FALLBACK` 설정 시 Primary `OperationalError` → Fallback DB 자동 전환. `_probe_primary_loop` daemon 스레드가 복구 확인 후 자동 복귀. 미설정 시 단일 엔진 모드(probe 스레드 없음). 소비자 코드(`SessionLocal()`)는 변경 없이 그대로 사용. `engine = SessionLocal._primary_engine`으로 alembic/env.py 호환성 유지.
 - **DB 세션 expunge**: `get_current_user()`는 `db.expunge(user)` 후 세션 반환 — 세션 종료 후에도 컬럼 속성 안전하게 접근 가능. 관계 lazy-load 사용 금지.
