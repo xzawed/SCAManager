@@ -94,7 +94,7 @@ https://github.com/login/oauth/authorize?response_type=code&client_id=Ov23liARxd
 - UI 변경 PR 외에도 인증/외부 통합 변경 PR 시 의무
 
 ### 회귀 가드 신설
-- `tests/integration/test_oauth_smoke.py` (신규):
+- `tests/integration/test_oauth_flow_smoke.py` (신규 — 그룹 61 PR #208 머지 완료):
   - SCAManager 가 보내는 `redirect_uri` 정합성 (mock 또는 live)
   - `APP_BASE_URL` 환경변수 → `redirect_uri` 변환 정확성
   - 외부 GitHub OAuth App callback URL mismatch 시뮬레이션 (mock 응답)

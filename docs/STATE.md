@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-02 기준 — **그룹 60+61 완료**: 18 PR 단일 작업일 — Phase 1+2 + 회고 + 정책 진화 7건 + P0 OAuth + leaderboard 완전 폐기 + Phase 3 SaaS 전환 토대)
+## 현재 수치 (2026-05-02 기준 — **그룹 60+61 완료**: 23 PR 단일 작업일 #188~#210 — Phase 1+2 + 회고 + 정책 진화 7건 + P0 OAuth + leaderboard 완전 폐기 + Phase 3 SaaS 전환 토대 + 종단간 가드 + 24 fail 해소)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
@@ -57,7 +57,7 @@
 
 ## 작업 이력 (그룹별)
 
-### 그룹 61 (2026-05-02 · 사용자 회신 후속 — leaderboard 완전 폐기 + Phase 3 SaaS 토대 — PR #206 + #207 + 본 sync PR)
+### 그룹 61 (2026-05-02 · 사용자 회신 후속 — leaderboard 완전 폐기 + Phase 3 SaaS 토대 + 종단간 가드 + 24 fail 해소 — PR #206 ~ #210 + 본 sync PR)
 
 **목표**: 그룹 60 (Phase 1+2 17 PR) 종료 후 사용자 정보 비대칭 3건 회신:
 1. Anthropic API 비용 = 본 사이클 ~$25 (Sonnet 4.6 주, Opus 4.7 보조). caching 전략 우선순위 ↑↑ (90% 절감)
@@ -78,7 +78,8 @@
 | **#207** Docs/cycle-61 final stale sync | **그룹 60+61 종료 후 stale 일괄 정리** — 5 에이전트 병렬 검증 결과 P0 9 / P1 5 / P2 5 처리. STATE 수치 정정 + design rework Q3 정정 + INDEX 결정 완료 + static-assets `insights_me` → `dashboard.html` + merge-retry `leaderboard` 정정 + collaboration retro 헤더 1줄 + CLAUDE.md L90 KPI 4↔5 명확화 |
 | **#208** Feat/policy-13 e2e + integration guards | **정책 13 강화 종단간 자동화 가드 신설** — `test_oauth_flow_smoke.py` +10 + `e2e/test_dashboard.py` +14 |
 | **#209** Chore/integration pre-existing 24 fail triage | **🎯 24 fail 일괄 해소** (conftest autouse 1건) — 그룹 60 PR B-1/B-2 와 동일 패턴 (`get_webhook_secret` mock 누락). **24 → 0 fail**. 환경 의존성 영구 격리 |
-| **(진행 중)** Docs/phase3-spec-update-saas-caching | **Phase 3 기획서 갱신** (사용자 회신 반영) — §5.3 5-Phase 로드맵 진화: Phase 1+2 완료 표기 + **Phase 3 = SaaS 전환 토대 + Insight 모드 + caching** 우선순위 대전환 (이전 단순 "모드 토글" → 지금 6 PR 분할 안: caching 인프라 / Insight service / 모드 토글 / default 모드 / RLS 권한 / 회귀 가드). §8 신설: 사용자 회신 표 (Anthropic 비용 ~$25 / single-tenant → SaaS / leaderboard 폐기) + Phase 3 진입 의무 4건 (caching 패턴 / Insight 카드 4종 / 모드 토글 default / RLS 모델 결정) |
+| **#210** Docs/phase3-spec-update-saas-caching | **Phase 3 기획서 갱신** (사용자 회신 반영) — §5.3 Phase 3 = SaaS 토대 + Insight + caching (6 PR 분할) + §8 사용자 회신 표 + 진입 의무 4건 |
+| **(진행 중)** Docs/cycle-61 stale sync v2 | **2차 교차 검증 (1차 5 + 2차 1 = 7 에이전트) — 즉시 fix 8건 + 권장 1건**. (a) CLAUDE.md L965 "현재 상태" 줄 수치 갱신 (1984/72/53 → 2010/82/65) + 그룹 60+61 누적 추가 + Phase 11 leaderboard 표기 정정 (b) STATE 헤더 18 → 23 PR + 그룹 61 PR # 마감 (#206~#210) + 본 sync 추가 (c) OAuth incident L97 파일명 정정 (`test_oauth_smoke` → `test_oauth_flow_smoke`) (d) operational-smoke runbook 자동화 가드 박스 신설 (e) phase1-2 retro 꼬리 1줄 (f) CLAUDE.md 정책 13 본문 자동화 가드 인용. **2차 검증 false-positive 차단 2건**: STATE L148 "PR 1 (#188 진행 중)" = 회고 시점 진술 보존 (수정 시 일관성 깨짐) + 2026-04-26 retro leaderboard = history 자산 |
 
 **5-way sync 영향**: 5/5 모두 적용 (정책 7 강화 응집 단위 — "리더보드 완전 폐기")
 
