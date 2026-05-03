@@ -6,10 +6,11 @@ import threading
 import time
 from urllib.parse import urlparse, parse_qs
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import sessionmaker, DeclarativeBase, Session
 from src.config import settings
+from src.shared.rls_context import get_rls_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -228,6 +229,37 @@ class FailoverSessionFactory:  # pylint: disable=too-many-instance-attributes
 _FALLBACK_URL = settings.database_url_fallback or None
 SessionLocal = FailoverSessionFactory(settings.database_url, _FALLBACK_URL)
 engine = SessionLocal._primary_engine  # pylint: disable=protected-access  # alembic/env.py 호환
+
+
+# Phase 3 postlude — RLS 운영 활성화 미들웨어 페어 (alembic 0026 USING 절 활성화).
+# 매 query 직전에 contextvars 의 user_id 를 읽고 SET LOCAL app.user_id 발화 (PG only).
+# RLSSessionMiddleware 가 request 시작 시 contextvars 설정 → 본 listener 가 query 마다 SET LOCAL → RLS USING 절 활성화.
+# Phase 3 postlude — pairs with RLSSessionMiddleware to activate alembic 0026 RLS USING clause.
+# Reads contextvars user_id and emits SET LOCAL app.user_id before every query (PG only).
+def _set_rls_user_id_per_query(  # pylint: disable=too-many-arguments,too-many-positional-arguments,unused-argument
+    conn, cursor, statement, params, context, executemany
+):
+    """SQLAlchemy before_cursor_execute hook — SET LOCAL app.user_id 발화.
+
+    SQLite dialect 또는 contextvars 조회 실패 시 graceful skip — query 차단 X.
+    SQLite dialect or contextvars failure → graceful skip (never break query).
+    """
+    if conn.dialect.name != "postgresql":
+        return
+    try:
+        user_id = get_rls_user_id()
+    except Exception:  # pylint: disable=broad-exception-caught  # noqa: BLE001
+        # contextvars 조회 자체가 깨져도 query 는 살려둠 (graceful)
+        # Even if contextvars introspection fails, keep the query path alive
+        return
+    val = str(user_id) if user_id else ""
+    cursor.execute(f"SET LOCAL app.user_id = '{val}'")
+
+
+# 운영 engine 에 listener 등록 — PG 환경에서만 실효 (SQLite skip 분기 내장)
+# Register on the production engine — only effective on PG (SQLite skip is built-in)
+if hasattr(engine, "dialect"):  # 정상 SQLAlchemy Engine 일 때만
+    event.listen(engine, "before_cursor_execute", _set_rls_user_id_per_query)
 
 
 def get_db():
