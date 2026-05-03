@@ -22,6 +22,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session as _Session
+
+# PR 4 — ORM metadata 등록 (모듈 최상단 import — pytest collection 시점에 등록).
+# tests/ 전체 실행 시 fixture-내 lazy import 가 metadata 누락을 일으킨 사례 (PR 4 CI #428 fail).
+# Module-level imports register ORM metadata at pytest collection time.
+# Lazy imports inside the fixture caused metadata gaps when running full tests/ suite (PR 4 CI #428).
+from src.database import Base  # noqa: E402
+from src.models.analysis import Analysis as _AnalysisModel  # noqa: E402, F401
+from src.models.repository import Repository as _RepoModel  # noqa: E402, F401
+from src.models.user import User as _UserModel  # noqa: E402, F401
 
 from src.auth.session import CurrentUser, require_login
 from src.main import app
@@ -423,16 +434,10 @@ def isolated_db():
     Provides an in-memory SQLite session with all ORM tables created (PR 4 only).
     헬퍼 `_detect_initial_dashboard_mode(db)` 의 Analysis count 의존성 검증용.
     Used for verifying the helper's Analysis-count dependency.
-    """
-    # 지연 import — 테스트 시점에만 ORM metadata 등록
-    # Lazy import — only register ORM metadata at test time
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import Session as _Session
-    from src.database import Base
-    from src.models.analysis import Analysis  # noqa: F401  pylint: disable=unused-import
-    from src.models.repository import Repository  # noqa: F401  pylint: disable=unused-import
-    from src.models.user import User  # noqa: F401  pylint: disable=unused-import
 
+    NOTE: ORM 모델 import 는 모듈 최상단으로 이동 (PR 4 CI #428 fail fix). lazy import 는
+    tests/ 전체 실행 시 metadata 등록 누락 → `no such table: users` 오류 유발.
+    """
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     with _Session(engine) as session:
