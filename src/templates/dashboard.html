@@ -312,7 +312,7 @@
   }
 </style>
 
-<div class="dashboard-page">
+<div class="dashboard-page" data-initial-mode="{{ initial_mode or 'overview' }}">
   <div class="dash-header">
     <div>
       <h1 class="dash-title">Dashboard</h1>
@@ -637,4 +637,36 @@
   document.addEventListener('themechange', buildDashChart);
 </script>
 {% endif %}
+
+{# Phase 3 PR 4 — 모드 토글 localStorage persist + 초기 redirect (mode/insight 양 모드 모두 적용) #}
+{# Phase 3 PR 4 — mode toggle localStorage persist + initial redirect (active in both modes) #}
+<script>
+  // 모드 토글 클릭 시 localStorage 저장 — 다음 진입 시 사용자 마지막 선택 보존
+  // Persist mode toggle clicks to localStorage — restore user's last choice on next visit
+  document.querySelectorAll('.dash-mode-toggle a').forEach(function (a) {
+    a.addEventListener('click', function () {
+      try {
+        var m = a.getAttribute('data-mode');
+        if (m) localStorage.setItem('sca-dashboard-mode', m);
+      } catch (e) { /* localStorage 접근 거부 (private mode 등) — silent skip */ }
+    });
+  });
+
+  // URL ?mode= 부재 + localStorage 우선 + 서버 initial_mode 와 다르면 1회 redirect
+  // When URL has no ?mode= and localStorage holds a different value, redirect once (FOUC 최소)
+  (function () {
+    try {
+      var url = new URL(window.location.href);
+      if (url.searchParams.has('mode')) return;  // URL 명시 = 사용자 선택, 손대지 않음
+      var stored = localStorage.getItem('sca-dashboard-mode');
+      if (!stored || (stored !== 'overview' && stored !== 'insight')) return;
+      var page = document.querySelector('.dashboard-page');
+      var initial = (page && page.getAttribute('data-initial-mode')) || 'overview';
+      if (stored !== initial) {
+        url.searchParams.set('mode', stored);
+        window.location.replace(url.toString());
+      }
+    } catch (e) { /* URL/localStorage 접근 오류 — silent skip (page 정상 렌더 보장) */ }
+  })();
+</script>
 {% endblock %}
