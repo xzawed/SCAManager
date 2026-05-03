@@ -10,21 +10,35 @@ Phase 2 함수 (운영 데이터 기반 — MCP 검증 결과: success_rate 16.6
 - auto_merge_kpi — Auto-merge 시도 success rate (단순 + retry-aware distinct PR 기준)
 - merge_failure_distribution — 실패 사유 Top N + 비율 (운영 신호: unstable_ci 압도적)
 
+Phase 3 함수 (PR 2):
+- insight_narrative — Claude AI 기반 4 카드 인사이트 (positive / focus / metrics / next).
+  PR 1 의 `build_cached_system_param` 헬퍼로 system prompt cache 5분 적용.
+
 now 인자 의존성 주입 패턴 (analytics_service 와 동일).
 """
 from __future__ import annotations
 
+import json
+import logging
+import re
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import anthropic
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from src.config import settings
 from src.models.analysis import Analysis
 from src.models.analysis_feedback import AnalysisFeedback
 from src.models.merge_attempt import MergeAttempt
 from src.models.repository import Repository
 from src.scorer.calculator import calculate_grade
+from src.shared.anthropic_caching import build_cached_system_param
+from src.shared.claude_metrics import extract_anthropic_usage, log_claude_api_call
+
+logger = logging.getLogger(__name__)
 
 
 # ─── KPI ──────────────────────────────────────────────────────────────────
@@ -378,3 +392,229 @@ def feedback_status(db: Session, *, threshold: int = 10) -> dict[str, Any]:
         "count": int(count),
         "recent_analysis": recent,
     }
+
+
+# ─── Phase 3 PR 2: Insight 모드 narrative ──────────────────────────────────
+
+
+_INSIGHT_SYSTEM_PROMPT = (
+    "You are SCAManager's code-quality insight analyst. "
+    "Given recent dashboard metrics for a developer, generate a concise "
+    "narrative as 4 cards. Always reply in Korean. Output strict JSON only "
+    "(no preamble, no trailing text, no code fences).\n\n"
+    "Cards (JSON keys):\n"
+    "1. positive_highlights (list[str], 3~5 items): ✨ recent strengths "
+    "(grades, secure code, test coverage wins).\n"
+    "2. focus_areas (list[str], 3~5 items): 🔍 areas needing attention "
+    "(recurring issues, declining trends, low scores).\n"
+    "3. key_metrics (list[dict], exactly 4 items): 📊 numeric highlights, "
+    'each {"label": str, "value": str, "delta": str}. '
+    "delta uses + / - prefix.\n"
+    "4. next_actions (list[str], 2~4 items): 💬 suggested next moves "
+    "(specific, actionable, prioritized).\n\n"
+    "Tone: concise, encouraging but honest. Avoid generic advice — refer "
+    "to the actual numbers. Each list item ≤ 80 Korean characters.\n\n"
+    'Return JSON: {"positive_highlights": [...], "focus_areas": [...], '
+    '"key_metrics": [...], "next_actions": [...]}'
+)
+
+
+def _empty_narrative_cards() -> dict[str, list]:
+    """4 카드 모두 빈 list — no_api_key / no_data / api_error / parse_error 공용 fallback.
+
+    Empty 4-card structure used as the fallback for non-success status values.
+    """
+    return {
+        "positive_highlights": [],
+        "focus_areas": [],
+        "key_metrics": [],
+        "next_actions": [],
+    }
+
+
+def _build_insight_response(
+    *, status: str, days: int, cards: dict[str, list] | None = None
+) -> dict[str, Any]:
+    """insight_narrative 응답 dict 빌더 — status + 4 카드 + generated_at + days.
+
+    Helper that builds the insight_narrative response dict.
+    """
+    base = cards if cards is not None else _empty_narrative_cards()
+    return {
+        **base,
+        "status": status,
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "days": days,
+    }
+
+
+def _extract_insight_json(text: str) -> str:
+    """Claude 응답에서 JSON 페이로드 추출 — 코드 블록 우선, 첫 `{` ~ 마지막 `}` fallback.
+
+    Extract a JSON payload from a Claude response — prefer fenced blocks,
+    fall back to the first `{` to the last `}`. Mirrors ai_review._extract_json_payload.
+    """
+    cleaned = text.strip()
+    block = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", cleaned, re.DOTALL | re.IGNORECASE)
+    if block:
+        return block.group(1)
+    first, last = cleaned.find("{"), cleaned.rfind("}")
+    if first != -1 and last > first:
+        return cleaned[first:last + 1]
+    return cleaned
+
+
+def _build_insight_user_prompt(
+    *,
+    days: int,
+    kpi: dict[str, Any],
+    trend: list[dict[str, Any]],
+    frequent: list[dict[str, Any]],
+    auto_merge: dict[str, Any],
+) -> str:
+    """4 헬퍼 결과를 Claude 가 읽을 수 있는 user message 로 직렬화.
+
+    Serializes the 4 dashboard helper outputs into a Claude-friendly user message.
+    """
+    payload = {
+        "window_days": days,
+        "kpi": kpi,
+        "trend_last_n_points": trend[-min(len(trend), 14):],  # 최근 N 포인트만 (토큰 절약)
+        "frequent_issues": frequent,
+        "auto_merge": auto_merge,
+    }
+    return (
+        f"다음은 최근 {days}일간의 dashboard 데이터입니다. "
+        "위 4 카드 JSON 형식으로 narrative 를 생성해주세요.\n\n"
+        f"```json\n{json.dumps(payload, ensure_ascii=False, default=str)}\n```"
+    )
+
+
+async def _call_insight_claude_api(
+    client: anthropic.AsyncAnthropic, model: str, user_prompt: str
+) -> str | None:
+    """Claude Messages API 호출 + caching system 인자 + 토큰 로깅. 실패 시 None.
+
+    Calls the Claude Messages API with cached system param and logs tokens.
+    Returns response text on success, None on any exception (caller maps to api_error).
+    """
+    start = time.perf_counter()
+    try:
+        response = await client.messages.create(
+            model=model,
+            max_tokens=1500,
+            system=build_cached_system_param(_INSIGHT_SYSTEM_PROMPT),
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+        duration_ms = (time.perf_counter() - start) * 1000
+        input_tokens, output_tokens = extract_anthropic_usage(response)
+        usage = getattr(response, "usage", None)
+        log_claude_api_call(
+            model=model,
+            duration_ms=duration_ms,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            status="success",
+            cache_read_tokens=getattr(usage, "cache_read_input_tokens", 0) or 0,
+            cache_creation_tokens=getattr(usage, "cache_creation_input_tokens", 0) or 0,
+        )
+        return response.content[0].text
+    except Exception as exc:  # pylint: disable=broad-exception-caught  # noqa: BLE001
+        # anthropic / httpx / 네트워크 오류 모두 graceful fallback (caller 가 api_error 처리)
+        # All anthropic/httpx/network errors fall through to graceful fallback (caller maps to api_error)
+        duration_ms = (time.perf_counter() - start) * 1000
+        log_claude_api_call(
+            model=model,
+            duration_ms=duration_ms,
+            input_tokens=0,
+            output_tokens=0,
+            status="error",
+            error_type=type(exc).__name__,
+        )
+        logger.exception("insight_narrative API call failed, returning api_error")
+        return None
+
+
+def _parse_insight_cards(text: str) -> dict[str, list] | None:
+    """Claude 응답 text 에서 4 카드 dict 추출. invalid JSON 시 None.
+
+    Parses 4-card dict from Claude response text. Returns None on invalid JSON.
+    """
+    try:
+        data = json.loads(_extract_insight_json(text))
+    except (json.JSONDecodeError, ValueError):
+        logger.warning("insight_narrative parse_error: %s", text[:200])
+        return None
+    return {
+        "positive_highlights": [str(s) for s in data.get("positive_highlights", [])],
+        "focus_areas": [str(s) for s in data.get("focus_areas", [])],
+        "key_metrics": [m for m in data.get("key_metrics", []) if isinstance(m, dict)],
+        "next_actions": [str(s) for s in data.get("next_actions", [])],
+    }
+
+
+async def insight_narrative(
+    db: Session,
+    days: int = 7,
+    *,
+    now: datetime | None = None,
+    api_key: str | None = None,
+) -> dict[str, Any]:
+    """Claude AI 기반 4 카드 인사이트 narrative — Phase 3 PR 2.
+
+    Generates a 4-card narrative (positive / focus / metrics / next) using Claude AI.
+    Reuses the PR 1 `build_cached_system_param` helper for 5-minute system prompt caching.
+
+    Args:
+        db: SQLAlchemy 세션. SQLAlchemy session.
+        days: 윈도우 일수 (default 7). Window size in days.
+        now: 의존성 주입용 — None 시 현재 시각. Injection point — defaults to now.
+        api_key: None 시 settings.anthropic_api_key 사용. Defaults to settings on None.
+
+    Returns:
+        {
+            "positive_highlights": list[str],   # ✨ 잘한 것 (3~5건)
+            "focus_areas": list[str],           # 🔍 신경 쓸 것 (3~5건)
+            "key_metrics": list[dict],          # 📊 숫자 [{"label", "value", "delta"}] × 4
+            "next_actions": list[str],          # 💬 다음 (2~4건)
+            "status": "success" | "no_api_key" | "no_data" | "api_error" | "parse_error",
+            "generated_at": "YYYY-MM-DDTHH:MM:SSZ",
+            "days": int,
+        }
+    """
+    # API key fallback — 명시 인자 우선, 없으면 settings
+    # API key fallback — explicit arg wins, otherwise settings
+    effective_key = api_key if api_key is not None else settings.anthropic_api_key
+    if not effective_key:
+        return _build_insight_response(status="no_api_key", days=days)
+
+    _now = now or datetime.now(timezone.utc)
+
+    # 4 dashboard 헬퍼 호출로 컨텍스트 수집
+    # Collect context by invoking the 4 dashboard helpers
+    kpi = dashboard_kpi(db, days, now=_now)
+    trend = dashboard_trend(db, days, now=_now)
+    frequent = frequent_issues_v2(db, days, now=_now)
+    auto_merge = auto_merge_kpi(db, days, now=_now)
+
+    # 데이터 0건이면 Claude API 호출 비용 발생 안 시킴 (cost-saver early return)
+    # Skip Claude API call when there's no data (cost-saver early return)
+    if int(kpi.get("analysis_count", {}).get("value", 0) or 0) == 0:
+        return _build_insight_response(status="no_data", days=days)
+
+    user_prompt = _build_insight_user_prompt(
+        days=days, kpi=kpi, trend=trend, frequent=frequent, auto_merge=auto_merge
+    )
+
+    # ai_review.py 와 동일 timeout/max_retries 패턴 — SDK 기본값 변경 면역
+    # Same timeout/max_retries pattern as ai_review.py — immune to SDK default changes
+    client = anthropic.AsyncAnthropic(api_key=effective_key, timeout=60.0, max_retries=2)
+    text = await _call_insight_claude_api(client, settings.claude_review_model, user_prompt)
+    if text is None:
+        return _build_insight_response(status="api_error", days=days)
+
+    cards = _parse_insight_cards(text)
+    if cards is None:
+        return _build_insight_response(status="parse_error", days=days)
+
+    return _build_insight_response(status="success", days=days, cards=cards)
