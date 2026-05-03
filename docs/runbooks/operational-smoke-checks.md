@@ -235,14 +235,14 @@ pytest e2e/test_theme_mobile_guards.py -v
 
 ---
 
-## 9. GitHub Code Scanning 알림 운영 체크 (정책 14)
+## 9. GitHub Security 탭 등록 알림 운영 체크 (정책 14)
 
-**기획 근거**: GitHub Code Scanning Alert #324 (`'break'/'return' in finally`) + #325 (`Unused import`) 가 추적용 메타 Issue #213 / #214 로 발견 (사이클 62, 2026-05-03). SCAManager 자체 lint (pylint / flake8 / bandit) 통과 ≠ Security 탭 0 alert. 두 영역 합집합 검토 의무.
+**기획 근거**: GitHub Security 탭 등록 Code Scanning Alert #324 (`'break'/'return' in finally`) + #325 (`Unused import`) 직접 확인 (사이클 62, 2026-05-03). 참조 메타 Issue #213/#214 는 단순 추적 수단 — Security 탭 자체가 단일 진실 소스. SCAManager 자체 lint (pylint / flake8 / bandit) 통과 ≠ Security 탭 0 alert. 두 영역 합집합 검토 의무.
 
 **정책 14 default 의무**:
-- 작업 시작 전 30초 체크리스트 (CLAUDE.md L715~) 에 open alert 카운트 1줄
-- 매 사이클 종료 시 정책 13 smoke check 와 페어로 Code Scanning open alert 검토
-- 신규 alert 발견 시 분류 처리 1회 의무 (a/b/c — fix / dismiss / suppress)
+- 작업 시작 전 30초 체크리스트 (CLAUDE.md L715~) 에 GitHub Security 탭 open alert 카운트 1줄
+- 매 사이클 종료 시 정책 13 smoke check 와 페어로 GitHub Security 탭 등록된 alert 직접 검토 (Issue 추적 수단 의존 X)
+- GitHub Security 탭에 신규 alert 등록 시 분류 처리 1회 의무 (a/b/c — fix / dismiss / suppress)
 
 ---
 
@@ -300,15 +300,15 @@ curl -s -H "Authorization: token $GITHUB_PAT" \
 
 ### 9.4 사이클 62 사례 (2026-05-03 시점) — 본 정책 신설 트리거
 
-- **Alert #324** (`break/return in finally`): SCAManager src/ 코드 위반 0건 검증 완료 (`make lint` + AST scan). → (b) **false-positive 추정** — alert 본문 인증 차단으로 직접 확인 불가, 다음 사이클에 사용자 GitHub Web 공유 후 dismiss/suppress 결정
-- **Alert #325** (`Unused import`): 동일 — flake8 F401 + pylint W0611 모두 0건. → (b) false-positive 추정
-- **메타 Issue**: #213 (#324 추적) + #214 (#325 추적) — 본 PR 머지 후에도 alert 자체 dismiss 처리되기 전까지 보존
+- **GitHub Security 탭 등록 Alert #324** (`break/return in finally`): SCAManager src/ 코드 위반 0건 검증 완료 (`make lint` + AST scan). → (b) **false-positive 추정** — alert 본문 인증 차단으로 직접 확인 불가, 다음 사이클에 사용자 GitHub Security 탭 본문 공유 후 dismiss/suppress 결정
+- **GitHub Security 탭 등록 Alert #325** (`Unused import`): 동일 — flake8 F401 + pylint W0611 모두 0건. → (b) false-positive 추정
+- **참조 메타 Issue**: #213 / #214 는 단순 추적 수단 — Security 탭 alert 자체가 단일 진실 소스. 본 PR 머지 후에도 alert 자체 dismiss 처리되기 전까지 메타 Issue 보존 (alert dismiss 시 함께 close)
 
 ---
 
-### 9.5 SCAManager 자체 lint ↔ GitHub Code Scanning 상호 보완 매트릭스
+### 9.5 SCAManager 자체 lint ↔ GitHub Security 탭 등록 알림 상호 보완 매트릭스
 
-| 검사 영역 | SCAManager 자체 | GitHub Code Scanning | 사용자 의무 |
+| 검사 영역 | SCAManager 자체 | GitHub Security 탭 등록 알림 | 사용자 의무 |
 |----------|----------------|---------------------|------------|
 | Python 스타일/오류 | pylint 10.00 + flake8 0건 | CodeQL python 룰셋 | 양쪽 둘다 0 |
 | 보안 정적분석 | bandit HIGH 0 | CodeQL 보안 룰 | 양쪽 둘다 0 |
@@ -316,4 +316,4 @@ curl -s -H "Authorization: token $GITHUB_PAT" \
 | Dependency CVE | (자체 가드 X) | Dependabot alerts | GitHub Security 탭 |
 | 의존성 그래프 | (자체 가드 X) | CodeQL dataflow | GitHub Security 탭 |
 
-두 영역 모두 0 alert = 진정한 "Security A" 상태.
+SCAManager 자체 lint + GitHub Security 탭 등록 알림 양쪽 모두 0 = 진정한 "Security A" 상태. **참조 Issue 추적 메타 의존 X — Security 탭이 단일 진실 소스.**
