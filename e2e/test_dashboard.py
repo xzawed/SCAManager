@@ -13,7 +13,6 @@ P0 OAuth 사고 (2026-05-02) 후속 + 정책 11 강화 (인증 flow 4 endpoint) 
 
 run: `make test-e2e` (Chromium Playwright, e2e/conftest.py 의 live_server fixture 사용)
 """
-import pytest
 
 
 # ─── /dashboard 기본 렌더링 ─────────────────────────────────────────────
