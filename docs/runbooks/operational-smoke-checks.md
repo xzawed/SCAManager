@@ -199,8 +199,8 @@ make test-e2e
 
 ### 8.4 정책 13 본문 (CLAUDE.md L660~) 자동화 가드 인용 정합
 
-manual smoke (3-endpoint) ↔ 자동화 가드 (integration 10 + e2e 14) 상호 보완 관계:
-| 영역 | manual (정책 13 default) | 자동화 (PR #208) |
+manual smoke (3-endpoint) ↔ 자동화 가드 (integration 10 + e2e 21 = test_dashboard 14 + test_theme_mobile_guards 7) 상호 보완 관계:
+| 영역 | manual (정책 13 default) | 자동화 (PR #208 + #212) |
 |------|----------------------|----------------|
 | /health | curl | TestSmokeCheckMinimal |
 | /auth/github redirect_uri | curl + decode | TestAuthFlowEndpoints |
@@ -209,4 +209,26 @@ manual smoke (3-endpoint) ↔ 자동화 가드 (integration 10 + e2e 14) 상호 
 | /webhooks/github 401 | curl + 서명 누락 | TestAuthFlowEndpoints |
 | /insights → /dashboard 301 | curl | TestInsightsRedirect + e2e |
 | /dashboard 페이지 시각 (KPI 5 / chart / nav) | 사용자 시각 검증 | e2e/test_dashboard.py |
+| claude-dark 토큰 정의 (8 + 등급 alias) | 사용자 시각 검증 | e2e/test_theme_mobile_guards.py §A |
+| WCAG 2.5.5 모바일 클릭 영역 (.btn / .nav-hamburger) | iOS / 안드 실기 | e2e/test_theme_mobile_guards.py §B |
 | 외부 의존 (GitHub OAuth App callback URL) | **사용자만 가능** | (자동화 불가) |
+
+### 8.5 E2E 테마 + 모바일 회귀 가드 — `e2e/test_theme_mobile_guards.py` (7건, 사이클 62 PR #212)
+- **A. claude-dark 토큰 회귀 가드** (cleanup PR #169 사고 차단):
+  - claude-dark settings 8 토큰 정의 (`--grad-gate/merge/notify/hook`, `--title-gradient`, `--save-btn-bg`, `--hint-bg`, `--hook-btn-bg`)
+  - claude-dark dashboard body 비-투명 (—bg-page 미정의 회귀)
+  - claude-dark 등급 alias (`--grade-a/b/c/d/f`) 정의
+- **B. WCAG 2.5.5 모바일 클릭 영역 가드** (UI 감사 Step A):
+  - 모바일 .btn (375px) min-height ≥44px
+  - 모바일 .btn--sm (375px) min-height ≥40px
+  - 모바일 .nav-hamburger (375px) ≥44x44
+  - 데스크탑 .btn (1024px) min-height < 44px (모바일 분기 누수 회귀)
+- **핵심 패턴**:
+  - claude-dark 토큰은 `body[data-theme="claude-dark"]` 스코프 → `getComputedStyle(document.body).getPropertyValue(...)` 조회 (`document.documentElement` 는 :root 만 노출 — 빈 문자열 false-positive)
+  - Playwright `page.evaluate()` 다중 statement → arrow function `() => { ... }` wrap 의무
+  - DOM 주입 헬퍼 (`_measure_injected_btn_min_height`) — 정적 셀렉터 의존도 감소
+
+```bash
+# 로컬 실행
+pytest e2e/test_theme_mobile_guards.py -v
+```

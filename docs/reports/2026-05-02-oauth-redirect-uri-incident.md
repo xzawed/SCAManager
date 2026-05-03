@@ -98,6 +98,10 @@ https://github.com/login/oauth/authorize?response_type=code&client_id=Ov23liARxd
   - SCAManager 가 보내는 `redirect_uri` 정합성 (mock 또는 live)
   - `APP_BASE_URL` 환경변수 → `redirect_uri` 변환 정확성
   - 외부 GitHub OAuth App callback URL mismatch 시뮬레이션 (mock 응답)
+- `e2e/test_theme_mobile_guards.py` (신규 — 사이클 62 PR #212 머지 완료):
+  - claude-dark 8 토큰 정의 가드 (cleanup PR #169 사고 차단) + dashboard body 비-투명 + 등급 alias
+  - WCAG 2.5.5 모바일 클릭 영역 가드 (.btn ≥44px / .btn--sm ≥40px / .nav-hamburger ≥44x44 / 데스크탑 누수 회귀)
+  - 본 사고와 직접 인과 X — UI 회귀 차원 가드. P0 OAuth 사고 후속 정책 11 강화 (인증 flow 검증) 의 형제 가드 (시각/모바일 영역 보완)
 
 ### Runbook 신설
 - [`docs/runbooks/operational-smoke-checks.md`](../runbooks/operational-smoke-checks.md):

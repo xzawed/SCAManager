@@ -3,9 +3,9 @@
 > **사용자 발화 (2026-05-02)**:
 > *"현재 Insights 탭은 한정적이고 해당 컨셉과 페이지는 다 폐기 후 가장 근본이 되는 대시보드와 정보를 보여주거나 제시하는 무언가 있어야 한다 — 이 내용에 대해 여러 에이전트는 현재 프로젝트 서비스의 사활이 걸린만큼 아주 깊고 많이 토론해도 됩니다."*
 >
-> **상태**: 5-에이전트 병렬 분석 완료 (2026-05-02). 사용자 검토 + 결정 대기.
-> **변경 영향 (예상)**: 코드 826 LOC 폐기 + 250~1100 LOC 신규 (MVP 선정 따라 다름).
-> **회귀 위험**: 보존 함수 (`weekly_summary`, `moving_average`, `top_issues`, `resolve_chat_id`) 미파괴 검증 의무.
+> **상태**: ✅ Phase 1+2 머지 완료 (그룹 60+61 — `/dashboard` MVP-B 출시 + Auto-merge KPI + feedback CTA + leaderboard 폐기) — Phase 3 (SaaS 토대 + caching) 진행 중. 사용자 회신 의무 4건 (caching 패턴 / Insight 카드 4종 / 모드 토글 default / RLS 모델) 후 PR 6분할 시작. 상세 진행 상태는 `docs/design/INDEX.md` + `docs/STATE.md` 참조.
+> **변경 영향 (실측)**: Phase 1+2 = 17 PR 머지, 코드 826 LOC 폐기 + dashboard_service 6 함수 신규 + alembic 0025 (leaderboard column drop).
+> **회귀 위험**: 보존 함수 (`weekly_summary`, `moving_average`, `resolve_chat_id`) 미파괴 — 회귀 가드 통과 (`top_issues` 는 Phase 1 PR 1 폐기 / `frequent_issues_v2` 신규 대체).
 
 ---
 
