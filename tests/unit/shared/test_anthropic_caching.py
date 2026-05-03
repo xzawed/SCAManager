@@ -14,8 +14,6 @@ Phase 3 PR 1 — TDD Red.
 """
 from unittest.mock import patch
 
-import pytest
-
 # 구현 모듈 import — Red 단계에서 ModuleNotFoundError 예상
 # Import implementation module — ModuleNotFoundError expected during Red phase
 from src.shared import anthropic_caching
