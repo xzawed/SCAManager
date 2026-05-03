@@ -2,13 +2,13 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-03 기준 — **그룹 60+61+사이클 62 완료**: 25 PR #188~#212 — Phase 1+2 + 회고 + 정책 진화 7건 + P0 OAuth + leaderboard 완전 폐기 + Phase 3 SaaS 전환 토대 + 종단간 가드 + 24 fail 해소 + 사이클 62 — cycle-61 v2 sync + e2e claude-dark + WCAG 2.5.5 가드 7건)
+## 현재 수치 (2026-05-03 기준 — **그룹 60+61+사이클 62+Phase 3 PR 1~4 완료**: 30 PR #188~#221 — Phase 1+2 + 회고 + 정책 진화 7건 + P0 OAuth + leaderboard 완전 폐기 + Phase 3 SaaS 전환 토대 시작 (caching 인프라 + insight service + 라우트 + 모드 토글 + 사용자 신호 default + localStorage) + 종단간 가드 + 정책 14 신설 + CI fix)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **2010개** | pytest 9.0.3 — 그룹 60+61 누적 +24 (Phase 1 +1 + Phase 2 +17 + P0 OAuth +4 + leaderboard 폐기 +2) **= 2010 collected / 2009 passed / 2 skipped / 0 failed** |
-| 통합 테스트 | **82개** | tests/integration/ — 그룹 61 PR #208 (정책 13 강화) +10 + PR #209 (24 fail 해소 — conftest autouse) **= 79 passed / 3 skipped / 0 failed** |
-| E2E 테스트 | **75개** | `make test-e2e` (Chromium Playwright) — 그룹 61 PR #208 +14 (test_dashboard) + 사이클 62 PR #212 +7 (test_theme_mobile_guards — claude-dark 토큰 회귀 가드 3 + WCAG 2.5.5 모바일 클릭 영역 가드 4) **= 73 passed / 0 failed / 2 pre-existing fail (test_settings 2건, 본 사이클 무관)** |
+| 단위 테스트 | **2031개** | pytest 9.0.3 — Phase 3 PR 1~4 누적 +21 (PR 1 caching 헬퍼 +6 / PR 2 insight_narrative +6 / PR 3 mode 분기 +5 / PR 4 detection 헬퍼 +4) **= 2031 collected / 2026 passed / 5 skipped / 0 failed** (CI fix 후 pre-existing 5 fail 도 본 환경에서 PASS — 다음 사이클 재검증 필요) |
+| 통합 테스트 | **82개** | tests/integration/ — 변화 없음 (Phase 3 PR 1~4 영역 외) **= 79 passed / 3 skipped / 0 failed** |
+| E2E 테스트 | **75개** | `make test-e2e` (Chromium Playwright) — 변화 없음 (PR 3 e2e dashboard URL 형식만 갱신, 카운트 변동 X) **= 73 passed / 0 failed / 2 pre-existing fail (test_settings 2건, 본 사이클 무관)** |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
@@ -82,7 +82,25 @@
 | **#211** Docs/cycle-61 stale sync v2 | **2차 교차 검증 (1차 5 + 2차 1 = 7 에이전트) — 즉시 fix 8건 + 권장 1건**. (a) CLAUDE.md L965 "현재 상태" 줄 수치 갱신 (1984/72/53 → 2010/82/65) + 그룹 60+61 누적 추가 + Phase 11 leaderboard 표기 정정 (b) STATE 헤더 18 → 23 PR + 그룹 61 PR # 마감 (#206~#210) + 본 sync 추가 (c) OAuth incident L97 파일명 정정 (`test_oauth_smoke` → `test_oauth_flow_smoke`) (d) operational-smoke runbook 자동화 가드 박스 신설 (e) phase1-2 retro 꼬리 1줄 (f) CLAUDE.md 정책 13 본문 자동화 가드 인용. **2차 검증 false-positive 차단 2건**: STATE L148 "PR 1 (#188 진행 중)" = 회고 시점 진술 보존 (수정 시 일관성 깨짐) + 2026-04-26 retro leaderboard = history 자산 |
 | **#212** Test/e2e theme mobile viewport guards | **7-에이전트 검증 P1 #5 후속 — claude-dark 토큰 회귀 + WCAG 2.5.5 모바일 가드 7건 신설**. `e2e/test_theme_mobile_guards.py` 신규 1 파일 223줄: A. claude-dark 8 토큰 정의 가드 (cleanup PR #169 사고 차단) + dashboard body 비-투명 + 등급 alias / B. WCAG 2.5.5 모바일 (.btn ≥44px + .btn--sm ≥40px + .nav-hamburger ≥44x44 + 데스크탑 누수 회귀). 핵심 학습: claude-dark 토큰은 `body[data-theme=claude-dark]` 스코프 → `getComputedStyle(document.body)` 조회 + Playwright `page.evaluate()` 다중 statement → arrow function wrap 의무 + DOM 주입 헬퍼로 정적 셀렉터 의존도 감소 |
 | **#215** Docs/cycle-62 multi-agent stale cleanup | **사이클 62 — 5+1 에이전트 정합성 검증 결과 P0 4 + P1 4 처리 + 정책 14 신설 (사용자 요청 후속)**. (a) STATE.md L11 E2E 65→75 + 비고 PR #212 (b) STATE.md L5 헤더 23→25 PR (c) STATE.md 본 표 #211 머지 + #212 행 추가 (d) README.md L21~22 배지 (Tests 72→82 + E2E 53→75) (e) CLAUDE.md L972 E2E 65→75 (f) CLAUDE.md L688~692 자동화 가드 ↔ manual smoke 페어 모호성 1줄 강화 (g) phase1-2 retro tail 표 PR #211/#212 행 + 누적 65→73 정정 (h) oauth-incident L100 PR #212 e2e 가드 1줄 (i) operational-smoke runbook §8.5 신설 (test_theme_mobile_guards 7건) (j) **정책 14 신설** (사용자 발화 *"시큐리티에서 감지하는 내용도 앞으로 프로젝트 운영시 체크사항으로 부탁드립니다"*) — GitHub Security 탭 등록 알림 (Code Scanning open alert) 운영 체크 의무 (작업 시작 전 30초 체크리스트 1줄 + runbook §9 신설 + alert 분류 처리 3 카테고리 a/b/c). **2차 cross-verify false-positive 차단 2건**: smoke-runbook L202 "e2e 14" 라인 grep 미발견 + phase2-data-readiness "검증 완료" 이미 ✅ 동의 표시. **참조 메타 Issue #213/#214** 는 단순 추적 수단 — Security 탭 자체가 단일 진실 소스 |
-| **(진행 중)** Docs/policy-14 clarify Security alerts | **정책 14 표현 명료화 (사용자 요청 정정)** — "Issue 발생 내용" 추적 메타 표현 → "GitHub Security 탭 등록 alert" 본질 표현 (사용자 발화 *"정책중 Issue발생 내용이 아닌 Security에 등록된 내용 반영으로 변경"*). CLAUDE.md L717~725 (정책 14 본문 회고 배경 + default 의무 3건) + runbook §9 헤더/§9.4 사이클 62 사례/§9.5 매트릭스 (각각 'Issue 추적 수단 의존 X — Security 탭 단일 진실 소스' 명시) + STATE.md 사이클 62 행 (j) 표현. 행동 영향 = 다음 Claude 세션의 alert 처리 흐름이 Security 탭 직접 확인 중심으로 정착 (Issue 보조 수단 격하) |
+| **#216** Docs/policy-14 clarify Security alerts | **정책 14 표현 명료화 (사용자 요청 정정)** — "Issue 발생 내용" 추적 메타 표현 → "GitHub Security 탭 등록 alert" 본질 표현 (사용자 발화 *"정책중 Issue발생 내용이 아닌 Security에 등록된 내용 반영으로 변경"*). CLAUDE.md L717~725 (정책 14 본문 회고 배경 + default 의무 3건) + runbook §9 헤더/§9.4 사이클 62 사례/§9.5 매트릭스 (각각 'Issue 추적 수단 의존 X — Security 탭 단일 진실 소스' 명시) + STATE.md 사이클 62 행 (j) 표현. 행동 영향 = 다음 Claude 세션의 alert 처리 흐름이 Security 탭 직접 확인 중심으로 정착 (Issue 보조 수단 격하) |
+| **#217** Fix/codeql-325 unused import e2e dashboard | **Code Scanning Alert #325 (`py/unused-import`) 해소 — 정책 14 분류 (a) 실제 위반**. `e2e/test_dashboard.py:16` `import pytest` 제거 (전체 grep 0 사용). 14 PASS 회귀 0. 정책 14 첫 적용 사례 — alert 분류 처리 (a/b/c) 흐름 검증 |
+
+---
+
+### 사이클 63 — Phase 3 SaaS 토대 시작 (2026-05-03 · PR #218 ~ #221, 4 PR 머지 완료 — PR 5/6 다음 세션 대기)
+
+**Phase 3 PR 6 분할 안 진행도 (4/6 완료)** — 사용자 결정 4번 (RLS 모델) 회신 대기 후 PR 5 시작.
+
+| PR # | 제목 | 핵심 |
+|------|------|------|
+| **#218** Feat/phase3-pr1 anthropic prompt caching | **Anthropic prompt caching 인프라**. `src/shared/anthropic_caching.py` 신설 — `build_cached_system_param()` 공용 헬퍼 (5분 ephemeral cache). `src/config.py` 에 `disable_prompt_cache: bool = False` (env `DISABLE_PROMPT_CACHE` opt-out). `src/analyzer/io/ai_review.py` 리팩터링 (system 인자 dict literal → 헬퍼 호출). 신규 단위 6 (정상/빈 문자열/disable_cache true/false/settings 우선/default). pylint +0.06. **사용자 결정 1번 (caching) = 🅐 default-on + opt-out** |
+| **#219** Feat/phase3-pr2 insight narrative service | **Insight 모드 service 신설 — `dashboard_service::insight_narrative` (async)**. 4 카드 JSON 응답 (✨ positive 3~5 / 🔍 focus 3~5 / 📊 metrics 4 dict / 💬 next 2~4). 5 status (success/no_api_key/no_data/api_error/parse_error). 4 dashboard 헬퍼 (kpi/trend/frequent/auto_merge) 컨텍스트 + Claude API + PR 1 caching 헬퍼 재사용. 보조 헬퍼 5건 (extract_json/build_user_prompt/call_api/parse_cards/empty_cards). 신규 단위 6. R0914 cleanup (헬퍼 추출) 후 pylint 10.00 회복. **사용자 결정 2번 (카드 4종) = 🅐 4종 모두** |
+| **#220** Feat/phase3-pr3 insight route template toggle | **Insight 모드 라우트 + 4 카드 템플릿 + 모드 토글 UI** (응집 단위 — 정책 7 강화 URL+화면+데이터 3종). `src/ui/routes/dashboard.py` async 변환 + `mode: str = "overview"` 인자 + whitelist + `await insight_narrative` 분기. `src/templates/dashboard.html` 모드 토글 nav (📊 Overview / 💬 Insight) + 4 카드 grid (2x2 → 1열 모바일) + status fallback (no_api_key/no_data/api_error). e2e dashboard URL 형식 갱신 (`?days=N` → `?mode=overview&days=N`). 신규 단위 5 + e2e 셀렉터 3건 정합 갱신. 정책 11 8 조합 시각 검증 의무 PR 본문 명시 |
+| **#221** Feat/phase3-pr4 mode detection localstorage | **사용자 신호 기반 default 모드 + localStorage persist** (settings.py `_detect_initial_mode` 패턴 차용). 신규 헬퍼 `_detect_initial_dashboard_mode(db)` — API key 미설정 또는 Analysis < 5건 → "overview" / 그 외 → "insight". 라우트 `mode: str | None = None` + URL ?mode= 우선 / fallback detection. 템플릿 `data-initial-mode` 속성 + JS persist (localStorage `sca-dashboard-mode` + 1회 redirect for FOUC 최소). 신규 단위 4. **CI fix 동반 (commit e093660) — fixture lazy ORM import → 모듈 최상단 이동** ('no such table: users' 트랩 차단, 단위 2106 → 2031 PASS / 0 fail). **사용자 결정 3번 (모드 default) = 🅒 사용자 신호 기반** |
+
+**Phase 3 PR 5/6 대기 (다음 세션)**:
+- **PR 5** SaaS 토대 — Supabase RLS 권한 모델: 사용자 결정 4번 회신 의무 (`🅐 Supabase RLS / 🅑 SQLAlchemy session-level / 🅒 hybrid`) — Claude 권장 default = 🅐 (운영 DB Supabase + DB 레벨 격리 + SaaS 가속화)
+- **PR 6** Insight 회귀 가드 — 통합/E2E (`/dashboard?mode=insight` + caching mock + 4 카드 시각 + localStorage persist + first-visit detection)
 
 **5-way sync 영향**: 5/5 모두 적용 (정책 7 강화 응집 단위 — "리더보드 완전 폐기")
 
