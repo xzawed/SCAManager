@@ -129,3 +129,16 @@
 - 회고 응답 (정책 2 진화 첫 검증): *"B단계를 승인합니다. 회고는 OK 입니다"* — 일괄 회신 첫 사례
 
 (Phase 2 종료. P0 #3 Auto-merge swap PR 후 Phase 3 진입 결정.)
+
+---
+
+## 📌 후속 (그룹 61 — 2026-05-02 본 회고 후 추가 머지)
+
+| PR # | 핵심 |
+|----|----|
+| #208 | 정책 13 강화 종단간 가드 (`tests/integration/test_oauth_flow_smoke.py` +10 + `e2e/test_dashboard.py` +14) — 회고 P0 #5 검증 환류 갭 + P0 OAuth 사고 후속 |
+| #209 | pre-existing 통합 24 fail 일괄 해소 (conftest autouse fixture — 그룹 60 PR B-1/B-2 패턴 차용) |
+| #210 | Phase 3 기획서 갱신 (사용자 회신 SaaS 전환 + caching 반영, Phase 3 PR 6분할 안 신설) |
+
+**그룹 61 추가 누적**: 단위 +0 / 통합 +10 (oauth_smoke) + 24 fail 해소 = 79 passed / E2E +14 (test_dashboard) = 65 passed / 0 fail (모두).
+**다음 사이클**: Phase 3 진입 의무 4건 (caching 패턴 / Insight 카드 4종 / 모드 토글 default / RLS 모델) 사용자 회신 후 PR 6분할 시작.
