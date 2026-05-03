@@ -159,3 +159,54 @@ curl -s -L --max-redirs 0 -o /dev/null -w "%{redirect_url}\n" "$APP_URL/auth/git
 # → 결론: SCAManager 측 100% 정상. GitHub OAuth App callback URL mismatch.
 # → fix: 사용자가 GitHub OAuth App 설정에서 callback URL 정정 (30초)
 ```
+
+---
+
+## 8. 자동화 가드 (그룹 61 PR #208) — manual smoke 와 상호 보완
+
+본 runbook 의 manual smoke check 와 페어로 동작하는 자동화 회귀 가드.
+**CI / Railway 빌드 자동 실행 → 다음 OAuth/redirect_uri 같은 외부 변경 사고 즉시 발견**.
+
+### 8.1 통합 테스트 — `tests/integration/test_oauth_flow_smoke.py` (10건)
+- TestSmokeCheckMinimal (3): /health 200 + /auth/github 302 + /login 200|302
+- TestAuthFlowEndpoints (3): redirect_uri 정합성 + /auth/callback 거부 + webhook 서명 누락 401
+- TestInsightsRedirect (3): /insights, /insights/me 301 redirect + 쿼리 파라미터 보존
+- TestPolicyThirteenAutomation (1): 3-endpoint 성능 < 3초
+
+```bash
+# 로컬 실행
+pytest tests/integration/test_oauth_flow_smoke.py -v
+```
+
+### 8.2 E2E 테스트 — `e2e/test_dashboard.py` (14건)
+- 페이지 로드 + 5xx 차단 (2)
+- KPI 5 카드 count + 5 라벨 노출 (2)
+- range toggle 4 링크 + default 7d active + 30d 클릭 navigate (3)
+- chart vendoring (1)
+- 자주 발생 이슈 섹션 + JS 런타임 0 (2)
+- /insights → /dashboard 301 redirect (2)
+- /login + nav Dashboard 링크 (2)
+
+```bash
+# 로컬 실행 (Playwright Chromium)
+make test-e2e
+```
+
+### 8.3 통합 환경 의존성 격리 — `tests/integration/conftest.py` autouse fixture (그룹 61 PR #209)
+- `patch("src.webhook.providers.github.get_webhook_secret", return_value="test_secret")` 일괄 적용
+- 신규 webhook integration test 도 자동 격리 — devcontainer 등 환경의 `GITHUB_WEBHOOK_SECRET=dev_secret` export 영향 차단
+- 효과: pre-existing 24 fail → 0 fail
+
+### 8.4 정책 13 본문 (CLAUDE.md L660~) 자동화 가드 인용 정합
+
+manual smoke (3-endpoint) ↔ 자동화 가드 (integration 10 + e2e 14) 상호 보완 관계:
+| 영역 | manual (정책 13 default) | 자동화 (PR #208) |
+|------|----------------------|----------------|
+| /health | curl | TestSmokeCheckMinimal |
+| /auth/github redirect_uri | curl + decode | TestAuthFlowEndpoints |
+| /login | curl | TestSmokeCheckMinimal + e2e |
+| /auth/callback 거부 | curl | TestAuthFlowEndpoints |
+| /webhooks/github 401 | curl + 서명 누락 | TestAuthFlowEndpoints |
+| /insights → /dashboard 301 | curl | TestInsightsRedirect + e2e |
+| /dashboard 페이지 시각 (KPI 5 / chart / nav) | 사용자 시각 검증 | e2e/test_dashboard.py |
+| 외부 의존 (GitHub OAuth App callback URL) | **사용자만 가능** | (자동화 불가) |
