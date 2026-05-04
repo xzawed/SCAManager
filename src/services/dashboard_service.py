@@ -761,9 +761,9 @@ def dashboard_security(
 
 
 def _is_security_kill_switch_active() -> bool:
-    """kill-switch 환경변수 검사 (security_scan_service 와 동일 — UI 표시용).
+    """kill-switch 환경변수 검사 — UI 표시용 (Cycle 78 helper 위임).
 
-    Check kill-switch env (mirror of security_scan_service — for UI display).
+    Check kill-switch env — for UI display (Cycle 78 helper delegation).
     """
-    import os  # pylint: disable=import-outside-toplevel  # noqa: PLC0415
-    return os.environ.get("SECURITY_AUTO_PROCESS_DISABLED", "0") == "1"
+    from src.shared.feature_kill_switch import is_disabled  # pylint: disable=import-outside-toplevel  # noqa: PLC0415
+    return is_disabled("SECURITY_AUTO_PROCESS")
