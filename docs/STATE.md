@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-04 기준 — **사이클 76 정합성 cleanup**: 59 PR #188~#250 (메타 #213/#214 제외) + 본 PR (사이클 76 5+1 정합성 cleanup) — 누적 정책 본문 16건 + 메모리 24건 (활성 22 + deprecated 2). **사이클 76 = 5+1 다중 에이전트 (관점 1~5 + cross-verify) 정합성 검증 = 1차 P0 24건 → cross-verify 종합 후 Tier A 8건 정정 (단위 카운트 2055→2122 3 위치 + 정책 7+14 line ref drift + 메모리 4→5 원칙 + STATE 헤더 + tail) + false-positive 차단 3건 + 신규 발견 3건 (정책 8 진화 정량 기준 정합 — 양호 ROI)**. 단위 2122 / 통합 84 / E2E 82
+## 현재 수치 (2026-05-04 기준 — **사이클 77 Tier B + Phase 옵션 표**: 60 PR #188~#251 (메타 #213/#214 제외) + 본 PR (사이클 77 Tier B 메모리 cleanup + Phase 옵션 표) — 누적 정책 본문 16건 + 메모리 24건 (활성 22 + deprecated 2). **사이클 77 = 사이클 76 회고 승인 후속 Tier B 3건 정정 (메모리 line:span drift) + Phase 2-C/D + Phase 4 후보 5종 옵션 표 작성 (사용자 사전 결정 회신 의무 — High tier)**. 단위 2122 / 통합 84 / E2E 82
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
@@ -114,7 +114,24 @@
 
 ---
 
-### 사이클 76 — 전체 문서 + 코드 5+1 다중 에이전트 정합성 cleanup (2026-05-04 · 본 PR)
+### 사이클 77 — Tier B 메모리 line:span drift 정정 + Phase 진행 옵션 표 (2026-05-04 · 본 PR)
+
+사이클 76 회고 승인 후속 — 사용자 발화: *"회고 내용 전부 진행을 승인합니다."* 잔여 작업 3 영역:
+1. **Tier B 3건 (즉시 진행)** = 메모리 line:span drift 정정 (작은 응집 PR)
+2. **Phase 2-C/D + Phase 4 본격화** = 옵션 표 작성 후 사용자 사전 결정 회신 의무 (High tier — 메모리 `feedback-phase4-area-entry-pattern.md` 페어)
+
+| 영역 | 처리 |
+|------|------|
+| **Tier B 정정 (본 PR)** | (1) `feedback-defensive-coercion-mock-safety.md:38` — `CLAUDE.md:835` → `:846` (정책 16 1번 원칙 본문 line) (2) `feedback-silent-fallback-streak-guard.md:65` — `CLAUDE.md:838` → `:849` (4번 원칙 본문) + `:867` (구체 명시) (3) `feedback-ai-review-quality-protect.md:17` — `:79,89` → `:23,89` (`:79` stale → import L23 + 사용처 L89) |
+| **Phase 2-C/D 옵션 표** | 본 PR 본문 §"Phase 진행 옵션 표" 신설 — 사용자 사전 결정 회신 의무 (High tier) |
+| **Phase 4 후보 5종 옵션 표** | 본 PR 본문 §"Phase 4 후보 5종 옵션 표" 신설 — 메모리 `feedback-phase4-area-entry-pattern.md` 의무 (5+1 다중 에이전트 검토 default) |
+| **자율 판단 보고 (정책 3)** | (1) Tier B 즉시 진행 = 작은 응집 PR + 사이클 76 회고 명시 영역 (2) Phase 2-C/D + Phase 4 = 옵션 표 작성 default — 사용자 명시 결정 회신 의무 (High tier 보존 — "전부 진행 승인" 도 옵션 표 면제 X) (3) 사이클 76 row "본 PR" → "머지 완료 (#251 추정)" 정정 동시 적용 (사이클 75/76 동일 패턴 회귀 차단) |
+| **운영 smoke check (정책 13)** | docs only + 메모리 only — 운영 endpoint 무영향 (생략 OK) |
+| **Code Scanning open alert (정책 14)** | 본 PR 작업 직전 = 0건 (사이클 73~75 누적 dismiss 완료) |
+
+---
+
+### 사이클 76 — 전체 문서 + 코드 5+1 다중 에이전트 정합성 cleanup (2026-05-04 · #251 추정 머지 완료)
 
 사용자 발화: *"전체 문서와 전체 코드를 여러 에이전트가 서로 병행 체크 하면서 최신화 및 문서 정리 최적화 작업을 수행합니다. 정리가 마무리 되시면 회고를 부탁드립니다."* — 5+1 다중 에이전트 (관점 1 src/ 트리 + 관점 2 STATE.md + 회고 보고서 + 관점 3 메모리 영역 + 관점 4 정책 본문 + 관점 5 테스트 + CI 정합성 + cross-verify general-purpose 6차) 병렬 정합성 검증.
 
