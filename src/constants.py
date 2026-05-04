@@ -14,10 +14,7 @@ TEST_COVERAGE_MAX = 15      # Claude AI 0-10 → 0-15 스케일링
 # ── Static analysis deduction weights ────────────────────────────────────
 PYLINT_ERROR_PENALTY = 3    # code_quality error 1건당 감점
 PYLINT_WARNING_PENALTY = 1  # code_quality warning 1건당 감점
-PYLINT_WARNING_CAP = 15     # (deprecated) 구 pylint warning 상한 — CQ_WARNING_CAP 사용 권장
-FLAKE8_WARNING_PENALTY = 1  # (deprecated) 구 flake8 경고 감점 — PYLINT_WARNING_PENALTY와 동일
-FLAKE8_WARNING_CAP = 10     # (deprecated) 구 flake8 상한 — CQ_WARNING_CAP 사용 권장
-CQ_WARNING_CAP = 25         # code_quality warning 감점 상한 (PYLINT_WARNING_CAP+FLAKE8_WARNING_CAP 합산)
+CQ_WARNING_CAP = 25         # code_quality warning 감점 상한 (구 PYLINT+FLAKE8 합산)
 BANDIT_HIGH_PENALTY = 7     # security error 1건당 감점
 BANDIT_LOW_PENALTY = 2      # security warning 1건당 감점
 

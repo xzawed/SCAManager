@@ -165,7 +165,7 @@ src/
 │   └── _merge_attempt_states.py # MergeAttempt.state lifecycle 정규 상수 (LEGACY/ENABLED_PENDING_MERGE/ACTUALLY_MERGED/DISABLED_EXTERNALLY) — Phase 3 PR-B1 도입
 ├── notifier/                   # `__init__.py` 가 import 시 각 채널 모듈 자동 로드 → REGISTRY 등록 (Phase S.3-E)
 │   ├── __init__.py             # 8개 notifier 모듈 import (등록 순서 = 발송 우선순위)
-│   ├── _common.py              # 공통 헬퍼 — format_ref, get_all_issues, get_issue_samples, truncate_message, truncate_issue_msg
+│   ├── _common.py              # 공통 헬퍼 — format_ref, get_all_issues (호출자 캐시 권장), truncate_message, truncate_issue_msg
 │   ├── telegram_commands.py    # Telegram 인라인 명령 처리 — /stats, /settings, /connect OTP 흐름
 │   ├── _http.py                # build_safe_client() — HTTP_CLIENT_TIMEOUT + follow_redirects=False (SSRF 방어)
 │   ├── registry.py             # NotifyContext + Notifier Protocol + REGISTRY + register() (채널 확장)
@@ -1082,7 +1082,7 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 - **auto_merge GitHub 권한**: `merge_pr()`은 `repo` 스코프 또는 Fine-grained `pull_requests: write` 권한 필요 — 권한 부족 시 False 반환(파이프라인 미중단). Branch Protection Rules가 있으면 APPROVE 후에도 Merge 실패 가능.
 - **http_client 싱글톤 원칙**: 신뢰 API (GitHub/Telegram/Railway) 호출은 `src/shared/http_client.py::get_http_client()` 를 통해 연결 풀 재사용. 외부 untrusted URL (Discord/Slack/custom_webhook/n8n) 은 `src/notifier/_http.py::build_safe_client()` 사용. `async with httpx.AsyncClient()` 매번 생성 금지 (2026-04-24 P1-3).
 - **MergeAttempt 관측 (Phase F.1+F.2)**: `src/gate/engine.py::_run_auto_merge`(자동) 및 `src/webhook/providers/telegram.py::handle_gate_callback`(반자동) 양쪽에서 `merge_pr` 직후 `log_merge_attempt()`(`src/shared/merge_metrics.py`)로 모든 시도(성공·실패)를 DB에 기록. `failure_reason`은 `src/gate/merge_reasons.py`의 정규 태그(`branch_protection_blocked`, `unstable_ci`, `permission_denied` 등). 관측 실패는 notify 경로를 막지 않도록 nested try/except로 격리 — DB 오류 시 rollback 후 WARNING + None. **Phase F.3**: `engine.py::_run_auto_merge` 실패 시 `get_advice(reason)` + 조건부 `create_merge_failure_issue()` 호출 — `auto_merge_issue_on_failure` 필드(5-way sync 적용)로 Issue 생성 제어.
-- **notifier 공통 헬퍼**: `src/notifier/_common.py`의 `format_ref()`, `get_all_issues()`, `get_issue_samples()`, `truncate_message()`, `truncate_issue_msg()`를 사용. 각 notifier 모듈에 이슈 수집 루프나 메시지 절단 로직 직접 작성 금지.
+- **notifier 공통 헬퍼**: `src/notifier/_common.py`의 `format_ref()`, `get_all_issues()` (호출자 캐시 권장 — hot path), `truncate_message()`, `truncate_issue_msg()`를 사용. 각 notifier 모듈에 이슈 수집 루프나 메시지 절단 로직 직접 작성 금지.
 - **webhook secret TTL 캐시**: `get_webhook_secret(full_name)` 함수가 `_webhook_secret_cache` dict에 5분(WEBHOOK_SECRET_CACHE_TTL=300초) TTL로 per-repo 시크릿을 캐시. 리포 시크릿 변경 후 최대 5분간 구 시크릿으로 검증 — 인지하고 있을 것.
 - **Telegram 콜백 도메인 분리**: `_make_callback_token(bot_token, scope, payload_id)`이 `scope ∈ {"gate","cmd"}`별 다른 HMAC 생성. 신규 명령 추가 시 `cmd:<verb>:<id>:<token>` 준수, 64-byte 한도 검증 (numeric id). `_gate_callback_token()`은 `_make_callback_token(..., "gate", analysis_id)` thin wrapper. `test_callback_data_within_64_bytes_all_commands` 단위 테스트 강제.
 - **Cron 엔드포인트 인증**: `POST /api/internal/cron/*`는 `INTERNAL_CRON_API_KEY` 전용 (admin key와 분리). Railway `[[deploy.cronJobs]]` 트리거. `hmac.compare_digest` 타이밍 안전 비교. `INTERNAL_CRON_API_KEY` 미설정 시 503 반환.
