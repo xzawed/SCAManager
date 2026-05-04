@@ -24,21 +24,21 @@ from sqlalchemy.orm import Session
 
 from src.models.repository import Repository
 from src.repositories import security_alert_log_repo
+from src.shared.feature_kill_switch import is_disabled
 from src.shared.http_client import get_http_client
 from src.shared.log_safety import sanitize_for_log
 
 logger = logging.getLogger(__name__)
 
 _GITHUB_API = "https://api.github.com"
-_KILL_SWITCH_ENV = "SECURITY_AUTO_PROCESS_DISABLED"
 
 
 def is_kill_switch_active() -> bool:
-    """kill-switch 환경변수 검사 (Phase 9 패턴 차용 — `SCAMANAGER_SELF_ANALYSIS_DISABLED`).
+    """kill-switch 환경변수 검사 — `SECURITY_AUTO_PROCESS_DISABLED=1` (Cycle 78 helper 위임).
 
-    Check kill-switch env var (Phase 9 pattern — SCAMANAGER_SELF_ANALYSIS_DISABLED).
+    Check kill-switch env var — SECURITY_AUTO_PROCESS_DISABLED=1 (Cycle 78 helper delegation).
     """
-    return os.environ.get(_KILL_SWITCH_ENV, "0") == "1"
+    return is_disabled("SECURITY_AUTO_PROCESS")
 
 
 def _resolve_token(user) -> str | None:
