@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-04 기준 — **사이클 73 PR (Phase 4 영역 진입 첫 작업)**: 54 PR #188~#243 (메타 Issue #213/#214 제외) + 본 PR (Code/Secret Scanning F1+F2) — 누적 정책 본문 16건 + 메모리 18건 + **사이클 73 PR = 5+1 다중 에이전트 검토 (관점 1~5 + cross-verify 6차) + 사용자 결정 옵션 🅒 채택 (F1+F2 묶음). F1 = alembic 0027 + SecurityAlertProcessLog ORM + RLS policy + repo + security_scan_service (cron 폴링 + GHAS graceful degradation + kill-switch) + cron API. F2 = dashboard `?mode=security` 4 카드 (✨ 처리됨 / 🔍 신규 pending / 📊 분류 분포 / 💬 최근 Top 5) + Empty State + tooltip + 4-테마 호환. read-only (자동 dismiss X — Phase 1 안전 default). 단위 2055→2085 (+30)**)
+## 현재 수치 (2026-05-04 기준 — **사이클 74 진입 (Phase 2 결정 영역)**: 55 PR #188~#244 (메타 #213/#214 제외) + 본 PR (사이클 73 종료 sync) — 누적 정책 본문 16건 + 메모리 18건 + 사이클 73 = 회고 PR (#243) + Phase 4 영역 진입 첫 작업 PR (#244 — Code/Secret Scanning F1+F2 + Copilot Autofix 5 commits + CI fix-up 회귀 가드 +14 = patch coverage 56.64% → 80%+ 달성, Railway 빌드 + 정책 13 smoke check 3 endpoint 모두 정상) + **사이클 74 진입 default = Phase 2 후보 사용자 결정 (d-🅓 Insight Haiku / f-1~4 DB 캐싱 1h TTL / 신규 1 system prompt 1024 패딩 / a-B Multi-block — 모두 High tier 사전 확인 의무)**. 단위 2099 / 통합 84 / E2E 82
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **2085개** | pytest 9.0.3 — 사이클 73 PR +30 (security_alert_log_repo 5 + security_scan_service 8 + 기존 회귀 17). **= 2085 collected / 2083 passed / 2 skipped / 0 failed** (Green 검증 완료) |
+| 단위 테스트 | **2099개** | pytest 9.0.3 — 사이클 73 #244 +30 (data layer + service async) + CI fix-up +14 (async coverage + dashboard_security 4 + cron 2 + route 1) = +44 누적. **= 2099 collected / 2097 passed / 2 skipped / 0 failed** |
 | 통합 테스트 | **84개** | tests/integration/ — Phase 3 PR 6 +2 (test_insight_caching — caching helper spy + user_id 격리) **= 81 passed / 3 skipped / 0 failed** |
 | E2E 테스트 | **82개** | `make test-e2e` (Chromium Playwright) — Phase 3 PR 6 +7 (test_dashboard_insight — 페이지 로드 4 + localStorage persist 3) **= 80 passed / 0 failed / 2 pre-existing fail (test_settings 2건, 본 사이클 무관)**. ⚠️ e2e ↔ tests/integration 동시 실행 금지 — `e2e/pytest.ini` 의도적 asyncio_mode 미설정, 분리 실행 default (`make test-e2e` vs CI command `pytest tests/`) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
@@ -114,7 +114,20 @@
 
 ---
 
-### 사이클 73 PR — Code/Secret Scanning 자동 처리 F1+F2 (Phase 4 영역 진입 첫 작업, 2026-05-04 · 본 PR)
+### 사이클 74 진입 — 사이클 73 종료 sync (2026-05-04 · 본 PR)
+
+사이클 73 = #243 (회고) + #244 (Phase 4 영역 진입 첫 작업) 머지 완료. Railway 빌드 + 정책 13 smoke check (3 endpoint) 모두 정상.
+
+| 영역 | 처리 |
+|------|------|
+| **STATE 헤더** | 사이클 73 종결 + 사이클 74 진입 default 명시 (Phase 2 후보 사용자 결정 의무) |
+| **단위 테스트** | 2085 → 2099 (+14 CI fix-up 회귀 가드 누적) |
+| **CLAUDE.md tail** | 사이클 73 PR #244 머지 + 사이클 74 진입 표시 |
+| **Phase 2 진입 옵션** | d-🅓 (Insight Haiku) / f-1~4 (DB 캐싱 1h TTL) / 신규 1 (`_INSIGHT_SYSTEM_PROMPT` 1024 패딩) / a-B (Multi-block 확장) — 모두 High tier 사용자 사전 확인 의무 |
+
+---
+
+### 사이클 73 PR — Code/Secret Scanning 자동 처리 F1+F2 (Phase 4 영역 진입 첫 작업, 2026-05-04 · #244)
 
 5+1 다중 에이전트 검토 (관점 1 아키텍처 / 관점 2 UX / 관점 3 보안 / 관점 4 운영비용 / 관점 5 경쟁 비교 + cross-verify general-purpose 6차) → 사용자 결정 옵션 🅒 (F1+F2 묶음 + 사전 확인) 채택.
 
