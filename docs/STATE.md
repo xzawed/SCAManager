@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-04 기준 — **사이클 70 진입 (정책 15/16 신설)**: 46 PR #188~#235 (메타 Issue #213/#214 제외 — 실측 `git log`) + 본 PR (사이클 70) — 누적 정책 본문 16건 + 메모리 13건 (취소선 2건 제외) + Phase 3 100% + postlude + 사이클 69 cleanup 머지 (#235) + **사이클 70 = 사용자 신규 규칙 2건 정책화 (정책 15 = 코드 작업 전 사전 사고 의무 / 정책 16 = 코드 단순화 default + 가독성 우선) + 메모리 페어 2건 신설**)
+## 현재 수치 (2026-05-04 기준 — **사이클 72 진입 (정책 16 5번째 원칙 추가 + 메모리 15건)**: 50 PR #188~#240 (메타 Issue #213/#214 제외 — 실측 `git log`) + 본 PR (사이클 72) — 누적 정책 본문 16건 + 메모리 15건 (취소선 2건 제외) + 사이클 70 정책 15/16 신설 (#236) + 사이클 71 정책 16 default 적용 첫 사이클 (#237/#238/#240 — pure cleanup + 응집 헬퍼 + gate legacy wrapper 단순화) + 사이클 71 후속 secret scanning 사고 처리 (Telegram Bot Token PR #227 commit message body 노출 → git filter-branch rewrite + force push + stale branches 53 삭제) + **사이클 72 = 정책 16 5번째 원칙 (토큰 비용 효율) + 명시 제외 영역 (b/c) + 메모리 페어 2건 신설**)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
@@ -114,7 +114,40 @@
 
 ---
 
-### 사이클 70 — 사용자 신규 규칙 2건 정책화 (2026-05-04 · 본 PR)
+### 사이클 72 — 정책 16 5번째 원칙 추가 + 메모리 페어 2건 (2026-05-04 · 본 PR)
+
+사용자 발화 (사이클 71 후): *"본래 의도는 토큰사용량을 줄이면서도 동급의 성능"* → 사이클 70 정책 16 본문에 토큰 비용 누락 (Claude 정책 15 위반 — 사용자 의도 모호 검증 안 함) → 사이클 72 회고 정정.
+
+| 영역 | 처리 |
+|------|------|
+| **정책 16 5번째 원칙 추가** | 토큰 비용 효율 (운영 Anthropic API 사용량 ↓ + 분산 + caching 활용) |
+| **명시 제외 영역** (사용자 명시 보류) | b: build_review_prompt 토큰 예산 8000 축소 / c: review_guides Tier1 압축 — 영구 보류 (품질 보존 의무) |
+| **진행 OK 영역** | a: review_code prompt caching 확대 / d: 모델 분기 / e: 동일 SHA 결과 재사용 / f: Insight narrative 호출 빈도 제한 / g: cache hit rate 모니터링 인프라 |
+| **메모리 신설 2건** | `feedback-ai-review-quality-protect.md` (정책 16 명시 제외 영역) + `feedback-secret-scanning-history-rewrite.md` (사이클 71 학습) |
+| **다음 작업** | 5+1 다중 에이전트 토큰 효율 분석 (5 후보 a/d/e/f/g) → 사용자 결정 → 실 PR |
+
+---
+
+### 사이클 71 — 정책 16 default 적용 첫 사이클 + secret scanning 사고 처리 (2026-05-04 · #237/#238/#240)
+
+사용자 결정 = 옵션 🅓 (PR 1+2+4) + PR 8 영구 보류 (운영 위험 high). cross-verify 6차 검증 (5+1 패턴).
+
+| PR # | 영역 | LOC | 회귀 |
+|------|------|-----|------|
+| **#237** Cycle 71 PR 1 | pure cleanup 5건 — deprecated 상수 (`PYLINT_WARNING_CAP`/`FLAKE8_WARNING_PENALTY`/`FLAKE8_WARNING_CAP`) + `_match_extension` 이중 dict 제거 + `_parse_shebang` 분기 제거 + `_FALLBACK_STATUSES` 미사용 + `get_issue_samples` 미사용 헬퍼 | -33/+25 | 784 passed |
+| **#238** Cycle 71 PR 4 | gate `enable_or_fallback` legacy 90 LOC → thin wrapper 7 LOC (Claude 옵션 🅑 자율 채택 — cross-verify 옵션 🅐 보다 정책 16 default 부합) | -78/+9 | 209 passed (gate 전체) |
+| **#240** Cycle 71 PR 2 | 응집 헬퍼 3건 — `merge_retry_service` chat_id 3중복 → `_resolve_retry_chat_id` 헬퍼 + `delete_repo_cascade` Webhook 실패 silent → logger.warning + `redirect_insights/_me` 통합 | -12/+33 | 234 passed (services + ui) |
+
+**🔴 후속 secret scanning 사고 처리** (사이클 71 종료 직후):
+- **사고**: PR #227 (사이클 66 conftest fix) commit message body L4 에 운영 Telegram Bot Token 명시 → GitHub Secret Scanning "Publicly leaked secret" alert 자동 등재
+- **처리**: 사용자 token revoke (Telegram BotFather) + `git filter-branch --msg-filter` rewrite (모든 local refs) + force push origin main (lease stale → --force 사용 — 사용자 명시 destructive 승인) + stale branches 53/53 일괄 삭제 (개별 push --delete loop)
+- **학습 메모리**: `feedback-secret-scanning-history-rewrite.md` 신설
+
+**옵션 🅒 (cross-verify 권장 — 16 호출 마이그레이션) 정책 16 자율 판단으로 옵션 🅑 (wrapper 보존) 채택 — 정확성/성능 동일 + 가독성 ↑ + 테스트 reshape 0 + 회귀 위험 lower**
+
+---
+
+### 사이클 70 — 사용자 신규 규칙 2건 정책화 (2026-05-04 · #236)
 
 사용자 발화 (사이클 69 머지 직후): *"앞으로 코드를 추가, 수정, 삭제 작업을 실행하기 이전에 항상 생각을 먼저 하고 진행을 합니다. 이해가 안되면 멈추거나 물어보고 하세요. 코드를 단순화 하여 작성을 해주세요. 단 정확성과 성능은 유지가 되야합니다. 되도록 코드는 이해하기가 쉽게 작성을 해주세요."*
 
