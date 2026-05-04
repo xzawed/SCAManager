@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     telegram_webhook_secret: str = ""  # Telegram setWebhook secret_token — 설정 시 헤더 검증
     anthropic_api_key: str = ""  # 빈 문자열이면 AI 리뷰 건너뜀
     claude_review_model: str = "claude-sonnet-4-6"  # AI 코드리뷰 모델 (환경변수 CLAUDE_REVIEW_MODEL로 오버라이드)
+    # Phase 2 d-🅓 (사이클 74) — Insight narrative 영역 한정 모델 (default Haiku — 67% 비용 절감)
+    # AI 리뷰 (review_code) 는 claude_review_model (Sonnet) 보존 — 명시 제외 영역 (메모리 feedback-ai-review-quality-protect.md)
+    # Phase 2 d-🅓 (Cycle 74) — model for Insight narrative only (default Haiku — 67% cheaper).
+    # AI review (review_code) keeps Sonnet (memory feedback-ai-review-quality-protect.md exclusion).
+    claude_insight_model: str = "claude-haiku-4-5"
     # 운영 opt-out — Anthropic prompt caching (5분 ephemeral) 비활성화 (default-on)
     # Operational opt-out — disables Anthropic prompt caching (default-on, 5-min ephemeral)
     disable_prompt_cache: bool = False

@@ -437,25 +437,50 @@ def feedback_status(db: Session, *, threshold: int = 10) -> dict[str, Any]:
 # ─── Phase 3 PR 2: Insight 모드 narrative ──────────────────────────────────
 
 
+# Phase 2 신규 1 (사이클 74) — Anthropic prompt caching ≥ 1024 토큰 권장 충족.
+# JSON Schema + 분류 가이드 보강으로 cache hit rate 활성화 (silent fallback 차단).
+# Phase 2 #1 (Cycle 74) — pad to ≥ 1024 tokens (Anthropic caching threshold).
+# Schema + classification guide enrichment activates cache_read (silent-fallback guard).
 _INSIGHT_SYSTEM_PROMPT = (
     "You are SCAManager's code-quality insight analyst. "
+    "SCAManager is a self-hosted GitHub PR/Push code review service that runs "
+    "static analysis (pylint, flake8, bandit, semgrep across 22 languages, "
+    "eslint, shellcheck, cppcheck, slither, rubocop, golangci-lint) plus "
+    "Claude AI review on every commit. It scores PRs on a 100-point scale "
+    "(code quality 25 + security 20 + commit message 15 + direction 25 + "
+    "tests 15) and emits A (90+), B (75+), C (60+), D (45+), F (44-) grades. "
+    "It also gates PRs (auto-approve / semi / auto-merge) and notifies via "
+    "Telegram, Discord, Slack, GitHub PR comment, email, n8n, and webhooks.\n\n"
     "Given recent dashboard metrics for a developer, generate a concise "
     "narrative as 4 cards. Always reply in Korean. Output strict JSON only "
-    "(no preamble, no trailing text, no code fences).\n\n"
-    "Cards (JSON keys):\n"
-    "1. positive_highlights (list[str], 3~5 items): ✨ recent strengths "
-    "(grades, secure code, test coverage wins).\n"
-    "2. focus_areas (list[str], 3~5 items): 🔍 areas needing attention "
-    "(recurring issues, declining trends, low scores).\n"
-    "3. key_metrics (list[dict], exactly 4 items): 📊 numeric highlights, "
-    'each {"label": str, "value": str, "delta": str}. '
-    "delta uses + / - prefix.\n"
-    "4. next_actions (list[str], 2~4 items): 💬 suggested next moves "
-    "(specific, actionable, prioritized).\n\n"
-    "Tone: concise, encouraging but honest. Avoid generic advice — refer "
-    "to the actual numbers. Each list item ≤ 80 Korean characters.\n\n"
-    'Return JSON: {"positive_highlights": [...], "focus_areas": [...], '
-    '"key_metrics": [...], "next_actions": [...]}'
+    "(no preamble, no trailing text, no code fences, no markdown). Match the "
+    "schema below exactly — extra keys, missing keys, or wrong types break "
+    "the dashboard parser and force a fallback.\n\n"
+    "Cards (JSON keys, in order):\n"
+    "1. positive_highlights (list[str], length 3 to 5): ✨ recent strengths — "
+    "high-grade PRs, secure commits, repos that improved week-over-week, "
+    "test coverage wins, fast review cycle. Reference actual numbers from the "
+    "user prompt (e.g. average score, A-grade count, repo-level wins).\n"
+    "2. focus_areas (list[str], length 3 to 5): 🔍 attention items — "
+    "recurring static-analysis issues (pylint/flake8/bandit/semgrep tags), "
+    "declining trends across the window, low-score files, security findings, "
+    "auto-merge failures or retry exhaustion. Cite the failing rule or repo.\n"
+    "3. key_metrics (list[dict], exactly 4 items): 📊 numeric highlights — "
+    'each item must be {"label": str, "value": str, "delta": str}. The label '
+    "is the metric name in Korean (e.g. 평균 점수). The value is the current "
+    "window value as a string (e.g. 87.5). The delta uses + / - prefix vs "
+    "the previous window (e.g. +2.3 or -5). If no prior window data, use 0.\n"
+    "4. next_actions (list[str], length 2 to 4): 💬 suggested next moves — "
+    "specific, actionable, prioritized for the next 1-7 days. Tie each "
+    "action to a card 1 strength to amplify or a card 2 focus area to fix. "
+    "Avoid generic advice ('write more tests') — name the file, repo, or "
+    "rule (e.g. 'src/foo.py 의 pylint W0611 4건 일괄 정리').\n\n"
+    "Tone: concise, encouraging but honest. Refer to actual numbers from the "
+    "user prompt rather than generic advice. Each list item ≤ 80 Korean "
+    "characters. Use full sentences ending with appropriate Korean particles.\n\n"
+    'Return strict JSON conforming to: {"positive_highlights": list[str], '
+    '"focus_areas": list[str], "key_metrics": list[{"label": str, "value": '
+    'str, "delta": str}], "next_actions": list[str]}.'
 )
 
 
@@ -652,7 +677,9 @@ async def insight_narrative(
     # ai_review.py 와 동일 timeout/max_retries 패턴 — SDK 기본값 변경 면역
     # Same timeout/max_retries pattern as ai_review.py — immune to SDK default changes
     client = anthropic.AsyncAnthropic(api_key=effective_key, timeout=60.0, max_retries=2)
-    text = await _call_insight_claude_api(client, settings.claude_review_model, user_prompt)
+    # Phase 2 d-🅓 (사이클 74) — Insight 영역 한정 Haiku (67% 비용 절감, AI 리뷰 Sonnet 보존)
+    # Phase 2 d-🅓 (Cycle 74) — Insight-only Haiku (67% cheaper, AI review keeps Sonnet)
+    text = await _call_insight_claude_api(client, settings.claude_insight_model, user_prompt)
     if text is None:
         return _build_insight_response(status="api_error", days=days)
 
