@@ -67,3 +67,98 @@ def test_alert_metadata_secret_scanning():
     assert meta["alert_type"] == "secret_scanning"
     assert meta["severity"] == "high"
     assert meta["rule_id"] == "telegram_bot_token"
+
+
+# ── async 영역 추가 (CI fix-up — patch coverage 80%+) ──
+import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
+
+
+class _FakeResp:
+    def __init__(self, status_code: int, payload=None):
+        self.status_code = status_code
+        self._payload = payload or []
+    def json(self):
+        return self._payload
+
+
+@pytest.mark.asyncio
+async def test_fetch_alerts_ghas_inactive_silent_skip():
+    """403/404 = GHAS 비활성 — silent skip + None 반환."""
+    fake_client = MagicMock()
+    fake_client.get = AsyncMock(return_value=_FakeResp(404))
+    with patch("src.services.security_scan_service.get_http_client", return_value=fake_client):
+        result = await security_scan_service._fetch_alerts(  # noqa: SLF001
+            "tok", "owner/test", "code-scanning",
+        )
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_alerts_success_returns_list():
+    """200 = alert list 반환."""
+    fake_client = MagicMock()
+    fake_client.get = AsyncMock(return_value=_FakeResp(200, [{"number": 1}, {"number": 2}]))
+    with patch("src.services.security_scan_service.get_http_client", return_value=fake_client):
+        result = await security_scan_service._fetch_alerts(  # noqa: SLF001
+            "tok", "owner/test", "code-scanning",
+        )
+    assert result == [{"number": 1}, {"number": 2}]
+
+
+@pytest.mark.asyncio
+async def test_fetch_alerts_http_error_returns_none():
+    """httpx.HTTPError = silent + None."""
+    import httpx
+    fake_client = MagicMock()
+    fake_client.get = AsyncMock(side_effect=httpx.ConnectError("fail"))
+    with patch("src.services.security_scan_service.get_http_client", return_value=fake_client):
+        result = await security_scan_service._fetch_alerts(  # noqa: SLF001
+            "tok", "owner/test", "code-scanning",
+        )
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_scan_repo_alerts_kill_switch_skip(monkeypatch):
+    """kill-switch 활성 시 즉시 skip."""
+    monkeypatch.setenv("SECURITY_AUTO_PROCESS_DISABLED", "1")
+    repo = MagicMock(full_name="owner/test", id=1)
+    counts = await security_scan_service.scan_repo_alerts(MagicMock(), repo)
+    assert counts == {"code_scanning": 0, "secret_scanning": 0, "skipped": 1}
+
+
+@pytest.mark.asyncio
+async def test_scan_repo_alerts_no_token_skip(monkeypatch):
+    """token 없음 → skip (사용자 + 전역 모두 부재)."""
+    monkeypatch.delenv("SECURITY_AUTO_PROCESS_DISABLED", raising=False)
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    repo = MagicMock(full_name="owner/test", id=1)
+    counts = await security_scan_service.scan_repo_alerts(MagicMock(), repo, user=None)
+    assert counts["skipped"] == 1
+
+
+@pytest.mark.asyncio
+async def test_scan_all_repos_kill_switch_sentinel(monkeypatch):
+    """kill-switch 활성 시 totals.skipped = -1 sentinel + 전체 skip."""
+    monkeypatch.setenv("SECURITY_AUTO_PROCESS_DISABLED", "1")
+    totals = await security_scan_service.scan_all_repos(MagicMock())
+    assert totals["skipped"] == -1
+    assert totals["repos"] == 0
+
+
+@pytest.mark.asyncio
+async def test_scan_all_repos_iterates_repos(monkeypatch):
+    """정상 시 모든 repo 순회 + totals 누적."""
+    monkeypatch.delenv("SECURITY_AUTO_PROCESS_DISABLED", raising=False)
+    fake_db = MagicMock()
+    repo1 = MagicMock(full_name="a/b", id=1)
+    repo2 = MagicMock(full_name="c/d", id=2)
+    fake_db.query.return_value.all.return_value = [repo1, repo2]
+    with patch.object(
+        security_scan_service, "scan_repo_alerts",
+        new=AsyncMock(return_value={"code_scanning": 1, "secret_scanning": 0, "skipped": 0}),
+    ):
+        totals = await security_scan_service.scan_all_repos(fake_db)
+    assert totals["repos"] == 2
+    assert totals["code_scanning"] == 2
