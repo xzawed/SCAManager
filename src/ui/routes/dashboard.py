@@ -149,17 +149,23 @@ async def dashboard(
 # Permanent redirect for users with bookmarks of the deprecated URLs.
 
 
-@router.get("/insights")
-def redirect_insights(request: Request) -> RedirectResponse:
-    """GET /insights → 301 /dashboard (쿼리 파라미터 보존)."""
+def _redirect_to_dashboard(request: Request) -> RedirectResponse:
+    """폐기 URL → 301 /dashboard (쿼리 파라미터 보존).
+
+    Permanent (301) redirect to /dashboard, preserving query string.
+    """
     qs = request.url.query
     target = f"/dashboard?{qs}" if qs else "/dashboard"
     return RedirectResponse(url=target, status_code=301)
+
+
+@router.get("/insights")
+def redirect_insights(request: Request) -> RedirectResponse:
+    """GET /insights → 301 /dashboard."""
+    return _redirect_to_dashboard(request)
 
 
 @router.get("/insights/me")
 def redirect_insights_me(request: Request) -> RedirectResponse:
-    """GET /insights/me → 301 /dashboard (쿼리 파라미터 보존)."""
-    qs = request.url.query
-    target = f"/dashboard?{qs}" if qs else "/dashboard"
-    return RedirectResponse(url=target, status_code=301)
+    """GET /insights/me → 301 /dashboard."""
+    return _redirect_to_dashboard(request)
