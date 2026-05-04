@@ -68,6 +68,7 @@ async def dashboard(
     current_user: Annotated[CurrentUser, Depends(require_login)],
     days: int = 7,
     mode: str | None = None,
+    refresh: int = 0,
 ):
     """대시보드 — Phase 3 PR 3 mode 분기 + PR 4 사용자 신호 기반 default.
 
@@ -113,9 +114,10 @@ async def dashboard(
 
         if effective_mode == "insight":
             # Phase 3 PR 2 — Claude AI 4 카드 narrative (caching 적용) + PR 5 user_id 격리.
-            # Phase 3 PR 2 — Claude AI 4-card narrative (with caching) + PR 5 user_id isolation.
+            # Phase 2-B 🅑 (사이클 74 PR-B) — DB 캐싱 1h TTL + ?refresh=1 강제 무효화
+            # Phase 2-B 🅑 (Cycle 74 PR-B) — DB cache 1h TTL + ?refresh=1 forces invalidation.
             insight = await dashboard_service.insight_narrative(
-                db, days=days, user_id=current_user.id
+                db, days=days, user_id=current_user.id, refresh=bool(refresh),
             )
             return templates.TemplateResponse(
                 request,

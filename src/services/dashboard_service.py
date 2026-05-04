@@ -625,6 +625,7 @@ async def insight_narrative(
     now: datetime | None = None,
     api_key: str | None = None,
     user_id: int | None = None,
+    refresh: bool = False,
 ) -> dict[str, Any]:
     """Claude AI 기반 4 카드 인사이트 narrative — Phase 3 PR 2 + PR 5 (user_id 격리).
 
@@ -658,6 +659,23 @@ async def insight_narrative(
 
     _now = now or datetime.now(timezone.utc)
 
+    # Phase 2-B 🅑 (사이클 74 PR-B) — DB 캐싱 1h TTL (UX 영향 최소 + 60% 비용 절감)
+    # `refresh=True` 시 강제 재생성 (사용자 명시 Refresh 버튼)
+    # `user_id` 명시 시만 캐싱 (admin/legacy 영역 = 캐싱 X)
+    # Phase 2-B 🅑 (Cycle 74 PR-B) — DB cache 1h TTL (min UX impact + 60% cost cut).
+    # `refresh=True` forces regen (user-explicit Refresh button).
+    # Caching only when `user_id` set (admin/legacy paths bypass cache).
+    if user_id is not None:
+        from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415
+        if refresh:
+            insight_narrative_cache_repo.invalidate(db, user_id=user_id, days=days)
+        else:
+            cached = insight_narrative_cache_repo.get_fresh(
+                db, user_id=user_id, days=days, now=_now,
+            )
+            if cached is not None:
+                return cached
+
     # 4 dashboard 헬퍼 호출로 컨텍스트 수집 + Phase 3 PR 5 user_id 격리
     # Collect context by invoking the 4 dashboard helpers + PR 5 user_id isolation
     kpi = dashboard_kpi(db, days, now=_now, user_id=user_id)
@@ -687,7 +705,15 @@ async def insight_narrative(
     if cards is None:
         return _build_insight_response(status="parse_error", days=days)
 
-    return _build_insight_response(status="success", days=days, cards=cards)
+    response = _build_insight_response(status="success", days=days, cards=cards)
+    # Phase 2-B 🅑 — 성공 응답만 캐시 upsert (error/parse_error 는 재시도 필요)
+    # Phase 2-B 🅑 — cache only success (error/parse_error need retry).
+    if user_id is not None:
+        from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415
+        insight_narrative_cache_repo.upsert(
+            db, user_id=user_id, days=days, response=response, now=_now,
+        )
+    return response
 
 
 # ── Cycle 73 F2 — Security Mode (Code Scanning + Secret Scanning audit) ──
