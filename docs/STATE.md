@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-04 기준 — **사이클 75 진입 (사이클 70~74 종결 회고 + sync 페어)**: 57 PR #188~#248 (메타 #213/#214 제외) + 본 PR (사이클 70~74 종결 회고) — 누적 정책 본문 16건 + 메모리 21건 (활성 19 + deprecated 2) + 사이클 70 (#236) ~ 사이클 74 (#247/#248) = 11 PR 누적. **사이클 75 진입 default = 5+1 다중 에이전트 회고 P0 6건 처리 + 메모리 신설 3건 + 정정 (메모리 카운트 18→21 + 단위 카운트 2055→2122 + 정책 16 line:span). 별도 PR 권장 = 정책 5/6/8/16 본문 진화 묶음 + 카테고리 분류 (≥ 20 임계 도달) + cross-verify 보존 default 복귀 + alembic 0027/0028 Railway smoke check**. 단위 2122 / 통합 84 / E2E 82
+## 현재 수치 (2026-05-04 기준 — **사이클 75 P1 묶음 (정책/메모리/cross-verify 진화)**: 58 PR #188~#249 (메타 #213/#214 제외) + 본 PR (사이클 75 P1 묶음) — 누적 정책 본문 16건 + 메모리 24건 (활성 22 + deprecated 2). **사이클 75 = (1) Railway 운영 alembic 0027/0028 자동 적용 검증 완료 (Project Token GraphQL — 둘 다 SUCCESS) + (2) 본 PR P1 묶음 = 정책 5 강화 (Phase 신호 분리) + 정책 6 강화 (line:span `grep -n` 실측) + 정책 8 진화 (단일 관점 회고 정량 X + cross-verify ROI 정량) + 정책 16 본문 보강 (4 단계 caching timeline) + 메모리 카테고리 분류 (5 카테고리)**. 단위 2122 / 통합 84 / E2E 82
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
@@ -114,7 +114,23 @@
 
 ---
 
-### 사이클 74 진입 — 사이클 73 종료 sync (2026-05-04 · 본 PR)
+### 사이클 75 P1 묶음 — 정책 본문 진화 + 메모리 카테고리 분류 (2026-05-04 · 본 PR)
+
+사용자 결정 = 옵션 🅓 (3 PR 묶음 단일 응집 PR — 정책/메모리/cross-verify 진화). 본 PR = docs only ~280 LOC.
+
+| 영역 | 처리 |
+|------|------|
+| **사이클 75 첫 작업 (Railway 검증)** | alembic 0027 (`SecurityAlertProcessLog`) + 0028 (`InsightNarrativeCache`) 자동 적용 검증 완료 — Project Token GraphQL `deploymentLogs` grep 결과 둘 다 SUCCESS, ERROR/Traceback 0건 (`Running upgrade 0026supabasrlspolicies -> 0027securityalertlog` + `Running upgrade 0027securityalertlog -> 0028insightcache` 라인 검증) |
+| **정책 5 강화** | "사이클 종료 신호 명시" → "+ Phase 단계별 진행/종료 신호 분리 의무" (사이클 74 사고 학습 — Phase 2-A/B 머지 후 Phase 2-C/D 진행 의도 미확인 차단) |
+| **정책 6 강화** | "다중 에이전트 디스패치 line:span 의무" → "+ 정책/메모리 본문 작성 시 `grep -n` 실측 의무" (사이클 72 정책 16 line:span drift 학습 — 자연 drift 추적 위해 commit hash 명시 권장) |
+| **정책 8 진화** | "+ 단일 관점 회고 (관점 5종 중 1) = 정량 기준 적용 X — Claude 직접 작성 default" + "+ cross-verify ROI 정량 (사이클당 평균 false-positive 차단 2~5건 + 신규 발견 1~6건) — default 진행 + 정량 기준 충족 시 생략" |
+| **정책 16 본문 보강** | "5번째 원칙 토큰 비용 효율" 본문에 "+ caching 4 단계 활성화 timeline (사이클 63 도입 → 72 baseline → 74 활성화 → 74 호출 빈도 제한)" 추가 + 운영 baseline 측정 의무 명시 |
+| **메모리 카테고리 분류** | MEMORY.md 인덱스 재구조화 = 5 카테고리 (🌐 환경 3 / 🧪 TDD 5 / 🤝 협업 6 / 📜 정책 페어 4 / 🛠️ 기술 패턴 4 + ⚰️ Deprecated 2) — 활성 22 + deprecated 2 = 24건 정합 |
+| **CLAUDE.md 정정** | 30초 체크리스트 메모리 카운트 21→24 (활성 22 + deprecated 2) + 5 카테고리 명시 갱신 + tail 사이클 75 P1 묶음 추가 |
+
+---
+
+### 사이클 74 진입 — 사이클 73 종료 sync (2026-05-04 · #246)
 
 사이클 73 = #243 (회고) + #244 (Phase 4 영역 진입 첫 작업) 머지 완료. Railway 빌드 + 정책 13 smoke check (3 endpoint) 모두 정상.
 
