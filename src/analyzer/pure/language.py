@@ -95,11 +95,14 @@ _SHEBANG_RE = re.compile(r"^#!\s*(\S+)(?:\s+(\S+))?")
 
 
 def _parse_shebang(content: str) -> str:
-    """첫 줄의 shebang에서 인터프리터 basename을 추출해 언어를 반환. 실패 시 empty string."""
-    if not content:
+    """첫 줄의 shebang에서 인터프리터 basename을 추출해 언어를 반환. 실패 시 empty string.
+
+    Extract interpreter basename from first-line shebang. Returns "" on failure.
+    """
+    lines = content.splitlines() if content else []
+    if not lines:
         return ""
-    first_line = content.splitlines()[0] if "\n" in content else content
-    match = _SHEBANG_RE.match(first_line)
+    match = _SHEBANG_RE.match(lines[0])
     if not match:
         return ""
     interpreter, arg = match.group(1), match.group(2)
@@ -122,12 +125,12 @@ def _match_filename(basename: str) -> str:
 
 
 def _match_extension(basename: str) -> str:
-    """확장자 매핑. `.R` 같은 대소문자 구분 케이스 우선 조회 후 lowercase 조회. 실패 시 empty string."""
+    """확장자 매핑 (lowercase). 실패 시 empty string.
+
+    Extension mapping (lowercase). Returns "" on failure.
+    """
     _, ext = os.path.splitext(basename)
-    if not ext:
-        return ""
-    # Check exact-case first (preserves `.R` vs `.r` if needed — both map to "r" here)
-    return _EXTENSION_MAP.get(ext) or _EXTENSION_MAP.get(ext.lower(), "")
+    return _EXTENSION_MAP.get(ext.lower(), "") if ext else ""
 
 
 def detect_language(filename: str, content: str | None = None) -> str:

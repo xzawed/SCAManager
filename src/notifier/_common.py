@@ -3,26 +3,26 @@ from __future__ import annotations
 
 from src.constants import (
     COMMIT_SHA_DISPLAY_LENGTH,
-    NOTIFIER_MAX_ISSUES_SHORT,
     NOTIFIER_MESSAGE_TRUNCATE,
 )
 
 
 def format_ref(commit_sha: str, pr_number: int | None) -> str:
-    """PR 번호 또는 단축 커밋 SHA 레퍼런스 문자열을 반환한다."""
+    """PR 번호 또는 단축 커밋 SHA 레퍼런스 문자열을 반환한다.
+
+    Format a PR number or short commit SHA reference string.
+    """
     if pr_number:
         return f"PR #{pr_number}"
     return f"커밋 {commit_sha[:COMMIT_SHA_DISPLAY_LENGTH]}"
 
 
 def get_all_issues(analysis_results: list) -> list:
-    """analysis_results에서 모든 AnalysisIssue를 평탄화해 반환한다."""
+    """analysis_results의 모든 AnalysisIssue를 평탄화한다 (호출자 캐시 권장 — hot path).
+
+    Flatten all AnalysisIssue from analysis_results (callers should cache — hot path).
+    """
     return [issue for r in analysis_results for issue in r.issues]
-
-
-def get_issue_samples(analysis_results: list, max_count: int = NOTIFIER_MAX_ISSUES_SHORT) -> list:
-    """분석 결과에서 상위 max_count개 이슈를 반환한다."""
-    return get_all_issues(analysis_results)[:max_count]
 
 
 def truncate_message(text: str, max_length: int, suffix: str = "...") -> str:
