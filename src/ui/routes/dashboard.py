@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-_VALID_MODES = ("overview", "insight")
+_VALID_MODES = ("overview", "insight", "security")
 
 # Phase 3 PR 4 — 사용자 신호 기반 default 모드 임계값.
 # Claude narrative 가 의미있게 생성되려면 최소 N건의 분석 컨텍스트가 필요.
@@ -95,6 +95,21 @@ async def dashboard(
             sanitize_for_log(effective_mode, max_len=20),
             "1" if mode in _VALID_MODES else "0",
         )
+
+        if effective_mode == "security":
+            # Cycle 73 F2 — Code Scanning + Secret Scanning audit dashboard (read-only).
+            security = dashboard_service.dashboard_security(db, user_id=current_user.id)
+            return templates.TemplateResponse(
+                request,
+                "dashboard.html",
+                {
+                    "current_user": current_user,
+                    "mode": "security",
+                    "initial_mode": effective_mode,
+                    "security": security,
+                    "days": days,
+                },
+            )
 
         if effective_mode == "insight":
             # Phase 3 PR 2 — Claude AI 4 카드 narrative (caching 적용) + PR 5 user_id 격리.

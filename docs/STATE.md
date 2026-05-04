@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-04 기준 — **사이클 73 진입 (사이클 70~72 종결 회고 + sync 페어)**: 53 PR #188~#242 (메타 Issue #213/#214 제외 — 실측 `git log`) + 본 PR (사이클 70~72 종결 회고) — 누적 정책 본문 16건 + 메모리 18건 (활성 16 + deprecated 2) + **사이클 73 = 5 에이전트 회고 (cross-verify 생략 — 정책 8 정량 기준 3 조건 충족) + 메모리 신설 3건 (defensive coercion / wrapper deprecation / silent fallback streak) + 메모리 강화 4건 (think-before-code-edit a-2 / secret-scanning destructive PR / architecture Medium ⚠️ 마커 / TDD Red 사이클 72 사례) + CLAUDE/STATE 정합 정정 (메모리 카운트 15→18 + 정책 16 본문 stale 정정). 별도 PR 권장 = `docs/policy-evolution-cycle-72` (정책 6/8/16/3 진화 묶음 — High tier 사용자 사전 확인 의무)**)
+## 현재 수치 (2026-05-04 기준 — **사이클 73 PR (Phase 4 영역 진입 첫 작업)**: 54 PR #188~#243 (메타 Issue #213/#214 제외) + 본 PR (Code/Secret Scanning F1+F2) — 누적 정책 본문 16건 + 메모리 18건 + **사이클 73 PR = 5+1 다중 에이전트 검토 (관점 1~5 + cross-verify 6차) + 사용자 결정 옵션 🅒 채택 (F1+F2 묶음). F1 = alembic 0027 + SecurityAlertProcessLog ORM + RLS policy + repo + security_scan_service (cron 폴링 + GHAS graceful degradation + kill-switch) + cron API. F2 = dashboard `?mode=security` 4 카드 (✨ 처리됨 / 🔍 신규 pending / 📊 분류 분포 / 💬 최근 Top 5) + Empty State + tooltip + 4-테마 호환. read-only (자동 dismiss X — Phase 1 안전 default). 단위 2055→2085 (+30)**)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **2055개** | pytest 9.0.3 — 사이클 65~67 누적 +14 신규 (RLS middleware #228 +9 — A 5 + B 4 / backfill #229 +5 — pure resolve). pre-existing 5 fail 완전 해소 (#227 — conftest setdefault → 직접 set, .env export 트랩 차단). **= 2055 collected / 2050 passed / 5 skipped / 0 failed** (`make test` 3회 결정적 검증 완료 — 사이클 64 누적 4 사이클 보류 종료) |
+| 단위 테스트 | **2085개** | pytest 9.0.3 — 사이클 73 PR +30 (security_alert_log_repo 5 + security_scan_service 8 + 기존 회귀 17). **= 2085 collected / 2083 passed / 2 skipped / 0 failed** (Green 검증 완료) |
 | 통합 테스트 | **84개** | tests/integration/ — Phase 3 PR 6 +2 (test_insight_caching — caching helper spy + user_id 격리) **= 81 passed / 3 skipped / 0 failed** |
 | E2E 테스트 | **82개** | `make test-e2e` (Chromium Playwright) — Phase 3 PR 6 +7 (test_dashboard_insight — 페이지 로드 4 + localStorage persist 3) **= 80 passed / 0 failed / 2 pre-existing fail (test_settings 2건, 본 사이클 무관)**. ⚠️ e2e ↔ tests/integration 동시 실행 금지 — `e2e/pytest.ini` 의도적 asyncio_mode 미설정, 분리 실행 default (`make test-e2e` vs CI command `pytest tests/`) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
@@ -114,7 +114,23 @@
 
 ---
 
-### 사이클 73 — 사이클 70~72 종결 회고 + sync 페어 (2026-05-04 · 본 PR)
+### 사이클 73 PR — Code/Secret Scanning 자동 처리 F1+F2 (Phase 4 영역 진입 첫 작업, 2026-05-04 · 본 PR)
+
+5+1 다중 에이전트 검토 (관점 1 아키텍처 / 관점 2 UX / 관점 3 보안 / 관점 4 운영비용 / 관점 5 경쟁 비교 + cross-verify general-purpose 6차) → 사용자 결정 옵션 🅒 (F1+F2 묶음 + 사전 확인) 채택.
+
+| 영역 | 처리 |
+|------|------|
+| **F1 데이터 layer** | alembic 0027 (`SecurityAlertProcessLog` + RLS policy — `analyses` 패턴 차용) + ORM (`src/models/security_alert_log.py`) + repo (`src/repositories/security_alert_log_repo.py` — upsert + record_user_decision + list_pending + count_by_classification) |
+| **F1 비즈니스 layer** | `src/services/security_scan_service.py` (`scan_all_repos` / `scan_repo_alerts` — cron 폴링 + GHAS graceful degradation 403/404 silent skip + kill-switch `SECURITY_AUTO_PROCESS_DISABLED=1` Phase 9 패턴 차용 + `_resolve_token` 사용자 우선 + 전역 fallback) + cron API `POST /api/internal/cron/scan-security` (INTERNAL_CRON_API_KEY 페어) |
+| **F2 dashboard** | `dashboard_service.dashboard_security` 신규 함수 + UI mode 분기 (`_VALID_MODES = (overview, insight, security)`) + 템플릿 4 카드 (✨ 처리됨 / 🔍 신규 pending / 📊 분류 분포 / 💬 최근 Top 5) + Empty State + tooltip + nav 토글 `🛡️ Security` 추가 + kill-switch 활성 시 안내 카드 |
+| **회귀 가드** | `tests/unit/repositories/test_security_alert_log_repo.py` (5건) + `tests/unit/services/test_security_scan_service.py` (8건) + 기존 17건 = +30 신규. **Green 검증 = pytest tests/unit = 2085 passed / 2 skipped / 0 failed** |
+| **자율 판단 보고 (정책 3)** | (1) Phase 4 "신규 도구" 영역 진입 = 사용자 결정 옵션 🅒 채택 정합 (2) F4/F5 (auto-dismiss / webhook) 보류 = 관점 3 안전 default + 관점 2 사용자 신뢰 모델 페어 (3) AI 분류 (F3) 보류 = 1개월 baseline 후 결정 (메모리 `feedback-architecture-decision-pre-confirm.md` High tier) (4) Anthropic 가격 모델 / DB 스키마 = 본 PR 영역 0 (read-only audit log 만) (5) admin endpoint = 사용처 < 3 정책 16 default 보류 |
+| **운영 smoke check (정책 13)** | code-only — 운영 endpoint 3 영역 무영향 (`/health`, `/auth/github`, `/login`). 신규 endpoint = `/api/internal/cron/scan-security` (INTERNAL_CRON_API_KEY 인증 — admin 영역) |
+| **Code Scanning open alert (정책 14)** | 본 PR 작업 직전 = 0건 (사이클 73 회고 후속 6건 dismiss 완료 — 4 used_in_tests + 2 false_positive). 본 PR 머지 후 재검증 의무 |
+
+---
+
+### 사이클 73 — 사이클 70~72 종결 회고 + sync 페어 (2026-05-04 · #243)
 
 5 에이전트 회고 (관점 1~5) + cross-verify 생략 (정책 8 정량 기준 3 조건 충족 — P0 ≥ 8 + 관점 5종 + 사용자 빠른 진행 신호 "A+B 진행"). 회고 보고서 = `docs/reports/2026-05-04-cycle-70-72-end-multi-agent-retrospective.md`.
 

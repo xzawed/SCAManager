@@ -328,6 +328,10 @@
         <a href="/dashboard?mode=insight&days={{ days }}"
            data-mode="insight"
            {% if mode == 'insight' %}class="active"{% endif %}>💬 Insight</a>
+        <a href="/dashboard?mode=security&days={{ days }}"
+           data-mode="security"
+           title="GitHub Code Scanning + Secret Scanning alert audit (Cycle 73 F2 — read-only)"
+           {% if mode == 'security' %}class="active"{% endif %}>🛡️ Security</a>
       </nav>
       <nav class="dash-range-toggle" aria-label="기간 선택 / Period selector">
         <a href="/dashboard?mode={{ mode }}&days=1" {% if days == 1 %}class="active"{% endif %}>1d</a>
@@ -338,9 +342,70 @@
     </div>
   </div>
 
-  {# Phase 3 PR 3 — Insight 모드: Claude AI 4 카드. Overview 분기는 그대로 보존 #}
-  {# Phase 3 PR 3 — Insight mode: Claude AI 4 cards. Overview branch is preserved as-is #}
-  {% if mode == 'insight' %}
+  {# Cycle 73 F2 — Security 모드: Code Scanning + Secret Scanning audit (read-only) #}
+  {# Cycle 73 F2 — Security mode: Code Scanning + Secret Scanning audit (read-only) #}
+  {% if mode == 'security' %}
+    {% if security and security.kill_switch_active %}
+    <div class="dash-insight-status">
+      🚫 Security 자동 처리 비활성화 (`SECURITY_AUTO_PROCESS_DISABLED=1`) — kill-switch 가 활성 상태입니다. 환경변수를 해제하면 cron 폴링이 재개됩니다.
+    </div>
+    {% elif security and security.total_alerts == 0 %}
+    {# Empty State — onboarding tooltip + 가이드 #}
+    <div class="dash-insight-status">
+      ✅ 처리 대기 중인 alert 가 없습니다. <br>
+      <small style="opacity:0.8;">cron 이 GitHub Code Scanning + Secret Scanning API 를 1시간마다 폴링하며, 신규 alert 발견 시 본 카드에 표시됩니다. <a href="https://github.com/{{ current_user.github_login }}?tab=security" target="_blank" rel="noopener">GitHub Security 탭에서 직접 확인</a>도 가능합니다.</small>
+    </div>
+    {% elif security %}
+    <div class="dash-insight-grid" role="region" aria-label="Security audit 4 카드">
+      <div class="dash-insight-card">
+        <h2 class="dash-insight-title">✨ 처리됨</h2>
+        <div class="dash-insight-metric">
+          <span class="dash-insight-metric-label">사용자 confirm 완료</span>
+          <span class="dash-insight-metric-value">{{ security.processed_count }}</span>
+        </div>
+        <div class="dash-insight-metric">
+          <span class="dash-insight-metric-label">전체 alert 누적</span>
+          <span class="dash-insight-metric-value">{{ security.total_alerts }}</span>
+        </div>
+      </div>
+      <div class="dash-insight-card">
+        <h2 class="dash-insight-title">🔍 신규 pending</h2>
+        <div class="dash-insight-metric">
+          <span class="dash-insight-metric-label">사용자 결정 대기</span>
+          <span class="dash-insight-metric-value">{{ security.pending_count }}</span>
+        </div>
+        <small style="opacity:0.7;">사용자 1-click confirm 의무 (Phase 1 — 자동 dismiss X)</small>
+      </div>
+      <div class="dash-insight-card">
+        <h2 class="dash-insight-title">📊 분류 분포</h2>
+        <div>
+          {% for key, count in security.classification.items() %}
+          <div class="dash-insight-metric">
+            <span class="dash-insight-metric-label">{{ key }}</span>
+            <span class="dash-insight-metric-value">{{ count }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="dash-insight-card">
+        <h2 class="dash-insight-title">💬 최근 pending (Top 5)</h2>
+        {% if security.recent_pending %}
+        <ul class="dash-insight-list">
+          {% for row in security.recent_pending %}
+          <li><strong>#{{ row.alert_number }}</strong> [{{ row.severity }}] {{ row.alert_type }} — <code style="font-size:0.85em;">{{ row.rule_id }}</code> ({{ row.ai_classification }})</li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <small style="opacity:0.7;">pending alert 없음.</small>
+        {% endif %}
+      </div>
+    </div>
+    {% else %}
+    <div class="dash-insight-status">
+      ⚠️ Security 데이터 로딩 실패 — 잠시 후 다시 시도해주세요.
+    </div>
+    {% endif %}
+  {% elif mode == 'insight' %}
     {% if insight and insight.status == 'success' %}
     <div class="dash-insight-grid" role="region" aria-label="AI Insight 4 카드">
       <div class="dash-insight-card">

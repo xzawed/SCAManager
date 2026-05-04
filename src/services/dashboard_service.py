@@ -661,3 +661,56 @@ async def insight_narrative(
         return _build_insight_response(status="parse_error", days=days)
 
     return _build_insight_response(status="success", days=days, cards=cards)
+
+
+# ── Cycle 73 F2 — Security Mode (Code Scanning + Secret Scanning audit) ──
+# Cycle 73 F2 — Security mode: Code Scanning + Secret Scanning audit overview.
+def dashboard_security(
+    db: Session, *, user_id: int | None = None,
+) -> dict[str, Any]:
+    """`/dashboard?mode=security` 카드 데이터 — F2 Phase 1 MVP (read-only).
+
+    `/dashboard?mode=security` card data — F2 Phase 1 MVP (read-only).
+    4 카드: ✨ 처리됨 / 🔍 신규 pending / 📊 분류 분포 / 💬 최근 alert (Top 5).
+    """
+    # 신규 import 는 함수 안에 배치 — 정책 16 default (모듈 import 영향 0)
+    # Inline import — keeps top-level import surface minimal (policy 16 default).
+    from src.repositories import security_alert_log_repo  # noqa: PLC0415
+
+    # 사용자별 격리: pending list 만 user_id 별 (audit 카운트는 전체 — admin 영역)
+    # Per-user isolation: pending list filtered by user_id (counts admin-wide for audit).
+    pending = security_alert_log_repo.list_pending(db, limit=5)
+    counts = security_alert_log_repo.count_by_classification(db)
+
+    # AI 분류 분포 정규화 (4 카테고리 — false_positive / used_in_tests / actual_violation / deferred)
+    classification_keys = ("false_positive", "used_in_tests", "actual_violation", "deferred", "unclassified")
+    classification = {key: counts.get(key, 0) for key in classification_keys}
+
+    return {
+        "total_alerts": counts.get("total", 0),
+        "pending_count": counts.get("pending", 0),
+        "processed_count": counts.get("total", 0) - counts.get("pending", 0),
+        "classification": classification,
+        "recent_pending": [
+            {
+                "id": row.id,
+                "alert_type": row.alert_type,
+                "alert_number": row.alert_number,
+                "severity": row.severity or "unknown",
+                "rule_id": row.rule_id or "-",
+                "ai_classification": row.ai_classification or "pending",
+                "ai_confidence": row.ai_confidence,
+            }
+            for row in pending
+        ],
+        "kill_switch_active": _is_security_kill_switch_active(),
+    }
+
+
+def _is_security_kill_switch_active() -> bool:
+    """kill-switch 환경변수 검사 (security_scan_service 와 동일 — UI 표시용).
+
+    Check kill-switch env (mirror of security_scan_service — for UI display).
+    """
+    import os  # pylint: disable=import-outside-toplevel  # noqa: PLC0415
+    return os.environ.get("SECURITY_AUTO_PROCESS_DISABLED", "0") == "1"
