@@ -406,7 +406,17 @@
     </div>
     {% endif %}
   {% elif mode == 'insight' %}
+    {# Phase 2-B 🅑 (사이클 74 PR-B) — DB 캐싱 1h TTL + Refresh 버튼 + generated_at 표시 #}
+    {# Phase 2-B 🅑 (Cycle 74 PR-B) — DB cache 1h TTL + Refresh button + generated_at display #}
     {% if insight and insight.status == 'success' %}
+    <div style="display:flex; justify-content:flex-end; align-items:center; gap:12px; margin-bottom:8px; font-size:0.85em; opacity:0.8;">
+      {% if insight.generated_at %}
+      <span title="cache 생성 시각 — 1시간 TTL">⏱ {{ insight.generated_at[:16].replace('T', ' ') }}</span>
+      {% endif %}
+      <a href="/dashboard?mode=insight&days={{ days }}&refresh=1"
+         title="cache 강제 무효화 + 신규 narrative 생성 (Anthropic API 호출)"
+         style="text-decoration:none;">🔄 Refresh</a>
+    </div>
     <div class="dash-insight-grid" role="region" aria-label="AI Insight 4 카드">
       <div class="dash-insight-card">
         <h2 class="dash-insight-title">✨ 잘한 것</h2>
