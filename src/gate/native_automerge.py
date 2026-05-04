@@ -90,88 +90,19 @@ async def enable_or_fallback(
     expected_sha: str | None = None,
     merge_method: str = "SQUASH",
 ) -> tuple[bool, str | None, str]:
-    """Native auto-merge enable 시도 후 필요 시 폴백.
-    Try native auto-merge enable, falling back when appropriate.
+    """Legacy thin wrapper around `enable_or_fallback_with_path()` — backwards compat.
 
-    `merge_pr()` 와 동일한 시그니처/반환 형식 — 호출자(engine.py)가 그대로 교체 가능.
-    Same signature/return shape as `merge_pr()` so the caller can drop-in replace.
+    `merge_pr()` 와 동일한 (ok, reason, head_sha) 튜플 반환. 신규 코드는
+    `enable_or_fallback_with_path()` 직접 사용 권장 (`MergeOutcome.path` 활용).
 
-    Args:
-        expected_sha: PR head SHA — 호출자가 이미 조회했다면 전달해 중복 GET 회피.
-                      None 이면 본 함수가 직접 조회.
-                      Pass to skip duplicate GET when caller already fetched it.
-
-    Returns:
-        (True, None, head_sha) — enable 성공 (GitHub 가 머지 책임 인수)
-                                 또는 폴백 머지 즉시 성공
-        (False, reason, head_sha) — enable 실패 + 폴백도 실패 / 폴백 미시도
-        Caller should branch on ok and inspect reason for failure tag.
-
-    참고: enable 성공 시 GitHub 가 비동기로 머지를 수행 — 실제 머지 commit 발생은
-    `pull_request.closed merged=true` webhook 으로 별도 추적해야 한다 (PR-B 범위).
-    Note: on enable success, GitHub will merge asynchronously; the actual merge
-    commit must be tracked via the `pull_request.closed merged=true` webhook (PR-B).
+    Returns the legacy (ok, reason, head_sha) tuple. New callers should use
+    `enable_or_fallback_with_path()` directly to access `MergeOutcome.path`.
     """
-    # 1. PR head SHA — 호출자가 전달했으면 재사용, 아니면 조회
-    # 1. PR head SHA — reuse if caller passed, otherwise fetch
-    head_sha = expected_sha or ""
-    if not head_sha:
-        try:
-            _state, head_sha = await get_pr_mergeable_state(
-                github_token, repo_full_name, pr_number,
-            )
-        except httpx.HTTPError as exc:
-            logger.warning("get_pr_mergeable_state 실패 (pr=%d): %s", pr_number, exc)
-
-    # 2. PR node_id 조회 — GraphQL mutation 의 첫 번째 인자
-    # 2. Fetch PR node_id — first argument of the GraphQL mutation
-    pr_node_id = await get_pr_node_id(github_token, repo_full_name, pr_number)
-    if pr_node_id is None:
-        # node_id 조회 실패 — GraphQL 시도 자체 불가, 즉시 폴백
-        # node_id lookup failed — can't try GraphQL, fall back immediately
-        logger.warning(
-            "PR node_id 조회 실패, REST merge_pr 폴백 (repo=%s, pr=%d)",
-            repo_full_name, pr_number,
-        )
-        return await merge_pr(
-            github_token, repo_full_name, pr_number,
-            expected_sha=head_sha or None,
-        )
-
-    # 3. enablePullRequestAutoMerge 시도
-    # 3. Try enablePullRequestAutoMerge
-    result = await enable_pull_request_auto_merge(
-        github_token,
-        pr_node_id,
-        expected_head_oid=head_sha or None,
-        merge_method=merge_method,
-    )
-
-    # 4. 성공 — GitHub 가 머지 책임 인수
-    # 4. Success — GitHub now owns the merge
-    if result.status == ENABLE_OK:
-        logger.info(
-            "PR #%d native auto-merge enabled: %s (head=%s)",
-            pr_number, repo_full_name, head_sha[:7] if head_sha else "?",
-        )
-        return (True, None, head_sha)
-
-    # 5. 폴백 부적합 (force-push 등) — 즉시 실패 보고
-    # 5. Not fallback-eligible (force-push etc.) — return failure immediately
-    if result.status in _NO_FALLBACK_STATUSES:
-        reason = f"{result.status}: {result.detail or ''}".rstrip(": ")
-        return (False, reason, head_sha)
-
-    # 6. 폴백 시도 — _NO_FALLBACK_STATUSES 외 모든 status 가 REST merge_pr 폴백
-    # 6. Try fallback — every status outside _NO_FALLBACK_STATUSES falls back to REST merge_pr
-    logger.info(
-        "PR #%d native enable=%s 폴백 (REST merge_pr): %s",
-        pr_number, result.status, result.detail or "-",
-    )
-    return await merge_pr(
+    outcome = await enable_or_fallback_with_path(
         github_token, repo_full_name, pr_number,
-        expected_sha=head_sha or None,
+        expected_sha=expected_sha, merge_method=merge_method,
     )
+    return (outcome.ok, outcome.reason, outcome.head_sha)
 
 
 async def enable_or_fallback_with_path(
