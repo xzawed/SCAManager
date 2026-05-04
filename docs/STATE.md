@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-04 기준 — **사이클 74 진입 (Phase 2 결정 영역)**: 55 PR #188~#244 (메타 #213/#214 제외) + 본 PR (사이클 73 종료 sync) — 누적 정책 본문 16건 + 메모리 18건 + 사이클 73 = 회고 PR (#243) + Phase 4 영역 진입 첫 작업 PR (#244 — Code/Secret Scanning F1+F2 + Copilot Autofix 5 commits + CI fix-up 회귀 가드 +14 = patch coverage 56.64% → 80%+ 달성, Railway 빌드 + 정책 13 smoke check 3 endpoint 모두 정상) + **사이클 74 진입 default = Phase 2 후보 사용자 결정 (d-🅓 Insight Haiku / f-1~4 DB 캐싱 1h TTL / 신규 1 system prompt 1024 패딩 / a-B Multi-block — 모두 High tier 사전 확인 의무)**. 단위 2099 / 통합 84 / E2E 82
+## 현재 수치 (2026-05-04 기준 — **사이클 75 진입 (사이클 70~74 종결 회고 + sync 페어)**: 57 PR #188~#248 (메타 #213/#214 제외) + 본 PR (사이클 70~74 종결 회고) — 누적 정책 본문 16건 + 메모리 21건 (활성 19 + deprecated 2) + 사이클 70 (#236) ~ 사이클 74 (#247/#248) = 11 PR 누적. **사이클 75 진입 default = 5+1 다중 에이전트 회고 P0 6건 처리 + 메모리 신설 3건 + 정정 (메모리 카운트 18→21 + 단위 카운트 2055→2122 + 정책 16 line:span). 별도 PR 권장 = 정책 5/6/8/16 본문 진화 묶음 + 카테고리 분류 (≥ 20 임계 도달) + cross-verify 보존 default 복귀 + alembic 0027/0028 Railway smoke check**. 단위 2122 / 통합 84 / E2E 82
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **2099개** | pytest 9.0.3 — 사이클 73 #244 +30 (data layer + service async) + CI fix-up +14 (async coverage + dashboard_security 4 + cron 2 + route 1) = +44 누적. **= 2099 collected / 2097 passed / 2 skipped / 0 failed** |
+| 단위 테스트 | **2122개** | pytest 9.0.3 — 사이클 73 #244 +44 (data layer + async + CI fix-up) + 사이클 74 PR-A #247 +6 (Multi-block 인프라 + Insight Haiku) + 사이클 74 PR-B #248 +13 (DB 캐싱 repo + service 통합) + 사이클 75 정합성 검증 = +67 누적. **= 2122 collected / 2120 passed / 2 skipped / 0 failed** |
 | 통합 테스트 | **84개** | tests/integration/ — Phase 3 PR 6 +2 (test_insight_caching — caching helper spy + user_id 격리) **= 81 passed / 3 skipped / 0 failed** |
 | E2E 테스트 | **82개** | `make test-e2e` (Chromium Playwright) — Phase 3 PR 6 +7 (test_dashboard_insight — 페이지 로드 4 + localStorage persist 3) **= 80 passed / 0 failed / 2 pre-existing fail (test_settings 2건, 본 사이클 무관)**. ⚠️ e2e ↔ tests/integration 동시 실행 금지 — `e2e/pytest.ini` 의도적 asyncio_mode 미설정, 분리 실행 default (`make test-e2e` vs CI command `pytest tests/`) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
