@@ -16,6 +16,7 @@ from src.config import settings
 from src.database import SessionLocal
 from src.services.cron_service import run_trend_check, run_weekly_reports
 from src.services.merge_retry_service import process_pending_retries
+from src.services.security_scan_service import scan_all_repos
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,23 @@ async def trigger_trend_check() -> dict:
         alerted = await run_trend_check(db)
     logger.info("trend_check: alerted=%d", alerted)
     return {"status": "ok", "alerted": alerted}
+
+
+@router.post("/scan-security", status_code=200)
+async def trigger_security_scan() -> dict:
+    """Cycle 73 F1 — GitHub Code Scanning + Secret Scanning alert 폴링 cron 트리거.
+
+    Cycle 73 F1 — trigger GitHub Code/Secret Scanning alert polling (cron).
+
+    Returns:
+        {"status": "ok", "totals": {"code_scanning": N, "secret_scanning": M, "skipped": K, "repos": R}}
+    """
+    # SessionLocal() context manager — F1 read-only (audit log upsert 만, dismiss X)
+    # SessionLocal() context manager — F1 read-only (audit log upsert only, no dismiss)
+    with SessionLocal() as db:
+        totals = await scan_all_repos(db)
+    logger.info("security_scan: totals=%s", totals)
+    return {"status": "ok", "totals": totals}
 
 
 @router.post("/retry-pending-merges", status_code=200)

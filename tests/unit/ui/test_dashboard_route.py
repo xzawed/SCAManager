@@ -682,3 +682,33 @@ def test_dashboard_passes_current_user_id_to_service(mock_insight_success):
         f"insight_narrative user_id 인자 누락 또는 불일치 — "
         f"기대: {_TEST_USER.id}, 실제: {insight_kwargs.get('user_id')!r}"
     )
+
+
+# ─── Cycle 73 F2 — security mode 분기 (CI fix-up — patch coverage 80%+) ───
+def test_dashboard_mode_security_calls_dashboard_security():
+    """mode=security → dashboard_service.dashboard_security 호출 + security 컨텍스트 주입."""
+    client = TestClient(app)
+    mock_db = MagicMock()
+    captured: dict = {}
+    fake_security = {
+        "total_alerts": 3, "pending_count": 2, "processed_count": 1,
+        "classification": {"false_positive": 1, "used_in_tests": 1, "actual_violation": 0,
+                           "deferred": 0, "unclassified": 1},
+        "recent_pending": [], "kill_switch_active": False,
+    }
+
+    def _capture(request, template_name, context, **kwargs):
+        captured.update(context)
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(content="<html>security</html>", status_code=200)
+
+    with patch("src.ui.routes.dashboard.SessionLocal", return_value=_ctx(mock_db)), \
+         patch("src.ui.routes.dashboard.dashboard_service.dashboard_security",
+               return_value=fake_security) as mock_sec, \
+         patch("src.ui.routes.dashboard.templates.TemplateResponse", side_effect=_capture):
+        response = client.get("/dashboard?mode=security")
+
+    assert response.status_code == 200
+    mock_sec.assert_called_once()
+    assert captured.get("mode") == "security"
+    assert captured.get("security") == fake_security
