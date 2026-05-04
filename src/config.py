@@ -66,6 +66,13 @@ class Settings(BaseSettings):
     # 자기 분석 무한 루프 킬 스위치 — True 시 모든 webhook 분석 skip (Phase 9)
     # Kill-switch to disable self-analysis entirely — skips all webhook pipeline (Phase 9)
     scamanager_self_analysis_disabled: bool = False
+    # Cycle 79 PR 2 — SaaS admin allow-list (CSV email 형식)
+    # 빈 문자열 = admin 영역 비활성 (모든 admin 엔드포인트 503 반환)
+    # 명시 = ',' 분리 email allow-list — `current_user.email in saas_admin_emails`
+    # Cycle 79 PR 2 — SaaS admin allow-list (CSV email format)
+    # Empty = admin area disabled (all admin endpoints return 503)
+    # Set = comma-separated email allow-list — `current_user.email in saas_admin_emails`
+    saas_admin_emails: str = ""
     # Phase 12: CI-aware Auto Merge 재시도 설정
     # Phase 12: CI-aware Auto Merge retry configuration
     merge_retry_enabled: bool = True           # False 시 레거시 단일 시도 동작
