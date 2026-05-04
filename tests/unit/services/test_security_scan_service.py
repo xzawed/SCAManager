@@ -1,8 +1,6 @@
 """Cycle 73 F1 — security_scan_service 단위 테스트 (kill-switch + GHAS graceful + token resolve)."""
 from __future__ import annotations
 
-import pytest
-
 from src.services import security_scan_service
 
 
