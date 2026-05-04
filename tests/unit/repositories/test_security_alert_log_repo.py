@@ -8,7 +8,6 @@ from sqlalchemy.pool import StaticPool
 
 from src.database import Base
 from src.models.repository import Repository
-from src.models.user import User  # noqa: F401  (register on metadata)
 from src.models.security_alert_log import SecurityAlertProcessLog  # noqa: F401
 from src.repositories import security_alert_log_repo
 
