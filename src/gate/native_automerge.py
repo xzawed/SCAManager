@@ -75,14 +75,6 @@ class MergeOutcome:
 
 logger = logging.getLogger(__name__)
 
-# 폴백을 시도해야 하는 enable 실패 status 집합
-# Set of enable failure statuses where fallback to merge_pr() makes sense
-# - ENABLE_DISABLED_IN_REPO: 리포 settings 에 "Allow auto-merge" 미설정 — 직접 머지 시도
-# - ENABLE_PERMISSION_DENIED: GraphQL mutation 권한 없음 — REST 권한은 있을 수 있어 시도
-# - ENABLE_DISABLED_IN_REPO: repo settings has "Allow auto-merge" off — try direct merge
-# - ENABLE_PERMISSION_DENIED: no GraphQL permission — REST might still work
-_FALLBACK_STATUSES = frozenset({ENABLE_DISABLED_IN_REPO, ENABLE_PERMISSION_DENIED})
-
 # 폴백 없이 즉시 실패 처리해야 하는 status
 # Statuses that should be treated as immediate failure without fallback
 # - ENABLE_FORCE_PUSHED: head SHA 가 이미 변경됨 — REST 머지도 stale 상태로 실패
@@ -170,8 +162,8 @@ async def enable_or_fallback(
         reason = f"{result.status}: {result.detail or ''}".rstrip(": ")
         return (False, reason, head_sha)
 
-    # 6. 폴백 시도 — _FALLBACK_STATUSES 또는 분류 외 status 모두 폴백
-    # 6. Try fallback — both _FALLBACK_STATUSES and unclassified statuses fall back
+    # 6. 폴백 시도 — _NO_FALLBACK_STATUSES 외 모든 status 가 REST merge_pr 폴백
+    # 6. Try fallback — every status outside _NO_FALLBACK_STATUSES falls back to REST merge_pr
     logger.info(
         "PR #%d native enable=%s 폴백 (REST merge_pr): %s",
         pr_number, result.status, result.detail or "-",
