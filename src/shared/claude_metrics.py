@@ -25,14 +25,30 @@ _PRICING_USD_PER_MTOK = {
 }
 _DEFAULT_FAMILY = "sonnet"  # 미지 모델 → sonnet 가격으로 보수적 추정
 
+# Anthropic prompt caching 가격 정책 (input rate 기준 배수)
+# Anthropic prompt caching pricing (multiplier on input rate)
+_CACHE_READ_MULTIPLIER = 0.1   # 캐시 읽기 = input 정가의 1/10
+_CACHE_CREATION_MULTIPLIER = 1.25  # 캐시 생성 = input 정가의 1.25× (5분 TTL 회수)
+
+# silent fallback 차단 — 5회 연속 cache_creation>0 + cache_read=0 시 WARNING
+# Silent-fallback guard — WARN after 5 consecutive creation>0 + read==0 calls.
+_SILENT_FALLBACK_THRESHOLD = 5
+
 
 def estimate_claude_cost_usd(
     *,
     model: str,
     input_tokens: int,
     output_tokens: int,
+    cache_read_tokens: int = 0,
+    cache_creation_tokens: int = 0,
 ) -> float:
-    """모델 + 토큰 수로 USD 비용 추정. 정확도 ±10% 허용 (추세 추적용)."""
+    """모델 + 토큰 수로 USD 비용 추정 (cache 비용 모델 포함). 정확도 ±10% 허용.
+
+    Estimate USD cost from model + token counts (includes cache pricing). ±10% tolerance.
+
+    cache_read = input rate × 0.1 (10× cheaper) / cache_creation = input rate × 1.25.
+    """
     model_lower = (model or "").lower()
     family = _DEFAULT_FAMILY
     for key in _PRICING_USD_PER_MTOK:
@@ -40,7 +56,48 @@ def estimate_claude_cost_usd(
             family = key
             break
     in_rate, out_rate = _PRICING_USD_PER_MTOK[family]
-    return (input_tokens * in_rate + output_tokens * out_rate) / 1_000_000
+    return (
+        input_tokens * in_rate
+        + output_tokens * out_rate
+        + cache_read_tokens * in_rate * _CACHE_READ_MULTIPLIER
+        + cache_creation_tokens * in_rate * _CACHE_CREATION_MULTIPLIER
+    ) / 1_000_000
+
+
+# 메모리 카운터 — 운영 cache hit rate 추세 추적 (process 재시작 시 reset)
+# In-memory counters — track cache hit-rate trend (reset on process restart).
+_cache_stats: dict[str, int | float] = {
+    "total_calls": 0,
+    "cache_read_tokens": 0,
+    "cache_creation_tokens": 0,
+    "input_tokens": 0,
+}
+_silent_fallback_streak: int = 0  # 연속 creation>0 + read==0 카운터
+
+
+def reset_cache_stats() -> None:
+    """카운터 초기화 — 테스트 격리 + 운영 수동 리셋용.
+
+    Reset counters — for test isolation and operational manual reset.
+    """
+    global _silent_fallback_streak  # pylint: disable=global-statement
+    _cache_stats.update(
+        total_calls=0, cache_read_tokens=0, cache_creation_tokens=0, input_tokens=0,
+    )
+    _silent_fallback_streak = 0
+
+
+def get_cache_stats() -> dict[str, int | float]:
+    """현재 누적 cache 통계 + hit_rate 반환 (process 시작 이후 누적).
+
+    Return cumulative cache stats + hit_rate since process start.
+    cache_hit_rate = cache_read / (cache_read + input).
+    """
+    read = _cache_stats["cache_read_tokens"]
+    inp = _cache_stats["input_tokens"]
+    denom = read + inp
+    hit_rate = (read / denom) if denom > 0 else 0.0
+    return {**_cache_stats, "cache_hit_rate": hit_rate}
 
 
 def extract_anthropic_usage(response: object) -> tuple[int, int]:
@@ -85,9 +142,32 @@ def log_claude_api_call(
             정가 대비 1.25× 비용 (캐시 등록 비용 — 5분 TTL 내 재사용 시 절감 회수).
             Tokens written to prompt cache (1.25× normal cost; recouped on hits).
     """
+    # defensive — 호출자 (특히 mock 테스트) 가 비-int 전달 시 0 으로 정규화
+    # Defensive coercion — callers (esp. mocks) may pass non-int; normalize to 0.
+    try:
+        cache_read_tokens = int(cache_read_tokens or 0)
+        cache_creation_tokens = int(cache_creation_tokens or 0)
+    except (TypeError, ValueError):
+        cache_read_tokens, cache_creation_tokens = 0, 0
     cost_usd = estimate_claude_cost_usd(
-        model=model, input_tokens=input_tokens, output_tokens=output_tokens,
+        model=model,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cache_read_tokens=cache_read_tokens,
+        cache_creation_tokens=cache_creation_tokens,
     )
+    # 누적 카운터 갱신 — silent fallback 차단 streak 추적 페어
+    # Update cumulative counters — pairs with silent-fallback streak guard.
+    global _silent_fallback_streak  # pylint: disable=global-statement
+    _cache_stats["total_calls"] += 1
+    _cache_stats["cache_read_tokens"] += cache_read_tokens
+    _cache_stats["cache_creation_tokens"] += cache_creation_tokens
+    _cache_stats["input_tokens"] += input_tokens
+    if status == "success":
+        if cache_creation_tokens > 0 and cache_read_tokens == 0:
+            _silent_fallback_streak += 1
+        else:
+            _silent_fallback_streak = 0
     extra = {
         "claude_model": model,
         "duration_ms": duration_ms,
@@ -109,6 +189,15 @@ def log_claude_api_call(
             cache_read_tokens, cache_creation_tokens, cost_usd, status,
             extra=extra,
         )
+        # silent fallback 의심 — caching 등록만 발생 + 읽기 0 → cache 미작동
+        # Suspect silent fallback — only cache writes, no reads → caching inactive.
+        if _silent_fallback_streak >= _SILENT_FALLBACK_THRESHOLD:
+            logger.warning(
+                "claude_api_call silent_cache_fallback streak=%d "
+                "(cache_creation>0 + cache_read=0 N회 연속 — system_text 1024 토큰 미달 가능)",
+                _silent_fallback_streak,
+            )
+            _silent_fallback_streak = 0  # 재 alert 방지
     else:
         logger.warning(
             "claude_api_call model=%s duration_ms=%.0f status=%s error_type=%s",
