@@ -18,6 +18,7 @@ from src.models.analysis import Analysis
 from src.models.gate_decision import GateDecision
 from src.models.repository import Repository
 from src.repositories import repo_config_repo, repository_repo
+from src.shared.log_safety import sanitize_for_log
 
 logger = logging.getLogger("src.ui")
 templates = Jinja2Templates(directory="src/templates")
@@ -51,8 +52,13 @@ async def delete_repo_cascade(db: Session, repo: Repository, github_token: str) 
     if repo.webhook_id:
         try:
             await delete_webhook(github_token, repo.full_name, repo.webhook_id)
-        except Exception:  # nosec B110  # pylint: disable=broad-except
-            pass
+        except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-except
+            # best-effort: GitHub API 실패 시 운영 관측 위해 logger.warning (Sentry 송출)
+            # best-effort: log warning on GitHub API failure for observability (Sentry)
+            logger.warning(
+                "delete_repo_cascade: webhook delete failed for %s: %s",
+                sanitize_for_log(repo.full_name), type(exc).__name__,
+            )
 
     analysis_ids = [
         row.id for row in db.query(Analysis.id).filter(Analysis.repo_id == repo.id).all()

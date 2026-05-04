@@ -317,11 +317,20 @@ async def _get_ci_status_safe(
         return "unknown"
 
 
+def _resolve_retry_chat_id(row: MergeRetryQueue, cfg: RepoConfigData) -> str | None:
+    """retry worker 알림 chat_id 3-tier fallback (config → row 스냅샷 → global).
+
+    Resolve retry worker notification chat_id (3-tier fallback).
+    `analytics_service.resolve_chat_id` 와 분리: row.notify_chat_id 단계 추가.
+    """
+    return cfg.notify_chat_id or row.notify_chat_id or settings.telegram_chat_id
+
+
 async def _notify_config_changed(row: MergeRetryQueue, cfg: RepoConfigData) -> None:
     """설정 변경으로 재시도가 중단됐음을 알린다.
     Notify user that retry was stopped due to config change.
     """
-    chat_id = cfg.notify_chat_id or row.notify_chat_id or settings.telegram_chat_id
+    chat_id = _resolve_retry_chat_id(row, cfg)
     if not chat_id or not settings.telegram_bot_token:
         return
     msg = (
@@ -342,7 +351,7 @@ async def _notify_merge_succeeded(row: MergeRetryQueue, cfg: RepoConfigData) -> 
     """재시도 후 머지 성공을 알린다 (시도 횟수 포함).
     Notify user of successful merge after retries (includes attempt count).
     """
-    chat_id = cfg.notify_chat_id or row.notify_chat_id or settings.telegram_chat_id
+    chat_id = _resolve_retry_chat_id(row, cfg)
     if not chat_id or not settings.telegram_bot_token:
         return
     pr_url = f"https://github.com/{row.repo_full_name}/pull/{row.pr_number}"
@@ -369,7 +378,7 @@ async def _notify_merge_terminal(
     """최종 머지 실패를 알린다.
     Notify user of terminal merge failure.
     """
-    chat_id = cfg.notify_chat_id or row.notify_chat_id or settings.telegram_chat_id
+    chat_id = _resolve_retry_chat_id(row, cfg)
     if not chat_id or not settings.telegram_bot_token:
         return
     advice = get_advice(reason_tag)
