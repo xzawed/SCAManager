@@ -75,6 +75,101 @@ class TestEstimateCostUsd:
         # 8000 * 3 + 1000 * 15 = 24000 + 15000 = 39000 µ$ = $0.039
         assert cost == pytest.approx(0.039)
 
+    # ── Phase 1 (g-G1) — cache 비용 모델 반영 ───────────────────────────
+    # cache_read = input 정가의 1/10 (Anthropic 정책 — 5분 ephemeral)
+    # cache_creation = input 정가의 1.25× (캐시 등록 비용 — 5분 TTL 내 회수)
+    def test_cache_read_costs_one_tenth_of_input(self):
+        """cache_read_tokens 는 input rate × 0.1 비용 (10배 절감)."""
+        cost = claude_metrics.estimate_claude_cost_usd(
+            model="claude-sonnet-4-6",
+            input_tokens=0,
+            output_tokens=0,
+            cache_read_tokens=1_000_000,
+        )
+        # sonnet input $3/M × 0.1 = $0.30
+        assert cost == pytest.approx(0.30)
+
+    def test_cache_creation_costs_one_quarter_more_than_input(self):
+        """cache_creation_tokens 는 input rate × 1.25 비용 (캐시 등록)."""
+        cost = claude_metrics.estimate_claude_cost_usd(
+            model="claude-sonnet-4-6",
+            input_tokens=0,
+            output_tokens=0,
+            cache_creation_tokens=1_000_000,
+        )
+        # sonnet input $3/M × 1.25 = $3.75
+        assert cost == pytest.approx(3.75)
+
+    def test_cache_fields_default_zero_backwards_compat(self):
+        """cache_*_tokens 인자 부재 시 기존 동작 보존 (backward compat)."""
+        cost = claude_metrics.estimate_claude_cost_usd(
+            model="claude-sonnet-4-6",
+            input_tokens=8000,
+            output_tokens=1000,
+        )
+        assert cost == pytest.approx(0.039)
+
+    def test_combined_cost_with_cache(self):
+        """cache + input + output 합산 — 운영 cache hit 시나리오."""
+        # 실제: 5000 cache_read (재사용) + 3000 input (신규) + 1000 output
+        cost = claude_metrics.estimate_claude_cost_usd(
+            model="claude-sonnet-4-6",
+            input_tokens=3000,
+            output_tokens=1000,
+            cache_read_tokens=5000,
+        )
+        # 5000 * 0.30 + 3000 * 3.0 + 1000 * 15.0 = 1500 + 9000 + 15000 = 25500 µ$
+        assert cost == pytest.approx(0.0255)
+
+
+class TestCacheStats:
+    """get_cache_stats — 메모리 카운터 헬퍼 (g-G2)"""
+
+    def setup_method(self):
+        # 테스트 격리 — 이전 테스트의 카운터 누적 차단
+        # Test isolation — clear counters from previous tests.
+        claude_metrics.reset_cache_stats()
+
+    def test_initial_stats_all_zero(self):
+        stats = claude_metrics.get_cache_stats()
+        assert stats == {
+            "total_calls": 0,
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+            "input_tokens": 0,
+            "cache_hit_rate": 0.0,
+        }
+
+    def test_log_call_accumulates_counters(self, caplog):
+        with caplog.at_level(logging.INFO, logger="src.shared.claude_metrics"):
+            claude_metrics.log_claude_api_call(
+                model="claude-sonnet-4-6", duration_ms=100,
+                input_tokens=3000, output_tokens=500, status="success",
+                cache_read_tokens=5000, cache_creation_tokens=0,
+            )
+        stats = claude_metrics.get_cache_stats()
+        assert stats["total_calls"] == 1
+        assert stats["cache_read_tokens"] == 5000
+        assert stats["input_tokens"] == 3000
+        # cache_hit_rate = read / (read + input) = 5000/8000 = 0.625
+        assert stats["cache_hit_rate"] == pytest.approx(0.625)
+
+    def test_silent_fallback_warning_on_creation_without_read(self, caplog):
+        """캐시 생성만 반복되고 read 가 0 — silent fallback 의심 — WARNING (신규 발견 2)."""
+        with caplog.at_level(logging.WARNING, logger="src.shared.claude_metrics"):
+            # 5회 연속 creation > 0 + read == 0 → WARNING 발화
+            # 5 consecutive creation > 0 + read == 0 → WARNING expected.
+            for _ in range(5):
+                claude_metrics.log_claude_api_call(
+                    model="claude-sonnet-4-6", duration_ms=100,
+                    input_tokens=1000, output_tokens=500, status="success",
+                    cache_read_tokens=0, cache_creation_tokens=600,
+                )
+        warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert any("cache_read=0" in r.getMessage() or "silent" in r.getMessage().lower()
+                   for r in warnings), \
+            "5회 연속 cache_creation>0 + cache_read=0 시 WARNING 의무"
+
 
 class TestLogClaudeApiCall:
     """log_claude_api_call — 구조화된 로그 출력"""

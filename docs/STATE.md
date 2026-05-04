@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-04 기준 — **사이클 72 진입 (정책 16 5번째 원칙 추가 + 메모리 15건)**: 50 PR #188~#240 (메타 Issue #213/#214 제외 — 실측 `git log`) + 본 PR (사이클 72) — 누적 정책 본문 16건 + 메모리 15건 (취소선 2건 제외) + 사이클 70 정책 15/16 신설 (#236) + 사이클 71 정책 16 default 적용 첫 사이클 (#237/#238/#240 — pure cleanup + 응집 헬퍼 + gate legacy wrapper 단순화) + 사이클 71 후속 secret scanning 사고 처리 (Telegram Bot Token PR #227 commit message body 노출 → git filter-branch rewrite + force push + stale branches 53 삭제) + **사이클 72 = 정책 16 5번째 원칙 (토큰 비용 효율) + 명시 제외 영역 (b/c) + 메모리 페어 2건 신설**)
+## 현재 수치 (2026-05-04 기준 — **사이클 72 PR 2 진입 (Claude API 비용 모니터링 정확화)**: 51 PR #188~#241 (메타 Issue #213/#214 제외) + 본 PR (사이클 72 PR 2) — 누적 정책 본문 16건 + 메모리 15건 (취소선 2건 제외) + 사이클 72 PR 1 (#241 정책 16 5번째 원칙 + 메모리 페어 2건) + **사이클 72 PR 2 = Phase 1 옵션 🅓 (데이터 기반 단계 진행) — `estimate_claude_cost_usd` cache 비용 모델 (cache_read 1/10x + cache_creation 1.25x) + `get_cache_stats` 메모리 카운터 헬퍼 + silent fallback WARNING + a-A 메모리/CLAUDE 정정 (caching 100% 적용) + e 결과 명시 (이미 100% 구현). 신규 단위 테스트 +6**)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
