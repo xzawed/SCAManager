@@ -49,6 +49,11 @@
 | 2026-05-01 | [phase-h-i-completion-retrospective](2026-05-01-phase-h-i-completion-retrospective.md) | Phase H+I 15 PR 완료 회고 — 12-에이전트 감사 Critical 10건 100% 처리, 외부 의존성 추가 0, Functional bug 1건 발견 (Telegram HMAC) |
 | 2026-05-01 | [ui-audit-cycle-retrospective](2026-05-01-ui-audit-cycle-retrospective.md) | UI 감사 사이클 (그룹 55~57) 회고 — 4-에이전트 화면 감사 65건 → Step A~E 분할 → 5-에이전트 정합성 cleanup 4 PR + 메타 sync PR-D1~D5 모델 + 환각 토큰 발견 패턴 + claude-dark 테마 토큰 매트릭스 |
 | 2026-05-01 | [collaboration-retrospective](2026-05-01-collaboration-retrospective.md) | 사용자 ↔ Claude 협업 회고 — 25 PR 시리즈 후 신뢰 모델 평가 + 사용자 합의 정책 5건 (옵션 장단점 명시 / PR 검증 미완료 섹션 / 자율 판단 보고 / 단언+가드 묶음 / 사이클 종료 신호) — **다음 세션 default 정책** |
+| 2026-05-04 | [phase3-end-multi-agent-retrospective](2026-05-04-phase3-end-multi-agent-retrospective.md) | Phase 3 종결 5+1 에이전트 회고 — RLS 운영 활성화 + Insight 회귀 가드 + P0 7건 (RLS 미들웨어 부재 등) |
+| 2026-05-04 | [cycle-64-67-end-multi-agent-retrospective](2026-05-04-cycle-64-67-end-multi-agent-retrospective.md) | 사이클 64~67 4 사이클 종결 회고 — cross-verify 생략 첫 사례 + 메모리 4건 신규/갱신 + 정책 P0 4건 진화 |
+| 2026-05-04 | [cycle-70-72-end-multi-agent-retrospective](2026-05-04-cycle-70-72-end-multi-agent-retrospective.md) | 사이클 70~72 종결 회고 — 정책 15/16 신설 적용 첫 사이클 + Telegram secret 사고 + 토큰 비용 효율 5번째 원칙 추가 |
+| 2026-05-04 | [cycle-70-74-end-multi-agent-retrospective](2026-05-04-cycle-70-74-end-multi-agent-retrospective.md) | 사이클 70~74 종결 회고 — Phase 2-A/B (Anthropic 효율화 + DB 캐싱) 머지 + Phase 4 영역 진입 첫 작업 + 메모리 카테고리 분류 임계 도달 |
+| 2026-05-04 | [cycle-76-full-consistency-cleanup-retrospective](2026-05-04-cycle-76-full-consistency-cleanup-retrospective.md) | 사이클 76 전체 문서+코드 5+1 정합성 cleanup — Tier A 8건 정정 + false-positive 차단 3건 + 신규 발견 3건 (정책 8 진화 정량 기준 정합) |
 
 ---
 

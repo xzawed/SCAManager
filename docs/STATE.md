@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-04 기준 — **사이클 75 P1 묶음 (정책/메모리/cross-verify 진화)**: 58 PR #188~#249 (메타 #213/#214 제외) + 본 PR (사이클 75 P1 묶음) — 누적 정책 본문 16건 + 메모리 24건 (활성 22 + deprecated 2). **사이클 75 = (1) Railway 운영 alembic 0027/0028 자동 적용 검증 완료 (Project Token GraphQL — 둘 다 SUCCESS) + (2) 본 PR P1 묶음 = 정책 5 강화 (Phase 신호 분리) + 정책 6 강화 (line:span `grep -n` 실측) + 정책 8 진화 (단일 관점 회고 정량 X + cross-verify ROI 정량) + 정책 16 본문 보강 (4 단계 caching timeline) + 메모리 카테고리 분류 (5 카테고리)**. 단위 2122 / 통합 84 / E2E 82
+## 현재 수치 (2026-05-04 기준 — **사이클 76 정합성 cleanup**: 59 PR #188~#250 (메타 #213/#214 제외) + 본 PR (사이클 76 5+1 정합성 cleanup) — 누적 정책 본문 16건 + 메모리 24건 (활성 22 + deprecated 2). **사이클 76 = 5+1 다중 에이전트 (관점 1~5 + cross-verify) 정합성 검증 = 1차 P0 24건 → cross-verify 종합 후 Tier A 8건 정정 (단위 카운트 2055→2122 3 위치 + 정책 7+14 line ref drift + 메모리 4→5 원칙 + STATE 헤더 + tail) + false-positive 차단 3건 + 신규 발견 3건 (정책 8 진화 정량 기준 정합 — 양호 ROI)**. 단위 2122 / 통합 84 / E2E 82
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
@@ -114,9 +114,27 @@
 
 ---
 
-### 사이클 75 P1 묶음 — 정책 본문 진화 + 메모리 카테고리 분류 (2026-05-04 · 본 PR)
+### 사이클 76 — 전체 문서 + 코드 5+1 다중 에이전트 정합성 cleanup (2026-05-04 · 본 PR)
 
-사용자 결정 = 옵션 🅓 (3 PR 묶음 단일 응집 PR — 정책/메모리/cross-verify 진화). 본 PR = docs only ~280 LOC.
+사용자 발화: *"전체 문서와 전체 코드를 여러 에이전트가 서로 병행 체크 하면서 최신화 및 문서 정리 최적화 작업을 수행합니다. 정리가 마무리 되시면 회고를 부탁드립니다."* — 5+1 다중 에이전트 (관점 1 src/ 트리 + 관점 2 STATE.md + 회고 보고서 + 관점 3 메모리 영역 + 관점 4 정책 본문 + 관점 5 테스트 + CI 정합성 + cross-verify general-purpose 6차) 병렬 정합성 검증.
+
+| 영역 | 처리 |
+|------|------|
+| **1차 5 에이전트 P0 합계** | 24건 (관점 1=3 + 관점 2=7 + 관점 3=4 + 관점 4=6 + 관점 5=4) |
+| **cross-verify 종합** | Tier A 8건 (즉시 정정) + Tier B 3건 (다음 사이클) + Tier C 2건 (보존 OK). false-positive 차단 3건 + 신규 발견 3건 (정책 8 진화 정량 정합) |
+| **Tier A 정정 (본 PR)** | (1) CLAUDE.md L1179 + L653 + README.md L21 단위 카운트 2055 → 2122 (3 위치 단일 root) (2) 메모리 `feedback-code-simplicity-default.md` "4 원칙" → "5 원칙" (description + 본문) (3) CLAUDE.md L426 정책 7 line ref L348 → L930 (4) CLAUDE.md L428 정책 7 line ref L353 → L921 (5) CLAUDE.md L784 정책 14 line ref L715~ → L891~ (6) STATE.md L5 헤더 사이클 75 → 사이클 76 진입 + 58 PR → 59 PR (7) STATE.md L117 cycle 75 row "본 PR" → 머지 완료 (#250) (8) CLAUDE.md tail 사이클 76 행 추가 |
+| **false-positive 차단 (cross-verify 효과)** | (FP-1) 관점 1 P0-2 `build_review_blocks` 위치 오류 (`anthropic_caching.py` X → 실측 `analyzer/pure/review_prompt.py:144`) (FP-2) 관점 4 P0-2/3 line ref 이미 :89 갱신됨 (보존 OK) (FP-3) 메모리 `feedback-ai-review-quality-protect.md:17` `:79,89` 두 번호 모두 명시 (의도 가능 보존) |
+| **신규 발견 (cross-verify 핵심 가치)** | (NEW-1) STATE.md L5 헤더 메타 정합성 깨짐 (사이클 75 마감 + 사이클 76 진입 미반영) (NEW-2) CLAUDE.md tail "현재 상태" 사이클 76 행 미존재 (NEW-3) `scan-security` cron endpoint = src/ 트리 명시 ✅ but 핵심 데이터 흐름 본문 보강 가능 (Tier B 권장 보류) |
+| **회고 + 자유 발언** | `docs/reports/2026-05-04-cycle-76-full-consistency-cleanup-retrospective.md` 신설 — 5+1 패턴 효과 + 정책 8 진화 정량 검증 + 자유 발언 (정책 9) |
+| **자율 판단 보고 (정책 3)** | (1) cross-verify 진행 default 적용 (정책 8 진화 3 조건 중 사용자 빠른 진행 신호 부재 = 생략 X) (2) Tier B 3건 (메모리 line:span drift) = 다음 사이클 묶음 (영향 ↓ + 본 PR 응집 단위 보호) (3) Tier C 2건 = 의도적 보존 (false-positive 차단 결과) (4) src/ 트리 `build_review_blocks` 추가 = 정확한 위치 (review_prompt.py:144) 보강 보류 (Tier B) |
+| **운영 smoke check (정책 13)** | docs only — 운영 endpoint 무영향 (생략 OK) |
+| **Code Scanning open alert (정책 14)** | 본 PR 작업 직전 = 0건 (사이클 73~75 누적 dismiss 완료) |
+
+---
+
+### 사이클 75 P1 묶음 — 정책 본문 진화 + 메모리 카테고리 분류 (2026-05-04 · #250)
+
+사용자 결정 = 옵션 🅓 (3 PR 묶음 단일 응집 PR — 정책/메모리/cross-verify 진화). #250 = docs only ~280 LOC.
 
 | 영역 | 처리 |
 |------|------|
