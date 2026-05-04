@@ -19,6 +19,13 @@ logger = logging.getLogger(__name__)
 # single retry only to avoid infinite loop. Critical C4 from 2026-04-30 audit.
 TELEGRAM_RETRY_AFTER_MAX_SECONDS = 30
 
+# Cycle 78 PR 2 — 봇 차단 silent skip + streak guard (5+1 NEW-P0 — 🅒 P0-1).
+# Telegram 403 = bot blocked by user / kicked from group → cron 누적 사고 차단.
+# silent skip + WARNING (단발) + 5회 연속 시 streak WARNING (운영자 인지).
+# Cycle 78 PR 2 — bot blocked silent skip + streak guard (5+1 NEW-P0 — 🅒 P0-1).
+TELEGRAM_BOT_BLOCKED_STREAK_THRESHOLD = 5
+_telegram_bot_blocked_streak: int = 0  # process restart 시 reset (정책 16 단순화)
+
 
 async def telegram_post_message(bot_token: str, chat_id: str, payload: dict) -> None:
     """Telegram Bot API sendMessage 엔드포인트에 JSON 페이로드를 POST한다.
@@ -26,11 +33,16 @@ async def telegram_post_message(bot_token: str, chat_id: str, payload: dict) -> 
     429 Too Many Requests 응답 시 `parameters.retry_after` 만큼 sleep 후 1회 재시도.
     cap 30s — 악의적 응답으로 인한 무기한 sleep 방지.
 
+    403 Forbidden (bot blocked by user / kicked from group) 시 silent skip + WARNING.
+    5회 연속 403 시 추가 streak WARNING — 운영자 인지 의무.
+    Cycle 78 PR 2 — bot blocked guard (Phase 9 silent fallback streak 패턴 차용).
+
     Args:
         bot_token: Telegram Bot API 토큰
         chat_id:   대상 채팅 ID (사용자·그룹·채널)
         payload:   sendMessage JSON 페이로드 (text, parse_mode 등)
     """
+    global _telegram_bot_blocked_streak  # pylint: disable=global-statement
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     client = get_http_client()  # 싱글톤
     body = {"chat_id": chat_id, **payload}
@@ -45,6 +57,33 @@ async def telegram_post_message(bot_token: str, chat_id: str, payload: dict) -> 
         )
         await asyncio.sleep(retry_after)
         r = await client.post(url, json=body)
+
+    # defensive int coercion — mock-safety + 정책 16 1번 원칙 정확성
+    # (메모리 `feedback-defensive-coercion-mock-safety.md` 패턴)
+    # defensive int coercion — mock-safety + Policy 16 #1 accuracy
+    try:
+        status = int(r.status_code or 0)
+    except (TypeError, ValueError):
+        status = 0
+
+    # 403 봇 차단 silent skip + streak guard (Cycle 78 PR 2 — 🅒 P0-1)
+    # 403 bot blocked silent skip + streak guard
+    if status == 403:
+        _telegram_bot_blocked_streak += 1
+        logger.warning(
+            "Telegram 403 (bot blocked or kicked) chat_id=%s — silent skip", chat_id,
+        )
+        if _telegram_bot_blocked_streak >= TELEGRAM_BOT_BLOCKED_STREAK_THRESHOLD:
+            logger.warning(
+                "Telegram bot_blocked streak=%d — 운영자 검토 의무 (token revoke 또는 chat 정리)",
+                _telegram_bot_blocked_streak,
+            )
+            _telegram_bot_blocked_streak = 0  # reset (재 alert 방지)
+        return
+
+    # 정상 응답 — streak reset
+    if status and status < 400:
+        _telegram_bot_blocked_streak = 0
 
     r.raise_for_status()
 
