@@ -103,7 +103,7 @@ def test_count_by_classification_includes_pending(db, repo):
         db, repo_id=repo.id, alert_type="code_scanning", alert_number=2,
         ai_classification="used_in_tests",
     )
-    log3 = security_alert_log_repo.upsert_alert_log(
+    security_alert_log_repo.upsert_alert_log(
         db, repo_id=repo.id, alert_type="code_scanning", alert_number=3,
     )  # ai_classification = None → "unclassified"
     counts = security_alert_log_repo.count_by_classification(db)
