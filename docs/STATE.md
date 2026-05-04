@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-04 기준 — **사이클 72 PR 2 진입 (Claude API 비용 모니터링 정확화)**: 51 PR #188~#241 (메타 Issue #213/#214 제외) + 본 PR (사이클 72 PR 2) — 누적 정책 본문 16건 + 메모리 15건 (취소선 2건 제외) + 사이클 72 PR 1 (#241 정책 16 5번째 원칙 + 메모리 페어 2건) + **사이클 72 PR 2 = Phase 1 옵션 🅓 (데이터 기반 단계 진행) — `estimate_claude_cost_usd` cache 비용 모델 (cache_read 1/10x + cache_creation 1.25x) + `get_cache_stats` 메모리 카운터 헬퍼 + silent fallback WARNING + a-A 메모리/CLAUDE 정정 (caching 100% 적용) + e 결과 명시 (이미 100% 구현). 신규 단위 테스트 +6**)
+## 현재 수치 (2026-05-04 기준 — **사이클 73 진입 (사이클 70~72 종결 회고 + sync 페어)**: 53 PR #188~#242 (메타 Issue #213/#214 제외 — 실측 `git log`) + 본 PR (사이클 70~72 종결 회고) — 누적 정책 본문 16건 + 메모리 18건 (활성 16 + deprecated 2) + **사이클 73 = 5 에이전트 회고 (cross-verify 생략 — 정책 8 정량 기준 3 조건 충족) + 메모리 신설 3건 (defensive coercion / wrapper deprecation / silent fallback streak) + 메모리 강화 4건 (think-before-code-edit a-2 / secret-scanning destructive PR / architecture Medium ⚠️ 마커 / TDD Red 사이클 72 사례) + CLAUDE/STATE 정합 정정 (메모리 카운트 15→18 + 정책 16 본문 stale 정정). 별도 PR 권장 = `docs/policy-evolution-cycle-72` (정책 6/8/16/3 진화 묶음 — High tier 사용자 사전 확인 의무)**)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
@@ -114,7 +114,23 @@
 
 ---
 
-### 사이클 72 — 정책 16 5번째 원칙 추가 + 메모리 페어 2건 (2026-05-04 · 본 PR)
+### 사이클 73 — 사이클 70~72 종결 회고 + sync 페어 (2026-05-04 · 본 PR)
+
+5 에이전트 회고 (관점 1~5) + cross-verify 생략 (정책 8 정량 기준 3 조건 충족 — P0 ≥ 8 + 관점 5종 + 사용자 빠른 진행 신호 "A+B 진행"). 회고 보고서 = `docs/reports/2026-05-04-cycle-70-72-end-multi-agent-retrospective.md`.
+
+| 영역 | 처리 |
+|------|------|
+| **회고 보고서 신설** | P0 18건 (관점 1: 3 / 관점 2: 5 / 관점 3: 3 / 관점 4: 4 / 관점 5: 3) + P1 15건 + P2 13건 |
+| **메모리 신설 3건** | `feedback-defensive-coercion-mock-safety.md` (사이클 72 PR 2 학습 — int 정규화) + `feedback-wrapper-thin-deprecation-pattern.md` (사이클 71 #238 학습 — 4 조건 충족 시 wrapper 보존) + `feedback-silent-fallback-streak-guard.md` (사이클 72 PR 2 학습 — N회 streak + WARNING + reset) |
+| **메모리 강화 4건** | `feedback-think-before-code-edit.md` (a-2) 사용자 신규 규칙 본질 의도 1줄 사전 확인 + `feedback-secret-scanning-history-rewrite.md` destructive PR §자율 판단 보고 의무 + `feedback-architecture-decision-pre-confirm.md` Medium tier ⚠️ 마커 default + `feedback-tdd-red-full-suite-validation.md` 사이클 72 PR 2 사례 1줄 |
+| **CLAUDE.md 정정** | 30초 체크리스트 메모리 카운트 15→18 (deprecated 2 포함) + 정책 16 L844 본문 stale 정정 (caching 100% 적용 명시) + tail 사이클 73 추가 |
+| **MEMORY.md 인덱스 갱신** | 활성 14→17 (취소선 2건 제외) — 신규 3건 추가 |
+| **별도 PR 권장 (사이클 73)** | `docs/policy-evolution-cycle-72` 정책 본문 진화 묶음 — 정책 6 강화 (메모리/문서 line:span) + 정책 8 cross-verify 정량 기준 (4) + 정책 16 §"How to apply" 단계 분리 1줄 + 정책 3 §"진화" 옵션 표 default — High tier 사용자 사전 확인 의무 |
+| **자율 판단 보고 (정책 3)** | cross-verify 생략 결정 = 정책 8 정량 기준 (사이클 69 신설) 3 조건 모두 충족 (P0 18 ≥ 8 + 관점 5종 모두 P0 1+ + 사용자 "A+B 진행" 신호) — 사이클 67 #232 패턴 정합 |
+
+---
+
+### 사이클 72 — 정책 16 5번째 원칙 추가 + Phase 1 인프라 baseline (2026-05-04 · #241 + #242)
 
 사용자 발화 (사이클 71 후): *"본래 의도는 토큰사용량을 줄이면서도 동급의 성능"* → 사이클 70 정책 16 본문에 토큰 비용 누락 (Claude 정책 15 위반 — 사용자 의도 모호 검증 안 함) → 사이클 72 회고 정정.
 
