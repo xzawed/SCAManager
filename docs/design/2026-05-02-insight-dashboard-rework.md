@@ -3,9 +3,9 @@
 > **사용자 발화 (2026-05-02)**:
 > *"현재 Insights 탭은 한정적이고 해당 컨셉과 페이지는 다 폐기 후 가장 근본이 되는 대시보드와 정보를 보여주거나 제시하는 무언가 있어야 한다 — 이 내용에 대해 여러 에이전트는 현재 프로젝트 서비스의 사활이 걸린만큼 아주 깊고 많이 토론해도 됩니다."*
 >
-> **상태**: ✅ Phase 1+2 머지 완료 (그룹 60+61 — `/dashboard` MVP-B 출시 + Auto-merge KPI + feedback CTA + leaderboard 폐기) — Phase 3 (SaaS 토대 + caching) 진행 중. 사용자 회신 의무 4건 (caching 패턴 / Insight 카드 4종 / 모드 토글 default / RLS 모델) 후 PR 6분할 시작. 상세 진행 상태는 `docs/design/INDEX.md` + `docs/STATE.md` 참조.
-> **변경 영향 (실측)**: Phase 1+2 = 17 PR 머지, 코드 826 LOC 폐기 + dashboard_service 6 함수 신규 + alembic 0025 (leaderboard column drop).
-> **회귀 위험**: 보존 함수 (`weekly_summary`, `moving_average`, `resolve_chat_id`) 미파괴 — 회귀 가드 통과 (`top_issues` 는 Phase 1 PR 1 폐기 / `frequent_issues_v2` 신규 대체).
+> **상태**: ✅ **Phase 3 100% 완료 + postlude 완료** (2026-05-04). 사용자 회신 4건 모두 처리 (caching #218 / 카드 4종 #219 / 모드 default #221 / RLS 모델 #223). Phase 3 PR 1~6 (#218~#224) + postlude 4 PR (RLS middleware #228 / backfill #229 / cleanup #230 / sync #231) + 종결 회고 (#232) + 정책 진화 (#233) 모두 머지. 상세 진행 = `docs/design/INDEX.md` + `docs/STATE.md`.
+> **변경 영향 (실측)**: Phase 1+2+3 = 누적 38+ PR 머지, 코드 826 LOC 폐기 + dashboard_service 7 함수 신규 (insight_narrative 포함) + 격리 헬퍼 2건 + alembic 0025/0026 (leaderboard drop + RLS policy) + RLS middleware (ASGI + contextvars + event listener 3-tier).
+> **회귀 위험**: 보존 함수 (`weekly_summary`, `moving_average`, `resolve_chat_id`) 미파괴 — 회귀 가드 통과 (`top_issues` 는 Phase 1 PR 1 폐기 / `frequent_issues_v2` 신규 대체). pre-existing 5 fail (사이클 62~65 누적 4 사이클 보류) 사이클 66 #227 종결.
 
 ---
 
