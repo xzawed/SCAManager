@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-04 기준 — **Phase 3 100% + postlude 4 PR + 사이클 65~67 cleanup 완료**: 38 PR #188~#230 — Phase 1+2 + 회고 + 정책 진화 9건 + 정책 14 신설 + P0 OAuth + leaderboard 완전 폐기 + Phase 3 SaaS 전환 토대 6 PR + RLS 운영 활성화 미들웨어 (#228) + legacy NULL backfill (#229) + pre-existing 5 fail 완전 해소 (#227) + 5+1 에이전트 회고 2회 + 5 P1 cleanup 묶음 (#230))
+## 현재 수치 (2026-05-04 기준 — **Phase 3 100% + postlude + 사이클 65~68 회고/cleanup 완료**: 41 PR #188~#233 — Phase 1+2 + 회고 + 정책 진화 13건 + 정책 14 신설 + P0 OAuth + leaderboard 완전 폐기 + Phase 3 SaaS 전환 토대 6 PR + RLS 운영 활성화 미들웨어 + legacy NULL backfill + pre-existing 5 fail 완전 해소 + 5+1 에이전트 회고 3회 (Phase 1+2 / Phase 3 종료 / 사이클 64~67 종결) + 5 P1 cleanup 묶음 + 사이클 67 회고 P0 4건 정책 진화 묶음 (#233))
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
@@ -98,7 +98,19 @@
 | **#228** Feat/phase3-postlude RLS runtime activation | **🔴 RLS 운영 활성화 미들웨어** — `src/shared/rls_context.py` (contextvars) + `src/middleware/rls_session.py` (ASGI middleware — BaseHTTPMiddleware 우회) + `src/database.py` event listener (`SET LOCAL app.user_id` PG only). LIFO 등록 순서 (RLS inner / SessionMiddleware outer). 신규 단위 9. 2-layer 격리 완전 활성화 |
 | **#229** Feat/legacy NULL backfill script | **legacy `Repository.user_id` backfill (옵션 🅐-2 author_login JOIN)** — `scripts/backfill_repository_user_id.py` 신설. dry-run default + `--apply` 명시 의무. `_resolve_user_id_for_repo` pure 함수 + 4 카운터 (resolved/skipped_no_analysis/skipped_no_author/skipped_no_user). 신규 단위 5. **사용자 결정 영역 보호** (실제 적용 = `--apply` 의무) |
 | **#230** Docs/cycle-67 P1 cleanup bundle | **잔여 5 P1 묶음** — caching docstring user-invariant 의무 (Medium) + 정책 9 회고 질문 default + 정책 10 fix-up commit format + R0914 결정 트리 (CLAUDE.md 테스트) + dialect helper 보류 사유 (사용처 1~2건만). 사이클 64 회고 P1 8건 → 7건 처리 + 1건 보류 명시 |
-| **(진행 중)** Docs/cycle-67 end state sync | **사이클 67 종료 sync** — 단위 2041→2055 정밀 실측 갱신 + 사이클 65~67 행 신설 + CLAUDE.md L1014 + README 배지 + 메모리 갱신 (RLS 운영 활성화 완료 표시 + Phase 3 100% 영향 확장). 사이클 64 회고 §3.2 잔여 작업 100% 처리 종결 PR |
+| **#231** Docs/cycle-67 end state sync | **사이클 67 종료 sync** — 단위 2041→2055 정밀 실측 갱신 + 사이클 65~67 행 신설 + CLAUDE.md L1014 + README 배지 + 메모리 갱신 (RLS 운영 활성화 완료 표시 + Phase 3 100% 영향 확장). 사이클 64 회고 §3.2 잔여 작업 100% 처리 종결 PR |
+
+---
+
+### 사이클 68 — 4 사이클 종결 회고 + 정책 진화 (2026-05-04 · PR #232 ~ #233 + 본 sync PR)
+
+사이클 64~67 4 사이클 종결 = 큰 마일스톤. 5 에이전트 회고 (cross-verify 생략 — 사이클 68 첫 적용 사례) + 정책 P0 4건 진화 + 사이클 종료 sync.
+
+| PR # | 제목 | 핵심 |
+|------|------|------|
+| **#232** Docs/cycle-67-end multi-agent retrospective | **4 사이클 종결 회고** — 1차 5 에이전트 (cross-verify 생략 — 사용자 빠른 진행 신호 + 1차 결과 충분). P0 13 + P1 7 + P2 3 식별. **메모리 4건** (3 신설: stale-blocker / asgi-middleware / conftest-direct-env-set + 1 갱신: architecture-pre-confirm 위임 분류 3-tier 정밀화). MEMORY 인덱스 8→11건. 회고 보고서 + 자유 발언 (정책 9) + 회고 질문 (사용자 회신 의무) |
+| **#233** Docs/policy-evolution cycle-67 P0 bundle | **사이클 67 회고 P0 4건 정책 본문 진화** (정책 7 강화 응집): (1) 정책 7 강화 — 단일 PR > 1500 LOC 사전 확인 + architecture 단일 OK 정정 (관점 1 P0-1+P0-2) (2) 정책 8 — cross-verify 생략 조건 + 회고 PR 패턴 3 분기 (관점 1 P0-3) (3) 정책 2 진화 — 모든 sync PR commit body 실측 1줄 의무 (관점 2 P0-1) (4) 30초 체크리스트 — 메모리 11건 사례 + 트랩 차단 효과 (관점 2 P0-2). 카테고리 분류 (관점 4 P0-2) = 별도 PR (High tier 사용자 결정 의무) |
+| **(진행 중)** Docs/cycle-68 end state sync | **사이클 68 종료 sync** — STATE 헤더 38→41 PR + 사이클 68 행 신설 + CLAUDE.md L1052 tail. 단위 2055 / 통합 84 / E2E 82 변화 0 (docs only). 정책 2 진화 default 첫 적용 — 실측 1줄 의무 명시 |
 
 ---
 
