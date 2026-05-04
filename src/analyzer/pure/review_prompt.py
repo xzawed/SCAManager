@@ -141,6 +141,49 @@ def get_system_prompt() -> str:
     return _SYSTEM_PROMPT
 
 
+def build_review_blocks(
+    commit_message: str,
+    patches: list[tuple[str, str]],
+    budget_tokens: int = 8000,
+) -> tuple[str, str, list[str]]:
+    """Phase 2 a-B (사이클 74) — Multi-block 확장 인프라 (system + user 분리).
+
+    Phase 2 a-B (Cycle 74) — multi-block infra (system + user split).
+
+    `build_review_prompt` 와 동일 입력이지만 `lang_guides` 를 system block 으로
+    분리해 Anthropic prompt caching 의 추가 cache_control 적용 가능하게 함.
+    호출자 (`ai_review.py`) 가 `lang_guides_block` 을 system 영역에 cache_control
+    포함시키면 단일 언어 PR 반복 시 cache hit rate ↑ (효과 = 운영 데이터 의존).
+
+    Returns:
+        (lang_guides_block, user_prompt, languages):
+        - lang_guides_block = "## 언어별 검토 기준\\n..." (cacheable system 영역, 빈 string 가능)
+        - user_prompt = commit_message + filenames + diff_text (PR 별 가변, 매번 새 토큰)
+        - languages = detected languages list
+
+    참고: 본 helper 는 인프라만 — `ai_review.py` 호출부 변경은 별도 PR (운영 데이터 후 결정).
+    Note: this is infra only — caller migration is a separate PR (post-baseline).
+    """
+    diff_text = "\n".join(
+        f"--- {fname}\n{patch}" for fname, patch in patches
+    )[:MAX_DIFF_CHARS]
+    filenames = "\n".join(fname for fname, _ in patches)
+    languages = detect_languages_from_patches(patches)
+
+    budget_chars = budget_tokens * _CHARS_PER_TOKEN - _FIXED_TOKEN_OVERHEAD * _CHARS_PER_TOKEN
+    lang_guides_block = _build_lang_guides(languages, max(budget_chars, 0))
+
+    detected_display = ", ".join(languages) if languages else "감지 안 됨"
+    user_prompt = _USER_PROMPT_TEMPLATE.format(
+        commit_message=commit_message or "(없음)",
+        filenames=filenames or "(없음)",
+        detected_langs=detected_display,
+        lang_guides="",  # multi-block 시 user_prompt 안 lang_guides 비움 (system 영역으로 분리)
+        diff_text=diff_text,
+    )
+    return lang_guides_block, user_prompt, languages
+
+
 def build_review_prompt(
     commit_message: str,
     patches: list[tuple[str, str]],

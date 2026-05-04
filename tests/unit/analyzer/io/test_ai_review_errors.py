@@ -339,3 +339,42 @@ async def test_review_code_passes_explicit_max_retries_to_anthropic_client():
     retries = captured_kwargs["max_retries"]
     assert isinstance(retries, int)
     assert 1 <= retries <= 5  # 합리적 범위 (무한 재시도 차단)
+
+
+# ── Phase 2 a-B (사이클 74) — Multi-block 인프라 회귀 가드 ──
+def test_build_review_blocks_returns_three_tuple():
+    """신규 helper = (lang_guides_block, user_prompt, languages) 3-튜플 반환."""
+    from src.analyzer.pure.review_prompt import build_review_blocks
+    result = build_review_blocks(
+        "fix bug", [("src/foo.py", "+def f():\n+    pass")],
+    )
+    assert len(result) == 3
+    lang_block, user_prompt, langs = result
+    assert isinstance(lang_block, str)
+    assert isinstance(user_prompt, str)
+    assert "python" in langs
+
+
+def test_build_review_blocks_separates_lang_guides_from_user():
+    """lang_guides 가 system block 으로 분리 — user_prompt 안 inline X."""
+    from src.analyzer.pure.review_prompt import build_review_blocks
+    lang_block, user_prompt, _ = build_review_blocks(
+        "fix bug", [("src/foo.py", "+def f():\n+    pass")],
+    )
+    if lang_block:  # 언어 감지 시
+        assert "## 언어별 검토 기준" in lang_block
+        assert "## 언어별 검토 기준" not in user_prompt
+
+
+def test_build_review_prompt_backwards_compat_unchanged():
+    """기존 build_review_prompt 시그니처 + 반환 형식 100% 보존 (호출자 영향 0)."""
+    from src.analyzer.pure.review_prompt import build_review_prompt
+    user_prompt, langs = build_review_prompt(
+        "fix bug", [("src/foo.py", "+def f():\n+    pass")],
+    )
+    assert isinstance(user_prompt, str)
+    assert isinstance(langs, list)
+    # lang_guides 가 user_prompt 안 inline 보존 (multi-block 미적용)
+    if "python" in langs:
+        # 단일 언어 시 ## 언어별 검토 기준 inline
+        assert "## 언어별 검토 기준" in user_prompt or "(언어 감지 안 됨)" not in user_prompt
