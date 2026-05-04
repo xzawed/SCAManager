@@ -94,9 +94,10 @@ src/
 │   ├── cron_service.py         # 주기적 실행 — run_weekly_reports, run_trend_check
 │   ├── dashboard_service.py    # /dashboard (Phase 1 PR 4 + Phase 2 PR 1+2 + Phase 3 PR 2/5) — 7 공개 함수: dashboard_kpi (KPI 4 — avg_score/analysis_count/high_security/active_repos), dashboard_trend (라인 차트), frequent_issues_v2 (Q7), auto_merge_kpi (단순+retry-aware), merge_failure_distribution (실패 사유 Top N), feedback_status (CTA banner), **insight_narrative (async — Phase 3 PR 2 — Claude AI 4 카드 ✨/🔍/📊/💬 + caching 헬퍼 + 5 status fallback)**. + Phase 3 PR 5 격리 헬퍼 2건: `_apply_analysis_user_filter` / `_apply_merge_attempt_user_filter` (Repository.user_id 기반 + legacy NULL 호환). UI 카드 = 5종 + Insight 모드 4 카드
 │   ├── merge_retry_service.py  # process_pending_retries 워커 (CI-aware Auto Merge 재시도)
-│   └── security_scan_service.py # scan_all_repos / scan_repo_alerts — Code/Secret Scanning 폴링 + audit log upsert + GHAS graceful degradation + kill-switch (`SECURITY_AUTO_PROCESS_DISABLED=1`) (사이클 73 F1)
+│   ├── security_scan_service.py # scan_all_repos / scan_repo_alerts — Code/Secret Scanning 폴링 + audit log upsert + GHAS graceful degradation + kill-switch (`SECURITY_AUTO_PROCESS_DISABLED=1`) (사이클 73 F1)
+│   └── saas_service.py         # tenant_inventory + rls_audit_matrix + rls_coverage_summary — SaaS Phase 1 read-only 집계 (Cycle 79 PR 3a)
 ├── auth/
-│   ├── session.py              # get_current_user() + require_login Depends
+│   ├── session.py              # get_current_user() + require_login Depends + require_admin (Cycle 79 PR 2 — SAAS_MULTITENANT kill-switch + saas_admin_emails allow-list 3-layer 검증)
 │   └── github.py               # /login, /auth/github, /auth/callback, /auth/logout
 ├── models/
 │   ├── repository.py           # Repository ORM (user_id FK nullable)
@@ -191,7 +192,8 @@ src/
 │   ├── stats.py                # GET /api/analyses/{id}, /api/repos/{repo}/stats
 │   ├── hook.py                 # GET /api/hook/verify, POST /api/hook/result (hook_token 인증)
 │   ├── users.py                # POST /api/users/me/telegram-otp — 6자리 OTP 발급 (5분 만료)
-│   └── internal_cron.py        # POST /api/internal/cron/{weekly,trend,scan-security,retry-pending-merges} — INTERNAL_CRON_API_KEY 전용 (scan-security = 사이클 73 F1)
+│   ├── internal_cron.py        # POST /api/internal/cron/{weekly,trend,scan-security,retry-pending-merges} — INTERNAL_CRON_API_KEY 전용 (scan-security = 사이클 73 F1)
+│   └── admin.py                # GET /api/admin/{tenants,rls-audit} — require_admin Depends (Cycle 79 PR 3a — SaaS Phase 1 read-only)
 ├── ui/
 │   ├── _helpers.py             # get_accessible_repo · webhook_base_url · delete_repo_cascade · templates
 │   ├── router.py               # aggregator — routes 6개 include (Phase 1 PR 3 insights 폐기, PR 4 dashboard 추가, catch-all `/repos/{name}` 마지막)
@@ -201,8 +203,9 @@ src/
 │       ├── add_repo.py         # /repos/add (GET/POST) · /api/github/repos
 │       ├── settings.py         # /repos/{name}/settings · reinstall-hook · reinstall-webhook
 │       ├── actions.py          # /repos/{name}/delete
-│       └── detail.py           # /repos/{name}/analyses/{id} · /repos/{name}
-├── templates/                  # add_repo, base, login, overview, repo_detail, analysis_detail, settings, dashboard (insights / insights_me 는 Phase 1 PR 2~3 폐기)
+│       ├── detail.py           # /repos/{name}/analyses/{id} · /repos/{name}
+│       └── admin.py            # GET /admin/{tenants,rls-audit} — require_admin Depends (Cycle 79 PR 3a — SaaS Phase 1 admin UI)
+├── templates/                  # add_repo, base, login, overview, repo_detail, analysis_detail, settings, dashboard, admin_tenants, admin_rls_audit (insights / insights_me 는 Phase 1 PR 2~3 폐기)
 ├── cli/
 │   ├── __main__.py             # python -m src.cli review
 │   ├── git_diff.py             # 로컬 git diff 수집

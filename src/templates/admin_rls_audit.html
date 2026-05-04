@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}RLS Audit — SCAManager Admin{% endblock %}
+
+{% block content %}
+<div class="container">
+  <header style="margin-bottom: 1.5rem;">
+    <h1 style="font-size: 1.5rem; margin: 0;">🛡️ RLS Policy Audit</h1>
+    <p style="color: var(--text-muted, #9ca3af); margin: 0.25rem 0 0;">
+      Supabase PostgreSQL Row Level Security 적용 매트릭스 — 정적 / alembic 마이그레이션 결과
+    </p>
+  </header>
+
+  <div style="margin-bottom: 1rem;">
+    <strong>총 테이블</strong>: {{ summary.total }}건 ·
+    <span style="color: var(--success, #10b981);">✅ 적용 {{ summary.applied }}건</span>
+    {% if summary.missing > 0 %}
+    · <span style="color: var(--danger, #ef4444);">❌ 미적용 {{ summary.missing }}건</span>
+    {% endif %}
+    · <a href="/admin/tenants" style="color: var(--accent, #60a5fa);">🏢 Tenant 인벤토리 →</a>
+  </div>
+
+  <div style="overflow-x: auto;">
+    <table style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr style="border-bottom: 1px solid var(--border, #374151);">
+          <th style="text-align: left; padding: 0.5rem;">테이블</th>
+          <th style="text-align: left; padding: 0.5rem;">격리 패턴</th>
+          <th style="text-align: left; padding: 0.5rem;">도입 alembic</th>
+          <th style="text-align: left; padding: 0.5rem;">상태</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in matrix %}
+        <tr style="border-bottom: 1px solid var(--border, #374151);">
+          <td style="padding: 0.5rem; font-family: monospace; font-size: 0.9em;">{{ m.table }}</td>
+          <td style="padding: 0.5rem; font-size: 0.9em;">{{ m.pattern }}</td>
+          <td style="padding: 0.5rem; font-family: monospace; font-size: 0.85em;">{{ m.since }}</td>
+          <td style="padding: 0.5rem;">
+            {% if m.status == "applied" %}
+            <span style="color: var(--success, #10b981);">✅ applied</span>
+            {% else %}
+            <span style="color: var(--danger, #ef4444);">❌ missing</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div style="margin-top: 2rem; padding: 1rem; background: var(--bg-card, #1f2937); border-radius: 8px;">
+    <h3 style="margin: 0 0 0.5rem; font-size: 1rem;">💡 RLS 운영 안내</h3>
+    <ul style="margin: 0; padding-left: 1.25rem; color: var(--text-muted, #9ca3af); font-size: 0.9em;">
+      <li><strong>RLS 적용</strong> = PostgreSQL 만 (SQLite 단위 테스트 자동 skip)</li>
+      <li>운영 활성화 미들웨어 = `src/middleware/rls_session.py` (사이클 66 #228)</li>
+      <li>contextvars bridge = `src/shared/rls_context.py` + DB event listener (`SET LOCAL app.user_id`)</li>
+      <li>2-layer 안전망 = (1) 앱 레벨 filter (`_apply_*_user_filter`) + (2) DB RLS policy (PG/Supabase)</li>
+      <li>backfill 진단 = `docs/runbooks/saas-phase0-backfill-readiness.md` (사이클 78 PR 3 — null=0 확인)</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}

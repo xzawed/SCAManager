@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}Tenant 인벤토리 — SCAManager Admin{% endblock %}
+
+{% block content %}
+<div class="container">
+  <header style="margin-bottom: 1.5rem;">
+    <h1 style="font-size: 1.5rem; margin: 0;">🏢 Tenant 인벤토리</h1>
+    <p style="color: var(--text-muted, #9ca3af); margin: 0.25rem 0 0;">
+      SaaS 멀티 테넌트 사용량 — read-only / 본 페이지는 admin 전용입니다
+    </p>
+  </header>
+
+  <div style="margin-bottom: 1rem;">
+    <strong>총 테넌트</strong>: {{ total_tenants }}건 ·
+    <a href="/admin/rls-audit" style="color: var(--accent, #60a5fa);">🛡️ RLS audit →</a>
+  </div>
+
+  {% if tenants %}
+  <div style="overflow-x: auto;">
+    <table style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr style="border-bottom: 1px solid var(--border, #374151);">
+          <th style="text-align: left; padding: 0.5rem;">ID</th>
+          <th style="text-align: left; padding: 0.5rem;">github_login</th>
+          <th style="text-align: left; padding: 0.5rem;">email</th>
+          <th style="text-align: right; padding: 0.5rem;">repo_count</th>
+          <th style="text-align: right; padding: 0.5rem;">analysis_count</th>
+          <th style="text-align: left; padding: 0.5rem;">최종 분석</th>
+          <th style="text-align: left; padding: 0.5rem;">가입일</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in tenants %}
+        <tr style="border-bottom: 1px solid var(--border, #374151);">
+          <td style="padding: 0.5rem;">{{ t.id }}</td>
+          <td style="padding: 0.5rem;"><strong>{{ t.github_login or '-' }}</strong></td>
+          <td style="padding: 0.5rem; font-family: monospace; font-size: 0.85em;">{{ t.email or '-' }}</td>
+          <td style="text-align: right; padding: 0.5rem;">{{ t.repo_count }}</td>
+          <td style="text-align: right; padding: 0.5rem;">{{ t.analysis_count }}</td>
+          <td style="padding: 0.5rem; font-family: monospace; font-size: 0.85em;">
+            {% if t.last_analysis_at %}{{ t.last_analysis_at.strftime('%Y-%m-%d %H:%M') }}{% else %}-{% endif %}
+          </td>
+          <td style="padding: 0.5rem; font-family: monospace; font-size: 0.85em;">
+            {% if t.created_at %}{{ t.created_at.strftime('%Y-%m-%d') }}{% else %}-{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div style="text-align: center; padding: 2rem; color: var(--text-muted, #9ca3af);">
+    <p>📭 등록된 테넌트가 없습니다.</p>
+    <p style="font-size: 0.9em;">사용자가 GitHub OAuth 로 가입하면 자동으로 표시됩니다.</p>
+  </div>
+  {% endif %}
+
+  <div style="margin-top: 2rem; padding: 1rem; background: var(--bg-card, #1f2937); border-radius: 8px;">
+    <h3 style="margin: 0 0 0.5rem; font-size: 1rem;">💡 운영 안내</h3>
+    <ul style="margin: 0; padding-left: 1.25rem; color: var(--text-muted, #9ca3af); font-size: 0.9em;">
+      <li>본 페이지는 read-only — 사용자 데이터 변경 불가</li>
+      <li>kill-switch 활성 시 (`SAAS_MULTITENANT_DISABLED=1`) 본 페이지 503 반환</li>
+      <li>admin 권한 = `SAAS_ADMIN_EMAILS` 환경변수 (CSV email)</li>
+      <li>Phase 2 영역 (결제 / 사용량 cap / per-tenant API key) = 별도 PR 진입 의무</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}
