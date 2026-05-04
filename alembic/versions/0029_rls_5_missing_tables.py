@@ -23,7 +23,6 @@ Create Date: 2026-05-04
 - 5 테이블 모두 ALTER + POLICY 명시 검증
 - legacy NULL 호환 정합 (단위 테스트 호환)
 """
-import sqlalchemy as sa  # noqa: F401  # alembic convention
 from alembic import op
 
 
