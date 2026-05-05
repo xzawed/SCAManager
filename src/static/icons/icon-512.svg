@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SCAManager PWA icon — 512x512 maskable (Cycle 81 PR-A 신설).
+  PWA maskable safe zone = center 80% (radius 205 from center 256).
+  192 동일 디자인 + 더 큰 폰트 (PWA splash screen 영역 호환).
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0a0a"/>
+      <stop offset="100%" stop-color="#1f2937"/>
+    </linearGradient>
+    <linearGradient id="text" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#60a5fa"/>
+      <stop offset="100%" stop-color="#10b981"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <text x="256" y="240"
+        text-anchor="middle"
+        dominant-baseline="central"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        font-size="140"
+        font-weight="800"
+        fill="url(#text)">SCA</text>
+  <text x="256" y="370"
+        text-anchor="middle"
+        dominant-baseline="central"
+        font-family="-apple-system, BlinkMacSystemFont, sans-serif"
+        font-size="40"
+        font-weight="500"
+        fill="#9ca3af">Manager</text>
+</svg>

@@ -71,8 +71,12 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 src/
 ├── main.py                     # FastAPI 앱, lifespan(DB 마이그레이션 + http_client), 전체 라우터 등록 + StaticFiles `/static` mount (UI 감사 Step C) + 미들웨어 LIFO 등록 (SecurityHeaders → RLSSessionMiddleware → SessionMiddleware — RLS inner / Session outer 보장, Phase 3 postlude #228)
 ├── static/
-│   └── vendor/
-│       └── chart.umd.min.js    # Chart.js 4.4.0 UMD min vendoring — CDN 차단/오프라인 환경 호환 (UI 감사 Step C). 사용처: repo_detail / analysis_detail / dashboard
+│   ├── vendor/
+│   │   └── chart.umd.min.js    # Chart.js 4.4.0 UMD min vendoring — CDN 차단/오프라인 환경 호환 (UI 감사 Step C). 사용처: repo_detail / analysis_detail / dashboard
+│   ├── manifest.json           # PWA manifest (Cycle 81 PR-A — 홈 화면 추가 + iOS PWA standalone 호환)
+│   └── icons/
+│       ├── icon-192.svg        # PWA maskable icon 192x192 (Cycle 81 PR-A — apple-touch-icon)
+│       └── icon-512.svg        # PWA maskable icon 512x512 (PWA splash screen)
 ├── config.py                   # pydantic-settings 환경변수 관리, postgres:// URL 자동 변환
 ├── constants.py                # 전역 상수 단일 출처 — 점수배점/감점가중치/AI기본값/등급/알림한도/HTTP타임아웃/캐시TTL
 ├── crypto.py                   # encrypt_token()/decrypt_token() — TOKEN_ENCRYPTION_KEY
