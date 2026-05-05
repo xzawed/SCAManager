@@ -21,7 +21,7 @@ from src.models.analysis import Analysis
 from src.models.repository import Repository
 from src.services import dashboard_service
 from src.shared.log_safety import sanitize_for_log
-from src.ui._helpers import get_locale, templates
+from src.ui._helpers import get_locale, templates  # noqa: F401  # get_locale = Phase 2 PR-6 페어
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +97,10 @@ async def dashboard(
             "1" if mode in _VALID_MODES else "0",
         )
 
+        # Phase 2 PR-6 — locale context 4 분기 모두 주입 의무 (LocaleMiddleware 페어)
+        # Phase 2 PR-6 — inject locale context to all 4 branches (pairs with LocaleMiddleware)
+        locale_value = get_locale(request)
+
         if effective_mode == "security":
             # Cycle 73 F2 — Code Scanning + Secret Scanning audit dashboard (read-only).
             security = dashboard_service.dashboard_security(db, user_id=current_user.id)
@@ -109,6 +113,7 @@ async def dashboard(
                     "initial_mode": effective_mode,
                     "security": security,
                     "days": days,
+                    "locale": locale_value,
                 },
             )
 
@@ -125,6 +130,7 @@ async def dashboard(
                     "initial_mode": effective_mode,
                     "usage": usage,
                     "days": days,
+                    "locale": locale_value,
                 },
             )
 
@@ -144,6 +150,7 @@ async def dashboard(
                     "initial_mode": effective_mode,  # PR 4 — 클라이언트 JS data-initial-mode 신호
                     "insight": insight,
                     "days": days,
+                    "locale": locale_value,
                 },
             )
 
@@ -173,6 +180,7 @@ async def dashboard(
             "merge_failures": merge_failures,
             "feedback": feedback,
             "days": days,
+            "locale": locale_value,
         },
     )
 
