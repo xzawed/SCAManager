@@ -111,3 +111,147 @@ def test_supabase_url_ssl_added(monkeypatch):
         extra={"DATABASE_URL": "postgresql://u:p@db.abc.supabase.co/postgres"},
     )
     assert "sslmode=require" in s.database_url
+
+
+# ---------------------------------------------------------------------------
+# Phase 1 PR-1a — i18n 환경변수 5건 + field_validator 4건 검증 (Cycle 84+)
+# Phase 1 PR-1a — i18n env vars 5 + field_validators 4 (Cycle 84+)
+# ---------------------------------------------------------------------------
+
+
+def test_default_locale_default_value(monkeypatch):
+    """DEFAULT_LOCALE 기본값은 'en' 이어야 한다."""
+    s = _reload_settings(monkeypatch)
+    assert s.default_locale == "en"
+
+
+def test_default_locale_reads_from_env(monkeypatch):
+    """DEFAULT_LOCALE 환경변수 설정 시 반영되어야 한다."""
+    s = _reload_settings(monkeypatch, extra={"DEFAULT_LOCALE": "ko"})
+    assert s.default_locale == "ko"
+
+
+def test_default_locale_validation_empty(monkeypatch):
+    """DEFAULT_LOCALE 이 공백이면 ValueError 발생해야 한다."""
+    with pytest.raises(ValueError, match="DEFAULT_LOCALE must not be empty"):
+        _reload_settings(monkeypatch, extra={"DEFAULT_LOCALE": ""})
+
+
+def test_default_locale_validation_invalid_chars(monkeypatch):
+    """DEFAULT_LOCALE 에 영숫자/하이픈 외 문자 포함 시 ValueError."""
+    with pytest.raises(ValueError, match="must contain only alphanumeric"):
+        _reload_settings(monkeypatch, extra={"DEFAULT_LOCALE": "en@US"})
+
+
+def test_default_locale_strips_whitespace(monkeypatch):
+    """DEFAULT_LOCALE 좌우 공백은 제거되어야 한다."""
+    s = _reload_settings(monkeypatch, extra={"DEFAULT_LOCALE": "  ja  "})
+    assert s.default_locale == "ja"
+
+
+def test_supported_locales_default_value(monkeypatch):
+    """SUPPORTED_LOCALES 기본값은 'en,ko,ja' 이어야 한다."""
+    s = _reload_settings(monkeypatch)
+    assert s.supported_locales == "en,ko,ja"
+
+
+def test_supported_locales_reads_from_env_normalized(monkeypatch):
+    """SUPPORTED_LOCALES 공백 포함 입력 시 정규화되어야 한다."""
+    s = _reload_settings(monkeypatch, extra={"SUPPORTED_LOCALES": "en, ko, ja"})
+    assert s.supported_locales == "en,ko,ja"
+
+
+def test_supported_locales_validation_empty(monkeypatch):
+    """SUPPORTED_LOCALES 이 공백이면 ValueError."""
+    with pytest.raises(ValueError, match="SUPPORTED_LOCALES must not be empty"):
+        _reload_settings(monkeypatch, extra={"SUPPORTED_LOCALES": ""})
+
+
+def test_supported_locales_validation_only_commas(monkeypatch):
+    """SUPPORTED_LOCALES 가 쉼표만 있고 언어 코드 없으면 ValueError."""
+    with pytest.raises(ValueError, match="must contain at least one"):
+        _reload_settings(monkeypatch, extra={"SUPPORTED_LOCALES": ",,,"})
+
+
+def test_supported_locales_validation_invalid_code_length(monkeypatch):
+    """언어 코드 길이가 2~10 자 범위 밖이면 ValueError (1자)."""
+    with pytest.raises(ValueError, match="must be 2~10 characters"):
+        _reload_settings(monkeypatch, extra={"SUPPORTED_LOCALES": "e,ko,ja"})
+
+
+def test_supported_locales_validation_invalid_chars(monkeypatch):
+    """언어 코드에 영숫자/하이픈 외 문자 포함 시 ValueError."""
+    with pytest.raises(ValueError, match="must contain only alphanumeric"):
+        _reload_settings(monkeypatch, extra={"SUPPORTED_LOCALES": "en,ko@KR"})
+
+
+def test_locale_fallback_default_value(monkeypatch):
+    """LOCALE_FALLBACK 기본값은 'en' 이어야 한다."""
+    s = _reload_settings(monkeypatch)
+    assert s.locale_fallback == "en"
+
+
+def test_locale_fallback_reads_from_env(monkeypatch):
+    """LOCALE_FALLBACK 환경변수 설정 시 반영되어야 한다."""
+    s = _reload_settings(monkeypatch, extra={"LOCALE_FALLBACK": "ja"})
+    assert s.locale_fallback == "ja"
+
+
+def test_locale_fallback_validation_empty(monkeypatch):
+    """LOCALE_FALLBACK 이 공백이면 ValueError."""
+    with pytest.raises(ValueError, match="LOCALE_FALLBACK must not be empty"):
+        _reload_settings(monkeypatch, extra={"LOCALE_FALLBACK": ""})
+
+
+def test_i18n_translations_dir_default_value(monkeypatch):
+    """I18N_TRANSLATIONS_DIR 기본값은 'src/i18n/translations' 이어야 한다."""
+    s = _reload_settings(monkeypatch)
+    assert s.i18n_translations_dir == "src/i18n/translations"
+
+
+def test_i18n_translations_dir_reads_from_env(monkeypatch):
+    """I18N_TRANSLATIONS_DIR 환경변수 설정 시 반영되어야 한다."""
+    s = _reload_settings(
+        monkeypatch,
+        extra={"I18N_TRANSLATIONS_DIR": "/app/i18n/translations"},
+    )
+    assert s.i18n_translations_dir == "/app/i18n/translations"
+
+
+def test_i18n_disabled_default_false(monkeypatch):
+    """I18N_DISABLED 기본값은 False (활성) 이어야 한다."""
+    s = _reload_settings(monkeypatch)
+    assert s.i18n_disabled is False
+
+
+def test_i18n_disabled_reads_from_env_true(monkeypatch):
+    """I18N_DISABLED=true 환경변수 설정 시 True 로 반영되어야 한다."""
+    s = _reload_settings(monkeypatch, extra={"I18N_DISABLED": "true"})
+    assert s.i18n_disabled is True
+
+
+def test_i18n_disabled_reads_from_env_zero(monkeypatch):
+    """I18N_DISABLED=0 환경변수 설정 시 False 로 반영되어야 한다."""
+    s = _reload_settings(monkeypatch, extra={"I18N_DISABLED": "0"})
+    assert s.i18n_disabled is False
+
+
+def test_is_disabled_i18n_helper_integration(monkeypatch):
+    """is_disabled('I18N') helper 통합 — Phase 1 PR-1a 페어 (사이클 78 NEW-P0-2)."""
+    from src.shared.feature_kill_switch import is_disabled
+
+    # 미설정 default = False
+    monkeypatch.delenv("I18N_DISABLED", raising=False)
+    assert is_disabled("I18N") is False
+
+    # 1 = True
+    monkeypatch.setenv("I18N_DISABLED", "1")
+    assert is_disabled("I18N") is True
+
+    # 0 = False
+    monkeypatch.setenv("I18N_DISABLED", "0")
+    assert is_disabled("I18N") is False
+
+    # true (case-insensitive) = True
+    monkeypatch.setenv("I18N_DISABLED", "true")
+    assert is_disabled("I18N") is True

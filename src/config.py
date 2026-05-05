@@ -90,6 +90,32 @@ class Settings(BaseSettings):
     merge_retry_worker_batch_size: int = 50    # cron sweep 1회 처리 최대 행 수
                                                 # Max rows per cron sweep
 
+    # Phase 1 PR-1a (사이클 84 — 다국어 지원 i18n 인프라)
+    # 다국어 지원 (영어/한국어/일본어) — 5 환경변수 + I18N_DISABLED kill-switch
+    # Phase 1 PR-1a (Cycle 84 — i18n infrastructure for multilingual support)
+    # Multilingual support (English/Korean/Japanese) — 5 env vars + I18N_DISABLED kill-switch
+    default_locale: str = "en"
+    # 신규 사용자 기본 언어 (User.preferred_language 초기값 — alembic 0030 페어)
+    # Default locale for new users (initial value for User.preferred_language — alembic 0030 pair)
+
+    supported_locales: str = "en,ko,ja"
+    # 지원 언어 목록 (쉼표 구분, 공백 제거 의무 — field_validator 정규화)
+    # Supported language codes (comma-separated, whitespace stripped — field_validator normalized)
+
+    locale_fallback: str = "en"
+    # 모든 감지 실패 시 극한 fallback (번역 파일 미존재 / 미지원 locale 등)
+    # Ultimate fallback when all detection fails (missing translation file / unsupported locale)
+
+    i18n_translations_dir: str = "src/i18n/translations"
+    # Babel + Jinja2 i18n 번역 파일 위치 (상대 또는 절대 경로)
+    # Path to Babel + Jinja2 i18n translation files (relative or absolute)
+
+    i18n_disabled: bool = False
+    # i18n 기능 kill-switch — `I18N_DISABLED=1` 시 LocaleMiddleware skip + 영문 hardcoded fallback
+    # i18n feature kill-switch — `I18N_DISABLED=1` skips LocaleMiddleware + English hardcoded fallback
+    # 운영 사고 시 즉각 비활성 default — 사이클 78 NEW-P0-2 패턴 페어 (`is_disabled("I18N")`)
+    # Operational incident response — pairs with Cycle 78 NEW-P0-2 pattern (`is_disabled("I18N")`)
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
     @staticmethod
@@ -146,6 +172,95 @@ class Settings(BaseSettings):
         if not v:
             return v
         return cls._normalize_pg_url(v)
+
+    # Phase 1 PR-1a — i18n 환경변수 4 field_validator (사이클 84)
+    # i18n env var validators (Cycle 84)
+
+    @field_validator("supported_locales")
+    @classmethod
+    def validate_supported_locales(cls, v: str) -> str:
+        """SUPPORTED_LOCALES 유효성 검사 + 정규화.
+
+        - 쉼표 구분 + 공백 제거
+        - 최소 1개 언어 코드 의무
+        - 각 코드 = 2~10 자 영숫자/하이픈 (ISO 639-1/BCP 47 호환)
+
+        Validate and normalize SUPPORTED_LOCALES.
+        - Comma-separated, whitespace stripped
+        - At least one language code required
+        - Each code = 2~10 chars alphanumeric/hyphen (ISO 639-1/BCP 47)
+        """
+        if not v or not v.strip():
+            raise ValueError(
+                "SUPPORTED_LOCALES must not be empty. "
+                "Set at least one language code (e.g., 'en,ko,ja')"
+            )
+        langs = [lang.strip() for lang in v.split(",")]
+        langs = [lang for lang in langs if lang and " " not in lang]
+        if not langs:
+            raise ValueError(
+                "SUPPORTED_LOCALES must contain at least one non-empty language code"
+            )
+        for lang in langs:
+            if not 2 <= len(lang) <= 10:
+                raise ValueError(
+                    f"Language code '{lang}' must be 2~10 characters "
+                    "(e.g., 'en', 'ko', 'zh-Hans')"
+                )
+            if not all(c.isalnum() or c == "-" for c in lang):
+                raise ValueError(
+                    f"Language code '{lang}' must contain only alphanumeric "
+                    "characters and hyphens"
+                )
+        return ",".join(langs)
+
+    @field_validator("default_locale")
+    @classmethod
+    def validate_default_locale(cls, v: str) -> str:
+        """DEFAULT_LOCALE 유효성 검사 + 좌우 공백 제거.
+
+        Validate DEFAULT_LOCALE — strip and validate format.
+        """
+        if not v or not v.strip():
+            raise ValueError(
+                "DEFAULT_LOCALE must not be empty. "
+                "Set a valid language code (e.g., 'en', 'ko')"
+            )
+        v = v.strip()
+        if not 2 <= len(v) <= 10:
+            raise ValueError(
+                f"DEFAULT_LOCALE '{v}' must be 2~10 characters"
+            )
+        if not all(c.isalnum() or c == "-" for c in v):
+            raise ValueError(
+                f"DEFAULT_LOCALE '{v}' must contain only alphanumeric "
+                "characters and hyphens"
+            )
+        return v
+
+    @field_validator("locale_fallback")
+    @classmethod
+    def validate_locale_fallback(cls, v: str) -> str:
+        """LOCALE_FALLBACK 유효성 검사 — 극한 fallback 영역 (특히 신중).
+
+        Validate LOCALE_FALLBACK — ultimate fallback (handle with care).
+        """
+        if not v or not v.strip():
+            raise ValueError(
+                "LOCALE_FALLBACK must not be empty. "
+                "Set a valid language code (e.g., 'en')"
+            )
+        v = v.strip()
+        if not 2 <= len(v) <= 10:
+            raise ValueError(
+                f"LOCALE_FALLBACK '{v}' must be 2~10 characters"
+            )
+        if not all(c.isalnum() or c == "-" for c in v):
+            raise ValueError(
+                f"LOCALE_FALLBACK '{v}' must contain only alphanumeric "
+                "characters and hyphens"
+            )
+        return v
 
 
 settings = Settings()
