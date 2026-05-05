@@ -138,6 +138,20 @@ def _ops_ctx(**overrides) -> dict:
             "api_cost": {"estimated_usd": 1.23, "input_tokens": 50000, "model": "claude-sonnet-4-6"},
             "merge": {"days": 7, "success_rate_pct": 75, "success_count": 6, "total_attempts": 8},
             "pipeline_latency": {"available": False, "p95_ms": 0, "reason": "Phase 2 보류"},
+            # Phase 5 PR-17 (사이클 84) — i18n KPI 2 카드
+            "language_distribution": {
+                "distribution": {"en": 1, "ko": 1, "ja": 1},
+                "percentages": {"en": 33.3, "ko": 33.3, "ja": 33.3},
+                "total_users": 3,
+            },
+            "i18n_fallback": {
+                "lookups_total": 100,
+                "lookups_hit": 95,
+                "lookups_fallback": 3,
+                "lookups_missing": 2,
+                "fallback_rate_pct": 5.0,
+                "memory_only": True,
+            },
         },
     }
     base.update(overrides)
