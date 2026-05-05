@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-04 기준 — **사이클 77 Tier B + Phase 옵션 표**: 60 PR #188~#251 (메타 #213/#214 제외) + 본 PR (사이클 77 Tier B 메모리 cleanup + Phase 옵션 표) — 누적 정책 본문 16건 + 메모리 24건 (활성 22 + deprecated 2). **사이클 77 = 사이클 76 회고 승인 후속 Tier B 3건 정정 (메모리 line:span drift) + Phase 2-C/D + Phase 4 후보 5종 옵션 표 작성 (사용자 사전 결정 회신 의무 — High tier)**. 단위 2122 / 통합 84 / E2E 82
+## 현재 수치 (2026-05-05 기준 — **사이클 79 종료 sync (영역 🅐 SaaS Phase 1 종결)**: 64 PR #188~#257 (메타 #213/#214 제외) + 본 PR (사이클 79 종료 sync) — 누적 정책 본문 16건 + 메모리 24건 (활성 22 + deprecated 2). **사이클 78 영역 🅒 Telegram (PR 1 #253 머지 + PR 2/3/4 머지 대기 — 사용자 영역) + 사이클 79 영역 🅐 SaaS Phase 1 종결 (PR 1+2+3a+3b — alembic 0029 RLS 5 누락 + admin allow-list + admin UI/REST + usage tab)**. 단위 2178 / 통합 84 / E2E 82
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **2122개** | pytest 9.0.3 — 사이클 73 #244 +44 (data layer + async + CI fix-up) + 사이클 74 PR-A #247 +6 (Multi-block 인프라 + Insight Haiku) + 사이클 74 PR-B #248 +13 (DB 캐싱 repo + service 통합) + 사이클 75 정합성 검증 = +67 누적. **= 2122 collected / 2120 passed / 2 skipped / 0 failed** |
+| 단위 테스트 | **2178개** | pytest 9.0.3 — 사이클 73~75 +67 (2055→2122) + **사이클 78 PR 1 (#253) +17** (feature_kill_switch helper) + **사이클 79 PR 1 (#254) +6** (alembic 0029 RLS 5) + **사이클 79 PR 2 (#255) +11** (require_admin) + **사이클 79 PR 3a (#256) +13** (saas_service + admin endpoints) + **사이클 79 PR 3b (#257) +9** (dashboard_usage) = **+56 사이클 78~79 누적**. **= 2178 collected / 2176 passed / 2 skipped / 0 failed** |
 | 통합 테스트 | **84개** | tests/integration/ — Phase 3 PR 6 +2 (test_insight_caching — caching helper spy + user_id 격리) **= 81 passed / 3 skipped / 0 failed** |
 | E2E 테스트 | **82개** | `make test-e2e` (Chromium Playwright) — Phase 3 PR 6 +7 (test_dashboard_insight — 페이지 로드 4 + localStorage persist 3) **= 80 passed / 0 failed / 2 pre-existing fail (test_settings 2건, 본 사이클 무관)**. ⚠️ e2e ↔ tests/integration 동시 실행 금지 — `e2e/pytest.ini` 의도적 asyncio_mode 미설정, 분리 실행 default (`make test-e2e` vs CI command `pytest tests/`) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
@@ -114,7 +114,44 @@
 
 ---
 
-### 사이클 77 — Tier B 메모리 line:span drift 정정 + Phase 진행 옵션 표 (2026-05-04 · 본 PR)
+### 사이클 79 — 영역 🅐 SaaS Phase 1 read-only 종결 (2026-05-05 · #254 + #255 + #256 + #257 + 본 PR sync)
+
+사이클 78 5+1 cross-verify 결과 = Q3 "전부다" 채택 — 영역 🅐 SaaS 멀티 테넌트 Phase 1 MVP read-only 진입. 5 사이클 분할 default (Q2 = 🅑) 정합 — 영역당 1 사이클.
+
+| PR # | 제목 | 핵심 |
+|------|------|------|
+| **#254** alembic 0029 RLS 5 누락 테이블 보강 | NEW-P0-1 처리 — `users` (self-RLS) + `repo_configs` + `gate_decisions` (2-hop) + `merge_retry_queue` + `analysis_feedbacks` (직접 user_id). dialect 분기 (PG only — SQLite skip). 신규 회귀 가드 6건 |
+| **#255** admin allow-list + require_admin Depends + kill-switch | `SAAS_ADMIN_EMAILS` CSV email allow-list + `SAAS_MULTITENANT_DISABLED` kill-switch (PR 1 #253 helper 위임). 3-layer 검증 (kill-switch / login / allow-list). 신규 회귀 가드 11건 |
+| **#256** admin UI + REST + saas_service | `/api/admin/{tenants,rls-audit}` REST + `/admin/{tenants,rls-audit}` UI + `saas_service` (tenant_inventory + rls_audit_matrix + rls_coverage_summary). CI fix-up = TemplateResponse 신 시그니처 (request 첫 인자) + Copilot Autofix 3 commit 통합 (CodeQL Unused import). 신규 회귀 가드 13건 |
+| **#257** `/dashboard?mode=usage` 본인 사용량 (user_id 직접 격리) | 4 카드 (📁 본인 리포 / 📊 누적 분석 / 🕒 최근 N일 / ⭐ 평균 점수) + Empty State + onboarding tooltip. mode 분기 4종 (overview/insight/security/usage). 신규 회귀 가드 9건 |
+| **본 PR** Docs/cycle-79-end-saas-phase1-sync | **사이클 79 종료 sync** — STATE 헤더 60→64 PR + 사이클 78/79 row 신설 + CLAUDE.md tail 사이클 78/79 행 + README 배지 (단위 2122→2178) |
+
+**사이클 79 신규 LOC 합**: ~1490 코드 + ~150 docs (+CLAUDE.md tree 갱신) + ~480 회귀 가드 = **+2120 LOC 누적**
+
+**자율 판단 보고 (정책 3)**:
+- (1) 사용자 결정 (Q1=🅐 + Q2=🅑 + Q3=전부다 + Q4=NEW-P0-1) 정합 진행
+- (2) 사이클 78 PR 2/3/4 머지 대기 = 사용자 영역 (Claude 진행 X)
+- (3) PR 3a CI fail (TemplateResponse 신 시그니처) = 사용자 logs 공유 후 정확한 fix-up commit (메모리 `feedback-log-first-debugging.md` 정합 — 추측 1차 수정 회피)
+- (4) Copilot Autofix 3 commit 통합 (메모리 `feedback-copilot-autofix-collaboration.md` 정합 — pull --rebase + 회귀 0 검증)
+- (5) NEW-P0-2 helper 사용처 = 3건 도달 (security_scan_service + dashboard_service + auth/session) → 임계 ≥3 정합
+- (6) 토큰 cost 추적 영역 = Phase 2 보류 (사용자별 cost 추적 인프라 부재)
+
+---
+
+### 사이클 78 — 영역 🅒 Telegram 본격화 (5 사이클 분할 첫 사이클 / 부분 진행 — 2026-05-05)
+
+사이클 77 옵션 표 사용자 결정 = Q1 = 🅐 (78 사이클 = 🅒 종결 4 PR 묶음). PR 1 #253 머지 완료 + PR 2/3/4 머지 대기 (사용자 영역).
+
+| PR # | 제목 | 상태 | 핵심 |
+|------|------|------|------|
+| **#253** feature_kill_switch helper 모듈 | ✅ 머지 | NEW-P0-2 (5+1 cross-verify 신규 발견) — Phase 4 5 영역 진입 의무 페어. 사용처 ≥3 임계 도달 = helper 추출 결정 시점. 기존 2 사용처 (security_scan_service + dashboard_service) thin wrapper 마이그레이션. 회귀 가드 17건 |
+| **PR 2** Telegram 봇 차단 silent skip + streak guard | 🟡 머지 대기 | 🅒 P0-1 fix — `telegram_post_message:49 r.raise_for_status()` → 403 silent skip + WARNING + 5회 streak guard. defensive int coercion 페어. 회귀 가드 7건 |
+| **PR 3** SaaS Phase 0 backfill 진단 보고 | 🟡 머지 대기 | docs/runbooks/ 신설 — Supabase MCP SELECT 진단 결과 = 운영 DB null=0 (Phase 0 이미 완료). NEW-P1-2 자동 해소 |
+| **PR 4** Telegram 본격화 (`/help` `/repos` `/last`) | 🟡 머지 대기 | 인터랙티브 read-only 명령 3종 + `TELEGRAM_INTERACTIVE_DISABLED` kill-switch + Empty State + RLS 격리. 회귀 가드 25건 |
+
+---
+
+### 사이클 77 — Tier B 메모리 line:span drift 정정 + Phase 진행 옵션 표 (2026-05-04 · #252)
 
 사이클 76 회고 승인 후속 — 사용자 발화: *"회고 내용 전부 진행을 승인합니다."* 잔여 작업 3 영역:
 1. **Tier B 3건 (즉시 진행)** = 메모리 line:span drift 정정 (작은 응집 PR)
