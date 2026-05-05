@@ -23,8 +23,33 @@ from src.shared.log_safety import sanitize_for_log
 logger = logging.getLogger("src.ui")
 templates = Jinja2Templates(directory="src/templates")
 
+# Phase 2 PR-5 (사이클 84) — Jinja2 i18n 필터 등록 (i18n + i18n_args 사용 가능)
+# Phase 2 PR-5 (Cycle 84) — Register Jinja2 i18n filters (i18n + i18n_args available)
+from src.i18n.filters import register_i18n_filters  # noqa: E402
+
+register_i18n_filters(templates.env)
+
 # GitHub Webhook 수신 경로 — add_repo + settings 에서 사용 (상수화)
 GITHUB_WEBHOOK_PATH = "/webhooks/github"
+
+
+def get_locale(request: Request) -> str:
+    """LocaleMiddleware 가 scope.state.locale 에 주입한 locale 반환.
+
+    Return locale injected by LocaleMiddleware into scope.state.locale.
+
+    LocaleMiddleware (src/middleware/locale.py) 가 매 request 시 5단계 감지
+    (Cookie > Accept-Language > default > fallback) 후 scope["state"]["locale"]
+    에 주입. 본 helper 가 모든 TemplateResponse 호출에서 동일 영역 사용 의무
+    (정책 16 4번 원칙 — 사용처 ≥ 12 도달).
+
+    LocaleMiddleware injects locale via 5-tier detection per request.
+    This helper unifies access across all TemplateResponse calls (policy 16 #4).
+    """
+    try:
+        return request.scope.get("state", {}).get("locale") or settings.default_locale
+    except (AttributeError, KeyError):
+        return settings.default_locale
 
 
 def webhook_base_url(request: Request) -> str:

@@ -15,7 +15,8 @@
     "yes": "Yes",
     "no": "No",
     "confirm": "Confirm",
-    "no_data": "No data available"
+    "no_data": "No data available",
+    "menu_aria": "Open menu"
   },
   "header": {
     "welcome": "Welcome, {name}",
@@ -23,9 +24,12 @@
     "dark_dashboard": "Dark Dashboard",
     "light_clean": "Clean Cards",
     "glass": "Glassmorphism",
-    "claude_dark": "Claude Dark (Beta)"
+    "claude_dark": "Claude Dark (Beta)",
+    "overview": "Overview",
+    "dashboard": "Dashboard"
   },
   "login": {
+    "title_prefix": "Login",
     "title": "SCAManager",
     "subtitle": "Claude reviews your PR and provides scores and feedback",
     "github_login": "Sign in with GitHub",
@@ -60,13 +64,58 @@
   "overview": {
     "greeting": "Hello, {name}",
     "title": "Today's Analyses",
+    "title_empty": "Repository Status",
     "repo_count": "{count} repos",
+    "add_repo": "+ Add Repository",
+    "settings_link": "Settings",
+    "analysis_count_unit": "{count} runs",
     "table": {
       "repository": "Repository",
       "analysis": "Analyses",
       "avg_score": "Average Score",
       "grade": "Grade"
+    },
+    "tutorial": {
+      "title": "Get Started in 3 Steps",
+      "subtitle": "Connect a GitHub repo to start automatic analysis on Push/PR",
+      "step1_title": "Select GitHub Repo",
+      "step1_desc": "Choose one of your OAuth-connected repos, and a Webhook will be auto-created.",
+      "step1_cta": "+ Add Repository",
+      "step2_title": "Initial Setup (Simple Mode)",
+      "step2_desc_part1": "After registration, select one of the ",
+      "step2_desc_preset": "Quick Setup Presets",
+      "step2_desc_part2": " in the settings page. Simple Mode defaults are Python analysis + Telegram notifications + PR comments.",
+      "step3_title": "First Push or PR",
+      "step3_desc": "Push your code, and analysis results will accumulate automatically in the dashboard. Provide thumbs feedback on score correctness to improve calibration.",
+      "tip_label": "Tip",
+      "tip_desc_part1": " — Up to 89 points (B grade) can be analyzed even without ",
+      "tip_desc_part2": "."
+    },
+    "calibration": {
+      "title": "AI Score Calibration",
+      "hint": "How well Claude's scores align with human judgment — 👍 ratio per score range",
+      "range": "Score Range",
+      "feedback_count": "Feedback Count",
+      "up_ratio": "👍 Ratio",
+      "visualization": "Visualization"
     }
+  },
+  "add_repo": {
+    "title_prefix": "Add Repository",
+    "page_title": "Add Repository",
+    "subtitle": "Webhook will be auto-created when you select a GitHub repo",
+    "back": "← Back",
+    "label_select": "GitHub Repository",
+    "loading_option": "Loading repo list...",
+    "hint_default": "Loading accessible repos from GitHub API.",
+    "placeholder_option": "Select a repository",
+    "no_repos_option": "No repos available to add",
+    "no_repos_hint": "All repos are already registered or no accessible repos available.",
+    "loaded_hint": "{count} repos loaded.",
+    "load_failed_option": "Failed to load repo list",
+    "error_prefix": "Error: ",
+    "api_error_prefix": "API error: ",
+    "submit": "Create Webhook + Add Repository"
   },
   "settings": {
     "title": "Settings",

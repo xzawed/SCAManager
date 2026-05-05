@@ -13,7 +13,7 @@ from src.models.analysis import Analysis
 from src.models.repository import Repository
 from src.repositories import analysis_feedback_repo
 from src.scorer.calculator import calculate_grade
-from src.ui._helpers import templates
+from src.ui._helpers import get_locale, templates
 
 router = APIRouter()
 
@@ -61,4 +61,5 @@ def overview(
         "repos": repo_data,
         "current_user": current_user,
         "calibration": calibration,
+        "locale": get_locale(request),
     })

@@ -163,11 +163,18 @@ async def update_preferred_language(
     # 만료 = 1년 (사용자 명시 변경 시까지 유지)
     # max-age = 1 year (until user explicitly changes)
     is_prod = settings.app_base_url.startswith("https")
+    # Phase 2 PR-5 (사이클 84 — cross-verify 옵션 C) — httponly=True 보안 강화
+    # Phase 2 PR-5 (Cycle 84 — cross-verify option C) — httponly=True security
+    # 변경 사유: JS 가 cookie 직접 읽지 않음 (LocaleMiddleware scope.state → Jinja
+    # `{{ locale }}` template 변수 주입 페어). XSS 위험 차단 + base.html 의
+    # readCookieLang() 함수 폐기 (서버 변수 주입으로 대체).
+    # Reason: JS no longer reads cookie (uses Jinja `{{ locale }}` injection from
+    # LocaleMiddleware.scope.state). Mitigates XSS + replaces base.html readCookieLang().
     response.set_cookie(
         key="preferred_language",
         value=language,
         max_age=60 * 60 * 24 * 365,  # 1 year
-        httponly=False,  # JavaScript 읽기 가능 (헤더 dropdown 표시 영역)
+        httponly=True,  # Phase 2 PR-5 — XSS 차단 + 서버측 template 주입 페어
         secure=is_prod,
         samesite="lax",
         path="/",
