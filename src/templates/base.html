@@ -824,6 +824,22 @@
         <div class="theme-option" data-theme="claude-dark" role="menuitem" tabindex="0">📚 Claude 다크 (베타)</div>
       </div>
     </div>
+    {# Phase 2 PR-4 (사이클 84) — 다국어 i18n 헤더 dropdown (테마 토글 패턴 차용) #}
+    {# Phase 2 PR-4 (Cycle 84) — i18n header dropdown (uses theme-switcher pattern) #}
+    {% if current_user %}
+    <div class="theme-switcher" id="langSwitcher">
+      <button class="theme-btn" id="langToggle" aria-label="언어 변경" aria-haspopup="true" aria-expanded="false">
+        <span id="langIcon">🌍</span>
+        <span id="langName">한국어</span>
+        <span class="chevron">▾</span>
+      </button>
+      <div class="theme-dropdown" id="langDropdown" role="menu">
+        <div class="lang-option" data-lang="en" role="menuitem" tabindex="0">🇺🇸 English</div>
+        <div class="lang-option" data-lang="ko" role="menuitem" tabindex="0">🇰🇷 한국어</div>
+        <div class="lang-option" data-lang="ja" role="menuitem" tabindex="0">🇯🇵 日本語</div>
+      </div>
+    </div>
+    {% endif %}
   </nav>
   <div class="container">{% block content %}{% endblock %}</div>
   {% block scripts %}{% endblock %}
@@ -883,6 +899,82 @@
       });
     });
     document.addEventListener('click', () => { switcher.classList.remove('open'); toggleBtn.setAttribute('aria-expanded', 'false'); });
+
+    // Phase 2 PR-4 (사이클 84) — 다국어 i18n 헤더 dropdown
+    // Phase 2 PR-4 (Cycle 84) — i18n header dropdown
+    (function() {
+      const LANGS = {
+        en: { icon: '🇺🇸', name: 'English' },
+        ko: { icon: '🇰🇷', name: '한국어' },
+        ja: { icon: '🇯🇵', name: '日本語' }
+      };
+      const langSwitcher = document.getElementById('langSwitcher');
+      if (!langSwitcher) return;  // 비로그인 사용자 = lang dropdown 부재
+      const langToggle = document.getElementById('langToggle');
+      const langIcon = document.getElementById('langIcon');
+      const langName = document.getElementById('langName');
+
+      function applyLang(lang) {
+        if (!LANGS[lang]) lang = 'ko';
+        langIcon.textContent = LANGS[lang].icon;
+        langName.textContent = LANGS[lang].name;
+        document.querySelectorAll('.lang-option').forEach(el => {
+          el.classList.toggle('active', el.dataset.lang === lang);
+        });
+      }
+
+      // Cookie `preferred_language` 우선, 없으면 ko default (LocaleMiddleware 페어)
+      // Cookie preferred_language priority, fallback to ko default (pairs with LocaleMiddleware)
+      function readCookieLang() {
+        const m = document.cookie.match(/(?:^|;\s*)preferred_language=([^;]+)/);
+        return m ? m[1] : 'ko';
+      }
+      applyLang(readCookieLang());
+
+      langToggle.addEventListener('click', e => {
+        e.stopPropagation();
+        const open = langSwitcher.classList.toggle('open');
+        langToggle.setAttribute('aria-expanded', open);
+      });
+
+      async function changeLang(lang) {
+        try {
+          const res = await fetch('/api/users/me/preferred-language', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ language: lang })
+          });
+          if (res.ok) {
+            applyLang(lang);
+            // 페이지 reload — 새 locale 로 UI 재렌더 (LocaleMiddleware 페어)
+            // Reload page — re-render UI with new locale (pairs with LocaleMiddleware)
+            window.location.reload();
+          } else {
+            console.error('Failed to update preferred_language:', res.status);
+          }
+        } catch (err) {
+          console.error('preferred_language API error:', err);
+        }
+        langSwitcher.classList.remove('open');
+        langToggle.setAttribute('aria-expanded', 'false');
+      }
+
+      document.querySelectorAll('.lang-option').forEach(el => {
+        el.addEventListener('click', () => changeLang(el.dataset.lang));
+        el.addEventListener('keydown', e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            changeLang(el.dataset.lang);
+          }
+        });
+      });
+
+      document.addEventListener('click', () => {
+        langSwitcher.classList.remove('open');
+        langToggle.setAttribute('aria-expanded', 'false');
+      });
+    })();
 
     // 모바일 햄버거
     const hamburger = document.getElementById('navHamburger');
