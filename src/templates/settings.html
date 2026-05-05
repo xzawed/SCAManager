@@ -464,6 +464,38 @@
       .alert .ms-auto { margin-left: 0; width: 100%; }
       .alert .btn { width: 100%; }
     }
+
+    /* Cycle 81 PR-C — settings 모바일 768px↓ 분기 (mobile portrait 호환)
+       5+1 cross-verify 관점 🅑 — 카드 padding 축소 + WCAG 2.5.5 ≥44px 가드 + 헤더 폰트 축소.
+       Progressive Disclosure (`<details>` wrap) 는 5-way sync 영향 위험 = Phase 2 영역 보류.
+       Cycle 81 PR-C — settings mobile 768px↓ branch (mobile portrait compat)
+       Cards padding shrink + WCAG 2.5.5 ≥44px guards + header font shrink.
+       `<details>` Progressive Disclosure deferred to Phase 2 (5-way sync risk). */
+    @media (max-width: 768px) {
+      /* 카드 padding 축소 — 모바일 가독성 + 스크롤 부담 ↓ */
+      .s-card-body { padding: 0.85rem; }
+      .s-card-hdr { padding: 0.6rem 0.85rem; }
+      .s-card-hdr .hdr-title { font-size: 12.5px; }
+      .s-card-hdr .hdr-icon { font-size: 14px; }
+
+      /* WCAG 2.5.5 모바일 ≥44px 클릭 영역 가드 (정책 11 페어) */
+      .gate-mode-btn { min-height: 44px; }
+      select, input[type=text], input[type=url], input[type=email], input[type=password] {
+        min-height: 44px;
+        font-size: 16px;  /* iOS Safari focus zoom 회피 (≥16px 의무) */
+      }
+      input[type=number] {
+        min-height: 44px;
+        font-size: 16px;
+      }
+      .save-btn, button[type=submit] { min-height: 48px; }
+
+      /* 위험 구역 (`.danger-summary-wrap`) 모바일 접근성 ↑ — 접힘 default 보존 + summary 클릭 영역 확대 */
+      .danger-summary-wrap summary {
+        min-height: 44px;
+        padding: 0.5rem;
+      }
+    }
   </style>
 
   <form id="settingsForm" method="post" action="/repos/{{ repo_name }}/settings">
