@@ -18,7 +18,9 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from src.i18n.loader import get_i18n_metrics
 from src.models.merge_attempt import MergeAttempt
+from src.models.user import User
 from src.shared.claude_metrics import (
     estimate_claude_cost_usd,
     get_cache_stats,
@@ -103,10 +105,67 @@ def _merge_kpi(db: Session, days: int = 7) -> dict[str, Any]:
     }
 
 
-def operations_kpi(db: Session, days: int = 7) -> dict[str, Any]:
-    """admin 운영 모니터링 KPI 5 카드 데이터 (Cycle 80 PR 2).
+def _i18n_language_distribution(db: Session) -> dict[str, Any]:
+    """사용자 preferred_language 분포 KPI (Phase 5 PR-17 — 사이클 84).
 
-    Admin operations dashboard KPI 5 cards (Cycle 80 PR 2).
+    User preferred_language distribution KPI (Phase 5 PR-17 — Cycle 84).
+
+    User.preferred_language NOT NULL default 'en' (alembic 0030) — 사용자 명시 결정 분포.
+    """
+    rows = db.execute(
+        select(User.preferred_language, func.count(User.id))  # pylint: disable=not-callable
+        .group_by(User.preferred_language)
+    ).all()
+
+    distribution: dict[str, int] = {}
+    for lang, count in rows:
+        distribution[lang or "unknown"] = int(count or 0)
+
+    total = sum(distribution.values())
+    # 비율 (%) 계산 — 0건 시 0% 반환
+    # Percentage breakdown — 0% when no users
+    percentages = {
+        lang: round((count / total * 100), 1) if total > 0 else 0.0
+        for lang, count in distribution.items()
+    }
+    return {
+        "distribution": distribution,
+        "percentages": percentages,
+        "total_users": total,
+    }
+
+
+def _i18n_fallback_rate() -> dict[str, Any]:
+    """i18n fallback rate KPI (Phase 5 PR-17 — 사이클 84).
+
+    i18n fallback rate KPI (Phase 5 PR-17 — Cycle 84).
+
+    fallback_rate = (lookups_fallback + lookups_missing) / lookups_total × 100
+    높은 비율 = 번역 누락 영역 ↑ 의미 (운영자 액션 의무).
+    Higher rate = more missing translations (operator action required).
+    process restart 시 reset (memory_only). Phase 6 영역 = DB persist.
+    """
+    metrics = get_i18n_metrics()
+    return {
+        "lookups_total": metrics["lookups_total"],
+        "lookups_hit": metrics["lookups_hit"],
+        "lookups_fallback": metrics["lookups_fallback"],
+        "lookups_missing": metrics["lookups_missing"],
+        "fallback_rate_pct": metrics["fallback_rate_pct"],
+        # process restart 시 reset 명시 (사용자 인지 의무)
+        # process restart resets — user awareness required
+        "memory_only": True,
+    }
+
+
+def operations_kpi(db: Session, days: int = 7) -> dict[str, Any]:
+    """admin 운영 모니터링 KPI 카드 데이터 (Cycle 80 PR 2 + 사이클 84 PR-17 i18n).
+
+    Admin operations dashboard KPI cards (Cycle 80 PR 2 + Cycle 84 PR-17 i18n).
+
+    Phase 5 PR-17 (사이클 84) — i18n KPI 2 카드 추가:
+    - language_distribution = User.preferred_language 분포 (en/ko/ja)
+    - i18n_fallback = fallback rate (메모리 카운터)
     """
     stats = get_cache_stats()
     return {
@@ -120,5 +179,9 @@ def operations_kpi(db: Session, days: int = 7) -> dict[str, Any]:
             "available": False,
             "reason": "Phase 2 영역 — stage_metrics 메모리 카운터 인프라 부재 (정책 16 4번 원칙)",
         },
+        # Phase 5 PR-17 (사이클 84) — i18n KPI 2 카드
+        # Phase 5 PR-17 (Cycle 84) — i18n KPI 2 cards
+        "language_distribution": _i18n_language_distribution(db),
+        "i18n_fallback": _i18n_fallback_rate(),
         "days": days,
     }

@@ -87,6 +87,42 @@
       <small style="opacity:0.6;">{{ kpi.pipeline_latency.reason }}</small>
       {% endif %}
     </div>
+
+    {# Phase 5 PR-17 (사이클 84) — Card 6: 사용자 언어 분포 (User.preferred_language) #}
+    {# Phase 5 PR-17 (Cycle 84) — Card 6: User language distribution #}
+    <div class="dash-insight-card">
+      <h2 class="dash-insight-title">{{ 'admin.operations.language_dist_title' | i18n_args(locale | default('ko')) }}</h2>
+      <div class="dash-insight-metric">
+        <span class="dash-insight-metric-label">{{ 'admin.operations.language_dist_total' | i18n_args(locale | default('ko')) }}</span>
+        <span class="dash-insight-metric-value">{{ kpi.language_distribution.total_users }}</span>
+      </div>
+      {% for lang, count in kpi.language_distribution.distribution.items() %}
+      <div class="dash-insight-metric">
+        <span class="dash-insight-metric-label">{{ lang }}</span>
+        <span class="dash-insight-metric-value">{{ count }} ({{ kpi.language_distribution.percentages[lang] }}%)</span>
+      </div>
+      {% endfor %}
+      <small style="opacity:0.7;">{{ 'admin.operations.language_dist_hint' | i18n_args(locale | default('ko')) }}</small>
+    </div>
+
+    {# Phase 5 PR-17 — Card 7: i18n fallback rate (메모리 카운터 — process restart 시 reset) #}
+    {# Phase 5 PR-17 — Card 7: i18n fallback rate (in-memory — resets on process restart) #}
+    <div class="dash-insight-card">
+      <h2 class="dash-insight-title">{{ 'admin.operations.i18n_fallback_title' | i18n_args(locale | default('ko')) }}</h2>
+      <div class="dash-insight-metric">
+        <span class="dash-insight-metric-label">{{ 'admin.operations.i18n_fallback_label' | i18n_args(locale | default('ko')) }}</span>
+        <span class="dash-insight-metric-value">{{ kpi.i18n_fallback.fallback_rate_pct }}%</span>
+      </div>
+      <div class="dash-insight-metric">
+        <span class="dash-insight-metric-label">{{ 'admin.operations.i18n_fallback_total' | i18n_args(locale | default('ko')) }}</span>
+        <span class="dash-insight-metric-value">{{ kpi.i18n_fallback.lookups_total }}</span>
+      </div>
+      <div class="dash-insight-metric">
+        <span class="dash-insight-metric-label">hit / fallback / missing</span>
+        <span class="dash-insight-metric-value" style="font-size:0.85em;">{{ kpi.i18n_fallback.lookups_hit }} / {{ kpi.i18n_fallback.lookups_fallback }} / {{ kpi.i18n_fallback.lookups_missing }}</span>
+      </div>
+      <small style="opacity:0.7;">{{ 'admin.operations.i18n_fallback_hint' | i18n_args(locale | default('ko')) }}</small>
+    </div>
   </div>
 
   {# 운영 안내 카드 — Phase 1 영역 한계 명시 #}
