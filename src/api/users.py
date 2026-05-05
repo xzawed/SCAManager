@@ -115,11 +115,18 @@ async def update_preferred_language(
             detail="i18n feature is disabled (I18N_DISABLED=1)",
         )
 
+    # Sink 직전 방어: 허용된 locale만 쿠키/DB 반영
+    # Sink-adjacent guard: only allow configured locales for cookie/DB
+    supported = {lang.strip().lower() for lang in settings.supported_locales.split(",")}
+    language = body.language.strip().lower() if body.language else ""
+    if language not in supported:
+        raise HTTPException(status_code=400, detail="invalid language")
+
     with SessionLocal() as db:
         db.execute(
             update(User)
             .where(User.id == current_user.id)
-            .values(preferred_language=body.language)
+            .values(preferred_language=language)
         )
         db.commit()
 
@@ -130,7 +137,7 @@ async def update_preferred_language(
     is_prod = settings.app_base_url.startswith("https")
     response.set_cookie(
         key="preferred_language",
-        value=body.language,
+        value=language,
         max_age=60 * 60 * 24 * 365,  # 1 year
         httponly=False,  # JavaScript 읽기 가능 (헤더 dropdown 표시 영역)
         secure=is_prod,
@@ -141,9 +148,9 @@ async def update_preferred_language(
     logger.info(
         "preferred_language updated for user_id=%d → '%s'",
         current_user.id,
-        body.language,
+        language,
     )
     return {
-        "language": body.language,
+        "language": language,
         "message": "preferred language updated",
     }
