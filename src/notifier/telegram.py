@@ -4,6 +4,7 @@ import logging
 from html import escape
 
 from src.constants import GRADE_EMOJI, TELEGRAM_MAX_MESSAGE_LENGTH, NOTIFIER_MAX_ISSUES_SHORT
+from src.i18n.loader import get_text
 from src.shared.http_client import get_http_client
 from src.scorer.calculator import ScoreResult
 from src.analyzer.io.static import StaticAnalysisResult
@@ -104,7 +105,15 @@ def _build_message(  # pylint: disable=too-many-positional-arguments
     analysis_results: list[StaticAnalysisResult],
     pr_number: int | None,
     ai_review: AiReviewResult | None = None,
+    language: str = "en",
 ) -> str:
+    """분석 결과를 Telegram HTML 메시지로 빌드 (Phase 3 PR-9 — 사이클 84 i18n).
+
+    Build Telegram HTML message for analysis result (Phase 3 PR-9 — Cycle 84 i18n).
+
+    Args:
+        language: 사용자 언어 ('ko'/'en'/'ja'). 3-layer fallback (resolve_notification_language).
+    """
     ref = format_ref(commit_sha, pr_number)
     all_issues = get_all_issues(analysis_results)
     top_issues = [
@@ -113,35 +122,43 @@ def _build_message(  # pylint: disable=too-many-positional-arguments
     ]
 
     grade_emoji = GRADE_EMOJI.get(score_result.grade, "⚪")  # type: ignore[union-attr]
-    issues_text = "\n".join(top_issues) if top_issues else "이슈 없음"
+    no_issues_text = get_text("notifier.telegram.no_issues", language)
+    issues_text = "\n".join(top_issues) if top_issues else no_issues_text
     bd = score_result.breakdown
 
     lines = [
-        f"{grade_emoji} <b>SCA 분석 결과</b>",
-        f"📁 <code>{escape(repo_name)}</code> — {escape(ref)}",
+        get_text("notifier.telegram.title", language, emoji=grade_emoji),
+        get_text("notifier.telegram.ref_line", language, repo=escape(repo_name), ref=escape(ref)),
         "",
-        f"<b>총점:</b> {score_result.total}/100  (등급 {score_result.grade})",
+        get_text(
+            "notifier.telegram.total", language,
+            total=score_result.total, grade=score_result.grade,
+        ),
         "",
-        "<b>점수 상세:</b>",
-        f"  커밋 메시지: {bd.get('commit_message', '-')}/15",
-        f"  코드 품질: {bd.get('code_quality', '-')}/25",
-        f"  보안: {bd.get('security', '-')}/20",
-        f"  구현 방향성: {bd.get('ai_review', '-')}/25",
-        f"  테스트: {bd.get('test_coverage', '-')}/15",
+        get_text("notifier.telegram.breakdown_header", language),
+        get_text("notifier.telegram.breakdown_commit", language, value=bd.get("commit_message", "-")),
+        get_text("notifier.telegram.breakdown_quality", language, value=bd.get("code_quality", "-")),
+        get_text("notifier.telegram.breakdown_security", language, value=bd.get("security", "-")),
+        get_text("notifier.telegram.breakdown_direction", language, value=bd.get("ai_review", "-")),
+        get_text("notifier.telegram.breakdown_test", language, value=bd.get("test_coverage", "-")),
     ]
 
     if ai_review and ai_review.summary:
-        lines += ["", f"<b>AI 요약:</b> {escape(ai_review.summary)}"]
+        lines += ["", get_text(
+            "notifier.telegram.ai_summary", language, summary=escape(ai_review.summary),
+        )]
 
     if ai_review and ai_review.suggestions:
-        lines += ["", "<b>개선 제안:</b>"]
+        lines += ["", get_text("notifier.telegram.ai_suggestions_header", language)]
         for s in ai_review.suggestions:
             lines.append(f"- {escape(s)}")
 
     if top_issues:
         lines += [
             "",
-            f"<b>정적 분석 이슈:</b> {len(all_issues)}건",
+            get_text(
+                "notifier.telegram.issues_header", language, count=len(all_issues),
+            ),
             issues_text,
         ]
 
@@ -158,9 +175,16 @@ async def send_analysis_result(
     analysis_results: list[StaticAnalysisResult],
     pr_number: int | None = None,
     ai_review: AiReviewResult | None = None,
+    language: str = "en",
 ) -> None:
-    """분석 결과를 Telegram HTML 메시지로 전송한다."""
-    text = _build_message(repo_name, commit_sha, score_result, analysis_results, pr_number, ai_review=ai_review)
+    """분석 결과를 Telegram HTML 메시지로 전송한다 (Phase 3 PR-9 — i18n).
+
+    Send analysis result via Telegram HTML message (Phase 3 PR-9 — i18n).
+    """
+    text = _build_message(
+        repo_name, commit_sha, score_result, analysis_results, pr_number,
+        ai_review=ai_review, language=language,
+    )
     await telegram_post_message(bot_token, chat_id, {"text": text, "parse_mode": "HTML"})
 
 
@@ -181,8 +205,17 @@ class _TelegramNotifier:
         return True
 
     async def send(self, ctx: NotifyContext) -> None:
-        """알림을 전송한다."""
+        """알림을 전송한다 (Phase 3 PR-9 — 사이클 84 i18n 3-layer fallback).
+
+        Send notification (Phase 3 PR-9 — Cycle 84 i18n 3-layer fallback).
+        """
         chat_id = (ctx.config.notify_chat_id if ctx.config else None) or settings.telegram_chat_id
+        # Phase 3 PR-9 — 3-layer 사용자 언어 결정 (User → RepoConfig → settings.default_locale)
+        # Phase 3 PR-9 — 3-layer language resolve (User → RepoConfig → settings.default_locale)
+        from src.database import SessionLocal  # noqa: WPS433  (지연 import)
+        from src.notifier._language import resolve_notification_language  # noqa: WPS433
+        with SessionLocal() as db:
+            language = resolve_notification_language(db, config=ctx.config)
         await send_analysis_result(
             bot_token=settings.telegram_bot_token,
             chat_id=chat_id,
@@ -192,6 +225,7 @@ class _TelegramNotifier:
             analysis_results=ctx.analysis_results,
             pr_number=ctx.pr_number,
             ai_review=ctx.ai_review,
+            language=language,
         )
 
 

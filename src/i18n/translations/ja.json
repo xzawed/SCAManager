@@ -534,6 +534,38 @@
   "notifier": {
     "no_issues": "問題なし",
     "score_label": "スコア: {score}/100",
-    "grade_label": "グレード {grade}"
+    "grade_label": "グレード {grade}",
+    "telegram": {
+      "title": "{emoji} <b>SCA 分析結果</b>",
+      "ref_line": "📁 <code>{repo}</code> — {ref}",
+      "total": "<b>合計:</b> {total}/100  (グレード {grade})",
+      "breakdown_header": "<b>スコア詳細:</b>",
+      "breakdown_commit": "  コミットメッセージ: {value}/15",
+      "breakdown_quality": "  コード品質: {value}/25",
+      "breakdown_security": "  セキュリティ: {value}/20",
+      "breakdown_direction": "  実装方向性: {value}/25",
+      "breakdown_test": "  テスト: {value}/15",
+      "ai_summary": "<b>AI 要約:</b> {summary}",
+      "ai_suggestions_header": "<b>改善提案:</b>",
+      "issues_header": "<b>静的解析の問題:</b> {count}件",
+      "no_issues": "問題なし"
+    },
+    "commands": {
+      "not_connected": "先に /connect <コード> でアカウントを連携してください。",
+      "unknown_command": "対応していないコマンドです。利用可能: /stats <repo>, /settings, /connect <コード>",
+      "connect_usage": "使い方: /connect <6桁コード>",
+      "connect_invalid_otp": "OTP が無効または期限切れです。",
+      "connect_already_linked": "この Telegram アカウントは既に他のユーザーに連携されています。",
+      "connect_success": "✅ {name} さんのアカウントが連携されました!",
+      "connect_default_name": "ユーザー",
+      "stats_usage": "使い方: /stats <リポジトリ全体名 (owner/repo)>",
+      "stats_repo_not_found": "リポジトリが見つかりません: {repo}",
+      "stats_no_data_title": "📊 {repo}",
+      "stats_no_data_body": "最近 7 日間の分析データがありません。",
+      "stats_summary": "📊 {repo}\n最近 7 日分析: {count}件\n平均スコア: {avg}点{trend}\n最低: {min} / 最高: {max}",
+      "stats_trend": " (7日移動平均比 {diff:+.1f}点)",
+      "settings_no_repos": "登録されたリポジトリがありません。",
+      "settings_header": "📋 登録されたリポジトリ:"
+    }
   }
 }

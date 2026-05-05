@@ -534,6 +534,38 @@
   "notifier": {
     "no_issues": "이슈 없음",
     "score_label": "점수: {score}/100",
-    "grade_label": "등급 {grade}"
+    "grade_label": "등급 {grade}",
+    "telegram": {
+      "title": "{emoji} <b>SCA 분석 결과</b>",
+      "ref_line": "📁 <code>{repo}</code> — {ref}",
+      "total": "<b>총점:</b> {total}/100  (등급 {grade})",
+      "breakdown_header": "<b>점수 상세:</b>",
+      "breakdown_commit": "  커밋 메시지: {value}/15",
+      "breakdown_quality": "  코드 품질: {value}/25",
+      "breakdown_security": "  보안: {value}/20",
+      "breakdown_direction": "  구현 방향성: {value}/25",
+      "breakdown_test": "  테스트: {value}/15",
+      "ai_summary": "<b>AI 요약:</b> {summary}",
+      "ai_suggestions_header": "<b>개선 제안:</b>",
+      "issues_header": "<b>정적 분석 이슈:</b> {count}건",
+      "no_issues": "이슈 없음"
+    },
+    "commands": {
+      "not_connected": "먼저 /connect <코드>로 계정을 연결하세요.",
+      "unknown_command": "지원하지 않는 명령입니다. 사용 가능: /stats <repo>, /settings, /connect <코드>",
+      "connect_usage": "사용법: /connect <6자리 코드>",
+      "connect_invalid_otp": "OTP가 잘못되었거나 만료되었습니다.",
+      "connect_already_linked": "이 Telegram 계정은 이미 다른 사용자에게 연결되어 있습니다.",
+      "connect_success": "✅ {name} 님의 계정이 연결되었습니다!",
+      "connect_default_name": "사용자",
+      "stats_usage": "사용법: /stats <리포지토리 전체 이름 (owner/repo)>",
+      "stats_repo_not_found": "리포지토리를 찾을 수 없습니다: {repo}",
+      "stats_no_data_title": "📊 {repo}",
+      "stats_no_data_body": "최근 7일간 분석 데이터가 없습니다.",
+      "stats_summary": "📊 {repo}\n최근 7일 분석: {count}건\n평균 점수: {avg}점{trend}\n최저: {min} / 최고: {max}",
+      "stats_trend": " (7일 이동평균 대비 {diff:+.1f}점)",
+      "settings_no_repos": "등록된 리포지토리가 없습니다.",
+      "settings_header": "📋 등록된 리포지토리:"
+    }
   }
 }
