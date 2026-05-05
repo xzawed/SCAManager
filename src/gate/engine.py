@@ -104,15 +104,25 @@ async def _run_review_comment(
     pr_number: int,
     result: dict,
 ) -> None:
-    """PR Review Comment 옵션 (독립)."""
+    """PR Review Comment 옵션 (독립). Phase 3 PR-11 — 3-layer fallback i18n.
+
+    PR Review Comment option (independent). Phase 3 PR-11 — 3-layer fallback i18n.
+    """
     if not config.pr_review_comment:
         return
     try:
+        # Phase 3 PR-11 — 3-layer 사용자 언어 결정 (User → RepoConfig → settings.default_locale)
+        # Phase 3 PR-11 — 3-layer language resolve
+        from src.database import SessionLocal  # noqa: WPS433
+        from src.notifier._language import resolve_notification_language  # noqa: WPS433
+        with SessionLocal() as db:
+            language = resolve_notification_language(db, config=config)
         await post_pr_comment(
             github_token=github_token,
             repo_name=repo_name,
             pr_number=pr_number,
             result=result,
+            language=language,
         )
     except (httpx.HTTPError, KeyError) as exc:
         # 예외 타입만 기록 — exc 본문에 HTTP 응답 바디가 포함되어 내부 구조 노출 위험
@@ -561,6 +571,12 @@ async def _run_auto_merge_legacy(  # pylint: disable=too-many-arguments
         )
         if config.auto_merge_issue_on_failure:
             try:
+                # Phase 3 PR-11 — 3-layer 사용자 언어 결정 (User → RepoConfig → settings.default_locale)
+                # Phase 3 PR-11 — 3-layer language resolve
+                from src.database import SessionLocal  # noqa: WPS433
+                from src.notifier._language import resolve_notification_language  # noqa: WPS433
+                with SessionLocal() as db_lang:
+                    language = resolve_notification_language(db_lang, config=config)
                 await create_merge_failure_issue(
                     github_token=github_token,
                     repo_name=repo_name,
@@ -569,6 +585,7 @@ async def _run_auto_merge_legacy(  # pylint: disable=too-many-arguments
                     threshold=config.merge_threshold,
                     reason=reason or "unknown",
                     advice=advice,
+                    language=language,
                 )
             except Exception as exc:  # pylint: disable=broad-except
                 logger.warning(

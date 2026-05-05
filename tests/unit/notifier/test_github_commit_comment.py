@@ -65,7 +65,9 @@ async def test_post_commit_comment_body_uses_shared_formatter():
         )
 
     body = mock_client.post.call_args[1]["json"]["body"]
-    assert "SCAManager 분석 결과" in body
+    # Phase 3 PR-11 (사이클 84) — i18n 적용 후 default locale en/ko/ja 양호
+    assert "SCAManager" in body
+    assert ("Analysis Result" in body) or ("분석 결과" in body) or ("分析結果" in body)
     assert "82/100" in body
 
 
