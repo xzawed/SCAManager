@@ -20,26 +20,50 @@ except ImportError:  # pragma: no cover — DNS 제약 dev env 전용 경로
     _SENTRY_AVAILABLE = False
 
 
+# Cycle 80 PR 1 — PII/secret 스크러빙 헤더 화이트리스트 확장 (5+1 cross-verify P0-1)
+# Cycle 80 PR 1 — PII/secret scrubbing header allowlist expansion
+_SENSITIVE_HEADERS = frozenset({
+    "authorization",                    # Bearer / Basic 토큰
+    "x-api-key",                        # admin API key
+    "x-hub-signature",                  # 구 GitHub HMAC 서명
+    "x-hub-signature-256",              # GitHub HMAC SHA-256 서명
+    "x-github-token",                   # GitHub API 호출 헤더
+    "x-telegram-bot-api-secret-token",  # Telegram webhook secret_token
+    "x-webhook-token",                  # custom webhook 인증
+    "x-forwarded-for",                  # 사용자 IP — PII
+    "x-real-ip",                        # 사용자 IP — PII
+    "cookie",                           # 세션 쿠키
+})
+
+
 def _before_send(event: dict, _hint: dict) -> dict:
     """Sentry 이벤트 전송 전 민감 데이터 스크러빙 — PII/secret 누수 방어.
 
     GitHub webhook 처리 중 발생한 예외는 request body·URL query·headers 에
     토큰/시크릿/사용자 입력이 포함될 수 있다. Sentry 기본 수집 범위를 명시적으로
     제한해 외부 SaaS 에 민감 정보가 유출되지 않도록 한다.
+
+    Cycle 80 PR 1 — 헤더 화이트리스트 확장 (4 → 10) + URL fragment 제거 추가.
     """
     request = event.get("request") or {}
-    # URL query string 제거 — ?token=xxx, ?api_key=yyy 등 유출 방지
+    # URL query string + fragment 제거 — ?token=xxx, #token=yyy 등 유출 방지
+    # URL query + fragment removal — defends ?token=xxx, #token=yyy
     url = request.get("url")
-    if isinstance(url, str) and "?" in url:
-        request["url"] = url.split("?", 1)[0]
+    if isinstance(url, str):
+        if "?" in url:
+            url = url.split("?", 1)[0]
+        if "#" in url:
+            url = url.split("#", 1)[0]
+        request["url"] = url
     # Cookies 제거 — 세션 쿠키가 그대로 Sentry 에 가는 것 방어
     if "cookies" in request:
         request["cookies"] = {}
-    # Authorization 헤더 등 민감 헤더 제거
+    # 민감 헤더 화이트리스트 기반 스크러빙 (Cycle 80 PR 1 — 10 헤더)
+    # Sensitive header allowlist scrubbing (Cycle 80 PR 1 — 10 headers)
     headers = request.get("headers") or {}
     if isinstance(headers, dict):
         for key in list(headers.keys()):
-            if key.lower() in ("authorization", "x-api-key", "x-hub-signature-256", "cookie"):
+            if key.lower() in _SENSITIVE_HEADERS:
                 headers[key] = "[Filtered]"
     event["request"] = request
     # body 는 Sentry 기본값이 이미 제외하지만 명시적으로 제거
