@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-_VALID_MODES = ("overview", "insight", "security")
+_VALID_MODES = ("overview", "insight", "security", "usage")
 
 # Phase 3 PR 4 — 사용자 신호 기반 default 모드 임계값.
 # Claude narrative 가 의미있게 생성되려면 최소 N건의 분석 컨텍스트가 필요.
@@ -108,6 +108,22 @@ async def dashboard(
                     "mode": "security",
                     "initial_mode": effective_mode,
                     "security": security,
+                    "days": days,
+                },
+            )
+
+        if effective_mode == "usage":
+            # Cycle 79 PR 3b — SaaS Phase 1 본인 사용량 dashboard (read-only — user_id 직접 격리).
+            # Cycle 79 PR 3b — SaaS Phase 1 own usage dashboard (read-only — user_id direct isolation).
+            usage = dashboard_service.dashboard_usage(db, user_id=current_user.id, days=days)
+            return templates.TemplateResponse(
+                request,
+                "dashboard.html",
+                {
+                    "current_user": current_user,
+                    "mode": "usage",
+                    "initial_mode": effective_mode,
+                    "usage": usage,
                     "days": days,
                 },
             )

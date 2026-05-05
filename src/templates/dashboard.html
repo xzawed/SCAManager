@@ -332,6 +332,10 @@
            data-mode="security"
            title="GitHub Code Scanning + Secret Scanning alert audit (Cycle 73 F2 — read-only)"
            {% if mode == 'security' %}class="active"{% endif %}>🛡️ Security</a>
+        <a href="/dashboard?mode=usage&days={{ days }}"
+           data-mode="usage"
+           title="본인 사용량 (SaaS Phase 1 read-only — Cycle 79 PR 3b) / Own usage (read-only)"
+           {% if mode == 'usage' %}class="active"{% endif %}>📈 Usage</a>
       </nav>
       <nav class="dash-range-toggle" aria-label="기간 선택 / Period selector">
         <a href="/dashboard?mode={{ mode }}&days=1" {% if days == 1 %}class="active"{% endif %}>1d</a>
@@ -403,6 +407,70 @@
     {% else %}
     <div class="dash-insight-status">
       ⚠️ Security 데이터 로딩 실패 — 잠시 후 다시 시도해주세요.
+    </div>
+    {% endif %}
+  {% elif mode == 'usage' %}
+    {# Cycle 79 PR 3b — SaaS Phase 1 본인 사용량 (read-only — user_id 직접 격리) #}
+    {# Cycle 79 PR 3b — SaaS Phase 1 own usage (read-only — user_id direct isolation) #}
+    {% if usage and usage.repo_count == 0 %}
+    {# Empty State — onboarding tooltip #}
+    <div class="dash-insight-status">
+      📭 등록된 리포지토리가 없습니다 / No repositories registered.<br>
+      <small style="opacity:0.8;">웹 UI 의 <a href="/repos/add">리포 추가</a> 페이지에서 GitHub 리포를 등록하면 본 카드에 사용량이 표시됩니다.</small>
+    </div>
+    {% elif usage %}
+    <div class="dash-insight-grid" role="region" aria-label="본인 사용량 4 카드">
+      <div class="dash-insight-card">
+        <h2 class="dash-insight-title">📁 본인 리포</h2>
+        <div class="dash-insight-metric">
+          <span class="dash-insight-metric-label">등록된 리포 수</span>
+          <span class="dash-insight-metric-value">{{ usage.repo_count }}</span>
+        </div>
+        <small style="opacity:0.7;">user_id 직접 격리 (RLS 페어 — alembic 0026/0029)</small>
+      </div>
+      <div class="dash-insight-card">
+        <h2 class="dash-insight-title">📊 누적 분석</h2>
+        <div class="dash-insight-metric">
+          <span class="dash-insight-metric-label">전체 누적</span>
+          <span class="dash-insight-metric-value">{{ usage.total_analyses }}</span>
+        </div>
+        {% if usage.last_analysis_at %}
+        <div class="dash-insight-metric">
+          <span class="dash-insight-metric-label">최종 분석</span>
+          <span class="dash-insight-metric-value" style="font-size:0.85em;">{{ usage.last_analysis_at.strftime('%Y-%m-%d %H:%M') }}</span>
+        </div>
+        {% endif %}
+      </div>
+      <div class="dash-insight-card">
+        <h2 class="dash-insight-title">🕒 최근 {{ usage.days }}일</h2>
+        <div class="dash-insight-metric">
+          <span class="dash-insight-metric-label">분석 건수</span>
+          <span class="dash-insight-metric-value">{{ usage.recent_analyses }}</span>
+        </div>
+        <small style="opacity:0.7;">기간: 최근 {{ usage.days }}일 (range toggle 페어)</small>
+      </div>
+      <div class="dash-insight-card">
+        <h2 class="dash-insight-title">⭐ 평균 점수</h2>
+        <div class="dash-insight-metric">
+          <span class="dash-insight-metric-label">최근 {{ usage.days }}일 평균</span>
+          <span class="dash-insight-metric-value">
+            {% if usage.avg_score is not none %}{{ usage.avg_score }}점{% else %}-{% endif %}
+          </span>
+        </div>
+        <small style="opacity:0.7;">샘플 부족 시 - 표시</small>
+      </div>
+    </div>
+    <div style="margin-top: 1rem; padding: 1rem; background: var(--bg-card, #1f2937); border-radius: 8px;">
+      <h3 style="margin: 0 0 0.5rem; font-size: 1rem;">💡 SaaS Phase 1 안내</h3>
+      <ul style="margin: 0; padding-left: 1.25rem; color: var(--text-muted, #9ca3af); font-size: 0.9em;">
+        <li>본 영역은 <strong>본인 데이터만</strong> 표시 — RLS user_id 직접 격리 (alembic 0026/0029)</li>
+        <li>토큰 cost 추정 영역 = Phase 2 (사용자별 cost 추적 인프라 도입 후)</li>
+        <li>SaaS 전환 시 (사용자 ≥ 2) 동일 카드 = 사용자별 격리 자동 동작</li>
+      </ul>
+    </div>
+    {% else %}
+    <div class="dash-insight-status">
+      ⚠️ Usage 데이터 로딩 실패 — 잠시 후 다시 시도해주세요.
     </div>
     {% endif %}
   {% elif mode == 'insight' %}
