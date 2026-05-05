@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}Operations — SCAManager Admin{% endblock %}
+
+{% block content %}
+<div class="container">
+  <header style="margin-bottom: 1.5rem;">
+    <h1 style="font-size: 1.5rem; margin: 0;">📈 Operations 운영 모니터링</h1>
+    <p style="color: var(--text-muted, #9ca3af); margin: 0.25rem 0 0;">
+      KPI 5종 (cache / API 비용 / merge / pipeline latency) — admin only / 메모리 카운터 (process restart 시 reset)
+    </p>
+  </header>
+
+  <div style="margin-bottom: 1rem;">
+    <strong>기간</strong>: 최근 {{ days }}일 ·
+    <a href="/admin/tenants" style="color: var(--accent, #60a5fa);">🏢 Tenant 인벤토리</a> ·
+    <a href="/admin/rls-audit" style="color: var(--accent, #60a5fa);">🛡️ RLS audit</a>
+  </div>
+
+  <div class="dash-insight-grid" role="region" aria-label="운영 모니터링 KPI 5 카드">
+    {# Card 1: cache_hit_rate (Anthropic prompt cache 효율) #}
+    <div class="dash-insight-card">
+      <h2 class="dash-insight-title">⚡ Cache Hit Rate</h2>
+      <div class="dash-insight-metric">
+        <span class="dash-insight-metric-label">cache_hit_rate</span>
+        <span class="dash-insight-metric-value">{{ kpi.cache.cache_hit_rate_pct }}%</span>
+      </div>
+      <div class="dash-insight-metric">
+        <span class="dash-insight-metric-label">총 호출 수</span>
+        <span class="dash-insight-metric-value">{{ kpi.cache.total_calls }}</span>
+      </div>
+      <small style="opacity:0.7;">cache_read / (cache_read + input) — 사이클 74 PR-A/B 효과</small>
+    </div>
+
+    {# Card 2: API 비용 추정 (사이클 72 #242 비용 모델) #}
+    <div class="dash-insight-card">
+      <h2 class="dash-insight-title">💰 API 비용 추정</h2>
+      <div class="dash-insight-metric">
+        <span class="dash-insight-metric-label">예상 비용 (USD)</span>
+        <span class="dash-insight-metric-value">${{ kpi.api_cost.estimated_usd }}</span>
+      </div>
+      <div class="dash-insight-metric">
+        <span class="dash-insight-metric-label">input 토큰</span>
+        <span class="dash-insight-metric-value">{{ kpi.api_cost.input_tokens }}</span>
+      </div>
+      <small style="opacity:0.7;">{{ kpi.api_cost.model }}</small>
+    </div>
+
+    {# Card 3: cache token 분포 (read vs creation) #}
+    <div class="dash-insight-card">
+      <h2 class="dash-insight-title">📊 Cache 토큰 분포</h2>
+      <div class="dash-insight-metric">
+        <span class="dash-insight-metric-label">cache_read</span>
+        <span class="dash-insight-metric-value">{{ kpi.cache.cache_read_tokens }}</span>
+      </div>
+      <div class="dash-insight-metric">
+        <span class="dash-insight-metric-label">cache_creation</span>
+        <span class="dash-insight-metric-value">{{ kpi.cache.cache_creation_tokens }}</span>
+      </div>
+      <small style="opacity:0.7;">read = 0.1× / creation = 1.25× input rate</small>
+    </div>
+
+    {# Card 4: merge success rate (auto_merge 글로벌) #}
+    <div class="dash-insight-card">
+      <h2 class="dash-insight-title">🔀 Merge Success</h2>
+      <div class="dash-insight-metric">
+        <span class="dash-insight-metric-label">최근 {{ kpi.merge.days }}일 성공률</span>
+        <span class="dash-insight-metric-value">{{ kpi.merge.success_rate_pct }}%</span>
+      </div>
+      <div class="dash-insight-metric">
+        <span class="dash-insight-metric-label">시도 / 성공</span>
+        <span class="dash-insight-metric-value" style="font-size:0.9em;">{{ kpi.merge.success_count }} / {{ kpi.merge.total_attempts }}</span>
+      </div>
+      <small style="opacity:0.7;">단순 시도 기준 (retry-aware는 dashboard auto_merge_kpi 참조)</small>
+    </div>
+
+    {# Card 5: pipeline latency (Phase 2 보류 — 메모리 카운터 부재) #}
+    <div class="dash-insight-card">
+      <h2 class="dash-insight-title">🕒 Pipeline Latency</h2>
+      {% if kpi.pipeline_latency.available %}
+      <div class="dash-insight-metric">
+        <span class="dash-insight-metric-label">p95 (ms)</span>
+        <span class="dash-insight-metric-value">{{ kpi.pipeline_latency.p95_ms }}</span>
+      </div>
+      {% else %}
+      <p style="opacity:0.7; font-size:0.9em;">📭 Phase 2 영역 — 메모리 카운터 인프라 부재</p>
+      <small style="opacity:0.6;">{{ kpi.pipeline_latency.reason }}</small>
+      {% endif %}
+    </div>
+  </div>
+
+  {# 운영 안내 카드 — Phase 1 영역 한계 명시 #}
+  <div style="margin-top: 2rem; padding: 1rem; background: var(--bg-card, #1f2937); border-radius: 8px;">
+    <h3 style="margin: 0 0 0.5rem; font-size: 1rem;">💡 Phase 1 운영 안내</h3>
+    <ul style="margin: 0; padding-left: 1.25rem; color: var(--text-muted, #9ca3af); font-size: 0.9em;">
+      <li><strong>메모리 카운터 한계</strong> — Railway 재배포 시 reset (cache stats / api_cost). DB persist = Phase 2 영역</li>
+      <li><strong>silent fallback streak</strong> — 5회 연속 cache 미작동 시 logger WARNING 발화 (Sentry 페어)</li>
+      <li><strong>1주 baseline 보고서</strong> = 사이클 81+ 별도 작업 (옵션 🅒 — cross-verify NEW-P0-3 정합)</li>
+      <li><strong>kill-switch</strong> = `OPERATIONS_DASHBOARD_DISABLED=1` (`SAAS_MULTITENANT_DISABLED` 와 별개)</li>
+      <li>Sentry 활성화 = Cycle 80 PR 1 runbook (`docs/runbooks/sentry-activation.md`) 페어</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}

@@ -95,7 +95,8 @@ src/
 │   ├── dashboard_service.py    # /dashboard (Phase 1 PR 4 + Phase 2 PR 1+2 + Phase 3 PR 2/5 + Cycle 73 F2 + Cycle 79 PR 3b) — 9 공개 함수: dashboard_kpi (KPI 4 — avg_score/analysis_count/high_security/active_repos), dashboard_trend (라인 차트), frequent_issues_v2 (Q7), auto_merge_kpi (단순+retry-aware), merge_failure_distribution (실패 사유 Top N), feedback_status (CTA banner), insight_narrative (async — Phase 3 PR 2 — Claude AI 4 카드 ✨/🔍/📊/💬 + caching 헬퍼 + 5 status fallback), dashboard_security (Cycle 73 F2 — Code/Secret Scanning 4 카드), **dashboard_usage (Cycle 79 PR 3b — SaaS Phase 1 본인 사용량 4 카드 — user_id 직접 격리)**. + Phase 3 PR 5 격리 헬퍼 2건: `_apply_analysis_user_filter` / `_apply_merge_attempt_user_filter` (Repository.user_id 기반 + legacy NULL 호환).
 │   ├── merge_retry_service.py  # process_pending_retries 워커 (CI-aware Auto Merge 재시도)
 │   ├── security_scan_service.py # scan_all_repos / scan_repo_alerts — Code/Secret Scanning 폴링 + audit log upsert + GHAS graceful degradation + kill-switch (`SECURITY_AUTO_PROCESS_DISABLED=1`) (사이클 73 F1)
-│   └── saas_service.py         # tenant_inventory + rls_audit_matrix + rls_coverage_summary — SaaS Phase 1 read-only 집계 (Cycle 79 PR 3a)
+│   ├── saas_service.py         # tenant_inventory + rls_audit_matrix + rls_coverage_summary — SaaS Phase 1 read-only 집계 (Cycle 79 PR 3a)
+│   └── operations_service.py   # operations_kpi (cache + api_cost + merge + pipeline_latency) — admin 운영 모니터링 KPI 5 카드 (Cycle 80 PR 2)
 ├── auth/
 │   ├── session.py              # get_current_user() + require_login Depends + require_admin (Cycle 79 PR 2 — SAAS_MULTITENANT kill-switch + saas_admin_emails allow-list 3-layer 검증)
 │   └── github.py               # /login, /auth/github, /auth/callback, /auth/logout
@@ -193,7 +194,7 @@ src/
 │   ├── hook.py                 # GET /api/hook/verify, POST /api/hook/result (hook_token 인증)
 │   ├── users.py                # POST /api/users/me/telegram-otp — 6자리 OTP 발급 (5분 만료)
 │   ├── internal_cron.py        # POST /api/internal/cron/{weekly,trend,scan-security,retry-pending-merges} — INTERNAL_CRON_API_KEY 전용 (scan-security = 사이클 73 F1)
-│   └── admin.py                # GET /api/admin/{tenants,rls-audit} — require_admin Depends (Cycle 79 PR 3a — SaaS Phase 1 read-only)
+│   └── admin.py                # GET /api/admin/{tenants,rls-audit,operations} — require_admin Depends (Cycle 79 PR 3a SaaS Phase 1 + Cycle 80 PR 2 operations KPI)
 ├── ui/
 │   ├── _helpers.py             # get_accessible_repo · webhook_base_url · delete_repo_cascade · templates
 │   ├── router.py               # aggregator — routes 6개 include (Phase 1 PR 3 insights 폐기, PR 4 dashboard 추가, catch-all `/repos/{name}` 마지막)
@@ -204,8 +205,8 @@ src/
 │       ├── settings.py         # /repos/{name}/settings · reinstall-hook · reinstall-webhook
 │       ├── actions.py          # /repos/{name}/delete
 │       ├── detail.py           # /repos/{name}/analyses/{id} · /repos/{name}
-│       └── admin.py            # GET /admin/{tenants,rls-audit} — require_admin Depends (Cycle 79 PR 3a — SaaS Phase 1 admin UI)
-├── templates/                  # add_repo, base, login, overview, repo_detail, analysis_detail, settings, dashboard, admin_tenants, admin_rls_audit (insights / insights_me 는 Phase 1 PR 2~3 폐기)
+│       └── admin.py            # GET /admin/{tenants,rls-audit,operations} — require_admin Depends (Cycle 79 PR 3a SaaS Phase 1 + Cycle 80 PR 2 operations admin UI)
+├── templates/                  # add_repo, base, login, overview, repo_detail, analysis_detail, settings, dashboard, admin_tenants, admin_rls_audit, admin_operations (insights / insights_me 는 Phase 1 PR 2~3 폐기)
 ├── cli/
 │   ├── __main__.py             # python -m src.cli review
 │   ├── git_diff.py             # 로컬 git diff 수집

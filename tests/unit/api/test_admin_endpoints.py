@@ -117,3 +117,35 @@ def test_admin_endpoints_blocked_when_kill_switch(monkeypatch):
     assert response.status_code == 503
     response = c.get("/admin/tenants")
     assert response.status_code == 503
+
+
+# ─── Cycle 80 PR 2 — operations endpoint 회귀 가드 ────────────────────
+
+
+def test_get_operations_returns_kpi(client):
+    """GET /api/admin/operations — KPI 5종 반환."""
+    response = client.get("/api/admin/operations")
+    assert response.status_code == 200
+    data = response.json()
+    assert "cache" in data
+    assert "api_cost" in data
+    assert "merge" in data
+    assert "pipeline_latency" in data
+
+
+def test_admin_operations_html_renders(client):
+    """GET /admin/operations — HTML 렌더링."""
+    response = client.get("/admin/operations")
+    assert response.status_code == 200
+    assert "Operations" in response.text or "운영 모니터링" in response.text
+
+
+def test_admin_operations_blocked_when_kill_switch(monkeypatch):
+    """GET /admin/operations — kill-switch 활성 시 503."""
+    app.dependency_overrides.pop(require_admin, None)
+    monkeypatch.setenv("SAAS_MULTITENANT_DISABLED", "1")
+    c = TestClient(app)
+    response = c.get("/admin/operations")
+    assert response.status_code == 503
+    response = c.get("/api/admin/operations")
+    assert response.status_code == 503

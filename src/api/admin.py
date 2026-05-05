@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from src.auth.session import CurrentUser, require_admin
 from src.database import SessionLocal
-from src.services import saas_service
+from src.services import operations_service, saas_service
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -56,3 +56,16 @@ def get_rls_audit(
         "summary": saas_service.rls_coverage_summary(),
         "matrix": saas_service.rls_audit_matrix(),
     }
+
+
+@router.get("/operations")
+def get_operations(
+    _admin: Annotated[CurrentUser, Depends(require_admin)],
+    db: Annotated[Session, Depends(_get_db)],
+    days: int = 7,
+) -> dict[str, Any]:
+    """admin 운영 모니터링 KPI 5 카드 (Cycle 80 PR 2 — 영역 🅔).
+
+    Admin operations dashboard KPI 5 cards (Cycle 80 PR 2).
+    """
+    return operations_service.operations_kpi(db, days=days)
