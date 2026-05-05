@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from src.auth.session import CurrentUser, require_admin
 from src.database import SessionLocal
-from src.services import saas_service
+from src.services import operations_service, saas_service
 from src.ui._helpers import templates
 
 router = APIRouter()
@@ -70,5 +70,28 @@ def admin_rls_audit(
             "current_user": admin,
             "matrix": saas_service.rls_audit_matrix(),
             "summary": saas_service.rls_coverage_summary(),
+        },
+    )
+
+
+@router.get("/admin/operations", response_class=HTMLResponse)
+def admin_operations(
+    request: Request,
+    admin: Annotated[CurrentUser, Depends(require_admin)],
+    db: Annotated[Session, Depends(_get_db)],
+    days: int = 7,
+) -> HTMLResponse:
+    """운영 모니터링 KPI 5 카드 admin dashboard (Cycle 80 PR 2 — 영역 🅔).
+
+    Operations dashboard admin (Cycle 80 PR 2 — area 🅔).
+    """
+    kpi = operations_service.operations_kpi(db, days=days)
+    return templates.TemplateResponse(
+        request,
+        "admin_operations.html",
+        {
+            "current_user": admin,
+            "kpi": kpi,
+            "days": days,
         },
     )
