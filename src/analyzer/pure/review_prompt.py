@@ -199,8 +199,13 @@ def _select_guide_modes(languages: list[str]) -> dict[str, str]:
     return modes
 
 
-def _build_lang_guides(languages: list[str], budget_chars: int) -> str:
-    """토큰 예산 내에서 언어별 가이드 섹션을 조립한다."""
+def _build_lang_guides(
+    languages: list[str], budget_chars: int, output_language: str = "en",
+) -> str:
+    """토큰 예산 내에서 언어별 가이드 섹션을 조립한다 (Phase 4 PR-13 — output_language 전달).
+
+    Build per-language guide section within token budget (Phase 4 PR-13 — output_language).
+    """
     if not languages:
         return ""
 
@@ -212,11 +217,11 @@ def _build_lang_guides(languages: list[str], budget_chars: int) -> str:
         if lang == "__rest__":
             snippet = f"Additional languages (brief review): {mode}\n"
         else:
-            snippet = get_guide(lang, mode) + "\n"
+            snippet = get_guide(lang, mode, output_language=output_language) + "\n"
 
         if used_chars + len(snippet) > budget_chars:
             if mode == "full":
-                snippet = get_guide(lang, "compact") + "\n"
+                snippet = get_guide(lang, "compact", output_language=output_language) + "\n"
             if used_chars + len(snippet) > budget_chars:
                 break
 
@@ -251,7 +256,7 @@ def build_review_blocks(
     commit_message: str,
     patches: list[tuple[str, str]],
     budget_tokens: int = 8000,
-    language: str = "en",  # noqa: ARG001  # Phase 4 PR-13+ 영역 (lang_guides 다국어)
+    language: str = "en",
 ) -> tuple[str, str, list[str]]:
     """Phase 2 a-B (사이클 74) — Multi-block 확장 인프라 (system + user 분리).
 
@@ -279,7 +284,8 @@ def build_review_blocks(
     languages = detect_languages_from_patches(patches)
 
     budget_chars = budget_tokens * _CHARS_PER_TOKEN - _FIXED_TOKEN_OVERHEAD * _CHARS_PER_TOKEN
-    lang_guides_block = _build_lang_guides(languages, max(budget_chars, 0))
+    # Phase 4 PR-13 — language 인자 전달 (Tier1 10 가이드 다국어, Tier2/3 영문 fallback)
+    lang_guides_block = _build_lang_guides(languages, max(budget_chars, 0), output_language=language)
 
     detected_display = ", ".join(languages) if languages else "none"
     user_prompt = _USER_PROMPT_TEMPLATE.format(
@@ -296,7 +302,7 @@ def build_review_prompt(
     commit_message: str,
     patches: list[tuple[str, str]],
     budget_tokens: int = 8000,
-    language: str = "en",  # noqa: ARG001  # Phase 4 PR-13+ 영역
+    language: str = "en",
 ) -> tuple[str, list[str]]:
     """언어-aware AI 리뷰 사용자 프롬프트를 생성한다 (시스템 프롬프트 제외).
 
@@ -322,7 +328,8 @@ def build_review_prompt(
     languages = detect_languages_from_patches(patches)
 
     budget_chars = budget_tokens * _CHARS_PER_TOKEN - _FIXED_TOKEN_OVERHEAD * _CHARS_PER_TOKEN
-    lang_guides = _build_lang_guides(languages, max(budget_chars, 0))
+    # Phase 4 PR-13 — language 인자 전달 (Tier1 10 가이드 다국어)
+    lang_guides = _build_lang_guides(languages, max(budget_chars, 0), output_language=language)
 
     detected_display = ", ".join(languages) if languages else "none"
 
