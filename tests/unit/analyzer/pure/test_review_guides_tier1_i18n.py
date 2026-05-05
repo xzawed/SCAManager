@@ -103,12 +103,12 @@ def test_tier2_now_supports_korean_after_pr14():
     assert ko != ja
 
 
-def test_tier3_falls_back_to_english_for_japanese():
-    """Tier3 (julia) — output_language='ja' 요청 시 영문 fallback (PR-15 미적용 영역)."""
+def test_tier3_now_supports_japanese_after_pr15():
+    """Tier3 (julia) — PR-15 적용 후 일본어 지원 (영문/한국어/일본어 distinct)."""
     en = get_guide("julia", "full", output_language="en")
     ja = get_guide("julia", "full", output_language="ja")
-    # PR-15 미적용 → 동일 영문 (fallback)
-    assert en == ja
+    # Phase 4 PR-15 적용 후 — Tier3 도 다국어 지원
+    assert en != ja
 
 
 # ── build_review_prompt + build_review_blocks — language 전달 ─────────────
