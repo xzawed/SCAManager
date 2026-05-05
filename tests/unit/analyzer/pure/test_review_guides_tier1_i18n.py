@@ -92,12 +92,15 @@ def test_get_guide_unknown_language_uses_generic_fallback():
 # ── Tier2/3 영문 fallback (PR-14/15 별도 진행 영역) ─────────────────────────
 
 
-def test_tier2_falls_back_to_english_for_korean():
-    """Tier2 (php) — output_language='ko' 요청 시 영문 fallback (PR-14 미적용 영역)."""
+def test_tier2_now_supports_korean_after_pr14():
+    """Tier2 (php) — PR-14 적용 후 한국어 지원 (영문/한국어/일본어 distinct)."""
     en = get_guide("php", "full", output_language="en")
     ko = get_guide("php", "full", output_language="ko")
-    # PR-14 미적용 → 동일 영문 (fallback)
-    assert en == ko
+    ja = get_guide("php", "full", output_language="ja")
+    # Phase 4 PR-14 적용 후 — Tier2 도 다국어 지원
+    assert en != ko
+    assert en != ja
+    assert ko != ja
 
 
 def test_tier3_falls_back_to_english_for_japanese():
