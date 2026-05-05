@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-05 기준 — **사이클 82 Tier B 묶음 — alembic dialect 헬퍼 + 메모리 신설 2건**: 72 PR #188~#271 (메타 #213/#214 제외) + 본 PR (Tier B PR 2) — 누적 정책 본문 16건 + 메모리 27건 (활성 25 + deprecated 2 — 사이클 78~81 회고 +1 testclient-lifespan + 사이클 82 PR 2 +2 = copilot-autofix-noqa-trap + pr-push-direct-validation). **사이클 78 영역 🅒 (PR 1 #253 + PR 2/3/4 영구 보류) + 사이클 79 영역 🅐 SaaS Phase 1 (#254~#257) + 사이클 80 영역 🅔 운영 모니터링 Phase 2 (#259/#260) + 사이클 81 영역 🅑 모바일 Phase 1 MVP 4 PR 분할 종결 (#262 PWA manifest / #263 dashboard 모바일 / #264 settings 모바일 / #265 form sweep) + 사이클 82 Tier B (PR 1 alembic dialect 헬퍼 + PR 2 메모리 신설 2건)**. 단위 2228 / 통합 118 / E2E 82
+## 현재 수치 (2026-05-05 기준 — **사이클 82 NEW-P0-1 머지 + sync (#274)**: 75 PR #188~#274 (메타 #213/#214 제외) — 누적 정책 본문 16건 + 메모리 27건 (활성 25 + deprecated 2). **사이클 78 영역 🅒 (PR 1 #253 + PR 2 #274 NEW-P0-1 = Telegram 봇 차단 silent skip 머지 / PR 3+4 영구 폐기 default — 보존) + 사이클 79 영역 🅐 SaaS Phase 1 (#254~#257) + 사이클 80 영역 🅔 운영 모니터링 Phase 2 (#259/#260) + 사이클 81 영역 🅑 모바일 Phase 1 MVP 4 PR 분할 종결 (#262 PWA manifest / #263 dashboard 모바일 / #264 settings 모바일 / #265 form sweep) + 사이클 82 Tier B (#272 alembic dialect 헬퍼 + #273 메모리 신설 2건) + 사이클 82 NEW-P0-1 머지 (#274 telegram_bot_blocked_skip)**. 단위 2236 / 통합 118 / E2E 82
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **2228개** | pytest 9.0.3 — 사이클 73~75 +67 (2055→2122) + 사이클 78 PR 1 +17 (feature_kill_switch helper) + 사이클 79 PR 1+2+3a+3b +39 (alembic 0029 + require_admin + saas_service + dashboard_usage) = 2178 + **사이클 80 PR 1 (#259) +23** (observability before_send PII 스크러빙 강화) + **사이클 80 PR 2 (#260) +13** (operations_service + admin operations endpoints) + **사이클 82 PR 1 +14** (alembic dialect 헬퍼 회귀 가드 — `tests/unit/shared/test_alembic_dialect.py`) = **+106 사이클 78~82 누적**. **= 2228 collected / 2226 passed / 2 skipped / 0 failed** |
+| 단위 테스트 | **2236개** | pytest 9.0.3 — 사이클 73~75 +67 (2055→2122) + 사이클 78 PR 1 +17 (feature_kill_switch helper) + 사이클 79 PR 1+2+3a+3b +39 (alembic 0029 + require_admin + saas_service + dashboard_usage) = 2178 + **사이클 80 PR 1 (#259) +23** (observability before_send PII 스크러빙 강화) + **사이클 80 PR 2 (#260) +13** (operations_service + admin operations endpoints) + **사이클 82 PR 1 +14** (alembic dialect 헬퍼 회귀 가드) + **사이클 82 NEW-P0-1 (#274) +7** (telegram_bot_blocked_skip 회귀 가드 — 봇 차단 silent skip + streak guard) + **baseline 정정 +1** (실측 `pytest tests/unit --collect-only -q` = 2236) = **+114 사이클 78~82 누적**. **= 2236 collected / 2234 passed / 2 skipped / 0 failed** |
 | 통합 테스트 | **118개** | tests/integration/ — 사이클 81 영역 🅑 모바일 Phase 1 MVP 4 PR 분할 +34 누적: PR-A (#262 PWA manifest +7) + PR-B (#263 dashboard mobile priority +5) + PR-C (#264 settings mobile +10) + PR-D (#265 form sweep +12). **= 115 passed / 3 skipped / 0 failed** |
 | E2E 테스트 | **82개** | `make test-e2e` (Chromium Playwright) — Phase 3 PR 6 +7 (test_dashboard_insight — 페이지 로드 4 + localStorage persist 3) **= 80 passed / 0 failed / 2 pre-existing fail (test_settings 2건, 본 사이클 무관)**. ⚠️ e2e ↔ tests/integration 동시 실행 금지 — `e2e/pytest.ini` 의도적 asyncio_mode 미설정, 분리 실행 default (`make test-e2e` vs CI command `pytest tests/`) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
@@ -120,17 +120,21 @@
 
 | PR # | 제목 | 핵심 |
 |------|------|------|
-| **PR 1** Feat/cycle-82-pr1-alembic-dialect-helper | **alembic dialect 헬퍼 추출** — `src/shared/alembic_dialect.py::is_postgresql(bind_or_conn)` 신설 + 11 사용처 일괄 치환 (alembic 0024/0026/0027/0028/0029 + `src/database.py::_set_rls_user_id_per_query`). `alembic/env.py:88` SQLite-specific 분기 보존. 회귀 가드 14건 (`tests/unit/shared/test_alembic_dialect.py` — defensive None/no-attribute + parametrize 7 non-pg dialects). 단위 2214→2228 |
-| **본 PR** Docs/cycle-82-pr2-tier-b-memory-additions | **메모리 신설 2건 + MEMORY 인덱스 갱신** — (1) `feedback-copilot-autofix-noqa-trap.md` (협업 카테고리 — `# noqa: F401` 무시 트랩 + side-effect import 4 패턴 revert default) (2) `feedback-pr-push-direct-validation.md` (TDD/CI 카테고리 — 사이클 73/79/81 3 사이클 연속 CI fail-fix 학습). MEMORY 인덱스 25→27 (활성 23→25 + deprecated 2). STATE/CLAUDE 헤더 메모리 카운트 동기화 |
+| **#272** Feat/cycle-82-pr1-alembic-dialect-helper | **alembic dialect 헬퍼 추출** — `src/shared/alembic_dialect.py::is_postgresql(bind_or_conn)` 신설 + 11 사용처 일괄 치환 (alembic 0024/0026/0027/0028/0029 + `src/database.py::_set_rls_user_id_per_query`). `alembic/env.py:88` SQLite-specific 분기 보존. 회귀 가드 14건 (`tests/unit/shared/test_alembic_dialect.py` — defensive None/no-attribute + parametrize 7 non-pg dialects). 단위 2214→2228 |
+| **#273** Docs/cycle-82-pr2-tier-b-memory-additions | **메모리 신설 2건 + MEMORY 인덱스 갱신** — (1) `feedback-copilot-autofix-noqa-trap.md` (협업 카테고리 — `# noqa: F401` 무시 트랩 + side-effect import 4 패턴 revert default) (2) `feedback-pr-push-direct-validation.md` (TDD/CI 카테고리 — 사이클 73/79/81 3 사이클 연속 CI fail-fix 학습). MEMORY 인덱스 25→27 (활성 23→25 + deprecated 2). STATE/CLAUDE 헤더 메모리 카운트 동기화 |
+| **#274** Fix/cycle-78-pr2-telegram-bot-blocked-skip | **사이클 82 NEW-P0-1 머지 — Telegram 403 (봇 차단) silent skip + streak guard** — 사이클 78 5+1 cross-verify 영역 🅒 P0-1 처리 (사이클 82 시점 main 21 commit 누적 → clean rebase + force-push). `src/notifier/telegram.py` 403 silent skip + 5회 연속 streak guard + defensive int coercion. 회귀 가드 7건 (`tests/unit/notifier/test_telegram_bot_blocked_skip.py`). 단위 2228→2236 (+7 NEW-P0-1 + baseline 실측 정정 +1). 운영 영향 = cron 누적 사고 차단 (NEW-P0-1 페어) |
+| **본 PR** Docs/cycle-82-new-p0-1-sync | **사이클 82 NEW-P0-1 머지 후 sync** — STATE 헤더 72→75 PR + 단위 2228→2236 + 사이클 82 row #274 추가 + CLAUDE.md tail NEW-P0-1 머지 행 + README 배지 (2228→2236) |
 
-**사이클 82 신규 LOC 합**: ~50 코드 (헬퍼) + ~250 회귀 가드 + ~280 docs/메모리 = **+580 LOC 누적**
+**사이클 82 신규 LOC 합**: ~50 코드 (헬퍼) + ~250 회귀 가드 + ~280 docs/메모리 + ~184 NEW-P0-1 (코드 39 + 회귀 가드 145) = **+764 LOC 누적**
 
 **자율 판단 보고 (정책 3)**:
 - (1) Tier B 묶음 default = 사이클 78~81 회고 P0 후속 (사용자 "모두 승인" 명시 — 옵션 🅐)
 - (2) PR 1 alembic dialect helper = 정책 16 4번 원칙 (사용처 ≥3 = 12 도달) 정합 — over-engineering X
 - (3) `alembic/env.py:88` 보존 = SQLite-specific (`is_postgresql` 부적합) 영역 — 헬퍼 적용 제외
 - (4) PR 2 메모리 카테고리 분류 = `feedback-copilot-autofix-noqa-trap` 협업 (메모리 `feedback-copilot-autofix-collaboration` 페어 확장) + `feedback-pr-push-direct-validation` TDD/CI (3 사이클 연속 사고 패턴)
-- (5) 다음 작업 default = 사이클 78 PR 2 web UI 머지 안내 (NEW-P0-1 운영 사고 차단) + Sentry baseline 1주 후 사이클 83+ 영역 🅓 진행 (NEW-P0-3 정합)
+- (5) NEW-P0-1 (#274) clean rebase + force-push = main 21 commit 누적 누적된 cycle 78 PR 2 → `src/notifier/telegram.py` 변경 충돌 0건 (main 21 commit 동안 telegram.py 변경 0) → clean rebase 가능. 메모리 `feedback-pr-push-direct-validation.md` default 적용 = `pytest tests/unit tests/integration -q` 2350 passed / 5 skipped / 0 failed
+- (6) PR 3+4 영구 폐기 default = **브랜치 보존** 채택 (사이클 71 stale branches 일괄 삭제 패턴 차용 — 다음 cleanup 사이클 일괄 처리). 사용자 명시 즉시 삭제 시 `git push origin --delete` 진행
+- (7) 다음 작업 default = Sentry baseline 1주 후 사이클 83+ 영역 🅓 진행 (NEW-P0-3 정합 — 🅔 → 🅓 순서)
 
 ---
 
