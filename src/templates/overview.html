@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Overview — SCAManager{% endblock %}
+{% block title %}{{ 'header.overview' | i18n_args(locale | default('ko')) }} — SCAManager{% endblock %}
 {% block content %}
 <style>
   .overview-header {
@@ -85,17 +85,18 @@
 
 <div class="overview-header">
   <div>
-    {# Phase 1B (UI 개편) — 친근한 환영 인사 (current_user 있을 때만) #}
+    {# Phase 1B (UI 개편) — 친근한 환영 인사 (current_user 있을 때만) / Phase 2 PR-5 — 다국어 적용 #}
+    {# Phase 1B (UI redesign) — friendly greeting (only when current_user exists) / Phase 2 PR-5 — i18n applied #}
     {% if current_user %}
-    <p class="overview-greeting">안녕하세요, {{ current_user.display_name or current_user.github_login }}님 👋</p>
+    <p class="overview-greeting">{{ 'overview.greeting' | i18n_args(locale | default('ko'), name=(current_user.display_name or current_user.github_login)) }} 👋</p>
     {% endif %}
-    <h2 class="overview-title">{% if repos %}오늘의 분석{% else %}리포지토리 현황{% endif %}</h2>
+    <h2 class="overview-title">{% if repos %}{{ 'overview.title' | i18n_args(locale | default('ko')) }}{% else %}{{ 'overview.title_empty' | i18n_args(locale | default('ko')) }}{% endif %}</h2>
   </div>
   <div class="overview-actions">
     {% if repos %}
-    <span class="repo-count">{{ repos | length }}개 리포</span>
+    <span class="repo-count">{{ 'overview.repo_count' | i18n_args(locale | default('ko'), count=repos | length) }}</span>
     {% endif %}
-    <a href="/repos/add" class="btn btn-primary btn--sm">+ 리포 추가</a>
+    <a href="/repos/add" class="btn btn-primary btn--sm">{{ 'overview.add_repo' | i18n_args(locale | default('ko')) }}</a>
   </div>
 </div>
 <style>
@@ -114,10 +115,10 @@
     <table>
       <thead>
         <tr>
-          <th>리포지토리</th>
-          <th>분석</th>
-          <th>평균 점수</th>
-          <th>등급</th>
+          <th>{{ 'overview.table.repository' | i18n_args(locale | default('ko')) }}</th>
+          <th>{{ 'overview.table.analysis' | i18n_args(locale | default('ko')) }}</th>
+          <th>{{ 'overview.table.avg_score' | i18n_args(locale | default('ko')) }}</th>
+          <th>{{ 'overview.table.grade' | i18n_args(locale | default('ko')) }}</th>
           <th></th>
         </tr>
       </thead>
@@ -127,7 +128,7 @@
         <td>
           <a class="repo-link" href="/repos/{{ item.full_name }}">{{ item.full_name }}</a>
         </td>
-        <td><span class="analysis-count">{{ item.analysis_count }}회</span></td>
+        <td><span class="analysis-count">{{ 'overview.analysis_count_unit' | i18n_args(locale | default('ko'), count=item.analysis_count) }}</span></td>
         <td>
           {% if item.avg_score %}
           <span class="score-cell {% if item.avg_score >= 75 %}score-high{% elif item.avg_score >= 50 %}score-mid{% else %}score-low{% endif %}">
@@ -142,7 +143,7 @@
           <span class="grade grade-{{ item.avg_grade }}">{{ item.avg_grade }}</span>
           {% endif %}
         </td>
-        <td><a class="settings-link" href="/repos/{{ item.full_name }}/settings">⚙️ 설정</a></td>
+        <td><a class="settings-link" href="/repos/{{ item.full_name }}/settings">⚙️ {{ 'overview.settings_link' | i18n_args(locale | default('ko')) }}</a></td>
       </tr>
       {% endfor %}
       </tbody>
@@ -153,42 +154,40 @@
 {# Phase E.5 — Onboarding 3단계 튜토리얼 (리포 0개일 때만 노출) #}
 <div class="card get-started-tutorial">
   <div class="gst-header">
-    <h2 class="gst-title">🚀 3단계로 시작하기</h2>
-    <p class="gst-subtitle">GitHub 리포를 연결하면 Push/PR 시 자동 분석이 시작됩니다</p>
+    <h2 class="gst-title">🚀 {{ 'overview.tutorial.title' | i18n_args(locale | default('ko')) }}</h2>
+    <p class="gst-subtitle">{{ 'overview.tutorial.subtitle' | i18n_args(locale | default('ko')) }}</p>
   </div>
   <div class="gst-steps">
     <div class="gst-step">
       <div class="gst-step-num">1</div>
       <div class="gst-step-body">
-        <div class="gst-step-title">GitHub 리포 선택</div>
-        <div class="gst-step-desc">OAuth 로 연결한 리포 중 하나를 선택하면 Webhook 이 자동 생성됩니다.</div>
-        <a href="/repos/add" class="btn btn-primary btn--sm gst-cta">+ 리포 추가</a>
+        <div class="gst-step-title">{{ 'overview.tutorial.step1_title' | i18n_args(locale | default('ko')) }}</div>
+        <div class="gst-step-desc">{{ 'overview.tutorial.step1_desc' | i18n_args(locale | default('ko')) }}</div>
+        <a href="/repos/add" class="btn btn-primary btn--sm gst-cta">{{ 'overview.tutorial.step1_cta' | i18n_args(locale | default('ko')) }}</a>
       </div>
     </div>
     <div class="gst-step">
       <div class="gst-step-num">2</div>
       <div class="gst-step-body">
-        <div class="gst-step-title">기본 설정 (Simple 모드)</div>
+        <div class="gst-step-title">{{ 'overview.tutorial.step2_title' | i18n_args(locale | default('ko')) }}</div>
         <div class="gst-step-desc">
-          등록 후 설정 페이지에서 <strong>🚀 빠른 설정 프리셋</strong> 중 하나 선택.
-          Simple 모드 기본값은 Python 분석 + Telegram 알림 + PR 코멘트입니다.
+          {{ 'overview.tutorial.step2_desc_part1' | i18n_args(locale | default('ko')) }}<strong>{{ 'overview.tutorial.step2_desc_preset' | i18n_args(locale | default('ko')) }}</strong>{{ 'overview.tutorial.step2_desc_part2' | i18n_args(locale | default('ko')) }}
         </div>
       </div>
     </div>
     <div class="gst-step">
       <div class="gst-step-num">3</div>
       <div class="gst-step-body">
-        <div class="gst-step-title">첫 Push 또는 PR</div>
+        <div class="gst-step-title">{{ 'overview.tutorial.step3_title' | i18n_args(locale | default('ko')) }}</div>
         <div class="gst-step-desc">
-          코드를 푸시하면 자동으로 분석 결과가 대시보드에 쌓입니다.
-          점수가 맞는지 👍/👎 피드백을 주시면 정합도 지표가 개선됩니다.
+          {{ 'overview.tutorial.step3_desc' | i18n_args(locale | default('ko')) }}
         </div>
       </div>
     </div>
   </div>
   <div class="gst-footer">
     <div class="gst-footer-hint">
-      💡 <strong>팁</strong> — <code>ANTHROPIC_API_KEY</code> 없이도 최대 89점(B등급)까지 분석 가능합니다.
+      💡 <strong>{{ 'overview.tutorial.tip_label' | i18n_args(locale | default('ko')) }}</strong>{{ 'overview.tutorial.tip_desc_part1' | i18n_args(locale | default('ko')) }}<code>ANTHROPIC_API_KEY</code>{{ 'overview.tutorial.tip_desc_part2' | i18n_args(locale | default('ko')) }}
     </div>
   </div>
 </div>
@@ -232,16 +231,16 @@
 {% if calibration and cal_total > 0 %}
 <div class="card calibration-card">
   <div class="calibration-header">
-    <h3>📊 AI 점수 정합도</h3>
-    <span class="calibration-hint">Claude 가 매긴 점수가 사람 판단과 얼마나 일치하는지 — 점수 범위별 👍 비율</span>
+    <h3>📊 {{ 'overview.calibration.title' | i18n_args(locale | default('ko')) }}</h3>
+    <span class="calibration-hint">{{ 'overview.calibration.hint' | i18n_args(locale | default('ko')) }}</span>
   </div>
   <table class="calibration-table">
     <thead>
       <tr>
-        <th>점수 범위</th>
-        <th>피드백 수</th>
-        <th>👍 비율</th>
-        <th>시각화</th>
+        <th>{{ 'overview.calibration.range' | i18n_args(locale | default('ko')) }}</th>
+        <th>{{ 'overview.calibration.feedback_count' | i18n_args(locale | default('ko')) }}</th>
+        <th>{{ 'overview.calibration.up_ratio' | i18n_args(locale | default('ko')) }}</th>
+        <th>{{ 'overview.calibration.visualization' | i18n_args(locale | default('ko')) }}</th>
       </tr>
     </thead>
     <tbody>

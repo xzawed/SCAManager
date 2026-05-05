@@ -21,7 +21,7 @@ from src.models.analysis import Analysis
 from src.models.repository import Repository
 from src.services import dashboard_service
 from src.shared.log_safety import sanitize_for_log
-from src.ui._helpers import templates
+from src.ui._helpers import get_locale, templates
 
 logger = logging.getLogger(__name__)
 

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="{{ locale | default('ko') }}">
 <head>
   <meta charset="UTF-8">
   <!-- viewport-fit=cover: iOS notch 디바이스의 safe-area-inset env() 활성화
@@ -796,10 +796,10 @@
        비로그인 상태에서 클릭 시 /login 으로 리다이렉트되므로 시각 노출 자체가 무의미.
        Step E (E1): Hamburger + nav links shown only when authenticated. #}
     {% if current_user %}
-    <button class="nav-hamburger" id="navHamburger" aria-label="메뉴" aria-expanded="false">☰</button>
+    <button class="nav-hamburger" id="navHamburger" aria-label="{{ 'common.menu_aria' | i18n_args(locale | default('ko')) }}" aria-expanded="false">☰</button>
     <div class="nav-links" id="navLinks">
-      <a class="nav-link" href="/">Overview</a>
-      <a class="nav-link" href="/dashboard">Dashboard</a>
+      <a class="nav-link" href="/">{{ 'header.overview' | i18n_args(locale | default('ko')) }}</a>
+      <a class="nav-link" href="/dashboard">{{ 'header.dashboard' | i18n_args(locale | default('ko')) }}</a>
     </div>
     {% endif %}
     <div class="nav-spacer"></div>
@@ -807,7 +807,7 @@
     <div class="nav-user">
       <span class="nav-user-name">{{ current_user.display_name or current_user.github_login }}</span>
       <form method="post" action="/auth/logout" style="display:inline;margin:0">
-        <button type="submit" class="nav-logout-btn">로그아웃</button>
+        <button type="submit" class="nav-logout-btn">{{ 'common.logout' | i18n_args(locale | default('ko')) }}</button>
       </form>
     </div>
     {% endif %}
@@ -923,13 +923,11 @@
         });
       }
 
-      // Cookie `preferred_language` 우선, 없으면 ko default (LocaleMiddleware 페어)
-      // Cookie preferred_language priority, fallback to ko default (pairs with LocaleMiddleware)
-      function readCookieLang() {
-        const m = document.cookie.match(/(?:^|;\s*)preferred_language=([^;]+)/);
-        return m ? m[1] : 'ko';
-      }
-      applyLang(readCookieLang());
+      // Phase 2 PR-5 (사이클 84) — 서버측 locale (LocaleMiddleware scope.state) 주입
+      // Cookie 직접 읽기 회피 (httponly=True 정합 — XSS 위험 0 + race condition 0)
+      // Phase 2 PR-5 (Cycle 84) — server-side locale injection from LocaleMiddleware
+      // Avoids document.cookie read (httponly=True compatible — XSS 0 + race 0)
+      applyLang('{{ locale | default("ko") }}');
 
       langToggle.addEventListener('click', e => {
         e.stopPropagation();

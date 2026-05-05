@@ -17,7 +17,7 @@ from src.github_client.repos import (
 from src.models.repo_config import RepoConfig
 from src.models.repository import Repository
 from src.repositories import repo_config_repo, repository_repo
-from src.ui._helpers import GITHUB_WEBHOOK_PATH, templates, webhook_base_url
+from src.ui._helpers import GITHUB_WEBHOOK_PATH, get_locale, templates, webhook_base_url
 
 router = APIRouter()
 
@@ -28,7 +28,7 @@ async def add_repo_page(
     current_user: Annotated[CurrentUser, Depends(require_login)],
 ):
     """리포 추가 페이지를 렌더링한다."""
-    return templates.TemplateResponse(request, "add_repo.html", {"current_user": current_user})
+    return templates.TemplateResponse(request, "add_repo.html", {"current_user": current_user, "locale": get_locale(request)})
 
 
 @router.get("/api/github/repos")

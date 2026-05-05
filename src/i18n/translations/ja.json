@@ -15,7 +15,8 @@
     "yes": "はい",
     "no": "いいえ",
     "confirm": "確認",
-    "no_data": "データなし"
+    "no_data": "データなし",
+    "menu_aria": "メニューを開く"
   },
   "header": {
     "welcome": "ようこそ、{name}さん",
@@ -23,9 +24,12 @@
     "dark_dashboard": "ダークダッシュボード",
     "light_clean": "クリーンカード",
     "glass": "グラスモーフィズム",
-    "claude_dark": "Claude ダーク (ベータ版)"
+    "claude_dark": "Claude ダーク (ベータ版)",
+    "overview": "概要",
+    "dashboard": "ダッシュボード"
   },
   "login": {
+    "title_prefix": "ログイン",
     "title": "SCAManager",
     "subtitle": "PRが入ってきたらClaudeがレビューしてスコアとフィードバックをお知らせします",
     "github_login": "GitHubでログイン",
@@ -60,13 +64,58 @@
   "overview": {
     "greeting": "こんにちは、{name}さん",
     "title": "本日の分析",
+    "title_empty": "リポジトリ状況",
     "repo_count": "{count}個のリポ",
+    "add_repo": "+ リポ追加",
+    "settings_link": "設定",
+    "analysis_count_unit": "{count}回",
     "table": {
       "repository": "リポジトリ",
       "analysis": "分析",
       "avg_score": "平均スコア",
       "grade": "グレード"
+    },
+    "tutorial": {
+      "title": "3ステップで始める",
+      "subtitle": "GitHubリポを連携するとPush/PR時に自動分析が開始されます",
+      "step1_title": "GitHubリポを選択",
+      "step1_desc": "OAuthで連携したリポの中から1つ選択するとWebhookが自動生成されます。",
+      "step1_cta": "+ リポ追加",
+      "step2_title": "初期設定 (Simpleモード)",
+      "step2_desc_part1": "登録後、設定ページの ",
+      "step2_desc_preset": "🚀 クイック設定プリセット",
+      "step2_desc_part2": " から1つを選択。Simpleモードの既定値は Python 分析 + Telegram 通知 + PR コメントです。",
+      "step3_title": "最初のPushまたはPR",
+      "step3_desc": "コードをプッシュすると分析結果が自動的にダッシュボードに蓄積されます。スコアが正しいか 👍/👎 のフィードバックをいただければ整合性指標が改善されます。",
+      "tip_label": "ヒント",
+      "tip_desc_part1": " — ",
+      "tip_desc_part2": " なしでも最大89点(Bグレード)まで分析可能です。"
+    },
+    "calibration": {
+      "title": "AIスコア整合性",
+      "hint": "Claudeが付けたスコアが人間の判断とどれだけ一致するか — スコア範囲別 👍 比率",
+      "range": "スコア範囲",
+      "feedback_count": "フィードバック数",
+      "up_ratio": "👍 比率",
+      "visualization": "可視化"
     }
+  },
+  "add_repo": {
+    "title_prefix": "リポ追加",
+    "page_title": "リポジトリ追加",
+    "subtitle": "GitHubリポを選択するとWebhookが自動生成されます",
+    "back": "← 戻る",
+    "label_select": "GitHubリポジトリ",
+    "loading_option": "リポリストを読み込み中...",
+    "hint_default": "GitHub APIからアクセス可能なリポリストを読み込みます。",
+    "placeholder_option": "リポを選択してください",
+    "no_repos_option": "追加可能なリポがありません",
+    "no_repos_hint": "すべてのリポが既に登録されているか、アクセス可能なリポがありません。",
+    "loaded_hint": "{count}個のリポを読み込みました。",
+    "load_failed_option": "リポリスト読み込み失敗",
+    "error_prefix": "エラー: ",
+    "api_error_prefix": "APIエラー: ",
+    "submit": "Webhook生成 + リポ追加"
   },
   "settings": {
     "title": "設定",
