@@ -595,7 +595,9 @@
               });
               if (res.ok) {
                 status.textContent = '저장됨. 페이지 새로고침... / Saved. Reloading...';
-                setTimeout(() => window.location.reload(), 600);
+                // SonarQube javascript:S7764 — globalThis 표준 권장 (window 대신)
+                // SonarQube javascript:S7764 — globalThis is the standard (replaces window)
+                setTimeout(() => globalThis.location.reload(), 600);
               } else {
                 status.textContent = '저장 실패 / Save failed (status: ' + res.status + ')';
               }

@@ -91,7 +91,24 @@ class PreferredLanguageUpdate(BaseModel):
         return v
 
 
-@router.post("/me/preferred-language", status_code=200)
+@router.post(
+    "/me/preferred-language",
+    status_code=200,
+    responses={
+        # Pydantic body validator 가 SUPPORTED_LOCALES 미지원 / 빈 문자열 시 발화
+        # FastAPI auto-422 from Pydantic body validator (unsupported locale / empty)
+        422: {
+            "description": (
+                "Validation error — language not in SUPPORTED_LOCALES or empty"
+            ),
+        },
+        # I18N_DISABLED=1 kill-switch 활성 시 503 (사이클 78 NEW-P0-2 패턴 페어)
+        # 503 when I18N_DISABLED=1 kill-switch active (Cycle 78 NEW-P0-2 pair)
+        503: {
+            "description": "i18n feature is disabled (I18N_DISABLED=1)",
+        },
+    },
+)
 async def update_preferred_language(
     body: PreferredLanguageUpdate,
     response: Response,

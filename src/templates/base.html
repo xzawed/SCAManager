@@ -949,7 +949,9 @@
             applyLang(lang);
             // 페이지 reload — 새 locale 로 UI 재렌더 (LocaleMiddleware 페어)
             // Reload page — re-render UI with new locale (pairs with LocaleMiddleware)
-            window.location.reload();
+            // SonarQube javascript:S7764 — globalThis 표준 권장 (window 대신)
+            // SonarQube javascript:S7764 — globalThis is the standard (replaces window)
+            globalThis.location.reload();
           } else {
             console.error('Failed to update preferred_language:', res.status);
           }
