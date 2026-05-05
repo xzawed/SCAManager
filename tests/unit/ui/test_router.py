@@ -1718,7 +1718,14 @@ def test_telegram_otp_section_renders_when_not_connected():
     # '연결 코드 발급' 버튼이 렌더링되어야 한다
     # The 'Issue Code' button must be rendered.
     assert "issueTelegramOtp" in html
-    assert "Issue Code" in html or "연결 코드 발급" in html
+    # Phase 2 PR-8 (사이클 84) — i18n 적용 후 default locale 'en' 또는 'ko' 양호
+    # 영문 "Issue link code" / 한국어 "연결 코드 발급" / 일본어 "連携コードを発行"
+    assert (
+        "Issue link code" in html
+        or "Issue Code" in html
+        or "연결 코드 발급" in html
+        or "連携コードを発行" in html
+    )
     # 'Telegram 연결' 서브섹션 제목이 존재해야 한다
     # The 'Telegram Connection' subsection title must be present.
     assert "Telegram" in html and "connect" in html.lower()

@@ -28,6 +28,7 @@ from src.shared.log_safety import sanitize_for_log
 from src.ui._helpers import (
     GITHUB_WEBHOOK_PATH,
     get_accessible_repo,
+    get_locale,
     logger,
     templates,
     webhook_base_url,
@@ -201,6 +202,7 @@ async def repo_settings(  # pylint: disable=too-many-positional-arguments,too-ma
         "webhook_stale": webhook_stale,
         "onboarding_needed": onboarding_needed,
         "initial_mode": initial_mode,
+        "locale": get_locale(request),
     })
 
 

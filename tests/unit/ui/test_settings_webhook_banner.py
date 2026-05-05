@@ -176,11 +176,12 @@ def test_settings_new_card_structure_present():
     resp = _settings_get(stale=False)
     assert resp.status_code == 200
     # 새 카드 이름이 있어야 함 / New card names must be present
-    assert "PR 동작 규칙" in resp.text
-    assert "알림 채널 (발신)" in resp.text
-    assert "이벤트 후 자동화" in resp.text
-    assert "통합 &amp; 인증 (수신)" in resp.text
-    assert "위험 구역" in resp.text
+    # Phase 2 PR-8 (사이클 84) — i18n 적용 후 default locale 'en' 또는 'ko' 양호
+    assert "PR Behavior Rules" in resp.text or "PR 동작 규칙" in resp.text
+    assert "Outbound Channels" in resp.text or "알림 채널 (발신)" in resp.text
+    assert "Post-event automation" in resp.text or "이벤트 후 자동화" in resp.text
+    assert "Integration &amp; Auth (Inbound)" in resp.text or "통합 &amp; 인증 (수신)" in resp.text
+    assert "Danger zone" in resp.text or "위험 구역" in resp.text
     # 구 카드명은 더 이상 존재하지 않아야 함 / Old card names must be gone
     assert "분석 동작 규칙" not in resp.text
     assert "알림 발신 채널" not in resp.text
