@@ -30,9 +30,10 @@ def _make_ai_review():
 
 
 def test_comment_body_contains_total_score():
+    """Phase 3 PR-11 (사이클 84) — i18n 적용 후 default locale en/ko/ja 양호."""
     body = _build_comment_body(_make_score(), [], None)
     assert "82/100" in body
-    assert "등급 B" in body
+    assert ("Grade B" in body) or ("등급 B" in body) or ("グレード B" in body)
 
 
 def test_comment_body_contains_grade_emoji():
@@ -41,12 +42,13 @@ def test_comment_body_contains_grade_emoji():
 
 
 def test_comment_body_contains_breakdown_table():
+    """Phase 3 PR-11 (사이클 84) — i18n 적용 후 default locale en/ko/ja 양호."""
     body = _build_comment_body(_make_score(), [], None)
-    assert "커밋 메시지" in body
-    assert "코드 품질" in body
-    assert "보안" in body
-    assert "구현 방향성" in body
-    assert "테스트" in body
+    assert ("Commit message" in body) or ("커밋 메시지" in body) or ("コミットメッセージ" in body)
+    assert ("Code quality" in body) or ("코드 품질" in body) or ("コード品質" in body)
+    assert ("Security" in body) or ("보안" in body) or ("セキュリティ" in body)
+    assert ("Implementation direction" in body) or ("구현 방향성" in body) or ("実装方向性" in body)
+    assert ("Tests" in body) or ("테스트" in body) or ("テスト" in body)
 
 
 def test_comment_body_includes_ai_summary_and_suggestions():
@@ -161,19 +163,21 @@ def _make_result(**kwargs):
 
 
 def test_build_comment_from_result_basic():
+    """Phase 3 PR-11 (사이클 84) — i18n 적용 후 default locale en/ko/ja 양호."""
     body = _build_comment_from_result(_make_result())
     assert "80/100" in body
-    assert "등급 B" in body
+    assert ("Grade B" in body) or ("등급 B" in body) or ("グレード B" in body)
     assert "🔵" in body  # GRADE_EMOJI["B"]
 
 
 def test_build_comment_from_result_contains_breakdown():
+    """Phase 3 PR-11 (사이클 84) — i18n 적용 후 default locale en/ko/ja 양호."""
     body = _build_comment_from_result(_make_result())
-    assert "커밋 메시지" in body
-    assert "코드 품질" in body
-    assert "보안" in body
-    assert "구현 방향성" in body
-    assert "테스트" in body
+    assert ("Commit message" in body) or ("커밋 메시지" in body) or ("コミットメッセージ" in body)
+    assert ("Code quality" in body) or ("코드 품질" in body) or ("コード品質" in body)
+    assert ("Security" in body) or ("보안" in body) or ("セキュリティ" in body)
+    assert ("Implementation direction" in body) or ("구현 방향성" in body) or ("実装方向性" in body)
+    assert ("Tests" in body) or ("테스트" in body) or ("テスト" in body)
 
 
 def test_build_comment_from_result_includes_ai_summary():

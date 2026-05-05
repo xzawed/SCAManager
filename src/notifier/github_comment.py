@@ -1,6 +1,11 @@
-"""GitHub pull request comment notifier using the GitHub Issues API."""
+"""GitHub pull request comment notifier using the GitHub Issues API.
+
+Phase 3 PR-11 (사이클 84) — i18n: language 인자 + 3-layer fallback (resolve_notification_language).
+Phase 3 PR-11 (Cycle 84) — i18n: language arg + 3-layer fallback.
+"""
 from src.constants import GRADE_EMOJI, NOTIFIER_MAX_ISSUES_LONG
 from src.github_client.helpers import github_api_headers
+from src.i18n.loader import get_text
 from src.shared.http_client import get_http_client
 from src.scorer.calculator import ScoreResult
 from src.analyzer.io.static import StaticAnalysisResult
@@ -11,6 +16,7 @@ def _build_comment_body(
     score_result: ScoreResult,
     analysis_results: list[StaticAnalysisResult],
     ai_review: AiReviewResult | None,
+    language: str = "en",
 ) -> str:
     """Build comment by normalizing objects to dict form and delegating to _build_comment_from_result."""
     result = {
@@ -31,7 +37,7 @@ def _build_comment_body(
             for i in r.issues
         ],
     }
-    return _build_comment_from_result(result)
+    return _build_comment_from_result(result, language=language)
 
 
 async def post_pr_comment(  # pylint: disable=too-many-positional-arguments
@@ -41,9 +47,10 @@ async def post_pr_comment(  # pylint: disable=too-many-positional-arguments
     score_result: ScoreResult,
     analysis_results: list[StaticAnalysisResult],
     ai_review: AiReviewResult | None,
+    language: str = "en",
 ) -> None:
-    """Post a formatted analysis result comment on a GitHub pull request."""
-    body = _build_comment_body(score_result, analysis_results, ai_review)
+    """Post a formatted analysis result comment on a GitHub pull request (Phase 3 PR-11 — i18n)."""
+    body = _build_comment_body(score_result, analysis_results, ai_review, language=language)
     url = f"https://api.github.com/repos/{repo_name}/issues/{pr_number}/comments"
     client = get_http_client()
     r = await client.post(
@@ -54,56 +61,62 @@ async def post_pr_comment(  # pylint: disable=too-many-positional-arguments
     r.raise_for_status()
 
 
-def _header_lines(result: dict) -> list[str]:
+def _header_lines(result: dict, language: str = "en") -> list[str]:
     """헤더(등급/총점/점수표) 라인 생성."""
     score = result.get("score", 0)
     grade = result.get("grade", "F")
     breakdown = result.get("breakdown", {})
     grade_emoji = GRADE_EMOJI.get(grade, "⚪")
     return [
-        f"## {grade_emoji} SCAManager 분석 결과",
+        get_text("notifier.github_pr_comment.title", language, emoji=grade_emoji),
         "",
-        f"**총점: {score}/100** (등급 {grade})",
+        get_text("notifier.github_pr_comment.total_line", language, score=score, grade=grade),
         "",
-        "### 점수 상세",
-        "| 항목 | 점수 | 만점 |",
-        "|------|------|------|",
-        f"| 커밋 메시지 | {breakdown.get('commit_message', '-')} | 15 |",
-        f"| 코드 품질 | {breakdown.get('code_quality', '-')} | 25 |",
-        f"| 보안 | {breakdown.get('security', '-')} | 20 |",
-        f"| 구현 방향성 (AI) | {breakdown.get('ai_review', '-')} | 25 |",
-        f"| 테스트 | {breakdown.get('test_coverage', '-')} | 15 |",
+        get_text("notifier.github_pr_comment.breakdown_header", language),
+        get_text("notifier.github_pr_comment.table_header", language),
+        get_text("notifier.github_pr_comment.table_separator", language),
+        get_text("notifier.github_pr_comment.row_commit", language, value=breakdown.get("commit_message", "-")),
+        get_text("notifier.github_pr_comment.row_quality", language, value=breakdown.get("code_quality", "-")),
+        get_text("notifier.github_pr_comment.row_security", language, value=breakdown.get("security", "-")),
+        get_text("notifier.github_pr_comment.row_direction", language, value=breakdown.get("ai_review", "-")),
+        get_text("notifier.github_pr_comment.row_test", language, value=breakdown.get("test_coverage", "-")),
     ]
 
 
-def _ai_summary_lines(result: dict) -> list[str]:
+def _ai_summary_lines(result: dict, language: str = "en") -> list[str]:
     """AI 요약 섹션."""
-    return ["", "### AI 요약", result["ai_summary"]] if result.get("ai_summary") else []
+    if not result.get("ai_summary"):
+        return []
+    return [
+        "",
+        get_text("notifier.github_pr_comment.ai_summary_header", language),
+        result["ai_summary"],
+    ]
 
 
-def _category_feedback_lines(result: dict) -> list[str]:
+def _category_feedback_lines(result: dict, language: str = "en") -> list[str]:
     """카테고리별 피드백 섹션. 전체 피드백이 비어있으면 빈 목록."""
     feedback_items = [
-        ("커밋 메시지", result.get("commit_message_feedback")),
-        ("코드 품질", result.get("code_quality_feedback")),
-        ("보안", result.get("security_feedback")),
-        ("구현 방향성", result.get("direction_feedback")),
-        ("테스트", result.get("test_feedback")),
+        (get_text("notifier.github_pr_comment.category_commit", language), result.get("commit_message_feedback")),
+        (get_text("notifier.github_pr_comment.category_quality", language), result.get("code_quality_feedback")),
+        (get_text("notifier.github_pr_comment.category_security", language), result.get("security_feedback")),
+        (get_text("notifier.github_pr_comment.category_direction", language), result.get("direction_feedback")),
+        (get_text("notifier.github_pr_comment.category_test", language), result.get("test_feedback")),
     ]
     if not any(fb for _, fb in feedback_items):
         return []
-    lines = ["", "### 카테고리별 피드백"]
+    lines = ["", get_text("notifier.github_pr_comment.category_feedback_header", language)]
     for label, fb in feedback_items:
         if fb:
             lines.append(f"- **{label}**: {fb}")
     return lines
 
 
-def _file_feedback_lines(result: dict) -> list[str]:
+def _file_feedback_lines(result: dict, language: str = "en") -> list[str]:
     """파일별 피드백 섹션."""
     if not result.get("file_feedbacks"):
         return []
-    lines = ["", "### 파일별 피드백"]
+    lines = ["", get_text("notifier.github_pr_comment.file_feedback_header", language)]
     for ff in result["file_feedbacks"]:
         lines.append(f"#### `{ff.get('file', '?')}`")
         for issue in ff.get("issues", []):
@@ -111,18 +124,27 @@ def _file_feedback_lines(result: dict) -> list[str]:
     return lines
 
 
-def _ai_suggestions_lines(result: dict) -> list[str]:
+def _ai_suggestions_lines(result: dict, language: str = "en") -> list[str]:
     """AI 개선 제안 섹션."""
     if not result.get("ai_suggestions"):
         return []
-    return ["", "### 개선 제안"] + [f"- {s}" for s in result["ai_suggestions"]]
+    return [
+        "",
+        get_text("notifier.github_pr_comment.ai_suggestions_header", language),
+    ] + [f"- {s}" for s in result["ai_suggestions"]]
 
 
-def _static_issues_lines(result: dict) -> list[str]:
+def _static_issues_lines(result: dict, language: str = "en") -> list[str]:
     """정적 분석 이슈 섹션 (상위 N건)."""
     if not result.get("issues"):
         return []
-    lines = ["", f"### 정적 분석 이슈 (상위 {NOTIFIER_MAX_ISSUES_LONG}건)"]
+    lines = [
+        "",
+        get_text(
+            "notifier.github_pr_comment.issues_header", language,
+            count=NOTIFIER_MAX_ISSUES_LONG,
+        ),
+    ]
     for issue in result["issues"][:NOTIFIER_MAX_ISSUES_LONG]:
         lines.append(
             f"- **[{issue.get('tool', '?')}]** {issue.get('message', '')} "
@@ -131,15 +153,15 @@ def _static_issues_lines(result: dict) -> list[str]:
     return lines
 
 
-def _build_comment_from_result(result: dict) -> str:
-    """Build a formatted PR comment body from a stored analysis result dict."""
+def _build_comment_from_result(result: dict, language: str = "en") -> str:
+    """Build a formatted PR comment body from a stored analysis result dict (Phase 3 PR-11 — i18n)."""
     return "\n".join(
-        _header_lines(result)
-        + _ai_summary_lines(result)
-        + _category_feedback_lines(result)
-        + _file_feedback_lines(result)
-        + _ai_suggestions_lines(result)
-        + _static_issues_lines(result)
+        _header_lines(result, language)
+        + _ai_summary_lines(result, language)
+        + _category_feedback_lines(result, language)
+        + _file_feedback_lines(result, language)
+        + _ai_suggestions_lines(result, language)
+        + _static_issues_lines(result, language)
     )
 
 
@@ -148,9 +170,10 @@ async def post_pr_comment_from_result(
     repo_name: str,
     pr_number: int,
     result: dict,
+    language: str = "en",
 ) -> None:
-    """Post a formatted analysis result comment from a stored result dict."""
-    body = _build_comment_from_result(result)
+    """Post a formatted analysis result comment from a stored result dict (Phase 3 PR-11 — i18n)."""
+    body = _build_comment_from_result(result, language=language)
     url = f"https://api.github.com/repos/{repo_name}/issues/{pr_number}/comments"
     client = get_http_client()
     r = await client.post(

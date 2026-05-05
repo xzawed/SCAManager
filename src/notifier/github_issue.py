@@ -1,4 +1,8 @@
-"""GitHub Issue 자동 생성 — 낮은 점수/보안 HIGH 커밋에 대한 알림."""
+"""GitHub Issue 자동 생성 — 낮은 점수/보안 HIGH 커밋에 대한 알림.
+
+Phase 3 PR-11 (사이클 84) — i18n: language 인자 + 3-layer fallback. Title prefix 영문 고정 (검색 호환).
+Phase 3 PR-11 (Cycle 84) — i18n: language arg + 3-layer fallback. Title prefix English-fixed (search-compat).
+"""
 import logging
 
 import httpx
@@ -6,6 +10,7 @@ import httpx
 from src.config import settings
 from src.constants import GITHUB_API
 from src.github_client.helpers import github_api_headers
+from src.i18n.loader import get_text
 from src.shared.http_client import get_http_client
 from src.shared.log_safety import sanitize_for_log
 
@@ -28,8 +33,9 @@ def _build_issue_body(
     analysis_id: int,
     result: dict,
     high_issues: list[dict],
+    language: str = "en",
 ) -> str:
-    """Issue body — AI 요약, 보안 HIGH 이슈, 분석 상세 링크."""
+    """Issue body — AI 요약, 보안 HIGH 이슈, 분석 상세 링크 (Phase 3 PR-11 — i18n)."""
     score = result.get("score", 0)
     grade = result.get("grade", "F")
     base_url = (settings.app_base_url or "").rstrip("/")
@@ -37,26 +43,37 @@ def _build_issue_body(
     full_link = f"{base_url}{link_path}" if base_url else link_path
 
     lines = [
-        f"## SCAManager 분석 결과 — 커밋 `{commit_sha[:7]}`",
+        get_text("notifier.github_issue.header", language, sha=commit_sha[:7]),
         "",
-        f"- **점수**: {score}/100 (등급 {grade})",
-        f"- **상세 분석**: {full_link}",
+        get_text("notifier.github_issue.score_line", language, score=score, grade=grade),
+        get_text("notifier.github_issue.detail_line", language, link=full_link),
     ]
 
     summary = result.get("ai_summary")
     if summary:
-        lines += ["", "### 요약", summary]
+        lines += [
+            "",
+            get_text("notifier.github_issue.summary_header", language),
+            summary,
+        ]
 
     if high_issues:
-        lines += ["", "### 보안 이슈 (HIGH)"]
+        lines += [
+            "",
+            get_text("notifier.github_issue.security_header", language),
+        ]
         for issue in high_issues[:10]:
-            lines.append(
-                f"- {issue.get('message', '')} (line {issue.get('line', '?')})"
-            )
+            lines.append(get_text(
+                "notifier.github_issue.security_item", language,
+                message=issue.get("message", ""), line=issue.get("line", "?"),
+            ))
 
     suggestions = result.get("ai_suggestions") or []
     if suggestions:
-        lines += ["", "### 개선 제안"]
+        lines += [
+            "",
+            get_text("notifier.github_issue.suggestions_header", language),
+        ]
         for s in suggestions[:5]:
             lines.append(f"- {s}")
 
@@ -70,8 +87,12 @@ async def create_low_score_issue(
     commit_sha: str,
     analysis_id: int,
     result: dict,
+    language: str = "en",
 ) -> int | None:
-    """낮은 점수 또는 보안 HIGH 커밋에 대한 GitHub Issue를 생성한다.
+    """낮은 점수 또는 보안 HIGH 커밋에 대한 GitHub Issue를 생성한다 (Phase 3 PR-11 — i18n).
+
+    Title prefix 영문 고정 — 운영자 검색 호환성 보장 (`[SCAManager] Low score commit: ...`).
+    Body 는 다국어 적용 — 사용자 가시 텍스트.
 
     Returns:
         생성된 Issue 번호, 실패 시 None.
@@ -82,8 +103,15 @@ async def create_low_score_issue(
     if high_issues:
         labels.append("security")
 
-    title = f"[SCAManager] 점수 낮은 커밋: {commit_sha[:7]} ({score}점)"
-    body = _build_issue_body(repo_name, commit_sha, analysis_id, result, high_issues)
+    # Title prefix = 영문 고정 (검색 호환). i18n key 의 본문도 영문 고정.
+    # Title prefix = English-fixed (search compat). i18n key body is also English-fixed.
+    title = get_text(
+        "notifier.github_issue.title_prefix_low_score", language,
+        sha=commit_sha[:7], score=score,
+    )
+    body = _build_issue_body(
+        repo_name, commit_sha, analysis_id, result, high_issues, language=language,
+    )
 
     try:
         client = get_http_client()
@@ -131,13 +159,18 @@ class _IssueNotifier:
         return ctx.score_result.total < ctx.config.reject_threshold or has_bandit_high
 
     async def send(self, ctx: NotifyContext) -> None:
-        """알림을 전송한다."""
+        """알림을 전송한다 (Phase 3 PR-11 — 3-layer fallback)."""
+        from src.database import SessionLocal  # noqa: WPS433
+        from src.notifier._language import resolve_notification_language  # noqa: WPS433
+        with SessionLocal() as db:
+            language = resolve_notification_language(db, config=ctx.config)
         await create_low_score_issue(
             github_token=ctx.owner_token,
             repo_name=ctx.repo_name,
             commit_sha=ctx.commit_sha,
             analysis_id=ctx.analysis_id,
             result=ctx.result_dict,
+            language=language,
         )
 
 

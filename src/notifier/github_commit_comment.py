@@ -18,12 +18,16 @@ async def post_commit_comment(
     repo_name: str,
     commit_sha: str,
     result: dict,
+    language: str = "en",
 ) -> None:
-    """Push 커밋에 분석 결과 Comment를 게시한다.
+    """Push 커밋에 분석 결과 Comment를 게시한다 (Phase 3 PR-11 — i18n).
+
+    Post analysis result comment on a Push commit (Phase 3 PR-11 — i18n).
 
     HTTPError 발생 시 로깅 후 조용히 반환 — 파이프라인을 중단하지 않는다.
+    HTTPError → log + silent return; do not stop the pipeline.
     """
-    body = _build_comment_from_result(result)
+    body = _build_comment_from_result(result, language=language)
     try:
         client = get_http_client()
         resp = await client.post(
@@ -59,12 +63,20 @@ class _CommitCommentNotifier:
         )
 
     async def send(self, ctx: NotifyContext) -> None:
-        """알림을 전송한다."""
+        """알림을 전송한다 (Phase 3 PR-11 — 3-layer fallback).
+
+        Send notification (Phase 3 PR-11 — 3-layer fallback).
+        """
+        from src.database import SessionLocal  # noqa: WPS433
+        from src.notifier._language import resolve_notification_language  # noqa: WPS433
+        with SessionLocal() as db:
+            language = resolve_notification_language(db, config=ctx.config)
         await post_commit_comment(
             github_token=ctx.owner_token,
             repo_name=ctx.repo_name,
             commit_sha=ctx.commit_sha,
             result=ctx.result_dict,
+            language=language,
         )
 
 
