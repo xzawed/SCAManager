@@ -1,5 +1,5 @@
 """Jinja2 i18n 필터 단위 테스트 (Phase 1 PR-1b)."""
-from jinja2 import Environment
+from jinja2 import Environment, select_autoescape
 
 from src.i18n.filters import i18n_args_filter, i18n_filter, register_i18n_filters
 
@@ -33,7 +33,7 @@ def test_i18n_args_filter_en():
 
 def test_register_i18n_filters_jinja_env():
     """register_i18n_filters — Jinja2 환경에 필터 등록 확인."""
-    env = Environment(autoescape=True)
+    env = Environment(autoescape=select_autoescape(["html", "xml"]))
     register_i18n_filters(env)
     assert "i18n" in env.filters
     assert "i18n_args" in env.filters
@@ -41,7 +41,7 @@ def test_register_i18n_filters_jinja_env():
 
 def test_jinja_template_uses_i18n_filter():
     """실제 Jinja2 템플릿에서 i18n 필터 동작 확인."""
-    env = Environment(autoescape=True)
+    env = Environment(autoescape=select_autoescape(["html", "xml"]))
     register_i18n_filters(env)
     tmpl = env.from_string('{{ "dashboard.title" | i18n("ko") }}')
     result = tmpl.render()
@@ -50,7 +50,7 @@ def test_jinja_template_uses_i18n_filter():
 
 def test_jinja_template_uses_i18n_args_filter():
     """실제 Jinja2 템플릿에서 i18n_args 필터 + 변수 치환 동작 확인."""
-    env = Environment(autoescape=True)
+    env = Environment(autoescape=select_autoescape(["html", "xml"]))
     register_i18n_filters(env)
     tmpl = env.from_string('{{ "header.welcome" | i18n_args("ja", name=user_name) }}')
     result = tmpl.render(user_name="Tanaka")
