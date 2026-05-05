@@ -151,6 +151,40 @@ def build_notification_tasks(  # pylint: disable=too-many-positional-arguments,t
     return tasks, names
 
 
+def _resolve_review_language(repo_name: str) -> str:
+    """AI 리뷰 출력 언어 결정 — Phase 4 PR-12 (사이클 84).
+
+    Resolve AI review output language — Phase 4 PR-12 (Cycle 84).
+
+    우선순위 (priority):
+    1. Repository.user_id → User.preferred_language (repo owner 언어)
+    2. settings.default_locale (env-based fallback)
+
+    notifier/_language.py 의 3-layer fallback 과 분리 — AI 리뷰는 repo 레벨 (DB 저장 + 다중 채널 재사용).
+    notifier 는 channel-level (Telegram/Discord/Slack/Email/GitHub 마다 다른 언어 가능).
+
+    Args:
+        repo_name: GitHub full name (owner/repo).
+
+    Returns:
+        언어 코드 ('en' / 'ko' / 'ja') — SUPPORTED_LOCALES 영역 내.
+    """
+    try:
+        with SessionLocal() as db:
+            repo = db.query(Repository).filter(Repository.full_name == repo_name).first()
+            if repo and repo.user_id:
+                from src.models.user import User  # noqa: WPS433  (지연 import — circular 회피)
+                user = db.query(User).filter(User.id == repo.user_id).first()
+                if user and user.preferred_language:
+                    return user.preferred_language
+    except Exception as exc:  # noqa: BLE001  graceful fallback (운영 보호)
+        logger.warning(
+            "_resolve_review_language failed for repo=%s: %s — falling back to default_locale",
+            sanitize_for_log(repo_name), exc,
+        )
+    return settings.default_locale
+
+
 def _extract_event_metadata(event: str, data: dict) -> tuple[str, str, str, int | None]:
     """Webhook 페이로드에서 repo_name, commit_sha, commit_message, pr_number를 추출한다."""
     repo_name: str = data["repository"]["full_name"]
@@ -416,10 +450,20 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
                 return
 
             patches = [(f.filename, f.patch) for f in files if f.patch]
+            # Phase 4 PR-12 (사이클 84) — repo owner 언어 결정 (User.preferred_language → default_locale)
+            # AI 리뷰 출력 언어 = repo owner 의 preferred_language. RepoConfig.notification_language 는
+            # 알림 채널 영역 (notifier/_language.py) — AI 리뷰는 DB 저장 + 다중 채널 재사용 → repo 레벨 결정.
+            # Phase 4 PR-12 (Cycle 84) — resolve repo owner's language (User.preferred_language → default_locale).
+            # AI review output language = repo owner's preferred_language. RepoConfig.notification_language
+            # is for channel-level (notifier/_language.py) — AI review is DB-stored + reused across channels.
+            review_language = _resolve_review_language(repo_name)
             with stage_timer("analyze", repo=repo_log) as ctx:
                 analysis_results, ai_review = await asyncio.gather(
                     _run_static_analysis(files),
-                    review_code(settings.anthropic_api_key, commit_message, patches),
+                    review_code(
+                        settings.anthropic_api_key, commit_message, patches,
+                        language=review_language,
+                    ),
                 )
                 ctx["file_count"] = len(analysis_results)
                 ctx["issue_count"] = sum(len(r.issues) for r in analysis_results)

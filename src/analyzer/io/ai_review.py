@@ -48,12 +48,20 @@ async def review_code(
     api_key: str,
     commit_message: str,
     patches: list[tuple[str, str]],
+    language: str = "en",
 ) -> AiReviewResult:
-    """Claude API로 코드를 리뷰하고 점수를 반환한다. API key가 없으면 기본값 반환."""
+    """Claude API로 코드를 리뷰하고 점수를 반환한다. API key가 없으면 기본값 반환.
+
+    Phase 4 PR-12 (사이클 84) — language 인자 추가. system prompt 가 출력 언어를 결정 (en/ko/ja).
+    Anthropic prompt cache key = system text hash → language 별 system text 다름 → 자동 cache 분기.
+
+    Phase 4 PR-12 (Cycle 84) — language arg added. System prompt determines output language.
+    Cache key (system text hash) auto-diverges per language → independent cache per language.
+    """
     if not api_key:
         return _default_result("no_api_key")
 
-    prompt, languages = build_review_prompt(commit_message, patches)
+    prompt, languages = build_review_prompt(commit_message, patches, language=language)
 
     if not prompt.strip():
         return _default_result("empty_diff")
@@ -76,7 +84,9 @@ async def review_code(
     # max_retries=2 — explicit so SDK upgrades cannot silently change retry behavior.
     client = anthropic.AsyncAnthropic(api_key=api_key, timeout=60.0, max_retries=2)
     model = settings.claude_review_model
-    system_text = get_system_prompt()
+    # Phase 4 PR-12 — language 별 system prompt (출력 언어 지시 포함).
+    # Phase 4 PR-12 — per-language system prompt (with output language directive).
+    system_text = get_system_prompt(language)
     start = time.perf_counter()
     try:
         # 시스템 프롬프트에 cache_control 적용 — 5분 ephemeral 캐시 (공용 헬퍼 경유).
