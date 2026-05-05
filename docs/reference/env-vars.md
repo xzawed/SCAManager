@@ -22,6 +22,7 @@
 | `APP_BASE_URL` | Railway 등 리버스 프록시에서 HTTPS redirect_uri 강제 지정 | `https://your-app.railway.app` |
 | `TOKEN_ENCRYPTION_KEY` | GitHub Access Token 암호화 키 (미설정 시 평문 저장) | `32자 이상 랜덤` |
 | `CLAUDE_REVIEW_MODEL` | AI 코드리뷰에 사용할 Claude 모델 ID | `claude-sonnet-4-6` (기본) |
+| `CLAUDE_INSIGHT_MODEL` | Insight narrative (`/dashboard?mode=insight`) 4 카드 생성용 Claude 모델 ID — 코드리뷰보다 단순 task → Haiku 분기로 토큰 비용 ↓ (Cycle 74 PR-A #247) | `claude-haiku-4-5` (기본) |
 | `DISABLE_PROMPT_CACHE` | Anthropic prompt caching (5분 ephemeral) opt-out — `1` 시 비활성 (Phase 3 PR 1 #218 신설). 운영 비용 통제용 — default `0` (caching 적용) | `0` (기본) / `1` (비활성) |
 | `TELEGRAM_WEBHOOK_SECRET` | Telegram `setWebhook` 시크릿 토큰 (미설정 시 헤더 검증 생략) | 빈 문자열 (기본) |
 | `N8N_WEBHOOK_SECRET` | n8n 전송 HMAC 서명 시크릿 (미설정 시 서명 생략) | 빈 문자열 (기본) |
@@ -31,9 +32,12 @@
 | 변수 | 설명 | 예시 |
 |------|------|------|
 | `INTERNAL_CRON_API_KEY` | **`POST /api/internal/cron/*` 전용 인증 키** (admin key 와 분리). Railway `[[deploy.cronJobs]]` 트리거. `hmac.compare_digest` 타이밍 안전 비교. **미설정 시 503 반환** — Phase 10 cron (weekly_summary, trend_check) 전부 비활성화. | `cron-internal-key-xxx` |
+| `SAAS_ADMIN_EMAILS` | **SaaS admin 권한 allow-list** — `,` 분리 email 문자열. `current_user.email in saas_admin_emails` 일치 시 `/admin/{tenants,rls-audit,operations}` UI + `/api/admin/*` REST 접근 허용. 미설정 시 admin 영역 자동 비활성화 (Cycle 79 PR 2 #255 — `require_admin` Depends 페어). | 빈 문자열 (기본) / `admin@example.com,owner@example.com` |
 | `SCAMANAGER_SELF_ANALYSIS_DISABLED` | **Loop Guard kill-switch** — `1` 설정 시 모든 webhook 분석 즉시 중단 (202 skipped). Phase 9 자기-분석 루프 사고 발생 시 즉각 차단용. | `0` (기본) / `1` (긴급 중단) |
+| `SECURITY_AUTO_PROCESS_DISABLED` | **Code/Secret Scanning auto-process kill-switch** — `1` 설정 시 `security_scan_service` + `dashboard_service` security 영역 자동 처리 중단 (Cycle 73 #244 신설). false-positive 누적 시 긴급 차단용. | `0` (기본) / `1` (긴급 중단) |
+| `SAAS_MULTITENANT_DISABLED` | **SaaS 멀티테넌트 영역 kill-switch** — `1` 설정 시 admin allow-list 검증 우회 (admin 영역 401 default). Cycle 79 PR 2 (#255) 신설 — SaaS 영역 운영 사고 시 즉각 차단용. | `0` (기본) / `1` (긴급 중단) |
 
-> **🔴 운영 안전**: 두 변수는 운영 사고 발생 시 즉시 사용해야 하므로 Railway Variables 에 미리 배치 권장. `INTERNAL_CRON_API_KEY` 미설정 시 cron job 이 silent 503 으로 실패해 weekly_summary 등이 발송 안 됨 — 운영자 인지 어려움.
+> **🔴 운영 안전**: 위 5 변수는 운영 사고 발생 시 즉시 사용해야 하므로 Railway Variables 에 미리 배치 권장. `INTERNAL_CRON_API_KEY` 미설정 시 cron job 이 silent 503 으로 실패해 weekly_summary 등이 발송 안 됨 — 운영자 인지 어려움. `SAAS_ADMIN_EMAILS` 미설정 시 admin UI 영역 (`/admin/tenants` 등) 모든 사용자 401 — Cycle 79+ SaaS 영역 활성화 시 의무. kill-switch 신규 추가 시 `src/shared/feature_kill_switch.py::is_disabled(feature)` helper 사용 default (Cycle 78 NEW-P0-2 #253 — 사용처 ≥ 3 도달 시 자동 헬퍼 추출 정책 16 4번 원칙 정합).
 
 ## Observability (선택, Phase E.2)
 

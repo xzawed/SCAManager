@@ -948,7 +948,7 @@ GitHub Code Scanning 점검 detail 절차 + 운영 통합 = `docs/runbooks/opera
 - **Phase 완료 조건**: 테스트 전체 통과 + `/lint` 통과 + (파이프라인 변경 시 `pipeline-reviewer` 승인) 세 조건이 모두 충족될 때만 Phase 완료를 선언한다.
 - **완료 시 필수 5-step**: 작업이 완료되면 반드시 ① 커밋 → ② PR 생성(`gh pr create`) → ③ `git push` → ④ `docs/STATE.md` 수치 갱신 → ⑤ **CLAUDE.md 아키텍처 섹션 동기화** (신규 파일 추가·삭제·이름 변경 시 `src/` 트리와 `### 핵심 데이터 흐름` 내 언급 갱신) 를 순서대로 수행한다. 예외 없음.
 - **README.md 배지 동기화**: 테스트 수·pylint·커버리지 수치가 바뀌면 `README.md` 14~18줄 배지도 함께 갱신한다. 수치 출처는 항상 `docs/STATE.md`.
-- **CLAUDE.md 아키텍처 동기화 체크리스트**: `src/` 하위에 파일 추가 시 아래 항목을 순서대로 확인한다. 누락 시 다음 Phase 착수 전 반드시 보완한다. **전례 2건**: (1) Phase 11에서 6개 파일 추가 후 CLAUDE.md에 5개 누락 → 3-에이전트 감사에서 발견, PR #73. (2) 2026-05-01 UI 감사 cleanup PR-D1 — `_merge_attempt_states.py` (Phase 3 PR-B1 도입분) + `static/vendor/chart.umd.min.js` (UI 감사 Step C) 트리 누락 → 5-에이전트 정합성 감사에서 발견.
+- **CLAUDE.md 아키텍처 동기화 체크리스트**: `src/` 하위에 파일 추가 시 아래 항목을 순서대로 확인한다. 누락 시 다음 Phase 착수 전 반드시 보완한다. **전례 3건**: (1) Phase 11에서 6개 파일 추가 후 CLAUDE.md에 5개 누락 → 3-에이전트 감사에서 발견, PR #73. (2) 2026-05-01 UI 감사 cleanup PR-D1 — `_merge_attempt_states.py` (Phase 3 PR-B1 도입분) + `static/vendor/chart.umd.min.js` (UI 감사 Step C) 트리 누락 → 5-에이전트 정합성 감사에서 발견. (3) 2026-05-05 사이클 78~82 5+1 cross-verify — 사이클 79/80/82 신규 환경변수 4건 (`CLAUDE_INSIGHT_MODEL` / `SAAS_MULTITENANT_DISABLED` / `SAAS_ADMIN_EMAILS` / `SECURITY_AUTO_PROCESS_DISABLED`) `docs/reference/env-vars.md` 미등재 → 6차 cross-verify 발견. `env-vars.md` sync 의무 본 체크리스트에 신규 추가.
 
   | 위치 | 확인 사항 |
   |------|----------|
@@ -957,6 +957,7 @@ GitHub Code Scanning 점검 detail 절차 + 운영 통합 = `docs/runbooks/opera
   | `repositories/` 한 줄 | 신규 repo 파일 "N종" 카운트 + 목록 갱신 |
   | `services/` 한 줄 | 신규 service 함수 목록 갱신 |
   | `### 핵심 데이터 흐름` | 신규 경로가 흐름도에 포함되어야 하면 추가 |
+  | `docs/reference/env-vars.md` | **신규 환경변수 (`*_DISABLED` kill-switch / `SAAS_*` / 모델 분기 / Sentry / DB 등) 추가 시 적정 섹션 (선택 / 내부 인증 / Observability / DB 등) 등재 의무** (사이클 82 5+1 cross-verify P0 학습 — 4건 누적 누락) |
 
 ### 모바일 환경 보호 — 수정 금지 파일
 
@@ -1057,7 +1058,7 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 ### DB / 마이그레이션
 
 - 🔴 **Supabase RLS 권한 모델 + 운영 활성화 미들웨어 (Phase 3 PR 5 #223 + postlude #228)**: `alembic/versions/0026_supabase_rls_policies.py` 가 3 테이블 (`repositories`, `analyses`, `merge_attempts`) 에 RLS policy 적용 (PG 전용 + dialect 분기 — SQLite 단위 테스트 자동 skip). 세션 컨텍스트 변수 = `current_setting('app.user_id', true)` 패턴 (Supabase Auth `auth.uid()` 미사용 — GitHub OAuth 정합). 운영 활성화 = `src/middleware/rls_session.py` (request 시작 시 `scope["session"]["user_id"]` → contextvars) + `src/database.py::_set_rls_user_id_per_query` event listener (매 query 직전 `SET LOCAL app.user_id = '<id>'` 발화). 1차 안전망 = 앱 레벨 filter (`src/services/dashboard_service.py::_apply_*_user_filter`, SQLite/PG 호환). 2차 안전망 = RLS policy (PG/Supabase 전용). **🔴 ASGI middleware 의무** (BaseHTTPMiddleware 우회 — Starlette `dispatch` 가 별도 anyio task 에서 `call_next` 호출해 contextvars 전파 X). middleware 등록 순서 = LIFO (RLS inner / SessionMiddleware outer — 후자가 먼저 호출).
-- **dialect 분기 helper 추출 보류 (사이클 64 회고 P1 — 사용처 ≥3 시점에 결정)**: 현재 `if conn.dialect.name != "postgresql": return` 패턴 사용처 = 2건 (`alembic/versions/0026_supabase_rls_policies.py::upgrade` + `src/database.py::_set_rls_user_id_per_query`). 임계값 (≥3) 미달 — 헬퍼 (`src/shared/alembic_dialect.py::pg_only(op)`) 추출 over-engineering 위험. 신규 PG-only 기능 도입 시 사용처 카운트 재검증 후 결정.
+- **dialect 분기 helper `is_postgresql(bind_or_conn)` 추출 완료 (사이클 82 PR 1 #272)**: 사이클 64 회고 P1 보류 결정 (사용처 2건 시점) → 사이클 78~82 영역 진입으로 사용처 12건 도달 (alembic 0024/0026/0027/0028/0029 + `src/database.py::_set_rls_user_id_per_query`) → 정책 16 4번 원칙 (사용처 ≥ 3 임계) 정합 헬퍼 추출. `src/shared/alembic_dialect.py::is_postgresql(bind_or_conn)` (duck typing — `bind`/`op.get_context()` 양 호환) + 11 사용처 일괄 치환 + 회귀 가드 14건 (`tests/unit/shared/test_alembic_dialect.py`). 예외: `alembic/env.py:88` SQLite-specific 분기 보존 (헬퍼 부적합 영역 — 자율 판단 보고 #272 명시). 사용 패턴: `from src.shared.alembic_dialect import is_postgresql; if not is_postgresql(op.get_bind()): return`.
 - 🔴 **Alembic batch_alter_table 금지**: SQLite 전용 패턴. PostgreSQL에서는 `op.create_unique_constraint('이름', '테이블', ['컬럼'])` 직접 사용. 잘못 사용 시 lifespan 마이그레이션 실패 → Railway 헬스체크 실패. **예외**: `0005_add_users_and_user_id.py`, `0006_phase8b_github_oauth.py`는 이미 프로덕션에 적용된 이력 마이그레이션이므로 수정 금지 — `alembic downgrade` 경로 파괴 위험. 신규 마이그레이션(0007 이후)에만 이 규칙을 적용한다.
 - **FailoverSessionFactory**: `DATABASE_URL_FALLBACK` 설정 시 Primary `OperationalError` → Fallback DB 자동 전환. `_probe_primary_loop` daemon 스레드가 복구 확인 후 자동 복귀. 미설정 시 단일 엔진 모드(probe 스레드 없음). 소비자 코드(`SessionLocal()`)는 변경 없이 그대로 사용. `engine = SessionLocal._primary_engine`으로 alembic/env.py 호환성 유지.
 - **DB 세션 expunge**: `get_current_user()`는 `db.expunge(user)` 후 세션 반환 — 세션 종료 후에도 컬럼 속성 안전하게 접근 가능. 관계 lazy-load 사용 금지.
