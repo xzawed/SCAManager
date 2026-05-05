@@ -356,18 +356,25 @@ def test_build_review_blocks_returns_three_tuple():
 
 
 def test_build_review_blocks_separates_lang_guides_from_user():
-    """lang_guides 가 system block 으로 분리 — user_prompt 안 inline X."""
+    """lang_guides 가 system block 으로 분리 — user_prompt 안 inline X.
+
+    Phase 4 PR-12 (사이클 84) — lang_guides header 영문 통일 ("## Per-language review criteria").
+    Phase 4 PR-12 (Cycle 84) — lang_guides header unified to English.
+    """
     from src.analyzer.pure.review_prompt import build_review_blocks
     lang_block, user_prompt, _ = build_review_blocks(
         "fix bug", [("src/foo.py", "+def f():\n+    pass")],
     )
     if lang_block:  # 언어 감지 시
-        assert "## 언어별 검토 기준" in lang_block
-        assert "## 언어별 검토 기준" not in user_prompt
+        assert "## Per-language review criteria" in lang_block
+        assert "## Per-language review criteria" not in user_prompt
 
 
 def test_build_review_prompt_backwards_compat_unchanged():
-    """기존 build_review_prompt 시그니처 + 반환 형식 100% 보존 (호출자 영향 0)."""
+    """기존 build_review_prompt 시그니처 + 반환 형식 100% 보존 (호출자 영향 0).
+
+    Phase 4 PR-12 (사이클 84) — lang_guides header 영문 통일.
+    """
     from src.analyzer.pure.review_prompt import build_review_prompt
     user_prompt, langs = build_review_prompt(
         "fix bug", [("src/foo.py", "+def f():\n+    pass")],
@@ -376,5 +383,5 @@ def test_build_review_prompt_backwards_compat_unchanged():
     assert isinstance(langs, list)
     # lang_guides 가 user_prompt 안 inline 보존 (multi-block 미적용)
     if "python" in langs:
-        # 단일 언어 시 ## 언어별 검토 기준 inline
-        assert "## 언어별 검토 기준" in user_prompt or "(언어 감지 안 됨)" not in user_prompt
+        # 단일 언어 시 ## Per-language review criteria inline
+        assert "## Per-language review criteria" in user_prompt or "(none)" not in user_prompt

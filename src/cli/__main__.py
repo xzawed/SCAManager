@@ -57,10 +57,13 @@ def main(argv: list[str] | None = None) -> None:
     # static analysis — Registry가 언어별 필터링 처리
     analysis_results = [analyze_file(f.filename, f.content) for f in files]
 
-    # AI review
+    # AI review — Phase 4 PR-12 (사이클 84) — language = settings.default_locale (CLI 환경)
+    # CLI 사용자 = 로컬 dev (User row 없음) → 환경변수 DEFAULT_LOCALE 또는 'en' fallback
+    # CLI user = local dev (no User row) → DEFAULT_LOCALE env or 'en' fallback
     api_key = "" if args.no_ai else os.environ.get("ANTHROPIC_API_KEY", "")
     patches = [(f.filename, f.patch) for f in files if f.patch]
-    ai_review = asyncio.run(review_code(api_key, commit_message, patches))
+    review_language = os.environ.get("DEFAULT_LOCALE", "en")
+    ai_review = asyncio.run(review_code(api_key, commit_message, patches, language=review_language))
 
     # score
     score_result = calculate_score(analysis_results, ai_review=ai_review)
