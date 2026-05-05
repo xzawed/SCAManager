@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-05 기준 — **사이클 79 종료 sync (영역 🅐 SaaS Phase 1 종결)**: 64 PR #188~#257 (메타 #213/#214 제외) + 본 PR (사이클 79 종료 sync) — 누적 정책 본문 16건 + 메모리 24건 (활성 22 + deprecated 2). **사이클 78 영역 🅒 Telegram (PR 1 #253 머지 + PR 2/3/4 머지 대기 — 사용자 영역) + 사이클 79 영역 🅐 SaaS Phase 1 종결 (PR 1+2+3a+3b — alembic 0029 RLS 5 누락 + admin allow-list + admin UI/REST + usage tab)**. 단위 2178 / 통합 84 / E2E 82
+## 현재 수치 (2026-05-05 기준 — **사이클 80 종료 sync (영역 🅔 운영 모니터링 Phase 2 종결)**: 66 PR #188~#260 (메타 #213/#214 제외) + 본 PR (사이클 80 종료 sync) — 누적 정책 본문 16건 + 메모리 24건 (활성 22 + deprecated 2). **사이클 78 영역 🅒 Telegram (PR 1 #253 머지 + PR 2/3/4 머지 대기 — 사용자 영역) + 사이클 79 영역 🅐 SaaS Phase 1 종결 (#254/#255/#256/#257) + 사이클 80 영역 🅔 운영 모니터링 종결 (#259/#260 — Sentry PII 스크러빙 강화 + admin operations KPI 5 카드)**. 단위 2214 / 통합 84 / E2E 82
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **2178개** | pytest 9.0.3 — 사이클 73~75 +67 (2055→2122) + **사이클 78 PR 1 (#253) +17** (feature_kill_switch helper) + **사이클 79 PR 1 (#254) +6** (alembic 0029 RLS 5) + **사이클 79 PR 2 (#255) +11** (require_admin) + **사이클 79 PR 3a (#256) +13** (saas_service + admin endpoints) + **사이클 79 PR 3b (#257) +9** (dashboard_usage) = **+56 사이클 78~79 누적**. **= 2178 collected / 2176 passed / 2 skipped / 0 failed** |
+| 단위 테스트 | **2214개** | pytest 9.0.3 — 사이클 73~75 +67 (2055→2122) + 사이클 78 PR 1 +17 (feature_kill_switch helper) + 사이클 79 PR 1+2+3a+3b +39 (alembic 0029 + require_admin + saas_service + dashboard_usage) = 2178 + **사이클 80 PR 1 (#259) +23** (observability before_send PII 스크러빙 강화) + **사이클 80 PR 2 (#260) +13** (operations_service + admin operations endpoints) = **+92 사이클 78~80 누적**. **= 2214 collected / 2212 passed / 2 skipped / 0 failed** |
 | 통합 테스트 | **84개** | tests/integration/ — Phase 3 PR 6 +2 (test_insight_caching — caching helper spy + user_id 격리) **= 81 passed / 3 skipped / 0 failed** |
 | E2E 테스트 | **82개** | `make test-e2e` (Chromium Playwright) — Phase 3 PR 6 +7 (test_dashboard_insight — 페이지 로드 4 + localStorage persist 3) **= 80 passed / 0 failed / 2 pre-existing fail (test_settings 2건, 본 사이클 무관)**. ⚠️ e2e ↔ tests/integration 동시 실행 금지 — `e2e/pytest.ini` 의도적 asyncio_mode 미설정, 분리 실행 default (`make test-e2e` vs CI command `pytest tests/`) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
@@ -114,7 +114,29 @@
 
 ---
 
-### 사이클 79 — 영역 🅐 SaaS Phase 1 read-only 종결 (2026-05-05 · #254 + #255 + #256 + #257 + 본 PR sync)
+### 사이클 80 — 영역 🅔 운영 모니터링 Phase 2 종결 (2026-05-05 · #259 + #260 + 본 PR sync)
+
+5 사이클 분할 default (Q2 = 🅑) 정합 — 영역 🅔 단일 사이클 종결. 5+1 cross-verify (관점 🅔) 옵션 🅐 + 🅑 묶음 채택 (옵션 🅒 1주 baseline 보고서 = 사이클 81+ 별도 진행).
+
+| PR # | 제목 | 핵심 |
+|------|------|------|
+| **#259** Sentry PII 스크러빙 강화 + runbook | 5+1 cross-verify P0-1 처리 — `_before_send` 헤더 화이트리스트 4 → 10 확장 (`X-Hub-Signature` / `X-GitHub-Token` / `X-Telegram-Bot-Api-Secret-Token` / `X-Webhook-Token` / `X-Forwarded-For` / `X-Real-IP`) + URL fragment 제거 추가 + `docs/runbooks/sentry-activation.md` 신설 (운영 활성화 절차). 회귀 가드 23건 (URL/헤더/cookies/body/frozenset). 운영 영향 0 (`SENTRY_DSN` 미설정 시 silent skip) |
+| **#260** admin operations KPI 5 카드 | 5+1 cross-verify 옵션 🅑 채택 — `operations_service` 신설 + `/api/admin/operations` REST + `/admin/operations` UI + 5 카드 (⚡ Cache Hit Rate / 💰 API 비용 추정 / 📊 Cache 토큰 분포 / 🔀 Merge Success / 🕒 Pipeline Latency placeholder). admin only (require_admin Depends 위임). 회귀 가드 13건 (operations_service 10 + admin endpoint 3) |
+| **본 PR** Docs/cycle-80-end-operations-monitoring-sync | **사이클 80 종료 sync** — STATE 헤더 64→66 PR + 사이클 80 row 신설 + CLAUDE.md tail 사이클 80 행 + README 배지 (단위 2178→2214) |
+
+**사이클 80 신규 LOC 합**: ~770 코드/template + ~150 docs/runbook + ~480 회귀 가드 = **+1400 LOC 누적**
+
+**자율 판단 보고 (정책 3)**:
+- (1) PR 1 = 5+1 cross-verify P0-1 처리 (Sentry PII 누설 위험 — 헤더 5건 추가 + URL fragment)
+- (2) PR 2 = operations_service 분리 (admin only 응집 단위 부합 — saas_service 패턴 차용)
+- (3) 메모리 카운터 한계 명시 (process restart 시 reset) — Phase 1 영역 (DB persist = NEW-P1-1 cross-verify Phase 2)
+- (4) pipeline_latency placeholder = stage_metrics 메모리 카운터 부재 명시 (정책 16 4번 원칙 — 사용처 ≥3 도달 전 추상 X)
+- (5) 옵션 🅒 (1주 baseline 보고서) = 사이클 81+ Sentry 활성화 1주 후 별도 진행 default (NEW-P0-3 정합 — 🅔 → 🅓 순서)
+- (6) 사용자 운영 = Railway `SENTRY_DSN` 환경변수 등록 의무 (runbook §3-2 명시)
+
+---
+
+### 사이클 79 — 영역 🅐 SaaS Phase 1 read-only 종결 (2026-05-05 · #254 + #255 + #256 + #257 + #258 sync)
 
 사이클 78 5+1 cross-verify 결과 = Q3 "전부다" 채택 — 영역 🅐 SaaS 멀티 테넌트 Phase 1 MVP read-only 진입. 5 사이클 분할 default (Q2 = 🅑) 정합 — 영역당 1 사이클.
 
