@@ -1,0 +1,93 @@
+{
+  "common": {
+    "logout": "ログアウト",
+    "settings": "設定",
+    "language": "言語",
+    "loading": "読み込み中...",
+    "error": "エラー",
+    "success": "成功",
+    "save": "保存",
+    "cancel": "キャンセル",
+    "back": "戻る",
+    "delete": "削除",
+    "edit": "編集",
+    "add": "追加",
+    "yes": "はい",
+    "no": "いいえ",
+    "confirm": "確認",
+    "no_data": "データなし"
+  },
+  "header": {
+    "welcome": "ようこそ、{name}さん",
+    "theme": "テーマ",
+    "dark_dashboard": "ダークダッシュボード",
+    "light_clean": "クリーンカード",
+    "glass": "グラスモーフィズム",
+    "claude_dark": "Claude ダーク (ベータ版)"
+  },
+  "login": {
+    "title": "SCAManager",
+    "subtitle": "PRが入ってきたらClaudeがレビューしてスコアとフィードバックをお知らせします",
+    "github_login": "GitHubでログイン",
+    "footer": "GitHub OAuthで安全に認証します"
+  },
+  "dashboard": {
+    "title": "ダッシュボード",
+    "subtitle": "私たちのコードはどのように流れていますか",
+    "modes": {
+      "overview": "概要",
+      "insight": "インサイト",
+      "security": "セキュリティ",
+      "usage": "使用量"
+    },
+    "kpi": {
+      "avg_score": "平均スコア",
+      "analysis_count": "分析数",
+      "high_security": "セキュリティ問題 (HIGH)",
+      "active_repos": "アクティブなリポ",
+      "auto_merge_success": "自動マージ成功率 (PR基準)"
+    },
+    "delta": {
+      "improvement": "改善",
+      "decline": "低下",
+      "no_change": "変動なし",
+      "no_comparison": "比較データなし",
+      "vs_period": "前 {days} 日比"
+    },
+    "trend": "スコアトレンド ({days}日)",
+    "frequent_issues": "頻発する問題 (最近 {days} 日)"
+  },
+  "overview": {
+    "greeting": "こんにちは、{name}さん",
+    "title": "本日の分析",
+    "repo_count": "{count}個のリポ",
+    "table": {
+      "repository": "リポジトリ",
+      "analysis": "分析",
+      "avg_score": "平均スコア",
+      "grade": "グレード"
+    }
+  },
+  "settings": {
+    "title": "設定",
+    "language": "言語",
+    "language_description": "好みの言語を選択してください。変更は即座に適用されます。",
+    "language_options": {
+      "en": "英語",
+      "ko": "韓国語",
+      "ja": "日本語"
+    }
+  },
+  "errors": {
+    "unauthorized": "アクセス権限なし",
+    "not_found": "リソースが見つかりません",
+    "validation_error": "検証失敗: {details}",
+    "database_error": "データベースエラー発生",
+    "no_api_key": "ANTHROPIC_API_KEY 未設定"
+  },
+  "notifier": {
+    "no_issues": "問題なし",
+    "score_label": "スコア: {score}/100",
+    "grade_label": "グレード {grade}"
+  }
+}
