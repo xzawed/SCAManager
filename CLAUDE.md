@@ -92,7 +92,7 @@ src/
 ├── services/                   # use case 계층 — 신규 오케스트레이션 모듈의 배치 장소 (기존 pipeline/engine/manager 는 도메인 위치 유지)
 │   ├── analytics_service.py    # 집계 단일 출처 — weekly_summary, moving_average, resolve_chat_id (top_issues / author_trend / repo_comparison / leaderboard 는 Phase 1 PR 1~3 폐기)
 │   ├── cron_service.py         # 주기적 실행 — run_weekly_reports, run_trend_check
-│   ├── dashboard_service.py    # /dashboard (Phase 1 PR 4 + Phase 2 PR 1+2 + Phase 3 PR 2/5) — 7 공개 함수: dashboard_kpi (KPI 4 — avg_score/analysis_count/high_security/active_repos), dashboard_trend (라인 차트), frequent_issues_v2 (Q7), auto_merge_kpi (단순+retry-aware), merge_failure_distribution (실패 사유 Top N), feedback_status (CTA banner), **insight_narrative (async — Phase 3 PR 2 — Claude AI 4 카드 ✨/🔍/📊/💬 + caching 헬퍼 + 5 status fallback)**. + Phase 3 PR 5 격리 헬퍼 2건: `_apply_analysis_user_filter` / `_apply_merge_attempt_user_filter` (Repository.user_id 기반 + legacy NULL 호환). UI 카드 = 5종 + Insight 모드 4 카드
+│   ├── dashboard_service.py    # /dashboard (Phase 1 PR 4 + Phase 2 PR 1+2 + Phase 3 PR 2/5 + Cycle 73 F2 + Cycle 79 PR 3b) — 9 공개 함수: dashboard_kpi (KPI 4 — avg_score/analysis_count/high_security/active_repos), dashboard_trend (라인 차트), frequent_issues_v2 (Q7), auto_merge_kpi (단순+retry-aware), merge_failure_distribution (실패 사유 Top N), feedback_status (CTA banner), insight_narrative (async — Phase 3 PR 2 — Claude AI 4 카드 ✨/🔍/📊/💬 + caching 헬퍼 + 5 status fallback), dashboard_security (Cycle 73 F2 — Code/Secret Scanning 4 카드), **dashboard_usage (Cycle 79 PR 3b — SaaS Phase 1 본인 사용량 4 카드 — user_id 직접 격리)**. + Phase 3 PR 5 격리 헬퍼 2건: `_apply_analysis_user_filter` / `_apply_merge_attempt_user_filter` (Repository.user_id 기반 + legacy NULL 호환).
 │   ├── merge_retry_service.py  # process_pending_retries 워커 (CI-aware Auto Merge 재시도)
 │   ├── security_scan_service.py # scan_all_repos / scan_repo_alerts — Code/Secret Scanning 폴링 + audit log upsert + GHAS graceful degradation + kill-switch (`SECURITY_AUTO_PROCESS_DISABLED=1`) (사이클 73 F1)
 │   └── saas_service.py         # tenant_inventory + rls_audit_matrix + rls_coverage_summary — SaaS Phase 1 read-only 집계 (Cycle 79 PR 3a)
@@ -199,7 +199,7 @@ src/
 │   ├── router.py               # aggregator — routes 6개 include (Phase 1 PR 3 insights 폐기, PR 4 dashboard 추가, catch-all `/repos/{name}` 마지막)
 │   └── routes/
 │       ├── overview.py         # GET /
-│       ├── dashboard.py        # GET /dashboard (Phase 1 PR 4 — MVP-B; supersedes /insights)
+│       ├── dashboard.py        # GET /dashboard (Phase 1 PR 4 — MVP-B; supersedes /insights) — mode 4종 (overview/insight/security/usage — Cycle 79 PR 3b 추가)
 │       ├── add_repo.py         # /repos/add (GET/POST) · /api/github/repos
 │       ├── settings.py         # /repos/{name}/settings · reinstall-hook · reinstall-webhook
 │       ├── actions.py          # /repos/{name}/delete

@@ -767,3 +767,70 @@ def _is_security_kill_switch_active() -> bool:
     """
     from src.shared.feature_kill_switch import is_disabled  # pylint: disable=import-outside-toplevel  # noqa: PLC0415
     return is_disabled("SECURITY_AUTO_PROCESS")
+
+
+# ── Cycle 79 PR 3b — Usage Mode (본인 사용량 — SaaS Phase 1 MVP read-only) ──
+# Cycle 79 PR 3b — Usage mode: own usage (SaaS Phase 1 MVP read-only).
+def dashboard_usage(
+    db: Session, *, user_id: int, days: int = 30,
+) -> dict[str, Any]:
+    """`/dashboard?mode=usage` 카드 데이터 — 본인 사용량 (SaaS Phase 1 read-only).
+
+    `/dashboard?mode=usage` card data — own usage (SaaS Phase 1 read-only).
+    4 카드: 📁 본인 리포 / 📊 누적 분석 / 🕒 최근 N일 분석 / ⭐ 평균 점수 (최근 N일).
+
+    user_id 직접 격리 (admin allow-list 외 — 본인 데이터만).
+    user_id direct isolation (no admin allow-list — own data only).
+    """
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(days=days)
+
+    # 본인 리포 카운트 (Repository.user_id == user_id 직접)
+    # Own repo count (Repository.user_id == user_id direct)
+    repo_count = db.scalar(
+        select(func.count(Repository.id))  # pylint: disable=not-callable
+        .where(Repository.user_id == user_id)
+    ) or 0
+
+    # 본인 누적 분석 + 최근 N일 분석 + 평균 점수 (Repository.user_id 간접)
+    # Own total analyses + recent N-day analyses + avg score (Repository.user_id indirect)
+    total_analyses_q = (
+        select(func.count(Analysis.id))  # pylint: disable=not-callable
+        .join(Repository, Analysis.repo_id == Repository.id)
+        .where(Repository.user_id == user_id)
+    )
+    total_analyses = db.scalar(total_analyses_q) or 0
+
+    recent_analyses_q = (
+        select(func.count(Analysis.id))  # pylint: disable=not-callable
+        .join(Repository, Analysis.repo_id == Repository.id)
+        .where(Repository.user_id == user_id)
+        .where(Analysis.created_at >= since)
+    )
+    recent_analyses = db.scalar(recent_analyses_q) or 0
+
+    avg_score_q = (
+        select(func.avg(Analysis.score))  # pylint: disable=not-callable
+        .join(Repository, Analysis.repo_id == Repository.id)
+        .where(Repository.user_id == user_id)
+        .where(Analysis.created_at >= since)
+        .where(Analysis.score.isnot(None))
+    )
+    avg_score = db.scalar(avg_score_q)
+    avg_score_value = round(float(avg_score), 1) if avg_score is not None else None
+
+    last_analysis_q = (
+        select(func.max(Analysis.created_at))
+        .join(Repository, Analysis.repo_id == Repository.id)
+        .where(Repository.user_id == user_id)
+    )
+    last_analysis_at = db.scalar(last_analysis_q)
+
+    return {
+        "repo_count": int(repo_count),
+        "total_analyses": int(total_analyses),
+        "recent_analyses": int(recent_analyses),
+        "avg_score": avg_score_value,
+        "last_analysis_at": last_analysis_at,
+        "days": days,
+    }
