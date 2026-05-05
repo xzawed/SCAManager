@@ -4,6 +4,7 @@ User account API — Telegram link OTP issuance + preferred language settings, e
 from __future__ import annotations
 
 import logging
+import re
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
@@ -19,6 +20,7 @@ from src.models.user import User
 from src.shared.log_safety import sanitize_for_log
 
 logger = logging.getLogger(__name__)
+LOCALE_COOKIE_VALUE_RE = re.compile(r"^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$")
 
 # OTP 자릿수 — One-time passcode digit count.
 _OTP_LENGTH = 6
@@ -150,6 +152,8 @@ async def update_preferred_language(
     if language not in supported:
         raise HTTPException(status_code=400, detail="invalid language")
     safe_language = language
+    if not LOCALE_COOKIE_VALUE_RE.fullmatch(safe_language):
+        raise HTTPException(status_code=400, detail="invalid language")
 
     with SessionLocal() as db:
         db.execute(
