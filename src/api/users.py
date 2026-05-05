@@ -4,6 +4,7 @@ User account API — Telegram link OTP issuance + preferred language settings, e
 from __future__ import annotations
 
 import logging
+import re
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
@@ -19,6 +20,7 @@ from src.models.user import User
 from src.shared.log_safety import sanitize_for_log
 
 logger = logging.getLogger(__name__)
+LOCALE_COOKIE_VALUE_RE = re.compile(r"^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$")
 
 # OTP 자릿수 — One-time passcode digit count.
 _OTP_LENGTH = 6
@@ -149,12 +151,15 @@ async def update_preferred_language(
     language = body.language.strip().lower() if body.language else ""
     if language not in supported:
         raise HTTPException(status_code=400, detail="invalid language")
+    safe_language = language
+    if not LOCALE_COOKIE_VALUE_RE.fullmatch(safe_language):
+        raise HTTPException(status_code=400, detail="invalid language")
 
     with SessionLocal() as db:
         db.execute(
             update(User)
             .where(User.id == current_user.id)
-            .values(preferred_language=language)
+            .values(preferred_language=safe_language)
         )
         db.commit()
 
@@ -172,7 +177,7 @@ async def update_preferred_language(
     # LocaleMiddleware.scope.state). Mitigates XSS + replaces base.html readCookieLang().
     response.set_cookie(
         key="preferred_language",
-        value=language,
+        value=safe_language,
         max_age=60 * 60 * 24 * 365,  # 1 year
         httponly=True,  # Phase 2 PR-5 — XSS 차단 + 서버측 template 주입 페어
         secure=is_prod,
@@ -185,9 +190,9 @@ async def update_preferred_language(
     logger.info(
         "preferred_language updated for user_id=%d → '%s'",
         current_user.id,
-        sanitize_for_log(language),
+        sanitize_for_log(safe_language),
     )
     return {
-        "language": language,
+        "language": safe_language,
         "message": "preferred language updated",
     }
