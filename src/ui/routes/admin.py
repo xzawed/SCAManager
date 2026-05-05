@@ -41,10 +41,12 @@ def admin_tenants(
     Tenant inventory admin dashboard.
     """
     inventory = saas_service.tenant_inventory(db)
+    # starlette 신 시그니처 — request 첫 인자 의무 (구 버전 = TypeError: unhashable type: 'dict')
+    # starlette new signature — request first arg required (old version raises TypeError)
     return templates.TemplateResponse(
+        request,
         "admin_tenants.html",
         {
-            "request": request,
             "current_user": admin,
             "tenants": inventory,
             "total_tenants": len(inventory),
@@ -62,9 +64,9 @@ def admin_rls_audit(
     RLS policy matrix admin dashboard.
     """
     return templates.TemplateResponse(
+        request,
         "admin_rls_audit.html",
         {
-            "request": request,
             "current_user": admin,
             "matrix": saas_service.rls_audit_matrix(),
             "summary": saas_service.rls_coverage_summary(),
