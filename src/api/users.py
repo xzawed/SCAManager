@@ -149,12 +149,13 @@ async def update_preferred_language(
     language = body.language.strip().lower() if body.language else ""
     if language not in supported:
         raise HTTPException(status_code=400, detail="invalid language")
+    safe_language = language
 
     with SessionLocal() as db:
         db.execute(
             update(User)
             .where(User.id == current_user.id)
-            .values(preferred_language=language)
+            .values(preferred_language=safe_language)
         )
         db.commit()
 
@@ -172,7 +173,7 @@ async def update_preferred_language(
     # LocaleMiddleware.scope.state). Mitigates XSS + replaces base.html readCookieLang().
     response.set_cookie(
         key="preferred_language",
-        value=language,
+        value=safe_language,
         max_age=60 * 60 * 24 * 365,  # 1 year
         httponly=True,  # Phase 2 PR-5 — XSS 차단 + 서버측 template 주입 페어
         secure=is_prod,
@@ -185,9 +186,9 @@ async def update_preferred_language(
     logger.info(
         "preferred_language updated for user_id=%d → '%s'",
         current_user.id,
-        sanitize_for_log(language),
+        sanitize_for_log(safe_language),
     )
     return {
-        "language": language,
+        "language": safe_language,
         "message": "preferred language updated",
     }
