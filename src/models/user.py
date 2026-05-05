@@ -35,6 +35,11 @@ class User(Base):
     # telegram_otp_expires_at: OTP expiry timestamp with timezone.
     telegram_otp_expires_at = Column(DateTime(timezone=True), nullable=True)
 
+    # Phase 1 PR-1c (사이클 84) — 다국어 지원 사용자 선호 언어
+    # User preferred language for multilingual support (Phase 1 PR-1c).
+    # Default = "en" (server_default 의존), LocaleMiddleware 가 Cookie 우선 시 override
+    preferred_language = Column(String(5), nullable=False, default="en", server_default="en")
+
     repositories = relationship("Repository", back_populates="owner")
 
     @property
