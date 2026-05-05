@@ -145,10 +145,11 @@ async def update_preferred_language(
         path="/",
     )
 
+    safe_language_for_log = language.replace("\r", "").replace("\n", "")
     logger.info(
         "preferred_language updated for user_id=%d → '%s'",
         current_user.id,
-        language,
+        safe_language_for_log,
     )
     return {
         "language": language,
