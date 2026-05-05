@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-05 기준 — **사이클 81 종료 sync (영역 🅑 모바일 Phase 1 MVP 종결)**: 70 PR #188~#265 (메타 #213/#214 제외) + 본 PR (사이클 81 종료 sync) — 누적 정책 본문 16건 + 메모리 24건 (활성 22 + deprecated 2). **사이클 78 영역 🅒 (PR 1 #253 + PR 2/3/4 영구 보류) + 사이클 79 영역 🅐 SaaS Phase 1 (#254~#257) + 사이클 80 영역 🅔 운영 모니터링 Phase 2 (#259/#260) + 사이클 81 영역 🅑 모바일 Phase 1 MVP 4 PR 분할 종결 (#262 PWA manifest / #263 dashboard 모바일 / #264 settings 모바일 / #265 form sweep)**. 단위 2214 / 통합 118 / E2E 82
+## 현재 수치 (2026-05-05 기준 — **사이클 78~81 4 사이클 종결 회고 (5+1 다중 에이전트)**: 71 PR #188~#267 (메타 #213/#214 제외) + 본 PR (회고) — 누적 정책 본문 16건 + 메모리 25건 (활성 23 + deprecated 2 — 사이클 78~81 회고 +1 = TestClient lifespan trap). **사이클 78 영역 🅒 (PR 1 #253 + PR 2/3/4 영구 보류) + 사이클 79 영역 🅐 SaaS Phase 1 (#254~#257) + 사이클 80 영역 🅔 운영 모니터링 Phase 2 (#259/#260) + 사이클 81 영역 🅑 모바일 Phase 1 MVP 4 PR 분할 종결 (#262 PWA manifest / #263 dashboard 모바일 / #264 settings 모바일 / #265 form sweep)**. 단위 2214 / 통합 118 / E2E 82
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
@@ -52,7 +52,7 @@
 | `src/gate/native_automerge.py` | enable_or_fallback() — GraphQL `enablePullRequestAutoMerge` 우선 + REST `merge_pr` 폴백 (Tier 3 PR-A, 그룹 52) |
 | `src/gate/_merge_attempt_states.py` | MergeAttempt.state lifecycle 정규 상수 (LEGACY/ENABLED_PENDING_MERGE/ACTUALLY_MERGED/DISABLED_EXTERNALLY) — Phase 3 PR-B1 도입 |
 | `src/github_client/graphql.py` | GraphQL POST 래퍼 + `enablePullRequestAutoMerge` mutation + `EnableAutoMergeResult` 분류 + 5xx 자동 재시도 (Phase H PR-1B-2, `_GRAPHQL_*` 상수) |
-| `src/static/vendor/chart.umd.min.js` | Chart.js 4.4.0 UMD min vendoring (UI 감사 Step C) — CDN 차단/오프라인 환경에서 빈 차트 회피. `src/main.py` 의 StaticFiles `/static` mount 로 노출. 사용 페이지: repo_detail / analysis_detail / insights_me. 운영 가이드: `docs/runbooks/static-assets.md` (PR-D4) |
+| `src/static/vendor/chart.umd.min.js` | Chart.js 4.4.0 UMD min vendoring (UI 감사 Step C) — CDN 차단/오프라인 환경에서 빈 차트 회피. `src/main.py` 의 StaticFiles `/static` mount 로 노출. 사용 페이지: repo_detail / analysis_detail / dashboard (insights_me 폐기 — 그룹 60 Phase 1 PR 2). 운영 가이드: `docs/runbooks/static-assets.md` (PR-D4) |
 | `tests/conftest.py` | 환경변수 주입 + _webhook_secret_cache autouse 클리어 |
 
 ## 작업 이력 (그룹별)
