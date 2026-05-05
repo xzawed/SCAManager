@@ -9,10 +9,7 @@ from fastapi.testclient import TestClient
 
 # 모든 ORM 모델 import — Base.metadata 에 테이블 정의 보장 (in-memory create_all 페어)
 # Import all ORM models — guarantee Base.metadata table definitions for in-memory create_all
-from src.models import (  # noqa: F401  pylint: disable=unused-import
-    analysis, analysis_feedback, gate_decision, insight_narrative_cache,
-    merge_attempt, merge_retry, repo_config, repository, security_alert_log, user,
-)
+import src.models  # noqa: F401  pylint: disable=unused-import  # side-effect import
 from src.api.admin import _get_db as _api_get_db  # noqa: F401  pylint: disable=unused-import
 from src.auth.session import CurrentUser, require_admin
 from src.database import Base, SessionLocal
