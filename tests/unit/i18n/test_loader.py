@@ -2,8 +2,6 @@
 
 JSON 파일 로드 + LRU cache + namespace dot path + fallback 검증.
 """
-import pytest
-
 from src.i18n.loader import get_text, load_translations
 
 
