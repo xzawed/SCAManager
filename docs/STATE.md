@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-05 기준 — **사이클 78~81 4 사이클 종결 회고 (5+1 다중 에이전트)**: 71 PR #188~#267 (메타 #213/#214 제외) + 본 PR (회고) — 누적 정책 본문 16건 + 메모리 25건 (활성 23 + deprecated 2 — 사이클 78~81 회고 +1 = TestClient lifespan trap). **사이클 78 영역 🅒 (PR 1 #253 + PR 2/3/4 영구 보류) + 사이클 79 영역 🅐 SaaS Phase 1 (#254~#257) + 사이클 80 영역 🅔 운영 모니터링 Phase 2 (#259/#260) + 사이클 81 영역 🅑 모바일 Phase 1 MVP 4 PR 분할 종결 (#262 PWA manifest / #263 dashboard 모바일 / #264 settings 모바일 / #265 form sweep)**. 단위 2214 / 통합 118 / E2E 82
+## 현재 수치 (2026-05-05 기준 — **사이클 82 Tier B 묶음 — alembic dialect 헬퍼 + 메모리 신설 2건**: 72 PR #188~#271 (메타 #213/#214 제외) + 본 PR (Tier B PR 2) — 누적 정책 본문 16건 + 메모리 27건 (활성 25 + deprecated 2 — 사이클 78~81 회고 +1 testclient-lifespan + 사이클 82 PR 2 +2 = copilot-autofix-noqa-trap + pr-push-direct-validation). **사이클 78 영역 🅒 (PR 1 #253 + PR 2/3/4 영구 보류) + 사이클 79 영역 🅐 SaaS Phase 1 (#254~#257) + 사이클 80 영역 🅔 운영 모니터링 Phase 2 (#259/#260) + 사이클 81 영역 🅑 모바일 Phase 1 MVP 4 PR 분할 종결 (#262 PWA manifest / #263 dashboard 모바일 / #264 settings 모바일 / #265 form sweep) + 사이클 82 Tier B (PR 1 alembic dialect 헬퍼 + PR 2 메모리 신설 2건)**. 단위 2228 / 통합 118 / E2E 82
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **2214개** | pytest 9.0.3 — 사이클 73~75 +67 (2055→2122) + 사이클 78 PR 1 +17 (feature_kill_switch helper) + 사이클 79 PR 1+2+3a+3b +39 (alembic 0029 + require_admin + saas_service + dashboard_usage) = 2178 + **사이클 80 PR 1 (#259) +23** (observability before_send PII 스크러빙 강화) + **사이클 80 PR 2 (#260) +13** (operations_service + admin operations endpoints) = **+92 사이클 78~80 누적**. **= 2214 collected / 2212 passed / 2 skipped / 0 failed** |
+| 단위 테스트 | **2228개** | pytest 9.0.3 — 사이클 73~75 +67 (2055→2122) + 사이클 78 PR 1 +17 (feature_kill_switch helper) + 사이클 79 PR 1+2+3a+3b +39 (alembic 0029 + require_admin + saas_service + dashboard_usage) = 2178 + **사이클 80 PR 1 (#259) +23** (observability before_send PII 스크러빙 강화) + **사이클 80 PR 2 (#260) +13** (operations_service + admin operations endpoints) + **사이클 82 PR 1 +14** (alembic dialect 헬퍼 회귀 가드 — `tests/unit/shared/test_alembic_dialect.py`) = **+106 사이클 78~82 누적**. **= 2228 collected / 2226 passed / 2 skipped / 0 failed** |
 | 통합 테스트 | **118개** | tests/integration/ — 사이클 81 영역 🅑 모바일 Phase 1 MVP 4 PR 분할 +34 누적: PR-A (#262 PWA manifest +7) + PR-B (#263 dashboard mobile priority +5) + PR-C (#264 settings mobile +10) + PR-D (#265 form sweep +12). **= 115 passed / 3 skipped / 0 failed** |
 | E2E 테스트 | **82개** | `make test-e2e` (Chromium Playwright) — Phase 3 PR 6 +7 (test_dashboard_insight — 페이지 로드 4 + localStorage persist 3) **= 80 passed / 0 failed / 2 pre-existing fail (test_settings 2건, 본 사이클 무관)**. ⚠️ e2e ↔ tests/integration 동시 실행 금지 — `e2e/pytest.ini` 의도적 asyncio_mode 미설정, 분리 실행 default (`make test-e2e` vs CI command `pytest tests/`) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
@@ -111,6 +111,26 @@
 | **#232** Docs/cycle-67-end multi-agent retrospective | **4 사이클 종결 회고** — 1차 5 에이전트 (cross-verify 생략 — 사용자 빠른 진행 신호 + 1차 결과 충분). P0 13 + P1 7 + P2 3 식별. **메모리 4건** (3 신설: stale-blocker / asgi-middleware / conftest-direct-env-set + 1 갱신: architecture-pre-confirm 위임 분류 3-tier 정밀화). MEMORY 인덱스 8→11건. 회고 보고서 + 자유 발언 (정책 9) + 회고 질문 (사용자 회신 의무) |
 | **#233** Docs/policy-evolution cycle-67 P0 bundle | **사이클 67 회고 P0 4건 정책 본문 진화** (정책 7 강화 응집): (1) 정책 7 강화 — 단일 PR > 1500 LOC 사전 확인 + architecture 단일 OK 정정 (관점 1 P0-1+P0-2) (2) 정책 8 — cross-verify 생략 조건 + 회고 PR 패턴 3 분기 (관점 1 P0-3) (3) 정책 2 진화 — 모든 sync PR commit body 실측 1줄 의무 (관점 2 P0-1) (4) 30초 체크리스트 — 메모리 11건 사례 + 트랩 차단 효과 (관점 2 P0-2). 카테고리 분류 (관점 4 P0-2) = 별도 PR (High tier 사용자 결정 의무) |
 | **#234** Docs/cycle-68 end state sync | **사이클 68 종료 sync** — STATE 헤더 38→41 PR + 사이클 68 행 신설 + CLAUDE.md L1052 tail. 단위 2055 / 통합 84 / E2E 82 변화 0 (docs only). 정책 2 진화 default 첫 적용 — 실측 1줄 의무 명시 |
+
+---
+
+### 사이클 82 — Tier B 묶음 (2026-05-05 · 사이클 78~81 회고 P0 후속 — alembic dialect 헬퍼 + 메모리 2건)
+
+사이클 78~81 회고 P0 후속 Tier B 처리 묶음. 정책 16 4번 원칙 (사용처 ≥3 시점 헬퍼 추출) 정합 — alembic dialect 분기 12 사용처 → 1 헬퍼. 메모리 2건 신설 (Copilot Autofix noqa 트랩 + PR push 직전 통합+단위 동시 실행).
+
+| PR # | 제목 | 핵심 |
+|------|------|------|
+| **PR 1** Feat/cycle-82-pr1-alembic-dialect-helper | **alembic dialect 헬퍼 추출** — `src/shared/alembic_dialect.py::is_postgresql(bind_or_conn)` 신설 + 11 사용처 일괄 치환 (alembic 0024/0026/0027/0028/0029 + `src/database.py::_set_rls_user_id_per_query`). `alembic/env.py:88` SQLite-specific 분기 보존. 회귀 가드 14건 (`tests/unit/shared/test_alembic_dialect.py` — defensive None/no-attribute + parametrize 7 non-pg dialects). 단위 2214→2228 |
+| **본 PR** Docs/cycle-82-pr2-tier-b-memory-additions | **메모리 신설 2건 + MEMORY 인덱스 갱신** — (1) `feedback-copilot-autofix-noqa-trap.md` (협업 카테고리 — `# noqa: F401` 무시 트랩 + side-effect import 4 패턴 revert default) (2) `feedback-pr-push-direct-validation.md` (TDD/CI 카테고리 — 사이클 73/79/81 3 사이클 연속 CI fail-fix 학습). MEMORY 인덱스 25→27 (활성 23→25 + deprecated 2). STATE/CLAUDE 헤더 메모리 카운트 동기화 |
+
+**사이클 82 신규 LOC 합**: ~50 코드 (헬퍼) + ~250 회귀 가드 + ~280 docs/메모리 = **+580 LOC 누적**
+
+**자율 판단 보고 (정책 3)**:
+- (1) Tier B 묶음 default = 사이클 78~81 회고 P0 후속 (사용자 "모두 승인" 명시 — 옵션 🅐)
+- (2) PR 1 alembic dialect helper = 정책 16 4번 원칙 (사용처 ≥3 = 12 도달) 정합 — over-engineering X
+- (3) `alembic/env.py:88` 보존 = SQLite-specific (`is_postgresql` 부적합) 영역 — 헬퍼 적용 제외
+- (4) PR 2 메모리 카테고리 분류 = `feedback-copilot-autofix-noqa-trap` 협업 (메모리 `feedback-copilot-autofix-collaboration` 페어 확장) + `feedback-pr-push-direct-validation` TDD/CI (3 사이클 연속 사고 패턴)
+- (5) 다음 작업 default = 사이클 78 PR 2 web UI 머지 안내 (NEW-P0-1 운영 사고 차단) + Sentry baseline 1주 후 사이클 83+ 영역 🅓 진행 (NEW-P0-3 정합)
 
 ---
 
