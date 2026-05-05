@@ -87,10 +87,14 @@ def test_build_message_uses_html_formatting():
 
 
 def test_build_message_includes_score_breakdown():
+    """Phase 3 PR-9 (사이클 84) — i18n 적용 후 default locale 'en' 또는 'ko' 양호.
+
+    Phase 3 PR-9 (Cycle 84) — after i18n, accept either default locale en or ko.
+    """
     msg = _build_message("owner/repo", "abc1234", _make_score(), _make_analysis(), None)
-    assert "코드 품질" in msg
-    assert "보안" in msg
-    assert "커밋" in msg
+    assert "Code quality" in msg or "코드 품질" in msg or "コード品質" in msg
+    assert "Security" in msg or "보안" in msg or "セキュリティ" in msg
+    assert "Commit" in msg or "커밋" in msg or "コミット" in msg
 
 
 @pytest.mark.asyncio
