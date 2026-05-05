@@ -24,6 +24,8 @@ SQLite (단위 테스트) 분기: op.execute 모두 skip — RLS 미지원 환�
 # (src/services/dashboard_service.py::_apply_*_user_filter) is the 1st layer.
 from alembic import op
 
+from src.shared.alembic_dialect import is_postgresql
+
 
 # revision identifiers, used by Alembic.
 # Revision identifiers used by Alembic.
@@ -89,7 +91,7 @@ def upgrade() -> None:
     """PG 환경에서 3 테이블 RLS 활성화 + policy 생성. SQLite skip."""
     # SQLite 단위 테스트 환경 — RLS 미지원, 모든 op.execute skip.
     # SQLite unit-test environment — RLS unsupported, skip all op.execute.
-    if op.get_context().dialect.name != 'postgresql':
+    if not is_postgresql(op.get_context()):
         return
 
     op.execute(_RLS_REPOSITORIES)
@@ -99,7 +101,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """RLS policy 제거 + RLS 비활성화. PG 전용."""
-    if op.get_context().dialect.name != 'postgresql':
+    if not is_postgresql(op.get_context()):
         return
 
     op.execute("DROP POLICY IF EXISTS merge_attempts_user_isolation ON merge_attempts;")

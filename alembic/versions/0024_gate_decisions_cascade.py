@@ -15,6 +15,8 @@ Create Date: 2026-05-01
 """
 from alembic import op
 
+from src.shared.alembic_dialect import is_postgresql
+
 
 revision = '0024gatedecisionscascade'
 down_revision = '0023compositeindexes'
@@ -33,7 +35,7 @@ def upgrade() -> None:
     # SQLite cannot ALTER FKs and skips enforcement by default — production
     # is Postgres so we only act there. Tests get the new ondelete via ORM.
     bind = op.get_bind()
-    if bind.dialect.name != 'postgresql':
+    if not is_postgresql(bind):
         return
 
     op.drop_constraint(_FK_NAME, 'gate_decisions', type_='foreignkey')
@@ -49,7 +51,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     bind = op.get_bind()
-    if bind.dialect.name != 'postgresql':
+    if not is_postgresql(bind):
         return
 
     op.drop_constraint(_FK_NAME, 'gate_decisions', type_='foreignkey')

@@ -16,6 +16,8 @@ GitHub Code Scanning + Secret Scanning alert process audit log.
 import sqlalchemy as sa
 from alembic import op
 
+from src.shared.alembic_dialect import is_postgresql
+
 
 revision = "0027securityalertlog"
 down_revision = "0026supabasrlspolicies"
@@ -80,7 +82,7 @@ def upgrade() -> None:
     # PostgreSQL 만 RLS policy 적용 (SQLite 단위 테스트 skip)
     # PostgreSQL only — RLS policy (SQLite unit tests skip)
     bind = op.get_bind()
-    if bind.dialect.name == "postgresql":
+    if is_postgresql(bind):
         op.execute(_RLS_SECURITY_ALERT_LOGS)
 
 
@@ -89,7 +91,7 @@ def downgrade() -> None:
     Drop RLS policy + table.
     """
     bind = op.get_bind()
-    if bind.dialect.name == "postgresql":
+    if is_postgresql(bind):
         op.execute("DROP POLICY IF EXISTS security_alert_logs_isolation ON security_alert_process_logs;")
 
     op.drop_index(
