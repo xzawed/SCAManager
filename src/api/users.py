@@ -16,6 +16,7 @@ from src.auth.session import CurrentUser, require_login
 from src.config import settings
 from src.database import SessionLocal
 from src.models.user import User
+from src.shared.log_safety import sanitize_for_log
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +96,16 @@ class PreferredLanguageUpdate(BaseModel):
     "/me/preferred-language",
     status_code=200,
     responses={
+        # Defense-in-depth sink-adjacent guard (사실상 도달 불가 — Pydantic validator 가 422 먼저 발화)
+        # Defense-in-depth sink-adjacent guard (effectively unreachable — Pydantic validator returns 422 first)
+        # Copilot Autofix CodeQL "Construction of a cookie using user-supplied input" 페어
+        # Pairs with Copilot Autofix CodeQL "Construction of a cookie using user-supplied input"
+        400: {
+            "description": (
+                "Sink-adjacent guard: invalid locale "
+                "(defense-in-depth, normally caught by 422)"
+            ),
+        },
         # Pydantic body validator 가 SUPPORTED_LOCALES 미지원 / 빈 문자열 시 발화
         # FastAPI auto-422 from Pydantic body validator (unsupported locale / empty)
         422: {
@@ -162,11 +173,12 @@ async def update_preferred_language(
         path="/",
     )
 
-    safe_language_for_log = language.replace("\r", "").replace("\n", "")
+    # CLAUDE.md L893 정합 — sanitize_for_log helper 사용 의무 (CR/LF/TAB/NUL 제거 + 길이 제한)
+    # CLAUDE.md L893 — must use sanitize_for_log helper (strips CR/LF/TAB/NUL + truncates)
     logger.info(
         "preferred_language updated for user_id=%d → '%s'",
         current_user.id,
-        safe_language_for_log,
+        sanitize_for_log(language),
     )
     return {
         "language": language,
