@@ -212,8 +212,8 @@
 <div style="background:var(--accent-blue,#2563eb);color:#fff;border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.25rem;display:flex;align-items:flex-start;gap:.75rem;">
   <span style="font-size:1.3rem;flex-shrink:0;">✅</span>
   <div>
-    <strong>CLI 코드리뷰 훅이 설정됐습니다!</strong><br>
-    <span style="font-size:13px;opacity:.9;">로컬 리포에서 아래 명령어를 실행하면 <code style="background:rgba(255,255,255,.2);padding:1px 5px;border-radius:4px;">git push</code> 시 자동으로 코드리뷰가 실행됩니다.</span>
+    <strong>{{ 'repo_detail.hook_installed_title' | i18n_args(locale | default('ko')) }}</strong><br>
+    <span style="font-size:13px;opacity:.9;">{{ 'repo_detail.hook_installed_desc_part1' | i18n_args(locale | default('ko')) }}<code style="background:rgba(255,255,255,.2);padding:1px 5px;border-radius:4px;">{{ 'repo_detail.hook_installed_desc_code' | i18n_args(locale | default('ko')) }}</code>{{ 'repo_detail.hook_installed_desc_part2' | i18n_args(locale | default('ko')) }}</span>
     <div style="margin-top:.6rem;background:rgba(0,0,0,.25);border-radius:6px;padding:.5rem .75rem;font-family:monospace;font-size:13px;">
       git pull &amp;&amp; bash .scamanager/install-hook.sh
     </div>
@@ -221,41 +221,49 @@
 </div>
 {% endif %}
 
-<!-- 헤더 / Header -->
+<!-- 헤더 / Header / Phase 2 PR-7 — i18n -->
 <div class="detail-header">
-  <a class="back-btn" href="/">← 목록</a>
+  <a class="back-btn" href="/">{{ 'repo_detail.back' | i18n_args(locale | default('ko')) }}</a>
   <div class="detail-header-text">
     <h2>{{ repo_name }}</h2>
   </div>
-  <a class="settings-btn" href="/repos/{{ repo_name }}/settings">⚙️ 설정</a>
+  <a class="settings-btn" href="/repos/{{ repo_name }}/settings">{{ 'repo_detail.settings_link' | i18n_args(locale | default('ko')) }}</a>
 </div>
 
-<!-- 점수 차트 / Score chart — Step E (E2): canvas 명시 height 컨테이너로 감싸 모바일 압착 회피 -->
+<!-- 점수 차트 / Score chart — Step E (E2) -->
 <div class="card chart-card">
-  <div class="chart-label">점수 추이</div>
+  <div class="chart-label">{{ 'repo_detail.score_trend_label' | i18n_args(locale | default('ko')) }}</div>
   <div class="chart-wrap-inner">
     <canvas id="scoreChart"></canvas>
   </div>
 </div>
 
-<!-- 분석 이력 / Analysis history -->
-<div class="card" style="padding:1.25rem 1.5rem;">
+<!-- 분석 이력 / Analysis history / Phase 2 PR-7 — i18n + data-i18n-* (JS 동적 텍스트 서버 주입 — XSS 차단) -->
+<div class="card history-card" style="padding:1.25rem 1.5rem;"
+     data-i18n-history-recent="{{ 'repo_detail.history_count_recent' | i18n_args(locale | default('ko'), count='__N__') }}"
+     data-i18n-history-filtered="{{ 'repo_detail.history_count_filtered' | i18n_args(locale | default('ko'), filtered='__F__', total='__T__') }}"
+     data-i18n-filter-empty="{{ 'repo_detail.filter_empty' | i18n_args(locale | default('ko')) }}"
+     data-i18n-page-total="{{ 'repo_detail.page_total' | i18n_args(locale | default('ko'), count='__N__') }}"
+     data-i18n-page-range="{{ 'repo_detail.page_range' | i18n_args(locale | default('ko'), start='__S__', end='__E__', total='__T__') }}"
+     data-i18n-source-pr="{{ 'repo_detail.source_filter.pr' | i18n_args(locale | default('ko')) }}"
+     data-i18n-source-push="{{ 'repo_detail.source_filter.push' | i18n_args(locale | default('ko')) }}"
+     data-i18n-source-cli="{{ 'repo_detail.source_filter.cli' | i18n_args(locale | default('ko')) }}">
   <div class="history-header">
-    <h3>분석 이력</h3>
-    <span class="history-count" id="historyCount">최근 {{ analyses | length }}건</span>
+    <h3>{{ 'repo_detail.history_title' | i18n_args(locale | default('ko')) }}</h3>
+    <span class="history-count" id="historyCount">{{ 'repo_detail.history_count_recent' | i18n_args(locale | default('ko'), count=(analyses | length)) }}</span>
   </div>
 
   <!-- 필터 바 / Filter bar -->
   <div class="filter-bar">
     <input type="search" class="filter-search" id="searchInput"
-      placeholder="커밋 메시지 또는 SHA 검색…" autocomplete="off">
+      placeholder="{{ 'repo_detail.search_placeholder' | i18n_args(locale | default('ko')) }}" autocomplete="off">
     <div class="filter-group" id="dateFilter">
-      <button class="filter-btn active" data-date="all">전체</button>
-      <button class="filter-btn" data-date="today">오늘</button>
-      <button class="filter-btn" data-date="week">금주</button>
-      <button class="filter-btn" data-date="month">이번달</button>
-      <button class="filter-btn" data-date="year">올해</button>
-      <button class="filter-btn" data-date="custom">직접 지정</button>
+      <button class="filter-btn active" data-date="all">{{ 'repo_detail.filter_all' | i18n_args(locale | default('ko')) }}</button>
+      <button class="filter-btn" data-date="today">{{ 'repo_detail.date_filter.today' | i18n_args(locale | default('ko')) }}</button>
+      <button class="filter-btn" data-date="week">{{ 'repo_detail.date_filter.week' | i18n_args(locale | default('ko')) }}</button>
+      <button class="filter-btn" data-date="month">{{ 'repo_detail.date_filter.month' | i18n_args(locale | default('ko')) }}</button>
+      <button class="filter-btn" data-date="year">{{ 'repo_detail.date_filter.year' | i18n_args(locale | default('ko')) }}</button>
+      <button class="filter-btn" data-date="custom">{{ 'repo_detail.date_filter.custom' | i18n_args(locale | default('ko')) }}</button>
     </div>
     <div class="custom-date-wrap" id="customDateWrap">
       <input type="date" class="date-input" id="dateFrom">
@@ -264,7 +272,7 @@
     </div>
     <div class="filter-divider"></div>
     <div class="filter-group" id="gradeFilter">
-      <button class="filter-btn active" data-grade="all">전체</button>
+      <button class="filter-btn active" data-grade="all">{{ 'repo_detail.filter_all' | i18n_args(locale | default('ko')) }}</button>
       <button class="filter-btn" data-grade="A">A</button>
       <button class="filter-btn" data-grade="B">B</button>
       <button class="filter-btn" data-grade="C">C</button>
@@ -273,14 +281,14 @@
     </div>
     <div class="filter-divider"></div>
     <div class="filter-group" id="sourceFilter">
-      <button class="filter-btn active" data-source="all">전체</button>
-      <button class="filter-btn" data-source="pr">PR</button>
-      <button class="filter-btn" data-source="push">Push</button>
-      <button class="filter-btn" data-source="cli">CLI</button>
+      <button class="filter-btn active" data-source="all">{{ 'repo_detail.filter_all' | i18n_args(locale | default('ko')) }}</button>
+      <button class="filter-btn" data-source="pr">{{ 'repo_detail.source_filter.pr' | i18n_args(locale | default('ko')) }}</button>
+      <button class="filter-btn" data-source="push">{{ 'repo_detail.source_filter.push' | i18n_args(locale | default('ko')) }}</button>
+      <button class="filter-btn" data-source="cli">{{ 'repo_detail.source_filter.cli' | i18n_args(locale | default('ko')) }}</button>
     </div>
     <div class="filter-divider"></div>
     <div class="score-range-wrap">
-      <span>점수</span>
+      <span>{{ 'repo_detail.score_range_label' | i18n_args(locale | default('ko')) }}</span>
       <div class="dual-slider-track" id="dualSliderTrack">
         <div class="dual-slider-bg"></div>
         <div class="dual-slider-fill" id="sliderFill"></div>
@@ -297,12 +305,12 @@
   <table>
     <thead>
       <tr>
-        <th class="sortable-th" data-sort="created_at">날짜 <span class="sort-icon"></span></th>
-        <th>커밋</th>
-        <th>PR</th>
-        <th class="sortable-th" data-sort="score">점수 <span class="sort-icon"></span></th>
-        <th>등급</th>
-        <th>소스</th>
+        <th class="sortable-th" data-sort="created_at">{{ 'repo_detail.table.date' | i18n_args(locale | default('ko')) }} <span class="sort-icon"></span></th>
+        <th>{{ 'repo_detail.table.commit' | i18n_args(locale | default('ko')) }}</th>
+        <th>{{ 'repo_detail.table.pr' | i18n_args(locale | default('ko')) }}</th>
+        <th class="sortable-th" data-sort="score">{{ 'repo_detail.table.score' | i18n_args(locale | default('ko')) }} <span class="sort-icon"></span></th>
+        <th>{{ 'repo_detail.table.grade' | i18n_args(locale | default('ko')) }}</th>
+        <th>{{ 'repo_detail.table.source' | i18n_args(locale | default('ko')) }}</th>
       </tr>
     </thead>
     <tbody id="analysisTable"></tbody>
@@ -343,7 +351,7 @@
       data: {
         labels: labels,
         datasets: [{
-          label: '점수',
+          label: {{ 'repo_detail.chart_score_label' | i18n_args(locale | default('ko')) | tojson }},
           data: scores,
           borderColor: accent,
           backgroundColor: accent + '22',
@@ -398,6 +406,20 @@
 const ALL_ANALYSES = {{ analyses | tojson }};
 const REPO_NAME_JS = {{ repo_name | tojson }};
 const PAGE_SIZE = 20;
+
+// Phase 2 PR-7 — 다국어 동적 텍스트 (data-i18n-* 속성 — 서버 Jinja injection 페어, XSS 차단)
+// Phase 2 PR-7 — i18n dynamic text (data-i18n-* attributes — server-side Jinja, XSS-safe)
+const _i18nCard = document.querySelector('.history-card');
+const I18N = {
+  historyRecent: _i18nCard.dataset.i18nHistoryRecent,
+  historyFiltered: _i18nCard.dataset.i18nHistoryFiltered,
+  filterEmpty: _i18nCard.dataset.i18nFilterEmpty,
+  pageTotal: _i18nCard.dataset.i18nPageTotal,
+  pageRange: _i18nCard.dataset.i18nPageRange,
+  sourcePr: _i18nCard.dataset.i18nSourcePr,
+  sourcePush: _i18nCard.dataset.i18nSourcePush,
+  sourceCli: _i18nCard.dataset.i18nSourceCli,
+};
 
 // ── 상태 ─────────────────────────────────────────────
 const state = {
@@ -487,14 +509,25 @@ document.getElementById('scoreMax').addEventListener('input', function() {
 // Step D: 소스 배지 시맨틱 토큰화 — push=success / cli=warning / pr=accent (모두 var)
 // Step D: source badge semantic tokens — auto across 4 themes
 function renderSourceBadge(src) {
-  const m = { pr: ['PR','var(--accent)'], push: ['Push','var(--success)'], cli: ['CLI','var(--warning)'] };
+  const m = {
+    pr:   [I18N.sourcePr,   'var(--accent)'],
+    push: [I18N.sourcePush, 'var(--success)'],
+    cli:  [I18N.sourceCli,  'var(--warning)']
+  };
   const [label, color] = m[src] || [src || '—', 'var(--text-muted)'];
   return '<span style="font-size:11px;font-weight:600;color:' + color + '">' + label + '</span>';
 }
 function renderTable(data) {
   const tbody = document.getElementById('analysisTable');
   if (!data.length) {
-    tbody.innerHTML = '<tr><td colspan="6" class="filter-empty">조건에 맞는 분석 이력이 없습니다.</td></tr>';
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 6;
+    td.className = 'filter-empty';
+    td.textContent = I18N.filterEmpty;
+    tr.appendChild(td);
+    tbody.innerHTML = '';
+    tbody.appendChild(tr);
     return;
   }
   tbody.innerHTML = data.map(function(a) {
@@ -532,7 +565,7 @@ function renderPagination(totalPages, total, start, count) {
   const info = document.getElementById('pageInfo');
   if (totalPages <= 1) {
     pg.innerHTML = '';
-    info.textContent = total > 0 ? '총 ' + total + '건' : '';
+    info.textContent = total > 0 ? I18N.pageTotal.replace('__N__', total) : '';
     return;
   }
   const cp = state.currentPage;
@@ -546,7 +579,10 @@ function renderPagination(totalPages, total, start, count) {
   });
   parts.push('<button class="page-btn" ' + (cp === totalPages ? 'disabled' : '') + ' data-page="' + (cp+1) + '">›</button>');
   pg.innerHTML = parts.join('');
-  info.textContent = (start+1) + '–' + (start+count) + ' / ' + total + '건';
+  info.textContent = I18N.pageRange
+    .replace('__S__', start + 1)
+    .replace('__E__', start + count)
+    .replace('__T__', total);
   pg.onclick = function(e) {
     var btn = e.target.closest('[data-page]');
     if (!btn || btn.disabled) return;
@@ -588,8 +624,8 @@ function applyFilters() {
   renderPagination(totalPages, total, start, pageData.length);
   var el = document.getElementById('historyCount');
   if (el) el.textContent = total === ALL_ANALYSES.length
-    ? '최근 ' + total + '건'
-    : total + '건 / 전체 ' + ALL_ANALYSES.length + '건';
+    ? I18N.historyRecent.replace('__N__', total)
+    : I18N.historyFiltered.replace('__F__', total).replace('__T__', ALL_ANALYSES.length);
   // 필터 결과를 시간 오름차순으로 차트에 동기화
   var chartData = filtered.slice().sort(function(a, b) {
     return (a.created_at || '') < (b.created_at || '') ? -1 : 1;

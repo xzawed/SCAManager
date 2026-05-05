@@ -710,7 +710,9 @@ def test_analysis_detail_shows_fallback_when_no_commit_message():
     with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/repos/owner%2Frepo/analyses/42")
     assert r.status_code == 200
-    assert "커밋 메시지 없음" in r.text
+    # Phase 2 PR-7 (사이클 84) — i18n 적용 후 default locale 'en' 또는 'ko' 양호
+    # Phase 2 PR-7 (Cycle 84) — after i18n, accept either default locale en or ko
+    assert "no commit message" in r.text or "커밋 메시지 없음" in r.text
 
 
 def test_analysis_detail_shows_score_when_result_empty():
@@ -1102,7 +1104,13 @@ def test_analysis_detail_result_none_shows_fallback():
     assert "75" in r.text
     assert "/100" in r.text
     # fallback 메시지 포함 (result 데이터 없음을 안내)
-    assert "분석 결과 데이터가 없습니다" in r.text or "상세 데이터가 없습니다" in r.text
+    # Phase 2 PR-7 (사이클 84) — i18n 적용 후 default locale 'en' 또는 'ko' 양호
+    assert (
+        "No analysis result data available" in r.text
+        or "분석 결과 데이터가 없습니다" in r.text
+        or "상세 데이터가 없습니다" in r.text
+        or "no detailed data" in r.text
+    )
     # AI 관련 섹션은 없어야 함 (result가 없으므로)
     assert "ai_summary" not in r.text
     assert "AI 요약" not in r.text
@@ -1137,7 +1145,13 @@ def test_analysis_detail_result_empty_dict_shows_fallback():
     assert "80" in r.text
     assert "/100" in r.text
     # fallback 메시지 포함
-    assert "분석 결과 데이터가 없습니다" in r.text or "상세 데이터가 없습니다" in r.text
+    # Phase 2 PR-7 (사이클 84) — i18n 적용 후 default locale 'en' 또는 'ko' 양호
+    assert (
+        "No analysis result data available" in r.text
+        or "분석 결과 데이터가 없습니다" in r.text
+        or "상세 데이터가 없습니다" in r.text
+        or "no detailed data" in r.text
+    )
     # AI 요약 섹션 없음
     # AI summary section must not be present.
     assert "AI 요약" not in r.text

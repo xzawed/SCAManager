@@ -197,6 +197,115 @@
     "api_error_prefix": "API 오류: ",
     "submit": "Webhook 생성 + 리포 추가"
   },
+  "repo_detail": {
+    "back": "← 목록",
+    "settings_link": "⚙️ 설정",
+    "score_trend_label": "점수 추이",
+    "history_title": "분석 이력",
+    "history_count_recent": "최근 {count}건",
+    "history_count_filtered": "{filtered}건 / 전체 {total}건",
+    "search_placeholder": "커밋 메시지 또는 SHA 검색…",
+    "score_range_label": "점수",
+    "table": {
+      "date": "날짜",
+      "commit": "커밋",
+      "pr": "PR",
+      "score": "점수",
+      "grade": "등급",
+      "source": "소스"
+    },
+    "filter_all": "전체",
+    "date_filter": {
+      "today": "오늘",
+      "week": "금주",
+      "month": "이번달",
+      "year": "올해",
+      "custom": "직접 지정"
+    },
+    "source_filter": {
+      "pr": "PR",
+      "push": "Push",
+      "cli": "CLI"
+    },
+    "chart_score_label": "점수",
+    "filter_empty": "조건에 맞는 분석 이력이 없습니다.",
+    "page_total": "총 {count}건",
+    "page_range": "{start}–{end} / {total}건",
+    "hook_installed_title": "CLI 코드리뷰 훅이 설정됐습니다!",
+    "hook_installed_desc_part1": "로컬 리포에서 아래 명령어를 실행하면 ",
+    "hook_installed_desc_code": "git push",
+    "hook_installed_desc_part2": " 시 자동으로 코드리뷰가 실행됩니다."
+  },
+  "analysis_detail": {
+    "title": "분석 #{id}",
+    "back": "← 이력",
+    "prev": "◀ 이전",
+    "next": "다음 ▶",
+    "nav_label": "분석 #{id}",
+    "source_cli": "🖥️ CLI",
+    "source_pr": "🔀 PR",
+    "source_push": "📤 Push",
+    "section_commit_msg": "📝 커밋 메시지",
+    "commit_msg_empty": "(커밋 메시지 없음)",
+    "score_unit_suffix": "/100",
+    "grade_label": "등급 {grade}",
+    "score_message": {
+      "excellent": "모범적이에요",
+      "good": "견고한 PR이에요",
+      "fair": "양호하지만 개선 여지가 있어요",
+      "needs_review": "살펴볼 부분이 있어요",
+      "poor": "꼭 확인이 필요해요"
+    },
+    "feedback": {
+      "prompt": "이 점수가 맞다고 생각하시나요?",
+      "hint": "(Claude AI 정합도 개선에 사용됩니다)",
+      "aria_group": "점수 정합도 피드백",
+      "thumbs_up": "맞음",
+      "thumbs_up_title": "맞습니다",
+      "thumbs_up_aria": "이 점수가 맞다고 피드백 (Thumbs up)",
+      "thumbs_down": "아님",
+      "thumbs_down_title": "아닙니다",
+      "thumbs_down_aria": "이 점수가 맞지 않다고 피드백 (Thumbs down)",
+      "saving": "저장 중...",
+      "saved": "감사합니다!",
+      "save_failed": "저장 실패: {message}"
+    },
+    "trend_section_title": "📈 점수 추이 (최근 {count}건)",
+    "trend_chart_score_prefix": "점수: ",
+    "trend_chart_current_marker": " ★ 현재",
+    "ai_defaults": {
+      "title": "AI 리뷰 기본값 적용",
+      "no_api_key": "ANTHROPIC_API_KEY가 설정되지 않아 AI 점수에 중립적 기본값이 적용되었습니다.",
+      "api_error": "AI API 호출에 실패하여 기본값이 적용되었습니다. 서버 로그를 확인하세요.",
+      "empty_diff": "분석 가능한 코드 변경사항이 없어 기본값이 적용되었습니다.",
+      "parse_error": "AI 응답 파싱에 실패하여 기본값이 적용되었습니다.",
+      "other": "AI 리뷰를 수행하지 못해 기본값이 적용되었습니다."
+    },
+    "breakdown": {
+      "section_title": "📊 점수 상세",
+      "code_quality": "코드 품질",
+      "security": "보안",
+      "commit_message": "커밋 메시지",
+      "ai_review": "구현 방향성",
+      "test_coverage": "테스트",
+      "th_item": "항목",
+      "th_score": "점수",
+      "th_ratio": "비율"
+    },
+    "ai": {
+      "summary_title": "🤖 AI 요약",
+      "suggestions_title": "💡 개선 제안",
+      "category_feedback_title": "📋 카테고리별 피드백",
+      "file_feedback_title": "📁 파일별 피드백",
+      "issues_title": "🔍 정적 분석 이슈 ({count}건)"
+    },
+    "empty": {
+      "ai_no_data": "AI 리뷰 데이터가 없습니다.",
+      "legacy_no_result_part1": "이 분석에는 상세 데이터가 없습니다.",
+      "legacy_no_result_part2": "(AI 리뷰 도입 전 분석 기록)",
+      "no_result": "분석 결과 데이터가 없습니다."
+    }
+  },
   "settings": {
     "title": "설정",
     "language": "언어",

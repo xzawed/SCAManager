@@ -197,6 +197,115 @@
     "api_error_prefix": "APIエラー: ",
     "submit": "Webhook生成 + リポ追加"
   },
+  "repo_detail": {
+    "back": "← 一覧",
+    "settings_link": "⚙️ 設定",
+    "score_trend_label": "スコア推移",
+    "history_title": "分析履歴",
+    "history_count_recent": "最近 {count} 件",
+    "history_count_filtered": "{filtered}件 / 全体 {total}件",
+    "search_placeholder": "コミットメッセージまたはSHA検索…",
+    "score_range_label": "スコア",
+    "table": {
+      "date": "日付",
+      "commit": "コミット",
+      "pr": "PR",
+      "score": "スコア",
+      "grade": "グレード",
+      "source": "ソース"
+    },
+    "filter_all": "全て",
+    "date_filter": {
+      "today": "今日",
+      "week": "今週",
+      "month": "今月",
+      "year": "今年",
+      "custom": "カスタム"
+    },
+    "source_filter": {
+      "pr": "PR",
+      "push": "Push",
+      "cli": "CLI"
+    },
+    "chart_score_label": "スコア",
+    "filter_empty": "条件に合う分析履歴がありません。",
+    "page_total": "計 {count} 件",
+    "page_range": "{start}–{end} / {total}件",
+    "hook_installed_title": "CLI コードレビューフックが設定されました!",
+    "hook_installed_desc_part1": "ローカルリポジトリで下記コマンドを実行すると、",
+    "hook_installed_desc_code": "git push",
+    "hook_installed_desc_part2": " 時に自動的にコードレビューが実行されます。"
+  },
+  "analysis_detail": {
+    "title": "分析 #{id}",
+    "back": "← 履歴",
+    "prev": "◀ 前へ",
+    "next": "次へ ▶",
+    "nav_label": "分析 #{id}",
+    "source_cli": "🖥️ CLI",
+    "source_pr": "🔀 PR",
+    "source_push": "📤 Push",
+    "section_commit_msg": "📝 コミットメッセージ",
+    "commit_msg_empty": "(コミットメッセージなし)",
+    "score_unit_suffix": "/100",
+    "grade_label": "グレード {grade}",
+    "score_message": {
+      "excellent": "模範的です",
+      "good": "堅実な PR です",
+      "fair": "良好ですが改善の余地があります",
+      "needs_review": "確認すべき点があります",
+      "poor": "確認が必要です"
+    },
+    "feedback": {
+      "prompt": "このスコアは正しいと思いますか?",
+      "hint": "(Claude AI の整合性改善に使用されます)",
+      "aria_group": "スコア整合性フィードバック",
+      "thumbs_up": "正しい",
+      "thumbs_up_title": "正しいです",
+      "thumbs_up_aria": "このスコアが正しいというフィードバック (Thumbs up)",
+      "thumbs_down": "違う",
+      "thumbs_down_title": "違います",
+      "thumbs_down_aria": "このスコアが正しくないというフィードバック (Thumbs down)",
+      "saving": "保存中...",
+      "saved": "ありがとうございます!",
+      "save_failed": "保存失敗: {message}"
+    },
+    "trend_section_title": "📈 スコア推移 (最近 {count} 件)",
+    "trend_chart_score_prefix": "スコア: ",
+    "trend_chart_current_marker": " ★ 現在",
+    "ai_defaults": {
+      "title": "AI レビューのデフォルト値が適用されました",
+      "no_api_key": "ANTHROPIC_API_KEY が設定されていないため、AI スコアに中立的なデフォルト値が適用されました。",
+      "api_error": "AI API 呼び出しに失敗したためデフォルト値が適用されました。サーバーログをご確認ください。",
+      "empty_diff": "分析可能なコード変更がないためデフォルト値が適用されました。",
+      "parse_error": "AI レスポンスのパース失敗のためデフォルト値が適用されました。",
+      "other": "AI レビューを実行できなかったためデフォルト値が適用されました。"
+    },
+    "breakdown": {
+      "section_title": "📊 スコア詳細",
+      "code_quality": "コード品質",
+      "security": "セキュリティ",
+      "commit_message": "コミットメッセージ",
+      "ai_review": "実装方向性",
+      "test_coverage": "テスト",
+      "th_item": "項目",
+      "th_score": "スコア",
+      "th_ratio": "比率"
+    },
+    "ai": {
+      "summary_title": "🤖 AI 要約",
+      "suggestions_title": "💡 改善提案",
+      "category_feedback_title": "📋 カテゴリ別フィードバック",
+      "file_feedback_title": "📁 ファイル別フィードバック",
+      "issues_title": "🔍 静的解析の問題 ({count}件)"
+    },
+    "empty": {
+      "ai_no_data": "AI レビューデータがありません。",
+      "legacy_no_result_part1": "この分析には詳細データがありません。",
+      "legacy_no_result_part2": "(AI レビュー導入前の分析記録)",
+      "no_result": "分析結果データがありません。"
+    }
+  },
   "settings": {
     "title": "設定",
     "language": "言語",
