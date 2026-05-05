@@ -61,6 +61,21 @@
     color: var(--text-muted);
     margin-top: .5rem;
   }
+
+  /* Cycle 81 PR-D — add_repo 모바일 768px↓ 분기 신설 (5+1 cross-verify 관점 🅑)
+     카드 padding 축소 + WCAG 2.5.5 ≥44px 가드 + 저장 버튼 ≥48px (settings PR-C 패턴 차용)
+     Cycle 81 PR-D — add_repo mobile 768px↓ branch (5+1 cross-verify 🅑)
+     Card padding shrink + WCAG 2.5.5 ≥44px guards + submit btn ≥48px (PR-C pattern) */
+  @media (max-width: 768px) {
+    .add-repo-card { margin: 1rem auto; }
+    .form-select { min-height: 44px; padding: .75rem 1rem; padding-right: 36px; }
+    .btn-primary { min-height: 48px; }
+    .back-btn { min-height: 44px; padding: .5rem .85rem; }
+    .form-group { margin-bottom: 1rem; }
+  }
+  @media (max-width: 480px) {
+    .add-repo-card { padding: 0 .5rem; }
+  }
 </style>
 
 <div class="toast" id="errorToast"></div>

@@ -26,6 +26,12 @@
     .login-wrap { padding: var(--space-4) 0; }
     .login-card { padding: 2rem 1.5rem; max-width: 100%; }
   }
+  /* Cycle 81 PR-D — 모바일 768px↓ 분기 신설 (5+1 cross-verify 관점 🅑)
+     btn-github ≥48px (WCAG 의무 액션 권장) — 모바일 OAuth 버튼 클릭 영역 ↑
+     Cycle 81 PR-D — mobile 768px↓ branch — btn-github ≥48px (WCAG required action) */
+  @media (max-width: 768px) {
+    .btn-github { min-height: 48px; }
+  }
   .login-logo {
     width: 60px;
     height: 60px;
