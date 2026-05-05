@@ -1,0 +1,27 @@
+{
+  "name": "SCAManager — Static Code Analysis Manager",
+  "short_name": "SCAManager",
+  "description": "GitHub Push/PR 정적 분석 + AI 코드 리뷰 + Auto-merge gate. 다중 채널 알림 (Telegram / Discord / Slack / Email / n8n).",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#0a0a0a",
+  "background_color": "#0a0a0a",
+  "lang": "ko-KR",
+  "categories": ["developer", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/static/icons/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/icons/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
