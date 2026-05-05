@@ -38,13 +38,15 @@ def test_build_embed_color_matches_grade():
 
 
 def test_build_embed_includes_breakdown_fields():
+    """Phase 3 PR-10 (사이클 84) — i18n 적용 후 default locale 'en' 또는 'ko' 양호."""
     embed = _build_embed("owner/repo", "abc1234", _make_score(), _make_analysis(), None)
     field_names = [f["name"] for f in embed["fields"]]
-    assert "코드 품질" in field_names
-    assert "보안" in field_names
-    assert "커밋 메시지" in field_names
-    assert "구현 방향성" in field_names
-    assert "테스트" in field_names
+    # 5 카테고리 — 영문/한국어/일본어 양호 (default locale = 'en')
+    assert any(n in field_names for n in ["Code quality", "코드 품질", "コード品質"])
+    assert any(n in field_names for n in ["Security", "보안", "セキュリティ"])
+    assert any(n in field_names for n in ["Commit message", "커밋 메시지", "コミットメッセージ"])
+    assert any(n in field_names for n in ["Implementation direction", "구현 방향성", "実装方向性"])
+    assert any(n in field_names for n in ["Tests", "테스트", "テスト"])
 
 
 def test_build_embed_shows_pr_number():

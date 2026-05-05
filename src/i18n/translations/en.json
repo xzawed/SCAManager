@@ -550,6 +550,43 @@
       "issues_header": "<b>Static analysis issues:</b> {count}",
       "no_issues": "No issues"
     },
+    "discord": {
+      "title": "📊 SCA Analysis — {repo}",
+      "summary_line": "{emoji} **Total: {total}/100** (Grade {grade}) — {ref}",
+      "ai_summary": "**AI summary:** {summary}",
+      "issues_header": "**Static analysis issues:** {count}",
+      "field_quality": "Code quality",
+      "field_security": "Security",
+      "field_commit": "Commit message",
+      "field_direction": "Implementation direction",
+      "field_test": "Tests"
+    },
+    "slack": {
+      "header": "{emoji} *SCA Analysis — {repo}* ({ref})",
+      "fallback": "SCA: {repo} — {total}/100 ({grade})",
+      "pretext": "*Total: {total}/100* (Grade {grade})",
+      "issues_header": "*Static analysis issues:* {count}",
+      "field_quality": "Code quality",
+      "field_security": "Security",
+      "field_commit": "Commit message",
+      "field_direction": "Implementation direction",
+      "field_test": "Tests"
+    },
+    "email": {
+      "subject": "[SCA] {repo} — {total}/100 ({grade})",
+      "title": "📊 SCA Analysis Result — {repo}",
+      "total": "Total: {total}/100",
+      "grade": "Grade {grade}",
+      "th_item": "Item",
+      "th_score": "Score",
+      "row_quality": "Code quality",
+      "row_security": "Security",
+      "row_commit": "Commit message",
+      "row_direction": "Implementation direction",
+      "row_test": "Tests",
+      "ai_summary": "AI summary:",
+      "issues_header": "Static analysis issues ({count}):"
+    },
     "commands": {
       "not_connected": "Connect your account first: /connect <code>",
       "unknown_command": "Unknown command. Available: /stats <repo>, /settings, /connect <code>",
