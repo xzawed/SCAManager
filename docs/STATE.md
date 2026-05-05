@@ -2,12 +2,12 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-05 기준 — **사이클 80 종료 sync (영역 🅔 운영 모니터링 Phase 2 종결)**: 66 PR #188~#260 (메타 #213/#214 제외) + 본 PR (사이클 80 종료 sync) — 누적 정책 본문 16건 + 메모리 24건 (활성 22 + deprecated 2). **사이클 78 영역 🅒 Telegram (PR 1 #253 머지 + PR 2/3/4 머지 대기 — 사용자 영역) + 사이클 79 영역 🅐 SaaS Phase 1 종결 (#254/#255/#256/#257) + 사이클 80 영역 🅔 운영 모니터링 종결 (#259/#260 — Sentry PII 스크러빙 강화 + admin operations KPI 5 카드)**. 단위 2214 / 통합 84 / E2E 82
+## 현재 수치 (2026-05-05 기준 — **사이클 81 종료 sync (영역 🅑 모바일 Phase 1 MVP 종결)**: 70 PR #188~#265 (메타 #213/#214 제외) + 본 PR (사이클 81 종료 sync) — 누적 정책 본문 16건 + 메모리 24건 (활성 22 + deprecated 2). **사이클 78 영역 🅒 (PR 1 #253 + PR 2/3/4 영구 보류) + 사이클 79 영역 🅐 SaaS Phase 1 (#254~#257) + 사이클 80 영역 🅔 운영 모니터링 Phase 2 (#259/#260) + 사이클 81 영역 🅑 모바일 Phase 1 MVP 4 PR 분할 종결 (#262 PWA manifest / #263 dashboard 모바일 / #264 settings 모바일 / #265 form sweep)**. 단위 2214 / 통합 118 / E2E 82
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
 | 단위 테스트 | **2214개** | pytest 9.0.3 — 사이클 73~75 +67 (2055→2122) + 사이클 78 PR 1 +17 (feature_kill_switch helper) + 사이클 79 PR 1+2+3a+3b +39 (alembic 0029 + require_admin + saas_service + dashboard_usage) = 2178 + **사이클 80 PR 1 (#259) +23** (observability before_send PII 스크러빙 강화) + **사이클 80 PR 2 (#260) +13** (operations_service + admin operations endpoints) = **+92 사이클 78~80 누적**. **= 2214 collected / 2212 passed / 2 skipped / 0 failed** |
-| 통합 테스트 | **84개** | tests/integration/ — Phase 3 PR 6 +2 (test_insight_caching — caching helper spy + user_id 격리) **= 81 passed / 3 skipped / 0 failed** |
+| 통합 테스트 | **118개** | tests/integration/ — 사이클 81 영역 🅑 모바일 Phase 1 MVP 4 PR 분할 +34 누적: PR-A (#262 PWA manifest +7) + PR-B (#263 dashboard mobile priority +5) + PR-C (#264 settings mobile +10) + PR-D (#265 form sweep +12). **= 115 passed / 3 skipped / 0 failed** |
 | E2E 테스트 | **82개** | `make test-e2e` (Chromium Playwright) — Phase 3 PR 6 +7 (test_dashboard_insight — 페이지 로드 4 + localStorage persist 3) **= 80 passed / 0 failed / 2 pre-existing fail (test_settings 2건, 본 사이클 무관)**. ⚠️ e2e ↔ tests/integration 동시 실행 금지 — `e2e/pytest.ini` 의도적 asyncio_mode 미설정, 분리 실행 default (`make test-e2e` vs CI command `pytest tests/`) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
@@ -114,7 +114,32 @@
 
 ---
 
-### 사이클 80 — 영역 🅔 운영 모니터링 Phase 2 종결 (2026-05-05 · #259 + #260 + 본 PR sync)
+### 사이클 81 — 영역 🅑 모바일 Phase 1 MVP 종결 (2026-05-05 · #262 + #263 + #264 + #265 + 본 PR sync)
+
+5+1 cross-verify (관점 🅑) Phase 1 MVP 4 PR 분할 완료. CSS only 변경 default (HTML 구조 보존 — 5-way sync 무영향). WCAG 2.5.5 일관 적용 + iOS Safari focus zoom 회피.
+
+| PR # | 제목 | 핵심 |
+|------|------|------|
+| **#262** PR-A | PWA manifest + SVG icon 192/512 maskable + theme-color | base.html PWA 헤더 4종 (manifest link + theme-color + apple-touch-icon + icon) + SVG icon (Chrome/Android PWA install + iOS 16+ apple-touch-icon SVG 호환). CI fix-up = TestClient lifespan 비활성 (사이클 79 PR 3a 동일 패턴 학습 — `with TestClient(app)` 진입 → 후속 unit test caplog 깨짐 차단). 통합 회귀 가드 7건 |
+| **#263** PR-B | dashboard 모바일 KPI 우선순위 재배치 | 480px↓ 분기 안 CSS order 5건 — 보안 HIGH first-fold (운영 위험 신호) + 자동 머지 second-fold (PR 결과 사용자 가치). 데스크탑 HTML 순서 보존. 통합 회귀 가드 5건 |
+| **#264** PR-C | settings 모바일 768px↓ + WCAG ≥44px | 모바일 768px↓ 분기 신설 (mobile portrait 호환) + 카드 padding 축소 + 헤더 폰트 축소 + WCAG 가드 (gate-mode-btn ≥44px / select+input ≥44px + ≥16px / save-btn ≥48px / danger-summary-wrap ≥44px). `<details>` Progressive Disclosure 보류 (5-way sync 영향 위험 — Phase 2 영역). 통합 회귀 가드 10건 |
+| **#265** PR-D | add_repo / login 모바일 form sweep | add_repo 모바일 768px↓ + 480px↓ 분기 신설 (form-select ≥44px / btn-primary ≥48px / back-btn ≥44px) + login 모바일 768px↓ 분기 (btn-github ≥48px). PR-C 패턴 차용. 통합 회귀 가드 12건 |
+| **본 PR** Docs/cycle-81-end-mobile-mvp-sync | **사이클 81 종료 sync** — STATE 헤더 66→70 PR + 통합 84→118 + 사이클 81 row 신설 + CLAUDE.md tail 사이클 81 행 + README 배지 |
+
+**사이클 81 신규 LOC 합**: ~570 코드/template + ~230 docs + ~480 회귀 가드 = **+1280 LOC 누적**
+
+**자율 판단 보고 (정책 3)**:
+- (1) 사이클 81 영역 🅑 종결 = 5+1 cross-verify Phase 1 MVP 4 PR 분할 완료 (사용자 Q3 "전부다" 정합)
+- (2) 단위 카운트 변화 0 (모든 신규 회귀 가드 = integration 영역 — `with TestClient` lifespan 비활성 패턴 차용)
+- (3) `<details>` Progressive Disclosure 보류 = 5-way sync 영향 위험 (HTML 구조 변경 — Phase 2 영역)
+- (4) PR-A CI fix-up 학습 적용 = TestClient lifespan 비활성 default (PR-B/C/D HTML 정적 검증 + `c = TestClient(app)` 직접)
+- (5) WCAG 2.5.5 일관 적용 = 일반 영역 ≥44px + 의무 액션 (저장/OAuth/머지) ≥48px
+- (6) iOS Safari focus zoom 회피 = input/select font-size ≥16px (settings 신규 + add_repo 보존)
+- (7) 다음 작업 default = 사이클 82 🅓 Phase 2 F3 (Sentry baseline 1주 후 — NEW-P0-3 정합)
+
+---
+
+### 사이클 80 — 영역 🅔 운영 모니터링 Phase 2 종결 (2026-05-05 · #259 + #260 + #261 sync)
 
 5 사이클 분할 default (Q2 = 🅑) 정합 — 영역 🅔 단일 사이클 종결. 5+1 cross-verify (관점 🅔) 옵션 🅐 + 🅑 묶음 채택 (옵션 🅒 1주 baseline 보고서 = 사이클 81+ 별도 진행).
 
