@@ -38,10 +38,11 @@ def test_build_html_contains_repo_name():
 
 
 def test_build_html_contains_breakdown():
+    """Phase 3 PR-10 (사이클 84) — i18n 적용 후 default locale en/ko/ja 양호."""
     html = _build_html_body("owner/repo", "abc1234", _make_score(), _make_analysis(), None)
-    assert "코드 품질" in html
-    assert "보안" in html
-    assert "테스트" in html
+    assert ("Code quality" in html) or ("코드 품질" in html) or ("コード品質" in html)
+    assert ("Security" in html) or ("보안" in html) or ("セキュリティ" in html)
+    assert ("Tests" in html) or ("테스트" in html) or ("テスト" in html)
 
 
 def test_build_html_contains_pr_number():
@@ -110,7 +111,9 @@ async def test_send_email_calls_smtp():
     msg = mock_smtp.send.call_args[0][0]
     assert "a@test.com" in msg["To"]
     assert "b@test.com" in msg["To"]
-    assert "SCA" in msg["Subject"]
+    # Phase 3 PR-10 — Subject = email.header.Header (RFC 2047 base64). str() 경유.
+    # Phase 3 PR-10 — Subject is email.header.Header (RFC 2047). Use str() to compare.
+    assert "SCA" in str(msg["Subject"])
 
 
 # ---------------------------------------------------------------------------
@@ -184,8 +187,10 @@ async def test_send_email_subject_contains_score_and_grade():
             smtp_host="smtp.test.com",
         )
     msg = mock_smtp.send.call_args[0][0]
-    assert "91" in msg["Subject"]
-    assert "A" in msg["Subject"]
+    # Phase 3 PR-10 — Subject = email.header.Header (RFC 2047 base64). str() 경유.
+    subject_str = str(msg["Subject"])
+    assert "91" in subject_str
+    assert "A" in subject_str
 
 
 # ---------------------------------------------------------------------------

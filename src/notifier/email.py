@@ -1,11 +1,17 @@
-"""Email notifier — sends HTML analysis reports via SMTP."""
+"""Email notifier — sends HTML analysis reports via SMTP.
+
+Phase 3 PR-10 (사이클 84) — i18n: language 인자 + 3-layer fallback + RFC 2047 base64 일본어 호환.
+Phase 3 PR-10 (Cycle 84) — i18n: language arg + 3-layer fallback + RFC 2047 base64 (Japanese-safe).
+"""
 import logging
+from email.header import Header
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from html import escape
 
 import aiosmtplib
 
+from src.i18n.loader import get_text
 from src.scorer.calculator import ScoreResult
 from src.analyzer.io.static import StaticAnalysisResult
 from src.analyzer.io.ai_review import AiReviewResult
@@ -22,26 +28,28 @@ def _build_html_body(  # pylint: disable=too-many-positional-arguments
     analysis_results: list[StaticAnalysisResult],
     pr_number: int | None,
     ai_review: AiReviewResult | None = None,
+    language: str = "en",
 ) -> str:
     ref = format_ref(commit_sha, pr_number)
     bd = score_result.breakdown
     color = GRADE_COLOR_HTML.get(score_result.grade, "#6366f1")
 
     rows = "".join(
-        f"<tr><td style='padding:4px 8px'>{name}</td>"
+        f"<tr><td style='padding:4px 8px'>{escape(name)}</td>"
         f"<td style='padding:4px 8px;text-align:right'><b>{bd.get(key, '-')}</b>/{mx}</td></tr>"
         for name, key, mx in [
-            ("코드 품질", "code_quality", 25),
-            ("보안", "security", 20),
-            ("커밋 메시지", "commit_message", 15),
-            ("구현 방향성", "ai_review", 25),
-            ("테스트", "test_coverage", 15),
+            (get_text("notifier.email.row_quality", language), "code_quality", 25),
+            (get_text("notifier.email.row_security", language), "security", 20),
+            (get_text("notifier.email.row_commit", language), "commit_message", 15),
+            (get_text("notifier.email.row_direction", language), "ai_review", 25),
+            (get_text("notifier.email.row_test", language), "test_coverage", 15),
         ]
     )
 
     ai_section = ""
     if ai_review and ai_review.summary:
-        ai_section = f"<p><b>AI 요약:</b> {escape(ai_review.summary)}</p>"
+        ai_label = get_text("notifier.email.ai_summary", language)
+        ai_section = f"<p><b>{escape(ai_label)}</b> {escape(ai_review.summary)}</p>"
 
     issues_section = ""
     all_issues = get_all_issues(analysis_results)
@@ -50,18 +58,27 @@ def _build_html_body(  # pylint: disable=too-many-positional-arguments
             f"<li>[{escape(i.tool)}] {escape(truncate_issue_msg(i.message))}</li>"
             for i in all_issues[:NOTIFIER_MAX_ISSUES_LONG]
         )
-        issues_section = f"<p><b>정적 분석 이슈 ({len(all_issues)}건):</b></p><ul>{issue_items}</ul>"
+        issues_header = get_text(
+            "notifier.email.issues_header", language, count=len(all_issues),
+        )
+        issues_section = f"<p><b>{escape(issues_header)}</b></p><ul>{issue_items}</ul>"
+
+    title = get_text("notifier.email.title", language, repo=escape(repo_name))
+    total_label = get_text("notifier.email.total", language, total=score_result.total)
+    grade_label = get_text("notifier.email.grade", language, grade=score_result.grade)
+    th_item = get_text("notifier.email.th_item", language)
+    th_score = get_text("notifier.email.th_score", language)
 
     return f"""\
 <div style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto">
   <div style="background:{color};color:#fff;padding:16px 20px;border-radius:8px 8px 0 0">
-    <h2 style="margin:0;font-size:18px">📊 SCA 분석 결과 — {escape(repo_name)}</h2>
+    <h2 style="margin:0;font-size:18px">{title}</h2>
     <p style="margin:4px 0 0;opacity:0.9">{escape(ref)}</p>
   </div>
   <div style="border:1px solid #e2e8f0;border-top:none;padding:20px;border-radius:0 0 8px 8px">
-    <p style="font-size:20px;margin:0 0 16px"><b>총점: {score_result.total}/100</b> (등급 {score_result.grade})</p>
+    <p style="font-size:20px;margin:0 0 16px"><b>{total_label}</b> ({grade_label})</p>
     <table style="width:100%;border-collapse:collapse;font-size:14px">
-      <thead><tr style="background:#f8fafc"><th style="padding:4px 8px;text-align:left">항목</th><th style="padding:4px 8px;text-align:right">점수</th></tr></thead>
+      <thead><tr style="background:#f8fafc"><th style="padding:4px 8px;text-align:left">{escape(th_item)}</th><th style="padding:4px 8px;text-align:right">{escape(th_score)}</th></tr></thead>
       <tbody>{rows}</tbody>
     </table>
     {ai_section}
@@ -83,15 +100,27 @@ async def send_email_notification(  # pylint: disable=too-many-arguments
     smtp_port: int = 587,
     smtp_user: str | None = None,
     smtp_pass: str | None = None,
+    language: str = "en",
 ) -> None:
-    """SMTP를 통해 HTML 분석 리포트 이메일을 전송한다."""
+    """SMTP를 통해 HTML 분석 리포트 이메일을 전송한다 (Phase 3 PR-10 — i18n + RFC 2047)."""
     if not recipients or not smtp_host:
         return
 
-    html = _build_html_body(repo_name, commit_sha, score_result, analysis_results, pr_number, ai_review)
+    html = _build_html_body(
+        repo_name, commit_sha, score_result, analysis_results, pr_number, ai_review,
+        language=language,
+    )
 
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"[SCA] {repo_name} — {score_result.total}점 ({score_result.grade})"
+    # Phase 3 PR-10 — RFC 2047 base64 인코딩 (Header 사용 — 일본어/한국어 등 비-ASCII subject 호환)
+    # Phase 3 PR-10 — RFC 2047 base64 (Header used — supports non-ASCII subjects like ja/ko)
+    # 직접 string 할당 시 Python email 모듈은 ASCII 외 문자에 raw bytes 또는 SMTP 거부 발생 위험.
+    # Direct string assignment risks raw bytes or SMTP rejection for non-ASCII chars.
+    subject_text = get_text(
+        "notifier.email.subject", language,
+        repo=repo_name, total=score_result.total, grade=score_result.grade,
+    )
+    msg["Subject"] = Header(subject_text, "utf-8")
     msg["From"] = smtp_user or "sca@localhost"
     msg["To"] = recipients
     msg.attach(MIMEText(html, "html"))
@@ -128,7 +157,11 @@ class _EmailNotifier:
         return bool(ctx.config and ctx.config.email_recipients and settings.smtp_host)
 
     async def send(self, ctx: NotifyContext) -> None:
-        """알림을 전송한다."""
+        """알림을 전송한다 (Phase 3 PR-10 — 3-layer fallback)."""
+        from src.database import SessionLocal  # noqa: WPS433
+        from src.notifier._language import resolve_notification_language  # noqa: WPS433
+        with SessionLocal() as db:
+            language = resolve_notification_language(db, config=ctx.config)
         await send_email_notification(
             recipients=ctx.config.email_recipients,
             repo_name=ctx.repo_name,
@@ -141,6 +174,7 @@ class _EmailNotifier:
             smtp_port=settings.smtp_port,
             smtp_user=settings.smtp_user,
             smtp_pass=settings.smtp_pass,
+            language=language,
         )
 
 

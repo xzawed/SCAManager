@@ -1,4 +1,8 @@
-"""Discord notifier — sends analysis results as embed messages via webhook."""
+"""Discord notifier — sends analysis results as embed messages via webhook.
+
+Phase 3 PR-10 (사이클 84) — i18n: language 인자 + 3-layer fallback (resolve_notification_language).
+Phase 3 PR-10 (Cycle 84) — i18n: language arg + 3-layer fallback.
+"""
 import logging
 
 from src.notifier._http import build_safe_client, validate_external_url
@@ -6,6 +10,7 @@ from src.constants import (
     GRADE_EMOJI, GRADE_COLOR_DISCORD,
     DISCORD_EMBED_DESC_MAX_LENGTH, NOTIFIER_MAX_ISSUES_SHORT,
 )
+from src.i18n.loader import get_text
 from src.scorer.calculator import ScoreResult
 from src.analyzer.io.static import StaticAnalysisResult
 from src.analyzer.io.ai_review import AiReviewResult
@@ -21,36 +26,49 @@ def _build_embed(  # pylint: disable=too-many-positional-arguments
     analysis_results: list[StaticAnalysisResult],
     pr_number: int | None,
     ai_review: AiReviewResult | None = None,
+    language: str = "en",
 ) -> dict:
     grade_emoji = GRADE_EMOJI.get(score_result.grade, "⚪")
     ref = format_ref(commit_sha, pr_number)
     bd = score_result.breakdown
 
     lines = [
-        f"{grade_emoji} **총점: {score_result.total}/100** (등급 {score_result.grade}) — {ref}",
+        get_text(
+            "notifier.discord.summary_line", language,
+            emoji=grade_emoji, total=score_result.total, grade=score_result.grade, ref=ref,
+        ),
     ]
 
     if ai_review and ai_review.summary:
-        lines.append(f"\n**AI 요약:** {ai_review.summary}")
+        lines.append("\n" + get_text(
+            "notifier.discord.ai_summary", language, summary=ai_review.summary,
+        ))
 
     all_issues = get_all_issues(analysis_results)
     if all_issues:
-        lines.append(f"\n**정적 분석 이슈:** {len(all_issues)}건")
+        lines.append("\n" + get_text(
+            "notifier.discord.issues_header", language, count=len(all_issues),
+        ))
         for issue in all_issues[:NOTIFIER_MAX_ISSUES_SHORT]:
             lines.append(f"- [{issue.tool}] {truncate_issue_msg(issue.message)}")
 
     desc = truncate_message("\n".join(lines), DISCORD_EMBED_DESC_MAX_LENGTH)
 
     fields = [
-        {"name": "코드 품질", "value": f"{bd.get('code_quality', '-')}/25", "inline": True},
-        {"name": "보안", "value": f"{bd.get('security', '-')}/20", "inline": True},
-        {"name": "커밋 메시지", "value": f"{bd.get('commit_message', '-')}/15", "inline": True},
-        {"name": "구현 방향성", "value": f"{bd.get('ai_review', '-')}/25", "inline": True},
-        {"name": "테스트", "value": f"{bd.get('test_coverage', '-')}/15", "inline": True},
+        {"name": get_text("notifier.discord.field_quality", language),
+         "value": f"{bd.get('code_quality', '-')}/25", "inline": True},
+        {"name": get_text("notifier.discord.field_security", language),
+         "value": f"{bd.get('security', '-')}/20", "inline": True},
+        {"name": get_text("notifier.discord.field_commit", language),
+         "value": f"{bd.get('commit_message', '-')}/15", "inline": True},
+        {"name": get_text("notifier.discord.field_direction", language),
+         "value": f"{bd.get('ai_review', '-')}/25", "inline": True},
+        {"name": get_text("notifier.discord.field_test", language),
+         "value": f"{bd.get('test_coverage', '-')}/15", "inline": True},
     ]
 
     return {
-        "title": f"📊 SCA 분석 — {repo_name}",
+        "title": get_text("notifier.discord.title", language, repo=repo_name),
         "description": desc,
         "color": GRADE_COLOR_DISCORD.get(score_result.grade, 0x6366F1),
         "fields": fields,
@@ -66,14 +84,18 @@ async def send_discord_notification(
     analysis_results: list[StaticAnalysisResult],
     pr_number: int | None = None,
     ai_review: AiReviewResult | None = None,
+    language: str = "en",
 ) -> None:
-    """Discord Embed 메시지를 Webhook URL로 전송한다."""
+    """Discord Embed 메시지를 Webhook URL로 전송한다 (Phase 3 PR-10 — i18n)."""
     if not webhook_url:
         return
     if not validate_external_url(webhook_url):
         logger.warning("send_discord_notification: blocked unsafe URL '%s'", webhook_url)
         return
-    embed = _build_embed(repo_name, commit_sha, score_result, analysis_results, pr_number, ai_review)
+    embed = _build_embed(
+        repo_name, commit_sha, score_result, analysis_results, pr_number, ai_review,
+        language=language,
+    )
     async with build_safe_client() as client:
         r = await client.post(webhook_url, json={"embeds": [embed]})
         r.raise_for_status()
@@ -95,7 +117,12 @@ class _DiscordNotifier:
         return bool(ctx.config and ctx.config.discord_webhook_url)
 
     async def send(self, ctx: NotifyContext) -> None:
-        """알림을 전송한다."""
+        """알림을 전송한다 (Phase 3 PR-10 — 3-layer fallback)."""
+        # 지연 import — circular 회피 (notifier._language → repositories → models)
+        from src.database import SessionLocal  # noqa: WPS433
+        from src.notifier._language import resolve_notification_language  # noqa: WPS433
+        with SessionLocal() as db:
+            language = resolve_notification_language(db, config=ctx.config)
         await send_discord_notification(
             webhook_url=ctx.config.discord_webhook_url,
             repo_name=ctx.repo_name,
@@ -104,6 +131,7 @@ class _DiscordNotifier:
             analysis_results=ctx.analysis_results,
             pr_number=ctx.pr_number,
             ai_review=ctx.ai_review,
+            language=language,
         )
 
 

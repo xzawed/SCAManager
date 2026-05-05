@@ -550,6 +550,43 @@
       "issues_header": "<b>정적 분석 이슈:</b> {count}건",
       "no_issues": "이슈 없음"
     },
+    "discord": {
+      "title": "📊 SCA 분석 — {repo}",
+      "summary_line": "{emoji} **총점: {total}/100** (등급 {grade}) — {ref}",
+      "ai_summary": "**AI 요약:** {summary}",
+      "issues_header": "**정적 분석 이슈:** {count}건",
+      "field_quality": "코드 품질",
+      "field_security": "보안",
+      "field_commit": "커밋 메시지",
+      "field_direction": "구현 방향성",
+      "field_test": "테스트"
+    },
+    "slack": {
+      "header": "{emoji} *SCA 분석 — {repo}* ({ref})",
+      "fallback": "SCA: {repo} — {total}/100 ({grade})",
+      "pretext": "*총점: {total}/100* (등급 {grade})",
+      "issues_header": "*정적 분석 이슈:* {count}건",
+      "field_quality": "코드 품질",
+      "field_security": "보안",
+      "field_commit": "커밋 메시지",
+      "field_direction": "구현 방향성",
+      "field_test": "테스트"
+    },
+    "email": {
+      "subject": "[SCA] {repo} — {total}점 ({grade})",
+      "title": "📊 SCA 분석 결과 — {repo}",
+      "total": "총점: {total}/100",
+      "grade": "등급 {grade}",
+      "th_item": "항목",
+      "th_score": "점수",
+      "row_quality": "코드 품질",
+      "row_security": "보안",
+      "row_commit": "커밋 메시지",
+      "row_direction": "구현 방향성",
+      "row_test": "테스트",
+      "ai_summary": "AI 요약:",
+      "issues_header": "정적 분석 이슈 ({count}건):"
+    },
     "commands": {
       "not_connected": "먼저 /connect <코드>로 계정을 연결하세요.",
       "unknown_command": "지원하지 않는 명령입니다. 사용 가능: /stats <repo>, /settings, /connect <코드>",

@@ -37,14 +37,15 @@ def test_build_payload_has_attachments_with_grade_color():
 
 
 def test_build_payload_includes_breakdown_fields():
+    """Phase 3 PR-10 (사이클 84) — i18n 적용 후 default locale en/ko/ja 양호."""
     payload = _build_payload("owner/repo", "abc1234", _make_score(), _make_analysis(), None)
     fields = payload["attachments"][0]["fields"]
     field_titles = [f["title"] for f in fields]
-    assert "코드 품질" in field_titles
-    assert "보안" in field_titles
-    assert "커밋 메시지" in field_titles
-    assert "구현 방향성" in field_titles
-    assert "테스트" in field_titles
+    assert any(n in field_titles for n in ["Code quality", "코드 품질", "コード品質"])
+    assert any(n in field_titles for n in ["Security", "보안", "セキュリティ"])
+    assert any(n in field_titles for n in ["Commit message", "커밋 메시지", "コミットメッセージ"])
+    assert any(n in field_titles for n in ["Implementation direction", "구현 방향성", "実装方向性"])
+    assert any(n in field_titles for n in ["Tests", "테스트", "テスト"])
 
 
 def test_build_payload_shows_pr_number():

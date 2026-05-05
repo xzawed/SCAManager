@@ -550,6 +550,43 @@
       "issues_header": "<b>静的解析の問題:</b> {count}件",
       "no_issues": "問題なし"
     },
+    "discord": {
+      "title": "📊 SCA 分析 — {repo}",
+      "summary_line": "{emoji} **合計: {total}/100** (グレード {grade}) — {ref}",
+      "ai_summary": "**AI 要約:** {summary}",
+      "issues_header": "**静的解析の問題:** {count}件",
+      "field_quality": "コード品質",
+      "field_security": "セキュリティ",
+      "field_commit": "コミットメッセージ",
+      "field_direction": "実装方向性",
+      "field_test": "テスト"
+    },
+    "slack": {
+      "header": "{emoji} *SCA 分析 — {repo}* ({ref})",
+      "fallback": "SCA: {repo} — {total}/100 ({grade})",
+      "pretext": "*合計: {total}/100* (グレード {grade})",
+      "issues_header": "*静的解析の問題:* {count}件",
+      "field_quality": "コード品質",
+      "field_security": "セキュリティ",
+      "field_commit": "コミットメッセージ",
+      "field_direction": "実装方向性",
+      "field_test": "テスト"
+    },
+    "email": {
+      "subject": "[SCA] {repo} — {total}点 ({grade})",
+      "title": "📊 SCA 分析結果 — {repo}",
+      "total": "合計: {total}/100",
+      "grade": "グレード {grade}",
+      "th_item": "項目",
+      "th_score": "スコア",
+      "row_quality": "コード品質",
+      "row_security": "セキュリティ",
+      "row_commit": "コミットメッセージ",
+      "row_direction": "実装方向性",
+      "row_test": "テスト",
+      "ai_summary": "AI 要約:",
+      "issues_header": "静的解析の問題 ({count}件):"
+    },
     "commands": {
       "not_connected": "先に /connect <コード> でアカウントを連携してください。",
       "unknown_command": "対応していないコマンドです。利用可能: /stats <repo>, /settings, /connect <コード>",
