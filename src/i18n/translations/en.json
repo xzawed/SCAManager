@@ -197,6 +197,115 @@
     "api_error_prefix": "API error: ",
     "submit": "Create Webhook + Add Repository"
   },
+  "repo_detail": {
+    "back": "← List",
+    "settings_link": "⚙️ Settings",
+    "score_trend_label": "Score Trend",
+    "history_title": "Analysis History",
+    "history_count_recent": "Last {count} entries",
+    "history_count_filtered": "{filtered} / total {total} entries",
+    "search_placeholder": "Search commit message or SHA…",
+    "score_range_label": "Score",
+    "table": {
+      "date": "Date",
+      "commit": "Commit",
+      "pr": "PR",
+      "score": "Score",
+      "grade": "Grade",
+      "source": "Source"
+    },
+    "filter_all": "All",
+    "date_filter": {
+      "today": "Today",
+      "week": "This Week",
+      "month": "This Month",
+      "year": "This Year",
+      "custom": "Custom"
+    },
+    "source_filter": {
+      "pr": "PR",
+      "push": "Push",
+      "cli": "CLI"
+    },
+    "chart_score_label": "Score",
+    "filter_empty": "No analysis entries match your filters.",
+    "page_total": "Total {count} entries",
+    "page_range": "{start}–{end} / {total} entries",
+    "hook_installed_title": "CLI code review hook is set up!",
+    "hook_installed_desc_part1": "Run the following in your local repo, and code review will run automatically on ",
+    "hook_installed_desc_code": "git push",
+    "hook_installed_desc_part2": "."
+  },
+  "analysis_detail": {
+    "title": "Analysis #{id}",
+    "back": "← History",
+    "prev": "◀ Previous",
+    "next": "Next ▶",
+    "nav_label": "Analysis #{id}",
+    "source_cli": "🖥️ CLI",
+    "source_pr": "🔀 PR",
+    "source_push": "📤 Push",
+    "section_commit_msg": "📝 Commit Message",
+    "commit_msg_empty": "(no commit message)",
+    "score_unit_suffix": "/100",
+    "grade_label": "Grade {grade}",
+    "score_message": {
+      "excellent": "Exemplary",
+      "good": "Solid PR",
+      "fair": "Decent, with room for improvement",
+      "needs_review": "Some areas to review",
+      "poor": "Needs review"
+    },
+    "feedback": {
+      "prompt": "Do you think this score is accurate?",
+      "hint": "(Used to improve Claude AI calibration)",
+      "aria_group": "Score accuracy feedback",
+      "thumbs_up": "Accurate",
+      "thumbs_up_title": "Accurate",
+      "thumbs_up_aria": "Feedback that this score is accurate (Thumbs up)",
+      "thumbs_down": "Inaccurate",
+      "thumbs_down_title": "Inaccurate",
+      "thumbs_down_aria": "Feedback that this score is inaccurate (Thumbs down)",
+      "saving": "Saving...",
+      "saved": "Thank you!",
+      "save_failed": "Save failed: {message}"
+    },
+    "trend_section_title": "📈 Score Trend (last {count} entries)",
+    "trend_chart_score_prefix": "Score: ",
+    "trend_chart_current_marker": " ★ Current",
+    "ai_defaults": {
+      "title": "AI review defaults applied",
+      "no_api_key": "ANTHROPIC_API_KEY is not set, so neutral defaults were applied to AI scores.",
+      "api_error": "AI API call failed, so defaults were applied. Please check server logs.",
+      "empty_diff": "No analyzable code changes — defaults applied.",
+      "parse_error": "AI response parsing failed — defaults applied.",
+      "other": "AI review could not run — defaults applied."
+    },
+    "breakdown": {
+      "section_title": "📊 Score Breakdown",
+      "code_quality": "Code Quality",
+      "security": "Security",
+      "commit_message": "Commit Message",
+      "ai_review": "Implementation Direction",
+      "test_coverage": "Tests",
+      "th_item": "Item",
+      "th_score": "Score",
+      "th_ratio": "Ratio"
+    },
+    "ai": {
+      "summary_title": "🤖 AI Summary",
+      "suggestions_title": "💡 Suggestions",
+      "category_feedback_title": "📋 Category Feedback",
+      "file_feedback_title": "📁 Per-file Feedback",
+      "issues_title": "🔍 Static Analysis Issues ({count})"
+    },
+    "empty": {
+      "ai_no_data": "No AI review data available.",
+      "legacy_no_result_part1": "This analysis has no detailed data.",
+      "legacy_no_result_part2": "(Recorded before AI review was introduced)",
+      "no_result": "No analysis result data available."
+    }
+  },
   "settings": {
     "title": "Settings",
     "language": "Language",

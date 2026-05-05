@@ -11,7 +11,7 @@ from src.auth.session import CurrentUser, require_login
 from src.database import SessionLocal
 from src.models.analysis import Analysis
 from src.repositories import analysis_feedback_repo
-from src.ui._helpers import get_accessible_repo, templates
+from src.ui._helpers import get_accessible_repo, get_locale, templates
 
 router = APIRouter()
 
@@ -84,6 +84,7 @@ def analysis_detail(
         "repo_name": repo_name, "analysis": data, "current_user": current_user,
         "trend_data": trend_data, "prev_id": prev_id, "next_id": next_id,
         "user_feedback": _serialize_feedback(user_feedback),
+        "locale": get_locale(request),
     })
 
 
@@ -159,4 +160,5 @@ def repo_detail(  # pylint: disable=too-many-positional-arguments
         "chart_scores": [a["score"] for a in rev],
         "hook_installed": bool(hook_installed),
         "current_user": current_user,
+        "locale": get_locale(request),
     })

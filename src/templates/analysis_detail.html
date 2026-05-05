@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}분석 #{{ analysis.id }} — {{ repo_name }} — SCAManager{% endblock %}
+{% block title %}{{ 'analysis_detail.title' | i18n_args(locale | default('ko'), id=analysis.id) }} — {{ repo_name }} — SCAManager{% endblock %}
 {% block content %}
 <style>
   .ad-header {
@@ -225,9 +225,9 @@
   }
 </style>
 
-<!-- 헤더 / Header -->
+<!-- 헤더 / Header / Phase 2 PR-7 — i18n -->
 <div class="ad-header">
-  <a class="back-btn" href="/repos/{{ repo_name }}">← 이력</a>
+  <a class="back-btn" href="/repos/{{ repo_name }}">{{ 'analysis_detail.back' | i18n_args(locale | default('ko')) }}</a>
   <h2>{{ repo_name }}</h2>
   <span class="grade grade-{{ analysis.grade }}" style="margin-left:auto">{{ analysis.grade }}</span>
 </div>
@@ -235,15 +235,15 @@
 <!-- 이전/다음 내비게이션 / Prev/Next navigation -->
 <div class="analysis-nav">
   {% if prev_id %}
-    <a href="/repos/{{ repo_name }}/analyses/{{ prev_id }}" class="nav-btn">◀ 이전</a>
+    <a href="/repos/{{ repo_name }}/analyses/{{ prev_id }}" class="nav-btn">{{ 'analysis_detail.prev' | i18n_args(locale | default('ko')) }}</a>
   {% else %}
-    <span class="nav-btn disabled">◀ 이전</span>
+    <span class="nav-btn disabled">{{ 'analysis_detail.prev' | i18n_args(locale | default('ko')) }}</span>
   {% endif %}
-  <span class="nav-label">분석 #{{ analysis.id }}</span>
+  <span class="nav-label">{{ 'analysis_detail.nav_label' | i18n_args(locale | default('ko'), id=analysis.id) }}</span>
   {% if next_id %}
-    <a href="/repos/{{ repo_name }}/analyses/{{ next_id }}" class="nav-btn">다음 ▶</a>
+    <a href="/repos/{{ repo_name }}/analyses/{{ next_id }}" class="nav-btn">{{ 'analysis_detail.next' | i18n_args(locale | default('ko')) }}</a>
   {% else %}
-    <span class="nav-btn disabled">다음 ▶</span>
+    <span class="nav-btn disabled">{{ 'analysis_detail.next' | i18n_args(locale | default('ko')) }}</span>
   {% endif %}
 </div>
 
@@ -255,17 +255,17 @@
   <span>🔀 PR #{{ analysis.pr_number }}</span>
   {% endif %}
   <span>
-    {% if analysis.source == 'cli' %}🖥️ CLI
-    {% elif analysis.source == 'pr' %}🔀 PR
-    {% else %}📤 Push
+    {% if analysis.source == 'cli' %}{{ 'analysis_detail.source_cli' | i18n_args(locale | default('ko')) }}
+    {% elif analysis.source == 'pr' %}{{ 'analysis_detail.source_pr' | i18n_args(locale | default('ko')) }}
+    {% else %}{{ 'analysis_detail.source_push' | i18n_args(locale | default('ko')) }}
     {% endif %}
   </span>
 </div>
 
 <!-- 커밋 메시지 / Commit message -->
 <div class="card ad-section">
-  <div class="ad-section-title">📝 커밋 메시지</div>
-  <div class="commit-msg-text">{{ analysis.commit_message or "(커밋 메시지 없음)" }}</div>
+  <div class="ad-section-title">{{ 'analysis_detail.section_commit_msg' | i18n_args(locale | default('ko')) }}</div>
+  <div class="commit-msg-text">{{ analysis.commit_message or ('analysis_detail.commit_msg_empty' | i18n_args(locale | default('ko'))) }}</div>
 </div>
 
 <!-- 점수 배너 / Score banner -->
@@ -275,37 +275,42 @@
     <span class="ad-score-big {% if analysis.score >= 75 %}high{% elif analysis.score >= 50 %}mid{% else %}low{% endif %}">
       {{ analysis.score }}
     </span>
-    <span style="font-size:1.2rem;color:var(--text-muted)">/100</span>
+    <span style="font-size:1.2rem;color:var(--text-muted)">{{ 'analysis_detail.score_unit_suffix' | i18n_args(locale | default('ko')) }}</span>
   </div>
   <div>
-    <div style="font-size:15px;font-weight:700;color:var(--text-primary)">등급 {{ analysis.grade }}</div>
-    {# Phase 1B (UI 개편) — 친근한 의미 라벨 (대화체). 등급별 짧은 코멘트 1줄. #}
+    <div style="font-size:15px;font-weight:700;color:var(--text-primary)">{{ 'analysis_detail.grade_label' | i18n_args(locale | default('ko'), grade=analysis.grade) }}</div>
+    {# Phase 1B (UI 개편) — 친근한 의미 라벨. Phase 2 PR-7 — i18n / 5 score messages #}
     <div class="ad-score-label">
-      {% if analysis.score >= 90 %}모범적이에요{% elif analysis.score >= 75 %}견고한 PR이에요
-      {% elif analysis.score >= 60 %}양호하지만 개선 여지가 있어요{% elif analysis.score >= 45 %}살펴볼 부분이 있어요
-      {% else %}꼭 확인이 필요해요{% endif %}
+      {% if analysis.score >= 90 %}{{ 'analysis_detail.score_message.excellent' | i18n_args(locale | default('ko')) }}
+      {% elif analysis.score >= 75 %}{{ 'analysis_detail.score_message.good' | i18n_args(locale | default('ko')) }}
+      {% elif analysis.score >= 60 %}{{ 'analysis_detail.score_message.fair' | i18n_args(locale | default('ko')) }}
+      {% elif analysis.score >= 45 %}{{ 'analysis_detail.score_message.needs_review' | i18n_args(locale | default('ko')) }}
+      {% else %}{{ 'analysis_detail.score_message.poor' | i18n_args(locale | default('ko')) }}{% endif %}
     </div>
   </div>
 </div>
 {% endif %}
 
-<!-- Phase E.3 — 이 점수가 맞나요? thumbs up/down 피드백 / Is this score accurate? thumbs up/down feedback -->
+<!-- Phase E.3 — 이 점수가 맞나요? thumbs up/down 피드백 / Phase 2 PR-7 — i18n -->
 <div class="card feedback-card" id="feedbackCard"
      data-analysis-id="{{ analysis.id }}"
      data-repo="{{ repo_name }}"
-     data-current-thumbs="{{ user_feedback.thumbs if user_feedback and user_feedback.thumbs else '' }}">
+     data-current-thumbs="{{ user_feedback.thumbs if user_feedback and user_feedback.thumbs else '' }}"
+     data-i18n-saving="{{ 'analysis_detail.feedback.saving' | i18n_args(locale | default('ko')) }}"
+     data-i18n-saved="{{ 'analysis_detail.feedback.saved' | i18n_args(locale | default('ko')) }}"
+     data-i18n-save-failed="{{ 'analysis_detail.feedback.save_failed' | i18n_args(locale | default('ko'), message='__M__') }}">
   <div class="feedback-prompt">
-    <span class="feedback-label">이 점수가 맞다고 생각하시나요?</span>
-    <span class="feedback-hint">(Claude AI 정합도 개선에 사용됩니다)</span>
+    <span class="feedback-label">{{ 'analysis_detail.feedback.prompt' | i18n_args(locale | default('ko')) }}</span>
+    <span class="feedback-hint">{{ 'analysis_detail.feedback.hint' | i18n_args(locale | default('ko')) }}</span>
   </div>
-  <div class="feedback-buttons" role="group" aria-label="점수 정합도 피드백">
+  <div class="feedback-buttons" role="group" aria-label="{{ 'analysis_detail.feedback.aria_group' | i18n_args(locale | default('ko')) }}">
     <button type="button" class="fb-btn fb-up" data-value="1"
-            title="맞습니다" aria-label="이 점수가 맞다고 피드백 (Thumbs up)">
-      <span aria-hidden="true">👍</span> <span class="fb-btn-label">맞음</span>
+            title="{{ 'analysis_detail.feedback.thumbs_up_title' | i18n_args(locale | default('ko')) }}" aria-label="{{ 'analysis_detail.feedback.thumbs_up_aria' | i18n_args(locale | default('ko')) }}">
+      <span aria-hidden="true">👍</span> <span class="fb-btn-label">{{ 'analysis_detail.feedback.thumbs_up' | i18n_args(locale | default('ko')) }}</span>
     </button>
     <button type="button" class="fb-btn fb-down" data-value="-1"
-            title="아닙니다" aria-label="이 점수가 맞지 않다고 피드백 (Thumbs down)">
-      <span aria-hidden="true">👎</span> <span class="fb-btn-label">아님</span>
+            title="{{ 'analysis_detail.feedback.thumbs_down_title' | i18n_args(locale | default('ko')) }}" aria-label="{{ 'analysis_detail.feedback.thumbs_down_aria' | i18n_args(locale | default('ko')) }}">
+      <span aria-hidden="true">👎</span> <span class="fb-btn-label">{{ 'analysis_detail.feedback.thumbs_down' | i18n_args(locale | default('ko')) }}</span>
     </button>
     <span class="fb-status" id="fbStatus" role="status" aria-live="polite"></span>
   </div>
@@ -350,7 +355,7 @@
   btns.forEach(btn => btn.addEventListener('click', async () => {
     const thumbs = parseInt(btn.dataset.value, 10);
     btns.forEach(b => b.disabled = true);
-    status.textContent = '저장 중...';
+    status.textContent = card.dataset.i18nSaving;
     status.className = 'fb-status';
     try {
       const url = `/repos/${encodeURIComponent(repo)}/analyses/${analysisId}/feedback`;
@@ -363,11 +368,11 @@
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       btns.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      status.textContent = '감사합니다!';
+      status.textContent = card.dataset.i18nSaved;
       status.className = 'fb-status ok';
       setTimeout(() => { status.textContent = ''; }, 2500);
     } catch (err) {
-      status.textContent = `저장 실패: ${err.message}`;
+      status.textContent = card.dataset.i18nSaveFailed.replace('__M__', err.message);
       status.className = 'fb-status error';
     } finally {
       btns.forEach(b => b.disabled = false);
@@ -378,31 +383,30 @@
 
 {% set r = analysis.result %}
 
-<!-- 점수 추이 트렌드 차트 / Score trend chart — Step E (E2): canvas wrap container -->
+<!-- 점수 추이 트렌드 차트 / Phase 2 PR-7 — i18n -->
 {% if trend_data is defined and trend_data|length > 1 %}
 <div class="card trend-section">
-  <div class="trend-section-title">📈 점수 추이 (최근 {{ trend_data|length }}건)</div>
+  <div class="trend-section-title">{{ 'analysis_detail.trend_section_title' | i18n_args(locale | default('ko'), count=trend_data|length) }}</div>
   <div class="chart-wrap-inner">
     <canvas id="trendChart"></canvas>
   </div>
 </div>
 {% endif %}
 
-<!-- AI 기본값 적용 경고 배너 / AI defaults applied warning banner -->
+<!-- AI 기본값 적용 경고 배너 / Phase 2 PR-7 — i18n -->
 {% set ai_status = r.get('ai_review_status', 'success') if r else 'success' %}
 {% if ai_status != 'success' %}
-<!-- Step D: AI 기본값 안내 배너 시맨틱 토큰화 / AI defaults notice — semantic warning tokens -->
 <div class="card ad-section" style="border-left:4px solid var(--warning);background:rgba(245,158,11,0.08)">
   <div style="display:flex;align-items:center;gap:.6rem">
     <span style="font-size:1.1rem">⚠️</span>
     <div>
-      <div style="font-size:13px;font-weight:700;color:var(--warning);margin-bottom:2px">AI 리뷰 기본값 적용</div>
+      <div style="font-size:13px;font-weight:700;color:var(--warning);margin-bottom:2px">{{ 'analysis_detail.ai_defaults.title' | i18n_args(locale | default('ko')) }}</div>
       <div style="font-size:13px;color:var(--text-primary)">
-        {% if ai_status == 'no_api_key' %}ANTHROPIC_API_KEY가 설정되지 않아 AI 점수에 중립적 기본값이 적용되었습니다.
-        {% elif ai_status == 'api_error' %}AI API 호출에 실패하여 기본값이 적용되었습니다. 서버 로그를 확인하세요.
-        {% elif ai_status == 'empty_diff' %}분석 가능한 코드 변경사항이 없어 기본값이 적용되었습니다.
-        {% elif ai_status == 'parse_error' %}AI 응답 파싱에 실패하여 기본값이 적용되었습니다.
-        {% else %}AI 리뷰를 수행하지 못해 기본값이 적용되었습니다.
+        {% if ai_status == 'no_api_key' %}{{ 'analysis_detail.ai_defaults.no_api_key' | i18n_args(locale | default('ko')) }}
+        {% elif ai_status == 'api_error' %}{{ 'analysis_detail.ai_defaults.api_error' | i18n_args(locale | default('ko')) }}
+        {% elif ai_status == 'empty_diff' %}{{ 'analysis_detail.ai_defaults.empty_diff' | i18n_args(locale | default('ko')) }}
+        {% elif ai_status == 'parse_error' %}{{ 'analysis_detail.ai_defaults.parse_error' | i18n_args(locale | default('ko')) }}
+        {% else %}{{ 'analysis_detail.ai_defaults.other' | i18n_args(locale | default('ko')) }}
         {% endif %}
       </div>
     </div>
@@ -410,25 +414,25 @@
 </div>
 {% endif %}
 
-<!-- 점수 상세 / Score breakdown -->
+<!-- 점수 상세 / Phase 2 PR-7 — i18n -->
 {% set bd = r.get('breakdown', {}) if r else {} %}
 {% if bd %}
 <div class="card ad-breakdown">
-  <div class="ad-section-title">📊 점수 상세</div>
+  <div class="ad-section-title">{{ 'analysis_detail.breakdown.section_title' | i18n_args(locale | default('ko')) }}</div>
   <table>
     <thead class="sr-only">
       <tr>
-        <th scope="col">항목</th>
-        <th scope="col">점수</th>
-        <th scope="col">비율</th>
+        <th scope="col">{{ 'analysis_detail.breakdown.th_item' | i18n_args(locale | default('ko')) }}</th>
+        <th scope="col">{{ 'analysis_detail.breakdown.th_score' | i18n_args(locale | default('ko')) }}</th>
+        <th scope="col">{{ 'analysis_detail.breakdown.th_ratio' | i18n_args(locale | default('ko')) }}</th>
       </tr>
     </thead>
     <tbody>
-    {% for label, key, mx in [('코드 품질','code_quality',25),('보안','security',20),('커밋 메시지','commit_message',15),('구현 방향성','ai_review',25),('테스트','test_coverage',15)] %}
+    {% for label_key, key, mx in [('code_quality','code_quality',25),('security','security',20),('commit_message','commit_message',15),('ai_review','ai_review',25),('test_coverage','test_coverage',15)] %}
     {% set val = bd.get(key, 0) %}
     {% set pct = (val / mx * 100) if mx else 0 %}
     <tr>
-      <th scope="row" style="width:110px;font-size:13px;padding:6px 8px;color:var(--text-muted);text-align:left;font-weight:normal;">{{ label }}</th>
+      <th scope="row" style="width:110px;font-size:13px;padding:6px 8px;color:var(--text-muted);text-align:left;font-weight:normal;">{{ ('analysis_detail.breakdown.' + label_key) | i18n_args(locale | default('ko')) }}</th>
       <td style="font-size:14px;font-weight:700;padding:6px 4px;width:60px;text-align:right">{{ val }}/{{ mx }}</td>
       <td class="ad-bar-cell" style="padding:6px 8px">
         <div class="ad-bar-wrap">
@@ -443,18 +447,18 @@
 {% endif %}
 
 {% if r %}
-<!-- AI 요약 / AI summary -->
+<!-- AI 요약 / Phase 2 PR-7 — i18n -->
 {% if r.get('ai_summary') %}
 <div class="card ad-section">
-  <div class="ad-section-title">🤖 AI 요약</div>
+  <div class="ad-section-title">{{ 'analysis_detail.ai.summary_title' | i18n_args(locale | default('ko')) }}</div>
   <div class="ad-text">{{ r.ai_summary }}</div>
 </div>
 {% endif %}
 
-<!-- 개선 제안 / Improvement suggestions -->
+<!-- 개선 제안 / Phase 2 PR-7 — i18n -->
 {% if r.get('ai_suggestions') %}
 <div class="card ad-section">
-  <div class="ad-section-title">💡 개선 제안</div>
+  <div class="ad-section-title">{{ 'analysis_detail.ai.suggestions_title' | i18n_args(locale | default('ko')) }}</div>
   <ul class="ad-list">
     {% for s in r.ai_suggestions %}
     <li>{{ s }}</li>
@@ -463,22 +467,22 @@
 </div>
 {% endif %}
 
-<!-- 카테고리별 피드백 / Category feedback -->
+<!-- 카테고리별 피드백 / Phase 2 PR-7 — i18n (label key 5종 분리 → breakdown.* 재사용) -->
 {% set feedbacks = [
-  ('커밋 메시지', r.get('commit_message_feedback', '')),
-  ('코드 품질', r.get('code_quality_feedback', '')),
-  ('보안', r.get('security_feedback', '')),
-  ('구현 방향성', r.get('direction_feedback', '')),
-  ('테스트', r.get('test_feedback', '')),
+  ('commit_message', r.get('commit_message_feedback', '')),
+  ('code_quality', r.get('code_quality_feedback', '')),
+  ('security', r.get('security_feedback', '')),
+  ('ai_review', r.get('direction_feedback', '')),
+  ('test_coverage', r.get('test_feedback', '')),
 ] %}
 {% set has_fb = feedbacks | selectattr('1') | list %}
 {% if has_fb %}
 <div class="card ad-section">
-  <div class="ad-section-title">📋 카테고리별 피드백</div>
-  {% for label, fb in feedbacks %}
+  <div class="ad-section-title">{{ 'analysis_detail.ai.category_feedback_title' | i18n_args(locale | default('ko')) }}</div>
+  {% for label_key, fb in feedbacks %}
   {% if fb %}
   <div class="ad-feedback-item">
-    <div class="ad-feedback-label">{{ label }}</div>
+    <div class="ad-feedback-label">{{ ('analysis_detail.breakdown.' + label_key) | i18n_args(locale | default('ko')) }}</div>
     <div class="ad-feedback-text">{{ fb }}</div>
   </div>
   {% endif %}
@@ -486,10 +490,10 @@
 </div>
 {% endif %}
 
-<!-- 파일별 피드백 / Per-file feedback -->
+<!-- 파일별 피드백 / Phase 2 PR-7 — i18n -->
 {% if r.get('file_feedbacks') %}
 <div class="card ad-section">
-  <div class="ad-section-title">📁 파일별 피드백</div>
+  <div class="ad-section-title">{{ 'analysis_detail.ai.file_feedback_title' | i18n_args(locale | default('ko')) }}</div>
   {% for ff in r.file_feedbacks %}
   <div style="margin-bottom:1rem">
     <div class="ad-file-name">{{ ff.get('file', '?') }}</div>
@@ -503,11 +507,11 @@
 </div>
 {% endif %}
 
-<!-- 정적 분석 이슈 / Static analysis issues -->
+<!-- 정적 분석 이슈 / Phase 2 PR-7 — i18n -->
 {% set issues = r.get('issues', []) %}
 {% if issues %}
 <div class="card ad-section">
-  <div class="ad-section-title">🔍 정적 분석 이슈 ({{ issues | length }}건)</div>
+  <div class="ad-section-title">{{ 'analysis_detail.ai.issues_title' | i18n_args(locale | default('ko'), count=issues | length) }}</div>
   {% for issue in issues %}
   <div class="ad-issue-row">
     <span class="ad-issue-tool {{ issue.get('severity', 'warning') }}">{{ issue.get('tool', '?') }}</span>
@@ -518,32 +522,30 @@
 </div>
 {% endif %}
 
-<!-- result는 있지만 모든 AI 필드가 비어있는 경우 / result exists but all AI fields are empty -->
+<!-- result 있지만 모든 AI 필드가 비어있는 경우 / Phase 2 PR-7 — i18n -->
 {% if not (r.get('ai_summary') or r.get('ai_suggestions') or has_fb or r.get('file_feedbacks') or r.get('issues')) %}
 <div class="card">
   <div class="ad-empty">
     <div style="font-size:2rem;margin-bottom:.75rem;opacity:0.5">🤖</div>
-    <p>AI 리뷰 데이터가 없습니다.</p>
+    <p>{{ 'analysis_detail.empty.ai_no_data' | i18n_args(locale | default('ko')) }}</p>
   </div>
 </div>
 {% endif %}
 
 {% else %}
-<!-- result가 없는 경우 / result is missing -->
+<!-- result 없는 경우 / Phase 2 PR-7 — i18n -->
 {% if analysis.score is none %}
-<!-- result도 없고 score도 없는 구버전 분석 / legacy analysis with no result and no score -->
 <div class="card">
   <div class="ad-empty">
     <div style="font-size:2rem;margin-bottom:.75rem;opacity:0.5">📭</div>
-    <p>이 분석에는 상세 데이터가 없습니다.<br>(AI 리뷰 도입 전 분석 기록)</p>
+    <p>{{ 'analysis_detail.empty.legacy_no_result_part1' | i18n_args(locale | default('ko')) }}<br>{{ 'analysis_detail.empty.legacy_no_result_part2' | i18n_args(locale | default('ko')) }}</p>
   </div>
 </div>
 {% else %}
-<!-- score는 있지만 result가 없는 경우 / score exists but result is missing -->
 <div class="card">
   <div class="ad-empty">
     <div style="font-size:2rem;margin-bottom:.75rem;opacity:0.5">📭</div>
-    <p>분석 결과 데이터가 없습니다.</p>
+    <p>{{ 'analysis_detail.empty.no_result' | i18n_args(locale | default('ko')) }}</p>
   </div>
 </div>
 {% endif %}
@@ -631,9 +633,9 @@
           callbacks: {
             title: function(items) {
               var idx = items[0].dataIndex;
-              return TREND[idx].label + (TREND[idx].id === CURRENT_ID ? ' ★ 현재' : '');
+              return TREND[idx].label + (TREND[idx].id === CURRENT_ID ? {{ 'analysis_detail.trend_chart_current_marker' | i18n_args(locale | default('ko')) | tojson }} : '');
             },
-            label: function(item) { return '점수: ' + item.raw; }
+            label: function(item) { return {{ 'analysis_detail.trend_chart_score_prefix' | i18n_args(locale | default('ko')) | tojson }} + item.raw; }
           }
         }
       },
