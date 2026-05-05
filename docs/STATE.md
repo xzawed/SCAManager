@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-05 기준 — **사이클 82 NEW-P0-1 머지 + sync (#274)**: 75 PR #188~#274 (메타 #213/#214 제외) — 누적 정책 본문 16건 + 메모리 27건 (활성 25 + deprecated 2). **사이클 78 영역 🅒 (PR 1 #253 + PR 2 #274 NEW-P0-1 = Telegram 봇 차단 silent skip 머지 / PR 3+4 영구 폐기 default — 보존) + 사이클 79 영역 🅐 SaaS Phase 1 (#254~#257) + 사이클 80 영역 🅔 운영 모니터링 Phase 2 (#259/#260) + 사이클 81 영역 🅑 모바일 Phase 1 MVP 4 PR 분할 종결 (#262 PWA manifest / #263 dashboard 모바일 / #264 settings 모바일 / #265 form sweep) + 사이클 82 Tier B (#272 alembic dialect 헬퍼 + #273 메모리 신설 2건) + 사이클 82 NEW-P0-1 머지 (#274 telegram_bot_blocked_skip)**. 단위 2236 / 통합 118 / E2E 82
+## 현재 수치 (2026-05-05 기준 — **사이클 84 다국어 i18n Phase 1 종결 (#283/#284/#285)**: 78 PR #188~#285 (메타 #213/#214 제외) — 누적 정책 본문 16건 + 메모리 27건 (활성 25 + deprecated 2). **사이클 84 다국어 (영어/한국어/일본어) Phase 1 인프라 = PR-1a (#283 환경변수 5건 + kill-switch + config) + PR-1b (#284 LocaleMiddleware ASGI + 번역 로더/필터 + en/ko/ja.json) + PR-1c (#285 alembic 0030 + ORM 3 모델 확장 + composite index)**. 단위 2305 / 통합 118 / E2E 82
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **2236개** | pytest 9.0.3 — 사이클 73~75 +67 (2055→2122) + 사이클 78 PR 1 +17 (feature_kill_switch helper) + 사이클 79 PR 1+2+3a+3b +39 (alembic 0029 + require_admin + saas_service + dashboard_usage) = 2178 + **사이클 80 PR 1 (#259) +23** (observability before_send PII 스크러빙 강화) + **사이클 80 PR 2 (#260) +13** (operations_service + admin operations endpoints) + **사이클 82 PR 1 +14** (alembic dialect 헬퍼 회귀 가드) + **사이클 82 NEW-P0-1 (#274) +7** (telegram_bot_blocked_skip 회귀 가드 — 봇 차단 silent skip + streak guard) + **baseline 정정 +1** (실측 `pytest tests/unit --collect-only -q` = 2236) = **+114 사이클 78~82 누적**. **= 2236 collected / 2234 passed / 2 skipped / 0 failed** |
+| 단위 테스트 | **2305개** | pytest 9.0.3 — 사이클 73~75 +67 + 사이클 78~82 +114 (2122→2236) + **사이클 84 i18n Phase 1 +69 누적** (PR-1a #283 +20 = field_validator 4 + 환경변수 5 + kill-switch 통합 / PR-1b #284 +36 = LocaleMiddleware 12 + loader 16 + filters 9 (Copilot Autofix 후 -1) / PR-1c #285 +13 = alembic 0030 회귀 가드 10 + 5-way sync). **= 2305 collected / 2303 passed / 2 skipped / 0 failed** |
 | 통합 테스트 | **118개** | tests/integration/ — 사이클 81 영역 🅑 모바일 Phase 1 MVP 4 PR 분할 +34 누적: PR-A (#262 PWA manifest +7) + PR-B (#263 dashboard mobile priority +5) + PR-C (#264 settings mobile +10) + PR-D (#265 form sweep +12). **= 115 passed / 3 skipped / 0 failed** |
 | E2E 테스트 | **82개** | `make test-e2e` (Chromium Playwright) — Phase 3 PR 6 +7 (test_dashboard_insight — 페이지 로드 4 + localStorage persist 3) **= 80 passed / 0 failed / 2 pre-existing fail (test_settings 2건, 본 사이클 무관)**. ⚠️ e2e ↔ tests/integration 동시 실행 금지 — `e2e/pytest.ini` 의도적 asyncio_mode 미설정, 분리 실행 default (`make test-e2e` vs CI command `pytest tests/`) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
@@ -111,6 +111,30 @@
 | **#232** Docs/cycle-67-end multi-agent retrospective | **4 사이클 종결 회고** — 1차 5 에이전트 (cross-verify 생략 — 사용자 빠른 진행 신호 + 1차 결과 충분). P0 13 + P1 7 + P2 3 식별. **메모리 4건** (3 신설: stale-blocker / asgi-middleware / conftest-direct-env-set + 1 갱신: architecture-pre-confirm 위임 분류 3-tier 정밀화). MEMORY 인덱스 8→11건. 회고 보고서 + 자유 발언 (정책 9) + 회고 질문 (사용자 회신 의무) |
 | **#233** Docs/policy-evolution cycle-67 P0 bundle | **사이클 67 회고 P0 4건 정책 본문 진화** (정책 7 강화 응집): (1) 정책 7 강화 — 단일 PR > 1500 LOC 사전 확인 + architecture 단일 OK 정정 (관점 1 P0-1+P0-2) (2) 정책 8 — cross-verify 생략 조건 + 회고 PR 패턴 3 분기 (관점 1 P0-3) (3) 정책 2 진화 — 모든 sync PR commit body 실측 1줄 의무 (관점 2 P0-1) (4) 30초 체크리스트 — 메모리 11건 사례 + 트랩 차단 효과 (관점 2 P0-2). 카테고리 분류 (관점 4 P0-2) = 별도 PR (High tier 사용자 결정 의무) |
 | **#234** Docs/cycle-68 end state sync | **사이클 68 종료 sync** — STATE 헤더 38→41 PR + 사이클 68 행 신설 + CLAUDE.md L1052 tail. 단위 2055 / 통합 84 / E2E 82 변화 0 (docs only). 정책 2 진화 default 첫 적용 — 실측 1줄 의무 명시 |
+
+---
+
+### 사이클 84 — 다국어 (영어/한국어/일본어) i18n 지원 Phase 1 종결 (2026-05-05 · #283 + #284 + #285 + 본 sync)
+
+사용자 명시 task ("긴급 + 영어/한국어/일본어 + 코드리뷰 + 대시보드 메뉴 커버 + 5번 정도 검수 + 세부 기획안") → 5+1 다중 에이전트 (관점 1~5) + cross-verify 6차 + 본인 5 라운드 검수 + 18 PR 분할 (Phase 1~5, ~12,100 LOC, 3~5주) 기획안 작성 후 Phase 1 PR-1a/b/c 분할 진행 (Q9 = 🅑 3 PR 분할 채택).
+
+| PR # | 제목 | 핵심 |
+|------|------|------|
+| **#283** Feat/i18n-phase1-pr1a-config-and-kill-switch | **PR-1a 환경변수 + kill-switch + config.py** — 5 환경변수 (DEFAULT_LOCALE / SUPPORTED_LOCALES / LOCALE_FALLBACK / I18N_TRANSLATIONS_DIR / I18N_DISABLED) + field_validator 4건 + .env.example + env-vars.md 신규 "다국어 지원" 섹션 + 회귀 가드 20건 |
+| **#284** Feat/i18n-phase1-pr1b-locale-middleware-and-loader | **PR-1b LocaleMiddleware + 번역 로더/필터 + en/ko/ja.json** — `src/middleware/locale.py` ASGI (5단계 locale 감지 + kill-switch) + `src/i18n/loader.py` (TranslationLoader + LRU cache + namespace dot path + 영문 fallback) + `src/i18n/filters.py` (Jinja2 i18n + i18n_args) + en/ko/ja.json (8 namespace × 3 언어 = 24 영역 skeleton) + 회귀 가드 36건 (LocaleMiddleware 12 + loader 16 + filters 9 — Copilot Autofix 후 정정). Babel 미사용 (JSON dict 자체 구현 — 정책 16 4번 원칙 정합) |
+| **#285** Feat/i18n-phase1-pr1c-alembic-0030-and-orm | **PR-1c alembic 0030 + ORM 3 모델 확장 + composite index** — 3 컬럼 (users.preferred_language + repo_configs.notification_language + insight_narrative_cache.language) + composite index `ix_insight_cache_user_days_language` (cross-verify 6차 §3.1 캐시 키 분리 의무) + 5-way sync (ORM + RepoConfigData + RepoConfigUpdate) + 회귀 가드 10건 + ORM lazy import 트랩 차단 (메모리 페어) |
+| **본 PR** Docs/i18n-phase1-end-sync | **사이클 84 Phase 1 종결 sync** — STATE 헤더 75→78 PR + 단위 2236→2305 + 사이클 84 row 신설 + CLAUDE.md tail 사이클 84 행 + README 배지 갱신 |
+
+**사이클 84 신규 LOC 합**: ~300 LOC PR-1a + ~700 LOC PR-1b + ~340 LOC PR-1c + ~80 sync = **~1,420 LOC 누적** (정책 7 강화 임계 1500 LOC 미달)
+
+**자율 판단 보고 (정책 3 강화 — ⚠️ 마커 5건+)**:
+- (1) Q9 = 🅑 3 PR 분할 채택 (사용자 검토 부담 ↓ — 사용자 회신 부재 default)
+- (2) Q1 진화 = 기획안 권장 🅔 Jinja2+Babel → 본 PR-1b 실제 구현 = JSON 기반 자체 dict (Babel 미사용 — 정책 16 4번 원칙 정합 + 의존성 추가 0)
+- (3) Q3 = 🅐 DB 컬럼 3개 모두 (cross-verify §3.1 InsightCache 캐시 키 분리 의무)
+- (4) Q5 = 🅐 Phase 별 사용자 사전 확인 default = 본 사이클 = Phase 1 단독 종결
+- (5) Q6 = 🅐 I18N_DISABLED kill-switch 도입 (사이클 78 NEW-P0-2 패턴 페어)
+- (6) PR-1b SonarCloud fail = race condition (newer report `f2db4ac` 우선 처리 → `bf93cb2` 거부) — 코드 영향 0 (사용자 직접 검증 의무 후 머지 OK)
+- (7) PR-1c GitHub PR 미생성 → SonarCloud 분석 미진행 영역 (사용자 web UI 의무) — 머지 시 SonarCloud 분석 진행 정합
 
 ---
 
