@@ -54,6 +54,7 @@
 | 2026-05-04 | [cycle-70-72-end-multi-agent-retrospective](2026-05-04-cycle-70-72-end-multi-agent-retrospective.md) | 사이클 70~72 종결 회고 — 정책 15/16 신설 적용 첫 사이클 + Telegram secret 사고 + 토큰 비용 효율 5번째 원칙 추가 |
 | 2026-05-04 | [cycle-70-74-end-multi-agent-retrospective](2026-05-04-cycle-70-74-end-multi-agent-retrospective.md) | 사이클 70~74 종결 회고 — Phase 2-A/B (Anthropic 효율화 + DB 캐싱) 머지 + Phase 4 영역 진입 첫 작업 + 메모리 카테고리 분류 임계 도달 |
 | 2026-05-04 | [cycle-76-full-consistency-cleanup-retrospective](2026-05-04-cycle-76-full-consistency-cleanup-retrospective.md) | 사이클 76 전체 문서+코드 5+1 정합성 cleanup — Tier A 8건 정정 + false-positive 차단 3건 + 신규 발견 3건 (정책 8 진화 정량 기준 정합) |
+| 2026-05-05 | [cycle-78-81-end-multi-agent-retrospective](2026-05-05-cycle-78-81-end-multi-agent-retrospective.md) | 사이클 78~81 4 사이클 종결 회고 (영역 4종 진입 머지 — 🅒/🅐/🅔/🅑) — 5+1 다중 에이전트 P0 18 → cross-verify 통합 13 + Tier A 4 정정 + Tier B 2 메모리 신설 + TestClient lifespan 트랩 메모리 등재 (3중복) + alembic dialect 헬퍼 정책 16 위반 정정 권장 |
 
 ---
 
