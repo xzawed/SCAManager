@@ -309,6 +309,16 @@
   @media (max-width: 480px) {
     .dash-kpi-grid { grid-template-columns: 1fr; }
     .dash-range-toggle a { min-height: 44px; }
+    /* Cycle 81 PR-B — 모바일 first-fold 우선순위 재배치 (5+1 cross-verify 관점 🅑)
+       데스크탑 = 평균/분석/보안/활성/자동머지 (HTML 순서) 보존
+       모바일 = 운영 위험/사용자 가치 우선 (보안 HIGH + 자동 머지 = first-fold)
+       Cycle 81 PR-B — mobile first-fold priority re-order (5+1 cross-verify 🅑)
+       Desktop = HTML order preserved; mobile = security HIGH + auto-merge first-fold */
+    .dash-kpi:nth-child(3) { order: 1; }  /* 🛡️ 보안 HIGH = 1 (운영 위험 신호) */
+    .dash-kpi:nth-child(5) { order: 2; }  /* 🔀 자동 머지 = 2 (PR 결과 사용자 가치) */
+    .dash-kpi:nth-child(1) { order: 3; }  /* ⭐ 평균 점수 = 3 (overall 건강도) */
+    .dash-kpi:nth-child(2) { order: 4; }  /* 📊 분석 건수 = 4 (활동량) */
+    .dash-kpi:nth-child(4) { order: 5; }  /* 📁 활성 리포 = 5 (확산) */
   }
 </style>
 
