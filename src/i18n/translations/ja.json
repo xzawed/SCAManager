@@ -37,29 +37,109 @@
   },
   "dashboard": {
     "title": "ダッシュボード",
+    "title_prefix": "ダッシュボード",
     "subtitle": "私たちのコードはどのように流れていますか",
+    "mode_aria": "ダッシュボードモード",
+    "range_aria": "期間選択",
     "modes": {
       "overview": "概要",
       "insight": "インサイト",
       "security": "セキュリティ",
-      "usage": "使用量"
+      "usage": "使用量",
+      "security_tooltip": "GitHub Code Scanning + Secret Scanning alert audit (サイクル 73 F2 — read-only)",
+      "usage_tooltip": "本人の使用量 (SaaS Phase 1 read-only — サイクル 79 PR 3b)"
     },
     "kpi": {
       "avg_score": "平均スコア",
       "analysis_count": "分析数",
       "high_security": "セキュリティ問題 (HIGH)",
       "active_repos": "アクティブなリポ",
-      "auto_merge_success": "自動マージ成功率 (PR基準)"
+      "auto_merge_success": "自動マージ成功率 (PR基準)",
+      "auto_merge_tooltip": "PR基準の最終 success rate (リトライ後の結果)。単純試行 success rate は sub-text 参照。"
     },
     "delta": {
       "improvement": "改善",
       "decline": "低下",
       "no_change": "変動なし",
       "no_comparison": "比較データなし",
-      "vs_period": "前 {days} 日比"
+      "vs_period": "前 {days} 日比",
+      "attempts_vs_period": "試行 ▲ +{delta}% 前 {days} 日比",
+      "attempts_vs_period_down": "試行 ▼ {delta}% 前 {days} 日比",
+      "attempts_no_change": "試行 — 変動なし",
+      "attempts_baseline": "試行ベース {value}% ({success}/{total})"
     },
     "trend": "スコアトレンド ({days}日)",
-    "frequent_issues": "頻発する問題 (最近 {days} 日)"
+    "trend_chart_label": "平均スコア",
+    "no_trend_data": "最近 {days} 日間の分析データがありません。",
+    "frequent_issues": "頻発する問題 (最近 {days} 日)",
+    "no_frequent_issues": "最近 {days} 日間に発見された問題はありません。",
+    "merge_failures_title": "自動マージ失敗の理由 (最近 {days} 日)",
+    "merge_failure_meta": "比率 {pct}% · {count}件",
+    "feedback_cta": {
+      "title": "📝 AIスコアにフィードバックをお願いします",
+      "meta_zero": "分析結果ページの 👍 / 👎 ボタンでスコアの整合性を教えてくださると AI 精度が改善されます。",
+      "meta_some": "現在まで {count} 件のフィードバックがあります — より正確な AI 整合性測定のためフィードバックをお願いします。",
+      "btn_recent": "→ 最近の分析を見る",
+      "aria": "フィードバック要請"
+    },
+    "security": {
+      "kill_switch_active": "🚫 Security 自動処理が無効化されています (`SECURITY_AUTO_PROCESS_DISABLED=1`) — kill-switch がアクティブです。環境変数を解除すると cron ポーリングが再開されます。",
+      "empty_title": "✅ 処理待ちの alert はありません。",
+      "empty_hint_part1": "cron が GitHub Code Scanning + Secret Scanning API を1時間ごとにポーリングし、新規 alert を発見した際に本カードに表示されます。",
+      "empty_hint_link": "GitHub Security タブで直接確認",
+      "empty_hint_part2": " も可能です。",
+      "load_failed": "⚠️ Security データ読み込み失敗 — しばらくしてから再試行してください。",
+      "card_aria": "Security audit 4 カード",
+      "processed_title": "✨ 処理済み",
+      "processed_label": "ユーザー confirm 完了",
+      "total_label": "全 alert 累計",
+      "pending_title": "🔍 新規 pending",
+      "pending_label": "ユーザー決定待ち",
+      "pending_hint": "ユーザー 1-click confirm 必須 (Phase 1 — 自動 dismiss なし)",
+      "classification_title": "📊 分類分布",
+      "recent_pending_title": "💬 最近 pending (Top 5)",
+      "recent_pending_empty": "pending alert なし。"
+    },
+    "usage": {
+      "empty_title": "📭 登録されたリポジトリがありません。",
+      "empty_hint_part1": "Web UI の ",
+      "empty_hint_link": "リポ追加",
+      "empty_hint_part2": " ページから GitHub リポを登録すると、本カードに使用量が表示されます。",
+      "load_failed": "⚠️ Usage データ読み込み失敗 — しばらくしてから再試行してください。",
+      "card_aria": "本人使用量 4 カード",
+      "own_repos_title": "📁 本人のリポ",
+      "repo_count_label": "登録済みリポ数",
+      "repo_count_hint": "user_id 直接分離 (RLS ペア — alembic 0026/0029)",
+      "total_analyses_title": "📊 累計分析",
+      "total_analyses_label": "累計合計",
+      "last_analysis_label": "最終分析",
+      "recent_period_title": "🕒 最近 {days} 日",
+      "recent_analyses_label": "分析件数",
+      "recent_period_hint": "期間: 最近 {days} 日 (range toggle ペア)",
+      "avg_score_title": "⭐ 平均スコア",
+      "avg_score_label": "最近 {days} 日平均",
+      "avg_score_unit": "{score} 点",
+      "avg_score_hint": "サンプル不足時は - 表示",
+      "saas_info_title": "💡 SaaS Phase 1 案内",
+      "saas_info_li1_part1": "本領域は ",
+      "saas_info_li1_strong": "本人データのみ",
+      "saas_info_li1_part2": " 表示 — RLS user_id 直接分離 (alembic 0026/0029)",
+      "saas_info_li2": "トークン cost 推定領域 = Phase 2 (ユーザー別 cost トラッキングインフラ導入後)",
+      "saas_info_li3": "SaaS 移行時 (ユーザー ≥ 2)、同一カードはユーザー別自動分離"
+    },
+    "insight": {
+      "card_aria": "AI Insight 4 カード",
+      "generated_at_tooltip": "cache 生成時刻 — 1時間 TTL",
+      "refresh": "🔄 更新",
+      "refresh_tooltip": "cache 強制無効化 + 新規 narrative 生成 (Anthropic API コール)",
+      "positive_title": "✨ よかったこと",
+      "focus_title": "🔍 注力すべき点",
+      "metrics_title": "📊 数値",
+      "next_title": "💬 次",
+      "no_api_key": "🔑 ANTHROPIC_API_KEY 未設定 — Insight モードは AI 分析が必要です。Railway Variables で key を設定してください。",
+      "no_data": "📭 最近 {days} 日の分析データが不足しています — 分析結果が蓄積された後に再試行してください。",
+      "load_failed": "⚠️ AI Insight 生成失敗 ({status}) — しばらくしてから再試行してください。"
+    }
   },
   "overview": {
     "greeting": "こんにちは、{name}さん",

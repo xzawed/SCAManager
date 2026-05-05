@@ -37,29 +37,109 @@
   },
   "dashboard": {
     "title": "대시보드",
+    "title_prefix": "대시보드",
     "subtitle": "우리 코드는 어떻게 흘러가고 있나요",
+    "mode_aria": "대시보드 모드",
+    "range_aria": "기간 선택",
     "modes": {
       "overview": "개요",
       "insight": "인사이트",
       "security": "보안",
-      "usage": "사용량"
+      "usage": "사용량",
+      "security_tooltip": "GitHub Code Scanning + Secret Scanning alert audit (사이클 73 F2 — read-only)",
+      "usage_tooltip": "본인 사용량 (SaaS Phase 1 read-only — 사이클 79 PR 3b)"
     },
     "kpi": {
       "avg_score": "평균 점수",
       "analysis_count": "분석 건수",
       "high_security": "보안 이슈 (HIGH)",
       "active_repos": "활성 리포",
-      "auto_merge_success": "자동 머지 성공률 (PR 기준)"
+      "auto_merge_success": "자동 머지 성공률 (PR 기준)",
+      "auto_merge_tooltip": "PR 기준 최종 success rate (retry 후 결과). 단순 시도 success rate 는 sub-text 참고."
     },
     "delta": {
       "improvement": "개선",
       "decline": "악화",
       "no_change": "변동 없음",
       "no_comparison": "비교 데이터 없음",
-      "vs_period": "vs 직전 {days}일"
+      "vs_period": "vs 직전 {days}일",
+      "attempts_vs_period": "시도 ▲ +{delta}% vs 직전 {days}일",
+      "attempts_vs_period_down": "시도 ▼ {delta}% vs 직전 {days}일",
+      "attempts_no_change": "시도 — 변동 없음",
+      "attempts_baseline": "시도 기준 {value}% ({success}/{total})"
     },
     "trend": "점수 추세 ({days}일)",
-    "frequent_issues": "자주 발생 이슈 (최근 {days}일)"
+    "trend_chart_label": "평균 점수",
+    "no_trend_data": "최근 {days}일간 분석 데이터가 없습니다.",
+    "frequent_issues": "자주 발생 이슈 (최근 {days}일)",
+    "no_frequent_issues": "최근 {days}일간 발견된 이슈가 없습니다.",
+    "merge_failures_title": "자동 머지 실패 사유 (최근 {days}일)",
+    "merge_failure_meta": "비율 {pct}% · {count}건",
+    "feedback_cta": {
+      "title": "📝 AI 점수에 피드백을 남겨주세요",
+      "meta_zero": "분석 결과 페이지의 👍 / 👎 버튼으로 점수 정합도를 알려주시면 AI 정확도가 개선됩니다.",
+      "meta_some": "현재까지 {count}건의 피드백이 있습니다 — 더 정확한 AI 정합도 측정을 위해 피드백을 남겨주세요.",
+      "btn_recent": "→ 최근 분석 보기",
+      "aria": "피드백 요청"
+    },
+    "security": {
+      "kill_switch_active": "🚫 Security 자동 처리 비활성화 (`SECURITY_AUTO_PROCESS_DISABLED=1`) — kill-switch 가 활성 상태입니다. 환경변수를 해제하면 cron 폴링이 재개됩니다.",
+      "empty_title": "✅ 처리 대기 중인 alert 가 없습니다.",
+      "empty_hint_part1": "cron 이 GitHub Code Scanning + Secret Scanning API 를 1시간마다 폴링하며, 신규 alert 발견 시 본 카드에 표시됩니다. ",
+      "empty_hint_link": "GitHub Security 탭에서 직접 확인",
+      "empty_hint_part2": "도 가능합니다.",
+      "load_failed": "⚠️ Security 데이터 로딩 실패 — 잠시 후 다시 시도해주세요.",
+      "card_aria": "Security audit 4 카드",
+      "processed_title": "✨ 처리됨",
+      "processed_label": "사용자 confirm 완료",
+      "total_label": "전체 alert 누적",
+      "pending_title": "🔍 신규 pending",
+      "pending_label": "사용자 결정 대기",
+      "pending_hint": "사용자 1-click confirm 의무 (Phase 1 — 자동 dismiss X)",
+      "classification_title": "📊 분류 분포",
+      "recent_pending_title": "💬 최근 pending (Top 5)",
+      "recent_pending_empty": "pending alert 없음."
+    },
+    "usage": {
+      "empty_title": "📭 등록된 리포지토리가 없습니다.",
+      "empty_hint_part1": "웹 UI 의 ",
+      "empty_hint_link": "리포 추가",
+      "empty_hint_part2": " 페이지에서 GitHub 리포를 등록하면 본 카드에 사용량이 표시됩니다.",
+      "load_failed": "⚠️ Usage 데이터 로딩 실패 — 잠시 후 다시 시도해주세요.",
+      "card_aria": "본인 사용량 4 카드",
+      "own_repos_title": "📁 본인 리포",
+      "repo_count_label": "등록된 리포 수",
+      "repo_count_hint": "user_id 직접 격리 (RLS 페어 — alembic 0026/0029)",
+      "total_analyses_title": "📊 누적 분석",
+      "total_analyses_label": "전체 누적",
+      "last_analysis_label": "최종 분석",
+      "recent_period_title": "🕒 최근 {days}일",
+      "recent_analyses_label": "분석 건수",
+      "recent_period_hint": "기간: 최근 {days}일 (range toggle 페어)",
+      "avg_score_title": "⭐ 평균 점수",
+      "avg_score_label": "최근 {days}일 평균",
+      "avg_score_unit": "{score}점",
+      "avg_score_hint": "샘플 부족 시 - 표시",
+      "saas_info_title": "💡 SaaS Phase 1 안내",
+      "saas_info_li1_part1": "본 영역은 ",
+      "saas_info_li1_strong": "본인 데이터만",
+      "saas_info_li1_part2": " 표시 — RLS user_id 직접 격리 (alembic 0026/0029)",
+      "saas_info_li2": "토큰 cost 추정 영역 = Phase 2 (사용자별 cost 추적 인프라 도입 후)",
+      "saas_info_li3": "SaaS 전환 시 (사용자 ≥ 2) 동일 카드 = 사용자별 격리 자동 동작"
+    },
+    "insight": {
+      "card_aria": "AI Insight 4 카드",
+      "generated_at_tooltip": "cache 생성 시각 — 1시간 TTL",
+      "refresh": "🔄 새로 고침",
+      "refresh_tooltip": "cache 강제 무효화 + 신규 narrative 생성 (Anthropic API 호출)",
+      "positive_title": "✨ 잘한 것",
+      "focus_title": "🔍 신경 쓸 것",
+      "metrics_title": "📊 숫자",
+      "next_title": "💬 다음",
+      "no_api_key": "🔑 ANTHROPIC_API_KEY 미설정 — Insight 모드는 AI 분석이 필요합니다. Railway Variables 에서 키를 설정해주세요.",
+      "no_data": "📭 최근 {days}일 분석 데이터가 부족합니다 — 분석 결과가 누적된 후 다시 시도해주세요.",
+      "load_failed": "⚠️ AI Insight 생성 실패 ({status}) — 잠시 후 다시 시도해주세요."
+    }
   },
   "overview": {
     "greeting": "안녕하세요, {name}님",

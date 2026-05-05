@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Dashboard · SCAManager{% endblock %}
+{% block title %}{{ 'dashboard.title_prefix' | i18n_args(locale | default('ko')) }} · SCAManager{% endblock %}
 
 {# Phase 1 PR 4 — MVP-B 신규 페이지. /insights (PR 1~3 폐기) 후속. #}
 {# Claude × Linear 디자인 시스템 부분 적용 (scoped — 다른 페이지 영향 0). #}
@@ -325,29 +325,29 @@
 <div class="dashboard-page" data-initial-mode="{{ initial_mode or 'overview' }}">
   <div class="dash-header">
     <div>
-      <h1 class="dash-title">Dashboard</h1>
-      <p class="dash-subtitle">우리 코드는 어떻게 흘러가고 있나요</p>
+      <h1 class="dash-title">{{ 'dashboard.title' | i18n_args(locale | default('ko')) }}</h1>
+      <p class="dash-subtitle">{{ 'dashboard.subtitle' | i18n_args(locale | default('ko')) }}</p>
     </div>
     <div style="display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
-      {# Phase 3 PR 3 — 모드 토글 (Overview default + Insight 신규) #}
-      {# Phase 3 PR 3 — mode toggle (Overview default + Insight new) #}
-      <nav class="dash-mode-toggle" aria-label="대시보드 모드 / Dashboard mode">
+      {# Phase 3 PR 3 — 모드 토글 (Overview default + Insight 신규) / Phase 2 PR-6 — i18n #}
+      {# Phase 3 PR 3 — mode toggle (Overview default + Insight new) / Phase 2 PR-6 — i18n #}
+      <nav class="dash-mode-toggle" aria-label="{{ 'dashboard.mode_aria' | i18n_args(locale | default('ko')) }}">
         <a href="/dashboard?mode=overview&days={{ days }}"
            data-mode="overview"
-           {% if mode == 'overview' %}class="active"{% endif %}>📊 Overview</a>
+           {% if mode == 'overview' %}class="active"{% endif %}>📊 {{ 'dashboard.modes.overview' | i18n_args(locale | default('ko')) }}</a>
         <a href="/dashboard?mode=insight&days={{ days }}"
            data-mode="insight"
-           {% if mode == 'insight' %}class="active"{% endif %}>💬 Insight</a>
+           {% if mode == 'insight' %}class="active"{% endif %}>💬 {{ 'dashboard.modes.insight' | i18n_args(locale | default('ko')) }}</a>
         <a href="/dashboard?mode=security&days={{ days }}"
            data-mode="security"
-           title="GitHub Code Scanning + Secret Scanning alert audit (Cycle 73 F2 — read-only)"
-           {% if mode == 'security' %}class="active"{% endif %}>🛡️ Security</a>
+           title="{{ 'dashboard.modes.security_tooltip' | i18n_args(locale | default('ko')) }}"
+           {% if mode == 'security' %}class="active"{% endif %}>🛡️ {{ 'dashboard.modes.security' | i18n_args(locale | default('ko')) }}</a>
         <a href="/dashboard?mode=usage&days={{ days }}"
            data-mode="usage"
-           title="본인 사용량 (SaaS Phase 1 read-only — Cycle 79 PR 3b) / Own usage (read-only)"
-           {% if mode == 'usage' %}class="active"{% endif %}>📈 Usage</a>
+           title="{{ 'dashboard.modes.usage_tooltip' | i18n_args(locale | default('ko')) }}"
+           {% if mode == 'usage' %}class="active"{% endif %}>📈 {{ 'dashboard.modes.usage' | i18n_args(locale | default('ko')) }}</a>
       </nav>
-      <nav class="dash-range-toggle" aria-label="기간 선택 / Period selector">
+      <nav class="dash-range-toggle" aria-label="{{ 'dashboard.range_aria' | i18n_args(locale | default('ko')) }}">
         <a href="/dashboard?mode={{ mode }}&days=1" {% if days == 1 %}class="active"{% endif %}>1d</a>
         <a href="/dashboard?mode={{ mode }}&days=7" {% if days == 7 %}class="active"{% endif %}>7d</a>
         <a href="/dashboard?mode={{ mode }}&days=30" {% if days == 30 %}class="active"{% endif %}>30d</a>
@@ -361,37 +361,37 @@
   {% if mode == 'security' %}
     {% if security and security.kill_switch_active %}
     <div class="dash-insight-status">
-      🚫 Security 자동 처리 비활성화 (`SECURITY_AUTO_PROCESS_DISABLED=1`) — kill-switch 가 활성 상태입니다. 환경변수를 해제하면 cron 폴링이 재개됩니다.
+      {{ 'dashboard.security.kill_switch_active' | i18n_args(locale | default('ko')) }}
     </div>
     {% elif security and security.total_alerts == 0 %}
-    {# Empty State — onboarding tooltip + 가이드 #}
+    {# Empty State — onboarding tooltip + 가이드 / Phase 2 PR-6 — i18n #}
     <div class="dash-insight-status">
-      ✅ 처리 대기 중인 alert 가 없습니다. <br>
-      <small style="opacity:0.8;">cron 이 GitHub Code Scanning + Secret Scanning API 를 1시간마다 폴링하며, 신규 alert 발견 시 본 카드에 표시됩니다. <a href="https://github.com/{{ current_user.github_login }}?tab=security" target="_blank" rel="noopener">GitHub Security 탭에서 직접 확인</a>도 가능합니다.</small>
+      {{ 'dashboard.security.empty_title' | i18n_args(locale | default('ko')) }} <br>
+      <small style="opacity:0.8;">{{ 'dashboard.security.empty_hint_part1' | i18n_args(locale | default('ko')) }}<a href="https://github.com/{{ current_user.github_login }}?tab=security" target="_blank" rel="noopener">{{ 'dashboard.security.empty_hint_link' | i18n_args(locale | default('ko')) }}</a>{{ 'dashboard.security.empty_hint_part2' | i18n_args(locale | default('ko')) }}</small>
     </div>
     {% elif security %}
-    <div class="dash-insight-grid" role="region" aria-label="Security audit 4 카드">
+    <div class="dash-insight-grid" role="region" aria-label="{{ 'dashboard.security.card_aria' | i18n_args(locale | default('ko')) }}">
       <div class="dash-insight-card">
-        <h2 class="dash-insight-title">✨ 처리됨</h2>
+        <h2 class="dash-insight-title">{{ 'dashboard.security.processed_title' | i18n_args(locale | default('ko')) }}</h2>
         <div class="dash-insight-metric">
-          <span class="dash-insight-metric-label">사용자 confirm 완료</span>
+          <span class="dash-insight-metric-label">{{ 'dashboard.security.processed_label' | i18n_args(locale | default('ko')) }}</span>
           <span class="dash-insight-metric-value">{{ security.processed_count }}</span>
         </div>
         <div class="dash-insight-metric">
-          <span class="dash-insight-metric-label">전체 alert 누적</span>
+          <span class="dash-insight-metric-label">{{ 'dashboard.security.total_label' | i18n_args(locale | default('ko')) }}</span>
           <span class="dash-insight-metric-value">{{ security.total_alerts }}</span>
         </div>
       </div>
       <div class="dash-insight-card">
-        <h2 class="dash-insight-title">🔍 신규 pending</h2>
+        <h2 class="dash-insight-title">{{ 'dashboard.security.pending_title' | i18n_args(locale | default('ko')) }}</h2>
         <div class="dash-insight-metric">
-          <span class="dash-insight-metric-label">사용자 결정 대기</span>
+          <span class="dash-insight-metric-label">{{ 'dashboard.security.pending_label' | i18n_args(locale | default('ko')) }}</span>
           <span class="dash-insight-metric-value">{{ security.pending_count }}</span>
         </div>
-        <small style="opacity:0.7;">사용자 1-click confirm 의무 (Phase 1 — 자동 dismiss X)</small>
+        <small style="opacity:0.7;">{{ 'dashboard.security.pending_hint' | i18n_args(locale | default('ko')) }}</small>
       </div>
       <div class="dash-insight-card">
-        <h2 class="dash-insight-title">📊 분류 분포</h2>
+        <h2 class="dash-insight-title">{{ 'dashboard.security.classification_title' | i18n_args(locale | default('ko')) }}</h2>
         <div>
           {% for key, count in security.classification.items() %}
           <div class="dash-insight-metric">
@@ -402,7 +402,7 @@
         </div>
       </div>
       <div class="dash-insight-card">
-        <h2 class="dash-insight-title">💬 최근 pending (Top 5)</h2>
+        <h2 class="dash-insight-title">{{ 'dashboard.security.recent_pending_title' | i18n_args(locale | default('ko')) }}</h2>
         {% if security.recent_pending %}
         <ul class="dash-insight-list">
           {% for row in security.recent_pending %}
@@ -410,106 +410,106 @@
           {% endfor %}
         </ul>
         {% else %}
-        <small style="opacity:0.7;">pending alert 없음.</small>
+        <small style="opacity:0.7;">{{ 'dashboard.security.recent_pending_empty' | i18n_args(locale | default('ko')) }}</small>
         {% endif %}
       </div>
     </div>
     {% else %}
     <div class="dash-insight-status">
-      ⚠️ Security 데이터 로딩 실패 — 잠시 후 다시 시도해주세요.
+      {{ 'dashboard.security.load_failed' | i18n_args(locale | default('ko')) }}
     </div>
     {% endif %}
   {% elif mode == 'usage' %}
-    {# Cycle 79 PR 3b — SaaS Phase 1 본인 사용량 (read-only — user_id 직접 격리) #}
-    {# Cycle 79 PR 3b — SaaS Phase 1 own usage (read-only — user_id direct isolation) #}
+    {# Cycle 79 PR 3b — SaaS Phase 1 본인 사용량 (read-only — user_id 직접 격리) / Phase 2 PR-6 — i18n #}
+    {# Cycle 79 PR 3b — SaaS Phase 1 own usage (read-only — user_id direct isolation) / Phase 2 PR-6 — i18n #}
     {% if usage and usage.repo_count == 0 %}
     {# Empty State — onboarding tooltip #}
     <div class="dash-insight-status">
-      📭 등록된 리포지토리가 없습니다 / No repositories registered.<br>
-      <small style="opacity:0.8;">웹 UI 의 <a href="/repos/add">리포 추가</a> 페이지에서 GitHub 리포를 등록하면 본 카드에 사용량이 표시됩니다.</small>
+      {{ 'dashboard.usage.empty_title' | i18n_args(locale | default('ko')) }}<br>
+      <small style="opacity:0.8;">{{ 'dashboard.usage.empty_hint_part1' | i18n_args(locale | default('ko')) }}<a href="/repos/add">{{ 'dashboard.usage.empty_hint_link' | i18n_args(locale | default('ko')) }}</a>{{ 'dashboard.usage.empty_hint_part2' | i18n_args(locale | default('ko')) }}</small>
     </div>
     {% elif usage %}
-    <div class="dash-insight-grid" role="region" aria-label="본인 사용량 4 카드">
+    <div class="dash-insight-grid" role="region" aria-label="{{ 'dashboard.usage.card_aria' | i18n_args(locale | default('ko')) }}">
       <div class="dash-insight-card">
-        <h2 class="dash-insight-title">📁 본인 리포</h2>
+        <h2 class="dash-insight-title">{{ 'dashboard.usage.own_repos_title' | i18n_args(locale | default('ko')) }}</h2>
         <div class="dash-insight-metric">
-          <span class="dash-insight-metric-label">등록된 리포 수</span>
+          <span class="dash-insight-metric-label">{{ 'dashboard.usage.repo_count_label' | i18n_args(locale | default('ko')) }}</span>
           <span class="dash-insight-metric-value">{{ usage.repo_count }}</span>
         </div>
-        <small style="opacity:0.7;">user_id 직접 격리 (RLS 페어 — alembic 0026/0029)</small>
+        <small style="opacity:0.7;">{{ 'dashboard.usage.repo_count_hint' | i18n_args(locale | default('ko')) }}</small>
       </div>
       <div class="dash-insight-card">
-        <h2 class="dash-insight-title">📊 누적 분석</h2>
+        <h2 class="dash-insight-title">{{ 'dashboard.usage.total_analyses_title' | i18n_args(locale | default('ko')) }}</h2>
         <div class="dash-insight-metric">
-          <span class="dash-insight-metric-label">전체 누적</span>
+          <span class="dash-insight-metric-label">{{ 'dashboard.usage.total_analyses_label' | i18n_args(locale | default('ko')) }}</span>
           <span class="dash-insight-metric-value">{{ usage.total_analyses }}</span>
         </div>
         {% if usage.last_analysis_at %}
         <div class="dash-insight-metric">
-          <span class="dash-insight-metric-label">최종 분석</span>
+          <span class="dash-insight-metric-label">{{ 'dashboard.usage.last_analysis_label' | i18n_args(locale | default('ko')) }}</span>
           <span class="dash-insight-metric-value" style="font-size:0.85em;">{{ usage.last_analysis_at.strftime('%Y-%m-%d %H:%M') }}</span>
         </div>
         {% endif %}
       </div>
       <div class="dash-insight-card">
-        <h2 class="dash-insight-title">🕒 최근 {{ usage.days }}일</h2>
+        <h2 class="dash-insight-title">{{ 'dashboard.usage.recent_period_title' | i18n_args(locale | default('ko'), days=usage.days) }}</h2>
         <div class="dash-insight-metric">
-          <span class="dash-insight-metric-label">분석 건수</span>
+          <span class="dash-insight-metric-label">{{ 'dashboard.usage.recent_analyses_label' | i18n_args(locale | default('ko')) }}</span>
           <span class="dash-insight-metric-value">{{ usage.recent_analyses }}</span>
         </div>
-        <small style="opacity:0.7;">기간: 최근 {{ usage.days }}일 (range toggle 페어)</small>
+        <small style="opacity:0.7;">{{ 'dashboard.usage.recent_period_hint' | i18n_args(locale | default('ko'), days=usage.days) }}</small>
       </div>
       <div class="dash-insight-card">
-        <h2 class="dash-insight-title">⭐ 평균 점수</h2>
+        <h2 class="dash-insight-title">{{ 'dashboard.usage.avg_score_title' | i18n_args(locale | default('ko')) }}</h2>
         <div class="dash-insight-metric">
-          <span class="dash-insight-metric-label">최근 {{ usage.days }}일 평균</span>
+          <span class="dash-insight-metric-label">{{ 'dashboard.usage.avg_score_label' | i18n_args(locale | default('ko'), days=usage.days) }}</span>
           <span class="dash-insight-metric-value">
-            {% if usage.avg_score is not none %}{{ usage.avg_score }}점{% else %}-{% endif %}
+            {% if usage.avg_score is not none %}{{ 'dashboard.usage.avg_score_unit' | i18n_args(locale | default('ko'), score=usage.avg_score) }}{% else %}-{% endif %}
           </span>
         </div>
-        <small style="opacity:0.7;">샘플 부족 시 - 표시</small>
+        <small style="opacity:0.7;">{{ 'dashboard.usage.avg_score_hint' | i18n_args(locale | default('ko')) }}</small>
       </div>
     </div>
     <div style="margin-top: 1rem; padding: 1rem; background: var(--bg-card, #1f2937); border-radius: 8px;">
-      <h3 style="margin: 0 0 0.5rem; font-size: 1rem;">💡 SaaS Phase 1 안내</h3>
+      <h3 style="margin: 0 0 0.5rem; font-size: 1rem;">{{ 'dashboard.usage.saas_info_title' | i18n_args(locale | default('ko')) }}</h3>
       <ul style="margin: 0; padding-left: 1.25rem; color: var(--text-muted, #9ca3af); font-size: 0.9em;">
-        <li>본 영역은 <strong>본인 데이터만</strong> 표시 — RLS user_id 직접 격리 (alembic 0026/0029)</li>
-        <li>토큰 cost 추정 영역 = Phase 2 (사용자별 cost 추적 인프라 도입 후)</li>
-        <li>SaaS 전환 시 (사용자 ≥ 2) 동일 카드 = 사용자별 격리 자동 동작</li>
+        <li>{{ 'dashboard.usage.saas_info_li1_part1' | i18n_args(locale | default('ko')) }}<strong>{{ 'dashboard.usage.saas_info_li1_strong' | i18n_args(locale | default('ko')) }}</strong>{{ 'dashboard.usage.saas_info_li1_part2' | i18n_args(locale | default('ko')) }}</li>
+        <li>{{ 'dashboard.usage.saas_info_li2' | i18n_args(locale | default('ko')) }}</li>
+        <li>{{ 'dashboard.usage.saas_info_li3' | i18n_args(locale | default('ko')) }}</li>
       </ul>
     </div>
     {% else %}
     <div class="dash-insight-status">
-      ⚠️ Usage 데이터 로딩 실패 — 잠시 후 다시 시도해주세요.
+      {{ 'dashboard.usage.load_failed' | i18n_args(locale | default('ko')) }}
     </div>
     {% endif %}
   {% elif mode == 'insight' %}
-    {# Phase 2-B 🅑 (사이클 74 PR-B) — DB 캐싱 1h TTL + Refresh 버튼 + generated_at 표시 #}
-    {# Phase 2-B 🅑 (Cycle 74 PR-B) — DB cache 1h TTL + Refresh button + generated_at display #}
+    {# Phase 2-B 🅑 (사이클 74 PR-B) — DB 캐싱 1h TTL + Refresh 버튼 + generated_at 표시 / Phase 2 PR-6 — i18n #}
+    {# Phase 2-B 🅑 (Cycle 74 PR-B) — DB cache 1h TTL + Refresh button + generated_at display / Phase 2 PR-6 — i18n #}
     {% if insight and insight.status == 'success' %}
     <div style="display:flex; justify-content:flex-end; align-items:center; gap:12px; margin-bottom:8px; font-size:0.85em; opacity:0.8;">
       {% if insight.generated_at %}
-      <span title="cache 생성 시각 — 1시간 TTL">⏱ {{ insight.generated_at[:16].replace('T', ' ') }}</span>
+      <span title="{{ 'dashboard.insight.generated_at_tooltip' | i18n_args(locale | default('ko')) }}">⏱ {{ insight.generated_at[:16].replace('T', ' ') }}</span>
       {% endif %}
       <a href="/dashboard?mode=insight&days={{ days }}&refresh=1"
-         title="cache 강제 무효화 + 신규 narrative 생성 (Anthropic API 호출)"
-         style="text-decoration:none;">🔄 Refresh</a>
+         title="{{ 'dashboard.insight.refresh_tooltip' | i18n_args(locale | default('ko')) }}"
+         style="text-decoration:none;">{{ 'dashboard.insight.refresh' | i18n_args(locale | default('ko')) }}</a>
     </div>
-    <div class="dash-insight-grid" role="region" aria-label="AI Insight 4 카드">
+    <div class="dash-insight-grid" role="region" aria-label="{{ 'dashboard.insight.card_aria' | i18n_args(locale | default('ko')) }}">
       <div class="dash-insight-card">
-        <h2 class="dash-insight-title">✨ 잘한 것</h2>
+        <h2 class="dash-insight-title">{{ 'dashboard.insight.positive_title' | i18n_args(locale | default('ko')) }}</h2>
         <ul class="dash-insight-list">
           {% for item in insight.positive_highlights %}<li>{{ item }}</li>{% endfor %}
         </ul>
       </div>
       <div class="dash-insight-card">
-        <h2 class="dash-insight-title">🔍 신경 쓸 것</h2>
+        <h2 class="dash-insight-title">{{ 'dashboard.insight.focus_title' | i18n_args(locale | default('ko')) }}</h2>
         <ul class="dash-insight-list">
           {% for item in insight.focus_areas %}<li>{{ item }}</li>{% endfor %}
         </ul>
       </div>
       <div class="dash-insight-card">
-        <h2 class="dash-insight-title">📊 숫자</h2>
+        <h2 class="dash-insight-title">{{ 'dashboard.insight.metrics_title' | i18n_args(locale | default('ko')) }}</h2>
         <div>
           {% for m in insight.key_metrics %}
           <div class="dash-insight-metric">
@@ -523,7 +523,7 @@
         </div>
       </div>
       <div class="dash-insight-card">
-        <h2 class="dash-insight-title">💬 다음</h2>
+        <h2 class="dash-insight-title">{{ 'dashboard.insight.next_title' | i18n_args(locale | default('ko')) }}</h2>
         <ul class="dash-insight-list">
           {% for item in insight.next_actions %}<li>{{ item }}</li>{% endfor %}
         </ul>
@@ -531,111 +531,108 @@
     </div>
     {% elif insight and insight.status == 'no_api_key' %}
     <div class="dash-insight-status">
-      🔑 ANTHROPIC_API_KEY 미설정 — Insight 모드는 AI 분석이 필요합니다. Railway Variables 에서 키를 설정해주세요.
+      {{ 'dashboard.insight.no_api_key' | i18n_args(locale | default('ko')) }}
     </div>
     {% elif insight and insight.status == 'no_data' %}
     <div class="dash-insight-status">
-      📭 최근 {{ days }}일 분석 데이터가 부족합니다 — 분석 결과가 누적된 후 다시 시도해주세요.
+      {{ 'dashboard.insight.no_data' | i18n_args(locale | default('ko'), days=days) }}
     </div>
     {% else %}
     <div class="dash-insight-status">
-      ⚠️ AI Insight 생성 실패 ({{ insight.status if insight else 'unknown' }}) — 잠시 후 다시 시도해주세요.
+      {{ 'dashboard.insight.load_failed' | i18n_args(locale | default('ko'), status=(insight.status if insight else 'unknown')) }}
     </div>
     {% endif %}
   {% else %}
 
-  {# Phase 2 PR 2 — feedback CTA banner (조건부, count < threshold 시만 표시) #}
+  {# Phase 2 PR 2 — feedback CTA banner (조건부, count < threshold 시만 표시) / Phase 2 PR-6 — i18n #}
   {% if feedback and feedback.show_cta %}
-  <div class="dash-cta-banner" role="region" aria-label="피드백 요청">
+  <div class="dash-cta-banner" role="region" aria-label="{{ 'dashboard.feedback_cta.aria' | i18n_args(locale | default('ko')) }}">
     <div class="dash-cta-text">
-      <p class="dash-cta-title">📝 AI 점수에 피드백을 남겨주세요</p>
+      <p class="dash-cta-title">{{ 'dashboard.feedback_cta.title' | i18n_args(locale | default('ko')) }}</p>
       <p class="dash-cta-meta">
         {% if feedback.count == 0 %}
-          분석 결과 페이지의 👍 / 👎 버튼으로 점수 정합도를 알려주시면 AI 정확도가 개선됩니다.
+          {{ 'dashboard.feedback_cta.meta_zero' | i18n_args(locale | default('ko')) }}
         {% else %}
-          현재까지 {{ feedback.count }}건의 피드백이 있습니다 — 더 정확한 AI 정합도 측정을 위해 피드백을 남겨주세요.
+          {{ 'dashboard.feedback_cta.meta_some' | i18n_args(locale | default('ko'), count=feedback.count) }}
         {% endif %}
       </p>
     </div>
     {% if feedback.recent_analysis %}
     <a class="dash-cta-btn"
        href="/repos/{{ feedback.recent_analysis.repo_full_name }}/analyses/{{ feedback.recent_analysis.id }}#feedbackCard">
-      → 최근 분석 보기
+      {{ 'dashboard.feedback_cta.btn_recent' | i18n_args(locale | default('ko')) }}
     </a>
     {% endif %}
   </div>
   {% endif %}
 
-  {# KPI 5 카드 (Phase 1 4 + Phase 2 Auto-merge) #}
+  {# KPI 5 카드 (Phase 1 4 + Phase 2 Auto-merge) / Phase 2 PR-6 — i18n #}
   <div class="dash-kpi-grid">
     <div class="dash-kpi">
-      <div class="dash-kpi-label">평균 점수</div>
+      <div class="dash-kpi-label">{{ 'dashboard.kpi.avg_score' | i18n_args(locale | default('ko')) }}</div>
       <div class="dash-kpi-row">
         <span class="dash-kpi-value">{{ kpi.avg_score.value if kpi.avg_score.value is not none else '—' }}</span>
         {% if kpi.avg_score.grade %}<span class="dash-kpi-grade {{ kpi.avg_score.grade }}">{{ kpi.avg_score.grade }}</span>{% endif %}
       </div>
       {% if kpi.avg_score.delta is not none %}
         {% if kpi.avg_score.delta > 0 %}
-          <div class="dash-kpi-delta up">▲ +{{ kpi.avg_score.delta }} vs 직전 {{ days }}일</div>
+          <div class="dash-kpi-delta up">▲ +{{ kpi.avg_score.delta }} {{ 'dashboard.delta.vs_period' | i18n_args(locale | default('ko'), days=days) }}</div>
         {% elif kpi.avg_score.delta < 0 %}
-          <div class="dash-kpi-delta down">▼ {{ kpi.avg_score.delta }} vs 직전 {{ days }}일</div>
+          <div class="dash-kpi-delta down">▼ {{ kpi.avg_score.delta }} {{ 'dashboard.delta.vs_period' | i18n_args(locale | default('ko'), days=days) }}</div>
         {% else %}
-          <div class="dash-kpi-delta neu">— 변동 없음</div>
+          <div class="dash-kpi-delta neu">— {{ 'dashboard.delta.no_change' | i18n_args(locale | default('ko')) }}</div>
         {% endif %}
       {% else %}
-        <div class="dash-kpi-delta neu">— 비교 데이터 없음</div>
+        <div class="dash-kpi-delta neu">— {{ 'dashboard.delta.no_comparison' | i18n_args(locale | default('ko')) }}</div>
       {% endif %}
     </div>
 
     <div class="dash-kpi">
-      <div class="dash-kpi-label">분석 건수</div>
+      <div class="dash-kpi-label">{{ 'dashboard.kpi.analysis_count' | i18n_args(locale | default('ko')) }}</div>
       <div class="dash-kpi-row">
         <span class="dash-kpi-value">{{ kpi.analysis_count.value }}</span>
       </div>
       {% if kpi.analysis_count.delta > 0 %}
-        <div class="dash-kpi-delta up">▲ +{{ kpi.analysis_count.delta }} vs 직전 {{ days }}일</div>
+        <div class="dash-kpi-delta up">▲ +{{ kpi.analysis_count.delta }} {{ 'dashboard.delta.vs_period' | i18n_args(locale | default('ko'), days=days) }}</div>
       {% elif kpi.analysis_count.delta < 0 %}
-        <div class="dash-kpi-delta down">▼ {{ kpi.analysis_count.delta }} vs 직전 {{ days }}일</div>
+        <div class="dash-kpi-delta down">▼ {{ kpi.analysis_count.delta }} {{ 'dashboard.delta.vs_period' | i18n_args(locale | default('ko'), days=days) }}</div>
       {% else %}
-        <div class="dash-kpi-delta neu">— 변동 없음</div>
+        <div class="dash-kpi-delta neu">— {{ 'dashboard.delta.no_change' | i18n_args(locale | default('ko')) }}</div>
       {% endif %}
     </div>
 
     <div class="dash-kpi">
-      <div class="dash-kpi-label">보안 이슈 (HIGH)</div>
+      <div class="dash-kpi-label">{{ 'dashboard.kpi.high_security' | i18n_args(locale | default('ko')) }}</div>
       <div class="dash-kpi-row">
         <span class="dash-kpi-value">{{ kpi.high_security_issues.value }}</span>
       </div>
       {% if kpi.high_security_issues.delta > 0 %}
-        <div class="dash-kpi-delta down">▲ +{{ kpi.high_security_issues.delta }} (악화)</div>
+        <div class="dash-kpi-delta down">▲ +{{ kpi.high_security_issues.delta }} ({{ 'dashboard.delta.decline' | i18n_args(locale | default('ko')) }})</div>
       {% elif kpi.high_security_issues.delta < 0 %}
-        <div class="dash-kpi-delta up">▼ {{ kpi.high_security_issues.delta }} (개선)</div>
+        <div class="dash-kpi-delta up">▼ {{ kpi.high_security_issues.delta }} ({{ 'dashboard.delta.improvement' | i18n_args(locale | default('ko')) }})</div>
       {% else %}
-        <div class="dash-kpi-delta neu">— 변동 없음</div>
+        <div class="dash-kpi-delta neu">— {{ 'dashboard.delta.no_change' | i18n_args(locale | default('ko')) }}</div>
       {% endif %}
     </div>
 
     <div class="dash-kpi">
-      <div class="dash-kpi-label">활성 리포</div>
+      <div class="dash-kpi-label">{{ 'dashboard.kpi.active_repos' | i18n_args(locale | default('ko')) }}</div>
       <div class="dash-kpi-row">
         <span class="dash-kpi-value">{{ kpi.active_repos.value }}</span>
         <span class="dash-kpi-grade">/ {{ kpi.active_repos.total }}</span>
       </div>
       {% if kpi.active_repos.delta > 0 %}
-        <div class="dash-kpi-delta up">▲ +{{ kpi.active_repos.delta }} vs 직전 {{ days }}일</div>
+        <div class="dash-kpi-delta up">▲ +{{ kpi.active_repos.delta }} {{ 'dashboard.delta.vs_period' | i18n_args(locale | default('ko'), days=days) }}</div>
       {% elif kpi.active_repos.delta < 0 %}
-        <div class="dash-kpi-delta down">▼ {{ kpi.active_repos.delta }} vs 직전 {{ days }}일</div>
+        <div class="dash-kpi-delta down">▼ {{ kpi.active_repos.delta }} {{ 'dashboard.delta.vs_period' | i18n_args(locale | default('ko'), days=days) }}</div>
       {% else %}
-        <div class="dash-kpi-delta neu">— 변동 없음</div>
+        <div class="dash-kpi-delta neu">— {{ 'dashboard.delta.no_change' | i18n_args(locale | default('ko')) }}</div>
       {% endif %}
     </div>
 
-    {# Phase 1+2 회고 P0 #3 swap (2026-05-02) — 메인=PR 기준 최종, sub=단순 시도.
-       사유: 단순 시도 16.6% 가 큰 폰트로 노출 시 부정 인상. retry-aware final 이
-       사용자 가치 (내 PR 결국 머지됐나) 에 더 가까움. 단순 시도는 sub-text 보존
-       (운영 신호 정확성 — fallback 으로 단순 표시 시 retry-aware 데이터 부재 환경 호환). #}
-    <div class="dash-kpi" title="PR 기준 최종 success rate (retry 후 결과). 단순 시도 success rate 는 sub-text 참고.">
-      <div class="dash-kpi-label">자동 머지 성공률 (PR 기준)</div>
+    {# Phase 1+2 회고 P0 #3 swap (2026-05-02) — 메인=PR 기준 최종, sub=단순 시도. / Phase 2 PR-6 — i18n #}
+    <div class="dash-kpi" title="{{ 'dashboard.kpi.auto_merge_tooltip' | i18n_args(locale | default('ko')) }}">
+      <div class="dash-kpi-label">{{ 'dashboard.kpi.auto_merge_success' | i18n_args(locale | default('ko')) }}</div>
       <div class="dash-kpi-row">
         <span class="dash-kpi-value">
           {%- if auto_merge.final_success_rate_pct is not none -%}
@@ -652,41 +649,41 @@
       </div>
       {% if auto_merge.delta is not none %}
         {% if auto_merge.delta > 0 %}
-          <div class="dash-kpi-delta up">시도 ▲ +{{ auto_merge.delta }}% vs 직전 {{ days }}일</div>
+          <div class="dash-kpi-delta up">{{ 'dashboard.delta.attempts_vs_period' | i18n_args(locale | default('ko'), delta=auto_merge.delta, days=days) }}</div>
         {% elif auto_merge.delta < 0 %}
-          <div class="dash-kpi-delta down">시도 ▼ {{ auto_merge.delta }}% vs 직전 {{ days }}일</div>
+          <div class="dash-kpi-delta down">{{ 'dashboard.delta.attempts_vs_period_down' | i18n_args(locale | default('ko'), delta=auto_merge.delta, days=days) }}</div>
         {% else %}
-          <div class="dash-kpi-delta neu">시도 — 변동 없음</div>
+          <div class="dash-kpi-delta neu">{{ 'dashboard.delta.attempts_no_change' | i18n_args(locale | default('ko')) }}</div>
         {% endif %}
       {% else %}
         <div class="dash-kpi-delta neu">
           {%- if auto_merge.value is not none -%}
-            시도 기준 {{ auto_merge.value }}% ({{ auto_merge.success_count }}/{{ auto_merge.total_attempts }})
+            {{ 'dashboard.delta.attempts_baseline' | i18n_args(locale | default('ko'), value=auto_merge.value, success=auto_merge.success_count, total=auto_merge.total_attempts) }}
           {%- else -%}
-            — 비교 데이터 없음
+            — {{ 'dashboard.delta.no_comparison' | i18n_args(locale | default('ko')) }}
           {%- endif -%}
         </div>
       {% endif %}
     </div>
   </div>
 
-  {# 점수 추세 라인 차트 #}
+  {# 점수 추세 라인 차트 / Phase 2 PR-6 — i18n #}
   <div class="dash-chart-card">
-    <h2 class="dash-section-title">점수 추세 ({{ days }}일)</h2>
+    <h2 class="dash-section-title">{{ 'dashboard.trend' | i18n_args(locale | default('ko'), days=days) }}</h2>
     {% if trend %}
       <div class="dash-chart-wrap">
         <canvas id="dashTrendChart"></canvas>
       </div>
     {% else %}
       <div class="dash-empty-state">
-        최근 {{ days }}일간 분석 데이터가 없습니다.
+        {{ 'dashboard.no_trend_data' | i18n_args(locale | default('ko'), days=days) }}
       </div>
     {% endif %}
   </div>
 
-  {# 자주 발생 이슈 #}
+  {# 자주 발생 이슈 / Phase 2 PR-6 — i18n #}
   <div class="dash-issues-card">
-    <h2 class="dash-section-title">자주 발생 이슈 (최근 {{ days }}일)</h2>
+    <h2 class="dash-section-title">{{ 'dashboard.frequent_issues' | i18n_args(locale | default('ko'), days=days) }}</h2>
     {% if frequent_issues %}
       {% for issue in frequent_issues %}
       <div class="dash-issue-row">
@@ -700,20 +697,20 @@
       </div>
       {% endfor %}
     {% else %}
-      <div class="dash-empty-state">최근 {{ days }}일간 발견된 이슈가 없습니다.</div>
+      <div class="dash-empty-state">{{ 'dashboard.no_frequent_issues' | i18n_args(locale | default('ko'), days=days) }}</div>
     {% endif %}
   </div>
 
-  {# Phase 2 PR 1 — 자동 머지 실패 사유 분포 (운영 신호: unstable_ci 우세) #}
+  {# Phase 2 PR 1 — 자동 머지 실패 사유 분포 (운영 신호: unstable_ci 우세) / Phase 2 PR-6 — i18n #}
   {% if merge_failures %}
   <div class="dash-issues-card" style="margin-top: 16px;">
-    <h2 class="dash-section-title">자동 머지 실패 사유 (최근 {{ days }}일)</h2>
+    <h2 class="dash-section-title">{{ 'dashboard.merge_failures_title' | i18n_args(locale | default('ko'), days=days) }}</h2>
     {% for fail in merge_failures %}
     <div class="dash-issue-row">
       <div>
         <div class="dash-issue-msg">{{ fail.reason }}</div>
         <div class="dash-issue-meta">
-          비율 {{ fail.share_pct }}% · {{ fail.count }}건
+          {{ 'dashboard.merge_failure_meta' | i18n_args(locale | default('ko'), pct=fail.share_pct, count=fail.count) }}
         </div>
       </div>
       <span class="dash-issue-badge">{{ fail.count }}</span>
@@ -757,7 +754,7 @@
       data: {
         labels: trendData.map(d => d.date),
         datasets: [{
-          label: '평균 점수',
+          label: {{ 'dashboard.trend_chart_label' | i18n_args(locale | default('ko')) | tojson }},
           data: trendData.map(d => d.avg_score),
           borderColor: accent,
           backgroundColor: accent + '22',

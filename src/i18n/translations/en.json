@@ -37,29 +37,109 @@
   },
   "dashboard": {
     "title": "Dashboard",
+    "title_prefix": "Dashboard",
     "subtitle": "How is our code flowing?",
+    "mode_aria": "Dashboard mode",
+    "range_aria": "Period selector",
     "modes": {
       "overview": "Overview",
       "insight": "Insight",
       "security": "Security",
-      "usage": "Usage"
+      "usage": "Usage",
+      "security_tooltip": "GitHub Code Scanning + Secret Scanning alert audit (Cycle 73 F2 — read-only)",
+      "usage_tooltip": "Own usage (SaaS Phase 1 read-only — Cycle 79 PR 3b)"
     },
     "kpi": {
       "avg_score": "Average Score",
       "analysis_count": "Analyses",
       "high_security": "Security Issues (HIGH)",
       "active_repos": "Active Repos",
-      "auto_merge_success": "Auto-Merge Success Rate (PR-based)"
+      "auto_merge_success": "Auto-Merge Success Rate (PR-based)",
+      "auto_merge_tooltip": "PR-based final success rate (after retries). Simple-attempt success rate is shown in sub-text."
     },
     "delta": {
       "improvement": "improved",
       "decline": "declined",
       "no_change": "no change",
       "no_comparison": "no comparison data",
-      "vs_period": "vs previous {days} days"
+      "vs_period": "vs previous {days} days",
+      "attempts_vs_period": "attempts ▲ +{delta}% vs previous {days} days",
+      "attempts_vs_period_down": "attempts ▼ {delta}% vs previous {days} days",
+      "attempts_no_change": "attempts — no change",
+      "attempts_baseline": "attempt baseline {value}% ({success}/{total})"
     },
     "trend": "Score Trend ({days}d)",
-    "frequent_issues": "Frequent Issues (Last {days} days)"
+    "trend_chart_label": "Average Score",
+    "no_trend_data": "No analysis data in the last {days} days.",
+    "frequent_issues": "Frequent Issues (Last {days} days)",
+    "no_frequent_issues": "No issues found in the last {days} days.",
+    "merge_failures_title": "Auto-Merge Failure Reasons (Last {days} days)",
+    "merge_failure_meta": "share {pct}% · {count} cases",
+    "feedback_cta": {
+      "title": "📝 Please give feedback on AI scores",
+      "meta_zero": "Use the 👍 / 👎 buttons on the analysis result page to indicate score accuracy — this improves AI calibration.",
+      "meta_some": "{count} feedback items so far — leave more feedback to improve AI calibration accuracy.",
+      "btn_recent": "→ View recent analysis",
+      "aria": "Feedback request"
+    },
+    "security": {
+      "kill_switch_active": "🚫 Security auto-processing disabled (`SECURITY_AUTO_PROCESS_DISABLED=1`) — kill-switch is active. Unset the env var to resume cron polling.",
+      "empty_title": "✅ No alerts pending review.",
+      "empty_hint_part1": "A cron polls GitHub Code Scanning + Secret Scanning APIs every hour, and new alerts will appear here. ",
+      "empty_hint_link": "View directly on GitHub Security tab",
+      "empty_hint_part2": " is also available.",
+      "load_failed": "⚠️ Failed to load Security data — please try again later.",
+      "card_aria": "Security audit 4 cards",
+      "processed_title": "✨ Processed",
+      "processed_label": "User confirmed",
+      "total_label": "Total alerts (cumulative)",
+      "pending_title": "🔍 New pending",
+      "pending_label": "Awaiting user decision",
+      "pending_hint": "User 1-click confirm required (Phase 1 — no auto-dismiss)",
+      "classification_title": "📊 Classification distribution",
+      "recent_pending_title": "💬 Recent pending (Top 5)",
+      "recent_pending_empty": "No pending alerts."
+    },
+    "usage": {
+      "empty_title": "📭 No repositories registered.",
+      "empty_hint_part1": "Register a GitHub repo on the ",
+      "empty_hint_link": "Add Repository",
+      "empty_hint_part2": " page to see usage here.",
+      "load_failed": "⚠️ Failed to load Usage data — please try again later.",
+      "card_aria": "Own usage 4 cards",
+      "own_repos_title": "📁 Your Repos",
+      "repo_count_label": "Registered repo count",
+      "repo_count_hint": "Direct user_id isolation (RLS pair — alembic 0026/0029)",
+      "total_analyses_title": "📊 Total Analyses",
+      "total_analyses_label": "Cumulative total",
+      "last_analysis_label": "Last analysis",
+      "recent_period_title": "🕒 Last {days} days",
+      "recent_analyses_label": "Analysis count",
+      "recent_period_hint": "Period: last {days} days (range toggle pair)",
+      "avg_score_title": "⭐ Average Score",
+      "avg_score_label": "Last {days} days average",
+      "avg_score_unit": "{score} pts",
+      "avg_score_hint": "Shown as - when sample is insufficient",
+      "saas_info_title": "💡 SaaS Phase 1 Info",
+      "saas_info_li1_part1": "This area shows ",
+      "saas_info_li1_strong": "your data only",
+      "saas_info_li1_part2": " — direct user_id isolation via RLS (alembic 0026/0029)",
+      "saas_info_li2": "Token cost estimation = Phase 2 (after per-user cost tracking infrastructure)",
+      "saas_info_li3": "On SaaS transition (users ≥ 2), the same cards isolate per-user automatically"
+    },
+    "insight": {
+      "card_aria": "AI Insight 4 cards",
+      "generated_at_tooltip": "Cache generation time — 1h TTL",
+      "refresh": "🔄 Refresh",
+      "refresh_tooltip": "Force cache invalidation + generate new narrative (Anthropic API call)",
+      "positive_title": "✨ What went well",
+      "focus_title": "🔍 What to focus on",
+      "metrics_title": "📊 Numbers",
+      "next_title": "💬 Next",
+      "no_api_key": "🔑 ANTHROPIC_API_KEY not set — Insight mode requires AI analysis. Please set the key in Railway Variables.",
+      "no_data": "📭 Insufficient analysis data in the last {days} days — please try again after results accumulate.",
+      "load_failed": "⚠️ AI Insight generation failed ({status}) — please try again later."
+    }
   },
   "overview": {
     "greeting": "Hello, {name}",
