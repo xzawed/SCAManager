@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 import src.models  # noqa: F401  pylint: disable=unused-import  # side-effect import
 from src.api.admin import _get_db as _api_get_db  # noqa: F401  pylint: disable=unused-import
 from src.auth.session import CurrentUser, require_admin
-from src.database import Base, SessionLocal
+from src.database import Base
 from src.main import app
 from src.ui.routes.admin import _get_db as _ui_get_db  # noqa: F401  pylint: disable=unused-import
 
