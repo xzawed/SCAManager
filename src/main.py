@@ -146,7 +146,14 @@ app.add_middleware(SecurityHeadersMiddleware)
 # alembic 0026 RLS policy + database.py event listener 페어 — 본 미들웨어 부재 시
 # RLS = "deny-all + legacy admin only 모드" 동작 (운영 사고 위험).
 from src.middleware.rls_session import RLSSessionMiddleware  # noqa: E402  # pylint: disable=wrong-import-position
+# Phase 1 PR-1b — i18n LocaleMiddleware (다국어 지원 인프라)
+# locale 감지 → scope["state"]["locale"] 주입. 사용자 명시 선택 (Cookie) > Accept-Language > default.
+# Detect locale → inject scope["state"]["locale"]. User explicit (Cookie) > Accept-Language > default.
+# LIFO 등록 = SessionMiddleware (outer) → LocaleMiddleware (inner) — locale 은 session 무관 영역
+# LIFO order = SessionMiddleware (outer) → LocaleMiddleware (inner) — locale doesn't depend on session
+from src.middleware.locale import LocaleMiddleware  # noqa: E402  # pylint: disable=wrong-import-position
 
+app.add_middleware(LocaleMiddleware)
 app.add_middleware(RLSSessionMiddleware)
 app.add_middleware(
     SessionMiddleware,

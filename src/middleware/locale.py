@@ -1,0 +1,168 @@
+"""LocaleMiddleware — ASGI middleware for i18n locale detection (Phase 1 PR-1b).
+
+Request 시작 시 locale 감지 후 scope["state"]["locale"] 주입.
+LocaleMiddleware injects scope["state"]["locale"] from request signals.
+
+감지 우선순위 (Detection priority):
+1. Cookie `preferred_language` (사용자 명시 선택 / explicit user choice)
+2. Accept-Language 헤더 (RFC 7231 q-weight 파싱 / RFC 7231 q-weight parsing)
+3. settings.default_locale (Q1 default = "en")
+4. settings.locale_fallback (모든 감지 실패 시 극한 fallback)
+
+Note: Session 기반 감지는 본 미들웨어 시점에 미존재 (SessionMiddleware 가 outer 라
+LocaleMiddleware 호출 시점에 scope["session"] 미설정). 사용자 로그인 후
+preferred_language 갱신 시 = Cookie 동기화 의무 (Phase 2 PR-4 영역 — 헤더 dropdown).
+
+Note: Session-based detection unavailable here (SessionMiddleware is outer in LIFO,
+so scope["session"] not yet populated). User login → preferred_language sync via
+Cookie (Phase 2 PR-4 — header dropdown).
+
+🔴 ASGI middleware 패턴 의무 (BaseHTTPMiddleware 우회) — 메모리
+`feedback-asgi-middleware-contextvars.md` 페어. RLSSessionMiddleware 패턴 차용.
+
+ASGI middleware required (not BaseHTTPMiddleware) — pairs with memory
+`feedback-asgi-middleware-contextvars.md`. Pattern from RLSSessionMiddleware.
+
+Kill-switch: `is_disabled("I18N")` 시 skip + scope["state"]["locale"] = "en"
+강제 (운영 사고 시 응급 비활성 — 사이클 78 NEW-P0-2 패턴 페어).
+
+Kill-switch: When `is_disabled("I18N")`, skip detection + force scope locale = "en"
+(emergency disable — pairs with Cycle 78 NEW-P0-2 pattern).
+"""
+import logging
+from typing import Optional
+
+from src.config import settings
+from src.shared.feature_kill_switch import is_disabled
+
+logger = logging.getLogger(__name__)
+
+
+class LocaleMiddleware:  # pylint: disable=too-few-public-methods
+    """ASGI middleware — locale detection + scope.state.locale injection.
+
+    ASGI 표준 = `__call__` 단일 method (pylint R0903 inline disable — 의도된 표준 패턴).
+    ASGI standard = single `__call__` method (pylint R0903 inline disable — intended).
+    """
+
+    def __init__(self, app):
+        self.app = app
+        # 지원 locale 집합 (settings.supported_locales 정규화 후 캐싱)
+        # Cached set of supported locales (normalized from settings.supported_locales)
+        self._supported = frozenset(
+            lang.strip() for lang in settings.supported_locales.split(",") if lang.strip()
+        )
+
+    async def __call__(self, scope, receive, send):
+        # HTTP scope 만 처리 (websocket / lifespan 무관)
+        # Only handle HTTP scope (websocket / lifespan unaffected)
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        # Kill-switch: i18n 비활성 → 영문 강제
+        # Kill-switch: i18n disabled → force English
+        if is_disabled("I18N"):
+            scope.setdefault("state", {})
+            scope["state"]["locale"] = settings.locale_fallback
+            await self.app(scope, receive, send)
+            return
+
+        locale = self._detect_locale(scope.get("headers") or [])
+        scope.setdefault("state", {})
+        scope["state"]["locale"] = locale
+
+        await self.app(scope, receive, send)
+
+    def _detect_locale(self, headers: list) -> str:
+        """5단계 locale 감지 우선순위 적용.
+
+        Apply 5-tier locale detection priority.
+        """
+        # 1. Cookie `preferred_language` (사용자 명시 선택)
+        # 1. Cookie `preferred_language` (explicit user choice)
+        cookie_locale = self._parse_cookie_locale(headers)
+        if cookie_locale and cookie_locale in self._supported:
+            return cookie_locale
+
+        # 2. Accept-Language 헤더 (RFC 7231 q-weight 파싱)
+        # 2. Accept-Language header (RFC 7231 q-weight parsing)
+        accept_locale = self._parse_accept_language(headers)
+        if accept_locale and accept_locale in self._supported:
+            return accept_locale
+
+        # 3. 기본값 (settings.default_locale)
+        # 3. Default (settings.default_locale)
+        if settings.default_locale in self._supported:
+            return settings.default_locale
+
+        # 4. 극한 fallback (settings.locale_fallback)
+        # 4. Ultimate fallback (settings.locale_fallback)
+        return settings.locale_fallback
+
+    @staticmethod
+    def _parse_cookie_locale(headers: list) -> Optional[str]:
+        """Cookie 헤더에서 `preferred_language` 추출.
+
+        Extract `preferred_language` from Cookie header.
+        """
+        for name, value in headers:
+            if name.lower() != b"cookie":
+                continue
+            try:
+                cookie_str = value.decode("utf-8", errors="ignore")
+            except (AttributeError, UnicodeDecodeError):
+                continue
+            for item in cookie_str.split(";"):
+                if "=" not in item:
+                    continue
+                key, val = item.split("=", 1)
+                if key.strip() == "preferred_language":
+                    return val.strip()
+        return None
+
+    @staticmethod
+    def _parse_accept_language(headers: list) -> Optional[str]:
+        """Accept-Language 헤더 RFC 7231 q-weight 파싱 후 최우선 locale 반환.
+
+        Parse Accept-Language header per RFC 7231 q-weights, return top locale.
+        예 (Example): "ko-KR,ko;q=0.9,en;q=0.8" → "ko"
+        """
+        for name, value in headers:
+            if name.lower() != b"accept-language":
+                continue
+            try:
+                header_str = value.decode("utf-8", errors="ignore")
+            except (AttributeError, UnicodeDecodeError):
+                continue
+
+            # RFC 7231 파싱 — 각 항목 (lang, q-weight)
+            # RFC 7231 parsing — each item (lang, q-weight)
+            items = []
+            for part in header_str.split(","):
+                segments = part.split(";")
+                lang = segments[0].strip().lower()
+                if not lang:
+                    continue
+                q_weight = 1.0  # default per RFC 7231
+                for seg in segments[1:]:
+                    seg = seg.strip()
+                    if seg.startswith("q="):
+                        try:
+                            q_weight = float(seg[2:])
+                        except (ValueError, IndexError):
+                            q_weight = 0.0
+                # 정규화: "ko-KR" → "ko" (base lang only)
+                # Normalize: "ko-KR" → "ko" (base lang only)
+                base_lang = lang.split("-")[0]
+                items.append((base_lang, q_weight))
+
+            if not items:
+                continue
+
+            # q-weight 내림차순 정렬 (안정 정렬 — 동일 q-weight 시 입력 순서 보존)
+            # Sort by q-weight descending (stable — preserves input order on ties)
+            items.sort(key=lambda x: x[1], reverse=True)
+            return items[0][0]
+
+        return None

@@ -1,0 +1,93 @@
+{
+  "common": {
+    "logout": "로그아웃",
+    "settings": "설정",
+    "language": "언어",
+    "loading": "로딩 중...",
+    "error": "오류",
+    "success": "성공",
+    "save": "저장",
+    "cancel": "취소",
+    "back": "돌아가기",
+    "delete": "삭제",
+    "edit": "편집",
+    "add": "추가",
+    "yes": "예",
+    "no": "아니오",
+    "confirm": "확인",
+    "no_data": "데이터 없음"
+  },
+  "header": {
+    "welcome": "환영합니다, {name}님",
+    "theme": "테마",
+    "dark_dashboard": "다크 대시보드",
+    "light_clean": "클린 카드",
+    "glass": "글래스모피즘",
+    "claude_dark": "Claude 다크 (베타)"
+  },
+  "login": {
+    "title": "SCAManager",
+    "subtitle": "PR이 들어오면 Claude가 검토하고 점수와 피드백을 알려드려요",
+    "github_login": "GitHub로 로그인",
+    "footer": "GitHub OAuth로 안전하게 인증합니다"
+  },
+  "dashboard": {
+    "title": "대시보드",
+    "subtitle": "우리 코드는 어떻게 흘러가고 있나요",
+    "modes": {
+      "overview": "개요",
+      "insight": "인사이트",
+      "security": "보안",
+      "usage": "사용량"
+    },
+    "kpi": {
+      "avg_score": "평균 점수",
+      "analysis_count": "분석 건수",
+      "high_security": "보안 이슈 (HIGH)",
+      "active_repos": "활성 리포",
+      "auto_merge_success": "자동 머지 성공률 (PR 기준)"
+    },
+    "delta": {
+      "improvement": "개선",
+      "decline": "악화",
+      "no_change": "변동 없음",
+      "no_comparison": "비교 데이터 없음",
+      "vs_period": "vs 직전 {days}일"
+    },
+    "trend": "점수 추세 ({days}일)",
+    "frequent_issues": "자주 발생 이슈 (최근 {days}일)"
+  },
+  "overview": {
+    "greeting": "안녕하세요, {name}님",
+    "title": "오늘의 분석",
+    "repo_count": "{count}개 리포",
+    "table": {
+      "repository": "리포지토리",
+      "analysis": "분석",
+      "avg_score": "평균 점수",
+      "grade": "등급"
+    }
+  },
+  "settings": {
+    "title": "설정",
+    "language": "언어",
+    "language_description": "선호하는 언어를 선택하세요. 변경 사항은 즉시 적용됩니다.",
+    "language_options": {
+      "en": "영어",
+      "ko": "한국어",
+      "ja": "일본어"
+    }
+  },
+  "errors": {
+    "unauthorized": "액세스 권한 없음",
+    "not_found": "리소스를 찾을 수 없음",
+    "validation_error": "유효성 검사 실패: {details}",
+    "database_error": "데이터베이스 오류 발생",
+    "no_api_key": "ANTHROPIC_API_KEY 미설정"
+  },
+  "notifier": {
+    "no_issues": "이슈 없음",
+    "score_label": "점수: {score}/100",
+    "grade_label": "등급 {grade}"
+  }
+}

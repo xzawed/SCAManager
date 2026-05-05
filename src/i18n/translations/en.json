@@ -1,0 +1,93 @@
+{
+  "common": {
+    "logout": "Logout",
+    "settings": "Settings",
+    "language": "Language",
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "save": "Save",
+    "cancel": "Cancel",
+    "back": "Back",
+    "delete": "Delete",
+    "edit": "Edit",
+    "add": "Add",
+    "yes": "Yes",
+    "no": "No",
+    "confirm": "Confirm",
+    "no_data": "No data available"
+  },
+  "header": {
+    "welcome": "Welcome, {name}",
+    "theme": "Theme",
+    "dark_dashboard": "Dark Dashboard",
+    "light_clean": "Clean Cards",
+    "glass": "Glassmorphism",
+    "claude_dark": "Claude Dark (Beta)"
+  },
+  "login": {
+    "title": "SCAManager",
+    "subtitle": "Claude reviews your PR and provides scores and feedback",
+    "github_login": "Sign in with GitHub",
+    "footer": "Secure authentication with GitHub OAuth"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "subtitle": "How is our code flowing?",
+    "modes": {
+      "overview": "Overview",
+      "insight": "Insight",
+      "security": "Security",
+      "usage": "Usage"
+    },
+    "kpi": {
+      "avg_score": "Average Score",
+      "analysis_count": "Analyses",
+      "high_security": "Security Issues (HIGH)",
+      "active_repos": "Active Repos",
+      "auto_merge_success": "Auto-Merge Success Rate (PR-based)"
+    },
+    "delta": {
+      "improvement": "improved",
+      "decline": "declined",
+      "no_change": "no change",
+      "no_comparison": "no comparison data",
+      "vs_period": "vs previous {days} days"
+    },
+    "trend": "Score Trend ({days}d)",
+    "frequent_issues": "Frequent Issues (Last {days} days)"
+  },
+  "overview": {
+    "greeting": "Hello, {name}",
+    "title": "Today's Analyses",
+    "repo_count": "{count} repos",
+    "table": {
+      "repository": "Repository",
+      "analysis": "Analyses",
+      "avg_score": "Average Score",
+      "grade": "Grade"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "language": "Language",
+    "language_description": "Select your preferred language. Changes apply immediately.",
+    "language_options": {
+      "en": "English",
+      "ko": "Korean",
+      "ja": "Japanese"
+    }
+  },
+  "errors": {
+    "unauthorized": "Unauthorized access",
+    "not_found": "Resource not found",
+    "validation_error": "Validation failed: {details}",
+    "database_error": "Database error occurred",
+    "no_api_key": "ANTHROPIC_API_KEY not set"
+  },
+  "notifier": {
+    "no_issues": "No issues",
+    "score_label": "Score: {score}/100",
+    "grade_label": "Grade {grade}"
+  }
+}
