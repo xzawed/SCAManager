@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from src.database import Base
-from src.models.user import User  # noqa: F401  (register on metadata)
+import src.models.user  # noqa: F401  (register on metadata)
 from src.models.insight_narrative_cache import InsightNarrativeCache  # noqa: F401
 from src.repositories import insight_narrative_cache_repo
 from src.services import dashboard_service
