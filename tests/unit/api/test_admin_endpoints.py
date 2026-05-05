@@ -87,11 +87,15 @@ def test_get_rls_audit_returns_matrix(client):
 
 
 def test_admin_tenants_html_renders(client):
-    """GET /admin/tenants — HTML 렌더링."""
+    """GET /admin/tenants — HTML 렌더링.
+
+    Phase 2 PR-8 (사이클 84) — i18n 적용 후 default locale 'en' 또는 'ko' 양호.
+    Phase 2 PR-8 (Cycle 84) — after i18n, accept either default locale en or ko.
+    """
     response = client.get("/admin/tenants")
     assert response.status_code == 200
-    assert "Tenant 인벤토리" in response.text
-    assert "총 테넌트" in response.text
+    assert "Tenant Inventory" in response.text or "Tenant 인벤토리" in response.text
+    assert "Total tenants" in response.text or "총 테넌트" in response.text
 
 
 def test_admin_rls_audit_html_renders(client):

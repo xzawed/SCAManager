@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}설정 — {{ repo_name }}{% endblock %}
+{% block title %}{{ 'settings_page.title_prefix' | i18n_args(locale | default('ko')) }} — {{ repo_name }}{% endblock %}
 {% block content %}
 <style>
   /* P0-3 + P2-5: padding-bottom 6rem + iOS safe-area-inset 추가 (notch 디바이스 호환)
@@ -338,37 +338,33 @@
   </div>
   {% endif %}
 
-  <!-- 헤더 / Header -->
+  <!-- 헤더 / Header / Phase 2 PR-8 — i18n -->
   <div class="settings-header">
-    <a class="back-btn" href="/repos/{{ repo_name }}">← 상세</a>
-    <h1 class="settings-title">리포지토리 설정</h1>
+    <a class="back-btn" href="/repos/{{ repo_name }}">{{ 'settings_page.back' | i18n_args(locale | default('ko')) }}</a>
+    <h1 class="settings-title">{{ 'settings_page.page_title' | i18n_args(locale | default('ko')) }}</h1>
     <div class="repo-badge">{{ repo_name }}</div>
   </div>
 
-  <!-- Simple/Advanced 모드 토글 — 시각 강화 (Progressive Mode 재설계) -->
-  <!-- Simple/Advanced mode toggle — visually strengthened segmented control (Progressive Mode redesign) -->
+  <!-- Simple/Advanced 모드 토글 / Phase 2 PR-8 — i18n -->
   <div class="mode-toggle-bar" id="modeToggleBar"
        data-initial-mode="{{ initial_mode or 'simple' }}">
-    <span class="mode-toggle-label">보기 모드</span>
+    <span class="mode-toggle-label">{{ 'settings_page.mode_toggle_label' | i18n_args(locale | default('ko')) }}</span>
     <div class="mode-toggle-segment">
       <button type="button" class="mode-toggle-btn active" data-settings-mode-btn="simple">
-        ✨ Simple <span class="mode-toggle-hint">필수 항목만</span>
+        {{ 'settings_page.mode_simple' | i18n_args(locale | default('ko')) }} <span class="mode-toggle-hint">{{ 'settings_page.mode_simple_hint' | i18n_args(locale | default('ko')) }}</span>
       </button>
       <button type="button" class="mode-toggle-btn" data-settings-mode-btn="advanced">
-        ⚙️ Advanced <span class="mode-toggle-hint">전체 설정</span>
+        {{ 'settings_page.mode_advanced' | i18n_args(locale | default('ko')) }} <span class="mode-toggle-hint">{{ 'settings_page.mode_advanced_hint' | i18n_args(locale | default('ko')) }}</span>
       </button>
     </div>
     <span class="mode-toggle-counter" id="modeToggleCounter"></span>
   </div>
 
-  <!-- P2-7: 단순 모드 안내 — mode toggle 바로 아래로 이동 (저장 버튼 보조설명 오해 회피)
-       P2-7: Hint moved right under the mode toggle (avoid being misread as save-bar caption) -->
   <p class="simple-only-hint" style="font-size:12px;color:var(--text-muted);
             margin: -.6rem 0 1.25rem; padding: .5rem .85rem; line-height:1.55;
             background: var(--hint-bg, rgba(99,102,241,.06));
             border-left: 3px solid var(--accent); border-radius: 6px;">
-    ⚙️ 더 정밀한 제어 (Approve 임계값 · Discord/Slack/Email · CLI Hook · 리포 삭제 등) 가 필요하면
-    상단의 <strong>Advanced</strong> 토글을 눌러주세요.
+    {{ 'settings_page.simple_only_hint' | i18n_args(locale | default('ko')) | safe }}
   </p>
   <style>
     /* P1-6: mode-toggle-bar 시각 무게를 카드(1px)와 동일화 + 강조는 box-shadow ring 으로 분리
@@ -509,17 +505,17 @@
     <div class="s-card" id="onboardingBanner" style="margin-bottom:1rem;border:1.5px solid var(--warning);">
       <div class="s-card-hdr" style="background:var(--grad-notify)">
         <span class="hdr-icon">👋</span>
-        <span class="hdr-title">시작하세요</span>
-        <span class="hdr-badge">알림 채널 미설정</span>
+        <span class="hdr-title">{{ 'settings_page.onboarding.header' | i18n_args(locale | default('ko')) }}</span>
+        <span class="hdr-badge">{{ 'settings_page.onboarding.badge' | i18n_args(locale | default('ko')) }}</span>
       </div>
       <div class="s-card-body">
-        <p style="font-size:13px;color:var(--text-muted);margin:0 0 .75rem;">분석 결과를 받으려면 아래 단계를 완료하세요.</p>
+        <p style="font-size:13px;color:var(--text-muted);margin:0 0 .75rem;">{{ 'settings_page.onboarding.intro' | i18n_args(locale | default('ko')) }}</p>
         <div style="display:flex;flex-direction:column;gap:.45rem;font-size:13px;">
           <a href="#notifyCard" style="color:var(--accent);font-weight:600;">
-            ① 알림 채널 설정 → 아래 <strong>알림 채널 (발신)</strong> 카드에서 Telegram 또는 다른 채널을 연결하세요
+            {{ 'settings_page.onboarding.step1' | i18n_args(locale | default('ko')) | safe }}
           </a>
           <span style="color:var(--text-muted);">
-            ② 리뷰 수준 결정 → 위 <strong>빠른 설정</strong>에서 프리셋을 선택하세요 (선택 사항)
+            {{ 'settings_page.onboarding.step2' | i18n_args(locale | default('ko')) | safe }}
           </span>
         </div>
       </div>
@@ -530,10 +526,9 @@
     <div class="alert alert-warning alert-dismissible d-flex align-items-center mb-4" role="alert" id="webhookStaleBanner">
       <span class="me-2">⚠️</span>
       <div>
-        <strong>Webhook 재등록 필요</strong> — <code>check_suite</code> 이벤트가 누락되어 자동 머지 재시도가 지연될 수 있습니다. Webhook을 재등록하면 CI 완료 즉시 머지를 재시도합니다.
-        <br><small class="text-muted">Auto-merge retry may be delayed: <code>check_suite</code> event not subscribed. Reinstall webhook to enable immediate CI-triggered retries.</small>
+        <strong>{{ 'settings_page.webhook_stale.title' | i18n_args(locale | default('ko')) }}</strong> — {{ 'settings_page.webhook_stale.desc' | i18n_args(locale | default('ko')) | safe }}
       </div>
-      <button type="button" onclick="document.querySelector('[data-reinstall-webhook]')?.click();" class="btn btn-sm btn-warning ms-auto">GitHub 수신 Webhook 재등록</button>
+      <button type="button" onclick="document.querySelector('[data-reinstall-webhook]')?.click();" class="btn btn-sm btn-warning ms-auto">{{ 'settings_page.webhook_stale.btn' | i18n_args(locale | default('ko')) }}</button>
     </div>
     {% endif %}
 
@@ -543,13 +538,12 @@
     <div class="s-card" id="languageCard" style="margin-bottom:1rem;">
       <div class="s-card-hdr" style="background:linear-gradient(135deg,#1e40af,#3b82f6)">
         <span class="hdr-icon">🌍</span>
-        <span class="hdr-title">언어 설정</span>
-        <span class="hdr-badge">Language</span>
+        <span class="hdr-title">{{ 'settings_page.language_card.header' | i18n_args(locale | default('ko')) }}</span>
+        <span class="hdr-badge">{{ 'settings_page.language_card.badge' | i18n_args(locale | default('ko')) }}</span>
       </div>
       <div class="s-card-body">
         <p style="font-size:12px;color:var(--text-muted);margin-bottom:0.8rem;">
-          선호 언어를 선택하세요. 변경 시 즉시 적용됩니다 (페이지 자동 새로고침).<br>
-          Select your preferred language. Changes apply immediately (page auto-reloads).
+          {{ 'settings_page.language_card.hint' | i18n_args(locale | default('ko')) }}
         </p>
         <div class="lang-radio-group" style="display:flex;gap:0.75rem;flex-wrap:wrap;">
           <label class="lang-radio-label" style="display:flex;align-items:center;gap:0.4rem;padding:8px 14px;border:1px solid var(--border);border-radius:8px;cursor:pointer;min-height:44px;box-sizing:border-box;">
@@ -612,118 +606,116 @@
     <div class="s-card" id="presetCard" style="margin-bottom:1rem;">
       <div class="s-card-hdr hdr-preset">
         <span class="hdr-icon">🚀</span>
-        <span class="hdr-title">빠른 설정</span>
-        <span class="hdr-badge">원클릭 프리셋</span>
+        <span class="hdr-title">{{ 'settings_page.preset_card.header' | i18n_args(locale | default('ko')) }}</span>
+        <span class="hdr-badge">{{ 'settings_page.preset_card.badge' | i18n_args(locale | default('ko')) }}</span>
       </div>
       <div class="s-card-body">
         <div class="preset-desc">
-          카드를 펼치면 설정이 자동으로 적용됩니다.
-          확인 후 <strong>저장 버튼</strong>을 눌러 반영하세요.
-          알림 채널(Slack·Discord 등)은 변경되지 않습니다.
+          {{ 'settings_page.preset_card.desc' | i18n_args(locale | default('ko')) | safe }}
         </div>
         <div class="preset-cards" id="presetCards">
 
-          <!-- 🌱 최소 / Minimal -->
+          {# 🌱 Minimal / Phase 2 PR-8 — i18n #}
           <details class="preset-details" id="preset-minimal"
                    ontoggle="onPresetToggle(this,'minimal')">
             <summary class="preset-summary">
               <span class="preset-icon">🌱</span>
               <div>
-                <div class="preset-name">최소</div>
-                <div class="preset-hint">PR 댓글만 · 최소 개입</div>
+                <div class="preset-name">{{ 'settings_page.preset_card.minimal_name' | i18n_args(locale | default('ko')) }}</div>
+                <div class="preset-hint">{{ 'settings_page.preset_card.minimal_hint' | i18n_args(locale | default('ko')) }}</div>
               </div>
             </summary>
             <div class="preset-detail-body">
               <table class="preset-table">
                 <thead>
                   <tr style="font-size:11px;color:var(--text-muted);font-weight:600;">
-                    <th scope="col" style="width:48%;text-align:left;">필드</th>
-                    <th scope="col" style="text-align:center;width:18%">현재값</th>
-                    <th scope="col" style="text-align:center;width:6%"><span class="sr-only">비교</span></th>
-                    <th scope="col" style="text-align:right;width:28%">프리셋값</th>
+                    <th scope="col" style="width:48%;text-align:left;">{{ 'settings_page.preset_card.th_field' | i18n_args(locale | default('ko')) }}</th>
+                    <th scope="col" style="text-align:center;width:18%">{{ 'settings_page.preset_card.th_current' | i18n_args(locale | default('ko')) }}</th>
+                    <th scope="col" style="text-align:center;width:6%"><span class="sr-only">{{ 'settings_page.preset_card.th_compare' | i18n_args(locale | default('ko')) }}</span></th>
+                    <th scope="col" style="text-align:right;width:28%">{{ 'settings_page.preset_card.th_preset' | i18n_args(locale | default('ko')) }}</th>
                   </tr>
                 </thead>
                 <tbody id="preset-diff-minimal"></tbody>
               </table>
               <p style="font-size:11px;color:var(--text-muted);margin-top:.5rem;line-height:1.5;">
-                알림 채널 URL은 이 프리셋이 변경하지 않습니다.
+                {{ 'settings_page.preset_card.channel_unchanged' | i18n_args(locale | default('ko')) }}
               </p>
               <button type="button" class="btn-save-new preset-apply-btn" style="margin-top:.65rem;padding:.5rem;"
                       onclick="applyPreset('minimal', document.getElementById('preset-minimal'))">
-                이 프리셋 적용 →
+                {{ 'settings_page.preset_card.apply_btn' | i18n_args(locale | default('ko')) }}
               </button>
               <div class="pt-applied-label" id="pt-label-minimal" style="display:none">
-                ✅ 적용됨 — 저장 버튼을 눌러주세요
+                {{ 'settings_page.preset_card.applied_label' | i18n_args(locale | default('ko')) }}
               </div>
             </div>
           </details>
 
-          <!-- ⚙️ 표준 / Standard -->
+          {# ⚙️ Standard / Phase 2 PR-8 — i18n #}
           <details class="preset-details" id="preset-standard"
                    ontoggle="onPresetToggle(this,'standard')">
             <summary class="preset-summary">
               <span class="preset-icon">⚙️</span>
               <div>
-                <div class="preset-name">표준</div>
-                <div class="preset-hint">균형잡힌 기본 설정</div>
+                <div class="preset-name">{{ 'settings_page.preset_card.standard_name' | i18n_args(locale | default('ko')) }}</div>
+                <div class="preset-hint">{{ 'settings_page.preset_card.standard_hint' | i18n_args(locale | default('ko')) }}</div>
               </div>
             </summary>
             <div class="preset-detail-body">
               <table class="preset-table">
                 <thead>
                   <tr style="font-size:11px;color:var(--text-muted);font-weight:600;">
-                    <th scope="col" style="width:48%;text-align:left;">필드</th>
-                    <th scope="col" style="text-align:center;width:18%">현재값</th>
-                    <th scope="col" style="text-align:center;width:6%"><span class="sr-only">비교</span></th>
-                    <th scope="col" style="text-align:right;width:28%">프리셋값</th>
+                    <th scope="col" style="width:48%;text-align:left;">{{ 'settings_page.preset_card.th_field' | i18n_args(locale | default('ko')) }}</th>
+                    <th scope="col" style="text-align:center;width:18%">{{ 'settings_page.preset_card.th_current' | i18n_args(locale | default('ko')) }}</th>
+                    <th scope="col" style="text-align:center;width:6%"><span class="sr-only">{{ 'settings_page.preset_card.th_compare' | i18n_args(locale | default('ko')) }}</span></th>
+                    <th scope="col" style="text-align:right;width:28%">{{ 'settings_page.preset_card.th_preset' | i18n_args(locale | default('ko')) }}</th>
                   </tr>
                 </thead>
                 <tbody id="preset-diff-standard"></tbody>
               </table>
               <p style="font-size:11px;color:var(--text-muted);margin-top:.5rem;line-height:1.5;">
-                알림 채널 URL은 이 프리셋이 변경하지 않습니다.
+                {{ 'settings_page.preset_card.channel_unchanged' | i18n_args(locale | default('ko')) }}
               </p>
               <button type="button" class="btn-save-new preset-apply-btn" style="margin-top:.65rem;padding:.5rem;"
                       onclick="applyPreset('standard', document.getElementById('preset-standard'))">
-                이 프리셋 적용 →
+                {{ 'settings_page.preset_card.apply_btn' | i18n_args(locale | default('ko')) }}
               </button>
               <div class="pt-applied-label" id="pt-label-standard" style="display:none">
-                ✅ 적용됨 — 저장 버튼을 눌러주세요
+                {{ 'settings_page.preset_card.applied_label' | i18n_args(locale | default('ko')) }}
               </div>
             </div>
           </details>
 
-          <!-- 🛡️ 엄격 / Strict -->
+          {# 🛡️ Strict / Phase 2 PR-8 — i18n #}
           <details class="preset-details" id="preset-strict"
                    ontoggle="onPresetToggle(this,'strict')">
             <summary class="preset-summary">
               <span class="preset-icon">🛡️</span>
               <div>
-                <div class="preset-name">엄격</div>
-                <div class="preset-hint">보안·품질 최우선</div>
+                <div class="preset-name">{{ 'settings_page.preset_card.strict_name' | i18n_args(locale | default('ko')) }}</div>
+                <div class="preset-hint">{{ 'settings_page.preset_card.strict_hint' | i18n_args(locale | default('ko')) }}</div>
               </div>
             </summary>
             <div class="preset-detail-body">
               <table class="preset-table">
                 <thead>
                   <tr style="font-size:11px;color:var(--text-muted);font-weight:600;">
-                    <th scope="col" style="width:48%;text-align:left;">필드</th>
-                    <th scope="col" style="text-align:center;width:18%">현재값</th>
-                    <th scope="col" style="text-align:center;width:6%"><span class="sr-only">비교</span></th>
-                    <th scope="col" style="text-align:right;width:28%">프리셋값</th>
+                    <th scope="col" style="width:48%;text-align:left;">{{ 'settings_page.preset_card.th_field' | i18n_args(locale | default('ko')) }}</th>
+                    <th scope="col" style="text-align:center;width:18%">{{ 'settings_page.preset_card.th_current' | i18n_args(locale | default('ko')) }}</th>
+                    <th scope="col" style="text-align:center;width:6%"><span class="sr-only">{{ 'settings_page.preset_card.th_compare' | i18n_args(locale | default('ko')) }}</span></th>
+                    <th scope="col" style="text-align:right;width:28%">{{ 'settings_page.preset_card.th_preset' | i18n_args(locale | default('ko')) }}</th>
                   </tr>
                 </thead>
                 <tbody id="preset-diff-strict"></tbody>
               </table>
               <p style="font-size:11px;color:var(--text-muted);margin-top:.5rem;line-height:1.5;">
-                알림 채널 URL은 이 프리셋이 변경하지 않습니다.
+                {{ 'settings_page.preset_card.channel_unchanged' | i18n_args(locale | default('ko')) }}
               </p>
               <button type="button" class="btn-save-new preset-apply-btn" style="margin-top:.65rem;padding:.5rem;"
                       onclick="applyPreset('strict', document.getElementById('preset-strict'))">
-                이 프리셋 적용 →
+                {{ 'settings_page.preset_card.apply_btn' | i18n_args(locale | default('ko')) }}
               </button>
               <div class="pt-applied-label" id="pt-label-strict" style="display:none">
-                ✅ 적용됨 — 저장 버튼을 눌러주세요
+                {{ 'settings_page.preset_card.applied_label' | i18n_args(locale | default('ko')) }}
               </div>
             </div>
           </details>
@@ -738,16 +730,16 @@
       <div class="s-card">
         <div class="s-card-hdr hdr-gate">
           <span class="hdr-icon">⚡</span>
-          <span class="hdr-title">PR 동작 규칙</span>
+          <span class="hdr-title">{{ 'settings_page.pr_rules.header' | i18n_args(locale | default('ko')) }}</span>
           <span class="hdr-badge" id="approveBadge">{{ config.approve_mode }}</span>
         </div>
         <div class="s-card-body">
 
-          <!-- 단순 모드 노출: PR 코멘트 / Always-visible: PR comment -->
+          {# Phase 2 PR-8 — i18n / Simple-mode visible: PR comment #}
           <div class="toggle-row">
             <div class="toggle-info">
-              <div class="t-title">PR 코드리뷰 댓글</div>
-              <div class="t-desc">분석 완료 시 AI 리뷰를 PR 댓글로 자동 발송</div>
+              <div class="t-title">{{ 'settings_page.pr_rules.pr_comment_title' | i18n_args(locale | default('ko')) }}</div>
+              <div class="t-desc">{{ 'settings_page.pr_rules.pr_comment_desc' | i18n_args(locale | default('ko')) }}</div>
             </div>
             <label class="toggle-switch">
               <input type="checkbox" name="pr_review_comment" value="on"
@@ -756,13 +748,12 @@
             </label>
           </div>
 
-          <!-- 단순 모드 노출: 자동 Merge + 임계값 / Always-visible: auto-merge + threshold -->
+          {# Simple-mode visible: auto-merge + threshold #}
           <div class="s-divider"></div>
           <div class="toggle-row">
             <div class="toggle-info">
-              <div class="t-title">자동 Merge</div>
-              <div class="t-desc">점수 이상 시 squash merge.<br>
-                <code style="font-size:10px;">pull_requests: write</code> 권한 필요</div>
+              <div class="t-title">{{ 'settings_page.pr_rules.auto_merge_title' | i18n_args(locale | default('ko')) }}</div>
+              <div class="t-desc">{{ 'settings_page.pr_rules.auto_merge_desc' | i18n_args(locale | default('ko')) | safe }}</div>
             </div>
             <label class="toggle-switch">
               <input type="checkbox" id="autoMergeChk" name="auto_merge" value="on"
@@ -775,8 +766,8 @@
           <div id="mergeThresholdRow" class="{% if not config.auto_merge %}is-hidden{% endif %}" style="margin-top:.75rem;">
             <div class="threshold-row" style="margin-bottom:0">
               <div class="threshold-label">
-                <span>Merge 임계값</span>
-                <span style="color:var(--success);font-size:11px;font-weight:600;">이상 → Merge</span>
+                <span>{{ 'settings_page.pr_rules.merge_threshold_label' | i18n_args(locale | default('ko')) }}</span>
+                <span style="color:var(--success);font-size:11px;font-weight:600;">{{ 'settings_page.pr_rules.merge_threshold_hint' | i18n_args(locale | default('ko')) }}</span>
               </div>
               <div class="threshold-ctrl">
                 <input type="range" class="approve-range" name="merge_threshold"
@@ -789,34 +780,34 @@
             </div>
           </div>
 
-          <!-- 고급 모드 전용: Approve 3-way + 기준점 슬라이더 / Advanced-only: approve 3-way + thresholds -->
+          {# Advanced-only: Approve 3-way + thresholds / Phase 2 PR-8 — i18n #}
           <div class="adv-only">
             <div class="s-divider"></div>
-            <div class="s-section-label">Approve 자동화 (고급)</div>
+            <div class="s-section-label">{{ 'settings_page.pr_rules.approve_section' | i18n_args(locale | default('ko')) }}</div>
 
             <div class="gate-btns">
               <button type="button"
                       class="gate-mode-btn {% if config.approve_mode == 'disabled' %}active{% endif %}"
                       data-mode="disabled" onclick="setApproveMode('disabled')">
-                <span class="gm-icon">🚫</span>비활성
+                <span class="gm-icon">🚫</span>{{ 'settings_page.pr_rules.gate_disabled' | i18n_args(locale | default('ko')) }}
               </button>
               <button type="button"
                       class="gate-mode-btn {% if config.approve_mode == 'auto' %}active{% endif %}"
                       data-mode="auto" onclick="setApproveMode('auto')">
-                <span class="gm-icon">⚡</span>자동
+                <span class="gm-icon">⚡</span>{{ 'settings_page.pr_rules.gate_auto' | i18n_args(locale | default('ko')) }}
               </button>
               <button type="button"
                       class="gate-mode-btn {% if config.approve_mode == 'semi-auto' %}active{% endif %}"
                       data-mode="semi-auto" onclick="setApproveMode('semi-auto')">
-                <span class="gm-icon">📱</span>반자동
+                <span class="gm-icon">📱</span>{{ 'settings_page.pr_rules.gate_semi' | i18n_args(locale | default('ko')) }}
               </button>
             </div>
 
             <div id="approveThresholds" class="{% if config.approve_mode == 'disabled' %}is-hidden{% endif %}">
               <div class="threshold-row">
                 <div class="threshold-label">
-                  <span>승인 기준점</span>
-                  <span style="color:var(--success);font-size:11px;font-weight:600;">이상 → 승인</span>
+                  <span>{{ 'settings_page.pr_rules.approve_threshold_label' | i18n_args(locale | default('ko')) }}</span>
+                  <span style="color:var(--success);font-size:11px;font-weight:600;">{{ 'settings_page.pr_rules.approve_threshold_hint' | i18n_args(locale | default('ko')) }}</span>
                 </div>
                 <div class="threshold-ctrl">
                   <input type="range" class="approve-range" name="approve_threshold"
@@ -829,8 +820,8 @@
               </div>
               <div class="threshold-row" style="margin-bottom:0">
                 <div class="threshold-label">
-                  <span>반려 기준점</span>
-                  <span style="color:var(--danger);font-size:11px;font-weight:600;">미만 → 반려</span>
+                  <span>{{ 'settings_page.pr_rules.reject_threshold_label' | i18n_args(locale | default('ko')) }}</span>
+                  <span style="color:var(--danger);font-size:11px;font-weight:600;">{{ 'settings_page.pr_rules.reject_threshold_hint' | i18n_args(locale | default('ko')) }}</span>
                 </div>
                 <div class="threshold-ctrl">
                   <input type="range" class="reject-range" name="reject_threshold"
@@ -842,23 +833,20 @@
                 </div>
               </div>
               <div class="range-hint">
-                💡 <strong>{{ config.approve_threshold }}점 이상</strong> 자동 승인 ·
-                   <strong>{{ config.reject_threshold }}점 미만</strong> 자동 반려 · 그 사이 스킵
+                {{ 'settings_page.pr_rules.range_summary' | i18n_args(locale | default('ko'), approve=config.approve_threshold, reject=config.reject_threshold) | safe }}
               </div>
             </div>
 
-            <!-- semi-auto 힌트 (Telegram Chat ID는 알림 채널 카드에서 설정) / semi-auto hint -->
             <div id="semiAutoHint" class="{% if config.approve_mode != 'semi-auto' %}is-hidden{% endif %}"
                  style="margin-top:.75rem;padding:.5rem .75rem;background:var(--hint-bg);border:1px solid var(--hint-border);border-radius:7px;font-size:11px;color:var(--text-muted);line-height:1.6;">
-              💡 반자동 Approve는 <a href="#notifyCard" style="color:var(--accent);font-weight:600;">알림 채널 카드의 Telegram Chat ID</a>로 전송됩니다.
+              {{ 'settings_page.pr_rules.semi_auto_hint' | i18n_args(locale | default('ko')) | safe }}
             </div>
 
-            <!-- Auto-merge 실패 시 Issue 생성 (auto_merge OFF 시 숨김 — 고급 모드에서만 의미) -->
             <div id="mergeIssueRow" class="{% if not config.auto_merge %}is-hidden{% endif %}" style="margin-top:.75rem;">
               <div class="toggle-row">
                 <div class="toggle-info">
-                  <div class="t-title">Auto-merge 실패 시 Issue 자동 생성</div>
-                  <div class="t-desc">실패 사유 + 권장 조치를 담은<br>GitHub Issue 자동 생성</div>
+                  <div class="t-title">{{ 'settings_page.pr_rules.merge_issue_title' | i18n_args(locale | default('ko')) }}</div>
+                  <div class="t-desc">{{ 'settings_page.pr_rules.merge_issue_desc' | i18n_args(locale | default('ko')) | safe }}</div>
                 </div>
                 <label class="toggle-switch">
                   <input type="checkbox" name="auto_merge_issue_on_failure" value="on"
@@ -880,16 +868,16 @@
       <div class="s-card">
         <div class="s-card-hdr hdr-merge">
           <span class="hdr-icon">🛠</span>
-          <span class="hdr-title">이벤트 후 자동화</span>
-          <span class="hdr-badge">Push · Railway · 팀</span>
+          <span class="hdr-title">{{ 'settings_page.post_event.header' | i18n_args(locale | default('ko')) }}</span>
+          <span class="hdr-badge">{{ 'settings_page.post_event.badge' | i18n_args(locale | default('ko')) }}</span>
         </div>
         <div class="s-card-body">
 
-          <div class="s-section-label">Push 이벤트</div>
+          <div class="s-section-label">{{ 'settings_page.post_event.section_push' | i18n_args(locale | default('ko')) }}</div>
           <div class="toggle-row">
             <div class="toggle-info">
-              <div class="t-title">커밋 코멘트</div>
-              <div class="t-desc">Push 커밋에 AI 리뷰 결과를<br>GitHub 커밋 코멘트로 게시</div>
+              <div class="t-title">{{ 'settings_page.post_event.commit_comment_title' | i18n_args(locale | default('ko')) }}</div>
+              <div class="t-desc">{{ 'settings_page.post_event.commit_comment_desc' | i18n_args(locale | default('ko')) | safe }}</div>
             </div>
             <label class="toggle-switch">
               <input type="checkbox" name="commit_comment" value="on"
@@ -901,8 +889,8 @@
           <div class="s-divider"></div>
           <div class="toggle-row">
             <div class="toggle-info">
-              <div class="t-title">점수 미달 시 Issue 생성</div>
-              <div class="t-desc">점수 미달 또는 보안 HIGH 발견 시<br>GitHub Issue 자동 생성</div>
+              <div class="t-title">{{ 'settings_page.post_event.create_issue_title' | i18n_args(locale | default('ko')) }}</div>
+              <div class="t-desc">{{ 'settings_page.post_event.create_issue_desc' | i18n_args(locale | default('ko')) | safe }}</div>
             </div>
             <label class="toggle-switch">
               <input type="checkbox" name="create_issue" value="on"
@@ -912,11 +900,11 @@
           </div>
 
           <div class="s-divider"></div>
-          <div class="s-section-label">Railway 배포</div>
+          <div class="s-section-label">{{ 'settings_page.post_event.section_railway' | i18n_args(locale | default('ko')) }}</div>
           <div class="toggle-row">
             <div class="toggle-info">
-              <div class="t-title">Railway 빌드 실패 알림</div>
-              <div class="t-desc">Railway 빌드 실패 이벤트 수신 시<br>해당 리포에 로그 포함 Issue 자동 생성</div>
+              <div class="t-title">{{ 'settings_page.post_event.railway_alerts_title' | i18n_args(locale | default('ko')) }}</div>
+              <div class="t-desc">{{ 'settings_page.post_event.railway_alerts_desc' | i18n_args(locale | default('ko')) | safe }}</div>
             </div>
             <label class="toggle-switch">
               <input type="checkbox" name="railway_deploy_alerts" id="railway_deploy_alerts" value="on"
@@ -939,47 +927,47 @@
       <div class="s-card notify-full" id="notifyCard">
         <div class="s-card-hdr hdr-notify">
           <span class="hdr-icon">📤</span>
-          <span class="hdr-title">알림 채널 (발신)</span>
-          <span class="hdr-badge">→ 외부</span>
+          <span class="hdr-title">{{ 'settings_page.notify.header' | i18n_args(locale | default('ko')) }}</span>
+          <span class="hdr-badge">{{ 'settings_page.notify.badge' | i18n_args(locale | default('ko')) }}</span>
         </div>
         <div class="s-card-body">
-          <div class="s-section-label">Telegram</div>
+          <div class="s-section-label">{{ 'settings_page.notify.section_telegram' | i18n_args(locale | default('ko')) }}</div>
           <div class="channel-grid">
             <div class="field-row">
               <label class="field-label">
                 <span class="conn-dot {% if config.notify_chat_id %}is-on{% else %}is-off{% endif %}"></span>
-                Telegram Chat ID
+                {{ 'settings_page.notify.telegram_chat_id_label' | i18n_args(locale | default('ko')) }}
               </label>
-              <span class="field-hint">미설정 시 전역 Chat ID 사용 · 반자동 Approve에도 사용</span>
+              <span class="field-hint">{{ 'settings_page.notify.telegram_chat_id_hint' | i18n_args(locale | default('ko')) }}</span>
               <div class="masked-field">
                 <input class="field-input" type="password" name="notify_chat_id"
                        value="{{ config.notify_chat_id or '' }}"
                        placeholder="-100xxxxxxxxx" autocomplete="off">
                 <button type="button" class="mask-toggle" onclick="toggleFieldMask(this)"
-                        aria-label="값 보이기/숨기기">👁️</button>
+                        aria-label="{{ 'settings_page.notify.mask_aria' | i18n_args(locale | default('ko')) }}">👁️</button>
               </div>
             </div>
 
-            <!-- Telegram 계정 연결 OTP (⑤에서 이동) / Telegram account linking OTP (moved from system card) -->
+            {# Telegram OTP / Phase 2 PR-8 — i18n #}
             <div class="field-row">
-              <label class="field-label">Telegram 계정 연결</label>
+              <label class="field-label">{{ 'settings_page.notify.telegram_link_label' | i18n_args(locale | default('ko')) }}</label>
               <div id="telegram-connect-section-notify">
                 {% if current_user.is_telegram_connected %}
-                <p class="text-success" style="font-size:13px;margin:0;">✅ Telegram 계정이 연결되어 있습니다.</p>
+                <p class="text-success" style="font-size:13px;margin:0;">{{ 'settings_page.notify.telegram_link_connected' | i18n_args(locale | default('ko')) }}</p>
                 {% else %}
                 <p style="font-size:13px;color:var(--text-muted);margin-bottom:.5rem;">
-                  Telegram 봇에서 /connect 명령으로 계정을 연결하세요.
+                  {{ 'settings_page.notify.telegram_link_hint' | i18n_args(locale | default('ko')) }}
                 </p>
                 <button type="button" class="hook-btn" id="issueTelegramOtp">
-                  🔗 연결 코드 발급 / Issue Code
+                  {{ 'settings_page.notify.telegram_link_btn' | i18n_args(locale | default('ko')) }}
                 </button>
                 <div id="telegramOtpDisplay" style="display:none;margin-top:.65rem;">
                   <code id="telegramOtpCode" style="font-size:1.4rem;font-weight:700;letter-spacing:.12em;"></code>
                   <span style="font-size:12px;color:var(--text-muted);margin-left:.5rem;">
-                    (<span id="telegramOtpCountdown">5:00</span> 후 만료)
+                    {{ 'settings_page.notify.telegram_otp_expires' | i18n_args(locale | default('ko'), remaining='<span id="telegramOtpCountdown">5:00</span>') | safe }}
                   </span>
                   <p style="font-size:11px;color:var(--text-muted);margin-top:.35rem;margin-bottom:0;">
-                    이전 코드는 무효화됩니다. / Previous codes are invalidated.
+                    {{ 'settings_page.notify.telegram_otp_invalidated' | i18n_args(locale | default('ko')) }}
                   </p>
                 </div>
                 <script>
@@ -1021,75 +1009,75 @@
             </div>
 
             <div class="field-row adv-only">
-              <div class="s-section-label" style="grid-column:1/-1;margin:.6rem 0 .25rem;">메신저 / 이메일</div>
+              <div class="s-section-label" style="grid-column:1/-1;margin:.6rem 0 .25rem;">{{ 'settings_page.notify.section_messengers' | i18n_args(locale | default('ko')) }}</div>
             </div>
             <div class="field-row adv-only">
               <label class="field-label">
                 <span class="conn-dot {% if config.discord_webhook_url %}is-on{% else %}is-off{% endif %}"></span>
-                Discord Webhook
+                {{ 'settings_page.notify.discord_label' | i18n_args(locale | default('ko')) }}
               </label>
               <div class="masked-field">
                 <input class="field-input" type="password" name="discord_webhook_url"
                        value="{{ config.discord_webhook_url or '' }}"
                        placeholder="https://discord.com/api/webhooks/..." autocomplete="off">
                 <button type="button" class="mask-toggle" onclick="toggleFieldMask(this)"
-                        aria-label="값 보이기/숨기기">👁️</button>
+                        aria-label="{{ 'settings_page.notify.mask_aria' | i18n_args(locale | default('ko')) }}">👁️</button>
               </div>
             </div>
             <div class="field-row adv-only">
               <label class="field-label">
                 <span class="conn-dot {% if config.slack_webhook_url %}is-on{% else %}is-off{% endif %}"></span>
-                Slack Webhook
+                {{ 'settings_page.notify.slack_label' | i18n_args(locale | default('ko')) }}
               </label>
               <div class="masked-field">
                 <input class="field-input" type="password" name="slack_webhook_url"
                        value="{{ config.slack_webhook_url or '' }}"
                        placeholder="https://hooks.slack.com/services/..." autocomplete="off">
                 <button type="button" class="mask-toggle" onclick="toggleFieldMask(this)"
-                        aria-label="값 보이기/숨기기">👁️</button>
+                        aria-label="{{ 'settings_page.notify.mask_aria' | i18n_args(locale | default('ko')) }}">👁️</button>
               </div>
             </div>
             <div class="field-row adv-only">
               <label class="field-label">
                 <span class="conn-dot {% if config.email_recipients %}is-on{% else %}is-off{% endif %}"></span>
-                Email 수신자 <span class="field-tag">SMTP 필요</span>
+                {{ 'settings_page.notify.email_label' | i18n_args(locale | default('ko')) }} <span class="field-tag">{{ 'settings_page.notify.email_tag' | i18n_args(locale | default('ko')) }}</span>
               </label>
-              <span class="field-hint">쉼표로 구분</span>
+              <span class="field-hint">{{ 'settings_page.notify.email_hint' | i18n_args(locale | default('ko')) }}</span>
               <div class="masked-field">
                 <input class="field-input" type="password" name="email_recipients"
                        value="{{ config.email_recipients or '' }}"
                        placeholder="admin@example.com, dev@example.com" autocomplete="off">
                 <button type="button" class="mask-toggle" onclick="toggleFieldMask(this)"
-                        aria-label="값 보이기/숨기기">👁️</button>
+                        aria-label="{{ 'settings_page.notify.mask_aria' | i18n_args(locale | default('ko')) }}">👁️</button>
               </div>
             </div>
             <div class="field-row adv-only">
               <label class="field-label">
                 <span class="conn-dot {% if config.custom_webhook_url %}is-on{% else %}is-off{% endif %}"></span>
-                Custom Webhook
+                {{ 'settings_page.notify.custom_label' | i18n_args(locale | default('ko')) }}
               </label>
               <div class="masked-field">
                 <input class="field-input" type="password" name="custom_webhook_url"
                        value="{{ config.custom_webhook_url or '' }}"
                        placeholder="https://example.com/webhook/..." autocomplete="off">
                 <button type="button" class="mask-toggle" onclick="toggleFieldMask(this)"
-                        aria-label="값 보이기/숨기기">👁️</button>
+                        aria-label="{{ 'settings_page.notify.mask_aria' | i18n_args(locale | default('ko')) }}">👁️</button>
               </div>
             </div>
             <div class="field-row adv-only">
-              <div class="s-section-label" style="grid-column:1/-1;margin:.6rem 0 .25rem;">자동화 연동 (발신)</div>
+              <div class="s-section-label" style="grid-column:1/-1;margin:.6rem 0 .25rem;">{{ 'settings_page.notify.section_automation' | i18n_args(locale | default('ko')) }}</div>
             </div>
             <div class="field-row adv-only">
               <label class="field-label">
                 <span class="conn-dot {% if config.n8n_webhook_url %}is-on{% else %}is-off{% endif %}"></span>
-                n8n Webhook
+                {{ 'settings_page.notify.n8n_label' | i18n_args(locale | default('ko')) }}
               </label>
               <div class="masked-field">
                 <input class="field-input" type="password" name="n8n_webhook_url"
                        value="{{ config.n8n_webhook_url or '' }}"
                        placeholder="https://n8n.example.com/webhook/..." autocomplete="off">
                 <button type="button" class="mask-toggle" onclick="toggleFieldMask(this)"
-                        aria-label="값 보이기/숨기기">👁️</button>
+                        aria-label="{{ 'settings_page.notify.mask_aria' | i18n_args(locale | default('ko')) }}">👁️</button>
               </div>
             </div>
           </div>
@@ -1099,7 +1087,7 @@
     </div><!-- /settings-grid -->
 
     <div class="save-bar">
-      <button type="submit" class="btn-save-new">💾 설정 저장</button>
+      <button type="submit" class="btn-save-new">{{ 'settings_page.save' | i18n_args(locale | default('ko')) }}</button>
     </div>
 
   </form>
@@ -1109,62 +1097,59 @@
   <div class="s-card adv-only" style="margin-bottom:1rem;">
     <div class="s-card-hdr hdr-hook">
       <span class="hdr-icon">📥</span>
-      <span class="hdr-title">통합 &amp; 인증 (수신)</span>
-      <span class="hdr-badge">⚡ + 💾 혼합</span>
+      <span class="hdr-title">{{ 'settings_page.inbound.header' | i18n_args(locale | default('ko')) }}</span>
+      <span class="hdr-badge">{{ 'settings_page.inbound.badge' | i18n_args(locale | default('ko')) }}</span>
     </div>
     <div class="s-card-body">
 
-      <!-- P1-2: 카드 동작 안내 — 사용자 인식 격차 해소 (form 구조 변경 없이 라벨만 추가)
-           P1-2: Card behaviour notice — closes the perception gap without changing form structure -->
+      {# Phase 2 PR-8 — i18n / Card behaviour notice #}
       <p style="font-size:12px;color:var(--text-muted);margin:0 0 1rem;padding:.5rem .75rem;
                 background:var(--hint-bg);border-left:3px solid var(--accent);border-radius:6px;line-height:1.55;">
-        💡 <strong>각 항목 동작 방식이 다릅니다</strong> —
-        🔗 GitHub Webhook 재등록 / 🔄 CLI Hook 재커밋 버튼은 <strong>클릭 시 즉시 실행</strong>됩니다.
-        Railway API 토큰만 페이지 하단의 <strong>💾 설정 저장</strong> 버튼으로 적용됩니다.
+        {{ 'settings_page.inbound.behavior_notice' | i18n_args(locale | default('ko')) | safe }}
       </p>
 
-      <div class="s-section-label">GitHub 수신 Webhook</div>
+      <div class="s-section-label">{{ 'settings_page.inbound.section_github_webhook' | i18n_args(locale | default('ko')) }}</div>
       <div class="hook-btns" style="margin-bottom:.5rem;">
         <button type="submit" class="hook-btn" form="reinstall_webhook_form"
-                data-reinstall-webhook>🔗 GitHub 수신 Webhook 재등록</button>
+                data-reinstall-webhook>{{ 'settings_page.inbound.github_reinstall_btn' | i18n_args(locale | default('ko')) }}</button>
       </div>
-      <span class="field-hint">GitHub이 SCAManager로 push·PR·check_suite 이벤트를 전송합니다.</span>
+      <span class="field-hint">{{ 'settings_page.inbound.github_reinstall_hint' | i18n_args(locale | default('ko')) }}</span>
 
       <div class="s-divider"></div>
-      <div class="s-section-label">CLI Hook (pre-push)</div>
+      <div class="s-section-label">{{ 'settings_page.inbound.section_cli_hook' | i18n_args(locale | default('ko')) }}</div>
       {% if hook_ok %}
-      <div class="hook-alert ok">✅ <strong>.scamanager/</strong> 파일이 Repo에 커밋됐습니다.</div>
+      <div class="hook-alert ok">{{ 'settings_page.inbound.hook_ok' | i18n_args(locale | default('ko')) | safe }}</div>
       {% endif %}
       {% if hook_fail %}
-      <div class="hook-alert fail">❌ 파일 커밋 실패. GitHub 토큰 권한(repo 스코프)을 확인하세요.</div>
+      <div class="hook-alert fail">{{ 'settings_page.inbound.hook_fail' | i18n_args(locale | default('ko')) }}</div>
       {% endif %}
       <div class="hook-code">git pull &amp;&amp; bash .scamanager/install-hook.sh</div>
       <div class="hook-btns">
-        <button type="submit" class="hook-btn" form="reinstall_hook_form">🔄 훅 파일 재커밋</button>
+        <button type="submit" class="hook-btn" form="reinstall_hook_form">{{ 'settings_page.inbound.hook_recommit_btn' | i18n_args(locale | default('ko')) }}</button>
       </div>
 
       <div class="s-divider"></div>
 
       <div class="s-section-label">
         <span class="conn-dot {% if railway_api_token_set %}is-on{% else %}is-off{% endif %}"></span>
-        Railway API 토큰
+        {{ 'settings_page.inbound.section_railway_token' | i18n_args(locale | default('ko')) }}
       </div>
       <div class="field-row">
         <div class="masked-field">
           <input class="field-input" type="password" name="railway_api_token"
                  form="settingsForm"
-                 placeholder="railway_api_token (설정 시 빌드 로그 200줄 포함)"
+                 placeholder="{{ 'settings_page.inbound.railway_token_placeholder' | i18n_args(locale | default('ko')) }}"
                  value="{{ '****' if railway_api_token_set else '' }}"
                  autocomplete="off">
           <button type="button" class="mask-toggle" onclick="toggleFieldMask(this)"
-                  aria-label="값 보이기/숨기기">👁️</button>
+                  aria-label="{{ 'settings_page.notify.mask_aria' | i18n_args(locale | default('ko')) }}">👁️</button>
         </div>
-        <span class="field-hint">Railway 대시보드 → Account Settings → Tokens 에서 발급. 변경하지 않으려면 그대로 두세요.</span>
+        <span class="field-hint">{{ 'settings_page.inbound.railway_token_hint' | i18n_args(locale | default('ko')) }}</span>
       </div>
 
       <div class="s-section-label" style="margin-top:.85rem">
         <span class="conn-dot {% if railway_webhook_url %}is-on{% else %}is-off{% endif %}"></span>
-        Railway Webhook URL
+        {{ 'settings_page.inbound.section_railway_webhook' | i18n_args(locale | default('ko')) }}
       </div>
       {% if railway_webhook_url %}
       <div class="field-row">
@@ -1174,42 +1159,39 @@
           <button type="button" class="hook-btn"
                   onclick="navigator.clipboard.writeText(document.getElementById('railway-webhook-url').value)">📋</button>
         </div>
-        <span class="field-hint">Railway Project Settings → Webhooks 에 위 URL 을 추가하세요.</span>
+        <span class="field-hint">{{ 'settings_page.inbound.railway_webhook_hint' | i18n_args(locale | default('ko')) }}</span>
       </div>
       {% else %}
-      <span class="field-hint">설정 저장 후 Railway Webhook URL 이 자동 생성됩니다.</span>
+      <span class="field-hint">{{ 'settings_page.inbound.railway_webhook_pending' | i18n_args(locale | default('ko')) }}</span>
       {% endif %}
 
     </div>
   </div>
 
-  <!-- ⑦ 위험 구역 (전체 .adv-only) / Danger zone (entire card .adv-only) -->
+  {# Danger zone / Phase 2 PR-8 — i18n #}
   <div class="s-card adv-only" style="margin-bottom:2rem;">
     <div class="s-card-hdr" style="background:linear-gradient(135deg,#991b1b,#dc2626)">
       <span class="hdr-icon">⚠️</span>
-      <span class="hdr-title">위험 구역</span>
-      <span class="hdr-badge">⚡ 즉시 실행</span>
+      <span class="hdr-title">{{ 'settings_page.danger.header' | i18n_args(locale | default('ko')) }}</span>
+      <span class="hdr-badge">{{ 'settings_page.danger.badge' | i18n_args(locale | default('ko')) }}</span>
     </div>
     <div class="s-card-body">
-      <!-- P1-2: 카드 동작 안내 — 삭제는 저장 버튼과 무관하게 즉시 실행됨을 명시
-           P1-2: Behaviour notice — delete is independent of the save button -->
       <p style="font-size:12px;color:var(--text-muted);margin:0 0 1rem;padding:.5rem .75rem;
                 background:rgba(220,38,38,.08);border-left:3px solid var(--danger);border-radius:6px;line-height:1.55;">
-        💡 이 카드의 작업은 <strong>버튼 클릭 시 즉시 실행</strong>됩니다 (저장 불필요).
+        {{ 'settings_page.danger.behavior_notice' | i18n_args(locale | default('ko')) | safe }}
       </p>
       <details class="danger-summary-wrap">
-        <summary class="danger-summary">⚠️ 위험한 작업 펼치기</summary>
+        <summary class="danger-summary">{{ 'settings_page.danger.summary' | i18n_args(locale | default('ko')) }}</summary>
         <div style="margin-top:.75rem;">
           <div class="toggle-row">
             <div class="toggle-info">
-              <div class="t-title" style="color:var(--danger);">리포지토리 삭제</div>
-              <div class="t-desc">SCAManager에서 이 리포지토리를 제거합니다.<br>
-                GitHub Webhook과 모든 분석 이력이 영구 삭제됩니다.</div>
+              <div class="t-title" style="color:var(--danger);">{{ 'settings_page.danger.delete_repo_title' | i18n_args(locale | default('ko')) }}</div>
+              <div class="t-desc">{{ 'settings_page.danger.delete_repo_desc' | i18n_args(locale | default('ko')) | safe }}</div>
             </div>
             <form method="post" action="/repos/{{ repo_name }}/delete"
-                  onsubmit="return confirm('정말 「{{ repo_name }}」 리포지토리를 삭제하시겠습니까?\n\n모든 분석 이력과 GitHub Webhook이 영구 삭제됩니다.');">
+                  onsubmit="return confirm({{ 'settings_page.danger.delete_confirm' | i18n_args(locale | default('ko'), repo_name=repo_name) | tojson }});">
               <button type="submit" style="background:var(--danger);color:#fff;border:none;border-radius:8px;padding:.6rem 1.1rem;font-weight:600;cursor:pointer;">
-                🗑️ 삭제
+                {{ 'settings_page.danger.delete_btn' | i18n_args(locale | default('ko')) }}
               </button>
             </form>
           </div>
@@ -1218,12 +1200,12 @@
     </div>
   </div>
 
-  <!-- CLI Hook / Webhook 재등록 hidden form / CLI Hook / Webhook re-registration hidden form -->
+  {# Hidden forms — Phase 2 PR-8 — i18n confirm dialog #}
   <form id="reinstall_hook_form" method="post"
         action="/repos/{{ repo_name }}/reinstall-hook" style="display:none"></form>
   <form id="reinstall_webhook_form" method="post"
         action="/repos/{{ repo_name }}/reinstall-webhook" style="display:none"
-        onsubmit="return confirm('GitHub Webhook을 재등록합니다.\n기존 Webhook이 삭제되고 새로 생성됩니다.')"></form>
+        onsubmit="return confirm({{ 'settings_page.danger.webhook_reinstall_confirm' | i18n_args(locale | default('ko')) | tojson }})"></form>
 
 </div>
 

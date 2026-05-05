@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from src.auth.session import CurrentUser, require_admin
 from src.database import SessionLocal
 from src.services import operations_service, saas_service
-from src.ui._helpers import templates
+from src.ui._helpers import get_locale, templates
 
 router = APIRouter()
 
@@ -50,6 +50,7 @@ def admin_tenants(
             "current_user": admin,
             "tenants": inventory,
             "total_tenants": len(inventory),
+            "locale": get_locale(request),
         },
     )
 
@@ -70,6 +71,7 @@ def admin_rls_audit(
             "current_user": admin,
             "matrix": saas_service.rls_audit_matrix(),
             "summary": saas_service.rls_coverage_summary(),
+            "locale": get_locale(request),
         },
     )
 
@@ -93,5 +95,6 @@ def admin_operations(
             "current_user": admin,
             "kpi": kpi,
             "days": days,
+            "locale": get_locale(request),
         },
     )
