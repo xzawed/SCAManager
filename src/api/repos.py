@@ -33,6 +33,9 @@ class RepoConfigUpdate(BaseModel):
     create_issue: bool = False
     railway_deploy_alerts: bool = False
     auto_merge_issue_on_failure: bool = False
+    # Phase 1 PR-1c (사이클 84) — 다국어 지원 리포별 알림 언어 override
+    # NULL = 사용자 preferred_language fallback (Phase 3 PR-9~11 알림 채널 영역)
+    notification_language: str | None = None
     # leaderboard_opt_in 폐기 (그룹 60 사용자 결정 정정 — alembic 0025)
 
     @model_validator(mode="after")

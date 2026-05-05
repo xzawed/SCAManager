@@ -32,6 +32,12 @@ class RepoConfig(Base):
     auto_merge_issue_on_failure = Column(Boolean, default=False, nullable=False)
     # leaderboard_opt_in 컬럼 — 그룹 60 사용자 결정 정정 (2026-05-02) 으로 폐기.
     # alembic 0025 에서 컬럼 drop. 회귀 가드: tests/unit/services/test_analytics_service_deprecations.py
+
+    # Phase 1 PR-1c (사이클 84) — 다국어 지원 리포별 알림 언어 override
+    # Per-repo notification language override (Phase 1 PR-1c).
+    # Nullable=True (NULL = 사용자 preferred_language fallback / NULL = fallback to user)
+    notification_language = Column(String(5), nullable=True)
+
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
