@@ -10,6 +10,7 @@ from sqlalchemy import create_engine, event, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import sessionmaker, DeclarativeBase, Session
 from src.config import settings
+from src.shared.alembic_dialect import is_postgresql
 from src.shared.rls_context import get_rls_user_id
 
 logger = logging.getLogger(__name__)
@@ -244,7 +245,7 @@ def _set_rls_user_id_per_query(  # pylint: disable=too-many-arguments,too-many-p
     SQLite dialect 또는 contextvars 조회 실패 시 graceful skip — query 차단 X.
     SQLite dialect or contextvars failure → graceful skip (never break query).
     """
-    if conn.dialect.name != "postgresql":
+    if not is_postgresql(conn):
         return
     try:
         user_id = get_rls_user_id()

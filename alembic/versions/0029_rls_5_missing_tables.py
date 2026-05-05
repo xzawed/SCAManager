@@ -25,6 +25,8 @@ Create Date: 2026-05-04
 """
 from alembic import op
 
+from src.shared.alembic_dialect import is_postgresql
+
 
 revision = "0029rls5missing"
 down_revision = "0028insightcache"
@@ -150,7 +152,7 @@ def upgrade() -> None:
     SQLite 단위 테스트 환경에서는 자동 skip.
     """
     bind = op.get_bind()
-    if bind.dialect.name != "postgresql":
+    if not is_postgresql(bind):
         return  # SQLite 단위 테스트 호환 — RLS skip
     for stmt in _RLS_STATEMENTS:
         op.execute(stmt)
@@ -162,7 +164,7 @@ def downgrade() -> None:
     Drop RLS policies + disable RLS (PostgreSQL only).
     """
     bind = op.get_bind()
-    if bind.dialect.name != "postgresql":
+    if not is_postgresql(bind):
         return
     for stmt in _DROP_STATEMENTS:
         op.execute(stmt)

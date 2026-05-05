@@ -16,6 +16,8 @@ TTL 만료 시 재생성 default (자동 invalidate 미적용 — MVP 단순화)
 import sqlalchemy as sa
 from alembic import op
 
+from src.shared.alembic_dialect import is_postgresql
+
 
 revision = "0028insightcache"
 down_revision = "0027securityalertlog"
@@ -68,7 +70,7 @@ def upgrade() -> None:
     )
 
     bind = op.get_bind()
-    if bind.dialect.name == "postgresql":
+    if is_postgresql(bind):
         op.execute(_RLS_INSIGHT_CACHE)
 
 
@@ -77,7 +79,7 @@ def downgrade() -> None:
     Drop RLS policy + table.
     """
     bind = op.get_bind()
-    if bind.dialect.name == "postgresql":
+    if is_postgresql(bind):
         op.execute("DROP POLICY IF EXISTS insight_cache_isolation ON insight_narrative_cache;")
 
     op.drop_index(
