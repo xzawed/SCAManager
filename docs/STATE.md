@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-06 기준 — **사이클 85 Sentry 완전 제거 + GitHub 정리 (62 branch 일괄 삭제)**: 100 PR #188~#308+ (메타 #213/#214 + #305 empty re-merge 제외) — 누적 정책 본문 16건 + 메모리 29건 (활성 27 + deprecated 2). **Sentry 통합 폐기 (사용자 명시 결정)** — `src/shared/observability.py` 폐기 + 테스트 -40 + `sentry-sdk[fastapi]>=2.0.0` 의존성 제거 + 환경변수 3건 (.env.example) + runbook archive (`_archive/sentry-activation.md`). 운영 영향 0 (`extra: "ignore"` policy 페어). 단위 2669 / 통합 129 / E2E 96
+## 현재 수치 (2026-05-06 기준 — **사이클 85 Sentry 폐기 + CLAUDE.md Anthropic 200줄 정합 정정 + 사이클 86 Q3 종결**: 102+ PR #188~#322+ (메타 #213/#214 + #305 empty re-merge 제외) — 누적 정책 본문 16건 + 메모리 29건 (활성 27 + deprecated 2). **사이클 85 종결**: Sentry 통합 완전 폐기 (#317) + CLAUDE.md cleanup Anthropic 권고 6.4배 → 3.8배 (#320 + Q3) — 1271 → 762 LOC (-40%) / ~57K → ~20K 토큰 (-65%). **사이클 86 Q3** = 정책 본문 진화 entry → `docs/policies/history.md` 이전. 단위 2669 / 통합 129 / E2E 96
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
@@ -111,6 +111,28 @@
 | **#232** Docs/cycle-67-end multi-agent retrospective | **4 사이클 종결 회고** — 1차 5 에이전트 (cross-verify 생략 — 사용자 빠른 진행 신호 + 1차 결과 충분). P0 13 + P1 7 + P2 3 식별. **메모리 4건** (3 신설: stale-blocker / asgi-middleware / conftest-direct-env-set + 1 갱신: architecture-pre-confirm 위임 분류 3-tier 정밀화). MEMORY 인덱스 8→11건. 회고 보고서 + 자유 발언 (정책 9) + 회고 질문 (사용자 회신 의무) |
 | **#233** Docs/policy-evolution cycle-67 P0 bundle | **사이클 67 회고 P0 4건 정책 본문 진화** (정책 7 강화 응집): (1) 정책 7 강화 — 단일 PR > 1500 LOC 사전 확인 + architecture 단일 OK 정정 (관점 1 P0-1+P0-2) (2) 정책 8 — cross-verify 생략 조건 + 회고 PR 패턴 3 분기 (관점 1 P0-3) (3) 정책 2 진화 — 모든 sync PR commit body 실측 1줄 의무 (관점 2 P0-1) (4) 30초 체크리스트 — 메모리 11건 사례 + 트랩 차단 효과 (관점 2 P0-2). 카테고리 분류 (관점 4 P0-2) = 별도 PR (High tier 사용자 결정 의무) |
 | **#234** Docs/cycle-68 end state sync | **사이클 68 종료 sync** — STATE 헤더 38→41 PR + 사이클 68 행 신설 + CLAUDE.md L1052 tail. 단위 2055 / 통합 84 / E2E 82 변화 0 (docs only). 정책 2 진화 default 첫 적용 — 실측 1줄 의무 명시 |
+
+---
+
+### 사이클 85 — Sentry 통합 폐기 + GitHub 정리 + CLAUDE.md Anthropic 200줄 정합 정정 (2026-05-06 · #317 + #320 + 사이클 86 Q3 + 본 회고+sync)
+
+사용자 명시 결정 2건 + 5+1 다중 에이전트 사전 검토 2회. 본 사이클 = **CLAUDE.md 효율성 대규모 정정** + **운영 의존성 단순화** (Sentry 통합 폐기 + 62 stale branches cleanup).
+
+| PR # | 제목 | 핵심 |
+|------|------|------|
+| **#317** chore/cycle-85-remove-sentry-completely | **Sentry 통합 완전 제거 + GitHub 정리** — 5 에이전트 사전 검토 (관점 1~5) → 자율 판단 보고 사용자 승인. `src/shared/observability.py` 105 LOC + 테스트 3 파일 458 LOC + `sentry-sdk[fastapi]` 의존성 제거 + `.env.example` 환경변수 3건 폐기 + `docs/runbooks/_archive/sentry-activation.md` archive 이동. **GitHub 정리** = alert-autofix 8 branch + stale 작업 54 branch = **62 branch 일괄 삭제** (사이클 71 패턴). 단위 -40 (2709 → 2669 — Sentry 테스트 폐기). Observability 4-layer → 3-layer (Claude metrics + stage timing + MergeAttempt) |
+| **#320** chore/cycle-85-claude-md-anthropic-200-lines-target | **CLAUDE.md Anthropic 200줄 정합 정정** — 5+1 다중 에이전트 사전 검토 (Anthropic 권고 + 토큰 분석 + 활용도 + tail entry + 정합성 + cross-verify) → Q1=🅒 + Q2=🅐 + Q3=🅑 + Q4=🅑 사용자 명시 결정. **6 신규 docs**: `docs/architecture.md` + `docs/cycle-history.md` + `docs/runbooks/railway.md` + `docs/reference/scoring.md` + `docs/policies/history.md` (Q3 stub) + `.claude/rules/<area>.md` 8 영역 (**Anthropic 공식 path-scoped rules 패턴 첫 도입**). **CLAUDE.md 1271 → 865 LOC (-32%) / 162K → 45K chars (-72%) / ~57K → ~22K 토큰 (-61%)** — Anthropic 권고 (200줄 hard target) 6.4배 → 4.3배 점진 진입 |
+| **사이클 86 Q3** chore/cycle-86-q3-policy-history-extraction | **Q3 정책 본문 진화 entry 실 추출 (사이클 85 stub 후속)** — 정책 1/2/3/7/8/11 진화 entry → `docs/policies/history.md` 이전. 정책 default rule + WHY/HOW + 진화 default 요약 1줄 본문 보존 (행동 가이드 영향 0). CLAUDE.md 865 → **762 LOC** (-12% 추가, -40% 누적). 신설 정책 (12~16) 보존 default |
+| **본 회고+sync PR** docs/cycle-85-end-retrospective-and-sync | **사이클 85 종결 회고 + Tier A sync** — 5+1 다중 에이전트 (관점 1~5) + cross-verify 6차 생략 (사용자 빠른 진행 신호 + 1차 결과 일관 — 사이클 67 #232 패턴 정합) + Tier A 4건 정정 (STATE 사이클 85 row + README/README.ko 배지 stale 2709→2669 + 본 회고 보고서 + 정책 8 진화 (2) cross-verify 정량 사후 명시). 회고 보고서: [`docs/reports/2026-05-06-cycle-85-end-multi-agent-retrospective.md`](reports/2026-05-06-cycle-85-end-multi-agent-retrospective.md) |
+
+**사이클 85 신규 LOC 합** (네 PR 통합 추정): -601 (Sentry) + +233 (CLAUDE.md cleanup 신규 - 제거) - 103 (Q3) + 회고 sync = **-471 LOC + 8 .claude/rules/ + 6 docs 신설 + 62 branch 삭제**. **회고 5+1 다중 에이전트** ([2026-05-06](reports/2026-05-06-cycle-85-end-multi-agent-retrospective.md)) — Tier A 4건 (본 PR) + Tier B 4건 (사용자 결정 의무) + Tier C 2건 (보류).
+
+**자율 판단 보고 (정책 3 강화 — ⚠️ 마커 적용)**:
+- ⚠️ Sentry 완전 제거 = High tier (architecture + 데이터 모델 + 사용자 인지 영향) — 사용자 명시 결정 정합 ✅
+- ⚠️ CLAUDE.md cleanup Q1=🅒 deep + Q4=🅑 path-scoped = 신규 디렉토리 (.claude/rules/) + 신규 패턴 첫 도입 — 사용자 명시 결정 정합 ✅
+- ⚠️ Q3 정책 본문 진화 분리 = 행동 가이드 영향 영역 (default rule + 요약 보존으로 영향 0 검증)
+- ⚠️ cross-verify 6차 생략 (본 회고) = 사용자 빠른 진행 신호 + 1차 5 결과 일관 정합 (사이클 67 #232 패턴)
+- ⚠️ 정책 1 진화 적용 누락 (Q1~Q4 일괄 결정 시 자가 보고 요청 X) = 자성 영역 (회고 §자성 명시) — 다음 사이클 default 적용 약속
 
 ---
 
