@@ -235,7 +235,10 @@ def _settings_ctx(**overrides) -> dict:
 
 
 def test_settings_renders_korean_headers_and_save():
-    """settings.html — 한국어 6 카드 헤더 + mode toggle + save."""
+    """settings.html — 한국어 5 카드 헤더 + mode toggle + save (Q5 — 언어 카드 제거 사이클 84 회고).
+
+    settings.html — Korean 5 card headers + mode toggle + save (Q5 — language card removed in Cycle 84 retro).
+    """
     out = _render("settings.html", locale="ko", **_settings_ctx())
     # Title block
     assert "설정 — owner/repo" in out
@@ -246,8 +249,9 @@ def test_settings_renders_korean_headers_and_save():
     assert "보기 모드" in out
     assert "✨ Simple" in out and "필수 항목만" in out
     assert "⚙️ Advanced" in out and "전체 설정" in out
-    # 6 card headers
-    assert ">언어 설정<" in out
+    # 5 card headers (사이클 84 Q5 — 언어 카드 제거, 헤더 dropdown 단일 진실 소스)
+    # 5 card headers (Cycle 84 Q5 — language card removed, header dropdown is single source of truth)
+    assert ">언어 설정<" not in out  # 회귀 가드 / regression guard
     assert ">빠른 설정<" in out
     assert ">PR 동작 규칙<" in out
     assert ">이벤트 후 자동화<" in out
@@ -265,7 +269,8 @@ def test_settings_renders_english_headers():
     assert "Repository Settings" in out
     assert "View mode" in out
     assert "Essentials only" in out
-    assert ">Language<" in out
+    # 사이클 84 Q5 — Language card removed (header dropdown = single source of truth)
+    assert ">Language<" not in out  # 회귀 가드 / regression guard
     assert ">Quick Settings<" in out
     assert ">PR Behavior Rules<" in out
     assert ">Post-event automation<" in out
@@ -281,7 +286,8 @@ def test_settings_renders_japanese_headers():
     assert "← 詳細" in out
     assert "リポジトリ設定" in out
     assert "表示モード" in out
-    assert ">言語設定<" in out
+    # 사이클 84 Q5 — 言語設定 card removed (header dropdown = single source of truth)
+    assert ">言語設定<" not in out  # 회귀 가드 / regression guard
     assert ">クイック設定<" in out
     assert ">PR 動作ルール<" in out
     assert ">イベント後の自動化<" in out

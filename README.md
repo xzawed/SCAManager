@@ -59,6 +59,28 @@ Most code review tools make you choose between static analysis precision and AI 
 
 ---
 
+## 🌐 Multilingual Support (English / 한국어 / 日本語)
+
+SCAManager supports **3 languages** across the entire user-facing surface — UI, notifications, and AI code review prompts. (Cycle 84 — 18 PR series)
+
+| Surface | Translated | Source of truth |
+|---------|------------|-----------------|
+| **Web UI** (login / dashboard / settings / admin) | All labels, buttons, hints | Header dropdown 🌐 (top nav) |
+| **Notifications** (Telegram / Discord / Slack / Email / GitHub PR Comment / Commit Comment / Issue) | All message templates | 3-layer fallback: User language → Repo notification language → default |
+| **AI Code Review** (Claude — 50 languages) | Tier1/Tier2/Tier3 + generic guides | 2-layer fallback: Repo owner language → User language → default |
+
+**How to switch**: Click the language dropdown 🌐 in the top header. Changes apply immediately and persist via cookie.
+
+**Notes**:
+- Language preference is stored on the User account (header dropdown is the single source of truth — there is no separate language setting in `/settings`)
+- GitHub Issue titles + Email subjects keep an English prefix for searchability (`[SCAManager]`, `[Code Review]`)
+- Anthropic prompt cache automatically diverges per language (system text hash differs → cache key separated, no manual config)
+- Kill-switch: set `I18N_DISABLED=1` to fall back to default locale only (operational emergencies)
+
+Detailed environment variables: [docs/reference/env-vars.md](docs/reference/env-vars.md#%EB%8B%A4%EA%B5%AD%EC%96%B4-%EC%A7%80%EC%9B%90-phase-1-pr-1a-cycle-84)
+
+---
+
 ## ✨ Features
 
 ### 🔍 Automated Code Analysis
