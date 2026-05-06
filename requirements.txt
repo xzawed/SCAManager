@@ -10,8 +10,8 @@ alembic==1.13.3
 psycopg2-binary==2.9.11
 PyGithub==2.3.0
 httpx==0.27.2
-# authlib>=1.6.11 — GHSA-jj8c-mmj3-mmgv (OAuth cache CSRF) fix
-authlib>=1.6.11
+# authlib>=1.7.2 — GHSA-jj8c-mmj3-mmgv (OAuth cache CSRF) fix
+authlib>=1.7.2
 itsdangerous>=2.1.0
 # starlette는 fastapi가 CVE 패치 버전을 번들로 가져옴 — 독립 핀 불필요
 # starlette CVE patches are bundled via fastapi>=0.115.5 — no standalone pin needed
