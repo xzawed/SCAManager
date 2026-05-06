@@ -2,13 +2,13 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-05 기준 — **사이클 84 다국어 i18n Phase 1 종결 (#283/#284/#285)**: 78 PR #188~#285 (메타 #213/#214 제외) — 누적 정책 본문 16건 + 메모리 27건 (활성 25 + deprecated 2). **사이클 84 다국어 (영어/한국어/일본어) Phase 1 인프라 = PR-1a (#283 환경변수 5건 + kill-switch + config) + PR-1b (#284 LocaleMiddleware ASGI + 번역 로더/필터 + en/ko/ja.json) + PR-1c (#285 alembic 0030 + ORM 3 모델 확장 + composite index)**. 단위 2305 / 통합 118 / E2E 82
+## 현재 수치 (2026-05-06 기준 — **사이클 84 다국어 i18n Phase 1~5 + 18 PR 종결 (#283~#304)**: 96 PR #188~#304 (메타 #213/#214 + #305 empty re-merge 제외) — 누적 정책 본문 16건 + 메모리 27건 (활성 25 + deprecated 2). **사이클 84 다국어 (영어/한국어/일본어) i18n 18 PR = Phase 1 (PR-1a/b/c #283~#285) + Phase 2 UI 5 PR (#287/#289/#290/#293/#294) + Phase 3 알림 3 PR (#295/#296/#297) + Phase 4 코드리뷰 4 PR (#298~#301) + Phase 5 검증/관측 3 PR (#302/#303/#304)**. 단위 2709 / 통합 129 / E2E 96
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **2305개** | pytest 9.0.3 — 사이클 73~75 +67 + 사이클 78~82 +114 (2122→2236) + **사이클 84 i18n Phase 1 +69 누적** (PR-1a #283 +20 = field_validator 4 + 환경변수 5 + kill-switch 통합 / PR-1b #284 +36 = LocaleMiddleware 12 + loader 16 + filters 9 (Copilot Autofix 후 -1) / PR-1c #285 +13 = alembic 0030 회귀 가드 10 + 5-way sync). **= 2305 collected / 2303 passed / 2 skipped / 0 failed** |
-| 통합 테스트 | **118개** | tests/integration/ — 사이클 81 영역 🅑 모바일 Phase 1 MVP 4 PR 분할 +34 누적: PR-A (#262 PWA manifest +7) + PR-B (#263 dashboard mobile priority +5) + PR-C (#264 settings mobile +10) + PR-D (#265 form sweep +12). **= 115 passed / 3 skipped / 0 failed** |
-| E2E 테스트 | **82개** | `make test-e2e` (Chromium Playwright) — Phase 3 PR 6 +7 (test_dashboard_insight — 페이지 로드 4 + localStorage persist 3) **= 80 passed / 0 failed / 2 pre-existing fail (test_settings 2건, 본 사이클 무관)**. ⚠️ e2e ↔ tests/integration 동시 실행 금지 — `e2e/pytest.ini` 의도적 asyncio_mode 미설정, 분리 실행 default (`make test-e2e` vs CI command `pytest tests/`) |
+| 단위 테스트 | **2709개** | pytest 9.0.3 — 사이클 73~75 +67 + 사이클 78~82 +114 (2122→2236) + **사이클 84 i18n 18 PR +473 누적** (Phase 1 +69 / Phase 2~5 +404 — UI 5 + 알림 3 + 코드리뷰 4 + 검증 3 + 가드 11 smoke). **= 2709 collected / 2705 passed / 4 skipped / 0 failed** |
+| 통합 테스트 | **129개** | tests/integration/ — 사이클 81 영역 🅑 모바일 Phase 1 MVP +34 + **사이클 84 i18n PR-18 smoke +11** (3 언어 × /login Cookie + HTML lang attr + default fallback + i18n metrics). **= 124 passed / 5 skipped / 0 failed** |
+| E2E 테스트 | **96개** | `make test-e2e` (Chromium Playwright) — Phase 3 PR 6 +7 + **사이클 84 i18n PR-16 +14** (3 언어 × 4 페이지 — login/overview/dashboard/settings + Cookie fallback + locale switch). **= 94 passed / 0 failed / 2 pre-existing fail (test_settings 2건, 본 사이클 무관)**. ⚠️ e2e ↔ tests/integration 동시 실행 금지 — `e2e/pytest.ini` 의도적 asyncio_mode 미설정, 분리 실행 default (`make test-e2e` vs CI command `pytest tests/`) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
@@ -114,18 +114,33 @@
 
 ---
 
-### 사이클 84 — 다국어 (영어/한국어/일본어) i18n 지원 Phase 1 종결 (2026-05-05 · #283 + #284 + #285 + 본 sync)
+### 사이클 84 — 다국어 (영어/한국어/일본어) i18n 지원 18 PR 종결 (2026-05-05 · #283 ~ #304 + 본 회고+sync PR)
 
-사용자 명시 task ("긴급 + 영어/한국어/일본어 + 코드리뷰 + 대시보드 메뉴 커버 + 5번 정도 검수 + 세부 기획안") → 5+1 다중 에이전트 (관점 1~5) + cross-verify 6차 + 본인 5 라운드 검수 + 18 PR 분할 (Phase 1~5, ~12,100 LOC, 3~5주) 기획안 작성 후 Phase 1 PR-1a/b/c 분할 진행 (Q9 = 🅑 3 PR 분할 채택).
+사용자 명시 task ("긴급 + 영어/한국어/일본어 + 코드리뷰 + 대시보드 메뉴 커버 + 5번 정도 검수 + 세부 기획안") → 5+1 다중 에이전트 (관점 1~5) + cross-verify 6차 + 본인 5 라운드 검수 + 18 PR 분할 (Phase 1~5, ~10,800 LOC) 기획안 작성 후 단일 작업일 (2026-05-05) 18 PR 진행. 14회 연속 "머지 했습니다 다음 작업 진행" 신호 → 평균 머지 간격 20.6분/PR. **사이클 64 #225 회고+sync 페어 패턴** 적용 (본 PR).
 
 | PR # | 제목 | 핵심 |
 |------|------|------|
-| **#283** Feat/i18n-phase1-pr1a-config-and-kill-switch | **PR-1a 환경변수 + kill-switch + config.py** — 5 환경변수 (DEFAULT_LOCALE / SUPPORTED_LOCALES / LOCALE_FALLBACK / I18N_TRANSLATIONS_DIR / I18N_DISABLED) + field_validator 4건 + .env.example + env-vars.md 신규 "다국어 지원" 섹션 + 회귀 가드 20건 |
-| **#284** Feat/i18n-phase1-pr1b-locale-middleware-and-loader | **PR-1b LocaleMiddleware + 번역 로더/필터 + en/ko/ja.json** — `src/middleware/locale.py` ASGI (5단계 locale 감지 + kill-switch) + `src/i18n/loader.py` (TranslationLoader + LRU cache + namespace dot path + 영문 fallback) + `src/i18n/filters.py` (Jinja2 i18n + i18n_args) + en/ko/ja.json (8 namespace × 3 언어 = 24 영역 skeleton) + 회귀 가드 36건 (LocaleMiddleware 12 + loader 16 + filters 9 — Copilot Autofix 후 정정). Babel 미사용 (JSON dict 자체 구현 — 정책 16 4번 원칙 정합) |
-| **#285** Feat/i18n-phase1-pr1c-alembic-0030-and-orm | **PR-1c alembic 0030 + ORM 3 모델 확장 + composite index** — 3 컬럼 (users.preferred_language + repo_configs.notification_language + insight_narrative_cache.language) + composite index `ix_insight_cache_user_days_language` (cross-verify 6차 §3.1 캐시 키 분리 의무) + 5-way sync (ORM + RepoConfigData + RepoConfigUpdate) + 회귀 가드 10건 + ORM lazy import 트랩 차단 (메모리 페어) |
-| **본 PR** Docs/i18n-phase1-end-sync | **사이클 84 Phase 1 종결 sync** — STATE 헤더 75→78 PR + 단위 2236→2305 + 사이클 84 row 신설 + CLAUDE.md tail 사이클 84 행 + README 배지 갱신 |
+| **#283** Feat/i18n-phase1-pr1a-config-and-kill-switch | **PR-1a 환경변수 + kill-switch + config.py** — 5 환경변수 + field_validator 4건 + 회귀 가드 20건 |
+| **#284** Feat/i18n-phase1-pr1b-locale-middleware-and-loader | **PR-1b LocaleMiddleware + 번역 로더/필터 + en/ko/ja.json** — `src/middleware/locale.py` ASGI (5단계 locale 감지) + `src/i18n/loader.py` + `src/i18n/filters.py` + en/ko/ja.json (8 namespace × 3 언어) + 회귀 가드 36건. Babel 미사용 (JSON dict 자체 — 정책 16 4번 원칙) |
+| **#285** Feat/i18n-phase1-pr1c-alembic-0030-and-orm | **PR-1c alembic 0030 + ORM 3 모델 확장** — 3 컬럼 (users + repo_configs + insight_narrative_cache) + composite index `ix_insight_cache_user_days_language` + 회귀 가드 10건 |
+| **#287** Feat/i18n-phase2-pr4-language-selector | **PR-4 언어 dropdown + /settings 언어 카드 + Cookie API** — `/api/users/me/preferred-language` POST + 헤더 dropdown 4 페이지 |
+| **#289** Feat/i18n-phase2-pr5-base-overview-i18n | **PR-5 base/login/add_repo/overview 진입 페이지 응집** — 4 페이지 동시 묶음 (정책 7 강화 응집 단위) |
+| **#290** Feat/i18n-phase2-pr6-dashboard-i18n | **PR-6 dashboard KPI 5 + mode 4종 + Insight 4카드 + Chart.js** — 단일 응집 (840 LOC / 473 가드) |
+| **#293** Feat/i18n-phase2-pr7-detail-i18n | **PR-7 repo_detail + analysis_detail 분석 영역 응집** |
+| **#294** Feat/i18n-phase2-pr8-settings-admin-i18n | **PR-8 settings + admin 3 페이지 응집** (1242 LOC — 사용자 사전 명시 필요 영역, 응집 단위 부합) |
+| **#295** Feat/i18n-phase3-pr9-telegram-i18n | **PR-9 Telegram + telegram_commands + 3-layer 사용자 언어 fallback** — `src/notifier/_language.py::resolve_notification_language()` 단일 헬퍼 |
+| **#296** Feat/i18n-phase3-pr10-external-channels-i18n | **PR-10 Discord + Slack + Email + RFC 2047 base64 일본어 호환** — 3 채널 응집 |
+| **#297** Feat/i18n-phase3-pr11-github-channels-i18n | **PR-11 GitHub PR Comment + Commit Comment + Issue** — 3 GitHub 채널 응집 (영문 prefix 보존 — 검색 호환) |
+| **#298** Feat/i18n-phase4-pr12-review-prompt-i18n | **PR-12 review_prompt + ai_review + Anthropic caching 언어별 분기** — system text hash 자동 발산 + 2-layer Repository.user_id → User.preferred_language fallback |
+| **#299** Feat/i18n-phase4-pr13-tier1-guides-i18n | **PR-13 Tier1 10 가이드 다국어** (Python/JS/TS/Java/Go/Rust/C/C++/C#/Ruby × en/ko/ja) — FULL/COMPACT (영문 default 보존) + FULL_KO/COMPACT_KO + FULL_JA/COMPACT_JA |
+| **#300** Feat/i18n-phase4-pr14-tier2-guides-i18n | **PR-14 Tier2 20 가이드 다국어** |
+| **#301** Feat/i18n-phase4-pr15-tier3-generic-i18n | **PR-15 Tier3 20 + generic 다국어** — Phase 4 종결 (50 언어 × en/ko/ja = 150 가이드) |
+| **#302** Feat/i18n-phase5-pr16-e2e-visual-regression | **PR-16 E2E 14건** — 3 언어 × 4 페이지 + Cookie fallback + locale switch. ⚠️ **사이클 85 사후 명시**: 같은 PR 이 #305 으로 재 머지된 empty squash artifact (file 변경 0). 운영 영향 0 — STATE 가드 차원 명시 |
+| **#303** Feat/i18n-phase5-pr17-operations-kpi | **PR-17 admin operations KPI 2 카드** — language_distribution + i18n_fallback_rate (메모리 카운터 4번째 사용처 — 정책 16 4번 원칙 정합) |
+| **#304** Feat/i18n-phase5-pr18-smoke-baseline-policy-closure | **PR-18 다국어 smoke 11 + 1주 baseline + 정책 진화 묶음** — Phase 5 + 18 PR i18n 종결 단일 응집 PR |
+| **본 PR** Docs/cycle-84-i18n-18pr-end-retrospective-and-sync | **사이클 84 회고 + Tier A 7건 sync** — 5+1 다중 에이전트 회고 (관점 1~5 + cross-verify 6차) + STATE/README/env-vars/MEMORY 일괄 정정 + PR-16 재머지 empty artifact 사후 명시 + Tier B 6건 사용자 결정 영역 |
 
-**사이클 84 신규 LOC 합**: ~300 LOC PR-1a + ~700 LOC PR-1b + ~340 LOC PR-1c + ~80 sync = **~1,420 LOC 누적** (정책 7 강화 임계 1500 LOC 미달)
+**사이클 84 신규 LOC 합 (Phase 1~5 18 PR 누적)**: 10,796 LOC + 회귀 가드 4,372 LOC (40.5% 비율) — Phase 1 ~1,420 + Phase 2 ~3,886 + Phase 3 ~1,780 + Phase 4 ~2,358 + Phase 5 ~1,090. **회고 5+1 다중 에이전트** (`docs/reports/2026-05-06-cycle-84-i18n-18pr-end-multi-agent-retrospective.md`) — Tier A 7건 (본 PR 정정) + Tier B 6건 (사용자 결정 영역) + Tier C 3건 (보류).
 
 **자율 판단 보고 (정책 3 강화 — ⚠️ 마커 5건+)**:
 - (1) Q9 = 🅑 3 PR 분할 채택 (사용자 검토 부담 ↓ — 사용자 회신 부재 default)
