@@ -233,12 +233,11 @@ Production-grade instrumentation for diagnostics and cost control.
 
 | Layer | Module | What it captures |
 |-------|--------|------------------|
-| Exception tracking | `src/shared/observability.py` (Sentry) | Unhandled exceptions with PII scrubbing via `before_send` hook. Activated when `SENTRY_DSN` is set. |
 | Claude API cost | `src/shared/claude_metrics.py` | Per-call model · input/output tokens · USD cost estimate · latency (structured log). |
 | Pipeline timing | `src/shared/stage_metrics.py` | `stage_timer` context manager emits `duration_ms` + `status` per pipeline stage. |
 | Auto-merge attempts | `src/shared/merge_metrics.py` + `merge_attempts` table | Every auto-merge attempt (success or failure) is persisted with `failure_reason` normalized tag (`branch_protection_blocked`, `unstable_ci`, `permission_denied`, …) + `score`/`threshold` snapshot. Phase F.1. |
 
-All layers are optional — Sentry is skipped when `SENTRY_DSN` is empty, and the other three emit structured logs unconditionally so any log shipper (Datadog, CloudWatch, Grafana Loki) can parse them.
+All three layers emit structured logs unconditionally so any log shipper (Datadog, CloudWatch, Grafana Loki, Railway Logs) can parse them. No external SaaS dependency required.
 
 ---
 

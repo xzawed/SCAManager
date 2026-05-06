@@ -520,10 +520,10 @@
       "i18n_fallback_hint": "fallback rate ↑ = 번역 누락 영역 ↑ — 운영자 액션 의무 (process restart 시 reset)",
       "info_title": "💡 Phase 1 운영 안내",
       "info_li1": "<strong>메모리 카운터 한계</strong> — Railway 재배포 시 reset (cache stats / api_cost). DB persist = Phase 2 영역",
-      "info_li2": "<strong>silent fallback streak</strong> — 5회 연속 cache 미작동 시 logger WARNING 발화 (Sentry 페어)",
+      "info_li2": "<strong>silent fallback streak</strong> — 5회 연속 cache 미작동 시 logger WARNING 발화 (Railway 로그)",
       "info_li3": "<strong>1주 baseline 보고서</strong> = 사이클 81+ 별도 작업 (옵션 🅒 — cross-verify NEW-P0-3 정합)",
       "info_li4": "<strong>kill-switch</strong> = `OPERATIONS_DASHBOARD_DISABLED=1` (`SAAS_MULTITENANT_DISABLED` 와 별개)",
-      "info_li5": "Sentry 활성화 = Cycle 80 PR 1 runbook (`docs/runbooks/sentry-activation.md`) 페어"
+      "info_li5": "사이클 85 — Sentry 통합 제거 (`docs/runbooks/_archive/sentry-activation.md` archive)"
     }
   },
   "errors": {

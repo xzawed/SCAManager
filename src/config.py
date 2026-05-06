@@ -56,10 +56,6 @@ class Settings(BaseSettings):
     # DB Failover 설정 (빈 문자열이면 failover 비활성)
     database_url_fallback: str = ""
     db_failover_probe_interval: int = 30  # Primary 복구 확인 주기(초)
-    # Observability (Phase E.2) — sentry_dsn 빈 문자열이면 Sentry 비활성
-    sentry_dsn: str = ""
-    sentry_environment: str = "production"  # "production" | "staging" | "development"
-    sentry_traces_sample_rate: float = 0.1  # 0.0~1.0, performance tracing 샘플링
     # Auto-merge unknown 상태 재시도 (Phase F Quick Win) — 운영 중 튜닝용
     merge_unknown_retry_limit: int = 3        # 기본 3회
     merge_unknown_retry_delay: float = 3.0    # 기본 3초 간격 (총 최대 9초)

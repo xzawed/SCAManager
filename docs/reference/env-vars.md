@@ -39,31 +39,11 @@
 
 > **🔴 운영 안전**: 위 5 변수는 운영 사고 발생 시 즉시 사용해야 하므로 Railway Variables 에 미리 배치 권장. `INTERNAL_CRON_API_KEY` 미설정 시 cron job 이 silent 503 으로 실패해 weekly_summary 등이 발송 안 됨 — 운영자 인지 어려움. `SAAS_ADMIN_EMAILS` 미설정 시 admin UI 영역 (`/admin/tenants` 등) 모든 사용자 401 — Cycle 79+ SaaS 영역 활성화 시 의무. kill-switch 신규 추가 시 `src/shared/feature_kill_switch.py::is_disabled(feature)` helper 사용 default (Cycle 78 NEW-P0-2 #253 — 사용처 ≥ 3 도달 시 자동 헬퍼 추출 정책 16 4번 원칙 정합).
 
-## Observability (선택, Phase E.2)
+## Observability (자동 로깅, env 설정 불필요)
 
-| 변수 | 설명 | 예시 |
-|------|------|------|
-| `SENTRY_DSN` | Sentry-compatible DSN — 미설정 시 비활성 (graceful no-op) | `your-sentry-dsn` |
-| `SENTRY_ENVIRONMENT` | 환경 태그 | `production` (기본) / `staging` / `development` |
-| `SENTRY_TRACES_SAMPLE_RATE` | Performance tracing 샘플링 비율 (0.0~1.0) | `0.1` (기본, 10%) |
+> **사이클 85 (2026-05-06)**: Sentry 통합 완전 폐기 (사용자 명시 결정). 환경변수 3건 (`SENTRY_DSN`/`SENTRY_ENVIRONMENT`/`SENTRY_TRACES_SAMPLE_RATE`) + `src/shared/observability.py` + `sentry-sdk` 의존성 제거. Railway 잔존 env vars 는 `model_config = {"extra": "ignore"}` 로 silent skip. 운영 영향 0. 폐기 runbook = [`docs/runbooks/_archive/sentry-activation.md`](_archive/sentry-activation.md) (역사 자산).
 
-### 현재 권장 — 연동 보류
-
-Sentry 의 Developer 무료 플랜이 14일 Trial 로 확인됨 (2026-04-23 사용자 검증).
-Phase E.2b/c 의 Claude API 메트릭 + 파이프라인 타이밍은 **Sentry 없이도 Railway
-로그에 자동 기록**되므로 당분간 `SENTRY_DSN` 빈 문자열 유지 권장.
-
-### 원할 때 활성화 방안
-
-`sentry-sdk` 는 DSN 형식 호환 서비스라면 어느 것이든 받아들임. 즉 **코드 변경
-없이** DSN 만 Railway Variables 에 추가하면 즉시 활성화:
-
-- **GlitchTip** ([glitchtip.com](https://glitchtip.com)) — Sentry-compatible API,
-  소규모 프로젝트 영구 무료. 추천.
-- **Self-hosted Sentry** — Docker Compose 로 자체 호스팅 가능, 기능 전부 무료.
-- **Sentry 유료** — 필요 시.
-
-### 자동 로깅 (env 설정 불필요)
+Sentry 외 자동 로깅은 별도 환경변수 없이 동작:
 
 - `claude_api_call` 로그 — model / duration_ms / input_tokens / output_tokens / cost_usd / status
 - `pipeline_stage` 로그 — collect_files / analyze / score_and_save / notify / pipeline_total

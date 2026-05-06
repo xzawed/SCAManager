@@ -226,16 +226,15 @@ PR 분석 완료
 
 ### 📊 Observability (관측)
 
-운영 중 문제 진단과 비용 관리를 위한 4단 계측 레이어.
+운영 중 문제 진단과 비용 관리를 위한 3단 계측 레이어.
 
 | 레이어 | 모듈 | 포착 내용 |
 |--------|------|-----------|
-| 예외 추적 | `src/shared/observability.py` (Sentry) | 처리되지 않은 예외 — `before_send` 훅으로 PII 스크러빙. `SENTRY_DSN` 설정 시 활성화 |
 | Claude API 비용 | `src/shared/claude_metrics.py` | 호출별 모델 · 입출력 토큰 · USD 비용 추정 · latency (구조화 로그) |
 | 파이프라인 타이밍 | `src/shared/stage_metrics.py` | `stage_timer` context manager — 단계별 `duration_ms` + `status` |
 | Auto-merge 시도 | `src/shared/merge_metrics.py` + `merge_attempts` 테이블 | 모든 auto-merge 시도(성공·실패) DB 기록 — `failure_reason` 정규 태그(`branch_protection_blocked`, `unstable_ci`, `permission_denied` 등) + 시도 시점 `score`/`threshold` 스냅샷. Phase F.1 |
 
-네 레이어 모두 선택적이며, Sentry 는 `SENTRY_DSN` 빈 문자열 시 스킵되고 나머지 셋은 구조화 로그로 항상 emit — 어떤 로그 집계 시스템(Datadog, CloudWatch, Grafana Loki)이든 파싱 가능합니다.
+세 레이어 모두 구조화 로그로 항상 emit — 어떤 로그 집계 시스템(Datadog, CloudWatch, Grafana Loki, Railway Logs)이든 파싱 가능합니다. 외부 SaaS 의존성 0.
 
 ---
 

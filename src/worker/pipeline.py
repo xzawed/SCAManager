@@ -256,9 +256,9 @@ async def _regate_pr_if_needed(
                     pr_number, existing.id, commit_sha[:8])
     except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
         # Phase 2: logger.exception 으로 stack trace 보존 — PR #105 silent skip
-        # 사고에서 line 211 의 `logger.error(... %s, exc)` 가 메시지만 남겨 Sentry/
+        # 사고에서 line 211 의 `logger.error(... %s, exc)` 가 메시지만 남겨
         # Railway 로그에서 원인 추적 불가능했던 문제 해결.
-        # Phase 2: use logger.exception so the full traceback is captured in Sentry/
+        # Phase 2: use logger.exception so the full traceback is captured in
         # Railway logs (the previous `logger.error` only left the exc message,
         # making the PR #105 silent-skip incident unreproducible from logs).
         logger.exception(
@@ -324,8 +324,8 @@ async def _save_and_gate(db: Session, params: _AnalysisSaveParams):
                 )
                 db.rollback()
             except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
-                # logger.exception 으로 stack trace 보존 — Sentry/Railway 로그에서 진짜 원인 추적 가능
-                # logger.exception preserves the stack trace for Sentry/Railway log triage
+                # logger.exception 으로 stack trace 보존 — Railway 로그에서 진짜 원인 추적 가능
+                # logger.exception preserves the stack trace for Railway log triage
                 logger.exception(
                     "Race-recovery gate check failed (pr=#%d, sha=%s)",
                     params.pr_number, params.commit_sha[:8],

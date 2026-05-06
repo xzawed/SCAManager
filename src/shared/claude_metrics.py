@@ -126,7 +126,7 @@ def log_claude_api_call(
 ) -> None:
     """Claude API 호출 1건의 구조화된 메트릭 로그.
 
-    LogRecord extra 로 필드를 첨부해 structured log shipper (Sentry, CloudWatch 등)
+    LogRecord extra 로 필드를 첨부해 structured log shipper (CloudWatch / Railway 등)
     가 파싱할 수 있도록 한다.
 
     Args:

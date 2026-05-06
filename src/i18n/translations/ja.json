@@ -520,10 +520,10 @@
       "i18n_fallback_hint": "fallback rate ↑ = 翻訳漏れ領域 ↑ — 運用者アクション必要 (process restart 時リセット)",
       "info_title": "💡 Phase 1 運用案内",
       "info_li1": "<strong>メモリカウンタ制約</strong> — Railway 再デプロイ時にリセット (cache stats / api_cost)。DB persist = Phase 2 領域",
-      "info_li2": "<strong>silent fallback streak</strong> — 5 回連続 cache 不作動時 logger WARNING 発火 (Sentry ペア)",
+      "info_li2": "<strong>silent fallback streak</strong> — 5 回連続 cache 不作動時 logger WARNING 発火 (Railway ログ)",
       "info_li3": "<strong>1 週 baseline レポート</strong> = サイクル 81+ 別作業 (オプション 🅒 — cross-verify NEW-P0-3 整合)",
       "info_li4": "<strong>kill-switch</strong> = `OPERATIONS_DASHBOARD_DISABLED=1` (`SAAS_MULTITENANT_DISABLED` とは別)",
-      "info_li5": "Sentry 有効化 = Cycle 80 PR 1 runbook (`docs/runbooks/sentry-activation.md`) ペア"
+      "info_li5": "サイクル 85 — Sentry 統合削除 (`docs/runbooks/_archive/sentry-activation.md` archive)"
     }
   },
   "errors": {

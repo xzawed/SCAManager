@@ -78,8 +78,8 @@ async def delete_repo_cascade(db: Session, repo: Repository, github_token: str) 
         try:
             await delete_webhook(github_token, repo.full_name, repo.webhook_id)
         except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-except
-            # best-effort: GitHub API 실패 시 운영 관측 위해 logger.warning (Sentry 송출)
-            # best-effort: log warning on GitHub API failure for observability (Sentry)
+            # best-effort: GitHub API 실패 시 운영 관측 위해 logger.warning (Railway 로그)
+            # best-effort: log warning on GitHub API failure for observability (Railway logs)
             logger.warning(
                 "delete_repo_cascade: webhook delete failed for %s: %s",
                 sanitize_for_log(repo.full_name), type(exc).__name__,
