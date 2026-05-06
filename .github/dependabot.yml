@@ -32,8 +32,23 @@ updates:
     labels:
       - "dependencies"
       - "python"
-    # 사이클 86 cleanup 후속 — 의존성 명시 핀 정합 검증 의무 페어
-    # Cycle 86 cleanup follow-up — paired with explicit dep pinning verification
+    # 사이클 87 Tier B-2 — production vs development 분리 (회고 관점 1 P1)
+    # 효과: minor/patch 일괄 묶음 → conflict 자동 해소 ROI ↑ + 머지 부담 ↓
+    # major bump + security update = group 외 개별 PR (변경 로그 검토 의무 페어)
+    # Cycle 87 Tier B-2 — split production vs development (retro perspective 1 P1)
+    # Effect: minor/patch grouped → fewer conflicts + less merge overhead
+    # major bump + security updates = individual PRs (changelog review pair)
+    groups:
+      production-deps:
+        dependency-type: "production"
+        update-types:
+          - "minor"
+          - "patch"
+      development-deps:
+        dependency-type: "development"
+        update-types:
+          - "minor"
+          - "patch"
 
   # GitHub Actions (workflows 의존성)
   # GitHub Actions workflow dependencies
@@ -45,3 +60,10 @@ updates:
     labels:
       - "dependencies"
       - "ci"
+    # 사이클 87 Tier B-2 — github-actions 도 minor/patch 묶음 (major = 개별 검토)
+    # Cycle 87 Tier B-2 — github-actions minor/patch grouping (major = individual review)
+    groups:
+      actions-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"

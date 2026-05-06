@@ -1,7 +1,7 @@
-# SCAManager 사이클 작업 이력 (사이클 60~81 archive)
+# SCAManager 사이클 작업 이력 (사이클 60~82 archive)
 
-> CLAUDE.md tail entry 분리본 (사이클 85 정리, 2026-05-06 → 사이클 86 회고 사이클 81 추가). 사이클 60~81 historical entries.
-> 사이클 82~86+ 직전 5 사이클은 CLAUDE.md tail 보존.
+> CLAUDE.md tail entry 분리본 (사이클 85 정리 → 사이클 86 회고 사이클 81 추가 → 사이클 87 진입 사이클 82 추가). 사이클 60~82 historical entries.
+> 사이클 83~87+ 직전 5 사이클은 CLAUDE.md tail 보존.
 > 본 파일은 회고 시점 (정책 8 5+1 패턴) 또는 영역 reference 시 read 의무.
 
 ## 목차
@@ -17,6 +17,7 @@
 - [사이클 75~77 (5+1 cleanup + Tier B + Phase 옵션 표)](#사이클-7577)
 - [사이클 78~80 (Phase 4 5 영역 분할 — Telegram + SaaS + 운영 모니터링)](#사이클-7880)
 - [사이클 81 (모바일 Phase 1 MVP)](#사이클-81)
+- [사이클 82 (Tier B 묶음 + NEW-P0-1)](#사이클-82)
 
 ---
 
@@ -93,3 +94,7 @@
 ## 사이클 81
 
 - **사이클 81 (모바일 Phase 1 MVP, 2026-05-05)** — PWA manifest + dashboard 모바일 KPI 우선순위 + settings 모바일 + form sweep (4 PR #262~#265). 통합 84→118 (+34 회귀 가드). `<details>` Progressive Disclosure = Phase 2 보류 (High tier).
+
+## 사이클 82
+
+- **사이클 82 (Tier B 묶음 + NEW-P0-1, 2026-05-05)** — alembic dialect 헬퍼 추출 (사용처 12) + 메모리 신설 2건 + Telegram 봇 차단 silent skip (NEW-P0-1) (#272/#274). 메모리 25→27.

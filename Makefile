@@ -55,6 +55,13 @@ lint:
 	flake8 src/ || true
 	bandit -r src/ -q || true
 
+# pylint 회귀 가드 — score < 9.90 시 fail (사이클 87 Tier B-1, baseline 9.94 보수적 floor)
+# pylint regression guard — fail when score < 9.90 (cycle 87 Tier B-1, 9.94 baseline conservative floor)
+# 사이클 86 회고 관점 4 P0 — pylint drift 자동 감지 부재 회복. flake8/bandit 은 기존 `make lint` 보존
+# Cycle 86 retro perspective 4 P0 — recover from pylint drift detection gap. flake8/bandit kept in `make lint`
+lint-strict:
+	pylint --fail-under=9.90 src/
+
 # Phase 완료 게이트 — 테스트 + 정적 분석 한번에
 # Phase completion gate — tests + static analysis in one command.
 gate:
