@@ -1,0 +1,30 @@
+---
+description: UI / 템플릿 작업 시 적용되는 SCAManager 규칙 (path-scoped) — 정책 11 (8 조합 시각 검증) 페어
+paths:
+  - "src/templates/**"
+  - "src/static/**"
+  - "src/ui/**"
+---
+
+# UI / 템플릿 규칙
+
+- **Telegram HTML 파싱**: `parse_mode: "HTML"` 사용 — 모든 동적 콘텐츠에 `html.escape()` 적용 필수. `_build_message()`가 4096자 초과 시 자동 절단.
+- **analysis_detail 템플릿 context**: `current_user`를 반드시 포함해야 함 — 누락 시 nav 사용자명·로그아웃 버튼 미표시. `analysis.result or {}` 패턴은 None → `{}` 변환으로 `{% if r %}` falsy 평가 → 모든 AI 섹션 숨김 버그 — `{% else %}` 분기로 fallback 처리 필수.
+- **settings.html 구조 규약**: 의도 기반 6 카드 구성 — ① 빠른 설정(프리셋 3종 diff 미리보기) / ② PR 들어왔을 때(pr_review_comment·approve_mode·approve/reject_threshold·auto_merge·merge_threshold) / ③ 이벤트 후 피드백(commit_comment·create_issue·railway_deploy_alerts, 트리거별 소제목 + toggle-switch 통일) / ④ 알림 채널(masked-field 6종) / ⑤ 시스템 & 토큰(CLI Hook + Webhook 재등록 + Railway API 토큰 + Railway Webhook URL) / ⑥ 위험 구역(리포 삭제, 기본 접힘). Progressive Disclosure 기존 JS 헬퍼 5종(`setApproveMode`·`toggleMergeThreshold`·`applyPreset`·`_setPair`·`_showPresetToast`) 시그니처 불변 + 신규 헬퍼 4종(`onPresetToggle`·`renderPresetDiff`·`flashPresetChanges`·`toggleMergeIssueOption`). 메인 `<form id="settingsForm">` + Railway API 토큰은 form 바깥에서 `form="settingsForm"` 속성으로 메인 폼에 포함. 백엔드 필드명(pr_review_comment, approve_mode 등 14개) 및 PRESETS 9개 필드 구성 불변 원칙 — 5-way 동기화 체크리스트(ORM → dataclass → API body → 폼 → PRESETS) 적용 대상.
+- **overview 등급 산출**: `calculate_grade(avg_score)` 사용 (`src/scorer/calculator.py`). 최신 분석 grade가 아닌 평균 점수 기반.
+- **analysis_detail trend_data**: `trend_data`·`prev_id`·`next_id`를 template context에 추가 전달. `trend_data`는 같은 리포 최근 30건 `{id, score, label}` 리스트. `trend_data|length > 1`일 때만 차트 렌더링.
+- **repo_detail 차트 동기화**: `buildChart(data)` 함수는 `data` 인자가 있으면 `_chartData`에 캐시, 없으면 캐시된 데이터 재사용. `applyFilters()` 호출마다 차트를 필터 결과와 동기화. `themechange` 이벤트는 `buildChart()` (인자 없음)으로 색상만 재빌드.
+- **리포 추가 Webhook URL**: `_webhook_base_url(request)` 헬퍼가 `APP_BASE_URL` 설정 시 HTTPS URL 강제. Railway 배포 시 반드시 `APP_BASE_URL` 설정 — 미설정 시 `http://`로 등록되어 Webhook 전달 실패.
+- **기존 Webhook 등록 리포**: `user_id = NULL` 리포는 모든 로그인 사용자에게 표시됨. `/repos/add`로 동일 리포 재등록 시 `user_id=NULL`이면 현재 사용자 소유 이전, 이미 소유자 있으면 에러.
+- **🔴 leaderboard_opt_in 컬럼 폐기 — Q3 정정 (그룹 60 후속 / 2026-05-02)**: 팀 리더보드 기능 완전 폐기 (alembic 0025). 향후 SaaS 전환 시 멀티 사용자 인사이트 모델 별도 신설 결정 — 기존 single-user opt-in 모델 부활 X.
+- **/dashboard 페이지 (그룹 60 신설)**: KPI 5 카드 (평균 점수 / 분석 건수 / 보안 HIGH / 활성 리포 / Auto-merge 성공률) + 점수 추세 라인 차트 + 자주 발생 이슈 + Auto-merge 실패 사유 + feedback CTA banner. scoped 디자인 토큰 (`.dashboard-page` wrapper 안 `--d-*` 토큰, base.html 4-테마 공존, claude-dark 분기 alias). KPI 그리드 반응형 4 단계 (desktop 5 / tablet 1024px↓ 3 / mobile 768px↓ 2 / xs 480px↓ 1). Chart.js vendoring 재사용. 신규 KPI 카드 추가 시 동일 높이 정합 (`.dash-kpi` `min-height: 152px` + `.dash-kpi-row` `min-height: 38px` + `.dash-kpi-delta margin-top: auto` 3-rule).
+- **🔴 Auto-merge KPI 시각 우선순위 (그룹 60 P0 #3 후속)**: KPI 메인 (36px 큰 폰트) = `final_success_rate_pct` (PR 기준 retry-aware). sub-text (12px) = 단순 시도 + delta. fallback: `final_success_rate_pct is none` 시 `value` (단순) 메인 표시. **KPI 카드 신설 시 시각 우선순위 = 사용자 가치 기준 결정 의무**.
+- **scoped 디자인 토큰의 4-테마 호환 한계**: `.dashboard-page` 안 자체 토큰 + `claude-dark` 분기 alias 만 정의. `dark/light/glass` 3 테마는 `var(--card-bg, var(--bg-surface, ...))` 다단 fallback 의존. **glass 테마의 `backdrop-filter` 적용 안 됨** → 시각 불일치 가능. 신규 시각 컴포넌트 도입 시 정책 11 8 조합 의무 검증.
+- **Insights 라우트 폐기 + 301 redirect (그룹 60 Phase 1 PR 5)**: `/insights`, `/insights/me` 모두 폐기 → `src/ui/routes/dashboard.py::redirect_insights*` 가 301 Location: /dashboard 응답 (쿼리 파라미터 보존).
+- 🔴 **환각(phantom) 토큰 alias 패턴 (UI 감사 Step A + cleanup PR #169)**: 컴포넌트 CSS 가 정의되지 않은 토큰 (`var(--bg-hover)`, `var(--card-bg)`, `var(--text)`, `var(--accent-blue)`, `var(--c-warning)` 등) 을 참조하면 브라우저는 fallback 없으면 invalid → 다크 테마 시각 깨짐. 발견 시 사용처 치환 대신 `base.html` 의 `:root` 블록에 alias (`--bg-hover: var(--table-row-hover)` 등) 흡수 — consumer 코드 변경 0 으로 4-테마 일괄 해결. 신규 토큰은 항상 `var(--*)` 경유, `#hex` 직접 사용 금지.
+- 🔴 **WCAG 2.5.5 모바일 클릭 영역 ≥44px 의무 (UI 감사 Step A/B/E)**: 모바일 인터랙티브 요소 (`.btn`, `.btn--sm`, `.nav-link`, `.nav-hamburger`, `.gate-mode-btn`, `.filter-btn`, `.page-btn`, `.chip-label`, `.day-selector a`, `.settings-link` 등) 는 `@media (max-width: 768px)` 분기에 `min-height: 44px` (또는 sm: 40px) + `box-sizing: border-box` 적용 필수. 신규 인터랙티브 컴포넌트 추가 시 동일 규칙 자동 적용. iOS Safari focus zoom 회피 위해 input/select font-size 모바일 분기 ≥16px 필수.
+- 🔴 **safe-area-inset 적용 의무 (UI 감사 Step A)**: notch (iPhone 12+) / 홈 인디케이터 디바이스 호환 위해 sticky/fixed 요소 (nav, .save-bar, .nav-links.open 모바일 메뉴) 는 `padding-{top,bottom,left,right}: max(*, env(safe-area-inset-*))` 또는 `calc(* + env(safe-area-inset-*, 0px))` 패턴. `<meta name="viewport">` 의 `viewport-fit=cover` 와 페어.
+- **Chart.js vendoring + StaticFiles mount (UI 감사 Step C — PR #166)**: 외부 CDN 차단 환경 호환 위해 `src/static/vendor/chart.umd.min.js` (4.4.0 UMD min, 204KB) 로컬 호스팅. `src/main.py` 가 `_STATIC_DIR` 존재 시 `app.mount("/static", StaticFiles(directory=...), name="static")` 조건부 mount. 신규 정적 자원은 `src/static/vendor/` 하위 배치.
+- **claude-dark 테마 차트 색 동기화 (UI 감사 Step C)**: Chart.js JS 는 CSS 변수 직접 못 읽으므로 `getComputedStyle(document.documentElement).getPropertyValue('--grade-a')` 등 동적 추출 → Chart 옵션에 주입. 테마 전환 시 `document.addEventListener('themechange', buildChart)` 로 chart 재빌드.
+- **색 의미(semantic) 토큰 통일 (UI 감사 Step D — PR #167 + cleanup #169)**: 시각적 의미는 항상 `--success` (A등급/성공/머지/conn-dot ON) / `--warning` (C등급/경고/대기) / `--danger` (F등급/실패/거부) 3종 토큰 사용. `#10b981`, `#ef4444`, `#f59e0b` 등 hex 직접 사용 금지. 등급 색 (`--grade-a/b/c/d/f`) 과 시맨틱 색 혼용 금지. claude-dark 테마는 모든 시맨틱/등급 색을 sage/sand/muted-red/terracotta 톤으로 자동 alias.
+- **claude-dark 테마 토큰 매트릭스 (cleanup PR #169)**: settings 페이지가 사용하는 토큰 8종 (`--grad-gate/merge/notify/hook`, `--title-gradient`, `--btn-gate-active-*`, `--save-btn-*`, `--hint-*`, `--hook-btn-*`) 은 claude-dark 에도 정의 의무 — 미정의 시 invalid var() → 카드 헤더 흰색/투명 등 시각 깨짐.
