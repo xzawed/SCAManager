@@ -151,7 +151,8 @@ async def update_preferred_language(
     language = body.language.strip().lower() if body.language else ""
     if language not in supported:
         raise HTTPException(status_code=400, detail="invalid language")
-    safe_language = language
+    canonical_locales = {loc: loc for loc in supported}
+    safe_language = canonical_locales[language]
     if not LOCALE_COOKIE_VALUE_RE.fullmatch(safe_language):
         raise HTTPException(status_code=400, detail="invalid language")
 
