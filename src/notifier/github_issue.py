@@ -27,7 +27,7 @@ def _bandit_high_issues(result: dict) -> list[dict]:
     return [i for i in issues if i.get("tool") == "bandit" and i.get("severity") == "HIGH"]
 
 
-def _build_issue_body(
+def _build_issue_body(  # pylint: disable=too-many-locals
     repo_name: str,
     commit_sha: str,
     analysis_id: int,

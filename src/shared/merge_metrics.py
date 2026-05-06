@@ -40,7 +40,7 @@ def parse_reason_tag(reason: str | None) -> str | None:
     return head or None
 
 
-def log_merge_attempt(  # pylint: disable=too-many-arguments
+def log_merge_attempt(  # pylint: disable=too-many-arguments,too-many-locals
     db: Session,
     *,
     analysis_id: int,

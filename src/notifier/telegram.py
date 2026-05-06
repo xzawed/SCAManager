@@ -98,7 +98,7 @@ def _parse_retry_after(response) -> int:
     return min(max(retry_after, 1), TELEGRAM_RETRY_AFTER_MAX_SECONDS)
 
 
-def _build_message(  # pylint: disable=too-many-positional-arguments
+def _build_message(  # pylint: disable=too-many-positional-arguments,too-many-locals
     repo_name: str,
     commit_sha: str,
     score_result: ScoreResult,

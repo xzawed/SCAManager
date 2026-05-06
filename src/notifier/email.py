@@ -21,7 +21,7 @@ from src.notifier._common import format_ref, get_all_issues, truncate_issue_msg
 logger = logging.getLogger(__name__)
 
 
-def _build_html_body(  # pylint: disable=too-many-positional-arguments
+def _build_html_body(  # pylint: disable=too-many-positional-arguments,too-many-locals
     repo_name: str,
     commit_sha: str,
     score_result: ScoreResult,

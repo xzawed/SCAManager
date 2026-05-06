@@ -63,7 +63,7 @@ def _detect_initial_dashboard_mode(db: Session, user_id: int | None = None) -> s
 
 
 @router.get("/dashboard", response_class=HTMLResponse)
-async def dashboard(
+async def dashboard(  # pylint: disable=too-many-locals
     request: Request,
     current_user: Annotated[CurrentUser, Depends(require_login)],
     days: int = 7,

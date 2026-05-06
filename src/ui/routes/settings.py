@@ -3,14 +3,13 @@ from __future__ import annotations
 
 import ipaddress
 import secrets
+from dataclasses import fields as dataclass_fields
 from typing import Annotated
 from urllib.parse import urlparse
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-
-from dataclasses import fields as dataclass_fields
 
 from src.auth.session import CurrentUser, require_login
 from src.config_manager.manager import RepoConfigData, get_repo_config, upsert_repo_config

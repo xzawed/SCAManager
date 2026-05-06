@@ -489,7 +489,7 @@ async def _enqueue_merge_retry(  # pylint: disable=too-many-arguments
         )
 
 
-async def _run_auto_merge_legacy(  # pylint: disable=too-many-arguments
+async def _run_auto_merge_legacy(  # pylint: disable=too-many-arguments,too-many-locals
     config: RepoConfigData,
     github_token: str,
     repo_name: str,
