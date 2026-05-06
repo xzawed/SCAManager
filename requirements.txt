@@ -1,7 +1,7 @@
 # fastapi>=0.115.5 — starlette CVE-2024-47874 / CVE-2025-54121 패치 버전 번들
 # fastapi>=0.115.5 — bundles starlette with CVE-2024-47874 / CVE-2025-54121 patches
 fastapi>=0.115.5
-uvicorn[standard]==0.30.6
+uvicorn[standard]==0.46.0
 pydantic-settings==2.3.4
 sqlalchemy==2.0.35
 alembic==1.13.3
