@@ -618,7 +618,7 @@ def _parse_insight_cards(text: str) -> dict[str, list] | None:
     }
 
 
-async def insight_narrative(
+async def insight_narrative(  # pylint: disable=too-many-locals
     db: Session,
     days: int = 7,
     *,

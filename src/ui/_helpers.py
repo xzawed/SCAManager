@@ -25,7 +25,7 @@ templates = Jinja2Templates(directory="src/templates")
 
 # Phase 2 PR-5 (사이클 84) — Jinja2 i18n 필터 등록 (i18n + i18n_args 사용 가능)
 # Phase 2 PR-5 (Cycle 84) — Register Jinja2 i18n filters (i18n + i18n_args available)
-from src.i18n.filters import register_i18n_filters  # noqa: E402
+from src.i18n.filters import register_i18n_filters  # noqa: E402  # pylint: disable=wrong-import-position
 
 register_i18n_filters(templates.env)
 

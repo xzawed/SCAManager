@@ -44,7 +44,7 @@ class AiReviewResult:  # pylint: disable=too-many-instance-attributes
     detected_languages: list[str] = field(default_factory=list)  # 감지된 언어 목록
 
 
-async def review_code(
+async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching + 예외 분기로 인한 누적 (사이클 84 i18n)
     api_key: str,
     commit_message: str,
     patches: list[tuple[str, str]],
