@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout (with full history for SonarCloud)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           # SonarCloud 가 새 파일/변경 이력을 제대로 분석하려면 shallow-clone 금지
           # Full history required so SonarCloud can analyse new files and change history correctly.
