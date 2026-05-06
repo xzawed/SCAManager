@@ -1,0 +1,47 @@
+# Dependabot configuration for SCAManager
+# 사이클 86 신설 (2026-05-06) — GitHub Auto-Injected `submit-pypi` workflow 영구 timeout 대응:
+# 2026-04-23 GitHub Changelog "Dependabot-based dependency graphs for Python" 신규 도입에 따라
+# Dependabot 활성 시 Auto-Injected submit-pypi 가 supersede 됨 (관점 4+5 검증).
+#
+# 정책 정합:
+# - 정책 12 (MCP scope): GitHub Settings UI 변경은 사용자 영역. 본 dependabot.yml 신설은 Claude scope.
+# - 정책 16 (단순화 default): 단일 ecosystem (pip) + weekly + open-PR 한도 = minimal config.
+# - 메모리 `feedback-log-first-debugging.md`: 추측 금지 — 5+1 다중 에이전트 검증 후 진행.
+#
+# 운영 영향:
+# - Python 의존성 보안 알림 (Dependabot security updates) 자동 제공
+# - 주간 Dependabot PR 발생 가능 (open-pull-requests-limit 으로 제어)
+# - GitHub Dependency Graph 데이터 = Dependabot 기반 자동 갱신 (submit-pypi 폐기 후속)
+
+version: 2
+updates:
+  # Python 의존성 (requirements.txt + requirements-dev.txt)
+  # Python dependencies (Railway 자동 감지 + 개발 환경)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Seoul"
+    # PR 누적 차단 — 동시 5개 한도 (운영 부담 ↓)
+    # Cap concurrent PRs at 5 to limit operational overhead
+    open-pull-requests-limit: 5
+    # Security update 우선 — 일반 update 보조
+    # Prioritize security updates over feature updates
+    labels:
+      - "dependencies"
+      - "python"
+    # 사이클 86 cleanup 후속 — 의존성 명시 핀 정합 검증 의무 페어
+    # Cycle 86 cleanup follow-up — paired with explicit dep pinning verification
+
+  # GitHub Actions (workflows 의존성)
+  # GitHub Actions workflow dependencies
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "ci"
