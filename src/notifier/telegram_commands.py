@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 # Phase 3 PR-9 (Cycle 84) — common prompt for disconnected users (settings.default_locale).
 # 백워드 호환 — 기존 단위 테스트 (`test_telegram_commands.py`) `_NOT_CONNECTED_MSG` 직접 비교 영역.
 # Backwards-compat — preserved for legacy tests doing direct equality comparisons.
-_NOT_CONNECTED_MSG = get_text("notifier.commands.not_connected", settings.default_locale)
+_unused_not_connected_msg = get_text("notifier.commands.not_connected", settings.default_locale)
 
 
 @dataclass(frozen=True)
