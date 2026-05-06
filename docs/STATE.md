@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-06 기준 — **사이클 85 Sentry 폐기 + CLAUDE.md Anthropic 200줄 정합 정정 + 사이클 86 Q3 종결**: 102+ PR #188~#322+ (메타 #213/#214 + #305 empty re-merge 제외) — 누적 정책 본문 16건 + 메모리 29건 (활성 27 + deprecated 2). **사이클 85 종결**: Sentry 통합 완전 폐기 (#317) + CLAUDE.md cleanup Anthropic 권고 6.4배 → 3.8배 (#320 + Q3) — 1271 → 762 LOC (-40%) / ~57K → ~20K 토큰 (-65%). **사이클 86 Q3** = 정책 본문 진화 entry → `docs/policies/history.md` 이전. 단위 2669 / 통합 129 / E2E 96
+## 현재 수치 (2026-05-06 기준 — **사이클 86 종결: Tier B Q1+Q2+Q3+Q4 + CI submit-pypi 대응 + pylint drift 회복 1차**: 105+ PR #188~#325+ (메타 #213/#214 + #305 empty re-merge 제외) — 누적 정책 본문 16건 + 메모리 29건 (활성 27 + deprecated 2). **사이클 85 종결**: Sentry 통합 완전 폐기 (#317) + CLAUDE.md cleanup Anthropic 권고 6.4배 → 3.4배 (#320 + #321 + #322) — 1271 → 677 LOC (-47%) / ~57K → ~20K 토큰 (-65%). **사이클 86**: #322 Tier B Q1+Q2+Q3+Q4 + #324 dependabot.yml (CI submit-pypi 영구 실패 대응) + #325 pylint 9.92→9.94 회복 1차. 단위 2669 / 통합 129 / E2E 96 / pylint **9.94/10** (잔여 36건 사이클 87+ 점진)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
@@ -14,7 +14,7 @@
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
 | SonarCloud Maintainability Rating | **A** | Code Smells 58 (-20 from 78) |
 | SonarCloud BLOCKER / CRITICAL | **0 / 0** | Phase Q.7 완료 — 5건 Cognitive Complexity 전부 해소 |
-| pylint | **10.00/10** | `python -m pylint src/` — 만점 유지 |
+| pylint | **9.94/10** | `python -m pylint src/` — 사이클 84 i18n + 사이클 85 cleanup 후속 누적 drift. #325 Tier A 13건 fix (W0611 2 + C0411/C0413 3 + R0914 8). 잔여 36건 사이클 87+ 점진 (C0415 21 lazy import 인텐셔널 + C0301 8 line-too-long + W0718/W0613 4 + R0913/R0917 3) → 10.00 회복 목표 |
 | 커버리지 | **95%** | `make test-cov` — 신규 파일 100% (analytics_service, api/insights, ui/routes/insights) |
 | bandit HIGH | **0개** | bandit 1.9.4 (Python 3.14 대응) |
 | flake8 | **0건** | `flake8 src/` |
@@ -111,6 +111,43 @@
 | **#232** Docs/cycle-67-end multi-agent retrospective | **4 사이클 종결 회고** — 1차 5 에이전트 (cross-verify 생략 — 사용자 빠른 진행 신호 + 1차 결과 충분). P0 13 + P1 7 + P2 3 식별. **메모리 4건** (3 신설: stale-blocker / asgi-middleware / conftest-direct-env-set + 1 갱신: architecture-pre-confirm 위임 분류 3-tier 정밀화). MEMORY 인덱스 8→11건. 회고 보고서 + 자유 발언 (정책 9) + 회고 질문 (사용자 회신 의무) |
 | **#233** Docs/policy-evolution cycle-67 P0 bundle | **사이클 67 회고 P0 4건 정책 본문 진화** (정책 7 강화 응집): (1) 정책 7 강화 — 단일 PR > 1500 LOC 사전 확인 + architecture 단일 OK 정정 (관점 1 P0-1+P0-2) (2) 정책 8 — cross-verify 생략 조건 + 회고 PR 패턴 3 분기 (관점 1 P0-3) (3) 정책 2 진화 — 모든 sync PR commit body 실측 1줄 의무 (관점 2 P0-1) (4) 30초 체크리스트 — 메모리 11건 사례 + 트랩 차단 효과 (관점 2 P0-2). 카테고리 분류 (관점 4 P0-2) = 별도 PR (High tier 사용자 결정 의무) |
 | **#234** Docs/cycle-68 end state sync | **사이클 68 종료 sync** — STATE 헤더 38→41 PR + 사이클 68 행 신설 + CLAUDE.md L1052 tail. 단위 2055 / 통합 84 / E2E 82 변화 0 (docs only). 정책 2 진화 default 첫 적용 — 실측 1줄 의무 명시 |
+
+---
+
+### 사이클 86 — CI submit-pypi 영구 실패 대응 + pylint drift 회복 + 사이클 85 회고 Tier B 후속 (2026-05-06 · #322 + #324 + #325 + 본 sync)
+
+사이클 85 종결 회고 후속 + GitHub 인프라 변경 대응. 본 사이클 = **소규모 누적 정정** (대규모 architecture 변경 X — 사이클 85 cleanup 의 후속 + 운영 안정성 영역).
+
+| PR # | 제목 | 핵심 |
+|------|------|------|
+| **#322** docs/cycle-86-q1-q2-q3-q4-tier-b-bundle | **사이클 85 회고 Tier B Q1+Q2+Q3+Q4 묶음** — Q1 STATE.md Sentry mention 분류 (active vs history archive) + Q2 `.claude/rules/<area>.md` sync 의무 → CLAUDE.md 동기화 체크리스트 신설 + Q3 CLAUDE.md 추가 cleanup (-85 LOC, 메모리 인덱스 + 정책 9 + 정책 10 압축) + Q4 정책 1 진화 회귀 가드 신설 (자가 검증 의무 + default 회복 패턴). 사이클 83 #279 단일 응집 정책 진화 묶음 패턴 정합 |
+| **#324** fix/cycle-86-dependabot-supersede-submit-pypi | **CI submit-pypi 영구 실패 대응** — 5+1 다중 에이전트 검증 (관점 1~5 + cross-verify 생략) → GitHub Auto-Injected workflow 영구 timeout 확정 (우리 코드 영역 X). `.github/dependabot.yml` 신설 (Python pip weekly + GitHub Actions monthly) → 2026-04-23 GitHub Changelog "Dependabot graphs for Python" supersede 트리거. 사용자 GitHub Settings 영역 = Auto-Submission Disable (Step 2 사용자 명시 의무 페어) |
+| **#325** fix/cycle-86-pylint-drift-recovery | **pylint 9.92 → 9.94 회복 1차 단계** — Tier A 13건 fix (W0611 unused-import 2건 re-export 영역 + C0411/C0413 import order/position 3건 + R0914 too-many-locals 8건 inline disable). 사이클 85 회고 관점 2 P0 finding (pylint drift 누적) 후속. 잔여 36건 = 사이클 87+ 점진 default (C0415 21건 lazy import + C0301 8건 + W0718/W0613 4건 + R0913/R0917 3건) |
+| **본 sync PR** docs/cycle-86-end-state-sync | **사이클 86 종결 sync** — 본 row 신설 + 사이클 85 row 와 응집 분리 (cycle boundaries 명확화). 사이클 86 = 소규모 누적 정정 영역 종결. 사용자 manual 의무 영역 = Step 1+2+3 GitHub Settings (Auto-Submission Disable + Dependabot 활성 + Branch Protection Rules 검증) |
+
+**사이클 86 누적 효과**:
+- CLAUDE.md: 762 → **677 LOC** (Q3 추가 cleanup -85 LOC)
+- pylint: 9.92 → **9.94** (#325 Tier A 13건 fix, 잔여 36건 사이클 87+)
+- CI 사고 대응: GitHub Auto-Injected `submit-pypi` 영구 실패 대응 (`.github/dependabot.yml` + 사용자 Settings 영역)
+- 정책 본문 회귀 가드 신설: 정책 1 진화 (Q4 — 일괄 결정 시 자가 검증 의무)
+- `.claude/rules/<area>.md` sync 의무 (Q2 — CLAUDE.md 동기화 체크리스트 신설)
+
+**자율 판단 보고 (정책 3 강화 — ⚠️ 마커 적용)**:
+- ⚠️ **CI 사고 대응 = GitHub-side 인프라 영역** (우리 코드 영역 X) — 사용자 명시 신호 ("여러 에이전트가 깊게") 페어 5+1 dispatch 진행 후 dependabot.yml 신설 한정 (Claude scope)
+- ⚠️ **pylint 잔여 36건 사이클 87+ 점진** — 1 PR 일괄 fix 시 변경 범위 ↑ + 검증 부담 ↑. 정책 16 단순화 default + 정책 7 강화 응집 단위 페어
+- ⚠️ **본 sync PR = 사이클 86 종결 명시** + 사용자 manual 의무 영역 (Step 1+2+3) 명시 — 정책 12 destructive 영역 사용자 명시 의무 보존
+
+**사용자 manual 의무 영역 (정책 13 페어)**:
+- Settings > Code security > Dependency graph > Automatic Dependency Submission **Disable** (Step 2)
+- Settings > Code security > Dependabot alerts/security updates **Enable** (Step 3 — dependabot.yml 활성)
+- Settings > Branches > main > Branch protection rules `submit-pypi` required check 등록 여부 검증 (Step 1)
+
+**잔여 영역 (사이클 87+ 점진 default)**:
+- pylint 9.94 → 10.00 (잔여 36건 — C0415/C0301/W0718/W0613/R0913/R0917)
+- D3 모바일 Phase 2 (Progressive Disclosure) — 사용자 명시 신호 의무 (사이클 81 보류)
+- D1 i18n Phase 6 (DB persist + pybabel) — 사용자 명시 신호 의무 (사이클 84 보류)
+- C2 Anthropic 200줄 추가 단계 (3.4배 → 1배) — 사용자 명시 사전 확인 의무 (사이클 85 보류)
+- B1 i18n fallback baseline (2026-05-12 시간 의존)
 
 ---
 
