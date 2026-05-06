@@ -1,7 +1,7 @@
-# SCAManager 사이클 작업 이력 (사이클 60~80 archive)
+# SCAManager 사이클 작업 이력 (사이클 60~81 archive)
 
-> CLAUDE.md tail entry 분리본 (사이클 85 정리, 2026-05-06). 사이클 60~80 historical entries.
-> 사이클 81~85+ 직전 5 사이클은 CLAUDE.md tail 보존.
+> CLAUDE.md tail entry 분리본 (사이클 85 정리, 2026-05-06 → 사이클 86 회고 사이클 81 추가). 사이클 60~81 historical entries.
+> 사이클 82~86+ 직전 5 사이클은 CLAUDE.md tail 보존.
 > 본 파일은 회고 시점 (정책 8 5+1 패턴) 또는 영역 reference 시 read 의무.
 
 ## 목차
@@ -16,6 +16,7 @@
 - [사이클 73~74 (Phase 4 진입 + Phase 2 효율화)](#사이클-7374)
 - [사이클 75~77 (5+1 cleanup + Tier B + Phase 옵션 표)](#사이클-7577)
 - [사이클 78~80 (Phase 4 5 영역 분할 — Telegram + SaaS + 운영 모니터링)](#사이클-7880)
+- [사이클 81 (모바일 Phase 1 MVP)](#사이클-81)
 
 ---
 
@@ -88,3 +89,7 @@
 - **사이클 78 (2026-05-05)** — 영역 🅒 Telegram 본격화 (5 사이클 분할 첫 사이클): PR 1 (#253 머지) `feature_kill_switch` helper 모듈 신설 + 기존 2 사용처 마이그레이션 (NEW-P0-2 — Phase 4 5 영역 진입 의무 페어). PR 2/3/4 = 머지 대기 (사용자 영역)
 - **사이클 79 (2026-05-05)** — 영역 🅐 SaaS Phase 1 read-only 종결: PR 1 (#254) alembic 0029 RLS 5 누락 테이블 보강 + PR 2 (#255) admin allow-list + require_admin Depends + `SAAS_MULTITENANT_DISABLED` kill-switch + PR 3a (#256) admin UI + REST API + saas_service (TemplateResponse 신 시그니처 fix-up + Copilot Autofix 3 commit 통합) + PR 3b (#257) `/dashboard?mode=usage` 본인 사용량 (user_id 직접 격리). **단위 2122 → 2178 (+56 회귀 가드 — RLS 6 + admin 11 + saas_service 7 + admin_endpoints 5 + dashboard_usage 9 + kill-switch 17 + telegram 봇 차단 7 등 누적)**
 - **사이클 80 (2026-05-05)** — 영역 🅔 운영 모니터링 Phase 2 종결: PR 1 (#259) Sentry PII 스크러빙 강화 (4 → 10 헤더 + URL fragment 제거 + runbook `docs/runbooks/_archive/sentry-activation.md`) + PR 2 (#260) admin operations KPI 5 카드 (`/admin/operations` + `/api/admin/operations` — cache_hit_rate / api_cost / cache 토큰 분포 / merge success / pipeline_latency placeholder + `operations_service` 신설). **단위 2178 → 2214 (+36 회귀 가드 — observability 23 + operations 10 + admin operations 3)** · 옵션 🅒 (1주 baseline 보고서) = 사이클 81+ Sentry 활성화 1주 후 별도 진행 default (NEW-P0-3 정합) → **사이클 85 Sentry 통합 폐기로 NEW-P0-3 자동 폐기**
+
+## 사이클 81
+
+- **사이클 81 (모바일 Phase 1 MVP, 2026-05-05)** — PWA manifest + dashboard 모바일 KPI 우선순위 + settings 모바일 + form sweep (4 PR #262~#265). 통합 84→118 (+34 회귀 가드). `<details>` Progressive Disclosure = Phase 2 보류 (High tier).
