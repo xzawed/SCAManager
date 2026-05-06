@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-06 기준 — **사이클 86 종결 회고 + Tier A sync (5+1 다중 에이전트)**: 110+ PR #188~#335+ (메타 #213/#214 + #305 empty re-merge 제외) — 누적 정책 본문 16건 + 메모리 29건 (활성 27 + deprecated 2). **사이클 85 종결**: Sentry 통합 완전 폐기 (#317) + CLAUDE.md cleanup Anthropic 권고 6.4배 → 3.4배 (#320 + #321 + #322) — 1271 → 677 LOC (-47%). **사이클 86**: 정책 진화 (#321/#322) + CI 사고 대응 (#324 → dependabot.yml) + 자동 dependabot 8 PR (#325-#332, ROI 100%) + sync (#334) + pylint 9.92→9.94 회복 1차 (#335) + 회고+Tier A sync (본 PR — README 배지 + CLAUDE.md 직전 5 사이클 정합). 단위 2669 / 통합 129 / E2E 96 / pylint **9.94/10** (잔여 36건 사이클 87+ 점진)
+## 현재 수치 (2026-05-06 기준 — **사이클 87 진입: Tier B 3건 단일 응집 묶음**: 112+ PR #188~#335+ — 누적 정책 본문 17건 (정책 8 본문 진화 +1 cross-verify 정량 표 default) + 메모리 29건 (활성 27 + deprecated 2). **사이클 86 종결 회고**: 5+1 다중 에이전트 (P0 6건 + P1 8건 + P2 17건) + Tier A 2건 (README 배지 9.94 + CLAUDE.md 직전 5 사이클 정합). **사이클 87**: 회고 Tier B 3건 = Makefile `lint-strict` target (pylint --fail-under=9.90 회귀 가드) + dependabot.yml `groups` 분리 + 정책 8 본문 진화 (cross-verify 생략 정량 표 default). 단위 2669 / 통합 129 / E2E 96 / pylint **9.94/10** (잔여 36건 사이클 87+ 점진)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
@@ -111,6 +111,23 @@
 | **#232** Docs/cycle-67-end multi-agent retrospective | **4 사이클 종결 회고** — 1차 5 에이전트 (cross-verify 생략 — 사용자 빠른 진행 신호 + 1차 결과 충분). P0 13 + P1 7 + P2 3 식별. **메모리 4건** (3 신설: stale-blocker / asgi-middleware / conftest-direct-env-set + 1 갱신: architecture-pre-confirm 위임 분류 3-tier 정밀화). MEMORY 인덱스 8→11건. 회고 보고서 + 자유 발언 (정책 9) + 회고 질문 (사용자 회신 의무) |
 | **#233** Docs/policy-evolution cycle-67 P0 bundle | **사이클 67 회고 P0 4건 정책 본문 진화** (정책 7 강화 응집): (1) 정책 7 강화 — 단일 PR > 1500 LOC 사전 확인 + architecture 단일 OK 정정 (관점 1 P0-1+P0-2) (2) 정책 8 — cross-verify 생략 조건 + 회고 PR 패턴 3 분기 (관점 1 P0-3) (3) 정책 2 진화 — 모든 sync PR commit body 실측 1줄 의무 (관점 2 P0-1) (4) 30초 체크리스트 — 메모리 11건 사례 + 트랩 차단 효과 (관점 2 P0-2). 카테고리 분류 (관점 4 P0-2) = 별도 PR (High tier 사용자 결정 의무) |
 | **#234** Docs/cycle-68 end state sync | **사이클 68 종료 sync** — STATE 헤더 38→41 PR + 사이클 68 행 신설 + CLAUDE.md L1052 tail. 단위 2055 / 통합 84 / E2E 82 변화 0 (docs only). 정책 2 진화 default 첫 적용 — 실측 1줄 의무 명시 |
+
+---
+
+### 사이클 87 — 사이클 86 회고 Tier B 3건 단일 응집 묶음 (2026-05-06 · 회고 후속)
+
+사이클 86 회고 결과 Tier B 3건 = 단일 응집 PR (사용자 옵션 🅐 명시 결정 — 사이클 83 #279 / 사이클 84 #308 패턴 정합).
+
+| 영역 | 핵심 |
+|------|------|
+| **Tier B-1** Makefile `lint-strict` target | `pylint --fail-under=9.90 src/` + `flake8 src/` + `bandit -r src/ -q` (no `\|\| true`) — pylint drift 자동 감지 회귀 가드. baseline 9.94 보수적 floor (잔여 36건 회복 후 단계적 상향). 기존 `make lint` 보존 (개발 편의 + 정책 12 destructive 영역 사용자 명시 의무 페어 — CI workflow 통합은 사용자 영역) |
+| **Tier B-2** dependabot.yml `groups` 분리 | pip 영역 production-deps (minor/patch) + development-deps (minor/patch) 분리 + github-actions 영역 actions-minor-patch 묶음. 사이클 86 8 PR 사례 (#325-#332) 학습 = major bump + security update = group 외 개별 PR (변경 로그 검토 의무 페어). conflict 자동 해소 ROI ↑ + 머지 부담 ↓ |
+| **Tier B-3** cross-verify 생략 PR 본문 대조 표 default | CLAUDE.md L257 정책 8 본문 진화 — cross-verify 6차 생략 시 PR 본문 §"cross-verify 생략 사유" 에 사이클 69 정량 3 조건 대조 표 형식 default. 사이클 86 #324 commit body 누락 사례 학습 ("5 관점 일관 + 사용자 명시 검증 신호" 만 명시 — 정량 대조 부재) |
+
+**자율 판단 보고 (정책 3 ⚠️ 마커)**:
+- ⚠️ Tier B-1 `lint-strict` = 새 target 추가 (기존 `lint` 보존) — 정책 12 destructive 영역 (CI failure rule 변경) 회피 default. CI workflow `make lint-strict` 호출 통합 = 사용자 명시 의무 영역 (사이클 87+ 별도 PR 후보)
+- ⚠️ Tier B-2 dependabot groups = 운영 패턴 변경 (단일 PR → 묶음 PR) — 사이클 88+ 다음 dependabot 주기 (월요일 09:00 KST) 검증 의무
+- ⚠️ Tier B-3 정책 8 본문 진화 = 사이클 87+ 모든 회고 PR 시 default 적용 의무. 본 사이클은 신설 자체 (사이클 88+ 첫 적용)
 
 ---
 
