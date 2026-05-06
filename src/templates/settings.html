@@ -533,75 +533,10 @@
     {% endif %}
 
     <!-- ① 빠른 설정 (프리셋) / Quick settings (presets) -->
-    {# Phase 2 PR-4 (사이클 84) — 다국어 i18n 언어 설정 카드 (헤더 dropdown 페어) #}
-    {# Phase 2 PR-4 (Cycle 84) — i18n language settings card (pairs with header dropdown) #}
-    <div class="s-card" id="languageCard" style="margin-bottom:1rem;">
-      <div class="s-card-hdr" style="background:linear-gradient(135deg,#1e40af,#3b82f6)">
-        <span class="hdr-icon">🌍</span>
-        <span class="hdr-title">{{ 'settings_page.language_card.header' | i18n_args(locale | default('ko')) }}</span>
-        <span class="hdr-badge">{{ 'settings_page.language_card.badge' | i18n_args(locale | default('ko')) }}</span>
-      </div>
-      <div class="s-card-body">
-        <p style="font-size:12px;color:var(--text-muted);margin-bottom:0.8rem;">
-          {{ 'settings_page.language_card.hint' | i18n_args(locale | default('ko')) }}
-        </p>
-        <div class="lang-radio-group" style="display:flex;gap:0.75rem;flex-wrap:wrap;">
-          <label class="lang-radio-label" style="display:flex;align-items:center;gap:0.4rem;padding:8px 14px;border:1px solid var(--border);border-radius:8px;cursor:pointer;min-height:44px;box-sizing:border-box;">
-            <input type="radio" name="settings_preferred_language" value="en"
-                   {% if current_user and current_user.preferred_language == 'en' %}checked{% endif %}
-                   data-lang-radio>
-            <span>🇺🇸 English</span>
-          </label>
-          <label class="lang-radio-label" style="display:flex;align-items:center;gap:0.4rem;padding:8px 14px;border:1px solid var(--border);border-radius:8px;cursor:pointer;min-height:44px;box-sizing:border-box;">
-            <input type="radio" name="settings_preferred_language" value="ko"
-                   {% if not current_user or current_user.preferred_language == 'ko' or not current_user.preferred_language %}checked{% endif %}
-                   data-lang-radio>
-            <span>🇰🇷 한국어</span>
-          </label>
-          <label class="lang-radio-label" style="display:flex;align-items:center;gap:0.4rem;padding:8px 14px;border:1px solid var(--border);border-radius:8px;cursor:pointer;min-height:44px;box-sizing:border-box;">
-            <input type="radio" name="settings_preferred_language" value="ja"
-                   {% if current_user and current_user.preferred_language == 'ja' %}checked{% endif %}
-                   data-lang-radio>
-            <span>🇯🇵 日本語</span>
-          </label>
-        </div>
-        <p id="langSaveStatus" style="font-size:11px;color:var(--text-muted);margin-top:0.5rem;min-height:1em;"></p>
-      </div>
-    </div>
-    <script>
-      // Phase 2 PR-4 — settings 페이지 언어 라디오 → API + Cookie 동기화
-      // Phase 2 PR-4 — settings page language radio → API + Cookie sync
-      (function() {
-        const radios = document.querySelectorAll('[data-lang-radio]');
-        const status = document.getElementById('langSaveStatus');
-        if (!radios.length) return;
-        radios.forEach(radio => {
-          radio.addEventListener('change', async () => {
-            if (!radio.checked) return;
-            const lang = radio.value;
-            status.textContent = '저장 중... / Saving...';
-            try {
-              const res = await fetch('/api/users/me/preferred-language', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'same-origin',
-                body: JSON.stringify({ language: lang })
-              });
-              if (res.ok) {
-                status.textContent = '저장됨. 페이지 새로고침... / Saved. Reloading...';
-                // SonarQube javascript:S7764 — globalThis 표준 권장 (window 대신)
-                // SonarQube javascript:S7764 — globalThis is the standard (replaces window)
-                setTimeout(() => globalThis.location.reload(), 600);
-              } else {
-                status.textContent = '저장 실패 / Save failed (status: ' + res.status + ')';
-              }
-            } catch (err) {
-              status.textContent = '오류 / Error: ' + err.message;
-            }
-          });
-        });
-      })();
-    </script>
+    {# 사이클 84 회고 Tier B Q5 (2026-05-06) — settings 언어 카드 제거 (사용자 명시 결정) #}
+    {# Cycle 84 retro Tier B Q5 — settings language card removed (user explicit decision) #}
+    {# 단일 진실 소스 = 헤더 dropdown (base.html). User.preferred_language 변경은 헤더 dropdown 으로 통일. #}
+    {# Single source of truth = header dropdown (base.html). User.preferred_language change unified through header. #}
 
     <div class="s-card" id="presetCard" style="margin-bottom:1rem;">
       <div class="s-card-hdr hdr-preset">

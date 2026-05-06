@@ -339,11 +339,6 @@
       "desc": "<code>check_suite</code> イベントが購読されておらず、自動マージのリトライが遅延する可能性があります。Webhook を再登録すると CI 完了直後に再試行されます。",
       "btn": "GitHub 受信 Webhook を再登録"
     },
-    "language_card": {
-      "header": "言語設定",
-      "badge": "Language",
-      "hint": "好みの言語を選択してください。変更時は即座に適用されます (ページ自動再読み込み)。"
-    },
     "preset_card": {
       "header": "クイック設定",
       "badge": "ワンクリックプリセット",

@@ -339,11 +339,6 @@
       "desc": "Auto-merge retry may be delayed: <code>check_suite</code> event is not subscribed. Reinstalling the webhook enables immediate retries on CI completion.",
       "btn": "Reinstall GitHub Webhook"
     },
-    "language_card": {
-      "header": "Language",
-      "badge": "Language",
-      "hint": "Select your preferred language. Changes apply immediately (page auto-reloads)."
-    },
     "preset_card": {
       "header": "Quick Settings",
       "badge": "One-click presets",
