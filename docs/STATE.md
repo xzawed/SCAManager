@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-06 기준 — **사이클 86 종결: Tier B Q1+Q2+Q3+Q4 + CI submit-pypi 대응 + pylint drift 회복 1차**: 105+ PR #188~#325+ (메타 #213/#214 + #305 empty re-merge 제외) — 누적 정책 본문 16건 + 메모리 29건 (활성 27 + deprecated 2). **사이클 85 종결**: Sentry 통합 완전 폐기 (#317) + CLAUDE.md cleanup Anthropic 권고 6.4배 → 3.4배 (#320 + #321 + #322) — 1271 → 677 LOC (-47%) / ~57K → ~20K 토큰 (-65%). **사이클 86**: #322 Tier B Q1+Q2+Q3+Q4 + #324 dependabot.yml (CI submit-pypi 영구 실패 대응) + #325 pylint 9.92→9.94 회복 1차. 단위 2669 / 통합 129 / E2E 96 / pylint **9.94/10** (잔여 36건 사이클 87+ 점진)
+## 현재 수치 (2026-05-06 기준 — **사이클 86 종결 회고 + Tier A sync (5+1 다중 에이전트)**: 110+ PR #188~#335+ (메타 #213/#214 + #305 empty re-merge 제외) — 누적 정책 본문 16건 + 메모리 29건 (활성 27 + deprecated 2). **사이클 85 종결**: Sentry 통합 완전 폐기 (#317) + CLAUDE.md cleanup Anthropic 권고 6.4배 → 3.4배 (#320 + #321 + #322) — 1271 → 677 LOC (-47%). **사이클 86**: 정책 진화 (#321/#322) + CI 사고 대응 (#324 → dependabot.yml) + 자동 dependabot 8 PR (#325-#332, ROI 100%) + sync (#334) + pylint 9.92→9.94 회복 1차 (#335) + 회고+Tier A sync (본 PR — README 배지 + CLAUDE.md 직전 5 사이클 정합). 단위 2669 / 통합 129 / E2E 96 / pylint **9.94/10** (잔여 36건 사이클 87+ 점진)
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
@@ -114,23 +114,27 @@
 
 ---
 
-### 사이클 86 — CI submit-pypi 영구 실패 대응 + pylint drift 회복 + 사이클 85 회고 Tier B 후속 (2026-05-06 · #322 + #324 + #325 + 본 sync)
+### 사이클 86 — CI submit-pypi 영구 실패 대응 + Dependabot 자동 8 PR + pylint drift 회복 + 5+1 회고 (2026-05-06 · #321 + #322 + #324 + #325-#332 + #334 + #335 + 본 회고+sync)
 
-사이클 85 종결 회고 후속 + GitHub 인프라 변경 대응. 본 사이클 = **소규모 누적 정정** (대규모 architecture 변경 X — 사이클 85 cleanup 의 후속 + 운영 안정성 영역).
+사이클 85 종결 회고 후속 + GitHub 인프라 변경 대응 + dependabot 자동화 ROI 검증. 본 사이클 = **운영 안정성 영역** (정책 진화 + CI 사고 대응 + dependency 자동화 + drift 회복).
 
 | PR # | 제목 | 핵심 |
 |------|------|------|
-| **#322** docs/cycle-86-q1-q2-q3-q4-tier-b-bundle | **사이클 85 회고 Tier B Q1+Q2+Q3+Q4 묶음** — Q1 STATE.md Sentry mention 분류 (active vs history archive) + Q2 `.claude/rules/<area>.md` sync 의무 → CLAUDE.md 동기화 체크리스트 신설 + Q3 CLAUDE.md 추가 cleanup (-85 LOC, 메모리 인덱스 + 정책 9 + 정책 10 압축) + Q4 정책 1 진화 회귀 가드 신설 (자가 검증 의무 + default 회복 패턴). 사이클 83 #279 단일 응집 정책 진화 묶음 패턴 정합 |
-| **#324** fix/cycle-86-dependabot-supersede-submit-pypi | **CI submit-pypi 영구 실패 대응** — 5+1 다중 에이전트 검증 (관점 1~5 + cross-verify 생략) → GitHub Auto-Injected workflow 영구 timeout 확정 (우리 코드 영역 X). `.github/dependabot.yml` 신설 (Python pip weekly + GitHub Actions monthly) → 2026-04-23 GitHub Changelog "Dependabot graphs for Python" supersede 트리거. 사용자 GitHub Settings 영역 = Auto-Submission Disable (Step 2 사용자 명시 의무 페어) |
-| **#325** fix/cycle-86-pylint-drift-recovery | **pylint 9.92 → 9.94 회복 1차 단계** — Tier A 13건 fix (W0611 unused-import 2건 re-export 영역 + C0411/C0413 import order/position 3건 + R0914 too-many-locals 8건 inline disable). 사이클 85 회고 관점 2 P0 finding (pylint drift 누적) 후속. 잔여 36건 = 사이클 87+ 점진 default (C0415 21건 lazy import + C0301 8건 + W0718/W0613 4건 + R0913/R0917 3건) |
-| **본 sync PR** docs/cycle-86-end-state-sync | **사이클 86 종결 sync** — 본 row 신설 + 사이클 85 row 와 응집 분리 (cycle boundaries 명확화). 사이클 86 = 소규모 누적 정정 영역 종결. 사용자 manual 의무 영역 = Step 1+2+3 GitHub Settings (Auto-Submission Disable + Dependabot 활성 + Branch Protection Rules 검증) |
+| **#321** chore/cycle-86-q3-policy-history-extraction | **Q3 정책 본문 진화 entry 실 추출** (사이클 85 stub 후속) — 정책 1/2/3/7/8/11 진화 entry → `docs/policies/history.md` 이전. CLAUDE.md 865 → 762 LOC |
+| **#322** chore/cycle-86-q1-q2-q3-q4-tier-b-bundle | **사이클 85 회고 Tier B Q1+Q2+Q3+Q4 묶음** — Q1 STATE.md Sentry mention 분류 + Q2 `.claude/rules/<area>.md` sync 의무 → CLAUDE.md 동기화 체크리스트 신설 + Q3 CLAUDE.md 추가 cleanup (-85 LOC) + Q4 정책 1 진화 회귀 가드 신설 (자가 검증 의무 + default 회복 패턴) |
+| **#324** fix/cycle-86-dependabot-supersede-submit-pypi | **CI submit-pypi 영구 실패 대응** — 5+1 다중 에이전트 검증 → GitHub Auto-Injected workflow 영구 timeout. `.github/dependabot.yml` 신설 (pip weekly + github_actions monthly) → 2026-04-23 GitHub Changelog "Dependabot graphs for Python" supersede 트리거 |
+| **#325-#332** dependabot 자동 8 PR | **Dependabot 자동화 ROI 100% 검증** — sonarqube 6→8 (#325) + setup-node 4→6 (#326) + playwright >=1.59.0 (#327) + codeql 3→4 (#328) + authlib >=1.7.2 (#329) + flake8 7.3.0 (#330) + itsdangerous >=2.2.0 (#331) + uvicorn 0.46.0 (#332). conflict 1건 (#332) Claude rebase + force-with-lease 해결 (옵션 🅐) |
+| **#334** docs/cycle-86-end-state-sync | **사이클 86 종결 sync 1차** — STATE 사이클 86 row 신설 + pylint 배지 10.00 → 9.94 |
+| **#335** fix/cycle-86-pylint-drift-recovery | **pylint 9.92 → 9.94 회복 1차** — Tier A 13건 fix (W0611 2 + C0411/C0413 3 + R0914 8). 잔여 36건 사이클 87+ 점진 |
+| **본 회고+sync PR** docs/cycle-86-end-multi-agent-retrospective | **사이클 86 종결 회고 + Tier A sync** — 5+1 다중 에이전트 (관점 1~5 + cross-verify 6차) + Tier A 정정 (README + README.ko 배지 9.94 + CLAUDE.md "직전 5 사이클" 정합 회복 사이클 81 → cycle-history.md 이전). 회고 보고서: [`docs/reports/2026-05-06-cycle-86-end-multi-agent-retrospective.md`](reports/2026-05-06-cycle-86-end-multi-agent-retrospective.md) |
 
 **사이클 86 누적 효과**:
-- CLAUDE.md: 762 → **677 LOC** (Q3 추가 cleanup -85 LOC)
-- pylint: 9.92 → **9.94** (#325 Tier A 13건 fix, 잔여 36건 사이클 87+)
-- CI 사고 대응: GitHub Auto-Injected `submit-pypi` 영구 실패 대응 (`.github/dependabot.yml` + 사용자 Settings 영역)
+- CLAUDE.md: 762 → **677 LOC** (Q3 + Q3 추가 cleanup 누적 -188 LOC)
+- pylint: 9.92 → **9.94** (#335 Tier A 13건 fix, 잔여 36건 사이클 87+)
+- CI 사고 대응: GitHub Auto-Injected `submit-pypi` 영구 실패 대응 (`.github/dependabot.yml` 1회 setup → 8 PR 자동 생성 → 8건 모두 머지 = ROI 100%)
 - 정책 본문 회귀 가드 신설: 정책 1 진화 (Q4 — 일괄 결정 시 자가 검증 의무)
 - `.claude/rules/<area>.md` sync 의무 (Q2 — CLAUDE.md 동기화 체크리스트 신설)
+- 회고 5+1 결과: P0 6건 + P1 8건 + P2 17건 — Tier A 2건 본 PR 즉시 정정 (README 배지 9.94 + CLAUDE.md "직전 5 사이클" 정합 회복) + Tier B 3건 사이클 87+ (pylint CI threshold + dependabot.yml groups + cross-verify 생략 정량 표)
 
 **자율 판단 보고 (정책 3 강화 — ⚠️ 마커 적용)**:
 - ⚠️ **CI 사고 대응 = GitHub-side 인프라 영역** (우리 코드 영역 X) — 사용자 명시 신호 ("여러 에이전트가 깊게") 페어 5+1 dispatch 진행 후 dependabot.yml 신설 한정 (Claude scope)
