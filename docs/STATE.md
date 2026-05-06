@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-06 기준 — **사이클 84 다국어 i18n Phase 1~5 + 18 PR 종결 (#283~#304)**: 96 PR #188~#304 (메타 #213/#214 + #305 empty re-merge 제외) — 누적 정책 본문 16건 + 메모리 27건 (활성 25 + deprecated 2). **사이클 84 다국어 (영어/한국어/일본어) i18n 18 PR = Phase 1 (PR-1a/b/c #283~#285) + Phase 2 UI 5 PR (#287/#289/#290/#293/#294) + Phase 3 알림 3 PR (#295/#296/#297) + Phase 4 코드리뷰 4 PR (#298~#301) + Phase 5 검증/관측 3 PR (#302/#303/#304)**. 단위 2709 / 통합 129 / E2E 96
+## 현재 수치 (2026-05-06 기준 — **사이클 85 Sentry 완전 제거 + GitHub 정리 (62 branch 일괄 삭제)**: 100 PR #188~#308+ (메타 #213/#214 + #305 empty re-merge 제외) — 누적 정책 본문 16건 + 메모리 29건 (활성 27 + deprecated 2). **Sentry 통합 폐기 (사용자 명시 결정)** — `src/shared/observability.py` 폐기 + 테스트 -40 + `sentry-sdk[fastapi]>=2.0.0` 의존성 제거 + 환경변수 3건 (.env.example) + runbook archive (`_archive/sentry-activation.md`). 운영 영향 0 (`extra: "ignore"` policy 페어). 단위 2669 / 통합 129 / E2E 96
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **2709개** | pytest 9.0.3 — 사이클 73~75 +67 + 사이클 78~82 +114 (2122→2236) + **사이클 84 i18n 18 PR +473 누적** (Phase 1 +69 / Phase 2~5 +404 — UI 5 + 알림 3 + 코드리뷰 4 + 검증 3 + 가드 11 smoke). **= 2709 collected / 2705 passed / 4 skipped / 0 failed** |
+| 단위 테스트 | **2669개** | pytest 9.0.3 — 사이클 73~75 +67 + 사이클 78~82 +114 (2122→2236) + 사이클 84 i18n 18 PR +473 누적 + **사이클 85 Sentry 완전 제거 -40** (test_observability 9 + test_observability_before_send 14 + test_sentry_scrubbing 17). **= 2669 collected / 2668 passed / 1 skipped / 0 failed** |
 | 통합 테스트 | **129개** | tests/integration/ — 사이클 81 영역 🅑 모바일 Phase 1 MVP +34 + **사이클 84 i18n PR-18 smoke +11** (3 언어 × /login Cookie + HTML lang attr + default fallback + i18n metrics). **= 124 passed / 5 skipped / 0 failed** |
 | E2E 테스트 | **96개** | `make test-e2e` (Chromium Playwright) — Phase 3 PR 6 +7 + **사이클 84 i18n PR-16 +14** (3 언어 × 4 페이지 — login/overview/dashboard/settings + Cookie fallback + locale switch). **= 94 passed / 0 failed / 2 pre-existing fail (test_settings 2건, 본 사이클 무관)**. ⚠️ e2e ↔ tests/integration 동시 실행 금지 — `e2e/pytest.ini` 의도적 asyncio_mode 미설정, 분리 실행 default (`make test-e2e` vs CI command `pytest tests/`) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |

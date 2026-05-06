@@ -520,10 +520,10 @@
       "i18n_fallback_hint": "Higher fallback rate = more missing translations — operator action required (resets on process restart)",
       "info_title": "💡 Phase 1 operations notes",
       "info_li1": "<strong>In-memory counter limit</strong> — resets on Railway redeploy (cache stats / api_cost). DB persist = Phase 2 area",
-      "info_li2": "<strong>silent fallback streak</strong> — 5 consecutive cache misses trigger logger WARNING (paired with Sentry)",
+      "info_li2": "<strong>silent fallback streak</strong> — 5 consecutive cache misses trigger logger WARNING (Railway logs)",
       "info_li3": "<strong>1-week baseline report</strong> = Cycle 81+ separate work (option C — cross-verify NEW-P0-3 alignment)",
       "info_li4": "<strong>kill-switch</strong> = `OPERATIONS_DASHBOARD_DISABLED=1` (separate from `SAAS_MULTITENANT_DISABLED`)",
-      "info_li5": "Sentry activation = Cycle 80 PR 1 runbook (`docs/runbooks/sentry-activation.md`) pair"
+      "info_li5": "Cycle 85 — Sentry integration removed (`docs/runbooks/_archive/sentry-activation.md` archived)"
     }
   },
   "errors": {

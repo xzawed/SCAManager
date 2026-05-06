@@ -13,7 +13,6 @@ from alembic.config import Config
 
 from src.config import settings
 from src.shared.http_client import close_http_client, init_http_client
-from src.shared.observability import init_sentry
 from src.webhook.router import router as webhook_router
 from src.api.repos import router as api_repos_router
 from src.api.stats import router as api_stats_router
@@ -91,7 +90,6 @@ async def lifespan(_app: FastAPI):
                 "TOKEN_ENCRYPTION_KEY required when STRICT_TOKEN_ENCRYPTION=true"
             )
         logger.warning("%s", warning_msg)
-    init_sentry()  # Sentry SDK — SENTRY_DSN 설정 시만 활성
     try:
         await asyncio.wait_for(asyncio.to_thread(_run_migrations), timeout=30)
         logger.info("DB migration completed")
@@ -99,7 +97,8 @@ async def lifespan(_app: FastAPI):
         logger.error("DB migration timed out after 30s — starting app anyway")
     except Exception:  # pylint: disable=broad-exception-caught  # noqa: BLE001
         # Phase H PR-6A: logger.exception 으로 stack trace 보존
-        # Sentry/Railway 로그에서 마이그레이션 실패 원인 추적 가능
+        # Railway 로그에서 마이그레이션 실패 원인 추적 가능
+        # logger.exception preserves stack trace; Railway logs surface failure cause
         logger.exception("DB migration failed")
     await init_http_client()
 
