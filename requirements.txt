@@ -15,7 +15,7 @@ authlib>=1.7.2
 itsdangerous>=2.2.0
 # starlette는 fastapi가 CVE 패치 버전을 번들로 가져옴 — 독립 핀 불필요
 # starlette CVE patches are bundled via fastapi>=0.115.5 — no standalone pin needed
-python-telegram-bot==21.6
+python-telegram-bot==22.7
 anthropic>=0.25.0
 aiosmtplib>=3.0.0
 pylint==3.3.1
