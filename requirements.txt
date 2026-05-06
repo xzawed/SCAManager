@@ -24,7 +24,7 @@ bandit>=1.9.4
 semgrep==1.161.0
 slither-analyzer>=0.10.0
 jinja2==3.1.6
-# python-multipart>=0.0.26 — CVE-2026-40347 (preamble/epilogue CPU DoS) fix
-python-multipart>=0.0.26
+# python-multipart>=0.0.27 — CVE-2026-40347 (preamble/epilogue CPU DoS) fix
+python-multipart>=0.0.27
 # cryptography>=46.0.7 — CVE-2026-26007/34073/39892 fix
 cryptography>=46.0.7
