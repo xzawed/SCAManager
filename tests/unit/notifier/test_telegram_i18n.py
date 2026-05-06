@@ -14,8 +14,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from src.notifier._language import resolve_notification_language
 from src.notifier.telegram import _build_message
 from src.notifier.telegram_commands import (
