@@ -67,248 +67,11 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 
 ## 아키텍처
 
-```
-src/
-├── main.py                     # FastAPI 앱, lifespan(DB 마이그레이션 + http_client), 전체 라우터 등록 + StaticFiles `/static` mount (UI 감사 Step C) + 미들웨어 LIFO 등록 (SecurityHeaders → RLSSessionMiddleware → SessionMiddleware — RLS inner / Session outer 보장, Phase 3 postlude #228)
-├── static/
-│   ├── vendor/
-│   │   └── chart.umd.min.js    # Chart.js 4.4.0 UMD min vendoring — CDN 차단/오프라인 환경 호환 (UI 감사 Step C). 사용처: repo_detail / analysis_detail / dashboard
-│   ├── manifest.json           # PWA manifest (Cycle 81 PR-A — 홈 화면 추가 + iOS PWA standalone 호환)
-│   └── icons/
-│       ├── icon-192.svg        # PWA maskable icon 192x192 (Cycle 81 PR-A — apple-touch-icon)
-│       └── icon-512.svg        # PWA maskable icon 512x512 (PWA splash screen)
-├── config.py                   # pydantic-settings 환경변수 관리, postgres:// URL 자동 변환
-├── constants.py                # 전역 상수 단일 출처 — 점수배점/감점가중치/AI기본값/등급/알림한도/HTTP타임아웃/캐시TTL
-├── crypto.py                   # encrypt_token()/decrypt_token() — TOKEN_ENCRYPTION_KEY
-├── database.py                 # SQLAlchemy engine, Base, FailoverSessionFactory
-├── shared/
-│   ├── http_client.py          # httpx.AsyncClient lifespan 싱글톤 (내부 신뢰 API 용)
-│   ├── log_safety.py           # sanitize_for_log() — 로그 인젝션 방지
-│   ├── claude_metrics.py       # Claude API 비용/latency 계측 — log_claude_api_call (Phase E.2b)
-│   ├── stage_metrics.py        # stage_timer context manager — pipeline 단계 타이밍 (Phase E.2c)
-│   ├── merge_metrics.py        # parse_reason_tag + log_merge_attempt — auto-merge 관측 (Phase F.1)
-│   ├── anthropic_caching.py    # build_cached_system_param() — Anthropic prompt cache 5분 ephemeral 헬퍼 + opt-out 환경변수 DISABLE_PROMPT_CACHE (Phase 3 PR 1)
-│   ├── rls_context.py          # contextvars 기반 request scope user_id (Phase 3 postlude #228 — middleware ↔ event listener bridge)
-│   ├── feature_kill_switch.py  # is_disabled(feature) — 환경변수 `<FEATURE>_DISABLED` 기반 기능 비활성화 helper (Cycle 78 NEW-P0-2 — Phase 4 5 영역 진입 의무 페어)
-│   └── alembic_dialect.py      # is_postgresql(bind_or_conn) — duck typing PG dialect 검사 (Cycle 82 PR 1 — 사용처 12개 도달 정책 16 4번 원칙 정정. alembic 9 + database.py 1 위치 thin wrapper)
-├── middleware/                 # FastAPI/Starlette ASGI 미들웨어 (Phase 3 postlude — RLS 운영 활성화)
-│   ├── rls_session.py          # RLSSessionMiddleware — ASGI middleware, scope["session"]["user_id"] → contextvars (Phase 3 postlude #228, BaseHTTPMiddleware 우회 — contextvars 전파 보장)
-│   └── locale.py               # LocaleMiddleware — ASGI middleware, 5단계 locale 감지 (Cookie > Accept-Language q-weight > default > fallback) → scope["state"]["locale"] (Cycle 84 i18n Phase 1 PR-1b #284, kill-switch is_disabled("I18N") 페어)
-├── i18n/                       # 다국어 지원 인프라 (Cycle 84 i18n Phase 1 PR-1b #284 — Babel 미사용 JSON dict 자체 구현, 정책 16 4번 원칙 정합)
-│   ├── __init__.py             # public API export (get_text / load_translations / register_i18n_filters)
-│   ├── loader.py               # TranslationLoader — JSON 파일 로드 + LRU cache + namespace dot path + 영문 fallback
-│   ├── filters.py              # Jinja2 필터 (i18n / i18n_args + register_i18n_filters)
-│   └── translations/           # 번역 파일 skeleton — en.json / ko.json / ja.json (8 namespace × 3 언어 = 24 영역)
-├── services/                   # use case 계층 — 신규 오케스트레이션 모듈의 배치 장소 (기존 pipeline/engine/manager 는 도메인 위치 유지)
-│   ├── analytics_service.py    # 집계 단일 출처 — weekly_summary, moving_average, resolve_chat_id (top_issues / author_trend / repo_comparison / leaderboard 는 Phase 1 PR 1~3 폐기)
-│   ├── cron_service.py         # 주기적 실행 — run_weekly_reports, run_trend_check
-│   ├── dashboard_service.py    # /dashboard (Phase 1 PR 4 + Phase 2 PR 1+2 + Phase 3 PR 2/5 + Cycle 73 F2 + Cycle 79 PR 3b) — 9 공개 함수: dashboard_kpi (KPI 4 — avg_score/analysis_count/high_security/active_repos), dashboard_trend (라인 차트), frequent_issues_v2 (Q7), auto_merge_kpi (단순+retry-aware), merge_failure_distribution (실패 사유 Top N), feedback_status (CTA banner), insight_narrative (async — Phase 3 PR 2 — Claude AI 4 카드 ✨/🔍/📊/💬 + caching 헬퍼 + 5 status fallback), dashboard_security (Cycle 73 F2 — Code/Secret Scanning 4 카드), **dashboard_usage (Cycle 79 PR 3b — SaaS Phase 1 본인 사용량 4 카드 — user_id 직접 격리)**. + Phase 3 PR 5 격리 헬퍼 2건: `_apply_analysis_user_filter` / `_apply_merge_attempt_user_filter` (Repository.user_id 기반 + legacy NULL 호환).
-│   ├── merge_retry_service.py  # process_pending_retries 워커 (CI-aware Auto Merge 재시도)
-│   ├── security_scan_service.py # scan_all_repos / scan_repo_alerts — Code/Secret Scanning 폴링 + audit log upsert + GHAS graceful degradation + kill-switch (`SECURITY_AUTO_PROCESS_DISABLED=1`) (사이클 73 F1)
-│   ├── saas_service.py         # tenant_inventory + rls_audit_matrix + rls_coverage_summary — SaaS Phase 1 read-only 집계 (Cycle 79 PR 3a)
-│   └── operations_service.py   # operations_kpi (cache + api_cost + merge + pipeline_latency) — admin 운영 모니터링 KPI 5 카드 (Cycle 80 PR 2)
-├── auth/
-│   ├── session.py              # get_current_user() + require_login Depends + require_admin (Cycle 79 PR 2 — SAAS_MULTITENANT kill-switch + saas_admin_emails allow-list 3-layer 검증)
-│   └── github.py               # /login, /auth/github, /auth/callback, /auth/logout
-├── models/
-│   ├── repository.py           # Repository ORM (user_id FK nullable)
-│   ├── analysis.py             # Analysis ORM (commit_message 포함)
-│   ├── analysis_feedback.py    # AnalysisFeedback ORM (thumbs +1/-1, comment, Phase E.3)
-│   ├── repo_config.py          # RepoConfig ORM (pr_review_comment, approve_mode, approve/reject_threshold, auto_merge, merge_threshold, hook_token)
-│   ├── gate_decision.py        # GateDecision ORM
-│   ├── merge_attempt.py        # MergeAttempt ORM — score/threshold 스냅샷 + failure_reason 정규 태그 (Phase F.1, append-only)
-│   ├── merge_retry.py          # MergeRetryQueue ORM (재시도 큐, append-only claim 패턴)
-│   ├── security_alert_log.py   # SecurityAlertProcessLog ORM — Code/Secret Scanning audit log (사이클 73 F1, alembic 0027)
-│   ├── insight_narrative_cache.py # InsightNarrativeCache ORM — Insight 1h TTL DB 캐싱 (사이클 74 PR-B Phase 2-B 🅑, alembic 0028)
-│   └── user.py                 # User ORM (github_id, github_login, github_access_token, email, display_name)
-├── webhook/
-│   ├── _helpers.py             # get_webhook_secret() + _webhook_secret_cache (TTL 300초)
-│   ├── validator.py            # HMAC-SHA256 서명 검증
-│   ├── loop_guard.py           # is_bot_sender, is_whitelisted_bot (PR #100), has_skip_marker, BotInteractionLimiter
-│   ├── router.py               # aggregator — providers 3개 include (+ 하위 호환 re-export)
-│   └── providers/
-│       ├── github.py           # POST /webhooks/github + merged-PR / issues 핸들러
-│       ├── telegram.py         # POST /api/webhook/telegram + gate callback
-│       └── railway.py          # POST /webhooks/railway/{token}
-├── github_client/
-│   ├── models.py               # ChangedFile dataclass 단일 출처
-│   ├── helpers.py              # github_api_headers() 공용 헬퍼
-│   ├── diff.py                 # get_pr_files, get_push_files
-│   ├── issues.py               # close_issue() — Issue 종료 API
-│   ├── repos.py                # list_user_repos(), create_webhook(), delete_webhook(), commit_scamanager_files()
-│   ├── checks.py               # get_ci_status, get_required_check_contexts (5분 TTL 캐시, D2+D8 페이지네이션)
-│   └── graphql.py              # GraphQL POST 래퍼 + enablePullRequestAutoMerge mutation + EnableAutoMergeResult 분류 (Tier 3 PR-A)
-├── railway_client/
-│   ├── models.py               # RailwayDeployEvent (3-그룹 nested) + RailwayProjectInfo + RailwayCommitInfo
-│   ├── webhook.py              # parse_railway_payload() — deploy 실패 이벤트 파싱
-│   └── logs.py                 # fetch_deployment_logs() — Railway GraphQL 로그 조회
-├── analyzer/
-│   ├── pure/                   # 순수 함수·데이터 (DB/HTTP 의존 없음 — 단위 테스트 고속)
-│   │   ├── registry.py         # AnalyzeContext + Analyzer Protocol + REGISTRY + register() + Category/Severity StrEnum
-│   │   ├── language.py         # detect_language(filename, content) — 50개 언어 감지. is_test_file()
-│   │   ├── review_prompt.py    # build_review_prompt() — 언어별 가이드 조립 + 토큰 예산 관리(8000)
-│   │   └── review_guides/      # 언어별 리뷰 체크리스트 (get_guide(lang, mode))
-│   │       ├── tier1/          # python/js/ts/java/go/rust/c/cpp/csharp/ruby (상세)
-│   │       ├── tier2/          # php/swift/kotlin/scala/shell ... fsharp (20개)
-│   │       ├── tier3/          # erlang/ocaml/.../json_schema (20개 경량)
-│   │       └── generic.py      # 알 수 없는 언어 fallback
-│   ├── io/                     # I/O 바운드 (tempfile·subprocess·Claude API)
-│   │   ├── static.py           # analyze_file — Registry 위임. AnalysisIssue(category/language 필드)
-│   │   ├── ai_review.py        # review_code() — Claude API, AiReviewResult (detected_languages 포함)
-│   │   └── tools/
-│   │       ├── python.py       # _PylintAnalyzer, _Flake8Analyzer, _BanditAnalyzer (모듈 로드 시 자동 등록)
-│   │       ├── semgrep.py      # _SemgrepAnalyzer — 22개 언어, graceful degradation
-│   │       ├── eslint.py       # _ESLintAnalyzer — JS/TS, flat config
-│   │       ├── shellcheck.py   # _ShellCheckAnalyzer — shell 스크립트
-│   │       ├── cppcheck.py     # _CppCheckAnalyzer — C/C++, XML v2 stderr 파싱
-│   │       ├── slither.py      # _SlitherAnalyzer — Solidity, stdout JSON, mixed-category
-│   │       ├── rubocop.py      # _RuboCopAnalyzer — Ruby, Security/ cop → security
-│   │       └── golangci_lint.py # _GolangciLintAnalyzer — Go, go.mod 자동생성, gosec → security
-│   └── configs/                # eslint.config.json 등 외부 도구 설정 파일 (런타임 리소스)
-├── scorer/
-│   └── calculator.py           # calculate_score(ai_review), ScoreResult, _grade
-├── config_manager/
-│   └── manager.py              # get_repo_config(), upsert_repo_config(), RepoConfigData
-├── gate/
-│   ├── _common.py              # score_from_result() 공용 헬퍼 (engine 과 향후 actions 공유)
-│   ├── engine.py               # run_gate_check() — 3-옵션 독립 처리 (직접 구현)
-│   ├── github_review.py        # post_github_review(), merge_pr() (REST 폴백 경로)
-│   ├── native_automerge.py     # enable_or_fallback() — GraphQL enablePullRequestAutoMerge 우선 + REST merge_pr 폴백 (Tier 3 PR-A)
-│   ├── merge_reasons.py        # auto-merge 실패 사유 정규 태그 상수 (Phase F QW5) — branch_protection_blocked, unstable_ci, permission_denied 등
-│   ├── telegram_gate.py        # send_gate_request() — 인라인 키보드 메시지
-│   ├── merge_failure_advisor.py # get_advice(reason) — reason tag → 권장 조치 텍스트 (Phase F.3 + Tier 3 PR-A enable reason 4종)
-│   ├── retry_policy.py         # 순수 함수: parse_reason_tag, should_retry, compute_next_retry_at, is_expired, mergeable_state_terminality
-│   └── _merge_attempt_states.py # MergeAttempt.state lifecycle 정규 상수 (LEGACY/ENABLED_PENDING_MERGE/ACTUALLY_MERGED/DISABLED_EXTERNALLY) — Phase 3 PR-B1 도입
-├── notifier/                   # `__init__.py` 가 import 시 각 채널 모듈 자동 로드 → REGISTRY 등록 (Phase S.3-E)
-│   ├── __init__.py             # 8개 notifier 모듈 import (등록 순서 = 발송 우선순위)
-│   ├── _common.py              # 공통 헬퍼 — format_ref, get_all_issues (호출자 캐시 권장), truncate_message, truncate_issue_msg
-│   ├── telegram_commands.py    # Telegram 인라인 명령 처리 — /stats, /settings, /connect OTP 흐름
-│   ├── _http.py                # build_safe_client() — HTTP_CLIENT_TIMEOUT + follow_redirects=False (SSRF 방어)
-│   ├── registry.py             # NotifyContext + Notifier Protocol + REGISTRY + register() (채널 확장)
-│   ├── telegram.py             # send_analysis_result() + _TelegramNotifier (항상 활성, global chat_id fallback)
-│   ├── discord.py              # send_discord_notification() + _DiscordNotifier (discord_webhook_url 설정 시)
-│   ├── slack.py                # send_slack_notification() + _SlackNotifier (slack_webhook_url 설정 시)
-│   ├── webhook.py              # send_webhook_notification() + _WebhookNotifier (custom_webhook_url 설정 시)
-│   ├── email.py                # send_email_notification() + _EmailNotifier (SMTP 설정 시)
-│   ├── n8n.py                  # notify_n8n() + _N8nNotifier (n8n_webhook_url 설정 시)
-│   ├── github_comment.py       # post_pr_comment_from_result() — result dict 기반 (PR 전용, gate/engine 에서 호출)
-│   ├── github_commit_comment.py # post_commit_comment() + _CommitCommentNotifier (Push 전용)
-│   ├── github_issue.py         # create_low_score_issue() + _IssueNotifier (저점 OR bandit HIGH 시)
-│   ├── railway_issue.py        # create_deploy_failure_issue() — Railway 빌드 실패 Issue (dedup, webhook 경유)
-│   └── merge_failure_issue.py  # create_merge_failure_issue() — auto-merge 실패 GitHub Issue (Phase F.3, dedup 24h)
-├── api/
-│   ├── auth.py                 # require_api_key Depends (X-API-Key 헤더)
-│   ├── deps.py                 # get_repo_or_404(repo_name, db) 공용 헬퍼
-│   ├── repos.py                # GET/PUT /api/repos, /api/repos/{repo}/analyses, /config
-│   ├── stats.py                # GET /api/analyses/{id}, /api/repos/{repo}/stats
-│   ├── hook.py                 # GET /api/hook/verify, POST /api/hook/result (hook_token 인증)
-│   ├── users.py                # POST /api/users/me/telegram-otp — 6자리 OTP 발급 (5분 만료)
-│   ├── internal_cron.py        # POST /api/internal/cron/{weekly,trend,scan-security,retry-pending-merges} — INTERNAL_CRON_API_KEY 전용 (scan-security = 사이클 73 F1)
-│   └── admin.py                # GET /api/admin/{tenants,rls-audit,operations} — require_admin Depends (Cycle 79 PR 3a SaaS Phase 1 + Cycle 80 PR 2 operations KPI)
-├── ui/
-│   ├── _helpers.py             # get_accessible_repo · webhook_base_url · delete_repo_cascade · templates
-│   ├── router.py               # aggregator — routes 6개 include (Phase 1 PR 3 insights 폐기, PR 4 dashboard 추가, catch-all `/repos/{name}` 마지막)
-│   └── routes/
-│       ├── overview.py         # GET /
-│       ├── dashboard.py        # GET /dashboard (Phase 1 PR 4 — MVP-B; supersedes /insights) — mode 4종 (overview/insight/security/usage — Cycle 79 PR 3b 추가)
-│       ├── add_repo.py         # /repos/add (GET/POST) · /api/github/repos
-│       ├── settings.py         # /repos/{name}/settings · reinstall-hook · reinstall-webhook
-│       ├── actions.py          # /repos/{name}/delete
-│       ├── detail.py           # /repos/{name}/analyses/{id} · /repos/{name}
-│       └── admin.py            # GET /admin/{tenants,rls-audit,operations} — require_admin Depends (Cycle 79 PR 3a SaaS Phase 1 + Cycle 80 PR 2 operations admin UI)
-├── templates/                  # add_repo, base, login, overview, repo_detail, analysis_detail, settings, dashboard, admin_tenants, admin_rls_audit, admin_operations (insights / insights_me 는 Phase 1 PR 2~3 폐기)
-├── cli/
-│   ├── __main__.py             # python -m src.cli review
-│   ├── git_diff.py             # 로컬 git diff 수집
-│   └── formatter.py            # 터미널 출력 포맷 (ANSI 색상)
-├── repositories/               # DB 접근 계층 10종 — repository_repo (find_by_full_name + Phase H 신규 find_by_full_name_with_owner opt-in joinedload), analysis_repo, analysis_feedback_repo, merge_attempt_repo, gate_decision_repo, repo_config_repo, user_repo, merge_retry_repo, security_alert_log_repo (사이클 73 F1), insight_narrative_cache_repo (사이클 74 PR-B Phase 2-B 🅑)
-└── worker/
-    └── pipeline.py             # run_analysis_pipeline, build_analysis_result_dict
-```
+- **src/ 트리 + 모듈 역할**: [`docs/architecture.md`](docs/architecture.md)
+- **핵심 데이터 흐름** (Webhook → pipeline → notify → gate): [`docs/architecture.md#핵심-데이터-흐름`](docs/architecture.md#핵심-데이터-흐름)
+- **점수 체계** (배점 + 등급 + AI 스케일링): [`docs/reference/scoring.md`](docs/reference/scoring.md)
 
-### 핵심 데이터 흐름
-
-```
-GitHub Push/PR
-  → POST /webhooks/github (HMAC 서명 검증)
-  → PR action 필터링 (opened/synchronize/reopened만 처리)
-  → BackgroundTasks 비동기 등록
-  → run_analysis_pipeline()
-      → Repository DB 등록 (API 호출 전, 실패해도 목록 노출 보장)
-      → _extract_commit_message() — PR: title+body, Push: head_commit 우선
-      → get_pr_files / get_push_files (모든 변경 파일 수집)
-      → asyncio.gather() 병렬 실행:
-          ├─ analyze_file() × N  (.py만 정적 분석, 테스트 파일은 bandit 제외)
-          └─ review_code()       (Claude AI — 50개 언어 체크리스트 + 토큰 예산 관리)
-      → calculate_score(ai_review)
-          (코드품질25 + 보안20 + 커밋15 + AI방향성25 + 테스트15)
-      → DB 저장 (Analysis 레코드)
-      → run_gate_check() [PR 이벤트만] — 3-옵션 완전 독립 처리
-          [pr_review_comment=on] → post_pr_comment_from_result() — PR에 AI 코드리뷰 댓글 발송
-          [approve_mode=auto]    → score ≥ approve_threshold → GitHub APPROVE
-                                   score < reject_threshold → GitHub REQUEST_CHANGES
-          [approve_mode=semi]    → Telegram 인라인 키보드 전송 → POST /api/webhook/telegram 콜백 수신
-          [auto_merge=on, score ≥ merge_threshold] → native_enable_or_fallback() (Tier 3 PR-A)
-              ├─ enable_pull_request_auto_merge GraphQL mutation (우선 시도)
-              │     → 성공 시 GitHub 가 CI 통과 후 자동 squash merge 수행
-              │     → ENABLE_FORCE_PUSHED → 즉시 실패 (폴백 X)
-              ├─ ENABLE_DISABLED_IN_REPO / ENABLE_PERMISSION_DENIED → REST merge_pr 폴백
-              └─ ENABLE_API_ERROR (분류 외) → REST merge_pr 폴백
-          [auto_merge=on, mergeable_state=unstable/unknown] → merge_retry_queue 큐잉
-              → check_suite.completed 웹훅 즉각 트리거 OR 1분 cron fallback
-              → process_pending_retries() → 조건 충족 시 재시도 (최대 30회, 24h)
-      → _build_notify_tasks() — RepoConfig 기반 채널 디스패처
-      → asyncio.gather(return_exceptions=True):
-          ├─ send_analysis_result()        (Telegram — notify_chat_id 또는 global fallback)
-          ├─ send_discord_notification()   (discord_webhook_url 설정 시)
-          ├─ send_slack_notification()     (slack_webhook_url 설정 시)
-          ├─ send_webhook_notification()   (custom_webhook_url 설정 시)
-          ├─ send_email_notification()     (email_recipients + SMTP 설정 시)
-          └─ notify_n8n()                  (n8n_webhook_url 설정 시)
-
-Telegram 반자동 콜백:
-  → POST /api/webhook/telegram
-  → gate:{decision}:{id}:{token} 파싱 (HMAC 인증 포함)
-  → post_github_review() + GateDecision DB 저장
-  → auto_merge=on, score ≥ merge_threshold → native_enable_or_fallback() (approve_mode 무관하게 독립 동작)
-
-대시보드:
-  → GET /                              (리포 현황 Web UI)
-  → GET /dashboard?days={1|7|30|90}&mode={overview|insight}  (그룹 60 신설 — Phase 1+2 KPI 5 + 차트 + 자주 이슈 + Auto-merge KPI + feedback CTA. Phase 3 PR 3+4 mode 분기 — overview = 기존 / insight = Claude AI 4 카드 narrative + caching. URL ?mode= 우선 → localStorage `sca-dashboard-mode` → 서버 fallback `_detect_initial_dashboard_mode` (API key + Analysis count 시그널). PR 5 user_id 격리 = `current_user.id` 자동 전달)
-  → GET /insights                      (그룹 60 — 301 redirect → /dashboard, 북마크 보존)
-  → GET /insights/me                   (그룹 60 — 301 redirect → /dashboard)
-  → GET /repos/{repo}                  (점수 차트 + 이력 Web UI)
-  → GET /repos/{repo}/analyses/{id}    (분석 상세 — AI 리뷰·피드백·이슈)
-  → GET /api/repos                     (REST API)
-  → GET /api/repos/{repo}/stats        (통계 API)
-
-CLI Hook (로컬 pre-push 자동 코드리뷰):
-  Repo 등록 시 (POST /repos/add):
-    → hook_token = secrets.token_hex(32) 생성 → RepoConfig 저장
-    → GitHub Contents API로 .scamanager/config.json + install-hook.sh 커밋
-    → 개발자: git pull && bash .scamanager/install-hook.sh (1회)
-  git push 시 (.git/hooks/pre-push 자동 실행):
-    → GET /api/hook/verify?repo=...&token=... (미등록 시 조용히 skip)
-    → git diff로 push 대상 diff 수집
-    → claude -p "[프롬프트+diff]" 실행 (Claude Code CLI — ANTHROPIC_API_KEY 불필요)
-    → 터미널에 결과 출력
-    → POST /api/hook/result → Analysis DB 저장 + 대시보드 반영
-    → exit 0 (push 항상 진행)
-```
-
-### 점수 체계
-
-| 항목 | 배점 | 도구 | 감점 규칙 |
-|------|------|------|----------|
-| 코드 품질 | 25점 | pylint + flake8 + semgrep(code_quality) | error -3, warning -1 (CQ_WARNING_CAP=25 통합 cap) |
-| 보안 | 20점 | bandit + semgrep(security) | HIGH -7, LOW/MED -2 |
-| 커밋 메시지 품질 | 15점 | Claude AI (0-20 → 0-15 스케일링) | — |
-| 구현 방향성 | 25점 | Claude AI (0-20 → 0-25 스케일링) | — |
-| 테스트 | 15점 | Claude AI (0-10 → 0-15 스케일링, 비-코드 파일 면제) | — |
-
-등급: A(90+), B(75+), C(60+), D(45+), F(44-)
-
-> `ANTHROPIC_API_KEY` 미설정 시 AI 항목은 중립적 기본값(커밋13 + 방향21 + 테스트10 = 44/55)으로 fallback, AI 없이도 최대 89점(B등급) 가능
+> 🔴 **신규 파일 추가 시 [`docs/architecture.md`](docs/architecture.md) 동기화 의무** — src/ 트리 항목 + 핵심 데이터 흐름 갱신.
 
 ## 환경변수 (필수만)
 
@@ -328,37 +91,10 @@ CLI Hook (로컬 pre-push 자동 코드리뷰):
 
 ## Railway 배포 + 운영 DB 환경
 
-**운영 DB (2026-05-02 기준)**: Supabase PostgreSQL + 온프레미스 PostgreSQL 이중 setup. Railway PostgreSQL 도 호환 (legacy 또는 staging). 모든 환경에 동일 alembic 마이그레이션 적용 — schema 일관성 보장. 운영 SQL 검증 도구 `scripts/dev/verify_phase2_data.sql` + runbook `docs/runbooks/phase2-data-readiness.md` 가 4 환경 (Supabase Dashboard / Supabase MCP / 온프레미스 psql / Railway) 모두 호환 (`\echo` meta-command 미사용 + `section` 라벨 컬럼).
-
-```bash
-# 시작 명령 (railway.toml에 설정됨 — --proxy-headers 포함)
-uvicorn src.main:app --host 0.0.0.0 --port $PORT --proxy-headers
-# DB 마이그레이션은 앱 lifespan에서 자동 실행
-```
-
-Railway 대시보드 설정:
-- **PostgreSQL 플러그인** 추가 (`DATABASE_URL` 자동 생성)
-- **Variables** 탭에서 나머지 환경변수 설정 (`${{Postgres.DATABASE_URL}}`)
-- `APP_BASE_URL` 반드시 설정 — OAuth redirect_uri HTTPS 보장
-
-헬스체크: `GET /health` → `{"status":"ok"}` (timeout: 60초). **`active_db` 등 내부 상태는 의도적으로 미노출** — 정보 노출 방지 (`tests/unit/test_main.py::test_health_returns_status_ok` 가 회귀 보장). DB failover 모니터링이 필요하면 별도 인증 엔드포인트 (`INTERNAL_CRON_API_KEY` 또는 admin key 기반) 신설 권장.
-
-### NIXPACKS 빌드 설정 우선순위
-
-| 우선순위 | 설정 위치 | 적용 범위 |
-|---------|----------|---------|
-| 1 | `railway.toml`의 `buildCommand` | 빌드 명령 최상위 오버라이드 |
-| 2 | `nixpacks.toml`의 `[phases.build]` | NIXPACKS 빌드 단계 설정 |
-| 3 | `nixpacks.toml`의 `providers` | NIXPACKS 언어 감지 오버라이드 |
-| 4 | NIXPACKS 자동 감지 | `requirements.txt`, `package.json` 등 파일 기반 |
-
-현재: `railway.toml`에 `buildCommand = "npm install -g eslint@9 @typescript-eslint/parser @typescript-eslint/eslint-plugin"` 설정됨.
-Node.js는 `nixpacks.toml` aptPkgs로 설치, eslint 전역 설치는 buildCommand에서 수행.
-
-```
-requirements.txt      ← Railway(프로덕션) 전용 — pytest/playwright 제외
-requirements-dev.txt  ← 로컬 개발 환경 — pytest, playwright 포함 (-r requirements.txt 포함)
-```
+- **상세 운영 가이드**: [`docs/runbooks/railway.md`](docs/runbooks/railway.md)
+- **운영 DB**: Supabase + 온프레미스 PostgreSQL 이중 setup (Railway 도 호환). 모든 환경 동일 alembic 마이그레이션 적용.
+- **Railway 필수 환경변수**: `DATABASE_URL` (PostgreSQL 플러그인 자동) + `APP_BASE_URL` (HTTPS, OAuth/Webhook 강제) + 나머지 [`docs/reference/env-vars.md`](docs/reference/env-vars.md) 참조.
+- **헬스체크**: `GET /health` → `{"status":"ok"}`. 내부 상태 미노출 (정보 노출 방지).
 
 ## Agent 작업 규칙
 
@@ -1100,172 +836,30 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 | `test-writer` 에이전트 | 모든 신규 기능·모듈 구현 착수 전 | 테스트 파일 먼저 생성 |
 | `pipeline-reviewer` 에이전트 | 파이프라인 핵심 파일 변경 후 | 전 항목 ✅ |
 
-## 주의사항 (카테고리별)
+## 주의사항 (카테고리별 — `.claude/rules/<area>.md` path-scoped)
 
-> 아래 섹션은 카테고리별 상세 규칙이다. 전체를 매번 읽을 필요는 없다 — **상황에 맞는 섹션만 열람**한다. 🔴 표시는 과거 사고로 검증된 고위험 규칙이다.
+> **사이클 85 정리**: 9 카테고리 본문은 `.claude/rules/<area>.md` 로 분리 (Anthropic 공식 path-scoped rules 패턴). Claude Code 가 해당 영역 파일 작업 시 자동 로드. 매 세션 의무 read 부담 0.
 
-### 테스트
+| 영역 | path-scoped 파일 | 매칭 경로 |
+|------|----------------|----------|
+| 테스트 | [`.claude/rules/testing.md`](.claude/rules/testing.md) | `tests/**`, `e2e/**`, `**/conftest.py`, `pytest.ini` |
+| DB / 마이그레이션 | [`.claude/rules/db.md`](.claude/rules/db.md) | `alembic/**`, `src/models/**`, `src/database.py`, `src/repositories/**` |
+| 파이프라인 / 비즈니스 로직 | [`.claude/rules/pipeline.md`](.claude/rules/pipeline.md) | `src/worker/pipeline.py`, `src/analyzer/**`, `src/scorer/**`, `src/webhook/**`, `src/gate/**` |
+| API / 알림 채널 | [`.claude/rules/api.md`](.claude/rules/api.md) | `src/api/**`, `src/notifier/**`, `src/webhook/**`, `src/gate/**`, `src/main.py` |
+| 보안 | [`.claude/rules/security.md`](.claude/rules/security.md) | `src/auth/**`, `src/crypto.py`, `src/shared/log_safety.py`, `src/api/auth.py`, `src/webhook/validator.py` |
+| UI / 템플릿 | [`.claude/rules/ui.md`](.claude/rules/ui.md) | `src/templates/**`, `src/static/**`, `src/ui/**` |
+| 다국어 / i18n | [`.claude/rules/i18n.md`](.claude/rules/i18n.md) | `src/i18n/**`, `src/middleware/locale.py`, `src/notifier/_language.py`, `src/analyzer/pure/review_guides/**` |
+| 배포 | [`.claude/rules/deploy.md`](.claude/rules/deploy.md) | `railway.toml`, `nixpacks.toml`, `requirements.txt`, `requirements-dev.txt`, `.env.example` |
 
-- 🔴 **asyncio_mode = auto**: `pytest.ini`의 `asyncio_mode = auto` 필수 — 없으면 모든 async 테스트가 경고 없이 실패.
-- **테스트 환경 변수**: `tests/conftest.py`가 `os.environ.setdefault`로 환경변수를 주입함. src 모듈은 import 시점에 `Settings()`를 인스턴스화하므로 conftest가 반드시 먼저 실행되어야 함.
-- **E2E 격리**: `e2e/`를 최상위 별도 디렉토리로 분리 (`tests/` 아래 금지) — `tests/e2e/`가 있으면 `asyncio_mode=auto`와 `sys.modules` 삭제가 충돌해 단위 테스트 98개 실패. E2E 서버는 `uvicorn.Server.serve()`를 `asyncio.new_event_loop()` + `loop.run_until_complete()`로 실행.
-- 🔴 **e2e ↔ tests/integration 동시 실행 금지**: `e2e/pytest.ini` 가 의도적으로 asyncio_mode 미설정 (위 E2E 격리 사유) — `pytest e2e/ tests/integration/` 같은 동시 실행 시 integration 의 async 테스트가 sync 처럼 실행 → "coroutine was never awaited" RuntimeWarning + fail. 분리 실행 default — `make test-e2e` (e2e) ↔ `pytest tests/` 또는 CI command (testpaths=tests, e2e 자동 격리). Phase 3 PR 6 (#224) 회귀 가드 작성 시 발견 사고. 운영 영향 0 (CI 가 testpaths 격리) — 단 다음 세션 Claude 가 동시 실행 명령 시 트랩 재발 위험 차단 1줄.
-- **require_login 우회**: `tests/test_ui_router.py`는 `app.dependency_overrides[require_login] = lambda: _test_user`로 의존성 override. 신규 UI 라우트 테스트 작성 시 동일 패턴 사용.
-- **Mock side_effect 재귀**: `mock.add.side_effect = fn` 설정 후 fn 내에서 `original_add(obj)` 호출 시 재귀 발생. side_effect 함수에서는 원본 mock을 호출하지 말 것 — 캡처만 하고 return None.
-- **모듈 레벨 캐시 격리**: `src/webhook/_helpers.py`의 `_webhook_secret_cache`는 모듈 레벨 dict. `tests/conftest.py`의 `_clear_webhook_secret_cache` autouse fixture가 테스트마다 자동 클리어. 신규 모듈 레벨 캐시 추가 시 동일한 autouse fixture 패턴 적용 필수 — 미적용 시 테스트 순서 의존성 버그 발생.
-- **`services/analytics_service.py` 테스트 패턴**: `db: Session` 인자 + `now: datetime | None = None` 의존성 주입(freezegun 미사용). 각 테스트 파일은 자체 in-memory SQLite engine fixture (`tests/unit/repositories/test_analysis_feedback_repo.py:20-58` 참조). `func.count/avg/min/max` 호출 시 `# pylint: disable=not-callable` 인라인 주석 필수 (E1102 false positive).
-- 🔴 **감사 식별 Critical 항목은 단순 hardening 단정 금지 (Phase H PR-5C 교훈)**: 12-에이전트 감사 등이 식별한 Critical 항목을 처리할 때 단위 테스트 통과만으로 검증 완료 단정 금지. `_TOKEN_42` 같은 하드코딩 fixture 가 receiver pattern 을 받아쓰기 (사이드웨이) 로 우회해 functional bug 를 가릴 수 있음 — PR-5C 사례 (모든 semi-auto Telegram 콜백이 실제 운영에서 401 거부됐으나 테스트는 통과). TDD Red 단계에서 "기존 테스트가 왜 통과하는가" 자문 의무.
-- 🔴 **`find_by_full_name` 같은 hot-path repository 함수 시그니처 변경 금지 (Phase H PR-3B)**: 70+ 단위 테스트가 `db.query.return_value.filter.return_value.first` mock chain 사용. `.options(joinedload(...))` 같은 메서드 추가 시 chain 깨짐 → 70+ 회귀 (Phase S.4 트랩 재발견). 신규 옵션은 별도 함수 (`find_by_full_name_with_owner` 패턴) 로 분리 — 기존 시그니처 불변.
-- 🔴 **의도적 중복 코드의 PARITY GUARD 패턴 (Phase H PR-5A)**: 두 모듈에 의도적으로 동일 함수가 있는 경우 (예: `_get_ci_status_safe` engine + service), 양쪽 docstring 에 `🔴 **PARITY GUARD**` 표지 + 변경 시 동시 수정 의무 명시 + parity 회귀 가드 테스트 (시그니처 + 행동 동등성) 의무. drift 즉시 검출. 통합 PR 은 mock patch 경로 마이그레이션 동반 필요로 별도 진행 권장.
-- **R0914 too-many-locals cleanup 결정 트리 (사이클 64 회고 P1 학습)**: pylint R0914 발생 시 두 패턴 중 선택:
-  1. **헬퍼 추출 default** — 신규 함수 작성 시 (예: Phase 3 PR 2 `insight_narrative` → `_call_insight_claude_api` + `_parse_insight_cards` 분리). 단일 책임 원칙 + 테스트 격리 + 향후 재사용 가능성 시 default.
-  2. **inline `# pylint: disable=too-many-locals` + 사유 주석** — 기존 함수 시그니처 확장 시 (예: Phase 3 PR 5 `dashboard_kpi`/`frequent_issues_v2` user_id 인자 추가). 함수 자체의 응집 단위 보호 + 헬퍼 추출이 응집 깨뜨릴 때.
-  현재 inline disable 사용처 (5건): `gate/github_review.py:107` (merge_pr) / `notifier/merge_failure_issue.py:44` / `services/merge_retry_service.py:41` / `services/dashboard_service.py:77` (dashboard_kpi) + `:224` (frequent_issues_v2). 모두 시그니처 확장 사례 — 패턴 정합.
+🔴 표시는 과거 사고로 검증된 고위험 규칙이다 (각 `.claude/rules/<area>.md` 파일 본문 참조).
 
-### DB / 마이그레이션
-
-- 🔴 **Supabase RLS 권한 모델 + 운영 활성화 미들웨어 (Phase 3 PR 5 #223 + postlude #228)**: `alembic/versions/0026_supabase_rls_policies.py` 가 3 테이블 (`repositories`, `analyses`, `merge_attempts`) 에 RLS policy 적용 (PG 전용 + dialect 분기 — SQLite 단위 테스트 자동 skip). 세션 컨텍스트 변수 = `current_setting('app.user_id', true)` 패턴 (Supabase Auth `auth.uid()` 미사용 — GitHub OAuth 정합). 운영 활성화 = `src/middleware/rls_session.py` (request 시작 시 `scope["session"]["user_id"]` → contextvars) + `src/database.py::_set_rls_user_id_per_query` event listener (매 query 직전 `SET LOCAL app.user_id = '<id>'` 발화). 1차 안전망 = 앱 레벨 filter (`src/services/dashboard_service.py::_apply_*_user_filter`, SQLite/PG 호환). 2차 안전망 = RLS policy (PG/Supabase 전용). **🔴 ASGI middleware 의무** (BaseHTTPMiddleware 우회 — Starlette `dispatch` 가 별도 anyio task 에서 `call_next` 호출해 contextvars 전파 X). middleware 등록 순서 = LIFO (RLS inner / SessionMiddleware outer — 후자가 먼저 호출).
-- **dialect 분기 helper `is_postgresql(bind_or_conn)` 추출 완료 (사이클 82 PR 1 #272)**: 사이클 64 회고 P1 보류 결정 (사용처 2건 시점) → 사이클 78~82 영역 진입으로 사용처 12건 도달 (alembic 0024/0026/0027/0028/0029 + `src/database.py::_set_rls_user_id_per_query`) → 정책 16 4번 원칙 (사용처 ≥ 3 임계) 정합 헬퍼 추출. `src/shared/alembic_dialect.py::is_postgresql(bind_or_conn)` (duck typing — `bind`/`op.get_context()` 양 호환) + 11 사용처 일괄 치환 + 회귀 가드 14건 (`tests/unit/shared/test_alembic_dialect.py`). 예외: `alembic/env.py:88` SQLite-specific 분기 보존 (헬퍼 부적합 영역 — 자율 판단 보고 #272 명시). 사용 패턴: `from src.shared.alembic_dialect import is_postgresql; if not is_postgresql(op.get_bind()): return`.
-- 🔴 **Alembic batch_alter_table 금지**: SQLite 전용 패턴. PostgreSQL에서는 `op.create_unique_constraint('이름', '테이블', ['컬럼'])` 직접 사용. 잘못 사용 시 lifespan 마이그레이션 실패 → Railway 헬스체크 실패. **예외**: `0005_add_users_and_user_id.py`, `0006_phase8b_github_oauth.py`는 이미 프로덕션에 적용된 이력 마이그레이션이므로 수정 금지 — `alembic downgrade` 경로 파괴 위험. 신규 마이그레이션(0007 이후)에만 이 규칙을 적용한다.
-- **FailoverSessionFactory**: `DATABASE_URL_FALLBACK` 설정 시 Primary `OperationalError` → Fallback DB 자동 전환. `_probe_primary_loop` daemon 스레드가 복구 확인 후 자동 복귀. 미설정 시 단일 엔진 모드(probe 스레드 없음). 소비자 코드(`SessionLocal()`)는 변경 없이 그대로 사용. `engine = SessionLocal._primary_engine`으로 alembic/env.py 호환성 유지.
-- **DB 세션 expunge**: `get_current_user()`는 `db.expunge(user)` 후 세션 반환 — 세션 종료 후에도 컬럼 속성 안전하게 접근 가능. 관계 lazy-load 사용 금지.
-- **ThreadPoolExecutor with 블록 금지**: `with` 문은 `shutdown(wait=True)` 호출 → DNS hang 시 무기한 블록. `try/finally` + `executor.shutdown(wait=False)` 패턴 사용 (database.py 참조).
-- **SQLite hostaddr 제외**: `_ipv4_connect_args`는 hostname이 None(SQLite URL)이면 빈 dict 반환 — 그렇지 않으면 `sqlite3.connect(hostaddr=...)` TypeError 발생.
-- **`Analysis.author_login` NULL 정책**: 신규 컬럼은 backfill 없이 NULL 허용. 모든 집계는 `WHERE author_login IS NOT NULL` 적용. backfill 필요 시 `scripts/backfill_author.py` 별도 실행. PR 이벤트 = `pull_request.user.login`, Push 이벤트 = `head_commit.author.username`.
-- **`Repository.user_id` NULL backfill 스크립트**: `scripts/backfill_repository_user_id.py` (사이클 66 #229) — author_login JOIN 패턴 (옵션 🅐-2). dry-run default + `--apply` 명시 의무. `_resolve_user_id_for_repo` pure 함수 (첫 Analysis.author_login → users.github_login 매칭) + 4 카운터 (resolved/skipped_no_analysis/skipped_no_author/skipped_no_user). 실제 적용은 사용자 명시 (운영 환경 또는 Supabase MCP).
-- 🔴 **ORM 컬럼 추가 시 마이그레이션 필수 동반**: `models/*.py`에 `Column(...)` 추가 후 반드시 `make revision m="설명"` 으로 마이그레이션 파일을 함께 생성해야 한다. 단위 테스트는 in-memory SQLite(`Base.metadata.create_all`)로 ORM 정의 그대로 테이블을 만들기 때문에 마이그레이션 파일이 없어도 테스트가 통과한다. 그러나 실제 DB(PostgreSQL/Railway)에는 컬럼이 생성되지 않아 운영 환경에서 500 에러가 발생한다. 전례: `leaderboard_opt_in` 컬럼 (PR #72·#74, 2026-04-26).
-- **`merge_retry_queue` 클레임 패턴**: `claim_batch` 은 단일 SQL `UPDATE … WHERE claimed_at IS NULL RETURNING (attempts_count = 1) AS is_first` 로 원자적 클레임 + 첫-지연 알림 결정 동시 수행. Postgres 는 `FOR UPDATE SKIP LOCKED`, SQLite 는 dialect 분기. 재배포 중 stale claim 은 5분 후 재클레임. 신규 큐 도입 시 동일 패턴 권장.
-- 🔴 **DB 인덱스 정의 — ORM `__table_args__` + alembic 양쪽 의무 (Phase H PR-4A)**: 신규 인덱스 추가 시 `models/*.py` 의 `__table_args__ = (Index(...), ...)` 와 `alembic/versions/NNNN_*.py` 의 `op.create_index(...)` 양쪽 정의 필수. ORM-only 정의는 단위 테스트 (in-memory SQLite `create_all`) 에서는 인식되지만 운영 PG 에 미반영 → 인덱스 활용 실패. 회귀 가드 테스트는 SQLAlchemy `inspect()` 로 인덱스 컬럼 검증 (`tests/unit/migrations/test_0023_composite_indexes.py` 참조).
-- 🔴 **FK ondelete CASCADE 일관성 매트릭스 (Phase H C7)**: child 테이블의 `ForeignKey("parent.id")` 추가 시 다른 child 모델의 `ondelete` 정책 일관성 검토 의무. 현재 `analyses.id` 를 참조하는 child 4종 모두 CASCADE 통일:
-
-  | child 모델 | FK 컬럼 | ondelete | 도입 시점 |
-  |------|------|------|------|
-  | `MergeAttempt.analysis_id` | analyses.id | **CASCADE** | Phase F.1 |
-  | `MergeRetryQueue.analysis_id` | analyses.id | **CASCADE** | Phase 12 |
-  | `AnalysisFeedback.analysis_id` | analyses.id | **CASCADE** | Phase E.3 |
-  | `GateDecision.analysis_id` | analyses.id | **CASCADE** | Phase H C7 (alembic 0024) |
-
-  신규 child 추가 시 동일 CASCADE 적용 (default), 다른 정책 (RESTRICT/SET NULL) 채택 시 회고에 사유 명시. application-level `delete_repo_cascade` (`ui/_helpers.py`) 는 admin script 우회 경로 보완 — DB 레벨 CASCADE 가 1차 안전망.
-
-### 파이프라인 / 비즈니스 로직
-
-- **멱등성**: `run_analysis_pipeline`은 commit SHA로 중복 체크 — 같은 SHA는 재분석 건너뜀. 단, push 이벤트 먼저 처리 후 PR 이벤트 도착 시(`pr_number=None` Analysis 존재) `_regate_pr_if_needed()`가 `pr_number`만 업데이트하고 `run_gate_check` 재실행 — 알림 재발송 없음.
-- **PR action 필터링**: `pull_request` 이벤트 중 `opened`/`synchronize`/`reopened`만 처리, `closed`/`labeled` 등은 무시.
-- **AI 점수 스케일링**: Claude는 commit 0-20, direction 0-20, test 0-10으로 반환 → calculator가 commit 0-15, direction 0-25, test 0-15로 스케일링. `round()` 사용으로 banker's rounding 적용.
-- **commit_scamanager_files**: GitHub Contents API `PUT /repos/{owner}/{repo}/contents/{path}` 사용. 파일 이미 있으면 GET으로 sha 조회 후 body에 포함해야 200 성공 (sha 누락 시 422 에러).
-- **다언어 AI 리뷰**: `language.py`가 50개 언어를 감지(확장자·shebang·파일명), `review_prompt.py`가 언어별 체크리스트를 토큰 예산(8000 토큰) 내에서 조립. 비-코드 파일만 변경 시 테스트 점수 면제(test_score=10 → 15/15).
-- **Analyzer Registry**: `src/analyzer/pure/registry.py` 의 REGISTRY 전역 목록 + `register()` (동일 name 중복 등록 방지). `src/analyzer/io/static.py` 가 `import src.analyzer.io.tools.{python,semgrep,eslint,shellcheck,cppcheck,slither,rubocop,golangci_lint}` 로 각 Analyzer 모듈 로드 → 모듈 import 시점에 자동 `register()` 호출. Phase S.3-B 이후 `pure/` vs `io/` 분리 구조.
-- **category 기반 점수 집계**: `AnalysisIssue.category`("code_quality"|"security") 기준으로 점수 계산. tool 이름 무관 — 새 정적분석 도구 추가 시 category만 올바르게 설정하면 점수에 자동 반영. `CQ_WARNING_CAP=25` 단일 cap (구 pylint 15 + flake8 10 통합).
-- **review_guides 구조**: `get_guide(lang, "full"|"compact")` — Tier1 full ~500토큰, compact 1줄. N≤3 전체 full, N≤6 Tier1 full+나머지 compact, N>10 상위 5개 compact만.
-- **AI 리뷰 JSON 파싱**: Claude가 JSON 앞에 설명 텍스트를 붙이는 경우 `re.search`로 코드 블록 내 JSON만 추출.
-- **봇 PR `create_issue` 루프 방지**: `pr_head_ref`가 `_BOT_PR_PREFIXES` (`claude-fix/`, `bot/`, `renovate/`, `dependabot/`) 중 하나로 시작하면 `create_issue`를 건너뜀 — n8n 자동 생성 PR이 저점을 받을 때 Issue 재생성 → 무한 루프 방지.
-- **봇 발신 / 자기 분석 루프 방지**: `src/webhook/providers/github.py::_loop_guard_check()`가 3-layer 체크 적용 — (1) Kill-switch `SCAMANAGER_SELF_ANALYSIS_DISABLED=1`, (2) `loop_guard.is_bot_sender()` + BOT_LOGIN_WHITELIST 비포함 → 즉시 차단, (3) skip marker (`[skip ci]`, `[skip-sca]`, `[ci skip]`) + `BotInteractionLimiter` **화이트리스트 봇 한정** 시간당 6회 상한 (PR #100 — `is_whitelisted_bot()` 분기, **사람 발신 / 비-화이트리스트 봇 / sender 누락은 limiter 미적용 = 무제한 통과**). `github-actions[bot]`, `dependabot[bot]`은 whitelist로 분석 진행. 새 자동화 봇 추가 시 `BOT_LOGIN_WHITELIST` 갱신 검토. 운영 runbook: `docs/runbooks/self-analysis.md`.
-- **stage_metrics 필드 규약**: `issue_count` = 전체 이슈 합계 (`sum(len(r.issues))`), `file_count` = 분석 파일 수. 두 필드를 혼동하지 말 것 (2026-04-24 P1-1 정정).
-- **커밋 메시지 추출**: `_extract_commit_message()`는 PR 이벤트 시 `title + "\n\n" + body`, Push 이벤트 시 `head_commit["message"]` 우선 사용.
-- 🔴 **GitHub 페이로드의 None-able 키 정규화**: GitHub 가 `head_commit` / `pull_request` 키 값을 **`None` 으로 보낼 수 있다** (예: 브랜치 삭제 push, 일부 이벤트 종류). `data.get("head_commit", {}).get(...)` 체이닝은 default 가 적용되지 않아 NPE 발생 — 항상 `(data.get("head_commit") or {}).get(...)` 패턴으로 정규화. `_extract_commit_message`(pipeline.py)는 `if head:` 가드, `_loop_guard_check`(webhook/providers/github.py)는 `or {}` 패턴 사용. 신규 webhook 핸들러 추가 시 동일 규칙 적용. (PR #124 회귀 사고로 도입)
-- **CLI Hook 인증/점수**: `GET /api/hook/verify`, `POST /api/hook/result`는 `hook_token` 파라미터로 인증(X-API-Key 불필요). pre-push 훅은 정적 분석 없이 AI 리뷰만 실행 → `calculate_score([], ai_review)` 호출 (code_quality=25, security=20 만점 적용).
-- **분석 source 필드**: `pipeline.py`가 result JSON에 `"source": "pr"|"push"` 저장. 기존 레코드 대응으로 `result.get("source") or ("pr" if pr_number else "push")` fallback 파생.
-- **GateDecision upsert**: `save_gate_decision()`은 동일 `analysis_id`로 이미 레코드가 있으면 UPDATE, 없으면 INSERT. 재시도·반자동 재승인 시 중복 INSERT가 없다.
-- **Analyzer tools 자동 등록**: `tools/semgrep.py`, `tools/eslint.py`, `tools/shellcheck.py`, `tools/cppcheck.py`, `tools/slither.py`, `tools/rubocop.py`, `tools/golangci_lint.py`는 `analyze_file()`에서 해당 모듈을 import할 때 자동으로 `register()` 호출. 새 도구 추가 시 (1) `tools/` 아래 클래스 작성 + `register()` 호출, (2) `analyze_file()`에서 import, (3) SUPPORTED_LANGUAGES에 지원 언어 선언 세 단계 필수.
-- **golangci-lint go.mod 자동생성**: `_GolangciLintAnalyzer.run()` 은 tmp_path 디렉토리에 `go.mod` 가 없으면 `_ensure_go_mod()` 로 최소 모듈 정의 (`module tempmod\ngo 1.21\n`) 를 자동 생성. 단일 `.go` 파일 분석 시 "no Go files" 오류 회피.
-- **`_build_issue_body()` 시그니처**: `high_issues: list[dict]` 파라미터가 추가되어 있음 — 호출처(`create_low_score_issue`)에서 `_bandit_high_issues(result)`를 1회만 계산한 뒤 전달. 직접 호출 시 반드시 high_issues 인자 포함.
-- **Railway Webhook 토큰 인증**: `POST /webhooks/railway/{token}` 엔드포인트는 DB에서 `railway_webhook_token == token` 조회 후 `config is None → 404` 처리. `railway_api_token`은 Fernet 암호화 저장 — `decrypt_token()`으로 백그라운드 핸들러에 전달.
-- **5-way 동기화 Railway 확장**: `railway_deploy_alerts`가 ORM/RepoConfigData/API body/settings 폼/PRESETS 5-way 동기화 적용 대상. `railway_webhook_token`·`railway_api_token`은 `hook_token` 동일 패턴으로 ORM 직접 관리 (RepoConfigData 미포함).
-- **RailwayDeployEvent nested 구조**: `src/railway_client/models.py`의 `RailwayDeployEvent`는 3-그룹 nested dataclass — `event.project.project_id`, `event.commit.commit_sha` 등 sub-dataclass 경로로 접근. 평면(`event.project_id`) 접근은 2026-04-22 이후 제거됨. 신규 필드 추가 시 `RailwayProjectInfo`(project_id/project_name/environment_name) 또는 `RailwayCommitInfo`(commit_sha/commit_message/repo_full_name)에 삽입. `parse_railway_payload` 외부 시그니처 불변.
-
-### API / 알림 채널
-
-- **keyword-only 강제 (`*`)**: 모든 `send_*` notifier 함수와 `run_gate_check()` 등은 `def fn(*, arg1, arg2)` 형태. 테스트에서 positional 호출 시 TypeError — 반드시 키워드 인자로 호출.
-- **RepoConfig 필드명**: `approve_mode`(구 `gate_mode`), `approve_threshold`(구 `auto_approve_threshold`), `reject_threshold`(구 `auto_reject_threshold`) — 구 필드명 사용 시 AttributeError.
-- **알림 채널 추가 체크리스트**: `RepoConfig` ORM → `RepoConfigData` dataclass → `RepoConfigUpdate` API body → UI 폼 4곳 반드시 동기화. 누락 시 REST API 업데이트 시 해당 필드가 NULL로 덮어써지는 버그 발생.
-- **Webhook 서명**: `X-Hub-Signature-256` 헤더 없거나 서명 불일치 시 401 반환 — 로컬 테스트 시 서명 생성 필요. 빈 시크릿(`GITHUB_WEBHOOK_SECRET` 미설정)이면 즉시 401.
-- **Webhook 서명 실패 일관성**: GitHub / Telegram webhook 모두 서명 불일치 시 `HTTPException(401)` 반환. 200 OK 반환 금지 — 공격자에게 성공 응답 노출 방지 (2026-04-24 P1-4 정정).
-- **알림 독립성**: `_build_notify_tasks()` 디스패처, `asyncio.gather(return_exceptions=True)`로 실행 — 한 채널 실패해도 나머지 채널은 정상 전송. `repo_config` 로드 실패 시에도 Telegram은 global fallback으로 항상 발송.
-- **PR Gate 3-옵션 독립**: `pr_review_comment`·`approve_mode`·`auto_merge+merge_threshold` 완전 독립. `post_pr_comment_from_result(result: dict, ...)` 사용 — `AiReviewResult` 객체 불필요. `run_gate_check` 시그니처: `(repo_name, pr_number, analysis_id, result, github_token, db, config: RepoConfigData | None = None)`.
-- **build_analysis_result_dict**: `src/worker/pipeline.py` 모듈 레벨 함수. pipeline과 hook.py 두 곳에서 Analysis.result dict를 생성할 때 사용. `score`·`grade` 필드 포함 — gate engine이 이를 기반으로 결정.
-- **GRADE 상수 단일 출처**: `src/constants.py`에 `GRADE_EMOJI`, `GRADE_COLOR_DISCORD`, `GRADE_COLOR_HTML`, `GRADE_COLOR_ANSI` 정의. 각 모듈에 로컬 정의 금지.
-- **ChangedFile / github_api_headers 단일 출처**: `src/github_client/models.py`가 ChangedFile 정의 출처. `src/github_client/helpers.py`의 `github_api_headers(token)` 사용 — 새 GitHub API 호출 시 직접 dict를 만들지 말 것.
-- **telegram_post_message**: `src/notifier/telegram.py`의 공용 헬퍼. `src/gate/telegram_gate.py`도 이 헬퍼 사용 — `httpx` 직접 import 금지.
-- **get_repo_or_404**: `src/api/deps.py`의 `get_repo_or_404(repo_name, db)` 사용. 신규 API 엔드포인트에서 Repository 조회 시 동일 패턴 사용.
-- **auto_merge GitHub 권한**: `merge_pr()`은 `repo` 스코프 또는 Fine-grained `pull_requests: write` 권한 필요 — 권한 부족 시 False 반환(파이프라인 미중단). Branch Protection Rules가 있으면 APPROVE 후에도 Merge 실패 가능.
-- **http_client 싱글톤 원칙**: 신뢰 API (GitHub/Telegram/Railway) 호출은 `src/shared/http_client.py::get_http_client()` 를 통해 연결 풀 재사용. 외부 untrusted URL (Discord/Slack/custom_webhook/n8n) 은 `src/notifier/_http.py::build_safe_client()` 사용. `async with httpx.AsyncClient()` 매번 생성 금지 (2026-04-24 P1-3).
-- **MergeAttempt 관측 (Phase F.1+F.2)**: `src/gate/engine.py::_run_auto_merge`(자동) 및 `src/webhook/providers/telegram.py::handle_gate_callback`(반자동) 양쪽에서 `merge_pr` 직후 `log_merge_attempt()`(`src/shared/merge_metrics.py`)로 모든 시도(성공·실패)를 DB에 기록. `failure_reason`은 `src/gate/merge_reasons.py`의 정규 태그(`branch_protection_blocked`, `unstable_ci`, `permission_denied` 등). 관측 실패는 notify 경로를 막지 않도록 nested try/except로 격리 — DB 오류 시 rollback 후 WARNING + None. **Phase F.3**: `engine.py::_run_auto_merge` 실패 시 `get_advice(reason)` + 조건부 `create_merge_failure_issue()` 호출 — `auto_merge_issue_on_failure` 필드(5-way sync 적용)로 Issue 생성 제어.
-- **notifier 공통 헬퍼**: `src/notifier/_common.py`의 `format_ref()`, `get_all_issues()` (호출자 캐시 권장 — hot path), `truncate_message()`, `truncate_issue_msg()`를 사용. 각 notifier 모듈에 이슈 수집 루프나 메시지 절단 로직 직접 작성 금지.
-- **webhook secret TTL 캐시**: `get_webhook_secret(full_name)` 함수가 `_webhook_secret_cache` dict에 5분(WEBHOOK_SECRET_CACHE_TTL=300초) TTL로 per-repo 시크릿을 캐시. 리포 시크릿 변경 후 최대 5분간 구 시크릿으로 검증 — 인지하고 있을 것.
-- **Telegram 콜백 도메인 분리**: `_make_callback_token(bot_token, scope, payload_id)`이 `scope ∈ {"gate","cmd"}`별 다른 HMAC 생성. 신규 명령 추가 시 `cmd:<verb>:<id>:<token>` 준수, 64-byte 한도 검증 (numeric id). `_gate_callback_token()`은 `_make_callback_token(..., "gate", analysis_id)` thin wrapper. `test_callback_data_within_64_bytes_all_commands` 단위 테스트 강제.
-- **Cron 엔드포인트 인증**: `POST /api/internal/cron/*`는 `INTERNAL_CRON_API_KEY` 전용 (admin key와 분리). Railway `[[deploy.cronJobs]]` 트리거. `hmac.compare_digest` 타이밍 안전 비교. `INTERNAL_CRON_API_KEY` 미설정 시 503 반환.
-- **Telegram chat_id 라우팅 우선순위**: cron 알림의 chat_id 결정은 `analytics_service.resolve_chat_id(repo, config)` 단일 헬퍼 — `RepoConfig.notify_chat_id` → `Repository.telegram_chat_id` → `settings.telegram_chat_id` → None(skip + WARNING).
-- **CI-aware Auto Merge 재시도**: `mergeable_state=unstable`+CI running 또는 `unknown` 상태일 때 단일 실패가 아닌 `merge_retry_queue` 큐잉. `check_suite.completed` 웹훅 또는 1분 cron 으로 재시도. 트리거: `src/services/merge_retry_service.py::process_pending_retries`. 첫 지연 시 Telegram 1회, 최종 성공/실패 시 1회. 중간 재시도는 무음.
-- **`merge_pr` SHA atomicity**: `merge_pr(..., expected_sha=...)` 는 `PUT /pulls/{n}/merge` 에 `sha` 파라미터를 포함해 force-push 된 코드의 의도치 않은 머지를 GitHub 측에서 차단. 신규 호출 시 항상 head SHA 전달.
-- **Webhook 이벤트 구독 갱신**: `create_webhook` 이벤트 목록은 `["push","pull_request","issues","check_suite"]`. 기존 등록 리포는 settings 페이지의 "Webhook 재등록" 버튼으로 갱신 — 미갱신 시 자동 재시도 기능 미동작 (cron fallback 으로 5분 지연 동작).
-- 🔴 **외부 SDK timeout/max_retries 명시 의무 (Phase H PR-1A/1B-1)**: 새 외부 SDK (Anthropic/aiosmtplib/유사) 클라이언트 인스턴스화 시 `timeout` 명시 (60s 권장, `HTTP_CLIENT_TIMEOUT` 정렬), `max_retries` 명시 (SDK 기본값과 동일 값이라도 명시). SDK 업그레이드로 default 변경 시 silent regression 차단. 회귀 가드 테스트 동반.
-- 🔴 **5xx 자동 재시도 — 신뢰 API 한정 (Phase H PR-1B-2/2B)**: GitHub/Telegram/Anthropic/Railway 등 신뢰 API 의 일시 5xx + transient network error 는 자동 재시도 (exponential backoff, max 3회). Telegram 429 는 `retry_after` 파싱 + cap 30s. **외부 untrusted webhook (Discord/Slack/n8n/custom_webhook) 는 재시도 금지** — idempotency 보장 불가, 중복 발송 부작용. 재시도 helper 통합 검토 — 현재 `src/shared/retry_helper.py` **미존재**, 채널별 (Telegram L80~ / GitHub graphql `_GRAPHQL_*` / Anthropic SDK `max_retries`) 인라인 구현. 신규 채널 추가 시 해당 채널 모듈 안에 동일 패턴 (exponential backoff + transient 분류) 직접 구현 또는 신규 helper 모듈 신설 결정 필요.
-- 🔴 **PyGithub 등 sync I/O 는 `asyncio.to_thread` wrap 의무 (Phase H PR-3A)**: async 컨텍스트(BackgroundTask, lifespan 등) 내부에서 sync HTTP 클라이언트 (PyGithub, requests) 호출 시 반드시 `asyncio.to_thread(fn, ...)` 로 wrap. 직접 호출 시 이벤트 루프 블록 → 다른 webhook/cron 정체 (월 5-10건 "sync hang" 사고 차단 — PR-3A 결과).
-- 🔴 **race-recovery 시그널 컨벤션 (Phase H PR-2A)**: 파이프라인 내 race recovery 분기는 `result_dict is None` 을 시그널로 사용. 호출자는 `if result_dict is None: skip notify` 로 명시적 처리 — 중복 알림 + silent KeyError 동시 차단.
-
-### 보안
-
-- 🔴 **hook_token 비교**: `!=` 연산자는 타이밍 공격에 취약. `hmac.compare_digest(config.hook_token or "", token)` 사용 필수.
-- 🔴 **Telegram 게이트 콜백 HMAC 인증 (Phase H PR-5C 후 정정)**: 콜백 데이터 형식 `gate:{decision}:{id}:{token}` — token 은 `hmac(bot_token, f"gate:{analysis_id}", sha256).hexdigest()[:32]` (128-bit). 발신측 (`telegram_gate._make_callback_token(scope="gate", id)`) 과 수신측 (`webhook/providers/telegram._parse_gate_callback`) 모두 동일 msg 형식 (`f"gate:{id}"`) 사용 의무 — 한쪽만 수정 시 모든 semi-auto 콜백 401 거부 (PR-5C 직전 functional bug 사례). 신규 HMAC 토큰 도입 시 발신/수신 동일 msg 형식 + scope prefix 단위 테스트 강제.
-- 🔴 **`/health` 응답 내부 상태 미노출 (Phase H PR-5B)**: liveness probe 전용 — `active_db` / DB 연결 정보 등 내부 상태 추가 금지. `tests/unit/test_main.py::test_health_returns_status_ok` 가 회귀 차단. failover 모니터링은 logger 로그 (Railway) 경유. 인증된 운영 대시보드 필요 시 별도 엔드포인트 (`INTERNAL_CRON_API_KEY` 기반) 신설.
-- **GitHub Access Token 암호화**: `src/crypto.py`의 `encrypt_token()`/`decrypt_token()` — `TOKEN_ENCRYPTION_KEY` 미설정 시 평문 저장. `User.plaintext_token` property가 DB 읽기 시 자동 복호화. `user.github_access_token` 직접 사용 금지 — `user.plaintext_token` 사용.
-- **SESSION_SECRET 강도**: `validate_session_secret` validator (`src/config.py`) 가 32자 미만 또는 기본값이면 WARNING 출력. 프로덕션에서는 32자 이상 랜덤 문자열 필수.
-- **TOKEN_ENCRYPTION_KEY prod 감지**: lifespan startup 에서 `APP_BASE_URL` 이 https:// 로 시작하고 키가 비어있으면 WARNING 배너 출력. dev 환경(http 또는 빈 URL)에서는 침묵. 키 생성 명령은 로그 메시지에 포함 (2026-04-24 P1-5).
-- **Jinja2 autoescape**: `Jinja2Templates`는 `.html` 파일에 대해 autoescape=True(기본값). 템플릿 변수는 자동 이스케이프됨 — `| safe` 필터 사용 금지. notifier HTML 출력엔 `html.escape()` 직접 적용 필수.
-- **OAuth CSRF state**: Authlib `authorize_access_token()`이 session state 검증을 내부 처리. `/auth/github`를 거치지 않은 직접 콜백(`/auth/callback`) 접근은 에러(500)로 차단됨 — 정상 동작.
-- **로그 인젝션 방어 (`sanitize_for_log`)**: `src/shared/log_safety.py`의 `sanitize_for_log(value, max_len=200)` 헬퍼로 user-controlled 입력을 logger 에 전달하기 전 반드시 경유. CR/LF/TAB/NUL 제거 + 길이 제한. `%r` 포맷만으로는 SonarCloud `pythonsecurity:S5145` taint analysis 를 통과 못 함 — 명시적 함수 호출 필요. 예: `logger.info("...%s...", sanitize_for_log(body.repo))`.
-- **URL Path 방어적 인코딩 (`_repo_path`)**: `src/github_client/repos.py::_repo_path(full_name)` 으로 `urllib.parse.quote(safe='/')` 적용. GitHub API URL 에 `repo_full_name`/path 변수 삽입 시 반드시 경유 — SonarCloud `pythonsecurity:S7044` 경고 회피 + 실질적 path injection 차단.
-- **FastAPI Annotated 패턴 강제**: `Depends(...)`/`Header(...)` 는 `Annotated[Type, Depends(require_login)]` / `Annotated[str | None, Header()] = None` 형식으로 작성. `python:S8410` 규칙. `default 있는 param 뒤에 Annotated (default 없음)` 오면 SyntaxError — 함수 시그니처에서 `Annotated` 를 앞으로 이동 필요.
-- **SonarCloud FP suppress 규약**: `sonar-project.properties` 의 `sonar.issue.ignore.multicriteria` 에 규칙별 예외 추가. 개별 라인 예외는 `# NOSONAR <ruleKey> — 이유` 주석. 커스텀 sanitizer 를 SonarCloud taint analysis 가 인식 못 할 때 NOSONAR 주석 + 이유 명시가 표준.
-
-### UI / 템플릿
-
-- **Telegram HTML 파싱**: `parse_mode: "HTML"` 사용 — 모든 동적 콘텐츠에 `html.escape()` 적용 필수. `_build_message()`가 4096자 초과 시 자동 절단.
-- **analysis_detail 템플릿 context**: `current_user`를 반드시 포함해야 함 — 누락 시 nav 사용자명·로그아웃 버튼 미표시. `analysis.result or {}` 패턴은 None → `{}` 변환으로 `{% if r %}` falsy 평가 → 모든 AI 섹션 숨김 버그 — `{% else %}` 분기로 fallback 처리 필수.
-- **settings.html 구조 규약**: 의도 기반 6 카드 구성 — ① 빠른 설정(프리셋 3종 diff 미리보기) / ② PR 들어왔을 때(pr_review_comment·approve_mode·approve/reject_threshold·auto_merge·merge_threshold) / ③ 이벤트 후 피드백(commit_comment·create_issue·railway_deploy_alerts, 트리거별 소제목 + toggle-switch 통일) / ④ 알림 채널(masked-field 6종) / ⑤ 시스템 & 토큰(CLI Hook + Webhook 재등록 + Railway API 토큰 + Railway Webhook URL) / ⑥ 위험 구역(리포 삭제, 기본 접힘). Progressive Disclosure 기존 JS 헬퍼 5종(`setApproveMode`·`toggleMergeThreshold`·`applyPreset`·`_setPair`·`_showPresetToast`) 시그니처 불변 + 신규 헬퍼 4종(`onPresetToggle`·`renderPresetDiff`·`flashPresetChanges`·`toggleMergeIssueOption`). 프리셋 P1 = 펼침 diff 미리보기, P2 = 적용 하이라이트(@keyframes preset-flash 2.5s). 메인 `<form id="settingsForm">` + Railway API 토큰은 form 바깥에서 `form="settingsForm"` 속성으로 메인 폼에 포함. 알림 채널 URL은 프리셋이 건드리지 않음. 저장 오류 시 `?save_error=1` 쿼리 감지 → 고급설정 `<details open>` 자동 토글. 백엔드 필드명(pr_review_comment, approve_mode 등 14개) 및 PRESETS 9개 필드 구성 불변 원칙 — 5-way 동기화 체크리스트(ORM → dataclass → API body → 폼 → PRESETS) 적용 대상.
-- **overview 등급 산출**: `calculate_grade(avg_score)` 사용 (`src/scorer/calculator.py`). 최신 분석 grade가 아닌 평균 점수 기반 — 평균 점수 컬럼과 등급 컬럼이 항상 동일 기준. `latest_id_subq`/`latest_map` 배치 조회는 제거됨.
-- **analysis_detail trend_data**: `trend_data`·`prev_id`·`next_id`를 template context에 추가 전달. `trend_data`는 같은 리포 최근 30건 `{id, score, label}` 리스트. `trend_data|length > 1`일 때만 차트 렌더링. `analysis_detail.html`은 Chart.js CDN을 직접 로드.
-- **repo_detail 차트 동기화**: `buildChart(data)` 함수는 `data` 인자가 있으면 `_chartData`에 캐시, 없으면 캐시된 데이터 재사용. `applyFilters()` 호출마다 차트를 필터 결과와 동기화. `themechange` 이벤트는 `buildChart()` (인자 없음)으로 색상만 재빌드.
-- **리포 추가 Webhook URL**: `_webhook_base_url(request)` 헬퍼가 `APP_BASE_URL` 설정 시 HTTPS URL 강제. Railway 배포 시 반드시 `APP_BASE_URL` 설정 — 미설정 시 `http://`로 등록되어 Webhook 전달 실패.
-- **기존 Webhook 등록 리포**: `user_id = NULL` 리포는 모든 로그인 사용자에게 표시됨. `/repos/add`로 동일 리포 재등록 시 `user_id=NULL`이면 현재 사용자 소유 이전, 이미 소유자 있으면 에러.
-- **🔴 leaderboard_opt_in 컬럼 폐기 — Q3 정정 (그룹 60 후속 / 2026-05-02)**: 본래 Q3 결정 = "보존" 이었으나 사용자 명시 정정 *"팀 리더보드 기능은 삭제 해주세요"* + *"코드 내 사용 안 함 또는 보류 내용 없었으면"* 정신 일치 → 컬럼 + 폼 + 핸들러 + dataclass + API body 모두 폐기 (alembic 0025). 회귀 가드 = `tests/unit/services/test_analytics_service_deprecations.py::test_leaderboard_opt_in_column_removed/dataclass_field_removed`. 향후 SaaS 전환 시 멀티 사용자 인사이트 모델 별도 신설 결정 — 기존 single-user opt-in 모델 부활 X.
-- **/dashboard 페이지 (그룹 60 신설)**: KPI 5 카드 (평균 점수 / 분석 건수 / 보안 HIGH / 활성 리포 / Auto-merge 성공률) + 점수 추세 라인 차트 + 자주 발생 이슈 + Auto-merge 실패 사유 + feedback CTA banner. scoped 디자인 토큰 (`.dashboard-page` wrapper 안 `--d-*` 토큰, base.html 4-테마 공존, claude-dark 분기 alias). KPI 그리드 반응형 4 단계 (desktop 5 / tablet 1024px↓ 3 / mobile 768px↓ 2 / xs 480px↓ 1). Chart.js vendoring 재사용 (`/static/vendor/chart.umd.min.js`) + themechange 페어. 신규 KPI 카드 추가 시 동일 높이 정합 (`.dash-kpi` `min-height: 152px` + `.dash-kpi-row` `min-height: 38px` + `.dash-kpi-delta margin-top: auto` 3-rule).
-- **🔴 Auto-merge KPI 시각 우선순위 (그룹 60 P0 #3 후속)**: KPI 메인 (36px 큰 폰트) = `final_success_rate_pct` (PR 기준 retry-aware) — 단순 시도 success rate (16.6% 같은 운영 데이터) 가 메인이면 부정 인상 위험. sub-text (12px) = 단순 시도 + delta. fallback: `final_success_rate_pct is none` 시 `value` (단순) 메인 표시. **KPI 카드 신설 시 시각 우선순위 = 사용자 가치 (=내 PR 결국 머지됐나) 기준 결정 의무**.
-- **scoped 디자인 토큰의 4-테마 호환 한계 (회고 P0 #4)**: `.dashboard-page` 안 자체 토큰 + `claude-dark` 분기 alias 만 정의. `dark/light/glass` 3 테마는 `var(--card-bg, var(--bg-surface, ...))` 다단 fallback 의존. **glass 테마의 `backdrop-filter` 적용 안 됨** → 시각 불일치 가능. 신규 시각 컴포넌트 도입 시 정책 11 8 조합 의무 검증 (특히 glass 테마 우선).
-- **Insights 라우트 폐기 + 301 redirect (그룹 60 Phase 1 PR 5)**: `/insights`, `/insights/me` 모두 폐기 → `src/ui/routes/dashboard.py::redirect_insights*` 가 301 Location: /dashboard 응답 (쿼리 파라미터 보존). 신규 폐기 라우트 도입 시 동일 패턴 (북마크 사용자 보호) + 회귀 가드 의무 (`tests/unit/ui/test_dashboard_redirects.py` 패턴).
-- 🔴 **환각(phantom) 토큰 alias 패턴 (UI 감사 Step A + cleanup PR #169)**: 컴포넌트 CSS 가 정의되지 않은 토큰 (`var(--bg-hover)`, `var(--card-bg)`, `var(--text)`, `var(--accent-blue)`, `var(--c-warning)` 등) 을 참조하면 브라우저는 fallback 없으면 invalid → 다크 테마 시각 깨짐 (예: filter-bar 배경 투명, 피드백 버튼 hover 안 보임). 발견 시 사용처 치환 대신 `base.html` 의 `:root` 블록에 alias (`--bg-hover: var(--table-row-hover)` 등) 흡수 — consumer 코드 변경 0 으로 4-테마 일괄 해결. 신규 토큰은 항상 `var(--*)` 경유, `#hex` 직접 사용 금지. 새 환각 토큰 발견 시 `:root` alias 블록에 추가가 1순위.
-- 🔴 **WCAG 2.5.5 모바일 클릭 영역 ≥44px 의무 (UI 감사 Step A/B/E)**: 모바일 인터랙티브 요소 (`.btn`, `.btn--sm`, `.nav-link`, `.nav-hamburger`, `.gate-mode-btn`, `.filter-btn`, `.page-btn`, `.chip-label`, `.day-selector a`, `.settings-link` 등) 는 `@media (max-width: 768px)` 분기에 `min-height: 44px` (또는 sm: 40px) + `box-sizing: border-box` 적용 필수. 신규 인터랙티브 컴포넌트 추가 시 동일 규칙 자동 적용. iOS Safari focus zoom 회피 위해 input/select font-size 모바일 분기 ≥16px 필수.
-- 🔴 **safe-area-inset 적용 의무 (UI 감사 Step A)**: notch (iPhone 12+) / 홈 인디케이터 디바이스 호환 위해 sticky/fixed 요소 (nav, .save-bar, .nav-links.open 모바일 메뉴) 는 `padding-{top,bottom,left,right}: max(*, env(safe-area-inset-*))` 또는 `calc(* + env(safe-area-inset-*, 0px))` 패턴. `<meta name="viewport">` 의 `viewport-fit=cover` (base.html L7) 와 페어. 새 sticky 요소 추가 시 동일 패턴 적용.
-- **Chart.js vendoring + StaticFiles mount (UI 감사 Step C — PR #166)**: 외부 CDN 차단 (사내망/방화벽/오프라인) 환경 호환 위해 `src/static/vendor/chart.umd.min.js` (4.4.0 UMD min, 204KB) 로컬 호스팅. `src/main.py` 가 `_STATIC_DIR` 존재 시 `app.mount("/static", StaticFiles(directory=...), name="static")` 조건부 mount. 사용 페이지 (`repo_detail`/`analysis_detail`/`dashboard`) 는 `<script src="/static/vendor/chart.umd.min.js">` 직접 참조. 신규 정적 자원은 `src/static/vendor/` 하위 배치 → 자동 노출. 디렉토리 추가 시 CLAUDE.md `src/` 트리 동기화 의무.
-- **claude-dark 테마 차트 색 동기화 (UI 감사 Step C)**: Chart.js JS 는 CSS 변수 직접 못 읽으므로 `getComputedStyle(document.documentElement).getPropertyValue('--grade-a')` 등 동적 추출 → Chart 옵션에 주입. 테마 전환 시 `document.addEventListener('themechange', buildChart)` 로 chart 재빌드 (chart.destroy() → new Chart()). `repo_detail.html`/`analysis_detail.html`/`dashboard.html` 동일 패턴. 새 차트 추가 시 동일 패턴 의무.
-- **색 의미(semantic) 토큰 통일 (UI 감사 Step D — PR #167 + cleanup #169)**: 시각적 의미는 항상 `--success` (A등급/성공/머지/conn-dot ON) / `--warning` (C등급/경고/대기) / `--danger` (F등급/실패/거부) 3종 토큰 사용. `#10b981`, `#ef4444`, `#f59e0b` 등 hex 직접 사용 금지. 등급 색 (`--grade-a/b/c/d/f`) 과 시맨틱 색 혼용 금지. claude-dark 테마는 모든 시맨틱/등급 색을 sage/sand/muted-red/terracotta 톤으로 자동 alias — 새 의미 토큰 추가 시 4-테마 모두 정의 + claude-dark alias 의무.
-- **claude-dark 테마 토큰 매트릭스 (cleanup PR #169)**: settings 페이지가 사용하는 토큰 8종 (`--grad-gate/merge/notify/hook`, `--title-gradient`, `--btn-gate-active-*`, `--save-btn-*`, `--hint-*`, `--hook-btn-*`) 은 claude-dark 에도 정의 의무 — 미정의 시 invalid var() → 카드 헤더 흰색/투명 등 시각 깨짐. 새 페이지가 다른 토큰 도입 시 4-테마 모두에 정의 추가 의무.
-
-### 다국어 / i18n (사이클 84 — Phase 1~5 18 PR 종결)
-
-- **3 언어 지원 (en/ko/ja) + 5단계 locale 감지**: `src/middleware/locale.py::LocaleMiddleware` (ASGI 직접 — BaseHTTPMiddleware 우회) 가 Cookie (`locale`) > Accept-Language q-weight > User.preferred_language > settings.default_locale > "en" fallback 순서로 5단계 감지 → `scope["state"]["locale"]` 주입. kill-switch = `is_disabled("I18N")` (사이클 78 페어). 신규 라우트는 `request.state.locale` 또는 Jinja2 `locale` 변수 직접 참조 (없으면 `'ko'` default fallback).
-- **번역 파일 단일 출처**: `src/i18n/translations/{en,ko,ja}.json` — 8 namespace × 3 언어 = 24 영역. Babel 미사용 (Python dict + LRU cache, 정책 16 4번 원칙 정합). namespace dot path (예: `'admin.operations.title_prefix'`) → JSON 중첩 검색. 미존재 키 = 영문 fallback → 키 자체 반환 (3-tier). 새 키 추가 시 3 언어 모두 동시 추가 의무 (en 누락 시 fallback 깨짐 — 운영 사고).
-- 🔴 **Jinja2 i18n 필터 호출 패턴**: 템플릿에서 `{{ 'key.path' | i18n_args(locale | default('ko'), arg=value) }}` — `locale` 변수 부재 시 `'ko'` default fallback 의무 (LocaleMiddleware 미통과 영역 호환). `i18n_args` 필터는 키워드 인자로 `{name}` placeholder 대체. `register_i18n_filters(env)` 가 `src/main.py` lifespan startup 에서 1회 등록.
-- **3-layer 알림 언어 fallback (Phase 3 — PR-9/10/11)**: 알림 발신 시 사용자 언어 결정 = `User.preferred_language` (alembic 0030) → `RepoConfig.notification_language` → `settings.default_locale` → `"en"` 4-tier. Telegram/Discord/Slack/Email/GitHub PR Comment/Commit Comment/Issue 7 채널 모두 동일 패턴. Email subject + Issue title 의 **prefix 만 영문 고정** (검색 호환 — `[SCAManager]` `[Code Review]` 등) + 본문 사용자 언어.
-- **2-layer AI 리뷰 언어 fallback (Phase 4 — PR-12/13/14/15)**: `src/analyzer/io/ai_review.py::review_code` 가 Repository.user_id → User.preferred_language → settings.default_locale → "en" 결정 → `build_review_prompt(..., language=lang)` 분기 → `review_guides/` Tier1~3 의 `FULL_KO/COMPACT_KO/FULL_JA/COMPACT_JA` 변수 우선 + 부재 시 `FULL/COMPACT` (영문 default) fallback. 영문 default 변수명 (`FULL`/`COMPACT`) 절대 변경 금지 — 50+ 사용처 회귀 위험.
-- **Anthropic prompt cache 언어 자동 발산 (Phase 4 PR-12)**: `build_cached_system_param` 의 system text 가 언어별 다른 가이드 포함 → SHA256 hash 자동 차이 → Anthropic cache key 자동 분리 (사용자 별도 작업 0). 동일 SHA + 동일 언어 = cache hit, 다른 언어 = cache miss + 신규 caching 시작. `DISABLE_PROMPT_CACHE=1` 시 양쪽 모두 비활성.
-- 🔴 **메모리 카운터 패턴 (정책 16 4번 원칙 정합 — 사용처 ≥ 3)**: 4 사용처 도달 — (1) `src/shared/claude_metrics.py::get_cache_stats` (cache_hit_rate / cost) (2) `src/shared/stage_metrics.py::stage_timer` (pipeline 단계 latency) (3) `src/notifier/telegram.py` 봇 차단 5회 streak guard (4) `src/i18n/loader.py::get_i18n_metrics` (lookups_total/hit/fallback/missing + fallback_rate_pct). 모두 process restart 시 reset (memory_only). DB persist 영역 = Phase 6+ 후보 (사용자 사전 확인 의무 — High tier).
-- **운영 KPI — language_distribution + i18n_fallback (PR-17)**: `src/services/operations_service.py::operations_kpi` 가 7 카드 (cache + api_cost + cache_dist + merge + pipeline_latency + language_distribution + i18n_fallback) 반환. `_i18n_language_distribution(db)` = User.preferred_language 분포 + percentages. `_i18n_fallback_rate()` = loader 메모리 카운터 → fallback_rate_pct. 운영 baseline = `docs/reports/2026-05-05-i18n-18pr-closure-baseline.md` (1주 후 재측정 의무).
-- **회귀 가드 — 다국어 smoke test (PR-18, 정책 13 페어)**: `tests/integration/test_i18n_smoke.py` (11건) — 3 언어 × /login Cookie smoke + HTML lang 속성 일치 + Cookie 부재 시 default fallback + 메모리 카운터 increment + missing key 카운터. 신규 i18n 영역 추가 시 동일 패턴 의무 (cookie locale → 페이지 응답 lang 속성 검증).
-
-### 배포
-
-- **NIXPACKS npm run build 자동 추가**: npm이 환경에 존재하면 `nixpacks.toml [phases.build] cmds` 명시 여부와 무관하게 `npm run build`를 자동 추가. 억제 유일 수단: `railway.toml`의 `buildCommand` (최상위 오버라이드). eslint 등 npm 전역 설치가 필요하면 buildCommand에 직접 작성.
-- **slither + solc 빌드타임 준비**: `slither-analyzer` (pip) 설치만으로는 부족 — solc 컴파일러 바이너리가 있어야 실제 `.sol` 분석 가능. `railway.toml`의 `buildCommand`에 `solc-select install 0.8.20 && solc-select use 0.8.20` 체인으로 빌드 이미지에 solc 0.8.20 사전 포함 → 런타임 첫 분석에서 `STATIC_ANALYSIS_TIMEOUT=30` 내 완료 보장. pragma 가 다른 버전이면 slither 가 자동 fallback 다운로드 시도(네트워크 있으면 성공, 없으면 `success=false` → `[]` graceful degradation). solc 버전 변경 필요 시 `railway.toml` buildCommand 의 두 번 solc 버전 문자열만 교체.
-- **NIXPACKS nixPkgs 오버라이드 함정**: `nixpacks.toml`에 `nixPkgs = ["nodejs"]` 등을 명시하면 Python provider의 nix 자동 설치(python3 + pip 포함)를 **완전히 교체**한다. Python+Node.js 공존 패턴: `nixPkgs` 사용 금지, `aptPkgs = ["nodejs", "npm"]`으로 Node.js 설치, pip install은 Python provider 자동 처리.
-- **APP_BASE_URL**: Railway 리버스 프록시 환경 필수 설정. **OAuth redirect_uri**와 **GitHub Webhook 등록 URL** 양쪽에 HTTPS URL 강제 적용 — 미설정 시 `http://`로 등록.
-- **Railway 빌드 검증 필수**: `git push` 성공 ≠ Railway 빌드 성공. `railway.toml`, `nixpacks.toml`, `requirements.txt` 변경 후 Railway 대시보드 빌드 로그 직접 확인 후 완료 선언.
-- **빌드 실패는 로그 우선, 추측 수정 금지**: Railway/CI 빌드 실패 보고를 받으면 즉각 수정 PR 을 작성하지 말 것. 전체 빌드 로그(실패 구간 위아래 30줄)를 먼저 받아 근본 원인을 특정한 뒤 수정. 2026-04-23 rubocop/prism 사건에서 "추측 기반 1차 수정 → 2차 재실패 → 로그 분석 후 3차 성공" 패턴으로 1시간 낭비 실적 있음. 상세: [회고](docs/reports/2026-04-23-railway-rubocop-prism-retrospective.md).
-- **gem/npm transitive 의존성 핀**: Ruby gem 또는 npm 패키지의 **직접 의존성만 버전 고정해도 transitive 의존성은 시간에 따라 바뀐다**. rubocop 1.57.2 는 pure Ruby 지만 transitive `rubocop-ast` 가 2024년 이후 prism 네이티브 확장을 필수로 요구하게 변경됨 → Railway 빌드 실패. 해결책은 `gem install rubocop-ast -v 1.36.2` (prism-free 마지막 버전) 를 rubocop 설치 **이전에** 명시 핀. 새 Ruby 도구 추가 시 동일 패턴 주의.
-- **requirements.txt 분리**: `requirements.txt`(프로덕션 — Railway 자동 감지)와 `requirements-dev.txt`(개발 — `-r requirements.txt` 포함 + pytest/playwright) 분리. `pytest`, `playwright`는 `requirements-dev.txt`에만 유지.
-- **SMTP_PORT 빈 문자열**: Railway 환경에서 `SMTP_PORT=""`로 설정 시 pydantic ValidationError 크래시. Railway Variables에서 SMTP_PORT 값을 삭제하거나 숫자로 설정.
-- **postgres:// URL**: Railway PostgreSQL이 `postgres://`로 제공하는 경우 `config.py`에서 `postgresql://`로 자동 변환.
 
 ## 현재 상태
 
-최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 2669개 | 통합 129개 | E2E 96개 | pylint 10.00 | 커버리지 95% | SonarCloud QG OK · Security A · Reliability A · Maintainability A · Tier1 정적분석 10종 · Observability (Claude metrics + stage timing + MergeAttempt) · AI 점수 피드백 루프 · Settings Minimal Mode · Onboarding 3단계 튜토리얼 · 5-렌즈 감사 95+ 통과 · Phase F Quick Win + F.1/F.3 완료 · Phase G 완료 (P1-5건 수정) · Phase 9 자기 분석 루프 방지 완료 · Phase 10 Telegram 확장 완료 (cron + /stats·/connect 명령) · ~~Phase 11 팀/멀티 리포 인사이트 완료 (author_trend + leaderboard + /insights 대시보드)~~ → **그룹 60+61 폐기 정정 (alembic 0025 + 5-way sync)** · 툴링 안전장치 (testpaths + ORM-마이그레이션 완전성 검사 67개) · Phase 12 CI-aware Auto Merge 재시도 완료 (merge_retry_queue + check_suite 웹훅 + 1분 cron) · Settings UI/UX 리디자인 완료 (수신/발신 웹훅 분리 + 온보딩 배너) → Phase 2A Progressive 재설계 완료 (PR #152, #153) → UI 감사 사이클 12 PR + 5-에이전트 정합성 cleanup 5 PR 완료 · Loop Guard Layer 3-b 화이트리스트 봇 한정 (PR #100) · Tier 3 PR-A 완료 (PR #103) · Phase 4 Critical 테스트 갭 5 PR 완료 (PR-T1~T5, +197 tests) · Phase H+I 15 PR + 회고/문서 동기화 1 PR (12-에이전트 감사 Critical 10건 100% 처리) · **그룹 60+61 (2026-05-02 단일 작업일 23 PR) 완료 — Phase 1+2 Insight Dashboard 재설계 (`/dashboard` MVP-B 출시 + 폐기 4종 + Auto-merge KPI + feedback CTA + leaderboard 완전 폐기 alembic 0025) + 5-에이전트 회고 2회 (Phase 1 / Phase 1+2 통합) + 정책 11/12/13 신설 + 정책 2/3/7/11 진화/강화 + P0 OAuth 사고 + 사후 가드 (test_oauth_redirect_uri_smoke 4 + test_oauth_flow_smoke 10 + e2e/test_dashboard 14) + Hook fix (sys.executable → PATH python) + pre-existing 31 fail (단위 7 + 통합 24) 완전 해소 (autouse fixture 패턴) + Phase 3 SaaS 전환 토대 기획 (PR 6분할 안)** · **사이클 62 (2026-05-03) — cycle-61 v2 sync (#211) + e2e claude-dark 토큰 회귀 + WCAG 2.5.5 모바일 가드 7건 신설 (#212) + 5+1 에이전트 정합성 cleanup (P0 4 + P1 4 처리) + 정책 14 신설 (GitHub Security 탭 운영 체크 의무 + 첫 적용 사례 #325 fix)** · **사이클 63 — Phase 3 SaaS 토대 시작 (4/6 PR 머지 #218~#221) — caching 인프라 + insight_narrative service + 라우트/모드 토글 UI + 사용자 신호 default+localStorage. CI fix (pytest fixture lazy ORM import 트랩 → 모듈 최상단 이동)** · **사이클 64 (2026-05-04) — Phase 3 100% 완료 — Supabase RLS 권한 모델 단일 PR (#223, 1008+ 사용자 명시 단일 결정) + Insight 회귀 가드 e2e 7 + integration 2 (#224) + 5+1 에이전트 회고 (P0 7건: 🔴 RLS 운영 활성화 미들웨어 부재 = 다음 사이클 첫 작업 의무)** · **사이클 65~67 (2026-05-04) — 회고 P1 100% 처리 종결 — 정합성 cleanup P0 12건 (#226 단위 80건 과대 정정 + Phase 3 누락 5건 + 정책 4건) + pre-existing 5 fail 4 사이클 누적 보류 종료 (#227 conftest setdefault → 직접 set, .env override 트랩) + RLS 운영 활성화 미들웨어 (#228 ASGI + contextvars + event listener LIFO 등록) + legacy NULL backfill 스크립트 (#229 author_login JOIN dry-run) + 잔여 5 P1 묶음 cleanup (#230 caching docstring + 정책 9/10 진화 + R0914 트리 + dialect helper 보류) — 단위 2041→2055** · **사이클 68 (2026-05-04) — 4 사이클 종결 회고 (#232 5 에이전트 + cross-verify 생략 첫 사례 + 메모리 4건 신규/갱신) + 사이클 67 회고 P0 4건 정책 진화 묶음 (#233 정책 7 강화 단일 큰 PR + 정책 8 회고 패턴 3 분기 + 정책 2 진화 sync 실측 + 30초 체크리스트 강화) + 사이클 68 종료 sync (#234 4 사이클 종결 회고 + 정책 진화 누적 sync) — 카테고리 분류 별도 PR 보류 (High tier)** · **사이클 69 (2026-05-04 · #235) — 5+1 깊은 정합성 cleanup — P0 12건 (Critical 5 + High 4 + Medium 3) + cross-verify general-purpose 2회 (1차 false-positive 1건 차단 + 2차 산식 정정 P0 3건 — STATE 헤더 42→45 / retro 합계 46→45 / "신규 2" 모호 제거)** · **사이클 70 (2026-05-04 · #236) — 사용자 신규 규칙 2건 정책화 — 정책 15 신설 (코드 작업 전 사전 사고) + 정책 16 신설 (코드 단순화 default — 4 원칙)** · **사이클 71 (2026-05-04 · #237/#238/#240) — 정책 16 default 적용 첫 사이클 — pure cleanup 5건 + 응집 헬퍼 3건 + gate legacy wrapper 단순화 (-90 LOC). PR 8 (asyncio.gather 병렬화) 영구 보류 (운영 위험). 후속 = Telegram Bot Token PR #227 commit message body 노출 사고 → git filter-branch --msg-filter rewrite + force push origin --all + stale branches 53/53 일괄 삭제** · **사이클 72 PR 1 (#241) — 정책 16 5번째 원칙 추가 (토큰 비용 효율) + 명시 제외 영역 + 메모리 2건 신설** · **사이클 72 PR 2 (#242) — Phase 1 옵션 🅓 (데이터 기반 단계 진행) Claude API 비용 모니터링 정확화 인프라 (g-G1 cache 비용 모델 + g-G2 메모리 카운터 + 신규 2 silent fallback WARNING + a-A 메모리/CLAUDE 정정 + e 결과 명시)** · **사이클 73 (2026-05-04 · #243) — 사이클 70~72 종결 회고 + sync 페어 (5 에이전트 + cross-verify 생략 + 메모리 3 신설 + 4 강화) + Code Scanning 6건 dismiss API 자체 처리 (4 used_in_tests + 2 false_positive)** · **사이클 73 PR (#244) — Phase 4 영역 진입 첫 작업 = Code/Secret Scanning F1+F2 + Copilot Autofix 5 + CI fix-up +14 (patch coverage 56.64%→80%+). 단위 2055→2099** · **사이클 74 진입 (#246) — 사이클 73 종료 sync — Phase 2 후보 4 모두 진행 결정** · **사이클 74 PR-A (#247) — Phase 2-A Anthropic API 호출당 효율화 묶음: 🅒 신규 1 = `_INSIGHT_SYSTEM_PROMPT` 1024 토큰 패딩 + 🅐 d-🅓 = Insight Haiku 모델 분기 (`claude_insight_model`) + 🅓 a-B = `build_review_blocks` 신규 helper (인프라만). 단위 2099→2105** · **사이클 74 PR-B (#248) — Phase 2-B 🅑 DB 캐싱 1h TTL 단일 응집 PR: alembic 0028 + `InsightNarrativeCache` ORM (RLS user_id 직접 격리) + repo + service cache read/write + UI route `?refresh=1` + 🔄 Refresh + ⏱ generated_at. 신규 단위 +16 = 2105→2121** · **사이클 75 진입 (#249) — 사이클 70~74 종결 회고 + sync 페어. 메모리 신설 3건 + 정정 (메모리 카운트 + 단위 카운트 + 정책 16 line:span)** · **사이클 75 첫 작업 — Railway 운영 alembic 0027 (`SecurityAlertProcessLog`) + 0028 (`InsightNarrativeCache`) 자동 적용 검증 완료** (Project Token + GraphQL deploymentLogs grep — 둘 다 SUCCESS, ERROR/Traceback 0건) · **사이클 75 P1 묶음 (#250 — 옵션 🅓 단일 응집 PR) — 정책 본문 진화 묶음 + 메모리 카테고리 분류**: 정책 5 강화 (Phase 단계별 진행/종료 신호 분리 의무) + 정책 6 강화 (정책/메모리 본문 작성 시 line:span `grep -n` 실측 의무) + 정책 8 진화 (단일 관점 회고 정량 기준 적용 X + cross-verify ROI 정량 — 사이클당 평균 false-positive 차단 2~5건) + 정책 16 본문 보강 (4 단계 caching 활성화 사례 timeline) + 메모리 카테고리 분류 (≥ 20 임계 도달 — 5 카테고리: 환경 3 / TDD 5 / 협업 6 / 정책 4 / 기술 4 + deprecated 2) + 메모리 카운트 정정 (21→22)** · **사이클 76 (2026-05-04 · #251 추정 머지) — 전체 문서 + 코드 5+1 다중 에이전트 정합성 cleanup**: 1차 5 에이전트 (관점 1~5) P0 24건 + cross-verify general-purpose 6차 종합 = Tier A 8건 정정 (단위 카운트 2055→2122 3 위치 + 정책 7+14 line ref drift + 메모리 4→5 원칙 + STATE 헤더 + tail) + false-positive 차단 3건 (build_review_blocks 위치 / line ref 이미 갱신 / 메모리 :79,89 두 번호 보존) + 신규 발견 3건 (STATE 헤더 stale / CLAUDE.md tail 사이클 76 행 / scan-security 흐름 보강). **정책 8 진화 정량 기준 정합 — cross-verify ROI 양호** (false-positive 차단 3건 + 신규 발견 3건 = 평균 정합) · **사이클 77 (2026-05-04 · #252) — Tier B 메모리 line:span drift 정정 + Phase 진행 옵션 표**: 사이클 76 회고 승인 후속 — Tier B 3건 즉시 정정 + Phase 2-C/D + Phase 4 후보 5종 옵션 표 작성. 사용자 결정 = Q1=🅐 + Q2=🅑 (5 사이클 분할) + Q3=전부다 (5 영역 모두 권장 ★ 채택) + Q4=NEW-P0-1 (Phase 2 진입 시 fix) · **사이클 78 (2026-05-05) — 영역 🅒 Telegram 본격화 (5 사이클 분할 첫 사이클)**: PR 1 (#253 머지) `feature_kill_switch` helper 모듈 신설 + 기존 2 사용처 마이그레이션 (NEW-P0-2 — Phase 4 5 영역 진입 의무 페어). PR 2/3/4 = 머지 대기 (사용자 영역) · **사이클 79 (2026-05-05) — 영역 🅐 SaaS Phase 1 read-only 종결**: PR 1 (#254) alembic 0029 RLS 5 누락 테이블 보강 + PR 2 (#255) admin allow-list + require_admin Depends + `SAAS_MULTITENANT_DISABLED` kill-switch + PR 3a (#256) admin UI + REST API + saas_service (TemplateResponse 신 시그니처 fix-up + Copilot Autofix 3 commit 통합) + PR 3b (#257) `/dashboard?mode=usage` 본인 사용량 (user_id 직접 격리). **단위 2122 → 2178 (+56 회귀 가드 — RLS 6 + admin 11 + saas_service 7 + admin_endpoints 5 + dashboard_usage 9 + kill-switch 17 + telegram 봇 차단 7 등 누적)** · **사이클 80 (2026-05-05) — 영역 🅔 운영 모니터링 Phase 2 종결**: PR 1 (#259) Sentry PII 스크러빙 강화 (4 → 10 헤더 + URL fragment 제거 + runbook `docs/runbooks/sentry-activation.md`) + PR 2 (#260) admin operations KPI 5 카드 (`/admin/operations` + `/api/admin/operations` — cache_hit_rate / api_cost / cache 토큰 분포 / merge success / pipeline_latency placeholder + `operations_service` 신설). **단위 2178 → 2214 (+36 회귀 가드 — observability 23 + operations 10 + admin operations 3)** · 옵션 🅒 (1주 baseline 보고서) = 사이클 81+ Sentry 활성화 1주 후 별도 진행 default (NEW-P0-3 정합) · **사이클 81 (2026-05-05) — 영역 🅑 모바일 Phase 1 MVP 종결 (5+1 cross-verify Phase 1 4 PR 분할 완료)**: PR-A (#262) PWA manifest + SVG icon 192/512 maskable + theme-color + apple-touch-icon + base.html PWA 헤더 4종 + CI fix-up TestClient lifespan 비활성 (사이클 79 PR 3a 동일 패턴 학습) / PR-B (#263) dashboard 모바일 KPI 우선순위 재배치 — 보안 HIGH first-fold + 자동 머지 second-fold (CSS order 480px↓ 분기) / PR-C (#264) settings 모바일 768px↓ 분기 신설 + WCAG 2.5.5 ≥44px 가드 + iOS Safari focus zoom 회피 / PR-D (#265) add_repo / login 모바일 form sweep + WCAG ≥44/48px 가드. **통합 84 → 118 (+34 회귀 가드 — PWA 7 + dashboard mobile 5 + settings mobile 10 + form sweep 12)**. `<details>` Progressive Disclosure = Phase 2 영역 보류 (5-way sync 영향 위험 — High tier) · **사이클 78~81 4 사이클 종결 회고 (2026-05-05 · #271)** — 5+1 다중 에이전트 (관점 1~5 P0 18건 + cross-verify 6차 종합) → Tier A 4건 즉시 정정 (TestClient lifespan 트랩 메모리 신설 + STATE Chart.js insights_me stale 정정 + STATE 사이클 65~67/68 section header 복구 + CLAUDE tail 본 행 추가) + Tier B 2건 (alembic dialect 헬퍼 사용처 12개 추출 + Copilot Autofix noqa 트랩 메모리). **메모리 카운트 24 → 25 (활성 22 → 23 + deprecated 2)** + INDEX.md 회고 등록. cross-verify ROI = 양호 (false-positive 차단 2 + 신규 발견 3 = 사이클 75 진화 평균 정합). 사이클 82 진입 default = Sentry baseline 1주 보류 + Tier B 정정 PR 진행 (NEW-P0-3 정합) · **사이클 82 Tier B 묶음 (2026-05-05)** — 사용자 "모두 승인" (옵션 🅐) 명시 후 Tier B 2 PR 분할 진행. **PR 1 (alembic dialect 헬퍼 추출)** = `src/shared/alembic_dialect.py::is_postgresql(bind_or_conn)` 신설 (정책 16 4번 원칙 정합 — 사용처 12 도달) + 11 사용처 일괄 치환 (alembic 0024/0026/0027/0028/0029 + `src/database.py` event listener) + `alembic/env.py:88` SQLite-specific 분기 보존 + 회귀 가드 14건 (`tests/unit/shared/test_alembic_dialect.py`). 단위 2214→2228. **PR 2 (본 PR — 메모리 신설 2건)** = `feedback-copilot-autofix-noqa-trap.md` (협업 — `# noqa: F401` 무시 트랩 + side-effect import 4 패턴 revert default) + `feedback-pr-push-direct-validation.md` (TDD/CI — 사이클 73/79/81 3 사이클 연속 CI fail-fix 학습 → PR push 직전 `pytest tests/unit tests/integration -q` 동시 실행 의무). **메모리 카운트 25 → 27 (활성 23 → 25 + deprecated 2)**. 사이클 78 PR 2 web UI 머지 안내 = 다음 작업 default (NEW-P0-1 운영 사고 차단) · **사이클 82 NEW-P0-1 머지 + sync (2026-05-05 · #274)** — 사이클 78 PR 2 (`fix/cycle-78-pr2-telegram-bot-blocked-skip`) main 21 commit 누적 → clean rebase + force-push (메모리 `feedback-pr-push-direct-validation.md` default 적용 = `pytest tests/unit tests/integration -q` 2350 passed / 5 skipped / 0 failed) → 머지 (#274). `src/notifier/telegram.py` Telegram 403 (봇 차단) silent skip + 5회 연속 streak guard + defensive int coercion (정책 16 1번 원칙 정확성 페어). 회귀 가드 7건 (`tests/unit/notifier/test_telegram_bot_blocked_skip.py`). 운영 영향 = cron 누적 사고 차단 (NEW-P0-1 페어). PR 3+4 영구 폐기 default = 브랜치 보존 (사이클 71 stale branches 일괄 cleanup 패턴 차용). 단위 2228→2236 (+7 NEW-P0-1 + baseline 실측 정정 +1) · **사이클 84 다국어 (영어/한국어/일본어) i18n Phase 1 종결 (2026-05-05 · #283/#284/#285 + sync)** — 사용자 명시 task ("긴급 + 영어/한국어/일본어 + 코드리뷰 + 대시보드 메뉴 커버 + 5번 정도 검수 + 세부 기획안") → 5+1 다중 에이전트 (관점 1~5) + cross-verify 6차 + 본인 5 라운드 검수 + 18 PR 분할 기획안 (Phase 1~5 ~12,100 LOC 3~5주) + Phase 1 PR-1a/b/c 분할 진행 (Q9 = 🅑 3 PR 분할). PR-1a (#283 환경변수 5 + kill-switch + config + field_validator 4) + PR-1b (#284 LocaleMiddleware ASGI + 번역 로더/필터 + en/ko/ja.json 8 namespace × 3 언어 — Babel 미사용 JSON dict 자체 구현) + PR-1c (#285 alembic 0030 + ORM 3 모델 확장 + composite index `(user_id, days, language)` 캐시 키 분리). **단위 2236 → 2305 (+69 회귀 가드)**. SonarCloud race condition 발견 (REST API 직접 추적 — `f2db4ac` 우선 처리 → `bf93cb2` 거부). 다음 작업 default = Phase 2 (UI 다국어 PR-4~8) 사용자 명시 신호 의무 (정책 5 강화 페어) · **사이클 82 종결 회고 (2026-05-05 · #277)** — 5+1 다중 에이전트 (관점 1~5 + cross-verify 6차) 종결 회고 + Tier A 4건 즉시 정정 (#276 sync — env-vars.md 4 환경변수 + CLAUDE.md L1060 dialect helper stale 정정 + L955 sync 체크리스트 강화 + STATE L117 header) + Tier B 11건 (High 3 / Medium 5 / Low 4) 사용자 결정 의무 영역 + 회고 질문 7건 사용자 회신 의무. cross-verify ROI = false-positive 차단 2 + 신규 발견 3 = 사이클 75 진화 평균 정합 ✅. **사이클 82 PR 3/4 영구 폐기 (사용자 Q2 = 🅐 명시 결정)** — `git push origin --delete` 적용 완료. 단일 작업일 6회 5+1 디스패치 = 누적 최고치 (이전 6배) — 정책 8 진화 후보 (단일 작업일 ≥ 5회 사전 확인 의무 신설) · **사이클 83 (2026-05-05) — Tier B 11건 단일 응집 정책 진화 묶음 PR (사용자 옵션 🅐 명시 결정)** — Q1 🅑 정책 9 완화 (회신 부재 default = 자율 판단 보고로 대체 OK / NEW-P0-N + destructive + High tier 영역 회신 의무 보존) + Q3 정책 8 진화 (단일 작업일 ≥ 5회 사전 확인 + 개별 PR cross-verify commit body 정량 명시) + 정책 3 ⚠️ 마커 정량 기준 (자율 판단 ≥ 5건 / architecture / 데이터 모델 / 사용자 인지 영향 / destructive — Claude 자가 판단 X) + 정책 1 진화 ("전부다" 일괄 결정 시 검토 깊이 자가 보고 요청 의무) + 정책 5 cross-reference 강화 (정책 2/8/11 페어) + 정책 5 NEW-P0-N 예외 명시 (운영 사고 차단 영역 = 매 사이클 진행 신호 회신 의무) + Q7 메모리 secondary 카테고리 cross-reference 도입 (`feedback-pr-push-direct-validation.md (TDD/CI primary, 협업 secondary)`) + 메모리 `user-trust-model-and-tone.md` 진화 (평소 ≠ 자율 판단 전권 위임 / High tier 영역 회신 의무 보존) + 30초 체크리스트 강화 (이전 회고 회신 회수 확인 + 정책 9 강화 페어). **자율 판단 보고 (정책 3 강화 — ⚠️ 마커 적용)**: ⚠️ Tier B-7 (`feedback-user-autofix-validation-pattern.md` 신설) 보류 = 사용처 1건 정책 16 4번 원칙 (≥ 3) 미달 / ⚠️ Tier B-9 (메모리 deprecated 자동 분류) 보류 = 사이클 90+ 메모리 ≥ 40건 도달 시 / ⚠️ Tier B-10 (PAT 발급 재검토) 보류 = 사용자 Q4 🅑 명시 (현행 유지) · **사이클 84 다국어 i18n Phase 2~5 + 18 PR 종결 (2026-05-05 · #287/#289/#290/#293/#294/#295/#296/#297/#298/#299/#300/#301/#302/#303 + PR-18 본 sync)** — Phase 1 (PR-1a/b/c #283~#285) 종결 후 사용자 "머지 했습니다. 다음 작업 진행해주세요" 14회 연속 신호 → Phase 2 UI 4 PR (PR-4 #287 언어 dropdown + /settings 언어 카드 + API + PR-5 #289 base/login/add_repo/overview 응집 + PR-6 #290 dashboard KPI 5 + mode 4종 + Insight 4카드 + Chart.js + PR-7 #293 repo_detail/analysis_detail + PR-8 #294 settings/admin 3) → Phase 3 알림 3 PR (PR-9 #295 Telegram + telegram_commands + 3-layer 사용자 언어 fallback + PR-10 #296 Discord + Slack + Email + RFC 2047 base64 일본어 호환 + PR-11 #297 GitHub PR Comment + Commit Comment + Issue) → Phase 4 코드리뷰 4 PR (PR-12 #298 review_prompt + ai_review + Anthropic caching 언어별 분기 — system text hash 자동 발산 + 2-layer Repository.user_id → User.preferred_language fallback + PR-13 #299 Tier1 10 가이드 + PR-14 #300 Tier2 20 가이드 + PR-15 #301 Tier3 20 + generic) → Phase 5 검증/관측 3 PR (PR-16 #302 E2E 14건 — 3 언어 × 4 페이지 + Cookie fallback + PR-17 #303 admin operations KPI 2 카드 추가 — language_distribution + i18n_fallback_rate 메모리 카운터 + PR-18 본 PR — 다국어 smoke test 11건 정책 13 페어 + 1주 baseline 보고서 + 정책 진화 묶음). **단위 2305 → 2709 (+404 회귀 가드) | 통합 118 → 129 (+11 PR-18 smoke) | E2E 82 → 96 (+14 PR-16)**. **새 i18n 영역 정책 4건 도입** — (a) 영문 default 보존 의무 (FULL/COMPACT 변수명 보존, FULL_KO/FULL_JA 페어) (b) 메모리 카운터 패턴 4번째 사용처 도달 (claude_metrics + stage_metrics + telegram_bot_blocked_streak + i18n_metrics — 정책 16 4번 원칙 ≥ 3 정합) (c) 영문 검색 호환 (GitHub Issue title prefix + Email subject prefix 영문 고정) (d) Anthropic prompt cache 언어 자동 발산 (system text hash 차이 → cache key 자동 분리 — 사용자 별도 작업 0). **자율 판단 보고 (정책 3 강화 — ⚠️ 마커 적용)**: ⚠️ Phase 5 단일 응집 PR-18 (smoke + baseline + 정책 sync 통합) = 정책 7 강화 응집 단위 부합 (Phase 5 종결 응집) · **사이클 84 회고+sync 페어 (2026-05-06 · #306)** — 5+1 다중 에이전트 회고 (관점 1~5 + cross-verify 6차) + Tier A 7건 즉시 정정 (STATE 헤더 + 카운트 + 사이클 84 row Phase 2~5 + README/README.ko 배지 + env-vars Babel stale + PR-16 재머지 사고 #305 empty squash artifact 사후 명시) + Tier B 6건 사용자 결정 영역 (정책 1/8 진화 + README i18n 섹션 + 메모리 신설 2 + Phase 6 진입 + fallback baseline). cross-verify ROI = false-positive 차단 1 + 신규 발견 3 = 사이클 75 진화 평균 정합 ✅ · **사이클 84 회고 Tier B Q3+Q5 사용자 명시 결정 후속 (2026-05-06 · #307)** — Q3 = README i18n 섹션 신설 (사용자 facing 핵심 기능 등재) + Q5 = settings 언어 카드 제거 (사용자 명시 정정 — "다국어 토글은 상단에만 있고 설정에는 언어설정이 필요 없습니다. 상단 언어선택 기준으로 통일"). settings.html L536-604 제거 (67 LOC) + en/ko/ja.json language_card 3 키 cleanup (사용처 0 도달 — 정책 16 4번 원칙 역방향) + 회귀 가드 정정 (`>언어 설정<` `>Language<` `>言語設定<` → `not in` 재 도입 차단) · **사이클 84 회고 Tier B Q1+Q2+Q4 정책 진화 + 메모리 신설 묶음 (2026-05-06 · 본 PR — 사이클 83 #279 패턴 정합)** — Q1 정책 1 진화 강화 (다중 PR 빠른 진행 신호 ≥ 10회 = 검토 깊이 자가 보고 요청 의무 default 추가 — 사이클 84 14회 연속 신호 학습) + Q2 정책 8 진화 본문 보강 (단일 작업일 dispatch 횟수 vs 누적 agent invocation 구분 명시 — 사이클 84 dispatch 2 vs invocation 9 비대칭 학습) + Q4 메모리 신설 2건 (`feedback-i18n-locale-fallback-pattern.md` 기술 패턴 — 5단계/3-layer/2-layer 통합 패턴 + 영문 default 보존 + Anthropic cache 자동 발산 / `feedback-memory-counter-pattern.md` 기술 패턴 — 4 사용처 도달 시맨틱 비동질성 헬퍼 추출 default 단정 금지 + 사이클 82 alembic dialect helper 와 대조). **메모리 카운트 27 → 29 (활성 25 → 27 + deprecated 2)** + 30초 체크리스트 갱신. **자율 판단 보고 (정책 3 강화 — ⚠️ 마커 적용)**: ⚠️ Q1+Q2+Q4 단일 응집 정책 진화 묶음 = 사이클 83 #279 패턴 정합 (architecture 영향 + 메모리 신설 = High tier 영역 — 사용자 명시 결정 정합) · **사이클 85 — Sentry 완전 제거 + GitHub 정리 (2026-05-06 · 본 PR)** — 사용자 명시 결정 (Q1+Q2+Q3+Q4 = 🅐 자율 판단 보고 승인). 5+1 다중 에이전트 사전 검토 (관점 1~5 코드/환경/테스트/문서/의존성). **코드**: `src/shared/observability.py` 파일 폐기 (105 LOC, init_sentry + _before_send + _SENSITIVE_HEADERS 10 self-contained) + `src/main.py` import + 호출 + 주석 + `src/config.py` Sentry 3 필드 + `src/worker/pipeline.py` + `src/shared/claude_metrics.py` + `src/ui/_helpers.py` 주석 정정. **테스트**: 40건 폐기 (test_observability 9 + test_observability_before_send 14 + test_sentry_scrubbing 17 — PII 회귀 가드 31건 폐기 default = log_safety.py 영역 중복 + 사용처 0). **문서**: CLAUDE.md 5 영역 + STATE.md Observability 5 카드 정정 + 사이클 80 row 보존 (역사 자산) + README.md / README.ko.md Observability 섹션 + env-vars.md Observability 섹션 정정 (자동 로깅만 보존) + runbook `docs/runbooks/sentry-activation.md` → `_archive/` 이동 (작업 추적성). **의존성**: `requirements.txt:31-33` `sentry-sdk[fastapi]>=2.0.0` 제거 + `.env.example:22-27` 환경변수 3건 + 주석 제거. **i18n**: en/ko/ja.json 6줄 정정 (운영 KPI 카드 — Sentry 키워드 제거). **GitHub 정리**: alert-autofix-340 (merged) + 364~370 (false-positive — Copilot Autofix `# noqa: F401` 무시 트랩 페어 + 365 `_NOT_CONNECTED_MSG` 백워드 호환 깨짐) 8 branch + cycle 70~84 stale 작업 branch 54건 = **총 62 branch 일괄 삭제** (사이클 71 패턴 정합). **단위 2709 → 2669 (-40 회귀 가드)**. 사용자 manual = Railway Variables `SENTRY_DSN`/`SENTRY_ENVIRONMENT`/`SENTRY_TRACES_SAMPLE_RATE` 3건 제거 (코드 PR 머지 후 — 정책 12 MCP scope 외 영역). **자율 판단 보고 (정책 3 강화 — ⚠️ 마커 적용)**: ⚠️ Sentry 완전 제거 = High tier (architecture 영향 + 데이터 모델 영향 + 사용자 인지 영향) but 사용자 명시 결정 정합 / ⚠️ runbook archive 이동 (완전 삭제 X) = 작업 추적성 보존 / ⚠️ 사이클 80 row 보존 = 정책 8 영구 자산 / ⚠️ GitHub 정리 62 branch 일괄 삭제 = 사이클 71 패턴 정합 사용자 명시 승인 영역
+최신 수치는 [docs/STATE.md](docs/STATE.md) 참조 — 단위 테스트 2669개 | 통합 129개 | E2E 96개 | pylint 10.00 | 커버리지 95% | SonarCloud QG OK · Security A · Reliability A · Maintainability A · Tier1 정적분석 10종 · Observability (Claude metrics + stage timing + MergeAttempt — Sentry 통합은 사이클 85 #317 폐기 완료) · AI 점수 피드백 루프 · Settings Minimal Mode · Onboarding 3단계 튜토리얼 · **사이클 60~80 historical**: [`docs/cycle-history.md`](docs/cycle-history.md) (archive). **직전 5 사이클 (2026-05-05 ~ 2026-05-06)**:
+
+- **사이클 81 (모바일 Phase 1 MVP, 2026-05-05)** — PWA manifest + dashboard 모바일 KPI 우선순위 + settings 모바일 + form sweep (4 PR #262~#265). 통합 84→118 (+34 회귀 가드). `<details>` Progressive Disclosure = Phase 2 보류 (High tier).
+- **사이클 82 (Tier B 묶음 + NEW-P0-1, 2026-05-05)** — alembic dialect 헬퍼 추출 (사용처 12) + 메모리 신설 2건 + Telegram 봇 차단 silent skip (NEW-P0-1) (#272/#274). 메모리 25→27.
+- **사이클 83 (Tier B 11건 정책 진화 묶음, 2026-05-05)** — 정책 9 완화 + 정책 8 진화 (단일 작업일 ≥ 5 dispatch 사전 확인) + 정책 3 ⚠️ 마커 정량 기준 + 정책 1 진화 + 정책 5 cross-reference 강화 + 메모리 cross-reference (#279).
+- **사이클 84 (다국어 i18n 18 PR + 회고 + Tier B, 2026-05-05~06)** — Phase 1~5 18 PR (#283~#304) — 영어/한국어/일본어 + UI/알림/AI 리뷰 전 영역. 단위 2236→2709 (+473) | 통합 118→129 | E2E 82→96. 회고+sync (#306) + Tier B Q3+Q5 (#307) + Tier B Q1+Q2+Q4 (#308) — 정책 1 진화 강화 (≥ 10회 빠른 진행 신호) + 정책 8 강화 (dispatch vs invocation 구분) + 메모리 신설 2 (i18n locale fallback + 메모리 카운터 패턴). 메모리 27→29.
+- **사이클 85 (Sentry 제거 + GitHub 정리 + CLAUDE.md Anthropic 200줄 정합 정정, 2026-05-06)** — Sentry 통합 완전 폐기 (40 테스트 + 105 LOC + 의존성 제거). GitHub 정리 62 branch 일괄 삭제. **CLAUDE.md cleanup**: 5+1 다중 에이전트 검토 (Anthropic 권고 6배 초과 → 3.5배) → 권장 default Q1=🅒 + Q2=🅐 + Q3=🅑 + Q4=🅑 채택 → src/ 트리 → `docs/architecture.md` / 9 카테고리 → `.claude/rules/<area>.md` (path-scoped, Anthropic 공식 패턴) / tail entry 사이클 60~80 → `docs/cycle-history.md` / Railway 배포 → `docs/runbooks/railway.md` / 점수 체계 → `docs/reference/scoring.md` / 정책 진화 history archive 영역 신설 → `docs/policies/history.md` (사이클 86+ 점진적 작업 default). LOC 1271 → ~700 (-45%) / 토큰 ~57K → ~25K (-56%).
