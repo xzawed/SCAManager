@@ -126,7 +126,10 @@ async def test_merge_pr_returns_false_on_http_error():
 async def test_merge_pr_returns_false_on_connection_error():
     # 연결 오류 발생 시 (False, str, "") 반환 — 예외 전파 없음
     # Returns (False, str, "") on connection error — no exception propagation
-    with patch("src.gate.github_review.get_http_client") as mock_get:
+    # 사이클 90 P1-1: merge_unknown_retry_delay=0 patch — retry backoff sleep 6s 제거 (slow test mock)
+    # Cycle 90 P1-1: patch retry_delay=0 to skip backoff sleep (slow test mock)
+    with patch("src.gate.github_review.get_http_client") as mock_get, \
+         patch("src.gate.github_review.settings.merge_unknown_retry_delay", 0):
         mock_client = AsyncMock()
         mock_get.return_value = mock_client
         mock_client.get = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))

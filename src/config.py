@@ -71,20 +71,20 @@ class Settings(BaseSettings):
     saas_admin_emails: str = ""
     # Phase 12: CI-aware Auto Merge 재시도 설정
     # Phase 12: CI-aware Auto Merge retry configuration
-    merge_retry_enabled: bool = True           # False 시 레거시 단일 시도 동작
-                                                # False falls back to legacy single-attempt behavior
-    merge_retry_max_attempts: int = 30         # 큐 행당 최대 재시도 횟수
-                                                # Maximum retry attempts per queue row
-    merge_retry_max_age_hours: int = 24        # 큐 행 만료 시간 (시간)
-                                                # Queue row expiry time (hours)
-    merge_retry_initial_backoff_seconds: int = 60   # 첫 재시도 백오프 (초)
-                                                     # Initial retry backoff (seconds)
-    merge_retry_max_backoff_seconds: int = 600      # 최대 백오프 (초)
-                                                     # Maximum retry backoff (seconds)
-    merge_retry_check_suite_webhook_enabled: bool = True  # check_suite 웹훅 활성화
-                                                           # Enable check_suite webhook
-    merge_retry_worker_batch_size: int = 50    # cron sweep 1회 처리 최대 행 수
-                                                # Max rows per cron sweep
+    # False 시 레거시 단일 시도 동작 / False falls back to legacy single-attempt behavior
+    merge_retry_enabled: bool = True
+    # 큐 행당 최대 재시도 횟수 / Maximum retry attempts per queue row
+    merge_retry_max_attempts: int = 30
+    # 큐 행 만료 시간 (시간) / Queue row expiry time (hours)
+    merge_retry_max_age_hours: int = 24
+    # 첫 재시도 백오프 (초) / Initial retry backoff (seconds)
+    merge_retry_initial_backoff_seconds: int = 60
+    # 최대 백오프 (초) / Maximum retry backoff (seconds)
+    merge_retry_max_backoff_seconds: int = 600
+    # check_suite 웹훅 활성화 / Enable check_suite webhook
+    merge_retry_check_suite_webhook_enabled: bool = True
+    # cron sweep 1회 처리 최대 행 수 / Max rows per cron sweep
+    merge_retry_worker_batch_size: int = 50
 
     # Phase 1 PR-1a (사이클 84 — 다국어 지원 i18n 인프라)
     # 다국어 지원 (영어/한국어/일본어) — 5 환경변수 + I18N_DISABLED kill-switch
