@@ -37,7 +37,7 @@ from src.gate.github_review import (
     get_pr_mergeable_state,
     merge_pr,
 )
-from src.github_client.graphql import (  # pylint: disable=unused-import
+from src.github_client.graphql import (  # noqa: F401  # pylint: disable=unused-import
     # ENABLE_DISABLED_IN_REPO + ENABLE_PERMISSION_DENIED 는 외부 (tests/unit/gate/test_native_automerge.py
     # + tests/unit/gate/test_engine_defensive_guards.py) 에서 본 모듈 경로로 import 하는 re-export 영역.
     # 메모리 `feedback-copilot-autofix-noqa-trap.md` 페어 — side-effect re-export 패턴.
