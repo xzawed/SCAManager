@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-06 기준 — **사이클 88 진입: CLAUDE.md Anthropic 200줄 정합 정정 Phase A** (정책 12~16 분리)): 113+ PR #188~#337+ — 누적 정책 본문 17건 + 메모리 29건 (활성 27 + deprecated 2). **사이클 87 종결**: Tier B 3건 단일 응집 (#337 — Makefile `lint-strict` + dependabot.yml `groups` + 정책 8 본문 진화). **사이클 88 Phase A (본 PR)**: 5+1 다중 에이전트 회의 (관점 1~5 + cross-verify 6차) → 옵션 🅑 균형 default 채택 → 정책 12~16 + 11 강화 본문 → `docs/policies/active.md` 분리 (CLAUDE.md 686 → 549 LOC, -20%). Phase B (정책 1~11 분리) = 별도 PR 진행 default. 단위 2669 / 통합 129 / E2E 96 / pylint **9.94/10**
+## 현재 수치 (2026-05-06 기준 — **사이클 88 Phase B-1: 정책 17 신설 + 정책 2/10 분리 (균형 default)**): 114+ PR #188~#338+ — 누적 정책 본문 **18건 (+1 정책 17 신설)** + 메모리 29건 (활성 27 + deprecated 2). **사이클 88 Phase A (#338)**: 정책 12~16 + 11 강화 본문 → `docs/policies/active.md` 분리 (CLAUDE.md 686 → 549 LOC, -20%). **사이클 88 Phase B-1 (본 PR)**: 신규 사용자 기준 ("문서정리는 권장하는 규격보다 안정성이 더 우선시 되야합니다") 정합 — Phase B 재검토 5+1 다중 에이전트 회의 → **균형 default**: 정책 17 신설 (문서 정리 시 안정성 > 권장 규격 우선순위 4 default 의무) + B-1 안전 분리 (정책 2 + 10 default rule + reference link 보존, detail → active.md). LOC 549 → ~545 (정책 17 신설 +14 / B-1 분리 -19 = 순 -4). B-2/B-3 = 사이클 89+ 보류 default. 단위 2669 / 통합 129 / E2E 96 / pylint **9.94/10**
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
@@ -114,7 +114,39 @@
 
 ---
 
-### 사이클 88 — CLAUDE.md Anthropic 200줄 정합 정정 Phase A (2026-05-06 · 5+1 다중 에이전트 회의 + 사용자 옵션 🅑 균형 default 채택)
+### 사이클 88 Phase B-1 — 정책 17 신설 + B-1 안전 분리 (2026-05-06 · 신규 사용자 기준 "안정성 > 권장 규격" 적용)
+
+Phase A 머지 완료 (#338, 686 → 549 LOC, -20%). 사용자 신규 발화 = *"문서정리는 권장하는 규격보다 안정성이 더 우선시 되야합니다... 제안한 내용이 조건에 타당한지 검토후 진행"* — Phase B 재검토 5+1 다중 에이전트 회의.
+
+**5+1 재검토 결과** (관점 1~5 + cross-verify 6차):
+- 관점 1 (Anthropic vs 안정성): 🅐 Phase B 보류 + 정책 17 신설 (안정성 100%)
+- 관점 2 (정책별 영향): 🅑 옵션 3 (정책 7 회복 + 8 ROI/분기 detail, -24 LOC)
+- 관점 3 (안정성 우선): 🅑 제한적 (정책 1+7+8, -80 LOC)
+- 관점 4 (분리 안전성): 🅑 안전만 (정책 2 + 10, -26 LOC)
+- 관점 5 (사용자 발화): 🅑 B-1 + 정책 17 (-26 LOC + 정책 17 신설)
+- Cross-verify 6차: **🅑 B-1 + 정책 17 ★ (균형)**
+
+**합의 영역 (5/5 일치)**: Phase B 단순 진행 X / 정책 17 신설 ✅ (5/6 명시) / B-1 (정책 2 + 10) 안전 분리 ✅ / 분리 금지 영역 명시 (정책 8 cross-verify + 11 8 조합 + 5 NEW-P0-N + 9 완화 미적용)
+
+**Phase B-1 (본 PR)**: 사용자 옵션 🅑 (균형) 명시 결정 채택.
+
+| 영역 | 변경 | LOC delta |
+|------|------|----------|
+| **정책 17 신설** (CLAUDE.md L395~) | 문서 정리 시 안정성 > 권장 규격 우선순위 4 default 의무 (안정성 우선 / default rule 보존 / 단계 분할 / 분리 위험 사용자 사전 확인) | +14 LOC |
+| **정책 2 압축** (L136~L146 → L136~L138) | default rule 1줄 + reference link / 템플릿 detail → active.md | -8 LOC |
+| **정책 10 압축** (L297~L309 → L297~L303) | 6-step + SCAManager 환경 + fix-up default 1~2줄 + reference link / PR body 템플릿 + 환경별 detail → active.md | -10 LOC |
+| **docs/policies/active.md 추가** | 정책 2 + 10 detail 본문 (Phase A 영역 위) | +50 LOC (active.md) |
+| **합계** | CLAUDE.md 549 → ~545 LOC (-4 순) / active.md +50 LOC | |
+
+**자율 판단 보고 (정책 3 ⚠️ 마커)**:
+- ⚠️ Phase B-1 = 신규 사용자 기준 (안정성 > 규격) 정합 — 정책 17 신설 (사용자 의도 정합) + B-1 안전 분리 (관점 4, 5 합의 영역 ★)
+- ⚠️ Phase B-2/B-3 = 사이클 89+ 보류 default (관점 1, 5 합의 — 분리 위험 영역 사용자 사전 확인 의무)
+- ⚠️ Phase A vs Phase B-1 누적 효과: 686 → 549 (-20%) → 545 (-21%) — Anthropic 권고 3.4배 → 2.7배 (안정성 우선 default 정합)
+- ⚠️ Cross-verify ROI: false-positive 차단 5건 (각 관점 1건씩 — 200줄 hard / 정책 모두 위험 / Phase B 전면 보류 / 정책 8/11 영구 금지 / 정책 17 필수) / 신규 발견 = 사실상 합의 영역 / Tier A 정정 후보 = B-1 + 정책 17 통합 단일 PR (관점 5+6 일치)
+
+---
+
+### 사이클 88 Phase A — CLAUDE.md Anthropic 200줄 정합 정정 (2026-05-06 · #338)
 
 사이클 85 회고 보류 영역 (C2 Anthropic 200줄 추가 cleanup) 진입. 사용자 발화 = *"Claude.md 를 Anthropic 에서 권장하는 수준으로 정리... 최적의 방안과 안정적인 방안 모두 만족하는 내용으로 정리"* — 균형 default 의무.
 

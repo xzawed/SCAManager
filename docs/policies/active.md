@@ -5,6 +5,36 @@
 > CLAUDE.md 본문 = 정책 N 표제 + 핵심 default rule 1줄 + 진화 default 1~2줄 + 본 파일 reference link.
 > 정책 진화 history (이전 사이클 진화 entry) = `docs/policies/history.md` (사이클 85 #320 + 사이클 86 #321 분리).
 
+## 정책 2: PR 본문 "🔍 사용자 검증 필요" 섹션 의무
+
+이전: "tests pass" 만 적힘 → 사용자가 무엇을 봐야 할지 모름.
+다음: 시각/운영 확인 항목 1~3개 명시.
+
+```markdown
+## 🔍 사용자 검증 필요
+- [ ] Railway 배포 후 `/repos/{owner}/{repo}/settings` 데스크탑 + 모바일 확인
+- [ ] claude-dark 테마 토글 시 카드 헤더 정상 표시
+- [ ] (있다면) 운영 사고 보고
+```
+
+---
+
+## 정책 10: PR 직접 생성 의무 (URL 안내 X, 자동 생성 ○)
+
+사용자 발화 (2026-05-02): *"앞으로의 작업은 PR 을 직접 생성을 부탁드립니다."*
+
+**default 6-step 흐름**: `git checkout main && pull` → `checkout -b <type>/<scope>` → 작업+commit → `push -u origin` → **PR 직접 생성** (gh CLI / GitHub API / URL 폴백) → URL 보고.
+
+**구현 옵션** (환경별 우선순위 — gh CLI > API + GITHUB_TOKEN > URL 안내 폴백). PR 생성은 사용자 수동 위임 금지 (정책 7 PR 단위와 모순).
+
+🔴 **현재 SCAManager 환경 (2026-05-02 사용자 결정)**: gh CLI 부재 + GITHUB_TOKEN 401 + PAT 발급 현행 유지 → **옵션 🅒 (URL 폴백) 사실상 default 운영**. 환경 변경 시 자동 🅐/🅑 전환.
+
+**기본 PR body 템플릿**: §Summary + §🔍 사용자 검증 필요 (정책 2) + §자율 판단 보고 (정책 3) + 🤖 Generated with [Claude Code](https://claude.com/claude-code) 푸터.
+
+**fix-up commit 형식 default** (사이클 64 회고 P1): PR 머지 전 CI fail / 회귀 발견 시 = **동일 PR 브랜치 추가 commit** (별도 PR X — 정책 7 강화 응집 단위 부합). commit message prefix = `fix(<feature>-ci):`. PR body §자율 판단 보고에 사유 명시 의무. 머지 후 발견 시 = 별도 `fix/<feature>-<bug>` PR.
+
+---
+
 ## 정책 11 강화 (사이클 62 P0 OAuth 사고 후속): 인증 flow 검증 추가
 
 🔴 **진화 default 요약**: 인증/외부 통합 변경 PR 시 8 조합 시각 체크리스트 + **인증 flow 4 endpoint 종단간 검증** 의무 — `/login` 200 + `/auth/github` 302 + `/auth/callback` redirect + `/auth/logout` redirect. 상세: [docs/policies/history.md#정책-11-강화](history.md#정책-11-강화).
