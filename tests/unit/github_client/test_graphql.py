@@ -247,13 +247,17 @@ async def test_enable_returns_permission_denied_on_403():
 
 
 async def test_enable_returns_api_error_on_500():
-    """HTTP 500 응답 → ENABLE_API_ERROR.
-    HTTP 500 response → ENABLE_API_ERROR.
+    """HTTP 500 응답 → ENABLE_API_ERROR (5xx exponential backoff retry 후).
+    HTTP 500 response → ENABLE_API_ERROR (after 5xx exponential backoff retry).
+
+    사이클 91 P1-2: asyncio.sleep mock — 5xx 재시도 backoff 3s 제거 (slow test mock).
+    Cycle 91 P1-2: asyncio.sleep mock — skip 3s 5xx retry backoff (slow test mock).
     """
     mock_client = AsyncMock()
     mock_client.post = AsyncMock(return_value=_make_status_response({}, 500))
 
-    with patch("src.github_client.graphql.get_http_client", return_value=mock_client):
+    with patch("src.github_client.graphql.get_http_client", return_value=mock_client), \
+         patch("src.github_client.graphql.asyncio.sleep", new_callable=AsyncMock):
         result = await enable_pull_request_auto_merge(TOKEN, NODE_ID)
 
     assert result.status == ENABLE_API_ERROR
@@ -261,13 +265,17 @@ async def test_enable_returns_api_error_on_500():
 
 
 async def test_enable_returns_api_error_on_network_failure():
-    """httpx.ConnectError → ENABLE_API_ERROR (network: prefix).
-    httpx.ConnectError → ENABLE_API_ERROR (network: prefix).
+    """httpx.ConnectError → ENABLE_API_ERROR (network: prefix, transient retry 후).
+    httpx.ConnectError → ENABLE_API_ERROR (network: prefix, after transient retry).
+
+    사이클 91 P1-2: asyncio.sleep mock — transient network error retry backoff 3s 제거.
+    Cycle 91 P1-2: asyncio.sleep mock — skip 3s transient retry backoff (slow test mock).
     """
     mock_client = AsyncMock()
     mock_client.post = AsyncMock(side_effect=httpx.ConnectError("DNS failure"))
 
-    with patch("src.github_client.graphql.get_http_client", return_value=mock_client):
+    with patch("src.github_client.graphql.get_http_client", return_value=mock_client), \
+         patch("src.github_client.graphql.asyncio.sleep", new_callable=AsyncMock):
         result = await enable_pull_request_auto_merge(TOKEN, NODE_ID)
 
     assert result.status == ENABLE_API_ERROR
