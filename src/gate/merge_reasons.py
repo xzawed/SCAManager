@@ -32,16 +32,16 @@ UNKNOWN = "unknown"                       # 분류 불가
 
 # --- Phase 12 재시도 큐 전용 태그 -------------------------------------------
 # --- Phase 12 retry queue specific tags -------------------------------------
-DEFERRED = "deferred"                     # 재시도 대기 중 (첫 번째 지연 항목)
-                                          # Waiting for retry (initial deferral entry)
-ALREADY_MERGED = "already_merged"         # 이미 병합됨 (중복 감지)
-                                          # Already merged (duplicate detection)
-SHA_DRIFT = "sha_drift"                   # force-push 로 커밋 SHA 변경됨
-                                          # Commit SHA changed due to force-push
-CONFIG_CHANGED = "config_changed"         # 사용자가 설정 변경 (auto_merge 해제 등)
-                                          # User changed config (auto_merge disabled etc.)
-OPTIONAL_CHECK_ONLY = "optional_check_only"  # 실패 체크가 선택적(optional)만 포함
-                                             # Only optional checks are failing
+# 재시도 대기 중 (첫 번째 지연 항목) / Waiting for retry (initial deferral entry)
+DEFERRED = "deferred"
+# 이미 병합됨 (중복 감지) / Already merged (duplicate detection)
+ALREADY_MERGED = "already_merged"
+# force-push 로 커밋 SHA 변경됨 / Commit SHA changed due to force-push
+SHA_DRIFT = "sha_drift"
+# 사용자가 설정 변경 (auto_merge 해제 등) / User changed config (auto_merge disabled etc.)
+CONFIG_CHANGED = "config_changed"
+# 실패 체크가 선택적(optional)만 포함 / Only optional checks are failing
+OPTIONAL_CHECK_ONLY = "optional_check_only"
 
 # 재시도 시스템이 대기할 수 있는 태그 집합 (is_retriable_tag 단일 출처)
 # Tag set the retry system can wait out (single source for is_retriable_tag)
