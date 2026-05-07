@@ -22,9 +22,12 @@ def _expand_advanced(page):
 
 
 def test_settings_page_loads(seeded_page, base_url):
-    """설정 페이지가 정상적으로 로드되어야 한다."""
+    """설정 페이지가 정상적으로 로드되어야 한다.
+
+    사이클 84 i18n 18 PR 후 default locale 영문 — 영문 기대값 (사이클 89 P0-2 학습).
+    """
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
-    assert seeded_page.title() == "설정 — owner/testrepo"
+    assert seeded_page.title() == "Settings — owner/testrepo"
 
 
 def test_preset_cards_exist(seeded_page, base_url):
@@ -504,10 +507,10 @@ def test_save_success_keeps_simple_mode(seeded_page, base_url):
 
 
 def test_auto_merge_in_pr_card(seeded_page, base_url):
-    """auto_merge 체크박스가 PR 동작 규칙 카드 안에 있어야 한다 (이벤트 후 자동화 카드 아님).
+    """auto_merge 체크박스가 PR Behavior Rules 카드 안에 있어야 한다 (이벤트 후 자동화 카드 아님).
 
-    Phase 2A Progressive 재설계: 카드명이 'PR 동작 규칙' 으로 갱신.
-    Phase 2A: card renamed to 'PR 동작 규칙'.
+    Phase 2A Progressive 재설계: 카드명이 'PR 동작 규칙' / 'PR Behavior Rules'.
+    사이클 84 i18n 18 PR 후 default locale 영문 — 영문 기대값 (사이클 89 P0-2 학습).
     """
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
     card_title = seeded_page.evaluate(
@@ -520,8 +523,8 @@ def test_auto_merge_in_pr_card(seeded_page, base_url):
             return title ? title.textContent.trim() : null;
         }"""
     )
-    assert card_title == "PR 동작 규칙", (
-        f"auto_merge 의 상위 카드 타이틀이 'PR 동작 규칙' 여야 하는데 '{card_title}' 임"
+    assert card_title == "PR Behavior Rules", (
+        f"auto_merge 의 상위 카드 타이틀이 'PR Behavior Rules' 여야 하는데 '{card_title}' 임"
     )
 
 

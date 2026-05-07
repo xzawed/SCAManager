@@ -48,10 +48,13 @@ def test_dashboard_renders_5_kpi_cards(page, base_url):
 
 
 def test_dashboard_kpi_labels_present(page, base_url):
-    """KPI 5 라벨 모두 페이지에 노출."""
+    """KPI 5 라벨 모두 페이지에 노출.
+
+    사이클 84 i18n 18 PR 후 default locale 영문 — 영문 기대값 (사이클 89 P0-2 학습).
+    """
     page.goto(f"{base_url}/dashboard")
     content = page.content()
-    for label in ("평균 점수", "분석 건수", "보안 이슈", "활성 리포", "자동 머지 성공률"):
+    for label in ("Average Score", "Analyses", "Security Issues (HIGH)", "Active Repos", "Auto-Merge Success Rate"):
         assert label in content, f"KPI 라벨 누락: {label}"
 
 
