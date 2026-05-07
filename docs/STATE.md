@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-06 기준 — **사이클 88 Phase B-1: 정책 17 신설 + 정책 2/10 분리 (균형 default)**): 114+ PR #188~#338+ — 누적 정책 본문 **18건 (+1 정책 17 신설)** + 메모리 29건 (활성 27 + deprecated 2). **사이클 88 Phase A (#338)**: 정책 12~16 + 11 강화 본문 → `docs/policies/active.md` 분리 (CLAUDE.md 686 → 549 LOC, -20%). **사이클 88 Phase B-1 (본 PR)**: 신규 사용자 기준 ("문서정리는 권장하는 규격보다 안정성이 더 우선시 되야합니다") 정합 — Phase B 재검토 5+1 다중 에이전트 회의 → **균형 default**: 정책 17 신설 (문서 정리 시 안정성 > 권장 규격 우선순위 4 default 의무) + B-1 안전 분리 (정책 2 + 10 default rule + reference link 보존, detail → active.md). LOC 549 → ~545 (정책 17 신설 +14 / B-1 분리 -19 = 순 -4). B-2/B-3 = 사이클 89+ 보류 default. 단위 2669 / 통합 129 / E2E 96 / pylint **9.94/10**
+## 현재 수치 (2026-05-07 기준 — **사이클 89~91 정기 검증 + Tier A fix + P1 자율 진입 + 회고 종결**): 118+ PR #188~#352+ — 누적 정책 본문 18건 + 메모리 30건 (활성 28 + deprecated 2). **사이클 89 (#349/#350)**: 5+1 다중 에이전트 정기 검증 (Round 1+2+3 — 종합 93.50/100 A 등급) + Tier A fix 2건 (P0-1 fixture / P0-2 E2E i18n / P0-3 flake8 noqa). **사이클 90 (#351)**: P1-1 자율 — flake8 cosmetic 20건 + slow test mock 1건. **사이클 91 (#352)**: P1-2 자율 — graphql slow test mock 2건 + Round 1 false-positive 식별 (단위 도메인 밀도 추정 부정확 발견). **누적 효과 (사이클 88 → 91)**: 통합 fail 1→0 / E2E fail 5→2 / flake8 40→18 (-55%) / slow test 12s→0.04s (-99.7%) / 단위+통합 시간 ~110s→95.70s. 단위 2669 / 통합 129 / E2E 96 / pylint **9.94/10**
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
@@ -111,6 +111,37 @@
 | **#232** Docs/cycle-67-end multi-agent retrospective | **4 사이클 종결 회고** — 1차 5 에이전트 (cross-verify 생략 — 사용자 빠른 진행 신호 + 1차 결과 충분). P0 13 + P1 7 + P2 3 식별. **메모리 4건** (3 신설: stale-blocker / asgi-middleware / conftest-direct-env-set + 1 갱신: architecture-pre-confirm 위임 분류 3-tier 정밀화). MEMORY 인덱스 8→11건. 회고 보고서 + 자유 발언 (정책 9) + 회고 질문 (사용자 회신 의무) |
 | **#233** Docs/policy-evolution cycle-67 P0 bundle | **사이클 67 회고 P0 4건 정책 본문 진화** (정책 7 강화 응집): (1) 정책 7 강화 — 단일 PR > 1500 LOC 사전 확인 + architecture 단일 OK 정정 (관점 1 P0-1+P0-2) (2) 정책 8 — cross-verify 생략 조건 + 회고 PR 패턴 3 분기 (관점 1 P0-3) (3) 정책 2 진화 — 모든 sync PR commit body 실측 1줄 의무 (관점 2 P0-1) (4) 30초 체크리스트 — 메모리 11건 사례 + 트랩 차단 효과 (관점 2 P0-2). 카테고리 분류 (관점 4 P0-2) = 별도 PR (High tier 사용자 결정 의무) |
 | **#234** Docs/cycle-68 end state sync | **사이클 68 종료 sync** — STATE 헤더 38→41 PR + 사이클 68 행 신설 + CLAUDE.md L1052 tail. 단위 2055 / 통합 84 / E2E 82 변화 0 (docs only). 정책 2 진화 default 첫 적용 — 실측 1줄 의무 명시 |
+
+---
+
+### 사이클 89~91 — 정기 5+1 검증 + Tier A fix + P1 자율 진입 + 회고 종결 (2026-05-07 · #349 + #350 + #351 + #352 + 본 회고+sync)
+
+사이클 88 종결 후 사용자 명시 "단위/통합/E2E + 코드 품질 + 정확성 검토 — 최소 5회 이상 + 점수 환산 + 재검증" 발화로 정기 검증 진입. 5+1 다중 에이전트 회의 5 라운드 (Round 1+2+3 + 사이클 91 Round 1 false-positive 회복 + 본 회고).
+
+**검증 결과 (사이클 89 종합)**: 93.50/100 (A 등급) — R0 운영 영향 96.5/100 (A+) / R1 개발/테스트 89.7/100 (B+).
+
+| PR | 영역 | 핵심 |
+|----|------|------|
+| **#349** fix/cycle-89-pra | P0-1 (`tests/integration/test_insight_caching.py:33` `InsightNarrativeCache` import) + P0-3 (`src/gate/native_automerge.py:40` flake8 F401 noqa) + 메모리 신설 (`feedback-fixture-model-sync-discipline.md`) + 진화 (`feedback-pr-push-direct-validation.md`) | 통합 125→**126** / flake8 40→**38** |
+| **#350** fix/cycle-89-prb | P0-2 E2E i18n 회귀 fix — Round 3 권장 default 옵션 🅐 (한글 cookie autouse) → Phase 5 적용 시 회귀 4건 발견 → **옵션 🅑 (영문 기대값 갱신) 정정** + 메모리 진화 정정 (`feedback-i18n-locale-fallback-pattern.md` §6번) | E2E 91→**94** / autouse 패턴 회귀 학습 |
+| **#351** chore/cycle-90-p1-1 | P1-1 자율 진입 — flake8 cosmetic 20건 (`config.py:74-87` + `merge_reasons.py:35-44` 한국어/영어 inline alignment → 단일 line 주석) + slow test mock 1건 (`gate/test_github_review.py:126` `merge_unknown_retry_delay=0` patch) | flake8 38→**18** / slow test 6.01s→0.02s |
+| **#352** test/cycle-91-p1-2 | P1-2 자율 진입 — graphql slow test mock 2건 (`github_client/test_graphql.py:249-280` `asyncio.sleep` mock) + **Round 1 false-positive 식별** (단위 도메인 밀도 추정 부정확 — middleware 5/실측 17, worker 22/실측 78, github_client 15/실측 74) | slow test 6s→**0.04s** / 단위+통합 95.70s |
+| **본 회고+sync PR** docs/cycle-89-91-end-multi-agent-retrospective | 사이클 89~91 종결 회고 — 5+1 (관점 1~5 + cross-verify 6차) + Tier A 3건 정정 (STATE row + CLAUDE tail 사이클 84 → cycle-history.md 이전 + CLAUDE L412 메모리 카테고리 7→8 정합) | P0 7건 + P1 12건 + P2 11건 / cross-verify ROI 5+4+3 |
+
+**자율 판단 보고 (정책 3 ⚠️ 마커)**:
+- ⚠️ 사이클 89 단일 작업일 13 invocation = 정책 8 진화 (1) 강화 임계 도달 — 사용자 명시 위임 ("최소 5회 이상") 면제 영역 정합
+- ⚠️ Round 3 cross-verify 권장 default 정정 가능 학습 — Phase 5 적용 시 검증 → 옵션 변경 default (사이클 89 #350 사례)
+- ⚠️ Round 1 false-positive 식별 — Round 2 cross-verify 단위 분포 실측 의무 default 강화 (사이클 92+ 정책 8 진화 후보)
+- ⚠️ autouse 패턴 = 광범위 영향 영역 = 정책 17 4번 default 페어 학습 (사이클 92+ 메모리 신설 후보 — `feedback-autouse-fixture-broad-impact-trap.md`)
+- ⚠️ Tier B 3건 (정책 17 5번째 / 정책 8 진화 / autouse 메모리) = 사이클 92+ 점진 default
+- ⚠️ 보류 = P1-3 (E2E settings UI + RLS legacy NULL — High tier 사전 확인 의무) + slow test mock 메모리 (사용처 임계 검증 — 메모리 카운터 패턴 페어)
+
+**Cross-verify ROI 정량 (정책 8 진화 (2))**:
+- false-positive 사전 차단: 5건
+- 신규 발견: 4건 (정기 검증 가치 / autouse 한계 / 도메인 밀도 추정 / 위임 ROI)
+- Tier A 정정 후보: 3건 (STATE/CLAUDE/MEMORY sync)
+
+회고 보고서: [`docs/reports/2026-05-07-cycle-89-91-end-multi-agent-retrospective.md`](reports/2026-05-07-cycle-89-91-end-multi-agent-retrospective.md)
 
 ---
 
