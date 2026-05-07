@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session
 # Top-level ORM imports register Base.metadata (no lazy imports allowed)
 from src.database import Base
 from src.models.analysis import Analysis
+from src.models.insight_narrative_cache import InsightNarrativeCache  # noqa: F401  (register on metadata)
 from src.models.merge_attempt import MergeAttempt  # noqa: F401  (register on metadata)
 from src.models.repository import Repository
 from src.models.user import User
