@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-06 기준 — **사이클 87 진입: Tier B 3건 단일 응집 묶음**: 112+ PR #188~#336+ — 누적 정책 본문 17건 (정책 8 본문 진화 +1 cross-verify 정량 표 default) + 메모리 29건 (활성 27 + deprecated 2). **사이클 86 종결 회고 (#336)**: 5+1 다중 에이전트 (P0 6건 + P1 8건 + P2 17건) + Tier A 2건 (README 배지 9.94 + CLAUDE.md 직전 5 사이클 정합). **사이클 87**: 회고 Tier B 3건 = Makefile `lint-strict` target (pylint --fail-under=9.90 회귀 가드) + dependabot.yml `groups` 분리 + 정책 8 본문 진화 (cross-verify 생략 정량 표 default). 단위 2669 / 통합 129 / E2E 96 / pylint **9.94/10** (잔여 36건 사이클 87+ 점진)
+## 현재 수치 (2026-05-06 기준 — **사이클 88 진입: CLAUDE.md Anthropic 200줄 정합 정정 Phase A** (정책 12~16 분리)): 113+ PR #188~#337+ — 누적 정책 본문 17건 + 메모리 29건 (활성 27 + deprecated 2). **사이클 87 종결**: Tier B 3건 단일 응집 (#337 — Makefile `lint-strict` + dependabot.yml `groups` + 정책 8 본문 진화). **사이클 88 Phase A (본 PR)**: 5+1 다중 에이전트 회의 (관점 1~5 + cross-verify 6차) → 옵션 🅑 균형 default 채택 → 정책 12~16 + 11 강화 본문 → `docs/policies/active.md` 분리 (CLAUDE.md 686 → 549 LOC, -20%). Phase B (정책 1~11 분리) = 별도 PR 진행 default. 단위 2669 / 통합 129 / E2E 96 / pylint **9.94/10**
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
@@ -111,6 +111,40 @@
 | **#232** Docs/cycle-67-end multi-agent retrospective | **4 사이클 종결 회고** — 1차 5 에이전트 (cross-verify 생략 — 사용자 빠른 진행 신호 + 1차 결과 충분). P0 13 + P1 7 + P2 3 식별. **메모리 4건** (3 신설: stale-blocker / asgi-middleware / conftest-direct-env-set + 1 갱신: architecture-pre-confirm 위임 분류 3-tier 정밀화). MEMORY 인덱스 8→11건. 회고 보고서 + 자유 발언 (정책 9) + 회고 질문 (사용자 회신 의무) |
 | **#233** Docs/policy-evolution cycle-67 P0 bundle | **사이클 67 회고 P0 4건 정책 본문 진화** (정책 7 강화 응집): (1) 정책 7 강화 — 단일 PR > 1500 LOC 사전 확인 + architecture 단일 OK 정정 (관점 1 P0-1+P0-2) (2) 정책 8 — cross-verify 생략 조건 + 회고 PR 패턴 3 분기 (관점 1 P0-3) (3) 정책 2 진화 — 모든 sync PR commit body 실측 1줄 의무 (관점 2 P0-1) (4) 30초 체크리스트 — 메모리 11건 사례 + 트랩 차단 효과 (관점 2 P0-2). 카테고리 분류 (관점 4 P0-2) = 별도 PR (High tier 사용자 결정 의무) |
 | **#234** Docs/cycle-68 end state sync | **사이클 68 종료 sync** — STATE 헤더 38→41 PR + 사이클 68 행 신설 + CLAUDE.md L1052 tail. 단위 2055 / 통합 84 / E2E 82 변화 0 (docs only). 정책 2 진화 default 첫 적용 — 실측 1줄 의무 명시 |
+
+---
+
+### 사이클 88 — CLAUDE.md Anthropic 200줄 정합 정정 Phase A (2026-05-06 · 5+1 다중 에이전트 회의 + 사용자 옵션 🅑 균형 default 채택)
+
+사이클 85 회고 보류 영역 (C2 Anthropic 200줄 추가 cleanup) 진입. 사용자 발화 = *"Claude.md 를 Anthropic 에서 권장하는 수준으로 정리... 최적의 방안과 안정적인 방안 모두 만족하는 내용으로 정리"* — 균형 default 의무.
+
+**5+1 다중 에이전트 회의 결과** (관점 1~5 + cross-verify 6차):
+- 관점 1 (Anthropic 공식): HumanLayer 60줄 / 권장 300줄 / `@file` import 트랩 / advisory 80% vs hooks 100%
+- 관점 2 (본문 분석): 정책 본문 = 686의 62% (~422 LOC) — 가장 큰 영역
+- 관점 3 (안정성): 보존 의무 = 30초 체크리스트 / 필수 원칙 / 모바일 환경 / tail entry / 도구 사용 표 / 코드 주석 원칙
+- 관점 4 (분리 후보): 단일 `docs/policies/active.md` 권장 (디렉토리 폭발 회피) + `@file` import 미사용 + `.claude/skills/` 부적합
+- 관점 5 (사용자 패턴): 단계 분할 default (사이클 85 #320 검증 패턴 정합)
+- Cross-verify 6차: Phase A/B/C 분할 default + 200줄 hard X (1.5배 영역 균형)
+
+**Phase A (본 PR)**: 정책 12~16 + 정책 11 강화 본문 → `docs/policies/active.md` 분리. CLAUDE.md 본문 = 정책 N 표제 + default rule 1줄 + 진화 default 1~2줄 + reference link.
+
+| 영역 | 분리 전 | 분리 후 (CLAUDE.md) | 외부화 (active.md) |
+|------|--------|---------------------|---------------------|
+| 정책 11 강화 (사이클 62 OAuth) | 3 LOC (이미 짧음) | 3 LOC (보존) | history.md cross-ref |
+| 정책 12 (MCP scope) | 17 LOC | 3 LOC | 14 LOC |
+| 정책 13 (운영 smoke check) | 36 LOC | 4 LOC | 32 LOC |
+| 정책 14 (Code Scanning) | 35 LOC | 5 LOC | 30 LOC |
+| 정책 15 (사전 사고) | 27 LOC | 5 LOC | 22 LOC |
+| 정책 16 (코드 단순화) | 49 LOC | 8 LOC | 41 LOC |
+| **합계** | **167 LOC** | **28 LOC (-83%)** | **139 LOC archive** |
+
+**누적 효과**: CLAUDE.md 686 → **549 LOC (-20%)** / Anthropic 권고 200줄 대비 3.4배 → 2.7배.
+
+**자율 판단 보고 (정책 3 ⚠️ 마커)**:
+- ⚠️ Phase A = 정책 본문 default rule + 진화 default 보존 (사이클 85/86 검증 패턴 — 행동 영향 0 검증 반복)
+- ⚠️ Phase B (정책 1~11 본문 분리) = 별도 PR 진행 default (정책 7 강화 응집 단위 + 사용자 단계 검증 의무)
+- ⚠️ Phase C (workflows + checklist detail 분리) = 사이클 89+ 보류 (관점 3 보존 의무 영역 일부 — 사용자 명시 결정 의무)
+- ⚠️ Cross-verify ROI: false-positive 사전 차단 5건 / 신규 발견 4건 (P0 1 + P1 2 + P2 1) / Tier A 정정 후보 = Phase A 진입 의무 + 정책 1 회귀 가드 default 적용
 
 ---
 
