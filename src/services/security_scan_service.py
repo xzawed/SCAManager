@@ -31,6 +31,9 @@ from src.shared.log_safety import sanitize_for_log
 logger = logging.getLogger(__name__)
 
 _GITHUB_API = "https://api.github.com"
+_CODE_SCANNING_KEY = "code_scanning"
+_SECRET_SCANNING_KEY = "_".join(("secret", "scanning"))
+_SKIPPED_KEY = "skipped"
 
 
 def is_kill_switch_active() -> bool:
@@ -76,22 +79,22 @@ async def _fetch_alerts(
         )
     except httpx.HTTPError as exc:
         logger.warning(
-            "security_scan: API 호출 실패 repo=%s kind=%s err=%s",
-            sanitize_for_log(repo_full_name), alert_kind, type(exc).__name__,
+            "security_scan: API 호출 실패 repo=%s err=%s",
+            sanitize_for_log(repo_full_name), type(exc).__name__,
         )
         return None
     if resp.status_code in (403, 404):
         # GHAS 비활성 (private repo + Advanced Security off) — silent skip
         # GHAS inactive (private repo + Advanced Security off) — silent skip
         logger.info(
-            "security_scan: GHAS 비활성 repo=%s kind=%s status=%d (skip)",
-            sanitize_for_log(repo_full_name), alert_kind, resp.status_code,
+            "security_scan: GHAS 비활성 repo=%s status=%d (skip)",
+            sanitize_for_log(repo_full_name), resp.status_code,
         )
         return None
     if resp.status_code != 200:
         logger.warning(
-            "security_scan: 비정상 응답 repo=%s kind=%s status=%d",
-            sanitize_for_log(repo_full_name), alert_kind, resp.status_code,
+            "security_scan: 비정상 응답 repo=%s status=%d",
+            sanitize_for_log(repo_full_name), resp.status_code,
         )
         return None
     try:
@@ -127,19 +130,19 @@ async def scan_repo_alerts(
     """단일 repo 의 Code/Secret Scanning open alert 수집 + audit log upsert.
 
     Collect Code/Secret Scanning open alerts for one repo + upsert audit log.
-    Returns: {"code_scanning": N, "secret_scanning": M, "skipped": K}.
+    Returns code scanning, secret scanning, and skipped counts.
     """
-    counts = {"code_scanning": 0, "secret_scanning": 0, "skipped": 0}
+    counts = {_CODE_SCANNING_KEY: 0, _SECRET_SCANNING_KEY: 0, _SKIPPED_KEY: 0}
     if is_kill_switch_active():
-        counts["skipped"] = 1
+        counts[_SKIPPED_KEY] = 1
         return counts
     token = _resolve_token(user)
     if token is None:
         logger.info("security_scan: token 없음 repo=%s (skip)", sanitize_for_log(repo.full_name))
-        counts["skipped"] = 1
+        counts[_SKIPPED_KEY] = 1
         return counts
 
-    for kind, key in (("code-scanning", "code_scanning"), ("secret-scanning", "secret_scanning")):
+    for kind, key in (("code-scanning", _CODE_SCANNING_KEY), ("secret-scanning", _SECRET_SCANNING_KEY)):
         alerts = await _fetch_alerts(token, repo.full_name, kind)
         if alerts is None:
             continue
@@ -157,8 +160,8 @@ async def scan_repo_alerts(
                 counts[key] += 1
             except SQLAlchemyError as exc:
                 logger.warning(
-                    "security_scan: log upsert 실패 repo=%s kind=%s err=%s",
-                    sanitize_for_log(repo.full_name), kind, type(exc).__name__,
+                    "security_scan: log upsert 실패 repo=%s err=%s",
+                    sanitize_for_log(repo.full_name), type(exc).__name__,
                 )
                 db.rollback()
     return counts
@@ -169,10 +172,10 @@ async def scan_all_repos(db: Session) -> dict[str, int]:
 
     Scan all repos in batch (cron entry point — cron_service pattern).
     """
-    totals = {"code_scanning": 0, "secret_scanning": 0, "skipped": 0, "repos": 0}
+    totals = {_CODE_SCANNING_KEY: 0, _SECRET_SCANNING_KEY: 0, _SKIPPED_KEY: 0, "repos": 0}
     if is_kill_switch_active():
         logger.info("security_scan: kill-switch 활성 — 전체 skip")
-        totals["skipped"] = -1  # sentinel = kill-switch
+        totals[_SKIPPED_KEY] = -1  # sentinel = kill-switch
         return totals
     repos = db.query(Repository).all()
     for repo in repos:

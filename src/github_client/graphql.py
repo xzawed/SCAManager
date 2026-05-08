@@ -125,7 +125,8 @@ async def graphql_request(
         # 마지막 시도 였으면 예외 전파, 아니면 backoff 후 재시도
         # If last attempt, propagate; otherwise back off and retry
         if attempt == _GRAPHQL_MAX_ATTEMPTS - 1:
-            assert last_exc is not None
+            if last_exc is None:  # pragma: no cover
+                raise RuntimeError("GraphQL retry loop ended without an exception")
             raise last_exc
         backoff = _GRAPHQL_INITIAL_BACKOFF_SECONDS * (2 ** attempt)
         logger.warning(
@@ -135,7 +136,8 @@ async def graphql_request(
         await asyncio.sleep(backoff)
 
     # 도달 불가 — for 루프가 항상 return 또는 raise
-    assert last_exc is not None  # pragma: no cover
+    if last_exc is None:  # pragma: no cover
+        raise RuntimeError("GraphQL retry loop exited unexpectedly")
     raise last_exc  # pragma: no cover
 
 

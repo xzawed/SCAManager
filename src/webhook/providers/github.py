@@ -97,12 +97,12 @@ async def _handle_merged_pr_event(data: dict) -> dict:
     if not numbers:
         return {"status": "accepted"}
 
-    token = ""
+    token: str | None = None
     try:
         with SessionLocal() as db:
             repo = repository_repo.find_by_full_name(db, repo_name)
             if repo and repo.owner:
-                token = repo.owner.plaintext_token or ""
+                token = repo.owner.plaintext_token
     except (SQLAlchemyError, KeyError, AttributeError) as exc:
         logger.warning(
             "merged-pr issue close: repo lookup failed for %s: %s",
@@ -239,14 +239,14 @@ async def _handle_issues_event(data: dict, background_tasks: BackgroundTasks) ->
         return {"status": "ignored"}
 
     n8n_url = None
-    repo_token = ""
+    repo_token: str | None = None
     try:
         with SessionLocal() as db:
             config = get_repo_config(db, repo_name)
             n8n_url = config.n8n_webhook_url
             repo = repository_repo.find_by_full_name(db, repo_name)
             if repo and repo.owner:
-                repo_token = repo.owner.plaintext_token or ""
+                repo_token = repo.owner.plaintext_token
     except (SQLAlchemyError, KeyError, AttributeError) as exc:
         logger.warning(
             "issues relay: repo config lookup failed for %s: %s",
@@ -267,7 +267,7 @@ async def _handle_issues_event(data: dict, background_tasks: BackgroundTasks) ->
         issue=issue,
         sender=sender,
         n8n_secret=settings.n8n_webhook_secret,
-        repo_token=repo_token,
+        repo_token=repo_token or "",
     )
     return {"status": "accepted"}
 

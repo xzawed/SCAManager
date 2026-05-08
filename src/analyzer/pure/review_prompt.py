@@ -79,7 +79,8 @@ test_score 채점 기준:
 
 _SYSTEM_PROMPT_EN = """\
 You are a senior code review system that evaluates GitHub code changes.
-Analyze the provided commit message, file list, and diff, and respond ONLY in the JSON format below. Do not include any other text.
+Analyze the provided commit message, file list, and diff, and respond ONLY in the JSON format below.
+Do not include any other text.
 
 {output_lang_directive}
 
@@ -107,7 +108,8 @@ Response JSON format (no extra text):
 }}
 
 test_score criteria:
-- 10: Only test-unnecessary files changed (.md, .cfg, .toml, .yml, .html, .json, Dockerfile, LICENSE, etc.) or sufficient tests included
+- 10: Only test-unnecessary files changed (.md, .cfg, .toml, .yml, .html, .json,
+  Dockerfile, LICENSE, etc.) or sufficient tests included
 - 7-9: Test code exists but coverage is partial (core paths only, missing edge cases)
 - 4-6: Test files were modified but coverage for new code is insufficient
 - 1-3: Tests needed but missing (change is simple so not severe)

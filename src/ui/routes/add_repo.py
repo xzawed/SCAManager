@@ -28,7 +28,11 @@ async def add_repo_page(
     current_user: Annotated[CurrentUser, Depends(require_login)],
 ):
     """리포 추가 페이지를 렌더링한다."""
-    return templates.TemplateResponse(request, "add_repo.html", {"current_user": current_user, "locale": get_locale(request)})
+    return templates.TemplateResponse(
+        request,
+        "add_repo.html",
+        {"current_user": current_user, "locale": get_locale(request)},
+    )
 
 
 @router.get("/api/github/repos")

@@ -54,7 +54,7 @@ def _run_migrations() -> None:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     """Run DB migrations on startup, then yield control to the application."""
-    if settings.session_secret == "dev-secret-change-in-production":
+    if settings.session_secret == "dev-secret-change-in-production":  # nosec B105
         logger.warning(
             "SESSION_SECRET is using the default insecure value — "
             "set SESSION_SECRET environment variable in production!"

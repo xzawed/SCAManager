@@ -10,7 +10,8 @@ from __future__ import annotations
 import logging
 import shutil
 import subprocess  # nosec B404
-import xml.etree.ElementTree as ET
+
+from defusedxml import ElementTree as ET
 
 from src.analyzer.pure.registry import AnalyzeContext, AnalysisIssue, Category, Severity, register
 from src.constants import STATIC_ANALYSIS_TIMEOUT

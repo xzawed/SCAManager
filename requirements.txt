@@ -10,6 +10,7 @@ alembic==1.18.4
 psycopg2-binary==2.9.12
 PyGithub==2.9.1
 httpx==0.28.1
+defusedxml>=0.7.1
 # authlib>=1.7.2 — GHSA-jj8c-mmj3-mmgv (OAuth cache CSRF) fix
 authlib>=1.7.2
 itsdangerous>=2.2.0

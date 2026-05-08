@@ -224,7 +224,7 @@ class FailoverSessionFactory:  # pylint: disable=too-many-instance-attributes
                     if self._active == "fallback":
                         self._switch_to("primary")
             except Exception:  # noqa: BLE001 — probe 실패는 무시  # pylint: disable=broad-exception-caught
-                pass
+                logger.debug("Primary DB probe failed while running on fallback", exc_info=True)
 
 
 _FALLBACK_URL = settings.database_url_fallback or None

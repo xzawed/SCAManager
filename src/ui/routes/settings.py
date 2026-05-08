@@ -39,7 +39,7 @@ router = APIRouter()
 # SSRF defence: block internal network and cloud metadata addresses.
 _BLOCKED_HOSTS = frozenset({
     "localhost", "127.0.0.1", "::1",
-    "0.0.0.0",  # noqa: S104
+    "0.0.0.0",  # nosec B104
     "169.254.169.254",  # AWS/GCP IMDS
     "metadata.google.internal",  # GCP metadata
     "fd00::ec2",  # AWS IPv6 IMDS
@@ -247,7 +247,7 @@ async def update_repo_settings(
             if config_orm and not config_orm.railway_webhook_token:
                 config_orm.railway_webhook_token = secrets.token_hex(32)
             new_api_token = form.get("railway_api_token", "")
-            if config_orm and new_api_token and new_api_token != "****":
+            if config_orm and new_api_token and new_api_token != "****":  # nosec B105
                 from src.crypto import encrypt_token  # pylint: disable=import-outside-toplevel
                 config_orm.railway_api_token = encrypt_token(new_api_token)
             if config_orm:
