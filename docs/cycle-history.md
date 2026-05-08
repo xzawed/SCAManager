@@ -1,7 +1,6 @@
-# SCAManager 사이클 작업 이력 (사이클 60~84 archive)
+# SCAManager 사이클 작업 이력 (사이클 60~91 archive)
 
-> CLAUDE.md tail entry 분리본 (사이클 85~88 누적 정리 → 사이클 89~91 회고 사이클 84 추가). 사이클 60~84 historical entries.
-> 사이클 85~91+ 직전 5 사이클은 CLAUDE.md tail 보존.
+> CLAUDE.md tail entry 분리본. 사이클 60~91 historical entries.
 > 본 파일은 회고 시점 (정책 8 5+1 패턴) 또는 영역 reference 시 read 의무.
 
 ## 목차
@@ -20,6 +19,7 @@
 - [사이클 82 (Tier B 묶음 + NEW-P0-1)](#사이클-82)
 - [사이클 83 (Tier B 11건 정책 진화 묶음)](#사이클-83)
 - [사이클 84 (다국어 i18n 18 PR + 회고 + Tier B)](#사이클-84)
+- [사이클 85~91 (Sentry 제거 + 정책 17 신설 + 정기 검증, 2026-05-06~07)](#사이클-8591)
 
 ---
 
@@ -108,3 +108,11 @@
 ## 사이클 84
 
 - **사이클 84 (다국어 i18n 18 PR + 회고 + Tier B, 2026-05-05~06)** — Phase 1~5 18 PR (#283~#304) — 영어/한국어/일본어 + UI/알림/AI 리뷰 전 영역. 단위 2236→2709 (+473) | 통합 118→129 | E2E 82→96. 회고+sync (#306) + Tier B Q3+Q5 (#307) + Tier B Q1+Q2+Q4 (#308) — 정책 1 진화 강화 (≥ 10회 빠른 진행 신호) + 정책 8 강화 (dispatch vs invocation 구분) + 메모리 신설 2 (i18n locale fallback + 메모리 카운터 패턴). 메모리 27→29.
+
+## 사이클 85~91
+
+- **사이클 85 (Sentry 제거 + GitHub 정리 + CLAUDE.md Anthropic 200줄 정합 정정, 2026-05-06)** — Sentry 통합 완전 폐기 (40 테스트 + 105 LOC + 의존성 제거). GitHub 정리 62 branch 일괄 삭제. **CLAUDE.md cleanup**: 5+1 다중 에이전트 검토 → src/ 트리 → `docs/architecture.md` / 9 카테고리 → `.claude/rules/<area>.md` / tail entry → `docs/cycle-history.md` / Railway → `docs/runbooks/railway.md` / 점수 → `docs/reference/scoring.md` / 정책 진화 history → `docs/policies/history.md`. LOC 1271 → 865 (-32%) / 토큰 ~57K → ~22K (-61%).
+- **사이클 86 (정책 진화 + CI 사고 + dependabot 자동화 + pylint drift + 5+1 회고, 2026-05-06 · #336)** — Q3 (#321) + Tier B Q1+Q2+Q3+Q4 (#322) + CI submit-pypi 대응 #324 (`dependabot.yml` supersede) + dependabot 자동 8 PR (#325-#332, ROI 100%, #332 conflict Claude rebase) + pylint #335 (9.92→9.94) + 5+1 회고 #336 (P0 6 + P1 8 + P2 17, Tier A 2 정정). LOC 762 → 677 (-11%).
+- **사이클 87 (Tier B 3건 단일 응집 묶음, 2026-05-06 · #337)** — 사이클 86 회고 후속 (옵션 🅐). **Tier B-1**: Makefile `lint-strict` (`pylint --fail-under=9.90`) drift 회귀 가드. **Tier B-2**: dependabot.yml `groups` 분리 (production-deps + development-deps + actions-minor-patch). **Tier B-3**: 정책 8 본문 진화 — cross-verify 생략 시 PR 본문 §"cross-verify 생략 사유" 사이클 69 정량 3 조건 대조 표 default.
+- **사이클 88 (CLAUDE.md Anthropic 200줄 정합 + 정책 17 신설, 2026-05-06 · #338 + #348)** — 사이클 85 보류 영역 (C2) 진입. **Phase A (#338)**: 정책 12~16 + 11 강화 본문 → `docs/policies/active.md` 분리 — CLAUDE.md 686 → 549 LOC (-20%). **Phase B-1 (#348)**: 신규 사용자 기준 *"문서정리는 권장하는 규격보다 안정성이 더 우선시 되야합니다"* 정합 — **정책 17 신설** (문서 정리 시 안정성 > 권장 규격 4 default 의무) + B-1 안전 분리 (정책 2 + 10).
+- **사이클 89~91 (정기 5+1 검증 + Tier A fix + P1 자율 + 회고 종결, 2026-05-07 · #349/#350/#351/#352 + #353)** — 사이클 89 정기 검증 (Round 1+2+3 — 종합 93.50/100 A 등급) + Tier A fix 2건 (#349 P0-1 fixture import + P0-3 flake8 noqa + 메모리 신설/진화 / #350 P0-2 E2E i18n 옵션 🅐 → 🅑 정정 + autouse 회귀 학습) + 사이클 90 P1-1 자율 (#351 flake8 cosmetic 20 + slow test mock 1) + 사이클 91 P1-2 자율 (#352 graphql slow test mock 2 + Round 1 false-positive 식별). **누적 효과**: 통합 fail 1→0 / E2E fail 5→2 / flake8 40→18 (-55%) / slow test 12s→0.04s (-99.7%). **회고 (5+1)**: P0 7 + P1 12 + P2 11 / Tier A 3건 / Tier B 사이클 92+.
