@@ -35,6 +35,47 @@
 
 ---
 
+## 정책 7: 위반 시 회복
+
+실수로 main 에 commit 했을 때:
+```bash
+# 1. 새 브랜치로 commit 이동
+git branch <type>/<scope>-<desc>
+# 2. main 을 origin/main 으로 reset
+git reset --hard origin/main
+# 3. 새 브랜치로 checkout 후 push
+git checkout <type>/<scope>-<desc>
+git push -u origin <branch>
+```
+
+(2026-05-01 본 사이클은 모든 작업이 브랜치 + PR 로 진행됐으나, 본 정책으로 명시화 + 강화하여 향후 세션에서 이탈 차단.)
+
+---
+
+## 정책 11: PR 본문 8 조합 시각 체크리스트 템플릿
+
+**적용 대상 파일**: `src/templates/*.html` / `src/static/**/*.css` / `base.html` `<style>` 블록 / 신규 시각 컴포넌트
+
+```markdown
+## 🚨 Claude 시각 검증 불가 — 사용자 의무 (정책 11)
+
+본 PR 은 UI/시각 변경 포함. Claude 는 정적 코드만 검증 가능 — 다음 8 조합 시각 정합성은 사용자 직접 확인 부탁드립니다:
+
+- [ ] dark 테마 데스크탑 (1440px+)
+- [ ] light 테마 데스크탑
+- [ ] glass 테마 데스크탑
+- [ ] claude-dark 테마 데스크탑
+- [ ] dark 테마 모바일 (375px ~ 767px)
+- [ ] light 테마 모바일
+- [ ] glass 테마 모바일
+- [ ] claude-dark 테마 모바일
+
+특히 검증 필요 (변경 영역 한정):
+- {변경 영역 설명}
+```
+
+---
+
 ## 정책 11 강화 (사이클 62 P0 OAuth 사고 후속): 인증 flow 검증 추가
 
 🔴 **진화 default 요약**: 인증/외부 통합 변경 PR 시 8 조합 시각 체크리스트 + **인증 flow 4 endpoint 종단간 검증** 의무 — `/login` 200 + `/auth/github` 302 + `/auth/callback` redirect + `/auth/logout` redirect. 상세: [docs/policies/history.md#정책-11-강화](history.md#정책-11-강화).
