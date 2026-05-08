@@ -79,22 +79,22 @@ async def _fetch_alerts(
         )
     except httpx.HTTPError as exc:
         logger.warning(
-            "security_scan: API 호출 실패 repo=%s kind=%s err=%s",
-            sanitize_for_log(repo_full_name), alert_kind, type(exc).__name__,
+            "security_scan: API 호출 실패 repo=%s err=%s",
+            sanitize_for_log(repo_full_name), type(exc).__name__,
         )
         return None
     if resp.status_code in (403, 404):
         # GHAS 비활성 (private repo + Advanced Security off) — silent skip
         # GHAS inactive (private repo + Advanced Security off) — silent skip
         logger.info(
-            "security_scan: GHAS 비활성 repo=%s kind=%s status=%d (skip)",
-            sanitize_for_log(repo_full_name), alert_kind, resp.status_code,
+            "security_scan: GHAS 비활성 repo=%s status=%d (skip)",
+            sanitize_for_log(repo_full_name), resp.status_code,
         )
         return None
     if resp.status_code != 200:
         logger.warning(
-            "security_scan: 비정상 응답 repo=%s kind=%s status=%d",
-            sanitize_for_log(repo_full_name), alert_kind, resp.status_code,
+            "security_scan: 비정상 응답 repo=%s status=%d",
+            sanitize_for_log(repo_full_name), resp.status_code,
         )
         return None
     try:
@@ -160,8 +160,8 @@ async def scan_repo_alerts(
                 counts[key] += 1
             except SQLAlchemyError as exc:
                 logger.warning(
-                    "security_scan: log upsert 실패 repo=%s kind=%s err=%s",
-                    sanitize_for_log(repo.full_name), kind, type(exc).__name__,
+                    "security_scan: log upsert 실패 repo=%s err=%s",
+                    sanitize_for_log(repo.full_name), type(exc).__name__,
                 )
                 db.rollback()
     return counts
