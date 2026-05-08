@@ -1,6 +1,6 @@
-# SCAManager 사이클 작업 이력 (사이클 60~91 archive)
+# SCAManager 사이클 작업 이력 (사이클 60~92 archive)
 
-> CLAUDE.md tail entry 분리본. 사이클 60~91 historical entries.
+> CLAUDE.md tail entry 분리본. 사이클 60~92 historical entries.
 > 본 파일은 회고 시점 (정책 8 5+1 패턴) 또는 영역 reference 시 read 의무.
 
 ## 목차
@@ -19,7 +19,7 @@
 - [사이클 82 (Tier B 묶음 + NEW-P0-1)](#사이클-82)
 - [사이클 83 (Tier B 11건 정책 진화 묶음)](#사이클-83)
 - [사이클 84 (다국어 i18n 18 PR + 회고 + Tier B)](#사이클-84)
-- [사이클 85~91 (Sentry 제거 + 정책 17 신설 + 정기 검증, 2026-05-06~07)](#사이클-8591)
+- [사이클 85~92 (Sentry 제거 + 정책 17 신설 + 정기 검증 + Phase C RLS, 2026-05-06~07)](#사이클-8591)
 
 ---
 
@@ -116,3 +116,4 @@
 - **사이클 87 (Tier B 3건 단일 응집 묶음, 2026-05-06 · #337)** — 사이클 86 회고 후속 (옵션 🅐). **Tier B-1**: Makefile `lint-strict` (`pylint --fail-under=9.90`) drift 회귀 가드. **Tier B-2**: dependabot.yml `groups` 분리 (production-deps + development-deps + actions-minor-patch). **Tier B-3**: 정책 8 본문 진화 — cross-verify 생략 시 PR 본문 §"cross-verify 생략 사유" 사이클 69 정량 3 조건 대조 표 default.
 - **사이클 88 (CLAUDE.md Anthropic 200줄 정합 + 정책 17 신설, 2026-05-06 · #338 + #348)** — 사이클 85 보류 영역 (C2) 진입. **Phase A (#338)**: 정책 12~16 + 11 강화 본문 → `docs/policies/active.md` 분리 — CLAUDE.md 686 → 549 LOC (-20%). **Phase B-1 (#348)**: 신규 사용자 기준 *"문서정리는 권장하는 규격보다 안정성이 더 우선시 되야합니다"* 정합 — **정책 17 신설** (문서 정리 시 안정성 > 권장 규격 4 default 의무) + B-1 안전 분리 (정책 2 + 10).
 - **사이클 89~91 (정기 5+1 검증 + Tier A fix + P1 자율 + 회고 종결, 2026-05-07 · #349/#350/#351/#352 + #353)** — 사이클 89 정기 검증 (Round 1+2+3 — 종합 93.50/100 A 등급) + Tier A fix 2건 (#349 P0-1 fixture import + P0-3 flake8 noqa + 메모리 신설/진화 / #350 P0-2 E2E i18n 옵션 🅐 → 🅑 정정 + autouse 회귀 학습) + 사이클 90 P1-1 자율 (#351 flake8 cosmetic 20 + slow test mock 1) + 사이클 91 P1-2 자율 (#352 graphql slow test mock 2 + Round 1 false-positive 식별). **누적 효과**: 통합 fail 1→0 / E2E fail 5→2 / flake8 40→18 (-55%) / slow test 12s→0.04s (-99.7%). **회고 (5+1)**: P0 7 + P1 12 + P2 11 / Tier A 3건 / Tier B 사이클 92+.
+- **사이클 92 (정책 17 5번째 default + 정책 8 진화 (3) + Phase C RLS 검증, 2026-05-07 · #361 + 본 sync)** — 사이클 89~91 회고 Tier B 합의 영역 진입. 5+1 사전 검토 (관점 1~5 + cross-verify 6차) → Phase A (정책 17 5번째 default 신설 — 누적 결함 정기 검증 의무 + 정책 8 진화 (3) cross-verify Round 2 단위 분포 실측 의무) + Phase B (Tier B-3 autouse 메모리 보류 default — 사용처 임계 미도달) + Phase C (RLS legacy NULL 0건 검증 — Supabase MCP SELECT-only 자율 / E2E UI 2건 사용자 사전 확인 의무 보류). CLAUDE.md 437 → 439 LOC. **운영 영역 안전 검증** — RLS legacy NULL 0건 (analysis_feedbacks 0/0 / insight_narrative_cache 3/0 / repositories 8/0 / security_alert_process_logs 0/0).

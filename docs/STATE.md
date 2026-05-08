@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-07 기준 — **사이클 89~91 정기 검증 + Tier A fix + P1 자율 진입 + 회고 종결**): 118+ PR #188~#352+ — 누적 정책 본문 18건 + 메모리 30건 (활성 28 + deprecated 2). **사이클 89 (#349/#350)**: 5+1 다중 에이전트 정기 검증 (Round 1+2+3 — 종합 93.50/100 A 등급) + Tier A fix 2건 (P0-1 fixture / P0-2 E2E i18n / P0-3 flake8 noqa). **사이클 90 (#351)**: P1-1 자율 — flake8 cosmetic 20건 + slow test mock 1건. **사이클 91 (#352)**: P1-2 자율 — graphql slow test mock 2건 + Round 1 false-positive 식별 (단위 도메인 밀도 추정 부정확 발견). **누적 효과 (사이클 88 → 91)**: 통합 fail 1→0 / E2E fail 5→2 / flake8 40→18 (-55%) / slow test 12s→0.04s (-99.7%) / 단위+통합 시간 ~110s→95.70s. 단위 2669 / 통합 129 / E2E 96 / pylint **9.94/10**
+## 현재 수치 (2026-05-07 기준 — **사이클 92 종결: 정책 17 5번째 default 신설 + Phase C RLS 검증**): 119+ PR #188~#361+ — 누적 정책 본문 18건 (정책 17 4 → 5 default 진화) + 메모리 30건 (활성 28 + deprecated 2). **사이클 92 Phase A (#361)**: 5+1 사전 검토 (관점 1~5 + cross-verify 6차) → Tier B-1 정책 17 5번째 default 신설 (누적 결함 정기 검증 의무) + Tier B-2 정책 8 진화 (3) cross-verify Round 2 단위 분포 실측 의무. **Phase C 결과 보고**: P1-3b RLS legacy NULL 검증 = **0건** (Supabase MCP 자율 SELECT — analysis_feedbacks 0/0 / insight_narrative_cache 3/0 / repositories 8/0 / security_alert_process_logs 0/0) — 운영 영역 안전. P1-3a-2 (simple 모드) + P1-3a-1 (944px grid) = 사이클 93+ 사용자 사전 확인 의무 보류 (정책 11/15/17 페어). 단위 2669 / 통합 129 / E2E 96 / pylint **9.94/10**
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
@@ -111,6 +111,40 @@
 | **#232** Docs/cycle-67-end multi-agent retrospective | **4 사이클 종결 회고** — 1차 5 에이전트 (cross-verify 생략 — 사용자 빠른 진행 신호 + 1차 결과 충분). P0 13 + P1 7 + P2 3 식별. **메모리 4건** (3 신설: stale-blocker / asgi-middleware / conftest-direct-env-set + 1 갱신: architecture-pre-confirm 위임 분류 3-tier 정밀화). MEMORY 인덱스 8→11건. 회고 보고서 + 자유 발언 (정책 9) + 회고 질문 (사용자 회신 의무) |
 | **#233** Docs/policy-evolution cycle-67 P0 bundle | **사이클 67 회고 P0 4건 정책 본문 진화** (정책 7 강화 응집): (1) 정책 7 강화 — 단일 PR > 1500 LOC 사전 확인 + architecture 단일 OK 정정 (관점 1 P0-1+P0-2) (2) 정책 8 — cross-verify 생략 조건 + 회고 PR 패턴 3 분기 (관점 1 P0-3) (3) 정책 2 진화 — 모든 sync PR commit body 실측 1줄 의무 (관점 2 P0-1) (4) 30초 체크리스트 — 메모리 11건 사례 + 트랩 차단 효과 (관점 2 P0-2). 카테고리 분류 (관점 4 P0-2) = 별도 PR (High tier 사용자 결정 의무) |
 | **#234** Docs/cycle-68 end state sync | **사이클 68 종료 sync** — STATE 헤더 38→41 PR + 사이클 68 행 신설 + CLAUDE.md L1052 tail. 단위 2055 / 통합 84 / E2E 82 변화 0 (docs only). 정책 2 진화 default 첫 적용 — 실측 1줄 의무 명시 |
+
+---
+
+### 사이클 92 — 정책 17 5번째 default 신설 + 정책 8 진화 (3) + Phase C RLS 검증 (2026-05-07 · #361 + 본 sync)
+
+사이클 89~91 회고 Tier B 합의 영역 (3건 중 2건) — 5+1 다중 에이전트 사전 검토 (관점 1~5 + cross-verify 6차) 통과 후 진행. 사용자 발화 = "잔여 작업 진행 전 모든 에이전트 검토 + 진행 + 테스트 후 문제 보고".
+
+**5+1 사전 검토 ROI**:
+- false-positive 사전 차단: 5건 (각 관점 1건씩)
+- 신규 발견: Phase A/B/C 분할 default + 단일 응집 PR 권장
+- Tier A 정정: Phase A 진입 + Phase B/C 보류 정당화
+
+| Phase | 영역 | 결과 |
+|-------|------|------|
+| **Phase A (#361 머지)** | Tier B-1 정책 17 5번째 default 신설 (누적 결함 정기 검증 의무 — 트리거 = 단일 작업일 ≥ 18 PR + ≥ 5 사이클 / 누적 ≥ 50 PR) + Tier B-2 정책 8 진화 (3) (cross-verify Round 2 도메인 카운트 `pytest --collect-only -q` 실측 의무) | CLAUDE.md 437 → 439 LOC / docs/policies/active.md +38 LOC |
+| **Phase B (보류 default)** | Tier B-3 autouse 메모리 신설 — 메모리 카운터 패턴 (사이클 84 default) 사용처 ≥ 3 임계 미도달 (단일 사용처 1회) | 사이클 93+ 후속 진입 트리거 (두 번째 사고 발생 시) |
+| **Phase C (결과 보고)** | P1-3 (E2E UI 2건 + RLS legacy NULL) 단계 분할 진행 | 단계 1+4 ✅ + 단계 2+3 보류 |
+
+**Phase C 단계별 결과**:
+- ✅ **단계 1+4 (P1-3b RLS legacy NULL)**: SCAManager 운영 DB (Supabase `qaoirpyhldlkeoyppfwq`) **0건 검증 완료** (analysis_feedbacks 0/0 / insight_narrative_cache 3/0 / repositories 8/0 / security_alert_process_logs 0/0) — UPDATE 불필요. 운영 영역 안전 (사이클 67 backfill + 사이클 79 RLS 5 누락 보강 검증).
+- ⚠️ **단계 2 (P1-3a-2 simple 모드 src 회귀)**: 분석 한계 — `_detect_initial_mode` (`src/ui/routes/settings.py:131`) 코드 분석상 default 시드 → simple 반환 정합 (회귀 미식별). 실 E2E 환경 회귀 추정 (사용자 영역). 사이클 93+ 보류 default.
+- ⚠️ **단계 3 (P1-3a-1 944px grid CSS)**: 정책 11 시각 검증 사용자 의무 영역 — Claude 단독 fix 금지. 사이클 93+ 보류 default.
+
+**자율 판단 보고 (정책 3 ⚠️ 마커)**:
+- ⚠️ Phase A = docs only / 운영 영향 0 / 정책 17 자기 적용 (default rule + 진화 default 1~2줄 본문 + detail external) 정합
+- ⚠️ Phase C 단계 1+4 = MCP SELECT-only 자율 (정책 12 default) — PII 0건 (count 메트릭만)
+- ⚠️ Phase C 단계 2+3 = High tier 영역 (정책 17 4번 + 정책 11 + 정책 15 페어) — 사용자 사전 확인 의무 보존
+- ⚠️ Tier B-3 보류 결정 = 메모리 카운터 패턴 (사이클 84) 임계 미도달 — 사이클 93+ 두 번째 autouse 사고 발생 시 신설 진입 트리거
+
+**잔여 영역 (사이클 93+ 점진 default)**:
+- P1-3a-2 simple 모드 src 회귀 fix — 실 E2E 환경 디버깅 의무 (사용자 영역)
+- P1-3a-1 944px grid CSS fix — 정책 11 시각 검증 사용자 의무
+- Tier B-3 (autouse 메모리) — 사용처 ≥ 3 임계 도달 시 진입
+- 다음 정기 검증 트리거: 사이클 92 + ≥ 5 사이클 = 사이클 97+ 또는 누적 ≥ 50 PR (정책 17 5번째 default 첫 적용 영역)
 
 ---
 
