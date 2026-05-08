@@ -68,16 +68,66 @@ def tenant_inventory(db: Session) -> list[dict[str, Any]]:
 # RLS policy matrix — cumulative result of alembic 0026/0027/0028/0029
 # 각 항목 = (table, isolation_pattern, since_alembic, status)
 _RLS_MATRIX: tuple[dict[str, str], ...] = (
-    {"table": "repositories", "pattern": "user_id 직접 (legacy NULL 호환)", "since": "0026", "status": "applied"},
-    {"table": "analyses", "pattern": "repo_id 간접 (repositories 페어)", "since": "0026", "status": "applied"},
-    {"table": "merge_attempts", "pattern": "repo_name 간접 (repositories.full_name 페어)", "since": "0026", "status": "applied"},
-    {"table": "security_alert_process_logs", "pattern": "repo_id 간접 (analyses 패턴)", "since": "0027", "status": "applied"},
-    {"table": "insight_narrative_cache", "pattern": "user_id 직접 (NULL 허용 X)", "since": "0028", "status": "applied"},
-    {"table": "users", "pattern": "self-RLS (id 직접 비교)", "since": "0029", "status": "applied"},
-    {"table": "repo_configs", "pattern": "repo_full_name 간접 (repositories 페어)", "since": "0029", "status": "applied"},
-    {"table": "gate_decisions", "pattern": "analysis_id 간접 2-hop (analyses → repositories)", "since": "0029", "status": "applied"},
-    {"table": "merge_retry_queue", "pattern": "repo_full_name 간접 (repositories 페어)", "since": "0029", "status": "applied"},
-    {"table": "analysis_feedbacks", "pattern": "user_id 직접 (NULL 허용 X — FK NOT NULL)", "since": "0029", "status": "applied"},
+    {
+        "table": "repositories",
+        "pattern": "user_id 직접 (legacy NULL 호환)",
+        "since": "0026",
+        "status": "applied",
+    },
+    {
+        "table": "analyses",
+        "pattern": "repo_id 간접 (repositories 페어)",
+        "since": "0026",
+        "status": "applied",
+    },
+    {
+        "table": "merge_attempts",
+        "pattern": "repo_name 간접 (repositories.full_name 페어)",
+        "since": "0026",
+        "status": "applied",
+    },
+    {
+        "table": "security_alert_process_logs",
+        "pattern": "repo_id 간접 (analyses 패턴)",
+        "since": "0027",
+        "status": "applied",
+    },
+    {
+        "table": "insight_narrative_cache",
+        "pattern": "user_id 직접 (NULL 허용 X)",
+        "since": "0028",
+        "status": "applied",
+    },
+    {
+        "table": "users",
+        "pattern": "self-RLS (id 직접 비교)",
+        "since": "0029",
+        "status": "applied",
+    },
+    {
+        "table": "repo_configs",
+        "pattern": "repo_full_name 간접 (repositories 페어)",
+        "since": "0029",
+        "status": "applied",
+    },
+    {
+        "table": "gate_decisions",
+        "pattern": "analysis_id 간접 2-hop (analyses → repositories)",
+        "since": "0029",
+        "status": "applied",
+    },
+    {
+        "table": "merge_retry_queue",
+        "pattern": "repo_full_name 간접 (repositories 페어)",
+        "since": "0029",
+        "status": "applied",
+    },
+    {
+        "table": "analysis_feedbacks",
+        "pattern": "user_id 직접 (NULL 허용 X — FK NOT NULL)",
+        "since": "0029",
+        "status": "applied",
+    },
 )
 
 

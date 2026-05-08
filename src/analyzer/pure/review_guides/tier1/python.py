@@ -11,7 +11,8 @@ FULL = """\
 - **Async**: No sync blocking I/O (requests, open) inside `async def` → use httpx, aiofiles
 - **Exceptions**: No bare `except:`; use `exc_info=True` or `logger.exception()` when logging
 - **Pitfalls**: Mutable default args (`def f(x=[])`), circular imports, heavy imports in `__init__.py`
-- **pytest**: `@pytest.fixture` scope (function/module/session) appropriateness, correct `parametrize` and `pytest.raises`
+- **pytest**: `@pytest.fixture` scope (function/module/session) appropriateness,
+  correct `parametrize` and `pytest.raises`
 - **Dependencies**: SQLAlchemy N+1 queries, missing `open()` / DB session context manager
 - **Security**: `eval` / `exec` / `pickle.loads` on untrusted input, SQL string format → parameterized
 """

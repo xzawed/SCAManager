@@ -7,7 +7,8 @@ FULL = """\
 ## Go review checklist
 - **Error handling**: Don't skip `err != nil` checks, don't discard with `_`; wrap via `fmt.Errorf("...: %w", err)`
 - **Interfaces**: Prefer small interfaces (1-2 methods); define on the consumer side, not the implementation side
-- **Goroutines**: Prevent leaks (propagate `context.Context`, use done channels, WaitGroup); recover from panics inside goroutines
+- **Goroutines**: Prevent leaks (propagate `context.Context`, use done channels, WaitGroup);
+  recover from panics inside goroutines
 - **Channels**: Explicit channel direction types (`chan<-`, `<-chan`); justify buffer size
 - **Pointers**: Consistent value vs pointer receivers; avoid unnecessary pointer conversion
 - **Packages**: Lowercase singular package names; no import cycles; leverage `internal` packages

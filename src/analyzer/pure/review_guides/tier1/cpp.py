@@ -6,7 +6,8 @@ Phase 4 PR-13 (사이클 84) — i18n: en (default) / ko / ja.
 FULL = """\
 ## C++ review checklist
 - **Smart pointers**: Prefer `unique_ptr` / `shared_ptr` over raw pointers; minimize direct `new` / `delete`
-- **RAII**: Resource acquisition = initialization; no exception throws in destructors; mark copy/move constructors `= default` / `= delete`
+- **RAII**: Resource acquisition = initialization; no exception throws in destructors;
+  mark copy/move constructors `= default` / `= delete`
 - **Modern C++**: Use range-for, `auto`, structured bindings, `std::optional`, `std::variant` (C++17+)
 - **Casting**: No C-style casts → use `static_cast` / `dynamic_cast` / `reinterpret_cast` explicitly
 - **STL**: Prefer `std::vector`; don't modify containers during iteration; pre-size with `reserve()`

@@ -6,7 +6,8 @@ Phase 4 PR-14 (사이클 84) — i18n: en (default) / ko / ja.
 FULL = """\
 ## HTML review checklist
 - **Security**: Don't inject raw user input (XSS); add SRI (`integrity`) on external CDN `<script src>`
-- **Accessibility**: `alt` required on images; `<label>` + `for` / `aria-label`; semantic tags (`<nav>`, `<main>`, `<button>`)
+- **Accessibility**: `alt` required on images; `<label>` + `for` / `aria-label`;
+  semantic tags (`<nav>`, `<main>`, `<button>`)
 - **Semantics**: Use semantic elements instead of overusing `<div>`; no `<table>` for layout
 - **Performance**: Set image `width` / `height` (prevent CLS); `loading="lazy"`; `<script defer>` / `async`
 - **Forms**: Choose `<form method>` GET vs POST; CSRF tokens; `autocomplete` attribute

@@ -5,7 +5,8 @@ Phase 4 PR-15 (사이클 84) — i18n: en (default) / ko / ja.
 
 FULL = """\
 ## Protocol Buffers review checklist
-- **Field numbers**: Don't change/reuse existing numbers (breaks compatibility); use `reserved` to protect removed numbers
+- **Field numbers**: Don't change/reuse existing numbers (breaks compatibility);
+  use `reserved` to protect removed numbers
 - **Type choice**: `int32` vs `sint32` (negative efficiency); `bytes` vs `string` (UTF-8 guarantee)
 - **Backward compat**: Add fields as optional only; no new `required` (proto2); careful with default reliance
 - **Packages**: Explicit `package` namespace; absolute import paths
@@ -13,7 +14,10 @@ FULL = """\
 - **Performance**: Paginate large repeated fields; type safety of `google.protobuf.Any`
 """
 
-COMPACT = "## Protobuf: stable field numbers, reserved protection, sint32 negatives, additions optional only, gRPC status"
+COMPACT = (
+    "## Protobuf: stable field numbers, reserved protection, "
+    "sint32 negatives, additions optional only, gRPC status"
+)
 
 FULL_KO = """\
 ## Protocol Buffers 검토 기준
@@ -25,7 +29,10 @@ FULL_KO = """\
 - **성능**: 대용량 repeated 필드 페이지네이션, `google.protobuf.Any` 타입 안전성
 """
 
-COMPACT_KO = "## Protobuf: 필드 번호 불변, reserved 보호, sint32 음수, 하위 호환 optional만 추가, gRPC status"
+COMPACT_KO = (
+    "## Protobuf: 필드 번호 불변, reserved 보호, "
+    "sint32 음수, 하위 호환 optional만 추가, gRPC status"
+)
 
 FULL_JA = """\
 ## Protocol Buffers レビュー基準
@@ -37,4 +44,7 @@ FULL_JA = """\
 - **パフォーマンス**: 大量 repeated フィールドのページネーション、`google.protobuf.Any` の型安全性
 """
 
-COMPACT_JA = "## Protobuf: フィールド番号不変、reserved 保護、sint32 負数、互換は optional のみ、gRPC status"
+COMPACT_JA = (
+    "## Protobuf: フィールド番号不変、reserved 保護、"
+    "sint32 負数、互換は optional のみ、gRPC status"
+)

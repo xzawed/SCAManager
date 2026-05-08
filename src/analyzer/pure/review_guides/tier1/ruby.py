@@ -6,7 +6,8 @@ Phase 4 PR-13 (사이클 84) — i18n: en (default) / ko / ja.
 FULL = """\
 ## Ruby review checklist
 - **Style**: snake_case methods/variables, PascalCase classes, 2-space indentation (no tabs)
-- **Methods**: Aim for ≤10 lines per method; explicit returns are encouraged for complex flows (otherwise `return` may be omitted)
+- **Methods**: Aim for ≤10 lines per method; explicit returns are encouraged for complex flows
+  (otherwise `return` may be omitted)
 - **Nil safety**: Use `&.` (safe navigation); distinguish `nil?` vs `empty?` vs `blank?`
 - **Blocks**: Consistent `do...end` (multi-line) vs `{...}` (single-line); pick `yield` vs `Proc.new` carefully
 - **ActiveRecord**: Avoid N+1 (`includes` / `eager_load`); no raw SQL `where("#{user_input}")`

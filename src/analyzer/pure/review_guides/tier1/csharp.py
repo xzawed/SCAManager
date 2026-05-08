@@ -6,8 +6,10 @@ Phase 4 PR-13 (사이클 84) — i18n: en (default) / ko / ja.
 FULL = """\
 ## C# review checklist
 - **async/await**: No `async void` (except event handlers); use `ConfigureAwait(false)` in library code
-- **Null safety**: Enable nullable reference types (`#nullable enable`); use `?.` / `??` / `??=`; minimize null-forgiving (`!`)
-- **LINQ**: Understand deferred execution (force with `.ToList()`); avoid N+1 queries; prevent multiple enumeration of `IEnumerable`
+- **Null safety**: Enable nullable reference types (`#nullable enable`); use `?.` / `??` / `??=`;
+  minimize null-forgiving (`!`)
+- **LINQ**: Understand deferred execution (force with `.ToList()`); avoid N+1 queries;
+  prevent multiple enumeration of `IEnumerable`
 - **IDisposable**: Use `using` declarations or `try/finally`; ensure `Dispose()` for unmanaged resources
 - **Exceptions**: Avoid catching `Exception` directly; use `AggregateException.Flatten()`, `ExceptionDispatchInfo`
 - **Collections**: `List<T>` vs `IReadOnlyList<T>` for public APIs; thread-safety with `ConcurrentDictionary`

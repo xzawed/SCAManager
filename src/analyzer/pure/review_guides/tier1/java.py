@@ -10,7 +10,8 @@ FULL = """\
 - **Exceptions**: Avoid overusing checked exceptions; on direct `Exception` catch, log + rethrow
 - **Collections**: No raw types (`List` without generic); use `Collections.unmodifiableList()` for immutability
 - **Concurrency**: Minimize `synchronized` scope; correct use of `volatile` / `AtomicXxx`; watch ThreadLocal leaks
-- **Streams**: Excessive chaining hurts readability — split when needed; prefer `toList()` (Java 16+) over `collect(Collectors.toList())`
+- **Streams**: Excessive chaining hurts readability — split when needed;
+  prefer `toList()` (Java 16+) over `collect(Collectors.toList())`
 - **Security**: No SQL string formatting → PreparedStatement; validate input to `Runtime.exec()`
 - **Dependencies**: Watch circular dependencies and SRP (single responsibility) violations
 """
