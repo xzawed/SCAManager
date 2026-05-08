@@ -256,3 +256,41 @@ git push -u origin <branch>
 **Why (5 원칙 추가 — 사이클 72)**: 사이클 70~71 진행 후 사용자 의도 검증 = "토큰 비용 효율" 이 본래 목적이었음 (사이클 70 정책 15 위반 사례 — Claude 가 "단순화" 의도 모호 검증 안 함). 사이클 72 회고 정정으로 5번째 원칙 신설. **운영 Anthropic API 비용 ↓** 가 실 가치 — 가독성 단순화는 부가 효과.
 
 **How to apply**: Edit/Write 도구 호출 직전 정책 15 사전 사고와 페어 — "이 변경이 가장 단순한 형태인가?" + "토큰 비용 영향은?" 2 자문 의무. CI lint (pylint R0911~R0917) 가 1차 가드, PR 본문 §"자율 판단 보고" 의 자가 리뷰 4 체크포인트 + 토큰 영향 추정이 2차 가드.
+
+---
+
+## 정책 17 5번째 default (사이클 92 신설): 누적 결함 정기 검증 의무
+
+사이클 89 정기 5+1 다중 에이전트 검증 (#349 Round 1+2+3) 시 사이클 74/84 누적 결함 발견 (E2E i18n hardcode 3건 + integration fixture sync 누락 1건) — 시간차 결함 패턴.
+
+**default 의무**:
+- **트리거 조건**: 단일 작업일 ≥ 18 PR 영역 도입 (예: 사이클 84 i18n 18 PR) + **≥ 5 사이클 경과** 후 정기 5+1 다중 에이전트 검증 default 진입.
+- **검증 영역**: 단위 + 통합 + E2E + 코드 품질 (pylint/flake8/bandit) + 기능 정확성 + 보안 (Round 1 6 영역).
+- **점수 환산 + 재검증** (Round 2 cross-verify 단위 분포 실측 의무 — 정책 8 진화 (3) 페어).
+- **수행 계획** (Round 3 — Tier A/B 분류 + 사용자 결정 옵션 표).
+
+**정량 기준**:
+- 단일 작업일 ≥ 18 PR 영역 도입 (사이클 84 i18n / 사이클 86 dependabot 8 자동 등 큰 영역 도입)
+- 직전 정기 검증 후 ≥ 5 사이클 경과 (또는 누적 ≥ 50 PR)
+- **둘 중 하나 충족 시 트리거** — 사용자 명시 결정 의무 X (정책 9 완화 default 적용 영역 — Medium tier)
+
+**정책 8 진화 (cross-verify) 와 차별점**:
+- 정책 17 5번째 = **정기 검증 트리거 (시간/PR 기반)** — Phase 종료 시점 또는 누적 임계 도달 시
+- 정책 8 진화 = **매 회고 cross-verify 트리거 (사이클 단위)** — 매 회고 시 5+1 default + cross-verify ROI 정량 명시 의무
+- 시점·대상 차별 명확 (혼동 시 양쪽 적용 = 토큰 낭비 — 정책 16 5번 페어)
+
+**검증 사례 (사이클 89)**:
+- 사이클 84 i18n 18 PR + 사이클 74 InsightNarrativeCache 도입 → 사이클 89 정기 검증으로 누적 결함 발견 (E2E i18n hardcode 3건 + integration fixture metadata sync 누락 1건)
+- ROI 양성 검증 — 정기 검증 없이는 운영 영역 시간 누적 결함 위험 ↑
+
+**Why**: 단일 작업일 ≥ 18 PR 영역 도입 시점 PR push 직전 검증으로는 시간차 결함 차단 불가 (E2E 영역 / fixture sync 영역). 정기 검증 default = 시간 비용 (5+1 dispatch) vs 운영 영역 누적 결함 회피 가치 (사고 차단) 균형 default.
+
+**How to apply**:
+- 사이클 종료 시점 자가 검토 — "직전 정기 검증 후 ≥ 5 사이클 경과? 또는 단일 작업일 ≥ 18 PR 도입 영역 존재?"
+- 트리거 충족 시 = 사이클 89 패턴 정합 (Round 1+2+3 다중 에이전트 회의 + Tier A 즉시 정정 + Tier B 사이클 N+1+ 점진)
+- 트리거 미충족 시 = default 정책 8 매 회고 cross-verify 적용 (정책 17 5번째 default 미적용)
+
+**Cross-ref**:
+- 메모리 `feedback-pr-push-direct-validation.md` 사이클 89 진화 (시간차 결함 누적 행 추가) 페어
+- 메모리 `feedback-fixture-model-sync-discipline.md` (사이클 89 신설) 페어
+- 정책 8 진화 (3) cross-verify Round 2 단위 분포 실측 의무 페어
