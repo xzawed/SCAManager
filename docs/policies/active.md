@@ -294,3 +294,86 @@ git push -u origin <branch>
 - 메모리 `feedback-pr-push-direct-validation.md` 사이클 89 진화 (시간차 결함 누적 행 추가) 페어
 - 메모리 `feedback-fixture-model-sync-discipline.md` (사이클 89 신설) 페어
 - 정책 8 진화 (3) cross-verify Round 2 단위 분포 실측 의무 페어
+
+---
+
+## 정책 18: Claude ↔ Codex 양방향 mutual 검증 의무 (사이클 93 신설)
+
+사용자 발화 (2026-05-09, 사이클 93 CI 분석 사고 직후 — 2회 진화):
+1차: *"앞으로 모든 작업의 후처리는 Codex가 검증 검토를 수행합니다. Claude 단독으로 수정 및 검증 검토에서 끝내지 않고 Codex의 동의까지 완료되야 마무리 된것으로 간주 하겠습니다."*
+2차 (양방향화): *"Claude 또는 Codex가 작업을 수행시 반드시 두 LLM모델이 OK확인을 받아야 통과합니다. 상호간의 작업 내용을 검증 검토를 수행합니다. Claude 도 Codex도 이 내용은 반드시 숙지합니다."*
+
+### 양방향 default 흐름 (대칭)
+
+| 단계 | Claude 작업 → Codex 검증 | Codex 작업 → Claude 검증 |
+|------|---------------------------|--------------------------|
+| 1. 작업 | Claude 수정/구현/회귀 가드 | Codex 반복 구현/테스트/리팩토링 |
+| 2. 1차 검증 | Claude test + lint + smoke | Codex 자가 검증 |
+| 3. **검증 의뢰 의무 명시** | "🔍 Codex 검증 의뢰" 1줄 | "🔍 Claude 검증 의뢰" 1줄 |
+| 4. 검증 결과 | Codex OK / NG 회신 | Claude OK / NG 회신 |
+| 5. NG 시 재진입 | Claude 수정 → 3 단계 반복 (≤ 3회) | Codex 수정 → 3 단계 반복 (≤ 3회) |
+| 6. 마무리 인정 | Codex OK 후 | Claude OK 후 |
+
+### 환경 통합 (현 SCAManager 기준)
+
+- 본 환경 (Claude Code in Codespaces) = OpenAI Codex CLI / npm / OPENAI_API_KEY 모두 부재 검증 (사이클 93 환경 검증)
+- **default 시나리오 A** = 사용자가 별도 환경 (Windows 호스트 / Codex Web / VSCode plugin)에서 Codex 실행 → 결과 채팅 회신
+- **사용자 회신 형식 3종 표준화**: `Codex OK` / `Codex NG: <사유>` / Codex 출력 본문 채팅 붙여넣기
+- **시나리오 C 보류** (Claude 가 본 환경에 nodejs+npm+Codex CLI 설치) = 사용자 사전 확인 의무 (정책 15 High tier — apt 권한 + OPENAI_API_KEY 발급 의향 + 정책 7 PR 단위 위반 위험)
+- **자동화 권장 영역** (≥ 2):
+  1. PR template `[ ] Codex OK 회신 받음` 체크박스 (즉시 — 위험 0)
+  2. Codex GitHub App + GitHub Actions workflow `codex-mutual-review.yml` (사이클 94+ 옵션, 사용자 confirm 후)
+- ⚠️ **`.codex/hooks.json` Windows hard-coded path** — `f:\DEVELOPMENT\...` 경로 → Codespaces (Linux) 환경에서 hook 0% 발화. mutual 자동화 검토 시 사전 인지 의무 (사이클 93 관점 5 발견).
+
+### NG 회기 ≤ 3회 default 가드
+
+| 회기 | default 동작 |
+|------|-------------|
+| 1회차 NG | Claude 수정 plan 옵션 표 → 사용자 confirm → 재진입 |
+| 2회차 NG | Claude 수정 + **1차 회기 NG 사유와 차이 분석** PR body 명시 |
+| **3회차 NG = 사용자 직접 결정 영역 escalation** | 옵션 표 (🅐 수용 머지 / 🅑 보류 / 🅒 다른 접근) → 사용자 결정 |
+
+**Why 3회 default**: 정책 8 5+1 cross-verify 패턴과 정합 (5 회기 = blind spot 가능 / 3 회기 = 대화 단위 합리적 상한). 사이클 73 #244 Copilot Autofix 5 commits 사례 학습 — 3 회기 후 자동화 안티패턴.
+
+### 회복 가드 (정책 1 진화 사이클 86 Q4 페어)
+
+작업 완료 보고 시 검증 의뢰 명시 누락 시 = **다음 응답에서 회복 의무** (자성 1줄 + 의뢰 1줄 추가). 회복 누락 시 = 다음 사이클 회고 §자성 명시 의무.
+
+**양방향 비대칭 위험**: Claude 측 회복 가드 = 메모리 `feedback-codex-post-validation-mandatory.md` 적용. Codex 측 회복 가드 = AGENTS.md hooks 또는 Codex system prompt 영역 (SCAManager 통제 외 — Codex 측 적용 검증 불가). default 보고: AGENTS.md 본문에 "Codex 환경 진입 시 본 섹션 read 의무" 명시 (PR #368 머지) — Codex 측 강제력 = 0 (자율 적용 영역).
+
+### 검증 사례 (사이클 93 첫 운영)
+
+- **PR #368** (AGENTS.md mutual 신설) — Codex OK 받고 사용자 머지 ✅
+- **PR #366** (Step 2-A + fix-up) — Codex OK 받고 사용자 머지 ✅
+- 사용자 라운드트립 부담 정량 = PR당 ~수분 (양성 ROI 검증)
+- 사이클 93 CI 분석 사고 (Claude 단독 false-positive) 차단 가치 ≫ 라운드트립 비용
+- **net positive 검증** (1 사이클 데이터) — ≥ 5 사이클 누적 시 ROI 재검증 의무 (정책 17 5번 default 페어)
+
+### 운영 P0 가드 영역 (3건 — 5+1 검토 도출)
+
+| # | P0 영역 | 본문 명시 가드 |
+|---|--------|--------------|
+| 1 | mutual ↔ 5+1 cross-verify 중복 오해 | "Codex OK 받았으니 5+1 6차 생략 OK" 단정 X — 양 layer 독립 의무 |
+| 2 | 5+1 dispatch 에 Codex 슬롯 추가 | self-contained 보호 깨짐 + 병렬성 손상 — 5+1 = Claude 내부 / mutual = 결과물 검증 시점 분리 |
+| 3 | 사이클 종료 = 사용자 신호만으로 종료 | 정책 5 강화 회귀 — 3 조건 AND 의무 (사용자 + Claude OK + Codex OK) |
+
+### 4-way Single Source of Truth + sync 가드
+
+| 영역 | 본문 위치 | sync 트리거 |
+|------|---------|-----------|
+| default 흐름 본문 | AGENTS.md §"Claude ↔ Codex 양방향 mutual 검증 의무" | 흐름 변경 시 4-way sync 의무 |
+| CLAUDE.md 정책 18 default rule | CLAUDE.md §"사용자 협업 정책" 정책 17 직후 | default rule 변경 시 sync |
+| detail · 검증 사례 · Why · How | docs/policies/active.md §"정책 18" (본 섹션) | detail 영역 변경 시 sync |
+| 진화 default 추적 | docs/policies/history.md §"보존 영역" — 정책 18 entry | 사이클 94+ 진화 시 추가 |
+| Claude 측 숙지 | 메모리 `feedback-codex-post-validation-mandatory.md` | 매 사이클 30초 grep 의무 |
+
+**5-way sync 가드** — 본문 충돌 시 **CLAUDE.md 정책 18 우선** (정책 일관성 — Claude 가 SCAManager 운영 주체).
+
+### Cross-ref
+
+- 정책 5 강화 페어 (사이클 종료 신호 = 두 LLM 동의 의무 구성요소)
+- 정책 8 페어 (5+1 cross-verify ↔ mutual 2-layer 격리 의무)
+- 정책 9 페어 (회고 자유 발언 = Claude 단독 / 회고 결과물 = Codex 검증 의뢰 의무)
+- 정책 17 5번 default 페어 (정기 검증 ≥ 5 사이클 ↔ mutual 매 PR 시점 차별)
+- 메모리 `feedback-codex-post-validation-mandatory.md` (Claude 측 숙지)
+- 메모리 `feedback-pr-scoped-ci-endpoint-pattern.md` (사이클 93 사고 학습 페어)
