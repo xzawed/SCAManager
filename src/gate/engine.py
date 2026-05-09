@@ -489,6 +489,21 @@ async def _enqueue_merge_retry(  # pylint: disable=too-many-arguments
         )
 
 
+def _resolve_legacy_merge_state(ok: bool, outcome) -> tuple[str, "datetime | None"]:
+    """legacy auto-merge state 분류 — 사이클 93 PR-B (S3776 분리).
+
+    Resolve legacy merge state (Cycle 93 PR-B — extracted to reduce S3776).
+    - native enable 성공 → ENABLED_PENDING_MERGE (enabled_at = now)
+    - REST 폴백 성공 → DIRECT_MERGED (enabled_at = None)
+    - 실패 → LEGACY (enabled_at = None — state 분류 의미 없음)
+    """
+    if ok and outcome.path == PATH_NATIVE_ENABLE:
+        return _states.ENABLED_PENDING_MERGE, datetime.now(timezone.utc)
+    if ok:
+        return _states.DIRECT_MERGED, None
+    return _states.LEGACY, None
+
+
 async def _run_auto_merge_legacy(  # pylint: disable=too-many-arguments,too-many-locals
     config: RepoConfigData,
     github_token: str,
@@ -515,17 +530,9 @@ async def _run_auto_merge_legacy(  # pylint: disable=too-many-arguments,too-many
         )
         ok, reason = outcome.ok, outcome.reason
 
-        # Phase 3 PR-B1: native enable success → enabled_pending_merge,
-        # REST 폴백 즉시 성공 → direct_merged. 실패는 state="legacy" 기본값 유지.
-        if ok and outcome.path == PATH_NATIVE_ENABLE:
-            new_state = _states.ENABLED_PENDING_MERGE
-            enabled_at = datetime.now(timezone.utc)
-        elif ok:
-            new_state = _states.DIRECT_MERGED
-            enabled_at = None
-        else:
-            new_state = _states.LEGACY  # 실패 — state 분류 의미 없음
-            enabled_at = None
+        # Phase 3 PR-B1: state 분류 분리 (사이클 93 PR-B — S3776 16→<15)
+        # state derivation extracted to helper (Cycle 93 PR-B — S3776 16→<15)
+        new_state, enabled_at = _resolve_legacy_merge_state(ok, outcome)
 
         # Phase F.1: 모든 시도 DB 기록 — 관측 실패가 파이프라인을 중단시키지 않도록
         # Phase F.1: Record every attempt in DB — observability failures must not interrupt the pipeline.
