@@ -28,3 +28,7 @@ ignore:
   - "alembic/versions/"
   - "src/templates/"
   - "setup.py"
+  # 사이클 93 Step 2 — src/scripts/ = production import X (사용자 로컬 1회 실행 도구).
+  # Cycle 93 Step 2 — src/scripts/ is NOT a production import (local one-shot tool).
+  # README.md 명시: "본 디렉토리는 production 의존성 X". coverage 측정 영역 외.
+  - "src/scripts/"
