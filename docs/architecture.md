@@ -10,7 +10,8 @@ src/
 ├── static/
 │   ├── vendor/chart.umd.min.js  # Chart.js 4.4.0 UMD min vendoring
 │   ├── manifest.json            # PWA manifest (Cycle 81 PR-A)
-│   └── icons/icon-{192,512}.svg # PWA maskable icons
+│   ├── icons/icon-{192,512}.svg # PWA maskable icons
+│   └── css/{tokens,themes}.css  # Foundation 디자인 토큰 + 4-테마 정의 (Cycle 93 Step 1, base.html 외부화)
 ├── config.py                    # pydantic-settings 환경변수 관리, postgres:// URL 자동 변환
 ├── constants.py                 # 전역 상수 단일 출처 — 점수배점/감점가중치/AI기본값/등급/알림한도/HTTP타임아웃/캐시TTL
 ├── crypto.py                    # encrypt_token()/decrypt_token() — TOKEN_ENCRYPTION_KEY

@@ -1787,23 +1787,38 @@ def _read_template(name: str) -> str:
     return (_TEMPLATES_DIR / name).read_text(encoding="utf-8")
 
 
+# 사이클 93 Step 1: Foundation 토큰 + 4-테마 외부화 (base.html → src/static/css/)
+# Cycle 93 Step 1: Foundation tokens + 4 themes externalized.
+_STATIC_CSS_DIR = Path(__file__).resolve().parents[3] / "src" / "static" / "css"
+
+
+def _read_css(name: str) -> str:
+    """src/static/css/<name>.css 내용 반환 — 외부화된 토큰/테마 회귀 가드 헬퍼."""
+    return (_STATIC_CSS_DIR / name).read_text(encoding="utf-8")
+
+
 def test_phantom_token_aliases_in_root():
     """PR #169 cleanup 회귀 가드 — :root 에 환각 토큰 alias 5종 보존.
 
     --bg-hover / --card-bg / --text (Step A) +
-    --accent-blue / --c-warning (PR-1 cleanup) 이 base.html :root 에 정의돼야.
+    --accent-blue / --c-warning (PR-1 cleanup) 이 정의돼야.
+    사이클 93 Step 1: base.html → tokens.css 외부화 (검사 위치 갱신).
     """
-    base = _read_template("base.html")
+    tokens = _read_css("tokens.css")
     for token in ("--bg-hover:", "--card-bg:", "--text:", "--accent-blue:", "--c-warning:"):
-        assert token in base, f"환각 토큰 alias {token} 가 base.html :root 에서 누락"
+        assert token in tokens, f"환각 토큰 alias {token} 가 tokens.css :root 에서 누락"
 
 
 def test_warning_token_defined_in_all_themes():
-    """PR #167 회귀 가드 — --warning 토큰이 4-테마 모두에 정의."""
-    base = _read_template("base.html")
-    assert base.count("--warning:") >= 3, (
+    """PR #167 회귀 가드 — --warning 토큰이 4-테마 모두에 정의.
+
+    사이클 93 Step 1: base.html → themes.css 외부화 (검사 위치 갱신).
+    dark / light / glass 3 테마 직접 정의 + claude-dark = alias (var(--claude-warning)).
+    """
+    themes = _read_css("themes.css")
+    assert themes.count("--warning:") >= 3, (
         f"--warning 토큰 정의가 부족 (3개 이상 기대 — dark/light/glass): "
-        f"{base.count('--warning:')}회"
+        f"{themes.count('--warning:')}회"
     )
 
 
@@ -1812,16 +1827,86 @@ def test_claude_dark_settings_tokens_defined():
 
     --grad-gate/merge/notify/hook + --title-gradient + --btn-gate-active-* +
     --save-btn-* + --hint-* + --hook-btn-* 가 claude-dark 블록에 있어야.
+    사이클 93 Step 1: base.html → themes.css 외부화 (검사 위치 갱신).
     """
-    base = _read_template("base.html")
-    # claude-dark 블록 안에서 --grad-gate 정의 확인
-    cd_idx = base.find('body[data-theme="claude-dark"]')
-    assert cd_idx != -1, "claude-dark 블록 누락"
-    cd_block_end = base.find("}", cd_idx + 100)  # 대략적 블록 끝
-    cd_block = base[cd_idx:cd_block_end + 200]  # 약간 여유
+    themes = _read_css("themes.css")
+    cd_idx = themes.find('body[data-theme="claude-dark"]')
+    assert cd_idx != -1, "themes.css 에 claude-dark alias 블록 누락"
+    cd_block_end = themes.find("\n}", cd_idx)
+    assert cd_block_end != -1, "claude-dark alias 블록의 닫는 } 미발견"
+    cd_block = themes[cd_idx:cd_block_end]
     for token in ("--grad-gate:", "--save-btn-bg:", "--hint-bg:", "--hook-btn-tx:"):
         assert token in cd_block, (
-            f"claude-dark 블록에 {token} 누락 — settings 페이지 시각 깨짐 위험"
+            f"claude-dark alias 블록에 {token} 누락 — settings 페이지 시각 깨짐 위험"
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# 사이클 93 Step 1 신규 회귀 가드 (정책 4 — 단언 + 회귀 가드 동시 머지)
+# Cycle 93 Step 1 NEW guards (Policy 4 — assertion + guard same PR)
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def test_external_css_links_in_base_html():
+    """사이클 93 Step 1 회귀 가드 — base.html 이 외부 토큰/테마 CSS 링크.
+
+    토큰 정의를 외부화한 후 base.html 이 두 파일을 <link> 로 로드해야 함.
+    누락 시 모든 페이지에서 var(--*) 가 invalid → 시각 전부 깨짐.
+    """
+    base = _read_template("base.html")
+    assert '/static/css/tokens.css' in base, "base.html 에 tokens.css 링크 누락"
+    assert '/static/css/themes.css' in base, "base.html 에 themes.css 링크 누락"
+
+
+def test_crimson_pro_removed():
+    """사이클 93 Step 1 회귀 가드 — Crimson Pro 폐기 (한글 글리프 미지원).
+
+    사용자 결정 3 (★) = Pretendard 단일화. Google Fonts <link> 에 family=Crimson 미포함.
+    """
+    base = _read_template("base.html")
+    # <link> 태그 내 Crimson Pro family 미포함 확인 (코멘트 영역은 OK)
+    link_lines = [line for line in base.splitlines() if 'fonts.googleapis.com/css' in line]
+    assert link_lines, "Google Fonts <link> 자체가 누락"
+    for line in link_lines:
+        assert 'Crimson' not in line, f"Crimson Pro 잔존 — Google Fonts <link>: {line}"
+
+
+def test_jetbrains_mono_globally_applied():
+    """사이클 93 Step 1 회귀 가드 — code/pre 에 var(--claude-font-mono) 글로벌 적용.
+
+    cross-verify 발견 = 사이클 92 까지 폰트 인프라 100% 미사용. 본 PR 적용 후 회귀 0.
+    """
+    base = _read_template("base.html")
+    assert "code, pre, kbd, samp" in base, "code/pre 글로벌 폰트 룰 누락"
+    # code 단일 룰에서 'Menlo' 인라인 사라졌는지 확인
+    assert "'Menlo', 'Consolas', monospace" not in base, (
+        "Menlo 인라인 fallback 잔존 — var(--claude-font-mono) 토큰 사용 의무"
+    )
+
+
+def test_foundation_tokens_present():
+    """사이클 93 Step 1 회귀 가드 — Phase 2 Foundation 신규 토큰 9종.
+
+    elevation 5-step + motion 3-duration + display 3-scale + accent-glow + mesh-bg.
+    """
+    tokens = _read_css("tokens.css")
+    themes = _read_css("themes.css")
+
+    # Theme-agnostic 토큰 (tokens.css)
+    for token in (
+        "--elev-1:", "--elev-2:", "--elev-3:", "--elev-4:", "--elev-inset:",
+        "--dur-fast:", "--dur-base:", "--dur-slow:",
+        "--ease-out-expo:", "--ease-spring:",
+        "--fs-display-sm:", "--fs-display-md:", "--fs-display-lg:",
+        "--tracking-tight:",
+        "--blur-sm:", "--blur-md:", "--blur-lg:",
+    ):
+        assert token in tokens, f"tokens.css 에 신규 Foundation 토큰 {token} 누락"
+
+    # Theme-dependent 토큰 (themes.css 4 테마 모두)
+    for token in ("--mesh-bg:", "--accent-glow:"):
+        assert themes.count(token) >= 4, (
+            f"themes.css 에 {token} 4-테마 정의 부족 (실측 {themes.count(token)}회 — 4 이상 기대)"
         )
 
 

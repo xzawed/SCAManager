@@ -1,0 +1,132 @@
+/* ============================================================================
+ * SCAManager — Foundation Design Tokens
+ * 외부화 일자: 2026-05-09 (사이클 93 Step 1 — UI Foundation PR)
+ * Externalized: 2026-05-09 (Cycle 93 Step 1 — UI Foundation PR)
+ *
+ * 본 파일은 테마 무관 공통 토큰만 포함. 테마별 토큰 = themes.css 참조.
+ * This file holds theme-agnostic tokens only. Theme-specific = themes.css.
+ *
+ * 추가 시 의무:
+ * - 새 토큰은 var(--*) 형태로만 사용 (#hex 직접 금지 — .claude/rules/ui.md L24)
+ * - 테마 의존 토큰은 themes.css 4 블록 모두에 정의 (L30 매트릭스)
+ * - 색상 의미 = --success / --warning / --danger 3종 통일 (L29)
+ * ========================================================================== */
+
+:root {
+  /* ── 레거시 호환 (기존 페이지 의존) ─────────────────────────────────────
+   * Legacy compat — kept for existing page consumers; do NOT remove */
+  --radius-card: 10px;
+  --radius-btn:  7px;
+  --transition:  0.18s ease;
+
+  /* ── 스페이싱 스케일 ───────────────────────────────────────────────────
+   * Spacing scale */
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-7: 32px; --space-8: 48px;
+
+  /* ── 폰트 크기 스케일 (UI 본문) ────────────────────────────────────────
+   * Body / UI font scale */
+  --fs-xs: 12px; --fs-sm: 13px; --fs-md: 14px; --fs-base: 15px;
+  --fs-lg: 16px; --fs-xl: 18px; --fs-2xl: 20px; --fs-3xl: 24px;
+
+  /* ── Phase 2 신규: Display 타이포그래피 스케일 ────────────────────────
+   * Phase 2 NEW: Display typography scale (hero / page-title)
+   * 기존 --fs-3xl (24px) 까지만 있어 모든 페이지가 "관리 페이지" 느낌.
+   * Hero/landing 무드를 위한 32/44/60px 추가. */
+  --fs-display-sm: 32px;
+  --fs-display-md: 44px;
+  --fs-display-lg: 60px;
+  --tracking-tight:   -0.02em;
+  --tracking-tighter: -0.025em;
+  --line-height-display: 1.05;
+
+  /* ── 반경 스케일 ───────────────────────────────────────────────────────
+   * Radius scale */
+  --radius-xs: 4px; --radius-sm: 6px; --radius-md: 10px;
+  --radius-lg: 14px; --radius-pill: 999px;
+
+  /* ── 레거시 그림자 (기존 페이지 의존) ─────────────────────────────────
+   * Legacy shadow scale (kept for existing consumers) */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.1), 0 1px 2px rgba(0,0,0,.07);
+  --shadow-md: 0 4px 16px rgba(0,0,0,.14);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,.22);
+
+  /* ── Phase 2 신규: Elevation 5-step (CodeRabbit/Linear 깊이 시스템) ───
+   * Phase 2 NEW: 5-step elevation depth (CodeRabbit/Linear-style)
+   * --elev-0: 평면 / --elev-1~4: 단계적 깊이 / --elev-inset: 내부 highlight.
+   * 테마별 alpha 차별 = themes.css 에서 override. */
+  --elev-0:     none;
+  --elev-1:     0 1px 2px rgba(0,0,0,.04), 0 1px 3px rgba(0,0,0,.06);
+  --elev-2:     0 2px 4px rgba(0,0,0,.04), 0 4px 8px rgba(0,0,0,.06);
+  --elev-3:     0 4px 8px rgba(0,0,0,.05), 0 8px 16px rgba(0,0,0,.08);
+  --elev-4:     0 8px 16px rgba(0,0,0,.06), 0 16px 32px rgba(0,0,0,.10);
+  --elev-inset: inset 0 1px 0 rgba(255,255,255,.04);
+
+  /* ── Phase 2 신규: Motion duration + easing ───────────────────────────
+   * Phase 2 NEW: motion scale
+   * 기존 --transition (0.18s ease) 단일 → 3-step + 3 curve.
+   * prefers-reduced-motion 가드는 consumer 측에서 적용 의무. */
+  --dur-fast:      120ms;
+  --dur-base:      220ms;
+  --dur-slow:      360ms;
+  --ease-out-expo: cubic-bezier(0.19, 1, 0.22, 1);
+  --ease-out:      cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring:   cubic-bezier(0.25, 1.5, 0.5, 1);
+
+  /* ── Phase 2 신규: Blur 효과 스케일 ───────────────────────────────────
+   * Phase 2 NEW: blur effect scale */
+  --blur-sm: 8px;
+  --blur-md: 16px;
+  --blur-lg: 24px;
+
+  /* ── 등급 색상 (기본값 = 다크/라이트 공통) ────────────────────────────
+   * Grade colors (default for dark/light/glass; claude-dark overrides) */
+  --grade-a: #4ade80; --grade-b: #60a5fa; --grade-c: #fbbf24;
+  --grade-d: #fb923c; --grade-f: #f87171;
+
+  /* ── 컨테이너 너비 ─────────────────────────────────────────────────────
+   * Container widths */
+  --container-lg: 1200px; --container-md: 860px; --container-sm: 560px;
+
+  /* ── Phase 1A: Claude × Linear 하이브리드 톤 ──────────────────────────
+   * 따뜻한 베이지/오렌지 (Claude warm). claude-dark 테마 = themes.css 에서 override. */
+  --claude-bg-base:      #F5F1E8;  /* warm cream */
+  --claude-bg-surface:   #FAF7F0;  /* card */
+  --claude-bg-elevated:  #FFFFFF;  /* modal/popover */
+  --claude-text-primary: #1F1E1B;  /* warm black */
+  --claude-text-muted:   #6B6862;
+  --claude-accent:       #D97757;  /* Anthropic-inspired orange */
+  --claude-accent-soft:  #E8C5A8;  /* hover/active bg */
+  --claude-border:       #E5E1D5;  /* 1px hairline */
+
+  /* ── 의미 색상 (claude tone, 채도 -20%) ────────────────────────────── */
+  --claude-success:      #9CAF88;  /* sage — A등급/성공 */
+  --claude-warning:      #D4A574;  /* sand — C등급/주의 */
+  --claude-danger:       #C84E3F;  /* muted red — F등급/실패 */
+  --claude-grade-a:      #9CAF88;
+  --claude-grade-b:      #A8A595;
+  --claude-grade-c:      #D4A574;
+  --claude-grade-d:      #C8895E;
+  --claude-grade-f:      #C84E3F;
+
+  /* ── 타이포그래피 토큰 (사이클 93 진화) ───────────────────────────────
+   * Typography tokens (Cycle 93 evolution)
+   * 사용자 결정 3 (★) = Crimson Pro 폐기 + Pretendard 우선.
+   * - heading: Pretendard (한글 글리프 자체 지원, 기존 Crimson Pro 는 한글 미지원)
+   * - body: Pretendard primary, Inter fallback (영문 강조 영역)
+   * - mono: JetBrains Mono primary (사이클 92까지 0건 사용 → 본 PR 글로벌 적용) */
+  --claude-font-heading: 'Pretendard Variable', Pretendard, system-ui, -apple-system, sans-serif;
+  --claude-font-body:    'Pretendard Variable', Pretendard, 'Inter', system-ui, -apple-system, sans-serif;
+  --claude-font-mono:    'JetBrains Mono', Menlo, Consolas, monospace;
+  --claude-line-height:  1.65;
+
+  /* ── 환각(phantom) 토큰 alias — 4-테마 자동 적용 ──────────────────────
+   * Phantom-token alias: keeps 7+ page consumers untouched (.claude/rules/ui.md L24).
+   * 7 페이지에서 --bg-hover / --card-bg / --text 참조하지만 base.html 미정의 → 다크 테마 시각 깨짐.
+   * 사용처 그대로 두고 alias 만 추가해 회귀 0. */
+  --bg-hover:    var(--table-row-hover);
+  --card-bg:     var(--bg-card);
+  --text:        var(--text-primary);
+  --accent-blue: var(--accent);    /* repo_detail.html CLI Hook 안내 배너 */
+  --c-warning:   var(--warning);   /* settings.html 잔존 토큰명 (legacy) */
+}
