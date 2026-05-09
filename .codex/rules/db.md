@@ -1,0 +1,19 @@
+---
+description: DB / 마이그레이션 작업 시 적용되는 SCAManager 코딩 규칙 (Codex용 — path-scoped)
+paths:
+  - "alembic/**"
+  - "src/models/**"
+  - "src/database.py"
+  - "src/repositories/**"
+---
+
+# DB / 마이그레이션 규칙 (Codex)
+
+- 🔴 **ORM 컬럼 추가 시 마이그레이션 필수**: `models/*.py` 에 `Column(...)` 추가 후 반드시 `make revision m="설명"` 실행. 단위 테스트(in-memory SQLite)는 마이그레이션 없이도 통과하지만, 운영 DB에는 컬럼이 없어 500 에러 발생.
+- 🔴 **`batch_alter_table` 금지**: PostgreSQL 에서 `op.create_unique_constraint('이름', '테이블', ['컬럼'])` 직접 사용.
+- **dialect 분기**: `from src.shared.alembic_dialect import is_postgresql; if not is_postgresql(op.get_bind()): return`
+- **DB 인덱스 이중 정의**: `models/*.py` 의 `__table_args__ = (Index(...),)` + `alembic/versions/` 의 `op.create_index(...)` 양쪽 모두 필수.
+- **FK ondelete CASCADE**: `analyses.id` 참조 child 4종 모두 CASCADE — 신규 child FK 추가 시 동일.
+- **DB 세션**: `get_current_user()` 는 `db.expunge(user)` 후 반환 — 관계 lazy-load 사용 금지.
+- **ThreadPoolExecutor**: `with` 문 금지 (shutdown hang) — `try/finally` + `executor.shutdown(wait=False)`.
+- **`(data.get("key") or {}).get(...)` 패턴**: GitHub 페이로드의 None-able 키 접근 시 `or {}` 정규화 필수.
