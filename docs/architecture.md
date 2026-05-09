@@ -11,7 +11,12 @@ src/
 │   ├── vendor/chart.umd.min.js  # Chart.js 4.4.0 UMD min vendoring
 │   ├── manifest.json            # PWA manifest (Cycle 81 PR-A)
 │   ├── icons/icon-{192,512}.svg # PWA maskable icons
-│   └── css/{tokens,themes}.css  # Foundation 디자인 토큰 + 4-테마 정의 (Cycle 93 Step 1, base.html 외부화)
+│   ├── css/{tokens,themes}.css  # Foundation 디자인 토큰 + 4-테마 정의 (Cycle 93 Step 1, base.html 외부화)
+│   └── illustrations/           # UI 일러스트 5장 (Cycle 93 Step 2 — 사용자 로컬 OpenAI DALL-E 3 생성)
+├── scripts/                     # 로컬 도구 (production import X) — Cycle 93 Step 2
+│   ├── illustration_prompts.py  # 5장 isometric prompt 정의 (login_hero/dashboard_empty/overview_onboarding/add_repo_hero/filter_empty)
+│   ├── generate_illustrations.py # OpenAI DALL-E 3 CLI (--all/--name/--dry-run)
+│   └── README.md                # 사용자 실행 가이드 + 비용 안내
 ├── config.py                    # pydantic-settings 환경변수 관리, postgres:// URL 자동 변환
 ├── constants.py                 # 전역 상수 단일 출처 — 점수배점/감점가중치/AI기본값/등급/알림한도/HTTP타임아웃/캐시TTL
 ├── crypto.py                    # encrypt_token()/decrypt_token() — TOKEN_ENCRYPTION_KEY
