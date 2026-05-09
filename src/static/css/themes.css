@@ -1,0 +1,221 @@
+/* ============================================================================
+ * SCAManager — 4-Theme Definitions
+ * 외부화 일자: 2026-05-09 (사이클 93 Step 1 — UI Foundation PR)
+ * Externalized: 2026-05-09 (Cycle 93 Step 1 — UI Foundation PR)
+ *
+ * 4 테마: dark (Linear) / light (Vercel) / glass (frosted) / claude-dark (warm).
+ * 신규 토큰 추가 시 4 블록 모두에 정의 의무 (.claude/rules/ui.md L30).
+ *
+ * Phase 2 신규 (본 PR):
+ * - --mesh-bg-* (테마별 radial-gradient 배경 — consumer 적용은 Step 2)
+ * - --accent-glow (테마별 accent 톤 glow — consumer 적용은 Step 2)
+ * 본 PR 범위 = 토큰 정의만. consumer 적용 = Step 2 (별도 PR, 회귀 위험 격리).
+ * ========================================================================== */
+
+/* ── Phase 1A: Claude 톤 다크 모드 토큰 (warm black) ──────────────────────────
+ *  data-theme="claude-dark" 시 활성. 기존 [data-theme="dark"] 와 별도. */
+[data-theme="claude-dark"] {
+  --claude-bg-base:      #1F1E1B;  /* warm black */
+  --claude-bg-surface:   #2A2825;
+  --claude-bg-elevated:  #33302C;
+  --claude-text-primary: #F5F1E8;
+  --claude-text-muted:   #A8A29A;
+  --claude-accent:       #E08968;
+  --claude-accent-soft:  #5C3D2E;
+  --claude-border:       #3D3A35;
+  --claude-success:      #A8BA94;
+  --claude-warning:      #DDB585;
+  --claude-danger:       #D45F50;
+}
+
+/* ── 다크 테마 (Linear 스타일) ───────────────────────────────────────────── */
+[data-theme="dark"], body:not([data-theme]) {
+  --bg-page:        #111118;
+  --bg-card:        #1c1c23;
+  --bg-nav:         #111118;
+  --bg-input:       #2a2a34;
+  --bg-input-focus: #32323e;
+  --border:         #2c2c38;
+  --border-focus:   #5e6ad2;
+  --text-primary:   #e2e2e8;
+  --text-muted:     #73737c;
+  --text-nav:       #a8a8b2;
+  --accent:         #5e6ad2;
+  --accent-hover:   #8d95e0;
+  --accent-grad:    linear-gradient(135deg, #5e6ad2, #8d95e0);
+  --success:        #4ade80;
+  --danger:         #f87171;
+  --warning:        #f59e0b;
+  --shadow:         0 4px 24px rgba(0,0,0,.5);
+  --shadow-card:    0 1px 3px rgba(0,0,0,.25), 0 0 0 1px rgba(255,255,255,.04);
+  --table-head:     #1a1a21;
+  --table-row-hover: #21212a;
+  --code-bg:        #0f0f15;
+
+  /* 설정 페이지 호환 */
+  --grad-gate:           linear-gradient(135deg, #5e6ad2, #4a57c4);
+  --grad-merge:          linear-gradient(135deg, #06b6d4, #0891b2);
+  --grad-notify:         linear-gradient(135deg, #fbbf24, #f59e0b);
+  --grad-hook:           linear-gradient(135deg, #a78bfa, #8b5cf6);
+  --title-gradient:      linear-gradient(135deg, #8d95e0, #c084fc);
+  --btn-gate-active-bg:  rgba(94,106,210,.15);
+  --btn-gate-active-bd:  #5e6ad2;
+  --btn-gate-active-tx:  #8d95e0;
+  --save-btn-bg:         linear-gradient(135deg, #5e6ad2, #4a57c4);
+  --save-btn-shadow:     rgba(94,106,210,.4);
+  --hint-bg:             rgba(255,255,255,.03);
+  --hint-border:         rgba(255,255,255,.05);
+  --hook-btn-bg:         rgba(139,92,246,.1);
+  --hook-btn-bd:         rgba(139,92,246,.3);
+  --hook-btn-tx:         #a78bfa;
+
+  /* Phase 2 신규: mesh-bg + accent-glow (consumer 미적용 — 정의만) */
+  --mesh-bg:    radial-gradient(at 20% 0%, rgba(94,106,210,0.10) 0, transparent 50%),
+                radial-gradient(at 80% 100%, rgba(192,132,252,0.08) 0, transparent 50%),
+                #111118;
+  --accent-glow: 0 0 24px rgba(94,106,210,0.35);
+}
+
+/* ── 라이트 테마 (Vercel 스타일) ─────────────────────────────────────────── */
+[data-theme="light"] {
+  --bg-page:        #f5f5f7;
+  --bg-card:        #ffffff;
+  --bg-nav:         #000000;
+  --bg-input:       #f5f5f7;
+  --bg-input-focus: #ffffff;
+  --border:         #e5e5e8;
+  --border-focus:   #5e6ad2;
+  --text-primary:   #111118;
+  --text-muted:     #8a8a96;
+  --text-nav:       #e5e5e8;
+  --accent:         #5e6ad2;
+  --accent-hover:   #4a57c4;
+  --accent-grad:    linear-gradient(135deg, #5e6ad2, #4a57c4);
+  --success:        #16a34a;
+  --danger:         #dc2626;
+  --warning:        #d97706;
+  --shadow:         0 2px 8px rgba(0,0,0,.07), 0 0 0 1px rgba(0,0,0,.04);
+  --shadow-card:    0 1px 3px rgba(0,0,0,.05), 0 0 0 1px rgba(0,0,0,.05);
+  --table-head:     #f9f9fb;
+  --table-row-hover: #f5f5f7;
+  --code-bg:        #f5f5f7;
+
+  /* 설정 페이지 호환 */
+  --grad-gate:           linear-gradient(135deg, #8d95e0, #5e6ad2);
+  --grad-merge:          linear-gradient(135deg, #22d3ee, #0891b2);
+  --grad-notify:         linear-gradient(135deg, #fcd34d, #f59e0b);
+  --grad-hook:           linear-gradient(135deg, #c4b5fd, #8b5cf6);
+  --title-gradient:      linear-gradient(135deg, #4a57c4, #7c3aed);
+  --btn-gate-active-bg:  rgba(94,106,210,.08);
+  --btn-gate-active-bd:  #5e6ad2;
+  --btn-gate-active-tx:  #5e6ad2;
+  --save-btn-bg:         linear-gradient(135deg, #5e6ad2, #7c3aed);
+  --save-btn-shadow:     rgba(94,106,210,.25);
+  --hint-bg:             #f9f9fb;
+  --hint-border:         #e5e5e8;
+  --hook-btn-bg:         rgba(124,58,237,.06);
+  --hook-btn-bd:         rgba(124,58,237,.2);
+  --hook-btn-tx:         #7c3aed;
+
+  /* Phase 2 신규: mesh-bg + accent-glow (라이트 톤, 채도 ↓) */
+  --mesh-bg:    radial-gradient(at 20% 0%, rgba(94,106,210,0.05) 0, transparent 50%),
+                radial-gradient(at 80% 100%, rgba(124,58,237,0.04) 0, transparent 50%),
+                #f5f5f7;
+  --accent-glow: 0 0 16px rgba(94,106,210,0.18);
+}
+
+/* ── 글래스모피즘 ───────────────────────────────────────────────────────── */
+[data-theme="glass"] {
+  --bg-page:        #0c0e1a;
+  --bg-card:        rgba(255,255,255,0.06);
+  --bg-nav:         rgba(12,14,26,0.9);
+  --bg-input:       rgba(255,255,255,0.07);
+  --bg-input-focus: rgba(255,255,255,0.12);
+  --border:         rgba(255,255,255,0.12);
+  --border-focus:   #8d95e0;
+  --text-primary:   #e2e2e8;
+  --text-muted:     rgba(255,255,255,0.4);
+  --text-nav:       #c8c8d4;
+  --accent:         #8d95e0;
+  --accent-hover:   #b0b8f0;
+  --accent-grad:    linear-gradient(135deg, #5e6ad2, #ec4899);
+  --success:        #4ade80;
+  --danger:         #f87171;
+  --warning:        #f59e0b;
+  --shadow:         0 8px 32px rgba(0,0,0,.5);
+  --shadow-card:    0 4px 20px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.06);
+  --table-head:     rgba(255,255,255,0.04);
+  --table-row-hover: rgba(255,255,255,0.04);
+  --code-bg:        rgba(0,0,0,0.3);
+
+  /* 설정 페이지 호환 */
+  --grad-gate:           linear-gradient(135deg, rgba(141,149,224,.9), rgba(94,106,210,.9));
+  --grad-merge:          linear-gradient(135deg, rgba(6,182,212,.9), rgba(8,145,178,.9));
+  --grad-notify:         linear-gradient(135deg, rgba(251,191,36,.9), rgba(245,158,11,.9));
+  --grad-hook:           linear-gradient(135deg, rgba(196,181,253,.9), rgba(139,92,246,.9));
+  --title-gradient:      linear-gradient(135deg, #c084fc, #f472b6);
+  --btn-gate-active-bg:  rgba(141,149,224,.18);
+  --btn-gate-active-bd:  #8d95e0;
+  --btn-gate-active-tx:  #c4b5fd;
+  --save-btn-bg:         linear-gradient(135deg, #8d95e0, #c084fc);
+  --save-btn-shadow:     rgba(192,132,252,.3);
+  --hint-bg:             rgba(255,255,255,.04);
+  --hint-border:         rgba(255,255,255,.07);
+  --hook-btn-bg:         rgba(196,181,253,.08);
+  --hook-btn-bd:         rgba(196,181,253,.25);
+  --hook-btn-tx:         #c4b5fd;
+
+  /* Phase 2 신규: mesh-bg = 기존 body[data-theme="glass"] 그라디언트 토큰화 + accent-glow */
+  --mesh-bg:    linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0c0e1a 100%);
+  --accent-glow: 0 0 32px rgba(141,149,224,0.40);
+}
+
+/* ── claude-dark (Phase 1B alias — claude-* 토큰 → 기존 토큰 매핑) ───────── */
+body[data-theme="claude-dark"] {
+  --bg-page:        var(--claude-bg-base);
+  --bg-card:        var(--claude-bg-surface);
+  --bg-nav:         var(--claude-bg-base);
+  --bg-input:       var(--claude-bg-elevated);
+  --bg-input-focus: var(--claude-accent-soft);
+  --border:         var(--claude-border);
+  --border-focus:   var(--claude-accent);
+  --text-primary:   var(--claude-text-primary);
+  --text-muted:     var(--claude-text-muted);
+  --text-nav:       var(--claude-text-muted);
+  --accent:         var(--claude-accent);
+  --accent-hover:   #F09578;
+  --accent-grad:    linear-gradient(135deg, #D97757, #F09578);
+
+  /* Phase 1C — 등급 색상 alias (sage/sand/muted-red/terracotta) */
+  --grade-a: var(--claude-grade-a);
+  --grade-b: var(--claude-grade-b);
+  --grade-c: var(--claude-grade-c);
+  --grade-d: var(--claude-grade-d);
+  --grade-f: var(--claude-grade-f);
+  --warning: var(--claude-warning);
+  --success: var(--claude-success);
+  --danger:  var(--claude-danger);
+
+  /* PR-1 C1 — settings 페이지 토큰 8종 (.claude/rules/ui.md L30 매트릭스) */
+  --grad-gate:           linear-gradient(135deg, #D97757, #B85A3D);
+  --grad-merge:          linear-gradient(135deg, #A8BA94, #8AA476);
+  --grad-notify:         linear-gradient(135deg, #DDB585, #C49566);
+  --grad-hook:           linear-gradient(135deg, #C8895E, #A86F46);
+  --title-gradient:      linear-gradient(135deg, #D97757, #DDB585);
+  --btn-gate-active-bg:  rgba(217,119,87,.15);
+  --btn-gate-active-bd:  var(--claude-accent);
+  --btn-gate-active-tx:  var(--claude-accent);
+  --save-btn-bg:         linear-gradient(135deg, #D97757, #B85A3D);
+  --save-btn-shadow:     rgba(217,119,87,.4);
+  --hint-bg:             rgba(217,119,87,.05);
+  --hint-border:         rgba(217,119,87,.15);
+  --hook-btn-bg:         rgba(200,137,94,.10);
+  --hook-btn-bd:         rgba(200,137,94,.30);
+  --hook-btn-tx:         #C8895E;
+
+  /* Phase 2 신규: warm cream mesh + terracotta glow */
+  --mesh-bg:    radial-gradient(at 20% 0%, rgba(217,119,87,0.06) 0, transparent 50%),
+                radial-gradient(at 80% 100%, rgba(221,181,133,0.05) 0, transparent 50%),
+                var(--claude-bg-base);
+  --accent-glow: 0 0 24px rgba(217,119,87,0.30);
+}

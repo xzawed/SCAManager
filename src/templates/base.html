@@ -14,238 +14,25 @@
   <title>{% block title %}SCAManager{% endblock %}</title>
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" crossorigin="anonymous">
-  <!-- Phase 1B (UI 개편): Claude × Linear 폰트 — Crimson Pro (serif H) + Inter (body) + JetBrains Mono (code).
-       토큰 정의는 base.html :root --claude-font-* 참조. 적용은 본 PR 의 일부 마이크로카피 + 후속 Phase 1C/2 에서 점진. -->
+  <!-- 사이클 93 Step 1: Crimson Pro 제거 (한글 글리프 미지원 → Pretendard 단일화).
+       Cycle 93 Step 1: Crimson Pro removed (no Hangul glyphs → consolidate to Pretendard).
+       Inter (body fallback) + JetBrains Mono (code) 보존. -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+  <!-- 사이클 93 Step 1: Foundation 토큰 + 4-테마 외부화 (base.html 999→780줄 슬림).
+       Cycle 93 Step 1: Foundation tokens + 4 themes externalized.
+       tokens.css = 테마 무관 / themes.css = 4 테마 정의. 신규 토큰: elevation 5-step + motion + display + mesh-bg + accent-glow. -->
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/themes.css">
   <style>
-    /* ── 공통 변수 (이전 버전 호환 유지) ───────── */
-    :root {
-      --radius-card: 10px;
-      --radius-btn:  7px;
-      --transition:  0.18s ease;
-
-      /* 스페이싱 스케일 */
-      --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
-      --space-5: 20px; --space-6: 24px; --space-7: 32px; --space-8: 48px;
-
-      /* 폰트 크기 스케일 */
-      --fs-xs: 12px; --fs-sm: 13px; --fs-md: 14px; --fs-base: 15px;
-      --fs-lg: 16px; --fs-xl: 18px; --fs-2xl: 20px; --fs-3xl: 24px;
-
-      /* 반경 스케일 */
-      --radius-xs: 4px; --radius-sm: 6px; --radius-md: 10px;
-      --radius-lg: 14px; --radius-pill: 999px;
-
-      /* 그림자 스케일 */
-      --shadow-sm: 0 1px 3px rgba(0,0,0,.1), 0 1px 2px rgba(0,0,0,.07);
-      --shadow-md: 0 4px 16px rgba(0,0,0,.14);
-      --shadow-lg: 0 8px 32px rgba(0,0,0,.22);
-
-      /* 등급 색상 */
-      --grade-a: #4ade80; --grade-b: #60a5fa; --grade-c: #fbbf24;
-      --grade-d: #fb923c; --grade-f: #f87171;
-
-      /* 컨테이너 너비 */
-      --container-lg: 1200px; --container-md: 860px; --container-sm: 560px;
-
-      /* ── Phase 1A (UI 개편): Claude × Linear 하이브리드 토큰 ─────────────
-       *  설계서: docs/design/2026-05-01-ui-redesign-claude-linear-hybrid.md
-       *  본 PR 은 신규 토큰 정의만 추가 — 적용은 Phase 1B 부터 (회귀 위험 0).
-       *  기존 토큰 (--bg-page / --grade-* 등) 은 호환성 유지 — Phase 1C 에서
-       *  alias 로 재정의 예정.
-       *  Phase 1A: define new tokens (no consumers yet) — zero regression. */
-
-      /* 따뜻한 베이지/오렌지 (Claude 톤) — 채도 -20%, 도서관 분위기 */
-      --claude-bg-base:      #F5F1E8;  /* warm cream */
-      --claude-bg-surface:   #FAF7F0;  /* card */
-      --claude-bg-elevated:  #FFFFFF;  /* modal/popover */
-      --claude-text-primary: #1F1E1B;  /* warm black */
-      --claude-text-muted:   #6B6862;
-      --claude-accent:       #D97757;  /* Anthropic-inspired orange */
-      --claude-accent-soft:  #E8C5A8;  /* hover/active bg */
-      --claude-border:       #E5E1D5;  /* 1px hairline */
-
-      /* 의미 색상 — 등급/상태 (채도 -20%) */
-      --claude-success:      #9CAF88;  /* sage — A등급/성공 */
-      --claude-warning:      #D4A574;  /* sand — C등급/주의 */
-      --claude-danger:       #C84E3F;  /* muted red — F등급/실패 */
-      --claude-grade-a:      #9CAF88;
-      --claude-grade-b:      #A8A595;
-      --claude-grade-c:      #D4A574;
-      --claude-grade-d:      #C8895E;
-      --claude-grade-f:      #C84E3F;
-
-      /* 타이포그래피 — Crimson Pro (serif H) + Inter (body) + JetBrains Mono
-       * 폰트 import 는 Phase 1B 적용 시점에 <link> 추가 — 본 PR 은 fallback 만 */
-      --claude-font-heading: 'Crimson Pro', Charter, Georgia, serif;
-      --claude-font-body:    'Inter', system-ui, -apple-system, sans-serif;
-      --claude-font-mono:    'JetBrains Mono', Menlo, Consolas, monospace;
-      --claude-line-height:  1.65;
-
-      /* Step A (UI 감사): 환각(phantom) 토큰 alias — 4-테마 자동 적용
-       * Step A: phantom-token aliases — auto-resolved per active theme via CSS lazy var()
-       * 7 페이지에서 var(--bg-hover) / var(--card-bg) / var(--text) 참조하지만 base.html
-       * 미정의 → 다크 테마에서 시각 깨짐. 사용처 그대로 두고 alias 만 추가해 회귀 0.
-       * Phantom-token alias: keeps consumers untouched; 0-regression compatibility shim. */
-      --bg-hover: var(--table-row-hover);
-      --card-bg:  var(--bg-card);
-      --text:     var(--text-primary);
-      /* PR-1 C2: 후속 환각 토큰 alias 2종 — repo_detail / settings 잔존 참조 흡수
-         PR-1 C2: additional phantom-token aliases for repo_detail / settings */
-      --accent-blue: var(--accent);   /* repo_detail.html CLI Hook 안내 배너 */
-      --c-warning:   var(--warning);  /* settings.html 잔존 토큰명 (legacy) */
-    }
-
-    /* ── Phase 1A: Claude 톤 다크 모드 토큰 (warm black) ──────────────────
-     *  data-theme="claude-dark" 시 활성. 기존 [data-theme="dark"] 와 별도 —
-     *  Phase 1B 에서 토글 UI 추가 후 운영 시작. 본 PR 은 정의만. */
-    [data-theme="claude-dark"] {
-      --claude-bg-base:      #1F1E1B;  /* warm black */
-      --claude-bg-surface:   #2A2825;
-      --claude-bg-elevated:  #33302C;
-      --claude-text-primary: #F5F1E8;
-      --claude-text-muted:   #A8A29A;
-      --claude-accent:       #E08968;
-      --claude-accent-soft:  #5C3D2E;
-      --claude-border:       #3D3A35;
-      --claude-success:      #A8BA94;
-      --claude-warning:      #DDB585;
-      --claude-danger:       #D45F50;
-    }
-
-    /* ── 다크 테마 (Linear 스타일) ─────────────── */
-    [data-theme="dark"], body:not([data-theme]) {
-      --bg-page:        #111118;
-      --bg-card:        #1c1c23;
-      --bg-nav:         #111118;
-      --bg-input:       #2a2a34;
-      --bg-input-focus: #32323e;
-      --border:         #2c2c38;
-      --border-focus:   #5e6ad2;
-      --text-primary:   #e2e2e8;
-      --text-muted:     #73737c;
-      --text-nav:       #a8a8b2;
-      --accent:         #5e6ad2;
-      --accent-hover:   #8d95e0;
-      --accent-grad:    linear-gradient(135deg, #5e6ad2, #8d95e0);
-      --success:        #4ade80;
-      --danger:         #f87171;
-      /* Step D: --warning 토큰 신규 — 이전엔 페이지마다 #f59e0b/#fbbf24 하드코딩
-         Step D: new --warning token — was hardcoded as #f59e0b in 5+ places */
-      --warning:        #f59e0b;
-      --shadow:         0 4px 24px rgba(0,0,0,.5);
-      --shadow-card:    0 1px 3px rgba(0,0,0,.25), 0 0 0 1px rgba(255,255,255,.04);
-      --table-head:     #1a1a21;
-      --table-row-hover: #21212a;
-      --code-bg:        #0f0f15;
-      /* 설정 페이지 호환 */
-      --grad-gate:           linear-gradient(135deg, #5e6ad2, #4a57c4);
-      /* P1-5: --grad-merge 녹색 → cyan/teal 로 변경 — --success (녹색 토글/conn-dot) 와
-         색 의미 분리 ("이벤트 후 자동화" 카드 헤더가 "성공 상태"로 오인되던 문제 해소)
-         P1-5: change green → cyan/teal to disambiguate from --success (toggle/conn-dot) */
-      --grad-merge:          linear-gradient(135deg, #06b6d4, #0891b2);
-      --grad-notify:         linear-gradient(135deg, #fbbf24, #f59e0b);
-      --grad-hook:           linear-gradient(135deg, #a78bfa, #8b5cf6);
-      --title-gradient:      linear-gradient(135deg, #8d95e0, #c084fc);
-      --btn-gate-active-bg:  rgba(94,106,210,.15);
-      --btn-gate-active-bd:  #5e6ad2;
-      --btn-gate-active-tx:  #8d95e0;
-      --save-btn-bg:         linear-gradient(135deg, #5e6ad2, #4a57c4);
-      --save-btn-shadow:     rgba(94,106,210,.4);
-      --hint-bg:             rgba(255,255,255,.03);
-      --hint-border:         rgba(255,255,255,.05);
-      --hook-btn-bg:         rgba(139,92,246,.1);
-      --hook-btn-bd:         rgba(139,92,246,.3);
-      --hook-btn-tx:         #a78bfa;
-    }
-
-    /* ── 라이트 테마 (Vercel 스타일) ──────────── */
-    [data-theme="light"] {
-      --bg-page:        #f5f5f7;
-      --bg-card:        #ffffff;
-      --bg-nav:         #000000;
-      --bg-input:       #f5f5f7;
-      --bg-input-focus: #ffffff;
-      --border:         #e5e5e8;
-      --border-focus:   #5e6ad2;
-      --text-primary:   #111118;
-      --text-muted:     #8a8a96;
-      --text-nav:       #e5e5e8;
-      --accent:         #5e6ad2;
-      --accent-hover:   #4a57c4;
-      --accent-grad:    linear-gradient(135deg, #5e6ad2, #4a57c4);
-      --success:        #16a34a;
-      --danger:         #dc2626;
-      /* Step D: --warning 라이트 테마 — Tailwind amber-600 */
-      --warning:        #d97706;
-      --shadow:         0 2px 8px rgba(0,0,0,.07), 0 0 0 1px rgba(0,0,0,.04);
-      --shadow-card:    0 1px 3px rgba(0,0,0,.05), 0 0 0 1px rgba(0,0,0,.05);
-      --table-head:     #f9f9fb;
-      --table-row-hover: #f5f5f7;
-      --code-bg:        #f5f5f7;
-      /* 설정 페이지 호환 */
-      --grad-gate:           linear-gradient(135deg, #8d95e0, #5e6ad2);
-      /* P1-5: cyan/teal — --success 와 분리 / disambiguate from --success */
-      --grad-merge:          linear-gradient(135deg, #22d3ee, #0891b2);
-      --grad-notify:         linear-gradient(135deg, #fcd34d, #f59e0b);
-      --grad-hook:           linear-gradient(135deg, #c4b5fd, #8b5cf6);
-      --title-gradient:      linear-gradient(135deg, #4a57c4, #7c3aed);
-      --btn-gate-active-bg:  rgba(94,106,210,.08);
-      --btn-gate-active-bd:  #5e6ad2;
-      --btn-gate-active-tx:  #5e6ad2;
-      --save-btn-bg:         linear-gradient(135deg, #5e6ad2, #7c3aed);
-      --save-btn-shadow:     rgba(94,106,210,.25);
-      --hint-bg:             #f9f9fb;
-      --hint-border:         #e5e5e8;
-      --hook-btn-bg:         rgba(124,58,237,.06);
-      --hook-btn-bd:         rgba(124,58,237,.2);
-      --hook-btn-tx:         #7c3aed;
-    }
-
-    /* ── 글래스모피즘 ─────────────────────────── */
-    [data-theme="glass"] {
-      --bg-page:        #0c0e1a;
-      --bg-card:        rgba(255,255,255,0.06);
-      --bg-nav:         rgba(12,14,26,0.9);
-      --bg-input:       rgba(255,255,255,0.07);
-      --bg-input-focus: rgba(255,255,255,0.12);
-      --border:         rgba(255,255,255,0.12);
-      --border-focus:   #8d95e0;
-      --text-primary:   #e2e2e8;
-      --text-muted:     rgba(255,255,255,0.4);
-      --text-nav:       #c8c8d4;
-      --accent:         #8d95e0;
-      --accent-hover:   #b0b8f0;
-      --accent-grad:    linear-gradient(135deg, #5e6ad2, #ec4899);
-      --success:        #4ade80;
-      --danger:         #f87171;
-      /* Step D: --warning 글래스 테마 — 다크와 동일 hex */
-      --warning:        #f59e0b;
-      --shadow:         0 8px 32px rgba(0,0,0,.5);
-      --shadow-card:    0 4px 20px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.06);
-      --table-head:     rgba(255,255,255,0.04);
-      --table-row-hover: rgba(255,255,255,0.04);
-      --code-bg:        rgba(0,0,0,0.3);
-      /* 설정 페이지 호환 */
-      --grad-gate:           linear-gradient(135deg, rgba(141,149,224,.9), rgba(94,106,210,.9));
-      /* P1-5: cyan/teal — --success 와 분리 / disambiguate from --success */
-      --grad-merge:          linear-gradient(135deg, rgba(6,182,212,.9), rgba(8,145,178,.9));
-      --grad-notify:         linear-gradient(135deg, rgba(251,191,36,.9), rgba(245,158,11,.9));
-      --grad-hook:           linear-gradient(135deg, rgba(196,181,253,.9), rgba(139,92,246,.9));
-      --title-gradient:      linear-gradient(135deg, #c084fc, #f472b6);
-      --btn-gate-active-bg:  rgba(141,149,224,.18);
-      --btn-gate-active-bd:  #8d95e0;
-      --btn-gate-active-tx:  #c4b5fd;
-      --save-btn-bg:         linear-gradient(135deg, #8d95e0, #c084fc);
-      --save-btn-shadow:     rgba(192,132,252,.3);
-      --hint-bg:             rgba(255,255,255,.04);
-      --hint-border:         rgba(255,255,255,.07);
-      --hook-btn-bg:         rgba(196,181,253,.08);
-      --hook-btn-bd:         rgba(196,181,253,.25);
-      --hook-btn-tx:         #c4b5fd;
-    }
+    /* ──────────────────────────────────────────────────────────────────────
+     * 사이클 93 Step 1 — Foundation 토큰 + 4-테마 정의는 외부 CSS 파일로 분리.
+     * Cycle 93 Step 1 — tokens + 4 themes externalized to /static/css/.
+     *   - tokens.css: 테마 무관 (spacing/fs/elevation/motion/display/...)
+     *   - themes.css: 4 테마 (dark/light/glass/claude-dark)
+     * 본 <style> 블록은 글로벌 reset + body + nav + 모든 component CSS 보존.
+     * ────────────────────────────────────────────────────────────────────── */
 
     /* ── 리셋 & 기본 ──────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -255,8 +42,7 @@
       border-radius: var(--radius-xs);
     }
     body {
-      font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont,
-                   'Segoe UI', system-ui, sans-serif;
+      font-family: var(--claude-font-body);
       background-color: var(--bg-page);
       color: var(--text-primary);
       transition: background-color var(--transition), color var(--transition);
@@ -265,63 +51,18 @@
       line-height: 1.6;
       -webkit-font-smoothing: antialiased;
     }
+    /* 사이클 93 Step 1: heading 글로벌 폰트 토큰 적용 (page-level CSS 가 override 가능 — specificity 보존).
+     * Cycle 93 Step 1: global heading font token (page-level CSS still overrides — specificity preserved). */
+    h1, h2, h3, h4, h5, h6 {
+      font-family: var(--claude-font-heading);
+      letter-spacing: var(--tracking-tight);
+    }
     body[data-theme="glass"] {
       background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0c0e1a 100%);
       background-attachment: fixed;
     }
-    /* Phase 1B (UI 개편): Claude 다크 — claude-* 토큰을 기존 토큰에 alias.
-     * 기존 페이지 마크업/클래스 무변경으로 즉시 적용. 본 PR 시점에는 토글
-     * 옵션만 추가 — 사용자가 명시적으로 선택했을 때만 활성. */
-    body[data-theme="claude-dark"] {
-      --bg-page:        var(--claude-bg-base);
-      --bg-card:        var(--claude-bg-surface);
-      --bg-nav:         var(--claude-bg-base);
-      --bg-input:       var(--claude-bg-elevated);
-      --bg-input-focus: var(--claude-accent-soft);
-      --border:         var(--claude-border);
-      --border-focus:   var(--claude-accent);
-      --text-primary:   var(--claude-text-primary);
-      --text-muted:     var(--claude-text-muted);
-      --text-nav:       var(--claude-text-muted);
-      --accent:         var(--claude-accent);
-      --accent-hover:   #F09578;  /* claude-accent 의 라이트 변형 */
-      --accent-grad:    linear-gradient(135deg, #D97757, #F09578);
-
-      /* Phase 1C (UI 개편) — claude-dark 테마에서 등급 색상 alias.
-       * 기존 토큰 (--grade-a 등) 을 claude 톤 (sage/sand/muted red) 로 재정의.
-       * .grade-a/.grade-b/... 클래스 + Chart.js 의 var(--grade-*) 참조 모두
-       * 자동 적용 (마크업 무변경). 기본 다크/라이트 테마는 영향 0. */
-      --grade-a: var(--claude-grade-a);  /* sage #9CAF88 */
-      --grade-b: var(--claude-grade-b);  /* taupe #A8A595 */
-      --grade-c: var(--claude-grade-c);  /* sand #D4A574 */
-      --grade-d: var(--claude-grade-d);  /* terracotta #C8895E */
-      --grade-f: var(--claude-grade-f);  /* muted red #C84E3F */
-      /* Step D: claude-dark 의 --warning 도 sand 톤으로 alias */
-      --warning: var(--claude-warning);  /* sand #DDB585 */
-      --success: var(--claude-success);  /* sage #A8BA94 */
-      --danger:  var(--claude-danger);   /* muted red #D45F50 */
-
-      /* PR-1 C1: settings 페이지가 사용하는 토큰 8종 — claude-dark 미정의 시
-       * 카드 헤더 / 저장 버튼 / hint 패널 / hook 버튼이 통째로 깨졌음. 모든 그라디언트는
-       * claude warm 톤 (terracotta / sage / sand / orange) 으로 재정의.
-       * PR-1 C1: 8 settings-page tokens — without these, claude-dark broke
-       * settings card headers, save button, hint panels, hook buttons. */
-      --grad-gate:           linear-gradient(135deg, #D97757, #B85A3D);  /* claude orange */
-      --grad-merge:          linear-gradient(135deg, #A8BA94, #8AA476);  /* claude sage */
-      --grad-notify:         linear-gradient(135deg, #DDB585, #C49566);  /* claude sand */
-      --grad-hook:           linear-gradient(135deg, #C8895E, #A86F46);  /* claude terracotta */
-      --title-gradient:      linear-gradient(135deg, #D97757, #DDB585);  /* claude orange→sand */
-      --btn-gate-active-bg:  rgba(217,119,87,.15);
-      --btn-gate-active-bd:  var(--claude-accent);
-      --btn-gate-active-tx:  var(--claude-accent);
-      --save-btn-bg:         linear-gradient(135deg, #D97757, #B85A3D);
-      --save-btn-shadow:     rgba(217,119,87,.4);
-      --hint-bg:             rgba(217,119,87,.05);
-      --hint-border:         rgba(217,119,87,.15);
-      --hook-btn-bg:         rgba(200,137,94,.10);
-      --hook-btn-bd:         rgba(200,137,94,.30);
-      --hook-btn-tx:         #C8895E;  /* claude terracotta */
-    }
+    /* Phase 1B claude-dark alias 블록 = themes.css 로 외부화 (사이클 93 Step 1).
+     * Phase 1B claude-dark alias block externalized to themes.css (Cycle 93 Step 1). */
 
     /* ── 네비게이션 ───────────────────────────── */
     /* Step A (S4): nav 좌우 padding 에 safe-area-inset 적용 — iOS notch landscape 호환
@@ -684,12 +425,16 @@
     .back-btn:hover { color: var(--text-primary); border-color: var(--accent); text-decoration: none; }
 
     /* ── 코드 ──────────────────────────────────── */
+    /* 사이클 93 Step 1: JetBrains Mono 글로벌 적용 (사이클 92까지 토큰 정의만 + 0건 사용).
+     * Cycle 93 Step 1: JetBrains Mono globally applied (loaded but unused until Cycle 92). */
+    code, pre, kbd, samp {
+      font-family: var(--claude-font-mono);
+    }
     code {
       background: var(--code-bg);
       padding: 2px 6px;
       border-radius: var(--radius-xs);
       font-size: var(--fs-xs);
-      font-family: 'Menlo', 'Consolas', monospace;
       color: var(--accent-hover);
       border: 1px solid var(--border);
     }
