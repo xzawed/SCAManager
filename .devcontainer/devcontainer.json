@@ -1,6 +1,7 @@
 {
   "name": "SCAManager Dev",
   "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "runArgs": ["--privileged"],
   "postCreateCommand": "pip install -r requirements-dev.txt",
   "forwardPorts": [8000],
   "portsAttributes": {
