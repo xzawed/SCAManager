@@ -12,7 +12,8 @@ src/
 │   ├── manifest.json            # PWA manifest (Cycle 81 PR-A)
 │   ├── icons/icon-{192,512}.svg # PWA maskable icons
 │   ├── css/{tokens,themes}.css  # Foundation 디자인 토큰 + 4-테마 정의 (Cycle 93 Step 1, base.html 외부화)
-│   └── illustrations/           # UI 일러스트 5장 (Cycle 93 Step 2 — 사용자 로컬 OpenAI DALL-E 3 생성)
+│   ├── css/illustrations.css    # 일러스트 배치 CSS — .illustration/--hero/--empty/--tutorial + 모바일 반응형 (#375)
+│   └── illustrations/           # DALL-E 3 생성 일러스트 5장 commit (#375 Step 2-B: login_hero/dashboard_empty/overview_onboarding/add_repo_hero/filter_empty)
 ├── scripts/                     # 로컬 도구 (production import X) — Cycle 93 Step 2
 │   ├── illustration_prompts.py  # 5장 isometric prompt 정의 (login_hero/dashboard_empty/overview_onboarding/add_repo_hero/filter_empty)
 │   ├── generate_illustrations.py # OpenAI DALL-E 3 CLI (--all/--name/--dry-run)
