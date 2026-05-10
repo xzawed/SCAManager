@@ -19,7 +19,8 @@
 - [사이클 82 (Tier B 묶음 + NEW-P0-1)](#사이클-82)
 - [사이클 83 (Tier B 11건 정책 진화 묶음)](#사이클-83)
 - [사이클 84 (다국어 i18n 18 PR + 회고 + Tier B)](#사이클-84)
-- [사이클 85~92 (Sentry 제거 + 정책 17 신설 + 정기 검증 + Phase C RLS, 2026-05-06~07)](#사이클-8591)
+- [사이클 85~91 (Sentry 제거 + 정책 17 신설 + 정기 검증 + Phase C RLS, 2026-05-06~07)](#사이클-8591)
+- [사이클 92~94 (정기 검증 + 정책 18 + Tailwind v4 빌드, 2026-05-07~11)](#사이클-9294)
 
 ---
 
@@ -117,3 +118,8 @@
 - **사이클 88 (CLAUDE.md Anthropic 200줄 정합 + 정책 17 신설, 2026-05-06 · #338 + #348)** — 사이클 85 보류 영역 (C2) 진입. **Phase A (#338)**: 정책 12~16 + 11 강화 본문 → `docs/policies/active.md` 분리 — CLAUDE.md 686 → 549 LOC (-20%). **Phase B-1 (#348)**: 신규 사용자 기준 *"문서정리는 권장하는 규격보다 안정성이 더 우선시 되야합니다"* 정합 — **정책 17 신설** (문서 정리 시 안정성 > 권장 규격 4 default 의무) + B-1 안전 분리 (정책 2 + 10).
 - **사이클 89~91 (정기 5+1 검증 + Tier A fix + P1 자율 + 회고 종결, 2026-05-07 · #349/#350/#351/#352 + #353)** — 사이클 89 정기 검증 (Round 1+2+3 — 종합 93.50/100 A 등급) + Tier A fix 2건 (#349 P0-1 fixture import + P0-3 flake8 noqa + 메모리 신설/진화 / #350 P0-2 E2E i18n 옵션 🅐 → 🅑 정정 + autouse 회귀 학습) + 사이클 90 P1-1 자율 (#351 flake8 cosmetic 20 + slow test mock 1) + 사이클 91 P1-2 자율 (#352 graphql slow test mock 2 + Round 1 false-positive 식별). **누적 효과**: 통합 fail 1→0 / E2E fail 5→2 / flake8 40→18 (-55%) / slow test 12s→0.04s (-99.7%). **회고 (5+1)**: P0 7 + P1 12 + P2 11 / Tier A 3건 / Tier B 사이클 92+.
 - **사이클 92 (정책 17 5번째 default + 정책 8 진화 (3) + Phase C RLS 검증, 2026-05-07 · #361 + 본 sync)** — 사이클 89~91 회고 Tier B 합의 영역 진입. 5+1 사전 검토 (관점 1~5 + cross-verify 6차) → Phase A (정책 17 5번째 default 신설 — 누적 결함 정기 검증 의무 + 정책 8 진화 (3) cross-verify Round 2 단위 분포 실측 의무) + Phase B (Tier B-3 autouse 메모리 보류 default — 사용처 임계 미도달) + Phase C (RLS legacy NULL 0건 검증 — Supabase MCP SELECT-only 자율 / E2E UI 2건 사용자 사전 확인 의무 보류). CLAUDE.md 437 → 439 LOC. **운영 영역 안전 검증** — RLS legacy NULL 0건 (analysis_feedbacks 0/0 / insight_narrative_cache 3/0 / repositories 8/0 / security_alert_process_logs 0/0).
+
+## 사이클 92~94
+
+- **사이클 93 (정책 18 신설 — Claude ↔ Codex 양방향 mutual 검증 의무, 2026-05-09 · #362~#371)** — CI 분석 사고 직후 mutual 검증 필요성 확인. 정책 18 신설: Claude 작업(로컬 commit) → Codex 검증 → OK 후 push / Codex 작업(로컬 commit) → Claude 검증 → OK 후 push 양방향 대칭 흐름 의무화. 17 정책 cross-reference 표 작성. NEW-P0-N 영역 (#362~#371 일부) 수정.
+- **사이클 94 (mutual 첫 운영 검증 + Tailwind v4 빌드 파이프라인 신설, 2026-05-10 · #372/#375~#379)** — chore/cycle-93-residual-tasks cherry-pick → Codex IDE Extension review NG → `_reset_repo_config()` 헬퍼 신설 → Codex OK → push (mutual 첫 운영 검증, #372). **UI 일러스트 Step 2-B (#375)**: DALL-E 3 5장 + 5페이지 마크업 + 4-테마 호환 CSS (src/static/illustrations/ + css/illustrations.css). **Tailwind v4 Hybrid 빌드 파이프라인 (#376~#378)**: main.css (소스) + css/dist/tailwind.css (빌드 출력) + npm ci && npm run build (Railway buildCommand 체인 추가) + 레이아웃 유틸리티 + CSS var 4-테마 공존. **Railway 빌드 실패 수정 (#379)**: nixpacks.toml `[phases.install]` 직접 작성 → Python venv provider 우선순위 충돌 → pip exit 127 → 제거 후 NIXPACKS Python provider 기본값 위임으로 SUCCESS.

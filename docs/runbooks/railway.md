@@ -37,7 +37,7 @@ uvicorn src.main:app --host 0.0.0.0 --port $PORT --proxy-headers
 | 3 | `nixpacks.toml`의 `providers` | NIXPACKS 언어 감지 오버라이드 |
 | 4 | NIXPACKS 자동 감지 | `requirements.txt`, `package.json` 등 파일 기반 |
 
-현재: `railway.toml`에 `buildCommand = "npm install -g eslint@9 @typescript-eslint/parser @typescript-eslint/eslint-plugin"` 설정됨. Node.js는 `nixpacks.toml` aptPkgs로 설치, eslint 전역 설치는 buildCommand에서 수행.
+현재: `railway.toml`에 `buildCommand` = eslint/solc-select/rubocop/golangci-lint 전역 설치 + `npm ci && npm run build` (Tailwind v4 CSS 빌드 포함) 체인 설정됨. Node.js는 `nixpacks.toml` `[phases.setup]` NodeSource 스크립트(`deb.nodesource.com/setup_20.x`)로 설치. Python 의존성은 nixpacks Python provider 기본값(venv 자동 생성 + pip install)으로 처리 — `[phases.install]` 직접 작성 시 pip exit 127 위험 (2026-05-10 사고 사례: nixpacks.toml `[phases.install]` 명시 → Python venv provider 우선순위 충돌 → pip exit 127 → Railway 빌드 실패, #379 수정).
 
 ## requirements.txt 분리
 
