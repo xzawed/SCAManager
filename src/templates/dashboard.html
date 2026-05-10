@@ -676,6 +676,13 @@
       </div>
     {% else %}
       <div class="dash-empty-state">
+        {# Cycle 94 Step 2-B — 빈 데이터 일러스트 / Empty data illustration #}
+        <img src="/static/illustrations/dashboard_empty.png"
+             class="illustration illustration--empty"
+             alt=""
+             role="presentation"
+             loading="lazy"
+             decoding="async">
         {{ 'dashboard.no_trend_data' | i18n_args(locale | default('ko'), days=days) }}
       </div>
     {% endif %}
@@ -697,7 +704,16 @@
       </div>
       {% endfor %}
     {% else %}
-      <div class="dash-empty-state">{{ 'dashboard.no_frequent_issues' | i18n_args(locale | default('ko'), days=days) }}</div>
+      <div class="dash-empty-state">
+        {# Cycle 94 Step 2-B — 빈 데이터 일러스트 (frequent_issues) #}
+        <img src="/static/illustrations/dashboard_empty.png"
+             class="illustration illustration--empty"
+             alt=""
+             role="presentation"
+             loading="lazy"
+             decoding="async">
+        {{ 'dashboard.no_frequent_issues' | i18n_args(locale | default('ko'), days=days) }}
+      </div>
     {% endif %}
   </div>
 
