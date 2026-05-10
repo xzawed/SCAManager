@@ -197,7 +197,7 @@ make test-e2e
 - 신규 webhook integration test 도 자동 격리 — devcontainer 등 환경의 `GITHUB_WEBHOOK_SECRET=dev_secret` export 영향 차단
 - 효과: pre-existing 24 fail → 0 fail
 
-### 8.4 정책 13 본문 (CLAUDE.md L660~) 자동화 가드 인용 정합
+### 8.4 정책 13 본문 (CLAUDE.md §정책 13) 자동화 가드 인용 정합
 
 manual smoke (3-endpoint) ↔ 자동화 가드 (integration 10 + e2e 21 = test_dashboard 14 + test_theme_mobile_guards 7) 상호 보완 관계:
 | 영역 | manual (정책 13 default) | 자동화 (PR #208 + #212) |
@@ -244,7 +244,7 @@ pytest e2e/test_theme_mobile_guards.py -v
 - **C.2** `test_insight_narrative_user_id_isolation_in_claude_context` — 다중 사용자 seed (User A 점수 80~90 / User B 50~60) + `user_id=user_a.id` 호출 → prompt JSON 의 analysis_count == 3 (User A 만 노출, User B 6 합산 미노출 — PR 5 RLS 격리 회귀 가드)
 
 ```bash
-# 로컬 실행 — e2e ↔ tests/integration 동시 실행 금지 (e2e/pytest.ini 의도적 asyncio_mode 미설정 — CLAUDE.md L832~ 참조)
+# 로컬 실행 — e2e ↔ tests/integration 동시 실행 금지 (e2e/pytest.ini 의도적 asyncio_mode 미설정 — .claude/rules/testing.md §e2e 분리 참조)
 pytest e2e/test_dashboard_insight.py -v
 pytest tests/integration/test_insight_caching.py -v
 ```
@@ -267,7 +267,7 @@ pytest tests/integration/test_insight_caching.py -v
 **기획 근거**: GitHub Security 탭 등록 Code Scanning Alert #324 (`'break'/'return' in finally`) + #325 (`Unused import`) 직접 확인 (사이클 62, 2026-05-03). 참조 메타 Issue #213/#214 는 단순 추적 수단 — Security 탭 자체가 단일 진실 소스. SCAManager 자체 lint (pylint / flake8 / bandit) 통과 ≠ Security 탭 0 alert. 두 영역 합집합 검토 의무.
 
 **정책 14 default 의무**:
-- 작업 시작 전 30초 체크리스트 (CLAUDE.md L715~) 에 GitHub Security 탭 open alert 카운트 1줄
+- 작업 시작 전 30초 체크리스트 (CLAUDE.md §작업 시작 전 필수 체크리스트) 에 GitHub Security 탭 open alert 카운트 1줄
 - 매 사이클 종료 시 정책 13 smoke check 와 페어로 GitHub Security 탭 등록된 alert 직접 검토 (Issue 추적 수단 의존 X)
 - GitHub Security 탭에 신규 alert 등록 시 분류 처리 1회 의무 (a/b/c — fix / dismiss / suppress)
 
