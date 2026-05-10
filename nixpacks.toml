@@ -5,3 +5,14 @@ aptPkgs = ["shellcheck", "cppcheck", "ruby-full", "golang-go", "build-essential"
 cmds = [
   "curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs"
 ]
+
+# Tailwind v4 CSS 빌드 파이프라인 (Hybrid: 레이아웃 유틸리티 + CSS var 4-theme)
+# Tailwind v4 CSS build pipeline (Hybrid: layout utilities + CSS var 4-theme)
+[phases.install]
+cmds = [
+  "pip install -r requirements.txt",
+  "npm ci"
+]
+
+[phases.build]
+cmds = ["npm run build"]

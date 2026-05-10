@@ -1,9 +1,25 @@
-.PHONY: install test test-v test-fast test-slow test-cov test-file test-isolated lint gate run migrate revision review install-playwright test-e2e test-e2e-headed
+.PHONY: install test test-v test-fast test-slow test-cov test-file test-isolated lint lint-strict gate run migrate revision review install-playwright test-e2e test-e2e-headed css-install css-build css-dev
 
-# 의존성 설치 (개발 환경 — 테스트/E2E 포함)
-# Install dependencies (development environment — includes tests/E2E).
+# 의존성 설치 (개발 환경 — 테스트/E2E + CSS 빌드 포함)
+# Install dependencies (development environment — includes tests/E2E + CSS build).
 install:
 	pip install -r requirements-dev.txt
+	npm install
+
+# CSS 빌드 (Tailwind v4 — 프로덕션 minified)
+# Build Tailwind v4 CSS (production minified).
+css-build:
+	npm run build
+
+# CSS 감시 빌드 (Tailwind v4 — 개발 watch 모드)
+# Watch and rebuild Tailwind v4 CSS (development watch mode).
+css-dev:
+	npm run dev:css
+
+# Node.js 의존성만 설치
+# Install Node.js dependencies only.
+css-install:
+	npm install
 
 # 테스트 (빠른 실행, 전체)
 # Run all tests (quick output).
