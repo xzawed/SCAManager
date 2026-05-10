@@ -213,6 +213,10 @@ body[data-theme="claude-dark"] {
   --hook-btn-bd:         rgba(200,137,94,.30);
   --hook-btn-tx:         #C8895E;
 
+  /* gst-step / cal-bar 배경 — tokens.css --bg-hover: var(--table-row-hover) 체인 완성
+   * gst-step / cal-bar background — completes tokens.css --bg-hover: var(--table-row-hover) chain */
+  --table-row-hover: rgba(217,119,87,0.06);
+
   /* Phase 2 신규: warm cream mesh + terracotta glow */
   --mesh-bg:    radial-gradient(at 20% 0%, rgba(217,119,87,0.06) 0, transparent 50%),
                 radial-gradient(at 80% 100%, rgba(221,181,133,0.05) 0, transparent 50%),
