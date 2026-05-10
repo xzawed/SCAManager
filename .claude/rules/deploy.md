@@ -18,7 +18,8 @@ paths:
 
 - **NIXPACKS npm run build 자동 추가**: npm이 환경에 존재하면 `nixpacks.toml [phases.build] cmds` 명시 여부와 무관하게 `npm run build`를 자동 추가. 억제 유일 수단: `railway.toml`의 `buildCommand` (최상위 오버라이드).
 - **slither + solc 빌드타임 준비**: `slither-analyzer` (pip) 설치만으로는 부족 — solc 컴파일러 바이너리 필요. `railway.toml`의 `buildCommand`에 `solc-select install 0.8.20 && solc-select use 0.8.20` 체인 의무.
-- **NIXPACKS nixPkgs 오버라이드 함정**: `nixpacks.toml`에 `nixPkgs = ["nodejs"]` 등을 명시하면 Python provider의 nix 자동 설치(python3 + pip 포함)를 **완전히 교체**. Python+Node.js 공존 패턴: `nixPkgs` 사용 금지, `aptPkgs = ["nodejs", "npm"]`으로 Node.js 설치.
+- **NIXPACKS nixPkgs 오버라이드 함정**: `nixpacks.toml`에 `nixPkgs = ["nodejs"]` 등을 명시하면 Python provider의 nix 자동 설치(python3 + pip 포함)를 **완전히 교체**. Python+Node.js 공존 패턴: `nixPkgs` 사용 금지, `nixpacks.toml` `[phases.setup]` `cmds`에서 NodeSource 스크립트로 Node.js 설치 (예: `curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs`), pip install은 Python provider 자동 처리 (`[phases.install]` 직접 작성 시 exit 127 위험).
+- **Tailwind v4 빌드**: `package.json`에 `npm run build` 스크립트가 `@tailwindcss/cli`로 `src/static/css/dist/tailwind.css`를 생성. `railway.toml` buildCommand 끝의 `npm ci && npm run build`가 이를 수행. 이 두 명령 제거 시 Tailwind CSS 누락으로 UI 깨짐 — buildCommand에서 제거 금지.
 - **APP_BASE_URL**: Railway 리버스 프록시 환경 필수 설정. **OAuth redirect_uri**와 **GitHub Webhook 등록 URL** 양쪽에 HTTPS URL 강제 적용 — 미설정 시 `http://`로 등록.
 - **Railway 빌드 검증 필수**: `git push` 성공 ≠ Railway 빌드 성공. `railway.toml`, `nixpacks.toml`, `requirements.txt` 변경 후 Railway 대시보드 빌드 로그 직접 확인 후 완료 선언.
 - **빌드 실패는 로그 우선, 추측 수정 금지**: Railway/CI 빌드 실패 보고를 받으면 즉각 수정 PR 을 작성하지 말 것. 전체 빌드 로그(실패 구간 위아래 30줄)를 먼저 받아 근본 원인을 특정한 뒤 수정. 상세: [회고](../../docs/reports/2026-04-23-railway-rubocop-prism-retrospective.md).
