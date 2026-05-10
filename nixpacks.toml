@@ -6,13 +6,10 @@ cmds = [
   "curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs"
 ]
 
-# Tailwind v4 CSS 빌드 파이프라인 (Hybrid: 레이아웃 유틸리티 + CSS var 4-theme)
-# Tailwind v4 CSS build pipeline (Hybrid: layout utilities + CSS var 4-theme)
-[phases.install]
-cmds = [
-  "pip install -r requirements.txt",
-  "npm ci"
-]
+# [phases.install] 제거 — nixpacks Python 기본 동작(python -m venv + pip install)에 위임
+# [phases.install] removed — delegate to nixpacks Python default (python -m venv + pip install)
+# pip 직접 호출 시 venv 미생성으로 "pip: command not found" (exit 127) 발생
+# Direct pip call without venv causes "pip: command not found" (exit 127)
 
-[phases.build]
-cmds = ["npm run build"]
+# [phases.build] 제거 — railway.toml buildCommand가 상위 오버라이드 (npm ci + npm run build 포함)
+# [phases.build] removed — railway.toml buildCommand overrides (includes npm ci + npm run build)
