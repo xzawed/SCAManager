@@ -2,13 +2,13 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-07 기준 — **사이클 92 종결: 정책 17 5번째 default 신설 + Phase C RLS 검증**): 119+ PR #188~#361+ — 누적 정책 본문 18건 (정책 17 4 → 5 default 진화) + 메모리 30건 (활성 28 + deprecated 2). **사이클 92 Phase A (#361)**: 5+1 사전 검토 (관점 1~5 + cross-verify 6차) → Tier B-1 정책 17 5번째 default 신설 (누적 결함 정기 검증 의무) + Tier B-2 정책 8 진화 (3) cross-verify Round 2 단위 분포 실측 의무. **Phase C 결과 보고**: P1-3b RLS legacy NULL 검증 = **0건** (Supabase MCP 자율 SELECT — analysis_feedbacks 0/0 / insight_narrative_cache 3/0 / repositories 8/0 / security_alert_process_logs 0/0) — 운영 영역 안전. P1-3a-2 (simple 모드) + P1-3a-1 (944px grid) = 사이클 93+ 사용자 사전 확인 의무 보류 (정책 11/15/17 페어). 단위 2669 / 통합 129 / E2E 96 / pylint **9.94/10**
+## 현재 수치 (2026-05-10 기준 — **사이클 94 종결: 정책 18 신설 (Claude ↔ Codex mutual) + 첫 NG → 코드 수정 → OK 첫 운영 사례 (#372)**): 130+ PR #188~#372 — 누적 정책 본문 19건 (정책 18 신설) + 메모리 30건 (활성 28 + deprecated 2 — 누적 검증 정기 sync PR 영역 보류). **사이클 94 (#372)**: chore/cycle-93-residual-tasks (529c0a5) cherry-pick → Codex IDE Extension review NG → `_reset_repo_config()` 헬퍼 신설 → OK → push (mutual 첫 운영 검증). P1-3a-2 (simple 모드) = #372 로 해소 (test_save_success ordering 트랩 차단). P1-3a-1 (944px grid) = UX 결정 영역 보류 (다수 자식 grid 도입 시 재활성화). 사이클 92~93 누적 (#362~#371) + 메모리 카운터 정확 검증 = 정기 sync PR 영역 (정책 17 5번째 default 트리거 시점 — ≥ 5 사이클 경과 또는 누적 ≥ 50 PR). 단위 2669 / 통합 129 / E2E 96 / pylint **9.94/10**
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
 | 단위 테스트 | **2669개** | pytest 9.0.3 — 사이클 73~75 +67 + 사이클 78~82 +114 (2122→2236) + 사이클 84 i18n 18 PR +473 누적 + **사이클 85 Sentry 완전 제거 -40** (test_observability 9 + test_observability_before_send 14 + test_sentry_scrubbing 17). **= 2669 collected / 2668 passed / 1 skipped / 0 failed** |
 | 통합 테스트 | **129개** | tests/integration/ — 사이클 81 영역 🅑 모바일 Phase 1 MVP +34 + **사이클 84 i18n PR-18 smoke +11** (3 언어 × /login Cookie + HTML lang attr + default fallback + i18n metrics). **= 124 passed / 5 skipped / 0 failed** |
-| E2E 테스트 | **96개** | `make test-e2e` (Chromium Playwright) — Phase 3 PR 6 +7 + **사이클 84 i18n PR-16 +14** (3 언어 × 4 페이지 — login/overview/dashboard/settings + Cookie fallback + locale switch). **= 94 passed / 0 failed / 2 pre-existing fail (test_settings 2건, 본 사이클 무관)**. ⚠️ e2e ↔ tests/integration 동시 실행 금지 — `e2e/pytest.ini` 의도적 asyncio_mode 미설정, 분리 실행 default (`make test-e2e` vs CI command `pytest tests/`) |
+| E2E 테스트 | **96개** | `make test-e2e` (Chromium Playwright) — Phase 3 PR 6 +7 + **사이클 84 i18n PR-16 +14** (3 언어 × 4 페이지 — login/overview/dashboard/settings + Cookie fallback + locale switch). **사이클 94 #372 (추정 수치 — 사용자 `make test-e2e` 검증 후 정정 영역)**: test_save_success ordering 트랩 차단 (`_reset_repo_config()` 헬퍼) → PASS 회복 + test_two_column UX 결정 영역 보류 (`@pytest.mark.skip`). **추정 = 95 passed / 1 skipped / 0 failed**. ⚠️ e2e ↔ tests/integration 동시 실행 금지 — `e2e/pytest.ini` 의도적 asyncio_mode 미설정, 분리 실행 default (`make test-e2e` vs CI command `pytest tests/`) |
 | SonarCloud Quality Gate | **OK** | CI #6 (2026-04-23) 반영 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
