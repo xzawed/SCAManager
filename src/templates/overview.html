@@ -153,12 +153,13 @@
 {% else %}
 {# Phase E.5 — Onboarding 3단계 튜토리얼 (리포 0개일 때만 노출) #}
 <div class="card get-started-tutorial">
-  {# Cycle 94 Step 2-B — 3-step onboarding 일러스트 (1792x1024 가로형) #}
+  {# Cycle 94 Step 2-B — 3-step onboarding 일러스트 (1792x1024 가로형)
+     Cycle 94 Step 2-B — 3-step onboarding illustration (1792x1024 landscape) #}
   <img src="/static/illustrations/overview_onboarding.png"
        class="illustration illustration--tutorial"
        alt=""
        role="presentation"
-       loading="lazy"
+       loading="eager"
        decoding="async">
   <div class="gst-header">
     <h2 class="gst-title">🚀 {{ 'overview.tutorial.title' | i18n_args(locale | default('ko')) }}</h2>
