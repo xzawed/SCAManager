@@ -122,11 +122,50 @@ class LocaleMiddleware:  # pylint: disable=too-few-public-methods
         return None
 
     @staticmethod
-    def _parse_accept_language(headers: list) -> Optional[str]:
+    def _parse_q_weight(seg: str) -> float:
+        """RFC 7231 q-weight 단일 segment 파싱 — 사이클 93 PR-B (S3776 분리).
+
+        Parse a single RFC 7231 q-weight segment (Cycle 93 PR-B — S3776 split).
+        """
+        seg = seg.strip()
+        if not seg.startswith("q="):
+            return 1.0  # default per RFC 7231
+        try:
+            return float(seg[2:])
+        except (ValueError, IndexError):
+            return 0.0
+
+    @classmethod
+    def _parse_lang_items(cls, header_str: str) -> list[tuple[str, float]]:
+        """Accept-Language 본문 → (base_lang, q_weight) tuple list.
+
+        Decompose header into (base_lang, q_weight) tuples (Cycle 93 PR-B — S3776 split).
+        """
+        items: list[tuple[str, float]] = []
+        for part in header_str.split(","):
+            segments = part.split(";")
+            lang = segments[0].strip().lower()
+            if not lang:
+                continue
+            # 첫 segment 외에서 q= 찾기 (default 1.0)
+            # Find q= in non-first segments (default 1.0)
+            q_weight = 1.0
+            for seg in segments[1:]:
+                if seg.strip().startswith("q="):
+                    q_weight = cls._parse_q_weight(seg)
+                    break
+            # 정규화: "ko-KR" → "ko" (base lang only)
+            # Normalize: "ko-KR" → "ko" (base lang only)
+            items.append((lang.split("-")[0], q_weight))
+        return items
+
+    @classmethod
+    def _parse_accept_language(cls, headers: list) -> Optional[str]:
         """Accept-Language 헤더 RFC 7231 q-weight 파싱 후 최우선 locale 반환.
 
         Parse Accept-Language header per RFC 7231 q-weights, return top locale.
         예 (Example): "ko-KR,ko;q=0.9,en;q=0.8" → "ko"
+        사이클 93 PR-B: S3776 (24→<15) — _parse_q_weight + _parse_lang_items 분리.
         """
         for name, value in headers:
             if name.lower() != b"accept-language":
@@ -135,34 +174,11 @@ class LocaleMiddleware:  # pylint: disable=too-few-public-methods
                 header_str = value.decode("utf-8", errors="ignore")
             except (AttributeError, UnicodeDecodeError):
                 continue
-
-            # RFC 7231 파싱 — 각 항목 (lang, q-weight)
-            # RFC 7231 parsing — each item (lang, q-weight)
-            items = []
-            for part in header_str.split(","):
-                segments = part.split(";")
-                lang = segments[0].strip().lower()
-                if not lang:
-                    continue
-                q_weight = 1.0  # default per RFC 7231
-                for seg in segments[1:]:
-                    seg = seg.strip()
-                    if seg.startswith("q="):
-                        try:
-                            q_weight = float(seg[2:])
-                        except (ValueError, IndexError):
-                            q_weight = 0.0
-                # 정규화: "ko-KR" → "ko" (base lang only)
-                # Normalize: "ko-KR" → "ko" (base lang only)
-                base_lang = lang.split("-")[0]
-                items.append((base_lang, q_weight))
-
+            items = cls._parse_lang_items(header_str)
             if not items:
                 continue
-
-            # q-weight 내림차순 정렬 (안정 정렬 — 동일 q-weight 시 입력 순서 보존)
-            # Sort by q-weight descending (stable — preserves input order on ties)
+            # q-weight 내림차순 안정 정렬 (동일 q-weight 시 입력 순서 보존)
+            # Stable sort by q-weight descending (preserves input order on ties)
             items.sort(key=lambda x: x[1], reverse=True)
             return items[0][0]
-
         return None

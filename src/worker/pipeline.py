@@ -266,12 +266,64 @@ async def _regate_pr_if_needed(
         )
 
 
+async def _race_recover_existing(
+    db: Session,
+    params: _AnalysisSaveParams,
+    existing,
+):
+    """기존 Analysis 발견 시 race-recovery 분기 — 사이클 93 PR-B (S3776 분리).
+
+    Race-recovery branch when existing Analysis is found (Cycle 93 PR-B — S3776 split).
+    PR 이벤트가 push 이벤트와 동시 도착해 dedup 통과 시 pr_number 보정 + gate 재실행.
+    """
+    try:
+        repo_config = get_repo_config(db, params.repo_name)
+    except (SQLAlchemyError, KeyError):
+        repo_config = None
+
+    if params.pr_number is None or existing.pr_number is not None:
+        return repo_config
+
+    try:
+        existing.pr_number = params.pr_number
+        db.commit()
+        await run_gate_check(
+            repo_name=params.repo_name,
+            pr_number=params.pr_number,
+            analysis_id=existing.id,
+            result=existing.result,
+            github_token=params.owner_token,
+            db=db,
+            config=repo_config,
+        )
+        logger.info(
+            "Race-recovered: PR #%d re-gated on concurrent existing Analysis %d (sha=%s)",
+            params.pr_number, existing.id, params.commit_sha[:8],
+        )
+    except SQLAlchemyError:
+        # Phase H PR-6A: logger.exception 으로 stack trace 보존
+        logger.exception(
+            "Race-recovery pr_number commit failed (sha=%s, pr=#%d)",
+            params.commit_sha, params.pr_number,
+        )
+        db.rollback()
+    except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+        # logger.exception 으로 stack trace 보존 — Railway 로그에서 진짜 원인 추적
+        # logger.exception preserves the stack trace for Railway log triage
+        logger.exception(
+            "Race-recovery gate check failed (pr=#%d, sha=%s)",
+            params.pr_number, params.commit_sha[:8],
+        )
+    return repo_config
+
+
 async def _save_and_gate(db: Session, params: _AnalysisSaveParams):
     """Analysis를 DB에 저장하고 Gate Engine을 실행한다.
 
     Returns:
         (repo_config, analysis_id, result_dict) 튜플.
         중복 커밋이면 (repo_config_or_None, None, None).
+    사이클 93 PR-B: race-recovery 분기 = `_race_recover_existing` 분리 (S3776 20→<15).
     """
     repo = repository_repo.find_by_full_name(db, params.repo_name)
     if repo is None:
@@ -285,51 +337,7 @@ async def _save_and_gate(db: Session, params: _AnalysisSaveParams):
     existing = analysis_repo.find_by_sha(db, params.commit_sha, repo.id)
     if existing is not None:
         logger.info("Commit %s already saved (concurrent insert detected), skipping", params.commit_sha)
-        # Phase 2 race fix (PR #105 silent skip 사고 대응):
-        # push 이벤트가 먼저 통과해 pr_number=None 으로 저장되고, 그 사이 이 PR
-        # 이벤트가 도착하면 1차 dedup → _regate_pr_if_needed 경로로 진입한다.
-        # 그러나 두 이벤트가 거의 동시에 도착해 둘 다 1차 dedup 통과 → 분석을
-        # 실행 → 2차 dedup 에서 PR 이벤트만 여기로 진입할 수 있다. 이때 gate 가
-        # 실행되지 않으면 PR #105 처럼 코멘트/머지 모두 누락된다 (silent skip).
-        # 보정: pr_number 가 비어있는 기존 Analysis 에 현재 PR 번호 부여 후 gate
-        # 재실행. _regate_pr_if_needed 와 동일한 의미론.
-        # Race fix: when an existing Analysis lacks pr_number and this is a PR event,
-        # patch pr_number then re-run the gate (matches `_regate_pr_if_needed`).
-        try:
-            repo_config = get_repo_config(db, params.repo_name)
-        except (SQLAlchemyError, KeyError):
-            repo_config = None
-        if params.pr_number is not None and existing.pr_number is None:
-            try:
-                existing.pr_number = params.pr_number
-                db.commit()
-                await run_gate_check(
-                    repo_name=params.repo_name,
-                    pr_number=params.pr_number,
-                    analysis_id=existing.id,
-                    result=existing.result,
-                    github_token=params.owner_token,
-                    db=db,
-                    config=repo_config,
-                )
-                logger.info(
-                    "Race-recovered: PR #%d re-gated on concurrent existing Analysis %d (sha=%s)",
-                    params.pr_number, existing.id, params.commit_sha[:8],
-                )
-            except SQLAlchemyError:
-                # Phase H PR-6A: logger.exception 으로 stack trace 보존
-                logger.exception(
-                    "Race-recovery pr_number commit failed (sha=%s, pr=#%d)",
-                    params.commit_sha, params.pr_number,
-                )
-                db.rollback()
-            except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
-                # logger.exception 으로 stack trace 보존 — Railway 로그에서 진짜 원인 추적 가능
-                # logger.exception preserves the stack trace for Railway log triage
-                logger.exception(
-                    "Race-recovery gate check failed (pr=#%d, sha=%s)",
-                    params.pr_number, params.commit_sha[:8],
-                )
+        repo_config = await _race_recover_existing(db, params, existing)
         return repo_config, None, None
     result_dict = build_analysis_result_dict(
         params.ai_review, params.score_result, params.analysis_results,

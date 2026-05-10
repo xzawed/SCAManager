@@ -38,7 +38,7 @@ from src.shared.merge_metrics import log_merge_attempt
 logger = logging.getLogger(__name__)
 
 
-async def process_pending_retries(  # pylint: disable=too-many-locals,too-many-statements
+async def process_pending_retries(
     db: Session,
     *,
     now: datetime | None = None,
@@ -49,6 +49,8 @@ async def process_pending_retries(  # pylint: disable=too-many-locals,too-many-s
     Process the pending merge retry queue.
 
     Returns counts dict: {"claimed", "succeeded", "terminal", "abandoned", "released", "skipped"}
+    사이클 93 PR-B: 단일 row 처리 = `_process_single_retry` 분리 (S3776 26→<15).
+    Cycle 93 PR-B: per-row processing extracted to `_process_single_retry` (S3776 26→<15).
     """
     # 현재 시각 설정 — 테스트에서 주입 가능 (freezegun 불필요)
     # Set current time — injectable from tests (no freezegun needed)
@@ -75,150 +77,7 @@ async def process_pending_retries(  # pylint: disable=too-many-locals,too-many-s
 
     for row in claimed:
         try:
-            # ── a. GitHub 토큰 조회 ────────────────────────────────────────
-            # ── a. Resolve GitHub token ───────────────────────────────────
-            token = _resolve_github_token(db, row.repo_full_name)
-            if token is None:
-                # 토큰 없음 — 30초 후 재시도 대기로 복귀
-                # No token — release back to retry queue after 30s
-                _now_naive = now.replace(tzinfo=None) + timedelta(seconds=30)
-                merge_retry_repo.release_claim(
-                    db,
-                    row.id,
-                    next_retry_at=_now_naive,
-                    last_failure_reason="no_token",
-                )
-                counts["released"] += 1
-                continue
-
-            # ── b-0. 최대 시도 횟수 초과 검사 ────────────────────────────────────────
-            # ── b-0. Max attempts exhaustion check ─────────────────────────────────
-            if row.attempts_count >= row.max_attempts:
-                merge_retry_repo.mark_abandoned(
-                    db, row.id, reason="max_attempts_exceeded"
-                )
-                counts["abandoned"] += 1
-                continue
-
-            # ── b. 설정 재확인 (D5) ────────────────────────────────────────
-            # ── b. Re-read live config (D5) ───────────────────────────────
-            cfg = get_repo_config(db, row.repo_full_name)
-            if not (cfg.auto_merge and row.score >= cfg.merge_threshold):
-                # 설정이 변경되어 자동 머지 조건 미충족 → 포기
-                # Config changed so auto-merge condition no longer met → abandon
-                merge_retry_repo.mark_abandoned(db, row.id, reason="config_changed")
-                await _notify_config_changed(row, cfg)
-                counts["abandoned"] += 1
-                continue
-
-            # ── c. PR 사전 검사 (D7) ──────────────────────────────────────
-            # ── c. Pre-merge guard (D7) ───────────────────────────────────
-            pr_data = await _get_pr_data(token, row.repo_full_name, row.pr_number)
-
-            if pr_data is None:
-                # PR 데이터 조회 실패 — 30초 후 재시도
-                # PR data fetch failed — retry after 30s
-                _now_naive = now.replace(tzinfo=None) + timedelta(seconds=30)
-                merge_retry_repo.release_claim(
-                    db,
-                    row.id,
-                    next_retry_at=_now_naive,
-                    last_failure_reason="pr_fetch_failed",
-                )
-                counts["released"] += 1
-                continue
-
-            # 이미 머지된 PR — 성공으로 처리
-            # PR already merged — treat as success
-            if pr_data.get("merged") is True:
-                merge_retry_repo.mark_succeeded(db, row.id, reason="already_merged")
-                counts["succeeded"] += 1
-                continue
-
-            # SHA drift 검사 — force-push 감지
-            # SHA drift check — detects force-push
-            head_sha = pr_data.get("head", {}).get("sha", "")
-            if head_sha and head_sha != row.commit_sha:
-                merge_retry_repo.mark_abandoned(db, row.id, reason="sha_drift")
-                counts["abandoned"] += 1
-                continue
-
-            # ── d. merge_pr 호출 ──────────────────────────────────────────
-            # ── d. Call merge_pr ──────────────────────────────────────────
-            ok, reason, _ = await merge_pr(
-                token,
-                row.repo_full_name,
-                row.pr_number,
-                expected_sha=row.commit_sha,
-            )
-
-            # ── e. 성공 처리 ──────────────────────────────────────────────
-            # ── e. Handle success ─────────────────────────────────────────
-            if ok:
-                log_merge_attempt(
-                    db,
-                    analysis_id=row.analysis_id,
-                    repo_name=row.repo_full_name,
-                    pr_number=row.pr_number,
-                    score=row.score,
-                    threshold=row.threshold_at_enqueue,
-                    success=True,
-                    reason=None,
-                )
-                merge_retry_repo.mark_succeeded(db, row.id)
-                await _notify_merge_succeeded(row, cfg)
-                counts["succeeded"] += 1
-                continue
-
-            # ── f. 실패 분류 ──────────────────────────────────────────────
-            # ── f. Classify failure ───────────────────────────────────────
-            reason_tag = parse_reason_tag(reason)
-            # F1: pr_data 에 이미 base.ref 가 있으므로 추가 호출 없이 활용
-            # F1: pr_data already contains base.ref — reuse without extra API call
-            base_ref = pr_data.get("base", {}).get("ref", "main")
-            ci_status = await _get_ci_status_safe(
-                token, row.repo_full_name, row.commit_sha, base_ref=base_ref,
-            )
-
-            expired = is_expired(row, now=now, max_age_hours=settings.merge_retry_max_age_hours)
-
-            if (not should_retry(reason_tag, ci_status)) or expired:
-                # 재시도 불가 또는 만료 → terminal 처리
-                # Non-retryable or expired → terminal
-                log_merge_attempt(
-                    db,
-                    analysis_id=row.analysis_id,
-                    repo_name=row.repo_full_name,
-                    pr_number=row.pr_number,
-                    score=row.score,
-                    threshold=row.threshold_at_enqueue,
-                    success=False,
-                    reason=reason,
-                )
-                merge_retry_repo.mark_terminal(db, row.id, reason=reason_tag)
-                await _notify_merge_terminal(row, cfg, reason, reason_tag)
-                if cfg.auto_merge_issue_on_failure:
-                    await _create_failure_issue_safe(token, row, cfg, reason, reason_tag)
-                counts["terminal"] += 1
-                continue
-
-            # ── g. 일시적 실패 — 백오프 후 재시도 대기로 복귀 ────────────
-            # ── g. Transient failure — bump and release with backoff ──────
-            next_retry_at = compute_next_retry_at(
-                row.attempts_count,
-                now=now,
-                initial_backoff=settings.merge_retry_initial_backoff_seconds,
-                max_backoff=settings.merge_retry_max_backoff_seconds,
-            )
-            merge_retry_repo.release_claim(
-                db,
-                row.id,
-                next_retry_at=next_retry_at.replace(tzinfo=None),  # naive UTC for DB
-                last_failure_reason=reason_tag,
-                last_detail_message=reason,
-            )
-            counts["released"] += 1
-
+            await _process_single_retry(db, row, now, counts)
         except (httpx.HTTPError, SQLAlchemyError) as exc:
             # 인프라 에러 — 클레임 해제, 짧은 백오프, attempts_count 미증가
             # Infra error — release claim, short backoff, do NOT bump attempts_count
@@ -236,6 +95,123 @@ async def process_pending_retries(  # pylint: disable=too-many-locals,too-many-s
             counts["released"] += 1
 
     return counts
+
+
+async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-return-statements
+    db: Session,
+    row,
+    now: datetime,
+    counts: dict[str, int],
+) -> None:
+    """단일 retry row 처리 — 사이클 93 PR-B (S3776 26→<15 분리).
+
+    Process a single retry row (Cycle 93 PR-B — extracted from process_pending_retries).
+    counts dict 직접 mutate. 호출자 (process_pending_retries) 가 try/except wrap.
+    """
+    # ── a. GitHub 토큰 조회 ────────────────────────────────────────
+    token = _resolve_github_token(db, row.repo_full_name)
+    if token is None:
+        # 토큰 없음 — 30초 후 재시도 대기로 복귀
+        # No token — release back to retry queue after 30s
+        _now_naive = now.replace(tzinfo=None) + timedelta(seconds=30)
+        merge_retry_repo.release_claim(
+            db, row.id, next_retry_at=_now_naive, last_failure_reason="no_token",
+        )
+        counts["released"] += 1
+        return
+
+    # ── b-0. 최대 시도 횟수 초과 ───────────────────────────────────
+    if row.attempts_count >= row.max_attempts:
+        merge_retry_repo.mark_abandoned(db, row.id, reason="max_attempts_exceeded")
+        counts["abandoned"] += 1
+        return
+
+    # ── b. 설정 재확인 (D5) ────────────────────────────────────────
+    cfg = get_repo_config(db, row.repo_full_name)
+    if not (cfg.auto_merge and row.score >= cfg.merge_threshold):
+        # 설정이 변경되어 자동 머지 조건 미충족 → 포기
+        # Config changed so auto-merge condition no longer met → abandon
+        merge_retry_repo.mark_abandoned(db, row.id, reason="config_changed")
+        await _notify_config_changed(row, cfg)
+        counts["abandoned"] += 1
+        return
+
+    # ── c. PR 사전 검사 (D7) ──────────────────────────────────────
+    pr_data = await _get_pr_data(token, row.repo_full_name, row.pr_number)
+    if pr_data is None:
+        _now_naive = now.replace(tzinfo=None) + timedelta(seconds=30)
+        merge_retry_repo.release_claim(
+            db, row.id, next_retry_at=_now_naive, last_failure_reason="pr_fetch_failed",
+        )
+        counts["released"] += 1
+        return
+
+    # 이미 머지된 PR — 성공
+    if pr_data.get("merged") is True:
+        merge_retry_repo.mark_succeeded(db, row.id, reason="already_merged")
+        counts["succeeded"] += 1
+        return
+
+    # SHA drift — force-push 감지
+    head_sha = pr_data.get("head", {}).get("sha", "")
+    if head_sha and head_sha != row.commit_sha:
+        merge_retry_repo.mark_abandoned(db, row.id, reason="sha_drift")
+        counts["abandoned"] += 1
+        return
+
+    # ── d. merge_pr 호출 ──────────────────────────────────────────
+    ok, reason, _ = await merge_pr(
+        token, row.repo_full_name, row.pr_number, expected_sha=row.commit_sha,
+    )
+
+    # ── e. 성공 처리 ──────────────────────────────────────────────
+    if ok:
+        log_merge_attempt(
+            db, analysis_id=row.analysis_id, repo_name=row.repo_full_name,
+            pr_number=row.pr_number, score=row.score,
+            threshold=row.threshold_at_enqueue, success=True, reason=None,
+        )
+        merge_retry_repo.mark_succeeded(db, row.id)
+        await _notify_merge_succeeded(row, cfg)
+        counts["succeeded"] += 1
+        return
+
+    # ── f. 실패 분류 ──────────────────────────────────────────────
+    reason_tag = parse_reason_tag(reason)
+    # F1: pr_data 에 이미 base.ref 가 있으므로 추가 호출 없이 활용
+    base_ref = pr_data.get("base", {}).get("ref", "main")
+    ci_status = await _get_ci_status_safe(
+        token, row.repo_full_name, row.commit_sha, base_ref=base_ref,
+    )
+    expired = is_expired(row, now=now, max_age_hours=settings.merge_retry_max_age_hours)
+
+    if (not should_retry(reason_tag, ci_status)) or expired:
+        # 재시도 불가 또는 만료 → terminal
+        log_merge_attempt(
+            db, analysis_id=row.analysis_id, repo_name=row.repo_full_name,
+            pr_number=row.pr_number, score=row.score,
+            threshold=row.threshold_at_enqueue, success=False, reason=reason,
+        )
+        merge_retry_repo.mark_terminal(db, row.id, reason=reason_tag)
+        await _notify_merge_terminal(row, cfg, reason, reason_tag)
+        if cfg.auto_merge_issue_on_failure:
+            await _create_failure_issue_safe(token, row, cfg, reason, reason_tag)
+        counts["terminal"] += 1
+        return
+
+    # ── g. 일시적 실패 — 백오프 후 재시도 대기로 복귀 ────────────
+    next_retry_at = compute_next_retry_at(
+        row.attempts_count,
+        now=now,
+        initial_backoff=settings.merge_retry_initial_backoff_seconds,
+        max_backoff=settings.merge_retry_max_backoff_seconds,
+    )
+    merge_retry_repo.release_claim(
+        db, row.id,
+        next_retry_at=next_retry_at.replace(tzinfo=None),  # naive UTC for DB
+        last_failure_reason=reason_tag, last_detail_message=reason,
+    )
+    counts["released"] += 1
 
 
 # ---------------------------------------------------------------------------
