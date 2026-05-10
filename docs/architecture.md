@@ -12,6 +12,8 @@ src/
 │   ├── manifest.json            # PWA manifest (Cycle 81 PR-A)
 │   ├── icons/icon-{192,512}.svg # PWA maskable icons
 │   ├── css/{tokens,themes}.css  # Foundation 디자인 토큰 + 4-테마 정의 (Cycle 93 Step 1, base.html 외부화)
+│   ├── css/main.css             # Tailwind v4 소스 — @import tokens/themes + layout 유틸리티 (#376)
+│   ├── css/dist/tailwind.css    # Tailwind v4 빌드 출력 (npm run build → Railway buildCommand, #376)
 │   ├── css/illustrations.css    # 일러스트 배치 CSS — .illustration/--hero/--empty/--tutorial + 모바일 반응형 (#375)
 │   └── illustrations/           # DALL-E 3 생성 일러스트 5장 commit (#375 Step 2-B: login_hero/dashboard_empty/overview_onboarding/add_repo_hero/filter_empty)
 ├── scripts/                     # 로컬 도구 (production import X) — Cycle 93 Step 2
