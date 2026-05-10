@@ -148,7 +148,7 @@ git push -u origin <branch>
 회고 배경: GitHub Security 탭의 Code Scanning Alert #324 (`'break' or 'return' statement in finally`) + #325 (`Unused import`) 직접 확인 (참조 메타 Issue #213 / #214 는 단순 추적 수단). SCAManager 자체 정적분석 (pylint / flake8 / bandit) 은 통과 (위반 0건) 하지만 GitHub Security 탭 (CodeQL 또는 추가 도구) 이 별도 룰셋으로 감지하는 영역이 있음. **빌드 통과 + SCAManager lint 통과 ≠ Security 탭 0 alert**. 외부 가시성 부재 시 alert 누적 → 운영 책임 이전 위험.
 
 **default 의무**:
-- **작업 시작 전 30초 체크리스트** (CLAUDE.md L891~) 에 GitHub Security 탭 Code Scanning open alert 카운트 1줄 추가 (이미 적용)
+- **작업 시작 전 30초 체크리스트** (CLAUDE.md §작업 시작 전 필수 체크리스트) 에 GitHub Security 탭 Code Scanning open alert 카운트 1줄 추가 (이미 적용)
 - **매 사이클 종료 시** (또는 Phase 종료 시) — 정책 13 smoke check 와 페어로 GitHub Security 탭 등록된 alert 직접 검토 (Issue 추적 수단 의존 X — Security 탭 자체가 단일 진실 소스)
 - **GitHub Security 탭에 신규 alert 등록 시** — 분류 처리 (1회 의무):
   - (a) 실제 위반 → 코드 fix PR (정책 7 단위)
@@ -194,7 +194,7 @@ git push -u origin <branch>
    - 검증 방법 부재 → 회귀 가드 추가 의무 또는 사용자 명시 검증 요청
 3. **위반 시 회복**: 사전 사고 누락 후 진행 시 사용자 발견 → 즉시 사과 + 영향 범위 분석 + revert 결정 회신.
 
-**위임 분류 3-tier 통합** (`feedback-architecture-decision-pre-confirm.md`):
+**위임 분류 3-tier 통합** (`feedback-architecture-decision-pre-confirm.md` (현재 미생성)):
 - **High (사전 확인 의무)** = 정책 15 적용 (DB 스키마 / API / 권한 / 데이터 모델) — 옵션 표 + 사용자 1줄 명시
 - **Medium (자율 + 보고)** = 정책 15 적용 (헬퍼 함수 / 정책 본문 진화) — Claude 사전 사고 후 자율 진입 + PR 본문 자율 판단 보고
 - **Low (즉시 진입)** = 정책 15 면제 OK (회귀 가드 / docstring / typo) — 단 (b)/(c) 자문은 의무
@@ -224,7 +224,7 @@ git push -u origin <branch>
 - ❌ `build_review_prompt` 토큰 예산 8000 → 축소 (사이클 72 사용자 명시 보류 — 품질 저하 원치 않음)
 - ❌ `review_guides/` 50개 언어 Tier1 full ~500 토큰 압축 (사이클 72 사용자 명시 보류 — 체크리스트 ↓ → 리뷰 깊이 ↓ 위험)
 - ✅ 진행 OK 영역 (사이클 72 검증): `review_code` prompt caching = **이미 100% 적용** (사이클 63 #218 — `src/analyzer/io/ai_review.py:79,89`) — multi-block 확장 (system + lang_guides 분리) 만 Phase 3 후보 (단 `build_review_prompt` 시그니처 변경 = High tier 사전 확인 의무) / 모델 분기 (Haiku/Sonnet/Opus) — Phase 2 (1주 운영 데이터 후 결정, AI 리뷰 품질 영향 = High tier) / 동일 SHA 결과 재사용 = **이미 100% 적용** (3-tier dedup — `src/worker/pipeline.py:178-181`) / Insight narrative 호출 빈도 제한 — Phase 2 (DB 캐싱 1h TTL 후보) / **cache hit rate 모니터링 인프라 = 사이클 72 PR 2 (#242) 도입** (`src/shared/claude_metrics.py::get_cache_stats` + cache 비용 모델 정확화 + silent fallback streak WARNING)
-- 신규 토큰 절약 영역 도입 시 사용자 사전 확인 의무 (정책 15 + High tier — `feedback-architecture-decision-pre-confirm.md` 페어)
+- 신규 토큰 절약 영역 도입 시 사용자 사전 확인 의무 (정책 15 + High tier — `feedback-architecture-decision-pre-confirm.md` (현재 미생성) 페어)
 
 **default 적용 패턴**:
 - **변수명** = 의도 명시 (예: `data` X → `repository_user_id` ○)
@@ -235,7 +235,7 @@ git push -u origin <branch>
 - **early return** = 중첩 깊이 ≤ 3 (R0911 임계 default)
 
 **금지 패턴** (단순화 위반):
-- ❌ 추상 베이스 클래스 / Protocol — 사용처 ≥ 3 일 때만 도입 (`feedback-architecture-decision-pre-confirm.md` Medium tier 기준 페어)
+- ❌ 추상 베이스 클래스 / Protocol — 사용처 ≥ 3 일 때만 도입 (`feedback-architecture-decision-pre-confirm.md` (현재 미생성) Medium tier 기준 페어)
 - ❌ Generic 타입 매개변수 — 사용처 ≥ 3 시점 도입
 - ❌ 메타클래스 / 데코레이터 체인 — 표준 라이브러리 (functools/contextlib) 외 자체 작성 금지 (사용자 명시 시만 OK)
 - ❌ "다음 확장 대비" 분기 — 현재 요건만 구현 (정책 7 강화 응집 단위 부합)
@@ -249,7 +249,7 @@ git push -u origin <branch>
 **검증 사례** (사이클 64~67 — 정책 16 사후 검증):
 - ✅ Phase 3 PR 5 (#223) RLS 격리 헬퍼 2건 (`_apply_*_user_filter`) — 함수 ≤ 10 줄 + 단일 책임 + 인자 3 (정합)
 - ✅ 사이클 66 #228 RLS middleware ASGI 직접 작성 (BaseHTTPMiddleware 우회) — 추상화 0 + 흐름 직선 (정합)
-- ⚠️ 사이클 64 회고 R0914 결정 트리 (CLAUDE.md L988~) — `dashboard_kpi` / `frequent_issues_v2` user_id 인자 추가 시 R0914 inline disable 채택 (헬퍼 추출 over-engineering 회피) — 정책 16 default 사례
+- ⚠️ 사이클 64 회고 R0914 결정 트리 (.claude/rules/testing.md §R0914 too-many-locals cleanup 결정 트리) — `dashboard_kpi` / `frequent_issues_v2` user_id 인자 추가 시 R0914 inline disable 채택 (헬퍼 추출 over-engineering 회피) — 정책 16 default 사례
 
 **Why**: 사이클 65~67 정합성 cleanup 누적 = 100+ 줄 변경 / 10+ 패턴 — 코드량 ↑ 자체가 미래 회고 부담. 단순화 default 로 다음 cleanup 부담 ↓.
 
@@ -291,8 +291,8 @@ git push -u origin <branch>
 - 트리거 미충족 시 = default 정책 8 매 회고 cross-verify 적용 (정책 17 5번째 default 미적용)
 
 **Cross-ref**:
-- 메모리 `feedback-pr-push-direct-validation.md` 사이클 89 진화 (시간차 결함 누적 행 추가) 페어
-- 메모리 `feedback-fixture-model-sync-discipline.md` (사이클 89 신설) 페어
+- 메모리 `feedback-pr-push-direct-validation.md` (현재 미생성) 사이클 89 진화 (시간차 결함 누적 행 추가) 페어
+- 메모리 `feedback-fixture-model-sync-discipline.md` (사이클 89 신설, 현재 미생성) 페어
 - 정책 8 진화 (3) cross-verify Round 2 단위 분포 실측 의무 페어
 
 ---
@@ -354,7 +354,7 @@ git push -u origin <branch>
 
 작업 완료 보고 시 검증 의뢰 명시 누락 시 = **다음 응답에서 회복 의무** (자성 1줄 + 의뢰 1줄 추가). 회복 누락 시 = 다음 사이클 회고 §자성 명시 의무.
 
-**양방향 비대칭 위험**: Claude 측 회복 가드 = 메모리 `feedback-codex-post-validation-mandatory.md` 적용. Codex 측 회복 가드 = AGENTS.md hooks 또는 Codex system prompt 영역 (SCAManager 통제 외 — Codex 측 적용 검증 불가). default 보고: AGENTS.md 본문에 "Codex 환경 진입 시 본 섹션 read 의무" 명시 (PR #368 머지) — Codex 측 강제력 = 0 (자율 적용 영역).
+**양방향 비대칭 위험**: Claude 측 회복 가드 = 메모리 `feedback-codex-post-validation-mandatory.md` (현재 미생성) 적용. Codex 측 회복 가드 = AGENTS.md hooks 또는 Codex system prompt 영역 (SCAManager 통제 외 — Codex 측 적용 검증 불가). default 보고: AGENTS.md 본문에 "Codex 환경 진입 시 본 섹션 read 의무" 명시 (PR #368 머지) — Codex 측 강제력 = 0 (자율 적용 영역).
 
 ### 검증 사례 (사이클 93 첫 운영)
 
@@ -380,7 +380,7 @@ git push -u origin <branch>
 | CLAUDE.md 정책 18 default rule | CLAUDE.md §"사용자 협업 정책" 정책 17 직후 | default rule 변경 시 sync |
 | detail · 검증 사례 · Why · How | docs/policies/active.md §"정책 18" (본 섹션) | detail 영역 변경 시 sync |
 | 진화 default 추적 | docs/policies/history.md §"보존 영역" — 정책 18 entry | 사이클 94+ 진화 시 추가 |
-| Claude 측 숙지 | 메모리 `feedback-codex-post-validation-mandatory.md` | 매 사이클 30초 grep 의무 |
+| Claude 측 숙지 | 메모리 `feedback-codex-post-validation-mandatory.md` (현재 미생성) | 매 사이클 30초 grep 의무 |
 
 **5-way sync 가드** — 본문 충돌 시 **CLAUDE.md 정책 18 우선** (정책 일관성 — Claude 가 SCAManager 운영 주체).
 
@@ -390,5 +390,5 @@ git push -u origin <branch>
 - 정책 8 페어 (5+1 cross-verify ↔ mutual 2-layer 격리 의무)
 - 정책 9 페어 (회고 자유 발언 = Claude 단독 / 회고 결과물 = Codex 검증 의뢰 의무)
 - 정책 17 5번 default 페어 (정기 검증 ≥ 5 사이클 ↔ mutual 매 PR 시점 차별)
-- 메모리 `feedback-codex-post-validation-mandatory.md` (Claude 측 숙지)
-- 메모리 `feedback-pr-scoped-ci-endpoint-pattern.md` (사이클 93 사고 학습 페어)
+- 메모리 `feedback-codex-post-validation-mandatory.md` (현재 미생성, Claude 측 숙지)
+- 메모리 `feedback-pr-scoped-ci-endpoint-pattern.md` (현재 미생성, 사이클 93 사고 학습 페어)
