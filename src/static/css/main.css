@@ -1,0 +1,14 @@
+/* SCAManager Tailwind v4 entry — Hybrid: layout utilities + CSS var theming */
+
+@import "tailwindcss";
+
+/* Explicit source scan: Jinja2 templates + static JS */
+@source "../../templates";
+@source "../js";
+
+/* 4-theme custom variants (preserves CSS custom property theming system)
+ * Usage: dark:bg-[var(--bg-card)] light:text-[var(--text-1)] etc. */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+@custom-variant light (&:where([data-theme=light], [data-theme=light] *));
+@custom-variant glass (&:where([data-theme=glass], [data-theme=glass] *));
+@custom-variant claude (&:where([data-theme=claude-dark], [data-theme=claude-dark] *));

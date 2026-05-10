@@ -1,0 +1,14 @@
+{
+  "name": "scamanager-ui",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SCAManager UI build — Tailwind v4 CSS pipeline",
+  "scripts": {
+    "build": "tailwindcss -i ./src/static/css/main.css -o ./src/static/css/dist/tailwind.css --minify",
+    "dev:css": "tailwindcss -i ./src/static/css/main.css -o ./src/static/css/dist/tailwind.css --watch"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.1.0",
+    "tailwindcss": "^4.1.0"
+  }
+}

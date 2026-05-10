@@ -5,8 +5,8 @@ __pycache__/
 *.pyd
 .Python
 *.egg-info/
-dist/
-build/
+/dist/
+/build/
 *.egg
 
 # Virtual environments
@@ -52,3 +52,8 @@ Thumbs.db
 
 # superpowers plan/spec working dir (완료된 plan은 docs/_archive/ 로 수동 이동)
 docs/superpowers/
+
+# Node.js / Tailwind v4 빌드 (개발 의존성 + 빌드 결과물)
+# Node.js / Tailwind v4 build (dev dependencies + build artifacts)
+node_modules/
+src/static/css/dist/tailwind.css
