@@ -166,6 +166,20 @@
   .page-btn:disabled { opacity: .35; cursor: not-allowed; }
   .page-info { font-size: 12px; color: var(--text-muted); margin-top: .35rem; text-align: center; }
   .filter-empty { text-align: center; padding: 2rem 1rem; color: var(--text-muted); font-size: 13px; }
+  /* Cycle 94 Step 2-B — filter-empty 일러스트 (JS 동적 td 영역, ::before background)
+     filter-empty illustration via ::before background (JS dynamically injects td.filter-empty) */
+  .filter-empty::before {
+    content: '';
+    display: block;
+    width: 180px;
+    height: 180px;
+    margin: 0 auto var(--space-3);
+    background: url('/static/illustrations/filter_empty.png') center / contain no-repeat;
+    opacity: 0.85;
+  }
+  @media (max-width: 640px) {
+    .filter-empty::before { width: 140px; height: 140px; }
+  }
   /* ── 날짜 필터 ─────────────────────────── */
   .custom-date-wrap {
     display: none; align-items: center; gap: .4rem; flex-shrink: 0;

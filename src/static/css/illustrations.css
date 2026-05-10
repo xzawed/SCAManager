@@ -1,0 +1,43 @@
+/* SCAManager UI 일러스트 4-테마 호환 CSS (Cycle 94 Step 2-B)
+ * SCAManager UI illustrations — 4-theme compatible CSS (Cycle 94 Step 2-B)
+ *
+ * PR #366 prompt 정책: neutral background that works across both warm cream
+ * and dark indigo theme contexts → 별도 filter 미적용 default.
+ * Per PR #366: prompts target neutral backgrounds compatible with all 4 themes,
+ * so no theme-specific filter applied by default.
+ */
+
+.illustration {
+  display: block;
+  margin: 0 auto;
+  max-width: 100%;
+  height: auto;
+}
+
+/* hero — login / add_repo 상단 큰 시각 영역
+ * hero — large visual area at top of login / add_repo */
+.illustration--hero {
+  max-width: 320px;
+  margin: 0 auto var(--space-6);
+}
+
+/* empty state — dashboard / repo_detail filter-empty (작은 시각 영역)
+ * empty state — small visual area in dashboard / repo_detail filter-empty */
+.illustration--empty {
+  max-width: 180px;
+  margin: 0 auto var(--space-3);
+  opacity: 0.85;
+}
+
+/* tutorial — overview 3-step 가로형 (1792x1024 비율)
+ * tutorial — horizontal 3-step layout (1792x1024 ratio) */
+.illustration--tutorial {
+  max-width: 100%;
+  margin: 0 0 var(--space-5);
+}
+
+/* 모바일 — hero 축소 / Mobile — shrink hero */
+@media (max-width: 640px) {
+  .illustration--hero { max-width: 240px; }
+  .illustration--empty { max-width: 140px; }
+}
