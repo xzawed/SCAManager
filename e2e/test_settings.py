@@ -1,7 +1,28 @@
 """E2E — 설정 페이지 테스트."""
+import os
+
 import pytest
 
 SETTINGS_URL = "/repos/owner%2Ftestrepo/settings"
+SETTINGS_REPO = "owner/testrepo"
+
+
+def _reset_repo_config(repo_full_name=SETTINGS_REPO):
+    """공유 E2E DB의 리포 설정을 기본 상태로 되돌린다."""
+    from sqlalchemy import create_engine, text
+
+    database_url = os.environ.get("DATABASE_URL", "")
+    assert database_url.startswith("sqlite:///"), "E2E DATABASE_URL must be sqlite"
+
+    engine = create_engine(database_url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text("DELETE FROM repo_configs WHERE repo_full_name=:repo_full_name"),
+                {"repo_full_name": repo_full_name},
+            )
+    finally:
+        engine.dispose()
 
 
 def _expand_advanced(page):
@@ -501,20 +522,12 @@ def test_save_error_forces_advanced_mode(seeded_page, base_url):
     assert mode == "advanced", f"save_error=1 시 data-settings-mode='advanced' 기대, 실제 {mode!r}"
 
 
-@pytest.mark.skip(
-    reason=(
-        "Test ordering 트랩 — 단독 실행 PASS / 전체 실행 fail. 원인: 직전 test "
-        "(test_gate_mode_persists_after_save L313 등) 가 RepoConfig.approve_mode 를 'auto'로 저장 후 "
-        "본 test 진입 시 `_detect_initial_mode` = 비-default 1건 → 'advanced' 반환 (default 위반). "
-        "해결 영역 = E2E DB 격리 fixture 신설 (사이클 94+ 사용자 사전 확인 의무 — High tier). "
-        "사이클 93 학습 — seeded_page fixture 가 새 browser context 만 격리하고 server DB 공유 한계."
-    )
-)
 def test_save_success_keeps_simple_mode(seeded_page, base_url):
     """?saved=1 (성공) 쿼리로 접근 시 모드는 유지 (강제 전환 없음).
 
     Phase 2A: localStorage 또는 서버 신호 또는 simple default — saved 는 강제 전환 사유 아님.
     """
+    _reset_repo_config()
     seeded_page.goto(f"{base_url}{SETTINGS_URL}?saved=1")
     seeded_page.wait_for_timeout(300)
     mode = seeded_page.evaluate(
