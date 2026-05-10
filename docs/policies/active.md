@@ -303,16 +303,31 @@ git push -u origin <branch>
 1차: *"앞으로 모든 작업의 후처리는 Codex가 검증 검토를 수행합니다. Claude 단독으로 수정 및 검증 검토에서 끝내지 않고 Codex의 동의까지 완료되야 마무리 된것으로 간주 하겠습니다."*
 2차 (양방향화): *"Claude 또는 Codex가 작업을 수행시 반드시 두 LLM모델이 OK확인을 받아야 통과합니다. 상호간의 작업 내용을 검증 검토를 수행합니다. Claude 도 Codex도 이 내용은 반드시 숙지합니다."*
 
-### 양방향 default 흐름 (대칭)
+### 양방향 default 흐름 (대칭, push 전 검증 — 사이클 94 정정)
+
+🔴 **사이클 94 사용자 정정 (2026-05-10)**: *"Codex에게 검토를 받으려면 PR을 올리기 전에 수행을 해야합니다. 그리고 현재는 PR이 이미 머지가 되었으므로 다음 사이클 진입을 해주세요."*
+
+→ **검증 = PR push 전 수행 의무**. 사이클 93 안티패턴 (PR #366/#368/#369/#370 = push 후 의뢰 명시 = mutual 의도 정합 X) 학습.
 
 | 단계 | Claude 작업 → Codex 검증 | Codex 작업 → Claude 검증 |
 |------|---------------------------|--------------------------|
-| 1. 작업 | Claude 수정/구현/회귀 가드 | Codex 반복 구현/테스트/리팩토링 |
+| 1. 작업 | Claude 수정/구현/회귀 가드 (로컬 commit 까지 — push X) | Codex 반복 구현/테스트/리팩토링 (로컬 commit 까지 — push X) |
 | 2. 1차 검증 | Claude test + lint + smoke | Codex 자가 검증 |
-| 3. **검증 의뢰 의무 명시** | "🔍 Codex 검증 의뢰" 1줄 | "🔍 Claude 검증 의뢰" 1줄 |
+| 3. **검증 의뢰 의무 명시 (push 전)** | "🔍 Codex 검증 의뢰 (push 전)" 1줄 — 변경 본문 + commit body + 로컬 검증 결과 첨부 | "🔍 Claude 검증 의뢰 (push 전)" 1줄 |
 | 4. 검증 결과 | Codex OK / NG 회신 | Claude OK / NG 회신 |
 | 5. NG 시 재진입 | Claude 수정 → 3 단계 반복 (≤ 3회) | Codex 수정 → 3 단계 반복 (≤ 3회) |
-| 6. 마무리 인정 | Codex OK 후 | Claude OK 후 |
+| 6. **상대 OK → push + PR 생성** | Codex OK 후 `git push` (사용자 머지 영역) | Claude OK 후 `git push` (사용자 머지 영역) |
+
+### 운영 흐름 (현 SCAManager Codespaces 환경 default)
+
+- Claude 가 변경 본문 작성 + 로컬 commit 까지 (`git push` 보류)
+- Claude 응답 = "🔍 Codex 검증 의뢰 (push 전)" 1줄 + 변경 본문 / commit body / `make test-fast` 결과 첨부 → 사용자가 Codex 환경 (Codex CLI / Codex Web / VSCode plugin) 에서 검토 의뢰 → 결과 채팅 회신
+- Codex OK 회신 → Claude `git push` + PR 생성 (사용자 머지 영역)
+- Codex NG 회신 → Claude 수정 plan 옵션 표 (정책 1) + 사용자 confirm + 재진입 (회기 ≤ 3)
+
+### 사이클 93 안티패턴 영역 (학습 보존)
+
+사이클 93 본 정책 신설 직후 모든 PR (#366 / #368 / #369 / #370) = push 후 Codex 의뢰 명시 패턴 적용 → **사용자 정정 영역 (사이클 94)**. 사이클 93 메모리 + AGENTS.md + CLAUDE.md 정책 18 본문 = "Codex 검증 의뢰 의무" 만 명시 → 시점 (push 전 vs push 후) 명시 부재 → Claude 자율 해석 = push 후. 사이클 94 정정 = push 전 의무 명시 강화.
 
 ### 환경 통합 (현 SCAManager 기준)
 
