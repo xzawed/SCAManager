@@ -42,7 +42,7 @@
   /* Cycle 81 PR-D — 모바일 768px↓ 분기 신설 (WCAG 액션 권장 클릭 영역)
      Cycle 81 PR-D — mobile 768px↓ branch — btn-github ≥48px (WCAG required action) */
   @media (max-width: 768px) {
-    .btn-github { min-height: 48px; }
+    .btn-github { min-height: 48px; box-sizing: border-box; }
   }
 
   /* 로고 아이콘 — 그라디언트 박스 + badge-pop 애니메이션
@@ -107,7 +107,7 @@
     width: 100%;
     padding: 14px 28px;
     background: linear-gradient(135deg, var(--accent), var(--accent-2));
-    color: #fff;
+    color: var(--btn-on-accent);
     border: none;
     border-radius: 12px;
     font-size: 15px;
@@ -121,7 +121,7 @@
   .btn-github:hover {
     transform: translateY(-1px);
     box-shadow: 0 8px 24px rgba(var(--accent-rgb), 0.35);
-    color: #fff;
+    color: var(--btn-on-accent);
     text-decoration: none;
   }
   .btn-github:active {

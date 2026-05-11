@@ -142,4 +142,9 @@
   --text:        var(--text-primary);
   --accent-blue: var(--accent);    /* repo_detail.html CLI Hook 안내 배너 */
   --c-warning:   var(--warning);   /* settings.html 잔존 토큰명 (legacy) */
+
+  /* ── 버튼 on-accent 텍스트 색상 ─────────────────────────────────────────
+   * Button text on accent-colored background (4-theme universal alias)
+   * #fff 직접 사용 금지 — 이 토큰 경유 의무 (.claude/rules/ui.md L24) */
+  --btn-on-accent: #fff;
 }
