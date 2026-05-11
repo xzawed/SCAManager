@@ -533,9 +533,122 @@
       padding: 0; margin: -1px; overflow: hidden;
       clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
     }
+
+    /* ── Aurora 배경 ──────────────────────────────────────────────────────── */
+    /* 오로라 배경 고정 레이어 (포인터 이벤트 없음, z-index: 0)
+       Aurora fixed background layer (no pointer events, z-index: 0) */
+    .aurora {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+    }
+    .orb {
+      position: absolute; border-radius: 50%;
+      filter: blur(80px); will-change: transform;
+    }
+    .orb-1 {
+      width: 600px; height: 600px; top: -200px; left: -100px;
+      background: radial-gradient(circle, var(--orb1), transparent 70%);
+      animation: var(--anim-float-a);
+    }
+    .orb-2 {
+      width: 500px; height: 500px; top: 30%; right: -150px;
+      background: radial-gradient(circle, var(--orb2), transparent 70%);
+      animation: var(--anim-float-b);
+    }
+    .orb-3 {
+      width: 400px; height: 400px; bottom: -100px; left: 30%;
+      background: radial-gradient(circle, var(--orb3), transparent 70%);
+      animation: var(--anim-float-c);
+    }
+    .orb-4 {
+      width: 350px; height: 350px; top: 50%; right: 20%;
+      background: radial-gradient(circle, var(--orb4), transparent 70%);
+      animation: var(--anim-float-d);
+    }
+    /* 오로라 orb 부유 애니메이션 키프레임 (tokens.css --anim-float-* 토큰과 페어)
+       Aurora orb float keyframes (paired with --anim-float-* tokens in tokens.css) */
+    @keyframes float-a { 0%{transform:translate(0,0)} 100%{transform:translate(60px,-80px)} }
+    @keyframes float-b { 0%{transform:translate(0,0)} 100%{transform:translate(-80px,60px)} }
+    @keyframes float-c { 0%{transform:translate(0,0)} 100%{transform:translate(40px,90px)} }
+    @keyframes float-d { 0%{transform:translate(0,0)} 100%{transform:translate(-50px,-70px)} }
+
+    /* 노이즈 텍스처 오버레이 (SVG data URI, mix-blend-mode: overlay)
+       Noise texture overlay (inline SVG data URI, mix-blend-mode: overlay) */
+    body::after {
+      content: '';
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+      opacity: 0.03; mix-blend-mode: overlay;
+    }
+
+    /* 오로라 위 콘텐츠는 z-index: 1 보장
+       Page content rendered above aurora layer */
+    nav, .container { position: relative; z-index: 1; }
+
+    /* ── Page animations ──────────────────────────────────────────────────── */
+    /* 페이지 전환 + 탭/스크롤 reveal + 뱃지/모달/토스트 애니메이션 키프레임
+       Page transition + tab/scroll reveal + badge/modal/toast animation keyframes */
+    @keyframes page-in    { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes tab-in     { from{opacity:0;transform:translateX(-8px)} to{opacity:1;transform:translateX(0)} }
+    @keyframes reveal-up  { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes badge-pop  { 0%{transform:scale(0.7)} 80%{transform:scale(1.05)} 100%{transform:scale(1)} }
+    @keyframes modal-in   { from{opacity:0;transform:scale(0.95) translateY(8px)} to{opacity:1;transform:scale(1) translateY(0)} }
+    @keyframes toast-in   { from{opacity:0;transform:translateX(24px)} to{opacity:1;transform:translateX(0)} }
+
+    .container { animation: var(--anim-page-in); }
+    /* reveal: IntersectionObserver가 .visible 추가 시 애니메이션 트리거
+       reveal: animation triggered when IntersectionObserver adds .visible */
+    .reveal { opacity: 0; }
+    .reveal.visible { animation: var(--anim-reveal-up); animation-delay: calc(var(--i,0) * 60ms); }
+    /* 탭 패널: .active 클래스로 show/hide + tab-in 애니메이션
+       Tab panel: show/hide via .active class with tab-in animation */
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; animation: var(--anim-tab-in); }
+
+    /* ── Nav badge + avatar ───────────────────────────────────────────────── */
+    /* Beta 뱃지 — accent 색상, pill 형태
+       Beta badge — accent color, pill shape */
+    .nav-badge {
+      background: rgba(var(--accent-rgb),.15);
+      border: 1px solid rgba(var(--accent-rgb),.3);
+      color: var(--accent);
+      font-size: 11px; font-weight: 600;
+      padding: 2px 8px; border-radius: var(--radius-pill);
+      letter-spacing: .04em;
+      flex-shrink: 0;
+    }
+    /* 사용자 아바타 — accent 그라디언트 원형, 첫 글자 이니셜
+       User avatar — accent gradient circle with initial letter */
+    .nav-avatar {
+      width: 28px; height: 28px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; color: #fff;
+      border: 2px solid var(--border-subtle);
+      flex-shrink: 0;
+    }
+    /* nav blur 강화 + 하단 보더 (aurora 위에 떠있는 느낌)
+       Nav blur enhancement + bottom border (floating above aurora) */
+    nav {
+      backdrop-filter: blur(20px) saturate(180%);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    /* nav 로고 아이콘 그라디언트 + 글로우 shadow
+       Nav logo icon gradient + glow shadow */
+    .nav-logo-icon {
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      box-shadow: 0 2px 8px rgba(var(--accent-rgb),.4);
+    }
   </style>
 </head>
 <body data-theme="dark">
+  <!-- Aurora background (fixed, pointer-events:none, z-index:0) -->
+  <div class="aurora" aria-hidden="true">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+    <div class="orb orb-4"></div>
+  </div>
   <nav>
     <a class="nav-logo" href="/">
       <div class="nav-logo-icon">⚡</div>
@@ -552,12 +665,14 @@
     </div>
     {% endif %}
     <div class="nav-spacer"></div>
+    <span class="nav-badge">Beta</span>
     {% if current_user %}
     <div class="nav-user">
       <span class="nav-user-name">{{ current_user.display_name or current_user.github_login }}</span>
       <form method="post" action="/auth/logout" style="display:inline;margin:0">
         <button type="submit" class="nav-logout-btn">{{ 'common.logout' | i18n_args(locale | default('ko')) }}</button>
       </form>
+      <div class="nav-avatar" aria-hidden="true">{{ (current_user.display_name or current_user.github_login or 'U')[0] | upper }}</div>
     </div>
     {% endif %}
     <div class="theme-switcher" id="themeSwitcher">
@@ -745,6 +860,75 @@
         }
       });
     }
+
+    // ── Animation framework ──────────────────────────────────────────────────
+    // 스크롤 reveal: .card, .s-card, .kpi-card, .reveal 요소 자동 감지
+    // Scroll reveal: auto-detect .card, .s-card, .kpi-card, .reveal elements
+    (function() {
+      var io = new IntersectionObserver(function(entries) {
+        entries.forEach(function(e, idx) {
+          if (e.isIntersecting) {
+            e.target.style.setProperty('--i', idx);
+            e.target.classList.add('visible');
+            io.unobserve(e.target);
+          }
+        });
+      }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+      document.querySelectorAll('.card, .s-card, .kpi-card, .reveal').forEach(function(el) {
+        if (!el.classList.contains('reveal')) el.classList.add('reveal');
+        io.observe(el);
+      });
+    })();
+
+    // KPI 카운트업 (data-count 속성 기반)
+    // KPI count-up (data-count attribute based)
+    function countUp(el, duration) {
+      var raw = el.dataset.count || el.textContent.replace(/[^0-9.]/g, '');
+      var target = parseFloat(raw);
+      if (isNaN(target)) return;
+      var suffix = el.dataset.suffix || '';
+      var isFloat = String(target).indexOf('.') !== -1;
+      var start = performance.now();
+      function tick(now) {
+        var p = Math.min((now - start) / (duration || 1200), 1);
+        var ease = 1 - Math.pow(1 - p, 3);
+        var val = isFloat ? (ease * target).toFixed(1) : Math.round(ease * target).toLocaleString();
+        el.textContent = val + suffix;
+        if (p < 1) requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+    }
+    document.querySelectorAll('[data-count]').forEach(function(el) {
+      var io2 = new IntersectionObserver(function(entries) {
+        if (entries[0].isIntersecting) { countUp(el); io2.unobserve(el); }
+      });
+      io2.observe(el);
+    });
+
+    // Chart.js 전역 애니메이션 기본값 (차트 라이브러리가 로드된 경우에만)
+    // Chart.js global animation defaults (only if chart library is loaded)
+    if (typeof Chart !== 'undefined') {
+      Chart.defaults.animation = { duration: 900, easing: 'easeOutQuart' };
+    }
+
+    // 탭 패널 활성화 (.tab-btn + .tab-panel 패턴)
+    // Tab panel activation (.tab-btn + .tab-panel pattern)
+    document.querySelectorAll('.tab-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var target = btn.dataset.tab;
+        document.querySelectorAll('.tab-btn').forEach(function(b) {
+          b.classList.toggle('active', b === btn);
+        });
+        document.querySelectorAll('.tab-panel').forEach(function(p) {
+          if (p.id === target) {
+            p.classList.add('active');
+            p.offsetWidth; // force reflow for re-animation
+          } else {
+            p.classList.remove('active');
+          }
+        });
+      });
+    });
   </script>
 </body>
 </html>
