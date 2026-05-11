@@ -3,55 +3,329 @@
 {% block title %}{{ 'admin.rls_audit.title_prefix' | i18n_args(locale | default('ko')) }} — SCAManager Admin{% endblock %}
 
 {% block content %}
-<div class="container">
-  <header style="margin-bottom: 1.5rem;">
-    <h1 style="font-size: 1.5rem; margin: 0;">{{ 'admin.rls_audit.page_title' | i18n_args(locale | default('ko')) }}</h1>
-    <p style="color: var(--text-muted, #9ca3af); margin: 0.25rem 0 0;">
-      {{ 'admin.rls_audit.subtitle' | i18n_args(locale | default('ko')) }}
-    </p>
+<style>
+  /* ──────────────────────────────────────────────────────────
+     Admin RLS Audit — glassmorphism redesign
+     관리자 RLS 감사 — 글래스모피즘 재디자인
+     CSS variables only, no hardcoded hex.
+     CSS 변수만 사용, 하드코딩 hex 없음.
+     ────────────────────────────────────────────────────────── */
+  .admin-page {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 32px 16px 64px;
+  }
+
+  /* ── 페이지 헤더 / Page header ──────────────────────────── */
+  .admin-header {
+    margin-bottom: 28px;
+  }
+
+  .admin-title {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 0 0 6px;
+    background: linear-gradient(135deg, var(--text-1), var(--accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .admin-subtitle {
+    font-size: 14px;
+    color: var(--text-2);
+    margin: 0;
+  }
+
+  /* ── 요약 바 / Summary bar ──────────────────────────────── */
+  .admin-summary-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+    padding: 12px 16px;
+    background: var(--bg-card);
+    backdrop-filter: blur(12px) saturate(150%);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    font-size: 14px;
+    color: var(--text-2);
+  }
+
+  .admin-summary-bar .sep {
+    opacity: 0.4;
+  }
+
+  /* ── 상태 배지 / Status badges ──────────────────────────── */
+  .badge-success {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    background: color-mix(in srgb, var(--success) 15%, transparent);
+    color: var(--success);
+    border: 1px solid color-mix(in srgb, var(--success) 30%, transparent);
+    animation: var(--anim-badge-pop);
+  }
+
+  .badge-danger {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    background: color-mix(in srgb, var(--danger) 15%, transparent);
+    color: var(--danger);
+    border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+    animation: var(--anim-badge-pop);
+  }
+
+  .admin-link {
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 500;
+    transition: opacity 0.15s ease;
+  }
+
+  .admin-link:hover {
+    opacity: 0.8;
+  }
+
+  /* ── 테이블 컨테이너 / Table container ───────────────────── */
+  .admin-table-wrap {
+    overflow-x: auto;
+    border-radius: 12px;
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-card);
+    backdrop-filter: blur(12px) saturate(150%);
+    margin-bottom: 24px;
+  }
+
+  .admin-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .admin-table thead tr {
+    background: var(--bg-elevated);
+  }
+
+  .admin-table th {
+    text-align: left;
+    padding: 10px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-2);
+    white-space: nowrap;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  /* 행 좌측 강조선 / Row left accent bar */
+  .admin-table tbody tr {
+    position: relative;
+    border-bottom: 1px solid var(--border-subtle);
+    transition: background 0.15s ease;
+  }
+
+  .admin-table tbody tr:last-child {
+    border-bottom: none;
+  }
+
+  .admin-table tbody tr::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--accent);
+    border-radius: 0 2px 2px 0;
+    transform: scaleY(0);
+    transform-origin: center;
+    transition: transform 0.15s;
+  }
+
+  .admin-table tbody tr:hover::before {
+    transform: scaleY(1);
+  }
+
+  .admin-table tbody tr:hover {
+    background: var(--table-row-hover, color-mix(in srgb, var(--accent) 5%, transparent));
+  }
+
+  .admin-table td {
+    padding: 11px 14px;
+    font-size: 13px;
+    color: var(--text-1);
+    vertical-align: middle;
+  }
+
+  .admin-table td.mono {
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--text-2);
+  }
+
+  /* ── 행 수준 상태 배지 / Row-level status badges ─────────── */
+  .status-applied {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    background: color-mix(in srgb, var(--success) 15%, transparent);
+    color: var(--success);
+    border: 1px solid color-mix(in srgb, var(--success) 30%, transparent);
+    animation: var(--anim-badge-pop);
+  }
+
+  .status-missing {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    background: color-mix(in srgb, var(--danger) 15%, transparent);
+    color: var(--danger);
+    border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+    animation: var(--anim-badge-pop);
+  }
+
+  /* ── 안내 카드 / Info card ──────────────────────────────── */
+  .admin-info-card {
+    position: relative;
+    padding: 20px 22px 22px;
+    background: var(--bg-card);
+    backdrop-filter: blur(12px) saturate(150%);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    overflow: hidden;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .admin-info-card::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2, var(--accent)));
+    border-radius: 0 0 12px 12px;
+  }
+
+  .admin-info-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+  }
+
+  .admin-info-title {
+    margin: 0 0 12px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-1);
+  }
+
+  .admin-info-list {
+    margin: 0;
+    padding-left: 18px;
+    color: var(--text-2);
+    font-size: 13px;
+    line-height: 1.7;
+  }
+
+  /* ── 빈 상태 / Empty state ──────────────────────────────── */
+  .admin-empty {
+    text-align: center;
+    padding: 48px 24px;
+    color: var(--text-2);
+  }
+
+  /* ── 반응형 / Responsive ────────────────────────────────── */
+  @media (max-width: 768px) {
+    .admin-page {
+      padding: 20px 12px 48px;
+    }
+
+    .admin-title {
+      font-size: 22px;
+    }
+
+    .admin-table th,
+    .admin-table td {
+      padding: 9px 10px;
+    }
+  }
+</style>
+
+<div class="admin-page">
+  <header class="admin-header">
+    <h1 class="admin-title">{{ 'admin.rls_audit.page_title' | i18n_args(locale | default('ko')) }}</h1>
+    <p class="admin-subtitle">{{ 'admin.rls_audit.subtitle' | i18n_args(locale | default('ko')) }}</p>
   </header>
 
-  <div style="margin-bottom: 1rem;">
-    <strong>{{ 'admin.rls_audit.total_label' | i18n_args(locale | default('ko')) }}</strong>: {{ summary.total }} ·
-    <span style="color: var(--success, #10b981);">{{ 'admin.rls_audit.applied_label' | i18n_args(locale | default('ko'), count=summary.applied) }}</span>
+  <div class="admin-summary-bar">
+    <strong>{{ 'admin.rls_audit.total_label' | i18n_args(locale | default('ko')) }}</strong>: {{ summary.total }}
+    <span class="sep">·</span>
+    <span class="badge-success">{{ 'admin.rls_audit.applied_label' | i18n_args(locale | default('ko'), count=summary.applied) }}</span>
     {% if summary.missing > 0 %}
-    · <span style="color: var(--danger, #ef4444);">{{ 'admin.rls_audit.missing_label' | i18n_args(locale | default('ko'), count=summary.missing) }}</span>
+    <span class="sep">·</span>
+    <span class="badge-danger">{{ 'admin.rls_audit.missing_label' | i18n_args(locale | default('ko'), count=summary.missing) }}</span>
     {% endif %}
-    · <a href="/admin/tenants" style="color: var(--accent, #60a5fa);">{{ 'admin.rls_audit.tenants_link' | i18n_args(locale | default('ko')) }}</a>
+    <span class="sep">·</span>
+    <a href="/admin/tenants" class="admin-link">{{ 'admin.rls_audit.tenants_link' | i18n_args(locale | default('ko')) }}</a>
   </div>
 
-  <div style="overflow-x: auto;">
-    <table style="width: 100%; border-collapse: collapse;">
+  <div class="admin-table-wrap reveal">
+    <table class="admin-table">
       <thead>
-        <tr style="border-bottom: 1px solid var(--border, #374151);">
-          <th style="text-align: left; padding: 0.5rem;">{{ 'admin.rls_audit.th.table' | i18n_args(locale | default('ko')) }}</th>
-          <th style="text-align: left; padding: 0.5rem;">{{ 'admin.rls_audit.th.pattern' | i18n_args(locale | default('ko')) }}</th>
-          <th style="text-align: left; padding: 0.5rem;">{{ 'admin.rls_audit.th.since' | i18n_args(locale | default('ko')) }}</th>
-          <th style="text-align: left; padding: 0.5rem;">{{ 'admin.rls_audit.th.status' | i18n_args(locale | default('ko')) }}</th>
+        <tr>
+          <th>{{ 'admin.rls_audit.th.table' | i18n_args(locale | default('ko')) }}</th>
+          <th>{{ 'admin.rls_audit.th.pattern' | i18n_args(locale | default('ko')) }}</th>
+          <th>{{ 'admin.rls_audit.th.since' | i18n_args(locale | default('ko')) }}</th>
+          <th>{{ 'admin.rls_audit.th.status' | i18n_args(locale | default('ko')) }}</th>
         </tr>
       </thead>
       <tbody>
         {% for m in matrix %}
-        <tr style="border-bottom: 1px solid var(--border, #374151);">
-          <td style="padding: 0.5rem; font-family: monospace; font-size: 0.9em;">{{ m.table }}</td>
-          <td style="padding: 0.5rem; font-size: 0.9em;">{{ m.pattern }}</td>
-          <td style="padding: 0.5rem; font-family: monospace; font-size: 0.85em;">{{ m.since }}</td>
-          <td style="padding: 0.5rem;">
+        <tr class="reveal">
+          <td class="mono">{{ m.table }}</td>
+          <td style="font-size: 12px;">{{ m.pattern }}</td>
+          <td class="mono">{{ m.since }}</td>
+          <td>
             {% if m.status == "applied" %}
-            <span style="color: var(--success, #10b981);">{{ 'admin.rls_audit.status_applied' | i18n_args(locale | default('ko')) }}</span>
+            <span class="status-applied">{{ 'admin.rls_audit.status_applied' | i18n_args(locale | default('ko')) }}</span>
             {% else %}
-            <span style="color: var(--danger, #ef4444);">{{ 'admin.rls_audit.status_missing' | i18n_args(locale | default('ko')) }}</span>
+            <span class="status-missing">{{ 'admin.rls_audit.status_missing' | i18n_args(locale | default('ko')) }}</span>
             {% endif %}
           </td>
         </tr>
         {% endfor %}
+        {% if not matrix %}
+        <tr>
+          <td colspan="4" class="admin-empty">—</td>
+        </tr>
+        {% endif %}
       </tbody>
     </table>
   </div>
 
-  <div style="margin-top: 2rem; padding: 1rem; background: var(--bg-card, #1f2937); border-radius: 8px;">
-    <h3 style="margin: 0 0 0.5rem; font-size: 1rem;">{{ 'admin.rls_audit.info_title' | i18n_args(locale | default('ko')) }}</h3>
-    <ul style="margin: 0; padding-left: 1.25rem; color: var(--text-muted, #9ca3af); font-size: 0.9em;">
+  <div class="admin-info-card reveal">
+    <h3 class="admin-info-title">{{ 'admin.rls_audit.info_title' | i18n_args(locale | default('ko')) }}</h3>
+    <ul class="admin-info-list">
       <li>{{ 'admin.rls_audit.info_li1' | i18n_args(locale | default('ko')) }}</li>
       <li>{{ 'admin.rls_audit.info_li2' | i18n_args(locale | default('ko')) }}</li>
       <li>{{ 'admin.rls_audit.info_li3' | i18n_args(locale | default('ko')) }}</li>
