@@ -57,7 +57,7 @@ def _find_repo(db: Session, repo_name: str, user_id: int):
 
 
 @router.get("/repos/{repo_name:path}/insights", response_class=HTMLResponse)
-async def repo_insights(
+async def repo_insights(  # pylint: disable=too-many-positional-arguments
     request: Request,
     repo_name: str,
     current_user: Annotated[CurrentUser, Depends(require_login)],

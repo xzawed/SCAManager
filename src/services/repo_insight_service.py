@@ -51,7 +51,7 @@ def _fetch_analyses(
     )
 
 
-def repo_kpi(
+def repo_kpi(  # pylint: disable=too-many-locals
     db: Session, repo_id: int, days: int = 30, now: datetime | None = None
 ) -> dict[str, Any]:
     """KPI 4종 — 평균 점수/등급/분석수/최다 반복 이슈/보안 HIGH/점수 delta.
@@ -263,11 +263,11 @@ def _extract_narrative_json(text: str) -> str:
         return block.group(1)
     first, last = cleaned.find("{"), cleaned.rfind("}")
     if first != -1 and last > first:
-        return cleaned[first : last + 1]
+        return cleaned[first : last + 1]  # noqa: E203
     return cleaned
 
 
-async def repo_insight_narrative(
+async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many-locals
     db: Session,
     repo_id: int,
     days: int = 30,
@@ -292,6 +292,7 @@ async def repo_insight_narrative(
     _now = now or datetime.now(timezone.utc)
 
     if user_id is not None:
+        # pylint: disable=import-outside-toplevel
         from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415
 
         if refresh:
@@ -356,6 +357,7 @@ async def repo_insight_narrative(
         return {"text": "", "status": "api_error"}
 
     if user_id is not None:
+        # pylint: disable=import-outside-toplevel
         from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415
 
         insight_narrative_cache_repo.upsert_repo(
