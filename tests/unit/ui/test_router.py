@@ -1823,22 +1823,30 @@ def test_warning_token_defined_in_all_themes():
 
 
 def test_claude_dark_settings_tokens_defined():
-    """PR #169 cleanup 회귀 가드 — claude-dark 의 settings 페이지 토큰 8종.
+    """PR #169 cleanup 회귀 가드 — settings 페이지 토큰 8종 (모든 4 테마 확인).
 
     --grad-gate/merge/notify/hook + --title-gradient + --btn-gate-active-* +
-    --save-btn-* + --hint-* + --hook-btn-* 가 claude-dark 블록에 있어야.
-    사이클 93 Step 1: base.html → themes.css 외부화 (검사 위치 갱신).
+    --save-btn-* + --hint-* + --hook-btn-* 가 각 테마 블록에 있어야.
+    2026-05-11 UI Redesign: claude-dark → catppuccin, glass → pastel 으로 교체.
     """
     themes = _read_css("themes.css")
-    cd_idx = themes.find('body[data-theme="claude-dark"]')
-    assert cd_idx != -1, "themes.css 에 claude-dark alias 블록 누락"
-    cd_block_end = themes.find("\n}", cd_idx)
-    assert cd_block_end != -1, "claude-dark alias 블록의 닫는 } 미발견"
-    cd_block = themes[cd_idx:cd_block_end]
-    for token in ("--grad-gate:", "--save-btn-bg:", "--hint-bg:", "--hook-btn-tx:"):
-        assert token in cd_block, (
-            f"claude-dark alias 블록에 {token} 누락 — settings 페이지 시각 깨짐 위험"
-        )
+    # 새 4 테마 모두 settings 페이지 토큰 필수 확인
+    # New 4 themes must all have settings page tokens
+    for theme_selector in (
+        '[data-theme="dark"]',
+        '[data-theme="light"]',
+        '[data-theme="pastel"]',
+        '[data-theme="catppuccin"]',
+    ):
+        idx = themes.find(theme_selector)
+        assert idx != -1, f"themes.css 에 {theme_selector} 블록 누락"
+        block_end = themes.find("\n}", idx)
+        assert block_end != -1, f"{theme_selector} 블록의 닫는 }} 미발견"
+        block = themes[idx:block_end]
+        for token in ("--grad-gate:", "--save-btn-bg:", "--hint-bg:", "--hook-btn-tx:"):
+            assert token in block, (
+                f"{theme_selector} 블록에 {token} 누락 — settings 페이지 시각 깨짐 위험"
+            )
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -1885,14 +1893,16 @@ def test_jetbrains_mono_globally_applied():
 
 
 def test_foundation_tokens_present():
-    """사이클 93 Step 1 회귀 가드 — Phase 2 Foundation 신규 토큰 9종.
+    """사이클 93 Step 1 회귀 가드 — Phase 2 Foundation 신규 토큰.
 
-    elevation 5-step + motion 3-duration + display 3-scale + accent-glow + mesh-bg.
+    elevation 5-step + motion 3-duration + display 3-scale + animation refs.
+    2026-05-11 UI Redesign: --mesh-bg/--accent-glow 제거, --anim-* 추가.
     """
     tokens = _read_css("tokens.css")
     themes = _read_css("themes.css")
 
     # Theme-agnostic 토큰 (tokens.css)
+    # Theme-agnostic tokens (tokens.css)
     for token in (
         "--elev-1:", "--elev-2:", "--elev-3:", "--elev-4:", "--elev-inset:",
         "--dur-fast:", "--dur-base:", "--dur-slow:",
@@ -1903,8 +1913,18 @@ def test_foundation_tokens_present():
     ):
         assert token in tokens, f"tokens.css 에 신규 Foundation 토큰 {token} 누락"
 
-    # Theme-dependent 토큰 (themes.css 4 테마 모두)
-    for token in ("--mesh-bg:", "--accent-glow:"):
+    # Animation convenience refs — 2026-05-11 UI Redesign 신규 추가
+    # Animation convenience refs — added in 2026-05-11 UI Redesign
+    for token in (
+        "--anim-page-in:", "--anim-tab-in:", "--anim-reveal-up:",
+        "--anim-badge-pop:", "--anim-modal-in:", "--anim-toast-in:",
+        "--anim-float-a:", "--anim-float-b:", "--anim-float-c:", "--anim-float-d:",
+    ):
+        assert token in tokens, f"tokens.css 에 animation 토큰 {token} 누락"
+
+    # 신규 4 테마 모두 orb 토큰 정의 확인 (mesh-bg/accent-glow 대체)
+    # New 4 themes must all define orb tokens (replaces mesh-bg/accent-glow)
+    for token in ("--orb1:", "--orb2:", "--orb3:", "--orb4:"):
         assert themes.count(token) >= 4, (
             f"themes.css 에 {token} 4-테마 정의 부족 (실측 {themes.count(token)}회 — 4 이상 기대)"
         )
