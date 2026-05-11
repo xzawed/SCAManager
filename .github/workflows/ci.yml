@@ -69,6 +69,9 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: SonarCloud scan
+        # Dependabot PR 는 GitHub 보안 정책상 SONAR_TOKEN 시크릿에 접근 불가 — 건너뜀
+        # Dependabot PRs cannot access SONAR_TOKEN due to GitHub security policy — skip.
+        if: github.actor != 'dependabot[bot]'
         uses: SonarSource/sonarqube-scan-action@v8
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
