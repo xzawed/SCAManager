@@ -288,6 +288,22 @@
     color: var(--text-2, var(--text-muted)); font-size: 14px;
   }
 
+  /* 이슈 테이블 컬럼 헤더 — 상단 배경 헤더 행 (정책 16: 단순·명확)
+     Issue table column header row */
+  .dash-table-header {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 16px;
+    background: var(--bg-elevated);
+    color: var(--text-2);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    border-radius: 8px 8px 0 0;
+    margin-bottom: 0;
+  }
+
   /* ── Phase 3 PR 3 — 모드 토글 (Overview / Insight / Security / Usage) ──
      Same design pattern as dash-range-toggle */
   .dash-mode-toggle {
@@ -775,8 +791,12 @@
   <div class="dash-issues-card reveal">
     <h2 class="dash-section-title">{{ 'dashboard.frequent_issues' | i18n_args(locale | default('ko'), days=days) }}</h2>
     {% if frequent_issues %}
+      <div class="dash-table-header">
+        <span>이슈</span>
+        <span>빈도</span>
+      </div>
       {% for issue in frequent_issues %}
-      <div class="dash-issue-row">
+      <div class="dash-issue-row reveal">
         <div>
           <div class="dash-issue-msg">{{ issue.message }}</div>
           <div class="dash-issue-meta">
