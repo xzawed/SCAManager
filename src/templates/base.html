@@ -567,10 +567,10 @@
         <span class="chevron">▾</span>
       </button>
       <div class="theme-dropdown" id="themeDropdown" role="menu">
-        <div class="theme-option" data-theme="dark"  role="menuitem" tabindex="0">🌙 다크 대시보드</div>
-        <div class="theme-option" data-theme="light" role="menuitem" tabindex="0">☀️ 클린 카드</div>
-        <div class="theme-option" data-theme="glass" role="menuitem" tabindex="0">✨ 글래스모피즘</div>
-        <div class="theme-option" data-theme="claude-dark" role="menuitem" tabindex="0">📚 Claude 다크 (베타)</div>
+        <div class="theme-option" data-theme="dark"       role="menuitem" tabindex="0">🌌 다크 오로라</div>
+        <div class="theme-option" data-theme="light"      role="menuitem" tabindex="0">☀️ 라이트</div>
+        <div class="theme-option" data-theme="pastel"     role="menuitem" tabindex="0">🌸 파스텔</div>
+        <div class="theme-option" data-theme="catppuccin" role="menuitem" tabindex="0">🐾 개발자 다크</div>
       </div>
     </div>
     {# Phase 2 PR-4 (사이클 84) — 다국어 i18n 헤더 dropdown (테마 토글 패턴 차용) #}
@@ -593,13 +593,14 @@
   <div class="container">{% block content %}{% endblock %}</div>
   {% block scripts %}{% endblock %}
   <script>
+    // 테마 마이그레이션: glass→pastel, claude-dark→catppuccin (2026-05-11 UI 리디자인)
+    // Theme migration: glass→pastel, claude-dark→catppuccin (2026-05-11 UI redesign)
+    const THEME_MIGRATE = { 'glass': 'pastel', 'claude-dark': 'catppuccin' };
     const THEMES = {
-      dark:  { icon: '🌙', name: '다크' },
-      light: { icon: '☀️', name: '클린' },
-      glass: { icon: '✨', name: '글래스' },
-      // Phase 1B (UI 개편): Claude 다크 — warm black + sage/sand 등급 색상.
-      // 본 PR 은 토글 옵션 추가만 — 실제 페이지 적용은 Phase 1C/2 에서 점진.
-      'claude-dark': { icon: '📚', name: 'Claude' }
+      dark:        { icon: '🌌', name: '다크' },
+      light:       { icon: '☀️', name: '라이트' },
+      pastel:      { icon: '🌸', name: '파스텔' },
+      catppuccin:  { icon: '🐾', name: '개발자' }
     };
     function applyTheme(theme) {
       if (!THEMES[theme]) theme = 'dark';
@@ -612,7 +613,8 @@
       });
       document.dispatchEvent(new CustomEvent('themechange', { detail: theme }));
     }
-    applyTheme(localStorage.getItem('sca-theme') || 'dark');
+    const _storedTheme = localStorage.getItem('sca-theme');
+    applyTheme(THEME_MIGRATE[_storedTheme] || _storedTheme || 'dark');
 
     // nav 활성 링크
     (function() {
