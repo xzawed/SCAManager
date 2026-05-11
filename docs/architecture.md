@@ -15,6 +15,7 @@ src/
 │   ├── css/main.css             # Tailwind v4 소스 — @import tokens/themes + layout 유틸리티 (#376)
 │   ├── css/dist/tailwind.css    # Tailwind v4 빌드 출력 (npm run build → Railway buildCommand, #376)
 │   ├── css/illustrations.css    # 일러스트 배치 CSS — .illustration/--hero/--empty/--tutorial + 모바일 반응형 (#375)
+│   ├── css/admin.css            # 관리자 페이지 공통 스타일 — .admin-* 글래스모피즘 컴포넌트 (admin_rls_audit, admin_tenants 공유)
 │   └── illustrations/           # DALL-E 3 생성 일러스트 5장 commit (#375 Step 2-B: login_hero/dashboard_empty/overview_onboarding/add_repo_hero/filter_empty)
 ├── scripts/                     # 로컬 도구 (production import X) — Cycle 93 Step 2
 │   ├── illustration_prompts.py  # 5장 isometric prompt 정의 (login_hero/dashboard_empty/overview_onboarding/add_repo_hero/filter_empty)

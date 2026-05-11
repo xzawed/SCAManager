@@ -3,152 +3,10 @@
 {% block title %}{{ 'admin.tenants.title_prefix' | i18n_args(locale | default('ko')) }} — SCAManager Admin{% endblock %}
 
 {% block content %}
+<link rel="stylesheet" href="/static/css/admin.css">
 <style>
-  /* ──────────────────────────────────────────────────────────
-     Admin Tenants — glassmorphism redesign
-     관리자 테넌트 — 글래스모피즘 재디자인
-     CSS variables only, no hardcoded hex.
-     CSS 변수만 사용, 하드코딩 hex 없음.
-     ────────────────────────────────────────────────────────── */
-  .admin-page {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 32px 16px 64px;
-  }
-
-  /* ── 페이지 헤더 / Page header ──────────────────────────── */
-  .admin-header {
-    margin-bottom: 28px;
-  }
-
-  .admin-title {
-    font-size: 28px;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    margin: 0 0 6px;
-    background: linear-gradient(135deg, var(--text-1), var(--accent));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-
-  .admin-subtitle {
-    font-size: 14px;
-    color: var(--text-2);
-    margin: 0;
-  }
-
-  /* ── 요약 바 / Summary bar ──────────────────────────────── */
-  .admin-summary-bar {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-    margin-bottom: 20px;
-    padding: 12px 16px;
-    background: var(--bg-card);
-    backdrop-filter: blur(12px) saturate(150%);
-    border: 1px solid var(--border-subtle);
-    border-radius: 10px;
-    font-size: 14px;
-    color: var(--text-2);
-  }
-
-  .admin-summary-bar .sep {
-    opacity: 0.4;
-  }
-
-  .admin-link {
-    color: var(--accent);
-    text-decoration: none;
-    font-weight: 500;
-    transition: opacity 0.15s ease;
-  }
-
-  .admin-link:hover {
-    opacity: 0.8;
-  }
-
-  /* ── 테이블 컨테이너 / Table container ───────────────────── */
-  .admin-table-wrap {
-    overflow-x: auto;
-    border-radius: 12px;
-    border: 1px solid var(--border-subtle);
-    background: var(--bg-card);
-    backdrop-filter: blur(12px) saturate(150%);
-    margin-bottom: 24px;
-  }
-
-  .admin-table {
-    width: 100%;
-    border-collapse: collapse;
-  }
-
-  .admin-table thead tr {
-    background: var(--bg-elevated);
-  }
-
-  .admin-table th {
-    text-align: left;
-    padding: 10px 14px;
-    font-size: 12px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-2);
-    white-space: nowrap;
-    border-bottom: 1px solid var(--border-subtle);
-  }
-
-  .admin-table th.num {
-    text-align: right;
-  }
-
-  /* 행 좌측 강조선 / Row left accent bar */
-  .admin-table tbody tr {
-    position: relative;
-    border-bottom: 1px solid var(--border-subtle);
-    transition: background 0.15s ease;
-  }
-
-  .admin-table tbody tr:last-child {
-    border-bottom: none;
-  }
-
-  .admin-table tbody tr::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 3px;
-    background: var(--accent);
-    border-radius: 0 2px 2px 0;
-    transform: scaleY(0);
-    transform-origin: center;
-    transition: transform 0.15s;
-  }
-
-  .admin-table tbody tr:hover::before {
-    transform: scaleY(1);
-  }
-
-  .admin-table tbody tr:hover {
-    background: var(--table-row-hover, color-mix(in srgb, var(--accent) 5%, transparent));
-  }
-
-  .admin-table td {
-    padding: 11px 14px;
-    font-size: 13px;
-    color: var(--text-1);
-    vertical-align: middle;
-  }
-
-  .admin-table td.mono {
-    font-family: monospace;
-    font-size: 12px;
-    color: var(--text-2);
-  }
+  /* Tenants 전용 — 숫자 정렬·로그인 이름·빈 상태 / Tenants specific styles */
+  .admin-table th.num { text-align: right; }
 
   .admin-table td.num {
     text-align: right;
@@ -161,13 +19,6 @@
     color: var(--text-1);
   }
 
-  /* ── 빈 상태 / Empty state ──────────────────────────────── */
-  .admin-empty {
-    text-align: center;
-    padding: 48px 24px;
-    color: var(--text-2);
-  }
-
   .admin-empty p {
     margin: 0 0 6px;
     font-size: 15px;
@@ -176,65 +27,6 @@
   .admin-empty small {
     font-size: 12px;
     opacity: 0.7;
-  }
-
-  /* ── 안내 카드 / Info card ──────────────────────────────── */
-  .admin-info-card {
-    position: relative;
-    padding: 20px 22px 22px;
-    background: var(--bg-card);
-    backdrop-filter: blur(12px) saturate(150%);
-    border: 1px solid var(--border-subtle);
-    border-radius: 12px;
-    overflow: hidden;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-  }
-
-  .admin-info-card::after {
-    content: "";
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 3px;
-    background: linear-gradient(90deg, var(--accent), var(--accent-2, var(--accent)));
-    border-radius: 0 0 12px 12px;
-  }
-
-  .admin-info-card:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
-  }
-
-  .admin-info-title {
-    margin: 0 0 12px;
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-1);
-  }
-
-  .admin-info-list {
-    margin: 0;
-    padding-left: 18px;
-    color: var(--text-2);
-    font-size: 13px;
-    line-height: 1.7;
-  }
-
-  /* ── 반응형 / Responsive ────────────────────────────────── */
-  @media (max-width: 768px) {
-    .admin-page {
-      padding: 20px 12px 48px;
-    }
-
-    .admin-title {
-      font-size: 22px;
-    }
-
-    .admin-table th,
-    .admin-table td {
-      padding: 9px 10px;
-    }
   }
 </style>
 
