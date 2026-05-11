@@ -1,6 +1,8 @@
 """InsightNarrativeCache Repository — get / upsert / delete (1h TTL pattern).
 
 Cycle 74 PR-B Phase 2-B 🅑 — Insight 모드 Claude AI 호출 빈도 제한 (60% 절감).
+0031 — repo-scoped cache helpers 추가 (get_fresh_repo / upsert_repo / invalidate_repo).
+0031 — Add repo-scoped cache helpers (get_fresh_repo / upsert_repo / invalidate_repo).
 """
 from __future__ import annotations
 
@@ -19,9 +21,9 @@ DEFAULT_TTL_SECONDS = 3600
 def get_fresh(
     db: Session, *, user_id: int, days: int, now: datetime | None = None,
 ) -> dict[str, Any] | None:
-    """캐시 조회 — 만료 미경과 시 response_json 반환, 없거나 만료면 None.
+    """전체 대시보드 캐시 조회 — 만료 미경과 시 response_json 반환, 없거나 만료면 None.
 
-    Get cache — return response_json if not expired, else None.
+    Get global dashboard cache — return response_json if not expired, else None.
     """
     now = now or datetime.now(timezone.utc)
     row = (
@@ -29,6 +31,7 @@ def get_fresh(
         .filter(
             InsightNarrativeCache.user_id == user_id,
             InsightNarrativeCache.days == days,
+            InsightNarrativeCache.repo_id.is_(None),
         )
         .first()
     )
@@ -48,9 +51,9 @@ def upsert(
     db: Session, *, user_id: int, days: int, response: dict[str, Any],
     ttl_seconds: int = DEFAULT_TTL_SECONDS, now: datetime | None = None,
 ) -> InsightNarrativeCache:
-    """캐시 upsert — (user_id, days) 키 기준 INSERT 또는 UPDATE.
+    """전체 대시보드 캐시 upsert — (user_id, days, repo_id=NULL) 키 기준.
 
-    Upsert cache by (user_id, days). INSERT if absent, UPDATE if present.
+    Upsert global dashboard cache by (user_id, days, repo_id=NULL).
     """
     now = now or datetime.now(timezone.utc)
     expires_at = now + timedelta(seconds=ttl_seconds)
@@ -59,6 +62,7 @@ def upsert(
         .filter(
             InsightNarrativeCache.user_id == user_id,
             InsightNarrativeCache.days == days,
+            InsightNarrativeCache.repo_id.is_(None),
         )
         .first()
     )
@@ -71,7 +75,7 @@ def upsert(
         return existing
 
     row = InsightNarrativeCache(
-        user_id=user_id, days=days, response_json=response,
+        user_id=user_id, days=days, repo_id=None, response_json=response,
         created_at=now, expires_at=expires_at,
     )
     db.add(row)
@@ -81,15 +85,120 @@ def upsert(
 
 
 def invalidate(db: Session, *, user_id: int, days: int) -> bool:
-    """사용자 명시 Refresh 시 강제 무효화 (DELETE).
+    """전체 대시보드 캐시 강제 무효화 (DELETE, repo_id=NULL).
 
-    Force invalidate (DELETE) on user-explicit Refresh.
+    Force invalidate global dashboard cache (DELETE, repo_id=NULL).
     Returns True if deleted, False if not found.
     """
     row = (
         db.query(InsightNarrativeCache)
         .filter(
             InsightNarrativeCache.user_id == user_id,
+            InsightNarrativeCache.days == days,
+            InsightNarrativeCache.repo_id.is_(None),
+        )
+        .first()
+    )
+    if row is None:
+        return False
+    db.delete(row)
+    db.commit()
+    return True
+
+
+# ─── 0031: repo-scoped cache helpers ─────────────────────────────────────────
+# ─── 0031: 리포별 캐시 헬퍼 ─────────────────────────────────────────────────
+
+
+def get_fresh_repo(
+    db: Session,
+    *,
+    user_id: int,
+    repo_id: int,
+    days: int,
+    language: str = "en",
+    now: datetime | None = None,
+) -> dict[str, Any] | None:
+    """리포별 캐시 조회 — 만료 미경과 시 response_json 반환, 없거나 만료면 None.
+
+    Get repo-specific cache — return response_json if not expired, else None.
+    """
+    now = now or datetime.now(timezone.utc)
+    row = (
+        db.query(InsightNarrativeCache)
+        .filter(
+            InsightNarrativeCache.user_id == user_id,
+            InsightNarrativeCache.repo_id == repo_id,
+            InsightNarrativeCache.days == days,
+            InsightNarrativeCache.language == language,
+        )
+        .first()
+    )
+    if row is None:
+        return None
+    expires = row.expires_at
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
+    if expires <= now:
+        return None
+    return dict(row.response_json or {})
+
+
+def upsert_repo(
+    db: Session,
+    *,
+    user_id: int,
+    repo_id: int,
+    days: int,
+    language: str = "en",
+    response: dict[str, Any],
+    ttl_seconds: int = DEFAULT_TTL_SECONDS,
+    now: datetime | None = None,
+) -> InsightNarrativeCache:
+    """리포별 캐시 upsert — (user_id, repo_id, days, language) 키 기준.
+
+    Upsert repo-specific cache by (user_id, repo_id, days, language).
+    """
+    now = now or datetime.now(timezone.utc)
+    expires_at = now + timedelta(seconds=ttl_seconds)
+    existing = (
+        db.query(InsightNarrativeCache)
+        .filter(
+            InsightNarrativeCache.user_id == user_id,
+            InsightNarrativeCache.repo_id == repo_id,
+            InsightNarrativeCache.days == days,
+            InsightNarrativeCache.language == language,
+        )
+        .first()
+    )
+    if existing is not None:
+        existing.response_json = response
+        existing.created_at = now
+        existing.expires_at = expires_at
+        db.commit()
+        db.refresh(existing)
+        return existing
+    row = InsightNarrativeCache(
+        user_id=user_id, repo_id=repo_id, days=days, language=language,
+        response_json=response, created_at=now, expires_at=expires_at,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def invalidate_repo(db: Session, *, user_id: int, repo_id: int, days: int) -> bool:
+    """리포별 캐시 강제 무효화 (DELETE).
+
+    Force invalidate repo-specific cache (DELETE).
+    Returns True if deleted, False if not found.
+    """
+    row = (
+        db.query(InsightNarrativeCache)
+        .filter(
+            InsightNarrativeCache.user_id == user_id,
+            InsightNarrativeCache.repo_id == repo_id,
             InsightNarrativeCache.days == days,
         )
         .first()
