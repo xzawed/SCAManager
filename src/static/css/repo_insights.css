@@ -1,0 +1,451 @@
+/* ──────────────────────────────────────────────────────────
+   Repo Insights page — scoped .ri-* classes
+   CPD 방지: admin.css 분리와 동일 패턴. 독립 파일 분리.
+   CPD prevention: same pattern as admin.css separation.
+   CSS variables only, no hardcoded hex.
+   ────────────────────────────────────────────────────────── */
+
+/* ── 페이지 레이아웃 / Page layout ─────────────────────── */
+.ri-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+}
+
+/* ── 헤더 / Header ──────────────────────────────────────── */
+.ri-header {
+  margin-bottom: 28px;
+}
+
+.ri-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-2);
+  text-decoration: none;
+  margin-bottom: 12px;
+  transition: color 0.15s;
+}
+
+.ri-back-link:hover {
+  color: var(--accent);
+}
+
+.ri-repo-title {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0 0 4px;
+  background: linear-gradient(135deg, var(--text-1), var(--accent));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.ri-header-meta {
+  font-size: 13px;
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ri-grade-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+/* ── 기간 선택 버튼 / Period selector ───────────────────── */
+.ri-day-selector {
+  display: flex;
+  gap: 6px;
+}
+
+.ri-day-btn {
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--text-2);
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  transition: background 0.15s, color 0.15s;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.ri-day-btn:hover,
+.ri-day-btn.active {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+/* ── KPI 카드 그리드 / KPI card grid ───────────────────── */
+.ri-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.ri-kpi-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(12px) saturate(150%);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 18px 20px 16px;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+  min-height: 100px;
+}
+
+.ri-kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.ri-kpi-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-2);
+  margin-bottom: 8px;
+}
+
+.ri-kpi-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-1);
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.ri-kpi-sub {
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.ri-delta-up   { color: var(--success); }
+.ri-delta-down { color: var(--danger); }
+
+/* ── 2열 그리드 (반복 이슈 + 도넛) / 2-col grid ─────────── */
+.ri-two-col {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+/* ── 공통 카드 / Common card ────────────────────────────── */
+.ri-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(12px) saturate(150%);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.ri-card-header {
+  padding: 14px 18px 0;
+}
+
+.ri-card-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-1);
+  margin: 0 0 14px;
+}
+
+/* ── 반복 이슈 테이블 / Recurring issues table ───────────── */
+.ri-issues-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ri-issues-table th {
+  text-align: left;
+  padding: 8px 18px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-2);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+}
+
+.ri-issues-table tbody tr {
+  position: relative;
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background 0.15s;
+}
+
+.ri-issues-table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.ri-issues-table tbody tr::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--accent);
+  border-radius: 0 2px 2px 0;
+  transform: scaleY(0);
+  transform-origin: center;
+  transition: transform 0.15s;
+}
+
+.ri-issues-table tbody tr:hover::before {
+  transform: scaleY(1);
+}
+
+.ri-issues-table tbody tr:hover {
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+
+.ri-issues-table td {
+  padding: 10px 18px;
+  font-size: 13px;
+  color: var(--text-1);
+  vertical-align: middle;
+}
+
+.ri-issues-table td.ri-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+/* ── 심각도 배지 / Severity badge ───────────────────────── */
+.ri-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.ri-badge-error {
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+  color: var(--danger);
+  border: 1px solid color-mix(in srgb, var(--danger) 25%, transparent);
+}
+
+.ri-badge-warning {
+  background: color-mix(in srgb, var(--warning) 15%, transparent);
+  color: var(--warning);
+  border: 1px solid color-mix(in srgb, var(--warning) 25%, transparent);
+}
+
+.ri-badge-tool {
+  background: color-mix(in srgb, var(--text-2) 12%, transparent);
+  color: var(--text-2);
+  border: 1px solid color-mix(in srgb, var(--text-2) 20%, transparent);
+}
+
+/* ── 도넛 차트 컨테이너 / Donut chart container ──────────── */
+.ri-donut-wrap {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+}
+
+.ri-donut-wrap canvas {
+  max-width: 200px;
+  max-height: 200px;
+}
+
+/* ── 문제 파일 / Problem files ──────────────────────────── */
+.ri-file-list {
+  padding: 0 18px 16px;
+  list-style: none;
+  margin: 0;
+}
+
+.ri-file-row {
+  margin-bottom: 12px;
+}
+
+.ri-file-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.ri-file-name {
+  font-size: 12px;
+  font-family: monospace;
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 70%;
+}
+
+.ri-file-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.ri-file-bar-bg {
+  height: 6px;
+  background: var(--border-subtle);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.ri-file-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2, var(--accent)));
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+
+/* ── AI 제안 / AI suggestions ───────────────────────────── */
+.ri-suggestions {
+  padding: 0 18px 16px;
+  counter-reset: suggestion;
+  list-style: none;
+  margin: 0;
+}
+
+.ri-suggestion-item {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  counter-increment: suggestion;
+}
+
+.ri-suggestion-item:last-child {
+  border-bottom: none;
+}
+
+.ri-suggestion-num {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-2);
+  min-width: 20px;
+}
+
+.ri-suggestion-text {
+  font-size: 13px;
+  color: var(--text-1);
+  flex: 1;
+  line-height: 1.5;
+}
+
+.ri-suggestion-count {
+  font-size: 11px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+/* ── AI 내러티브 카드 / AI narrative card ───────────────── */
+.ri-narrative-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(12px) saturate(150%);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 20px 22px 22px;
+  margin-bottom: 24px;
+  position: relative;
+  overflow: hidden;
+}
+
+.ri-narrative-card::after {
+  content: "";
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2, var(--accent)));
+  border-radius: 0 0 12px 12px;
+}
+
+.ri-narrative-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-1);
+  margin: 0 0 12px;
+}
+
+.ri-narrative-text {
+  font-size: 14px;
+  color: var(--text-2);
+  line-height: 1.75;
+  white-space: pre-wrap;
+}
+
+/* ── 빈 상태 / Empty state ──────────────────────────────── */
+.ri-empty {
+  text-align: center;
+  padding: 40px 24px;
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+/* ── 반응형 / Responsive ────────────────────────────────── */
+@media (max-width: 1024px) {
+  .ri-kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .ri-page {
+    padding: 16px 12px 48px;
+  }
+
+  .ri-kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+
+  .ri-two-col {
+    grid-template-columns: 1fr;
+  }
+
+  .ri-repo-title {
+    font-size: 20px;
+  }
+
+  /* WCAG 2.5.5 — 모바일 인터랙티브 요소 최소 44px */
+  /* WCAG 2.5.5 — min 44px for mobile interactive elements */
+  .ri-day-btn {
+    min-height: 44px;
+    padding: 0 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ri-kpi-card,
+  .ri-issues-table tbody tr::before,
+  .ri-file-bar {
+    transition: none;
+  }
+}
