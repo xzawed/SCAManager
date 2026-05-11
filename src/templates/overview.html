@@ -135,7 +135,7 @@
     border-radius: 0 2px 2px 0;
   }
   .repo-row:hover::before { transform: scaleY(1); }
-  .repo-row:hover { background: var(--table-row-hover, rgba(255,255,255,0.04)); }
+  .repo-row:hover { background: var(--table-row-hover, transparent); }
 
   /* 리포 링크
      Repo link */
@@ -168,7 +168,7 @@
   .score-cell {
     font-weight: 700;
     font-size: var(--fs-base);
-    animation: badge-pop 0.4s cubic-bezier(0.25, 1.5, 0.5, 1) both;
+    animation: var(--anim-badge-pop);
   }
   .score-cell.score-high { color: var(--grade-a); }
   .score-cell.score-mid  { color: var(--grade-c); }
@@ -177,7 +177,7 @@
   /* 등급 뱃지 — badge-pop 애니메이션 적용
      Grade badge — badge-pop animation applied */
   .grade {
-    animation: badge-pop 0.4s cubic-bezier(0.25, 1.5, 0.5, 1) both;
+    animation: var(--anim-badge-pop);
   }
 
   /* Step B (B4): settings-link nowrap + 모바일에서 클릭 영역 ≥40px (WCAG 2.5.5)
@@ -245,7 +245,7 @@
 
     /* B4: 설정 링크 클릭 영역 강화 (모바일 손가락 권장 ≥40px)
        B4: enlarge settings-link tap target on mobile (≥40px) */
-    .settings-link { padding: 8px 12px; min-height: 40px; box-sizing: border-box; }
+    .settings-link { padding: 8px 12px; min-height: 44px; box-sizing: border-box; }
   }
 </style>
 
@@ -388,7 +388,7 @@
   .gst-footer-hint { font-size: 12px; color: var(--text-1, var(--text-primary)); }
   .gst-footer-hint code { background: var(--bg-card); padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 12px; }
 </style>
-<div class="get-started-tutorial reveal">
+<div class="get-started-tutorial">
   {# Cycle 94 Step 2-B — 3-step onboarding 일러스트 (1792x1024 가로형)
      Cycle 94 Step 2-B — 3-step onboarding illustration (1792x1024 landscape) #}
   <img src="/static/illustrations/overview_onboarding.png"
