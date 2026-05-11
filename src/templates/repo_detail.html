@@ -82,7 +82,7 @@
     font-weight: 700;
     font-size: 15px;
     display: inline-block;
-    animation: var(--anim-badge-pop, badge-pop 0.4s cubic-bezier(0.34,1.56,0.64,1) both);
+    animation: var(--anim-badge-pop);
   }
   .score-val.high { color: var(--grade-a); }
   .score-val.mid  { color: var(--grade-c); }
@@ -90,7 +90,7 @@
 
   /* grade 배지도 badge-pop 애니메이션 / Apply badge-pop to grade badges too */
   .grade {
-    animation: var(--anim-badge-pop, badge-pop 0.4s cubic-bezier(0.34,1.56,0.64,1) both);
+    animation: var(--anim-badge-pop);
   }
 
   .date-cell {
@@ -265,9 +265,10 @@
        Step B (B1): prevent iOS Safari focus zoom (any input <16px triggers it) */
     .filter-search { font-size: 16px; }
     .date-input { font-size: 16px; }
-    /* Step B (B1): filter-btn / page-btn 클릭 영역 보강 (WCAG 2.5.5) — Step A 의 .btn 분기 보완 */
-    .filter-btn { min-height: 40px; padding: .55rem .85rem; font-size: 13px; }
-    .page-btn { min-width: 44px; min-height: 44px; }
+    /* Step B (B1): filter-btn / page-btn 클릭 영역 보강 (WCAG 2.5.5) — Step A 의 .btn 분기 보완
+       WCAG 2.5.5: minimum touch target 44px (updated from 40px) */
+    .filter-btn { min-height: 44px; padding: .55rem .85rem; font-size: 13px; box-sizing: border-box; }
+    .page-btn { min-width: 44px; min-height: 44px; box-sizing: border-box; }
     /* Step B (B1): 슬라이더 thumb 모바일 24px (settings P2-6 패턴 재적용) */
     .dual-slider-track input[type=range]::-webkit-slider-thumb { width: 24px; height: 24px; }
   }
@@ -294,6 +295,8 @@
 {% endif %}
 
 <!-- 헤더 / Header / Phase 2 PR-7 — i18n -->
+<!-- FOUC 방지: detail-header 는 above-the-fold — reveal 클래스 제외
+     FOUC prevention: detail-header is above the fold, no reveal class -->
 <div class="detail-header">
   <a class="back-btn" href="/">{{ 'repo_detail.back' | i18n_args(locale | default('ko')) }}</a>
   <div class="detail-header-text">
@@ -303,7 +306,9 @@
 </div>
 
 <!-- 점수 차트 / Score chart — Step E (E2) -->
-<div class="card chart-card reveal">
+<!-- FOUC 방지: chart-card 는 above-the-fold — reveal 클래스 제외
+     FOUC prevention: primary score trend chart is above the fold, no reveal class -->
+<div class="card chart-card">
   <div class="chart-label">{{ 'repo_detail.score_trend_label' | i18n_args(locale | default('ko')) }}</div>
   <div class="chart-wrap-inner">
     <canvas id="scoreChart"></canvas>
@@ -406,14 +411,17 @@
        PR-3 F3: dynamic tooltip colors from theme tokens (light + claude-dark harmony) */
     const tipBg   = s.getPropertyValue('--bg-card').trim() || '#1c1c23';
     const tipText = s.getPropertyValue('--text-primary').trim() || '#e2e2e8';
-    return { accent, muted, border, tipBg, tipText };
+    /* Fix 4: --accent-rgb 토큰으로 rgba() 구성 — accent hex 직접 연결 방식 대체
+       Fix 4: use --accent-rgb token for rgba() — replaces fragile hex string concat */
+    const accentRgb = getComputedStyle(document.documentElement).getPropertyValue('--accent-rgb').trim() || '99,102,241';
+    return { accent, accentRgb, muted, border, tipBg, tipText };
   }
 
   let chart;
   let _chartData = [];
   function buildChart(data) {
     if (data !== undefined) _chartData = data;
-    const { accent, muted, border } = getThemeColors();
+    const { accent, accentRgb, muted, border } = getThemeColors();
     const ctx = document.getElementById('scoreChart');
     const labels = _chartData.map(function(a) { return (a.created_at || '').slice(0, 10); });
     const scores = _chartData.map(function(a) { return a.score; });
@@ -426,10 +434,14 @@
           label: {{ 'repo_detail.chart_score_label' | i18n_args(locale | default('ko')) | tojson }},
           data: scores,
           borderColor: accent,
-          backgroundColor: accent + '22',
+          /* rgba 구성 — rgb 채널 토큰 사용, 투명도 0.13 고정
+             rgba construction via rgb channel token, fixed opacity 0.13 */
+          backgroundColor: `rgba(${accentRgb}, 0.13)`,
           borderWidth: 2,
           pointBackgroundColor: accent,
-          pointBorderColor: '#fff',
+          /* 테마 배경색으로 포인트 테두리 — 라이트/다크 자동 대응
+             Use theme bg-base for point border — auto-adapts to light/dark themes */
+          pointBorderColor: getComputedStyle(document.documentElement).getPropertyValue('--bg-base').trim() || '#fff',
           pointBorderWidth: 2,
           pointRadius: 4,
           pointHoverRadius: 6,
@@ -615,7 +627,7 @@ function renderTable(data) {
       : '<span style="color:var(--text-muted)">—</span>';
     /* analysis-row 클래스 추가 — hover accent bar 및 reveal 애니메이션 적용
        Add analysis-row class for hover accent bar and reveal animation */
-    return '<tr class="analysis-row" style="cursor:pointer" onclick="location.href=\'/repos/' + encodeRepo(REPO_NAME_JS) + '/analyses/' + a.id + '\'">'
+    return '<tr class="analysis-row reveal" style="cursor:pointer" onclick="location.href=\'/repos/' + encodeRepo(REPO_NAME_JS) + '/analyses/' + a.id + '\'">'
       + '<td class="date-cell">' + date + msgPreview + '</td>'
       + '<td><span class="commit-sha">' + escHtml((a.commit_sha || '').slice(0,7)) + '</span></td>'
       + '<td>' + pr + '</td>'
