@@ -58,16 +58,12 @@
   --hook-btn-bd:        rgba(168,85,247,.3);
   --hook-btn-tx:        #c084fc;
 
-  /* backward-compat aliases — remove after full migration */
+  /* backward-compat aliases — still in use, keep until consumers are migrated */
   --bg-page:        var(--bg-base);
   --text-primary:   var(--text-1);
   --text-muted:     var(--text-2);
-  --text-nav:       var(--text-3);
   --border:         var(--border-subtle);
-  --border-focus:   var(--border-strong);
   --shadow-card:    var(--shadow-sm);
-  --table-head:     var(--bg-elevated);
-  --shadow:         var(--shadow-md);
 }
 
 /* ── Light — Vercel ──────────────────────────────────────────────────────── */
@@ -126,12 +122,8 @@
   --bg-page:        var(--bg-base);
   --text-primary:   var(--text-1);
   --text-muted:     var(--text-2);
-  --text-nav:       var(--text-3);
   --border:         var(--border-subtle);
-  --border-focus:   var(--border-strong);
   --shadow-card:    var(--shadow-sm);
-  --table-head:     var(--bg-elevated);
-  --shadow:         var(--shadow-md);
 }
 
 /* ── Pastel — Dreamy Soft (replaces Glass) ───────────────────────────────── */
@@ -190,12 +182,8 @@
   --bg-page:        var(--bg-base);
   --text-primary:   var(--text-1);
   --text-muted:     var(--text-2);
-  --text-nav:       var(--text-3);
   --border:         var(--border-subtle);
-  --border-focus:   var(--border-strong);
   --shadow-card:    var(--shadow-sm);
-  --table-head:     var(--bg-elevated);
-  --shadow:         var(--shadow-md);
 }
 
 /* ── Catppuccin — Dev Dark (replaces Claude-dark) ────────────────────────── */
@@ -254,10 +242,6 @@
   --bg-page:        var(--bg-base);
   --text-primary:   var(--text-1);
   --text-muted:     var(--text-2);
-  --text-nav:       var(--text-3);
   --border:         var(--border-subtle);
-  --border-focus:   var(--border-strong);
   --shadow-card:    var(--shadow-sm);
-  --table-head:     var(--bg-elevated);
-  --shadow:         var(--shadow-md);
 }
