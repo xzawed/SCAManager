@@ -3,6 +3,7 @@
 0031 migration regression guard — insight_narrative_cache.repo_id column + index.
 """
 import os
+import importlib
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("GITHUB_WEBHOOK_SECRET", "test-secret")
@@ -18,9 +19,9 @@ from src.database import Base
 
 # Base.metadata.create_all 전 명시 import 의무 — FK 참조 테이블 포함
 # Explicit imports required before create_all — including FK-referenced tables
-import src.models.user  # noqa: F401  pylint: disable=unused-import,wrong-import-position
-import src.models.repository  # noqa: F401  pylint: disable=unused-import,wrong-import-position
-import src.models.insight_narrative_cache  # noqa: F401  pylint: disable=unused-import,wrong-import-position
+importlib.import_module("src.models.user")
+importlib.import_module("src.models.repository")
+importlib.import_module("src.models.insight_narrative_cache")
 
 
 @pytest.fixture()
