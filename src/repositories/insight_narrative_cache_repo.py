@@ -19,7 +19,12 @@ DEFAULT_TTL_SECONDS = 3600
 
 
 def get_fresh(
-    db: Session, *, user_id: int, days: int, now: datetime | None = None,
+    db: Session,
+    *,
+    user_id: int,
+    days: int,
+    language: str = "en",
+    now: datetime | None = None,
 ) -> dict[str, Any] | None:
     """전체 대시보드 캐시 조회 — 만료 미경과 시 response_json 반환, 없거나 만료면 None.
 
@@ -32,6 +37,7 @@ def get_fresh(
             InsightNarrativeCache.user_id == user_id,
             InsightNarrativeCache.days == days,
             InsightNarrativeCache.repo_id.is_(None),
+            InsightNarrativeCache.language == language,
         )
         .first()
     )
@@ -48,12 +54,18 @@ def get_fresh(
 
 
 def upsert(
-    db: Session, *, user_id: int, days: int, response: dict[str, Any],
-    ttl_seconds: int = DEFAULT_TTL_SECONDS, now: datetime | None = None,
+    db: Session,
+    *,
+    user_id: int,
+    days: int,
+    language: str = "en",
+    response: dict[str, Any],
+    ttl_seconds: int = DEFAULT_TTL_SECONDS,
+    now: datetime | None = None,
 ) -> InsightNarrativeCache:
-    """전체 대시보드 캐시 upsert — (user_id, days, repo_id=NULL) 키 기준.
+    """전체 대시보드 캐시 upsert — (user_id, days, language, repo_id=NULL) 키 기준.
 
-    Upsert global dashboard cache by (user_id, days, repo_id=NULL).
+    Upsert global dashboard cache by (user_id, days, language, repo_id=NULL).
     """
     now = now or datetime.now(timezone.utc)
     expires_at = now + timedelta(seconds=ttl_seconds)
@@ -63,6 +75,7 @@ def upsert(
             InsightNarrativeCache.user_id == user_id,
             InsightNarrativeCache.days == days,
             InsightNarrativeCache.repo_id.is_(None),
+            InsightNarrativeCache.language == language,
         )
         .first()
     )
@@ -75,8 +88,8 @@ def upsert(
         return existing
 
     row = InsightNarrativeCache(
-        user_id=user_id, days=days, repo_id=None, response_json=response,
-        created_at=now, expires_at=expires_at,
+        user_id=user_id, days=days, language=language, repo_id=None,
+        response_json=response, created_at=now, expires_at=expires_at,
     )
     db.add(row)
     db.commit()
@@ -188,23 +201,31 @@ def upsert_repo(
     return row
 
 
-def invalidate_repo(db: Session, *, user_id: int, repo_id: int, days: int) -> bool:
+def invalidate_repo(
+    db: Session,
+    *,
+    user_id: int,
+    repo_id: int,
+    days: int,
+    language: str | None = None,
+) -> int:
     """리포별 캐시 강제 무효화 (DELETE).
 
     Force invalidate repo-specific cache (DELETE).
-    Returns True if deleted, False if not found.
+
+    language=None 시 해당 (user_id, repo_id, days) 모든 언어 행 삭제.
+    language=None: delete all language variants for (user_id, repo_id, days).
+    Returns count of deleted rows.
     """
-    row = (
-        db.query(InsightNarrativeCache)
-        .filter(
-            InsightNarrativeCache.user_id == user_id,
-            InsightNarrativeCache.repo_id == repo_id,
-            InsightNarrativeCache.days == days,
-        )
-        .first()
+    q = db.query(InsightNarrativeCache).filter(
+        InsightNarrativeCache.user_id == user_id,
+        InsightNarrativeCache.repo_id == repo_id,
+        InsightNarrativeCache.days == days,
     )
-    if row is None:
-        return False
-    db.delete(row)
+    if language is not None:
+        q = q.filter(InsightNarrativeCache.language == language)
+    rows = q.all()
+    for row in rows:
+        db.delete(row)
     db.commit()
-    return True
+    return len(rows)
