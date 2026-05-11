@@ -58,12 +58,6 @@
   --hook-btn-bd:        rgba(168,85,247,.3);
   --hook-btn-tx:        #c084fc;
 
-  /* backward-compat aliases — still in use, keep until consumers are migrated */
-  --bg-page:        var(--bg-base);
-  --text-primary:   var(--text-1);
-  --text-muted:     var(--text-2);
-  --border:         var(--border-subtle);
-  --shadow-card:    var(--shadow-sm);
 }
 
 /* ── Light — Vercel ──────────────────────────────────────────────────────── */
@@ -119,11 +113,6 @@
   --hook-btn-bd:        rgba(124,58,237,.2);
   --hook-btn-tx:        #7c3aed;
 
-  --bg-page:        var(--bg-base);
-  --text-primary:   var(--text-1);
-  --text-muted:     var(--text-2);
-  --border:         var(--border-subtle);
-  --shadow-card:    var(--shadow-sm);
 }
 
 /* ── Pastel — Dreamy Soft (replaces Glass) ───────────────────────────────── */
@@ -179,11 +168,6 @@
   --hook-btn-bd:        rgba(244,114,182,.25);
   --hook-btn-tx:        #db2777;
 
-  --bg-page:        var(--bg-base);
-  --text-primary:   var(--text-1);
-  --text-muted:     var(--text-2);
-  --border:         var(--border-subtle);
-  --shadow-card:    var(--shadow-sm);
 }
 
 /* ── Catppuccin — Dev Dark (replaces Claude-dark) ────────────────────────── */
@@ -239,9 +223,4 @@
   --hook-btn-bd:        rgba(243,139,168,.25);
   --hook-btn-tx:        #f38ba8;
 
-  --bg-page:        var(--bg-base);
-  --text-primary:   var(--text-1);
-  --text-muted:     var(--text-2);
-  --border:         var(--border-subtle);
-  --shadow-card:    var(--shadow-sm);
 }

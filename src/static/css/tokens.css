@@ -139,7 +139,7 @@
    * 사용처 그대로 두고 alias 만 추가해 회귀 0. */
   --bg-hover:    var(--table-row-hover);
   --card-bg:     var(--bg-card);
-  --text:        var(--text-primary);
+  --text:        var(--text-1);
   --accent-blue: var(--accent);    /* repo_detail.html CLI Hook 안내 배너 */
   --c-warning:   var(--warning);   /* settings.html 잔존 토큰명 (legacy) */
 

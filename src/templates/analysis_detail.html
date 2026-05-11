@@ -397,7 +397,7 @@
     <span class="ad-score-big {% if analysis.score >= 75 %}high{% elif analysis.score >= 50 %}mid{% else %}low{% endif %}">
       {{ analysis.score }}
     </span>
-    <span style="font-size:1.2rem;color:var(--text-muted)">{{ 'analysis_detail.score_unit_suffix' | i18n_args(locale | default('ko')) }}</span>
+    <span style="font-size:1.2rem;color:var(--text-2)">{{ 'analysis_detail.score_unit_suffix' | i18n_args(locale | default('ko')) }}</span>
   </div>
   <div>
     <div style="font-size:15px;font-weight:700;color:var(--text-1)">{{ 'analysis_detail.grade_label' | i18n_args(locale | default('ko'), grade=analysis.grade) }}</div>
@@ -441,10 +441,10 @@
   .feedback-card { padding: 1rem 1.2rem; display: flex; align-items: center;
                    justify-content: space-between; flex-wrap: wrap; gap: 0.8rem; }
   .feedback-prompt { display: flex; flex-direction: column; }
-  .feedback-label { font-size: 14px; font-weight: 600; color: var(--text-primary); }
-  .feedback-hint  { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  .feedback-label { font-size: 14px; font-weight: 600; color: var(--text-1); }
+  .feedback-hint  { font-size: 12px; color: var(--text-2); margin-top: 2px; }
   .feedback-buttons { display: flex; gap: 0.5rem; align-items: center; }
-  .fb-btn { padding: 0.5rem 1rem; border-radius: 8px; border: 1px solid var(--border);
+  .fb-btn { padding: 0.5rem 1rem; border-radius: 8px; border: 1px solid var(--border-subtle);
             background: var(--bg-card); cursor: pointer; font-size: 14px;
             transition: all 0.15s ease; display: inline-flex; align-items: center; gap: 0.3rem; }
   .fb-btn:hover { background: var(--bg-hover); transform: translateY(-1px); }
@@ -453,7 +453,7 @@
   .fb-btn.active.fb-up   { background: color-mix(in srgb, var(--success) 13%, transparent); border-color: var(--success); color: var(--success); }
   .fb-btn.active.fb-down { background: color-mix(in srgb, var(--danger) 13%, transparent); border-color: var(--danger); color: var(--danger); }
   .fb-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  .fb-status { font-size: 12px; color: var(--text-muted); margin-left: 0.5rem; }
+  .fb-status { font-size: 12px; color: var(--text-2); margin-left: 0.5rem; }
   /* Step D: 피드백 상태 토큰화 / Feedback status semantic tokens */
   .fb-status.ok    { color: var(--success); }
   .fb-status.error { color: var(--danger); }

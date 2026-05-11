@@ -15,9 +15,9 @@
     -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
   }
   .repo-badge {
-    margin-left:auto; background:var(--bg-input); color:var(--text-muted);
+    margin-left:auto; background:var(--bg-input); color:var(--text-2);
     padding:.25rem .8rem; border-radius:20px; font-size:12px; font-family:monospace;
-    border:1px solid var(--border);
+    border:1px solid var(--border-subtle);
   }
 
   /* 1컬럼 기본 (모바일 퍼스트) — 640px 이상에서 2컬럼으로 전환 */
@@ -74,9 +74,9 @@
   .s-card-body { padding:1.1rem; }
 
   /* 카드 내 섹션 구분 */
-  .s-divider { height:1px; background:var(--border); margin:1rem 0; opacity:.6; }
+  .s-divider { height:1px; background:var(--border-subtle); margin:1rem 0; opacity:.6; }
   .s-section-label {
-    font-size:11px; font-weight:700; color:var(--text-muted);
+    font-size:11px; font-weight:700; color:var(--text-2);
     letter-spacing:.06em; text-transform:uppercase; margin-bottom:.65rem;
   }
 
@@ -85,12 +85,12 @@
 
   /* 프리셋 카드 */
   .hdr-preset { background: linear-gradient(135deg, var(--accent), var(--accent-2, var(--pink, var(--accent)))); }
-  .preset-desc { font-size:12px; color:var(--text-muted); margin-bottom:.85rem; line-height:1.5; }
+  .preset-desc { font-size:12px; color:var(--text-2); margin-bottom:.85rem; line-height:1.5; }
 
   /* 프리셋 아코디언 */
   .preset-cards { display:flex; flex-direction:column; gap:.5rem; }
   .preset-details {
-    border:1.5px solid var(--border); border-radius:10px;
+    border:1.5px solid var(--border-subtle); border-radius:10px;
     background:var(--bg-input); overflow:hidden;
     transition:border-color var(--transition), box-shadow var(--transition);
   }
@@ -108,20 +108,20 @@
   }
   .preset-summary::-webkit-details-marker { display:none; }
   .preset-summary::after {
-    content:'▼'; font-size:10px; color:var(--text-muted);
+    content:'▼'; font-size:10px; color:var(--text-2);
     margin-left:auto; transition:transform var(--transition);
   }
   .preset-details[open] .preset-summary::after { transform:rotate(180deg); }
   .preset-icon { font-size:20px; line-height:1; flex-shrink:0; }
   .preset-name { font-size:13px; font-weight:700; }
-  .preset-hint { font-size:11px; color:var(--text-muted); margin-top:.1rem; line-height:1.3; }
+  .preset-hint { font-size:11px; color:var(--text-2); margin-top:.1rem; line-height:1.3; }
   .preset-detail-body {
     padding:.65rem 1rem 1rem;
-    border-top:1px solid var(--border);
+    border-top:1px solid var(--border-subtle);
   }
   .preset-table { width:100%; font-size:12px; border-collapse:collapse; }
-  .preset-table td { padding:.28rem .2rem; color:var(--text-muted); vertical-align:middle; }
-  .preset-table td:first-child { font-weight:600; color:var(--text-primary); width:58%; }
+  .preset-table td { padding:.28rem .2rem; color:var(--text-2); vertical-align:middle; }
+  .preset-table td:first-child { font-weight:600; color:var(--text-1); width:58%; }
   .preset-table td:last-child { text-align:right; }
   .pt-applied-label {
     margin-top:.75rem; padding:.4rem .65rem;
@@ -134,8 +134,8 @@
      Gate mode buttons — P1-3: ≥48px touch target on mobile (WCAG 2.5.5) */
   .gate-btns { display:grid; grid-template-columns:repeat(3,1fr); gap:.4rem; margin-bottom:1rem; }
   .gate-mode-btn {
-    padding:.5rem .25rem; border-radius:8px; border:1.5px solid var(--border);
-    background:var(--bg-input); color:var(--text-muted);
+    padding:.5rem .25rem; border-radius:8px; border:1.5px solid var(--border-subtle);
+    background:var(--bg-input); color:var(--text-2);
     font-size:12px; font-weight:600; text-align:center; cursor:pointer;
     transition:all var(--transition);
     display:flex; flex-direction:column; align-items:center; gap:.15rem;
@@ -155,11 +155,11 @@
   .threshold-row { margin-bottom:.85rem; }
   .threshold-label {
     display:flex; justify-content:space-between; align-items:center;
-    margin-bottom:.35rem; font-size:12px; color:var(--text-muted);
+    margin-bottom:.35rem; font-size:12px; color:var(--text-2);
   }
   .threshold-ctrl { display:flex; align-items:center; gap:.5rem; }
   .threshold-ctrl input[type=range] {
-    flex:1; height:6px; border-radius:3px; background:var(--border);
+    flex:1; height:6px; border-radius:3px; background:var(--border-subtle);
     -webkit-appearance:none; outline:none; cursor:pointer;
   }
   .threshold-ctrl input[type=range]::-webkit-slider-thumb {
@@ -185,9 +185,9 @@
   .range-hint {
     margin-top:.65rem; padding:.5rem .75rem;
     background:var(--hint-bg); border:1px solid var(--hint-border);
-    border-radius:7px; font-size:11px; color:var(--text-muted); line-height:1.6;
+    border-radius:7px; font-size:11px; color:var(--text-2); line-height:1.6;
   }
-  .range-hint strong { color:var(--text-primary); }
+  .range-hint strong { color:var(--text-1); }
 
   /* 토글 스위치 */
   /* P1-7: 다중 줄 t-desc 와 1줄 토글의 baseline 어긋남 보정 — flex-start + 토글 자체 중앙 정렬
@@ -196,7 +196,7 @@
   .toggle-row .toggle-switch { align-self:center; flex-shrink:0; }
   .toggle-row + .toggle-row { margin-top:.85rem; }
   .toggle-info .t-title { font-size:13px; font-weight:600; margin-bottom:.2rem; }
-  .toggle-info .t-desc  { font-size:11px; color:var(--text-muted); line-height:1.4; }
+  .toggle-info .t-desc  { font-size:11px; color:var(--text-2); line-height:1.4; }
   .toggle-switch { position:relative; display:inline-flex; align-items:center; flex-shrink:0; }
   .toggle-switch input[type="checkbox"] { width:0; height:0; opacity:0; position:absolute; }
   /* 토글 트랙 — 시맨틱 토큰: OFF=elevated+border, ON=success
@@ -229,16 +229,16 @@
   /* 입력 필드 */
   .field-row { display:flex; flex-direction:column; gap:5px; margin-bottom:.6rem; }
   .field-row:last-child { margin-bottom:0; }
-  .field-label { font-size:12px; font-weight:600; color:var(--text-primary); display:flex; align-items:center; gap:6px; }
+  .field-label { font-size:12px; font-weight:600; color:var(--text-1); display:flex; align-items:center; gap:6px; }
   .field-tag {
     font-size:10px; font-weight:600; padding:2px 6px; border-radius:4px;
     background:rgba(99,102,241,.12); color:var(--accent); letter-spacing:.04em;
   }
-  .field-hint { font-size:11px; color:var(--text-muted); }
+  .field-hint { font-size:11px; color:var(--text-2); }
   .field-input {
     width:100%; padding:.55rem .875rem; border-radius:8px;
-    border:1.5px solid var(--border); background:var(--bg-input);
-    color:var(--text-primary); font-size:12px; font-family:'Menlo','Consolas',monospace;
+    border:1.5px solid var(--border-subtle); background:var(--bg-input);
+    color:var(--text-1); font-size:12px; font-family:'Menlo','Consolas',monospace;
     transition:border-color var(--transition), background var(--transition), box-shadow var(--transition);
     outline:none;
   }
@@ -252,15 +252,15 @@
   }
   .field-input:focus { border-color:var(--accent); background:var(--bg-input-focus);
                        box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent); }
-  .field-input::placeholder { color:var(--text-muted); opacity:.7; }
+  .field-input::placeholder { color:var(--text-2); opacity:.7; }
 
   /* 알림 채널 1컬럼 기본 (모바일 퍼스트) */
   .channel-grid { display:grid; grid-template-columns:1fr; gap:.5rem .9rem; }
 
   /* Hook 카드 */
   .hook-code {
-    background:var(--bg-input); border:1px solid var(--border); border-radius:7px;
-    padding:.55rem .8rem; font-family:monospace; font-size:12px; color:var(--text-muted);
+    background:var(--bg-input); border:1px solid var(--border-subtle); border-radius:7px;
+    padding:.55rem .8rem; font-family:monospace; font-size:12px; color:var(--text-2);
     margin-bottom:.75rem;
   }
   .hook-btns { display:flex; gap:.5rem; flex-wrap:wrap; }
@@ -293,7 +293,7 @@
   .save-bar {
     position:sticky; bottom:0;
     padding:.75rem 0 calc(.85rem + env(safe-area-inset-bottom, 0px));
-    background: var(--bg-page);
+    background: var(--bg-base);
     border-top: 1px solid var(--border-subtle);
     box-shadow: 0 -8px 16px -8px rgba(0,0,0,.18);
     transform: translateY(8px);
@@ -424,7 +424,7 @@
     <span class="mode-toggle-counter" id="modeToggleCounter"></span>
   </div>
 
-  <p class="simple-only-hint" style="font-size:12px;color:var(--text-muted);
+  <p class="simple-only-hint" style="font-size:12px;color:var(--text-2);
             margin: -.6rem 0 1.25rem; padding: .5rem .85rem; line-height:1.55;
             background: var(--hint-bg, rgba(99,102,241,.06));
             border-left: 3px solid var(--accent); border-radius: 6px;">
@@ -436,12 +436,12 @@
     .mode-toggle-bar { display: flex; align-items: center; gap: 0.75rem;
                        margin: 0 0 1.25rem; padding: 0.55rem 0.85rem;
                        background: var(--bg-card); border-radius: 10px;
-                       border: 1px solid var(--border); flex-wrap: wrap;
-                       box-shadow: var(--shadow-card);
+                       border: 1px solid var(--border-subtle); flex-wrap: wrap;
+                       box-shadow: var(--shadow-sm);
                        transition: border-color 0.2s ease, box-shadow 0.2s ease; }
     .mode-toggle-bar:hover { border-color: var(--accent);
-                             box-shadow: 0 0 0 3px rgba(99,102,241,0.10), var(--shadow-card); }
-    .mode-toggle-label { font-size: 12px; color: var(--text-muted);
+                             box-shadow: 0 0 0 3px rgba(99,102,241,0.10), var(--shadow-sm); }
+    .mode-toggle-label { font-size: 12px; color: var(--text-2);
                          font-weight: 700; text-transform: uppercase;
                          letter-spacing: 0.05em; }
     /* P1-1 보완: segment 컨테이너는 모바일에서 풀폭 stretch 가능하도록 / Segment can stretch on mobile */
@@ -451,7 +451,7 @@
        P1-6: drop scale(1.02) which overflowed segment 3px padding; rely on font-weight emphasis */
     .mode-toggle-btn { padding: 0.4rem 0.95rem; border-radius: 6px;
                        border: 1px solid transparent; background: transparent;
-                       cursor: pointer; font-size: 13px; color: var(--text-primary);
+                       cursor: pointer; font-size: 13px; color: var(--text-1);
                        font-weight: 500; transition: all 0.15s ease;
                        display: inline-flex; align-items: center; gap: 0.35rem; }
     .mode-toggle-btn:hover:not(.active) { background: var(--bg-hover); }
@@ -459,7 +459,7 @@
                               border-color: var(--accent); font-weight: 700;
                               box-shadow: 0 2px 8px rgba(99,102,241,0.25); }
     .mode-toggle-hint { font-size: 11px; opacity: 0.85; margin-left: 0.15rem; }
-    .mode-toggle-counter { margin-left: auto; font-size: 11px; color: var(--text-muted);
+    .mode-toggle-counter { margin-left: auto; font-size: 11px; color: var(--text-2);
                            font-weight: 600; }
     /* 빈 카운터 숨김 — JS 미주입 시 죽은 마크업 회피 / Hide empty counter to avoid dead markup */
     .mode-toggle-counter:empty { display: none; }
@@ -487,8 +487,8 @@
                 vertical-align: middle; margin-right: 6px;
                 box-shadow: 0 0 0 1.5px var(--bg-card); }
     .conn-dot.is-on  { background: var(--success, #10b981); }
-    .conn-dot.is-off { background: var(--text-muted, #9ca3af); opacity: 0.55; }
-    .conn-status-text { font-size: 11px; color: var(--text-muted); font-weight: 500; }
+    .conn-dot.is-off { background: var(--text-2, #9ca3af); opacity: 0.55; }
+    .conn-status-text { font-size: 11px; color: var(--text-2); font-weight: 500; }
 
     /* P2-2: s-section-label (uppercase 11px) 안 conn-dot 의 baseline 보정
        P2-2: vertical-align fix for conn-dot inside uppercase section labels */
@@ -505,12 +505,12 @@
     .alert-warning {
       background: color-mix(in srgb, var(--warning) 12%, transparent);
       border-color: color-mix(in srgb, var(--warning) 35%, transparent);
-      color: var(--text-primary);
+      color: var(--text-1);
     }
     .alert .me-2 { margin-right: .5rem; }
     .alert .ms-auto { margin-left: auto; }
     .alert.mb-4 { margin-bottom: 1rem; }
-    .alert .text-muted { color: var(--text-muted); }
+    .alert .text-muted { color: var(--text-2); }
     .btn.btn-sm {
       padding: .35rem .85rem; font-size: 12px; font-weight: 600;
       border-radius: 6px; border: 1px solid transparent; cursor: pointer;
@@ -573,12 +573,12 @@
         <span class="hdr-badge">{{ 'settings_page.onboarding.badge' | i18n_args(locale | default('ko')) }}</span>
       </div>
       <div class="s-card-body">
-        <p style="font-size:13px;color:var(--text-muted);margin:0 0 .75rem;">{{ 'settings_page.onboarding.intro' | i18n_args(locale | default('ko')) }}</p>
+        <p style="font-size:13px;color:var(--text-2);margin:0 0 .75rem;">{{ 'settings_page.onboarding.intro' | i18n_args(locale | default('ko')) }}</p>
         <div style="display:flex;flex-direction:column;gap:.45rem;font-size:13px;">
           <a href="#notifyCard" style="color:var(--accent);font-weight:600;">
             {{ 'settings_page.onboarding.step1' | i18n_args(locale | default('ko')) | safe }}
           </a>
-          <span style="color:var(--text-muted);">
+          <span style="color:var(--text-2);">
             {{ 'settings_page.onboarding.step2' | i18n_args(locale | default('ko')) | safe }}
           </span>
         </div>
@@ -627,7 +627,7 @@
             <div class="preset-detail-body">
               <table class="preset-table">
                 <thead>
-                  <tr style="font-size:11px;color:var(--text-muted);font-weight:600;">
+                  <tr style="font-size:11px;color:var(--text-2);font-weight:600;">
                     <th scope="col" style="width:48%;text-align:left;">{{ 'settings_page.preset_card.th_field' | i18n_args(locale | default('ko')) }}</th>
                     <th scope="col" style="text-align:center;width:18%">{{ 'settings_page.preset_card.th_current' | i18n_args(locale | default('ko')) }}</th>
                     <th scope="col" style="text-align:center;width:6%"><span class="sr-only">{{ 'settings_page.preset_card.th_compare' | i18n_args(locale | default('ko')) }}</span></th>
@@ -636,7 +636,7 @@
                 </thead>
                 <tbody id="preset-diff-minimal"></tbody>
               </table>
-              <p style="font-size:11px;color:var(--text-muted);margin-top:.5rem;line-height:1.5;">
+              <p style="font-size:11px;color:var(--text-2);margin-top:.5rem;line-height:1.5;">
                 {{ 'settings_page.preset_card.channel_unchanged' | i18n_args(locale | default('ko')) }}
               </p>
               <button type="button" class="btn-save-new preset-apply-btn" style="margin-top:.65rem;padding:.5rem;"
@@ -662,7 +662,7 @@
             <div class="preset-detail-body">
               <table class="preset-table">
                 <thead>
-                  <tr style="font-size:11px;color:var(--text-muted);font-weight:600;">
+                  <tr style="font-size:11px;color:var(--text-2);font-weight:600;">
                     <th scope="col" style="width:48%;text-align:left;">{{ 'settings_page.preset_card.th_field' | i18n_args(locale | default('ko')) }}</th>
                     <th scope="col" style="text-align:center;width:18%">{{ 'settings_page.preset_card.th_current' | i18n_args(locale | default('ko')) }}</th>
                     <th scope="col" style="text-align:center;width:6%"><span class="sr-only">{{ 'settings_page.preset_card.th_compare' | i18n_args(locale | default('ko')) }}</span></th>
@@ -671,7 +671,7 @@
                 </thead>
                 <tbody id="preset-diff-standard"></tbody>
               </table>
-              <p style="font-size:11px;color:var(--text-muted);margin-top:.5rem;line-height:1.5;">
+              <p style="font-size:11px;color:var(--text-2);margin-top:.5rem;line-height:1.5;">
                 {{ 'settings_page.preset_card.channel_unchanged' | i18n_args(locale | default('ko')) }}
               </p>
               <button type="button" class="btn-save-new preset-apply-btn" style="margin-top:.65rem;padding:.5rem;"
@@ -697,7 +697,7 @@
             <div class="preset-detail-body">
               <table class="preset-table">
                 <thead>
-                  <tr style="font-size:11px;color:var(--text-muted);font-weight:600;">
+                  <tr style="font-size:11px;color:var(--text-2);font-weight:600;">
                     <th scope="col" style="width:48%;text-align:left;">{{ 'settings_page.preset_card.th_field' | i18n_args(locale | default('ko')) }}</th>
                     <th scope="col" style="text-align:center;width:18%">{{ 'settings_page.preset_card.th_current' | i18n_args(locale | default('ko')) }}</th>
                     <th scope="col" style="text-align:center;width:6%"><span class="sr-only">{{ 'settings_page.preset_card.th_compare' | i18n_args(locale | default('ko')) }}</span></th>
@@ -706,7 +706,7 @@
                 </thead>
                 <tbody id="preset-diff-strict"></tbody>
               </table>
-              <p style="font-size:11px;color:var(--text-muted);margin-top:.5rem;line-height:1.5;">
+              <p style="font-size:11px;color:var(--text-2);margin-top:.5rem;line-height:1.5;">
                 {{ 'settings_page.preset_card.channel_unchanged' | i18n_args(locale | default('ko')) }}
               </p>
               <button type="button" class="btn-save-new preset-apply-btn" style="margin-top:.65rem;padding:.5rem;"
@@ -837,7 +837,7 @@
             </div>
 
             <div id="semiAutoHint" class="{% if config.approve_mode != 'semi-auto' %}is-hidden{% endif %}"
-                 style="margin-top:.75rem;padding:.5rem .75rem;background:var(--hint-bg);border:1px solid var(--hint-border);border-radius:7px;font-size:11px;color:var(--text-muted);line-height:1.6;">
+                 style="margin-top:.75rem;padding:.5rem .75rem;background:var(--hint-bg);border:1px solid var(--hint-border);border-radius:7px;font-size:11px;color:var(--text-2);line-height:1.6;">
               {{ 'settings_page.pr_rules.semi_auto_hint' | i18n_args(locale | default('ko')) | safe }}
             </div>
 
@@ -954,7 +954,7 @@
                 {% if current_user.is_telegram_connected %}
                 <p class="text-success" style="font-size:13px;margin:0;">{{ 'settings_page.notify.telegram_link_connected' | i18n_args(locale | default('ko')) }}</p>
                 {% else %}
-                <p style="font-size:13px;color:var(--text-muted);margin-bottom:.5rem;">
+                <p style="font-size:13px;color:var(--text-2);margin-bottom:.5rem;">
                   {{ 'settings_page.notify.telegram_link_hint' | i18n_args(locale | default('ko')) }}
                 </p>
                 <button type="button" class="hook-btn" id="issueTelegramOtp">
@@ -962,10 +962,10 @@
                 </button>
                 <div id="telegramOtpDisplay" style="display:none;margin-top:.65rem;">
                   <code id="telegramOtpCode" style="font-size:1.4rem;font-weight:700;letter-spacing:.12em;"></code>
-                  <span style="font-size:12px;color:var(--text-muted);margin-left:.5rem;">
+                  <span style="font-size:12px;color:var(--text-2);margin-left:.5rem;">
                     {{ 'settings_page.notify.telegram_otp_expires' | i18n_args(locale | default('ko'), remaining='<span id="telegramOtpCountdown">5:00</span>') | safe }}
                   </span>
-                  <p style="font-size:11px;color:var(--text-muted);margin-top:.35rem;margin-bottom:0;">
+                  <p style="font-size:11px;color:var(--text-2);margin-top:.35rem;margin-bottom:0;">
                     {{ 'settings_page.notify.telegram_otp_invalidated' | i18n_args(locale | default('ko')) }}
                   </p>
                 </div>
@@ -1102,7 +1102,7 @@
     <div class="s-card-body">
 
       {# Phase 2 PR-8 — i18n / Card behaviour notice #}
-      <p style="font-size:12px;color:var(--text-muted);margin:0 0 1rem;padding:.5rem .75rem;
+      <p style="font-size:12px;color:var(--text-2);margin:0 0 1rem;padding:.5rem .75rem;
                 background:var(--hint-bg);border-left:3px solid var(--accent);border-radius:6px;line-height:1.55;">
         {{ 'settings_page.inbound.behavior_notice' | i18n_args(locale | default('ko')) | safe }}
       </p>
@@ -1175,7 +1175,7 @@
       <span class="hdr-badge">{{ 'settings_page.danger.badge' | i18n_args(locale | default('ko')) }}</span>
     </div>
     <div class="s-card-body">
-      <p style="font-size:12px;color:var(--text-muted);margin:0 0 1rem;padding:.5rem .75rem;
+      <p style="font-size:12px;color:var(--text-2);margin:0 0 1rem;padding:.5rem .75rem;
                 background: color-mix(in srgb, var(--danger) 8%, transparent);border-left:3px solid var(--danger);border-radius:6px;line-height:1.55;">
         {{ 'settings_page.danger.behavior_notice' | i18n_args(locale | default('ko')) | safe }}
       </p>
@@ -1308,7 +1308,7 @@
         '<tr style="' + rowStyle + '">' +
           '<td>' + labels[key] + '</td>' +
           '<td style="text-align:center">' + fmt(curNorm) + '</td>' +
-          '<td style="text-align:center;font-weight:600;color:var(--text-muted)">' + arrow + '</td>' +
+          '<td style="text-align:center;font-weight:600;color:var(--text-2)">' + arrow + '</td>' +
           '<td style="text-align:right;' + nextStyle + '">' + fmt(next) + '</td>' +
         '</tr>';
     });
