@@ -23,13 +23,40 @@
   /* 1컬럼 기본 (모바일 퍼스트) — 640px 이상에서 2컬럼으로 전환 */
   .settings-grid { display:grid; grid-template-columns:1fr; gap:1rem; margin-bottom:1rem; }
 
-  /* 카드 */
+  /* 카드 — 글래스모피즘 + 호버 리프트 + 상단 그라디언트 바
+     Card — glassmorphism + hover lift + top gradient accent bar */
   .s-card {
     border-radius:var(--radius-card); background:var(--bg-card);
-    border:1px solid var(--border); box-shadow:var(--shadow-card); overflow:hidden;
-    transition:background var(--transition), border-color var(--transition);
+    border:1px solid var(--border-subtle); box-shadow:var(--shadow-sm); overflow:hidden;
+    transition:background var(--transition), border-color var(--transition),
+               transform 0.2s ease, box-shadow 0.2s ease;
+    position: relative;
+    backdrop-filter: blur(12px) saturate(150%);
+    -webkit-backdrop-filter: blur(12px) saturate(150%);
   }
-  body[data-theme="glass"] .s-card { backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px); }
+  .s-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+  }
+  /* 호버 시 상단 그라디언트 바 / Top gradient accent bar on hover */
+  .s-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    border-radius: 3px 3px 0 0;
+    opacity: 0;
+    transition: opacity 0.3s;
+    z-index: 1;
+  }
+  .s-card:hover::before { opacity: 1; }
+  /* 위험 구역 카드 — 호버 시 danger 그라디언트 바
+     Danger zone card — danger gradient bar on hover */
+  .s-card.danger-zone::before {
+    background: linear-gradient(90deg, var(--danger), color-mix(in srgb, var(--danger) 60%, transparent));
+  }
+  body[data-theme="glass"] .s-card { backdrop-filter:blur(20px) saturate(180%); -webkit-backdrop-filter:blur(20px) saturate(180%); }
 
   /* 카드 헤더 그라디언트 */
   .s-card-hdr {
@@ -172,17 +199,32 @@
   .toggle-info .t-desc  { font-size:11px; color:var(--text-muted); line-height:1.4; }
   .toggle-switch { position:relative; display:inline-flex; align-items:center; flex-shrink:0; }
   .toggle-switch input[type="checkbox"] { width:0; height:0; opacity:0; position:absolute; }
+  /* 토글 트랙 — 시맨틱 토큰: OFF=elevated+border, ON=success
+     Toggle track — semantic tokens: OFF=elevated+border, ON=success */
   .toggle-track {
-    width:44px; height:24px; background:var(--border); border-radius:12px;
-    cursor:pointer; transition:background var(--transition); position:relative; display:block;
+    width:44px; height:24px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius:12px;
+    cursor:pointer; transition:background var(--transition), border-color var(--transition);
+    position:relative; display:block;
   }
   .toggle-track::after {
     content:''; position:absolute; top:3px; left:3px;
-    width:18px; height:18px; background:#fff; border-radius:50%;
-    transition:transform var(--transition); box-shadow:0 1px 4px rgba(0,0,0,.3);
+    width:16px; height:16px; background:var(--bg-elevated); border-radius:50%;
+    transition:transform var(--transition), background var(--transition);
+    box-shadow:0 1px 4px rgba(0,0,0,.3);
   }
-  .toggle-switch input:checked + .toggle-track { background:var(--success); }
-  .toggle-switch input:checked + .toggle-track::after { transform:translateX(20px); }
+  /* ON 상태 — success 배경 + btn-on-accent 노브
+     ON state — success background + btn-on-accent knob */
+  .toggle-switch input:checked + .toggle-track {
+    background: var(--success);
+    border-color: var(--success);
+  }
+  .toggle-switch input:checked + .toggle-track::after {
+    transform:translateX(20px);
+    background: var(--btn-on-accent);
+  }
 
   /* 입력 필드 */
   .field-row { display:flex; flex-direction:column; gap:5px; margin-bottom:.6rem; }
@@ -200,7 +242,16 @@
     transition:border-color var(--transition), background var(--transition), box-shadow var(--transition);
     outline:none;
   }
-  .field-input:focus { border-color:var(--border-focus); background:var(--bg-input-focus); box-shadow:0 0 0 3px rgba(99,102,241,.15); }
+  /* 입력 포커스 글로우 — 액센트 링 (add_repo.html 과 동일 패턴)
+     Input focus glow — accent ring (matches add_repo.html pattern) */
+  input, select, textarea { transition: border-color 0.2s, box-shadow 0.2s; }
+  input:focus, select:focus, textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
+    outline: none;
+  }
+  .field-input:focus { border-color:var(--accent); background:var(--bg-input-focus);
+                       box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent); }
   .field-input::placeholder { color:var(--text-muted); opacity:.7; }
 
   /* 알림 채널 1컬럼 기본 (모바일 퍼스트) */
@@ -237,23 +288,36 @@
 
   /* 저장 버튼 — P0-3: 단색 배경 + box-shadow 로 본문과 명확히 분리
      P2-5: iOS safe-area-inset 추가 (홈 인디케이터 회피)
-     Save bar — P0-3 solid bg + shadow; P2-5 iOS safe-area-inset for home indicator */
+     Save bar — P0-3 solid bg + shadow; P2-5 iOS safe-area-inset for home indicator
+     슬라이드 업 입장 애니메이션 / Slide-up entrance animation */
   .save-bar {
     position:sticky; bottom:0;
     padding:.75rem 0 calc(.85rem + env(safe-area-inset-bottom, 0px));
     background: var(--bg-page);
-    border-top: 1px solid var(--border);
+    border-top: 1px solid var(--border-subtle);
     box-shadow: 0 -8px 16px -8px rgba(0,0,0,.18);
+    transform: translateY(8px);
+    opacity: 0;
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s;
   }
+  .save-bar.visible {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  /* 프라이머리 버튼 — 액센트 그라디언트 + 호버 리프트 + 클릭 스케일
+     Primary button — accent gradient + hover lift + click scale */
   .btn-save-new {
     width:100%; padding:.72rem; border-radius:9px; border:none;
-    background:var(--save-btn-bg); color:#fff;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: var(--btn-on-accent);
     font-size:14px; font-weight:700; cursor:pointer;
     box-shadow:0 4px 14px var(--save-btn-shadow);
-    transition:opacity var(--transition), box-shadow var(--transition);
+    transition: opacity var(--transition), box-shadow var(--transition),
+                transform 0.15s ease;
     display:flex; align-items:center; justify-content:center; gap:8px;
   }
-  .btn-save-new:hover { opacity:.88; }
+  .btn-save-new:hover { opacity:.9; transform: translateY(-1px); box-shadow: 0 6px 20px var(--save-btn-shadow); }
+  .btn-save-new:active { transform: scale(0.97); opacity: 1; }
 
   /* 저장 결과 토스트 */
   .save-toast {
@@ -1104,7 +1168,7 @@
   </div>
 
   {# Danger zone / Phase 2 PR-8 — i18n #}
-  <div class="s-card adv-only" style="margin-bottom:2rem;">
+  <div class="s-card danger-zone adv-only" style="margin-bottom:2rem;">
     <div class="s-card-hdr" style="background:linear-gradient(135deg,#991b1b,#dc2626)">
       <span class="hdr-icon">⚠️</span>
       <span class="hdr-title">{{ 'settings_page.danger.header' | i18n_args(locale | default('ko')) }}</span>
@@ -1397,6 +1461,20 @@
   // 저장 오류 시 — 모드 전환은 initSettingsMode() 가 ?save_error=1 을 감지해
   // 자동으로 advanced 로 전환한다 (Phase 2A Progressive 재설계).
   // Save-error advanced switch is handled by initSettingsMode() via ?save_error=1 detection.
+
+  // 저장 바 슬라이드 업 입장 애니메이션 — DOM 준비 후 .visible 추가
+  // Save bar slide-up entrance — add .visible after DOM ready
+  (function initSaveBarEntrance() {
+    var saveBar = document.querySelector('.save-bar');
+    if (!saveBar) { return; }
+    // requestAnimationFrame 2회 — 브라우저가 초기 렌더 완료 후 transition 트리거
+    // Two rAF frames — ensures browser completes initial render before triggering transition
+    requestAnimationFrame(function() {
+      requestAnimationFrame(function() {
+        saveBar.classList.add('visible');
+      });
+    });
+  }());
 
   // 토스트 클릭 시 즉시 닫기 + URL 쿼리 제거
   const toast = document.getElementById('saveToast');
