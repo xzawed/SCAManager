@@ -78,7 +78,7 @@
     transition: all .15s ease;
   }
   .dash-range-toggle a.active {
-    background: var(--bg-elevated, var(--card-bg, #fff));
+    background: var(--bg-elevated);
     color: var(--text-1, var(--text-primary));
     font-weight: 600;
     box-shadow: 0 1px 2px rgba(0,0,0,.06);
@@ -95,7 +95,7 @@
   /* 카드 컨테이너 — glassmorphism + reveal
      Card container — glassmorphism + reveal */
   .dash-kpi {
-    background: var(--bg-card, var(--bg-surface, rgba(255,255,255,.04)));
+    background: var(--bg-card, rgba(255,255,255,.04));
     backdrop-filter: blur(12px) saturate(150%);
     border: 1px solid var(--border-subtle, rgba(255,255,255,.08));
     border-radius: 16px;
@@ -160,7 +160,7 @@
 
   /* ── Chart card — glassmorphism ─────────────────────────────── */
   .dash-chart-card {
-    background: var(--bg-card, var(--bg-surface, rgba(255,255,255,.04)));
+    background: var(--bg-card, rgba(255,255,255,.04));
     backdrop-filter: blur(12px) saturate(150%);
     border: 1px solid var(--border-subtle, rgba(255,255,255,.08));
     border-radius: 16px;
@@ -182,7 +182,7 @@
 
   /* ── feedback CTA banner (Phase 2 PR 2 — 조건부) ─────────────── */
   .dash-cta-banner {
-    background: linear-gradient(135deg, var(--accent-faint, rgba(217,119,87,.08)) 0%, transparent 100%);
+    background: linear-gradient(135deg, var(--accent-faint, transparent) 0%, transparent 100%);
     border: 1px solid var(--d-accent);
     border-radius: 16px;
     padding: 16px 20px;
@@ -229,7 +229,7 @@
 
   /* ── 자주 발생 이슈 카드 — glassmorphism ────────────────────── */
   .dash-issues-card {
-    background: var(--bg-card, var(--bg-surface, rgba(255,255,255,.04)));
+    background: var(--bg-card, rgba(255,255,255,.04));
     backdrop-filter: blur(12px) saturate(150%);
     border: 1px solid var(--border-subtle, rgba(255,255,255,.08));
     border-radius: 16px;
@@ -322,7 +322,7 @@
     transition: all .15s ease;
   }
   .dash-mode-toggle a.active {
-    background: var(--bg-elevated, var(--card-bg, #fff));
+    background: var(--bg-elevated);
     color: var(--text-1, var(--text-primary));
     font-weight: 600;
     box-shadow: 0 1px 2px rgba(0,0,0,.06);
@@ -335,7 +335,7 @@
     margin-bottom: 24px;
   }
   .dash-insight-card {
-    background: var(--bg-card, var(--bg-surface, rgba(255,255,255,.04)));
+    background: var(--bg-card, rgba(255,255,255,.04));
     backdrop-filter: blur(12px) saturate(150%);
     border: 1px solid var(--border-subtle, rgba(255,255,255,.08));
     border-radius: 16px;
@@ -379,7 +379,7 @@
   .dash-insight-status {
     text-align: center; padding: 32px;
     color: var(--text-2, var(--text-muted)); font-size: 14px;
-    background: var(--bg-card, var(--bg-surface, rgba(255,255,255,.04)));
+    background: var(--bg-card, rgba(255,255,255,.04));
     backdrop-filter: blur(12px) saturate(150%);
     border: 1px dashed var(--border-subtle, rgba(255,255,255,.08));
     border-radius: 16px;
@@ -401,6 +401,7 @@
     .dash-insight-grid { grid-template-columns: 1fr; }
     .dash-insight-card { min-height: auto; padding: 18px; }
     .dash-mode-toggle a { min-height: 44px; }
+    .dash-range-toggle a { min-height: 44px; box-sizing: border-box; }
   }
   @media (max-width: 480px) {
     .dash-kpi-grid { grid-template-columns: 1fr; }
@@ -566,9 +567,9 @@
         <small style="opacity:0.7;">{{ 'dashboard.usage.avg_score_hint' | i18n_args(locale | default('ko')) }}</small>
       </div>
     </div>
-    <div style="margin-top: 1rem; padding: 1rem; background: var(--bg-card, #1f2937); border-radius: 8px;">
+    <div style="margin-top: 1rem; padding: 1rem; background: var(--bg-card); border-radius: 8px;">
       <h3 style="margin: 0 0 0.5rem; font-size: 1rem;">{{ 'dashboard.usage.saas_info_title' | i18n_args(locale | default('ko')) }}</h3>
-      <ul style="margin: 0; padding-left: 1.25rem; color: var(--text-muted, #9ca3af); font-size: 0.9em;">
+      <ul style="margin: 0; padding-left: 1.25rem; color: var(--text-muted, var(--text-2)); font-size: 0.9em;">
         <li>{{ 'dashboard.usage.saas_info_li1_part1' | i18n_args(locale | default('ko')) }}<strong>{{ 'dashboard.usage.saas_info_li1_strong' | i18n_args(locale | default('ko')) }}</strong>{{ 'dashboard.usage.saas_info_li1_part2' | i18n_args(locale | default('ko')) }}</li>
         <li>{{ 'dashboard.usage.saas_info_li2' | i18n_args(locale | default('ko')) }}</li>
         <li>{{ 'dashboard.usage.saas_info_li3' | i18n_args(locale | default('ko')) }}</li>
@@ -664,7 +665,7 @@
 
   {# KPI 5 카드 (Phase 1 4 + Phase 2 Auto-merge) / Phase 2 PR-6 — i18n #}
   <div class="dash-kpi-grid">
-    <div class="dash-kpi reveal">
+    <div class="dash-kpi">
       <div class="dash-kpi-label">{{ 'dashboard.kpi.avg_score' | i18n_args(locale | default('ko')) }}</div>
       <div class="dash-kpi-row">
         <span class="dash-kpi-value"
@@ -684,7 +685,7 @@
       {% endif %}
     </div>
 
-    <div class="dash-kpi reveal">
+    <div class="dash-kpi">
       <div class="dash-kpi-label">{{ 'dashboard.kpi.analysis_count' | i18n_args(locale | default('ko')) }}</div>
       <div class="dash-kpi-row">
         <span class="dash-kpi-value" data-count="{{ kpi.analysis_count.value }}">{{ kpi.analysis_count.value }}</span>
@@ -698,7 +699,7 @@
       {% endif %}
     </div>
 
-    <div class="dash-kpi reveal">
+    <div class="dash-kpi">
       <div class="dash-kpi-label">{{ 'dashboard.kpi.high_security' | i18n_args(locale | default('ko')) }}</div>
       <div class="dash-kpi-row">
         <span class="dash-kpi-value" data-count="{{ kpi.high_security_issues.value }}">{{ kpi.high_security_issues.value }}</span>
@@ -712,7 +713,7 @@
       {% endif %}
     </div>
 
-    <div class="dash-kpi reveal">
+    <div class="dash-kpi">
       <div class="dash-kpi-label">{{ 'dashboard.kpi.active_repos' | i18n_args(locale | default('ko')) }}</div>
       <div class="dash-kpi-row">
         <span class="dash-kpi-value" data-count="{{ kpi.active_repos.value }}">{{ kpi.active_repos.value }}</span>
@@ -728,7 +729,7 @@
     </div>
 
     {# Phase 1+2 회고 P0 #3 swap (2026-05-02) — 메인=PR 기준 최종, sub=단순 시도. / Phase 2 PR-6 — i18n #}
-    <div class="dash-kpi reveal" title="{{ 'dashboard.kpi.auto_merge_tooltip' | i18n_args(locale | default('ko')) }}">
+    <div class="dash-kpi" title="{{ 'dashboard.kpi.auto_merge_tooltip' | i18n_args(locale | default('ko')) }}">
       <div class="dash-kpi-label">{{ 'dashboard.kpi.auto_merge_success' | i18n_args(locale | default('ko')) }}</div>
       <div class="dash-kpi-row">
         <span class="dash-kpi-value"
@@ -767,7 +768,7 @@
   </div>
 
   {# 점수 추세 라인 차트 / Phase 2 PR-6 — i18n #}
-  <div class="dash-chart-card reveal">
+  <div class="dash-chart-card">
     <h2 class="dash-section-title">{{ 'dashboard.trend' | i18n_args(locale | default('ko'), days=days) }}</h2>
     {% if trend %}
       <div class="dash-chart-wrap">
