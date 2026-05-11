@@ -174,10 +174,10 @@
     border-radius: 4px;
     flex-shrink: 0;
   }
-  /* Step D 호환 + semantic token 유지
-     Step D compatibility + semantic token preserved */
-  .ad-issue-tool.error   { background: rgba(239,68,68,0.15);  color: var(--danger); }
-  .ad-issue-tool.warning { background: rgba(245,158,11,0.15); color: var(--warning); }
+  /* Step D 호환 + semantic token 유지 (color-mix로 토큰 기반 반투명 배경)
+     Step D compatibility + semantic token preserved (color-mix for token-based alpha bg) */
+  .ad-issue-tool.error   { background: color-mix(in srgb, var(--danger) 15%, transparent);  color: var(--danger); }
+  .ad-issue-tool.warning { background: color-mix(in srgb, var(--warning) 15%, transparent); color: var(--warning); }
   .ad-issue-line {
     font-size: 12px;
     color: var(--text-2);
@@ -186,9 +186,10 @@
   .ad-issue-msg { color: var(--text-1); }
 
   /* ── 심각도 뱃지 (HIGH / MEDIUM / LOW) ───────────────────────────── */
-  /* 심각도 시맨틱 색상 뱃지 / Severity semantic color badges */
+  /* 심각도 시맨틱 색상 뱃지 — color-mix로 토큰 기반 반투명 배경 (4-테마 자동 호환)
+     Severity semantic color badges — color-mix token-based alpha bg (auto 4-theme compat) */
   .severity-high {
-    background: rgba(239,68,68,0.15);
+    background: color-mix(in srgb, var(--danger) 15%, transparent);
     color: var(--danger);
     border: 1px solid var(--danger);
     font-size: 11px;
@@ -198,7 +199,7 @@
     letter-spacing: .04em;
   }
   .severity-medium {
-    background: rgba(245,158,11,0.15);
+    background: color-mix(in srgb, var(--warning) 15%, transparent);
     color: var(--warning);
     border: 1px solid var(--warning);
     font-size: 11px;
@@ -208,7 +209,7 @@
     letter-spacing: .04em;
   }
   .severity-low {
-    background: rgba(16,185,129,0.15);
+    background: color-mix(in srgb, var(--success) 15%, transparent);
     color: var(--success);
     border: 1px solid var(--success);
     font-size: 11px;
@@ -332,6 +333,9 @@
     .commit-msg-text { font-size: 12px; padding: 8px 10px; }
     .analysis-nav { flex-wrap: wrap; }
     .nav-btn { padding: 7px 14px; min-height: 44px; box-sizing: border-box; }
+    /* WCAG 2.5.5 모바일 터치 타겟 44px 보장 (피드백 버튼)
+       WCAG 2.5.5 mobile touch target 44px guarantee (feedback buttons) */
+    .fb-btn { min-height: 44px; box-sizing: border-box; }
   }
   @media (max-width: 480px) {
     .ad-breakdown td:first-child { width: 80px; font-size: 11px !important; }
@@ -444,10 +448,10 @@
             background: var(--bg-card); cursor: pointer; font-size: 14px;
             transition: all 0.15s ease; display: inline-flex; align-items: center; gap: 0.3rem; }
   .fb-btn:hover { background: var(--bg-hover); transform: translateY(-1px); }
-  /* Step D: 피드백 버튼 시맨틱 토큰화 (3-테마 + claude-dark 자동 적용)
-     Step D: feedback button semantic tokens — auto across 4 themes */
-  .fb-btn.active.fb-up   { background: rgba(74,222,128,.13); border-color: var(--success); color: var(--success); }
-  .fb-btn.active.fb-down { background: rgba(248,113,113,.13); border-color: var(--danger); color: var(--danger); }
+  /* Step D: 피드백 버튼 시맨틱 토큰화 — color-mix 반투명 배경 (4-테마 자동 적용)
+     Step D: feedback button semantic tokens — color-mix alpha bg (auto across 4 themes) */
+  .fb-btn.active.fb-up   { background: color-mix(in srgb, var(--success) 13%, transparent); border-color: var(--success); color: var(--success); }
+  .fb-btn.active.fb-down { background: color-mix(in srgb, var(--danger) 13%, transparent); border-color: var(--danger); color: var(--danger); }
   .fb-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .fb-status { font-size: 12px; color: var(--text-muted); margin-left: 0.5rem; }
   /* Step D: 피드백 상태 토큰화 / Feedback status semantic tokens */
@@ -708,9 +712,12 @@
      Step D: read current-point highlight from var(--danger) for theme harmony */
   var dangerColor = s.getPropertyValue('--danger').trim() || '#ef4444';
 
+  /* --bg-base 토큰에서 포인트 테두리 색상 읽기 (4-테마 자동 호환)
+     Read point border color from --bg-base token (auto 4-theme compat) */
+  var bgBase = getComputedStyle(document.documentElement).getPropertyValue('--bg-base').trim() || '#ffffff';
   var pointColors  = TREND.map(function(t) { return t.id === CURRENT_ID ? dangerColor : accent; });
   var pointRadii   = TREND.map(function(t) { return t.id === CURRENT_ID ? 7 : 3; });
-  var pointBorders = TREND.map(function(t) { return t.id === CURRENT_ID ? '#fff' : accent; });
+  var pointBorders = TREND.map(function(t) { return t.id === CURRENT_ID ? bgBase : accent; });
 
   new Chart(canvas, {
     type: 'line',
