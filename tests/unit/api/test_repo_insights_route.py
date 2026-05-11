@@ -10,7 +10,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-import src.models.insight_narrative_cache  # noqa: F401  (register table on Base.metadata for create_all)
+from src.models.insight_narrative_cache import InsightNarrativeCache  # noqa: F401  (register table on Base.metadata for create_all)
 from src.auth.session import CurrentUser, require_login
 from src.database import Base
 from src.main import app
