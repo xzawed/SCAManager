@@ -31,6 +31,7 @@ from src.constants import (
 MAX_DIFF_CHARS = 16000
 _FIXED_TOKEN_OVERHEAD = 3000
 _CHARS_PER_TOKEN = 4  # rough approximation
+_NONE_LABEL = "(none)"
 
 # Phase 4 PR-12 — 출력 언어 지시 키 (system prompt 안 명시) — 3 언어 분기
 # Phase 4 PR-12 — output language directive (in system prompt) — 3-language branch
@@ -291,8 +292,8 @@ def build_review_blocks(
 
     detected_display = ", ".join(languages) if languages else "none"
     user_prompt = _USER_PROMPT_TEMPLATE.format(
-        commit_message=commit_message or "(none)",
-        filenames=filenames or "(none)",
+        commit_message=commit_message or _NONE_LABEL,
+        filenames=filenames or _NONE_LABEL,
         detected_langs=detected_display,
         lang_guides="",  # multi-block 시 user_prompt 안 lang_guides 비움 (system 영역으로 분리)
         diff_text=diff_text,
@@ -336,8 +337,8 @@ def build_review_prompt(
     detected_display = ", ".join(languages) if languages else "none"
 
     user_prompt = _USER_PROMPT_TEMPLATE.format(
-        commit_message=commit_message or "(none)",
-        filenames=filenames or "(none)",
+        commit_message=commit_message or _NONE_LABEL,
+        filenames=filenames or _NONE_LABEL,
         detected_langs=detected_display,
         lang_guides=lang_guides,
         diff_text=diff_text,
