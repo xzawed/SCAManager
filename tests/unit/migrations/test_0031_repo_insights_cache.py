@@ -49,25 +49,24 @@ def test_repo_id_is_nullable(engine):
 
 def test_global_and_repo_rows_coexist(engine):
     """같은 (user_id, days) 에 repo_id=NULL 과 repo_id=N 행이 공존 가능하다."""
-    from src.models.insight_narrative_cache import InsightNarrativeCache
     from datetime import datetime, timedelta, timezone
     from sqlalchemy.orm import Session
 
     _now = datetime.now(timezone.utc)
     with Session(engine) as db:
-        db.add(InsightNarrativeCache(
+        db.add(src.models.insight_narrative_cache.InsightNarrativeCache(
             user_id=1, days=30, language="en", repo_id=None,
             response_json={"status": "global"}, created_at=_now,
             expires_at=_now + timedelta(hours=1),
         ))
-        db.add(InsightNarrativeCache(
+        db.add(src.models.insight_narrative_cache.InsightNarrativeCache(
             user_id=1, days=30, language="en", repo_id=5,
             response_json={"status": "repo"}, created_at=_now,
             expires_at=_now + timedelta(hours=1),
         ))
         db.commit()
-        count = db.query(InsightNarrativeCache).filter(
-            InsightNarrativeCache.user_id == 1,
-            InsightNarrativeCache.days == 30,
+        count = db.query(src.models.insight_narrative_cache.InsightNarrativeCache).filter(
+            src.models.insight_narrative_cache.InsightNarrativeCache.user_id == 1,
+            src.models.insight_narrative_cache.InsightNarrativeCache.days == 30,
         ).count()
         assert count == 2
