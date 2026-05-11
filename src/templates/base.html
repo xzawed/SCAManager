@@ -582,7 +582,8 @@
 
     /* 오로라 위 콘텐츠는 z-index: 1 보장
        Page content rendered above aurora layer */
-    nav, .container { position: relative; z-index: 1; }
+    nav { z-index: 100; }
+    .container { position: relative; z-index: 1; }
 
     /* ── Page animations ──────────────────────────────────────────────────── */
     /* 페이지 전환 + 탭/스크롤 reveal + 뱃지/모달/토스트 애니메이션 키프레임
