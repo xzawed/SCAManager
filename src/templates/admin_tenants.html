@@ -251,7 +251,7 @@
   </div>
 
   {% if tenants %}
-  <div class="admin-table-wrap reveal">
+  <div class="admin-table-wrap">
     <table class="admin-table">
       <thead>
         <tr>
@@ -284,7 +284,7 @@
     </table>
   </div>
   {% else %}
-  <div class="admin-table-wrap reveal">
+  <div class="admin-table-wrap">
     <div class="admin-empty">
       <p>{{ 'admin.tenants.empty_title' | i18n_args(locale | default('ko')) }}</p>
       <small>{{ 'admin.tenants.empty_hint' | i18n_args(locale | default('ko')) }}</small>

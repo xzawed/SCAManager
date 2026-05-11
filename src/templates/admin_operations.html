@@ -234,7 +234,7 @@
 
     {# Card 1: cache_hit_rate (Anthropic prompt cache 효율) #}
     {# Card 1: cache_hit_rate (Anthropic prompt cache efficiency) #}
-    <div class="admin-ops-card reveal">
+    <div class="admin-ops-card">
       <h2 class="admin-ops-card-title">{{ 'admin.operations.cache_card_title' | i18n_args(locale | default('ko')) }}</h2>
       <div class="admin-ops-metric">
         <span class="admin-ops-metric-label">cache_hit_rate</span>
@@ -249,7 +249,7 @@
 
     {# Card 2: API 비용 추정 (사이클 72 #242 비용 모델) #}
     {# Card 2: API cost estimate (cycle 72 #242 cost model) #}
-    <div class="admin-ops-card reveal">
+    <div class="admin-ops-card">
       <h2 class="admin-ops-card-title">{{ 'admin.operations.api_cost_title' | i18n_args(locale | default('ko')) }}</h2>
       <div class="admin-ops-metric">
         <span class="admin-ops-metric-label">{{ 'admin.operations.api_cost_label' | i18n_args(locale | default('ko')) }}</span>
@@ -264,7 +264,7 @@
 
     {# Card 3: cache token 분포 (read vs creation) #}
     {# Card 3: cache token distribution (read vs creation) #}
-    <div class="admin-ops-card reveal">
+    <div class="admin-ops-card">
       <h2 class="admin-ops-card-title">{{ 'admin.operations.cache_dist_title' | i18n_args(locale | default('ko')) }}</h2>
       <div class="admin-ops-metric">
         <span class="admin-ops-metric-label">cache_read</span>
@@ -279,7 +279,7 @@
 
     {# Card 4: merge success rate (auto_merge 글로벌) #}
     {# Card 4: merge success rate (global auto_merge) #}
-    <div class="admin-ops-card reveal">
+    <div class="admin-ops-card">
       <h2 class="admin-ops-card-title">{{ 'admin.operations.merge_title' | i18n_args(locale | default('ko')) }}</h2>
       <div class="admin-ops-metric">
         <span class="admin-ops-metric-label">{{ 'admin.operations.merge_period_label' | i18n_args(locale | default('ko'), days=kpi.merge.days) }}</span>
@@ -294,7 +294,7 @@
 
     {# Card 5: pipeline latency (Phase 2 보류 — 메모리 카운터 부재) #}
     {# Card 5: pipeline latency (Phase 2 pending — no in-memory counters) #}
-    <div class="admin-ops-card reveal">
+    <div class="admin-ops-card">
       <h2 class="admin-ops-card-title">{{ 'admin.operations.latency_title' | i18n_args(locale | default('ko')) }}</h2>
       {% if kpi.pipeline_latency.available %}
       <div class="admin-ops-metric">
@@ -309,7 +309,7 @@
 
     {# Phase 5 PR-17 (사이클 84) — Card 6: 사용자 언어 분포 (User.preferred_language) #}
     {# Phase 5 PR-17 (Cycle 84) — Card 6: User language distribution #}
-    <div class="admin-ops-card reveal">
+    <div class="admin-ops-card">
       <h2 class="admin-ops-card-title">{{ 'admin.operations.language_dist_title' | i18n_args(locale | default('ko')) }}</h2>
       <div class="admin-ops-metric">
         <span class="admin-ops-metric-label">{{ 'admin.operations.language_dist_total' | i18n_args(locale | default('ko')) }}</span>
@@ -326,7 +326,7 @@
 
     {# Phase 5 PR-17 — Card 7: i18n fallback rate (메모리 카운터 — process restart 시 reset) #}
     {# Phase 5 PR-17 — Card 7: i18n fallback rate (in-memory — resets on process restart) #}
-    <div class="admin-ops-card reveal">
+    <div class="admin-ops-card">
       <h2 class="admin-ops-card-title">{{ 'admin.operations.i18n_fallback_title' | i18n_args(locale | default('ko')) }}</h2>
       <div class="admin-ops-metric">
         <span class="admin-ops-metric-label">{{ 'admin.operations.i18n_fallback_label' | i18n_args(locale | default('ko')) }}</span>
