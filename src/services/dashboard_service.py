@@ -434,6 +434,85 @@ def feedback_status(db: Session, *, threshold: int = 10) -> dict[str, Any]:
     }
 
 
+# ─── 0031: 리포별 인사이트 카드 (대시보드 섹션용) ───────────────────────────
+# ─── 0031: Per-repo insight cards (dashboard section) ────────────────────────
+
+
+def repo_insight_cards(
+    db: Session,
+    days: int = 30,
+    *,
+    user_id: int | None = None,
+    now: datetime | None = None,
+) -> list[dict[str, Any]]:
+    """사용자 소유 리포별 인사이트 카드 요약 — 대시보드 카드 섹션용 (최대 10개).
+
+    Per-repo insight card summary for the dashboard section (max 10 repos).
+
+    Returns list of dicts with: repo_id, full_name, avg_score, grade,
+    recurring_issue_count, score_trend, insights_url.
+    """
+    from src.services.repo_insight_service import (  # noqa: PLC0415
+        repo_kpi,
+        repo_recurring_issues,
+    )
+
+    _now = now or datetime.now(timezone.utc)
+
+    # 사용자 소유 리포 조회 (legacy NULL 포함)
+    # Fetch user-owned repos (legacy NULL user_id included)
+    repo_q = select(Repository)
+    if user_id is not None:
+        repo_q = repo_q.where(
+            (Repository.user_id == user_id) | (Repository.user_id.is_(None))
+        )
+    repos = list(db.scalars(repo_q.limit(50)).all())
+    if not repos:
+        return []
+
+    # 각 리포별 요약 집계
+    # Aggregate summary per repo
+    cards = []
+    for repo in repos:
+        kpi = repo_kpi(db, repo.id, days, now=_now)
+        if kpi["analysis_count"] == 0:
+            continue  # 해당 기간 내 분석 없는 리포 제외 / Skip repos with no analyses in window
+
+        recurring = repo_recurring_issues(db, repo.id, days, n=20, now=_now)
+        recurring_count = len(recurring)
+
+        trend = _score_trend(kpi["score_delta"])
+
+        cards.append({
+            "repo_id": repo.id,
+            "full_name": repo.full_name,
+            "avg_score": kpi["avg_score"],
+            "grade": kpi["grade"],
+            "recurring_issue_count": recurring_count,
+            "score_trend": trend,
+            "insights_url": f"/repos/{repo.full_name}/insights",
+        })
+
+    # avg_score 내림차순 정렬 후 최대 10개 반환
+    # Sort by avg_score descending, return max 10
+    cards.sort(key=lambda c: c["avg_score"] or 0, reverse=True)
+    return cards[:10]
+
+
+def _score_trend(score_delta: float | None) -> str:
+    """점수 delta → 추세 문자열 변환.
+
+    Convert score delta to trend string.
+    """
+    if score_delta is None:
+        return "flat"
+    if score_delta > 1.0:
+        return "up"
+    if score_delta < -1.0:
+        return "down"
+    return "flat"
+
+
 # ─── Phase 3 PR 2: Insight 모드 narrative ──────────────────────────────────
 
 
