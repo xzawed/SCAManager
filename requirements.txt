@@ -2,7 +2,7 @@
 # fastapi>=0.115.5 — bundles starlette with CVE-2024-47874 / CVE-2025-54121 patches
 fastapi>=0.115.5
 uvicorn[standard]==0.46.0
-pydantic-settings==2.14.0
+pydantic-settings==2.14.1
 sqlalchemy==2.0.49
 alembic==1.18.4
 # 온프레미스 프로덕션: psycopg2-binary → psycopg2 + libpq-dev(Ubuntu) / postgresql-devel(RHEL) 설치 권장
@@ -22,7 +22,7 @@ aiosmtplib>=5.1.0
 pylint==3.3.1
 flake8==7.3.0
 bandit>=1.9.4
-semgrep==1.161.0
+semgrep==1.162.0
 slither-analyzer>=0.10.0
 jinja2==3.1.6
 # python-multipart>=0.0.27 — CVE-2026-40347 (preamble/epilogue CPU DoS) fix
