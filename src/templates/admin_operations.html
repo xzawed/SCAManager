@@ -3,132 +3,353 @@
 {% block title %}{{ 'admin.operations.title_prefix' | i18n_args(locale | default('ko')) }} — SCAManager Admin{% endblock %}
 
 {% block content %}
-<div class="container">
-  <header style="margin-bottom: 1.5rem;">
-    <h1 style="font-size: 1.5rem; margin: 0;">{{ 'admin.operations.page_title' | i18n_args(locale | default('ko')) }}</h1>
-    <p style="color: var(--text-muted, #9ca3af); margin: 0.25rem 0 0;">
-      {{ 'admin.operations.subtitle' | i18n_args(locale | default('ko')) }}
-    </p>
+<style>
+  /* ──────────────────────────────────────────────────────────
+     Admin Operations — glassmorphism redesign
+     관리자 운영 현황 — 글래스모피즘 재디자인
+     CSS variables only, no hardcoded hex.
+     CSS 변수만 사용, 하드코딩 hex 없음.
+     ────────────────────────────────────────────────────────── */
+  .admin-ops-page {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 32px 16px 64px;
+  }
+
+  /* ── 페이지 헤더 / Page header ──────────────────────────── */
+  .admin-ops-header {
+    margin-bottom: 28px;
+  }
+
+  .admin-ops-title {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 0 0 6px;
+    background: linear-gradient(135deg, var(--text-1), var(--accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .admin-ops-subtitle {
+    font-size: 14px;
+    color: var(--text-2);
+    margin: 0;
+  }
+
+  /* ── 기간/링크 바 / Period-links bar ──────────────────────── */
+  .admin-ops-meta-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+    padding: 10px 14px;
+    background: var(--bg-card);
+    backdrop-filter: blur(12px) saturate(150%);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    font-size: 14px;
+    color: var(--text-2);
+  }
+
+  .admin-ops-meta-bar .sep {
+    opacity: 0.4;
+  }
+
+  .admin-ops-link {
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 500;
+    transition: opacity 0.15s ease;
+  }
+
+  .admin-ops-link:hover {
+    opacity: 0.8;
+  }
+
+  /* ── KPI 카드 그리드 / KPI card grid ───────────────────────── */
+  .admin-ops-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+    margin-bottom: 32px;
+  }
+
+  /* ── KPI 카드 글래스모피즘 / KPI card glassmorphism ─────────── */
+  .admin-ops-card {
+    position: relative;
+    padding: 20px 22px 22px;
+    background: var(--bg-card);
+    backdrop-filter: blur(12px) saturate(150%);
+    border: 1px solid var(--border-subtle);
+    border-radius: 16px;
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .admin-ops-card::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2, var(--accent)));
+    border-radius: 0 0 16px 16px;
+  }
+
+  .admin-ops-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+  }
+
+  .admin-ops-card-title {
+    margin: 0 0 14px;
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-2);
+  }
+
+  /* ── 지표 행 / Metric row ───────────────────────────────── */
+  .admin-ops-metric {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .admin-ops-metric:last-of-type {
+    border-bottom: none;
+  }
+
+  .admin-ops-metric-label {
+    font-size: 12px;
+    color: var(--text-3, var(--text-2));
+    white-space: nowrap;
+  }
+
+  .admin-ops-metric-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-1);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .admin-ops-metric-value.small {
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .admin-ops-card-hint {
+    display: block;
+    margin-top: 10px;
+    font-size: 11px;
+    color: var(--text-2);
+    opacity: 0.8;
+    line-height: 1.5;
+  }
+
+  /* ── 안내 카드 / Info card ──────────────────────────────── */
+  .admin-ops-info-card {
+    position: relative;
+    padding: 20px 22px 22px;
+    background: var(--bg-card);
+    backdrop-filter: blur(12px) saturate(150%);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    overflow: hidden;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .admin-ops-info-card::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2, var(--accent)));
+    border-radius: 0 0 12px 12px;
+  }
+
+  .admin-ops-info-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+  }
+
+  .admin-ops-info-title {
+    margin: 0 0 12px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-1);
+  }
+
+  .admin-ops-info-list {
+    margin: 0;
+    padding-left: 18px;
+    color: var(--text-2);
+    font-size: 13px;
+    line-height: 1.7;
+  }
+
+  /* ── 반응형 / Responsive ────────────────────────────────── */
+  @media (max-width: 768px) {
+    .admin-ops-page {
+      padding: 20px 12px 48px;
+    }
+
+    .admin-ops-title {
+      font-size: 22px;
+    }
+
+    .admin-ops-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+
+<div class="admin-ops-page">
+  <header class="admin-ops-header">
+    <h1 class="admin-ops-title">{{ 'admin.operations.page_title' | i18n_args(locale | default('ko')) }}</h1>
+    <p class="admin-ops-subtitle">{{ 'admin.operations.subtitle' | i18n_args(locale | default('ko')) }}</p>
   </header>
 
-  <div style="margin-bottom: 1rem;">
-    <strong>{{ 'admin.operations.period_label' | i18n_args(locale | default('ko')) }}</strong>: {{ 'admin.operations.period_value' | i18n_args(locale | default('ko'), days=days) }} ·
-    <a href="/admin/tenants" style="color: var(--accent, #60a5fa);">{{ 'admin.tenants.rls_link' | i18n_args(locale | default('ko')) }}</a>
-    <a href="/admin/rls-audit" style="color: var(--accent, #60a5fa);">{{ 'admin.rls_audit.tenants_link' | i18n_args(locale | default('ko')) }}</a>
+  <div class="admin-ops-meta-bar">
+    <strong>{{ 'admin.operations.period_label' | i18n_args(locale | default('ko')) }}</strong>:
+    {{ 'admin.operations.period_value' | i18n_args(locale | default('ko'), days=days) }}
+    <span class="sep">·</span>
+    <a href="/admin/tenants" class="admin-ops-link">{{ 'admin.tenants.rls_link' | i18n_args(locale | default('ko')) }}</a>
+    <span class="sep">·</span>
+    <a href="/admin/rls-audit" class="admin-ops-link">{{ 'admin.rls_audit.tenants_link' | i18n_args(locale | default('ko')) }}</a>
   </div>
 
-  <div class="dash-insight-grid" role="region" aria-label="{{ 'admin.operations.card_aria' | i18n_args(locale | default('ko')) }}">
+  <section class="admin-ops-grid" aria-label="{{ 'admin.operations.card_aria' | i18n_args(locale | default('ko')) }}">
+
     {# Card 1: cache_hit_rate (Anthropic prompt cache 효율) #}
-    <div class="dash-insight-card">
-      <h2 class="dash-insight-title">{{ 'admin.operations.cache_card_title' | i18n_args(locale | default('ko')) }}</h2>
-      <div class="dash-insight-metric">
-        <span class="dash-insight-metric-label">cache_hit_rate</span>
-        <span class="dash-insight-metric-value">{{ kpi.cache.cache_hit_rate_pct }}%</span>
+    {# Card 1: cache_hit_rate (Anthropic prompt cache efficiency) #}
+    <div class="admin-ops-card">
+      <h2 class="admin-ops-card-title">{{ 'admin.operations.cache_card_title' | i18n_args(locale | default('ko')) }}</h2>
+      <div class="admin-ops-metric">
+        <span class="admin-ops-metric-label">cache_hit_rate</span>
+        <span class="admin-ops-metric-value">{{ kpi.cache.cache_hit_rate_pct }}%</span>
       </div>
-      <div class="dash-insight-metric">
-        <span class="dash-insight-metric-label">{{ 'admin.operations.cache_total_calls' | i18n_args(locale | default('ko')) }}</span>
-        <span class="dash-insight-metric-value">{{ kpi.cache.total_calls }}</span>
+      <div class="admin-ops-metric">
+        <span class="admin-ops-metric-label">{{ 'admin.operations.cache_total_calls' | i18n_args(locale | default('ko')) }}</span>
+        <span class="admin-ops-metric-value">{{ kpi.cache.total_calls }}</span>
       </div>
-      <small style="opacity:0.7;">{{ 'admin.operations.cache_hint' | i18n_args(locale | default('ko')) }}</small>
+      <small class="admin-ops-card-hint">{{ 'admin.operations.cache_hint' | i18n_args(locale | default('ko')) }}</small>
     </div>
 
     {# Card 2: API 비용 추정 (사이클 72 #242 비용 모델) #}
-    <div class="dash-insight-card">
-      <h2 class="dash-insight-title">{{ 'admin.operations.api_cost_title' | i18n_args(locale | default('ko')) }}</h2>
-      <div class="dash-insight-metric">
-        <span class="dash-insight-metric-label">{{ 'admin.operations.api_cost_label' | i18n_args(locale | default('ko')) }}</span>
-        <span class="dash-insight-metric-value">${{ kpi.api_cost.estimated_usd }}</span>
+    {# Card 2: API cost estimate (cycle 72 #242 cost model) #}
+    <div class="admin-ops-card">
+      <h2 class="admin-ops-card-title">{{ 'admin.operations.api_cost_title' | i18n_args(locale | default('ko')) }}</h2>
+      <div class="admin-ops-metric">
+        <span class="admin-ops-metric-label">{{ 'admin.operations.api_cost_label' | i18n_args(locale | default('ko')) }}</span>
+        <span class="admin-ops-metric-value">${{ kpi.api_cost.estimated_usd }}</span>
       </div>
-      <div class="dash-insight-metric">
-        <span class="dash-insight-metric-label">{{ 'admin.operations.api_cost_input_tokens' | i18n_args(locale | default('ko')) }}</span>
-        <span class="dash-insight-metric-value">{{ kpi.api_cost.input_tokens }}</span>
+      <div class="admin-ops-metric">
+        <span class="admin-ops-metric-label">{{ 'admin.operations.api_cost_input_tokens' | i18n_args(locale | default('ko')) }}</span>
+        <span class="admin-ops-metric-value">{{ kpi.api_cost.input_tokens }}</span>
       </div>
-      <small style="opacity:0.7;">{{ kpi.api_cost.model }}</small>
+      <small class="admin-ops-card-hint">{{ kpi.api_cost.model }}</small>
     </div>
 
     {# Card 3: cache token 분포 (read vs creation) #}
-    <div class="dash-insight-card">
-      <h2 class="dash-insight-title">{{ 'admin.operations.cache_dist_title' | i18n_args(locale | default('ko')) }}</h2>
-      <div class="dash-insight-metric">
-        <span class="dash-insight-metric-label">cache_read</span>
-        <span class="dash-insight-metric-value">{{ kpi.cache.cache_read_tokens }}</span>
+    {# Card 3: cache token distribution (read vs creation) #}
+    <div class="admin-ops-card">
+      <h2 class="admin-ops-card-title">{{ 'admin.operations.cache_dist_title' | i18n_args(locale | default('ko')) }}</h2>
+      <div class="admin-ops-metric">
+        <span class="admin-ops-metric-label">cache_read</span>
+        <span class="admin-ops-metric-value">{{ kpi.cache.cache_read_tokens }}</span>
       </div>
-      <div class="dash-insight-metric">
-        <span class="dash-insight-metric-label">cache_creation</span>
-        <span class="dash-insight-metric-value">{{ kpi.cache.cache_creation_tokens }}</span>
+      <div class="admin-ops-metric">
+        <span class="admin-ops-metric-label">cache_creation</span>
+        <span class="admin-ops-metric-value">{{ kpi.cache.cache_creation_tokens }}</span>
       </div>
-      <small style="opacity:0.7;">{{ 'admin.operations.cache_dist_hint' | i18n_args(locale | default('ko')) }}</small>
+      <small class="admin-ops-card-hint">{{ 'admin.operations.cache_dist_hint' | i18n_args(locale | default('ko')) }}</small>
     </div>
 
     {# Card 4: merge success rate (auto_merge 글로벌) #}
-    <div class="dash-insight-card">
-      <h2 class="dash-insight-title">{{ 'admin.operations.merge_title' | i18n_args(locale | default('ko')) }}</h2>
-      <div class="dash-insight-metric">
-        <span class="dash-insight-metric-label">{{ 'admin.operations.merge_period_label' | i18n_args(locale | default('ko'), days=kpi.merge.days) }}</span>
-        <span class="dash-insight-metric-value">{{ kpi.merge.success_rate_pct }}%</span>
+    {# Card 4: merge success rate (global auto_merge) #}
+    <div class="admin-ops-card">
+      <h2 class="admin-ops-card-title">{{ 'admin.operations.merge_title' | i18n_args(locale | default('ko')) }}</h2>
+      <div class="admin-ops-metric">
+        <span class="admin-ops-metric-label">{{ 'admin.operations.merge_period_label' | i18n_args(locale | default('ko'), days=kpi.merge.days) }}</span>
+        <span class="admin-ops-metric-value">{{ kpi.merge.success_rate_pct }}%</span>
       </div>
-      <div class="dash-insight-metric">
-        <span class="dash-insight-metric-label">{{ 'admin.operations.merge_attempts_label' | i18n_args(locale | default('ko')) }}</span>
-        <span class="dash-insight-metric-value" style="font-size:0.9em;">{{ kpi.merge.success_count }} / {{ kpi.merge.total_attempts }}</span>
+      <div class="admin-ops-metric">
+        <span class="admin-ops-metric-label">{{ 'admin.operations.merge_attempts_label' | i18n_args(locale | default('ko')) }}</span>
+        <span class="admin-ops-metric-value small">{{ kpi.merge.success_count }} / {{ kpi.merge.total_attempts }}</span>
       </div>
-      <small style="opacity:0.7;">{{ 'admin.operations.merge_hint' | i18n_args(locale | default('ko')) }}</small>
+      <small class="admin-ops-card-hint">{{ 'admin.operations.merge_hint' | i18n_args(locale | default('ko')) }}</small>
     </div>
 
     {# Card 5: pipeline latency (Phase 2 보류 — 메모리 카운터 부재) #}
-    <div class="dash-insight-card">
-      <h2 class="dash-insight-title">{{ 'admin.operations.latency_title' | i18n_args(locale | default('ko')) }}</h2>
+    {# Card 5: pipeline latency (Phase 2 pending — no in-memory counters) #}
+    <div class="admin-ops-card">
+      <h2 class="admin-ops-card-title">{{ 'admin.operations.latency_title' | i18n_args(locale | default('ko')) }}</h2>
       {% if kpi.pipeline_latency.available %}
-      <div class="dash-insight-metric">
-        <span class="dash-insight-metric-label">p95 (ms)</span>
-        <span class="dash-insight-metric-value">{{ kpi.pipeline_latency.p95_ms }}</span>
+      <div class="admin-ops-metric">
+        <span class="admin-ops-metric-label">p95 (ms)</span>
+        <span class="admin-ops-metric-value">{{ kpi.pipeline_latency.p95_ms }}</span>
       </div>
       {% else %}
-      <p style="opacity:0.7; font-size:0.9em;">{{ 'admin.operations.latency_phase2_pending' | i18n_args(locale | default('ko')) }}</p>
-      <small style="opacity:0.6;">{{ kpi.pipeline_latency.reason }}</small>
+      <p style="font-size: 13px; color: var(--text-2); margin: 0 0 6px;">{{ 'admin.operations.latency_phase2_pending' | i18n_args(locale | default('ko')) }}</p>
+      <small class="admin-ops-card-hint">{{ kpi.pipeline_latency.reason }}</small>
       {% endif %}
     </div>
 
     {# Phase 5 PR-17 (사이클 84) — Card 6: 사용자 언어 분포 (User.preferred_language) #}
     {# Phase 5 PR-17 (Cycle 84) — Card 6: User language distribution #}
-    <div class="dash-insight-card">
-      <h2 class="dash-insight-title">{{ 'admin.operations.language_dist_title' | i18n_args(locale | default('ko')) }}</h2>
-      <div class="dash-insight-metric">
-        <span class="dash-insight-metric-label">{{ 'admin.operations.language_dist_total' | i18n_args(locale | default('ko')) }}</span>
-        <span class="dash-insight-metric-value">{{ kpi.language_distribution.total_users }}</span>
+    <div class="admin-ops-card">
+      <h2 class="admin-ops-card-title">{{ 'admin.operations.language_dist_title' | i18n_args(locale | default('ko')) }}</h2>
+      <div class="admin-ops-metric">
+        <span class="admin-ops-metric-label">{{ 'admin.operations.language_dist_total' | i18n_args(locale | default('ko')) }}</span>
+        <span class="admin-ops-metric-value">{{ kpi.language_distribution.total_users }}</span>
       </div>
       {% for lang, count in kpi.language_distribution.distribution.items() %}
-      <div class="dash-insight-metric">
-        <span class="dash-insight-metric-label">{{ lang }}</span>
-        <span class="dash-insight-metric-value">{{ count }} ({{ kpi.language_distribution.percentages[lang] }}%)</span>
+      <div class="admin-ops-metric">
+        <span class="admin-ops-metric-label">{{ lang }}</span>
+        <span class="admin-ops-metric-value small">{{ count }} ({{ kpi.language_distribution.percentages[lang] }}%)</span>
       </div>
       {% endfor %}
-      <small style="opacity:0.7;">{{ 'admin.operations.language_dist_hint' | i18n_args(locale | default('ko')) }}</small>
+      <small class="admin-ops-card-hint">{{ 'admin.operations.language_dist_hint' | i18n_args(locale | default('ko')) }}</small>
     </div>
 
     {# Phase 5 PR-17 — Card 7: i18n fallback rate (메모리 카운터 — process restart 시 reset) #}
     {# Phase 5 PR-17 — Card 7: i18n fallback rate (in-memory — resets on process restart) #}
-    <div class="dash-insight-card">
-      <h2 class="dash-insight-title">{{ 'admin.operations.i18n_fallback_title' | i18n_args(locale | default('ko')) }}</h2>
-      <div class="dash-insight-metric">
-        <span class="dash-insight-metric-label">{{ 'admin.operations.i18n_fallback_label' | i18n_args(locale | default('ko')) }}</span>
-        <span class="dash-insight-metric-value">{{ kpi.i18n_fallback.fallback_rate_pct }}%</span>
+    <div class="admin-ops-card">
+      <h2 class="admin-ops-card-title">{{ 'admin.operations.i18n_fallback_title' | i18n_args(locale | default('ko')) }}</h2>
+      <div class="admin-ops-metric">
+        <span class="admin-ops-metric-label">{{ 'admin.operations.i18n_fallback_label' | i18n_args(locale | default('ko')) }}</span>
+        <span class="admin-ops-metric-value">{{ kpi.i18n_fallback.fallback_rate_pct }}%</span>
       </div>
-      <div class="dash-insight-metric">
-        <span class="dash-insight-metric-label">{{ 'admin.operations.i18n_fallback_total' | i18n_args(locale | default('ko')) }}</span>
-        <span class="dash-insight-metric-value">{{ kpi.i18n_fallback.lookups_total }}</span>
+      <div class="admin-ops-metric">
+        <span class="admin-ops-metric-label">{{ 'admin.operations.i18n_fallback_total' | i18n_args(locale | default('ko')) }}</span>
+        <span class="admin-ops-metric-value">{{ kpi.i18n_fallback.lookups_total }}</span>
       </div>
-      <div class="dash-insight-metric">
-        <span class="dash-insight-metric-label">hit / fallback / missing</span>
-        <span class="dash-insight-metric-value" style="font-size:0.85em;">{{ kpi.i18n_fallback.lookups_hit }} / {{ kpi.i18n_fallback.lookups_fallback }} / {{ kpi.i18n_fallback.lookups_missing }}</span>
+      <div class="admin-ops-metric">
+        <span class="admin-ops-metric-label">hit / fallback / missing</span>
+        <span class="admin-ops-metric-value small">{{ kpi.i18n_fallback.lookups_hit }} / {{ kpi.i18n_fallback.lookups_fallback }} / {{ kpi.i18n_fallback.lookups_missing }}</span>
       </div>
-      <small style="opacity:0.7;">{{ 'admin.operations.i18n_fallback_hint' | i18n_args(locale | default('ko')) }}</small>
+      <small class="admin-ops-card-hint">{{ 'admin.operations.i18n_fallback_hint' | i18n_args(locale | default('ko')) }}</small>
     </div>
-  </div>
+
+  </section>
 
   {# 운영 안내 카드 — Phase 1 영역 한계 명시 #}
-  <div style="margin-top: 2rem; padding: 1rem; background: var(--bg-card, #1f2937); border-radius: 8px;">
-    <h3 style="margin: 0 0 0.5rem; font-size: 1rem;">{{ 'admin.operations.info_title' | i18n_args(locale | default('ko')) }}</h3>
-    <ul style="margin: 0; padding-left: 1.25rem; color: var(--text-muted, #9ca3af); font-size: 0.9em;">
+  {# Info card — Phase 1 scope limitations #}
+  <div class="admin-ops-info-card reveal">
+    <h3 class="admin-ops-info-title">{{ 'admin.operations.info_title' | i18n_args(locale | default('ko')) }}</h3>
+    <ul class="admin-ops-info-list">
       <li>{{ 'admin.operations.info_li1' | i18n_args(locale | default('ko')) }}</li>
       <li>{{ 'admin.operations.info_li2' | i18n_args(locale | default('ko')) }}</li>
       <li>{{ 'admin.operations.info_li3' | i18n_args(locale | default('ko')) }}</li>

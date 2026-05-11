@@ -2,6 +2,10 @@
 {% block title %}{{ 'header.overview' | i18n_args(locale | default('ko')) }} — SCAManager{% endblock %}
 {% block content %}
 <style>
+  /* ── Overview page premium redesign ────────────────────────────────── */
+
+  /* 헤더 레이아웃
+     Header layout */
   .overview-header {
     display: flex;
     align-items: center;
@@ -9,29 +13,139 @@
     margin-bottom: var(--space-7);
     gap: var(--space-4);
   }
+
+  /* 환영 인사 서브텍스트
+     Greeting sub-text */
+  .overview-greeting {
+    margin: 0 0 var(--space-2);
+    font-size: var(--fs-sm);
+    color: var(--text-2, var(--text-muted));
+    font-weight: 400;
+  }
+
+  /* 그라디언트 페이지 타이틀
+     Gradient page title */
   .overview-title {
     margin: 0;
-    font-size: 1.35rem;
+    font-size: 1.5rem;
     font-weight: 700;
-    color: var(--text-primary);
     letter-spacing: -.02em;
+    background: linear-gradient(135deg, var(--text-1, var(--text-primary)), var(--accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
   }
+
+  /* 헤더 우측 액션 영역
+     Header right-side actions */
   .overview-actions { display: flex; align-items: center; gap: var(--space-3); }
+
+  /* 리포 개수 뱃지
+     Repo count badge */
   .repo-count {
     font-size: var(--fs-xs);
-    color: var(--text-muted);
-    background: var(--bg-input);
-    border: 1px solid var(--border);
+    color: var(--text-2, var(--text-muted));
+    background: var(--bg-elevated, var(--bg-input));
+    border: 1px solid var(--border-subtle, var(--border));
     padding: 4px 12px;
     border-radius: var(--radius-pill);
   }
+
+  /* 기본 버튼 — 그라디언트 스타일
+     Primary button — gradient style */
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2, var(--accent))) !important;
+    color: var(--btn-on-accent, #fff) !important;
+    border: none !important;
+    border-radius: 10px !important;
+    font-weight: 600;
+    transition: transform 0.1s, box-shadow 0.2s;
+    cursor: pointer;
+  }
+  .btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(var(--accent-rgb, 99,102,241), 0.3) !important;
+    text-decoration: none;
+  }
+  .btn-primary:active { transform: scale(0.97); }
+
+  /* ── 리포 테이블 카드 ──────────────────────────────────────────────── */
+
+  /* 테이블 래퍼 — 카드 스타일 강화
+     Table wrapper — enhanced card style */
+  .overview-table-card {
+    background: var(--bg-card, var(--bg-surface));
+    backdrop-filter: blur(12px) saturate(150%);
+    border: 1px solid var(--border-subtle, var(--border));
+    border-radius: 16px;
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+    margin-bottom: 0;
+  }
+
+  /* 테이블 가로 스크롤 래퍼
+     Table horizontal scroll wrapper */
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  /* 테이블 기본 스타일
+     Table base styles */
+  .overview-table-card table { width: 100%; border-collapse: collapse; }
+
+  /* 테이블 헤더 — 고급형 스타일
+     Table header — premium style */
+  .overview-table-card thead th {
+    background: var(--bg-elevated, var(--bg-nav));
+    color: var(--text-2, var(--text-muted));
+    font-size: 12px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 12px 16px;
+    font-weight: 600;
+    border-bottom: 1px solid var(--border-subtle, var(--border));
+    white-space: nowrap;
+  }
+
+  /* 리포 행 — 호버 액센트 바 효과
+     Repo row — hover accent bar effect */
+  .repo-row {
+    position: relative;
+    transition: background 0.15s;
+  }
+  .repo-row td {
+    padding: 13px 16px;
+    border-bottom: 1px solid var(--border-subtle, var(--border));
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+  .repo-row:last-child td { border-bottom: none; }
+
+  /* 왼쪽 액센트 바 (호버 시 노출)
+     Left accent bar (shown on hover) */
+  .repo-row::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--accent);
+    transform: scaleY(0);
+    transform-origin: center;
+    transition: transform 0.15s;
+    border-radius: 0 2px 2px 0;
+  }
+  .repo-row:hover::before { transform: scaleY(1); }
+  .repo-row:hover { background: var(--table-row-hover, transparent); }
+
+  /* 리포 링크
+     Repo link */
   .repo-link {
     font-weight: 600;
     font-size: var(--fs-sm);
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    color: var(--text-primary);
+    color: var(--text-1, var(--text-primary));
     text-decoration: none;
   }
   .repo-link::before {
@@ -44,11 +158,28 @@
     flex-shrink: 0;
   }
   .repo-link:hover { color: var(--accent); text-decoration: none; }
-  .score-cell { font-weight: 700; font-size: var(--fs-base); }
+
+  /* 분석 수 텍스트
+     Analysis count text */
+  .analysis-count { font-size: var(--fs-xs); color: var(--text-2, var(--text-muted)); }
+
+  /* 점수 셀 — badge-pop 애니메이션 적용
+     Score cell — badge-pop animation applied */
+  .score-cell {
+    font-weight: 700;
+    font-size: var(--fs-base);
+    animation: var(--anim-badge-pop);
+  }
   .score-cell.score-high { color: var(--grade-a); }
   .score-cell.score-mid  { color: var(--grade-c); }
   .score-cell.score-low  { color: var(--grade-f); }
-  .analysis-count { font-size: var(--fs-xs); color: var(--text-muted); }
+
+  /* 등급 뱃지 — badge-pop 애니메이션 적용
+     Grade badge — badge-pop animation applied */
+  .grade {
+    animation: var(--anim-badge-pop);
+  }
+
   /* Step B (B4): settings-link nowrap + 모바일에서 클릭 영역 ≥40px (WCAG 2.5.5)
      Step B (B4): settings-link nowrap + ≥40px touch on mobile (WCAG 2.5.5) */
   .settings-link {
@@ -56,30 +187,65 @@
     align-items: center;
     gap: var(--space-1);
     font-size: var(--fs-xs);
-    color: var(--text-muted);
+    color: var(--text-2, var(--text-muted));
     text-decoration: none;
     padding: 4px 10px;
     border-radius: var(--radius-sm);
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-subtle, var(--border));
     transition: all var(--transition);
     white-space: nowrap;
   }
   .settings-link:hover { color: var(--accent); border-color: var(--accent); text-decoration: none; }
-  .empty-state {
-    text-align: center;
-    padding: 4rem 2rem;
+
+  /* ── 캘리브레이션 카드 ───────────────────────────────────────────── */
+
+  /* 캘리브레이션 카드 스타일
+     Calibration card styles */
+  .calibration-card {
+    margin-top: 1.5rem;
+    padding: 1.2rem 1.4rem;
+    background: var(--bg-card, var(--bg-surface));
+    backdrop-filter: blur(12px) saturate(150%);
+    border: 1px solid var(--border-subtle, var(--border));
+    border-radius: 16px;
+    box-shadow: var(--shadow-sm);
   }
-  .empty-icon { font-size: 2.5rem; margin-bottom: var(--space-4); opacity: 0.4; }
-  .empty-state p { color: var(--text-muted); margin: 0; font-size: var(--fs-sm); line-height: 1.7; }
+  .calibration-header { margin-bottom: 0.8rem; }
+  .calibration-header h3 { margin: 0 0 0.3rem; font-size: 16px; }
+  .calibration-hint { font-size: 12px; color: var(--text-2, var(--text-muted)); }
+  .calibration-table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
+  .calibration-table th,
+  .calibration-table td {
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-subtle, var(--border));
+  }
+  .calibration-table th {
+    background: var(--bg-elevated, var(--bg-nav));
+    font-size: 12px;
+    color: var(--text-2, var(--text-muted));
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .cal-bar { width: 160px; height: 8px; background: var(--bg-elevated, var(--bg-hover)); border-radius: 4px; overflow: hidden; }
+
+  /* Step D: cal-bar-fill 시맨틱 토큰화 — claude-dark 에서 sage 톤 자동 적용
+     Step D: semantic tokenization — auto sage in claude-dark theme */
+  .cal-bar-fill { height: 100%; background: linear-gradient(90deg, var(--success), var(--success)); opacity: .85; transition: width 0.3s ease; }
+
+  /* ── 반응형 ─────────────────────────────────────────────────────── */
   @media (max-width: 768px) {
     .overview-header { flex-direction: column; align-items: flex-start; margin-bottom: var(--space-5); }
+
     /* B4: 테이블 헤더/셀 세로 wrap ("평/균/점/수") 방지 + 가로 스크롤
        B4: prevent vertical wrap on narrow th/td + horizontal scroll */
-    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .table-wrap th, .table-wrap td { white-space: nowrap; }
     .repo-link { white-space: nowrap; }
-    /* B4: 설정 링크 클릭 영역 강화 (모바일 손가락 권장 ≥40px) */
-    .settings-link { padding: 8px 12px; min-height: 40px; box-sizing: border-box; }
+
+    /* B4: 설정 링크 클릭 영역 강화 (모바일 손가락 권장 ≥40px)
+       B4: enlarge settings-link tap target on mobile (≥40px) */
+    .settings-link { padding: 8px 12px; min-height: 44px; box-sizing: border-box; }
   }
 </style>
 
@@ -99,18 +265,9 @@
     <a href="/repos/add" class="btn btn-primary btn--sm">{{ 'overview.add_repo' | i18n_args(locale | default('ko')) }}</a>
   </div>
 </div>
-<style>
-  /* Phase 1B (UI 개편) — 환영 인사 스타일 (Claude 톤). 본 PR 만의 한정 CSS. */
-  .overview-greeting {
-    margin: 0 0 var(--space-2);
-    font-size: var(--fs-sm);
-    color: var(--text-muted);
-    font-weight: 400;
-  }
-</style>
 
 {% if repos %}
-<div class="s-card" style="margin-bottom:0">
+<div class="overview-table-card">
   <div class="table-wrap">
     <table>
       <thead>
@@ -124,7 +281,7 @@
       </thead>
       <tbody>
       {% for item in repos %}
-      <tr>
+      <tr class="repo-row reveal">
         <td>
           <a class="repo-link" href="/repos/{{ item.full_name }}">{{ item.full_name }}</a>
         </td>
@@ -135,7 +292,7 @@
             {{ item.avg_score }}
           </span>
           {% else %}
-          <span style="color:var(--text-muted)">—</span>
+          <span style="color:var(--text-2, var(--text-muted))">—</span>
           {% endif %}
         </td>
         <td>
@@ -152,7 +309,86 @@
 </div>
 {% else %}
 {# Phase E.5 — Onboarding 3단계 튜토리얼 (리포 0개일 때만 노출) #}
-<div class="card get-started-tutorial">
+<style>
+  /* 빈 상태 컨테이너 (리포 없을 때만 로드)
+     Empty-state container (loaded only when no repos) */
+  .empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+  }
+  .empty-icon { font-size: 2.5rem; margin-bottom: var(--space-4); opacity: 0.4; }
+  .empty-state p { color: var(--text-2, var(--text-muted)); margin: 0; font-size: var(--fs-sm); line-height: 1.7; }
+
+  /* 튜토리얼 카드 공통 (리포 없을 때만 로드)
+     Tutorial card common (loaded only when no repos) */
+  .get-started-tutorial {
+    padding: 1.4rem 1.6rem;
+    background: var(--bg-card, var(--bg-surface));
+    backdrop-filter: blur(12px) saturate(150%);
+    border: 1px solid var(--border-subtle, var(--border));
+    border-radius: 16px;
+    box-shadow: var(--shadow-sm);
+  }
+  .gst-header { margin-bottom: 1.2rem; }
+  .gst-title { margin: 0 0 0.3rem; font-size: 20px; }
+  .gst-subtitle { margin: 0; color: var(--text-2, var(--text-muted)); font-size: 14px; }
+
+  /* Step E (E5): 데스크탑 ≥1024px 에서 3-col grid (튜토리얼 카드 가로 펼침)
+     모바일은 1-col 유지 (col 너비 부족).
+     Step E (E5): 3-col grid on desktop ≥1024px; 1-col stack on mobile */
+  .gst-steps { display: flex; flex-direction: column; gap: 0.9rem; }
+  @media (min-width: 1024px) {
+    .gst-steps { display: grid; grid-template-columns: repeat(3, 1fr); align-items: stretch; }
+  }
+
+  /* 튜토리얼 단계 카드
+     Tutorial step card */
+  .gst-step {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+    padding: 1rem 1.1rem;
+    background: var(--bg-elevated, var(--bg-hover));
+    border-radius: 10px;
+    border: 1px solid var(--border-subtle, var(--border));
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .gst-step:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+  }
+  .gst-step-num {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2, var(--accent)));
+    color: var(--btn-on-accent, white);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 16px;
+  }
+  .gst-step-body { flex: 1; }
+  .gst-step-title { font-size: 15px; font-weight: 700; color: var(--text-1, var(--text-primary)); margin-bottom: 0.25rem; }
+  .gst-step-desc { font-size: 13px; color: var(--text-2, var(--text-muted)); line-height: 1.5; }
+  .gst-step-desc code { background: var(--bg-card); padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 12px; }
+  .gst-cta { margin-top: 0.5rem; }
+
+  /* 팁 푸터
+     Tip footer */
+  .gst-footer {
+    margin-top: 1rem;
+    padding: 0.7rem 0.9rem;
+    background: rgba(var(--accent-rgb, 99,102,241), 0.08);
+    border-radius: 6px;
+    border-left: 3px solid var(--accent);
+  }
+  .gst-footer-hint { font-size: 12px; color: var(--text-1, var(--text-primary)); }
+  .gst-footer-hint code { background: var(--bg-card); padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 12px; }
+</style>
+<div class="get-started-tutorial">
   {# Cycle 94 Step 2-B — 3-step onboarding 일러스트 (1792x1024 가로형)
      Cycle 94 Step 2-B — 3-step onboarding illustration (1792x1024 landscape) #}
   <img src="/static/illustrations/overview_onboarding.png"
@@ -199,45 +435,12 @@
     </div>
   </div>
 </div>
-<style>
-  .get-started-tutorial { padding: 1.4rem 1.6rem; }
-  .gst-header { margin-bottom: 1.2rem; }
-  .gst-title { margin: 0 0 0.3rem; font-size: 20px; }
-  .gst-subtitle { margin: 0; color: var(--text-muted); font-size: 14px; }
-  /* Step E (E5): 데스크탑 ≥1024px 에서 3-col grid (튜토리얼 카드 가로 펼침)
-     모바일은 1-col 유지 (col 너비 부족). 빈 상태 카드 가독성 향상.
-     Step E (E5): 3-col grid on desktop ≥1024px; 1-col stack on mobile */
-  .gst-steps { display: flex; flex-direction: column; gap: 0.9rem; }
-  @media (min-width: 1024px) {
-    .gst-steps { display: grid; grid-template-columns: repeat(3, 1fr); align-items: stretch; }
-  }
-  .gst-step { display: flex; gap: 1rem; align-items: flex-start;
-              padding: 1rem 1.1rem; background: var(--bg-hover);
-              border-radius: 10px; border: 1px solid var(--border); }
-  .gst-step-num { flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%;
-                  background: var(--accent); color: white; display: flex;
-                  align-items: center; justify-content: center;
-                  font-weight: 700; font-size: 16px; }
-  .gst-step-body { flex: 1; }
-  .gst-step-title { font-size: 15px; font-weight: 700; color: var(--text-primary);
-                    margin-bottom: 0.25rem; }
-  .gst-step-desc { font-size: 13px; color: var(--text-muted); line-height: 1.5; }
-  .gst-step-desc code { background: var(--bg-card); padding: 0.1rem 0.35rem;
-                        border-radius: 3px; font-size: 12px; }
-  .gst-cta { margin-top: 0.5rem; }
-  .gst-footer { margin-top: 1rem; padding: 0.7rem 0.9rem;
-                background: rgba(59,130,246,0.08); border-radius: 6px;
-                border-left: 3px solid #3b82f6; }
-  .gst-footer-hint { font-size: 12px; color: var(--text-primary); }
-  .gst-footer-hint code { background: var(--bg-card); padding: 0.1rem 0.35rem;
-                          border-radius: 3px; font-size: 12px; }
-</style>
 {% endif %}
 
 {# Phase E.3-d — AI 점수 정합도 지표 (피드백 1건 이상 있을 때만 노출) #}
 {% set cal_total = calibration.values() | map(attribute='count') | sum %}
 {% if calibration and cal_total > 0 %}
-<div class="card calibration-card">
+<div class="calibration-card reveal">
   <div class="calibration-header">
     <h3>📊 {{ 'overview.calibration.title' | i18n_args(locale | default('ko')) }}</h3>
     <span class="calibration-hint">{{ 'overview.calibration.hint' | i18n_args(locale | default('ko')) }}</span>
@@ -269,23 +472,6 @@
     </tbody>
   </table>
 </div>
-<style>
-  .calibration-card { margin-top: 1.5rem; padding: 1.2rem 1.4rem; }
-  .calibration-header { margin-bottom: 0.8rem; }
-  .calibration-header h3 { margin: 0 0 0.3rem; font-size: 16px; }
-  .calibration-hint { font-size: 12px; color: var(--text-muted); }
-  .calibration-table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
-  .calibration-table th, .calibration-table td { padding: 0.5rem 0.75rem; text-align: left;
-                                                  border-bottom: 1px solid var(--border); }
-  .calibration-table th { font-size: 12px; color: var(--text-muted); font-weight: 600; }
-  .cal-bar { width: 160px; height: 8px; background: var(--bg-hover); border-radius: 4px;
-             overflow: hidden; }
-  /* Step D: cal-bar-fill 시맨틱 토큰화 — claude-dark 에서 sage 톤 자동 적용
-     Step D: semantic tokenization — auto sage in claude-dark theme */
-  .cal-bar-fill { height: 100%; background: linear-gradient(90deg, var(--success), var(--success));
-                  opacity: .85;
-                  transition: width 0.3s ease; }
-</style>
 {% endif %}
 
 {% endblock %}

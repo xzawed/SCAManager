@@ -11,6 +11,7 @@
      v2 목업 (docs/design/mockups/2026-05-02-dashboard-v2-overview.html) 디자인 시스템 일부.
      운영 base.html 의 4-테마 (dark/light/glass/claude-dark) 와 공존.
      Crimson Pro 는 시스템 serif fallback (Phase 4 에서 base 통합 시 Google Fonts 추가 결정).
+     Dashboard-scoped tokens — zero impact on other pages.
      ──────────────────────────────────────────────────────────────── */
   .dashboard-page {
     --d-accent: #D97757;
@@ -38,60 +39,97 @@
     padding: 32px 16px 64px;
   }
 
+  /* ── 헤더 / Header ───────────────────────────────────────────── */
   .dash-header {
     display: flex; align-items: flex-end; justify-content: space-between;
     margin-bottom: 32px; gap: 16px; flex-wrap: wrap;
   }
+
+  /* 그라디언트 타이틀 — overview.html 동일 패턴
+     Gradient title — same pattern as overview.html */
   .dash-title {
     font-family: var(--d-font-heading);
-    font-size: 32px; font-weight: 600;
+    font-size: 32px; font-weight: 700;
     letter-spacing: -.02em;
     margin: 0 0 4px;
-    color: var(--text-primary);
+    background: linear-gradient(135deg, var(--text-1, var(--text-primary)), var(--accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
   }
   .dash-subtitle {
-    font-size: 14px; color: var(--text-muted);
+    font-size: 14px; color: var(--text-2, var(--text-muted));
     margin: 0;
   }
 
+  /* ── 범위 / 모드 토글 ────────────────────────────────────────── */
   .dash-range-toggle {
     display: inline-flex; gap: 1px; padding: 3px;
     background: var(--bg-elevated, var(--card-bg, rgba(255,255,255,.04)));
     border-radius: 9px;
-    border: 1px solid var(--border, rgba(255,255,255,.08));
+    border: 1px solid var(--border-subtle, rgba(255,255,255,.08));
   }
   .dash-range-toggle a {
     padding: 7px 14px; border-radius: 6px;
     font-size: 13px; font-weight: 500;
-    color: var(--text-muted); text-decoration: none;
+    color: var(--text-2, var(--text-muted)); text-decoration: none;
     min-height: 40px; box-sizing: border-box;
     display: inline-flex; align-items: center;
     transition: all .15s ease;
   }
   .dash-range-toggle a.active {
-    background: var(--bg-elevated, var(--card-bg, #fff));
-    color: var(--text-primary);
+    background: var(--bg-elevated);
+    color: var(--text-1, var(--text-primary));
     font-weight: 600;
     box-shadow: 0 1px 2px rgba(0,0,0,.06);
   }
 
-  /* KPI 5 카드 — Phase 2 PR 1 (Auto-merge 추가). 동일 높이 정합 (PR #187 패턴) */
+  /* ── KPI 5 카드 — 프리미엄 스타일 + count-up ───────────────────
+     KPI 5 cards — premium style + count-up
+     Phase 2 PR 1 (Auto-merge 추가). 동일 높이 정합 (PR #187 패턴) */
   .dash-kpi-grid {
     display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px;
     margin-bottom: 24px;
   }
+
+  /* 카드 컨테이너 — glassmorphism + reveal
+     Card container — glassmorphism + reveal */
   .dash-kpi {
-    background: var(--card-bg, var(--bg-surface, rgba(255,255,255,.04)));
-    border: 1px solid var(--border, rgba(255,255,255,.08));
-    border-radius: 14px;
-    padding: 20px;
+    background: var(--bg-card, rgba(255,255,255,.04));
+    backdrop-filter: blur(12px) saturate(150%);
+    border: 1px solid var(--border-subtle, rgba(255,255,255,.08));
+    border-radius: 16px;
+    padding: 20px 24px;
+    box-shadow: var(--shadow-sm);
     display: flex; flex-direction: column;
     min-height: 152px;
-    transition: border-color .2s ease;
+    position: relative;
+    overflow: hidden;
+    transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
   }
-  .dash-kpi:hover { border-color: var(--d-accent); }
+  .dash-kpi:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+    border-color: var(--accent);
+  }
+
+  /* 하단 액센트 라인 (호버 시 scaleX 0→1)
+     Bottom accent line (scaleX 0→1 on hover) */
+  .dash-kpi::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2, var(--accent)));
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform .2s ease;
+    border-radius: 0 0 16px 16px;
+  }
+  .dash-kpi:hover::after { transform: scaleX(1); }
+
   .dash-kpi-label {
-    font-size: 12px; color: var(--text-muted); font-weight: 500;
+    font-size: 12px; color: var(--text-2, var(--text-muted)); font-weight: 500;
     margin-bottom: 12px; min-height: 18px;
   }
   .dash-kpi-row {
@@ -102,9 +140,9 @@
     font-family: var(--d-font-heading);
     font-size: 36px; font-weight: 600;
     letter-spacing: -.02em; line-height: 1;
-    color: var(--text-primary);
+    color: var(--text-1, var(--text-primary));
   }
-  .dash-kpi-grade { font-size: 14px; font-weight: 600; color: var(--text-muted); }
+  .dash-kpi-grade { font-size: 14px; font-weight: 600; color: var(--text-2, var(--text-muted)); }
   .dash-kpi-grade.A { color: var(--d-grade-a); }
   .dash-kpi-grade.B { color: var(--d-grade-b); }
   .dash-kpi-grade.C { color: var(--d-grade-c); }
@@ -113,19 +151,21 @@
   .dash-kpi-delta {
     font-size: 12px; font-weight: 500;
     display: inline-flex; align-items: center; gap: 4px;
-    margin-top: auto;  /* 항상 카드 하단 고정 */
+    margin-top: auto;  /* 항상 카드 하단 고정 / always pinned to card bottom */
     min-height: 16px;
   }
   .dash-kpi-delta.up { color: var(--d-success); }
   .dash-kpi-delta.down { color: var(--d-danger); }
-  .dash-kpi-delta.neu { color: var(--text-muted); }
+  .dash-kpi-delta.neu { color: var(--text-2, var(--text-muted)); }
 
-  /* Chart card */
+  /* ── Chart card — glassmorphism ─────────────────────────────── */
   .dash-chart-card {
-    background: var(--card-bg, var(--bg-surface, rgba(255,255,255,.04)));
-    border: 1px solid var(--border, rgba(255,255,255,.08));
-    border-radius: 14px;
-    padding: 20px;
+    background: var(--bg-card, rgba(255,255,255,.04));
+    backdrop-filter: blur(12px) saturate(150%);
+    border: 1px solid var(--border-subtle, rgba(255,255,255,.08));
+    border-radius: 16px;
+    padding: 20px 24px;
+    box-shadow: var(--shadow-sm);
     margin-bottom: 24px;
   }
   .dash-section-title {
@@ -133,18 +173,18 @@
     font-size: 18px; font-weight: 600;
     letter-spacing: -.01em;
     margin: 0 0 16px;
-    color: var(--text-primary);
+    color: var(--text-1, var(--text-primary));
   }
   .dash-chart-wrap {
     position: relative;
     height: 320px;
   }
 
-  /* Phase 2 PR 2 — feedback CTA banner (조건부) */
+  /* ── feedback CTA banner (Phase 2 PR 2 — 조건부) ─────────────── */
   .dash-cta-banner {
-    background: linear-gradient(135deg, var(--accent-faint, rgba(217,119,87,.08)) 0%, transparent 100%);
+    background: linear-gradient(135deg, var(--accent-faint, transparent) 0%, transparent 100%);
     border: 1px solid var(--d-accent);
-    border-radius: 14px;
+    border-radius: 16px;
     padding: 16px 20px;
     margin-bottom: 24px;
     display: flex; align-items: center; justify-content: space-between;
@@ -156,103 +196,157 @@
   .dash-cta-title {
     font-family: var(--d-font-heading);
     font-size: 16px; font-weight: 600;
-    color: var(--text-primary);
+    color: var(--text-1, var(--text-primary));
     margin: 0 0 4px;
   }
   .dash-cta-meta {
-    font-size: 13px; color: var(--text-muted);
+    font-size: 13px; color: var(--text-2, var(--text-muted));
     margin: 0;
   }
+
+  /* 프라이머리 버튼 — 액센트 그라디언트 + 호버 리프트
+     Primary button — accent gradient + hover lift */
   .dash-cta-btn {
     padding: 10px 18px; min-height: 40px;
     border-radius: 8px; font-size: 13px; font-weight: 600;
     text-decoration: none; box-sizing: border-box;
-    background: var(--d-accent); color: #fff; border: 1px solid var(--d-accent);
+    background: linear-gradient(135deg, var(--accent), var(--accent-2, var(--accent)));
+    color: var(--btn-on-accent); border: none;
     display: inline-flex; align-items: center; gap: 6px;
-    transition: all .15s ease;
+    transition: transform .15s ease, box-shadow .15s ease;
   }
-  .dash-cta-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+  .dash-cta-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(var(--accent-rgb, 99,102,241), 0.3);
+    text-decoration: none;
+  }
+  .dash-cta-btn:active { transform: scale(0.97); }
+
   @media (max-width: 480px) {
     .dash-cta-banner { padding: 14px; }
     .dash-cta-btn { width: 100%; justify-content: center; min-height: 44px; }
   }
 
-  /* 자주 발생 이슈 카드 */
+  /* ── 자주 발생 이슈 카드 — glassmorphism ────────────────────── */
   .dash-issues-card {
-    background: var(--card-bg, var(--bg-surface, rgba(255,255,255,.04)));
-    border: 1px solid var(--border, rgba(255,255,255,.08));
-    border-radius: 14px;
-    padding: 20px;
+    background: var(--bg-card, rgba(255,255,255,.04));
+    backdrop-filter: blur(12px) saturate(150%);
+    border: 1px solid var(--border-subtle, rgba(255,255,255,.08));
+    border-radius: 16px;
+    box-shadow: var(--shadow-sm);
+    padding: 20px 24px;
+    overflow: hidden;
   }
+
+  /* 이슈 행 — 왼쪽 액센트 바 호버 효과
+     Issue row — left accent bar on hover */
   .dash-issue-row {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 0;
-    border-bottom: 1px solid var(--border, rgba(255,255,255,.08));
+    padding: 0 0 0 4px;
+    border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,.08));
     min-height: 56px;
+    position: relative;
+    transition: background .15s ease;
   }
   .dash-issue-row:last-child { border-bottom: none; }
+  .dash-issue-row::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--accent);
+    transform: scaleY(0);
+    transform-origin: center;
+    transition: transform .15s ease;
+    border-radius: 0 2px 2px 0;
+  }
+  .dash-issue-row:hover::before { transform: scaleY(1); }
+  .dash-issue-row:hover { background: var(--table-row-hover, transparent); }
+
   .dash-issue-msg {
     font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-    font-size: 13px; color: var(--text-primary);
+    font-size: 13px; color: var(--text-1, var(--text-primary));
   }
   .dash-issue-meta {
-    font-size: 11px; color: var(--text-subtle, var(--text-muted));
+    font-size: 11px; color: var(--text-2, var(--text-muted));
     margin-top: 2px;
   }
+
+  /* 뱃지 — badge-pop 애니메이션 적용
+     Badge — badge-pop animation applied */
   .dash-issue-badge {
     padding: 3px 10px; border-radius: 12px;
-    background: var(--bg-input, rgba(255,255,255,.04));
+    background: var(--bg-elevated, rgba(255,255,255,.04));
     font-size: 11px; font-weight: 600;
-    color: var(--text-muted);
+    color: var(--text-2, var(--text-muted));
     font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    animation: var(--anim-badge-pop);
   }
 
   .dash-empty-state {
     padding: 32px; text-align: center;
-    color: var(--text-muted); font-size: 14px;
+    color: var(--text-2, var(--text-muted)); font-size: 14px;
   }
 
-  /* Phase 3 PR 3 — 모드 토글 (Overview / Insight). dash-range-toggle 와 동일 디자인 패턴 */
-  /* Phase 3 PR 3 — mode toggle (Overview / Insight). Same pattern as dash-range-toggle */
+  /* 이슈 테이블 컬럼 헤더 — 상단 배경 헤더 행 (정책 16: 단순·명확)
+     Issue table column header row */
+  .dash-table-header {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 16px;
+    background: var(--bg-elevated);
+    color: var(--text-2);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    border-radius: 8px 8px 0 0;
+    margin-bottom: 0;
+  }
+
+  /* ── Phase 3 PR 3 — 모드 토글 (Overview / Insight / Security / Usage) ──
+     Same design pattern as dash-range-toggle */
   .dash-mode-toggle {
     display: inline-flex; gap: 1px; padding: 3px;
     background: var(--bg-elevated, var(--card-bg, rgba(255,255,255,.04)));
     border-radius: 9px;
-    border: 1px solid var(--border, rgba(255,255,255,.08));
+    border: 1px solid var(--border-subtle, rgba(255,255,255,.08));
     margin-right: 8px;
   }
   .dash-mode-toggle a {
     padding: 7px 14px; border-radius: 6px;
     font-size: 13px; font-weight: 500;
-    color: var(--text-muted); text-decoration: none;
+    color: var(--text-2, var(--text-muted)); text-decoration: none;
     min-height: 40px; box-sizing: border-box;
     display: inline-flex; align-items: center; gap: 4px;
     transition: all .15s ease;
   }
   .dash-mode-toggle a.active {
-    background: var(--bg-elevated, var(--card-bg, #fff));
-    color: var(--text-primary);
+    background: var(--bg-elevated);
+    color: var(--text-1, var(--text-primary));
     font-weight: 600;
     box-shadow: 0 1px 2px rgba(0,0,0,.06);
   }
 
-  /* Phase 3 PR 3 — Insight 4 카드 grid (✨ positive / 🔍 focus / 📊 metrics / 💬 next) */
-  /* Phase 3 PR 3 — Insight 4-card grid (✨ positive / 🔍 focus / 📊 metrics / 💬 next) */
+  /* ── Insight 4 카드 grid (Phase 3 PR 3) ─────────────────────────
+     ✨ positive / 🔍 focus / 📊 metrics / 💬 next */
   .dash-insight-grid {
     display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
     margin-bottom: 24px;
   }
   .dash-insight-card {
-    background: var(--card-bg, var(--bg-surface, rgba(255,255,255,.04)));
-    border: 1px solid var(--border, rgba(255,255,255,.08));
-    border-radius: 14px;
+    background: var(--bg-card, rgba(255,255,255,.04));
+    backdrop-filter: blur(12px) saturate(150%);
+    border: 1px solid var(--border-subtle, rgba(255,255,255,.08));
+    border-radius: 16px;
+    box-shadow: var(--shadow-sm);
     padding: 20px 22px;
     min-height: 200px;
   }
   .dash-insight-title {
     font-family: var(--d-font-heading);
     font-size: 16px; font-weight: 600;
-    color: var(--text-primary);
+    color: var(--text-1, var(--text-primary));
     margin: 0 0 14px;
     display: flex; align-items: center; gap: 8px;
   }
@@ -262,7 +356,7 @@
   }
   .dash-insight-list li {
     font-size: 14px; line-height: 1.5;
-    color: var(--text-primary);
+    color: var(--text-1, var(--text-primary));
     padding-left: 16px; position: relative;
   }
   .dash-insight-list li::before {
@@ -271,27 +365,29 @@
   }
   .dash-insight-metric {
     display: flex; align-items: baseline; justify-content: space-between;
-    padding: 8px 0; border-bottom: 1px solid var(--border, rgba(255,255,255,.06));
+    padding: 8px 0; border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,.06));
   }
   .dash-insight-metric:last-child { border-bottom: none; }
-  .dash-insight-metric-label { font-size: 13px; color: var(--text-muted); }
+  .dash-insight-metric-label { font-size: 13px; color: var(--text-2, var(--text-muted)); }
   .dash-insight-metric-value {
     font-family: var(--d-font-heading);
-    font-size: 18px; font-weight: 600; color: var(--text-primary);
+    font-size: 18px; font-weight: 600; color: var(--text-1, var(--text-primary));
   }
   .dash-insight-metric-delta {
-    font-size: 12px; margin-left: 8px; color: var(--text-muted);
+    font-size: 12px; margin-left: 8px; color: var(--text-2, var(--text-muted));
   }
   .dash-insight-status {
     text-align: center; padding: 32px;
-    color: var(--text-muted); font-size: 14px;
-    background: var(--card-bg, var(--bg-surface, rgba(255,255,255,.04)));
-    border: 1px dashed var(--border, rgba(255,255,255,.08));
-    border-radius: 14px;
+    color: var(--text-2, var(--text-muted)); font-size: 14px;
+    background: var(--bg-card, rgba(255,255,255,.04));
+    backdrop-filter: blur(12px) saturate(150%);
+    border: 1px dashed var(--border-subtle, rgba(255,255,255,.08));
+    border-radius: 16px;
+    box-shadow: var(--shadow-sm);
     margin-bottom: 24px;
   }
 
-  /* 모바일 — KPI 5 → 데스크탑 5 / tablet 3 / 모바일 2 / xs 1 */
+  /* ── 모바일 반응형 — KPI 5 → 데스크탑 5 / tablet 3 / 모바일 2 / xs 1 ── */
   @media (max-width: 1024px) {
     .dash-kpi-grid { grid-template-columns: repeat(3, 1fr); }
   }
@@ -305,6 +401,7 @@
     .dash-insight-grid { grid-template-columns: 1fr; }
     .dash-insight-card { min-height: auto; padding: 18px; }
     .dash-mode-toggle a { min-height: 44px; }
+    .dash-range-toggle a { min-height: 44px; box-sizing: border-box; }
   }
   @media (max-width: 480px) {
     .dash-kpi-grid { grid-template-columns: 1fr; }
@@ -470,9 +567,9 @@
         <small style="opacity:0.7;">{{ 'dashboard.usage.avg_score_hint' | i18n_args(locale | default('ko')) }}</small>
       </div>
     </div>
-    <div style="margin-top: 1rem; padding: 1rem; background: var(--bg-card, #1f2937); border-radius: 8px;">
+    <div style="margin-top: 1rem; padding: 1rem; background: var(--bg-card); border-radius: 8px;">
       <h3 style="margin: 0 0 0.5rem; font-size: 1rem;">{{ 'dashboard.usage.saas_info_title' | i18n_args(locale | default('ko')) }}</h3>
-      <ul style="margin: 0; padding-left: 1.25rem; color: var(--text-muted, #9ca3af); font-size: 0.9em;">
+      <ul style="margin: 0; padding-left: 1.25rem; color: var(--text-muted, var(--text-2)); font-size: 0.9em;">
         <li>{{ 'dashboard.usage.saas_info_li1_part1' | i18n_args(locale | default('ko')) }}<strong>{{ 'dashboard.usage.saas_info_li1_strong' | i18n_args(locale | default('ko')) }}</strong>{{ 'dashboard.usage.saas_info_li1_part2' | i18n_args(locale | default('ko')) }}</li>
         <li>{{ 'dashboard.usage.saas_info_li2' | i18n_args(locale | default('ko')) }}</li>
         <li>{{ 'dashboard.usage.saas_info_li3' | i18n_args(locale | default('ko')) }}</li>
@@ -571,7 +668,8 @@
     <div class="dash-kpi">
       <div class="dash-kpi-label">{{ 'dashboard.kpi.avg_score' | i18n_args(locale | default('ko')) }}</div>
       <div class="dash-kpi-row">
-        <span class="dash-kpi-value">{{ kpi.avg_score.value if kpi.avg_score.value is not none else '—' }}</span>
+        <span class="dash-kpi-value"
+          {% if kpi.avg_score.value is not none %}data-count="{{ kpi.avg_score.value }}"{% endif %}>{{ kpi.avg_score.value if kpi.avg_score.value is not none else '—' }}</span>
         {% if kpi.avg_score.grade %}<span class="dash-kpi-grade {{ kpi.avg_score.grade }}">{{ kpi.avg_score.grade }}</span>{% endif %}
       </div>
       {% if kpi.avg_score.delta is not none %}
@@ -590,7 +688,7 @@
     <div class="dash-kpi">
       <div class="dash-kpi-label">{{ 'dashboard.kpi.analysis_count' | i18n_args(locale | default('ko')) }}</div>
       <div class="dash-kpi-row">
-        <span class="dash-kpi-value">{{ kpi.analysis_count.value }}</span>
+        <span class="dash-kpi-value" data-count="{{ kpi.analysis_count.value }}">{{ kpi.analysis_count.value }}</span>
       </div>
       {% if kpi.analysis_count.delta > 0 %}
         <div class="dash-kpi-delta up">▲ +{{ kpi.analysis_count.delta }} {{ 'dashboard.delta.vs_period' | i18n_args(locale | default('ko'), days=days) }}</div>
@@ -604,7 +702,7 @@
     <div class="dash-kpi">
       <div class="dash-kpi-label">{{ 'dashboard.kpi.high_security' | i18n_args(locale | default('ko')) }}</div>
       <div class="dash-kpi-row">
-        <span class="dash-kpi-value">{{ kpi.high_security_issues.value }}</span>
+        <span class="dash-kpi-value" data-count="{{ kpi.high_security_issues.value }}">{{ kpi.high_security_issues.value }}</span>
       </div>
       {% if kpi.high_security_issues.delta > 0 %}
         <div class="dash-kpi-delta down">▲ +{{ kpi.high_security_issues.delta }} ({{ 'dashboard.delta.decline' | i18n_args(locale | default('ko')) }})</div>
@@ -618,7 +716,7 @@
     <div class="dash-kpi">
       <div class="dash-kpi-label">{{ 'dashboard.kpi.active_repos' | i18n_args(locale | default('ko')) }}</div>
       <div class="dash-kpi-row">
-        <span class="dash-kpi-value">{{ kpi.active_repos.value }}</span>
+        <span class="dash-kpi-value" data-count="{{ kpi.active_repos.value }}">{{ kpi.active_repos.value }}</span>
         <span class="dash-kpi-grade">/ {{ kpi.active_repos.total }}</span>
       </div>
       {% if kpi.active_repos.delta > 0 %}
@@ -634,11 +732,13 @@
     <div class="dash-kpi" title="{{ 'dashboard.kpi.auto_merge_tooltip' | i18n_args(locale | default('ko')) }}">
       <div class="dash-kpi-label">{{ 'dashboard.kpi.auto_merge_success' | i18n_args(locale | default('ko')) }}</div>
       <div class="dash-kpi-row">
-        <span class="dash-kpi-value">
+        <span class="dash-kpi-value"
+          {%- if auto_merge.final_success_rate_pct is not none %} data-count="{{ auto_merge.final_success_rate_pct }}"
+          {%- elif auto_merge.value is not none %} data-count="{{ auto_merge.value }}"{% endif %}>
           {%- if auto_merge.final_success_rate_pct is not none -%}
-            {{ auto_merge.final_success_rate_pct }}<span style="font-size:.5em;color:var(--text-muted);">%</span>
+            {{ auto_merge.final_success_rate_pct }}<span style="font-size:.5em;color:var(--text-2, var(--text-muted));">%</span>
           {%- elif auto_merge.value is not none -%}
-            {{ auto_merge.value }}<span style="font-size:.5em;color:var(--text-muted);">%</span>
+            {{ auto_merge.value }}<span style="font-size:.5em;color:var(--text-2, var(--text-muted));">%</span>
           {%- else -%}
             —
           {%- endif -%}
@@ -689,11 +789,15 @@
   </div>
 
   {# 자주 발생 이슈 / Phase 2 PR-6 — i18n #}
-  <div class="dash-issues-card">
+  <div class="dash-issues-card reveal">
     <h2 class="dash-section-title">{{ 'dashboard.frequent_issues' | i18n_args(locale | default('ko'), days=days) }}</h2>
     {% if frequent_issues %}
+      <div class="dash-table-header">
+        <span>이슈</span>
+        <span>빈도</span>
+      </div>
       {% for issue in frequent_issues %}
-      <div class="dash-issue-row">
+      <div class="dash-issue-row reveal">
         <div>
           <div class="dash-issue-msg">{{ issue.message }}</div>
           <div class="dash-issue-meta">
@@ -720,7 +824,7 @@
 
   {# Phase 2 PR 1 — 자동 머지 실패 사유 분포 (운영 신호: unstable_ci 우세) / Phase 2 PR-6 — i18n #}
   {% if merge_failures %}
-  <div class="dash-issues-card" style="margin-top: 16px;">
+  <div class="dash-issues-card reveal" style="margin-top: 16px;">
     <h2 class="dash-section-title">{{ 'dashboard.merge_failures_title' | i18n_args(locale | default('ko'), days=days) }}</h2>
     {% for fail in merge_failures %}
     <div class="dash-issue-row">
@@ -785,6 +889,7 @@
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        animation: { duration: 900, easing: 'easeOutQuart' },
         scales: {
           y: { min: 0, max: 100,
                ticks: { color: subtle, stepSize: 25, font: { size: 11 } },

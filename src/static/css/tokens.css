@@ -73,6 +73,19 @@
   --ease-out:      cubic-bezier(0.16, 1, 0.3, 1);
   --ease-spring:   cubic-bezier(0.25, 1.5, 0.5, 1);
 
+  /* ── Animation convenience refs ─────────────────────────────────────────
+   * Animation convenience references */
+  --anim-page-in:   page-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --anim-tab-in:    tab-in  0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --anim-reveal-up: reveal-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --anim-badge-pop: badge-pop 0.4s cubic-bezier(0.25, 1.5, 0.5, 1) both;
+  --anim-modal-in:  modal-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --anim-toast-in:  toast-in 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --anim-float-a:   float-a 22s ease-in-out infinite alternate;
+  --anim-float-b:   float-b 28s ease-in-out infinite alternate;
+  --anim-float-c:   float-c 18s ease-in-out infinite alternate;
+  --anim-float-d:   float-d 24s ease-in-out infinite alternate;
+
   /* ── Phase 2 신규: Blur 효과 스케일 ───────────────────────────────────
    * Phase 2 NEW: blur effect scale */
   --blur-sm: 8px;
@@ -126,7 +139,12 @@
    * 사용처 그대로 두고 alias 만 추가해 회귀 0. */
   --bg-hover:    var(--table-row-hover);
   --card-bg:     var(--bg-card);
-  --text:        var(--text-primary);
+  --text:        var(--text-1);
   --accent-blue: var(--accent);    /* repo_detail.html CLI Hook 안내 배너 */
   --c-warning:   var(--warning);   /* settings.html 잔존 토큰명 (legacy) */
+
+  /* ── 버튼 on-accent 텍스트 색상 ─────────────────────────────────────────
+   * Button text on accent-colored background (4-theme universal alias)
+   * #fff 직접 사용 금지 — 이 토큰 경유 의무 (.claude/rules/ui.md L24) */
+  --btn-on-accent: #fff;
 }

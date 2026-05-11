@@ -34,7 +34,7 @@
      * 사이클 93 Step 1 — Foundation 토큰 + 4-테마 정의는 외부 CSS 파일로 분리.
      * Cycle 93 Step 1 — tokens + 4 themes externalized to /static/css/.
      *   - tokens.css: 테마 무관 (spacing/fs/elevation/motion/display/...)
-     *   - themes.css: 4 테마 (dark/light/glass/claude-dark)
+     *   - themes.css: 4 테마 (dark/light/pastel/catppuccin)
      * 본 <style> 블록은 글로벌 reset + body + nav + 모든 component CSS 보존.
      * ────────────────────────────────────────────────────────────────────── */
 
@@ -47,8 +47,8 @@
     }
     body {
       font-family: var(--claude-font-body);
-      background-color: var(--bg-page);
-      color: var(--text-primary);
+      background-color: var(--bg-base);
+      color: var(--text-1);
       transition: background-color var(--transition), color var(--transition);
       min-height: 100vh;
       font-size: var(--fs-md);
@@ -61,8 +61,8 @@
       font-family: var(--claude-font-heading);
       letter-spacing: var(--tracking-tight);
     }
-    body[data-theme="glass"] {
-      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0c0e1a 100%);
+    body[data-theme="pastel"] {
+      background: linear-gradient(135deg, #f0ecff 0%, #ede8ff 50%, #e8e3ff 100%);
       background-attachment: fixed;
     }
     /* Phase 1B claude-dark alias 블록 = themes.css 로 외부화 (사이클 93 Step 1).
@@ -73,12 +73,12 @@
        Step A (S4): safe-area-inset on nav left/right padding for iOS notch landscape */
     nav {
       background: var(--bg-nav);
-      color: var(--text-nav);
+      color: var(--text-3);
       padding: 0 max(1.5rem, env(safe-area-inset-left)) 0 max(1.5rem, env(safe-area-inset-right));
       display: flex;
       align-items: center;
       gap: var(--space-2);
-      height: 52px;
+      height: 56px;
       position: sticky;
       top: 0;
       z-index: 100;
@@ -108,7 +108,7 @@
     .nav-logo strong { font-size: var(--fs-sm); letter-spacing: -.2px; font-weight: 600; }
     .nav-links { display: flex; align-items: center; gap: 2px; }
     nav a.nav-link {
-      color: var(--text-muted);
+      color: var(--text-2);
       text-decoration: none;
       font-size: var(--fs-sm);
       font-weight: 500;
@@ -116,7 +116,7 @@
       border-radius: var(--radius-sm);
       transition: color var(--transition), background var(--transition);
     }
-    nav a.nav-link:hover { color: var(--text-nav); background: rgba(255,255,255,.06); }
+    nav a.nav-link:hover { color: var(--text-3); background: rgba(255,255,255,.06); }
     nav a.nav-link[aria-current="page"] { color: #fff; background: rgba(255,255,255,.1); }
     .nav-spacer { flex: 1; }
 
@@ -125,7 +125,7 @@
       display: none;
       background: none;
       border: 1px solid rgba(255,255,255,.12);
-      color: var(--text-nav);
+      color: var(--text-3);
       width: 32px;
       height: 32px;
       border-radius: var(--radius-sm);
@@ -147,7 +147,7 @@
     }
     .nav-user-name {
       font-size: var(--fs-xs);
-      color: var(--text-nav);
+      color: var(--text-3);
       white-space: nowrap;
       max-width: 140px;
       overflow: hidden;
@@ -158,7 +158,7 @@
       align-items: center;
       background: rgba(255,255,255,.06);
       border: 1px solid rgba(255,255,255,.1);
-      color: var(--text-nav);
+      color: var(--text-3);
       padding: 5px 10px;
       border-radius: var(--radius-pill);
       cursor: pointer;
@@ -181,7 +181,7 @@
       gap: var(--space-1);
       background: rgba(255,255,255,.06);
       border: 1px solid rgba(255,255,255,.1);
-      color: var(--text-nav);
+      color: var(--text-3);
       padding: 5px 10px;
       border-radius: var(--radius-pill);
       cursor: pointer;
@@ -199,7 +199,7 @@
       right: 0;
       top: calc(100% + 6px);
       background: var(--bg-card);
-      border: 1px solid var(--border);
+      border: 1px solid var(--border-subtle);
       border-radius: var(--radius-md);
       box-shadow: var(--shadow-md);
       min-width: 180px;
@@ -207,7 +207,7 @@
       z-index: 200;
     }
     .theme-switcher.open .theme-dropdown { display: block; }
-    body[data-theme="glass"] .theme-dropdown { backdrop-filter: blur(20px); }
+    body[data-theme="pastel"] .theme-dropdown { backdrop-filter: blur(20px); }
     .theme-option {
       display: flex;
       align-items: center;
@@ -215,7 +215,7 @@
       padding: 9px 14px;
       cursor: pointer;
       font-size: var(--fs-sm);
-      color: var(--text-primary);
+      color: var(--text-1);
       transition: background var(--transition);
     }
     .theme-option:hover { background: rgba(94,106,210,.1); }
@@ -237,31 +237,31 @@
       border-radius: var(--radius-card);
       padding: 1.5rem;
       margin-bottom: 1.25rem;
-      box-shadow: var(--shadow-card);
-      border: 1px solid var(--border);
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--border-subtle);
       transition: background var(--transition), border-color var(--transition);
     }
-    body[data-theme="glass"] .card { backdrop-filter: blur(16px); }
+    body[data-theme="pastel"] .card { backdrop-filter: blur(16px); }
 
     /* ── 구조화 카드 (신규 페이지 표준) ──────── */
     .s-card {
       background: var(--bg-card);
       border-radius: var(--radius-card);
-      border: 1px solid var(--border);
-      box-shadow: var(--shadow-card);
+      border: 1px solid var(--border-subtle);
+      box-shadow: var(--shadow-sm);
       margin-bottom: var(--space-5);
       overflow: hidden;
       transition: background var(--transition), border-color var(--transition);
     }
     .s-card-hdr {
       padding: 14px 20px;
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid var(--border-subtle);
       display: flex;
       align-items: center;
       gap: var(--space-3);
     }
     .s-card-body { padding: var(--space-5) 20px; }
-    body[data-theme="glass"] .s-card { backdrop-filter: blur(16px); }
+    body[data-theme="pastel"] .s-card { backdrop-filter: blur(16px); }
 
     /* ── 등급 배지 ─────────────────────────────── */
     .grade {
@@ -285,19 +285,19 @@
     th {
       padding: .625rem 1rem;
       text-align: left;
-      background: var(--table-head);
-      color: var(--text-muted);
+      background: var(--bg-elevated);
+      color: var(--text-2);
       font-size: var(--fs-xs);
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: .06em;
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid var(--border-subtle);
     }
     td {
       padding: .75rem 1rem;
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid var(--border-subtle);
       font-size: var(--fs-sm);
-      color: var(--text-primary);
+      color: var(--text-1);
     }
     tbody tr:last-child td { border-bottom: none; }
     tbody tr:hover td { background: var(--table-row-hover); }
@@ -370,8 +370,8 @@
     /* Ghost — 기존 .btn-ghost + 새 .btn--ghost */
     .btn-ghost, .btn--ghost {
       background: transparent;
-      color: var(--text-muted);
-      border-color: var(--border);
+      color: var(--text-2);
+      border-color: var(--border-subtle);
     }
     .btn-ghost:hover, .btn--ghost:hover {
       border-color: var(--accent);
@@ -405,28 +405,28 @@
       margin: 0 0 2px;
       font-size: 1.35rem;
       font-weight: 700;
-      color: var(--text-primary);
+      color: var(--text-1);
       letter-spacing: -.02em;
     }
     .page-header .subtitle {
       font-size: var(--fs-sm);
-      color: var(--text-muted);
+      color: var(--text-2);
       margin-top: 2px;
     }
     .back-btn {
       display: inline-flex;
       align-items: center;
       gap: var(--space-1);
-      color: var(--text-muted);
+      color: var(--text-2);
       font-size: var(--fs-sm);
       text-decoration: none;
       padding: 4px 10px;
       border-radius: var(--radius-sm);
-      border: 1px solid var(--border);
+      border: 1px solid var(--border-subtle);
       transition: all var(--transition);
       flex-shrink: 0;
     }
-    .back-btn:hover { color: var(--text-primary); border-color: var(--accent); text-decoration: none; }
+    .back-btn:hover { color: var(--text-1); border-color: var(--accent); text-decoration: none; }
 
     /* ── 코드 ──────────────────────────────────── */
     /* 사이클 93 Step 1: JetBrains Mono 글로벌 적용 (사이클 92까지 토큰 정의만 + 0건 사용).
@@ -440,7 +440,7 @@
       border-radius: var(--radius-xs);
       font-size: var(--fs-xs);
       color: var(--accent-hover);
-      border: 1px solid var(--border);
+      border: 1px solid var(--border-subtle);
     }
 
     /* ── 섹션 제목 ─────────────────────────────── */
@@ -449,7 +449,7 @@
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: .08em;
-      color: var(--text-muted);
+      color: var(--text-2);
       margin: 0 0 1rem;
     }
 
@@ -462,7 +462,7 @@
       100% { background-position:  200% 0; }
     }
     .skeleton {
-      background: linear-gradient(90deg, var(--bg-input) 25%, var(--border) 50%, var(--bg-input) 75%);
+      background: linear-gradient(90deg, var(--bg-input) 25%, var(--border-subtle) 50%, var(--bg-input) 75%);
       background-size: 200% 100%;
       animation: shimmer 1.4s infinite;
       border-radius: var(--radius-sm);
@@ -479,7 +479,7 @@
         flex-direction: column;
         align-items: flex-start;
         position: fixed;
-        top: 52px;
+        top: 56px;
         left: 0;
         right: 0;
         background: var(--bg-nav);
@@ -533,9 +533,123 @@
       padding: 0; margin: -1px; overflow: hidden;
       clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
     }
+
+    /* ── Aurora 배경 ──────────────────────────────────────────────────────── */
+    /* 오로라 배경 고정 레이어 (포인터 이벤트 없음, z-index: 0)
+       Aurora fixed background layer (no pointer events, z-index: 0) */
+    .aurora {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+    }
+    .orb {
+      position: absolute; border-radius: 50%;
+      filter: blur(80px); will-change: transform;
+    }
+    .orb-1 {
+      width: 600px; height: 600px; top: -200px; left: -100px;
+      background: radial-gradient(circle, var(--orb1), transparent 70%);
+      animation: var(--anim-float-a);
+    }
+    .orb-2 {
+      width: 500px; height: 500px; top: 30%; right: -150px;
+      background: radial-gradient(circle, var(--orb2), transparent 70%);
+      animation: var(--anim-float-b);
+    }
+    .orb-3 {
+      width: 400px; height: 400px; bottom: -100px; left: 30%;
+      background: radial-gradient(circle, var(--orb3), transparent 70%);
+      animation: var(--anim-float-c);
+    }
+    .orb-4 {
+      width: 350px; height: 350px; top: 50%; right: 20%;
+      background: radial-gradient(circle, var(--orb4), transparent 70%);
+      animation: var(--anim-float-d);
+    }
+    /* 오로라 orb 부유 애니메이션 키프레임 (tokens.css --anim-float-* 토큰과 페어)
+       Aurora orb float keyframes (paired with --anim-float-* tokens in tokens.css) */
+    @keyframes float-a { 0%{transform:translate(0,0)} 100%{transform:translate(60px,-80px)} }
+    @keyframes float-b { 0%{transform:translate(0,0)} 100%{transform:translate(-80px,60px)} }
+    @keyframes float-c { 0%{transform:translate(0,0)} 100%{transform:translate(40px,90px)} }
+    @keyframes float-d { 0%{transform:translate(0,0)} 100%{transform:translate(-50px,-70px)} }
+
+    /* 노이즈 텍스처 오버레이 (SVG data URI, mix-blend-mode: overlay)
+       Noise texture overlay (inline SVG data URI, mix-blend-mode: overlay) */
+    body::after {
+      content: '';
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+      opacity: 0.03; mix-blend-mode: overlay;
+    }
+
+    /* 오로라 위 콘텐츠는 z-index: 1 보장
+       Page content rendered above aurora layer */
+    nav { z-index: 100; }
+    .container { position: relative; z-index: 1; }
+
+    /* ── Page animations ──────────────────────────────────────────────────── */
+    /* 페이지 전환 + 탭/스크롤 reveal + 뱃지/모달/토스트 애니메이션 키프레임
+       Page transition + tab/scroll reveal + badge/modal/toast animation keyframes */
+    @keyframes page-in    { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes tab-in     { from{opacity:0;transform:translateX(-8px)} to{opacity:1;transform:translateX(0)} }
+    @keyframes reveal-up  { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes badge-pop  { 0%{transform:scale(0.7)} 80%{transform:scale(1.05)} 100%{transform:scale(1)} }
+    @keyframes modal-in   { from{opacity:0;transform:scale(0.95) translateY(8px)} to{opacity:1;transform:scale(1) translateY(0)} }
+    @keyframes toast-in   { from{opacity:0;transform:translateX(24px)} to{opacity:1;transform:translateX(0)} }
+
+    .container { animation: var(--anim-page-in); }
+    /* reveal: IntersectionObserver가 .visible 추가 시 애니메이션 트리거
+       reveal: animation triggered when IntersectionObserver adds .visible */
+    .reveal { opacity: 0; }
+    .reveal.visible { animation: var(--anim-reveal-up); animation-delay: calc(var(--i,0) * 60ms); }
+    /* 탭 패널: .active 클래스로 show/hide + tab-in 애니메이션
+       Tab panel: show/hide via .active class with tab-in animation */
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; animation: var(--anim-tab-in); }
+
+    /* ── Nav badge + avatar ───────────────────────────────────────────────── */
+    /* Beta 뱃지 — accent 색상, pill 형태
+       Beta badge — accent color, pill shape */
+    .nav-badge {
+      background: rgba(var(--accent-rgb),.15);
+      border: 1px solid rgba(var(--accent-rgb),.3);
+      color: var(--accent);
+      font-size: 11px; font-weight: 600;
+      padding: 2px 8px; border-radius: var(--radius-pill);
+      letter-spacing: .04em;
+      flex-shrink: 0;
+    }
+    /* 사용자 아바타 — accent 그라디언트 원형, 첫 글자 이니셜
+       User avatar — accent gradient circle with initial letter */
+    .nav-avatar {
+      width: 28px; height: 28px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; color: #fff;
+      border: 2px solid var(--border-subtle);
+      flex-shrink: 0;
+    }
+    /* nav blur 강화 + 하단 보더 (aurora 위에 떠있는 느낌)
+       Nav blur enhancement + bottom border (floating above aurora) */
+    nav {
+      backdrop-filter: blur(20px) saturate(180%);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    /* nav 로고 아이콘 그라디언트 + 글로우 shadow
+       Nav logo icon gradient + glow shadow */
+    .nav-logo-icon {
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      box-shadow: 0 2px 8px rgba(var(--accent-rgb),.4);
+    }
   </style>
 </head>
 <body data-theme="dark">
+  <!-- Aurora background (fixed, pointer-events:none, z-index:0) -->
+  <div class="aurora" aria-hidden="true">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+    <div class="orb orb-4"></div>
+  </div>
   <nav>
     <a class="nav-logo" href="/">
       <div class="nav-logo-icon">⚡</div>
@@ -552,12 +666,14 @@
     </div>
     {% endif %}
     <div class="nav-spacer"></div>
+    <span class="nav-badge">Beta</span>
     {% if current_user %}
     <div class="nav-user">
       <span class="nav-user-name">{{ current_user.display_name or current_user.github_login }}</span>
       <form method="post" action="/auth/logout" style="display:inline;margin:0">
         <button type="submit" class="nav-logout-btn">{{ 'common.logout' | i18n_args(locale | default('ko')) }}</button>
       </form>
+      <div class="nav-avatar" aria-hidden="true">{{ (current_user.display_name or current_user.github_login or 'U')[0] | upper }}</div>
     </div>
     {% endif %}
     <div class="theme-switcher" id="themeSwitcher">
@@ -567,10 +683,10 @@
         <span class="chevron">▾</span>
       </button>
       <div class="theme-dropdown" id="themeDropdown" role="menu">
-        <div class="theme-option" data-theme="dark"  role="menuitem" tabindex="0">🌙 다크 대시보드</div>
-        <div class="theme-option" data-theme="light" role="menuitem" tabindex="0">☀️ 클린 카드</div>
-        <div class="theme-option" data-theme="glass" role="menuitem" tabindex="0">✨ 글래스모피즘</div>
-        <div class="theme-option" data-theme="claude-dark" role="menuitem" tabindex="0">📚 Claude 다크 (베타)</div>
+        <div class="theme-option" data-theme="dark"       role="menuitem" tabindex="0">🌌 다크 오로라</div>
+        <div class="theme-option" data-theme="light"      role="menuitem" tabindex="0">☀️ 라이트</div>
+        <div class="theme-option" data-theme="pastel"     role="menuitem" tabindex="0">🌸 파스텔</div>
+        <div class="theme-option" data-theme="catppuccin" role="menuitem" tabindex="0">🐾 개발자 다크</div>
       </div>
     </div>
     {# Phase 2 PR-4 (사이클 84) — 다국어 i18n 헤더 dropdown (테마 토글 패턴 차용) #}
@@ -593,13 +709,14 @@
   <div class="container">{% block content %}{% endblock %}</div>
   {% block scripts %}{% endblock %}
   <script>
+    // 테마 마이그레이션: glass→pastel, claude-dark→catppuccin (2026-05-11 UI 리디자인)
+    // Theme migration: glass→pastel, claude-dark→catppuccin (2026-05-11 UI redesign)
+    const THEME_MIGRATE = { 'glass': 'pastel', 'claude-dark': 'catppuccin' };
     const THEMES = {
-      dark:  { icon: '🌙', name: '다크' },
-      light: { icon: '☀️', name: '클린' },
-      glass: { icon: '✨', name: '글래스' },
-      // Phase 1B (UI 개편): Claude 다크 — warm black + sage/sand 등급 색상.
-      // 본 PR 은 토글 옵션 추가만 — 실제 페이지 적용은 Phase 1C/2 에서 점진.
-      'claude-dark': { icon: '📚', name: 'Claude' }
+      dark:        { icon: '🌌', name: '다크' },
+      light:       { icon: '☀️', name: '라이트' },
+      pastel:      { icon: '🌸', name: '파스텔' },
+      catppuccin:  { icon: '🐾', name: '개발자' }
     };
     function applyTheme(theme) {
       if (!THEMES[theme]) theme = 'dark';
@@ -612,7 +729,8 @@
       });
       document.dispatchEvent(new CustomEvent('themechange', { detail: theme }));
     }
-    applyTheme(localStorage.getItem('sca-theme') || 'dark');
+    const _storedTheme = localStorage.getItem('sca-theme');
+    applyTheme(THEME_MIGRATE[_storedTheme] || _storedTheme || 'dark');
 
     // nav 활성 링크
     (function() {
@@ -743,6 +861,75 @@
         }
       });
     }
+
+    // ── Animation framework ──────────────────────────────────────────────────
+    // 스크롤 reveal: .card, .s-card, .kpi-card, .reveal 요소 자동 감지
+    // Scroll reveal: auto-detect .card, .s-card, .kpi-card, .reveal elements
+    (function() {
+      var io = new IntersectionObserver(function(entries) {
+        entries.forEach(function(e, idx) {
+          if (e.isIntersecting) {
+            e.target.style.setProperty('--i', idx);
+            e.target.classList.add('visible');
+            io.unobserve(e.target);
+          }
+        });
+      }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+      document.querySelectorAll('.card, .s-card, .kpi-card, .reveal').forEach(function(el) {
+        if (!el.classList.contains('reveal')) el.classList.add('reveal');
+        io.observe(el);
+      });
+    })();
+
+    // KPI 카운트업 (data-count 속성 기반)
+    // KPI count-up (data-count attribute based)
+    function countUp(el, duration) {
+      var raw = el.dataset.count || el.textContent.replace(/[^0-9.]/g, '');
+      var target = parseFloat(raw);
+      if (isNaN(target)) return;
+      var suffix = el.dataset.suffix || '';
+      var isFloat = String(target).indexOf('.') !== -1;
+      var start = performance.now();
+      function tick(now) {
+        var p = Math.min((now - start) / (duration || 1200), 1);
+        var ease = 1 - Math.pow(1 - p, 3);
+        var val = isFloat ? (ease * target).toFixed(1) : Math.round(ease * target).toLocaleString();
+        el.textContent = val + suffix;
+        if (p < 1) requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+    }
+    document.querySelectorAll('[data-count]').forEach(function(el) {
+      var io2 = new IntersectionObserver(function(entries) {
+        if (entries[0].isIntersecting) { countUp(el); io2.unobserve(el); }
+      });
+      io2.observe(el);
+    });
+
+    // Chart.js 전역 애니메이션 기본값 (차트 라이브러리가 로드된 경우에만)
+    // Chart.js global animation defaults (only if chart library is loaded)
+    if (typeof Chart !== 'undefined') {
+      Chart.defaults.animation = { duration: 900, easing: 'easeOutQuart' };
+    }
+
+    // 탭 패널 활성화 (.tab-btn + .tab-panel 패턴)
+    // Tab panel activation (.tab-btn + .tab-panel pattern)
+    document.querySelectorAll('.tab-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var target = btn.dataset.tab;
+        document.querySelectorAll('.tab-btn').forEach(function(b) {
+          b.classList.toggle('active', b === btn);
+        });
+        document.querySelectorAll('.tab-panel').forEach(function(p) {
+          if (p.id === target) {
+            p.classList.add('active');
+            p.offsetWidth; // force reflow for re-animation
+          } else {
+            p.classList.remove('active');
+          }
+        });
+      });
+    });
   </script>
 </body>
 </html>

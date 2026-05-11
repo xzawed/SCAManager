@@ -3,55 +3,67 @@
 {% block title %}{{ 'admin.rls_audit.title_prefix' | i18n_args(locale | default('ko')) }} — SCAManager Admin{% endblock %}
 
 {% block content %}
-<div class="container">
-  <header style="margin-bottom: 1.5rem;">
-    <h1 style="font-size: 1.5rem; margin: 0;">{{ 'admin.rls_audit.page_title' | i18n_args(locale | default('ko')) }}</h1>
-    <p style="color: var(--text-muted, #9ca3af); margin: 0.25rem 0 0;">
-      {{ 'admin.rls_audit.subtitle' | i18n_args(locale | default('ko')) }}
-    </p>
+<link rel="stylesheet" href="/static/css/admin.css">
+<style>
+  /* RLS Audit 전용 — 좁은 max-width / RLS Audit specific — narrower max-width */
+  .admin-page { max-width: 1100px; }
+</style>
+
+<div class="admin-page">
+  <header class="admin-header">
+    <h1 class="admin-title">{{ 'admin.rls_audit.page_title' | i18n_args(locale | default('ko')) }}</h1>
+    <p class="admin-subtitle">{{ 'admin.rls_audit.subtitle' | i18n_args(locale | default('ko')) }}</p>
   </header>
 
-  <div style="margin-bottom: 1rem;">
-    <strong>{{ 'admin.rls_audit.total_label' | i18n_args(locale | default('ko')) }}</strong>: {{ summary.total }} ·
-    <span style="color: var(--success, #10b981);">{{ 'admin.rls_audit.applied_label' | i18n_args(locale | default('ko'), count=summary.applied) }}</span>
+  <div class="admin-summary-bar">
+    <strong>{{ 'admin.rls_audit.total_label' | i18n_args(locale | default('ko')) }}</strong>: {{ summary.total }}
+    <span class="sep">·</span>
+    <span class="badge-success">{{ 'admin.rls_audit.applied_label' | i18n_args(locale | default('ko'), count=summary.applied) }}</span>
     {% if summary.missing > 0 %}
-    · <span style="color: var(--danger, #ef4444);">{{ 'admin.rls_audit.missing_label' | i18n_args(locale | default('ko'), count=summary.missing) }}</span>
+    <span class="sep">·</span>
+    <span class="badge-danger">{{ 'admin.rls_audit.missing_label' | i18n_args(locale | default('ko'), count=summary.missing) }}</span>
     {% endif %}
-    · <a href="/admin/tenants" style="color: var(--accent, #60a5fa);">{{ 'admin.rls_audit.tenants_link' | i18n_args(locale | default('ko')) }}</a>
+    <span class="sep">·</span>
+    <a href="/admin/tenants" class="admin-link">{{ 'admin.rls_audit.tenants_link' | i18n_args(locale | default('ko')) }}</a>
   </div>
 
-  <div style="overflow-x: auto;">
-    <table style="width: 100%; border-collapse: collapse;">
+  <div class="admin-table-wrap">
+    <table class="admin-table">
       <thead>
-        <tr style="border-bottom: 1px solid var(--border, #374151);">
-          <th style="text-align: left; padding: 0.5rem;">{{ 'admin.rls_audit.th.table' | i18n_args(locale | default('ko')) }}</th>
-          <th style="text-align: left; padding: 0.5rem;">{{ 'admin.rls_audit.th.pattern' | i18n_args(locale | default('ko')) }}</th>
-          <th style="text-align: left; padding: 0.5rem;">{{ 'admin.rls_audit.th.since' | i18n_args(locale | default('ko')) }}</th>
-          <th style="text-align: left; padding: 0.5rem;">{{ 'admin.rls_audit.th.status' | i18n_args(locale | default('ko')) }}</th>
+        <tr>
+          <th>{{ 'admin.rls_audit.th.table' | i18n_args(locale | default('ko')) }}</th>
+          <th>{{ 'admin.rls_audit.th.pattern' | i18n_args(locale | default('ko')) }}</th>
+          <th>{{ 'admin.rls_audit.th.since' | i18n_args(locale | default('ko')) }}</th>
+          <th>{{ 'admin.rls_audit.th.status' | i18n_args(locale | default('ko')) }}</th>
         </tr>
       </thead>
       <tbody>
         {% for m in matrix %}
-        <tr style="border-bottom: 1px solid var(--border, #374151);">
-          <td style="padding: 0.5rem; font-family: monospace; font-size: 0.9em;">{{ m.table }}</td>
-          <td style="padding: 0.5rem; font-size: 0.9em;">{{ m.pattern }}</td>
-          <td style="padding: 0.5rem; font-family: monospace; font-size: 0.85em;">{{ m.since }}</td>
-          <td style="padding: 0.5rem;">
+        <tr class="reveal">
+          <td class="mono">{{ m.table }}</td>
+          <td style="font-size: 12px;">{{ m.pattern }}</td>
+          <td class="mono">{{ m.since }}</td>
+          <td>
             {% if m.status == "applied" %}
-            <span style="color: var(--success, #10b981);">{{ 'admin.rls_audit.status_applied' | i18n_args(locale | default('ko')) }}</span>
+            <span class="status-applied">{{ 'admin.rls_audit.status_applied' | i18n_args(locale | default('ko')) }}</span>
             {% else %}
-            <span style="color: var(--danger, #ef4444);">{{ 'admin.rls_audit.status_missing' | i18n_args(locale | default('ko')) }}</span>
+            <span class="status-missing">{{ 'admin.rls_audit.status_missing' | i18n_args(locale | default('ko')) }}</span>
             {% endif %}
           </td>
         </tr>
         {% endfor %}
+        {% if not matrix %}
+        <tr>
+          <td colspan="4" class="admin-empty">—</td>
+        </tr>
+        {% endif %}
       </tbody>
     </table>
   </div>
 
-  <div style="margin-top: 2rem; padding: 1rem; background: var(--bg-card, #1f2937); border-radius: 8px;">
-    <h3 style="margin: 0 0 0.5rem; font-size: 1rem;">{{ 'admin.rls_audit.info_title' | i18n_args(locale | default('ko')) }}</h3>
-    <ul style="margin: 0; padding-left: 1.25rem; color: var(--text-muted, #9ca3af); font-size: 0.9em;">
+  <div class="admin-info-card reveal">
+    <h3 class="admin-info-title">{{ 'admin.rls_audit.info_title' | i18n_args(locale | default('ko')) }}</h3>
+    <ul class="admin-info-list">
       <li>{{ 'admin.rls_audit.info_li1' | i18n_args(locale | default('ko')) }}</li>
       <li>{{ 'admin.rls_audit.info_li2' | i18n_args(locale | default('ko')) }}</li>
       <li>{{ 'admin.rls_audit.info_li3' | i18n_args(locale | default('ko')) }}</li>

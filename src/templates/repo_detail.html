@@ -2,19 +2,33 @@
 {% block title %}{{ repo_name }} — SCAManager{% endblock %}
 {% block content %}
 <style>
+  /* ── 페이지 타이틀 그라디언트 / Page title gradient ── */
+  .detail-header-text h2 {
+    margin: 0 0 4px;
+    font-size: 1.4rem;
+    font-weight: 700;
+    font-family: 'Menlo', 'Consolas', monospace;
+    background: linear-gradient(135deg, var(--text-1), var(--accent));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+
+  /* ── 헤더 카드 (glassmorphism) / Header card glassmorphism ── */
   .detail-header {
     display: flex;
     align-items: center;
     gap: 1rem;
     margin-bottom: 1.75rem;
+    padding: 1.25rem 1.5rem;
+    background: var(--bg-card);
+    backdrop-filter: blur(12px) saturate(150%);
+    border: 1px solid var(--border-subtle);
+    border-radius: 16px;
+    box-shadow: var(--shadow-sm);
   }
-  .detail-header-text h2 {
-    margin: 0 0 4px;
-    font-size: 1.4rem;
-    font-weight: 700;
-    color: var(--text-primary);
-    font-family: 'Menlo', 'Consolas', monospace;
-  }
+
   /* Step E (E2) + PR-3 F1: chart-card 명시 height — viewport 비례 clamp 로 데스크탑/모바일 양쪽 적정
      Step E + PR-3 F1: viewport-relative clamp keeps chart legible on both desktop and mobile */
   .chart-card {
@@ -29,7 +43,7 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: .08em;
-    color: var(--text-muted);
+    color: var(--text-2);
     margin-bottom: .75rem;
   }
   .history-header {
@@ -42,48 +56,61 @@
     margin: 0;
     font-size: 14px;
     font-weight: 700;
-    color: var(--text-primary);
+    color: var(--text-1);
   }
   .history-count {
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--text-2);
   }
   .commit-sha {
     font-family: 'Menlo', 'Consolas', monospace;
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--text-2);
     background: var(--code-bg);
     padding: 2px 6px;
     border-radius: 4px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-subtle);
   }
   .pr-badge {
     font-size: 12px;
     color: var(--accent);
     font-weight: 600;
   }
+
+  /* ── 점수/등급 배지 애니메이션 / Score and grade badge animation ── */
   .score-val {
     font-weight: 700;
     font-size: 15px;
+    display: inline-block;
+    animation: var(--anim-badge-pop);
   }
   .score-val.high { color: var(--grade-a); }
   .score-val.mid  { color: var(--grade-c); }
   .score-val.low  { color: var(--grade-f); }
+
+  /* grade 배지도 badge-pop 애니메이션 / Apply badge-pop to grade badges too */
+  .grade {
+    animation: var(--anim-badge-pop);
+  }
+
   .date-cell {
     font-size: 13px;
-    color: var(--text-muted);
+    color: var(--text-2);
   }
+
+  /* ── settings 버튼 — pill 스타일 / Pill-style settings button ── */
   .settings-btn {
     display: inline-flex;
     align-items: center;
     gap: 6px;
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--text-2);
     text-decoration: none;
-    padding: 5px 12px;
-    border-radius: 6px;
-    border: 1px solid var(--border);
-    transition: all var(--transition);
+    padding: 6px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-elevated, transparent);
+    transition: all 0.18s;
     margin-left: auto;
   }
   .settings-btn:hover {
@@ -93,43 +120,74 @@
   }
   .commit-msg-preview {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--text-2);
     margin-top: 2px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 200px;
   }
+
+  /* ── 테이블 헤더 / Table header styling ── */
+  table thead tr th {
+    background: var(--bg-elevated, var(--card-bg));
+    color: var(--text-2);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  /* ── 분석 행 hover accent bar / Analysis row hover left accent bar ── */
+  .analysis-row { position: relative; transition: background 0.15s; }
+  .analysis-row::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--accent);
+    transform: scaleY(0);
+    transform-origin: center;
+    transition: transform 0.15s;
+    border-radius: 0 2px 2px 0;
+  }
+  .analysis-row:hover::before { transform: scaleY(1); }
+  .analysis-row:hover { background: var(--table-row-hover, transparent); }
+
   /* ── 필터 바 ─────────────────────────── */
   .filter-bar {
     display: flex; flex-wrap: wrap; gap: .6rem; align-items: center;
     margin-bottom: 1rem; padding: .75rem 1rem;
-    background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border);
+    background: var(--bg-elevated, var(--card-bg)); border-radius: 8px; border: 1px solid var(--border-subtle);
   }
   .filter-search {
     flex: 1; min-width: 180px; padding: .4rem .75rem;
-    border-radius: 6px; border: 1.5px solid var(--border);
-    background: transparent; color: var(--text-primary);
+    border-radius: 6px; border: 1.5px solid var(--border-subtle);
+    background: transparent; color: var(--text-1);
     font-size: 13px; outline: none;
     transition: border-color var(--transition);
   }
   .filter-search:focus { border-color: var(--accent); }
-  .filter-search::placeholder { color: var(--text-muted); opacity: .7; }
+  .filter-search::placeholder { color: var(--text-2); opacity: .7; }
   .filter-group { display: flex; gap: .3rem; flex-wrap: wrap; }
+
+  /* ── 필터 버튼 pill 스타일 / Filter buttons pill style ── */
   .filter-btn {
-    padding: .3rem .65rem; font-size: 12px; font-weight: 600;
-    border-radius: 6px; border: 1.5px solid var(--border);
-    background: transparent; color: var(--text-muted); cursor: pointer;
-    transition: all var(--transition);
+    padding: 6px 14px; font-size: 12px; font-weight: 600;
+    border-radius: 999px; border: 1px solid var(--border-subtle);
+    background: var(--bg-elevated, transparent); color: var(--text-2); cursor: pointer;
+    transition: all 0.18s;
   }
   .filter-btn:hover { border-color: var(--accent); color: var(--accent); }
-  .filter-btn.active { background: rgba(94,106,210,.12); border-color: var(--accent); color: var(--accent); }
-  .filter-btn[data-source="pr"].active   { background: rgba(96,165,250,.12); border-color: var(--grade-b); color: var(--grade-b); }
-  .filter-btn[data-source="push"].active { background: rgba(74,222,128,.12); border-color: var(--grade-a); color: var(--grade-a); }
-  .filter-btn[data-source="cli"].active  { background: rgba(251,191,36,.12); border-color: var(--grade-c); color: var(--grade-c); }
-  .filter-divider { width: 1px; height: 22px; background: var(--border); flex-shrink: 0; }
+  .filter-btn.active { background: var(--accent); color: var(--btn-on-accent, #fff); border-color: var(--accent); }
+  .filter-btn[data-source="pr"].active   { background: var(--grade-b); color: var(--btn-on-accent, #fff); border-color: var(--grade-b); }
+  .filter-btn[data-source="push"].active { background: var(--success); color: var(--btn-on-accent, #fff); border-color: var(--success); }
+  .filter-btn[data-source="cli"].active  { background: var(--warning); color: var(--btn-on-accent, #fff); border-color: var(--warning); }
+  .filter-divider { width: 1px; height: 22px; background: var(--border-subtle); flex-shrink: 0; }
   /* ── 점수 범위 슬라이더 ────────────────── */
-  .score-range-wrap { display: flex; align-items: center; gap: .5rem; font-size: 12px; color: var(--text-muted); min-width: 220px; }
+  .score-range-wrap { display: flex; align-items: center; gap: .5rem; font-size: 12px; color: var(--text-2); min-width: 220px; }
   .dual-slider-track { position: relative; flex: 1; height: 6px; min-width: 100px; }
   .dual-slider-track input[type=range] {
     position: absolute; width: 100%; height: 6px;
@@ -142,8 +200,8 @@
     box-shadow: 0 1px 4px rgba(0,0,0,.3); cursor: pointer; pointer-events: all;
   }
   .dual-slider-fill { position: absolute; height: 6px; background: var(--accent); border-radius: 3px; top: 0; pointer-events: none; }
-  .dual-slider-bg { position: absolute; width: 100%; height: 6px; background: var(--border); border-radius: 3px; top: 0; }
-  .score-val-label { font-size: 12px; font-weight: 700; color: var(--text-primary); min-width: 28px; text-align: center; }
+  .dual-slider-bg { position: absolute; width: 100%; height: 6px; background: var(--border-subtle); border-radius: 3px; top: 0; }
+  .score-val-label { font-size: 12px; font-weight: 700; color: var(--text-1); min-width: 28px; text-align: center; }
   /* ── 정렬 헤더 ─────────────────────────── */
   .sortable-th { cursor: pointer; user-select: none; white-space: nowrap; }
   .sortable-th:hover { color: var(--accent); }
@@ -155,17 +213,17 @@
   .pagination { display: flex; align-items: center; justify-content: center; gap: .35rem; margin-top: .875rem; flex-wrap: wrap; }
   .page-btn {
     min-width: 32px; height: 32px; padding: 0 .5rem;
-    border-radius: 6px; border: 1.5px solid var(--border);
-    background: transparent; color: var(--text-muted);
+    border-radius: 6px; border: 1.5px solid var(--border-subtle);
+    background: var(--bg-elevated, transparent); color: var(--text-2);
     font-size: 13px; font-weight: 500; cursor: pointer;
     transition: all var(--transition);
     display: inline-flex; align-items: center; justify-content: center;
   }
   .page-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-  .page-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+  .page-btn.active { background: var(--accent); border-color: var(--accent); color: var(--btn-on-accent, #fff); font-weight: 700; }
   .page-btn:disabled { opacity: .35; cursor: not-allowed; }
-  .page-info { font-size: 12px; color: var(--text-muted); margin-top: .35rem; text-align: center; }
-  .filter-empty { text-align: center; padding: 2rem 1rem; color: var(--text-muted); font-size: 13px; }
+  .page-info { font-size: 12px; color: var(--text-2); margin-top: .35rem; text-align: center; }
+  .filter-empty { text-align: center; padding: 2rem 1rem; color: var(--text-2); font-size: 13px; }
   /* Cycle 94 Step 2-B — filter-empty 일러스트 (JS 동적 td 영역, ::before background)
      filter-empty illustration via ::before background (JS dynamically injects td.filter-empty) */
   .filter-empty::before {
@@ -186,8 +244,8 @@
   }
   .custom-date-wrap.visible { display: flex; }
   .date-input {
-    padding: .3rem .5rem; border-radius: 6px; border: 1.5px solid var(--border);
-    background: transparent; color: var(--text-primary); font-size: 12px;
+    padding: .3rem .5rem; border-radius: 6px; border: 1.5px solid var(--border-subtle);
+    background: transparent; color: var(--text-1); font-size: 12px;
     width: 128px; outline: none; transition: border-color var(--transition);
   }
   .date-input:focus { border-color: var(--accent); }
@@ -207,9 +265,10 @@
        Step B (B1): prevent iOS Safari focus zoom (any input <16px triggers it) */
     .filter-search { font-size: 16px; }
     .date-input { font-size: 16px; }
-    /* Step B (B1): filter-btn / page-btn 클릭 영역 보강 (WCAG 2.5.5) — Step A 의 .btn 분기 보완 */
-    .filter-btn { min-height: 40px; padding: .55rem .85rem; font-size: 13px; }
-    .page-btn { min-width: 44px; min-height: 44px; }
+    /* Step B (B1): filter-btn / page-btn 클릭 영역 보강 (WCAG 2.5.5) — Step A 의 .btn 분기 보완
+       WCAG 2.5.5: minimum touch target 44px (updated from 40px) */
+    .filter-btn { min-height: 44px; padding: .55rem .85rem; font-size: 13px; box-sizing: border-box; }
+    .page-btn { min-width: 44px; min-height: 44px; box-sizing: border-box; }
     /* Step B (B1): 슬라이더 thumb 모바일 24px (settings P2-6 패턴 재적용) */
     .dual-slider-track input[type=range]::-webkit-slider-thumb { width: 24px; height: 24px; }
   }
@@ -236,6 +295,8 @@
 {% endif %}
 
 <!-- 헤더 / Header / Phase 2 PR-7 — i18n -->
+<!-- FOUC 방지: detail-header 는 above-the-fold — reveal 클래스 제외
+     FOUC prevention: detail-header is above the fold, no reveal class -->
 <div class="detail-header">
   <a class="back-btn" href="/">{{ 'repo_detail.back' | i18n_args(locale | default('ko')) }}</a>
   <div class="detail-header-text">
@@ -245,6 +306,8 @@
 </div>
 
 <!-- 점수 차트 / Score chart — Step E (E2) -->
+<!-- FOUC 방지: chart-card 는 above-the-fold — reveal 클래스 제외
+     FOUC prevention: primary score trend chart is above the fold, no reveal class -->
 <div class="card chart-card">
   <div class="chart-label">{{ 'repo_detail.score_trend_label' | i18n_args(locale | default('ko')) }}</div>
   <div class="chart-wrap-inner">
@@ -253,7 +316,7 @@
 </div>
 
 <!-- 분석 이력 / Analysis history / Phase 2 PR-7 — i18n + data-i18n-* (JS 동적 텍스트 서버 주입 — XSS 차단) -->
-<div class="card history-card" style="padding:1.25rem 1.5rem;"
+<div class="card history-card reveal" style="padding:1.25rem 1.5rem;"
      data-i18n-history-recent="{{ 'repo_detail.history_count_recent' | i18n_args(locale | default('ko'), count='__N__') }}"
      data-i18n-history-filtered="{{ 'repo_detail.history_count_filtered' | i18n_args(locale | default('ko'), filtered='__F__', total='__T__') }}"
      data-i18n-filter-empty="{{ 'repo_detail.filter_empty' | i18n_args(locale | default('ko')) }}"
@@ -281,7 +344,7 @@
     </div>
     <div class="custom-date-wrap" id="customDateWrap">
       <input type="date" class="date-input" id="dateFrom">
-      <span style="color:var(--text-muted);font-size:11px">–</span>
+      <span style="color:var(--text-2);font-size:11px">–</span>
       <input type="date" class="date-input" id="dateTo">
     </div>
     <div class="filter-divider"></div>
@@ -310,7 +373,7 @@
         <input type="range" id="scoreMax" min="0" max="100" value="100" step="1">
       </div>
       <span class="score-val-label" id="scoreMinLabel">0</span>
-      <span style="color:var(--text-muted);font-size:11px">–</span>
+      <span style="color:var(--text-2);font-size:11px">–</span>
       <span class="score-val-label" id="scoreMaxLabel">100</span>
     </div>
   </div>
@@ -342,20 +405,23 @@
   function getThemeColors() {
     const s = getComputedStyle(document.body);
     const accent  = s.getPropertyValue('--accent').trim()  || '#6366f1';
-    const muted   = s.getPropertyValue('--text-muted').trim() || '#64748b';
-    const border  = s.getPropertyValue('--border').trim()  || '#2d3748';
+    const muted   = s.getPropertyValue('--text-2').trim() || '#64748b';
+    const border  = s.getPropertyValue('--border-subtle').trim()  || '#2d3748';
     /* PR-3 F3: tooltip 색을 테마 토큰에서 동적 read — 라이트/claude-dark 부조화 해소
        PR-3 F3: dynamic tooltip colors from theme tokens (light + claude-dark harmony) */
     const tipBg   = s.getPropertyValue('--bg-card').trim() || '#1c1c23';
-    const tipText = s.getPropertyValue('--text-primary').trim() || '#e2e2e8';
-    return { accent, muted, border, tipBg, tipText };
+    const tipText = s.getPropertyValue('--text-1').trim() || '#e2e2e8';
+    /* Fix 4: --accent-rgb 토큰으로 rgba() 구성 — accent hex 직접 연결 방식 대체
+       Fix 4: use --accent-rgb token for rgba() — replaces fragile hex string concat */
+    const accentRgb = getComputedStyle(document.documentElement).getPropertyValue('--accent-rgb').trim() || '99,102,241';
+    return { accent, accentRgb, muted, border, tipBg, tipText };
   }
 
   let chart;
   let _chartData = [];
   function buildChart(data) {
     if (data !== undefined) _chartData = data;
-    const { accent, muted, border } = getThemeColors();
+    const { accent, accentRgb, muted, border } = getThemeColors();
     const ctx = document.getElementById('scoreChart');
     const labels = _chartData.map(function(a) { return (a.created_at || '').slice(0, 10); });
     const scores = _chartData.map(function(a) { return a.score; });
@@ -368,10 +434,14 @@
           label: {{ 'repo_detail.chart_score_label' | i18n_args(locale | default('ko')) | tojson }},
           data: scores,
           borderColor: accent,
-          backgroundColor: accent + '22',
+          /* rgba 구성 — rgb 채널 토큰 사용, 투명도 0.13 고정
+             rgba construction via rgb channel token, fixed opacity 0.13 */
+          backgroundColor: `rgba(${accentRgb}, 0.13)`,
           borderWidth: 2,
           pointBackgroundColor: accent,
-          pointBorderColor: '#fff',
+          /* 테마 배경색으로 포인트 테두리 — 라이트/다크 자동 대응
+             Use theme bg-base for point border — auto-adapts to light/dark themes */
+          pointBorderColor: getComputedStyle(document.documentElement).getPropertyValue('--bg-base').trim() || '#fff',
           pointBorderWidth: 2,
           pointRadius: 4,
           pointHoverRadius: 6,
@@ -407,7 +477,9 @@
         /* Step E (E2): false 로 변경 — chart-wrap-inner 컨테이너 height(200px) 가
            폭과 무관하게 보장되어 모바일 압착 + canvas height attr 깜빡임 회피.
            Step E (E2): false → no width-driven height resize → no mobile squish */
-        maintainAspectRatio: false
+        maintainAspectRatio: false,
+        /* 차트 진입 애니메이션 — easeOutQuart 900ms / Chart entry animation */
+        animation: { duration: 900, easing: 'easeOutQuart' }
       }
     });
   }
@@ -528,7 +600,7 @@ function renderSourceBadge(src) {
     push: [I18N.sourcePush, 'var(--success)'],
     cli:  [I18N.sourceCli,  'var(--warning)']
   };
-  const [label, color] = m[src] || [src || '—', 'var(--text-muted)'];
+  const [label, color] = m[src] || [src || '—', 'var(--text-2)'];
   return '<span style="font-size:11px;font-weight:600;color:' + color + '">' + label + '</span>';
 }
 function renderTable(data) {
@@ -552,8 +624,10 @@ function renderTable(data) {
     const sc = a.score >= 75 ? 'high' : a.score >= 50 ? 'mid' : 'low';
     const pr = a.pr_number
       ? '<span class="pr-badge">#' + a.pr_number + '</span>'
-      : '<span style="color:var(--text-muted)">—</span>';
-    return '<tr style="cursor:pointer" onclick="location.href=\'/repos/' + encodeRepo(REPO_NAME_JS) + '/analyses/' + a.id + '\'">'
+      : '<span style="color:var(--text-2)">—</span>';
+    /* analysis-row 클래스 추가 — hover accent bar 및 reveal 애니메이션 적용
+       Add analysis-row class for hover accent bar and reveal animation */
+    return '<tr class="analysis-row reveal" style="cursor:pointer" onclick="location.href=\'/repos/' + encodeRepo(REPO_NAME_JS) + '/analyses/' + a.id + '\'">'
       + '<td class="date-cell">' + date + msgPreview + '</td>'
       + '<td><span class="commit-sha">' + escHtml((a.commit_sha || '').slice(0,7)) + '</span></td>'
       + '<td>' + pr + '</td>'
@@ -586,7 +660,7 @@ function renderPagination(totalPages, total, start, count) {
   var parts = ['<button class="page-btn" ' + (cp === 1 ? 'disabled' : '') + ' data-page="' + (cp-1) + '">‹</button>'];
   getPageRange(cp, totalPages).forEach(function(p) {
     if (p === '...') {
-      parts.push('<span style="color:var(--text-muted);padding:0 .25rem">…</span>');
+      parts.push('<span style="color:var(--text-2);padding:0 .25rem">…</span>');
     } else {
       parts.push('<button class="page-btn ' + (p === cp ? 'active' : '') + '" data-page="' + p + '">' + p + '</button>');
     }

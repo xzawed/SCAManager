@@ -15,30 +15,57 @@
     -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
   }
   .repo-badge {
-    margin-left:auto; background:var(--bg-input); color:var(--text-muted);
+    margin-left:auto; background:var(--bg-input); color:var(--text-2);
     padding:.25rem .8rem; border-radius:20px; font-size:12px; font-family:monospace;
-    border:1px solid var(--border);
+    border:1px solid var(--border-subtle);
   }
 
   /* 1컬럼 기본 (모바일 퍼스트) — 640px 이상에서 2컬럼으로 전환 */
   .settings-grid { display:grid; grid-template-columns:1fr; gap:1rem; margin-bottom:1rem; }
 
-  /* 카드 */
+  /* 카드 — 글래스모피즘 + 호버 리프트 + 상단 그라디언트 바
+     Card — glassmorphism + hover lift + top gradient accent bar */
   .s-card {
     border-radius:var(--radius-card); background:var(--bg-card);
-    border:1px solid var(--border); box-shadow:var(--shadow-card); overflow:hidden;
-    transition:background var(--transition), border-color var(--transition);
+    border:1px solid var(--border-subtle); box-shadow:var(--shadow-sm); overflow:hidden;
+    transition:background var(--transition), border-color var(--transition),
+               transform 0.2s ease, box-shadow 0.2s ease;
+    position: relative;
+    backdrop-filter: blur(12px) saturate(150%);
+    -webkit-backdrop-filter: blur(12px) saturate(150%);
   }
-  body[data-theme="glass"] .s-card { backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px); }
+  .s-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+  }
+  /* 호버 시 상단 그라디언트 바 / Top gradient accent bar on hover */
+  .s-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    border-radius: 3px 3px 0 0;
+    opacity: 0;
+    transition: opacity 0.3s;
+    z-index: 1;
+  }
+  .s-card:hover::before { opacity: 1; }
+  /* 위험 구역 카드 — 호버 시 danger 그라디언트 바
+     Danger zone card — danger gradient bar on hover */
+  .s-card.danger-zone::before {
+    background: linear-gradient(90deg, var(--danger), color-mix(in srgb, var(--danger) 60%, transparent));
+  }
+  body[data-theme="glass"] .s-card { backdrop-filter:blur(20px) saturate(180%); -webkit-backdrop-filter:blur(20px) saturate(180%); }
 
   /* 카드 헤더 그라디언트 */
   .s-card-hdr {
     padding:.72rem 1.1rem; display:flex; align-items:center; gap:.55rem;
   }
   .s-card-hdr .hdr-icon { font-size:16px; }
-  .s-card-hdr .hdr-title { font-size:13px; font-weight:700; color:#fff; flex:1; }
+  .s-card-hdr .hdr-title { font-size:13px; font-weight:700; color: var(--btn-on-accent); flex:1; }
   .s-card-hdr .hdr-badge {
-    background:rgba(255,255,255,.22); color:#fff; font-size:11px; padding:2px 9px; border-radius:10px;
+    background: color-mix(in srgb, var(--btn-on-accent) 22%, transparent); color: var(--btn-on-accent); font-size:11px; padding:2px 9px; border-radius:10px;
   }
   .hdr-gate   { background:var(--grad-gate); }
   .hdr-merge  { background:var(--grad-merge); }
@@ -47,9 +74,9 @@
   .s-card-body { padding:1.1rem; }
 
   /* 카드 내 섹션 구분 */
-  .s-divider { height:1px; background:var(--border); margin:1rem 0; opacity:.6; }
+  .s-divider { height:1px; background:var(--border-subtle); margin:1rem 0; opacity:.6; }
   .s-section-label {
-    font-size:11px; font-weight:700; color:var(--text-muted);
+    font-size:11px; font-weight:700; color:var(--text-2);
     letter-spacing:.06em; text-transform:uppercase; margin-bottom:.65rem;
   }
 
@@ -57,13 +84,13 @@
   .is-hidden { display:none !important; }
 
   /* 프리셋 카드 */
-  .hdr-preset { background: linear-gradient(135deg, #6366f1, #ec4899); }
-  .preset-desc { font-size:12px; color:var(--text-muted); margin-bottom:.85rem; line-height:1.5; }
+  .hdr-preset { background: linear-gradient(135deg, var(--accent), var(--accent-2, var(--pink, var(--accent)))); }
+  .preset-desc { font-size:12px; color:var(--text-2); margin-bottom:.85rem; line-height:1.5; }
 
   /* 프리셋 아코디언 */
   .preset-cards { display:flex; flex-direction:column; gap:.5rem; }
   .preset-details {
-    border:1.5px solid var(--border); border-radius:10px;
+    border:1.5px solid var(--border-subtle); border-radius:10px;
     background:var(--bg-input); overflow:hidden;
     transition:border-color var(--transition), box-shadow var(--transition);
   }
@@ -81,25 +108,25 @@
   }
   .preset-summary::-webkit-details-marker { display:none; }
   .preset-summary::after {
-    content:'▼'; font-size:10px; color:var(--text-muted);
+    content:'▼'; font-size:10px; color:var(--text-2);
     margin-left:auto; transition:transform var(--transition);
   }
   .preset-details[open] .preset-summary::after { transform:rotate(180deg); }
   .preset-icon { font-size:20px; line-height:1; flex-shrink:0; }
   .preset-name { font-size:13px; font-weight:700; }
-  .preset-hint { font-size:11px; color:var(--text-muted); margin-top:.1rem; line-height:1.3; }
+  .preset-hint { font-size:11px; color:var(--text-2); margin-top:.1rem; line-height:1.3; }
   .preset-detail-body {
     padding:.65rem 1rem 1rem;
-    border-top:1px solid var(--border);
+    border-top:1px solid var(--border-subtle);
   }
   .preset-table { width:100%; font-size:12px; border-collapse:collapse; }
-  .preset-table td { padding:.28rem .2rem; color:var(--text-muted); vertical-align:middle; }
-  .preset-table td:first-child { font-weight:600; color:var(--text-primary); width:58%; }
+  .preset-table td { padding:.28rem .2rem; color:var(--text-2); vertical-align:middle; }
+  .preset-table td:first-child { font-weight:600; color:var(--text-1); width:58%; }
   .preset-table td:last-child { text-align:right; }
   .pt-applied-label {
     margin-top:.75rem; padding:.4rem .65rem;
     background:rgba(16,185,129,.1); border:1px solid rgba(16,185,129,.3);
-    border-radius:6px; font-size:11px; color:#059669; font-weight:600;
+    border-radius:6px; font-size:11px; color: var(--success); font-weight:600;
     text-align:center;
   }
 
@@ -107,8 +134,8 @@
      Gate mode buttons — P1-3: ≥48px touch target on mobile (WCAG 2.5.5) */
   .gate-btns { display:grid; grid-template-columns:repeat(3,1fr); gap:.4rem; margin-bottom:1rem; }
   .gate-mode-btn {
-    padding:.5rem .25rem; border-radius:8px; border:1.5px solid var(--border);
-    background:var(--bg-input); color:var(--text-muted);
+    padding:.5rem .25rem; border-radius:8px; border:1.5px solid var(--border-subtle);
+    background:var(--bg-input); color:var(--text-2);
     font-size:12px; font-weight:600; text-align:center; cursor:pointer;
     transition:all var(--transition);
     display:flex; flex-direction:column; align-items:center; gap:.15rem;
@@ -128,11 +155,11 @@
   .threshold-row { margin-bottom:.85rem; }
   .threshold-label {
     display:flex; justify-content:space-between; align-items:center;
-    margin-bottom:.35rem; font-size:12px; color:var(--text-muted);
+    margin-bottom:.35rem; font-size:12px; color:var(--text-2);
   }
   .threshold-ctrl { display:flex; align-items:center; gap:.5rem; }
   .threshold-ctrl input[type=range] {
-    flex:1; height:6px; border-radius:3px; background:var(--border);
+    flex:1; height:6px; border-radius:3px; background:var(--border-subtle);
     -webkit-appearance:none; outline:none; cursor:pointer;
   }
   .threshold-ctrl input[type=range]::-webkit-slider-thumb {
@@ -158,9 +185,9 @@
   .range-hint {
     margin-top:.65rem; padding:.5rem .75rem;
     background:var(--hint-bg); border:1px solid var(--hint-border);
-    border-radius:7px; font-size:11px; color:var(--text-muted); line-height:1.6;
+    border-radius:7px; font-size:11px; color:var(--text-2); line-height:1.6;
   }
-  .range-hint strong { color:var(--text-primary); }
+  .range-hint strong { color:var(--text-1); }
 
   /* 토글 스위치 */
   /* P1-7: 다중 줄 t-desc 와 1줄 토글의 baseline 어긋남 보정 — flex-start + 토글 자체 중앙 정렬
@@ -169,47 +196,71 @@
   .toggle-row .toggle-switch { align-self:center; flex-shrink:0; }
   .toggle-row + .toggle-row { margin-top:.85rem; }
   .toggle-info .t-title { font-size:13px; font-weight:600; margin-bottom:.2rem; }
-  .toggle-info .t-desc  { font-size:11px; color:var(--text-muted); line-height:1.4; }
+  .toggle-info .t-desc  { font-size:11px; color:var(--text-2); line-height:1.4; }
   .toggle-switch { position:relative; display:inline-flex; align-items:center; flex-shrink:0; }
   .toggle-switch input[type="checkbox"] { width:0; height:0; opacity:0; position:absolute; }
+  /* 토글 트랙 — 시맨틱 토큰: OFF=elevated+border, ON=success
+     Toggle track — semantic tokens: OFF=elevated+border, ON=success */
   .toggle-track {
-    width:44px; height:24px; background:var(--border); border-radius:12px;
-    cursor:pointer; transition:background var(--transition); position:relative; display:block;
+    width:44px; height:24px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius:12px;
+    cursor:pointer; transition:background var(--transition), border-color var(--transition);
+    position:relative; display:block;
   }
   .toggle-track::after {
     content:''; position:absolute; top:3px; left:3px;
-    width:18px; height:18px; background:#fff; border-radius:50%;
-    transition:transform var(--transition); box-shadow:0 1px 4px rgba(0,0,0,.3);
+    width:16px; height:16px; background:var(--bg-elevated); border-radius:50%;
+    transition:transform var(--transition), background var(--transition);
+    box-shadow:0 1px 4px rgba(0,0,0,.3);
   }
-  .toggle-switch input:checked + .toggle-track { background:var(--success); }
-  .toggle-switch input:checked + .toggle-track::after { transform:translateX(20px); }
+  /* ON 상태 — success 배경 + btn-on-accent 노브
+     ON state — success background + btn-on-accent knob */
+  .toggle-switch input:checked + .toggle-track {
+    background: var(--success);
+    border-color: var(--success);
+  }
+  .toggle-switch input:checked + .toggle-track::after {
+    transform:translateX(20px);
+    background: var(--btn-on-accent);
+  }
 
   /* 입력 필드 */
   .field-row { display:flex; flex-direction:column; gap:5px; margin-bottom:.6rem; }
   .field-row:last-child { margin-bottom:0; }
-  .field-label { font-size:12px; font-weight:600; color:var(--text-primary); display:flex; align-items:center; gap:6px; }
+  .field-label { font-size:12px; font-weight:600; color:var(--text-1); display:flex; align-items:center; gap:6px; }
   .field-tag {
     font-size:10px; font-weight:600; padding:2px 6px; border-radius:4px;
     background:rgba(99,102,241,.12); color:var(--accent); letter-spacing:.04em;
   }
-  .field-hint { font-size:11px; color:var(--text-muted); }
+  .field-hint { font-size:11px; color:var(--text-2); }
   .field-input {
     width:100%; padding:.55rem .875rem; border-radius:8px;
-    border:1.5px solid var(--border); background:var(--bg-input);
-    color:var(--text-primary); font-size:12px; font-family:'Menlo','Consolas',monospace;
+    border:1.5px solid var(--border-subtle); background:var(--bg-input);
+    color:var(--text-1); font-size:12px; font-family:'Menlo','Consolas',monospace;
     transition:border-color var(--transition), background var(--transition), box-shadow var(--transition);
     outline:none;
   }
-  .field-input:focus { border-color:var(--border-focus); background:var(--bg-input-focus); box-shadow:0 0 0 3px rgba(99,102,241,.15); }
-  .field-input::placeholder { color:var(--text-muted); opacity:.7; }
+  /* 입력 포커스 글로우 — 액센트 링 (add_repo.html 과 동일 패턴)
+     Input focus glow — accent ring (matches add_repo.html pattern) */
+  input, select, textarea { transition: border-color 0.2s, box-shadow 0.2s; }
+  input:focus, select:focus, textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
+    outline: none;
+  }
+  .field-input:focus { border-color:var(--accent); background:var(--bg-input-focus);
+                       box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent); }
+  .field-input::placeholder { color:var(--text-2); opacity:.7; }
 
   /* 알림 채널 1컬럼 기본 (모바일 퍼스트) */
   .channel-grid { display:grid; grid-template-columns:1fr; gap:.5rem .9rem; }
 
   /* Hook 카드 */
   .hook-code {
-    background:var(--bg-input); border:1px solid var(--border); border-radius:7px;
-    padding:.55rem .8rem; font-family:monospace; font-size:12px; color:var(--text-muted);
+    background:var(--bg-input); border:1px solid var(--border-subtle); border-radius:7px;
+    padding:.55rem .8rem; font-family:monospace; font-size:12px; color:var(--text-2);
     margin-bottom:.75rem;
   }
   .hook-btns { display:flex; gap:.5rem; flex-wrap:wrap; }
@@ -222,8 +273,8 @@
   .hook-alert {
     padding:.55rem .9rem; border-radius:8px; font-size:13px; margin-bottom:.6rem;
   }
-  .hook-alert.ok   { background:#d1fae5; color:#065f46; }
-  .hook-alert.fail { background:#fee2e2; color:#991b1b; }
+  .hook-alert.ok   { background: color-mix(in srgb, var(--success) 15%, transparent); color: var(--success); }
+  .hook-alert.fail { background: color-mix(in srgb, var(--danger) 15%, transparent); color: var(--danger); }
 
   /* 위험 구역 details */
   .danger-summary {
@@ -237,23 +288,36 @@
 
   /* 저장 버튼 — P0-3: 단색 배경 + box-shadow 로 본문과 명확히 분리
      P2-5: iOS safe-area-inset 추가 (홈 인디케이터 회피)
-     Save bar — P0-3 solid bg + shadow; P2-5 iOS safe-area-inset for home indicator */
+     Save bar — P0-3 solid bg + shadow; P2-5 iOS safe-area-inset for home indicator
+     슬라이드 업 입장 애니메이션 / Slide-up entrance animation */
   .save-bar {
     position:sticky; bottom:0;
     padding:.75rem 0 calc(.85rem + env(safe-area-inset-bottom, 0px));
-    background: var(--bg-page);
-    border-top: 1px solid var(--border);
+    background: var(--bg-base);
+    border-top: 1px solid var(--border-subtle);
     box-shadow: 0 -8px 16px -8px rgba(0,0,0,.18);
+    transform: translateY(8px);
+    opacity: 0;
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s;
   }
+  .save-bar.visible {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  /* 프라이머리 버튼 — 액센트 그라디언트 + 호버 리프트 + 클릭 스케일
+     Primary button — accent gradient + hover lift + click scale */
   .btn-save-new {
     width:100%; padding:.72rem; border-radius:9px; border:none;
-    background:var(--save-btn-bg); color:#fff;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: var(--btn-on-accent);
     font-size:14px; font-weight:700; cursor:pointer;
     box-shadow:0 4px 14px var(--save-btn-shadow);
-    transition:opacity var(--transition), box-shadow var(--transition);
+    transition: opacity var(--transition), box-shadow var(--transition),
+                transform 0.15s ease;
     display:flex; align-items:center; justify-content:center; gap:8px;
   }
-  .btn-save-new:hover { opacity:.88; }
+  .btn-save-new:hover { opacity:.9; transform: translateY(-1px); box-shadow: 0 6px 20px var(--save-btn-shadow); }
+  .btn-save-new:active { transform: scale(0.97); opacity: 1; }
 
   /* 저장 결과 토스트 */
   .save-toast {
@@ -263,8 +327,8 @@
     box-shadow:0 4px 18px rgba(0,0,0,.18);
     animation: toastIn .25s ease, toastOut .4s ease 3s forwards;
   }
-  .save-toast-ok  { background:#d1fae5; color:#065f46; border:1px solid #6ee7b7; }
-  .save-toast-err { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; }
+  .save-toast-ok  { background: color-mix(in srgb, var(--success) 15%, transparent); border-color: var(--success); color: var(--success); border: 1px solid var(--success); }
+  .save-toast-err { background: color-mix(in srgb, var(--danger) 15%, transparent); border-color: var(--danger); color: var(--danger); border: 1px solid var(--danger); }
   @keyframes toastIn  { from { opacity:0; transform:translateX(-50%) translateY(-10px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
   @keyframes toastOut { from { opacity:1; } to { opacity:0; pointer-events:none; } }
 
@@ -360,7 +424,7 @@
     <span class="mode-toggle-counter" id="modeToggleCounter"></span>
   </div>
 
-  <p class="simple-only-hint" style="font-size:12px;color:var(--text-muted);
+  <p class="simple-only-hint" style="font-size:12px;color:var(--text-2);
             margin: -.6rem 0 1.25rem; padding: .5rem .85rem; line-height:1.55;
             background: var(--hint-bg, rgba(99,102,241,.06));
             border-left: 3px solid var(--accent); border-radius: 6px;">
@@ -372,12 +436,12 @@
     .mode-toggle-bar { display: flex; align-items: center; gap: 0.75rem;
                        margin: 0 0 1.25rem; padding: 0.55rem 0.85rem;
                        background: var(--bg-card); border-radius: 10px;
-                       border: 1px solid var(--border); flex-wrap: wrap;
-                       box-shadow: var(--shadow-card);
+                       border: 1px solid var(--border-subtle); flex-wrap: wrap;
+                       box-shadow: var(--shadow-sm);
                        transition: border-color 0.2s ease, box-shadow 0.2s ease; }
     .mode-toggle-bar:hover { border-color: var(--accent);
-                             box-shadow: 0 0 0 3px rgba(99,102,241,0.10), var(--shadow-card); }
-    .mode-toggle-label { font-size: 12px; color: var(--text-muted);
+                             box-shadow: 0 0 0 3px rgba(99,102,241,0.10), var(--shadow-sm); }
+    .mode-toggle-label { font-size: 12px; color: var(--text-2);
                          font-weight: 700; text-transform: uppercase;
                          letter-spacing: 0.05em; }
     /* P1-1 보완: segment 컨테이너는 모바일에서 풀폭 stretch 가능하도록 / Segment can stretch on mobile */
@@ -387,7 +451,7 @@
        P1-6: drop scale(1.02) which overflowed segment 3px padding; rely on font-weight emphasis */
     .mode-toggle-btn { padding: 0.4rem 0.95rem; border-radius: 6px;
                        border: 1px solid transparent; background: transparent;
-                       cursor: pointer; font-size: 13px; color: var(--text-primary);
+                       cursor: pointer; font-size: 13px; color: var(--text-1);
                        font-weight: 500; transition: all 0.15s ease;
                        display: inline-flex; align-items: center; gap: 0.35rem; }
     .mode-toggle-btn:hover:not(.active) { background: var(--bg-hover); }
@@ -395,7 +459,7 @@
                               border-color: var(--accent); font-weight: 700;
                               box-shadow: 0 2px 8px rgba(99,102,241,0.25); }
     .mode-toggle-hint { font-size: 11px; opacity: 0.85; margin-left: 0.15rem; }
-    .mode-toggle-counter { margin-left: auto; font-size: 11px; color: var(--text-muted);
+    .mode-toggle-counter { margin-left: auto; font-size: 11px; color: var(--text-2);
                            font-weight: 600; }
     /* 빈 카운터 숨김 — JS 미주입 시 죽은 마크업 회피 / Hide empty counter to avoid dead markup */
     .mode-toggle-counter:empty { display: none; }
@@ -423,8 +487,8 @@
                 vertical-align: middle; margin-right: 6px;
                 box-shadow: 0 0 0 1.5px var(--bg-card); }
     .conn-dot.is-on  { background: var(--success, #10b981); }
-    .conn-dot.is-off { background: var(--text-muted, #9ca3af); opacity: 0.55; }
-    .conn-status-text { font-size: 11px; color: var(--text-muted); font-weight: 500; }
+    .conn-dot.is-off { background: var(--text-2, #9ca3af); opacity: 0.55; }
+    .conn-status-text { font-size: 11px; color: var(--text-2); font-weight: 500; }
 
     /* P2-2: s-section-label (uppercase 11px) 안 conn-dot 의 baseline 보정
        P2-2: vertical-align fix for conn-dot inside uppercase section labels */
@@ -439,21 +503,21 @@
       font-size: 13px; line-height: 1.5;
     }
     .alert-warning {
-      background: rgba(245, 158, 11, .12);
-      border-color: rgba(245, 158, 11, .35);
-      color: var(--text-primary);
+      background: color-mix(in srgb, var(--warning) 12%, transparent);
+      border-color: color-mix(in srgb, var(--warning) 35%, transparent);
+      color: var(--text-1);
     }
     .alert .me-2 { margin-right: .5rem; }
     .alert .ms-auto { margin-left: auto; }
     .alert.mb-4 { margin-bottom: 1rem; }
-    .alert .text-muted { color: var(--text-muted); }
+    .alert .text-muted { color: var(--text-2); }
     .btn.btn-sm {
       padding: .35rem .85rem; font-size: 12px; font-weight: 600;
       border-radius: 6px; border: 1px solid transparent; cursor: pointer;
       transition: opacity .15s ease, transform .1s ease;
     }
     .btn.btn-warning {
-      background: #f59e0b; color: #fff; border-color: #d97706;
+      background: var(--warning); color: var(--btn-on-accent); border-color: var(--warning);
     }
     .btn.btn-warning:hover { opacity: .9; }
     @media (max-width: 480px) {
@@ -509,12 +573,12 @@
         <span class="hdr-badge">{{ 'settings_page.onboarding.badge' | i18n_args(locale | default('ko')) }}</span>
       </div>
       <div class="s-card-body">
-        <p style="font-size:13px;color:var(--text-muted);margin:0 0 .75rem;">{{ 'settings_page.onboarding.intro' | i18n_args(locale | default('ko')) }}</p>
+        <p style="font-size:13px;color:var(--text-2);margin:0 0 .75rem;">{{ 'settings_page.onboarding.intro' | i18n_args(locale | default('ko')) }}</p>
         <div style="display:flex;flex-direction:column;gap:.45rem;font-size:13px;">
           <a href="#notifyCard" style="color:var(--accent);font-weight:600;">
             {{ 'settings_page.onboarding.step1' | i18n_args(locale | default('ko')) | safe }}
           </a>
-          <span style="color:var(--text-muted);">
+          <span style="color:var(--text-2);">
             {{ 'settings_page.onboarding.step2' | i18n_args(locale | default('ko')) | safe }}
           </span>
         </div>
@@ -563,7 +627,7 @@
             <div class="preset-detail-body">
               <table class="preset-table">
                 <thead>
-                  <tr style="font-size:11px;color:var(--text-muted);font-weight:600;">
+                  <tr style="font-size:11px;color:var(--text-2);font-weight:600;">
                     <th scope="col" style="width:48%;text-align:left;">{{ 'settings_page.preset_card.th_field' | i18n_args(locale | default('ko')) }}</th>
                     <th scope="col" style="text-align:center;width:18%">{{ 'settings_page.preset_card.th_current' | i18n_args(locale | default('ko')) }}</th>
                     <th scope="col" style="text-align:center;width:6%"><span class="sr-only">{{ 'settings_page.preset_card.th_compare' | i18n_args(locale | default('ko')) }}</span></th>
@@ -572,7 +636,7 @@
                 </thead>
                 <tbody id="preset-diff-minimal"></tbody>
               </table>
-              <p style="font-size:11px;color:var(--text-muted);margin-top:.5rem;line-height:1.5;">
+              <p style="font-size:11px;color:var(--text-2);margin-top:.5rem;line-height:1.5;">
                 {{ 'settings_page.preset_card.channel_unchanged' | i18n_args(locale | default('ko')) }}
               </p>
               <button type="button" class="btn-save-new preset-apply-btn" style="margin-top:.65rem;padding:.5rem;"
@@ -598,7 +662,7 @@
             <div class="preset-detail-body">
               <table class="preset-table">
                 <thead>
-                  <tr style="font-size:11px;color:var(--text-muted);font-weight:600;">
+                  <tr style="font-size:11px;color:var(--text-2);font-weight:600;">
                     <th scope="col" style="width:48%;text-align:left;">{{ 'settings_page.preset_card.th_field' | i18n_args(locale | default('ko')) }}</th>
                     <th scope="col" style="text-align:center;width:18%">{{ 'settings_page.preset_card.th_current' | i18n_args(locale | default('ko')) }}</th>
                     <th scope="col" style="text-align:center;width:6%"><span class="sr-only">{{ 'settings_page.preset_card.th_compare' | i18n_args(locale | default('ko')) }}</span></th>
@@ -607,7 +671,7 @@
                 </thead>
                 <tbody id="preset-diff-standard"></tbody>
               </table>
-              <p style="font-size:11px;color:var(--text-muted);margin-top:.5rem;line-height:1.5;">
+              <p style="font-size:11px;color:var(--text-2);margin-top:.5rem;line-height:1.5;">
                 {{ 'settings_page.preset_card.channel_unchanged' | i18n_args(locale | default('ko')) }}
               </p>
               <button type="button" class="btn-save-new preset-apply-btn" style="margin-top:.65rem;padding:.5rem;"
@@ -633,7 +697,7 @@
             <div class="preset-detail-body">
               <table class="preset-table">
                 <thead>
-                  <tr style="font-size:11px;color:var(--text-muted);font-weight:600;">
+                  <tr style="font-size:11px;color:var(--text-2);font-weight:600;">
                     <th scope="col" style="width:48%;text-align:left;">{{ 'settings_page.preset_card.th_field' | i18n_args(locale | default('ko')) }}</th>
                     <th scope="col" style="text-align:center;width:18%">{{ 'settings_page.preset_card.th_current' | i18n_args(locale | default('ko')) }}</th>
                     <th scope="col" style="text-align:center;width:6%"><span class="sr-only">{{ 'settings_page.preset_card.th_compare' | i18n_args(locale | default('ko')) }}</span></th>
@@ -642,7 +706,7 @@
                 </thead>
                 <tbody id="preset-diff-strict"></tbody>
               </table>
-              <p style="font-size:11px;color:var(--text-muted);margin-top:.5rem;line-height:1.5;">
+              <p style="font-size:11px;color:var(--text-2);margin-top:.5rem;line-height:1.5;">
                 {{ 'settings_page.preset_card.channel_unchanged' | i18n_args(locale | default('ko')) }}
               </p>
               <button type="button" class="btn-save-new preset-apply-btn" style="margin-top:.65rem;padding:.5rem;"
@@ -773,7 +837,7 @@
             </div>
 
             <div id="semiAutoHint" class="{% if config.approve_mode != 'semi-auto' %}is-hidden{% endif %}"
-                 style="margin-top:.75rem;padding:.5rem .75rem;background:var(--hint-bg);border:1px solid var(--hint-border);border-radius:7px;font-size:11px;color:var(--text-muted);line-height:1.6;">
+                 style="margin-top:.75rem;padding:.5rem .75rem;background:var(--hint-bg);border:1px solid var(--hint-border);border-radius:7px;font-size:11px;color:var(--text-2);line-height:1.6;">
               {{ 'settings_page.pr_rules.semi_auto_hint' | i18n_args(locale | default('ko')) | safe }}
             </div>
 
@@ -890,7 +954,7 @@
                 {% if current_user.is_telegram_connected %}
                 <p class="text-success" style="font-size:13px;margin:0;">{{ 'settings_page.notify.telegram_link_connected' | i18n_args(locale | default('ko')) }}</p>
                 {% else %}
-                <p style="font-size:13px;color:var(--text-muted);margin-bottom:.5rem;">
+                <p style="font-size:13px;color:var(--text-2);margin-bottom:.5rem;">
                   {{ 'settings_page.notify.telegram_link_hint' | i18n_args(locale | default('ko')) }}
                 </p>
                 <button type="button" class="hook-btn" id="issueTelegramOtp">
@@ -898,10 +962,10 @@
                 </button>
                 <div id="telegramOtpDisplay" style="display:none;margin-top:.65rem;">
                   <code id="telegramOtpCode" style="font-size:1.4rem;font-weight:700;letter-spacing:.12em;"></code>
-                  <span style="font-size:12px;color:var(--text-muted);margin-left:.5rem;">
+                  <span style="font-size:12px;color:var(--text-2);margin-left:.5rem;">
                     {{ 'settings_page.notify.telegram_otp_expires' | i18n_args(locale | default('ko'), remaining='<span id="telegramOtpCountdown">5:00</span>') | safe }}
                   </span>
-                  <p style="font-size:11px;color:var(--text-muted);margin-top:.35rem;margin-bottom:0;">
+                  <p style="font-size:11px;color:var(--text-2);margin-top:.35rem;margin-bottom:0;">
                     {{ 'settings_page.notify.telegram_otp_invalidated' | i18n_args(locale | default('ko')) }}
                   </p>
                 </div>
@@ -1038,7 +1102,7 @@
     <div class="s-card-body">
 
       {# Phase 2 PR-8 — i18n / Card behaviour notice #}
-      <p style="font-size:12px;color:var(--text-muted);margin:0 0 1rem;padding:.5rem .75rem;
+      <p style="font-size:12px;color:var(--text-2);margin:0 0 1rem;padding:.5rem .75rem;
                 background:var(--hint-bg);border-left:3px solid var(--accent);border-radius:6px;line-height:1.55;">
         {{ 'settings_page.inbound.behavior_notice' | i18n_args(locale | default('ko')) | safe }}
       </p>
@@ -1104,15 +1168,15 @@
   </div>
 
   {# Danger zone / Phase 2 PR-8 — i18n #}
-  <div class="s-card adv-only" style="margin-bottom:2rem;">
-    <div class="s-card-hdr" style="background:linear-gradient(135deg,#991b1b,#dc2626)">
+  <div class="s-card danger-zone adv-only" style="margin-bottom:2rem;">
+    <div class="s-card-hdr" style="background: linear-gradient(135deg, color-mix(in srgb, var(--danger) 60%, #000), var(--danger))">
       <span class="hdr-icon">⚠️</span>
       <span class="hdr-title">{{ 'settings_page.danger.header' | i18n_args(locale | default('ko')) }}</span>
       <span class="hdr-badge">{{ 'settings_page.danger.badge' | i18n_args(locale | default('ko')) }}</span>
     </div>
     <div class="s-card-body">
-      <p style="font-size:12px;color:var(--text-muted);margin:0 0 1rem;padding:.5rem .75rem;
-                background:rgba(220,38,38,.08);border-left:3px solid var(--danger);border-radius:6px;line-height:1.55;">
+      <p style="font-size:12px;color:var(--text-2);margin:0 0 1rem;padding:.5rem .75rem;
+                background: color-mix(in srgb, var(--danger) 8%, transparent);border-left:3px solid var(--danger);border-radius:6px;line-height:1.55;">
         {{ 'settings_page.danger.behavior_notice' | i18n_args(locale | default('ko')) | safe }}
       </p>
       <details class="danger-summary-wrap">
@@ -1125,7 +1189,7 @@
             </div>
             <form method="post" action="/repos/{{ repo_name }}/delete"
                   onsubmit="return confirm({{ 'settings_page.danger.delete_confirm' | i18n_args(locale | default('ko'), repo_name=repo_name) | tojson }});">
-              <button type="submit" style="background:var(--danger);color:#fff;border:none;border-radius:8px;padding:.6rem 1.1rem;font-weight:600;cursor:pointer;">
+              <button type="submit" style="background:var(--danger);color:var(--btn-on-accent);border:none;border-radius:8px;padding:.6rem 1.1rem;font-weight:600;cursor:pointer;">
                 {{ 'settings_page.danger.delete_btn' | i18n_args(locale | default('ko')) }}
               </button>
             </form>
@@ -1244,7 +1308,7 @@
         '<tr style="' + rowStyle + '">' +
           '<td>' + labels[key] + '</td>' +
           '<td style="text-align:center">' + fmt(curNorm) + '</td>' +
-          '<td style="text-align:center;font-weight:600;color:var(--text-muted)">' + arrow + '</td>' +
+          '<td style="text-align:center;font-weight:600;color:var(--text-2)">' + arrow + '</td>' +
           '<td style="text-align:right;' + nextStyle + '">' + fmt(next) + '</td>' +
         '</tr>';
     });
@@ -1397,6 +1461,20 @@
   // 저장 오류 시 — 모드 전환은 initSettingsMode() 가 ?save_error=1 을 감지해
   // 자동으로 advanced 로 전환한다 (Phase 2A Progressive 재설계).
   // Save-error advanced switch is handled by initSettingsMode() via ?save_error=1 detection.
+
+  // 저장 바 슬라이드 업 입장 애니메이션 — DOM 준비 후 .visible 추가
+  // Save bar slide-up entrance — add .visible after DOM ready
+  (function initSaveBarEntrance() {
+    var saveBar = document.querySelector('.save-bar');
+    if (!saveBar) { return; }
+    // requestAnimationFrame 2회 — 브라우저가 초기 렌더 완료 후 transition 트리거
+    // Two rAF frames — ensures browser completes initial render before triggering transition
+    requestAnimationFrame(function() {
+      requestAnimationFrame(function() {
+        saveBar.classList.add('visible');
+      });
+    });
+  }());
 
   // 토스트 클릭 시 즉시 닫기 + URL 쿼리 제거
   const toast = document.getElementById('saveToast');
