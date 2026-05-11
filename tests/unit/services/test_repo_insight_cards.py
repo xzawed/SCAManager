@@ -12,7 +12,6 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-import src.models  # noqa: F401
 from src.database import Base
 from src.models.analysis import Analysis
 from src.models.repository import Repository
