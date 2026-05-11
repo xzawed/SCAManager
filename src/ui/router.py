@@ -15,6 +15,7 @@ from src.ui.routes import (
     dashboard,
     detail,
     overview,
+    repo_insights,
     settings,
 )
 
@@ -27,4 +28,5 @@ router.include_router(dashboard.router)      # GET /dashboard (Phase 1 PR 4 — 
 router.include_router(add_repo.router)       # GET/POST /repos/add, /api/github/repos
 router.include_router(settings.router)       # /repos/{name}/settings, reinstall-*
 router.include_router(actions.router)        # /repos/{name}/delete
+router.include_router(repo_insights.router)  # /repos/{name}/insights (catch-all 이전 등록 필수)
 router.include_router(detail.router)         # /repos/{name}/analyses/{id}, /repos/{name}  (catch-all 마지막)

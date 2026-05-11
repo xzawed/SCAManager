@@ -163,6 +163,9 @@ async def dashboard(  # pylint: disable=too-many-locals
         # Phase 2 PR 1: Auto-merge KPI + 실패 분포.
         auto_merge = dashboard_service.auto_merge_kpi(db, days=days, user_id=_uid)
         merge_failures = dashboard_service.merge_failure_distribution(db, days=days, n=5, user_id=_uid)
+        # 0031 — 리포별 인사이트 카드 섹션 (overview 모드 전용)
+        # 0031 — Per-repo insight card section (overview mode only)
+        repo_cards = dashboard_service.repo_insight_cards(db, days=days, user_id=_uid)
         # Phase 2 PR 2 (2026-05-02): feedback CTA — 운영 row=0 → 사용자 행동 유도.
         feedback = dashboard_service.feedback_status(db)
 
@@ -179,6 +182,7 @@ async def dashboard(  # pylint: disable=too-many-locals
             "auto_merge": auto_merge,
             "merge_failures": merge_failures,
             "feedback": feedback,
+            "repo_cards": repo_cards,
             "days": days,
             "locale": locale_value,
         },

@@ -16,6 +16,8 @@ src/
 │   ├── css/dist/tailwind.css    # Tailwind v4 빌드 출력 (npm run build → Railway buildCommand, #376)
 │   ├── css/illustrations.css    # 일러스트 배치 CSS — .illustration/--hero/--empty/--tutorial + 모바일 반응형 (#375)
 │   ├── css/admin.css            # 관리자 페이지 공통 스타일 — .admin-* 글래스모피즘 컴포넌트 (admin_rls_audit, admin_tenants 공유)
+│   ├── css/repo_insights.css    # 리포별 인사이트 페이지 전용 스타일 — .ri-* 클래스 (CPD 분리)
+│   │                            # Repo insights page scoped styles (.ri-* classes, CPD prevention)
 │   └── illustrations/           # DALL-E 3 생성 일러스트 5장 commit (#375 Step 2-B: login_hero/dashboard_empty/overview_onboarding/add_repo_hero/filter_empty)
 ├── scripts/                     # 로컬 도구 (production import X) — Cycle 93 Step 2
 │   ├── illustration_prompts.py  # 5장 isometric prompt 정의 (login_hero/dashboard_empty/overview_onboarding/add_repo_hero/filter_empty)
@@ -45,7 +47,9 @@ src/
 ├── services/
 │   ├── analytics_service.py     # 집계 단일 출처 — weekly_summary, moving_average, resolve_chat_id
 │   ├── cron_service.py          # 주기 실행 — run_weekly_reports, run_trend_check
-│   ├── dashboard_service.py     # /dashboard 9 공개 함수 (KPI 4 + trend + frequent_issues + auto_merge_kpi + feedback_status + insight_narrative + dashboard_security + dashboard_usage) + RLS 격리 헬퍼 2건
+│   ├── dashboard_service.py     # /dashboard 9 공개 함수 (KPI 4 + trend + frequent_issues + auto_merge_kpi + feedback_status + insight_narrative + dashboard_security + dashboard_usage + repo_insight_cards) + RLS 격리 헬퍼 2건
+│   ├── repo_insight_service.py  # 리포별 집계 6 함수 (repo_kpi/recurring_issues/problem_files/ai_suggestions/category_breakdown/insight_narrative)
+│   │                            # Per-repo aggregation 6 functions
 │   ├── merge_retry_service.py   # process_pending_retries 워커 (CI-aware)
 │   ├── security_scan_service.py # Code/Secret Scanning 폴링 + audit log + GHAS graceful degradation
 │   ├── saas_service.py          # tenant_inventory + rls_audit_matrix (Cycle 79 PR 3a)
@@ -53,7 +57,7 @@ src/
 ├── auth/
 │   ├── session.py               # get_current_user() + require_login + require_admin (3-layer SaaS 검증)
 │   └── github.py                # /login, /auth/github, /auth/callback, /auth/logout
-├── models/                      # 10 ORM 모델 — repository, analysis, analysis_feedback, repo_config, gate_decision, merge_attempt, merge_retry, security_alert_log, insight_narrative_cache, user
+├── models/                      # 10 ORM 모델 — repository, analysis, analysis_feedback, repo_config, gate_decision, merge_attempt, merge_retry, security_alert_log, insight_narrative_cache (0031: repo_id FK), user
 ├── webhook/
 │   ├── _helpers.py              # get_webhook_secret() + cache (TTL 300s)
 │   ├── validator.py             # HMAC-SHA256 서명 검증
@@ -98,8 +102,8 @@ src/
 ├── ui/
 │   ├── _helpers.py              # get_accessible_repo, webhook_base_url, delete_repo_cascade, templates
 │   ├── router.py                # aggregator
-│   └── routes/                  # overview / dashboard (mode 4종) / add_repo / settings / actions / detail / admin
-├── templates/                   # base, login, overview, repo_detail, analysis_detail, settings, dashboard, admin_*
+│   └── routes/                  # overview / dashboard (mode 4종) / add_repo / settings / actions / detail / admin / repo_insights
+├── templates/                   # base, login, overview, repo_detail, analysis_detail, settings, dashboard, admin_*, repo_insights
 ├── cli/                         # python -m src.cli review (git_diff + formatter)
 ├── repositories/                # DB 접근 계층 10종
 └── worker/pipeline.py           # run_analysis_pipeline, build_analysis_result_dict
@@ -153,6 +157,7 @@ Telegram 반자동 콜백:
   → GET /dashboard?days=&mode={overview|insight|security|usage}
   → GET /insights, /insights/me        (301 redirect → /dashboard)
   → GET /repos/{repo}                  (점수 차트 + 이력)
+  → GET /repos/{repo}/insights         (리포별 KPI + 반복 이슈 + 문제 파일 + AI 제안 + 카테고리 분석)
   → GET /repos/{repo}/analyses/{id}    (분석 상세)
   → GET /api/repos, /api/repos/{repo}/stats
 

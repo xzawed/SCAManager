@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+{% block title %}{{ repo.full_name }} — Insights · SCAManager{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="/static/css/repo_insights.css">
+
+<div class="ri-page">
+
+  {# ── 헤더 ──────────────────────────────────────────────── #}
+  <div class="ri-header">
+    <a href="/dashboard" class="ri-back-link">← 대시보드</a>
+    <div style="display:flex; align-items:flex-end; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+      <div>
+        <h1 class="ri-repo-title">📦 {{ repo.full_name }}</h1>
+        <div class="ri-header-meta">
+          <span class="ri-grade-badge">{{ kpi.grade }}</span>
+          <span>최근 {{ days }}일 · 분석 {{ kpi.analysis_count }}건 기준</span>
+          {% if kpi.score_delta is not none %}
+            {% if kpi.score_delta > 0 %}
+              <span class="ri-delta-up">↑ +{{ kpi.score_delta }}</span>
+            {% elif kpi.score_delta < 0 %}
+              <span class="ri-delta-down">↓ {{ kpi.score_delta }}</span>
+            {% endif %}
+          {% endif %}
+        </div>
+      </div>
+      <div class="ri-day-selector">
+        {% for d in [7, 30, 90] %}
+        <a href="/repos/{{ repo.full_name }}/insights?days={{ d }}"
+           class="ri-day-btn {% if days == d %}active{% endif %}">{{ d }}일</a>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  {# ── KPI 4 카드 ─────────────────────────────────────────── #}
+  <div class="ri-kpi-grid">
+    <div class="ri-kpi-card">
+      <div class="ri-kpi-label">평균 점수</div>
+      <div class="ri-kpi-value">
+        {% if kpi.avg_score is not none %}{{ kpi.avg_score }}{% else %}—{% endif %}
+      </div>
+      <div class="ri-kpi-sub">{{ kpi.grade }}등급</div>
+    </div>
+    <div class="ri-kpi-card">
+      <div class="ri-kpi-label">총 분석수</div>
+      <div class="ri-kpi-value">{{ kpi.analysis_count }}</div>
+      <div class="ri-kpi-sub">최근 {{ days }}일</div>
+    </div>
+    <div class="ri-kpi-card">
+      <div class="ri-kpi-label">최다 반복 이슈</div>
+      <div class="ri-kpi-value" style="font-size:16px; word-break:break-word;">
+        {% if kpi.top_recurring_issue %}{{ kpi.top_recurring_issue[:40] }}{% else %}—{% endif %}
+      </div>
+      {% if kpi.top_recurring_count %}
+      <div class="ri-kpi-sub">{{ kpi.top_recurring_count }}회 반복</div>
+      {% endif %}
+    </div>
+    <div class="ri-kpi-card">
+      <div class="ri-kpi-label">보안 HIGH</div>
+      <div class="ri-kpi-value {% if kpi.high_security_count > 0 %}ri-delta-down{% endif %}">
+        {{ kpi.high_security_count }}건
+      </div>
+      <div class="ri-kpi-sub">severity: error / HIGH</div>
+    </div>
+  </div>
+
+  {# ── AI 내러티브 (API 키 있을 때만) ────────────────────── #}
+  {% if narrative and narrative.text %}
+  <div class="ri-narrative-card">
+    <div class="ri-narrative-title">🤖 AI 종합 진단</div>
+    <p class="ri-narrative-text">{{ narrative.text }}</p>
+    <div style="text-align:right; margin-top:8px;">
+      <a href="/repos/{{ repo.full_name }}/insights?days={{ days }}&refresh=1"
+         style="font-size:11px; color:var(--text-2); text-decoration:none;">↺ 갱신</a>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── 2열: 반복 이슈 테이블 + 카테고리 도넛 ──────────────── #}
+  {% if recurring_issues or breakdown.total > 0 %}
+  <div class="ri-two-col">
+    <div class="ri-card">
+      <div class="ri-card-header">
+        <h2 class="ri-card-title">🔄 반복 이슈 랭킹</h2>
+      </div>
+      {% if recurring_issues %}
+      <table class="ri-issues-table" aria-label="반복 이슈 목록">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>이슈 메시지</th>
+            <th>도구</th>
+            <th class="ri-num">횟수</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for issue in recurring_issues %}
+          <tr>
+            <td style="color:var(--text-2); font-size:12px;">{{ loop.index }}</td>
+            <td>
+              <div style="font-size:13px; word-break:break-word;">{{ issue.message }}</div>
+              <div style="margin-top:3px; display:flex; gap:4px; flex-wrap:wrap;">
+                {% if issue.severity %}
+                <span class="ri-badge {% if issue.severity|lower in ('error','high') %}ri-badge-error{% else %}ri-badge-warning{% endif %}">
+                  {{ issue.severity }}
+                </span>
+                {% endif %}
+                {% if issue.tool %}
+                <span class="ri-badge ri-badge-tool">{{ issue.tool }}</span>
+                {% endif %}
+              </div>
+            </td>
+            <td style="font-size:12px; color:var(--text-2);">{{ issue.tool or '—' }}</td>
+            <td class="ri-num">{{ issue.count }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="ri-empty">반복 이슈 없음</div>
+      {% endif %}
+    </div>
+
+    <div class="ri-card">
+      <div class="ri-card-header">
+        <h2 class="ri-card-title">📊 카테고리 비율</h2>
+      </div>
+      <div class="ri-donut-wrap">
+        {% if breakdown.total > 0 %}
+        <canvas id="riDonutChart" width="200" height="200"
+                aria-label="이슈 카테고리 비율 차트"></canvas>
+        <div style="margin-top:12px; font-size:12px; color:var(--text-2); text-align:center;">
+          전체 {{ breakdown.total }}건
+        </div>
+        {% else %}
+        <div class="ri-empty">집계 데이터 없음</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── 문제 파일 TOP 5 ─────────────────────────────────────── #}
+  {% if problem_files %}
+  <div class="ri-card">
+    <div class="ri-card-header">
+      <h2 class="ri-card-title">📁 문제 파일 TOP {{ problem_files|length }}</h2>
+    </div>
+    <ul class="ri-file-list">
+      {% for f in problem_files %}
+      <li class="ri-file-row">
+        <div class="ri-file-info">
+          <span class="ri-file-name" title="{{ f.file }}">{{ f.file }}</span>
+          <span class="ri-file-count">{{ f.count }}회</span>
+        </div>
+        <div class="ri-file-bar-bg">
+          <div class="ri-file-bar" style="width: {{ f.pct }}%;"></div>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {# ── AI 제안 모음 TOP 10 ─────────────────────────────────── #}
+  {% if ai_suggestions %}
+  <div class="ri-card">
+    <div class="ri-card-header">
+      <h2 class="ri-card-title">💡 AI 제안 모음</h2>
+    </div>
+    <ol class="ri-suggestions">
+      {% for s in ai_suggestions %}
+      <li class="ri-suggestion-item">
+        <span class="ri-suggestion-num">{{ loop.index }}</span>
+        <span class="ri-suggestion-text">{{ s.suggestion }}</span>
+        {% if s.count > 1 %}
+        <span class="ri-suggestion-count">{{ s.count }}회 언급</span>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ol>
+  </div>
+  {% endif %}
+
+  {# 분석 데이터 없을 때 empty state #}
+  {% if kpi.analysis_count == 0 %}
+  <div class="ri-card">
+    <div class="ri-empty">
+      <p>최근 {{ days }}일 내 분석 데이터가 없습니다.</p>
+      <small>GitHub Push 또는 PR 이벤트 발생 후 다시 확인하세요.</small>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if breakdown.total > 0 %}
+<script src="/static/vendor/chart.umd.min.js"></script>
+<script>
+(function() {
+  const breakdown = {{ breakdown | tojson }};
+
+  function readVar(name, fallback) {
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || fallback;
+  }
+
+  let riChart = null;
+  function buildRiChart() {
+    const ctx = document.getElementById('riDonutChart');
+    if (!ctx) return;
+    if (riChart) riChart.destroy();
+    riChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: ['보안 오류', '보안 경고', '코드품질 오류', '코드품질 경고'],
+        datasets: [{
+          data: [
+            breakdown.security_error,
+            breakdown.security_warning,
+            breakdown.code_quality_error,
+            breakdown.code_quality_warning,
+          ],
+          backgroundColor: [
+            readVar('--danger',  'oklch(0.637 0.237 25.331)'),
+            readVar('--warning', 'oklch(0.769 0.188 70.08)'),
+            readVar('--accent',  'oklch(0.585 0.233 277.117)'),
+            readVar('--text-2',  'oklch(0.554 0 0)'),
+          ],
+          borderWidth: 0,
+        }],
+      },
+      options: {
+        cutout: '62%',
+        plugins: { legend: { display: false } },
+        animation: { duration: 500 },
+      },
+    });
+  }
+
+  buildRiChart();
+  document.addEventListener('themechange', buildRiChart);
+})();
+</script>
+{% endif %}
+{% endblock %}
