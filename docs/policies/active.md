@@ -5,6 +5,8 @@
 > CLAUDE.md 본문 = 정책 N 표제 + 핵심 default rule 1줄 + 진화 default 1~2줄 + 본 파일 reference link.
 > 정책 진화 history (이전 사이클 진화 entry) = `docs/policies/history.md` (사이클 85 #320 + 사이클 86 #321 분리).
 
+<a id="정책-2"></a>
+
 ## 정책 2: PR 본문 "🔍 사용자 검증 필요" 섹션 의무
 
 이전: "tests pass" 만 적힘 → 사용자가 무엇을 봐야 할지 모름.
@@ -19,6 +21,8 @@
 
 ---
 
+<a id="정책-10"></a>
+
 ## 정책 10: PR 직접 생성 의무 (URL 안내 X, 자동 생성 ○)
 
 사용자 발화 (2026-05-02): *"앞으로의 작업은 PR 을 직접 생성을 부탁드립니다."*
@@ -27,13 +31,15 @@
 
 **구현 옵션** (환경별 우선순위 — gh CLI > API + GITHUB_TOKEN > URL 안내 폴백). PR 생성은 사용자 수동 위임 금지 (정책 7 PR 단위와 모순).
 
-🔴 **현재 SCAManager 환경 (2026-05-02 사용자 결정)**: gh CLI 부재 + GITHUB_TOKEN 401 + PAT 발급 현행 유지 → **옵션 🅒 (URL 폴백) 사실상 default 운영**. 환경 변경 시 자동 🅐/🅑 전환.
+🔴 **현재 SCAManager 환경**: gh CLI v2.88.1 설치 완료 + xzawed 계정 인증 완료 → **옵션 🅐 (gh pr create) default 운영**.
 
 **기본 PR body 템플릿**: §Summary + §🔍 사용자 검증 필요 (정책 2) + §자율 판단 보고 (정책 3) + 🤖 Generated with [Claude Code](https://claude.com/claude-code) 푸터.
 
 **fix-up commit 형식 default** (사이클 64 회고 P1): PR 머지 전 CI fail / 회귀 발견 시 = **동일 PR 브랜치 추가 commit** (별도 PR X — 정책 7 강화 응집 단위 부합). commit message prefix = `fix(<feature>-ci):`. PR body §자율 판단 보고에 사유 명시 의무. 머지 후 발견 시 = 별도 `fix/<feature>-<bug>` PR.
 
 ---
+
+<a id="정책-7"></a>
 
 ## 정책 7: 위반 시 회복
 
@@ -51,6 +57,8 @@ git push -u origin <branch>
 (2026-05-01 본 사이클은 모든 작업이 브랜치 + PR 로 진행됐으나, 본 정책으로 명시화 + 강화하여 향후 세션에서 이탈 차단.)
 
 ---
+
+<a id="정책-11"></a>
 
 ## 정책 11: PR 본문 8 조합 시각 체크리스트 템플릿
 
@@ -82,6 +90,8 @@ git push -u origin <branch>
 
 ---
 
+<a id="정책-12"></a>
+
 ## 정책 12 신설 (2026-05-02 Phase 1+2 회고 후속): MCP scope 제한 의무
 
 회고 발견: Phase 2 진입 검증 시 Supabase MCP 직접 실행 = 사용자 부담 87% 절감 (15분 → 2분). 그러나 INSERT/DELETE 권한 misuse 위험 명시 의무.
@@ -101,6 +111,8 @@ git push -u origin <branch>
 **금지**: `mcp__*__execute_sql` 의 SQL 자체 사용자 사전 노출 없이 INSERT/DELETE 실행. PII 컬럼 (`users.email`, `users.github_access_token`, `repo_configs.*_token` 등) SELECT 도 사전 승인.
 
 ---
+
+<a id="정책-13"></a>
 
 ## 정책 13 신설 (2026-05-02 P0 OAuth 사고 후속): 운영 endpoint smoke check 의무
 
@@ -141,6 +153,8 @@ git push -u origin <branch>
 
 ---
 
+<a id="정책-14"></a>
+
 ## 정책 14 신설 (2026-05-03 사이클 62 후속): GitHub Code Scanning 알림 운영 체크 의무
 
 사용자 발화 (2026-05-03): *"시큐리티에서 감지하는 내용도 앞으로 프로젝트 운영시 체크사항으로 부탁드립니다."*
@@ -157,7 +171,7 @@ git push -u origin <branch>
 
 **실행 방법**:
 - gh CLI 가용 시: `gh api repos/<owner>/<repo>/code-scanning/alerts --jq '[.[] | select(.state=="open")] | length'`
-- gh 부재 시: 사용자 GitHub `Security → Code scanning alerts` 탭 직접 확인 → Claude 에 카운트 + alert 제목 공유 의무 (현 SCAManager 환경 default — 정책 10 옵션 🅒 와 동일 폴백 패턴)
+- gh 부재 시: 사용자 GitHub `Security → Code scanning alerts` 탭 직접 확인 → Claude 에 카운트 + alert 제목 공유 의무 (gh CLI 미사용 환경 폴백 패턴)
 - API 인증 필요 (Code Scanning API 는 미인증 호출 차단) — 사용자 PAT 발급 시점에 자동화 가능
 
 **PR 본문 §"Code Scanning open alert 결과" 섹션 의무** (인증/외부 통합 변경 PR 외에는 사이클 종료 PR 일괄 회신 OK — 정책 2 진화 패턴):
@@ -178,6 +192,8 @@ git push -u origin <branch>
 - detail 절차 + 운영 통합 = `docs/runbooks/operational-smoke-checks.md` §9
 
 ---
+
+<a id="정책-15"></a>
 
 ## 정책 15 신설 (2026-05-04 사이클 70 진입): 코드 작업 (add/edit/delete) 전 사전 사고 의무
 
@@ -208,6 +224,8 @@ git push -u origin <branch>
 **How to apply**: 모든 Edit/Write/Bash (destructive) 도구 호출 직전 1줄 자문 → 명확하면 진행, 불명하면 사용자 회신 대기. PR 본문 §"자율 판단 보고" (정책 3) 페어.
 
 ---
+
+<a id="정책-16"></a>
 
 ## 정책 16 신설 (2026-05-04 사이클 70 진입): 코드 단순화 default + 가독성 우선
 
@@ -259,6 +277,8 @@ git push -u origin <branch>
 
 ---
 
+<a id="정책-17-5번째-default"></a>
+
 ## 정책 17 5번째 default (사이클 92 신설): 누적 결함 정기 검증 의무
 
 사이클 89 정기 5+1 다중 에이전트 검증 (#349 Round 1+2+3) 시 사이클 74/84 누적 결함 발견 (E2E i18n hardcode 3건 + integration fixture sync 누락 1건) — 시간차 결함 패턴.
@@ -296,6 +316,8 @@ git push -u origin <branch>
 - 정책 8 진화 (3) cross-verify Round 2 단위 분포 실측 의무 페어
 
 ---
+
+<a id="정책-18"></a>
 
 ## 정책 18: Claude ↔ Codex 양방향 mutual 검증 의무 (사이클 93 신설)
 
