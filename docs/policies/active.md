@@ -31,7 +31,7 @@
 
 **구현 옵션** (환경별 우선순위 — gh CLI > API + GITHUB_TOKEN > URL 안내 폴백). PR 생성은 사용자 수동 위임 금지 (정책 7 PR 단위와 모순).
 
-🔴 **현재 SCAManager 환경 (2026-05-02 사용자 결정)**: gh CLI 부재 + GITHUB_TOKEN 401 + PAT 발급 현행 유지 → **옵션 🅒 (URL 폴백) 사실상 default 운영**. 환경 변경 시 자동 🅐/🅑 전환.
+🔴 **현재 SCAManager 환경**: gh CLI v2.88.1 설치 완료 + xzawed 계정 인증 완료 → **옵션 🅐 (gh pr create) default 운영**.
 
 **기본 PR body 템플릿**: §Summary + §🔍 사용자 검증 필요 (정책 2) + §자율 판단 보고 (정책 3) + 🤖 Generated with [Claude Code](https://claude.com/claude-code) 푸터.
 
@@ -171,7 +171,7 @@ git push -u origin <branch>
 
 **실행 방법**:
 - gh CLI 가용 시: `gh api repos/<owner>/<repo>/code-scanning/alerts --jq '[.[] | select(.state=="open")] | length'`
-- gh 부재 시: 사용자 GitHub `Security → Code scanning alerts` 탭 직접 확인 → Claude 에 카운트 + alert 제목 공유 의무 (현 SCAManager 환경 default — 정책 10 옵션 🅒 와 동일 폴백 패턴)
+- gh 부재 시: 사용자 GitHub `Security → Code scanning alerts` 탭 직접 확인 → Claude 에 카운트 + alert 제목 공유 의무 (gh CLI 미사용 환경 폴백 패턴)
 - API 인증 필요 (Code Scanning API 는 미인증 호출 차단) — 사용자 PAT 발급 시점에 자동화 가능
 
 **PR 본문 §"Code Scanning open alert 결과" 섹션 의무** (인증/외부 통합 변경 PR 외에는 사이클 종료 PR 일괄 회신 OK — 정책 2 진화 패턴):
