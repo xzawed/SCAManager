@@ -5,6 +5,8 @@
 > CLAUDE.md 본문 = 정책 N 표제 + 핵심 default rule 1줄 + 진화 default 1~2줄 + 본 파일 reference link.
 > 정책 진화 history (이전 사이클 진화 entry) = `docs/policies/history.md` (사이클 85 #320 + 사이클 86 #321 분리).
 
+<a id="정책-2"></a>
+
 ## 정책 2: PR 본문 "🔍 사용자 검증 필요" 섹션 의무
 
 이전: "tests pass" 만 적힘 → 사용자가 무엇을 봐야 할지 모름.
@@ -18,6 +20,8 @@
 ```
 
 ---
+
+<a id="정책-10"></a>
 
 ## 정책 10: PR 직접 생성 의무 (URL 안내 X, 자동 생성 ○)
 
@@ -35,6 +39,8 @@
 
 ---
 
+<a id="정책-7"></a>
+
 ## 정책 7: 위반 시 회복
 
 실수로 main 에 commit 했을 때:
@@ -51,6 +57,8 @@ git push -u origin <branch>
 (2026-05-01 본 사이클은 모든 작업이 브랜치 + PR 로 진행됐으나, 본 정책으로 명시화 + 강화하여 향후 세션에서 이탈 차단.)
 
 ---
+
+<a id="정책-11"></a>
 
 ## 정책 11: PR 본문 8 조합 시각 체크리스트 템플릿
 
@@ -82,6 +90,8 @@ git push -u origin <branch>
 
 ---
 
+<a id="정책-12"></a>
+
 ## 정책 12 신설 (2026-05-02 Phase 1+2 회고 후속): MCP scope 제한 의무
 
 회고 발견: Phase 2 진입 검증 시 Supabase MCP 직접 실행 = 사용자 부담 87% 절감 (15분 → 2분). 그러나 INSERT/DELETE 권한 misuse 위험 명시 의무.
@@ -101,6 +111,8 @@ git push -u origin <branch>
 **금지**: `mcp__*__execute_sql` 의 SQL 자체 사용자 사전 노출 없이 INSERT/DELETE 실행. PII 컬럼 (`users.email`, `users.github_access_token`, `repo_configs.*_token` 등) SELECT 도 사전 승인.
 
 ---
+
+<a id="정책-13"></a>
 
 ## 정책 13 신설 (2026-05-02 P0 OAuth 사고 후속): 운영 endpoint smoke check 의무
 
@@ -141,6 +153,8 @@ git push -u origin <branch>
 
 ---
 
+<a id="정책-14"></a>
+
 ## 정책 14 신설 (2026-05-03 사이클 62 후속): GitHub Code Scanning 알림 운영 체크 의무
 
 사용자 발화 (2026-05-03): *"시큐리티에서 감지하는 내용도 앞으로 프로젝트 운영시 체크사항으로 부탁드립니다."*
@@ -179,6 +193,8 @@ git push -u origin <branch>
 
 ---
 
+<a id="정책-15"></a>
+
 ## 정책 15 신설 (2026-05-04 사이클 70 진입): 코드 작업 (add/edit/delete) 전 사전 사고 의무
 
 사용자 발화 (2026-05-04, 사이클 69 머지 후): *"앞으로 코드를 추가, 수정, 삭제 작업을 실행하기 이전에 항상 생각을 먼저 하고 진행을 합니다. 이해가 안되면 멈추거나 물어보고 하세요."*
@@ -208,6 +224,8 @@ git push -u origin <branch>
 **How to apply**: 모든 Edit/Write/Bash (destructive) 도구 호출 직전 1줄 자문 → 명확하면 진행, 불명하면 사용자 회신 대기. PR 본문 §"자율 판단 보고" (정책 3) 페어.
 
 ---
+
+<a id="정책-16"></a>
 
 ## 정책 16 신설 (2026-05-04 사이클 70 진입): 코드 단순화 default + 가독성 우선
 
@@ -259,6 +277,8 @@ git push -u origin <branch>
 
 ---
 
+<a id="정책-17-5번째-default"></a>
+
 ## 정책 17 5번째 default (사이클 92 신설): 누적 결함 정기 검증 의무
 
 사이클 89 정기 5+1 다중 에이전트 검증 (#349 Round 1+2+3) 시 사이클 74/84 누적 결함 발견 (E2E i18n hardcode 3건 + integration fixture sync 누락 1건) — 시간차 결함 패턴.
@@ -296,6 +316,8 @@ git push -u origin <branch>
 - 정책 8 진화 (3) cross-verify Round 2 단위 분포 실측 의무 페어
 
 ---
+
+<a id="정책-18"></a>
 
 ## 정책 18: Claude ↔ Codex 양방향 mutual 검증 의무 (사이클 93 신설)
 
