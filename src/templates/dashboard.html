@@ -65,7 +65,7 @@
   /* ── 범위 / 모드 토글 ────────────────────────────────────────── */
   .dash-range-toggle {
     display: inline-flex; gap: 1px; padding: 3px;
-    background: var(--bg-elevated, var(--card-bg, rgba(255,255,255,.04)));
+    background: var(--bg-card, rgba(255,255,255,.04));
     border-radius: 9px;
     border: 1px solid var(--border-subtle, rgba(255,255,255,.08));
   }
@@ -78,10 +78,10 @@
     transition: all .15s ease;
   }
   .dash-range-toggle a.active {
-    background: var(--bg-elevated);
+    background: var(--bg-elevated, rgba(255,255,255,.12));
     color: var(--text-1, var(--text-primary));
-    font-weight: 600;
-    box-shadow: 0 1px 2px rgba(0,0,0,.06);
+    font-weight: 700;
+    box-shadow: var(--shadow-sm, 0 1px 4px rgba(0,0,0,.15));
   }
 
   /* ── KPI 5 카드 — 프리미엄 스타일 + count-up ───────────────────
@@ -308,7 +308,7 @@
      Same design pattern as dash-range-toggle */
   .dash-mode-toggle {
     display: inline-flex; gap: 1px; padding: 3px;
-    background: var(--bg-elevated, var(--card-bg, rgba(255,255,255,.04)));
+    background: var(--bg-card, rgba(255,255,255,.04));
     border-radius: 9px;
     border: 1px solid var(--border-subtle, rgba(255,255,255,.08));
     margin-right: 8px;
@@ -322,10 +322,10 @@
     transition: all .15s ease;
   }
   .dash-mode-toggle a.active {
-    background: var(--bg-elevated);
+    background: var(--bg-elevated, rgba(255,255,255,.12));
     color: var(--text-1, var(--text-primary));
-    font-weight: 600;
-    box-shadow: 0 1px 2px rgba(0,0,0,.06);
+    font-weight: 700;
+    box-shadow: var(--shadow-sm, 0 1px 4px rgba(0,0,0,.15));
   }
 
   /* ── Insight 4 카드 grid (Phase 3 PR 3) ─────────────────────────
@@ -789,7 +789,7 @@
   </div>
 
   {# 자주 발생 이슈 / Phase 2 PR-6 — i18n #}
-  <div class="dash-issues-card reveal">
+  <div class="dash-issues-card">
     <h2 class="dash-section-title">{{ 'dashboard.frequent_issues' | i18n_args(locale | default('ko'), days=days) }}</h2>
     {% if frequent_issues %}
       <div class="dash-table-header">
@@ -824,7 +824,7 @@
 
   {# Phase 2 PR 1 — 자동 머지 실패 사유 분포 (운영 신호: unstable_ci 우세) / Phase 2 PR-6 — i18n #}
   {% if merge_failures %}
-  <div class="dash-issues-card reveal" style="margin-top: 16px;">
+  <div class="dash-issues-card" style="margin-top: 16px;">
     <h2 class="dash-section-title">{{ 'dashboard.merge_failures_title' | i18n_args(locale | default('ko'), days=days) }}</h2>
     {% for fail in merge_failures %}
     <div class="dash-issue-row">
