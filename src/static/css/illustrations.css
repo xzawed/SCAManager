@@ -33,7 +33,7 @@
  * tutorial — horizontal 3-step layout (1792x1024 ratio) */
 .illustration--tutorial {
   max-width: 100%;
-  margin: 0 0 var(--space-5);
+  margin: 0 auto var(--space-5);
 }
 
 /* 모바일 — hero 축소 / Mobile — shrink hero */
