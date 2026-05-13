@@ -106,9 +106,12 @@
   }
 
   /* 리포 행 — 호버 액센트 바 효과
-     Repo row — hover accent bar effect */
+     Repo row — hover accent bar effect
+     🔴 tr::before 방식은 Chromium이 phantom table-column으로 취급 → thead/tbody 컬럼 오정렬.
+     🔴 tr::before causes Chromium to insert phantom first column → thead/tbody column desync.
+     → first-child td의 inset box-shadow 방식으로 교체 (position:relative 불필요).
+     → Replaced with inset box-shadow on first td (no position:relative needed). */
   .repo-row {
-    position: relative;
     transition: background 0.15s;
   }
   .repo-row td {
@@ -119,22 +122,15 @@
   }
   .repo-row:last-child td { border-bottom: none; }
 
-  /* 왼쪽 액센트 바 (호버 시 노출)
-     Left accent bar (shown on hover) */
-  .repo-row::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 3px;
-    background: var(--accent);
-    transform: scaleY(0);
-    transform-origin: center;
-    transition: transform 0.15s;
-    border-radius: 0 2px 2px 0;
+  /* 왼쪽 액센트 바 — inset box-shadow (호버 시 노출)
+     Left accent bar — inset box-shadow (shown on hover) */
+  .repo-row td:first-child {
+    box-shadow: inset 3px 0 0 transparent;
+    transition: box-shadow 0.15s;
   }
-  .repo-row:hover::before { transform: scaleY(1); }
+  .repo-row:hover td:first-child {
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
   .repo-row:hover { background: var(--table-row-hover, transparent); }
 
   /* 리포 링크
