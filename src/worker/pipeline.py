@@ -173,11 +173,11 @@ def _resolve_review_language(repo_name: str) -> str:
         with SessionLocal() as db:
             repo = db.query(Repository).filter(Repository.full_name == repo_name).first()
             if repo and repo.user_id:
-                from src.models.user import User  # noqa: WPS433  (지연 import — circular 회피)
+                from src.models.user import User  # noqa: WPS433  # pylint: disable=import-outside-toplevel
                 user = db.query(User).filter(User.id == repo.user_id).first()
                 if user and user.preferred_language:
                     return user.preferred_language
-    except Exception as exc:  # noqa: BLE001  graceful fallback (운영 보호)
+    except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
         logger.warning(
             "_resolve_review_language failed for repo=%s: %s — falling back to default_locale",
             sanitize_for_log(repo_name), exc,

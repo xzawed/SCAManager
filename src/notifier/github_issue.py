@@ -27,7 +27,7 @@ def _bandit_high_issues(result: dict) -> list[dict]:
     return [i for i in issues if i.get("tool") == "bandit" and i.get("severity") == "HIGH"]
 
 
-def _build_issue_body(  # pylint: disable=too-many-locals
+def _build_issue_body(  # pylint: disable=too-many-locals,too-many-positional-arguments
     repo_name: str,
     commit_sha: str,
     analysis_id: int,
@@ -160,8 +160,8 @@ class _IssueNotifier:
 
     async def send(self, ctx: NotifyContext) -> None:
         """알림을 전송한다 (Phase 3 PR-11 — 3-layer fallback)."""
-        from src.database import SessionLocal  # noqa: WPS433
-        from src.notifier._language import resolve_notification_language  # noqa: WPS433
+        from src.database import SessionLocal  # noqa: WPS433  # pylint: disable=import-outside-toplevel
+        from src.notifier._language import resolve_notification_language  # noqa: WPS433  # pylint: disable=import-outside-toplevel
         with SessionLocal() as db:
             language = resolve_notification_language(db, config=ctx.config)
         await create_low_score_issue(

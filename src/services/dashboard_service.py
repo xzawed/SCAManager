@@ -452,7 +452,7 @@ def repo_insight_cards(
     Returns list of dicts with: repo_id, full_name, avg_score, grade,
     recurring_issue_count, score_trend, insights_url.
     """
-    from src.services.repo_insight_service import (  # noqa: PLC0415
+    from src.services.repo_insight_service import (  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
         repo_kpi,
         repo_recurring_issues,
     )
@@ -745,7 +745,7 @@ async def insight_narrative(  # pylint: disable=too-many-locals
     # `refresh=True` forces regen (user-explicit Refresh button).
     # Caching only when `user_id` set (admin/legacy paths bypass cache).
     if user_id is not None:
-        from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415
+        from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
         if refresh:
             insight_narrative_cache_repo.invalidate(db, user_id=user_id, days=days)
         else:
@@ -788,7 +788,7 @@ async def insight_narrative(  # pylint: disable=too-many-locals
     # Phase 2-B 🅑 — 성공 응답만 캐시 upsert (error/parse_error 는 재시도 필요)
     # Phase 2-B 🅑 — cache only success (error/parse_error need retry).
     if user_id is not None:
-        from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415
+        from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
         insight_narrative_cache_repo.upsert(
             db, user_id=user_id, days=days, response=response, now=_now,
         )
@@ -797,7 +797,7 @@ async def insight_narrative(  # pylint: disable=too-many-locals
 
 # ── Cycle 73 F2 — Security Mode (Code Scanning + Secret Scanning audit) ──
 # Cycle 73 F2 — Security mode: Code Scanning + Secret Scanning audit overview.
-def dashboard_security(
+def dashboard_security(  # pylint: disable=unused-argument
     db: Session, *, user_id: int | None = None,
 ) -> dict[str, Any]:
     """`/dashboard?mode=security` 카드 데이터 — F2 Phase 1 MVP (read-only).
@@ -807,7 +807,7 @@ def dashboard_security(
     """
     # 신규 import 는 함수 안에 배치 — 정책 16 default (모듈 import 영향 0)
     # Inline import — keeps top-level import surface minimal (policy 16 default).
-    from src.repositories import security_alert_log_repo  # noqa: PLC0415
+    from src.repositories import security_alert_log_repo  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     # 사용자별 격리: pending list 만 user_id 별 (audit 카운트는 전체 — admin 영역)
     # Per-user isolation: pending list filtered by user_id (counts admin-wide for audit).

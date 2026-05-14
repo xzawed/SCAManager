@@ -165,7 +165,7 @@ def _build_message(  # pylint: disable=too-many-positional-arguments,too-many-lo
     return truncate_message("\n".join(lines), TELEGRAM_MAX_MESSAGE_LENGTH)
 
 
-async def send_analysis_result(
+async def send_analysis_result(  # pylint: disable=too-many-arguments
     *,
     bot_token: str,
     chat_id: str,
@@ -212,8 +212,8 @@ class _TelegramNotifier:
         chat_id = (ctx.config.notify_chat_id if ctx.config else None) or settings.telegram_chat_id
         # Phase 3 PR-9 — 3-layer 사용자 언어 결정 (User → RepoConfig → settings.default_locale)
         # Phase 3 PR-9 — 3-layer language resolve (User → RepoConfig → settings.default_locale)
-        from src.database import SessionLocal  # noqa: WPS433  (지연 import)
-        from src.notifier._language import resolve_notification_language  # noqa: WPS433
+        from src.database import SessionLocal  # noqa: WPS433  # pylint: disable=import-outside-toplevel
+        from src.notifier._language import resolve_notification_language  # noqa: WPS433  # pylint: disable=import-outside-toplevel
         with SessionLocal() as db:
             language = resolve_notification_language(db, config=ctx.config)
         await send_analysis_result(

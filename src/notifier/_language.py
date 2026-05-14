@@ -17,7 +17,7 @@ Notification channel user-language resolver — 3-layer fallback (Phase 3 PR-9 �
 
 사용 패턴 (usage):
     from src.notifier._language import resolve_notification_language
-    lang = resolve_notification_language(db, repo_full_name=ctx.repo_name, config=ctx.config)
+    lang = resolve_notification_language(db, config=ctx.config)
     # → "ko" / "en" / "ja"
     msg = get_text("notifier.telegram.title", lang)
 
@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 def resolve_notification_language(
     db: Optional[Session] = None,
     *,
-    repo_full_name: Optional[str] = None,
+    _repo_full_name: Optional[str] = None,
     config: Any = None,
     telegram_user_id: Optional[str] = None,
 ) -> str:
@@ -48,7 +48,7 @@ def resolve_notification_language(
 
     Args:
         db: SQLAlchemy 세션 — User 조회 시 의무. None 시 layer 1 skip.
-        repo_full_name: 리포 full name (현재 unused — Layer 2 는 config 인자 직접 사용).
+        _repo_full_name: 리포 full name (현재 unused — Layer 2 는 config 인자 직접 사용).
         config: RepoConfigData (notification_language 필드 보유). None 시 layer 2 skip.
         telegram_user_id: Telegram 사용자 ID — User.preferred_language 조회 키.
             None 시 layer 1 skip (Telegram 미연결 사용자 — Discord/Slack/Email 등).
@@ -74,11 +74,11 @@ def resolve_notification_language(
     # Layer 1: User.preferred_language (Telegram-linked user)
     if db is not None and telegram_user_id:
         try:
-            from src.repositories import user_repo  # noqa: WPS433  (지연 import — circular 회피)
+            from src.repositories import user_repo  # noqa: WPS433  # pylint: disable=import-outside-toplevel
             user = user_repo.find_by_telegram_user_id(db, telegram_user_id)
             if user and user.preferred_language:
                 return user.preferred_language
-        except Exception as exc:  # noqa: BLE001 — graceful fallback (운영 보호)
+        except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
             logger.warning(
                 "Layer 1 (User.preferred_language) lookup failed: %s — fall through to Layer 2",
                 exc,

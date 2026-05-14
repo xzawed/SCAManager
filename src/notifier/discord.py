@@ -119,8 +119,8 @@ class _DiscordNotifier:
     async def send(self, ctx: NotifyContext) -> None:
         """알림을 전송한다 (Phase 3 PR-10 — 3-layer fallback)."""
         # 지연 import — circular 회피 (notifier._language → repositories → models)
-        from src.database import SessionLocal  # noqa: WPS433
-        from src.notifier._language import resolve_notification_language  # noqa: WPS433
+        from src.database import SessionLocal  # noqa: WPS433  # pylint: disable=import-outside-toplevel
+        from src.notifier._language import resolve_notification_language  # noqa: WPS433  # pylint: disable=import-outside-toplevel
         with SessionLocal() as db:
             language = resolve_notification_language(db, config=ctx.config)
         await send_discord_notification(
