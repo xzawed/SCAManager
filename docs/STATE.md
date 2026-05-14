@@ -2,11 +2,11 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-12 기준 — **UI 완전 리디자인 (#397) + SonarQube Quality Gate 복원 (#399)**: 4-테마(Dark Polar Aurora / Light Vercel / Pastel Dreamy / Catppuccin Mocha) + aurora orbs + 전페이지 애니메이션 + 글래스모피즘 카드 + 공유 admin.css 추출 (CPD 14%→<3% 해소)): 130+ PR #188~#399 — 누적 정책 본문 19건 + 메모리 30건 (활성 28 + deprecated 2). **#397**: 11개 HTML 템플릿 완전 재디자인 (CSS variable Full Migration + aurora + 애니메이션 + WCAG 44px). **#399**: `src/static/mockup-polar.html` sonar.exclusions 추가 + `_NONE_LABEL` 상수 추출 + `admin.css` 분리로 CPD 14.1% 해소 → Quality Gate OK 복원. 단위 2708 / 통합 129 / E2E 96 / pylint **9.94/10**
+## 현재 수치 (2026-05-14 기준 — **사이클 97**: P0 경로 하드코딩 수정 (#420) + 문서 정비 (#421) + Issue #408 기능 구현 (#423 — 네비게이션 진행 바 + CachedStaticFiles + N+1 쿼리 제거 + compute_score_kpi 공유 헬퍼 + CPD 0.0% 달성)): 130+ PR #188~#423 — 누적 정책 본문 19건 + 메모리 30건 (활성 28 + deprecated 2). 단위 2912 / 통합 129 / E2E 96 / pylint **10.00/10**
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **2708개** | pytest 9.0.3 — 사이클 73~75 +67 + 사이클 78~82 +114 (2122→2236) + 사이클 84 i18n 18 PR +473 누적 + **사이클 85 Sentry 완전 제거 -40** + **#375 일러스트 회귀 가드 +13** + **#397 UI 리디자인 +26** (form/mobile/sweep). **= 2708 collected** |
+| 단위 테스트 | **2912개** | pytest 9.0.3 — 사이클 73~75 +67 + 사이클 78~82 +114 (2122→2236) + 사이클 84 i18n 18 PR +473 누적 + **사이클 85 Sentry 완전 제거 -40** + **#375 일러스트 회귀 가드 +13** + **#397 UI 리디자인 +26** (form/mobile/sweep) + **사이클 96 #415 pylint +0** + **사이클 97 #423 +4** (CachedStaticFiles 2 + recurring_count 회귀가드 2). **= 2912 collected** |
 | 통합 테스트 | **129개** | tests/integration/ — 사이클 81 영역 🅑 모바일 Phase 1 MVP +34 + **사이클 84 i18n PR-18 smoke +11** (3 언어 × /login Cookie + HTML lang attr + default fallback + i18n metrics). **= 124 passed / 5 skipped / 0 failed** |
 | E2E 테스트 | **96개** | `make test-e2e` (Chromium Playwright) — Phase 3 PR 6 +7 + **사이클 84 i18n PR-16 +14** (3 언어 × 4 페이지 — login/overview/dashboard/settings + Cookie fallback + locale switch). **사이클 94 #372 (추정 수치 — 사용자 `make test-e2e` 검증 후 정정 영역)**: test_save_success ordering 트랩 차단 (`_reset_repo_config()` 헬퍼) → PASS 회복 + test_two_column UX 결정 영역 보류 (`@pytest.mark.skip`). **추정 = 95 passed / 1 skipped / 0 failed**. ⚠️ e2e ↔ tests/integration 동시 실행 금지 — `e2e/pytest.ini` 의도적 asyncio_mode 미설정, 분리 실행 default (`make test-e2e` vs CI command `pytest tests/`) |
 | SonarCloud Quality Gate | **OK** | #399 머지 후 복원 — CPD 14%→<3%, mockup 제외, _NONE_LABEL 상수화 |
@@ -52,7 +52,10 @@
 | `src/gate/native_automerge.py` | enable_or_fallback() — GraphQL `enablePullRequestAutoMerge` 우선 + REST `merge_pr` 폴백 (Tier 3 PR-A, 그룹 52) |
 | `src/gate/_merge_attempt_states.py` | MergeAttempt.state lifecycle 정규 상수 (LEGACY/ENABLED_PENDING_MERGE/ACTUALLY_MERGED/DISABLED_EXTERNALLY) — Phase 3 PR-B1 도입 |
 | `src/github_client/graphql.py` | GraphQL POST 래퍼 + `enablePullRequestAutoMerge` mutation + `EnableAutoMergeResult` 분류 + 5xx 자동 재시도 (Phase H PR-1B-2, `_GRAPHQL_*` 상수) |
-| `src/static/vendor/chart.umd.min.js` | Chart.js 4.4.0 UMD min vendoring (UI 감사 Step C) — CDN 차단/오프라인 환경에서 빈 차트 회피. `src/main.py` 의 StaticFiles `/static` mount 로 노출. 사용 페이지: repo_detail / analysis_detail / dashboard (insights_me 폐기 — 그룹 60 Phase 1 PR 2). 운영 가이드: `docs/runbooks/static-assets.md` (PR-D4) |
+| `src/static/vendor/chart.umd.min.js` | Chart.js 4.4.0 UMD min vendoring (UI 감사 Step C) — CDN 차단/오프라인 환경에서 빈 차트 회피. `src/main.py` 의 CachedStaticFiles (`Cache-Control: public, max-age=31536000, immutable`) mount 로 노출. 사용 페이지: repo_detail / analysis_detail / dashboard. 운영 가이드: `docs/runbooks/static-assets.md` (PR-D4) |
+| `src/main.py` `CachedStaticFiles` | `StaticFiles` 서브클래스 — HTTP 200 응답에 `Cache-Control: public, max-age=31536000, immutable` 자동 주입 (사이클 97 #423) |
+| `src/services/repo_insight_service.py` `compute_score_kpi` | 공유 헬퍼 — cur/prev 분석 리스트 → avg_score/score_delta/grade 계산. `repo_kpi` + `dashboard_service.repo_insight_cards` 양쪽에서 재사용 (CPD 제거 목적, 사이클 97 #423) |
+| `src/services/dashboard_service.py` `_fetch_analyses_for_window` / `_group_analyses_by_repo` | N+1 제거 배치 헬퍼 — repo_ids IN 절 단일 쿼리 + per-repo cap 그룹화 (사이클 97 #423) |
 | `tests/conftest.py` | 환경변수 주입 + _webhook_secret_cache autouse 클리어 |
 
 ## 작업 이력
@@ -61,3 +64,4 @@
 - **사이클 62~92** (2026-05-03 ~ 2026-05-11): [docs/cycle-history.md](cycle-history.md)
 - **사이클 95** (2026-05-14): 문서 정비 P2 (#410~#413) — testing.md SessionLocal 경고 추가 / architecture.md mockup-polar.html 항목 / AGENTS.md 중복 표 → 링크 3건 / STATE.md 그룹 13-61 아카이브 / CLAUDE.md HTML 주석 7블록 + line 361 압축 (59줄 절감).
 - **사이클 96** (2026-05-14): pylint 10.00/10 달성 (#415) — C0415 17건 inline disable + C0301/R0913/R0917/W0718/W0613/E0401 처리. PR-D5 (#417): CLAUDE.md HTML 블록 3·5 → docs/policies/active.md 이전 (#정책-17-why-how + #정책-5-phase-종료-cross-reference 신설).
+- **사이클 97** (2026-05-14): P0 경로 하드코딩 수정 (#420) — `.codex/hooks.json` + `doc_review_gate.py` × 2 + `.claude/settings.json` + `CLAUDE.md` `f:/` → `d:/` 전수 교체. 문서 정비 (#421) — AGENTS.md 완료 6-step 정정 + `.codex/rules/deploy.md` nixpacks exit127 경고 추가. Issue #408 기능 구현 (#423) — MPA 네비게이션 진행 바 (`#page-progress` CSS+JS IIFE, 같은 경로 앵커 가드) + `CachedStaticFiles` (1년 캐시 immutable) + `dashboard_service.repo_insight_cards` N+1 → 배치 IN 쿼리 2건 (`_fetch_analyses_for_window` + `_group_analyses_by_repo`) + `compute_score_kpi` 공유 헬퍼 추출 (CPD 5.5%→0.0%) + `recurring_issue_count` count≥2 수정. 단위 테스트 2708→2912.
