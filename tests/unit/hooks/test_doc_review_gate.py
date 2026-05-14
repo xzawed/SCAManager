@@ -51,13 +51,13 @@ class TestClassifyFileGrade:
 
     def test_absolute_windows_path_normalized(self):
         grade = classify_file_grade(
-            "f:/DEVELOPMENT/SOURCE/CLAUDE/SCAManager/CLAUDE.md"
+            "d:/Source/SCAManager/CLAUDE.md"
         )
         assert grade == "critical"
 
     def test_backslash_path_normalized(self):
         grade = classify_file_grade(
-            "f:\\DEVELOPMENT\\SOURCE\\CLAUDE\\SCAManager\\.claude\\agents\\test-writer.md"
+            "d:\\Source\\SCAManager\\.claude\\agents\\test-writer.md"
         )
         assert grade == "critical"
 
