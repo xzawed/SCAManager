@@ -719,6 +719,11 @@
   var pointRadii   = TREND.map(function(t) { return t.id === CURRENT_ID ? 7 : 3; });
   var pointBorders = TREND.map(function(t) { return t.id === CURRENT_ID ? bgBase : accent; });
 
+  // 동일 canvas 재사용 전 기존 Chart 인스턴스 제거 (hx-boost 재방문 대비)
+  // Destroy existing Chart instance before reuse (guard for hx-boost re-navigation)
+  var _existing = (window.Chart && Chart.getChart) ? Chart.getChart(canvas) : null;
+  if (_existing) _existing.destroy();
+
   new Chart(canvas, {
     type: 'line',
     data: {
