@@ -78,7 +78,10 @@ def _build_html_body(  # pylint: disable=too-many-positional-arguments,too-many-
   <div style="border:1px solid #e2e8f0;border-top:none;padding:20px;border-radius:0 0 8px 8px">
     <p style="font-size:20px;margin:0 0 16px"><b>{total_label}</b> ({grade_label})</p>
     <table style="width:100%;border-collapse:collapse;font-size:14px">
-      <thead><tr style="background:#f8fafc"><th style="padding:4px 8px;text-align:left">{escape(th_item)}</th><th style="padding:4px 8px;text-align:right">{escape(th_score)}</th></tr></thead>
+      <thead><tr style="background:#f8fafc">
+        <th style="padding:4px 8px;text-align:left">{escape(th_item)}</th>
+        <th style="padding:4px 8px;text-align:right">{escape(th_score)}</th>
+      </tr></thead>
       <tbody>{rows}</tbody>
     </table>
     {ai_section}
@@ -158,8 +161,8 @@ class _EmailNotifier:
 
     async def send(self, ctx: NotifyContext) -> None:
         """알림을 전송한다 (Phase 3 PR-10 — 3-layer fallback)."""
-        from src.database import SessionLocal  # noqa: WPS433
-        from src.notifier._language import resolve_notification_language  # noqa: WPS433
+        from src.database import SessionLocal  # noqa: WPS433  # pylint: disable=import-outside-toplevel
+        from src.notifier._language import resolve_notification_language  # noqa: WPS433  # pylint: disable=import-outside-toplevel
         with SessionLocal() as db:
             language = resolve_notification_language(db, config=ctx.config)
         await send_email_notification(

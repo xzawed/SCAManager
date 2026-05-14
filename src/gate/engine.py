@@ -113,8 +113,8 @@ async def _run_review_comment(
     try:
         # Phase 3 PR-11 — 3-layer 사용자 언어 결정 (User → RepoConfig → settings.default_locale)
         # Phase 3 PR-11 — 3-layer language resolve
-        from src.database import SessionLocal  # noqa: WPS433
-        from src.notifier._language import resolve_notification_language  # noqa: WPS433
+        from src.database import SessionLocal  # noqa: WPS433  # pylint: disable=import-outside-toplevel
+        from src.notifier._language import resolve_notification_language  # noqa: WPS433  # pylint: disable=import-outside-toplevel
         with SessionLocal() as db:
             language = resolve_notification_language(db, config=config)
         await post_pr_comment(
@@ -580,8 +580,8 @@ async def _run_auto_merge_legacy(  # pylint: disable=too-many-arguments,too-many
             try:
                 # Phase 3 PR-11 — 3-layer 사용자 언어 결정 (User → RepoConfig → settings.default_locale)
                 # Phase 3 PR-11 — 3-layer language resolve
-                from src.database import SessionLocal  # noqa: WPS433
-                from src.notifier._language import resolve_notification_language  # noqa: WPS433
+                from src.database import SessionLocal  # noqa: WPS433  # pylint: disable=import-outside-toplevel
+                from src.notifier._language import resolve_notification_language  # noqa: WPS433  # pylint: disable=import-outside-toplevel
                 with SessionLocal() as db_lang:
                     language = resolve_notification_language(db_lang, config=config)
                 await create_merge_failure_issue(

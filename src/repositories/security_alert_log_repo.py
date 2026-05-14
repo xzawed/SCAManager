@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from src.models.security_alert_log import SecurityAlertProcessLog
 
 
-def upsert_alert_log(
+def upsert_alert_log(  # pylint: disable=too-many-arguments
     db: Session,
     *,
     repo_id: int,
