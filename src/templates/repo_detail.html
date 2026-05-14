@@ -484,8 +484,12 @@
     });
   }
 
-  // 테마 변경 시 마지막 필터 상태 데이터로 재빌드
-  document.addEventListener('themechange', function() { buildChart(); });
+  // hx-boost 재방문 시 리스너 누적 방지 — 최초 1회만 등록
+  // Guard against listener accumulation on hx-boost re-navigation — register only once
+  if (!document._repoThemeListener) {
+    document._repoThemeListener = true;
+    document.addEventListener('themechange', function() { buildChart(); });
+  }
 </script>
 <script>
 // ── 데이터 주입 ──────────────────────────────────────

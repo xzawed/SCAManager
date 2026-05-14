@@ -957,7 +957,12 @@
 
   buildDashChart();
   // base.html dispatchEvent('themechange') ↔ dashboard 차트 재빌드 (UI 감사 Step C 패턴 통일)
-  document.addEventListener('themechange', buildDashChart);
+  // hx-boost 재방문 시 리스너 누적 방지 — 최초 1회만 등록
+  // Guard against listener accumulation on hx-boost re-navigation — register only once
+  if (!document._dashThemeListener) {
+    document._dashThemeListener = true;
+    document.addEventListener('themechange', buildDashChart);
+  }
 </script>
 {% endif %}
 
