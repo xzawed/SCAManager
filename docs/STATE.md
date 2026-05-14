@@ -59,3 +59,4 @@
 
 - **그룹 13~61** (2026-04 ~ 2026-05-02): [docs/_archive/STATE-groups-13-61-2026-05.md](_archive/STATE-groups-13-61-2026-05.md)
 - **사이클 62~92** (2026-05-03 ~ 2026-05-11): [docs/cycle-history.md](cycle-history.md)
+- **사이클 95** (2026-05-14): 문서 정비 P2 (#410~#413) — testing.md SessionLocal 경고 추가 / architecture.md mockup-polar.html 항목 / AGENTS.md 중복 표 → 링크 3건 / STATE.md 그룹 13-61 아카이브 / CLAUDE.md HTML 주석 7블록 + line 361 압축 (59줄 절감). PR-D5 예정: 블록 3·5 docs/policies 이전 후 제거.
