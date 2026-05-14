@@ -22,4 +22,3 @@ paths:
 - **get_repo_or_404**: `src/api/deps.py::get_repo_or_404(repo_name, db)` 사용.
 - 🔴 **5xx 자동 재시도 — 신뢰 API 한정**: GitHub/Telegram/Anthropic/Railway 등 신뢰 API 의 일시 5xx + transient network error 는 자동 재시도 (exponential backoff, max 3회). **외부 untrusted webhook (Discord/Slack/n8n/custom_webhook) 는 재시도 금지** — idempotency 보장 불가, 중복 발송 부작용.
 - 🔴 **PyGithub 등 sync I/O 는 `asyncio.to_thread` wrap 의무**: async 컨텍스트 (BackgroundTask, lifespan 등) 내부에서 sync HTTP 클라이언트 (PyGithub, requests) 호출 시 반드시 `asyncio.to_thread(fn, ...)` 로 wrap. 직접 호출 시 이벤트 루프 블록 → 다른 webhook/cron 정체.
-- 🔴 **race-recovery 시그널 컨벤션**: 파이프라인 내 race recovery 분기는 `result_dict is None` 을 시그널로 사용. 호출자는 `if result_dict is None: skip notify` 로 명시적 처리.
