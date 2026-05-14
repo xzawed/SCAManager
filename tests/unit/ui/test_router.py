@@ -43,14 +43,20 @@ def test_overview_shows_landing_when_not_logged_in():
     """비로그인 상태에서 / 접근 시 200 랜딩 페이지 반환 (302 /login 아님).
     Unauthenticated GET / returns 200 landing page (no longer 302 /login redirect).
     """
+    def _restore_get_current_user():
+        return _test_current_user
+
+    def _restore_require_login():
+        return _test_user
+
     app.dependency_overrides.pop(require_login, None)
     app.dependency_overrides[get_current_user] = lambda: None
     try:
         r = client.get("/", follow_redirects=False)
         assert r.status_code == 200, f"랜딩 페이지 200 기대, 실제: {r.status_code}"
     finally:
-        app.dependency_overrides[get_current_user] = lambda: _test_current_user
-        app.dependency_overrides[require_login] = lambda: _test_user
+        app.dependency_overrides[get_current_user] = _restore_get_current_user
+        app.dependency_overrides[require_login] = _restore_require_login
 
 
 # ── 로그인 상태 기존 테스트 ──
