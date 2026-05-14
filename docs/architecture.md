@@ -9,6 +9,7 @@ src/
 ├── main.py                     # FastAPI 앱, lifespan(DB 마이그레이션 + http_client), 전체 라우터 등록 + CachedStaticFiles `/static` mount (Cache-Control immutable 1년) + 미들웨어 LIFO 등록 (SecurityHeaders → RLSSessionMiddleware → SessionMiddleware → LocaleMiddleware)
 ├── static/
 │   ├── vendor/chart.umd.min.js  # Chart.js 4.4.0 UMD min vendoring
+│   ├── vendor/htmx.min.js       # HTMX 1.9.12 hx-boost 네비게이션 (전체 페이지 리로드 제거)
 │   ├── manifest.json            # PWA manifest (Cycle 81 PR-A)
 │   ├── icons/icon-{192,512}.svg # PWA maskable icons
 │   ├── css/{tokens,themes}.css  # Foundation 디자인 토큰 + 4-테마 정의 (Cycle 93 Step 1, base.html 외부화)
