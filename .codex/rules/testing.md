@@ -40,6 +40,7 @@ os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123456")
 - `func.count/avg/min/max` 호출 시 `# pylint: disable=not-callable` 인라인 주석 필수
 - 기존 hot-path 함수 시그니처 변경 금지 (`find_by_full_name` 등) — 신규 함수로 분리
 - 🔴 TDD Red 단계에서 "기존 테스트가 왜 통과하는가" 자문 의무 (fixture 우회 가능성 확인)
+- 🔴 **PARITY GUARD 패턴**: 두 모듈에 의도적으로 동일 함수가 있는 경우, 양쪽 docstring 에 `🔴 **PARITY GUARD**` 표지 + 변경 시 동시 수정 의무 명시 + parity 회귀 가드 테스트 (시그니처 + 행동 동등성) 의무.
 
 ## pylint R0914 결정 트리
 
