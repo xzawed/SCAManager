@@ -13,7 +13,7 @@ from pathlib import Path
 # File grade classification
 
 _PROJECT_PREFIXES = (
-    "f:/development/source/claude/scamanager/",
+    "d:/source/scamanager/",
 )
 
 _CRITICAL = [
