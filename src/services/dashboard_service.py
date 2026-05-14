@@ -537,16 +537,8 @@ def repo_insight_cards(  # pylint: disable=too-many-locals
 
         prev = prev_by_repo.get(repo_id, [])
 
-        cur_scores = [a.score for a in cur if a.score is not None]
-        prev_scores = [a.score for a in prev if a.score is not None]
-        avg_score = round(sum(cur_scores) / len(cur_scores), 1) if cur_scores else None
-        prev_avg = round(sum(prev_scores) / len(prev_scores), 1) if prev_scores else None
-        score_delta = (
-            round(avg_score - prev_avg, 1)
-            if (avg_score is not None and prev_avg is not None)
-            else None
-        )
-        grade = calculate_grade(int(avg_score)) if avg_score is not None else "?"
+        from src.services.repo_insight_service import compute_score_kpi  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+        avg_score, score_delta, grade = compute_score_kpi(cur, prev)
 
         # 이슈 빈도 카운트 (recurring 이슈 수)
         # Count recurring issues

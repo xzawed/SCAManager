@@ -51,6 +51,26 @@ def _fetch_analyses(
     )
 
 
+def compute_score_kpi(
+    cur: list,
+    prev: list,
+) -> tuple[float | None, float | None, str]:
+    """평균점수/score_delta/등급 계산 공유 헬퍼.
+    Shared helper: compute avg_score, score_delta, grade from two analysis lists.
+    """
+    cur_scores = [a.score for a in cur if a.score is not None]
+    prev_scores = [a.score for a in prev if a.score is not None]
+    avg_score = round(sum(cur_scores) / len(cur_scores), 1) if cur_scores else None
+    prev_avg = round(sum(prev_scores) / len(prev_scores), 1) if prev_scores else None
+    score_delta = (
+        round(avg_score - prev_avg, 1)
+        if (avg_score is not None and prev_avg is not None)
+        else None
+    )
+    grade = calculate_grade(int(avg_score)) if avg_score is not None else "?"
+    return avg_score, score_delta, grade
+
+
 def repo_kpi(  # pylint: disable=too-many-locals
     db: Session, repo_id: int, days: int = 30, now: datetime | None = None
 ) -> dict[str, Any]:
@@ -77,16 +97,7 @@ def repo_kpi(  # pylint: disable=too-many-locals
         ).all()
     )
 
-    cur_scores = [a.score for a in cur if a.score is not None]
-    prev_scores = [a.score for a in prev if a.score is not None]
-    avg_score = round(sum(cur_scores) / len(cur_scores), 1) if cur_scores else None
-    prev_avg = round(sum(prev_scores) / len(prev_scores), 1) if prev_scores else None
-    score_delta = (
-        round(avg_score - prev_avg, 1)
-        if (avg_score is not None and prev_avg is not None)
-        else None
-    )
-    grade = calculate_grade(int(avg_score)) if avg_score is not None else "?"
+    avg_score, score_delta, grade = compute_score_kpi(cur, prev)
 
     # 이슈 빈도 카운트
     # Issue frequency count
