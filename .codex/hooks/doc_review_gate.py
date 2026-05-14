@@ -18,6 +18,7 @@ _PROJECT_PREFIXES = (
 
 _CRITICAL = [
     r"^CLAUDE\.md$",
+    r"^AGENTS\.md$",
     r"^docs/STATE\.md$",
     r"^\.claude/settings\.json$",
     r"^\.claude/agents/[^/]+\.md$",
