@@ -20,3 +20,5 @@ paths:
 - **Webhook 서명 실패**: `HTTPException(401)` 반환 — 200 OK 금지.
 - **FastAPI Annotated 패턴**: `Annotated[Type, Depends(...)]` / `Annotated[str | None, Header()] = None` 형식.
 - **get_repo_or_404**: `src/api/deps.py::get_repo_or_404(repo_name, db)` 사용.
+- 🔴 **5xx 자동 재시도 — 신뢰 API 한정**: GitHub/Telegram/Anthropic/Railway 등 신뢰 API 의 일시 5xx + transient network error 는 자동 재시도 (exponential backoff, max 3회). **외부 untrusted webhook (Discord/Slack/n8n/custom_webhook) 는 재시도 금지** — idempotency 보장 불가, 중복 발송 부작용.
+- 🔴 **PyGithub 등 sync I/O 는 `asyncio.to_thread` wrap 의무**: async 컨텍스트 (BackgroundTask, lifespan 등) 내부에서 sync HTTP 클라이언트 (PyGithub, requests) 호출 시 반드시 `asyncio.to_thread(fn, ...)` 로 wrap. 직접 호출 시 이벤트 루프 블록 → 다른 webhook/cron 정체.
