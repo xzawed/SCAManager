@@ -117,3 +117,50 @@ class TestRepoInsightCards:
 
         result = repo_insight_cards(db, days=30, user_id=user.id)
         assert len(result) <= 10
+
+    def test_recurring_issue_count_requires_two_or_more_occurrences(self, db, user):
+        """recurring_issue_count는 count >= 2인 이슈만 카운트한다.
+
+        recurring_issue_count only counts issues that appear >= 2 times.
+        """
+        from src.services.dashboard_service import repo_insight_cards
+
+        r = _make_repo(db, "owner/test-recur", user.id)
+        # "issue-once" 1회 (recurring 아님), "issue-twice" 2회 (recurring)
+        # "issue-once" appears once (not recurring), "issue-twice" appears twice (recurring)
+        _make_analysis(db, r.id, 80, offset_hours=1, result={
+            "issues": [
+                {"message": "issue-once", "category": "code_quality", "tool": "pylint"},
+                {"message": "issue-twice", "category": "code_quality", "tool": "pylint"},
+            ]
+        })
+        _make_analysis(db, r.id, 75, offset_hours=2, result={
+            "issues": [
+                {"message": "issue-twice", "category": "code_quality", "tool": "pylint"},
+            ]
+        })
+
+        cards = repo_insight_cards(db, days=30, user_id=user.id)
+        assert len(cards) == 1
+        # "issue-twice" 만 카운트 = 1 / Only "issue-twice" counts = 1
+        assert cards[0]["recurring_issue_count"] == 1
+
+    def test_recurring_issue_count_zero_when_all_single_occurrence(self, db, user):
+        """모든 이슈가 1회씩만 등장하면 recurring_issue_count == 0.
+
+        recurring_issue_count is 0 when all issues appear only once.
+        """
+        from src.services.dashboard_service import repo_insight_cards
+
+        r = _make_repo(db, "owner/test-single", user.id)
+        _make_analysis(db, r.id, 80, offset_hours=1, result={
+            "issues": [
+                {"message": "issue-a", "category": "code_quality", "tool": "pylint"},
+                {"message": "issue-b", "category": "code_quality", "tool": "pylint"},
+            ]
+        })
+
+        cards = repo_insight_cards(db, days=30, user_id=user.id)
+        assert len(cards) == 1
+        # 각 이슈가 1회만 등장 → recurring 없음 / Each issue appears once → no recurring
+        assert cards[0]["recurring_issue_count"] == 0

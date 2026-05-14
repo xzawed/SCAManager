@@ -438,7 +438,44 @@ def feedback_status(db: Session, *, threshold: int = 10) -> dict[str, Any]:
 # ─── 0031: Per-repo insight cards (dashboard section) ────────────────────────
 
 
-def repo_insight_cards(
+def _fetch_analyses_for_window(
+    db: Session,
+    repo_ids: list[int],
+    start: datetime,
+    end: datetime,
+    limit: int,
+    *,
+    end_inclusive: bool = False,
+) -> list[Analysis]:
+    """기간 내 배치 분석 조회 헬퍼. / Batch-fetch analyses for a time window."""
+    end_filter = (Analysis.created_at <= end) if end_inclusive else (Analysis.created_at < end)
+    return list(
+        db.scalars(
+            select(Analysis)
+            .where(Analysis.repo_id.in_(repo_ids))
+            .where(Analysis.created_at >= start)
+            .where(end_filter)
+            .where(Analysis.result.isnot(None))
+            .order_by(Analysis.created_at.desc())
+            .limit(limit)
+        ).all()
+    )
+
+
+def _group_analyses_by_repo(
+    analyses: list[Analysis],
+    cap: int,
+) -> dict[int, list[Analysis]]:
+    """repo_id 별 분리 + per-repo 상한 적용. / Group analyses by repo_id with per-repo cap."""
+    by_repo: dict[int, list[Analysis]] = {}
+    for a in analyses:
+        bucket = by_repo.setdefault(a.repo_id, [])
+        if len(bucket) < cap:
+            bucket.append(a)
+    return by_repo
+
+
+def repo_insight_cards(  # pylint: disable=too-many-locals
     db: Session,
     days: int = 30,
     *,
@@ -449,14 +486,12 @@ def repo_insight_cards(
 
     Per-repo insight card summary for the dashboard section (max 10 repos).
 
+    N+1 개선 (Issue #408): 리포별 개별 쿼리 대신 배치 조회 (2 쿼리 — current/previous window).
+    N+1 fix (Issue #408): batch query for all repos instead of per-repo individual queries.
+
     Returns list of dicts with: repo_id, full_name, avg_score, grade,
     recurring_issue_count, score_trend, insights_url.
     """
-    from src.services.repo_insight_service import (  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
-        repo_kpi,
-        repo_recurring_issues,
-    )
-
     _now = now or datetime.now(timezone.utc)
 
     # 사용자 소유 리포 조회 (legacy NULL 포함)
@@ -470,24 +505,62 @@ def repo_insight_cards(
     if not repos:
         return []
 
-    # 각 리포별 요약 집계
-    # Aggregate summary per repo
+    repo_ids = [r.id for r in repos]
+    repo_map = {r.id: r for r in repos}
+    since = _now - timedelta(days=days)
+    prev_since = _now - timedelta(days=days * 2)
+    prev_until = since
+
+    # 리포당 최대 분석 건수 상한 (Python-side 적용)
+    # Per-repo analysis cap applied in Python after batch fetch
+    max_per_repo = 30
+
+    # 현재/이전 기간 분석 배치 조회 후 repo_id 별 그룹화
+    # Batch-fetch current and previous window analyses, then group by repo_id
+    batch_limit = len(repo_ids) * max_per_repo
+    cur_by_repo = _group_analyses_by_repo(
+        _fetch_analyses_for_window(db, repo_ids, since, _now, batch_limit, end_inclusive=True),
+        max_per_repo,
+    )
+    prev_by_repo = _group_analyses_by_repo(
+        _fetch_analyses_for_window(db, repo_ids, prev_since, prev_until, batch_limit),
+        max_per_repo,
+    )
+
+    # 각 리포별 요약 집계 (DB 쿼리 없이 Python-side 처리)
+    # Aggregate per-repo summary using pre-loaded analyses (no DB calls in loop)
     cards = []
-    for repo in repos:
-        kpi = repo_kpi(db, repo.id, days, now=_now)
-        if kpi["analysis_count"] == 0:
+    for repo_id, repo in repo_map.items():
+        cur = cur_by_repo.get(repo_id, [])
+        if not cur:
             continue  # 해당 기간 내 분석 없는 리포 제외 / Skip repos with no analyses in window
 
-        recurring = repo_recurring_issues(db, repo.id, days, n=20, now=_now)
-        recurring_count = len(recurring)
+        prev = prev_by_repo.get(repo_id, [])
 
-        trend = _score_trend(kpi["score_delta"])
+        from src.services.repo_insight_service import compute_score_kpi  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+        avg_score, score_delta, grade = compute_score_kpi(cur, prev)
+
+        # 이슈 빈도 카운트 (recurring 이슈 수)
+        # Count recurring issues
+        issue_counter: dict[str, int] = {}
+        for a in cur:
+            for issue in (a.result or {}).get("issues", []):
+                if not isinstance(issue, dict):
+                    continue
+                key = issue.get("message") or issue.get("code")
+                if key:
+                    issue_counter[key] = issue_counter.get(key, 0) + 1
+        # count >= 2인 항목만 recurring으로 집계 (1회만 등장한 이슈는 제외)
+        # Count only issues appearing >= 2 times (single-occurrence issues excluded)
+        recurring_count = sum(1 for cnt in issue_counter.values() if cnt >= 2)
+
+        trend = _score_trend(score_delta)
 
         cards.append({
-            "repo_id": repo.id,
+            "repo_id": repo_id,
             "full_name": repo.full_name,
-            "avg_score": kpi["avg_score"],
-            "grade": kpi["grade"],
+            "avg_score": avg_score,
+            "grade": grade,
             "recurring_issue_count": recurring_count,
             "score_trend": trend,
             "insights_url": f"/repos/{repo.full_name}/insights",

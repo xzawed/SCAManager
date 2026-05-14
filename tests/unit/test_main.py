@@ -299,3 +299,31 @@ def test_static_missing_file_returns_404(client):
     """존재하지 않는 static 자원은 404 반환 (graceful)."""
     response = client.get("/static/vendor/nonexistent.js")
     assert response.status_code == 404
+
+
+# --- Issue #408 G1: CachedStaticFiles Cache-Control 회귀 가드 ---
+# 정적 자원 응답에 장기 캐시 헤더가 포함되는지 확인
+# Regression guard: static assets must include long-term Cache-Control header
+
+def test_static_file_has_cache_control_immutable(client):
+    """200 응답에 `public, max-age=31536000, immutable` Cache-Control 헤더가 포함된다.
+    Verify CachedStaticFiles adds 1-year immutable Cache-Control on 200 responses.
+
+    회귀 위험: src/main.py 의 CachedStaticFiles 가 StaticFiles 로 되돌아갈 때 차단.
+    Regression guard: blocks downgrade from CachedStaticFiles back to plain StaticFiles.
+    """
+    response = client.get("/static/vendor/chart.umd.min.js")
+    assert response.status_code == 200
+    cc = response.headers.get("cache-control", "")
+    assert "public" in cc, f"Cache-Control 에 'public' 없음: {cc!r}"
+    assert "max-age=31536000" in cc, f"Cache-Control 에 'max-age=31536000' 없음: {cc!r}"
+    assert "immutable" in cc, f"Cache-Control 에 'immutable' 없음: {cc!r}"
+
+
+def test_static_404_no_cache_control_immutable(client):
+    """404 응답에는 장기 캐시 헤더를 붙이지 않는다.
+    Verify CachedStaticFiles does NOT add immutable Cache-Control on 404 responses."""
+    response = client.get("/static/vendor/nonexistent.js")
+    assert response.status_code == 404
+    cc = response.headers.get("cache-control", "")
+    assert "immutable" not in cc, f"404 응답에 immutable 헤더가 붙으면 안 됨: {cc!r}"

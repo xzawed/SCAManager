@@ -3,6 +3,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, Request, Response
 from fastapi.staticfiles import StaticFiles
@@ -161,11 +162,26 @@ app.add_middleware(
     same_site="lax",
     max_age=60 * 60 * 24 * 7,  # 7 days
 )
+
+
+# 정적 파일 장기 캐시 — 불변 에셋(CSS/JS/이미지)에 1년 Cache-Control 헤더 추가
+# Long-term cache for static assets — adds 1-year Cache-Control header for immutable files
+class CachedStaticFiles(StaticFiles):
+    """1년 Cache-Control 헤더를 200 응답에 추가한다.
+    Adds a 1-year Cache-Control header to 200 responses for immutable static assets."""
+
+    async def get_response(self, path: str, scope: Any) -> Response:
+        response = await super().get_response(path, scope)
+        if response.status_code == 200:
+            response.headers["cache-control"] = "public, max-age=31536000, immutable"
+        return response
+
+
 # Step C (UI 감사): Chart.js vendoring 정적 마운트 — CDN 차단/오프라인 시 빈 차트 회피
 # Step C: vendored Chart.js for offline/CDN-blocked environments (avoid empty chart frames)
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 if _STATIC_DIR.exists():
-    app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+    app.mount("/static", CachedStaticFiles(directory=str(_STATIC_DIR)), name="static")
 
 app.include_router(auth_router)
 app.include_router(webhook_router)

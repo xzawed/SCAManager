@@ -585,6 +585,23 @@
     nav { z-index: 100; }
     .container { position: relative; z-index: 1; }
 
+    /* ── 페이지 네비게이션 로딩 프로그레스 바 / Page navigation loading progress bar ─── */
+    #page-progress {
+      position: fixed;
+      top: 56px; /* nav height */
+      left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      transform-origin: left;
+      transform: scaleX(0);
+      opacity: 0;
+      z-index: 99;
+      transition: transform 0.1s var(--ease-out-expo), opacity 0.2s;
+    }
+    #page-progress.is-loading {
+      opacity: 1;
+    }
+
     /* ── Page animations ──────────────────────────────────────────────────── */
     /* 페이지 전환 + 탭/스크롤 reveal + 뱃지/모달/토스트 애니메이션 키프레임
        Page transition + tab/scroll reveal + badge/modal/toast animation keyframes */
@@ -706,6 +723,8 @@
     </div>
     {% endif %}
   </nav>
+  <!-- 네비게이션 로딩 프로그레스 바 / Navigation loading progress bar -->
+  <div id="page-progress"></div>
   <div class="container">{% block content %}{% endblock %}</div>
   {% block scripts %}{% endblock %}
   <script>
@@ -905,6 +924,59 @@
       });
       io2.observe(el);
     });
+
+    // 네비게이션 로딩 피드백 / Navigation loading feedback
+    // fake progress 0→70% → beforeunload 100% → pageshow reset
+    (function() {
+      var bar = document.getElementById('page-progress');
+      if (!bar) return;
+      var _raf, _pct = 0;
+
+      function _startProgress() {
+        _pct = 0;
+        bar.classList.add('is-loading');
+        bar.style.transform = 'scaleX(0)';
+        _raf = requestAnimationFrame(_tick);
+      }
+      function _tick() {
+        _pct = Math.min(_pct + (70 - _pct) * 0.04, 70);
+        bar.style.transform = 'scaleX(' + (_pct / 100) + ')';
+        _raf = requestAnimationFrame(_tick);
+      }
+      function _finishProgress() {
+        cancelAnimationFrame(_raf);
+        bar.style.transform = 'scaleX(1)';
+        setTimeout(function() { bar.classList.remove('is-loading'); }, 200);
+      }
+      function _resetProgress() {
+        cancelAnimationFrame(_raf);
+        bar.classList.remove('is-loading');
+        bar.style.transform = 'scaleX(0)';
+      }
+
+      document.addEventListener('click', function(e) {
+        var a = e.target.closest('a[href]');
+        if (!a) return;
+        try {
+          var url = new URL(a.href, location.href);
+          if (url.origin !== location.origin) return;
+          // 동일 페이지 앵커 링크는 progress bar 트리거 안 함
+          // Skip same-page anchor links to avoid triggering the progress bar
+          if (url.pathname === location.pathname && url.search === location.search) return;
+        } catch (err) { return; }
+        if (a.target === '_blank') return;
+        _startProgress();
+      });
+
+      document.addEventListener('submit', function(e) {
+        if (!e.defaultPrevented) _startProgress();
+      });
+
+      window.addEventListener('beforeunload', _finishProgress);
+      window.addEventListener('pageshow', function(e) {
+        if (e.persisted) _resetProgress();
+      });
+    })();
 
     // Chart.js 전역 애니메이션 기본값 (차트 라이브러리가 로드된 경우에만)
     // Chart.js global animation defaults (only if chart library is loaded)
