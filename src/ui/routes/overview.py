@@ -1,4 +1,9 @@
-"""Overview 페이지 — `GET /` 전체 리포 현황 대시보드."""
+"""Overview 페이지 — `GET /` 전체 리포 현황 대시보드.
+Overview page — `GET /` full repo status dashboard.
+
+비인증 사용자에게는 랜딩 페이지를 보여준다.
+Shows landing page to unauthenticated visitors.
+"""
 from __future__ import annotations
 
 from typing import Annotated
@@ -7,7 +12,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy import func
 
-from src.auth.session import CurrentUser, require_login
+from src.auth.session import CurrentUser, get_current_user
 from src.database import SessionLocal
 from src.models.analysis import Analysis
 from src.models.repository import Repository
@@ -21,9 +26,15 @@ router = APIRouter()
 @router.get("/", response_class=HTMLResponse)
 def overview(
     request: Request,
-    current_user: Annotated[CurrentUser, Depends(require_login)],
+    current_user: Annotated[CurrentUser | None, Depends(get_current_user)],
 ):
-    """전체 리포 현황 대시보드를 렌더링한다."""
+    """전체 리포 현황 대시보드를 렌더링한다. 미인증 시 랜딩 페이지 반환.
+    Renders repo dashboard. Returns landing page for unauthenticated visitors.
+    """
+    if current_user is None:
+        return templates.TemplateResponse(request, "landing.html", {
+            "locale": get_locale(request),
+        })
     with SessionLocal() as db:
         repos = db.query(Repository).filter(
             (Repository.user_id == current_user.id) | (Repository.user_id.is_(None))

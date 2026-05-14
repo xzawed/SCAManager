@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="{{ locale | default('ko') }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#07070f" id="theme-color-meta">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="icon" type="image/svg+xml" href="/static/icons/icon-192.svg">
+  <title>SCAManager — AI 코드 리뷰 자동화</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" crossorigin="anonymous">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/themes.css">
+  <style>
+    /* ── 리셋 ─────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--claude-font-body, "Pretendard Variable", Inter, sans-serif);
+      background: var(--bg-base, #07070f);
+      color: var(--text-1, #f0f0f8);
+      min-height: 100vh;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { text-decoration: none; }
+
+    /* ── 배경 — 애니메이션 메시 그라데이션 ──────────────── */
+    .landing-bg {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+    }
+    /* 베이스 그라데이션 — 테마 accent 색상 */
+    .landing-bg::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 20% 20%, rgba(var(--accent-rgb, 99,102,241), 0.18) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 50% at 80% 70%, rgba(var(--accent-rgb, 99,102,241), 0.12) 0%, transparent 55%),
+        radial-gradient(ellipse 50% 80% at 50% 50%, var(--bg-base, #07070f) 30%, transparent 100%);
+      animation: meshShift 14s ease-in-out infinite alternate;
+    }
+    @keyframes meshShift {
+      0%   { opacity: 1; transform: scale(1) rotate(0deg); }
+      50%  { opacity: 0.85; transform: scale(1.06) rotate(1.5deg); }
+      100% { opacity: 1; transform: scale(1.02) rotate(-1deg); }
+    }
+
+    /* ── 부유 orb ──────────────────────────────────────── */
+    .orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(80px);
+      will-change: transform;
+    }
+    .orb-1 {
+      width: 560px; height: 560px;
+      top: -120px; left: -100px;
+      background: radial-gradient(circle, var(--orb1, rgba(99,102,241,0.18)), transparent 70%);
+      animation: float1 18s ease-in-out infinite;
+    }
+    .orb-2 {
+      width: 480px; height: 480px;
+      top: 10%; right: -80px;
+      background: radial-gradient(circle, var(--orb2, rgba(168,85,247,0.14)), transparent 70%);
+      animation: float2 22s ease-in-out infinite;
+    }
+    .orb-3 {
+      width: 380px; height: 380px;
+      bottom: 10%; left: 25%;
+      background: radial-gradient(circle, var(--orb3, rgba(236,72,153,0.10)), transparent 70%);
+      animation: float3 16s ease-in-out infinite;
+    }
+    .orb-4 {
+      width: 300px; height: 300px;
+      bottom: 5%; right: 15%;
+      background: radial-gradient(circle, var(--orb4, rgba(59,130,246,0.12)), transparent 70%);
+      animation: float4 20s ease-in-out infinite;
+    }
+    @keyframes float1 {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      33%      { transform: translate(40px, -50px) scale(1.06); }
+      66%      { transform: translate(-30px, 30px) scale(0.96); }
+    }
+    @keyframes float2 {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      40%      { transform: translate(-50px, 40px) scale(1.08); }
+      75%      { transform: translate(20px, -30px) scale(0.94); }
+    }
+    @keyframes float3 {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      50%      { transform: translate(35px, -45px) scale(1.05); }
+    }
+    @keyframes float4 {
+      0%, 100% { transform: translate(0, 0); }
+      35%      { transform: translate(-25px, 35px) scale(1.07); }
+      70%      { transform: translate(30px, -20px) scale(0.97); }
+    }
+
+    /* ── 노이즈 오버레이 — 깊이감 ──────────────────────── */
+    .landing-bg::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+      background-size: 200px 200px;
+      opacity: 0.4;
+      pointer-events: none;
+    }
+
+    /* ── 헤더 nav (최소) ────────────────────────────────── */
+    .landing-nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 clamp(16px, 5vw, 48px);
+      height: 60px;
+      background: rgba(var(--bg-base-rgb, 7,7,15), 0.7);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+    }
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 1rem;
+      color: var(--text-1);
+      letter-spacing: -0.02em;
+    }
+    .nav-logo-icon {
+      width: 28px; height: 28px;
+      border-radius: 8px;
+      background: var(--accent-grad, linear-gradient(135deg,#6366f1,#a855f7));
+      display: grid;
+      place-items: center;
+      font-size: 14px;
+    }
+    .nav-cta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .nav-login {
+      font-size: 0.875rem;
+      color: var(--text-2);
+      padding: 6px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border-subtle);
+      transition: color 0.2s, border-color 0.2s;
+    }
+    .nav-login:hover { color: var(--text-1); border-color: var(--border-strong); }
+
+    /* ── 히어로 섹션 ────────────────────────────────────── */
+    .hero {
+      position: relative;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 80px clamp(16px, 6vw, 48px) 60px;
+      text-align: center;
+    }
+    .hero-content {
+      max-width: 760px;
+      width: 100%;
+    }
+
+    /* ── 입장 애니메이션 ────────────────────────────────── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(28px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .reveal {
+      opacity: 0;
+      animation: fadeUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) var(--delay, 0s) forwards;
+    }
+
+    /* ── 배지 ───────────────────────────────────────────── */
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border-radius: 100px;
+      border: 1px solid rgba(var(--accent-rgb, 99,102,241), 0.35);
+      background: rgba(var(--accent-rgb, 99,102,241), 0.08);
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--accent-hover, #818cf8);
+      margin-bottom: 28px;
+      letter-spacing: 0.02em;
+    }
+    .badge-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent, #6366f1);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.5; transform: scale(0.85); }
+    }
+
+    /* ── 타이틀 ─────────────────────────────────────────── */
+    .hero-title {
+      font-size: clamp(2.4rem, 7vw, 4.4rem);
+      font-weight: 800;
+      line-height: 1.12;
+      letter-spacing: -0.04em;
+      margin-bottom: 22px;
+      color: var(--text-1);
+    }
+    .title-gradient {
+      background: var(--title-gradient, linear-gradient(135deg,#818cf8,#c084fc));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    /* ── 서브타이틀 ─────────────────────────────────────── */
+    .hero-sub {
+      font-size: clamp(1rem, 2.5vw, 1.2rem);
+      color: var(--text-2);
+      line-height: 1.65;
+      margin-bottom: 32px;
+      font-weight: 400;
+    }
+
+    /* ── 기능 칩 ────────────────────────────────────────── */
+    .hero-chips {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 40px;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      border-radius: 100px;
+      border: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+      background: var(--bg-card, rgba(255,255,255,0.04));
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--text-2);
+      transition: border-color 0.2s, color 0.2s, background 0.2s;
+    }
+    .chip:hover {
+      border-color: rgba(var(--accent-rgb, 99,102,241), 0.4);
+      color: var(--text-1);
+      background: rgba(var(--accent-rgb, 99,102,241), 0.06);
+    }
+    .chip-icon { font-size: 0.9em; }
+
+    /* ── 버튼 ───────────────────────────────────────────── */
+    .hero-actions {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 14px;
+    }
+    /* 공통 */
+    .btn-hero {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 13px 28px;
+      border-radius: 12px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition:
+        transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+        box-shadow 0.25s ease,
+        background 0.2s,
+        border-color 0.2s;
+      text-decoration: none;
+      letter-spacing: -0.01em;
+    }
+    .btn-hero:hover { transform: translateY(-3px); }
+    /* 프라이머리 — 채워진 그라데이션 */
+    .btn-hero-primary {
+      background: var(--accent-grad, linear-gradient(135deg,#6366f1,#a855f7));
+      color: #fff;
+      border-color: transparent;
+      box-shadow: 0 2px 12px rgba(var(--accent-rgb, 99,102,241), 0.35);
+    }
+    .btn-hero-primary:hover {
+      box-shadow:
+        0 0 0 3px rgba(var(--accent-rgb, 99,102,241), 0.25),
+        0 4px 28px rgba(var(--accent-rgb, 99,102,241), 0.55),
+        0 8px 32px rgba(var(--accent-rgb, 99,102,241), 0.25);
+    }
+    /* 세컨더리 — 테두리형 */
+    .btn-hero-secondary {
+      background: var(--bg-card, rgba(255,255,255,0.04));
+      color: var(--text-1);
+      border-color: var(--border-strong, rgba(255,255,255,0.14));
+      backdrop-filter: blur(8px);
+    }
+    .btn-hero-secondary:hover {
+      background: rgba(var(--accent-rgb, 99,102,241), 0.08);
+      border-color: rgba(var(--accent-rgb, 99,102,241), 0.45);
+      box-shadow: 0 0 0 3px rgba(var(--accent-rgb, 99,102,241), 0.12);
+    }
+    .btn-arrow { transition: transform 0.2s; }
+    .btn-hero-primary:hover .btn-arrow { transform: translateX(3px); }
+
+    /* ── 스탯 바 ────────────────────────────────────────── */
+    .hero-stats {
+      position: relative;
+      z-index: 10;
+      display: flex;
+      justify-content: center;
+      gap: clamp(24px, 6vw, 64px);
+      padding: 32px 0 48px;
+      border-top: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+    }
+    .stat-item { text-align: center; }
+    .stat-value {
+      font-size: clamp(1.4rem, 4vw, 2rem);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      background: var(--title-gradient, linear-gradient(135deg,#818cf8,#c084fc));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .stat-label { font-size: 0.8rem; color: var(--text-3); margin-top: 4px; }
+
+    /* ── 프리뷰 카드 (코드 리뷰 스니펫) ─────────────────── */
+    .hero-preview {
+      position: relative;
+      z-index: 10;
+      max-width: 640px;
+      margin: 0 auto 48px;
+    }
+    .preview-card {
+      background: var(--bg-elevated, #13131f);
+      border: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: var(--shadow-lg, 0 8px 48px rgba(0,0,0,.6));
+      transform: perspective(1000px) rotateX(2deg);
+      transition: transform 0.4s ease;
+    }
+    .preview-card:hover { transform: perspective(1000px) rotateX(0deg) translateY(-4px); }
+    .preview-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+      background: var(--bg-card, rgba(255,255,255,0.04));
+    }
+    .win-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+    }
+    .wd-red   { background: #ff5f56; }
+    .wd-yel   { background: #ffbd2e; }
+    .wd-grn   { background: #27c93f; }
+    .preview-file {
+      margin-left: 8px;
+      font-size: 0.78rem;
+      color: var(--text-3);
+      font-family: var(--claude-font-mono, "JetBrains Mono", monospace);
+    }
+    .preview-score-badge {
+      margin-left: auto;
+      padding: 3px 10px;
+      border-radius: 100px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      background: rgba(74,222,128,0.12);
+      color: var(--grade-a, #4ade80);
+      border: 1px solid rgba(74,222,128,0.2);
+    }
+    .preview-body { padding: 18px; }
+    .review-line {
+      display: flex;
+      gap: 12px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.04));
+      font-size: 0.82rem;
+      line-height: 1.5;
+      animation: reviewReveal 0.5s ease var(--rdelay, 0s) both;
+    }
+    .review-line:last-child { border-bottom: none; }
+    @keyframes reviewReveal {
+      from { opacity: 0; transform: translateX(-8px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+    .rl-icon { flex-shrink: 0; width: 20px; text-align: center; }
+    .rl-text { color: var(--text-2); }
+    .rl-text strong { color: var(--text-1); font-weight: 600; }
+    .rl-sev-high   { color: var(--danger, #f87171); }
+    .rl-sev-mid    { color: var(--warning, #f59e0b); }
+    .rl-sev-ok     { color: var(--success, #4ade80); }
+
+    /* ── 반응형 ─────────────────────────────────────────── */
+    @media (max-width: 600px) {
+      .hero-stats { gap: 20px; }
+      .btn-hero { padding: 12px 22px; font-size: 0.9rem; }
+      .orb-1 { width: 300px; height: 300px; }
+      .orb-2 { width: 260px; height: 260px; }
+      .orb-3, .orb-4 { display: none; }
+    }
+
+    /* ── 테마별 배경 보정 ──────────────────────────────── */
+    [data-theme="light"] .landing-bg::before {
+      background:
+        radial-gradient(ellipse 80% 60% at 20% 20%, rgba(var(--accent-rgb, 79,70,229), 0.07) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 50% at 80% 70%, rgba(var(--accent-rgb, 79,70,229), 0.05) 0%, transparent 55%),
+        var(--bg-base, #f6f6fd);
+    }
+    [data-theme="pastel"] .landing-bg::before {
+      background:
+        radial-gradient(ellipse 80% 60% at 20% 20%, rgba(139,92,246, 0.14) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 50% at 80% 70%, rgba(244,114,182, 0.10) 0%, transparent 55%),
+        var(--bg-base, #f0ecff);
+    }
+    [data-theme="catppuccin"] .landing-bg::before {
+      background:
+        radial-gradient(ellipse 80% 60% at 20% 20%, rgba(203,166,247, 0.14) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 50% at 80% 70%, rgba(180,190,254, 0.10) 0%, transparent 55%),
+        var(--bg-base, #1e1e2e);
+    }
+  </style>
+</head>
+<body data-theme="dark">
+
+<!-- 배경 레이어 / Background layer -->
+<div class="landing-bg" aria-hidden="true">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+  <div class="orb orb-4"></div>
+</div>
+
+<!-- 네비게이션 / Navigation -->
+<nav class="landing-nav">
+  <a href="/" class="nav-logo">
+    <div class="nav-logo-icon">🔍</div>
+    SCAManager
+  </a>
+  <div class="nav-cta">
+    <a href="/login" class="nav-login">로그인</a>
+  </div>
+</nav>
+
+<!-- 히어로 섹션 / Hero section -->
+<main class="hero">
+  <div class="hero-content">
+
+    <!-- 배지 / Badge -->
+    <div class="hero-badge reveal" style="--delay: 0s">
+      <span class="badge-dot"></span>
+      AI 코드 리뷰 자동화
+    </div>
+
+    <!-- 타이틀 / Title -->
+    <h1 class="hero-title reveal" style="--delay: 0.1s">
+      AI가 만드는<br>
+      <span class="title-gradient">완벽한 코드 리뷰</span>
+    </h1>
+
+    <!-- 서브타이틀 / Subtitle -->
+    <p class="hero-sub reveal" style="--delay: 0.2s">
+      GitHub / GitLab 자동 연동, Telegram 알림으로<br class="br-md">
+      완성되는 코드 품질 관리
+    </p>
+
+    <!-- 기능 칩 / Feature chips -->
+    <div class="hero-chips reveal" style="--delay: 0.28s">
+      <span class="chip"><span class="chip-icon">🐙</span> GitHub</span>
+      <span class="chip"><span class="chip-icon">🦊</span> GitLab</span>
+      <span class="chip"><span class="chip-icon">✈️</span> Telegram</span>
+      <span class="chip"><span class="chip-icon">💬</span> Slack</span>
+      <span class="chip"><span class="chip-icon">🎮</span> Discord</span>
+    </div>
+
+    <!-- 버튼 CTA / Buttons -->
+    <div class="hero-actions reveal" style="--delay: 0.38s">
+      <a href="/auth/github" class="btn-hero btn-hero-primary">
+        지금 시작
+        <svg class="btn-arrow" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </a>
+      <a href="https://github.com/xzawed/SCAManager" target="_blank" rel="noopener noreferrer" class="btn-hero btn-hero-secondary">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+        </svg>
+        GitHub 보기
+      </a>
+    </div>
+  </div>
+
+  <!-- 코드 리뷰 프리뷰 카드 / Preview card -->
+  <div class="hero-preview reveal" style="--delay: 0.55s; margin-top: 60px;">
+    <div class="preview-card">
+      <div class="preview-header">
+        <span class="win-dot wd-red"></span>
+        <span class="win-dot wd-yel"></span>
+        <span class="win-dot wd-grn"></span>
+        <span class="preview-file">auth/session.py · PR #42</span>
+        <span class="preview-score-badge">A · 94점</span>
+      </div>
+      <div class="preview-body">
+        <div class="review-line" style="--rdelay: 0.65s">
+          <span class="rl-icon rl-sev-ok">✓</span>
+          <span class="rl-text"><strong>보안:</strong> JWT 토큰 검증 로직이 견고합니다. HMAC-SHA256 사용 확인.</span>
+        </div>
+        <div class="review-line" style="--rdelay: 0.75s">
+          <span class="rl-icon rl-sev-mid">⚠</span>
+          <span class="rl-text"><strong>성능:</strong> <code>get_current_user</code>에서 매 요청마다 DB 조회 발생. Redis 캐시 고려.</span>
+        </div>
+        <div class="review-line" style="--rdelay: 0.85s">
+          <span class="rl-icon rl-sev-high">●</span>
+          <span class="rl-text"><strong>보안:</strong> 세션 쿠키에 <code>HttpOnly</code> 플래그 미설정. XSS 공격 노출 위험.</span>
+        </div>
+        <div class="review-line" style="--rdelay: 0.95s">
+          <span class="rl-icon rl-sev-ok">✓</span>
+          <span class="rl-text"><strong>코드 품질:</strong> 함수 분리와 단일 책임 원칙이 잘 지켜졌습니다.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- 스탯 바 / Stats bar -->
+<div class="hero-stats reveal" style="--delay: 0.68s">
+  <div class="stat-item">
+    <div class="stat-value">50+</div>
+    <div class="stat-label">지원 언어</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-value">10종</div>
+    <div class="stat-label">정적 분석 도구</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-value">5채널</div>
+    <div class="stat-label">알림 채널</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-value">AI</div>
+    <div class="stat-label">Claude 기반 리뷰</div>
+  </div>
+</div>
+
+<!-- 테마 초기화 스크립트 / Theme init script -->
+<script>
+  (function() {
+    var t = localStorage.getItem("scam-theme") || "dark";
+    document.body.setAttribute("data-theme", t);
+    var m = document.getElementById("theme-color-meta");
+    if (m) {
+      var colors = { dark:"#07070f", light:"#f6f6fd", pastel:"#f0ecff", catppuccin:"#1e1e2e" };
+      m.setAttribute("content", colors[t] || "#07070f");
+    }
+  })();
+</script>
+
+</body>
+</html>

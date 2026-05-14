@@ -13,12 +13,18 @@ os.environ.setdefault("SESSION_SECRET", "test-session-secret")
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 from src.main import app
-from src.auth.session import require_login
+from src.auth.session import CurrentUser, get_current_user, require_login
 from src.models.user import User as UserModel
 
 # 모든 UI 테스트에서 require_login 의존성을 우회 (user_id=1 로그인 상태)
 _test_user = UserModel(id=1, github_id="12345", github_login="testuser", github_access_token="gho_test", email="test@example.com", display_name="Test User")
+# overview 라우트는 get_current_user (optional) 를 사용하므로 CurrentUser 로 override.
+# overview route uses get_current_user (optional), so override with CurrentUser instance.
+_test_current_user = CurrentUser(
+    id=1, github_login="testuser", email="test@example.com", display_name="Test User", plaintext_token=""
+)
 app.dependency_overrides[require_login] = lambda: _test_user
+app.dependency_overrides[get_current_user] = lambda: _test_current_user
 
 client = TestClient(app)
 
@@ -33,14 +39,17 @@ def _ctx(db_mock):
 # ── 비로그인 리다이렉트 테스트 ──────────────────────────
 # ── Unauthenticated redirect tests ──────────────────────────
 
-def test_overview_redirects_when_not_logged_in():
-    """비로그인 상태에서 / 접근 시 /login 으로 302 리다이렉트."""
-    del app.dependency_overrides[require_login]
+def test_overview_shows_landing_when_not_logged_in():
+    """비로그인 상태에서 / 접근 시 200 랜딩 페이지 반환 (302 /login 아님).
+    Unauthenticated GET / returns 200 landing page (no longer 302 /login redirect).
+    """
+    app.dependency_overrides.pop(require_login, None)
+    app.dependency_overrides[get_current_user] = lambda: None
     try:
         r = client.get("/", follow_redirects=False)
-        assert r.status_code == 302
-        assert "/login" in r.headers.get("location", "")
+        assert r.status_code == 200, f"랜딩 페이지 200 기대, 실제: {r.status_code}"
     finally:
+        app.dependency_overrides[get_current_user] = lambda: _test_current_user
         app.dependency_overrides[require_login] = lambda: _test_user
 
 
@@ -951,7 +960,14 @@ def test_nav_user_fallback_to_github_login():
         id=2, github_id="99999", github_login="fallback_user",
         github_access_token="gho_x", email="fb@example.com", display_name=""
     )
+    # overview는 get_current_user 사용 — CurrentUser 로 override 필요.
+    # overview uses get_current_user — must override with CurrentUser.
+    no_name_current_user = CurrentUser(
+        id=2, github_login="fallback_user", email="fb@example.com",
+        display_name="", plaintext_token=""
+    )
     app.dependency_overrides[require_login] = lambda: no_name_user
+    app.dependency_overrides[get_current_user] = lambda: no_name_current_user
     try:
         mock_db = MagicMock()
         mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
@@ -961,6 +977,7 @@ def test_nav_user_fallback_to_github_login():
         assert "fallback_user" in r.text
     finally:
         app.dependency_overrides[require_login] = lambda: _test_user
+        app.dependency_overrides[get_current_user] = lambda: _test_current_user
 
 
 # ── 이력 페이지 조회 강화 테스트 ──────────────────────────
