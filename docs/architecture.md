@@ -18,6 +18,7 @@ src/
 │   ├── css/admin.css            # 관리자 페이지 공통 스타일 — .admin-* 글래스모피즘 컴포넌트 (admin_rls_audit, admin_tenants 공유)
 │   ├── css/repo_insights.css    # 리포별 인사이트 페이지 전용 스타일 — .ri-* 클래스 (CPD 분리)
 │   │                            # Repo insights page scoped styles (.ri-* classes, CPD prevention)
+│   ├── mockup-polar.html        # 대시보드 KPI 레이아웃 목업 — SonarCloud sonar.exclusions 등재 (#399)
 │   └── illustrations/           # DALL-E 3 생성 일러스트 5장 commit (#375 Step 2-B: login_hero/dashboard_empty/overview_onboarding/add_repo_hero/filter_empty)
 ├── scripts/                     # 로컬 도구 (production import X) — Cycle 93 Step 2
 │   ├── illustration_prompts.py  # 5장 isometric prompt 정의 (login_hero/dashboard_empty/overview_onboarding/add_repo_hero/filter_empty)
