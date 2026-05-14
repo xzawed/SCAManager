@@ -3,6 +3,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, Request, Response
 from fastapi.staticfiles import StaticFiles
@@ -169,7 +170,7 @@ class CachedStaticFiles(StaticFiles):
     """1년 Cache-Control 헤더를 200 응답에 추가한다.
     Adds a 1-year Cache-Control header to 200 responses for immutable static assets."""
 
-    async def get_response(self, path: str, scope) -> Response:
+    async def get_response(self, path: str, scope: Any) -> Response:
         response = await super().get_response(path, scope)
         if response.status_code == 200:
             response.headers["cache-control"] = "public, max-age=31536000, immutable"

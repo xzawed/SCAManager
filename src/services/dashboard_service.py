@@ -488,6 +488,7 @@ def repo_insight_cards(  # pylint: disable=too-many-locals
             .where(Analysis.created_at <= _now)
             .where(Analysis.result.isnot(None))
             .order_by(Analysis.created_at.desc())
+            .limit(len(repo_ids) * max_per_repo)
         ).all()
     )
 
@@ -500,6 +501,8 @@ def repo_insight_cards(  # pylint: disable=too-many-locals
             .where(Analysis.created_at >= prev_since)
             .where(Analysis.created_at < prev_until)
             .where(Analysis.result.isnot(None))
+            .order_by(Analysis.created_at.desc())
+            .limit(len(repo_ids) * max_per_repo)
         ).all()
     )
 
@@ -548,7 +551,9 @@ def repo_insight_cards(  # pylint: disable=too-many-locals
                 key = issue.get("message") or issue.get("code")
                 if key:
                     issue_counter[key] = issue_counter.get(key, 0) + 1
-        recurring_count = len(issue_counter)
+        # count >= 2인 항목만 recurring으로 집계 (1회만 등장한 이슈는 제외)
+        # Count only issues appearing >= 2 times (single-occurrence issues excluded)
+        recurring_count = sum(1 for cnt in issue_counter.values() if cnt >= 2)
 
         trend = _score_trend(score_delta)
 

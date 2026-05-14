@@ -960,6 +960,9 @@
         try {
           var url = new URL(a.href, location.href);
           if (url.origin !== location.origin) return;
+          // 동일 페이지 앵커 링크는 progress bar 트리거 안 함
+          // Skip same-page anchor links to avoid triggering the progress bar
+          if (url.pathname === location.pathname && url.search === location.search) return;
         } catch (err) { return; }
         if (a.target === '_blank') return;
         _startProgress();
