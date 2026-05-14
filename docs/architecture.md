@@ -6,7 +6,7 @@
 
 ```
 src/
-├── main.py                     # FastAPI 앱, lifespan(DB 마이그레이션 + http_client), 전체 라우터 등록 + StaticFiles `/static` mount + 미들웨어 LIFO 등록 (SecurityHeaders → RLSSessionMiddleware → SessionMiddleware → LocaleMiddleware)
+├── main.py                     # FastAPI 앱, lifespan(DB 마이그레이션 + http_client), 전체 라우터 등록 + CachedStaticFiles `/static` mount (Cache-Control immutable 1년) + 미들웨어 LIFO 등록 (SecurityHeaders → RLSSessionMiddleware → SessionMiddleware → LocaleMiddleware)
 ├── static/
 │   ├── vendor/chart.umd.min.js  # Chart.js 4.4.0 UMD min vendoring
 │   ├── manifest.json            # PWA manifest (Cycle 81 PR-A)
@@ -48,9 +48,9 @@ src/
 ├── services/
 │   ├── analytics_service.py     # 집계 단일 출처 — weekly_summary, moving_average, resolve_chat_id
 │   ├── cron_service.py          # 주기 실행 — run_weekly_reports, run_trend_check
-│   ├── dashboard_service.py     # /dashboard 9 공개 함수 (KPI 4 + trend + frequent_issues + auto_merge_kpi + feedback_status + insight_narrative + dashboard_security + dashboard_usage + repo_insight_cards) + RLS 격리 헬퍼 2건
-│   ├── repo_insight_service.py  # 리포별 집계 6 함수 (repo_kpi/recurring_issues/problem_files/ai_suggestions/category_breakdown/insight_narrative)
-│   │                            # Per-repo aggregation 6 functions
+│   ├── dashboard_service.py     # /dashboard 9 공개 함수 (KPI 4 + trend + frequent_issues + auto_merge_kpi + feedback_status + insight_narrative + dashboard_security + dashboard_usage + repo_insight_cards) + RLS 격리 헬퍼 2건 + N+1 배치 헬퍼 2건 (_fetch_analyses_for_window / _group_analyses_by_repo)
+│   ├── repo_insight_service.py  # 리포별 집계 6 함수 (repo_kpi/recurring_issues/problem_files/ai_suggestions/category_breakdown/insight_narrative) + compute_score_kpi 공유 헬퍼 (dashboard_service CPD 제거)
+│   │                            # Per-repo aggregation 6 functions + compute_score_kpi shared helper
 │   ├── merge_retry_service.py   # process_pending_retries 워커 (CI-aware)
 │   ├── security_scan_service.py # Code/Secret Scanning 폴링 + audit log + GHAS graceful degradation
 │   ├── saas_service.py          # tenant_inventory + rls_audit_matrix (Cycle 79 PR 3a)
