@@ -15,7 +15,7 @@ paths:
 > 상세 절차: [`docs/runbooks/railway.md`](../../docs/runbooks/railway.md)
 
 - 🔴 **NIXPACKS npm run build 억제**: `railway.toml` 의 `buildCommand` 최상위 오버라이드만 억제 가능.
-- 🔴 **NIXPACKS nixPkgs 오버라이드 함정**: `nixpacks.toml` 에 `nixPkgs` 명시 시 Python provider nix 자동 설치 **완전 교체**. Python+Node.js 공존: `nixPkgs` 사용 금지, `[phases.setup]` `cmds`에서 NodeSource 스크립트 설치 (`curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs`).
+- 🔴 **NIXPACKS nixPkgs 오버라이드 함정**: `nixpacks.toml` 에 `nixPkgs` 명시 시 Python provider nix 자동 설치 **완전 교체**. Python+Node.js 공존: `nixPkgs` 사용 금지, `[phases.setup]` `cmds`에서 NodeSource 스크립트 설치 (`curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs`). `[phases.install]` 직접 작성 금지 — pip 직접 호출 시 venv 미생성으로 "pip: command not found" (exit 127) 발생. `[phases.build]` 도 작성 금지 — `railway.toml` buildCommand 가 상위 오버라이드.
 - **APP_BASE_URL**: Railway 필수 — OAuth redirect_uri + GitHub Webhook URL 양쪽 HTTPS 강제.
 - **Railway 빌드 검증**: `git push` 성공 ≠ Railway 빌드 성공. `railway.toml`/`nixpacks.toml`/`requirements.txt` 변경 후 대시보드 빌드 로그 직접 확인.
 - **빌드 실패 시 로그 우선**: 즉각 수정 PR 금지 — 전체 빌드 로그(실패 구간 위아래 30줄) 먼저 확인.
