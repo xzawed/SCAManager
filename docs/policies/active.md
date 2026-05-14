@@ -277,6 +277,16 @@ git push -u origin <branch>
 
 ---
 
+<a id="정책-17-why-how"></a>
+
+## 정책 17: 문서 cleanup Why / How to apply (자가 검토 4 자문)
+
+**Why**: SCAManager CLAUDE.md = 단순 docs 가 아닌 **운영 의무 영역** (16+ 정책 + Hook 신뢰 + 5-step 완료 + 30초 체크리스트). Anthropic 200줄 hard target 적용 시 detail 손실 → 행동 회귀 위험. 안정성 보존 우선이 사용자 의도 정합 — 사이클 88 Phase A 검증 (정책 12~16 default rule 보존 + detail external = 행동 영향 0).
+
+**How to apply**: cleanup PR 작성 시 자가 검토 4 자문 — (a) default rule + 진화 default 보존? (b) 행동 영향 0 검증 가능? (c) 단계 분할 + 단계별 검증 의무 적용? (d) 분리 위험 영역 사용자 사전 확인 받았나? 모두 ✅ 시 진행, 1 조건이라도 ❌ 시 보류 또는 사용자 옵션 표.
+
+---
+
 <a id="정책-17-5번째-default"></a>
 
 ## 정책 17 5번째 default (사이클 92 신설): 누적 결함 정기 검증 의무
@@ -414,3 +424,18 @@ git push -u origin <branch>
 - 정책 17 5번 default 페어 (정기 검증 ≥ 5 사이클 ↔ mutual 매 PR 시점 차별)
 - 메모리 `feedback-codex-post-validation-mandatory.md` (현재 미생성, Claude 측 숙지)
 - 메모리 `feedback-pr-scoped-ci-endpoint-pattern.md` (현재 미생성, 사이클 93 사고 학습 페어)
+
+---
+
+<a id="정책-5-phase-종료-cross-reference"></a>
+
+## 정책 5: Phase 종료 cross-reference 4 정책 열거 상세
+
+Phase 종료 시점 의무는 **정책 2/5/8/11 4 정책에 분산** (사이클 83 — 정책 5 cross-reference 강화):
+
+- **정책 2 진화**: Phase 종료 일괄 회신 묶음 (sync 실측 1줄 의무)
+- **정책 5 강화**: Phase 단계별 진행/종료 신호 분리 의무 (본 정책)
+- **정책 8**: 회고 패턴 3 분기 (회고+sync 페어 / sync 단독 / 회고 단독)
+- **정책 11 강화**: Phase 종료 누적 회신 묶음 (8 조합 시각 체크리스트 누적 의무)
+
+---

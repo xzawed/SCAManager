@@ -141,14 +141,7 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 
 **Phase 단계별 진행/종료 신호 분리 의무 (사이클 75 진화 — 사이클 74 사고 학습)**: 사용자가 "A+B+C+D 모두 진행" 같은 다중 단계 발화 시 Claude 의 사이클 종료 (예: 회고 진입) 시점에 **잔여 단계 (예: C/D) 진행 신호 명시 회신 의무**. 사이클 74 사례 = Phase 2-A (#247) + Phase 2-B (#248) 머지 후 회고 진입 → Phase 2-C/D 진행 의도 미확인 = 사용자 발화와 Claude 종료 신호 불일치. **default 적용**: 다중 단계 발화 후 일부 단계만 진행하고 사이클 종료 시 = "Phase X-Y 완료. Phase X-Z 잔여 — 다음 사이클 진입 시 결정 회신 의무" 1줄 명시.
 
-🔴 **정책 5 cross-reference 강화 (사이클 83)** — Phase 종료 시점 의무는 **정책 2/5/8/11 4 정책에 분산** (인지 부담 ↑ 위험). **default 적용**: Phase 종료 시점 진입 시 4 정책 cross-reference 자가 검토 의무 (한 정책만 적용 시 다른 3 정책 위반 가능). Claude 가 PR commit body §"Phase 종료 처리" 섹션에 적용 정책 명시 권장.
-
-<!-- cross-reference 4 정책 열거 상세
-- **정책 2 진화**: Phase 종료 일괄 회신 묶음 (sync 실측 1줄 의무)
-- **정책 5 강화**: Phase 단계별 진행/종료 신호 분리 의무 (본 정책)
-- **정책 8**: 회고 패턴 3 분기 (회고+sync 페어 / sync 단독 / 회고 단독)
-- **정책 11 강화**: Phase 종료 누적 회신 묶음 (8 조합 시각 체크리스트 누적 의무)
--->
+🔴 **정책 5 cross-reference 강화 (사이클 83)** — Phase 종료 시점 의무는 **정책 2/5/8/11 4 정책에 분산** (인지 부담 ↑ 위험). **default 적용**: Phase 종료 시점 진입 시 4 정책 cross-reference 자가 검토 의무 (한 정책만 적용 시 다른 3 정책 위반 가능). Claude 가 PR commit body §"Phase 종료 처리" 섹션에 적용 정책 명시 권장. 상세: [docs/policies/active.md#정책-5-phase-종료-cross-reference](docs/policies/active.md#정책-5-phase-종료-cross-reference).
 
 🔴 **정책 5 NEW-P0-N 예외 명시 (사이클 83 — 사이클 78~82 회고 Tier B-5 사용자 OK Q5)** — **운영 사고 차단 영역 (NEW-P0-N) 은 Phase 단계별 보류 default 적용 X**: 사이클 78 PR 2 (NEW-P0-1 = Telegram 봇 차단 silent skip) = 정책 5 강화 default 적용 결과 = "PR 2/3/4 = 머지 대기 (사용자 영역)" 명시 → 4 사이클 누적 사용자 머지 대기 → 운영 사고 위험 누적 (메모리 `feedback-stale-blocker-policy.md` 2.5배 자기 위반).
 
@@ -302,13 +295,7 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 4. **분리 위험 영역 사용자 사전 확인 의무** — 매 작업/회고/PR 의무 영역 (정책 8 cross-verify 정량 기준 / 정책 11 8 조합 체크리스트 / 정책 5 NEW-P0-N 예외 / 정책 9 완화 미적용 영역) = 본문 보존 default + 분리 시 High tier 사전 확인 의무
 5. **누적 결함 정기 검증 default** (사이클 92 신설 — 사이클 89 #349/#350 시간차 결함 학습) — 단일 작업일 ≥ 18 PR 영역 도입 후 **≥ 5 사이클 경과 시 정기 5+1 다중 에이전트 검증 default** (정기 검증 트리거 = 시간/PR 기반 / 매 회고 cross-verify 트리거 정책 8 진화 와 시점·대상 차별). 사이클 89 사례 = 사이클 74/84 누적 결함 (E2E i18n hardcode + integration fixture sync) 발견 — 정기 검증 ROI 양성 검증. 상세: [docs/policies/active.md#정책-17-5번째-default](docs/policies/active.md#정책-17-5번째-default).
 
-Why + How to apply (자가 검토 4 자문) 상세: [docs/policies/active.md#정책-17-5번째-default](docs/policies/active.md#정책-17-5번째-default).
-
-<!-- Why/How to apply 상세 → docs/policies/active.md#정책-17-5번째-default 참조
-**Why**: SCAManager CLAUDE.md = 단순 docs 가 아닌 **운영 의무 영역** (16+ 정책 + Hook 신뢰 + 5-step 완료 + 30초 체크리스트). Anthropic 200줄 hard target 적용 시 detail 손실 → 행동 회귀 위험. 안정성 보존 우선이 사용자 의도 정합 — 사이클 88 Phase A 검증 (정책 12~16 default rule 보존 + detail external = 행동 영향 0).
-
-**How to apply**: cleanup PR 작성 시 자가 검토 4 자문 — (a) default rule + 진화 default 보존? (b) 행동 영향 0 검증 가능? (c) 단계 분할 + 단계별 검증 의무 적용? (d) 분리 위험 영역 사용자 사전 확인 받았나? 모두 ✅ 시 진행, 1 조건이라도 ❌ 시 보류 또는 사용자 옵션 표.
--->
+Why + How to apply (자가 검토 4 자문) 상세: [docs/policies/active.md#정책-17-why-how](docs/policies/active.md#정책-17-why-how).
 
 #### 정책 18 신설 (2026-05-09 사이클 93): Claude ↔ Codex 양방향 mutual 검증 의무
 
