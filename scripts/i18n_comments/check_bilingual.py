@@ -207,7 +207,7 @@ def main() -> int:
                         help="Filter report to phase files only (informational)")
     args = parser.parse_args()
 
-    base = Path("f:/DEVELOPMENT/SOURCE/CLAUDE/SCAManager")
+    base = Path(__file__).resolve().parents[2]
     roots = [base / p for p in args.paths]
     files = _collect_py_files(roots)
 
