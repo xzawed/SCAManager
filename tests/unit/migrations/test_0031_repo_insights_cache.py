@@ -25,7 +25,6 @@ from src.database import Base
 import src.models.user  # noqa: F401  pylint: disable=unused-import,wrong-import-position
 import src.models.repository  # noqa: F401  pylint: disable=unused-import,wrong-import-position
 import src.models.insight_narrative_cache  # noqa: F401  pylint: disable=unused-import,wrong-import-position
-from src.models.insight_narrative_cache import InsightNarrativeCache  # noqa: F401
 
 
 @pytest.fixture()
