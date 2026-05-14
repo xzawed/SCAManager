@@ -104,7 +104,7 @@ src/
 │   ├── _helpers.py              # get_accessible_repo, webhook_base_url, delete_repo_cascade, templates
 │   ├── router.py                # aggregator
 │   └── routes/                  # overview / dashboard (mode 4종) / add_repo / settings / actions / detail / admin / repo_insights
-├── templates/                   # base, login, overview, repo_detail, analysis_detail, settings, dashboard, admin_*, repo_insights
+├── templates/                   # base, landing, login, overview, repo_detail, analysis_detail, settings, dashboard, admin_*, repo_insights
 ├── cli/                         # python -m src.cli review (git_diff + formatter)
 ├── repositories/                # DB 접근 계층 10종
 └── worker/pipeline.py           # run_analysis_pipeline, build_analysis_result_dict
