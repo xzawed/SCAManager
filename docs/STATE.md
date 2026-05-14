@@ -14,7 +14,7 @@
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
 | SonarCloud Maintainability Rating | **A** | Code Smells 58 (-20 from 78) |
 | SonarCloud BLOCKER / CRITICAL | **0 / 0** | Phase Q.7 완료 — 5건 Cognitive Complexity 전부 해소 |
-| pylint | **9.94/10** | `python -m pylint src/` — 사이클 84 i18n + 사이클 85 cleanup 후속 누적 drift. #325 Tier A 13건 fix (W0611 2 + C0411/C0413 3 + R0914 8). 잔여 36건 사이클 87+ 점진 (C0415 21 lazy import 인텐셔널 + C0301 8 line-too-long + W0718/W0613 4 + R0913/R0917 3) → 10.00 회복 목표 |
+| pylint | **10.00/10** | `python -m pylint src/` — #415 잔여 21건 전체 해소 (C0415 17 lazy import inline disable + C0301 1 + R0913/R0917 3 + W0718/W0613 2 + E0401 1). **10.00 달성** |
 | 커버리지 | **95%** | `make test-cov` — 신규 파일 100% (analytics_service, api/insights, ui/routes/insights) |
 | bandit HIGH | **0개** | bandit 1.9.4 (Python 3.14 대응) |
 | flake8 | **0건** | `flake8 src/` |
@@ -60,3 +60,4 @@
 - **그룹 13~61** (2026-04 ~ 2026-05-02): [docs/_archive/STATE-groups-13-61-2026-05.md](_archive/STATE-groups-13-61-2026-05.md)
 - **사이클 62~92** (2026-05-03 ~ 2026-05-11): [docs/cycle-history.md](cycle-history.md)
 - **사이클 95** (2026-05-14): 문서 정비 P2 (#410~#413) — testing.md SessionLocal 경고 추가 / architecture.md mockup-polar.html 항목 / AGENTS.md 중복 표 → 링크 3건 / STATE.md 그룹 13-61 아카이브 / CLAUDE.md HTML 주석 7블록 + line 361 압축 (59줄 절감). PR-D5 예정: 블록 3·5 docs/policies 이전 후 제거.
+- **사이클 96** (2026-05-14): pylint 10.00/10 달성 (#415) — C0415 17건 inline disable + C0301/R0913/R0917/W0718/W0613/E0401 처리.
