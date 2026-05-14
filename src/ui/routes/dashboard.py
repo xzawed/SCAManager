@@ -11,6 +11,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from starlette.concurrency import run_in_threadpool
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -27,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+_DASHBOARD_TEMPLATE = "dashboard.html"
 
 _VALID_MODES = ("overview", "insight", "security", "usage")
 
@@ -103,10 +105,14 @@ async def dashboard(  # pylint: disable=too-many-locals
 
         if effective_mode == "security":
             # Cycle 73 F2 — Code Scanning + Secret Scanning audit dashboard (read-only).
-            security = dashboard_service.dashboard_security(db, user_id=current_user.id)
+            # SQLAlchemy 2.x: session은 단일 스레드 순차 접근 시 다른 스레드에 전달 가능.
+            # SQLAlchemy 2.x: session may be passed to another thread for sequential-only access.
+            security = await run_in_threadpool(
+                dashboard_service.dashboard_security, db, user_id=current_user.id
+            )
             return templates.TemplateResponse(
                 request,
-                "dashboard.html",
+                _DASHBOARD_TEMPLATE,
                 {
                     "current_user": current_user,
                     "mode": "security",
@@ -120,10 +126,12 @@ async def dashboard(  # pylint: disable=too-many-locals
         if effective_mode == "usage":
             # Cycle 79 PR 3b — SaaS Phase 1 본인 사용량 dashboard (read-only — user_id 직접 격리).
             # Cycle 79 PR 3b — SaaS Phase 1 own usage dashboard (read-only — user_id direct isolation).
-            usage = dashboard_service.dashboard_usage(db, user_id=current_user.id, days=days)
+            usage = await run_in_threadpool(
+                dashboard_service.dashboard_usage, db, user_id=current_user.id, days=days
+            )
             return templates.TemplateResponse(
                 request,
-                "dashboard.html",
+                _DASHBOARD_TEMPLATE,
                 {
                     "current_user": current_user,
                     "mode": "usage",
@@ -143,7 +151,7 @@ async def dashboard(  # pylint: disable=too-many-locals
             )
             return templates.TemplateResponse(
                 request,
-                "dashboard.html",
+                _DASHBOARD_TEMPLATE,
                 {
                     "current_user": current_user,
                     "mode": "insight",
@@ -157,17 +165,25 @@ async def dashboard(  # pylint: disable=too-many-locals
         # effective_mode == "overview" — 기존 동작 보존 + PR 5 user_id 격리
         # effective_mode == "overview" — preserves prior behavior + PR 5 user_id isolation
         _uid = current_user.id
-        kpi = dashboard_service.dashboard_kpi(db, days=days, user_id=_uid)
-        trend = dashboard_service.dashboard_trend(db, days=days, user_id=_uid)
-        frequent_issues = dashboard_service.frequent_issues_v2(db, days=days, n=5, user_id=_uid)
+
+        def _load_overview() -> tuple:
+            # 7 sync DB 호출을 스레드 풀에서 일괄 실행 — 이벤트 루프 블로킹 방지.
+            # Batch 7 sync DB calls in threadpool — prevents event loop blocking.
+            kpi_ = dashboard_service.dashboard_kpi(db, days=days, user_id=_uid)
+            trend_ = dashboard_service.dashboard_trend(db, days=days, user_id=_uid)
+            freq_ = dashboard_service.frequent_issues_v2(db, days=days, n=5, user_id=_uid)
+            am_ = dashboard_service.auto_merge_kpi(db, days=days, user_id=_uid)
+            mf_ = dashboard_service.merge_failure_distribution(db, days=days, n=5, user_id=_uid)
+            rc_ = dashboard_service.repo_insight_cards(db, days=days, user_id=_uid)
+            fb_ = dashboard_service.feedback_status(db)
+            return kpi_, trend_, freq_, am_, mf_, rc_, fb_
+
         # Phase 2 PR 1: Auto-merge KPI + 실패 분포.
-        auto_merge = dashboard_service.auto_merge_kpi(db, days=days, user_id=_uid)
-        merge_failures = dashboard_service.merge_failure_distribution(db, days=days, n=5, user_id=_uid)
         # 0031 — 리포별 인사이트 카드 섹션 (overview 모드 전용)
-        # 0031 — Per-repo insight card section (overview mode only)
-        repo_cards = dashboard_service.repo_insight_cards(db, days=days, user_id=_uid)
         # Phase 2 PR 2 (2026-05-02): feedback CTA — 운영 row=0 → 사용자 행동 유도.
-        feedback = dashboard_service.feedback_status(db)
+        kpi, trend, frequent_issues, auto_merge, merge_failures, repo_cards, feedback = (
+            await run_in_threadpool(_load_overview)
+        )
 
     return templates.TemplateResponse(
         request,

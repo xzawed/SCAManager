@@ -43,7 +43,7 @@ except ImportError:
     print("ERROR: anthropic package not installed. Run: pip install anthropic", file=sys.stderr)
     sys.exit(1)
 
-BASE_DIR = Path("f:/DEVELOPMENT/SOURCE/CLAUDE/SCAManager")
+BASE_DIR = Path(__file__).resolve().parents[2]
 MANIFEST_PATH = BASE_DIR / "scripts" / "i18n_comments" / "manifest.json"
 GLOSSARY_PATH = BASE_DIR / "scripts" / "i18n_comments" / "glossary.md"
 

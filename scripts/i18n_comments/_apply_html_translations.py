@@ -95,6 +95,6 @@ def apply_translations(base: Path, translations: dict[str, list[tuple[str, str]]
 
 
 if __name__ == "__main__":
-    base = Path("f:/DEVELOPMENT/SOURCE/CLAUDE/SCAManager")
+    base = Path(__file__).resolve().parents[2]
     n = apply_translations(base, TRANSLATIONS)
     print(f"\nTotal HTML translations applied: {n}")
