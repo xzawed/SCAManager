@@ -957,12 +957,14 @@
 
   buildDashChart();
   // base.html dispatchEvent('themechange') ↔ dashboard 차트 재빌드 (UI 감사 Step C 패턴 통일)
-  // hx-boost 재방문 시 리스너 누적 방지 — 최초 1회만 등록
-  // Guard against listener accumulation on hx-boost re-navigation — register only once
-  if (!document._dashThemeListener) {
-    document._dashThemeListener = true;
-    document.addEventListener('themechange', buildDashChart);
+  // base.html dispatchEvent('themechange') ↔ dashboard chart rebuild (UI audit Step C pattern unified)
+  // hx-boost 재방문 시 이전 리스너 제거 후 현재 스코프 함수 재등록 (stale closure 방지)
+  // Remove stale listener then re-register fresh function on each hx-boost activation
+  if (document._dashThemeHandler) {
+    document.removeEventListener('themechange', document._dashThemeHandler);
   }
+  document._dashThemeHandler = buildDashChart;
+  document.addEventListener('themechange', document._dashThemeHandler);
 </script>
 {% endif %}
 

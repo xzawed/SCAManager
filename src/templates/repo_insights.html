@@ -242,7 +242,13 @@
   }
 
   buildRiChart();
-  document.addEventListener('themechange', buildRiChart);
+  // hx-boost 재방문 시 이전 리스너 제거 후 현재 스코프 함수 재등록 (stale closure 방지)
+  // Remove stale listener then re-register fresh function on each hx-boost activation
+  if (document._riThemeHandler) {
+    document.removeEventListener('themechange', document._riThemeHandler);
+  }
+  document._riThemeHandler = buildRiChart;
+  document.addEventListener('themechange', document._riThemeHandler);
 })();
 </script>
 {% endif %}

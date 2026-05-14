@@ -484,12 +484,13 @@
     });
   }
 
-  // hx-boost 재방문 시 리스너 누적 방지 — 최초 1회만 등록
-  // Guard against listener accumulation on hx-boost re-navigation — register only once
-  if (!document._repoThemeListener) {
-    document._repoThemeListener = true;
-    document.addEventListener('themechange', function() { buildChart(); });
+  // hx-boost 재방문 시 이전 리스너 제거 후 현재 스코프 클로저 재등록 (stale closure 방지)
+  // Remove stale listener then re-register fresh closure on each hx-boost activation
+  if (document._repoThemeHandler) {
+    document.removeEventListener('themechange', document._repoThemeHandler);
   }
+  document._repoThemeHandler = function() { buildChart(); };
+  document.addEventListener('themechange', document._repoThemeHandler);
 </script>
 <script>
 // ── 데이터 주입 ──────────────────────────────────────
