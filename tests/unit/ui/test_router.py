@@ -966,8 +966,21 @@ def test_nav_user_fallback_to_github_login():
         id=2, github_login="fallback_user", email="fb@example.com",
         display_name="", plaintext_token=""
     )
-    app.dependency_overrides[require_login] = lambda: no_name_user
-    app.dependency_overrides[get_current_user] = lambda: no_name_current_user
+
+    def _override_require_login():
+        return no_name_user
+
+    def _override_get_current_user():
+        return no_name_current_user
+
+    def _default_require_login():
+        return _test_user
+
+    def _default_get_current_user():
+        return _test_current_user
+
+    app.dependency_overrides[require_login] = _override_require_login
+    app.dependency_overrides[get_current_user] = _override_get_current_user
     try:
         mock_db = MagicMock()
         mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
@@ -976,8 +989,8 @@ def test_nav_user_fallback_to_github_login():
         assert r.status_code == 200
         assert "fallback_user" in r.text
     finally:
-        app.dependency_overrides[require_login] = lambda: _test_user
-        app.dependency_overrides[get_current_user] = lambda: _test_current_user
+        app.dependency_overrides[require_login] = _default_require_login
+        app.dependency_overrides[get_current_user] = _default_get_current_user
 
 
 # ── 이력 페이지 조회 강화 테스트 ──────────────────────────
