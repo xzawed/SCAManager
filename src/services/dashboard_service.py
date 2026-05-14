@@ -438,6 +438,43 @@ def feedback_status(db: Session, *, threshold: int = 10) -> dict[str, Any]:
 # ─── 0031: Per-repo insight cards (dashboard section) ────────────────────────
 
 
+def _fetch_analyses_for_window(
+    db: Session,
+    repo_ids: list[int],
+    start: datetime,
+    end: datetime,
+    limit: int,
+    *,
+    end_inclusive: bool = False,
+) -> list[Analysis]:
+    """기간 내 배치 분석 조회 헬퍼. / Batch-fetch analyses for a time window."""
+    end_filter = (Analysis.created_at <= end) if end_inclusive else (Analysis.created_at < end)
+    return list(
+        db.scalars(
+            select(Analysis)
+            .where(Analysis.repo_id.in_(repo_ids))
+            .where(Analysis.created_at >= start)
+            .where(end_filter)
+            .where(Analysis.result.isnot(None))
+            .order_by(Analysis.created_at.desc())
+            .limit(limit)
+        ).all()
+    )
+
+
+def _group_analyses_by_repo(
+    analyses: list[Analysis],
+    cap: int,
+) -> dict[int, list[Analysis]]:
+    """repo_id 별 분리 + per-repo 상한 적용. / Group analyses by repo_id with per-repo cap."""
+    by_repo: dict[int, list[Analysis]] = {}
+    for a in analyses:
+        bucket = by_repo.setdefault(a.repo_id, [])
+        if len(bucket) < cap:
+            bucket.append(a)
+    return by_repo
+
+
 def repo_insight_cards(  # pylint: disable=too-many-locals
     db: Session,
     days: int = 30,
@@ -478,47 +515,17 @@ def repo_insight_cards(  # pylint: disable=too-many-locals
     # Per-repo analysis cap applied in Python after batch fetch
     max_per_repo = 30
 
-    # 현재 기간 분석 배치 조회
-    # Batch fetch analyses for current window
-    cur_analyses_raw = list(
-        db.scalars(
-            select(Analysis)
-            .where(Analysis.repo_id.in_(repo_ids))
-            .where(Analysis.created_at >= since)
-            .where(Analysis.created_at <= _now)
-            .where(Analysis.result.isnot(None))
-            .order_by(Analysis.created_at.desc())
-            .limit(len(repo_ids) * max_per_repo)
-        ).all()
+    # 현재/이전 기간 분석 배치 조회 후 repo_id 별 그룹화
+    # Batch-fetch current and previous window analyses, then group by repo_id
+    batch_limit = len(repo_ids) * max_per_repo
+    cur_by_repo = _group_analyses_by_repo(
+        _fetch_analyses_for_window(db, repo_ids, since, _now, batch_limit, end_inclusive=True),
+        max_per_repo,
     )
-
-    # 이전 기간 분석 배치 조회
-    # Batch fetch analyses for previous window
-    prev_analyses_raw = list(
-        db.scalars(
-            select(Analysis)
-            .where(Analysis.repo_id.in_(repo_ids))
-            .where(Analysis.created_at >= prev_since)
-            .where(Analysis.created_at < prev_until)
-            .where(Analysis.result.isnot(None))
-            .order_by(Analysis.created_at.desc())
-            .limit(len(repo_ids) * max_per_repo)
-        ).all()
+    prev_by_repo = _group_analyses_by_repo(
+        _fetch_analyses_for_window(db, repo_ids, prev_since, prev_until, batch_limit),
+        max_per_repo,
     )
-
-    # repo_id 별 분리 (per-repo 상한 적용)
-    # Group by repo_id, apply per-repo cap
-    cur_by_repo: dict[int, list[Analysis]] = {}
-    for a in cur_analyses_raw:
-        bucket = cur_by_repo.setdefault(a.repo_id, [])
-        if len(bucket) < max_per_repo:
-            bucket.append(a)
-
-    prev_by_repo: dict[int, list[Analysis]] = {}
-    for a in prev_analyses_raw:
-        bucket = prev_by_repo.setdefault(a.repo_id, [])
-        if len(bucket) < max_per_repo:
-            bucket.append(a)
 
     # 각 리포별 요약 집계 (DB 쿼리 없이 Python-side 처리)
     # Aggregate per-repo summary using pre-loaded analyses (no DB calls in loop)
