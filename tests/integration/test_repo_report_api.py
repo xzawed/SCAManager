@@ -13,8 +13,8 @@ from src.main import app
 
 # ORM 모델 import — Base.metadata 등록 의무 (lazy import 금지)
 # ORM model imports register tables on Base.metadata (no lazy imports allowed)
-from src.models.repository import Repository  # noqa: F401
-from src.models.analysis import Analysis  # noqa: F401
+import src.models.repository  # noqa: F401
+import src.models.analysis  # noqa: F401
 
 client = TestClient(app)
 
