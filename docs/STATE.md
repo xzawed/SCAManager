@@ -2,13 +2,13 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-15 기준 — **사이클 98**: CodeQL py/exit-from-finally 수정 (#433) + HTMX hx-boost 네비게이션 (#434) + hx-boost 후속 수정 (#435) + themechange stale closure 완전 수정 (#436)): 130+ PR #188~#436 — 누적 정책 본문 19건 + 메모리 30건 (활성 28 + deprecated 2). 단위 2917 / 통합 129 / E2E 96 / pylint **10.00/10**
+## 현재 수치 (2026-05-15 기준 — **사이클 98**: CodeQL py/exit-from-finally 수정 (#433) + HTMX hx-boost 네비게이션 (#434) + hx-boost 후속 수정 (#435) + themechange stale closure 완전 수정 (#436) + 문서 정합성 수정 (#439)): 130+ PR #188~#439 — 누적 정책 본문 19건 + 메모리 30건 (활성 28 + deprecated 2). 전체 2917 (단위 2766 + 통합 151) / E2E 96 / pylint **10.00/10**
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
-| 단위 테스트 | **2917개** | pytest 9.0.3 — 사이클 73~75 +67 + 사이클 78~82 +114 (2122→2236) + 사이클 84 i18n 18 PR +473 누적 + **사이클 85 Sentry 완전 제거 -40** + **#375 일러스트 회귀 가드 +13** + **#397 UI 리디자인 +26** (form/mobile/sweep) + **사이클 96 #415 pylint +0** + **사이클 97 #423 +4** (CachedStaticFiles 2 + recurring_count 회귀가드 2) + **#428 랜딩 페이지 +2** (test_overview_landing.py) + **사이클 98 #434 +3** (test_htmx_vendor.py — htmx vendor 존재·script 로드·hx-boost 속성 회귀가드). **= 2917 collected** |
-| 통합 테스트 | **129개** | tests/integration/ — 사이클 81 영역 🅑 모바일 Phase 1 MVP +34 + **사이클 84 i18n PR-18 smoke +11** (3 언어 × /login Cookie + HTML lang attr + default fallback + i18n metrics). **= 124 passed / 5 skipped / 0 failed** |
-| E2E 테스트 | **96개** | `make test-e2e` (Chromium Playwright) — Phase 3 PR 6 +7 + **사이클 84 i18n PR-16 +14** (3 언어 × 4 페이지 — login/overview/dashboard/settings + Cookie fallback + locale switch). **사이클 94 #372 (추정 수치 — 사용자 `make test-e2e` 검증 후 정정 영역)**: test_save_success ordering 트랩 차단 (`_reset_repo_config()` 헬퍼) → PASS 회복 + test_two_column UX 결정 영역 보류 (`@pytest.mark.skip`). **추정 = 95 passed / 1 skipped / 0 failed**. ⚠️ e2e ↔ tests/integration 동시 실행 금지 — `e2e/pytest.ini` 의도적 asyncio_mode 미설정, 분리 실행 default (`make test-e2e` vs CI command `pytest tests/`) |
+| 전체 테스트 | **2917개** | `pytest tests/` — 단위 2766 + 통합 151 = 2917 collected. 추적 이력: 사이클 73~75 +67 + 사이클 78~82 +114 (2122→2236) + 사이클 84 i18n 18 PR +473 누적 + **사이클 85 Sentry 완전 제거 -40** + **#375 일러스트 회귀 가드 +13** + **#397 UI 리디자인 +26** (form/mobile/sweep) + **사이클 96 #415 pylint +0** + **사이클 97 #423 +4** (CachedStaticFiles 2 + recurring_count 회귀가드 2) + **#428 랜딩 페이지 +2** (test_overview_landing.py) + **사이클 98 #434 +3** (test_htmx_vendor.py — htmx vendor 존재·script 로드·hx-boost 속성 회귀가드). **= 2917 collected** |
+| 통합 테스트 | **151개** | tests/integration/ (13 파일) — 사이클 81 영역 🅑 모바일 Phase 1 MVP +34 + **사이클 84 i18n PR-18 smoke +11** (3 언어 × /login Cookie + HTML lang attr + default fallback + i18n metrics) + **PR #400 repo insights +22** (test_repo_insights_css.py — CSS 변수·WCAG·reduced-motion 회귀가드). **= 151 collected** |
+| E2E 테스트 | **96개** | `make test-e2e` (Chromium Playwright) — Phase 3 PR 6 +7 + **사이클 84 i18n PR-16 +14** (3 언어 × 4 페이지 — login/overview/dashboard/settings + Cookie fallback + locale switch). 사이클 94 #372: test_save_success ordering 트랩 차단 (`_reset_repo_config()` 헬퍼) + test_two_column 보류 (`@pytest.mark.skip`). **= 96 collected (95 passed / 1 skipped)**. ⚠️ e2e ↔ tests/integration 동시 실행 금지 — `e2e/pytest.ini` 의도적 asyncio_mode 미설정, 분리 실행 default (`make test-e2e` vs CI command `pytest tests/`) |
 | SonarCloud Quality Gate | **OK** | #399 머지 후 복원 — CPD 14%→<3%, mockup 제외, _NONE_LABEL 상수화 |
 | SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
