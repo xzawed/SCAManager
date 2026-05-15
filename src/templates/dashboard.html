@@ -428,7 +428,7 @@
   .repos-grade-legend-item { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 4px; }
   .repos-grade-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
   .repos-warnings { margin-bottom: 16px; }
-  .repos-warning-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--warning-bg, rgba(245,158,11,0.1)); border: 1px solid var(--warning, #f59e0b); border-radius: 8px; margin-bottom: 6px; font-size: 13px; }
+  .repos-warning-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--warning-faint, rgba(var(--warning-rgb, 245 158 11) / 0.1)); border: 1px solid var(--warning); border-radius: 8px; margin-bottom: 6px; font-size: 13px; }
   .repos-warning-icon { color: var(--warning); }
   .repos-warning-link { color: var(--text-primary); text-decoration: none; font-weight: 600; }
   .repos-warning-link:hover { text-decoration: underline; }
@@ -627,8 +627,9 @@
         var ctx = document.getElementById('repoTrendChart');
         if (!ctx) return;
         var cs = getComputedStyle(document.documentElement);
-        var colorA = cs.getPropertyValue('--grade-a').trim() || '#10b981';
-        var colorBorder = cs.getPropertyValue('--accent-primary').trim() || '#3b82f6';
+        // CSS 변수로만 색상 결정 — hex 직접 사용 금지 (ui.md 의무)
+        // Color determined solely via CSS variables — no hex fallbacks (ui.md rule)
+        var colorBorder = cs.getPropertyValue('--accent-primary').trim() || cs.getPropertyValue('--accent').trim();
 
         if (window._repoTrendChart) { window._repoTrendChart.destroy(); }
         window._repoTrendChart = new Chart(ctx, {
