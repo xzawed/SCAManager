@@ -717,8 +717,8 @@
       <ul class="repos-recommendations">
         {% for issue in repo_report.recurring_issues[:5] %}
         <li class="repos-rec-item">
-          <span class="repos-rec-badge repos-rec-{{ issue.severity | lower | default('warning') }}">
-            {{ issue.severity | upper | default('WARNING') }}
+          <span class="repos-rec-badge repos-rec-{{ (issue.severity or 'warning') | lower }}">
+            {{ (issue.severity or 'WARNING') | upper }}
           </span>
           <span class="repos-rec-msg">{{ issue.message }}</span>
           <span class="repos-rec-count">{{ issue.count }}회 반복</span>
