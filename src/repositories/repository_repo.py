@@ -74,3 +74,20 @@ def save_new(db: Session, repo: Repository) -> Repository:
     """신규 리포를 저장하고 반환한다. commit은 호출자 책임."""
     db.add(repo)
     return repo
+
+
+def find_all_by_user(db: Session, user_id: int) -> list[Repository]:
+    """사용자 소유 리포 + 공유(user_id=NULL) 리포 전체 반환 (생성일 내림차순).
+
+    Return repos owned by user_id plus shared repos (user_id IS NULL).
+    """
+    # PR-2 Dashboard repos 모드(_build_repo_summary)에서 사용
+    # Used by PR-2 Dashboard repos mode (_build_repo_summary)
+    return (
+        db.query(Repository)
+        .filter(
+            (Repository.user_id == user_id) | (Repository.user_id.is_(None))
+        )
+        .order_by(Repository.created_at.desc())
+        .all()
+    )

@@ -131,6 +131,36 @@ def repo_kpi(  # pylint: disable=too-many-locals
     }
 
 
+def repo_score_trend(
+    db: Session, repo_id: int, days: int = 30, now: datetime | None = None
+) -> list[dict[str, Any]]:
+    """날짜별 평균 점수 시계열 — 트렌드 차트용.
+
+    Returns daily avg score series for trend chart.
+    Bins analyses by date (UTC), oldest first.
+    """
+    _now = now or datetime.now(timezone.utc)
+    analyses = _fetch_analyses(db, repo_id, days, _now)
+
+    # 날짜별 점수 집계 (KST 아닌 UTC 기준)
+    # Group scores by date (UTC)
+    buckets: dict[str, list[float]] = {}
+    for a in analyses:
+        if a.score is None:
+            continue
+        date_key = a.created_at.strftime("%Y-%m-%d") if a.created_at else "unknown"
+        buckets.setdefault(date_key, []).append(float(a.score))
+
+    return [
+        {
+            "date": date_key,
+            "avg_score": round(sum(scores) / len(scores), 1),
+            "count": len(scores),
+        }
+        for date_key, scores in sorted(buckets.items())
+    ]
+
+
 def repo_recurring_issues(
     db: Session, repo_id: int, days: int = 30, n: int = 10, now: datetime | None = None
 ) -> list[dict[str, Any]]:
