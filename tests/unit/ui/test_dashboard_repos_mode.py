@@ -4,7 +4,6 @@ Unit tests for the Dashboard repos mode branch.
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
-import pytest
 from fastapi.testclient import TestClient
 
 from src.ui.routes.dashboard import _VALID_MODES, _build_repo_summary
