@@ -99,12 +99,13 @@ src/
 │   ├── auth.py                  # require_api_key Depends
 │   ├── deps.py                  # get_repo_or_404
 │   ├── repos.py / stats.py / hook.py / users.py
+│   └── repo_report.py               # Repo별 분석 레포트 JSON API (list + detail)
 │   ├── internal_cron.py         # POST /api/internal/cron/{weekly,trend,scan-security,retry-pending-merges}
 │   └── admin.py                 # GET /api/admin/{tenants,rls-audit,operations}
 ├── ui/
 │   ├── _helpers.py              # get_accessible_repo, webhook_base_url, delete_repo_cascade, templates
 │   ├── router.py                # aggregator
-│   └── routes/                  # overview / dashboard (mode 4종) / add_repo / settings / actions / detail / admin / repo_insights
+│   └── routes/                  # overview / dashboard (mode 5종) / add_repo / settings / actions / detail / admin / repo_insights
 ├── templates/                   # base, landing, login, overview, repo_detail, analysis_detail, settings, dashboard, admin_*, repo_insights, add_repo
 ├── cli/                         # python -m src.cli review (git_diff + formatter)
 ├── repositories/                # DB 접근 계층 10종
@@ -156,7 +157,8 @@ Telegram 반자동 콜백:
 
 대시보드:
   → GET /                              (리포 현황)
-  → GET /dashboard?days=&mode={overview|insight|security|usage}
+  → GET /dashboard?days=&mode={overview|insight|security|usage|repos}
+  → GET /dashboard?mode=repos&repo=owner/repo  (repos 모드 — 전체 Repo 포트폴리오 요약 + 개별 Repo 상세 레포트)
   → GET /insights, /insights/me        (301 redirect → /dashboard)
   → GET /repos/{repo}                  (점수 차트 + 이력)
   → GET /repos/{repo}/insights         (리포별 KPI + 반복 이슈 + 문제 파일 + AI 제안 + 카테고리 분석)

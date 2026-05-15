@@ -417,6 +417,53 @@
     .dash-kpi:nth-child(2) { order: 4; }  /* 📊 분석 건수 = 4 (활동량) */
     .dash-kpi:nth-child(4) { order: 5; }  /* 📁 활성 리포 = 5 (확산) */
   }
+
+  /* ── repos 모드 ── */
+  .repos-kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+  .repos-grade-bar-wrap { margin-bottom: 16px; }
+  .repos-grade-bar-label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+  .repos-grade-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; gap: 1px; }
+  .repos-grade-seg { height: 100%; transition: width 0.3s; }
+  .repos-grade-legend { display: flex; gap: 12px; margin-top: 4px; flex-wrap: wrap; }
+  .repos-grade-legend-item { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 4px; }
+  .repos-grade-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .repos-warnings { margin-bottom: 16px; }
+  .repos-warning-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--warning-bg, rgba(245,158,11,0.1)); border: 1px solid var(--warning, #f59e0b); border-radius: 8px; margin-bottom: 6px; font-size: 13px; }
+  .repos-warning-icon { color: var(--warning); }
+  .repos-warning-link { color: var(--text-primary); text-decoration: none; font-weight: 600; }
+  .repos-warning-link:hover { text-decoration: underline; }
+  .repos-warning-score { margin-left: auto; color: var(--text-muted); font-size: 12px; }
+  .repos-selector-form { margin-bottom: 24px; }
+  .repos-selector { width: 100%; padding: 10px 14px; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); font-size: 14px; cursor: pointer; }
+  @media (max-width: 768px) { .repos-selector { min-height: 44px; font-size: 16px; } }
+  .repos-report-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; color: var(--text-primary); }
+  .repos-section { margin-bottom: 28px; }
+  .repos-section h3 { font-size: 14px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+  .repos-category-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .repos-cat-card { background: var(--bg-surface); border-radius: 8px; padding: 14px; text-align: center; }
+  .repos-cat-value { font-size: 28px; font-weight: 700; }
+  .repos-cat-label { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+  .repos-cat-security-error .repos-cat-value { color: var(--danger); }
+  .repos-cat-security-warn .repos-cat-value { color: var(--warning); }
+  .repos-cat-quality-error .repos-cat-value { color: var(--danger); }
+  .repos-cat-quality-warn .repos-cat-value { color: var(--text-muted); }
+  .repos-suggestions { list-style: none; padding: 0; }
+  .repos-suggestion-item { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border-color-subtle, rgba(255,255,255,0.05)); font-size: 13px; }
+  .repos-suggestion-count { flex-shrink: 0; background: var(--bg-surface); border-radius: 4px; padding: 2px 6px; font-size: 11px; color: var(--text-muted); }
+  .repos-suggestion-text { color: var(--text-primary); }
+  .repos-recommendations { list-style: none; padding: 0; }
+  .repos-rec-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border-color-subtle, rgba(255,255,255,0.05)); font-size: 13px; }
+  .repos-rec-badge { flex-shrink: 0; border-radius: 4px; padding: 2px 6px; font-size: 10px; font-weight: 700; }
+  .repos-rec-high { background: var(--danger); color: #fff; }
+  .repos-rec-error { background: var(--danger); color: #fff; }
+  .repos-rec-warning { background: var(--warning); color: #000; }
+  .repos-rec-msg { flex: 1; color: var(--text-primary); }
+  .repos-rec-count { flex-shrink: 0; color: var(--text-muted); font-size: 11px; }
+  .repos-empty { color: var(--text-muted); font-size: 14px; padding: 20px 0; }
+  @media (max-width: 768px) {
+    .repos-kpi-grid { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .repos-category-grid { grid-template-columns: repeat(2, 1fr); }
+  }
 </style>
 
 <div class="dashboard-page" data-initial-mode="{{ initial_mode or 'overview' }}">
@@ -443,6 +490,9 @@
            data-mode="usage"
            title="{{ 'dashboard.modes.usage_tooltip' | i18n_args(locale | default('ko')) }}"
            {% if mode == 'usage' %}class="active"{% endif %}>📈 {{ 'dashboard.modes.usage' | i18n_args(locale | default('ko')) }}</a>
+        <a href="/dashboard?mode=repos&days={{ days }}"
+           data-mode="repos"
+           {% if mode == 'repos' %}class="active"{% endif %}>📋 Repos</a>
       </nav>
       <nav class="dash-range-toggle" aria-label="{{ 'dashboard.range_aria' | i18n_args(locale | default('ko')) }}">
         <a href="/dashboard?mode={{ mode }}&days=1" {% if days == 1 %}class="active"{% endif %}>1d</a>
@@ -453,9 +503,240 @@
     </div>
   </div>
 
+  {# repos 모드: 포트폴리오 요약 + 개별 Repo 레포트 #}
+  {# repos mode: portfolio summary + individual repo report #}
+  {% if mode == 'repos' %}
+<div class="repos-mode">
+
+  {# ── 상단 요약 (B+C): KPI 카드 + 등급 분포 바 + 경고 Repo 배너 #}
+  {# Top summary (B+C): KPI cards + grade distribution bar + warning banners #}
+  <div class="dash-kpi-grid repos-kpi-grid">
+    <div class="dash-kpi">
+      <div class="dash-kpi-label">평균 점수</div>
+      <div class="dash-kpi-value">
+        {% if summary.summary.avg_score is not none %}
+          {{ summary.summary.avg_score }}
+        {% else %}
+          —
+        {% endif %}
+      </div>
+    </div>
+    <div class="dash-kpi">
+      <div class="dash-kpi-label">연결 Repo</div>
+      <div class="dash-kpi-value">{{ summary.summary.total_repos }}</div>
+    </div>
+    <div class="dash-kpi">
+      <div class="dash-kpi-label">경고</div>
+      <div class="dash-kpi-value"
+           style="color: {% if summary.summary.warning_count > 0 %}var(--danger){% else %}var(--success){% endif %}">
+        {{ summary.summary.warning_count }}
+      </div>
+    </div>
+  </div>
+
+  {# 등급 분포 바 #}
+  {# Grade distribution bar #}
+  {% set dist = summary.summary.grade_distribution %}
+  {% set total = summary.summary.total_repos %}
+  {% if total > 0 %}
+  <div class="repos-grade-bar-wrap">
+    <div class="repos-grade-bar-label">등급 분포</div>
+    <div class="repos-grade-bar">
+      {% for grade, color in [('A','var(--grade-a)'),('B','var(--grade-b)'),('C','var(--grade-c)'),('D','var(--grade-d)'),('F','var(--grade-f)')] %}
+        {% set count = dist.get(grade, 0) %}
+        {% if count > 0 %}
+        <div class="repos-grade-seg" title="{{ grade }}등급 {{ count }}개"
+             style="width:{{ (count / total * 100) | round(1) }}%; background:{{ color }}">
+        </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+    <div class="repos-grade-legend">
+      {% for grade in ['A','B','C','D','F'] %}
+        {% set count = dist.get(grade, 0) %}
+        {% if count > 0 %}
+        <span class="repos-grade-legend-item">
+          <span class="repos-grade-dot" style="background:var(--grade-{{ grade | lower }})"></span>
+          {{ grade }} {{ count }}
+        </span>
+        {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {# 경고 Repo 배너 #}
+  {# Warning repo banners #}
+  {% if summary.warning_repos %}
+  <div class="repos-warnings">
+    {% for r in summary.warning_repos[:3] %}
+    <div class="repos-warning-item">
+      <span class="repos-warning-icon">⚠</span>
+      <a href="/dashboard?mode=repos&repo={{ r.full_name }}&days={{ days }}"
+         class="repos-warning-link">{{ r.full_name }}</a>
+      <span class="repos-warning-score">
+        {{ r.avg_score if r.avg_score is not none else '—' }} ({{ r.grade }})
+        {% if r.score_delta is not none %}
+          {% if r.score_delta > 0 %}▲{% elif r.score_delta < 0 %}▼{% endif %}
+          {{ r.score_delta | abs }}
+        {% endif %}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {# ── Repo 선택 드롭다운 #}
+  {# Repo selector dropdown #}
+  <form method="get" class="repos-selector-form">
+    <input type="hidden" name="mode" value="repos">
+    <input type="hidden" name="days" value="{{ days }}">
+    <select name="repo" class="repos-selector"
+            onchange="this.form.submit()" aria-label="Repo 선택">
+      <option value="">— Repo를 선택하세요 —</option>
+      {% for r in summary.repos %}
+      <option value="{{ r.full_name }}"
+        {% if r.full_name == selected_repo %}selected{% endif %}>
+        {{ r.full_name }}
+        {% if r.avg_score is not none %}({{ r.avg_score }}){% endif %}
+      </option>
+      {% endfor %}
+    </select>
+  </form>
+
+  {# ── 개별 Repo 레포트 #}
+  {# Individual repo report #}
+  {% if repo_report %}
+  <div class="repos-report">
+    <h2 class="repos-report-title">{{ repo_report.repo_full_name }}</h2>
+
+    {# ① 점수 트렌드 차트 #}
+    {# ① Score trend chart #}
+    {% if repo_report.score_trend | length > 1 %}
+    <section class="repos-section">
+      <h3>점수 트렌드</h3>
+      <canvas id="repoTrendChart" height="80"></canvas>
+    </section>
+    <script>
+    (function() {
+      // repos 모드 themechange — remove-before-add 패턴 (ui.md 규칙 준수)
+      // repos mode themechange — remove-before-add pattern (ui.md rule)
+      var trendData = {{ repo_report.score_trend | tojson }};
+
+      function buildRepoTrendChart() {
+        var ctx = document.getElementById('repoTrendChart');
+        if (!ctx) return;
+        var cs = getComputedStyle(document.documentElement);
+        var colorA = cs.getPropertyValue('--grade-a').trim() || '#10b981';
+        var colorBorder = cs.getPropertyValue('--accent-primary').trim() || '#3b82f6';
+
+        if (window._repoTrendChart) { window._repoTrendChart.destroy(); }
+        window._repoTrendChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: trendData.map(function(d) { return d.date; }),
+            datasets: [{
+              label: '평균 점수',
+              data: trendData.map(function(d) { return d.avg_score; }),
+              borderColor: colorBorder,
+              backgroundColor: colorBorder + '22',
+              tension: 0.3,
+              fill: true,
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+              y: { min: 0, max: 100, grid: { color: 'rgba(255,255,255,0.05)' } }
+            }
+          }
+        });
+      }
+
+      buildRepoTrendChart();
+
+      // themechange remove-before-add 패턴
+      // themechange remove-before-add pattern
+      if (document._reposThemeHandler) {
+        document.removeEventListener('themechange', document._reposThemeHandler);
+      }
+      document._reposThemeHandler = buildRepoTrendChart;
+      document.addEventListener('themechange', document._reposThemeHandler);
+    })();
+    </script>
+    {% endif %}
+
+    {# ② 이슈 카테고리 분석 #}
+    {# ② Issue category analysis #}
+    <section class="repos-section">
+      <h3>이슈 카테고리</h3>
+      {% set bd = repo_report.category_breakdown %}
+      <div class="repos-category-grid">
+        <div class="repos-cat-card repos-cat-security-error">
+          <div class="repos-cat-value">{{ bd.security_error }}</div>
+          <div class="repos-cat-label">보안 에러</div>
+        </div>
+        <div class="repos-cat-card repos-cat-security-warn">
+          <div class="repos-cat-value">{{ bd.security_warning }}</div>
+          <div class="repos-cat-label">보안 경고</div>
+        </div>
+        <div class="repos-cat-card repos-cat-quality-error">
+          <div class="repos-cat-value">{{ bd.code_quality_error }}</div>
+          <div class="repos-cat-label">품질 에러</div>
+        </div>
+        <div class="repos-cat-card repos-cat-quality-warn">
+          <div class="repos-cat-value">{{ bd.code_quality_warning }}</div>
+          <div class="repos-cat-label">품질 경고</div>
+        </div>
+      </div>
+    </section>
+
+    {# ③ AI 리뷰 요약 (반복 이슈 패턴) #}
+    {# ③ AI review summary (recurring issue patterns) #}
+    {% if repo_report.ai_suggestions %}
+    <section class="repos-section">
+      <h3>AI 리뷰 요약</h3>
+      <ul class="repos-suggestions">
+        {% for s in repo_report.ai_suggestions[:5] %}
+        <li class="repos-suggestion-item">
+          <span class="repos-suggestion-count">×{{ s.count }}</span>
+          <span class="repos-suggestion-text">{{ s.suggestion }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+
+    {# ⑤ 개선 권장 사항 (recurring_issues 기반) #}
+    {# ⑤ Recommendations based on recurring issues #}
+    {% if repo_report.recurring_issues %}
+    <section class="repos-section">
+      <h3>개선 권장 사항</h3>
+      <ul class="repos-recommendations">
+        {% for issue in repo_report.recurring_issues[:5] %}
+        <li class="repos-rec-item">
+          <span class="repos-rec-badge repos-rec-{{ issue.severity | lower | default('warning') }}">
+            {{ issue.severity | upper | default('WARNING') }}
+          </span>
+          <span class="repos-rec-msg">{{ issue.message }}</span>
+          <span class="repos-rec-count">{{ issue.count }}회 반복</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+
+  </div>
+  {% elif selected_repo %}
+  <p class="repos-empty">선택한 Repo를 찾을 수 없습니다.</p>
+  {% endif %}
+
+</div>
+
   {# Cycle 73 F2 — Security 모드: Code Scanning + Secret Scanning audit (read-only) #}
   {# Cycle 73 F2 — Security mode: Code Scanning + Secret Scanning audit (read-only) #}
-  {% if mode == 'security' %}
+  {% elif mode == 'security' %}
     {% if security and security.kill_switch_active %}
     <div class="dash-insight-status">
       {{ 'dashboard.security.kill_switch_active' | i18n_args(locale | default('ko')) }}
