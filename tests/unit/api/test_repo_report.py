@@ -1,7 +1,6 @@
 """repo_report API 엔드포인트 단위 테스트.
 Unit tests for the repo_report API endpoints.
 """
-from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
