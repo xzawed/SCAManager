@@ -50,8 +50,8 @@ src/
 │   ├── analytics_service.py     # 집계 단일 출처 — weekly_summary, moving_average, resolve_chat_id
 │   ├── cron_service.py          # 주기 실행 — run_weekly_reports, run_trend_check
 │   ├── dashboard_service.py     # /dashboard 9 공개 함수 (KPI 4 + trend + frequent_issues + auto_merge_kpi + feedback_status + insight_narrative + dashboard_security + dashboard_usage + repo_insight_cards) + RLS 격리 헬퍼 2건 + N+1 배치 헬퍼 2건 (_fetch_analyses_for_window / _group_analyses_by_repo)
-│   ├── repo_insight_service.py  # 리포별 집계 6 함수 (repo_kpi/recurring_issues/problem_files/ai_suggestions/category_breakdown/insight_narrative) + compute_score_kpi 공유 헬퍼 (dashboard_service CPD 제거)
-│   │                            # Per-repo aggregation 6 functions + compute_score_kpi shared helper
+│   ├── repo_insight_service.py  # 리포별 집계 7 함수 (repo_kpi/repo_score_trend/recurring_issues/problem_files/ai_suggestions/category_breakdown/insight_narrative) + compute_score_kpi 공유 헬퍼 (dashboard_service CPD 제거)
+│   │                            # Per-repo aggregation 7 functions (repo_score_trend added cycle 99) + compute_score_kpi shared helper
 │   ├── merge_retry_service.py   # process_pending_retries 워커 (CI-aware)
 │   ├── security_scan_service.py # Code/Secret Scanning 폴링 + audit log + GHAS graceful degradation
 │   ├── saas_service.py          # tenant_inventory + rls_audit_matrix (Cycle 79 PR 3a)
@@ -111,7 +111,7 @@ src/
 │   ├── __init__.py              # MCP tool 선언 패키지
 │   └── repo_report_tools.py     # list_repo_reports / get_repo_report tool 스키마
 ├── cli/                         # python -m src.cli review (git_diff + formatter)
-├── repositories/                # DB 접근 계층 10종
+├── repositories/                # DB 접근 계층 10종 — repository_repo (`find_by_full_name` + `find_all_by_user` shared+owned repos + Phase H `find_by_full_name_with_owner`)
 └── worker/pipeline.py           # run_analysis_pipeline, build_analysis_result_dict
 ```
 
@@ -167,6 +167,8 @@ Telegram 반자동 콜백:
   → GET /repos/{repo}/insights         (리포별 KPI + 반복 이슈 + 문제 파일 + AI 제안 + 카테고리 분석)
   → GET /repos/{repo}/analyses/{id}    (분석 상세)
   → GET /api/repos, /api/repos/{repo}/stats
+  → GET /api/repos/report?days=N           (전체 Repo 포트폴리오 요약 — JSON API)
+  → GET /api/repos/{name:path}/report?days=N  (개별 Repo 상세 레포트 — JSON API)
 
 CLI Hook (로컬 pre-push 자동 코드리뷰):
   Repo 등록 시 (POST /repos/add):
