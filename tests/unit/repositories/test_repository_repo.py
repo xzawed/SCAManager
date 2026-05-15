@@ -132,3 +132,97 @@ def test_find_by_full_name_handles_repo_without_owner(db_session):
     assert found is not None
     assert found.user_id is None
     assert found.owner is None
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# find_all_by_user — 사용자 소유 + 공유(user_id=NULL) 리포 조회
+# find_all_by_user — returns repos owned by user plus shared (user_id=NULL)
+# ──────────────────────────────────────────────────────────────────────────
+
+
+def _seed_user(db_session, github_id: str, login: str) -> User:
+    """테스트용 User 레코드 생성 헬퍼.
+    Helper to create a User record for tests.
+    """
+    user = User(
+        github_id=github_id,
+        github_login=login,
+        display_name=login,
+        email=f"{login}@example.com",
+        github_access_token=f"ghp_{login}",
+    )
+    db_session.add(user)
+    db_session.commit()
+    return user
+
+
+def test_find_all_by_user_returns_owned_repos(db_session):
+    """사용자 소유 리포 2건이 모두 반환된다.
+    Both repos owned by the user are returned.
+    """
+    user = _seed_user(db_session, "1", "alice")
+    db_session.add_all([
+        Repository(full_name="alice/repo1", user_id=user.id),
+        Repository(full_name="alice/repo2", user_id=user.id),
+    ])
+    db_session.commit()
+
+    result = repository_repo.find_all_by_user(db_session, user.id)
+    full_names = {r.full_name for r in result}
+    assert full_names == {"alice/repo1", "alice/repo2"}
+
+
+def test_find_all_by_user_returns_shared_repos(db_session):
+    """user_id=NULL 공유 리포가 포함된다.
+    Repos with user_id=NULL (shared) are included.
+    """
+    user = _seed_user(db_session, "2", "bob")
+    db_session.add(Repository(full_name="shared/repo", user_id=None))
+    db_session.commit()
+
+    result = repository_repo.find_all_by_user(db_session, user.id)
+    assert any(r.full_name == "shared/repo" for r in result)
+
+
+def test_find_all_by_user_excludes_other_user_repos(db_session):
+    """다른 사용자 소유 리포는 제외된다.
+    Repos owned by a different user are excluded.
+    """
+    user_a = _seed_user(db_session, "3", "carol")
+    user_b = _seed_user(db_session, "4", "dave")
+    db_session.add_all([
+        Repository(full_name="carol/repo", user_id=user_a.id),
+        Repository(full_name="dave/repo", user_id=user_b.id),
+    ])
+    db_session.commit()
+
+    result = repository_repo.find_all_by_user(db_session, user_a.id)
+    full_names = {r.full_name for r in result}
+    assert "carol/repo" in full_names
+    assert "dave/repo" not in full_names
+
+
+def test_find_all_by_user_ordered_by_created_at_desc(db_session):
+    """반환 순서가 created_at 내림차순 (최신 리포가 첫 번째).
+    Results are ordered by created_at descending (newest first).
+    """
+    from datetime import datetime, timedelta, timezone
+
+    user = _seed_user(db_session, "5", "eve")
+    now = datetime.now(timezone.utc)
+    older = Repository(
+        full_name="eve/older",
+        user_id=user.id,
+        created_at=now - timedelta(days=2),
+    )
+    newer = Repository(
+        full_name="eve/newer",
+        user_id=user.id,
+        created_at=now - timedelta(days=1),
+    )
+    db_session.add_all([older, newer])
+    db_session.commit()
+
+    result = repository_repo.find_all_by_user(db_session, user.id)
+    assert result[0].full_name == "eve/newer"
+    assert result[1].full_name == "eve/older"

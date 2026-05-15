@@ -16,6 +16,7 @@ from src.config import settings
 from src.shared.http_client import close_http_client, init_http_client
 from src.webhook.router import router as webhook_router
 from src.api.repos import router as api_repos_router
+from src.api.repo_report import router as api_repo_report_router
 from src.api.stats import router as api_stats_router
 from src.api.hook import router as api_hook_router
 from src.api.users import router as api_users_router
@@ -186,6 +187,7 @@ if _STATIC_DIR.exists():
 app.include_router(auth_router)
 app.include_router(webhook_router)
 app.include_router(api_repos_router)
+app.include_router(api_repo_report_router)
 app.include_router(api_stats_router)
 app.include_router(api_hook_router)
 app.include_router(api_users_router)
