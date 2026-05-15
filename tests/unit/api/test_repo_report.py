@@ -17,8 +17,10 @@ _AUTH = {"X-API-Key": _VALID_KEY}
 
 @pytest.fixture(autouse=True)
 def _mock_api_key(monkeypatch):
-    """API 키 인증 우회."""
-    monkeypatch.setenv("API_KEY", _VALID_KEY)
+    """API 키 인증 우회 — settings 싱글톤 직접 패치.
+    Bypass API key auth — patch settings singleton directly.
+    """
+    monkeypatch.setattr("src.api.auth.settings.api_key", _VALID_KEY)
 
 
 # ── /api/repos/report ─────────────────────────────────────────────────────────

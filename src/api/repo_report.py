@@ -3,9 +3,10 @@ Per-repository analysis report JSON API endpoints.
 """
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 
 from src.api.auth import require_api_key
+from src.api.deps import get_repo_or_404
 from src.database import SessionLocal
 from src.repositories import repository_repo
 from src.services.repo_insight_service import (
@@ -95,11 +96,9 @@ def get_repo_report(
     Returns detailed analysis report for a single repo.
     """
     with SessionLocal() as db:
-        repo = repository_repo.find_by_full_name(db, repo_name)
+        repo = get_repo_or_404(repo_name, db)
         # API key auth는 전역 — user_id 필터 없음 (기존 /api/repos 패턴 동일)
         # API key auth is global — no user_id filter (matches existing /api/repos pattern)
-        if repo is None:
-            raise HTTPException(status_code=404, detail="Repository not found")
 
         now = datetime.now(timezone.utc)
 
