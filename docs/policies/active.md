@@ -33,7 +33,14 @@
 
 🔴 **현재 SCAManager 환경**: gh CLI v2.88.1 설치 완료 + xzawed 계정 인증 완료 → **옵션 🅐 (gh pr create) default 운영**.
 
-**기본 PR body 템플릿**: §Summary + §🔍 사용자 검증 필요 (정책 2) + §자율 판단 보고 (정책 3) + 🤖 Generated with [Claude Code](https://claude.com/claude-code) 푸터.
+**기본 PR body 템플릿**: §Summary + §🔍 사용자 검증 필요 (정책 2) + §자율 판단 보고 (정책 3) + §🔍 Codex 검증 의뢰 (정책 18) + 🤖 Generated with [Claude Code](https://claude.com/claude-code) 푸터.
+
+```markdown
+## 🔍 Codex 검증 의뢰 (push 전, 정책 18)
+- [ ] Codex 검증 의뢰 완료 — push 전 Codex OK 회신 대기 중
+```
+
+> 🔴 **누락 시**: 다음 응답에서 회복 의무 (자성 1줄 + 의뢰 1줄). 사이클 99 PR #441/442/443 전체 누락 → 본 항목 신설 (cross-verify 실측 확인). 예외: 사용자 명시 `mutual 생략 OK` 발화 시.
 
 **fix-up commit 형식 default** (사이클 64 회고 P1): PR 머지 전 CI fail / 회귀 발견 시 = **동일 PR 브랜치 추가 commit** (별도 PR X — 정책 7 강화 응집 단위 부합). commit message prefix = `fix(<feature>-ci):`. PR body §자율 판단 보고에 사유 명시 의무. 머지 후 발견 시 = 별도 `fix/<feature>-<bug>` PR.
 
