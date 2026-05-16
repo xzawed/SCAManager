@@ -212,9 +212,14 @@
     apiErrorPrefix: i18nCard.dataset.i18nApiErrorPrefix,
   };
 
+  // 페이지 이탈 시 fetch abort 제어 — hx-boost 뒤로가기 freezing 방지
+  // AbortController to cancel in-flight fetch on page leave — prevents stale DOM updates after hx-boost navigation
+  let _repoCtrl = new AbortController();
+  window.addEventListener('pagehide', () => _repoCtrl.abort());
+
   async function loadRepos() {
     try {
-      const resp = await fetch('/api/github/repos');
+      const resp = await fetch('/api/github/repos', { signal: _repoCtrl.signal });
       if (!resp.ok) throw new Error(I18N.apiErrorPrefix + resp.status);
       const repos = await resp.json();
 
@@ -242,6 +247,9 @@
 
       hint.textContent = I18N.loadedTemplate.replace('__N__', repos.length);
     } catch (e) {
+      // AbortError는 정상 이탈 — UI 변경 없음 (pagehide 시 abort 트리거)
+      // AbortError means normal navigation away — skip UI update (triggered by pagehide abort)
+      if (e.name === 'AbortError') return;
       const failOpt = document.createElement('option');
       failOpt.value = '';
       failOpt.textContent = I18N.loadFailed;

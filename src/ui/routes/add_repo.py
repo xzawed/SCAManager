@@ -40,13 +40,22 @@ async def github_repos_list(
     current_user: Annotated[CurrentUser, Depends(require_login)],
 ):
     """사용자의 GitHub 리포 목록 중 미등록 리포만 반환한다."""
+    # 토큰 없으면 빈 목록 반환 (401 전파 방지)
+    # Return empty list if token missing (prevent 401 propagation)
+    if not current_user.plaintext_token:
+        return []
     with SessionLocal() as db:
         existing_names = {
             r.full_name for r in db.query(Repository).filter(
                 Repository.user_id == current_user.id
             ).all()
         }
-    repos = await list_user_repos(current_user.plaintext_token or "")
+    try:
+        repos = await list_user_repos(current_user.plaintext_token)
+    except Exception:
+        # GitHub API 오류(401/403/429/timeout) 시 빈 목록 반환
+        # Return empty list on GitHub API error (401/403/429/timeout)
+        return []
     return [r for r in repos if r["full_name"] not in existing_names]
 
 
@@ -101,7 +110,7 @@ async def add_repo(
             config.hook_token = hook_token
         db.commit()
 
-    server_url = str(request.base_url).rstrip("/")
+    server_url = webhook_base_url(request)
     await commit_scamanager_files(
         current_user.plaintext_token or "",
         repo_full_name,

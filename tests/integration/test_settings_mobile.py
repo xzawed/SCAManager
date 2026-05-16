@@ -22,7 +22,7 @@ import pytest
 @pytest.fixture(scope="module")
 def settings_html() -> str:
     """settings.html 본문 read (templates 정적 자원)."""
-    return (Path(__file__).resolve().parents[2] / "src" / "templates" / "settings.html").read_text()
+    return (Path(__file__).resolve().parents[2] / "src" / "templates" / "settings.html").read_text(encoding='utf-8')
 
 
 # ─── 768px↓ 분기 신설 ────────────────────────────────────────────
@@ -112,5 +112,5 @@ def test_existing_details_preserved(settings_html):
 
 def test_pwa_manifest_unchanged():
     """PR-A PWA manifest = settings 변경 무영향."""
-    manifest = (Path(__file__).resolve().parents[2] / "src" / "static" / "manifest.json").read_text()
+    manifest = (Path(__file__).resolve().parents[2] / "src" / "static" / "manifest.json").read_text(encoding='utf-8')
     assert '"display": "standalone"' in manifest

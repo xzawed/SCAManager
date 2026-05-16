@@ -201,8 +201,14 @@ class _TelegramNotifier:
     name = "telegram"
 
     def is_enabled(self, ctx: NotifyContext) -> bool:  # pylint: disable=unused-argument
-        """채널 활성화 여부를 반환한다."""
-        return True
+        """채널 활성화 여부를 반환한다.
+
+        TELEGRAM_BOT_TOKEN 또는 TELEGRAM_CHAT_ID 미설정 시 비활성화.
+        Disabled when TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is not configured.
+        """
+        # 토큰 또는 기본 chat_id 없으면 비활성화 (빈 문자열 허용 안 함)
+        # Disable if token or default chat_id is missing (empty string not allowed)
+        return bool(settings.telegram_bot_token and settings.telegram_chat_id)
 
     async def send(self, ctx: NotifyContext) -> None:
         """알림을 전송한다 (Phase 3 PR-9 — 사이클 84 i18n 3-layer fallback).

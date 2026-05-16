@@ -726,10 +726,12 @@
   <!-- 네비게이션 로딩 프로그레스 바 / Navigation loading progress bar -->
   <div id="page-progress"></div>
   <div class="container">{% block content %}{% endblock %}</div>
-  {% block scripts %}{% endblock %}
   <!-- HTMX hx-boost: 앵커 클릭을 fetch 교체로 업그레이드 (전체 페이지 리로드 제거)
        HTMX hx-boost: upgrades anchor clicks to fetch-based swaps (eliminates full page reload) -->
   <script src="/static/vendor/htmx.min.js"></script>
+  <!-- 자식 템플릿 스크립트 블록 — htmx 로드 이후 배치 (race condition 방지)
+       Child template scripts block — placed after htmx load to prevent race conditions -->
+  {% block scripts %}{% endblock %}
   <script>
     // 테마 마이그레이션: glass→pastel, claude-dark→catppuccin (2026-05-11 UI 리디자인)
     // Theme migration: glass→pastel, claude-dark→catppuccin (2026-05-11 UI redesign)
@@ -887,21 +889,32 @@
     // ── Animation framework ──────────────────────────────────────────────────
     // 스크롤 reveal: .card, .s-card, .kpi-card, .reveal 요소 자동 감지
     // Scroll reveal: auto-detect .card, .s-card, .kpi-card, .reveal elements
-    (function() {
-      var io = new IntersectionObserver(function(entries) {
-        entries.forEach(function(e, idx) {
-          if (e.isIntersecting) {
-            e.target.style.setProperty('--i', idx);
-            e.target.classList.add('visible');
-            io.unobserve(e.target);
-          }
-        });
-      }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+    // hx-boost popstate 복원 후 재호출 가능하도록 IIFE → named function 패턴
+    // Refactored from IIFE to named function so it can be called again after hx-boost restore
+    var _revealIO = new IntersectionObserver(function(entries) {
+      entries.forEach(function(e, idx) {
+        if (e.isIntersecting) {
+          e.target.style.setProperty('--i', idx);
+          e.target.classList.add('visible');
+          _revealIO.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+    function _initReveal() {
+      // visible 클래스가 없는 요소만 observe (중복 등록 방지)
+      // Only observe elements without .visible to prevent duplicate registration
       document.querySelectorAll('.card, .s-card, .kpi-card, .reveal').forEach(function(el) {
         if (!el.classList.contains('reveal')) el.classList.add('reveal');
-        io.observe(el);
+        if (!el.classList.contains('visible')) _revealIO.observe(el);
       });
-    })();
+    }
+    _initReveal();
+
+    // hx-boost popstate/historyRestore 후 .reveal 요소 재초기화 (opacity:0 고착 방지)
+    // Re-initialize reveal elements after hx-boost popstate/historyRestore (prevent opacity:0 freeze)
+    document.addEventListener('htmx:afterSettle', _initReveal);
+    document.addEventListener('htmx:historyRestore', _initReveal);
 
     // KPI 카운트업 (data-count 속성 기반)
     // KPI count-up (data-count attribute based)
