@@ -41,6 +41,11 @@ test-fast:
 test-slow:
 	python -m pytest tests/ -m "slow" -q
 
+# Windows 로컬 환경용 — subprocess(slow) 154개 제외, 짧은 traceback, 헤더 없음
+# Local Windows run — excludes 154 slow subprocess tests, short tracebacks, no header.
+test-local:
+	python -m pytest tests/ -m "not slow" --tb=short -q --no-header
+
 # 테스트 + 커버리지
 # Run tests and generate coverage report.
 test-cov:
