@@ -17,12 +17,12 @@ import pytest
 
 @pytest.fixture(scope="module")
 def add_repo_html() -> str:
-    return (Path(__file__).resolve().parents[2] / "src" / "templates" / "add_repo.html").read_text()
+    return (Path(__file__).resolve().parents[2] / "src" / "templates" / "add_repo.html").read_text(encoding='utf-8')
 
 
 @pytest.fixture(scope="module")
 def login_html() -> str:
-    return (Path(__file__).resolve().parents[2] / "src" / "templates" / "login.html").read_text()
+    return (Path(__file__).resolve().parents[2] / "src" / "templates" / "login.html").read_text(encoding='utf-8')
 
 
 # ─── add_repo.html 모바일 분기 신설 ──────────────────────────────
@@ -95,18 +95,18 @@ def test_login_existing_480px_branch_preserved(login_html):
 
 def test_pwa_manifest_unchanged():
     """PR-A PWA manifest = 본 PR 무영향."""
-    manifest = (Path(__file__).resolve().parents[2] / "src" / "static" / "manifest.json").read_text()
+    manifest = (Path(__file__).resolve().parents[2] / "src" / "static" / "manifest.json").read_text(encoding='utf-8')
     assert '"display": "standalone"' in manifest
 
 
 def test_dashboard_mobile_priority_unchanged():
     """PR-B dashboard 모바일 KPI 우선순위 = 본 PR 무영향."""
-    dashboard_html = (Path(__file__).resolve().parents[2] / "src" / "templates" / "dashboard.html").read_text()
+    dashboard_html = (Path(__file__).resolve().parents[2] / "src" / "templates" / "dashboard.html").read_text(encoding='utf-8')
     assert ".dash-kpi:nth-child(3) { order: 1;" in dashboard_html
 
 
 def test_settings_mobile_768px_unchanged():
     """PR-C settings 모바일 768px↓ = 본 PR 무영향."""
-    settings_html = (Path(__file__).resolve().parents[2] / "src" / "templates" / "settings.html").read_text()
+    settings_html = (Path(__file__).resolve().parents[2] / "src" / "templates" / "settings.html").read_text(encoding='utf-8')
     assert "@media (max-width: 768px)" in settings_html
     assert ".s-card-body { padding: 0.85rem; }" in settings_html
