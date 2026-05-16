@@ -11,7 +11,7 @@ from datetime import datetime
 from datetime import timezone as _tz
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from starlette.concurrency import run_in_threadpool
 from sqlalchemy import func, select
@@ -134,7 +134,7 @@ def _build_repo_summary(db: Session, user_id: int, days: int) -> dict:
 async def dashboard(  # pylint: disable=too-many-locals
     request: Request,
     current_user: Annotated[CurrentUser, Depends(require_login)],
-    days: int = 7,
+    days: int = Query(default=7, ge=1, le=365),
     mode: str | None = None,
     refresh: int = 0,
 ):

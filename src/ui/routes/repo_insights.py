@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 from typing import Annotated, Generator
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -62,7 +62,7 @@ async def repo_insights(  # pylint: disable=too-many-positional-arguments
     repo_name: str,
     current_user: Annotated[CurrentUser, Depends(require_login)],
     db: Annotated[Session, Depends(_get_db)],
-    days: int = 30,
+    days: int = Query(default=30, ge=1, le=365),
     refresh: int = 0,
 ) -> HTMLResponse:
     """리포별 코드 인사이트 페이지.
