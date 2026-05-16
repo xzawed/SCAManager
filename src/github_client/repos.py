@@ -32,22 +32,34 @@ def _repo_path(full_name: str) -> str:
 
 
 async def list_user_repos(token: str) -> list[dict]:
-    """사용자가 접근 가능한 리포 목록 반환 (public + private, per_page=100, sort=updated)."""
+    """사용자가 접근 가능한 리포 목록 반환 (public + private, pagination 처리).
+
+    Returns repos accessible by the user (public + private, with pagination).
+    """
     client = get_http_client()  # 싱글톤
-    resp = await client.get(
-        f"{GITHUB_API}/user/repos",
-        params={"per_page": 100, "sort": "updated", "affiliation": "owner,collaborator"},
-        headers=_auth_headers(token),
-    )
-    resp.raise_for_status()
-    return [
-        {
-            "full_name": r["full_name"],
-            "private": r["private"],
-            "description": r.get("description") or "",
-        }
-        for r in resp.json()
-    ]
+    results: list[dict] = []
+    # GitHub API pagination: Link 헤더의 next URL을 따라 모든 페이지 수집
+    # Follow Link header next URLs to collect all pages from GitHub API
+    url: str | None = f"{GITHUB_API}/user/repos"
+    params: dict | None = {"per_page": 100, "sort": "updated", "affiliation": "owner,collaborator"}
+    while url:
+        resp = await client.get(url, params=params, headers=_auth_headers(token))
+        resp.raise_for_status()
+        results.extend(
+            {
+                "full_name": r["full_name"],
+                "private": r["private"],
+                "description": r.get("description") or "",
+            }
+            for r in resp.json()
+        )
+        # 다음 페이지 URL 추출 (없으면 None → 루프 종료)
+        # Extract next page URL (None = end of pages)
+        next_link = resp.links.get("next", {})
+        url = next_link.get("url")
+        params = None  # 두 번째 요청부터 URL에 파라미터 포함됨
+        # params already encoded in next URL from second request onward
+    return results
 
 
 async def create_webhook(token: str, repo_full_name: str, webhook_url: str, secret: str) -> int:
