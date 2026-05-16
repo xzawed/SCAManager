@@ -101,7 +101,7 @@ async def add_repo(
             config.hook_token = hook_token
         db.commit()
 
-    server_url = str(request.base_url).rstrip("/")
+    server_url = webhook_base_url(request)
     await commit_scamanager_files(
         current_user.plaintext_token or "",
         repo_full_name,
