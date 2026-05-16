@@ -1,6 +1,8 @@
 import subprocess
 from unittest.mock import patch, MagicMock
 
+import pytest
+
 from src.analyzer.io.static import (
     analyze_file,
     StaticAnalysisResult,
@@ -10,6 +12,7 @@ from src.analyzer.io.static import (
     _run_bandit,
     _is_test_file,
 )
+from src.analyzer.io.tools.python import _PylintAnalyzer, _Flake8Analyzer
 
 CLEAN_CODE = """\
 def add(a: int, b: int) -> int:
@@ -24,16 +27,36 @@ eval(input())
 """
 
 # ---------------------------------------------------------------------------
-# 기존 테스트
-# Legacy tests (baseline coverage).
+# Module-scope fixtures — subprocess 실행 비용을 모듈당 한 번으로 제한
+# Module-scope fixtures — pay the subprocess cost once per module, not per test.
 # ---------------------------------------------------------------------------
 
-def test_clean_code_has_no_errors():
+@pytest.fixture(scope="module")
+def _clean_result():
+    """CLEAN_CODE 분석 결과 — module 범위로 한 번만 실제 subprocess 실행.
+    Analyze CLEAN_CODE once per module — avoids redundant subprocess calls.
+    """
+    return analyze_file("clean.py", CLEAN_CODE)
+
+
+@pytest.fixture(scope="module")
+def _eval_result():
+    """eval(input()) 코드 분석 결과 — module 범위로 한 번만 실제 subprocess 실행.
+    Analyze eval code once per module — avoids redundant subprocess calls.
+    """
+    return analyze_file("eval.py", "eval(input())\n")
+
+
+# ---------------------------------------------------------------------------
+# 기존 테스트 (fixture 재사용으로 중복 subprocess 제거)
+# Legacy tests (refactored to reuse module-scope fixtures).
+# ---------------------------------------------------------------------------
+
+def test_clean_code_has_no_errors(_clean_result):
     # 정상 Python 코드는 error 심각도 이슈를 생성하지 않는다
     # Clean Python code should not produce error-severity issues.
-    result = analyze_file("clean.py", CLEAN_CODE)
-    assert isinstance(result, StaticAnalysisResult)
-    errors = [i for i in result.issues if i.severity == "error"]
+    assert isinstance(_clean_result, StaticAnalysisResult)
+    errors = [i for i in _clean_result.issues if i.severity == "error"]
     assert len(errors) == 0
 
 
@@ -44,17 +67,17 @@ def test_bad_code_detects_issues():
     assert len(result.issues) > 0
 
 
-def test_bandit_detects_eval():
+def test_bandit_detects_eval(_eval_result):
     # eval(input()) 패턴은 bandit이 HIGH 보안 이슈로 탐지한다
-    result = analyze_file("eval.py", "eval(input())\n")
-    bandit_issues = [i for i in result.issues if i.tool == "bandit"]
+    # eval(input()) pattern must be detected as a HIGH security issue by bandit.
+    bandit_issues = [i for i in _eval_result.issues if i.tool == "bandit"]
     assert len(bandit_issues) > 0
 
 
-def test_result_has_correct_filename():
-    # 반환된 StaticAnalysisResult.filename 은 전달된 filename과 동일하다
-    result = analyze_file("myfile.py", CLEAN_CODE)
-    assert result.filename == "myfile.py"
+def test_result_has_correct_filename(_clean_result):
+    # analyze_file 에 전달된 filename 이 result.filename 에 보존된다
+    # The filename passed to analyze_file must be preserved in result.filename.
+    assert _clean_result.filename == "clean.py"
 
 
 def test_empty_content_returns_no_issues():
@@ -336,8 +359,10 @@ def test_is_test_file_with_path_prefix():
 
 def test_test_file_skips_bandit():
     # test_ 접두사 파일은 bandit(security) 검사를 건너뛴다 — Registry _BanditAnalyzer.is_enabled
-    with patch("src.analyzer.io.tools.python._BanditAnalyzer.run", return_value=[]) as mock_bandit_run, \
-         patch("src.analyzer.io.tools.python._BanditAnalyzer.is_enabled", return_value=False) as mock_enabled:
+    # Bandit must be skipped for test_ files — pylint/flake8 also mocked to isolate bandit behavior.
+    with patch("src.analyzer.io.tools.python._BanditAnalyzer.is_enabled", return_value=False), \
+         patch("src.analyzer.io.tools.python._PylintAnalyzer.run", return_value=[]), \
+         patch("src.analyzer.io.tools.python._Flake8Analyzer.run", return_value=[]):
         result = analyze_file("test_something.py", "def test_foo(): pass\n")
     # 테스트 파일에서 bandit 결과는 없어야 한다
     # bandit must not produce results on test files.
@@ -347,14 +372,11 @@ def test_test_file_skips_bandit():
 
 def test_non_test_file_runs_bandit():
     # 일반 .py 파일은 bandit(security) 검사를 실행한다 — is_enabled=True 기본
-    result = analyze_file("module.py", "eval(input())\n")
-    # bandit 이슈가 있거나 빈 목록이어도 security 카테고리로 분류되어야 함
-    # bandit issues (or an empty list) must be classified under the security category.
-    # (실제 bandit 실행 여부 확인)
-    from src.analyzer.io.tools.python import _BanditAnalyzer
+    # Regular .py files must have bandit enabled — is_enabled returns True by default.
     from src.analyzer.pure.registry import AnalyzeContext
     ctx = AnalyzeContext(filename="module.py", content="x=1\n", language="python",
                          is_test=False, tmp_path="module.py")
+    from src.analyzer.io.tools.python import _BanditAnalyzer
     assert _BanditAnalyzer().is_enabled(ctx) is True
 
 
