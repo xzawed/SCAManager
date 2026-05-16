@@ -5,7 +5,7 @@ import ipaddress
 import secrets
 from dataclasses import fields as dataclass_fields
 from typing import Annotated
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -295,8 +295,9 @@ async def reinstall_hook(
     )
 
     status = "hook_ok" if ok else "hook_fail"
+    safe_repo_name = quote(repo_name, safe="")
     return RedirectResponse(
-        url=f"/repos/{repo_name}/settings?{status}=1",
+        url=f"/repos/{safe_repo_name}/settings?{status}=1",
         status_code=303,
     )
 
@@ -331,8 +332,9 @@ async def reinstall_webhook(
             new_id = await create_webhook(token, repo_name, webhook_url, new_secret)
         except (httpx.HTTPError, KeyError, ValueError, OSError) as exc:
             logger.warning("Webhook reinstall failed: %s", exc)
+            safe_repo_name = quote(repo_name, safe="")
             return RedirectResponse(
-                url=f"/repos/{repo_name}/settings?hook_fail=1",
+                url=f"/repos/{safe_repo_name}/settings?hook_fail=1",
                 status_code=303,
             )
 
@@ -340,7 +342,8 @@ async def reinstall_webhook(
         repo.webhook_secret = new_secret
         db.commit()
 
+    safe_repo_name = quote(repo_name, safe="")
     return RedirectResponse(
-        url=f"/repos/{repo_name}/settings?hook_ok=1",
+        url=f"/repos/{safe_repo_name}/settings?hook_ok=1",
         status_code=303,
     )
