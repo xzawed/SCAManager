@@ -26,7 +26,7 @@ def test_dashboard_html_includes_mobile_order_css():
     # dashboard.html 본문 직접 read (templates 정적 자원)
     from pathlib import Path
     dashboard_html = Path(__file__).resolve().parents[2] / "src" / "templates" / "dashboard.html"
-    content = dashboard_html.read_text()
+    content = dashboard_html.read_text(encoding='utf-8')
 
     # 모바일 480px↓ 분기 안 order CSS 포함 검증
     assert "@media (max-width: 480px)" in content
@@ -39,7 +39,7 @@ def test_dashboard_html_security_kpi_first_in_mobile_order():
     """모바일 first-fold = 보안 HIGH (3rd HTML child) → order: 1 의무."""
     from pathlib import Path
     dashboard_html = Path(__file__).resolve().parents[2] / "src" / "templates" / "dashboard.html"
-    content = dashboard_html.read_text()
+    content = dashboard_html.read_text(encoding='utf-8')
     # nth-child(3) = 보안 HIGH (HTML 순서) — order: 1 (모바일 first)
     assert ".dash-kpi:nth-child(3) { order: 1;" in content, \
         "모바일 보안 HIGH first-fold 우선순위 누락"
@@ -49,7 +49,7 @@ def test_dashboard_html_auto_merge_kpi_second_in_mobile_order():
     """모바일 second = 자동 머지 (5th HTML child) → order: 2 의무."""
     from pathlib import Path
     dashboard_html = Path(__file__).resolve().parents[2] / "src" / "templates" / "dashboard.html"
-    content = dashboard_html.read_text()
+    content = dashboard_html.read_text(encoding='utf-8')
     # nth-child(5) = 자동 머지 (HTML 순서) — order: 2 (모바일 second)
     assert ".dash-kpi:nth-child(5) { order: 2;" in content, \
         "모바일 자동 머지 second-fold 우선순위 누락"
@@ -63,7 +63,7 @@ def test_dashboard_html_desktop_order_preserved():
     """
     from pathlib import Path
     dashboard_html = Path(__file__).resolve().parents[2] / "src" / "templates" / "dashboard.html"
-    content = dashboard_html.read_text()
+    content = dashboard_html.read_text(encoding='utf-8')
     # order CSS 가 모바일 분기 안에만 위치 검증 (전역 X)
     # 단순 검증 = order CSS 직전 line 에 480px media query 포함
     lines = content.split("\n")
