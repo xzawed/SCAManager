@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-18 기준 — **사이클 103**: auto-merge 재시도 안정성 개선 (#479) — cron fallback + has_hooks retriable + unknown ci_status retriable): 130+ PR #188~#479 — 누적 정책 본문 19건 + 메모리 19건. 전체 2968 수집 (2964 passed, 4 skipped, 단위 2814 + 통합 154) / E2E 99 / pylint **10.00/10**
+## 현재 수치 (2026-05-18 기준 — **사이클 104**: 5+1 다중 에이전트 전체 정합성 감사 + Anthropic 표준 준수 검증 (#490)): 130+ PR #188~#490 — 누적 정책 본문 19건 + 메모리 19건. 전체 2968 수집 (2964 passed, 4 skipped, 단위 2814 + 통합 154) / E2E 99 / pylint **10.00/10**
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
@@ -62,6 +62,7 @@
 
 - **그룹 13~61** (2026-04 ~ 2026-05-02): [docs/_archive/STATE-groups-13-61-2026-05.md](_archive/STATE-groups-13-61-2026-05.md)
 - **사이클 62~92** (2026-05-03 ~ 2026-05-11): [docs/cycle-history.md](cycle-history.md)
+- **사이클 104** (2026-05-18): 5+1 다중 에이전트 전체 정합성 감사 + Anthropic 표준 준수 검증 (#490) — P0 5건: `docs/architecture.md` tailwind.css ghost entry 명시 + 함수명 2개 정정 (`enable_or_fallback` / `build_notification_tasks`) + github_client·railway_client 미등재 파일 추가 + E2E/메모리/배지 수치 갱신 (96→99, 18→19, 2967→2968). P1 1건: CLAUDE.md doc-consistency-reviewer 사용 범위 명확화 (cross-verify 6차 금지 → 단독 목적 허용). false-positive 2건 제거. Anthropic 표준 준수도 **93/100** 확인.
 - **사이클 103** (2026-05-18): MCP Supabase 직접 조회로 auto-merge 실패 원인 분석 → 3건 코드 수정 + Codex mutual 검증 OK 후 머지 (#479) — **P0-fix**: `_trigger_retry_for_sha`의 `if not rows: return` 조기 반환 제거 + overdue sweep 무조건 실행 (cron failure fallback 보장) + `has_hooks` terminality `terminal` → `retriable` (CI hook 대기 → CI 완료 자동 해소) + `should_retry(UNSTABLE_CI, "unknown")` → `True` (transient GitHub API 오류 시 영구 terminal 방지). 테스트 3파일 갱신 (test_retry_policy · test_check_suite_handler · test_auto_merge_enqueue) + 신규 `test_trigger_retry_for_sha_sweeps_overdue_when_no_sha_rows` 추가. 단위 2813→2814.
 - **사이클 102** (2026-05-17): 잔여 작업 확인 + `.codex/rules/ui.md` 테마명 정정 (`glass/claude-dark` → `pastel/catppuccin` — #462 CLAUDE.md 정정과 동기화, Codex 규칙 drift 해소, #475). CLAUDE.md P2-1 압축 완료 — **#476 Phase 1** (~10줄: 정책 8 관점 분리 목록·사이클 67 조건·단일관점 ROI·정책 18 하단) + **#477 Phase 2** (~7줄: 정책 1 서문·중복 cross-ref·cross-verify 에이전트 설명 1줄 합침·진화 요약 heading 제거) + `docs/policies/history.md` 이전 3건 (정책 1 Q4 회귀 가드 전체 · 사이클 67 생략 조건 폐기 이력 · 단일관점 ROI 삭제 배경). 5+1 에이전트 검증 + Codex mutual OK. 총 절감 ~17줄.
 - **사이클 95** (2026-05-14): 문서 정비 P2 (#410~#413) — testing.md SessionLocal 경고 추가 / architecture.md mockup-polar.html 항목 / AGENTS.md 중복 표 → 링크 3건 / STATE.md 그룹 13-61 아카이브 / CLAUDE.md HTML 주석 7블록 + line 361 압축 (59줄 절감).
