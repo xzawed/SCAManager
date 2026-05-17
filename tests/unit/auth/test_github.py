@@ -361,3 +361,168 @@ def test_jinja2_autoescape_enabled():
         "Jinja2 autoescape가 비활성화되어 있어 XSS 위험이 있다 / "
         "Jinja2 autoescape is disabled — XSS risk"
     )
+
+
+# ---------------------------------------------------------------------------
+# OAuth scope 설정 검증
+# OAuth scope configuration verification
+# ---------------------------------------------------------------------------
+
+def test_oauth_scope_configured_correctly():
+    """GitHub OAuth 등록 시 scope가 'repo user:email'로 설정되어야 한다.
+    GitHub OAuth must be registered with scope 'repo user:email'.
+    """
+    from src.auth.github import oauth
+    scope = oauth.github.client_kwargs.get("scope")
+    assert scope == "repo user:email"
+
+
+# ---------------------------------------------------------------------------
+# CSRF state 위조 — Authlib MismatchingStateError 명시적 단위 테스트
+# CSRF state forgery — explicit MismatchingStateError unit test
+# ---------------------------------------------------------------------------
+
+def test_callback_mismatching_state_error_returns_500():
+    """state 위조 시 MismatchingStateError → 500 반환 (CSRF 방어 명시적 검증).
+    Forged state causes MismatchingStateError → 500 (explicit CSRF defence).
+    """
+    # 실제 Authlib import 경로 확인 후 사용
+    # Use the verified Authlib import path
+    try:
+        from authlib.integrations.base_client.errors import MismatchingStateError
+    except ImportError:
+        from authlib.common.errors import AuthlibBaseError as MismatchingStateError
+
+    no_raise_client = TestClient(app, raise_server_exceptions=False)
+    with patch(
+        "src.auth.github.oauth.github.authorize_access_token",
+        new_callable=AsyncMock,
+        side_effect=MismatchingStateError(),
+    ):
+        r = no_raise_client.get(
+            "/auth/callback?code=x&state=forged_state",
+            follow_redirects=False,
+        )
+    # 성공(302 to /)이어서는 안 된다
+    # Must not be a success redirect
+    assert r.status_code == 500
+
+
+def test_callback_missing_state_returns_error():
+    """state 파라미터 없이 code만 있는 콜백 → 성공 302(/) 아님.
+    Code-only callback without state must not produce a success redirect.
+    """
+    no_raise_client = TestClient(app, raise_server_exceptions=False)
+    r = no_raise_client.get(
+        "/auth/callback?code=only_code_no_state",
+        follow_redirects=False,
+    )
+    # 성공(302 to /)이어서는 안 된다
+    # Must not be a success redirect (302 to /).
+    assert not (r.status_code == 302 and r.headers.get("location") == "/")
+
+
+# ---------------------------------------------------------------------------
+# Session fixation 방어 — 인증 완료 후 세션 초기화 순서 검증
+# Session fixation defence — session cleared before setting user_id
+# ---------------------------------------------------------------------------
+
+def test_callback_clears_session_before_setting_user_id():
+    """인증 완료 후 session.clear() 가 user_id 설정보다 먼저 호출되어야 한다.
+    session.clear() must be called before session['user_id'] is set.
+    """
+    from src.models.user import User  # noqa: PLC0415
+
+    mock_token = {"access_token": "gho_token"}
+    mock_user_info = MagicMock()
+    mock_user_info.json.return_value = {
+        "id": 55555, "login": "fixuser", "name": "Fix User",
+    }
+    mock_emails_resp = MagicMock()
+    mock_emails_resp.json.return_value = [
+        {"email": "fix@example.com", "primary": True, "verified": True}
+    ]
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = None
+
+    call_order: list[str] = []
+
+    class TrackingDict(dict):
+        # 호출 순서 추적용 dict 서브클래스
+        # Dict subclass to track call order for session fixation verification.
+        # Starlette SessionMiddleware가 응답 처리 시 .accessed/.modified 속성을 요구함
+        # Starlette SessionMiddleware requires .accessed and .modified attributes during response processing.
+        accessed: bool = False
+        modified: bool = False
+
+        def clear(self):
+            call_order.append("clear")
+            self.modified = True
+            super().clear()
+
+        def __setitem__(self, key, value):
+            call_order.append(f"set:{key}")
+            self.accessed = True
+            self.modified = True
+            super().__setitem__(key, value)
+
+        def __getitem__(self, key):
+            self.accessed = True
+            return super().__getitem__(key)
+
+    tracking_session = TrackingDict()
+
+    async def patched_authorize(request):
+        # 세션을 TrackingDict로 교체하여 호출 순서 추적
+        # Replace session with TrackingDict to track call order
+        request.scope["session"] = tracking_session
+        return mock_token
+
+    with patch("src.auth.github.oauth.github.authorize_access_token",
+               side_effect=patched_authorize):
+        with patch("src.auth.github.oauth.github.get",
+                   new_callable=AsyncMock,
+                   side_effect=[mock_user_info, mock_emails_resp]):
+            with patch("src.auth.github.SessionLocal") as mock_sl:
+                mock_db.query.return_value.filter.return_value.first.return_value = None
+                mock_sl.return_value.__enter__.return_value = mock_db
+                client.get("/auth/callback?code=test&state=test", follow_redirects=False)
+
+    # clear()가 먼저, user_id 설정이 나중
+    # clear() must come before set:user_id
+    assert "clear" in call_order, "session.clear() 가 호출되지 않았다"
+    assert "set:user_id" in call_order, "session['user_id'] 가 설정되지 않았다"
+    clear_idx = call_order.index("clear")
+    userid_idx = call_order.index("set:user_id")
+    assert clear_idx < userid_idx, (
+        f"session.clear()({clear_idx}) 가 user_id 설정({userid_idx}) 이후에 호출됐다 — session fixation 방어 실패"
+    )
+
+
+# ---------------------------------------------------------------------------
+# OAuthError — access_denied 등 OAuth 에러 처리
+# OAuthError — handling OAuth errors such as access_denied
+# ---------------------------------------------------------------------------
+
+def test_callback_oauth_error_returns_non_success():
+    """OAuthError(access_denied) 발생 시 성공 302(/)가 아닌 응답을 반환해야 한다.
+    OAuthError (e.g. access_denied) must not produce a success redirect.
+    """
+    try:
+        from authlib.integrations.base_client.errors import OAuthError
+    except ImportError:
+        from authlib.common.errors import AuthlibBaseError as OAuthError
+
+    no_raise_client = TestClient(app, raise_server_exceptions=False)
+    with patch(
+        "src.auth.github.oauth.github.authorize_access_token",
+        new_callable=AsyncMock,
+        side_effect=OAuthError(error="access_denied"),
+    ):
+        r = no_raise_client.get(
+            "/auth/callback?code=x&state=x",
+            follow_redirects=False,
+        )
+    # 성공(302 to /)이어서는 안 된다
+    # Must not be a success redirect.
+    assert not (r.status_code == 302 and r.headers.get("location") == "/")
