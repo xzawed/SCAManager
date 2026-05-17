@@ -522,6 +522,10 @@ class TestSemgrepAnalyzeFileIntegration:
         # StaticAnalysisResult가 정상 반환되어야 한다
         from src.analyzer.io.static import StaticAnalysisResult
         assert isinstance(result, StaticAnalysisResult)
+        # 빈 출력 mock이므로 이슈 없어야 한다 (subprocess.run이 전체 패치됨)
+        # Empty mock output → no issues (subprocess.run is fully patched)
+        assert result.issues == []
+        assert result.filename == "app.py"
 
     def test_semgrep_skipped_for_python_file_when_not_installed(self):
         # semgrep 미설치 환경에서는 _SemgrepAnalyzer가 is_enabled()=False → run() 호출 안 됨
@@ -543,6 +547,9 @@ class TestSemgrepAnalyzeFileIntegration:
         # shutil.which=None이므로 semgrep의 run()은 호출되지 않아야 한다
         from src.analyzer.io.static import StaticAnalysisResult
         assert isinstance(result, StaticAnalysisResult)
+        # semgrep 미설치 + 빈 코드 → 이슈 없음, filename 정합 확인
+        # semgrep absent + trivial code → no issues; verify filename
+        assert result.filename == "module.py"
 
     def test_semgrep_runs_for_javascript_file_when_installed(self):
         # javascript 파일도 semgrep이 설치된 경우 분석 대상이 된다

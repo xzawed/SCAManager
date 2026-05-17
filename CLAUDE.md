@@ -242,7 +242,7 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 
 #### 정책 11: **UI/시각 변경 PR 본문에 "Claude 시각 검증 불가" 의무 명시**
 
-사용자 발화 (2026-05-02 Phase 1 회고): *"PR본문 검증의 경우 디테일한 검증은 없었습니다."* — Claude 가 만든 UI/시각 변경 (template, css, html 파일) 은 정적 코드만 검증 가능. 4-테마 (dark/light/glass/claude-dark) × 모바일/데스크탑 8 조합 시각 정합성은 사용자 의무.
+사용자 발화 (2026-05-02 Phase 1 회고): *"PR본문 검증의 경우 디테일한 검증은 없었습니다."* — Claude 가 만든 UI/시각 변경 (template, css, html 파일) 은 정적 코드만 검증 가능. 4-테마 (dark/light/pastel/catppuccin) × 모바일/데스크탑 8 조합 시각 정합성은 사용자 의무.
 
 **default 의무**: `src/templates/*.html` / `src/static/**/*.css` / `base.html` `<style>` 블록 / 신규 시각 컴포넌트 변경 PR 작성 시 — PR 본문 최상단에 8 조합 체크리스트 삽입. 템플릿: [docs/policies/active.md#정책-11](docs/policies/active.md#정책-11)
 
