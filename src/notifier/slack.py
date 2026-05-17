@@ -102,7 +102,7 @@ async def send_slack_notification(
     """Slack Incoming Webhook으로 분석 결과 메시지를 전송한다 (Phase 3 PR-10 — i18n)."""
     if not webhook_url:
         return
-    if not validate_external_url(webhook_url):
+    if not await validate_external_url(webhook_url):
         logger.warning("send_slack_notification: blocked unsafe URL '%s'", webhook_url)
         return
     payload = _build_payload(

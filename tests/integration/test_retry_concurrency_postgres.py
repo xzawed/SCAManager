@@ -168,10 +168,14 @@ def test_concurrent_claim_no_double_processing():
         # Must complete without errors.
         assert not errors, f"Unexpected errors from worker threads: {errors}"
 
-        # 각 스레드가 결과를 반환했는지 확인
-        # Confirm each thread produced a result.
-        assert results[0] is not None
-        assert results[1] is not None
+        # 각 스레드가 정확히 1개 행을 클레임했는지 확인 (limit=1, 2개 시드)
+        # Confirm each thread claimed exactly 1 row (limit=1, 2 seeded rows).
+        assert len(results[0]) == 1, (
+            f"Worker 0 expected exactly 1 claimed row, got {results[0]}"
+        )
+        assert len(results[1]) == 1, (
+            f"Worker 1 expected exactly 1 claimed row, got {results[1]}"
+        )
 
         # 두 스레드가 획득한 행 id 를 합산
         # Aggregate claimed row ids from both threads.
@@ -330,10 +334,14 @@ def test_skip_locked_prevents_concurrent_double_claim():
         # Must complete without errors.
         assert not errors, f"Unexpected errors from worker threads: {errors}"
 
-        # 각 스레드가 결과를 반환했는지 확인
-        # Confirm each thread produced a result.
-        assert results[0] is not None
-        assert results[1] is not None
+        # 각 워커가 리스트를 반환했는지 확인 (SKIP LOCKED 로 한 워커는 0개 가능)
+        # Confirm each worker returned a list (one may get 0 rows due to SKIP LOCKED).
+        assert isinstance(results[0], list), (
+            f"Worker 0 did not return a list: {results[0]}"
+        )
+        assert isinstance(results[1], list), (
+            f"Worker 1 did not return a list: {results[1]}"
+        )
 
         # 두 결과를 합산 — 정확히 1개 행만 클레임되어야 함
         # Aggregate results — exactly 1 row must be claimed in total.
