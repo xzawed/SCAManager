@@ -25,9 +25,12 @@ def test_bandit_high_severity_lowers_security_score():
     assert result.security_score < 20
 
 def test_grade_a_for_score_90_plus():
-    result = calculate_score([_make_result([])])
-    if result.total >= 90:
-        assert result.grade == "A"
+    # AI 점수 최대값으로 100점을 강제해 등급 A 검증 (기본값으로는 89점 — if 조건 미충족)
+    # Force total=100 with max AI scores to verify grade A (defaults yield 89 — condition never met)
+    ai = _make_ai_review(commit_score=20, ai_score=20, test_score=10)
+    result = calculate_score([_make_result([])], ai_review=ai)
+    assert result.total >= 90
+    assert result.grade == "A"
 
 def test_grade_f_for_low_score():
     many_issues = [
