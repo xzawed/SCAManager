@@ -273,11 +273,11 @@ async def reinstall_hook(
 ):
     """기존 등록 리포에 .scamanager/ 파일을 재커밋한다."""
     with SessionLocal() as db:
-        get_accessible_repo(db, repo_name, current_user)
-        config = repo_config_repo.find_by_full_name(db, repo_name)
+        repo = get_accessible_repo(db, repo_name, current_user)
+        config = repo_config_repo.find_by_full_name(db, repo.full_name)
         if config is None:
             config = RepoConfig(
-                repo_full_name=repo_name,
+                repo_full_name=repo.full_name,
                 hook_token=secrets.token_hex(32),
             )
             db.add(config)
@@ -289,13 +289,15 @@ async def reinstall_hook(
     server_url = webhook_base_url(request)
     ok = await commit_scamanager_files(
         current_user.plaintext_token or "",
-        repo_name,
+        repo.full_name,
         server_url,
         hook_token,
     )
 
     status = "hook_ok" if ok else "hook_fail"
-    safe_repo_name = quote(repo_name, safe="")
+    # repo.full_name 사용 — DB 검증값으로 CodeQL py/url-redirection 차단
+    # Use repo.full_name (DB-validated) to prevent CodeQL py/url-redirection
+    safe_repo_name = quote(repo.full_name, safe="")
     return RedirectResponse(
         url=f"/repos/{safe_repo_name}/settings?{status}=1",
         status_code=303,
@@ -332,7 +334,9 @@ async def reinstall_webhook(
             new_id = await create_webhook(token, repo_name, webhook_url, new_secret)
         except (httpx.HTTPError, KeyError, ValueError, OSError) as exc:
             logger.warning("Webhook reinstall failed: %s", exc)
-            safe_repo_name = quote(repo_name, safe="")
+            # repo.full_name 사용 — DB 검증값으로 CodeQL py/url-redirection 차단
+            # Use repo.full_name (DB-validated) to prevent CodeQL py/url-redirection
+            safe_repo_name = quote(repo.full_name, safe="")
             return RedirectResponse(
                 url=f"/repos/{safe_repo_name}/settings?hook_fail=1",
                 status_code=303,
@@ -342,7 +346,9 @@ async def reinstall_webhook(
         repo.webhook_secret = new_secret
         db.commit()
 
-    safe_repo_name = quote(repo_name, safe="")
+    # repo.full_name 사용 — DB 검증값으로 CodeQL py/url-redirection 차단
+    # Use repo.full_name (DB-validated) to prevent CodeQL py/url-redirection
+    safe_repo_name = quote(repo.full_name, safe="")
     return RedirectResponse(
         url=f"/repos/{safe_repo_name}/settings?hook_ok=1",
         status_code=303,

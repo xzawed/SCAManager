@@ -26,6 +26,9 @@ async def test_list_user_repos_returns_repo_list():
     mock_resp = MagicMock()
     mock_resp.json.return_value = mock_response_data
     mock_resp.raise_for_status = MagicMock()
+    # pagination 루프 종료 — 미설정 시 MagicMock이 truthy라 while url: 무한 루프 → 30s 타임아웃
+    # Terminate pagination loop — without this, MagicMock is truthy causing infinite while url: loop
+    mock_resp.links = {}
 
     with patch("src.github_client.repos.get_http_client") as mock_get:
         mock_client = AsyncMock()
