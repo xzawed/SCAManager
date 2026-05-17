@@ -21,6 +21,7 @@
 | `API_KEY` | Dashboard REST API 인증 키 (없으면 인증 생략) | `any-secret-string` |
 | `APP_BASE_URL` | Railway 등 리버스 프록시에서 HTTPS redirect_uri 강제 지정 | `https://your-app.railway.app` |
 | `TOKEN_ENCRYPTION_KEY` | GitHub Access Token 암호화 키 (미설정 시 평문 저장) | `32자 이상 랜덤` |
+| `STRICT_TOKEN_ENCRYPTION` | `true` 설정 시 `TOKEN_ENCRYPTION_KEY` 미설정이면 lifespan startup 차단 (기본값 `false` = 평문 저장 허용 + WARNING 출력) | `false` (기본) |
 | `CLAUDE_REVIEW_MODEL` | AI 코드리뷰에 사용할 Claude 모델 ID | `claude-sonnet-4-6` (기본) |
 | `CLAUDE_INSIGHT_MODEL` | Insight narrative (`/dashboard?mode=insight`) 4 카드 생성용 Claude 모델 ID — 코드리뷰보다 단순 task → Haiku 분기로 토큰 비용 ↓ (Cycle 74 PR-A #247) | `claude-haiku-4-5` (기본) |
 | `DISABLE_PROMPT_CACHE` | Anthropic prompt caching (5분 ephemeral) opt-out — `1` 시 비활성 (Phase 3 PR 1 #218 신설). 운영 비용 통제용 — default `0` (caching 적용) | `0` (기본) / `1` (비활성) |
@@ -70,7 +71,7 @@ Sentry 외 자동 로깅은 별도 환경변수 없이 동작:
 | 변수 | 설명 |
 |------|------|
 | `SMTP_HOST` | SMTP 메일 서버 호스트 (예: `smtp.gmail.com`) |
-| `SMTP_PORT` | SMTP 포트 (기본 587) — Railway에서 빈 문자열 설정 시 크래시, 삭제하거나 숫자로 설정 |
+| `SMTP_PORT` | SMTP 포트 (기본 587) — `config.py`의 `coerce_smtp_port` validator가 빈 문자열을 587로 자동 변환 (크래시 없음). 명시적 숫자 설정 권장 |
 | `SMTP_USER` | SMTP 인증 사용자 |
 | `SMTP_PASS` | SMTP 인증 비밀번호 |
 
