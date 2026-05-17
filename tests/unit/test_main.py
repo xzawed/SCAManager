@@ -271,6 +271,73 @@ def test_lifespan_warmup_ping_handles_failure_silently(caplog):
 # UI 감사 Step C 회귀 가드 — Chart.js vendoring 이 정상 마운트됐는지 확인
 # UI audit Step C regression guard — verify Chart.js is correctly mounted
 
+# --- TELEGRAM_WEBHOOK_SECRET 부재 경고 (prod 환경) ---
+# --- TELEGRAM_WEBHOOK_SECRET absence warning (prod environment) ---
+
+def test_lifespan_warns_telegram_webhook_secret_missing_in_prod(caplog):
+    """prod 환경(https URL)에서 TELEGRAM_WEBHOOK_SECRET 미설정 시 SECURITY 경고 출력.
+    Warns when TELEGRAM_WEBHOOK_SECRET is unset in production — /webhooks/telegram auth bypassed.
+    """
+    import logging as _logging
+    with patch("src.main._run_migrations"), \
+         patch("src.main.settings") as mock_settings:
+        mock_settings.session_secret = "test-session-secret-32-chars-long!"
+        mock_settings.anthropic_api_key = "sk-ant-test-key"
+        mock_settings.app_base_url = "https://scamanager.example.com"
+        mock_settings.token_encryption_key = "valid-fernet-key"
+        mock_settings.strict_token_encryption = False
+        mock_settings.telegram_webhook_secret = ""
+        with caplog.at_level(_logging.WARNING, logger="src.main"):
+            with TestClient(app):
+                pass
+    assert any("TELEGRAM_WEBHOOK_SECRET" in rec.message for rec in caplog.records), \
+        "prod 환경에서 TELEGRAM_WEBHOOK_SECRET 부재 경고가 로그에 남지 않았습니다"
+
+
+def test_lifespan_no_warning_telegram_webhook_secret_set_in_prod(caplog):
+    """prod 환경이라도 TELEGRAM_WEBHOOK_SECRET 가 설정되어 있으면 경고 없음.
+    No warning when TELEGRAM_WEBHOOK_SECRET is set — authentication is active.
+    """
+    import logging as _logging
+    with patch("src.main._run_migrations"), \
+         patch("src.main.settings") as mock_settings:
+        mock_settings.session_secret = "test-session-secret-32-chars-long!"
+        mock_settings.anthropic_api_key = "sk-ant-test-key"
+        mock_settings.app_base_url = "https://scamanager.example.com"
+        mock_settings.token_encryption_key = "valid-fernet-key"
+        mock_settings.strict_token_encryption = False
+        mock_settings.telegram_webhook_secret = "some-secret-token"
+        with caplog.at_level(_logging.WARNING, logger="src.main"):
+            with TestClient(app) as c:
+                c.get("/health")
+    assert not any("TELEGRAM_WEBHOOK_SECRET" in rec.message for rec in caplog.records), \
+        "시크릿이 설정되어 있는데도 TELEGRAM_WEBHOOK_SECRET 경고가 남았습니다"
+
+
+def test_lifespan_no_warning_telegram_webhook_secret_dev_env(caplog):
+    """dev 환경(http URL)에서는 시크릿이 없어도 경고 없음 — prod 전용 체크.
+    No warning in dev (http) environments — the check is prod-only.
+    """
+    import logging as _logging
+    with patch("src.main._run_migrations"), \
+         patch("src.main.settings") as mock_settings:
+        mock_settings.session_secret = "test-session-secret-32-chars-long!"
+        mock_settings.anthropic_api_key = "sk-ant-test-key"
+        mock_settings.app_base_url = "http://localhost:8000"
+        mock_settings.token_encryption_key = ""
+        mock_settings.strict_token_encryption = False
+        mock_settings.telegram_webhook_secret = ""
+        with caplog.at_level(_logging.WARNING, logger="src.main"):
+            with TestClient(app) as c:
+                c.get("/health")
+    assert not any("TELEGRAM_WEBHOOK_SECRET" in rec.message for rec in caplog.records), \
+        "dev(http) 환경에서 TELEGRAM_WEBHOOK_SECRET 경고가 남았습니다"
+
+
+# --- PR-4 G1: StaticFiles `/static/vendor/chart.umd.min.js` 200 응답 가드 ---
+# UI 감사 Step C 회귀 가드 — Chart.js vendoring 이 정상 마운트됐는지 확인
+# UI audit Step C regression guard — verify Chart.js is correctly mounted
+
 def test_static_chartjs_returns_200(client):
     """StaticFiles `/static/vendor/chart.umd.min.js` 가 200 + JS Content-Type 반환.
     Verify vendored Chart.js is served successfully.

@@ -93,6 +93,16 @@ async def lifespan(_app: FastAPI):
                 "TOKEN_ENCRYPTION_KEY required when STRICT_TOKEN_ENCRYPTION=true"
             )
         logger.warning("%s", warning_msg)
+    if is_prod_like and not (settings.telegram_webhook_secret or "").strip():
+        # Telegram webhook 시크릿 미설정 시 /webhooks/telegram 인증이 완전히 우회됨.
+        # When TELEGRAM_WEBHOOK_SECRET is not set, /webhooks/telegram auth is bypassed entirely.
+        logger.warning(
+            "SECURITY: TELEGRAM_WEBHOOK_SECRET is not set in production "
+            "(APP_BASE_URL=%s). The /webhooks/telegram endpoint will accept "
+            "requests without authentication. Set TELEGRAM_WEBHOOK_SECRET to "
+            "the value configured in your Telegram bot's webhook settings.",
+            settings.app_base_url,
+        )
     try:
         await asyncio.wait_for(asyncio.to_thread(_run_migrations), timeout=30)
         logger.info("DB migration completed")
