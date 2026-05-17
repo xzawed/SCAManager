@@ -8,7 +8,7 @@ paths:
 
 # UI / 템플릿 규칙 (Codex)
 
-- **4-테마 지원**: dark / light / glass / claude-dark. 신규 CSS 변수는 `var(--*)` 경유, `#hex` 직접 사용 금지.
+- **4-테마 지원**: dark / light / pastel / catppuccin. 신규 CSS 변수는 `var(--*)` 경유, `#hex` 직접 사용 금지.
 - 🔴 **환각 토큰 금지**: 정의되지 않은 CSS 변수 참조 시 브라우저 invalid → 시각 깨짐. 신규 alias 는 `base.html` `:root` 블록에 흡수.
 - 🔴 **모바일 클릭 영역 ≥44px**: `@media (max-width: 768px)` 분기에서 인터랙티브 요소 `min-height: 44px` 필수.
 - **safe-area-inset**: sticky/fixed 요소 (`nav`, `.save-bar`) 에 `padding: max(*, env(safe-area-inset-*))` 패턴.
