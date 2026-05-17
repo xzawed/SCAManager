@@ -434,6 +434,37 @@ git push -u origin <branch>
 
 ---
 
+<a id="정책-8-doc-audit-agent-domain"></a>
+
+## 정책 8: 문서 감사 5+1 에이전트 파일 도메인 분리 (사이클 101 신설)
+
+**배경**: 사이클 101 5+1 doc audit 시 5 에이전트가 서로 겹치는 파일 영역을 감사 → 동일 이슈 중복 보고 + false-positive 교차 발생. 비중복 도메인 분리로 커버리지 ↑ + 중복 보고 ↓.
+
+**default 에이전트 도메인 분리 표** (문서 감사 5+1 dispatch 시 아래 5 도메인 고정 배정):
+
+| 에이전트 # | 담당 도메인 | 주요 파일 |
+|-----------|------------|---------|
+| Agent-1 | 핵심 정책 문서 | `CLAUDE.md` / `.claude/` (skills, rules 제외) |
+| Agent-2 | 활성 정책 + 이력 | `docs/policies/active.md` / `docs/policies/history.md` |
+| Agent-3 | 아키텍처 + 상태 | `docs/architecture.md` / `docs/STATE.md` / `docs/cycle-history.md` |
+| Agent-4 | Path-scoped rules | `.claude/rules/*.md` (8 영역 전체) |
+| Agent-5 | 참조 + 운영 문서 | `docs/reference/*.md` / `docs/runbooks/*.md` / `docs/reports/` (최근 3건) |
+| Agent-6 (cross-verify) | 전체 합성 | 1~5 결과 종합 + false-positive 제거 + P0/P1/P2 정렬 |
+
+**적용 시 의무 조건** (CLAUDE.md 정책 8 기존 조건 전부 유지):
+- 각 에이전트 프롬프트에 "담당 도메인 외 파일 언급 금지" 명시 (비중복 강제)
+- `self-contained` (다른 에이전트 결과 의존 0)
+- `line:span 인용 의무` (`grep -n` 실측 — 정책 6 페어)
+- 출력 P0/P1/P2 분류
+
+**cross-verify (Agent-6) 생략 기준**: CLAUDE.md 정책 8 정량 3 조건 동일 적용 (P0 합계 ≥ 8 + 5 관점 모두 P0 ≥ 1 + 사용자 빠른 진행 신호 명시).
+
+**도메인 재배정 허용 조건**: 특정 사이클 작업 범위가 일부 도메인에 집중된 경우 에이전트 수 조정 가능 (예: pipeline 변경 집중 사이클 → Agent-4 `pipeline.md` 전담 / Agent-5 = `api.md` + `security.md` 페어). 단, 비중복 원칙 보존 의무.
+
+**Why**: 사이클 101 5+1 결과 cross-verify 에서 false-positive 6건 제거됨 — 도메인 겹침이 중복 보고 주원인. 비중복 분리 시 cross-verify 부담 ↓ + 각 에이전트 집중도 ↑.
+
+---
+
 <a id="정책-5-phase-종료-cross-reference"></a>
 
 ## 정책 5: Phase 종료 cross-reference 4 정책 열거 상세
