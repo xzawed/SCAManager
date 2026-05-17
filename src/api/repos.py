@@ -4,6 +4,11 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field, model_validator
 from src.api.auth import require_api_key
 from src.api.deps import get_repo_or_404
+from src.constants import (
+    GATE_DEFAULT_APPROVE_THRESHOLD,
+    GATE_DEFAULT_REJECT_THRESHOLD,
+    GATE_DEFAULT_MERGE_THRESHOLD,
+)
 from src.database import SessionLocal
 from src.models.repository import Repository
 from src.models.analysis import Analysis
@@ -19,8 +24,8 @@ class RepoConfigUpdate(BaseModel):
 
     pr_review_comment: bool = True
     approve_mode: Literal["disabled", "auto", "semi-auto"] = "disabled"
-    approve_threshold: int = Field(75, ge=0, le=100)
-    reject_threshold: int = Field(50, ge=0, le=100)
+    approve_threshold: int = Field(GATE_DEFAULT_APPROVE_THRESHOLD, ge=0, le=100)
+    reject_threshold: int = Field(GATE_DEFAULT_REJECT_THRESHOLD, ge=0, le=100)
     notify_chat_id: str | None = None
     n8n_webhook_url: str | None = None
     discord_webhook_url: str | None = None
@@ -28,7 +33,7 @@ class RepoConfigUpdate(BaseModel):
     custom_webhook_url: str | None = None
     email_recipients: str | None = None
     auto_merge: bool = False
-    merge_threshold: int = Field(75, ge=0, le=100)
+    merge_threshold: int = Field(GATE_DEFAULT_MERGE_THRESHOLD, ge=0, le=100)
     commit_comment: bool = False
     create_issue: bool = False
     railway_deploy_alerts: bool = False

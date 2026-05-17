@@ -22,6 +22,7 @@ import httpx
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from src.constants import GITHUB_API
 from src.models.repository import Repository
 from src.repositories import security_alert_log_repo
 from src.shared.feature_kill_switch import is_disabled
@@ -29,8 +30,6 @@ from src.shared.http_client import get_http_client
 from src.shared.log_safety import sanitize_for_log
 
 logger = logging.getLogger(__name__)
-
-_GITHUB_API = "https://api.github.com"
 _CODE_SCANNING_KEY = "code_scanning"
 _SECRET_SCANNING_KEY = "_".join(("secret", "scanning"))
 _SKIPPED_KEY = "skipped"
@@ -66,7 +65,7 @@ async def _fetch_alerts(
     alert_kind = "code-scanning" | "secret-scanning".
     Returns None on GHAS 비활성 (403/404) — silent skip + WARNING.
     """
-    url = f"{_GITHUB_API}/repos/{repo_full_name}/{alert_kind}/alerts"
+    url = f"{GITHUB_API}/repos/{repo_full_name}/{alert_kind}/alerts"
     client = get_http_client()
     try:
         resp = await client.get(

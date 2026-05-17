@@ -13,6 +13,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from src.auth.session import CurrentUser, require_login
 from src.config_manager.manager import RepoConfigData, get_repo_config, upsert_repo_config
+from src.constants import (
+    GATE_DEFAULT_APPROVE_THRESHOLD,
+    GATE_DEFAULT_REJECT_THRESHOLD,
+    GATE_DEFAULT_MERGE_THRESHOLD,
+)
 from src.database import SessionLocal
 from src.github_client.repos import (
     WEBHOOK_EVENTS,
@@ -226,8 +231,8 @@ async def update_repo_settings(
                 repo_full_name=repo_name,
                 pr_review_comment=form.get("pr_review_comment") == "on",
                 approve_mode=form.get("approve_mode", "disabled"),
-                approve_threshold=int(form.get("approve_threshold", 75)),
-                reject_threshold=int(form.get("reject_threshold", 50)),
+                approve_threshold=int(form.get("approve_threshold", GATE_DEFAULT_APPROVE_THRESHOLD)),
+                reject_threshold=int(form.get("reject_threshold", GATE_DEFAULT_REJECT_THRESHOLD)),
                 notify_chat_id=form.get("notify_chat_id") or None,
                 n8n_webhook_url=form.get("n8n_webhook_url") or None,
                 discord_webhook_url=form.get("discord_webhook_url", "") or None,
@@ -235,7 +240,7 @@ async def update_repo_settings(
                 custom_webhook_url=form.get("custom_webhook_url", "") or None,
                 email_recipients=form.get("email_recipients", "") or None,
                 auto_merge=form.get("auto_merge") == "on",
-                merge_threshold=int(form.get("merge_threshold", 75)),
+                merge_threshold=int(form.get("merge_threshold", GATE_DEFAULT_MERGE_THRESHOLD)),
                 commit_comment=form.get("commit_comment") == "on",
                 create_issue=form.get("create_issue") == "on",
                 railway_deploy_alerts=form.get("railway_deploy_alerts") == "on",

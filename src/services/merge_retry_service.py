@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from src.config import settings
 from src.config_manager.manager import RepoConfigData, get_repo_config
+from src.constants import GITHUB_API
 from src.gate.github_review import merge_pr
 from src.gate.merge_failure_advisor import get_advice
 from src.gate.retry_policy import (
@@ -243,7 +244,7 @@ async def _get_pr_data(
     """PR 전체 데이터를 조회한다. 실패 시 None 반환.
     Fetch full PR data. Returns None on failure.
     """
-    url = f"https://api.github.com/repos/{repo_full_name}/pulls/{pr_number}"
+    url = f"{GITHUB_API}/repos/{repo_full_name}/pulls/{pr_number}"
     try:
         client = get_http_client()
         r = await client.get(url, headers=github_api_headers(token))
