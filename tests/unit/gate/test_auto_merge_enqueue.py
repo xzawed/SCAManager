@@ -364,9 +364,9 @@ async def test_run_auto_merge_uses_legacy_when_retry_disabled():
 # T8-9: CI status check fails → terminal (safe default)
 # ---------------------------------------------------------------------------
 
-async def test_run_auto_merge_terminal_when_ci_status_unknown():
-    """get_ci_status가 'unknown' 반환 → should_retry=False → 터미널 처리.
-    get_ci_status returns 'unknown' → should_retry=False → terminal failure.
+async def test_run_auto_merge_enqueue_when_ci_status_unknown():
+    """get_ci_status가 'unknown' 반환 → should_retry=True → 재시도 큐 등록 (transient 오류 보호).
+    get_ci_status returns 'unknown' → should_retry=True → enqueue for retry (protects against transient errors).
     """
     mock_db = MagicMock()
     config = _config()
@@ -388,8 +388,8 @@ async def test_run_auto_merge_terminal_when_ci_status_unknown():
         mock_state.return_value = ("unknown", "sha123")
         mock_merge.return_value = MergeOutcome(ok=False, reason="unstable_ci: state=unstable", head_sha="sha123", path=PATH_REST_FALLBACK)
         mock_required.return_value = {"ci/test"}
-        # CI 상태를 알 수 없음 → should_retry(unstable_ci, "unknown") = False
-        # CI status unknown → should_retry(unstable_ci, "unknown") = False
+        # CI 상태 알 수 없음 (GitHub API 일시 오류) → transient 보호 → 재시도 큐 등록
+        # CI status unknown (transient GitHub API error) → treat as running → enqueue for retry
         mock_ci.return_value = "unknown"
 
         await _run_auto_merge(
@@ -397,10 +397,11 @@ async def test_run_auto_merge_terminal_when_ci_status_unknown():
             analysis_id=1, db=mock_db,
         )
 
-        # unknown CI 상태 → 재시도 불가 → 터미널 / Unknown CI → no retry → terminal
-        mock_repo.enqueue_or_bump.assert_not_called()
-        mock_deferred_notify.assert_not_called()
-        mock_fail_notify.assert_called_once()
+        # unknown → retriable → 재시도 큐 등록, 터미널 알림 없음
+        # unknown → retriable → enqueued, no terminal notification
+        mock_repo.enqueue_or_bump.assert_called_once()
+        mock_deferred_notify.assert_called_once()
+        mock_fail_notify.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

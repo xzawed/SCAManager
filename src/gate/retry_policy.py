@@ -39,6 +39,9 @@ _STATE_TERMINALITY: dict[str, str] = {
     # CI 진행 중일 수도, 실패했을 수도 있음 — 추가 판단 필요
     # Could be CI running or a failing check — needs further disambiguation
     "unstable": "needs_disambiguation",
+    # has_hooks: GitHub Branch Protection hook 대기 — CI 완료 후 해소되므로 재시도 가능
+    # has_hooks: GitHub Branch Protection hook pending — resolves after CI completes, so retriable
+    "has_hooks": "retriable",
     # 이하 모두 즉시 종료 (재시도 불가)
     # All states below are immediately terminal (no retry)
     "clean": "terminal",
@@ -46,7 +49,6 @@ _STATE_TERMINALITY: dict[str, str] = {
     "behind": "terminal",
     "dirty": "terminal",
     "draft": "terminal",
-    "has_hooks": "terminal",
 }
 
 
@@ -84,7 +86,9 @@ def should_retry(reason_tag: str, ci_status: str) -> bool:
     if reason_tag == UNSTABLE_CI:
         # CI 진행 중이거나 방금 통과했으면 재시도 — merge API 갱신 지연 가능
         # Retry when CI is still running or just passed — merge API may lag
-        return ci_status in ("running", "passed")
+        # unknown: GitHub API 일시 오류 시 영구 종료 방지 — running으로 간주 재시도
+        # unknown: prevents permanent terminal on transient GitHub API errors — treat as running
+        return ci_status in ("running", "passed", "unknown")
 
     if reason_tag == UNKNOWN_STATE_TIMEOUT:
         # GitHub가 아직 상태 계산 중일 때만 재시도
