@@ -14,7 +14,7 @@ src/
 │   ├── icons/icon-{192,512}.svg # PWA maskable icons
 │   ├── css/{tokens,themes}.css  # Foundation 디자인 토큰 + 4-테마 정의 (Cycle 93 Step 1, base.html 외부화)
 │   ├── css/main.css             # Tailwind v4 소스 — @import tokens/themes + layout 유틸리티 (#376)
-│   ├── css/dist/tailwind.css    # Tailwind v4 빌드 출력 (npm run build → Railway buildCommand, #376)
+│   ├── css/dist/tailwind.css    # Tailwind v4 빌드 출력 — Railway buildCommand 자동 생성, git 미포함 (.gitkeep 마커만 커밋)
 │   ├── css/illustrations.css    # 일러스트 배치 CSS — .illustration/--hero/--empty/--tutorial + 모바일 반응형 (#375)
 │   ├── css/admin.css            # 관리자 페이지 공통 스타일 — .admin-* 글래스모피즘 컴포넌트 (admin_rls_audit, admin_tenants 공유)
 │   ├── css/repo_insights.css    # 리포별 인사이트 페이지 전용 스타일 — .ri-* 클래스 (CPD 분리)
@@ -66,8 +66,8 @@ src/
 │   ├── loop_guard.py            # is_bot_sender, is_whitelisted_bot, has_skip_marker, BotInteractionLimiter
 │   ├── router.py                # aggregator
 │   └── providers/               # github.py + telegram.py + railway.py
-├── github_client/               # diff / issues / repos / checks (5분 TTL) / graphql (Tier 3 PR-A)
-├── railway_client/              # 3-그룹 nested dataclass + parse_railway_payload + fetch_deployment_logs
+├── github_client/               # diff / issues / repos / checks (5분 TTL) / graphql (Tier 3 PR-A) / helpers (github_api_headers, ChangedFile) / models (ChangedFile 정의)
+├── railway_client/              # models (RailwayDeployEvent 3-그룹 nested dataclass) / logs (fetch_deployment_logs) / webhook (parse_railway_payload)
 ├── analyzer/
 │   ├── pure/                    # registry / language / review_prompt / review_guides (tier1~3 + generic, 50 언어)
 │   ├── io/                      # static.py (Registry 위임) + ai_review.py (Claude API)
@@ -136,14 +136,14 @@ GitHub Push/PR
           [approve_mode=auto]    → score ≥ approve_threshold → GitHub APPROVE
                                    score < reject_threshold → GitHub REQUEST_CHANGES
           [approve_mode=semi]    → Telegram 인라인 키보드 → POST /api/webhook/telegram 콜백
-          [auto_merge=on, score ≥ merge_threshold] → native_enable_or_fallback()
+          [auto_merge=on, score ≥ merge_threshold] → enable_or_fallback()
               ├─ enable_pull_request_auto_merge GraphQL mutation (우선)
               ├─ ENABLE_DISABLED_IN_REPO / ENABLE_PERMISSION_DENIED → REST merge_pr 폴백
               └─ ENABLE_API_ERROR (분류 외) → REST merge_pr 폴백
           [auto_merge=on, mergeable_state=unstable/unknown] → merge_retry_queue 큐잉
               → check_suite.completed 웹훅 즉각 트리거 OR 1분 cron fallback
               → process_pending_retries() → 최대 30회, 24h
-      → _build_notify_tasks() — RepoConfig 기반 채널 디스패처
+      → build_notification_tasks() — RepoConfig 기반 채널 디스패처
       → asyncio.gather(return_exceptions=True):
           ├─ send_analysis_result()        (Telegram)
           ├─ send_discord_notification()
@@ -156,7 +156,7 @@ Telegram 반자동 콜백:
   → POST /api/webhook/telegram
   → gate:{decision}:{id}:{token} 파싱 (HMAC 인증)
   → post_github_review() + GateDecision DB 저장
-  → auto_merge=on, score ≥ merge_threshold → native_enable_or_fallback()
+  → auto_merge=on, score ≥ merge_threshold → enable_or_fallback()
 
 대시보드:
   → GET /                              (리포 현황)
