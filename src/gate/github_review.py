@@ -5,6 +5,7 @@ import logging
 import httpx
 
 from src.config import settings
+from src.constants import GITHUB_API
 from src.gate import merge_reasons
 from src.github_client.helpers import github_api_headers
 from src.shared.http_client import get_http_client
@@ -26,7 +27,7 @@ async def post_github_review(
 ) -> None:
     """Post an APPROVE or REQUEST_CHANGES review on a GitHub pull request."""
     event = "APPROVE" if decision == "approve" else "REQUEST_CHANGES"
-    url = f"https://api.github.com/repos/{repo_full_name}/pulls/{pr_number}/reviews"
+    url = f"{GITHUB_API}/repos/{repo_full_name}/pulls/{pr_number}/reviews"
     client = get_http_client()  # 싱글톤
     r = await client.post(
         url,
@@ -53,7 +54,7 @@ async def get_pr_mergeable_state(
     실패 시 ('unknown', '') 반환 — raise_for_status 호출.
     Returns ('unknown', '') on failure — calls raise_for_status.
     """
-    url = f"https://api.github.com/repos/{repo_full_name}/pulls/{pr_number}"
+    url = f"{GITHUB_API}/repos/{repo_full_name}/pulls/{pr_number}"
     client = get_http_client()  # 싱글톤
     r = await client.get(url, headers=github_api_headers(github_token))
     r.raise_for_status()
@@ -78,7 +79,7 @@ async def get_pr_base_ref(
     F1: replaces hardcoded "main" with actual PR base ref so BPR checks resolve
     correctly for develop/staging/etc. base branches.
     """
-    url = f"https://api.github.com/repos/{repo_full_name}/pulls/{pr_number}"
+    url = f"{GITHUB_API}/repos/{repo_full_name}/pulls/{pr_number}"
     try:
         client = get_http_client()
         r = await client.get(url, headers=github_api_headers(github_token))
@@ -149,7 +150,7 @@ async def merge_pr(  # pylint: disable=too-many-locals
     if state == "unknown":
         return (False, f"{merge_reasons.UNKNOWN_STATE_TIMEOUT}: GitHub mergeable 계산 미완료", head_sha)
 
-    url = f"https://api.github.com/repos/{repo_full_name}/pulls/{pr_number}/merge"
+    url = f"{GITHUB_API}/repos/{repo_full_name}/pulls/{pr_number}/merge"
     try:
         client = get_http_client()  # 싱글톤
         # SHA atomicity guard — expected_sha 전달 시 PUT body 에 포함

@@ -3,7 +3,7 @@
 Phase 3 PR-11 (사이클 84) — i18n: language 인자 + 3-layer fallback (resolve_notification_language).
 Phase 3 PR-11 (Cycle 84) — i18n: language arg + 3-layer fallback.
 """
-from src.constants import GRADE_EMOJI, NOTIFIER_MAX_ISSUES_LONG
+from src.constants import GITHUB_API, GRADE_EMOJI, NOTIFIER_MAX_ISSUES_LONG
 from src.github_client.helpers import github_api_headers
 from src.i18n.loader import get_text
 from src.shared.http_client import get_http_client
@@ -51,7 +51,7 @@ async def post_pr_comment(  # pylint: disable=too-many-positional-arguments
 ) -> None:
     """Post a formatted analysis result comment on a GitHub pull request (Phase 3 PR-11 — i18n)."""
     body = _build_comment_body(score_result, analysis_results, ai_review, language=language)
-    url = f"https://api.github.com/repos/{repo_name}/issues/{pr_number}/comments"
+    url = f"{GITHUB_API}/repos/{repo_name}/issues/{pr_number}/comments"
     client = get_http_client()
     r = await client.post(
         url,
@@ -174,7 +174,7 @@ async def post_pr_comment_from_result(
 ) -> None:
     """Post a formatted analysis result comment from a stored result dict (Phase 3 PR-11 — i18n)."""
     body = _build_comment_from_result(result, language=language)
-    url = f"https://api.github.com/repos/{repo_name}/issues/{pr_number}/comments"
+    url = f"{GITHUB_API}/repos/{repo_name}/issues/{pr_number}/comments"
     client = get_http_client()
     r = await client.post(
         url,

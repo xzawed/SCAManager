@@ -1,6 +1,11 @@
 """RepoConfig ORM 모델 — 리포별 분석·Gate·알림 설정."""
 from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, DateTime, Boolean
+from src.constants import (
+    GATE_DEFAULT_APPROVE_THRESHOLD,
+    GATE_DEFAULT_REJECT_THRESHOLD,
+    GATE_DEFAULT_MERGE_THRESHOLD,
+)
 from src.database import Base
 
 
@@ -13,8 +18,8 @@ class RepoConfig(Base):
     repo_full_name = Column(String, unique=True, nullable=False, index=True)
     pr_review_comment = Column(Boolean, default=True, nullable=False)
     approve_mode = Column(String, default="disabled", nullable=False)
-    approve_threshold = Column(Integer, default=75, nullable=False)
-    reject_threshold = Column(Integer, default=50, nullable=False)
+    approve_threshold = Column(Integer, default=GATE_DEFAULT_APPROVE_THRESHOLD, nullable=False)
+    reject_threshold = Column(Integer, default=GATE_DEFAULT_REJECT_THRESHOLD, nullable=False)
     notify_chat_id = Column(String, nullable=True)
     n8n_webhook_url = Column(String, nullable=True)
     discord_webhook_url = Column(String, nullable=True)
@@ -22,7 +27,7 @@ class RepoConfig(Base):
     custom_webhook_url = Column(String, nullable=True)
     email_recipients = Column(String, nullable=True)
     auto_merge = Column(Boolean, default=False, nullable=False)
-    merge_threshold = Column(Integer, default=75, nullable=False)
+    merge_threshold = Column(Integer, default=GATE_DEFAULT_MERGE_THRESHOLD, nullable=False)
     commit_comment = Column(Boolean, default=False, nullable=False)
     create_issue = Column(Boolean, default=False, nullable=False)
     hook_token = Column(String, nullable=True, unique=True)
@@ -45,10 +50,10 @@ class RepoConfig(Base):
     def __init__(self, **kwargs):
         kwargs.setdefault("pr_review_comment", True)
         kwargs.setdefault("approve_mode", "disabled")
-        kwargs.setdefault("approve_threshold", 75)
-        kwargs.setdefault("reject_threshold", 50)
+        kwargs.setdefault("approve_threshold", GATE_DEFAULT_APPROVE_THRESHOLD)
+        kwargs.setdefault("reject_threshold", GATE_DEFAULT_REJECT_THRESHOLD)
         kwargs.setdefault("auto_merge", False)
-        kwargs.setdefault("merge_threshold", 75)
+        kwargs.setdefault("merge_threshold", GATE_DEFAULT_MERGE_THRESHOLD)
         kwargs.setdefault("commit_comment", False)
         kwargs.setdefault("create_issue", False)
         kwargs.setdefault("railway_deploy_alerts", False)

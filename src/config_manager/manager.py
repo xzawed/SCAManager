@@ -1,6 +1,11 @@
 """Repository configuration manager — get and upsert RepoConfig records."""
 from dataclasses import dataclass, fields
 from sqlalchemy.orm import Session
+from src.constants import (
+    GATE_DEFAULT_APPROVE_THRESHOLD,
+    GATE_DEFAULT_REJECT_THRESHOLD,
+    GATE_DEFAULT_MERGE_THRESHOLD,
+)
 from src.models.repo_config import RepoConfig
 
 
@@ -11,8 +16,8 @@ class RepoConfigData:  # pylint: disable=too-many-instance-attributes
     repo_full_name: str
     pr_review_comment: bool = True
     approve_mode: str = "disabled"
-    approve_threshold: int = 75
-    reject_threshold: int = 50
+    approve_threshold: int = GATE_DEFAULT_APPROVE_THRESHOLD
+    reject_threshold: int = GATE_DEFAULT_REJECT_THRESHOLD
     notify_chat_id: str | None = None
     n8n_webhook_url: str | None = None
     discord_webhook_url: str | None = None
@@ -20,7 +25,7 @@ class RepoConfigData:  # pylint: disable=too-many-instance-attributes
     custom_webhook_url: str | None = None
     email_recipients: str | None = None
     auto_merge: bool = False
-    merge_threshold: int = 75
+    merge_threshold: int = GATE_DEFAULT_MERGE_THRESHOLD
     commit_comment: bool = False
     create_issue: bool = False
     railway_deploy_alerts: bool = False

@@ -13,6 +13,7 @@ from alembic import command
 from alembic.config import Config
 
 from src.config import settings
+from src.constants import GITHUB_API
 from src.shared.http_client import close_http_client, init_http_client
 from src.webhook.router import router as webhook_router
 from src.api.repos import router as api_repos_router
@@ -114,7 +115,7 @@ async def lifespan(_app: FastAPI):
     try:
         from src.shared.http_client import get_http_client  # pylint: disable=import-outside-toplevel
         warmup_client = get_http_client()
-        await warmup_client.get("https://api.github.com/zen", timeout=3.0)
+        await warmup_client.get(f"{GITHUB_API}/zen", timeout=3.0)
         logger.info("GitHub API warm-up ping succeeded")
     except Exception as warmup_exc:  # pylint: disable=broad-exception-caught
         logger.info("GitHub API warm-up ping skipped: %s", type(warmup_exc).__name__)
