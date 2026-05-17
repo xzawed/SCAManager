@@ -450,13 +450,25 @@ def test_callback_clears_session_before_setting_user_id():
     class TrackingDict(dict):
         # 호출 순서 추적용 dict 서브클래스
         # Dict subclass to track call order for session fixation verification.
+        # Starlette SessionMiddleware가 응답 처리 시 .accessed/.modified 속성을 요구함
+        # Starlette SessionMiddleware requires .accessed and .modified attributes during response processing.
+        accessed: bool = False
+        modified: bool = False
+
         def clear(self):
             call_order.append("clear")
+            self.modified = True
             super().clear()
 
         def __setitem__(self, key, value):
             call_order.append(f"set:{key}")
+            self.accessed = True
+            self.modified = True
             super().__setitem__(key, value)
+
+        def __getitem__(self, key):
+            self.accessed = True
+            return super().__getitem__(key)
 
     tracking_session = TrackingDict()
 
