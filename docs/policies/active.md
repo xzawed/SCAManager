@@ -78,12 +78,12 @@ git push -u origin <branch>
 
 - [ ] dark 테마 데스크탑 (1440px+)
 - [ ] light 테마 데스크탑
-- [ ] glass 테마 데스크탑
-- [ ] claude-dark 테마 데스크탑
+- [ ] pastel 테마 데스크탑
+- [ ] catppuccin 테마 데스크탑
 - [ ] dark 테마 모바일 (375px ~ 767px)
 - [ ] light 테마 모바일
-- [ ] glass 테마 모바일
-- [ ] claude-dark 테마 모바일
+- [ ] pastel 테마 모바일
+- [ ] catppuccin 테마 모바일
 
 특히 검증 필요 (변경 영역 한정):
 - {변경 영역 설명}
