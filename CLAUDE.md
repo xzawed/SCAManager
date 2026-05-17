@@ -181,12 +181,7 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 
 **default 회고 패턴** (Claude 단독 회고 금지):
 - **최소 4~5 에이전트 병렬 디스패치** (단일 메시지에 동시 tool_use)
-- **관점 분리** — 각 에이전트는 다른 관점에서 회고 (예시):
-  1. 작업 패턴 (PR 분할 / Step 모델 / cleanup 4 갈래 ROI)
-  2. 다중 에이전트 운영 (사이클별 ROI / false-positive / 신뢰성)
-  3. 사용자 ↔ Claude 협업 (결정 패턴 / 정보 비대칭 / 신뢰 모델)
-  4. 기술 학습 (신규 패턴 / 패밀리 분류 / 재사용성)
-  5. 문서 정합성 (stale 누적 / 메타 sync 효율)
+- **관점 분리** — 에이전트별 비중복 도메인 배정 (5종 예시: [docs/policies/active.md#정책-8-doc-audit-agent-domain](docs/policies/active.md#정책-8-doc-audit-agent-domain))
 - **각 에이전트 프롬프트 강제 조건**:
   - `self-contained` (다른 에이전트 결과 의존 0 — 병렬성 보호)
   - `line:span 인용 의무` (정책 6 — 환각 보고 80% 차단)
@@ -201,11 +196,10 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 - 1차 5 에이전트 결과 받은 후 별도 cross-verify 에이전트 1건 디스패치 (= 5+1 = 6 패턴)
 - ❌ **cross-verify = `doc-consistency-reviewer` 사용 금지** — 회고 분석이 본 에이전트 scope 외라며 거절 사례 (사이클 64 #225 회고 보고서 §2)
 - ✅ **cross-verify default = `general-purpose` 또는 task-specific specialist** — 검증된 패턴 (사이클 65 #226 정합성 cleanup PR 검증)
-- ⚠️ **cross-verify 생략 가능 조건 (사이클 67 #232 사례)**: 사용자 신호 = "회고 이후 다음 작업" 같은 빠른 진행 명시 + 1차 5 결과 양과 깊이 충분 + Claude 자율 판단 보고 (정책 3) PR 본문 명시 시 cross-verify 생략 OK. 단, 다음 사이클 회고에서 보존 의무 (회귀 가드).
 - 🔴 **cross-verify 생략 정량 기준 (사이클 69 cross-verify 식별)**: "양과 깊이 충분" 의 정량 기준 = (1) 1차 5 에이전트 P0 합계 ≥ 8건 + (2) 관점 5종 모두 P0 1건 이상 식별 + (3) 사용자 빠른 진행 신호 명시 ("회고 이후 다음 작업" / "바로 진행" 등). **3 조건 모두 충족 시만 생략 OK**. Claude 자가 판단 X — 사용자 명시 신호 의무. 미충족 시 cross-verify (general-purpose) 강제.
 - 🔴 **cross-verify 생략 PR 본문 대조 표 default (사이클 87)**: 6차 생략 시 PR 본문 §"cross-verify 생략 사유" 에 사이클 69 정량 3 조건 대조 표 default. 3 조건 모두 ✅ 시만 생략 OK. 1 조건이라도 ❌ 시 cross-verify 강제. 표 형식 상세: [docs/policies/history.md#정책-8-진화](docs/policies/history.md#정책-8-진화).
 
-🔴 **단일 관점 회고 + cross-verify ROI 정량 (사이클 75 진화)**: 관점 1~5 중 1개 단독 회고 = 5+1 패턴 미적용 (정량 기준 적용 X, Claude 직접 작성 default). cross-verify ROI = 사이클당 평균 false-positive 차단 2~5건 + 신규 발견 1~6건 (사이클 64~74 누적 평균). default = 5+1 진행 + 정량 기준 충족 시 생략. 상세: [docs/policies/history.md#정책-8-진화](docs/policies/history.md#정책-8-진화).
+🔴 **단일 관점 회고 (사이클 75 진화)**: 관점 1~5 중 1개 단독 회고 = 5+1 패턴 미적용 (Claude 직접 작성 default). default = 5+1 진행 + 정량 기준 충족 시 생략. 상세: [docs/policies/history.md#정책-8-진화](docs/policies/history.md#정책-8-진화).
 
 🔴 **정책 8 진화 default 요약** (사이클 83~84, 92):
 - **(1) 단일 작업일 5+1 dispatch ≥ 5회 = 사용자 사전 확인 의무** (사이클 83). 사용자 명시 신호 시 면제 OK. 정책 16 5번 원칙 (토큰 비용 효율) 페어.
@@ -328,11 +322,7 @@ Why + How to apply (자가 검토 4 자문) 상세: [docs/policies/active.md#정
 - 메모리 grep / 단순 정보 제공
 - **사용자 직접 결정 영역** (사용자 명시 결정 = 최종, 두 LLM 검증 면제)
 
-**환경 통합 (현 SCAManager 기준)**: Codespaces 환경 default = 시나리오 A (사용자 별도 환경 Codex CLI 실행 + 채팅 회신). 사용자 회신 형식 3종 + 자동화 권장 + `.codex/hooks.json` Windows path 경고 상세: [docs/policies/active.md#정책-18](docs/policies/active.md#정책-18).
-
-**≥ 5 사이클 누적 시 ROI 재검증 의무** (정책 17 5번 default 정기 검증 페어) — 사용자 라운드트립 부담 정량 (사이클당 PR수 × N분) vs 단일 LLM blind spot 차단 가치 재평가.
-
-상세 + 검증 사례 + 양방향 흐름 표: [docs/policies/active.md#정책-18](docs/policies/active.md#정책-18) + AGENTS.md §"Claude ↔ Codex 양방향 mutual 검증 의무 (사이클 93 신설)" + 메모리 `feedback-codex-post-validation-mandatory.md`.
+상세: [docs/policies/active.md#정책-18](docs/policies/active.md#정책-18).
 
 ---
 
