@@ -1414,3 +1414,290 @@ async def test_run_gate_check_runs_three_options_via_gather():
     mock_approve.assert_awaited_once()
     mock_merge.assert_awaited_once()
 
+
+# ---------------------------------------------------------------------------
+# 네트워크 타임아웃 — httpx.TimeoutException 내성
+# Network timeout resilience — httpx.TimeoutException
+# ---------------------------------------------------------------------------
+
+
+async def test_post_pr_comment_timeout_does_not_abort_gate():
+    """post_pr_comment 가 TimeoutException 을 던져도 gate 가 계속 실행되어 post_github_review 가 호출된다.
+    Gate must continue and call post_github_review even when post_pr_comment raises TimeoutException.
+    """
+    # httpx.TimeoutException 은 httpx.HTTPError 서브클래스 — 내부 except 가 포착
+    # httpx.TimeoutException is a subclass of httpx.HTTPError — caught internally.
+    mock_db = MagicMock()
+    config = _config(pr_review_comment=True, approve_mode="auto", approve_threshold=75, reject_threshold=50)
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch(
+            "src.gate.engine.post_pr_comment",
+            new_callable=AsyncMock,
+            side_effect=httpx.TimeoutException("timed out"),
+        ):
+            with patch("src.gate.engine.post_github_review", new_callable=AsyncMock) as mock_review:
+                with patch("src.gate.engine.save_gate_decision"):
+                    with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
+                        await run_gate_check(
+                            repo_name="owner/repo",
+                            pr_number=1,
+                            analysis_id=1,
+                            result={"score": 80, "grade": "B"},
+                            github_token="tok",
+                            db=mock_db,
+                        )
+                        # 타임아웃 시에도 approve 옵션은 실행되어야 한다
+                        # Approve option must run even on timeout.
+                        mock_review.assert_called_once()
+
+
+async def test_post_github_review_timeout_does_not_crash():
+    """post_github_review 가 TimeoutException 을 던져도 run_gate_check 가 예외 없이 완료된다.
+    run_gate_check must complete without exception even when post_github_review raises TimeoutException.
+    """
+    # httpx.TimeoutException 은 httpx.HTTPError 서브클래스 → _run_auto_approve 내부 except 포착
+    # httpx.TimeoutException subclasses httpx.HTTPError — caught by _run_auto_approve's except.
+    mock_db = MagicMock()
+    config = _config(approve_mode="auto", approve_threshold=75, reject_threshold=50, pr_review_comment=False)
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch(
+            "src.gate.engine.post_github_review",
+            new_callable=AsyncMock,
+            side_effect=httpx.TimeoutException("timed out"),
+        ):
+            with patch("src.gate.engine.save_gate_decision"):
+                with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
+                    with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
+                        # 예외 없이 완료되어야 한다
+                        # Must complete without raising an exception.
+                        await run_gate_check(
+                            repo_name="owner/repo",
+                            pr_number=1,
+                            analysis_id=1,
+                            result={"score": 80, "grade": "B"},
+                            github_token="tok",
+                            db=mock_db,
+                        )
+
+
+async def test_merge_pr_timeout_does_not_crash():
+    """native_enable_with_path 가 TimeoutException 을 던져도 run_gate_check 가 예외 없이 완료된다.
+    run_gate_check must complete without exception even when native_enable_with_path raises TimeoutException.
+    """
+    # httpx.TimeoutException 은 httpx.HTTPError 서브클래스 → _run_auto_merge_legacy 내부 except 포착
+    # httpx.TimeoutException subclasses httpx.HTTPError — caught inside _run_auto_merge_legacy.
+    mock_db = MagicMock()
+    config = _config(approve_mode="disabled", auto_merge=True, merge_threshold=75, pr_review_comment=False)
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch(
+            "src.gate.engine.native_enable_with_path",
+            new_callable=AsyncMock,
+            side_effect=httpx.TimeoutException("timed out"),
+        ):
+            with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
+                with patch("src.gate.engine.save_gate_decision"):
+                    # 타임아웃 시에도 gate 는 계속 실행되어야 한다
+                    # Gate must continue even on timeout.
+                    await run_gate_check(
+                        repo_name="owner/repo",
+                        pr_number=3,
+                        analysis_id=10,
+                        result={"score": 90, "grade": "A"},
+                        github_token="tok",
+                        db=mock_db,
+                    )
+
+
+# ---------------------------------------------------------------------------
+# HTTP 상태 에러 — httpx.HTTPStatusError 내성 (403/422)
+# HTTP status error resilience — httpx.HTTPStatusError
+# ---------------------------------------------------------------------------
+
+
+async def test_post_pr_comment_http_status_error_does_not_abort_gate():
+    """post_pr_comment 가 HTTPStatusError(403) 를 던져도 gate 가 계속 실행되어 post_github_review 가 호출된다.
+    Gate must continue and call post_github_review even when post_pr_comment raises HTTPStatusError(403).
+    """
+    mock_db = MagicMock()
+    config = _config(pr_review_comment=True, approve_mode="auto", approve_threshold=75, reject_threshold=50)
+    # 403 Forbidden 에러 객체 생성
+    # Create a 403 Forbidden HTTPStatusError object.
+    mock_req = MagicMock()
+    mock_resp = MagicMock()
+    mock_resp.status_code = 403
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch(
+            "src.gate.engine.post_pr_comment",
+            new_callable=AsyncMock,
+            side_effect=httpx.HTTPStatusError("403 Forbidden", request=mock_req, response=mock_resp),
+        ):
+            with patch("src.gate.engine.post_github_review", new_callable=AsyncMock) as mock_review:
+                with patch("src.gate.engine.save_gate_decision"):
+                    with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
+                        await run_gate_check(
+                            repo_name="owner/repo",
+                            pr_number=1,
+                            analysis_id=1,
+                            result={"score": 80, "grade": "B"},
+                            github_token="tok",
+                            db=mock_db,
+                        )
+                        # 403 에러에도 approve 옵션은 실행되어야 한다
+                        # Approve option must run even on 403 error.
+                        mock_review.assert_called_once()
+
+
+async def test_post_github_review_http_status_error_does_not_crash():
+    """post_github_review 가 HTTPStatusError(422) 를 던져도 run_gate_check 가 예외 없이 완료된다.
+    run_gate_check must complete without exception even when post_github_review raises HTTPStatusError(422).
+    """
+    mock_db = MagicMock()
+    config = _config(approve_mode="auto", approve_threshold=75, reject_threshold=50, pr_review_comment=False)
+    # 422 Unprocessable Entity 에러 객체 생성
+    # Create a 422 Unprocessable Entity HTTPStatusError object.
+    mock_req = MagicMock()
+    mock_resp = MagicMock()
+    mock_resp.status_code = 422
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch(
+            "src.gate.engine.post_github_review",
+            new_callable=AsyncMock,
+            side_effect=httpx.HTTPStatusError("422 Unprocessable", request=mock_req, response=mock_resp),
+        ):
+            with patch("src.gate.engine.save_gate_decision"):
+                with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
+                    with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock):
+                        # 예외 없이 완료되어야 한다
+                        # Must complete without raising an exception.
+                        await run_gate_check(
+                            repo_name="owner/repo",
+                            pr_number=1,
+                            analysis_id=1,
+                            result={"score": 80, "grade": "B"},
+                            github_token="tok",
+                            db=mock_db,
+                        )
+
+
+# ---------------------------------------------------------------------------
+# DB commit 실패 — save_gate_decision 예외 격리
+# DB commit failure — save_gate_decision exception isolation
+# ---------------------------------------------------------------------------
+
+
+async def test_save_gate_decision_db_failure_does_not_crash_other_options():
+    """save_gate_decision 이 RuntimeError 를 던져도 run_gate_check 가 예외 없이 완료된다.
+    Gather 가 각 옵션을 격리하므로 DB 실패가 다른 옵션을 중단시키지 않는다.
+    run_gate_check must complete without exception even when save_gate_decision raises RuntimeError.
+    asyncio.gather isolates each option so DB failure does not abort other options.
+    """
+    mock_db = MagicMock()
+    # approve_mode="auto" + pr_review_comment=True 로 두 옵션 모두 활성화
+    # Enable both options: approve_mode="auto" and pr_review_comment=True.
+    config = _config(pr_review_comment=True, approve_mode="auto", approve_threshold=75, reject_threshold=50)
+    with patch("src.gate.engine.get_repo_config", return_value=config):
+        with patch(
+            "src.gate.engine.save_gate_decision",
+            side_effect=RuntimeError("DB commit failed"),
+        ):
+            with patch("src.gate.engine.post_pr_comment", new_callable=AsyncMock) as mock_comment:
+                with patch("src.gate.engine.post_github_review", new_callable=AsyncMock) as mock_review:
+                    with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
+                        # DB 실패에도 gate 는 완료되어야 한다
+                        # Gate must complete even when DB fails.
+                        await run_gate_check(
+                            repo_name="owner/repo",
+                            pr_number=1,
+                            analysis_id=1,
+                            result={"score": 80, "grade": "B"},
+                            github_token="tok",
+                            db=mock_db,
+                        )
+                        # comment 와 review 는 save_gate_decision 과 별도 옵션이므로 호출된다
+                        # comment and review belong to separate options from save_gate_decision.
+                        mock_comment.assert_called_once()
+                        mock_review.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# _get_ci_status_safe — 타임아웃 전파 검증
+# _get_ci_status_safe — timeout propagation
+# ---------------------------------------------------------------------------
+
+
+async def test_get_ci_status_safe_timeout_propagates():
+    """get_ci_status 가 TimeoutException 을 던지면 _get_ci_status_safe 가 'unknown' 을 반환한다.
+    TimeoutException 은 httpx.HTTPError 서브클래스이므로 내부 except 가 포착해 'unknown' 반환.
+    When get_ci_status raises TimeoutException, _get_ci_status_safe returns 'unknown'.
+    TimeoutException is a subclass of httpx.HTTPError so the internal except catches it.
+    """
+    from src.gate.engine import _get_ci_status_safe  # 지역 import / local import
+
+    with patch(
+        "src.gate.engine.get_required_check_contexts",
+        new_callable=AsyncMock,
+    ) as mock_required, patch(
+        "src.gate.engine.get_ci_status",
+        new_callable=AsyncMock,
+        side_effect=httpx.TimeoutException("ci status timed out"),
+    ):
+        mock_required.return_value = {"ci-check"}
+        # TimeoutException 은 httpx.HTTPError 로 catch → 'unknown' 반환
+        # TimeoutException caught as httpx.HTTPError → returns 'unknown'.
+        result = await _get_ci_status_safe("token", "owner/repo", "sha123")
+
+    assert result == "unknown"
+
+
+# ---------------------------------------------------------------------------
+# 모든 옵션 예외 — logger.error 3회 호출 검증
+# All options exception — verify logger.error called 3 times
+# ---------------------------------------------------------------------------
+
+
+async def test_run_gate_check_all_options_exception_logged(caplog):
+    """3 개 옵션 모두 RuntimeError 를 던지면 run_gate_check 가 완료되고 logger.error 가 3 번 호출된다.
+    각 옵션 이름("review_comment", "approve", "auto_merge") 이 로그에 포함되어야 한다.
+    When all 3 options raise RuntimeError, run_gate_check completes and logs 3 errors.
+    Each option name must appear in the log output.
+    """
+    mock_db = MagicMock()
+    config = _config(pr_review_comment=True, approve_mode="auto", auto_merge=True)
+
+    with caplog.at_level(logging.ERROR, logger="src.gate.engine"):
+        with patch("src.gate.engine.get_repo_config", return_value=config), \
+             patch(
+                 "src.gate.engine._run_review_comment",
+                 new=AsyncMock(side_effect=RuntimeError("review_comment boom")),
+             ), \
+             patch(
+                 "src.gate.engine._run_approve_decision",
+                 new=AsyncMock(side_effect=RuntimeError("approve boom")),
+             ), \
+             patch(
+                 "src.gate.engine._run_auto_merge",
+                 new=AsyncMock(side_effect=RuntimeError("auto_merge boom")),
+             ):
+            # 3 개 옵션 모두 예외를 던져도 gate 는 완료되어야 한다
+            # Gate must complete even when all 3 options raise exceptions.
+            await run_gate_check(
+                repo_name="owner/repo",
+                pr_number=1,
+                analysis_id=1,
+                result={"score": 80, "grade": "B"},
+                github_token="tok",
+                db=mock_db,
+            )
+
+    # logger.error 가 3 번 호출되어야 한다 (각 옵션별 1번)
+    # logger.error must be called 3 times (once per option).
+    error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(error_records) == 3
+
+    # 각 옵션 이름이 로그 메시지에 포함되어야 한다
+    # Each option name must appear in the log messages.
+    logged_text = " ".join(r.message for r in error_records)
+    assert "review_comment" in logged_text
+    assert "approve" in logged_text
+    assert "auto_merge" in logged_text
+
