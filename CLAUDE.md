@@ -190,7 +190,7 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 
 **cross-verify 단계 (2차) 의무 — 사이클 64 학습 (2026-05-04)**:
 - 1차 5 에이전트 결과 받은 후 별도 cross-verify 에이전트 1건 디스패치 (= 5+1 = 6 패턴)
-- ❌ `doc-consistency-reviewer` 금지 (scope 거절) / ✅ `general-purpose` 또는 task-specific specialist — 상세: [history.md#정책-8-진화](docs/policies/history.md#정책-8-진화)
+- ❌ cross-verify 6차 에이전트로 `doc-consistency-reviewer` 사용 금지 (사이클 64: 회고 cross-verify scope 거절) / ✅ `general-purpose` 또는 task-specific specialist — 단, 문서 diff 일관성 검토 단독 목적의 호출은 허용. 상세: [history.md#정책-8-진화](docs/policies/history.md#정책-8-진화)
 - 🔴 **cross-verify 생략 정량 기준 (사이클 69 cross-verify 식별)**: "양과 깊이 충분" 의 정량 기준 = (1) 1차 5 에이전트 P0 합계 ≥ 8건 + (2) 관점 5종 모두 P0 1건 이상 식별 + (3) 사용자 빠른 진행 신호 명시 ("회고 이후 다음 작업" / "바로 진행" 등). **3 조건 모두 충족 시만 생략 OK**. Claude 자가 판단 X — 사용자 명시 신호 의무. 미충족 시 cross-verify (general-purpose) 강제.
 - 🔴 **cross-verify 생략 PR 본문 대조 표 default (사이클 87)**: 6차 생략 시 PR 본문 §"cross-verify 생략 사유" 에 사이클 69 정량 3 조건 대조 표 default. 3 조건 모두 ✅ 시만 생략 OK. 1 조건이라도 ❌ 시 cross-verify 강제. 표 형식 상세: [docs/policies/history.md#정책-8-진화](docs/policies/history.md#정책-8-진화).
 
