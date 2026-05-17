@@ -1464,9 +1464,12 @@
 
   // 저장 바 슬라이드 업 입장 애니메이션 — DOM 준비 후 .visible 추가
   // Save bar slide-up entrance — add .visible after DOM ready
-  (function initSaveBarEntrance() {
+  function _initSaveBar() {
     var saveBar = document.querySelector('.save-bar');
     if (!saveBar) { return; }
+    // hx-boost 재진입 시 애니메이션 재생을 위해 먼저 제거
+    // Remove first to replay animation on hx-boost re-entry
+    saveBar.classList.remove('visible');
     // requestAnimationFrame 2회 — 브라우저가 초기 렌더 완료 후 transition 트리거
     // Two rAF frames — ensures browser completes initial render before triggering transition
     requestAnimationFrame(function() {
@@ -1474,7 +1477,18 @@
         saveBar.classList.add('visible');
       });
     });
-  }());
+  }
+  _initSaveBar();
+
+  // hx-boost 재방문 시 opacity:0 고착 방지 — remove-before-add 패턴 (PR #435 학습)
+  // Prevent opacity:0 freeze on hx-boost re-visit — remove-before-add pattern (PR #435)
+  if (document._xSaveBarHandler) {
+    document.removeEventListener('htmx:afterSettle', document._xSaveBarHandler);
+    document.removeEventListener('htmx:historyRestore', document._xSaveBarHandler);
+  }
+  document._xSaveBarHandler = _initSaveBar;
+  document.addEventListener('htmx:afterSettle', document._xSaveBarHandler);
+  document.addEventListener('htmx:historyRestore', document._xSaveBarHandler);
 
   // 토스트 클릭 시 즉시 닫기 + URL 쿼리 제거
   const toast = document.getElementById('saveToast');
