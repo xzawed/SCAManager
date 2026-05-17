@@ -24,64 +24,64 @@ from src.notifier._http import validate_external_url, build_safe_client
 # ---------------------------------------------------------------------------
 
 
-def test_validate_blocks_loopback_ipv4():
+async def test_validate_blocks_loopback_ipv4():
     # 127.0.0.1 루프백 주소는 반드시 차단
     # 127.0.0.1 loopback address must be blocked.
-    assert validate_external_url("http://127.0.0.1/hook") is False
+    assert await validate_external_url("http://127.0.0.1/hook") is False
 
 
-def test_validate_blocks_loopback_ipv6():
+async def test_validate_blocks_loopback_ipv6():
     # IPv6 루프백 ::1 도 차단
     # IPv6 loopback ::1 must also be blocked.
-    assert validate_external_url("http://[::1]/hook") is False
+    assert await validate_external_url("http://[::1]/hook") is False
 
 
-def test_validate_blocks_private_10_range():
+async def test_validate_blocks_private_10_range():
     # RFC 1918 10.x.x.x 사설 대역 차단
     # RFC 1918 10.x.x.x private range must be blocked.
-    assert validate_external_url("https://10.0.0.1/hook") is False
+    assert await validate_external_url("https://10.0.0.1/hook") is False
 
 
-def test_validate_blocks_private_192_range():
+async def test_validate_blocks_private_192_range():
     # RFC 1918 192.168.x.x 사설 대역 차단
     # RFC 1918 192.168.x.x private range must be blocked.
-    assert validate_external_url("https://192.168.1.1/hook") is False
+    assert await validate_external_url("https://192.168.1.1/hook") is False
 
 
-def test_validate_blocks_link_local():
+async def test_validate_blocks_link_local():
     # AWS IMDSv1 인스턴스 메타데이터 주소 차단 (169.254.169.254)
-    assert validate_external_url("https://169.254.169.254/hook") is False
+    assert await validate_external_url("https://169.254.169.254/hook") is False
 
 
-def test_validate_blocks_http_scheme():
+async def test_validate_blocks_http_scheme():
     # https 전용 — http:// 스킴은 차단
-    assert validate_external_url("http://example.com/hook") is False
+    assert await validate_external_url("http://example.com/hook") is False
 
 
-def test_validate_allows_https_public_url():
+async def test_validate_allows_https_public_url():
     # 공인 IP로 해석되는 https URL은 허용
     # socket.getaddrinfo를 mock해 공인 IP(1.2.3.4) 반환
     fake_addrinfo = [(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("1.2.3.4", 0))]
     with patch("socket.getaddrinfo", return_value=fake_addrinfo):
-        assert validate_external_url("https://discord.com/api/webhooks/123") is True
+        assert await validate_external_url("https://discord.com/api/webhooks/123") is True
 
 
-def test_validate_hostname_resolves_to_private_ip_blocked():
+async def test_validate_hostname_resolves_to_private_ip_blocked():
     # DNS가 사설 IP를 반환하는 외부처럼 보이는 도메인 차단 (DNS 리바인딩 방어)
     # Block seemingly external domains whose DNS resolves to private IPs (DNS rebinding defence).
     fake_addrinfo = [(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("10.0.0.1", 0))]
     with patch("socket.getaddrinfo", return_value=fake_addrinfo):
-        assert validate_external_url("https://evil.example.com/hook") is False
+        assert await validate_external_url("https://evil.example.com/hook") is False
 
 
-def test_validate_empty_string_returns_false():
+async def test_validate_empty_string_returns_false():
     # 빈 문자열은 False 반환
-    assert validate_external_url("") is False
+    assert await validate_external_url("") is False
 
 
-def test_validate_invalid_url_returns_false():
+async def test_validate_invalid_url_returns_false():
     # URL 형식이 아닌 문자열은 False 반환
-    assert validate_external_url("not-a-url") is False
+    assert await validate_external_url("not-a-url") is False
 
 
 # ---------------------------------------------------------------------------
@@ -116,10 +116,10 @@ def test_build_safe_client_no_follow_redirects():
 # ---------------------------------------------------------------------------
 
 
-def test_validate_logs_warning_on_private_ip(caplog):
+async def test_validate_logs_warning_on_private_ip(caplog):
     # 사설 IP 차단 시 logger.warning이 호출되어야 한다
     with caplog.at_level(logging.WARNING, logger="src.notifier._http"):
-        result = validate_external_url("https://192.168.1.1/hook")
+        result = await validate_external_url("https://192.168.1.1/hook")
     assert result is False
     assert len(caplog.records) >= 1
     assert any(r.levelno == logging.WARNING for r in caplog.records)

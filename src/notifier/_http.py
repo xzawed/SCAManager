@@ -1,4 +1,5 @@
 """SSRF-safe HTTP helpers for external webhook notifiers."""
+import asyncio
 import ipaddress
 import logging
 import socket
@@ -28,7 +29,7 @@ def _is_dangerous_ip(addr: str) -> bool:
         return False
 
 
-def validate_external_url(url: str) -> bool:
+async def validate_external_url(url: str) -> bool:
     """Return True only if *url* is safe to use as an external webhook target.
 
     Blocks:
@@ -36,6 +37,9 @@ def validate_external_url(url: str) -> bool:
     - IP literals in private/loopback/link-local/reserved/multicast ranges
     - Hostnames that DNS-resolve to any such address (DNS-rebinding defence)
     - Empty or malformed URLs
+
+    DNS 조회는 asyncio.to_thread 으로 실행 — 이벤트 루프 블로킹 방지.
+    DNS lookup runs in asyncio.to_thread to avoid blocking the event loop.
     """
     if not url:
         return False
@@ -60,9 +64,12 @@ def validate_external_url(url: str) -> bool:
     except ValueError:
         pass  # hostname is a domain name — proceed to DNS resolution
 
-    # DNS resolution: block if any returned address is private/internal
+    # DNS resolution: block if any returned address is private/internal.
+    # socket.getaddrinfo 는 sync blocking — asyncio.to_thread 로 오프로드.
+    # socket.getaddrinfo is sync blocking — offload via asyncio.to_thread.
     try:
-        addrs = [sockaddr[0] for _f, _t, _p, _c, sockaddr in socket.getaddrinfo(hostname, None)]
+        raw = await asyncio.to_thread(socket.getaddrinfo, hostname, None)
+        addrs = [sockaddr[0] for _f, _t, _p, _c, sockaddr in raw]
     except socket.gaierror:
         logger.warning("SSRF guard: DNS resolution failed for hostname '%s'", hostname)
         return False

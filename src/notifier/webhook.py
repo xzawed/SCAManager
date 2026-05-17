@@ -50,7 +50,7 @@ async def send_webhook_notification(
     """범용 Webhook URL로 분석 결과 JSON을 POST한다."""
     if not webhook_url:
         return
-    if not validate_external_url(webhook_url):
+    if not await validate_external_url(webhook_url):
         logger.warning("send_webhook_notification: blocked unsafe URL '%s'", webhook_url)
         return
     payload = _build_payload(repo_name, commit_sha, score_result, analysis_results, pr_number, ai_review)

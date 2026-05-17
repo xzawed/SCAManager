@@ -49,7 +49,7 @@ async def notify_n8n(
     """n8n Webhook으로 분석 점수 페이로드를 POST한다 (envelope 구조)."""
     if not webhook_url:
         return
-    if not validate_external_url(webhook_url):
+    if not await validate_external_url(webhook_url):
         logger.warning("notify_n8n: blocked unsafe URL '%s'", webhook_url)
         return
     payload = _build_envelope(
@@ -79,7 +79,7 @@ async def notify_n8n_issue(
     """GitHub Issue 이벤트를 n8n Webhook으로 릴레이한다 (envelope 구조)."""
     if not webhook_url:
         return
-    if not validate_external_url(webhook_url):
+    if not await validate_external_url(webhook_url):
         logger.warning("notify_n8n_issue: blocked unsafe URL '%s'", webhook_url)
         return
 
