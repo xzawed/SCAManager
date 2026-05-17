@@ -466,25 +466,32 @@ async def _handle_check_suite_completed(  # NOSONAR python:S7503 — caller awai
 
 
 async def _trigger_retry_for_sha(repo_full_name: str, commit_sha: str) -> None:
-    """check_suite.completed 트리거 — 해당 SHA의 pending 재시도 행 즉시 처리.
-    Triggered by check_suite.completed — immediately processes pending retry rows for the SHA.
+    """check_suite.completed 트리거 — SHA 특정 행 즉시 처리 + overdue 전체 sweep.
+    Triggered by check_suite.completed — processes SHA-specific rows immediately,
+    then sweeps all overdue pending items as a cron failure fallback.
 
     별도 DB 세션 내에서 실행 (background task) — 웹훅 요청 세션과 독립.
     Runs in a separate DB session (background task) — independent of the webhook request session.
     """
     try:
+        # SHA 특정 행 우선 처리 (해당 CI 완료와 직접 연관된 항목)
+        # Process SHA-specific rows first (directly tied to the completed CI run)
         with SessionLocal() as db:
             rows = merge_retry_repo.find_pending_by_sha(
                 db,
                 repo_full_name=repo_full_name,
                 commit_sha=commit_sha,
             )
-            if not rows:
-                return
             ids = [r.id for r in rows]
 
+        if ids:
+            with SessionLocal() as db:
+                await process_pending_retries(db, only_ids=ids)
+
+        # overdue 전체 sweep — cron 실패 fallback (next_retry_at 만료 항목 처리)
+        # Full overdue sweep — cron failure fallback (picks up items past next_retry_at)
         with SessionLocal() as db:
-            await process_pending_retries(db, only_ids=ids)
+            await process_pending_retries(db)
     except Exception as exc:  # pylint: disable=broad-except
         logger.warning(
             "_trigger_retry_for_sha 실패 (repo=%s, sha=%.7s): %s",

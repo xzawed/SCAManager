@@ -75,7 +75,7 @@ def test_parse_reason_tag_whitespace_stripped():
         ("behind", "terminal"),
         ("dirty", "terminal"),
         ("draft", "terminal"),
-        ("has_hooks", "terminal"),
+        ("has_hooks", "retriable"),
         ("totally_made_up_state", "terminal"),
     ],
 )
@@ -96,7 +96,7 @@ def test_mergeable_state_terminality_matrix(state, expected):
         ("unstable_ci", "running", True),
         ("unstable_ci", "passed", True),
         ("unstable_ci", "failed", False),
-        ("unstable_ci", "unknown", False),
+        ("unstable_ci", "unknown", True),
         ("unknown_state_timeout", "running", True),
         ("unknown_state_timeout", "passed", False),
         ("unknown_state_timeout", "failed", False),

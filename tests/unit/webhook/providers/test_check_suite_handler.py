@@ -167,15 +167,18 @@ async def test_pr_synchronize_calls_abandon_stale():
 
 
 async def test_trigger_retry_for_sha_calls_process_pending():
-    """_trigger_retry_for_sha → process_pending_retries with correct ids.
-    _trigger_retry_for_sha calls process_pending_retries with the IDs of pending rows.
+    """SHA 특정 행이 있을 때 SHA 한정 + overdue 전체 sweep 순서로 호출.
+    When SHA-specific rows exist, calls process_pending_retries twice:
+    first with only_ids, then without (full overdue sweep).
     """
-    from unittest.mock import AsyncMock, MagicMock, patch  # pylint: disable=import-outside-toplevel
+    from unittest.mock import AsyncMock, MagicMock, call, patch  # pylint: disable=import-outside-toplevel
 
     from src.webhook.providers.github import _trigger_retry_for_sha  # pylint: disable=import-outside-toplevel
 
     mock_row = MagicMock()
     mock_row.id = 99
+
+    _ok = {"claimed": 1, "succeeded": 1, "terminal": 0, "abandoned": 0, "released": 0, "skipped": 0}
 
     with patch("src.webhook.providers.github.SessionLocal") as mock_session_cls, \
          patch("src.webhook.providers.github.merge_retry_repo") as mock_repo, \
@@ -188,14 +191,7 @@ async def test_trigger_retry_for_sha_calls_process_pending():
         mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_db)
         mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
         mock_repo.find_pending_by_sha.return_value = [mock_row]
-        mock_process.return_value = {
-            "claimed": 1,
-            "succeeded": 1,
-            "terminal": 0,
-            "abandoned": 0,
-            "released": 0,
-            "skipped": 0,
-        }
+        mock_process.return_value = _ok
 
         await _trigger_retry_for_sha("owner/repo", "abc123")
 
@@ -204,4 +200,41 @@ async def test_trigger_retry_for_sha_calls_process_pending():
             repo_full_name="owner/repo",
             commit_sha="abc123",
         )
-        mock_process.assert_called_once_with(mock_db, only_ids=[99])
+        # SHA 한정 호출 + overdue 전체 sweep 호출 (cron fallback) 두 번 호출 검증
+        # Verifies two calls: SHA-specific first, then full overdue sweep (cron fallback)
+        assert mock_process.call_count == 2
+        assert mock_process.call_args_list[0] == call(mock_db, only_ids=[99])
+        assert mock_process.call_args_list[1] == call(mock_db)
+
+
+async def test_trigger_retry_for_sha_sweeps_overdue_when_no_sha_rows():
+    """SHA 특정 행이 없어도 overdue 전체 sweep은 실행된다 (cron fallback).
+    Full overdue sweep runs even when no SHA-specific rows are found (cron fallback).
+    """
+    from unittest.mock import AsyncMock, MagicMock, call, patch  # pylint: disable=import-outside-toplevel
+
+    from src.webhook.providers.github import _trigger_retry_for_sha  # pylint: disable=import-outside-toplevel
+
+    _ok = {"claimed": 0, "succeeded": 0, "terminal": 0, "abandoned": 0, "released": 0, "skipped": 0}
+
+    with patch("src.webhook.providers.github.SessionLocal") as mock_session_cls, \
+         patch("src.webhook.providers.github.merge_retry_repo") as mock_repo, \
+         patch(
+             "src.webhook.providers.github.process_pending_retries",
+             new_callable=AsyncMock,
+         ) as mock_process:
+
+        mock_db = MagicMock()
+        mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_db)
+        mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
+        # SHA 매칭 항목 없음
+        # No SHA-specific rows found
+        mock_repo.find_pending_by_sha.return_value = []
+        mock_process.return_value = _ok
+
+        await _trigger_retry_for_sha("owner/repo", "no_match_sha")
+
+        # SHA 특정 only_ids 호출은 없고, overdue 전체 sweep만 1회 호출
+        # No SHA-specific call (ids empty → skipped), only full sweep call
+        assert mock_process.call_count == 1
+        assert mock_process.call_args_list[0] == call(mock_db)
