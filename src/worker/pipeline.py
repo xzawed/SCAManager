@@ -187,14 +187,18 @@ def _resolve_review_language(repo_name: str) -> str:
 
 def _extract_event_metadata(event: str, data: dict) -> tuple[str, str, str, int | None]:
     """Webhook 페이로드에서 repo_name, commit_sha, commit_message, pr_number를 추출한다."""
-    repo_name: str = data["repository"]["full_name"]
+    # 브랜치 삭제 push 시 "repository" 키가 None일 수 있으므로 `or {}` 패턴 필수 (PR #124 규칙)
+    # "repository" key may be None on branch-delete push — `or {}` pattern required (PR #124 rule)
+    repo_name: str = (data.get("repository") or {}).get("full_name", "")
     commit_message = _extract_commit_message(event, data)
     if event == "pull_request":
         pr_number: int | None = data["number"]
-        commit_sha: str = data["pull_request"]["head"]["sha"]
+        commit_sha: str = (data.get("pull_request") or {}).get("head", {}).get("sha", "")
     else:
         pr_number = None
-        commit_sha = data["after"]
+        # 브랜치 삭제 시 "after"가 없거나 0000...000일 수 있음 — .get() 방어
+        # Branch-delete sends "after" as missing or all-zeros — use .get() defensively
+        commit_sha = data.get("after", "")
     return repo_name, commit_sha, commit_message, pr_number
 
 
