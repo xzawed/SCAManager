@@ -1,4 +1,4 @@
-.PHONY: install test test-v test-fast test-slow test-cov test-file test-isolated lint lint-strict gate run migrate revision review install-playwright test-e2e test-e2e-headed css-install css-build css-dev
+.PHONY: install test test-v test-fast test-slow test-cov test-file test-isolated lint lint-strict gate run migrate revision review check-memory-refs install-playwright test-e2e test-e2e-headed css-install css-build css-dev
 
 # 의존성 설치 (개발 환경 — 테스트/E2E + CSS 빌드 포함)
 # Install dependencies (development environment — includes tests/E2E + CSS build).
@@ -100,6 +100,11 @@ migrate:
 # Local code review via CLI.
 review:
 	python -m src.cli review
+
+# 메모리 슬러그 교차 점검 — 문서 참조 vs 실제 파일 비교, 스테일 어노테이션 탐지
+# Memory slug cross-check — compare doc references vs actual files, detect stale annotations.
+check-memory-refs:
+	python scripts/check_memory_refs.py
 
 # 개발 서버 실행
 # Start the development server (port 8000).
