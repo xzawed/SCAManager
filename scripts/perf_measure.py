@@ -413,7 +413,7 @@ def _render_markdown(
 
 # ── Page definitions ───────────────────────────────────────────────────────
 
-def _local_pages(analysis_id: int, api_key: str = _LOCAL_API_KEY) -> list[dict]:
+def _local_pages(analysis_id: int) -> list[dict]:
     """로컬 측정 대상 페이지 목록 / List of pages to measure locally."""
     return [
         {"page": "/login", "url": f"{LOCAL_URL}/login"},
@@ -428,11 +428,11 @@ def _local_pages(analysis_id: int, api_key: str = _LOCAL_API_KEY) -> list[dict]:
             "url": f"{LOCAL_URL}/repos/owner%2Ftestrepo/analyses/{analysis_id}",
         },
         {"page": "/repos/owner%2Ftestrepo/settings", "url": f"{LOCAL_URL}/repos/owner%2Ftestrepo/settings"},
-        {"page": "/api/repos", "url": f"{LOCAL_URL}/api/repos", "api_only": True, "api_key": api_key},
+        {"page": "/api/repos", "url": f"{LOCAL_URL}/api/repos", "api_only": True},
         {
             "page": "/api/repos/owner%2Ftestrepo/report",
             "url": f"{LOCAL_URL}/api/repos/owner%2Ftestrepo/report",
-            "api_only": True, "api_key": api_key,
+            "api_only": True,
         },
     ]
 
