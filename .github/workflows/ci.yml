@@ -21,11 +21,13 @@ jobs:
       - name: TruffleHog — 커밋 메시지 + 코드 diff 시크릿 스캔
         # 코드 변경(diff) 와 커밋 메시지 본문 모두 스캔 — 2026-05-03 사고 유형 방어
         # Scans both code diffs and commit message bodies — guards against 2026-05-03 incident type
+        # push-to-main 이벤트: github.event.before(머지 이전 SHA) → BASE==HEAD 오류 방지
+        # push-to-main event: github.event.before (pre-merge SHA) prevents BASE==HEAD error
         uses: trufflesecurity/trufflehog@main
         with:
           path: ./
-          base: ${{ github.event.repository.default_branch }}
-          head: HEAD
+          base: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          head: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           extra_args: --only-verified
 
   test-and-analyze:
