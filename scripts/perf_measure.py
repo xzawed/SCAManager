@@ -517,7 +517,8 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-branches,too-man
                 pg.add_init_script(_LCP_INIT_JS)
 
                 for page_def in browser_pages:
-                    print(f"  측정 중: {page_def['page']}")
+                    page_label = str(page_def.get("page", "")).replace("\n", "").replace("\r", "")
+                    print(f"  측정 중: {page_label}")
                     metrics = _measure_page(pg, page_def["url"])
                     local_results.append({"page": page_def["page"], "metrics": metrics})
 
