@@ -493,8 +493,6 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-branches,too-man
     signal.signal(signal.SIGTERM, _cleanup)
 
     try:
-        analysis_id = 1  # 운영 전용 모드에서는 사용되지 않음 / unused in prod-only mode
-
         if run_local:
             print("▶ 로컬 서버 시작 중... / Starting local server...")
             # fd를 즉시 닫아 Windows SQLite 잠금 방지 / Close fd immediately to avoid SQLite file lock on Windows
