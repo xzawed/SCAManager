@@ -5,7 +5,7 @@ pytest-asyncio>=1.3.0
 pytest-cov>=7.1.0
 # subprocess hang 방지 — Windows 환경 특히 중요 (pytest.ini addopts --timeout=30 페어)
 # Prevents subprocess hangs — especially critical on Windows (paired with addopts --timeout=30).
-pytest-timeout>=2.3.0
+pytest-timeout>=2.4.0
 playwright>=1.59.0
 pytest-playwright>=0.5.0
 # 사이클 93 Step 2: src/scripts/generate_illustrations.py (DALL-E 3) — 사용자 로컬 1회 실행 도구.
