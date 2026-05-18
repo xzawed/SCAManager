@@ -114,6 +114,15 @@ Sentry 외 자동 로깅은 별도 환경변수 없이 동작:
 
 ---
 
+## 성능 측정 스크립트 (scripts/perf_measure.py 전용)
+
+`make perf-report` 또는 `python scripts/perf_measure.py` 실행 시에만 참조. 운영 서버 배포 환경변수가 아님.
+
+| 변수 | 기본값 | 설명 |
+|------|--------|------|
+| `PERF_PROD_URL` | `https://scamanager-production.up.railway.app` | 운영 서버 측정 URL |
+| `PERF_API_KEY` | `""` | 운영 API 키 (`X-Api-Key` 헤더 — `/api/repos` 등 API 엔드포인트 TTFB 측정용, 없으면 401 예상) |
+
 ## 내부 모듈 상수 (참고 — env var 아님)
 
 환경변수가 아닌 코드 내 모듈 상수지만, 운영 동작 가시성 / 튜닝 시 인지가 필요한 값. 변경은 코드 수정 (PR) 으로만 가능.
