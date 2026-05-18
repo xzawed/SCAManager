@@ -20,6 +20,7 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import requests
 
@@ -274,6 +275,13 @@ def _http_ttfb(url: str, *, headers: dict | None = None, allow_redirects: bool =
 
 # ── Report generation ──────────────────────────────────────────────────────
 
+def _is_health_page(page: str) -> bool:
+    """/health 페이지 여부 정규화 판별 (쿼리 파라미터·trailing slash 무시).
+    Check if page is /health — normalises path (ignores query params and trailing slash).
+    """
+    return urlsplit(str(page)).path.rstrip("/") == "/health"
+
+
 def _fmt(v: int | None) -> str:
     """ms 값을 사람이 읽기 좋은 문자열로 변환 / Format ms value for humans."""
     if v is None:
@@ -291,7 +299,7 @@ def _verdict(metrics: dict, thresholds: dict, page: str = "") -> str:
             continue
         # /health 페이지 TTFB 는 health_ttfb 전용 임계값 적용 (더 엄격한 300ms)
         # For /health page TTFB use health_ttfb threshold (stricter 300ms)
-        if key == "ttfb" and page.endswith("/health") and "health_ttfb" in thresholds:
+        if key == "ttfb" and _is_health_page(page) and "health_ttfb" in thresholds:
             thr = thresholds["health_ttfb"]
         else:
             thr = thresholds.get(key, 9_999)
@@ -391,12 +399,12 @@ def _render_markdown(
             # health_ttfb 는 TTFB 키에 /health 페이지 한정 적용 — 중복 위반 방지
             # health_ttfb applies only to /health TTFB — skip double-counting
             if key == "health_ttfb":
-                if not r["page"].endswith("/health"):
+                if not _is_health_page(r["page"]):
                     continue
                 avg = (m.get("ttfb") or {}).get("avg")
                 report_key = "health_ttfb"
             else:
-                if key == "ttfb" and r["page"].endswith("/health"):
+                if key == "ttfb" and _is_health_page(r["page"]):
                     continue  # /health TTFB handled by health_ttfb entry above
                 avg = (m.get(key) or {}).get("avg")
                 report_key = key
