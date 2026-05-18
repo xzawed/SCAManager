@@ -32,7 +32,7 @@ def _measure_one(pg, url: str) -> dict:
     slow: list[dict] = []
 
     def _on_finished(req):
-        t = req.timing()
+        t = req.timing
         dur = t.get("responseEnd", 0) - t.get("requestStart", 0)
         if dur > 500:
             slow.append({"url": req.url, "ms": round(dur)})
