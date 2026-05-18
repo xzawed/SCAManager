@@ -18,14 +18,26 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: TruffleHog — 커밋 메시지 + 코드 diff 시크릿 스캔
-        # 코드 변경(diff) 와 커밋 메시지 본문 모두 스캔 — 2026-05-03 사고 유형 방어
-        # Scans both code diffs and commit message bodies — guards against 2026-05-03 incident type
+      - name: TruffleHog — PR 이벤트 시크릿 스캔
+        # PR diff 범위만 스캔 — 2026-05-03 사고 유형 방어
+        # Scans PR diff range only — guards against 2026-05-03 incident type
+        if: github.event_name == 'pull_request'
         uses: trufflesecurity/trufflehog@main
         with:
           path: ./
-          base: ${{ github.event.repository.default_branch }}
-          head: HEAD
+          base: ${{ github.event.pull_request.base.sha }}
+          head: ${{ github.event.pull_request.head.sha }}
+          extra_args: --only-verified
+
+      - name: TruffleHog — push 이벤트 시크릿 스캔
+        # before == zeros(첫 push / force-push) 시 invalid SHA 오류 방지를 위해 건너뜀
+        # Skip when before is zeros (first push / force-push) to avoid invalid SHA error
+        if: github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000'
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.before }}
+          head: ${{ github.sha }}
           extra_args: --only-verified
 
   test-and-analyze:
