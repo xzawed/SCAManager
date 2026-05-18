@@ -236,15 +236,22 @@ def _measure_page(pg, url: str, runs: int = 3) -> dict:
 def _http_ttfb(url: str, *, headers: dict | None = None, allow_redirects: bool = True) -> dict:
     """HTTP TTFB 전용 측정 — requests 라이브러리, 3회 평균.
     TTFB-only measurement via requests library, 3-run average.
+
+    stream=True + response.elapsed 로 첫 응답 헤더 수신 시점만 측정 (strict TTFB).
+    Uses stream=True + response.elapsed to measure only the first response header receipt (strict TTFB).
     """
     times: list[float] = []
     status = None
     for _ in range(3):
         try:
-            start = time.perf_counter()
-            r = requests.get(url, headers=headers or {}, allow_redirects=allow_redirects, timeout=10)
-            times.append((time.perf_counter() - start) * 1000)
-            status = r.status_code
+            # stream=True: 응답 헤더만 수신 후 반환 — body 다운로드 제외 (strict TTFB)
+            # stream=True: returns after receiving headers only — excludes body download (strict TTFB)
+            with requests.get(
+                url, headers=headers or {}, allow_redirects=allow_redirects,
+                timeout=10, stream=True,
+            ) as r:
+                times.append(r.elapsed.total_seconds() * 1000)
+                status = r.status_code
         except Exception:  # noqa: BLE001
             pass
     avg = round(sum(times) / len(times)) if times else None
@@ -490,7 +497,9 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-branches,too-man
 
         if run_local:
             print("▶ 로컬 서버 시작 중... / Starting local server...")
-            _, db_path = tempfile.mkstemp(suffix=".db", prefix="perf_")
+            # fd를 즉시 닫아 Windows SQLite 잠금 방지 / Close fd immediately to avoid SQLite file lock on Windows
+            fd, db_path = tempfile.mkstemp(suffix=".db", prefix="perf_")
+            os.close(fd)
             db_file = db_path
             _setup_db(db_path)
             analysis_id = _seed_data(db_path)
