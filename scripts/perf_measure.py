@@ -485,8 +485,8 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-branches,too-man
         if db_file and os.path.exists(db_file):
             try:
                 os.unlink(db_file)
-            except OSError:
-                pass
+            except OSError as exc:
+                print(f"[WARN] Failed to remove temporary DB file '{db_file}': {exc}", file=sys.stderr)
         sys.exit(0)
 
     signal.signal(signal.SIGINT, _cleanup)
@@ -585,8 +585,8 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-branches,too-man
         if db_file and os.path.exists(db_file):
             try:
                 os.unlink(db_file)
-            except OSError:
-                pass
+            except OSError as exc:
+                print(f"[WARN] Failed to remove temporary DB file '{db_file}': {exc}", file=sys.stderr)
 
 
 if __name__ == "__main__":
