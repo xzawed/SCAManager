@@ -41,7 +41,12 @@ PROD_URL = os.environ.get("PERF_PROD_URL", "https://scamanager-production.up.rai
 # Production API key — passed as X-Api-Key header (401 expected if absent).
 PERF_API_KEY = os.environ.get("PERF_API_KEY", "")
 
-THRESHOLDS_LOCAL = {"ttfb": 500, "fcp": 1500, "lcp": 2500, "dcl": 1500, "load": 3000}
+THRESHOLDS_LOCAL = {
+    "ttfb": 500,
+    "health_ttfb": 300,   # /health 전용 — e2e/test_performance.py THRESHOLDS["health_ttfb"]과 동기
+    # /health-specific — kept in sync with e2e/test_performance.py THRESHOLDS["health_ttfb"]
+    "fcp": 1500, "lcp": 2500, "dcl": 1500, "load": 3000,
+}
 THRESHOLDS_PROD = {"ttfb": 300, "fcp": 1500, "lcp": 2500, "dcl": 1500, "load": 3000}
 
 # 로컬 테스트용 더미 API 키 / Dummy API key for local test server
@@ -276,11 +281,21 @@ def _fmt(v: int | None) -> str:
     return f"{v}ms" if v < 1000 else f"{v / 1000:.1f}s"
 
 
-def _verdict(metrics: dict, thresholds: dict) -> str:
-    """임계값 초과 시 🔴, 이내 시 ✅ 반환 / Return 🔴 if any threshold exceeded, else ✅."""
+def _verdict(metrics: dict, thresholds: dict, page: str = "") -> str:
+    """임계값 초과 시 🔴, 이내 시 ✅ 반환 — /health 는 health_ttfb 임계값 적용.
+    Return 🔴 if any threshold exceeded, else ✅ — /health uses health_ttfb threshold.
+    """
     for key in ("ttfb", "fcp", "lcp", "dcl", "load"):
         avg = (metrics.get(key) or {}).get("avg")
-        if avg is not None and avg > thresholds.get(key, 9_999):
+        if avg is None:
+            continue
+        # /health 페이지 TTFB 는 health_ttfb 전용 임계값 적용 (더 엄격한 300ms)
+        # For /health page TTFB use health_ttfb threshold (stricter 300ms)
+        if key == "ttfb" and page.endswith("/health") and "health_ttfb" in thresholds:
+            thr = thresholds["health_ttfb"]
+        else:
+            thr = thresholds.get(key, 9_999)
+        if avg > thr:
             return "🔴"
     return "✅"
 
@@ -306,7 +321,7 @@ def _render_table(results: list[dict], thresholds: dict) -> str:
                 f"| {_fmt((m.get('lcp') or {}).get('avg'))} "
                 f"| {_fmt((m.get('dcl') or {}).get('avg'))} "
                 f"| {_fmt((m.get('load') or {}).get('avg'))} "
-                f"| {_verdict(m, thresholds)} |"
+                f"| {_verdict(m, thresholds, page=r['page'])} |"
             )
     return "\n".join(rows)
 
@@ -373,10 +388,21 @@ def _render_markdown(
             continue
         m = r["metrics"]
         for key, thr in THRESHOLDS_LOCAL.items():
-            avg = (m.get(key) or {}).get("avg")
+            # health_ttfb 는 TTFB 키에 /health 페이지 한정 적용 — 중복 위반 방지
+            # health_ttfb applies only to /health TTFB — skip double-counting
+            if key == "health_ttfb":
+                if not r["page"].endswith("/health"):
+                    continue
+                avg = (m.get("ttfb") or {}).get("avg")
+                report_key = "health_ttfb"
+            else:
+                if key == "ttfb" and r["page"].endswith("/health"):
+                    continue  # /health TTFB handled by health_ttfb entry above
+                avg = (m.get(key) or {}).get("avg")
+                report_key = key
             if avg is not None and avg > thr:
                 violations.append(
-                    f"- 🏠 {r['page']} **{key.upper()}**: {_fmt(avg)} (>{_fmt(thr)})"
+                    f"- 🏠 {r['page']} **{report_key.upper()}**: {_fmt(avg)} (>{_fmt(thr)})"
                 )
     for r in (prod_results or []):
         if r.get("auth_only"):

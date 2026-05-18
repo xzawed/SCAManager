@@ -21,6 +21,7 @@
 - [사이클 84 (다국어 i18n 18 PR + 회고 + Tier B)](#사이클-84)
 - [사이클 85~91 (Sentry 제거 + 정책 17 신설 + 정기 검증 + Phase C RLS, 2026-05-06~07)](#사이클-8591)
 - [사이클 92~94 (정기 검증 + 정책 18 + Tailwind v4 빌드, 2026-05-07~11)](#사이클-9294)
+- [사이클 95~106 (문서 정비 + pylint 10.00 + 성능 측정 E2E, 2026-05-14~18)](#사이클-95106)
 
 ---
 
@@ -123,3 +124,18 @@
 
 - **사이클 93 (정책 18 신설 — Claude ↔ Codex 양방향 mutual 검증 의무, 2026-05-09 · #362~#371)** — CI 분석 사고 직후 mutual 검증 필요성 확인. 정책 18 신설: Claude 작업(로컬 commit) → Codex 검증 → OK 후 push / Codex 작업(로컬 commit) → Claude 검증 → OK 후 push 양방향 대칭 흐름 의무화. 17 정책 cross-reference 표 작성. NEW-P0-N 영역 (#362~#371 일부) 수정.
 - **사이클 94 (mutual 첫 운영 검증 + Tailwind v4 빌드 파이프라인 신설, 2026-05-10 · #372/#375~#379)** — chore/cycle-93-residual-tasks cherry-pick → Codex IDE Extension review NG → `_reset_repo_config()` 헬퍼 신설 → Codex OK → push (mutual 첫 운영 검증, #372). **UI 일러스트 Step 2-B (#375)**: DALL-E 3 5장 + 5페이지 마크업 + 4-테마 호환 CSS (src/static/illustrations/ + css/illustrations.css). **Tailwind v4 Hybrid 빌드 파이프라인 (#376~#378)**: main.css (소스) + css/dist/tailwind.css (빌드 출력) + npm ci && npm run build (Railway buildCommand 체인 추가) + 레이아웃 유틸리티 + CSS var 4-테마 공존. **Railway 빌드 실패 수정 (#379)**: nixpacks.toml `[phases.install]` 직접 작성 → Python venv provider 우선순위 충돌 → pip exit 127 → 제거 후 NIXPACKS Python provider 기본값 위임으로 SUCCESS.
+
+## 사이클 95~106
+
+- **사이클 95 (2026-05-14 · #410~#413)** — 문서 정비 P2: testing.md SessionLocal 경고 추가 / architecture.md mockup-polar.html 항목 / AGENTS.md 중복 표 → 링크 3건 / STATE.md 그룹 13-61 아카이브 / CLAUDE.md HTML 주석 7블록 + line 361 압축 (59줄 절감).
+- **사이클 96 (2026-05-14 · #415, #417)** — pylint 10.00/10 달성: C0415 17건 inline disable + C0301/R0913/R0917/W0718/W0613/E0401 처리. PR-D5 (#417): CLAUDE.md HTML 블록 3·5 → docs/policies/active.md 이전 (#정책-17-why-how + #정책-5-phase-종료-cross-reference 신설).
+- **사이클 97 (2026-05-14 · #420~#431)** — P0 경로 하드코딩 수정 (#420): `.codex/hooks.json` + `doc_review_gate.py` × 2 + `.claude/settings.json` + `CLAUDE.md` `f:/` → `d:/` 전수 교체. 문서 정비 (#421): AGENTS.md 완료 6-step 정정 + `.codex/rules/deploy.md` nixpacks exit127 경고. Issue #408 기능 구현 (#423): MPA 네비게이션 진행 바 + `CachedStaticFiles` + N+1 배치 IN 쿼리 2건 + `compute_score_kpi` 헬퍼 + `recurring_issue_count` 수정. 단위 2912→2914. scripts 경로 동적화 + dashboard async 블로킹 수정 (#426). 랜딩 페이지 신설 (#428) + phantom token 수정 (#429). CodeQL unused import 해소 (#431). 단위 테스트 2914→2917.
+- **사이클 98 (2026-05-15 · #433~#436)** — CodeQL py/exit-from-finally 수정 (#433): `test_router.py` finally 람다 → 명시 함수 2건. HTMX hx-boost 네비게이션 (#434): `htmx.min.js` 1.9.12 vendoring + `<body hx-boost="true">` + Chart.js `destroy()` 가드 + 회귀가드 3건 (단위 2917→2920 추정). hx-boost 후속 (#435): architecture.md 항목 + themechange boolean 플래그. stale closure 완전 수정 (#436): remove-before-add 패턴 3파일 + `.claude/rules/ui.md` 갱신.
+- **사이클 99 (2026-05-15 · #441~#445, docs/cycle99-retro-followup)** — repo_report API 9 + 통합 3 + repository_repo 4 + dashboard repos 5 + mcp 5 테스트 추가 (#441~#443). CodeQL 정비 (#445): `import pytest` 삭제 + false-positive 2건 dismiss. 회고 문서 정비: settings 싱글톤 mock 패턴 + Jinja2 None 함정 경고 + architecture.md 엔드포인트 갱신 + policies/active.md Codex 검증 섹션 추가. 단위 2914→2968 (cherry-pick 수습 포함).
+- **사이클 100 (2026-05-17 · #449)** — pytest 성능 병목 해소: `pytest.ini` `--timeout=30` 전역 적용 + starlette/fastapi DeprecationWarning 필터 + `pytest-timeout>=2.3.0` + `Makefile` `test-local` 타겟 + `test_static_analyzer.py` module-scope fixtures. 테스트 수 변동 없음 (34 passed).
+- **사이클 101 (2026-05-17 · #460~#470)** — 5+1 멀티에이전트 감사 전 항목 수정 (#460~#464): dead assertion 수정 + KeyError 방어 + GITHUB_API URL 상수화 + Gate 임계값 constants.py 단일 출처 + 테마명 정정 + TELEGRAM_WEBHOOK_SECRET 경고 + validate_external_url async화. 단위 2810→2813, 통합 125→154. 문서 감사 후속 (#466~#467): rules/ 경로·timeout·SMTP 정정 + env-vars.md 누락 항목. 회고 자유 발언 이행 (#469~#470): `scripts/check_memory_refs.py` 신설 + `Makefile` `check-memory-refs` + 5+1 에이전트 도메인 분리 표 신설.
+- **사이클 102 (2026-05-17 · #475~#477)** — `.codex/rules/ui.md` 테마명 정정 (#475). CLAUDE.md P2-1 압축: **#476 Phase 1** (~10줄 절감) + **#477 Phase 2** (~7줄 절감) + `docs/policies/history.md` 이전 3건. 5+1 에이전트 검증 + Codex mutual OK. 총 절감 ~17줄.
+- **사이클 103 (2026-05-18 · #479)** — MCP Supabase 직접 조회로 auto-merge 실패 원인 분석 → 3건 코드 수정 + Codex mutual OK 후 머지: `_trigger_retry_for_sha` 조기 반환 제거 + overdue sweep 무조건 실행 + `has_hooks` terminality `terminal` → `retriable` + `should_retry(UNSTABLE_CI, "unknown")` → `True`. 테스트 3파일 갱신 + 신규 1건 추가. 단위 2813→2814.
+- **사이클 104 (2026-05-18 · #490)** — 5+1 다중 에이전트 전체 정합성 감사 + Anthropic 표준 준수 검증: P0 5건 (architecture.md tailwind.css ghost entry + 함수명 2개 + github_client·railway_client 미등재 파일 추가 + 수치 갱신). P1 1건: doc-consistency-reviewer 사용 범위 명확화. false-positive 2건 제거. Anthropic 표준 준수도 **93/100**.
+- **사이클 105 (2026-05-18 · #498)** — CI TruffleHog BASE==HEAD 오류 수정: push-to-main 이벤트에서 `base: default_branch`가 HEAD와 동일 커밋 → exit 1 문제. 인라인 삼항 조건식 → PR/push 이벤트별 2-step 분리 + zero-SHA if 가드. Codex mutual 검증 2회 (1차 NG→수정→2차 OK).
+- **사이클 106 (2026-05-18 · #500)** — 페이지 성능 측정 E2E + 독립 스크립트: `e2e/test_performance.py` 12개 `@pytest.mark.perf` 테스트 (TTFB/FCP/LCP/DCL/Load, 3회 avg/min/max, Playwright Chromium headless) + `scripts/perf_measure.py` 독립 실행 스크립트 (로컬 SQLite 서버 자동 시작·종료, 운영 Railway TTFB, `--local-only`/`--prod-only`, stream=True strict TTFB, Markdown 리포트) + `make test-perf`/`make perf-report` 타깃. Codex mutual 검증 OK. 첫 리포트: 로컬 11 페이지 전부 ✅, `/api/github/repos` ~510ms 느린 API 포착. E2E 99→111 (+12 perf).
