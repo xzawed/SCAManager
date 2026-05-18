@@ -524,8 +524,8 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-branches,too-man
 
                 ctx.close()
                 browser.close()
-
-            for page_def in api_pages_local:
+            for idx, page_def in enumerate(api_pages_local, start=1):
+                print(f"  측정 중 (API TTFB) [{idx}/{len(api_pages_local)}]")
                 print(f"  측정 중 (API TTFB): {page_def['page']}")
                 metrics = _http_ttfb(page_def["url"], headers={"X-Api-Key": page_def.get("api_key", _LOCAL_API_KEY)})
                 local_results.append({"page": page_def["page"], "metrics": metrics, "auth_only": True})
