@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-18 기준 — **사이클 106**: 페이지 성능 측정 E2E + 독립 스크립트 (#500)): 130+ PR #188~#502 — 누적 정책 본문 19건 + 메모리 19건. 전체 2968 수집 (2964 passed, 4 skipped, 단위 2814 + 통합 154) / E2E 111 (99 표준 + 12 perf) / pylint **10.00/10**
+## 현재 수치 (2026-05-19 기준 — **사이클 107**: 회고 반영 + 문서·코드 정비 (#503)): 130+ PR #188~#503 — 누적 정책 본문 19건 + 메모리 20건. 전체 2968 수집 (2964 passed, 4 skipped, 단위 2814 + 통합 154) / E2E 111 (99 표준 + 12 perf) / pylint **10.00/10**
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
@@ -61,7 +61,8 @@
 ## 작업 이력
 
 - **그룹 13~61** (2026-04 ~ 2026-05-02): [docs/_archive/STATE-groups-13-61-2026-05.md](_archive/STATE-groups-13-61-2026-05.md)
-- **사이클 62~106** (2026-05-03 ~ 2026-05-18): [docs/cycle-history.md](cycle-history.md)
+- **사이클 62~107** (2026-05-03 ~ 2026-05-19): [docs/cycle-history.md](cycle-history.md)
+- **사이클 107** (2026-05-19): 회고 반영 + 문서·코드 정비 (#503) — P0 수정: `make perf-report` Windows UnicodeEncodeError (`PYTHONIOENCODING=utf-8`). `/health` 임계값 e2e/scripts 통일 (`health_ttfb: 300ms` + `_is_health_page()` urlsplit 헬퍼, Codex NG→수정). CLAUDE.md 6-step `cycle-history.md` 동기화 추가. `docs/cycle-history.md` 사이클 95~106 이력 12건 추가. `docs/architecture.md` `scripts/` 미등재 파일 5개. `.claude/rules/testing.md` `@pytest.mark.perf` 지침. **다음 사이클 P1 잔여**: FCP/LCP 조건부 assert → `assert is not None` 선행 추가 + `/health` Playwright → requests 전환.
 - **사이클 106** (2026-05-18): 페이지 성능 측정 E2E + 독립 스크립트 (#500) — `e2e/test_performance.py` 12개 `@pytest.mark.perf` 테스트 (TTFB/FCP/LCP/DCL/Load, 3회 avg/min/max, Playwright Chromium headless, `analysis_page` fixture + `seeded_analysis` session-scope) + `scripts/perf_measure.py` 독립 실행 스크립트 (로컬 SQLite 서버 자동 시작·종료, 운영 Railway TTFB, `--local-only`/`--prod-only`, `_http_ttfb` stream=True strict TTFB, Markdown 리포트 `docs/reports/perf-*.md`) + `make test-perf`/`make perf-report` Makefile 타깃. Codex mutual 검증 OK (P1 fd 미닫음 + P2 TTFB 정확도 수정). 첫 리포트: 로컬 11 페이지 전부 ✅, `/api/github/repos` ~510ms 느린 API 포착.
 - **사이클 105** (2026-05-18): CI TruffleHog BASE==HEAD 오류 수정 (#498) — push-to-main 이벤트에서 `base: default_branch`가 HEAD와 동일 커밋을 가리켜 exit 1하던 문제 해소. 인라인 삼항 조건식 → PR/push 이벤트별 2-step 분리 + zero-SHA(첫 push/force-push) if 가드 추가. Codex mutual 검증 2회 (1차 NG→수정→2차 OK). CI TruffleHog + pytest 전체 success 확인.
 - **사이클 104** (2026-05-18): 5+1 다중 에이전트 전체 정합성 감사 + Anthropic 표준 준수 검증 (#490) — P0 5건: `docs/architecture.md` tailwind.css ghost entry 명시 + 함수명 2개 정정 (`enable_or_fallback` / `build_notification_tasks`) + github_client·railway_client 미등재 파일 추가 + E2E/메모리/배지 수치 갱신 (96→99, 18→19, 2967→2968). P1 1건: CLAUDE.md doc-consistency-reviewer 사용 범위 명확화 (cross-verify 6차 금지 → 단독 목적 허용). false-positive 2건 제거. Anthropic 표준 준수도 **93/100** 확인.
