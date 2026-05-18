@@ -37,6 +37,9 @@ except ImportError:
 LOCAL_PORT = 8002
 LOCAL_URL = f"http://127.0.0.1:{LOCAL_PORT}"
 PROD_URL = os.environ.get("PERF_PROD_URL", "https://scamanager-production.up.railway.app")
+# 운영 API 키 — X-Api-Key 헤더로 전달 (없으면 401 예상)
+# Production API key — passed as X-Api-Key header (401 expected if absent).
+PERF_API_KEY = os.environ.get("PERF_API_KEY", "")
 
 THRESHOLDS_LOCAL = {"ttfb": 500, "fcp": 1500, "lcp": 2500, "dcl": 1500, "load": 3000}
 THRESHOLDS_PROD  = {"ttfb": 300, "fcp": 1500, "lcp": 2500, "dcl": 1500, "load": 3000}
@@ -226,6 +229,33 @@ def _measure_page(pg, url: str, runs: int = 3) -> dict:
     return stats
 
 
+def _api_ttfb(url: str, api_key: str) -> dict:
+    """API 엔드포인트 TTFB 전용 측정 (X-Api-Key 헤더 사용).
+    TTFB-only measurement for API endpoints (uses X-Api-Key header).
+    """
+    times: list[float] = []
+    status = None
+    for _ in range(3):
+        try:
+            start = time.perf_counter()
+            r = requests.get(url, headers={"X-Api-Key": api_key}, timeout=10)
+            times.append((time.perf_counter() - start) * 1000)
+            status = r.status_code
+        except Exception:  # noqa: BLE001
+            pass
+    avg = round(sum(times) / len(times)) if times else None
+    return {
+        "ttfb": {
+            "avg": avg,
+            "min": round(min(times)) if times else None,
+            "max": round(max(times)) if times else None,
+        },
+        "fcp": {}, "lcp": {}, "dcl": {}, "load": {},
+        "slow_requests": [],
+        "status": status,
+    }
+
+
 def _prod_ttfb(url: str) -> dict:
     """운영 인증 페이지 TTFB 전용 측정 (requests 라이브러리, 리다이렉트 미추적).
     TTFB-only measurement for production auth pages (no credentials — measures redirect).
@@ -327,6 +357,31 @@ def _render_markdown(
             "",
         ]
 
+    # 로컬 vs 운영 비교 표 (양쪽 결과 모두 있을 때만) / Local vs prod comparison table (only when both present)
+    if local_results and prod_results:
+        local_map = {r["page"]: r for r in local_results}
+        prod_map  = {r["page"]: r for r in prod_results}
+        common_pages = [p for p in local_map if p in prod_map]
+        if common_pages:
+            cmp_rows = [
+                "| 페이지 | 로컬 Load | 운영 Load | 배율 |",
+                "|--------|----------|----------|------|",
+            ]
+            for page in common_pages:
+                local_load = (local_map[page]["metrics"].get("load") or {}).get("avg")
+                prod_load  = (prod_map[page]["metrics"].get("load") or {}).get("avg")
+                if local_load is not None and prod_load is not None and local_load > 0:
+                    ratio = f"{prod_load / local_load:.1f}x"
+                else:
+                    ratio = "—"
+                cmp_rows.append(
+                    f"| {page} | {_fmt(local_load)} | {_fmt(prod_load)} | {ratio} |"
+                )
+            lines += [
+                "## 📊 로컬 vs 운영 비교",
+                "",
+            ] + cmp_rows + [""]
+
     # 임계값 초과 항목 / Threshold violations
     violations = []
     for r in (local_results or []):
@@ -365,7 +420,7 @@ def _render_markdown(
         lines += [
             "## 🔍 느린 API 엔드포인트 (> 500ms)",
             "",
-            "| 엔드포인트 | 응답 시간 |",
+            "| 엔드포인트 | 평균 응답 |",
             "|-----------|---------|",
         ] + slow_all + [""]
 
@@ -374,7 +429,7 @@ def _render_markdown(
 
 # ── Page definitions ───────────────────────────────────────────────────────
 
-def _local_pages(analysis_id: int) -> list[dict]:
+def _local_pages(analysis_id: int, api_key: str = "perf-api-key") -> list[dict]:
     """로컬 측정 대상 페이지 목록 / List of pages to measure locally."""
     return [
         {"page": "/login",                              "url": f"{LOCAL_URL}/login"},
@@ -385,6 +440,9 @@ def _local_pages(analysis_id: int) -> list[dict]:
         {"page": "/repos/owner%2Ftestrepo",             "url": f"{LOCAL_URL}/repos/owner%2Ftestrepo"},
         {"page": "/repos/owner%2Ftestrepo/insights",    "url": f"{LOCAL_URL}/repos/owner%2Ftestrepo/insights"},
         {"page": f"/repos/.../analyses/{analysis_id}",  "url": f"{LOCAL_URL}/repos/owner%2Ftestrepo/analyses/{analysis_id}"},
+        {"page": "/repos/owner%2Ftestrepo/settings",    "url": f"{LOCAL_URL}/repos/owner%2Ftestrepo/settings"},
+        {"page": "/api/repos",                          "url": f"{LOCAL_URL}/api/repos",                         "api_only": True, "api_key": api_key},
+        {"page": "/api/repos/owner%2Ftestrepo/report",  "url": f"{LOCAL_URL}/api/repos/owner%2Ftestrepo/report", "api_only": True, "api_key": api_key},
     ]
 
 
@@ -398,6 +456,9 @@ def _prod_pages() -> list[dict]:
         # 인증 필요 — TTFB only / Auth-required — TTFB only
         {"page": "/dashboard",  "url": f"{PROD_URL}/dashboard",  "auth_only": True},
         {"page": "/repos/add",  "url": f"{PROD_URL}/repos/add",  "auth_only": True},
+        # API 엔드포인트 — X-Api-Key 헤더, TTFB only / API endpoints — X-Api-Key header, TTFB only
+        {"page": "/api/repos",                         "url": f"{PROD_URL}/api/repos",                         "api_only": True},
+        {"page": "/api/repos/owner%2Ftestrepo/report", "url": f"{PROD_URL}/api/repos/owner%2Ftestrepo/report",  "api_only": True},
     ]
 
 
@@ -448,13 +509,17 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-branches,too-man
             server = _start_local_server(db_path)
             print(f"  ✓ 로컬 서버 준비 (port {LOCAL_PORT})")
 
+            pages_to_measure = _local_pages(analysis_id)
+            browser_pages = [p for p in pages_to_measure if not p.get("api_only")]
+            api_pages_local = [p for p in pages_to_measure if p.get("api_only")]
+
             with sync_playwright() as pw:
                 browser = pw.chromium.launch(headless=True)
                 ctx = browser.new_context()
                 pg = ctx.new_page()
                 pg.add_init_script(_LCP_INIT_JS)
 
-                for page_def in _local_pages(analysis_id):
+                for page_def in browser_pages:
                     print(f"  측정 중: {page_def['page']}")
                     metrics = _measure_page(pg, page_def["url"])
                     local_results.append({"page": page_def["page"], "metrics": metrics})
@@ -462,14 +527,20 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-branches,too-man
                 ctx.close()
                 browser.close()
 
+            for page_def in api_pages_local:
+                print(f"  측정 중 (API TTFB): {page_def['page']}")
+                metrics = _api_ttfb(page_def["url"], page_def.get("api_key", "perf-api-key"))
+                local_results.append({"page": page_def["page"], "metrics": metrics, "auth_only": True})
+
             server.should_exit = True
             print("  ✓ 로컬 서버 종료")
 
         if run_prod:
             print(f"\n▶ 운영 서버 측정 중... / Measuring production: {PROD_URL}")
-            pages = _prod_pages()
-            public_pages = [p for p in pages if not p.get("auth_only")]
-            auth_pages   = [p for p in pages if p.get("auth_only")]
+            prod_pages_all = _prod_pages()
+            public_pages   = [p for p in prod_pages_all if not p.get("auth_only") and not p.get("api_only")]
+            auth_pages     = [p for p in prod_pages_all if p.get("auth_only")]
+            api_pages_prod = [p for p in prod_pages_all if p.get("api_only")]
 
             with sync_playwright() as pw:
                 browser = pw.chromium.launch(headless=True)
@@ -493,6 +564,11 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-branches,too-man
                     "metrics": metrics,
                     "auth_only": True,
                 })
+
+            for page_def in api_pages_prod:
+                print(f"  측정 중 (API TTFB): {page_def['page']}")
+                metrics = _api_ttfb(page_def["url"], PERF_API_KEY)
+                prod_results.append({"page": page_def["page"], "metrics": metrics, "auth_only": True})
 
         report = _render_markdown(
             local_results if run_local else None,
