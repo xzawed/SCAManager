@@ -10,4 +10,4 @@ playwright>=1.59.0
 pytest-playwright>=0.5.0
 # 사이클 93 Step 2: src/scripts/generate_illustrations.py (DALL-E 3) — 사용자 로컬 1회 실행 도구.
 # Cycle 93 Step 2: local one-shot tool for UI illustration generation (OpenAI DALL-E 3).
-openai>=2.36.0
+openai>=2.37.0
