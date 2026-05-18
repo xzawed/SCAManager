@@ -309,3 +309,43 @@ def seeded_page(browser_instance, live_server, tmp_path_factory):
     pg = context.new_page()
     yield pg
     context.close()
+
+
+def _seed_analysis(db_path: str) -> int:
+    """owner/testrepo Analysis 레코드를 DB에 삽입하고 ID를 반환한다.
+    Insert an Analysis record for owner/testrepo and return its ID.
+    """
+    from sqlalchemy import create_engine, text
+    engine = create_engine(f"sqlite:///{db_path}")
+    with engine.connect() as conn:
+        row = conn.execute(text(
+            "SELECT id FROM repositories WHERE full_name='owner/testrepo'"
+        )).fetchone()
+        if row is None:
+            raise RuntimeError("_seed_repo must be called before _seed_analysis")
+        repo_id = row[0]
+        conn.execute(text("""
+            INSERT OR IGNORE INTO analyses
+                (repo_id, commit_sha, commit_message, score, grade, result, author_login, created_at)
+            VALUES
+                (:rid, 'perf-test-sha-001', 'perf: seed analysis for E2E',
+                 85, 'B', :res, 'e2e-tester', datetime('now'))
+        """), {"rid": repo_id, "res": json.dumps({"summary": "e2e perf test"})})
+        conn.commit()
+        analysis_row = conn.execute(text(
+            "SELECT id FROM analyses WHERE repo_id=:rid AND commit_sha='perf-test-sha-001'"
+        ), {"rid": repo_id}).fetchone()
+        if analysis_row is None:
+            raise RuntimeError("_seed_analysis: INSERT succeeded but row not found")
+    engine.dispose()
+    return analysis_row[0]
+
+
+@pytest.fixture(scope="session")
+def seeded_analysis(live_server):
+    """owner/testrepo + Analysis 레코드를 삽입하고 analysis_id를 반환하는 session fixture.
+    Seeds owner/testrepo repo and Analysis record; returns analysis_id (session-scoped).
+    """
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    _seed_repo(live_server, db_path)
+    return _seed_analysis(db_path)

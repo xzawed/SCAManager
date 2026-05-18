@@ -1,4 +1,4 @@
-.PHONY: install test test-v test-fast test-slow test-cov test-file test-isolated lint lint-strict gate run migrate revision review check-memory-refs install-playwright test-e2e test-e2e-headed css-install css-build css-dev
+.PHONY: install test test-v test-fast test-slow test-cov test-file test-isolated lint lint-strict gate run migrate revision review check-memory-refs install-playwright test-e2e test-e2e-headed test-perf perf-report css-install css-build css-dev
 
 # 의존성 설치 (개발 환경 — 테스트/E2E + CSS 빌드 포함)
 # Install dependencies (development environment — includes tests/E2E + CSS build).
@@ -131,3 +131,13 @@ test-e2e:
 # Run E2E tests with browser visible.
 test-e2e-headed:
 	python -m pytest e2e/ -v -p no:asyncio --headed
+
+# 성능 테스트 (pytest 기반, 로컬 E2E 서버)
+# Run performance tests (pytest-based, local E2E server).
+test-perf:
+	python -m pytest e2e/ -m perf -v --timeout=120 -p no:asyncio
+
+# 성능 리포트 생성 (로컬 + 운영)
+# Generate performance report (local + production).
+perf-report:
+	python scripts/perf_measure.py
