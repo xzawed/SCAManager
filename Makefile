@@ -137,7 +137,7 @@ test-e2e-headed:
 test-perf:
 	python -m pytest e2e/ -m perf -v --timeout=120 -p no:asyncio
 
-# 성능 리포트 생성 (로컬 + 운영)
-# Generate performance report (local + production).
+# 성능 리포트 생성 (로컬 + 운영) — PYTHONIOENCODING=utf-8 로 Windows UnicodeEncodeError 방지
+# Generate performance report (local + production) — PYTHONIOENCODING=utf-8 prevents Windows UnicodeEncodeError.
 perf-report:
-	python scripts/perf_measure.py
+	PYTHONIOENCODING=utf-8 python scripts/perf_measure.py

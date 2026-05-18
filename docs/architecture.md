@@ -26,6 +26,16 @@ src/
 │   ├── generate_illustrations.py # OpenAI DALL-E 3 CLI (--all/--name/--dry-run)
 │   ├── perf_measure.py          # 페이지 성능 측정 독립 스크립트 — 로컬 SQLite 서버 자동 시작·종료 + 운영 Railway TTFB, Markdown 리포트 (사이클 106 #500)
 │   │                            # Standalone page perf script — local SQLite server auto-start/stop + prod Railway TTFB, Markdown report
+│   ├── parse_bandit.py          # bandit 보안 결과 파싱 — JSON 출력 → 이슈 목록 변환
+│   │                            # Parse bandit security results — JSON output → issue list conversion
+│   ├── parse_coverage.py        # 커버리지 결과 파싱 — coverage.py XML → 요약 통계
+│   │                            # Parse coverage results — coverage.py XML → summary stats
+│   ├── benchmark_static_analysis.py # 정적 분석 벤치마크 — 도구별 실행 시간 측정
+│   │                            # Static analysis benchmark — measure per-tool execution time
+│   ├── backfill_repository_user_id.py # repository user_id 백필 — 마이그레이션 보조 스크립트
+│   │                            # Backfill repository user_id — migration helper script
+│   ├── check_memory_refs.py     # 메모리 참조 유효성 검사 — CLAUDE.md/active.md/history.md 슬러그 ↔ 실제 파일 비교 (사이클 101 #469)
+│   │                            # Memory reference validator — slug ↔ actual file cross-check
 │   └── README.md                # 사용자 실행 가이드 + 비용 안내
 ├── config.py                    # pydantic-settings 환경변수 관리, postgres:// URL 자동 변환
 ├── constants.py                 # 전역 상수 단일 출처 — 점수배점/감점가중치/AI기본값/등급/알림한도/HTTP타임아웃/캐시TTL
