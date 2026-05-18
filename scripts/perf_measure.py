@@ -42,7 +42,10 @@ PROD_URL = os.environ.get("PERF_PROD_URL", "https://scamanager-production.up.rai
 PERF_API_KEY = os.environ.get("PERF_API_KEY", "")
 
 THRESHOLDS_LOCAL = {"ttfb": 500, "fcp": 1500, "lcp": 2500, "dcl": 1500, "load": 3000}
-THRESHOLDS_PROD  = {"ttfb": 300, "fcp": 1500, "lcp": 2500, "dcl": 1500, "load": 3000}
+THRESHOLDS_PROD = {"ttfb": 300, "fcp": 1500, "lcp": 2500, "dcl": 1500, "load": 3000}
+
+# 로컬 테스트용 더미 API 키 / Dummy API key for local test server
+_LOCAL_API_KEY = "perf-api-key"
 
 _LCP_INIT_JS = """
     window._perf_lcp = null;
@@ -57,6 +60,7 @@ _LCP_INIT_JS = """
 """
 
 # ── DB / Server setup ──────────────────────────────────────────────────────
+
 
 def _setup_db(db_path: str) -> None:
     """SQLite DB 생성 — ORM 스키마 직접 적용.
@@ -125,7 +129,7 @@ def _start_local_server(db_path: str):
         "GITHUB_TOKEN": "perf-test-token",
         "TELEGRAM_BOT_TOKEN": "1234567890:AAperftest",
         "TELEGRAM_CHAT_ID": "-100000000",
-        "API_KEY": "perf-api-key",
+        "API_KEY": _LOCAL_API_KEY,
         "GITHUB_CLIENT_ID": "perf-github-client-id",
         "GITHUB_CLIENT_SECRET": "perf-github-client-secret",
         "SESSION_SECRET": "perf-session-secret-32chars-long!!",
@@ -229,43 +233,16 @@ def _measure_page(pg, url: str, runs: int = 3) -> dict:
     return stats
 
 
-def _api_ttfb(url: str, api_key: str) -> dict:
-    """API 엔드포인트 TTFB 전용 측정 (X-Api-Key 헤더 사용).
-    TTFB-only measurement for API endpoints (uses X-Api-Key header).
+def _http_ttfb(url: str, *, headers: dict | None = None, allow_redirects: bool = True) -> dict:
+    """HTTP TTFB 전용 측정 — requests 라이브러리, 3회 평균.
+    TTFB-only measurement via requests library, 3-run average.
     """
     times: list[float] = []
     status = None
     for _ in range(3):
         try:
             start = time.perf_counter()
-            r = requests.get(url, headers={"X-Api-Key": api_key}, timeout=10)
-            times.append((time.perf_counter() - start) * 1000)
-            status = r.status_code
-        except Exception:  # noqa: BLE001
-            pass
-    avg = round(sum(times) / len(times)) if times else None
-    return {
-        "ttfb": {
-            "avg": avg,
-            "min": round(min(times)) if times else None,
-            "max": round(max(times)) if times else None,
-        },
-        "fcp": {}, "lcp": {}, "dcl": {}, "load": {},
-        "slow_requests": [],
-        "status": status,
-    }
-
-
-def _prod_ttfb(url: str) -> dict:
-    """운영 인증 페이지 TTFB 전용 측정 (requests 라이브러리, 리다이렉트 미추적).
-    TTFB-only measurement for production auth pages (no credentials — measures redirect).
-    """
-    times: list[float] = []
-    status = None
-    for _ in range(3):
-        try:
-            start = time.perf_counter()
-            r = requests.get(url, allow_redirects=False, timeout=10)
+            r = requests.get(url, headers=headers or {}, allow_redirects=allow_redirects, timeout=10)
             times.append((time.perf_counter() - start) * 1000)
             status = r.status_code
         except Exception:  # noqa: BLE001
@@ -285,7 +262,7 @@ def _prod_ttfb(url: str) -> dict:
 
 # ── Report generation ──────────────────────────────────────────────────────
 
-def _fmt(v) -> str:
+def _fmt(v: int | None) -> str:
     """ms 값을 사람이 읽기 좋은 문자열로 변환 / Format ms value for humans."""
     if v is None:
         return "—"
@@ -360,7 +337,7 @@ def _render_markdown(
     # 로컬 vs 운영 비교 표 (양쪽 결과 모두 있을 때만) / Local vs prod comparison table (only when both present)
     if local_results and prod_results:
         local_map = {r["page"]: r for r in local_results}
-        prod_map  = {r["page"]: r for r in prod_results}
+        prod_map = {r["page"]: r for r in prod_results}
         common_pages = [p for p in local_map if p in prod_map]
         if common_pages:
             cmp_rows = [
@@ -369,7 +346,7 @@ def _render_markdown(
             ]
             for page in common_pages:
                 local_load = (local_map[page]["metrics"].get("load") or {}).get("avg")
-                prod_load  = (prod_map[page]["metrics"].get("load") or {}).get("avg")
+                prod_load = (prod_map[page]["metrics"].get("load") or {}).get("avg")
                 if local_load is not None and prod_load is not None and local_load > 0:
                     ratio = f"{prod_load / local_load:.1f}x"
                 else:
@@ -429,20 +406,27 @@ def _render_markdown(
 
 # ── Page definitions ───────────────────────────────────────────────────────
 
-def _local_pages(analysis_id: int, api_key: str = "perf-api-key") -> list[dict]:
+def _local_pages(analysis_id: int, api_key: str = _LOCAL_API_KEY) -> list[dict]:
     """로컬 측정 대상 페이지 목록 / List of pages to measure locally."""
     return [
-        {"page": "/login",                              "url": f"{LOCAL_URL}/login"},
-        {"page": "/",                                   "url": f"{LOCAL_URL}/"},
-        {"page": "/health",                             "url": f"{LOCAL_URL}/health"},
-        {"page": "/dashboard",                          "url": f"{LOCAL_URL}/dashboard"},
-        {"page": "/repos/add",                          "url": f"{LOCAL_URL}/repos/add"},
-        {"page": "/repos/owner%2Ftestrepo",             "url": f"{LOCAL_URL}/repos/owner%2Ftestrepo"},
-        {"page": "/repos/owner%2Ftestrepo/insights",    "url": f"{LOCAL_URL}/repos/owner%2Ftestrepo/insights"},
-        {"page": f"/repos/.../analyses/{analysis_id}",  "url": f"{LOCAL_URL}/repos/owner%2Ftestrepo/analyses/{analysis_id}"},
-        {"page": "/repos/owner%2Ftestrepo/settings",    "url": f"{LOCAL_URL}/repos/owner%2Ftestrepo/settings"},
-        {"page": "/api/repos",                          "url": f"{LOCAL_URL}/api/repos",                         "api_only": True, "api_key": api_key},
-        {"page": "/api/repos/owner%2Ftestrepo/report",  "url": f"{LOCAL_URL}/api/repos/owner%2Ftestrepo/report", "api_only": True, "api_key": api_key},
+        {"page": "/login", "url": f"{LOCAL_URL}/login"},
+        {"page": "/", "url": f"{LOCAL_URL}/"},
+        {"page": "/health", "url": f"{LOCAL_URL}/health"},
+        {"page": "/dashboard", "url": f"{LOCAL_URL}/dashboard"},
+        {"page": "/repos/add", "url": f"{LOCAL_URL}/repos/add"},
+        {"page": "/repos/owner%2Ftestrepo", "url": f"{LOCAL_URL}/repos/owner%2Ftestrepo"},
+        {"page": "/repos/owner%2Ftestrepo/insights", "url": f"{LOCAL_URL}/repos/owner%2Ftestrepo/insights"},
+        {
+            "page": f"/repos/.../analyses/{analysis_id}",
+            "url": f"{LOCAL_URL}/repos/owner%2Ftestrepo/analyses/{analysis_id}",
+        },
+        {"page": "/repos/owner%2Ftestrepo/settings", "url": f"{LOCAL_URL}/repos/owner%2Ftestrepo/settings"},
+        {"page": "/api/repos", "url": f"{LOCAL_URL}/api/repos", "api_only": True, "api_key": api_key},
+        {
+            "page": "/api/repos/owner%2Ftestrepo/report",
+            "url": f"{LOCAL_URL}/api/repos/owner%2Ftestrepo/report",
+            "api_only": True, "api_key": api_key,
+        },
     ]
 
 
@@ -450,15 +434,19 @@ def _prod_pages() -> list[dict]:
     """운영 측정 대상 페이지 목록 / List of production pages to measure."""
     return [
         # 공개 페이지 — 전체 측정 / Public pages — full measurement
-        {"page": "/login",    "url": f"{PROD_URL}/login",    "auth_only": False},
-        {"page": "/",         "url": f"{PROD_URL}/",         "auth_only": False},
-        {"page": "/health",   "url": f"{PROD_URL}/health",   "auth_only": False},
+        {"page": "/login", "url": f"{PROD_URL}/login", "auth_only": False},
+        {"page": "/", "url": f"{PROD_URL}/", "auth_only": False},
+        {"page": "/health", "url": f"{PROD_URL}/health", "auth_only": False},
         # 인증 필요 — TTFB only / Auth-required — TTFB only
-        {"page": "/dashboard",  "url": f"{PROD_URL}/dashboard",  "auth_only": True},
-        {"page": "/repos/add",  "url": f"{PROD_URL}/repos/add",  "auth_only": True},
+        {"page": "/dashboard", "url": f"{PROD_URL}/dashboard", "auth_only": True},
+        {"page": "/repos/add", "url": f"{PROD_URL}/repos/add", "auth_only": True},
         # API 엔드포인트 — X-Api-Key 헤더, TTFB only / API endpoints — X-Api-Key header, TTFB only
-        {"page": "/api/repos",                         "url": f"{PROD_URL}/api/repos",                         "api_only": True},
-        {"page": "/api/repos/owner%2Ftestrepo/report", "url": f"{PROD_URL}/api/repos/owner%2Ftestrepo/report",  "api_only": True},
+        {"page": "/api/repos", "url": f"{PROD_URL}/api/repos", "api_only": True},
+        {
+            "page": "/api/repos/owner%2Ftestrepo/report",
+            "url": f"{PROD_URL}/api/repos/owner%2Ftestrepo/report",
+            "api_only": True,
+        },
     ]
 
 
@@ -469,7 +457,7 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="SCAManager 페이지 성능 측정")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--local-only", action="store_true", help="로컬 측정만")
-    group.add_argument("--prod-only",  action="store_true", help="운영 측정만")
+    group.add_argument("--prod-only", action="store_true", help="운영 측정만")
     return parser.parse_args()
 
 
@@ -477,12 +465,12 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-branches,too-man
     """성능 측정 메인 진입점 / Main entry point for performance measurement."""
     args = _parse_args()
     run_local = not args.prod_only
-    run_prod  = not args.local_only
+    run_prod = not args.local_only
 
     server = None
     db_file = None
     local_results: list[dict] = []
-    prod_results:  list[dict] = []
+    prod_results: list[dict] = []
 
     def _cleanup(signum=None, frame=None):  # noqa: ARG001
         if server:
@@ -498,7 +486,7 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-branches,too-man
     signal.signal(signal.SIGTERM, _cleanup)
 
     try:
-        analysis_id = 1
+        analysis_id = 1  # 운영 전용 모드에서는 사용되지 않음 / unused in prod-only mode
 
         if run_local:
             print("▶ 로컬 서버 시작 중... / Starting local server...")
@@ -529,7 +517,7 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-branches,too-man
 
             for page_def in api_pages_local:
                 print(f"  측정 중 (API TTFB): {page_def['page']}")
-                metrics = _api_ttfb(page_def["url"], page_def.get("api_key", "perf-api-key"))
+                metrics = _http_ttfb(page_def["url"], headers={"X-Api-Key": page_def.get("api_key", _LOCAL_API_KEY)})
                 local_results.append({"page": page_def["page"], "metrics": metrics, "auth_only": True})
 
             server.should_exit = True
@@ -538,8 +526,8 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-branches,too-man
         if run_prod:
             print(f"\n▶ 운영 서버 측정 중... / Measuring production: {PROD_URL}")
             prod_pages_all = _prod_pages()
-            public_pages   = [p for p in prod_pages_all if not p.get("auth_only") and not p.get("api_only")]
-            auth_pages     = [p for p in prod_pages_all if p.get("auth_only")]
+            public_pages = [p for p in prod_pages_all if not p.get("auth_only") and not p.get("api_only")]
+            auth_pages = [p for p in prod_pages_all if p.get("auth_only")]
             api_pages_prod = [p for p in prod_pages_all if p.get("api_only")]
 
             with sync_playwright() as pw:
@@ -558,7 +546,7 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-branches,too-man
 
             for page_def in auth_pages:
                 print(f"  측정 중 (TTFB only): {page_def['page']}")
-                metrics = _prod_ttfb(page_def["url"])
+                metrics = _http_ttfb(page_def["url"], allow_redirects=False)
                 prod_results.append({
                     "page": page_def["page"],
                     "metrics": metrics,
@@ -567,16 +555,17 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-branches,too-man
 
             for page_def in api_pages_prod:
                 print(f"  측정 중 (API TTFB): {page_def['page']}")
-                metrics = _api_ttfb(page_def["url"], PERF_API_KEY)
+                metrics = _http_ttfb(page_def["url"], headers={"X-Api-Key": PERF_API_KEY})
                 prod_results.append({"page": page_def["page"], "metrics": metrics, "auth_only": True})
 
         report = _render_markdown(
             local_results if run_local else None,
-            prod_results  if run_prod  else None,
+            prod_results if run_prod else None,
         )
 
         ts = datetime.now().strftime("%Y-%m-%d-%H%M")
-        report_path = Path("docs/reports") / f"perf-{ts}.md"
+        # 스크립트 위치 기준으로 프로젝트 루트 결정 / Resolve project root from script location
+        report_path = Path(__file__).parent.parent / "docs" / "reports" / f"perf-{ts}.md"
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(report, encoding="utf-8")
         print(f"\n✅ 리포트 저장: {report_path}")
