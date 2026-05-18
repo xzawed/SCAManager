@@ -24,6 +24,8 @@ src/
 ├── scripts/                     # 로컬 도구 (production import X) — Cycle 93 Step 2
 │   ├── illustration_prompts.py  # 5장 isometric prompt 정의 (login_hero/dashboard_empty/overview_onboarding/add_repo_hero/filter_empty)
 │   ├── generate_illustrations.py # OpenAI DALL-E 3 CLI (--all/--name/--dry-run)
+│   ├── perf_measure.py          # 페이지 성능 측정 독립 스크립트 — 로컬 SQLite 서버 자동 시작·종료 + 운영 Railway TTFB, Markdown 리포트 (사이클 106 #500)
+│   │                            # Standalone page perf script — local SQLite server auto-start/stop + prod Railway TTFB, Markdown report
 │   └── README.md                # 사용자 실행 가이드 + 비용 안내
 ├── config.py                    # pydantic-settings 환경변수 관리, postgres:// URL 자동 변환
 ├── constants.py                 # 전역 상수 단일 출처 — 점수배점/감점가중치/AI기본값/등급/알림한도/HTTP타임아웃/캐시TTL
@@ -113,6 +115,18 @@ src/
 ├── cli/                         # python -m src.cli review (git_diff + formatter)
 ├── repositories/                # DB 접근 계층 10종 — repository_repo (`find_by_full_name` + `find_all_by_user` shared+owned repos + Phase H `find_by_full_name_with_owner`)
 └── worker/pipeline.py           # run_analysis_pipeline, build_analysis_result_dict
+```
+
+## e2e/ 디렉토리 구조
+
+```
+e2e/
+├── conftest.py           # live_server / page / seeded_page / browser_instance / seeded_analysis fixtures (session-scope)
+├── pytest.ini            # E2E 전용 pytest 설정 (asyncio_mode 미설정 — src/ 단위 테스트 충돌 방지)
+├── test_performance.py   # 12개 @pytest.mark.perf 성능 테스트 — TTFB/FCP/LCP/DCL/Load (3회 avg/min/max), Playwright Chromium headless (사이클 106 #500)
+│                         # 12 @pytest.mark.perf performance tests — TTFB/FCP/LCP/DCL/Load (3-run avg/min/max)
+├── test_i18n.py          # 3-언어 × 4-페이지 i18n 연기 테스트 (Cycle 84 PR-16)
+└── test_repos_mode.py    # /repos/add + /repos/{name} 기능 흐름 E2E (Cycle 94)
 ```
 
 ## 핵심 데이터 흐름
