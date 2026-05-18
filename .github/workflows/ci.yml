@@ -7,9 +7,31 @@ on:
     branches: [main]
 
 jobs:
+  # Layer 2: CI 시크릿 스캔 — 커밋 메시지 + 코드 diff 동시 탐지
+  # Layer 2: CI secret scan — detects secrets in both commit messages and code diffs
+  secret-scan:
+    name: TruffleHog secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history for commit message scan)
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: TruffleHog — 커밋 메시지 + 코드 diff 시크릿 스캔
+        # 코드 변경(diff) 와 커밋 메시지 본문 모두 스캔 — 2026-05-03 사고 유형 방어
+        # Scans both code diffs and commit message bodies — guards against 2026-05-03 incident type
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --only-verified
+
   test-and-analyze:
     name: pytest + Codecov + SonarCloud
     runs-on: ubuntu-latest
+    needs: secret-scan
     steps:
       - name: Checkout (with full history for SonarCloud)
         uses: actions/checkout@v6

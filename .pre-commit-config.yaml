@@ -1,0 +1,59 @@
+# pre-commit 훅 설정 — 시크릿 유출 3중 가드 Layer 1
+# Pre-commit hook config — Secret leak prevention Layer 1
+#
+# 설치: pip install pre-commit && pre-commit install && pre-commit install --hook-type commit-msg
+# Install: pip install pre-commit && pre-commit install && pre-commit install --hook-type commit-msg
+
+repos:
+  # Layer 1-A: gitleaks — 코드 diff + 커밋 메시지 시크릿 탐지
+  # Layer 1-A: gitleaks — detects secrets in code diff AND commit messages
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+        name: "🔐 gitleaks: 시크릿 패턴 스캔 (코드)"
+        description: Detect hardcoded secrets in staged files
+
+  # Layer 1-B: 커밋 메시지 본문 토큰 패턴 차단 (이번 사고 유형)
+  # Layer 1-B: Block token patterns in commit message body (this incident type)
+  - repo: local
+    hooks:
+      - id: check-commit-msg-secrets
+        name: "🔐 커밋 메시지 시크릿 패턴 차단"
+        language: pygrep
+        entry: "[0-9]{8,12}:[A-Za-z0-9_-]{35,}"
+        args: ["--multiline"]
+        stages: [commit-msg]
+        description: |
+          Telegram Bot Token 형식이 커밋 메시지에 포함되면 차단.
+          실제 값 대신 <REDACTED> 또는 *** 사용.
+
+      - id: check-env-not-staged
+        name: "🔐 .env 파일 커밋 차단"
+        language: pygrep
+        entry: "."
+        files: "^\\.env$"
+        stages: [pre-commit]
+        description: .env 파일이 staged되면 커밋 차단.
+
+      - id: check-secrets-in-diff
+        name: "🔐 diff 내 주요 시크릿 패턴 차단"
+        language: pygrep
+        entry: "(TELEGRAM_BOT_TOKEN|ANTHROPIC_API_KEY|GITHUB_CLIENT_SECRET|SESSION_SECRET|TOKEN_ENCRYPTION_KEY)\\s*=\\s*['\"]?[^${'\"\\s]{10,}"
+        stages: [pre-commit]
+        description: |
+          환경변수에 실제 값이 하드코딩된 경우 차단.
+          os.getenv() 또는 os.environ 참조 방식만 허용.
+
+  # Layer 1-C: 기본 코드 품질 훅
+  # Layer 1-C: Basic code quality hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+      - id: detect-private-key
+        name: "🔐 SSH/PEM 개인키 탐지"
