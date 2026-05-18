@@ -9,6 +9,7 @@ THRESHOLDS = {
     "lcp":  2500,
     "dcl":  1500,
     "load": 3000,
+    "health_ttfb": 300,   # /health endpoint — tighter TTFB budget / tighter for health check
 }
 
 _LCP_INIT_JS = """
@@ -44,7 +45,7 @@ def _measure_one(pg, url: str) -> dict:
             const fcp = performance.getEntriesByType('paint')
                 .find(e => e.name === 'first-contentful-paint');
             return {
-                ttfb: Math.round((nav.responseStart || 0) - (nav.requestStart || 0)),
+                ttfb: Math.round((nav.responseStart || 0) - (nav.fetchStart || 0)),
                 dcl:  Math.round((nav.domContentLoadedEventEnd || 0) - (nav.startTime || 0)),
                 load: Math.round((nav.loadEventEnd || 0) - (nav.startTime || 0)),
                 fcp:  fcp ? Math.round(fcp.startTime) : null,
@@ -154,8 +155,8 @@ def test_health_ttfb(perf_page, base_url):
     """/health API 응답 시간 < 300ms."""
     stats = _measure_page(perf_page, f"{base_url}/health")
     assert stats["ttfb"]["avg"] is not None
-    assert stats["ttfb"]["avg"] < 300, (
-        f"/health TTFB {stats['ttfb']['avg']}ms >= 300ms"
+    assert stats["ttfb"]["avg"] < THRESHOLDS["health_ttfb"], (
+        f"/health TTFB {stats['ttfb']['avg']}ms >= {THRESHOLDS['health_ttfb']}ms"
     )
 
 
