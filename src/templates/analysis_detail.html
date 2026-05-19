@@ -691,38 +691,43 @@
 <script src="/static/vendor/chart.umd.min.js"></script>
 <script>
 (function() {
+  /* TREND/CURRENT_ID/REPO_NAME — Jinja 주입값, 스크립트 최초 실행 시 1회 확정
+     Jinja-injected values fixed at script execution time — not re-read on theme change */
   var TREND = {{ trend_data | tojson }};
   var CURRENT_ID = {{ analysis.id }};
   var REPO_NAME = {{ repo_name | tojson }};
 
-  var canvas = document.getElementById('trendChart');
-  if (!canvas) return;
+  /* 차트 빌드 함수 — themechange 마다 재호출 가능하도록 named function으로 분리
+     Named function so it can be re-invoked on themechange (theme color re-read) */
+  function _buildAnalysisChart() {
+    var canvas = document.getElementById('trendChart');
+    if (!canvas) return;
 
-  var s = getComputedStyle(document.body);
-  /* --accent-rgb 기반 accent 색상 (테마 호환) / --accent-rgb based accent color (theme compatible) */
-  var accentRgb = s.getPropertyValue('--accent-rgb').trim();
-  var accent = accentRgb ? ('rgb(' + accentRgb + ')') : (s.getPropertyValue('--accent').trim() || '#6366f1');
-  var muted  = s.getPropertyValue('--text-2').trim() || s.getPropertyValue('--text-muted').trim() || '#64748b';
-  var border = s.getPropertyValue('--border-subtle').trim() || s.getPropertyValue('--border').trim() || '#2d3748';
-  /* PR-3 F3: tooltip 색을 테마 토큰에서 동적 read — 라이트/claude-dark 부조화 해소
-     PR-3 F3: tooltip colors read from theme tokens — light/claude-dark harmony */
-  var tipBg   = s.getPropertyValue('--bg-card').trim() || '#1c1c23';
-  var tipText = s.getPropertyValue('--text-1').trim() || s.getPropertyValue('--text-primary').trim() || '#e2e2e8';
-  /* Step D: 현재 분석 강조 색을 var(--danger) 에서 읽기 (3-테마 + claude-dark 호환)
-     Step D: read current-point highlight from var(--danger) for theme harmony */
-  var dangerColor = s.getPropertyValue('--danger').trim() || '#ef4444';
+    var s = getComputedStyle(document.body);
+    /* --accent-rgb 기반 accent 색상 (테마 호환) / --accent-rgb based accent color (theme compatible) */
+    var accentRgb = s.getPropertyValue('--accent-rgb').trim();
+    var accent = accentRgb ? ('rgb(' + accentRgb + ')') : (s.getPropertyValue('--accent').trim() || '#6366f1');
+    var muted  = s.getPropertyValue('--text-2').trim() || s.getPropertyValue('--text-muted').trim() || '#64748b';
+    var border = s.getPropertyValue('--border-subtle').trim() || s.getPropertyValue('--border').trim() || '#2d3748';
+    /* PR-3 F3: tooltip 색을 테마 토큰에서 동적 read — 라이트/claude-dark 부조화 해소
+       PR-3 F3: tooltip colors read from theme tokens — light/claude-dark harmony */
+    var tipBg   = s.getPropertyValue('--bg-card').trim() || '#1c1c23';
+    var tipText = s.getPropertyValue('--text-1').trim() || s.getPropertyValue('--text-primary').trim() || '#e2e2e8';
+    /* Step D: 현재 분석 강조 색을 var(--danger) 에서 읽기 (3-테마 + claude-dark 호환)
+       Step D: read current-point highlight from var(--danger) for theme harmony */
+    var dangerColor = s.getPropertyValue('--danger').trim() || '#ef4444';
 
-  /* --bg-base 토큰에서 포인트 테두리 색상 읽기 (4-테마 자동 호환)
-     Read point border color from --bg-base token (auto 4-theme compat) */
-  var bgBase = getComputedStyle(document.documentElement).getPropertyValue('--bg-base').trim() || '#ffffff';
-  var pointColors  = TREND.map(function(t) { return t.id === CURRENT_ID ? dangerColor : accent; });
-  var pointRadii   = TREND.map(function(t) { return t.id === CURRENT_ID ? 7 : 3; });
-  var pointBorders = TREND.map(function(t) { return t.id === CURRENT_ID ? bgBase : accent; });
+    /* --bg-base: themes.css 가 body[data-theme]에 정의 → documentElement 아닌 body 기준
+       --bg-base defined on body[data-theme] in themes.css — read from body, not documentElement */
+    var bgBase = s.getPropertyValue('--bg-base').trim() || '#07070f';
+    var pointColors  = TREND.map(function(t) { return t.id === CURRENT_ID ? dangerColor : accent; });
+    var pointRadii   = TREND.map(function(t) { return t.id === CURRENT_ID ? 7 : 3; });
+    var pointBorders = TREND.map(function(t) { return t.id === CURRENT_ID ? bgBase : accent; });
 
-  // 동일 canvas 재사용 전 기존 Chart 인스턴스 제거 (hx-boost 재방문 대비)
-  // Destroy existing Chart instance before reuse (guard for hx-boost re-navigation)
-  var _existing = (window.Chart && Chart.getChart) ? Chart.getChart(canvas) : null;
-  if (_existing) _existing.destroy();
+    /* 동일 canvas 재사용 전 기존 Chart 인스턴스 제거 (hx-boost 재방문 + themechange 재빌드 대비)
+       Destroy existing instance before rebuild (guard for hx-boost re-navigation & theme rebuild) */
+    var _existing = (window.Chart && Chart.getChart) ? Chart.getChart(canvas) : null;
+    if (_existing) _existing.destroy();
 
   new Chart(canvas, {
     type: 'line',
@@ -791,6 +796,19 @@
       maintainAspectRatio: false
     }
   });
+  } // end _buildAnalysisChart
+
+  /* 최초 렌더 / Initial render */
+  _buildAnalysisChart();
+
+  /* themechange — remove-before-add 패턴 (ui.md: _<pageScope><Domain>Handler)
+     hx-boost 재방문 시 stale closure 방지 + 테마 전환 시 차트 색상 재빌드
+     Prevent stale closure on hx-boost revisit; rebuild chart colors on theme change */
+  if (document._adThemeHandler) {
+    document.removeEventListener('themechange', document._adThemeHandler);
+  }
+  document._adThemeHandler = _buildAnalysisChart;
+  document.addEventListener('themechange', document._adThemeHandler);
 })();
 </script>
 {% endif %}

@@ -633,13 +633,23 @@
     });
   }
 
-  /* hx-boost 재방문 시 stale closure 방지 — remove-before-add 패턴
-     Prevent stale closure on hx-boost revisit — remove-before-add pattern */
+  /* themechange — remove-before-add 패턴: hx-boost 재방문 시 stale closure 방지
+     themechange remove-before-add: prevent stale closure on hx-boost revisit */
   if (document._repoThemeHandler) {
     document.removeEventListener('themechange', document._repoThemeHandler);
   }
   document._repoThemeHandler = function() { buildChart(); };
   document.addEventListener('themechange', document._repoThemeHandler);
+
+  /* htmx 재방문(historyRestore/afterSettle) 시 차트 재빌드 — remove-before-add 패턴
+     Rebuild chart on htmx historyRestore (back button) & afterSettle — remove-before-add */
+  if (document._repoHtmxHandler) {
+    document.removeEventListener('htmx:afterSettle', document._repoHtmxHandler);
+    document.removeEventListener('htmx:historyRestore', document._repoHtmxHandler);
+  }
+  document._repoHtmxHandler = function() { buildChart(); };
+  document.addEventListener('htmx:afterSettle', document._repoHtmxHandler);
+  document.addEventListener('htmx:historyRestore', document._repoHtmxHandler);
 </script>
 <script>
 // ── 데이터 주입 ──────────────────────────────────────

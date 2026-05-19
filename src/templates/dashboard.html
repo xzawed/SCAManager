@@ -626,7 +626,7 @@
       function buildRepoTrendChart() {
         var ctx = document.getElementById('repoTrendChart');
         if (!ctx) return;
-        var cs = getComputedStyle(document.documentElement);
+        var cs = getComputedStyle(document.body);
         // CSS 변수로만 색상 결정 — hex 직접 사용 금지 (ui.md 의무)
         // Color determined solely via CSS variables — no hex fallbacks (ui.md rule)
         var colorBorder = cs.getPropertyValue('--accent-primary').trim() || cs.getPropertyValue('--accent').trim();
@@ -1187,8 +1187,13 @@
   // Trend data (server-injected) — autoescape safe
   const trendData = {{ trend | tojson }};
 
+  /* --d-accent 등 .dashboard-page scoped 토큰은 documentElement에서 읽으면 빈 값 반환
+     (CSS 변수는 하위→상위 방향 상속 불가). .dashboard-page 요소 기준으로 읽어야 올바른 값 반환.
+     Scoped tokens like --d-accent must be read from .dashboard-page element —
+     CSS custom props don't inherit upward to documentElement. */
   function readVar(name, fallback) {
-    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    var el = document.querySelector('.dashboard-page') || document.body;
+    const v = getComputedStyle(el).getPropertyValue(name).trim();
     return v || fallback;
   }
 
