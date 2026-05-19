@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-19 기준 — **사이클 108**: E2E assert 강화 + /health requests 전환 + /api/github/repos TTL 캐시 (#504, #505)): 132+ PR #188~#506 — 누적 정책 본문 19건 + 메모리 20건. 전체 2970 수집 (2966 passed, 4 skipped, 단위 2816 + 통합 154) / E2E 111 (99 표준 + 12 perf) / pylint **10.00/10**
+## 현재 수치 (2026-05-19 기준 — **사이클 108**: E2E assert 강화 + /health requests 전환 + /api/github/repos TTL 캐시 + Session 재사용 (#504~#508)): 132+ PR #188~#508 — 누적 정책 본문 19건 + 메모리 20건. 전체 2970 수집 (2966 passed, 4 skipped, 단위 2816 + 통합 154) / E2E 111 (99 표준 + 12 perf) / pylint **10.00/10**
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
