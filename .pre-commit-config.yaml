@@ -40,10 +40,12 @@ repos:
         name: "🔐 diff 내 주요 시크릿 패턴 차단"
         language: pygrep
         entry: "(TELEGRAM_BOT_TOKEN|ANTHROPIC_API_KEY|GITHUB_CLIENT_SECRET|SESSION_SECRET|TOKEN_ENCRYPTION_KEY)\\s*=\\s*['\"]?[^${'\"\\s]{10,}"
+        exclude: "^(README\\.md|README\\.ko\\.md|docs/|tests/|e2e/)"
         stages: [pre-commit]
         description: |
           환경변수에 실제 값이 하드코딩된 경우 차단.
           os.getenv() 또는 os.environ 참조 방식만 허용.
+          README/docs/tests 는 문서 예시값 허용을 위해 제외.
 
   # Layer 1-C: 기본 코드 품질 훅
   # Layer 1-C: Basic code quality hooks
