@@ -626,7 +626,7 @@
       function buildRepoTrendChart() {
         var ctx = document.getElementById('repoTrendChart');
         if (!ctx) return;
-        var cs = getComputedStyle(document.documentElement);
+        var cs = getComputedStyle(document.body);
         // CSS 변수로만 색상 결정 — hex 직접 사용 금지 (ui.md 의무)
         // Color determined solely via CSS variables — no hex fallbacks (ui.md rule)
         var colorBorder = cs.getPropertyValue('--accent-primary').trim() || cs.getPropertyValue('--accent').trim();
