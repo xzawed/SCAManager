@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import secrets
+import time
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -20,6 +21,13 @@ from src.repositories import repo_config_repo, repository_repo
 from src.ui._helpers import GITHUB_WEBHOOK_PATH, get_locale, templates, webhook_base_url
 
 router = APIRouter()
+
+# user_id → (repos_list, expiry_monotonic) — GitHub API 중복 호출 방지 TTL 캐시
+# user_id → (repos_list, expiry_monotonic) — TTL cache to avoid redundant GitHub API calls.
+_user_repos_cache: dict[int, tuple[list[dict], float]] = {}
+# _required_contexts_cache / _webhook_secret_cache 와 동일 5분 TTL
+# Same 5-minute TTL as _required_contexts_cache / _webhook_secret_cache.
+_USER_REPOS_CACHE_TTL = 300
 
 
 @router.get("/repos/add", response_class=HTMLResponse)
@@ -44,19 +52,29 @@ async def github_repos_list(
     # Return empty list if token missing (prevent 401 propagation)
     if not current_user.plaintext_token:
         return []
+
+    # GitHub API 응답은 TTL 캐시로 재사용 — existing_names 는 항상 최신 DB 조회
+    # Reuse GitHub API response via TTL cache — existing_names always queries fresh DB.
+    now = time.monotonic()
+    cached = _user_repos_cache.get(current_user.id)
+    if cached and now < cached[1]:
+        all_repos = cached[0]
+    else:
+        try:
+            all_repos = await list_user_repos(current_user.plaintext_token)
+        except Exception:
+            # GitHub API 오류(401/403/429/timeout) 시 빈 목록 반환
+            # Return empty list on GitHub API error (401/403/429/timeout)
+            return []
+        _user_repos_cache[current_user.id] = (all_repos, now + _USER_REPOS_CACHE_TTL)
+
     with SessionLocal() as db:
         existing_names = {
             r.full_name for r in db.query(Repository).filter(
                 Repository.user_id == current_user.id
             ).all()
         }
-    try:
-        repos = await list_user_repos(current_user.plaintext_token)
-    except Exception:
-        # GitHub API 오류(401/403/429/timeout) 시 빈 목록 반환
-        # Return empty list on GitHub API error (401/403/429/timeout)
-        return []
-    return [r for r in repos if r["full_name"] not in existing_names]
+    return [r for r in all_repos if r["full_name"] not in existing_names]
 
 
 @router.post("/repos/add")
