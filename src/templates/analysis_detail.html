@@ -699,7 +699,7 @@
 
   /* 차트 빌드 함수 — themechange 마다 재호출 가능하도록 named function으로 분리
      Named function so it can be re-invoked on themechange (theme color re-read) */
-  function _buildAnalysisChart() {
+  function _buildAnalysisChart(animate) {
     var canvas = document.getElementById('trendChart');
     if (!canvas) return;
 
@@ -787,8 +787,8 @@
           }
         }
       },
-      /* 차트 진입 애니메이션 — 900ms easeOutQuart / Chart entry animation */
-      animation: { duration: 900, easing: 'easeOutQuart' },
+      /* 진입 시 애니메이션, 테마 전환 시 즉시 반영 / Entry animation; instant on theme change */
+      animation: animate === false ? { duration: 0 } : { duration: 900, easing: 'easeOutQuart' },
       responsive: true,
       /* Step E (E2): false — chart-wrap-inner 컨테이너 height(200px) 가
          폭과 무관하게 보장. 모바일 압착 + canvas height attr 깜빡임 회피.
@@ -807,7 +807,7 @@
   if (document._adThemeHandler) {
     document.removeEventListener('themechange', document._adThemeHandler);
   }
-  document._adThemeHandler = _buildAnalysisChart;
+  document._adThemeHandler = function() { _buildAnalysisChart(false); };
   document.addEventListener('themechange', document._adThemeHandler);
 })();
 </script>

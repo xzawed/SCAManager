@@ -623,7 +623,7 @@
       // repos mode themechange — remove-before-add pattern (ui.md rule)
       var trendData = {{ repo_report.score_trend | tojson }};
 
-      function buildRepoTrendChart() {
+      function buildRepoTrendChart(animate) {
         var ctx = document.getElementById('repoTrendChart');
         if (!ctx) return;
         var cs = getComputedStyle(document.body);
@@ -647,6 +647,7 @@
           },
           options: {
             responsive: true,
+            animation: animate === false ? { duration: 0 } : undefined,
             plugins: { legend: { display: false } },
             scales: {
               y: { min: 0, max: 100, grid: { color: 'rgba(255,255,255,0.05)' } }
@@ -662,7 +663,7 @@
       if (document._reposThemeHandler) {
         document.removeEventListener('themechange', document._reposThemeHandler);
       }
-      document._reposThemeHandler = buildRepoTrendChart;
+      document._reposThemeHandler = function() { buildRepoTrendChart(false); };
       document.addEventListener('themechange', document._reposThemeHandler);
     })();
     </script>
@@ -1198,7 +1199,7 @@
   }
 
   let dashChart = null;
-  function buildDashChart() {
+  function buildDashChart(animate) {
     const ctx = document.getElementById('dashTrendChart');
     if (!ctx) return;
     if (dashChart) dashChart.destroy();
@@ -1227,7 +1228,7 @@
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        animation: { duration: 900, easing: 'easeOutQuart' },
+        animation: animate === false ? { duration: 0 } : { duration: 900, easing: 'easeOutQuart' },
         scales: {
           y: { min: 0, max: 100,
                ticks: { color: subtle, stepSize: 25, font: { size: 11 } },
@@ -1250,7 +1251,7 @@
   if (document._dashThemeHandler) {
     document.removeEventListener('themechange', document._dashThemeHandler);
   }
-  document._dashThemeHandler = buildDashChart;
+  document._dashThemeHandler = function() { buildDashChart(false); };
   document.addEventListener('themechange', document._dashThemeHandler);
 </script>
 {% endif %}

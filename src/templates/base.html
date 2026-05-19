@@ -320,7 +320,7 @@
       font-size: var(--fs-sm);
       font-weight: 500;
       font-family: inherit;
-      transition: all var(--transition);
+      transition: background-color var(--transition), color var(--transition), border-color var(--transition), transform var(--transition), box-shadow var(--transition);
       white-space: nowrap;
       text-decoration: none;
       letter-spacing: -.01em;
@@ -423,7 +423,7 @@
       padding: 4px 10px;
       border-radius: var(--radius-sm);
       border: 1px solid var(--border-subtle);
-      transition: all var(--transition);
+      transition: color var(--transition), border-color var(--transition), background-color var(--transition);
       flex-shrink: 0;
     }
     .back-btn:hover { color: var(--text-1); border-color: var(--accent); text-decoration: none; }
@@ -836,11 +836,12 @@
           });
           if (res.ok) {
             applyLang(lang);
-            // 페이지 reload — 새 locale 로 UI 재렌더 (LocaleMiddleware 페어)
-            // Reload page — re-render UI with new locale (pairs with LocaleMiddleware)
-            // SonarQube javascript:S7764 — globalThis 표준 권장 (window 대신)
-            // SonarQube javascript:S7764 — globalThis is the standard (replaces window)
-            globalThis.location.reload();
+            // hx-boost swap으로 재렌더 — full reload 대신 body innerHTML 교체 (서버 왕복 1회로 감소)
+            // Re-render via hx-boost swap — replaces body innerHTML instead of full reload
+            htmx.ajax('GET', location.pathname + location.search, {
+              target: document.body,
+              swap: 'outerHTML'
+            });
           } else {
             console.error('Failed to update preferred_language:', res.status);
           }
@@ -975,7 +976,12 @@
         if (b) { b.classList.remove('is-loading'); b.style.transform = 'scaleX(0)'; }
       }
 
-      document.addEventListener('click', function(e) {
+      // hx-boost 재실행마다 누적 방지 — remove-before-add 패턴
+      // Prevent accumulation on each hx-boost re-execution — remove-before-add
+      if (document._progressClickHandler) {
+        document.removeEventListener('click', document._progressClickHandler);
+      }
+      document._progressClickHandler = function(e) {
         var a = e.target.closest('a[href]');
         if (!a) return;
         try {
@@ -987,11 +993,16 @@
         } catch (err) { return; }
         if (a.target === '_blank') return;
         _startProgress();
-      });
+      };
+      document.addEventListener('click', document._progressClickHandler);
 
-      document.addEventListener('submit', function(e) {
+      if (document._progressSubmitHandler) {
+        document.removeEventListener('submit', document._progressSubmitHandler);
+      }
+      document._progressSubmitHandler = function(e) {
         if (!e.defaultPrevented) _startProgress();
-      });
+      };
+      document.addEventListener('submit', document._progressSubmitHandler);
 
       // hx-boost 네비게이션 완료 → 프로그레스 바 완료 (실제 지연 제거 핵심)
       // hx-boost navigation settled → finish progress bar (key to real latency elimination)
