@@ -518,8 +518,8 @@
     };
   }
 
-  let chart;
-  let _chartData = [];
+  var chart;
+  var _chartData = [];
 
   function buildChart(data, animate) {
     if (data !== undefined) _chartData = data;
@@ -527,6 +527,8 @@
     const emptyEl  = document.getElementById('chartEmpty');
     const statsEl  = document.getElementById('chartStats');
     if (!canvasEl) return;
+    /* Chart.js 비동기 로드 미완료 시 안전 종료 / Guard against async Chart.js load race */
+    if (typeof Chart === 'undefined') return;
 
     /* 빈 상태 처리 / Empty state */
     if (!_chartData || _chartData.length === 0) {
@@ -654,6 +656,7 @@
   document.addEventListener('htmx:historyRestore', document._repoHtmxHandler);
 </script>
 <script>
+(function() {
 // ── 데이터 주입 ──────────────────────────────────────
 const ALL_ANALYSES = {{ analyses | tojson }};
 const REPO_NAME_JS = {{ repo_name | tojson }};
@@ -967,5 +970,6 @@ document.getElementById('dateTo').addEventListener('change', function() {
 updateSliderFill();
 updateSortHeaders();
 applyFilters();
+})();
 </script>
 {% endblock %}
