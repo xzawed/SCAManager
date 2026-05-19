@@ -72,6 +72,29 @@ def test_logout_with_user_id_deletes_token_from_db():
     # DB execute (UPDATE users SET github_access_token=NULL) and commit must be called.
     assert mock_db.execute.called
     assert mock_db.commit.called
+    # execute 인자가 UPDATE users ... github_access_token=None 인지 검증
+    # Verify execute arg is UPDATE users ... github_access_token=None
+    import sqlalchemy
+    call_args = mock_db.execute.call_args
+    stmt = call_args[0][0]  # 첫 번째 positional arg / First positional arg
+    assert isinstance(stmt, sqlalchemy.sql.dml.Update), (
+        "execute() 의 첫 인자가 SQLAlchemy Update 구문이 아니다 / "
+        "First arg of execute() is not a SQLAlchemy Update statement"
+    )
+    # stmt._values 키: Column 객체 — 이름으로 검증
+    # stmt._values keys are Column objects — verify by name
+    col_names = [col.key for col in stmt._values]
+    assert "github_access_token" in col_names, (
+        f"UPDATE 구문에 github_access_token 컬럼이 없다 / "
+        f"UPDATE statement missing github_access_token column. Found: {col_names}"
+    )
+    # None 값 검증 — BindParameter.value 또는 value 속성 확인
+    # Verify None value via BindParameter
+    bind_param = stmt._values[next(c for c in stmt._values if c.key == "github_access_token")]
+    assert bind_param.value is None, (
+        f"github_access_token 이 None 으로 설정되지 않았다 (실제값: {bind_param.value!r}) / "
+        f"github_access_token not set to None (actual: {bind_param.value!r})"
+    )
 
 
 def test_callback_creates_new_user_and_redirects():
