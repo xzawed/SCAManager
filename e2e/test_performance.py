@@ -162,7 +162,9 @@ def test_health_ttfb(base_url):
     # Session reuse keeps TCP alive — eliminates Windows localhost IPv6→IPv4 DNS fallback latency.
     times = []
     with requests.Session() as session:
-        session.get(f"{base_url}/health", timeout=5)  # 워밍업 (첫 연결 오버헤드 제외)
+        # 워밍업 요청 — 첫 연결 오버헤드 제외
+        # Warmup request to establish connection and eliminate cold-start latency.
+        session.get(f"{base_url}/health", timeout=5)
         for _ in range(3):
             start = time.perf_counter()
             resp = session.get(f"{base_url}/health", timeout=5)
