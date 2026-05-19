@@ -48,9 +48,13 @@ def _resolve_token(user) -> str | None:
 
     User token first + global fallback (merge_retry_service._resolve_github_token pattern).
     """
-    if user is not None and getattr(user, "github_access_token", None):
+    if user is not None:
         try:
-            return user.plaintext_token
+            # plaintext_token 직접 체크 — None 이면 env fallback 진행
+            # Check plaintext_token directly — fall through to env if None
+            token = user.plaintext_token
+            if token:
+                return token
         except Exception:  # pylint: disable=broad-except  # noqa: BLE001
             return None
     return os.environ.get("GITHUB_TOKEN") or None
