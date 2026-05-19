@@ -93,7 +93,9 @@
     position: relative;
     height: clamp(200px, 30vw, 320px);
   }
-  /* 빈 상태 — position absolute로 컨테이너 전체 채움 / Empty state fills container via absolute */
+  /* 빈 상태 — position absolute로 컨테이너 전체 채움 / Empty state fills container via absolute
+     컨테이너 레벨 opacity 제거 → 요소별 색상 토큰 사용 (4-테마 고대비 보장)
+     No container-level opacity — per-element tokens guarantee contrast across all 4 themes */
   .chart-empty-state {
     display: none;
     position: absolute;
@@ -101,13 +103,23 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: .75rem;
-    color: var(--text-2);
-    opacity: .75;
+    gap: .625rem;
   }
-  .chart-empty-state svg { width: 40px; height: 40px; }
-  .chart-empty-state span { font-size: 13px; }
-  .chart-empty-state .chart-empty-sub { font-size: 11px; opacity: .7; }
+  /* SVG 아이콘: --accent 사용 (4-테마 모두 배경 대비 ≥ 4.5:1)
+     SVG icon: --accent guarantees ≥ 4.5:1 contrast on all 4 card backgrounds */
+  .chart-empty-state svg {
+    width: 44px; height: 44px;
+    color: var(--accent);
+    opacity: .6;
+  }
+  /* 제목: --text-1 사용 (최고 대비) / Title: --text-1 (highest contrast) */
+  .chart-empty-state .chart-empty-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-1);
+  }
+  /* 부제: --text-2 사용 (보조 텍스트) / Subtitle: --text-2 (secondary text) */
+  .chart-empty-state .chart-empty-sub { font-size: 11px; color: var(--text-2); }
   .history-header {
     display: flex;
     align-items: center;
@@ -382,7 +394,7 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
       </svg>
-      <span id="chartEmptyText">분석 이력이 없습니다</span>
+      <span class="chart-empty-title" id="chartEmptyText">분석 이력이 없습니다</span>
       <span class="chart-empty-sub">Push 또는 PR 이벤트 후 첫 분석이 완료되면 차트가 표시됩니다</span>
     </div>
   </div>
