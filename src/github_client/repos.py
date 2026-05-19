@@ -144,7 +144,6 @@ ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo ".")
 CONFIG="${ROOT}/.scamanager/config.json"
 
 [ -f "${CONFIG}" ] || exit 0
-command -v claude &>/dev/null || exit 0
 command -v python3 &>/dev/null || exit 0
 
 # config.json에서 값 추출 — python3 -c 에 CONFIG를 argv로 전달해 경로 주입 방지
@@ -196,9 +195,42 @@ prompt = (
 sys.stdout.write(prompt)
 " > "${TMPFILE}"
 
-# claude -p 에 프롬프트를 stdin으로 전달 (argv 주입 차단)
-RESULT=$(claude -p < "${TMPFILE}" 2>/dev/null) || true
-[ -z "${RESULT}" ] && echo "⚠️  [SCAManager] claude CLI 실행 실패 또는 빈 응답 — 코드리뷰를 건너뜁니다." >&2
+# Anthropic API 직접 호출 — claude -p 대체 (2025-06-15 Agent SDK 크레딧 분리 대응)
+# Direct Anthropic API call — replaces claude -p (Agent SDK billing split from 2025-06-15)
+[ -n "${ANTHROPIC_API_KEY:-}" ] || {
+  echo "⚠️  [SCAManager] ANTHROPIC_API_KEY 환경변수 미설정 — 코드리뷰를 건너뜁니다." >&2
+  rm -f "${TMPFILE}"
+  exit 0
+}
+REVIEW_MODEL="${SCAMANAGER_REVIEW_MODEL:-claude-haiku-4-5-20251001}"
+RESULT=$(python3 -c "
+import json, sys, os, urllib.request
+key = os.environ.get('ANTHROPIC_API_KEY', '')
+model = sys.argv[2]
+with open(sys.argv[1]) as f:
+    prompt = f.read()
+payload = json.dumps({
+    'model': model,
+    'max_tokens': 2048,
+    'messages': [{'role': 'user', 'content': prompt}]
+}).encode()
+req = urllib.request.Request(
+    'https://api.anthropic.com/v1/messages',
+    data=payload,
+    headers={
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+    }
+)
+try:
+    with urllib.request.urlopen(req, timeout=60) as r:
+        d = json.loads(r.read())
+        print(d['content'][0]['text'])
+except Exception:
+    pass
+" "${TMPFILE}" "${REVIEW_MODEL}" 2>/dev/null) || true
+[ -z "${RESULT}" ] && echo "⚠️  [SCAManager] Anthropic API 호출 실패 또는 빈 응답 — 코드리뷰를 건너뜁니다." >&2
 rm -f "${TMPFILE}"
 
 if [ -n "${RESULT}" ]; then
