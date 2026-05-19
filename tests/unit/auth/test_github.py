@@ -41,6 +41,39 @@ def test_logout_clears_session_and_redirects():
     assert "/login" in r.headers["location"]
 
 
+def test_logout_with_user_id_deletes_token_from_db():
+    """user_id 가 세션에 있을 때 logout → DB에서 github_access_token 삭제 후 /login 리다이렉트.
+    When user_id exists in session, logout deletes github_access_token from DB and redirects.
+    """
+    import json
+    import base64
+    import itsdangerous
+
+    # SESSION_SECRET 과 동일한 값으로 Starlette SessionMiddleware 가 사용하는 서명 쿠키 생성
+    # Create a signed session cookie using the same SESSION_SECRET as SessionMiddleware.
+    secret = os.environ["SESSION_SECRET"]
+    signer = itsdangerous.TimestampSigner(secret)
+    session_payload = base64.b64encode(json.dumps({"user_id": 42}).encode()).decode()
+    signed = signer.sign(session_payload).decode()
+
+    mock_db = MagicMock()
+
+    with patch("src.auth.github.SessionLocal") as mock_sl:
+        mock_sl.return_value.__enter__.return_value = mock_db
+        r = client.post(
+            "/auth/logout",
+            follow_redirects=False,
+            cookies={"session": signed},
+        )
+
+    assert r.status_code == 302
+    assert "/login" in r.headers["location"]
+    # DB execute (UPDATE users SET github_access_token=NULL) 와 commit 이 호출되어야 한다
+    # DB execute (UPDATE users SET github_access_token=NULL) and commit must be called.
+    assert mock_db.execute.called
+    assert mock_db.commit.called
+
+
 def test_callback_creates_new_user_and_redirects():
     """콜백 처리 시 신규 유저를 생성하고 / 로 리다이렉트한다."""
     mock_token = {"access_token": "gho_new_token"}
