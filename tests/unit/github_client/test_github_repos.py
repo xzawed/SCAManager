@@ -256,3 +256,38 @@ async def test_commit_scamanager_files_returns_false_on_error():
         )
 
     assert result is False
+
+
+# ------------------------------------------------------------------
+# _INSTALL_HOOK_SH 회귀 테스트 — Agent SDK 요금 분리 대응 (2025-06-15)
+# Regression tests for _INSTALL_HOOK_SH — Agent SDK billing split 2025-06-15
+# ------------------------------------------------------------------
+
+def test_install_hook_sh_no_claude_p():
+    from src.github_client.repos import _INSTALL_HOOK_SH
+    non_comment = [l for l in _INSTALL_HOOK_SH.splitlines() if not l.lstrip().startswith('#')]
+    assert not any('claude -p' in l for l in non_comment)
+
+
+def test_install_hook_sh_uses_anthropic_api():
+    """pre-push hook 스크립트가 Anthropic API를 직접 호출해야 한다."""
+    from src.github_client.repos import _INSTALL_HOOK_SH
+    assert "api.anthropic.com/v1/messages" in _INSTALL_HOOK_SH, (
+        "hook 스크립트에 Anthropic API 엔드포인트가 없음"
+    )
+
+
+def test_install_hook_sh_reads_anthropic_api_key():
+    """pre-push hook 스크립트가 ANTHROPIC_API_KEY 환경변수를 사용해야 한다."""
+    from src.github_client.repos import _INSTALL_HOOK_SH
+    assert "ANTHROPIC_API_KEY" in _INSTALL_HOOK_SH, (
+        "hook 스크립트에 ANTHROPIC_API_KEY 참조가 없음"
+    )
+
+
+def test_install_hook_sh_no_claude_command_check():
+    """pre-push hook 스크립트에 claude CLI 존재 여부 체크가 없어야 한다."""
+    from src.github_client.repos import _INSTALL_HOOK_SH
+    assert "command -v claude" not in _INSTALL_HOOK_SH, (
+        "hook 스크립트에 'command -v claude' 발견 — claude CLI 불필요하므로 제거 필수"
+    )
