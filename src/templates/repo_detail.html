@@ -29,14 +29,32 @@
     box-shadow: var(--shadow-sm);
   }
 
-  /* Step E (E2) + PR-3 F1: chart-card 명시 height — viewport 비례 clamp 로 데스크탑/모바일 양쪽 적정
-     Step E + PR-3 F1: viewport-relative clamp keeps chart legible on both desktop and mobile */
+  /* ── 모던 차트 카드 / Modern chart card ── */
   .chart-card {
-    padding: 1.25rem 1.5rem;
-  }
-  .chart-card .chart-wrap-inner {
+    padding: 1.5rem;
     position: relative;
-    height: clamp(200px, 30vw, 320px);
+    overflow: hidden;
+  }
+  /* 상단 accent 라인 그라디언트 / Top accent gradient line */
+  .chart-card::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent 0%, var(--accent) 40%, var(--accent-2, var(--accent)) 60%, transparent 100%);
+    border-radius: 2px 2px 0 0;
+    opacity: .6;
+    transition: opacity var(--dur-base, .2s);
+    pointer-events: none;
+  }
+  .chart-card:hover::after { opacity: 1; }
+  .chart-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    gap: 1rem;
+    flex-wrap: wrap;
   }
   .chart-label {
     font-size: 11px;
@@ -44,8 +62,50 @@
     text-transform: uppercase;
     letter-spacing: .08em;
     color: var(--text-2);
-    margin-bottom: .75rem;
   }
+  /* stats 배지 행 / Stats badge row */
+  .chart-stats-row {
+    display: flex;
+    gap: 1.25rem;
+    flex-shrink: 0;
+  }
+  .chart-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 1px;
+  }
+  .chart-stat-val {
+    font-size: 14px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-1);
+    line-height: 1;
+  }
+  .chart-stat-lbl {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--text-2);
+  }
+  /* Step E (E2): chart-wrap-inner height */
+  .chart-card .chart-wrap-inner {
+    position: relative;
+    height: clamp(200px, 30vw, 320px);
+  }
+  /* 빈 상태 / Empty state */
+  .chart-empty-state {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: clamp(200px, 30vw, 320px);
+    gap: .75rem;
+    color: var(--text-2);
+    opacity: .45;
+  }
+  .chart-empty-state svg { width: 40px; height: 40px; }
+  .chart-empty-state span { font-size: 13px; }
   .history-header {
     display: flex;
     align-items: center;
@@ -309,9 +369,19 @@
 <!-- FOUC 방지: chart-card 는 above-the-fold — reveal 클래스 제외
      FOUC prevention: primary score trend chart is above the fold, no reveal class -->
 <div class="card chart-card">
-  <div class="chart-label">{{ 'repo_detail.score_trend_label' | i18n_args(locale | default('ko')) }}</div>
+  <div class="chart-header">
+    <span class="chart-label">{{ 'repo_detail.score_trend_label' | i18n_args(locale | default('ko')) }}</span>
+    <div class="chart-stats-row" id="chartStats"></div>
+  </div>
   <div class="chart-wrap-inner">
     <canvas id="scoreChart"></canvas>
+    <!-- 빈 상태 — 데이터 없을 때 / Empty state when no analysis data -->
+    <div class="chart-empty-state" id="chartEmpty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+      </svg>
+      <span id="chartEmptyText">분석 이력이 없습니다</span>
+    </div>
   </div>
 </div>
 
@@ -402,90 +472,154 @@
 <!-- Step C: Chart.js vendoring — CDN 차단/오프라인 환경에서 빈 차트 회피 / Vendored Chart.js -->
 <script src="/static/vendor/chart.umd.min.js"></script>
 <script>
+  /* ── 테마 토큰 읽기 — body 기준 (themes.css가 body[data-theme]에 변수 정의)
+     Read theme tokens from body — themes.css defines variables on body[data-theme] */
   function getThemeColors() {
     const s = getComputedStyle(document.body);
-    const accent  = s.getPropertyValue('--accent').trim()  || '#6366f1';
-    const muted   = s.getPropertyValue('--text-2').trim() || '#64748b';
-    const border  = s.getPropertyValue('--border-subtle').trim()  || '#2d3748';
-    /* PR-3 F3: tooltip 색을 테마 토큰에서 동적 read — 라이트/claude-dark 부조화 해소
-       PR-3 F3: dynamic tooltip colors from theme tokens (light + claude-dark harmony) */
-    const tipBg   = s.getPropertyValue('--bg-card').trim() || '#1c1c23';
-    const tipText = s.getPropertyValue('--text-1').trim() || '#e2e2e8';
-    /* Fix 4: --accent-rgb 토큰으로 rgba() 구성 — accent hex 직접 연결 방식 대체
-       Fix 4: use --accent-rgb token for rgba() — replaces fragile hex string concat */
-    const accentRgb = getComputedStyle(document.documentElement).getPropertyValue('--accent-rgb').trim() || '99,102,241';
-    return { accent, accentRgb, muted, border, tipBg, tipText };
+    const accent    = s.getPropertyValue('--accent').trim()       || '#6366f1';
+    const accentRgb = s.getPropertyValue('--accent-rgb').trim()   || '99,102,241';
+    const muted     = s.getPropertyValue('--text-2').trim()       || '#64748b';
+    const border    = s.getPropertyValue('--border-subtle').trim()|| '#2d3748';
+    const tipBg     = s.getPropertyValue('--bg-card').trim()      || '#1c1c23';
+    const tipText   = s.getPropertyValue('--text-1').trim()       || '#e2e2e8';
+    const bgBase    = s.getPropertyValue('--bg-base').trim()      || '#07070f';
+    const success   = s.getPropertyValue('--success').trim()      || '#4ade80';
+    const danger    = s.getPropertyValue('--danger').trim()       || '#f87171';
+    return { accent, accentRgb, muted, border, tipBg, tipText, bgBase, success, danger };
+  }
+
+  /* 등급별 포인트 색상 — body CSS 변수 기준, 테마 자동 반영
+     Grade-based point color from body CSS vars — auto-adapts to any theme */
+  function gradeColor(grade) {
+    const s = getComputedStyle(document.body);
+    const map = {
+      'A': s.getPropertyValue('--grade-a').trim() || '#4ade80',
+      'B': s.getPropertyValue('--grade-b').trim() || '#60a5fa',
+      'C': s.getPropertyValue('--grade-c').trim() || '#fbbf24',
+      'D': s.getPropertyValue('--grade-d').trim() || '#fb923c',
+      'F': s.getPropertyValue('--grade-f').trim() || '#f87171',
+    };
+    return map[grade] || (s.getPropertyValue('--accent').trim() || '#6366f1');
   }
 
   let chart;
   let _chartData = [];
+
   function buildChart(data) {
     if (data !== undefined) _chartData = data;
-    const { accent, accentRgb, muted, border } = getThemeColors();
-    const ctx = document.getElementById('scoreChart');
-    const labels = _chartData.map(function(a) { return (a.created_at || '').slice(0, 10); });
-    const scores = _chartData.map(function(a) { return a.score; });
+    const canvasEl = document.getElementById('scoreChart');
+    const emptyEl  = document.getElementById('chartEmpty');
+    const statsEl  = document.getElementById('chartStats');
+    if (!canvasEl) return;
+
+    /* 빈 상태 처리 / Empty state */
+    if (!_chartData || _chartData.length === 0) {
+      canvasEl.style.display = 'none';
+      if (emptyEl) emptyEl.style.display = 'flex';
+      if (statsEl) statsEl.innerHTML = '';
+      if (chart) { chart.destroy(); chart = null; }
+      return;
+    }
+    canvasEl.style.display = '';
+    if (emptyEl) emptyEl.style.display = 'none';
+
+    const { accent, accentRgb, muted, border, tipBg, tipText, bgBase, success, danger } = getThemeColors();
+    const scores = _chartData.map(function(a) { return a.score; }).filter(function(s) { return s != null; });
+
+    /* stats 배지 — 평균/최고/최저 / Stats: avg / max / min */
+    if (statsEl && scores.length) {
+      var avg = Math.round(scores.reduce(function(a, b) { return a + b; }, 0) / scores.length);
+      var mn  = Math.min.apply(null, scores);
+      var mx  = Math.max.apply(null, scores);
+      statsEl.innerHTML =
+        '<div class="chart-stat"><span class="chart-stat-val">' + avg + '</span><span class="chart-stat-lbl">평균</span></div>' +
+        '<div class="chart-stat"><span class="chart-stat-val" style="color:' + success + '">' + mx + '</span><span class="chart-stat-lbl">최고</span></div>' +
+        '<div class="chart-stat"><span class="chart-stat-val" style="color:' + danger  + '">' + mn + '</span><span class="chart-stat-lbl">최저</span></div>';
+    }
+
+    /* 그라디언트 fill — accent 색상 기반, 위에서 아래로 투명 / Gradient fill from accent */
+    const canvasCtx = canvasEl.getContext('2d');
+    const h = canvasEl.offsetHeight || 280;
+    const grad = canvasCtx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0,    'rgba(' + accentRgb + ', 0.22)');
+    grad.addColorStop(0.65, 'rgba(' + accentRgb + ', 0.05)');
+    grad.addColorStop(1,    'rgba(' + accentRgb + ', 0)');
+
+    const labels    = _chartData.map(function(a) { return (a.created_at || '').slice(0, 10); });
+    const dataScores= _chartData.map(function(a) { return a.score; });
+    /* 등급별 포인트 색상 / Per-point grade colors */
+    const ptColors  = _chartData.map(function(a) { return gradeColor(a.grade); });
+
     if (chart) chart.destroy();
-    chart = new Chart(ctx, {
+    chart = new Chart(canvasEl, {
       type: 'line',
       data: {
         labels: labels,
         datasets: [{
           label: {{ 'repo_detail.chart_score_label' | i18n_args(locale | default('ko')) | tojson }},
-          data: scores,
+          data: dataScores,
           borderColor: accent,
-          /* rgba 구성 — rgb 채널 토큰 사용, 투명도 0.13 고정
-             rgba construction via rgb channel token, fixed opacity 0.13 */
-          backgroundColor: `rgba(${accentRgb}, 0.13)`,
-          borderWidth: 2,
-          pointBackgroundColor: accent,
-          /* 테마 배경색으로 포인트 테두리 — 라이트/다크 자동 대응
-             Use theme bg-base for point border — auto-adapts to light/dark themes */
-          pointBorderColor: getComputedStyle(document.documentElement).getPropertyValue('--bg-base').trim() || '#fff',
+          backgroundColor: grad,
+          borderWidth: 2.5,
+          pointBackgroundColor: ptColors,
+          /* 포인트 테두리 = 배경색 → 등급 색상이 돋보임 / Point border = bg-base → grade color pops */
+          pointBorderColor: bgBase,
           pointBorderWidth: 2,
-          pointRadius: 4,
-          pointHoverRadius: 6,
-          tension: 0.35,
-          fill: true
+          pointRadius: scores.length > 30 ? 3 : 5,
+          pointHoverRadius: 8,
+          pointHoverBorderWidth: 2,
+          tension: 0.4,
+          fill: true,
         }]
       },
       options: {
         scales: {
           y: {
             min: 0, max: 100,
-            grid: { color: border + '66' },
-            ticks: { color: muted, font: { size: 11 } }
+            grid: { color: border + '55' },
+            border: { display: false },
+            ticks: { color: muted, font: { size: 11 }, padding: 8 }
           },
           x: {
             grid: { display: false },
-            ticks: { color: muted, font: { size: 11 }, maxTicksLimit: 8 }
+            border: { display: false },
+            ticks: { color: muted, font: { size: 11 }, maxTicksLimit: 8, maxRotation: 0 }
           }
         },
         plugins: {
           legend: { display: false },
           tooltip: {
-            backgroundColor: getThemeColors().tipBg,
-            titleColor: getThemeColors().tipText,
-            bodyColor: getThemeColors().tipText,
-            borderColor: getThemeColors().border,
+            backgroundColor: tipBg,
+            titleColor: tipText,
+            bodyColor: muted,
+            borderColor: border,
             borderWidth: 1,
-            padding: 10,
-            cornerRadius: 8
+            padding: { x: 14, y: 10 },
+            cornerRadius: 10,
+            displayColors: false,
+            callbacks: {
+              label: function(item) {
+                var a = _chartData[item.dataIndex];
+                return '점수 ' + item.raw + (a && a.grade ? ' · ' + a.grade + '등급' : '');
+              }
+            }
           }
         },
         responsive: true,
-        /* Step E (E2): false 로 변경 — chart-wrap-inner 컨테이너 height(200px) 가
-           폭과 무관하게 보장되어 모바일 압착 + canvas height attr 깜빡임 회피.
-           Step E (E2): false → no width-driven height resize → no mobile squish */
+        /* Step E (E2): false → chart-wrap-inner 컨테이너 height 보장
+           Step E (E2): false → honours container height set by CSS */
         maintainAspectRatio: false,
-        /* 차트 진입 애니메이션 — easeOutQuart 900ms / Chart entry animation */
-        animation: { duration: 900, easing: 'easeOutQuart' }
+        /* 부드러운 진입 애니메이션 / Smooth entry animation */
+        animation: { duration: 800, easing: 'easeOutCubic' },
+        /* 인덱스 모드 hover — 어디서든 데이터 포인트 포착
+           Index-mode interaction — captures nearest point across full width */
+        interaction: { intersect: false, mode: 'index' },
       }
     });
   }
 
-  // hx-boost 재방문 시 이전 리스너 제거 후 현재 스코프 클로저 재등록 (stale closure 방지)
-  // Remove stale listener then re-register fresh closure on each hx-boost activation
+  /* hx-boost 재방문 시 stale closure 방지 — remove-before-add 패턴
+     Prevent stale closure on hx-boost revisit — remove-before-add pattern */
   if (document._repoThemeHandler) {
     document.removeEventListener('themechange', document._repoThemeHandler);
   }
