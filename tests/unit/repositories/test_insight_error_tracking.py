@@ -26,7 +26,6 @@ from sqlalchemy.pool import StaticPool
 from src.database import Base
 from src.models.analysis import Analysis  # noqa: F401  (Base.metadata 등록)
 from src.models.insight_narrative_cache import InsightNarrativeCache
-from src.models.user import User  # noqa: F401
 from src.repositories import insight_narrative_cache_repo
 
 
