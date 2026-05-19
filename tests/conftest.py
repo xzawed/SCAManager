@@ -20,6 +20,7 @@ os.environ["GITHUB_CLIENT_SECRET"] = "test-github-client-secret"
 os.environ["SESSION_SECRET"] = "test-session-secret-32-chars-long!"
 
 from src.main import app
+from src.ui.routes import add_repo as _add_repo_module
 from src.webhook import router as webhook_router
 
 
@@ -28,6 +29,15 @@ def _clear_webhook_secret_cache():
     webhook_router._webhook_secret_cache.clear()
     yield
     webhook_router._webhook_secret_cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def _clear_user_repos_cache():
+    # GitHub 리포 TTL 캐시 — 테스트 간 격리 보장
+    # Clear GitHub repos TTL cache to ensure test isolation.
+    _add_repo_module._user_repos_cache.clear()
+    yield
+    _add_repo_module._user_repos_cache.clear()
 
 
 @pytest.fixture

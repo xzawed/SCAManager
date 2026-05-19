@@ -596,6 +596,50 @@ def test_api_github_repos_excludes_already_registered():
     assert "owner/repo-a" in full_names
 
 
+def test_api_github_repos_cache_hit():
+    """두 번 호출 시 list_user_repos는 1회만 실행된다 (캐시 히트)."""
+    from unittest.mock import AsyncMock, patch
+
+    mock_repos = [{"full_name": "owner/repo-a", "private": False, "description": ""}]
+
+    with patch("src.ui.routes.add_repo.list_user_repos", new_callable=AsyncMock, return_value=mock_repos) as mock_fn:
+        with patch("src.ui.routes.add_repo.SessionLocal") as mock_sl:
+            mock_db = MagicMock()
+            mock_db.query.return_value.filter.return_value.all.return_value = []
+            mock_sl.return_value.__enter__.return_value = mock_db
+            client.get("/api/github/repos")
+            client.get("/api/github/repos")
+
+    # 두 번 호출해도 GitHub API는 1회만 호출 (2번째는 캐시 히트)
+    # GitHub API called only once despite two requests (second hits cache).
+    assert mock_fn.call_count == 1
+
+
+def test_api_github_repos_cache_expired():
+    """캐시 만료 후 list_user_repos가 재호출된다."""
+    from unittest.mock import AsyncMock, patch
+    import src.ui.routes.add_repo as _mod
+
+    mock_repos = [{"full_name": "owner/repo-a", "private": False, "description": ""}]
+
+    with patch("src.ui.routes.add_repo.list_user_repos", new_callable=AsyncMock, return_value=mock_repos) as mock_fn:
+        with patch("src.ui.routes.add_repo.SessionLocal") as mock_sl:
+            mock_db = MagicMock()
+            mock_db.query.return_value.filter.return_value.all.return_value = []
+            mock_sl.return_value.__enter__.return_value = mock_db
+            client.get("/api/github/repos")
+            # 캐시 만료 시뮬레이션 — expiry를 과거로 강제 조작
+            # Simulate expiry by forcing the cached timestamp into the past.
+            for uid in list(_mod._user_repos_cache):
+                repos_list, _ = _mod._user_repos_cache[uid]
+                _mod._user_repos_cache[uid] = (repos_list, 0.0)
+            client.get("/api/github/repos")
+
+    # 만료 후 재호출 — GitHub API 2회
+    # After expiry, API is called again — total 2 calls.
+    assert mock_fn.call_count == 2
+
+
 def test_add_repo_post_creates_repo_and_webhook():
     """POST /repos/add는 리포를 DB에 저장하고 Webhook을 생성한 후 리다이렉트한다."""
     from unittest.mock import AsyncMock, patch, MagicMock
