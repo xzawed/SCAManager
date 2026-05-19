@@ -204,7 +204,7 @@
   const breakdown = {{ breakdown | tojson }};
 
   function readVar(name, fallback) {
-    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    const v = getComputedStyle(document.body).getPropertyValue(name).trim();
     return v || fallback;
   }
 
@@ -249,6 +249,16 @@
   }
   document._riThemeHandler = buildRiChart;
   document.addEventListener('themechange', document._riThemeHandler);
+
+  /* htmx 재방문(historyRestore/afterSettle) 시 차트 재빌드 — remove-before-add 패턴
+     Rebuild chart on htmx historyRestore (back button) & afterSettle — remove-before-add */
+  if (document._riHtmxHandler) {
+    document.removeEventListener('htmx:afterSettle', document._riHtmxHandler);
+    document.removeEventListener('htmx:historyRestore', document._riHtmxHandler);
+  }
+  document._riHtmxHandler = buildRiChart;
+  document.addEventListener('htmx:afterSettle', document._riHtmxHandler);
+  document.addEventListener('htmx:historyRestore', document._riHtmxHandler);
 })();
 </script>
 {% endif %}
