@@ -421,45 +421,45 @@
   /* ── repos 모드 ── */
   .repos-kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
   .repos-grade-bar-wrap { margin-bottom: 16px; }
-  .repos-grade-bar-label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+  .repos-grade-bar-label { font-size: 11px; color: var(--text-2); margin-bottom: 4px; }
   .repos-grade-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; gap: 1px; }
   .repos-grade-seg { height: 100%; transition: width 0.3s; }
   .repos-grade-legend { display: flex; gap: 12px; margin-top: 4px; flex-wrap: wrap; }
-  .repos-grade-legend-item { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 4px; }
+  .repos-grade-legend-item { font-size: 11px; color: var(--text-2); display: flex; align-items: center; gap: 4px; }
   .repos-grade-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
   .repos-warnings { margin-bottom: 16px; }
   .repos-warning-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--warning-faint, rgba(var(--warning-rgb, 245 158 11) / 0.1)); border: 1px solid var(--warning); border-radius: 8px; margin-bottom: 6px; font-size: 13px; }
   .repos-warning-icon { color: var(--warning); }
-  .repos-warning-link { color: var(--text-primary); text-decoration: none; font-weight: 600; }
+  .repos-warning-link { color: var(--text-1); text-decoration: none; font-weight: 600; }
   .repos-warning-link:hover { text-decoration: underline; }
-  .repos-warning-score { margin-left: auto; color: var(--text-muted); font-size: 12px; }
+  .repos-warning-score { margin-left: auto; color: var(--text-2); font-size: 12px; }
   .repos-selector-form { margin-bottom: 24px; }
-  .repos-selector { width: 100%; padding: 10px 14px; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); font-size: 14px; cursor: pointer; }
+  .repos-selector { width: 100%; padding: 10px 14px; background: var(--bg-2); border: 1px solid var(--border-subtle); border-radius: 8px; color: var(--text-1); font-size: 14px; cursor: pointer; }
   @media (max-width: 768px) { .repos-selector { min-height: 44px; font-size: 16px; } }
-  .repos-report-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; color: var(--text-primary); }
+  .repos-report-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; color: var(--text-1); }
   .repos-section { margin-bottom: 28px; }
-  .repos-section h3 { font-size: 14px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+  .repos-section h3 { font-size: 14px; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
   .repos-category-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-  .repos-cat-card { background: var(--bg-surface); border-radius: 8px; padding: 14px; text-align: center; }
+  .repos-cat-card { background: var(--bg-2); border-radius: 8px; padding: 14px; text-align: center; }
   .repos-cat-value { font-size: 28px; font-weight: 700; }
-  .repos-cat-label { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+  .repos-cat-label { font-size: 11px; color: var(--text-2); margin-top: 4px; }
   .repos-cat-security-error .repos-cat-value { color: var(--danger); }
   .repos-cat-security-warn .repos-cat-value { color: var(--warning); }
   .repos-cat-quality-error .repos-cat-value { color: var(--danger); }
-  .repos-cat-quality-warn .repos-cat-value { color: var(--text-muted); }
+  .repos-cat-quality-warn .repos-cat-value { color: var(--text-2); }
   .repos-suggestions { list-style: none; padding: 0; }
   .repos-suggestion-item { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border-color-subtle, rgba(255,255,255,0.05)); font-size: 13px; }
-  .repos-suggestion-count { flex-shrink: 0; background: var(--bg-surface); border-radius: 4px; padding: 2px 6px; font-size: 11px; color: var(--text-muted); }
-  .repos-suggestion-text { color: var(--text-primary); }
+  .repos-suggestion-count { flex-shrink: 0; background: var(--bg-2); border-radius: 4px; padding: 2px 6px; font-size: 11px; color: var(--text-2); }
+  .repos-suggestion-text { color: var(--text-1); }
   .repos-recommendations { list-style: none; padding: 0; }
   .repos-rec-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border-color-subtle, rgba(255,255,255,0.05)); font-size: 13px; }
   .repos-rec-badge { flex-shrink: 0; border-radius: 4px; padding: 2px 6px; font-size: 10px; font-weight: 700; }
   .repos-rec-high { background: var(--danger); color: #fff; }
   .repos-rec-error { background: var(--danger); color: #fff; }
   .repos-rec-warning { background: var(--warning); color: #000; }
-  .repos-rec-msg { flex: 1; color: var(--text-primary); }
-  .repos-rec-count { flex-shrink: 0; color: var(--text-muted); font-size: 11px; }
-  .repos-empty { color: var(--text-muted); font-size: 14px; padding: 20px 0; }
+  .repos-rec-msg { flex: 1; color: var(--text-1); }
+  .repos-rec-count { flex-shrink: 0; color: var(--text-2); font-size: 11px; }
+  .repos-empty { color: var(--text-2); font-size: 14px; padding: 20px 0; }
   @media (max-width: 768px) {
     .repos-kpi-grid { grid-template-columns: repeat(3, 1fr); gap: 8px; }
     .repos-category-grid { grid-template-columns: repeat(2, 1fr); }
