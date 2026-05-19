@@ -3,6 +3,7 @@ User account API — Telegram link OTP issuance + preferred language settings, e
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import secrets
@@ -155,13 +156,18 @@ async def update_preferred_language(
     if not LOCALE_COOKIE_VALUE_RE.fullmatch(safe_language):
         raise HTTPException(status_code=400, detail="invalid language")
 
-    with SessionLocal() as db:
-        db.execute(
-            update(User)
-            .where(User.id == current_user.id)
-            .values(preferred_language=safe_language)
-        )
-        db.commit()
+    # 동기 SQLAlchemy를 asyncio.to_thread로 wrap — 이벤트 루프 블로킹 방지
+    # Wrap sync SQLAlchemy in asyncio.to_thread — prevents event loop blocking
+    def _do_update() -> None:
+        with SessionLocal() as db:
+            db.execute(
+                update(User)
+                .where(User.id == current_user.id)
+                .values(preferred_language=safe_language)
+            )
+            db.commit()
+
+    await asyncio.to_thread(_do_update)
 
     # Cookie 동기화 — LocaleMiddleware 가 매 request 시 우선 감지
     # Cookie sync — LocaleMiddleware checks Cookie first per request

@@ -209,7 +209,7 @@
   }
 
   let riChart = null;
-  function buildRiChart() {
+  function buildRiChart(animate) {
     const ctx = document.getElementById('riDonutChart');
     if (!ctx) return;
     if (riChart) riChart.destroy();
@@ -236,7 +236,7 @@
       options: {
         cutout: '62%',
         plugins: { legend: { display: false } },
-        animation: { duration: 500 },
+        animation: animate === false ? { duration: 0 } : { duration: 500 },
       },
     });
   }
@@ -247,7 +247,7 @@
   if (document._riThemeHandler) {
     document.removeEventListener('themechange', document._riThemeHandler);
   }
-  document._riThemeHandler = buildRiChart;
+  document._riThemeHandler = function() { buildRiChart(false); };
   document.addEventListener('themechange', document._riThemeHandler);
 
   /* htmx 재방문(historyRestore/afterSettle) 시 차트 재빌드 — remove-before-add 패턴

@@ -503,24 +503,25 @@
     return { accent, accentRgb, muted, border, tipBg, tipText, bgBase, success, danger };
   }
 
-  /* 등급별 포인트 색상 — body CSS 변수 기준, 테마 자동 반영
-     Grade-based point color from body CSS vars — auto-adapts to any theme */
-  function gradeColor(grade) {
+  /* 등급별 포인트 색상 맵 — getComputedStyle 1회 호출로 통합 (N번 반복 방지)
+     Grade color map — single getComputedStyle call instead of one per data point */
+  function getGradeColorMap() {
     const s = getComputedStyle(document.body);
-    const map = {
+    const accent = s.getPropertyValue('--accent').trim() || '#6366f1';
+    return {
       'A': s.getPropertyValue('--grade-a').trim() || '#4ade80',
       'B': s.getPropertyValue('--grade-b').trim() || '#60a5fa',
       'C': s.getPropertyValue('--grade-c').trim() || '#fbbf24',
       'D': s.getPropertyValue('--grade-d').trim() || '#fb923c',
       'F': s.getPropertyValue('--grade-f').trim() || '#f87171',
+      '_default': accent,
     };
-    return map[grade] || (s.getPropertyValue('--accent').trim() || '#6366f1');
   }
 
   let chart;
   let _chartData = [];
 
-  function buildChart(data) {
+  function buildChart(data, animate) {
     if (data !== undefined) _chartData = data;
     const canvasEl = document.getElementById('scoreChart');
     const emptyEl  = document.getElementById('chartEmpty');
@@ -562,8 +563,9 @@
 
     const labels    = _chartData.map(function(a) { return (a.created_at || '').slice(0, 10); });
     const dataScores= _chartData.map(function(a) { return a.score; });
-    /* 등급별 포인트 색상 / Per-point grade colors */
-    const ptColors  = _chartData.map(function(a) { return gradeColor(a.grade); });
+    /* 등급별 포인트 색상 — getComputedStyle 1회 호출 후 맵 재사용 / Grade colors via single CSS read */
+    const gcMap     = getGradeColorMap();
+    const ptColors  = _chartData.map(function(a) { return gcMap[a.grade] || gcMap['_default']; });
 
     if (chart) chart.destroy();
     chart = new Chart(canvasEl, {
@@ -624,8 +626,8 @@
         /* Step E (E2): false → chart-wrap-inner 컨테이너 height 보장
            Step E (E2): false → honours container height set by CSS */
         maintainAspectRatio: false,
-        /* 부드러운 진입 애니메이션 / Smooth entry animation */
-        animation: { duration: 800, easing: 'easeOutCubic' },
+        /* 진입 시 애니메이션, 테마 전환 시 즉시 반영 / Entry animation; instant on theme change */
+        animation: animate === false ? { duration: 0 } : { duration: 800, easing: 'easeOutCubic' },
         /* 인덱스 모드 hover — 어디서든 데이터 포인트 포착
            Index-mode interaction — captures nearest point across full width */
         interaction: { intersect: false, mode: 'index' },
@@ -638,7 +640,7 @@
   if (document._repoThemeHandler) {
     document.removeEventListener('themechange', document._repoThemeHandler);
   }
-  document._repoThemeHandler = function() { buildChart(); };
+  document._repoThemeHandler = function() { buildChart(undefined, false); };
   document.addEventListener('themechange', document._repoThemeHandler);
 
   /* htmx 재방문(historyRestore/afterSettle) 시 차트 재빌드 — remove-before-add 패턴
@@ -647,7 +649,7 @@
     document.removeEventListener('htmx:afterSettle', document._repoHtmxHandler);
     document.removeEventListener('htmx:historyRestore', document._repoHtmxHandler);
   }
-  document._repoHtmxHandler = function() { buildChart(); };
+  document._repoHtmxHandler = function() { buildChart(undefined, false); };
   document.addEventListener('htmx:afterSettle', document._repoHtmxHandler);
   document.addEventListener('htmx:historyRestore', document._repoHtmxHandler);
 </script>
