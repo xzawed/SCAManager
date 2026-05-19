@@ -254,7 +254,9 @@ def _set_rls_user_id_per_query(  # pylint: disable=too-many-arguments,too-many-p
         # Even if contextvars introspection fails, keep the query path alive
         return
     val = str(user_id) if user_id else ""
-    cursor.execute(f"SET LOCAL app.user_id = '{val}'")
+    # f-string SQL 인젝션 방지 — 파라미터화 쿼리로 안전하게 처리
+    # Prevent f-string SQL injection — use parameterized query
+    cursor.execute("SET LOCAL app.user_id = %s", (val,))
 
 
 # 운영 engine 에 listener 등록 — PG 환경에서만 실효 (SQLite skip 분기 내장)
