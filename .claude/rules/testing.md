@@ -12,7 +12,7 @@ paths:
 ## 환경 + 격리
 
 - 🔴 **asyncio_mode = auto**: `pytest.ini`의 `asyncio_mode = auto` 필수 — 없으면 모든 async 테스트가 경고 없이 실패.
-- **테스트 환경 변수**: `tests/conftest.py`가 `os.environ.setdefault`로 환경변수를 주입함. src 모듈은 import 시점에 `Settings()`를 인스턴스화하므로 conftest가 반드시 먼저 실행되어야 함.
+- **테스트 환경 변수**: `tests/conftest.py`가 `os.environ[key] = value` 직접 대입으로 환경변수를 주입함 (사이클 65 fix — `setdefault`는 셸 환경 export 시 무시되어 운영 토큰이 설정으로 유입되는 버그가 있었음). src 모듈은 import 시점에 `Settings()`를 인스턴스화하므로 conftest가 반드시 먼저 실행되어야 함.
 - **E2E 격리**: `e2e/`를 최상위 별도 디렉토리로 분리 (`tests/` 아래 금지) — `tests/e2e/`가 있으면 `asyncio_mode=auto`와 `sys.modules` 삭제가 충돌해 단위 테스트 98개 실패. E2E 서버는 `uvicorn.Server.serve()`를 `asyncio.new_event_loop()` + `loop.run_until_complete()`로 실행.
 - 🔴 **e2e ↔ tests/integration 동시 실행 금지**: `e2e/pytest.ini` 가 의도적으로 asyncio_mode 미설정 (위 E2E 격리 사유) — `pytest e2e/ tests/integration/` 같은 동시 실행 시 integration 의 async 테스트가 sync 처럼 실행 → "coroutine was never awaited" RuntimeWarning + fail. 분리 실행 default — `make test-e2e` (e2e) ↔ `pytest tests/` 또는 CI command (testpaths=tests, e2e 자동 격리).
 - **`@pytest.mark.perf` 선택 실행**: `make test-perf` = `pytest e2e/ -m perf -v --timeout=120 -p no:asyncio`. 일반 E2E(`make test-e2e`)와 분리 실행 — CI `testpaths=tests`에 포함되지 않음(자동 격리). `perf` 마커는 루트 `pytest.ini`와 `e2e/pytest.ini` 양쪽 등록됨.
