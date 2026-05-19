@@ -26,7 +26,6 @@ from src.main import app
 
 # ORM metadata 등록 (모듈 최상단 import — pytest collection 시점에 등록).
 # Register ORM metadata at module import time (pytest collection).
-from src.database import Base  # noqa: E402
 from src.models.analysis import Analysis as _AnalysisModel  # noqa: E402, F401
 from src.models.repository import Repository as _RepoModel  # noqa: E402, F401
 from src.models.user import User as _UserModel  # noqa: E402, F401
