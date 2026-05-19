@@ -789,7 +789,11 @@
         }
       });
     });
-    document.addEventListener('click', () => { switcher.classList.remove('open'); toggleBtn.setAttribute('aria-expanded', 'false'); });
+    if (document._themeCloseHandler) {
+      document.removeEventListener('click', document._themeCloseHandler);
+    }
+    document._themeCloseHandler = function() { switcher.classList.remove('open'); toggleBtn.setAttribute('aria-expanded', 'false'); };
+    document.addEventListener('click', document._themeCloseHandler);
 
     // Phase 2 PR-4 (사이클 84) — 다국어 i18n 헤더 dropdown
     // Phase 2 PR-4 (Cycle 84) — i18n header dropdown
@@ -862,10 +866,14 @@
         });
       });
 
-      document.addEventListener('click', () => {
+      if (document._langCloseHandler) {
+        document.removeEventListener('click', document._langCloseHandler);
+      }
+      document._langCloseHandler = function() {
         langSwitcher.classList.remove('open');
         langToggle.setAttribute('aria-expanded', 'false');
-      });
+      };
+      document.addEventListener('click', document._langCloseHandler);
     })();
 
     // 모바일 햄버거
@@ -878,13 +886,17 @@
         hamburger.setAttribute('aria-expanded', String(open));
         hamburger.textContent = open ? '✕' : '☰';
       });
-      document.addEventListener('click', () => {
+      if (document._hamburgerCloseHandler) {
+        document.removeEventListener('click', document._hamburgerCloseHandler);
+      }
+      document._hamburgerCloseHandler = function() {
         if (navLinks.classList.contains('open')) {
           navLinks.classList.remove('open');
           hamburger.setAttribute('aria-expanded', 'false');
           hamburger.textContent = '☰';
         }
-      });
+      };
+      document.addEventListener('click', document._hamburgerCloseHandler);
     }
 
     // ── Animation framework ──────────────────────────────────────────────────
@@ -951,6 +963,7 @@
       var _raf, _pct = 0;
 
       function _startProgress() {
+        cancelAnimationFrame(_raf);
         var b = _bar(); if (!b) return;
         _pct = 0;
         b.classList.add('is-loading');
@@ -1013,10 +1026,17 @@
 
       // 일반 페이지 언로드 폴백 (외부 링크, HTMX 미개입 경우)
       // Fallback for non-HTMX navigations (external links, forms bypassing HTMX)
-      window.addEventListener('beforeunload', _finishProgress);
-      window.addEventListener('pageshow', function(e) {
-        if (e.persisted) _resetProgress();
-      });
+      if (globalThis._progressBeforeUnloadHandler) {
+        globalThis.removeEventListener('beforeunload', globalThis._progressBeforeUnloadHandler);
+      }
+      globalThis._progressBeforeUnloadHandler = _finishProgress;
+      globalThis.addEventListener('beforeunload', globalThis._progressBeforeUnloadHandler);
+
+      if (globalThis._progressPageShowHandler) {
+        globalThis.removeEventListener('pageshow', globalThis._progressPageShowHandler);
+      }
+      globalThis._progressPageShowHandler = function(e) { if (e.persisted) _resetProgress(); };
+      globalThis.addEventListener('pageshow', globalThis._progressPageShowHandler);
     })();
 
     // Chart.js 전역 애니메이션 기본값 (차트 라이브러리가 로드된 경우에만)
