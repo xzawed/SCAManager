@@ -996,6 +996,9 @@
       // hx-boost 네비게이션 완료 → 프로그레스 바 완료 (실제 지연 제거 핵심)
       // hx-boost navigation settled → finish progress bar (key to real latency elimination)
       document.addEventListener('htmx:afterSettle', _finishProgress);
+      // 뒤로가기(historyRestore) 시 mid-animation 고착 방지
+      // Prevent progress bar from freezing mid-animation on back navigation
+      document.addEventListener('htmx:historyRestore', _finishProgress);
 
       // 일반 페이지 언로드 폴백 (외부 링크, HTMX 미개입 경우)
       // Fallback for non-HTMX navigations (external links, forms bypassing HTMX)
