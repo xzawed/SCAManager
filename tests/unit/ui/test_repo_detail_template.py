@@ -84,7 +84,11 @@ def _extract_script_blocks(html: str) -> list[str]:
 
     Extract the inner content of each <script>...</script> block.
     """
-    return re.findall(r"<script[^>]*>(.*?)</script\s*>", html, re.DOTALL | re.IGNORECASE)
+    return re.findall(
+        r"<script\b[^>]*>(.*?)</script\b[^>]*>",
+        html,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
 
 
 # ─── Test 1: Script Block 2 는 IIFE 로 래핑돼야 함 ────────────────────────────
