@@ -256,7 +256,7 @@
     document.removeEventListener('htmx:afterSettle', document._riHtmxHandler);
     document.removeEventListener('htmx:historyRestore', document._riHtmxHandler);
   }
-  document._riHtmxHandler = buildRiChart;
+  document._riHtmxHandler = function() { buildRiChart(false); };
   document.addEventListener('htmx:afterSettle', document._riHtmxHandler);
   document.addEventListener('htmx:historyRestore', document._riHtmxHandler);
 })();

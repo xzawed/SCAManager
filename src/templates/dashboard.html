@@ -629,7 +629,7 @@
         var cs = getComputedStyle(document.body);
         // CSS 변수로만 색상 결정 — hex 직접 사용 금지 (ui.md 의무)
         // Color determined solely via CSS variables — no hex fallbacks (ui.md rule)
-        var colorBorder = cs.getPropertyValue('--accent-primary').trim() || cs.getPropertyValue('--accent').trim();
+        var colorBorder = cs.getPropertyValue('--accent').trim();
 
         if (window._repoTrendChart) { window._repoTrendChart.destroy(); }
         window._repoTrendChart = new Chart(ctx, {
@@ -665,6 +665,16 @@
       }
       document._reposThemeHandler = function() { buildRepoTrendChart(false); };
       document.addEventListener('themechange', document._reposThemeHandler);
+
+      /* htmx 재방문 시 차트 재빌드 — remove-before-add 패턴
+         Rebuild chart on htmx revisit — remove-before-add pattern */
+      if (document._reposHtmxHandler) {
+        document.removeEventListener('htmx:afterSettle', document._reposHtmxHandler);
+        document.removeEventListener('htmx:historyRestore', document._reposHtmxHandler);
+      }
+      document._reposHtmxHandler = function() { buildRepoTrendChart(false); };
+      document.addEventListener('htmx:afterSettle', document._reposHtmxHandler);
+      document.addEventListener('htmx:historyRestore', document._reposHtmxHandler);
     })();
     </script>
     {% endif %}
@@ -1253,6 +1263,16 @@
   }
   document._dashThemeHandler = function() { buildDashChart(false); };
   document.addEventListener('themechange', document._dashThemeHandler);
+
+  /* htmx 재방문 시 차트 재빌드 — remove-before-add 패턴
+     Rebuild chart on htmx revisit — remove-before-add pattern */
+  if (document._dashHtmxHandler) {
+    document.removeEventListener('htmx:afterSettle', document._dashHtmxHandler);
+    document.removeEventListener('htmx:historyRestore', document._dashHtmxHandler);
+  }
+  document._dashHtmxHandler = function() { buildDashChart(false); };
+  document.addEventListener('htmx:afterSettle', document._dashHtmxHandler);
+  document.addEventListener('htmx:historyRestore', document._dashHtmxHandler);
 </script>
 {% endif %}
 

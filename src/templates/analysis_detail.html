@@ -809,6 +809,16 @@
   }
   document._adThemeHandler = function() { _buildAnalysisChart(false); };
   document.addEventListener('themechange', document._adThemeHandler);
+
+  /* htmx 재방문(historyRestore/afterSettle) 시 차트 재빌드 — remove-before-add 패턴
+     Rebuild chart on htmx historyRestore/afterSettle — remove-before-add pattern */
+  if (document._adHtmxHandler) {
+    document.removeEventListener('htmx:afterSettle', document._adHtmxHandler);
+    document.removeEventListener('htmx:historyRestore', document._adHtmxHandler);
+  }
+  document._adHtmxHandler = function() { _buildAnalysisChart(); };
+  document.addEventListener('htmx:afterSettle', document._adHtmxHandler);
+  document.addEventListener('htmx:historyRestore', document._adHtmxHandler);
 })();
 </script>
 {% endif %}
