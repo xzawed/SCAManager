@@ -472,10 +472,10 @@
 <!-- Step C: Chart.js vendoring — CDN 차단/오프라인 환경에서 빈 차트 회피 / Vendored Chart.js -->
 <script src="/static/vendor/chart.umd.min.js"></script>
 <script>
-  /* ── 테마 토큰 읽기 — documentElement 기준 (themes.css :root/:html[data-theme] 정의 위치)
-     Read theme tokens from documentElement (themes.css defines on :root / html[data-theme]) */
+  /* ── 테마 토큰 읽기 — body 기준 (themes.css가 body[data-theme]에 변수 정의)
+     Read theme tokens from body — themes.css defines variables on body[data-theme] */
   function getThemeColors() {
-    const s = getComputedStyle(document.documentElement);
+    const s = getComputedStyle(document.body);
     const accent    = s.getPropertyValue('--accent').trim()       || '#6366f1';
     const accentRgb = s.getPropertyValue('--accent-rgb').trim()   || '99,102,241';
     const muted     = s.getPropertyValue('--text-2').trim()       || '#64748b';
@@ -488,10 +488,10 @@
     return { accent, accentRgb, muted, border, tipBg, tipText, bgBase, success, danger };
   }
 
-  /* 등급별 포인트 색상 — CSS 변수에서 직접 읽어 테마 자동 반영
-     Grade-based point color from CSS vars — auto-adapts to any theme */
+  /* 등급별 포인트 색상 — body CSS 변수 기준, 테마 자동 반영
+     Grade-based point color from body CSS vars — auto-adapts to any theme */
   function gradeColor(grade) {
-    const s = getComputedStyle(document.documentElement);
+    const s = getComputedStyle(document.body);
     const map = {
       'A': s.getPropertyValue('--grade-a').trim() || '#4ade80',
       'B': s.getPropertyValue('--grade-b').trim() || '#60a5fa',
