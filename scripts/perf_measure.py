@@ -248,18 +248,25 @@ def _http_ttfb(url: str, *, headers: dict | None = None, allow_redirects: bool =
     """
     times: list[float] = []
     status = None
-    for _ in range(3):
+    with requests.Session() as session:
+        # 워밍업 — TCP 연결 수립, Windows IPv6→IPv4 DNS fallback 지연 제거, 측정값 제외
+        # Warmup — establish TCP connection, eliminates Windows IPv6→IPv4 DNS fallback latency, excluded from measurements
         try:
-            # stream=True: 응답 헤더만 수신 후 반환 — body 다운로드 제외 (strict TTFB)
-            # stream=True: returns after receiving headers only — excludes body download (strict TTFB)
-            with requests.get(
-                url, headers=headers or {}, allow_redirects=allow_redirects,
-                timeout=10, stream=True,
-            ) as r:
-                times.append(r.elapsed.total_seconds() * 1000)
-                status = r.status_code
+            session.get(url, headers=headers or {}, allow_redirects=allow_redirects, timeout=10)
         except Exception:  # noqa: BLE001
             pass
+        for _ in range(3):
+            try:
+                # stream=True: 응답 헤더만 수신 후 반환 — body 다운로드 제외 (strict TTFB)
+                # stream=True: returns after receiving headers only — excludes body download (strict TTFB)
+                with session.get(
+                    url, headers=headers or {}, allow_redirects=allow_redirects,
+                    timeout=10, stream=True,
+                ) as r:
+                    times.append(r.elapsed.total_seconds() * 1000)
+                    status = r.status_code
+            except Exception:  # noqa: BLE001
+                pass
     avg = round(sum(times) / len(times)) if times else None
     return {
         "ttfb": {
