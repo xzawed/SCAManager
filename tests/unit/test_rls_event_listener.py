@@ -86,7 +86,7 @@ def test_listener_emits_set_local_on_postgresql_with_user_id(
     _set_rls_user_id_per_query(
         mock_pg_conn, mock_cursor, "SELECT 1", {}, None, False
     )
-    mock_cursor.execute.assert_called_once_with("SET LOCAL app.user_id = '42'")
+    mock_cursor.execute.assert_called_once_with("SET LOCAL app.user_id = %s", ("42",))
 
 
 # ---------------------------------------------------------------------------
@@ -101,7 +101,7 @@ def test_listener_emits_empty_on_postgresql_no_user(mock_pg_conn, mock_cursor):
     _set_rls_user_id_per_query(
         mock_pg_conn, mock_cursor, "SELECT 1", {}, None, False
     )
-    mock_cursor.execute.assert_called_once_with("SET LOCAL app.user_id = ''")
+    mock_cursor.execute.assert_called_once_with("SET LOCAL app.user_id = %s", ("",))
 
 
 # ---------------------------------------------------------------------------
