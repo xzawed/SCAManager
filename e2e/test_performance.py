@@ -1,7 +1,10 @@
 """E2E 성능 측정 테스트 — @pytest.mark.perf 마커로 선택 실행.
 E2E performance tests — selectively run via @pytest.mark.perf.
 """
+import time
+
 import pytest
+import requests
 
 THRESHOLDS = {
     "ttfb": 500,   # ms — 로컬 SQLite 기준 완화값 / relaxed for local SQLite
@@ -134,10 +137,10 @@ def test_login_load(perf_page, base_url):
 def test_root_fcp(perf_page, base_url):
     """/ (landing) FCP < 1500ms."""
     stats = _measure_page(perf_page, f"{base_url}/")
-    if stats["fcp"]["avg"] is not None:
-        assert stats["fcp"]["avg"] < THRESHOLDS["fcp"], (
-            f"FCP {stats['fcp']['avg']}ms >= {THRESHOLDS['fcp']}ms"
-        )
+    assert stats["fcp"]["avg"] is not None, "FCP was not captured by PerformanceObserver"
+    assert stats["fcp"]["avg"] < THRESHOLDS["fcp"], (
+        f"FCP {stats['fcp']['avg']}ms >= {THRESHOLDS['fcp']}ms"
+    )
 
 
 @pytest.mark.perf
@@ -151,12 +154,24 @@ def test_root_load(perf_page, base_url):
 
 
 @pytest.mark.perf
-def test_health_ttfb(perf_page, base_url):
-    """/health API 응답 시간 < 300ms."""
-    stats = _measure_page(perf_page, f"{base_url}/health")
-    assert stats["ttfb"]["avg"] is not None
-    assert stats["ttfb"]["avg"] < THRESHOLDS["health_ttfb"], (
-        f"/health TTFB {stats['ttfb']['avg']}ms >= {THRESHOLDS['health_ttfb']}ms"
+def test_health_ttfb(base_url):
+    """/health API 응답 시간 < 300ms — requests Session으로 직접 측정.
+    /health TTFB measured with requests.Session — Playwright overhead unnecessary.
+    """
+    # Session 재사용으로 TCP 연결 유지 — Windows localhost DNS fallback 오버헤드 제거
+    # Session reuse keeps TCP alive — eliminates Windows localhost IPv6→IPv4 DNS fallback latency.
+    times = []
+    with requests.Session() as session:
+        session.get(f"{base_url}/health", timeout=5)  # 워밍업 (첫 연결 오버헤드 제외)
+        for _ in range(3):
+            start = time.perf_counter()
+            resp = session.get(f"{base_url}/health", timeout=5)
+            elapsed_ms = round((time.perf_counter() - start) * 1000)
+            assert resp.status_code == 200
+            times.append(elapsed_ms)
+    avg_ms = round(sum(times) / len(times))
+    assert avg_ms < THRESHOLDS["health_ttfb"], (
+        f"/health avg {avg_ms}ms >= {THRESHOLDS['health_ttfb']}ms"
     )
 
 
@@ -176,10 +191,10 @@ def test_dashboard_ttfb(perf_page, base_url):
 def test_dashboard_lcp(perf_page, base_url):
     """/dashboard LCP < 2500ms."""
     stats = _measure_page(perf_page, f"{base_url}/dashboard")
-    if stats["lcp"]["avg"] is not None:
-        assert stats["lcp"]["avg"] < THRESHOLDS["lcp"], (
-            f"LCP {stats['lcp']['avg']}ms >= {THRESHOLDS['lcp']}ms"
-        )
+    assert stats["lcp"]["avg"] is not None, "LCP was not captured by PerformanceObserver"
+    assert stats["lcp"]["avg"] < THRESHOLDS["lcp"], (
+        f"LCP {stats['lcp']['avg']}ms >= {THRESHOLDS['lcp']}ms"
+    )
 
 
 @pytest.mark.perf
