@@ -43,6 +43,12 @@ class RepoConfig(Base):
     # Nullable=True (NULL = 사용자 preferred_language fallback / NULL = fallback to user)
     notification_language = Column(String(5), nullable=True)
 
+    # 리포별 Claude 코드리뷰 모델 override (Alembic 0032)
+    # Per-repo Claude review model override (Alembic 0032)
+    # NULL = settings.claude_review_model 전역 기본값 사용
+    # NULL = fall back to settings.claude_review_model global default
+    review_model = Column(String(50), nullable=True)
+
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))

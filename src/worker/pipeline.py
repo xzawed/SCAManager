@@ -347,6 +347,7 @@ async def _save_and_gate(db: Session, params: _AnalysisSaveParams):
         params.ai_review, params.score_result, params.analysis_results,
         source="pr" if params.pr_number else "push",
     )
+    ai = params.ai_review
     analysis = analysis_repo.save_new(db, Analysis(
         repo_id=repo.id,
         commit_sha=params.commit_sha,
@@ -356,6 +357,9 @@ async def _save_and_gate(db: Session, params: _AnalysisSaveParams):
         grade=params.score_result.grade,
         result=result_dict,
         author_login=params.author_login,
+        review_model=getattr(ai, "used_model", None),
+        input_tokens=getattr(ai, "input_tokens", None) or None,
+        output_tokens=getattr(ai, "output_tokens", None) or None,
     ))
     analysis_id = analysis.id
     try:
@@ -469,12 +473,22 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
             # AI review output language = repo owner's preferred_language. RepoConfig.notification_language
             # is for channel-level (notifier/_language.py) — AI review is DB-stored + reused across channels.
             review_language = _resolve_review_language(repo_name)
+            # 리포별 모델 override 조회 — 실패 시 None (전역 기본값 fallback, 비중요 경로)
+            # Fetch per-repo model override — falls back to None (global default) on error
+            repo_review_model: str | None = None
+            try:
+                with SessionLocal() as db_cfg:
+                    repo_review_model = get_repo_config(db_cfg, repo_name).review_model or None
+            except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+                pass  # 모델 조회 실패 = 전역 기본값으로 fallback (분석 중단 불필요)
+
             with stage_timer("analyze", repo=repo_log) as ctx:
                 analysis_results, ai_review = await asyncio.gather(
                     _run_static_analysis(files),
                     review_code(
                         settings.anthropic_api_key, commit_message, patches,
                         language=review_language,
+                        model=repo_review_model,
                     ),
                 )
                 ctx["file_count"] = len(analysis_results)

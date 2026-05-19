@@ -42,6 +42,13 @@ class AiReviewResult:  # pylint: disable=too-many-instance-attributes
     file_feedbacks: list[dict] = field(default_factory=list)  # 파일별 피드백
     status: str = "success"  # "success" | "no_api_key" | "empty_diff" | "api_error" | "parse_error"
     detected_languages: list[str] = field(default_factory=list)  # 감지된 언어 목록
+    # Anthropic API 실제 토큰 사용량 — 비용 추적용 (0 = API 미호출 또는 오류)
+    # Actual Anthropic API token usage — for cost tracking (0 = not called or error)
+    input_tokens: int = 0
+    output_tokens: int = 0
+    # 실제 사용된 모델명 — None = 전역 기본값 사용
+    # Actual model used — None means global default was used
+    used_model: str | None = None
 
 
 async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching + 예외 분기로 인한 누적 (사이클 84 i18n)
@@ -49,6 +56,7 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
     commit_message: str,
     patches: list[tuple[str, str]],
     language: str = "en",
+    model: str | None = None,
 ) -> AiReviewResult:
     """Claude API로 코드를 리뷰하고 점수를 반환한다. API key가 없으면 기본값 반환.
 
@@ -83,7 +91,7 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
     # Set 60s — well above typical 5-15s response, far below SDK default.
     # max_retries=2 — explicit so SDK upgrades cannot silently change retry behavior.
     client = anthropic.AsyncAnthropic(api_key=api_key, timeout=60.0, max_retries=2)
-    model = settings.claude_review_model
+    model = model or settings.claude_review_model
     # Phase 4 PR-12 — language 별 system prompt (출력 언어 지시 포함).
     # Phase 4 PR-12 — per-language system prompt (with output language directive).
     system_text = get_system_prompt(language)
@@ -117,6 +125,9 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
         )
         result = _parse_response(response.content[0].text)
         result.detected_languages = languages
+        result.input_tokens = input_tokens
+        result.output_tokens = output_tokens
+        result.used_model = model
         return result
     except Exception as exc:  # pylint: disable=broad-exception-caught  # noqa: BLE001
         # anthropic/httpx 는 다양한 예외를 발생시킬 수 있음 — 모두 graceful fallback

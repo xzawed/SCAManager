@@ -33,6 +33,9 @@ class RepoConfigData:  # pylint: disable=too-many-instance-attributes
     # Phase 1 PR-1c (사이클 84) — 다국어 지원 리포별 알림 언어 override
     # NULL = 사용자 preferred_language fallback (Phase 3 PR-9~11 알림 채널 영역)
     notification_language: str | None = None
+    # 리포별 Claude 코드리뷰 모델 override (Alembic 0032)
+    # NULL = settings.claude_review_model 전역 기본값 사용
+    review_model: str | None = None
     # leaderboard_opt_in 폐기 (그룹 60 사용자 결정 정정 — alembic 0025)
 
 

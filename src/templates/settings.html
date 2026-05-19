@@ -1110,6 +1110,25 @@
         {{ 'settings_page.inbound.behavior_notice' | i18n_args(locale | default('ko')) | safe }}
       </p>
 
+      {# AI 리뷰 모델 선택 — Alembic 0032 #}
+      <div class="s-section-label">AI 코드리뷰 모델</div>
+      <div class="field-row">
+        <select name="review_model" form="settingsForm" class="field-input" style="max-width:420px;">
+          <option value="">전역 기본값 사용</option>
+          {% for m in claude_models %}
+          <option value="{{ m.id }}" {% if config.review_model == m.id %}selected{% endif %}>{{ m.label }}</option>
+          {% endfor %}
+        </select>
+        <span class="field-hint">
+          리포별 AI 리뷰 모델을 선택합니다.
+          Haiku → 빠름·저렴 ($0.80/1M) · Sonnet → 균형 ($3/1M) · Opus → 고품질 ($15/1M).
+          비어두면 서버 전역 기본값(claude-sonnet-4-6)을 따릅니다.
+          ※ 가격은 Anthropic 공식 기준 (실제 청구와 다를 수 있습니다).
+        </span>
+      </div>
+
+      <div class="s-divider"></div>
+
       <div class="s-section-label">{{ 'settings_page.inbound.section_github_webhook' | i18n_args(locale | default('ko')) }}</div>
       <div class="hook-btns" style="margin-bottom:.5rem;">
         <button type="submit" class="hook-btn" form="reinstall_webhook_form"

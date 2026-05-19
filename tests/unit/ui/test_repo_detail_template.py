@@ -50,6 +50,10 @@ _MINIMAL_CONTEXT = {
     "locale": "ko",
     # repo_id 는 템플릿에서 선택적 사용 — None 허용
     "repo_id": None,
+    # Alembic 0032 — 월별 비용 추적 (빈 값으로 초기화)
+    "monthly_cost_usd": 0.0,
+    "monthly_token_count": 0,
+    "monthly_cost_month": "2026-05",
 }
 
 

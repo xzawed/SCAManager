@@ -123,3 +123,39 @@ MAX_BOT_EVENTS_PER_HOUR: int = 6
 SKIP_CI_MARKERS: tuple[str, ...] = ("[skip ci]", "[skip-sca]", "[ci skip]")
 # 커밋 메시지에 이 문자열이 포함되면 분석 skip
 # If any of these strings appear in a commit message, analysis is skipped
+
+# ── Claude AI 모델 목록 + 요금 (Anthropic 공식 기준, USD/1M 토큰) ─────────
+# ── Claude AI model catalog + pricing (Anthropic official, USD per 1M tokens) ─
+# 출처: https://www.anthropic.com/pricing (2025-05 기준 — 실제 청구와 다를 수 있음)
+# Source: https://www.anthropic.com/pricing (as of 2025-05 — actual billing may differ)
+CLAUDE_MODELS: list[dict] = [
+    {
+        "id": "claude-haiku-4-5-20251001",
+        "label": "Claude Haiku 4.5 (빠름/저렴 · Fast/Cheap)",
+        "input_price": 0.80,
+        "output_price": 4.00,
+    },
+    {
+        "id": "claude-sonnet-4-6",
+        "label": "Claude Sonnet 4.6 (균형 · Balanced) ★기본값",
+        "input_price": 3.00,
+        "output_price": 15.00,
+    },
+    {
+        "id": "claude-opus-4-7",
+        "label": "Claude Opus 4.7 (고품질 · High Quality)",
+        "input_price": 15.00,
+        "output_price": 75.00,
+    },
+]
+
+# 모델 ID → 가격 딕셔너리 (빠른 조회용)
+# Model ID → pricing dict (for fast lookup)
+CLAUDE_MODEL_PRICING: dict[str, dict[str, float]] = {
+    m["id"]: {"input": m["input_price"], "output": m["output_price"]}
+    for m in CLAUDE_MODELS
+}
+
+# 모델 미등록 시 fallback (Sonnet 기준)
+# Fallback pricing when model not in registry (Sonnet tier)
+CLAUDE_PRICING_FALLBACK: dict[str, float] = {"input": 3.00, "output": 15.00}
