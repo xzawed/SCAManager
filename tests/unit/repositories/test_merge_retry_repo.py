@@ -408,6 +408,40 @@ def test_claim_batch_only_ids_filter(db_session):
     assert claimed[0].id == row1.id
 
 
+def test_claim_batch_uses_for_update_skip_locked_on_postgresql():
+    """PostgreSQL dialect 일 때 WITH FOR UPDATE SKIP LOCKED 경로가 활성화된다.
+    When dialect is 'postgresql', claim_batch() calls with_for_update(skip_locked=True).
+    """
+    from unittest.mock import MagicMock, call  # noqa: PLC0415
+
+    # db.bind.dialect.name = 'postgresql' 로 mock
+    # Mock db so that db.bind.dialect.name returns 'postgresql'.
+    mock_db = MagicMock()
+    mock_db.bind.dialect.name = "postgresql"
+
+    # query chain: query() → filter() → with_for_update() → order_by() → limit() → all()
+    # query() → filter() 는 두 번 호출됨 (claimed_at IS NULL | ... 조합 포함)
+    # query chain: two filter() calls (pending + date) then with_for_update.
+    mock_query = MagicMock()
+    mock_db.query.return_value = mock_query
+    mock_query.filter.return_value = mock_query
+    mock_query.with_for_update.return_value = mock_query
+    mock_query.order_by.return_value = mock_query
+    mock_query.limit.return_value = mock_query
+    # 행 없음 → 빈 리스트 반환 (UPDATE 단계 건너뜀)
+    # No rows returned — skips UPDATE step (clean path).
+    mock_query.all.return_value = []
+
+    from datetime import datetime, timezone  # noqa: PLC0415
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    result = merge_retry_repo.claim_batch(mock_db, now=now)
+
+    assert result == []
+    # with_for_update(skip_locked=True) 가 반드시 호출되어야 한다
+    # with_for_update(skip_locked=True) must be called for PostgreSQL.
+    mock_query.with_for_update.assert_called_once_with(skip_locked=True)
+
+
 # ---------------------------------------------------------------------------
 # 3. release_claim()
 # ---------------------------------------------------------------------------

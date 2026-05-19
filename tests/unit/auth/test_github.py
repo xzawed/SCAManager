@@ -41,6 +41,62 @@ def test_logout_clears_session_and_redirects():
     assert "/login" in r.headers["location"]
 
 
+def test_logout_with_user_id_deletes_token_from_db():
+    """user_id 가 세션에 있을 때 logout → DB에서 github_access_token 삭제 후 /login 리다이렉트.
+    When user_id exists in session, logout deletes github_access_token from DB and redirects.
+    """
+    import json
+    import base64
+    import itsdangerous
+
+    # SESSION_SECRET 과 동일한 값으로 Starlette SessionMiddleware 가 사용하는 서명 쿠키 생성
+    # Create a signed session cookie using the same SESSION_SECRET as SessionMiddleware.
+    secret = os.environ["SESSION_SECRET"]
+    signer = itsdangerous.TimestampSigner(secret)
+    session_payload = base64.b64encode(json.dumps({"user_id": 42}).encode()).decode()
+    signed = signer.sign(session_payload).decode()
+
+    mock_db = MagicMock()
+
+    with patch("src.auth.github.SessionLocal") as mock_sl:
+        mock_sl.return_value.__enter__.return_value = mock_db
+        r = client.post(
+            "/auth/logout",
+            follow_redirects=False,
+            cookies={"session": signed},
+        )
+
+    assert r.status_code == 302
+    assert "/login" in r.headers["location"]
+    # DB execute (UPDATE users SET github_access_token=NULL) 와 commit 이 호출되어야 한다
+    # DB execute (UPDATE users SET github_access_token=NULL) and commit must be called.
+    assert mock_db.execute.called
+    assert mock_db.commit.called
+    # execute 인자가 UPDATE users ... github_access_token=None 인지 검증
+    # Verify execute arg is UPDATE users ... github_access_token=None
+    import sqlalchemy
+    call_args = mock_db.execute.call_args
+    stmt = call_args[0][0]  # 첫 번째 positional arg / First positional arg
+    assert isinstance(stmt, sqlalchemy.sql.dml.Update), (
+        "execute() 의 첫 인자가 SQLAlchemy Update 구문이 아니다 / "
+        "First arg of execute() is not a SQLAlchemy Update statement"
+    )
+    # stmt._values 키: Column 객체 — 이름으로 검증
+    # stmt._values keys are Column objects — verify by name
+    col_names = [col.key for col in stmt._values]
+    assert "github_access_token" in col_names, (
+        f"UPDATE 구문에 github_access_token 컬럼이 없다 / "
+        f"UPDATE statement missing github_access_token column. Found: {col_names}"
+    )
+    # None 값 검증 — BindParameter.value 또는 value 속성 확인
+    # Verify None value via BindParameter
+    bind_param = stmt._values[next(c for c in stmt._values if c.key == "github_access_token")]
+    assert bind_param.value is None, (
+        f"github_access_token 이 None 으로 설정되지 않았다 (실제값: {bind_param.value!r}) / "
+        f"github_access_token not set to None (actual: {bind_param.value!r})"
+    )
+
+
 def test_callback_creates_new_user_and_redirects():
     """콜백 처리 시 신규 유저를 생성하고 / 로 리다이렉트한다."""
     mock_token = {"access_token": "gho_new_token"}
