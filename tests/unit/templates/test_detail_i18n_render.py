@@ -47,6 +47,10 @@ def _repo_ctx(**overrides) -> dict:
         "chart_labels": ["2026-05-01"],
         "chart_scores": [80],
         "hook_installed": False,
+        # Alembic 0032 — 월별 비용 추적
+        "monthly_cost_usd": 0.0,
+        "monthly_token_count": 0,
+        "monthly_cost_month": "2026-05",
     }
     base.update(overrides)
     return base
