@@ -518,8 +518,8 @@
     };
   }
 
-  let chart;
-  let _chartData = [];
+  var chart;
+  var _chartData = [];
 
   function buildChart(data, animate) {
     if (data !== undefined) _chartData = data;
@@ -654,6 +654,7 @@
   document.addEventListener('htmx:historyRestore', document._repoHtmxHandler);
 </script>
 <script>
+(function() {
 // ── 데이터 주입 ──────────────────────────────────────
 const ALL_ANALYSES = {{ analyses | tojson }};
 const REPO_NAME_JS = {{ repo_name | tojson }};
@@ -967,5 +968,6 @@ document.getElementById('dateTo').addEventListener('change', function() {
 updateSliderFill();
 updateSortHeaders();
 applyFilters();
+})();
 </script>
 {% endblock %}
