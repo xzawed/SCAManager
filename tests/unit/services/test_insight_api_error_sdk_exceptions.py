@@ -28,7 +28,6 @@ from sqlalchemy.orm import Session
 
 from src.database import Base
 from src.models.analysis import Analysis  # noqa: F401  (Base.metadata 등록 / register on metadata)
-from src.models.merge_attempt import MergeAttempt  # noqa: F401
 from src.models.repository import Repository  # noqa: F401
 from src.models.user import User  # noqa: F401
 
