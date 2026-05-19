@@ -963,7 +963,10 @@
                 <div id="telegramOtpDisplay" style="display:none;margin-top:.65rem;">
                   <code id="telegramOtpCode" style="font-size:1.4rem;font-weight:700;letter-spacing:.12em;"></code>
                   <span style="font-size:12px;color:var(--text-2);margin-left:.5rem;">
-                    {{ 'settings_page.notify.telegram_otp_expires' | i18n_args(locale | default('ko'), remaining='<span id="telegramOtpCountdown">5:00</span>') | safe }}
+                    {# OTP 카운트다운 span — 의도적 HTML이므로 Markup으로 명시 (loader.py XSS 가드에서 이스케이프 제외) #}
+                    {# OTP countdown span — intentional HTML marked as Markup (bypasses loader.py XSS escape) #}
+                    {% set _otp_countdown_span %}<span id="telegramOtpCountdown">5:00</span>{% endset %}
+                    {{ 'settings_page.notify.telegram_otp_expires' | i18n_args(locale | default('ko'), remaining=_otp_countdown_span) | safe }}
                   </span>
                   <p style="font-size:11px;color:var(--text-2);margin-top:.35rem;margin-bottom:0;">
                     {{ 'settings_page.notify.telegram_otp_invalidated' | i18n_args(locale | default('ko')) }}

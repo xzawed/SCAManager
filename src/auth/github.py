@@ -5,6 +5,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from sqlalchemy import update
+
 from src.config import settings
 from src.crypto import encrypt_token
 from src.database import SessionLocal
@@ -109,5 +111,14 @@ async def auth_callback(request: Request):
 @router.post("/auth/logout")
 async def logout(request: Request):
     """세션 초기화 후 /login 리다이렉트."""
+    user_id = request.session.get("user_id")
+    if user_id:
+        # 로그아웃 시 github_access_token 삭제 — 토큰 무기한 잔존 방지
+        # Clear github_access_token on logout — prevent stale credential retention
+        with SessionLocal() as db:
+            db.execute(
+                update(User).where(User.id == user_id).values(github_access_token=None)
+            )
+            db.commit()
     request.session.clear()
     return RedirectResponse(url="/login", status_code=302)

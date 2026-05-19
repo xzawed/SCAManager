@@ -12,6 +12,7 @@ Used in Phase 2 PR-5~8 (UI multilingual) scope.
 from typing import Any
 
 from jinja2 import Environment
+from markupsafe import Markup, escape as _html_escape
 
 from src.i18n.loader import get_text
 
@@ -30,12 +31,19 @@ def i18n_filter(key: str, locale: str | None = None) -> str:
 def i18n_args_filter(key: str, locale: str | None = None, **kwargs: Any) -> str:
     """Jinja2 필터 — 번역 + 변수 치환.
 
-    Jinja2 filter — translation + variable substitution.
+    XSS 방어: str kwargs에 html.escape 적용 — Markup 인스턴스(의도적 HTML)는 이스케이프 제외.
+    XSS defence: html.escape applied to str kwargs — Markup instances (intentional HTML) pass through.
 
     Example:
         {{ "header.welcome" | i18n_args(locale, name=user.name) }}
     """
-    return get_text(key, locale, **kwargs)
+    # str kwargs에 XSS 가드 적용 — Markup(의도적 HTML)은 그대로 통과
+    # Apply XSS guard to str kwargs — Markup (intentional HTML) passes through unchanged
+    safe_kwargs = {
+        k: v if not isinstance(v, str) or isinstance(v, Markup) else str(_html_escape(v))
+        for k, v in kwargs.items()
+    }
+    return get_text(key, locale, **safe_kwargs)
 
 
 def register_i18n_filters(env: Environment) -> None:

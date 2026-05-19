@@ -265,6 +265,10 @@ def claim_batch(
     if only_ids:
         query = query.filter(MergeRetryQueue.id.in_(only_ids))
 
+    # PostgreSQL: FOR UPDATE SKIP LOCKED로 동시 실행 클레임 방지 (SQLite: 단일 연결로 자동 원자적)
+    # PostgreSQL: FOR UPDATE SKIP LOCKED prevents concurrent duplicate claims (SQLite: atomic under single conn)
+    if db.bind.dialect.name == 'postgresql':
+        query = query.with_for_update(skip_locked=True)
     rows = query.order_by(MergeRetryQueue.next_retry_at.asc()).limit(limit).all()
 
     if not rows:
