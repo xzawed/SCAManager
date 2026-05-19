@@ -4,6 +4,8 @@ InsightNarrativeCache ORM — Insight mode Claude AI narrative 1h TTL cache.
 
 0031 — `repo_id` nullable FK 추가 (repo_id=NULL: 전체 대시보드 캐시, repo_id=N: 리포별 캐시).
 0031 — Add nullable `repo_id` FK (NULL=global dashboard cache, N=repo-specific cache).
+0033 — 에러 추적 컬럼 3개 추가 (last_error_at / error_count / last_error_type).
+0033 — Add 3 error-tracking columns (last_error_at / error_count / last_error_type).
 """
 from datetime import datetime, timezone
 
@@ -49,3 +51,11 @@ class InsightNarrativeCache(Base):
         DateTime, default=lambda: datetime.now(timezone.utc), nullable=False,
     )
     expires_at = Column(DateTime, nullable=False, index=True)
+
+    # 0033 — 에러 추적 컬럼: api_error / parse_error / no_data 발생 시 갱신
+    # 0033 — Error tracking columns: updated on api_error / parse_error / no_data
+    last_error_at = Column(DateTime, nullable=True)
+    error_count = Column(Integer, nullable=False, default=0, server_default="0")
+    # 예외 클래스명 또는 status 문자열 (예: "APITimeoutError", "api_error", "no_data")
+    # Exception class name or status string (e.g. "APITimeoutError", "api_error", "no_data")
+    last_error_type = Column(String(100), nullable=True)

@@ -348,6 +348,12 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
                 return cached
 
     if not kpi.get("analysis_count"):
+        if user_id is not None:
+            from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+            insight_narrative_cache_repo.record_error_repo(
+                db, user_id=user_id, repo_id=repo_id, days=days,
+                error_type="no_data", now=_now,
+            )
         return {"text": "", "status": "no_data"}
 
     user_prompt = (
@@ -385,7 +391,7 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
         raw = response.content[0].text
         data = json.loads(_extract_narrative_json(raw))
         result: dict[str, Any] = {"text": str(data.get("text", raw)), "status": "success"}
-    except Exception:  # pylint: disable=broad-exception-caught  # noqa: BLE001
+    except Exception as exc:  # pylint: disable=broad-exception-caught  # noqa: BLE001
         duration_ms = (time.perf_counter() - start) * 1000
         log_claude_api_call(
             model=settings.claude_insight_model,
@@ -393,8 +399,15 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
             input_tokens=0,
             output_tokens=0,
             status="error",
+            error_type=type(exc).__name__,
         )
         logger.exception("repo_insight_narrative API call failed")
+        if user_id is not None:
+            from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+            insight_narrative_cache_repo.record_error_repo(
+                db, user_id=user_id, repo_id=repo_id, days=days,
+                error_type=type(exc).__name__, now=_now,
+            )
         return {"text": "", "status": "api_error"}
 
     if user_id is not None:

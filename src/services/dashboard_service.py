@@ -838,6 +838,11 @@ async def insight_narrative(  # pylint: disable=too-many-locals
     # 데이터 0건이면 Claude API 호출 비용 발생 안 시킴 (cost-saver early return)
     # Skip Claude API call when there's no data (cost-saver early return)
     if int(kpi.get("analysis_count", {}).get("value", 0) or 0) == 0:
+        if user_id is not None:
+            from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+            insight_narrative_cache_repo.record_error(
+                db, user_id=user_id, days=days, error_type="no_data", now=_now,
+            )
         return _build_insight_response(status="no_data", days=days)
 
     user_prompt = _build_insight_user_prompt(
@@ -851,10 +856,20 @@ async def insight_narrative(  # pylint: disable=too-many-locals
     # Phase 2 d-🅓 (Cycle 74) — Insight-only Haiku (67% cheaper, AI review keeps Sonnet)
     text = await _call_insight_claude_api(client, settings.claude_insight_model, user_prompt)
     if text is None:
+        if user_id is not None:
+            from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+            insight_narrative_cache_repo.record_error(
+                db, user_id=user_id, days=days, error_type="api_error", now=_now,
+            )
         return _build_insight_response(status="api_error", days=days)
 
     cards = _parse_insight_cards(text)
     if cards is None:
+        if user_id is not None:
+            from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+            insight_narrative_cache_repo.record_error(
+                db, user_id=user_id, days=days, error_type="parse_error", now=_now,
+            )
         return _build_insight_response(status="parse_error", days=days)
 
     response = _build_insight_response(status="success", days=days, cards=cards)
