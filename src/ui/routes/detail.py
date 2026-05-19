@@ -1,6 +1,7 @@
 """리포 분석 이력 + 분석 상세 페이지 — catch-all `/repos/{name}` 는 마지막에 include."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -8,12 +9,29 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from src.auth.session import CurrentUser, require_login
+from src.constants import CLAUDE_MODEL_PRICING, CLAUDE_PRICING_FALLBACK
 from src.database import SessionLocal
 from src.models.analysis import Analysis
 from src.repositories import analysis_feedback_repo
 from src.ui._helpers import get_accessible_repo, get_locale, templates
 
 router = APIRouter()
+
+
+def _calc_monthly_cost(rows: list) -> float:
+    """분석 행 목록에서 Anthropic API 예상 비용(USD)을 계산한다.
+
+    Calculate estimated Anthropic API cost (USD) from a list of analysis rows.
+    입력: (review_model, input_tokens, output_tokens) 튜플 목록
+    Input: list of (review_model, input_tokens, output_tokens) tuples.
+    """
+    total = 0.0
+    for row in rows:
+        pricing = CLAUDE_MODEL_PRICING.get(row.review_model or "", CLAUDE_PRICING_FALLBACK)
+        inp = (row.input_tokens or 0) / 1_000_000
+        out = (row.output_tokens or 0) / 1_000_000
+        total += inp * pricing["input"] + out * pricing["output"]
+    return round(total, 4)
 
 
 class FeedbackRequest(BaseModel):
@@ -154,6 +172,26 @@ def repo_detail(  # pylint: disable=too-many-positional-arguments
             for a in analyses
         ]
         rev = list(reversed(analyses_data))
+
+        # 이번 달 비용 계산 (매월 1일 00:00 UTC ~ 말일 23:59 UTC 기준)
+        # Monthly cost calculation (1st 00:00 UTC to last day of month)
+        now = datetime.now(timezone.utc)
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        monthly_analyses = (
+            db.query(Analysis.review_model, Analysis.input_tokens, Analysis.output_tokens)
+            .filter(
+                Analysis.repo_id == repo.id,
+                Analysis.created_at >= month_start,
+                Analysis.input_tokens.isnot(None),
+            )
+            .all()
+        )
+        monthly_cost_usd = _calc_monthly_cost(monthly_analyses)
+        monthly_token_count = sum(
+            (row.input_tokens or 0) + (row.output_tokens or 0)
+            for row in monthly_analyses
+        )
+
     return templates.TemplateResponse(request, "repo_detail.html", {
         "repo_name": repo_name, "analyses": analyses_data,
         "chart_labels": [a["created_at"][:10] if a["created_at"] else "" for a in rev],
@@ -161,4 +199,7 @@ def repo_detail(  # pylint: disable=too-many-positional-arguments
         "hook_installed": bool(hook_installed),
         "current_user": current_user,
         "locale": get_locale(request),
+        "monthly_cost_usd": monthly_cost_usd,
+        "monthly_token_count": monthly_token_count,
+        "monthly_cost_month": now.strftime("%Y-%m"),
     })

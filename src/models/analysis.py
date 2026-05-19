@@ -46,4 +46,12 @@ class Analysis(Base):
         index=True,
     )
 
+    # 리뷰에 사용된 Claude 모델 — 비용 계산용 (Alembic 0032)
+    # Claude model used for this review — for cost calculation (Alembic 0032)
+    review_model = Column(String(50), nullable=True)
+    # Anthropic API 실제 토큰 사용량 — 비용 계산용 (Alembic 0032)
+    # Actual Anthropic API token usage — for cost calculation (Alembic 0032)
+    input_tokens = Column(Integer, nullable=True)
+    output_tokens = Column(Integer, nullable=True)
+
     repository = relationship("Repository", back_populates="analyses")

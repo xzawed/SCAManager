@@ -14,6 +14,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from src.auth.session import CurrentUser, require_login
 from src.config_manager.manager import RepoConfigData, get_repo_config, upsert_repo_config
 from src.constants import (
+    CLAUDE_MODELS,
     GATE_DEFAULT_APPROVE_THRESHOLD,
     GATE_DEFAULT_REJECT_THRESHOLD,
     GATE_DEFAULT_MERGE_THRESHOLD,
@@ -207,6 +208,7 @@ async def repo_settings(  # pylint: disable=too-many-positional-arguments,too-ma
         "onboarding_needed": onboarding_needed,
         "initial_mode": initial_mode,
         "locale": get_locale(request),
+        "claude_models": CLAUDE_MODELS,
     })
 
 
@@ -245,6 +247,7 @@ async def update_repo_settings(
                 create_issue=form.get("create_issue") == "on",
                 railway_deploy_alerts=form.get("railway_deploy_alerts") == "on",
                 auto_merge_issue_on_failure=form.get("auto_merge_issue_on_failure") == "on",
+                review_model=form.get("review_model") or None,
                 # leaderboard_opt_in 폐기 (그룹 60 사용자 결정 정정 — alembic 0025)
             ))
             # railway_webhook_token, railway_api_token — RepoConfigData 외부 관리
