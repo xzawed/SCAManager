@@ -85,7 +85,7 @@ def _extract_script_blocks(html: str) -> list[str]:
     Extract the inner content of each <script>...</script> block.
     """
     return re.findall(
-        r"<script[^>]*>(.*?)</script>",
+        r"<script\b[^>]*>(.*?)</script\b[^>]*>",
         html,
         flags=re.DOTALL | re.IGNORECASE,
     )
