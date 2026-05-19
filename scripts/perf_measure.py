@@ -257,14 +257,16 @@ def _http_ttfb(url: str, *, headers: dict | None = None, allow_redirects: bool =
             pass
         for _ in range(3):
             try:
-                # stream=True: 응답 헤더만 수신 후 반환 — body 다운로드 제외 (strict TTFB)
-                # stream=True: returns after receiving headers only — excludes body download (strict TTFB)
+                # stream=True: 응답 헤더만 수신 후 반환 — r.elapsed 는 헤더 수신 시점까지만 측정 (strict TTFB)
+                # stream=True: r.elapsed captures only time-to-headers receipt (strict TTFB)
                 with session.get(
                     url, headers=headers or {}, allow_redirects=allow_redirects,
                     timeout=10, stream=True,
                 ) as r:
                     times.append(r.elapsed.total_seconds() * 1000)
                     status = r.status_code
+                    r.content  # 커넥션 풀 반환 보장 — body 소비 후 안전 반환 (미소비 시 소켓 파기)
+                    # Drain body so urllib3 returns the connection to the pool (undrained = socket discarded)
             except Exception:  # noqa: BLE001
                 pass
     avg = round(sum(times) / len(times)) if times else None
