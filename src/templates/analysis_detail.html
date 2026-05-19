@@ -459,9 +459,15 @@
   .fb-status.error { color: var(--danger); }
 </style>
 <script>
-(function() {
+/* htmx-boost 재방문 시 핸들러 중복 등록 방지 — named function + remove-before-add 패턴 (ui.md)
+   Prevent duplicate handler registration on htmx-boost re-navigation — named function + remove-before-add (ui.md) */
+function _initFeedback() {
   const card = document.getElementById('feedbackCard');
-  if (!card) return;
+  /* feedbackInit guard: 동일 DOM 요소에 중복 초기화 방지 (htmx:afterSettle 이 비내비게이션 요청에도 발화)
+     feedbackInit guard: prevent re-init on same DOM node (htmx:afterSettle fires on non-navigation requests too) */
+  if (!card || card.dataset.feedbackInit) return;
+  card.dataset.feedbackInit = '1';
+
   const analysisId = card.dataset.analysisId;
   const repo = card.dataset.repo;
   const current = card.dataset.currentThumbs;
@@ -500,7 +506,15 @@
       btns.forEach(b => b.disabled = false);
     }
   }));
-})();
+}
+_initFeedback();
+if (document._adFeedbackHandler) {
+  document.removeEventListener('htmx:afterSettle', document._adFeedbackHandler);
+  document.removeEventListener('htmx:historyRestore', document._adFeedbackHandler);
+}
+document._adFeedbackHandler = _initFeedback;
+document.addEventListener('htmx:afterSettle', document._adFeedbackHandler);
+document.addEventListener('htmx:historyRestore', document._adFeedbackHandler);
 </script>
 
 {% set r = analysis.result %}
@@ -736,7 +750,7 @@
       datasets: [{
         data: TREND.map(function(t) { return t.score; }),
         borderColor: accent,
-        backgroundColor: accent + '22',
+        backgroundColor: accentRgb ? ('rgba(' + accentRgb + ', 0.13)') : (accent + '22'),
         pointBackgroundColor: pointColors,
         pointBorderColor: pointBorders,
         pointBorderWidth: 2,
