@@ -93,19 +93,21 @@
     position: relative;
     height: clamp(200px, 30vw, 320px);
   }
-  /* 빈 상태 / Empty state */
+  /* 빈 상태 — position absolute로 컨테이너 전체 채움 / Empty state fills container via absolute */
   .chart-empty-state {
     display: none;
+    position: absolute;
+    inset: 0;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    height: clamp(200px, 30vw, 320px);
     gap: .75rem;
     color: var(--text-2);
-    opacity: .45;
+    opacity: .75;
   }
   .chart-empty-state svg { width: 40px; height: 40px; }
   .chart-empty-state span { font-size: 13px; }
+  .chart-empty-state .chart-empty-sub { font-size: 11px; opacity: .7; }
   .history-header {
     display: flex;
     align-items: center;
@@ -381,6 +383,7 @@
         <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
       </svg>
       <span id="chartEmptyText">분석 이력이 없습니다</span>
+      <span class="chart-empty-sub">Push 또는 PR 이벤트 후 첫 분석이 완료되면 차트가 표시됩니다</span>
     </div>
   </div>
 </div>
