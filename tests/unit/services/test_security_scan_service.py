@@ -162,3 +162,16 @@ async def test_scan_all_repos_iterates_repos(monkeypatch):
         totals = await security_scan_service.scan_all_repos(fake_db)
     assert totals["repos"] == 2
     assert totals["code_scanning"] == 2
+
+
+def test_resolve_token_user_plaintext_none_falls_back_to_env(monkeypatch):
+    """user.plaintext_token=None 이어도 GITHUB_TOKEN 환경변수 fallback 보장.
+    Falls back to GITHUB_TOKEN env when user.plaintext_token is None, even if github_access_token exists."""
+    class _U:
+        # 암호화된 blob 은 있으나 복호화 결과가 None 인 경우
+        # Encrypted blob exists but decryption result is None
+        github_access_token = "encrypted_blob"
+        plaintext_token = None
+    monkeypatch.setenv("GITHUB_TOKEN", "fallback_global_pat")
+    token = security_scan_service._resolve_token(_U())  # noqa: SLF001
+    assert token == "fallback_global_pat"
