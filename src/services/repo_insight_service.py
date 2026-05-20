@@ -352,7 +352,7 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
             from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
             insight_narrative_cache_repo.record_error_repo(
                 db, user_id=user_id, repo_id=repo_id, days=days,
-                error_type="no_data", now=_now,
+                language=language, error_type="no_data", now=_now,
             )
         return {"text": "", "status": "no_data"}
 
@@ -406,7 +406,7 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
             from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
             insight_narrative_cache_repo.record_error_repo(
                 db, user_id=user_id, repo_id=repo_id, days=days,
-                error_type=type(exc).__name__, now=_now,
+                language=language, error_type=type(exc).__name__, now=_now,
             )
         return {"text": "", "status": "api_error"}
 

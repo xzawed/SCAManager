@@ -31,6 +31,7 @@ class InsightNarrativeCache(Base):
             "user_id", "days", "language",
         ),
         Index("ix_insight_cache_repo_id", "repo_id"),
+        Index("ix_insight_cache_last_error_at", "last_error_at"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
