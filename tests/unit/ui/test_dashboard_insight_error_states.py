@@ -191,7 +191,7 @@ def test_route_insight_api_error_overview_services_not_called():
     assert response.status_code == 200
     # api_error 는 insight 분기 내 정상 응답 — overview 분기 미진입 (dashboard_kpi 미호출)
     # api_error is a normal insight response — overview branch NOT entered (dashboard_kpi not called)
-    mock_kpi.assert_not_called(), (
+    assert not mock_kpi.called, (
         "api_error 시 overview 분기 폴백 발생 (dashboard_kpi 호출됨) — 잘못된 에러 처리"
     )
 
