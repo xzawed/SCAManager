@@ -6,7 +6,7 @@ import hmac
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Query
 from pydantic import BaseModel
 
 from src.database import SessionLocal
@@ -29,16 +29,37 @@ router = APIRouter(prefix="/api/hook")
 # ---------------------------------------------------------------------------
 
 @router.get("/verify")
-def verify_hook(repo: str, token: str):
+def verify_hook(
+    repo: str,
+    token: str | None = Query(default=None),
+    authorization: str | None = Header(default=None),
+):
     """pre-push 훅이 Repo 등록 여부를 확인하는 엔드포인트.
 
     hook_token 일치 → 200 {"status": "active"}
     불일치 또는 미등록 → 404
+
+    토큰 전달 방식 (우선순위 순):
+    Token delivery methods (in priority order):
+    1. Authorization: Bearer <token> 헤더 (권장 — 서버/프록시 로그 미노출)
+       Authorization: Bearer <token> header (preferred — not logged by servers/proxies)
+    2. ?token=<token> query param (하위 호환 — deprecated, 향후 제거 예정)
+       ?token=<token> query param (backward-compat — deprecated, will be removed later)
     """
+    # Authorization: Bearer <token> 헤더 우선, 없으면 query param fallback
+    # Prefer Authorization: Bearer header; fall back to query param for backward compat.
+    bearer_token: str | None = None
+    if authorization and authorization.startswith("Bearer "):
+        bearer_token = authorization[7:]
+
+    effective_token = bearer_token or token
+    if not effective_token:
+        raise HTTPException(status_code=401, detail="토큰이 필요합니다")
+
     with SessionLocal() as db:
         config = repo_config_repo.find_by_full_name(db, repo)
 
-    if config is None or not hmac.compare_digest(config.hook_token or "", token):
+    if config is None or not hmac.compare_digest(config.hook_token or "", effective_token):
         raise HTTPException(status_code=404, detail="등록되지 않은 리포 또는 유효하지 않은 토큰")
 
     return {"status": "active"}
