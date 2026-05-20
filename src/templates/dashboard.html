@@ -434,13 +434,13 @@
   .repos-warning-link:hover { text-decoration: underline; }
   .repos-warning-score { margin-left: auto; color: var(--text-2); font-size: 12px; }
   .repos-selector-form { margin-bottom: 24px; }
-  .repos-selector { width: 100%; padding: 10px 14px; background: var(--bg-2); border: 1px solid var(--border-subtle); border-radius: 8px; color: var(--text-1); font-size: 14px; cursor: pointer; }
+  .repos-selector { width: 100%; padding: 10px 14px; background: var(--bg-2, var(--bg-input)); border: 1px solid var(--border-subtle); border-radius: 8px; color: var(--text-1); font-size: 14px; cursor: pointer; }
   @media (max-width: 768px) { .repos-selector { min-height: 44px; font-size: 16px; } }
   .repos-report-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; color: var(--text-1); }
   .repos-section { margin-bottom: 28px; }
   .repos-section h3 { font-size: 14px; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
   .repos-category-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-  .repos-cat-card { background: var(--bg-2); border-radius: 8px; padding: 14px; text-align: center; }
+  .repos-cat-card { background: var(--bg-2, var(--bg-card)); border-radius: 8px; padding: 14px; text-align: center; }
   .repos-cat-value { font-size: 28px; font-weight: 700; }
   .repos-cat-label { font-size: 11px; color: var(--text-2); margin-top: 4px; }
   .repos-cat-security-error .repos-cat-value { color: var(--danger); }
@@ -449,7 +449,7 @@
   .repos-cat-quality-warn .repos-cat-value { color: var(--text-2); }
   .repos-suggestions { list-style: none; padding: 0; }
   .repos-suggestion-item { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border-color-subtle, rgba(255,255,255,0.05)); font-size: 13px; }
-  .repos-suggestion-count { flex-shrink: 0; background: var(--bg-2); border-radius: 4px; padding: 2px 6px; font-size: 11px; color: var(--text-2); }
+  .repos-suggestion-count { flex-shrink: 0; background: var(--bg-2, var(--bg-card)); border-radius: 4px; padding: 2px 6px; font-size: 11px; color: var(--text-2); }
   .repos-suggestion-text { color: var(--text-1); }
   .repos-recommendations { list-style: none; padding: 0; }
   .repos-rec-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border-color-subtle, rgba(255,255,255,0.05)); font-size: 13px; }
