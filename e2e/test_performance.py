@@ -6,6 +6,10 @@ import time
 import pytest
 import requests
 
+from e2e._perf_helpers import LCP_INIT_JS as _LCP_INIT_JS
+from e2e._perf_helpers import measure_one as _measure_one
+from e2e._perf_helpers import measure_page as _measure_page
+
 THRESHOLDS = {
     "ttfb": 500,   # ms — 로컬 SQLite 기준 완화값 / relaxed for local SQLite
     "fcp":  1500,
@@ -14,69 +18,6 @@ THRESHOLDS = {
     "load": 3000,
     "health_ttfb": 300,   # /health endpoint — tighter TTFB budget / tighter for health check
 }
-
-_LCP_INIT_JS = """
-    window._perf_lcp = null;
-    try {
-        new PerformanceObserver((list) => {
-            const entries = list.getEntries();
-            if (entries.length > 0) {
-                window._perf_lcp = entries[entries.length - 1].startTime;
-            }
-        }).observe({ type: 'largest-contentful-paint', buffered: true });
-    } catch(e) {}
-"""
-
-
-def _measure_one(pg, url: str) -> dict:
-    """단일 측정 — TTFB/FCP/LCP/DCL/Load(ms) + 느린 요청 목록 반환.
-    Single measurement — TTFB/FCP/LCP/DCL/Load(ms) + slow request list.
-    """
-    slow: list[dict] = []
-
-    def _on_finished(req):
-        t = req.timing
-        dur = t.get("responseEnd", 0) - t.get("requestStart", 0)
-        if dur > 500:
-            slow.append({"url": req.url, "ms": round(dur)})
-
-    pg.on("requestfinished", _on_finished)
-    try:
-        pg.goto(url, wait_until="networkidle", timeout=30_000)
-        metrics = pg.evaluate("""() => {
-            const nav = performance.getEntriesByType('navigation')[0] || {};
-            const fcp = performance.getEntriesByType('paint')
-                .find(e => e.name === 'first-contentful-paint');
-            return {
-                ttfb: Math.round((nav.responseStart || 0) - (nav.fetchStart || 0)),
-                dcl:  Math.round((nav.domContentLoadedEventEnd || 0) - (nav.startTime || 0)),
-                load: Math.round((nav.loadEventEnd || 0) - (nav.startTime || 0)),
-                fcp:  fcp ? Math.round(fcp.startTime) : null,
-                lcp:  (typeof window._perf_lcp === 'number')
-                          ? Math.round(window._perf_lcp) : null,
-            };
-        }""")
-        metrics["slow_requests"] = slow[:]
-        return metrics
-    finally:
-        pg.remove_listener("requestfinished", _on_finished)
-
-
-def _measure_page(pg, url: str, runs: int = 3) -> dict:
-    """N회 측정 후 avg/min/max 통계 반환.
-    Returns avg/min/max stats over N runs.
-    """
-    results = [_measure_one(pg, url) for _ in range(runs)]
-    stats: dict = {}
-    for key in ("ttfb", "fcp", "lcp", "dcl", "load"):
-        vals = [r[key] for r in results if r.get(key) is not None]
-        stats[key] = {
-            "avg": round(sum(vals) / len(vals)) if vals else None,
-            "min": min(vals) if vals else None,
-            "max": max(vals) if vals else None,
-        }
-    stats["slow_requests"] = [req for r in results for req in r.get("slow_requests", [])]
-    return stats
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────────
