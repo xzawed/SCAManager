@@ -259,6 +259,7 @@ async def dashboard(  # pylint: disable=too-many-locals
             # Phase 2-B 🅑 (Cycle 74 PR-B) — DB cache 1h TTL + ?refresh=1 forces invalidation.
             insight = await dashboard_service.insight_narrative(
                 db, days=days, user_id=current_user.id, refresh=bool(refresh),
+                language=locale_value,
             )
             return templates.TemplateResponse(
                 request,
