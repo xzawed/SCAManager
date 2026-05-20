@@ -154,7 +154,9 @@ def _classify_check_runs(check_runs: list[dict]) -> str:
     for run in check_runs:
         status = run.get("status", "")
         # 진행 중 또는 대기 중 → 'running' / In-progress or queued → 'running'
-        if status in ("in_progress", "queued"):
+        # GitHub API 반환 가능 상태: in_progress, queued, waiting, pending, requested
+        # All non-completed GitHub check statuses: in_progress, queued, waiting, pending, requested
+        if status in ("in_progress", "queued", "waiting", "pending", "requested"):
             return "running"
 
     # 모두 completed — conclusion 확인 / All completed — check conclusions

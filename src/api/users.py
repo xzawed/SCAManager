@@ -46,15 +46,18 @@ async def issue_telegram_otp(
     otp = "".join(secrets.choice("0123456789") for _ in range(_OTP_LENGTH))
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=_OTP_TTL_MINUTES)
 
-    # DB에 OTP 저장 — 기존 값을 덮어씀으로써 마지막 발급 OTP만 유효하게 유지
-    # Save OTP to DB — overwrite any existing value so only the latest OTP is valid.
-    with SessionLocal() as db:
-        db.execute(
-            update(User)
-            .where(User.id == current_user.id)
-            .values(telegram_otp=otp, telegram_otp_expires_at=expires_at)
-        )
-        db.commit()
+    # DB에 OTP 저장 — asyncio.to_thread로 wrap하여 이벤트 루프 블로킹 방지
+    # Save OTP to DB — wrapped in asyncio.to_thread to avoid event loop blocking.
+    def _do_save() -> None:
+        with SessionLocal() as db:
+            db.execute(
+                update(User)
+                .where(User.id == current_user.id)
+                .values(telegram_otp=otp, telegram_otp_expires_at=expires_at)
+            )
+            db.commit()
+
+    await asyncio.to_thread(_do_save)
 
     logger.info("telegram_otp issued for user_id=%d", current_user.id)
     return {
