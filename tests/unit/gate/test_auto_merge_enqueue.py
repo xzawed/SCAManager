@@ -47,6 +47,22 @@ def _make_enqueue_result(*, is_first_deferral: bool) -> EnqueueResult:
     return EnqueueResult(row=row, is_first_deferral=is_first_deferral)
 
 
+def _mock_session_local(mock_db: MagicMock):
+    """SessionLocal 컨텍스트 매니저 mock 생성.
+    Create a mock context manager for SessionLocal that yields mock_db.
+
+    P0-H: _run_auto_merge 가 독립 SessionLocal() 을 열므로, 직접 호출 테스트는
+    SessionLocal 을 patch 해 mock_db 를 주입해야 한다.
+    P0-H: _run_auto_merge opens its own SessionLocal, so direct-call tests must
+    patch SessionLocal to inject mock_db.
+    """
+    cm = MagicMock()
+    cm.__enter__ = MagicMock(return_value=mock_db)
+    cm.__exit__ = MagicMock(return_value=False)
+    session_local_cls = MagicMock(return_value=cm)
+    return session_local_cls
+
+
 # ---------------------------------------------------------------------------
 # T8-1: CI 진행 중 → 재시도 큐 등록
 # T8-1: CI running → enqueue for retry
@@ -61,6 +77,7 @@ async def test_run_auto_merge_enqueues_when_ci_running():
     enqueue_result = _make_enqueue_result(is_first_deferral=True)
 
     with patch("src.gate.engine.settings") as mock_settings, \
+         patch("src.gate.engine.SessionLocal", _mock_session_local(mock_db)), \
          patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
          patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main") as mock_base_ref, \
@@ -83,7 +100,7 @@ async def test_run_auto_merge_enqueues_when_ci_running():
 
         await _run_auto_merge(
             config, "ghp_token", "owner/repo", 42, 80,
-            analysis_id=1, db=mock_db,
+            analysis_id=1,
         )
 
         # 큐 등록 호출 확인 / Verify enqueue was called
@@ -113,6 +130,7 @@ async def test_run_auto_merge_terminal_when_ci_failed():
     config = _config()
 
     with patch("src.gate.engine.settings") as mock_settings, \
+         patch("src.gate.engine.SessionLocal", _mock_session_local(mock_db)), \
          patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
          patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main") as mock_base_ref, \
@@ -135,7 +153,7 @@ async def test_run_auto_merge_terminal_when_ci_failed():
 
         await _run_auto_merge(
             config, "ghp_token", "owner/repo", 42, 80,
-            analysis_id=1, db=mock_db,
+            analysis_id=1,
         )
 
         # 큐 등록 없음 / No enqueue
@@ -161,6 +179,7 @@ async def test_run_auto_merge_success_no_enqueue():
     config = _config()
 
     with patch("src.gate.engine.settings") as mock_settings, \
+         patch("src.gate.engine.SessionLocal", _mock_session_local(mock_db)), \
          patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
          patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main") as mock_base_ref, \
@@ -178,7 +197,7 @@ async def test_run_auto_merge_success_no_enqueue():
 
         await _run_auto_merge(
             config, "ghp_token", "owner/repo", 42, 80,
-            analysis_id=1, db=mock_db,
+            analysis_id=1,
         )
 
         # 성공 경로에서는 큐 등록 없음 / No enqueue on success path
@@ -200,6 +219,7 @@ async def test_run_auto_merge_terminal_on_dirty_conflict():
     config = _config()
 
     with patch("src.gate.engine.settings") as mock_settings, \
+         patch("src.gate.engine.SessionLocal", _mock_session_local(mock_db)), \
          patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
          patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main") as mock_base_ref, \
@@ -219,7 +239,7 @@ async def test_run_auto_merge_terminal_on_dirty_conflict():
 
         await _run_auto_merge(
             config, "ghp_token", "owner/repo", 42, 80,
-            analysis_id=1, db=mock_db,
+            analysis_id=1,
         )
 
         # 터미널 태그 → 큐 등록 없음 / Terminal tag → no enqueue
@@ -242,6 +262,7 @@ async def test_run_auto_merge_deferred_no_notify_on_bump():
     enqueue_result = _make_enqueue_result(is_first_deferral=False)
 
     with patch("src.gate.engine.settings") as mock_settings, \
+         patch("src.gate.engine.SessionLocal", _mock_session_local(mock_db)), \
          patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
          patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main") as mock_base_ref, \
@@ -264,7 +285,7 @@ async def test_run_auto_merge_deferred_no_notify_on_bump():
 
         await _run_auto_merge(
             config, "ghp_token", "owner/repo", 42, 80,
-            analysis_id=1, db=mock_db,
+            analysis_id=1,
         )
 
         # 두 번째 지연: 알림 없음 / Second deferral: no notification
@@ -293,7 +314,7 @@ async def test_run_auto_merge_skips_when_score_below_threshold():
 
         await _run_auto_merge(
             config, "ghp_token", "owner/repo", 42, 60,  # score=60 < threshold=75
-            analysis_id=1, db=MagicMock(),
+            analysis_id=1,
         )
 
         # 조건 미충족 시 즉시 반환 / Early return when conditions not met
@@ -320,7 +341,7 @@ async def test_run_auto_merge_skips_when_auto_merge_disabled():
 
         await _run_auto_merge(
             config, "ghp_token", "owner/repo", 42, 90,  # score >= threshold but auto_merge=False
-            analysis_id=1, db=MagicMock(),
+            analysis_id=1,
         )
 
         # auto_merge=False 이므로 즉시 반환 / Early return when auto_merge=False
@@ -341,6 +362,7 @@ async def test_run_auto_merge_uses_legacy_when_retry_disabled():
     config = _config()
 
     with patch("src.gate.engine.settings") as mock_settings, \
+         patch("src.gate.engine.SessionLocal", _mock_session_local(mock_db)), \
          patch("src.gate.engine._run_auto_merge_legacy", new_callable=AsyncMock) as mock_legacy, \
          patch("src.gate.engine.merge_retry_repo") as mock_repo:
 
@@ -349,7 +371,7 @@ async def test_run_auto_merge_uses_legacy_when_retry_disabled():
 
         await _run_auto_merge(
             config, "ghp_token", "owner/repo", 42, 80,
-            analysis_id=1, db=mock_db,
+            analysis_id=1,
         )
 
         # 레거시 함수가 호출되어야 함 / Legacy function must be called
@@ -372,6 +394,7 @@ async def test_run_auto_merge_enqueue_when_ci_status_unknown():
     config = _config()
 
     with patch("src.gate.engine.settings") as mock_settings, \
+         patch("src.gate.engine.SessionLocal", _mock_session_local(mock_db)), \
          patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
          patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main") as mock_base_ref, \
@@ -394,7 +417,7 @@ async def test_run_auto_merge_enqueue_when_ci_status_unknown():
 
         await _run_auto_merge(
             config, "ghp_token", "owner/repo", 42, 80,
-            analysis_id=1, db=mock_db,
+            analysis_id=1,
         )
 
         # unknown → retriable → 재시도 큐 등록, 터미널 알림 없음
@@ -415,7 +438,10 @@ async def test_run_auto_merge_no_analysis_id_skips_enqueue():
     """
     config = _config()
 
+    mock_db = MagicMock()
+
     with patch("src.gate.engine.settings") as mock_settings, \
+         patch("src.gate.engine.SessionLocal", _mock_session_local(mock_db)), \
          patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
          patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main") as mock_base_ref, \
@@ -431,10 +457,12 @@ async def test_run_auto_merge_no_analysis_id_skips_enqueue():
         mock_required.return_value = {"ci/test"}
         mock_ci.return_value = "running"
 
-        # analysis_id=None, db=None → 큐 등록 생략 / Skip enqueue when ids are None
+        # analysis_id=None → 큐 등록 생략 / Skip enqueue when analysis_id is None
+        # P0-H: db=None 인자 제거 — _run_auto_merge 내부에서 독립 SessionLocal() 사용
+        # P0-H: db=None arg removed — _run_auto_merge opens its own SessionLocal internally
         await _run_auto_merge(
             config, "ghp_token", "owner/repo", 42, 80,
-            analysis_id=None, db=None,
+            analysis_id=None,
         )
 
         # 예외 없이 완료, 큐 등록 없음 / Completes without exception, no enqueue

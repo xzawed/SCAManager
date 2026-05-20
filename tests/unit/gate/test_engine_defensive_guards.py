@@ -26,6 +26,16 @@ os.environ.setdefault("ANTHROPIC_API_KEY", "")
 import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
+
+def _mock_session_local(mock_db: MagicMock):
+    """SessionLocal 컨텍스트 매니저 mock — P0-H 세션 격리 픽스처.
+    Mock context manager for SessionLocal (P0-H session isolation fixture).
+    """
+    cm = MagicMock()
+    cm.__enter__ = MagicMock(return_value=mock_db)
+    cm.__exit__ = MagicMock(return_value=False)
+    return MagicMock(return_value=cm)
+
 import httpx
 
 from src.config_manager.manager import RepoConfigData
@@ -117,15 +127,17 @@ async def test_run_auto_merge_outer_catches_runtime_error(caplog):
     config = _config()
 
     with patch("src.gate.engine.settings") as mock_settings, \
+         patch("src.gate.engine.SessionLocal", _mock_session_local(mock_db)), \
          patch("src.gate.engine._run_auto_merge_retry", new_callable=AsyncMock) as mock_retry:
         mock_settings.merge_retry_enabled = True
         mock_retry.side_effect = RuntimeError("unexpected")
 
         with caplog.at_level(logging.ERROR):
             # 예외 미전파 — 호출이 정상 반환되어야 함
+            # P0-H: db= 인자 제거 — 독립 SessionLocal() 사용
             await _run_auto_merge(
                 config, "ghp_token", "owner/repo", 42, 80,
-                analysis_id=1, db=mock_db,
+                analysis_id=1,
             )
 
     assert any("Auto Merge 실패" in r.message and "RuntimeError" in r.message
@@ -138,14 +150,16 @@ async def test_run_auto_merge_outer_catches_value_error(caplog):
     config = _config()
 
     with patch("src.gate.engine.settings") as mock_settings, \
+         patch("src.gate.engine.SessionLocal", _mock_session_local(mock_db)), \
          patch("src.gate.engine._run_auto_merge_retry", new_callable=AsyncMock) as mock_retry:
         mock_settings.merge_retry_enabled = True
         mock_retry.side_effect = ValueError("bad arg")
 
         with caplog.at_level(logging.ERROR):
+            # P0-H: db= 인자 제거 — 독립 SessionLocal() 사용
             await _run_auto_merge(
                 config, "ghp_token", "owner/repo", 42, 80,
-                analysis_id=1, db=mock_db,
+                analysis_id=1,
             )
 
     assert any("ValueError" in r.message for r in caplog.records)
