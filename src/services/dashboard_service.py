@@ -37,6 +37,7 @@ from src.models.repository import Repository
 from src.scorer.calculator import calculate_grade
 from src.shared.anthropic_caching import build_cached_system_param
 from src.shared.claude_metrics import extract_anthropic_usage, log_claude_api_call
+from src.shared.lang_names import LANG_NAMES
 
 logger = logging.getLogger(__name__)
 
@@ -588,9 +589,6 @@ def _score_trend(score_delta: float | None) -> str:
 
 # ─── Phase 3 PR 2: Insight 모드 narrative ──────────────────────────────────
 
-# 지원 언어 코드 → Claude 프롬프트 언어명 매핑 (repo_insight_service 와 동일 집합)
-# Locale code → language name for Claude prompts (same set as repo_insight_service).
-_DASHBOARD_LANG_NAMES: dict[str, str] = {"ko": "Korean", "en": "English", "ja": "Japanese"}
 
 # Phase 2 신규 1 (사이클 74) — Anthropic prompt caching ≥ 1024 토큰 권장 충족.
 # JSON Schema + 분류 가이드 보강으로 cache hit rate 활성화 (silent fallback 차단).
@@ -622,17 +620,17 @@ _INSIGHT_SYSTEM_PROMPT = (
     "auto-merge failures or retry exhaustion. Cite the failing rule or repo.\n"
     "3. key_metrics (list[dict], exactly 4 items): 📊 numeric highlights — "
     'each item must be {"label": str, "value": str, "delta": str}. The label '
-    "is the metric name in Korean (e.g. 평균 점수). The value is the current "
+    "is the metric name in the response language. The value is the current "
     "window value as a string (e.g. 87.5). The delta uses + / - prefix vs "
     "the previous window (e.g. +2.3 or -5). If no prior window data, use 0.\n"
     "4. next_actions (list[str], length 2 to 4): 💬 suggested next moves — "
     "specific, actionable, prioritized for the next 1-7 days. Tie each "
     "action to a card 1 strength to amplify or a card 2 focus area to fix. "
     "Avoid generic advice ('write more tests') — name the file, repo, or "
-    "rule (e.g. 'src/foo.py 의 pylint W0611 4건 일괄 정리').\n\n"
+    "rule (e.g. 'src/foo.py pylint W0611 4 occurrences').\n\n"
     "Tone: concise, encouraging but honest. Refer to actual numbers from the "
-    "user prompt rather than generic advice. Each list item ≤ 80 Korean "
-    "characters. Use full sentences ending with appropriate Korean particles.\n\n"
+    "user prompt rather than generic advice. Each list item ≤ 80 characters. "
+    "Use full sentences.\n\n"
     'Return strict JSON conforming to: {"positive_highlights": list[str], '
     '"focus_areas": list[str], "key_metrics": list[{"label": str, "value": '
     'str, "delta": str}], "next_actions": list[str]}.'
@@ -704,7 +702,7 @@ def _build_insight_user_prompt(
         "frequent_issues": frequent,
         "auto_merge": auto_merge,
     }
-    lang_name = _DASHBOARD_LANG_NAMES.get(language, "Korean")
+    lang_name = LANG_NAMES.get(language, "Korean")
     return (
         f"다음은 최근 {days}일간의 dashboard 데이터입니다. "
         f"위 4 카드 JSON 형식으로 narrative 를 생성해주세요. "

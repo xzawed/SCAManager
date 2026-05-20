@@ -50,7 +50,8 @@ src/
 │   ├── anthropic_caching.py     # build_cached_system_param() — Anthropic prompt cache 5분 ephemeral
 │   ├── rls_context.py           # contextvars 기반 request scope user_id (Phase 3 postlude)
 │   ├── feature_kill_switch.py   # is_disabled(feature) helper (Cycle 78 NEW-P0-2)
-│   └── alembic_dialect.py       # is_postgresql(bind_or_conn) (Cycle 82 PR 1 — 사용처 12)
+│   ├── alembic_dialect.py       # is_postgresql(bind_or_conn) (Cycle 82 PR 1 — 사용처 12)
+│   └── lang_names.py            # LANG_NAMES dict — locale 코드 → Claude 프롬프트 언어명 (단일 출처)
 ├── middleware/
 │   ├── rls_session.py           # RLSSessionMiddleware (ASGI, BaseHTTPMiddleware 우회)
 │   └── locale.py                # LocaleMiddleware — 5단계 locale 감지 (Cookie > Accept-Language q-weight > User > settings > fallback)
