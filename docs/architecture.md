@@ -131,12 +131,18 @@ src/
 
 ```
 e2e/
-├── conftest.py           # live_server / page / seeded_page / browser_instance / seeded_analysis fixtures (session-scope)
-├── pytest.ini            # E2E 전용 pytest 설정 (asyncio_mode 미설정 — src/ 단위 테스트 충돌 방지)
-├── test_performance.py   # 12개 @pytest.mark.perf 성능 테스트 — TTFB/FCP/LCP/DCL/Load (3회 avg/min/max), Playwright Chromium headless (사이클 106 #500)
-│                         # 12 @pytest.mark.perf performance tests — TTFB/FCP/LCP/DCL/Load (3-run avg/min/max)
-├── test_i18n.py          # 3-언어 × 4-페이지 i18n 연기 테스트 (Cycle 84 PR-16)
-└── test_repos_mode.py    # /repos/add + /repos/{name} 기능 흐름 E2E (Cycle 94)
+├── conftest.py                    # live_server / page / seeded_page / browser_instance / seeded_analysis fixtures (session-scope)
+├── pytest.ini                     # E2E 전용 pytest 설정 (asyncio_mode 미설정 — src/ 단위 테스트 충돌 방지)
+├── _perf_helpers.py               # LCP_INIT_JS + measure_one/page 공통 헬퍼 — test_performance.py + scripts/perf_measure.py 공유 (사이클 111 #536)
+├── test_performance.py            # 12개 @pytest.mark.perf 성능 테스트 — TTFB/FCP/LCP/DCL/Load (3회 avg/min/max)
+├── test_dashboard.py              # /dashboard 페이지 E2E — 4 모드(overview/insight/usage/security) 전환 흐름
+├── test_dashboard_insight.py      # /dashboard?mode=insight E2E — AI narrative 카드 렌더링
+├── test_i18n_visual_regression.py # 3-언어 × 4-페이지 i18n 시각 회귀 테스트 (Cycle 84 PR-16)
+├── test_navigation.py             # hx-boost 네비게이션 + 뒤로가기 흐름 E2E
+├── test_repos_mode.py             # /repos/add + /repos/{name} 기능 흐름 E2E (Cycle 94)
+├── test_settings.py               # /repos/{name}/settings 저장 흐름 E2E
+├── test_theme.py                  # 4-테마 토글 E2E (desktop)
+└── test_theme_mobile_guards.py    # 모바일 테마 토글 + 44px 터치 영역 E2E
 ```
 
 ## 핵심 데이터 흐름
