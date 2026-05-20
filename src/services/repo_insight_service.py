@@ -22,16 +22,13 @@ from src.config import settings
 from src.models.analysis import Analysis
 from src.scorer.calculator import calculate_grade
 from src.shared.claude_metrics import extract_anthropic_usage, log_claude_api_call
+from src.shared.lang_names import LANG_NAMES
 
 logger = logging.getLogger(__name__)
 
 # 집계 최대 분석 건수 — Python 루프 O(N×이슈수) 상한
 # Max analyses per aggregation — caps Python loop O(N×issues)
 _MAX_ANALYSES = 30
-
-# 지원 언어 코드 → Claude 프롬프트 언어명 매핑
-# Mapping from locale code to the language name used in Claude prompts.
-_LANG_NAMES: dict[str, str] = {"ko": "Korean", "en": "English", "ja": "Japanese"}
 
 
 def _fetch_analyses(
@@ -371,7 +368,7 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
         f"({kpi.get('top_recurring_count')} times)\n"
         f"Top 5 issues: {json.dumps(recurring[:5], ensure_ascii=False)}\n\n"
         f"Please provide a 2-3 paragraph diagnostic narrative "
-        f"in {_LANG_NAMES.get(language, 'Korean')} summarizing "
+        f"in {LANG_NAMES.get(language, 'Korean')} summarizing "
         "this repository's code quality status, key recurring problems, and concrete "
         "next steps. Respond with strict JSON only: {\"text\": \"...narrative...\"}"
     )
