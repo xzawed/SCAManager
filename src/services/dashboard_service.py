@@ -588,6 +588,9 @@ def _score_trend(score_delta: float | None) -> str:
 
 # ─── Phase 3 PR 2: Insight 모드 narrative ──────────────────────────────────
 
+# 지원 언어 코드 → Claude 프롬프트 언어명 매핑 (repo_insight_service 와 동일 집합)
+# Locale code → language name for Claude prompts (same set as repo_insight_service).
+_DASHBOARD_LANG_NAMES: dict[str, str] = {"ko": "Korean", "en": "English", "ja": "Japanese"}
 
 # Phase 2 신규 1 (사이클 74) — Anthropic prompt caching ≥ 1024 토큰 권장 충족.
 # JSON Schema + 분류 가이드 보강으로 cache hit rate 활성화 (silent fallback 차단).
@@ -604,7 +607,7 @@ _INSIGHT_SYSTEM_PROMPT = (
     "It also gates PRs (auto-approve / semi / auto-merge) and notifies via "
     "Telegram, Discord, Slack, GitHub PR comment, email, n8n, and webhooks.\n\n"
     "Given recent dashboard metrics for a developer, generate a concise "
-    "narrative as 4 cards. Always reply in Korean. Output strict JSON only "
+    "narrative as 4 cards. Output strict JSON only "
     "(no preamble, no trailing text, no code fences, no markdown). Match the "
     "schema below exactly — extra keys, missing keys, or wrong types break "
     "the dashboard parser and force a fallback.\n\n"
@@ -688,6 +691,7 @@ def _build_insight_user_prompt(
     trend: list[dict[str, Any]],
     frequent: list[dict[str, Any]],
     auto_merge: dict[str, Any],
+    language: str = "en",
 ) -> str:
     """4 헬퍼 결과를 Claude 가 읽을 수 있는 user message 로 직렬화.
 
@@ -700,9 +704,11 @@ def _build_insight_user_prompt(
         "frequent_issues": frequent,
         "auto_merge": auto_merge,
     }
+    lang_name = _DASHBOARD_LANG_NAMES.get(language, "Korean")
     return (
         f"다음은 최근 {days}일간의 dashboard 데이터입니다. "
-        "위 4 카드 JSON 형식으로 narrative 를 생성해주세요.\n\n"
+        f"위 4 카드 JSON 형식으로 narrative 를 생성해주세요. "
+        f"Please respond in {lang_name}.\n\n"
         f"```json\n{json.dumps(payload, ensure_ascii=False, default=str)}\n```"
     )
 
@@ -778,6 +784,7 @@ async def insight_narrative(  # pylint: disable=too-many-locals
     api_key: str | None = None,
     user_id: int | None = None,
     refresh: bool = False,
+    language: str = "en",
 ) -> dict[str, Any]:
     """Claude AI 기반 4 카드 인사이트 narrative — Phase 3 PR 2 + PR 5 (user_id 격리).
 
@@ -791,6 +798,7 @@ async def insight_narrative(  # pylint: disable=too-many-locals
         now: 의존성 주입용 — None 시 현재 시각. Injection point — defaults to now.
         api_key: None 시 settings.anthropic_api_key 사용. Defaults to settings on None.
         user_id: PR 5 — 사용자별 데이터 격리. None 시 모든 리포 (admin/legacy 호환).
+        language: 응답 언어 코드 ("ko"/"en"/"ja"). Response language code.
 
     Returns:
         {
@@ -823,7 +831,7 @@ async def insight_narrative(  # pylint: disable=too-many-locals
             insight_narrative_cache_repo.invalidate(db, user_id=user_id, days=days)
         else:
             cached = insight_narrative_cache_repo.get_fresh(
-                db, user_id=user_id, days=days, now=_now,
+                db, user_id=user_id, days=days, language=language, now=_now,
             )
             if cached is not None:
                 return cached
@@ -841,12 +849,13 @@ async def insight_narrative(  # pylint: disable=too-many-locals
         if user_id is not None:
             from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
             insight_narrative_cache_repo.record_error(
-                db, user_id=user_id, days=days, error_type="no_data", now=_now,
+                db, user_id=user_id, days=days, language=language, error_type="no_data", now=_now,
             )
         return _build_insight_response(status="no_data", days=days)
 
     user_prompt = _build_insight_user_prompt(
-        days=days, kpi=kpi, trend=trend, frequent=frequent, auto_merge=auto_merge
+        days=days, kpi=kpi, trend=trend, frequent=frequent, auto_merge=auto_merge,
+        language=language,
     )
 
     # ai_review.py 와 동일 timeout/max_retries 패턴 — SDK 기본값 변경 면역
@@ -859,7 +868,7 @@ async def insight_narrative(  # pylint: disable=too-many-locals
         if user_id is not None:
             from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
             insight_narrative_cache_repo.record_error(
-                db, user_id=user_id, days=days, error_type="api_error", now=_now,
+                db, user_id=user_id, days=days, language=language, error_type="api_error", now=_now,
             )
         return _build_insight_response(status="api_error", days=days)
 
@@ -868,7 +877,7 @@ async def insight_narrative(  # pylint: disable=too-many-locals
         if user_id is not None:
             from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
             insight_narrative_cache_repo.record_error(
-                db, user_id=user_id, days=days, error_type="parse_error", now=_now,
+                db, user_id=user_id, days=days, language=language, error_type="parse_error", now=_now,
             )
         return _build_insight_response(status="parse_error", days=days)
 
@@ -878,7 +887,7 @@ async def insight_narrative(  # pylint: disable=too-many-locals
     if user_id is not None:
         from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
         insight_narrative_cache_repo.upsert(
-            db, user_id=user_id, days=days, response=response, now=_now,
+            db, user_id=user_id, days=days, language=language, response=response, now=_now,
         )
     return response
 
