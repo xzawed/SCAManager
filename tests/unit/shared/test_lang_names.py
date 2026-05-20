@@ -6,8 +6,6 @@ their own duplicate dictionaries.
 """
 from __future__ import annotations
 
-import pytest
-
 
 # ─── LANG_NAMES 상수 기본 검증 ──────────────────────────────────────────────
 
