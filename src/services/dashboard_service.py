@@ -103,10 +103,20 @@ def dashboard_kpi(  # pylint: disable=too-many-locals
 
     # 현재 + 직전 윈도우 분석 (delta 비교용) + user_id 권한 필터
     # Pull current and previous window analyses (for delta) + user_id permission filter
-    cur_q = select(Analysis).where(Analysis.created_at >= cur_since).where(Analysis.created_at <= _now)
-    prev_q = select(Analysis).where(Analysis.created_at >= prev_since).where(Analysis.created_at < cur_since)
-    cur_analyses = list(db.scalars(_apply_analysis_user_filter(cur_q, user_id)).all())
-    prev_analyses = list(db.scalars(_apply_analysis_user_filter(prev_q, user_id)).all())
+    # P0-I: score/repo_id/result 3 컬럼만 선택 — result JSON blob 전체 ORM 로드 방지
+    # P0-I: select only 3 columns — avoids loading the full result JSON blob as ORM objects
+    cur_q = (
+        select(Analysis.score, Analysis.repo_id, Analysis.result)
+        .where(Analysis.created_at >= cur_since)
+        .where(Analysis.created_at <= _now)
+    )
+    prev_q = (
+        select(Analysis.score, Analysis.repo_id, Analysis.result)
+        .where(Analysis.created_at >= prev_since)
+        .where(Analysis.created_at < cur_since)
+    )
+    cur_analyses = list(db.execute(_apply_analysis_user_filter(cur_q, user_id)).all())
+    prev_analyses = list(db.execute(_apply_analysis_user_filter(prev_q, user_id)).all())
 
     # 활성 리포 total — user_id 기준
     # Active repos total — by user_id
@@ -128,8 +138,12 @@ def dashboard_kpi(  # pylint: disable=too-many-locals
     }
 
 
-def _kpi_avg(cur: list[Analysis], prev: list[Analysis]) -> dict[str, Any]:
-    """평균 점수 + 등급 + delta 카드 빌더."""
+def _kpi_avg(cur: list[Any], prev: list[Any]) -> dict[str, Any]:
+    """평균 점수 + 등급 + delta 카드 빌더.
+
+    cur/prev 는 (score, repo_id, result) Row 또는 Analysis ORM 객체 모두 허용.
+    cur/prev accept (score, repo_id, result) Row tuples or full Analysis ORM objects.
+    """
     cur_scored = [a.score for a in cur if a.score is not None]
     prev_scored = [a.score for a in prev if a.score is not None]
     avg_value = round(sum(cur_scored) / len(cur_scored), 1) if cur_scored else None
@@ -141,14 +155,14 @@ def _kpi_avg(cur: list[Analysis], prev: list[Analysis]) -> dict[str, Any]:
     return {"value": avg_value, "grade": grade, "delta": delta}
 
 
-def _kpi_security(cur: list[Analysis], prev: list[Analysis]) -> dict[str, int]:
+def _kpi_security(cur: list[Any], prev: list[Any]) -> dict[str, int]:
     """보안 HIGH 이슈 카운트 + delta 카드 빌더."""
     cur_high = _count_high_security(cur)
     return {"value": cur_high, "delta": cur_high - _count_high_security(prev)}
 
 
 def _kpi_active_repos(
-    cur: list[Analysis], prev: list[Analysis], total: int
+    cur: list[Any], prev: list[Any], total: int
 ) -> dict[str, int]:
     """활성 리포 수 + 전체 + delta 카드 빌더."""
     cur_active = len({a.repo_id for a in cur})
@@ -159,10 +173,19 @@ def _kpi_active_repos(
     }
 
 
-def _count_high_security(analyses: list[Analysis]) -> int:
-    """Analysis.result['issues'] JSON 중 category=security AND severity=HIGH 카운트.
+def _count_high_security(analyses: list[Any]) -> int:
+    """Analysis.result['issues'] JSON 중 category=security AND severity=HIGH/ERROR 카운트.
+
+    Count security issues with HIGH or ERROR severity from Analysis.result['issues'] JSON.
 
     PR #185 회귀 가드로 issues JSON 에 category/severity 필드 보장됨.
+    PR #185 guard ensures category/severity fields are present in issues JSON.
+
+    severity 이중 표현 — bandit 파서가 issue_severity=="HIGH" 를 Severity.ERROR="error"
+    (소문자) 로 변환 저장하므로 "HIGH" (대소문자 무관) 과 "ERROR" (소문자) 모두 허용.
+    Dual severity representation — bandit parser stores issue_severity=="HIGH" as
+    Severity.ERROR="error" (lowercase), so we accept both "HIGH" (case-insensitive)
+    and "error" from the stored JSON.
     """
     total = 0
     for a in analyses:
@@ -170,7 +193,10 @@ def _count_high_security(analyses: list[Analysis]) -> int:
         for issue in result.get("issues", []):
             if not isinstance(issue, dict):
                 continue
-            if issue.get("category") == "security" and issue.get("severity", "").upper() == "HIGH":
+            # severity 이중 표현 허용: bandit 파서가 "HIGH" → Severity.ERROR="error" 변환 저장
+            # Accept dual forms: bandit parser converts issue_severity="HIGH" → stored as "error"
+            sev = issue.get("severity", "").upper()
+            if issue.get("category") == "security" and sev in ("HIGH", "ERROR"):
                 total += 1
     return total
 
