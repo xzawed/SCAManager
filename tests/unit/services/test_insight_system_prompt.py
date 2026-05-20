@@ -10,8 +10,6 @@ Target lines (before fix):
 """
 from __future__ import annotations
 
-import pytest
-
 
 # ─── _INSIGHT_SYSTEM_PROMPT 언어 중립화 검증 ────────────────────────────────
 
