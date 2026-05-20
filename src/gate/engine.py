@@ -7,6 +7,8 @@ from html import escape
 import httpx
 from sqlalchemy.orm import Session
 from src.config import settings
+from src.database import SessionLocal  # 독립 세션 열기용 — asyncio.gather 공유 세션 오염 방지
+# SessionLocal imported at module level for independent sessions in asyncio.gather coroutines.
 from src.config_manager.manager import get_repo_config, RepoConfigData
 from src.gate._common import score_from_result as _score_from_result
 from src.gate.github_review import (
@@ -68,11 +70,14 @@ async def run_gate_check(  # pylint: disable=too-many-positional-arguments
     # Phase H PR-2C: run 3 options in parallel with asyncio.gather. Per CLAUDE.md
     # contract the options are fully independent; serial await wastes 1-3s each.
     # `return_exceptions=True` keeps unexpected errors from cancelling siblings.
+    # P0-H 버그 수정: _run_approve_decision/_run_auto_merge 는 각각 독립 SessionLocal()을 열어
+    # asyncio.gather 병렬 실행 시 동일 Session 공유로 인한 identity map 오염·PendingRollbackError 방지.
+    # P0-H fix: both coroutines now open their own independent SessionLocal() so that concurrent
+    # db.commit() calls in asyncio.gather do not corrupt the shared identity map.
     results = await asyncio.gather(
         _run_review_comment(config, github_token, repo_name, pr_number, result),
         _run_approve_decision(
             config=config,
-            db=db,
             analysis_id=analysis_id,
             github_token=github_token,
             repo_name=repo_name,
@@ -82,7 +87,7 @@ async def run_gate_check(  # pylint: disable=too-many-positional-arguments
         ),
         _run_auto_merge(
             config, github_token, repo_name, pr_number, score,
-            analysis_id=analysis_id, db=db,
+            analysis_id=analysis_id,
         ),
         return_exceptions=True,
     )
@@ -113,7 +118,6 @@ async def _run_review_comment(
     try:
         # Phase 3 PR-11 — 3-layer 사용자 언어 결정 (User → RepoConfig → settings.default_locale)
         # Phase 3 PR-11 — 3-layer language resolve
-        from src.database import SessionLocal  # noqa: WPS433  # pylint: disable=import-outside-toplevel
         from src.notifier._language import resolve_notification_language  # noqa: WPS433  # pylint: disable=import-outside-toplevel
         with SessionLocal() as db:
             language = resolve_notification_language(db, config=config)
@@ -133,7 +137,6 @@ async def _run_review_comment(
 async def _run_approve_decision(  # pylint: disable=too-many-arguments
     *,
     config: RepoConfigData,
-    db: Session,
     analysis_id: int,
     github_token: str,
     repo_name: str,
@@ -141,17 +144,22 @@ async def _run_approve_decision(  # pylint: disable=too-many-arguments
     score: int,
     result: dict,
 ) -> None:
-    """Approve 옵션 (auto / semi-auto 분기)."""
+    """Approve 옵션 (auto / semi-auto 분기).
+
+    P0-H: asyncio.gather 병렬 실행 시 외부 Session 공유 대신 독립 SessionLocal() 사용.
+    P0-H: Opens its own SessionLocal() instead of receiving a shared Session from gather.
+    """
     if config.approve_mode == "auto":
-        await _run_auto_approve(
-            config=config,
-            db=db,
-            analysis_id=analysis_id,
-            github_token=github_token,
-            repo_name=repo_name,
-            pr_number=pr_number,
-            score=score,
-        )
+        with SessionLocal() as db:
+            await _run_auto_approve(
+                config=config,
+                db=db,
+                analysis_id=analysis_id,
+                github_token=github_token,
+                repo_name=repo_name,
+                pr_number=pr_number,
+                score=score,
+            )
     elif config.approve_mode == "semi-auto":
         await _run_semi_auto_approve(
             config=config,
@@ -226,7 +234,6 @@ async def _run_auto_merge(  # pylint: disable=too-many-arguments,too-many-locals
     score: int,
     *,
     analysis_id: int | None = None,
-    db: Session | None = None,
 ) -> None:
     """Auto Merge 옵션 (approve_mode 무관하게 독립).
 
@@ -234,34 +241,38 @@ async def _run_auto_merge(  # pylint: disable=too-many-arguments,too-many-locals
     Phase 12: When merge_retry_enabled=True, retriable failures are enqueued for retry.
 
     Phase F.1: `log_merge_attempt` 로 모든 시도(성공·실패)를 DB 에 기록한다.
-    analysis_id/db 가 None 이면 기록을 생략 — 레거시 호출부 호환.
+    analysis_id 가 None 이면 기록을 생략 — 레거시 호출부 호환.
+
+    P0-H: asyncio.gather 병렬 실행 시 외부 Session 공유 대신 독립 SessionLocal() 사용.
+    P0-H: Opens its own SessionLocal() instead of receiving a shared Session from gather.
     """
     if not (config.auto_merge and score >= config.merge_threshold):
         return
 
-    # 레거시 경로: 재시도 비활성화 시 단일 시도 동작
-    # Legacy path: fall back to single-attempt behavior when retry is disabled.
-    if not settings.merge_retry_enabled:
-        await _run_auto_merge_legacy(
-            config, github_token, repo_name, pr_number, score,
-            analysis_id=analysis_id, db=db,
-        )
-        return
+    with SessionLocal() as db:
+        # 레거시 경로: 재시도 비활성화 시 단일 시도 동작
+        # Legacy path: fall back to single-attempt behavior when retry is disabled.
+        if not settings.merge_retry_enabled:
+            await _run_auto_merge_legacy(
+                config, github_token, repo_name, pr_number, score,
+                analysis_id=analysis_id, db=db,
+            )
+            return
 
-    # --- Phase 12 재시도 인식 경로 — 복잡도 분산을 위해 헬퍼에 위임 ---
-    # --- Phase 12 retry-aware path — delegate to helper to distribute complexity ---
-    try:
-        await _run_auto_merge_retry(
-            config, github_token, repo_name, pr_number, score,
-            analysis_id=analysis_id, db=db,
-        )
-    # Phase F QW4: RuntimeError/ValueError 도 포착해 알림 스킵 방지
-    # Phase F QW4: also catch RuntimeError/ValueError to prevent notification skip.
-    except (httpx.HTTPError, KeyError, RuntimeError, ValueError) as exc:
-        logger.error(
-            "Auto Merge 실패 (repo=%s, pr=%d): %s",
-            repo_name, pr_number, type(exc).__name__,
-        )
+        # --- Phase 12 재시도 인식 경로 — 복잡도 분산을 위해 헬퍼에 위임 ---
+        # --- Phase 12 retry-aware path — delegate to helper to distribute complexity ---
+        try:
+            await _run_auto_merge_retry(
+                config, github_token, repo_name, pr_number, score,
+                analysis_id=analysis_id, db=db,
+            )
+        # Phase F QW4: RuntimeError/ValueError 도 포착해 알림 스킵 방지
+        # Phase F QW4: also catch RuntimeError/ValueError to prevent notification skip.
+        except (httpx.HTTPError, KeyError, RuntimeError, ValueError) as exc:
+            logger.error(
+                "Auto Merge 실패 (repo=%s, pr=%d): %s",
+                repo_name, pr_number, type(exc).__name__,
+            )
 
 
 async def _run_auto_merge_retry(  # pylint: disable=too-many-arguments,too-many-locals
@@ -580,7 +591,6 @@ async def _run_auto_merge_legacy(  # pylint: disable=too-many-arguments,too-many
             try:
                 # Phase 3 PR-11 — 3-layer 사용자 언어 결정 (User → RepoConfig → settings.default_locale)
                 # Phase 3 PR-11 — 3-layer language resolve
-                from src.database import SessionLocal  # noqa: WPS433  # pylint: disable=import-outside-toplevel
                 from src.notifier._language import resolve_notification_language  # noqa: WPS433  # pylint: disable=import-outside-toplevel
                 with SessionLocal() as db_lang:
                     language = resolve_notification_language(db_lang, config=config)
