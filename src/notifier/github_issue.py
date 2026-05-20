@@ -22,9 +22,17 @@ _BOT_PR_PREFIXES: tuple[str, ...] = ("claude-fix/", "bot/", "renovate/", "depend
 
 
 def _bandit_high_issues(result: dict) -> list[dict]:
-    """result["issues"]에서 bandit HIGH severity 이슈만 추출한다."""
+    """result["issues"]에서 bandit HIGH severity 이슈만 추출한다.
+
+    registry.py 의 Severity.ERROR = "error" 로 저장되므로 대소문자 정규화 후 비교한다.
+    Severity.ERROR = "error" in registry.py — normalise to uppercase before comparing.
+    """
     issues = result.get("issues") or []
-    return [i for i in issues if i.get("tool") == "bandit" and i.get("severity") == "HIGH"]
+    return [
+        i for i in issues
+        if i.get("tool") == "bandit"
+        and i.get("severity", "").upper() in ("HIGH", "ERROR")
+    ]
 
 
 def _build_issue_body(  # pylint: disable=too-many-locals,too-many-positional-arguments
@@ -153,7 +161,7 @@ class _IssueNotifier:
         if is_bot_pr:
             return False
         has_bandit_high = any(
-            i.get("severity") == "HIGH" and i.get("tool") == "bandit"
+            i.get("severity", "").upper() in ("HIGH", "ERROR") and i.get("tool") == "bandit"
             for i in (ctx.result_dict.get("issues") or [])
         )
         return ctx.score_result.total < ctx.config.reject_threshold or has_bandit_high
