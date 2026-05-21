@@ -83,13 +83,14 @@ def test_icon_512_svg_serves_200():
 
 
 def test_base_html_includes_manifest_link():
-    """base.html (login 페이지 응답) = manifest link + theme-color + apple-touch-icon 헤더 포함.
+    """landing.html (/ 페이지 응답) = manifest link + theme-color + apple-touch-icon 헤더 포함.
 
-    /login route = `get_current_user` (request.session) 만 의존 — DB/lifespan 무관.
-    /login route = depends only on request.session — DB/lifespan independent.
+    사이클 117: /login → 301 redirect. / (landing.html) 로 검증 대상 변경.
+    Cycle 117: /login → 301 redirect. Test target changed to / (landing.html).
+    / route = `get_current_user` (request.session) 만 의존 — DB/lifespan 무관.
     """
     c = TestClient(app)
-    response = c.get("/login")
+    response = c.get("/")
     assert response.status_code == 200
     # PWA 핵심 헤더 3종
     assert '<link rel="manifest" href="/static/manifest.json">' in response.text

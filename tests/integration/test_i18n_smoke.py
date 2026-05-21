@@ -9,10 +9,10 @@ Pairs with Policy 13 (operational endpoint smoke check obligation) — supports 
 during i18n / auth / UI changes via FastAPI app + TestClient.
 
 검증 범위:
-- /login + Cookie locale=en/ko/ja → 200 + 해당 언어 텍스트 표시
+- /login + Cookie locale=en/ko/ja → 301 /auth/github (사이클 117 변경)
+- / (랜딩 페이지) + Cookie locale=en/ko/ja → 200 + HTML lang attribute 동적 매칭
 - LocaleMiddleware Layer 1 (Cookie) 우선 감지 정상 동작
-- HTML lang attribute 동적 매칭
-- Cookie 미설정 시 settings.default_locale ('en') fallback
+- Cookie 미설정 시 settings.default_locale fallback
 - /api/users/me/preferred-language POST → User 미연결 = 401, 연결 시 200 (PR-1c → PR-4 페어)
 
 검증 X (별도 영역):
@@ -45,39 +45,42 @@ def client():
         app.dependency_overrides.update(saved_overrides)
 
 
-# ── 3 언어 × /login Cookie smoke ──────────────────────────────────────────
+# ── /login 301 리다이렉트 smoke (사이클 117 — 중간 단계 제거) ──────────────
 
 
-@pytest.mark.parametrize("locale,anchor", [
-    ("en", "Sign in with GitHub"),
-    ("ko", "GitHub로 로그인"),
-    ("ja", "GitHubでログイン"),
-])
-def test_login_smoke_per_language(client, locale, anchor):
-    """/login + preferred_language Cookie → 200 + 해당 언어 텍스트.
+@pytest.mark.parametrize("locale", ["en", "ko", "ja"])
+def test_login_redirects_to_auth_github_regardless_of_locale(client, locale):
+    """/login + preferred_language Cookie → 301 /auth/github (사이클 117).
 
-    LocaleMiddleware Layer 1 (Cookie) 우선 감지 정상 동작 확인.
+    /login 은 locale 에 관계없이 301 리다이렉트 — LocaleMiddleware 통과 후 redirect.
+    /login always 301-redirects to /auth/github regardless of locale cookie.
     """
     response = client.get(
         "/login",
         cookies={"preferred_language": locale},
     )
-    assert response.status_code == 200, (
-        f"login smoke failed for locale={locale}: status={response.status_code}"
+    assert response.status_code == 301, (
+        f"login smoke failed for locale={locale}: expected 301, got {response.status_code}"
     )
-    assert anchor in response.text, (
-        f"login smoke text missing for locale={locale}: '{anchor}' not found"
+    assert response.headers.get("location") == "/auth/github", (
+        f"login redirect target mismatch for locale={locale}"
     )
+
+
+# ── 3 언어 × 랜딩 페이지 (/) Cookie smoke ────────────────────────────────
+# /login 이 301 리다이렉트로 변경됨 (사이클 117) — lang attr 검증을 / 로 이전
+# /login changed to 301 redirect (cycle 117) — lang attr verification moved to /
 
 
 @pytest.mark.parametrize("locale", ["en", "ko", "ja"])
-def test_login_html_lang_attr_matches_cookie(client, locale):
-    """/login HTML <html lang="..."> 동적 attribute = Cookie locale 매칭.
+def test_landing_html_lang_attr_matches_cookie(client, locale):
+    """/ (랜딩 페이지) HTML <html lang="..."> 동적 attribute = Cookie locale 매칭.
 
     Phase 2 PR-5 (base.html) i18n 적용 페어 — HTML lang 동적 검증.
+    /login 이 301 redirect 가 됨에 따라 / 로 검증 대상 변경 (사이클 117).
     """
     response = client.get(
-        "/login",
+        "/",
         cookies={"preferred_language": locale},
     )
     assert response.status_code == 200
@@ -86,13 +89,15 @@ def test_login_html_lang_attr_matches_cookie(client, locale):
     )
 
 
-def test_login_no_cookie_falls_to_default_locale(client):
-    """Cookie 미설정 → settings.default_locale ('en') fallback."""
-    response = client.get("/login")
+def test_landing_no_cookie_falls_to_default_locale(client):
+    """/ Cookie 미설정 → settings.default_locale 기본값 fallback.
+
+    /login 이 301 redirect 가 됨에 따라 / 로 검증 대상 변경 (사이클 117).
+    """
+    response = client.get("/")
     assert response.status_code == 200
-    # default_locale = 'en'
-    assert "Sign in with GitHub" in response.text
-    assert '<html lang="en"' in response.text
+    # default_locale = 'ko' (landing.html default)
+    assert "SCAManager" in response.text
 
 
 # ── /api/users/me/preferred-language smoke (Phase 2 PR-4 페어) ────────────

@@ -76,9 +76,13 @@ def test_dashboard_html_desktop_order_preserved():
 
 
 def test_dashboard_html_login_response_includes_pwa_headers():
-    """기존 PR-A 회귀 가드 — /login = base.html PWA 헤더 보존."""
+    """기존 PR-A 회귀 가드 — landing.html PWA 헤더 보존.
+
+    사이클 117: /login → 301 redirect. / (landing.html) 로 검증 대상 변경.
+    Cycle 117: /login → 301 redirect. Test target changed to / (landing.html).
+    """
     c = TestClient(app)
-    response = c.get("/login")
+    response = c.get("/")
     assert response.status_code == 200
     # PR-A PWA 헤더 = PR-B 무관 = 회귀 0 검증
     assert '<link rel="manifest" href="/static/manifest.json">' in response.text
