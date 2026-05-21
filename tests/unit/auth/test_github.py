@@ -35,12 +35,23 @@ def test_login_redirects_if_already_authenticated():
 
 
 def test_logout_clears_session_and_redirects():
-    """POST /auth/logout은 세션을 초기화하고 / 로 리다이렉트한다 (사이클 117 fix — /login은 301).
-    POST /auth/logout clears session and redirects to / (cycle 117 fix — /login is now 301).
+    """POST /auth/logout은 세션을 초기화하고 / 로 302 리다이렉트한다 (비-HTMX 요청).
+    POST /auth/logout clears session and 302-redirects to / for non-HTMX requests.
     """
     r = client.post("/auth/logout", follow_redirects=False)
     assert r.status_code == 302
     assert r.headers["location"] == "/"
+
+
+def test_logout_with_htmx_returns_hx_redirect():
+    """HTMX 요청(HX-Request 헤더)이면 200 + HX-Redirect: / 를 반환한다.
+    HTMX request (HX-Request header) returns 200 + HX-Redirect: / for full page reload.
+    hx-boost body-swap 대신 window.location 전체 재로드 → landing.html <head> CSS 적용 보장.
+    Forces window.location reload instead of body-swap so landing.html <head> CSS applies.
+    """
+    r = client.post("/auth/logout", follow_redirects=False, headers={"HX-Request": "true"})
+    assert r.status_code == 200
+    assert r.headers.get("HX-Redirect") == "/"
 
 
 def test_logout_with_user_id_deletes_token_from_db():

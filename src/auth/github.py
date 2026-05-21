@@ -2,7 +2,7 @@
 import logging
 from authlib.integrations.starlette_client import OAuth, OAuthError
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from sqlalchemy import update
@@ -124,8 +124,8 @@ async def auth_callback(request: Request):
 @router.post("/auth/logout")
 async def logout(request: Request):
     """세션 초기화 후 / (랜딩 페이지) 리다이렉트.
-    /login 은 사이클 117 이후 /auth/github 로 301 redirect 되므로 직접 / 로 이동.
-    Redirect to / (landing page) — /login now 301-redirects to /auth/github (cycle 117).
+    HTMX hx-boost 요청은 HX-Redirect 헤더로 전체 페이지 재로드 — landing.html 독립 <head> CSS 보존.
+    Redirect to /. HTMX requests use HX-Redirect for full reload so landing.html <head> CSS applies.
     """
     user_id = request.session.get("user_id")
     if user_id:
@@ -137,4 +137,10 @@ async def logout(request: Request):
             )
             db.commit()
     request.session.clear()
+    if request.headers.get("HX-Request"):
+        # hx-boost body-swap 대신 window.location 전체 재로드 유도
+        # Force full page navigation instead of body-swap so landing.html CSS applies
+        resp = Response(status_code=200)
+        resp.headers["HX-Redirect"] = "/"
+        return resp
     return RedirectResponse(url="/", status_code=302)
