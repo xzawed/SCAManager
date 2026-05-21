@@ -79,13 +79,14 @@ async def test_handle_gate_callback_approve_with_auto_merge():
     config = RepoConfigData(repo_full_name="owner/repo", auto_merge=True, merge_threshold=75)
     with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock):
-            with patch("src.webhook.providers.telegram.save_gate_decision"):
+            with patch("src.webhook.providers.telegram.save_gate_decision") as mock_save:
                 with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
                     with patch("src.webhook.providers.telegram.merge_pr", new_callable=AsyncMock) as mock_merge:
                         with patch("src.webhook.providers.telegram.log_merge_attempt") as mock_log:
                             mock_merge.return_value = (True, None, "abc123")
                             await handle_gate_callback(analysis_id=42, decision="approve",
                                                        decided_by="john")
+                            mock_save.assert_called_once()
                             mock_merge.assert_called_once()
                             mock_log.assert_called_once()
                             _, kw = mock_log.call_args
@@ -105,11 +106,12 @@ async def test_handle_gate_callback_approve_without_auto_merge():
     config = RepoConfigData(repo_full_name="owner/repo", auto_merge=False)
     with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock):
-            with patch("src.webhook.providers.telegram.save_gate_decision"):
+            with patch("src.webhook.providers.telegram.save_gate_decision") as mock_save:
                 with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
                     with patch("src.webhook.providers.telegram.merge_pr", new_callable=AsyncMock) as mock_merge:
                         await handle_gate_callback(analysis_id=42, decision="approve",
                                                    decided_by="john")
+                        mock_save.assert_called_once()
                         mock_merge.assert_not_called()
 
 
@@ -125,11 +127,12 @@ async def test_handle_gate_callback_reject_does_not_merge():
     config = RepoConfigData(repo_full_name="owner/repo", auto_merge=True)
     with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock):
-            with patch("src.webhook.providers.telegram.save_gate_decision"):
+            with patch("src.webhook.providers.telegram.save_gate_decision") as mock_save:
                 with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
                     with patch("src.webhook.providers.telegram.merge_pr", new_callable=AsyncMock) as mock_merge:
                         await handle_gate_callback(analysis_id=42, decision="reject",
                                                    decided_by="john")
+                        mock_save.assert_called_once()
                         mock_merge.assert_not_called()
 
 
