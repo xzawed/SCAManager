@@ -24,6 +24,7 @@ paths:
 - **모듈 레벨 캐시 격리**: `src/webhook/_helpers.py`의 `_webhook_secret_cache`는 모듈 레벨 dict. `tests/conftest.py`의 `_clear_webhook_secret_cache` autouse fixture가 테스트마다 자동 클리어. 신규 모듈 레벨 캐시 추가 시 동일한 autouse fixture 패턴 적용 필수.
 - **`services/analytics_service.py` 테스트 패턴**: `db: Session` 인자 + `now: datetime | None = None` 의존성 주입(freezegun 미사용). 각 테스트 파일은 자체 in-memory SQLite engine fixture (`tests/unit/repositories/test_analysis_feedback_repo.py:20-58` 참조). `func.count/avg/min/max` 호출 시 `# pylint: disable=not-callable` 인라인 주석 필수.
 - **SessionLocal Mock 한계**: `SessionLocal` Mock 은 ORM 속성 오류 미감지 — 핵심 라우트에 실 DB 테스트 병행 필수.
+- 🔴 **empty `__init__.py` + explicit ORM import 의무 (사이클 115 PR #560 / 사이클 116 P1-C)**: `src/models/__init__.py` 가 빈 파일이므로 `import src.models` 에 side-effect 없음 — `Base.metadata.create_all()` 호출 전 **테스트 파일 최상단에 각 ORM 모델을 명시적으로 import** 해야 해당 테이블이 in-memory SQLite 에 생성됨. 누락 시 "no such table: <model>" 런타임 에러. 신규 ORM 모델 추가 시 관련 테스트 파일의 top-level import 확인 필수. 패턴: `from src.models.insight_narrative_cache import InsightNarrativeCache  # noqa: F401`.
 - 🔴 **settings 싱글톤 mock — `monkeypatch.setenv` 무효**: `src/api/auth.py` 의 `settings = Settings()` 는 모듈 import 시점에 인스턴스화 완료. `monkeypatch.setenv("API_KEY", ...)` 는 이미 생성된 singleton 에 미반영 → `require_api_key` 가 항상 원래 값으로 판정. 올바른 패턴: `monkeypatch.setattr("src.api.auth.settings.api_key", _VALID_KEY)` — singleton 인스턴스 속성 직접 교체. (사이클 99 PR #441 fix-up `7e13d72` 검증 패턴). 다른 `Settings` 필드도 동일 규칙 적용.
 
 ## 회귀 차단 트랩 (사고 검증 영역)

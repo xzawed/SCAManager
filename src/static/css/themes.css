@@ -35,6 +35,9 @@
   --grade-d:        #fb923c; --grade-f: #f87171;
   --accent-grad:    linear-gradient(135deg,#6366f1,#a855f7);
   --table-row-hover: rgba(99,102,241,0.05);
+  --warning-rgb:     245 158 11;
+  --warning-faint:   rgba(245,158,11,0.1);
+  --accent-faint:    rgba(99,102,241,0.08);
 
   /* aurora orb colors */
   --orb1: rgba(99,102,241,0.18);
@@ -93,6 +96,9 @@
   --grade-d:        #ea580c; --grade-f: #dc2626;
   --accent-grad:    linear-gradient(135deg,#4f46e5,#7c3aed);
   --table-row-hover: rgba(79,70,229,0.04);
+  --warning-rgb:     217 119 6;
+  --warning-faint:   rgba(217,119,6,0.08);
+  --accent-faint:    rgba(79,70,229,0.06);
 
   --orb1: rgba(79,70,229,0.07);
   --orb2: rgba(124,58,237,0.06);
@@ -149,6 +155,9 @@
   --grade-d:        #ea580c; --grade-f: #dc2626;
   --accent-grad:    linear-gradient(135deg,#8b5cf6,#a78bfa);
   --table-row-hover: rgba(139,92,246,0.04);
+  --warning-rgb:     217 119 6;
+  --warning-faint:   rgba(217,119,6,0.08);
+  --accent-faint:    rgba(139,92,246,0.08);
 
   --orb1: rgba(167,139,250,0.28);
   --orb2: rgba(244,114,182,0.22);
@@ -205,6 +214,9 @@
   --grade-d:        #fab387; --grade-f: #f38ba8;
   --accent-grad:    linear-gradient(135deg,#cba6f7,#b4befe);
   --table-row-hover: rgba(203,166,247,0.06);
+  --warning-rgb:     249 226 175;
+  --warning-faint:   rgba(249,226,175,0.12);
+  --accent-faint:    rgba(203,166,247,0.08);
 
   --orb1: rgba(203,166,247,0.12);
   --orb2: rgba(243,139,168,0.10);
