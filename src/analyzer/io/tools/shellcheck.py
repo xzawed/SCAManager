@@ -43,7 +43,7 @@ class _ShellCheckAnalyzer:
             issues = []
             for item in data:
                 level = item.get("level", "warning")
-                severity = Severity.ERROR if level == "error" else Severity.WARNING
+                severity = Severity.ERROR if level.lower() == "error" else Severity.WARNING
                 issues.append(AnalysisIssue(
                     tool="shellcheck",
                     severity=severity,

@@ -73,7 +73,7 @@ def _parse_cppcheck_xml(xml_text: str, language: str) -> list[AnalysisIssue]:
     issues: list[AnalysisIssue] = []
     for err in root.findall(".//error"):
         sev = err.get("severity", "warning")
-        severity = Severity.ERROR if sev == "error" else Severity.WARNING
+        severity = Severity.ERROR if sev.lower() == "error" else Severity.WARNING
         message = err.get("msg", "") or err.get("verbose", "") or err.get("id", "")
         line = 0
         loc = err.find("location")
