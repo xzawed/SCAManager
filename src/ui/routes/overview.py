@@ -27,6 +27,7 @@ router = APIRouter()
 def overview(
     request: Request,
     current_user: Annotated[CurrentUser | None, Depends(get_current_user)],
+    error: str | None = None,
 ):
     """전체 리포 현황 대시보드를 렌더링한다. 미인증 시 랜딩 페이지 반환.
     Renders repo dashboard. Returns landing page for unauthenticated visitors.
@@ -34,6 +35,9 @@ def overview(
     if current_user is None:
         return templates.TemplateResponse(request, "landing.html", {
             "locale": get_locale(request),
+            # OAuth 오류 메시지 표시용 (auth_callback 에서 /?error=<type> 전달)
+            # Used to display OAuth error banner (passed from auth_callback via /?error=<type>)
+            "error": error,
         })
     with SessionLocal() as db:
         repos = db.query(Repository).filter(

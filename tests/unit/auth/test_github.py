@@ -17,21 +17,21 @@ client = TestClient(app)
 
 
 def test_login_page_loads():
-    """GET /login은 로그인 페이지(200 HTML)를 반환한다."""
-    with patch("src.auth.github.get_current_user", return_value=None):
-        r = client.get("/login")
-    assert r.status_code == 200
-    assert "text/html" in r.headers["content-type"]
+    """/login 은 /auth/github 로 301 리다이렉트한다 (사이클 117 — 중간 단계 제거).
+    /login redirects 301 to /auth/github (cycle 117 — removed intermediate step).
+    """
+    r = client.get("/login", follow_redirects=False)
+    assert r.status_code == 301
+    assert r.headers["location"] == "/auth/github"
 
 
 def test_login_redirects_if_already_authenticated():
-    """이미 로그인된 사용자가 /login 접근 시 / 로 리다이렉트."""
-    from src.models.user import User
-    mock_user = User(id=1, github_id="12345", email="a@b.com", display_name="Test")
-    with patch("src.auth.github.get_current_user", return_value=mock_user):
-        r = client.get("/login", follow_redirects=False)
-    assert r.status_code == 302
-    assert r.headers["location"] == "/"
+    """/login 은 인증 여부에 관계없이 /auth/github 로 301 리다이렉트한다.
+    /login always 301-redirects to /auth/github regardless of auth state.
+    """
+    r = client.get("/login", follow_redirects=False)
+    assert r.status_code == 301
+    assert r.headers["location"] == "/auth/github"
 
 
 def test_logout_clears_session_and_redirects():
@@ -267,30 +267,35 @@ def test_auth_github_uses_url_for_when_app_base_url_not_set():
 # OAuth 콜백 — 실패 경로
 # ---------------------------------------------------------------------------
 
-def test_callback_token_failure_returns_500():
-    """authorize_access_token 실패 시 500 반환(미처리 예외 문서화)."""
-    no_raise_client = TestClient(app, raise_server_exceptions=False)
+def test_callback_token_failure_redirects_to_error():
+    """authorize_access_token 실패 시 /?error=auth_failed 로 302 리다이렉트 (사이클 117).
+    authorize_access_token failure redirects to /?error=auth_failed (cycle 117).
+    """
     with patch("src.auth.github.oauth.github.authorize_access_token",
                new_callable=AsyncMock, side_effect=Exception("OAuth failed")):
-        r = no_raise_client.get("/auth/callback?code=bad&state=bad", follow_redirects=False)
-    assert r.status_code == 500
+        r = client.get("/auth/callback?code=bad&state=bad", follow_redirects=False)
+    assert r.status_code == 302
+    assert r.headers["location"] == "/?error=auth_failed"
 
 
-def test_callback_user_api_failure_returns_500():
-    """GitHub user API 호출 실패 시 500 반환."""
-    no_raise_client = TestClient(app, raise_server_exceptions=False)
+def test_callback_user_api_failure_redirects_to_error():
+    """GitHub user API 호출 실패 시 /?error=auth_failed 로 302 리다이렉트 (사이클 117).
+    GitHub user API failure redirects to /?error=auth_failed (cycle 117).
+    """
     mock_token = {"access_token": "gho_token"}
     with patch("src.auth.github.oauth.github.authorize_access_token",
                new_callable=AsyncMock, return_value=mock_token):
         with patch("src.auth.github.oauth.github.get",
                    new_callable=AsyncMock, side_effect=Exception("GitHub API unavailable")):
-            r = no_raise_client.get("/auth/callback?code=test&state=test", follow_redirects=False)
-    assert r.status_code == 500
+            r = client.get("/auth/callback?code=test&state=test", follow_redirects=False)
+    assert r.status_code == 302
+    assert r.headers["location"] == "/?error=auth_failed"
 
 
-def test_callback_missing_user_id_returns_500():
-    """user_info에 'id' 필드가 없으면 KeyError → 500 반환."""
-    no_raise_client = TestClient(app, raise_server_exceptions=False)
+def test_callback_missing_user_id_redirects_to_error():
+    """user_info에 'id' 필드가 없으면 KeyError → /?error=auth_failed 로 302 리다이렉트 (사이클 117).
+    Missing 'id' field causes KeyError → 302 redirect to /?error=auth_failed (cycle 117).
+    """
     mock_token = {"access_token": "gho_token"}
     mock_user_info = MagicMock()
     mock_user_info.json.return_value = {"login": "nouser"}  # id 없음
@@ -302,8 +307,9 @@ def test_callback_missing_user_id_returns_500():
                    new_callable=AsyncMock, side_effect=[mock_user_info, mock_emails_resp]):
             with patch("src.auth.github.SessionLocal") as mock_sl:
                 mock_sl.return_value.__enter__.return_value = MagicMock()
-                r = no_raise_client.get("/auth/callback?code=test&state=test", follow_redirects=False)
-    assert r.status_code == 500
+                r = client.get("/auth/callback?code=test&state=test", follow_redirects=False)
+    assert r.status_code == 302
+    assert r.headers["location"] == "/?error=auth_failed"
 
 
 # ---------------------------------------------------------------------------
@@ -438,30 +444,30 @@ def test_oauth_scope_configured_correctly():
 # CSRF state forgery — explicit MismatchingStateError unit test
 # ---------------------------------------------------------------------------
 
-def test_callback_mismatching_state_error_returns_500():
-    """state 위조 시 MismatchingStateError → 500 반환 (CSRF 방어 명시적 검증).
-    Forged state causes MismatchingStateError → 500 (explicit CSRF defence).
+def test_callback_mismatching_state_error_redirects_to_oauth_error():
+    """state 위조 시 MismatchingStateError → /?error=oauth_failed 302 리다이렉트 (사이클 117).
+    MismatchingStateError is caught as OAuthError → 302 to /?error=oauth_failed (cycle 117).
+    CSRF 방어: 위조 state는 성공 리다이렉트(/?  no error)를 절대 반환하지 않는다.
+    CSRF defence: forged state must never produce a success redirect (/ no error).
     """
-    # 실제 Authlib import 경로 확인 후 사용
-    # Use the verified Authlib import path
     try:
         from authlib.integrations.base_client.errors import MismatchingStateError
     except ImportError:
         from authlib.common.errors import AuthlibBaseError as MismatchingStateError
 
-    no_raise_client = TestClient(app, raise_server_exceptions=False)
     with patch(
         "src.auth.github.oauth.github.authorize_access_token",
         new_callable=AsyncMock,
         side_effect=MismatchingStateError(),
     ):
-        r = no_raise_client.get(
+        r = client.get(
             "/auth/callback?code=x&state=forged_state",
             follow_redirects=False,
         )
-    # 성공(302 to /)이어서는 안 된다
-    # Must not be a success redirect
-    assert r.status_code == 500
+    # CSRF 위조 → OAuth 오류 배너 표시 (성공 리다이렉트 아님)
+    # CSRF forgery → OAuth error banner (not a success redirect)
+    assert r.status_code == 302
+    assert r.headers["location"] == "/?error=oauth_failed"
 
 
 def test_callback_missing_state_returns_error():
@@ -582,3 +588,97 @@ def test_callback_oauth_error_returns_non_success():
     # 성공(302 to /)이어서는 안 된다
     # Must not be a success redirect.
     assert not (r.status_code == 302 and r.headers.get("location") == "/")
+
+
+# ---------------------------------------------------------------------------
+# 변경 예정 동작 — TDD Red 단계 테스트
+# Planned behavior changes — TDD Red phase tests
+# ---------------------------------------------------------------------------
+
+def test_require_login_redirects_to_auth_github():
+    """비인증 요청 시 require_login 이 /auth/github 로 302 리다이렉트해야 한다.
+    require_login must redirect to /auth/github (not /login) for unauthenticated requests.
+
+    현재 동작: /login 으로 리다이렉트 (session.py:55)
+    변경 예정: /auth/github 로 리다이렉트
+    Current: redirects to /login — Expected after change: redirects to /auth/github
+    """
+    from src.auth.session import require_login
+    from fastapi import HTTPException
+
+    # 비인증 상태 요청 시뮬레이션 — get_current_user 가 None 반환
+    # Simulate unauthenticated request — get_current_user returns None
+    mock_request = MagicMock()
+    mock_request.session.get.return_value = None  # user_id 없음 / no user_id in session
+
+    try:
+        require_login(mock_request)
+        raise AssertionError("require_login 이 예외 없이 통과했다 — 비인증 요청이 허용됨")
+    except HTTPException as exc:
+        # 변경 후 기대값: Location = /auth/github, status_code = 302
+        # After change: Location must be /auth/github with 302
+        assert exc.status_code == 302, f"302 기대, 실제: {exc.status_code}"
+        location = exc.headers.get("Location", "")
+        assert location == "/auth/github", (
+            f"Location '/auth/github' 기대, 실제: {location!r}\n"
+            f"(현재 /login — session.py:55 변경 전 Red 단계)"
+        )
+
+
+def test_login_route_redirects_301_to_auth_github():
+    """GET /login 이 301 리다이렉트 + Location: /auth/github 를 반환해야 한다.
+    GET /login must return 301 redirect with Location: /auth/github.
+
+    현재 동작: login.html 200 렌더링 (github.py:40-49)
+    변경 예정: 301 Moved Permanently → /auth/github
+    Current: renders login.html 200 — Expected after change: 301 to /auth/github
+    """
+    # 미인증 상태에서 /login 접근 — get_current_user 가 None 반환하도록 patch
+    # Unauthenticated /login access — patch get_current_user to return None
+    with patch("src.auth.github.get_current_user", return_value=None):
+        r = client.get("/login", follow_redirects=False)
+
+    # 변경 후 기대값: 301 + Location: /auth/github
+    # After change: 301 + Location: /auth/github
+    assert r.status_code == 301, (
+        f"301 기대, 실제: {r.status_code}\n"
+        f"(현재 200 login.html — github.py:40 변경 전 Red 단계)"
+    )
+    assert r.headers.get("location") == "/auth/github", (
+        f"Location '/auth/github' 기대, 실제: {r.headers.get('location')!r}"
+    )
+
+
+def test_auth_callback_oauth_error_redirects_to_landing():
+    """auth_callback 에서 OAuthError 발생 시 /?error=oauth_failed 로 302 리다이렉트해야 한다.
+    OAuthError in auth_callback must redirect to /?error=oauth_failed with 302.
+
+    현재 동작: try/except 없음 → 500 (github.py:65)
+    변경 예정: OAuthError → RedirectResponse("/?error=oauth_failed", 302)
+    Current: no try/except → 500 — Expected after change: 302 to /?error=oauth_failed
+    """
+    from authlib.integrations.base_client.errors import OAuthError
+
+    # raise_server_exceptions=False 로 500 과 302 모두 response 로 수신
+    # Use raise_server_exceptions=False to capture both 500 and 302 as responses
+    test_client = TestClient(app, raise_server_exceptions=False)
+    with patch(
+        "src.auth.github.oauth.github.authorize_access_token",
+        new_callable=AsyncMock,
+        side_effect=OAuthError(error="access_denied"),
+    ):
+        r = test_client.get(
+            "/auth/callback?code=x&state=x",
+            follow_redirects=False,
+        )
+
+    # 변경 후 기대값: 302 + Location: /?error=oauth_failed
+    # After change: 302 + Location: /?error=oauth_failed
+    assert r.status_code == 302, (
+        f"302 기대, 실제: {r.status_code}\n"
+        f"(현재 OAuthError 처리 없음 → 500 — github.py:65 변경 전 Red 단계)"
+    )
+    location = r.headers.get("location", "")
+    assert "error=oauth_failed" in location, (
+        f"Location 에 'error=oauth_failed' 기대, 실제: {location!r}"
+    )
