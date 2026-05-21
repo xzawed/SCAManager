@@ -81,12 +81,12 @@ def test_get_current_user_with_zero_user_id_returns_none():
 
 
 def test_require_login_with_nonexistent_user_raises_redirect():
-    """DB에 존재하지 않는 user_id로 require_login 호출 시 303 리다이렉트를 발생시켜야 한다.
+    """DB에 존재하지 않는 user_id로 require_login 호출 시 /auth/github 302 리다이렉트 발생 (사이클 117).
     When require_login is called with a valid-looking but nonexistent user_id,
-    it must raise HTTPException with status 302 and Location: /login.
+    it must raise HTTPException with status 302 and Location: /auth/github (cycle 117).
 
-    이유: get_current_user가 None을 반환하면 require_login이 302 리다이렉트를 발생시킴.
-    Reason: when get_current_user returns None, require_login raises 302 redirect.
+    이유: get_current_user가 None을 반환하면 require_login이 /auth/github 302 리다이렉트를 발생시킴.
+    Reason: when get_current_user returns None, require_login raises 302 to /auth/github.
     """
     mock_db = _mock_db_not_found()
     with patch("src.auth.session.SessionLocal") as mock_sl:
@@ -95,4 +95,4 @@ def test_require_login_with_nonexistent_user_raises_redirect():
             require_login(_req({"user_id": 99999}))
 
     assert exc_info.value.status_code == 302
-    assert exc_info.value.headers["Location"] == "/login"
+    assert exc_info.value.headers["Location"] == "/auth/github"

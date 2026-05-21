@@ -54,11 +54,13 @@ def test_get_current_user_valid():
 
 
 def test_require_login_no_session_raises_302():
-    """비로그인 시 HTTPException 302 with Location: /login."""
+    """비로그인 시 HTTPException 302 with Location: /auth/github (사이클 117 — /login 중간 단계 제거).
+    Non-authenticated raises HTTPException 302 with Location: /auth/github (cycle 117).
+    """
     with pytest.raises(HTTPException) as exc_info:
         require_login(_req({}))
     assert exc_info.value.status_code == 302
-    assert exc_info.value.headers["Location"] == "/login"
+    assert exc_info.value.headers["Location"] == "/auth/github"
 
 
 def test_require_login_returns_current_user():

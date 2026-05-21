@@ -83,15 +83,24 @@ def test_icon_512_svg_serves_200():
 
 
 def test_base_html_includes_manifest_link():
-    """base.html (login 페이지 응답) = manifest link + theme-color + apple-touch-icon 헤더 포함.
+    """landing.html (/ 페이지 응답) = manifest link + theme-color + apple-touch-icon 헤더 포함.
 
-    /login route = `get_current_user` (request.session) 만 의존 — DB/lifespan 무관.
-    /login route = depends only on request.session — DB/lifespan independent.
+    사이클 117: /login → 301 redirect. / (landing.html) 로 검증 대상 변경.
+    Cycle 117: /login → 301 redirect. Test target changed to / (landing.html).
+    dependency_overrides 클리어 — 이전 테스트 mock user 누출 시 DB 조회 방지 (DB/lifespan 무관).
+    dependency_overrides cleared — prevents DB hit from leaked mock user in prior tests.
     """
-    c = TestClient(app)
-    response = c.get("/login")
-    assert response.status_code == 200
-    # PWA 핵심 헤더 3종
-    assert '<link rel="manifest" href="/static/manifest.json">' in response.text
-    assert 'theme-color' in response.text
-    assert '/static/icons/icon-192.svg' in response.text
+    from src.auth.session import get_current_user  # pylint: disable=import-outside-toplevel
+    saved = dict(app.dependency_overrides)
+    app.dependency_overrides[get_current_user] = lambda: None
+    try:
+        c = TestClient(app)
+        response = c.get("/")
+        assert response.status_code == 200
+        # PWA 핵심 헤더 3종
+        assert '<link rel="manifest" href="/static/manifest.json">' in response.text
+        assert 'theme-color' in response.text
+        assert '/static/icons/icon-192.svg' in response.text
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(saved)

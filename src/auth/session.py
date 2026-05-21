@@ -49,10 +49,12 @@ def get_current_user(request: Request) -> CurrentUser | None:
 
 
 def require_login(request: Request) -> CurrentUser:
-    """로그인 필수 의존성. 비로그인 시 /login 으로 302 리다이렉트."""
+    """로그인 필수 의존성. 비로그인 시 /auth/github 으로 302 리다이렉트."""
+    # /login 중간 단계 제거 — GitHub OAuth 직행 (사이클 117)
+    # Skip /login intermediate step — go straight to GitHub OAuth (cycle 117)
     user = get_current_user(request)
     if not user:
-        raise HTTPException(status_code=302, headers={"Location": "/login"})
+        raise HTTPException(status_code=302, headers={"Location": "/auth/github"})
     return user
 
 

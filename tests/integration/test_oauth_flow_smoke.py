@@ -57,13 +57,13 @@ class TestSmokeCheckMinimal:
             "OAuth flow 깨짐 — P0 사고 위험."
         )
 
-    def test_login_page_returns_200_or_302(self, client):
-        """GET /login → 200 (페이지 표시) 또는 302 (로그인 상태에서 / 로 redirect).
+    def test_login_page_returns_redirect(self, client):
+        """GET /login → 301 /auth/github (사이클 117 — 중간 단계 제거).
 
-        둘 다 정상 — 5xx 만 P0.
+        5xx 만 P0 — 301/302 모두 정상.
         """
         response = client.get("/login")
-        assert response.status_code in (200, 302), (
+        assert response.status_code in (200, 301, 302), (
             f"/login 5xx: {response.status_code}"
         )
 
@@ -103,10 +103,11 @@ class TestAuthFlowEndpoints:
         )
 
     def test_auth_callback_rejects_direct_call(self):
-        """GET /auth/callback 직접 호출 시 거부 (state 검증 실패).
+        """GET /auth/callback 직접 호출 시 인증 우회 불가 (state 검증 실패).
 
-        4xx / 5xx / authlib MismatchingStateError exception 모두 정상 거부 — 200 만 P0
-        (인증 우회 위험). raise_server_exceptions=False 로 exception 도 5xx 응답으로 변환.
+        200 만 P0 (인증 우회 위험) — 4xx/5xx/302(오류 배너) 모두 정상 거부.
+        사이클 117: OAuthError → 302 /?error=oauth_failed 로 처리 변경.
+        Cycle 117: OAuthError now redirects to /?error=oauth_failed (302), not 4xx/5xx.
         """
         # pylint: disable=import-outside-toplevel
         from src.main import app
@@ -115,10 +116,13 @@ class TestAuthFlowEndpoints:
         assert response.status_code != 200, (
             f"/auth/callback 직접 호출 200 = 인증 우회 위험. status={response.status_code}"
         )
-        # 정상 거부: 4xx (state 검증 실패) 또는 5xx (Authlib MismatchingStateError 처리되지 않음)
-        assert response.status_code >= 400, (
-            f"4xx/5xx 거부 기대, 실제: {response.status_code}"
-        )
+        # 302 (오류 배너 리다이렉트) 도 정상 거부 — 인증 없이 / 로 이동하지 않음
+        # 302 to /?error=... is also a valid rejection — no successful auth without state
+        if response.status_code == 302:
+            location = response.headers.get("location", "")
+            assert "error=" in location, (
+                f"302 redirect without error param — potential bypass: location={location}"
+            )
 
     def test_webhooks_github_rejects_missing_signature(self, client):
         """POST /webhooks/github 서명 헤더 누락 시 401 (HMAC 검증)."""

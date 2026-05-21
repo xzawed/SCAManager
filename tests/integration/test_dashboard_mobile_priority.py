@@ -76,10 +76,23 @@ def test_dashboard_html_desktop_order_preserved():
 
 
 def test_dashboard_html_login_response_includes_pwa_headers():
-    """기존 PR-A 회귀 가드 — /login = base.html PWA 헤더 보존."""
-    c = TestClient(app)
-    response = c.get("/login")
-    assert response.status_code == 200
-    # PR-A PWA 헤더 = PR-B 무관 = 회귀 0 검증
-    assert '<link rel="manifest" href="/static/manifest.json">' in response.text
-    assert 'theme-color' in response.text
+    """기존 PR-A 회귀 가드 — landing.html PWA 헤더 보존.
+
+    사이클 117: /login → 301 redirect. / (landing.html) 로 검증 대상 변경.
+    Cycle 117: /login → 301 redirect. Test target changed to / (landing.html).
+    dependency_overrides 클리어 — 이전 테스트 mock user 누출 시 DB 조회 방지 (DB/lifespan 무관).
+    dependency_overrides cleared — prevents DB hit from leaked mock user in prior tests.
+    """
+    from src.auth.session import get_current_user  # pylint: disable=import-outside-toplevel
+    saved = dict(app.dependency_overrides)
+    app.dependency_overrides[get_current_user] = lambda: None
+    try:
+        c = TestClient(app)
+        response = c.get("/")
+        assert response.status_code == 200
+        # PR-A PWA 헤더 = PR-B 무관 = 회귀 0 검증
+        assert '<link rel="manifest" href="/static/manifest.json">' in response.text
+        assert 'theme-color' in response.text
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(saved)

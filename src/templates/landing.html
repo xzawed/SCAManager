@@ -160,6 +160,41 @@
     }
     .nav-login:hover { color: var(--text-1); border-color: var(--border-strong); }
 
+    /* ── 오류 배너 ──────────────────────────────────────── */
+    .auth-error-banner {
+      position: fixed;
+      top: 72px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 200;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 20px;
+      border-radius: 10px;
+      background: rgba(var(--warning-rgb, 245 158 11), 0.12);
+      border: 1px solid rgba(var(--warning-rgb, 245 158 11), 0.35);
+      color: var(--text-1);
+      font-size: 0.875rem;
+      max-width: calc(100vw - 32px);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.25);
+      animation: banner-in 0.22s ease;
+    }
+    .auth-error-banner .banner-icon { font-size: 1.1rem; flex-shrink: 0; }
+    .auth-error-banner .banner-close {
+      margin-left: 12px;
+      background: none;
+      border: none;
+      color: var(--text-3);
+      cursor: pointer;
+      padding: 0 4px;
+      font-size: 1rem;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .auth-error-banner .banner-close:hover { color: var(--text-1); }
+    @keyframes banner-in { from { opacity: 0; transform: translateX(-50%) translateY(-8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+
     /* ── 히어로 섹션 ────────────────────────────────────── */
     .hero {
       position: relative;
@@ -462,9 +497,24 @@
     SCAManager
   </a>
   <div class="nav-cta">
-    <a href="/login" class="nav-login">로그인</a>
+    <a href="/auth/github" class="nav-login">로그인</a>
   </div>
 </nav>
+
+{% if error %}
+<!-- OAuth 오류 배너 / OAuth error banner -->
+<div class="auth-error-banner" role="alert" id="authErrorBanner">
+  <span class="banner-icon">⚠️</span>
+  <span>
+    {% if error == "oauth_failed" %}
+      로그인 중 문제가 발생했습니다. 다시 시도해 주세요.
+    {% else %}
+      일시적인 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.
+    {% endif %}
+  </span>
+  <button class="banner-close" aria-label="닫기" onclick="document.getElementById('authErrorBanner').remove()">✕</button>
+</div>
+{% endif %}
 
 <!-- 히어로 섹션 / Hero section -->
 <main class="hero">
