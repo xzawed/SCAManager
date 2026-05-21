@@ -35,15 +35,17 @@ def test_login_redirects_if_already_authenticated():
 
 
 def test_logout_clears_session_and_redirects():
-    """POST /auth/logout은 세션을 초기화하고 /login 으로 리다이렉트한다."""
+    """POST /auth/logout은 세션을 초기화하고 / 로 리다이렉트한다 (사이클 117 fix — /login은 301).
+    POST /auth/logout clears session and redirects to / (cycle 117 fix — /login is now 301).
+    """
     r = client.post("/auth/logout", follow_redirects=False)
     assert r.status_code == 302
-    assert "/login" in r.headers["location"]
+    assert r.headers["location"] == "/"
 
 
 def test_logout_with_user_id_deletes_token_from_db():
-    """user_id 가 세션에 있을 때 logout → DB에서 github_access_token 삭제 후 /login 리다이렉트.
-    When user_id exists in session, logout deletes github_access_token from DB and redirects.
+    """user_id 가 세션에 있을 때 logout → DB에서 github_access_token 삭제 후 / 리다이렉트.
+    When user_id exists in session, logout deletes github_access_token from DB and redirects to /.
     """
     import json
     import base64
@@ -67,7 +69,7 @@ def test_logout_with_user_id_deletes_token_from_db():
         )
 
     assert r.status_code == 302
-    assert "/login" in r.headers["location"]
+    assert r.headers["location"] == "/"
     # DB execute (UPDATE users SET github_access_token=NULL) 와 commit 이 호출되어야 한다
     # DB execute (UPDATE users SET github_access_token=NULL) and commit must be called.
     assert mock_db.execute.called

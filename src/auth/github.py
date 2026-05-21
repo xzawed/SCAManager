@@ -123,7 +123,10 @@ async def auth_callback(request: Request):
 
 @router.post("/auth/logout")
 async def logout(request: Request):
-    """세션 초기화 후 /login 리다이렉트."""
+    """세션 초기화 후 / (랜딩 페이지) 리다이렉트.
+    /login 은 사이클 117 이후 /auth/github 로 301 redirect 되므로 직접 / 로 이동.
+    Redirect to / (landing page) — /login now 301-redirects to /auth/github (cycle 117).
+    """
     user_id = request.session.get("user_id")
     if user_id:
         # 로그아웃 시 github_access_token 삭제 — 토큰 무기한 잔존 방지
@@ -134,4 +137,4 @@ async def logout(request: Request):
             )
             db.commit()
     request.session.clear()
-    return RedirectResponse(url="/login", status_code=302)
+    return RedirectResponse(url="/", status_code=302)
