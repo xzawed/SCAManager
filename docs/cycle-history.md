@@ -148,7 +148,7 @@
 
 ## 사이클 116
 
-- **사이클 116 (2026-05-21 · #561~#562)** — 사이클 115 5+1 회고 (6 에이전트 병렬) + Tier A/B 이행. **회고 결과**: P0 1건 확정 (`--border-color-subtle` 오타) + P0-1 false-positive 1건 제거 (`--text-muted` CSS fallback chain 정상) + P1 6건 + false-positive 3건 추가 제거 (rubocop frozenset 정상 / `--d-*` 의도적 설계 / api.md 순방향 참조 기존 존재). **#561** STATE.md/cycle-history 사이클 116 회고 동기화. **#562**: `dashboard.html:451,455` `--border-color-subtle` → `--border-subtle` (P0-2, 테마 토큰 불일치 수정) + `themes.css` 4테마(`dark`/`light`/`pastel`/`catppuccin`)에 `--warning-rgb`/`--warning-faint`/`--accent-faint` 추가 (P1-A/B, dashboard 경고 배너·CTA accent 테마 연동) + `test_dashboard_service_user_id_filter.py` `InsightNarrativeCache` top-level import 추가 (P1-C, empty `__init__.py` 패턴 — PR #560과 동일) + `.claude/rules/testing.md` empty `__init__.py` + explicit ORM import 필수 패턴 항목 추가 (P1-F). 테스트 수 변동 없음 3092. Codex mutual: OK 6/6.
+- **사이클 116 (2026-05-21 · #561~#563)** — 사이클 115 5+1 회고 (6 에이전트 병렬) + Tier A/B/C 전수 이행. **회고 결과**: P0 1건 확정 (`--border-color-subtle` 오타) + P0-1 false-positive 1건 제거 (`--text-muted` CSS fallback chain 정상) + P1 6건 + false-positive 3건 추가 제거 (rubocop frozenset 정상 / `--d-*` 의도적 설계 / api.md 순방향 참조 기존 존재). **#562 (Tier A/B)**: `dashboard.html:451,455` `--border-color-subtle` → `--border-subtle` (P0-2) + `themes.css` 4테마에 `--warning-rgb`/`--warning-faint`/`--accent-faint` 추가 (P1-A/B) + `test_dashboard_service_user_id_filter.py` `InsightNarrativeCache` import 추가 (P1-C) + `.claude/rules/testing.md` empty `__init__.py` 패턴 항목 추가 (P1-F). **#563 (Tier C)**: `cppcheck.py:76` + `shellcheck.py:46` severity `.lower()` 방어적 정규화 (P1-D/E) + `api.md` asyncio.gather 규칙 → `pipeline.md` 역방향 cross-ref 추가. 테스트 수 변동 없음 3092. Codex mutual: 샌드박스 오류 → Claude 직접 실측 대체 OK.
 
 ## 사이클 115
 
