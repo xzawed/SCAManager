@@ -362,3 +362,81 @@ def test_hook_result_unknown_repo_returns_404():
 
     assert r.status_code == 404
     mock_db.add.assert_not_called()
+
+
+# ------------------------------------------------------------------
+# T-1: Bearer 헤더 인증 3시나리오 회귀 가드 (사이클 113 P0-A)
+# T-1: Bearer header auth 3-scenario regression guard (Cycle 113 P0-A)
+# ------------------------------------------------------------------
+
+def test_verify_with_bearer_header_only():
+    """Authorization: Bearer 헤더만으로 verify 성공 → 200 {"status": "active"}.
+    Verify succeeds with only an Authorization: Bearer header — returns 200 {"status": "active"}.
+
+    사이클 113 P0-A 회귀 가드: hook.py 가 Authorization 헤더에서 bearer_token을 파싱 후
+    effective_token으로 사용하는지 검증한다.
+    Cycle 113 P0-A regression guard: verifies hook.py parses bearer_token from
+    Authorization header and uses it as effective_token.
+    """
+    mock_db = MagicMock()
+    mock_config = MagicMock()
+    mock_config.hook_token = "bearer-only-token"
+    mock_db.query.return_value.filter.return_value.first.return_value = mock_config
+
+    with patch("src.api.hook.SessionLocal", return_value=_make_session_mock(mock_db)):
+        with patch("src.api.hook.repo_config_repo.find_by_full_name", return_value=mock_config):
+            r = client.get(
+                "/api/hook/verify",
+                params={"repo": "owner/repo"},
+                headers={"Authorization": "Bearer bearer-only-token"},
+            )
+
+    assert r.status_code == 200
+    assert r.json()["status"] == "active"
+
+
+def test_verify_bearer_takes_priority_over_query_param():
+    """Bearer와 ?token= 동시 존재 시 Bearer가 우선 처리되어 올바른 token으로 인증된다.
+    When both Bearer header and ?token= query param are present, Bearer takes priority.
+
+    사이클 113 P0-A 회귀 가드: effective_token = bearer_token or token 우선순위 검증.
+    Cycle 113 P0-A regression guard: verifies effective_token = bearer_token or token priority.
+    """
+    mock_db = MagicMock()
+    mock_config = MagicMock()
+    # hook_token이 Bearer 값과 일치 → Bearer 우선 사용 시 200
+    # hook_token matches Bearer value → 200 when Bearer takes priority
+    mock_config.hook_token = "correct-bearer-token"
+
+    with patch("src.api.hook.SessionLocal", return_value=_make_session_mock(mock_db)):
+        with patch("src.api.hook.repo_config_repo.find_by_full_name", return_value=mock_config):
+            r = client.get(
+                "/api/hook/verify",
+                params={"repo": "owner/repo", "token": "wrong-query-token"},
+                headers={"Authorization": "Bearer correct-bearer-token"},
+            )
+
+    # Bearer 값이 hook_token과 일치하므로 200 반환 (query param 무시)
+    # Bearer matches hook_token → 200 (query param ignored)
+    assert r.status_code == 200
+    assert r.json()["status"] == "active"
+
+
+def test_verify_no_token_returns_401():
+    """Authorization 헤더도 ?token= 쿼리도 없으면 401 반환.
+    Returns 401 when neither Authorization header nor ?token= query param is present.
+
+    사이클 113 P0-A 회귀 가드: effective_token이 None이면 HTTPException(401) 발화 검증.
+    Cycle 113 P0-A regression guard: verifies HTTPException(401) raised when effective_token is None.
+    """
+    mock_db = MagicMock()
+
+    with patch("src.api.hook.SessionLocal", return_value=_make_session_mock(mock_db)):
+        r = client.get(
+            "/api/hook/verify",
+            params={"repo": "owner/repo"},
+            # Authorization 헤더 없음, token 쿼리 없음
+            # No Authorization header, no token query param
+        )
+
+    assert r.status_code == 401
