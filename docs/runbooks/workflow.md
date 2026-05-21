@@ -40,6 +40,7 @@
 
 > 파일 분석 시 전체 읽기 원칙: import 미사용 여부, 함수 사용처 등을 판단할 때 `grep -n` 실측 의무.
 > 파일 앞부분만 읽고 판단하는 것은 false-positive 원인 — 사이클 113 `test_performance.py` 사고 학습.
+> → CLAUDE.md 정책 6 (line:span 인용 시 `grep -n` 실측 의무) 와 동일 원칙.
 
 ---
 

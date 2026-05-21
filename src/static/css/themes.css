@@ -11,6 +11,7 @@
   --bg-nav:         rgba(7,7,15,0.85);
   --bg-input:       rgba(255,255,255,0.06);
   --bg-input-focus: rgba(255,255,255,0.1);
+  --bg-2:           var(--bg-card);
   --text-1:         #f0f0f8;
   --text-2:         #8b8b9e;
   --text-3:         #6b6b7e;
@@ -68,6 +69,7 @@
   --bg-nav:         rgba(246,246,253,0.85);
   --bg-input:       #f0f0f8;
   --bg-input-focus: #ffffff;
+  --bg-2:           var(--bg-card);
   --text-1:         #0f0f1a;
   --text-2:         #5c5c7a;
   --text-3:         #9090aa;
@@ -123,6 +125,7 @@
   --bg-nav:         rgba(240,236,255,0.85);
   --bg-input:       rgba(255,255,255,0.6);
   --bg-input-focus: rgba(255,255,255,0.9);
+  --bg-2:           var(--bg-card);
   --text-1:         #1e0a4a;
   --text-2:         #6b4fa0;
   --text-3:         #a08cc0;
@@ -178,6 +181,7 @@
   --bg-nav:         rgba(30,30,46,0.92);
   --bg-input:       #313244;
   --bg-input-focus: #45475a;
+  --bg-2:           var(--bg-card);
   --text-1:         #cdd6f4;
   --text-2:         #a6adc8;
   --text-3:         #7f849c;

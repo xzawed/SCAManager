@@ -33,3 +33,4 @@ paths:
 - **Railway Webhook 토큰 인증**: `POST /webhooks/railway/{token}` 엔드포인트는 DB에서 `railway_webhook_token == token` 조회 후 `config is None → 404` 처리. `railway_api_token`은 Fernet 암호화 저장 — `decrypt_token()`으로 백그라운드 핸들러에 전달.
 - **5-way 동기화 Railway 확장**: `railway_deploy_alerts`가 ORM/RepoConfigData/API body/settings 폼/PRESETS 5-way 동기화 적용 대상.
 - **RailwayDeployEvent nested 구조**: `src/railway_client/models.py`의 `RailwayDeployEvent`는 3-그룹 nested dataclass — `event.project.project_id`, `event.commit.commit_sha` 등 sub-dataclass 경로로 접근. 평면(`event.project_id`) 접근은 2026-04-22 이후 제거됨. 신규 필드 추가 시 `RailwayProjectInfo` 또는 `RailwayCommitInfo`에 삽입.
+- **asyncio.gather 내 Session 공유 금지**: `gather()` 내 코루틴은 각각 독립 `with SessionLocal() as db:` 사용 의무 — 세션 공유 시 트랜잭션 충돌. 교차 참조: [`.claude/rules/api.md`](.claude/rules/api.md) (사이클 113 P0-H 학습).
