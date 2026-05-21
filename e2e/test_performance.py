@@ -1,10 +1,7 @@
 """E2E 성능 측정 테스트 — @pytest.mark.perf 마커로 선택 실행.
 E2E performance tests — selectively run via @pytest.mark.perf.
 """
-import time
-
 import pytest
-import requests
 
 from e2e._perf_helpers import LCP_INIT_JS as _LCP_INIT_JS
 from e2e._perf_helpers import measure_one as _measure_one
