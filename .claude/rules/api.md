@@ -40,3 +40,4 @@ paths:
 - 🔴 **`asyncio.gather` 내부 shared Session 금지 (사이클 113 P0-H)**: `asyncio.gather()` 로 동시 실행되는 코루틴들이 단일 `Session` 인스턴스를 공유하면 SQLAlchemy identity map 오염 + 동시 `commit()` 충돌 발생. 각 코루틴은 `with SessionLocal() as db:` 블록을 독립적으로 열어야 함. 전례: `src/gate/engine.py` — `_run_approve_decision` + `_run_auto_merge` 를 gather 전에 db 파라미터 제거 후 각 함수 내부에서 독립 Session 생성으로 수정 (사이클 113 P0-H).
   - **올바른 패턴**: `await asyncio.gather(_run_approve_decision(...), _run_auto_merge(...))` — 각 함수 내부에서 `with SessionLocal() as db:` 독립 사용
   - **금지 패턴**: `await asyncio.gather(_run_approve_decision(db=db, ...), _run_auto_merge(db=db, ...))` — 동일 db 공유
+  - 교차 참조: [`.claude/rules/pipeline.md`](.claude/rules/pipeline.md) (파이프라인 레이어 동일 규칙 — 사이클 115 PR #556 추가)
