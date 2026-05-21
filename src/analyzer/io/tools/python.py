@@ -132,7 +132,7 @@ class _BanditAnalyzer:
             return [
                 AnalysisIssue(
                     tool="bandit",
-                    severity=Severity.ERROR if item["issue_severity"] == "HIGH" else Severity.WARNING,
+                    severity=Severity.ERROR if item["issue_severity"].upper() == "HIGH" else Severity.WARNING,
                     message=item["issue_text"],
                     line=item["line_number"],
                     category=self.category,
