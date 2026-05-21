@@ -304,3 +304,65 @@ class TestFrequentIssuesV2:
         from src.services.dashboard_service import frequent_issues_v2
 
         assert frequent_issues_v2(db, days=7) == []
+
+
+# ─── T-2: _count_high_security — severity="error" 소문자 회귀 가드 (사이클 113 P0-C) ──
+
+
+class TestCountHighSecurityErrorSeverity:
+    """_count_high_security — bandit이 저장하는 severity="error" 소문자 포함 검증.
+
+    Verify _count_high_security counts bandit issues stored as severity="error" (lowercase).
+
+    사이클 113 P0-C 회귀 가드: bandit 파서가 issue_severity=="HIGH"를
+    Severity.ERROR="error"(소문자)로 변환 저장하므로 두 형태를 모두 카운트해야 한다.
+    Cycle 113 P0-C regression guard: bandit parser converts issue_severity=="HIGH"
+    to Severity.ERROR="error" (lowercase), so both forms must be counted.
+    """
+
+    def test_high_security_issues_count_error_severity(self, db, repos):
+        """bandit이 Severity.ERROR="error" (소문자)로 저장한 이슈도 high_security_issues에 포함됨.
+        Issues stored as severity="error" (lowercase) by bandit parser are counted in high_security_issues.
+        """
+        from src.services.dashboard_service import dashboard_kpi
+
+        now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+        result_data = {
+            "issues": [
+                # bandit 파서가 HIGH → Severity.ERROR="error"(소문자)로 저장하는 패턴
+                # bandit parser stores HIGH → Severity.ERROR="error" (lowercase)
+                {"category": "security", "severity": "error", "tool": "bandit", "message": "B608"},
+                # 대문자 "HIGH"도 함께 포함 (혼재 시 양쪽 카운트)
+                # Uppercase "HIGH" mixed in — both forms should be counted
+                {"category": "security", "severity": "HIGH", "tool": "bandit", "message": "B102"},
+                # security가 아닌 카테고리는 제외
+                # Non-security category excluded
+                {"category": "code_quality", "severity": "error", "tool": "pylint", "message": "C0103"},
+            ]
+        }
+        _make_analysis(db, repos[0].id, 75, offset_hours=1, result=result_data)
+
+        result = dashboard_kpi(db, days=7, now=now)
+        # severity="error"(소문자) + severity="HIGH" 합산 → 2건
+        # severity="error" (lowercase) + severity="HIGH" → total 2
+        assert result["high_security_issues"]["value"] == 2
+
+    def test_high_security_issues_excludes_low_severity(self, db, repos):
+        """severity="low" 이슈는 high_security_issues에서 제외된다.
+        Issues with severity="low" are excluded from high_security_issues count.
+        """
+        from src.services.dashboard_service import dashboard_kpi
+
+        now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+        result_data = {
+            "issues": [
+                {"category": "security", "severity": "LOW", "tool": "bandit", "message": "B404"},
+                {"category": "security", "severity": "MEDIUM", "tool": "bandit", "message": "B301"},
+            ]
+        }
+        _make_analysis(db, repos[0].id, 90, offset_hours=1, result=result_data)
+
+        result = dashboard_kpi(db, days=7, now=now)
+        # LOW/MEDIUM severity 보안 이슈는 카운트 0
+        # LOW/MEDIUM severity security issues → count 0
+        assert result["high_security_issues"]["value"] == 0

@@ -162,3 +162,46 @@ def test_post_telegram_otp_uses_secrets_for_randomness():
     # Only digit chars — guaranteed by secrets.choice("0123456789").
     assert all(c in "0123456789" for c in otp)
     assert len(otp) == 6
+
+
+# ── T-3: asyncio.to_thread 래핑 검증 (사이클 113 P0-D 회귀 가드) ──
+# ── T-3: asyncio.to_thread wrapping verification (Cycle 113 P0-D regression guard) ──
+
+
+async def test_post_telegram_otp_wraps_db_in_to_thread():
+    """issue_telegram_otp이 DB 저장을 asyncio.to_thread로 래핑하는지 검증한다.
+    Verifies that issue_telegram_otp wraps DB save in asyncio.to_thread.
+
+    사이클 113 P0-D 회귀 가드: 동기 SQLAlchemy 호출이 async 엔드포인트에서 이벤트 루프를
+    블로킹하지 않도록 asyncio.to_thread로 wrap 되어야 한다.
+    Cycle 113 P0-D regression guard: sync SQLAlchemy must be wrapped in asyncio.to_thread
+    inside async endpoints to avoid event loop blocking.
+    """
+    import asyncio
+    from src.api.users import issue_telegram_otp
+
+    to_thread_calls: list[str] = []
+    real_to_thread = asyncio.to_thread
+
+    async def _spy(fn, *args, **kwargs):
+        # 호출된 함수 이름 기록 — _do_save 클로저 확인
+        # Record the name of the called function — checks for _do_save closure
+        to_thread_calls.append(getattr(fn, "__name__", repr(fn)))
+        return await real_to_thread(fn, *args, **kwargs)
+
+    mock_db = MagicMock()
+    mock_db.execute.return_value = None
+    mock_db.commit.return_value = None
+
+    with patch("src.api.users.asyncio.to_thread", side_effect=_spy):
+        with patch("src.api.users.SessionLocal", return_value=_make_db_session_mock(mock_db)):
+            # issue_telegram_otp 직접 호출 — TestClient는 ASGI event loop 별도 관리
+            # Call issue_telegram_otp directly — TestClient manages its own ASGI event loop
+            await issue_telegram_otp(current_user=_FAKE_USER)
+
+    # asyncio.to_thread가 최소 1번 호출 — _do_save 클로저가 wrap됨
+    # asyncio.to_thread must be called at least once — _do_save closure is wrapped
+    assert len(to_thread_calls) >= 1
+    # 호출된 함수 이름이 "_do_save" 포함
+    # The called function name must include "_do_save"
+    assert any("_do_save" in name for name in to_thread_calls)
