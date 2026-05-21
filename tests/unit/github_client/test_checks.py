@@ -551,3 +551,81 @@ async def test_get_required_check_contexts_caches_result():
     assert result2 == {"CI / test"}
     # 캐시 적중으로 API는 1회만 호출 / API called only once due to cache hit.
     assert mock_client.get.call_count == 1
+
+
+# ── 사이클 113 P0-B 회귀 가드 — 3상태 (waiting/pending/requested) ────────
+# ── Cycle 113 P0-B regression guard — 3 new in-progress states ────────────
+
+
+@pytest.mark.parametrize("status", ["waiting", "pending", "requested"])
+async def test_get_ci_status_running_when_check_in_new_in_progress_states(status):
+    """사이클 113 P0-B 회귀 가드 — waiting/pending/requested 는 running으로 분류.
+    Cycle 113 P0-B regression guard — waiting/pending/requested must be classified as running.
+
+    `_classify_check_runs()` 의 status in ("in_progress", "queued", "waiting", "pending", "requested")
+    조건에서 사이클 113에 추가된 3상태를 검증한다.
+    향후 리팩토링 시 이 3상태가 무음으로 제거되는 것을 방지한다.
+
+    Validates the 3 states added in cycle 113 to the condition
+    `status in ("in_progress", "queued", "waiting", "pending", "requested")`.
+    Prevents silent removal of these 3 states during future refactoring.
+    """
+    # 대상 상태만 가진 체크런 1개로 세팅 / Single check run with the target status only.
+    check_runs_body = {
+        "check_runs": [_check_run("CI / build", status, None)],
+        "total_count": 1,
+    }
+
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(
+        side_effect=[
+            _resp(200, check_runs_body),  # check-runs 1페이지 / check-runs page 1
+        ]
+    )
+
+    with patch("src.github_client.checks.get_http_client", return_value=mock_client):
+        result = await get_ci_status(TOKEN, REPO, SHA)
+
+    # waiting/pending/requested 모두 "running" 으로 분류되어야 함
+    # All of waiting/pending/requested must be classified as "running".
+    assert result == "running", (
+        f"status={status!r} must be classified as 'running' "
+        f"(cycle 113 P0-B regression guard)"
+    )
+    # check-runs 1회만 호출 — 레거시 API 미호출 / Only check-runs called — no legacy API call.
+    assert mock_client.get.call_count == 1
+
+
+@pytest.mark.parametrize("status", ["waiting", "pending", "requested"])
+async def test_get_ci_status_new_states_do_not_fall_through_to_failed(status):
+    """사이클 113 P0-B 부정 케이스 — 3상태는 'failed'/'unknown'으로 빠지지 않는다.
+    Cycle 113 P0-B negative guard — 3 states must NOT fall through to 'failed' or 'unknown'.
+
+    `_classify_check_runs()` 에서 신규 3상태가 running 분기에 포함되지 않을 경우
+    completed 가 아닌 체크런은 기본값(failed 또는 unknown)으로 떨어진다.
+    이 테스트는 그 회귀를 명시적으로 차단한다.
+
+    If the 3 new states were missing from the running branch, non-completed
+    check runs would fall through to the default (failed or unknown).
+    This test explicitly blocks that regression.
+    """
+    check_runs_body = {
+        "check_runs": [_check_run("CI / deploy", status, None)],
+        "total_count": 1,
+    }
+
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(
+        side_effect=[
+            _resp(200, check_runs_body),
+        ]
+    )
+
+    with patch("src.github_client.checks.get_http_client", return_value=mock_client):
+        result = await get_ci_status(TOKEN, REPO, SHA)
+
+    # "failed" 또는 "unknown" 으로 빠지지 않아야 함 / Must NOT be 'failed' or 'unknown'.
+    assert result not in ("failed", "unknown"), (
+        f"status={status!r} must not fall through to 'failed'/'unknown' "
+        f"(cycle 113 P0-B regression guard)"
+    )
