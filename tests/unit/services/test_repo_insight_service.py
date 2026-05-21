@@ -241,17 +241,18 @@ class TestRepoCategoryBreakdown:
         from src.services.repo_insight_service import repo_category_breakdown
 
         _add_analysis(db, repo.id, result={"issues": [
-            {"category": "security", "severity": "error"},
+            {"category": "security", "severity": "error"},    # 소문자 error
+            {"category": "security", "severity": "HIGH"},     # 대문자 HIGH (bandit 저장 형식)
             {"category": "security", "severity": "warning"},
             {"category": "code_quality", "severity": "error"},
             {"category": "code_quality", "severity": "warning"},
         ]})
         bd = repo_category_breakdown(db, repo.id)
-        assert bd["security_error"] == 1
+        assert bd["security_error"] == 2   # error + HIGH 양쪽 모두 집계
         assert bd["security_warning"] == 1
         assert bd["code_quality_error"] == 1
         assert bd["code_quality_warning"] == 1
-        assert bd["total"] == 4
+        assert bd["total"] == 5
 
     def test_empty_all_zeros(self, db, repo):
         from src.services.repo_insight_service import repo_category_breakdown

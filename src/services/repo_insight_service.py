@@ -280,8 +280,8 @@ def repo_category_breakdown(
             if not isinstance(issue, dict):
                 continue
             category = issue.get("category", "")
-            severity = issue.get("severity", "").lower()
-            is_error = severity in ("error", "high")
+            severity = issue.get("severity", "").upper()
+            is_error = severity in ("HIGH", "ERROR")
             if category == "security":
                 counts["security_error" if is_error else "security_warning"] += 1
             elif category == "code_quality":
