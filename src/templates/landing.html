@@ -121,8 +121,8 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0 clamp(16px, 5vw, 48px);
-      height: 60px;
+      padding: env(safe-area-inset-top, 0px) clamp(16px, 5vw, 48px) 0;
+      height: calc(60px + env(safe-area-inset-top, 0px));
       background: var(--bg-nav);
       backdrop-filter: blur(20px);
       -webkit-backdrop-filter: blur(20px);
@@ -149,7 +149,7 @@
     /* ── 오류 배너 ──────────────────────────────────────── */
     .auth-error-banner {
       position: fixed;
-      top: 72px;
+      top: calc(72px + env(safe-area-inset-top, 0px));
       left: 50%;
       transform: translateX(-50%);
       z-index: 200;
@@ -173,10 +173,15 @@
       border: none;
       color: var(--text-3);
       cursor: pointer;
-      padding: 0 4px;
+      padding: 12px 10px;
       font-size: 1rem;
       line-height: 1;
       flex-shrink: 0;
+      min-height: 44px;
+      min-width: 44px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
     }
     .auth-error-banner .banner-close:hover { color: var(--text-1); }
     @keyframes banner-in { from { opacity: 0; transform: translateX(-50%) translateY(-8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
