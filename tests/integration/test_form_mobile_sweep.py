@@ -20,11 +20,6 @@ def add_repo_html() -> str:
     return (Path(__file__).resolve().parents[2] / "src" / "templates" / "add_repo.html").read_text(encoding='utf-8')
 
 
-@pytest.fixture(scope="module")
-def login_html() -> str:
-    return (Path(__file__).resolve().parents[2] / "src" / "templates" / "login.html").read_text(encoding='utf-8')
-
-
 # ─── add_repo.html 모바일 분기 신설 ──────────────────────────────
 
 
@@ -63,31 +58,6 @@ def test_add_repo_form_select_ios_focus_zoom_preserved(add_repo_html):
     """`.form-select` font-size 16px (iOS focus zoom 회피) 보존 검증."""
     # 기존 line 43 = font-size 16px (PR-D 변경 무관)
     assert "font-size: 16px;" in add_repo_html
-
-
-# ─── login.html 모바일 분기 강화 ────────────────────────────────
-
-
-def test_login_mobile_768px_branch_exists(login_html):
-    """login.html 모바일 768px↓ 분기 신설 (PR-D)."""
-    assert "@media (max-width: 768px)" in login_html
-
-
-def test_login_btn_github_wcag_48px(login_html):
-    """`.btn-github` 모바일 ≥48px (OAuth 의무 액션 — WCAG 권장)."""
-    idx = login_html.find("@media (max-width: 768px)")
-    block = login_html[idx:idx + 500]
-    assert ".btn-github { min-height: 48px; }" in block
-
-
-def test_login_existing_480px_branch_preserved(login_html):
-    """기존 login 480px↓ 분기 보존 (회귀 0)."""
-    assert "@media (max-width: 480px)" in login_html
-    # 기존 분기 영역 = .login-wrap + .login-card padding
-    idx = login_html.find("@media (max-width: 480px)")
-    block = login_html[idx:idx + 300]
-    assert ".login-wrap" in block
-    assert ".login-card" in block
 
 
 # ─── 회귀 가드 (PR-A/B/C 영역 무영향) ──────────────────────────

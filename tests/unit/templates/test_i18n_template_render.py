@@ -1,14 +1,15 @@
-"""Phase 2 PR-5 회귀 가드 — base.html / login.html / add_repo.html / overview.html 다국어 렌더링 검증.
+"""Phase 2 PR-5 회귀 가드 — base.html / add_repo.html / overview.html 다국어 렌더링 검증.
 
-Phase 2 PR-5 regression guards — multilingual rendering for base/login/add_repo/overview templates.
+Phase 2 PR-5 regression guards — multilingual rendering for base/add_repo/overview templates.
+login.html 은 사이클 117 에서 삭제됨 (standalone landing.html 로 통합).
+login.html deleted in cycle 117 (merged into standalone landing.html).
 
 검증 범위 (Coverage):
-1. login.html — 5 i18n 키 (title_prefix / title / subtitle / github_login / footer) en/ko/ja
-2. add_repo.html — page_title / subtitle / label_select / submit / data-i18n-* 속성 en/ko/ja
-3. overview.html (with repos) — greeting / title / repo_count / table headers en/ko/ja
-4. overview.html (empty) — title_empty / tutorial 3 step en/ko/ja
-5. base.html nav — header.overview / header.dashboard / common.menu_aria / common.logout en/ko/ja
-6. locale 미주입 (None) → default 'ko' fallback
+1. add_repo.html — page_title / subtitle / label_select / submit / data-i18n-* 속성 en/ko/ja
+2. overview.html (with repos) — greeting / title / repo_count / table headers en/ko/ja
+3. overview.html (empty) — title_empty / tutorial 3 step en/ko/ja
+4. base.html nav — header.overview / header.dashboard / common.menu_aria / common.logout en/ko/ja
+5. locale 미주입 (None) → default 'ko' fallback
 """
 from __future__ import annotations
 
@@ -30,43 +31,6 @@ def _render(template_name: str, **context) -> str:
     register_i18n_filters(env)
     tmpl = env.get_template(template_name)
     return tmpl.render(**context)
-
-
-# ── login.html ──────────────────────────────────────────────────────────────
-
-
-def test_login_html_renders_korean_keys():
-    """login.html — 한국어 5 키 렌더 검증."""
-    out = _render("login.html", locale="ko")
-    assert "로그인 — SCAManager" in out  # title block
-    assert "PR이 들어오면 Claude가 검토하고" in out  # subtitle
-    assert "GitHub로 로그인" in out  # github_login
-    assert "GitHub OAuth로 안전하게 인증합니다" in out  # footer
-
-
-def test_login_html_renders_english_keys():
-    """login.html — 영문 5 키 렌더 검증."""
-    out = _render("login.html", locale="en")
-    assert "Login — SCAManager" in out
-    assert "Claude reviews your PR" in out
-    assert "Sign in with GitHub" in out
-    assert "Secure authentication with GitHub OAuth" in out
-
-
-def test_login_html_renders_japanese_keys():
-    """login.html — 일본어 5 키 렌더 검증."""
-    out = _render("login.html", locale="ja")
-    assert "ログイン — SCAManager" in out
-    assert "PRが入ってきたらClaudeがレビュー" in out
-    assert "GitHubでログイン" in out
-    assert "GitHub OAuthで安全に認証します" in out
-
-
-def test_login_html_default_locale_fallback_to_ko():
-    """login.html — locale 미주입 시 default 'ko' fallback (Jinja default 필터)."""
-    out = _render("login.html")  # locale=None
-    assert "로그인 — SCAManager" in out
-    assert "GitHub로 로그인" in out
 
 
 # ── add_repo.html ───────────────────────────────────────────────────────────
@@ -224,12 +188,11 @@ def test_overview_html_empty_renders_japanese_tutorial():
     assert "ヒント" in out
 
 
-# ── base.html nav (via login.html which extends base) ───────────────────────
+# ── base.html nav (via overview.html which extends base) ────────────────────
 
 
-def test_base_nav_renders_korean_via_login():
-    """base.html nav — 한국어 (login.html extends base + locale=ko 시)."""
-    # login 페이지는 비로그인 상태이므로 nav 미노출 — overview 경유 검증
+def test_base_nav_renders_korean_via_overview():
+    """base.html nav — 한국어 (overview.html extends base + locale=ko 시)."""
     repos = [{"full_name": "owner/repo", "analysis_count": 1, "avg_score": 50, "avg_grade": "D"}]
     out = _render("overview.html", locale="ko", current_user=_FakeUser(), repos=repos, calibration={})
     assert ">개요</a>" in out  # header.overview
