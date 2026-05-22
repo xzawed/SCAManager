@@ -23,6 +23,7 @@
 - [사이클 92~94 (정기 검증 + 정책 18 + Tailwind v4 빌드, 2026-05-07~11)](#사이클-9294)
 - [사이클 95~106 (문서 정비 + pylint 10.00 + 성능 측정 E2E, 2026-05-14~18)](#사이클-95106)
 - [사이클 107~109 (테마 차트 수정 + 전체 감사 14건, 2026-05-19)](#사이클-107109)
+- [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
 
 ---
@@ -146,6 +147,10 @@
 
 - **사이클 109 (2026-05-19 · #516~#519)** — 전체 페이지 정밀 감사 + P0/P1/P2 14건 수정: **5+1 다중 에이전트 감사** (base.html/repo_detail/repo_insights/dashboard/analysis_detail/backend API/security/i18n) — P0 1건 + P1 7건 + P2 6건. **#516 P0**: `database.py` RLS `SET LOCAL` f-string → `%s` 파라미터화 쿼리 (SQL injection 방어). **#517 P1**: `base.html` `_startProgress()` RAF 경쟁조건 (`cancelAnimationFrame` 선행) + 이벤트 핸들러 누적등록 4곳 remove-before-add 전환 (`_themeCloseHandler`/`_langCloseHandler`/`_hamburgerCloseHandler`/`_progressPageShowHandler`/`_progressBeforeUnloadHandler`). **#518 P1**: `merge_retry_repo.py` `claim_batch` PostgreSQL 조건부 `FOR UPDATE SKIP LOCKED` + `auth/github.py` 로그아웃 시 DB `github_access_token = NULL` 처리 + `i18n/filters.py` `i18n_args_filter` XSS 가드 (`markupsafe.escape` — str kwargs 이스케이프, Markup 인스턴스 passthrough) + `settings.html` countdown `{% set %}` Markup 객체화. CI fail (codecov/patch 69.23%) → 테스트 2건 추가 fix-up 후 pass. Codex NG (assert 약함) → `call_args[0][0]` SQLAlchemy Update 구조 검증 강화 → OK. 단위 2816→2818. **#519 P1~P2**: `analysis_detail.html`/`repo_insights.html`/`dashboard.html` `htmx:afterSettle`+`htmx:historyRestore` 핸들러 + animate=false 일관 적용 (뒤로가기 시 차트 미복원 버그) + `dashboard.html` phantom CSS 토큰 `--accent-primary` 제거. Codex NG (animate=false 누락) → `_adHtmxHandler` 수정 → OK. **회고 신규 식별**: P1 `security_scan_service.py:51` 직접 토큰 접근 + P2 dashboard CSS 토큰 4종 미정의 + `i18n/filters.py` XSS 경로 테스트 0% → 다음 사이클 GitHub Issue #520 추적.
 - **사이클 107 (2026-05-19 · #503)** — 회고 반영 + 문서·코드 정비: P0 `make perf-report` Windows UnicodeEncodeError (`PYTHONIOENCODING=utf-8`). `/health` TTFB 임계값 e2e/scripts 통일 (`THRESHOLDS_LOCAL health_ttfb: 300ms` + `_is_health_page()` urlsplit 정규화 헬퍼 — Codex 1차 NG→수정, 2차 샌드박스 오류로 grep+사용자 승인 대체). `CLAUDE.md` 6-step ⑤에 `cycle-history.md` 이력 동기화 추가. `docs/cycle-history.md` 사이클 95~106 이력 12건 추가. `docs/architecture.md` `scripts/` 미등재 파일 5개 추가 (`parse_bandit.py` / `parse_coverage.py` / `benchmark_static_analysis.py` / `backfill_repository_user_id.py` / `check_memory_refs.py`). `.claude/rules/testing.md` `@pytest.mark.perf` 선택 실행 지침 추가. **P1 잔여 → 사이클 108**: FCP/LCP 조건부 assert → `assert is not None` 선행 추가 + `/health` Playwright → requests 전환.
+
+## 사이클 118
+
+- **사이클 118 (2026-05-22 · #582)** — 사이클 117 5+1 회고 P0/P1 전수 이행. **P0-1**: `docs/architecture.md:122` templates 목록 `login` 제거 (login.html 삭제 후 잔존). **P0-2**: `docs/STATE.md:10` 비고 `= 154 passed` → `= 151 passed` (CI 실측 기준). **P1-1**: `src/auth/github.py:88,97` `encrypt_token()` 이중 언어 주석 영어 라인 추가 (CLAUDE.md 원칙). **P1-2**: `src/templates/landing.html` `.banner-close` `min-height: 44px; min-width: 44px; padding: 12px 10px` (WCAG 2.5.5 ≥44px). **P1-3**: `landing.html` `.landing-nav` `env(safe-area-inset-top, 0px)` padding-top + height calc 보정 / `.auth-error-banner` `top: calc(72px + env(safe-area-inset-top, 0px))` (iPhone notch 호환). Codex mutual: 샌드박스 `CreateProcessAsUserW 1920` → Claude 직접 검증 대체 OK (cp949 오타 fix-up 포함). 테스트 수 변동 없음 3092.
 
 ## 사이클 117
 
