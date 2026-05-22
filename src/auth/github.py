@@ -2,7 +2,7 @@
 import logging
 from authlib.integrations.starlette_client import OAuth, OAuthError
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from sqlalchemy import update
