@@ -144,3 +144,30 @@ def test_landing_page_passes_error_param_to_template():
         )
     finally:
         app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_landing_page_passes_auth_failed_error_to_template():
+    """GET /?error=auth_failed 요청 시 error 값이 template context 에 전달되어야 한다.
+    GET /?error=auth_failed must pass the error value to the template context (cycle 117).
+    """
+    app.dependency_overrides[get_current_user] = lambda: None
+    try:
+        with patch("src.ui.routes.overview.templates.TemplateResponse") as mock_tr:
+            mock_tr.return_value = HTMLResponse(content="<html>landing</html>", status_code=200)
+            landing_client = TestClient(app, follow_redirects=False)
+            response = landing_client.get("/?error=auth_failed")
+
+        assert response.status_code == 200
+
+        call_args = mock_tr.call_args
+        if len(call_args.args) >= 3:
+            context = call_args.args[2]
+        else:
+            context = call_args.kwargs.get("context", {})
+
+        assert "error" in context
+        assert context["error"] == "auth_failed", (
+            f"context['error'] == 'auth_failed' 기대, 실제: {context.get('error')!r}"
+        )
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)

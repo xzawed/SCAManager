@@ -110,6 +110,42 @@ def test_logout_with_user_id_deletes_token_from_db():
     )
 
 
+def test_logout_htmx_with_user_id_deletes_token_and_returns_hx_redirect():
+    """HTMX 요청 + user_id 세션 존재 시 DB token 삭제 AND 200 + HX-Redirect: / 반환.
+    HTMX request with user_id in session must delete DB token AND return 200 + HX-Redirect: /.
+    두 동작이 동시에 수행되는지 콤보 검증.
+    Combo test: both DB deletion and HX-Redirect must happen together.
+    """
+    import json
+    import base64
+    import itsdangerous
+
+    secret = os.environ["SESSION_SECRET"]
+    signer = itsdangerous.TimestampSigner(secret)
+    session_payload = base64.b64encode(json.dumps({"user_id": 99}).encode()).decode()
+    signed = signer.sign(session_payload).decode()
+
+    mock_db = MagicMock()
+
+    with patch("src.auth.github.SessionLocal") as mock_sl:
+        mock_sl.return_value.__enter__.return_value = mock_db
+        r = client.post(
+            "/auth/logout",
+            follow_redirects=False,
+            headers={"HX-Request": "true"},
+            cookies={"session": signed},
+        )
+
+    # HX-Redirect 응답 검증
+    # HX-Redirect response verification
+    assert r.status_code == 200
+    assert r.headers.get("HX-Redirect") == "/"
+    # DB token 삭제도 수행되어야 한다
+    # DB token deletion must also be performed
+    assert mock_db.execute.called
+    assert mock_db.commit.called
+
+
 def test_callback_creates_new_user_and_redirects():
     """콜백 처리 시 신규 유저를 생성하고 / 로 리다이렉트한다."""
     mock_token = {"access_token": "gho_new_token"}
@@ -616,41 +652,35 @@ def test_callback_clears_session_before_setting_user_id():
 # ---------------------------------------------------------------------------
 
 def test_callback_oauth_error_returns_non_success():
-    """OAuthError(access_denied) 발생 시 성공 302(/)가 아닌 응답을 반환해야 한다.
-    OAuthError (e.g. access_denied) must not produce a success redirect.
+    """OAuthError(access_denied) 발생 시 /?error=oauth_failed 로 302 리다이렉트해야 한다.
+    OAuthError (e.g. access_denied) must redirect to /?error=oauth_failed with 302.
     """
     try:
         from authlib.integrations.base_client.errors import OAuthError
     except ImportError:
         from authlib.common.errors import AuthlibBaseError as OAuthError
 
-    no_raise_client = TestClient(app, raise_server_exceptions=False)
     with patch(
         "src.auth.github.oauth.github.authorize_access_token",
         new_callable=AsyncMock,
         side_effect=OAuthError(error="access_denied"),
     ):
-        r = no_raise_client.get(
+        r = client.get(
             "/auth/callback?code=x&state=x",
             follow_redirects=False,
         )
-    # 성공(302 to /)이어서는 안 된다
-    # Must not be a success redirect.
-    assert not (r.status_code == 302 and r.headers.get("location") == "/")
+    assert r.status_code == 302
+    assert r.headers.get("location") == "/?error=oauth_failed"
 
 
 # ---------------------------------------------------------------------------
-# 변경 예정 동작 — TDD Red 단계 테스트
-# Planned behavior changes — TDD Red phase tests
+# require_login + /login 라우트 동작 검증
+# require_login + /login route behaviour verification
 # ---------------------------------------------------------------------------
 
 def test_require_login_redirects_to_auth_github():
     """비인증 요청 시 require_login 이 /auth/github 로 302 리다이렉트해야 한다.
-    require_login must redirect to /auth/github (not /login) for unauthenticated requests.
-
-    현재 동작: /login 으로 리다이렉트 (session.py:55)
-    변경 예정: /auth/github 로 리다이렉트
-    Current: redirects to /login — Expected after change: redirects to /auth/github
+    require_login must redirect to /auth/github for unauthenticated requests (cycle 117).
     """
     from src.auth.session import require_login
     from fastapi import HTTPException
@@ -664,13 +694,10 @@ def test_require_login_redirects_to_auth_github():
         require_login(mock_request)
         raise AssertionError("require_login 이 예외 없이 통과했다 — 비인증 요청이 허용됨")
     except HTTPException as exc:
-        # 변경 후 기대값: Location = /auth/github, status_code = 302
-        # After change: Location must be /auth/github with 302
         assert exc.status_code == 302, f"302 기대, 실제: {exc.status_code}"
         location = exc.headers.get("Location", "")
         assert location == "/auth/github", (
-            f"Location '/auth/github' 기대, 실제: {location!r}\n"
-            f"(현재 /login — session.py:55 변경 전 Red 단계)"
+            f"Location '/auth/github' 기대, 실제: {location!r}"
         )
 
 
@@ -685,34 +712,19 @@ def test_login_route_redirects_301_to_auth_github():
 
 def test_auth_callback_oauth_error_redirects_to_landing():
     """auth_callback 에서 OAuthError 발생 시 /?error=oauth_failed 로 302 리다이렉트해야 한다.
-    OAuthError in auth_callback must redirect to /?error=oauth_failed with 302.
-
-    현재 동작: try/except 없음 → 500 (github.py:65)
-    변경 예정: OAuthError → RedirectResponse("/?error=oauth_failed", 302)
-    Current: no try/except → 500 — Expected after change: 302 to /?error=oauth_failed
+    OAuthError in auth_callback must redirect to /?error=oauth_failed with 302 (cycle 117).
     """
     from authlib.integrations.base_client.errors import OAuthError
 
-    # raise_server_exceptions=False 로 500 과 302 모두 response 로 수신
-    # Use raise_server_exceptions=False to capture both 500 and 302 as responses
-    test_client = TestClient(app, raise_server_exceptions=False)
     with patch(
         "src.auth.github.oauth.github.authorize_access_token",
         new_callable=AsyncMock,
         side_effect=OAuthError(error="access_denied"),
     ):
-        r = test_client.get(
+        r = client.get(
             "/auth/callback?code=x&state=x",
             follow_redirects=False,
         )
 
-    # 변경 후 기대값: 302 + Location: /?error=oauth_failed
-    # After change: 302 + Location: /?error=oauth_failed
-    assert r.status_code == 302, (
-        f"302 기대, 실제: {r.status_code}\n"
-        f"(현재 OAuthError 처리 없음 → 500 — github.py:65 변경 전 Red 단계)"
-    )
-    location = r.headers.get("location", "")
-    assert "error=oauth_failed" in location, (
-        f"Location 에 'error=oauth_failed' 기대, 실제: {location!r}"
-    )
+    assert r.status_code == 302
+    assert r.headers.get("location") == "/?error=oauth_failed"

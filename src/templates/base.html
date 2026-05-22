@@ -673,8 +673,9 @@
       <strong>SCAManager</strong>
     </a>
     {# Step E (E1): nav 햄버거 + Overview/Insights 링크는 로그인 후에만 노출.
-       비로그인 상태에서 클릭 시 /login 으로 리다이렉트되므로 시각 노출 자체가 무의미.
-       Step E (E1): Hamburger + nav links shown only when authenticated. #}
+       비로그인 상태에서 클릭 시 /auth/github 로 리다이렉트됨 (사이클 117 — /login 중간 단계 제거).
+       Step E (E1): Hamburger + nav links shown only when authenticated.
+       Unauthenticated clicks redirect to /auth/github (cycle 117 — /login intermediate removed). #}
     {% if current_user %}
     <button class="nav-hamburger" id="navHamburger" aria-label="{{ 'common.menu_aria' | i18n_args(locale | default('ko')) }}" aria-expanded="false">☰</button>
     <div class="nav-links" id="navLinks">

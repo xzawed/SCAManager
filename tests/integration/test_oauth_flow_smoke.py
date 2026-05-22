@@ -58,13 +58,12 @@ class TestSmokeCheckMinimal:
         )
 
     def test_login_page_returns_redirect(self, client):
-        """GET /login → 301 /auth/github (사이클 117 — 중간 단계 제거).
-
-        5xx 만 P0 — 301/302 모두 정상.
+        """GET /login → 301 /auth/github (사이클 117 — /login 301 permanent redirect).
+        GET /login must return exactly 301 (permanent redirect to /auth/github).
         """
-        response = client.get("/login")
-        assert response.status_code in (200, 301, 302), (
-            f"/login 5xx: {response.status_code}"
+        response = client.get("/login", follow_redirects=False)
+        assert response.status_code == 301, (
+            f"/login 301 기대, 실제: {response.status_code}"
         )
 
 

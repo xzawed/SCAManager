@@ -18,7 +18,7 @@ paths:
 - **SESSION_SECRET 강도**: `validate_session_secret` validator (`src/config.py`) 가 32자 미만 또는 기본값이면 WARNING 출력. 프로덕션에서는 32자 이상 랜덤 문자열 필수.
 - **TOKEN_ENCRYPTION_KEY prod 감지**: lifespan startup 에서 `APP_BASE_URL` 이 https:// 로 시작하고 키가 비어있으면 WARNING 배너 출력. dev 환경(http 또는 빈 URL)에서는 침묵.
 - **Jinja2 autoescape**: `Jinja2Templates`는 `.html` 파일에 대해 autoescape=True(기본값). 템플릿 변수는 자동 이스케이프됨 — `| safe` 필터 사용 금지. notifier HTML 출력엔 `html.escape()` 직접 적용 필수.
-- **OAuth CSRF state**: Authlib `authorize_access_token()`이 session state 검증을 내부 처리. `/auth/github`를 거치지 않은 직접 콜백(`/auth/callback`) 접근은 에러(500)로 차단됨 — 정상 동작.
+- **OAuth CSRF state**: Authlib `authorize_access_token()`이 session state 검증을 내부 처리. `/auth/github`를 거치지 않은 직접 콜백(`/auth/callback`) 접근은 `OAuthError` → `302 /?error=oauth_failed` 리다이렉트 (사이클 117 — 이전 500 에러에서 변경).
 - **로그 인젝션 방어 (`sanitize_for_log`)**: `src/shared/log_safety.py`의 `sanitize_for_log(value, max_len=200)` 헬퍼로 user-controlled 입력을 logger 에 전달하기 전 반드시 경유. CR/LF/TAB/NUL 제거 + 길이 제한. `%r` 포맷만으로는 SonarCloud `pythonsecurity:S5145` taint analysis 를 통과 못 함 — 명시적 함수 호출 필요. 예: `logger.info("...%s...", sanitize_for_log(body.repo))`.
 - **URL Path 방어적 인코딩 (`_repo_path`)**: `src/github_client/repos.py::_repo_path(full_name)` 으로 `urllib.parse.quote(safe='/')` 적용. GitHub API URL 에 `repo_full_name`/path 변수 삽입 시 반드시 경유 — SonarCloud `pythonsecurity:S7044` 경고 회피 + 실질적 path injection 차단.
 - **FastAPI Annotated 패턴 강제**: `Depends(...)`/`Header(...)` 는 `Annotated[Type, Depends(require_login)]` / `Annotated[str | None, Header()] = None` 형식으로 작성. `python:S8410` 규칙. `default 있는 param 뒤에 Annotated (default 없음)` 오면 SyntaxError — 함수 시그니처에서 `Annotated` 를 앞으로 이동 필요.
