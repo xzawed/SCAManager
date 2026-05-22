@@ -495,7 +495,7 @@
       일시적인 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.
     {% endif %}
   </span>
-  <button class="banner-close" aria-label="닫기" onclick="document.getElementById('authErrorBanner').remove()">✕</button>
+  <button class="banner-close" aria-label="닫기" onclick="document.getElementById('authErrorBanner').remove(); history.replaceState(null,'',location.pathname)">✕</button>
 </div>
 {% endif %}
 
