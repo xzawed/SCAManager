@@ -202,3 +202,25 @@ async def test_auth_header_included_in_requests():
     for put_call in client.put.call_args_list:
         headers = put_call.kwargs.get("headers") or {}
         assert headers.get("Authorization") == f"Bearer {TOKEN}"
+
+
+# ---------------------------------------------------------------------------
+# 시나리오 7: GET timeout — httpx.HTTPError 시 False 반환 (Cycle 121 P2)
+# Scenario 7: GET network timeout raises httpx.HTTPError → returns False.
+# ---------------------------------------------------------------------------
+
+
+async def test_get_timeout_returns_false():
+    """GET 요청 중 네트워크 timeout 발생 시 False 를 반환한다.
+    When GET raises httpx.HTTPError (e.g. timeout), commit_scamanager_files returns False.
+    """
+    client = AsyncMock()
+    client.get = AsyncMock(side_effect=httpx.TimeoutException("timeout"))
+    patcher = _patch_client(client)
+    try:
+        result = await commit_scamanager_files(TOKEN, REPO, SERVER, HOOK_TOKEN)
+    finally:
+        patcher.stop()
+
+    assert result is False
+    client.put.assert_not_called()

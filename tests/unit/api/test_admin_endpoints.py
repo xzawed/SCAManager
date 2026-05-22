@@ -155,7 +155,7 @@ def test_admin_operations_blocked_when_kill_switch(monkeypatch):
     assert response.status_code == 503
 
 
-# ─── Cycle 111 — OPERATIONS_DASHBOARD_DISABLED kill-switch 회귀 가드 ────────
+# ─── Cycle 120 — OPERATIONS_DASHBOARD_DISABLED kill-switch 회귀 가드 ────────
 
 
 def test_admin_operations_kill_switch_returns_503(client):
