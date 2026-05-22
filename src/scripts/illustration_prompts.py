@@ -52,7 +52,7 @@ _COMMON_STYLE = (
 PROMPTS: tuple[IllustrationPrompt, ...] = (
     IllustrationPrompt(
         name="login_hero",
-        placement="login.html L40-60 — form 상단 hero (60-70% viewport)",
+        placement="landing.html — 히어로 섹션 (사이클 117: login.html 삭제, landing.html로 통합)",
         size="1024x1024",
         quality="hd",
         prompt=(
