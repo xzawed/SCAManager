@@ -37,8 +37,9 @@
 | `SCAMANAGER_SELF_ANALYSIS_DISABLED` | **Loop Guard kill-switch** — `1` 설정 시 모든 webhook 분석 즉시 중단 (202 skipped). Phase 9 자기-분석 루프 사고 발생 시 즉각 차단용. | `0` (기본) / `1` (긴급 중단) |
 | `SECURITY_AUTO_PROCESS_DISABLED` | **Code/Secret Scanning auto-process kill-switch** — `1` 설정 시 `security_scan_service` + `dashboard_service` security 영역 자동 처리 중단 (Cycle 73 #244 신설). false-positive 누적 시 긴급 차단용. | `0` (기본) / `1` (긴급 중단) |
 | `SAAS_MULTITENANT_DISABLED` | **SaaS 멀티테넌트 영역 kill-switch** — `1` 설정 시 admin 영역 즉시 **503** 반환 (`session.py:82,94` — 401 아님). Cycle 79 PR 2 (#255) 신설 — SaaS 영역 운영 사고 시 즉각 차단용. | `0` (기본) / `1` (긴급 중단) |
+| `OPERATIONS_DASHBOARD_DISABLED` | **운영 모니터링 대시보드 kill-switch** — `1` 설정 시 `/admin/operations` 라우트 즉시 **503** 반환 (`admin.py`). Cycle 120 신설 — 운영 KPI 대시보드 장애 시 긴급 차단용. | `0` (기본) / `1` (긴급 중단) |
 
-> **🔴 운영 안전**: 위 5 변수는 운영 사고 발생 시 즉시 사용해야 하므로 Railway Variables 에 미리 배치 권장. `INTERNAL_CRON_API_KEY` 미설정 시 cron job 이 silent 503 으로 실패해 weekly_summary 등이 발송 안 됨 — 운영자 인지 어려움. `SAAS_ADMIN_EMAILS` 미설정 시 admin UI 영역 (`/admin/tenants` 등) 모든 사용자 401 — Cycle 79+ SaaS 영역 활성화 시 의무. kill-switch 신규 추가 시 `src/shared/feature_kill_switch.py::is_disabled(feature)` helper 사용 default (Cycle 78 NEW-P0-2 #253 — 사용처 ≥ 3 도달 시 자동 헬퍼 추출 정책 16 4번 원칙 정합).
+> **🔴 운영 안전**: 위 6 변수는 운영 사고 발생 시 즉시 사용해야 하므로 Railway Variables 에 미리 배치 권장. `INTERNAL_CRON_API_KEY` 미설정 시 cron job 이 silent 503 으로 실패해 weekly_summary 등이 발송 안 됨 — 운영자 인지 어려움. `SAAS_ADMIN_EMAILS` 미설정 시 admin UI 영역 (`/admin/tenants` 등) 모든 사용자 401 — Cycle 79+ SaaS 영역 활성화 시 의무. kill-switch 신규 추가 시 `src/shared/feature_kill_switch.py::is_disabled(feature)` helper 사용 default (Cycle 78 NEW-P0-2 #253 — 사용처 ≥ 3 도달 시 자동 헬퍼 추출 정책 16 4번 원칙 정합).
 
 ## Observability (자동 로깅, env 설정 불필요)
 

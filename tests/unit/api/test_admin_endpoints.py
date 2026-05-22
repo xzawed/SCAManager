@@ -153,3 +153,35 @@ def test_admin_operations_blocked_when_kill_switch(monkeypatch):
     assert response.status_code == 503
     response = c.get("/api/admin/operations")
     assert response.status_code == 503
+
+
+# ─── Cycle 111 — OPERATIONS_DASHBOARD_DISABLED kill-switch 회귀 가드 ────────
+
+
+def test_admin_operations_kill_switch_returns_503(client):
+    """OPERATIONS_DASHBOARD_DISABLED=1 시 /admin/operations 가 503 을 반환한다.
+
+    When OPERATIONS_DASHBOARD is disabled via kill-switch, /admin/operations returns 503.
+    """
+    from unittest.mock import patch
+
+    with patch("src.ui.routes.admin.is_disabled", return_value=True):
+        response = client.get("/admin/operations")
+    assert response.status_code == 503
+
+
+def test_admin_operations_active_returns_200(client):
+    """kill-switch 비활성 시 /admin/operations 가 200 을 반환한다.
+
+    When kill-switch is inactive, /admin/operations returns 200 with KPI context.
+    """
+    from unittest.mock import MagicMock, patch
+
+    # MagicMock — 템플릿이 중첩 속성 접근(kpi.cache.hit_rate 등)을 자동 처리
+    # MagicMock — handles nested attribute access (kpi.cache.hit_rate etc.) automatically
+    with patch("src.ui.routes.admin.is_disabled", return_value=False), patch(
+        "src.ui.routes.admin.operations_service.operations_kpi",
+        return_value=MagicMock(),
+    ):
+        response = client.get("/admin/operations")
+    assert response.status_code == 200

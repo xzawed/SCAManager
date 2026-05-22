@@ -9,11 +9,12 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from src.auth.session import CurrentUser, require_admin
+from src.shared.feature_kill_switch import is_disabled
 from src.database import SessionLocal
 from src.services import operations_service, saas_service
 from src.ui._helpers import get_locale, templates
@@ -87,6 +88,10 @@ def admin_operations(
 
     Operations dashboard admin (Cycle 80 PR 2 — area 🅔).
     """
+    # OPERATIONS_DASHBOARD_DISABLED=1 시 운영 대시보드 즉시 503 반환
+    # Return 503 immediately when OPERATIONS_DASHBOARD_DISABLED=1
+    if is_disabled("OPERATIONS_DASHBOARD"):
+        raise HTTPException(status_code=503, detail="Operations dashboard is disabled")
     kpi = operations_service.operations_kpi(db, days=days)
     return templates.TemplateResponse(
         request,
