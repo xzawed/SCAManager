@@ -71,7 +71,7 @@ src/
 │   └── operations_service.py    # operations_kpi 7 카드 — admin 운영 모니터링
 ├── auth/
 │   ├── session.py               # get_current_user() + require_login + require_admin (3-layer SaaS 검증)
-│   └── github.py                # /login, /auth/github, /auth/callback, /auth/logout
+│   └── github.py                # /login (301→/auth/github, 하위호환), /auth/github, /auth/callback, /auth/logout
 ├── models/                      # 10 ORM 모델 — repository, analysis, analysis_feedback, repo_config, gate_decision (0034: analysis_id UNIQUE constraint), merge_attempt, merge_retry, security_alert_log, insight_narrative_cache (0031: repo_id FK; 0033: last_error_at/error_count/last_error_type), user
 ├── webhook/
 │   ├── _helpers.py              # get_webhook_secret() + cache (TTL 300s)

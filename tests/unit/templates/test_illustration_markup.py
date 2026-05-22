@@ -12,7 +12,8 @@ TEMPLATES_DIR = REPO_ROOT / "src" / "templates"
 CSS_DIR = REPO_ROOT / "src" / "static" / "css"
 
 EXPECTED_PNGS = [
-    "login_hero.png",
+    # login_hero.png 삭제 (사이클 118 — login.html 삭제 후 orphan, landing.html 일러스트 추가 시 복원)
+    # login_hero.png removed (cycle 118 — orphaned after login.html deletion; restore when landing.html illustration is added)
     "dashboard_empty.png",
     "overview_onboarding.png",
     "add_repo_hero.png",
