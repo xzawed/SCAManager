@@ -86,6 +86,7 @@ async def auth_callback(request: Request):
                     github_id=github_id,
                     github_login=github_login,
                     github_access_token=access_token,  # 이미 encrypt_token() 적용됨
+                    # encrypt_token() already applied before this assignment
                     email=primary_email,
                     display_name=display_name,
                 )
@@ -94,6 +95,7 @@ async def auth_callback(request: Request):
                 db.refresh(user)
             else:
                 user.github_access_token = access_token  # 이미 encrypt_token() 적용됨
+                # encrypt_token() already applied before this assignment
                 user.github_login = github_login
                 user.display_name = display_name
                 db.commit()

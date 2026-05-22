@@ -119,7 +119,7 @@ src/
 │   ├── _helpers.py              # get_accessible_repo, webhook_base_url, delete_repo_cascade, templates
 │   ├── router.py                # aggregator
 │   └── routes/                  # overview / dashboard (mode 5종) / add_repo / settings / actions / detail / admin / repo_insights
-├── templates/                   # base, landing, login, overview, repo_detail, analysis_detail, settings, dashboard, admin_*, repo_insights, add_repo
+├── templates/                   # base, landing, overview, repo_detail, analysis_detail, settings, dashboard, admin_*, repo_insights, add_repo
 ├── mcp/
 │   ├── __init__.py              # MCP tool 선언 패키지
 │   └── repo_report_tools.py     # list_repo_reports / get_repo_report tool 스키마
