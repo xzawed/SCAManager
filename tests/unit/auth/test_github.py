@@ -248,6 +248,42 @@ def test_callback_no_primary_email_uses_fallback():
     assert captured["user"].email == "fallback@example.com"
 
 
+def test_callback_no_email_anywhere_uses_noreply_address():
+    """primary+verified 이메일도 없고 user_info["email"]도 None인 경우
+    {github_id}@users.noreply.github.com 을 사용해야 한다.
+    When no primary+verified email exists and user_info["email"] is None,
+    must fall back to {github_id}@users.noreply.github.com.
+    """
+    from src.models.user import User  # noqa: PLC0415
+    mock_token = {"access_token": "gho_token"}
+    mock_user_info = MagicMock()
+    mock_user_info.json.return_value = {
+        "id": 99999, "login": "noemailuser", "name": "No Email", "email": None
+    }
+    mock_emails_resp = MagicMock()
+    mock_emails_resp.json.return_value = []  # 이메일 목록 비어있음 / empty email list
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = None
+    captured = {}
+
+    def capture_add(obj):
+        if isinstance(obj, User):
+            captured["user"] = obj
+
+    mock_db.add.side_effect = capture_add
+
+    with patch("src.auth.github.oauth.github.authorize_access_token",
+               new_callable=AsyncMock, return_value=mock_token):
+        with patch("src.auth.github.oauth.github.get",
+                   new_callable=AsyncMock, side_effect=[mock_user_info, mock_emails_resp]):
+            with patch("src.auth.github.SessionLocal") as mock_sl:
+                mock_sl.return_value.__enter__.return_value = mock_db
+                client.get("/auth/callback?code=test&state=test", follow_redirects=False)
+
+    assert captured.get("user") is not None
+    assert captured["user"].email == "99999@users.noreply.github.com"
+
+
 # ---------------------------------------------------------------------------
 # OAuth 리다이렉트 URI 보안 분기 — app_base_url 설정 여부
 # ---------------------------------------------------------------------------
