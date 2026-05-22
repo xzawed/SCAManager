@@ -30,8 +30,6 @@ Kill-switch: When `is_disabled("I18N")`, skip detection + force scope locale = "
 (emergency disable — pairs with Cycle 78 NEW-P0-2 pattern).
 """
 import logging
-from typing import Optional
-
 from src.config import settings
 from src.shared.feature_kill_switch import is_disabled
 
@@ -101,7 +99,7 @@ class LocaleMiddleware:  # pylint: disable=too-few-public-methods
         return settings.locale_fallback
 
     @staticmethod
-    def _parse_cookie_locale(headers: list) -> Optional[str]:
+    def _parse_cookie_locale(headers: list) -> str | None:
         """Cookie 헤더에서 `preferred_language` 추출.
 
         Extract `preferred_language` from Cookie header.
@@ -160,7 +158,7 @@ class LocaleMiddleware:  # pylint: disable=too-few-public-methods
         return items
 
     @classmethod
-    def _parse_accept_language(cls, headers: list) -> Optional[str]:
+    def _parse_accept_language(cls, headers: list) -> str | None:
         """Accept-Language 헤더 RFC 7231 q-weight 파싱 후 최우선 locale 반환.
 
         Parse Accept-Language header per RFC 7231 q-weights, return top locale.
