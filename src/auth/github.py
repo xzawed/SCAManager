@@ -28,8 +28,6 @@ oauth.register(
 
 router = APIRouter(tags=["auth"])
 templates = Jinja2Templates(directory="src/templates")
-# Phase 2 PR-5 (사이클 84) — Jinja2 i18n 필터 등록 (login.html 다국어 페어)
-# Phase 2 PR-5 (Cycle 84) — Register Jinja2 i18n filters (pairs with login.html i18n)
 # auth/github.py 는 자체 Jinja2Templates 인스턴스 사용 — _helpers.templates 와 분리
 # auth/github.py uses its own Jinja2Templates instance — separate from _helpers.templates
 from src.i18n.filters import register_i18n_filters  # noqa: E402  # pylint: disable=wrong-import-position

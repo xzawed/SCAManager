@@ -23,6 +23,11 @@ from src.ui._helpers import get_locale, templates
 router = APIRouter()
 
 
+# 허용된 error 파라미터 값 — 미등록 값은 None 으로 치환해 임의 문자열 렌더링 방지
+# Allowlisted error param values — unrecognised values replaced with None to prevent arbitrary string rendering
+_ALLOWED_ERRORS = {"oauth_failed", "auth_failed"}
+
+
 @router.get("/", response_class=HTMLResponse)
 def overview(
     request: Request,
@@ -37,7 +42,7 @@ def overview(
             "locale": get_locale(request),
             # OAuth 오류 메시지 표시용 (auth_callback 에서 /?error=<type> 전달)
             # Used to display OAuth error banner (passed from auth_callback via /?error=<type>)
-            "error": error,
+            "error": error if error in _ALLOWED_ERRORS else None,
         })
     with SessionLocal() as db:
         repos = db.query(Repository).filter(
