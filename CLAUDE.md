@@ -225,7 +225,7 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 
 **default 6-step**: `git checkout main && pull` → `checkout -b <type>/<scope>` → 작업+commit → `push -u origin` → **PR 직접 생성** (gh pr create) → URL 보고.
 
-🔴 **현재 SCAManager 환경**: gh CLI v2.88.1 설치 완료 + xzawed 계정 인증 완료 → **옵션 🅐 (gh pr create) default**.
+🔴 **현재 SCAManager 환경**: gh CLI v2.89.0 설치 완료 + xzawed 계정 인증 완료 → **옵션 🅐 (gh pr create) default**.
 
 **fix-up commit default**: 머지 전 CI fail / 회귀 = 동일 PR 브랜치 추가 commit (정책 7 강화 응집 단위). 머지 후 발견 = 별도 fix PR. PR body 템플릿 + 환경별 detail: [docs/policies/active.md#정책-10](docs/policies/active.md#정책-10).
 
@@ -327,7 +327,7 @@ Why + How to apply (자가 검토 4 자문) 상세: [docs/policies/active.md#정
 gh run list --limit 3                                       # CI status (기존 vs 신규 실패 구분)
 gh api repos/xzawed/SCAManager/code-scanning/alerts \      # Code Scanning open alert 카운트 (정책 14)
   --jq '[.[] | select(.state=="open")] | length'            # CI/auth 부재 시 GitHub Security 탭 직접 확인
-ls ~/.claude/projects/d--Source-SCAManager/memory/ | \   # 신규 fixture/테스트/패턴 작성 전 메모리 grep
+ls ~/.claude/projects/f--DEVELOPMENT-SOURCE-CLAUDE-SCAManager/memory/ | \   # 신규 fixture/테스트/패턴 작성 전 메모리 grep
   grep -E "pytest-|test-|feedback-"                         # 해당 영역 메모리 본문 read 후 default 적용 의무
 ls docs/reports/ | tail -1                                  # 직전 회고 보고서 회신 회수 확인 (정책 9 강화 페어)
 git status                                                  # 미커밋 변경 없는지 확인

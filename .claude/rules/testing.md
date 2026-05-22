@@ -39,4 +39,4 @@ pylint R0914 발생 시 두 패턴 중 선택:
 1. **헬퍼 추출 default** — 신규 함수 작성 시. 단일 책임 원칙 + 테스트 격리 + 향후 재사용 가능성 시 default.
 2. **inline `# pylint: disable=too-many-locals` + 사유 주석** — 기존 함수 시그니처 확장 시. 함수 자체의 응집 단위 보호 + 헬퍼 추출이 응집 깨뜨릴 때.
 
-현재 inline disable 사용처 (5건): `gate/github_review.py:107` (merge_pr) / `notifier/merge_failure_issue.py:59` / `services/merge_retry_service.py:100` / `services/dashboard_service.py:77` (dashboard_kpi) + `:224` (frequent_issues_v2). 모두 시그니처 확장 사례.
+현재 inline disable 사용처 (5건): `gate/github_review.py:108` (merge_pr) / `notifier/merge_failure_issue.py:59` / `services/merge_retry_service.py:100` / `services/dashboard_service.py:77` (dashboard_kpi) + `:224` (frequent_issues_v2). 모두 시그니처 확장 사례.

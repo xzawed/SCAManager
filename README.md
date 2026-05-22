@@ -4,8 +4,8 @@
 
 **Automated Code Quality Analysis · AI Review · PR Gate Service for GitHub**
 
-[![Python](https://img.shields.io/badge/Python-3.14-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.136-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-SQLAlchemy_2-336791?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Claude AI](https://img.shields.io/badge/Claude_AI-Sonnet_4.6_(default)-CC6600?style=flat-square&logo=anthropic&logoColor=white)](https://www.anthropic.com/)
 [![Railway](https://img.shields.io/badge/Deploy-Railway-0B0D0E?style=flat-square&logo=railway&logoColor=white)](https://railway.app/)
@@ -18,7 +18,7 @@
 [![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=xzawed_SCAManager&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=xzawed_SCAManager)
 [![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=xzawed_SCAManager&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=xzawed_SCAManager)
 
-[![Tests](https://img.shields.io/badge/Tests-3092_total_(2938_unit_+_154_integration)-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-3092_total_(2941_unit_+_151_integration)-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
 [![E2E](https://img.shields.io/badge/E2E-111_passing-brightgreen?style=flat-square&logo=playwright&logoColor=white)](e2e/)
 [![pylint](https://img.shields.io/badge/pylint-10.00%2F10-brightgreen?style=flat-square&logo=python&logoColor=white)](src/)
 [![bandit](https://img.shields.io/badge/bandit-HIGH_0-brightgreen?style=flat-square&logo=security&logoColor=white)](src/)
@@ -395,6 +395,11 @@ make run
 make install            # Install dependencies
 make test               # Full test suite (compact output)
 make test-v             # Full test suite (verbose output)
+make test-fast          # Fast unit tests only (excludes tests/integration/, -m "not slow")
+make test-slow          # Integration tests only (tests/integration/ — real subprocess)
+make test-file f=tests/path/test.py  # Single file test
+make test-perf          # Perf marker tests (e2e/ -m perf, separate from test-e2e)
+make test-isolated      # Isolated test run (fresh subprocess per test)
 make test-cov           # Tests + coverage report
 make lint               # pylint + flake8 + bandit
 make review             # CLI code review (HEAD~1)
@@ -419,7 +424,7 @@ make test-e2e-headed    # E2E tests (with browser)
 /repos/{owner/repo}/settings        → ⚙️  Gate · notifications · Hook settings
 ```
 
-> All UI pages require login — unauthenticated requests redirect to `/login`
+> Unauthenticated requests to UI pages show the landing page (`/`) or redirect to `/auth/github` for login
 
 ---
 
@@ -430,7 +435,7 @@ make test-e2e-headed    # E2E tests (with browser)
 
 **Auth (OAuth)**
 ```
-GET  /login                          Login page
+GET  /login                          301 redirect → /auth/github (하위호환 — cycle 117)
 GET  /auth/github                    Start GitHub OAuth
 GET  /auth/callback                  GitHub OAuth callback
 POST /auth/logout                    Logout

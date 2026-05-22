@@ -20,23 +20,10 @@ src/
 │   ├── css/repo_insights.css    # 리포별 인사이트 페이지 전용 스타일 — .ri-* 클래스 (CPD 분리)
 │   │                            # Repo insights page scoped styles (.ri-* classes, CPD prevention)
 │   ├── mockup-polar.html        # 대시보드 KPI 레이아웃 목업 — SonarCloud sonar.exclusions 등재 (#399)
-│   └── illustrations/           # DALL-E 3 생성 일러스트 5장 commit (#375 Step 2-B: login_hero/dashboard_empty/overview_onboarding/add_repo_hero/filter_empty)
-├── scripts/                     # 로컬 도구 (production import X) — Cycle 93 Step 2
+│   └── illustrations/           # DALL-E 3 생성 일러스트 4장 commit (#375 Step 2-B: dashboard_empty/overview_onboarding/add_repo_hero/filter_empty; login_hero.png 사이클 118 #584 삭제)
+├── scripts/                     # src/scripts/ — DALL-E 3 일러스트 생성 도구 (production import X; 최상위 scripts/ 와 별도)
 │   ├── illustration_prompts.py  # 5장 isometric prompt 정의 (login_hero/dashboard_empty/overview_onboarding/add_repo_hero/filter_empty)
-│   ├── generate_illustrations.py # OpenAI DALL-E 3 CLI (--all/--name/--dry-run)
-│   ├── perf_measure.py          # 페이지 성능 측정 독립 스크립트 — 로컬 SQLite 서버 자동 시작·종료 + 운영 Railway TTFB, Markdown 리포트 (사이클 106 #500)
-│   │                            # Standalone page perf script — local SQLite server auto-start/stop + prod Railway TTFB, Markdown report
-│   ├── parse_bandit.py          # bandit 보안 결과 파싱 — JSON 출력 → 이슈 목록 변환
-│   │                            # Parse bandit security results — JSON output → issue list conversion
-│   ├── parse_coverage.py        # 커버리지 결과 파싱 — coverage.py XML → 요약 통계
-│   │                            # Parse coverage results — coverage.py XML → summary stats
-│   ├── benchmark_static_analysis.py # 정적 분석 벤치마크 — 도구별 실행 시간 측정
-│   │                            # Static analysis benchmark — measure per-tool execution time
-│   ├── backfill_repository_user_id.py # repository user_id 백필 — 마이그레이션 보조 스크립트
-│   │                            # Backfill repository user_id — migration helper script
-│   ├── check_memory_refs.py     # 메모리 참조 유효성 검사 — CLAUDE.md/active.md/history.md 슬러그 ↔ 실제 파일 비교 (사이클 101 #469)
-│   │                            # Memory reference validator — slug ↔ actual file cross-check
-│   └── README.md                # 사용자 실행 가이드 + 비용 안내
+│   └── generate_illustrations.py # OpenAI DALL-E 3 CLI (--all/--name/--dry-run)
 ├── config.py                    # pydantic-settings 환경변수 관리, postgres:// URL 자동 변환
 ├── constants.py                 # 전역 상수 단일 출처 — 점수배점/감점가중치/AI기본값/등급/알림한도/HTTP타임아웃/캐시TTL
 ├── crypto.py                    # encrypt_token()/decrypt_token() — TOKEN_ENCRYPTION_KEY
@@ -62,7 +49,7 @@ src/
 ├── services/
 │   ├── analytics_service.py     # 집계 단일 출처 — weekly_summary, moving_average, resolve_chat_id
 │   ├── cron_service.py          # 주기 실행 — run_weekly_reports, run_trend_check
-│   ├── dashboard_service.py     # /dashboard 9 공개 함수 (KPI 4 + trend + frequent_issues + auto_merge_kpi + feedback_status + insight_narrative + dashboard_security + dashboard_usage + repo_insight_cards) + RLS 격리 헬퍼 2건 + N+1 배치 헬퍼 2건 (_fetch_analyses_for_window / _group_analyses_by_repo)
+│   ├── dashboard_service.py     # /dashboard 10 공개 함수 (dashboard_kpi + dashboard_trend + frequent_issues_v2 + auto_merge_kpi + merge_failure_distribution + feedback_status + repo_insight_cards + insight_narrative + dashboard_security + dashboard_usage) + RLS 격리 헬퍼 2건 + N+1 배치 헬퍼 2건 (_fetch_analyses_for_window / _group_analyses_by_repo)
 │   ├── repo_insight_service.py  # 리포별 집계 7 함수 (repo_kpi/repo_score_trend/recurring_issues/problem_files/ai_suggestions/category_breakdown/insight_narrative) + compute_score_kpi 공유 헬퍼 (dashboard_service CPD 제거)
 │   │                            # Per-repo aggregation 7 functions (repo_score_trend added cycle 99) + compute_score_kpi shared helper
 │   ├── merge_retry_service.py   # process_pending_retries 워커 (CI-aware)
@@ -126,6 +113,28 @@ src/
 ├── cli/                         # python -m src.cli review (git_diff + formatter)
 ├── repositories/                # DB 접근 계층 10종 — repository_repo (`find_by_full_name` + `find_all_by_user` shared+owned repos + Phase H `find_by_full_name_with_owner`)
 └── worker/pipeline.py           # run_analysis_pipeline, build_analysis_result_dict
+```
+
+## scripts/ 디렉토리 구조 (최상위 — src/ 외부)
+
+> **주의**: `src/scripts/` (DALL-E 3 생성 도구 2건) 와 별도. 아래는 최상위 `scripts/` 로컬 도구 목록 (production import X).
+> **Note**: Separate from `src/scripts/` (2 DALL-E generation scripts). Below are top-level `scripts/` local tools (not imported in production).
+
+```
+scripts/
+├── perf_measure.py              # 페이지 성능 측정 독립 스크립트 — 로컬 SQLite 서버 자동 시작·종료 + 운영 Railway TTFB, Markdown 리포트 (사이클 106 #500)
+│                                # Standalone page perf script — local SQLite server auto-start/stop + prod Railway TTFB, Markdown report
+├── parse_bandit.py              # bandit 보안 결과 파싱 — JSON 출력 → 이슈 목록 변환
+│                                # Parse bandit security results — JSON output → issue list conversion
+├── parse_coverage.py            # 커버리지 결과 파싱 — coverage.py XML → 요약 통계
+│                                # Parse coverage results — coverage.py XML → summary stats
+├── benchmark_static_analysis.py # 정적 분석 벤치마크 — 도구별 실행 시간 측정
+│                                # Static analysis benchmark — measure per-tool execution time
+├── backfill_repository_user_id.py # repository user_id 백필 — 마이그레이션 보조 스크립트
+│                                # Backfill repository user_id — migration helper script
+├── check_memory_refs.py         # 메모리 참조 유효성 검사 — CLAUDE.md/active.md/history.md 슬러그 ↔ 실제 파일 비교 (사이클 101 #469)
+│                                # Memory reference validator — slug ↔ actual file cross-check
+└── README.md                    # 사용자 실행 가이드 + 비용 안내
 ```
 
 ## e2e/ 디렉토리 구조
