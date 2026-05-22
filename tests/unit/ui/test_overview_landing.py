@@ -171,3 +171,37 @@ def test_landing_page_passes_auth_failed_error_to_template():
         )
     finally:
         app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_landing_page_blocks_non_whitelisted_error_param():
+    """GET /?error=arbitrary_string — _ALLOWED_ERRORS 화이트리스트 차단 검증.
+    Non-whitelisted error param must be replaced with None (prevents arbitrary string rendering).
+
+    보안: _ALLOWED_ERRORS = {"oauth_failed", "auth_failed"} 외 값은 None 치환 의무.
+    Security: values outside _ALLOWED_ERRORS must be replaced with None.
+    """
+    app.dependency_overrides[get_current_user] = lambda: None
+    try:
+        with patch("src.ui.routes.overview.templates.TemplateResponse") as mock_tr:
+            mock_tr.return_value = HTMLResponse(content="<html>landing</html>", status_code=200)
+            landing_client = TestClient(app, follow_redirects=False)
+            response = landing_client.get("/?error=hacked_xss_string")
+
+        assert response.status_code == 200
+
+        call_args = mock_tr.call_args
+        if len(call_args.args) >= 3:
+            context = call_args.args[2]
+        else:
+            context = call_args.kwargs.get("context", {})
+
+        assert "error" in context, (
+            f"template context 에 'error' 키 기대 (None 치환 포함), "
+            f"실제 keys: {list(context.keys())}"
+        )
+        assert context["error"] is None, (
+            f"비허용 error param → None 치환 기대, 실제: {context.get('error')!r} "
+            f"(_ALLOWED_ERRORS 화이트리스트 우회 차단 실패)"
+        )
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
