@@ -641,25 +641,10 @@ def test_require_login_redirects_to_auth_github():
 def test_login_route_redirects_301_to_auth_github():
     """GET /login 이 301 리다이렉트 + Location: /auth/github 를 반환해야 한다.
     GET /login must return 301 redirect with Location: /auth/github.
-
-    현재 동작: login.html 200 렌더링 (github.py:40-49)
-    변경 예정: 301 Moved Permanently → /auth/github
-    Current: renders login.html 200 — Expected after change: 301 to /auth/github
     """
-    # 미인증 상태에서 /login 접근 — get_current_user 가 None 반환하도록 patch
-    # Unauthenticated /login access — patch get_current_user to return None
-    with patch("src.auth.github.get_current_user", return_value=None):
-        r = client.get("/login", follow_redirects=False)
-
-    # 변경 후 기대값: 301 + Location: /auth/github
-    # After change: 301 + Location: /auth/github
-    assert r.status_code == 301, (
-        f"301 기대, 실제: {r.status_code}\n"
-        f"(현재 200 login.html — github.py:40 변경 전 Red 단계)"
-    )
-    assert r.headers.get("location") == "/auth/github", (
-        f"Location '/auth/github' 기대, 실제: {r.headers.get('location')!r}"
-    )
+    r = client.get("/login", follow_redirects=False)
+    assert r.status_code == 301
+    assert r.headers.get("location") == "/auth/github"
 
 
 def test_auth_callback_oauth_error_redirects_to_landing():

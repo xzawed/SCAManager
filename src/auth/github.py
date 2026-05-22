@@ -12,7 +12,6 @@ from src.crypto import encrypt_token
 from src.database import SessionLocal
 from src.models.user import User
 from src.repositories import user_repo
-from src.auth.session import get_current_user
 
 logger = logging.getLogger(__name__)
 
