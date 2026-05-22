@@ -60,7 +60,8 @@ def test_base_html_includes_illustrations_css():
 @pytest.mark.parametrize(
     "template,png_ref",
     [
-        ("login.html", "login_hero.png"),
+        # login.html 은 사이클 117 에서 삭제됨 — landing.html 일러스트 추가 후 케이스 복원 예정
+        # login.html deleted in cycle 117 — restore after landing.html illustration is added
         ("dashboard.html", "dashboard_empty.png"),
         ("overview.html", "overview_onboarding.png"),
         ("add_repo.html", "add_repo_hero.png"),
@@ -68,9 +69,10 @@ def test_base_html_includes_illustrations_css():
     ],
 )
 def test_template_references_illustration(template, png_ref):
-    """5 페이지가 각각 올바른 PNG 경로 참조 (Step 2-B 종결 신호).
+    """4 페이지가 각각 올바른 PNG 경로 참조 (Step 2-B 종결 신호).
 
-    Each of 5 pages references its assigned PNG (Step 2-B completion signal).
+    Each of 4 pages references its assigned PNG (Step 2-B completion signal).
+    login.html 삭제 후 4개로 축소 (사이클 117 PR #578).
     """
     body = (TEMPLATES_DIR / template).read_text(encoding="utf-8")
     assert (
@@ -82,8 +84,9 @@ def test_decorative_illustrations_have_presentation_role():
     """장식용 일러스트 = alt='' + role='presentation' (접근성 정합).
 
     Decorative illustrations use empty alt + role=presentation (a11y).
+    login.html → landing.html 교체 (사이클 117 — login.html 삭제).
     """
-    for template in ["login.html", "dashboard.html", "overview.html", "add_repo.html"]:
+    for template in ["landing.html", "dashboard.html", "overview.html", "add_repo.html"]:
         body = (TEMPLATES_DIR / template).read_text(encoding="utf-8")
         if 'src="/static/illustrations/' in body:
             assert (
