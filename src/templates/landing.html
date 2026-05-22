@@ -145,20 +145,6 @@
       place-items: center;
       font-size: 14px;
     }
-    .nav-cta {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    .nav-login {
-      font-size: 0.875rem;
-      color: var(--text-2);
-      padding: 6px 14px;
-      border-radius: 8px;
-      border: 1px solid var(--border-subtle);
-      transition: color 0.2s, border-color 0.2s;
-    }
-    .nav-login:hover { color: var(--text-1); border-color: var(--border-strong); }
 
     /* ── 오류 배너 ──────────────────────────────────────── */
     .auth-error-banner {
@@ -496,9 +482,6 @@
     <div class="nav-logo-icon">🔍</div>
     SCAManager
   </a>
-  <div class="nav-cta">
-    <a href="/auth/github" class="nav-login">로그인</a>
-  </div>
 </nav>
 
 {% if error %}
