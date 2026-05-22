@@ -12,7 +12,7 @@
 | 단위 테스트 수·커버리지·pylint | [STATE.md 헤더](../STATE.md) |
 | 아키텍처·작업 규칙·주의사항 | [CLAUDE.md](../../CLAUDE.md) |
 | README 배지 | [README.md L21-25](../../README.md) |
-| 최신 작업 이력 | [STATE.md 그룹 57](../STATE.md) |
+| 최신 작업 이력 | [STATE.md — 사이클 헤더 참조](../STATE.md) |
 | **사용자 협업 정책** | [collaboration-retrospective.md](2026-05-01-collaboration-retrospective.md) (다음 세션 default) |
 
 ---

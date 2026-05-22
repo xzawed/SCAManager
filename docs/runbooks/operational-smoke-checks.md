@@ -101,10 +101,10 @@ Railway MCP 부재 시 사용자 의무:
 | 사고 유형 | 즉시 진단 명령 | 예상 fix 시간 |
 |----------|-------------|-------------|
 | 로그인 불가 (OAuth) | `curl ... /auth/github` → redirect_uri 확인 + GitHub OAuth App 비교 | ~30초 (사용자 OAuth App 수정) |
-| /health 5xx | Railway 로그 (Sentry 알람) | ~5분 (rollback) |
+| /health 5xx | Railway 로그 확인 | ~5분 (rollback) |
 | Webhook 미수신 | GitHub webhook delivery 페이지 + `/webhooks/github` 401 응답 확인 | ~10분 |
 | 알림 미발송 | Telegram/Discord/Slack URL + 토큰 검증 (Settings 페이지) | ~5분 |
-| 분석 실패 | Anthropic API key + Sentry 알람 | ~10분 |
+| 분석 실패 | Anthropic API key 확인 + Railway 로그 | ~10분 |
 
 ---
 
@@ -255,7 +255,7 @@ pytest tests/integration/test_insight_caching.py -v
 |------|----------------------|----------------|
 | /dashboard?mode=insight 페이지 | 사용자 시각 검증 | e2e/test_dashboard_insight.py §A |
 | 모드 토글 + localStorage persist | 사용자 시각 + DevTools | e2e/test_dashboard_insight.py §B |
-| Anthropic prompt caching 적용 | Sentry/Railway 로그 `cache_*_tokens` | tests/integration/test_insight_caching.py C.1 |
+| Anthropic prompt caching 적용 | Railway 로그 `cache_*_tokens` 확인 | tests/integration/test_insight_caching.py C.1 |
 | user_id 격리 (Claude API context) | 다중 사용자 운영 검증 | tests/integration/test_insight_caching.py C.2 |
 | Supabase RLS policy 적용 | Supabase Dashboard `SELECT * FROM pg_policies` | (자동화 미적용 — 운영 환경 별도 검증) |
 | RLS 운영 활성화 (`SET LOCAL app.user_id`) | 사용자 별도 PR 의무 (메모리 `phase3-rls-runtime-activation-pending.md`) | (미들웨어 PR 진행 시 동시 추가) |
