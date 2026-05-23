@@ -24,6 +24,7 @@
 - [사이클 95~106 (문서 정비 + pylint 10.00 + 성능 측정 E2E, 2026-05-14~18)](#사이클-95106)
 - [사이클 107~109 (테마 차트 수정 + 전체 감사 14건, 2026-05-19)](#사이클-107109)
 - [사이클 110~116 (AI Insight 에러 추적·차트·다국어·감사 묶음, 2026-05-20~22)](#사이클-110116) — 상세: STATE.md 작업 이력 참조
+- [사이클 128 (테마 드롭다운 CSS 변수 스코프 + 대비 수정, 2026-05-23)](#사이클-128)
 - [사이클 127 (hx-boost JS 에러 트랩 + 정적 스캐너 + ESLint 인프라 + E2E stale 셀렉터 수정, 2026-05-23)](#사이클-127)
 - [사이클 126 (차트 스파크라인 리디자인 — 테마 accent 그라디언트 fill, 2026-05-23)](#사이클-126)
 - [사이클 125 (회고 P1/P2 이행 — session 예외 처리 + overflow 테스트, 2026-05-23)](#사이클-125)
@@ -157,6 +158,10 @@
 
 - **사이클 109 (2026-05-19 · #516~#519)** — 전체 페이지 정밀 감사 + P0/P1/P2 14건 수정: **5+1 다중 에이전트 감사** (base.html/repo_detail/repo_insights/dashboard/analysis_detail/backend API/security/i18n) — P0 1건 + P1 7건 + P2 6건. **#516 P0**: `database.py` RLS `SET LOCAL` f-string → `%s` 파라미터화 쿼리 (SQL injection 방어). **#517 P1**: `base.html` `_startProgress()` RAF 경쟁조건 (`cancelAnimationFrame` 선행) + 이벤트 핸들러 누적등록 4곳 remove-before-add 전환 (`_themeCloseHandler`/`_langCloseHandler`/`_hamburgerCloseHandler`/`_progressPageShowHandler`/`_progressBeforeUnloadHandler`). **#518 P1**: `merge_retry_repo.py` `claim_batch` PostgreSQL 조건부 `FOR UPDATE SKIP LOCKED` + `auth/github.py` 로그아웃 시 DB `github_access_token = NULL` 처리 + `i18n/filters.py` `i18n_args_filter` XSS 가드 (`markupsafe.escape` — str kwargs 이스케이프, Markup 인스턴스 passthrough) + `settings.html` countdown `{% set %}` Markup 객체화. CI fail (codecov/patch 69.23%) → 테스트 2건 추가 fix-up 후 pass. Codex NG (assert 약함) → `call_args[0][0]` SQLAlchemy Update 구조 검증 강화 → OK. 단위 2816→2818. **#519 P1~P2**: `analysis_detail.html`/`repo_insights.html`/`dashboard.html` `htmx:afterSettle`+`htmx:historyRestore` 핸들러 + animate=false 일관 적용 (뒤로가기 시 차트 미복원 버그) + `dashboard.html` phantom CSS 토큰 `--accent-primary` 제거. Codex NG (animate=false 누락) → `_adHtmxHandler` 수정 → OK. **회고 신규 식별**: P1 `security_scan_service.py:51` 직접 토큰 접근 + P2 dashboard CSS 토큰 4종 미정의 + `i18n/filters.py` XSS 경로 테스트 0% → 다음 사이클 GitHub Issue #520 추적.
 - **사이클 107 (2026-05-19 · #503)** — 회고 반영 + 문서·코드 정비: P0 `make perf-report` Windows UnicodeEncodeError (`PYTHONIOENCODING=utf-8`). `/health` TTFB 임계값 e2e/scripts 통일 (`THRESHOLDS_LOCAL health_ttfb: 300ms` + `_is_health_page()` urlsplit 정규화 헬퍼 — Codex 1차 NG→수정, 2차 샌드박스 오류로 grep+사용자 승인 대체). `CLAUDE.md` 6-step ⑤에 `cycle-history.md` 이력 동기화 추가. `docs/cycle-history.md` 사이클 95~106 이력 12건 추가. `docs/architecture.md` `scripts/` 미등재 파일 5개 추가 (`parse_bandit.py` / `parse_coverage.py` / `benchmark_static_analysis.py` / `backfill_repository_user_id.py` / `check_memory_refs.py`). `.claude/rules/testing.md` `@pytest.mark.perf` 선택 실행 지침 추가. **P1 잔여 → 사이클 108**: FCP/LCP 조건부 assert → `assert is not None` 선행 추가 + `/health` Playwright → requests 전환.
+
+## 사이클 128
+
+- **사이클 128 (2026-05-23 · #611)** — 테마 드롭다운 폰트 가시성 버그 수정. 근본 원인: `themes.css`의 `[data-theme="X"]` 셀렉터가 `<body>` 뿐 아니라 `<div class="theme-option" data-theme="X">` 요소에도 매칭 → 각 옵션이 자기 데이터 테마의 CSS 변수를 상속 → 파스텔 페이지에서 "다크 오로라" 옵션이 `--text-1: #f0f0f8` (다크 테마 흰 텍스트) 수신 → 흰 배경에 흰 텍스트 = 안 보임. **수정 1** `themes.css` 4개 테마 규칙 `[data-theme]` → `body[data-theme]` 스코프 제한 (`.theme-option` 요소가 잘못된 CSS 변수 상속 차단). **수정 2** `base.html` nav 링크 hover `color: var(--text-3)` → `var(--text-1)` (파스텔/라이트에서 hover 시 텍스트 더 연해지는 역방향 버그). **수정 3** 현재 페이지 링크 `color: #fff` → `var(--text-1)` + `font-weight:600` + `var(--accent-faint)` 배경 (밝은 nav에서 흰 텍스트 = 투명 버그). **수정 4** 로그아웃 hover `color: #fca5a5` → `var(--danger)` (라이트 nav에서 연분홍 텍스트 = 거의 안 보임 버그). 단위 ±0 (2948 유지), E2E 112 유지.
 
 ## 사이클 127
 
