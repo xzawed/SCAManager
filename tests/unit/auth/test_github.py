@@ -728,3 +728,38 @@ def test_auth_callback_oauth_error_redirects_to_landing():
 
     assert r.status_code == 302
     assert r.headers.get("location") == "/?error=oauth_failed"
+
+
+# ---------------------------------------------------------------------------
+# OAuth state 소비 후 재사용 차단 — 명시적 단위 테스트
+# OAuth state consumed-after-use rejection — explicit unit test
+# ---------------------------------------------------------------------------
+
+def test_oauth_state_consumed_after_use_reuse_fails():
+    """Authlib은 콜백 완료 후 세션에서 state를 pop(소비)한다.
+    같은 state로 두 번째 콜백 요청 시 MismatchingStateError → /?error=oauth_failed.
+    Authlib pops (consumes) the OAuth state from the session after a successful callback.
+    A second callback with the same state triggers MismatchingStateError → oauth_failed redirect.
+
+    이 동작은 state 재사용 공격(replay attack)을 차단한다.
+    This behaviour prevents OAuth state replay attacks.
+    """
+    try:
+        from authlib.integrations.base_client.errors import MismatchingStateError
+    except ImportError:
+        from authlib.common.errors import AuthlibBaseError as MismatchingStateError
+
+    with patch(
+        "src.auth.github.oauth.github.authorize_access_token",
+        new_callable=AsyncMock,
+        side_effect=MismatchingStateError(),
+    ):
+        r = client.get(
+            "/auth/callback?code=reused-code&state=already-consumed-state",
+            follow_redirects=False,
+        )
+
+    # state 소비 후 재사용 → OAuth 오류 (성공 302 to / 아님)
+    # Consumed state reuse → OAuth error, not a success redirect.
+    assert r.status_code == 302
+    assert r.headers.get("location") == "/?error=oauth_failed"

@@ -96,3 +96,18 @@ def test_require_login_with_nonexistent_user_raises_redirect():
 
     assert exc_info.value.status_code == 302
     assert exc_info.value.headers["Location"] == "/auth/github"
+
+
+def test_get_current_user_with_large_int_user_id_returns_none():
+    """세션 user_id가 INT_MAX(2^31-1) 경계값이면 DB 조회 후 None을 반환해야 한다.
+    When session user_id is at the 32-bit integer boundary (2^31-1),
+    get_current_user must perform the DB lookup and return None (no such user).
+
+    이유: 공격자가 대형 정수를 주입해 다른 사용자 세션을 탈취하려는 시도를 차단함.
+    Reason: documents that even boundary-value integer injection returns None safely.
+    """
+    mock_db = _mock_db_not_found()
+    with patch("src.auth.session.SessionLocal") as mock_sl:
+        mock_sl.return_value.__enter__.return_value = mock_db
+        result = get_current_user(_req({"user_id": 2**31 - 1}))
+    assert result is None
