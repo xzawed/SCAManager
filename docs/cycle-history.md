@@ -23,6 +23,7 @@
 - [사이클 92~94 (정기 검증 + 정책 18 + Tailwind v4 빌드, 2026-05-07~11)](#사이클-9294)
 - [사이클 95~106 (문서 정비 + pylint 10.00 + 성능 측정 E2E, 2026-05-14~18)](#사이클-95106)
 - [사이클 107~109 (테마 차트 수정 + 전체 감사 14건, 2026-05-19)](#사이클-107109)
+- [사이클 124 (B+C — S1192 상수화 + 보안 심층 테스트 2건, 2026-05-23)](#사이클-124)
 - [사이클 123 (B+C — Email XSS 회귀 가드 + Optional→X|None 현대화, 2026-05-23)](#사이클-123)
 - [사이클 122 (121 승인 항목 — STATE.md 테이블 출처 레이블 + 수치 동기화, 2026-05-23)](#사이클-122)
 - [사이클 121 (5+1 회고 + P2 GET timeout 회귀 가드 + 메모리 2건, 2026-05-23)](#사이클-121)
@@ -156,6 +157,10 @@
 ## 사이클 123
 
 - **사이클 123 (2026-05-23 · #595)** — B+C 작업. **B — P3 보안 심층 테스트**: `test_email.py` `test_build_html_escapes_xss_in_issue_message` 추가 — Telegram 4건 대비 Email issue.message XSS parity 갭 해소. **C — SonarCloud S6540 Code Smells 감소 (Phase 1)**: `src/middleware/locale.py` `Optional[str]`→`str|None` 2곳 + `from typing import Optional` 제거. `src/notifier/_language.py` `Optional[Session/str]`→`Session|None/str|None` 3곳 + Optional import 제거. 런타임 영향 없음 (Python 3.14). 단위 2944→2945, 누적 3095→3096.
+
+## 사이클 124
+
+- **사이클 124 (2026-05-23 · #597)** — B+C 작업. B — P3 보안 심층 테스트 2건: `test_session_security.py` `test_get_current_user_with_large_int_user_id_returns_none` (INT_MAX 2^31-1 경계 — session fixation 주입 차단 문서화). `test_github.py` `test_oauth_state_consumed_after_use_reuse_fails` (Authlib state pop→소비 후 재사용 → `MismatchingStateError` → `/?error=oauth_failed` 302 명시). C Phase 2 — SonarCloud S1192 해소: `src/constants.py` `BREAKDOWN_KEY_CODE_QUALITY` / `BREAKDOWN_KEY_SECURITY` / `BREAKDOWN_KEY_COMMIT_MESSAGE` / `BREAKDOWN_KEY_AI_REVIEW` / `BREAKDOWN_KEY_TEST_COVERAGE` 5개 상수 신설. `src/scorer/calculator.py` 중복 리터럴 → `Category.CODE_QUALITY` / `Category.SECURITY` / `Severity.ERROR` / `Severity.WARNING` StrEnum + `BREAKDOWN_KEY_*` 상수 교체. 단위 2945→2947, 누적 3096→3098.
 
 ## 사이클 122
 
