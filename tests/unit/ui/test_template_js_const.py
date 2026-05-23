@@ -8,6 +8,7 @@ Top-level const/let re-declaration → SyntaxError → all handlers silenced (PR
 """
 
 import re
+from html.parser import HTMLParser
 from pathlib import Path
 
 _TEMPLATES_DIR = Path(__file__).parent.parent.parent.parent / "src" / "templates"
@@ -17,12 +18,38 @@ def _extract_inline_scripts(html: str) -> list[str]:
     """<script src=...> 외부 스크립트를 제외하고 인라인 <script> 블록 내용만 반환한다.
     Returns inline <script> block contents, excluding <script src=...> external scripts.
     """
-    blocks = []
-    for m in re.finditer(r"<script([^>]*)>(.*?)</script>", html, re.DOTALL | re.IGNORECASE):
-        attrs, content = m.group(1), m.group(2)
-        if "src=" not in attrs:
-            blocks.append(content)
-    return blocks
+    class _InlineScriptExtractor(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__()
+            self.blocks: list[str] = []
+            self._in_script = False
+            self._current: list[str] = []
+            self._script_has_src = False
+
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+            if tag.lower() != "script":
+                return
+            self._in_script = True
+            self._current = []
+            self._script_has_src = any((name or "").lower() == "src" for name, _ in attrs)
+
+        def handle_endtag(self, tag: str) -> None:
+            if tag.lower() != "script" or not self._in_script:
+                return
+            if not self._script_has_src:
+                self.blocks.append("".join(self._current))
+            self._in_script = False
+            self._current = []
+            self._script_has_src = False
+
+        def handle_data(self, data: str) -> None:
+            if self._in_script:
+                self._current.append(data)
+
+    parser = _InlineScriptExtractor()
+    parser.feed(html)
+    parser.close()
+    return parser.blocks
 
 
 def _find_toplevel_const_let(js: str) -> list[tuple[int, str]]:
