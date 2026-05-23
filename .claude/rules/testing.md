@@ -42,3 +42,14 @@ pylint R0914 발생 시 두 패턴 중 선택:
 현재 inline disable 사용처 (5건): `gate/github_review.py:108` (merge_pr) / `notifier/merge_failure_issue.py:59` / `services/merge_retry_service.py:100` / `services/dashboard_service.py:77` (dashboard_kpi) + `:224` (frequent_issues_v2). 모두 시그니처 확장 사례.
 
 🔴 **line:span drift 주의**: 위 목록의 line 번호는 코드 변경 시 자연 drift 발생 — 인용 또는 업데이트 시 `grep -n` 실측 의무 (정책 6). 가능 시 commit hash 병기 권장 (예: `github_review.py:108 (#586)`).
+
+## JavaScript 테스트 정책 (사이클 127 P0 학습)
+
+사이클 127 PR #604 회귀 분석: hx-boost `const` 재선언 SyntaxError 는 Python 커버리지 95.7% + 103개 E2E `page.goto()` 테스트 모두 통과했으나 검출 실패. 구조적 원인 3가지 → 아래 규칙으로 봉인.
+
+- 🔴 **Python 커버리지 = JS 커버리지 대체 불가**: `--cov=src` 는 `src/templates/*.html` 인라인 JS 미측정. 커버리지 보고 시 "Python N% / JS: E2E 커버" 형식으로 언어별 분리 명시 의무. "커버리지 95%" 단독 보고 = false 안도감 유발 금지.
+- 🔴 **hx-boost 재방문 E2E 테스트 의무 (PR #604 회귀 가드)**: `base.html` `<script>` 블록 변경 시 **3회 이상 hx-boost 재방문 시나리오 E2E 테스트** 작성 의무. `page.goto()` 단독 = fresh JS 컨텍스트 → hx-boost `const` 재선언 SyntaxError 미감지. 패턴: `e2e/test_navigation.py::test_nav_handler_survives_hx_boost_renavigation` 참조.
+- 🔴 **`pageerror` JS 에러 트랩 의무 (사이클 127 conftest 반영)**: `e2e/conftest.py` `page` + `seeded_page` fixture 양쪽에 `pg.on("pageerror", ...)` 등록 후 fixture teardown 에서 `pytest.fail()` 변환. Playwright 기본 동작은 uncaught JS exception 묵살 — 트랩 없으면 SyntaxError 재발 감지 불가.
+- 🔴 **`get_current_user` override 의무 (사이클 127 conftest 반영)**: `_start_uvicorn` 에서 `require_login` 뿐 아니라 `get_current_user` 도 override 필수. Overview 같은 public 라우트는 `get_current_user` (optional, returns `None`) 의존 → override 없으면 `{% if current_user %}` nav 블록 미렌더링 → nav 링크 존재 여부 테스트 불가.
+- **hx-boost 이후 URL 인코딩 predicate 패턴**: `page.goto("owner%2Ftestrepo")` 후 anchor 클릭 시 브라우저 URL 이 decoded `owner/testrepo` 로 변경됨. `wait_for_url(encoded_url)` timeout → `wait_for_url(lambda url: "owner" in url and "testrepo" in url and "/settings" not in url)` predicate 사용.
+- **`<script>` top-level `const`/`let` 금지 (PR #604 근본 원인)**: `base.html` + 각 템플릿 `<body>` 안 `<script>` 블록의 top-level `const`/`let` 은 hx-boost 재실행 시 SyntaxError. 모든 변수는 IIFE `(function() { var x = ...; })();` 또는 `var` 단독 선언 사용. `src/templates/*.html` 신규 `<script>` 작성 시 자동 적용.
