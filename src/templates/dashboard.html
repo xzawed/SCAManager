@@ -1223,7 +1223,8 @@
 <script>
   // 추세 데이터 (서버 주입) — autoescape 안전
   // Trend data (server-injected) — autoescape safe
-  const trendData = {{ trend | tojson }};
+  // 🔴 Must use var — const causes SyntaxError on hx-boost body swap re-execution
+  var trendData = {{ trend | tojson }};
 
   /* --d-accent 등 .dashboard-page scoped 토큰은 documentElement에서 읽으면 빈 값 반환
      (CSS 변수는 하위→상위 방향 상속 불가). .dashboard-page 요소 기준으로 읽어야 올바른 값 반환.
@@ -1235,7 +1236,8 @@
     return v || fallback;
   }
 
-  let dashChart = null;
+  // 🔴 Must use var — let causes SyntaxError on hx-boost body swap re-execution
+  var dashChart = null;
   function buildDashChart(animate) {
     const ctx = document.getElementById('dashTrendChart');
     if (!ctx) return;
