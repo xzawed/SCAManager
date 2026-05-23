@@ -116,8 +116,8 @@
       border-radius: var(--radius-sm);
       transition: color var(--transition), background var(--transition);
     }
-    nav a.nav-link:hover { color: var(--text-3); background: rgba(255,255,255,.06); }
-    nav a.nav-link[aria-current="page"] { color: #fff; background: rgba(255,255,255,.1); }
+    nav a.nav-link:hover { color: var(--text-1); background: rgba(255,255,255,.06); }
+    nav a.nav-link[aria-current="page"] { color: var(--text-1); font-weight: 600; background: var(--accent-faint); }
     .nav-spacer { flex: 1; }
 
     /* 모바일 햄버거 */
@@ -170,7 +170,7 @@
     .nav-logout-btn:hover {
       background: rgba(239,68,68,.15);
       border-color: rgba(239,68,68,.4);
-      color: #fca5a5;
+      color: var(--danger);
     }
 
     /* ── 테마 스위처 ──────────────────────────── */

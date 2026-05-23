@@ -4,7 +4,9 @@
  * ========================================================================== */
 
 /* ── Dark — Polar Aurora ─────────────────────────────────────────────────── */
-[data-theme="dark"], body:not([data-theme]) {
+/* 🔴 body 에만 스코프 — .theme-option[data-theme] 요소가 잘못 매칭되어 CSS 변수 override 방지
+ * 🔴 Scoped to body only — prevents .theme-option[data-theme] from accidentally inheriting wrong theme vars */
+body[data-theme="dark"], body:not([data-theme]) {
   --bg-base:        #07070f;
   --bg-card:        rgba(255,255,255,0.04);
   --bg-elevated:    #13131f;
@@ -65,7 +67,7 @@
 }
 
 /* ── Light — Vercel ──────────────────────────────────────────────────────── */
-[data-theme="light"] {
+body[data-theme="light"] {
   --bg-base:        #f6f6fd;
   --bg-card:        rgba(255,255,255,0.9);
   --bg-elevated:    #ffffff;
@@ -124,7 +126,7 @@
 }
 
 /* ── Pastel — Dreamy Soft (replaces Glass) ───────────────────────────────── */
-[data-theme="pastel"] {
+body[data-theme="pastel"] {
   --bg-base:        #f0ecff;
   --bg-card:        rgba(255,255,255,0.72);
   --bg-elevated:    #ffffff;
@@ -183,7 +185,7 @@
 }
 
 /* ── Catppuccin — Dev Dark (replaces Claude-dark) ────────────────────────── */
-[data-theme="catppuccin"] {
+body[data-theme="catppuccin"] {
   --bg-base:        #1e1e2e;
   --bg-card:        rgba(30,30,46,0.9);
   --bg-elevated:    #313244;
