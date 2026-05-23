@@ -116,9 +116,12 @@ def _start_uvicorn(db_path: str) -> tuple:
             del sys.modules[mod_name]
 
     from src.main import app  # noqa: PLC0415
-    from src.auth.session import require_login, CurrentUser  # noqa: PLC0415
+    from src.auth.session import require_login, get_current_user, CurrentUser  # noqa: PLC0415
 
-    # E2E용 테스트 사용자 — require_login 의존성 우회 (CurrentUser dataclass 사용)
+    # E2E용 테스트 사용자 — require_login + get_current_user 의존성 우회
+    # require_login: 인증 필수 라우트 / get_current_user: overview 등 공개 라우트의 optional 인증
+    # Override both: require_login (mandatory auth) + get_current_user (optional auth, public routes)
+    # This ensures current_user is set in ALL templates including overview, so nav links render.
     _e2e_user = CurrentUser(
         id=_E2E_USER_ID,
         github_login="e2e-tester",
@@ -127,6 +130,7 @@ def _start_uvicorn(db_path: str) -> tuple:
         plaintext_token="gho_e2e_test_token",
     )
     app.dependency_overrides[require_login] = lambda: _e2e_user
+    app.dependency_overrides[get_current_user] = lambda: _e2e_user
 
     config = uvicorn.Config(
         app,
@@ -218,11 +222,21 @@ def browser_instance():
 
 @pytest.fixture
 def page(browser_instance, base_url):  # noqa: F811
-    """테스트마다 새로운 브라우저 컨텍스트(격리된 localStorage)를 제공한다."""
+    """테스트마다 새로운 브라우저 컨텍스트(격리된 localStorage)를 제공한다.
+    JS 런타임 에러(uncaught exception)를 테스트 실패로 자동 전환한다 (hx-boost SyntaxError 감지용).
+    Each test gets a fresh browser context. Uncaught JS exceptions fail the test automatically.
+    """
     context = browser_instance.new_context(base_url=base_url)
     pg = context.new_page()
+    js_errors: list[str] = []
+    pg.on("pageerror", lambda err: js_errors.append(str(err)))
     yield pg
     context.close()
+    if js_errors:
+        pytest.fail(
+            f"JS 런타임 에러 감지 ({len(js_errors)}건) — hx-boost script 재실행 오류 의심:\n"
+            + "\n".join(js_errors)
+        )
 
 
 # ── 테스트 데이터 시드 ────────────────────────────────────────────────
@@ -298,7 +312,10 @@ def _seed_repo(base_url: str, db_path: str) -> None:
 
 @pytest.fixture
 def seeded_page(browser_instance, live_server, tmp_path_factory):
-    """테스트 레포(owner/testrepo)가 DB에 등록된 상태의 page fixture."""
+    """테스트 레포(owner/testrepo)가 DB에 등록된 상태의 page fixture.
+    JS 런타임 에러(uncaught exception)를 테스트 실패로 자동 전환한다.
+    Page fixture with owner/testrepo seeded in DB. Uncaught JS exceptions fail the test.
+    """
     # db_path를 tmp_path_factory에서 재구성하는 대신, live_server fixture에서 전달받은 경로 활용
     # live_server가 세션 scope이므로 DB 경로를 세션 레벨에서 공유해야 함
     # 간단히: 같은 tmpdir 패턴으로 추정하는 대신, 환경변수에서 읽음
@@ -307,8 +324,15 @@ def seeded_page(browser_instance, live_server, tmp_path_factory):
     _seed_repo(live_server, db_path)
     context = browser_instance.new_context(base_url=live_server)
     pg = context.new_page()
+    js_errors: list[str] = []
+    pg.on("pageerror", lambda err: js_errors.append(str(err)))
     yield pg
     context.close()
+    if js_errors:
+        pytest.fail(
+            f"JS 런타임 에러 감지 ({len(js_errors)}건) — hx-boost script 재실행 오류 의심:\n"
+            + "\n".join(js_errors)
+        )
 
 
 def _seed_analysis(db_path: str) -> int:
