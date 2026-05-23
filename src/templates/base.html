@@ -736,13 +736,16 @@
   <script>
     // 테마 마이그레이션: glass→pastel, claude-dark→catppuccin (2026-05-11 UI 리디자인)
     // Theme migration: glass→pastel, claude-dark→catppuccin (2026-05-11 UI redesign)
-    const THEME_MIGRATE = { 'glass': 'pastel', 'claude-dark': 'catppuccin' };
-    const THEMES = {
+    // 🔴 var 사용 필수 — const는 hx-boost body swap 후 스크립트 재실행 시 재선언 SyntaxError 유발
+    // 🔴 Must use var — const causes SyntaxError on re-execution after hx-boost body swap
+    var THEME_MIGRATE = { 'glass': 'pastel', 'claude-dark': 'catppuccin' };
+    var THEMES = {
       dark:        { icon: '🌌', name: '다크' },
       light:       { icon: '☀️', name: '라이트' },
       pastel:      { icon: '🌸', name: '파스텔' },
       catppuccin:  { icon: '🐾', name: '개발자' }
     };
+
     function applyTheme(theme) {
       if (!THEMES[theme]) theme = 'dark';
       document.body.dataset.theme = theme;
@@ -754,151 +757,222 @@
       });
       document.dispatchEvent(new CustomEvent('themechange', { detail: theme }));
     }
-    const _storedTheme = localStorage.getItem('sca-theme');
-    applyTheme(THEME_MIGRATE[_storedTheme] || _storedTheme || 'dark');
 
-    // nav 활성 링크
+    // 초기 테마 적용 — hx-boost 재실행 시에도 올바른 테마 유지
+    // Apply theme on load (and on hx-boost re-execution to keep theme consistent)
     (function() {
-      const path = location.pathname;
-      document.querySelectorAll('nav a.nav-link').forEach(a => {
+      var stored = localStorage.getItem('sca-theme');
+      applyTheme(THEME_MIGRATE[stored] || stored || 'dark');
+    })();
+
+    // body swap 후 테마 UI 요소 갱신 (icon·label·active 클래스) — themechange 이벤트 미발송
+    // Refresh theme UI elements after body swap — does NOT dispatch themechange event
+    function _refreshThemeUI() {
+      var stored = localStorage.getItem('sca-theme');
+      var theme = THEME_MIGRATE[stored] || stored || 'dark';
+      if (!THEMES[theme]) theme = 'dark';
+      document.body.dataset.theme = theme;
+      var iconEl = document.getElementById('themeIcon');
+      var nameEl = document.getElementById('themeName');
+      if (iconEl) iconEl.textContent = THEMES[theme].icon;
+      if (nameEl) nameEl.textContent = THEMES[theme].name;
+      document.querySelectorAll('.theme-option').forEach(function(el) {
+        el.classList.toggle('active', el.dataset.theme === theme);
+      });
+    }
+
+    // ── 네비게이션 핸들러 (hx-boost body swap 마다 재초기화) ─────────────────
+    // Nav handlers — re-initialized on every hx-boost body swap and history restore.
+    // AbortController로 이전 호출의 element-level 리스너 일괄 제거 (이중 등록 방지)
+    // AbortController cancels element-level listeners from the previous call (prevents double-registration)
+    function _initNavHandlers() {
+      if (document._baseNavAbortCtrl) { document._baseNavAbortCtrl.abort(); }
+      var ctrl = new AbortController();
+      document._baseNavAbortCtrl = ctrl;
+      var sig = ctrl.signal;
+
+      // aria-current 갱신 — body swap 후 경로가 달라지므로 매번 재설정
+      // Update aria-current — path changes on body swap, re-set every time
+      var path = location.pathname;
+      document.querySelectorAll('nav a.nav-link').forEach(function(a) {
+        a.removeAttribute('aria-current');
         try {
-          const href = new URL(a.href, location.origin).pathname;
+          var href = new URL(a.href, location.origin).pathname;
           if (href === '/' ? path === '/' : path.startsWith(href)) {
             a.setAttribute('aria-current', 'page');
           }
         } catch (_) {}
       });
-    })();
 
-    // 테마 드롭다운
-    const switcher = document.getElementById('themeSwitcher');
-    const toggleBtn = document.getElementById('themeToggle');
-    toggleBtn.addEventListener('click', e => {
-      e.stopPropagation();
-      const open = switcher.classList.toggle('open');
-      toggleBtn.setAttribute('aria-expanded', open);
-    });
-    document.querySelectorAll('.theme-option').forEach(el => {
-      el.addEventListener('click', () => { applyTheme(el.dataset.theme); switcher.classList.remove('open'); toggleBtn.setAttribute('aria-expanded', 'false'); });
-      el.addEventListener('keydown', e => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          applyTheme(el.dataset.theme);
-          switcher.classList.remove('open');
-          toggleBtn.setAttribute('aria-expanded', 'false');
-          toggleBtn.focus();
-        }
-      });
-    });
-    if (document._themeCloseHandler) {
-      document.removeEventListener('click', document._themeCloseHandler);
-    }
-    document._themeCloseHandler = function() { switcher.classList.remove('open'); toggleBtn.setAttribute('aria-expanded', 'false'); };
-    document.addEventListener('click', document._themeCloseHandler);
+      // 테마 UI 상태 복원 (body swap 이후 아이콘·라벨 소실 방지)
+      // Restore theme UI state (prevent icon/label loss after body swap)
+      _refreshThemeUI();
 
-    // Phase 2 PR-4 (사이클 84) — 다국어 i18n 헤더 dropdown
-    // Phase 2 PR-4 (Cycle 84) — i18n header dropdown
-    (function() {
-      const LANGS = {
-        en: { icon: '🇺🇸', name: 'English' },
-        ko: { icon: '🇰🇷', name: '한국어' },
-        ja: { icon: '🇯🇵', name: '日本語' }
-      };
-      const langSwitcher = document.getElementById('langSwitcher');
-      if (!langSwitcher) return;  // 비로그인 사용자 = lang dropdown 부재
-      const langToggle = document.getElementById('langToggle');
-      const langIcon = document.getElementById('langIcon');
-      const langName = document.getElementById('langName');
-
-      function applyLang(lang) {
-        if (!LANGS[lang]) lang = 'ko';
-        langIcon.textContent = LANGS[lang].icon;
-        langName.textContent = LANGS[lang].name;
-        document.querySelectorAll('.lang-option').forEach(el => {
-          el.classList.toggle('active', el.dataset.lang === lang);
+      // 테마 드롭다운 이벤트 등록
+      // Register theme dropdown events
+      var switcher = document.getElementById('themeSwitcher');
+      var toggleBtn = document.getElementById('themeToggle');
+      if (toggleBtn && switcher) {
+        toggleBtn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          var open = switcher.classList.toggle('open');
+          toggleBtn.setAttribute('aria-expanded', open);
+        }, { signal: sig });
+        document.querySelectorAll('.theme-option').forEach(function(el) {
+          el.addEventListener('click', function() {
+            applyTheme(el.dataset.theme);
+            switcher.classList.remove('open');
+            toggleBtn.setAttribute('aria-expanded', 'false');
+          }, { signal: sig });
+          el.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              applyTheme(el.dataset.theme);
+              switcher.classList.remove('open');
+              toggleBtn.setAttribute('aria-expanded', 'false');
+              toggleBtn.focus();
+            }
+          }, { signal: sig });
         });
+        if (document._themeCloseHandler) {
+          document.removeEventListener('click', document._themeCloseHandler);
+        }
+        document._themeCloseHandler = function() { switcher.classList.remove('open'); toggleBtn.setAttribute('aria-expanded', 'false'); };
+        document.addEventListener('click', document._themeCloseHandler);
       }
 
-      // Phase 2 PR-5 (사이클 84) — 서버측 locale (LocaleMiddleware scope.state) 주입
-      // Cookie 직접 읽기 회피 (httponly=True 정합 — XSS 위험 0 + race condition 0)
-      // Phase 2 PR-5 (Cycle 84) — server-side locale injection from LocaleMiddleware
-      // Avoids document.cookie read (httponly=True compatible — XSS 0 + race 0)
-      applyLang('{{ locale | default("ko") }}');
+      // Phase 2 PR-4 (사이클 84) — 다국어 i18n 헤더 dropdown
+      // Phase 2 PR-4 (Cycle 84) — i18n header dropdown
+      (function() {
+        var LANGS = {
+          en: { icon: '🇺🇸', name: 'English' },
+          ko: { icon: '🇰🇷', name: '한국어' },
+          ja: { icon: '🇯🇵', name: '日本語' }
+        };
+        var langSwitcher = document.getElementById('langSwitcher');
+        if (!langSwitcher) return;  // 비로그인 사용자 = lang dropdown 부재
+        var langToggle = document.getElementById('langToggle');
+        var langIcon = document.getElementById('langIcon');
+        var langName = document.getElementById('langName');
 
-      langToggle.addEventListener('click', e => {
-        e.stopPropagation();
-        const open = langSwitcher.classList.toggle('open');
-        langToggle.setAttribute('aria-expanded', open);
-      });
-
-      async function changeLang(lang) {
-        try {
-          const res = await fetch('/api/users/me/preferred-language', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'same-origin',
-            body: JSON.stringify({ language: lang })
+        function applyLang(lang) {
+          if (!LANGS[lang]) lang = 'ko';
+          langIcon.textContent = LANGS[lang].icon;
+          langName.textContent = LANGS[lang].name;
+          document.querySelectorAll('.lang-option').forEach(function(el) {
+            el.classList.toggle('active', el.dataset.lang === lang);
           });
-          if (res.ok) {
-            applyLang(lang);
-            // hx-boost swap으로 재렌더 — full reload 대신 body innerHTML 교체 (서버 왕복 1회로 감소)
-            // Re-render via hx-boost swap — replaces body innerHTML instead of full reload
-            htmx.ajax('GET', location.pathname + location.search, {
-              target: document.body,
-              swap: 'outerHTML'
+        }
+
+        // Phase 2 PR-5 (사이클 84) — 서버측 locale (LocaleMiddleware scope.state) 주입
+        // Cookie 직접 읽기 회피 (httponly=True 정합 — XSS 위험 0 + race condition 0)
+        // Phase 2 PR-5 (Cycle 84) — server-side locale injection from LocaleMiddleware
+        // Avoids document.cookie read (httponly=True compatible — XSS 0 + race 0)
+        applyLang('{{ locale | default("ko") }}');
+
+        langToggle.addEventListener('click', function(e) {
+          e.stopPropagation();
+          var open = langSwitcher.classList.toggle('open');
+          langToggle.setAttribute('aria-expanded', open);
+        }, { signal: sig });
+
+        async function changeLang(lang) {
+          try {
+            const res = await fetch('/api/users/me/preferred-language', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'same-origin',
+              body: JSON.stringify({ language: lang })
             });
-          } else {
-            console.error('Failed to update preferred_language:', res.status);
+            if (res.ok) {
+              applyLang(lang);
+              // hx-boost swap으로 재렌더 — full reload 대신 body innerHTML 교체 (서버 왕복 1회로 감소)
+              // Re-render via hx-boost swap — replaces body innerHTML instead of full reload
+              htmx.ajax('GET', location.pathname + location.search, {
+                target: document.body,
+                swap: 'outerHTML'
+              });
+            } else {
+              console.error('Failed to update preferred_language:', res.status);
+            }
+          } catch (err) {
+            console.error('preferred_language API error:', err);
           }
-        } catch (err) {
-          console.error('preferred_language API error:', err);
+          langSwitcher.classList.remove('open');
+          langToggle.setAttribute('aria-expanded', 'false');
         }
-        langSwitcher.classList.remove('open');
-        langToggle.setAttribute('aria-expanded', 'false');
-      }
 
-      document.querySelectorAll('.lang-option').forEach(el => {
-        el.addEventListener('click', () => changeLang(el.dataset.lang));
-        el.addEventListener('keydown', e => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            changeLang(el.dataset.lang);
-          }
+        document.querySelectorAll('.lang-option').forEach(function(el) {
+          el.addEventListener('click', function() { changeLang(el.dataset.lang); }, { signal: sig });
+          el.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); changeLang(el.dataset.lang); }
+          }, { signal: sig });
         });
-      });
 
-      if (document._langCloseHandler) {
-        document.removeEventListener('click', document._langCloseHandler);
-      }
-      document._langCloseHandler = function() {
-        langSwitcher.classList.remove('open');
-        langToggle.setAttribute('aria-expanded', 'false');
-      };
-      document.addEventListener('click', document._langCloseHandler);
-    })();
-
-    // 모바일 햄버거
-    const hamburger = document.getElementById('navHamburger');
-    const navLinks = document.getElementById('navLinks');
-    if (hamburger) {
-      hamburger.addEventListener('click', e => {
-        e.stopPropagation();
-        const open = navLinks.classList.toggle('open');
-        hamburger.setAttribute('aria-expanded', String(open));
-        hamburger.textContent = open ? '✕' : '☰';
-      });
-      if (document._hamburgerCloseHandler) {
-        document.removeEventListener('click', document._hamburgerCloseHandler);
-      }
-      document._hamburgerCloseHandler = function() {
-        if (navLinks.classList.contains('open')) {
-          navLinks.classList.remove('open');
-          hamburger.setAttribute('aria-expanded', 'false');
-          hamburger.textContent = '☰';
+        if (document._langCloseHandler) {
+          document.removeEventListener('click', document._langCloseHandler);
         }
-      };
-      document.addEventListener('click', document._hamburgerCloseHandler);
+        document._langCloseHandler = function() {
+          langSwitcher.classList.remove('open');
+          langToggle.setAttribute('aria-expanded', 'false');
+        };
+        document.addEventListener('click', document._langCloseHandler);
+      })();
+
+      // 모바일 햄버거
+      // Mobile hamburger
+      var hamburger = document.getElementById('navHamburger');
+      var navLinks = document.getElementById('navLinks');
+      if (hamburger) {
+        hamburger.addEventListener('click', function(e) {
+          e.stopPropagation();
+          var open = navLinks.classList.toggle('open');
+          hamburger.setAttribute('aria-expanded', String(open));
+          hamburger.textContent = open ? '✕' : '☰';
+        }, { signal: sig });
+        if (document._hamburgerCloseHandler) {
+          document.removeEventListener('click', document._hamburgerCloseHandler);
+        }
+        document._hamburgerCloseHandler = function() {
+          if (navLinks.classList.contains('open')) {
+            navLinks.classList.remove('open');
+            hamburger.setAttribute('aria-expanded', 'false');
+            hamburger.textContent = '☰';
+          }
+        };
+        document.addEventListener('click', document._hamburgerCloseHandler);
+      }
+
+      // 탭 패널 활성화 (.tab-btn + .tab-panel 패턴)
+      // Tab panel activation (.tab-btn + .tab-panel pattern)
+      document.querySelectorAll('.tab-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var target = btn.dataset.tab;
+          document.querySelectorAll('.tab-btn').forEach(function(b) {
+            b.classList.toggle('active', b === btn);
+          });
+          document.querySelectorAll('.tab-panel').forEach(function(p) {
+            if (p.id === target) {
+              p.classList.add('active');
+              p.offsetWidth; // force reflow for re-animation
+            } else {
+              p.classList.remove('active');
+            }
+          });
+        }, { signal: sig });
+      });
     }
+
+    _initNavHandlers();
+    // hx-boost body swap / 뒤로가기 후 재초기화 — remove-before-add 패턴
+    // Re-initialize after hx-boost body swap / back navigation — remove-before-add
+    if (document._baseNavHandler) {
+      document.removeEventListener('htmx:afterSettle', document._baseNavHandler);
+      document.removeEventListener('htmx:historyRestore', document._baseNavHandler);
+    }
+    document._baseNavHandler = _initNavHandlers;
+    document.addEventListener('htmx:afterSettle', document._baseNavHandler);
+    document.addEventListener('htmx:historyRestore', document._baseNavHandler);
 
     // ── Animation framework ──────────────────────────────────────────────────
     // 스크롤 reveal: .card, .s-card, .kpi-card, .reveal 요소 자동 감지
@@ -948,12 +1022,27 @@
       }
       requestAnimationFrame(tick);
     }
-    document.querySelectorAll('[data-count]').forEach(function(el) {
-      var io2 = new IntersectionObserver(function(entries) {
-        if (entries[0].isIntersecting) { countUp(el); io2.unobserve(el); }
+    // data-count-done 속성으로 중복 카운트업 방지 — hx-boost body swap 후 신규 요소에만 적용
+    // Prevent duplicate count-up via data-count-done — only animates newly swapped-in elements
+    function _initKpiCountup() {
+      document.querySelectorAll('[data-count]').forEach(function(el) {
+        if (el.dataset.countDone) return;
+        var io2 = new IntersectionObserver(function(entries) {
+          if (entries[0].isIntersecting) {
+            el.dataset.countDone = '1';
+            countUp(el);
+            io2.disconnect();
+          }
+        });
+        io2.observe(el);
       });
-      io2.observe(el);
-    });
+    }
+    _initKpiCountup();
+    if (document._kpiCountupHandler) {
+      document.removeEventListener('htmx:afterSettle', document._kpiCountupHandler);
+    }
+    document._kpiCountupHandler = _initKpiCountup;
+    document.addEventListener('htmx:afterSettle', document._kpiCountupHandler);
 
     // 네비게이션 로딩 피드백 / Navigation loading feedback
     // fake progress 0→70% → hx-boost afterSettle / beforeunload 100% → pageshow reset
@@ -1045,25 +1134,6 @@
     if (typeof Chart !== 'undefined') {
       Chart.defaults.animation = { duration: 900, easing: 'easeOutQuart' };
     }
-
-    // 탭 패널 활성화 (.tab-btn + .tab-panel 패턴)
-    // Tab panel activation (.tab-btn + .tab-panel pattern)
-    document.querySelectorAll('.tab-btn').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        var target = btn.dataset.tab;
-        document.querySelectorAll('.tab-btn').forEach(function(b) {
-          b.classList.toggle('active', b === btn);
-        });
-        document.querySelectorAll('.tab-panel').forEach(function(p) {
-          if (p.id === target) {
-            p.classList.add('active');
-            p.offsetWidth; // force reflow for re-animation
-          } else {
-            p.classList.remove('active');
-          }
-        });
-      });
-    });
   </script>
 </body>
 </html>
