@@ -978,7 +978,10 @@
                   (function () {
                     var btn = document.getElementById('issueTelegramOtp');
                     if (!btn) { return; }
-                    btn.addEventListener('click', async function () {
+                    // remove-before-add — hx-boost 재방문 시 click 이벤트 중복 방지
+                    // remove-before-add — prevent duplicate click event on hx-boost re-visit
+                    if (btn._otpClickHandler) { btn.removeEventListener('click', btn._otpClickHandler); }
+                    btn._otpClickHandler = async function () {
                       btn.disabled = true;
                       try {
                         var resp = await fetch('/api/users/me/telegram-otp', { method: 'POST' });
@@ -1003,7 +1006,8 @@
                         console.error('Telegram OTP issuance failed:', e);
                         btn.disabled = false;
                       }
-                    });
+                    };
+                    btn.addEventListener('click', btn._otpClickHandler);
                   }());
                 </script>
                 {% endif %}
@@ -1238,7 +1242,9 @@
 
 <script>
   // 프리셋 정의 — 알림 채널 URL은 건드리지 않음
-  const PRESETS = {
+  // 🔴 var 사용 필수 — const는 hx-boost 재실행 시 재선언 SyntaxError 유발
+  // 🔴 Must use var — const causes SyntaxError on hx-boost re-execution
+  var PRESETS = {
     minimal: {
       pr_review_comment: true,
       commit_comment: false,
@@ -1273,7 +1279,7 @@
       merge_threshold: 85,
     },
   };
-  const PRESET_LABELS = { minimal: '최소', standard: '표준', strict: '엄격' };
+  var PRESET_LABELS = { minimal: '최소', standard: '표준', strict: '엄격' };
 
   // 아코디언 토글 — 펼치면 diff 미리보기(자동 적용 아님), 다른 카드는 닫힘
   function onPresetToggle(el, name) {
@@ -1519,21 +1525,24 @@
   document.addEventListener('htmx:historyRestore', document._xSaveBarHandler);
 
   // 토스트 클릭 시 즉시 닫기 + URL 쿼리 제거
-  const toast = document.getElementById('saveToast');
-  if (toast) {
+  // _clickBound 가드로 hx-boost 재실행 시 중복 리스너 방지
+  // _clickBound guard prevents duplicate listener on hx-boost re-execution
+  var toast = document.getElementById('saveToast');
+  if (toast && !toast._clickBound) {
+    toast._clickBound = true;
     toast.style.cursor = 'pointer';
-    toast.addEventListener('click', () => { toast.style.display = 'none'; });
+    toast.addEventListener('click', function() { toast.style.display = 'none'; });
     if (history.replaceState) {
-      const url = new URL(location.href);
-      url.searchParams.delete('saved');
-      url.searchParams.delete('save_error');
-      history.replaceState(null, '', url.pathname + (url.search || ''));
+      var toastUrl = new URL(location.href);
+      toastUrl.searchParams.delete('saved');
+      toastUrl.searchParams.delete('save_error');
+      history.replaceState(null, '', toastUrl.pathname + (toastUrl.search || ''));
     }
   }
 
   // Simple/Advanced 모드 토글 (localStorage 에 영속, ?mode= 쿼리 오버라이드, 서버 신호 fallback)
   // Mode toggle — localStorage persistent, ?mode= override, server signal fallback
-  const SETTINGS_MODE_KEY = 'scamanager_settings_mode';
+  var SETTINGS_MODE_KEY = 'scamanager_settings_mode';
   function toggleSettingsMode(mode) {
     if (mode !== 'simple' && mode !== 'advanced') mode = 'simple';
     document.body.setAttribute('data-settings-mode', mode);
@@ -1560,9 +1569,12 @@
                             || stored || serverHint || 'simple';
     toggleSettingsMode(initial);
   })();
-  // 토글 버튼 바인딩
-  document.querySelectorAll('[data-settings-mode-btn]').forEach(btn => {
-    btn.addEventListener('click', () => toggleSettingsMode(btn.dataset.settingsModeBtn));
+  // 토글 버튼 바인딩 — remove-before-add 패턴으로 hx-boost 재실행 시 중복 리스너 방지
+  // Mode toggle bind — remove-before-add prevents duplicate listeners on hx-boost re-execution
+  document.querySelectorAll('[data-settings-mode-btn]').forEach(function(btn) {
+    if (btn._modeHandler) { btn.removeEventListener('click', btn._modeHandler); }
+    btn._modeHandler = function() { toggleSettingsMode(btn.dataset.settingsModeBtn); };
+    btn.addEventListener('click', btn._modeHandler);
   });
 </script>
 {% endblock %}
