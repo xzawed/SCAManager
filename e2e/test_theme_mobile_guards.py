@@ -1,45 +1,47 @@
-"""E2E 회귀 가드 — claude-dark 토큰 누락 + WCAG 2.5.5 모바일 클릭 영역.
+"""E2E 회귀 가드 — catppuccin 토큰 누락 + WCAG 2.5.5 모바일 클릭 영역.
 
 7-에이전트 정합성 검증 (2026-05-02) P1 #5 후속.
 도입 배경:
-  - cleanup PR #169 — claude-dark 테마가 settings 페이지 토큰 8종 (`--save-btn-bg`,
+  - cleanup PR #169 — catppuccin(구 claude-dark) 테마가 settings 페이지 토큰 8종 (`--save-btn-bg`,
     `--grad-gate/merge/notify/hook`, `--title-gradient`, `--btn-gate-active-*`,
     `--hint-*`, `--hook-btn-*`) 미정의로 카드 헤더가 흰색/투명 깨졌던 사고.
   - UI 감사 Step A — WCAG 2.5.5 Target Size — 모바일 (≤768px) 인터랙티브 요소
     `.btn`/`.btn--sm`/`.nav-hamburger`/`.nav-logout-btn` min-height ≥40~44px 의무.
+  - 2026-05-11 UI 리디자인: claude-dark → catppuccin, glass → pastel 로 테마 명칭 변경.
 
 본 테스트는 두 영역의 회귀를 e2e 레벨에서 차단한다.
 """
-# E2E regression guards — claude-dark token regression + WCAG 2.5.5 mobile click area.
+# E2E regression guards — catppuccin token regression + WCAG 2.5.5 mobile click area.
 
 import pytest
 
 
-# ── A. claude-dark 토큰 회귀 가드 (cleanup PR #169 사고 차단) ────────────────
+# ── A. catppuccin 토큰 회귀 가드 (cleanup PR #169 사고 차단) ─────────────────
 
 
-def _set_claude_dark(page) -> None:
-    """헬퍼 — claude-dark 테마로 전환 후 적용 확인.
+def _set_catppuccin(page) -> None:
+    """헬퍼 — catppuccin 테마로 전환 후 적용 확인.
 
-    드롭다운 → claude-dark 옵션 클릭 → body[data-theme=claude-dark] 단언.
+    드롭다운 → catppuccin 옵션 클릭 → body[data-theme=catppuccin] 단언.
+    (2026-05-11 UI 리디자인 전 이름: claude-dark)
     """
-    # Helper — switch to claude-dark theme and assert it applied.
+    # Helper — switch to catppuccin theme and assert it applied (formerly claude-dark).
     page.click("#themeToggle")
     page.wait_for_selector(".theme-switcher.open", timeout=2000)
-    page.click('.theme-option[data-theme="claude-dark"]')
-    assert page.get_attribute("body", "data-theme") == "claude-dark"
+    page.click('.theme-option[data-theme="catppuccin"]')
+    assert page.get_attribute("body", "data-theme") == "catppuccin"
 
 
-def test_claude_dark_settings_tokens_defined(seeded_page, base_url):
-    """claude-dark 테마에서 settings 페이지의 8 토큰 모두 정의되어 있어야 한다.
+def test_catppuccin_settings_tokens_defined(seeded_page, base_url):
+    """catppuccin 테마에서 settings 페이지의 8 토큰 모두 정의되어 있어야 한다.
 
-    회귀 사례: cleanup PR #169 이전 settings 페이지가 claude-dark 토큰 미정의로
+    회귀 사례: cleanup PR #169 이전 settings 페이지가 catppuccin(구 claude-dark) 토큰 미정의로
     `var(--save-btn-bg)` 등이 invalid → 카드 헤더 흰색 / 저장 버튼 투명 깨짐.
     """
-    # Regression guard: cleanup PR #169 — claude-dark settings tokens were missing,
+    # Regression guard: cleanup PR #169 — catppuccin settings tokens were missing,
     # causing card headers / save button to render blank.
     seeded_page.goto(f"{base_url}/repos/owner/testrepo/settings")
-    _set_claude_dark(seeded_page)
+    _set_catppuccin(seeded_page)
 
     # 8 토큰 모두 :root 에 정의되어 있어야 함 (빈 문자열이면 미정의 = invalid var())
     # All 8 tokens must be defined on :root (empty value = undefined = invalid).
@@ -53,49 +55,49 @@ def test_claude_dark_settings_tokens_defined(seeded_page, base_url):
         "--hint-bg",
         "--hook-btn-bg",
     ]
-    # claude-dark 토큰은 body[data-theme="claude-dark"] 스코프 → document.body 에서 조회
-    # claude-dark tokens scoped to body[data-theme=claude-dark] — query document.body.
+    # catppuccin 토큰은 body[data-theme="catppuccin"] 스코프 → document.body 에서 조회
+    # catppuccin tokens scoped to body[data-theme=catppuccin] — query document.body.
     for token in required:
         value = seeded_page.evaluate(
             f"getComputedStyle(document.body).getPropertyValue('{token}').trim()"
         )
-        assert value, f"claude-dark 테마에 {token} 미정의 (settings 페이지 깨짐 위험)"
+        assert value, f"catppuccin 테마에 {token} 미정의 (settings 페이지 깨짐 위험)"
 
 
-def test_claude_dark_dashboard_renders_without_token_failure(page, base_url):
-    """claude-dark 테마 적용 후 dashboard 페이지가 정상 렌더되고 body 배경이 투명이 아니어야 한다.
+def test_catppuccin_dashboard_renders_without_token_failure(page, base_url):
+    """catppuccin 테마 적용 후 dashboard 페이지가 정상 렌더되고 body 배경이 투명이 아니어야 한다.
 
     회귀 사례: --bg-app 등 핵심 토큰 미정의 시 body 배경이 transparent → 시각 깨짐.
     """
     # Regression guard: missing --bg-app etc. would render body bg transparent.
     page.goto(f"{base_url}/dashboard")
-    _set_claude_dark(page)
+    _set_catppuccin(page)
 
     # body 배경이 transparent / rgba(0,0,0,0) 가 아니어야 함
     # body bg must not be transparent / rgba(0,0,0,0).
     bg = page.evaluate("getComputedStyle(document.body).backgroundColor")
     assert bg not in ("rgba(0, 0, 0, 0)", "transparent"), (
-        f"claude-dark dashboard body 배경 투명 — 토큰 누락 의심: {bg}"
+        f"catppuccin dashboard body 배경 투명 — 토큰 누락 의심: {bg}"
     )
 
 
-def test_claude_dark_grade_aliases_defined(page, base_url):
-    """claude-dark 테마에서 등급 색 alias (--grade-a/b/c/d/f) 가 모두 정의되어 있어야 한다.
+def test_catppuccin_grade_aliases_defined(page, base_url):
+    """catppuccin 테마에서 등급 색 alias (--grade-a/b/c/d/f) 가 모두 정의되어 있어야 한다.
 
     회귀 사례: 등급 색 미정의 시 overview 카드의 등급 뱃지가 색상 없이 렌더.
     """
     # Regression guard: missing --grade-* aliases would render overview grade badges colorless.
     page.goto(base_url)
-    _set_claude_dark(page)
+    _set_catppuccin(page)
 
-    # 등급 alias 도 body[data-theme="claude-dark"] 스코프
-    # Grade aliases scoped to body[data-theme=claude-dark] too.
+    # 등급 alias 도 body[data-theme="catppuccin"] 스코프
+    # Grade aliases scoped to body[data-theme=catppuccin] too.
     for grade in ["a", "b", "c", "d", "f"]:
         token = f"--grade-{grade}"
         value = page.evaluate(
             f"getComputedStyle(document.body).getPropertyValue('{token}').trim()"
         )
-        assert value, f"claude-dark 테마에 {token} 미정의"
+        assert value, f"catppuccin 테마에 {token} 미정의"
 
 
 # ── B. WCAG 2.5.5 모바일 클릭 영역 회귀 가드 (UI 감사 Step A) ─────────────────

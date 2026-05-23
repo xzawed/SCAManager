@@ -24,12 +24,12 @@ def test_switch_to_light_theme(page, base_url):
     assert page.get_attribute("body", "data-theme") == "light"
 
 
-def test_switch_to_glass_theme(page, base_url):
-    """글래스모피즘 테마로 전환되어야 한다."""
+def test_switch_to_pastel_theme(page, base_url):
+    """파스텔 테마로 전환되어야 한다."""
     page.goto(base_url)
     page.click("#themeToggle")
-    page.click('[data-theme="glass"]')
-    assert page.get_attribute("body", "data-theme") == "glass"
+    page.click('[data-theme="pastel"]')
+    assert page.get_attribute("body", "data-theme") == "pastel"
 
 
 def test_theme_persists_after_reload(page, base_url):
@@ -45,9 +45,9 @@ def test_theme_saved_to_localstorage(page, base_url):
     """선택한 테마가 localStorage에 저장되어야 한다."""
     page.goto(base_url)
     page.click("#themeToggle")
-    page.click('[data-theme="glass"]')
+    page.click('[data-theme="pastel"]')
     value = page.evaluate("localStorage.getItem('sca-theme')")
-    assert value == "glass"
+    assert value == "pastel"
 
 
 def test_active_class_on_selected_theme(page, base_url):
@@ -73,19 +73,19 @@ def test_dropdown_closes_on_outside_click(page, base_url):
     assert not page.is_visible(".theme-switcher.open")
 
 
-def test_claude_dark_theme_switch(page, base_url):
-    """PR-D5 회귀 가드 — claude-dark 테마 옵션 (Phase 1B 도입) 클릭 + 적용 검증.
+def test_catppuccin_theme_switch(page, base_url):
+    """PR-D5 회귀 가드 — catppuccin 테마 옵션 클릭 + 적용 검증.
 
-    이전 e2e 는 dark/light/glass 만 검증 → claude-dark 누락. PR #150 신규 4번째 옵션.
-    Previous e2e covered dark/light/glass only; claude-dark (PR #150) was missing.
+    이전 e2e 는 dark/light/glass 만 검증 → catppuccin 누락. 2026-05-11 UI 리디자인 후 4번째 옵션.
+    Previous e2e covered dark/light/glass only; catppuccin (2026-05-11 redesign) was missing.
     """
     page.goto(base_url)
     page.click("#themeToggle")
     page.wait_for_selector(".theme-switcher.open", timeout=2000)
-    # claude-dark 옵션 존재 + 클릭 가능
-    # claude-dark option must exist + be clickable
-    page.click('.theme-option[data-theme="claude-dark"]')
-    assert page.get_attribute("body", "data-theme") == "claude-dark"
+    # catppuccin 옵션 존재 + 클릭 가능
+    # catppuccin option must exist + be clickable
+    page.click('.theme-option[data-theme="catppuccin"]')
+    assert page.get_attribute("body", "data-theme") == "catppuccin"
     # 드롭다운 자동 닫힘
     # Dropdown auto-closes
     assert not page.is_visible(".theme-switcher.open")
