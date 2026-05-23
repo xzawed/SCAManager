@@ -5,10 +5,13 @@
   "description": "SCAManager UI build — Tailwind v4 CSS pipeline",
   "scripts": {
     "build": "tailwindcss -i ./src/static/css/main.css -o ./src/static/css/dist/tailwind.css --minify",
-    "dev:css": "tailwindcss -i ./src/static/css/main.css -o ./src/static/css/dist/tailwind.css --watch"
+    "dev:css": "tailwindcss -i ./src/static/css/main.css -o ./src/static/css/dist/tailwind.css --watch",
+    "lint:js": "eslint \"src/templates/**/*.html\" --quiet"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.1.0",
-    "tailwindcss": "^4.1.0"
+    "tailwindcss": "^4.1.0",
+    "eslint": "^8.57.0",
+    "eslint-plugin-html": "^8.1.1"
   }
 }
