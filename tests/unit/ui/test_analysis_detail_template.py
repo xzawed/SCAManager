@@ -185,31 +185,44 @@ class TestChartBackgroundColor:
         )
 
     def test_case_a_rgba_condition_present_in_chart_block(self, html_with_trend: str):
-        """케이스 A: 차트 스크립트 블록에 accentRgb 조건부 rgba() 패턴이 있어야 함.
+        """케이스 A: 차트 스크립트 블록에 accentRgb 기반 rgba() 패턴이 있어야 함.
 
-        Case A: chart script block must contain the conditional rgba() pattern.
+        스파크라인 리디자인(사이클 126) 이후 캔버스 그라디언트 방식으로 전환.
+        accentRgb 를 사용하는 addColorStop 패턴이 있어야 함 (invalid CSS 방지 불변식 유지).
+
+        Case A: chart script block must contain accentRgb-based rgba() pattern.
+        After sparkline redesign (cycle 126) the chart uses canvas gradient.
+        addColorStop with accentRgb must be present (Bug 1 invariant preserved).
         """
         blocks = _script_blocks(html_with_trend)
         trend_blocks = [b for b in blocks if "TREND" in b or "trendChart" in b]
         assert trend_blocks, "TREND 또는 trendChart 를 포함하는 <script> 블록을 찾을 수 없음."
 
         chart_block = trend_blocks[0]
+        # 캔버스 그라디언트 방식: addColorStop 에 accentRgb 기반 rgba() 사용
+        # Canvas gradient approach: addColorStop uses accentRgb-based rgba()
         assert re.search(
-            r"accentRgb\s*\?\s*\(['\"]rgba\(",
+            r"rgba\(' \+ accentRgb \+ '",
             chart_block,
         ), (
-            "차트 블록에 `accentRgb ? ('rgba(...` 패턴이 없음 — Bug 1 수정이 되돌아갔을 수 있음. "
+            "차트 블록에 `rgba(' + accentRgb + '` 패턴이 없음 — "
+            "accentRgb 미사용 시 invalid CSS 재발 위험 (Bug 1 회귀). "
             f"블록 앞 300자:\n{chart_block[:300]}"
         )
 
-    def test_case_a_rgba_uses_correct_alpha(self, html_with_trend: str):
-        """케이스 A: rgba 알파값이 0.13 (0x22/0xFF ≈ 0.133) 이어야 함.
+    def test_case_a_rgba_uses_gradient_fill(self, html_with_trend: str):
+        """케이스 A: 캔버스 그라디언트 fill 이 사용되어야 함 (스파크라인 리디자인, 사이클 126).
 
-        Case A: rgba alpha value must be 0.13 (approximation of 0x22/0xFF).
+        Case A: canvas gradient fill must be used (sparkline redesign, cycle 126).
+        createLinearGradient + addColorStop 패턴이 존재해야 함.
         """
-        assert "rgba(' + accentRgb + ', 0.13)" in html_with_trend, (
-            "chart backgroundColor rgba 알파값이 0.13 이 아님 — "
-            "원래 0x22 불투명도(13%)와 다를 수 있음."
+        assert "createLinearGradient" in html_with_trend, (
+            "chart가 createLinearGradient 를 사용하지 않음 — "
+            "캔버스 그라디언트 fill 이 제거됐을 수 있음."
+        )
+        assert "addColorStop" in html_with_trend, (
+            "chart가 addColorStop 을 사용하지 않음 — "
+            "그라디언트 색상 정지점이 제거됐을 수 있음."
         )
 
     def test_case_b_no_chart_block_renders(self, html_one_trend: str):

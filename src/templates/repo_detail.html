@@ -577,19 +577,17 @@
         '<div class="chart-stat"><span class="chart-stat-val" style="color:' + danger  + '">' + mn + '</span><span class="chart-stat-lbl">최저</span></div>';
     }
 
-    /* 그라디언트 fill — accent 색상 기반, 위에서 아래로 투명 / Gradient fill from accent */
+    /* 스파크라인 그라디언트 fill — accent 기반, 위에서 아래로 투명
+       Sparkline gradient fill — accent based, top to transparent */
     const canvasCtx = canvasEl.getContext('2d');
     const h = canvasEl.offsetHeight || 280;
     const grad = canvasCtx.createLinearGradient(0, 0, 0, h);
-    grad.addColorStop(0,    'rgba(' + accentRgb + ', 0.22)');
-    grad.addColorStop(0.65, 'rgba(' + accentRgb + ', 0.05)');
-    grad.addColorStop(1,    'rgba(' + accentRgb + ', 0)');
+    grad.addColorStop(0,   'rgba(' + accentRgb + ', 0.30)');
+    grad.addColorStop(0.7, 'rgba(' + accentRgb + ', 0.05)');
+    grad.addColorStop(1,   'rgba(' + accentRgb + ', 0)');
 
     const labels    = _chartData.map(function(a) { return (a.created_at || '').slice(0, 10); });
     const dataScores= _chartData.map(function(a) { return a.score; });
-    /* 등급별 포인트 색상 — getComputedStyle 1회 호출 후 맵 재사용 / Grade colors via single CSS read */
-    const gcMap     = getGradeColorMap();
-    const ptColors  = _chartData.map(function(a) { return gcMap[a.grade] || gcMap['_default']; });
 
     if (chart) chart.destroy();
     chart = new Chart(canvasEl, {
@@ -602,29 +600,24 @@
           borderColor: accent,
           backgroundColor: grad,
           borderWidth: 2.5,
-          pointBackgroundColor: ptColors,
-          /* 포인트 테두리 = 배경색 → 등급 색상이 돋보임 / Point border = bg-base → grade color pops */
-          pointBorderColor: bgBase,
-          pointBorderWidth: 2,
-          pointRadius: scores.length > 30 ? 3 : 5,
-          pointHoverRadius: 8,
+          /* 스파크라인 — 포인트 숨김, hover 시만 표시 / Sparkline — hide points, show on hover only */
+          pointRadius: 0,
+          pointHoverRadius: 6,
+          pointHoverBackgroundColor: accent,
+          pointHoverBorderColor: '#fff',
           pointHoverBorderWidth: 2,
-          tension: 0.4,
+          tension: 0.45,
           fill: true,
         }]
       },
       options: {
         scales: {
+          x: { display: false },
           y: {
             min: 0, max: 100,
-            grid: { color: border + '55' },
+            grid: { color: border + '44', drawBorder: false },
             border: { display: false },
-            ticks: { color: muted, font: { size: 11 }, padding: 8 }
-          },
-          x: {
-            grid: { display: false },
-            border: { display: false },
-            ticks: { color: muted, font: { size: 11 }, maxTicksLimit: 8, maxRotation: 0 }
+            ticks: { color: muted, font: { size: 11 }, maxTicksLimit: 3, padding: 8 }
           }
         },
         plugins: {
@@ -650,10 +643,7 @@
         /* Step E (E2): false → chart-wrap-inner 컨테이너 height 보장
            Step E (E2): false → honours container height set by CSS */
         maintainAspectRatio: false,
-        /* 진입 시 애니메이션, 테마 전환 시 즉시 반영 / Entry animation; instant on theme change */
-        animation: animate === false ? { duration: 0 } : { duration: 800, easing: 'easeOutCubic' },
-        /* 인덱스 모드 hover — 어디서든 데이터 포인트 포착
-           Index-mode interaction — captures nearest point across full width */
+        animation: animate === false ? { duration: 0 } : { duration: 300, easing: 'easeOutCubic' },
         interaction: { intersect: false, mode: 'index' },
       }
     });
