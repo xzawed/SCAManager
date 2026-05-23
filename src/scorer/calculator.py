@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from src.analyzer.io.static import StaticAnalysisResult
 from src.analyzer.io.ai_review import AiReviewResult
+from src.analyzer.pure.registry import Category, Severity
 from src.constants import (
     CODE_QUALITY_MAX, SECURITY_MAX,
     COMMIT_MSG_MAX, AI_REVIEW_MAX, TEST_COVERAGE_MAX,
@@ -11,6 +12,8 @@ from src.constants import (
     AI_DEFAULT_COMMIT, AI_DEFAULT_DIRECTION, AI_DEFAULT_TEST,
     AI_RAW_COMMIT_MAX, AI_RAW_DIRECTION_MAX, AI_RAW_TEST_MAX,
     GRADE_THRESHOLDS,
+    BREAKDOWN_KEY_CODE_QUALITY, BREAKDOWN_KEY_SECURITY,
+    BREAKDOWN_KEY_COMMIT_MESSAGE, BREAKDOWN_KEY_AI_REVIEW, BREAKDOWN_KEY_TEST_COVERAGE,
 )
 
 
@@ -43,10 +46,11 @@ def calculate_score(
     all_issues = [issue for r in analysis_results for issue in r.issues]
 
     # category 기반 집계 — tool 이름에 무관하게 미래 도구(Semgrep 등)도 동일하게 처리
-    cq_errors = sum(1 for i in all_issues if i.category == "code_quality" and i.severity == "error")
-    cq_warnings = sum(1 for i in all_issues if i.category == "code_quality" and i.severity == "warning")
-    sec_errors = sum(1 for i in all_issues if i.category == "security" and i.severity == "error")
-    sec_warnings = sum(1 for i in all_issues if i.category == "security" and i.severity == "warning")
+    # Category-based aggregation — tool-agnostic, future tools (e.g. Semgrep) handled uniformly.
+    cq_errors = sum(1 for i in all_issues if i.category == Category.CODE_QUALITY and i.severity == Severity.ERROR)
+    cq_warnings = sum(1 for i in all_issues if i.category == Category.CODE_QUALITY and i.severity == Severity.WARNING)
+    sec_errors = sum(1 for i in all_issues if i.category == Category.SECURITY and i.severity == Severity.ERROR)
+    sec_warnings = sum(1 for i in all_issues if i.category == Category.SECURITY and i.severity == Severity.WARNING)
 
     code_quality_score = max(0, CODE_QUALITY_MAX
                              - cq_errors * PYLINT_ERROR_PENALTY
@@ -73,11 +77,11 @@ def calculate_score(
     total = max(0, min(code_quality_score + security_score + commit_score + ai_score + test_score, 100))
 
     breakdown: dict = {
-        "code_quality": code_quality_score,
-        "security": security_score,
-        "commit_message": commit_score,
-        "ai_review": ai_score,
-        "test_coverage": test_score,
+        BREAKDOWN_KEY_CODE_QUALITY: code_quality_score,
+        BREAKDOWN_KEY_SECURITY: security_score,
+        BREAKDOWN_KEY_COMMIT_MESSAGE: commit_score,
+        BREAKDOWN_KEY_AI_REVIEW: ai_score,
+        BREAKDOWN_KEY_TEST_COVERAGE: test_score,
     }
     if ai_defaults_applied:
         breakdown["ai_defaults_applied"] = True

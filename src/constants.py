@@ -124,6 +124,14 @@ SKIP_CI_MARKERS: tuple[str, ...] = ("[skip ci]", "[skip-sca]", "[ci skip]")
 # 커밋 메시지에 이 문자열이 포함되면 분석 skip
 # If any of these strings appear in a commit message, analysis is skipped
 
+# ── 점수 breakdown dict 키 (단일 출처 — calculator · notifier · gate 공유) ─────
+# ── Score breakdown dict keys (single source — shared by calculator/notifier/gate) ──
+BREAKDOWN_KEY_CODE_QUALITY = "code_quality"
+BREAKDOWN_KEY_SECURITY = "security"
+BREAKDOWN_KEY_COMMIT_MESSAGE = "commit_message"
+BREAKDOWN_KEY_AI_REVIEW = "ai_review"
+BREAKDOWN_KEY_TEST_COVERAGE = "test_coverage"
+
 # ── Claude AI 모델 목록 + 요금 (Anthropic 공식 기준, USD/1M 토큰) ─────────
 # ── Claude AI model catalog + pricing (Anthropic official, USD per 1M tokens) ─
 # 출처: https://www.anthropic.com/pricing (2025-05 기준 — 실제 청구와 다를 수 있음)
