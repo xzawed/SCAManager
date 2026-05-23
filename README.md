@@ -4,7 +4,7 @@
 
 **Automated Code Quality Analysis · AI Review · PR Gate Service for GitHub**
 
-[![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.14-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.136-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-SQLAlchemy_2-336791?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Claude AI](https://img.shields.io/badge/Claude_AI-Sonnet_4.6_(default)-CC6600?style=flat-square&logo=anthropic&logoColor=white)](https://www.anthropic.com/)
@@ -19,7 +19,7 @@
 [![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=xzawed_SCAManager&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=xzawed_SCAManager)
 
 [![Tests](https://img.shields.io/badge/Tests-3099_total_(2948_unit_+_151_integration)-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
-[![E2E](https://img.shields.io/badge/E2E-111_passing-brightgreen?style=flat-square&logo=playwright&logoColor=white)](e2e/)
+[![E2E](https://img.shields.io/badge/E2E-112_passing-brightgreen?style=flat-square&logo=playwright&logoColor=white)](e2e/)
 [![pylint](https://img.shields.io/badge/pylint-10.00%2F10-brightgreen?style=flat-square&logo=python&logoColor=white)](src/)
 [![bandit](https://img.shields.io/badge/bandit-HIGH_0-brightgreen?style=flat-square&logo=security&logoColor=white)](src/)
 [![Coverage](https://img.shields.io/badge/Coverage-95%25-brightgreen?style=flat-square&logo=codecov&logoColor=white)](tests/)
@@ -249,7 +249,7 @@ All features accessible via browser after GitHub OAuth login.
 - **Score History Chart** — Chart.js-based visualization
 - **Analysis Detail** — AI review · category feedback · static analysis issues
 - **Settings Page** — 🚀 One-click presets · 4-card Progressive Disclosure · toggle show/hide
-- **Themes** — Dark / Light / Glass — all three fully supported
+- **Themes** — Dark / Light / Pastel / Catppuccin — all four fully supported
 
 ---
 
@@ -312,7 +312,7 @@ git push origin main
 | **Static Analysis** | pylint · flake8 · bandit (Python) + Semgrep (22+) + ESLint (JS/TS) + ShellCheck (shell) + cppcheck (C/C++) + slither (Solidity) + RuboCop (Ruby) + golangci-lint (Go) |
 | **Testing** | pytest · pytest-asyncio · httpx TestClient |
 | **E2E Testing** | Playwright (Chromium) |
-| **Web UI** | Jinja2 · Chart.js · CSS Variables (3 themes) |
+| **Web UI** | Jinja2 · Chart.js · CSS Variables (4 themes) |
 | **Notifications** | Telegram · GitHub · Discord · Slack · Email · n8n · Webhook |
 | **Deployment** | Railway / on-premises (systemd · nginx · Docker Compose) |
 
@@ -392,16 +392,22 @@ make run
 ## 🧪 Development Commands
 
 ```bash
-make install            # Install dependencies
+make install            # Install dependencies (pip + npm)
 make test               # Full test suite (compact output)
 make test-v             # Full test suite (verbose output)
 make test-fast          # Fast unit tests only (excludes tests/integration/, -m "not slow")
 make test-slow          # Integration tests only (tests/integration/ — real subprocess)
 make test-file f=tests/path/test.py  # Single file test
+make test-local         # Windows-friendly — excludes slow subprocess tests, short tracebacks
 make test-perf          # Perf marker tests (e2e/ -m perf, separate from test-e2e)
-make test-isolated      # Isolated test run (fresh subprocess per test)
+make test-isolated      # Isolated test run (stashes .env, unsets credentials)
 make test-cov           # Tests + coverage report
 make lint               # pylint + flake8 + bandit
+make lint-strict        # pylint regression guard (fail if score < 9.90)
+make lint-js            # ESLint on src/templates/**/*.html inline scripts
+make css-build          # Build Tailwind v4 CSS (production minified)
+make css-dev            # Watch and rebuild Tailwind v4 CSS (dev mode)
+make gate               # Full phase gate — tests + lint in one command
 make review             # CLI code review (HEAD~1)
 make run                # Development server (port 8000)
 make migrate            # Run DB migrations
@@ -409,6 +415,7 @@ make revision m="desc"  # Create new migration file
 make install-playwright # Install Playwright + Chromium
 make test-e2e           # E2E tests (headless)
 make test-e2e-headed    # E2E tests (with browser)
+make perf-report        # Generate performance report (local + production)
 ```
 
 ---
@@ -419,6 +426,7 @@ make test-e2e-headed    # E2E tests (with browser)
 /login                              → 🔑 GitHub OAuth login
 /repos/add                          → ➕ Add repository
 /                                   → 📊 Repository overview dashboard
+/dashboard                          → 📈 KPI dashboard (avg score / security HIGH / auto-merge rate)
 /repos/{owner/repo}                 → 📈 Score history + analysis log
 /repos/{owner/repo}/analyses/{id}   → 🔍 Analysis detail (AI review · feedback)
 /repos/{owner/repo}/settings        → ⚙️  Gate · notifications · Hook settings
@@ -435,7 +443,7 @@ make test-e2e-headed    # E2E tests (with browser)
 
 **Auth (OAuth)**
 ```
-GET  /login                          301 redirect → /auth/github (하위호환 — cycle 117)
+GET  /login                          301 redirect → /auth/github (backward-compatible — cycle 117)
 GET  /auth/github                    Start GitHub OAuth
 GET  /auth/callback                  GitHub OAuth callback
 POST /auth/logout                    Logout
@@ -444,10 +452,13 @@ POST /auth/logout                    Logout
 **Web Dashboard**
 ```
 GET  /                               Repository list
+GET  /dashboard                      KPI dashboard (avg score / security / auto-merge rate)
 GET  /repos/add                      Add repository page
 GET  /repos/{repo}                   Repo detail (chart + history)
 GET  /repos/{repo}/analyses/{id}     Analysis detail
 GET  /repos/{repo}/settings          Settings page
+GET  /insights                       301 → /dashboard (deprecated, cycle 60)
+GET  /insights/me                    301 → /dashboard (deprecated, cycle 60)
 POST /repos/add                      Register repo + auto-create Webhook + Hook files
 POST /repos/{repo}/settings          Save settings
 POST /repos/{repo}/reinstall-hook    Re-commit CLI Hook files
