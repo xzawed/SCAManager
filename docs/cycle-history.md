@@ -24,7 +24,7 @@
 - [사이클 95~106 (문서 정비 + pylint 10.00 + 성능 측정 E2E, 2026-05-14~18)](#사이클-95106)
 - [사이클 107~109 (테마 차트 수정 + 전체 감사 14건, 2026-05-19)](#사이클-107109)
 - [사이클 110~116 (AI Insight 에러 추적·차트·다국어·감사 묶음, 2026-05-20~22)](#사이클-110116) — 상세: STATE.md 작업 이력 참조
-- [사이클 127 (hx-boost JS 에러 트랩 + 정적 스캐너 + ESLint 인프라, 2026-05-23)](#사이클-127)
+- [사이클 127 (hx-boost JS 에러 트랩 + 정적 스캐너 + ESLint 인프라 + E2E stale 셀렉터 수정, 2026-05-23)](#사이클-127)
 - [사이클 126 (차트 스파크라인 리디자인 — 테마 accent 그라디언트 fill, 2026-05-23)](#사이클-126)
 - [사이클 125 (회고 P1/P2 이행 — session 예외 처리 + overflow 테스트, 2026-05-23)](#사이클-125)
 - [사이클 124 (B+C — S1192 상수화 + 보안 심층 테스트 2건, 2026-05-23)](#사이클-124)
@@ -160,7 +160,7 @@
 
 ## 사이클 127
 
-- **사이클 127 (2026-05-23 · #605~#608)** — hx-boost JS 버그 재발 방지 4-레이어. PR #604(사이클 126 이전) `const` 재선언 SyntaxError 사고 학습 → 구조적 대책 4종: **#605 (PR A)** `e2e/conftest.py` pageerror JS 에러 트랩(page + seeded_page 양쪽) + `get_current_user` dependency override + `test_navigation.py` 10개 수정/신규(hx-boost 3회 재방문 회귀 가드 `test_nav_handler_survives_hx_boost_renavigation` 포함) + `.claude/rules/testing.md` JS 정책 6개 규칙. **#606 (PR B+C)** `tests/unit/ui/test_template_js_const.py` 정적 스캐너(brace depth 추적 — top-level const/let 탐지) + `add_repo.html` / `dashboard.html` top-level const×8+let×2 → var 교체. **#607 (PR D)** `package.json` eslint@^8.57.0 + eslint-plugin-html@^8.1.1 + `make lint-js` Makefile 타겟 + `.eslintrc.json` / `.eslintignore`(Jinja2 5개 파일 제외). **#608 (PR E)** `docs/STATE.md` 커버리지 형식 → "Python 95% / JS: E2E 커버" 언어별 분리 + E2E 111→112 + cycle-history 동기화. 사이클 127 P0 핵심: `--cov=src`는 HTML 인라인 JS 미측정 — 단일 수치 보고 금지, 언어별 분리 default 정착. Codex sandbox PowerShell spawn 오류 — 사용자 명시 결정(B)으로 push 진행. 단위 ±0 (2948 유지), E2E 111→112.
+- **사이클 127 (2026-05-23 · #605~#609)** — hx-boost JS 버그 재발 방지 4-레이어 + E2E 사전 실패 8건 해소. PR #604(사이클 126 이전) `const` 재선언 SyntaxError 사고 학습 → 구조적 대책 4종: **#605 (PR A)** `e2e/conftest.py` pageerror JS 에러 트랩(page + seeded_page 양쪽) + `get_current_user` dependency override + `test_navigation.py` 10개 수정/신규(hx-boost 3회 재방문 회귀 가드 `test_nav_handler_survives_hx_boost_renavigation` 포함) + `.claude/rules/testing.md` JS 정책 6개 규칙. **#606 (PR B+C)** `tests/unit/ui/test_template_js_const.py` 정적 스캐너(brace depth 추적 — top-level const/let 탐지) + `add_repo.html` / `dashboard.html` top-level const×8+let×2 → var 교체. **#607 (PR D)** `package.json` eslint@^8.57.0 + eslint-plugin-html@^8.1.1 + `make lint-js` Makefile 타겟 + `.eslintrc.json` / `.eslintignore`(Jinja2 5개 파일 제외). **#608 (PR E)** `docs/STATE.md` 커버리지 형식 → "Python 95% / JS: E2E 커버" 언어별 분리 + E2E 111→112 + cycle-history 동기화. **#609 (E2E 사후 수정)** 2026-05-11 UI 리디자인 후 방치된 stale 셀렉터 수정: `test_theme.py` glass→pastel / claude-dark→catppuccin + `test_theme_mobile_guards.py` `_set_claude_dark()`→`_set_catppuccin()` 전면 갱신 + `test_repos_mode.py` 미정의 `auth_cookies` 픽스처 제거 — 5 TIMEOUT + 3 ERROR = 8건 → PASS. 사이클 127 P0 핵심: `--cov=src`는 HTML 인라인 JS 미측정 — 단일 수치 보고 금지, 언어별 분리 default 정착. Codex sandbox PowerShell spawn 오류 — 사용자 명시 결정(B)으로 push 진행. 단위 ±0 (2948 유지), E2E 112 (카운트 유지, 사전 실패 8건 → PASS).
 
 ## 사이클 126
 
