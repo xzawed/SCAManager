@@ -32,20 +32,25 @@ def get_current_user(request: Request) -> CurrentUser | None:
     user_id = request.session.get("user_id")
     if not user_id:
         return None
-    with SessionLocal() as db:
-        user = user_repo.find_by_id(db, user_id)
-        if not user:
-            return None
-        return CurrentUser(
-            id=user.id,
-            github_login=user.github_login,
-            email=user.email,
-            display_name=user.display_name,
-            plaintext_token=user.plaintext_token or "",
-            # telegram_user_id가 있으면 연동 완료 상태
-            # is_telegram_connected is True when telegram_user_id is set.
-            is_telegram_connected=user.is_telegram_connected,
-        )
+    try:
+        with SessionLocal() as db:
+            user = user_repo.find_by_id(db, user_id)
+            if not user:
+                return None
+            return CurrentUser(
+                id=user.id,
+                github_login=user.github_login,
+                email=user.email,
+                display_name=user.display_name,
+                plaintext_token=user.plaintext_token or "",
+                # telegram_user_id가 있으면 연동 완료 상태
+                # is_telegram_connected is True when telegram_user_id is set.
+                is_telegram_connected=user.is_telegram_connected,
+            )
+    except Exception:
+        # 세션 변조 값(오버플로우 정수 등)이 DB 오류를 유발해도 안전하게 None 반환
+        # Safely return None when session-injected values (e.g. overflow int) cause DB errors
+        return None
 
 
 def require_login(request: Request) -> CurrentUser:
