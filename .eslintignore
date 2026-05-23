@@ -1,0 +1,11 @@
+# Jinja2 템플릿 변수({{ }})가 <script> 블록 내에 존재해 ESLint JS 파서 parse error 유발
+# Templates with Jinja2 interpolations inside <script> blocks — ESLint JS parser chokes on {{ }}
+src/templates/analysis_detail.html
+src/templates/base.html
+src/templates/dashboard.html
+src/templates/repo_detail.html
+src/templates/repo_insights.html
+
+# 벤더 라이브러리
+# Vendor libraries
+src/static/vendor/

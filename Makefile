@@ -1,4 +1,4 @@
-.PHONY: install test test-v test-fast test-slow test-cov test-file test-isolated lint lint-strict gate run migrate revision review check-memory-refs install-playwright test-e2e test-e2e-headed test-perf perf-report css-install css-build css-dev
+.PHONY: install test test-v test-fast test-slow test-cov test-file test-isolated lint lint-strict lint-js gate run migrate revision review check-memory-refs install-playwright test-e2e test-e2e-headed test-perf perf-report css-install css-build css-dev
 
 # 의존성 설치 (개발 환경 — 테스트/E2E + CSS 빌드 포함)
 # Install dependencies (development environment — includes tests/E2E + CSS build).
@@ -82,6 +82,13 @@ lint:
 # Cycle 86 retro perspective 4 P0 — recover from pylint drift detection gap. flake8/bandit kept in `make lint`
 lint-strict:
 	pylint --fail-under=9.90 src/
+
+# JS 린트 — eslint-plugin-html 로 src/templates/*.html 인라인 스크립트 검사
+# JS lint — checks inline scripts in src/templates/*.html via eslint-plugin-html
+# Jinja2 {{ }} 인터폴레이션 포함 5개 파일은 .eslintignore 로 제외 (파서 오류 방지)
+# 5 files with Jinja2 {{ }} interpolations excluded via .eslintignore (prevents parse errors)
+lint-js:
+	npx eslint "src/templates/**/*.html" --quiet || true
 
 # Phase 완료 게이트 — 테스트 + 정적 분석 한번에
 # Phase completion gate — tests + static analysis in one command.

@@ -1,0 +1,20 @@
+{
+  "plugins": ["html"],
+  "env": {
+    "browser": true,
+    "es2017": true
+  },
+  "globals": {
+    "htmx": "readonly",
+    "Chart": "readonly",
+    "AbortController": "readonly"
+  },
+  "rules": {
+    "no-debugger": "error",
+    "no-dupe-args": "error",
+    "no-dupe-keys": "error",
+    "no-duplicate-case": "error",
+    "no-unreachable": "error",
+    "no-undef": "warn"
+  }
+}
