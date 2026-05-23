@@ -743,6 +743,12 @@ def test_oauth_state_consumed_after_use_reuse_fails():
 
     이 동작은 state 재사용 공격(replay attack)을 차단한다.
     This behaviour prevents OAuth state replay attacks.
+
+    주의: 신규 코드 경로 추가 아님 — test_callback_mismatching_state_error_redirects_to_oauth_error와
+    동일 코드 경로를 실행하며, "state 위조"와 "state 재사용" 공격 벡터를 각각 문서화하는 목적.
+    Note: not a new code path — shares the same execution path as
+    test_callback_mismatching_state_error_redirects_to_oauth_error.
+    Both tests document distinct attack vectors: state forgery vs. state replay/reuse.
     """
     try:
         from authlib.integrations.base_client.errors import MismatchingStateError

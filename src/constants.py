@@ -124,8 +124,8 @@ SKIP_CI_MARKERS: tuple[str, ...] = ("[skip ci]", "[skip-sca]", "[ci skip]")
 # 커밋 메시지에 이 문자열이 포함되면 분석 skip
 # If any of these strings appear in a commit message, analysis is skipped
 
-# ── 점수 breakdown dict 키 (단일 출처 — calculator · notifier · gate 공유) ─────
-# ── Score breakdown dict keys (single source — shared by calculator/notifier/gate) ──
+# ── 점수 breakdown dict 키 (단일 출처 — 현재 calculator 전용, notifier·gate 확장 예정) ─────
+# ── Score breakdown dict keys (single source — currently calculator only; notifier/gate extension planned) ──
 BREAKDOWN_KEY_CODE_QUALITY = "code_quality"
 BREAKDOWN_KEY_SECURITY = "security"
 BREAKDOWN_KEY_COMMIT_MESSAGE = "commit_message"

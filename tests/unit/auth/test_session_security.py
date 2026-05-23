@@ -5,14 +5,18 @@ src/auth/session.py 의 비정상 user_id 값 처리 및 존재하지 않는 사
 Verifies handling of malformed user_id values and redirect for nonexistent users.
 """
 import os
-os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
-os.environ.setdefault("GITHUB_WEBHOOK_SECRET", "test_secret")
-os.environ.setdefault("GITHUB_TOKEN", "ghp_test")
-os.environ.setdefault("TELEGRAM_BOT_TOKEN", "123:ABC")
-os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
-os.environ.setdefault("GITHUB_CLIENT_ID", "test-cid")
-os.environ.setdefault("GITHUB_CLIENT_SECRET", "test-csecret")
-os.environ.setdefault("SESSION_SECRET", "test-session-secret-32-chars-long!")
+# conftest.py 직접 대입 패턴 의무 (testing.md) — setdefault는 기존 환경변수를 덮지 않아
+# 운영 토큰 유입 위험이 있음 (사이클 65 fix 교훈).
+# Direct assignment required per testing.md — setdefault does not override existing env vars,
+# risking production token bleed-in (cycle 65 fix lesson).
+os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+os.environ["GITHUB_WEBHOOK_SECRET"] = "test_secret"
+os.environ["GITHUB_TOKEN"] = "ghp_test"
+os.environ["TELEGRAM_BOT_TOKEN"] = "123:ABC"
+os.environ["TELEGRAM_CHAT_ID"] = "-100123"
+os.environ["GITHUB_CLIENT_ID"] = "test-cid"
+os.environ["GITHUB_CLIENT_SECRET"] = "test-csecret"
+os.environ["SESSION_SECRET"] = "test-session-secret-32-chars-long!"
 
 import pytest
 from unittest.mock import MagicMock, patch
@@ -105,9 +109,32 @@ def test_get_current_user_with_large_int_user_id_returns_none():
 
     이유: 공격자가 대형 정수를 주입해 다른 사용자 세션을 탈취하려는 시도를 차단함.
     Reason: documents that even boundary-value integer injection returns None safely.
+    신규 코드 경로 추가 아님 — 경계값 명세 + 공격 벡터 문서화 목적.
+    Not a new code path — documents the boundary value and attack vector.
     """
     mock_db = _mock_db_not_found()
     with patch("src.auth.session.SessionLocal") as mock_sl:
         mock_sl.return_value.__enter__.return_value = mock_db
         result = get_current_user(_req({"user_id": 2**31 - 1}))
+    assert result is None
+
+
+def test_get_current_user_with_overflow_user_id_returns_none():
+    """세션 user_id가 INT_MAX+1 (2^31, PG INTEGER 오버플로우 경계)이면 안전하게 None을 반환해야 한다.
+    When session user_id is INT_MAX+1 (2^31, PostgreSQL INTEGER overflow boundary),
+    get_current_user must return None safely — not propagate a DataError as a 500 response.
+
+    이유: 공격자가 PG INTEGER 범위 초과 값을 주입 시 DataError → 500 노출 위험을 차단.
+    Reason: guards against attackers injecting values beyond PG INTEGER range,
+    which would otherwise cause a DataError to propagate as an unhandled 500 response.
+    """
+    mock_db = MagicMock()
+    # PG DataError 시뮬레이션 — 오버플로우 값이 DB 조회 시 예외를 발생시키는 상황
+    # Simulate PG DataError — overflow value triggers an exception during DB lookup
+    mock_db.query.return_value.filter.return_value.first.side_effect = Exception(
+        "integer out of range"
+    )
+    with patch("src.auth.session.SessionLocal") as mock_sl:
+        mock_sl.return_value.__enter__.return_value = mock_db
+        result = get_current_user(_req({"user_id": 2**31}))
     assert result is None
