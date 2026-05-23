@@ -208,13 +208,14 @@
 
 {% block scripts %}
 <script>
-  const select = document.getElementById('repo_full_name');
-  const submitBtn = document.getElementById('submitBtn');
-  const hint = document.getElementById('repoHint');
+  // 🔴 Must use var — const causes SyntaxError on hx-boost body swap re-execution
+  var select = document.getElementById('repo_full_name');
+  var submitBtn = document.getElementById('submitBtn');
+  var hint = document.getElementById('repoHint');
   // Phase 2 PR-5 — 다국어 동적 텍스트 (서버 Jinja injection 페어)
   // Phase 2 PR-5 — i18n dynamic text (paired with server-side Jinja injection)
-  const i18nCard = document.querySelector('.add-repo-card');
-  const I18N = {
+  var i18nCard = document.querySelector('.add-repo-card');
+  var I18N = {
     placeholder: i18nCard.dataset.i18nPlaceholder,
     noReposOption: i18nCard.dataset.i18nNoReposOption,
     noReposHint: i18nCard.dataset.i18nNoReposHint,
@@ -226,7 +227,7 @@
 
   // 페이지 이탈 시 fetch abort 제어 — hx-boost 뒤로가기 freezing 방지
   // AbortController to cancel in-flight fetch on page leave — prevents stale DOM updates after hx-boost navigation
-  let _repoCtrl = new AbortController();
+  var _repoCtrl = new AbortController();
   window.addEventListener('pagehide', () => _repoCtrl.abort());
 
   async function loadRepos() {
@@ -279,8 +280,8 @@
 
   // 에러 쿼리 파라미터 → 토스트 팝업
   // Error query parameter → toast popup
-  const params = new URLSearchParams(window.location.search);
-  const errorMsg = params.get('error');
+  var params = new URLSearchParams(window.location.search);
+  var errorMsg = params.get('error');
   if (errorMsg) {
     const toast = document.getElementById('errorToast');
     toast.textContent = errorMsg;
