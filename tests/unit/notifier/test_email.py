@@ -255,3 +255,19 @@ async def test_send_email_passes_explicit_timeout_to_aiosmtplib():
     assert "timeout" in call_kwargs, "aiosmtplib.send 호출에 timeout 인자 필수"
     assert isinstance(call_kwargs["timeout"], (int, float))
     assert 0 < call_kwargs["timeout"] <= 30  # 보수적 상한
+
+
+def test_build_html_escapes_xss_in_issue_message():
+    """issue.message에 XSS 페이로드가 있어도 HTML body에 raw 태그가 출력되지 않는다.
+    When issue.message contains an XSS payload, raw tags must not appear in the HTML body.
+    """
+    xss_issue = AnalysisIssue(
+        tool="pylint",
+        severity="warning",
+        message="<script>alert('xss')</script>",
+    )
+    html = _build_html_body(
+        "owner/repo", "abc1234", _make_score(), _make_analysis(issues=[xss_issue]), None
+    )
+    assert "<script>" not in html
+    assert "&lt;script&gt;" in html

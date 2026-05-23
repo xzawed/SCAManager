@@ -26,7 +26,7 @@ DI 패턴 (dependency injection): db 와 user_repo 는 Optional — 단위 테�
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -36,11 +36,11 @@ logger = logging.getLogger(__name__)
 
 
 def resolve_notification_language(
-    db: Optional[Session] = None,
+    db: Session | None = None,
     *,
-    _repo_full_name: Optional[str] = None,
+    _repo_full_name: str | None = None,
     config: Any = None,
-    telegram_user_id: Optional[str] = None,
+    telegram_user_id: str | None = None,
 ) -> str:
     """알림 채널 사용자 언어 결정 — 3-layer fallback.
 
