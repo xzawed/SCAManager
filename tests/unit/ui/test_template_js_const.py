@@ -7,7 +7,6 @@ On hx-boost body swap, <script> blocks re-execute in the same JS context.
 Top-level const/let re-declaration → SyntaxError → all handlers silenced (PR #604).
 """
 
-import re
 from html.parser import HTMLParser
 from pathlib import Path
 
