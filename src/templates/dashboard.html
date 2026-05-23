@@ -629,9 +629,23 @@
         var cs = getComputedStyle(document.body);
         // CSS 변수로만 색상 결정 — hex 직접 사용 금지 (ui.md 의무)
         // Color determined solely via CSS variables — no hex fallbacks (ui.md rule)
-        var colorBorder = cs.getPropertyValue('--accent').trim();
+        var accent    = cs.getPropertyValue('--accent').trim()            || '#6366f1';
+        var accentRgb = cs.getPropertyValue('--accent-rgb').trim()        || '99,102,241';
+        var muted     = cs.getPropertyValue('--text-2').trim()            || '#64748b';
+        var border    = cs.getPropertyValue('--border-subtle').trim()
+                     || cs.getPropertyValue('--border').trim()            || 'rgba(255,255,255,0.05)';
 
         if (window._repoTrendChart) { window._repoTrendChart.destroy(); }
+
+        // 스파크라인 그라디언트 fill — 테마 accent 기반
+        // Sparkline gradient fill — theme accent based
+        var canvasCtx = ctx.getContext('2d');
+        var h = ctx.offsetHeight || 200;
+        var grad = canvasCtx.createLinearGradient(0, 0, 0, h);
+        grad.addColorStop(0,   'rgba(' + accentRgb + ', 0.30)');
+        grad.addColorStop(0.7, 'rgba(' + accentRgb + ', 0.05)');
+        grad.addColorStop(1,   'rgba(' + accentRgb + ', 0)');
+
         window._repoTrendChart = new Chart(ctx, {
           type: 'line',
           data: {
@@ -639,18 +653,31 @@
             datasets: [{
               label: '평균 점수',
               data: trendData.map(function(d) { return d.avg_score; }),
-              borderColor: colorBorder,
-              backgroundColor: colorBorder + '22',
-              tension: 0.3,
+              borderColor: accent,
+              backgroundColor: grad,
+              tension: 0.45,
               fill: true,
+              borderWidth: 2.5,
+              pointRadius: 0,
+              pointHoverRadius: 5,
+              pointHoverBackgroundColor: accent,
+              pointHoverBorderColor: '#fff',
+              pointHoverBorderWidth: 2,
             }]
           },
           options: {
             responsive: true,
-            animation: animate === false ? { duration: 0 } : undefined,
+            maintainAspectRatio: false,
+            animation: animate === false ? { duration: 0 } : { duration: 300, easing: 'easeOutCubic' },
             plugins: { legend: { display: false } },
             scales: {
-              y: { min: 0, max: 100, grid: { color: 'rgba(255,255,255,0.05)' } }
+              x: { display: false },
+              y: {
+                min: 0, max: 100,
+                grid: { color: border + '44', drawBorder: false },
+                border: { display: false },
+                ticks: { color: muted, font: { size: 10 }, maxTicksLimit: 3, padding: 6 }
+              }
             }
           }
         });
@@ -1214,10 +1241,20 @@
     if (!ctx) return;
     if (dashChart) dashChart.destroy();
 
-    const accent = readVar('--d-accent', '#D97757') || '#D97757';
-    const muted = readVar('--text-muted', '#888');
-    const subtle = readVar('--text-subtle', muted);
-    const border = readVar('--border', 'rgba(255,255,255,.08)');
+    const accent    = readVar('--d-accent', readVar('--accent', '#6366f1'));
+    const accentRgb = readVar('--accent-rgb', '99,102,241');
+    const muted     = readVar('--text-muted', '#888');
+    const subtle    = readVar('--text-subtle', muted);
+    const border    = readVar('--border', 'rgba(255,255,255,.08)');
+
+    // 스파크라인 그라디언트 fill — 테마 accent 기반
+    // Sparkline gradient fill — theme accent based
+    const canvasCtx = ctx.getContext('2d');
+    const h = ctx.offsetHeight || 200;
+    const grad = canvasCtx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0,   'rgba(' + accentRgb + ', 0.30)');
+    grad.addColorStop(0.7, 'rgba(' + accentRgb + ', 0.05)');
+    grad.addColorStop(1,   'rgba(' + accentRgb + ', 0)');
 
     dashChart = new Chart(ctx, {
       type: 'line',
@@ -1227,23 +1264,29 @@
           label: {{ 'dashboard.trend_chart_label' | i18n_args(locale | default('ko')) | tojson }},
           data: trendData.map(d => d.avg_score),
           borderColor: accent,
-          backgroundColor: accent + '22',
-          tension: 0.35,
-          pointRadius: 3,
+          backgroundColor: grad,
+          tension: 0.45,
+          pointRadius: 0,
           pointHoverRadius: 5,
-          borderWidth: 2,
+          pointHoverBackgroundColor: accent,
+          pointHoverBorderColor: '#fff',
+          pointHoverBorderWidth: 2,
+          borderWidth: 2.5,
           fill: true,
         }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        animation: animate === false ? { duration: 0 } : { duration: 900, easing: 'easeOutQuart' },
+        animation: animate === false ? { duration: 0 } : { duration: 300, easing: 'easeOutCubic' },
         scales: {
-          y: { min: 0, max: 100,
-               ticks: { color: subtle, stepSize: 25, font: { size: 11 } },
-               grid: { color: border, drawTicks: false } },
-          x: { ticks: { color: subtle, font: { size: 11 } }, grid: { display: false } }
+          x: { display: false },
+          y: {
+            min: 0, max: 100,
+            ticks: { color: subtle, maxTicksLimit: 3, font: { size: 11 }, padding: 6 },
+            grid: { color: border + '44', drawTicks: false },
+            border: { display: false }
+          }
         },
         plugins: {
           legend: { display: false },
