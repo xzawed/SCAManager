@@ -1066,6 +1066,8 @@ function _initRepoBulk() {
         _allItems = [];
         data.registrations.forEach(function(reg) {
           stateMap[reg.issue_key] = reg;
+          // summary 항목은 등록 완료 → 체크박스 없음, 모달 미도달 (미등록 후보 추가 시 title/body 필요)
+          // Summary items are already registered → no checkbox, modal unreachable (future unregistered candidates will need title/body)
           _allItems.push({
             key:   reg.issue_key,
             type:  reg.issue_type,
@@ -1163,9 +1165,9 @@ function _initRepoBulk() {
   function openBulkModal() {
     var item = _queue[_queueIdx];
     document.getElementById('bulkProgress').textContent = (_queueIdx + 1) + ' / ' + _queue.length;
-    document.getElementById('bulkTitle').value  = item.title;
-    document.getElementById('bulkBody').value   = item.body;
-    document.getElementById('bulkLabels').value = item.labels.join(', ');
+    document.getElementById('bulkTitle').value  = item.title  || '';
+    document.getElementById('bulkBody').value   = item.body   || '';
+    document.getElementById('bulkLabels').value = (item.labels || []).join(', ');
     document.getElementById('bulkError').classList.add('hidden');
     document.getElementById('bulkSubmit').disabled = false;
     document.getElementById('bulkSubmit').textContent =
