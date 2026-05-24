@@ -79,7 +79,7 @@ async def register(request: Request, req: RegisterRequest):
     issue_key = _make_issue_key(req)
 
     with SessionLocal() as db:
-        analysis, repo = _get_analysis_and_repo(db, req.analysis_id, current_user_id=current_user.id)
+        _, repo = _get_analysis_and_repo(db, req.analysis_id, current_user_id=current_user.id)
         try:
             result = await register_issue(
                 db,
@@ -124,7 +124,7 @@ async def get_status(request: Request, analysis_id: int):
         raise HTTPException(status_code=401, detail="Login required")
 
     with SessionLocal() as db:
-        analysis, repo = _get_analysis_and_repo(db, analysis_id, current_user_id=current_user.id)
+        _, repo = _get_analysis_and_repo(db, analysis_id, current_user_id=current_user.id)
         statuses = await get_analysis_issue_status(
             db,
             analysis_id=analysis_id,
