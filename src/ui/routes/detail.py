@@ -193,7 +193,7 @@ def repo_detail(  # pylint: disable=too-many-positional-arguments
         )
 
     return templates.TemplateResponse(request, "repo_detail.html", {
-        "repo_name": repo_name, "analyses": analyses_data,
+        "repo_name": repo_name, "repo_id": repo.id, "analyses": analyses_data,
         "chart_labels": [a["created_at"][:10] if a["created_at"] else "" for a in rev],
         "chart_scores": [a["score"] for a in rev],
         "hook_installed": bool(hook_installed),

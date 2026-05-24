@@ -23,6 +23,7 @@ from src.api.hook import router as api_hook_router
 from src.api.users import router as api_users_router
 from src.api.internal_cron import router as api_internal_cron_router
 from src.api.admin import router as api_admin_router
+from src.api.issue_registration import router as issue_registration_router
 from src.ui.routes.admin import router as ui_admin_router
 from src.ui.router import router as ui_router
 from src.auth.github import router as auth_router
@@ -204,6 +205,7 @@ app.include_router(api_hook_router)
 app.include_router(api_users_router)
 app.include_router(api_internal_cron_router)
 app.include_router(api_admin_router)
+app.include_router(issue_registration_router)
 app.include_router(ui_admin_router)
 app.include_router(ui_router)
 

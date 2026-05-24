@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [사이클 129 (AI Issue 등록 기능 Phase 1+2, 2026-05-24)](#사이클-129)
 - [Phase F~Phase 12 (그룹 시대)](#phase-f-phase-12)
 - [그룹 60+61 (2026-05-02 단일 작업일 23 PR)](#그룹-6061)
 - [사이클 62 (2026-05-03)](#사이클-62)
@@ -36,6 +37,33 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 사이클 129
+
+**날짜**: 2026-05-24 | **PR**: #614 (`feat/ai-issue-registration`) | **상태**: PR 생성 완료
+
+**작업 내용**: AI 분석 결과 GitHub Issue 등록 기능 (Phase 1 + Phase 2)
+
+| 영역 | 내용 |
+|------|------|
+| 신규 모델 | `IssueRegistration` ORM — UniqueConstraint(repo_id+issue_key), CASCADE FK, alembic 0035 |
+| 신규 레포 | `issue_registration_repo` — find_by_key / create / list_by_analysis / list_by_repo / update_state |
+| github_client | `create_issue()` + `get_issue_state()` 추가 |
+| 신규 서비스 | `issue_registration_service` — make_ai/static_issue_key, register_issue(IntegrityError TOCTOU 처리), get_analysis_issue_status, get_repo_issue_summary (TTL 300초) |
+| 신규 API | `POST /api/issues/register` (201/409/403/502) + `GET /api/issues/status` + `GET /api/issues/repo-summary` — 소유권 검증 포함 |
+| Phase 1 UI | `analysis_detail.html` — AI/정적 탭 + 편집 모달 + IIFE `_initIssueReg` (hx-boost 패턴) |
+| Phase 2 UI | `repo_detail.html` — `#repoBulkPanel` 일괄 등록 패널 + IIFE `_initRepoBulk` (hx-boost 패턴) |
+| 신규 테스트 | 35개 단위 테스트 (모델 4 + 리포 8 + github_client 4 + 서비스 11 + API 8) |
+| 총 단위 | 2948 → 2991 (+43) |
+
+**주요 픽스**:
+- `analysis.result` None guard (기존 `test_analysis_detail_empty_states_renders_japanese` 회귀 수정)
+- hx-boost 재초기화 패턴 (`htmx:afterSettle`/`historyRestore`) 양쪽 템플릿 적용
+- `_allItems` 초기화 버그 — `loadSummary()` 에서 `data.registrations` 기반 구성
+- 소유권 검증 (`current_user_id` → repo.user_id 비교) API 헬퍼 2곳 추가
+- IntegrityError TOCTOU race condition catch → `ValueError("DUPLICATE:N")` 변환
+
+**정책 18 Codex 검증**: OK (7/7 체크리스트 실측 확인)
 
 ---
 

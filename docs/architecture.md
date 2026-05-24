@@ -52,6 +52,7 @@ src/
 │   ├── dashboard_service.py     # /dashboard 10 공개 함수 (dashboard_kpi + dashboard_trend + frequent_issues_v2 + auto_merge_kpi + merge_failure_distribution + feedback_status + repo_insight_cards + insight_narrative + dashboard_security + dashboard_usage) + RLS 격리 헬퍼 2건 + N+1 배치 헬퍼 2건 (_fetch_analyses_for_window / _group_analyses_by_repo)
 │   ├── repo_insight_service.py  # 리포별 집계 7 함수 (repo_kpi/repo_score_trend/recurring_issues/problem_files/ai_suggestions/category_breakdown/insight_narrative) + compute_score_kpi 공유 헬퍼 (dashboard_service CPD 제거)
 │   │                            # Per-repo aggregation 7 functions (repo_score_trend added cycle 99) + compute_score_kpi shared helper
+│   ├── issue_registration_service.py  # make_ai/static_issue_key + register_issue(IntegrityError TOCTOU 처리) + get_analysis_issue_status + get_repo_issue_summary (TTL 300초 캐시)
 │   ├── merge_retry_service.py   # process_pending_retries 워커 (CI-aware)
 │   ├── security_scan_service.py # Code/Secret Scanning 폴링 + audit log + GHAS graceful degradation
 │   ├── saas_service.py          # tenant_inventory + rls_audit_matrix (Cycle 79 PR 3a)
@@ -59,14 +60,14 @@ src/
 ├── auth/
 │   ├── session.py               # get_current_user() + require_login + require_admin (3-layer SaaS 검증)
 │   └── github.py                # /login (301→/auth/github, 하위호환), /auth/github, /auth/callback, /auth/logout
-├── models/                      # 10 ORM 모델 — repository, analysis, analysis_feedback, repo_config, gate_decision (0034: analysis_id UNIQUE constraint), merge_attempt, merge_retry, security_alert_log, insight_narrative_cache (0031: repo_id FK; 0033: last_error_at/error_count/last_error_type), user
+├── models/                      # 11 ORM 모델 — repository, analysis, analysis_feedback, repo_config, gate_decision (0034: analysis_id UNIQUE constraint), merge_attempt, merge_retry, security_alert_log, insight_narrative_cache (0031: repo_id FK; 0033: last_error_at/error_count/last_error_type), user, issue_registration (0035: repo_id+issue_key UniqueConstraint + CASCADE FK)
 ├── webhook/
 │   ├── _helpers.py              # get_webhook_secret() + cache (TTL 300s)
 │   ├── validator.py             # HMAC-SHA256 서명 검증
 │   ├── loop_guard.py            # is_bot_sender, is_whitelisted_bot, has_skip_marker, BotInteractionLimiter
 │   ├── router.py                # aggregator
 │   └── providers/               # github.py + telegram.py + railway.py
-├── github_client/               # diff / issues / repos / checks (5분 TTL) / graphql (Tier 3 PR-A) / helpers (github_api_headers, ChangedFile) / models (ChangedFile 정의)
+├── github_client/               # diff / issues (create_issue, get_issue_state, close_issue) / repos / checks (5분 TTL) / graphql (Tier 3 PR-A) / helpers (github_api_headers, ChangedFile) / models (ChangedFile 정의)
 ├── railway_client/              # models (RailwayDeployEvent 3-그룹 nested dataclass) / logs (fetch_deployment_logs) / webhook (parse_railway_payload)
 ├── analyzer/
 │   ├── pure/                    # registry / language / review_prompt / review_guides (tier1~3 + generic, 50 언어)
@@ -101,6 +102,7 @@ src/
 │   ├── repos.py / stats.py / hook.py / users.py
 │   └── repo_report.py               # Repo별 분석 레포트 JSON API (list + detail)
 │   ├── internal_cron.py         # POST /api/internal/cron/{weekly,trend,scan-security,retry-pending-merges}
+│   ├── issue_registration.py    # POST /api/issues/register + GET /api/issues/status + GET /api/issues/repo-summary (소유권 검증 포함)
 │   └── admin.py                 # GET /api/admin/{tenants,rls-audit,operations}
 ├── ui/
 │   ├── _helpers.py              # get_accessible_repo, webhook_base_url, delete_repo_cascade, templates
@@ -111,7 +113,7 @@ src/
 │   ├── __init__.py              # MCP tool 선언 패키지
 │   └── repo_report_tools.py     # list_repo_reports / get_repo_report tool 스키마
 ├── cli/                         # python -m src.cli review (git_diff + formatter)
-├── repositories/                # DB 접근 계층 10종 — repository_repo (`find_by_full_name` + `find_all_by_user` shared+owned repos + Phase H `find_by_full_name_with_owner`)
+├── repositories/                # DB 접근 계층 11종 — repository_repo (`find_by_full_name` + `find_all_by_user` shared+owned repos + Phase H `find_by_full_name_with_owner`), issue_registration_repo (find_by_key/create/list_by_analysis/list_by_repo/update_state)
 └── worker/pipeline.py           # run_analysis_pipeline, build_analysis_result_dict
 ```
 
