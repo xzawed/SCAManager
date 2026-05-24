@@ -45,10 +45,7 @@ tools: list[dict] = [
             "properties": {
                 "repo_name": {
                     "type": "string",
-                    "description": (  # pylint: disable=line-too-long
-                        "owner/repo 형식. 예: myorg/backend-api"
-                        " / Format: owner/repo. Example: myorg/backend-api"
-                    ),
+                    "description": "owner/repo 형식. 예: myorg/backend-api / Format: owner/repo. Example: myorg/backend-api",  # pylint: disable=line-too-long
                 },
                 "days": {
                     "type": "integer",
