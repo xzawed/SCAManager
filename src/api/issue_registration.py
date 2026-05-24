@@ -37,9 +37,9 @@ class RegisterRequest(BaseModel):
     labels: list[str]
 
 
-def _get_analysis_and_repo(db: Session, analysis_id: int) -> tuple:
-    """analysis_id로 Analysis + Repository를 조회한다. 없으면 404 raise.
-    Look up Analysis and Repository by analysis_id. Raises 404 if not found.
+def _get_analysis_and_repo(db: Session, analysis_id: int, *, current_user_id: int) -> tuple:
+    """analysis_id로 Analysis + Repository를 조회하고 소유권을 검증한다. 없으면 404 raise.
+    Look up Analysis and Repository by analysis_id and verify ownership. Raises 404 if not found.
     """
     analysis = db.query(Analysis).filter(Analysis.id == analysis_id).first()
     if not analysis:
@@ -47,6 +47,10 @@ def _get_analysis_and_repo(db: Session, analysis_id: int) -> tuple:
     repo = db.query(Repository).filter(Repository.id == analysis.repo_id).first()
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
+    # 리포 소유권 검증 — user_id가 None이면 공유 리포로 허용
+    # Ownership check — user_id=None means shared repo (allow all)
+    if repo.user_id is not None and repo.user_id != current_user_id:
+        raise HTTPException(status_code=404)
     return analysis, repo
 
 
@@ -75,7 +79,7 @@ async def register(request: Request, req: RegisterRequest):
     issue_key = _make_issue_key(req)
 
     with SessionLocal() as db:
-        analysis, repo = _get_analysis_and_repo(db, req.analysis_id)
+        analysis, repo = _get_analysis_and_repo(db, req.analysis_id, current_user_id=current_user.id)
         try:
             result = await register_issue(
                 db,
@@ -120,7 +124,7 @@ async def get_status(request: Request, analysis_id: int):
         raise HTTPException(status_code=401, detail="Login required")
 
     with SessionLocal() as db:
-        analysis, repo = _get_analysis_and_repo(db, analysis_id)
+        analysis, repo = _get_analysis_and_repo(db, analysis_id, current_user_id=current_user.id)
         statuses = await get_analysis_issue_status(
             db,
             analysis_id=analysis_id,
@@ -131,13 +135,17 @@ async def get_status(request: Request, analysis_id: int):
     return {"registrations": statuses}
 
 
-def _get_repo_or_404(db: Session, repo_id: int) -> Repository:
-    """repo_id로 Repository를 조회한다. 없으면 404 raise.
-    Look up Repository by repo_id. Raises 404 if not found.
+def _get_repo_or_404(db: Session, repo_id: int, *, current_user_id: int) -> Repository:
+    """repo_id로 Repository를 조회하고 소유권을 검증한다. 없으면 404 raise.
+    Look up Repository by repo_id and verify ownership. Raises 404 if not found.
     """
     repo = db.query(Repository).filter(Repository.id == repo_id).first()
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
+    # 리포 소유권 검증 — user_id가 None이면 공유 리포로 허용
+    # Ownership check — user_id=None means shared repo (allow all)
+    if repo.user_id is not None and repo.user_id != current_user_id:
+        raise HTTPException(status_code=404)
     return repo
 
 
@@ -151,7 +159,7 @@ async def repo_summary(request: Request, repo_id: int):
         raise HTTPException(status_code=401, detail="Login required")
 
     with SessionLocal() as db:
-        repo = _get_repo_or_404(db, repo_id)
+        repo = _get_repo_or_404(db, repo_id, current_user_id=current_user.id)
         registrations = await get_repo_issue_summary(
             db,
             repo_id=repo_id,

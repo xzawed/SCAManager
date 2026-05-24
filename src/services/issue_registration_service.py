@@ -5,6 +5,7 @@ import hashlib
 from datetime import datetime, timezone
 
 import httpx
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.github_client.issues import create_issue, get_issue_state
@@ -57,14 +58,22 @@ async def register_issue(
         body=body,
         labels=labels,
     )
-    record = issue_registration_repo.create(
-        db,
-        analysis_id=analysis_id,
-        repo_id=repo_id,
-        issue_type=issue_type,
-        issue_key=issue_key,
-        github_issue_number=gh_result["number"],
-    )
+    try:
+        record = issue_registration_repo.create(
+            db,
+            analysis_id=analysis_id,
+            repo_id=repo_id,
+            issue_type=issue_type,
+            issue_key=issue_key,
+            github_issue_number=gh_result["number"],
+        )
+    except IntegrityError:
+        # TOCTOU 경쟁 조건 처리 — 동시 요청이 UniqueConstraint 위반 시 기존 레코드 조회
+        # TOCTOU race condition — concurrent insert hit UniqueConstraint, find existing record
+        db.rollback()
+        existing = issue_registration_repo.find_by_key(db, repo_id=repo_id, issue_key=issue_key)
+        issue_num = existing.github_issue_number if existing else gh_result["number"]
+        raise ValueError(f"DUPLICATE:{issue_num}") from None
     return {
         "github_issue_number": record.github_issue_number,
         "github_issue_url": gh_result["html_url"],

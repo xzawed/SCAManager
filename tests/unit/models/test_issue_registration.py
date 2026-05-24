@@ -5,6 +5,8 @@ from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import sessionmaker
 from src.database import Base
 from src.models.issue_registration import IssueRegistration
+from src.models.analysis import Analysis  # noqa: F401
+from src.models.repository import Repository  # noqa: F401
 
 
 @pytest.fixture
