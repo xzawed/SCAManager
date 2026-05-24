@@ -81,6 +81,35 @@ async def register_issue(
     }
 
 
+async def _sync_state_if_stale(
+    db: Session,
+    rec,
+    *,
+    now: datetime,
+    repo_full_name: str,
+    github_token: str,
+) -> None:
+    """TTL 만료 시 GitHub 상태를 재조회하여 DB에 갱신한다.
+    Re-fetch GitHub state if stale and update DB; silently ignore network errors.
+
+    SQLite는 tzinfo 없이 저장하므로 naive datetime을 UTC로 정규화 후 비교.
+    SQLite stores DateTime without tzinfo — normalize naive datetime to UTC before comparing.
+    """
+    synced = rec.github_issue_synced_at
+    if synced is not None and synced.tzinfo is None:
+        synced = synced.replace(tzinfo=timezone.utc)
+    stale = synced is None or (now - synced).total_seconds() > _SYNC_TTL_SECONDS
+    if not stale:
+        return
+    try:
+        state = await get_issue_state(github_token, repo_full_name, rec.github_issue_number)
+        issue_registration_repo.update_state(db, record=rec, state=state)
+    except httpx.HTTPError:
+        # 동기화 실패 시 기존 상태 유지 — 사용자에게 오류 미노출
+        # Keep existing state on sync failure — silent fallback
+        pass
+
+
 async def get_analysis_issue_status(
     db: Session,
     *,
@@ -95,25 +124,7 @@ async def get_analysis_issue_status(
     now = datetime.now(timezone.utc)
     result = []
     for rec in records:
-        # SQLite는 tzinfo 없이 저장 — 비교 시 UTC로 정규화
-        # SQLite stores DateTime without tzinfo — normalize to UTC for comparison
-        synced = rec.github_issue_synced_at
-        if synced is not None and synced.tzinfo is None:
-            synced = synced.replace(tzinfo=timezone.utc)
-        stale = (
-            synced is None
-            or (now - synced).total_seconds() > _SYNC_TTL_SECONDS
-        )
-        if stale:
-            try:
-                state = await get_issue_state(
-                    github_token, repo_full_name, rec.github_issue_number
-                )
-                issue_registration_repo.update_state(db, record=rec, state=state)
-            except httpx.HTTPError:
-                # 동기화 실패 시 기존 상태 유지 — 사용자에게 오류 미노출
-                # Keep existing state on sync failure — silent fallback
-                pass
+        await _sync_state_if_stale(db, rec, now=now, repo_full_name=repo_full_name, github_token=github_token)
         result.append({
             "issue_key": rec.issue_key,
             "github_issue_number": rec.github_issue_number,
@@ -139,23 +150,7 @@ async def get_repo_issue_summary(
     now = datetime.now(timezone.utc)
     result = []
     for rec in records:
-        synced = rec.github_issue_synced_at
-        if synced is not None and synced.tzinfo is None:
-            synced = synced.replace(tzinfo=timezone.utc)
-        stale = (
-            synced is None
-            or (now - synced).total_seconds() > _SYNC_TTL_SECONDS
-        )
-        if stale:
-            try:
-                state = await get_issue_state(
-                    github_token, repo_full_name, rec.github_issue_number
-                )
-                issue_registration_repo.update_state(db, record=rec, state=state)
-            except httpx.HTTPError:
-                # 동기화 실패 시 기존 상태 유지 — 조용히 실패
-                # Keep existing state on sync failure — silent fallback
-                pass
+        await _sync_state_if_stale(db, rec, now=now, repo_full_name=repo_full_name, github_token=github_token)
         result.append({
             "issue_key": rec.issue_key,
             "issue_type": rec.issue_type,
