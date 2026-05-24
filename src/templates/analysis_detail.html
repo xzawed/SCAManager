@@ -700,8 +700,8 @@ document.addEventListener('htmx:historyRestore', document._adFeedbackHandler);
 {# ─── GitHub Issue 등록 패널 (신규) ─── #}
 <section class="issue-reg-panel" id="issueRegPanel"
          data-analysis-id="{{ analysis.id }}"
-         data-ai-suggestions="{{ analysis.result.get('ai_suggestions', []) | tojson }}"
-         data-static-issues="{{ analysis.result.get('issues', []) | tojson }}">
+         data-ai-suggestions="{{ (analysis.result or {}).get('ai_suggestions', []) | tojson }}"
+         data-static-issues="{{ (analysis.result or {}).get('issues', []) | tojson }}">
 
   <h3 class="panel-title">📋 GitHub Issue 등록</h3>
 
