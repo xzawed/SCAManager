@@ -1,5 +1,5 @@
 # tests/unit/services/test_issue_registration_service.py
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
