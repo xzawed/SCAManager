@@ -38,7 +38,7 @@
       "--radius-pill": "999px"
     },
     "elevation": {
-      "--elev-0": "평면 / --elev-1~4: 단계적 깊이 / --elev-inset: 내부 highlight.\n   * 테마별 alpha 차별 = themes.css 에서 override. */\n  --elev-0:     none",
+      "--elev-0": "none",
       "--elev-1": "0 1px 2px rgba(0,0,0,.04), 0 1px 3px rgba(0,0,0,.06)",
       "--elev-2": "0 2px 4px rgba(0,0,0,.04), 0 4px 8px rgba(0,0,0,.06)",
       "--elev-3": "0 4px 8px rgba(0,0,0,.05), 0 8px 16px rgba(0,0,0,.08)",

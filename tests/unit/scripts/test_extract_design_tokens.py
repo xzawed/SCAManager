@@ -6,8 +6,6 @@ import json
 import textwrap
 from pathlib import Path
 
-import pytest
-
 # 스크립트 임포트 경로 설정 / Script import path setup
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
@@ -112,3 +110,34 @@ def test_categorize_root_vars_radius():
     root_vars = parse_vars(SAMPLE_ROOT_CSS)
     categories = categorize_root_vars(root_vars)
     assert "--radius-sm" in categories["radius"]
+
+
+def test_parse_vars_ignores_css_comments():
+    """CSS 주석 내 변수 패턴이 실제 값을 오염시키지 않는지 확인 / Verify CSS comments do not corrupt actual values."""
+    css = textwrap.dedent("""
+        /* --elev-0: 평면 / --elev-1~4: 단계적 깊이 */
+        --elev-0: none;
+        --elev-1: 0 1px 2px rgba(0,0,0,.04);
+    """)
+    result = parse_vars(css)
+    assert result["--elev-0"] == "none"
+    assert "--elev-1" in result
+    # 주석 내용이 값으로 추출되어선 안 됨 / comment content must not appear as a value
+    assert "평면" not in result.get("--elev-0", "")
+
+
+def test_main_generates_valid_json(tmp_path, monkeypatch):
+    """main() 실제 CSS 파일 파싱 후 올바른 JSON 생성 확인 / Verify main() generates valid JSON."""
+    import extract_design_tokens as mod
+
+    output_file = tmp_path / "tokens.json"
+    monkeypatch.setattr(mod, "OUTPUT", output_file)
+    mod.main()
+
+    assert output_file.exists()
+    data = json.load(output_file.open(encoding="utf-8"))
+    assert "foundation" in data
+    assert "themes" in data
+    assert set(data["themes"].keys()) == {"dark", "light", "pastel", "catppuccin"}
+    # elevation 값이 주석으로 오염되지 않아야 함 / elevation must not be corrupted by comments
+    assert data["foundation"]["elevation"].get("--elev-0") == "none"
