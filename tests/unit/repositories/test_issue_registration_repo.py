@@ -4,7 +4,6 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from src.database import Base
-from src.models.issue_registration import IssueRegistration
 from src.repositories import issue_registration_repo
 
 
