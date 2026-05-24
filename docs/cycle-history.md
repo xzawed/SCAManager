@@ -40,7 +40,7 @@
 
 ## 사이클 129
 
-**날짜**: 2026-05-24 | **PR**: #614 (`feat/ai-issue-registration`) | **상태**: PR 생성 완료
+**날짜**: 2026-05-24 | **PR**: #614 (`feat/ai-issue-registration`) | **상태**: ✅ 머지 완료
 
 **작업 내용**: AI 분석 결과 GitHub Issue 등록 기능 (Phase 1 + Phase 2)
 
@@ -49,12 +49,12 @@
 | 신규 모델 | `IssueRegistration` ORM — UniqueConstraint(repo_id+issue_key), CASCADE FK, alembic 0035 |
 | 신규 레포 | `issue_registration_repo` — find_by_key / create / list_by_analysis / list_by_repo / update_state |
 | github_client | `create_issue()` + `get_issue_state()` 추가 |
-| 신규 서비스 | `issue_registration_service` — make_ai/static_issue_key, register_issue(IntegrityError TOCTOU 처리), get_analysis_issue_status, get_repo_issue_summary (TTL 300초) |
+| 신규 서비스 | `issue_registration_service` — make_ai/static_issue_key, register_issue(IntegrityError TOCTOU 처리), _sync_state_if_stale 헬퍼, get_analysis_issue_status, get_repo_issue_summary (TTL 300초) |
 | 신규 API | `POST /api/issues/register` (201/409/403/502) + `GET /api/issues/status` + `GET /api/issues/repo-summary` — 소유권 검증 포함 |
 | Phase 1 UI | `analysis_detail.html` — AI/정적 탭 + 편집 모달 + IIFE `_initIssueReg` (hx-boost 패턴) |
 | Phase 2 UI | `repo_detail.html` — `#repoBulkPanel` 일괄 등록 패널 + IIFE `_initRepoBulk` (hx-boost 패턴) |
-| 신규 테스트 | 35개 단위 테스트 (모델 4 + 리포 8 + github_client 4 + 서비스 11 + API 8) |
-| 총 단위 | 2948 → 2991 (+43) |
+| 신규 테스트 | 59개 단위 테스트 (모델 4 + 리포 8 + github_client 4 + 서비스 15 + API 17 + CPD fix-up) |
+| 총 단위 | 2948 → 3007 (+59) |
 
 **주요 픽스**:
 - `analysis.result` None guard (기존 `test_analysis_detail_empty_states_renders_japanese` 회귀 수정)
@@ -63,7 +63,12 @@
 - 소유권 검증 (`current_user_id` → repo.user_id 비교) API 헬퍼 2곳 추가
 - IntegrityError TOCTOU race condition catch → `ValueError("DUPLICATE:N")` 변환
 
-**정책 18 Codex 검증**: OK (7/7 체크리스트 실측 확인)
+**CI 수정 3단계**:
+1. SonarCloud Coverage 75%/83% → 100% (21 tests 추가 — `_get_analysis_and_repo`·`_get_repo_or_404`·TOCTOU·HTTPError·naive-datetime 경로)
+2. SonarCloud CPD 4.8% → `_sync_state_if_stale` 헬퍼 추출 + `sonar.cpd.exclusions=tests/**,src/templates/**` → 0.0%
+3. CodeQL 자동수정 2건 (`test_issue_registration_service.py`·`test_issue_registration.py`) rebase 흡수
+
+**정책 18 Codex 검증**: OK × 2회 (초기 기능 + CPD fix-up)
 
 ---
 
