@@ -47,7 +47,7 @@ def get_current_user(request: Request) -> CurrentUser | None:
                 # is_telegram_connected is True when telegram_user_id is set.
                 is_telegram_connected=user.is_telegram_connected,
             )
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         # 세션 변조 값(오버플로우 정수 등)이 DB 오류를 유발해도 안전하게 None 반환
         # Safely return None when session-injected values (e.g. overflow int) cause DB errors
         return None

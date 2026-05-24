@@ -2190,3 +2190,20 @@ def test_preset_threshold_values():
     assert settings.count("approve_threshold: 75") >= 2, (
         "minimal/standard 프리셋의 approve_threshold:75 둘 다 보존 필요"
     )
+
+
+def test_api_github_repos_returns_empty_on_github_api_error():
+    """GitHub API 오류 시 빈 목록 반환 — 광범위 예외 처리 경로 검증.
+    Returns empty list when GitHub API call raises any exception.
+    """
+    import src.ui.routes.add_repo as _mod
+
+    # 캐시 초기화 — GitHub API 호출 강제 (캐시 히트 방지)
+    # Clear cache to force the GitHub API call (bypass cache hit).
+    _mod._user_repos_cache.clear()
+
+    with patch("src.ui.routes.add_repo.list_user_repos", new_callable=AsyncMock, side_effect=Exception("API error")):
+        r = client.get("/api/github/repos")
+
+    assert r.status_code == 200
+    assert r.json() == []
