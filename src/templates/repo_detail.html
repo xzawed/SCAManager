@@ -1044,7 +1044,7 @@ applyFilters();
 })();
 </script>
 <script>
-(function _initRepoBulk() {
+function _initRepoBulk() {
   var panel = document.getElementById('repoBulkPanel');
   if (!panel) return;
 
@@ -1055,12 +1055,23 @@ applyFilters();
   var _queueIdx = 0;
 
   /* ── 상태 로드 ── */
+  /* ── State loading ── */
   function loadSummary() {
     return fetch('/api/issues/repo-summary?repo_id=' + repoId)
       .then(function(r) { return r.ok ? r.json() : null; })
       .then(function(data) {
         if (!data) return;
-        data.registrations.forEach(function(reg) { stateMap[reg.issue_key] = reg; });
+        // 상태 맵 + 아이템 목록 동시 구성
+        // Build stateMap and item list together
+        _allItems = [];
+        data.registrations.forEach(function(reg) {
+          stateMap[reg.issue_key] = reg;
+          _allItems.push({
+            key:   reg.issue_key,
+            type:  reg.issue_type,
+            label: '#' + reg.github_issue_number + ' — ' + (reg.issue_type === 'ai_suggestion' ? 'AI 제안' : '정적 분석'),
+          });
+        });
         renderAll();
       })
       .catch(function() {});
@@ -1126,6 +1137,7 @@ applyFilters();
   }
 
   /* ── 탭 전환 ── */
+  /* ── Tab switching ── */
   document.querySelectorAll('#repoBulkPanel .issue-tab').forEach(function(tab) {
     tab.addEventListener('click', function() {
       document.querySelectorAll('#repoBulkPanel .issue-tab').forEach(function(t) { t.classList.remove('active'); });
@@ -1138,6 +1150,7 @@ applyFilters();
   document.getElementById('showUnregisteredOnly').addEventListener('change', renderAll);
 
   /* ── 일괄 등록 ── */
+  /* ── Bulk registration ── */
   document.getElementById('bulkRegisterBtn').addEventListener('click', function() {
     var checked = Array.prototype.slice.call(document.querySelectorAll('.issue-list input[type=checkbox]:checked'));
     _queue = checked.map(function(cb) {
@@ -1235,7 +1248,18 @@ applyFilters();
   });
 
   /* ── 초기화 ── */
+  /* ── Initialization ── */
+  // 최초 로드 시 초기화 — hx-boost 재방문 시 재초기화
+  // Initialize on first load — re-init on hx-boost navigation
   loadSummary();
-})();
+}
+_initRepoBulk();
+if (document._repoBulkHandler) {
+  document.removeEventListener('htmx:afterSettle', document._repoBulkHandler);
+  document.removeEventListener('htmx:historyRestore', document._repoBulkHandler);
+}
+document._repoBulkHandler = _initRepoBulk;
+document.addEventListener('htmx:afterSettle', document._repoBulkHandler);
+document.addEventListener('htmx:historyRestore', document._repoBulkHandler);
 </script>
 {% endblock %}
