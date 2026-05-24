@@ -5,7 +5,6 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from src.database import Base
-from src.models.issue_registration import IssueRegistration  # noqa: F401
 from src.services.issue_registration_service import (
     make_ai_issue_key,
     make_static_issue_key,
