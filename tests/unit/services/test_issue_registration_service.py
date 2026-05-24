@@ -1,5 +1,4 @@
 # tests/unit/services/test_issue_registration_service.py
-import hashlib
 from datetime import datetime, timezone, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
