@@ -119,3 +119,28 @@ def test_status_returns_registrations(client):
         resp = client.get("/api/issues/status?analysis_id=10")
     assert resp.status_code == 200
     assert len(resp.json()["registrations"]) == 1
+
+
+# ── GET /api/issues/repo-summary ──
+
+def test_repo_summary_returns_401_when_not_logged_in(client):
+    resp = client.get("/api/issues/repo-summary?repo_id=1")
+    assert resp.status_code == 401
+
+
+def test_repo_summary_returns_registrations(client):
+    mock_repo = _mock_repo()
+    with (
+        patch("src.api.issue_registration.get_current_user", return_value=_mock_user()),
+        patch("src.api.issue_registration._get_repo_or_404", return_value=mock_repo),
+        patch("src.api.issue_registration.get_repo_issue_summary",
+              new=AsyncMock(return_value=[
+                  {"issue_key": "k1", "issue_type": "static_issue",
+                   "github_issue_number": 55, "github_issue_state": "open",
+                   "github_issue_url": "https://github.com/owner/repo/issues/55",
+                   "created_at": "2026-05-24T00:00:00"},
+              ])),
+    ):
+        resp = client.get("/api/issues/repo-summary?repo_id=1")
+    assert resp.status_code == 200
+    assert len(resp.json()["registrations"]) == 1

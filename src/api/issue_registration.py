@@ -12,6 +12,7 @@ from src.models.analysis import Analysis
 from src.models.repository import Repository
 from src.services.issue_registration_service import (
     get_analysis_issue_status,
+    get_repo_issue_summary,
     make_ai_issue_key,
     make_static_issue_key,
     register_issue,
@@ -128,3 +129,34 @@ async def get_status(request: Request, analysis_id: int):
         )
 
     return {"registrations": statuses}
+
+
+def _get_repo_or_404(db: Session, repo_id: int) -> Repository:
+    """repo_id로 Repository를 조회한다. 없으면 404 raise.
+    Look up Repository by repo_id. Raises 404 if not found.
+    """
+    repo = db.query(Repository).filter(Repository.id == repo_id).first()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+    return repo
+
+
+@router.get("/repo-summary")
+async def repo_summary(request: Request, repo_id: int):
+    """repo_detail용 등록 이력 + GitHub 상태를 반환한다.
+    Return registration history and GitHub state for repo_detail.
+    """
+    current_user = get_current_user(request)
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Login required")
+
+    with SessionLocal() as db:
+        repo = _get_repo_or_404(db, repo_id)
+        registrations = await get_repo_issue_summary(
+            db,
+            repo_id=repo_id,
+            repo_full_name=repo.full_name,
+            github_token=current_user.plaintext_token,
+        )
+
+    return {"registrations": registrations}
