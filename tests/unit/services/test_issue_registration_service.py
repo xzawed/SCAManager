@@ -1,6 +1,6 @@
 # tests/unit/services/test_issue_registration_service.py
 from datetime import datetime, timezone, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
