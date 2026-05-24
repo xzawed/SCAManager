@@ -697,6 +697,66 @@ document.addEventListener('htmx:historyRestore', document._adFeedbackHandler);
 {% endif %}
 {% endif %}
 
+{# ─── GitHub Issue 등록 패널 (신규) ─── #}
+<section class="issue-reg-panel" id="issueRegPanel"
+         data-analysis-id="{{ analysis.id }}"
+         data-ai-suggestions="{{ analysis.result.get('ai_suggestions', []) | tojson }}"
+         data-static-issues="{{ analysis.result.get('issues', []) | tojson }}">
+
+  <h3 class="panel-title">📋 GitHub Issue 등록</h3>
+
+  {# 탭 #}
+  <div class="issue-reg-tabs" role="tablist">
+    <button class="issue-tab active" data-tab="ai" role="tab">
+      💡 AI 제안사항 <span class="issue-tab-count" id="aiCount"></span>
+    </button>
+    <button class="issue-tab" data-tab="static" role="tab">
+      🔴 정적 분석 이슈 <span class="issue-tab-count" id="staticCount"></span>
+    </button>
+  </div>
+
+  {# AI 제안 목록 #}
+  <div class="issue-tab-panel" id="tabAi">
+    <ul class="issue-list" id="aiIssueList"></ul>
+  </div>
+
+  {# 정적 분석 이슈 목록 #}
+  <div class="issue-tab-panel hidden" id="tabStatic">
+    <ul class="issue-list" id="staticIssueList"></ul>
+  </div>
+</section>
+
+{# ─── 편집 모달 ─── #}
+<div class="issue-modal-overlay hidden" id="issueModalOverlay" role="dialog" aria-modal="true">
+  <div class="issue-modal">
+    <h4 class="issue-modal-title">📝 GitHub Issue 생성</h4>
+
+    <label class="issue-modal-label">제목
+      <input type="text" id="issueTitle" class="issue-modal-input">
+    </label>
+
+    <label class="issue-modal-label">본문
+      <textarea id="issueBody" class="issue-modal-textarea" rows="6"></textarea>
+    </label>
+
+    <label class="issue-modal-label">라벨 (쉼표 구분)
+      <input type="text" id="issueLabels" class="issue-modal-input"
+             placeholder="bug, enhancement">
+    </label>
+
+    <div class="issue-modal-actions">
+      <button type="button" class="btn-secondary" id="issueModalCancel">취소</button>
+      <button type="button" class="btn-primary" id="issueModalSubmit">
+        GitHub에 Issue 생성 →
+      </button>
+    </div>
+    <p class="issue-modal-error hidden" id="issueModalError"></p>
+  </div>
+</div>
+
+{# ─── 성공 토스트 ─── #}
+<div class="issue-toast hidden" id="issueToast"></div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -844,4 +904,203 @@ document.addEventListener('htmx:historyRestore', document._adFeedbackHandler);
 })();
 </script>
 {% endif %}
+<script>
+(function _initIssueReg() {
+  var panel = document.getElementById('issueRegPanel');
+  if (!panel) return;
+
+  var analysisId    = Number(panel.dataset.analysisId);
+  var aiSuggestions = JSON.parse(panel.dataset.aiSuggestions || '[]');
+  var staticIssues  = JSON.parse(panel.dataset.staticIssues  || '[]');
+
+  /* ── 상태 맵 — issue_key(서버) → registration */
+  var stateMap = {};
+
+  /* ── 상태 로드 ── */
+  function loadStatus() {
+    return fetch('/api/issues/status?analysis_id=' + analysisId)
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(data) {
+        if (!data) return;
+        data.registrations.forEach(function(reg) {
+          stateMap[reg.issue_key] = reg;
+        });
+      })
+      .catch(function() {});
+  }
+
+  /* ── 아이템 구성 ── */
+  function buildAiItem(text, idx) {
+    return {
+      key: 'ai:' + text.slice(0, 50),
+      label: text,
+      type: 'ai_suggestion',
+      suggestionText: text,
+      title: '💡 [AI 제안] ' + text.slice(0, 60),
+    };
+  }
+
+  function buildStaticItem(issue) {
+    return {
+      key: 'st:' + (issue.tool||'') + ':' + (issue.category||'') + ':' + (issue.message||'').slice(0, 40),
+      label: (issue.tool||'') + ' — ' + (issue.message||''),
+      type: 'static_issue',
+      tool: issue.tool,
+      category: issue.category,
+      message: issue.message,
+      title: '🔴 [' + (issue.category||'') + '] ' + (issue.tool||'') + ': ' + (issue.message||'').slice(0, 50),
+    };
+  }
+
+  /* ── 렌더링 ── */
+  function renderAll() {
+    renderList('aiIssueList', 'aiCount', aiSuggestions.map(buildAiItem));
+    renderList('staticIssueList', 'staticCount', staticIssues.map(buildStaticItem));
+  }
+
+  function renderList(listId, countId, items) {
+    var ul = document.getElementById(listId);
+    var countEl = document.getElementById(countId);
+    ul.innerHTML = '';
+    if (countEl) countEl.textContent = '(' + items.length + ')';
+    items.forEach(function(item) { ul.appendChild(buildRow(item)); });
+  }
+
+  function buildRow(item) {
+    var li = document.createElement('li');
+    li.className = 'issue-row';
+    var label = document.createElement('span');
+    label.className = 'issue-row-label';
+    label.textContent = item.label;
+    li.appendChild(label);
+
+    var reg = stateMap[item.key];
+    if (reg) {
+      var badge = document.createElement('a');
+      badge.href = reg.github_issue_url;
+      badge.target = '_blank';
+      badge.rel = 'noopener noreferrer';
+      badge.className = reg.github_issue_state === 'closed'
+        ? 'issue-badge issue-badge--closed'
+        : 'issue-badge issue-badge--open';
+      badge.textContent = reg.github_issue_state === 'closed'
+        ? '✅ #' + reg.github_issue_number + ' 해결됨'
+        : '🔵 #' + reg.github_issue_number + ' 진행중';
+      li.appendChild(badge);
+    } else {
+      var btn = document.createElement('button');
+      btn.className = 'btn-register';
+      btn.textContent = 'Issue 등록';
+      btn.addEventListener('click', (function(i) { return function() { openModal(i); }; })(item));
+      li.appendChild(btn);
+    }
+    return li;
+  }
+
+  /* ── 탭 전환 ── */
+  document.querySelectorAll('.issue-tab').forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      document.querySelectorAll('.issue-tab').forEach(function(t) { t.classList.remove('active'); });
+      document.querySelectorAll('.issue-tab-panel').forEach(function(p) { p.classList.add('hidden'); });
+      tab.classList.add('active');
+      document.getElementById(tab.dataset.tab === 'ai' ? 'tabAi' : 'tabStatic').classList.remove('hidden');
+    });
+  });
+
+  /* ── 모달 ── */
+  var _currentItem = null;
+
+  function openModal(item) {
+    _currentItem = item;
+    document.getElementById('issueTitle').value = item.title;
+    document.getElementById('issueBody').value = _defaultBody(item);
+    document.getElementById('issueLabels').value =
+      item.type === 'ai_suggestion' ? 'ai-suggestion, enhancement' : (item.category || 'bug');
+    document.getElementById('issueModalError').classList.add('hidden');
+    document.getElementById('issueModalOverlay').classList.remove('hidden');
+    document.getElementById('issueTitle').focus();
+  }
+
+  function closeModal() {
+    document.getElementById('issueModalOverlay').classList.add('hidden');
+    _currentItem = null;
+  }
+
+  function _defaultBody(item) {
+    if (item.type === 'ai_suggestion') {
+      return '## 📌 분석 정보\n분석 ID: ' + analysisId + '\n\n## 💡 AI 제안 내용\n' + item.suggestionText + '\n\n---\n*SCAManager AI 분석 결과에서 생성됨*';
+    }
+    return '## 📌 분석 정보\n분석 ID: ' + analysisId + '\n\n## 🔴 이슈 내용\n- 도구: ' + (item.tool||'') + '\n- 카테고리: ' + (item.category||'') + '\n- 메시지: ' + (item.message||'') + '\n\n---\n*SCAManager 정적 분석 결과에서 생성됨*';
+  }
+
+  document.getElementById('issueModalCancel').addEventListener('click', closeModal);
+  document.getElementById('issueModalOverlay').addEventListener('click', function(e) {
+    if (e.target === document.getElementById('issueModalOverlay')) closeModal();
+  });
+
+  document.getElementById('issueModalSubmit').addEventListener('click', function() {
+    if (!_currentItem) return;
+    var btn = document.getElementById('issueModalSubmit');
+    btn.disabled = true;
+    btn.textContent = '생성 중...';
+
+    var payload = {
+      analysis_id: analysisId,
+      issue_type: _currentItem.type,
+      suggestion_text: _currentItem.suggestionText || null,
+      tool: _currentItem.tool || null,
+      category: _currentItem.category || null,
+      message: _currentItem.message || null,
+      title: document.getElementById('issueTitle').value.trim(),
+      body: document.getElementById('issueBody').value,
+      labels: document.getElementById('issueLabels').value
+              .split(',').map(function(s) { return s.trim(); }).filter(Boolean),
+    };
+
+    fetch('/api/issues/register', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    })
+    .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
+    .then(function(res) {
+      if (!res.ok) {
+        var errEl = document.getElementById('issueModalError');
+        errEl.textContent = res.data.detail || '오류가 발생했습니다.';
+        errEl.classList.remove('hidden');
+        btn.disabled = false;
+        btn.textContent = 'GitHub에 Issue 생성 →';
+        return;
+      }
+      /* 성공 — 상태 맵 갱신 후 목록 다시 렌더링 */
+      stateMap[_currentItem.key] = {
+        github_issue_number: res.data.github_issue_number,
+        github_issue_state: 'open',
+        github_issue_url: res.data.github_issue_url,
+      };
+      closeModal();
+      renderAll();
+      showToast('✅ Issue #' + res.data.github_issue_number + ' 생성됨');
+    })
+    .catch(function() {
+      var errEl = document.getElementById('issueModalError');
+      errEl.textContent = '네트워크 오류가 발생했습니다. 다시 시도해 주세요.';
+      errEl.classList.remove('hidden');
+      btn.disabled = false;
+      btn.textContent = 'GitHub에 Issue 생성 →';
+    });
+  });
+
+  /* ── 토스트 ── */
+  function showToast(msg) {
+    var toast = document.getElementById('issueToast');
+    toast.textContent = msg;
+    toast.classList.remove('hidden');
+    setTimeout(function() { toast.classList.add('hidden'); }, 5000);
+  }
+
+  /* ── 초기화 ── */
+  loadStatus().then(renderAll);
+})();
+</script>
 {% endblock %}
