@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.github_client.issues import create_issue, get_issue_state
+from src.models.issue_registration import IssueRegistration
 from src.repositories import issue_registration_repo
 
 # GitHub 상태 캐시 TTL (초) — 만료 시 재조회
@@ -31,7 +32,7 @@ def make_static_issue_key(tool: str, category: str, message: str) -> str:
     return hashlib.sha256(content.encode()).hexdigest()[:64]
 
 
-async def register_issue(
+async def register_issue(  # pylint: disable=too-many-arguments
     db: Session,
     *,
     analysis_id: int,
@@ -83,7 +84,7 @@ async def register_issue(
 
 async def _sync_state_if_stale(
     db: Session,
-    rec,
+    rec: IssueRegistration,
     *,
     now: datetime,
     repo_full_name: str,

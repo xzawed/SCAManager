@@ -22,6 +22,8 @@ router = APIRouter(prefix="/api/issues")
 
 
 class RegisterRequest(BaseModel):
+    """Issue 등록 요청 본문. Register issue request body."""
+
     analysis_id: int
     issue_type: str  # "ai_suggestion" | "static_issue"
     # AI 제안사항용 — issue_key 서버 생성에 사용

@@ -8,6 +8,7 @@ paths:
   - ".env.example"
   - "Procfile"
   - "alembic.ini"
+  - "sonar-project.properties"
 ---
 
 # 배포 규칙
@@ -28,3 +29,4 @@ paths:
 - **FastAPI 버전 핀**: `requirements.txt` — `fastapi>=0.136.1` (CVE-2024-47874 / CVE-2025-54121 패치 버전). 다운그레이드 금지.
 - **SMTP_PORT 빈 문자열**: Railway 환경에서 `SMTP_PORT=""`로 설정해도 `config.py`의 `coerce_smtp_port` field_validator가 587로 자동 변환 (크래시 없음). 다만 Railway Variables에서 빈 값 대신 명시적 숫자 설정 권장.
 - **postgres:// URL**: Railway PostgreSQL이 `postgres://`로 제공하는 경우 `config.py`에서 `postgresql://`로 자동 변환.
+- **SonarCloud CPD 제외 (`sonar.cpd.exclusions`)**: 신규 기능 PR 에 테스트 파일(반복 패치 블록)과 Jinja2 HTML 템플릿(구조적 반복)이 포함될 경우 `sonar.cpd.exclusions=tests/**,src/templates/**` 가 이미 설정되어 있음. 서비스/API 계층 내 중복 블록(≥10 토큰)은 추출 헬퍼로 제거 의무. 사이클 129 학습: 13줄 TTL 동기화 중복이 `get_analysis_issue_status`·`get_repo_issue_summary` 양쪽에 존재 → CPD 4.8% → `_sync_state_if_stale` 헬퍼 추출로 0.0% 해소. **체크포인트**: 신규 서비스 함수 2개 이상이 동일 로직 블록을 공유하면 PR 완성 전 헬퍼 추출.

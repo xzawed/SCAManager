@@ -62,7 +62,7 @@ async def github_repos_list(
     else:
         try:
             all_repos = await list_user_repos(current_user.plaintext_token)
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             # GitHub API 오류(401/403/429/timeout) 시 빈 목록 반환
             # Return empty list on GitHub API error (401/403/429/timeout)
             return []
