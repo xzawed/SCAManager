@@ -6,7 +6,6 @@ from sqlalchemy.orm import sessionmaker
 from src.database import Base
 from src.models.issue_registration import IssueRegistration
 import src.models.analysis  # noqa: F401
-import src.models.repository  # noqa: F401
 
 
 @pytest.fixture
