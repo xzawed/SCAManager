@@ -69,11 +69,25 @@ def test_update_state_changes_state_and_synced_at(db):
     assert rec.github_issue_synced_at is not None
 
 
-def test_list_by_repo_returns_records(db):
-    _create(db, repo_id=1, issue_key="r1")
-    _create(db, repo_id=1, issue_key="r2")
+def test_list_by_repo_returns_newest_first(db):
+    from datetime import timedelta
+    # 순서 보장을 위해 created_at 명시
+    # Explicitly set created_at to guarantee ordering
+    older = issue_registration_repo.create(db, repo_id=1, analysis_id=1,
+        issue_type="ai_suggestion", issue_key="r1", github_issue_number=1)
+    older.created_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    db.commit()
+    newer = issue_registration_repo.create(db, repo_id=1, analysis_id=1,
+        issue_type="ai_suggestion", issue_key="r2", github_issue_number=2)
+    newer.created_at = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    db.commit()
+
     result = issue_registration_repo.list_by_repo(db, repo_id=1)
     assert len(result) == 2
+    # 최신순 — r2(2026-01-02)가 먼저
+    # Newest first — r2 (2026-01-02) comes first
+    assert result[0].issue_key == "r2"
+    assert result[1].issue_key == "r1"
 
 
 def test_same_key_different_repo_allowed(db):
