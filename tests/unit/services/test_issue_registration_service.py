@@ -151,3 +151,36 @@ async def test_get_analysis_issue_status_skips_fresh_sync(db):
             db, analysis_id=1, repo_full_name="o/r", github_token="tok"
         )
     assert result[0]["github_issue_state"] == "open"
+
+
+# ── get_repo_issue_summary (Phase 2) ──
+from src.services.issue_registration_service import get_repo_issue_summary
+
+
+@pytest.mark.asyncio
+async def test_get_repo_issue_summary_empty(db):
+    result = await get_repo_issue_summary(
+        db, repo_id=99, repo_full_name="o/r", github_token="tok"
+    )
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_get_repo_issue_summary_returns_with_registration_state(db):
+    from src.repositories import issue_registration_repo
+    issue_registration_repo.create(
+        db, analysis_id=1, repo_id=1, issue_type="static_issue",
+        issue_key="sk1", github_issue_number=55,
+    )
+    with patch(
+        "src.services.issue_registration_service.get_issue_state",
+        new=AsyncMock(return_value="open"),
+    ):
+        result = await get_repo_issue_summary(
+            db, repo_id=1, repo_full_name="o/r", github_token="tok"
+        )
+    assert len(result) == 1
+    assert result[0]["github_issue_number"] == 55
+    assert result[0]["github_issue_state"] == "open"
+    assert result[0]["issue_type"] == "static_issue"
+    assert "created_at" in result[0]

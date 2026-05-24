@@ -114,3 +114,47 @@ async def get_analysis_issue_status(
             ),
         })
     return result
+
+
+async def get_repo_issue_summary(
+    db: Session,
+    *,
+    repo_id: int,
+    repo_full_name: str,
+    github_token: str,
+) -> list[dict]:
+    """repo_detail용 등록 이력 + TTL 만료 항목 일괄 GitHub 상태 동기화.
+    Return all repo registrations for repo_detail; bulk-sync stale GitHub states.
+    """
+    records = issue_registration_repo.list_by_repo(db, repo_id=repo_id)
+    now = datetime.now(timezone.utc)
+    result = []
+    for rec in records:
+        synced = rec.github_issue_synced_at
+        if synced is not None and synced.tzinfo is None:
+            synced = synced.replace(tzinfo=timezone.utc)
+        stale = (
+            synced is None
+            or (now - synced).total_seconds() > _SYNC_TTL_SECONDS
+        )
+        if stale:
+            try:
+                state = await get_issue_state(
+                    github_token, repo_full_name, rec.github_issue_number
+                )
+                issue_registration_repo.update_state(db, record=rec, state=state)
+            except httpx.HTTPError:
+                # 동기화 실패 시 기존 상태 유지 — 조용히 실패
+                # Keep existing state on sync failure — silent fallback
+                pass
+        result.append({
+            "issue_key": rec.issue_key,
+            "issue_type": rec.issue_type,
+            "github_issue_number": rec.github_issue_number,
+            "github_issue_state": rec.github_issue_state,
+            "github_issue_url": (
+                f"https://github.com/{repo_full_name}/issues/{rec.github_issue_number}"
+            ),
+            "created_at": rec.created_at.isoformat() if rec.created_at else None,
+        })
+    return result
