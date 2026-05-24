@@ -58,7 +58,7 @@ MOBILE_PAGES = {"dashboard", "analysis_detail", "repo_detail", "settings"}
 
 async def _set_theme(page, theme: str) -> None:
     """JS로 data-theme 속성 변경 후 트랜지션 대기 / Switch theme via JS and wait for transition."""
-    await page.evaluate(f"document.body.setAttribute('data-theme', '{theme}')")
+    await page.evaluate("(t) => document.body.setAttribute('data-theme', t)", theme)
     await page.wait_for_timeout(350)  # 테마 트랜지션 안정 대기 / wait for CSS transition
 
 
@@ -98,55 +98,57 @@ async def _make_context(browser, viewport: dict, session_cookie: str):
 async def _capture_desktop(browser, repo_id: int, analysis_id: int, session_cookie: str) -> None:
     """데스크탑(1440px) 전체 페이지 캡처 / Capture all pages at desktop width (1440px)."""
     ctx = await _make_context(browser, {"width": 1440, "height": 900}, session_cookie)
-    page = await ctx.new_page()
+    try:
+        page = await ctx.new_page()
 
-    # 공개 페이지 / Public pages
-    for name, path in PAGES_PUBLIC:
-        await page.goto(f"{BASE_URL}{path}", wait_until="networkidle")
-        await _capture_all_themes(page, name)
+        # 공개 페이지 / Public pages
+        for name, path in PAGES_PUBLIC:
+            await page.goto(f"{BASE_URL}{path}", wait_until="networkidle")
+            await _capture_all_themes(page, name)
 
-    # 인증 페이지 / Auth-required pages
-    for name, path in PAGES_AUTH:
-        resp = await page.goto(f"{BASE_URL}{path}", wait_until="networkidle")
-        if resp and resp.url.endswith("/") and name != "overview":
-            print(f"  ⚠️  {name}: 인증 실패 — session-cookie 를 확인하세요")
-            continue
-        await _capture_all_themes(page, name)
+        # 인증 페이지 / Auth-required pages
+        for name, path in PAGES_AUTH:
+            resp = await page.goto(f"{BASE_URL}{path}", wait_until="networkidle")
+            if resp and resp.url.endswith("/") and name != "overview":
+                print(f"  ⚠️  {name}: 인증 실패 — session-cookie 를 확인하세요")
+                continue
+            await _capture_all_themes(page, name)
 
-    # 데이터 의존 페이지 / Data-dependent pages
-    for name, path_tmpl in PAGES_DATA:
-        path = path_tmpl.format(repo_id=repo_id, analysis_id=analysis_id)
-        resp = await page.goto(f"{BASE_URL}{path}", wait_until="networkidle")
-        if resp and resp.status == 404:
-            print(f"  ⚠️  {name}: 404 — --repo-id / --analysis-id 를 확인하세요")
-            continue
-        await _capture_all_themes(page, name)
+        # 데이터 의존 페이지 / Data-dependent pages
+        for name, path_tmpl in PAGES_DATA:
+            path = path_tmpl.format(repo_id=repo_id, analysis_id=analysis_id)
+            resp = await page.goto(f"{BASE_URL}{path}", wait_until="networkidle")
+            if resp and resp.status == 404:
+                print(f"  ⚠️  {name}: 404 — --repo-id / --analysis-id 를 확인하세요")
+                continue
+            await _capture_all_themes(page, name)
 
-    # 어드민 페이지 / Admin pages
-    for name, path in PAGES_ADMIN:
-        resp = await page.goto(f"{BASE_URL}{path}", wait_until="networkidle")
-        if resp and resp.status in (403, 404):
-            print(f"  ⚠️  {name}: {resp.status} — 어드민 계정인지 확인하세요")
-            continue
-        await _capture_all_themes(page, name)
-
-    await ctx.close()
+        # 어드민 페이지 / Admin pages
+        for name, path in PAGES_ADMIN:
+            resp = await page.goto(f"{BASE_URL}{path}", wait_until="networkidle")
+            if resp and resp.status in (403, 404):
+                print(f"  ⚠️  {name}: {resp.status} — 어드민 계정인지 확인하세요")
+                continue
+            await _capture_all_themes(page, name)
+    finally:
+        await ctx.close()
 
 
 async def _capture_mobile(browser, repo_id: int, analysis_id: int, session_cookie: str) -> None:
     """모바일(390px) 주요 페이지 캡처 / Capture key pages at mobile width (390px)."""
     ctx = await _make_context(browser, {"width": 390, "height": 844}, session_cookie)
-    page = await ctx.new_page()
+    try:
+        page = await ctx.new_page()
 
-    all_pages = PAGES_PUBLIC + PAGES_AUTH + PAGES_DATA + PAGES_ADMIN
-    for name, path_tmpl in all_pages:
-        if name not in MOBILE_PAGES:
-            continue
-        path = path_tmpl.format(repo_id=repo_id, analysis_id=analysis_id)
-        await page.goto(f"{BASE_URL}{path}", wait_until="networkidle")
-        await _capture_all_themes(page, name, suffix="-mobile")
-
-    await ctx.close()
+        all_pages = PAGES_PUBLIC + PAGES_AUTH + PAGES_DATA + PAGES_ADMIN
+        for name, path_tmpl in all_pages:
+            if name not in MOBILE_PAGES:
+                continue
+            path = path_tmpl.format(repo_id=repo_id, analysis_id=analysis_id)
+            await page.goto(f"{BASE_URL}{path}", wait_until="networkidle")
+            await _capture_all_themes(page, name, suffix="-mobile")
+    finally:
+        await ctx.close()
 
 
 async def main(args: argparse.Namespace) -> None:
