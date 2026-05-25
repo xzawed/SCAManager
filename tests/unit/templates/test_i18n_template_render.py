@@ -199,7 +199,7 @@ def test_base_nav_renders_korean_via_overview():
     assert ">대시보드</a>" in out  # header.dashboard
     assert ">로그아웃</button>" in out  # common.logout
     assert 'aria-label="메뉴 열기"' in out  # common.menu_aria
-    assert '<html lang="ko">' in out  # HTML lang dynamic
+    assert '<html lang="ko"' in out  # HTML lang dynamic (data-* attrs also present)
 
 
 def test_base_nav_renders_english_via_overview():
@@ -210,7 +210,7 @@ def test_base_nav_renders_english_via_overview():
     assert ">Dashboard</a>" in out
     assert ">Logout</button>" in out
     assert 'aria-label="Open menu"' in out
-    assert '<html lang="en">' in out
+    assert '<html lang="en"' in out
 
 
 def test_base_nav_renders_japanese_via_overview():
@@ -221,7 +221,7 @@ def test_base_nav_renders_japanese_via_overview():
     assert ">ダッシュボード</a>" in out
     assert ">ログアウト</button>" in out
     assert 'aria-label="メニューを開く"' in out
-    assert '<html lang="ja">' in out
+    assert '<html lang="ja"' in out
 
 
 # ── locale 미주입 fallback ──────────────────────────────────────────────────
@@ -231,7 +231,7 @@ def test_overview_html_locale_none_defaults_to_ko():
     """overview.html — locale 미주입 시 'ko' default fallback (Jinja default 필터)."""
     out = _render("overview.html", current_user=_FakeUser(), repos=[], calibration={})
     assert "리포지토리 현황" in out
-    assert '<html lang="ko">' in out
+    assert '<html lang="ko"' in out
 
 
 def test_add_repo_html_locale_none_defaults_to_ko():

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ locale | default('ko') }}">
+<html lang="{{ locale | default('ko') }}" data-variant="refined" data-density="comfortable" data-radius="balanced" data-motion="live">
 <head>
   <meta charset="UTF-8">
   <!-- viewport-fit=cover: iOS notch 디바이스의 safe-area-inset env() 활성화
@@ -29,6 +29,8 @@
   <!-- Tailwind v4 utilities (Hybrid: layout/spacing/typography utilities, no Preflight override)
        Inline <style> below retains higher specificity for existing components -->
   <link rel="stylesheet" href="/static/css/dist/tailwind.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/pages.css">
   <style>
     /* ──────────────────────────────────────────────────────────────────────
      * 사이클 93 Step 1 — Foundation 토큰 + 4-테마 정의는 외부 CSS 파일로 분리.
@@ -274,11 +276,11 @@
       font-weight: 700;
       font-size: var(--fs-xs);
     }
-    .grade-A { background: rgba(74,222,128,.12); color: var(--grade-a); }
-    .grade-B { background: rgba(96,165,250,.12); color: var(--grade-b); }
-    .grade-C { background: rgba(251,191,36,.12);  color: var(--grade-c); }
-    .grade-D { background: rgba(251,146,60,.12);  color: var(--grade-d); }
-    .grade-F { background: rgba(248,113,113,.12); color: var(--grade-f); }
+    .grade-A, .grade--a { background: var(--grade-a-bg); color: var(--grade-a); border-color: var(--grade-a-bd); }
+    .grade-B, .grade--b { background: var(--grade-b-bg); color: var(--grade-b); border-color: var(--grade-b-bd); }
+    .grade-C, .grade--c { background: var(--grade-c-bg); color: var(--grade-c); border-color: var(--grade-c-bd); }
+    .grade-D, .grade--d { background: var(--grade-d-bg); color: var(--grade-d); border-color: var(--grade-d-bd); }
+    .grade-F, .grade--f { background: var(--grade-f-bg); color: var(--grade-f); border-color: var(--grade-f-bd); }
 
     /* ── 테이블 ────────────────────────────────── */
     table { width: 100%; border-collapse: collapse; }
@@ -534,54 +536,8 @@
       clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
     }
 
-    /* ── Aurora 배경 ──────────────────────────────────────────────────────── */
-    /* 오로라 배경 고정 레이어 (포인터 이벤트 없음, z-index: 0)
-       Aurora fixed background layer (no pointer events, z-index: 0) */
-    .aurora {
-      position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
-    }
-    .orb {
-      position: absolute; border-radius: 50%;
-      filter: blur(80px); will-change: transform;
-    }
-    .orb-1 {
-      width: 600px; height: 600px; top: -200px; left: -100px;
-      background: radial-gradient(circle, var(--orb1), transparent 70%);
-      animation: var(--anim-float-a);
-    }
-    .orb-2 {
-      width: 500px; height: 500px; top: 30%; right: -150px;
-      background: radial-gradient(circle, var(--orb2), transparent 70%);
-      animation: var(--anim-float-b);
-    }
-    .orb-3 {
-      width: 400px; height: 400px; bottom: -100px; left: 30%;
-      background: radial-gradient(circle, var(--orb3), transparent 70%);
-      animation: var(--anim-float-c);
-    }
-    .orb-4 {
-      width: 350px; height: 350px; top: 50%; right: 20%;
-      background: radial-gradient(circle, var(--orb4), transparent 70%);
-      animation: var(--anim-float-d);
-    }
-    /* 오로라 orb 부유 애니메이션 키프레임 (tokens.css --anim-float-* 토큰과 페어)
-       Aurora orb float keyframes (paired with --anim-float-* tokens in tokens.css) */
-    @keyframes float-a { 0%{transform:translate(0,0)} 100%{transform:translate(60px,-80px)} }
-    @keyframes float-b { 0%{transform:translate(0,0)} 100%{transform:translate(-80px,60px)} }
-    @keyframes float-c { 0%{transform:translate(0,0)} 100%{transform:translate(40px,90px)} }
-    @keyframes float-d { 0%{transform:translate(0,0)} 100%{transform:translate(-50px,-70px)} }
-
-    /* 노이즈 텍스처 오버레이 (SVG data URI, mix-blend-mode: overlay)
-       Noise texture overlay (inline SVG data URI, mix-blend-mode: overlay) */
-    body::after {
-      content: '';
-      position: fixed; inset: 0; z-index: 0; pointer-events: none;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
-      opacity: 0.03; mix-blend-mode: overlay;
-    }
-
-    /* 오로라 위 콘텐츠는 z-index: 1 보장
-       Page content rendered above aurora layer */
+    /* atmosphere 위 콘텐츠는 z-index: 1 보장 (.aurora/.orb CSS는 components.css로 이전)
+       Page content rendered above atmosphere layer (aurora/orb CSS moved to components.css) */
     nav { z-index: 100; }
     .container { position: relative; z-index: 1; }
 
@@ -660,12 +616,12 @@
   </style>
 </head>
 <body data-theme="dark" hx-boost="true">
-  <!-- Aurora background (fixed, pointer-events:none, z-index:0) -->
-  <div class="aurora" aria-hidden="true">
-    <div class="orb orb-1"></div>
-    <div class="orb orb-2"></div>
-    <div class="orb orb-3"></div>
-    <div class="orb orb-4"></div>
+  <!-- Atmosphere background — animated aurora orbs + noise grain (pointer-events:none, z-index:0) -->
+  <div class="atmosphere" aria-hidden="true">
+    <span class="atmosphere__orb atmosphere__orb--1"></span>
+    <span class="atmosphere__orb atmosphere__orb--2"></span>
+    <span class="atmosphere__orb atmosphere__orb--3"></span>
+    <span class="atmosphere__grain"></span>
   </div>
   <nav>
     <a class="nav-logo" href="/">
@@ -730,6 +686,8 @@
   <!-- HTMX hx-boost: 앵커 클릭을 fetch 교체로 업그레이드 (전체 페이지 리로드 제거)
        HTMX hx-boost: upgrades anchor clicks to fetch-based swaps (eliminates full page reload) -->
   <script src="/static/vendor/htmx.min.js"></script>
+  <script src="/static/js/effects.js"></script>
+  <script src="/static/js/tweaks.js"></script>
   <!-- 자식 템플릿 스크립트 블록 — htmx 로드 이후 배치 (race condition 방지)
        Child template scripts block — placed after htmx load to prevent race conditions -->
   {% block scripts %}{% endblock %}
@@ -749,6 +707,7 @@
     function applyTheme(theme) {
       if (!THEMES[theme]) theme = 'dark';
       document.body.dataset.theme = theme;
+      document.documentElement.setAttribute('data-theme', theme);
       localStorage.setItem('sca-theme', theme);
       document.getElementById('themeIcon').textContent = THEMES[theme].icon;
       document.getElementById('themeName').textContent = THEMES[theme].name;
@@ -772,6 +731,7 @@
       var theme = THEME_MIGRATE[stored] || stored || 'dark';
       if (!THEMES[theme]) theme = 'dark';
       document.body.dataset.theme = theme;
+      document.documentElement.setAttribute('data-theme', theme);
       var iconEl = document.getElementById('themeIcon');
       var nameEl = document.getElementById('themeName');
       if (iconEl) iconEl.textContent = THEMES[theme].icon;
@@ -807,6 +767,17 @@
       // 테마 UI 상태 복원 (body swap 이후 아이콘·라벨 소실 방지)
       // Restore theme UI state (prevent icon/label loss after body swap)
       _refreshThemeUI();
+
+      // hx-boost body swap 후 <html> data-theme 동기화
+      // Sync html data-theme on every nav re-init (hx-boost safe)
+      (function() {
+        var stored = localStorage.getItem('sca-theme');
+        var THEME_MIGRATE_LOCAL = THEME_MIGRATE;
+        var theme = THEME_MIGRATE_LOCAL[stored] || stored || 'dark';
+        var THEMES_LOCAL = { dark: 1, light: 1, pastel: 1, catppuccin: 1 };
+        if (!THEMES_LOCAL[theme]) theme = 'dark';
+        document.documentElement.setAttribute('data-theme', theme);
+      })();
 
       // 테마 드롭다운 이벤트 등록
       // Register theme dropdown events
