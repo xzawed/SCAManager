@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [사이클 134 (문서 정리 — README 제품화 + reports/superpowers 아카이브 + policies .claude/ 이동, 2026-05-25)](#사이클-134)
 - [사이클 133 (nav-logo 라이트/파스텔 텍스트 불가시 수정, 2026-05-25)](#사이클-133)
 - [사이클 132 (theme-option CSS 변수 충돌 버그 수정, 2026-05-25)](#사이클-132)
 - [사이클 131 (Claude Design UI 전체 재설계 9 PR — 토큰 시스템·컴포넌트·WCAG, 2026-05-25)](#사이클-131)
@@ -41,6 +42,24 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 사이클 134
+
+**날짜**: 2026-05-25 | **PR**: #643 (`chore/docs-cleanup-product-readme`) | **상태**: ✅ 머지 완료
+
+**작업 내용**: 전체 문서 정리 — README 제품화 + 내부 문서 아카이브/재배치
+
+| 영역 | 내용 |
+|------|------|
+| README 제품화 | 내부 사이클/Phase 참조 8건 제거 (cycle 84·117, Phase 10·12·F.1 등), 테스트 배지 갱신 (3173+ / 3022 unit + 151 integration) |
+| reports 아카이브 | `docs/reports/` 44파일 → `docs/_archive/reports/` (git mv) |
+| superpowers 아카이브 | `docs/superpowers/plans/` 5파일 + `docs/superpowers/specs/` 5파일 → `docs/_archive/superpowers/` (untracked → cp+rm) |
+| policies 이동 | `docs/policies/active.md` + `history.md` → `.claude/policies/` (git mv) |
+| CLAUDE.md 링크 갱신 | `docs/policies/` 참조 25건 → `.claude/policies/` (sed 일괄 치환) |
+| 연계 파일 갱신 | `scripts/check_memory_refs.py` + `.claude/rules/deploy.md` + `.claude/rules/i18n.md` + `docs/runbooks/operational-smoke-checks.md` 내 경로 동기화 |
+| 테스트 | 기존 통과 상태 유지, 소스 변경 없음 |
+
+---
 
 ## 사이클 133
 
