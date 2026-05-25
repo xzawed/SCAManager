@@ -188,7 +188,7 @@
       </div>
       {% if item.avg_score %}
       <div class="score-bar score-bar--{{ (item.avg_grade or 'f') | lower }}"
-           style="--sb-pct: {{ item.avg_score | round | int }}%;">
+           style="--sb-pct: {{ [[item.avg_score | round | int, 0] | max, 100] | min }}%;">
       </div>
       <div class="repo-card__score-row">
         <span class="repo-card__score">{{ item.avg_score }}<span style="color: var(--text-3, rgba(255,255,255,0.4)); font-size:11px;">/100</span></span>
