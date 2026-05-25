@@ -170,8 +170,13 @@
   .severity-medium { background: color-mix(in srgb, var(--warning) 15%, transparent); color: var(--warning); border: 1px solid var(--warning); font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 4px; letter-spacing: .04em; }
   .severity-low    { background: color-mix(in srgb, var(--success) 15%, transparent); color: var(--success); border: 1px solid var(--success); font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 4px; letter-spacing: .04em; }
 
-  /* ── 이전/다음 내비게이션 / Prev/next navigation ─────────────────── */
-  .analysis-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; gap: .5rem; }
+  /* ── 내비게이션 1행 / Navigation + back in single row ───────────── */
+  /* back-btn 왼쪽, prev/next 그룹 오른쪽 / back-btn left, prev/next group right */
+  .analysis-nav {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: var(--space-5, 1.25rem); gap: .5rem;
+  }
+  .analysis-nav__controls { display: flex; align-items: center; gap: var(--space-2, 0.5rem); }
   /* pill 형태 네비게이션 버튼 / Pill-style navigation buttons */
   .nav-btn {
     border-radius: 999px; padding: 8px 18px;
@@ -181,7 +186,112 @@
   }
   .nav-btn:hover { background: var(--accent); color: var(--btn-on-accent, #fff); border-color: var(--accent); text-decoration: none; }
   .nav-btn.disabled { opacity: 0.38; cursor: default; pointer-events: none; }
-  .nav-label { font-size: 0.82rem; color: var(--text-2); flex: 1; text-align: center; }
+  .nav-label { font-size: 0.82rem; color: var(--text-2); padding: 0 var(--space-2, 0.5rem); }
+
+  /* ── GitHub Issue 등록 패널 / Issue registration panel ──────────── */
+  .issue-reg-panel {
+    background: var(--bg-card, rgba(255,255,255,0.05));
+    border: 1px solid var(--border-subtle, rgba(255,255,255,0.08));
+    border-radius: var(--radius-lg, 12px);
+    overflow: hidden;
+    margin-bottom: var(--space-5, 1.25rem);
+  }
+  .panel-title {
+    font-size: var(--fs-md, 1rem); font-weight: 700; color: var(--text-1);
+    padding: var(--space-5, 1.25rem); margin: 0;
+    border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.08));
+  }
+  .issue-reg-tabs {
+    display: flex;
+    background: var(--bg-mute, rgba(255,255,255,0.03));
+    border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.08));
+  }
+  .issue-tab {
+    padding: 0.75rem 1.25rem; background: none; border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-2); font-size: 0.875rem; font-weight: 600;
+    cursor: pointer; transition: color 0.15s, border-color 0.15s;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .issue-tab:hover { color: var(--text-1); }
+  .issue-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .issue-tab-count {
+    font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 999px;
+    background: var(--bg-elevated, rgba(255,255,255,0.08)); color: var(--text-2);
+  }
+  .issue-tab-panel { padding: 0; }
+  .issue-tab-panel.hidden { display: none; }
+  .issue-list { list-style: none; margin: 0; padding: 0; }
+  .issue-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: var(--space-4, 1rem); padding: 0.875rem var(--space-5, 1.25rem);
+    border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+  }
+  .issue-row:last-child { border-bottom: none; }
+  .issue-row-label { font-size: 13px; color: var(--text-1); line-height: 1.5; flex: 1; min-width: 0; }
+  .issue-badge {
+    font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px;
+    text-decoration: none; flex-shrink: 0; white-space: nowrap;
+  }
+  .issue-badge--open {
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+  .issue-badge--closed {
+    background: color-mix(in srgb, var(--success) 12%, transparent);
+    color: var(--success); border: 1px solid color-mix(in srgb, var(--success) 30%, transparent);
+  }
+  .btn-register {
+    font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 6px;
+    border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    color: var(--accent); cursor: pointer; transition: background 0.15s;
+    flex-shrink: 0; white-space: nowrap;
+  }
+  .btn-register:hover { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+
+  /* ── Issue 등록 모달 / Issue registration modal ──────────────── */
+  .issue-modal-overlay {
+    position: fixed; inset: 0;
+    background: var(--overlay-bg, rgba(0,0,0,0.6)); backdrop-filter: blur(4px);
+    z-index: 9000; display: flex; align-items: center; justify-content: center; padding: 1rem;
+  }
+  .issue-modal-overlay.hidden { display: none; }
+  .issue-modal {
+    background: var(--bg-card, rgba(30,30,40,0.98));
+    border: 1px solid var(--border-subtle, rgba(255,255,255,0.12));
+    border-radius: 16px; padding: 1.5rem;
+    width: 100%; max-width: 520px; max-height: 90vh; overflow-y: auto;
+    box-shadow: var(--shadow-overlay, 0 20px 60px rgba(0,0,0,0.5));
+  }
+  .issue-modal-title { font-size: 1rem; font-weight: 700; color: var(--text-1); margin: 0 0 1.25rem; }
+  .issue-modal-label {
+    display: flex; flex-direction: column; gap: 4px;
+    font-size: 13px; font-weight: 600; color: var(--text-2); margin-bottom: 1rem;
+  }
+  .issue-modal-input,
+  .issue-modal-textarea {
+    width: 100%; box-sizing: border-box;
+    background: var(--bg-elevated, rgba(255,255,255,0.05));
+    border: 1px solid var(--border-subtle); border-radius: 8px; padding: 8px 12px;
+    color: var(--text-1); font-size: 13px; font-family: inherit;
+    transition: border-color 0.15s; resize: vertical;
+  }
+  .issue-modal-input:focus,
+  .issue-modal-textarea:focus { outline: none; border-color: var(--accent); }
+  .issue-modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.25rem; }
+  .issue-modal-error { font-size: 12px; color: var(--danger); margin-top: 0.5rem; }
+  .issue-modal-error.hidden { display: none; }
+
+  /* ── 성공 토스트 / Success toast ─────────────────────────────── */
+  .issue-toast {
+    position: fixed; bottom: 1.5rem; right: 1.5rem;
+    background: var(--bg-card); border: 1px solid var(--border-subtle);
+    border-radius: 10px; padding: 0.75rem 1.25rem;
+    font-size: 13px; font-weight: 600; color: var(--text-1);
+    box-shadow: var(--shadow-md, 0 8px 24px rgba(0,0,0,0.3)); z-index: 9001; backdrop-filter: blur(8px);
+  }
+  .issue-toast.hidden { display: none; }
 
   /* ── 트렌드 차트 / Trend chart ───────────────────────────────────── */
   /* Step E (E2) + PR-3 F1: clamp으로 viewport 비례 높이 / Viewport-relative clamp height */
@@ -219,6 +329,7 @@
     .analysis-hero { flex-direction: column; gap: var(--space-4, 1rem); }
     .analysis-hero__score-num { font-size: var(--fs-2xl, 1.5rem); }
     .analysis-nav { flex-wrap: wrap; }
+    .analysis-nav__controls { flex-wrap: wrap; }
     .nav-btn { padding: 7px 14px; min-height: 44px; box-sizing: border-box; }
     /* WCAG 2.5.5 모바일 터치 타겟 44px 보장 / WCAG 2.5.5 mobile touch target 44px */
     .fb-btn { min-height: 44px; box-sizing: border-box; }
@@ -285,7 +396,7 @@
       </div>
       <!-- 점수 바 / Score bar -->
       <div class="score-bar score-bar--{{ (analysis.grade or 'f') | lower }}"
-           style="--sb-pct: {{ (analysis.score | round | int) if analysis.score is not none else 0 }}%; max-width: 360px;">
+           style="--sb-pct: {{ (analysis.score | round | int) if analysis.score is not none else 0 }}%;">
       </div>
       <!-- 메타 정보 인라인 / Inline meta info -->
       <div style="display:flex; flex-wrap:wrap; gap: var(--space-3, 0.75rem); margin-top: var(--space-3, 0.75rem); align-items: center;">
@@ -317,24 +428,22 @@
     </div>
   </div>
 
-  <!-- 이전/다음 내비게이션 / Prev/Next navigation -->
+  <!-- 내비게이션 + 뒤로가기 1행 / Navigation + back link in single row -->
   <div class="analysis-nav">
-    {% if prev_id %}
-      <a href="/repos/{{ repo_name }}/analyses/{{ prev_id }}" class="nav-btn">{{ 'analysis_detail.prev' | i18n_args(locale | default('ko')) }}</a>
-    {% else %}
-      <span class="nav-btn disabled">{{ 'analysis_detail.prev' | i18n_args(locale | default('ko')) }}</span>
-    {% endif %}
-    <span class="nav-label">{{ 'analysis_detail.nav_label' | i18n_args(locale | default('ko'), id=analysis.id) }}</span>
-    {% if next_id %}
-      <a href="/repos/{{ repo_name }}/analyses/{{ next_id }}" class="nav-btn">{{ 'analysis_detail.next' | i18n_args(locale | default('ko')) }}</a>
-    {% else %}
-      <span class="nav-btn disabled">{{ 'analysis_detail.next' | i18n_args(locale | default('ko')) }}</span>
-    {% endif %}
-  </div>
-
-  <!-- 뒤로가기 링크 / Back link -->
-  <div style="margin-bottom: var(--space-5, 1.25rem);">
     <a class="back-btn" href="/repos/{{ repo_name }}">{{ 'analysis_detail.back' | i18n_args(locale | default('ko')) }}</a>
+    <div class="analysis-nav__controls">
+      {% if prev_id %}
+        <a href="/repos/{{ repo_name }}/analyses/{{ prev_id }}" class="nav-btn">{{ 'analysis_detail.prev' | i18n_args(locale | default('ko')) }}</a>
+      {% else %}
+        <span class="nav-btn disabled">{{ 'analysis_detail.prev' | i18n_args(locale | default('ko')) }}</span>
+      {% endif %}
+      <span class="nav-label">{{ 'analysis_detail.nav_label' | i18n_args(locale | default('ko'), id=analysis.id) }}</span>
+      {% if next_id %}
+        <a href="/repos/{{ repo_name }}/analyses/{{ next_id }}" class="nav-btn">{{ 'analysis_detail.next' | i18n_args(locale | default('ko')) }}</a>
+      {% else %}
+        <span class="nav-btn disabled">{{ 'analysis_detail.next' | i18n_args(locale | default('ko')) }}</span>
+      {% endif %}
+    </div>
   </div>
 
   <!-- 커밋 메시지 카드 / Commit message card -->
