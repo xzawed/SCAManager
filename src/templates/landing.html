@@ -14,7 +14,34 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="/static/css/tokens.css">
   <link rel="stylesheet" href="/static/css/themes.css">
+  <link rel="stylesheet" href="/static/css/components.css">
   <style>
+    /* ── components.css 미정의 토큰 — landing 전용 alias (dark 고정) ──────
+     * Component token aliases for landing standalone (always-dark context)
+     * components.css 가 참조하는 신규 토큰을 기존 dark 테마 토큰으로 alias */
+    :root {
+      --font-sans: var(--claude-font-body, "Pretendard Variable", Inter, sans-serif);
+      --font-mono: var(--claude-font-mono, "JetBrains Mono", monospace);
+      --lh-tight:  1.15;
+      --lh-snug:   1.35;
+      --lh-base:   1.55;
+      --ls-tight:  -0.022em;
+      --ls-snug:   -0.012em;
+      --radius-xl: 18px;
+      --accent-1:  var(--accent, #6366f1);
+      --accent-text-on: #ffffff;
+      --bg-card-hi: rgba(255, 255, 255, 0.045);
+      --glow-accent: 0 0 0 3px rgba(var(--accent-rgb, 99,102,241), 0.25), 0 4px 28px rgba(var(--accent-rgb, 99,102,241), 0.55);
+      --bg-mute:    rgba(255,255,255,0.04);
+      --border-focus: rgba(var(--accent-rgb, 99,102,241), 0.5);
+      --accent-glow: rgba(var(--accent-rgb, 99,102,241), 0.15);
+      --status-ok:   var(--success, #4ade80);
+      --status-warn: var(--warning, #f59e0b);
+      --status-err:  var(--danger, #f87171);
+      --status-info: var(--accent-hover, #818cf8);
+      --text-mono:   var(--text-2);
+    }
+
     /* ── 리셋 ─────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -51,56 +78,9 @@
       100% { opacity: 1; transform: scale(1.02) rotate(-1deg); }
     }
 
-    /* ── 부유 orb ──────────────────────────────────────── */
-    .orb {
-      position: absolute;
-      border-radius: 50%;
-      filter: blur(80px);
-      will-change: transform;
-    }
-    .orb-1 {
-      width: 560px; height: 560px;
-      top: -120px; left: -100px;
-      background: radial-gradient(circle, var(--orb1, rgba(99,102,241,0.18)), transparent 70%);
-      animation: float1 18s ease-in-out infinite;
-    }
-    .orb-2 {
-      width: 480px; height: 480px;
-      top: 10%; right: -80px;
-      background: radial-gradient(circle, var(--orb2, rgba(168,85,247,0.14)), transparent 70%);
-      animation: float2 22s ease-in-out infinite;
-    }
-    .orb-3 {
-      width: 380px; height: 380px;
-      bottom: 10%; left: 25%;
-      background: radial-gradient(circle, var(--orb3, rgba(236,72,153,0.10)), transparent 70%);
-      animation: float3 16s ease-in-out infinite;
-    }
-    .orb-4 {
-      width: 300px; height: 300px;
-      bottom: 5%; right: 15%;
-      background: radial-gradient(circle, var(--orb4, rgba(59,130,246,0.12)), transparent 70%);
-      animation: float4 20s ease-in-out infinite;
-    }
-    @keyframes float1 {
-      0%, 100% { transform: translate(0, 0) scale(1); }
-      33%      { transform: translate(40px, -50px) scale(1.06); }
-      66%      { transform: translate(-30px, 30px) scale(0.96); }
-    }
-    @keyframes float2 {
-      0%, 100% { transform: translate(0, 0) scale(1); }
-      40%      { transform: translate(-50px, 40px) scale(1.08); }
-      75%      { transform: translate(20px, -30px) scale(0.94); }
-    }
-    @keyframes float3 {
-      0%, 100% { transform: translate(0, 0) scale(1); }
-      50%      { transform: translate(35px, -45px) scale(1.05); }
-    }
-    @keyframes float4 {
-      0%, 100% { transform: translate(0, 0); }
-      35%      { transform: translate(-25px, 35px) scale(1.07); }
-      70%      { transform: translate(30px, -20px) scale(0.97); }
-    }
+    /* ── 부유 orb → .atmosphere (components.css) 로 대체 ──────────────
+     * Orb background replaced by .atmosphere BEM component (components.css)
+     * .orb / .orb-1/2/3/4 CSS rules removed — animation keyframes below also removed */
 
     /* ── 노이즈 오버레이 — 깊이감 ──────────────────────── */
     .landing-bg::after {
@@ -248,12 +228,8 @@
       margin-bottom: 22px;
       color: var(--text-1);
     }
-    .title-gradient {
-      background: var(--title-gradient, linear-gradient(135deg,#818cf8,#c084fc));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
+    /* .title-gradient → components.css .t-gradient 으로 대체 (HTML에서 교체 완료)
+     * .title-gradient replaced by .t-gradient from components.css */
 
     /* ── 서브타이틀 ─────────────────────────────────────── */
     .hero-sub {
@@ -293,7 +269,9 @@
     }
     .chip-icon { font-size: 0.9em; }
 
-    /* ── 버튼 ───────────────────────────────────────────── */
+    /* ── 버튼 — .btn .btn--primary .btn--lg / .btn--ghost 는 components.css 사용 ──
+     * Buttons: .btn .btn--primary .btn--lg / .btn--ghost provided by components.css
+     * landing-specific .hero-actions wrapper only */
     .hero-actions {
       display: flex;
       align-items: center;
@@ -301,53 +279,8 @@
       flex-wrap: wrap;
       gap: 14px;
     }
-    /* 공통 */
-    .btn-hero {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 13px 28px;
-      border-radius: 12px;
-      font-size: 0.95rem;
-      font-weight: 600;
-      border: 1px solid transparent;
-      cursor: pointer;
-      transition:
-        transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
-        box-shadow 0.25s ease,
-        background 0.2s,
-        border-color 0.2s;
-      text-decoration: none;
-      letter-spacing: -0.01em;
-    }
-    .btn-hero:hover { transform: translateY(-3px); }
-    /* 프라이머리 — 채워진 그라데이션 */
-    .btn-hero-primary {
-      background: var(--accent-grad, linear-gradient(135deg,#6366f1,#a855f7));
-      color: #fff;
-      border-color: transparent;
-      box-shadow: 0 2px 12px rgba(var(--accent-rgb, 99,102,241), 0.35);
-    }
-    .btn-hero-primary:hover {
-      box-shadow:
-        0 0 0 3px rgba(var(--accent-rgb, 99,102,241), 0.25),
-        0 4px 28px rgba(var(--accent-rgb, 99,102,241), 0.55),
-        0 8px 32px rgba(var(--accent-rgb, 99,102,241), 0.25);
-    }
-    /* 세컨더리 — 테두리형 */
-    .btn-hero-secondary {
-      background: var(--bg-card, rgba(255,255,255,0.04));
-      color: var(--text-1);
-      border-color: var(--border-strong, rgba(255,255,255,0.14));
-      backdrop-filter: blur(8px);
-    }
-    .btn-hero-secondary:hover {
-      background: rgba(var(--accent-rgb, 99,102,241), 0.08);
-      border-color: rgba(var(--accent-rgb, 99,102,241), 0.45);
-      box-shadow: 0 0 0 3px rgba(var(--accent-rgb, 99,102,241), 0.12);
-    }
     .btn-arrow { transition: transform 0.2s; }
-    .btn-hero-primary:hover .btn-arrow { transform: translateX(3px); }
+    .btn--primary:hover .btn-arrow { transform: translateX(3px); }
 
     /* ── 스탯 바 ────────────────────────────────────────── */
     .hero-stats {
@@ -409,16 +342,9 @@
       color: var(--text-3);
       font-family: var(--claude-font-mono, "JetBrains Mono", monospace);
     }
-    .preview-score-badge {
-      margin-left: auto;
-      padding: 3px 10px;
-      border-radius: 100px;
-      font-size: 0.75rem;
-      font-weight: 700;
-      background: rgba(74,222,128,0.12);
-      color: var(--grade-a, #4ade80);
-      border: 1px solid rgba(74,222,128,0.2);
-    }
+    /* .preview-score-badge → components.css .grade .grade--lg .grade--a 으로 대체
+     * .preview-score-badge replaced by .grade BEM component from components.css */
+    .preview-header .grade { margin-left: auto; }
     .preview-body { padding: 18px; }
     .review-line {
       display: flex;
@@ -444,10 +370,7 @@
     /* ── 반응형 ─────────────────────────────────────────── */
     @media (max-width: 600px) {
       .hero-stats { gap: 20px; }
-      .btn-hero { padding: 12px 22px; font-size: 0.9rem; min-height: 44px; }
-      .orb-1 { width: 300px; height: 300px; }
-      .orb-2 { width: 260px; height: 260px; }
-      .orb-3, .orb-4 { display: none; }
+      .btn.btn--lg { padding: 12px 22px; font-size: 0.9rem; min-height: 44px; }
     }
 
     /* ── 테마별 배경 보정 ──────────────────────────────── */
@@ -473,12 +396,13 @@
 </head>
 <body data-theme="dark">
 
-<!-- 배경 레이어 / Background layer -->
-<div class="landing-bg" aria-hidden="true">
-  <div class="orb orb-1"></div>
-  <div class="orb orb-2"></div>
-  <div class="orb orb-3"></div>
-  <div class="orb orb-4"></div>
+<!-- 배경 레이어 — atmosphere BEM 컴포넌트 / Background layer — atmosphere BEM component -->
+<div class="landing-bg" aria-hidden="true"></div>
+<div class="atmosphere" aria-hidden="true">
+  <span class="atmosphere__orb atmosphere__orb--1"></span>
+  <span class="atmosphere__orb atmosphere__orb--2"></span>
+  <span class="atmosphere__orb atmosphere__orb--3"></span>
+  <span class="atmosphere__grain"></span>
 </div>
 
 <!-- 네비게이션 / Navigation -->
@@ -517,7 +441,7 @@
     <!-- 타이틀 / Title -->
     <h1 class="hero-title reveal" style="--delay: 0.1s">
       AI가 만드는<br>
-      <span class="title-gradient">완벽한 코드 리뷰</span>
+      <span class="t-gradient">완벽한 코드 리뷰</span>
     </h1>
 
     <!-- 서브타이틀 / Subtitle -->
@@ -537,13 +461,13 @@
 
     <!-- 버튼 CTA / Buttons -->
     <div class="hero-actions reveal" style="--delay: 0.38s">
-      <a href="/auth/github" class="btn-hero btn-hero-primary">
+      <a href="/auth/github" class="btn btn--primary btn--lg">
         지금 시작
         <svg class="btn-arrow" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </a>
-      <a href="https://github.com/xzawed/SCAManager" target="_blank" rel="noopener noreferrer" class="btn-hero btn-hero-secondary">
+      <a href="https://github.com/xzawed/SCAManager" target="_blank" rel="noopener noreferrer" class="btn btn--ghost btn--lg">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
           <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
         </svg>
@@ -560,7 +484,7 @@
         <span class="win-dot wd-yel"></span>
         <span class="win-dot wd-grn"></span>
         <span class="preview-file">auth/session.py · PR #42</span>
-        <span class="preview-score-badge">A · 94점</span>
+        <span class="grade grade--lg grade--a">A</span>
       </div>
       <div class="preview-body">
         <div class="review-line" style="--rdelay: 0.65s">
