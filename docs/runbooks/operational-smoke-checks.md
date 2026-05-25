@@ -1,7 +1,7 @@
 # 운영 endpoint smoke check Runbook
 
 **목적**: 정책 13 (운영 endpoint smoke check 의무) 의 default 실행 가이드.
-**기획 근거**: [`docs/reports/2026-05-02-oauth-redirect-uri-incident.md`](../reports/2026-05-02-oauth-redirect-uri-incident.md) — P0 OAuth 사고 후속.
+**기획 근거**: [`docs/_archive/reports/2026-05-02-oauth-redirect-uri-incident.md`](../_archive/reports/2026-05-02-oauth-redirect-uri-incident.md) — P0 OAuth 사고 후속.
 
 **정책 13 적용 시점**:
 - 매 사이클 종료 시 (또는 Phase 종료 시) — 최소 3-endpoint
