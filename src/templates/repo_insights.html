@@ -138,6 +138,7 @@
         <h2 class="ri-card-title card__title">🔄 반복 이슈 랭킹</h2>
       </div>
       {% if recurring_issues %}
+      <div class="table-wrap">
       <table class="ri-issues-table" aria-label="반복 이슈 목록">
         <thead>
           <tr>
@@ -170,6 +171,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
       {% else %}
       <div class="ri-empty">반복 이슈 없음</div>
       {% endif %}

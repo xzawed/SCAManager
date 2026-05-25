@@ -223,7 +223,7 @@
   padding: 10px 18px;
   font-size: 13px;
   color: var(--text-1);
-  vertical-align: middle;
+  vertical-align: top;
 }
 
 .ri-issues-table td.ri-num {
@@ -439,6 +439,15 @@
   .ri-day-btn {
     min-height: 44px;
     padding: 0 14px;
+  }
+}
+
+/* 모바일 ≤640px: 이슈 테이블 '도구' 컬럼(3번째) 숨김 — 배지에 이미 표시됨 */
+/* Mobile ≤640px: hide the tool column (3rd) — already shown in badge */
+@media (max-width: 640px) {
+  .ri-issues-table th:nth-child(3),
+  .ri-issues-table td:nth-child(3) {
+    display: none;
   }
 }
 
