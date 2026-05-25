@@ -657,10 +657,10 @@
         <span class="chevron">▾</span>
       </button>
       <div class="theme-dropdown" id="themeDropdown" role="menu">
-        <div class="theme-option" data-theme="dark"       role="menuitem" tabindex="0">🌌 다크 오로라</div>
-        <div class="theme-option" data-theme="light"      role="menuitem" tabindex="0">☀️ 라이트</div>
-        <div class="theme-option" data-theme="pastel"     role="menuitem" tabindex="0">🌸 파스텔</div>
-        <div class="theme-option" data-theme="catppuccin" role="menuitem" tabindex="0">🐾 개발자 다크</div>
+        <div class="theme-option" data-theme-target="dark"       role="menuitem" tabindex="0">🌌 다크 오로라</div>
+        <div class="theme-option" data-theme-target="light"      role="menuitem" tabindex="0">☀️ 라이트</div>
+        <div class="theme-option" data-theme-target="pastel"     role="menuitem" tabindex="0">🌸 파스텔</div>
+        <div class="theme-option" data-theme-target="catppuccin" role="menuitem" tabindex="0">🐾 개발자 다크</div>
       </div>
     </div>
     {# Phase 2 PR-4 (사이클 84) — 다국어 i18n 헤더 dropdown (테마 토글 패턴 차용) #}
@@ -712,7 +712,7 @@
       document.getElementById('themeIcon').textContent = THEMES[theme].icon;
       document.getElementById('themeName').textContent = THEMES[theme].name;
       document.querySelectorAll('.theme-option').forEach(el => {
-        el.classList.toggle('active', el.dataset.theme === theme);
+        el.classList.toggle('active', el.dataset.themeTarget === theme);
       });
       document.dispatchEvent(new CustomEvent('themechange', { detail: theme }));
     }
@@ -737,7 +737,7 @@
       if (iconEl) iconEl.textContent = THEMES[theme].icon;
       if (nameEl) nameEl.textContent = THEMES[theme].name;
       document.querySelectorAll('.theme-option').forEach(function(el) {
-        el.classList.toggle('active', el.dataset.theme === theme);
+        el.classList.toggle('active', el.dataset.themeTarget === theme);
       });
     }
 
@@ -791,14 +791,14 @@
         }, { signal: sig });
         document.querySelectorAll('.theme-option').forEach(function(el) {
           el.addEventListener('click', function() {
-            applyTheme(el.dataset.theme);
+            applyTheme(el.dataset.themeTarget);
             switcher.classList.remove('open');
             toggleBtn.setAttribute('aria-expanded', 'false');
           }, { signal: sig });
           el.addEventListener('keydown', function(e) {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
-              applyTheme(el.dataset.theme);
+              applyTheme(el.dataset.themeTarget);
               switcher.classList.remove('open');
               toggleBtn.setAttribute('aria-expanded', 'false');
               toggleBtn.focus();
