@@ -3,8 +3,61 @@
 
 {% block content %}
 <link rel="stylesheet" href="/static/css/repo_insights.css">
+<style>
+  /* ── 인사이트 페이지 래퍼 / Insights page wrapper ── */
+  .insights-wrap {
+    max-width: 1200px; margin: 0 auto;
+    padding: var(--space-7, 2rem) var(--space-6, 1.5rem) var(--space-8, 3rem);
+  }
 
-<div class="ri-page">
+  /* ── KPI 행 / KPI row ── */
+  .kpi-row {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-4, 1rem); margin-bottom: var(--space-7, 2rem);
+  }
+  @media (max-width: 768px) { .kpi-row { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 480px) { .kpi-row { grid-template-columns: 1fr; } }
+
+  /* ── KPI 카드 (ri-kpi-card 위에 추가 스타일) / KPI card ── */
+  .kpi {
+    background: var(--bg-card, var(--bg-2, rgba(255,255,255,0.05)));
+    border: 1px solid var(--border-subtle, rgba(255,255,255,0.08));
+    border-radius: var(--radius-lg, 12px); padding: var(--space-5, 1.25rem);
+    display: flex; flex-direction: column;
+  }
+  .kpi__label {
+    font-size: var(--fs-xs, 0.75rem); color: var(--text-2, rgba(255,255,255,0.6));
+    text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600;
+    margin-bottom: var(--space-3, 0.75rem);
+  }
+  .kpi__value {
+    font-family: var(--claude-font-mono, monospace);
+    font-size: var(--fs-3xl, 2rem); font-weight: 700; line-height: 1;
+    color: var(--text-1, #fff); margin-bottom: var(--space-2, 0.5rem);
+  }
+  .kpi__foot { font-size: var(--fs-xs, 0.75rem); color: var(--text-3, rgba(255,255,255,0.4)); margin-top: auto; }
+
+  /* ── 카드 컴포넌트 (차트 섹션용) / Card component (chart section) ── */
+  .card {
+    background: var(--bg-card, var(--bg-2, rgba(255,255,255,0.05)));
+    border: 1px solid var(--border-subtle, rgba(255,255,255,0.08));
+    border-radius: var(--radius-lg, 12px); overflow: hidden; margin-bottom: var(--space-5, 1.25rem);
+  }
+  .card__head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: var(--space-5, 1.25rem);
+    border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+  }
+  .card__title { font-size: var(--fs-md, 1rem); font-weight: 640; color: var(--text-1, #fff); }
+
+  @media (max-width: 768px) {
+    .insights-wrap { padding: var(--space-5, 1.25rem) var(--space-4, 1rem) var(--space-6, 1.5rem); }
+  }
+</style>
+
+<div class="insights-wrap">
+
+  {# ── 기존 .ri-page 구조 인라인 유지 (CSS 호환) / Preserve .ri-page inline structure for CSS compat #}
 
   {# ── 헤더 ──────────────────────────────────────────────── #}
   <div class="ri-header">
@@ -33,35 +86,35 @@
     </div>
   </div>
 
-  {# ── KPI 4 카드 ─────────────────────────────────────────── #}
-  <div class="ri-kpi-grid">
-    <div class="ri-kpi-card">
-      <div class="ri-kpi-label">평균 점수</div>
-      <div class="ri-kpi-value">
+  {# ── KPI 4 카드 (new .kpi component) ───────────────────── #}
+  <div class="kpi-row">
+    <div class="kpi ri-kpi-card">
+      <div class="kpi__label ri-kpi-label">평균 점수</div>
+      <div class="kpi__value ri-kpi-value">
         {% if kpi.avg_score is not none %}{{ kpi.avg_score }}{% else %}—{% endif %}
       </div>
-      <div class="ri-kpi-sub">{{ kpi.grade }}등급</div>
+      <div class="kpi__foot ri-kpi-sub">{{ kpi.grade }}등급</div>
     </div>
-    <div class="ri-kpi-card">
-      <div class="ri-kpi-label">총 분석수</div>
-      <div class="ri-kpi-value">{{ kpi.analysis_count }}</div>
-      <div class="ri-kpi-sub">최근 {{ days }}일</div>
+    <div class="kpi ri-kpi-card">
+      <div class="kpi__label ri-kpi-label">총 분석수</div>
+      <div class="kpi__value ri-kpi-value">{{ kpi.analysis_count }}</div>
+      <div class="kpi__foot ri-kpi-sub">최근 {{ days }}일</div>
     </div>
-    <div class="ri-kpi-card">
-      <div class="ri-kpi-label">최다 반복 이슈</div>
-      <div class="ri-kpi-value" style="font-size:16px; word-break:break-word;">
+    <div class="kpi ri-kpi-card">
+      <div class="kpi__label ri-kpi-label">최다 반복 이슈</div>
+      <div class="kpi__value ri-kpi-value" style="font-size: var(--fs-md, 1rem); word-break:break-word;">
         {% if kpi.top_recurring_issue %}{{ kpi.top_recurring_issue[:40] }}{% else %}—{% endif %}
       </div>
       {% if kpi.top_recurring_count %}
-      <div class="ri-kpi-sub">{{ kpi.top_recurring_count }}회 반복</div>
+      <div class="kpi__foot ri-kpi-sub">{{ kpi.top_recurring_count }}회 반복</div>
       {% endif %}
     </div>
-    <div class="ri-kpi-card">
-      <div class="ri-kpi-label">보안 HIGH</div>
-      <div class="ri-kpi-value {% if kpi.high_security_count > 0 %}ri-delta-down{% endif %}">
+    <div class="kpi ri-kpi-card">
+      <div class="kpi__label ri-kpi-label">보안 HIGH</div>
+      <div class="kpi__value ri-kpi-value {% if kpi.high_security_count > 0 %}ri-delta-down{% endif %}">
         {{ kpi.high_security_count }}건
       </div>
-      <div class="ri-kpi-sub">severity: error / HIGH</div>
+      <div class="kpi__foot ri-kpi-sub">severity: error / HIGH</div>
     </div>
   </div>
 
@@ -80,9 +133,9 @@
   {# ── 2열: 반복 이슈 테이블 + 카테고리 도넛 ──────────────── #}
   {% if recurring_issues or breakdown.total > 0 %}
   <div class="ri-two-col">
-    <div class="ri-card">
-      <div class="ri-card-header">
-        <h2 class="ri-card-title">🔄 반복 이슈 랭킹</h2>
+    <div class="ri-card card">
+      <div class="ri-card-header card__head">
+        <h2 class="ri-card-title card__title">🔄 반복 이슈 랭킹</h2>
       </div>
       {% if recurring_issues %}
       <table class="ri-issues-table" aria-label="반복 이슈 목록">
@@ -122,9 +175,9 @@
       {% endif %}
     </div>
 
-    <div class="ri-card">
-      <div class="ri-card-header">
-        <h2 class="ri-card-title">📊 카테고리 비율</h2>
+    <div class="ri-card card">
+      <div class="ri-card-header card__head">
+        <h2 class="ri-card-title card__title">📊 카테고리 비율</h2>
       </div>
       <div class="ri-donut-wrap">
         {% if breakdown.total > 0 %}
@@ -143,9 +196,9 @@
 
   {# ── 문제 파일 TOP 5 ─────────────────────────────────────── #}
   {% if problem_files %}
-  <div class="ri-card">
-    <div class="ri-card-header">
-      <h2 class="ri-card-title">📁 문제 파일 TOP {{ problem_files|length }}</h2>
+  <div class="ri-card card">
+    <div class="ri-card-header card__head">
+      <h2 class="ri-card-title card__title">📁 문제 파일 TOP {{ problem_files|length }}</h2>
     </div>
     <ul class="ri-file-list">
       {% for f in problem_files %}
@@ -165,9 +218,9 @@
 
   {# ── AI 제안 모음 TOP 10 ─────────────────────────────────── #}
   {% if ai_suggestions %}
-  <div class="ri-card">
-    <div class="ri-card-header">
-      <h2 class="ri-card-title">💡 AI 제안 모음</h2>
+  <div class="ri-card card">
+    <div class="ri-card-header card__head">
+      <h2 class="ri-card-title card__title">💡 AI 제안 모음</h2>
     </div>
     <ol class="ri-suggestions">
       {% for s in ai_suggestions %}
@@ -185,7 +238,7 @@
 
   {# 분석 데이터 없을 때 empty state #}
   {% if kpi.analysis_count == 0 %}
-  <div class="ri-card">
+  <div class="ri-card card">
     <div class="ri-empty">
       <p>최근 {{ days }}일 내 분석 데이터가 없습니다.</p>
       <small>GitHub Push 또는 PR 이벤트 발생 후 다시 확인하세요.</small>
@@ -193,7 +246,7 @@
   </div>
   {% endif %}
 
-</div>
+</div>{# /.insights-wrap #}
 {% endblock %}
 
 {% block scripts %}

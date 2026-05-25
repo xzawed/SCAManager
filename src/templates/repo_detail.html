@@ -2,12 +2,82 @@
 {% block title %}{{ repo_name }} — SCAManager{% endblock %}
 {% block content %}
 <style>
-  /* ── 페이지 타이틀 그라디언트 / Page title gradient ── */
+  /* ── 페이지 래퍼 / Page wrapper ── */
+  .repo-wrap {
+    max-width: 1200px; margin: 0 auto;
+    padding: var(--space-7, 2rem) var(--space-6, 1.5rem) var(--space-8, 3rem);
+  }
+
+  /* ── 리포 히어로 / Repo hero ── */
+  .repo-hero {
+    display: flex; align-items: flex-start; gap: var(--space-5, 1.25rem);
+    margin-bottom: var(--space-7, 2rem);
+  }
+  .repo-hero__icon {
+    width: 52px; height: 52px; border-radius: 12px; flex-shrink: 0;
+    background: var(--accent-grad, linear-gradient(135deg, #7c7aff, #b289ff));
+    display: grid; place-items: center; font-size: 22px;
+  }
+  .repo-hero__body { flex: 1; min-width: 0; }
+  .repo-hero__name {
+    font-size: var(--fs-xl, 1.25rem); font-weight: 700;
+    color: var(--text-1, #fff); letter-spacing: -0.02em; margin: 0 0 var(--space-2, 0.5rem);
+    font-family: var(--claude-font-mono, monospace);
+  }
+  .repo-hero__meta {
+    display: flex; gap: var(--space-3, 0.75rem); flex-wrap: wrap; align-items: center;
+  }
+
+  /* ── 점수 바 / Score bar ── */
+  .score-bar {
+    height: 5px;
+    background: var(--table-row-hover, rgba(255,255,255,0.08));
+    border-radius: 999px; overflow: hidden; display: inline-block; vertical-align: middle;
+  }
+  .score-bar::after {
+    content: ''; display: block; height: 100%; width: var(--sb-pct, 0%);
+    background: var(--accent-grad, linear-gradient(90deg, #7c7aff, #b289ff));
+    border-radius: 999px;
+  }
+  .score-bar--a::after { background: var(--success, #34d399); }
+  .score-bar--b::after { background: #60a5fa; }
+  .score-bar--c::after { background: var(--warning, #fbbf24); }
+  .score-bar--d::after { background: #fb923c; }
+  .score-bar--f::after { background: var(--danger, #f87171); }
+
+  /* ── 등급 배지 / Grade badge ── */
+  .grade {
+    display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 0.75rem; line-height: 1;
+    padding: 2px 7px; border-radius: 6px; border: 1px solid transparent;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    animation: var(--anim-badge-pop);
+  }
+  .grade--a { background: rgba(52,211,153,0.12); color: #34d399; border-color: rgba(52,211,153,0.32); }
+  .grade--b { background: rgba(96,165,250,0.12); color: #60a5fa; border-color: rgba(96,165,250,0.32); }
+  .grade--c { background: rgba(251,191,36,0.12);  color: #fbbf24; border-color: rgba(251,191,36,0.32); }
+  .grade--d { background: rgba(251,146,60,.12);   color: #fb923c; border-color: rgba(251,146,60,0.32); }
+  .grade--f { background: rgba(248,113,113,.12);  color: #f87171; border-color: rgba(248,113,113,0.32); }
+
+  /* ── 카드 컴포넌트 / Card component ── */
+  .card {
+    background: var(--bg-card, var(--bg-2, rgba(255,255,255,0.05)));
+    border: 1px solid var(--border-subtle, rgba(255,255,255,0.08));
+    border-radius: var(--radius-lg, 12px); overflow: hidden; margin-bottom: var(--space-5, 1.25rem);
+  }
+  .card__head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: var(--space-5, 1.25rem);
+    border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+  }
+  .card__title { font-size: var(--fs-md, 1rem); font-weight: 640; color: var(--text-1, #fff); }
+
+  /* ── 페이지 타이틀 그라디언트 (레거시 호환) / Page title gradient (legacy compat) ── */
   .detail-header-text h2 {
     margin: 0 0 4px;
     font-size: 1.4rem;
     font-weight: 700;
-    font-family: 'Menlo', 'Consolas', monospace;
+    font-family: var(--claude-font-mono, monospace);
     background: linear-gradient(135deg, var(--text-1), var(--accent));
     -webkit-background-clip: text;
     background-clip: text;
@@ -353,7 +423,31 @@
     .custom-date-wrap { flex-direction: column; align-items: stretch; }
     .date-input { width: 100%; }
   }
+  @media (max-width: 768px) {
+    .repo-wrap { padding: var(--space-5, 1.25rem) var(--space-4, 1rem) var(--space-6, 1.5rem); }
+    .repo-hero { flex-direction: column; }
+    .repo-hero__icon { width: 44px; height: 44px; font-size: 18px; border-radius: 10px; }
+  }
 </style>
+
+<div class="repo-wrap">
+
+<!-- 리포 히어로 / Repo hero -->
+<div class="repo-hero">
+  <div class="repo-hero__icon">📦</div>
+  <div class="repo-hero__body">
+    <h1 class="repo-hero__name">{{ repo_name }}</h1>
+    <div class="repo-hero__meta">
+      {%- set _sorted = analyses | sort(attribute='created_at', reverse=true) %}
+      {%- if _sorted %}
+      {%- set _latest = _sorted[0] %}
+      <span class="grade grade--{{ (_latest.grade or 'f') | lower }}">{{ _latest.grade or 'F' }}</span>
+      <span style="font-size: var(--fs-sm, 0.875rem); color: var(--text-2, rgba(255,255,255,0.6));">최근 점수: {{ (_latest.score | round(1)) if _latest.score is not none else '—' }}/100</span>
+      {%- endif %}
+      <span style="font-size: var(--fs-xs, 0.75rem); color: var(--text-3, rgba(255,255,255,0.4));">{{ analyses | length }}건 분석</span>
+    </div>
+  </div>
+</div>
 
 {% if hook_installed %}
 <div style="background:var(--accent-blue,#2563eb);color:#fff;border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.25rem;display:flex;align-items:flex-start;gap:.75rem;">
@@ -383,8 +477,8 @@
 <!-- FOUC 방지: chart-card 는 above-the-fold — reveal 클래스 제외
      FOUC prevention: primary score trend chart is above the fold, no reveal class -->
 <div class="card chart-card">
-  <div class="chart-header">
-    <span class="chart-label">{{ 'repo_detail.score_trend_label' | i18n_args(locale | default('ko')) }}</span>
+  <div class="card__head chart-header">
+    <span class="card__title chart-label">{{ 'repo_detail.score_trend_label' | i18n_args(locale | default('ko')) }}</span>
     <div class="chart-stats-row" id="chartStats"></div>
   </div>
   <div class="chart-wrap-inner">
@@ -432,8 +526,8 @@
      data-i18n-source-pr="{{ 'repo_detail.source_filter.pr' | i18n_args(locale | default('ko')) }}"
      data-i18n-source-push="{{ 'repo_detail.source_filter.push' | i18n_args(locale | default('ko')) }}"
      data-i18n-source-cli="{{ 'repo_detail.source_filter.cli' | i18n_args(locale | default('ko')) }}">
-  <div class="history-header">
-    <h3>{{ 'repo_detail.history_title' | i18n_args(locale | default('ko')) }}</h3>
+  <div class="card__head history-header">
+    <h3 class="card__title">{{ 'repo_detail.history_title' | i18n_args(locale | default('ko')) }}</h3>
     <span class="history-count" id="historyCount">{{ 'repo_detail.history_count_recent' | i18n_args(locale | default('ko'), count=(analyses | length)) }}</span>
   </div>
 
@@ -562,6 +656,8 @@
 </div>
 
 <div class="issue-toast hidden" id="repoIssueToast"></div>
+
+</div>{# /.repo-wrap #}
 {% endblock %}
 
 {% block scripts %}
@@ -871,8 +967,10 @@ function renderTable(data) {
       + '<td class="date-cell">' + date + msgPreview + '</td>'
       + '<td><span class="commit-sha">' + escHtml((a.commit_sha || '').slice(0,7)) + '</span></td>'
       + '<td>' + pr + '</td>'
-      + '<td><span class="score-val ' + sc + '">' + (a.score != null ? a.score : '—') + '</span></td>'
-      + '<td><span class="grade grade-' + (a.grade || '') + '">' + (a.grade || '—') + '</span></td>'
+      + '<td><div style="display:inline-flex;align-items:center;gap:6px;">'
+      + '<div class="score-bar score-bar--' + (a.grade || 'f').toLowerCase() + '" style="--sb-pct:' + (a.score != null ? Math.round(a.score) : 0) + '%;width:70px;vertical-align:middle;"></div>'
+      + '<span class="score-val ' + sc + '">' + (a.score != null ? a.score : '—') + '</span></div></td>'
+      + '<td><span class="grade grade--' + (a.grade || 'f').toLowerCase() + '">' + (a.grade || '—') + '</span></td>'
       + '<td>' + renderSourceBadge(a.source) + '</td>'
       + '</tr>';
   }).join('');
