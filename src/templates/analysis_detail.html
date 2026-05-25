@@ -235,6 +235,9 @@
     .ad-breakdown table { font-size: 12px; }
   }
   @media (max-width: 480px) {
+    /* th:first-child = <th scope="row"> 레이블 셀, td:first-child = fallback */
+    /* th:first-child = <th scope="row"> label cell, td:first-child = fallback */
+    .ad-breakdown th:first-child,
     .ad-breakdown td:first-child { width: 80px; font-size: 11px !important; }
     .ad-breakdown td:nth-child(2) { width: 50px; font-size: 12px !important; }
   }
@@ -493,6 +496,7 @@
       <div class="card__title">{{ 'analysis_detail.breakdown.section_title' | i18n_args(locale | default('ko')) }}</div>
     </div>
     <div class="card__body">
+      <div class="table-wrap">
       <table>
         <thead class="sr-only">
           <tr>
@@ -517,6 +521,7 @@
         {% endfor %}
         </tbody>
       </table>
+      </div>
     </div>
   </div>
   {% endif %}
