@@ -6,63 +6,143 @@
 
 {% block content %}
 <style>
-  /* ────────────────────────────────────────────────────────────────
-     Dashboard 전용 scoped 토큰 — 다른 페이지 영향 X.
-     v2 목업 (docs/design/mockups/2026-05-02-dashboard-v2-overview.html) 디자인 시스템 일부.
-     운영 base.html 의 4-테마 (dark/light/glass/claude-dark) 와 공존.
-     Crimson Pro 는 시스템 serif fallback (Phase 4 에서 base 통합 시 Google Fonts 추가 결정).
-     Dashboard-scoped tokens — zero impact on other pages.
-     ──────────────────────────────────────────────────────────────── */
-  .dashboard-page {
-    --d-accent: #D97757;
-    --d-accent-soft: rgba(217, 119, 87, 0.08);
-    --d-success: #9CAF88;
-    --d-warning: #D4A574;
-    --d-danger: #C84E3F;
-    --d-grade-a: #9CAF88;
-    --d-grade-b: #A8A595;
-    --d-grade-c: #D4A574;
-    --d-grade-d: #C8895E;
-    --d-grade-f: #C84E3F;
-    --d-font-heading: Charter, Georgia, 'Crimson Pro', serif;
-  }
-  body[data-theme="claude-dark"] .dashboard-page {
-    --d-accent: #E08968;
-    --d-success: #A8BA94;
-    --d-warning: #DDB585;
-    --d-danger: #D45F50;
-  }
-
-  .dashboard-page {
+  /* ── Dashboard page layout ── */
+  .dash-wrap {
     max-width: 1200px;
     margin: 0 auto;
-    padding: 32px 16px 64px;
+    padding: var(--space-7, 2rem) var(--space-6, 1.5rem) var(--space-10, 4rem);
   }
-
-  /* ── 헤더 / Header ───────────────────────────────────────────── */
-  .dash-header {
+  .dash-head {
     display: flex; align-items: flex-end; justify-content: space-between;
-    margin-bottom: 32px; gap: 16px; flex-wrap: wrap;
+    margin-bottom: var(--space-7, 2rem); gap: var(--space-4, 1rem); flex-wrap: wrap;
   }
-
-  /* 그라디언트 타이틀 — overview.html 동일 패턴
-     Gradient title — same pattern as overview.html */
-  .dash-title {
-    font-family: var(--d-font-heading);
-    font-size: 32px; font-weight: 700;
-    letter-spacing: -.02em;
-    margin: 0 0 4px;
-    background: linear-gradient(135deg, var(--text-1, var(--text-primary)), var(--accent));
+  .dash-head-title {
+    font-size: var(--fs-display-sm, 2rem);
+    font-weight: 760;
+    letter-spacing: var(--ls-tight, -0.025em);
+    line-height: var(--lh-snug, 1.3);
+    background: var(--accent-grad, linear-gradient(135deg, #7c7aff, #b289ff));
     -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
     background-clip: text;
+    color: transparent;
+    margin: 0 0 4px;
   }
-  .dash-subtitle {
-    font-size: 14px; color: var(--text-2, var(--text-muted));
+  .dash-head-sub {
+    font-size: var(--fs-sm, 0.875rem);
+    color: var(--text-2, rgba(255,255,255,0.6));
     margin: 0;
   }
+  /* KPI grid — responsive 5→3→2→1 columns */
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: var(--space-4, 1rem);
+    margin-bottom: var(--space-7, 2rem);
+  }
+  @media (max-width: 1024px) { .kpi-row { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 768px)  { .kpi-row { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 480px)  { .kpi-row { grid-template-columns: 1fr; } }
+  /* KPI card — uses .kpi class from components.css when available */
+  .kpi {
+    background: var(--bg-card, rgba(255,255,255,0.05));
+    border: 1px solid var(--border-subtle, rgba(255,255,255,0.08));
+    border-radius: var(--radius-lg, 12px);
+    padding: var(--space-5, 1.25rem);
+    display: flex; flex-direction: column;
+  }
+  .kpi__label {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: var(--fs-xs, 0.75rem); color: var(--text-2, rgba(255,255,255,0.6));
+    text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600;
+    margin-bottom: var(--space-3, 0.75rem);
+  }
+  .kpi__value {
+    display: flex; align-items: baseline; gap: var(--space-1, 0.25rem);
+    margin-bottom: var(--space-2, 0.5rem);
+  }
+  .kpi__value .t-num {
+    font-family: var(--font-mono, monospace);
+    font-size: var(--fs-3xl, 2rem); font-weight: 700; line-height: 1;
+    color: var(--text-1, #fff);
+  }
+  .kpi__unit {
+    font-size: var(--fs-sm, 0.875rem); color: var(--text-3, rgba(255,255,255,0.4));
+  }
+  .kpi__delta {
+    font-size: var(--fs-xs, 0.75rem); font-weight: 600;
+    margin-top: auto;
+    padding: 2px 6px; border-radius: var(--radius-pill, 999px);
+    display: inline-flex; align-items: center; gap: 3px;
+    width: fit-content;
+  }
+  .kpi__delta--up   { background: rgba(52,211,153,0.12); color: var(--status-ok, #34d399); }
+  .kpi__delta--down { background: rgba(248,113,113,0.12); color: var(--status-err, #f87171); }
+  .kpi__delta--flat { background: rgba(156,163,175,0.12); color: var(--text-3, rgba(255,255,255,0.4)); }
+  .kpi__foot {
+    font-size: var(--fs-xs, 0.75rem); color: var(--text-3, rgba(255,255,255,0.4));
+    margin-top: var(--space-2, 0.5rem);
+  }
+  /* Dashboard 2-column grid */
+  .dash-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-5, 1.25rem);
+    margin-bottom: var(--space-7, 2rem);
+  }
+  @media (max-width: 768px) { .dash-grid { grid-template-columns: 1fr; } }
+  .dash-grid--full { grid-column: 1 / -1; }
+  /* Card component (fallback for components.css .card) */
+  .card {
+    background: var(--bg-card, rgba(255,255,255,0.05));
+    border: 1px solid var(--border-subtle, rgba(255,255,255,0.08));
+    border-radius: var(--radius-lg, 12px);
+    overflow: hidden;
+  }
+  .card__head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: var(--space-5, 1.25rem);
+    border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+  }
+  .card__title { font-size: var(--fs-md, 1rem); font-weight: 640; color: var(--text-1, #fff); }
+  /* Frequency list */
+  .freq-list { list-style: none; padding: var(--space-4, 1rem) var(--space-5, 1.25rem); margin: 0; }
+  .freq-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: var(--space-3, 0.75rem);
+    align-items: center;
+    padding: var(--space-2, 0.5rem) 0;
+    border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+  }
+  .freq-row:last-child { border-bottom: 0; }
+  .freq-row__label { font-size: var(--fs-sm, 0.875rem); color: var(--text-1, #fff); }
+  .freq-row__bar {
+    width: 100px; height: 4px;
+    background: var(--bg-mute, rgba(255,255,255,0.08));
+    border-radius: var(--radius-pill, 999px); overflow: hidden;
+  }
+  .freq-row__bar-fill {
+    height: 100%; background: var(--accent-grad, linear-gradient(90deg, #7c7aff, #b289ff));
+    border-radius: var(--radius-pill, 999px); width: var(--bar-pct, 0%);
+  }
+  .freq-row__count {
+    font-family: var(--font-mono, monospace); font-size: var(--fs-xs, 0.75rem);
+    color: var(--text-3, rgba(255,255,255,0.4)); min-width: 24px; text-align: right;
+  }
+  /* Reason list */
+  .reason-list { list-style: none; padding: var(--space-4, 1rem) var(--space-5, 1.25rem); margin: 0; }
+  .reason-row {
+    display: flex; gap: var(--space-3, 0.75rem); align-items: flex-start;
+    padding: var(--space-2, 0.5rem) 0;
+    border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+    font-size: var(--fs-sm, 0.875rem);
+  }
+  .reason-row:last-child { border-bottom: 0; }
+  .reason-row__reason { flex: 1; color: var(--text-1, #fff); }
+  .reason-row__count { font-family: var(--font-mono, monospace); font-size: var(--fs-xs, 0.75rem); color: var(--text-3, rgba(255,255,255,0.4)); }
 
-  /* ── 범위 / 모드 토글 ────────────────────────────────────────── */
+  /* ── 범위 / 모드 토글 (기존 스타일 보존) ─────────────────────── */
+  /* Range and mode toggles — preserved styles */
   .dash-range-toggle {
     display: inline-flex; gap: 1px; padding: 3px;
     background: var(--bg-card, rgba(255,255,255,.04));
@@ -82,226 +162,6 @@
     color: var(--text-1, var(--text-primary));
     font-weight: 700;
     box-shadow: var(--shadow-sm, 0 1px 4px rgba(0,0,0,.15));
-  }
-
-  /* ── KPI 5 카드 — 프리미엄 스타일 + count-up ───────────────────
-     KPI 5 cards — premium style + count-up
-     Phase 2 PR 1 (Auto-merge 추가). 동일 높이 정합 (PR #187 패턴) */
-  .dash-kpi-grid {
-    display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px;
-    margin-bottom: 24px;
-  }
-
-  /* 카드 컨테이너 — glassmorphism + reveal
-     Card container — glassmorphism + reveal */
-  .dash-kpi {
-    background: var(--bg-card, rgba(255,255,255,.04));
-    backdrop-filter: blur(12px) saturate(150%);
-    border: 1px solid var(--border-subtle, rgba(255,255,255,.08));
-    border-radius: 16px;
-    padding: 20px 24px;
-    box-shadow: var(--shadow-sm);
-    display: flex; flex-direction: column;
-    min-height: 152px;
-    position: relative;
-    overflow: hidden;
-    transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
-  }
-  .dash-kpi:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
-    border-color: var(--accent);
-  }
-
-  /* 하단 액센트 라인 (호버 시 scaleX 0→1)
-     Bottom accent line (scaleX 0→1 on hover) */
-  .dash-kpi::after {
-    content: '';
-    position: absolute;
-    bottom: 0; left: 0; right: 0;
-    height: 2px;
-    background: linear-gradient(90deg, var(--accent), var(--accent-2, var(--accent)));
-    transform: scaleX(0);
-    transform-origin: left;
-    transition: transform .2s ease;
-    border-radius: 0 0 16px 16px;
-  }
-  .dash-kpi:hover::after { transform: scaleX(1); }
-
-  .dash-kpi-label {
-    font-size: 12px; color: var(--text-2, var(--text-muted)); font-weight: 500;
-    margin-bottom: 12px; min-height: 18px;
-  }
-  .dash-kpi-row {
-    display: flex; align-items: baseline; gap: 8px;
-    margin-bottom: 8px; min-height: 38px;
-  }
-  .dash-kpi-value {
-    font-family: var(--d-font-heading);
-    font-size: 36px; font-weight: 600;
-    letter-spacing: -.02em; line-height: 1;
-    color: var(--text-1, var(--text-primary));
-  }
-  .dash-kpi-grade { font-size: 14px; font-weight: 600; color: var(--text-2, var(--text-muted)); }
-  .dash-kpi-grade.A { color: var(--d-grade-a); }
-  .dash-kpi-grade.B { color: var(--d-grade-b); }
-  .dash-kpi-grade.C { color: var(--d-grade-c); }
-  .dash-kpi-grade.D { color: var(--d-grade-d); }
-  .dash-kpi-grade.F { color: var(--d-grade-f); }
-  .dash-kpi-delta {
-    font-size: 12px; font-weight: 500;
-    display: inline-flex; align-items: center; gap: 4px;
-    margin-top: auto;  /* 항상 카드 하단 고정 / always pinned to card bottom */
-    min-height: 16px;
-  }
-  .dash-kpi-delta.up { color: var(--d-success); }
-  .dash-kpi-delta.down { color: var(--d-danger); }
-  .dash-kpi-delta.neu { color: var(--text-2, var(--text-muted)); }
-
-  /* ── Chart card — glassmorphism ─────────────────────────────── */
-  .dash-chart-card {
-    background: var(--bg-card, rgba(255,255,255,.04));
-    backdrop-filter: blur(12px) saturate(150%);
-    border: 1px solid var(--border-subtle, rgba(255,255,255,.08));
-    border-radius: 16px;
-    padding: 20px 24px;
-    box-shadow: var(--shadow-sm);
-    margin-bottom: 24px;
-  }
-  .dash-section-title {
-    font-family: var(--d-font-heading);
-    font-size: 18px; font-weight: 600;
-    letter-spacing: -.01em;
-    margin: 0 0 16px;
-    color: var(--text-1, var(--text-primary));
-  }
-  .dash-chart-wrap {
-    position: relative;
-    height: 320px;
-  }
-
-  /* ── feedback CTA banner (Phase 2 PR 2 — 조건부) ─────────────── */
-  .dash-cta-banner {
-    background: linear-gradient(135deg, var(--accent-faint, transparent) 0%, transparent 100%);
-    border: 1px solid var(--d-accent);
-    border-radius: 16px;
-    padding: 16px 20px;
-    margin-bottom: 24px;
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 16px; flex-wrap: wrap;
-  }
-  .dash-cta-text {
-    flex: 1; min-width: 220px;
-  }
-  .dash-cta-title {
-    font-family: var(--d-font-heading);
-    font-size: 16px; font-weight: 600;
-    color: var(--text-1, var(--text-primary));
-    margin: 0 0 4px;
-  }
-  .dash-cta-meta {
-    font-size: 13px; color: var(--text-2, var(--text-muted));
-    margin: 0;
-  }
-
-  /* 프라이머리 버튼 — 액센트 그라디언트 + 호버 리프트
-     Primary button — accent gradient + hover lift */
-  .dash-cta-btn {
-    padding: 10px 18px; min-height: 40px;
-    border-radius: 8px; font-size: 13px; font-weight: 600;
-    text-decoration: none; box-sizing: border-box;
-    background: linear-gradient(135deg, var(--accent), var(--accent-2, var(--accent)));
-    color: var(--btn-on-accent); border: none;
-    display: inline-flex; align-items: center; gap: 6px;
-    transition: transform .15s ease, box-shadow .15s ease;
-  }
-  .dash-cta-btn:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 6px 20px rgba(var(--accent-rgb, 99,102,241), 0.3);
-    text-decoration: none;
-  }
-  .dash-cta-btn:active { transform: scale(0.97); }
-
-  @media (max-width: 480px) {
-    .dash-cta-banner { padding: 14px; }
-    .dash-cta-btn { width: 100%; justify-content: center; min-height: 44px; }
-  }
-
-  /* ── 자주 발생 이슈 카드 — glassmorphism ────────────────────── */
-  .dash-issues-card {
-    background: var(--bg-card, rgba(255,255,255,.04));
-    backdrop-filter: blur(12px) saturate(150%);
-    border: 1px solid var(--border-subtle, rgba(255,255,255,.08));
-    border-radius: 16px;
-    box-shadow: var(--shadow-sm);
-    padding: 20px 24px;
-    overflow: hidden;
-  }
-
-  /* 이슈 행 — 왼쪽 액센트 바 호버 효과
-     Issue row — left accent bar on hover */
-  .dash-issue-row {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 0 0 0 4px;
-    border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,.08));
-    min-height: 56px;
-    position: relative;
-    transition: background .15s ease;
-  }
-  .dash-issue-row:last-child { border-bottom: none; }
-  .dash-issue-row::before {
-    content: '';
-    position: absolute;
-    left: 0; top: 0; bottom: 0;
-    width: 3px;
-    background: var(--accent);
-    transform: scaleY(0);
-    transform-origin: center;
-    transition: transform .15s ease;
-    border-radius: 0 2px 2px 0;
-  }
-  .dash-issue-row:hover::before { transform: scaleY(1); }
-  .dash-issue-row:hover { background: var(--table-row-hover, transparent); }
-
-  .dash-issue-msg {
-    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-    font-size: 13px; color: var(--text-1, var(--text-primary));
-  }
-  .dash-issue-meta {
-    font-size: 11px; color: var(--text-2, var(--text-muted));
-    margin-top: 2px;
-  }
-
-  /* 뱃지 — badge-pop 애니메이션 적용
-     Badge — badge-pop animation applied */
-  .dash-issue-badge {
-    padding: 3px 10px; border-radius: 12px;
-    background: var(--bg-elevated, rgba(255,255,255,.04));
-    font-size: 11px; font-weight: 600;
-    color: var(--text-2, var(--text-muted));
-    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-    animation: var(--anim-badge-pop);
-  }
-
-  .dash-empty-state {
-    padding: 32px; text-align: center;
-    color: var(--text-2, var(--text-muted)); font-size: 14px;
-  }
-
-  /* 이슈 테이블 컬럼 헤더 — 상단 배경 헤더 행 (정책 16: 단순·명확)
-     Issue table column header row */
-  .dash-table-header {
-    display: flex;
-    justify-content: space-between;
-    padding: 8px 16px;
-    background: var(--bg-elevated);
-    color: var(--text-2);
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    border-radius: 8px 8px 0 0;
-    margin-bottom: 0;
   }
 
   /* ── Phase 3 PR 3 — 모드 토글 (Overview / Insight / Security / Usage) ──
@@ -328,6 +188,48 @@
     box-shadow: var(--shadow-sm, 0 1px 4px rgba(0,0,0,.15));
   }
 
+  /* ── feedback CTA banner (Phase 2 PR 2 — 조건부) ─────────────── */
+  .dash-cta-banner {
+    background: linear-gradient(135deg, var(--accent-faint, transparent) 0%, transparent 100%);
+    border: 1px solid var(--accent, #7c7aff);
+    border-radius: var(--radius-lg, 12px);
+    padding: var(--space-5, 1.25rem);
+    margin-bottom: var(--space-5, 1.25rem);
+    display: flex; align-items: center; justify-content: space-between;
+    gap: var(--space-4, 1rem); flex-wrap: wrap;
+  }
+  .dash-cta-text {
+    flex: 1; min-width: 220px;
+  }
+  .dash-cta-title {
+    font-size: var(--fs-md, 1rem); font-weight: 640;
+    color: var(--text-1, #fff);
+    margin: 0 0 4px;
+  }
+  .dash-cta-meta {
+    font-size: var(--fs-sm, 0.875rem); color: var(--text-2, rgba(255,255,255,0.6));
+    margin: 0;
+  }
+  .dash-cta-btn {
+    padding: 10px 18px; min-height: 40px;
+    border-radius: var(--radius-md, 8px); font-size: 13px; font-weight: 600;
+    text-decoration: none; box-sizing: border-box;
+    background: var(--accent-grad, linear-gradient(135deg, #7c7aff, #b289ff));
+    color: var(--btn-on-accent, #fff); border: none;
+    display: inline-flex; align-items: center; gap: 6px;
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .dash-cta-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(var(--accent-rgb, 99,102,241), 0.3);
+    text-decoration: none;
+  }
+  .dash-cta-btn:active { transform: scale(0.97); }
+  @media (max-width: 480px) {
+    .dash-cta-banner { padding: 14px; }
+    .dash-cta-btn { width: 100%; justify-content: center; min-height: 44px; }
+  }
+
   /* ── Insight 4 카드 grid (Phase 3 PR 3) ─────────────────────────
      ✨ positive / 🔍 focus / 📊 metrics / 💬 next */
   .dash-insight-grid {
@@ -338,15 +240,14 @@
     background: var(--bg-card, rgba(255,255,255,.04));
     backdrop-filter: blur(12px) saturate(150%);
     border: 1px solid var(--border-subtle, rgba(255,255,255,.08));
-    border-radius: 16px;
+    border-radius: var(--radius-lg, 12px);
     box-shadow: var(--shadow-sm);
     padding: 20px 22px;
     min-height: 200px;
   }
   .dash-insight-title {
-    font-family: var(--d-font-heading);
     font-size: 16px; font-weight: 600;
-    color: var(--text-1, var(--text-primary));
+    color: var(--text-1, #fff);
     margin: 0 0 14px;
     display: flex; align-items: center; gap: 8px;
   }
@@ -356,66 +257,46 @@
   }
   .dash-insight-list li {
     font-size: 14px; line-height: 1.5;
-    color: var(--text-1, var(--text-primary));
+    color: var(--text-1, #fff);
     padding-left: 16px; position: relative;
   }
   .dash-insight-list li::before {
     content: "·"; position: absolute; left: 4px; top: -2px;
-    color: var(--d-accent); font-weight: 700; font-size: 16px;
+    color: var(--accent, #7c7aff); font-weight: 700; font-size: 16px;
   }
   .dash-insight-metric {
     display: flex; align-items: baseline; justify-content: space-between;
     padding: 8px 0; border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,.06));
   }
   .dash-insight-metric:last-child { border-bottom: none; }
-  .dash-insight-metric-label { font-size: 13px; color: var(--text-2, var(--text-muted)); }
+  .dash-insight-metric-label { font-size: 13px; color: var(--text-2, rgba(255,255,255,0.6)); }
   .dash-insight-metric-value {
-    font-family: var(--d-font-heading);
-    font-size: 18px; font-weight: 600; color: var(--text-1, var(--text-primary));
+    font-size: 18px; font-weight: 600; color: var(--text-1, #fff);
   }
   .dash-insight-metric-delta {
-    font-size: 12px; margin-left: 8px; color: var(--text-2, var(--text-muted));
+    font-size: 12px; margin-left: 8px; color: var(--text-2, rgba(255,255,255,0.6));
   }
   .dash-insight-status {
     text-align: center; padding: 32px;
-    color: var(--text-2, var(--text-muted)); font-size: 14px;
+    color: var(--text-2, rgba(255,255,255,0.6)); font-size: 14px;
     background: var(--bg-card, rgba(255,255,255,.04));
     backdrop-filter: blur(12px) saturate(150%);
     border: 1px dashed var(--border-subtle, rgba(255,255,255,.08));
-    border-radius: 16px;
+    border-radius: var(--radius-lg, 12px);
     box-shadow: var(--shadow-sm);
     margin-bottom: 24px;
   }
 
-  /* ── 모바일 반응형 — KPI 5 → 데스크탑 5 / tablet 3 / 모바일 2 / xs 1 ── */
-  @media (max-width: 1024px) {
-    .dash-kpi-grid { grid-template-columns: repeat(3, 1fr); }
+  /* ── legacy issue/chart styles (kept for non-overview modes) ─── */
+  .dash-section-title {
+    font-size: 18px; font-weight: 600;
+    letter-spacing: -.01em;
+    margin: 0 0 16px;
+    color: var(--text-1, #fff);
   }
-  @media (max-width: 768px) {
-    .dashboard-page { padding: 24px 12px 64px; }
-    .dash-title { font-size: 26px; }
-    .dash-kpi-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
-    .dash-kpi { padding: 16px; min-height: 132px; }
-    .dash-kpi-value { font-size: 28px; }
-    .dash-chart-wrap { height: 240px; }
-    .dash-insight-grid { grid-template-columns: 1fr; }
-    .dash-insight-card { min-height: auto; padding: 18px; }
-    .dash-mode-toggle a { min-height: 44px; }
-    .dash-range-toggle a { min-height: 44px; box-sizing: border-box; }
-  }
-  @media (max-width: 480px) {
-    .dash-kpi-grid { grid-template-columns: 1fr; }
-    .dash-range-toggle a { min-height: 44px; }
-    /* Cycle 81 PR-B — 모바일 first-fold 우선순위 재배치 (5+1 cross-verify 관점 🅑)
-       데스크탑 = 평균/분석/보안/활성/자동머지 (HTML 순서) 보존
-       모바일 = 운영 위험/사용자 가치 우선 (보안 HIGH + 자동 머지 = first-fold)
-       Cycle 81 PR-B — mobile first-fold priority re-order (5+1 cross-verify 🅑)
-       Desktop = HTML order preserved; mobile = security HIGH + auto-merge first-fold */
-    .dash-kpi:nth-child(3) { order: 1; }  /* 🛡️ 보안 HIGH = 1 (운영 위험 신호) */
-    .dash-kpi:nth-child(5) { order: 2; }  /* 🔀 자동 머지 = 2 (PR 결과 사용자 가치) */
-    .dash-kpi:nth-child(1) { order: 3; }  /* ⭐ 평균 점수 = 3 (overall 건강도) */
-    .dash-kpi:nth-child(2) { order: 4; }  /* 📊 분석 건수 = 4 (활동량) */
-    .dash-kpi:nth-child(4) { order: 5; }  /* 📁 활성 리포 = 5 (확산) */
+  .dash-empty-state {
+    padding: 32px; text-align: center;
+    color: var(--text-2, rgba(255,255,255,0.6)); font-size: 14px;
   }
 
   /* ── repos 모드 ── */
@@ -464,13 +345,36 @@
     .repos-kpi-grid { grid-template-columns: repeat(3, 1fr); gap: 8px; }
     .repos-category-grid { grid-template-columns: repeat(2, 1fr); }
   }
+
+  /* ── 모바일 반응형 — KPI mobile first-fold priority (Cycle 81 PR-B) ── */
+  @media (max-width: 768px) {
+    .dash-wrap { padding: var(--space-5, 1.25rem) var(--space-4, 1rem) var(--space-8, 3rem); }
+    .kpi .kpi__value .t-num { font-size: var(--fs-2xl, 1.5rem); }
+    .dash-range-toggle a { min-height: 44px; box-sizing: border-box; }
+    .dash-mode-toggle a { min-height: 44px; }
+    .dash-insight-grid { grid-template-columns: 1fr; }
+    .dash-insight-card { min-height: auto; padding: 18px; }
+  }
+  @media (max-width: 480px) {
+    .dash-range-toggle a { min-height: 44px; }
+    /* Cycle 81 PR-B — 모바일 first-fold 우선순위 재배치 (5+1 cross-verify 관점 🅑)
+       데스크탑 = 평균/분석/보안/활성/자동머지 (HTML 순서) 보존
+       모바일 = 운영 위험/사용자 가치 우선 (보안 HIGH + 자동 머지 = first-fold)
+       Cycle 81 PR-B — mobile first-fold priority re-order (5+1 cross-verify 🅑)
+       Desktop = HTML order preserved; mobile = security HIGH + auto-merge first-fold */
+    .kpi:nth-child(3) { order: 1; }  /* 보안 HIGH = 1 (운영 위험 신호) */
+    .kpi:nth-child(5) { order: 2; }  /* 자동 머지 = 2 (PR 결과 사용자 가치) */
+    .kpi:nth-child(1) { order: 3; }  /* 평균 점수 = 3 (overall 건강도) */
+    .kpi:nth-child(2) { order: 4; }  /* 분석 건수 = 4 (활동량) */
+    .kpi:nth-child(4) { order: 5; }  /* 활성 리포 = 5 (확산) */
+  }
 </style>
 
-<div class="dashboard-page" data-initial-mode="{{ initial_mode or 'overview' }}">
-  <div class="dash-header">
+<div class="dash-wrap dashboard-page" data-initial-mode="{{ initial_mode or 'overview' }}">
+  <div class="dash-head">
     <div>
-      <h1 class="dash-title">{{ 'dashboard.title' | i18n_args(locale | default('ko')) }}</h1>
-      <p class="dash-subtitle">{{ 'dashboard.subtitle' | i18n_args(locale | default('ko')) }}</p>
+      <h1 class="dash-head-title">{{ 'dashboard.title' | i18n_args(locale | default('ko')) }}</h1>
+      <p class="dash-head-sub">{{ 'dashboard.subtitle' | i18n_args(locale | default('ko')) }}</p>
     </div>
     <div style="display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
       {# Phase 3 PR 3 — 모드 토글 (Overview default + Insight 신규) / Phase 2 PR-6 — i18n #}
@@ -510,26 +414,23 @@
 
   {# ── 상단 요약 (B+C): KPI 카드 + 등급 분포 바 + 경고 Repo 배너 #}
   {# Top summary (B+C): KPI cards + grade distribution bar + warning banners #}
-  <div class="dash-kpi-grid repos-kpi-grid">
-    <div class="dash-kpi">
-      <div class="dash-kpi-label">평균 점수</div>
-      <div class="dash-kpi-value">
-        {% if summary.summary.avg_score is not none %}
-          {{ summary.summary.avg_score }}
-        {% else %}
-          —
-        {% endif %}
+  <div class="kpi-row repos-kpi-grid">
+    <div class="kpi">
+      <div class="kpi__label"><span>평균 점수</span></div>
+      <div class="kpi__value">
+        <span class="t-num">{% if summary.summary.avg_score is not none %}{{ summary.summary.avg_score }}{% else %}—{% endif %}</span>
       </div>
     </div>
-    <div class="dash-kpi">
-      <div class="dash-kpi-label">연결 Repo</div>
-      <div class="dash-kpi-value">{{ summary.summary.total_repos }}</div>
+    <div class="kpi">
+      <div class="kpi__label"><span>연결 Repo</span></div>
+      <div class="kpi__value"><span class="t-num">{{ summary.summary.total_repos }}</span></div>
     </div>
-    <div class="dash-kpi">
-      <div class="dash-kpi-label">경고</div>
-      <div class="dash-kpi-value"
-           style="color: {% if summary.summary.warning_count > 0 %}var(--danger){% else %}var(--success){% endif %}">
-        {{ summary.summary.warning_count }}
+    <div class="kpi">
+      <div class="kpi__label"><span>경고</span></div>
+      <div class="kpi__value">
+        <span class="t-num" style="color: {% if summary.summary.warning_count > 0 %}var(--danger){% else %}var(--success){% endif %}">
+          {{ summary.summary.warning_count }}
+        </span>
       </div>
     </div>
   </div>
@@ -984,99 +885,120 @@
   {% endif %}
 
   {# KPI 5 카드 (Phase 1 4 + Phase 2 Auto-merge) / Phase 2 PR-6 — i18n #}
-  <div class="dash-kpi-grid">
-    <div class="dash-kpi">
-      <div class="dash-kpi-label">{{ 'dashboard.kpi.avg_score' | i18n_args(locale | default('ko')) }}</div>
-      <div class="dash-kpi-row">
-        <span class="dash-kpi-value"
+  {# Redesigned with BEM .kpi structure — Phase 3 CSS design system migration #}
+  <div class="kpi-row">
+
+    {# ① 평균 점수 — grade badge + delta / Average score — grade badge + delta #}
+    <div class="kpi">
+      <div class="kpi__label">
+        <span>{{ 'dashboard.kpi.avg_score' | i18n_args(locale | default('ko')) }}</span>
+        {% if kpi.avg_score.grade %}
+        <span class="grade grade--{{ (kpi.avg_score.grade or 'f') | lower }}">{{ kpi.avg_score.grade }}</span>
+        {% endif %}
+      </div>
+      <div class="kpi__value">
+        <span class="t-num"
           {% if kpi.avg_score.value is not none %}data-count="{{ kpi.avg_score.value }}"{% endif %}>{{ kpi.avg_score.value if kpi.avg_score.value is not none else '—' }}</span>
-        {% if kpi.avg_score.grade %}<span class="dash-kpi-grade {{ kpi.avg_score.grade }}">{{ kpi.avg_score.grade }}</span>{% endif %}
+        {% if kpi.avg_score.value is not none %}<span class="kpi__unit">/100</span>{% endif %}
       </div>
       {% if kpi.avg_score.delta is not none %}
         {% if kpi.avg_score.delta > 0 %}
-          <div class="dash-kpi-delta up">▲ +{{ kpi.avg_score.delta }} {{ 'dashboard.delta.vs_period' | i18n_args(locale | default('ko'), days=days) }}</div>
+          <div class="kpi__delta kpi__delta--up">▲ +{{ kpi.avg_score.delta }} {{ 'dashboard.delta.vs_period' | i18n_args(locale | default('ko'), days=days) }}</div>
         {% elif kpi.avg_score.delta < 0 %}
-          <div class="dash-kpi-delta down">▼ {{ kpi.avg_score.delta }} {{ 'dashboard.delta.vs_period' | i18n_args(locale | default('ko'), days=days) }}</div>
+          <div class="kpi__delta kpi__delta--down">▼ {{ kpi.avg_score.delta }} {{ 'dashboard.delta.vs_period' | i18n_args(locale | default('ko'), days=days) }}</div>
         {% else %}
-          <div class="dash-kpi-delta neu">— {{ 'dashboard.delta.no_change' | i18n_args(locale | default('ko')) }}</div>
+          <div class="kpi__delta kpi__delta--flat">— {{ 'dashboard.delta.no_change' | i18n_args(locale | default('ko')) }}</div>
         {% endif %}
       {% else %}
-        <div class="dash-kpi-delta neu">— {{ 'dashboard.delta.no_comparison' | i18n_args(locale | default('ko')) }}</div>
+        <div class="kpi__delta kpi__delta--flat">— {{ 'dashboard.delta.no_comparison' | i18n_args(locale | default('ko')) }}</div>
       {% endif %}
+      <div class="kpi__foot">최근 {{ days }}일 평균</div>
     </div>
 
-    <div class="dash-kpi">
-      <div class="dash-kpi-label">{{ 'dashboard.kpi.analysis_count' | i18n_args(locale | default('ko')) }}</div>
-      <div class="dash-kpi-row">
-        <span class="dash-kpi-value" data-count="{{ kpi.analysis_count.value }}">{{ kpi.analysis_count.value }}</span>
+    {# ② 분석 건수 / Analysis count #}
+    <div class="kpi">
+      <div class="kpi__label"><span>{{ 'dashboard.kpi.analysis_count' | i18n_args(locale | default('ko')) }}</span></div>
+      <div class="kpi__value">
+        <span class="t-num" data-count="{{ kpi.analysis_count.value }}">{{ kpi.analysis_count.value }}</span>
+        <span class="kpi__unit">건</span>
       </div>
       {% if kpi.analysis_count.delta > 0 %}
-        <div class="dash-kpi-delta up">▲ +{{ kpi.analysis_count.delta }} {{ 'dashboard.delta.vs_period' | i18n_args(locale | default('ko'), days=days) }}</div>
+        <div class="kpi__delta kpi__delta--up">▲ +{{ kpi.analysis_count.delta }} {{ 'dashboard.delta.vs_period' | i18n_args(locale | default('ko'), days=days) }}</div>
       {% elif kpi.analysis_count.delta < 0 %}
-        <div class="dash-kpi-delta down">▼ {{ kpi.analysis_count.delta }} {{ 'dashboard.delta.vs_period' | i18n_args(locale | default('ko'), days=days) }}</div>
+        <div class="kpi__delta kpi__delta--down">▼ {{ kpi.analysis_count.delta }} {{ 'dashboard.delta.vs_period' | i18n_args(locale | default('ko'), days=days) }}</div>
       {% else %}
-        <div class="dash-kpi-delta neu">— {{ 'dashboard.delta.no_change' | i18n_args(locale | default('ko')) }}</div>
+        <div class="kpi__delta kpi__delta--flat">— {{ 'dashboard.delta.no_change' | i18n_args(locale | default('ko')) }}</div>
       {% endif %}
     </div>
 
-    <div class="dash-kpi">
-      <div class="dash-kpi-label">{{ 'dashboard.kpi.high_security' | i18n_args(locale | default('ko')) }}</div>
-      <div class="dash-kpi-row">
-        <span class="dash-kpi-value" data-count="{{ kpi.high_security_issues.value }}">{{ kpi.high_security_issues.value }}</span>
+    {# ③ 보안 HIGH 이슈 (보안 악화 시 down 표시 — 반전 delta) / Security HIGH issues #}
+    <div class="kpi">
+      <div class="kpi__label"><span>{{ 'dashboard.kpi.high_security' | i18n_args(locale | default('ko')) }}</span></div>
+      <div class="kpi__value">
+        <span class="t-num" data-count="{{ kpi.high_security_issues.value }}">{{ kpi.high_security_issues.value }}</span>
       </div>
       {% if kpi.high_security_issues.delta > 0 %}
-        <div class="dash-kpi-delta down">▲ +{{ kpi.high_security_issues.delta }} ({{ 'dashboard.delta.decline' | i18n_args(locale | default('ko')) }})</div>
+        <div class="kpi__delta kpi__delta--down">▲ +{{ kpi.high_security_issues.delta }} ({{ 'dashboard.delta.decline' | i18n_args(locale | default('ko')) }})</div>
       {% elif kpi.high_security_issues.delta < 0 %}
-        <div class="dash-kpi-delta up">▼ {{ kpi.high_security_issues.delta }} ({{ 'dashboard.delta.improvement' | i18n_args(locale | default('ko')) }})</div>
+        <div class="kpi__delta kpi__delta--up">▼ {{ kpi.high_security_issues.delta }} ({{ 'dashboard.delta.improvement' | i18n_args(locale | default('ko')) }})</div>
       {% else %}
-        <div class="dash-kpi-delta neu">— {{ 'dashboard.delta.no_change' | i18n_args(locale | default('ko')) }}</div>
+        <div class="kpi__delta kpi__delta--flat">— {{ 'dashboard.delta.no_change' | i18n_args(locale | default('ko')) }}</div>
       {% endif %}
     </div>
 
-    <div class="dash-kpi">
-      <div class="dash-kpi-label">{{ 'dashboard.kpi.active_repos' | i18n_args(locale | default('ko')) }}</div>
-      <div class="dash-kpi-row">
-        <span class="dash-kpi-value" data-count="{{ kpi.active_repos.value }}">{{ kpi.active_repos.value }}</span>
-        <span class="dash-kpi-grade">/ {{ kpi.active_repos.total }}</span>
+    {# ④ 활성 리포 / Active repos #}
+    <div class="kpi">
+      <div class="kpi__label"><span>{{ 'dashboard.kpi.active_repos' | i18n_args(locale | default('ko')) }}</span></div>
+      <div class="kpi__value">
+        <span class="t-num" data-count="{{ kpi.active_repos.value }}">{{ kpi.active_repos.value }}</span>
+        <span class="kpi__unit">/ {{ kpi.active_repos.total }}</span>
       </div>
       {% if kpi.active_repos.delta > 0 %}
-        <div class="dash-kpi-delta up">▲ +{{ kpi.active_repos.delta }} {{ 'dashboard.delta.vs_period' | i18n_args(locale | default('ko'), days=days) }}</div>
+        <div class="kpi__delta kpi__delta--up">▲ +{{ kpi.active_repos.delta }} {{ 'dashboard.delta.vs_period' | i18n_args(locale | default('ko'), days=days) }}</div>
       {% elif kpi.active_repos.delta < 0 %}
-        <div class="dash-kpi-delta down">▼ {{ kpi.active_repos.delta }} {{ 'dashboard.delta.vs_period' | i18n_args(locale | default('ko'), days=days) }}</div>
+        <div class="kpi__delta kpi__delta--down">▼ {{ kpi.active_repos.delta }} {{ 'dashboard.delta.vs_period' | i18n_args(locale | default('ko'), days=days) }}</div>
       {% else %}
-        <div class="dash-kpi-delta neu">— {{ 'dashboard.delta.no_change' | i18n_args(locale | default('ko')) }}</div>
+        <div class="kpi__delta kpi__delta--flat">— {{ 'dashboard.delta.no_change' | i18n_args(locale | default('ko')) }}</div>
       {% endif %}
     </div>
 
-    {# Phase 1+2 회고 P0 #3 swap (2026-05-02) — 메인=PR 기준 최종, sub=단순 시도. / Phase 2 PR-6 — i18n #}
-    <div class="dash-kpi" title="{{ 'dashboard.kpi.auto_merge_tooltip' | i18n_args(locale | default('ko')) }}">
-      <div class="dash-kpi-label">{{ 'dashboard.kpi.auto_merge_success' | i18n_args(locale | default('ko')) }}</div>
-      <div class="dash-kpi-row">
-        <span class="dash-kpi-value"
+    {# ⑤ 자동 머지 성공률 — Phase 1+2 회고 P0 #3 swap (2026-05-02)
+       메인=PR 기준 최종 (final_success_rate_pct), sub=단순 시도 (value)
+       Auto-merge success rate — main=PR-based final, sub=simple attempt rate #}
+    {# 🔴 ui.md: Auto-merge KPI 시각 우선순위 — final_success_rate_pct = 메인 (36px), value = fallback #}
+    <div class="kpi" title="{{ 'dashboard.kpi.auto_merge_tooltip' | i18n_args(locale | default('ko')) }}">
+      <div class="kpi__label">
+        <span>{{ 'dashboard.kpi.auto_merge_success' | i18n_args(locale | default('ko')) }}</span>
+        {% if auto_merge.distinct_prs %}
+          <span style="font-size:var(--fs-xs,0.75rem); color:var(--text-3,rgba(255,255,255,0.4));">{{ auto_merge.final_success_prs }}/{{ auto_merge.distinct_prs }} PR</span>
+        {% endif %}
+      </div>
+      <div class="kpi__value">
+        <span class="t-num"
           {%- if auto_merge.final_success_rate_pct is not none %} data-count="{{ auto_merge.final_success_rate_pct }}"
           {%- elif auto_merge.value is not none %} data-count="{{ auto_merge.value }}"{% endif %}>
           {%- if auto_merge.final_success_rate_pct is not none -%}
-            {{ auto_merge.final_success_rate_pct }}<span style="font-size:.5em;color:var(--text-2, var(--text-muted));">%</span>
+            {{ auto_merge.final_success_rate_pct }}
           {%- elif auto_merge.value is not none -%}
-            {{ auto_merge.value }}<span style="font-size:.5em;color:var(--text-2, var(--text-muted));">%</span>
+            {{ auto_merge.value }}
           {%- else -%}
             —
           {%- endif -%}
         </span>
-        {% if auto_merge.distinct_prs %}
-          <span class="dash-kpi-grade">{{ auto_merge.final_success_prs }}/{{ auto_merge.distinct_prs }} PR</span>
-        {% endif %}
+        {%- if auto_merge.final_success_rate_pct is not none or auto_merge.value is not none -%}
+          <span class="kpi__unit">%</span>
+        {%- endif -%}
       </div>
       {% if auto_merge.delta is not none %}
         {% if auto_merge.delta > 0 %}
-          <div class="dash-kpi-delta up">{{ 'dashboard.delta.attempts_vs_period' | i18n_args(locale | default('ko'), delta=auto_merge.delta, days=days) }}</div>
+          <div class="kpi__delta kpi__delta--up">{{ 'dashboard.delta.attempts_vs_period' | i18n_args(locale | default('ko'), delta=auto_merge.delta, days=days) }}</div>
         {% elif auto_merge.delta < 0 %}
-          <div class="dash-kpi-delta down">{{ 'dashboard.delta.attempts_vs_period_down' | i18n_args(locale | default('ko'), delta=auto_merge.delta, days=days) }}</div>
+          <div class="kpi__delta kpi__delta--down">{{ 'dashboard.delta.attempts_vs_period_down' | i18n_args(locale | default('ko'), delta=auto_merge.delta, days=days) }}</div>
         {% else %}
-          <div class="dash-kpi-delta neu">{{ 'dashboard.delta.attempts_no_change' | i18n_args(locale | default('ko')) }}</div>
+          <div class="kpi__delta kpi__delta--flat">{{ 'dashboard.delta.attempts_no_change' | i18n_args(locale | default('ko')) }}</div>
         {% endif %}
       {% else %}
-        <div class="dash-kpi-delta neu">
+        <div class="kpi__delta kpi__delta--flat">
           {%- if auto_merge.value is not none -%}
             {{ 'dashboard.delta.attempts_baseline' | i18n_args(locale | default('ko'), value=auto_merge.value, success=auto_merge.success_count, total=auto_merge.total_attempts) }}
           {%- else -%}
@@ -1085,14 +1007,22 @@
         </div>
       {% endif %}
     </div>
-  </div>
 
-  {# 점수 추세 라인 차트 / Phase 2 PR-6 — i18n #}
-  <div class="dash-chart-card">
-    <h2 class="dash-section-title">{{ 'dashboard.trend' | i18n_args(locale | default('ko'), days=days) }}</h2>
+  </div>{# end .kpi-row #}
+
+  {# 점수 추세 라인 차트 — .card 구조로 재작성 / Score trend chart — rewritten with .card structure #}
+  <div class="card dash-grid--full" style="margin-bottom: var(--space-5, 1.25rem);">
+    <div class="card__head">
+      <div>
+        <div style="font-size: var(--fs-xs, 0.75rem); color: var(--text-2, rgba(255,255,255,0.6)); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; margin-bottom: 4px;">점수 추세</div>
+        <div class="card__title">{{ 'dashboard.trend' | i18n_args(locale | default('ko'), days=days) }}</div>
+      </div>
+    </div>
     {% if trend %}
-      <div class="dash-chart-wrap">
-        <canvas id="dashTrendChart"></canvas>
+      <div style="padding: var(--space-5, 1.25rem);">
+        <div style="position: relative; height: 220px;">
+          <canvas id="dashTrendChart"></canvas>
+        </div>
       </div>
     {% else %}
       <div class="dash-empty-state">
@@ -1108,25 +1038,28 @@
     {% endif %}
   </div>
 
-  {# 자주 발생 이슈 / Phase 2 PR-6 — i18n #}
-  <div class="dash-issues-card">
-    <h2 class="dash-section-title">{{ 'dashboard.frequent_issues' | i18n_args(locale | default('ko'), days=days) }}</h2>
+  {# 자주 발생 이슈 — .card + freq-list 구조 / Frequent issues — .card + freq-list structure #}
+  <div class="card dash-grid--full" style="margin-bottom: var(--space-5, 1.25rem);">
+    <div class="card__head">
+      <div class="card__title">{{ 'dashboard.frequent_issues' | i18n_args(locale | default('ko'), days=days) }}</div>
+    </div>
     {% if frequent_issues %}
-      <div class="dash-table-header">
-        <span>이슈</span>
-        <span>빈도</span>
-      </div>
-      {% for issue in frequent_issues %}
-      <div class="dash-issue-row reveal">
-        <div>
-          <div class="dash-issue-msg">{{ issue.message }}</div>
-          <div class="dash-issue-meta">
-            {{ issue.tool or '—' }} · {{ issue.language or '—' }} · {{ issue.category or '—' }}
+      {# 최대 빈도 값으로 bar 비율 계산 — Calculate bar ratio from max frequency value #}
+      {% set max_count = frequent_issues[0].count if frequent_issues else 1 %}
+      <ul class="freq-list">
+        {% for issue in frequent_issues %}
+        <li class="freq-row reveal">
+          <span class="freq-row__label">
+            <span style="font-family: var(--font-mono, monospace); font-size: var(--fs-xs, 0.75rem);">{{ issue.message }}</span>
+            <span style="font-size: var(--fs-xs, 0.75rem); color: var(--text-3, rgba(255,255,255,0.4)); display: block;">{{ issue.tool or '—' }} · {{ issue.language or '—' }} · {{ issue.category or '—' }}</span>
+          </span>
+          <div class="freq-row__bar">
+            <div class="freq-row__bar-fill" style="--bar-pct: {{ ((issue.count / max_count) * 100) | round(1) }}%"></div>
           </div>
-        </div>
-        <span class="dash-issue-badge">{{ issue.count }}</span>
-      </div>
-      {% endfor %}
+          <span class="freq-row__count">{{ issue.count }}</span>
+        </li>
+        {% endfor %}
+      </ul>
     {% else %}
       <div class="dash-empty-state">
         {# Cycle 94 Step 2-B — 빈 데이터 일러스트 (frequent_issues)
@@ -1142,21 +1075,26 @@
     {% endif %}
   </div>
 
-  {# Phase 2 PR 1 — 자동 머지 실패 사유 분포 (운영 신호: unstable_ci 우세) / Phase 2 PR-6 — i18n #}
+  {# Phase 2 PR 1 — 자동 머지 실패 사유 분포 (운영 신호: unstable_ci 우세)
+     Auto-merge failure reason distribution — .card + reason-list structure #}
   {% if merge_failures %}
-  <div class="dash-issues-card" style="margin-top: 16px;">
-    <h2 class="dash-section-title">{{ 'dashboard.merge_failures_title' | i18n_args(locale | default('ko'), days=days) }}</h2>
-    {% for fail in merge_failures %}
-    <div class="dash-issue-row">
-      <div>
-        <div class="dash-issue-msg">{{ fail.reason }}</div>
-        <div class="dash-issue-meta">
-          {{ 'dashboard.merge_failure_meta' | i18n_args(locale | default('ko'), pct=fail.share_pct, count=fail.count) }}
-        </div>
-      </div>
-      <span class="dash-issue-badge">{{ fail.count }}</span>
+  <div class="card dash-grid--full" style="margin-bottom: var(--space-5, 1.25rem);">
+    <div class="card__head">
+      <div class="card__title">{{ 'dashboard.merge_failures_title' | i18n_args(locale | default('ko'), days=days) }}</div>
     </div>
-    {% endfor %}
+    <ul class="reason-list">
+      {% for fail in merge_failures %}
+      <li class="reason-row">
+        <span class="reason-row__reason">
+          <span style="font-family: var(--font-mono, monospace);">{{ fail.reason }}</span>
+          <span style="font-size: var(--fs-xs, 0.75rem); color: var(--text-3, rgba(255,255,255,0.4)); display: block;">
+            {{ 'dashboard.merge_failure_meta' | i18n_args(locale | default('ko'), pct=fail.share_pct, count=fail.count) }}
+          </span>
+        </span>
+        <span class="reason-row__count">{{ fail.count }}</span>
+      </li>
+      {% endfor %}
+    </ul>
   </div>
   {% endif %}
 
