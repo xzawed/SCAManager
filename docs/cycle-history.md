@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [사이클 135 (모바일 테이블 헤더-값 정렬 불일치 수정 — 3페이지, 2026-05-25)](#사이클-135)
 - [사이클 134 (문서 정리 — README 제품화 + reports/superpowers 아카이브 + policies .claude/ 이동, 2026-05-25)](#사이클-134)
 - [사이클 133 (nav-logo 라이트/파스텔 텍스트 불가시 수정, 2026-05-25)](#사이클-133)
 - [사이클 132 (theme-option CSS 변수 충돌 버그 수정, 2026-05-25)](#사이클-132)
@@ -42,6 +43,25 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 사이클 135
+
+**날짜**: 2026-05-25
+**작업**: 모바일 테이블 헤더-값 정렬 불일치 수정 — repo_detail / analysis_detail / repo_insights 3페이지
+**PR**: #645 (`fix/mobile-table-grid-alignment`)
+
+### 변경 내용
+
+- `src/static/css/repo_insights.css`: `vertical-align: middle → top` — 멀티라인 이슈 메시지 행에서 `#`/도구 값이 행 중앙에 부유하던 문제 수정. `@media (max-width: 640px)` 도구 컬럼(3번째) 숨김 (배지에 이미 표시)
+- `src/templates/repo_insights.html`: `ri-issues-table`을 `.table-wrap`으로 감쌈 (`overflow-x: auto` 적용)
+- `src/templates/analysis_detail.html`: 점수 브레이크다운 table `.table-wrap` 추가. `@media (max-width: 480px)` 에 `th:first-child` 선택자 추가 (`<th scope="row">`가 `td:first-child`에 매칭 안 되던 버그)
+- `src/templates/repo_detail.html`: `@media (max-width: 480px)` 커밋(col2)/출처(col6) 숨김 → 6컬럼 → 4컬럼 (날짜·PR·점수·등급)
+
+### Playwright 검증
+
+390px(iPhone 12 Pro) 뷰포트 before/after 스크린샷 비교 — 3개 섹션 모두 수정 확인
+
+---
 
 ## 사이클 134
 
