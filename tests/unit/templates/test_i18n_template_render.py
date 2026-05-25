@@ -77,7 +77,7 @@ class _FakeUser:
 
 
 def test_overview_html_with_repos_renders_korean():
-    """overview.html (리포 ≥ 1) — 한국어 greeting + table header + repo_count."""
+    """overview.html (리포 ≥ 1) — 한국어 greeting + card 구조 + repo_count."""
     repos = [{"full_name": "owner/repo", "analysis_count": 5, "avg_score": 80, "avg_grade": "B"}]
     out = _render(
         "overview.html",
@@ -89,15 +89,13 @@ def test_overview_html_with_repos_renders_korean():
     assert "안녕하세요, Alice님" in out  # greeting
     assert "오늘의 분석" in out  # title (with repos)
     assert "1개 리포" in out  # repo_count
-    assert "리포지토리</th>" in out  # table.repository
-    assert "분석</th>" in out  # table.analysis
-    assert "평균 점수</th>" in out  # table.avg_score
-    assert "등급</th>" in out  # table.grade
+    assert "owner/repo" in out  # repo card name
+    assert "grade-B" in out  # grade badge CSS class
     assert "5회</span>" in out  # analysis_count_unit
 
 
 def test_overview_html_with_repos_renders_english():
-    """overview.html (리포 ≥ 1) — 영문 greeting + table header + repo_count."""
+    """overview.html (리포 ≥ 1) — 영문 greeting + card 구조 + repo_count."""
     repos = [{"full_name": "owner/repo", "analysis_count": 5, "avg_score": 80, "avg_grade": "B"}]
     out = _render(
         "overview.html",
@@ -109,13 +107,13 @@ def test_overview_html_with_repos_renders_english():
     assert "Hello, Alice" in out
     assert "Today&#39;s Analyses" in out  # apostrophe escaped
     assert "1 repos" in out
-    assert "Repository</th>" in out
-    assert "Average Score</th>" in out
+    assert "owner/repo" in out  # repo card name
+    assert "grade-B" in out  # grade badge CSS class
     assert "5 runs</span>" in out
 
 
 def test_overview_html_with_repos_renders_japanese():
-    """overview.html (리포 ≥ 1) — 일본어 greeting + table header + repo_count."""
+    """overview.html (리포 ≥ 1) — 일본어 greeting + card 구조 + repo_count."""
     repos = [{"full_name": "owner/repo", "analysis_count": 5, "avg_score": 80, "avg_grade": "B"}]
     out = _render(
         "overview.html",
@@ -127,8 +125,8 @@ def test_overview_html_with_repos_renders_japanese():
     assert "こんにちは、Aliceさん" in out
     assert "本日の分析" in out
     assert "1個のリポ" in out
-    assert "リポジトリ</th>" in out
-    assert "平均スコア</th>" in out
+    assert "owner/repo" in out  # repo card name
+    assert "grade-B" in out  # grade badge CSS class
     assert "5回</span>" in out
 
 
