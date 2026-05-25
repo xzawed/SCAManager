@@ -4,12 +4,12 @@
 <style>
   .settings-wrap {
     max-width: 860px; margin: 0 auto;
-    padding: var(--space-7) var(--space-6) calc(var(--space-10) + env(safe-area-inset-bottom, 0px));
+    padding: var(--space-7) var(--space-6) calc(var(--space-8, 48px) + env(safe-area-inset-bottom, 0px));
   }
   .settings-section { margin-bottom: var(--space-5); }
   .settings-head {
     font-size: var(--fs-xl); font-weight: 700;
-    letter-spacing: var(--ls-tight);
+    letter-spacing: var(--tracking-tight);
     background: var(--accent-grad);
     -webkit-background-clip: text; background-clip: text; color: transparent;
     margin: 0 0 var(--space-7);
@@ -150,7 +150,7 @@
   }
   .toggle-switch .toggle-track::after {
     content:''; position:absolute; top:3px; left:3px;
-    width:16px; height:16px; background:var(--bg-elevated); border-radius:50%;
+    width:16px; height:16px; background:#fff; border-radius:50%;
     transition:transform var(--transition), background var(--transition);
     box-shadow:0 1px 4px rgba(0,0,0,.3);
   }
@@ -527,7 +527,7 @@
               <p style="font-size:11px;color:var(--text-2);margin-top:.5rem;line-height:1.5;">
                 {{ 'settings_page.preset_card.channel_unchanged' | i18n_args(locale | default('ko')) }}
               </p>
-              <button type="button" class="btn btn--secondary btn--sm preset-apply-btn" style="margin-top:.65rem;padding:.5rem;"
+              <button type="button" class="btn btn--ghost btn--sm preset-apply-btn" style="margin-top:.65rem;padding:.5rem;"
                       onclick="applyPreset('minimal', document.getElementById('preset-minimal'))">
                 {{ 'settings_page.preset_card.apply_btn' | i18n_args(locale | default('ko')) }}
               </button>
@@ -562,7 +562,7 @@
               <p style="font-size:11px;color:var(--text-2);margin-top:.5rem;line-height:1.5;">
                 {{ 'settings_page.preset_card.channel_unchanged' | i18n_args(locale | default('ko')) }}
               </p>
-              <button type="button" class="btn btn--secondary btn--sm preset-apply-btn" style="margin-top:.65rem;padding:.5rem;"
+              <button type="button" class="btn btn--ghost btn--sm preset-apply-btn" style="margin-top:.65rem;padding:.5rem;"
                       onclick="applyPreset('standard', document.getElementById('preset-standard'))">
                 {{ 'settings_page.preset_card.apply_btn' | i18n_args(locale | default('ko')) }}
               </button>
@@ -597,7 +597,7 @@
               <p style="font-size:11px;color:var(--text-2);margin-top:.5rem;line-height:1.5;">
                 {{ 'settings_page.preset_card.channel_unchanged' | i18n_args(locale | default('ko')) }}
               </p>
-              <button type="button" class="btn btn--secondary btn--sm preset-apply-btn" style="margin-top:.65rem;padding:.5rem;"
+              <button type="button" class="btn btn--ghost btn--sm preset-apply-btn" style="margin-top:.65rem;padding:.5rem;"
                       onclick="applyPreset('strict', document.getElementById('preset-strict'))">
                 {{ 'settings_page.preset_card.apply_btn' | i18n_args(locale | default('ko')) }}
               </button>
@@ -675,16 +675,19 @@
             <div class="gate-btns">
               <button type="button"
                       class="gate-mode-btn {% if config.approve_mode == 'disabled' %}active{% endif %}"
+                      aria-pressed="{{ 'true' if config.approve_mode == 'disabled' else 'false' }}"
                       data-mode="disabled" onclick="setApproveMode('disabled')">
                 <span class="gm-icon">🚫</span>{{ 'settings_page.pr_rules.gate_disabled' | i18n_args(locale | default('ko')) }}
               </button>
               <button type="button"
                       class="gate-mode-btn {% if config.approve_mode == 'auto' %}active{% endif %}"
+                      aria-pressed="{{ 'true' if config.approve_mode == 'auto' else 'false' }}"
                       data-mode="auto" onclick="setApproveMode('auto')">
                 <span class="gm-icon">⚡</span>{{ 'settings_page.pr_rules.gate_auto' | i18n_args(locale | default('ko')) }}
               </button>
               <button type="button"
                       class="gate-mode-btn {% if config.approve_mode == 'semi-auto' %}active{% endif %}"
+                      aria-pressed="{{ 'true' if config.approve_mode == 'semi-auto' else 'false' }}"
                       data-mode="semi-auto" onclick="setApproveMode('semi-auto')">
                 <span class="gm-icon">📱</span>{{ 'settings_page.pr_rules.gate_semi' | i18n_args(locale | default('ko')) }}
               </button>
@@ -1350,7 +1353,9 @@
   function setApproveMode(mode) {
     document.getElementById('approveModeValue').value = mode;
     document.querySelectorAll('.gate-mode-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.mode === mode);
+      var isActive = btn.dataset.mode === mode;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
     });
     const badge = document.getElementById('approveBadge');
     if (badge) badge.textContent = mode;
