@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [사이클 131 (Claude Design UI 전체 재설계 9 PR — 토큰 시스템·컴포넌트·WCAG, 2026-05-25)](#사이클-131)
 - [사이클 130 (pylint 10.00/10 복원 + IssueRegistration 타입 힌트 + codecov/patch 수정, 2026-05-24)](#사이클-130)
 - [사이클 129 (AI Issue 등록 기능 Phase 1+2, 2026-05-24)](#사이클-129)
 - [Phase F~Phase 12 (그룹 시대)](#phase-f-phase-12)
@@ -38,6 +39,45 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 사이클 131
+
+**날짜**: 2026-05-25 | **PR**: #625~#633 (9건) | **상태**: ✅ 머지 완료
+
+**작업 내용**: Claude Design UI 전체 재설계 — 디자인 토큰 시스템, 컴포넌트 분리, WCAG 모바일 수정
+
+| PR | 브랜치 | 내용 |
+|----|--------|------|
+| #625 | `feat/design-tokens-t1` | T1 토큰 구조 재편 — `tokens.css` `[data-theme]` 블록 4테마, `themes.css` 7줄 스텁 전환 |
+| #626 | `feat/base-html-shell-v3` | T2 base.html — `.atmosphere` div, `components.css`/`pages.css`/`effects.js`/`tweaks.js` 신규, grade BEM 클래스 |
+| #627 | `feat/dashboard-redesign` | 대시보드 KPI 카드 재설계 — score-bar, freq-rows, `.kpi`+`.dash-kpi` 이중 클래스 |
+| #628 | `feat/analysis-detail-redesign` | analysis_detail 재설계 |
+| #629 | `feat/repo-detail-redesign` | repo_detail 재설계 |
+| #630 | `feat/overview-add-repo-redesign` | overview + add_repo 재설계 — score-bar clamp, step-cards, WCAG btn-primary/back-btn 48/44px |
+| #631 | `feat/settings-redesign` | settings 재설계 — 6카드, toggle-switch, save-bar, WCAG gate-mode-btn/mode-toggle-btn 44px |
+| #632 | `feat/landing-redesign` | landing 재설계 — standalone `.atmosphere`, grade BEM 5종, prefers-reduced-motion |
+| #633 | `feat/admin-redesign` | admin 재설계 — `.tbl` stub, `badge--success/danger` BEM, `<table class="admin-table tbl">` |
+
+**핵심 변경**:
+- `tokens.css` `[data-theme="dark/light/pastel/catppuccin"]` 블록 신설 — grade-bg/bd 토큰 포함
+- `components.css` (1041줄) + `pages.css` (761줄) 신규 파일 분리
+- `effects.js` + `tweaks.js` 신규 JS 파일 (atmosphere 애니메이션)
+- 모든 `.grade-X` → `.grade.grade--x` BEM 통일
+- WCAG 2.5.5 모바일 44/48px 회귀 가드 수정 (정책 WCAG 규칙 준수)
+
+**충돌 해소 (3회 force-push rebase)**:
+1. T2 themes.css — T1이 stub 전환했으므로 `--ours` 수락 (grade-bg/bd는 tokens.css에 이미 존재)
+2. T2 components.css add/add — landing PR (#632) 머지 후 swatch 중복 제거본을 `--ours` 수락
+3. overview+add_repo — 중간 PR 머지 후 rolling conflict 해소
+
+**CI 수정 사항**:
+- `.kpi:nth-child()` → `.dash-kpi:nth-child()` (대시보드 order 선택자 — 회귀 가드 `.dash-kpi` 클래스 필수)
+- `add_repo.html` `.btn-primary { min-height: 48px; }` + `.back-btn { min-height: 44px; }` 복원 (WCAG 회귀)
+- `settings.html` `.gate-mode-btn { min-height: 44px; }` 단독 규칙 분리 (정확한 문자열 매치 테스트)
+
+**테스트**: 단위 3009 → 3022 (+13, test_router.py + test_i18n_template_render.py 갱신)
+
+---
 
 ## 사이클 130
 
