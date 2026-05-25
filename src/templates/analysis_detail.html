@@ -26,7 +26,7 @@
     margin: var(--space-3, 0.75rem) 0;
   }
   .analysis-hero__score-num {
-    font-family: var(--font-mono, monospace);
+    font-family: var(--claude-font-mono, monospace);
     font-size: var(--fs-3xl, 2rem); font-weight: 700;
     letter-spacing: -0.025em; line-height: 1;
     color: var(--text-1, #fff);
@@ -65,7 +65,7 @@
     text-transform: uppercase; letter-spacing: 0.05em;
   }
   .grade--hero {
-    width: 72px; height: 72px; font-size: 2rem; font-weight: 800;
+    width: 88px; height: 88px; font-size: 2.25rem; font-weight: 800;
     border-radius: 16px; letter-spacing: -0.03em; padding: 0;
   }
   .grade--a { background: rgba(52,211,153,0.12); color: #34d399; border-color: rgba(52,211,153,0.32); }
@@ -73,6 +73,14 @@
   .grade--c { background: rgba(251,191,36,0.12);  color: #fbbf24; border-color: rgba(251,191,36,0.32); }
   .grade--d { background: rgba(251,146,60,0.12);  color: #fb923c; border-color: rgba(251,146,60,0.32); }
   .grade--f { background: rgba(248,113,113,0.12); color: #f87171; border-color: rgba(248,113,113,0.32); }
+  /* 이슈 심각도 배지 (이슈 행은 a-f 대신 error/warning/high/info 사용) */
+  /* Severity badge modifiers (issue rows use error/warning/high/info, not a-f) */
+  .grade--error   { background: rgba(248,113,113,0.12); color: #f87171; border-color: rgba(248,113,113,0.32); }
+  .grade--warning { background: rgba(251,191,36,0.12);  color: #fbbf24; border-color: rgba(251,191,36,0.32); }
+  .grade--high    { background: rgba(248,113,113,0.12); color: #f87171; border-color: rgba(248,113,113,0.32); }
+  .grade--medium  { background: rgba(251,146,60,0.12);  color: #fb923c; border-color: rgba(251,146,60,0.32); }
+  .grade--low     { background: rgba(96,165,250,0.12);  color: #60a5fa; border-color: rgba(96,165,250,0.32); }
+  .grade--info    { background: rgba(96,165,250,0.12);  color: #60a5fa; border-color: rgba(96,165,250,0.32); }
 
   /* ── 카드 컴포넌트 (로컬 fallback) / Card component (local fallback) ─ */
   .card {
@@ -107,7 +115,7 @@
   .issue__sev--warning { background: var(--warning, #fbbf24); }
   .issue__sev--info    { background: #60a5fa; }
   .issue__title { font-size: var(--fs-sm, 0.875rem); color: var(--text-1, #fff); line-height: 1.4; }
-  .issue__path  { font-size: var(--fs-xs, 0.75rem); color: var(--text-3, rgba(255,255,255,0.4)); margin-top: 2px; font-family: var(--font-mono, monospace); }
+  .issue__path  { font-size: var(--fs-xs, 0.75rem); color: var(--text-3, rgba(255,255,255,0.4)); margin-top: 2px; font-family: var(--claude-font-mono, monospace); }
 
   /* ── 레거시 섹션 스타일 (기존 AI 카드용) / Legacy section styles (existing AI cards) ─ */
   /* 기존 ad-* 클래스 호환 유지 / Preserve legacy ad-* class compat */
@@ -282,7 +290,7 @@
           📅 {{ analysis.created_at[:16].replace('T', ' ') if analysis.created_at else '—' }}
         </span>
         {% if analysis.commit_sha %}
-        <code style="font-size: var(--fs-xs, 0.75rem); color: var(--text-2, rgba(255,255,255,0.6)); font-family: var(--font-mono, monospace);"
+        <code style="font-size: var(--fs-xs, 0.75rem); color: var(--text-2, rgba(255,255,255,0.6)); font-family: var(--claude-font-mono, monospace);"
               title="{{ analysis.commit_sha }}">
           🔗 {{ analysis.commit_sha[:7] }}
         </code>
