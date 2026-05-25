@@ -18,17 +18,17 @@
   <div class="admin-summary-bar">
     <strong>{{ 'admin.rls_audit.total_label' | i18n_args(locale | default('ko')) }}</strong>: {{ summary.total }}
     <span class="sep">·</span>
-    <span class="badge-success">{{ 'admin.rls_audit.applied_label' | i18n_args(locale | default('ko'), count=summary.applied) }}</span>
+    <span class="badge badge--success">{{ 'admin.rls_audit.applied_label' | i18n_args(locale | default('ko'), count=summary.applied) }}</span>
     {% if summary.missing > 0 %}
     <span class="sep">·</span>
-    <span class="badge-danger">{{ 'admin.rls_audit.missing_label' | i18n_args(locale | default('ko'), count=summary.missing) }}</span>
+    <span class="badge badge--danger">{{ 'admin.rls_audit.missing_label' | i18n_args(locale | default('ko'), count=summary.missing) }}</span>
     {% endif %}
     <span class="sep">·</span>
     <a href="/admin/tenants" class="admin-link">{{ 'admin.rls_audit.tenants_link' | i18n_args(locale | default('ko')) }}</a>
   </div>
 
   <div class="admin-table-wrap">
-    <table class="admin-table">
+    <table class="admin-table tbl">
       <thead>
         <tr>
           <th>{{ 'admin.rls_audit.th.table' | i18n_args(locale | default('ko')) }}</th>
@@ -45,9 +45,9 @@
           <td class="mono">{{ m.since }}</td>
           <td>
             {% if m.status == "applied" %}
-            <span class="status-applied">{{ 'admin.rls_audit.status_applied' | i18n_args(locale | default('ko')) }}</span>
+            <span class="badge badge--success">{{ 'admin.rls_audit.status_applied' | i18n_args(locale | default('ko')) }}</span>
             {% else %}
-            <span class="status-missing">{{ 'admin.rls_audit.status_missing' | i18n_args(locale | default('ko')) }}</span>
+            <span class="badge badge--danger">{{ 'admin.rls_audit.status_missing' | i18n_args(locale | default('ko')) }}</span>
             {% endif %}
           </td>
         </tr>
