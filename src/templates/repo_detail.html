@@ -274,7 +274,7 @@
 
   /* ── 테이블 헤더 / Table header styling ── */
   table thead tr th {
-    background: var(--bg-elevated, var(--card-bg));
+    background: var(--bg-elevated, var(--bg-card));
     color: var(--text-2);
     font-size: 12px;
     font-weight: 700;
@@ -580,7 +580,7 @@
   </div>
 
   <div class="table-wrap">
-  <table>
+  <table class="tbl">
     <thead>
       <tr>
         <th class="sortable-th" data-sort="created_at">{{ 'repo_detail.table.date' | i18n_args(locale | default('ko')) }} <span class="sort-icon"></span></th>
