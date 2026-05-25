@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [사이클 136 (analysis_detail 최상단/맨하단 디자인 마감 개선, 2026-05-25)](#사이클-136)
 - [사이클 135 (모바일 테이블 헤더-값 정렬 불일치 수정 — 3페이지, 2026-05-25)](#사이클-135)
 - [사이클 134 (문서 정리 — README 제품화 + reports/superpowers 아카이브 + policies .claude/ 이동, 2026-05-25)](#사이클-134)
 - [사이클 133 (nav-logo 라이트/파스텔 텍스트 불가시 수정, 2026-05-25)](#사이클-133)
@@ -43,6 +44,23 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 사이클 136
+
+**날짜**: 2026-05-25 | **PR**: #647 (`fix/analysis-detail-top-bottom-polish`) | **상태**: ✅ 머지 완료
+
+**작업 내용**: analysis_detail 최상단/맨하단 디자인 마감 개선
+
+| 영역 | 내용 |
+|------|------|
+| 점수바 전체 폭 | `max-width: 360px` 인라인 스타일 제거 → 히어로 카드 전체 폭 활용 |
+| nav 1행 통합 | `.analysis-nav` + 별도 back-btn div → 1행 (back-btn 왼쪽, `analysis-nav__controls` 오른쪽) |
+| issue-reg-panel CSS | 탭 버튼(`.issue-tab`), 리스트(`.issue-list/.issue-row`), 배지(`.issue-badge--open/closed`), 등록 버튼(`.btn-register`) 등 15+ 클래스 전면 추가 (기존 CSS 전무) |
+| 모달/토스트 CSS | `.issue-modal-overlay` (z-index 9000, backdrop-filter blur) / `.issue-modal` (max-width 520px) / `.issue-toast` (z-index 9001, 고정 위치) |
+| 모바일 | `@media (max-width: 768px)` `.analysis-nav__controls { flex-wrap: wrap }` 추가 |
+| Codex 검증 | Round 1 NG (rgba 3곳 CSS var 미경유) → 수정 후 Round 2 sandbox 오류 → Claude 직접 검토 대체 |
+
+---
 
 ## 사이클 135
 
