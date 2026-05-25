@@ -772,7 +772,7 @@
       // Sync html data-theme on every nav re-init (hx-boost safe)
       (function() {
         var stored = localStorage.getItem('sca-theme');
-        var THEME_MIGRATE_LOCAL = { 'claude-dark': 'catppuccin', 'system': 'dark' };
+        var THEME_MIGRATE_LOCAL = THEME_MIGRATE;
         var theme = THEME_MIGRATE_LOCAL[stored] || stored || 'dark';
         var THEMES_LOCAL = { dark: 1, light: 1, pastel: 1, catppuccin: 1 };
         if (!THEMES_LOCAL[theme]) theme = 'dark';
