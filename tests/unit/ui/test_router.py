@@ -1674,10 +1674,9 @@ def test_overview_does_not_show_latest_score_column():
 
 
 def test_overview_grade_derived_from_avg_score():
-    """avg_map에 {1: 92.0} 반환 시 등급 뱃지 'grade-A'가 HTML에 포함되어야 한다.
-    변경 예정: 등급 컬럼을 최신 grade가 아닌 평균 점수 기반 calculate_grade(avg_score)로 변경.
-    평균 92점 → GRADE_THRESHOLDS A≥90 → 'grade-A' CSS 클래스.
-    구현 전에는 avg 기반 grade 렌더링이 없으므로 이 테스트는 실패(Red).
+    """avg_map에 {1: 92.0} 반환 시 등급 뱃지 'grade--a'가 HTML에 포함되어야 한다.
+    등급 컬럼은 최신 grade가 아닌 평균 점수 기반 calculate_grade(avg_score)로 산출.
+    평균 92점 → GRADE_THRESHOLDS A≥90 → 'grade--a' BEM CSS 클래스.
     """
     mock_db = MagicMock()
     mock_repo = MagicMock(id=1, full_name="owner/repo", user_id=1, created_at="2026-01-01")
@@ -1695,9 +1694,9 @@ def test_overview_grade_derived_from_avg_score():
     with patch("src.ui.routes.overview.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/")
     assert r.status_code == 200
-    # 평균 92점 → grade A → 템플릿에서 <span class="grade grade-A"> 뱃지 스팬으로 렌더
-    # 현재 구현(latest_grade 기반)에서는 latest_map이 비어 있어 이 스팬이 없음 → Red
-    assert '<span class="grade grade-A">' in r.text
+    # 평균 92점 → grade A → 템플릿에서 <span class="grade grade--a"> 뱃지 스팬으로 렌더 (BEM 패턴)
+    # Average 92 → grade A → template renders <span class="grade grade--a"> badge (BEM pattern)
+    assert '<span class="grade grade--a">' in r.text
 
 
 # ── Settings 페이지 재설계 스모크 테스트 (2026-04-21) ──────────────────────────
