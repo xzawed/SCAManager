@@ -473,9 +473,6 @@
   --claude-font-mono:    var(--font-mono);
   --claude-line-height:  var(--lh-base);
 
-  /* Spacing compat */
-  --space-8: 48px;
-
   /* Display typography compat */
   --tracking-tight:   var(--ls-tight);
   --tracking-tighter: -0.025em;
@@ -500,8 +497,6 @@
 
   /* Elevation compat (old names) */
   --elev-0: none;
-  --elev-4: var(--elev-3);
-  --elev-inset: inset 0 1px 0 rgba(255,255,255,.04);
 
   /* Phantom token aliases */
   --bg-hover:    var(--bg-mute);
@@ -511,7 +506,10 @@
 }
 
 /* Per-theme compat aliases */
-[data-theme="dark"], body:not([data-theme]) {
+[data-theme="dark"] {
+  --elev-4: var(--elev-3);
+  --elev-inset: inset 0 1px 0 rgba(255,255,255,.04);
+
   --accent:        var(--accent-1);
   --accent-hover:  var(--accent-2);
   --accent-3:      var(--accent-2);
@@ -555,6 +553,9 @@
 }
 
 [data-theme="light"] {
+  --elev-4: var(--elev-3);
+  --elev-inset: inset 0 1px 0 rgba(0,0,0,.04);
+
   --accent:        var(--accent-1);
   --accent-hover:  var(--accent-2);
   --accent-3:      var(--accent-2);
@@ -596,6 +597,9 @@
 }
 
 [data-theme="pastel"] {
+  --elev-4: var(--elev-3);
+  --elev-inset: inset 0 1px 0 rgba(0,0,0,.04);
+
   --accent:        var(--accent-1);
   --accent-hover:  var(--accent-2);
   --accent-3:      var(--accent-2);
@@ -637,6 +641,9 @@
 }
 
 [data-theme="catppuccin"] {
+  --elev-4: var(--elev-3);
+  --elev-inset: inset 0 1px 0 rgba(255,255,255,.03);
+
   --accent:        var(--accent-1);
   --accent-hover:  var(--accent-2);
   --accent-3:      var(--accent-2);

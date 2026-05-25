@@ -1971,6 +1971,11 @@ def test_foundation_tokens_present():
     """
     tokens = _read_css("tokens.css")
     themes = _read_css("themes.css")
+    # themes.css 는 comment-only stub — 실제 CSS 선택자 규칙이 없어야 함
+    # themes.css must be a comment-only stub — no actual CSS selector rules allowed
+    import re as _re
+    assert not _re.search(r'\[data-theme[^\]]*\]\s*\{', themes), \
+        "themes.css should be a stub (no theme definitions) — all themes are in tokens.css"
 
     # Theme-agnostic 토큰 (tokens.css)
     # Theme-agnostic tokens (tokens.css)
