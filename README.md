@@ -18,7 +18,7 @@
 [![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=xzawed_SCAManager&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=xzawed_SCAManager)
 [![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=xzawed_SCAManager&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=xzawed_SCAManager)
 
-[![Tests](https://img.shields.io/badge/Tests-3142%2B_total_(2991_unit_+_151_integration)-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-3173%2B_total_(3022_unit_+_151_integration)-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
 [![E2E](https://img.shields.io/badge/E2E-112_passing-brightgreen?style=flat-square&logo=playwright&logoColor=white)](e2e/)
 [![pylint](https://img.shields.io/badge/pylint-10.00%2F10-brightgreen?style=flat-square&logo=python&logoColor=white)](src/)
 [![bandit](https://img.shields.io/badge/bandit-HIGH_0-brightgreen?style=flat-square&logo=security&logoColor=white)](src/)
@@ -61,7 +61,7 @@ Most code review tools make you choose between static analysis precision and AI 
 
 ## 🌐 Multilingual Support (English / 한국어 / 日本語)
 
-SCAManager supports **3 languages** across the entire user-facing surface — UI, notifications, and AI code review prompts. (Cycle 84 — 18 PR series)
+SCAManager supports **3 languages** across the entire user-facing surface — UI, notifications, and AI code review prompts.
 
 | Surface | Translated | Source of truth |
 |---------|------------|-----------------|
@@ -77,7 +77,7 @@ SCAManager supports **3 languages** across the entire user-facing surface — UI
 - Anthropic prompt cache automatically diverges per language (system text hash differs → cache key separated, no manual config)
 - Kill-switch: set `I18N_DISABLED=1` to fall back to default locale only (operational emergencies)
 
-Detailed environment variables: [docs/reference/env-vars.md](docs/reference/env-vars.md#%EB%8B%A4%EA%B5%AD%EC%96%B4-%EC%A7%80%EC%9B%90-phase-1-pr-1a-cycle-84)
+Detailed environment variables: [docs/reference/env-vars.md](docs/reference/env-vars.md)
 
 ---
 
@@ -146,7 +146,7 @@ All channels run independently via `asyncio.gather(return_exceptions=True)` — 
 
 ---
 
-### 📡 Telegram Insights (Phase 10)
+### 📡 Telegram Insights
 
 Beyond real-time push/PR alerts, SCAManager's Telegram integration provides scheduled reports, trend detection, and interactive bot commands.
 
@@ -215,7 +215,7 @@ Analysis complete
 | `approve_mode="semi-auto"` | Manual decision via Telegram buttons |
 | `auto_merge=true` | Squash merge when threshold is met |
 
-#### ♻️ CI-aware Auto Merge Retry (Phase 12)
+#### ♻️ CI-aware Auto Merge Retry
 
 When `auto_merge=true` and the merge fails because CI is still running (`mergeable_state=unstable` or `unknown`), SCAManager queues the PR for retry instead of giving up:
 
@@ -235,7 +235,7 @@ Production-grade instrumentation for diagnostics and cost control.
 |-------|--------|------------------|
 | Claude API cost | `src/shared/claude_metrics.py` | Per-call model · input/output tokens · USD cost estimate · latency (structured log). |
 | Pipeline timing | `src/shared/stage_metrics.py` | `stage_timer` context manager emits `duration_ms` + `status` per pipeline stage. |
-| Auto-merge attempts | `src/shared/merge_metrics.py` + `merge_attempts` table | Every auto-merge attempt (success or failure) is persisted with `failure_reason` normalized tag (`branch_protection_blocked`, `unstable_ci`, `permission_denied`, …) + `score`/`threshold` snapshot. Phase F.1. |
+| Auto-merge attempts | `src/shared/merge_metrics.py` + `merge_attempts` table | Every auto-merge attempt (success or failure) is persisted with `failure_reason` normalized tag (`branch_protection_blocked`, `unstable_ci`, `permission_denied`, …) + `score`/`threshold` snapshot. |
 
 All three layers emit structured logs unconditionally so any log shipper (Datadog, CloudWatch, Grafana Loki, Railway Logs) can parse them. No external SaaS dependency required.
 
@@ -443,7 +443,7 @@ make perf-report        # Generate performance report (local + production)
 
 **Auth (OAuth)**
 ```
-GET  /login                          301 redirect → /auth/github (backward-compatible — cycle 117)
+GET  /login                          301 redirect → /auth/github (backward-compatible)
 GET  /auth/github                    Start GitHub OAuth
 GET  /auth/callback                  GitHub OAuth callback
 POST /auth/logout                    Logout
@@ -457,8 +457,8 @@ GET  /repos/add                      Add repository page
 GET  /repos/{repo}                   Repo detail (chart + history)
 GET  /repos/{repo}/analyses/{id}     Analysis detail
 GET  /repos/{repo}/settings          Settings page
-GET  /insights                       301 → /dashboard (deprecated, cycle 60)
-GET  /insights/me                    301 → /dashboard (deprecated, cycle 60)
+GET  /insights                       301 → /dashboard (deprecated)
+GET  /insights/me                    301 → /dashboard (deprecated)
 POST /repos/add                      Register repo + auto-create Webhook + Hook files
 POST /repos/{repo}/settings          Save settings
 POST /repos/{repo}/reinstall-hook    Re-commit CLI Hook files

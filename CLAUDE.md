@@ -109,15 +109,15 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 
 사용자 발화: *"반대 하기를 원하기 보다 각각의 장단점을 알려주시면 권장을 한다 하더라도 제가 판단하는데 도움이 될거라 생각합니다."*
 
-**권장 default 표 형식**: `| 옵션 | 장점 | 단점 | 위험 | 권장 시점 |` 5컬럼 + 권장 표시 (★) 보조 + "고려했으나 제시 안 한 안" 1줄 (추론 추적성). 상세 예시: [docs/policies/history.md#정책-1-진화](docs/policies/history.md#정책-1-진화).
+**권장 default 표 형식**: `| 옵션 | 장점 | 단점 | 위험 | 권장 시점 |` 5컬럼 + 권장 표시 (★) 보조 + "고려했으나 제시 안 한 안" 1줄 (추론 추적성). 상세 예시: [.claude/policies/history.md#정책-1-진화](.claude/policies/history.md#정책-1-진화).
 
-🔴 **진화 default 요약** — (1) "전부다" 일괄 결정 시 검토 깊이 1줄 자가 보고 요청 의무 (사이클 83). (2) 다중 PR 빠른 진행 신호 ≥ 10회 = 동일 의무 (사이클 84). 예외: 단순 머지 보고 + 옵션 표 결정. 상세: [docs/policies/history.md#정책-1-진화](docs/policies/history.md#정책-1-진화).
+🔴 **진화 default 요약** — (1) "전부다" 일괄 결정 시 검토 깊이 1줄 자가 보고 요청 의무 (사이클 83). (2) 다중 PR 빠른 진행 신호 ≥ 10회 = 동일 의무 (사이클 84). 예외: 단순 머지 보고 + 옵션 표 결정. 상세: [.claude/policies/history.md#정책-1-진화](.claude/policies/history.md#정책-1-진화).
 
-🔴 **정책 1 진화 회귀 가드 (사이클 86 Q4 — 사용자 명시 결정)** — **자가 검증 의무**: Claude 가 일괄 결정 발화 직후 자가 보고 요청 누락 시 = **다음 응답에서 회복 의무** (자성 1줄 + 검토 깊이 사후 요청 + 자가 보고 1줄). 사이클 85 회고 P0 사례 = 본 회귀 가드 첫 적용. 회복 누락 시 = 다음 사이클 회고 §자성 명시 의무. 회복 패턴 예시: [docs/policies/history.md#정책-1-진화-회귀-가드](docs/policies/history.md#정책-1-진화-회귀-가드).
+🔴 **정책 1 진화 회귀 가드 (사이클 86 Q4 — 사용자 명시 결정)** — **자가 검증 의무**: Claude 가 일괄 결정 발화 직후 자가 보고 요청 누락 시 = **다음 응답에서 회복 의무** (자성 1줄 + 검토 깊이 사후 요청 + 자가 보고 1줄). 사이클 85 회고 P0 사례 = 본 회귀 가드 첫 적용. 회복 누락 시 = 다음 사이클 회고 §자성 명시 의무. 회복 패턴 예시: [.claude/policies/history.md#정책-1-진화-회귀-가드](.claude/policies/history.md#정책-1-진화-회귀-가드).
 
 #### 정책 2: PR 본문 "🔍 사용자 검증 필요" 섹션 의무
 
-**default**: 모든 PR 본문 §"🔍 사용자 검증 필요" 섹션 — 시각/운영 확인 항목 1~3개 명시 (Railway 배포 / 테마 토글 / 운영 사고 보고 등). "tests pass" 만 적기 금지. 템플릿 + 진화 (Phase 종료 일괄 회신 묶음) 상세: [docs/policies/active.md#정책-2](docs/policies/active.md#정책-2).
+**default**: 모든 PR 본문 §"🔍 사용자 검증 필요" 섹션 — 시각/운영 확인 항목 1~3개 명시 (Railway 배포 / 테마 토글 / 운영 사고 보고 등). "tests pass" 만 적기 금지. 템플릿 + 진화 (Phase 종료 일괄 회신 묶음) 상세: [.claude/policies/active.md#정책-2](.claude/policies/active.md#정책-2).
 
 #### 정책 3: **자율 판단 결정의 사후 보고 의무**
 
@@ -137,7 +137,7 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 
 **Phase 단계별 진행/종료 신호 분리 의무 (사이클 75 진화 — 사이클 74 사고 학습)**: 사용자가 "A+B+C+D 모두 진행" 같은 다중 단계 발화 시 Claude 의 사이클 종료 (예: 회고 진입) 시점에 **잔여 단계 (예: C/D) 진행 신호 명시 회신 의무**. 사이클 74 사례 = Phase 2-A (#247) + Phase 2-B (#248) 머지 후 회고 진입 → Phase 2-C/D 진행 의도 미확인 = 사용자 발화와 Claude 종료 신호 불일치. **default 적용**: 다중 단계 발화 후 일부 단계만 진행하고 사이클 종료 시 = "Phase X-Y 완료. Phase X-Z 잔여 — 다음 사이클 진입 시 결정 회신 의무" 1줄 명시.
 
-🔴 **정책 5 cross-reference 강화 (사이클 83)** — Phase 종료 시점 의무는 **정책 2/5/8/11 4 정책에 분산** (인지 부담 ↑ 위험). **default 적용**: Phase 종료 시점 진입 시 4 정책 cross-reference 자가 검토 의무 (한 정책만 적용 시 다른 3 정책 위반 가능). Claude 가 PR commit body §"Phase 종료 처리" 섹션에 적용 정책 명시 권장. 상세: [docs/policies/active.md#정책-5-phase-종료-cross-reference](docs/policies/active.md#정책-5-phase-종료-cross-reference).
+🔴 **정책 5 cross-reference 강화 (사이클 83)** — Phase 종료 시점 의무는 **정책 2/5/8/11 4 정책에 분산** (인지 부담 ↑ 위험). **default 적용**: Phase 종료 시점 진입 시 4 정책 cross-reference 자가 검토 의무 (한 정책만 적용 시 다른 3 정책 위반 가능). Claude 가 PR commit body §"Phase 종료 처리" 섹션에 적용 정책 명시 권장. 상세: [.claude/policies/active.md#정책-5-phase-종료-cross-reference](.claude/policies/active.md#정책-5-phase-종료-cross-reference).
 
 🔴 **정책 5 NEW-P0-N 예외 명시 (사이클 83 — 사이클 78~82 회고 Tier B-5 사용자 OK Q5)** — **운영 사고 차단 영역 (NEW-P0-N) 은 Phase 단계별 보류 default 적용 X**: 사이클 78 PR 2 (NEW-P0-1 = Telegram 봇 차단 silent skip) = 정책 5 강화 default 적용 결과 = "PR 2/3/4 = 머지 대기 (사용자 영역)" 명시 → 4 사이클 누적 사용자 머지 대기 → 운영 사고 위험 누적 (메모리 `feedback-stale-blocker-policy.md` 2.5배 자기 위반).
 
@@ -169,7 +169,7 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 
 **브랜치 명명 규칙**: [작업 시작 전 필수 체크리스트](#작업-시작-전-필수-체크리스트-매-작업마다) 표 참조.
 
-**위반 시 회복**: [docs/policies/active.md#정책-7](docs/policies/active.md#정책-7) 참조.
+**위반 시 회복**: [.claude/policies/active.md#정책-7](.claude/policies/active.md#정책-7) 참조.
 
 #### 정책 8: **회고는 항상 다중 에이전트로 깊게 진행 의무**
 
@@ -177,7 +177,7 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 
 **default 회고 패턴** (Claude 단독 회고 금지):
 - **최소 4~5 에이전트 병렬 디스패치** (단일 메시지에 동시 tool_use)
-- **관점 분리** — 에이전트별 비중복 도메인 배정 (5종 예시: [docs/policies/active.md#정책-8-doc-audit-agent-domain](docs/policies/active.md#정책-8-doc-audit-agent-domain))
+- **관점 분리** — 에이전트별 비중복 도메인 배정 (5종 예시: [.claude/policies/active.md#정책-8-doc-audit-agent-domain](.claude/policies/active.md#정책-8-doc-audit-agent-domain))
 - **각 에이전트 프롬프트 강제 조건**:
   - `self-contained` (다른 에이전트 결과 의존 0 — 병렬성 보호)
   - `line:span 인용 의무` (정책 6 — 환각 보고 80% 차단)
@@ -190,11 +190,11 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 
 **cross-verify 단계 (2차) 의무 — 사이클 64 학습 (2026-05-04)**:
 - 1차 5 에이전트 결과 받은 후 별도 cross-verify 에이전트 1건 디스패치 (= 5+1 = 6 패턴)
-- ❌ cross-verify 6차 에이전트로 `doc-consistency-reviewer` 사용 금지 (사이클 64: 회고 cross-verify scope 거절) / ✅ `general-purpose` 또는 task-specific specialist — 단, 문서 diff 일관성 검토 단독 목적의 호출은 허용. 상세: [history.md#정책-8-진화](docs/policies/history.md#정책-8-진화)
+- ❌ cross-verify 6차 에이전트로 `doc-consistency-reviewer` 사용 금지 (사이클 64: 회고 cross-verify scope 거절) / ✅ `general-purpose` 또는 task-specific specialist — 단, 문서 diff 일관성 검토 단독 목적의 호출은 허용. 상세: [history.md#정책-8-진화](.claude/policies/history.md#정책-8-진화)
 - 🔴 **cross-verify 생략 정량 기준 (사이클 69 cross-verify 식별)**: "양과 깊이 충분" 의 정량 기준 = (1) 1차 5 에이전트 P0 합계 ≥ 8건 + (2) 관점 5종 모두 P0 1건 이상 식별 + (3) 사용자 빠른 진행 신호 명시 ("회고 이후 다음 작업" / "바로 진행" 등). **3 조건 모두 충족 시만 생략 OK**. Claude 자가 판단 X — 사용자 명시 신호 의무. 미충족 시 cross-verify (general-purpose) 강제.
-- 🔴 **cross-verify 생략 PR 본문 대조 표 default (사이클 87)**: 6차 생략 시 PR 본문 §"cross-verify 생략 사유" 에 사이클 69 정량 3 조건 대조 표 default. 3 조건 모두 ✅ 시만 생략 OK. 1 조건이라도 ❌ 시 cross-verify 강제. 표 형식 상세: [docs/policies/history.md#정책-8-진화](docs/policies/history.md#정책-8-진화).
+- 🔴 **cross-verify 생략 PR 본문 대조 표 default (사이클 87)**: 6차 생략 시 PR 본문 §"cross-verify 생략 사유" 에 사이클 69 정량 3 조건 대조 표 default. 3 조건 모두 ✅ 시만 생략 OK. 1 조건이라도 ❌ 시 cross-verify 강제. 표 형식 상세: [.claude/policies/history.md#정책-8-진화](.claude/policies/history.md#정책-8-진화).
 
-🔴 **단일 관점 회고 (사이클 75 진화)**: 관점 1~5 중 1개 단독 회고 = 5+1 패턴 미적용 (Claude 직접 작성 default). default = 5+1 진행 + 정량 기준 충족 시 생략. 상세: [docs/policies/history.md#정책-8-진화](docs/policies/history.md#정책-8-진화).
+🔴 **단일 관점 회고 (사이클 75 진화)**: 관점 1~5 중 1개 단독 회고 = 5+1 패턴 미적용 (Claude 직접 작성 default). default = 5+1 진행 + 정량 기준 충족 시 생략. 상세: [.claude/policies/history.md#정책-8-진화](.claude/policies/history.md#정책-8-진화).
 
 🔴 **정책 8 진화 default 요약** (사이클 83~84, 92):
 - **(1) 단일 작업일 5+1 dispatch ≥ 5회 = 사용자 사전 확인 의무** (사이클 83). 사용자 명시 신호 시 면제 OK. 정책 16 5번 원칙 (토큰 비용 효율) 페어.
@@ -202,7 +202,7 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 - **(2) cross-verify ROI commit body 정량 명시 의무** — false-positive 차단 N건 / 신규 발견 N건 / Tier A 정정 N건 (정책 6 페어).
 - **(3) cross-verify Round 2 도메인 카운트 = `pytest --collect-only -q` 실측 의무** (사이클 92). 추정 카운트 보고 = 자동 false-positive 처리. 사이클 89 Round 1 추정 부정확 사례 (middleware 5/실측 17, worker 22/실측 78, github_client 15/실측 74) 학습 페어. 정책 6 (line:span `grep -n` 실측 — 정적 line 영역) 와 시점·대상 차별 (정책 8 진화 = 동적 테스트 분포 카운트).
 
-상세: [docs/policies/history.md#정책-8-진화](docs/policies/history.md#정책-8-진화).
+상세: [.claude/policies/history.md#정책-8-진화](.claude/policies/history.md#정책-8-진화).
 #### 정책 9: **회고 후 반드시 Claude 자유 발언 시간 의무**
 
 사용자 발화: *"회고 이후에 반드시 바라는 점 원하는 것 수정이 필요한 부분 등 자유롭게 말하는 시간도 있었으면 합니다."*
@@ -215,7 +215,7 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 
 **원칙**: 솔직함 우선 + 자성/요청 균형 + 구체적 제안 (추상 발언 X) + 사용자 발화 인용 보존.
 
-**Phase 종료 시 회고 질문 default** (사이클 64 회고 P1 학습): Claude 가 회고 자유 발언에 §"🔍 회고 질문 (사용자 회신 의무)" 1줄 추가 — "Phase 본 권장 default N건 중 다른 결정 했을 만한 항목 있었나?". 회신 패턴: `[x] 모두 OK / [!] N번 다시 검토 (사유) / [ ] 미수행`. 템플릿 상세: [docs/policies/active.md](docs/policies/active.md).
+**Phase 종료 시 회고 질문 default** (사이클 64 회고 P1 학습): Claude 가 회고 자유 발언에 §"🔍 회고 질문 (사용자 회신 의무)" 1줄 추가 — "Phase 본 권장 default N건 중 다른 결정 했을 만한 항목 있었나?". 회신 패턴: `[x] 모두 OK / [!] N번 다시 검토 (사유) / [ ] 미수행`. 템플릿 상세: [.claude/policies/active.md](.claude/policies/active.md).
 
 🔴 **정책 9 완화 (사이클 83 — 사이클 78~82 회고 P0 학습)**: 회신 부재 default = **자율 판단 보고 명시 시 회신 의무 면제 OK** (Claude 자율 진입 가능). **단, 미적용 영역 3종**: (a) 운영 사고 차단 영역 (NEW-P0-N — 정책 5 강화 페어) (b) destructive 작업 (브랜치 삭제 / DROP / DELETE — 정책 7/12 페어) (c) architecture/UX/데이터 모델 결정 (`feedback-architecture-decision-pre-confirm.md` High tier) — 본 3 영역은 사용자 명시 회신 의무 보존.
 
@@ -227,39 +227,39 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 
 🔴 **현재 SCAManager 환경**: gh CLI v2.89.0 설치 완료 + xzawed 계정 인증 완료 → **옵션 🅐 (gh pr create) default**.
 
-**fix-up commit default**: 머지 전 CI fail / 회귀 = 동일 PR 브랜치 추가 commit (정책 7 강화 응집 단위). 머지 후 발견 = 별도 fix PR. PR body 템플릿 + 환경별 detail: [docs/policies/active.md#정책-10](docs/policies/active.md#정책-10).
+**fix-up commit default**: 머지 전 CI fail / 회귀 = 동일 PR 브랜치 추가 commit (정책 7 강화 응집 단위). 머지 후 발견 = 별도 fix PR. PR body 템플릿 + 환경별 detail: [.claude/policies/active.md#정책-10](.claude/policies/active.md#정책-10).
 
 #### 정책 11: **UI/시각 변경 PR 본문에 "Claude 시각 검증 불가" 의무 명시**
 
 사용자 발화 (2026-05-02 Phase 1 회고): *"PR본문 검증의 경우 디테일한 검증은 없었습니다."* — Claude 가 만든 UI/시각 변경 (template, css, html 파일) 은 정적 코드만 검증 가능. 4-테마 (dark/light/pastel/catppuccin) × 모바일/데스크탑 8 조합 시각 정합성은 사용자 의무.
 
-**default 의무**: `src/templates/*.html` / `src/static/**/*.css` / `base.html` `<style>` 블록 / 신규 시각 컴포넌트 변경 PR 작성 시 — PR 본문 최상단에 8 조합 체크리스트 삽입. 템플릿: [docs/policies/active.md#정책-11](docs/policies/active.md#정책-11)
+**default 의무**: `src/templates/*.html` / `src/static/**/*.css` / `base.html` `<style>` 블록 / 신규 시각 컴포넌트 변경 PR 작성 시 — PR 본문 최상단에 8 조합 체크리스트 삽입. 템플릿: [.claude/policies/active.md#정책-11](.claude/policies/active.md#정책-11)
 
 **금지**: UI/시각 변경 PR 본문에 본 섹션 누락 후 "테스트 통과" 만 적기. 정적 테스트와 시각 검증의 비대칭 명시 의무.
 
 **Phase 종료 시 누적 회신 의무 (사이클 64 학습)** — Phase 단위로 8 조합 체크리스트 PR 4 건 이상 누적 시 사용자 명시 회신 0 건 사례 (Phase 3 회고 §1 P1-7). 본 정책 11 ↔ 정책 2 진화 (Phase 종료 일괄 회신 묶음) 페어 적용 default. Phase 종료 시 Claude 가 누적 8 조합 체크리스트 단일 회신 표 묶음 + 사용자 명시 OK/NG/미수행 회신 요청 의무. 회신 부재 시 다음 사이클 진입 보류 또는 자율 판단 보고 (정책 3 강화).
 
-🔴 **정책 2 진화**: Phase 종료 일괄 회신 묶음 + sync PR pytest 실측 1줄 의무. **정책 3 진화**: 자율 판단 보고 최상단 + ⚠️ 마커 (정량 5 조건). **정책 7 강화**: 응집 단위 분할 (URL+화면+데이터) + PR > 1500 LOC 사전 확인. **정책 3(MCP)**: MCP 실행 결과 별도 섹션. **정책 11 강화**: 인증 변경 시 4-endpoint 종단간 검증 의무. 상세: [docs/policies/history.md](docs/policies/history.md).
+🔴 **정책 2 진화**: Phase 종료 일괄 회신 묶음 + sync PR pytest 실측 1줄 의무. **정책 3 진화**: 자율 판단 보고 최상단 + ⚠️ 마커 (정량 5 조건). **정책 7 강화**: 응집 단위 분할 (URL+화면+데이터) + PR > 1500 LOC 사전 확인. **정책 3(MCP)**: MCP 실행 결과 별도 섹션. **정책 11 강화**: 인증 변경 시 4-endpoint 종단간 검증 의무. 상세: [.claude/policies/history.md](.claude/policies/history.md).
 
 #### 정책 12: MCP scope 제한 의무
 
-**default**: SELECT-only 자율 실행 OK / **INSERT/UPDATE/DELETE/DROP/ALTER + PII·credential SELECT = 사용자 사전 승인 의무** (운영 데이터 변경 + secret 노출 차단). MCP 호출 시 PR 본문 §"MCP 자율 실행 결과" 명시 (정책 3 강화 페어). 상세 + 검증 사례 + 금지 패턴: [docs/policies/active.md#정책-12](docs/policies/active.md#정책-12).
+**default**: SELECT-only 자율 실행 OK / **INSERT/UPDATE/DELETE/DROP/ALTER + PII·credential SELECT = 사용자 사전 승인 의무** (운영 데이터 변경 + secret 노출 차단). MCP 호출 시 PR 본문 §"MCP 자율 실행 결과" 명시 (정책 3 강화 페어). 상세 + 검증 사례 + 금지 패턴: [.claude/policies/active.md#정책-12](.claude/policies/active.md#정책-12).
 
 #### 정책 13: 운영 endpoint smoke check 의무
 
-**default**: 매 사이클/Phase 종료 시 3-endpoint smoke check — `/health` 200 + `/auth/github` 302 + Location `redirect_uri=` 정합 + `/login` 200. PR 본문 §"운영 smoke check 결과" 섹션 의무 (인증/외부 통합 변경 PR). **자동화 가드 (oauth_flow_smoke 10 + dashboard 14 + theme_mobile 7) ≠ manual smoke check 대체** — CI 통과 ≠ 운영 정상. 상세: [docs/policies/active.md#정책-13](docs/policies/active.md#정책-13).
+**default**: 매 사이클/Phase 종료 시 3-endpoint smoke check — `/health` 200 + `/auth/github` 302 + Location `redirect_uri=` 정합 + `/login` 200. PR 본문 §"운영 smoke check 결과" 섹션 의무 (인증/외부 통합 변경 PR). **자동화 가드 (oauth_flow_smoke 10 + dashboard 14 + theme_mobile 7) ≠ manual smoke check 대체** — CI 통과 ≠ 운영 정상. 상세: [.claude/policies/active.md#정책-13](.claude/policies/active.md#정책-13).
 
 #### 정책 14: GitHub Code Scanning 알림 운영 체크 의무
 
 사용자 발화: *"시큐리티에서 감지하는 내용도 앞으로 프로젝트 운영시 체크사항으로 부탁드립니다."*
 
-**default**: 매 사이클 종료 시 Security 탭 Code Scanning open alert 직접 검토. 신규 alert = (a) 실제 위반 → fix PR / (b) false-positive → dismiss + 사유 / (c) 의도 패턴 → suppress + 회고. PR 본문 §"Code Scanning open alert" 일괄 회신 OK. **SCAManager lint (pylint/flake8/bandit) 통과 ≠ Security 탭 0 alert** (CodeQL 별도 룰셋). 상세: [docs/policies/active.md#정책-14](docs/policies/active.md#정책-14).
+**default**: 매 사이클 종료 시 Security 탭 Code Scanning open alert 직접 검토. 신규 alert = (a) 실제 위반 → fix PR / (b) false-positive → dismiss + 사유 / (c) 의도 패턴 → suppress + 회고. PR 본문 §"Code Scanning open alert" 일괄 회신 OK. **SCAManager lint (pylint/flake8/bandit) 통과 ≠ Security 탭 0 alert** (CodeQL 별도 룰셋). 상세: [.claude/policies/active.md#정책-14](.claude/policies/active.md#정책-14).
 
 #### 정책 15: 코드 작업 (add/edit/delete) 전 사전 사고 의무
 
 사용자 발화: *"앞으로 코드를 추가, 수정, 삭제 작업을 실행하기 이전에 항상 생각을 먼저 하고 진행을 합니다. 이해가 안되면 멈추거나 물어보고 하세요."*
 
-**default**: 모든 Edit/Write/MCP destructive 직전 3 자문 의무 — (a) 목적 = 사용자 의도 정합? (b) 영향 범위 인지? (c) 검증 방법 명확? 이해 부족 시 즉시 중단 (옵션 표 또는 yes/no 사전 확인). **위임 분류 3-tier**: **High** (사전 확인 의무 — DB 스키마/API/권한/데이터 모델) / **Medium** (자율+보고 — 헬퍼/정책 진화) / **Low** (즉시 진입 — 회귀 가드/docstring/typo). 상세: [docs/policies/active.md#정책-15](docs/policies/active.md#정책-15).
+**default**: 모든 Edit/Write/MCP destructive 직전 3 자문 의무 — (a) 목적 = 사용자 의도 정합? (b) 영향 범위 인지? (c) 검증 방법 명확? 이해 부족 시 즉시 중단 (옵션 표 또는 yes/no 사전 확인). **위임 분류 3-tier**: **High** (사전 확인 의무 — DB 스키마/API/권한/데이터 모델) / **Medium** (자율+보고 — 헬퍼/정책 진화) / **Low** (즉시 진입 — 회귀 가드/docstring/typo). 상세: [.claude/policies/active.md#정책-15](.claude/policies/active.md#정책-15).
 
 #### 정책 16: 코드 단순화 default + 가독성 우선
 
@@ -269,7 +269,7 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 
 **🚫 명시 제외 영역** (AI 리뷰 품질 보존 — 사이클 72 사용자 명시 보류): `build_review_prompt` 토큰 예산 8000 축소 / `review_guides/` Tier1 full 압축. 신규 토큰 절약 영역 도입 시 사용자 사전 확인 의무 (정책 15 High tier 페어).
 
-**금지 패턴**: 추상 베이스 클래스 / Generic 타입 / 메타클래스 / 데코레이터 체인 / "확장 대비" 분기. 상세 + 검증 사례 + 리뷰 체크포인트: [docs/policies/active.md#정책-16](docs/policies/active.md#정책-16).
+**금지 패턴**: 추상 베이스 클래스 / Generic 타입 / 메타클래스 / 데코레이터 체인 / "확장 대비" 분기. 상세 + 검증 사례 + 리뷰 체크포인트: [.claude/policies/active.md#정책-16](.claude/policies/active.md#정책-16).
 
 #### 정책 17 신설 (2026-05-06 사이클 88 진입): 문서 정리 시 안정성 > 권장 규격 우선순위
 
@@ -277,18 +277,18 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 
 **default 의무 5 원칙** (우선순위 순):
 1. **안정성 우선** — 행동 가이드 detail 보존 + 회귀 0 (Anthropic 200줄 hard target 등 외부 권장 규격은 가이드라인 — 안정성 충돌 시 거부)
-2. **default rule + 진화 default 본문 보존** — 정책 본문의 default rule + 진화 default 1~2줄 = CLAUDE.md 본문 보존 의무 / detail · 검증 사례 · Why · How to apply = `docs/policies/active.md` 또는 `history.md` external (Phase A 검증 패턴)
+2. **default rule + 진화 default 본문 보존** — 정책 본문의 default rule + 진화 default 1~2줄 = CLAUDE.md 본문 보존 의무 / detail · 검증 사례 · Why · How to apply = `.claude/policies/active.md` 또는 `history.md` external (Phase A 검증 패턴)
 3. **단계 분할 + 단계별 검증 의무** — 매 분리 단계마다 5+1 다중 에이전트 회의 + 운영 검증 (행동 가이드 drift 0) + 사용자 옵션 표 결정 (정책 1 + 정책 8 + 정책 7 강화 페어)
 4. **분리 위험 영역 사용자 사전 확인 의무** — 매 작업/회고/PR 의무 영역 (정책 8 cross-verify 정량 기준 / 정책 11 8 조합 체크리스트 / 정책 5 NEW-P0-N 예외 / 정책 9 완화 미적용 영역) = 본문 보존 default + 분리 시 High tier 사전 확인 의무
-5. **누적 결함 정기 검증 default** (사이클 92 신설 — 사이클 89 #349/#350 시간차 결함 학습) — 단일 작업일 ≥ 18 PR 영역 도입 후 **≥ 5 사이클 경과 시 정기 5+1 다중 에이전트 검증 default** (정기 검증 트리거 = 시간/PR 기반 / 매 회고 cross-verify 트리거 정책 8 진화 와 시점·대상 차별). 사이클 89 사례 = 사이클 74/84 누적 결함 (E2E i18n hardcode + integration fixture sync) 발견 — 정기 검증 ROI 양성 검증. 상세: [docs/policies/active.md#정책-17-5번째-default](docs/policies/active.md#정책-17-5번째-default).
+5. **누적 결함 정기 검증 default** (사이클 92 신설 — 사이클 89 #349/#350 시간차 결함 학습) — 단일 작업일 ≥ 18 PR 영역 도입 후 **≥ 5 사이클 경과 시 정기 5+1 다중 에이전트 검증 default** (정기 검증 트리거 = 시간/PR 기반 / 매 회고 cross-verify 트리거 정책 8 진화 와 시점·대상 차별). 사이클 89 사례 = 사이클 74/84 누적 결함 (E2E i18n hardcode + integration fixture sync) 발견 — 정기 검증 ROI 양성 검증. 상세: [.claude/policies/active.md#정책-17-5번째-default](.claude/policies/active.md#정책-17-5번째-default).
 
-Why + How to apply (자가 검토 4 자문) 상세: [docs/policies/active.md#정책-17-why-how](docs/policies/active.md#정책-17-why-how).
+Why + How to apply (자가 검토 4 자문) 상세: [.claude/policies/active.md#정책-17-why-how](.claude/policies/active.md#정책-17-why-how).
 
 #### 정책 18 신설 (2026-05-09 사이클 93): Claude ↔ Codex 양방향 mutual 검증 의무
 
 사용자 발화 (2026-05-09, 사이클 93 CI 분석 사고 직후): *"Claude 또는 Codex가 작업을 수행시 반드시 두 LLM모델이 OK확인을 받아야 통과합니다. 상호간의 작업 내용을 검증 검토를 수행합니다. Claude 도 Codex도 이 내용은 반드시 숙지합니다."*
 
-🔴 **사이클 94 사용자 정정 (2026-05-10)**: Codex 검증 = PR push 전 의무. push 후 의뢰 안티패턴 상세: [docs/policies/active.md#정책-18](docs/policies/active.md#정책-18).
+🔴 **사이클 94 사용자 정정 (2026-05-10)**: Codex 검증 = PR push 전 의무. push 후 의뢰 안티패턴 상세: [.claude/policies/active.md#정책-18](.claude/policies/active.md#정책-18).
 
 **default 의무 5 영역**:
 1. **양방향 대칭 흐름 (push 전 검증 default)** — Claude 작업 (로컬 commit) → Codex 검증 → OK 후 push / Codex 작업 (로컬 commit) → Claude 검증 → OK 후 push. **push 전 단독 완료 금지**.
@@ -315,7 +315,7 @@ Why + How to apply (자가 검토 4 자문) 상세: [docs/policies/active.md#정
 - 메모리 grep / 단순 정보 제공
 - **사용자 직접 결정 영역** (사용자 명시 결정 = 최종, 두 LLM 검증 면제)
 
-상세: [docs/policies/active.md#정책-18](docs/policies/active.md#정책-18).
+상세: [.claude/policies/active.md#정책-18](.claude/policies/active.md#정책-18).
 
 ---
 
