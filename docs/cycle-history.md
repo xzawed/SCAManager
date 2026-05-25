@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [사이클 132 (theme-option CSS 변수 충돌 버그 수정, 2026-05-25)](#사이클-132)
 - [사이클 131 (Claude Design UI 전체 재설계 9 PR — 토큰 시스템·컴포넌트·WCAG, 2026-05-25)](#사이클-131)
 - [사이클 130 (pylint 10.00/10 복원 + IssueRegistration 타입 힌트 + codecov/patch 수정, 2026-05-24)](#사이클-130)
 - [사이클 129 (AI Issue 등록 기능 Phase 1+2, 2026-05-24)](#사이클-129)
@@ -39,6 +40,21 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 사이클 132
+
+**날짜**: 2026-05-25 | **PR**: #639 (`fix/theme-option-data-attr-collision`) | **상태**: ✅ 머지 완료
+
+**작업 내용**: theme-option `data-theme` 속성 → `data-theme-target` 변경 (CSS 변수 충돌 버그)
+
+| 영역 | 내용 |
+|------|------|
+| 버그 원인 | T1 `tokens.css` `[data-theme]` element-agnostic 선택자 — `.theme-option[data-theme="dark"]` 항목에 다크 테마 CSS 변수 오염 |
+| 증상 | 파스텔 테마에서 "다크 오로라" 옵션 텍스트 불가시 (`--text-1: #f3f3fa` 흰색), catppuccin에서 "파스텔" 저대비 |
+| 수정 | `data-theme` → `data-theme-target` (HTML 4곳 + JS 4곳) |
+| 테스트 | UI 178 통과, 테스트 수 변동 없음 |
+
+---
 
 ## 사이클 131
 
