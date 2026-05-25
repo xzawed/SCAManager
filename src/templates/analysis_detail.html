@@ -1,762 +1,721 @@
 {% extends "base.html" %}
 {% block title %}{{ 'analysis_detail.title' | i18n_args(locale | default('ko'), id=analysis.id) }} — {{ repo_name }} — SCAManager{% endblock %}
-{% block content %}
+
+{% block head %}
 <style>
-  /* ── 페이지 헤더 ─────────────────────────────────────────────────── */
-  /* 분석 상세 헤더 레이아웃 / Analysis detail header layout */
-  .ad-header {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    margin-bottom: 1.75rem;
-    flex-wrap: wrap;
-  }
-  /* 그라디언트 텍스트 제목 (--text-1 → --accent, 135deg)
-     Gradient text title (--text-1 → --accent, 135deg) */
-  .ad-header h2 {
-    margin: 0;
-    font-size: 1.3rem;
-    font-weight: 700;
-    background: linear-gradient(135deg, var(--text-1) 0%, var(--accent) 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+  /* ── 페이지 래퍼 / Page wrapper ──────────────────────────────────── */
+  .analysis-wrap {
+    max-width: 1060px; margin: 0 auto;
+    padding: var(--space-7, 2rem) var(--space-6, 1.5rem) var(--space-8, 3rem);
   }
 
-  /* ── 메타 정보 ───────────────────────────────────────────────────── */
-  /* 분석 메타 정보 행 / Analysis metadata row */
+  /* ── 히어로 영역 / Hero area ─────────────────────────────────────── */
+  .analysis-hero {
+    display: flex; gap: var(--space-6, 1.5rem); align-items: flex-start;
+    margin-bottom: var(--space-7, 2rem);
+  }
+  .analysis-hero__grade { flex-shrink: 0; }
+  .analysis-hero__body { flex: 1; min-width: 0; }
+  .analysis-hero__title {
+    font-size: var(--fs-xl, 1.25rem); font-weight: 700;
+    color: var(--text-1, #fff); margin: 0 0 var(--space-2, 0.5rem);
+    letter-spacing: -0.02em;
+  }
+  .analysis-hero__score-row {
+    display: flex; align-items: baseline; gap: var(--space-3, 0.75rem);
+    margin: var(--space-3, 0.75rem) 0;
+  }
+  .analysis-hero__score-num {
+    font-family: var(--font-mono, monospace);
+    font-size: var(--fs-3xl, 2rem); font-weight: 700;
+    letter-spacing: -0.025em; line-height: 1;
+    color: var(--text-1, #fff);
+  }
+  .analysis-hero__score-unit {
+    font-size: var(--fs-md, 1rem); color: var(--text-3, rgba(255,255,255,0.4));
+  }
+
+  /* ── 점수 바 / Score bar ─────────────────────────────────────────── */
+  /* 점수 진행 바 — CSS custom property로 너비 제어 / Score progress bar — width controlled via CSS custom property */
+  .score-bar {
+    height: 6px;
+    background: var(--table-row-hover, rgba(255,255,255,0.08));
+    border-radius: var(--radius-pill, 999px); overflow: hidden;
+    margin: var(--space-2, 0.5rem) 0;
+  }
+  .score-bar::after {
+    content: ''; display: block; height: 100%;
+    width: var(--sb-pct, 0%);
+    background: var(--accent-grad, linear-gradient(90deg, #7c7aff, #b289ff));
+    border-radius: var(--radius-pill, 999px);
+    transition: width 0.8s cubic-bezier(0.16,1,0.3,1);
+  }
+  .score-bar--a::after { background: var(--success, #34d399); }
+  .score-bar--b::after { background: #60a5fa; }
+  .score-bar--c::after { background: var(--warning, #fbbf24); }
+  .score-bar--d::after { background: #fb923c; }
+  .score-bar--f::after { background: var(--danger, #f87171); }
+
+  /* ── 등급 배지 (로컬 fallback) / Grade badge (local fallback) ──────── */
+  /* 글로벌 .grade 가 없을 때 대비 fallback 정의 / Fallback for when global .grade is absent */
+  .grade {
+    display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 0.75rem; line-height: 1;
+    padding: 2px 7px; border-radius: 6px; border: 1px solid transparent;
+    text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .grade--hero {
+    width: 72px; height: 72px; font-size: 2rem; font-weight: 800;
+    border-radius: 16px; letter-spacing: -0.03em; padding: 0;
+  }
+  .grade--a { background: rgba(52,211,153,0.12); color: #34d399; border-color: rgba(52,211,153,0.32); }
+  .grade--b { background: rgba(96,165,250,0.12); color: #60a5fa; border-color: rgba(96,165,250,0.32); }
+  .grade--c { background: rgba(251,191,36,0.12);  color: #fbbf24; border-color: rgba(251,191,36,0.32); }
+  .grade--d { background: rgba(251,146,60,0.12);  color: #fb923c; border-color: rgba(251,146,60,0.32); }
+  .grade--f { background: rgba(248,113,113,0.12); color: #f87171; border-color: rgba(248,113,113,0.32); }
+
+  /* ── 카드 컴포넌트 (로컬 fallback) / Card component (local fallback) ─ */
+  .card {
+    background: var(--bg-card, rgba(255,255,255,0.05));
+    border: 1px solid var(--border-subtle, rgba(255,255,255,0.08));
+    border-radius: var(--radius-lg, 12px); overflow: hidden;
+    margin-bottom: var(--space-5, 1.25rem);
+  }
+  .card__head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: var(--space-5, 1.25rem);
+    border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+  }
+  .card__title { font-size: var(--fs-md, 1rem); font-weight: 640; color: var(--text-1, #fff); }
+  .card__body { padding: var(--space-5, 1.25rem); }
+
+  /* ── 이슈 행 / Issue row ─────────────────────────────────────────── */
+  /* 정적 분석 이슈 행 — 3-column grid (dot / content / badge) / Static analysis issue row — 3-col grid */
+  .issue {
+    display: grid;
+    grid-template-columns: 8px 1fr auto;
+    gap: var(--space-4, 1rem);
+    align-items: start;
+    padding: var(--space-3, 0.75rem) var(--space-5, 1.25rem);
+    border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+  }
+  .issue:last-child { border-bottom: 0; }
+  .issue__sev {
+    width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex-shrink: 0;
+  }
+  .issue__sev--error   { background: var(--danger, #f87171); }
+  .issue__sev--warning { background: var(--warning, #fbbf24); }
+  .issue__sev--info    { background: #60a5fa; }
+  .issue__title { font-size: var(--fs-sm, 0.875rem); color: var(--text-1, #fff); line-height: 1.4; }
+  .issue__path  { font-size: var(--fs-xs, 0.75rem); color: var(--text-3, rgba(255,255,255,0.4)); margin-top: 2px; font-family: var(--font-mono, monospace); }
+
+  /* ── 레거시 섹션 스타일 (기존 AI 카드용) / Legacy section styles (existing AI cards) ─ */
+  /* 기존 ad-* 클래스 호환 유지 / Preserve legacy ad-* class compat */
   .ad-meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: .5rem 1.5rem;
-    font-size: 13px;
-    color: var(--text-2);
-    margin-bottom: 1.5rem;
+    display: flex; flex-wrap: wrap; gap: .5rem 1.5rem;
+    font-size: 13px; color: var(--text-2); margin-bottom: 1.5rem;
   }
   .ad-meta span { display: inline-flex; align-items: center; gap: 4px; }
-
-  /* ── 점수 배너 ───────────────────────────────────────────────────── */
-  /* 점수/등급 배너 — 글라스모피즘 카드 / Score/grade banner — glassmorphism card */
-  .ad-score-banner {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    padding: 1.25rem 1.5rem;
-    margin-bottom: 1.25rem;
-    background: var(--bg-card);
-    backdrop-filter: blur(12px) saturate(150%);
-    border: 1px solid var(--border-subtle);
-    border-radius: 16px;
-    box-shadow: var(--shadow-sm);
-  }
-  /* 큰 점수 숫자 — badge-pop 애니메이션 (0.35s 딜레이로 page-in 완료 후 실행)
-     Large score number — badge-pop animation (0.35s delay after page-in completes) */
-  .ad-score-big {
-    font-size: 2rem;
-    font-weight: 800;
-    line-height: 1;
-    animation: var(--anim-badge-pop);
-    animation-delay: 0.35s;
-    animation-fill-mode: both;
-    display: inline-block;
-  }
-  .ad-score-big.high { color: var(--grade-a); }
-  .ad-score-big.mid  { color: var(--grade-c); }
-  .ad-score-big.low  { color: var(--grade-f); }
-  /* 등급 배지 badge-pop 애니메이션 / Grade badge badge-pop animation */
-  .ad-grade-badge {
-    animation: var(--anim-badge-pop);
-    animation-delay: 0.35s;
-    animation-fill-mode: both;
-    display: inline-block;
-  }
-  .ad-score-label {
-    font-size: 13px;
-    color: var(--text-2);
-  }
-
-  /* ── 점수 상세 바 ────────────────────────────────────────────────── */
   .ad-breakdown { margin-bottom: 1.25rem; }
   .ad-breakdown table { width: 100%; }
   .ad-bar-cell { width: 50%; }
   .ad-bar-wrap {
     background: var(--bg-elevated);
-    border-radius: 4px;
-    height: 8px;
-    overflow: hidden;
+    border-radius: 4px; height: 8px; overflow: hidden;
   }
-  .ad-bar-fill {
-    height: 100%;
-    border-radius: 4px;
-    transition: width 0.4s ease;
-  }
+  .ad-bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
   .ad-bar-fill.high { background: var(--grade-a); }
   .ad-bar-fill.mid  { background: var(--grade-c); }
   .ad-bar-fill.low  { background: var(--grade-f); }
-
-  /* ── 섹션 공통 ───────────────────────────────────────────────────── */
-  /* 섹션 여백 / Section spacing */
   .ad-section { margin-bottom: 1.25rem; }
   .ad-section-title {
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--text-2);
-    text-transform: uppercase;
-    letter-spacing: .05em;
-    margin-bottom: .75rem;
-    display: flex;
-    align-items: center;
-    gap: 6px;
+    font-size: 13px; font-weight: 700; color: var(--text-2);
+    text-transform: uppercase; letter-spacing: .05em;
+    margin-bottom: .75rem; display: flex; align-items: center; gap: 6px;
   }
-  .ad-text {
-    font-size: 14px;
-    line-height: 1.7;
-    color: var(--text-1);
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
+  .ad-text { font-size: 14px; line-height: 1.7; color: var(--text-1); white-space: pre-wrap; word-break: break-word; }
   .ad-list { list-style: none; padding: 0; margin: 0; }
-  .ad-list li {
-    font-size: 14px;
-    padding: .4rem 0;
-    border-bottom: 1px solid var(--border-subtle);
-    color: var(--text-1);
-  }
+  .ad-list li { font-size: 14px; padding: .4rem 0; border-bottom: 1px solid var(--border-subtle); color: var(--text-1); }
   .ad-list li:last-child { border-bottom: none; }
-
-  /* ── 카테고리 피드백 ──────────────────────────────────────────────── */
-  /* 피드백 항목 / Feedback item */
-  .ad-feedback-item {
-    padding: .75rem 0;
-    border-bottom: 1px solid var(--border-subtle);
-  }
+  .ad-feedback-item { padding: .75rem 0; border-bottom: 1px solid var(--border-subtle); }
   .ad-feedback-item:last-child { border-bottom: none; }
-  .ad-feedback-label {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--accent);
-    margin-bottom: 4px;
-  }
-  .ad-feedback-text {
-    font-size: 14px;
-    color: var(--text-1);
-    line-height: 1.6;
-  }
-
-  /* ── 파일 피드백 ──────────────────────────────────────────────────── */
+  .ad-feedback-label { font-size: 12px; font-weight: 600; color: var(--accent); margin-bottom: 4px; }
+  .ad-feedback-text { font-size: 14px; color: var(--text-1); line-height: 1.6; }
   .ad-file-name {
     font-family: var(--claude-font-mono, 'Menlo', 'Consolas', monospace);
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--accent);
-    background: var(--code-bg);
-    padding: 2px 8px;
-    border-radius: 4px;
-    border: 1px solid var(--border-subtle);
-    margin-bottom: 6px;
-    display: inline-block;
+    font-size: 13px; font-weight: 600; color: var(--accent);
+    background: var(--code-bg); padding: 2px 8px; border-radius: 4px;
+    border: 1px solid var(--border-subtle); margin-bottom: 6px; display: inline-block;
   }
-
-  /* ── 정적 분석 이슈 카드 ──────────────────────────────────────────── */
-  /* 이슈 행 — reveal 스태거 지원 / Issue row — reveal stagger support */
-  .ad-issue-row {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    padding: .35rem 0;
-    font-size: 13px;
-  }
-  /* 이슈 도구 뱃지 시맨틱 토큰 / Issue tool badge semantic tokens */
-  .ad-issue-tool {
-    font-size: 11px;
-    font-weight: 600;
-    padding: 2px 6px;
-    border-radius: 4px;
-    flex-shrink: 0;
-  }
-  /* Step D 호환 + semantic token 유지 (color-mix로 토큰 기반 반투명 배경)
-     Step D compatibility + semantic token preserved (color-mix for token-based alpha bg) */
-  .ad-issue-tool.error   { background: color-mix(in srgb, var(--danger) 15%, transparent);  color: var(--danger); }
-  .ad-issue-tool.warning { background: color-mix(in srgb, var(--warning) 15%, transparent); color: var(--warning); }
-  .ad-issue-line {
-    font-size: 12px;
-    color: var(--text-2);
-    flex-shrink: 0;
-  }
-  .ad-issue-msg { color: var(--text-1); }
-
-  /* ── 심각도 뱃지 (HIGH / MEDIUM / LOW) ───────────────────────────── */
-  /* 심각도 시맨틱 색상 뱃지 — color-mix로 토큰 기반 반투명 배경 (4-테마 자동 호환)
-     Severity semantic color badges — color-mix token-based alpha bg (auto 4-theme compat) */
-  .severity-high {
-    background: color-mix(in srgb, var(--danger) 15%, transparent);
-    color: var(--danger);
-    border: 1px solid var(--danger);
-    font-size: 11px;
-    font-weight: 700;
-    padding: 2px 7px;
-    border-radius: 4px;
-    letter-spacing: .04em;
-  }
-  .severity-medium {
-    background: color-mix(in srgb, var(--warning) 15%, transparent);
-    color: var(--warning);
-    border: 1px solid var(--warning);
-    font-size: 11px;
-    font-weight: 700;
-    padding: 2px 7px;
-    border-radius: 4px;
-    letter-spacing: .04em;
-  }
-  .severity-low {
-    background: color-mix(in srgb, var(--success) 15%, transparent);
-    color: var(--success);
-    border: 1px solid var(--success);
-    font-size: 11px;
-    font-weight: 700;
-    padding: 2px 7px;
-    border-radius: 4px;
-    letter-spacing: .04em;
-  }
-
-  /* ── 빈 상태 ─────────────────────────────────────────────────────── */
-  .ad-empty {
-    text-align: center;
-    padding: 3rem 2rem;
-    color: var(--text-2);
-    font-size: 14px;
-  }
-
-  /* ── 커밋 메시지 ──────────────────────────────────────────────────── */
+  .ad-empty { text-align: center; padding: 3rem 2rem; color: var(--text-2); font-size: 14px; }
   .commit-msg-text {
     font-family: var(--claude-font-mono, 'Menlo', 'Consolas', monospace);
-    font-size: 13px;
-    background: var(--code-bg);
-    padding: 10px 14px;
-    border-radius: 6px;
-    border: 1px solid var(--border-subtle);
-    color: var(--text-1);
-    white-space: pre-wrap;
-    word-break: break-word;
-    overflow-wrap: anywhere;
-    max-width: 100%;
+    font-size: 13px; background: var(--code-bg); padding: 10px 14px;
+    border-radius: 6px; border: 1px solid var(--border-subtle);
+    color: var(--text-1); white-space: pre-wrap; word-break: break-word;
+    overflow-wrap: anywhere; max-width: 100%;
   }
 
-  /* ── 이전/다음 내비게이션 — pill 버튼 ────────────────────────────── */
-  /* 이전/다음 네비게이션 / Prev/next navigation */
-  .analysis-nav {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 1rem;
-    gap: .5rem;
-  }
+  /* ── 심각도 배지 / Severity badges ──────────────────────────────── */
+  /* color-mix 기반 반투명 배경 — 4-테마 자동 호환 / color-mix alpha bg — auto 4-theme compat */
+  .severity-high   { background: color-mix(in srgb, var(--danger) 15%, transparent);  color: var(--danger);  border: 1px solid var(--danger);  font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 4px; letter-spacing: .04em; }
+  .severity-medium { background: color-mix(in srgb, var(--warning) 15%, transparent); color: var(--warning); border: 1px solid var(--warning); font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 4px; letter-spacing: .04em; }
+  .severity-low    { background: color-mix(in srgb, var(--success) 15%, transparent); color: var(--success); border: 1px solid var(--success); font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 4px; letter-spacing: .04em; }
+
+  /* ── 이전/다음 내비게이션 / Prev/next navigation ─────────────────── */
+  .analysis-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; gap: .5rem; }
   /* pill 형태 네비게이션 버튼 / Pill-style navigation buttons */
   .nav-btn {
-    border-radius: 999px;
-    padding: 8px 18px;
-    border: 1px solid var(--border-subtle);
-    background: var(--bg-elevated);
-    color: var(--text-2);
-    text-decoration: none;
-    font-size: 0.82rem;
-    cursor: pointer;
-    transition: all 0.18s;
-    display: inline-flex;
-    align-items: center;
+    border-radius: 999px; padding: 8px 18px;
+    border: 1px solid var(--border-subtle); background: var(--bg-elevated);
+    color: var(--text-2); text-decoration: none; font-size: 0.82rem;
+    cursor: pointer; transition: all 0.18s; display: inline-flex; align-items: center;
   }
-  .nav-btn:hover {
-    background: var(--accent);
-    color: var(--btn-on-accent, #fff);
-    border-color: var(--accent);
-    text-decoration: none;
-  }
+  .nav-btn:hover { background: var(--accent); color: var(--btn-on-accent, #fff); border-color: var(--accent); text-decoration: none; }
   .nav-btn.disabled { opacity: 0.38; cursor: default; pointer-events: none; }
   .nav-label { font-size: 0.82rem; color: var(--text-2); flex: 1; text-align: center; }
 
-  /* ── 트렌드 차트 섹션 ────────────────────────────────────────────── */
-  /* Step E (E2) + PR-3 F1: 차트 컨테이너 viewport 비례 clamp — 데스크탑 빈약 시각 회피
-     Step E + PR-3 F1: viewport-relative clamp avoids desktop chart squish */
+  /* ── 트렌드 차트 / Trend chart ───────────────────────────────────── */
+  /* Step E (E2) + PR-3 F1: clamp으로 viewport 비례 높이 / Viewport-relative clamp height */
   .trend-section {
-    margin-bottom: 1.25rem;
-    padding: 1rem 1.25rem;
-    background: var(--bg-card);
-    backdrop-filter: blur(12px) saturate(150%);
-    border: 1px solid var(--border-subtle);
-    border-radius: 16px;
-    box-shadow: var(--shadow-sm);
+    margin-bottom: 1.25rem; padding: 1rem 1.25rem;
+    background: var(--bg-card); backdrop-filter: blur(12px) saturate(150%);
+    border: 1px solid var(--border-subtle); border-radius: 16px; box-shadow: var(--shadow-sm);
   }
-  .trend-section .chart-wrap-inner {
-    position: relative;
-    height: clamp(200px, 30vw, 320px);
-  }
+  .trend-section .chart-wrap-inner { position: relative; height: clamp(200px, 30vw, 320px); }
   .trend-section-title {
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--text-2);
-    text-transform: uppercase;
-    letter-spacing: .05em;
-    margin-bottom: .75rem;
-    display: flex;
-    align-items: center;
-    gap: 6px;
+    font-size: 13px; font-weight: 700; color: var(--text-2);
+    text-transform: uppercase; letter-spacing: .05em; margin-bottom: .75rem;
+    display: flex; align-items: center; gap: 6px;
   }
 
-  /* ── AI 섹션 카드 — 글라스모피즘 ────────────────────────────────── */
-  /* AI 섹션 카드에 glassmorphism 적용 / Glassmorphism on AI section cards */
+  /* ── AI 섹션 카드 (glassmorphism) / AI section card (glassmorphism) ── */
   .ad-ai-card {
-    background: var(--bg-card);
-    backdrop-filter: blur(12px) saturate(150%);
-    border: 1px solid var(--border-subtle);
-    border-radius: 16px;
-    box-shadow: var(--shadow-sm);
-    padding: 1.5rem;
-    margin-bottom: 1.25rem;
+    background: var(--bg-card); backdrop-filter: blur(12px) saturate(150%);
+    border: 1px solid var(--border-subtle); border-radius: 16px;
+    box-shadow: var(--shadow-sm); padding: 1.5rem; margin-bottom: 1.25rem;
   }
 
-  /* ── 반응형 (태블릿) ─────────────────────────────────────────────── */
+  /* ── 이슈 도구 배지 / Issue tool badges ─────────────────────────── */
+  /* Step D 호환 + semantic token (color-mix 반투명 배경) / Step D compat + semantic token */
+  .ad-issue-row { display: flex; align-items: baseline; gap: 8px; padding: .35rem 0; font-size: 13px; }
+  .ad-issue-tool { font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 4px; flex-shrink: 0; }
+  .ad-issue-tool.error   { background: color-mix(in srgb, var(--danger) 15%, transparent);  color: var(--danger); }
+  .ad-issue-tool.warning { background: color-mix(in srgb, var(--warning) 15%, transparent); color: var(--warning); }
+  .ad-issue-line { font-size: 12px; color: var(--text-2); flex-shrink: 0; }
+  .ad-issue-msg  { color: var(--text-1); }
+
+  /* ── 반응형 / Responsive ─────────────────────────────────────────── */
   @media (max-width: 768px) {
-    .ad-header { gap: 0.75rem; }
-    .ad-header h2 { font-size: 1.1rem; word-break: break-all; }
-    .ad-score-big { font-size: 1.6rem; }
-    .ad-score-banner { padding: 1rem; }
-    .ad-breakdown table { font-size: 12px; }
-    .ad-breakdown td { padding: 4px 4px !important; }
-    .ad-bar-cell { width: 40%; }
+    .analysis-wrap { padding: var(--space-5, 1.25rem) var(--space-4, 1rem) var(--space-6, 1.5rem); }
+    .analysis-hero { flex-direction: column; gap: var(--space-4, 1rem); }
+    .analysis-hero__score-num { font-size: var(--fs-2xl, 1.5rem); }
+    .analysis-nav { flex-wrap: wrap; }
+    .nav-btn { padding: 7px 14px; min-height: 44px; box-sizing: border-box; }
+    /* WCAG 2.5.5 모바일 터치 타겟 44px 보장 / WCAG 2.5.5 mobile touch target 44px */
+    .fb-btn { min-height: 44px; box-sizing: border-box; }
     .ad-section { margin-bottom: 1rem; }
-    .card { padding: 1rem; }
+    .card { padding: 0; }
     .ad-ai-card { padding: 1rem; border-radius: 12px; }
     .ad-issue-row { flex-wrap: wrap; gap: 4px; }
     .ad-feedback-text { font-size: 13px; }
     .ad-text { font-size: 13px; }
     .ad-list li { font-size: 13px; }
     .commit-msg-text { font-size: 12px; padding: 8px 10px; }
-    .analysis-nav { flex-wrap: wrap; }
-    .nav-btn { padding: 7px 14px; min-height: 44px; box-sizing: border-box; }
-    /* WCAG 2.5.5 모바일 터치 타겟 44px 보장 (피드백 버튼)
-       WCAG 2.5.5 mobile touch target 44px guarantee (feedback buttons) */
-    .fb-btn { min-height: 44px; box-sizing: border-box; }
+    .ad-breakdown td { padding: 4px 4px !important; }
+    .ad-bar-cell { width: 40%; }
+    .ad-breakdown table { font-size: 12px; }
   }
   @media (max-width: 480px) {
     .ad-breakdown td:first-child { width: 80px; font-size: 11px !important; }
     .ad-breakdown td:nth-child(2) { width: 50px; font-size: 12px !important; }
   }
 </style>
+{% endblock %}
 
-<!-- 헤더 / Header / Phase 2 PR-7 — i18n -->
-<div class="ad-header">
-  <a class="back-btn" href="/repos/{{ repo_name }}">{{ 'analysis_detail.back' | i18n_args(locale | default('ko')) }}</a>
-  <h2>{{ repo_name }}</h2>
-  <!-- 등급 배지에 badge-pop 애니메이션 적용 (above-fold 딜레이 0.35s)
-       Grade badge with badge-pop animation (above-fold, 0.35s delay) -->
-  <span class="grade grade-{{ analysis.grade }} ad-grade-badge" style="margin-left:auto">{{ analysis.grade }}</span>
-</div>
+{% block content %}
+<div class="analysis-wrap">
 
-<!-- 이전/다음 내비게이션 / Prev/Next navigation -->
-<div class="analysis-nav">
-  {% if prev_id %}
-    <a href="/repos/{{ repo_name }}/analyses/{{ prev_id }}" class="nav-btn">{{ 'analysis_detail.prev' | i18n_args(locale | default('ko')) }}</a>
-  {% else %}
-    <span class="nav-btn disabled">{{ 'analysis_detail.prev' | i18n_args(locale | default('ko')) }}</span>
-  {% endif %}
-  <span class="nav-label">{{ 'analysis_detail.nav_label' | i18n_args(locale | default('ko'), id=analysis.id) }}</span>
-  {% if next_id %}
-    <a href="/repos/{{ repo_name }}/analyses/{{ next_id }}" class="nav-btn">{{ 'analysis_detail.next' | i18n_args(locale | default('ko')) }}</a>
-  {% else %}
-    <span class="nav-btn disabled">{{ 'analysis_detail.next' | i18n_args(locale | default('ko')) }}</span>
-  {% endif %}
-</div>
-
-<!-- 메타 정보 / Meta info -->
-<div class="ad-meta">
-  <span>📅 {{ analysis.created_at[:16].replace('T', ' ') if analysis.created_at else "—" }}</span>
-  <span>🔗 <code style="font-size:12px" title="{{ analysis.commit_sha }}">{{ analysis.commit_sha[:7] }}</code></span>
-  {% if analysis.pr_number %}
-  <span>🔀 PR #{{ analysis.pr_number }}</span>
-  {% endif %}
-  <span>
-    {% if analysis.source == 'cli' %}{{ 'analysis_detail.source_cli' | i18n_args(locale | default('ko')) }}
-    {% elif analysis.source == 'pr' %}{{ 'analysis_detail.source_pr' | i18n_args(locale | default('ko')) }}
-    {% else %}{{ 'analysis_detail.source_push' | i18n_args(locale | default('ko')) }}
-    {% endif %}
-  </span>
-</div>
-
-<!-- 커밋 메시지 / Commit message -->
-<div class="card ad-section">
-  <div class="ad-section-title">{{ 'analysis_detail.section_commit_msg' | i18n_args(locale | default('ko')) }}</div>
-  <div class="commit-msg-text">{{ analysis.commit_message or ('analysis_detail.commit_msg_empty' | i18n_args(locale | default('ko'))) }}</div>
-</div>
-<!-- 커밋 메시지 카드: 첫 번째 visible 카드 — reveal 미적용 (above fold)
-     Commit message card: first visible card — no reveal (above fold) -->
-
-<!-- 점수 배너 / Score banner -->
-{% if analysis.score is not none %}
-<div class="ad-score-banner">
-  <div>
-    <span class="ad-score-big {% if analysis.score >= 75 %}high{% elif analysis.score >= 50 %}mid{% else %}low{% endif %}">
-      {{ analysis.score }}
-    </span>
-    <span style="font-size:1.2rem;color:var(--text-2)">{{ 'analysis_detail.score_unit_suffix' | i18n_args(locale | default('ko')) }}</span>
-  </div>
-  <div>
-    <div style="font-size:15px;font-weight:700;color:var(--text-1)">{{ 'analysis_detail.grade_label' | i18n_args(locale | default('ko'), grade=analysis.grade) }}</div>
-    {# Phase 1B (UI 개편) — 친근한 의미 라벨. Phase 2 PR-7 — i18n / 5 score messages #}
-    <div class="ad-score-label">
-      {% if analysis.score >= 90 %}{{ 'analysis_detail.score_message.excellent' | i18n_args(locale | default('ko')) }}
-      {% elif analysis.score >= 75 %}{{ 'analysis_detail.score_message.good' | i18n_args(locale | default('ko')) }}
-      {% elif analysis.score >= 60 %}{{ 'analysis_detail.score_message.fair' | i18n_args(locale | default('ko')) }}
-      {% elif analysis.score >= 45 %}{{ 'analysis_detail.score_message.needs_review' | i18n_args(locale | default('ko')) }}
-      {% else %}{{ 'analysis_detail.score_message.poor' | i18n_args(locale | default('ko')) }}{% endif %}
+  <!-- 히어로 영역 / Hero area -->
+  <div class="analysis-hero">
+    <div class="analysis-hero__grade">
+      <!-- 등급 배지 — badge-pop 애니메이션 (above-fold 0.35s 딜레이) / Grade badge — badge-pop animation -->
+      <span class="grade grade--hero grade--{{ (analysis.grade or 'f') | lower }}"
+            style="animation: var(--anim-badge-pop); animation-delay: 0.35s; animation-fill-mode: both; display: inline-flex;">
+        {{ analysis.grade or 'F' }}
+      </span>
     </div>
-  </div>
-</div>
-{% endif %}
-
-<!-- Phase E.3 — 이 점수가 맞나요? thumbs up/down 피드백 / Phase 2 PR-7 — i18n -->
-<div class="card feedback-card" id="feedbackCard"
-     data-analysis-id="{{ analysis.id }}"
-     data-repo="{{ repo_name }}"
-     data-current-thumbs="{{ user_feedback.thumbs if user_feedback and user_feedback.thumbs else '' }}"
-     data-i18n-saving="{{ 'analysis_detail.feedback.saving' | i18n_args(locale | default('ko')) }}"
-     data-i18n-saved="{{ 'analysis_detail.feedback.saved' | i18n_args(locale | default('ko')) }}"
-     data-i18n-save-failed="{{ 'analysis_detail.feedback.save_failed' | i18n_args(locale | default('ko'), message='__M__') }}">
-  <div class="feedback-prompt">
-    <span class="feedback-label">{{ 'analysis_detail.feedback.prompt' | i18n_args(locale | default('ko')) }}</span>
-    <span class="feedback-hint">{{ 'analysis_detail.feedback.hint' | i18n_args(locale | default('ko')) }}</span>
-  </div>
-  <div class="feedback-buttons" role="group" aria-label="{{ 'analysis_detail.feedback.aria_group' | i18n_args(locale | default('ko')) }}">
-    <button type="button" class="fb-btn fb-up" data-value="1"
-            title="{{ 'analysis_detail.feedback.thumbs_up_title' | i18n_args(locale | default('ko')) }}" aria-label="{{ 'analysis_detail.feedback.thumbs_up_aria' | i18n_args(locale | default('ko')) }}">
-      <span aria-hidden="true">👍</span> <span class="fb-btn-label">{{ 'analysis_detail.feedback.thumbs_up' | i18n_args(locale | default('ko')) }}</span>
-    </button>
-    <button type="button" class="fb-btn fb-down" data-value="-1"
-            title="{{ 'analysis_detail.feedback.thumbs_down_title' | i18n_args(locale | default('ko')) }}" aria-label="{{ 'analysis_detail.feedback.thumbs_down_aria' | i18n_args(locale | default('ko')) }}">
-      <span aria-hidden="true">👎</span> <span class="fb-btn-label">{{ 'analysis_detail.feedback.thumbs_down' | i18n_args(locale | default('ko')) }}</span>
-    </button>
-    <span class="fb-status" id="fbStatus" role="status" aria-live="polite"></span>
-  </div>
-</div>
-<style>
-  .feedback-card { padding: 1rem 1.2rem; display: flex; align-items: center;
-                   justify-content: space-between; flex-wrap: wrap; gap: 0.8rem; }
-  .feedback-prompt { display: flex; flex-direction: column; }
-  .feedback-label { font-size: 14px; font-weight: 600; color: var(--text-1); }
-  .feedback-hint  { font-size: 12px; color: var(--text-2); margin-top: 2px; }
-  .feedback-buttons { display: flex; gap: 0.5rem; align-items: center; }
-  .fb-btn { padding: 0.5rem 1rem; border-radius: 8px; border: 1px solid var(--border-subtle);
-            background: var(--bg-card); cursor: pointer; font-size: 14px;
-            transition: all 0.15s ease; display: inline-flex; align-items: center; gap: 0.3rem; }
-  .fb-btn:hover { background: var(--bg-hover); transform: translateY(-1px); }
-  /* Step D: 피드백 버튼 시맨틱 토큰화 — color-mix 반투명 배경 (4-테마 자동 적용)
-     Step D: feedback button semantic tokens — color-mix alpha bg (auto across 4 themes) */
-  .fb-btn.active.fb-up   { background: color-mix(in srgb, var(--success) 13%, transparent); border-color: var(--success); color: var(--success); }
-  .fb-btn.active.fb-down { background: color-mix(in srgb, var(--danger) 13%, transparent); border-color: var(--danger); color: var(--danger); }
-  .fb-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  .fb-status { font-size: 12px; color: var(--text-2); margin-left: 0.5rem; }
-  /* Step D: 피드백 상태 토큰화 / Feedback status semantic tokens */
-  .fb-status.ok    { color: var(--success); }
-  .fb-status.error { color: var(--danger); }
-</style>
-<script>
-/* htmx-boost 재방문 시 핸들러 중복 등록 방지 — named function + remove-before-add 패턴 (ui.md)
-   Prevent duplicate handler registration on htmx-boost re-navigation — named function + remove-before-add (ui.md) */
-function _initFeedback() {
-  const card = document.getElementById('feedbackCard');
-  /* feedbackInit guard: 동일 DOM 요소에 중복 초기화 방지 (htmx:afterSettle 이 비내비게이션 요청에도 발화)
-     feedbackInit guard: prevent re-init on same DOM node (htmx:afterSettle fires on non-navigation requests too) */
-  if (!card || card.dataset.feedbackInit) return;
-  card.dataset.feedbackInit = '1';
-
-  const analysisId = card.dataset.analysisId;
-  const repo = card.dataset.repo;
-  const current = card.dataset.currentThumbs;
-  const status = document.getElementById('fbStatus');
-  const btns = card.querySelectorAll('.fb-btn');
-
-  // 초기 상태 복원
-  if (current) {
-    const match = card.querySelector(`.fb-btn[data-value="${current}"]`);
-    if (match) match.classList.add('active');
-  }
-
-  btns.forEach(btn => btn.addEventListener('click', async () => {
-    const thumbs = parseInt(btn.dataset.value, 10);
-    btns.forEach(b => b.disabled = true);
-    status.textContent = card.dataset.i18nSaving;
-    status.className = 'fb-status';
-    try {
-      const url = `/repos/${encodeURIComponent(repo)}/analyses/${analysisId}/feedback`;
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        credentials: 'same-origin',
-        body: JSON.stringify({thumbs}),
-      });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      btns.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      status.textContent = card.dataset.i18nSaved;
-      status.className = 'fb-status ok';
-      setTimeout(() => { status.textContent = ''; }, 2500);
-    } catch (err) {
-      status.textContent = card.dataset.i18nSaveFailed.replace('__M__', err.message);
-      status.className = 'fb-status error';
-    } finally {
-      btns.forEach(b => b.disabled = false);
-    }
-  }));
-}
-_initFeedback();
-if (document._adFeedbackHandler) {
-  document.removeEventListener('htmx:afterSettle', document._adFeedbackHandler);
-  document.removeEventListener('htmx:historyRestore', document._adFeedbackHandler);
-}
-document._adFeedbackHandler = _initFeedback;
-document.addEventListener('htmx:afterSettle', document._adFeedbackHandler);
-document.addEventListener('htmx:historyRestore', document._adFeedbackHandler);
-</script>
-
-{% set r = analysis.result %}
-
-<!-- 점수 추이 트렌드 차트 / Phase 2 PR-7 — i18n -->
-{% if trend_data is defined and trend_data|length > 1 %}
-<div class="trend-section reveal">
-  <div class="trend-section-title">{{ 'analysis_detail.trend_section_title' | i18n_args(locale | default('ko'), count=trend_data|length) }}</div>
-  <div class="chart-wrap-inner">
-    <canvas id="trendChart"></canvas>
-  </div>
-</div>
-{% endif %}
-
-<!-- AI 기본값 적용 경고 배너 / Phase 2 PR-7 — i18n -->
-{% set ai_status = r.get('ai_review_status', 'success') if r else 'success' %}
-{% if ai_status != 'success' %}
-<div class="ad-ai-card reveal" style="border-left:4px solid var(--warning);background:rgba(245,158,11,0.08)">
-  <div style="display:flex;align-items:center;gap:.6rem">
-    <span style="font-size:1.1rem">⚠️</span>
-    <div>
-      <div style="font-size:13px;font-weight:700;color:var(--warning);margin-bottom:2px">{{ 'analysis_detail.ai_defaults.title' | i18n_args(locale | default('ko')) }}</div>
-      <div style="font-size:13px;color:var(--text-1)">
-        {% if ai_status == 'no_api_key' %}{{ 'analysis_detail.ai_defaults.no_api_key' | i18n_args(locale | default('ko')) }}
-        {% elif ai_status == 'api_error' %}{{ 'analysis_detail.ai_defaults.api_error' | i18n_args(locale | default('ko')) }}
-        {% elif ai_status == 'empty_diff' %}{{ 'analysis_detail.ai_defaults.empty_diff' | i18n_args(locale | default('ko')) }}
-        {% elif ai_status == 'parse_error' %}{{ 'analysis_detail.ai_defaults.parse_error' | i18n_args(locale | default('ko')) }}
-        {% else %}{{ 'analysis_detail.ai_defaults.other' | i18n_args(locale | default('ko')) }}
+    <div class="analysis-hero__body">
+      <!-- 리포 이름 수퍼라벨 / Repo name superlabel -->
+      <div style="font-size: var(--fs-xs, 0.75rem); color: var(--text-2, rgba(255,255,255,0.6)); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; margin-bottom: var(--space-1, 0.25rem);">
+        {{ repo_name }}
+      </div>
+      <h1 class="analysis-hero__title">{{ 'analysis_detail.title' | i18n_args(locale | default('ko'), id=analysis.id) }}</h1>
+      <!-- 점수 행 / Score row -->
+      <div class="analysis-hero__score-row">
+        <span class="analysis-hero__score-num"
+              style="animation: var(--anim-badge-pop); animation-delay: 0.35s; animation-fill-mode: both; display: inline-block;">
+          {% if analysis.score is not none %}{{ analysis.score | round(1) }}{% else %}—{% endif %}
+        </span>
+        <span class="analysis-hero__score-unit">/100</span>
+        <!-- 등급 레이블 (i18n) — "등급 B" / Grade label (i18n) — "Grade B" -->
+        <span style="font-size: 15px; font-weight: 700; color: var(--text-1);">
+          {{ 'analysis_detail.grade_label' | i18n_args(locale | default('ko'), grade=analysis.grade) }}
+        </span>
+        {% if analysis.score is not none %}
+        <span class="ad-score-label" style="font-size: 13px; color: var(--text-2);">
+          {% if analysis.score >= 90 %}{{ 'analysis_detail.score_message.excellent' | i18n_args(locale | default('ko')) }}
+          {% elif analysis.score >= 75 %}{{ 'analysis_detail.score_message.good' | i18n_args(locale | default('ko')) }}
+          {% elif analysis.score >= 60 %}{{ 'analysis_detail.score_message.fair' | i18n_args(locale | default('ko')) }}
+          {% elif analysis.score >= 45 %}{{ 'analysis_detail.score_message.needs_review' | i18n_args(locale | default('ko')) }}
+          {% else %}{{ 'analysis_detail.score_message.poor' | i18n_args(locale | default('ko')) }}{% endif %}
+        </span>
         {% endif %}
+      </div>
+      <!-- 점수 바 / Score bar -->
+      <div class="score-bar score-bar--{{ (analysis.grade or 'f') | lower }}"
+           style="--sb-pct: {{ (analysis.score | round | int) if analysis.score is not none else 0 }}%; max-width: 360px;">
+      </div>
+      <!-- 메타 정보 인라인 / Inline meta info -->
+      <div style="display:flex; flex-wrap:wrap; gap: var(--space-3, 0.75rem); margin-top: var(--space-3, 0.75rem); align-items: center;">
+        <span style="font-size: var(--fs-xs, 0.75rem); color: var(--text-3, rgba(255,255,255,0.4));">
+          📅 {{ analysis.created_at[:16].replace('T', ' ') if analysis.created_at else '—' }}
+        </span>
+        {% if analysis.commit_sha %}
+        <code style="font-size: var(--fs-xs, 0.75rem); color: var(--text-2, rgba(255,255,255,0.6)); font-family: var(--font-mono, monospace);"
+              title="{{ analysis.commit_sha }}">
+          🔗 {{ analysis.commit_sha[:7] }}
+        </code>
+        {% endif %}
+        {% if analysis.pr_number %}
+        <a class="grade grade--b"
+           href="https://github.com/{{ repo_name }}/pull/{{ analysis.pr_number }}"
+           target="_blank" rel="noopener"
+           style="font-size: 0.7rem; text-decoration: none;">
+          PR #{{ analysis.pr_number }}
+        </a>
+        {% endif %}
+        <!-- 분석 소스 레이블 / Analysis source label -->
+        <span style="font-size: var(--fs-xs, 0.75rem); color: var(--text-3, rgba(255,255,255,0.4));">
+          {% if analysis.source == 'cli' %}{{ 'analysis_detail.source_cli' | i18n_args(locale | default('ko')) }}
+          {% elif analysis.source == 'pr' %}{{ 'analysis_detail.source_pr' | i18n_args(locale | default('ko')) }}
+          {% else %}{{ 'analysis_detail.source_push' | i18n_args(locale | default('ko')) }}
+          {% endif %}
+        </span>
       </div>
     </div>
   </div>
-</div>
-{% endif %}
 
-<!-- 점수 상세 / Phase 2 PR-7 — i18n -->
-{% set bd = r.get('breakdown', {}) if r else {} %}
-{% if bd %}
-<div class="ad-ai-card ad-breakdown reveal">
-  <div class="ad-section-title">{{ 'analysis_detail.breakdown.section_title' | i18n_args(locale | default('ko')) }}</div>
-  <table>
-    <thead class="sr-only">
-      <tr>
-        <th scope="col">{{ 'analysis_detail.breakdown.th_item' | i18n_args(locale | default('ko')) }}</th>
-        <th scope="col">{{ 'analysis_detail.breakdown.th_score' | i18n_args(locale | default('ko')) }}</th>
-        <th scope="col">{{ 'analysis_detail.breakdown.th_ratio' | i18n_args(locale | default('ko')) }}</th>
-      </tr>
-    </thead>
-    <tbody>
-    {% for label_key, key, mx in [('code_quality','code_quality',25),('security','security',20),('commit_message','commit_message',15),('ai_review','ai_review',25),('test_coverage','test_coverage',15)] %}
-    {% set val = bd.get(key, 0) %}
-    {% set pct = (val / mx * 100) if mx else 0 %}
-    <tr>
-      <th scope="row" style="width:110px;font-size:13px;padding:6px 8px;color:var(--text-2);text-align:left;font-weight:normal;">{{ ('analysis_detail.breakdown.' + label_key) | i18n_args(locale | default('ko')) }}</th>
-      <td style="font-size:14px;font-weight:700;padding:6px 4px;width:60px;text-align:right">{{ val }}/{{ mx }}</td>
-      <td class="ad-bar-cell" style="padding:6px 8px">
-        <div class="ad-bar-wrap">
-          <div class="ad-bar-fill {% if pct >= 75 %}high{% elif pct >= 50 %}mid{% else %}low{% endif %}" style="width:{{ pct }}%"></div>
-        </div>
-      </td>
-    </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-</div>
-{% endif %}
+  <!-- 이전/다음 내비게이션 / Prev/Next navigation -->
+  <div class="analysis-nav">
+    {% if prev_id %}
+      <a href="/repos/{{ repo_name }}/analyses/{{ prev_id }}" class="nav-btn">{{ 'analysis_detail.prev' | i18n_args(locale | default('ko')) }}</a>
+    {% else %}
+      <span class="nav-btn disabled">{{ 'analysis_detail.prev' | i18n_args(locale | default('ko')) }}</span>
+    {% endif %}
+    <span class="nav-label">{{ 'analysis_detail.nav_label' | i18n_args(locale | default('ko'), id=analysis.id) }}</span>
+    {% if next_id %}
+      <a href="/repos/{{ repo_name }}/analyses/{{ next_id }}" class="nav-btn">{{ 'analysis_detail.next' | i18n_args(locale | default('ko')) }}</a>
+    {% else %}
+      <span class="nav-btn disabled">{{ 'analysis_detail.next' | i18n_args(locale | default('ko')) }}</span>
+    {% endif %}
+  </div>
 
-{% if r %}
-<!-- AI 요약 / Phase 2 PR-7 — i18n -->
-{% if r.get('ai_summary') %}
-<!-- AI 요약 카드 — glassmorphism + reveal (below fold)
-     AI summary card — glassmorphism + reveal (below fold) -->
-<div class="ad-ai-card reveal" style="--i: 0">
-  <div class="ad-section-title">{{ 'analysis_detail.ai.summary_title' | i18n_args(locale | default('ko')) }}</div>
-  <div class="ad-text">{{ r.ai_summary }}</div>
-</div>
-{% endif %}
+  <!-- 뒤로가기 링크 / Back link -->
+  <div style="margin-bottom: var(--space-5, 1.25rem);">
+    <a class="back-btn" href="/repos/{{ repo_name }}">{{ 'analysis_detail.back' | i18n_args(locale | default('ko')) }}</a>
+  </div>
 
-<!-- 개선 제안 / Phase 2 PR-7 — i18n -->
-{% if r.get('ai_suggestions') %}
-<!-- 개선 제안 카드 — glassmorphism + reveal stagger
-     Suggestions card — glassmorphism + reveal stagger -->
-<div class="ad-ai-card reveal" style="--i: 1">
-  <div class="ad-section-title">{{ 'analysis_detail.ai.suggestions_title' | i18n_args(locale | default('ko')) }}</div>
-  <ul class="ad-list">
-    {% for s in r.ai_suggestions %}
-    <li>{{ s }}</li>
-    {% endfor %}
-  </ul>
-</div>
-{% endif %}
+  <!-- 커밋 메시지 카드 / Commit message card -->
+  <!-- 첫 번째 visible 카드 — reveal 미적용 (above fold) / First card — no reveal (above fold) -->
+  <div class="card">
+    <div class="card__head">
+      <div class="card__title">{{ 'analysis_detail.section_commit_msg' | i18n_args(locale | default('ko')) }}</div>
+    </div>
+    <div class="card__body">
+      <div class="commit-msg-text">{{ analysis.commit_message or ('analysis_detail.commit_msg_empty' | i18n_args(locale | default('ko'))) }}</div>
+    </div>
+  </div>
 
-<!-- 카테고리별 피드백 / Phase 2 PR-7 — i18n (label key 5종 분리 → breakdown.* 재사용) -->
-{% set feedbacks = [
-  ('commit_message', r.get('commit_message_feedback', '')),
-  ('code_quality', r.get('code_quality_feedback', '')),
-  ('security', r.get('security_feedback', '')),
-  ('ai_review', r.get('direction_feedback', '')),
-  ('test_coverage', r.get('test_feedback', '')),
-] %}
-{% set has_fb = feedbacks | selectattr('1') | list %}
-{% if has_fb %}
-<!-- 카테고리 피드백 카드 — glassmorphism + reveal stagger
-     Category feedback card — glassmorphism + reveal stagger -->
-<div class="ad-ai-card reveal" style="--i: 2">
-  <div class="ad-section-title">{{ 'analysis_detail.ai.category_feedback_title' | i18n_args(locale | default('ko')) }}</div>
-  {% for label_key, fb in feedbacks %}
-  {% if fb %}
-  <div class="ad-feedback-item">
-    <div class="ad-feedback-label">{{ ('analysis_detail.breakdown.' + label_key) | i18n_args(locale | default('ko')) }}</div>
-    <div class="ad-feedback-text">{{ fb }}</div>
+  <!-- 점수 피드백 카드 (thumbs) / Score feedback card (thumbs) -->
+  <!-- Phase E.3 — 이 점수가 맞나요? / Is this score correct? -->
+  <div class="card feedback-card" id="feedbackCard"
+       data-analysis-id="{{ analysis.id }}"
+       data-repo="{{ repo_name }}"
+       data-current-thumbs="{{ user_feedback.thumbs if user_feedback and user_feedback.thumbs else '' }}"
+       data-i18n-saving="{{ 'analysis_detail.feedback.saving' | i18n_args(locale | default('ko')) }}"
+       data-i18n-saved="{{ 'analysis_detail.feedback.saved' | i18n_args(locale | default('ko')) }}"
+       data-i18n-save-failed="{{ 'analysis_detail.feedback.save_failed' | i18n_args(locale | default('ko'), message='__M__') }}">
+    <div class="card__body feedback-card-inner">
+      <div class="feedback-prompt">
+        <span class="feedback-label">{{ 'analysis_detail.feedback.prompt' | i18n_args(locale | default('ko')) }}</span>
+        <span class="feedback-hint">{{ 'analysis_detail.feedback.hint' | i18n_args(locale | default('ko')) }}</span>
+      </div>
+      <div class="feedback-buttons" role="group" aria-label="{{ 'analysis_detail.feedback.aria_group' | i18n_args(locale | default('ko')) }}">
+        <button type="button" class="fb-btn fb-up" data-value="1"
+                title="{{ 'analysis_detail.feedback.thumbs_up_title' | i18n_args(locale | default('ko')) }}" aria-label="{{ 'analysis_detail.feedback.thumbs_up_aria' | i18n_args(locale | default('ko')) }}">
+          <span aria-hidden="true">👍</span> <span class="fb-btn-label">{{ 'analysis_detail.feedback.thumbs_up' | i18n_args(locale | default('ko')) }}</span>
+        </button>
+        <button type="button" class="fb-btn fb-down" data-value="-1"
+                title="{{ 'analysis_detail.feedback.thumbs_down_title' | i18n_args(locale | default('ko')) }}" aria-label="{{ 'analysis_detail.feedback.thumbs_down_aria' | i18n_args(locale | default('ko')) }}">
+          <span aria-hidden="true">👎</span> <span class="fb-btn-label">{{ 'analysis_detail.feedback.thumbs_down' | i18n_args(locale | default('ko')) }}</span>
+        </button>
+        <span class="fb-status" id="fbStatus" role="status" aria-live="polite"></span>
+      </div>
+    </div>
+  </div>
+  <style>
+    /* 피드백 카드 내부 레이아웃 / Feedback card inner layout */
+    .feedback-card-inner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.8rem; }
+    .feedback-prompt { display: flex; flex-direction: column; }
+    .feedback-label { font-size: 14px; font-weight: 600; color: var(--text-1); }
+    .feedback-hint  { font-size: 12px; color: var(--text-2); margin-top: 2px; }
+    .feedback-buttons { display: flex; gap: 0.5rem; align-items: center; }
+    .fb-btn { padding: 0.5rem 1rem; border-radius: 8px; border: 1px solid var(--border-subtle);
+              background: var(--bg-card); cursor: pointer; font-size: 14px;
+              transition: all 0.15s ease; display: inline-flex; align-items: center; gap: 0.3rem; }
+    .fb-btn:hover { background: var(--bg-hover); transform: translateY(-1px); }
+    /* Step D: 시맨틱 토큰 — color-mix 반투명 배경 / Semantic tokens — color-mix alpha bg */
+    .fb-btn.active.fb-up   { background: color-mix(in srgb, var(--success) 13%, transparent); border-color: var(--success); color: var(--success); }
+    .fb-btn.active.fb-down { background: color-mix(in srgb, var(--danger) 13%, transparent);  border-color: var(--danger);  color: var(--danger); }
+    .fb-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .fb-status { font-size: 12px; color: var(--text-2); margin-left: 0.5rem; }
+    /* Step D: 피드백 상태 시맨틱 토큰 / Feedback status semantic tokens */
+    .fb-status.ok    { color: var(--success); }
+    .fb-status.error { color: var(--danger); }
+  </style>
+  <script>
+  /* htmx-boost 재방문 시 핸들러 중복 등록 방지 — named function + remove-before-add 패턴 (ui.md)
+     Prevent duplicate handler registration on htmx-boost re-navigation — named function + remove-before-add */
+  function _initFeedback() {
+    var card = document.getElementById('feedbackCard');
+    /* feedbackInit guard: 동일 DOM 요소에 중복 초기화 방지 / Prevent re-init on same DOM node */
+    if (!card || card.dataset.feedbackInit) return;
+    card.dataset.feedbackInit = '1';
+
+    var analysisId = card.dataset.analysisId;
+    var repo = card.dataset.repo;
+    var current = card.dataset.currentThumbs;
+    var status = document.getElementById('fbStatus');
+    var btns = card.querySelectorAll('.fb-btn');
+
+    // 초기 상태 복원 / Restore initial state
+    if (current) {
+      var match = card.querySelector('.fb-btn[data-value="' + current + '"]');
+      if (match) match.classList.add('active');
+    }
+
+    btns.forEach(function(btn) {
+      btn.addEventListener('click', async function() {
+        var thumbs = parseInt(btn.dataset.value, 10);
+        btns.forEach(function(b) { b.disabled = true; });
+        status.textContent = card.dataset.i18nSaving;
+        status.className = 'fb-status';
+        try {
+          var url = '/repos/' + encodeURIComponent(repo) + '/analyses/' + analysisId + '/feedback';
+          var resp = await fetch(url, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            credentials: 'same-origin',
+            body: JSON.stringify({thumbs: thumbs}),
+          });
+          if (!resp.ok) throw new Error('HTTP ' + resp.status);
+          btns.forEach(function(b) { b.classList.remove('active'); });
+          btn.classList.add('active');
+          status.textContent = card.dataset.i18nSaved;
+          status.className = 'fb-status ok';
+          setTimeout(function() { status.textContent = ''; }, 2500);
+        } catch (err) {
+          status.textContent = card.dataset.i18nSaveFailed.replace('__M__', err.message);
+          status.className = 'fb-status error';
+        } finally {
+          btns.forEach(function(b) { b.disabled = false; });
+        }
+      });
+    });
+  }
+  _initFeedback();
+  if (document._adFeedbackHandler) {
+    document.removeEventListener('htmx:afterSettle', document._adFeedbackHandler);
+    document.removeEventListener('htmx:historyRestore', document._adFeedbackHandler);
+  }
+  document._adFeedbackHandler = _initFeedback;
+  document.addEventListener('htmx:afterSettle', document._adFeedbackHandler);
+  document.addEventListener('htmx:historyRestore', document._adFeedbackHandler);
+  </script>
+
+  {% set r = analysis.result %}
+
+  <!-- 점수 추이 트렌드 차트 / Score trend chart -->
+  {% if trend_data is defined and trend_data|length > 1 %}
+  <div class="trend-section reveal">
+    <div class="trend-section-title">{{ 'analysis_detail.trend_section_title' | i18n_args(locale | default('ko'), count=trend_data|length) }}</div>
+    <div class="chart-wrap-inner">
+      <canvas id="trendChart"></canvas>
+    </div>
   </div>
   {% endif %}
-  {% endfor %}
-</div>
-{% endif %}
 
-<!-- 파일별 피드백 / Phase 2 PR-7 — i18n -->
-{% if r.get('file_feedbacks') %}
-<!-- 파일 피드백 카드 — glassmorphism + reveal stagger
-     File feedback card — glassmorphism + reveal stagger -->
-<div class="ad-ai-card reveal" style="--i: 3">
-  <div class="ad-section-title">{{ 'analysis_detail.ai.file_feedback_title' | i18n_args(locale | default('ko')) }}</div>
-  {% for ff in r.file_feedbacks %}
-  <div style="margin-bottom:1rem">
-    <div class="ad-file-name">{{ ff.get('file', '?') }}</div>
-    <ul class="ad-list">
-      {% for issue in ff.get('issues', []) %}
-      <li>{{ issue }}</li>
+  <!-- AI 기본값 적용 경고 배너 / AI fallback warning banner -->
+  {% set ai_status = r.get('ai_review_status', 'success') if r else 'success' %}
+  {% if ai_status != 'success' %}
+  <div class="ad-ai-card reveal" style="border-left:4px solid var(--warning);background:rgba(245,158,11,0.08)">
+    <div style="display:flex;align-items:center;gap:.6rem">
+      <span style="font-size:1.1rem">⚠️</span>
+      <div>
+        <div style="font-size:13px;font-weight:700;color:var(--warning);margin-bottom:2px">{{ 'analysis_detail.ai_defaults.title' | i18n_args(locale | default('ko')) }}</div>
+        <div style="font-size:13px;color:var(--text-1)">
+          {% if ai_status == 'no_api_key' %}{{ 'analysis_detail.ai_defaults.no_api_key' | i18n_args(locale | default('ko')) }}
+          {% elif ai_status == 'api_error' %}{{ 'analysis_detail.ai_defaults.api_error' | i18n_args(locale | default('ko')) }}
+          {% elif ai_status == 'empty_diff' %}{{ 'analysis_detail.ai_defaults.empty_diff' | i18n_args(locale | default('ko')) }}
+          {% elif ai_status == 'parse_error' %}{{ 'analysis_detail.ai_defaults.parse_error' | i18n_args(locale | default('ko')) }}
+          {% else %}{{ 'analysis_detail.ai_defaults.other' | i18n_args(locale | default('ko')) }}
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- 점수 상세 / Score breakdown -->
+  {% set bd = r.get('breakdown', {}) if r else {} %}
+  {% if bd %}
+  <div class="card ad-breakdown reveal">
+    <div class="card__head">
+      <div class="card__title">{{ 'analysis_detail.breakdown.section_title' | i18n_args(locale | default('ko')) }}</div>
+    </div>
+    <div class="card__body">
+      <table>
+        <thead class="sr-only">
+          <tr>
+            <th scope="col">{{ 'analysis_detail.breakdown.th_item' | i18n_args(locale | default('ko')) }}</th>
+            <th scope="col">{{ 'analysis_detail.breakdown.th_score' | i18n_args(locale | default('ko')) }}</th>
+            <th scope="col">{{ 'analysis_detail.breakdown.th_ratio' | i18n_args(locale | default('ko')) }}</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for label_key, key, mx in [('code_quality','code_quality',25),('security','security',20),('commit_message','commit_message',15),('ai_review','ai_review',25),('test_coverage','test_coverage',15)] %}
+        {% set val = bd.get(key, 0) %}
+        {% set pct = (val / mx * 100) if mx else 0 %}
+        <tr>
+          <th scope="row" style="width:110px;font-size:13px;padding:6px 8px;color:var(--text-2);text-align:left;font-weight:normal;">{{ ('analysis_detail.breakdown.' + label_key) | i18n_args(locale | default('ko')) }}</th>
+          <td style="font-size:14px;font-weight:700;padding:6px 4px;width:60px;text-align:right">{{ val }}/{{ mx }}</td>
+          <td class="ad-bar-cell" style="padding:6px 8px">
+            <div class="ad-bar-wrap">
+              <div class="ad-bar-fill {% if pct >= 75 %}high{% elif pct >= 50 %}mid{% else %}low{% endif %}" style="width:{{ pct }}%"></div>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if r %}
+  <!-- AI 요약 / AI summary -->
+  {% if r.get('ai_summary') %}
+  <div class="card reveal" style="--i: 0">
+    <div class="card__head">
+      <div class="card__title">{{ 'analysis_detail.ai.summary_title' | i18n_args(locale | default('ko')) }}</div>
+    </div>
+    <div class="card__body">
+      <div class="ad-text">{{ r.ai_summary }}</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- 개선 제안 / Improvement suggestions -->
+  {% if r.get('ai_suggestions') %}
+  <div class="card reveal" style="--i: 1">
+    <div class="card__head">
+      <div class="card__title">{{ 'analysis_detail.ai.suggestions_title' | i18n_args(locale | default('ko')) }}</div>
+    </div>
+    <div class="card__body">
+      <ul class="ad-list">
+        {% for s in r.ai_suggestions %}
+        <li>{{ s }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- 카테고리별 피드백 / Category feedback -->
+  {% set feedbacks = [
+    ('commit_message', r.get('commit_message_feedback', '')),
+    ('code_quality', r.get('code_quality_feedback', '')),
+    ('security', r.get('security_feedback', '')),
+    ('ai_review', r.get('direction_feedback', '')),
+    ('test_coverage', r.get('test_feedback', '')),
+  ] %}
+  {% set has_fb = feedbacks | selectattr('1') | list %}
+  {% if has_fb %}
+  <div class="card reveal" style="--i: 2">
+    <div class="card__head">
+      <div class="card__title">{{ 'analysis_detail.ai.category_feedback_title' | i18n_args(locale | default('ko')) }}</div>
+    </div>
+    <div class="card__body">
+      {% for label_key, fb in feedbacks %}
+      {% if fb %}
+      <div class="ad-feedback-item">
+        <div class="ad-feedback-label">{{ ('analysis_detail.breakdown.' + label_key) | i18n_args(locale | default('ko')) }}</div>
+        <div class="ad-feedback-text">{{ fb }}</div>
+      </div>
+      {% endif %}
       {% endfor %}
-    </ul>
+    </div>
   </div>
-  {% endfor %}
-</div>
-{% endif %}
+  {% endif %}
 
-<!-- 정적 분석 이슈 / Phase 2 PR-7 — i18n -->
-{% set issues = r.get('issues', []) %}
-{% if issues %}
-<!-- 이슈 카드 — glassmorphism + reveal stagger / Issue card — glassmorphism + reveal stagger -->
-<div class="ad-ai-card reveal" style="--i: 4">
-  <div class="ad-section-title">{{ 'analysis_detail.ai.issues_title' | i18n_args(locale | default('ko'), count=issues | length) }}</div>
-  {% for issue in issues %}
-  <!-- 이슈 행 — reveal stagger (--i는 loop.index0) / Issue row — reveal stagger via --i -->
-  <div class="ad-issue-row reveal" style="--i: {{ loop.index0 }}">
-    <span class="ad-issue-tool {{ issue.get('severity', 'warning') }}">{{ issue.get('tool', '?') }}</span>
-    {% if issue.get('line') %}<span class="ad-issue-line">L{{ issue.line }}</span>{% endif %}
-    <span class="ad-issue-msg">{{ issue.get('message', '') }}</span>
+  <!-- 파일별 피드백 / Per-file feedback -->
+  {% if r.get('file_feedbacks') %}
+  <div class="card reveal" style="--i: 3">
+    <div class="card__head">
+      <div class="card__title">{{ 'analysis_detail.ai.file_feedback_title' | i18n_args(locale | default('ko')) }}</div>
+    </div>
+    <div class="card__body">
+      {% for ff in r.file_feedbacks %}
+      <div style="margin-bottom:1rem">
+        <div class="ad-file-name">{{ ff.get('file', '?') }}</div>
+        <ul class="ad-list">
+          {% for issue_item in ff.get('issues', []) %}
+          <li>{{ issue_item }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endfor %}
+    </div>
   </div>
-  {% endfor %}
-</div>
-{% endif %}
+  {% endif %}
 
-<!-- result 있지만 모든 AI 필드가 비어있는 경우 / Phase 2 PR-7 — i18n -->
-{% if not (r.get('ai_summary') or r.get('ai_suggestions') or has_fb or r.get('file_feedbacks') or r.get('issues')) %}
-<div class="ad-ai-card reveal">
-  <div class="ad-empty">
-    <div style="font-size:2rem;margin-bottom:.75rem;opacity:0.5">🤖</div>
-    <p>{{ 'analysis_detail.empty.ai_no_data' | i18n_args(locale | default('ko')) }}</p>
+  <!-- 정적 분석 이슈 / Static analysis issues -->
+  {% set issues = r.get('issues', []) %}
+  {% if issues %}
+  <div class="card reveal" style="--i: 4">
+    <div class="card__head">
+      <div class="card__title">{{ 'analysis_detail.ai.issues_title' | i18n_args(locale | default('ko'), count=issues | length) }}</div>
+      <span class="grade grade--f" style="font-size: 0.7rem;">{{ issues | length }}</span>
+    </div>
+    <!-- 이슈 행 — .issue grid (dot / content / badge) / Issue rows — .issue grid -->
+    {% for iss in issues %}
+    <div class="issue reveal" style="--i: {{ loop.index0 }}">
+      <span class="issue__sev issue__sev--{{ (iss.get('severity', 'warning') or 'warning') | lower }}"></span>
+      <div>
+        <div class="issue__title">
+          <span class="ad-issue-tool {{ (iss.get('severity', 'warning') or 'warning') | lower }}" style="margin-right:4px">{{ iss.get('tool', '?') }}</span>
+          {% if iss.get('line') %}<span class="ad-issue-line">L{{ iss.line }}</span>{% endif %}
+          {{ iss.get('message', '') }}
+        </div>
+        {% if iss.get('path') or iss.get('file') %}
+        <div class="issue__path">{{ iss.get('path') or iss.get('file', '') }}{% if iss.get('line') %}:{{ iss.line }}{% endif %}</div>
+        {% endif %}
+      </div>
+      <span class="grade grade--{{ (iss.get('severity', 'warning') or 'warning') | lower }}" style="font-size: 0.65rem; align-self: start; margin-top: 4px;">
+        {{ (iss.get('severity') or 'WARN') | upper }}
+      </span>
+    </div>
+    {% endfor %}
   </div>
-</div>
-{% endif %}
+  {% endif %}
 
-{% else %}
-<!-- result 없는 경우 / Phase 2 PR-7 — i18n -->
-{% if analysis.score is none %}
-<div class="card">
-  <div class="ad-empty">
-    <div style="font-size:2rem;margin-bottom:.75rem;opacity:0.5">📭</div>
-    <p>{{ 'analysis_detail.empty.legacy_no_result_part1' | i18n_args(locale | default('ko')) }}<br>{{ 'analysis_detail.empty.legacy_no_result_part2' | i18n_args(locale | default('ko')) }}</p>
+  <!-- result 있지만 AI 필드 모두 빈 경우 / result exists but all AI fields empty -->
+  {% if not (r.get('ai_summary') or r.get('ai_suggestions') or has_fb or r.get('file_feedbacks') or r.get('issues')) %}
+  <div class="card reveal">
+    <div class="card__body">
+      <div class="ad-empty">
+        <div style="font-size:2rem;margin-bottom:.75rem;opacity:0.5">🤖</div>
+        <p>{{ 'analysis_detail.empty.ai_no_data' | i18n_args(locale | default('ko')) }}</p>
+      </div>
+    </div>
   </div>
-</div>
-{% else %}
-<div class="card">
-  <div class="ad-empty">
-    <div style="font-size:2rem;margin-bottom:.75rem;opacity:0.5">📭</div>
-    <p>{{ 'analysis_detail.empty.no_result' | i18n_args(locale | default('ko')) }}</p>
+  {% endif %}
+
+  {% else %}
+  <!-- result 없는 경우 / No result -->
+  {% if analysis.score is none %}
+  <div class="card">
+    <div class="card__body">
+      <div class="ad-empty">
+        <div style="font-size:2rem;margin-bottom:.75rem;opacity:0.5">📭</div>
+        <p>{{ 'analysis_detail.empty.legacy_no_result_part1' | i18n_args(locale | default('ko')) }}<br>{{ 'analysis_detail.empty.legacy_no_result_part2' | i18n_args(locale | default('ko')) }}</p>
+      </div>
+    </div>
   </div>
-</div>
-{% endif %}
-{% endif %}
-
-{# ─── GitHub Issue 등록 패널 (신규) ─── #}
-<section class="issue-reg-panel" id="issueRegPanel"
-         data-analysis-id="{{ analysis.id }}"
-         data-ai-suggestions="{{ (analysis.result or {}).get('ai_suggestions', []) | tojson }}"
-         data-static-issues="{{ (analysis.result or {}).get('issues', []) | tojson }}">
-
-  <h3 class="panel-title">📋 GitHub Issue 등록</h3>
-
-  {# 탭 #}
-  <div class="issue-reg-tabs" role="tablist">
-    <button class="issue-tab active" data-tab="ai" role="tab">
-      💡 AI 제안사항 <span class="issue-tab-count" id="aiCount"></span>
-    </button>
-    <button class="issue-tab" data-tab="static" role="tab">
-      🔴 정적 분석 이슈 <span class="issue-tab-count" id="staticCount"></span>
-    </button>
+  {% else %}
+  <div class="card">
+    <div class="card__body">
+      <div class="ad-empty">
+        <div style="font-size:2rem;margin-bottom:.75rem;opacity:0.5">📭</div>
+        <p>{{ 'analysis_detail.empty.no_result' | i18n_args(locale | default('ko')) }}</p>
+      </div>
+    </div>
   </div>
+  {% endif %}
+  {% endif %}
 
-  {# AI 제안 목록 #}
-  <div class="issue-tab-panel" id="tabAi">
-    <ul class="issue-list" id="aiIssueList"></ul>
-  </div>
+  <!-- GitHub Issue 등록 패널 / GitHub Issue registration panel -->
+  <section class="issue-reg-panel" id="issueRegPanel"
+           data-analysis-id="{{ analysis.id }}"
+           data-ai-suggestions="{{ (analysis.result or {}).get('ai_suggestions', []) | tojson }}"
+           data-static-issues="{{ (analysis.result or {}).get('issues', []) | tojson }}">
 
-  {# 정적 분석 이슈 목록 #}
-  <div class="issue-tab-panel hidden" id="tabStatic">
-    <ul class="issue-list" id="staticIssueList"></ul>
-  </div>
-</section>
+    <h3 class="panel-title">📋 GitHub Issue 등록</h3>
 
-{# ─── 편집 모달 ─── #}
-<div class="issue-modal-overlay hidden" id="issueModalOverlay" role="dialog" aria-modal="true">
-  <div class="issue-modal">
-    <h4 class="issue-modal-title">📝 GitHub Issue 생성</h4>
-
-    <label class="issue-modal-label">제목
-      <input type="text" id="issueTitle" class="issue-modal-input">
-    </label>
-
-    <label class="issue-modal-label">본문
-      <textarea id="issueBody" class="issue-modal-textarea" rows="6"></textarea>
-    </label>
-
-    <label class="issue-modal-label">라벨 (쉼표 구분)
-      <input type="text" id="issueLabels" class="issue-modal-input"
-             placeholder="bug, enhancement">
-    </label>
-
-    <div class="issue-modal-actions">
-      <button type="button" class="btn-secondary" id="issueModalCancel">취소</button>
-      <button type="button" class="btn-primary" id="issueModalSubmit">
-        GitHub에 Issue 생성 →
+    <!-- 탭 / Tabs -->
+    <div class="issue-reg-tabs" role="tablist">
+      <button class="issue-tab active" data-tab="ai" role="tab">
+        💡 AI 제안사항 <span class="issue-tab-count" id="aiCount"></span>
+      </button>
+      <button class="issue-tab" data-tab="static" role="tab">
+        🔴 정적 분석 이슈 <span class="issue-tab-count" id="staticCount"></span>
       </button>
     </div>
-    <p class="issue-modal-error hidden" id="issueModalError"></p>
+
+    <!-- AI 제안 목록 / AI suggestions list -->
+    <div class="issue-tab-panel" id="tabAi">
+      <ul class="issue-list" id="aiIssueList"></ul>
+    </div>
+
+    <!-- 정적 분석 이슈 목록 / Static analysis issues list -->
+    <div class="issue-tab-panel hidden" id="tabStatic">
+      <ul class="issue-list" id="staticIssueList"></ul>
+    </div>
+  </section>
+
+  <!-- 편집 모달 / Edit modal -->
+  <div class="issue-modal-overlay hidden" id="issueModalOverlay" role="dialog" aria-modal="true">
+    <div class="issue-modal">
+      <h4 class="issue-modal-title">📝 GitHub Issue 생성</h4>
+
+      <label class="issue-modal-label">제목
+        <input type="text" id="issueTitle" class="issue-modal-input">
+      </label>
+
+      <label class="issue-modal-label">본문
+        <textarea id="issueBody" class="issue-modal-textarea" rows="6"></textarea>
+      </label>
+
+      <label class="issue-modal-label">라벨 (쉼표 구분)
+        <input type="text" id="issueLabels" class="issue-modal-input"
+               placeholder="bug, enhancement">
+      </label>
+
+      <div class="issue-modal-actions">
+        <button type="button" class="btn-secondary" id="issueModalCancel">취소</button>
+        <button type="button" class="btn-primary" id="issueModalSubmit">
+          GitHub에 Issue 생성 →
+        </button>
+      </div>
+      <p class="issue-modal-error hidden" id="issueModalError"></p>
+    </div>
   </div>
-</div>
 
-{# ─── 성공 토스트 ─── #}
-<div class="issue-toast hidden" id="issueToast"></div>
+  <!-- 성공 토스트 / Success toast -->
+  <div class="issue-toast hidden" id="issueToast"></div>
 
+</div>{# end .analysis-wrap #}
 {% endblock %}
 
 {% block scripts %}
@@ -805,8 +764,7 @@ document.addEventListener('htmx:historyRestore', document._adFeedbackHandler);
     var _existing = (window.Chart && Chart.getChart) ? Chart.getChart(canvas) : null;
     if (_existing) _existing.destroy();
 
-    // 스파크라인 그라디언트 fill — 테마 accent 기반
-    // Sparkline gradient fill — theme accent based
+    // 스파크라인 그라디언트 fill — 테마 accent 기반 / Sparkline gradient fill — theme accent based
     var canvasCtx = canvas.getContext('2d');
     var h = canvas.offsetHeight || 200;
     var grad = canvasCtx.createLinearGradient(0, 0, 0, h);
@@ -872,9 +830,8 @@ document.addEventListener('htmx:historyRestore', document._adFeedbackHandler);
       },
       animation: animate === false ? { duration: 0 } : { duration: 300, easing: 'easeOutCubic' },
       responsive: true,
-      /* Step E (E2): false — chart-wrap-inner 컨테이너 height(200px) 가
-         폭과 무관하게 보장. 모바일 압착 + canvas height attr 깜빡임 회피.
-         Step E (E2): false — chart-wrap-inner container height(200px) guaranteed regardless of width. */
+      /* Step E (E2): false — chart-wrap-inner 컨테이너 height 보장
+         Step E (E2): false — chart-wrap-inner container height guaranteed */
       maintainAspectRatio: false
     }
   });
@@ -884,7 +841,6 @@ document.addEventListener('htmx:historyRestore', document._adFeedbackHandler);
   _buildAnalysisChart();
 
   /* themechange — remove-before-add 패턴 (ui.md: _<pageScope><Domain>Handler)
-     hx-boost 재방문 시 stale closure 방지 + 테마 전환 시 차트 색상 재빌드
      Prevent stale closure on hx-boost revisit; rebuild chart colors on theme change */
   if (document._adThemeHandler) {
     document.removeEventListener('themechange', document._adThemeHandler);
@@ -913,10 +869,10 @@ document.addEventListener('htmx:historyRestore', document._adFeedbackHandler);
   var aiSuggestions = JSON.parse(panel.dataset.aiSuggestions || '[]');
   var staticIssues  = JSON.parse(panel.dataset.staticIssues  || '[]');
 
-  /* ── 상태 맵 — issue_key(서버) → registration */
+  /* ── 상태 맵 — issue_key(서버) → registration / State map — issue_key → registration */
   var stateMap = {};
 
-  /* ── 상태 로드 ── */
+  /* ── 상태 로드 / Load status ── */
   function loadStatus() {
     return fetch('/api/issues/status?analysis_id=' + analysisId)
       .then(function(r) { return r.ok ? r.json() : null; })
@@ -929,7 +885,7 @@ document.addEventListener('htmx:historyRestore', document._adFeedbackHandler);
       .catch(function() {});
   }
 
-  /* ── 아이템 구성 ── */
+  /* ── 아이템 구성 / Build items ── */
   function buildAiItem(text, idx) {
     return {
       key: 'ai:' + text.slice(0, 50),
@@ -952,7 +908,7 @@ document.addEventListener('htmx:historyRestore', document._adFeedbackHandler);
     };
   }
 
-  /* ── 렌더링 ── */
+  /* ── 렌더링 / Rendering ── */
   function renderAll() {
     renderList('aiIssueList', 'aiCount', aiSuggestions.map(buildAiItem));
     renderList('staticIssueList', 'staticCount', staticIssues.map(buildStaticItem));
@@ -997,7 +953,7 @@ document.addEventListener('htmx:historyRestore', document._adFeedbackHandler);
     return li;
   }
 
-  /* ── 탭 전환 ── */
+  /* ── 탭 전환 / Tab switching ── */
   document.querySelectorAll('.issue-tab').forEach(function(tab) {
     tab.addEventListener('click', function() {
       document.querySelectorAll('.issue-tab').forEach(function(t) { t.classList.remove('active'); });
@@ -1007,7 +963,7 @@ document.addEventListener('htmx:historyRestore', document._adFeedbackHandler);
     });
   });
 
-  /* ── 모달 ── */
+  /* ── 모달 / Modal ── */
   var _currentItem = null;
 
   function openModal(item) {
@@ -1072,7 +1028,7 @@ document.addEventListener('htmx:historyRestore', document._adFeedbackHandler);
         btn.textContent = 'GitHub에 Issue 생성 →';
         return;
       }
-      /* 성공 — 상태 맵 갱신 후 목록 다시 렌더링 */
+      /* 성공 — 상태 맵 갱신 후 목록 다시 렌더링 / Success — update state map and re-render list */
       stateMap[_currentItem.key] = {
         github_issue_number: res.data.github_issue_number,
         github_issue_state: 'open',
@@ -1091,7 +1047,7 @@ document.addEventListener('htmx:historyRestore', document._adFeedbackHandler);
     });
   });
 
-  /* ── 토스트 ── */
+  /* ── 토스트 / Toast ── */
   function showToast(msg) {
     var toast = document.getElementById('issueToast');
     toast.textContent = msg;
@@ -1099,7 +1055,7 @@ document.addEventListener('htmx:historyRestore', document._adFeedbackHandler);
     setTimeout(function() { toast.classList.add('hidden'); }, 5000);
   }
 
-  /* ── 초기화 ── */
+  /* ── 초기화 / Initialize ── */
   loadStatus().then(renderAll);
 })();
 </script>
