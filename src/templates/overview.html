@@ -2,209 +2,133 @@
 {% block title %}{{ 'header.overview' | i18n_args(locale | default('ko')) }} — SCAManager{% endblock %}
 {% block content %}
 <style>
-  /* ── Overview page premium redesign ────────────────────────────────── */
+  /* ── Overview page v3 redesign ─────────────────────────────────────── */
 
-  /* 헤더 레이아웃
-     Header layout */
-  .overview-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: var(--space-7);
-    gap: var(--space-4);
+  /* 페이지 전체 래퍼
+     Page-level wrapper */
+  .overview-wrap {
+    max-width: 1200px; margin: 0 auto;
+    padding: var(--space-7, 2rem) var(--space-6, 1.5rem) var(--space-8, 3rem);
   }
 
-  /* 환영 인사 서브텍스트
-     Greeting sub-text */
-  .overview-greeting {
-    margin: 0 0 var(--space-2);
-    font-size: var(--fs-sm);
-    color: var(--text-2, var(--text-muted));
+  /* 페이지 헤더
+     Page header */
+  .ov-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: var(--space-7, 2rem); gap: var(--space-4, 1rem); flex-wrap: wrap;
+  }
+  .ov-head-greeting {
+    margin: 0 0 var(--space-2, 0.5rem);
+    font-size: var(--fs-sm, 0.875rem);
+    color: var(--text-2, rgba(255,255,255,0.6));
     font-weight: 400;
   }
-
-  /* 그라디언트 페이지 타이틀
-     Gradient page title */
-  .overview-title {
+  .ov-head-title {
+    font-size: var(--fs-display-sm, 2rem); font-weight: 760;
+    letter-spacing: -0.025em; line-height: 1.2;
+    background: var(--accent-grad, linear-gradient(135deg, #7c7aff, #b289ff));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
     margin: 0;
-    font-size: 1.5rem;
-    font-weight: 700;
-    letter-spacing: -.02em;
-    background: linear-gradient(135deg, var(--text-1, var(--text-primary)), var(--accent));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
   }
-
-  /* 헤더 우측 액션 영역
-     Header right-side actions */
-  .overview-actions { display: flex; align-items: center; gap: var(--space-3); }
 
   /* 리포 개수 뱃지
      Repo count badge */
   .repo-count {
-    font-size: var(--fs-xs);
-    color: var(--text-2, var(--text-muted));
-    background: var(--bg-elevated, var(--bg-input));
-    border: 1px solid var(--border-subtle, var(--border));
+    font-size: var(--fs-xs, 0.75rem);
+    color: var(--text-2, rgba(255,255,255,0.6));
+    background: var(--bg-elevated, var(--bg-2, rgba(255,255,255,0.05)));
+    border: 1px solid var(--border-subtle, rgba(255,255,255,0.08));
     padding: 4px 12px;
-    border-radius: var(--radius-pill);
+    border-radius: var(--radius-pill, 999px);
   }
 
-  /* 기본 버튼 — 그라디언트 스타일
-     Primary button — gradient style */
-  .btn-primary {
-    background: linear-gradient(135deg, var(--accent), var(--accent-2, var(--accent))) !important;
-    color: var(--btn-on-accent, #fff) !important;
-    border: none !important;
-    border-radius: 10px !important;
-    font-weight: 600;
-    transition: transform 0.1s, box-shadow 0.2s;
-    cursor: pointer;
+  /* 리포 그리드
+     Repo grid */
+  .repo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: var(--space-4, 1rem);
   }
-  .btn-primary:hover {
+
+  /* 리포 카드
+     Repo card */
+  .repo-card {
+    display: flex; flex-direction: column; gap: var(--space-3, 0.75rem);
+    background: var(--bg-card, var(--bg-2, rgba(255,255,255,0.05)));
+    border: 1px solid var(--border-subtle, rgba(255,255,255,0.08));
+    border-radius: var(--radius-lg, 12px);
+    padding: var(--space-5, 1.25rem);
+    text-decoration: none;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  }
+  .repo-card:hover {
     transform: translateY(-1px);
-    box-shadow: 0 6px 20px rgba(var(--accent-rgb, 99,102,241), 0.3) !important;
+    box-shadow: var(--shadow-md, 0 4px 16px rgba(0,0,0,0.2));
+    border-color: var(--border-strong, rgba(255,255,255,0.2));
     text-decoration: none;
   }
-  .btn-primary:active { transform: scale(0.97); }
-
-  /* ── 리포 테이블 카드 ──────────────────────────────────────────────── */
-
-  /* 테이블 래퍼 — 카드 스타일 강화
-     Table wrapper — enhanced card style */
-  .overview-table-card {
-    background: var(--bg-card, var(--bg-surface));
-    backdrop-filter: blur(12px) saturate(150%);
-    border: 1px solid var(--border-subtle, var(--border));
-    border-radius: 16px;
-    box-shadow: var(--shadow-sm);
-    overflow: hidden;
-    margin-bottom: 0;
+  .repo-card__row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3, 0.75rem); }
+  .repo-card__name {
+    font-size: var(--fs-md, 1rem); font-weight: 640; color: var(--text-1, #fff);
+    letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-
-  /* 테이블 가로 스크롤 래퍼
-     Table horizontal scroll wrapper */
-  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-
-  /* 테이블 기본 스타일
-     Table base styles */
-  .overview-table-card table { width: 100%; border-collapse: collapse; }
-
-  /* 테이블 헤더 — 고급형 스타일
-     Table header — premium style */
-  .overview-table-card thead th {
-    background: var(--bg-elevated, var(--bg-nav));
-    color: var(--text-2, var(--text-muted));
-    font-size: 12px;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    padding: 12px 16px;
-    font-weight: 600;
-    border-bottom: 1px solid var(--border-subtle, var(--border));
-    white-space: nowrap;
+  .repo-card__meta { font-size: var(--fs-xs, 0.75rem); color: var(--text-3, rgba(255,255,255,0.4)); }
+  .repo-card__score-row {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: var(--fs-xs, 0.75rem);
   }
+  .repo-card__score { font-family: var(--claude-font-mono, monospace); color: var(--text-1, #fff); font-size: var(--fs-sm, 0.875rem); }
 
-  /* 리포 행 — 호버 액센트 바 효과
-     Repo row — hover accent bar effect
-     🔴 tr::before 방식은 Chromium이 phantom table-column으로 취급 → thead/tbody 컬럼 오정렬.
-     🔴 tr::before causes Chromium to insert phantom first column → thead/tbody column desync.
-     → first-child td의 inset box-shadow 방식으로 교체 (position:relative 불필요).
-     → Replaced with inset box-shadow on first td (no position:relative needed). */
-  .repo-row {
-    transition: background 0.15s;
+  /* 점수 바 (인라인)
+     Score bar (inline) */
+  .score-bar {
+    height: 4px;
+    background: var(--table-row-hover, rgba(255,255,255,0.08));
+    border-radius: 999px; overflow: hidden;
   }
-  .repo-row td {
-    padding: 13px 16px;
-    border-bottom: 1px solid var(--border-subtle, var(--border));
-    white-space: nowrap;
-    vertical-align: middle;
+  .score-bar::after {
+    content: ''; display: block; height: 100%; width: var(--sb-pct, 0%);
+    background: var(--accent-grad, linear-gradient(90deg, #7c7aff, #b289ff));
+    border-radius: 999px;
   }
-  .repo-row:last-child td { border-bottom: none; }
+  .score-bar--a::after { background: var(--success, #34d399); }
+  .score-bar--b::after { background: #60a5fa; }
+  .score-bar--c::after { background: var(--warning, #fbbf24); }
+  .score-bar--d::after { background: #fb923c; }
+  .score-bar--f::after { background: var(--danger, #f87171); }
 
-  /* 왼쪽 액센트 바 — inset box-shadow (호버 시 노출)
-     Left accent bar — inset box-shadow (shown on hover) */
-  .repo-row td:first-child {
-    box-shadow: inset 3px 0 0 transparent;
-    transition: box-shadow 0.15s;
-  }
-  .repo-row:hover td:first-child {
-    box-shadow: inset 3px 0 0 var(--accent);
-  }
-  .repo-row:hover { background: var(--table-row-hover, transparent); }
-
-  /* 리포 링크
-     Repo link */
-  .repo-link {
-    font-weight: 600;
-    font-size: var(--fs-sm);
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    color: var(--text-1, var(--text-primary));
-    text-decoration: none;
-  }
-  .repo-link::before {
-    content: '';
-    display: inline-block;
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--success);
-    flex-shrink: 0;
-  }
-  .repo-link:hover { color: var(--accent); text-decoration: none; }
-
-  /* 분석 수 텍스트
-     Analysis count text */
-  .analysis-count { font-size: var(--fs-xs); color: var(--text-2, var(--text-muted)); }
-
-  /* 점수 셀 — badge-pop 애니메이션 적용
-     Score cell — badge-pop animation applied */
-  .score-cell {
-    font-weight: 700;
-    font-size: var(--fs-base);
-    animation: var(--anim-badge-pop);
-  }
-  .score-cell.score-high { color: var(--grade-a); }
-  .score-cell.score-mid  { color: var(--grade-c); }
-  .score-cell.score-low  { color: var(--grade-f); }
-
-  /* 등급 뱃지 — badge-pop 애니메이션 적용
-     Grade badge — badge-pop animation applied */
+  /* 등급 뱃지
+     Grade badge */
   .grade {
+    display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 0.75rem; line-height: 1;
+    padding: 2px 7px; border-radius: 6px; border: 1px solid transparent;
+    text-transform: uppercase; letter-spacing: 0.05em; flex-shrink: 0;
     animation: var(--anim-badge-pop);
   }
+  .grade-A { background: rgba(52,211,153,0.12); color: #34d399; border-color: rgba(52,211,153,0.32); }
+  .grade-B { background: rgba(96,165,250,0.12); color: #60a5fa; border-color: rgba(96,165,250,0.32); }
+  .grade-C { background: rgba(251,191,36,.12);  color: #fbbf24; border-color: rgba(251,191,36,0.32); }
+  .grade-D { background: rgba(251,146,60,.12);  color: #fb923c; border-color: rgba(251,146,60,0.32); }
+  .grade-F { background: rgba(248,113,113,.12); color: #f87171; border-color: rgba(248,113,113,0.32); }
 
-  /* Step B (B4): settings-link nowrap + 모바일에서 클릭 영역 ≥40px (WCAG 2.5.5)
-     Step B (B4): settings-link nowrap + ≥40px touch on mobile (WCAG 2.5.5) */
-  .settings-link {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    font-size: var(--fs-xs);
-    color: var(--text-2, var(--text-muted));
-    text-decoration: none;
-    padding: 4px 10px;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border-subtle, var(--border));
-    transition: all var(--transition);
-    white-space: nowrap;
+  /* 빈 상태
+     Empty state */
+  .ov-empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
   }
-  .settings-link:hover { color: var(--accent); border-color: var(--accent); text-decoration: none; }
+  .ov-empty-icon { font-size: 2.5rem; margin-bottom: var(--space-4, 1rem); opacity: 0.4; }
+  .ov-empty-state p { color: var(--text-2, rgba(255,255,255,0.6)); margin: 0; font-size: var(--fs-sm, 0.875rem); line-height: 1.7; }
 
-  /* ── 캘리브레이션 카드 ───────────────────────────────────────────── */
-
-  /* 캘리브레이션 카드 스타일
-     Calibration card styles */
+  /* 캘리브레이션 카드
+     Calibration card */
   .calibration-card {
-    margin-top: 1.5rem;
-    padding: 1.2rem 1.4rem;
+    margin-top: 1.5rem; padding: 1.2rem 1.4rem;
     background: var(--bg-card, var(--bg-surface));
     backdrop-filter: blur(12px) saturate(150%);
     border: 1px solid var(--border-subtle, var(--border));
-    border-radius: 16px;
-    box-shadow: var(--shadow-sm);
+    border-radius: 16px; box-shadow: var(--shadow-sm);
   }
   .calibration-header { margin-bottom: 0.8rem; }
   .calibration-header h3 { margin: 0 0 0.3rem; font-size: 16px; }
@@ -212,262 +136,210 @@
   .calibration-table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
   .calibration-table th,
   .calibration-table td {
-    padding: 0.5rem 0.75rem;
-    text-align: left;
+    padding: 0.5rem 0.75rem; text-align: left;
     border-bottom: 1px solid var(--border-subtle, var(--border));
   }
   .calibration-table th {
     background: var(--bg-elevated, var(--bg-nav));
-    font-size: 12px;
-    color: var(--text-2, var(--text-muted));
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
+    font-size: 12px; color: var(--text-2, var(--text-muted));
+    font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
   }
   .cal-bar { width: 160px; height: 8px; background: var(--bg-elevated, var(--bg-hover)); border-radius: 4px; overflow: hidden; }
-
-  /* Step D: cal-bar-fill 시맨틱 토큰화 — claude-dark 에서 sage 톤 자동 적용
-     Step D: semantic tokenization — auto sage in claude-dark theme */
   .cal-bar-fill { height: 100%; background: linear-gradient(90deg, var(--success), var(--success)); opacity: .85; transition: width 0.3s ease; }
 
-  /* ── 반응형 ─────────────────────────────────────────────────────── */
+  /* 반응형
+     Responsive */
   @media (max-width: 768px) {
-    .overview-header { flex-direction: column; align-items: flex-start; margin-bottom: var(--space-5); }
-
-    /* B4: 테이블 헤더/셀 세로 wrap ("평/균/점/수") 방지 + 가로 스크롤
-       B4: prevent vertical wrap on narrow th/td + horizontal scroll */
-    .table-wrap th, .table-wrap td { white-space: nowrap; }
-    .repo-link { white-space: nowrap; }
-
-    /* B4: 설정 링크 클릭 영역 강화 (모바일 손가락 권장 ≥40px)
-       B4: enlarge settings-link tap target on mobile (≥40px) */
-    .settings-link { padding: 8px 12px; min-height: 44px; box-sizing: border-box; }
+    .overview-wrap { padding: var(--space-5, 1.25rem) var(--space-4, 1rem) var(--space-6, 1.5rem); }
+    .ov-head { flex-direction: column; align-items: flex-start; margin-bottom: var(--space-5, 1.25rem); }
+    .repo-grid { grid-template-columns: 1fr; }
   }
 </style>
 
-<div class="overview-header">
-  <div>
-    {# Phase 1B (UI 개편) — 친근한 환영 인사 (current_user 있을 때만) / Phase 2 PR-5 — 다국어 적용 #}
-    {# Phase 1B (UI redesign) — friendly greeting (only when current_user exists) / Phase 2 PR-5 — i18n applied #}
-    {% if current_user %}
-    <p class="overview-greeting">{{ 'overview.greeting' | i18n_args(locale | default('ko'), name=(current_user.display_name or current_user.github_login)) }} 👋</p>
-    {% endif %}
-    <h2 class="overview-title">{% if repos %}{{ 'overview.title' | i18n_args(locale | default('ko')) }}{% else %}{{ 'overview.title_empty' | i18n_args(locale | default('ko')) }}{% endif %}</h2>
+<div class="overview-wrap">
+  <div class="ov-head">
+    <div>
+      {# 친근한 환영 인사 (current_user 있을 때만) / 다국어 적용
+         Friendly greeting (only when current_user exists) / i18n applied #}
+      {% if current_user %}
+      <p class="ov-head-greeting">{{ 'overview.greeting' | i18n_args(locale | default('ko'), name=(current_user.display_name or current_user.github_login)) }} 👋</p>
+      {% endif %}
+      <h2 class="ov-head-title">{% if repos %}{{ 'overview.title' | i18n_args(locale | default('ko')) }}{% else %}{{ 'overview.title_empty' | i18n_args(locale | default('ko')) }}{% endif %}</h2>
+    </div>
+    <div style="display: flex; align-items: center; gap: var(--space-3, 0.75rem);">
+      {% if repos %}
+      <span class="repo-count">{{ 'overview.repo_count' | i18n_args(locale | default('ko'), count=repos | length) }}</span>
+      {% endif %}
+      <a href="/repos/add" class="btn btn-primary btn--sm">{{ 'overview.add_repo' | i18n_args(locale | default('ko')) }}</a>
+    </div>
   </div>
-  <div class="overview-actions">
-    {% if repos %}
-    <span class="repo-count">{{ 'overview.repo_count' | i18n_args(locale | default('ko'), count=repos | length) }}</span>
-    {% endif %}
-    <a href="/repos/add" class="btn btn-primary btn--sm">{{ 'overview.add_repo' | i18n_args(locale | default('ko')) }}</a>
-  </div>
-</div>
 
-{% if repos %}
-<div class="overview-table-card">
-  <div class="table-wrap">
-    <table>
+  {% if repos %}
+  <div class="repo-grid">
+    {% for item in repos %}
+    <a class="repo-card reveal" href="/repos/{{ item.full_name }}">
+      <div class="repo-card__row">
+        <span class="repo-card__name">{{ item.full_name }}</span>
+        {% if item.avg_grade %}
+        {# (value or 'f') | lower — None 함정 방지 (ui.md 규칙)
+           (value or 'f') | lower — guard against None (ui.md rule) #}
+        <span class="grade grade-{{ item.avg_grade }}">{{ item.avg_grade }}</span>
+        {% endif %}
+      </div>
+      {% if item.avg_score %}
+      <div class="score-bar score-bar--{{ (item.avg_grade or 'F') | lower }}"
+           style="--sb-pct: {{ item.avg_score | round | int }}%;">
+      </div>
+      <div class="repo-card__score-row">
+        <span class="repo-card__score">{{ item.avg_score }}<span style="color: var(--text-3, rgba(255,255,255,0.4)); font-size:11px;">/100</span></span>
+        <span class="repo-card__meta">{{ 'overview.analysis_count_unit' | i18n_args(locale | default('ko'), count=item.analysis_count) }}</span>
+      </div>
+      {% else %}
+      <span class="repo-card__meta" style="color: var(--text-2, rgba(255,255,255,0.6));">{{ 'overview.analysis_count_unit' | i18n_args(locale | default('ko'), count=item.analysis_count) }}</span>
+      {% endif %}
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  {# Phase E.5 — Onboarding 3단계 튜토리얼 (리포 0개일 때만 노출)
+     Phase E.5 — Onboarding 3-step tutorial (shown only when no repos) #}
+  <style>
+    /* 튜토리얼 카드 공통 (리포 없을 때만 로드)
+       Tutorial card common (loaded only when no repos) */
+    .get-started-tutorial {
+      padding: 1.4rem 1.6rem;
+      background: var(--bg-card, var(--bg-surface));
+      backdrop-filter: blur(12px) saturate(150%);
+      border: 1px solid var(--border-subtle, var(--border));
+      border-radius: 16px;
+      box-shadow: var(--shadow-sm);
+    }
+    .gst-header { margin-bottom: 1.2rem; }
+    .gst-title { margin: 0 0 0.3rem; font-size: 20px; }
+    .gst-subtitle { margin: 0; color: var(--text-2, var(--text-muted)); font-size: 14px; }
+
+    /* Step E (E5): 데스크탑 ≥1024px 에서 3-col grid
+       Step E (E5): 3-col grid on desktop ≥1024px */
+    .gst-steps { display: flex; flex-direction: column; gap: 0.9rem; }
+    @media (min-width: 1024px) {
+      .gst-steps { display: grid; grid-template-columns: repeat(3, 1fr); align-items: stretch; }
+    }
+
+    /* 튜토리얼 단계 카드
+       Tutorial step card */
+    .gst-step {
+      display: flex; gap: 1rem; align-items: flex-start;
+      padding: 1rem 1.1rem;
+      background: var(--bg-elevated, var(--bg-hover));
+      border-radius: 10px;
+      border: 1px solid var(--border-subtle, var(--border));
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .gst-step:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+    .gst-step-num {
+      flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2, var(--accent)));
+      color: var(--btn-on-accent, white);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 16px;
+    }
+    .gst-step-body { flex: 1; }
+    .gst-step-title { font-size: 15px; font-weight: 700; color: var(--text-1, var(--text-primary)); margin-bottom: 0.25rem; }
+    .gst-step-desc { font-size: 13px; color: var(--text-2, var(--text-muted)); line-height: 1.5; }
+    .gst-step-desc code { background: var(--bg-card); padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 12px; }
+    .gst-cta { margin-top: 0.5rem; }
+    .gst-footer {
+      margin-top: 1rem; padding: 0.7rem 0.9rem;
+      background: rgba(var(--accent-rgb, 99,102,241), 0.08);
+      border-radius: 6px; border-left: 3px solid var(--accent);
+    }
+    .gst-footer-hint { font-size: 12px; color: var(--text-1, var(--text-primary)); }
+    .gst-footer-hint code { background: var(--bg-card); padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 12px; }
+  </style>
+  <div class="get-started-tutorial">
+    {# Cycle 94 Step 2-B — 3-step onboarding illustration #}
+    <img src="/static/illustrations/overview_onboarding.png"
+         class="illustration illustration--tutorial"
+         alt=""
+         role="presentation"
+         loading="eager"
+         decoding="async">
+    <div class="gst-header">
+      <h2 class="gst-title">🚀 {{ 'overview.tutorial.title' | i18n_args(locale | default('ko')) }}</h2>
+      <p class="gst-subtitle">{{ 'overview.tutorial.subtitle' | i18n_args(locale | default('ko')) }}</p>
+    </div>
+    <div class="gst-steps">
+      <div class="gst-step">
+        <div class="gst-step-num">1</div>
+        <div class="gst-step-body">
+          <div class="gst-step-title">{{ 'overview.tutorial.step1_title' | i18n_args(locale | default('ko')) }}</div>
+          <div class="gst-step-desc">{{ 'overview.tutorial.step1_desc' | i18n_args(locale | default('ko')) }}</div>
+          <a href="/repos/add" class="btn btn-primary btn--sm gst-cta">{{ 'overview.tutorial.step1_cta' | i18n_args(locale | default('ko')) }}</a>
+        </div>
+      </div>
+      <div class="gst-step">
+        <div class="gst-step-num">2</div>
+        <div class="gst-step-body">
+          <div class="gst-step-title">{{ 'overview.tutorial.step2_title' | i18n_args(locale | default('ko')) }}</div>
+          <div class="gst-step-desc">
+            {{ 'overview.tutorial.step2_desc_part1' | i18n_args(locale | default('ko')) }}<strong>{{ 'overview.tutorial.step2_desc_preset' | i18n_args(locale | default('ko')) }}</strong>{{ 'overview.tutorial.step2_desc_part2' | i18n_args(locale | default('ko')) }}
+          </div>
+        </div>
+      </div>
+      <div class="gst-step">
+        <div class="gst-step-num">3</div>
+        <div class="gst-step-body">
+          <div class="gst-step-title">{{ 'overview.tutorial.step3_title' | i18n_args(locale | default('ko')) }}</div>
+          <div class="gst-step-desc">{{ 'overview.tutorial.step3_desc' | i18n_args(locale | default('ko')) }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="gst-footer">
+      <div class="gst-footer-hint">
+        💡 <strong>{{ 'overview.tutorial.tip_label' | i18n_args(locale | default('ko')) }}</strong>{{ 'overview.tutorial.tip_desc_part1' | i18n_args(locale | default('ko')) }}<code>ANTHROPIC_API_KEY</code>{{ 'overview.tutorial.tip_desc_part2' | i18n_args(locale | default('ko')) }}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {# Phase E.3-d — AI 점수 정합도 지표 (피드백 1건 이상 있을 때만 노출)
+     Phase E.3-d — AI calibration (shown only when feedback count > 0) #}
+  {% set cal_total = calibration.values() | map(attribute='count') | sum %}
+  {% if calibration and cal_total > 0 %}
+  <div class="calibration-card reveal">
+    <div class="calibration-header">
+      <h3>📊 {{ 'overview.calibration.title' | i18n_args(locale | default('ko')) }}</h3>
+      <span class="calibration-hint">{{ 'overview.calibration.hint' | i18n_args(locale | default('ko')) }}</span>
+    </div>
+    <table class="calibration-table">
       <thead>
         <tr>
-          <th>{{ 'overview.table.repository' | i18n_args(locale | default('ko')) }}</th>
-          <th>{{ 'overview.table.analysis' | i18n_args(locale | default('ko')) }}</th>
-          <th>{{ 'overview.table.avg_score' | i18n_args(locale | default('ko')) }}</th>
-          <th>{{ 'overview.table.grade' | i18n_args(locale | default('ko')) }}</th>
-          <th></th>
+          <th>{{ 'overview.calibration.range' | i18n_args(locale | default('ko')) }}</th>
+          <th>{{ 'overview.calibration.feedback_count' | i18n_args(locale | default('ko')) }}</th>
+          <th>{{ 'overview.calibration.up_ratio' | i18n_args(locale | default('ko')) }}</th>
+          <th>{{ 'overview.calibration.visualization' | i18n_args(locale | default('ko')) }}</th>
         </tr>
       </thead>
       <tbody>
-      {% for item in repos %}
-      <tr class="repo-row reveal">
-        <td>
-          <a class="repo-link" href="/repos/{{ item.full_name }}">{{ item.full_name }}</a>
-        </td>
-        <td><span class="analysis-count">{{ 'overview.analysis_count_unit' | i18n_args(locale | default('ko'), count=item.analysis_count) }}</span></td>
-        <td>
-          {% if item.avg_score %}
-          <span class="score-cell {% if item.avg_score >= 75 %}score-high{% elif item.avg_score >= 50 %}score-mid{% else %}score-low{% endif %}">
-            {{ item.avg_score }}
-          </span>
-          {% else %}
-          <span style="color:var(--text-2, var(--text-muted))">—</span>
-          {% endif %}
-        </td>
-        <td>
-          {% if item.avg_grade %}
-          <span class="grade grade-{{ item.avg_grade }}">{{ item.avg_grade }}</span>
-          {% endif %}
-        </td>
-        <td><a class="settings-link" href="/repos/{{ item.full_name }}/settings">⚙️ {{ 'overview.settings_link' | i18n_args(locale | default('ko')) }}</a></td>
-      </tr>
+      {% for range_name, data in calibration.items() %}
+        {% if data.count > 0 %}
+        <tr>
+          <td><strong>{{ range_name }}</strong></td>
+          <td>{{ data.count }}</td>
+          <td>{{ "%.1f"|format(data.up_ratio * 100) }}%</td>
+          <td>
+            <div class="cal-bar">
+              <div class="cal-bar-fill" style="width: {{ (data.up_ratio * 100) | round(1) }}%"></div>
+            </div>
+          </td>
+        </tr>
+        {% endif %}
       {% endfor %}
       </tbody>
     </table>
   </div>
-</div>
-{% else %}
-{# Phase E.5 — Onboarding 3단계 튜토리얼 (리포 0개일 때만 노출) #}
-<style>
-  /* 빈 상태 컨테이너 (리포 없을 때만 로드)
-     Empty-state container (loaded only when no repos) */
-  .empty-state {
-    text-align: center;
-    padding: 4rem 2rem;
-  }
-  .empty-icon { font-size: 2.5rem; margin-bottom: var(--space-4); opacity: 0.4; }
-  .empty-state p { color: var(--text-2, var(--text-muted)); margin: 0; font-size: var(--fs-sm); line-height: 1.7; }
+  {% endif %}
 
-  /* 튜토리얼 카드 공통 (리포 없을 때만 로드)
-     Tutorial card common (loaded only when no repos) */
-  .get-started-tutorial {
-    padding: 1.4rem 1.6rem;
-    background: var(--bg-card, var(--bg-surface));
-    backdrop-filter: blur(12px) saturate(150%);
-    border: 1px solid var(--border-subtle, var(--border));
-    border-radius: 16px;
-    box-shadow: var(--shadow-sm);
-  }
-  .gst-header { margin-bottom: 1.2rem; }
-  .gst-title { margin: 0 0 0.3rem; font-size: 20px; }
-  .gst-subtitle { margin: 0; color: var(--text-2, var(--text-muted)); font-size: 14px; }
-
-  /* Step E (E5): 데스크탑 ≥1024px 에서 3-col grid (튜토리얼 카드 가로 펼침)
-     모바일은 1-col 유지 (col 너비 부족).
-     Step E (E5): 3-col grid on desktop ≥1024px; 1-col stack on mobile */
-  .gst-steps { display: flex; flex-direction: column; gap: 0.9rem; }
-  @media (min-width: 1024px) {
-    .gst-steps { display: grid; grid-template-columns: repeat(3, 1fr); align-items: stretch; }
-  }
-
-  /* 튜토리얼 단계 카드
-     Tutorial step card */
-  .gst-step {
-    display: flex;
-    gap: 1rem;
-    align-items: flex-start;
-    padding: 1rem 1.1rem;
-    background: var(--bg-elevated, var(--bg-hover));
-    border-radius: 10px;
-    border: 1px solid var(--border-subtle, var(--border));
-    transition: transform 0.2s, box-shadow 0.2s;
-  }
-  .gst-step:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
-  }
-  .gst-step-num {
-    flex-shrink: 0;
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, var(--accent), var(--accent-2, var(--accent)));
-    color: var(--btn-on-accent, white);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 700;
-    font-size: 16px;
-  }
-  .gst-step-body { flex: 1; }
-  .gst-step-title { font-size: 15px; font-weight: 700; color: var(--text-1, var(--text-primary)); margin-bottom: 0.25rem; }
-  .gst-step-desc { font-size: 13px; color: var(--text-2, var(--text-muted)); line-height: 1.5; }
-  .gst-step-desc code { background: var(--bg-card); padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 12px; }
-  .gst-cta { margin-top: 0.5rem; }
-
-  /* 팁 푸터
-     Tip footer */
-  .gst-footer {
-    margin-top: 1rem;
-    padding: 0.7rem 0.9rem;
-    background: rgba(var(--accent-rgb, 99,102,241), 0.08);
-    border-radius: 6px;
-    border-left: 3px solid var(--accent);
-  }
-  .gst-footer-hint { font-size: 12px; color: var(--text-1, var(--text-primary)); }
-  .gst-footer-hint code { background: var(--bg-card); padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 12px; }
-</style>
-<div class="get-started-tutorial">
-  {# Cycle 94 Step 2-B — 3-step onboarding 일러스트 (1792x1024 가로형)
-     Cycle 94 Step 2-B — 3-step onboarding illustration (1792x1024 landscape) #}
-  <img src="/static/illustrations/overview_onboarding.png"
-       class="illustration illustration--tutorial"
-       alt=""
-       role="presentation"
-       loading="eager"
-       decoding="async">
-  <div class="gst-header">
-    <h2 class="gst-title">🚀 {{ 'overview.tutorial.title' | i18n_args(locale | default('ko')) }}</h2>
-    <p class="gst-subtitle">{{ 'overview.tutorial.subtitle' | i18n_args(locale | default('ko')) }}</p>
-  </div>
-  <div class="gst-steps">
-    <div class="gst-step">
-      <div class="gst-step-num">1</div>
-      <div class="gst-step-body">
-        <div class="gst-step-title">{{ 'overview.tutorial.step1_title' | i18n_args(locale | default('ko')) }}</div>
-        <div class="gst-step-desc">{{ 'overview.tutorial.step1_desc' | i18n_args(locale | default('ko')) }}</div>
-        <a href="/repos/add" class="btn btn-primary btn--sm gst-cta">{{ 'overview.tutorial.step1_cta' | i18n_args(locale | default('ko')) }}</a>
-      </div>
-    </div>
-    <div class="gst-step">
-      <div class="gst-step-num">2</div>
-      <div class="gst-step-body">
-        <div class="gst-step-title">{{ 'overview.tutorial.step2_title' | i18n_args(locale | default('ko')) }}</div>
-        <div class="gst-step-desc">
-          {{ 'overview.tutorial.step2_desc_part1' | i18n_args(locale | default('ko')) }}<strong>{{ 'overview.tutorial.step2_desc_preset' | i18n_args(locale | default('ko')) }}</strong>{{ 'overview.tutorial.step2_desc_part2' | i18n_args(locale | default('ko')) }}
-        </div>
-      </div>
-    </div>
-    <div class="gst-step">
-      <div class="gst-step-num">3</div>
-      <div class="gst-step-body">
-        <div class="gst-step-title">{{ 'overview.tutorial.step3_title' | i18n_args(locale | default('ko')) }}</div>
-        <div class="gst-step-desc">
-          {{ 'overview.tutorial.step3_desc' | i18n_args(locale | default('ko')) }}
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="gst-footer">
-    <div class="gst-footer-hint">
-      💡 <strong>{{ 'overview.tutorial.tip_label' | i18n_args(locale | default('ko')) }}</strong>{{ 'overview.tutorial.tip_desc_part1' | i18n_args(locale | default('ko')) }}<code>ANTHROPIC_API_KEY</code>{{ 'overview.tutorial.tip_desc_part2' | i18n_args(locale | default('ko')) }}
-    </div>
-  </div>
-</div>
-{% endif %}
-
-{# Phase E.3-d — AI 점수 정합도 지표 (피드백 1건 이상 있을 때만 노출) #}
-{% set cal_total = calibration.values() | map(attribute='count') | sum %}
-{% if calibration and cal_total > 0 %}
-<div class="calibration-card reveal">
-  <div class="calibration-header">
-    <h3>📊 {{ 'overview.calibration.title' | i18n_args(locale | default('ko')) }}</h3>
-    <span class="calibration-hint">{{ 'overview.calibration.hint' | i18n_args(locale | default('ko')) }}</span>
-  </div>
-  <table class="calibration-table">
-    <thead>
-      <tr>
-        <th>{{ 'overview.calibration.range' | i18n_args(locale | default('ko')) }}</th>
-        <th>{{ 'overview.calibration.feedback_count' | i18n_args(locale | default('ko')) }}</th>
-        <th>{{ 'overview.calibration.up_ratio' | i18n_args(locale | default('ko')) }}</th>
-        <th>{{ 'overview.calibration.visualization' | i18n_args(locale | default('ko')) }}</th>
-      </tr>
-    </thead>
-    <tbody>
-    {% for range_name, data in calibration.items() %}
-      {% if data.count > 0 %}
-      <tr>
-        <td><strong>{{ range_name }}</strong></td>
-        <td>{{ data.count }}</td>
-        <td>{{ "%.1f"|format(data.up_ratio * 100) }}%</td>
-        <td>
-          <div class="cal-bar">
-            <div class="cal-bar-fill" style="width: {{ (data.up_ratio * 100) | round(1) }}%"></div>
-          </div>
-        </td>
-      </tr>
-      {% endif %}
-    {% endfor %}
-    </tbody>
-  </table>
-</div>
-{% endif %}
+</div>{# /overview-wrap #}
 
 {% endblock %}

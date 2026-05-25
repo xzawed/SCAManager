@@ -2,158 +2,130 @@
 {% block title %}{{ 'add_repo.title_prefix' | i18n_args(locale | default('ko')) }} — SCAManager{% endblock %}
 {% block content %}
 <style>
+  /* ── add_repo v3 redesign ──────────────────────────────────────────── */
+
   /* 페이지 제목 그라디언트 텍스트
      Page title gradient text */
   .add-repo-page-title {
     font-size: clamp(1.4rem, 3vw, 1.8rem);
-    font-weight: 700;
-    background: linear-gradient(135deg, var(--text-1), var(--accent));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    margin: 0;
-    line-height: 1.3;
+    font-weight: 760;
+    background: var(--accent-grad, linear-gradient(135deg, #7c7aff, #b289ff));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    margin: 0; line-height: 1.3;
   }
 
-  /* 폼 카드 글래스모피즘 스타일
-     Form card glassmorphism style */
-  .add-repo-card {
+  /* 열 너비 제한 (일러스트 + 카드 동일 열)
+     Column width constraint (illustration + card same column) */
+  .addrepo-col {
     max-width: 560px;
-    margin: 2rem auto;
-    background: var(--bg-card);
-    backdrop-filter: blur(12px) saturate(150%);
-    -webkit-backdrop-filter: blur(12px) saturate(150%);
-    border: 1px solid var(--border-subtle);
-    border-radius: 16px;
-    box-shadow: var(--shadow-md);
-    padding: 32px;
+    margin: 0 auto;
   }
 
   /* 토스트 에러 팝업
      Toast error popup */
   .toast {
-    position: fixed;
-    top: 1.5rem;
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--danger);
-    color: var(--btn-on-accent);
-    padding: .75rem 1.5rem;
-    border-radius: var(--radius-btn, 8px);
-    font-size: 14px;
-    font-weight: 600;
-    box-shadow: 0 4px 16px color-mix(in srgb, var(--danger) 40%, transparent);
-    z-index: 9999;
-    opacity: 0;
-    transition: opacity .3s;
-    pointer-events: none;
+    position: fixed; top: 1.5rem; left: 50%; transform: translateX(-50%);
+    background: var(--danger, #f87171); color: var(--btn-on-accent, #fff);
+    padding: .75rem 1.5rem; border-radius: var(--radius-btn, 8px);
+    font-size: 14px; font-weight: 600;
+    box-shadow: 0 4px 16px color-mix(in srgb, var(--danger, #f87171) 40%, transparent);
+    z-index: 9999; opacity: 0; transition: opacity .3s; pointer-events: none;
   }
   .toast.show { opacity: 1; }
 
-  /* 폼 그룹 간격
-     Form group spacing */
+  /* 단계 카드 공통
+     Step card common */
+  .step-card {
+    background: var(--bg-card, var(--bg-2, rgba(255,255,255,0.05)));
+    border: 1px solid var(--border-subtle, rgba(255,255,255,0.08));
+    border-radius: var(--radius-lg, 12px);
+    padding: var(--space-5, 1.25rem);
+    margin-bottom: var(--space-4, 1rem);
+  }
+  .step-card__header {
+    display: flex; align-items: center; gap: var(--space-3, 0.75rem);
+    margin-bottom: var(--space-4, 1rem);
+  }
+  .step-card__num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--accent-grad, linear-gradient(135deg, #7c7aff, #b289ff));
+    font-size: var(--fs-xs, 0.75rem); font-weight: 700; color: #fff; flex-shrink: 0;
+  }
+  .step-card__title { font-size: var(--fs-md, 1rem); font-weight: 640; color: var(--text-1, #fff); }
+
+  /* 폼 그룹
+     Form group */
   .form-group { margin-bottom: 1.25rem; }
 
-  /* 폼 라벨 스타일
-     Form label style */
+  /* 폼 라벨
+     Form label */
   .form-label {
-    display: block;
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-2);
-    margin-bottom: 6px;
+    display: block; font-size: 13px; font-weight: 500;
+    color: var(--text-2, rgba(255,255,255,0.6)); margin-bottom: 6px;
   }
 
   /* select 입력 스타일 — focus glow 포함
      Select input style — with focus glow */
   .form-select {
-    width: 100%;
-    padding: 10px 14px;
-    padding-right: 36px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-subtle);
-    border-radius: 10px;
-    color: var(--text-1);
-    font-size: 14px;
+    width: 100%; padding: 10px 14px; padding-right: 36px;
+    background: var(--bg-elevated, var(--bg-2, rgba(255,255,255,0.06)));
+    border: 1px solid var(--border-subtle, rgba(255,255,255,0.12));
+    border-radius: 10px; color: var(--text-1, #fff); font-size: 14px;
     transition: border-color 0.2s, box-shadow 0.2s;
-    appearance: none;
-    cursor: pointer;
+    appearance: none; cursor: pointer;
     /* appearance:none 으로 제거된 기본 화살표를 SVG chevron 으로 보강
        SVG chevron to replace the native arrow removed by appearance:none */
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='none' stroke='%2373737c' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 14px center;
+    background-repeat: no-repeat; background-position: right 14px center;
     box-sizing: border-box;
   }
   .form-select:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
+    outline: none; border-color: var(--accent, #7c7aff);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #7c7aff) 15%, transparent);
   }
 
   /* 힌트 텍스트 — 인포 박스 스타일
      Hint text — info box style */
   .repo-hint {
-    margin-top: 10px;
-    padding: 10px 14px;
-    background: var(--bg-elevated);
-    border-left: 3px solid var(--accent);
+    margin-top: 10px; padding: 10px 14px;
+    background: var(--bg-elevated, var(--bg-2, rgba(255,255,255,0.06)));
+    border-left: 3px solid var(--accent, #7c7aff);
     border-radius: 0 8px 8px 0;
-    color: var(--text-2);
-    font-size: 13px;
-    line-height: 1.5;
+    color: var(--text-2, rgba(255,255,255,0.6)); font-size: 13px; line-height: 1.5;
   }
 
   /* 제출 버튼 — 액센트 그라디언트, hover 리프트, active 스케일
      Submit button — accent gradient, hover lift, active scale */
   .btn-submit {
-    background: linear-gradient(135deg, var(--accent), var(--accent-2, var(--accent)));
-    color: var(--btn-on-accent);
-    border: none;
-    border-radius: 12px;
-    padding: 12px 28px;
-    font-size: 15px;
-    font-weight: 600;
-    cursor: pointer;
-    width: 100%;
+    background: var(--accent-grad, linear-gradient(135deg, #7c7aff, #b289ff));
+    color: var(--btn-on-accent, #fff);
+    border: none; border-radius: 12px;
+    padding: 12px 28px; font-size: 15px; font-weight: 600;
+    cursor: pointer; width: 100%;
     transition: transform 0.1s, box-shadow 0.2s, opacity 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
   }
   .btn-submit:hover:not(:disabled) {
     transform: translateY(-1px);
-    box-shadow: 0 6px 20px color-mix(in srgb, var(--accent) 30%, transparent);
+    box-shadow: 0 6px 20px color-mix(in srgb, var(--accent, #7c7aff) 30%, transparent);
   }
   .btn-submit:active:not(:disabled) { transform: scale(0.97); }
-  .btn-submit:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
+  .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
 
   /* 모바일 분기 — iOS Safari 자동 줌인 방지 (font-size < 16px 시 zoom 트리거)
      Mobile breakpoint — prevent iOS Safari zoom on focus (triggers below 16px) */
   @media (max-width: 768px) {
-    .add-repo-card {
-      margin: 1rem auto;
-      padding: 24px 20px;
-    }
-    .form-select { min-height: 44px; font-size: 16px; padding: .75rem 1rem; padding-right: 36px; box-sizing: border-box; }
+    .addrepo-col { margin: 1rem auto; }
+    .step-card { padding: 1rem; }
+    /* iOS Safari 자동 줌 방지 — font-size ≥ 16px 필수
+       iOS Safari auto-zoom prevention — font-size ≥ 16px required */
+    .form-select { min-height: 44px; font-size: 16px; padding: .75rem 1rem; padding-right: 36px; }
     .btn-submit { min-height: 48px; }
-    .btn-primary { min-height: 48px; }
-    .back-btn { min-height: 44px; padding: .5rem .85rem; }
     .form-group { margin-bottom: 1rem; }
   }
   @media (max-width: 480px) {
-    .add-repo-card { padding: 20px 16px; }
-  }
-
-  /* 이미지와 카드를 동일한 560px 열로 묶어 정렬 통일
-     Constrain illustration and card to the same 560px column */
-  .add-repo-col {
-    max-width: 560px;
-    margin: 0 auto;
+    .step-card { padding: 0.875rem 0.875rem; }
   }
 </style>
 
@@ -167,44 +139,52 @@
   </div>
 </div>
 
-{# 이미지와 카드를 동일한 560px 열로 묶어 정렬 통일 (illustration--tutorial max-width:100% 와 카드 padding 차이로 인한 시각 불일치 해소)
-   Wrap illustration and card in the same 560px column to fix visual misalignment caused by illustration--tutorial max-width:100% vs card padding #}
-<div class="add-repo-col">
+{# 이미지와 카드를 동일한 560px 열로 묶어 정렬 통일
+   Wrap illustration and card in the same 560px column for alignment consistency #}
+<div class="addrepo-col">
 
-{# Cycle 94 Step 2-B — repository 분석 파이프라인 일러스트 (1792x1024 가로형)
-   Cycle 94 Step 2-B — repository analysis pipeline illustration (1792x1024 landscape) #}
-<img src="/static/illustrations/add_repo_hero.png"
-     class="illustration illustration--tutorial"
-     alt=""
-     role="presentation"
-     loading="eager"
-     decoding="sync">
+  {# Cycle 94 Step 2-B — repository 분석 파이프라인 일러스트 (1792x1024 가로형)
+     Cycle 94 Step 2-B — repository analysis pipeline illustration (1792x1024 landscape) #}
+  <img src="/static/illustrations/add_repo_hero.png"
+       class="illustration illustration--tutorial"
+       alt=""
+       role="presentation"
+       loading="eager"
+       decoding="sync">
 
-{# Phase 2 PR-5 — 다국어 적용. JS 동적 텍스트는 data-i18n-* 속성으로 서버측 주입
-   (LocaleMiddleware ↔ Jinja {{ locale }} 페어 — XSS 차단 + race condition 0). #}
-<div class="card add-repo-card reveal"
-     data-i18n-placeholder="{{ 'add_repo.placeholder_option' | i18n_args(locale | default('ko')) }}"
-     data-i18n-no-repos-option="{{ 'add_repo.no_repos_option' | i18n_args(locale | default('ko')) }}"
-     data-i18n-no-repos-hint="{{ 'add_repo.no_repos_hint' | i18n_args(locale | default('ko')) }}"
-     data-i18n-loaded-template="{{ 'add_repo.loaded_hint' | i18n_args(locale | default('ko'), count='__N__') }}"
-     data-i18n-load-failed="{{ 'add_repo.load_failed_option' | i18n_args(locale | default('ko')) }}"
-     data-i18n-error-prefix="{{ 'add_repo.error_prefix' | i18n_args(locale | default('ko')) }}"
-     data-i18n-api-error-prefix="{{ 'add_repo.api_error_prefix' | i18n_args(locale | default('ko')) }}">
-  <form method="post" action="/repos/add" id="addRepoForm">
-    <div class="form-group">
-      <label class="form-label" for="repo_full_name">{{ 'add_repo.label_select' | i18n_args(locale | default('ko')) }}</label>
-      <select class="form-select" name="repo_full_name" id="repo_full_name" required>
-        <option value="">{{ 'add_repo.loading_option' | i18n_args(locale | default('ko')) }}</option>
-      </select>
-      <p class="repo-hint" id="repoHint">{{ 'add_repo.hint_default' | i18n_args(locale | default('ko')) }}</p>
+  {# Phase 2 PR-5 — 다국어 적용. JS 동적 텍스트는 data-i18n-* 속성으로 서버측 주입
+     Phase 2 PR-5 — i18n applied. JS dynamic text injected server-side via data-i18n-* attributes. #}
+  <form method="post" action="/repos/add" id="addRepoForm"
+        data-i18n-placeholder="{{ 'add_repo.placeholder_option' | i18n_args(locale | default('ko')) }}"
+        data-i18n-no-repos-option="{{ 'add_repo.no_repos_option' | i18n_args(locale | default('ko')) }}"
+        data-i18n-no-repos-hint="{{ 'add_repo.no_repos_hint' | i18n_args(locale | default('ko')) }}"
+        data-i18n-loaded-template="{{ 'add_repo.loaded_hint' | i18n_args(locale | default('ko'), count='__N__') }}"
+        data-i18n-load-failed="{{ 'add_repo.load_failed_option' | i18n_args(locale | default('ko')) }}"
+        data-i18n-error-prefix="{{ 'add_repo.error_prefix' | i18n_args(locale | default('ko')) }}"
+        data-i18n-api-error-prefix="{{ 'add_repo.api_error_prefix' | i18n_args(locale | default('ko')) }}">
+
+    {# Step 1: GitHub 리포지터리 선택
+       Step 1: Select GitHub repository #}
+    <div class="step-card">
+      <div class="step-card__header">
+        <span class="step-card__num">1</span>
+        <div class="step-card__title">{{ 'add_repo.label_select' | i18n_args(locale | default('ko')) }}</div>
+      </div>
+      <div class="form-group" style="margin-bottom: 0;">
+        <label class="form-label" for="repo_full_name">{{ 'add_repo.label_select' | i18n_args(locale | default('ko')) }}</label>
+        <select class="form-select" name="repo_full_name" id="repo_full_name" required>
+          <option value="">{{ 'add_repo.loading_option' | i18n_args(locale | default('ko')) }}</option>
+        </select>
+        <p class="repo-hint" id="repoHint">{{ 'add_repo.hint_default' | i18n_args(locale | default('ko')) }}</p>
+      </div>
     </div>
+
     <button type="submit" class="btn-submit" id="submitBtn" disabled>
       {{ 'add_repo.submit' | i18n_args(locale | default('ko')) }}
     </button>
   </form>
-</div>
 
-</div>{# /add-repo-col #}
+</div>{# /addrepo-col #}
 
 {% block scripts %}
 <script>
@@ -214,15 +194,15 @@
   var hint = document.getElementById('repoHint');
   // Phase 2 PR-5 — 다국어 동적 텍스트 (서버 Jinja injection 페어)
   // Phase 2 PR-5 — i18n dynamic text (paired with server-side Jinja injection)
-  var i18nCard = document.querySelector('.add-repo-card');
+  var i18nForm = document.getElementById('addRepoForm');
   var I18N = {
-    placeholder: i18nCard.dataset.i18nPlaceholder,
-    noReposOption: i18nCard.dataset.i18nNoReposOption,
-    noReposHint: i18nCard.dataset.i18nNoReposHint,
-    loadedTemplate: i18nCard.dataset.i18nLoadedTemplate,
-    loadFailed: i18nCard.dataset.i18nLoadFailed,
-    errorPrefix: i18nCard.dataset.i18nErrorPrefix,
-    apiErrorPrefix: i18nCard.dataset.i18nApiErrorPrefix,
+    placeholder: i18nForm.dataset.i18nPlaceholder,
+    noReposOption: i18nForm.dataset.i18nNoReposOption,
+    noReposHint: i18nForm.dataset.i18nNoReposHint,
+    loadedTemplate: i18nForm.dataset.i18nLoadedTemplate,
+    loadFailed: i18nForm.dataset.i18nLoadFailed,
+    errorPrefix: i18nForm.dataset.i18nErrorPrefix,
+    apiErrorPrefix: i18nForm.dataset.i18nApiErrorPrefix,
   };
 
   // 페이지 이탈 시 fetch abort 제어 — hx-boost 뒤로가기 freezing 방지

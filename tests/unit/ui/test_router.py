@@ -73,19 +73,25 @@ def test_overview_returns_html():
 
 
 def test_overview_with_repos_shows_avg_score():
-    """리포 목록에 평균 점수(avg_score) 컬럼이 표시되어야 한다 (i18n: en/ko)."""
+    """리포 목록에 평균 점수(avg_score)가 카드 형태로 표시되어야 한다.
+    v3 card redesign — table 헤더 제거, 카드 내 점수 표시로 변경.
+    """
     mock_db = MagicMock()
     mock_repo = MagicMock(id=1, full_name="owner/repo", user_id=1, created_at="2026-01-01")
     mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [mock_repo]
-    # count_map, avg_map → dict([]) = {}, latest_map → {}
-    mock_db.query.return_value.filter.return_value.group_by.return_value.all.return_value = []
+    # count_map → [(1, 1)], avg_map → [(1, 75.0)]
+    # v3 card redesign — avg_score rendered in repo-card, not table column
+    mock_db.query.return_value.filter.return_value.group_by.return_value.all.side_effect = [
+        [(1, 1)],     # count_map
+        [(1, 75.0)],  # avg_map
+    ]
     mock_db.query.return_value.filter.return_value.all.return_value = []
     with patch("src.ui.routes.overview.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/")
     assert r.status_code == 200
-    # Phase 2 PR-5 (사이클 84) — i18n 적용 후 default locale (en) 기준
-    # Phase 2 PR-5 (Cycle 84) — after i18n, default locale (en) baseline
-    assert "Average Score" in r.text or "평균 점수" in r.text
+    # v3 카드 — 점수는 repo-card__score span 으로 렌더 (테이블 헤더 없음)
+    # v3 card — score rendered in repo-card__score span (no table header)
+    assert "repo-card__score" in r.text or "/100" in r.text
 
 
 def test_repo_detail_returns_html():
