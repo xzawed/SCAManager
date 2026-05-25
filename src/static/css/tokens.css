@@ -1,150 +1,691 @@
 /* ============================================================================
- * SCAManager — Foundation Design Tokens
- * 외부화 일자: 2026-05-09 (사이클 93 Step 1 — UI Foundation PR)
- * Externalized: 2026-05-09 (Cycle 93 Step 1 — UI Foundation PR)
- *
- * 본 파일은 테마 무관 공통 토큰만 포함. 테마별 토큰 = themes.css 참조.
- * This file holds theme-agnostic tokens only. Theme-specific = themes.css.
- *
- * 추가 시 의무:
- * - 새 토큰은 var(--*) 형태로만 사용 (#hex 직접 금지 — .claude/rules/ui.md L24)
- * - 테마 의존 토큰은 themes.css 4 블록 모두에 정의 (L30 매트릭스)
- * - 색상 의미 = --success / --warning / --danger 3종 통일 (L29)
- * ========================================================================== */
+   SCAManager · Design Tokens
+   ----------------------------------------------------------------------------
+   Architecture:
+     [data-theme]    →  4 themes: dark · light · pastel · catppuccin
+     [data-variant]  →  2 variants: refined (conservative) · signature (bold)
+     [data-density]  →  3 levels: compact · comfortable · spacious
+     [data-radius]   →  3 levels: sharp · balanced · soft
 
+   Every component reads from these vars — never hardcode.
+   ========================================================================== */
+
+/* ----- Universal: type, spacing scale, motion, elevation primitives ------- */
 :root {
-  /* ── 레거시 호환 (기존 페이지 의존) ─────────────────────────────────────
-   * Legacy compat — kept for existing page consumers; do NOT remove */
-  --radius-card: 10px;
-  --radius-btn:  7px;
-  --transition:  0.18s ease;
+  /* Type — Pretendard 한글 우선, Inter fallback, JetBrains Mono 코드 */
+  --font-sans: "Pretendard Variable", "Pretendard", "Inter", system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
 
-  /* ── 스페이싱 스케일 ───────────────────────────────────────────────────
-   * Spacing scale */
-  --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
-  --space-5: 20px; --space-6: 24px; --space-7: 32px; --space-8: 48px;
+  --fs-xs:   12px;
+  --fs-sm:   13px;
+  --fs-base: 14px;
+  --fs-md:   15px;
+  --fs-lg:   17px;
+  --fs-xl:   20px;
+  --fs-2xl:  24px;
+  --fs-3xl:  30px;
+  --fs-display-sm: 36px;
+  --fs-display-md: 48px;
+  --fs-display-lg: 64px;
+  --fs-display-xl: 88px;
 
-  /* ── 폰트 크기 스케일 (UI 본문) ────────────────────────────────────────
-   * Body / UI font scale */
-  --fs-xs: 12px; --fs-sm: 13px; --fs-md: 14px; --fs-base: 15px;
-  --fs-lg: 16px; --fs-xl: 18px; --fs-2xl: 20px; --fs-3xl: 24px;
+  --lh-tight: 1.15;
+  --lh-snug:  1.35;
+  --lh-base:  1.55;
 
-  /* ── Phase 2 신규: Display 타이포그래피 스케일 ────────────────────────
-   * Phase 2 NEW: Display typography scale (hero / page-title)
-   * 기존 --fs-3xl (24px) 까지만 있어 모든 페이지가 "관리 페이지" 느낌.
-   * Hero/landing 무드를 위한 32/44/60px 추가. */
-  --fs-display-sm: 32px;
-  --fs-display-md: 44px;
-  --fs-display-lg: 60px;
-  --tracking-tight:   -0.02em;
+  --ls-tight: -0.022em;
+  --ls-snug:  -0.012em;
+  --ls-wide:  0.04em;
+
+  /* Spacing (base 4 grid, density scales via --density) */
+  --density: 1;
+  --space-1:  calc(4px  * var(--density));
+  --space-2:  calc(8px  * var(--density));
+  --space-3:  calc(12px * var(--density));
+  --space-4:  calc(16px * var(--density));
+  --space-5:  calc(20px * var(--density));
+  --space-6:  calc(24px * var(--density));
+  --space-7:  calc(32px * var(--density));
+  --space-8:  calc(40px * var(--density));
+  --space-9:  calc(56px * var(--density));
+  --space-10: calc(72px * var(--density));
+
+  /* Radius (--radius-mult scales whole set) */
+  --radius-mult: 1;
+  --radius-xs:   calc(3px  * var(--radius-mult));
+  --radius-sm:   calc(5px  * var(--radius-mult));
+  --radius-md:   calc(8px  * var(--radius-mult));
+  --radius-lg:   calc(12px * var(--radius-mult));
+  --radius-xl:   calc(18px * var(--radius-mult));
+  --radius-pill: 999px;
+
+  /* Motion */
+  --dur-fast:  120ms;
+  --dur-base:  200ms;
+  --dur-slow:  360ms;
+  --ease-out:        cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-expo:   cubic-bezier(0.19, 1, 0.22, 1);
+  --ease-spring:     cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ----- Density modifiers -------------------------------------------------- */
+[data-density="compact"]     { --density: 0.82; }
+[data-density="comfortable"] { --density: 1.00; }
+[data-density="spacious"]    { --density: 1.18; }
+
+/* ----- Radius modifiers --------------------------------------------------- */
+[data-radius="sharp"]    { --radius-mult: 0.45; }
+[data-radius="balanced"] { --radius-mult: 1.00; }
+[data-radius="soft"]     { --radius-mult: 1.55; }
+
+/* ==========================================================================
+   DARK — Premium Dark (ground truth)
+   ========================================================================== */
+[data-theme="dark"] {
+  --bg-base:     #07070f;
+  --bg-canvas:   #0c0c18;
+  --bg-card:     rgba(255, 255, 255, 0.024);
+  --bg-card-hi:  rgba(255, 255, 255, 0.045);
+  --bg-elevated: #14141f;
+  --bg-nav:      rgba(8, 8, 16, 0.72);
+  --bg-input:    rgba(255, 255, 255, 0.035);
+  --bg-mute:     rgba(255, 255, 255, 0.06);
+
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.13);
+  --border-focus:  rgba(124, 122, 255, 0.6);
+
+  --text-1: #f3f3fa;
+  --text-2: #a5a7be;
+  --text-3: #6a6c85;
+  --text-mono: #c8cae0;
+
+  /* Accent — Refined: indigo → purple */
+  --accent-1:    #7c7aff;
+  --accent-2:    #b289ff;
+  --accent-glow: rgba(124, 122, 255, 0.35);
+  --accent-grad: linear-gradient(135deg, #7c7aff 0%, #b289ff 100%);
+  --accent-text-on: #ffffff;
+
+  /* Grade — vibrant on dark */
+  --grade-a:     #34d399;
+  --grade-a-bg:  rgba(52, 211, 153, 0.12);
+  --grade-a-bd:  rgba(52, 211, 153, 0.32);
+  --grade-b:     #38bdf8;
+  --grade-b-bg:  rgba(56, 189, 248, 0.12);
+  --grade-b-bd:  rgba(56, 189, 248, 0.32);
+  --grade-c:     #fbbf24;
+  --grade-c-bg:  rgba(251, 191, 36, 0.13);
+  --grade-c-bd:  rgba(251, 191, 36, 0.34);
+  --grade-d:     #fb923c;
+  --grade-d-bg:  rgba(251, 146, 60, 0.13);
+  --grade-d-bd:  rgba(251, 146, 60, 0.34);
+  --grade-f:     #f87171;
+  --grade-f-bg:  rgba(248, 113, 113, 0.13);
+  --grade-f-bd:  rgba(248, 113, 113, 0.34);
+
+  --status-ok:   #34d399;
+  --status-warn: #fbbf24;
+  --status-err:  #f87171;
+  --status-info: #38bdf8;
+
+  --chart-grid: rgba(255, 255, 255, 0.05);
+  --chart-axis: rgba(255, 255, 255, 0.18);
+  --chart-1:    #7c7aff;
+  --chart-2:    #38bdf8;
+  --chart-3:    #34d399;
+  --chart-4:    #fbbf24;
+  --chart-5:    #f472b6;
+
+  /* Page atmosphere — only used in Signature variant */
+  --aurora-1: radial-gradient(60% 50% at 12% 0%, rgba(124, 122, 255, 0.18), transparent 60%);
+  --aurora-2: radial-gradient(50% 50% at 92% 18%, rgba(34, 211, 238, 0.10), transparent 60%);
+  --aurora-3: radial-gradient(70% 40% at 50% 110%, rgba(178, 137, 255, 0.10), transparent 60%);
+
+  /* Animated atmosphere orb colors (per theme) */
+  --atm-color-1: #7c7aff;
+  --atm-color-2: #b289ff;
+  --atm-color-3: #4f8df0;
+
+  --elev-1: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 1px 2px rgba(0, 0, 0, 0.4);
+  --elev-2: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 8px 24px -8px rgba(0, 0, 0, 0.5);
+  --elev-3: 0 1px 0 rgba(255, 255, 255, 0.07) inset, 0 24px 56px -16px rgba(0, 0, 0, 0.6);
+  --glow-accent: 0 0 0 1px rgba(124, 122, 255, 0.4), 0 8px 32px -8px rgba(124, 122, 255, 0.5);
+}
+
+/* DARK · Signature variant — cyan → indigo → pink prismatic */
+[data-theme="dark"][data-variant="signature"] {
+  --accent-1:    #22d3ee;
+  --accent-2:    #6366f1;
+  --accent-3:    #ec4899;
+  --accent-glow: rgba(99, 102, 241, 0.45);
+  --accent-grad: linear-gradient(135deg, #22d3ee 0%, #6366f1 50%, #ec4899 100%);
+  --border-focus: rgba(99, 102, 241, 0.7);
+
+  --chart-1: #22d3ee;
+  --chart-2: #6366f1;
+  --chart-3: #ec4899;
+  --chart-4: #34d399;
+  --chart-5: #fbbf24;
+
+  --aurora-1: radial-gradient(60% 50% at 8% -5%, rgba(34, 211, 238, 0.22), transparent 60%);
+  --aurora-2: radial-gradient(55% 50% at 95% 20%, rgba(236, 72, 153, 0.16), transparent 60%);
+  --aurora-3: radial-gradient(70% 40% at 50% 115%, rgba(99, 102, 241, 0.18), transparent 60%);
+
+  --atm-color-1: #22d3ee;
+  --atm-color-2: #ec4899;
+  --atm-color-3: #6366f1;
+
+  --glow-accent: 0 0 0 1px rgba(99, 102, 241, 0.5), 0 10px 40px -10px rgba(99, 102, 241, 0.6);
+}
+/* ==========================================================================
+   LIGHT — Clean Professional
+   ========================================================================== */
+[data-theme="light"] {
+  --bg-base:     #f5f5fb;
+  --bg-canvas:   #fafafd;
+  --bg-card:     #ffffff;
+  --bg-card-hi:  #ffffff;
+  --bg-elevated: #ffffff;
+  --bg-nav:      rgba(255, 255, 255, 0.82);
+  --bg-input:    #ffffff;
+  --bg-mute:     #eeeef6;
+
+  --border-subtle: #ececf3;
+  --border-strong: #d7d8e6;
+  --border-focus:  rgba(99, 102, 241, 0.5);
+
+  --text-1: #131325;
+  --text-2: #55576f;
+  --text-3: #888aa3;
+  --text-mono: #2d2e44;
+
+  --accent-1:    #5b5ef0;
+  --accent-2:    #8b5cf6;
+  --accent-glow: rgba(91, 94, 240, 0.22);
+  --accent-grad: linear-gradient(135deg, #5b5ef0 0%, #8b5cf6 100%);
+  --accent-text-on: #ffffff;
+
+  --grade-a:     #059669;
+  --grade-a-bg:  #ecfdf5;
+  --grade-a-bd:  #a7f3d0;
+  --grade-b:     #0369a1;
+  --grade-b-bg:  #e0f2fe;
+  --grade-b-bd:  #7dd3fc;
+  --grade-c:     #b45309;
+  --grade-c-bg:  #fef3c7;
+  --grade-c-bd:  #fcd34d;
+  --grade-d:     #c2410c;
+  --grade-d-bg:  #ffedd5;
+  --grade-d-bd:  #fdba74;
+  --grade-f:     #b91c1c;
+  --grade-f-bg:  #fee2e2;
+  --grade-f-bd:  #fca5a5;
+
+  --status-ok:   #059669;
+  --status-warn: #b45309;
+  --status-err:  #b91c1c;
+  --status-info: #0284c7;
+
+  --chart-grid: rgba(20, 20, 60, 0.05);
+  --chart-axis: rgba(20, 20, 60, 0.15);
+  --chart-1:    #5b5ef0;
+  --chart-2:    #0284c7;
+  --chart-3:    #059669;
+  --chart-4:    #b45309;
+  --chart-5:    #db2777;
+
+  --aurora-1: radial-gradient(60% 50% at 12% 0%, rgba(91, 94, 240, 0.06), transparent 60%);
+  --aurora-2: radial-gradient(50% 50% at 92% 18%, rgba(2, 132, 199, 0.04), transparent 60%);
+  --aurora-3: radial-gradient(70% 40% at 50% 110%, rgba(139, 92, 246, 0.04), transparent 60%);
+
+  --atm-color-1: #a5b1ff;
+  --atm-color-2: #d4b5ff;
+  --atm-color-3: #ffd1e8;
+
+  --elev-1: 0 1px 2px rgba(20, 20, 60, 0.05), 0 0 0 1px rgba(20, 20, 60, 0.03);
+  --elev-2: 0 1px 3px rgba(20, 20, 60, 0.06), 0 8px 24px -8px rgba(20, 20, 60, 0.12);
+  --elev-3: 0 2px 4px rgba(20, 20, 60, 0.06), 0 24px 56px -16px rgba(20, 20, 60, 0.18);
+  --glow-accent: 0 0 0 1px rgba(91, 94, 240, 0.3), 0 8px 24px -8px rgba(91, 94, 240, 0.3);
+}
+
+[data-theme="light"][data-variant="signature"] {
+  --accent-1:    #0891b2;
+  --accent-2:    #6366f1;
+  --accent-3:    #db2777;
+  --accent-glow: rgba(99, 102, 241, 0.25);
+  --accent-grad: linear-gradient(135deg, #0891b2 0%, #6366f1 50%, #db2777 100%);
+  --chart-1: #0891b2;
+  --chart-2: #6366f1;
+  --chart-3: #db2777;
+  --aurora-1: radial-gradient(60% 50% at 8% -5%, rgba(8, 145, 178, 0.07), transparent 60%);
+  --aurora-2: radial-gradient(55% 50% at 95% 20%, rgba(219, 39, 119, 0.05), transparent 60%);
+  --aurora-3: radial-gradient(70% 40% at 50% 115%, rgba(99, 102, 241, 0.06), transparent 60%);
+  --atm-color-1: #5dd5e8;
+  --atm-color-2: #f59bc7;
+  --atm-color-3: #9da6ff;
+}
+
+/* ==========================================================================
+   PASTEL — Soft Focus
+   ========================================================================== */
+[data-theme="pastel"] {
+  --bg-base:     #f5f1ea;
+  --bg-canvas:   #faf6ee;
+  --bg-card:     #fffaf2;
+  --bg-card-hi:  #fffdf7;
+  --bg-elevated: #fffaf2;
+  --bg-nav:      rgba(250, 246, 238, 0.82);
+  --bg-input:    #fffdf7;
+  --bg-mute:     #ede6d8;
+
+  --border-subtle: #e6dfd0;
+  --border-strong: #d4ccba;
+  --border-focus:  rgba(140, 130, 210, 0.5);
+
+  --text-1: #2d2738;
+  --text-2: #6a6276;
+  --text-3: #9a92a3;
+  --text-mono: #46405a;
+
+  --accent-1:    #8c82d2;
+  --accent-2:    #c89ad8;
+  --accent-glow: rgba(140, 130, 210, 0.22);
+  --accent-grad: linear-gradient(135deg, #8c82d2 0%, #c89ad8 100%);
+  --accent-text-on: #ffffff;
+
+  --grade-a:     #4f9d7d;
+  --grade-a-bg:  #e6f3eb;
+  --grade-a-bd:  #b2dabf;
+  --grade-b:     #6791ba;
+  --grade-b-bg:  #e5eff7;
+  --grade-b-bd:  #b6cee2;
+  --grade-c:     #b8924a;
+  --grade-c-bg:  #f7eecf;
+  --grade-c-bd:  #ddc079;
+  --grade-d:     #c47a52;
+  --grade-d-bg:  #f5d9c4;
+  --grade-d-bd:  #e0a987;
+  --grade-f:     #b65d6d;
+  --grade-f-bg:  #f5d6dc;
+  --grade-f-bd:  #d99aa6;
+
+  --status-ok:   #4f9d7d;
+  --status-warn: #b8924a;
+  --status-err:  #b65d6d;
+  --status-info: #6791ba;
+
+  --chart-grid: rgba(45, 39, 56, 0.06);
+  --chart-axis: rgba(45, 39, 56, 0.18);
+  --chart-1:    #8c82d2;
+  --chart-2:    #6791ba;
+  --chart-3:    #4f9d7d;
+  --chart-4:    #b8924a;
+  --chart-5:    #c87da4;
+
+  --aurora-1: radial-gradient(60% 50% at 12% 0%, rgba(140, 130, 210, 0.10), transparent 60%);
+  --aurora-2: radial-gradient(50% 50% at 92% 18%, rgba(200, 154, 216, 0.08), transparent 60%);
+  --aurora-3: radial-gradient(70% 40% at 50% 110%, rgba(140, 130, 210, 0.06), transparent 60%);
+
+  --atm-color-1: #c8badc;
+  --atm-color-2: #e8c2d8;
+  --atm-color-3: #b5cfdb;
+
+  --elev-1: 0 1px 2px rgba(82, 70, 110, 0.06), 0 0 0 1px rgba(82, 70, 110, 0.04);
+  --elev-2: 0 2px 4px rgba(82, 70, 110, 0.07), 0 10px 28px -10px rgba(82, 70, 110, 0.14);
+  --elev-3: 0 2px 6px rgba(82, 70, 110, 0.08), 0 26px 60px -16px rgba(82, 70, 110, 0.2);
+  --glow-accent: 0 0 0 1px rgba(140, 130, 210, 0.3), 0 10px 28px -8px rgba(140, 130, 210, 0.34);
+}
+
+[data-theme="pastel"][data-variant="signature"] {
+  --accent-1:    #7fb0c4;
+  --accent-2:    #a097d7;
+  --accent-3:    #d896b4;
+  --accent-glow: rgba(160, 151, 215, 0.26);
+  --accent-grad: linear-gradient(135deg, #7fb0c4 0%, #a097d7 50%, #d896b4 100%);
+  --chart-1: #7fb0c4;
+  --chart-2: #a097d7;
+  --chart-3: #d896b4;
+  --atm-color-1: #b4d5e2;
+  --atm-color-2: #c8b4e8;
+  --atm-color-3: #e8b4cf;
+}
+
+/* ==========================================================================
+   CATPPUCCIN — Dev Aesthetic (Mocha-inspired)
+   ========================================================================== */
+[data-theme="catppuccin"] {
+  --bg-base:     #181825;  /* mantle */
+  --bg-canvas:   #1e1e2e;  /* base */
+  --bg-card:     #313244;  /* surface0 */
+  --bg-card-hi:  #45475a;  /* surface1 */
+  --bg-elevated: #313244;
+  --bg-nav:      rgba(24, 24, 37, 0.82);
+  --bg-input:    #313244;
+  --bg-mute:     #45475a;
+
+  --border-subtle: rgba(205, 214, 244, 0.08);
+  --border-strong: rgba(205, 214, 244, 0.18);
+  --border-focus:  rgba(203, 166, 247, 0.6);
+
+  --text-1: #cdd6f4;  /* text */
+  --text-2: #a6adc8;  /* subtext0 */
+  --text-3: #7f849c;  /* overlay1 */
+  --text-mono: #cdd6f4;
+
+  --accent-1:    #cba6f7;  /* mauve */
+  --accent-2:    #b4befe;  /* lavender */
+  --accent-glow: rgba(203, 166, 247, 0.35);
+  --accent-grad: linear-gradient(135deg, #cba6f7 0%, #b4befe 100%);
+  --accent-text-on: #1e1e2e;
+
+  --grade-a:     #a6e3a1;  /* green */
+  --grade-a-bg:  rgba(166, 227, 161, 0.14);
+  --grade-a-bd:  rgba(166, 227, 161, 0.36);
+  --grade-b:     #89b4fa;  /* blue */
+  --grade-b-bg:  rgba(137, 180, 250, 0.14);
+  --grade-b-bd:  rgba(137, 180, 250, 0.36);
+  --grade-c:     #f9e2af;  /* yellow */
+  --grade-c-bg:  rgba(249, 226, 175, 0.14);
+  --grade-c-bd:  rgba(249, 226, 175, 0.36);
+  --grade-d:     #fab387;  /* peach */
+  --grade-d-bg:  rgba(250, 179, 135, 0.14);
+  --grade-d-bd:  rgba(250, 179, 135, 0.36);
+  --grade-f:     #f38ba8;  /* pink/red */
+  --grade-f-bg:  rgba(243, 139, 168, 0.14);
+  --grade-f-bd:  rgba(243, 139, 168, 0.36);
+
+  --status-ok:   #a6e3a1;
+  --status-warn: #f9e2af;
+  --status-err:  #f38ba8;
+  --status-info: #89b4fa;
+
+  --chart-grid: rgba(205, 214, 244, 0.06);
+  --chart-axis: rgba(205, 214, 244, 0.2);
+  --chart-1:    #cba6f7;
+  --chart-2:    #89b4fa;
+  --chart-3:    #a6e3a1;
+  --chart-4:    #f9e2af;
+  --chart-5:    #f5c2e7;
+
+  --aurora-1: radial-gradient(60% 50% at 12% 0%, rgba(203, 166, 247, 0.16), transparent 60%);
+  --aurora-2: radial-gradient(50% 50% at 92% 18%, rgba(137, 180, 250, 0.10), transparent 60%);
+  --aurora-3: radial-gradient(70% 40% at 50% 110%, rgba(245, 194, 231, 0.10), transparent 60%);
+
+  --atm-color-1: #cba6f7;
+  --atm-color-2: #b4befe;
+  --atm-color-3: #f5c2e7;
+
+  --elev-1: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 1px 2px rgba(0, 0, 0, 0.35);
+  --elev-2: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 8px 24px -8px rgba(0, 0, 0, 0.45);
+  --elev-3: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 24px 56px -16px rgba(0, 0, 0, 0.5);
+  --glow-accent: 0 0 0 1px rgba(203, 166, 247, 0.42), 0 10px 32px -8px rgba(203, 166, 247, 0.5);
+}
+
+[data-theme="catppuccin"][data-variant="signature"] {
+  --accent-1:    #94e2d5;  /* teal */
+  --accent-2:    #cba6f7;  /* mauve */
+  --accent-3:    #f5c2e7;  /* pink */
+  --accent-glow: rgba(203, 166, 247, 0.4);
+  --accent-grad: linear-gradient(135deg, #94e2d5 0%, #cba6f7 50%, #f5c2e7 100%);
+  --chart-1: #94e2d5;
+  --chart-2: #cba6f7;
+  --chart-3: #f5c2e7;
+  --chart-4: #f9e2af;
+  --chart-5: #89b4fa;
+  --atm-color-1: #94e2d5;
+  --atm-color-2: #f5c2e7;
+  --atm-color-3: #cba6f7;
+}
+
+/* ==========================================================================
+   VARIANT-WIDE TUNINGS (Signature applies bolder display/glow regardless theme)
+   ========================================================================== */
+[data-variant="signature"] {
+  --fs-display-lg: 72px;
+  --fs-display-xl: 104px;
+  --ls-tight: -0.028em;
+}
+
+/* ============================================================================
+   COMPAT ALIASES — maps legacy variable names to new Claude Design tokens.
+   Existing page CSS consumers (settings, dashboard scoped styles, admin) use these.
+   Do NOT remove until all page templates are fully migrated.
+   ========================================================================== */
+
+/* Universal aliases (element-agnostic) */
+:root {
+  /* Container widths (Phase 2 legacy) */
+  --container-lg: 1200px;
+  --container-md: 860px;
+  --container-sm: 560px;
+
+  /* Motion compat */
+  --transition: var(--dur-base) var(--ease-out);
+
+  /* Radius compat */
+  --radius-card: var(--radius-lg);
+  --radius-btn:  var(--radius-md);
+
+  /* Font compat */
+  --claude-font-body:    var(--font-sans);
+  --claude-font-heading: var(--font-sans);
+  --claude-font-mono:    var(--font-mono);
+  --claude-line-height:  var(--lh-base);
+
+  /* Display typography compat */
+  --tracking-tight:   var(--ls-tight);
   --tracking-tighter: -0.025em;
-  --line-height-display: 1.05;
+  --line-height-display: var(--lh-tight);
 
-  /* ── 반경 스케일 ───────────────────────────────────────────────────────
-   * Radius scale */
-  --radius-xs: 4px; --radius-sm: 6px; --radius-md: 10px;
-  --radius-lg: 14px; --radius-pill: 999px;
-
-  /* ── 레거시 그림자 (기존 페이지 의존) ─────────────────────────────────
-   * Legacy shadow scale (kept for existing consumers) */
-  --shadow-sm: 0 1px 3px rgba(0,0,0,.1), 0 1px 2px rgba(0,0,0,.07);
-  --shadow-md: 0 4px 16px rgba(0,0,0,.14);
-  --shadow-lg: 0 8px 32px rgba(0,0,0,.22);
-
-  /* ── Phase 2 신규: Elevation 5-step (CodeRabbit/Linear 깊이 시스템) ───
-   * Phase 2 NEW: 5-step elevation depth (CodeRabbit/Linear-style)
-   * --elev-0: 평면 / --elev-1~4: 단계적 깊이 / --elev-inset: 내부 highlight.
-   * 테마별 alpha 차별 = themes.css 에서 override. */
-  --elev-0:     none;
-  --elev-1:     0 1px 2px rgba(0,0,0,.04), 0 1px 3px rgba(0,0,0,.06);
-  --elev-2:     0 2px 4px rgba(0,0,0,.04), 0 4px 8px rgba(0,0,0,.06);
-  --elev-3:     0 4px 8px rgba(0,0,0,.05), 0 8px 16px rgba(0,0,0,.08);
-  --elev-4:     0 8px 16px rgba(0,0,0,.06), 0 16px 32px rgba(0,0,0,.10);
-  --elev-inset: inset 0 1px 0 rgba(255,255,255,.04);
-
-  /* ── Phase 2 신규: Motion duration + easing ───────────────────────────
-   * Phase 2 NEW: motion scale
-   * 기존 --transition (0.18s ease) 단일 → 3-step + 3 curve.
-   * prefers-reduced-motion 가드는 consumer 측에서 적용 의무. */
-  --dur-fast:      120ms;
-  --dur-base:      220ms;
-  --dur-slow:      360ms;
-  --ease-out-expo: cubic-bezier(0.19, 1, 0.22, 1);
-  --ease-out:      cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-spring:   cubic-bezier(0.25, 1.5, 0.5, 1);
-
-  /* ── Animation convenience refs ─────────────────────────────────────────
-   * Animation convenience references */
-  --anim-page-in:   page-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
-  --anim-tab-in:    tab-in  0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
-  --anim-reveal-up: reveal-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
-  --anim-badge-pop: badge-pop 0.4s cubic-bezier(0.25, 1.5, 0.5, 1) both;
-  --anim-modal-in:  modal-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
-  --anim-toast-in:  toast-in 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  /* Animation convenience refs (Phase 2 legacy) */
+  --anim-page-in:   page-in 0.35s var(--ease-out) both;
+  --anim-tab-in:    tab-in  0.25s var(--ease-out) both;
+  --anim-reveal-up: reveal-up 0.4s var(--ease-out) both;
+  --anim-badge-pop: badge-pop 0.4s var(--ease-spring) both;
+  --anim-modal-in:  modal-in 0.25s var(--ease-out) both;
+  --anim-toast-in:  toast-in 0.28s var(--ease-out) both;
   --anim-float-a:   float-a 22s ease-in-out infinite alternate;
   --anim-float-b:   float-b 28s ease-in-out infinite alternate;
   --anim-float-c:   float-c 18s ease-in-out infinite alternate;
   --anim-float-d:   float-d 24s ease-in-out infinite alternate;
 
-  /* ── Phase 2 신규: Blur 효과 스케일 ───────────────────────────────────
-   * Phase 2 NEW: blur effect scale */
+  /* Blur scale compat */
   --blur-sm: 8px;
   --blur-md: 16px;
   --blur-lg: 24px;
 
-  /* ── 등급 색상 (기본값 = 다크/라이트 공통) ────────────────────────────
-   * Grade colors (default for dark/light/glass; claude-dark overrides) */
-  --grade-a: #4ade80; --grade-b: #60a5fa; --grade-c: #fbbf24;
-  --grade-d: #fb923c; --grade-f: #f87171;
+  /* Elevation compat (old names) */
+  --elev-0: none;
 
-  /* ── 컨테이너 너비 ─────────────────────────────────────────────────────
-   * Container widths */
-  --container-lg: 1200px; --container-md: 860px; --container-sm: 560px;
-
-  /* ── Phase 1A: Claude × Linear 하이브리드 톤 ──────────────────────────
-   * 따뜻한 베이지/오렌지 (Claude warm). claude-dark 테마 = themes.css 에서 override. */
-  --claude-bg-base:      #F5F1E8;  /* warm cream */
-  --claude-bg-surface:   #FAF7F0;  /* card */
-  --claude-bg-elevated:  #FFFFFF;  /* modal/popover */
-  --claude-text-primary: #1F1E1B;  /* warm black */
-  --claude-text-muted:   #6B6862;
-  --claude-accent:       #D97757;  /* Anthropic-inspired orange */
-  --claude-accent-soft:  #E8C5A8;  /* hover/active bg */
-  --claude-border:       #E5E1D5;  /* 1px hairline */
-
-  /* ── 의미 색상 (claude tone, 채도 -20%) ────────────────────────────── */
-  --claude-success:      #9CAF88;  /* sage — A등급/성공 */
-  --claude-warning:      #D4A574;  /* sand — C등급/주의 */
-  --claude-danger:       #C84E3F;  /* muted red — F등급/실패 */
-  --claude-grade-a:      #9CAF88;
-  --claude-grade-b:      #A8A595;
-  --claude-grade-c:      #D4A574;
-  --claude-grade-d:      #C8895E;
-  --claude-grade-f:      #C84E3F;
-
-  /* ── 타이포그래피 토큰 (사이클 93 진화) ───────────────────────────────
-   * Typography tokens (Cycle 93 evolution)
-   * 사용자 결정 3 (★) = Crimson Pro 폐기 + Pretendard 우선.
-   * - heading: Pretendard (한글 글리프 자체 지원, 기존 Crimson Pro 는 한글 미지원)
-   * - body: Pretendard primary, Inter fallback (영문 강조 영역)
-   * - mono: JetBrains Mono primary (사이클 92까지 0건 사용 → 본 PR 글로벌 적용) */
-  --claude-font-heading: 'Pretendard Variable', Pretendard, system-ui, -apple-system, sans-serif;
-  --claude-font-body:    'Pretendard Variable', Pretendard, 'Inter', system-ui, -apple-system, sans-serif;
-  --claude-font-mono:    'JetBrains Mono', Menlo, Consolas, monospace;
-  --claude-line-height:  1.65;
-
-  /* ── 환각(phantom) 토큰 alias — 4-테마 자동 적용 ──────────────────────
-   * Phantom-token alias: keeps 7+ page consumers untouched (.claude/rules/ui.md L24).
-   * 7 페이지에서 --bg-hover / --card-bg / --text 참조하지만 base.html 미정의 → 다크 테마 시각 깨짐.
-   * 사용처 그대로 두고 alias 만 추가해 회귀 0. */
-  --bg-hover:    var(--table-row-hover);
+  /* Phantom token aliases */
+  --bg-hover:    var(--bg-mute);
   --card-bg:     var(--bg-card);
   --text:        var(--text-1);
-  --accent-blue: var(--accent);    /* repo_detail.html CLI Hook 안내 배너 */
-  --c-warning:   var(--warning);   /* settings.html 잔존 토큰명 (legacy) */
-
-  /* ── 버튼 on-accent 텍스트 색상 ─────────────────────────────────────────
-   * Button text on accent-colored background (4-theme universal alias)
-   * #fff 직접 사용 금지 — 이 토큰 경유 의무 (.claude/rules/ui.md L24) */
-  --btn-on-accent: #fff;
+  --c-warning:   var(--status-warn);
 }
+
+/* Per-theme compat aliases */
+[data-theme="dark"] {
+  --elev-4: var(--elev-3);
+  --elev-inset: inset 0 1px 0 rgba(255,255,255,.04);
+
+  --accent:        var(--accent-1);
+  --accent-hover:  var(--accent-2);
+  --accent-3:      var(--accent-2);
+  --accent-rgb:    124, 122, 255;
+  --accent-faint:  var(--accent-glow);
+  --accent-blue:   var(--accent-1);
+  --success:       var(--status-ok);
+  --warning:       var(--status-warn);
+  --warning-rgb:   251, 191, 36;
+  --warning-faint: rgba(251, 191, 36, 0.10);
+  --danger:        var(--status-err);
+  --shadow-sm:     var(--elev-1);
+  --shadow-md:     var(--elev-2);
+  --shadow-lg:     var(--elev-3);
+  --code-bg:       rgba(0, 0, 0, 0.28);
+  --table-row-hover: var(--bg-mute);
+  --bg-2:          var(--bg-card);
+  --bg-input-focus: var(--bg-card-hi);
+  --orb1: var(--atm-color-1);
+  --orb2: var(--atm-color-2);
+  --orb3: var(--atm-color-3);
+  --orb4: var(--atm-color-1);
+
+  /* settings page compat */
+  --grad-gate:          linear-gradient(135deg, #7c7aff, #6c6af0);
+  --grad-merge:         linear-gradient(135deg, #38bdf8, #0284c7);
+  --grad-notify:        linear-gradient(135deg, #fbbf24, #f59e0b);
+  --grad-hook:          linear-gradient(135deg, #b289ff, #9a75f0);
+  --title-gradient:     var(--accent-grad);
+  --btn-gate-active-bg: rgba(124, 122, 255, 0.14);
+  --btn-gate-active-bd: var(--accent-1);
+  --btn-gate-active-tx: var(--accent-2);
+  --save-btn-bg:        var(--accent-grad);
+  --save-btn-shadow:    rgba(124, 122, 255, 0.38);
+  --hint-bg:            rgba(255, 255, 255, 0.025);
+  --hint-border:        rgba(255, 255, 255, 0.05);
+  --hook-btn-bg:        rgba(178, 137, 255, 0.10);
+  --hook-btn-bd:        rgba(178, 137, 255, 0.30);
+  --hook-btn-tx:        var(--accent-2);
+  --btn-on-accent:      var(--accent-text-on);
+}
+
+[data-theme="light"] {
+  --elev-4: var(--elev-3);
+  --elev-inset: inset 0 1px 0 rgba(0,0,0,.04);
+
+  --accent:        var(--accent-1);
+  --accent-hover:  var(--accent-2);
+  --accent-3:      var(--accent-2);
+  --accent-rgb:    91, 94, 240;
+  --accent-faint:  var(--accent-glow);
+  --accent-blue:   var(--accent-1);
+  --success:       var(--status-ok);
+  --warning:       var(--status-warn);
+  --warning-rgb:   180, 83, 9;
+  --warning-faint: rgba(180, 83, 9, 0.10);
+  --danger:        var(--status-err);
+  --shadow-sm:     var(--elev-1);
+  --shadow-md:     var(--elev-2);
+  --shadow-lg:     var(--elev-3);
+  --code-bg:       var(--bg-mute);
+  --table-row-hover: var(--bg-mute);
+  --bg-2:          var(--bg-card);
+  --bg-input-focus: var(--bg-card-hi);
+  --orb1: var(--atm-color-1);
+  --orb2: var(--atm-color-2);
+  --orb3: var(--atm-color-3);
+  --orb4: var(--atm-color-1);
+  --grad-gate:     linear-gradient(135deg, #5b5ef0, #4f52e0);
+  --grad-merge:    linear-gradient(135deg, #0284c7, #0369a1);
+  --grad-notify:   linear-gradient(135deg, #b45309, #92400e);
+  --grad-hook:     linear-gradient(135deg, #8b5cf6, #7c3aed);
+  --title-gradient: var(--accent-grad);
+  --btn-gate-active-bg: rgba(91, 94, 240, 0.10);
+  --btn-gate-active-bd: var(--accent-1);
+  --btn-gate-active-tx: var(--accent-1);
+  --save-btn-bg:   var(--accent-grad);
+  --save-btn-shadow: rgba(91, 94, 240, 0.30);
+  --hint-bg:       rgba(0, 0, 0, 0.02);
+  --hint-border:   rgba(0, 0, 0, 0.05);
+  --hook-btn-bg:   rgba(139, 92, 246, 0.08);
+  --hook-btn-bd:   rgba(139, 92, 246, 0.25);
+  --hook-btn-tx:   var(--accent-2);
+  --btn-on-accent: var(--accent-text-on);
+}
+
+[data-theme="pastel"] {
+  --elev-4: var(--elev-3);
+  --elev-inset: inset 0 1px 0 rgba(0,0,0,.04);
+
+  --accent:        var(--accent-1);
+  --accent-hover:  var(--accent-2);
+  --accent-3:      var(--accent-2);
+  --accent-rgb:    140, 130, 210;
+  --accent-faint:  var(--accent-glow);
+  --accent-blue:   var(--accent-1);
+  --success:       var(--status-ok);
+  --warning:       var(--status-warn);
+  --warning-rgb:   184, 146, 74;
+  --warning-faint: rgba(184, 146, 74, 0.12);
+  --danger:        var(--status-err);
+  --shadow-sm:     var(--elev-1);
+  --shadow-md:     var(--elev-2);
+  --shadow-lg:     var(--elev-3);
+  --code-bg:       var(--bg-mute);
+  --table-row-hover: var(--bg-mute);
+  --bg-2:          var(--bg-card);
+  --bg-input-focus: var(--bg-card-hi);
+  --orb1: var(--atm-color-1);
+  --orb2: var(--atm-color-2);
+  --orb3: var(--atm-color-3);
+  --orb4: var(--atm-color-1);
+  --grad-gate:     linear-gradient(135deg, #8c82d2, #7a6fc0);
+  --grad-merge:    linear-gradient(135deg, #6791ba, #5280a0);
+  --grad-notify:   linear-gradient(135deg, #b8924a, #a07838);
+  --grad-hook:     linear-gradient(135deg, #c89ad8, #b085c0);
+  --title-gradient: var(--accent-grad);
+  --btn-gate-active-bg: rgba(140, 130, 210, 0.10);
+  --btn-gate-active-bd: var(--accent-1);
+  --btn-gate-active-tx: var(--accent-1);
+  --save-btn-bg:   var(--accent-grad);
+  --save-btn-shadow: rgba(140, 130, 210, 0.30);
+  --hint-bg:       rgba(82, 70, 110, 0.03);
+  --hint-border:   rgba(82, 70, 110, 0.06);
+  --hook-btn-bg:   rgba(200, 154, 216, 0.10);
+  --hook-btn-bd:   rgba(200, 154, 216, 0.28);
+  --hook-btn-tx:   var(--accent-2);
+  --btn-on-accent: var(--accent-text-on);
+}
+
+[data-theme="catppuccin"] {
+  --elev-4: var(--elev-3);
+  --elev-inset: inset 0 1px 0 rgba(255,255,255,.03);
+
+  --accent:        var(--accent-1);
+  --accent-hover:  var(--accent-2);
+  --accent-3:      var(--accent-2);
+  --accent-rgb:    203, 166, 247;
+  --accent-faint:  var(--accent-glow);
+  --accent-blue:   var(--accent-1);
+  --success:       var(--status-ok);
+  --warning:       var(--status-warn);
+  --warning-rgb:   249, 226, 175;
+  --warning-faint: rgba(249, 226, 175, 0.14);
+  --danger:        var(--status-err);
+  --shadow-sm:     var(--elev-1);
+  --shadow-md:     var(--elev-2);
+  --shadow-lg:     var(--elev-3);
+  --code-bg:       rgba(0, 0, 0, 0.22);
+  --table-row-hover: var(--bg-mute);
+  --bg-2:          var(--bg-card);
+  --bg-input-focus: var(--bg-card-hi);
+  --orb1: var(--atm-color-1);
+  --orb2: var(--atm-color-2);
+  --orb3: var(--atm-color-3);
+  --orb4: var(--atm-color-1);
+  --grad-gate:     linear-gradient(135deg, #cba6f7, #b9a0e8);
+  --grad-merge:    linear-gradient(135deg, #89b4fa, #74a0e8);
+  --grad-notify:   linear-gradient(135deg, #f9e2af, #e8d09e);
+  --grad-hook:     linear-gradient(135deg, #b4befe, #a0aaec);
+  --title-gradient: var(--accent-grad);
+  --btn-gate-active-bg: rgba(203, 166, 247, 0.14);
+  --btn-gate-active-bd: var(--accent-1);
+  --btn-gate-active-tx: var(--accent-1);
+  --save-btn-bg:   var(--accent-grad);
+  --save-btn-shadow: rgba(203, 166, 247, 0.35);
+  --hint-bg:       rgba(255, 255, 255, 0.025);
+  --hint-border:   rgba(205, 214, 244, 0.08);
+  --hook-btn-bg:   rgba(180, 190, 254, 0.10);
+  --hook-btn-bd:   rgba(180, 190, 254, 0.28);
+  --hook-btn-tx:   var(--accent-2);
+  --btn-on-accent: var(--accent-text-on);
+}
+
+/* Selector fallback — support data-theme on both <html> and <body> during migration */
+body[data-theme="dark"]        { color: var(--text-1); }
+body[data-theme="light"]       { color: var(--text-1); }
+body[data-theme="pastel"]      { color: var(--text-1); }
+body[data-theme="catppuccin"]  { color: var(--text-1); }

@@ -139,5 +139,6 @@ def test_main_generates_valid_json(tmp_path, monkeypatch):
     assert "foundation" in data
     assert "themes" in data
     assert set(data["themes"].keys()) == {"dark", "light", "pastel", "catppuccin"}
-    # elevation 값이 주석으로 오염되지 않아야 함 / elevation must not be corrupted by comments
-    assert data["foundation"]["elevation"].get("--elev-0") == "none"
+    # 스페이싱 값이 추출되어야 함 (v3 토큰 기준) / spacing values must be extracted (v3 tokens)
+    # v3 design tokens: --elev-* are per-theme (not in :root); check spacing instead
+    assert data["foundation"]["spacing"]  # spacing section must be non-empty
