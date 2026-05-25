@@ -40,6 +40,12 @@
       --status-err:  var(--danger, #f87171);
       --status-info: var(--accent-hover, #818cf8);
       --text-mono:   var(--text-2);
+      --fs-display-xl: 80px;
+      --grade-a-bg: rgba(74,222,128,0.12);  --grade-a-bd: rgba(74,222,128,0.30);
+      --grade-b-bg: rgba(96,165,250,0.12);  --grade-b-bd: rgba(96,165,250,0.30);
+      --grade-c-bg: rgba(251,191,36,0.12);  --grade-c-bd: rgba(251,191,36,0.30);
+      --grade-d-bg: rgba(251,146,60,0.12);  --grade-d-bd: rgba(251,146,60,0.30);
+      --grade-f-bg: rgba(248,113,113,0.12); --grade-f-bd: rgba(248,113,113,0.30);
     }
 
     /* ── 리셋 ─────────────────────────────────────────── */
@@ -191,6 +197,9 @@
     .reveal {
       opacity: 0;
       animation: fadeUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) var(--delay, 0s) forwards;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .reveal { animation: none; opacity: 1; }
     }
 
     /* ── 배지 ───────────────────────────────────────────── */
@@ -484,7 +493,7 @@
         <span class="win-dot wd-yel"></span>
         <span class="win-dot wd-grn"></span>
         <span class="preview-file">auth/session.py · PR #42</span>
-        <span class="grade grade--lg grade--a">A</span>
+        <span class="grade grade--lg grade--a" aria-label="Grade A">A</span>
       </div>
       <div class="preview-body">
         <div class="review-line" style="--rdelay: 0.65s">
@@ -527,6 +536,47 @@
     <div class="stat-label">Claude 기반 리뷰</div>
   </div>
 </div>
+
+<!-- 기능 소개 섹션 / Features section -->
+<section style="max-width: 900px; margin: 60px auto 0; padding: 0 20px;">
+  <h2 class="reveal" style="--delay: 0.1s; font-size: var(--fs-2xl, 1.5rem); font-weight: 700; text-align: center; margin-bottom: 36px;">
+    왜 SCAManager인가?
+  </h2>
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px;">
+    <div class="card card--hover reveal" style="--idx: 0; --delay: 0.15s; padding: 24px;">
+      <div style="font-size: 28px; margin-bottom: 12px;">⚡</div>
+      <div class="card__title" style="margin-bottom: 8px;">자동 코드 리뷰</div>
+      <p style="font-size: var(--fs-sm, 13px); color: var(--text-2); margin: 0;">Push 즉시 정적분석 + AI 리뷰. 피드백을 기다릴 필요 없습니다.</p>
+    </div>
+    <div class="card card--hover reveal" style="--idx: 1; --delay: 0.2s; padding: 24px;">
+      <div style="font-size: 28px; margin-bottom: 12px;">🚦</div>
+      <div class="card__title" style="margin-bottom: 8px;">스마트 Gate</div>
+      <p style="font-size: var(--fs-sm, 13px); color: var(--text-2); margin: 0;">점수 기반 PR 자동 승인/반려. 기준 이하 코드는 자동으로 차단.</p>
+    </div>
+    <div class="card card--hover reveal" style="--idx: 2; --delay: 0.25s; padding: 24px;">
+      <div style="font-size: 28px; margin-bottom: 12px;">📊</div>
+      <div class="card__title" style="margin-bottom: 8px;">점수 시스템</div>
+      <p style="font-size: var(--fs-sm, 13px); color: var(--text-2); margin: 0;">100점 만점의 명확한 코드 품질 점수. 등급으로 한눈에 파악.</p>
+    </div>
+    <div class="card card--hover reveal" style="--idx: 3; --delay: 0.3s; padding: 24px;">
+      <div style="font-size: 28px; margin-bottom: 12px;">🔔</div>
+      <div class="card__title" style="margin-bottom: 8px;">멀티 채널 알림</div>
+      <p style="font-size: var(--fs-sm, 13px); color: var(--text-2); margin: 0;">Telegram·Discord·Slack·Email·n8n. 원하는 채널로 받으세요.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 등급 시스템 소개 / Grade showcase section -->
+<section style="max-width: 900px; margin: 48px auto 60px; padding: 0 20px; text-align: center;">
+  <p class="reveal" style="--delay: 0.1s; font-size: var(--fs-sm, 13px); color: var(--text-2); margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.08em;">코드 품질 등급</p>
+  <div class="reveal" style="--delay: 0.15s; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+    <span class="grade grade--lg grade--a" aria-label="Grade A — 우수">A</span>
+    <span class="grade grade--lg grade--b" aria-label="Grade B — 양호">B</span>
+    <span class="grade grade--lg grade--c" aria-label="Grade C — 보통">C</span>
+    <span class="grade grade--lg grade--d" aria-label="Grade D — 미흡">D</span>
+    <span class="grade grade--lg grade--f" aria-label="Grade F — 불합격">F</span>
+  </div>
+</section>
 
 <!-- 테마 초기화 스크립트 / Theme init script -->
 <script>

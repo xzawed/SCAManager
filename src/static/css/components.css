@@ -1038,22 +1038,4 @@ body.fx-ready .fx-enter.is-in-view {
   font-size: 11px;
   color: var(--text-3);
 }
-.swatch__chip {
-  height: 64px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-mute);
-  position: relative;
-  overflow: hidden;
-}
-.swatch__chip--grad { background: var(--accent-grad); }
-.swatch__name {
-  font-size: var(--fs-xs);
-  font-weight: 540;
-  color: var(--text-1);
-}
-.swatch__val {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-3);
-}
+
