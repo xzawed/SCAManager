@@ -362,11 +362,11 @@
        모바일 = 운영 위험/사용자 가치 우선 (보안 HIGH + 자동 머지 = first-fold)
        Cycle 81 PR-B — mobile first-fold priority re-order (5+1 cross-verify 🅑)
        Desktop = HTML order preserved; mobile = security HIGH + auto-merge first-fold */
-    .kpi:nth-child(3) { order: 1; }  /* 보안 HIGH = 1 (운영 위험 신호) */
-    .kpi:nth-child(5) { order: 2; }  /* 자동 머지 = 2 (PR 결과 사용자 가치) */
-    .kpi:nth-child(1) { order: 3; }  /* 평균 점수 = 3 (overall 건강도) */
-    .kpi:nth-child(2) { order: 4; }  /* 분석 건수 = 4 (활동량) */
-    .kpi:nth-child(4) { order: 5; }  /* 활성 리포 = 5 (확산) */
+    .dash-kpi:nth-child(3) { order: 1; }  /* 보안 HIGH = 1 (운영 위험 신호) */
+    .dash-kpi:nth-child(5) { order: 2; }  /* 자동 머지 = 2 (PR 결과 사용자 가치) */
+    .dash-kpi:nth-child(1) { order: 3; }  /* 평균 점수 = 3 (overall 건강도) */
+    .dash-kpi:nth-child(2) { order: 4; }  /* 분석 건수 = 4 (활동량) */
+    .dash-kpi:nth-child(4) { order: 5; }  /* 활성 리포 = 5 (확산) */
   }
 
   /* Grade badge fallback — these are also in base.html after PR-T2 merges */
@@ -903,7 +903,7 @@
   <div class="kpi-row">
 
     {# ① 평균 점수 — grade badge + delta / Average score — grade badge + delta #}
-    <div class="kpi">
+    <div class="kpi dash-kpi">
       <div class="kpi__label">
         <span>{{ 'dashboard.kpi.avg_score' | i18n_args(locale | default('ko')) }}</span>
         {% if kpi.avg_score.grade %}
@@ -930,7 +930,7 @@
     </div>
 
     {# ② 분석 건수 / Analysis count #}
-    <div class="kpi">
+    <div class="kpi dash-kpi">
       <div class="kpi__label"><span>{{ 'dashboard.kpi.analysis_count' | i18n_args(locale | default('ko')) }}</span></div>
       <div class="kpi__value">
         <span class="t-num" data-count="{{ kpi.analysis_count.value }}">{{ kpi.analysis_count.value }}</span>
@@ -946,7 +946,7 @@
     </div>
 
     {# ③ 보안 HIGH 이슈 (보안 악화 시 down 표시 — 반전 delta) / Security HIGH issues #}
-    <div class="kpi">
+    <div class="kpi dash-kpi">
       <div class="kpi__label"><span>{{ 'dashboard.kpi.high_security' | i18n_args(locale | default('ko')) }}</span></div>
       <div class="kpi__value">
         <span class="t-num" data-count="{{ kpi.high_security_issues.value }}">{{ kpi.high_security_issues.value }}</span>
@@ -961,7 +961,7 @@
     </div>
 
     {# ④ 활성 리포 / Active repos #}
-    <div class="kpi">
+    <div class="kpi dash-kpi">
       <div class="kpi__label"><span>{{ 'dashboard.kpi.active_repos' | i18n_args(locale | default('ko')) }}</span></div>
       <div class="kpi__value">
         <span class="t-num" data-count="{{ kpi.active_repos.value }}">{{ kpi.active_repos.value }}</span>
@@ -980,7 +980,7 @@
        메인=PR 기준 최종 (final_success_rate_pct), sub=단순 시도 (value)
        Auto-merge success rate — main=PR-based final, sub=simple attempt rate #}
     {# 🔴 ui.md: Auto-merge KPI 시각 우선순위 — final_success_rate_pct = 메인 (36px), value = fallback #}
-    <div class="kpi" title="{{ 'dashboard.kpi.auto_merge_tooltip' | i18n_args(locale | default('ko')) }}">
+    <div class="kpi dash-kpi" title="{{ 'dashboard.kpi.auto_merge_tooltip' | i18n_args(locale | default('ko')) }}">
       <div class="kpi__label">
         <span>{{ 'dashboard.kpi.auto_merge_success' | i18n_args(locale | default('ko')) }}</span>
         {% if auto_merge.distinct_prs %}
