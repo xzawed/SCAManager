@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [사이클 138 (대시보드 server-side auto-detect 제거 — 항상 개요 표시, 2026-05-27)](#사이클-138)
 - [사이클 137 (대시보드 localStorage redirect 버그 수정, 2026-05-26)](#사이클-137)
 - [사이클 136 (analysis_detail 최상단/맨하단 디자인 마감 개선, 2026-05-25)](#사이클-136)
 - [사이클 135 (모바일 테이블 헤더-값 정렬 불일치 수정 — 3페이지, 2026-05-25)](#사이클-135)
@@ -45,6 +46,24 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 사이클 138
+
+**날짜**: 2026-05-27 | **PR**: #651 (`fix/dashboard-always-overview`) | **상태**: 🔄 PR 생성 (머지 대기)
+
+**작업 내용**: `/dashboard` 진입 시 서버 측 auto-detect 제거 → 항상 개요 탭 표시
+
+| 영역 | 내용 |
+|------|------|
+| 근본 원인 | `_detect_initial_dashboard_mode()` 가 ANTHROPIC_API_KEY 설정 + Analysis ≥ 5 조건 충족 시 서버 측에서 `insight` 탭 강제 선택 |
+| PR #649(사이클 137) 한계 | 클라이언트 localStorage redirect만 제거 — 서버 auto-detect는 그대로 남아 있어 증상 지속 |
+| 수정 | `dashboard.py:155` `else` 분기 → `_detect_initial_dashboard_mode()` 호출 제거, `effective_mode = "overview"` 하드코딩 |
+| 함수 보존 | `_detect_initial_dashboard_mode()` 함수 정의는 파일에 보존 (A.1~A.3 테스트가 직접 테스트) |
+| 테스트 | A.4 테스트 업데이트 (detect 미호출 + kpi 호출 + mode=overview) — 16/16 통과 |
+| 조사 방법 | 6-에이전트 근본 원인 조사 + 5-에이전트 옵션 토론 (A/B/C) → Option A 4/5 다수결 |
+| Codex 검증 | Windows 샌드박스 spawn 반복 실패 → 세션 확립 fallback (Claude 직접 실측 대체, OK) |
+
+---
 
 ## 사이클 137
 
