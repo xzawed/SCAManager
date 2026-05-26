@@ -153,7 +153,9 @@ async def dashboard(  # pylint: disable=too-many-locals
         if mode in _VALID_MODES:
             effective_mode = mode
         else:
-            effective_mode = _detect_initial_dashboard_mode(db, user_id=current_user.id)
+            # 사이클 138 — /dashboard 진입 시 항상 개요 표시 (사용자 신호 기반 auto-detect 제거)
+            # Cycle 138 — always default to overview on /dashboard entry (removed auto-detect)
+            effective_mode = "overview"
 
         # Telemetry — Phase 1 PR 5 자율 판단 (정책 3) + Phase 3 PR 3/4 mode 추가, 비식별.
         # Telemetry: log usage frequency (user.id + days + effective_mode + url_mode flag — no PII).
