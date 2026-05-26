@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [사이클 137 (대시보드 localStorage redirect 버그 수정, 2026-05-26)](#사이클-137)
 - [사이클 136 (analysis_detail 최상단/맨하단 디자인 마감 개선, 2026-05-25)](#사이클-136)
 - [사이클 135 (모바일 테이블 헤더-값 정렬 불일치 수정 — 3페이지, 2026-05-25)](#사이클-135)
 - [사이클 134 (문서 정리 — README 제품화 + reports/superpowers 아카이브 + policies .claude/ 이동, 2026-05-25)](#사이클-134)
@@ -44,6 +45,21 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 사이클 137
+
+**날짜**: 2026-05-26 | **PR**: #649 (`fix/dashboard-localstorage-redirect`) | **상태**: ✅ 머지 완료
+
+**작업 내용**: 대시보드 `/dashboard` 진입 시 이전 탭으로 redirect되는 버그 수정
+
+| 영역 | 내용 |
+|------|------|
+| 버그 | Insight 탭 방문 후 `/dashboard` 진입 시 localStorage `'insight'` 저장값으로 `window.location.replace()` 실행 → 개요 대신 Insight 탭 표시 |
+| 수정 | localStorage setItem + redirect IIFE 전체 제거 (31줄 삭제) |
+| 영향 | `/dashboard` 이제 항상 서버 기본값(개요) 표시. 모드 토글 active 클래스는 서버 렌더링으로 정상 동작 |
+| 추가 | 기존 코드는 `repos/security/usage` 3 모드 누락 — 불완전한 상태였음 |
+
+---
 
 ## 사이클 136
 
