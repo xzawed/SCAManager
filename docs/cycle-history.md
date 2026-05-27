@@ -49,7 +49,7 @@
 
 ## 사이클 138
 
-**날짜**: 2026-05-27 | **PR**: #651 (`fix/dashboard-always-overview`) | **상태**: 🔄 PR 생성 (머지 대기)
+**날짜**: 2026-05-27 | **PR**: #651 (`fix/dashboard-always-overview`) | **상태**: ✅ 머지 완료
 
 **작업 내용**: `/dashboard` 진입 시 서버 측 auto-detect 제거 → 항상 개요 탭 표시
 
