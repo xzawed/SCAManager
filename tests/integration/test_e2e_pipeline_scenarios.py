@@ -147,7 +147,7 @@ def mock_deps(monkeypatch):
     from src.analyzer.io.static import StaticAnalysisResult
     monkeypatch.setattr(
         "src.worker.pipeline.analyze_file",
-        lambda filename, content: StaticAnalysisResult(filename=filename),
+        lambda filename, content, repo_config=None: StaticAnalysisResult(filename=filename),
     )
     gate_mock = AsyncMock()
     monkeypatch.setattr("src.worker.pipeline.run_gate_check", gate_mock)

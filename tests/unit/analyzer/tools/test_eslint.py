@@ -441,3 +441,40 @@ class TestESLintRegistration:
         from src.analyzer.pure.registry import Analyzer
         from src.analyzer.io.tools.eslint import _ESLintAnalyzer
         assert isinstance(_ESLintAnalyzer(), Analyzer)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# TestEslintReactSupport — JSX/TSX 파일에 React 설정 적용 검증
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestEslintReactSupport:
+    def test_jsx_file_uses_react_config(self, make_ctx):
+        # .jsx 파일은 React 전용 eslint 설정(_REACT_CONFIG_PATH)을 사용해야 한다
+        # .jsx files must use the React-specific eslint config (_REACT_CONFIG_PATH).
+        from src.analyzer.io.tools.eslint import _ESLintAnalyzer, _REACT_CONFIG_PATH
+        ctx = make_ctx(language="javascript", filename="app.jsx", tmp_path="/tmp/app.jsx")
+        with patch("subprocess.run", return_value=_mock_eslint_proc(SAMPLE_OUTPUT_NO_MESSAGES)) as mock_run:
+            _ESLintAnalyzer().run(ctx)
+        call_args = mock_run.call_args[0][0]
+        assert _REACT_CONFIG_PATH in call_args
+
+    def test_tsx_file_uses_react_config(self, make_ctx):
+        # .tsx 파일은 React 전용 eslint 설정(_REACT_CONFIG_PATH)을 사용해야 한다
+        # .tsx files must use the React-specific eslint config (_REACT_CONFIG_PATH).
+        from src.analyzer.io.tools.eslint import _ESLintAnalyzer, _REACT_CONFIG_PATH
+        ctx = make_ctx(language="typescript", filename="App.tsx", tmp_path="/tmp/App.tsx")
+        with patch("subprocess.run", return_value=_mock_eslint_proc(SAMPLE_OUTPUT_NO_MESSAGES)) as mock_run:
+            _ESLintAnalyzer().run(ctx)
+        call_args = mock_run.call_args[0][0]
+        assert _REACT_CONFIG_PATH in call_args
+
+    def test_js_file_does_not_use_react_config(self, make_ctx):
+        # .js 파일은 기본 eslint 설정(_CONFIG_PATH)을 사용하고 React 설정을 사용하지 않아야 한다
+        # .js files must use the base eslint config (_CONFIG_PATH), not the React config.
+        from src.analyzer.io.tools.eslint import _ESLintAnalyzer, _CONFIG_PATH, _REACT_CONFIG_PATH
+        ctx = make_ctx(language="javascript", filename="app.js", tmp_path="/tmp/app.js")
+        with patch("subprocess.run", return_value=_mock_eslint_proc(SAMPLE_OUTPUT_NO_MESSAGES)) as mock_run:
+            _ESLintAnalyzer().run(ctx)
+        call_args = mock_run.call_args[0][0]
+        assert _CONFIG_PATH in call_args
+        assert _REACT_CONFIG_PATH not in call_args
