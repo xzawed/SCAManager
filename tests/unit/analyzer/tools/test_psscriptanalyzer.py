@@ -132,6 +132,17 @@ class TestPSScriptAnalyzer:
         with patch("subprocess.run", return_value=_mock_proc("[not valid json]")):
             assert _PSScriptAnalyzer().run(ctx) == []
 
+    def test_returns_empty_on_json_decode_error_explicit(self):
+        """JSONDecodeError가 발생하면 빈 리스트를 반환한다.
+        Returns empty list when JSONDecodeError occurs.
+        """
+        from src.analyzer.io.tools.psscriptanalyzer import _PSScriptAnalyzer
+        ctx = _make_ctx()
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = json.JSONDecodeError("", "", 0)
+            result = _PSScriptAnalyzer().run(ctx)
+        assert result == []
+
     def test_returns_empty_on_non_array_output(self):
         # [로 시작하지 않는 출력은 빈 목록을 반환해야 한다
         # Output not starting with [ must return empty list

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import subprocess  # nosec B404
 
@@ -45,14 +46,18 @@ class _PSScriptAnalyzer:
         Parse Invoke-ScriptAnalyzer ConvertTo-Json output and return issues.
         """
         try:
+            # 경로를 환경변수로 전달해 PowerShell 커맨드 문자열 인젝션 방지
+            # Pass path via env var to prevent PowerShell command string injection
+            env = os.environ.copy()
+            env["PSSA_PATH"] = ctx.tmp_path
             r = subprocess.run(  # nosec B603 B607
                 [
                     "pwsh", "-NonInteractive", "-Command",
-                    f"Invoke-ScriptAnalyzer -Path '{ctx.tmp_path}' "
-                    f"-Severity Error,Warning | ConvertTo-Json -AsArray",
+                    "Invoke-ScriptAnalyzer -Path $env:PSSA_PATH -Severity Error,Warning | ConvertTo-Json -AsArray",
                 ],
                 capture_output=True, text=True,
                 timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
+                env=env,
             )
             raw = r.stdout.strip()
             # JSON 배열이 아닌 경우(빈 출력 또는 에러 텍스트) 빈 목록 반환
