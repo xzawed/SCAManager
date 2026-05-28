@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-23 기준 — **사이클 128**: 테마 드롭다운 CSS 변수 스코프 + 대비 수정 (#611)): 150+ PR #188~#611 — 누적 정책 본문 18건 + 메모리 17건. 전체 3099 수집 (3095 passed, 4 skipped, 단위 2948 + 통합 151) / E2E 112 (100 표준 + 12 perf) / pylint **10.00/10**
+## 현재 수치 (2026-05-28 기준 — **사이클 129**: Lint L-1 언어 확장 (#654) — 15개 신규 정적분석기 + 15개 언어 추가): 150+ PR #188~#654 — 누적 정책 본문 18건 + 메모리 17건. 테스트 수 make test 실행 후 갱신 필요 / E2E 112 (100 표준 + 12 perf) / pylint **10.00/10**
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
@@ -19,8 +19,8 @@
 | bandit HIGH | **0개** | bandit 1.9.4 (Python 3.14 대응) |
 | flake8 | **0건** (E501 16건 soft-pass — `|| true` 가드, CI 차단 없음) | `flake8 src/` |
 | 지원 언어 (AI 리뷰) | **50개** | language.py — Tier1/2/3 가이드 |
-| 지원 언어 (정적분석) | **37개+** | Semgrep 22 + ESLint 2 + ShellCheck 1 + cppcheck 1 + slither 1 + rubocop 1 + golangci-lint 1 + Python 3 도구 |
-| Tier1 정적분석 도구 | **10종** | pylint·flake8·bandit·semgrep·eslint·shellcheck·cppcheck·slither·**rubocop**·**golangci-lint** |
+| 지원 언어 (정적분석) | **52개+** | Semgrep 22 + ESLint/tsc 2 + ShellCheck 1 + cppcheck 1 + slither 1 + rubocop 1 + golangci-lint 1 + Python 3 + **신규 15**: Dockerfile(hadolint)·Kotlin(ktlint)·HCL(tflint)·SQL(sqlfluff)·YAML(yamllint)·PHP(phpstan)·Swift(swiftlint)·CSS(stylelint)·SCSS(stylelint)·HTML(htmlhint)·Protobuf(buf_lint)·Dart(dart_analyze)·PowerShell(psscriptanalyzer)·C#(dotnet_format)·Rust(clippy) |
+| Tier1 정적분석 도구 | **25종** | pylint·flake8·bandit·semgrep·eslint·shellcheck·cppcheck·slither·rubocop·golangci-lint·**hadolint**·**ktlint**·**tflint**·**tsc**·**sqlfluff**·**yamllint**·**phpstan**·**swiftlint**·**stylelint**·**htmlhint**·**buf_lint**·**dart_analyze**·**psscriptanalyzer**·**dotnet_format**·**clippy** |
 | pytest-asyncio | **1.3.0** | Python 3.14 DeprecationWarning 제거 완료 |
 | CodeQL | **✅ pass** | `.github/workflows/codeql.yml` — 주 1회 실행. 본 README 배지 (L15) 와 페어 |
 
