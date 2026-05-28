@@ -114,6 +114,7 @@ class TestStylelintAnalyzer:
         assert len(issues) == 2
         assert issues[0].line == 2
         assert issues[1].line == 5
+        assert issues[0].category == Category.CODE_QUALITY
 
     def test_severity_mapping(self):
         # severity 필드가 올바르게 매핑되어야 한다 (warning → WARNING, error → ERROR)

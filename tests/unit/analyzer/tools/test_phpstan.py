@@ -98,6 +98,7 @@ class TestPhpstanAnalyzer:
         assert issues[0].line == 5
         assert issues[1].line == 10
         assert issues[0].severity == Severity.ERROR
+        assert issues[0].category == Category.CODE_QUALITY
 
     def test_all_issues_are_error_severity(self):
         # phpstan의 모든 이슈는 ERROR 심각도를 가져야 한다

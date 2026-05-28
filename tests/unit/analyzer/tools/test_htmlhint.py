@@ -105,6 +105,7 @@ class TestHtmlhintAnalyzer:
         assert len(issues) == 2
         assert issues[0].line == 1
         assert issues[1].line == 3
+        assert issues[0].category == Category.CODE_QUALITY
 
     def test_severity_mapping(self):
         # type 필드가 올바르게 severity로 매핑되어야 한다 (error → ERROR, warning → WARNING)
