@@ -73,3 +73,13 @@ def test_require_login_returns_current_user():
         result = require_login(_req({"user_id": 1}))
     assert isinstance(result, CurrentUser)
     assert result.id == 1
+
+
+def test_get_current_user_db_error_returns_none():
+    """DB 오류(세션 변조 등) 시 None 반환 — 광범위 예외 처리 경로 검증.
+    Returns None when DB raises any exception (session tamper guard).
+    """
+    with patch("src.auth.session.SessionLocal") as mock_sl:
+        mock_sl.return_value.__enter__.side_effect = Exception("DB error")
+        result = get_current_user(_req({"user_id": 1}))
+    assert result is None

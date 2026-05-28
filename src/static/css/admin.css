@@ -67,6 +67,9 @@
 }
 
 /* ── 상태 배지 (공통) / Status badges (shared) ───────────── */
+/* .badge base + legacy selectors share one layout block
+   .badge 기반 + 레거시 셀렉터가 하나의 레이아웃 블록 공유 */
+.badge,
 .badge-success,
 .badge-danger,
 .status-applied,
@@ -81,6 +84,7 @@
   animation: var(--anim-badge-pop);
 }
 
+.badge--success,
 .badge-success,
 .status-applied {
   background: color-mix(in srgb, var(--success) 15%, transparent);
@@ -88,6 +92,7 @@
   border: 1px solid color-mix(in srgb, var(--success) 30%, transparent);
 }
 
+.badge--danger,
 .badge-danger,
 .status-missing {
   background: color-mix(in srgb, var(--danger) 15%, transparent);
@@ -95,9 +100,22 @@
   border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
 }
 
+.badge--warn {
+  background: color-mix(in srgb, var(--warning) 15%, transparent);
+  color: var(--warning);
+  border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
+}
+
 .status-applied,
 .status-missing {
   font-size: 11px;
+}
+
+/* .tbl は components.css がマージされると定義される前方互換フック
+   .tbl is a forward-compat hook — defined in components.css once Task 2 merges */
+.tbl {
+  width: 100%;
+  border-collapse: collapse;
 }
 
 /* ── 테이블 컨테이너 / Table container ───────────────────── */

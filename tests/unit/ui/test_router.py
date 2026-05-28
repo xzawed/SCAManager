@@ -73,19 +73,25 @@ def test_overview_returns_html():
 
 
 def test_overview_with_repos_shows_avg_score():
-    """리포 목록에 평균 점수(avg_score) 컬럼이 표시되어야 한다 (i18n: en/ko)."""
+    """리포 목록에 평균 점수(avg_score)가 카드 형태로 표시되어야 한다.
+    v3 card redesign — table 헤더 제거, 카드 내 점수 표시로 변경.
+    """
     mock_db = MagicMock()
     mock_repo = MagicMock(id=1, full_name="owner/repo", user_id=1, created_at="2026-01-01")
     mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [mock_repo]
-    # count_map, avg_map → dict([]) = {}, latest_map → {}
-    mock_db.query.return_value.filter.return_value.group_by.return_value.all.return_value = []
+    # count_map → [(1, 1)], avg_map → [(1, 75.0)]
+    # v3 card redesign — avg_score rendered in repo-card, not table column
+    mock_db.query.return_value.filter.return_value.group_by.return_value.all.side_effect = [
+        [(1, 1)],     # count_map
+        [(1, 75.0)],  # avg_map
+    ]
     mock_db.query.return_value.filter.return_value.all.return_value = []
     with patch("src.ui.routes.overview.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/")
     assert r.status_code == 200
-    # Phase 2 PR-5 (사이클 84) — i18n 적용 후 default locale (en) 기준
-    # Phase 2 PR-5 (Cycle 84) — after i18n, default locale (en) baseline
-    assert "Average Score" in r.text or "평균 점수" in r.text
+    # v3 카드 — 점수는 repo-card__score span 으로 렌더 (테이블 헤더 없음)
+    # v3 card — score rendered in repo-card__score span (no table header)
+    assert "repo-card__score" in r.text or "/100" in r.text
 
 
 def test_repo_detail_returns_html():
@@ -1668,10 +1674,9 @@ def test_overview_does_not_show_latest_score_column():
 
 
 def test_overview_grade_derived_from_avg_score():
-    """avg_map에 {1: 92.0} 반환 시 등급 뱃지 'grade-A'가 HTML에 포함되어야 한다.
-    변경 예정: 등급 컬럼을 최신 grade가 아닌 평균 점수 기반 calculate_grade(avg_score)로 변경.
-    평균 92점 → GRADE_THRESHOLDS A≥90 → 'grade-A' CSS 클래스.
-    구현 전에는 avg 기반 grade 렌더링이 없으므로 이 테스트는 실패(Red).
+    """avg_map에 {1: 92.0} 반환 시 등급 뱃지 'grade--a'가 HTML에 포함되어야 한다.
+    등급 컬럼은 최신 grade가 아닌 평균 점수 기반 calculate_grade(avg_score)로 산출.
+    평균 92점 → GRADE_THRESHOLDS A≥90 → 'grade--a' BEM CSS 클래스.
     """
     mock_db = MagicMock()
     mock_repo = MagicMock(id=1, full_name="owner/repo", user_id=1, created_at="2026-01-01")
@@ -1689,9 +1694,9 @@ def test_overview_grade_derived_from_avg_score():
     with patch("src.ui.routes.overview.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/")
     assert r.status_code == 200
-    # 평균 92점 → grade A → 템플릿에서 <span class="grade grade-A"> 뱃지 스팬으로 렌더
-    # 현재 구현(latest_grade 기반)에서는 latest_map이 비어 있어 이 스팬이 없음 → Red
-    assert '<span class="grade grade-A">' in r.text
+    # 평균 92점 → grade A → 템플릿에서 <span class="grade grade--a"> 뱃지 스팬으로 렌더 (BEM 패턴)
+    # Average 92 → grade A → template renders <span class="grade grade--a"> badge (BEM pattern)
+    assert '<span class="grade grade--a">' in r.text
 
 
 # ── Settings 페이지 재설계 스모크 테스트 (2026-04-21) ──────────────────────────
@@ -1892,13 +1897,13 @@ def test_phantom_token_aliases_in_root():
 def test_warning_token_defined_in_all_themes():
     """PR #167 회귀 가드 — --warning 토큰이 4-테마 모두에 정의.
 
-    사이클 93 Step 1: base.html → themes.css 외부화 (검사 위치 갱신).
-    dark / light / glass 3 테마 직접 정의 + claude-dark = alias (var(--claude-warning)).
+    Phase 3 v3: 테마 블록이 tokens.css compat 섹션으로 이전됨.
+    Phase 3 v3: theme blocks migrated to tokens.css compat section.
     """
-    themes = _read_css("themes.css")
-    assert themes.count("--warning:") >= 3, (
-        f"--warning 토큰 정의가 부족 (3개 이상 기대 — dark/light/glass): "
-        f"{themes.count('--warning:')}회"
+    tokens = _read_css("tokens.css")
+    assert tokens.count("--warning:") >= 3, (
+        f"--warning 토큰 정의가 부족 (3개 이상 기대 — dark/light/pastel/catppuccin): "
+        f"{tokens.count('--warning:')}회"
     )
 
 
@@ -1907,26 +1912,17 @@ def test_claude_dark_settings_tokens_defined():
 
     --grad-gate/merge/notify/hook + --title-gradient + --btn-gate-active-* +
     --save-btn-* + --hint-* + --hook-btn-* 가 각 테마 블록에 있어야.
-    2026-05-11 UI Redesign: claude-dark → catppuccin, glass → pastel 으로 교체.
+    Phase 3 v3: 테마 블록이 tokens.css compat 섹션으로 이전됨.
+    Phase 3 v3: theme blocks migrated to tokens.css compat section (4 per-theme blocks).
     """
-    themes = _read_css("themes.css")
-    # 새 4 테마 모두 settings 페이지 토큰 필수 확인
-    # New 4 themes must all have settings page tokens
-    for theme_selector in (
-        '[data-theme="dark"]',
-        '[data-theme="light"]',
-        '[data-theme="pastel"]',
-        '[data-theme="catppuccin"]',
-    ):
-        idx = themes.find(theme_selector)
-        assert idx != -1, f"themes.css 에 {theme_selector} 블록 누락"
-        block_end = themes.find("\n}", idx)
-        assert block_end != -1, f"{theme_selector} 블록의 닫는 }} 미발견"
-        block = themes[idx:block_end]
-        for token in ("--grad-gate:", "--save-btn-bg:", "--hint-bg:", "--hook-btn-tx:"):
-            assert token in block, (
-                f"{theme_selector} 블록에 {token} 누락 — settings 페이지 시각 깨짐 위험"
-            )
+    tokens = _read_css("tokens.css")
+    # settings 페이지 핵심 토큰이 tokens.css compat 섹션에 존재하는지 확인
+    # settings page key tokens must exist somewhere in tokens.css compat section
+    for token in ("--grad-gate:", "--save-btn-bg:", "--hint-bg:", "--hook-btn-tx:"):
+        assert tokens.count(token) >= 4, (
+            f"tokens.css 에 {token} 4-테마 정의 부족 "
+            f"(실측 {tokens.count(token)}회 — 4 이상 기대)"
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -1980,6 +1976,11 @@ def test_foundation_tokens_present():
     """
     tokens = _read_css("tokens.css")
     themes = _read_css("themes.css")
+    # themes.css 는 comment-only stub — 실제 CSS 선택자 규칙이 없어야 함
+    # themes.css must be a comment-only stub — no actual CSS selector rules allowed
+    import re as _re
+    assert not _re.search(r'\[data-theme[^\]]*\]\s*\{', themes), \
+        "themes.css should be a stub (no theme definitions) — all themes are in tokens.css"
 
     # Theme-agnostic 토큰 (tokens.css)
     # Theme-agnostic tokens (tokens.css)
@@ -2004,9 +2005,11 @@ def test_foundation_tokens_present():
 
     # 신규 4 테마 모두 orb 토큰 정의 확인 (mesh-bg/accent-glow 대체)
     # New 4 themes must all define orb tokens (replaces mesh-bg/accent-glow)
+    # Phase 3 v3: orb 토큰은 tokens.css compat 섹션으로 이전됨
+    # Phase 3 v3: orb tokens migrated to tokens.css compat section
     for token in ("--orb1:", "--orb2:", "--orb3:", "--orb4:"):
-        assert themes.count(token) >= 4, (
-            f"themes.css 에 {token} 4-테마 정의 부족 (실측 {themes.count(token)}회 — 4 이상 기대)"
+        assert tokens.count(token) >= 4, (
+            f"tokens.css 에 {token} 4-테마 정의 부족 (실측 {tokens.count(token)}회 — 4 이상 기대)"
         )
 
 
@@ -2190,3 +2193,20 @@ def test_preset_threshold_values():
     assert settings.count("approve_threshold: 75") >= 2, (
         "minimal/standard 프리셋의 approve_threshold:75 둘 다 보존 필요"
     )
+
+
+def test_api_github_repos_returns_empty_on_github_api_error():
+    """GitHub API 오류 시 빈 목록 반환 — 광범위 예외 처리 경로 검증.
+    Returns empty list when GitHub API call raises any exception.
+    """
+    import src.ui.routes.add_repo as _mod
+
+    # 캐시 초기화 — GitHub API 호출 강제 (캐시 히트 방지)
+    # Clear cache to force the GitHub API call (bypass cache hit).
+    _mod._user_repos_cache.clear()
+
+    with patch("src.ui.routes.add_repo.list_user_repos", new_callable=AsyncMock, side_effect=Exception("API error")):
+        r = client.get("/api/github/repos")
+
+    assert r.status_code == 200
+    assert r.json() == []

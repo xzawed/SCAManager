@@ -70,7 +70,7 @@ def mock_deps(monkeypatch):
     monkeypatch.setattr("src.worker.pipeline.review_code", AsyncMock(return_value=_fake_ai_review()))
     monkeypatch.setattr(
         "src.worker.pipeline.analyze_file",
-        lambda filename, content: __import__(
+        lambda filename, content, repo_config=None: __import__(
             "src.analyzer.io.static", fromlist=["StaticAnalysisResult"]
         ).StaticAnalysisResult(filename=filename),
     )

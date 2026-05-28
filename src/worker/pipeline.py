@@ -27,6 +27,10 @@ from src.repositories import repository_repo, analysis_repo
 
 logger = logging.getLogger(__name__)
 
+# 정적 분석 타임아웃 (초) — 초과 시 빈 리스트 반환, AI 리뷰는 계속 진행
+# Static analysis timeout (seconds) — returns empty list on timeout, AI review continues
+PIPELINE_ANALYSIS_TIMEOUT = 60
+
 
 @dataclass
 class _AnalysisSaveParams:  # pylint: disable=too-many-instance-attributes
@@ -119,14 +123,22 @@ def _extract_author_login(event_type: str, data: dict) -> str | None:
     return (head.get("author") or {}).get("username")
 
 
-async def _run_static_analysis(files: list[ChangedFile]) -> list[StaticAnalysisResult]:
-    """Run registered analyzers on all changed files; each Analyzer filters by language."""
+async def _run_static_analysis(
+    files: list[ChangedFile], repo_config: object | None = None
+) -> list[StaticAnalysisResult]:
+    """Run registered analyzers on all changed files; each Analyzer filters by language.
+
+    repo_config: RepoConfig 인스턴스 — disabled_tools 필터링에 사용.
+    repo_config: RepoConfig instance — used for disabled_tools filtering.
+    """
     return await asyncio.to_thread(
-        lambda: [analyze_file(f.filename, f.content) for f in files]
+        lambda: [analyze_file(f.filename, f.content, repo_config=repo_config) for f in files]
     )
 
 
-async def _run_static_with_timeout(files: list[ChangedFile]) -> list[StaticAnalysisResult]:
+async def _run_static_with_timeout(
+    files: list[ChangedFile], repo_config: object | None = None
+) -> list[StaticAnalysisResult]:
     """_run_static_analysis를 PIPELINE_ANALYSIS_TIMEOUT 초 상한으로 실행한다.
     Run _run_static_analysis bounded by PIPELINE_ANALYSIS_TIMEOUT seconds.
     타임아웃 초과 시 빈 리스트 반환 — AI 리뷰는 계속 진행.
@@ -134,7 +146,7 @@ async def _run_static_with_timeout(files: list[ChangedFile]) -> list[StaticAnaly
     """
     try:
         return await asyncio.wait_for(
-            _run_static_analysis(files),
+            _run_static_analysis(files, repo_config=repo_config),
             timeout=PIPELINE_ANALYSIS_TIMEOUT,
         )
     except asyncio.TimeoutError:
@@ -493,18 +505,25 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
             # AI review output language = repo owner's preferred_language. RepoConfig.notification_language
             # is for channel-level (notifier/_language.py) — AI review is DB-stored + reused across channels.
             review_language = _resolve_review_language(repo_name)
-            # 리포별 모델 override 조회 — 실패 시 None (전역 기본값 fallback, 비중요 경로)
-            # Fetch per-repo model override — falls back to None (global default) on error
+            # 리포 설정 단일 조회 — review_model + disabled_tools 양쪽에 사용
+            # Single DB fetch — used for both review_model and disabled_tools
             repo_review_model: str | None = None
+            _static_repo_cfg: object | None = None
             try:
                 with SessionLocal() as db_cfg:
-                    repo_review_model = get_repo_config(db_cfg, repo_name).review_model or None
+                    _cfg = get_repo_config(db_cfg, repo_name)
+                    repo_review_model = _cfg.review_model or None
+                    _static_repo_cfg = _cfg
             except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
-                pass  # 모델 조회 실패 = 전역 기본값으로 fallback (분석 중단 불필요)
+                logger.debug(
+                    "repo_config fetch failed for %s — using defaults for model and disabled_tools",
+                    repo_name,
+                )
 
             with stage_timer("analyze", repo=repo_log) as ctx:
                 analysis_results, ai_review = await asyncio.gather(
-                    _run_static_with_timeout(files),
+                    _run_static_with_timeout(files, repo_config=_static_repo_cfg),
+>>>>>>> origin/main
                     review_code(
                         settings.anthropic_api_key, commit_message, patches,
                         language=review_language,

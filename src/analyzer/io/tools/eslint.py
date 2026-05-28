@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import pathlib
 import shutil
 import subprocess  # nosec B404
 
@@ -19,6 +20,14 @@ logger = logging.getLogger(__name__)
 _CONFIG_PATH = os.path.abspath(os.path.join(
     os.path.dirname(__file__), "..", "configs", "eslint.config.json"
 ))
+
+_REACT_CONFIG_PATH = os.path.abspath(os.path.join(
+    os.path.dirname(__file__), "..", "configs", "eslint_react.config.json"
+))
+
+# JSX/TSX 확장자 — React 전용 eslint 설정 사용 대상
+# File extensions that use the React-specific eslint config
+_REACT_EXTENSIONS: frozenset[str] = frozenset({".jsx", ".tsx"})
 
 
 class _ESLintAnalyzer:
@@ -38,9 +47,12 @@ class _ESLintAnalyzer:
     def run(self, ctx: AnalyzeContext) -> list[AnalysisIssue]:
         """eslint JSON 출력을 파싱해 AnalysisIssue 목록 반환."""
         try:
+            # JSX/TSX 파일은 React 설정 사용, 그 외는 기본 설정 사용
+            # Use React config for JSX/TSX files, base config otherwise
+            _cfg = _REACT_CONFIG_PATH if pathlib.Path(ctx.filename).suffix in _REACT_EXTENSIONS else _CONFIG_PATH
             r = subprocess.run(  # nosec B603 B607
                 ["eslint", "--format=json", "--no-eslintrc",
-                 "-c", _CONFIG_PATH, ctx.tmp_path],
+                 "-c", _cfg, ctx.tmp_path],
                 capture_output=True, text=True, timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
             if not r.stdout.strip().startswith("["):

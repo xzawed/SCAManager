@@ -1,6 +1,6 @@
 """RepoConfig ORM 모델 — 리포별 분석·Gate·알림 설정."""
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, JSON
 from src.constants import (
     GATE_DEFAULT_APPROVE_THRESHOLD,
     GATE_DEFAULT_REJECT_THRESHOLD,
@@ -48,6 +48,12 @@ class RepoConfig(Base):
     # NULL = settings.claude_review_model 전역 기본값 사용
     # NULL = fall back to settings.claude_review_model global default
     review_model = Column(String(50), nullable=True)
+
+    # per-repo 비활성화 도구 목록 — JSON 배열, 기본값 빈 배열 (Alembic 0035)
+    # Per-repo disabled analyzer names — JSON array, defaults to empty list (Alembic 0035)
+    # server_default='[]' — SQLite create_all + PG 양쪽 DDL DEFAULT 적용
+    # server_default='[]' — ensures DDL DEFAULT for both SQLite create_all and PostgreSQL
+    disabled_tools = Column(JSON, default=list, server_default='[]', nullable=False)
 
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),

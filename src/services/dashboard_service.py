@@ -1,3 +1,4 @@
+# pylint: disable=too-many-lines
 """Dashboard service — Phase 1 PR 4 + Phase 2 PR 1 (MVP-B + Auto-merge KPI).
 Dashboard service for the /dashboard route.
 

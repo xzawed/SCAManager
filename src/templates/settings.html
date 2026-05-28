@@ -2,93 +2,89 @@
 {% block title %}{{ 'settings_page.title_prefix' | i18n_args(locale | default('ko')) }} — {{ repo_name }}{% endblock %}
 {% block content %}
 <style>
-  /* P0-3 + P2-5: padding-bottom 6rem + iOS safe-area-inset 추가 (notch 디바이스 호환)
-     P0-3 + P2-5: 6rem bottom padding + iOS safe-area-inset (notch device support) */
-  .settings-wrap { max-width: 860px; margin: 0 auto;
-                   padding: 1.5rem 1rem calc(6rem + env(safe-area-inset-bottom, 0px)); }
-
-  /* 페이지 헤더 */
-  .settings-header { display:flex; align-items:center; gap:.75rem; margin-bottom:1.75rem; }
-  .settings-title {
-    font-size:1.35rem; font-weight:800; letter-spacing:-.02em;
-    background: var(--title-gradient);
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  .settings-wrap {
+    max-width: 860px; margin: 0 auto;
+    padding: var(--space-7) var(--space-6) calc(var(--space-8, 48px) + env(safe-area-inset-bottom, 0px));
   }
+  .settings-section { margin-bottom: var(--space-5); }
+  .settings-head {
+    font-size: var(--fs-xl); font-weight: 700;
+    letter-spacing: var(--tracking-tight);
+    background: var(--accent-grad);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    margin: 0 0 var(--space-7);
+  }
+
+  /* Settings header */
+  .settings-header { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-7); }
+  .settings-title { font-size: var(--fs-2xl); font-weight: 700; margin: 0; }
   .repo-badge {
-    margin-left:auto; background:var(--bg-input); color:var(--text-2);
-    padding:.25rem .8rem; border-radius:20px; font-size:12px; font-family:monospace;
-    border:1px solid var(--border-subtle);
+    margin-left: auto; padding: var(--space-1) var(--space-3);
+    background: var(--bg-mute, var(--bg-input)); border-radius: var(--radius-pill, 20px);
+    font-size: var(--fs-xs); color: var(--text-2);
+  }
+  .back-btn {
+    display: inline-flex; align-items: center; gap: var(--space-2);
+    font-size: var(--fs-sm); color: var(--text-2);
+    text-decoration: none;
+  }
+  .back-btn:hover { color: var(--text-1); }
+
+  /* Mode toggle bar */
+  .mode-toggle-bar {
+    display: flex; align-items: center; gap: var(--space-3);
+    margin: 0 0 var(--space-5, 1.25rem); padding: var(--space-3, .55rem) var(--space-4, .85rem);
+    background: var(--bg-card); border-radius: var(--radius-lg, 10px);
+    border: 1px solid var(--border-subtle); flex-wrap: wrap;
+    box-shadow: var(--shadow-sm);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  .mode-toggle-bar:hover { border-color: var(--accent);
+                           box-shadow: 0 0 0 3px rgba(99,102,241,0.10), var(--shadow-sm); }
+  .mode-toggle-label { font-size: 12px; color: var(--text-2);
+                       font-weight: 700; text-transform: uppercase;
+                       letter-spacing: 0.05em; }
+  .mode-toggle-segment { display: inline-flex; gap: 2px; padding: 3px;
+                         background: var(--bg-input); border-radius: 8px; }
+  .mode-toggle-btn { padding: 0.4rem 0.95rem; border-radius: 6px;
+                     border: 1px solid transparent; background: transparent;
+                     cursor: pointer; font-size: 13px; color: var(--text-1);
+                     font-weight: 500; transition: all 0.15s ease;
+                     display: inline-flex; align-items: center; gap: 0.35rem; }
+  .mode-toggle-btn:hover:not(.active) { background: var(--bg-hover, rgba(99,102,241,.08)); }
+  .mode-toggle-btn.active { background: var(--accent); color: white;
+                            border-color: var(--accent); font-weight: 700;
+                            box-shadow: 0 2px 8px rgba(99,102,241,0.25); }
+  .mode-toggle-hint { font-size: 11px; opacity: 0.85; margin-left: 0.15rem; }
+  .mode-toggle-counter { margin-left: auto; font-size: 11px; color: var(--text-2);
+                         font-weight: 600; }
+  .mode-toggle-counter:empty { display: none; }
+
+  /* Simple/Advanced mode visibility */
+  body[data-settings-mode="simple"] .adv-only,
+  main[data-settings-mode="simple"] .adv-only { display: none !important; }
+  body[data-settings-mode="advanced"] .simple-only-hint { display: none !important; }
+
+  /* Mobile mode toggle stack */
+  @media (max-width: 480px) {
+    .mode-toggle-bar { flex-direction: column; align-items: stretch; gap: 0.5rem; }
+    .mode-toggle-segment { width: 100%; }
+    .mode-toggle-btn { flex: 1; justify-content: center; }
+    .mode-toggle-hint { display: none; }
+    .mode-toggle-counter { margin-left: 0; text-align: center; }
   }
 
-  /* 1컬럼 기본 (모바일 퍼스트) — 640px 이상에서 2컬럼으로 전환 */
-  .settings-grid { display:grid; grid-template-columns:1fr; gap:1rem; margin-bottom:1rem; }
-
-  /* 카드 — 글래스모피즘 + 호버 리프트 + 상단 그라디언트 바
-     Card — glassmorphism + hover lift + top gradient accent bar */
-  .s-card {
-    border-radius:var(--radius-card); background:var(--bg-card);
-    border:1px solid var(--border-subtle); box-shadow:var(--shadow-sm); overflow:hidden;
-    transition:background var(--transition), border-color var(--transition),
-               transform 0.2s ease, box-shadow 0.2s ease;
-    position: relative;
-    backdrop-filter: blur(12px) saturate(150%);
-    -webkit-backdrop-filter: blur(12px) saturate(150%);
-  }
-  .s-card:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
-  }
-  /* 호버 시 상단 그라디언트 바 / Top gradient accent bar on hover */
-  .s-card::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 3px;
-    background: linear-gradient(90deg, var(--accent), var(--accent-2));
-    border-radius: 3px 3px 0 0;
-    opacity: 0;
-    transition: opacity 0.3s;
-    z-index: 1;
-  }
-  .s-card:hover::before { opacity: 1; }
-  /* 위험 구역 카드 — 호버 시 danger 그라디언트 바
-     Danger zone card — danger gradient bar on hover */
-  .s-card.danger-zone::before {
-    background: linear-gradient(90deg, var(--danger), color-mix(in srgb, var(--danger) 60%, transparent));
-  }
-  body[data-theme="glass"] .s-card { backdrop-filter:blur(20px) saturate(180%); -webkit-backdrop-filter:blur(20px) saturate(180%); }
-
-  /* 카드 헤더 그라디언트 */
-  .s-card-hdr {
-    padding:.72rem 1.1rem; display:flex; align-items:center; gap:.55rem;
-  }
-  .s-card-hdr .hdr-icon { font-size:16px; }
-  .s-card-hdr .hdr-title { font-size:13px; font-weight:700; color: var(--btn-on-accent); flex:1; }
-  .s-card-hdr .hdr-badge {
-    background: color-mix(in srgb, var(--btn-on-accent) 22%, transparent); color: var(--btn-on-accent); font-size:11px; padding:2px 9px; border-radius:10px;
-  }
-  .hdr-gate   { background:var(--grad-gate); }
-  .hdr-merge  { background:var(--grad-merge); }
-  .hdr-notify { background:var(--grad-notify); }
-  .hdr-hook   { background:var(--grad-hook); }
-  .s-card-body { padding:1.1rem; }
-
-  /* 카드 내 섹션 구분 */
-  .s-divider { height:1px; background:var(--border-subtle); margin:1rem 0; opacity:.6; }
-  .s-section-label {
-    font-size:11px; font-weight:700; color:var(--text-2);
-    letter-spacing:.06em; text-transform:uppercase; margin-bottom:.65rem;
+  /* Hint banner */
+  .simple-only-hint {
+    font-size: var(--fs-xs, 12px); color: var(--text-2);
+    margin: -.6rem 0 1.25rem; padding: .5rem .85rem; line-height: 1.55;
+    background: var(--hint-bg, rgba(99,102,241,.06));
+    border-left: 3px solid var(--accent); border-radius: 6px;
   }
 
-  /* Progressive Disclosure */
-  .is-hidden { display:none !important; }
-
-  /* 프리셋 카드 */
-  .hdr-preset { background: linear-gradient(135deg, var(--accent), var(--accent-2, var(--pink, var(--accent)))); }
-  .preset-desc { font-size:12px; color:var(--text-2); margin-bottom:.85rem; line-height:1.5; }
-
-  /* 프리셋 아코디언 */
+  /* Preset accordion */
   .preset-cards { display:flex; flex-direction:column; gap:.5rem; }
+  .preset-desc { font-size:12px; color:var(--text-2); margin-bottom:.85rem; line-height:1.5; }
   .preset-details {
     border:1.5px solid var(--border-subtle); border-radius:10px;
     background:var(--bg-input); overflow:hidden;
@@ -115,10 +111,7 @@
   .preset-icon { font-size:20px; line-height:1; flex-shrink:0; }
   .preset-name { font-size:13px; font-weight:700; }
   .preset-hint { font-size:11px; color:var(--text-2); margin-top:.1rem; line-height:1.3; }
-  .preset-detail-body {
-    padding:.65rem 1rem 1rem;
-    border-top:1px solid var(--border-subtle);
-  }
+  .preset-detail-body { padding:.65rem 1rem 1rem; border-top:1px solid var(--border-subtle); }
   .preset-table { width:100%; font-size:12px; border-collapse:collapse; }
   .preset-table td { padding:.28rem .2rem; color:var(--text-2); vertical-align:middle; }
   .preset-table td:first-child { font-weight:600; color:var(--text-1); width:58%; }
@@ -126,53 +119,73 @@
   .pt-applied-label {
     margin-top:.75rem; padding:.4rem .65rem;
     background:rgba(16,185,129,.1); border:1px solid rgba(16,185,129,.3);
-    border-radius:6px; font-size:11px; color: var(--success); font-weight:600;
-    text-align:center;
+    border-radius:6px; font-size:11px; color: var(--success); font-weight:600; text-align:center;
+  }
+  @media(min-width:640px) {
+    .preset-cards { display:grid; grid-template-columns:repeat(3,1fr); gap:.6rem; align-items:start; }
   }
 
-  /* Gate 모드 버튼 — P1-3: 모바일 클릭 영역 ≥48px (WCAG 2.5.5)
-     Gate mode buttons — P1-3: ≥48px touch target on mobile (WCAG 2.5.5) */
+  /* Preset highlight animation */
+  @keyframes preset-flash {
+    0%   { box-shadow: 0 0 0 3px rgba(99,102,241,.5); background: rgba(99,102,241,.1); }
+    100% { box-shadow: 0 0 0 0   rgba(99,102,241,0);  background: transparent; }
+  }
+  .preset-just-applied { animation: preset-flash 2.5s ease-out; border-radius: 8px; }
+
+  /* Toggle switch (legacy markup preserved) */
+  .toggle-row { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; }
+  .toggle-row .toggle-switch { align-self:center; flex-shrink:0; }
+  .toggle-row + .toggle-row { margin-top:.85rem; }
+  .toggle-info .t-title { font-size:13px; font-weight:600; margin-bottom:.2rem; }
+  .toggle-info .t-desc  { font-size:11px; color:var(--text-2); line-height:1.4; }
+  .toggle-switch { position:relative; display:inline-flex; align-items:center; flex-shrink:0; }
+  .toggle-switch input[type="checkbox"] { width:0; height:0; opacity:0; position:absolute; }
+  .toggle-switch .toggle-track {
+    width:44px; height:24px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius:12px;
+    cursor:pointer; transition:background var(--transition), border-color var(--transition);
+    position:relative; display:block;
+  }
+  .toggle-switch .toggle-track::after {
+    content:''; position:absolute; top:3px; left:3px;
+    width:16px; height:16px; background:#fff; border-radius:50%;
+    transition:transform var(--transition), background var(--transition);
+    box-shadow:0 1px 4px rgba(0,0,0,.3);
+  }
+  .toggle-switch input:checked + .toggle-track { background: var(--success); border-color: var(--success); }
+  .toggle-switch input:checked + .toggle-track::after { transform:translateX(20px); background: var(--btn-on-accent); }
+
+  /* Gate mode buttons */
   .gate-btns { display:grid; grid-template-columns:repeat(3,1fr); gap:.4rem; margin-bottom:1rem; }
   .gate-mode-btn {
-    padding:.5rem .25rem; border-radius:8px; border:1.5px solid var(--border-subtle);
-    background:var(--bg-input); color:var(--text-2);
-    font-size:12px; font-weight:600; text-align:center; cursor:pointer;
-    transition:all var(--transition);
-    display:flex; flex-direction:column; align-items:center; gap:.15rem;
-    min-height:44px;
+    padding: var(--space-2, .5rem) var(--space-4, .25rem);
+    border-radius: var(--radius-md, 8px);
+    border: 1.5px solid var(--border-subtle);
+    background: var(--bg-input);
+    color: var(--text-2);
+    font-size: 12px; font-weight: 600; text-align: center; font-family: inherit; cursor: pointer;
+    transition: all var(--transition);
+    display: flex; flex-direction: column; align-items: center; gap: .15rem;
+    min-height: 44px;
   }
   .gate-mode-btn .gm-icon { font-size:15px; }
   .gate-mode-btn.active {
-    background:var(--btn-gate-active-bg);
-    border-color:var(--btn-gate-active-bd);
-    color:var(--btn-gate-active-tx);
+    background: var(--btn-gate-active-bg, rgba(99,102,241,.15));
+    border-color: var(--btn-gate-active-bd, var(--accent));
+    color: var(--btn-gate-active-tx, var(--accent));
   }
-  @media (max-width: 480px) {
-    .gate-mode-btn { padding:.65rem .35rem; min-height:48px; }
-  }
+  .gate-mode-btn:hover:not(.active) { background: var(--bg-mute, var(--bg-hover)); border-color: var(--border-strong, var(--accent)); }
+  @media (max-width: 480px) { .gate-mode-btn { padding:.65rem .35rem; min-height:48px; } }
 
-  /* 슬라이더 + 숫자 인라인 */
+  /* Threshold rows */
   .threshold-row { margin-bottom:.85rem; }
-  .threshold-label {
-    display:flex; justify-content:space-between; align-items:center;
-    margin-bottom:.35rem; font-size:12px; color:var(--text-2);
-  }
+  .threshold-label { display:flex; justify-content:space-between; align-items:center; margin-bottom:.35rem; font-size:12px; color:var(--text-2); }
   .threshold-ctrl { display:flex; align-items:center; gap:.5rem; }
-  .threshold-ctrl input[type=range] {
-    flex:1; height:6px; border-radius:3px; background:var(--border-subtle);
-    -webkit-appearance:none; outline:none; cursor:pointer;
-  }
-  .threshold-ctrl input[type=range]::-webkit-slider-thumb {
-    -webkit-appearance:none; width:18px; height:18px; border-radius:50%; cursor:pointer;
-  }
-  /* P2-6: 모바일 thumb 24px — 손가락 터치 권장 크기 / Larger thumb for mobile touch */
-  @media (max-width: 480px) {
-    .threshold-ctrl input[type=range]::-webkit-slider-thumb {
-      width:24px; height:24px;
-    }
-  }
-  /* PR-1 C3 (Step D 누락분): 슬라이더 thumb 시맨틱 토큰화 — claude-dark sage/muted-red 자동 적용
-     PR-1 C3 (Step D missed): semantic tokens for slider thumbs */
+  .threshold-ctrl input[type=range] { flex:1; height:6px; border-radius:3px; background:var(--border-subtle); -webkit-appearance:none; outline:none; cursor:pointer; }
+  .threshold-ctrl input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:18px; height:18px; border-radius:50%; cursor:pointer; }
+  @media (max-width: 480px) { .threshold-ctrl input[type=range]::-webkit-slider-thumb { width:24px; height:24px; } }
   .approve-range::-webkit-slider-thumb { background:var(--success); box-shadow:0 2px 6px rgba(74,222,128,.35); }
   .reject-range::-webkit-slider-thumb  { background:var(--danger);  box-shadow:0 2px 6px rgba(248,113,113,.35); }
   .num-input {
@@ -189,51 +202,11 @@
   }
   .range-hint strong { color:var(--text-1); }
 
-  /* 토글 스위치 */
-  /* P1-7: 다중 줄 t-desc 와 1줄 토글의 baseline 어긋남 보정 — flex-start + 토글 자체 중앙 정렬
-     P1-7: align-items:flex-start to fix multi-line desc vs single-line toggle baseline */
-  .toggle-row { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; }
-  .toggle-row .toggle-switch { align-self:center; flex-shrink:0; }
-  .toggle-row + .toggle-row { margin-top:.85rem; }
-  .toggle-info .t-title { font-size:13px; font-weight:600; margin-bottom:.2rem; }
-  .toggle-info .t-desc  { font-size:11px; color:var(--text-2); line-height:1.4; }
-  .toggle-switch { position:relative; display:inline-flex; align-items:center; flex-shrink:0; }
-  .toggle-switch input[type="checkbox"] { width:0; height:0; opacity:0; position:absolute; }
-  /* 토글 트랙 — 시맨틱 토큰: OFF=elevated+border, ON=success
-     Toggle track — semantic tokens: OFF=elevated+border, ON=success */
-  .toggle-track {
-    width:44px; height:24px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-subtle);
-    border-radius:12px;
-    cursor:pointer; transition:background var(--transition), border-color var(--transition);
-    position:relative; display:block;
-  }
-  .toggle-track::after {
-    content:''; position:absolute; top:3px; left:3px;
-    width:16px; height:16px; background:var(--bg-elevated); border-radius:50%;
-    transition:transform var(--transition), background var(--transition);
-    box-shadow:0 1px 4px rgba(0,0,0,.3);
-  }
-  /* ON 상태 — success 배경 + btn-on-accent 노브
-     ON state — success background + btn-on-accent knob */
-  .toggle-switch input:checked + .toggle-track {
-    background: var(--success);
-    border-color: var(--success);
-  }
-  .toggle-switch input:checked + .toggle-track::after {
-    transform:translateX(20px);
-    background: var(--btn-on-accent);
-  }
-
-  /* 입력 필드 */
+  /* Field rows */
   .field-row { display:flex; flex-direction:column; gap:5px; margin-bottom:.6rem; }
   .field-row:last-child { margin-bottom:0; }
   .field-label { font-size:12px; font-weight:600; color:var(--text-1); display:flex; align-items:center; gap:6px; }
-  .field-tag {
-    font-size:10px; font-weight:600; padding:2px 6px; border-radius:4px;
-    background:rgba(99,102,241,.12); color:var(--accent); letter-spacing:.04em;
-  }
+  .field-tag { font-size:10px; font-weight:600; padding:2px 6px; border-radius:4px; background:rgba(99,102,241,.12); color:var(--accent); letter-spacing:.04em; }
   .field-hint { font-size:11px; color:var(--text-2); }
   .field-input {
     width:100%; padding:.55rem .875rem; border-radius:8px;
@@ -242,8 +215,6 @@
     transition:border-color var(--transition), background var(--transition), box-shadow var(--transition);
     outline:none;
   }
-  /* 입력 포커스 글로우 — 액센트 링 (add_repo.html 과 동일 패턴)
-     Input focus glow — accent ring (matches add_repo.html pattern) */
   input, select, textarea { transition: border-color 0.2s, box-shadow 0.2s; }
   input:focus, select:focus, textarea:focus {
     border-color: var(--accent);
@@ -254,88 +225,26 @@
                        box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent); }
   .field-input::placeholder { color:var(--text-2); opacity:.7; }
 
-  /* 알림 채널 1컬럼 기본 (모바일 퍼스트) */
+  /* Channel grid */
   .channel-grid { display:grid; grid-template-columns:1fr; gap:.5rem .9rem; }
 
-  /* Hook 카드 */
-  .hook-code {
-    background:var(--bg-input); border:1px solid var(--border-subtle); border-radius:7px;
-    padding:.55rem .8rem; font-family:monospace; font-size:12px; color:var(--text-2);
-    margin-bottom:.75rem;
-  }
+  /* Hook elements */
+  .hook-code { background:var(--bg-input); border:1px solid var(--border-subtle); border-radius:7px; padding:.55rem .8rem; font-family:monospace; font-size:12px; color:var(--text-2); margin-bottom:.75rem; }
   .hook-btns { display:flex; gap:.5rem; flex-wrap:wrap; }
   .hook-btn {
-    padding:.42rem .9rem; border-radius:8px;
-    background:var(--hook-btn-bg); border:1.5px solid var(--hook-btn-bd); color:var(--hook-btn-tx);
-    font-size:12px; font-weight:500; cursor:pointer; transition:all var(--transition);
+    display: inline-flex; align-items: center; gap: var(--space-2, .35rem);
+    padding: var(--space-2, .42rem) var(--space-4, .9rem);
+    background: var(--hook-btn-bg); border: 1.5px solid var(--hook-btn-bd); color: var(--hook-btn-tx);
+    border-radius: var(--radius-md, 8px);
+    font-size: 12px; font-weight: 500; font-family: inherit; cursor: pointer;
+    transition: all var(--transition);
   }
-  .hook-btn:hover { filter:brightness(1.15); }
-  .hook-alert {
-    padding:.55rem .9rem; border-radius:8px; font-size:13px; margin-bottom:.6rem;
-  }
+  .hook-btn:hover { filter: brightness(1.15); }
+  .hook-alert { padding:.55rem .9rem; border-radius:8px; font-size:13px; margin-bottom:.6rem; }
   .hook-alert.ok   { background: color-mix(in srgb, var(--success) 15%, transparent); color: var(--success); }
   .hook-alert.fail { background: color-mix(in srgb, var(--danger) 15%, transparent); color: var(--danger); }
 
-  /* 위험 구역 details */
-  .danger-summary {
-    font-size:12px; font-weight:700; color:var(--danger);
-    cursor:pointer; user-select:none; outline:none;
-    list-style:none; display:flex; align-items:center; gap:.4rem;
-  }
-  .danger-summary::-webkit-details-marker { display:none; }
-  .danger-summary::before { content:'▶'; font-size:10px; transition:transform var(--transition); }
-  details[open] .danger-summary::before { transform:rotate(90deg); }
-
-  /* 저장 버튼 — P0-3: 단색 배경 + box-shadow 로 본문과 명확히 분리
-     P2-5: iOS safe-area-inset 추가 (홈 인디케이터 회피)
-     Save bar — P0-3 solid bg + shadow; P2-5 iOS safe-area-inset for home indicator
-     슬라이드 업 입장 애니메이션 / Slide-up entrance animation */
-  .save-bar {
-    position:sticky; bottom:0;
-    padding:.75rem 0 calc(.85rem + env(safe-area-inset-bottom, 0px));
-    background: var(--bg-base);
-    border-top: 1px solid var(--border-subtle);
-    box-shadow: 0 -8px 16px -8px rgba(0,0,0,.18);
-    transform: translateY(8px);
-    opacity: 0;
-    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s;
-  }
-  .save-bar.visible {
-    transform: translateY(0);
-    opacity: 1;
-  }
-  /* 프라이머리 버튼 — 액센트 그라디언트 + 호버 리프트 + 클릭 스케일
-     Primary button — accent gradient + hover lift + click scale */
-  .btn-save-new {
-    width:100%; padding:.72rem; border-radius:9px; border:none;
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
-    color: var(--btn-on-accent);
-    font-size:14px; font-weight:700; cursor:pointer;
-    box-shadow:0 4px 14px var(--save-btn-shadow);
-    transition: opacity var(--transition), box-shadow var(--transition),
-                transform 0.15s ease;
-    display:flex; align-items:center; justify-content:center; gap:8px;
-  }
-  .btn-save-new:hover { opacity:.9; transform: translateY(-1px); box-shadow: 0 6px 20px var(--save-btn-shadow); }
-  .btn-save-new:active { transform: scale(0.97); opacity: 1; }
-
-  /* 저장 결과 토스트 */
-  .save-toast {
-    position:fixed; top:1.1rem; left:50%; transform:translateX(-50%);
-    padding:.65rem 1.4rem; border-radius:10px;
-    font-size:13px; font-weight:600; z-index:1000;
-    box-shadow:0 4px 18px rgba(0,0,0,.18);
-    animation: toastIn .25s ease, toastOut .4s ease 3s forwards;
-  }
-  .save-toast-ok  { background: color-mix(in srgb, var(--success) 15%, transparent); border-color: var(--success); color: var(--success); border: 1px solid var(--success); }
-  .save-toast-err { background: color-mix(in srgb, var(--danger) 15%, transparent); border-color: var(--danger); color: var(--danger); border: 1px solid var(--danger); }
-  @keyframes toastIn  { from { opacity:0; transform:translateX(-50%) translateY(-10px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
-  @keyframes toastOut { from { opacity:1; } to { opacity:0; pointer-events:none; } }
-
-  /* (Phase 2A Progressive 재설계: 별도 아코디언 제거 — .adv-only 클래스로 단순/고급 분리)
-     Phase 2A Progressive: dedicated accordion removed — replaced by .adv-only class-based split */
-
-  /* 마스킹 필드 */
+  /* Masked field */
   .masked-field { position:relative; display:flex; align-items:center; }
   .masked-field .field-input { padding-right:44px; flex:1; }
   .mask-toggle {
@@ -347,45 +256,152 @@
   .mask-toggle:hover { opacity:1; background:var(--bg-hover,rgba(99,102,241,.1)); }
   .mask-toggle:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 
-  /* 프리셋 적용 하이라이트 (P2) */
-  @keyframes preset-flash {
-    0%   { box-shadow: 0 0 0 3px rgba(99,102,241,.5); background: rgba(99,102,241,.1); }
-    100% { box-shadow: 0 0 0 0   rgba(99,102,241,0);  background: transparent; }
+  /* Save toast */
+  .save-toast {
+    position:fixed; top:1.1rem; left:50%; transform:translateX(-50%);
+    padding:.65rem 1.4rem; border-radius:10px;
+    font-size:13px; font-weight:600; z-index:1000;
+    box-shadow:0 4px 18px rgba(0,0,0,.18);
+    animation: toastIn .25s ease, toastOut .4s ease 3s forwards;
   }
-  .preset-just-applied {
-    animation: preset-flash 2.5s ease-out;
-    border-radius: 8px;
-  }
+  .save-toast-ok  { background: color-mix(in srgb, var(--success) 15%, transparent); border: 1px solid var(--success); color: var(--success); }
+  .save-toast-err { background: color-mix(in srgb, var(--danger) 15%, transparent); border: 1px solid var(--danger); color: var(--danger); }
+  @keyframes toastIn  { from { opacity:0; transform:translateX(-50%) translateY(-10px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
+  @keyframes toastOut { from { opacity:1; } to { opacity:0; pointer-events:none; } }
 
-  /* 반응형 — 640px 이상에서 2컬럼 전환 / Responsive: 2-col at ≥640px */
-  @media(max-width:639px) {
-    .repo-badge { display:none; }
-    /* P0-5 + P2-5: 모바일 좌우 0 (이중 패딩 해소) + iOS safe-area-inset
-       P0-5 + P2-5: zero horizontal pad on mobile + iOS safe-area-inset */
-    .settings-wrap { padding:1rem 0 calc(6rem + env(safe-area-inset-bottom, 0px)); }
-    /* PR-1 C4 (Step B 누락분): 모바일 input font-size 16px — iOS Safari focus zoom 회피
-       PR-1 C4: 16px on mobile prevents iOS Safari focus zoom (notify_chat_id, all webhook URLs) */
-    .field-input { font-size: 16px; }
+  /* Save bar */
+  .save-bar {
+    position: sticky; bottom: 0;
+    display: flex; align-items: center; justify-content: flex-end;
+    gap: var(--space-3, .75rem);
+    padding: var(--space-3, .75rem) var(--space-6, 1.5rem) calc(var(--space-3, .75rem) + env(safe-area-inset-bottom, 0px));
+    background: var(--bg-nav, var(--bg-base));
+    backdrop-filter: saturate(140%) blur(14px);
+    -webkit-backdrop-filter: saturate(140%) blur(14px);
+    border-top: 1px solid var(--border-subtle);
+    box-shadow: 0 -8px 16px -8px rgba(0,0,0,.18);
+    opacity: 0;
+    transform: translateY(8px);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s;
+    z-index: 40;
   }
+  .save-bar.visible { opacity: 1; transform: translateY(0); }
+
+  /* Danger zone */
+  .danger-zone { border-color: var(--danger) !important; }
+  .danger-zone .s-card-hdr { border-bottom-color: var(--danger) !important; }
+  .s-card.danger-zone::before {
+    background: linear-gradient(90deg, var(--danger), color-mix(in srgb, var(--danger) 60%, transparent));
+  }
+  .danger-summary {
+    font-size:12px; font-weight:700; color:var(--danger);
+    cursor:pointer; user-select:none; outline:none;
+    list-style:none; display:flex; align-items:center; gap:.4rem;
+  }
+  .danger-summary::-webkit-details-marker { display:none; }
+  .danger-summary::before { content:'►'; font-size:10px; transition:transform var(--transition); }
+  details[open] .danger-summary::before { transform:rotate(90deg); }
+
+  /* Stale webhook alert */
+  .alert {
+    display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+    padding: .85rem 1.1rem; margin-bottom: 1rem;
+    border-radius: 8px; border: 1px solid transparent;
+    font-size: 13px; line-height: 1.5;
+  }
+  .alert-warning {
+    background: color-mix(in srgb, var(--warning) 12%, transparent);
+    border-color: color-mix(in srgb, var(--warning) 35%, transparent);
+    color: var(--text-1);
+  }
+  .alert .me-2 { margin-right: .5rem; }
+  .alert .ms-auto { margin-left: auto; }
+  .alert.mb-4 { margin-bottom: 1rem; }
+  .btn.btn-sm { padding: .35rem .85rem; font-size: 12px; font-weight: 600; border-radius: 6px; border: 1px solid transparent; cursor: pointer; transition: opacity .15s ease, transform .1s ease; }
+  .btn.btn-warning { background: var(--warning); color: var(--btn-on-accent); border-color: var(--warning); }
+  .btn.btn-warning:hover { opacity: .9; }
+  @media (max-width: 480px) { .alert .ms-auto { margin-left: 0; width: 100%; } .alert .btn { width: 100%; } }
+
+  /* Connection status dot */
+  .conn-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+              vertical-align: middle; margin-right: 6px;
+              box-shadow: 0 0 0 1.5px var(--bg-card); }
+  .conn-dot.is-on  { background: var(--success, #10b981); }
+  .conn-dot.is-off { background: var(--text-2, #9ca3af); opacity: 0.55; }
+  .conn-status-text { font-size: 11px; color: var(--text-2); font-weight: 500; }
+  .s-section-label .conn-dot { vertical-align: -1px; }
+
+  /* Card section layout */
+  .settings-grid { display:grid; grid-template-columns:1fr; gap:1rem; margin-bottom:1rem; }
   @media(min-width:640px) {
     .settings-grid { grid-template-columns:1fr 1fr; }
-    /* P2-4: align-items:start — 한 카드 펼침 시 인접 카드가 빈 영역으로 늘어나지 않게
-       P2-4: align-items:start so adjacent cards stay short when one is expanded */
-    .preset-cards  { display:grid; grid-template-columns:repeat(3,1fr); gap:.6rem; align-items:start; }
-    .notify-full   { grid-column:1/-1; }
-    /* P0-1: 자식 카드가 1개뿐인 settings-grid 는 자동 1컬럼 (우측 빈공간 해소)
-       P0-1: settings-grid with a single child card auto-collapses to 1 col */
+    .notify-full { grid-column:1/-1; }
     .settings-grid:has(> .s-card:only-child) { grid-template-columns: 1fr; }
   }
-  /* P1-4: channel-grid 2-col 은 충분한 폭 (≥1024px) 에서만 활성화 — 좁은 데스크탑·태블릿에서
-     placeholder URL 잘림 회피 / Activate 2-col channel grid only ≥1024px */
   @media(min-width:1024px) {
-    .channel-grid  { grid-template-columns:1fr 1fr; }
-  }
-  /* P0-2: 데스크탑 ≥1024px 에서 페이지 폭 확장 (양옆 빈여백 해소)
-     P0-2: Widen page at ≥1024px to remove desktop dead space */
-  @media(min-width:1024px) {
+    .channel-grid { grid-template-columns:1fr 1fr; }
     .settings-wrap { max-width: 1140px; }
+  }
+
+  /* Card (s-card) styles */
+  .s-card {
+    border-radius:var(--radius-card); background:var(--bg-card);
+    border:1px solid var(--border-subtle); box-shadow:var(--shadow-sm); overflow:hidden;
+    transition:background var(--transition), border-color var(--transition), transform 0.2s ease, box-shadow 0.2s ease;
+    position: relative;
+    backdrop-filter: blur(12px) saturate(150%);
+    -webkit-backdrop-filter: blur(12px) saturate(150%);
+  }
+  .s-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+  .s-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    border-radius: 3px 3px 0 0; opacity: 0; transition: opacity 0.3s;
+  }
+  .s-card:hover::before { opacity: 1; }
+  body[data-theme="glass"] .s-card { backdrop-filter:blur(20px) saturate(180%); -webkit-backdrop-filter:blur(20px) saturate(180%); }
+
+  .s-card-hdr { padding:.72rem 1.1rem; display:flex; align-items:center; gap:.55rem; }
+  .s-card-hdr .hdr-icon { font-size:16px; }
+  .s-card-hdr .hdr-title { font-size:13px; font-weight:700; color: var(--btn-on-accent); flex:1; }
+  .s-card-hdr .hdr-badge { background: color-mix(in srgb, var(--btn-on-accent) 22%, transparent); color: var(--btn-on-accent); font-size:11px; padding:2px 9px; border-radius:10px; }
+  .hdr-gate   { background:var(--grad-gate); }
+  .hdr-merge  { background:var(--grad-merge); }
+  .hdr-notify { background:var(--grad-notify); }
+  .hdr-hook   { background:var(--grad-hook); }
+  .hdr-preset { background: linear-gradient(135deg, var(--accent), var(--accent-2, var(--pink, var(--accent)))); }
+  .s-card-body { padding:1.1rem; }
+
+  .s-divider { height:1px; background:var(--border-subtle); margin:1rem 0; opacity:.6; }
+  .s-section-label { font-size:11px; font-weight:700; color:var(--text-2); letter-spacing:.06em; text-transform:uppercase; margin-bottom:.65rem; }
+  .is-hidden { display:none !important; }
+
+  /* Section gradient text classes */
+  .grad-gate-text  { background: var(--grad-gate,  linear-gradient(135deg, #7c7aff, #6c6af0)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .grad-merge-text { background: var(--grad-merge, linear-gradient(135deg, #34d399, #059669)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .grad-notify-text{ background: var(--grad-notify,linear-gradient(135deg, #60a5fa, #3b82f6)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .grad-hook-text  { background: var(--grad-hook,  linear-gradient(135deg, #c084fc, #7c3aed)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+  @media (max-width: 768px) {
+    .settings-wrap { padding: var(--space-5, 1.25rem) var(--space-4, 1rem) var(--space-8, 2rem); }
+    .save-bar { padding: var(--space-3, .75rem) var(--space-4, 1rem); }
+    .gate-mode-btn { min-height: 44px; }
+    .mode-toggle-btn { min-height: 44px; }
+    .gate-mode-btn,
+    .mode-toggle-btn { box-sizing: border-box; }
+    .s-card-body { padding: 0.85rem; }
+    .s-card-hdr { padding: 0.6rem 0.85rem; }
+    .s-card-hdr .hdr-title { font-size: 12.5px; }
+    .s-card-hdr .hdr-icon { font-size: 14px; }
+    select, input[type=text], input[type=url], input[type=email], input[type=password] { min-height: 44px; font-size: 16px; }
+    input[type=number] { min-height: 44px; font-size: 16px; }
+    .save-btn, button[type=submit] { min-height: 48px; }
+    .danger-summary-wrap summary { min-height: 44px; padding: 0.5rem; }
+  }
+  @media(max-width:639px) {
+    .repo-badge { display:none; }
+    .settings-wrap { padding:1rem 0 calc(6rem + env(safe-area-inset-bottom, 0px)); }
+    .field-input { font-size: 16px; }
   }
 </style>
 
@@ -430,133 +446,7 @@
             border-left: 3px solid var(--accent); border-radius: 6px;">
     {{ 'settings_page.simple_only_hint' | i18n_args(locale | default('ko')) | safe }}
   </p>
-  <style>
-    /* P1-6: mode-toggle-bar 시각 무게를 카드(1px)와 동일화 + 강조는 box-shadow ring 으로 분리
-       P1-6: align toggle bar weight with card (1px) + accent ring instead of thicker border */
-    .mode-toggle-bar { display: flex; align-items: center; gap: 0.75rem;
-                       margin: 0 0 1.25rem; padding: 0.55rem 0.85rem;
-                       background: var(--bg-card); border-radius: 10px;
-                       border: 1px solid var(--border-subtle); flex-wrap: wrap;
-                       box-shadow: var(--shadow-sm);
-                       transition: border-color 0.2s ease, box-shadow 0.2s ease; }
-    .mode-toggle-bar:hover { border-color: var(--accent);
-                             box-shadow: 0 0 0 3px rgba(99,102,241,0.10), var(--shadow-sm); }
-    .mode-toggle-label { font-size: 12px; color: var(--text-2);
-                         font-weight: 700; text-transform: uppercase;
-                         letter-spacing: 0.05em; }
-    /* P1-1 보완: segment 컨테이너는 모바일에서 풀폭 stretch 가능하도록 / Segment can stretch on mobile */
-    .mode-toggle-segment { display: inline-flex; gap: 2px; padding: 3px;
-                           background: var(--bg-input); border-radius: 8px; }
-    /* P1-6: scale(1.02) 제거 (segment 패딩 3px 초과해 튀어나오는 문제) — font-weight 강조로 대체
-       P1-6: drop scale(1.02) which overflowed segment 3px padding; rely on font-weight emphasis */
-    .mode-toggle-btn { padding: 0.4rem 0.95rem; border-radius: 6px;
-                       border: 1px solid transparent; background: transparent;
-                       cursor: pointer; font-size: 13px; color: var(--text-1);
-                       font-weight: 500; transition: all 0.15s ease;
-                       display: inline-flex; align-items: center; gap: 0.35rem; }
-    .mode-toggle-btn:hover:not(.active) { background: var(--bg-hover); }
-    .mode-toggle-btn.active { background: var(--accent); color: white;
-                              border-color: var(--accent); font-weight: 700;
-                              box-shadow: 0 2px 8px rgba(99,102,241,0.25); }
-    .mode-toggle-hint { font-size: 11px; opacity: 0.85; margin-left: 0.15rem; }
-    .mode-toggle-counter { margin-left: auto; font-size: 11px; color: var(--text-2);
-                           font-weight: 600; }
-    /* 빈 카운터 숨김 — JS 미주입 시 죽은 마크업 회피 / Hide empty counter to avoid dead markup */
-    .mode-toggle-counter:empty { display: none; }
-
-    /* P1-1: 모바일(≤480px)에서 토글 바 세로 stack + segment 풀폭 + hint 숨김
-       P1-1: ≤480px → column stack, segment full width, hint hidden */
-    @media (max-width: 480px) {
-      .mode-toggle-bar { flex-direction: column; align-items: stretch; gap: 0.5rem; }
-      .mode-toggle-segment { width: 100%; }
-      .mode-toggle-btn { flex: 1; justify-content: center; }
-      .mode-toggle-hint { display: none; }
-      .mode-toggle-counter { margin-left: 0; text-align: center; }
-    }
-
-    /* Simple 모드: .adv-only 숨김 / Simple mode hides .adv-only */
-    body[data-settings-mode="simple"] .adv-only,
-    main[data-settings-mode="simple"] .adv-only { display: none !important; }
-    /* Simple 모드 전용 안내 — 고급 모드에선 숨김 / Simple-only hint hidden in advanced mode */
-    body[data-settings-mode="advanced"] .simple-only-hint { display: none !important; }
-
-    /* ●○ 연결 상태 점 / Connection status dot
-       P2-1: ring 색을 var(--bg-card) 로 변경 → 라이트/다크/claude-dark 모든 테마에서 일관 ("뚫린" 효과)
-       P2-1: ring uses var(--bg-card) — works across all 3 themes (light/dark/claude-dark) */
-    .conn-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-                vertical-align: middle; margin-right: 6px;
-                box-shadow: 0 0 0 1.5px var(--bg-card); }
-    .conn-dot.is-on  { background: var(--success, #10b981); }
-    .conn-dot.is-off { background: var(--text-2, #9ca3af); opacity: 0.55; }
-    .conn-status-text { font-size: 11px; color: var(--text-2); font-weight: 500; }
-
-    /* P2-2: s-section-label (uppercase 11px) 안 conn-dot 의 baseline 보정
-       P2-2: vertical-align fix for conn-dot inside uppercase section labels */
-    .s-section-label .conn-dot { vertical-align: -1px; }
-
-    /* P1-8: webhook stale 배너용 Bootstrap 호환 클래스 정의 (프로젝트는 Bootstrap 미로드)
-       P1-8: Bootstrap-compatible classes for webhook stale banner (project does not load Bootstrap) */
-    .alert {
-      display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
-      padding: .85rem 1.1rem; margin-bottom: 1rem;
-      border-radius: 8px; border: 1px solid transparent;
-      font-size: 13px; line-height: 1.5;
-    }
-    .alert-warning {
-      background: color-mix(in srgb, var(--warning) 12%, transparent);
-      border-color: color-mix(in srgb, var(--warning) 35%, transparent);
-      color: var(--text-1);
-    }
-    .alert .me-2 { margin-right: .5rem; }
-    .alert .ms-auto { margin-left: auto; }
-    .alert.mb-4 { margin-bottom: 1rem; }
-    .alert .text-muted { color: var(--text-2); }
-    .btn.btn-sm {
-      padding: .35rem .85rem; font-size: 12px; font-weight: 600;
-      border-radius: 6px; border: 1px solid transparent; cursor: pointer;
-      transition: opacity .15s ease, transform .1s ease;
-    }
-    .btn.btn-warning {
-      background: var(--warning); color: var(--btn-on-accent); border-color: var(--warning);
-    }
-    .btn.btn-warning:hover { opacity: .9; }
-    @media (max-width: 480px) {
-      .alert .ms-auto { margin-left: 0; width: 100%; }
-      .alert .btn { width: 100%; }
-    }
-
-    /* Cycle 81 PR-C — settings 모바일 768px↓ 분기 (mobile portrait 호환)
-       5+1 cross-verify 관점 🅑 — 카드 padding 축소 + WCAG 2.5.5 ≥44px 가드 + 헤더 폰트 축소.
-       Progressive Disclosure (`<details>` wrap) 는 5-way sync 영향 위험 = Phase 2 영역 보류.
-       Cycle 81 PR-C — settings mobile 768px↓ branch (mobile portrait compat)
-       Cards padding shrink + WCAG 2.5.5 ≥44px guards + header font shrink.
-       `<details>` Progressive Disclosure deferred to Phase 2 (5-way sync risk). */
-    @media (max-width: 768px) {
-      /* 카드 padding 축소 — 모바일 가독성 + 스크롤 부담 ↓ */
-      .s-card-body { padding: 0.85rem; }
-      .s-card-hdr { padding: 0.6rem 0.85rem; }
-      .s-card-hdr .hdr-title { font-size: 12.5px; }
-      .s-card-hdr .hdr-icon { font-size: 14px; }
-
-      /* WCAG 2.5.5 모바일 ≥44px 클릭 영역 가드 (정책 11 페어) */
-      .gate-mode-btn { min-height: 44px; }
-      select, input[type=text], input[type=url], input[type=email], input[type=password] {
-        min-height: 44px;
-        font-size: 16px;  /* iOS Safari focus zoom 회피 (≥16px 의무) */
-      }
-      input[type=number] {
-        min-height: 44px;
-        font-size: 16px;
-      }
-      .save-btn, button[type=submit] { min-height: 48px; }
-
-      /* 위험 구역 (`.danger-summary-wrap`) 모바일 접근성 ↑ — 접힘 default 보존 + summary 클릭 영역 확대 */
-      .danger-summary-wrap summary {
-        min-height: 44px;
-        padding: 0.5rem;
-      }
-    }
-  </style>
+  
 
   <form id="settingsForm" method="post" action="/repos/{{ repo_name }}/settings">
     <input type="hidden" name="approve_mode" id="approveModeValue" value="{{ config.approve_mode }}">
@@ -639,7 +529,7 @@
               <p style="font-size:11px;color:var(--text-2);margin-top:.5rem;line-height:1.5;">
                 {{ 'settings_page.preset_card.channel_unchanged' | i18n_args(locale | default('ko')) }}
               </p>
-              <button type="button" class="btn-save-new preset-apply-btn" style="margin-top:.65rem;padding:.5rem;"
+              <button type="button" class="btn btn--ghost btn--sm preset-apply-btn" style="margin-top:.65rem;padding:.5rem;"
                       onclick="applyPreset('minimal', document.getElementById('preset-minimal'))">
                 {{ 'settings_page.preset_card.apply_btn' | i18n_args(locale | default('ko')) }}
               </button>
@@ -674,7 +564,7 @@
               <p style="font-size:11px;color:var(--text-2);margin-top:.5rem;line-height:1.5;">
                 {{ 'settings_page.preset_card.channel_unchanged' | i18n_args(locale | default('ko')) }}
               </p>
-              <button type="button" class="btn-save-new preset-apply-btn" style="margin-top:.65rem;padding:.5rem;"
+              <button type="button" class="btn btn--ghost btn--sm preset-apply-btn" style="margin-top:.65rem;padding:.5rem;"
                       onclick="applyPreset('standard', document.getElementById('preset-standard'))">
                 {{ 'settings_page.preset_card.apply_btn' | i18n_args(locale | default('ko')) }}
               </button>
@@ -709,7 +599,7 @@
               <p style="font-size:11px;color:var(--text-2);margin-top:.5rem;line-height:1.5;">
                 {{ 'settings_page.preset_card.channel_unchanged' | i18n_args(locale | default('ko')) }}
               </p>
-              <button type="button" class="btn-save-new preset-apply-btn" style="margin-top:.65rem;padding:.5rem;"
+              <button type="button" class="btn btn--ghost btn--sm preset-apply-btn" style="margin-top:.65rem;padding:.5rem;"
                       onclick="applyPreset('strict', document.getElementById('preset-strict'))">
                 {{ 'settings_page.preset_card.apply_btn' | i18n_args(locale | default('ko')) }}
               </button>
@@ -787,16 +677,19 @@
             <div class="gate-btns">
               <button type="button"
                       class="gate-mode-btn {% if config.approve_mode == 'disabled' %}active{% endif %}"
+                      aria-pressed="{{ 'true' if config.approve_mode == 'disabled' else 'false' }}"
                       data-mode="disabled" onclick="setApproveMode('disabled')">
                 <span class="gm-icon">🚫</span>{{ 'settings_page.pr_rules.gate_disabled' | i18n_args(locale | default('ko')) }}
               </button>
               <button type="button"
                       class="gate-mode-btn {% if config.approve_mode == 'auto' %}active{% endif %}"
+                      aria-pressed="{{ 'true' if config.approve_mode == 'auto' else 'false' }}"
                       data-mode="auto" onclick="setApproveMode('auto')">
                 <span class="gm-icon">⚡</span>{{ 'settings_page.pr_rules.gate_auto' | i18n_args(locale | default('ko')) }}
               </button>
               <button type="button"
                       class="gate-mode-btn {% if config.approve_mode == 'semi-auto' %}active{% endif %}"
+                      aria-pressed="{{ 'true' if config.approve_mode == 'semi-auto' else 'false' }}"
                       data-mode="semi-auto" onclick="setApproveMode('semi-auto')">
                 <span class="gm-icon">📱</span>{{ 'settings_page.pr_rules.gate_semi' | i18n_args(locale | default('ko')) }}
               </button>
@@ -1093,7 +986,7 @@
     </div><!-- /settings-grid -->
 
     <div class="save-bar">
-      <button type="submit" class="btn-save-new">{{ 'settings_page.save' | i18n_args(locale | default('ko')) }}</button>
+      <button type="submit" class="btn btn--primary" id="saveBtn" form="settingsForm">{{ 'settings_page.save' | i18n_args(locale | default('ko')) }}</button>
     </div>
 
   </form>
@@ -1462,7 +1355,9 @@
   function setApproveMode(mode) {
     document.getElementById('approveModeValue').value = mode;
     document.querySelectorAll('.gate-mode-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.mode === mode);
+      var isActive = btn.dataset.mode === mode;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
     });
     const badge = document.getElementById('approveBadge');
     if (badge) badge.textContent = mode;
