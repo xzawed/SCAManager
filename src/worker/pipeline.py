@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from src.database import SessionLocal
 from src.config import settings
+from src.constants import PIPELINE_ANALYSIS_TIMEOUT
 from src.shared.log_safety import sanitize_for_log
 from src.shared.stage_metrics import stage_timer
 from src.github_client.diff import get_pr_files, get_push_files, ChangedFile
@@ -123,6 +124,25 @@ async def _run_static_analysis(files: list[ChangedFile]) -> list[StaticAnalysisR
     return await asyncio.to_thread(
         lambda: [analyze_file(f.filename, f.content) for f in files]
     )
+
+
+async def _run_static_with_timeout(files: list[ChangedFile]) -> list[StaticAnalysisResult]:
+    """_run_static_analysis를 PIPELINE_ANALYSIS_TIMEOUT 초 상한으로 실행한다.
+    Run _run_static_analysis bounded by PIPELINE_ANALYSIS_TIMEOUT seconds.
+    타임아웃 초과 시 빈 리스트 반환 — AI 리뷰는 계속 진행.
+    Returns empty list on timeout — AI review continues unaffected.
+    """
+    try:
+        return await asyncio.wait_for(
+            _run_static_analysis(files),
+            timeout=PIPELINE_ANALYSIS_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "static analysis timed out after %ss — continuing with empty results",
+            PIPELINE_ANALYSIS_TIMEOUT,
+        )
+        return []
 
 
 def build_notification_tasks(  # pylint: disable=too-many-positional-arguments,too-many-arguments
@@ -484,7 +504,7 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
 
             with stage_timer("analyze", repo=repo_log) as ctx:
                 analysis_results, ai_review = await asyncio.gather(
-                    _run_static_analysis(files),
+                    _run_static_with_timeout(files),
                     review_code(
                         settings.anthropic_api_key, commit_message, patches,
                         language=review_language,
