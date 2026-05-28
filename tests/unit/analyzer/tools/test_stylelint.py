@@ -150,6 +150,14 @@ class TestStylelintAnalyzer:
         with patch("subprocess.run", return_value=_mock_proc("No files found")):
             assert _StylelintAnalyzer().run(ctx) == []
 
+    def test_returns_empty_on_json_decode_error(self):
+        # JSONDecodeError가 발생하면 빈 리스트를 반환한다
+        # Returns empty list when JSONDecodeError occurs
+        from src.analyzer.io.tools.stylelint import _StylelintAnalyzer
+        ctx = _make_ctx()
+        with patch("subprocess.run", side_effect=json.JSONDecodeError("", "", 0)):
+            assert _StylelintAnalyzer().run(ctx) == []
+
     def test_module_registers_stylelint(self):
         # 모듈 임포트 시 REGISTRY에 stylelint가 자동 등록된다
         # Module import must auto-register stylelint in REGISTRY

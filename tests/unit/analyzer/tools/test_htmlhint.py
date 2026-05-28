@@ -141,6 +141,14 @@ class TestHtmlhintAnalyzer:
         with patch("subprocess.run", return_value=_mock_proc("htmlhint: command not found")):
             assert _HtmlhintAnalyzer().run(ctx) == []
 
+    def test_returns_empty_on_json_decode_error(self):
+        # JSONDecodeError가 발생하면 빈 리스트를 반환한다
+        # Returns empty list when JSONDecodeError occurs
+        from src.analyzer.io.tools.htmlhint import _HtmlhintAnalyzer
+        ctx = _make_ctx()
+        with patch("subprocess.run", side_effect=json.JSONDecodeError("", "", 0)):
+            assert _HtmlhintAnalyzer().run(ctx) == []
+
     def test_module_registers_htmlhint(self):
         # 모듈 임포트 시 REGISTRY에 htmlhint가 자동 등록된다
         # Module import must auto-register htmlhint in REGISTRY
