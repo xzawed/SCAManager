@@ -34,7 +34,7 @@
 - [사이클 95~106 (문서 정비 + pylint 10.00 + 성능 측정 E2E, 2026-05-14~18)](#사이클-95106)
 - [사이클 107~109 (테마 차트 수정 + 전체 감사 14건, 2026-05-19)](#사이클-107109)
 - [사이클 110~116 (AI Insight 에러 추적·차트·다국어·감사 묶음, 2026-05-20~22)](#사이클-110116) — 상세: STATE.md 작업 이력 참조
-- [사이클 129 (Lint L-1 언어 확장 — 15개 신규 정적분석기, 2026-05-28)](#사이클-129)
+- [사이클 129 (Lint L-1 언어 확장 — 15개 신규 정적분석기 + hotfix #656~#658, 2026-05-28)](#사이클-129)
 - [사이클 128 (테마 드롭다운 CSS 변수 스코프 + 대비 수정, 2026-05-23)](#사이클-128)
 - [사이클 127 (hx-boost JS 에러 트랩 + 정적 스캐너 + ESLint 인프라 + E2E stale 셀렉터 수정, 2026-05-23)](#사이클-127)
 - [사이클 126 (차트 스파크라인 리디자인 — 테마 accent 그라디언트 fill, 2026-05-23)](#사이클-126)
@@ -383,7 +383,7 @@
 
 ## 사이클 129
 
-- **사이클 129 (2026-05-28 · #654)** — Lint L-1 언어 확장 — Subagent-Driven Development 10-task 실행. **신규 정적분석기 15종**: hadolint(Dockerfile)·ktlint(Kotlin)·tflint(Terraform/HCL)·tsc(TypeScript)·sqlfluff(SQL)·yamllint(YAML)·phpstan(PHP)·swiftlint(Swift)·stylelint(CSS/SCSS)·htmlhint(HTML)·buf_lint(Protobuf)·dart_analyze(Dart)·psscriptanalyzer(PowerShell)·dotnet_format(C#)·clippy(Rust). **핵심 구현**: `src/analyzer/io/static.py` `analyze_file()` — `repo_config` kwarg 추가 (`disabled_tools` 지원, Task 1); 23개 분석기 알파벳 순 import. `src/analyzer/io/tools/` 신규 15개 파일. `railway.toml` buildCommand — P0 도구 괄호식 `(cmd || echo WARNING)` 패턴으로 설치 (ktlint·hadolint·tflint graceful failure). `requirements.txt` — sqlfluff·yamllint 추가 + python-multipart CVE 핀 보존. **보안 수정**: psscriptanalyzer.py path를 f-string이 아닌 `env["PSSA_PATH"]` 환경변수로 전달 (PowerShell command injection 방어). **JSONL 파싱**: buf_lint — 줄 단위 JSON 파싱 (배열 아님). **통합 테스트 수정**: `test_e2e_pipeline_scenarios.py` + `test_webhook_to_gate.py` mock lambda에 `repo_config=None` kwarg 추가 (Task 1 시그니처 변경 대응). `pipeline.py` `_run_static_with_timeout` + `_run_static_analysis` — `repo_config` 파라미터 연쇄 전달. 2단계 리뷰 (스펙 준수 + 코드 품질) 완료. Codex mutual: 정책 18 검증 의뢰. 지원 언어(정적분석) 37개+ → 52개+.
+- **사이클 129 (2026-05-28 · #654~#658)** — Lint L-1 언어 확장 + hotfix 3건. **#654** Subagent-Driven Development 10-task 실행. **신규 정적분석기 15종**: hadolint(Dockerfile)·ktlint(Kotlin)·tflint(Terraform/HCL)·tsc(TypeScript)·sqlfluff(SQL)·yamllint(YAML)·phpstan(PHP)·swiftlint(Swift)·stylelint(CSS/SCSS)·htmlhint(HTML)·buf_lint(Protobuf)·dart_analyze(Dart)·psscriptanalyzer(PowerShell)·dotnet_format(C#)·clippy(Rust). **핵심 구현**: `src/analyzer/io/static.py` `analyze_file()` — `repo_config` kwarg 추가 (`disabled_tools` 지원, Task 1); 23개 분석기 알파벳 순 import. `src/analyzer/io/tools/` 신규 15개 파일. `railway.toml` buildCommand — P0 도구 괄호식 `(cmd || echo WARNING)` 패턴으로 설치 (ktlint·hadolint·tflint graceful failure). `requirements.txt` — sqlfluff·yamllint 추가 + python-multipart CVE 핀 보존. **보안 수정**: psscriptanalyzer.py path를 f-string이 아닌 `env["PSSA_PATH"]` 환경변수로 전달 (PowerShell command injection 방어). **JSONL 파싱**: buf_lint — 줄 단위 JSON 파싱 (배열 아님). **통합 테스트 수정**: `test_e2e_pipeline_scenarios.py` + `test_webhook_to_gate.py` mock lambda에 `repo_config=None` kwarg 추가 (Task 1 시그니처 변경 대응). `pipeline.py` `_run_static_with_timeout` + `_run_static_analysis` — `repo_config` 파라미터 연쇄 전달. 2단계 리뷰 (스펙 준수 + 코드 품질) 완료. Codex mutual: 정책 18 검증 의뢰. 지원 언어(정적분석) 37개+ → 52개+. **#656** pipeline.py 머지 충돌 마커 잔존 제거(SyntaxError) + `_slow`/`_fast` mock 시그니처 `repo_config=None` 추가 — CI 복원. **#657** dotnet_format·tsc `(.+)$`→`([^\n]+)$` ReDoS 1차 수정 (SonarCloud S5852 미해소). **#658** `\s+([^\n]+)$`→`[ \t]+(\S[^\n]*)$` 구분자·캡처 그룹 완전 분리 — S5852 hotspot 2건 해소, SonarCloud Quality Gate OK 복원.
 
 ## 사이클 128
 

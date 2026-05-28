@@ -2,15 +2,15 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-05-28 기준 — **사이클 138 완료**: 대시보드 server-side auto-detect 제거 (#651) 머지 + **사이클 129 Lint L-1 언어 확장 (#654)** 포함): 156+ PR #188~#655 — 누적 정책 본문 18건 + 메모리 17건. 전체 3173 수집 (단위 3022 + 통합 151) / E2E 112 (100 표준 + 12 perf) / pylint **10.00/10**
+## 현재 수치 (2026-05-28 기준 — **사이클 138 완료**: 대시보드 server-side auto-detect 제거 (#651) 머지 + **사이클 129 Lint L-1 언어 확장 (#654)** + **hotfix #656~#658** 포함): 156+ PR #188~#658 — 누적 정책 본문 18건 + 메모리 17건. 전체 3173 수집 (단위 3022 + 통합 151) / E2E 112 (100 표준 + 12 perf) / pylint **10.00/10**
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
 | 전체 테스트 | **3173 수집** *(헤더 = 최신값, 이 셀 = pytest 누적 추적)* | `pytest tests/` — 단위 3022 + 통합 151. 추적 이력: (이전 사이클 73~128 누적 2948) + **사이클 129 #614 AI Issue 등록 +59** (2948→3007). + **사이클 130 #617 +2** (3007→3009). + **사이클 131 Claude Design 재설계 #625~#633 +13** (test_router.py + test_i18n_template_render.py 갱신, 3009→3022 단위). |
 | 통합 테스트 | **151개** | tests/integration/ — 사이클 81 영역 🅑 모바일 Phase 1 MVP +34 + **사이클 84 i18n PR-18 smoke +11** + **PR #400 repo insights +22** + **사이클 99 #441 +3** (repo_report_api auth·list·404) + **사이클 100~101 누적** (test_retry_concurrency_postgres assertion 강화). 기존 test_settings_mobile.py 일부 Windows cp949 인코딩 오류 제외. **= 151 passed** |
 | E2E 테스트 | **112개** | `make test-e2e` (Chromium Playwright) — Phase 3 PR 6 +7 + **사이클 84 i18n PR-16 +14** (3 언어 × 4 페이지 — login/overview/dashboard/settings + Cookie fallback + locale switch). 사이클 94 #372: test_save_success ordering 트랩 차단 (`_reset_repo_config()` 헬퍼) + test_two_column 보류 (`@pytest.mark.skip`). **+ 사이클 106 #500 `@pytest.mark.perf` 12개** (TTFB/FCP/LCP/DCL/Load — 3회 avg/min/max). **+ 사이클 127 #605 `test_nav_handler_survives_hx_boost_renavigation` +1** (hx-boost 3회 재방문 회귀 가드). **+ 사이클 127 #609 사전 실패 8건 해소** (5 TIMEOUT: test_theme.py glass/claude-dark 셀렉터 → pastel/catppuccin 갱신 + 3 ERROR: test_repos_mode.py auth_cookies 픽스처 제거). **= 112 collected (100 표준 + 12 perf)**. `make test-perf` 로 perf 마커만 선택 실행. ⚠️ e2e ↔ tests/integration 동시 실행 금지 — `e2e/pytest.ini` 의도적 asyncio_mode 미설정, 분리 실행 default (`make test-e2e` vs CI command `pytest tests/`) |
-| SonarCloud Quality Gate | **OK** | #399 머지 후 복원 — CPD 14%→<3%, mockup 제외, _NONE_LABEL 상수화 |
-| SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 |
+| SonarCloud Quality Gate | **OK** | #399 이후 유지 — **#658 ReDoS 정규식 수정으로 S5852 hotspot 2건 해소, QG OK 복원** |
+| SonarCloud Security Rating | **A** | Vuln 0, Hotspots 0 (dotnet_format·tsc ReDoS 패턴 #658 수정) |
 | SonarCloud Reliability Rating | **A** | Bugs 0 |
 | SonarCloud Maintainability Rating | **A** | Code Smells 58 (-20 from 78) |
 | SonarCloud BLOCKER / CRITICAL | **0 / 0** | Phase Q.7 완료 — 5건 Cognitive Complexity 전부 해소 |
