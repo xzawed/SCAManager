@@ -1,6 +1,6 @@
 [build]
 builder = "NIXPACKS"
-buildCommand = "npm install -g eslint@9 @typescript-eslint/parser @typescript-eslint/eslint-plugin && solc-select install 0.8.20 && solc-select use 0.8.20 && gem install rubocop-ast -v 1.36.2 --no-document --bindir /usr/bin && gem install rubocop -v 1.57.2 --no-document --bindir /usr/bin && curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b /usr/bin v1.55.2 && npm ci && npm run build"
+buildCommand = "(npm install -g eslint@9 @typescript-eslint/parser @typescript-eslint/eslint-plugin || echo 'WARNING: eslint global install failed — eslint analyzer will be disabled') && (solc-select install 0.8.20 && solc-select use 0.8.20 || echo 'WARNING: solc-select failed — slither analyzer will be disabled') && (gem install rubocop-ast -v 1.36.2 --no-document --bindir /usr/bin || echo 'WARNING: rubocop-ast install failed') && (gem install rubocop -v 1.57.2 --no-document --bindir /usr/bin || echo 'WARNING: rubocop install failed — rubocop analyzer will be disabled') && (curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b /usr/bin v1.55.2 || echo 'WARNING: golangci-lint install failed — go analyzer will be disabled') && npm ci && npm run build"
 
 [deploy]
 startCommand = "uvicorn src.main:app --host 0.0.0.0 --port $PORT --proxy-headers"
