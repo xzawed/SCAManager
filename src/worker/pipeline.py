@@ -504,23 +504,20 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
             # AI review output language = repo owner's preferred_language. RepoConfig.notification_language
             # is for channel-level (notifier/_language.py) — AI review is DB-stored + reused across channels.
             review_language = _resolve_review_language(repo_name)
-            # 리포별 모델 override 조회 — 실패 시 None (전역 기본값 fallback, 비중요 경로)
-            # Fetch per-repo model override — falls back to None (global default) on error
+            # 리포 설정 단일 조회 — review_model + disabled_tools 양쪽에 사용
+            # Single DB fetch — used for both review_model and disabled_tools
             repo_review_model: str | None = None
-            try:
-                with SessionLocal() as db_cfg:
-                    repo_review_model = get_repo_config(db_cfg, repo_name).review_model or None
-            except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
-                pass  # 모델 조회 실패 = 전역 기본값으로 fallback (분석 중단 불필요)
-
-            # per-repo disabled_tools 조회 — 실패 시 None (도구 disable 기능만 비활성)
-            # Fetch per-repo repo_config for disabled_tools — falls back to None on error
             _static_repo_cfg: object | None = None
             try:
-                with SessionLocal() as _db_cfg2:
-                    _static_repo_cfg = get_repo_config(_db_cfg2, repo_name)
+                with SessionLocal() as db_cfg:
+                    _cfg = get_repo_config(db_cfg, repo_name)
+                    repo_review_model = _cfg.review_model or None
+                    _static_repo_cfg = _cfg
             except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
-                pass
+                logger.debug(
+                    "repo_config fetch failed for %s — using defaults for model and disabled_tools",
+                    repo_name,
+                )
 
             with stage_timer("analyze", repo=repo_log) as ctx:
                 analysis_results, ai_review = await asyncio.gather(

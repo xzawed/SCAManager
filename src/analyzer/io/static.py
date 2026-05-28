@@ -70,14 +70,14 @@ def analyze_file(
             tmp_path=tmp_path,
             repo_config=repo_config,
         )
+        # per-repo 비활성화 도구 목록 — 루프 외부에서 한 번만 조회
+        # Fetch disabled tools list once before the loop
+        _disabled = getattr(ctx.repo_config, 'disabled_tools', None) or []
         for analyzer in REGISTRY:
             if not analyzer.supports(ctx):
                 continue
             if not analyzer.is_enabled(ctx):
                 continue
-            # per-repo 비활성화 도구 스킵
-            # Skip tools listed in per-repo disabled_tools
-            _disabled = getattr(ctx.repo_config, 'disabled_tools', None) or []
             if analyzer.name in _disabled:
                 continue
             try:
