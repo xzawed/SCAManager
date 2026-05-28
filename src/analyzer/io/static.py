@@ -43,7 +43,7 @@ class StaticAnalysisResult:
     issues: list[AnalysisIssue] = field(default_factory=list)
 
 
-def analyze_file(
+def analyze_file(  # pylint: disable=too-many-locals
     filename: str, content: str, repo_config: object | None = None
 ) -> StaticAnalysisResult:
     """Run all applicable registered analyzers on a single file.
