@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 # tsc 출력 형식: /path/file.ts(LINE,COL): error|warning TSxxxx: message
 # tsc output format: /path/file.ts(LINE,COL): error|warning TSxxxx: message
 _TSC_DIAG_RE = re.compile(
-    r'^.+\((\d+),\d+\):\s+(error|warning)\s+TS\d+:\s+(.+)$',
+    r'^[^\n(]+\((\d+),\d+\):\s+(error|warning)\s+TS\d+:\s+([^\n]+)$',
     re.MULTILINE,
 )
 

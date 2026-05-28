@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 # dotnet format 진단 출력 패턴: (줄,열): error|warning <code>: 메시지
 # Pattern for dotnet format diagnostic output: (line,col): error|warning <code>: message
 _DOTNET_DIAG_RE = re.compile(
-    r'\((\d+),\d+\):\s+(error|warning)\s+\w+:\s+(.+)$',
+    r'\((\d+),\d+\):\s+(error|warning)\s+\w+:\s+([^\n]+)$',
     re.MULTILINE,
 )
 
