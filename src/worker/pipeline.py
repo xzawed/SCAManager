@@ -523,7 +523,6 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
             with stage_timer("analyze", repo=repo_log) as ctx:
                 analysis_results, ai_review = await asyncio.gather(
                     _run_static_with_timeout(files, repo_config=_static_repo_cfg),
->>>>>>> origin/main
                     review_code(
                         settings.anthropic_api_key, commit_message, patches,
                         language=review_language,
