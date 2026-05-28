@@ -26,6 +26,10 @@ from src.repositories import repository_repo, analysis_repo
 
 logger = logging.getLogger(__name__)
 
+# 정적 분석 타임아웃 (초) — 초과 시 빈 리스트 반환, AI 리뷰는 계속 진행
+# Static analysis timeout (seconds) — returns empty list on timeout, AI review continues
+PIPELINE_ANALYSIS_TIMEOUT = 60
+
 
 @dataclass
 class _AnalysisSaveParams:  # pylint: disable=too-many-instance-attributes
@@ -118,11 +122,38 @@ def _extract_author_login(event_type: str, data: dict) -> str | None:
     return (head.get("author") or {}).get("username")
 
 
-async def _run_static_analysis(files: list[ChangedFile]) -> list[StaticAnalysisResult]:
-    """Run registered analyzers on all changed files; each Analyzer filters by language."""
+async def _run_static_analysis(
+    files: list[ChangedFile], repo_config: object | None = None
+) -> list[StaticAnalysisResult]:
+    """Run registered analyzers on all changed files; each Analyzer filters by language.
+
+    repo_config: RepoConfig 인스턴스 — disabled_tools 필터링에 사용.
+    repo_config: RepoConfig instance — used for disabled_tools filtering.
+    """
     return await asyncio.to_thread(
-        lambda: [analyze_file(f.filename, f.content) for f in files]
+        lambda: [analyze_file(f.filename, f.content, repo_config=repo_config) for f in files]
     )
+
+
+async def _run_static_with_timeout(
+    files: list[ChangedFile], repo_config: object | None = None
+) -> list[StaticAnalysisResult]:
+    """_run_static_analysis를 PIPELINE_ANALYSIS_TIMEOUT 초 상한으로 실행한다.
+    Run _run_static_analysis bounded by PIPELINE_ANALYSIS_TIMEOUT seconds.
+    타임아웃 초과 시 빈 리스트 반환 — AI 리뷰는 계속 진행.
+    Returns empty list on timeout — AI review continues unaffected.
+    """
+    try:
+        return await asyncio.wait_for(
+            _run_static_analysis(files, repo_config=repo_config),
+            timeout=PIPELINE_ANALYSIS_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "static analysis timed out after %ss — continuing with empty results",
+            PIPELINE_ANALYSIS_TIMEOUT,
+        )
+        return []
 
 
 def build_notification_tasks(  # pylint: disable=too-many-positional-arguments,too-many-arguments
@@ -482,9 +513,18 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
             except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
                 pass  # 모델 조회 실패 = 전역 기본값으로 fallback (분석 중단 불필요)
 
+            # per-repo disabled_tools 조회 — 실패 시 None (도구 disable 기능만 비활성)
+            # Fetch per-repo repo_config for disabled_tools — falls back to None on error
+            _static_repo_cfg: object | None = None
+            try:
+                with SessionLocal() as _db_cfg2:
+                    _static_repo_cfg = get_repo_config(_db_cfg2, repo_name)
+            except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+                pass
+
             with stage_timer("analyze", repo=repo_log) as ctx:
                 analysis_results, ai_review = await asyncio.gather(
-                    _run_static_analysis(files),
+                    _run_static_with_timeout(files, repo_config=_static_repo_cfg),
                     review_code(
                         settings.anthropic_api_key, commit_message, patches,
                         language=review_language,

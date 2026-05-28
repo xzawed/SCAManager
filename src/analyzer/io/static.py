@@ -28,8 +28,16 @@ class StaticAnalysisResult:
     issues: list[AnalysisIssue] = field(default_factory=list)
 
 
-def analyze_file(filename: str, content: str) -> StaticAnalysisResult:
-    """Run all applicable registered analyzers on a single file."""
+def analyze_file(
+    filename: str, content: str, repo_config: object | None = None
+) -> StaticAnalysisResult:
+    """Run all applicable registered analyzers on a single file.
+
+    repo_config: RepoConfig ORM 인스턴스 또는 disabled_tools 속성을 가진 객체 (선택).
+    repo_config: RepoConfig ORM instance or any object with disabled_tools attribute (optional).
+    repo_config.disabled_tools 에 포함된 analyzer는 스킵된다.
+    Analyzers whose name appears in repo_config.disabled_tools are skipped.
+    """
     if not content.strip():
         return StaticAnalysisResult(filename=filename)
 
@@ -60,10 +68,22 @@ def analyze_file(filename: str, content: str) -> StaticAnalysisResult:
             language=language,
             is_test=is_test,
             tmp_path=tmp_path,
+            repo_config=repo_config,
         )
         for analyzer in REGISTRY:
-            if analyzer.supports(ctx) and analyzer.is_enabled(ctx):
+            if not analyzer.supports(ctx):
+                continue
+            if not analyzer.is_enabled(ctx):
+                continue
+            # per-repo 비활성화 도구 스킵
+            # Skip tools listed in per-repo disabled_tools
+            _disabled = getattr(ctx.repo_config, 'disabled_tools', None) or []
+            if analyzer.name in _disabled:
+                continue
+            try:
                 result.issues.extend(analyzer.run(ctx))
+            except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+                logger.warning("analyzer %s failed for %s: %s", analyzer.name, ctx.filename, exc)
 
     return result
 
