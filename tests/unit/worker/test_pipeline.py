@@ -996,7 +996,7 @@ async def test_run_static_with_timeout_returns_empty_on_timeout():
     import asyncio
     from src.worker.pipeline import _run_static_with_timeout
 
-    async def _slow(files):          # 타임아웃보다 오래 걸리는 가짜 분석
+    async def _slow(files, repo_config=None):          # 타임아웃보다 오래 걸리는 가짜 분석
         await asyncio.sleep(10)
         return []
 
@@ -1015,7 +1015,7 @@ async def test_run_static_with_timeout_returns_results_when_fast():
 
     fake_result = [StaticAnalysisResult(filename="app.py", issues=[])]
 
-    async def _fast(files):
+    async def _fast(files, repo_config=None):
         return fake_result
 
     with patch("src.worker.pipeline._run_static_analysis", side_effect=_fast):
