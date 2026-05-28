@@ -41,7 +41,7 @@ class _SemgrepAnalyzer:
 
     def run(self, ctx: AnalyzeContext) -> list[AnalysisIssue]:
         """semgrep p/default 룰셋으로 분석 후 이슈 목록 반환.
-        # Analyze with semgrep p/default ruleset and return issue list.
+        Analyze with semgrep p/default ruleset and return issue list.
         """
         try:
             r = subprocess.run(  # nosec B603 B607
