@@ -40,10 +40,12 @@ class _SemgrepAnalyzer:
         return shutil.which("semgrep") is not None
 
     def run(self, ctx: AnalyzeContext) -> list[AnalysisIssue]:
-        """semgrep auto 룰셋으로 분석 후 이슈 목록 반환."""
+        """semgrep p/default 룰셋으로 분석 후 이슈 목록 반환.
+        # Analyze with semgrep p/default ruleset and return issue list.
+        """
         try:
             r = subprocess.run(  # nosec B603 B607
-                ["semgrep", "scan", "--config=auto", "--json",
+                ["semgrep", "scan", "--config=p/default", "--json",
                  "--timeout", str(STATIC_ANALYSIS_TIMEOUT), ctx.tmp_path],
                 capture_output=True, text=True, timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
