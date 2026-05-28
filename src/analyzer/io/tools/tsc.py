@@ -52,12 +52,15 @@ class _TscAnalyzer:
         """tsc 진단 출력을 파싱해 AnalysisIssue 목록 반환.
         Parse tsc diagnostic output and return AnalysisIssue list.
         """
-        jsx_flag = ["--jsx", "react"] if ctx.filename.endswith((".tsx", ".jsx")) else []
+        # .tsx 파일은 React JSX 컴파일 플래그 추가
+        # Add React JSX compile flag for .tsx files
+        jsx_flag = ["--jsx", "react"] if ctx.filename.endswith(".tsx") else []
         try:
             r = subprocess.run(  # nosec B603 B607
                 [
                     "tsc", "--noEmit", "--strict", "--skipLibCheck",
                     "--lib", "dom,es2020", "--target", "es2020",
+                    "--module", "esnext",
                     "--allowJs",
                 ] + jsx_flag + [ctx.tmp_path],
                 capture_output=True, text=True,
