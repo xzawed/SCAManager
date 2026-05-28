@@ -243,14 +243,15 @@ class TestSemgrepIsEnabled:
 # ──────────────────────────────────────────────────────────────────────────────
 
 class TestSemgrepRunSubprocessCall:
-    def test_run_includes_config_auto_flag(self, make_ctx):
-        # semgrep 실행 시 --config=auto 플래그가 포함되어야 한다
+    def test_run_includes_config_p_default_flag(self, make_ctx):
+        # semgrep 실행 시 --config=p/default 플래그가 포함되어야 한다 (네트워크 의존성 제거)
+        # semgrep must use --config=p/default flag (removes network dependency on auto).
         from src.analyzer.io.tools.semgrep import _SemgrepAnalyzer
         ctx = make_ctx(language="python", tmp_path="/tmp/sample.py")
         with patch("subprocess.run", return_value=_mock_semgrep_proc(SAMPLE_OUTPUT_EMPTY)) as mock_run:
             _SemgrepAnalyzer().run(ctx)
         call_args = mock_run.call_args[0][0]
-        assert any("--config=auto" in arg or arg == "--config=auto" for arg in call_args)
+        assert any("--config=p/default" in arg or arg == "--config=p/default" for arg in call_args)
 
     def test_run_includes_json_flag(self, make_ctx):
         # semgrep 실행 시 --json 플래그가 포함되어야 한다
@@ -564,3 +565,23 @@ class TestSemgrepAnalyzeFileIntegration:
         assert isinstance(result, StaticAnalysisResult)
         # javascript는 python 도구(pylint/flake8/bandit)가 지원 안 하므로 issues는 비어 있어야 한다
         assert result.issues == []
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# TestSemgrepConfig — --config 플래그 검증 (네트워크 의존성 제거)
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestSemgrepConfig:
+    def test_semgrep_uses_local_ruleset_not_auto(self, make_ctx):
+        """semgrep 실행 시 --config=auto 가 아닌 --config=p/default 를 사용해야 한다."""
+        from src.analyzer.io.tools.semgrep import _SemgrepAnalyzer
+        ctx = make_ctx("python", "app.py")
+
+        with patch("subprocess.run") as mock_run:
+            with patch("shutil.which", return_value="/usr/bin/semgrep"):
+                mock_run.return_value = _mock_semgrep_proc(SAMPLE_OUTPUT_EMPTY)
+                _SemgrepAnalyzer().run(ctx)
+
+        cmd = mock_run.call_args[0][0]
+        assert "--config=p/default" in cmd, f"expected --config=p/default in {cmd}"
+        assert "--config=auto" not in cmd, f"--config=auto must not appear in {cmd}"

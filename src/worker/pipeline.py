@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from src.database import SessionLocal
 from src.config import settings
+from src.constants import PIPELINE_ANALYSIS_TIMEOUT
 from src.shared.log_safety import sanitize_for_log
 from src.shared.stage_metrics import stage_timer
 from src.github_client.diff import get_pr_files, get_push_files, ChangedFile

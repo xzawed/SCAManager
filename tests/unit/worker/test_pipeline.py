@@ -986,3 +986,39 @@ async def test_collect_files_wrapped_in_asyncio_to_thread(mock_deps):
     assert "_collect_files" in to_thread_calls, (
         f"_collect_files 미호출 — to_thread 호출 목록: {to_thread_calls}"
     )
+
+
+# ── 타임아웃 테스트 ────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_run_static_with_timeout_returns_empty_on_timeout():
+    """분석이 PIPELINE_ANALYSIS_TIMEOUT 초과 시 빈 리스트를 반환해야 한다."""
+    import asyncio
+    from src.worker.pipeline import _run_static_with_timeout
+
+    async def _slow(files):          # 타임아웃보다 오래 걸리는 가짜 분석
+        await asyncio.sleep(10)
+        return []
+
+    with patch("src.worker.pipeline._run_static_analysis", side_effect=_slow):
+        with patch("src.worker.pipeline.PIPELINE_ANALYSIS_TIMEOUT", 0.01):
+            result = await _run_static_with_timeout([])
+
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_run_static_with_timeout_returns_results_when_fast():
+    """분석이 타임아웃 내에 완료되면 정상 결과를 반환해야 한다."""
+    from src.worker.pipeline import _run_static_with_timeout
+    from src.analyzer.io.static import StaticAnalysisResult
+
+    fake_result = [StaticAnalysisResult(filename="app.py", issues=[])]
+
+    async def _fast(files):
+        return fake_result
+
+    with patch("src.worker.pipeline._run_static_analysis", side_effect=_fast):
+        result = await _run_static_with_timeout([])
+
+    assert result == fake_result

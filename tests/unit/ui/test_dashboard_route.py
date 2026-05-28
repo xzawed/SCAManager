@@ -543,14 +543,14 @@ def test_detect_initial_mode_returns_insight_when_signals_met(isolated_db):
         f"모든 신호 충족 시 'insight' 기대, 실제: {result!r}"
 
 
-# A.4 — 라우트 통합 — mode 파라미터 부재 시 detection 함수 호출 + initial_mode 컨텍스트 키
-# A.4 — Route integration — without mode param, detection is invoked + initial_mode in context.
+# A.4 — 라우트 통합 — mode 파라미터 부재 시 항상 'overview' (사이클 138 — auto-detect 제거)
+# A.4 — Route integration — without mode param, always 'overview' (cycle 138 — auto-detect removed).
 def test_dashboard_no_mode_param_uses_detection():
-    """GET /dashboard (mode 미지정) → `_detect_initial_dashboard_mode` 호출.
+    """GET /dashboard (mode 미지정) → 항상 'overview' (사이클 138 — auto-detect 제거).
 
-    Without ?mode= param, the route invokes the detection helper and uses its
-    return value as the effective mode. The context exposes `initial_mode` for
-    the client-side JS fallback (localStorage persist).
+    Cycle 138 fix: the route no longer calls _detect_initial_dashboard_mode.
+    Without ?mode= param, effective_mode is always 'overview'.
+    The context still exposes `initial_mode` for client-side JS.
     """
     client = TestClient(app)
     mock_db = MagicMock()
@@ -561,21 +561,10 @@ def test_dashboard_no_mode_param_uses_detection():
         from fastapi.responses import HTMLResponse
         return HTMLResponse(content="<html>x</html>", status_code=200)
 
-    fake_insight = {
-        "positive_highlights": ["좋은 결과"],
-        "focus_areas": [],
-        "key_metrics": [],
-        "next_actions": [],
-        "status": "success",
-        "generated_at": "2026-05-03T00:00:00Z",
-        "days": 7,
-    }
-
     with patch("src.ui.routes.dashboard.SessionLocal", return_value=_ctx(mock_db)), \
-         patch("src.ui.routes.dashboard._detect_initial_dashboard_mode",
-               return_value="insight") as mock_detect, \
+         patch("src.ui.routes.dashboard._detect_initial_dashboard_mode") as mock_detect, \
          patch("src.ui.routes.dashboard.dashboard_service.insight_narrative",
-               new=AsyncMock(return_value=fake_insight)) as mock_insight, \
+               new=AsyncMock()) as mock_insight, \
          patch("src.ui.routes.dashboard.dashboard_service.dashboard_kpi",
                return_value={}) as mock_kpi, \
          patch("src.ui.routes.dashboard.dashboard_service.dashboard_trend", return_value=[]), \
@@ -588,23 +577,21 @@ def test_dashboard_no_mode_param_uses_detection():
         response = client.get("/dashboard")
 
     assert response.status_code == 200
-    # detection 호출 — URL ?mode= 부재 시 server fallback 적용
-    # Detection invoked — server fallback applied when ?mode= is absent
-    mock_detect.assert_called_once()
-    # detection 이 'insight' 반환 → insight 분기 진입
-    # Detection returned 'insight' → insight branch executed
-    mock_insight.assert_awaited_once()
-    # overview 분기는 호출 안 됨 (insight 진입 검증)
-    # Overview branch not executed (confirms insight branch entered)
-    mock_kpi.assert_not_called()
-    # 컨텍스트 mode = detection 결과
-    # Context mode = detection result
-    assert captured.get("mode") == "insight", \
-        f"detection 결과 'insight' 기대, 실제 mode={captured.get('mode')!r}"
+    # 사이클 138 — auto-detect 제거: _detect_initial_dashboard_mode 미호출
+    # Cycle 138 — auto-detect removed: _detect_initial_dashboard_mode not called
+    mock_detect.assert_not_called()
+    # 항상 overview 분기 → dashboard_kpi 호출 + insight_narrative 미호출
+    # Always overview branch → dashboard_kpi called + insight_narrative not called
+    mock_kpi.assert_called()
+    mock_insight.assert_not_awaited()
+    # 컨텍스트 mode = 'overview'
+    # Context mode = 'overview'
+    assert captured.get("mode") == "overview", \
+        f"mode 미지정 시 'overview' 기대, 실제: {captured.get('mode')!r}"
     # 컨텍스트 initial_mode 키 — 클라이언트 JS data-initial-mode 신호용
     # initial_mode key in context — for client-side JS data-initial-mode signal
-    assert captured.get("initial_mode") == "insight", \
-        f"context['initial_mode']='insight' 기대, 실제: {captured.get('initial_mode')!r}"
+    assert captured.get("initial_mode") == "overview", \
+        f"context['initial_mode']='overview' 기대, 실제: {captured.get('initial_mode')!r}"
 
 
 # ─── Phase 3 PR 5 (2026-05-04) — user_id RLS 격리 ─────────────────────────

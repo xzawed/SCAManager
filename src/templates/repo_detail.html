@@ -2,12 +2,82 @@
 {% block title %}{{ repo_name }} — SCAManager{% endblock %}
 {% block content %}
 <style>
-  /* ── 페이지 타이틀 그라디언트 / Page title gradient ── */
+  /* ── 페이지 래퍼 / Page wrapper ── */
+  .repo-wrap {
+    max-width: 1200px; margin: 0 auto;
+    padding: var(--space-7, 2rem) var(--space-6, 1.5rem) var(--space-8, 3rem);
+  }
+
+  /* ── 리포 히어로 / Repo hero ── */
+  .repo-hero {
+    display: flex; align-items: flex-start; gap: var(--space-5, 1.25rem);
+    margin-bottom: var(--space-7, 2rem);
+  }
+  .repo-hero__icon {
+    width: 52px; height: 52px; border-radius: 12px; flex-shrink: 0;
+    background: var(--accent-grad, linear-gradient(135deg, #7c7aff, #b289ff));
+    display: grid; place-items: center; font-size: 22px;
+  }
+  .repo-hero__body { flex: 1; min-width: 0; }
+  .repo-hero__name {
+    font-size: var(--fs-xl, 1.25rem); font-weight: 700;
+    color: var(--text-1, #fff); letter-spacing: -0.02em; margin: 0 0 var(--space-2, 0.5rem);
+    font-family: var(--claude-font-mono, monospace);
+  }
+  .repo-hero__meta {
+    display: flex; gap: var(--space-3, 0.75rem); flex-wrap: wrap; align-items: center;
+  }
+
+  /* ── 점수 바 / Score bar ── */
+  .score-bar {
+    height: 5px;
+    background: var(--table-row-hover, rgba(255,255,255,0.08));
+    border-radius: 999px; overflow: hidden; display: inline-block; vertical-align: middle;
+  }
+  .score-bar::after {
+    content: ''; display: block; height: 100%; width: var(--sb-pct, 0%);
+    background: var(--accent-grad, linear-gradient(90deg, #7c7aff, #b289ff));
+    border-radius: 999px;
+  }
+  .score-bar--a::after { background: var(--success, #34d399); }
+  .score-bar--b::after { background: #60a5fa; }
+  .score-bar--c::after { background: var(--warning, #fbbf24); }
+  .score-bar--d::after { background: #fb923c; }
+  .score-bar--f::after { background: var(--danger, #f87171); }
+
+  /* ── 등급 배지 / Grade badge ── */
+  .grade {
+    display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 0.75rem; line-height: 1;
+    padding: 2px 7px; border-radius: 6px; border: 1px solid transparent;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    animation: var(--anim-badge-pop);
+  }
+  .grade--a { background: rgba(52,211,153,0.12); color: #34d399; border-color: rgba(52,211,153,0.32); }
+  .grade--b { background: rgba(96,165,250,0.12); color: #60a5fa; border-color: rgba(96,165,250,0.32); }
+  .grade--c { background: rgba(251,191,36,0.12);  color: #fbbf24; border-color: rgba(251,191,36,0.32); }
+  .grade--d { background: rgba(251,146,60,.12);   color: #fb923c; border-color: rgba(251,146,60,0.32); }
+  .grade--f { background: rgba(248,113,113,.12);  color: #f87171; border-color: rgba(248,113,113,0.32); }
+
+  /* ── 카드 컴포넌트 / Card component ── */
+  .card {
+    background: var(--bg-card, var(--bg-2, rgba(255,255,255,0.05)));
+    border: 1px solid var(--border-subtle, rgba(255,255,255,0.08));
+    border-radius: var(--radius-lg, 12px); overflow: hidden; margin-bottom: var(--space-5, 1.25rem);
+  }
+  .card__head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: var(--space-5, 1.25rem);
+    border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+  }
+  .card__title { font-size: var(--fs-md, 1rem); font-weight: 640; color: var(--text-1, #fff); }
+
+  /* ── 페이지 타이틀 그라디언트 (레거시 호환) / Page title gradient (legacy compat) ── */
   .detail-header-text h2 {
     margin: 0 0 4px;
     font-size: 1.4rem;
     font-weight: 700;
-    font-family: 'Menlo', 'Consolas', monospace;
+    font-family: var(--claude-font-mono, monospace);
     background: linear-gradient(135deg, var(--text-1), var(--accent));
     -webkit-background-clip: text;
     background-clip: text;
@@ -204,7 +274,7 @@
 
   /* ── 테이블 헤더 / Table header styling ── */
   table thead tr th {
-    background: var(--bg-elevated, var(--card-bg));
+    background: var(--bg-elevated, var(--bg-card));
     color: var(--text-2);
     font-size: 12px;
     font-weight: 700;
@@ -352,8 +422,36 @@
     .filter-search { min-width: unset; }
     .custom-date-wrap { flex-direction: column; align-items: stretch; }
     .date-input { width: 100%; }
+    /* 좁은 모바일: '커밋'(2번째)+'출처'(6번째) 컬럼 숨김 → 4컬럼으로 축소 */
+    /* Narrow mobile: hide commit (col2) + source (col6) → collapse to 4 cols */
+    .tbl th:nth-child(2), .tbl td:nth-child(2),
+    .tbl th:nth-child(6), .tbl td:nth-child(6) { display: none; }
+  }
+  @media (max-width: 768px) {
+    .repo-wrap { padding: var(--space-5, 1.25rem) var(--space-4, 1rem) var(--space-6, 1.5rem); }
+    .repo-hero { flex-direction: column; }
+    .repo-hero__icon { width: 44px; height: 44px; font-size: 18px; border-radius: 10px; }
   }
 </style>
+
+<div class="repo-wrap">
+
+<!-- 리포 히어로 / Repo hero -->
+<div class="repo-hero">
+  <div class="repo-hero__icon">📦</div>
+  <div class="repo-hero__body">
+    <h1 class="repo-hero__name">{{ repo_name }}</h1>
+    <div class="repo-hero__meta">
+      {%- set _sorted = analyses | sort(attribute='created_at', reverse=true) %}
+      {%- if _sorted %}
+      {%- set _latest = _sorted[0] %}
+      <span class="grade grade--{{ (_latest.grade or 'f') | lower }}">{{ _latest.grade or 'F' }}</span>
+      <span style="font-size: var(--fs-sm, 0.875rem); color: var(--text-2, rgba(255,255,255,0.6));">최근 점수: {{ (_latest.score | round(1)) if _latest.score is not none else '—' }}/100</span>
+      {%- endif %}
+      <span style="font-size: var(--fs-xs, 0.75rem); color: var(--text-3, rgba(255,255,255,0.4));">{{ analyses | length }}건 분석</span>
+    </div>
+  </div>
+</div>
 
 {% if hook_installed %}
 <div style="background:var(--accent-blue,#2563eb);color:#fff;border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.25rem;display:flex;align-items:flex-start;gap:.75rem;">
@@ -383,8 +481,8 @@
 <!-- FOUC 방지: chart-card 는 above-the-fold — reveal 클래스 제외
      FOUC prevention: primary score trend chart is above the fold, no reveal class -->
 <div class="card chart-card">
-  <div class="chart-header">
-    <span class="chart-label">{{ 'repo_detail.score_trend_label' | i18n_args(locale | default('ko')) }}</span>
+  <div class="card__head chart-header">
+    <span class="card__title chart-label">{{ 'repo_detail.score_trend_label' | i18n_args(locale | default('ko')) }}</span>
     <div class="chart-stats-row" id="chartStats"></div>
   </div>
   <div class="chart-wrap-inner">
@@ -432,8 +530,8 @@
      data-i18n-source-pr="{{ 'repo_detail.source_filter.pr' | i18n_args(locale | default('ko')) }}"
      data-i18n-source-push="{{ 'repo_detail.source_filter.push' | i18n_args(locale | default('ko')) }}"
      data-i18n-source-cli="{{ 'repo_detail.source_filter.cli' | i18n_args(locale | default('ko')) }}">
-  <div class="history-header">
-    <h3>{{ 'repo_detail.history_title' | i18n_args(locale | default('ko')) }}</h3>
+  <div class="card__head history-header">
+    <h3 class="card__title">{{ 'repo_detail.history_title' | i18n_args(locale | default('ko')) }}</h3>
     <span class="history-count" id="historyCount">{{ 'repo_detail.history_count_recent' | i18n_args(locale | default('ko'), count=(analyses | length)) }}</span>
   </div>
 
@@ -486,7 +584,7 @@
   </div>
 
   <div class="table-wrap">
-  <table>
+  <table class="tbl">
     <thead>
       <tr>
         <th class="sortable-th" data-sort="created_at">{{ 'repo_detail.table.date' | i18n_args(locale | default('ko')) }} <span class="sort-icon"></span></th>
@@ -503,6 +601,67 @@
   <div id="pagination" class="pagination"></div>
   <div id="pageInfo" class="page-info"></div>
 </div>
+
+{# ─── 반복 이슈 일괄 등록 패널 (Phase 2 신규) ─── #}
+<section class="issue-reg-panel" id="repoBulkPanel"
+         data-repo-id="{{ repo_id }}">
+
+  <h3 class="panel-title">🔁 반복 이슈 — Issue 등록 관리</h3>
+
+  <div class="issue-reg-tabs" role="tablist">
+    <button class="issue-tab active" data-tab="static" role="tab">
+      🔴 정적 분석 이슈 <span class="issue-tab-count" id="repoStaticCount"></span>
+    </button>
+    <button class="issue-tab" data-tab="ai" role="tab">
+      💡 AI 제안사항 <span class="issue-tab-count" id="repoAiCount"></span>
+    </button>
+  </div>
+
+  <div class="issue-bulk-toolbar">
+    <label class="issue-filter-label">
+      <input type="checkbox" id="showUnregisteredOnly"> 미등록만 보기
+    </label>
+    <button class="btn-primary" id="bulkRegisterBtn" disabled>
+      선택 항목 일괄 Issue 등록 (0건) →
+    </button>
+  </div>
+
+  <div class="issue-tab-panel" id="repoTabStatic">
+    <ul class="issue-list" id="repoStaticList"></ul>
+  </div>
+  <div class="issue-tab-panel hidden" id="repoTabAi">
+    <ul class="issue-list" id="repoAiList"></ul>
+  </div>
+</section>
+
+{# ─── 일괄 등록 모달 ─── #}
+<div class="issue-modal-overlay hidden" id="bulkModalOverlay" role="dialog" aria-modal="true">
+  <div class="issue-modal">
+    <div class="issue-modal-progress" id="bulkProgress"></div>
+    <h4 class="issue-modal-title">📝 GitHub Issue 생성</h4>
+
+    <label class="issue-modal-label">제목
+      <input type="text" id="bulkTitle" class="issue-modal-input">
+    </label>
+    <label class="issue-modal-label">본문
+      <textarea id="bulkBody" class="issue-modal-textarea" rows="5"></textarea>
+    </label>
+    <label class="issue-modal-label">라벨 (쉼표 구분)
+      <input type="text" id="bulkLabels" class="issue-modal-input">
+    </label>
+
+    <div class="issue-modal-actions">
+      <button type="button" class="btn-secondary" id="bulkCancel">취소</button>
+      <button type="button" class="btn-secondary" id="bulkSkip">이 항목 건너뜀</button>
+      <button type="button" class="btn-primary"   id="bulkSubmit">생성 후 다음 →</button>
+    </div>
+    <p class="issue-modal-error hidden" id="bulkError"></p>
+  </div>
+</div>
+
+<div class="issue-toast hidden" id="repoIssueToast"></div>
+
+</div>{# /.repo-wrap #}
 {% endblock %}
 
 {% block scripts %}
@@ -812,8 +971,10 @@ function renderTable(data) {
       + '<td class="date-cell">' + date + msgPreview + '</td>'
       + '<td><span class="commit-sha">' + escHtml((a.commit_sha || '').slice(0,7)) + '</span></td>'
       + '<td>' + pr + '</td>'
-      + '<td><span class="score-val ' + sc + '">' + (a.score != null ? a.score : '—') + '</span></td>'
-      + '<td><span class="grade grade-' + (a.grade || '') + '">' + (a.grade || '—') + '</span></td>'
+      + '<td><div style="display:inline-flex;align-items:center;gap:6px;">'
+      + '<div class="score-bar score-bar--' + (a.grade || 'f').toLowerCase() + '" style="--sb-pct:' + (a.score != null ? Math.round(a.score) : 0) + '%;width:70px;vertical-align:middle;"></div>'
+      + '<span class="score-val ' + sc + '">' + (a.score != null ? a.score : '—') + '</span></div></td>'
+      + '<td><span class="grade grade--' + (a.grade || 'f').toLowerCase() + '">' + (a.grade || '—') + '</span></td>'
       + '<td>' + renderSourceBadge(a.source) + '</td>'
       + '</tr>';
   }).join('');
@@ -983,5 +1144,226 @@ updateSliderFill();
 updateSortHeaders();
 applyFilters();
 })();
+</script>
+<script>
+function _initRepoBulk() {
+  var panel = document.getElementById('repoBulkPanel');
+  if (!panel) return;
+
+  var repoId   = Number(panel.dataset.repoId);
+  var stateMap = {};
+  var _allItems = [];
+  var _queue    = [];
+  var _queueIdx = 0;
+
+  /* ── 상태 로드 ── */
+  /* ── State loading ── */
+  function loadSummary() {
+    return fetch('/api/issues/repo-summary?repo_id=' + repoId)
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(data) {
+        if (!data) return;
+        // 상태 맵 + 아이템 목록 동시 구성
+        // Build stateMap and item list together
+        _allItems = [];
+        data.registrations.forEach(function(reg) {
+          stateMap[reg.issue_key] = reg;
+          // summary 항목은 등록 완료 → 체크박스 없음, 모달 미도달 (미등록 후보 추가 시 title/body 필요)
+          // Summary items are already registered → no checkbox, modal unreachable (future unregistered candidates will need title/body)
+          _allItems.push({
+            key:   reg.issue_key,
+            type:  reg.issue_type,
+            label: '#' + reg.github_issue_number + ' — ' + (reg.issue_type === 'ai_suggestion' ? 'AI 제안' : '정적 분석'),
+          });
+        });
+        renderAll();
+      })
+      .catch(function() {});
+  }
+
+  function renderAll() {
+    var showUnreg = document.getElementById('showUnregisteredOnly').checked;
+    var staticItems = _allItems.filter(function(i) { return i.type === 'static_issue'; });
+    var aiItems     = _allItems.filter(function(i) { return i.type === 'ai_suggestion'; });
+    renderList('repoStaticList', 'repoStaticCount', staticItems, showUnreg);
+    renderList('repoAiList',     'repoAiCount',     aiItems,     showUnreg);
+    updateBulkBtn();
+  }
+
+  function renderList(listId, countId, items, showUnregOnly) {
+    var ul = document.getElementById(listId);
+    var ce = document.getElementById(countId);
+    var filtered = showUnregOnly ? items.filter(function(i) { return !stateMap[i.key]; }) : items;
+    ul.innerHTML = '';
+    if (ce) ce.textContent = '(' + filtered.length + ')';
+    filtered.forEach(function(item) { ul.appendChild(buildBulkRow(item)); });
+  }
+
+  function buildBulkRow(item) {
+    var li  = document.createElement('li');
+    li.className = 'issue-row';
+    var reg = stateMap[item.key];
+
+    if (!reg) {
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.dataset.key = item.key;
+      cb.addEventListener('change', updateBulkBtn);
+      li.appendChild(cb);
+    }
+
+    var lbl = document.createElement('span');
+    lbl.className = 'issue-row-label' + (reg && reg.github_issue_state === 'closed' ? ' line-through' : '');
+    lbl.textContent = item.label;
+    li.appendChild(lbl);
+
+    if (reg) {
+      var badge = document.createElement('a');
+      badge.href = reg.github_issue_url;
+      badge.target = '_blank';
+      badge.rel = 'noopener noreferrer';
+      badge.className = reg.github_issue_state === 'closed'
+        ? 'issue-badge issue-badge--closed'
+        : 'issue-badge issue-badge--open';
+      badge.textContent = reg.github_issue_state === 'closed'
+        ? '✅ #' + reg.github_issue_number + ' 해결됨'
+        : '🔵 #' + reg.github_issue_number + ' 진행중';
+      li.appendChild(badge);
+    }
+    return li;
+  }
+
+  function updateBulkBtn() {
+    var checked = document.querySelectorAll('.issue-list input[type=checkbox]:checked');
+    var btn = document.getElementById('bulkRegisterBtn');
+    btn.disabled = checked.length === 0;
+    btn.textContent = '선택 항목 일괄 Issue 등록 (' + checked.length + '건) →';
+  }
+
+  /* ── 탭 전환 ── */
+  /* ── Tab switching ── */
+  document.querySelectorAll('#repoBulkPanel .issue-tab').forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      document.querySelectorAll('#repoBulkPanel .issue-tab').forEach(function(t) { t.classList.remove('active'); });
+      document.querySelectorAll('#repoBulkPanel .issue-tab-panel').forEach(function(p) { p.classList.add('hidden'); });
+      tab.classList.add('active');
+      document.getElementById(tab.dataset.tab === 'static' ? 'repoTabStatic' : 'repoTabAi').classList.remove('hidden');
+    });
+  });
+
+  document.getElementById('showUnregisteredOnly').addEventListener('change', renderAll);
+
+  /* ── 일괄 등록 ── */
+  /* ── Bulk registration ── */
+  document.getElementById('bulkRegisterBtn').addEventListener('click', function() {
+    var checked = Array.prototype.slice.call(document.querySelectorAll('.issue-list input[type=checkbox]:checked'));
+    _queue = checked.map(function(cb) {
+      return _allItems.find(function(i) { return i.key === cb.dataset.key; });
+    }).filter(Boolean);
+    _queueIdx = 0;
+    if (_queue.length > 0) openBulkModal();
+  });
+
+  function openBulkModal() {
+    var item = _queue[_queueIdx];
+    document.getElementById('bulkProgress').textContent = (_queueIdx + 1) + ' / ' + _queue.length;
+    document.getElementById('bulkTitle').value  = item.title  || '';
+    document.getElementById('bulkBody').value   = item.body   || '';
+    document.getElementById('bulkLabels').value = (item.labels || []).join(', ');
+    document.getElementById('bulkError').classList.add('hidden');
+    document.getElementById('bulkSubmit').disabled = false;
+    document.getElementById('bulkSubmit').textContent =
+      _queueIdx < _queue.length - 1 ? '생성 후 다음 →' : 'GitHub에 Issue 생성';
+    document.getElementById('bulkModalOverlay').classList.remove('hidden');
+  }
+
+  function closeBulkModal() {
+    document.getElementById('bulkModalOverlay').classList.add('hidden');
+    _queue = [];
+    _queueIdx = 0;
+  }
+
+  document.getElementById('bulkCancel').addEventListener('click', closeBulkModal);
+
+  document.getElementById('bulkSkip').addEventListener('click', function() {
+    _queueIdx++;
+    if (_queueIdx < _queue.length) openBulkModal();
+    else closeBulkModal();
+  });
+
+  document.getElementById('bulkSubmit').addEventListener('click', function() {
+    var item = _queue[_queueIdx];
+    var btn  = document.getElementById('bulkSubmit');
+    btn.disabled = true;
+    btn.textContent = '생성 중...';
+
+    var payload = {
+      analysis_id: item.analysis_id,
+      issue_type:  item.type,
+      suggestion_text: item.type === 'ai_suggestion' ? (item.suggestionText || null) : null,
+      tool:     item.tool     || null,
+      category: item.category || null,
+      message:  item.message  || null,
+      title:    document.getElementById('bulkTitle').value.trim(),
+      body:     document.getElementById('bulkBody').value,
+      labels:   document.getElementById('bulkLabels').value
+                .split(',').map(function(s) { return s.trim(); }).filter(Boolean),
+    };
+
+    fetch('/api/issues/register', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    })
+    .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
+    .then(function(res) {
+      if (!res.ok) {
+        var errEl = document.getElementById('bulkError');
+        errEl.textContent = res.data.detail || '오류 발생';
+        errEl.classList.remove('hidden');
+        btn.disabled = false;
+        btn.textContent = '다시 시도';
+        return;
+      }
+      stateMap[item.key] = {
+        github_issue_number: res.data.github_issue_number,
+        github_issue_state:  'open',
+        github_issue_url:    res.data.github_issue_url,
+      };
+      _queueIdx++;
+      if (_queueIdx < _queue.length) {
+        openBulkModal();
+      } else {
+        var total = _queue.length;
+        closeBulkModal();
+        renderAll();
+        var toast = document.getElementById('repoIssueToast');
+        toast.textContent = '✅ ' + total + '건 Issue 등록 완료';
+        toast.classList.remove('hidden');
+        setTimeout(function() { toast.classList.add('hidden'); }, 5000);
+      }
+    })
+    .catch(function() {
+      document.getElementById('bulkError').textContent = '네트워크 오류';
+      document.getElementById('bulkError').classList.remove('hidden');
+      btn.disabled = false;
+      btn.textContent = '다시 시도';
+    });
+  });
+
+  /* ── 초기화 ── */
+  /* ── Initialization ── */
+  // 최초 로드 시 초기화 — hx-boost 재방문 시 재초기화
+  // Initialize on first load — re-init on hx-boost navigation
+  loadSummary();
+}
+_initRepoBulk();
+if (document._repoBulkHandler) {
+  document.removeEventListener('htmx:afterSettle', document._repoBulkHandler);
+  document.removeEventListener('htmx:historyRestore', document._repoBulkHandler);
+}
+document._repoBulkHandler = _initRepoBulk;
+document.addEventListener('htmx:afterSettle', document._repoBulkHandler);
+document.addEventListener('htmx:historyRestore', document._repoBulkHandler);
 </script>
 {% endblock %}

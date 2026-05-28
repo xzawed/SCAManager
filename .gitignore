@@ -57,3 +57,8 @@ docs/superpowers/
 # Node.js / Tailwind v4 build (dev dependencies + build artifacts)
 node_modules/
 src/static/css/dist/tailwind.css
+
+# Claude Design brief screenshots (large binaries — generated locally)
+# Claude Design brief 스크린샷 (대용량 바이너리 — 로컬에서 생성)
+docs/design/brief/screenshots/**/*.png
+docs/design/output/screenshots/
