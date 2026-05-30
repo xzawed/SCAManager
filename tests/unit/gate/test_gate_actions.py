@@ -98,30 +98,28 @@ def test_review_comment_action_is_not_applicable_when_disabled():
 
 @pytest.mark.asyncio
 async def test_review_comment_action_execute_calls_post_pr_comment():
-    """execute()가 post_pr_comment를 호출해야 한다. Action은 engine에 위임."""
+    """execute()가 post_pr_comment를 호출해야 한다."""
     from src.gate.actions.review_comment import ReviewCommentAction  # pylint: disable=import-outside-toplevel
     ctx = _make_ctx(pr_review_comment=True)
-    # Action은 engine._run_review_comment에 위임 → engine 네임스페이스로 패치
-    # Action delegates to engine._run_review_comment → patch engine namespace
-    with patch("src.gate.engine.post_pr_comment", new=AsyncMock()) as mock_post, \
-         patch("src.gate.engine.SessionLocal") as mock_sess, \
-         patch("src.gate.engine._run_review_comment", new=AsyncMock()) as mock_impl:
+    # Action이 직접 구현 보유 → actions.review_comment 네임스페이스로 패치
+    # Action owns the implementation → patch actions.review_comment namespace
+    with patch("src.gate.actions.review_comment.post_pr_comment", new=AsyncMock()) as mock_post, \
+         patch("src.gate.actions.review_comment.SessionLocal") as mock_sess, \
+         patch("src.gate.actions.review_comment.resolve_notification_language", return_value="en"):
         mock_sess.return_value.__enter__ = MagicMock(return_value=MagicMock())
         mock_sess.return_value.__exit__ = MagicMock(return_value=False)
         await ReviewCommentAction().execute(ctx)
-    mock_impl.assert_awaited_once()
+    mock_post.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_review_comment_action_skips_when_disabled():
-    """pr_review_comment=False이면 execute()가 engine._run_review_comment를 호출하지 않아야 한다."""
+    """pr_review_comment=False이면 execute()가 post_pr_comment를 호출하지 않아야 한다."""
     from src.gate.actions.review_comment import ReviewCommentAction  # pylint: disable=import-outside-toplevel
     ctx = _make_ctx(pr_review_comment=False)
-    with patch("src.gate.engine._run_review_comment", new=AsyncMock()) as mock_impl:
+    with patch("src.gate.actions.review_comment.post_pr_comment", new=AsyncMock()) as mock_post:
         await ReviewCommentAction().execute(ctx)
-    # pr_review_comment=False → engine._run_review_comment가 early return
-    # Engine function is called but returns early due to pr_review_comment=False
-    mock_impl.assert_awaited_once()  # 위임은 항상 발생, 내부에서 early return
+    mock_post.assert_not_awaited()
 
 
 # ─── ApproveAction ────────────────────────────────────────────────────────────
@@ -146,23 +144,28 @@ def test_approve_action_is_not_applicable_when_disabled():
 
 @pytest.mark.asyncio
 async def test_approve_action_auto_calls_post_github_review():
-    """auto 모드에서 execute()가 engine._run_approve_decision에 위임해야 한다."""
+    """auto 모드에서 score >= approve_threshold이면 post_github_review를 호출해야 한다."""
     from src.gate.actions.approve import ApproveAction  # pylint: disable=import-outside-toplevel
-    ctx = _make_ctx(approve_mode="auto", score=80)
-    # Action은 engine._run_approve_decision에 위임 → engine 네임스페이스로 패치
-    with patch("src.gate.engine._run_approve_decision", new=AsyncMock()) as mock_impl:
+    ctx = _make_ctx(approve_mode="auto", score=80)  # 80 >= threshold(70)
+    # Action이 직접 구현 보유 → actions.approve 네임스페이스로 패치
+    with patch("src.gate.actions.approve.post_github_review", new=AsyncMock()) as mock_review, \
+         patch("src.gate.actions.approve.gate_decision_repo"), \
+         patch("src.gate.actions.approve.SessionLocal") as mock_sess:
+        mock_sess.return_value.__enter__ = MagicMock(return_value=MagicMock())
+        mock_sess.return_value.__exit__ = MagicMock(return_value=False)
         await ApproveAction().execute(ctx)
-    mock_impl.assert_awaited_once()
+    mock_review.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_approve_action_semi_auto_calls_send_gate_request():
-    """semi-auto 모드에서 execute()가 engine._run_approve_decision에 위임해야 한다."""
+    """semi-auto 모드에서 execute()가 send_gate_request를 호출해야 한다."""
     from src.gate.actions.approve import ApproveAction  # pylint: disable=import-outside-toplevel
     ctx = _make_ctx(approve_mode="semi-auto", score=75)
-    with patch("src.gate.engine._run_approve_decision", new=AsyncMock()) as mock_impl:
+    with patch("src.gate.actions.approve.send_gate_request", new=AsyncMock()) as mock_gate, \
+         patch("src.gate.actions.approve._score_from_result", return_value=MagicMock()):
         await ApproveAction().execute(ctx)
-    mock_impl.assert_awaited_once()
+    mock_gate.assert_awaited_once()
 
 
 # ─── AutoMergeAction ─────────────────────────────────────────────────────────
