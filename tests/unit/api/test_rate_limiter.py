@@ -78,3 +78,92 @@ def test_app_state_has_limiter():
 
     assert hasattr(app.state, "limiter")
     assert app.state.limiter is limiter
+
+
+# ─── 실제 엔드포인트 rate limit 적용 검증 ────────────────────────────────────
+# Verifying rate limit decoration on real API endpoints
+
+def test_rate_limited_endpoints_have_request_parameter():
+    """rate limit 적용 엔드포인트의 서명에 request: Request가 있어야 한다.
+    Rate-limited endpoint signatures must include request: Request (required by slowapi).
+
+    slowapi는 첫 번째 파라미터 중 Request 타입을 찾아 IP를 추출한다.
+    slowapi finds the Request-typed parameter to extract the client IP.
+    """
+    import inspect  # pylint: disable=import-outside-toplevel
+    from src.api.repos import list_repos, list_repo_analyses  # pylint: disable=import-outside-toplevel
+    from src.api.stats import get_analysis, get_repo_stats  # pylint: disable=import-outside-toplevel
+    from fastapi import Request  # pylint: disable=import-outside-toplevel
+
+    for fn in (list_repos, list_repo_analyses, get_analysis, get_repo_stats):
+        sig = inspect.signature(fn)
+        request_params = [
+            p for p in sig.parameters.values()
+            if p.annotation is Request or p.annotation == "Request"
+        ]
+        assert len(request_params) >= 1, (
+            f"{fn.__name__}()에 request: Request 파라미터 없음 — slowapi 동작 불가"
+        )
+
+
+def test_429_response_has_json_body():
+    """429 응답은 JSON body를 가져야 한다.
+    429 response must have a JSON body.
+    """
+    test_limiter = Limiter(key_func=get_remote_address, storage_uri="memory://", config_filename="")
+    test_app = FastAPI()
+    test_app.state.limiter = test_limiter
+    test_app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+    @test_app.get("/strict")
+    @test_limiter.limit("1/minute")
+    async def _strict(request: Request):  # pylint: disable=unused-argument
+        return {"ok": True}
+
+    client = TestClient(test_app, raise_server_exceptions=False)
+    client.get("/strict")       # 성공 (1/minute 할당 소진) / first call uses the 1/minute quota
+    resp = client.get("/strict")  # 429
+
+    assert resp.status_code == 429
+    # slowapi는 기본 JSON 오류 응답을 반환 / slowapi returns a JSON error response
+    data = resp.json()
+    assert "error" in data or "detail" in data or "message" in data
+
+
+def test_429_response_content_type_is_json():
+    """429 응답의 Content-Type이 application/json이어야 한다.
+    429 response Content-Type must be application/json.
+
+    slowapi 기본 설정에서 Retry-After 헤더는 미포함 (headers_enabled=False).
+    slowapi default config does not include Retry-After (headers_enabled=False).
+    """
+    test_limiter = Limiter(key_func=get_remote_address, storage_uri="memory://", config_filename="")
+    test_app = FastAPI()
+    test_app.state.limiter = test_limiter
+    test_app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+    @test_app.get("/retry-after-test")
+    @test_limiter.limit("1/minute")
+    async def _retry(request: Request):  # pylint: disable=unused-argument
+        return {"ok": True}
+
+    client = TestClient(test_app, raise_server_exceptions=False)
+    client.get("/retry-after-test")
+    resp = client.get("/retry-after-test")  # 429
+
+    assert resp.status_code == 429
+    # slowapi 기본 설정: Content-Type은 JSON, Retry-After는 미포함 (headers_enabled=False 기본값)
+    # slowapi default: JSON content type; Retry-After omitted when headers_enabled=False (default)
+    assert "application/json" in resp.headers.get("content-type", "")
+
+
+def test_rate_limiter_storage_is_in_memory():
+    """rate_limiter는 메모리 스토리지를 사용해야 한다 (Redis 등 외부 의존성 없음).
+    Rate limiter must use in-memory storage (no external dependency like Redis).
+    """
+    from src.middleware.rate_limiter import limiter  # pylint: disable=import-outside-toplevel
+
+    storage_uri = str(getattr(limiter, "_storage_uri", "") or "")
+    assert "memory" in storage_uri.lower() or storage_uri == "", (
+        f"Rate limiter should use memory storage, got: {storage_uri}"
+    )
