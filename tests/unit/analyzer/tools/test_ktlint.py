@@ -5,7 +5,7 @@ import json
 import subprocess
 import pytest
 from unittest.mock import patch, MagicMock
-from src.analyzer.pure.registry import AnalyzeContext, Severity, Category, REGISTRY
+from src.analyzer.pure.registry import AnalyzeContext, REGISTRY
 
 
 def _make_ctx(language: str, filename: str) -> AnalyzeContext:
