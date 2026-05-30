@@ -37,6 +37,11 @@ paths:
 - 🔴 **5xx 자동 재시도 — 신뢰 API 한정 (Phase H PR-1B-2/2B)**: GitHub/Telegram/Anthropic/Railway 등 신뢰 API 의 일시 5xx + transient network error 는 자동 재시도 (exponential backoff, max 3회). Telegram 429 는 `retry_after` 파싱 + cap 30s. **외부 untrusted webhook (Discord/Slack/n8n/custom_webhook) 는 재시도 금지** — idempotency 보장 불가, 중복 발송 부작용. 채널별 (Telegram L80~ / GitHub graphql `_GRAPHQL_*` / Anthropic SDK `max_retries`) 인라인 구현.
 - 🔴 **PyGithub 등 sync I/O 는 `asyncio.to_thread` wrap 의무 (Phase H PR-3A)**: async 컨텍스트(BackgroundTask, lifespan 등) 내부에서 sync HTTP 클라이언트 (PyGithub, requests) 호출 시 반드시 `asyncio.to_thread(fn, ...)` 로 wrap. 직접 호출 시 이벤트 루프 블록 → 다른 webhook/cron 정체.
 - 🔴 **race-recovery 시그널 컨벤션 (Phase H PR-2A)**: 파이프라인 내 race recovery 분기는 `result_dict is None` 을 시그널로 사용. 호출자는 `if result_dict is None: skip notify` 로 명시적 처리.
+- 🔴 **Rate limiting 데코레이터 의무 (사이클 142 Phase C A1 #675)**: 신규 API 엔드포인트 추가 시 `@limiter.limit(RATE_LIMIT_API)` 또는 `@limiter.limit(RATE_LIMIT_HEAVY)` 데코레이터 필수. 누락 시 DoS 취약.
+  - `RATE_LIMIT_API = "60/minute"` — 조회성 엔드포인트 (GET, 상태 조회)
+  - `RATE_LIMIT_HEAVY = "10/minute"` — 쓰기/삭제 엔드포인트 (PUT, DELETE, POST 고비용)
+  - `src/middleware/rate_limiter.py:20-21` 상수 정의 출처 — 직접 문자열 작성 금지, import 사용
+  - **예외**: `Depends(require_login)` 과 `@limiter.limit()` 조합 시 FastAPI 422 충돌 발생 가능 — `users.py` 인증 엔드포인트처럼 require_login 이 이미 DoS 보호 역할이면 미적용 허용 (PR 본문 정책 3 보고 의무)
 - 🔴 **`asyncio.gather` 내부 shared Session 금지 (사이클 113 P0-H)**: `asyncio.gather()` 로 동시 실행되는 코루틴들이 단일 `Session` 인스턴스를 공유하면 SQLAlchemy identity map 오염 + 동시 `commit()` 충돌 발생. 각 코루틴은 `with SessionLocal() as db:` 블록을 독립적으로 열어야 함. 전례: `src/gate/engine.py` — `_run_approve_decision` + `_run_auto_merge` 를 gather 전에 db 파라미터 제거 후 각 함수 내부에서 독립 Session 생성으로 수정 (사이클 113 P0-H).
   - **올바른 패턴**: `await asyncio.gather(_run_approve_decision(...), _run_auto_merge(...))` — 각 함수 내부에서 `with SessionLocal() as db:` 독립 사용
   - **금지 패턴**: `await asyncio.gather(_run_approve_decision(db=db, ...), _run_auto_merge(db=db, ...))` — 동일 db 공유
