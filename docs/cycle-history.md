@@ -5,7 +5,7 @@
 
 ## 목차
 
-- [사이클 142 (5+1 에이전트 감사 4 Phase — 보안·API·UI/CSS/i18n, 2026-05-31)](#사이클-142)
+- [사이클 142 (5+1 에이전트 감사 4 Phase + 회고 Tier A/B 이행, 2026-05-31)](#사이클-142)
 - [사이클 141 (Rate Limiting 테스트 보강 + GateAction 구현 직접 이전, 2026-05-30)](#사이클-141)
 - [사이클 140 (conftest 모델 기본값 fix + GateAction Registry 패턴 도입, 2026-05-30)](#사이클-140)
 - [사이클 139 (5+1 에이전트 조사 기반 품질 개선 4 Phase — Code Scanning·alembic·Rate Limiting·알림·dashboard, 2026-05-30)](#사이클-139)
@@ -54,9 +54,9 @@
 
 ## 사이클 142
 
-**날짜**: 2026-05-31 | **PR**: #673~#676 | **상태**: ✅ 머지 완료
+**날짜**: 2026-05-31 | **PR**: #673~#679 | **상태**: ✅ 머지 완료
 
-**작업 내용**: 5+1 에이전트 감사 결과 4 Phase 전수 이행 — P0 수치 보정 + 즉각 버그 3건 + 보안 4건 + API 보강 + UI/CSS/i18n 보정
+**작업 내용**: 5+1 에이전트 감사 결과 4 Phase 전수 이행 + docs sync + 5+1 회고 Tier A/B 이행
 
 | PR | 내용 |
 |----|------|
@@ -94,6 +94,15 @@
 - 신규 테스트: 0건 (단위 3221 유지)
 
 **신규 테스트**: +8건 (#674 +3, #675 +5 — 단위 3213→3221, 전체 3364→3372)
+
+**docs sync** (#677): STATE.md + cycle-history.md + README 수치 동기화 (3371→3372, 3220→3221 Codex 실측 보정)
+
+**5+1 회고 + Tier A/B 이행** (#678, #679):
+- 회고 P0 3건 / P1 5건 확정 (cross-verify: false-positive 1건 제거, 등급 조정 2건)
+- Tier A (#678): `docs/reference/env-vars.md` TELEGRAM_WEBHOOK_SECRET fail-closed 수정 + APP_BASE_URL CORS 역할 기재 + `.claude/rules/api.md` rate limiting 의무 + `.claude/rules/security.md` CSP/LimitBodySizeMiddleware/SESSION_SECRET prod guard
+- Tier B (#679): `src/main.py` `LimitBodySizeMiddleware` ValueError 처리 (400) + 회귀 가드 3건 (단위 3221→3224)
+- 잔여: Tier B P1-4 (dashboard.html repos i18n 31라인) → 다음 사이클 / Tier C P2 → 로드맵
+- dashboard 접속 모드 추적: `src/ui/routes/dashboard.py:162-168` 기존 로그 활용 가능 (`railway logs | grep "dashboard_view.*mode=repos"`)
 
 ## 사이클 141
 
