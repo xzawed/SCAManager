@@ -277,3 +277,25 @@ async def test_telegram_post_message_raises_on_second_429():
 
     # 정확히 2회 시도 후 포기
     assert mock_client.post.call_count == 2
+
+
+async def test_telegram_post_message_zero_retry_after_uses_minimum():
+    """retry_after=0 응답 시 최소 대기 1초가 적용되어야 한다.
+    Minimum wait of 1 second must apply when retry_after is 0.
+    """
+    with patch("src.notifier.telegram.get_http_client") as mock_get, \
+         patch("src.notifier.telegram.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock(side_effect=[_make_429_response(0), _make_200_response()])
+        mock_get.return_value = mock_client
+
+        await telegram_post_message(
+            bot_token="123:ABC", chat_id="-100", payload={"text": "x"},
+        )
+
+    sleep_arg = mock_sleep.await_args.args[0]
+    # max(0, 1) = 1 → cap 적용으로 최소 1초 보장
+    # max(0, 1) = 1 → cap ensures minimum 1 second
+    assert sleep_arg >= 1, f"sleep must be >= 1s, got {sleep_arg}"

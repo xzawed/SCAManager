@@ -109,3 +109,22 @@ async def test_send_slack_notification_skips_when_no_url():
             analysis_results=_make_analysis(),
         )
     mock_build.assert_not_called()
+
+
+def test_build_payload_long_footer_text_is_truncated():
+    """attachment.text가 3000자를 초과하면 절단되어야 한다.
+    attachment.text must be truncated when it exceeds 3000 characters.
+    """
+    long_summary = "A" * 3500
+    ai = AiReviewResult(
+        commit_score=17, ai_score=15, test_score=10,
+        summary=long_summary, suggestions=[],
+    )
+    payload = _build_payload(
+        "owner/repo", "abc1234",
+        _make_score(), _make_analysis(),
+        pr_number=None, ai_review=ai,
+    )
+    footer = payload["attachments"][0].get("text", "")
+    assert len(footer) <= 3000, f"footer too long: {len(footer)} chars"
+    assert len(footer) > 0  # 내용은 있어야 함 / content must exist
