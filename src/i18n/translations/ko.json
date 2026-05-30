@@ -152,7 +152,26 @@
     "recurring_issues_count": "반복이슈 {count}종",
     "trend_improve": "↑ 개선",
     "trend_decline": "↓ 하락",
-    "trend_stable": "→ 유지"
+    "trend_stable": "→ 유지",
+    "repos": {
+      "kpi_avg_score": "평균 점수",
+      "kpi_connected_repos": "연결 Repo",
+      "kpi_warning": "경고",
+      "grade_distribution": "등급 분포",
+      "grade_bar_tooltip": "{grade}등급 {count}개",
+      "select_repo_aria": "Repo 선택",
+      "chart_avg_score_label": "평균 점수",
+      "cat_security_error": "보안 에러",
+      "cat_security_warning": "보안 경고",
+      "cat_quality_error": "품질 에러",
+      "cat_quality_warning": "품질 경고",
+      "recurring_count": "{count}회 반복"
+    },
+    "kpi_foot_avg": "최근 {days}일 평균",
+    "kpi_unit_count": "건",
+    "score_trend_subtitle": "점수 추세",
+    "repo_insights_title": "🗂 리포별 인사이트",
+    "recent_days": "최근 {days}일"
   },
   "overview": {
     "greeting": "안녕하세요, {name}님",
