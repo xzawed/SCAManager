@@ -1,7 +1,6 @@
 """disabled_tools 인프라 테스트 — repo_config.disabled_tools에 등록된 도구는 스킵된다.
 Infrastructure tests for disabled_tools — analyzers listed in repo_config.disabled_tools are skipped.
 """
-import pytest
 from src.analyzer.io.static import analyze_file
 
 
