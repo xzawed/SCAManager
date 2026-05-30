@@ -5,7 +5,9 @@ os.environ.setdefault("GITHUB_TOKEN", "ghp_test")
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "123:ABC")
 os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 os.environ.setdefault("ANTHROPIC_API_KEY", "")
+os.environ.setdefault("TELEGRAM_WEBHOOK_SECRET", "test-tg-webhook-secret-for-tests!")
 
+import pytest
 import httpx
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
@@ -34,27 +36,40 @@ def _ctx(db_mock):
     return ctx
 
 
+# S1 fix: route 테스트는 TELEGRAM_WEBHOOK_SECRET 헤더를 포함해야 한다 (fail-closed 정책)
+# S1 fix: route tests must supply X-Telegram-Bot-Api-Secret-Token header (fail-closed policy)
+_TG_SECRET = "test-tg-webhook-secret-for-tests!"
+_TG_HEADERS = {"X-Telegram-Bot-Api-Secret-Token": _TG_SECRET}
+
+
+@pytest.fixture(autouse=True)
+def _patch_tg_secret(monkeypatch):
+    """모든 route 테스트에서 telegram settings.telegram_webhook_secret을 테스트 값으로 교체."""
+    import src.webhook.providers.telegram as _tg  # pylint: disable=import-outside-toplevel
+    monkeypatch.setattr(_tg.settings, "telegram_webhook_secret", _TG_SECRET)
+
+
 def test_approve_returns_200():
     with patch("src.webhook.providers.telegram.handle_gate_callback", new_callable=AsyncMock):
-        r = client.post("/api/webhook/telegram", json=APPROVE)
+        r = client.post("/api/webhook/telegram", json=APPROVE, headers=_TG_HEADERS)
     assert r.status_code == 200
 
 def test_reject_returns_200():
     with patch("src.webhook.providers.telegram.handle_gate_callback", new_callable=AsyncMock):
-        r = client.post("/api/webhook/telegram", json=REJECT)
+        r = client.post("/api/webhook/telegram", json=REJECT, headers=_TG_HEADERS)
     assert r.status_code == 200
 
 def test_non_gate_returns_200():
-    r = client.post("/api/webhook/telegram", json=OTHER)
+    r = client.post("/api/webhook/telegram", json=OTHER, headers=_TG_HEADERS)
     assert r.status_code == 200
 
 def test_no_callback_query_returns_200():
-    r = client.post("/api/webhook/telegram", json={"update_id": 1})
+    r = client.post("/api/webhook/telegram", json={"update_id": 1}, headers=_TG_HEADERS)
     assert r.status_code == 200
 
 def test_gate_callback_called_with_correct_args():
     with patch("src.webhook.providers.telegram.handle_gate_callback", new_callable=AsyncMock) as mock_h:
-        client.post("/api/webhook/telegram", json=APPROVE)
+        client.post("/api/webhook/telegram", json=APPROVE, headers=_TG_HEADERS)
     mock_h.assert_called_once()
     kw = mock_h.call_args.kwargs
     assert kw["analysis_id"] == 42
@@ -62,6 +77,20 @@ def test_gate_callback_called_with_correct_args():
     # decided_by 형식: "username(id:user_id)" — user_id(stable integer) 포함
     assert "john" in kw["decided_by"]
     assert "1" in kw["decided_by"]
+
+
+def test_missing_secret_returns_401():
+    """S1: TELEGRAM_WEBHOOK_SECRET 미설정(빈 값) 시 모든 요청이 401을 반환해야 한다.
+    S1: Fail-closed — all requests rejected when TELEGRAM_WEBHOOK_SECRET is empty.
+    """
+    import src.webhook.providers.telegram as _tg  # pylint: disable=import-outside-toplevel
+    original = _tg.settings.telegram_webhook_secret
+    try:
+        _tg.settings.telegram_webhook_secret = ""
+        r = client.post("/api/webhook/telegram", json=APPROVE)
+    finally:
+        _tg.settings.telegram_webhook_secret = original
+    assert r.status_code == 401
 
 
 # --- handle_gate_callback auto_merge 테스트 (Red: handle_gate_callback에 auto_merge 로직이 없음) ---
@@ -189,7 +218,7 @@ BAD_PARTS_PAYLOAD = {
 def test_invalid_hmac_token_does_not_call_callback():
     # HMAC 토큰이 잘못된 경우 handle_gate_callback이 호출되지 않아야 한다
     with patch("src.webhook.providers.telegram.handle_gate_callback", new_callable=AsyncMock) as mock_h:
-        r = client.post("/api/webhook/telegram", json=INVALID_TOKEN_PAYLOAD)
+        r = client.post("/api/webhook/telegram", json=INVALID_TOKEN_PAYLOAD, headers=_TG_HEADERS)
     assert r.status_code == 200
     mock_h.assert_not_called()
 
@@ -197,7 +226,7 @@ def test_invalid_hmac_token_does_not_call_callback():
 def test_malformed_callback_data_no_crash():
     # 콜백 data가 gate:로 시작하지만 파트 수가 4개 미만이면 200 반환, callback 미호출
     with patch("src.webhook.providers.telegram.handle_gate_callback", new_callable=AsyncMock) as mock_h:
-        r = client.post("/api/webhook/telegram", json=BAD_PARTS_PAYLOAD)
+        r = client.post("/api/webhook/telegram", json=BAD_PARTS_PAYLOAD, headers=_TG_HEADERS)
     assert r.status_code == 200
     mock_h.assert_not_called()
 
@@ -229,13 +258,15 @@ def test_secret_token_invalid_returns_401():
     mock_h.assert_not_called()
 
 
-def test_secret_token_not_configured_skips_check():
-    """TELEGRAM_WEBHOOK_SECRET 미설정 → 헤더 없어도 정상 처리."""
+def test_secret_token_not_configured_returns_401():
+    """S1: TELEGRAM_WEBHOOK_SECRET 미설정 → fail-closed, 401 반환 (인증 우회 차단).
+    S1: Empty secret must return 401 — fail-closed policy prevents unauthenticated access.
+    """
     with patch("src.webhook.providers.telegram.settings.telegram_webhook_secret", ""):
         with patch("src.webhook.providers.telegram.handle_gate_callback", new_callable=AsyncMock) as mock_h:
             r = client.post("/api/webhook/telegram", json=APPROVE)
-    assert r.status_code == 200
-    mock_h.assert_called_once()
+    assert r.status_code == 401
+    mock_h.assert_not_called()
 
 
 async def test_handle_gate_callback_analysis_not_found():
@@ -382,7 +413,7 @@ def test_message_text_routes_to_commands_handler():
                 "src.webhook.providers.telegram.telegram_post_message",
                 new_callable=AsyncMock,
             ):
-                r = client.post("/api/webhook/telegram", json=payload)
+                r = client.post("/api/webhook/telegram", json=payload, headers=_TG_HEADERS)
     assert r.status_code == 200
     assert r.json() == {"status": "ok"}
     # handle_message_command가 sender_id="123", text="/stats owner/repo" 로 호출됐는지 확인
@@ -402,7 +433,7 @@ def test_callback_query_gate_prefix_unchanged():
     with patch("src.webhook.providers.telegram.handle_gate_callback",
                new_callable=AsyncMock) as mock_gate:
         with patch("src.webhook.providers.telegram.parse_cmd_callback") as mock_cmd:
-            r = client.post("/api/webhook/telegram", json=APPROVE)
+            r = client.post("/api/webhook/telegram", json=APPROVE, headers=_TG_HEADERS)
     assert r.status_code == 200
     mock_gate.assert_called_once()
     # parse_cmd_callback은 gate: 접두사 데이터로 호출되지 않아야 한다
@@ -429,7 +460,7 @@ def test_callback_query_cmd_prefix_dispatched():
                return_value=None) as mock_cmd:
         with patch("src.webhook.providers.telegram.handle_gate_callback",
                    new_callable=AsyncMock) as mock_gate:
-            r = client.post("/api/webhook/telegram", json=cmd_payload)
+            r = client.post("/api/webhook/telegram", json=cmd_payload, headers=_TG_HEADERS)
     assert r.status_code == 200
     assert r.json() == {"status": "ok"}
     # parse_cmd_callback이 cmd: 데이터로 호출됐는지 확인
@@ -446,7 +477,8 @@ def test_unknown_payload_returns_ok():
     """
     # 알 수 없는 형식의 페이로드 — 두 키 모두 없음
     # Unknown payload format — neither key is present
-    r = client.post("/api/webhook/telegram", json={"update_id": 1, "unknown_key": "value"})
+    r = client.post("/api/webhook/telegram", json={"update_id": 1, "unknown_key": "value"},
+                    headers=_TG_HEADERS)
     assert r.status_code == 200
     assert r.json() == {"status": "ok"}
 
