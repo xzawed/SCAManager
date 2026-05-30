@@ -53,14 +53,15 @@
 
 ## 사이클 141
 
-**날짜**: 2026-05-30 | **PR**: #669~#670 | **상태**: 🔄 진행 중
+**날짜**: 2026-05-30 | **PR**: #669~#671 | **상태**: ✅ 머지 완료
 
-**작업 내용**: Rate Limiting 테스트 보강 + GateAction 구현 직접 이전 (Sprint E-final)
+**작업 내용**: Rate Limiting 테스트 보강 + GateAction 구현 직접 이전 (Sprint E-final) + CodeQL 4건 해소
 
 | PR | 내용 |
 |----|------|
 | #669 | test(security): Rate Limiting 테스트 보강 — 엔드포인트 서명·429 형식·스토리지 검증 (+9 단위 테스트) |
 | #670 | refactor(gate): ApproveAction·ReviewCommentAction에 구현 직접 이전 — engine.py 위임 제거 |
+| #671 | fix(tests): CodeQL py/unused-import 4건 해소 — pytest 제거 + side-effect import dismiss |
 
 **GateAction Sprint E-final 세부** (#670):
 - `approve.py`: `_run_auto` / `_run_semi_auto` 메서드 직접 구현 (`gate_decision_repo.upsert()` 직접 호출)
@@ -69,6 +70,10 @@
 - `test_engine.py` 3개 테스트 패치 경로 수정: `engine.SessionLocal`/`engine.save_gate_decision` → `actions.approve.SessionLocal`/`actions.approve.gate_decision_repo`
 - P0-H 규약 유지: 각 Action 독립 SessionLocal() 사용, asyncio.gather 내 세션 공유 없음
 - 신규 테스트 0건 (리팩토링만) — 단위 3061 유지
+
+**CodeQL 4건 해소** (#671):
+- alert #485: `test_rate_limiter.py` `import pytest` 미사용 → 코드 수정 (1행 삭제)
+- alert #486~#488: `engine.py` side-effect import 오탐지 → false positive dismiss
 
 **신규 테스트**: +9건 (#669 Rate Limiting — 단위 3052→3061)
 
