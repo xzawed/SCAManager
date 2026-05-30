@@ -16,7 +16,9 @@
     "no": "아니오",
     "confirm": "확인",
     "no_data": "데이터 없음",
-    "menu_aria": "메뉴 열기"
+    "menu_aria": "메뉴 열기",
+    "theme_aria": "테마 변경",
+    "lang_aria": "언어 변경"
   },
   "header": {
     "welcome": "환영합니다, {name}님",
@@ -139,7 +141,18 @@
       "no_api_key": "🔑 ANTHROPIC_API_KEY 미설정 — Insight 모드는 AI 분석이 필요합니다. Railway Variables 에서 키를 설정해주세요.",
       "no_data": "📭 최근 {days}일 분석 데이터가 부족합니다 — 분석 결과가 누적된 후 다시 시도해주세요.",
       "load_failed": "⚠️ AI Insight 생성 실패 ({status}) — 잠시 후 다시 시도해주세요."
-    }
+    },
+    "select_repo_placeholder": "— Repo를 선택하세요 —",
+    "score_trend": "점수 트렌드",
+    "issue_category": "이슈 카테고리",
+    "ai_review_summary": "AI 리뷰 요약",
+    "recommendations": "개선 권장 사항",
+    "repo_not_found": "선택한 Repo를 찾을 수 없습니다",
+    "insight_link": "인사이트 보기 →",
+    "recurring_issues_count": "반복이슈 {count}종",
+    "trend_improve": "↑ 개선",
+    "trend_decline": "↓ 하락",
+    "trend_stable": "→ 유지"
   },
   "overview": {
     "greeting": "안녕하세요, {name}님",
@@ -648,5 +661,9 @@
       "settings_no_repos": "등록된 리포지토리가 없습니다.",
       "settings_header": "📋 등록된 리포지토리:"
     }
+  },
+  "repo_insights": {
+    "recurring_table_aria": "반복 이슈 목록",
+    "donut_aria": "이슈 카테고리 비율 차트"
   }
 }

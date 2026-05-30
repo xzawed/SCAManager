@@ -16,7 +16,9 @@
     "no": "いいえ",
     "confirm": "確認",
     "no_data": "データなし",
-    "menu_aria": "メニューを開く"
+    "menu_aria": "メニューを開く",
+    "theme_aria": "テーマを変更",
+    "lang_aria": "言語を変更"
   },
   "header": {
     "welcome": "ようこそ、{name}さん",
@@ -139,7 +141,18 @@
       "no_api_key": "🔑 ANTHROPIC_API_KEY 未設定 — Insight モードは AI 分析が必要です。Railway Variables で key を設定してください。",
       "no_data": "📭 最近 {days} 日の分析データが不足しています — 分析結果が蓄積された後に再試行してください。",
       "load_failed": "⚠️ AI Insight 生成失敗 ({status}) — しばらくしてから再試行してください。"
-    }
+    },
+    "select_repo_placeholder": "— Repoを選択 —",
+    "score_trend": "スコアトレンド",
+    "issue_category": "イシューカテゴリ",
+    "ai_review_summary": "AIレビュー要約",
+    "recommendations": "改善提案",
+    "repo_not_found": "選択したRepoが見つかりません",
+    "insight_link": "インサイトを見る →",
+    "recurring_issues_count": "繰り返しイシュー{count}件",
+    "trend_improve": "↑ 改善",
+    "trend_decline": "↓ 低下",
+    "trend_stable": "→ 維持"
   },
   "overview": {
     "greeting": "こんにちは、{name}さん",
@@ -648,5 +661,9 @@
       "settings_no_repos": "登録されたリポジトリがありません。",
       "settings_header": "📋 登録されたリポジトリ:"
     }
+  },
+  "repo_insights": {
+    "recurring_table_aria": "繰り返しイシューリスト",
+    "donut_aria": "イシューカテゴリ比率チャート"
   }
 }

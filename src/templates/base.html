@@ -651,7 +651,7 @@
     </div>
     {% endif %}
     <div class="theme-switcher" id="themeSwitcher">
-      <button class="theme-btn" id="themeToggle" aria-label="테마 변경" aria-haspopup="true" aria-expanded="false">
+      <button class="theme-btn" id="themeToggle" aria-label="{{ 'common.theme_aria' | i18n_args(locale | default('ko')) }}" aria-haspopup="true" aria-expanded="false">
         <span id="themeIcon">🌙</span>
         <span id="themeName">다크</span>
         <span class="chevron">▾</span>
@@ -667,7 +667,7 @@
     {# Phase 2 PR-4 (Cycle 84) — i18n header dropdown (uses theme-switcher pattern) #}
     {% if current_user %}
     <div class="theme-switcher" id="langSwitcher">
-      <button class="theme-btn" id="langToggle" aria-label="언어 변경" aria-haspopup="true" aria-expanded="false">
+      <button class="theme-btn" id="langToggle" aria-label="{{ 'common.lang_aria' | i18n_args(locale | default('ko')) }}" aria-haspopup="true" aria-expanded="false">
         <span id="langIcon">🌍</span>
         <span id="langName">한국어</span>
         <span class="chevron">▾</span>

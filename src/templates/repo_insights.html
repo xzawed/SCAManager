@@ -139,7 +139,7 @@
       </div>
       {% if recurring_issues %}
       <div class="table-wrap">
-      <table class="ri-issues-table" aria-label="반복 이슈 목록">
+      <table class="ri-issues-table" aria-label="{{ 'repo_insights.recurring_table_aria' | i18n_args(locale | default('ko')) }}">
         <thead>
           <tr>
             <th>#</th>
@@ -184,7 +184,7 @@
       <div class="ri-donut-wrap">
         {% if breakdown.total > 0 %}
         <canvas id="riDonutChart" width="200" height="200"
-                aria-label="이슈 카테고리 비율 차트"></canvas>
+                aria-label="{{ 'repo_insights.donut_aria' | i18n_args(locale | default('ko')) }}"></canvas>
         <div style="margin-top:12px; font-size:12px; color:var(--text-2); text-align:center;">
           전체 {{ breakdown.total }}건
         </div>
