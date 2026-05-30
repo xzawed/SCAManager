@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 
 from src.database import SessionLocal
 from src.config import settings
-from src.constants import PIPELINE_ANALYSIS_TIMEOUT
 from src.shared.log_safety import sanitize_for_log
 from src.shared.stage_metrics import stage_timer
 from src.github_client.diff import get_pr_files, get_push_files, ChangedFile
@@ -279,6 +278,11 @@ async def _regate_pr_if_needed(
     owner_token: str = settings.github_token
     if repo.owner and repo.owner.plaintext_token:
         owner_token = repo.owner.plaintext_token
+    if existing.result is None:
+        # result=None 이면 run_gate_check 내부에서 AttributeError 발생 — 조기 종료
+        # Skip if result is None to avoid AttributeError inside run_gate_check
+        logger.warning("_regate_pr_if_needed: analysis %d has no result, skipping gate", existing.id)
+        return
     try:
         await run_gate_check(
             repo_name=repo_name,
@@ -318,6 +322,11 @@ async def _race_recover_existing(
         repo_config = None
 
     if params.pr_number is None or existing.pr_number is not None:
+        return repo_config
+    if existing.result is None:
+        # result=None 이면 run_gate_check 내부에서 AttributeError 발생 — 조기 종료
+        # Skip if result is None to avoid AttributeError inside run_gate_check
+        logger.warning("_race_recover_existing: analysis %d has no result, skipping gate", existing.id)
         return repo_config
 
     try:
@@ -438,7 +447,7 @@ async def _send_notifications(notify_tasks: list, task_names: list[str]) -> None
     """알림 채널들을 병렬 실행하고 실패를 로그로 기록한다."""
     results = await asyncio.gather(*notify_tasks, return_exceptions=True)
     for idx, exc in enumerate(results):
-        if isinstance(exc, Exception):
+        if isinstance(exc, BaseException):
             name = task_names[idx] if idx < len(task_names) else "unknown"
             logger.error("Notification [%s] failed: %s", name, exc,
                          exc_info=(type(exc), exc, exc.__traceback__))
