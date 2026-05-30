@@ -446,3 +446,47 @@ def test_security_headers_include_csp(client):
     assert "default-src 'self'" in csp, f"CSP default-src 'self' 없음: {csp!r}"
     assert "script-src" in csp, f"CSP script-src 없음: {csp!r}"
     assert "frame-ancestors 'none'" in csp, f"CSP frame-ancestors 없음: {csp!r}"
+
+
+# --- LimitBodySizeMiddleware ValueError 회귀 가드 ---
+# Content-Length 헤더가 숫자가 아닐 때 ValueError 가 발생하지 않고 400 을 반환해야 함
+# Regression guard: LimitBodySizeMiddleware must handle non-numeric Content-Length gracefully
+
+def test_limit_body_size_413_when_content_length_exceeds_10mb(client):
+    """Content-Length 가 10MB + 1바이트(10485761)이면 413 Request Entity Too Large 반환.
+    Returns 413 when Content-Length header exceeds the 10 MB limit by one byte.
+    """
+    # 10MB + 1 = 10485761 — _MAX_BODY(10485760) 초과
+    # 10MB + 1 = 10485761 — exceeds _MAX_BODY (10 * 1024 * 1024)
+    response = client.get("/health", headers={"Content-Length": "10485761"})
+    assert response.status_code == 413, (
+        f"10MB 초과 요청이 413 을 반환해야 하는데 {response.status_code} 반환"
+    )
+
+
+def test_limit_body_size_400_when_content_length_malformed(client):
+    """Content-Length 헤더가 숫자로 변환 불가능한 값이면 400 Bad Request 반환.
+    Returns 400 when Content-Length cannot be parsed as an integer (ValueError guard).
+
+    회귀 위험: int(content_length) 직접 호출 시 ValueError 로 500 반환.
+    Regression risk: calling int(content_length) without try/except raises ValueError → 500.
+    """
+    # "not-a-number" → int() 호출 시 ValueError 발생 — 400 으로 변환되어야 함
+    # "not-a-number" → int() raises ValueError — must be caught and returned as 400
+    response = client.get("/health", headers={"Content-Length": "not-a-number"})
+    assert response.status_code == 400, (
+        f"잘못된 Content-Length 가 400 을 반환해야 하는데 {response.status_code} 반환 "
+        f"— ValueError 미처리 회귀 가드 실패"
+    )
+
+
+def test_limit_body_size_passes_normal_content_length(client):
+    """Content-Length 가 정상 범위(1024바이트)이면 미들웨어를 통과하고 200 반환.
+    Passes through LimitBodySizeMiddleware and returns 200 for a normal Content-Length value.
+    """
+    # 1024바이트 — _MAX_BODY(10485760) 미만이므로 통과
+    # 1024 bytes — well within _MAX_BODY, middleware must pass through
+    response = client.get("/health", headers={"Content-Length": "1024"})
+    assert response.status_code == 200, (
+        f"정상 Content-Length(1024) 요청이 200 을 반환해야 하는데 {response.status_code} 반환"
+    )

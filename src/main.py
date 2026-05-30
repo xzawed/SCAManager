@@ -44,8 +44,15 @@ class LimitBodySizeMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-pu
 
     async def dispatch(self, request: Request, call_next) -> Response:
         content_length = request.headers.get("content-length")
-        if content_length and int(content_length) > self._MAX_BODY:
-            return Response("Request body too large", status_code=413)
+        if content_length:
+            try:
+                body_size = int(content_length)
+            except ValueError:
+                # 비정형 Content-Length 헤더 — 500 전파 차단
+                # Malformed Content-Length header — prevent 500 propagation
+                return Response("Invalid Content-Length", status_code=400)
+            if body_size > self._MAX_BODY:
+                return Response("Request body too large", status_code=413)
         return await call_next(request)
 
 
