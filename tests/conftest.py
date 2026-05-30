@@ -18,6 +18,10 @@ os.environ["ANTHROPIC_API_KEY"] = "sk-test-key"
 os.environ["GITHUB_CLIENT_ID"] = "test-github-client-id"
 os.environ["GITHUB_CLIENT_SECRET"] = "test-github-client-secret"
 os.environ["SESSION_SECRET"] = "test-session-secret-32-chars-long!"
+# Claude 모델 기본값 명시 — .env.example 이 빈값으로 설정되어 Python default 를 override 하는 버그 방지
+# Explicitly set Claude model defaults — .env.example sets empty values that would override Python defaults
+os.environ["CLAUDE_REVIEW_MODEL"] = "claude-sonnet-4-6"
+os.environ["CLAUDE_INSIGHT_MODEL"] = "claude-haiku-4-5"
 
 from src.main import app
 from src.ui.routes import add_repo as _add_repo_module
