@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [사이클 139 (5+1 에이전트 조사 기반 품질 개선 4 Phase — Code Scanning·alembic·Rate Limiting·알림·dashboard, 2026-05-30)](#사이클-139)
 - [사이클 138 (대시보드 server-side auto-detect 제거 — 항상 개요 표시, 2026-05-27)](#사이클-138)
 - [사이클 137 (대시보드 localStorage redirect 버그 수정, 2026-05-26)](#사이클-137)
 - [사이클 136 (analysis_detail 최상단/맨하단 디자인 마감 개선, 2026-05-25)](#사이클-136)
@@ -47,6 +48,25 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 사이클 139
+
+**날짜**: 2026-05-30 | **PR**: #660~#664 | **상태**: ✅ 머지 완료
+
+**작업 내용**: 5+1 다중 에이전트 정밀 조사 결과 기반 4 Phase 품질 개선
+
+| Phase | PR | 내용 |
+|-------|-----|------|
+| Code Scanning | #660 | CodeQL py/unused-import 8건 수정 + false-positive 26건 dismiss |
+| A (Critical) | #661 | alembic 0035 revision 중복 해소 → 0036 renumber (DB 무결성 복구) |
+| B (High) | #662 | slowapi Rate Limiting 추가 — API 엔드포인트 4개 60req/min IP 제한 |
+| C (Medium) | #663 | 알림 채널 엣지 케이스 — Slack 3000자 방어 + Email TLS + Telegram retry_after=0 |
+| D (Low) | #664 | dashboard_service 복잡도 축소 — `_handle_insight_error()` 헬퍼 추출, pylint 10.00 복원 |
+
+**신규 테스트**: +13건 (단위 3022→3035)
+**조사 방법**: 5 에이전트 병렬 조사 (httpx·GateAction·보안·알림·기술부채) + 1 cross-verify → 계획 수립 후 순차 실행
+
+---
 
 ## 사이클 138
 
