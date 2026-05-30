@@ -1,7 +1,6 @@
 """API Rate Limiting 테스트.
 API rate limiting tests.
 """
-import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from slowapi import Limiter, _rate_limit_exceeded_handler
