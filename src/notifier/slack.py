@@ -11,7 +11,7 @@ from src.i18n.loader import get_text
 from src.scorer.calculator import ScoreResult
 from src.analyzer.io.static import StaticAnalysisResult
 from src.analyzer.io.ai_review import AiReviewResult
-from src.notifier._common import format_ref, get_all_issues, truncate_issue_msg
+from src.notifier._common import format_ref, get_all_issues, truncate_issue_msg, truncate_message
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,9 @@ def _build_payload(  # pylint: disable=too-many-positional-arguments,too-many-lo
         "fields": fields,
     }
     if footer_text:
-        attachment["text"] = footer_text
+        # Slack attachment.text 3000자 제한 방어 — 장문 AI 요약 + 이슈 목록 누적 시 초과 가능
+        # Guard against Slack attachment.text 3000-char limit for long AI summaries + issue lists
+        attachment["text"] = truncate_message(footer_text, 3000)
 
     return {"text": text, "attachments": [attachment]}
 

@@ -271,3 +271,67 @@ def test_build_html_escapes_xss_in_issue_message():
     )
     assert "<script>" not in html
     assert "&lt;script&gt;" in html
+
+
+# ---------------------------------------------------------------------------
+# TLS / SMTP 연결 엣지 케이스 (Phase C 신규)
+# TLS / SMTP connection edge cases (Phase C new)
+# ---------------------------------------------------------------------------
+
+async def test_send_email_called_with_use_tls_true():
+    """aiosmtplib.send()가 use_tls=True로 호출되어야 한다.
+    aiosmtplib.send() must be called with use_tls=True.
+    """
+    with patch("src.notifier.email.aiosmtplib") as mock_smtp:
+        mock_smtp.send = AsyncMock(return_value=None)
+        await send_email_notification(
+            recipients="test@example.com",
+            repo_name="owner/repo",
+            commit_sha="abc1234",
+            score_result=_make_score(),
+            analysis_results=_make_analysis(),
+            smtp_host="smtp.example.com",
+            smtp_port=587,
+            smtp_user="user",
+            smtp_pass="pass",
+        )
+    call_kwargs = mock_smtp.send.await_args.kwargs
+    assert call_kwargs.get("use_tls") is True, "use_tls must be True"
+
+
+async def test_send_email_smtp_tls_error_propagates():
+    """TLS 협상 실패(SMTPNotSupported)는 예외로 전파되어야 한다.
+    SMTPNotSupported must propagate when TLS negotiation fails.
+    """
+    with patch("src.notifier.email.aiosmtplib") as mock_smtp:
+        mock_smtp.send = AsyncMock(
+            side_effect=aiosmtplib.SMTPNotSupported("TLS not available")
+        )
+        with pytest.raises(aiosmtplib.SMTPNotSupported):
+            await send_email_notification(
+                recipients="test@example.com",
+                repo_name="owner/repo",
+                commit_sha="abc1234",
+                score_result=_make_score(),
+                analysis_results=_make_analysis(),
+                smtp_host="smtp.example.com",
+            )
+
+
+async def test_send_email_smtp_server_disconnected_propagates():
+    """서버 연결 끊김(SMTPServerDisconnected)은 예외로 전파되어야 한다.
+    SMTPServerDisconnected must propagate when server connection drops.
+    """
+    with patch("src.notifier.email.aiosmtplib") as mock_smtp:
+        mock_smtp.send = AsyncMock(
+            side_effect=aiosmtplib.SMTPServerDisconnected("Connection lost")
+        )
+        with pytest.raises(aiosmtplib.SMTPServerDisconnected):
+            await send_email_notification(
+                recipients="test@example.com",
+                repo_name="owner/repo",
+                commit_sha="abc1234",
+                score_result=_make_score(),
+                analysis_results=_make_analysis(),
+                smtp_host="smtp.example.com",
+            )
