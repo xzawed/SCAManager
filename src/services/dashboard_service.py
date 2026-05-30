@@ -38,6 +38,7 @@ from src.models.repository import Repository
 from src.scorer.calculator import calculate_grade
 from src.shared.anthropic_caching import build_cached_system_param
 from src.shared.claude_metrics import extract_anthropic_usage, log_claude_api_call
+from src.repositories import insight_narrative_cache_repo
 from src.shared.lang_names import LANG_NAMES
 
 logger = logging.getLogger(__name__)
@@ -693,6 +694,25 @@ def _build_insight_response(
     }
 
 
+def _handle_insight_error(
+    db: Session,
+    *,
+    user_id: int | None,
+    days: int,
+    language: str,
+    error_type: str,
+    now: datetime,
+) -> dict[str, Any]:
+    """에러 발생 시 cache에 기록(user_id 있을 때만) 후 error 응답 dict 반환.
+    Records error in cache when user_id is set, then returns error response dict.
+    """
+    if user_id is not None:
+        insight_narrative_cache_repo.record_error(
+            db, user_id=user_id, days=days, language=language, error_type=error_type, now=now,
+        )
+    return _build_insight_response(status=error_type, days=days)
+
+
 def _extract_insight_json(text: str) -> str:
     """Claude 응답에서 JSON 페이로드 추출 — 코드 블록 우선, 첫 `{` ~ 마지막 `}` fallback.
 
@@ -851,7 +871,6 @@ async def insight_narrative(  # pylint: disable=too-many-locals
     # `refresh=True` forces regen (user-explicit Refresh button).
     # Caching only when `user_id` set (admin/legacy paths bypass cache).
     if user_id is not None:
-        from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
         if refresh:
             insight_narrative_cache_repo.invalidate(db, user_id=user_id, days=days)
         else:
@@ -871,12 +890,9 @@ async def insight_narrative(  # pylint: disable=too-many-locals
     # 데이터 0건이면 Claude API 호출 비용 발생 안 시킴 (cost-saver early return)
     # Skip Claude API call when there's no data (cost-saver early return)
     if int(kpi.get("analysis_count", {}).get("value", 0) or 0) == 0:
-        if user_id is not None:
-            from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
-            insight_narrative_cache_repo.record_error(
-                db, user_id=user_id, days=days, language=language, error_type="no_data", now=_now,
-            )
-        return _build_insight_response(status="no_data", days=days)
+        return _handle_insight_error(
+            db, user_id=user_id, days=days, language=language, error_type="no_data", now=_now,
+        )
 
     user_prompt = _build_insight_user_prompt(
         days=days, kpi=kpi, trend=trend, frequent=frequent, auto_merge=auto_merge,
@@ -890,27 +906,20 @@ async def insight_narrative(  # pylint: disable=too-many-locals
     # Phase 2 d-🅓 (Cycle 74) — Insight-only Haiku (67% cheaper, AI review keeps Sonnet)
     text = await _call_insight_claude_api(client, settings.claude_insight_model, user_prompt)
     if text is None:
-        if user_id is not None:
-            from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
-            insight_narrative_cache_repo.record_error(
-                db, user_id=user_id, days=days, language=language, error_type="api_error", now=_now,
-            )
-        return _build_insight_response(status="api_error", days=days)
+        return _handle_insight_error(
+            db, user_id=user_id, days=days, language=language, error_type="api_error", now=_now,
+        )
 
     cards = _parse_insight_cards(text)
     if cards is None:
-        if user_id is not None:
-            from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
-            insight_narrative_cache_repo.record_error(
-                db, user_id=user_id, days=days, language=language, error_type="parse_error", now=_now,
-            )
-        return _build_insight_response(status="parse_error", days=days)
+        return _handle_insight_error(
+            db, user_id=user_id, days=days, language=language, error_type="parse_error", now=_now,
+        )
 
     response = _build_insight_response(status="success", days=days, cards=cards)
     # Phase 2-B 🅑 — 성공 응답만 캐시 upsert (error/parse_error 는 재시도 필요)
     # Phase 2-B 🅑 — cache only success (error/parse_error need retry).
     if user_id is not None:
-        from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
         insight_narrative_cache_repo.upsert(
             db, user_id=user_id, days=days, language=language, response=response, now=_now,
         )
