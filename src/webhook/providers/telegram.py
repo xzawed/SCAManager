@@ -88,6 +88,14 @@ async def handle_gate_callback(
                 if repo.owner and repo.owner.plaintext_token
                 else settings.github_token
             )
+            if analysis.pr_number is None:
+                # push 이벤트로 생성된 Analysis는 pr_number=None — GitHub Review 불가
+                # Analysis created from push event has no pr_number — GitHub Review unavailable
+                logger.warning(
+                    "handle_gate_callback: analysis %d has no pr_number, skipping gate action",
+                    analysis_id,
+                )
+                return
             body = f"{'✅ 승인' if decision == 'approve' else '❌ 반려'} by @{decided_by}"
             await post_github_review(
                 github_token, repo.full_name,
