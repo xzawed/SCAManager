@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [사이클 142 (5+1 에이전트 감사 4 Phase — 보안·API·UI/CSS/i18n, 2026-05-31)](#사이클-142)
 - [사이클 141 (Rate Limiting 테스트 보강 + GateAction 구현 직접 이전, 2026-05-30)](#사이클-141)
 - [사이클 140 (conftest 모델 기본값 fix + GateAction Registry 패턴 도입, 2026-05-30)](#사이클-140)
 - [사이클 139 (5+1 에이전트 조사 기반 품질 개선 4 Phase — Code Scanning·alembic·Rate Limiting·알림·dashboard, 2026-05-30)](#사이클-139)
@@ -50,6 +51,49 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 사이클 142
+
+**날짜**: 2026-05-31 | **PR**: #673~#676 | **상태**: ✅ 머지 완료
+
+**작업 내용**: 5+1 에이전트 감사 결과 4 Phase 전수 이행 — P0 수치 보정 + 즉각 버그 3건 + 보안 4건 + API 보강 + UI/CSS/i18n 보정
+
+| PR | 내용 |
+|----|------|
+| #673 | fix(phase-a): P0 수치 수정 + 즉각 로직 버그 3건 — B1 Telegram pr_number 가드 + B2 pipeline async fix + STATE.md/README 재집계 |
+| #674 | fix(phase-b): 보안 강화 4건 — S1 Telegram fail-closed(401) + S2 SESSION_SECRET RuntimeError + S3 Railway token 미노출 + S4 CSP 헤더 |
+| #675 | fix(phase-c): API 보강 — A1 Rate limiting 10 엔드포인트 확장 + A2 issue_registration async fix + A4 CORS + body 10MB 제한 + limit 상한선 |
+| #676 | fix(phase-d): UI/CSS/i18n — U5 tokens.css phantom 변수 alias 3개 + U4 aria-label i18n (base.html/repo_insights.html) + U3 dashboard 핵심 텍스트 i18n 8건 |
+
+**Phase A 세부** (#673):
+- `src/webhook/providers/telegram.py`: `handle_gate_callback` — `analysis.pr_number is None` 가드 추가 (push Analysis → HTTPError 방지)
+- `src/worker/pipeline.py`: async/await 블로킹 해소
+- `docs/STATE.md`/`README.md`: 단위 테스트 3061 → 3213 실측 재집계 (과소집계 152건 보정)
+
+**Phase B 세부** (#674):
+- S1: Telegram webhook secret 미설정 → `skip` → **401** fail-closed 변경 (autouse fixture 통일)
+- S2: `SESSION_SECRET` 32자 미만 → `ValueError` → **RuntimeError** 명시적 서버 중단
+- S3: `railway.py` 토큰 검증 시 시크릿 헤더 강제
+- S4: `main.py` CSP 헤더 추가 (Content-Security-Policy)
+- 신규 테스트: +3건 (S2 RuntimeError ×2, S4 CSP ×1 — 단위 3213→3216)
+
+**Phase C 세부** (#675):
+- A1: Rate limiting — repos.py PUT/DELETE (HEAVY), hook.py GET/POST (API), repo_report.py, issue_registration.py (HEAVY/API) 10개 엔드포인트 확장
+- A2: `issue_registration.py` — `asyncio.to_thread` 격리 (register/get_status/repo_summary sync DB 블로킹 해소)
+- A4: `main.py` CORS 미들웨어 — `APP_BASE_URL` 기반 명시적 `allow_origins`
+- P2: limit/skip `Annotated[int, Query(ge=, le=)]` 상한선 (repos.py, stats.py, repo_report.py)
+- `LimitBodySizeMiddleware`: Content-Length > 10MB → 413
+- `conftest.py` autouse 픽스처: rate limiter 인메모리 카운터 테스트 간 초기화
+- 신규 테스트: +4건 (conftest autouse fixture 효과 — 단위 3216→3220)
+
+**Phase D 세부** (#676):
+- U5: `tokens.css` `[data-theme]` alias 3개 추가 (`--text-muted→--text-2`, `--text-subtle→--text-3`, `--border→--border-subtle`) — dark/catppuccin Chart.js axis 저대비 해소
+- U4: `base.html` 테마/언어 변경 버튼 `aria-label` → `common.theme_aria`/`common.lang_aria` (ko/en/ja)
+- U4+: `repo_insights.html` table/canvas aria-label → `repo_insights.*_aria` i18n
+- U3: `dashboard.html` 하드코딩 한국어 8건 → `dashboard.*` i18n 키 (12개 신규 키, ko/en/ja)
+- 신규 테스트: 0건 (단위 3220 유지)
+
+**신규 테스트**: +7건 (#674 +3, #675 +4 — 단위 3213→3220, 전체 3364→3371)
 
 ## 사이클 141
 
