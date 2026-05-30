@@ -1,7 +1,8 @@
 """Repository and config REST API endpoints (/api/repos/*)."""
 from typing import Literal
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field, model_validator
+from src.middleware.rate_limiter import limiter, RATE_LIMIT_API
 from src.api.auth import require_api_key
 from src.api.deps import get_repo_or_404
 from src.constants import (
@@ -61,7 +62,8 @@ class RepoConfigUpdate(BaseModel):
 
 
 @router.get("/repos")
-def list_repos():
+@limiter.limit(RATE_LIMIT_API)
+def list_repos(request: Request):  # pylint: disable=unused-argument
     """등록된 전체 리포지토리 목록을 반환한다."""
     with SessionLocal() as db:
         repos = db.query(Repository).order_by(Repository.created_at.desc()).all()
@@ -73,7 +75,8 @@ def list_repos():
 
 
 @router.get("/repos/{repo_name:path}/analyses")
-def list_repo_analyses(repo_name: str, skip: int = 0, limit: int = 20):
+@limiter.limit(RATE_LIMIT_API)
+def list_repo_analyses(request: Request, repo_name: str, skip: int = 0, limit: int = 20):  # pylint: disable=unused-argument
     """리포지토리 분석 이력 목록을 반환한다."""
     with SessionLocal() as db:
         repo = get_repo_or_404(repo_name, db)
