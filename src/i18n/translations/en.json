@@ -16,7 +16,9 @@
     "no": "No",
     "confirm": "Confirm",
     "no_data": "No data available",
-    "menu_aria": "Open menu"
+    "menu_aria": "Open menu",
+    "theme_aria": "Change theme",
+    "lang_aria": "Change language"
   },
   "header": {
     "welcome": "Welcome, {name}",
@@ -139,7 +141,18 @@
       "no_api_key": "🔑 ANTHROPIC_API_KEY not set — Insight mode requires AI analysis. Please set the key in Railway Variables.",
       "no_data": "📭 Insufficient analysis data in the last {days} days — please try again after results accumulate.",
       "load_failed": "⚠️ AI Insight generation failed ({status}) — please try again later."
-    }
+    },
+    "select_repo_placeholder": "— Select a Repo —",
+    "score_trend": "Score Trend",
+    "issue_category": "Issue Categories",
+    "ai_review_summary": "AI Review Summary",
+    "recommendations": "Recommendations",
+    "repo_not_found": "Selected Repo not found",
+    "insight_link": "View Insights →",
+    "recurring_issues_count": "{count} recurring issues",
+    "trend_improve": "↑ Improved",
+    "trend_decline": "↓ Declined",
+    "trend_stable": "→ Stable"
   },
   "overview": {
     "greeting": "Hello, {name}",
@@ -648,5 +661,9 @@
       "settings_no_repos": "No repositories registered.",
       "settings_header": "📋 Registered repositories:"
     }
+  },
+  "repo_insights": {
+    "recurring_table_aria": "Recurring issues list",
+    "donut_aria": "Issue category ratio chart"
   }
 }

@@ -508,7 +508,7 @@
     <input type="hidden" name="days" value="{{ days }}">
     <select name="repo" class="repos-selector"
             onchange="this.form.submit()" aria-label="Repo 선택">
-      <option value="">— Repo를 선택하세요 —</option>
+      <option value="">{{ 'dashboard.select_repo_placeholder' | i18n_args(locale | default('ko')) }}</option>
       {% for r in summary.repos %}
       <option value="{{ r.full_name }}"
         {% if r.full_name == selected_repo %}selected{% endif %}>
@@ -529,7 +529,7 @@
     {# ① Score trend chart #}
     {% if repo_report.score_trend | length > 1 %}
     <section class="repos-section">
-      <h3>점수 트렌드</h3>
+      <h3>{{ 'dashboard.score_trend' | i18n_args(locale | default('ko')) }}</h3>
       <canvas id="repoTrendChart" height="80"></canvas>
     </section>
     <script>
@@ -624,7 +624,7 @@
     {# ② 이슈 카테고리 분석 #}
     {# ② Issue category analysis #}
     <section class="repos-section">
-      <h3>이슈 카테고리</h3>
+      <h3>{{ 'dashboard.issue_category' | i18n_args(locale | default('ko')) }}</h3>
       {% set bd = repo_report.category_breakdown %}
       <div class="repos-category-grid">
         <div class="repos-cat-card repos-cat-security-error">
@@ -683,7 +683,7 @@
 
   </div>
   {% elif selected_repo %}
-  <p class="repos-empty">선택한 Repo를 찾을 수 없습니다.</p>
+  <p class="repos-empty">{{ 'dashboard.repo_not_found' | i18n_args(locale | default('ko')) }}</p>
   {% endif %}
 
 </div>
@@ -1141,20 +1141,19 @@
             {% endif %}
           </div>
           <div style="font-size:12px; color:var(--text-2); margin-bottom:4px;">
-            반복이슈 {{ card.recurring_issue_count }}종
+            {{ 'dashboard.recurring_issues_count' | i18n_args(locale | default('ko'), count=card.recurring_issue_count) }}
           </div>
           <div style="font-size:12px; color:var(--text-2);">
-            추세
             {% if card.score_trend == 'up' %}
-              <span style="color:var(--success);">↑ 개선</span>
+              <span style="color:var(--success);">{{ 'dashboard.trend_improve' | i18n_args(locale | default('ko')) }}</span>
             {% elif card.score_trend == 'down' %}
-              <span style="color:var(--danger);">↓ 하락</span>
+              <span style="color:var(--danger);">{{ 'dashboard.trend_decline' | i18n_args(locale | default('ko')) }}</span>
             {% else %}
-              <span>→ 유지</span>
+              <span>{{ 'dashboard.trend_stable' | i18n_args(locale | default('ko')) }}</span>
             {% endif %}
           </div>
           <div style="margin-top:10px; font-size:12px; color:var(--accent); font-weight:600;">
-            인사이트 보기 →
+            {{ 'dashboard.insight_link' | i18n_args(locale | default('ko')) }}
           </div>
         </div>
       </a>

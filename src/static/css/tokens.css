@@ -684,6 +684,15 @@
   --btn-on-accent: var(--accent-text-on);
 }
 
+/* Global phantom-token aliases — theme-independent, resolves to per-theme values */
+/* dashboard.html buildTrendChart() / Chart.js axis readVar() fallback 제거용 */
+/* Resolves phantom tokens used by dashboard.html Chart.js axis readVar() calls */
+[data-theme] {
+  --text-muted:  var(--text-2);
+  --text-subtle: var(--text-3);
+  --border:      var(--border-subtle);
+}
+
 /* Selector fallback — support data-theme on both <html> and <body> during migration */
 body[data-theme="dark"]        { color: var(--text-1); }
 body[data-theme="light"]       { color: var(--text-1); }
