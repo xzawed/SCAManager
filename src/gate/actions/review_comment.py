@@ -1,13 +1,17 @@
 """ReviewCommentAction — PR에 AI 리뷰 댓글을 게시하는 Gate 액션.
 ReviewCommentAction — posts AI review comment to PR.
 
-구현은 engine.py의 _run_review_comment()에 위임한다.
-테스트는 src.gate.engine.post_pr_comment 등 engine 네임스페이스로 패치 가능.
-Delegates to engine.py's _run_review_comment(). Tests can patch engine namespace symbols.
+Sprint E-final: 구현이 이 모듈에 직접 포함됨 (engine.py 위임 제거).
+Sprint E-final: Implementation lives here directly (delegation to engine.py removed).
 """
 import logging
 
+import httpx
+
+from src.database import SessionLocal
 from src.gate.actions import GateAction, GateContext, register
+from src.notifier.github_comment import post_pr_comment_from_result as post_pr_comment
+from src.notifier._language import resolve_notification_language
 
 logger = logging.getLogger(__name__)
 
@@ -16,8 +20,8 @@ class ReviewCommentAction(GateAction):
     """PR Review Comment Gate 옵션.
     Posts a detailed AI review comment to the PR when pr_review_comment=True.
 
-    P0-H: 실제 구현(_run_review_comment)이 독립 SessionLocal()을 사용.
-    P0-H: Actual impl (_run_review_comment) opens its own SessionLocal().
+    P0-H: 독립 SessionLocal() 사용 — asyncio.gather 병렬 실행 시 Session 공유 금지.
+    P0-H: Uses independent SessionLocal() — do not share with gather siblings.
     """
 
     def is_applicable(self, config) -> bool:
@@ -25,15 +29,27 @@ class ReviewCommentAction(GateAction):
         return bool(config.pr_review_comment)
 
     async def execute(self, ctx: GateContext) -> None:
-        """engine.py의 _run_review_comment에 위임한다.
-        Delegates to engine.py's _run_review_comment.
+        """PR에 AI 리뷰 댓글을 게시한다.
+        Posts AI review comment to PR.
         """
-        # 지연 import — engine.py ↔ actions/ 순환 import 방지
-        # Lazy import to avoid circular import between engine.py and actions/
-        from src.gate import engine  # pylint: disable=import-outside-toplevel
-        await engine._run_review_comment(  # pylint: disable=protected-access
-            ctx.config, ctx.github_token, ctx.repo_name, ctx.pr_number, ctx.result,
-        )
+        if not ctx.config.pr_review_comment:
+            return
+        try:
+            # Phase 3 PR-11 — 3-layer 사용자 언어 결정
+            # Phase 3 PR-11 — 3-layer language resolve
+            with SessionLocal() as db:
+                language = resolve_notification_language(db, config=ctx.config)
+            await post_pr_comment(
+                github_token=ctx.github_token,
+                repo_name=ctx.repo_name,
+                pr_number=ctx.pr_number,
+                result=ctx.result,
+                language=language,
+            )
+        except (httpx.HTTPError, KeyError) as exc:
+            # 예외 타입만 기록 — exc 본문에 HTTP 응답 바디가 포함될 수 있음
+            # Log only the exception type — exc body may contain HTTP response details.
+            logger.error("PR Review Comment 실패: %s", type(exc).__name__)
 
 
 register(ReviewCommentAction())

@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [사이클 141 (Rate Limiting 테스트 보강 + GateAction 구현 직접 이전, 2026-05-30)](#사이클-141)
 - [사이클 140 (conftest 모델 기본값 fix + GateAction Registry 패턴 도입, 2026-05-30)](#사이클-140)
 - [사이클 139 (5+1 에이전트 조사 기반 품질 개선 4 Phase — Code Scanning·alembic·Rate Limiting·알림·dashboard, 2026-05-30)](#사이클-139)
 - [사이클 138 (대시보드 server-side auto-detect 제거 — 항상 개요 표시, 2026-05-27)](#사이클-138)
@@ -49,6 +50,29 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 사이클 141
+
+**날짜**: 2026-05-30 | **PR**: #669~#670 | **상태**: 🔄 진행 중
+
+**작업 내용**: Rate Limiting 테스트 보강 + GateAction 구현 직접 이전 (Sprint E-final)
+
+| PR | 내용 |
+|----|------|
+| #669 | test(security): Rate Limiting 테스트 보강 — 엔드포인트 서명·429 형식·스토리지 검증 (+9 단위 테스트) |
+| #670 | refactor(gate): ApproveAction·ReviewCommentAction에 구현 직접 이전 — engine.py 위임 제거 |
+
+**GateAction Sprint E-final 세부** (#670):
+- `approve.py`: `_run_auto` / `_run_semi_auto` 메서드 직접 구현 (`gate_decision_repo.upsert()` 직접 호출)
+- `review_comment.py`: `post_pr_comment` + `resolve_notification_language` 직접 호출 구현
+- 이전 위임 경로(`engine._run_approve_decision`, `engine._run_review_comment`) 완전 제거
+- `test_engine.py` 3개 테스트 패치 경로 수정: `engine.SessionLocal`/`engine.save_gate_decision` → `actions.approve.SessionLocal`/`actions.approve.gate_decision_repo`
+- P0-H 규약 유지: 각 Action 독립 SessionLocal() 사용, asyncio.gather 내 세션 공유 없음
+- 신규 테스트 0건 (리팩토링만) — 단위 3061 유지
+
+**신규 테스트**: +9건 (#669 Rate Limiting — 단위 3052→3061)
+
+---
 
 ## 사이클 140
 
