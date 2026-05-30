@@ -152,7 +152,26 @@
     "recurring_issues_count": "繰り返しイシュー{count}件",
     "trend_improve": "↑ 改善",
     "trend_decline": "↓ 低下",
-    "trend_stable": "→ 維持"
+    "trend_stable": "→ 維持",
+    "repos": {
+      "kpi_avg_score": "平均スコア",
+      "kpi_connected_repos": "接続リポ",
+      "kpi_warning": "警告",
+      "grade_distribution": "グレード分布",
+      "grade_bar_tooltip": "{grade}グレード {count}件",
+      "select_repo_aria": "リポを選択",
+      "chart_avg_score_label": "平均スコア",
+      "cat_security_error": "セキュリティエラー",
+      "cat_security_warning": "セキュリティ警告",
+      "cat_quality_error": "品質エラー",
+      "cat_quality_warning": "品質警告",
+      "recurring_count": "{count}回繰り返し"
+    },
+    "kpi_foot_avg": "直近{days}日平均",
+    "kpi_unit_count": "件",
+    "score_trend_subtitle": "スコアトレンド",
+    "repo_insights_title": "🗂 リポ別インサイト",
+    "recent_days": "直近{days}日"
   },
   "overview": {
     "greeting": "こんにちは、{name}さん",

@@ -430,17 +430,17 @@
   {# Top summary (B+C): KPI cards + grade distribution bar + warning banners #}
   <div class="kpi-row repos-kpi-grid">
     <div class="kpi">
-      <div class="kpi__label"><span>평균 점수</span></div>
+      <div class="kpi__label"><span>{{ 'dashboard.repos.kpi_avg_score' | i18n_args(locale | default('ko')) }}</span></div>
       <div class="kpi__value">
         <span class="t-num">{% if summary.summary.avg_score is not none %}{{ summary.summary.avg_score }}{% else %}—{% endif %}</span>
       </div>
     </div>
     <div class="kpi">
-      <div class="kpi__label"><span>연결 Repo</span></div>
+      <div class="kpi__label"><span>{{ 'dashboard.repos.kpi_connected_repos' | i18n_args(locale | default('ko')) }}</span></div>
       <div class="kpi__value"><span class="t-num">{{ summary.summary.total_repos }}</span></div>
     </div>
     <div class="kpi">
-      <div class="kpi__label"><span>경고</span></div>
+      <div class="kpi__label"><span>{{ 'dashboard.repos.kpi_warning' | i18n_args(locale | default('ko')) }}</span></div>
       <div class="kpi__value">
         <span class="t-num" style="color: {% if summary.summary.warning_count > 0 %}var(--danger){% else %}var(--success){% endif %}">
           {{ summary.summary.warning_count }}
@@ -455,12 +455,12 @@
   {% set total = summary.summary.total_repos %}
   {% if total > 0 %}
   <div class="repos-grade-bar-wrap">
-    <div class="repos-grade-bar-label">등급 분포</div>
+    <div class="repos-grade-bar-label">{{ 'dashboard.repos.grade_distribution' | i18n_args(locale | default('ko')) }}</div>
     <div class="repos-grade-bar">
       {% for grade, color in [('A','var(--grade-a)'),('B','var(--grade-b)'),('C','var(--grade-c)'),('D','var(--grade-d)'),('F','var(--grade-f)')] %}
         {% set count = dist.get(grade, 0) %}
         {% if count > 0 %}
-        <div class="repos-grade-seg" title="{{ grade }}등급 {{ count }}개"
+        <div class="repos-grade-seg" title="{{ 'dashboard.repos.grade_bar_tooltip' | i18n_args(locale | default('ko'), grade=grade, count=count) }}"
              style="width:{{ (count / total * 100) | round(1) }}%; background:{{ color }}">
         </div>
         {% endif %}
@@ -507,7 +507,7 @@
     <input type="hidden" name="mode" value="repos">
     <input type="hidden" name="days" value="{{ days }}">
     <select name="repo" class="repos-selector"
-            onchange="this.form.submit()" aria-label="Repo 선택">
+            onchange="this.form.submit()" aria-label="{{ 'dashboard.repos.select_repo_aria' | i18n_args(locale | default('ko')) }}">
       <option value="">{{ 'dashboard.select_repo_placeholder' | i18n_args(locale | default('ko')) }}</option>
       {% for r in summary.repos %}
       <option value="{{ r.full_name }}"
@@ -566,7 +566,7 @@
           data: {
             labels: trendData.map(function(d) { return d.date; }),
             datasets: [{
-              label: '평균 점수',
+              label: '{{ "dashboard.repos.chart_avg_score_label" | i18n_args(locale | default("ko")) | e }}',
               data: trendData.map(function(d) { return d.avg_score; }),
               borderColor: accent,
               backgroundColor: grad,
@@ -629,19 +629,19 @@
       <div class="repos-category-grid">
         <div class="repos-cat-card repos-cat-security-error">
           <div class="repos-cat-value">{{ bd.security_error }}</div>
-          <div class="repos-cat-label">보안 에러</div>
+          <div class="repos-cat-label">{{ 'dashboard.repos.cat_security_error' | i18n_args(locale | default('ko')) }}</div>
         </div>
         <div class="repos-cat-card repos-cat-security-warn">
           <div class="repos-cat-value">{{ bd.security_warning }}</div>
-          <div class="repos-cat-label">보안 경고</div>
+          <div class="repos-cat-label">{{ 'dashboard.repos.cat_security_warning' | i18n_args(locale | default('ko')) }}</div>
         </div>
         <div class="repos-cat-card repos-cat-quality-error">
           <div class="repos-cat-value">{{ bd.code_quality_error }}</div>
-          <div class="repos-cat-label">품질 에러</div>
+          <div class="repos-cat-label">{{ 'dashboard.repos.cat_quality_error' | i18n_args(locale | default('ko')) }}</div>
         </div>
         <div class="repos-cat-card repos-cat-quality-warn">
           <div class="repos-cat-value">{{ bd.code_quality_warning }}</div>
-          <div class="repos-cat-label">품질 경고</div>
+          <div class="repos-cat-label">{{ 'dashboard.repos.cat_quality_warning' | i18n_args(locale | default('ko')) }}</div>
         </div>
       </div>
     </section>
@@ -650,7 +650,7 @@
     {# ③ AI review summary (recurring issue patterns) #}
     {% if repo_report.ai_suggestions %}
     <section class="repos-section">
-      <h3>AI 리뷰 요약</h3>
+      <h3>{{ 'dashboard.ai_review_summary' | i18n_args(locale | default('ko')) }}</h3>
       <ul class="repos-suggestions">
         {% for s in repo_report.ai_suggestions[:5] %}
         <li class="repos-suggestion-item">
@@ -666,7 +666,7 @@
     {# ⑤ Recommendations based on recurring issues #}
     {% if repo_report.recurring_issues %}
     <section class="repos-section">
-      <h3>개선 권장 사항</h3>
+      <h3>{{ 'dashboard.recommendations' | i18n_args(locale | default('ko')) }}</h3>
       <ul class="repos-recommendations">
         {% for issue in repo_report.recurring_issues[:5] %}
         <li class="repos-rec-item">
@@ -674,7 +674,7 @@
             {{ (issue.severity or 'WARNING') | upper }}
           </span>
           <span class="repos-rec-msg">{{ issue.message }}</span>
-          <span class="repos-rec-count">{{ issue.count }}회 반복</span>
+          <span class="repos-rec-count">{{ 'dashboard.repos.recurring_count' | i18n_args(locale | default('ko'), count=issue.count) }}</span>
         </li>
         {% endfor %}
       </ul>
@@ -926,7 +926,7 @@
       {% else %}
         <div class="kpi__delta kpi__delta--flat">— {{ 'dashboard.delta.no_comparison' | i18n_args(locale | default('ko')) }}</div>
       {% endif %}
-      <div class="kpi__foot">최근 {{ days }}일 평균</div>
+      <div class="kpi__foot">{{ 'dashboard.kpi_foot_avg' | i18n_args(locale | default('ko'), days=days) }}</div>
     </div>
 
     {# ② 분석 건수 / Analysis count #}
@@ -934,7 +934,7 @@
       <div class="kpi__label"><span>{{ 'dashboard.kpi.analysis_count' | i18n_args(locale | default('ko')) }}</span></div>
       <div class="kpi__value">
         <span class="t-num" data-count="{{ kpi.analysis_count.value }}">{{ kpi.analysis_count.value }}</span>
-        <span class="kpi__unit">건</span>
+        <span class="kpi__unit">{{ 'dashboard.kpi_unit_count' | i18n_args(locale | default('ko')) }}</span>
       </div>
       {% if kpi.analysis_count.delta > 0 %}
         <div class="kpi__delta kpi__delta--up">▲ +{{ kpi.analysis_count.delta }} {{ 'dashboard.delta.vs_period' | i18n_args(locale | default('ko'), days=days) }}</div>
@@ -1028,7 +1028,7 @@
   <div class="card dash-grid--full" style="margin-bottom: var(--space-5, 1.25rem);">
     <div class="card__head">
       <div>
-        <div style="font-size: var(--fs-xs, 0.75rem); color: var(--text-2, rgba(255,255,255,0.6)); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; margin-bottom: 4px;">점수 추세</div>
+        <div style="font-size: var(--fs-xs, 0.75rem); color: var(--text-2, rgba(255,255,255,0.6)); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; margin-bottom: 4px;">{{ 'dashboard.score_trend_subtitle' | i18n_args(locale | default('ko')) }}</div>
         <div class="card__title">{{ 'dashboard.trend' | i18n_args(locale | default('ko'), days=days) }}</div>
       </div>
     </div>
@@ -1116,8 +1116,8 @@
   {% if repo_cards %}
   <div style="margin-top: 24px;">
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; flex-wrap:wrap; gap:8px;">
-      <h2 class="dash-section-title">🗂 리포별 인사이트</h2>
-      <span style="font-size:12px; color:var(--text-2);">최근 {{ days }}일</span>
+      <h2 class="dash-section-title">{{ 'dashboard.repo_insights_title' | i18n_args(locale | default('ko')) }}</h2>
+      <span style="font-size:12px; color:var(--text-2);">{{ 'dashboard.recent_days' | i18n_args(locale | default('ko'), days=days) }}</span>
     </div>
     <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); gap:16px;">
       {% for card in repo_cards %}

@@ -152,7 +152,26 @@
     "recurring_issues_count": "{count} recurring issues",
     "trend_improve": "↑ Improved",
     "trend_decline": "↓ Declined",
-    "trend_stable": "→ Stable"
+    "trend_stable": "→ Stable",
+    "repos": {
+      "kpi_avg_score": "Avg Score",
+      "kpi_connected_repos": "Connected Repos",
+      "kpi_warning": "Warning",
+      "grade_distribution": "Grade Distribution",
+      "grade_bar_tooltip": "{grade} Grade {count} repos",
+      "select_repo_aria": "Select Repo",
+      "chart_avg_score_label": "Avg Score",
+      "cat_security_error": "Security Error",
+      "cat_security_warning": "Security Warning",
+      "cat_quality_error": "Quality Error",
+      "cat_quality_warning": "Quality Warning",
+      "recurring_count": "{count} occurrences"
+    },
+    "kpi_foot_avg": "Recent {days}-day avg",
+    "kpi_unit_count": "analyses",
+    "score_trend_subtitle": "Score Trend",
+    "repo_insights_title": "🗂 Per-Repo Insights",
+    "recent_days": "Recent {days} days"
   },
   "overview": {
     "greeting": "Hello, {name}",
