@@ -46,6 +46,20 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        # S4: CSP — 외부 리소스 로드 차단. script/style 'unsafe-inline' 은 HTMX + 인라인
+        # IIFE 스크립트 지원을 위해 허용 (nonce 기반 strict CSP는 향후 개선 목표).
+        # S4: CSP — blocks external resource loading. 'unsafe-inline' for script/style
+        # is required to support HTMX and inline IIFE scripts (nonce-based strict
+        # CSP is a future improvement goal).
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: https:; "
+            "connect-src 'self'; "
+            "font-src 'self' data:; "
+            "frame-ancestors 'none';"
+        )
         if settings.app_base_url.startswith("https"):
             response.headers["Strict-Transport-Security"] = (
                 "max-age=31536000; includeSubDomains"
@@ -62,7 +76,17 @@ def _run_migrations() -> None:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     """Run DB migrations on startup, then yield control to the application."""
-    if settings.session_secret == "dev-secret-change-in-production":  # nosec B105
+    is_prod_like = settings.app_base_url.startswith("https")
+    _DEFAULT_SESSION_SECRET = "dev-secret-change-in-production"  # nosec B105
+    if settings.session_secret == _DEFAULT_SESSION_SECRET:  # nosec B105
+        if is_prod_like:
+            # S2: 프로덕션(HTTPS)에서 공개 기본값 사용 금지 — 세션 위조 가능
+            # S2: Refuse to start in production with a publicly-known session secret
+            raise RuntimeError(
+                "SESSION_SECRET must be changed in production — "
+                "the default value is publicly known and allows session forgery. "
+                "Set SESSION_SECRET to a random string of 32+ characters."
+            )
         logger.warning(
             "SESSION_SECRET is using the default insecure value — "
             "set SESSION_SECRET environment variable in production!"
@@ -73,7 +97,6 @@ async def lifespan(_app: FastAPI):
             "모든 분석이 기본값(89/B)으로 fallback 됩니다. "
             "Railway Variables 또는 .env 에 키를 설정하세요."
         )
-    is_prod_like = settings.app_base_url.startswith("https")
     if is_prod_like and not (settings.token_encryption_key or "").strip():
         # Phase 2 — opt-in fail-fast: 14-에이전트 감사에서 P1 보안 위험으로 식별
         # (DB 유출 시 모든 GitHub OAuth token + Railway API token 평문 노출).

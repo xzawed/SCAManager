@@ -394,3 +394,55 @@ def test_static_404_no_cache_control_immutable(client):
     assert response.status_code == 404
     cc = response.headers.get("cache-control", "")
     assert "immutable" not in cc, f"404 응답에 immutable 헤더가 붙으면 안 됨: {cc!r}"
+
+
+# --- S2: SESSION_SECRET 프로덕션 강제 (Phase B) ---
+
+def test_lifespan_raises_when_default_session_secret_in_prod():
+    """S2: prod 환경(https)에서 기본 SESSION_SECRET 사용 시 RuntimeError로 기동 차단.
+    S2: Startup must raise RuntimeError when default SESSION_SECRET is used in production.
+    """
+    import pytest as _pytest  # pylint: disable=import-outside-toplevel
+    with patch("src.main._run_migrations"), \
+         patch("src.main.settings") as mock_settings:
+        mock_settings.session_secret = "dev-secret-change-in-production"
+        mock_settings.anthropic_api_key = "sk-ant-test"
+        mock_settings.app_base_url = "https://scamanager.example.com"
+        mock_settings.token_encryption_key = "valid-key"
+        mock_settings.strict_token_encryption = False
+        mock_settings.telegram_webhook_secret = "some-secret"
+        with _pytest.raises(RuntimeError, match="SESSION_SECRET must be changed in production"):
+            with TestClient(app):
+                pass
+
+
+def test_lifespan_warns_default_session_secret_in_dev(caplog):
+    """S2: dev 환경(http)에서는 기본 SESSION_SECRET 사용 시 경고만 출력 — 기동 허용.
+    S2: Dev (http) environment should warn but not raise for default SESSION_SECRET.
+    """
+    import logging as _logging  # pylint: disable=import-outside-toplevel
+    with patch("src.main._run_migrations"), \
+         patch("src.main.settings") as mock_settings:
+        mock_settings.session_secret = "dev-secret-change-in-production"
+        mock_settings.anthropic_api_key = "sk-ant-test"
+        mock_settings.app_base_url = "http://localhost:8000"
+        mock_settings.token_encryption_key = ""
+        mock_settings.strict_token_encryption = False
+        mock_settings.telegram_webhook_secret = ""
+        with caplog.at_level(_logging.WARNING, logger="src.main"):
+            with TestClient(app):
+                pass
+    assert any("SESSION_SECRET" in rec.message for rec in caplog.records)
+
+
+# --- S4: Content-Security-Policy 헤더 (Phase B) ---
+
+def test_security_headers_include_csp(client):
+    """S4: 모든 응답에 Content-Security-Policy 헤더가 포함되어야 한다.
+    S4: All responses must include a Content-Security-Policy header.
+    """
+    response = client.get("/health")
+    csp = response.headers.get("content-security-policy", "")
+    assert "default-src 'self'" in csp, f"CSP default-src 'self' 없음: {csp!r}"
+    assert "script-src" in csp, f"CSP script-src 없음: {csp!r}"
+    assert "frame-ancestors 'none'" in csp, f"CSP frame-ancestors 없음: {csp!r}"

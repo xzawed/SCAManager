@@ -68,6 +68,27 @@ def _parse_gate_callback(data: str) -> "tuple[str, int, str] | None":
     return decision, analysis_id, callback_token
 
 
+def _log_merge_attempt_safe(
+    db, analysis_id, repo_name, pr_number, score, threshold, ok, reason
+) -> None:
+    """merge_attempt 기록 실패가 게이트 콜백을 중단시키지 않도록 격리한다.
+    Isolate merge_attempt logging failures so they do not abort the gate callback.
+    """
+    try:
+        log_merge_attempt(
+            db,
+            analysis_id=analysis_id,
+            repo_name=repo_name,
+            pr_number=pr_number,
+            score=score,
+            threshold=threshold,
+            success=ok,
+            reason=reason,
+        )
+    except Exception as log_exc:  # pylint: disable=broad-except
+        logger.warning("merge_attempt 기록 실패 (pr=%d): %s", pr_number, log_exc)
+
+
 async def handle_gate_callback(
     analysis_id: int,
     decision: str,
@@ -107,22 +128,10 @@ async def handle_gate_callback(
             score = result_dict.get("score", analysis.score or 0)
             if config.auto_merge and score >= config.merge_threshold:
                 ok, reason, *_ = await merge_pr(github_token, repo.full_name, analysis.pr_number)
-                try:
-                    log_merge_attempt(
-                        db,
-                        analysis_id=analysis_id,
-                        repo_name=repo.full_name,
-                        pr_number=analysis.pr_number,
-                        score=score,
-                        threshold=config.merge_threshold,
-                        success=ok,
-                        reason=reason,
-                    )
-                except Exception as log_exc:  # pylint: disable=broad-except
-                    logger.warning(
-                        "merge_attempt 기록 실패 (pr=%d): %s",
-                        analysis.pr_number, log_exc,
-                    )
+                _log_merge_attempt_safe(
+                    db, analysis_id, repo.full_name, analysis.pr_number,
+                    score, config.merge_threshold, ok, reason,
+                )
                 if ok:
                     logger.info("PR #%d manual-approved+auto-merged: %s",
                                 analysis.pr_number, repo.full_name)
@@ -194,11 +203,15 @@ async def telegram_webhook(
     TELEGRAM_WEBHOOK_SECRET 설정 시 X-Telegram-Bot-Api-Secret-Token 헤더를 검증한다.
     Validates X-Telegram-Bot-Api-Secret-Token header when TELEGRAM_WEBHOOK_SECRET is set.
     """
-    if settings.telegram_webhook_secret:
-        provided = x_telegram_bot_api_secret_token or ""
-        if not hmac.compare_digest(provided, settings.telegram_webhook_secret):
-            logger.warning("Telegram webhook: invalid or missing secret token")
-            raise HTTPException(status_code=401, detail="Invalid secret token")
+    if not settings.telegram_webhook_secret:
+        # 시크릿 미설정 — fail-closed: 인증 없이 요청 수락 차단 (S1 보안 강화)
+        # Fail-closed when secret is not configured — reject unauthenticated access
+        logger.warning("Telegram webhook: TELEGRAM_WEBHOOK_SECRET not configured, rejecting request")
+        raise HTTPException(status_code=401, detail="Webhook not configured")
+    provided = x_telegram_bot_api_secret_token or ""
+    if not hmac.compare_digest(provided, settings.telegram_webhook_secret):
+        logger.warning("Telegram webhook: invalid or missing secret token")
+        raise HTTPException(status_code=401, detail="Invalid secret token")
 
     payload = await request.json()
 
