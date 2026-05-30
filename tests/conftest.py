@@ -44,6 +44,19 @@ def _clear_user_repos_cache():
     _add_repo_module._user_repos_cache.clear()
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """Rate limiter 인메모리 카운터를 테스트마다 초기화한다 — 테스트 간 rate limit 누적 방지.
+    Reset in-memory rate limiter counters between tests to prevent cross-test leakage.
+    """
+    from src.middleware.rate_limiter import limiter  # pylint: disable=import-outside-toplevel
+    yield
+    try:
+        limiter._storage.reset()  # limits.MemoryStorage.reset() — 모든 카운터 초기화
+    except Exception:  # pylint: disable=broad-except
+        pass
+
+
 @pytest.fixture
 def client():
     return TestClient(app)

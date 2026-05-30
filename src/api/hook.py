@@ -6,7 +6,8 @@ import hmac
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query, Request
+from src.middleware.rate_limiter import limiter, RATE_LIMIT_API
 from pydantic import BaseModel
 
 from src.database import SessionLocal
@@ -29,7 +30,9 @@ router = APIRouter(prefix="/api/hook")
 # ---------------------------------------------------------------------------
 
 @router.get("/verify")
+@limiter.limit(RATE_LIMIT_API)
 def verify_hook(
+    request: Request,  # pylint: disable=unused-argument
     repo: str,
     token: str | None = Query(default=None),
     authorization: str | None = Header(default=None),
@@ -79,7 +82,8 @@ class HookResultRequest(BaseModel):
 
 
 @router.post("/result")
-def save_hook_result(body: HookResultRequest):
+@limiter.limit(RATE_LIMIT_API)
+def save_hook_result(request: Request, body: HookResultRequest):  # pylint: disable=unused-argument
     """pre-push 훅이 코드리뷰 결과를 전송하는 엔드포인트.
 
     토큰 검증 후 Analysis 레코드를 저장하고 점수를 반환한다.

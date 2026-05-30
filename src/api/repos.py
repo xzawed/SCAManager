@@ -1,8 +1,8 @@
 """Repository and config REST API endpoints (/api/repos/*)."""
-from typing import Literal
-from fastapi import APIRouter, Request
+from typing import Annotated, Literal
+from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel, Field, model_validator
-from src.middleware.rate_limiter import limiter, RATE_LIMIT_API
+from src.middleware.rate_limiter import limiter, RATE_LIMIT_API, RATE_LIMIT_HEAVY
 from src.api.auth import require_api_key
 from src.api.deps import get_repo_or_404
 from src.constants import (
@@ -76,7 +76,12 @@ def list_repos(request: Request):  # pylint: disable=unused-argument
 
 @router.get("/repos/{repo_name:path}/analyses")
 @limiter.limit(RATE_LIMIT_API)
-def list_repo_analyses(request: Request, repo_name: str, skip: int = 0, limit: int = 20):  # pylint: disable=unused-argument
+def list_repo_analyses(
+    request: Request,
+    repo_name: str,
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 20,
+):  # pylint: disable=unused-argument
     """리포지토리 분석 이력 목록을 반환한다."""
     with SessionLocal() as db:
         repo = get_repo_or_404(repo_name, db)
@@ -95,7 +100,8 @@ def list_repo_analyses(request: Request, repo_name: str, skip: int = 0, limit: i
 
 
 @router.put("/repos/{repo_name:path}/config")
-def update_repo_config(repo_name: str, body: RepoConfigUpdate):
+@limiter.limit(RATE_LIMIT_HEAVY)
+def update_repo_config(request: Request, repo_name: str, body: RepoConfigUpdate):  # pylint: disable=unused-argument
     """리포지토리 Gate·알림 설정을 업데이트한다."""
     with SessionLocal() as db:
         record = upsert_repo_config(db, RepoConfigData(
@@ -106,7 +112,8 @@ def update_repo_config(repo_name: str, body: RepoConfigUpdate):
 
 
 @router.delete("/repos/{repo_name:path}")
-def delete_repo_api(repo_name: str):
+@limiter.limit(RATE_LIMIT_HEAVY)
+def delete_repo_api(request: Request, repo_name: str):  # pylint: disable=unused-argument
     """리포지토리와 모든 연관 데이터(Analysis, GateDecision, RepoConfig)를 삭제한다.
 
     API 모드는 사용자 OAuth 토큰이 없으므로 GitHub Webhook은 자동 삭제하지 않는다.

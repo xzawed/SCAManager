@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
@@ -33,6 +34,19 @@ from src.ui.router import router as ui_router
 from src.auth.github import router as auth_router
 
 logger = logging.getLogger(__name__)
+
+
+class LimitBodySizeMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-methods
+    """요청 본문 크기를 제한한다 (DoS 방어).
+    Limits request body size to prevent DoS via oversized payloads."""
+
+    _MAX_BODY = 10 * 1024 * 1024  # 10 MB
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > self._MAX_BODY:
+            return Response("Request body too large", status_code=413)
+        return await call_next(request)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-methods
@@ -181,6 +195,18 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(LimitBodySizeMiddleware)
+# A4: CORS — APP_BASE_URL 기반 명시적 출처 허용 (allow_origins=["*"] 금지)
+# A4: CORS — explicit origin from APP_BASE_URL, never allow_origins=["*"]
+if settings.app_base_url:
+    _origin = settings.app_base_url.rstrip("/")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[_origin],
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "DELETE"],
+        allow_headers=["*"],
+    )
 # Phase 3 postlude — RLS 운영 활성화 미들웨어. Starlette LIFO 미들웨어 스택:
 # add_middleware 마지막 호출이 outer (request 먼저 처리). 원하는 흐름 = SessionMiddleware → RLSSessionMiddleware → route
 # 따라서 RLS 먼저 등록 (inner), SessionMiddleware 나중 등록 (outer — RLS 보다 먼저 호출).

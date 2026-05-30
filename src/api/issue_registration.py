@@ -1,8 +1,10 @@
 """issue_registration API — GitHub Issue 등록 + 상태 조회 엔드포인트.
 issue_registration API — endpoints for registering GitHub Issues and querying state.
 """
+import asyncio
 import httpx
 from fastapi import APIRouter, HTTPException, Request
+from src.middleware.rate_limiter import limiter, RATE_LIMIT_API, RATE_LIMIT_HEAVY
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -70,6 +72,7 @@ def _make_issue_key(req: RegisterRequest) -> str:
 
 
 @router.post("/register", status_code=201)
+@limiter.limit(RATE_LIMIT_HEAVY)
 async def register(request: Request, req: RegisterRequest):
     """AI 분석 이슈를 GitHub Issue로 등록한다.
     Register an AI analysis issue as a GitHub Issue.
@@ -80,8 +83,15 @@ async def register(request: Request, req: RegisterRequest):
 
     issue_key = _make_issue_key(req)
 
+    # A2: 소유권 검증은 sync DB 쿼리 — asyncio.to_thread로 이벤트 루프 차단 방지
+    # A2: Ownership check is sync DB query — offload to thread to avoid blocking event loop
+    def _check_ownership():
+        with SessionLocal() as _db:
+            return _get_analysis_and_repo(_db, req.analysis_id, current_user_id=current_user.id)
+
+    _, repo = await asyncio.to_thread(_check_ownership)
+
     with SessionLocal() as db:
-        _, repo = _get_analysis_and_repo(db, req.analysis_id, current_user_id=current_user.id)
         try:
             result = await register_issue(
                 db,
@@ -117,6 +127,7 @@ async def register(request: Request, req: RegisterRequest):
 
 
 @router.get("/status")
+@limiter.limit(RATE_LIMIT_API)
 async def get_status(request: Request, analysis_id: int):
     """analysis_detail용 등록 이력 + GitHub 상태 동기화 결과를 반환한다.
     Return registration history and synced GitHub state for analysis_detail.
@@ -125,8 +136,13 @@ async def get_status(request: Request, analysis_id: int):
     if not current_user:
         raise HTTPException(status_code=401, detail="Login required")
 
+    def _check():
+        with SessionLocal() as _db:
+            return _get_analysis_and_repo(_db, analysis_id, current_user_id=current_user.id)
+
+    _, repo = await asyncio.to_thread(_check)
+
     with SessionLocal() as db:
-        _, repo = _get_analysis_and_repo(db, analysis_id, current_user_id=current_user.id)
         statuses = await get_analysis_issue_status(
             db,
             analysis_id=analysis_id,
@@ -152,6 +168,7 @@ def _get_repo_or_404(db: Session, repo_id: int, *, current_user_id: int) -> Repo
 
 
 @router.get("/repo-summary")
+@limiter.limit(RATE_LIMIT_API)
 async def repo_summary(request: Request, repo_id: int):
     """repo_detail용 등록 이력 + GitHub 상태를 반환한다.
     Return registration history and GitHub state for repo_detail.
@@ -160,8 +177,13 @@ async def repo_summary(request: Request, repo_id: int):
     if not current_user:
         raise HTTPException(status_code=401, detail="Login required")
 
+    def _check():
+        with SessionLocal() as _db:
+            return _get_repo_or_404(_db, repo_id, current_user_id=current_user.id)
+
+    repo = await asyncio.to_thread(_check)
+
     with SessionLocal() as db:
-        repo = _get_repo_or_404(db, repo_id, current_user_id=current_user.id)
         registrations = await get_repo_issue_summary(
             db,
             repo_id=repo_id,
