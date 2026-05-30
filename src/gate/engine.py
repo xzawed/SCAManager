@@ -1,4 +1,8 @@
-"""Gate Engine — 3개 독립 옵션: Review Comment / Approve / Auto Merge."""
+"""Gate Engine — 3개 독립 옵션: Review Comment / Approve / Auto Merge.
+
+Sprint E: 3개 옵션은 Action 클래스 + GATE_ACTIONS Registry 패턴으로 전환됨.
+Sprint E: The 3 options have been migrated to Action classes via GATE_ACTIONS registry.
+"""
 import asyncio
 import logging
 from datetime import datetime, timezone
@@ -10,6 +14,12 @@ from src.config import settings
 from src.database import SessionLocal  # 독립 세션 열기용 — asyncio.gather 공유 세션 오염 방지
 # SessionLocal imported at module level for independent sessions in asyncio.gather coroutines.
 from src.config_manager.manager import get_repo_config, RepoConfigData
+# Action Registry — 3개 옵션을 GATE_ACTIONS 리스트로 관리. import 시 자동 등록.
+# Action Registry — manages 3 gate options via GATE_ACTIONS list. Registered at import time.
+from src.gate.actions import GATE_ACTIONS, GateContext
+import src.gate.actions.review_comment  # noqa: F401 — registers ReviewCommentAction  # pylint: disable=cyclic-import,unused-import
+import src.gate.actions.approve  # noqa: F401 — registers ApproveAction  # pylint: disable=cyclic-import,unused-import
+import src.gate.actions.auto_merge  # noqa: F401 — registers AutoMergeAction  # pylint: disable=cyclic-import,unused-import
 from src.gate._common import score_from_result as _score_from_result
 from src.gate.github_review import (
     post_github_review, get_pr_mergeable_state, get_pr_base_ref,
@@ -61,43 +71,26 @@ async def run_gate_check(  # pylint: disable=too-many-positional-arguments
         config = get_repo_config(db, repo_name)
     score = result.get("score", 0)
 
-    # Phase H PR-2C: 3 옵션 병렬 실행 (asyncio.gather + return_exceptions=True)
-    # CLAUDE.md 규약 — pr_review_comment·approve_mode·auto_merge 완전 독립.
-    # 직렬 await 시 옵션마다 1-3초 latency 합산 → webhook 응답 지연.
-    # gather 로 병렬화하면 평균 latency 가 가장 느린 옵션 1개 = ~3s 로 단축.
-    # return_exceptions=True 는 한 옵션의 예상 외 예외가 다른 옵션을 cancel
-    # 하지 않도록 보장 (각 옵션 내부에서 이미 try/except 처리하므로 추가 안전망).
-    # Phase H PR-2C: run 3 options in parallel with asyncio.gather. Per CLAUDE.md
-    # contract the options are fully independent; serial await wastes 1-3s each.
-    # `return_exceptions=True` keeps unexpected errors from cancelling siblings.
-    # P0-H 버그 수정: _run_approve_decision/_run_auto_merge 는 각각 독립 SessionLocal()을 열어
-    # asyncio.gather 병렬 실행 시 동일 Session 공유로 인한 identity map 오염·PendingRollbackError 방지.
-    # P0-H fix: both coroutines now open their own independent SessionLocal() so that concurrent
-    # db.commit() calls in asyncio.gather do not corrupt the shared identity map.
-    results = await asyncio.gather(
-        _run_review_comment(config, github_token, repo_name, pr_number, result),
-        _run_approve_decision(
-            config=config,
-            analysis_id=analysis_id,
-            github_token=github_token,
-            repo_name=repo_name,
-            pr_number=pr_number,
-            score=score,
-            result=result,
-        ),
-        _run_auto_merge(
-            config, github_token, repo_name, pr_number, score,
-            analysis_id=analysis_id,
-        ),
+    # Sprint E: GATE_ACTIONS Registry로 3 옵션 병렬 실행.
+    # 각 Action은 내부에서 독립 SessionLocal()을 열어 P0-H 규약 준수.
+    # Sprint E: Dispatch 3 options via GATE_ACTIONS registry in parallel.
+    # Each Action opens its own SessionLocal() to comply with the P0-H invariant.
+    ctx = GateContext(
+        repo_name=repo_name, pr_number=pr_number, analysis_id=analysis_id,
+        result=result, github_token=github_token, config=config, score=score,
+    )
+    applicable = [a for a in GATE_ACTIONS if a.is_applicable(config)]
+    outcomes = await asyncio.gather(
+        *[a.execute(ctx) for a in applicable],
         return_exceptions=True,
     )
     # 옵션별 예상 외 예외 로깅 — 옵션 내부 try/except 가 못 잡은 케이스만
     # Log unexpected exceptions per option — only those not caught internally.
-    for option_name, outcome in zip(("review_comment", "approve", "auto_merge"), results):
+    for action, outcome in zip(applicable, outcomes):
         if isinstance(outcome, BaseException):
             logger.error(
-                "Gate option [%s] unexpected exception: %s",
-                option_name, type(outcome).__name__,
+                "Gate action [%s] unexpected exception: %s",
+                type(action).__name__, type(outcome).__name__,
                 exc_info=(type(outcome), outcome, outcome.__traceback__),
             )
 
@@ -109,15 +102,12 @@ async def _run_review_comment(
     pr_number: int,
     result: dict,
 ) -> None:
-    """PR Review Comment 옵션 (독립). Phase 3 PR-11 — 3-layer fallback i18n.
-
-    PR Review Comment option (independent). Phase 3 PR-11 — 3-layer fallback i18n.
+    """PR Review Comment 옵션 — ReviewCommentAction이 위임받는 실제 구현.
+    Actual implementation delegated to by ReviewCommentAction.
     """
     if not config.pr_review_comment:
         return
     try:
-        # Phase 3 PR-11 — 3-layer 사용자 언어 결정 (User → RepoConfig → settings.default_locale)
-        # Phase 3 PR-11 — 3-layer language resolve
         from src.notifier._language import resolve_notification_language  # noqa: WPS433  # pylint: disable=import-outside-toplevel
         with SessionLocal() as db:
             language = resolve_notification_language(db, config=config)
@@ -129,8 +119,6 @@ async def _run_review_comment(
             language=language,
         )
     except (httpx.HTTPError, KeyError) as exc:
-        # 예외 타입만 기록 — exc 본문에 HTTP 응답 바디가 포함되어 내부 구조 노출 위험
-        # Log only the exception type — exc body may contain HTTP response details.
         logger.error("PR Review Comment 실패: %s", type(exc).__name__)
 
 
@@ -144,86 +132,45 @@ async def _run_approve_decision(  # pylint: disable=too-many-arguments
     score: int,
     result: dict,
 ) -> None:
-    """Approve 옵션 (auto / semi-auto 분기).
-
-    P0-H: asyncio.gather 병렬 실행 시 외부 Session 공유 대신 독립 SessionLocal() 사용.
-    P0-H: Opens its own SessionLocal() instead of receiving a shared Session from gather.
+    """Approve 옵션 (auto / semi-auto 분기) — ApproveAction이 위임받는 실제 구현.
+    Actual implementation delegated to by ApproveAction.
+    P0-H: 독립 SessionLocal() 사용.
     """
     if config.approve_mode == "auto":
-        with SessionLocal() as db:
-            await _run_auto_approve(
-                config=config,
-                db=db,
-                analysis_id=analysis_id,
-                github_token=github_token,
-                repo_name=repo_name,
-                pr_number=pr_number,
-                score=score,
-            )
+        if score >= config.approve_threshold:
+            decision = "approve"
+            body = f"✅ 자동 승인: 점수 {score}점 (기준: {config.approve_threshold}점 이상)"
+        elif score < config.reject_threshold:
+            decision = "reject"
+            body = f"❌ 자동 반려: 점수 {score}점 (기준: {config.reject_threshold}점 미만)"
+        else:
+            with SessionLocal() as db:
+                save_gate_decision(db, analysis_id, "skip", "auto")
+            return
+        try:
+            await post_github_review(github_token, repo_name, pr_number, decision, body)
+            with SessionLocal() as db:
+                save_gate_decision(db, analysis_id, decision, "auto")
+        except (httpx.HTTPError, KeyError) as exc:
+            logger.error("GitHub Review 실패: %s", type(exc).__name__)
     elif config.approve_mode == "semi-auto":
-        await _run_semi_auto_approve(
-            config=config,
-            analysis_id=analysis_id,
-            repo_name=repo_name,
-            pr_number=pr_number,
-            result=result,
-        )
-
-
-async def _run_auto_approve(  # pylint: disable=too-many-arguments
-    *,
-    config: RepoConfigData,
-    db: Session,
-    analysis_id: int,
-    github_token: str,
-    repo_name: str,
-    pr_number: int,
-    score: int,
-) -> None:
-    """Auto Approve 분기 — score 기준으로 approve / reject / skip."""
-    if score >= config.approve_threshold:
-        decision = "approve"
-        body = f"✅ 자동 승인: 점수 {score}점 (기준: {config.approve_threshold}점 이상)"
-    elif score < config.reject_threshold:
-        decision = "reject"
-        body = f"❌ 자동 반려: 점수 {score}점 (기준: {config.reject_threshold}점 미만)"
-    else:
-        save_gate_decision(db, analysis_id, "skip", "auto")
-        return
-
-    try:
-        await post_github_review(github_token, repo_name, pr_number, decision, body)
-        save_gate_decision(db, analysis_id, decision, "auto")
-    except (httpx.HTTPError, KeyError) as exc:
-        logger.error("GitHub Review 실패: %s", type(exc).__name__)
-
-
-async def _run_semi_auto_approve(
-    *,
-    config: RepoConfigData,
-    analysis_id: int,
-    repo_name: str,
-    pr_number: int,
-    result: dict,
-) -> None:
-    """Semi-auto Approve 분기 — Telegram 인라인 키보드 발송."""
-    if not config.notify_chat_id:
-        logger.warning(
-            "semi-auto 모드이나 notify_chat_id 미설정: %s", sanitize_for_log(repo_name),
-        )
-        return
-    try:
-        score_result = _score_from_result(result)
-        await send_gate_request(
-            bot_token=settings.telegram_bot_token,
-            chat_id=config.notify_chat_id,
-            analysis_id=analysis_id,
-            repo_full_name=repo_name,
-            pr_number=pr_number,
-            score_result=score_result,
-        )
-    except (httpx.HTTPError, KeyError) as exc:
-        logger.error("Telegram Gate 요청 실패: %s", type(exc).__name__)
+        if not config.notify_chat_id:
+            logger.warning(
+                "semi-auto 모드이나 notify_chat_id 미설정: %s", sanitize_for_log(repo_name),
+            )
+            return
+        try:
+            score_result = _score_from_result(result)
+            await send_gate_request(
+                bot_token=settings.telegram_bot_token,
+                chat_id=config.notify_chat_id,
+                analysis_id=analysis_id,
+                repo_full_name=repo_name,
+                pr_number=pr_number,
+                score_result=score_result,
+            )
+        except (httpx.HTTPError, KeyError) as exc:
+            logger.error("Telegram Gate 요청 실패: %s", type(exc).__name__)
 
 
 async def _run_auto_merge(  # pylint: disable=too-many-arguments,too-many-locals
@@ -235,39 +182,24 @@ async def _run_auto_merge(  # pylint: disable=too-many-arguments,too-many-locals
     *,
     analysis_id: int | None = None,
 ) -> None:
-    """Auto Merge 옵션 (approve_mode 무관하게 독립).
-
-    Phase 12: merge_retry_enabled=True 시 retriable 실패를 큐에 등록해 재시도.
-    Phase 12: When merge_retry_enabled=True, retriable failures are enqueued for retry.
-
-    Phase F.1: `log_merge_attempt` 로 모든 시도(성공·실패)를 DB 에 기록한다.
-    analysis_id 가 None 이면 기록을 생략 — 레거시 호출부 호환.
-
-    P0-H: asyncio.gather 병렬 실행 시 외부 Session 공유 대신 독립 SessionLocal() 사용.
-    P0-H: Opens its own SessionLocal() instead of receiving a shared Session from gather.
+    """Auto Merge 옵션 — AutoMergeAction이 위임받는 실제 구현.
+    Actual implementation delegated to by AutoMergeAction.
+    P0-H: 독립 SessionLocal() 사용.
     """
     if not (config.auto_merge and score >= config.merge_threshold):
         return
-
     with SessionLocal() as db:
-        # 레거시 경로: 재시도 비활성화 시 단일 시도 동작
-        # Legacy path: fall back to single-attempt behavior when retry is disabled.
         if not settings.merge_retry_enabled:
             await _run_auto_merge_legacy(
                 config, github_token, repo_name, pr_number, score,
                 analysis_id=analysis_id, db=db,
             )
             return
-
-        # --- Phase 12 재시도 인식 경로 — 복잡도 분산을 위해 헬퍼에 위임 ---
-        # --- Phase 12 retry-aware path — delegate to helper to distribute complexity ---
         try:
             await _run_auto_merge_retry(
                 config, github_token, repo_name, pr_number, score,
                 analysis_id=analysis_id, db=db,
             )
-        # Phase F QW4: RuntimeError/ValueError 도 포착해 알림 스킵 방지
-        # Phase F QW4: also catch RuntimeError/ValueError to prevent notification skip.
         except (httpx.HTTPError, KeyError, RuntimeError, ValueError) as exc:
             logger.error(
                 "Auto Merge 실패 (repo=%s, pr=%d): %s",
