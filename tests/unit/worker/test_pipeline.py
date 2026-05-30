@@ -1022,3 +1022,87 @@ async def test_run_static_with_timeout_returns_results_when_fast():
         result = await _run_static_with_timeout([])
 
     assert result == fake_result
+
+
+# ---------------------------------------------------------------------------
+# _send_notifications — BaseException 처리 (B2)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_send_notifications_handles_cancelled_error():
+    """asyncio.CancelledError(BaseException 서브클래스)가 로그 출력 후 묵살되어야 한다.
+    CancelledError must be logged and not re-raised (BaseException fix).
+    """
+    import asyncio
+    from src.worker.pipeline import _send_notifications  # pylint: disable=import-outside-toplevel
+
+    cancelled = asyncio.CancelledError("cancelled")
+    with patch("src.worker.pipeline.logger") as mock_logger:
+        # CancelledError를 반환하는 gather 결과 시뮬레이션
+        with patch("src.worker.pipeline.asyncio.gather",
+                   new=AsyncMock(return_value=[cancelled])):
+            # 예외가 전파되지 않아야 한다 — BaseException 경로 커버
+            await _send_notifications([AsyncMock()], ["test_channel"])
+    mock_logger.error.assert_called_once()
+    assert "test_channel" in mock_logger.error.call_args[0][1]
+
+
+# ---------------------------------------------------------------------------
+# _regate_pr_if_needed — result=None 가드 (B3)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_regate_pr_skips_when_result_is_none():
+    """existing.result=None이면 run_gate_check를 호출하지 않고 조기 종료해야 한다.
+    Must return early without calling run_gate_check when existing.result is None.
+    """
+    from src.worker.pipeline import _regate_pr_if_needed  # pylint: disable=import-outside-toplevel
+
+    mock_db = MagicMock()
+    # pr_number=None → guard 통과, sha lookup 필요
+    mock_repo = MagicMock(id=1, full_name="owner/repo")
+    mock_repo.owner = MagicMock(plaintext_token="tok")
+    # pr_number=None이어야 `existing.pr_number == pr_number(5)` 조건 통과
+    mock_existing = MagicMock(id=10, pr_number=None, result=None)
+
+    with patch("src.worker.pipeline.repository_repo") as mock_repo_repo:
+        mock_repo_repo.find_by_full_name.return_value = mock_repo
+        with patch("src.worker.pipeline.analysis_repo") as mock_analysis_repo:
+            mock_analysis_repo.find_by_sha.return_value = mock_existing
+            with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock) as mock_gate:
+                await _regate_pr_if_needed(mock_db, "owner/repo", "abc123", 5)
+
+    mock_gate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_race_recover_existing_skips_when_result_is_none():
+    """existing.result=None이면 run_gate_check를 호출하지 않고 repo_config를 반환해야 한다.
+    Must return repo_config without calling run_gate_check when existing.result is None.
+    """
+    from src.worker.pipeline import _race_recover_existing  # pylint: disable=import-outside-toplevel
+    from src.worker.pipeline import _AnalysisSaveParams  # pylint: disable=import-outside-toplevel
+
+    mock_db = MagicMock()
+    # pr_number가 있어야 'params.pr_number is None' early-return을 통과
+    # existing.pr_number=None이어야 'existing.pr_number is not None' early-return을 통과
+    mock_existing = MagicMock(id=20, pr_number=None, result=None)
+    mock_repo_config = MagicMock()
+
+    params = _AnalysisSaveParams(
+        repo_name="owner/repo",
+        commit_sha="abc123",
+        commit_message="feat: test",
+        pr_number=7,
+        owner_token="tok",
+        analysis_results=[],
+        ai_review=MagicMock(),
+        score_result=MagicMock(),
+    )
+
+    with patch("src.worker.pipeline.get_repo_config", return_value=mock_repo_config):
+        with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock) as mock_gate:
+            result = await _race_recover_existing(mock_db, params, mock_existing)
+
+    mock_gate.assert_not_called()
+    assert result is mock_repo_config

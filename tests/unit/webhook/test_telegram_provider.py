@@ -513,3 +513,27 @@ def test_cmd_scope_token_does_not_validate_as_gate():
         parsed = _parse_gate_callback(f"gate:approve:42:{cmd_token}")
 
     assert parsed is None, "cmd 도메인 토큰을 gate 로 재사용 시도 차단 필요"
+
+
+# --- handle_gate_callback pr_number=None 가드 (B1) ---
+
+async def test_handle_gate_callback_skips_when_pr_number_is_none():
+    """pr_number=None인 Analysis(push 이벤트)가 연결된 경우 gate action을 건너뛰어야 한다.
+    Gate action must be skipped when the linked Analysis has pr_number=None (push event).
+    """
+    from src.webhook.router import handle_gate_callback  # pylint: disable=import-outside-toplevel
+    # push Analysis — pr_number 없음
+    mock_analysis = MagicMock(id=55, repo_id=1, pr_number=None, result={"score": 80})
+    mock_repo = MagicMock(id=1, full_name="owner/repo")
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter_by.return_value.first.side_effect = [
+        mock_analysis, mock_repo
+    ]
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.webhook.providers.telegram.post_github_review",
+                   new_callable=AsyncMock) as mock_review:
+            with patch("src.webhook.providers.telegram.save_gate_decision") as mock_save:
+                await handle_gate_callback(analysis_id=55, decision="approve", decided_by="john")
+    # pr_number=None → post_github_review·save_gate_decision 모두 호출되지 않아야 한다
+    mock_review.assert_not_called()
+    mock_save.assert_not_called()
