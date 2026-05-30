@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [사이클 140 (conftest 모델 기본값 fix + GateAction Registry 패턴 도입, 2026-05-30)](#사이클-140)
 - [사이클 139 (5+1 에이전트 조사 기반 품질 개선 4 Phase — Code Scanning·alembic·Rate Limiting·알림·dashboard, 2026-05-30)](#사이클-139)
 - [사이클 138 (대시보드 server-side auto-detect 제거 — 항상 개요 표시, 2026-05-27)](#사이클-138)
 - [사이클 137 (대시보드 localStorage redirect 버그 수정, 2026-05-26)](#사이클-137)
@@ -48,6 +49,29 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 사이클 140
+
+**날짜**: 2026-05-30 | **PR**: #665~#667 | **상태**: ✅ 머지 완료
+
+**작업 내용**: 기존 테스트 실패 수정 + GateAction Registry 패턴 도입
+
+| PR | 내용 |
+|----|------|
+| #665 | docs: STATE.md + cycle-history.md 사이클 139 이력 동기화 |
+| #666 | fix(tests): conftest.py CLAUDE_REVIEW/INSIGHT_MODEL 기본값 명시 — .env 빈값 override 방지 |
+| #667 | feat(gate): GateAction Registry 패턴 도입 — Action 클래스 3종 + GATE_ACTIONS 레지스트리 |
+
+**GateAction Registry 세부**:
+- `src/gate/actions/` — `GateContext`(frozen dataclass) + `GateAction`(ABC) + `GATE_ACTIONS` + 3개 Action 클래스
+- `run_gate_check()` → `asyncio.gather(*[a.execute(ctx) for a in GATE_ACTIONS if a.is_applicable(config)])`
+- 기존 `_run_*` 함수 유지 (Action 위임 대상 + 기존 217개 테스트 보존)
+- 신규 테스트 17건 (총 gate 테스트 234개)
+- 새 Gate 옵션 추가 시 engine.py 수정 없이 Action 파일만 추가
+
+**신규 테스트**: +17건 (단위 3035→3052)
+
+---
 
 ## 사이클 139
 
