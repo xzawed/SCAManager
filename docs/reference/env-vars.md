@@ -19,13 +19,13 @@
 | `GITHUB_TOKEN` | GitHub API Personal Access Token (레거시 리포 fallback) | `your-github-token` |
 | `ANTHROPIC_API_KEY` | Claude AI 리뷰 API 키 (없으면 AI 항목 기본값 적용) | `your-anthropic-api-key` |
 | `API_KEY` | Dashboard REST API 인증 키 (없으면 인증 생략) | `any-secret-string` |
-| `APP_BASE_URL` | Railway 등 리버스 프록시에서 HTTPS redirect_uri 강제 지정 | `https://your-app.railway.app` |
+| `APP_BASE_URL` | Railway 등 리버스 프록시에서 HTTPS redirect_uri 강제 지정 + **CORS allow_origins 출처 결정** (사이클 142 Phase C — `src/main.py` CORSMiddleware, 미설정 시 CORS 미등록) | `https://your-app.railway.app` |
 | `TOKEN_ENCRYPTION_KEY` | GitHub Access Token 암호화 키 (미설정 시 평문 저장) | `32자 이상 랜덤` |
 | `STRICT_TOKEN_ENCRYPTION` | `true` 설정 시 `TOKEN_ENCRYPTION_KEY` 미설정이면 lifespan startup 차단 (기본값 `false` = 평문 저장 허용 + WARNING 출력) | `false` (기본) |
 | `CLAUDE_REVIEW_MODEL` | AI 코드리뷰에 사용할 Claude 모델 ID | `claude-sonnet-4-6` (기본) |
 | `CLAUDE_INSIGHT_MODEL` | Insight narrative (`/dashboard?mode=insight`) 4 카드 생성용 Claude 모델 ID — 코드리뷰보다 단순 task → Haiku 분기로 토큰 비용 ↓ (Cycle 74 PR-A #247) | `claude-haiku-4-5` (기본) |
 | `DISABLE_PROMPT_CACHE` | Anthropic prompt caching (5분 ephemeral) opt-out — `1` 시 비활성 (Phase 3 PR 1 #218 신설). 운영 비용 통제용 — default `0` (caching 적용) | `0` (기본) / `1` (비활성) |
-| `TELEGRAM_WEBHOOK_SECRET` | Telegram `setWebhook` 시크릿 토큰 (미설정 시 헤더 검증 생략) | 빈 문자열 (기본) |
+| `TELEGRAM_WEBHOOK_SECRET` | Telegram `setWebhook` 시크릿 토큰 — **미설정 시 401 fail-closed** (사이클 142 Phase B S1 #674 보안 강화 — 이전 "헤더 검증 생략"에서 변경). Railway에서 반드시 설정 필요, 미설정 시 Telegram gate callback 전체 비활성 | 빈 문자열 (기본, **운영 시 반드시 설정**) |
 | `N8N_WEBHOOK_SECRET` | n8n 전송 HMAC 서명 시크릿 (미설정 시 서명 생략) | 빈 문자열 (기본) |
 
 ## 내부 인증 (cron · admin · loop guard)
