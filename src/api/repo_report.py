@@ -2,8 +2,10 @@
 Per-repository analysis report JSON API endpoints.
 """
 from datetime import datetime, timezone
+from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
+from src.middleware.rate_limiter import limiter, RATE_LIMIT_API
 
 from src.api.auth import require_api_key
 from src.api.deps import get_repo_or_404
@@ -25,8 +27,10 @@ _WARNING_GRADES = {"D", "F"}
 
 
 @router.get("/repos/report")
+@limiter.limit(RATE_LIMIT_API)
 def list_repos_report(
-    days: int = Query(default=30, ge=1, le=365),
+    request: Request,  # pylint: disable=unused-argument
+    days: Annotated[int, Query(ge=1, le=365)] = 30,
 ) -> dict:
     """연결된 전체 Repo 요약 반환 (KPI + 등급 + 경고 여부).
 
@@ -87,9 +91,11 @@ def list_repos_report(
 
 
 @router.get("/repos/{repo_name:path}/report")
+@limiter.limit(RATE_LIMIT_API)
 def get_repo_report(
+    request: Request,  # pylint: disable=unused-argument
     repo_name: str,
-    days: int = Query(default=30, ge=1, le=365),
+    days: Annotated[int, Query(ge=1, le=365)] = 30,
 ) -> dict:
     """개별 Repo 상세 분석 레포트 반환.
 
