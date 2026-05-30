@@ -12,8 +12,12 @@ from starlette.middleware.sessions import SessionMiddleware
 from alembic import command
 from alembic.config import Config
 
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+
 from src.config import settings
 from src.constants import GITHUB_API
+from src.middleware.rate_limiter import limiter
 from src.shared.http_client import close_http_client, init_http_client
 from src.webhook.router import router as webhook_router
 from src.api.repos import router as api_repos_router
@@ -149,6 +153,10 @@ app = FastAPI(
     redoc_url=None if _is_prod else "/redoc",
     openapi_url=None if _is_prod else "/openapi.json",
 )
+# slowapi rate limiting 등록 — IP 기반 60req/min (API 엔드포인트 DoS 방어)
+# Register slowapi rate limiting — IP-based 60 req/min (DoS defense for API endpoints)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SecurityHeadersMiddleware)
 # Phase 3 postlude — RLS 운영 활성화 미들웨어. Starlette LIFO 미들웨어 스택:
 # add_middleware 마지막 호출이 outer (request 먼저 처리). 원하는 흐름 = SessionMiddleware → RLSSessionMiddleware → route

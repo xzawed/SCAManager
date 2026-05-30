@@ -1,15 +1,17 @@
 """Statistics API — analysis detail and per-repo score statistics endpoints."""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from src.api.auth import require_api_key
 from src.api.deps import get_repo_or_404
 from src.database import SessionLocal
+from src.middleware.rate_limiter import limiter, RATE_LIMIT_API
 from src.models.analysis import Analysis
 
 router = APIRouter(prefix="/api", dependencies=[require_api_key])
 
 
 @router.get("/analyses/{analysis_id}")
-def get_analysis(analysis_id: int):
+@limiter.limit(RATE_LIMIT_API)
+def get_analysis(request: Request, analysis_id: int):  # pylint: disable=unused-argument
     """단일 분석 상세 정보를 반환한다."""
     with SessionLocal() as db:
         analysis = db.query(Analysis).filter(Analysis.id == analysis_id).first()
@@ -25,7 +27,8 @@ def get_analysis(analysis_id: int):
 
 
 @router.get("/repos/{repo_name:path}/stats")
-def get_repo_stats(repo_name: str, limit: int = 30):
+@limiter.limit(RATE_LIMIT_API)
+def get_repo_stats(request: Request, repo_name: str, limit: int = 30):  # pylint: disable=unused-argument
     """리포지토리 점수 통계(평균·트렌드)를 반환한다."""
     with SessionLocal() as db:
         repo = get_repo_or_404(repo_name, db)
