@@ -84,16 +84,16 @@
 - P2: limit/skip `Annotated[int, Query(ge=, le=)]` 상한선 (repos.py, stats.py, repo_report.py)
 - `LimitBodySizeMiddleware`: Content-Length > 10MB → 413
 - `conftest.py` autouse 픽스처: rate limiter 인메모리 카운터 테스트 간 초기화
-- 신규 테스트: +4건 (conftest autouse fixture 효과 — 단위 3216→3220)
+- 신규 테스트: +5건 (conftest autouse fixture 효과 — 단위 3216→3221)
 
 **Phase D 세부** (#676):
 - U5: `tokens.css` `[data-theme]` alias 3개 추가 (`--text-muted→--text-2`, `--text-subtle→--text-3`, `--border→--border-subtle`) — dark/catppuccin Chart.js axis 저대비 해소
 - U4: `base.html` 테마/언어 변경 버튼 `aria-label` → `common.theme_aria`/`common.lang_aria` (ko/en/ja)
 - U4+: `repo_insights.html` table/canvas aria-label → `repo_insights.*_aria` i18n
 - U3: `dashboard.html` 하드코딩 한국어 8건 → `dashboard.*` i18n 키 (12개 신규 키, ko/en/ja)
-- 신규 테스트: 0건 (단위 3220 유지)
+- 신규 테스트: 0건 (단위 3221 유지)
 
-**신규 테스트**: +7건 (#674 +3, #675 +4 — 단위 3213→3220, 전체 3364→3371)
+**신규 테스트**: +8건 (#674 +3, #675 +5 — 단위 3213→3221, 전체 3364→3372)
 
 ## 사이클 141
 
