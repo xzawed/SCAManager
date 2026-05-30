@@ -1728,10 +1728,10 @@ async def test_run_gate_check_all_options_exception_logged(caplog):
     error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
     assert len(error_records) == 3
 
-    # 각 옵션 이름이 로그 메시지에 포함되어야 한다
-    # Each option name must appear in the log messages.
+    # 각 Action 클래스 이름이 로그 메시지에 포함되어야 한다 (Sprint E: 클래스명 기반 로깅)
+    # Each Action class name must appear in the log messages (Sprint E: class-name-based logging).
     logged_text = " ".join(r.message for r in error_records)
-    assert "review_comment" in logged_text
-    assert "approve" in logged_text
-    assert "auto_merge" in logged_text
+    assert "ReviewCommentAction" in logged_text
+    assert "ApproveAction" in logged_text
+    assert "AutoMergeAction" in logged_text
 
