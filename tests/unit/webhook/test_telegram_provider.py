@@ -494,7 +494,7 @@ def test_unknown_payload_returns_ok():
 def test_sender_receiver_hmac_token_parity():
     """발신측 _gate_callback_token() 이 만든 토큰을 수신측이 검증 통과해야 한다."""
     from src.gate.telegram_gate import _gate_callback_token  # pylint: disable=import-outside-toplevel
-    from src.webhook.providers.telegram import _parse_gate_callback  # pylint: disable=import-outside-toplevel
+    import src.webhook.providers.telegram as _tg  # pylint: disable=import-outside-toplevel
 
     bot_token = "123:ABC"  # conftest 환경변수와 일치
     analysis_id = 99
@@ -504,7 +504,7 @@ def test_sender_receiver_hmac_token_parity():
     with patch("src.webhook.providers.telegram.settings") as mock_settings:
         mock_settings.telegram_bot_token = bot_token
         callback_data = f"gate:approve:{analysis_id}:{sender_token}"
-        parsed = _parse_gate_callback(callback_data)
+        parsed = _tg._parse_gate_callback(callback_data)
 
     assert parsed is not None, (
         "PARITY 위반: 발신측 토큰이 수신측 검증을 통과해야 함 — "
@@ -527,8 +527,8 @@ def test_receiver_rejects_legacy_str_id_token():
 
     with patch("src.webhook.providers.telegram.settings") as mock_settings:
         mock_settings.telegram_bot_token = bot_token
-        from src.webhook.providers.telegram import _parse_gate_callback  # pylint: disable=import-outside-toplevel
-        parsed = _parse_gate_callback(f"gate:approve:42:{legacy_token}")
+        import src.webhook.providers.telegram as _tg  # pylint: disable=import-outside-toplevel
+        parsed = _tg._parse_gate_callback(f"gate:approve:42:{legacy_token}")
 
     assert parsed is None, "구 패턴 토큰은 거부되어야 함 (Critical C10 가드)"
 
@@ -541,8 +541,8 @@ def test_cmd_scope_token_does_not_validate_as_gate():
 
     with patch("src.webhook.providers.telegram.settings") as mock_settings:
         mock_settings.telegram_bot_token = bot_token
-        from src.webhook.providers.telegram import _parse_gate_callback  # pylint: disable=import-outside-toplevel
-        parsed = _parse_gate_callback(f"gate:approve:42:{cmd_token}")
+        import src.webhook.providers.telegram as _tg  # pylint: disable=import-outside-toplevel
+        parsed = _tg._parse_gate_callback(f"gate:approve:42:{cmd_token}")
 
     assert parsed is None, "cmd 도메인 토큰을 gate 로 재사용 시도 차단 필요"
 
