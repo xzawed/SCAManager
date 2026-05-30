@@ -97,12 +97,14 @@
 
 **docs sync** (#677): STATE.md + cycle-history.md + README 수치 동기화 (3371→3372, 3220→3221 Codex 실측 보정)
 
-**5+1 회고 + Tier A/B 이행** (#678, #679):
+**5+1 회고 + Tier A/B/C 전수 이행** (#678~#682):
 - 회고 P0 3건 / P1 5건 확정 (cross-verify: false-positive 1건 제거, 등급 조정 2건)
-- Tier A (#678): `docs/reference/env-vars.md` TELEGRAM_WEBHOOK_SECRET fail-closed 수정 + APP_BASE_URL CORS 역할 기재 + `.claude/rules/api.md` rate limiting 의무 + `.claude/rules/security.md` CSP/LimitBodySizeMiddleware/SESSION_SECRET prod guard
-- Tier B (#679): `src/main.py` `LimitBodySizeMiddleware` ValueError 처리 (400) + 회귀 가드 3건 (단위 3221→3224)
-- 잔여: Tier B P1-4 (dashboard.html repos i18n 31라인) → 다음 사이클 / Tier C P2 → 로드맵
+- **Tier A (#678)**: `docs/reference/env-vars.md` TELEGRAM_WEBHOOK_SECRET fail-closed 수정 + APP_BASE_URL CORS 역할 기재 + `.claude/rules/api.md` rate limiting 의무 + `.claude/rules/security.md` CSP/LimitBodySizeMiddleware/SESSION_SECRET prod guard
+- **Tier B P1-2 (#679)**: `src/main.py` `LimitBodySizeMiddleware` ValueError 처리 (400) + 회귀 가드 3건 (단위 3221→3224)
+- **Code Scanning #489/#490 (#681)**: `test_telegram_provider.py` import 스타일 통일 (py/import-and-import-from 해소)
+- **Tier B P1-4 (#682)**: `dashboard.html` repos 모드 한국어 19개 → i18n 전환 (dashboard.repos.* 12키 + 최상위 5키, ko/en/ja) + 회귀 가드 105케이스 (단위 3224→3329)
 - dashboard 접속 모드 추적: `src/ui/routes/dashboard.py:162-168` 기존 로그 활용 가능 (`railway logs | grep "dashboard_view.*mode=repos"`)
+- 잔여: repo_detail.html·analysis_detail.html i18n → 별도 사이클 / Tier C P2 chunked bypass → 로드맵
 
 ## 사이클 141
 
