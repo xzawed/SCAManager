@@ -14,6 +14,8 @@ from src.gate._common import score_from_result as _score_from_result
 from src.gate.actions import GateAction, GateContext, register
 from src.gate.github_review import post_github_review
 from src.gate.telegram_gate import send_gate_request
+from src.i18n.loader import get_text
+from src.notifier._language import resolve_notification_language
 from src.repositories import gate_decision_repo
 from src.shared.log_safety import sanitize_for_log
 
@@ -42,12 +44,22 @@ class ApproveAction(GateAction):
 
     async def _run_auto(self, ctx: GateContext) -> None:
         """Auto Approve — score 기준 approve/reject/skip."""
+        # 알림 언어 결정 (3-layer fallback) — GitHub PR 댓글을 리포 소유자 언어로 게시
+        # Resolve notification language (3-layer fallback) — post PR review in owner's language
+        with SessionLocal() as db:
+            language = resolve_notification_language(db, config=ctx.config)
         if ctx.score >= ctx.config.approve_threshold:
             decision = "approve"
-            body = f"✅ 자동 승인: 점수 {ctx.score}점 (기준: {ctx.config.approve_threshold}점 이상)"
+            body = get_text(
+                "notifier.gate.auto_approve", language,
+                score=ctx.score, threshold=ctx.config.approve_threshold,
+            )
         elif ctx.score < ctx.config.reject_threshold:
             decision = "reject"
-            body = f"❌ 자동 반려: 점수 {ctx.score}점 (기준: {ctx.config.reject_threshold}점 미만)"
+            body = get_text(
+                "notifier.gate.auto_reject", language,
+                score=ctx.score, threshold=ctx.config.reject_threshold,
+            )
         else:
             with SessionLocal() as db:
                 gate_decision_repo.upsert(db, ctx.analysis_id, "skip", "auto")

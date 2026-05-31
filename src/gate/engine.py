@@ -20,9 +20,8 @@ from src.gate.actions import GATE_ACTIONS, GateContext
 import src.gate.actions.review_comment  # noqa: F401 — registers ReviewCommentAction  # pylint: disable=cyclic-import,unused-import
 import src.gate.actions.approve  # noqa: F401 — registers ApproveAction  # pylint: disable=cyclic-import,unused-import
 import src.gate.actions.auto_merge  # noqa: F401 — registers AutoMergeAction  # pylint: disable=cyclic-import,unused-import
-from src.gate._common import score_from_result as _score_from_result
 from src.gate.github_review import (
-    post_github_review, get_pr_mergeable_state, get_pr_base_ref,
+    get_pr_mergeable_state, get_pr_base_ref,
 )
 from src.gate import _merge_attempt_states as _states
 from src.gate.merge_failure_advisor import get_advice
@@ -34,8 +33,6 @@ from src.gate.native_automerge import (
 from src.gate.retry_policy import parse_reason_tag, should_retry
 from src.github_client.checks import get_ci_status, get_required_check_contexts
 from src.notifier.merge_failure_issue import create_merge_failure_issue
-from src.gate.telegram_gate import send_gate_request
-from src.notifier.github_comment import post_pr_comment_from_result as post_pr_comment
 from src.notifier.telegram import telegram_post_message
 from src.models.gate_decision import GateDecision
 from src.repositories import gate_decision_repo, merge_retry_repo
@@ -93,84 +90,6 @@ async def run_gate_check(  # pylint: disable=too-many-positional-arguments
                 type(action).__name__, type(outcome).__name__,
                 exc_info=(type(outcome), outcome, outcome.__traceback__),
             )
-
-
-async def _run_review_comment(
-    config: RepoConfigData,
-    github_token: str,
-    repo_name: str,
-    pr_number: int,
-    result: dict,
-) -> None:
-    """PR Review Comment 옵션 — ReviewCommentAction이 위임받는 실제 구현.
-    Actual implementation delegated to by ReviewCommentAction.
-    """
-    if not config.pr_review_comment:
-        return
-    try:
-        from src.notifier._language import resolve_notification_language  # noqa: WPS433  # pylint: disable=import-outside-toplevel
-        with SessionLocal() as db:
-            language = resolve_notification_language(db, config=config)
-        await post_pr_comment(
-            github_token=github_token,
-            repo_name=repo_name,
-            pr_number=pr_number,
-            result=result,
-            language=language,
-        )
-    except (httpx.HTTPError, KeyError) as exc:
-        logger.error("PR Review Comment 실패: %s", type(exc).__name__)
-
-
-async def _run_approve_decision(  # pylint: disable=too-many-arguments
-    *,
-    config: RepoConfigData,
-    analysis_id: int,
-    github_token: str,
-    repo_name: str,
-    pr_number: int,
-    score: int,
-    result: dict,
-) -> None:
-    """Approve 옵션 (auto / semi-auto 분기) — ApproveAction이 위임받는 실제 구현.
-    Actual implementation delegated to by ApproveAction.
-    P0-H: 독립 SessionLocal() 사용.
-    """
-    if config.approve_mode == "auto":
-        if score >= config.approve_threshold:
-            decision = "approve"
-            body = f"✅ 자동 승인: 점수 {score}점 (기준: {config.approve_threshold}점 이상)"
-        elif score < config.reject_threshold:
-            decision = "reject"
-            body = f"❌ 자동 반려: 점수 {score}점 (기준: {config.reject_threshold}점 미만)"
-        else:
-            with SessionLocal() as db:
-                save_gate_decision(db, analysis_id, "skip", "auto")
-            return
-        try:
-            await post_github_review(github_token, repo_name, pr_number, decision, body)
-            with SessionLocal() as db:
-                save_gate_decision(db, analysis_id, decision, "auto")
-        except (httpx.HTTPError, KeyError) as exc:
-            logger.error("GitHub Review 실패: %s", type(exc).__name__)
-    elif config.approve_mode == "semi-auto":
-        if not config.notify_chat_id:
-            logger.warning(
-                "semi-auto 모드이나 notify_chat_id 미설정: %s", sanitize_for_log(repo_name),
-            )
-            return
-        try:
-            score_result = _score_from_result(result)
-            await send_gate_request(
-                bot_token=settings.telegram_bot_token,
-                chat_id=config.notify_chat_id,
-                analysis_id=analysis_id,
-                repo_full_name=repo_name,
-                pr_number=pr_number,
-                score_result=score_result,
-            )
-        except (httpx.HTTPError, KeyError) as exc:
-            logger.error("Telegram Gate 요청 실패: %s", type(exc).__name__)
 
 
 async def _run_auto_merge(  # pylint: disable=too-many-arguments,too-many-locals

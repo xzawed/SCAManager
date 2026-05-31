@@ -781,6 +781,10 @@
       "stats_trend": " (7일 이동평균 대비 {diff:+.1f}점)",
       "settings_no_repos": "등록된 리포지토리가 없습니다.",
       "settings_header": "📋 등록된 리포지토리:"
+    },
+    "gate": {
+      "auto_approve": "✅ 자동 승인: 점수 {score}점 (기준: {threshold}점 이상)",
+      "auto_reject": "❌ 자동 반려: 점수 {score}점 (기준: {threshold}점 미만)"
     }
   },
   "repo_insights": {

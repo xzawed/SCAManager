@@ -781,6 +781,10 @@
       "stats_trend": " (7日移動平均比 {diff:+.1f}点)",
       "settings_no_repos": "登録されたリポジトリがありません。",
       "settings_header": "📋 登録されたリポジトリ:"
+    },
+    "gate": {
+      "auto_approve": "✅ 自動承認: スコア {score}点 (基準: {threshold}点以上)",
+      "auto_reject": "❌ 自動却下: スコア {score}点 (基準: {threshold}点未満)"
     }
   },
   "repo_insights": {

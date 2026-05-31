@@ -781,6 +781,10 @@
       "stats_trend": " (vs 7d moving avg {diff:+.1f})",
       "settings_no_repos": "No repositories registered.",
       "settings_header": "📋 Registered repositories:"
+    },
+    "gate": {
+      "auto_approve": "✅ Auto-approved: score {score} (threshold: {threshold}+)",
+      "auto_reject": "❌ Auto-rejected: score {score} (threshold: below {threshold})"
     }
   },
   "repo_insights": {

@@ -610,7 +610,7 @@ async def test_config_provided_skips_get_repo_config():
 
 def test_score_from_result_empty_dict():
     """result={}인 경우 기본값(score=0, grade='F')으로 ScoreResult를 반환한다."""
-    from src.gate.engine import _score_from_result
+    from src.gate._common import score_from_result as _score_from_result
     sr = _score_from_result({})
     assert sr.total == 0
     assert sr.grade == "F"
@@ -620,7 +620,7 @@ def test_score_from_result_empty_dict():
 
 def test_score_from_result_breakdown_none():
     """result['breakdown']=None인 경우 AttributeError 없이 기본값으로 처리해야 한다."""
-    from src.gate.engine import _score_from_result
+    from src.gate._common import score_from_result as _score_from_result
     sr = _score_from_result({"score": 75, "grade": "B", "breakdown": None})
     assert sr.total == 75
     assert sr.code_quality_score == 0
@@ -629,7 +629,7 @@ def test_score_from_result_breakdown_none():
 
 def test_score_from_result_partial_breakdown():
     """breakdown에 일부 키만 있는 경우 누락 키는 0으로 처리한다."""
-    from src.gate.engine import _score_from_result
+    from src.gate._common import score_from_result as _score_from_result
     sr = _score_from_result({"score": 80, "grade": "B", "breakdown": {"code_quality": 20}})
     assert sr.code_quality_score == 20
     assert sr.security_score == 0
