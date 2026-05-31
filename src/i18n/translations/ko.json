@@ -294,6 +294,22 @@
       "btn_create_next": "생성 후 다음 →",
       "bulk_register": "선택 항목 일괄 Issue 등록 ({count}건) →",
       "bulk_complete": "✅ {count}건 Issue 등록 완료"
+    },
+    "js_msg": {
+      "chart_avg": "평균",
+      "chart_max": "최고",
+      "chart_min": "최저",
+      "tooltip_score": "점수 {score}",
+      "grade_suffix": " · {grade}등급",
+      "label_ai": "AI 제안",
+      "label_static": "정적 분석",
+      "status_resolved": "✅ #{num} 해결됨",
+      "status_open": "🔵 #{num} 진행중",
+      "bulk_submit_final": "GitHub에 Issue 생성",
+      "btn_creating": "생성 중...",
+      "err_generic": "오류 발생",
+      "btn_retry": "다시 시도",
+      "err_network": "네트워크 오류"
     }
   },
   "analysis_detail": {

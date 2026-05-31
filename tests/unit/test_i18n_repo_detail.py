@@ -148,3 +148,43 @@ def test_repo_detail_bulk_value_has_count_placeholder(locale: str, key: str):
     val = _load(locale).get("repo_detail", {}).get("issue_mgmt", {}).get(key)
     assert isinstance(val, str) and val.strip(), f"[{locale}] {key} 비어있음"
     assert "{count}" in val, f"[{locale}] {key}에 {{count}} 플레이스홀더 없음: {val!r}"
+
+
+# ---------------------------------------------------------------------------
+# 사이클 145 Sprint 2 — js_msg 동적 텍스트 키
+# Cycle 145 Sprint 2 — js_msg dynamic text keys
+# ---------------------------------------------------------------------------
+_JS_MSG_KEYS_145 = [
+    "chart_avg", "chart_max", "chart_min",
+    "tooltip_score", "grade_suffix",
+    "label_ai", "label_static",
+    "status_resolved", "status_open",
+    "bulk_submit_final", "btn_creating", "err_generic", "btn_retry", "err_network",
+]
+
+
+@pytest.mark.parametrize("locale", _LOCALES)
+@pytest.mark.parametrize("key", _JS_MSG_KEYS_145)
+def test_repo_detail_js_msg_key_exists(locale: str, key: str):
+    """repo_detail.js_msg.<key>가 모든 locale에 존재해야 한다."""
+    data = _load(locale)
+    assert "js_msg" in data["repo_detail"], f"[{locale}] js_msg 없음"
+    assert key in data["repo_detail"]["js_msg"], f"[{locale}] js_msg.{key} 없음"
+
+
+@pytest.mark.parametrize("locale", _LOCALES)
+@pytest.mark.parametrize("key", _JS_MSG_KEYS_145)
+def test_repo_detail_js_msg_non_empty(locale: str, key: str):
+    """repo_detail.js_msg.<key> 값이 비어있지 않아야 한다."""
+    val = _load(locale).get("repo_detail", {}).get("js_msg", {}).get(key)
+    assert isinstance(val, str) and val.strip(), f"[{locale}] js_msg.{key} 비어있음"
+
+
+@pytest.mark.parametrize("locale", _LOCALES)
+def test_repo_detail_js_msg_placeholders(locale: str):
+    """플레이스홀더 키 검증."""
+    js = _load(locale)["repo_detail"]["js_msg"]
+    assert "{num}" in js["status_resolved"]
+    assert "{num}" in js["status_open"]
+    assert "{score}" in js["tooltip_score"]
+    assert "{grade}" in js["grade_suffix"]

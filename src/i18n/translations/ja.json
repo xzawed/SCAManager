@@ -294,6 +294,22 @@
       "btn_create_next": "作成して次へ →",
       "bulk_register": "選択項目を一括Issue登録 ({count}件) →",
       "bulk_complete": "✅ {count}件のIssue登録完了"
+    },
+    "js_msg": {
+      "chart_avg": "平均",
+      "chart_max": "最高",
+      "chart_min": "最低",
+      "tooltip_score": "スコア {score}",
+      "grade_suffix": " · {grade}グレード",
+      "label_ai": "AI提案",
+      "label_static": "静的解析",
+      "status_resolved": "✅ #{num} 解決済み",
+      "status_open": "🔵 #{num} 進行中",
+      "bulk_submit_final": "GitHubにIssueを作成",
+      "btn_creating": "作成中...",
+      "err_generic": "エラーが発生しました",
+      "btn_retry": "再試行",
+      "err_network": "ネットワークエラー"
     }
   },
   "analysis_detail": {

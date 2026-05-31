@@ -294,6 +294,22 @@
       "btn_create_next": "Create & Next →",
       "bulk_register": "Register Selected Issues in Bulk ({count}) →",
       "bulk_complete": "✅ {count} issues registered"
+    },
+    "js_msg": {
+      "chart_avg": "Avg",
+      "chart_max": "Max",
+      "chart_min": "Min",
+      "tooltip_score": "Score {score}",
+      "grade_suffix": " · Grade {grade}",
+      "label_ai": "AI Suggestion",
+      "label_static": "Static Analysis",
+      "status_resolved": "✅ #{num} Resolved",
+      "status_open": "🔵 #{num} Open",
+      "bulk_submit_final": "Create Issue on GitHub",
+      "btn_creating": "Creating...",
+      "err_generic": "An error occurred",
+      "btn_retry": "Retry",
+      "err_network": "Network error"
     }
   },
   "analysis_detail": {
