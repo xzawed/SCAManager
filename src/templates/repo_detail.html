@@ -529,7 +529,12 @@
      data-i18n-page-range="{{ 'repo_detail.page_range' | i18n_args(locale | default('ko'), start='__S__', end='__E__', total='__T__') }}"
      data-i18n-source-pr="{{ 'repo_detail.source_filter.pr' | i18n_args(locale | default('ko')) }}"
      data-i18n-source-push="{{ 'repo_detail.source_filter.push' | i18n_args(locale | default('ko')) }}"
-     data-i18n-source-cli="{{ 'repo_detail.source_filter.cli' | i18n_args(locale | default('ko')) }}">
+     data-i18n-source-cli="{{ 'repo_detail.source_filter.cli' | i18n_args(locale | default('ko')) }}"
+     data-i18n-chart-avg="{{ 'repo_detail.js_msg.chart_avg' | i18n_args(locale | default('ko')) }}"
+     data-i18n-chart-max="{{ 'repo_detail.js_msg.chart_max' | i18n_args(locale | default('ko')) }}"
+     data-i18n-chart-min="{{ 'repo_detail.js_msg.chart_min' | i18n_args(locale | default('ko')) }}"
+     data-i18n-tooltip-score="{{ 'repo_detail.js_msg.tooltip_score' | i18n_args(locale | default('ko'), score='__S__') }}"
+     data-i18n-grade-suffix="{{ 'repo_detail.js_msg.grade_suffix' | i18n_args(locale | default('ko'), grade='__G__') }}">
   <div class="card__head history-header">
     <h3 class="card__title">{{ 'repo_detail.history_title' | i18n_args(locale | default('ko')) }}</h3>
     <span class="history-count" id="historyCount">{{ 'repo_detail.history_count_recent' | i18n_args(locale | default('ko'), count=(analyses | length)) }}</span>
@@ -606,7 +611,17 @@
 <section class="issue-reg-panel" id="repoBulkPanel"
          data-repo-id="{{ repo_id }}"
          data-i18n-bulk-register="{{ 'repo_detail.issue_mgmt.bulk_register' | i18n_args(locale | default('ko'), count='__N__') }}"
-         data-i18n-bulk-complete="{{ 'repo_detail.issue_mgmt.bulk_complete' | i18n_args(locale | default('ko'), count='__N__') }}">
+         data-i18n-bulk-complete="{{ 'repo_detail.issue_mgmt.bulk_complete' | i18n_args(locale | default('ko'), count='__N__') }}"
+         data-i18n-label-ai="{{ 'repo_detail.js_msg.label_ai' | i18n_args(locale | default('ko')) }}"
+         data-i18n-label-static="{{ 'repo_detail.js_msg.label_static' | i18n_args(locale | default('ko')) }}"
+         data-i18n-status-resolved="{{ 'repo_detail.js_msg.status_resolved' | i18n_args(locale | default('ko'), num='__N__') }}"
+         data-i18n-status-open="{{ 'repo_detail.js_msg.status_open' | i18n_args(locale | default('ko'), num='__N__') }}"
+         data-i18n-bulk-submit-final="{{ 'repo_detail.js_msg.bulk_submit_final' | i18n_args(locale | default('ko')) }}"
+         data-i18n-btn-create-next="{{ 'repo_detail.issue_mgmt.btn_create_next' | i18n_args(locale | default('ko')) }}"
+         data-i18n-btn-creating="{{ 'repo_detail.js_msg.btn_creating' | i18n_args(locale | default('ko')) }}"
+         data-i18n-err-generic="{{ 'repo_detail.js_msg.err_generic' | i18n_args(locale | default('ko')) }}"
+         data-i18n-btn-retry="{{ 'repo_detail.js_msg.btn_retry' | i18n_args(locale | default('ko')) }}"
+         data-i18n-err-network="{{ 'repo_detail.js_msg.err_network' | i18n_args(locale | default('ko')) }}">
 
   <h3 class="panel-title">{{ 'repo_detail.issue_mgmt.title' | i18n_args(locale | default('ko')) }}</h3>
 
@@ -733,9 +748,9 @@
       var mn  = Math.min.apply(null, scores);
       var mx  = Math.max.apply(null, scores);
       statsEl.innerHTML =
-        '<div class="chart-stat"><span class="chart-stat-val">' + avg + '</span><span class="chart-stat-lbl">평균</span></div>' +
-        '<div class="chart-stat"><span class="chart-stat-val" style="color:' + success + '">' + mx + '</span><span class="chart-stat-lbl">최고</span></div>' +
-        '<div class="chart-stat"><span class="chart-stat-val" style="color:' + danger  + '">' + mn + '</span><span class="chart-stat-lbl">최저</span></div>';
+        '<div class="chart-stat"><span class="chart-stat-val">' + avg + '</span><span class="chart-stat-lbl">' + I18N.chartAvg + '</span></div>' +
+        '<div class="chart-stat"><span class="chart-stat-val" style="color:' + success + '">' + mx + '</span><span class="chart-stat-lbl">' + I18N.chartMax + '</span></div>' +
+        '<div class="chart-stat"><span class="chart-stat-val" style="color:' + danger  + '">' + mn + '</span><span class="chart-stat-lbl">' + I18N.chartMin + '</span></div>';
     }
 
     /* 스파크라인 그라디언트 fill — accent 기반, 위에서 아래로 투명
@@ -795,7 +810,7 @@
             callbacks: {
               label: function(item) {
                 var a = _chartData[item.dataIndex];
-                return '점수 ' + item.raw + (a && a.grade ? ' · ' + a.grade + '등급' : '');
+                return I18N.tooltipScore.replace('__S__', item.raw) + (a && a.grade ? I18N.gradeSuffix.replace('__G__', a.grade) : '');
               }
             }
           }
@@ -847,6 +862,13 @@ const I18N = {
   sourcePr: _i18nCard.dataset.i18nSourcePr,
   sourcePush: _i18nCard.dataset.i18nSourcePush,
   sourceCli: _i18nCard.dataset.i18nSourceCli,
+  // 사이클 145 Sprint 2 — 차트 통계/tooltip i18n
+  // Cycle 145 Sprint 2 — chart stats/tooltip i18n
+  chartAvg: _i18nCard.dataset.i18nChartAvg,
+  chartMax: _i18nCard.dataset.i18nChartMax,
+  chartMin: _i18nCard.dataset.i18nChartMin,
+  tooltipScore: _i18nCard.dataset.i18nTooltipScore,
+  gradeSuffix: _i18nCard.dataset.i18nGradeSuffix,
 };
 
 // 사이클 144 Sprint 2 — 일괄 등록 버튼/토스트 i18n (#repoBulkPanel data-i18n-*)
@@ -855,6 +877,18 @@ const _i18nBulkPanel = document.getElementById('repoBulkPanel');
 const I18N_BULK = _i18nBulkPanel ? {
   bulkRegister: _i18nBulkPanel.dataset.i18nBulkRegister,
   bulkComplete: _i18nBulkPanel.dataset.i18nBulkComplete,
+  // 사이클 145 Sprint 2 — Issue 모달 라벨/상태/버튼/오류 i18n
+  // Cycle 145 Sprint 2 — Issue modal label/status/button/error i18n
+  labelAi: _i18nBulkPanel.dataset.i18nLabelAi,
+  labelStatic: _i18nBulkPanel.dataset.i18nLabelStatic,
+  statusResolved: _i18nBulkPanel.dataset.i18nStatusResolved,
+  statusOpen: _i18nBulkPanel.dataset.i18nStatusOpen,
+  bulkSubmitFinal: _i18nBulkPanel.dataset.i18nBulkSubmitFinal,
+  btnCreateNext: _i18nBulkPanel.dataset.i18nBtnCreateNext,
+  btnCreating: _i18nBulkPanel.dataset.i18nBtnCreating,
+  errGeneric: _i18nBulkPanel.dataset.i18nErrGeneric,
+  btnRetry: _i18nBulkPanel.dataset.i18nBtnRetry,
+  errNetwork: _i18nBulkPanel.dataset.i18nErrNetwork,
 } : { bulkRegister: '', bulkComplete: '' };
 
 // ── 상태 ─────────────────────────────────────────────
@@ -1183,7 +1217,7 @@ function _initRepoBulk() {
           _allItems.push({
             key:   reg.issue_key,
             type:  reg.issue_type,
-            label: '#' + reg.github_issue_number + ' — ' + (reg.issue_type === 'ai_suggestion' ? 'AI 제안' : '정적 분석'),
+            label: '#' + reg.github_issue_number + ' — ' + (reg.issue_type === 'ai_suggestion' ? I18N_BULK.labelAi : I18N_BULK.labelStatic),
           });
         });
         renderAll();
@@ -1236,8 +1270,8 @@ function _initRepoBulk() {
         ? 'issue-badge issue-badge--closed'
         : 'issue-badge issue-badge--open';
       badge.textContent = reg.github_issue_state === 'closed'
-        ? '✅ #' + reg.github_issue_number + ' 해결됨'
-        : '🔵 #' + reg.github_issue_number + ' 진행중';
+        ? I18N_BULK.statusResolved.replace('__N__', reg.github_issue_number)
+        : I18N_BULK.statusOpen.replace('__N__', reg.github_issue_number);
       li.appendChild(badge);
     }
     return li;
@@ -1283,7 +1317,7 @@ function _initRepoBulk() {
     document.getElementById('bulkError').classList.add('hidden');
     document.getElementById('bulkSubmit').disabled = false;
     document.getElementById('bulkSubmit').textContent =
-      _queueIdx < _queue.length - 1 ? '생성 후 다음 →' : 'GitHub에 Issue 생성';
+      _queueIdx < _queue.length - 1 ? I18N_BULK.btnCreateNext : I18N_BULK.bulkSubmitFinal;
     document.getElementById('bulkModalOverlay').classList.remove('hidden');
   }
 
@@ -1305,7 +1339,7 @@ function _initRepoBulk() {
     var item = _queue[_queueIdx];
     var btn  = document.getElementById('bulkSubmit');
     btn.disabled = true;
-    btn.textContent = '생성 중...';
+    btn.textContent = I18N_BULK.btnCreating;
 
     var payload = {
       analysis_id: item.analysis_id,
@@ -1329,10 +1363,10 @@ function _initRepoBulk() {
     .then(function(res) {
       if (!res.ok) {
         var errEl = document.getElementById('bulkError');
-        errEl.textContent = res.data.detail || '오류 발생';
+        errEl.textContent = res.data.detail || I18N_BULK.errGeneric;
         errEl.classList.remove('hidden');
         btn.disabled = false;
-        btn.textContent = '다시 시도';
+        btn.textContent = I18N_BULK.btnRetry;
         return;
       }
       stateMap[item.key] = {
@@ -1354,10 +1388,10 @@ function _initRepoBulk() {
       }
     })
     .catch(function() {
-      document.getElementById('bulkError').textContent = '네트워크 오류';
+      document.getElementById('bulkError').textContent = I18N_BULK.errNetwork;
       document.getElementById('bulkError').classList.remove('hidden');
       btn.disabled = false;
-      btn.textContent = '다시 시도';
+      btn.textContent = I18N_BULK.btnRetry;
     });
   });
 
