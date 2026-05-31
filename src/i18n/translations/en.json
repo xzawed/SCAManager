@@ -425,7 +425,27 @@
       "en": "English",
       "ko": "Korean",
       "ja": "Japanese"
-    }
+    },
+    "model_card_title": "AI Code Review Model",
+    "badge_advanced": "Advanced",
+    "use_global_default": "Use global default",
+    "preset_minimal": "Minimal",
+    "preset_standard": "Standard",
+    "preset_strict": "Strict",
+    "field_pr_review_comment": "PR Code Review Comment",
+    "field_commit_comment": "Commit Comment",
+    "field_create_issue": "Auto-create Issue",
+    "field_railway_deploy_alerts": "Railway Build Failure Issue",
+    "field_approve_mode": "Approve Mode",
+    "field_auto_merge": "Auto Merge",
+    "field_approve_threshold": "Approve Threshold",
+    "field_reject_threshold": "Reject Threshold",
+    "field_merge_threshold": "Merge Threshold",
+    "mode_auto": "⚡ Auto",
+    "mode_semi_auto": "📱 Semi-auto",
+    "preset_applied_suffix": "preset applied — please click the Save button",
+    "hide_value": "Hide value",
+    "show_value": "Show value"
   },
   "settings_page": {
     "title_prefix": "Settings",
