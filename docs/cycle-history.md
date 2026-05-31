@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [사이클 148 (전체 템플릿 i18n 완결 — base.html langName FOUC 해소, 2026-06-01)](#사이클-148)
 - [사이클 147 (회고 Tier A/B — settings 누락 i18n + toggle a11y + render-parity 가드, 2026-06-01)](#사이클-147)
 - [사이클 146 (템플릿 i18n 완성 — base/repo_insights/settings/landing 잔존 한국어 전수 전환, 2026-06-01)](#사이클-146)
 - [사이클 145 (JS 동적 텍스트 i18n — analysis_detail/repo_detail JS 메시지 data-i18n 전환, 2026-05-31)](#사이클-145)
@@ -56,6 +57,20 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 사이클 148
+
+**날짜**: 2026-06-01 | **PR**: #710 | **상태**: ✅ 머지 완료
+
+**작업 내용**: 전체 템플릿 i18n 완결 — base.html langName/langIcon 초기 렌더 FOUC 해소 (회고 P2-1)
+
+**조사 결과**: 잔여 소형 템플릿(admin_operations/add_repo/overview/admin_rls_audit/admin_tenants) 전수 조사 — **이미 모두 i18n 완료** (i18n_args 16~35개씩, 사용자 노출 한국어 0건). 이전 카운트(18/10/9)는 전부 주석·CSS.
+
+**유일 잔존 = base.html L676 langName FOUC**: 초기 서버 렌더값이 locale 무관 '한국어' 고정 → en/ja 사용자 JS 실행 전 순간 한국어 노출. locale별 endonym/flag 직접 렌더로 해소 (en→English/🇺🇸, ja→日本語/🇯🇵, ko→한국어/🇰🇷). endonym 은 i18n 비번역.
+
+**달성**: 전체 템플릿 사용자 노출 한국어 0건 (endonym/JS fallback 제외). 사이클 143~148 i18n 대장정 완결.
+
+**테스트**: 코드 1줄 변경 (테스트 수 무변동, 4451 유지).
 
 ## 사이클 147
 
