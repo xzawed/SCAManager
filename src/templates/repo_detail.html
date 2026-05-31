@@ -446,9 +446,9 @@
       {%- if _sorted %}
       {%- set _latest = _sorted[0] %}
       <span class="grade grade--{{ (_latest.grade or 'f') | lower }}">{{ _latest.grade or 'F' }}</span>
-      <span style="font-size: var(--fs-sm, 0.875rem); color: var(--text-2, rgba(255,255,255,0.6));">최근 점수: {{ (_latest.score | round(1)) if _latest.score is not none else '—' }}/100</span>
+      <span style="font-size: var(--fs-sm, 0.875rem); color: var(--text-2, rgba(255,255,255,0.6));">{{ 'repo_detail.recent_score' | i18n_args(locale | default('ko')) }} {{ (_latest.score | round(1)) if _latest.score is not none else '—' }}/100</span>
       {%- endif %}
-      <span style="font-size: var(--fs-xs, 0.75rem); color: var(--text-3, rgba(255,255,255,0.4));">{{ analyses | length }}건 분석</span>
+      <span style="font-size: var(--fs-xs, 0.75rem); color: var(--text-3, rgba(255,255,255,0.4));">{{ analyses | length }}{{ 'repo_detail.analysis_unit' | i18n_args(locale | default('ko')) }}</span>
     </div>
   </div>
 </div>
@@ -492,8 +492,8 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
       </svg>
-      <span class="chart-empty-title" id="chartEmptyText">분석 이력이 없습니다</span>
-      <span class="chart-empty-sub">Push 또는 PR 이벤트 후 첫 분석이 완료되면 차트가 표시됩니다</span>
+      <span class="chart-empty-title" id="chartEmptyText">{{ 'repo_detail.history_empty' | i18n_args(locale | default('ko')) }}</span>
+      <span class="chart-empty-sub">{{ 'repo_detail.history_empty_hint' | i18n_args(locale | default('ko')) }}</span>
     </div>
   </div>
 </div>
@@ -501,22 +501,22 @@
 <!-- 이번 달 AI 리뷰 예상 비용 (Alembic 0032) -->
 <div class="card reveal" style="padding:1rem 1.5rem;margin-bottom:1rem;">
   <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;">
-    <span style="font-size:13px;font-weight:600;color:var(--text-1);">이번 달 AI 리뷰 예상 비용</span>
-    <span style="font-size:11px;color:var(--text-2);">({{ monthly_cost_month }} 01일 ~ 말일, 서버사이드 Webhook 분석 기준)</span>
+    <span style="font-size:13px;font-weight:600;color:var(--text-1);">{{ 'repo_detail.cost.title' | i18n_args(locale | default('ko')) }}</span>
+    <span style="font-size:11px;color:var(--text-2);">{{ 'repo_detail.cost.period' | i18n_args(locale | default('ko'), month=monthly_cost_month) }}</span>
     {% if monthly_token_count > 0 %}
     <span style="margin-left:auto;font-size:15px;font-weight:700;color:var(--accent);">
       ${{ "%.4f"|format(monthly_cost_usd) }}
     </span>
     <span style="font-size:12px;color:var(--text-2);">
-      (입력+출력 {{ "{:,}".format(monthly_token_count) }} 토큰)
+      {{ 'repo_detail.cost.tokens' | i18n_args(locale | default('ko'), count="{:,}".format(monthly_token_count)) }}
     </span>
     {% else %}
-    <span style="margin-left:auto;font-size:13px;color:var(--text-2);">데이터 없음 — 이번 달 토큰 추적 분석이 아직 없습니다.</span>
+    <span style="margin-left:auto;font-size:13px;color:var(--text-2);">{{ 'repo_detail.cost.no_data' | i18n_args(locale | default('ko')) }}</span>
     {% endif %}
   </div>
   <p style="font-size:11px;color:var(--text-2);margin:.4rem 0 0;">
-    ※ Anthropic 공식 요금 기준 추정값입니다. 실제 청구금액과 다를 수 있으며, pre-push 훅 비용(사용자 API 키)은 포함되지 않습니다.
-    모델 변경: <a href="/repos/{{ repo_name }}/settings" style="color:var(--accent);">설정 페이지</a>
+    {{ 'repo_detail.cost.disclaimer' | i18n_args(locale | default('ko')) }}
+    {{ 'repo_detail.cost.model_change' | i18n_args(locale | default('ko')) }} <a href="/repos/{{ repo_name }}/settings" style="color:var(--accent);">{{ 'repo_detail.cost.settings_link' | i18n_args(locale | default('ko')) }}</a>
   </p>
 </div>
 
