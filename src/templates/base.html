@@ -650,17 +650,21 @@
       <div class="nav-avatar" aria-hidden="true">{{ (current_user.display_name or current_user.github_login or 'U')[0] | upper }}</div>
     </div>
     {% endif %}
-    <div class="theme-switcher" id="themeSwitcher">
+    <div class="theme-switcher" id="themeSwitcher"
+         data-i18n-theme-dark-short="{{ 'common.theme.dark_short' | i18n_args(locale | default('ko')) }}"
+         data-i18n-theme-light-short="{{ 'common.theme.light_short' | i18n_args(locale | default('ko')) }}"
+         data-i18n-theme-pastel-short="{{ 'common.theme.pastel_short' | i18n_args(locale | default('ko')) }}"
+         data-i18n-theme-catppuccin-short="{{ 'common.theme.catppuccin_short' | i18n_args(locale | default('ko')) }}">
       <button class="theme-btn" id="themeToggle" aria-label="{{ 'common.theme_aria' | i18n_args(locale | default('ko')) }}" aria-haspopup="true" aria-expanded="false">
         <span id="themeIcon">🌙</span>
-        <span id="themeName">다크</span>
+        <span id="themeName">{{ 'common.theme.dark_short' | i18n_args(locale | default('ko')) }}</span>
         <span class="chevron">▾</span>
       </button>
       <div class="theme-dropdown" id="themeDropdown" role="menu">
-        <div class="theme-option" data-theme-target="dark"       role="menuitem" tabindex="0">🌌 다크 오로라</div>
-        <div class="theme-option" data-theme-target="light"      role="menuitem" tabindex="0">☀️ 라이트</div>
-        <div class="theme-option" data-theme-target="pastel"     role="menuitem" tabindex="0">🌸 파스텔</div>
-        <div class="theme-option" data-theme-target="catppuccin" role="menuitem" tabindex="0">🐾 개발자 다크</div>
+        <div class="theme-option" data-theme-target="dark"       role="menuitem" tabindex="0">🌌 {{ 'common.theme.dark_label' | i18n_args(locale | default('ko')) }}</div>
+        <div class="theme-option" data-theme-target="light"      role="menuitem" tabindex="0">☀️ {{ 'common.theme.light_label' | i18n_args(locale | default('ko')) }}</div>
+        <div class="theme-option" data-theme-target="pastel"     role="menuitem" tabindex="0">🌸 {{ 'common.theme.pastel_label' | i18n_args(locale | default('ko')) }}</div>
+        <div class="theme-option" data-theme-target="catppuccin" role="menuitem" tabindex="0">🐾 {{ 'common.theme.catppuccin_label' | i18n_args(locale | default('ko')) }}</div>
       </div>
     </div>
     {# Phase 2 PR-4 (사이클 84) — 다국어 i18n 헤더 dropdown (테마 토글 패턴 차용) #}
@@ -697,11 +701,17 @@
     // 🔴 var 사용 필수 — const는 hx-boost body swap 후 스크립트 재실행 시 재선언 SyntaxError 유발
     // 🔴 Must use var — const causes SyntaxError on re-execution after hx-boost body swap
     var THEME_MIGRATE = { 'glass': 'pastel', 'claude-dark': 'catppuccin' };
+    // 테마 짧은 이름은 themeSwitcher 컨테이너의 data-i18n 속성에서 읽음 (locale별 i18n)
+    // Theme short names are read from themeSwitcher container's data-i18n attributes (locale-aware i18n)
+    // 🔴 var 사용 필수 — hx-boost body swap 후 재실행 시 매번 dataset 재읽기 (stale 방지)
+    // 🔴 Must use var — re-reads dataset each time on hx-boost body swap re-execution (stale guard)
+    var _themeSw = document.getElementById('themeSwitcher');
+    var _themeDs = (_themeSw && _themeSw.dataset) || {};
     var THEMES = {
-      dark:        { icon: '🌌', name: '다크' },
-      light:       { icon: '☀️', name: '라이트' },
-      pastel:      { icon: '🌸', name: '파스텔' },
-      catppuccin:  { icon: '🐾', name: '개발자' }
+      dark:        { icon: '🌌', name: _themeDs.i18nThemeDarkShort || '다크' },
+      light:       { icon: '☀️', name: _themeDs.i18nThemeLightShort || '라이트' },
+      pastel:      { icon: '🌸', name: _themeDs.i18nThemePastelShort || '파스텔' },
+      catppuccin:  { icon: '🐾', name: _themeDs.i18nThemeCatppuccinShort || '개발자' }
     };
 
     function applyTheme(theme) {
