@@ -55,23 +55,33 @@
 
 ## 사이클 143
 
-**날짜**: 2026-05-31 | **PR**: #686~#690 | **상태**: ✅ 머지 완료 (⚠️ #690 Sprint 3 pending — 예상 수치 기준)
+**날짜**: 2026-05-31 | **PR**: #684~#692 | **상태**: ✅ 머지 완료
 
-**작업 내용**: i18n 완성 + 프로세스 강화 — analysis_detail·repo_detail HTML i18n + GitHub PR 단일 템플릿 신규 + 정책 보강
+**작업 내용**: i18n 완성 + 프로세스 강화 — brainstorming→deep-research→설계/계획→구현(5+1 회고 포함)
 
 | PR | 내용 |
 |----|------|
+| #684 | docs(spec): 사이클 143 설계 문서 |
+| #685 | docs(plan): 사이클 143 구현 계획 (9 Task) |
 | #686 | fix(i18n): analysis_detail.html issue_form 라벨 3건 (Sprint 1-A, +18 테스트) |
 | #687 | chore: GitHub PR 단일 템플릿 신규 — 정책 18/11 체크리스트 (Sprint 1-B) |
 | #688 | chore(policy): CLAUDE.md 6-step + 정책 11 표준 형식 보강 (Sprint 1-C) |
 | #689 | fix(i18n): repo_detail.html 일반 텍스트 ~11건 (Sprint 2, +66 테스트) |
 | #690 | fix(i18n): repo_detail.html 이슈 등록 UI ~11건 + smoke (Sprint 3, +66 단위 +2 통합) |
+| #691 | docs: 사이클 143 완료 이력 동기화 |
+| #692 | fix(회고 Tier A): PR 템플릿 정책 18 정렬 + cost.period YYYY-MM 문구 수정 |
 
 **주요 설계 결정**:
 - JS 내 한국어 (~15건) 보류 — ICU MessageFormat 기반 표준 방식 미확보, prefix/suffix 비표준 확인 (deep-research)
 - GitHub 다중 PR 템플릿 대신 단일 파일 방식 채택 — 공식 문서 확인 (deep-research)
 
-**신규 테스트**: +150 단위 +2 통합 (단위 3329→3479, 통합 151→153, 전체 3480→3632)
+**5+1 회고 (Tier A 이행, #692)**:
+- P0 0건 (P0-A 후보 → cross-verify P1 하향, 프로세스 문서 결함). P1 6건 / P2 3건. cross-verify false-positive 0건 (1~5차 정확도 100%).
+- Tier A (#692): PR 템플릿 정책 18 문구를 active.md canonical로 정렬 + 정책 3 섹션 추가 + cost.period 3언어 YYYY-MM 대응 (ja `2026-05月1日` 비문 해소)
+- Tier B 이월 (다음 사이클): P1-2 analysis_detail Issue 패널 비대칭 i18n / P1-3 L625 정적+JS 카운트 / P1-4 test_detail_i18n_render.py 사이클 143 키 assert
+- 정책 진화 후보: docs PR 코드 PR 의존 시 blocking 신호 (P1-5 머지 순서 역전 학습)
+
+**신규 테스트**: +150 단위 +2 통합 (단위 3329→3479, 통합 151→153, 전체 3480→3632). 회고 Tier A는 문구 수정만 — 테스트 수 변동 없음.
 
 ## 사이클 142
 
