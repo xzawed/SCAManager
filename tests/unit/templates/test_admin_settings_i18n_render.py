@@ -404,3 +404,123 @@ def test_admin_tenants_locale_none_defaults_to_ko():
 def test_settings_locale_none_defaults_to_ko():
     out = _render("settings.html", **_settings_ctx())
     assert "리포지토리 설정" in out  # ko default
+
+
+# ── 사이클 146/147 render-parity 가드 (회고 P1-4) ───────────────────────────
+# Cycle 146/147 render-parity guards (retro P1-4) — settings 네임스페이스 키가
+# JSON 에만 존재하고 템플릿이 오타 키를 호출하면 raw 키 노출 → 키 존재 테스트는
+# 통과하나 렌더 가드는 실패. 사이클 144 #696 패턴을 사이클 146 키에 적용.
+
+
+class _CfgWithModel(_Cfg):
+    """`settings` 네임스페이스 model 카드 렌더에 필요한 review_model 속성 추가.
+
+    Adds the review_model attribute required by the `settings` namespace model card.
+    """
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("review_model", None)
+        super().__init__(**kwargs)
+
+
+# claude_models — 모델 선택 카드 <option> 렌더용 (settings.html:1082 for 루프)
+# claude_models — feeds the model select card <option> loop (settings.html:1082)
+_CLAUDE_MODELS = [
+    {"id": "claude-sonnet-4-6", "label": "Sonnet 4.6"},
+    {"id": "claude-opus-4-1", "label": "Opus 4.1"},
+]
+
+
+def _settings_ctx_146(**overrides) -> dict:
+    """사이클 146/147 키 렌더에 필요한 model 카드 + claude_models 포함 context."""
+    base = _settings_ctx(config=_CfgWithModel(), claude_models=_CLAUDE_MODELS)
+    base.update(overrides)
+    return base
+
+
+def test_settings_renders_korean_settings_namespace_keys():
+    """settings 네임스페이스 키 (model 카드 + preset 라벨 + JS 필드) 한국어 렌더 검증.
+
+    Renders Korean text for `settings` namespace keys (model card + preset labels + JS fields).
+    오타 키면 raw 'settings.model_card_title' 등이 노출되어 실패.
+    """
+    out = _render("settings.html", locale="ko", **_settings_ctx_146())
+    # model 카드 (사이클 146 — alembic 0032) / model card
+    assert "AI 코드리뷰 모델" in out
+    assert "전역 기본값 사용" in out
+    assert "리포별 AI 리뷰 모델을 선택합니다" in out  # model_hint
+    # JS 인라인 PRESET_LABELS (settings.html:1174~1176) — 렌더 출력에 문자열로 포함
+    # JS inline PRESET_LABELS appear as literal strings in rendered output
+    assert "minimal: '최소'" in out
+    assert "standard: '표준'" in out
+    assert "strict: '엄격'" in out
+    # JS 인라인 field 라벨 (settings.html:1196~1204)
+    assert "pr_review_comment: 'PR 코드리뷰 댓글'" in out
+    assert "approve_threshold: '승인 기준점'" in out
+    assert "merge_threshold: 'Merge 임계값'" in out
+    # mode 라벨 (settings.html:1221~1222)
+    assert "⚡ 자동" in out
+    assert "📱 반자동" in out
+
+
+def test_settings_renders_english_settings_namespace_keys():
+    """settings 네임스페이스 키 영어 렌더 검증."""
+    out = _render("settings.html", locale="en", **_settings_ctx_146())
+    assert "AI Code Review Model" in out
+    assert "Use global default" in out
+    assert "minimal: 'Minimal'" in out
+    assert "standard: 'Standard'" in out
+    assert "strict: 'Strict'" in out
+
+
+def test_settings_renders_japanese_settings_namespace_keys():
+    """settings 네임스페이스 키 일본어 렌더 검증."""
+    out = _render("settings.html", locale="ja", **_settings_ctx_146())
+    assert "AIコードレビューモデル" in out
+    assert "グローバルデフォルトを使用" in out
+    assert "minimal: '最小'" in out
+
+
+def test_settings_renders_save_toast_ok_when_saved():
+    """saved=True 시 save_toast_ok 번역 텍스트 렌더 (settings.html:411~413).
+
+    Renders save_toast_ok translation when saved=True (settings.html:411~413).
+    조건부 블록이므로 saved=True context override 로 활성화.
+    """
+    out_ko = _render("settings.html", locale="ko", **_settings_ctx_146(saved=True))
+    assert "✅ 설정이 저장되었습니다." in out_ko
+    out_en = _render("settings.html", locale="en", **_settings_ctx_146(saved=True))
+    assert "Settings saved." in out_en
+
+
+def test_settings_renders_save_toast_err_when_save_error():
+    """save_error=True 시 save_toast_err 번역 텍스트 렌더 (settings.html:415~417)."""
+    out = _render("settings.html", locale="ko", **_settings_ctx_146(save_error=True))
+    assert "❌ 저장에 실패했습니다" in out
+
+
+def test_settings_renders_common_theme_labels():
+    """base.html 상속 — common.theme 4 테마 라벨 렌더 (테마 키 커버, base.html:664~667).
+
+    Inherits base.html — renders common.theme 4 theme labels (theme key coverage).
+    settings 가 base 를 상속하므로 테마 메뉴가 함께 렌더됨 → 테마 키 사각 차단.
+    """
+    out_ko = _render("settings.html", locale="ko", **_settings_ctx_146())
+    assert "다크 오로라" in out_ko  # common.theme.dark_label
+    assert "파스텔" in out_ko  # common.theme.pastel_label
+    out_en = _render("settings.html", locale="en", **_settings_ctx_146())
+    assert "Dark Aurora" in out_en
+
+
+def test_settings_no_raw_settings_namespace_keys_leak():
+    """렌더 출력에 raw 'settings.<key>' 미노출 회귀 가드 (오타 키 탐지).
+
+    Regression guard — no raw 'settings.<key>' leaks into rendered output (typo key detection).
+    'settings_page.' 는 별도 정상 네임스페이스이므로 제외. data-* 속성명도 제외.
+    """
+    out = _render("settings.html", locale="ko", **_settings_ctx_146())
+    # 'settings.' 직후 식별자 패턴 — 단 'settings_page.' / 'settings-' 는 정상
+    import re
+
+    leaks = re.findall(r"(?<![\w-])settings\.[a-z_]+", out)
+    assert not leaks, f"raw settings 키 노출: {leaks}"
