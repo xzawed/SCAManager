@@ -604,7 +604,9 @@
 
 {# ─── 반복 이슈 일괄 등록 패널 (Phase 2 신규) ─── #}
 <section class="issue-reg-panel" id="repoBulkPanel"
-         data-repo-id="{{ repo_id }}">
+         data-repo-id="{{ repo_id }}"
+         data-i18n-bulk-register="{{ 'repo_detail.issue_mgmt.bulk_register' | i18n_args(locale | default('ko'), count='__N__') }}"
+         data-i18n-bulk-complete="{{ 'repo_detail.issue_mgmt.bulk_complete' | i18n_args(locale | default('ko'), count='__N__') }}">
 
   <h3 class="panel-title">{{ 'repo_detail.issue_mgmt.title' | i18n_args(locale | default('ko')) }}</h3>
 
@@ -622,7 +624,7 @@
       <input type="checkbox" id="showUnregisteredOnly"> {{ 'repo_detail.issue_mgmt.filter_unregistered' | i18n_args(locale | default('ko')) }}
     </label>
     <button class="btn-primary" id="bulkRegisterBtn" disabled>
-      선택 항목 일괄 Issue 등록 (0건) →
+      {{ 'repo_detail.issue_mgmt.bulk_register' | i18n_args(locale | default('ko'), count=0) }}
     </button>
   </div>
 
@@ -846,6 +848,14 @@ const I18N = {
   sourcePush: _i18nCard.dataset.i18nSourcePush,
   sourceCli: _i18nCard.dataset.i18nSourceCli,
 };
+
+// 사이클 144 Sprint 2 — 일괄 등록 버튼/토스트 i18n (#repoBulkPanel data-i18n-*)
+// Cycle 144 Sprint 2 — bulk register button/toast i18n (#repoBulkPanel data-i18n-*)
+const _i18nBulkPanel = document.getElementById('repoBulkPanel');
+const I18N_BULK = _i18nBulkPanel ? {
+  bulkRegister: _i18nBulkPanel.dataset.i18nBulkRegister,
+  bulkComplete: _i18nBulkPanel.dataset.i18nBulkComplete,
+} : { bulkRegister: '', bulkComplete: '' };
 
 // ── 상태 ─────────────────────────────────────────────
 const state = {
@@ -1237,7 +1247,7 @@ function _initRepoBulk() {
     var checked = document.querySelectorAll('.issue-list input[type=checkbox]:checked');
     var btn = document.getElementById('bulkRegisterBtn');
     btn.disabled = checked.length === 0;
-    btn.textContent = '선택 항목 일괄 Issue 등록 (' + checked.length + '건) →';
+    btn.textContent = I18N_BULK.bulkRegister.replace('__N__', checked.length);
   }
 
   /* ── 탭 전환 ── */
@@ -1338,7 +1348,7 @@ function _initRepoBulk() {
         closeBulkModal();
         renderAll();
         var toast = document.getElementById('repoIssueToast');
-        toast.textContent = '✅ ' + total + '건 Issue 등록 완료';
+        toast.textContent = I18N_BULK.bulkComplete.replace('__N__', total);
         toast.classList.remove('hidden');
         setTimeout(function() { toast.classList.add('hidden'); }, 5000);
       }
