@@ -791,6 +791,8 @@
     "chart_sec_err": "보안 오류",
     "chart_sec_warn": "보안 경고",
     "chart_qual_err": "코드품질 오류",
-    "chart_qual_warn": "코드품질 경고"
+    "chart_qual_warn": "코드품질 경고",
+    "count_items": "{count}건",
+    "total_items": "전체 {count}건"
   }
 }

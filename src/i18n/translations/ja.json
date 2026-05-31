@@ -791,6 +791,8 @@
     "chart_sec_err": "セキュリティエラー",
     "chart_sec_warn": "セキュリティ警告",
     "chart_qual_err": "コード品質エラー",
-    "chart_qual_warn": "コード品質警告"
+    "chart_qual_warn": "コード品質警告",
+    "count_items": "{count}件",
+    "total_items": "全体 {count}件"
   }
 }

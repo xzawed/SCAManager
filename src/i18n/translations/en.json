@@ -791,6 +791,8 @@
     "chart_sec_err": "Security error",
     "chart_sec_warn": "Security warning",
     "chart_qual_err": "Code quality error",
-    "chart_qual_warn": "Code quality warning"
+    "chart_qual_warn": "Code quality warning",
+    "count_items": "{count}",
+    "total_items": "Total {count}"
   }
 }

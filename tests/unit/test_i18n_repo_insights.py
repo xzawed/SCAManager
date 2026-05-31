@@ -19,6 +19,7 @@ _KEYS = [
     "empty_category", "problem_files_title", "count_suffix", "ai_suggestions_title",
     "mention_count", "empty_no_data", "empty_no_data_hint",
     "chart_sec_err", "chart_sec_warn", "chart_qual_err", "chart_qual_warn",
+    "count_items", "total_items",
 ]
 
 

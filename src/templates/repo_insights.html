@@ -112,7 +112,7 @@
     <div class="kpi ri-kpi-card">
       <div class="kpi__label ri-kpi-label">{{ 'repo_insights.kpi_security_high' | i18n_args(locale | default('ko')) }}</div>
       <div class="kpi__value ri-kpi-value {% if kpi.high_security_count > 0 %}ri-delta-down{% endif %}">
-        {{ kpi.high_security_count }}건
+        {{ 'repo_insights.count_items' | i18n_args(locale | default('ko'), count=kpi.high_security_count) }}
       </div>
       <div class="kpi__foot ri-kpi-sub">severity: error / HIGH</div>
     </div>
@@ -190,7 +190,7 @@
                 data-i18n-chart-qual-err="{{ 'repo_insights.chart_qual_err' | i18n_args(locale | default('ko')) }}"
                 data-i18n-chart-qual-warn="{{ 'repo_insights.chart_qual_warn' | i18n_args(locale | default('ko')) }}"></canvas>
         <div style="margin-top:12px; font-size:12px; color:var(--text-2); text-align:center;">
-          전체 {{ breakdown.total }}건
+          {{ 'repo_insights.total_items' | i18n_args(locale | default('ko'), count=breakdown.total) }}
         </div>
         {% else %}
         <div class="ri-empty">{{ 'repo_insights.empty_category' | i18n_args(locale | default('ko')) }}</div>
