@@ -32,3 +32,31 @@ def test_get_text_renders_gate_approve():
     from src.i18n.loader import get_text  # pylint: disable=import-outside-toplevel
     out = get_text("notifier.gate.auto_approve", "en", score=85, threshold=75)
     assert "85" in out and "75" in out and "{score}" not in out
+
+
+# 사이클 149 Sprint 2 — Telegram 반자동 Gate 메시지 키
+# Cycle 149 Sprint 2 — Telegram semi-auto gate message keys
+_TG_KEYS = [
+    "tg_review_title", "tg_repo_line", "tg_score_line",
+    "tg_choose", "tg_btn_approve", "tg_btn_reject",
+]
+
+
+@pytest.mark.parametrize("locale", _LOCALES)
+@pytest.mark.parametrize("key", _TG_KEYS)
+def test_gate_tg_key_exists(locale, key):
+    assert key in _load(locale)["notifier"]["gate"], f"[{locale}] notifier.gate.{key} 없음"
+
+
+def test_get_text_renders_tg_score():
+    from src.i18n.loader import get_text  # pylint: disable=import-outside-toplevel
+    out = get_text("notifier.gate.tg_score_line", "en", score=85, grade="B")
+    assert "85" in out and "B" in out
+
+
+def test_tg_repo_line_preserves_markdown():
+    """리포 라인은 Telegram Markdown 백틱을 보존한다 (parse_mode=Markdown)."""
+    g_ko = _load("ko")["notifier"]["gate"]
+    assert "`{repo}`" in g_ko["tg_repo_line"], "ko tg_repo_line 백틱 누락"
+    g_en = _load("en")["notifier"]["gate"]
+    assert "`{repo}`" in g_en["tg_repo_line"], "en tg_repo_line 백틱 누락"

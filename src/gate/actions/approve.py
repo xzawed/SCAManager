@@ -81,6 +81,10 @@ class ApproveAction(GateAction):
                 sanitize_for_log(ctx.repo_name),
             )
             return
+        # 알림 언어 결정 (3-layer fallback) — Telegram 검토 요청을 수신자 언어로 발송
+        # Resolve notification language (3-layer fallback) — send Telegram request in recipient's language
+        with SessionLocal() as db:
+            language = resolve_notification_language(db, config=ctx.config)
         try:
             score_result = _score_from_result(ctx.result)
             await send_gate_request(
@@ -90,6 +94,7 @@ class ApproveAction(GateAction):
                 repo_full_name=ctx.repo_name,
                 pr_number=ctx.pr_number,
                 score_result=score_result,
+                language=language,
             )
         except (httpx.HTTPError, KeyError) as exc:
             logger.error("Telegram Gate 요청 실패: %s", type(exc).__name__)
