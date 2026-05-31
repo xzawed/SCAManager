@@ -309,3 +309,61 @@ def test_analysis_detail_locale_none_defaults_to_ko():
     out = _render("analysis_detail.html", **_analysis_ctx())
     assert "← 이력" in out  # back ko default
     assert "분석 #42" in out
+
+
+# ---------------------------------------------------------------------------
+# 사이클 143/144 i18n 렌더 정합 가드 (회고 P1-4)
+# 키 존재가 아닌 실제 렌더 결과에 번역 텍스트가 나타나는지 검증 —
+# 템플릿이 오타 키 호출 시 raw 키 노출을 검출.
+# Render-parity guard: verifies translated text appears in rendered output,
+# catching template typo-key calls that key-existence tests miss.
+# ---------------------------------------------------------------------------
+
+
+def test_repo_detail_cycle143_korean_strings_render():
+    """repo_detail.html ko — 사이클 143 신규 번역 텍스트 렌더 검증."""
+    out = _render("repo_detail.html", locale="ko", **_repo_ctx())
+    assert "최근 점수:" in out  # recent_score
+    assert "이번 달 AI 리뷰 예상 비용" in out  # cost.title
+    assert "한 달 전체" in out  # cost.period ({month} 보간 후 Tier A 수정값)
+    assert "반복 이슈" in out  # issue_mgmt.title (🔁 반복 이슈 — Issue 등록 관리)
+
+
+def test_repo_detail_cycle143_english_strings_render():
+    """repo_detail.html en — 사이클 143 신규 번역 텍스트 렌더 검증."""
+    out = _render("repo_detail.html", locale="en", **_repo_ctx())
+    assert "Recent Score:" in out  # recent_score
+    assert "Estimated AI Review Cost This Month" in out  # cost.title
+
+
+def test_repo_detail_history_empty_renders_when_no_analyses():
+    """repo_detail.html — analyses 비어있을 때 history_empty 빈 상태 렌더."""
+    out = _render("repo_detail.html", locale="ko", **_repo_ctx(analyses=[]))
+    assert "분석 이력이 없습니다" in out  # history_empty
+
+
+def test_repo_detail_cycle144_bulk_register_renders():
+    """repo_detail.html ko — 사이클 144 일괄 등록 버튼 정적 렌더 (count=0)."""
+    out = _render("repo_detail.html", locale="ko", **_repo_ctx())
+    # 템플릿이 count=0 으로 i18n_args 호출 → {count}건 보간 검증
+    assert "선택 항목 일괄 Issue 등록 (0건)" in out  # issue_mgmt.bulk_register
+
+
+def test_analysis_detail_cycle144_issue_panel_korean_renders():
+    """analysis_detail.html ko — 사이클 144 Issue 패널 번역 텍스트 렌더."""
+    out = _render("analysis_detail.html", locale="ko", **_analysis_ctx())
+    assert "GitHub Issue 등록" in out  # issue_panel.panel_title (📋 GitHub Issue 등록)
+    assert "GitHub Issue 생성" in out  # issue_panel.modal_title (📝 GitHub Issue 생성)
+
+
+def test_analysis_detail_cycle144_issue_panel_english_renders():
+    """analysis_detail.html en — 사이클 144 Issue 패널 번역 텍스트 렌더."""
+    out = _render("analysis_detail.html", locale="en", **_analysis_ctx())
+    assert "GitHub Issue Registration" in out  # issue_panel.panel_title
+    assert "Create GitHub Issue" in out  # issue_panel.modal_title
+
+
+def test_analysis_detail_cycle143_issue_form_renders():
+    """analysis_detail.html ko — 사이클 143 issue_form 라벨 렌더."""
+    out = _render("analysis_detail.html", locale="ko", **_analysis_ctx())
+    assert "제목" in out  # issue_form.title
