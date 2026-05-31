@@ -808,7 +808,16 @@
       "tg_score_line": "スコア: *{score}点* ({grade})",
       "tg_choose": "承認または却下を選択してください。",
       "tg_btn_approve": "✅ 承認",
-      "tg_btn_reject": "❌ 却下"
+      "tg_btn_reject": "❌ 却下",
+      "retry_stopped_title": "🚫 <b>自動マージ再試行停止</b>",
+      "retry_repo_line": "📁 <code>{repo}</code> — PR #{pr}",
+      "retry_stopped_reason": "<i>設定変更により再試行が停止されました (auto_merge無効化またはスコア基準変更)。</i>",
+      "retry_succeeded_title": "✅ <b>自動マージ成功 (再試行)</b>",
+      "retry_score_attempts": "スコア: {score}点 | 試行回数: {attempts}回",
+      "retry_view_github": "🔗 <a href=\"{url}\">GitHubで見る</a>",
+      "retry_terminal_title": "⚠️ <b>自動マージ最終失敗</b>",
+      "retry_terminal_reason": "理由: <code>{reason}</code>",
+      "retry_advice_line": "💡 {advice}"
     }
   },
   "repo_insights": {

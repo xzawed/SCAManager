@@ -60,3 +60,30 @@ def test_tg_repo_line_preserves_markdown():
     assert "`{repo}`" in g_ko["tg_repo_line"], "ko tg_repo_line 백틱 누락"
     g_en = _load("en")["notifier"]["gate"]
     assert "`{repo}`" in g_en["tg_repo_line"], "en tg_repo_line 백틱 누락"
+
+
+# 사이클 149 Sprint 4 — 머지 재시도 Telegram 알림 키 (HTML parse_mode)
+# Cycle 149 Sprint 4 — merge retry Telegram notification keys (HTML parse_mode)
+_RETRY_KEYS = [
+    "retry_stopped_title", "retry_repo_line", "retry_stopped_reason",
+    "retry_succeeded_title", "retry_score_attempts", "retry_view_github",
+    "retry_terminal_title", "retry_terminal_reason", "retry_advice_line",
+]
+
+
+@pytest.mark.parametrize("locale", _LOCALES)
+@pytest.mark.parametrize("key", _RETRY_KEYS)
+def test_gate_retry_key_exists(locale, key):
+    assert key in _load(locale)["notifier"]["gate"], f"[{locale}] notifier.gate.{key} 없음"
+
+
+def test_retry_score_attempts_renders():
+    from src.i18n.loader import get_text  # pylint: disable=import-outside-toplevel
+    out = get_text("notifier.gate.retry_score_attempts", "en", score=85, attempts=3)
+    assert "85" in out and "3" in out
+
+
+def test_retry_view_github_preserves_html():
+    from src.i18n.loader import get_text  # pylint: disable=import-outside-toplevel
+    out = get_text("notifier.gate.retry_view_github", "en", url="http://x")
+    assert "<a href=" in out

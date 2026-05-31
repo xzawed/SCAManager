@@ -808,7 +808,16 @@
       "tg_score_line": "Score: *{score}* ({grade})",
       "tg_choose": "Please choose approve or reject.",
       "tg_btn_approve": "✅ Approve",
-      "tg_btn_reject": "❌ Reject"
+      "tg_btn_reject": "❌ Reject",
+      "retry_stopped_title": "🚫 <b>Auto-merge Retry Stopped</b>",
+      "retry_repo_line": "📁 <code>{repo}</code> — PR #{pr}",
+      "retry_stopped_reason": "<i>Retry stopped: auto_merge disabled or threshold changed.</i>",
+      "retry_succeeded_title": "✅ <b>Auto-merge Succeeded (Retry)</b>",
+      "retry_score_attempts": "Score: {score} | Attempts: {attempts}",
+      "retry_view_github": "🔗 <a href=\"{url}\">View on GitHub</a>",
+      "retry_terminal_title": "⚠️ <b>Auto-merge Final Failure</b>",
+      "retry_terminal_reason": "Reason: <code>{reason}</code>",
+      "retry_advice_line": "💡 {advice}"
     }
   },
   "repo_insights": {
