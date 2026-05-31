@@ -724,7 +724,8 @@
                          oninput="this.previousElementSibling.value=this.value">
                 </div>
               </div>
-              <div class="range-hint">
+              <div class="range-hint"
+                   data-i18n-range-summary="{{ 'settings_page.pr_rules.range_summary' | i18n_args(locale | default('ko'), approve='__A__', reject='__R__') }}">
                 {{ 'settings_page.pr_rules.range_summary' | i18n_args(locale | default('ko'), approve=config.approve_threshold, reject=config.reject_threshold) | safe }}
               </div>
             </div>
@@ -1071,13 +1072,13 @@
   <div class="s-card adv-only" style="margin-bottom:1rem;">
     <div class="s-card-hdr" style="background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 80%, #000), var(--accent));">
       <span class="hdr-icon">🤖</span>
-      <span class="hdr-title">AI 코드리뷰 모델</span>
-      <span class="hdr-badge">고급</span>
+      <span class="hdr-title">{{ 'settings.model_card_title' | i18n_args(locale | default('ko')) }}</span>
+      <span class="hdr-badge">{{ 'settings.badge_advanced' | i18n_args(locale | default('ko')) }}</span>
     </div>
     <div class="s-card-body">
       <div class="field-row">
         <select name="review_model" form="settingsForm" class="field-input" style="max-width:420px;">
-          <option value="">전역 기본값 사용</option>
+          <option value="">{{ 'settings.use_global_default' | i18n_args(locale | default('ko')) }}</option>
           {% for m in claude_models %}
           <option value="{{ m.id }}" {% if config.review_model == m.id %}selected{% endif %}>{{ m.label }}</option>
           {% endfor %}
@@ -1172,7 +1173,11 @@
       merge_threshold: 85,
     },
   };
-  var PRESET_LABELS = { minimal: '최소', standard: '표준', strict: '엄격' };
+  var PRESET_LABELS = {
+    minimal: '{{ 'settings.preset_minimal' | i18n_args(locale | default('ko')) }}',
+    standard: '{{ 'settings.preset_standard' | i18n_args(locale | default('ko')) }}',
+    strict: '{{ 'settings.preset_strict' | i18n_args(locale | default('ko')) }}',
+  };
 
   // 아코디언 토글 — 펼치면 diff 미리보기(자동 적용 아님), 다른 카드는 닫힘
   function onPresetToggle(el, name) {
@@ -1191,15 +1196,15 @@
     if (!tbody) return;
 
     const labels = {
-      pr_review_comment: 'PR 코드리뷰 댓글',
-      commit_comment: '커밋 코멘트',
-      create_issue: '이슈 자동 생성',
-      railway_deploy_alerts: 'Railway 빌드 실패 Issue',
-      approve_mode: 'Approve 모드',
-      auto_merge: '자동 Merge',
-      approve_threshold: '승인 기준점',
-      reject_threshold: '반려 기준점',
-      merge_threshold: 'Merge 임계값',
+      pr_review_comment: '{{ 'settings.field_pr_review_comment' | i18n_args(locale | default('ko')) }}',
+      commit_comment: '{{ 'settings.field_commit_comment' | i18n_args(locale | default('ko')) }}',
+      create_issue: '{{ 'settings.field_create_issue' | i18n_args(locale | default('ko')) }}',
+      railway_deploy_alerts: '{{ 'settings.field_railway_deploy_alerts' | i18n_args(locale | default('ko')) }}',
+      approve_mode: '{{ 'settings.field_approve_mode' | i18n_args(locale | default('ko')) }}',
+      auto_merge: '{{ 'settings.field_auto_merge' | i18n_args(locale | default('ko')) }}',
+      approve_threshold: '{{ 'settings.field_approve_threshold' | i18n_args(locale | default('ko')) }}',
+      reject_threshold: '{{ 'settings.field_reject_threshold' | i18n_args(locale | default('ko')) }}',
+      merge_threshold: '{{ 'settings.field_merge_threshold' | i18n_args(locale | default('ko')) }}',
     };
 
     function curVal(key) {
@@ -1216,8 +1221,8 @@
       if (val === true) return '✅';
       if (val === false) return '⬜';
       if (val === 'disabled') return '🚫';
-      if (val === 'auto') return '⚡ 자동';
-      if (val === 'semi-auto') return '📱 반자동';
+      if (val === 'auto') return '{{ 'settings.mode_auto' | i18n_args(locale | default('ko')) }}';
+      if (val === 'semi-auto') return '{{ 'settings.mode_semi_auto' | i18n_args(locale | default('ko')) }}';
       return String(val);
     }
 
@@ -1283,10 +1288,12 @@
 
     // hint 텍스트 업데이트
     const hint = document.querySelector('.range-hint');
-    if (hint) {
-      hint.innerHTML =
-        '💡 <strong>' + p.approve_threshold + '점 이상</strong> 자동 승인 · ' +
-        '<strong>' + p.reject_threshold + '점 미만</strong> 자동 반려 · 그 사이 스킵';
+    if (hint && hint.dataset.i18nRangeSummary) {
+      // 서버 주입 i18n 템플릿 재사용 — __A__/__R__ 치환 (settings_page.pr_rules.range_summary)
+      // Reuse server-injected i18n template — replace __A__/__R__
+      hint.innerHTML = hint.dataset.i18nRangeSummary
+        .replace('__A__', p.approve_threshold)
+        .replace('__R__', p.reject_threshold);
     }
 
     // 적용됨 레이블 표시 (다른 카드는 숨김)
@@ -1345,7 +1352,8 @@
     const toast = document.createElement('div');
     toast.id = 'presetToast';
     toast.className = 'save-toast save-toast-ok';
-    toast.innerHTML = '✅ <strong>' + label + '</strong> 프리셋 적용됨 — 저장 버튼을 눌러주세요';
+    toast.innerHTML = '✅ <strong>' + label + '</strong> ' +
+      '{{ 'settings.preset_applied_suffix' | i18n_args(locale | default('ko')) }}';
     toast.style.cursor = 'pointer';
     toast.addEventListener('click', () => toast.remove());
     document.body.appendChild(toast);
@@ -1374,7 +1382,9 @@
     const isHidden = input.type === 'password';
     input.type = isHidden ? 'text' : 'password';
     btn.textContent = isHidden ? '🙈' : '👁️';
-    btn.setAttribute('aria-label', isHidden ? '값 숨기기' : '값 보이기');
+    btn.setAttribute('aria-label', isHidden
+      ? '{{ 'settings.hide_value' | i18n_args(locale | default('ko')) }}'
+      : '{{ 'settings.show_value' | i18n_args(locale | default('ko')) }}');
   }
 
   function toggleMergeIssueOption(show) {

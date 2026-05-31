@@ -425,7 +425,27 @@
       "en": "영어",
       "ko": "한국어",
       "ja": "일본어"
-    }
+    },
+    "model_card_title": "AI 코드리뷰 모델",
+    "badge_advanced": "고급",
+    "use_global_default": "전역 기본값 사용",
+    "preset_minimal": "최소",
+    "preset_standard": "표준",
+    "preset_strict": "엄격",
+    "field_pr_review_comment": "PR 코드리뷰 댓글",
+    "field_commit_comment": "커밋 코멘트",
+    "field_create_issue": "이슈 자동 생성",
+    "field_railway_deploy_alerts": "Railway 빌드 실패 Issue",
+    "field_approve_mode": "Approve 모드",
+    "field_auto_merge": "자동 Merge",
+    "field_approve_threshold": "승인 기준점",
+    "field_reject_threshold": "반려 기준점",
+    "field_merge_threshold": "Merge 임계값",
+    "mode_auto": "⚡ 자동",
+    "mode_semi_auto": "📱 반자동",
+    "preset_applied_suffix": "프리셋 적용됨 — 저장 버튼을 눌러주세요",
+    "hide_value": "값 숨기기",
+    "show_value": "값 보이기"
   },
   "settings_page": {
     "title_prefix": "설정",

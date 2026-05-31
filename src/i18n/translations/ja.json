@@ -425,7 +425,27 @@
       "en": "英語",
       "ko": "韓国語",
       "ja": "日本語"
-    }
+    },
+    "model_card_title": "AIコードレビューモデル",
+    "badge_advanced": "高度",
+    "use_global_default": "グローバルデフォルトを使用",
+    "preset_minimal": "最小",
+    "preset_standard": "標準",
+    "preset_strict": "厳格",
+    "field_pr_review_comment": "PRコードレビューコメント",
+    "field_commit_comment": "コミットコメント",
+    "field_create_issue": "Issue自動作成",
+    "field_railway_deploy_alerts": "Railwayビルド失敗Issue",
+    "field_approve_mode": "Approveモード",
+    "field_auto_merge": "自動Merge",
+    "field_approve_threshold": "承認しきい値",
+    "field_reject_threshold": "却下しきい値",
+    "field_merge_threshold": "Mergeしきい値",
+    "mode_auto": "⚡ 自動",
+    "mode_semi_auto": "📱 半自動",
+    "preset_applied_suffix": "プリセット適用済み — 保存ボタンを押してください",
+    "hide_value": "値を隠す",
+    "show_value": "値を表示"
   },
   "settings_page": {
     "title_prefix": "設定",
