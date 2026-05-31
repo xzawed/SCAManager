@@ -18,7 +18,17 @@
     "no_data": "데이터 없음",
     "menu_aria": "메뉴 열기",
     "theme_aria": "테마 변경",
-    "lang_aria": "언어 변경"
+    "lang_aria": "언어 변경",
+    "theme": {
+      "dark_label": "다크 오로라",
+      "light_label": "라이트",
+      "pastel_label": "파스텔",
+      "catppuccin_label": "개발자 다크",
+      "dark_short": "다크",
+      "light_short": "라이트",
+      "pastel_short": "파스텔",
+      "catppuccin_short": "개발자"
+    }
   },
   "header": {
     "welcome": "환영합니다, {name}님",

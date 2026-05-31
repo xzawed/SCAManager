@@ -18,7 +18,17 @@
     "no_data": "データなし",
     "menu_aria": "メニューを開く",
     "theme_aria": "テーマを変更",
-    "lang_aria": "言語を変更"
+    "lang_aria": "言語を変更",
+    "theme": {
+      "dark_label": "ダークオーロラ",
+      "light_label": "ライト",
+      "pastel_label": "パステル",
+      "catppuccin_label": "デベロッパーダーク",
+      "dark_short": "ダーク",
+      "light_short": "ライト",
+      "pastel_short": "パステル",
+      "catppuccin_short": "デベロッパー"
+    }
   },
   "header": {
     "welcome": "ようこそ、{name}さん",

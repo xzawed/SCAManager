@@ -18,7 +18,17 @@
     "no_data": "No data available",
     "menu_aria": "Open menu",
     "theme_aria": "Change theme",
-    "lang_aria": "Change language"
+    "lang_aria": "Change language",
+    "theme": {
+      "dark_label": "Dark Aurora",
+      "light_label": "Light",
+      "pastel_label": "Pastel",
+      "catppuccin_label": "Developer Dark",
+      "dark_short": "Dark",
+      "light_short": "Light",
+      "pastel_short": "Pastel",
+      "catppuccin_short": "Developer"
+    }
   },
   "header": {
     "welcome": "Welcome, {name}",
