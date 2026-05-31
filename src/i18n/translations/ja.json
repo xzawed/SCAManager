@@ -367,6 +367,14 @@
       "title": "タイトル",
       "body": "本文",
       "labels": "ラベル (カンマ区切り)"
+    },
+    "issue_panel": {
+      "panel_title": "📋 GitHub Issue登録",
+      "tab_ai": "💡 AI提案事項",
+      "tab_static": "🔴 静的解析イシュー",
+      "modal_title": "📝 GitHub Issue作成",
+      "btn_cancel": "キャンセル",
+      "btn_submit": "GitHubにIssue作成 →"
     }
   },
   "settings": {

@@ -367,6 +367,14 @@
       "title": "제목",
       "body": "본문",
       "labels": "라벨 (쉼표 구분)"
+    },
+    "issue_panel": {
+      "panel_title": "📋 GitHub Issue 등록",
+      "tab_ai": "💡 AI 제안사항",
+      "tab_static": "🔴 정적 분석 이슈",
+      "modal_title": "📝 GitHub Issue 생성",
+      "btn_cancel": "취소",
+      "btn_submit": "GitHub에 Issue 생성 →"
     }
   },
   "settings": {
