@@ -117,3 +117,34 @@ def test_repo_detail_sprint3_issue_mgmt_value_non_empty(locale: str, key: str):
     assert isinstance(val, str) and val.strip(), (
         f"[{locale}] repo_detail.issue_mgmt.{key} 비어있음: {val!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# 사이클 144 Sprint 2 — issue_mgmt 동적 카운트 키 (data-i18n 패턴)
+# Cycle 144 Sprint 2 — issue_mgmt dynamic count keys (data-i18n pattern)
+# ---------------------------------------------------------------------------
+_SPRINT2_144_BULK_KEYS = ["bulk_register", "bulk_complete"]
+
+
+@pytest.mark.parametrize("locale", _LOCALES)
+@pytest.mark.parametrize("key", _SPRINT2_144_BULK_KEYS)
+def test_repo_detail_bulk_key_exists(locale: str, key: str):
+    """repo_detail.issue_mgmt.<bulk_key>가 모든 locale에 존재해야 한다.
+    repo_detail.issue_mgmt.<bulk_key> must exist in all locales.
+    """
+    data = _load(locale)
+    assert "issue_mgmt" in data["repo_detail"]
+    assert key in data["repo_detail"]["issue_mgmt"], (
+        f"[{locale}] repo_detail.issue_mgmt.{key} 없음"
+    )
+
+
+@pytest.mark.parametrize("locale", _LOCALES)
+@pytest.mark.parametrize("key", _SPRINT2_144_BULK_KEYS)
+def test_repo_detail_bulk_value_has_count_placeholder(locale: str, key: str):
+    """repo_detail.issue_mgmt.<bulk_key> 값에 {count} 플레이스홀더가 있어야 한다.
+    Value must contain the {count} placeholder for dynamic count injection.
+    """
+    val = _load(locale).get("repo_detail", {}).get("issue_mgmt", {}).get(key)
+    assert isinstance(val, str) and val.strip(), f"[{locale}] {key} 비어있음"
+    assert "{count}" in val, f"[{locale}] {key}에 {{count}} 플레이스홀더 없음: {val!r}"

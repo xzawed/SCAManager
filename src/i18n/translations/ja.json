@@ -291,7 +291,9 @@
       "form_labels": "ラベル (カンマ区切り)",
       "btn_cancel": "キャンセル",
       "btn_skip": "この項目をスキップ",
-      "btn_create_next": "作成して次へ →"
+      "btn_create_next": "作成して次へ →",
+      "bulk_register": "選択項目を一括Issue登録 ({count}件) →",
+      "bulk_complete": "✅ {count}件のIssue登録完了"
     }
   },
   "analysis_detail": {

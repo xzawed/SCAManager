@@ -291,7 +291,9 @@
       "form_labels": "라벨 (쉼표 구분)",
       "btn_cancel": "취소",
       "btn_skip": "이 항목 건너뜀",
-      "btn_create_next": "생성 후 다음 →"
+      "btn_create_next": "생성 후 다음 →",
+      "bulk_register": "선택 항목 일괄 Issue 등록 ({count}건) →",
+      "bulk_complete": "✅ {count}건 Issue 등록 완료"
     }
   },
   "analysis_detail": {

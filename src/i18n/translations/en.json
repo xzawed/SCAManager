@@ -291,7 +291,9 @@
       "form_labels": "Labels (comma separated)",
       "btn_cancel": "Cancel",
       "btn_skip": "Skip this item",
-      "btn_create_next": "Create & Next →"
+      "btn_create_next": "Create & Next →",
+      "bulk_register": "Register Selected Issues in Bulk ({count}) →",
+      "bulk_complete": "✅ {count} issues registered"
     }
   },
   "analysis_detail": {
