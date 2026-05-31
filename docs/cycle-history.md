@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [사이클 143 (i18n 완성 + 프로세스 강화 — analysis_detail·repo_detail HTML i18n + PR 템플릿, 2026-05-31)](#사이클-143)
 - [사이클 142 (5+1 에이전트 감사 4 Phase + 회고 Tier A/B 이행, 2026-05-31)](#사이클-142)
 - [사이클 141 (Rate Limiting 테스트 보강 + GateAction 구현 직접 이전, 2026-05-30)](#사이클-141)
 - [사이클 140 (conftest 모델 기본값 fix + GateAction Registry 패턴 도입, 2026-05-30)](#사이클-140)
@@ -51,6 +52,26 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 사이클 143
+
+**날짜**: 2026-05-31 | **PR**: #686~#690 | **상태**: ✅ 머지 완료 (⚠️ #690 Sprint 3 pending — 예상 수치 기준)
+
+**작업 내용**: i18n 완성 + 프로세스 강화 — analysis_detail·repo_detail HTML i18n + GitHub PR 단일 템플릿 신규 + 정책 보강
+
+| PR | 내용 |
+|----|------|
+| #686 | fix(i18n): analysis_detail.html issue_form 라벨 3건 (Sprint 1-A, +18 테스트) |
+| #687 | chore: GitHub PR 단일 템플릿 신규 — 정책 18/11 체크리스트 (Sprint 1-B) |
+| #688 | chore(policy): CLAUDE.md 6-step + 정책 11 표준 형식 보강 (Sprint 1-C) |
+| #689 | fix(i18n): repo_detail.html 일반 텍스트 ~11건 (Sprint 2, +66 테스트) |
+| #690 | fix(i18n): repo_detail.html 이슈 등록 UI ~11건 + smoke (Sprint 3, +66 단위 +2 통합) |
+
+**주요 설계 결정**:
+- JS 내 한국어 (~15건) 보류 — ICU MessageFormat 기반 표준 방식 미확보, prefix/suffix 비표준 확인 (deep-research)
+- GitHub 다중 PR 템플릿 대신 단일 파일 방식 채택 — 공식 문서 확인 (deep-research)
+
+**신규 테스트**: +150 단위 +2 통합 (단위 3329→3479, 통합 151→153, 전체 3480→3632)
 
 ## 사이클 142
 
