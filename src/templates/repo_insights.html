@@ -61,13 +61,13 @@
 
   {# ── 헤더 ──────────────────────────────────────────────── #}
   <div class="ri-header">
-    <a href="/dashboard" class="ri-back-link">← 대시보드</a>
+    <a href="/dashboard" class="ri-back-link">← {{ 'repo_insights.back_dashboard' | i18n_args(locale | default('ko')) }}</a>
     <div style="display:flex; align-items:flex-end; justify-content:space-between; flex-wrap:wrap; gap:12px;">
       <div>
         <h1 class="ri-repo-title">📦 {{ repo.full_name }}</h1>
         <div class="ri-header-meta">
           <span class="ri-grade-badge">{{ kpi.grade }}</span>
-          <span>최근 {{ days }}일 · 분석 {{ kpi.analysis_count }}건 기준</span>
+          <span>{{ 'repo_insights.period_basis' | i18n_args(locale | default('ko'), days=days, count=kpi.analysis_count) }}</span>
           {% if kpi.score_delta is not none %}
             {% if kpi.score_delta > 0 %}
               <span class="ri-delta-up">↑ +{{ kpi.score_delta }}</span>
@@ -80,7 +80,7 @@
       <div class="ri-day-selector">
         {% for d in [7, 30, 90] %}
         <a href="/repos/{{ repo.full_name }}/insights?days={{ d }}"
-           class="ri-day-btn {% if days == d %}active{% endif %}">{{ d }}일</a>
+           class="ri-day-btn {% if days == d %}active{% endif %}">{{ 'repo_insights.day_label' | i18n_args(locale | default('ko'), days=d) }}</a>
         {% endfor %}
       </div>
     </div>
@@ -89,30 +89,30 @@
   {# ── KPI 4 카드 (new .kpi component) ───────────────────── #}
   <div class="kpi-row">
     <div class="kpi ri-kpi-card">
-      <div class="kpi__label ri-kpi-label">평균 점수</div>
+      <div class="kpi__label ri-kpi-label">{{ 'repo_insights.kpi_avg_score' | i18n_args(locale | default('ko')) }}</div>
       <div class="kpi__value ri-kpi-value">
         {% if kpi.avg_score is not none %}{{ kpi.avg_score }}{% else %}—{% endif %}
       </div>
-      <div class="kpi__foot ri-kpi-sub">{{ kpi.grade }}등급</div>
+      <div class="kpi__foot ri-kpi-sub">{{ 'repo_insights.grade_label' | i18n_args(locale | default('ko'), grade=kpi.grade) }}</div>
     </div>
     <div class="kpi ri-kpi-card">
-      <div class="kpi__label ri-kpi-label">총 분석수</div>
+      <div class="kpi__label ri-kpi-label">{{ 'repo_insights.kpi_total_analyses' | i18n_args(locale | default('ko')) }}</div>
       <div class="kpi__value ri-kpi-value">{{ kpi.analysis_count }}</div>
-      <div class="kpi__foot ri-kpi-sub">최근 {{ days }}일</div>
+      <div class="kpi__foot ri-kpi-sub">{{ 'repo_insights.recent_days' | i18n_args(locale | default('ko'), days=days) }}</div>
     </div>
     <div class="kpi ri-kpi-card">
-      <div class="kpi__label ri-kpi-label">최다 반복 이슈</div>
+      <div class="kpi__label ri-kpi-label">{{ 'repo_insights.kpi_top_recurring' | i18n_args(locale | default('ko')) }}</div>
       <div class="kpi__value ri-kpi-value" style="font-size: var(--fs-md, 1rem); word-break:break-word;">
         {% if kpi.top_recurring_issue %}{{ kpi.top_recurring_issue[:40] }}{% else %}—{% endif %}
       </div>
       {% if kpi.top_recurring_count %}
-      <div class="kpi__foot ri-kpi-sub">{{ kpi.top_recurring_count }}회 반복</div>
+      <div class="kpi__foot ri-kpi-sub">{{ 'repo_insights.recurring_count' | i18n_args(locale | default('ko'), count=kpi.top_recurring_count) }}</div>
       {% endif %}
     </div>
     <div class="kpi ri-kpi-card">
-      <div class="kpi__label ri-kpi-label">보안 HIGH</div>
+      <div class="kpi__label ri-kpi-label">{{ 'repo_insights.kpi_security_high' | i18n_args(locale | default('ko')) }}</div>
       <div class="kpi__value ri-kpi-value {% if kpi.high_security_count > 0 %}ri-delta-down{% endif %}">
-        {{ kpi.high_security_count }}건
+        {{ 'repo_insights.count_items' | i18n_args(locale | default('ko'), count=kpi.high_security_count) }}
       </div>
       <div class="kpi__foot ri-kpi-sub">severity: error / HIGH</div>
     </div>
@@ -121,11 +121,11 @@
   {# ── AI 내러티브 (API 키 있을 때만) ────────────────────── #}
   {% if narrative and narrative.text %}
   <div class="ri-narrative-card">
-    <div class="ri-narrative-title">🤖 AI 종합 진단</div>
+    <div class="ri-narrative-title">🤖 {{ 'repo_insights.narrative_title' | i18n_args(locale | default('ko')) }}</div>
     <p class="ri-narrative-text">{{ narrative.text }}</p>
     <div style="text-align:right; margin-top:8px;">
       <a href="/repos/{{ repo.full_name }}/insights?days={{ days }}&refresh=1"
-         style="font-size:11px; color:var(--text-2); text-decoration:none;">↺ 갱신</a>
+         style="font-size:11px; color:var(--text-2); text-decoration:none;">↺ {{ 'repo_insights.refresh' | i18n_args(locale | default('ko')) }}</a>
     </div>
   </div>
   {% endif %}
@@ -135,7 +135,7 @@
   <div class="ri-two-col">
     <div class="ri-card card">
       <div class="ri-card-header card__head">
-        <h2 class="ri-card-title card__title">🔄 반복 이슈 랭킹</h2>
+        <h2 class="ri-card-title card__title">🔄 {{ 'repo_insights.recurring_ranking_title' | i18n_args(locale | default('ko')) }}</h2>
       </div>
       {% if recurring_issues %}
       <div class="table-wrap">
@@ -143,9 +143,9 @@
         <thead>
           <tr>
             <th>#</th>
-            <th>이슈 메시지</th>
-            <th>도구</th>
-            <th class="ri-num">횟수</th>
+            <th>{{ 'repo_insights.th_message' | i18n_args(locale | default('ko')) }}</th>
+            <th>{{ 'repo_insights.th_tool' | i18n_args(locale | default('ko')) }}</th>
+            <th class="ri-num">{{ 'repo_insights.th_count' | i18n_args(locale | default('ko')) }}</th>
           </tr>
         </thead>
         <tbody>
@@ -173,23 +173,27 @@
       </table>
       </div>
       {% else %}
-      <div class="ri-empty">반복 이슈 없음</div>
+      <div class="ri-empty">{{ 'repo_insights.empty_recurring' | i18n_args(locale | default('ko')) }}</div>
       {% endif %}
     </div>
 
     <div class="ri-card card">
       <div class="ri-card-header card__head">
-        <h2 class="ri-card-title card__title">📊 카테고리 비율</h2>
+        <h2 class="ri-card-title card__title">📊 {{ 'repo_insights.category_ratio_title' | i18n_args(locale | default('ko')) }}</h2>
       </div>
       <div class="ri-donut-wrap">
         {% if breakdown.total > 0 %}
         <canvas id="riDonutChart" width="200" height="200"
-                aria-label="{{ 'repo_insights.donut_aria' | i18n_args(locale | default('ko')) }}"></canvas>
+                aria-label="{{ 'repo_insights.donut_aria' | i18n_args(locale | default('ko')) }}"
+                data-i18n-chart-sec-err="{{ 'repo_insights.chart_sec_err' | i18n_args(locale | default('ko')) }}"
+                data-i18n-chart-sec-warn="{{ 'repo_insights.chart_sec_warn' | i18n_args(locale | default('ko')) }}"
+                data-i18n-chart-qual-err="{{ 'repo_insights.chart_qual_err' | i18n_args(locale | default('ko')) }}"
+                data-i18n-chart-qual-warn="{{ 'repo_insights.chart_qual_warn' | i18n_args(locale | default('ko')) }}"></canvas>
         <div style="margin-top:12px; font-size:12px; color:var(--text-2); text-align:center;">
-          전체 {{ breakdown.total }}건
+          {{ 'repo_insights.total_items' | i18n_args(locale | default('ko'), count=breakdown.total) }}
         </div>
         {% else %}
-        <div class="ri-empty">집계 데이터 없음</div>
+        <div class="ri-empty">{{ 'repo_insights.empty_category' | i18n_args(locale | default('ko')) }}</div>
         {% endif %}
       </div>
     </div>
@@ -200,14 +204,14 @@
   {% if problem_files %}
   <div class="ri-card card">
     <div class="ri-card-header card__head">
-      <h2 class="ri-card-title card__title">📁 문제 파일 TOP {{ problem_files|length }}</h2>
+      <h2 class="ri-card-title card__title">📁 {{ 'repo_insights.problem_files_title' | i18n_args(locale | default('ko'), count=problem_files|length) }}</h2>
     </div>
     <ul class="ri-file-list">
       {% for f in problem_files %}
       <li class="ri-file-row">
         <div class="ri-file-info">
           <span class="ri-file-name" title="{{ f.file }}">{{ f.file }}</span>
-          <span class="ri-file-count">{{ f.count }}회</span>
+          <span class="ri-file-count">{{ 'repo_insights.count_suffix' | i18n_args(locale | default('ko'), count=f.count) }}</span>
         </div>
         <div class="ri-file-bar-bg">
           <div class="ri-file-bar" style="width: {{ f.pct }}%;"></div>
@@ -222,7 +226,7 @@
   {% if ai_suggestions %}
   <div class="ri-card card">
     <div class="ri-card-header card__head">
-      <h2 class="ri-card-title card__title">💡 AI 제안 모음</h2>
+      <h2 class="ri-card-title card__title">💡 {{ 'repo_insights.ai_suggestions_title' | i18n_args(locale | default('ko')) }}</h2>
     </div>
     <ol class="ri-suggestions">
       {% for s in ai_suggestions %}
@@ -230,7 +234,7 @@
         <span class="ri-suggestion-num">{{ loop.index }}</span>
         <span class="ri-suggestion-text">{{ s.suggestion }}</span>
         {% if s.count > 1 %}
-        <span class="ri-suggestion-count">{{ s.count }}회 언급</span>
+        <span class="ri-suggestion-count">{{ 'repo_insights.mention_count' | i18n_args(locale | default('ko'), count=s.count) }}</span>
         {% endif %}
       </li>
       {% endfor %}
@@ -242,8 +246,8 @@
   {% if kpi.analysis_count == 0 %}
   <div class="ri-card card">
     <div class="ri-empty">
-      <p>최근 {{ days }}일 내 분석 데이터가 없습니다.</p>
-      <small>GitHub Push 또는 PR 이벤트 발생 후 다시 확인하세요.</small>
+      <p>{{ 'repo_insights.empty_no_data' | i18n_args(locale | default('ko'), days=days) }}</p>
+      <small>{{ 'repo_insights.empty_no_data_hint' | i18n_args(locale | default('ko')) }}</small>
     </div>
   </div>
   {% endif %}
@@ -268,10 +272,18 @@
     const ctx = document.getElementById('riDonutChart');
     if (!ctx) return;
     if (riChart) riChart.destroy();
+    // 차트 라벨은 canvas data-i18n-chart-* 속성에서 읽음 (locale별 i18n)
+    // Chart labels read from canvas data-i18n-chart-* attributes (locale-aware i18n)
+    const labels = [
+      ctx.dataset.i18nChartSecErr || '보안 오류',
+      ctx.dataset.i18nChartSecWarn || '보안 경고',
+      ctx.dataset.i18nChartQualErr || '코드품질 오류',
+      ctx.dataset.i18nChartQualWarn || '코드품질 경고',
+    ];
     riChart = new Chart(ctx, {
       type: 'doughnut',
       data: {
-        labels: ['보안 오류', '보안 경고', '코드품질 오류', '코드품질 경고'],
+        labels: labels,
         datasets: [{
           data: [
             breakdown.security_error,
