@@ -783,15 +783,15 @@
            data-ai-suggestions="{{ (analysis.result or {}).get('ai_suggestions', []) | tojson }}"
            data-static-issues="{{ (analysis.result or {}).get('issues', []) | tojson }}">
 
-    <h3 class="panel-title">📋 GitHub Issue 등록</h3>
+    <h3 class="panel-title">{{ 'analysis_detail.issue_panel.panel_title' | i18n_args(locale | default('ko')) }}</h3>
 
     <!-- 탭 / Tabs -->
     <div class="issue-reg-tabs" role="tablist">
       <button class="issue-tab active" data-tab="ai" role="tab">
-        💡 AI 제안사항 <span class="issue-tab-count" id="aiCount"></span>
+        {{ 'analysis_detail.issue_panel.tab_ai' | i18n_args(locale | default('ko')) }} <span class="issue-tab-count" id="aiCount"></span>
       </button>
       <button class="issue-tab" data-tab="static" role="tab">
-        🔴 정적 분석 이슈 <span class="issue-tab-count" id="staticCount"></span>
+        {{ 'analysis_detail.issue_panel.tab_static' | i18n_args(locale | default('ko')) }} <span class="issue-tab-count" id="staticCount"></span>
       </button>
     </div>
 
@@ -809,7 +809,7 @@
   <!-- 편집 모달 / Edit modal -->
   <div class="issue-modal-overlay hidden" id="issueModalOverlay" role="dialog" aria-modal="true">
     <div class="issue-modal">
-      <h4 class="issue-modal-title">📝 GitHub Issue 생성</h4>
+      <h4 class="issue-modal-title">{{ 'analysis_detail.issue_panel.modal_title' | i18n_args(locale | default('ko')) }}</h4>
 
       <label class="issue-modal-label">{{ 'analysis_detail.issue_form.title' | i18n_args(locale | default('ko')) }}
         <input type="text" id="issueTitle" class="issue-modal-input">
@@ -825,9 +825,9 @@
       </label>
 
       <div class="issue-modal-actions">
-        <button type="button" class="btn-secondary" id="issueModalCancel">취소</button>
+        <button type="button" class="btn-secondary" id="issueModalCancel">{{ 'analysis_detail.issue_panel.btn_cancel' | i18n_args(locale | default('ko')) }}</button>
         <button type="button" class="btn-primary" id="issueModalSubmit">
-          GitHub에 Issue 생성 →
+          {{ 'analysis_detail.issue_panel.btn_submit' | i18n_args(locale | default('ko')) }}
         </button>
       </div>
       <p class="issue-modal-error hidden" id="issueModalError"></p>

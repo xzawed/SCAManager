@@ -367,6 +367,14 @@
       "title": "Title",
       "body": "Body",
       "labels": "Labels (comma separated)"
+    },
+    "issue_panel": {
+      "panel_title": "📋 GitHub Issue Registration",
+      "tab_ai": "💡 AI Suggestions",
+      "tab_static": "🔴 Static Analysis Issues",
+      "modal_title": "📝 Create GitHub Issue",
+      "btn_cancel": "Cancel",
+      "btn_submit": "Create Issue on GitHub →"
     }
   },
   "settings": {
