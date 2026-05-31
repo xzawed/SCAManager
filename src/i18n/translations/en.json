@@ -266,7 +266,33 @@
     "hook_installed_title": "CLI code review hook is set up!",
     "hook_installed_desc_part1": "Run the following in your local repo, and code review will run automatically on ",
     "hook_installed_desc_code": "git push",
-    "hook_installed_desc_part2": "."
+    "hook_installed_desc_part2": ".",
+    "recent_score": "Recent Score:",
+    "analysis_unit": "analyses",
+    "history_empty": "No analysis history",
+    "history_empty_hint": "The chart will appear after the first analysis is complete following a Push or PR event.",
+    "cost": {
+      "title": "Estimated AI Review Cost This Month",
+      "period": "({month} 1st – last day, server-side Webhook analysis basis)",
+      "tokens": "(input+output {count} tokens)",
+      "no_data": "No data — no token-tracked analyses this month yet.",
+      "disclaimer": "※ Estimated based on Anthropic official pricing. Actual charges may differ. Pre-push hook costs (user API key) are not included.",
+      "model_change": "Change model:",
+      "settings_link": "Settings page"
+    },
+    "issue_mgmt": {
+      "title": "🔁 Recurring Issues — Issue Registration",
+      "tab_static": "🔴 Static Analysis Issues",
+      "tab_ai": "💡 AI Suggestions",
+      "filter_unregistered": "Show unregistered only",
+      "modal_title": "📝 Create GitHub Issue",
+      "form_title": "Title",
+      "form_body": "Body",
+      "form_labels": "Labels (comma separated)",
+      "btn_cancel": "Cancel",
+      "btn_skip": "Skip this item",
+      "btn_create_next": "Create & Next →"
+    }
   },
   "analysis_detail": {
     "title": "Analysis #{id}",
