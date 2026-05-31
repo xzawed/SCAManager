@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [사이클 144 (회고 Tier B 이행 — analysis_detail/repo_detail i18n 완성 + 렌더 정합 가드, 2026-05-31)](#사이클-144)
 - [사이클 143 (i18n 완성 + 프로세스 강화 — analysis_detail·repo_detail HTML i18n + PR 템플릿, 2026-05-31)](#사이클-143)
 - [사이클 142 (5+1 에이전트 감사 4 Phase + 회고 Tier A/B 이행, 2026-05-31)](#사이클-142)
 - [사이클 141 (Rate Limiting 테스트 보강 + GateAction 구현 직접 이전, 2026-05-30)](#사이클-141)
@@ -52,6 +53,27 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 사이클 144
+
+**날짜**: 2026-05-31 | **PR**: #694~#696 | **상태**: ✅ 머지 완료
+
+**작업 내용**: 사이클 143 회고 Tier B 이행 — analysis_detail/repo_detail i18n 완성 + 렌더 정합 가드
+
+| PR | 내용 |
+|----|------|
+| #694 | fix(i18n): analysis_detail.html Issue 패널 정적 i18n (Sprint 1, P1-2) — issue_panel.* 6키 신설, +36 테스트 |
+| #695 | fix(i18n): repo_detail.html 일괄 등록 버튼 정적+JS data-i18n (Sprint 2, P1-3) — bulk_register/bulk_complete 2키, +12 테스트 |
+| #696 | test(i18n): 사이클 143/144 렌더 정합 가드 (Sprint 3, P1-4) — test_detail_i18n_render +7 |
+
+**주요 결정**:
+- P1-2: analysis_detail 전용 네임스페이스(`issue_panel.*`) 신설 — repo_detail.issue_mgmt와 분리 (페이지별 독립 원칙)
+- P1-3: JS 동적 카운트는 기존 Phase 2 PR-7 `data-i18n-*` + `__N__` 치환 패턴 재사용 (XSS-safe) — 설계 문서 "JS i18n 보류" 중 검증 패턴 존재 영역 재검토 처리
+- P1-4: 렌더 정합 가드로 "키 존재만 검증" 사각 보완 — 실제 렌더 출력 번역 텍스트 출현 검증 (오타 키 raw 노출 검출)
+
+**보류 (다음 사이클)**: analysis_detail/repo_detail 나머지 JS 동적 메시지 (생성 중.../오류 토스트) — data-i18n 확장 가능하나 범위 분리
+
+**신규 테스트**: +55 단위 (3479→3534, 전체 3632→3687). 통합 153 유지.
 
 ## 사이클 143
 
