@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [사이클 146 (템플릿 i18n 완성 — base/repo_insights/settings/landing 잔존 한국어 전수 전환, 2026-06-01)](#사이클-146)
 - [사이클 145 (JS 동적 텍스트 i18n — analysis_detail/repo_detail JS 메시지 data-i18n 전환, 2026-05-31)](#사이클-145)
 - [사이클 144 (회고 Tier B 이행 — analysis_detail/repo_detail i18n 완성 + 렌더 정합 가드, 2026-05-31)](#사이클-144)
 - [사이클 143 (i18n 완성 + 프로세스 강화 — analysis_detail·repo_detail HTML i18n + PR 템플릿, 2026-05-31)](#사이클-143)
@@ -54,6 +55,29 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 사이클 146
+
+**날짜**: 2026-06-01 | **PR**: #702~#705 | **상태**: ✅ 머지 완료
+
+**작업 내용**: 템플릿 i18n 완성 — base/repo_insights/settings/landing 4개 템플릿 잔존 한국어 전수 i18n 전환
+
+| PR | 내용 |
+|----|------|
+| #702 | fix(i18n): base.html 테마 드롭다운 (Sprint 1) — common.theme.* 8키, 전 페이지 노출 헤더, +48 |
+| #703 | fix(i18n): repo_insights.html (Sprint 2) — repo_insights.* 31키 확장, KPI/랭킹/차트, +186 |
+| #704 | fix(i18n): settings.html (Sprint 3) — settings.* 20키, PRESET/필드 라벨/모드/프리셋 diff, +120 |
+| #705 | fix(i18n): landing.html (Sprint 4) — landing.* 36키 신설, 히어로/데모 리뷰/통계/기능, +217 |
+
+**주요 결정**:
+- **언어 endonym(English/한국어/日本語) i18n 제외** — 각 언어를 자기 언어로 표기하는 i18n 표준
+- **데모 리뷰/프리셋 diff HTML 보존** — `| safe` 필터 + data-i18n element 속성(innerHTML 변경 후 유지) 패턴
+- **기존 키 재사용** — settings 프리셋 diff는 settings_page.pr_rules.range_summary 재사용 (신규 키 0)
+- landing standalone(base 미상속) — locale 라우트 주입으로 i18n_args 사용
+
+**완결**: 4 템플릿 모두 사용자 노출 한국어 0건 (JS graceful fallback 제외). analysis_detail L1055는 실측 결과 한국어 없음(변수+기호) 확인.
+
+**신규 테스트**: +571 단위 (3687→4258, 전체 3840→4411). 통합 153 유지.
 
 ## 사이클 145
 
