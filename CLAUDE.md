@@ -356,7 +356,7 @@ GitHub Code Scanning 점검 detail 절차 + 운영 통합 = `docs/runbooks/opera
 - **TDD 우선**: 구현 코드 작성 전 반드시 `test-writer` 에이전트로 테스트를 먼저 작성한다.
 - **Hook 신뢰**: `src/` 파일 편집 후 PostToolUse Hook이 자동 실행하는 pytest 결과를 확인한다. 실패 시 다음 단계로 진행하지 않는다.
 - **Phase 완료 조건**: 테스트 전체 통과 + `/lint` 통과 + (파이프라인 변경 시 `pipeline-reviewer` 승인) 세 조건이 모두 충족될 때만 Phase 완료를 선언한다.
-- **완료 시 필수 6-step**: 작업이 완료되면 반드시 ① 커밋 → ② Codex 검증 의뢰 (push 전, 정책 18) → ③ `git push` → ④ PR 생성(`gh pr create`) → ⑤ `docs/STATE.md` 수치 갱신 + `docs/cycle-history.md` 사이클 이력 동기화 → ⑥ **docs/architecture.md 동기화** (신규 파일 추가·삭제·이름 변경 시 `src/` 트리와 `### 핵심 데이터 흐름` 내 언급 갱신) 를 순서대로 수행한다. 예외 없음.
+- **완료 시 필수 6-step**: 작업이 완료되면 반드시 ① 커밋 → ② Codex 검증 의뢰 (push 전, 정책 18) → ③ `git push` → ④ PR 생성(`gh pr create`) — **PR 본문에 `## 🔍 Codex 검증 의뢰 (push 전, 정책 18)` 섹션 필수 포함** (`.github/pull_request_template.md` 자동 삽입 또는 수동 추가) → ⑤ `docs/STATE.md` 수치 갱신 + `docs/cycle-history.md` 사이클 이력 동기화 → ⑥ **docs/architecture.md 동기화** (신규 파일 추가·삭제·이름 변경 시 `src/` 트리와 `### 핵심 데이터 흐름` 내 언급 갱신) 를 순서대로 수행한다. 예외 없음.
 - **README.md 배지 동기화**: 테스트 수·pylint·커버리지 수치가 바뀌면 `README.md` 21~25줄 배지도 함께 갱신한다. 수치 출처는 항상 `docs/STATE.md`.
 - **CLAUDE.md 아키텍처 동기화 체크리스트**: `src/` 하위에 파일 추가 시 아래 항목을 순서대로 확인한다. 누락 시 다음 Phase 착수 전 반드시 보완한다. **전례 3건** (Phase 11 PR #73 / 2026-05-01 UI 감사 cleanup PR-D1 / 2026-05-05 사이클 78~82 5+1 cross-verify 환경변수 4건 누락).
 
