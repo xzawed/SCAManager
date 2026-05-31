@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [사이클 145 (JS 동적 텍스트 i18n — analysis_detail/repo_detail JS 메시지 data-i18n 전환, 2026-05-31)](#사이클-145)
 - [사이클 144 (회고 Tier B 이행 — analysis_detail/repo_detail i18n 완성 + 렌더 정합 가드, 2026-05-31)](#사이클-144)
 - [사이클 143 (i18n 완성 + 프로세스 강화 — analysis_detail·repo_detail HTML i18n + PR 템플릿, 2026-05-31)](#사이클-143)
 - [사이클 142 (5+1 에이전트 감사 4 Phase + 회고 Tier A/B 이행, 2026-05-31)](#사이클-142)
@@ -53,6 +54,26 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 사이클 145
+
+**날짜**: 2026-05-31 | **PR**: #698~#699 | **상태**: ✅ 머지 완료
+
+**작업 내용**: JS 동적 텍스트 i18n — analysis_detail/repo_detail의 JS 동적 한국어를 data-i18n 패턴으로 전환
+
+| PR | 내용 |
+|----|------|
+| #698 | fix(i18n): analysis_detail.html JS 동적 텍스트 (Sprint 1) — js_msg.* 10키, 상태/버튼/오류/Issue 본문 빌더, +66 테스트 |
+| #699 | fix(i18n): repo_detail.html JS 동적 텍스트 (Sprint 2) — js_msg.* 14키, 차트 통계/tooltip/상태/버튼/오류, +87 테스트 |
+
+**주요 결정**:
+- **그룹 D (GitHub Issue 본문) locale i18n 채택**: analysis_detail의 Issue 본문 마크다운 빌더(body_ai/body_static)를 locale 번역 — 생성되는 GitHub Issue 본문이 사용자 언어로. 멀티라인(`\n` 7개) + {id}/{text}/{tool}/{category}/{message} 플레이스홀더를 data-i18n 속성으로 처리
+- **검증된 data-i18n-* + __VAR__ 패턴 재사용** (Phase 2 PR-7, XSS-safe) — 2 컨테이너(.history-card I18N / #repoBulkPanel I18N_BULK) 확장
+- btn_create_next 등 기존 키 재사용
+
+**보류 (다음 사이클)**: analysis_detail L1055 `🔴 [category] tool: message` — 변수 3개 + slice 구조 분해 복잡
+
+**신규 테스트**: +153 단위 (3534→3687, 전체 3687→3840). 통합 153 유지.
 
 ## 사이클 144
 
