@@ -273,7 +273,7 @@
     "history_empty_hint": "Push 또는 PR 이벤트 후 첫 분석이 완료되면 차트가 표시됩니다",
     "cost": {
       "title": "이번 달 AI 리뷰 예상 비용",
-      "period": "({month} 01일 ~ 말일, 서버사이드 Webhook 분석 기준)",
+      "period": "({month} 한 달 전체, 서버사이드 Webhook 분석 기준)",
       "tokens": "(입력+출력 {count} 토큰)",
       "no_data": "데이터 없음 — 이번 달 토큰 추적 분석이 아직 없습니다.",
       "disclaimer": "※ Anthropic 공식 요금 기준 추정값입니다. 실제 청구금액과 다를 수 있으며, pre-push 훅 비용(사용자 API 키)은 포함되지 않습니다.",
