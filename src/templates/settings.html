@@ -724,7 +724,8 @@
                          oninput="this.previousElementSibling.value=this.value">
                 </div>
               </div>
-              <div class="range-hint">
+              <div class="range-hint"
+                   data-i18n-range-summary="{{ 'settings_page.pr_rules.range_summary' | i18n_args(locale | default('ko'), approve='__A__', reject='__R__') }}">
                 {{ 'settings_page.pr_rules.range_summary' | i18n_args(locale | default('ko'), approve=config.approve_threshold, reject=config.reject_threshold) | safe }}
               </div>
             </div>
@@ -1287,10 +1288,12 @@
 
     // hint 텍스트 업데이트
     const hint = document.querySelector('.range-hint');
-    if (hint) {
-      hint.innerHTML =
-        '💡 <strong>' + p.approve_threshold + '점 이상</strong> 자동 승인 · ' +
-        '<strong>' + p.reject_threshold + '점 미만</strong> 자동 반려 · 그 사이 스킵';
+    if (hint && hint.dataset.i18nRangeSummary) {
+      // 서버 주입 i18n 템플릿 재사용 — __A__/__R__ 치환 (settings_page.pr_rules.range_summary)
+      // Reuse server-injected i18n template — replace __A__/__R__
+      hint.innerHTML = hint.dataset.i18nRangeSummary
+        .replace('__A__', p.approve_threshold)
+        .replace('__R__', p.reject_threshold);
     }
 
     // 적용됨 레이블 표시 (다른 카드는 숨김)
