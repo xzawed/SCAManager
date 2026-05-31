@@ -672,8 +672,11 @@
     {% if current_user %}
     <div class="theme-switcher" id="langSwitcher">
       <button class="theme-btn" id="langToggle" aria-label="{{ 'common.lang_aria' | i18n_args(locale | default('ko')) }}" aria-haspopup="true" aria-expanded="false">
-        <span id="langIcon">🌍</span>
-        <span id="langName">한국어</span>
+        {# 초기 렌더는 locale endonym/flag 직접 출력 — JS 실행 전 FOUC 방지 (사이클 148, 회고 P2-1).
+           endonym 은 i18n 비번역 (각 언어 자기 표기). JS(applyLang)가 전환 시 갱신.
+           Initial render outputs locale endonym/flag directly to avoid pre-JS FOUC. #}
+        <span id="langIcon">{% if locale == 'en' %}🇺🇸{% elif locale == 'ja' %}🇯🇵{% else %}🇰🇷{% endif %}</span>
+        <span id="langName">{% if locale == 'en' %}English{% elif locale == 'ja' %}日本語{% else %}한국어{% endif %}</span>
         <span class="chevron">▾</span>
       </button>
       <div class="theme-dropdown" id="langDropdown" role="menu">
