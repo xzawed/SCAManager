@@ -30,6 +30,7 @@ from src.gate.retry_policy import (
 from src.github_client.checks import get_ci_status, get_required_check_contexts
 from src.github_client.helpers import github_api_headers
 from src.models.merge_retry import MergeRetryQueue
+from src.notifier._language import resolve_notification_language
 from src.notifier.merge_failure_issue import create_merge_failure_issue
 from src.notifier.telegram import telegram_post_message
 from src.repositories import merge_retry_repo, repository_repo, user_repo
@@ -194,9 +195,12 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
             threshold=row.threshold_at_enqueue, success=False, reason=reason,
         )
         merge_retry_repo.mark_terminal(db, row.id, reason=reason_tag)
-        await _notify_merge_terminal(row, cfg, reason, reason_tag)
+        # 사이클 149 Sprint 3 — 알림 + Issue 사용자 언어 결정 (조언 텍스트 i18n)
+        # Cycle 149 Sprint 3 — resolve user language for notify + Issue (advice text i18n)
+        language = resolve_notification_language(db, config=cfg)
+        await _notify_merge_terminal(row, cfg, reason, reason_tag, language=language)
         if cfg.auto_merge_issue_on_failure:
-            await _create_failure_issue_safe(token, row, cfg, reason, reason_tag)
+            await _create_failure_issue_safe(token, row, cfg, reason, reason_tag, language=language)
         counts["terminal"] += 1
         return
 
@@ -351,6 +355,8 @@ async def _notify_merge_terminal(
     cfg: RepoConfigData,
     reason: str | None,
     reason_tag: str,
+    *,
+    language: str = "ko",
 ) -> None:
     """최종 머지 실패를 알린다.
     Notify user of terminal merge failure.
@@ -358,7 +364,7 @@ async def _notify_merge_terminal(
     chat_id = _resolve_retry_chat_id(row, cfg)
     if not chat_id or not settings.telegram_bot_token:
         return
-    advice = get_advice(reason_tag)
+    advice = get_advice(reason_tag, language)
     pr_url = f"https://github.com/{row.repo_full_name}/pull/{row.pr_number}"
     msg = (
         "⚠️ <b>자동 머지 최종 실패</b>\n"
@@ -382,11 +388,13 @@ async def _create_failure_issue_safe(
     cfg: RepoConfigData,  # pylint: disable=unused-argument
     reason: str | None,
     reason_tag: str,
+    *,
+    language: str = "ko",
 ) -> None:
     """create_merge_failure_issue 를 안전하게 호출한다 (예외 격리).
     Safely call create_merge_failure_issue (exception-isolated).
     """
-    advice = get_advice(reason_tag)
+    advice = get_advice(reason_tag, language)
     try:
         await create_merge_failure_issue(
             github_token=token,
@@ -396,6 +404,7 @@ async def _create_failure_issue_safe(
             threshold=row.threshold_at_enqueue,
             reason=reason or reason_tag,
             advice=advice,
+            language=language,
         )
     except Exception as exc:  # pylint: disable=broad-except
         logger.warning(
