@@ -273,7 +273,7 @@
     "history_empty_hint": "PushまたはPRイベント後、最初の分析が完了するとグラフが表示されます。",
     "cost": {
       "title": "今月のAIレビュー予想コスト",
-      "period": "({month}月1日〜末日、サーバーサイドWebhook分析基準)",
+      "period": "({month} の月間全体、サーバーサイドWebhook分析基準)",
       "tokens": "(入力+出力 {count} トークン)",
       "no_data": "データなし — 今月はトークン追跡分析がまだありません。",
       "disclaimer": "※ Anthropic公式料金に基づく推定値です。実際の請求額と異なる場合があり、pre-pushフックのコスト（ユーザーAPIキー）は含まれません。",
