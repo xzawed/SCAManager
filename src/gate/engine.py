@@ -424,7 +424,13 @@ async def _run_auto_merge_legacy(  # pylint: disable=too-many-arguments,too-many
             logger.info("PR #%d auto-merged: %s", pr_number, sanitize_for_log(repo_name))
             return
 
-        advice = get_advice(reason)
+        # Phase 3 PR-11 — 3-layer 사용자 언어 결정 (User → RepoConfig → settings.default_locale)
+        # 사이클 149 Sprint 3 — get_advice 도 동일 언어 적용 (조언 텍스트 i18n)
+        # Phase 3 PR-11 — 3-layer language resolve; Cycle 149 Sprint 3 — advice text also localized
+        from src.notifier._language import resolve_notification_language  # noqa: WPS433  # pylint: disable=import-outside-toplevel
+        with SessionLocal() as db_lang:
+            language = resolve_notification_language(db_lang, config=config)
+        advice = get_advice(reason, language)
 
         logger.warning(
             "PR #%d auto-merge 실패 (repo=%s): %s", pr_number, repo_name, reason
@@ -440,11 +446,6 @@ async def _run_auto_merge_legacy(  # pylint: disable=too-many-arguments,too-many
         )
         if config.auto_merge_issue_on_failure:
             try:
-                # Phase 3 PR-11 — 3-layer 사용자 언어 결정 (User → RepoConfig → settings.default_locale)
-                # Phase 3 PR-11 — 3-layer language resolve
-                from src.notifier._language import resolve_notification_language  # noqa: WPS433  # pylint: disable=import-outside-toplevel
-                with SessionLocal() as db_lang:
-                    language = resolve_notification_language(db_lang, config=config)
                 await create_merge_failure_issue(
                     github_token=github_token,
                     repo_name=repo_name,
@@ -498,7 +499,13 @@ async def _handle_terminal_merge_failure(  # pylint: disable=too-many-arguments
         except Exception as log_exc:  # pylint: disable=broad-except
             logger.warning("merge_attempt 기록 실패: %s", log_exc)
 
-    advice = get_advice(reason_tag)
+    # 3-layer 사용자 언어 결정 (User → RepoConfig → settings.default_locale)
+    # 사이클 149 Sprint 3 — get_advice 도 동일 언어 적용 (조언 텍스트 i18n)
+    # 3-layer language resolve; Cycle 149 Sprint 3 — advice text also localized
+    from src.notifier._language import resolve_notification_language  # noqa: WPS433  # pylint: disable=import-outside-toplevel
+    with SessionLocal() as db_lang:
+        language = resolve_notification_language(db_lang, config=config)
+    advice = get_advice(reason_tag, language)
     logger.warning(
         "PR #%d auto-merge 실패 (repo=%s): %s",
         pr_number, sanitize_for_log(repo_name), sanitize_for_log(reason),
@@ -522,6 +529,7 @@ async def _handle_terminal_merge_failure(  # pylint: disable=too-many-arguments
                 threshold=config.merge_threshold,
                 reason=reason or "unknown",
                 advice=advice,
+                language=language,
             )
         except Exception as exc:  # pylint: disable=broad-except
             logger.warning(

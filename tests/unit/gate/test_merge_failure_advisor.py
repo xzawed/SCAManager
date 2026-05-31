@@ -1,10 +1,9 @@
 """tests/unit/gate/test_merge_failure_advisor.py"""
-import pytest
 from src.gate import merge_reasons
 
 
 def test_get_advice_known_reason_returns_specific_text():
-    """알려진 reason tag 는 태그별 권장 조치 텍스트를 반환한다."""
+    """알려진 reason tag 는 태그별 권장 조치 텍스트를 반환한다 (ko default)."""
     from src.gate.merge_failure_advisor import get_advice
     advice = get_advice(merge_reasons.BRANCH_PROTECTION_BLOCKED)
     assert "Branch Protection" in advice
@@ -19,7 +18,8 @@ def test_get_advice_with_colon_suffix_extracts_tag():
 
 
 def test_get_advice_unknown_or_none_returns_default():
-    """알 수 없는 태그와 None 은 기본 문구를 반환한다."""
-    from src.gate.merge_failure_advisor import get_advice, _DEFAULT_ADVICE
-    assert get_advice("completely_unknown_tag") == _DEFAULT_ADVICE
-    assert get_advice(None) == _DEFAULT_ADVICE
+    """알 수 없는 태그와 None 은 동일한 기본 문구를 반환한다 (ko default)."""
+    from src.gate.merge_failure_advisor import get_advice
+    default_advice = get_advice(None)
+    assert get_advice("completely_unknown_tag") == default_advice
+    assert default_advice  # 비어있지 않은 문구
