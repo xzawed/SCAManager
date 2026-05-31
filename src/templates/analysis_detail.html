@@ -781,7 +781,18 @@
   <section class="issue-reg-panel" id="issueRegPanel"
            data-analysis-id="{{ analysis.id }}"
            data-ai-suggestions="{{ (analysis.result or {}).get('ai_suggestions', []) | tojson }}"
-           data-static-issues="{{ (analysis.result or {}).get('issues', []) | tojson }}">
+           data-static-issues="{{ (analysis.result or {}).get('issues', []) | tojson }}"
+           data-i18n-suggestion-prefix="{{ 'analysis_detail.js_msg.suggestion_prefix' | i18n_args(locale | default('ko')) }}"
+           data-i18n-status-resolved="{{ 'analysis_detail.js_msg.status_resolved' | i18n_args(locale | default('ko'), num='__N__') }}"
+           data-i18n-status-open="{{ 'analysis_detail.js_msg.status_open' | i18n_args(locale | default('ko'), num='__N__') }}"
+           data-i18n-btn-register="{{ 'analysis_detail.js_msg.btn_register' | i18n_args(locale | default('ko')) }}"
+           data-i18n-body-ai="{{ 'analysis_detail.js_msg.body_ai' | i18n_args(locale | default('ko'), id='__ID__', text='__TEXT__') }}"
+           data-i18n-body-static="{{ 'analysis_detail.js_msg.body_static' | i18n_args(locale | default('ko'), id='__ID__', tool='__TOOL__', category='__CAT__', message='__MSG__') }}"
+           data-i18n-btn-creating="{{ 'analysis_detail.js_msg.btn_creating' | i18n_args(locale | default('ko')) }}"
+           data-i18n-err-generic="{{ 'analysis_detail.js_msg.err_generic' | i18n_args(locale | default('ko')) }}"
+           data-i18n-toast-created="{{ 'analysis_detail.js_msg.toast_created' | i18n_args(locale | default('ko'), num='__N__') }}"
+           data-i18n-err-network="{{ 'analysis_detail.js_msg.err_network' | i18n_args(locale | default('ko')) }}"
+           data-i18n-btn-submit="{{ 'analysis_detail.issue_panel.btn_submit' | i18n_args(locale | default('ko')) }}">
 
     <h3 class="panel-title">{{ 'analysis_detail.issue_panel.panel_title' | i18n_args(locale | default('ko')) }}</h3>
 
@@ -991,6 +1002,21 @@
   var aiSuggestions = JSON.parse(panel.dataset.aiSuggestions || '[]');
   var staticIssues  = JSON.parse(panel.dataset.staticIssues  || '[]');
 
+  /* ── i18n JS 동적 텍스트 (data-i18n-* + __VAR__ 치환) / i18n JS dynamic text ── */
+  var I18N_JS = {
+    suggestionPrefix: panel.dataset.i18nSuggestionPrefix,
+    statusResolved:   panel.dataset.i18nStatusResolved,
+    statusOpen:       panel.dataset.i18nStatusOpen,
+    btnRegister:      panel.dataset.i18nBtnRegister,
+    bodyAi:           panel.dataset.i18nBodyAi,
+    bodyStatic:       panel.dataset.i18nBodyStatic,
+    btnCreating:      panel.dataset.i18nBtnCreating,
+    errGeneric:       panel.dataset.i18nErrGeneric,
+    toastCreated:     panel.dataset.i18nToastCreated,
+    errNetwork:       panel.dataset.i18nErrNetwork,
+    btnSubmit:        panel.dataset.i18nBtnSubmit,
+  };
+
   /* ── 상태 맵 — issue_key(서버) → registration / State map — issue_key → registration */
   var stateMap = {};
 
@@ -1014,7 +1040,7 @@
       label: text,
       type: 'ai_suggestion',
       suggestionText: text,
-      title: '💡 [AI 제안] ' + text.slice(0, 60),
+      title: I18N_JS.suggestionPrefix + text.slice(0, 60),
     };
   }
 
@@ -1062,13 +1088,13 @@
         ? 'issue-badge issue-badge--closed'
         : 'issue-badge issue-badge--open';
       badge.textContent = reg.github_issue_state === 'closed'
-        ? '✅ #' + reg.github_issue_number + ' 해결됨'
-        : '🔵 #' + reg.github_issue_number + ' 진행중';
+        ? I18N_JS.statusResolved.replace('__N__', reg.github_issue_number)
+        : I18N_JS.statusOpen.replace('__N__', reg.github_issue_number);
       li.appendChild(badge);
     } else {
       var btn = document.createElement('button');
       btn.className = 'btn-register';
-      btn.textContent = 'Issue 등록';
+      btn.textContent = I18N_JS.btnRegister;
       btn.addEventListener('click', (function(i) { return function() { openModal(i); }; })(item));
       li.appendChild(btn);
     }
@@ -1106,9 +1132,15 @@
 
   function _defaultBody(item) {
     if (item.type === 'ai_suggestion') {
-      return '## 📌 분석 정보\n분석 ID: ' + analysisId + '\n\n## 💡 AI 제안 내용\n' + item.suggestionText + '\n\n---\n*SCAManager AI 분석 결과에서 생성됨*';
+      return I18N_JS.bodyAi
+        .replace('__ID__', analysisId)
+        .replace('__TEXT__', item.suggestionText);
     }
-    return '## 📌 분석 정보\n분석 ID: ' + analysisId + '\n\n## 🔴 이슈 내용\n- 도구: ' + (item.tool||'') + '\n- 카테고리: ' + (item.category||'') + '\n- 메시지: ' + (item.message||'') + '\n\n---\n*SCAManager 정적 분석 결과에서 생성됨*';
+    return I18N_JS.bodyStatic
+      .replace('__ID__', analysisId)
+      .replace('__TOOL__', item.tool || '')
+      .replace('__CAT__', item.category || '')
+      .replace('__MSG__', item.message || '');
   }
 
   document.getElementById('issueModalCancel').addEventListener('click', closeModal);
@@ -1120,7 +1152,7 @@
     if (!_currentItem) return;
     var btn = document.getElementById('issueModalSubmit');
     btn.disabled = true;
-    btn.textContent = '생성 중...';
+    btn.textContent = I18N_JS.btnCreating;
 
     var payload = {
       analysis_id: analysisId,
@@ -1144,10 +1176,10 @@
     .then(function(res) {
       if (!res.ok) {
         var errEl = document.getElementById('issueModalError');
-        errEl.textContent = res.data.detail || '오류가 발생했습니다.';
+        errEl.textContent = res.data.detail || I18N_JS.errGeneric;
         errEl.classList.remove('hidden');
         btn.disabled = false;
-        btn.textContent = 'GitHub에 Issue 생성 →';
+        btn.textContent = I18N_JS.btnSubmit;
         return;
       }
       /* 성공 — 상태 맵 갱신 후 목록 다시 렌더링 / Success — update state map and re-render list */
@@ -1158,14 +1190,14 @@
       };
       closeModal();
       renderAll();
-      showToast('✅ Issue #' + res.data.github_issue_number + ' 생성됨');
+      showToast(I18N_JS.toastCreated.replace('__N__', res.data.github_issue_number));
     })
     .catch(function() {
       var errEl = document.getElementById('issueModalError');
-      errEl.textContent = '네트워크 오류가 발생했습니다. 다시 시도해 주세요.';
+      errEl.textContent = I18N_JS.errNetwork;
       errEl.classList.remove('hidden');
       btn.disabled = false;
-      btn.textContent = 'GitHub에 Issue 생성 →';
+      btn.textContent = I18N_JS.btnSubmit;
     });
   });
 

@@ -377,6 +377,18 @@
       "modal_title": "📝 Create GitHub Issue",
       "btn_cancel": "Cancel",
       "btn_submit": "Create Issue on GitHub →"
+    },
+    "js_msg": {
+      "suggestion_prefix": "💡 [AI Suggestion] ",
+      "status_resolved": "✅ #{num} Resolved",
+      "status_open": "🔵 #{num} Open",
+      "btn_register": "Register Issue",
+      "body_ai": "## 📌 Analysis Info\nAnalysis ID: {id}\n\n## 💡 AI Suggestion\n{text}\n\n---\n*Generated from SCAManager AI analysis results*",
+      "body_static": "## 📌 Analysis Info\nAnalysis ID: {id}\n\n## 🔴 Issue Details\n- Tool: {tool}\n- Category: {category}\n- Message: {message}\n\n---\n*Generated from SCAManager static analysis results*",
+      "btn_creating": "Creating...",
+      "err_generic": "An error occurred.",
+      "toast_created": "✅ Issue #{num} created",
+      "err_network": "A network error occurred. Please try again."
     }
   },
   "settings": {

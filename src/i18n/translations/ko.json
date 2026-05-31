@@ -377,6 +377,18 @@
       "modal_title": "📝 GitHub Issue 생성",
       "btn_cancel": "취소",
       "btn_submit": "GitHub에 Issue 생성 →"
+    },
+    "js_msg": {
+      "suggestion_prefix": "💡 [AI 제안] ",
+      "status_resolved": "✅ #{num} 해결됨",
+      "status_open": "🔵 #{num} 진행중",
+      "btn_register": "Issue 등록",
+      "body_ai": "## 📌 분석 정보\n분석 ID: {id}\n\n## 💡 AI 제안 내용\n{text}\n\n---\n*SCAManager AI 분석 결과에서 생성됨*",
+      "body_static": "## 📌 분석 정보\n분석 ID: {id}\n\n## 🔴 이슈 내용\n- 도구: {tool}\n- 카테고리: {category}\n- 메시지: {message}\n\n---\n*SCAManager 정적 분석 결과에서 생성됨*",
+      "btn_creating": "생성 중...",
+      "err_generic": "오류가 발생했습니다.",
+      "toast_created": "✅ Issue #{num} 생성됨",
+      "err_network": "네트워크 오류가 발생했습니다. 다시 시도해 주세요."
     }
   },
   "settings": {

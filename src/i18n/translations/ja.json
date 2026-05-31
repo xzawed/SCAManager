@@ -377,6 +377,18 @@
       "modal_title": "📝 GitHub Issue作成",
       "btn_cancel": "キャンセル",
       "btn_submit": "GitHubにIssue作成 →"
+    },
+    "js_msg": {
+      "suggestion_prefix": "💡 [AI 提案] ",
+      "status_resolved": "✅ #{num} 解決済み",
+      "status_open": "🔵 #{num} 進行中",
+      "btn_register": "Issue 登録",
+      "body_ai": "## 📌 分析情報\n分析ID: {id}\n\n## 💡 AI 提案内容\n{text}\n\n---\n*SCAManager AI 分析結果から生成されました*",
+      "body_static": "## 📌 分析情報\n分析ID: {id}\n\n## 🔴 課題内容\n- ツール: {tool}\n- カテゴリ: {category}\n- メッセージ: {message}\n\n---\n*SCAManager 静的分析結果から生成されました*",
+      "btn_creating": "作成中...",
+      "err_generic": "エラーが発生しました。",
+      "toast_created": "✅ Issue #{num} 作成済み",
+      "err_network": "ネットワークエラーが発生しました。もう一度お試しください。"
     }
   },
   "settings": {
