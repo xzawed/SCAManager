@@ -336,6 +336,11 @@
       "legacy_no_result_part1": "이 분석에는 상세 데이터가 없습니다.",
       "legacy_no_result_part2": "(AI 리뷰 도입 전 분석 기록)",
       "no_result": "분석 결과 데이터가 없습니다."
+    },
+    "issue_form": {
+      "title": "제목",
+      "body": "본문",
+      "labels": "라벨 (쉼표 구분)"
     }
   },
   "settings": {

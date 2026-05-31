@@ -336,6 +336,11 @@
       "legacy_no_result_part1": "この分析には詳細データがありません。",
       "legacy_no_result_part2": "(AI レビュー導入前の分析記録)",
       "no_result": "分析結果データがありません。"
+    },
+    "issue_form": {
+      "title": "タイトル",
+      "body": "本文",
+      "labels": "ラベル (カンマ区切り)"
     }
   },
   "settings": {

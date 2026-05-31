@@ -811,15 +811,15 @@
     <div class="issue-modal">
       <h4 class="issue-modal-title">📝 GitHub Issue 생성</h4>
 
-      <label class="issue-modal-label">제목
+      <label class="issue-modal-label">{{ 'analysis_detail.issue_form.title' | i18n_args(locale | default('ko')) }}
         <input type="text" id="issueTitle" class="issue-modal-input">
       </label>
 
-      <label class="issue-modal-label">본문
+      <label class="issue-modal-label">{{ 'analysis_detail.issue_form.body' | i18n_args(locale | default('ko')) }}
         <textarea id="issueBody" class="issue-modal-textarea" rows="6"></textarea>
       </label>
 
-      <label class="issue-modal-label">라벨 (쉼표 구분)
+      <label class="issue-modal-label">{{ 'analysis_detail.issue_form.labels' | i18n_args(locale | default('ko')) }}
         <input type="text" id="issueLabels" class="issue-modal-input"
                placeholder="bug, enhancement">
       </label>
