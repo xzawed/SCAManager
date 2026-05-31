@@ -808,7 +808,16 @@
       "tg_score_line": "점수: *{score}점* ({grade}등급)",
       "tg_choose": "승인 또는 반려를 선택하세요.",
       "tg_btn_approve": "✅ 승인",
-      "tg_btn_reject": "❌ 반려"
+      "tg_btn_reject": "❌ 반려",
+      "retry_stopped_title": "🚫 <b>자동 머지 재시도 중단</b>",
+      "retry_repo_line": "📁 <code>{repo}</code> — PR #{pr}",
+      "retry_stopped_reason": "<i>설정이 변경되어 재시도가 중단되었습니다 (auto_merge 비활성 또는 점수 기준 변경).</i>",
+      "retry_succeeded_title": "✅ <b>자동 머지 성공 (재시도)</b>",
+      "retry_score_attempts": "점수: {score}점 | 시도 횟수: {attempts}회",
+      "retry_view_github": "🔗 <a href=\"{url}\">GitHub에서 보기</a>",
+      "retry_terminal_title": "⚠️ <b>자동 머지 최종 실패</b>",
+      "retry_terminal_reason": "사유: <code>{reason}</code>",
+      "retry_advice_line": "💡 {advice}"
     }
   },
   "repo_insights": {
