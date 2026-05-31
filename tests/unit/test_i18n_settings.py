@@ -19,6 +19,7 @@ _KEYS = [
     "field_approve_threshold", "field_reject_threshold", "field_merge_threshold",
     "mode_auto", "mode_semi_auto",
     "preset_applied_suffix", "hide_value", "show_value",
+    "save_toast_ok", "save_toast_err", "model_hint",
 ]
 
 

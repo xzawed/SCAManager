@@ -445,7 +445,10 @@
     "mode_semi_auto": "📱 半自動",
     "preset_applied_suffix": "プリセット適用済み — 保存ボタンを押してください",
     "hide_value": "値を隠す",
-    "show_value": "値を表示"
+    "show_value": "値を表示",
+    "save_toast_ok": "✅ 設定が保存されました。",
+    "save_toast_err": "❌ 保存に失敗しました。承認基準点が却下基準点より低いです。",
+    "model_hint": "リポジトリ別のAIレビューモデルを選択します。Haiku → 高速・低コスト ($0.80/1M) · Sonnet → バランス ($3/1M) · Opus → 高品質 ($15/1M)。空欄の場合はサーバー全体のデフォルト(claude-sonnet-4-6)を使用します。※ 価格はAnthropic公式基準です(実際の請求と異なる場合があります)。"
   },
   "settings_page": {
     "title_prefix": "設定",
