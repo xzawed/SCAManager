@@ -445,7 +445,10 @@
     "mode_semi_auto": "📱 반자동",
     "preset_applied_suffix": "프리셋 적용됨 — 저장 버튼을 눌러주세요",
     "hide_value": "값 숨기기",
-    "show_value": "값 보이기"
+    "show_value": "값 보이기",
+    "save_toast_ok": "✅ 설정이 저장되었습니다.",
+    "save_toast_err": "❌ 저장에 실패했습니다. 승인 기준점이 반려 기준점보다 낮습니다.",
+    "model_hint": "리포별 AI 리뷰 모델을 선택합니다. Haiku → 빠름·저렴 ($0.80/1M) · Sonnet → 균형 ($3/1M) · Opus → 고품질 ($15/1M). 비어두면 서버 전역 기본값(claude-sonnet-4-6)을 따릅니다. ※ 가격은 Anthropic 공식 기준 (실제 청구와 다를 수 있습니다)."
   },
   "settings_page": {
     "title_prefix": "설정",

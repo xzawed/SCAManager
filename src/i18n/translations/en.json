@@ -445,7 +445,10 @@
     "mode_semi_auto": "📱 Semi-auto",
     "preset_applied_suffix": "preset applied — please click the Save button",
     "hide_value": "Hide value",
-    "show_value": "Show value"
+    "show_value": "Show value",
+    "save_toast_ok": "✅ Settings saved.",
+    "save_toast_err": "❌ Save failed. The approve threshold is lower than the reject threshold.",
+    "model_hint": "Select an AI review model per repo. Haiku → fast & cheap ($0.80/1M) · Sonnet → balanced ($3/1M) · Opus → high quality ($15/1M). Leave empty to use the server global default (claude-sonnet-4-6). ※ Prices are based on Anthropic official rates (actual billing may differ)."
   },
   "settings_page": {
     "title_prefix": "Settings",

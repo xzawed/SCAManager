@@ -410,11 +410,11 @@
   <!-- 저장 결과 토스트 / Save result toast -->
   {% if saved %}
   <div class="save-toast save-toast-ok" id="saveToast">
-    ✅ 설정이 저장되었습니다.
+    {{ 'settings.save_toast_ok' | i18n_args(locale | default('ko')) }}
   </div>
   {% elif save_error %}
   <div class="save-toast save-toast-err" id="saveToast">
-    ❌ 저장에 실패했습니다. 승인 기준점이 반려 기준점보다 낮습니다.
+    {{ 'settings.save_toast_err' | i18n_args(locale | default('ko')) }}
   </div>
   {% endif %}
 
@@ -630,7 +630,7 @@
               <div class="t-title">{{ 'settings_page.pr_rules.pr_comment_title' | i18n_args(locale | default('ko')) }}</div>
               <div class="t-desc">{{ 'settings_page.pr_rules.pr_comment_desc' | i18n_args(locale | default('ko')) }}</div>
             </div>
-            <label class="toggle-switch">
+            <label class="toggle-switch" aria-label="{{ 'settings_page.pr_rules.pr_comment_title' | i18n_args(locale | default('ko')) }}">
               <input type="checkbox" name="pr_review_comment" value="on"
                      {% if config.pr_review_comment %}checked{% endif %}>
               <span class="toggle-track"></span>
@@ -644,7 +644,7 @@
               <div class="t-title">{{ 'settings_page.pr_rules.auto_merge_title' | i18n_args(locale | default('ko')) }}</div>
               <div class="t-desc">{{ 'settings_page.pr_rules.auto_merge_desc' | i18n_args(locale | default('ko')) | safe }}</div>
             </div>
-            <label class="toggle-switch">
+            <label class="toggle-switch" aria-label="{{ 'settings_page.pr_rules.auto_merge_title' | i18n_args(locale | default('ko')) }}">
               <input type="checkbox" id="autoMergeChk" name="auto_merge" value="on"
                      {% if config.auto_merge %}checked{% endif %}
                      onchange="toggleMergeThreshold(this.checked)">
@@ -741,7 +741,7 @@
                   <div class="t-title">{{ 'settings_page.pr_rules.merge_issue_title' | i18n_args(locale | default('ko')) }}</div>
                   <div class="t-desc">{{ 'settings_page.pr_rules.merge_issue_desc' | i18n_args(locale | default('ko')) | safe }}</div>
                 </div>
-                <label class="toggle-switch">
+                <label class="toggle-switch" aria-label="{{ 'settings_page.pr_rules.merge_issue_title' | i18n_args(locale | default('ko')) }}">
                   <input type="checkbox" name="auto_merge_issue_on_failure" value="on"
                          {% if config.auto_merge_issue_on_failure %}checked{% endif %}>
                   <span class="toggle-track"></span>
@@ -772,7 +772,7 @@
               <div class="t-title">{{ 'settings_page.post_event.commit_comment_title' | i18n_args(locale | default('ko')) }}</div>
               <div class="t-desc">{{ 'settings_page.post_event.commit_comment_desc' | i18n_args(locale | default('ko')) | safe }}</div>
             </div>
-            <label class="toggle-switch">
+            <label class="toggle-switch" aria-label="{{ 'settings_page.post_event.commit_comment_title' | i18n_args(locale | default('ko')) }}">
               <input type="checkbox" name="commit_comment" value="on"
                      {% if config.commit_comment %}checked{% endif %}>
               <span class="toggle-track"></span>
@@ -785,7 +785,7 @@
               <div class="t-title">{{ 'settings_page.post_event.create_issue_title' | i18n_args(locale | default('ko')) }}</div>
               <div class="t-desc">{{ 'settings_page.post_event.create_issue_desc' | i18n_args(locale | default('ko')) | safe }}</div>
             </div>
-            <label class="toggle-switch">
+            <label class="toggle-switch" aria-label="{{ 'settings_page.post_event.create_issue_title' | i18n_args(locale | default('ko')) }}">
               <input type="checkbox" name="create_issue" value="on"
                      {% if config.create_issue %}checked{% endif %}>
               <span class="toggle-track"></span>
@@ -799,7 +799,7 @@
               <div class="t-title">{{ 'settings_page.post_event.railway_alerts_title' | i18n_args(locale | default('ko')) }}</div>
               <div class="t-desc">{{ 'settings_page.post_event.railway_alerts_desc' | i18n_args(locale | default('ko')) | safe }}</div>
             </div>
-            <label class="toggle-switch">
+            <label class="toggle-switch" aria-label="{{ 'settings_page.post_event.railway_alerts_title' | i18n_args(locale | default('ko')) }}">
               <input type="checkbox" name="railway_deploy_alerts" id="railway_deploy_alerts" value="on"
                      {% if config.railway_deploy_alerts %}checked{% endif %}>
               <span class="toggle-track"></span>
@@ -1084,10 +1084,7 @@
           {% endfor %}
         </select>
         <span class="field-hint">
-          리포별 AI 리뷰 모델을 선택합니다.
-          Haiku → 빠름·저렴 ($0.80/1M) · Sonnet → 균형 ($3/1M) · Opus → 고품질 ($15/1M).
-          비어두면 서버 전역 기본값(claude-sonnet-4-6)을 따릅니다.
-          ※ 가격은 Anthropic 공식 기준 (실제 청구와 다를 수 있습니다).
+          {{ 'settings.model_hint' | i18n_args(locale | default('ko')) }}
         </span>
       </div>
     </div>
