@@ -266,7 +266,20 @@
     "hook_installed_title": "CLI コードレビューフックが設定されました!",
     "hook_installed_desc_part1": "ローカルリポジトリで下記コマンドを実行すると、",
     "hook_installed_desc_code": "git push",
-    "hook_installed_desc_part2": " 時に自動的にコードレビューが実行されます。"
+    "hook_installed_desc_part2": " 時に自動的にコードレビューが実行されます。",
+    "recent_score": "最近スコア:",
+    "analysis_unit": "件",
+    "history_empty": "分析履歴がありません",
+    "history_empty_hint": "PushまたはPRイベント後、最初の分析が完了するとグラフが表示されます。",
+    "cost": {
+      "title": "今月のAIレビュー予想コスト",
+      "period": "({month}月1日〜末日、サーバーサイドWebhook分析基準)",
+      "tokens": "(入力+出力 {count} トークン)",
+      "no_data": "データなし — 今月はトークン追跡分析がまだありません。",
+      "disclaimer": "※ Anthropic公式料金に基づく推定値です。実際の請求額と異なる場合があり、pre-pushフックのコスト（ユーザーAPIキー）は含まれません。",
+      "model_change": "モデル変更:",
+      "settings_link": "設定ページ"
+    }
   },
   "analysis_detail": {
     "title": "分析 #{id}",

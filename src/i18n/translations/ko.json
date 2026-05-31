@@ -266,7 +266,20 @@
     "hook_installed_title": "CLI 코드리뷰 훅이 설정됐습니다!",
     "hook_installed_desc_part1": "로컬 리포에서 아래 명령어를 실행하면 ",
     "hook_installed_desc_code": "git push",
-    "hook_installed_desc_part2": " 시 자동으로 코드리뷰가 실행됩니다."
+    "hook_installed_desc_part2": " 시 자동으로 코드리뷰가 실행됩니다.",
+    "recent_score": "최근 점수:",
+    "analysis_unit": "건 분석",
+    "history_empty": "분석 이력이 없습니다",
+    "history_empty_hint": "Push 또는 PR 이벤트 후 첫 분석이 완료되면 차트가 표시됩니다",
+    "cost": {
+      "title": "이번 달 AI 리뷰 예상 비용",
+      "period": "({month} 01일 ~ 말일, 서버사이드 Webhook 분석 기준)",
+      "tokens": "(입력+출력 {count} 토큰)",
+      "no_data": "데이터 없음 — 이번 달 토큰 추적 분석이 아직 없습니다.",
+      "disclaimer": "※ Anthropic 공식 요금 기준 추정값입니다. 실제 청구금액과 다를 수 있으며, pre-push 훅 비용(사용자 API 키)은 포함되지 않습니다.",
+      "model_change": "모델 변경:",
+      "settings_link": "설정 페이지"
+    }
   },
   "analysis_detail": {
     "title": "분석 #{id}",
