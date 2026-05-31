@@ -784,7 +784,13 @@
     },
     "gate": {
       "auto_approve": "✅ Auto-approved: score {score} (threshold: {threshold}+)",
-      "auto_reject": "❌ Auto-rejected: score {score} (threshold: below {threshold})"
+      "auto_reject": "❌ Auto-rejected: score {score} (threshold: below {threshold})",
+      "tg_review_title": "🔍 *PR Review Request*",
+      "tg_repo_line": "Repo: `{repo}` — PR #{pr}",
+      "tg_score_line": "Score: *{score}* ({grade})",
+      "tg_choose": "Please choose approve or reject.",
+      "tg_btn_approve": "✅ Approve",
+      "tg_btn_reject": "❌ Reject"
     }
   },
   "repo_insights": {

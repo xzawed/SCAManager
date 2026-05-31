@@ -2,6 +2,7 @@
 import hashlib
 import hmac
 
+from src.i18n.loader import get_text
 from src.notifier.telegram import telegram_post_message
 from src.scorer.calculator import ScoreResult
 
@@ -49,19 +50,41 @@ async def send_gate_request(
     repo_full_name: str,
     pr_number: int,
     score_result: ScoreResult,
+    language: str = "ko",
 ) -> None:
-    """반자동 Gate PR 검토 요청을 Telegram 인라인 키보드로 전송한다."""
+    """반자동 Gate PR 검토 요청을 Telegram 인라인 키보드로 전송한다.
+    Send a semi-auto gate PR review request via Telegram inline keyboard.
+
+    language: 알림 수신자 언어 (ko/en/ja) — 메시지 본문 + 버튼 텍스트 i18n.
+    language: recipient's language (ko/en/ja) — i18n for message body and button labels.
+    Telegram Markdown(백틱/별표)은 키 값에 보존되어 parse_mode="Markdown"으로 렌더된다.
+    Telegram Markdown (backtick/asterisk) is preserved in key values and rendered via parse_mode="Markdown".
+    """
+    # 4개 i18n 키를 Python 측에서 줄바꿈으로 조합 (제목/리포/점수/선택)
+    # Compose the 4 i18n keys with newlines on the Python side (title/repo/score/choose)
     text = (
-        f"🔍 *PR 검토 요청*\n"
-        f"리포: `{repo_full_name}` — PR #{pr_number}\n"
-        f"점수: *{score_result.total}점* ({score_result.grade}등급)\n\n"
-        f"승인 또는 반려를 선택하세요."
+        get_text("notifier.gate.tg_review_title", language) + "\n"
+        + get_text(
+            "notifier.gate.tg_repo_line", language,
+            repo=repo_full_name, pr=pr_number,
+        ) + "\n"
+        + get_text(
+            "notifier.gate.tg_score_line", language,
+            score=score_result.total, grade=score_result.grade,
+        ) + "\n\n"
+        + get_text("notifier.gate.tg_choose", language)
     )
     token = _gate_callback_token(bot_token, analysis_id)
     reply_markup = {
         "inline_keyboard": [[
-            {"text": "✅ 승인", "callback_data": f"gate:approve:{analysis_id}:{token}"},
-            {"text": "❌ 반려", "callback_data": f"gate:reject:{analysis_id}:{token}"},
+            {
+                "text": get_text("notifier.gate.tg_btn_approve", language),
+                "callback_data": f"gate:approve:{analysis_id}:{token}",
+            },
+            {
+                "text": get_text("notifier.gate.tg_btn_reject", language),
+                "callback_data": f"gate:reject:{analysis_id}:{token}",
+            },
         ]]
     }
     await telegram_post_message(bot_token, chat_id, {
