@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [사이클 149 (알림/Gate 메시지 i18n — 자동 승인·반려·Telegram·머지 조언·재시도 + engine.py dead code 제거, 2026-06-01)](#사이클-149)
 - [사이클 148 (전체 템플릿 i18n 완결 — base.html langName FOUC 해소, 2026-06-01)](#사이클-148)
 - [사이클 147 (회고 Tier A/B — settings 누락 i18n + toggle a11y + render-parity 가드, 2026-06-01)](#사이클-147)
 - [사이클 146 (템플릿 i18n 완성 — base/repo_insights/settings/landing 잔존 한국어 전수 전환, 2026-06-01)](#사이클-146)
@@ -57,6 +58,29 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 사이클 149
+
+**날짜**: 2026-06-01 | **PR**: #712~#715 | **상태**: ✅ 머지 완료
+
+**작업 내용**: 알림/Gate 메시지 i18n — UI 외 사용자 노출 알림(GitHub PR 댓글·Telegram·Issue) 전체 언어 적용. resolve_notification_language 우회 경로 해소.
+
+| PR | 내용 |
+|----|------|
+| #712 | fix(i18n): Gate 자동 승인/반려 메시지(approve.py) i18n — notifier.gate.{auto_approve,auto_reject} + engine.py dead code(_run_approve_decision/_run_review_comment) 제거 |
+| #713 | fix(i18n): Telegram 반자동 Gate 메시지(telegram_gate.py) i18n — tg_* 6키 + send_gate_request language 파라미터 |
+| #714 | fix(i18n): 머지 실패 조언(get_advice) i18n — merge_advice 16키 + get_advice(reason, language) + 호출처 4곳 |
+| #715 | fix(i18n): 머지 재시도 Telegram 알림(merge_retry_service) i18n — retry_* 9키 + 3 함수 language |
+
+**주요 결정**:
+- 모든 알림이 기존 `resolve_notification_language(db, config)` 3-layer fallback 재사용 (User → RepoConfig → default)
+- Telegram Markdown/HTML 태그(백틱·별표·<b>·<code>·<a>) + escape() 보존
+- 기술 용어(git pull origin main, Branch Protection Rules, pull_requests: write 등) 영어 보존
+- engine.py dead code 제거 (사이클 141 Action 클래스 이전 후 미사용 — 호출처 0 확인)
+
+**완결**: UI(사이클 143~148) + 알림(사이클 149) i18n 전수 — en/ja 사용자가 모든 채널에서 자국어 수신. (내부 로그 메시지는 i18n 대상 외 — 운영자용)
+
+**신규 테스트**: +109 단위 (4298→4407, 전체 4451→4560). 통합 153 유지.
 
 ## 사이클 148
 

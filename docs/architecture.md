@@ -83,7 +83,7 @@ src/
 │   ├── native_automerge.py      # enable_or_fallback() — GraphQL 우선 + REST 폴백
 │   ├── merge_reasons.py         # 정규 태그 상수 (branch_protection_blocked, unstable_ci 등)
 │   ├── telegram_gate.py         # send_gate_request() — 인라인 키보드
-│   ├── merge_failure_advisor.py # get_advice(reason)
+│   ├── merge_failure_advisor.py # get_advice(reason, language) — i18n (사이클 149)
 │   ├── retry_policy.py          # 순수 함수 — should_retry, compute_next_retry_at, is_expired
 │   └── _merge_attempt_states.py # MergeAttempt.state lifecycle 정규 상수
 ├── notifier/                    # `__init__.py` 가 자동 로드 → REGISTRY 등록
