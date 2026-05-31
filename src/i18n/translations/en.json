@@ -336,6 +336,11 @@
       "legacy_no_result_part1": "This analysis has no detailed data.",
       "legacy_no_result_part2": "(Recorded before AI review was introduced)",
       "no_result": "No analysis result data available."
+    },
+    "issue_form": {
+      "title": "Title",
+      "body": "Body",
+      "labels": "Labels (comma separated)"
     }
   },
   "settings": {
