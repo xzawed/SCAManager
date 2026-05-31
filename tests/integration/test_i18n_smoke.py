@@ -177,3 +177,24 @@ def test_i18n_metrics_missing_key_increments_fallback_rate():
     assert metrics["lookups_hit"] == 1
     assert metrics["lookups_missing"] == 1
     assert metrics["fallback_rate_pct"] == 50.0
+
+
+# ── repo_detail locale smoke (사이클 143 Sprint 3) ─────────────────────────
+# repo_detail locale smoke (Cycle 143 Sprint 3)
+
+
+@pytest.mark.parametrize("locale", ["en", "ja"])
+def test_repo_detail_redirects_for_unauthenticated(client, locale):
+    """/repos/{owner}/{repo} — 미인증 시 locale 무관하게 302/401/404 반환.
+
+    Unauthenticated access to /repos/ returns 302/401/404 regardless of locale.
+    500이 아님을 확인하여 locale 주입 오류가 없음을 검증한다.
+    Confirms no locale injection error by checking the status code is not 500.
+    """
+    response = client.get(
+        "/repos/testowner/testrepo",
+        cookies={"preferred_language": locale},
+    )
+    assert response.status_code in (302, 401, 404), (
+        f"[{locale}] /repos/ 접근 시 예상치 못한 상태 코드: {response.status_code}"
+    )

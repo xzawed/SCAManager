@@ -279,6 +279,19 @@
       "disclaimer": "※ Anthropic 공식 요금 기준 추정값입니다. 실제 청구금액과 다를 수 있으며, pre-push 훅 비용(사용자 API 키)은 포함되지 않습니다.",
       "model_change": "모델 변경:",
       "settings_link": "설정 페이지"
+    },
+    "issue_mgmt": {
+      "title": "🔁 반복 이슈 — Issue 등록 관리",
+      "tab_static": "🔴 정적 분석 이슈",
+      "tab_ai": "💡 AI 제안사항",
+      "filter_unregistered": "미등록만 보기",
+      "modal_title": "📝 GitHub Issue 생성",
+      "form_title": "제목",
+      "form_body": "본문",
+      "form_labels": "라벨 (쉼표 구분)",
+      "btn_cancel": "취소",
+      "btn_skip": "이 항목 건너뜀",
+      "btn_create_next": "생성 후 다음 →"
     }
   },
   "analysis_detail": {

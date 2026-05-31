@@ -606,20 +606,20 @@
 <section class="issue-reg-panel" id="repoBulkPanel"
          data-repo-id="{{ repo_id }}">
 
-  <h3 class="panel-title">🔁 반복 이슈 — Issue 등록 관리</h3>
+  <h3 class="panel-title">{{ 'repo_detail.issue_mgmt.title' | i18n_args(locale | default('ko')) }}</h3>
 
   <div class="issue-reg-tabs" role="tablist">
     <button class="issue-tab active" data-tab="static" role="tab">
-      🔴 정적 분석 이슈 <span class="issue-tab-count" id="repoStaticCount"></span>
+      {{ 'repo_detail.issue_mgmt.tab_static' | i18n_args(locale | default('ko')) }} <span class="issue-tab-count" id="repoStaticCount"></span>
     </button>
     <button class="issue-tab" data-tab="ai" role="tab">
-      💡 AI 제안사항 <span class="issue-tab-count" id="repoAiCount"></span>
+      {{ 'repo_detail.issue_mgmt.tab_ai' | i18n_args(locale | default('ko')) }} <span class="issue-tab-count" id="repoAiCount"></span>
     </button>
   </div>
 
   <div class="issue-bulk-toolbar">
     <label class="issue-filter-label">
-      <input type="checkbox" id="showUnregisteredOnly"> 미등록만 보기
+      <input type="checkbox" id="showUnregisteredOnly"> {{ 'repo_detail.issue_mgmt.filter_unregistered' | i18n_args(locale | default('ko')) }}
     </label>
     <button class="btn-primary" id="bulkRegisterBtn" disabled>
       선택 항목 일괄 Issue 등록 (0건) →
@@ -638,22 +638,22 @@
 <div class="issue-modal-overlay hidden" id="bulkModalOverlay" role="dialog" aria-modal="true">
   <div class="issue-modal">
     <div class="issue-modal-progress" id="bulkProgress"></div>
-    <h4 class="issue-modal-title">📝 GitHub Issue 생성</h4>
+    <h4 class="issue-modal-title">{{ 'repo_detail.issue_mgmt.modal_title' | i18n_args(locale | default('ko')) }}</h4>
 
-    <label class="issue-modal-label">제목
+    <label class="issue-modal-label">{{ 'repo_detail.issue_mgmt.form_title' | i18n_args(locale | default('ko')) }}
       <input type="text" id="bulkTitle" class="issue-modal-input">
     </label>
-    <label class="issue-modal-label">본문
+    <label class="issue-modal-label">{{ 'repo_detail.issue_mgmt.form_body' | i18n_args(locale | default('ko')) }}
       <textarea id="bulkBody" class="issue-modal-textarea" rows="5"></textarea>
     </label>
-    <label class="issue-modal-label">라벨 (쉼표 구분)
+    <label class="issue-modal-label">{{ 'repo_detail.issue_mgmt.form_labels' | i18n_args(locale | default('ko')) }}
       <input type="text" id="bulkLabels" class="issue-modal-input">
     </label>
 
     <div class="issue-modal-actions">
-      <button type="button" class="btn-secondary" id="bulkCancel">취소</button>
-      <button type="button" class="btn-secondary" id="bulkSkip">이 항목 건너뜀</button>
-      <button type="button" class="btn-primary"   id="bulkSubmit">생성 후 다음 →</button>
+      <button type="button" class="btn-secondary" id="bulkCancel">{{ 'repo_detail.issue_mgmt.btn_cancel' | i18n_args(locale | default('ko')) }}</button>
+      <button type="button" class="btn-secondary" id="bulkSkip">{{ 'repo_detail.issue_mgmt.btn_skip' | i18n_args(locale | default('ko')) }}</button>
+      <button type="button" class="btn-primary"   id="bulkSubmit">{{ 'repo_detail.issue_mgmt.btn_create_next' | i18n_args(locale | default('ko')) }}</button>
     </div>
     <p class="issue-modal-error hidden" id="bulkError"></p>
   </div>

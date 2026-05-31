@@ -279,6 +279,19 @@
       "disclaimer": "※ Estimated based on Anthropic official pricing. Actual charges may differ. Pre-push hook costs (user API key) are not included.",
       "model_change": "Change model:",
       "settings_link": "Settings page"
+    },
+    "issue_mgmt": {
+      "title": "🔁 Recurring Issues — Issue Registration",
+      "tab_static": "🔴 Static Analysis Issues",
+      "tab_ai": "💡 AI Suggestions",
+      "filter_unregistered": "Show unregistered only",
+      "modal_title": "📝 Create GitHub Issue",
+      "form_title": "Title",
+      "form_body": "Body",
+      "form_labels": "Labels (comma separated)",
+      "btn_cancel": "Cancel",
+      "btn_skip": "Skip this item",
+      "btn_create_next": "Create & Next →"
     }
   },
   "analysis_detail": {

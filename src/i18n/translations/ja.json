@@ -279,6 +279,19 @@
       "disclaimer": "※ Anthropic公式料金に基づく推定値です。実際の請求額と異なる場合があり、pre-pushフックのコスト（ユーザーAPIキー）は含まれません。",
       "model_change": "モデル変更:",
       "settings_link": "設定ページ"
+    },
+    "issue_mgmt": {
+      "title": "🔁 繰り返しイシュー — Issue登録管理",
+      "tab_static": "🔴 静的解析イシュー",
+      "tab_ai": "💡 AI提案事項",
+      "filter_unregistered": "未登録のみ表示",
+      "modal_title": "📝 GitHub Issue作成",
+      "form_title": "タイトル",
+      "form_body": "本文",
+      "form_labels": "ラベル (カンマ区切り)",
+      "btn_cancel": "キャンセル",
+      "btn_skip": "この項目をスキップ",
+      "btn_create_next": "作成して次へ →"
     }
   },
   "analysis_detail": {

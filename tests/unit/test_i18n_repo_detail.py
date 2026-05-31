@@ -73,3 +73,47 @@ def test_repo_detail_sprint2_cost_value_non_empty(locale: str, key: str):
     """
     val = _load(locale).get("repo_detail", {}).get("cost", {}).get(key)
     assert isinstance(val, str) and val.strip(), f"[{locale}] repo_detail.cost.{key} 비어있음: {val!r}"
+
+
+# ---------------------------------------------------------------------------
+# Sprint 3 — issue_mgmt 서브 네임스페이스 (사이클 143)
+# ---------------------------------------------------------------------------
+_SPRINT3_ISSUE_MGMT_KEYS = [
+    "title",
+    "tab_static",
+    "tab_ai",
+    "filter_unregistered",
+    "modal_title",
+    "form_title",
+    "form_body",
+    "form_labels",
+    "btn_cancel",
+    "btn_skip",
+    "btn_create_next",
+]
+
+
+@pytest.mark.parametrize("locale", _LOCALES)
+@pytest.mark.parametrize("key", _SPRINT3_ISSUE_MGMT_KEYS)
+def test_repo_detail_sprint3_issue_mgmt_key_exists(locale: str, key: str):
+    """repo_detail.issue_mgmt.<key>가 모든 locale에 존재해야 한다.
+    repo_detail.issue_mgmt.<key> must exist in all locales.
+    """
+    data = _load(locale)
+    assert "repo_detail" in data
+    assert "issue_mgmt" in data["repo_detail"], f"[{locale}] repo_detail.issue_mgmt 없음"
+    assert key in data["repo_detail"]["issue_mgmt"], (
+        f"[{locale}] repo_detail.issue_mgmt.{key} 없음"
+    )
+
+
+@pytest.mark.parametrize("locale", _LOCALES)
+@pytest.mark.parametrize("key", _SPRINT3_ISSUE_MGMT_KEYS)
+def test_repo_detail_sprint3_issue_mgmt_value_non_empty(locale: str, key: str):
+    """repo_detail.issue_mgmt.<key> 값이 비어있지 않아야 한다.
+    Value must be non-empty.
+    """
+    val = _load(locale).get("repo_detail", {}).get("issue_mgmt", {}).get(key)
+    assert isinstance(val, str) and val.strip(), (
+        f"[{locale}] repo_detail.issue_mgmt.{key} 비어있음: {val!r}"
+    )
