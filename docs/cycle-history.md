@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [사이클 147 (회고 Tier A/B — settings 누락 i18n + toggle a11y + render-parity 가드, 2026-06-01)](#사이클-147)
 - [사이클 146 (템플릿 i18n 완성 — base/repo_insights/settings/landing 잔존 한국어 전수 전환, 2026-06-01)](#사이클-146)
 - [사이클 145 (JS 동적 텍스트 i18n — analysis_detail/repo_detail JS 메시지 data-i18n 전환, 2026-05-31)](#사이클-145)
 - [사이클 144 (회고 Tier B 이행 — analysis_detail/repo_detail i18n 완성 + 렌더 정합 가드, 2026-05-31)](#사이클-144)
@@ -55,6 +56,26 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 사이클 147
+
+**날짜**: 2026-06-01 | **PR**: #707~#708 | **상태**: ✅ 머지 완료
+
+**작업 내용**: 사이클 146 회고 Tier A/B 이행 — settings survey 누락 i18n + toggle a11y + render-parity 가드
+
+| PR | 내용 |
+|----|------|
+| #707 | fix(i18n): settings.html 저장 토스트 + 모델 hint (Tier A, 회고 P1-1~3) + toggle-switch label aria-label 6건 (SonarCloud S6853) |
+| #708 | test(i18n): render-parity 가드 23케이스 (Tier B, 회고 P1-4) — repo_insights/settings/landing/theme |
+
+**회고 반영**:
+- P1-1~3: settings survey가  서버 렌더 토스트 + field-hint 누락 → 완결 (잔존 0건)
+- P1-4: 사이클 144 #696이 default화한 render-parity 가드를 사이클 146 키에 소급 적용 — 오타 키 raw 노출 검출
+- 부수: SonarCloud S6853 toggle label 접근성 6건 동시 개선 (정책 10 fix-up)
+- .claude/rules/i18n.md 학습 3건 추가: survey 전수 의무(Jinja 블록)·render-parity 가드 동반 의무·toggle label a11y
+- P2-4: STATE.md 헤더 날짜 표기 정정 (2026-05-31→2026-06-01)
+
+**신규 테스트**: +40 단위 (4258→4298, 전체 4411→4451). 통합 153 유지.
 
 ## 사이클 146
 
