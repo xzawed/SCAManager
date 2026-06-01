@@ -114,7 +114,7 @@ def _build_message(  # pylint: disable=too-many-positional-arguments,too-many-lo
     Args:
         language: 사용자 언어 ('ko'/'en'/'ja'). 3-layer fallback (resolve_notification_language).
     """
-    ref = format_ref(commit_sha, pr_number)
+    ref = format_ref(commit_sha, pr_number, language)
     all_issues = get_all_issues(analysis_results)
     top_issues = [
         f"- [{escape(i.tool)}] {escape(truncate_issue_msg(i.message))}"

@@ -34,7 +34,7 @@ def _build_payload(  # pylint: disable=too-many-positional-arguments,too-many-lo
     language: str = "en",
 ) -> dict:
     grade_emoji = _SLACK_GRADE_EMOJI.get(score_result.grade, ":white_circle:")
-    ref = format_ref(commit_sha, pr_number)
+    ref = format_ref(commit_sha, pr_number, language)
     bd = score_result.breakdown
 
     text = get_text(

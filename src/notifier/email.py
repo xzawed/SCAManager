@@ -30,7 +30,7 @@ def _build_html_body(  # pylint: disable=too-many-positional-arguments,too-many-
     ai_review: AiReviewResult | None = None,
     language: str = "en",
 ) -> str:
-    ref = format_ref(commit_sha, pr_number)
+    ref = format_ref(commit_sha, pr_number, language)
     bd = score_result.breakdown
     color = GRADE_COLOR_HTML.get(score_result.grade, "#6366f1")
 

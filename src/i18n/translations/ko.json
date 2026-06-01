@@ -828,6 +828,9 @@
       "retry_terminal_title": "⚠️ <b>자동 머지 최종 실패</b>",
       "retry_terminal_reason": "사유: <code>{reason}</code>",
       "retry_advice_line": "💡 {advice}"
+    },
+    "common": {
+      "commit_ref": "커밋 {sha}"
     }
   },
   "repo_insights": {

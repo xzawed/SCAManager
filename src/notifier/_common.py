@@ -7,14 +7,21 @@ from src.constants import (
 )
 
 
-def format_ref(commit_sha: str, pr_number: int | None) -> str:
+def format_ref(commit_sha: str, pr_number: int | None, language: str = "ko") -> str:
     """PR 번호 또는 단축 커밋 SHA 레퍼런스 문자열을 반환한다.
 
     Format a PR number or short commit SHA reference string.
+    language: 커밋 레퍼런스 i18n (push 이벤트 — pr_number 없을 때).
+    language: i18n for the commit reference (push event — when pr_number is absent).
     """
     if pr_number:
         return f"PR #{pr_number}"
-    return f"커밋 {commit_sha[:COMMIT_SHA_DISPLAY_LENGTH]}"
+    # 커밋 레퍼런스 i18n — push 이벤트 시 수신자 언어 적용 (사이클 152 P0-A)
+    # Commit reference i18n — apply recipient language on push events
+    from src.i18n.loader import get_text  # noqa: WPS433  # pylint: disable=import-outside-toplevel
+    return get_text(
+        "notifier.common.commit_ref", language, sha=commit_sha[:COMMIT_SHA_DISPLAY_LENGTH],
+    )
 
 
 def get_all_issues(analysis_results: list) -> list:

@@ -29,7 +29,7 @@ def _build_embed(  # pylint: disable=too-many-positional-arguments
     language: str = "en",
 ) -> dict:
     grade_emoji = GRADE_EMOJI.get(score_result.grade, "⚪")
-    ref = format_ref(commit_sha, pr_number)
+    ref = format_ref(commit_sha, pr_number, language)
     bd = score_result.breakdown
 
     lines = [
