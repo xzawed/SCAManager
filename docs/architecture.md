@@ -99,7 +99,7 @@ src/
 ├── api/
 │   ├── auth.py                  # require_api_key Depends
 │   ├── deps.py                  # get_repo_or_404
-│   ├── repos.py / stats.py / hook.py / users.py
+│   ├── repos.py / stats.py / hook.py (_resolve_hook_locale — repo owner 언어 해소, 사이클 151) / users.py
 │   └── repo_report.py               # Repo별 분석 레포트 JSON API (list + detail)
 │   ├── internal_cron.py         # POST /api/internal/cron/{weekly,trend,scan-security,retry-pending-merges}
 │   ├── issue_registration.py    # POST /api/issues/register + GET /api/issues/status + GET /api/issues/repo-summary (소유권 검증 포함)
