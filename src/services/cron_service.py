@@ -11,6 +11,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.config import settings
+from src.i18n.loader import get_text
+from src.notifier._language import resolve_notification_language
 from src.notifier.telegram import telegram_post_message
 from src.repositories import repo_config_repo, repository_repo
 from src.services.analytics_service import moving_average, resolve_chat_id, weekly_summary
@@ -59,9 +61,10 @@ async def run_weekly_reports(db: Session, *, now: datetime | None = None) -> int
             if summary is None:
                 continue
 
-            # 메시지 포맷팅 후 Telegram 발송
-            # Format message and send via Telegram
-            text = _format_weekly_message(repo.full_name, summary)
+            # 발신 언어 결정 (config 기반 fallback) 후 메시지 포맷팅 및 Telegram 발송
+            # Resolve notification language (config-based fallback), then format & send
+            language = resolve_notification_language(db, config=config)
+            text = _format_weekly_message(repo.full_name, summary, language)
             await telegram_post_message(
                 settings.telegram_bot_token,
                 chat_id,
@@ -79,24 +82,29 @@ async def run_weekly_reports(db: Session, *, now: datetime | None = None) -> int
     return sent
 
 
-def _format_weekly_message(repo_full_name: str, summary: dict) -> str:
-    """주간 요약 Telegram 메시지를 포맷팅한다.
-    Format a weekly summary Telegram message.
+def _format_weekly_message(
+    repo_full_name: str, summary: dict, language: str = "ko"
+) -> str:
+    """주간 요약 Telegram 메시지를 사용자 언어로 포맷팅한다.
+    Format a weekly summary Telegram message in the user's language.
 
     Args:
         repo_full_name: 리포 전체 이름 (owner/repo) / Repository full name
         summary: weekly_summary() 반환 dict / Return value of weekly_summary()
+        language: 발신 언어 코드 (ko/en/ja) / Notification language code
 
     Returns:
         HTML 포맷 메시지 문자열 / HTML-formatted message string
     """
     avg = summary["avg_score"]
     count = summary["count"]
+    # HTML 태그(<b>/<code>)는 i18n 값에 포함되거나 직접 조합해 보존
+    # HTML tags (<b>/<code>) preserved via i18n values or direct composition
     return (
-        f"<b>\U0001f4ca 주간 리포트 / Weekly Report</b>\n"
+        f"{get_text('notifier.cron.weekly_title', language)}\n"
         f"<code>{repo_full_name}</code>\n"
-        f"분석 건수 / Analyses: {count}\n"
-        f"평균 점수 / Avg score: {avg:.1f}"
+        f"{get_text('notifier.cron.weekly_analyses', language, count=count)}\n"
+        f"{get_text('notifier.cron.weekly_avg', language, avg=f'{avg:.1f}')}"
     )
 
 
@@ -148,7 +156,12 @@ async def run_trend_check(db: Session, *, now: datetime | None = None) -> int:
             # Calculate drop — send alert if >= threshold
             drop = prev_avg - current_avg
             if drop >= _TREND_DROP_THRESHOLD:
-                text = _format_trend_alert(repo.full_name, current_avg, prev_avg, drop)
+                # 발신 언어 결정 (config 기반 fallback)
+                # Resolve notification language (config-based fallback)
+                language = resolve_notification_language(db, config=config)
+                text = _format_trend_alert(
+                    repo.full_name, current_avg, prev_avg, drop, language
+                )
                 await telegram_post_message(
                     settings.telegram_bot_token,
                     chat_id,
@@ -171,23 +184,27 @@ def _format_trend_alert(
     current: float,
     prev: float,
     drop: float,
+    language: str = "ko",
 ) -> str:
-    """트렌드 경고 메시지를 포맷팅한다.
-    Format a trend alert message.
+    """트렌드 경고 메시지를 사용자 언어로 포맷팅한다.
+    Format a trend alert message in the user's language.
 
     Args:
         repo_full_name: 리포 전체 이름 (owner/repo) / Repository full name
         current: 현재 7일 이동 평균 / Current 7-day moving average
         prev: 이전 7일 이동 평균 / Previous 7-day moving average
         drop: 하락폭 (prev - current) / Score drop (prev - current)
+        language: 발신 언어 코드 (ko/en/ja) / Notification language code
 
     Returns:
         HTML 포맷 경고 메시지 / HTML-formatted alert message
     """
+    # HTML 태그(<b>/<code>)는 i18n 값에 포함되거나 직접 조합해 보존
+    # HTML tags (<b>/<code>) preserved via i18n values or direct composition
     return (
-        f"<b>⚠️ 점수 하락 경고 / Score Drop Alert</b>\n"
+        f"{get_text('notifier.cron.trend_title', language)}\n"
         f"<code>{repo_full_name}</code>\n"
-        f"이전 7일 평균 / Prev avg: {prev:.1f}\n"
-        f"현재 7일 평균 / Current avg: {current:.1f}\n"
-        f"하락 / Drop: -{drop:.1f}점"
+        f"{get_text('notifier.cron.trend_prev', language, prev=f'{prev:.1f}')}\n"
+        f"{get_text('notifier.cron.trend_current', language, current=f'{current:.1f}')}\n"
+        f"{get_text('notifier.cron.trend_drop', language, drop=f'{drop:.1f}')}"
     )

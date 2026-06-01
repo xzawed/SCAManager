@@ -678,6 +678,15 @@
     "hook_repo_not_found": "Repository not found"
   },
   "notifier": {
+    "cron": {
+      "weekly_title": "📊 <b>Weekly Report</b>",
+      "weekly_analyses": "Analyses: {count}",
+      "weekly_avg": "Avg score: {avg}",
+      "trend_title": "⚠️ <b>Score Drop Alert</b>",
+      "trend_prev": "Prev 7-day avg: {prev}",
+      "trend_current": "Current 7-day avg: {current}",
+      "trend_drop": "Drop: -{drop}"
+    },
     "no_issues": "No issues",
     "score_label": "Score: {score}/100",
     "grade_label": "Grade {grade}",
