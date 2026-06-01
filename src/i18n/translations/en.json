@@ -840,6 +840,11 @@
     },
     "common": {
       "commit_ref": "Commit {sha}"
+    },
+    "railway": {
+      "build_failed": "Railway Build Failed",
+      "log_fetch_failed": "Failed to fetch logs. Please check the Railway dashboard.",
+      "dashboard_link": "Open Railway Dashboard"
     }
   },
   "repo_insights": {

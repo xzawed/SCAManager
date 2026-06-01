@@ -27,7 +27,9 @@ router = APIRouter()
 
 
 @router.post("/webhooks/railway/{token}", responses={404: {"description": "Token not found"}})
-async def railway_webhook(
+async def railway_webhook(  # pylint: disable=too-many-locals
+    # 사이클 153 — 알림 언어(language) 해소 변수 추가로 16개 (시그니처 확장, 헬퍼 추출 시 응집 깨짐)
+    # Cycle 153 — language resolution var added (signature extension; extracting a helper breaks cohesion)
     token: str,
     request: Request,
     background_tasks: BackgroundTasks,
@@ -62,6 +64,11 @@ async def railway_webhook(
             if user:
                 github_token = user.plaintext_token or github_token
 
+        # 세션 종료 전 알림 언어 해소 — Issue 제목/본문 i18n (사이클 153)
+        # Resolve notification language before session closes — Issue title/body i18n
+        from src.notifier._language import resolve_notification_language  # noqa: WPS433  # pylint: disable=import-outside-toplevel
+        language = resolve_notification_language(db, config=config)
+
     if not deploy_alerts:
         return {"status": "ignored"}
 
@@ -75,6 +82,7 @@ async def railway_webhook(
         event=event,
         decrypted_api_token=decrypted_api_token,
         github_token=github_token,
+        language=language,
     )
     return JSONResponse({"status": "accepted"}, status_code=202)
 
@@ -85,8 +93,10 @@ async def _handle_railway_deploy_failure(
     event: RailwayDeployEvent,
     decrypted_api_token: str | None,
     github_token: str,
+    language: str = "ko",
 ) -> None:
-    """Railway 빌드 실패 이벤트를 처리하고 GitHub Issue 를 생성한다."""
+    """Railway 빌드 실패 이벤트를 처리하고 GitHub Issue 를 생성한다.
+    language: repo 소유자 알림 언어 (Issue 제목/본문 i18n)."""
     logs_tail: str | None = None
     if decrypted_api_token:
         try:
@@ -98,6 +108,7 @@ async def _handle_railway_deploy_failure(
     await create_deploy_failure_issue(
         github_token=github_token,
         repo_full_name=repo_full_name,
+        language=language,
         event=event,
         logs_tail=logs_tail,
     )

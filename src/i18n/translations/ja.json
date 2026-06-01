@@ -840,6 +840,11 @@
     },
     "common": {
       "commit_ref": "コミット {sha}"
+    },
+    "railway": {
+      "build_failed": "Railwayビルド失敗",
+      "log_fetch_failed": "ログを取得できませんでした。Railwayダッシュボードで確認してください。",
+      "dashboard_link": "Railwayダッシュボードを開く"
     }
   },
   "repo_insights": {
