@@ -671,7 +671,11 @@
     "issue_no_write_permission": "Issuesの書き込み権限がありません。GitHubトークンを確認してください。",
     "github_api_error": "GitHub APIエラー",
     "invalid_url": "無効なURL: {field}。内部ネットワークアドレスは使用できません。",
-    "repo_name_required": "リポジトリ名が必要です"
+    "repo_name_required": "リポジトリ名が必要です",
+    "hook_token_required": "トークンが必要です",
+    "hook_invalid_repo_or_token": "未登録のリポジトリまたは無効なトークン",
+    "hook_invalid_token": "無効なトークン",
+    "hook_repo_not_found": "リポジトリが見つかりません"
   },
   "notifier": {
     "no_issues": "問題なし",

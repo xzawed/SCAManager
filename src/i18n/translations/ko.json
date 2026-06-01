@@ -671,7 +671,11 @@
     "issue_no_write_permission": "Issues 쓰기 권한이 없습니다. GitHub 토큰을 확인해 주세요.",
     "github_api_error": "GitHub API 오류",
     "invalid_url": "유효하지 않은 URL: {field}. 내부 네트워크 주소는 사용할 수 없습니다.",
-    "repo_name_required": "리포 이름이 필요합니다"
+    "repo_name_required": "리포 이름이 필요합니다",
+    "hook_token_required": "토큰이 필요합니다",
+    "hook_invalid_repo_or_token": "등록되지 않은 리포 또는 유효하지 않은 토큰",
+    "hook_invalid_token": "유효하지 않은 토큰",
+    "hook_repo_not_found": "리포지토리를 찾을 수 없습니다"
   },
   "notifier": {
     "no_issues": "이슈 없음",
