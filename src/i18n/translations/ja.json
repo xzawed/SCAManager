@@ -678,6 +678,15 @@
     "hook_repo_not_found": "リポジトリが見つかりません"
   },
   "notifier": {
+    "cron": {
+      "weekly_title": "📊 <b>週間レポート</b>",
+      "weekly_analyses": "分析件数: {count}",
+      "weekly_avg": "平均スコア: {avg}",
+      "trend_title": "⚠️ <b>スコア低下警告</b>",
+      "trend_prev": "直近7日平均(前): {prev}",
+      "trend_current": "直近7日平均(現): {current}",
+      "trend_drop": "低下: -{drop}点"
+    },
     "no_issues": "問題なし",
     "score_label": "スコア: {score}/100",
     "grade_label": "グレード {grade}",
