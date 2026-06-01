@@ -1,7 +1,8 @@
 """Repository and config REST API endpoints (/api/repos/*)."""
 from typing import Annotated, Literal
 from fastapi import APIRouter, Query, Request
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+from src.config import settings
 from src.middleware.rate_limiter import limiter, RATE_LIMIT_API, RATE_LIMIT_HEAVY
 from src.api.auth import require_api_key
 from src.api.deps import get_repo_or_404
@@ -49,6 +50,29 @@ class RepoConfigUpdate(BaseModel):
     # Per-repo disabled analyzer names — JSON array, defaults to empty list (Alembic 0035)
     disabled_tools: list = Field(default_factory=list)
     # leaderboard_opt_in 폐기 (그룹 60 사용자 결정 정정 — alembic 0025)
+
+    @field_validator("notification_language")
+    @classmethod
+    def validate_notification_language(cls, v):
+        """notification_language SUPPORTED_LOCALES 검증 (None/빈값 허용 — preferred_language fallback).
+
+        Validate notification_language against SUPPORTED_LOCALES.
+        None/empty is allowed (intended fallback to user preferred_language).
+        """
+        if v is None or v == "":
+            # None/빈값 = fallback 의도, 허용 (조용한 영문 fallback 아님 — 정상 설계)
+            # None/empty = intended fallback, allowed
+            return None
+        v = v.strip().lower()
+        if v == "":
+            return None
+        supported = {lang.strip() for lang in settings.supported_locales.split(",")}
+        if v not in supported:
+            raise ValueError(
+                f"notification_language '{v}' not in SUPPORTED_LOCALES "
+                f"({settings.supported_locales})"
+            )
+        return v
 
     @model_validator(mode="after")
     def validate_thresholds(self) -> "RepoConfigUpdate":

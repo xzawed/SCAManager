@@ -429,3 +429,61 @@ def test_config_update_with_commit_comment_and_create_issue():
     called_data = mock_upsert.call_args[0][1]
     assert called_data.commit_comment is True
     assert called_data.create_issue is True
+
+
+# --- notification_language validator (사이클 152 Sprint 3 P1-2) ---
+# 미지원 값(예: "de")은 422 차단 → 조용한 영문 fallback 방지.
+# None/빈값은 valid (사용자 preferred_language fallback 의도).
+# Unsupported value (e.g. "de") rejected with 422 → prevents silent English fallback.
+# None/empty is valid (intended fallback to user preferred_language).
+
+
+def test_repo_config_rejects_invalid_notification_language():
+    """미지원 notification_language("de") 입력 시 ValidationError 발생."""
+    from src.api.repos import RepoConfigUpdate  # pylint: disable=import-outside-toplevel
+    import pytest  # pylint: disable=import-outside-toplevel
+    with pytest.raises(Exception):  # noqa: B017  # pydantic ValidationError
+        RepoConfigUpdate(
+            approve_threshold=80, reject_threshold=40,
+            notification_language="de",
+        )
+
+
+def test_repo_config_allows_none_notification_language():
+    """notification_language=None 은 fallback 의도 — 허용."""
+    from src.api.repos import RepoConfigUpdate  # pylint: disable=import-outside-toplevel
+    cfg = RepoConfigUpdate(
+        approve_threshold=80, reject_threshold=40,
+        notification_language=None,
+    )
+    assert cfg.notification_language is None
+
+
+def test_repo_config_allows_empty_notification_language():
+    """notification_language="" 은 fallback 의도로 정규화 → None 반환."""
+    from src.api.repos import RepoConfigUpdate  # pylint: disable=import-outside-toplevel
+    cfg = RepoConfigUpdate(
+        approve_threshold=80, reject_threshold=40,
+        notification_language="",
+    )
+    assert cfg.notification_language is None
+
+
+def test_repo_config_allows_supported_notification_language():
+    """지원 locale("ja") 은 정규화 후 그대로 통과."""
+    from src.api.repos import RepoConfigUpdate  # pylint: disable=import-outside-toplevel
+    cfg = RepoConfigUpdate(
+        approve_threshold=80, reject_threshold=40,
+        notification_language="ja",
+    )
+    assert cfg.notification_language == "ja"
+
+
+def test_repo_config_normalizes_notification_language_case():
+    """대문자/공백 입력 시 lower+strip 정규화."""
+    from src.api.repos import RepoConfigUpdate  # pylint: disable=import-outside-toplevel
+    cfg = RepoConfigUpdate(
+        approve_threshold=80, reject_threshold=40,
+        notification_language="  JA  ",
+    )
+    assert cfg.notification_language == "ja"
