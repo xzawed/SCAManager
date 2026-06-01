@@ -828,6 +828,9 @@
       "retry_terminal_title": "⚠️ <b>自動マージ最終失敗</b>",
       "retry_terminal_reason": "理由: <code>{reason}</code>",
       "retry_advice_line": "💡 {advice}"
+    },
+    "common": {
+      "commit_ref": "コミット {sha}"
     }
   },
   "repo_insights": {
