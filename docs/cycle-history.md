@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [사이클 151 (hook.py CLI 에러 i18n — repo 소유자 언어 해소, i18n 전수 완결, 2026-06-01)](#사이클-151)
 - [사이클 150 (웹 UI 에러 메시지 i18n — issue 등록·리포 추가·설정, 2026-06-01)](#사이클-150)
 - [사이클 149 (알림/Gate 메시지 i18n — 자동 승인·반려·Telegram·머지 조언·재시도 + engine.py dead code 제거, 2026-06-01)](#사이클-149)
 - [사이클 148 (전체 템플릿 i18n 완결 — base.html langName FOUC 해소, 2026-06-01)](#사이클-148)
@@ -59,6 +60,32 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 사이클 151
+
+**날짜**: 2026-06-01 | **PR**: #724 | **상태**: ✅ 머지 완료
+
+**작업 내용**: hook.py(pre-push hook CLI 인증) 에러 4건 i18n — 사이클 150 보류 항목 완결. repo 소유자 언어 해소.
+
+| 에러 | 키 |
+|----|------|
+| 토큰이 필요합니다 (401) | errors.hook_token_required |
+| 등록되지 않은 리포 또는 유효하지 않은 토큰 (404) | errors.hook_invalid_repo_or_token |
+| 유효하지 않은 토큰 (403) | errors.hook_invalid_token |
+| 리포지토리를 찾을 수 없습니다 (404) | errors.hook_repo_not_found |
+
+**주요 결정**:
+- **repo 소유자 언어 해소** — hook 토큰 인증이라 세션 locale 없음 → `_resolve_hook_locale(db, repo)` 헬퍼: Repository → user → preferred_language → default. CLI hook 에러도 repo 소유자 언어로 표시.
+- 인증 로직(hmac.compare_digest, 200 active 응답) 완전 불변 — 에러 텍스트만 i18n
+- locale 해소를 에러 경로 직전에 배치 — 정상 경로 쿼리 순서 보존(testing.md hot-path mock 트랩 회피), 기존 테스트 0 수정
+
+**🎉 i18n 전수 완결 (사이클 143~151)**:
+- UI 템플릿(143~148): 전 페이지 사용자 노출 한국어 0건
+- 알림 메시지(149): GitHub PR 댓글·Telegram·Issue 전 채널 3-layer 언어 적용
+- 웹 UI 에러(150) + CLI hook 에러(151): 사용자 노출 에러 전수 locale 적용
+- en/ja 사용자가 UI·알림·에러 전 영역에서 자국어 수신. (내부 로그는 운영자용 — i18n 대상 외)
+
+**신규 테스트**: +16 단위 (4426→4442, 전체 4579→4595). 통합 153 유지.
 
 ## 사이클 150
 
