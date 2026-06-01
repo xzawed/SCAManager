@@ -671,7 +671,11 @@
     "issue_no_write_permission": "No write permission for Issues. Please check your GitHub token.",
     "github_api_error": "GitHub API error",
     "invalid_url": "Invalid URL: {field}. Internal network addresses are not allowed.",
-    "repo_name_required": "Repository name is required"
+    "repo_name_required": "Repository name is required",
+    "hook_token_required": "Token is required",
+    "hook_invalid_repo_or_token": "Unregistered repository or invalid token",
+    "hook_invalid_token": "Invalid token",
+    "hook_repo_not_found": "Repository not found"
   },
   "notifier": {
     "no_issues": "No issues",

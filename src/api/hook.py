@@ -7,13 +7,16 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request
-from src.middleware.rate_limiter import limiter, RATE_LIMIT_API
 from pydantic import BaseModel
 
+from src.middleware.rate_limiter import limiter, RATE_LIMIT_API
+from src.config import settings
 from src.database import SessionLocal
+from src.i18n.loader import get_text
 from src.shared.log_safety import sanitize_for_log
 from src.models.analysis import Analysis
 from src.models.repository import Repository
+from src.models.user import User
 from src.repositories import repo_config_repo
 from src.analyzer.io.ai_review import AiReviewResult
 from src.scorer.calculator import calculate_score
@@ -23,6 +26,27 @@ from src.constants import AI_DEFAULT_COMMIT_RAW, AI_DEFAULT_DIRECTION_RAW, AI_DE
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/hook")
+
+
+def _resolve_hook_locale(db, repo_name: str) -> str:
+    """hook 엔드포인트용 — repo 소유자 preferred_language 해소. 없으면 default.
+
+    Resolve repo owner's preferred_language for hook endpoints; default otherwise.
+
+    hook 토큰 인증은 per-user 세션 locale 이 없으므로, repo full_name 으로
+    소유자(User.preferred_language) 언어를 해소한다. 미지원 언어/소유자 부재 시 default.
+    Hook token auth has no per-user session locale, so resolve the owner's
+    language via repo full_name. Falls back to default for unsupported/missing owner.
+    """
+    repo = db.query(Repository).filter(Repository.full_name == repo_name).first()
+    if repo and repo.user_id:
+        user = db.query(User).filter(User.id == repo.user_id).first()
+        if user and user.preferred_language:
+            lang = user.preferred_language
+            supported = {code.strip() for code in settings.supported_locales.split(",")}
+            if lang in supported:
+                return lang
+    return settings.default_locale
 
 
 # ---------------------------------------------------------------------------
@@ -56,14 +80,24 @@ def verify_hook(
         bearer_token = authorization[7:]
 
     effective_token = bearer_token or token
-    if not effective_token:
-        raise HTTPException(status_code=401, detail="토큰이 필요합니다")
 
+    # locale 해소는 에러 발생 시에만 (정상 경로 쿼리 순서 불변 — 토큰 검증 로직 보존)
+    # Resolve locale only on error (keep happy-path query order intact — preserve token check)
     with SessionLocal() as db:
-        config = repo_config_repo.find_by_full_name(db, repo)
+        if not effective_token:
+            locale = _resolve_hook_locale(db, repo)
+            raise HTTPException(
+                status_code=401,
+                detail=get_text("errors.hook_token_required", locale),
+            )
 
-    if config is None or not hmac.compare_digest(config.hook_token or "", effective_token):
-        raise HTTPException(status_code=404, detail="등록되지 않은 리포 또는 유효하지 않은 토큰")
+        config = repo_config_repo.find_by_full_name(db, repo)
+        if config is None or not hmac.compare_digest(config.hook_token or "", effective_token):
+            locale = _resolve_hook_locale(db, repo)
+            raise HTTPException(
+                status_code=404,
+                detail=get_text("errors.hook_invalid_repo_or_token", locale),
+            )
 
     return {"status": "active"}
 
@@ -92,14 +126,24 @@ def save_hook_result(request: Request, body: HookResultRequest):  # pylint: disa
         config = repo_config_repo.find_by_full_name(db, body.repo)
 
         if config is None or not hmac.compare_digest(config.hook_token or "", body.token):
-            raise HTTPException(status_code=403, detail="유효하지 않은 토큰")
+            # locale 해소는 에러 시에만 (정상 경로 쿼리 순서 불변)
+            # Resolve locale only on error (keep happy-path query order intact)
+            locale = _resolve_hook_locale(db, body.repo)
+            raise HTTPException(
+                status_code=403,
+                detail=get_text("errors.hook_invalid_token", locale),
+            )
 
         repo = db.query(Repository).filter(
             Repository.full_name == body.repo
         ).first()
 
         if repo is None:
-            raise HTTPException(status_code=404, detail="리포지토리를 찾을 수 없습니다")
+            locale = _resolve_hook_locale(db, body.repo)
+            raise HTTPException(
+                status_code=404,
+                detail=get_text("errors.hook_repo_not_found", locale),
+            )
 
         existing = db.query(Analysis).filter_by(
             commit_sha=body.commit_sha, repo_id=repo.id
