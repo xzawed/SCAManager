@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [사이클 152 (i18n 통합 회고(143~151) — P0 3건 수정·발신 경로 비대칭 교정, 2026-06-01)](#사이클-152)
 - [사이클 151 (hook.py CLI 에러 i18n — repo 소유자 언어 해소, i18n 전수 완결, 2026-06-01)](#사이클-151)
 - [사이클 150 (웹 UI 에러 메시지 i18n — issue 등록·리포 추가·설정, 2026-06-01)](#사이클-150)
 - [사이클 149 (알림/Gate 메시지 i18n — 자동 승인·반려·Telegram·머지 조언·재시도 + engine.py dead code 제거, 2026-06-01)](#사이클-149)
@@ -60,6 +61,33 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 사이클 152
+
+**날짜**: 2026-06-01 | **PR**: #726~#728 | **상태**: ✅ 머지 완료
+
+**작업 내용**: i18n 대장정(143~151) 통합 회고(5+1) + Tier A/B 이행 — "전수 완결" 선언 후 발견된 발신 경로 i18n 우회 P0 3건 수정.
+
+**통합 회고 결과**: P0 3건(cross-verify 진위 3/3 확정) + P1 3건 + P2 1건. false-positive 차단 2건.
+
+| PR | 내용 |
+|----|------|
+| #726 | fix(i18n): format_ref 커밋 레퍼런스 i18n (P0-A) — push 이벤트 "커밋" 4채널 누출 + 회귀 가드 |
+| #727 | fix(i18n): engine.py 동기 머지 알림 i18n (P0-B/C) — _notify_merge_failure/deferred + reason tag-only(P1-1) |
+| #728 | fix(i18n): notification_language validator(P1-2) + 오케스트레이션 seam 테스트(P1-3) |
+
+**근본 원인 (자성)**: 사이클 149 "알림 i18n 완결" 선언 시 `gate/engine.py` 동기 머지 알림(_notify_merge_failure/_notify_merge_deferred)과 `_common.py::format_ref`를 검증하지 않음. 동일 의미 메시지를 merge_retry_service는 i18n인데 engine만 우회 = 동기/비동기 경로 비대칭. cross-verify(6차)가 없었으면 "완결" 보고에 묻혔을 P0.
+
+**학습 (.claude/rules/i18n.md 5건 추가)**:
+- 알림 발신 경로 전체 i18n 의무 — 동기/비동기 비대칭 금지, "완결" 선언 전 grep 전수 검증
+- 내부 로그 vs 사용자 발신 경계
+- hook owner 언어 해소 패턴 (151)
+- notifier.gate/merge_advice/common/errors 키 그룹 (149~152)
+- notification_language validator 의무
+
+**잔존 (로드맵)**: railway_issue.py 한국어 (P2 — 별도 기능, 캠페인 scope 외) / cron_service.py 주간 리포트·점수 하락 알림은 이미 이중언어("한국어 / English") — 누출 아님.
+
+**신규 테스트**: +51 단위 (4442→4493, 전체 4595→4646). 통합 153 유지.
 
 ## 사이클 151
 
