@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
+from html import escape
 
 import httpx
 from sqlalchemy.exc import SQLAlchemyError
@@ -102,7 +103,7 @@ def _format_weekly_message(
     # HTML tags (<b>/<code>) preserved via i18n values or direct composition
     return (
         f"{get_text('notifier.cron.weekly_title', language)}\n"
-        f"<code>{repo_full_name}</code>\n"
+        f"<code>{escape(repo_full_name)}</code>\n"
         f"{get_text('notifier.cron.weekly_analyses', language, count=count)}\n"
         f"{get_text('notifier.cron.weekly_avg', language, avg=f'{avg:.1f}')}"
     )
@@ -203,7 +204,7 @@ def _format_trend_alert(
     # HTML tags (<b>/<code>) preserved via i18n values or direct composition
     return (
         f"{get_text('notifier.cron.trend_title', language)}\n"
-        f"<code>{repo_full_name}</code>\n"
+        f"<code>{escape(repo_full_name)}</code>\n"
         f"{get_text('notifier.cron.trend_prev', language, prev=f'{prev:.1f}')}\n"
         f"{get_text('notifier.cron.trend_current', language, current=f'{current:.1f}')}\n"
         f"{get_text('notifier.cron.trend_drop', language, drop=f'{drop:.1f}')}"

@@ -822,6 +822,8 @@
     "gate": {
       "auto_approve": "✅ 自動承認: スコア {score}点 (基準: {threshold}点以上)",
       "auto_reject": "❌ 自動却下: スコア {score}点 (基準: {threshold}点未満)",
+      "manual_approve_body": "✅ 承認 by @{decided_by}",
+      "manual_reject_body": "❌ 却下 by @{decided_by}",
       "tg_review_title": "🔍 *PRレビュー依頼*",
       "tg_repo_line": "リポ: `{repo}` — PR #{pr}",
       "tg_score_line": "スコア: *{score}点* ({grade})",

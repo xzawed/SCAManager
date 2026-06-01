@@ -45,3 +45,19 @@ def test_trend_alert_japanese():
     out = _format_trend_alert("o/r", 70.0, 85.0, 15.0, "ja")
     assert "점수 하락" not in out
     assert "スコア低下警告" in out
+
+
+def test_weekly_message_escapes_repo_name():
+    """<code> 블록의 repo_full_name 이 escape 되어야 한다 — 방어 일관성 (사이클 154 P2).
+    The repo_full_name inside <code> must be HTML-escaped (defensive parity)."""
+    from src.services.cron_service import _format_weekly_message  # pylint: disable=import-outside-toplevel
+    out = _format_weekly_message("o/<b>r", {"avg_score": 85.0, "count": 10}, "en")
+    assert "o/&lt;b&gt;r" in out, f"escape 미적용: {out!r}"
+    assert "<b>r" not in out
+
+
+def test_trend_alert_escapes_repo_name():
+    """트렌드 경고도 repo_full_name 을 escape 한다 (engine/merge_retry 와 동일 패턴)."""
+    from src.services.cron_service import _format_trend_alert  # pylint: disable=import-outside-toplevel
+    out = _format_trend_alert("o/<b>r", 70.0, 85.0, 15.0, "en")
+    assert "o/&lt;b&gt;r" in out, f"escape 미적용: {out!r}"

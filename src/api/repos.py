@@ -78,9 +78,11 @@ class RepoConfigUpdate(BaseModel):
     def validate_thresholds(self) -> "RepoConfigUpdate":
         """approve_threshold가 reject_threshold 이상인지 검증한다."""
         if self.approve_threshold < self.reject_threshold:
+            # API 422 응답 — 형제 validator(notification_language)와 동일하게 영문 고정
+            # API 422 response — kept English, consistent with the sibling validator
             raise ValueError(
-                f"approve_threshold({self.approve_threshold})는 "
-                f"reject_threshold({self.reject_threshold}) 이상이어야 합니다"
+                f"approve_threshold({self.approve_threshold}) must be >= "
+                f"reject_threshold({self.reject_threshold})"
             )
         return self
 

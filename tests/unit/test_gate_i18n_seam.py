@@ -172,3 +172,81 @@ async def test_engine_notify_merge_failure_threads_english_no_korean():
     # 영어 선택 시 한국어 텍스트 (사유/머지 등) 가 새지 않아야 함
     assert "사유" not in text and "자동 머지" not in text, \
         f"영어 선택인데 한국어 누출: {text!r}"
+
+
+def _make_gate_callback_mocks(*, decision: str):
+    """handle_gate_callback 의존성 mock 묶음 — (db_cm, analysis, repo, config).
+    Build the dependency mock bundle for handle_gate_callback seam tests."""
+    db_cm = MagicMock()
+    db_cm.__enter__.return_value = MagicMock()
+    db_cm.__exit__.return_value = False
+    analysis = MagicMock()
+    analysis.repo_id = 1
+    analysis.pr_number = 7
+    analysis.result = {"score": 90}
+    analysis.score = 90
+    repo = MagicMock()
+    repo.full_name = "owner/repo"
+    repo.owner.plaintext_token = "ghp_x"
+    config = MagicMock()
+    config.auto_merge = False  # 머지 분기 skip — body 생성만 검증
+    return db_cm, analysis, repo, config
+
+
+@pytest.mark.asyncio
+async def test_gate_callback_approve_threads_japanese_to_review_body():
+    """handle_gate_callback(approve) 가 resolve된 'ja' 언어로 일본어 PR Review body 생성 (사이클 154 P0).
+
+    GitHub PR Review body 는 리포 협업자 전체 노출 — 하드코딩 한국어 회귀 차단.
+    """
+    from src.webhook.providers import telegram  # pylint: disable=import-outside-toplevel
+
+    db_cm, analysis, repo, config = _make_gate_callback_mocks(decision="approve")
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=db_cm), patch(
+        "src.webhook.providers.telegram.analysis_repo.find_by_id", return_value=analysis
+    ), patch(
+        "src.webhook.providers.telegram.repository_repo.find_by_id", return_value=repo
+    ), patch(
+        "src.webhook.providers.telegram.get_repo_config", return_value=config
+    ), patch(
+        "src.webhook.providers.telegram.resolve_notification_language", return_value="ja"
+    ), patch(
+        "src.webhook.providers.telegram.save_gate_decision"
+    ), patch(
+        "src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock
+    ) as mock_review:
+        await telegram.handle_gate_callback(1, "approve", "alice")
+
+    assert mock_review.await_count == 1
+    # post_github_review(token, full_name, pr_number, decision, body) — body = 5번째 positional
+    body = mock_review.await_args.args[4]
+    assert "承認" in body, f"일본어 승인 body 아님: {body!r}"
+    assert "승인" not in body, f"일본어 선택인데 한국어 누출: {body!r}"
+    assert "alice" in body
+
+
+@pytest.mark.asyncio
+async def test_gate_callback_reject_threads_english_no_korean():
+    """handle_gate_callback(reject) 가 'en' 언어로 영어 body 생성 — 한국어 부재."""
+    from src.webhook.providers import telegram  # pylint: disable=import-outside-toplevel
+
+    db_cm, analysis, repo, config = _make_gate_callback_mocks(decision="reject")
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=db_cm), patch(
+        "src.webhook.providers.telegram.analysis_repo.find_by_id", return_value=analysis
+    ), patch(
+        "src.webhook.providers.telegram.repository_repo.find_by_id", return_value=repo
+    ), patch(
+        "src.webhook.providers.telegram.get_repo_config", return_value=config
+    ), patch(
+        "src.webhook.providers.telegram.resolve_notification_language", return_value="en"
+    ), patch(
+        "src.webhook.providers.telegram.save_gate_decision"
+    ), patch(
+        "src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock
+    ) as mock_review:
+        await telegram.handle_gate_callback(1, "reject", "bob")
+
+    assert mock_review.await_count == 1
+    body = mock_review.await_args.args[4]
+    assert "Rejected" in body, f"영어 반려 body 아님: {body!r}"
+    assert "반려" not in body, f"영어 선택인데 한국어 누출: {body!r}"
