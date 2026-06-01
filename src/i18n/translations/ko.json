@@ -237,6 +237,7 @@
     "load_failed_option": "리포 목록 로드 실패",
     "error_prefix": "오류: ",
     "api_error_prefix": "API 오류: ",
+    "error_already_registered": "이미 다른 사용자가 등록한 리포입니다",
     "submit": "Webhook 생성 + 리포 추가"
   },
   "repo_detail": {
@@ -665,7 +666,12 @@
     "not_found": "리소스를 찾을 수 없음",
     "validation_error": "유효성 검사 실패: {details}",
     "database_error": "데이터베이스 오류 발생",
-    "no_api_key": "ANTHROPIC_API_KEY 미설정"
+    "no_api_key": "ANTHROPIC_API_KEY 미설정",
+    "issue_duplicate": "이미 등록된 이슈입니다 (#{num})",
+    "issue_no_write_permission": "Issues 쓰기 권한이 없습니다. GitHub 토큰을 확인해 주세요.",
+    "github_api_error": "GitHub API 오류",
+    "invalid_url": "유효하지 않은 URL: {field}. 내부 네트워크 주소는 사용할 수 없습니다.",
+    "repo_name_required": "리포 이름이 필요합니다"
   },
   "notifier": {
     "no_issues": "이슈 없음",
