@@ -827,7 +827,16 @@
       "retry_view_github": "🔗 <a href=\"{url}\">View on GitHub</a>",
       "retry_terminal_title": "⚠️ <b>Auto-merge Final Failure</b>",
       "retry_terminal_reason": "Reason: <code>{reason}</code>",
-      "retry_advice_line": "💡 {advice}"
+      "retry_advice_line": "💡 {advice}",
+      "merge_failed_title": "⚠️ <b>Auto Merge Failed</b>",
+      "merge_score_threshold": "Score: {score} (threshold: {threshold}+)",
+      "merge_reason_line": "Reason: <code>{reason}</code>",
+      "merge_advice_line": "💡 {advice}",
+      "merge_view_github": "🔗 <a href=\"{url}\">View on GitHub</a>",
+      "merge_deferred_title": "⏳ <b>Auto-merge Pending</b>",
+      "merge_deferred_score": "Score: {score} (threshold: {threshold})",
+      "merge_deferred_reason": "Reason: CI {ci_status} ({reason})",
+      "merge_deferred_retry": "<i>Will automatically retry merge after CI completes.</i>"
     },
     "common": {
       "commit_ref": "Commit {sha}"

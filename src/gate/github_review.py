@@ -145,10 +145,14 @@ async def merge_pr(  # pylint: disable=too-many-locals
             await asyncio.sleep(retry_delay)
 
     if state in _MERGEABLE_BLOCK:
+        # 사이클 152 Sprint 2 (P1-1): reason 을 정규 태그만 반환 (language-neutral).
+        # 하드코딩 한국어 설명 제거 — get_advice 는 태그만 사용, 알림은 advice(i18n)로 안내.
+        # Cycle 152 Sprint 2 (P1-1): return reason as the canonical tag only (language-neutral).
+        # Korean detail removed — get_advice uses the tag; notifications rely on advice (i18n).
         reason_tag = merge_reasons.mergeable_state_to_reason(state)
-        return (False, f"{reason_tag}: 머지 조건 미충족 (state={state})", head_sha)
+        return (False, reason_tag, head_sha)
     if state == "unknown":
-        return (False, f"{merge_reasons.UNKNOWN_STATE_TIMEOUT}: GitHub mergeable 계산 미완료", head_sha)
+        return (False, merge_reasons.UNKNOWN_STATE_TIMEOUT, head_sha)
 
     url = f"{GITHUB_API}/repos/{repo_full_name}/pulls/{pr_number}/merge"
     try:

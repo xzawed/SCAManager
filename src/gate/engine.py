@@ -32,6 +32,7 @@ from src.gate.native_automerge import (
 )
 from src.gate.retry_policy import parse_reason_tag, should_retry
 from src.github_client.checks import get_ci_status, get_required_check_contexts
+from src.i18n.loader import get_text
 from src.notifier.merge_failure_issue import create_merge_failure_issue
 from src.notifier.telegram import telegram_post_message
 from src.models.gate_decision import GateDecision
@@ -336,6 +337,12 @@ async def _enqueue_merge_retry(  # pylint: disable=too-many-arguments
             initial_next_retry_seconds=settings.merge_retry_initial_backoff_seconds,
         )
         if enqueued.is_first_deferral:
+            # 3-layer 사용자 언어 결정 (User → RepoConfig → settings.default_locale)
+            # 사이클 152 Sprint 2 — deferred 알림도 동기 경로 i18n 적용.
+            # 3-layer language resolve; Cycle 152 Sprint 2 — localize deferred notice.
+            from src.notifier._language import resolve_notification_language  # noqa: WPS433  # pylint: disable=import-outside-toplevel
+            with SessionLocal() as db_lang:
+                language = resolve_notification_language(db_lang, config=config)
             await _notify_merge_deferred(
                 repo_name=repo_name,
                 pr_number=pr_number,
@@ -344,6 +351,7 @@ async def _enqueue_merge_retry(  # pylint: disable=too-many-arguments
                 reason_tag=reason_tag,
                 ci_status=ci_status,
                 chat_id=config.notify_chat_id or settings.telegram_chat_id,
+                language=language,
             )
     except Exception as exc:  # pylint: disable=broad-except
         logger.warning(
@@ -443,6 +451,7 @@ async def _run_auto_merge_legacy(  # pylint: disable=too-many-arguments,too-many
             reason=reason or "unknown",
             advice=advice,
             chat_id=config.notify_chat_id or settings.telegram_chat_id,
+            language=language,
         )
         if config.auto_merge_issue_on_failure:
             try:
@@ -518,6 +527,7 @@ async def _handle_terminal_merge_failure(  # pylint: disable=too-many-arguments
         reason=reason or "unknown",
         advice=advice,
         chat_id=config.notify_chat_id or settings.telegram_chat_id,
+        language=language,
     )
     if config.auto_merge_issue_on_failure:
         try:
@@ -546,19 +556,25 @@ async def _notify_merge_failure(
     reason: str,
     advice: str,
     chat_id: str | None,
+    language: str = "ko",
 ) -> None:
-    """auto_merge 실패를 Telegram 으로 알린다. chat_id 없으면 스킵."""
+    """auto_merge 실패를 Telegram 으로 알린다. chat_id 없으면 스킵.
+
+    Notify auto_merge failure via Telegram; skip when chat_id is missing.
+    사이클 152 Sprint 2 — 하드코딩 한국어 → i18n (language 기반 get_text 조합).
+    Cycle 152 Sprint 2 — hardcoded Korean replaced with language-aware get_text.
+    """
     if not chat_id or not settings.telegram_bot_token:
         return
     # Phase F QW3: GitHub PR 링크 추가 — 사용자 즉시 접근
     pr_url = f"https://github.com/{repo_name}/pull/{pr_number}"
     text = (
-        "⚠️ <b>Auto Merge 실패</b>\n"
-        f"📁 <code>{escape(repo_name)}</code> — PR #{pr_number}\n"
-        f"점수: {score}점 (기준 {threshold}점 이상)\n"
-        f"사유: <code>{escape(reason)}</code>\n"
-        f"💡 {escape(advice)}\n"
-        f"🔗 <a href=\"{escape(pr_url)}\">GitHub 에서 보기</a>"
+        get_text("notifier.gate.merge_failed_title", language) + "\n"
+        + get_text("notifier.gate.retry_repo_line", language, repo=escape(repo_name), pr=pr_number) + "\n"
+        + get_text("notifier.gate.merge_score_threshold", language, score=score, threshold=threshold) + "\n"
+        + get_text("notifier.gate.merge_reason_line", language, reason=escape(reason)) + "\n"
+        + get_text("notifier.gate.merge_advice_line", language, advice=escape(advice)) + "\n"
+        + get_text("notifier.gate.merge_view_github", language, url=escape(pr_url))
     )
     try:
         await telegram_post_message(
@@ -579,18 +595,25 @@ async def _notify_merge_deferred(
     reason_tag: str,
     ci_status: str,
     chat_id: str | None,
+    language: str = "ko",
 ) -> None:
     """CI 대기 중임을 사용자에게 알린다 (최초 지연 1회).
     Notify user that merge is deferred while waiting for CI (first deferral only).
+
+    사이클 152 Sprint 2 — 하드코딩 한국어 → i18n (language 기반 get_text 조합).
+    Cycle 152 Sprint 2 — hardcoded Korean replaced with language-aware get_text.
     """
     if not chat_id or not settings.telegram_bot_token:
         return
     msg = (
-        "⏳ <b>자동 머지 대기 중</b>\n"
-        f"📁 <code>{escape(repo_name)}</code> — PR #{pr_number}\n"
-        f"점수: {score}점 (기준: {threshold}점)\n"
-        f"사유: CI {ci_status} ({escape(reason_tag)})\n"
-        "<i>CI 완료 후 자동으로 머지를 재시도합니다.</i>"
+        get_text("notifier.gate.merge_deferred_title", language) + "\n"
+        + get_text("notifier.gate.retry_repo_line", language, repo=escape(repo_name), pr=pr_number) + "\n"
+        + get_text("notifier.gate.merge_deferred_score", language, score=score, threshold=threshold) + "\n"
+        + get_text(
+            "notifier.gate.merge_deferred_reason", language,
+            ci_status=ci_status, reason=escape(reason_tag),
+        ) + "\n"
+        + get_text("notifier.gate.merge_deferred_retry", language)
     )
     try:
         await telegram_post_message(
