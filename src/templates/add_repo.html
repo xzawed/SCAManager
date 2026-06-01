@@ -163,7 +163,8 @@
         data-i18n-loaded-template="{{ 'add_repo.loaded_hint' | i18n_args(locale | default('ko'), count='__N__') }}"
         data-i18n-load-failed="{{ 'add_repo.load_failed_option' | i18n_args(locale | default('ko')) }}"
         data-i18n-error-prefix="{{ 'add_repo.error_prefix' | i18n_args(locale | default('ko')) }}"
-        data-i18n-api-error-prefix="{{ 'add_repo.api_error_prefix' | i18n_args(locale | default('ko')) }}">
+        data-i18n-api-error-prefix="{{ 'add_repo.api_error_prefix' | i18n_args(locale | default('ko')) }}"
+        data-i18n-error-already-registered="{{ 'add_repo.error_already_registered' | i18n_args(locale | default('ko')) }}">
 
     {# Step 1: GitHub 리포지터리 선택
        Step 1: Select GitHub repository #}
@@ -205,6 +206,7 @@
     loadFailed: i18nForm.dataset.i18nLoadFailed,
     errorPrefix: i18nForm.dataset.i18nErrorPrefix,
     apiErrorPrefix: i18nForm.dataset.i18nApiErrorPrefix,
+    errorAlreadyRegistered: i18nForm.dataset.i18nErrorAlreadyRegistered,
   };
 
   // 페이지 이탈 시 fetch abort 제어 — hx-boost 뒤로가기 freezing 방지
@@ -265,8 +267,12 @@
   var params = new URLSearchParams(window.location.search);
   var errorMsg = params.get('error');
   if (errorMsg) {
+    // 알려진 에러 코드면 i18n 메시지로 매핑, 아니면 raw 표시 (하위 호환)
+    // Map known error codes to i18n messages, else show raw (backward compatible)
+    var ERROR_MAP = { already_registered: I18N.errorAlreadyRegistered };
+    var displayMsg = ERROR_MAP[errorMsg] || errorMsg;
     const toast = document.getElementById('errorToast');
-    toast.textContent = errorMsg;
+    toast.textContent = displayMsg;
     toast.classList.add('show');
     setTimeout(() => toast.classList.remove('show'), 4000);
     // URL에서 쿼리 파라미터 제거

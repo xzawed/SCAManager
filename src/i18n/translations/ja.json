@@ -237,6 +237,7 @@
     "load_failed_option": "リポリスト読み込み失敗",
     "error_prefix": "エラー: ",
     "api_error_prefix": "APIエラー: ",
+    "error_already_registered": "既に他のユーザーが登録したリポジトリです",
     "submit": "Webhook生成 + リポ追加"
   },
   "repo_detail": {
@@ -665,7 +666,12 @@
     "not_found": "リソースが見つかりません",
     "validation_error": "検証失敗: {details}",
     "database_error": "データベースエラー発生",
-    "no_api_key": "ANTHROPIC_API_KEY 未設定"
+    "no_api_key": "ANTHROPIC_API_KEY 未設定",
+    "issue_duplicate": "既に登録されたイシューです (#{num})",
+    "issue_no_write_permission": "Issuesの書き込み権限がありません。GitHubトークンを確認してください。",
+    "github_api_error": "GitHub APIエラー",
+    "invalid_url": "無効なURL: {field}。内部ネットワークアドレスは使用できません。",
+    "repo_name_required": "リポジトリ名が必要です"
   },
   "notifier": {
     "no_issues": "問題なし",

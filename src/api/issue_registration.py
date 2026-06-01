@@ -2,14 +2,16 @@
 issue_registration API — endpoints for registering GitHub Issues and querying state.
 """
 import asyncio
+
 import httpx
 from fastapi import APIRouter, HTTPException, Request
-from src.middleware.rate_limiter import limiter, RATE_LIMIT_API, RATE_LIMIT_HEAVY
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from src.auth.session import get_current_user
 from src.database import SessionLocal
+from src.i18n.loader import get_text
+from src.middleware.rate_limiter import limiter, RATE_LIMIT_API, RATE_LIMIT_HEAVY
 from src.models.analysis import Analysis
 from src.models.repository import Repository
 from src.services.issue_registration_service import (
@@ -19,6 +21,7 @@ from src.services.issue_registration_service import (
     make_static_issue_key,
     register_issue,
 )
+from src.ui._helpers import get_locale
 
 router = APIRouter(prefix="/api/issues")
 
@@ -81,6 +84,7 @@ async def register(request: Request, req: RegisterRequest):
     if not current_user:
         raise HTTPException(status_code=401, detail="Login required")
 
+    locale = get_locale(request)
     issue_key = _make_issue_key(req)
 
     # A2: 소유권 검증은 sync DB 쿼리 — asyncio.to_thread로 이벤트 루프 차단 방지
@@ -112,16 +116,19 @@ async def register(request: Request, req: RegisterRequest):
                 issue_num = str(exc).split(":")[1]
                 raise HTTPException(
                     status_code=409,
-                    detail=f"이미 등록된 이슈입니다 (#{issue_num})",
+                    detail=get_text("errors.issue_duplicate", locale, num=issue_num),
                 ) from exc
             raise HTTPException(status_code=500, detail=str(exc)) from exc
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 403:
                 raise HTTPException(
                     status_code=403,
-                    detail="Issues 쓰기 권한이 없습니다. GitHub 토큰을 확인해 주세요.",
+                    detail=get_text("errors.issue_no_write_permission", locale),
                 ) from exc
-            raise HTTPException(status_code=502, detail="GitHub API 오류") from exc
+            raise HTTPException(
+                status_code=502,
+                detail=get_text("errors.github_api_error", locale),
+            ) from exc
 
     return result
 

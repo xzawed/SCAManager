@@ -27,6 +27,7 @@ from src.github_client.repos import (
     delete_webhook,
     list_webhooks,
 )
+from src.i18n.loader import get_text
 from src.models.repo_config import RepoConfig
 from src.repositories import repo_config_repo
 from src.shared.log_safety import sanitize_for_log
@@ -82,8 +83,9 @@ def _is_safe_webhook_url(url: str | None) -> bool:  # pylint: disable=too-many-r
         return False
 
 
-def _validate_webhook_urls(form) -> None:
-    """폼의 모든 webhook URL을 검증한다. 안전하지 않으면 HTTPException(400)."""
+def _validate_webhook_urls(form, locale: str) -> None:
+    """폼의 모든 webhook URL을 검증한다. 안전하지 않으면 HTTPException(400).
+    Validate all webhook URLs in the form. Raises HTTPException(400) if unsafe."""
     webhook_fields = (
         "n8n_webhook_url", "discord_webhook_url",
         "slack_webhook_url", "custom_webhook_url",
@@ -93,7 +95,7 @@ def _validate_webhook_urls(form) -> None:
         if url and not _is_safe_webhook_url(url):
             raise HTTPException(
                 status_code=400,
-                detail=f"유효하지 않은 URL: {field}. 내부 네트워크 주소는 사용할 수 없습니다.",
+                detail=get_text("errors.invalid_url", locale, field=field),
             )
 
 
@@ -225,7 +227,7 @@ async def update_repo_settings(
     form = await request.form()
     # SSRF 방어: webhook URL 사전 검증 — 내부 네트워크 요청 차단
     # SSRF defence: validate webhook URLs before saving — blocks internal network requests.
-    _validate_webhook_urls(form)
+    _validate_webhook_urls(form, get_locale(request))
     with SessionLocal() as db:
         get_accessible_repo(db, repo_name, current_user)
         try:

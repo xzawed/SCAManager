@@ -237,6 +237,7 @@
     "load_failed_option": "Failed to load repo list",
     "error_prefix": "Error: ",
     "api_error_prefix": "API error: ",
+    "error_already_registered": "This repository is already registered by another user",
     "submit": "Create Webhook + Add Repository"
   },
   "repo_detail": {
@@ -665,7 +666,12 @@
     "not_found": "Resource not found",
     "validation_error": "Validation failed: {details}",
     "database_error": "Database error occurred",
-    "no_api_key": "ANTHROPIC_API_KEY not set"
+    "no_api_key": "ANTHROPIC_API_KEY not set",
+    "issue_duplicate": "Issue already registered (#{num})",
+    "issue_no_write_permission": "No write permission for Issues. Please check your GitHub token.",
+    "github_api_error": "GitHub API error",
+    "invalid_url": "Invalid URL: {field}. Internal network addresses are not allowed.",
+    "repo_name_required": "Repository name is required"
   },
   "notifier": {
     "no_issues": "No issues",

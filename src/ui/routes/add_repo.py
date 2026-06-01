@@ -15,6 +15,7 @@ from src.github_client.repos import (
     create_webhook,
     list_user_repos,
 )
+from src.i18n.loader import get_text
 from src.models.repo_config import RepoConfig
 from src.models.repository import Repository
 from src.repositories import repo_config_repo, repository_repo
@@ -83,17 +84,23 @@ async def add_repo(
     current_user: Annotated[CurrentUser, Depends(require_login)],
 ):
     """리포를 등록하고 GitHub Webhook을 생성한다."""
+    locale = get_locale(request)
     form = await request.form()
     repo_full_name = (form.get("repo_full_name") or "").strip()
     if not repo_full_name:
-        raise HTTPException(status_code=400, detail="리포 이름이 필요합니다")
+        raise HTTPException(
+            status_code=400,
+            detail=get_text("errors.repo_name_required", locale),
+        )
 
     with SessionLocal() as db:
         existing = repository_repo.find_by_full_name(db, repo_full_name)
         if existing:
             if existing.user_id is not None:
+                # 에러 코드만 URL 로 전달 → 템플릿이 코드→i18n 매핑 (한국어 URL 노출 제거)
+                # Pass only error code in URL → template maps code→i18n (no hardcoded text in URL)
                 return RedirectResponse(
-                    url="/repos/add?error=이미+다른+사용자가+등록한+리포입니다",
+                    url="/repos/add?error=already_registered",
                     status_code=303,
                 )
             existing.user_id = current_user.id
