@@ -840,6 +840,11 @@
     },
     "common": {
       "commit_ref": "커밋 {sha}"
+    },
+    "railway": {
+      "build_failed": "Railway 빌드 실패",
+      "log_fetch_failed": "로그를 가져오지 못했습니다. Railway 대시보드에서 확인해주세요.",
+      "dashboard_link": "Railway 대시보드 열기"
     }
   },
   "repo_insights": {
