@@ -827,7 +827,16 @@
       "retry_view_github": "🔗 <a href=\"{url}\">GitHubで見る</a>",
       "retry_terminal_title": "⚠️ <b>自動マージ最終失敗</b>",
       "retry_terminal_reason": "理由: <code>{reason}</code>",
-      "retry_advice_line": "💡 {advice}"
+      "retry_advice_line": "💡 {advice}",
+      "merge_failed_title": "⚠️ <b>自動マージ失敗</b>",
+      "merge_score_threshold": "スコア: {score}点 (基準: {threshold}点以上)",
+      "merge_reason_line": "理由: <code>{reason}</code>",
+      "merge_advice_line": "💡 {advice}",
+      "merge_view_github": "🔗 <a href=\"{url}\">GitHubで見る</a>",
+      "merge_deferred_title": "⏳ <b>自動マージ待機中</b>",
+      "merge_deferred_score": "スコア: {score}点 (基準: {threshold}点)",
+      "merge_deferred_reason": "理由: CI {ci_status} ({reason})",
+      "merge_deferred_retry": "<i>CI完了後、自動的にマージを再試行します。</i>"
     },
     "common": {
       "commit_ref": "コミット {sha}"

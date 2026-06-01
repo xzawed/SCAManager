@@ -827,7 +827,16 @@
       "retry_view_github": "🔗 <a href=\"{url}\">GitHub에서 보기</a>",
       "retry_terminal_title": "⚠️ <b>자동 머지 최종 실패</b>",
       "retry_terminal_reason": "사유: <code>{reason}</code>",
-      "retry_advice_line": "💡 {advice}"
+      "retry_advice_line": "💡 {advice}",
+      "merge_failed_title": "⚠️ <b>Auto Merge 실패</b>",
+      "merge_score_threshold": "점수: {score}점 (기준 {threshold}점 이상)",
+      "merge_reason_line": "사유: <code>{reason}</code>",
+      "merge_advice_line": "💡 {advice}",
+      "merge_view_github": "🔗 <a href=\"{url}\">GitHub에서 보기</a>",
+      "merge_deferred_title": "⏳ <b>자동 머지 대기 중</b>",
+      "merge_deferred_score": "점수: {score}점 (기준: {threshold}점)",
+      "merge_deferred_reason": "사유: CI {ci_status} ({reason})",
+      "merge_deferred_retry": "<i>CI 완료 후 자동으로 머지를 재시도합니다.</i>"
     },
     "common": {
       "commit_ref": "커밋 {sha}"

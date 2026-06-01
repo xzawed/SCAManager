@@ -87,3 +87,104 @@ def test_retry_view_github_preserves_html():
     from src.i18n.loader import get_text  # pylint: disable=import-outside-toplevel
     out = get_text("notifier.gate.retry_view_github", "en", url="http://x")
     assert "<a href=" in out
+
+
+# 사이클 152 Sprint 2 — engine.py 동기 머지 알림 키 (HTML parse_mode)
+# Cycle 152 Sprint 2 — engine.py synchronous merge notification keys (HTML parse_mode)
+_ENGINE_MERGE_KEYS = [
+    "merge_failed_title", "merge_score_threshold", "merge_reason_line",
+    "merge_advice_line", "merge_view_github", "merge_deferred_title",
+    "merge_deferred_score", "merge_deferred_reason", "merge_deferred_retry",
+]
+
+
+@pytest.mark.parametrize("locale", _LOCALES)
+@pytest.mark.parametrize("key", _ENGINE_MERGE_KEYS)
+def test_engine_merge_key_exists(locale, key):
+    assert key in _load(locale)["notifier"]["gate"], f"[{locale}] notifier.gate.{key} 없음"
+
+
+def test_merge_failed_title_no_korean_en():
+    from src.i18n.loader import get_text  # pylint: disable=import-outside-toplevel
+    out = get_text("notifier.gate.merge_failed_title", "en")
+    assert "실패" not in out and "Failed" in out
+
+
+def test_merge_deferred_title_no_korean_en():
+    from src.i18n.loader import get_text  # pylint: disable=import-outside-toplevel
+    out = get_text("notifier.gate.merge_deferred_title", "en")
+    assert "대기" not in out and "Pending" in out
+
+
+def test_merge_score_threshold_renders():
+    from src.i18n.loader import get_text  # pylint: disable=import-outside-toplevel
+    out = get_text("notifier.gate.merge_score_threshold", "en", score=82, threshold=70)
+    assert "82" in out and "70" in out and "{score}" not in out
+
+
+def test_merge_deferred_reason_renders():
+    from src.i18n.loader import get_text  # pylint: disable=import-outside-toplevel
+    out = get_text(
+        "notifier.gate.merge_deferred_reason", "en",
+        ci_status="pending", reason="unstable_ci",
+    )
+    assert "pending" in out and "unstable_ci" in out
+
+
+def test_merge_view_github_preserves_html():
+    from src.i18n.loader import get_text  # pylint: disable=import-outside-toplevel
+    out = get_text("notifier.gate.merge_view_github", "en", url="http://x")
+    assert "<a href=" in out
+
+
+@pytest.mark.asyncio
+async def test_notify_merge_failure_en_has_no_korean(monkeypatch):
+    """_notify_merge_failure(language='en') 메시지에 한국어 누출이 없어야 한다.
+
+    push 이벤트 누출 회귀 가드 — engine 동기 경로 i18n (사이클 152 Sprint 2).
+    """
+    from unittest.mock import AsyncMock  # pylint: disable=import-outside-toplevel
+    from src.gate import engine  # pylint: disable=import-outside-toplevel
+
+    captured = {}
+
+    async def _fake_post(_token, _chat, payload):
+        captured["text"] = payload["text"]
+
+    monkeypatch.setattr(engine.settings, "telegram_bot_token", "x")
+    monkeypatch.setattr(engine, "telegram_post_message", AsyncMock(side_effect=_fake_post))
+
+    await engine._notify_merge_failure(  # pylint: disable=protected-access
+        repo_name="owner/repo", pr_number=7, score=82, threshold=70,
+        reason="unstable_ci", advice="Wait for CI", chat_id="123",
+        language="en",
+    )
+    text = captured["text"]
+    for korean in ["실패", "점수", "사유", "기준", "보기"]:
+        assert korean not in text, f"한국어 누출: {korean!r} in {text!r}"
+    assert "Failed" in text and "Reason" in text
+
+
+@pytest.mark.asyncio
+async def test_notify_merge_deferred_en_has_no_korean(monkeypatch):
+    """_notify_merge_deferred(language='en') 메시지에 한국어 누출이 없어야 한다."""
+    from unittest.mock import AsyncMock  # pylint: disable=import-outside-toplevel
+    from src.gate import engine  # pylint: disable=import-outside-toplevel
+
+    captured = {}
+
+    async def _fake_post(_token, _chat, payload):
+        captured["text"] = payload["text"]
+
+    monkeypatch.setattr(engine.settings, "telegram_bot_token", "x")
+    monkeypatch.setattr(engine, "telegram_post_message", AsyncMock(side_effect=_fake_post))
+
+    await engine._notify_merge_deferred(  # pylint: disable=protected-access
+        repo_name="owner/repo", pr_number=7, score=82, threshold=70,
+        reason_tag="unstable_ci", ci_status="pending", chat_id="123",
+        language="en",
+    )
+    text = captured["text"]
+    for korean in ["대기", "점수", "사유", "재시도"]:
+        assert korean not in text, f"한국어 누출: {korean!r} in {text!r}"
+    assert "Pending" in text
