@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [사이클 150 (웹 UI 에러 메시지 i18n — issue 등록·리포 추가·설정, 2026-06-01)](#사이클-150)
 - [사이클 149 (알림/Gate 메시지 i18n — 자동 승인·반려·Telegram·머지 조언·재시도 + engine.py dead code 제거, 2026-06-01)](#사이클-149)
 - [사이클 148 (전체 템플릿 i18n 완결 — base.html langName FOUC 해소, 2026-06-01)](#사이클-148)
 - [사이클 147 (회고 Tier A/B — settings 누락 i18n + toggle a11y + render-parity 가드, 2026-06-01)](#사이클-147)
@@ -58,6 +59,27 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 사이클 150
+
+**날짜**: 2026-06-01 | **PR**: #717 | **상태**: ✅ 머지 완료
+
+**작업 내용**: 웹 UI 사용자 노출 에러 메시지 i18n — HTTPException detail + redirect 에러를 사용자 locale 적용
+
+| 파일 | 에러 |
+|----|------|
+| issue_registration.py (3) | 이미 등록된 이슈·Issues 쓰기 권한·GitHub API 오류 |
+| settings.py (1) | 유효하지 않은 URL (SSRF 방어) |
+| add_repo.py (2) | 리포 이름 필요 + redirect 중복 등록 (코드 방식) |
+
+**주요 결정**:
+- get_locale(request) + get_text(errors.*) 패턴 — errors 네임스페이스 확장 5키 + add_repo 1키
+- **redirect 에러 코드 방식**: add_repo redirect URL의 한국어 텍스트 → 에러 코드(already_registered) + 템플릿 data-i18n ERROR_MAP 매핑 (한국어 URL 노출 제거)
+- **hook.py 4건 보류** (자율 판단 — 정책 3): CLI/webhook 에러는 hook 토큰 인증으로 per-user locale 없음 — 별도 검토
+
+**완결**: UI(143~148) + 알림(149) + 웹 에러(150) i18n 전수. en/ja 사용자가 정상 UI·알림·에러까지 자국어 수신.
+
+**신규 테스트**: +19 단위 (4407→4426, 전체 4560→4579). 통합 153 유지.
 
 ## 사이클 149
 
