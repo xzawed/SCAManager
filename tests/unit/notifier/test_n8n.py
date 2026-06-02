@@ -55,6 +55,19 @@ async def test_notify_n8n_skips_when_no_url():
     mock_build.assert_not_called()
 
 
+async def test_notify_n8n_blocks_ssrf_url():
+    # SSRF 차단(validate_external_url=False) 시 build_safe_client 미호출 (Theme B S2 — n8n.py:52-54).
+    # notify_n8n_issue 는 별도 커버됨(test_n8n_envelope) — 여기선 notify_n8n(분석 페이로드) 차단 봉인.
+    with patch("src.notifier.n8n.build_safe_client") as mock_build, \
+         patch("src.notifier.n8n.validate_external_url", return_value=False):
+        score = ScoreResult(total=80, grade="B", code_quality_score=25, security_score=20, breakdown={})
+        await notify_n8n(
+            webhook_url="http://169.254.169.254/hook",
+            repo_full_name="owner/repo", commit_sha="abc123", pr_number=None, score_result=score,
+        )
+    mock_build.assert_not_called()
+
+
 async def test_notify_n8n_raises_on_error():
     mock_response = MagicMock()
     mock_response.raise_for_status.side_effect = Exception("Connection error")
