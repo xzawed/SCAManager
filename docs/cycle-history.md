@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [사이클 155 (154 회고 메타학습 봉인 — 발신 경로 한국어 AST 소스 스캔 자동 가드, 3연속 과대선언 패턴 영구 차단, 2026-06-02)](#사이클-155)
 - [사이클 154 (153 회고 발견 잔여 발신 경로 i18n — telegram 반자동 body P0 + P2 6건 + 호출 역추적 seam, 2026-06-02)](#사이클-154)
 - [사이클 153 (i18n 로드맵 완결 — railway Issue·cron 알림 i18n, 발신 경로 한국어 0건 ⚠️회고서 부정확 판정, 2026-06-01)](#사이클-153)
 - [사이클 152 (i18n 통합 회고(143~151) — P0 3건 수정·발신 경로 비대칭 교정, 2026-06-01)](#사이클-152)
@@ -64,9 +65,32 @@
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
 
+## 사이클 155
+
+**날짜**: 2026-06-02 | **PR**: #734+ | **상태**: 작업 완료
+
+**작업 내용**: 사이클 154 회고(5+1+cross-verify) 메타학습 봉인. 회고 결과 사이클 154 "발신 경로 0건" = ✅ **정확** (6차 적대적 cross-verify 반증 실패 — discord/email/slack/n8n/issue 본문 빌더 전수 + get_text 키 99개 3-locale 확인). **149/152/153/154 3연속 "완결 과대선언→회고 P0" 패턴이 사이클 154에서 끊김 확정.**
+
+**핵심 (회고 에이전트 5 메타결함 해소)**:
+- 근본 원인 = 검증 도구(grep 패턴)를 **고정 함수명 enumeration** 으로 산문 규칙에 봉인 → enumeration drift 가 새 회피 경로. 산문 규칙 자체가 drift 소스 (line:span drift 동형).
+- 해소 = **AST 소스 스캔 자동 회귀 가드** `tests/unit/notifier/test_no_hardcoded_korean_in_send_modules.py`:
+  - `src/notifier·gate·webhook/providers` + cron/merge_retry 37파일 AST 스캔 → 문자열 리터럴 한국어를 logger.* 인자·docstring 제외 후 검출, 위반 0건 강제.
+  - **mutation 자기검증 2건**: 합성 하드코딩 한국어 body(telegram.py:120 동형) → 탐지 / logger·docstring 한국어 → 미탐지. 가드가 no-op 아님 증명.
+  - "발신 경로 한국어 0건" 이 Claude self-declaration 이 아니라 **CI green** 으로 객관화. 신규 발신 모듈 추가 시 자동 커버 (수동 enumeration 갱신 불요).
+
+**추가**:
+- telegram ko-default seam 테스트 (회고 에이전트 3 P1-1 — approve→ko fallback body 대칭).
+- 문서 정정: cycle-history 사이클 154 PR `#732+`→`#733`·상태 "✅ 머지 완료" / i18n.md `notifier.gate.*` 열거에 `manual_*` 추가(149~154) + 자동 가드 default 등재.
+
+**보류 (사용자 결정 영역)**: railway_issue.py body 구조 라벨(Project/Status/Build Log 등) 영문 하드코딩 P2 — 사이클 153 #730 명시 채택 영역이라 사용자 결정 대기 (cross-verify 식별, 한국어 누출 아님 = i18n 미완성).
+
+**신규 테스트**: +4 단위 (4533→4537, 전체 4686→4690) — AST 가드 +3, ko-default seam +1. 통합 153 유지. pylint 10.00 유지.
+
+---
+
 ## 사이클 154
 
-**날짜**: 2026-06-02 | **PR**: #732+ | **상태**: 작업 완료
+**날짜**: 2026-06-02 | **PR**: #733 | **상태**: ✅ 머지 완료
 
 **작업 내용**: 사이클 153 회고(5+1 cross-verify)가 발견한 잔여 발신 경로 한국어 수정. 153의 "발신 경로 0건 실측" 선언이 회고에서 **부정확 판정** — grep 범위를 `src/notifier/ src/gate/ src/services` 디렉토리로 한정해 `src/webhook/providers/` 누락.
 
