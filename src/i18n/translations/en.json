@@ -822,6 +822,8 @@
     "gate": {
       "auto_approve": "✅ Auto-approved: score {score} (threshold: {threshold}+)",
       "auto_reject": "❌ Auto-rejected: score {score} (threshold: below {threshold})",
+      "manual_approve_body": "✅ Approved by @{decided_by}",
+      "manual_reject_body": "❌ Rejected by @{decided_by}",
       "tg_review_title": "🔍 *PR Review Request*",
       "tg_repo_line": "Repo: `{repo}` — PR #{pr}",
       "tg_score_line": "Score: *{score}* ({grade})",

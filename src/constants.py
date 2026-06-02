@@ -148,7 +148,7 @@ CLAUDE_MODELS: list[dict] = [
     },
     {
         "id": "claude-sonnet-4-6",
-        "label": "Claude Sonnet 4.6 (균형 · Balanced) ★기본값",
+        "label": "Claude Sonnet 4.6 (균형 · Balanced) ★기본 · Default",
         "input_price": 3.00,
         "output_price": 15.00,
     },

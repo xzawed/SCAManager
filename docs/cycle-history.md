@@ -5,7 +5,8 @@
 
 ## 목차
 
-- [사이클 153 (i18n 로드맵 완결 — railway Issue·cron 알림 i18n, 발신 경로 한국어 0건, 2026-06-01)](#사이클-153)
+- [사이클 154 (153 회고 발견 잔여 발신 경로 i18n — telegram 반자동 body P0 + P2 6건 + 호출 역추적 seam, 2026-06-02)](#사이클-154)
+- [사이클 153 (i18n 로드맵 완결 — railway Issue·cron 알림 i18n, 발신 경로 한국어 0건 ⚠️회고서 부정확 판정, 2026-06-01)](#사이클-153)
 - [사이클 152 (i18n 통합 회고(143~151) — P0 3건 수정·발신 경로 비대칭 교정, 2026-06-01)](#사이클-152)
 - [사이클 151 (hook.py CLI 에러 i18n — repo 소유자 언어 해소, i18n 전수 완결, 2026-06-01)](#사이클-151)
 - [사이클 150 (웹 UI 에러 메시지 i18n — issue 등록·리포 추가·설정, 2026-06-01)](#사이클-150)
@@ -63,6 +64,28 @@
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
 
+## 사이클 154
+
+**날짜**: 2026-06-02 | **PR**: #732+ | **상태**: 작업 완료
+
+**작업 내용**: 사이클 153 회고(5+1 cross-verify)가 발견한 잔여 발신 경로 한국어 수정. 153의 "발신 경로 0건 실측" 선언이 회고에서 **부정확 판정** — grep 범위를 `src/notifier/ src/gate/ src/services` 디렉토리로 한정해 `src/webhook/providers/` 누락.
+
+**P0 (1건)**:
+- `webhook/providers/telegram.py:120` — 반자동 Gate 콜백의 승인/반려 body `f"{'✅ 승인' if ... else '❌ 반려'} by @..."` 가 `post_github_review` → **GitHub PR Review 로 게시 = 모든 협업자 영구 노출**. 단일 한국어. → `notifier.gate.manual_approve_body`/`manual_reject_body` 3언어 키 + config 조기 로드 + `resolve_notification_language` 해소.
+
+**P2 (6건)**:
+- `services/cron_service.py:105/206` — `<code>{repo_full_name}</code>` escape 미적용 (engine/merge_retry 와 비대칭) → `escape()` 적용.
+- `webhook/providers/railway.py:106` — 로그 조회 실패 시 `logs_tail = f"로그 조회 실패: {exc}"` (i18n 키 우회) → `None` 유지로 `railway_issue` 가 `log_fetch_failed` 키 대체. exc 는 logger 보존.
+- `api/repos.py:81` — `validate_thresholds` 한국어 ValueError(422 노출) → 형제 validator 와 동일 영문화.
+- `services/operations_service.py:80/180` — admin KPI 한국어("추정"/"Phase 2 영역") → 운영자용 영문화.
+- `constants.py:151` — 모델 라벨 `★기본값` → `★기본 · Default` 이중언어 (기존 `(균형 · Balanced)` 패턴 정합).
+
+**프로세스 학습 (회고 핵심)**: 발신 경로 grep = **디렉토리 한정 금지, 발신 API 호출 역추적 의무**. `grep 'post_github_review\|telegram_post_message\|create_.*_issue\|...' src/` 로 모든 호출 site 수집 후 인자 개별 확인. `.claude/rules/i18n.md` 에 default 등재. "0건 실측" 선언은 회고 cross-verify 통과 후에만 (선언→회고 P0 발견 패턴 149/152/153 3연속 재발).
+
+**신규 테스트**: +6 단위 (4527→4533, 전체 4680→4686) — telegram 콜백 seam +2(승인 ja/반려 en body 언어 배선), cron escape 가드 +2, railway 핸들러 seam +2(language 배선 + 로그 실패 None 유지). 통합 153 유지. pylint 신규 경고 0 (R0917/E501 은 pre-existing).
+
+---
+
 ## 사이클 153
 
 **날짜**: 2026-06-01 | **PR**: #730~#731 | **상태**: ✅ 머지 완료
@@ -78,7 +101,7 @@
 - railway: config 기반 resolve_notification_language → background task 스레딩. field 라벨(Project/Status)은 기술 식별자라 영어 유지.
 - cron: 기존 이중언어를 단일 언어로 전환 (수신자 언어). HTML 태그 보존.
 
-**🎉 발신 경로 사용자 노출 한국어 0건 실측 달성**: 통합 회고(사이클 152) 학습("완결 선언 전 발신 경로 grep 전수 검증")을 적용 — `grep '[가-힣]' src/notifier/ src/gate/ src/services/{merge_retry,cron}` 에서 로그·주석 제외 후 **0건 확정**. 사이클 149의 성급한 "완결" 선언과 달리 이번엔 실측 검증.
+**🎉 발신 경로 사용자 노출 한국어 0건 실측 달성** — ⚠️ **사이클 154 회고에서 부정확 판정**: 이 grep 이 `src/notifier/ src/gate/ src/services/{merge_retry,cron}` **디렉토리로 한정**되어 `src/webhook/providers/telegram.py:120`(반자동 승인 body, GitHub PR Review 노출 P0)를 누락. "0건 실측" 은 미달성이었음. 사이클 154 가 호출 역추적 grep 으로 수정 + i18n.md default 등재. (선언→회고 P0 발견 패턴 149/152/153 3연속)
 
 **i18n 대장정 최종 (143~153)**: UI(143~148) + 알림(149,152) + 웹/CLI 에러(150~151) + 로드맵(153). en/ja 사용자가 모든 발신 경로에서 자국어 수신. (내부 로그는 운영자용 — 대상 외)
 

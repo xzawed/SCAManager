@@ -822,6 +822,8 @@
     "gate": {
       "auto_approve": "✅ 자동 승인: 점수 {score}점 (기준: {threshold}점 이상)",
       "auto_reject": "❌ 자동 반려: 점수 {score}점 (기준: {threshold}점 미만)",
+      "manual_approve_body": "✅ 승인 by @{decided_by}",
+      "manual_reject_body": "❌ 반려 by @{decided_by}",
       "tg_review_title": "🔍 *PR 검토 요청*",
       "tg_repo_line": "리포: `{repo}` — PR #{pr}",
       "tg_score_line": "점수: *{score}점* ({grade}등급)",

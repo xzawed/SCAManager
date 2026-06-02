@@ -102,8 +102,12 @@ async def _handle_railway_deploy_failure(
         try:
             logs_tail = await fetch_deployment_logs(decrypted_api_token, event.deployment_id)
         except RailwayLogFetchError as exc:
+            # exc 상세는 운영자 로그에만 남기고, Issue 본문은 None 유지 →
+            # railway_issue 가 i18n 키(notifier.railway.log_fetch_failed)로 대체 (사이클 154 P2)
+            # Keep exc detail in operator logs only; leave body None so railway_issue
+            # substitutes the i18n key (avoids leaking hardcoded Korean into the Issue)
             logger.warning("Railway 로그 조회 실패 (%s): %s", event.deployment_id, exc)
-            logs_tail = f"로그 조회 실패: {exc}"
+            logs_tail = None
 
     await create_deploy_failure_issue(
         github_token=github_token,

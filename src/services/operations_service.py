@@ -77,7 +77,7 @@ def _api_cost_estimate(stats: dict[str, int | float]) -> dict[str, Any]:
         "output_estimate": output_estimate,
         "cache_read_tokens": cache_read,
         "cache_creation_tokens": cache_creation,
-        "model": "claude-sonnet-4-6 (default 추정)",
+        "model": "claude-sonnet-4-6 (assumed default)",
     }
 
 
@@ -177,7 +177,7 @@ def operations_kpi(db: Session, days: int = 7) -> dict[str, Any]:
         # Phase 2 영역 (NEW-P1-1 cross-verify 정합)
         "pipeline_latency": {
             "available": False,
-            "reason": "Phase 2 영역 — stage_metrics 메모리 카운터 인프라 부재 (정책 16 4번 원칙)",
+            "reason": "Phase 2 scope — stage_metrics in-memory counter infra not yet present",
         },
         # Phase 5 PR-17 (사이클 84) — i18n KPI 2 카드
         # Phase 5 PR-17 (Cycle 84) — i18n KPI 2 cards

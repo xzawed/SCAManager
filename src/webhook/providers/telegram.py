@@ -21,6 +21,8 @@ from src.config_manager.manager import get_repo_config
 from src.database import SessionLocal
 from src.gate.engine import save_gate_decision
 from src.gate.github_review import merge_pr, post_github_review
+from src.i18n.loader import get_text
+from src.notifier._language import resolve_notification_language
 from src.notifier.telegram import telegram_post_message
 from src.notifier.telegram_commands import handle_message_command, parse_cmd_callback
 from src.repositories import analysis_repo, repository_repo
@@ -117,13 +119,21 @@ async def handle_gate_callback(
                     analysis_id,
                 )
                 return
-            body = f"{'✅ 승인' if decision == 'approve' else '❌ 반려'} by @{decided_by}"
+            # GitHub PR Review body 는 리포 협업자 전체에게 영구 노출 — 발신 언어 i18n (사이클 154 P0)
+            # The PR Review body is permanently visible to all collaborators — i18n it (Cycle 154 P0)
+            config = get_repo_config(db, repo.full_name)
+            language = resolve_notification_language(db, config=config)
+            body_key = (
+                "notifier.gate.manual_approve_body"
+                if decision == "approve"
+                else "notifier.gate.manual_reject_body"
+            )
+            body = get_text(body_key, language, decided_by=decided_by)
             await post_github_review(
                 github_token, repo.full_name,
                 analysis.pr_number, decision, body,
             )
             save_gate_decision(db, analysis_id, decision, "manual", decided_by)
-            config = get_repo_config(db, repo.full_name)
             result_dict = analysis.result if isinstance(analysis.result, dict) else {}
             score = result_dict.get("score", analysis.score or 0)
             if config.auto_merge and score >= config.merge_threshold:
