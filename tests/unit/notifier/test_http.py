@@ -84,6 +84,21 @@ async def test_validate_invalid_url_returns_false():
     assert await validate_external_url("not-a-url") is False
 
 
+async def test_validate_https_without_host_blocked():
+    # https 스킴이지만 host 가 없는 URL 은 fail-closed 차단 (_http.py:54-55)
+    # https scheme but no host → fail-closed block. 기존 "not-a-url" 은 scheme 단계(L50)에서
+    # 막혀 이 분기에 미도달했음 — fail-open 회귀(L55를 return True 로) 봉인.
+    assert await validate_external_url("https:///path-only") is False
+
+
+async def test_validate_dns_resolution_failure_blocked():
+    # 도메인이 DNS 해석에 실패하면 fail-closed 차단 (_http.py:73-75, socket.gaierror)
+    # DNS resolution failure → fail-closed block. 기존 DNS 테스트는 getaddrinfo 성공 mock 만
+    # 사용해 except 분기에 미도달했음 — asyncio.to_thread 경유로도 gaierror 가 surface 됨.
+    with patch("socket.getaddrinfo", side_effect=socket.gaierror("name resolution failed")):
+        assert await validate_external_url("https://nonexistent.invalid/hook") is False
+
+
 # ---------------------------------------------------------------------------
 # build_safe_client 테스트
 # ---------------------------------------------------------------------------
