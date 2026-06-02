@@ -16,7 +16,7 @@ from src.scorer.calculator import ScoreResult
 from src.analyzer.io.static import StaticAnalysisResult
 from src.analyzer.io.ai_review import AiReviewResult
 from src.constants import GRADE_COLOR_HTML, HTTP_CLIENT_TIMEOUT, NOTIFIER_MAX_ISSUES_LONG
-from src.notifier._common import format_ref, get_all_issues, truncate_issue_msg
+from src.notifier._common import format_ref, get_all_issues, resolve_ai_summary, truncate_issue_msg
 
 logger = logging.getLogger(__name__)
 
@@ -47,9 +47,10 @@ def _build_html_body(  # pylint: disable=too-many-positional-arguments,too-many-
     )
 
     ai_section = ""
-    if ai_review and ai_review.summary:
+    ai_summary = resolve_ai_summary(ai_review, language)
+    if ai_summary:
         ai_label = get_text("notifier.email.ai_summary", language)
-        ai_section = f"<p><b>{escape(ai_label)}</b> {escape(ai_review.summary)}</p>"
+        ai_section = f"<p><b>{escape(ai_label)}</b> {escape(ai_summary)}</p>"
 
     issues_section = ""
     all_issues = get_all_issues(analysis_results)

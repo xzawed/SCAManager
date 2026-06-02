@@ -37,10 +37,14 @@ def _make_score_result(total: int = 85, grade: str = "B") -> MagicMock:
 
 
 def _make_ai_review(summary: str = "OK", suggestions: list[str] | None = None) -> MagicMock:
-    """기본 AiReviewResult mock 생성 헬퍼.
-    Helper to build a basic AiReviewResult mock.
+    """기본 AiReviewResult mock 생성 헬퍼 (정상 리뷰 — status='success').
+    Helper to build a basic AiReviewResult mock (successful review).
+
+    status 미지정 시 MagicMock auto-attr 가 resolve_ai_summary 의 실패 fallback 분기를
+    오발화하므로 명시 (사이클 155).
+    status must be set; otherwise MagicMock's auto-attr trips the failure-fallback branch.
     """
-    return MagicMock(summary=summary, suggestions=suggestions or [])
+    return MagicMock(summary=summary, suggestions=suggestions or [], status="success")
 
 
 def _make_issue(tool: str = "pylint", message: str = "W0001 some issue") -> MagicMock:

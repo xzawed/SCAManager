@@ -9,7 +9,7 @@ import pathlib
 
 import pytest
 
-from src.notifier._common import format_ref
+from src.notifier._common import format_ref, resolve_ai_summary
 
 _TRANS_DIR = pathlib.Path("src/i18n/translations")
 _LOCALES = ["ko", "en", "ja"]
@@ -60,3 +60,42 @@ def test_format_ref_commit_korean_default():
     """
     out = format_ref("abc1234def", None)
     assert "커밋" in out
+
+
+# ── resolve_ai_summary — AI 리뷰 fallback 현지화 (사이클 155 P1) ──
+
+class _FakeAi:
+    def __init__(self, summary, status):
+        self.summary = summary
+        self.status = status
+
+
+@pytest.mark.parametrize("locale", _LOCALES)
+def test_ai_unavailable_key_exists(locale: str):
+    """notifier.common.ai_unavailable 가 모든 locale 에 존재해야 한다."""
+    assert "ai_unavailable" in _load(locale)["notifier"]["common"], f"[{locale}] ai_unavailable 없음"
+
+
+def test_resolve_ai_summary_success_returns_raw():
+    """status='success' + summary 있으면 원본 summary 반환 (정상 AI 리뷰)."""
+    assert resolve_ai_summary(_FakeAi("좋은 리팩토링", "success")) == "좋은 리팩토링"
+
+
+def test_resolve_ai_summary_failure_localizes_english():
+    """status!='success' (실패 fallback) + en → 영어 ai_unavailable, 한국어 누출 없음."""
+    out = resolve_ai_summary(_FakeAi("", "no_api_key"), "en")
+    assert out == "AI review unavailable (defaults applied)"
+    assert "리뷰 불가" not in out
+
+
+def test_resolve_ai_summary_failure_localizes_japanese():
+    """status!='success' + ja → 일본어 ai_unavailable."""
+    out = resolve_ai_summary(_FakeAi("", "parse_error"), "ja")
+    assert "AIレビュー不可" in out
+    assert "리뷰 불가" not in out
+
+
+def test_resolve_ai_summary_none_and_empty():
+    """ai_review=None → None. success + 빈 summary → None (라인 생략)."""
+    assert resolve_ai_summary(None, "en") is None
+    assert resolve_ai_summary(_FakeAi("", "success"), "en") is None
