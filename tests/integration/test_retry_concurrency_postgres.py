@@ -137,6 +137,10 @@ def test_concurrent_claim_no_double_processing():
         # Result storage and error collector.
         results: list = [None, None]
         errors: list = []
+        # barrier — 두 워커의 claim_batch SELECT 가 동시에 실행되도록 동기화.
+        # 미동반 시 SELECT 윈도우 비중첩으로 회귀(SKIP LOCKED 제거)조차 spurious-pass 가능.
+        # timeout=30 — 한 워커가 barrier 도달 전 예외 시 다른 워커 무기한 block 방지 (deadlock guard).
+        barrier = threading.Barrier(2, timeout=30)
 
         def worker(i: int) -> None:
             """스레드 워커 — 독립 세션으로 claim_batch 호출.
@@ -144,6 +148,7 @@ def test_concurrent_claim_no_double_processing():
             """
             try:
                 with Session() as db:
+                    barrier.wait()  # 두 워커 동시 진입 강제 / force concurrent entry
                     claimed = claim_batch(
                         db,
                         now=datetime.now(timezone.utc).replace(tzinfo=None),
@@ -244,26 +249,34 @@ def test_stale_claim_recovery():
             now = datetime.now(timezone.utc).replace(tzinfo=None)
             claimed = claim_batch(db, now=now, stale_after_seconds=300)
             db.commit()
+            # 세션 종료 전 필요한 속성 추출 — commit 후 expire 된 ORM 속성을 세션 밖에서
+            # 접근하면 DetachedInstanceError (사이클 156 S3: CI 영구 skip 으로 가려져 있던 잠재 버그).
+            # Capture attributes before the session closes; commit expires them and
+            # accessing them after the session ends raises DetachedInstanceError.
+            reclaimed_count = len(claimed)
+            reclaimed_id = claimed[0].id if claimed else None
+            reclaimed_token = claimed[0].claim_token if claimed else None
+            reclaimed_attempts = claimed[0].attempts_count if claimed else None
 
         # stale 행이 재클레임되어야 함
         # The stale row must be reclaimed.
-        assert len(claimed) == 1, (
-            f"Expected 1 reclaimed row, got {len(claimed)}"
+        assert reclaimed_count == 1, (
+            f"Expected 1 reclaimed row, got {reclaimed_count}"
         )
-        assert claimed[0].id == row_id, (
-            f"Expected row id {row_id}, got {claimed[0].id}"
+        assert reclaimed_id == row_id, (
+            f"Expected row id {row_id}, got {reclaimed_id}"
         )
 
         # claim_token 이 새 UUID 로 교체되었는지 확인
         # Confirm claim_token was replaced with a new UUID.
-        assert claimed[0].claim_token != "old-token-from-crashed-worker", (
+        assert reclaimed_token != "old-token-from-crashed-worker", (
             "claim_token must be updated when a stale claim is reclaimed"
         )
 
         # attempts_count 가 1 증가했는지 확인
         # Confirm attempts_count was incremented by 1.
-        assert claimed[0].attempts_count == 1, (
-            f"Expected attempts_count=1, got {claimed[0].attempts_count}"
+        assert reclaimed_attempts == 1, (
+            f"Expected attempts_count=1, got {reclaimed_attempts}"
         )
 
     finally:
@@ -303,6 +316,10 @@ def test_skip_locked_prevents_concurrent_double_claim():
         # Result storage and error collector.
         results: list = [None, None]
         errors: list = []
+        # barrier — 두 세션이 동일 행을 두고 동시에 SELECT...FOR UPDATE SKIP LOCKED 를 치도록 강제.
+        # 이 동시성이 SKIP LOCKED 의 non-blocking 획득(한 쪽만 성공)을 실제로 검증하는 핵심 조건.
+        # timeout=30 — deadlock guard (한 워커 조기 예외 시 무기한 block 방지).
+        barrier = threading.Barrier(2, timeout=30)
 
         def worker(i: int) -> None:
             """스레드 워커 — 독립 세션으로 동일 행 claim 시도.
@@ -310,6 +327,7 @@ def test_skip_locked_prevents_concurrent_double_claim():
             """
             try:
                 with Session() as db:
+                    barrier.wait()  # 두 워커 동시 진입 강제 / force concurrent entry
                     claimed = claim_batch(
                         db,
                         now=datetime.now(timezone.utc).replace(tzinfo=None),

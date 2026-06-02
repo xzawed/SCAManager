@@ -16,6 +16,7 @@ paths:
 - **E2E 격리**: `e2e/`를 최상위 별도 디렉토리로 분리 (`tests/` 아래 금지) — `tests/e2e/`가 있으면 `asyncio_mode=auto`와 `sys.modules` 삭제가 충돌해 단위 테스트 98개 실패. E2E 서버는 `uvicorn.Server.serve()`를 `asyncio.new_event_loop()` + `loop.run_until_complete()`로 실행.
 - 🔴 **e2e ↔ tests/integration 동시 실행 금지**: `e2e/pytest.ini` 가 의도적으로 asyncio_mode 미설정 (위 E2E 격리 사유) — `pytest e2e/ tests/integration/` 같은 동시 실행 시 integration 의 async 테스트가 sync 처럼 실행 → "coroutine was never awaited" RuntimeWarning + fail. 분리 실행 default — `make test-e2e` (e2e) ↔ `pytest tests/` 또는 CI command (testpaths=tests, e2e 자동 격리).
 - **`@pytest.mark.perf` 선택 실행**: `make test-perf` = `pytest e2e/ -m perf -v --timeout=120 -p no:asyncio`. 일반 E2E(`make test-e2e`)와 분리 실행 — CI `testpaths=tests`에 포함되지 않음(자동 격리). `perf` 마커는 루트 `pytest.ini`와 `e2e/pytest.ini` 양쪽 등록됨.
+- 🔴 **PG 의존 동시성 테스트 CI 활성화 패턴 (사이클 156 S3)**: `FOR UPDATE SKIP LOCKED` 등 PostgreSQL 전용 기능 테스트(`tests/integration/test_retry_concurrency_postgres.py`)는 `@pytest.mark.skipif(not DATABASE_URL_TEST_POSTGRES)` 가드 — 기본 CI(SQLite)에서 **항상 skip**되어 회귀를 못 잡는다. `.github/workflows/ci.yml` 의 별도 `pg-concurrency` job(`services: postgres:16` + health-check)에서 활성화. **(1) env 는 `DATABASE_URL_TEST_POSTGRES` 단일만 — `DATABASE_URL` 은 `conftest.py` 가 sqlite 로 덮어써 무의미.** (2) 명시 단일 파일 경로만 실행 — e2e/integration 혼입 금지(위 🔴 격리 규칙). (3) **동시성 race 테스트는 `threading.Barrier(2, timeout=N)` 동반 의무** — barrier 미동반 시 두 워커 SELECT 윈도우 비중첩으로 회귀(SKIP LOCKED 제거)조차 spurious-pass. `timeout` 은 한 워커 조기 예외 시 deadlock guard. (4) `--timeout=60`.
 
 ## Mock + Fixture 패턴
 
