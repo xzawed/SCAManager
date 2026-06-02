@@ -278,7 +278,10 @@ def test_default_result_neutral_scores():
         assert result.commit_score == 17
         assert result.ai_score == 17
         assert result.test_score == 7
-        assert result.summary  # 비어있지 않음
+        # summary 는 빈 문자열 — 발신 시 status 기반 현지화 (사이클 155). status 가 사유 추적.
+        # summary is empty; notifiers localize via status (Cycle 155). status carries the reason.
+        assert result.summary == ""
+        assert result.status == reason
 
 
 # ──────────────────────────────────────────────────────────────────────────

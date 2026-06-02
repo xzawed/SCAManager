@@ -31,7 +31,16 @@ import re
 # 스캔 대상 — 사용자 발신 메시지를 조립하는 모듈 디렉토리/파일
 # Scan targets — modules that compose user-facing outbound messages
 _TARGET_DIRS = ["src/notifier", "src/gate", "src/webhook/providers"]
-_TARGET_FILES = ["src/services/cron_service.py", "src/services/merge_retry_service.py"]
+# upstream 데이터 출처 — notifier 로 흐르는 필드(AiReviewResult.summary 등)를 만드는 모듈.
+# ai_review.py 의 AI 프롬프트는 review_prompt.py/review_guides 에 분리돼 있어 본 파일은
+# summary 외 사용자 노출 한국어 없음 (사이클 155 회고 — Codex 검증이 발신 경로 누락 식별).
+# Upstream data-origin modules: where notifier-bound fields originate. ai_review.py's
+# AI prompts live in separate files, so it carries no user-facing Korean besides summary.
+_TARGET_FILES = [
+    "src/services/cron_service.py",
+    "src/services/merge_retry_service.py",
+    "src/analyzer/io/ai_review.py",
+]
 
 _KOREAN = re.compile(r"[가-힣]")
 _LOG_METHODS = {"debug", "info", "warning", "error", "exception", "critical", "log"}
@@ -43,30 +52,46 @@ _LOG_TARGETS = {"logger", "log", "logging", "_logger"}
 _ALLOWLIST: set[tuple[str, int]] = set()
 
 
+def _docstring_position(node: ast.AST) -> "tuple[int, int] | None":
+    """node(module/func/class)가 docstring 을 가지면 그 Constant 위치, 아니면 None.
+    Return the docstring Constant position if node has one, else None."""
+    body = getattr(node, "body", None)
+    if not body:
+        return None
+    first = body[0]
+    if (
+        isinstance(first, ast.Expr)
+        and isinstance(first.value, ast.Constant)
+        and isinstance(first.value.value, str)
+    ):
+        return (first.value.lineno, first.value.col_offset)
+    return None
+
+
+def _is_logger_call(node: ast.AST) -> bool:
+    """node 가 logger.<method>(...) 호출인지 판정한다.
+    Whether node is a logger.<method>(...) call."""
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr in _LOG_METHODS
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id in _LOG_TARGETS
+    )
+
+
 def _excluded_const_positions(tree: ast.AST) -> set[tuple[int, int]]:
     """docstring + logger.* 호출 서브트리의 문자열 상수 위치를 수집한다.
     Collect positions of string constants that are docstrings or logger.* call args."""
     excluded: set[tuple[int, int]] = set()
     for node in ast.walk(tree):
-        # docstring = module/func/class body 첫 statement 인 bare string
         if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            body = getattr(node, "body", [])
-            if (
-                body
-                and isinstance(body[0], ast.Expr)
-                and isinstance(body[0].value, ast.Constant)
-                and isinstance(body[0].value.value, str)
-            ):
-                c = body[0].value
-                excluded.add((c.lineno, c.col_offset))
-        # logger.<method>(...) 호출 서브트리의 모든 문자열 상수 (f-string Constant 포함)
-        if (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr in _LOG_METHODS
-            and isinstance(node.func.value, ast.Name)
-            and node.func.value.id in _LOG_TARGETS
-        ):
+            pos = _docstring_position(node)
+            if pos is not None:
+                excluded.add(pos)
+        elif _is_logger_call(node):
+            # logger 호출 서브트리의 모든 문자열 상수 (f-string Constant 포함) 제외
+            # Exclude all string constants in the logger-call subtree (incl. f-string parts)
             for sub in ast.walk(node):
                 if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
                     excluded.add((sub.lineno, sub.col_offset))

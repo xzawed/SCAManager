@@ -9,7 +9,9 @@ from src.shared.http_client import get_http_client
 from src.scorer.calculator import ScoreResult
 from src.analyzer.io.static import StaticAnalysisResult
 from src.analyzer.io.ai_review import AiReviewResult
-from src.notifier._common import format_ref, get_all_issues, truncate_message, truncate_issue_msg
+from src.notifier._common import (
+    format_ref, get_all_issues, resolve_ai_summary, truncate_issue_msg, truncate_message,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -143,9 +145,10 @@ def _build_message(  # pylint: disable=too-many-positional-arguments,too-many-lo
         get_text("notifier.telegram.breakdown_test", language, value=bd.get("test_coverage", "-")),
     ]
 
-    if ai_review and ai_review.summary:
+    ai_summary = resolve_ai_summary(ai_review, language)
+    if ai_summary:
         lines += ["", get_text(
-            "notifier.telegram.ai_summary", language, summary=escape(ai_review.summary),
+            "notifier.telegram.ai_summary", language, summary=escape(ai_summary),
         )]
 
     if ai_review and ai_review.suggestions:

@@ -850,7 +850,8 @@
       "merge_deferred_retry": "<i>CI 완료 후 자동으로 머지를 재시도합니다.</i>"
     },
     "common": {
-      "commit_ref": "커밋 {sha}"
+      "commit_ref": "커밋 {sha}",
+      "ai_unavailable": "AI 리뷰 불가 (기본값 적용)"
     },
     "railway": {
       "build_failed": "Railway 빌드 실패",

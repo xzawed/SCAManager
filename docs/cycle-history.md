@@ -82,9 +82,15 @@
 - telegram ko-default seam 테스트 (회고 에이전트 3 P1-1 — approve→ko fallback body 대칭).
 - 문서 정정: cycle-history 사이클 154 PR `#732+`→`#733`·상태 "✅ 머지 완료" / i18n.md `notifier.gate.*` 열거에 `manual_*` 추가(149~154) + 자동 가드 default 등재.
 
+**🔴 가드 검증이 식별한 P1 (회고 6 에이전트가 모두 놓친 leak — push 전 Codex 검증 fallback 이 포착)**:
+- `src/analyzer/io/ai_review.py:203` `_default_result` summary `"AI 리뷰 불가 (기본값 적용)"` 하드코딩 한국어가 AI 리뷰 실패 시 **discord/email/github_comment/telegram 4채널로 사용자 발신** (키는 i18n 이나 summary **값**이 하드코딩). 회고 에이전트 1/6(cross-verify) 모두 notifier 디렉토리만 봐서 upstream 출처(`analyzer/io`)를 놓침 — 에이전트 5 가 예측한 "가드 scope = 새 drift 면" 의 실증.
+- 수정: `_default_result` summary=`""` + `notifier._common.resolve_ai_summary(ai_review, language)` 헬퍼 (status!=success 시 `notifier.common.ai_unavailable` ko/en/ja 현지화) + 4 notifier 적용. 대시보드는 기존 `ai_review_status` 기반 i18n 배너 유지(영향 0).
+- **가드 scope 보강**: `_TARGET_FILES` 에 `src/analyzer/io/ai_review.py` 추가 (AI 프롬프트는 review_prompt.py/review_guides 분리 → 본 파일 summary 외 한국어 0). 재발 시 가드 자동 포착.
+- **의의**: 검증 layer(외부 LLM fallback) + 자동 가드 개념이 작동 — 6 에이전트 self-verify 가 공유한 "notifier scope" 가정을 외부 검증이 깸 (정책 18 mutual 2-layer 정당성 실증).
+
 **보류 (사용자 결정 영역)**: railway_issue.py body 구조 라벨(Project/Status/Build Log 등) 영문 하드코딩 P2 — 사이클 153 #730 명시 채택 영역이라 사용자 결정 대기 (cross-verify 식별, 한국어 누출 아님 = i18n 미완성).
 
-**신규 테스트**: +4 단위 (4533→4537, 전체 4686→4690) — AST 가드 +3, ko-default seam +1. 통합 153 유지. pylint 10.00 유지.
+**신규 테스트**: +11 단위 (4533→4544, 전체 4686→4697) — AST 가드 +3, ko-default seam +1, resolve_ai_summary 현지화 +7 (ai_unavailable 키 3 + success/en/ja/none-empty 4). 통합 153 유지. pylint 10.00 유지 (discord _build_embed R0914 inline disable — ai_summary local).
 
 ---
 

@@ -196,11 +196,15 @@ def _parse_response(text: str) -> AiReviewResult:
 
 def _default_result(reason: str = "no_api_key") -> AiReviewResult:
     """API key 없음, 빈 diff, 또는 오류 시 반환하는 중립적 기본값."""
+    # summary 는 빈 문자열 — 발신 시 status 기반으로 notifier 가 현지화 메시지 대체
+    # (notifier._common.resolve_ai_summary). 대시보드는 ai_review_status 로 별도 i18n 배너 렌더.
+    # summary stays empty — notifiers localize via status (resolve_ai_summary);
+    # the dashboard renders its own i18n banner from ai_review_status (사이클 155 P1).
     return AiReviewResult(
         commit_score=17,
         ai_score=17,
         test_score=7,
-        summary="AI 리뷰 불가 (기본값 적용)",
+        summary="",
         suggestions=[],
         status=reason,
     )

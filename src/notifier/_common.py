@@ -24,6 +24,24 @@ def format_ref(commit_sha: str, pr_number: int | None, language: str = "ko") -> 
     )
 
 
+def resolve_ai_summary(ai_review, language: str = "ko") -> "str | None":
+    """AI 리뷰 summary 표시 문자열을 해소한다 — 실패 status 시 현지화 메시지로 대체.
+
+    Resolve the AI review summary display string. When the review failed
+    (status != "success"), return the localized "unavailable" message instead
+    of the raw fallback — prevents hardcoded Korean leaking to notify channels
+    (사이클 155 P1: AiReviewResult.summary 가 발신 경로로 흐르는 upstream 필드).
+    """
+    if ai_review is None:
+        return None
+    # 실패 fallback (no_api_key/api_error/empty_diff/parse_error) → 수신자 언어로 현지화
+    # Failure fallback → localize in the recipient's language
+    if getattr(ai_review, "status", "success") != "success":
+        from src.i18n.loader import get_text  # noqa: WPS433  # pylint: disable=import-outside-toplevel
+        return get_text("notifier.common.ai_unavailable", language)
+    return ai_review.summary or None
+
+
 def get_all_issues(analysis_results: list) -> list:
     """analysis_results의 모든 AnalysisIssue를 평탄화한다 (호출자 캐시 권장 — hot path).
 

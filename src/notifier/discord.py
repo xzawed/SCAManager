@@ -14,12 +14,16 @@ from src.i18n.loader import get_text
 from src.scorer.calculator import ScoreResult
 from src.analyzer.io.static import StaticAnalysisResult
 from src.analyzer.io.ai_review import AiReviewResult
-from src.notifier._common import format_ref, get_all_issues, truncate_message, truncate_issue_msg
+from src.notifier._common import (
+    format_ref, get_all_issues, resolve_ai_summary, truncate_issue_msg, truncate_message,
+)
 
 logger = logging.getLogger(__name__)
 
 
-def _build_embed(  # pylint: disable=too-many-positional-arguments
+def _build_embed(  # pylint: disable=too-many-positional-arguments,too-many-locals
+    # ai_summary local 추가로 16개 (사이클 155 — resolve_ai_summary 발신 현지화). 헬퍼 추출 시 embed 응집 깨짐
+    # ai_summary local added (Cycle 155); extracting a helper would break embed-build cohesion
     repo_name: str,
     commit_sha: str,
     score_result: ScoreResult,
@@ -39,9 +43,10 @@ def _build_embed(  # pylint: disable=too-many-positional-arguments
         ),
     ]
 
-    if ai_review and ai_review.summary:
+    ai_summary = resolve_ai_summary(ai_review, language)
+    if ai_summary:
         lines.append("\n" + get_text(
-            "notifier.discord.ai_summary", language, summary=ai_review.summary,
+            "notifier.discord.ai_summary", language, summary=ai_summary,
         ))
 
     all_issues = get_all_issues(analysis_results)

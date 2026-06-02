@@ -850,7 +850,8 @@
       "merge_deferred_retry": "<i>CI完了後、自動的にマージを再試行します。</i>"
     },
     "common": {
-      "commit_ref": "コミット {sha}"
+      "commit_ref": "コミット {sha}",
+      "ai_unavailable": "AIレビュー不可 (デフォルト適用)"
     },
     "railway": {
       "build_failed": "Railwayビルド失敗",

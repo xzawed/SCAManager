@@ -6,6 +6,7 @@ Phase 3 PR-11 (Cycle 84) — i18n: language arg + 3-layer fallback.
 from src.constants import GITHUB_API, GRADE_EMOJI, NOTIFIER_MAX_ISSUES_LONG
 from src.github_client.helpers import github_api_headers
 from src.i18n.loader import get_text
+from src.notifier._common import resolve_ai_summary
 from src.shared.http_client import get_http_client
 from src.scorer.calculator import ScoreResult
 from src.analyzer.io.static import StaticAnalysisResult
@@ -23,7 +24,7 @@ def _build_comment_body(
         "score": score_result.total,
         "grade": score_result.grade,
         "breakdown": score_result.breakdown,
-        "ai_summary": ai_review.summary if ai_review else None,
+        "ai_summary": resolve_ai_summary(ai_review, language),
         "ai_suggestions": ai_review.suggestions if ai_review else [],
         "commit_message_feedback": ai_review.commit_message_feedback if ai_review else None,
         "code_quality_feedback": ai_review.code_quality_feedback if ai_review else None,

@@ -850,7 +850,8 @@
       "merge_deferred_retry": "<i>Will automatically retry merge after CI completes.</i>"
     },
     "common": {
-      "commit_ref": "Commit {sha}"
+      "commit_ref": "Commit {sha}",
+      "ai_unavailable": "AI review unavailable (defaults applied)"
     },
     "railway": {
       "build_failed": "Railway Build Failed",
