@@ -105,28 +105,35 @@ def test_migration_alembic_round_trip():
             "(SQLite does not support ALTER TABLE UNIQUE constraint)"
         )
 
+    from unittest.mock import patch
+
     from alembic.config import Config
     from alembic import command as alembic_command
+    from src.config import settings as app_settings
 
     cfg = Config("alembic.ini")
     cfg.set_main_option("sqlalchemy.url", db_url)
 
-    # 0020mergeretryqueue 로 업그레이드
-    # Upgrade to 0020mergeretryqueue.
-    alembic_command.upgrade(cfg, "0020mergeretryqueue")
+    # 🔴 alembic/env.py:30 이 cfg URL 을 settings.database_url 로 덮어씀 (싱글톤, import 시 sqlite 고정).
+    # → cfg.set_main_option 만으로는 SQLiteImpl 로 실행돼 0009 의 ALTER constraint 에서 실패.
+    # settings 싱글톤 속성을 PG URL 로 patch (monkeypatch.setenv 무효 — testing.md 규칙). (사이클 157 #8 fix-up)
+    # env.py overrides cfg URL with settings.database_url (singleton fixed to sqlite at import),
+    # so patch the singleton attribute to the PG URL; patch.object restores it automatically.
+    with patch.object(app_settings, "database_url", db_url):
+        # 0020mergeretryqueue 로 업그레이드 / Upgrade to 0020mergeretryqueue.
+        alembic_command.upgrade(cfg, "0020mergeretryqueue")
 
-    eng = create_engine(db_url)
-    tables = inspect(eng).get_table_names()
-    eng.dispose()
-    assert "merge_retry_queue" in tables, "업그레이드 후 테이블이 존재해야 한다 / Table must exist after upgrade"
+        eng = create_engine(db_url)
+        tables = inspect(eng).get_table_names()
+        eng.dispose()
+        assert "merge_retry_queue" in tables, "업그레이드 후 테이블이 존재해야 한다 / Table must exist after upgrade"
 
-    # 0019leaderboardoptin 으로 다운그레이드
-    # Downgrade back to 0019leaderboardoptin.
-    alembic_command.downgrade(cfg, "0019leaderboardoptin")
+        # 0019leaderboardoptin 으로 다운그레이드 / Downgrade back to 0019leaderboardoptin.
+        alembic_command.downgrade(cfg, "0019leaderboardoptin")
 
-    eng2 = create_engine(db_url)
-    tables2 = inspect(eng2).get_table_names()
-    eng2.dispose()
-    assert "merge_retry_queue" not in tables2, (
-        "다운그레이드 후 테이블이 제거되어야 한다 / Table must be gone after downgrade"
-    )
+        eng2 = create_engine(db_url)
+        tables2 = inspect(eng2).get_table_names()
+        eng2.dispose()
+        assert "merge_retry_queue" not in tables2, (
+            "다운그레이드 후 테이블이 제거되어야 한다 / Table must be gone after downgrade"
+        )
