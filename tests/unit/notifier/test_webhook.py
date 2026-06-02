@@ -97,3 +97,17 @@ async def test_send_webhook_skips_when_no_url():
             analysis_results=_make_analysis(),
         )
     mock_build.assert_not_called()
+
+
+async def test_send_webhook_blocks_ssrf_url():
+    # SSRF 차단(validate_external_url=False) 시 build_safe_client 미호출 (Theme B S2 — webhook.py:53-55).
+    with patch("src.notifier.webhook.build_safe_client") as mock_build, \
+         patch("src.notifier.webhook.validate_external_url", return_value=False):
+        await send_webhook_notification(
+            webhook_url="http://169.254.169.254/hook",
+            repo_name="owner/repo",
+            commit_sha="abc1234",
+            score_result=_make_score(),
+            analysis_results=_make_analysis(),
+        )
+    mock_build.assert_not_called()

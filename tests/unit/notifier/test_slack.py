@@ -111,6 +111,20 @@ async def test_send_slack_notification_skips_when_no_url():
     mock_build.assert_not_called()
 
 
+async def test_send_slack_notification_blocks_ssrf_url():
+    # SSRF 차단(validate_external_url=False) 시 build_safe_client 미호출 (Theme B S2 — slack.py:107-109).
+    with patch("src.notifier.slack.build_safe_client") as mock_build, \
+         patch("src.notifier.slack.validate_external_url", return_value=False):
+        await send_slack_notification(
+            webhook_url="http://169.254.169.254/hook",
+            repo_name="owner/repo",
+            commit_sha="abc1234",
+            score_result=_make_score(),
+            analysis_results=_make_analysis(),
+        )
+    mock_build.assert_not_called()
+
+
 def test_build_payload_long_footer_text_is_truncated():
     """attachment.text가 3000자를 초과하면 절단되어야 한다.
     attachment.text must be truncated when it exceeds 3000 characters.
