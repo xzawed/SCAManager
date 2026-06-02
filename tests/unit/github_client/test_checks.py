@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from src.github_client.checks import (
     get_ci_status,
     get_required_check_contexts,
+    _legacy_state_to_ci_status,
     _parse_link_next,
     _required_contexts_cache,
 )
@@ -629,3 +630,34 @@ async def test_get_ci_status_new_states_do_not_fall_through_to_failed(status):
         f"status={status!r} must not fall through to 'failed'/'unknown' "
         f"(cycle 113 P0-B regression guard)"
     )
+
+
+# ── 레거시 commit status fallback 봉인 (Theme B S4) ─────────────────────────
+# ── Legacy commit status fallback guard (auto-merge gate 정확성 경로) ────────
+
+
+@pytest.mark.parametrize("state,expected", [
+    ("pending", "running"),
+    ("success", "passed"),
+    ("failure", "failed"),
+    ("error", "failed"),
+    ("unexpected", "unknown"),
+    ("", "unknown"),
+])
+def test_legacy_state_to_ci_status(state, expected):
+    # 레거시 commit status state → CI 상태 매핑 (checks.py:173-183) 전 분기 봉인.
+    # 기존 테스트는 check-runs 경로만 거쳐 이 매핑에 0회 도달 — auto-merge gate fallback 정확성 직결.
+    assert _legacy_state_to_ci_status(state) == expected
+
+
+async def test_get_ci_status_legacy_fallback_when_no_check_runs():
+    # check-runs 비어 있으면 레거시 commit status fallback (checks.py:143-147) 경유.
+    # filtered 가 비면 _classify_check_runs(L130) 미실행 → 레거시 API → _legacy_state_to_ci_status.
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(side_effect=[
+        _resp(200, {"check_runs": [], "total_count": 0}),
+        _resp(200, {"state": "success", "statuses": [{"state": "success", "context": "ci/legacy"}]}),
+    ])
+    with patch("src.github_client.checks.get_http_client", return_value=mock_client):
+        result = await get_ci_status(TOKEN, REPO, SHA)
+    assert result == "passed"

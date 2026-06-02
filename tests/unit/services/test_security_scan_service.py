@@ -175,3 +175,49 @@ def test_resolve_token_user_plaintext_none_falls_back_to_env(monkeypatch):
     monkeypatch.setenv("GITHUB_TOKEN", "fallback_global_pat")
     token = security_scan_service._resolve_token(_U())  # noqa: SLF001
     assert token == "fallback_global_pat"
+
+
+# ── scan_repo_alerts 처리 본체 봉인 (Theme B S4) ───────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_scan_repo_alerts_counts_and_logs_metadata():
+    """code-scanning alert 1건 → counts +1 + upsert_alert_log 가 정규화 metadata 로 호출 (처리 본체 L148-170).
+
+    kwargs 값(alert_type/alert_number/rule_id)까지 단언해 _alert_metadata 정규화 회귀도 봉인 (PR-5C 회피).
+    """
+    repo = MagicMock(id=7, full_name="owner/test")
+    db = MagicMock()
+    alert = {"number": 5, "rule": {"id": "py/test", "severity": "error"}}
+    with patch.object(security_scan_service, "is_kill_switch_active", return_value=False), \
+         patch.object(security_scan_service, "_resolve_token", return_value="tok"), \
+         patch.object(security_scan_service, "_fetch_alerts",
+                      new=AsyncMock(side_effect=[[alert], []])), \
+         patch.object(security_scan_service.security_alert_log_repo, "upsert_alert_log") as mock_upsert:
+        counts = await security_scan_service.scan_repo_alerts(db, repo)
+    assert counts["code_scanning"] == 1
+    assert counts["secret_scanning"] == 0
+    assert mock_upsert.call_count == 1
+    kw = mock_upsert.call_args.kwargs
+    assert kw["repo_id"] == 7
+    assert kw["alert_type"] == "code_scanning"
+    assert kw["alert_number"] == 5
+    assert kw["rule_id"] == "py/test"
+
+
+@pytest.mark.asyncio
+async def test_scan_repo_alerts_rollback_on_db_error():
+    """upsert_alert_log 가 SQLAlchemyError 시 counts 미증가 + db.rollback 호출 (L164-169 격리)."""
+    from sqlalchemy.exc import SQLAlchemyError
+    repo = MagicMock(id=7, full_name="owner/test")
+    db = MagicMock()
+    alert = {"number": 5, "rule": {"id": "py/test", "severity": "error"}}
+    with patch.object(security_scan_service, "is_kill_switch_active", return_value=False), \
+         patch.object(security_scan_service, "_resolve_token", return_value="tok"), \
+         patch.object(security_scan_service, "_fetch_alerts",
+                      new=AsyncMock(side_effect=[[alert], []])), \
+         patch.object(security_scan_service.security_alert_log_repo, "upsert_alert_log",
+                      side_effect=SQLAlchemyError("boom")):
+        counts = await security_scan_service.scan_repo_alerts(db, repo)
+    assert counts["code_scanning"] == 0
+    db.rollback.assert_called_once()
