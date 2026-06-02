@@ -122,7 +122,10 @@ def _min_height_px(page, selector: str) -> float:
         f"}}"
     )
     if raw is None:
-        pytest.skip(f"셀렉터 '{selector}' 미존재 — 페이지 구조 변경 가능성")
+        # fail-fast — 셀렉터 미존재 = 페이지 구조 회귀 (silent skip 금지, 사이클 157 #9).
+        # docstring 의 fail-fast 의도 정합. 호출처(.btn--sm) 는 overview 에 정적 존재 보장(L178).
+        # Missing selector = structural regression — fail rather than silently skip.
+        pytest.fail(f"셀렉터 '{selector}' 미존재 — 페이지 구조 회귀 (fail-fast)")
     if not raw.endswith("px"):
         return 0.0
     return float(raw[:-2])
@@ -197,7 +200,10 @@ def test_mobile_nav_hamburger_44x44(page, base_url):
         "}"
     )
     if raw_height is None:
-        pytest.skip(".nav-hamburger 셀렉터 미존재 — 페이지 구조 변경 가능성")
+        # fail-fast — .nav-hamburger 는 e2e conftest 가 current_user 를 override(get_current_user)하므로
+        # 항상 렌더(base.html:635 `{% if current_user %}`). 미존재 = 진짜 회귀 (사이클 157 #9).
+        # The e2e conftest overrides get_current_user, so .nav-hamburger always renders; absence = regression.
+        pytest.fail(".nav-hamburger 셀렉터 미존재 — current_user 인증 시 항상 렌더 (fail-fast)")
     min_w_str, min_h_str = raw_height
     assert min_w_str.endswith("px") and min_h_str.endswith("px"), (
         f".nav-hamburger min-w/h px 단위 아님 — minWidth={min_w_str}, minHeight={min_h_str}"
