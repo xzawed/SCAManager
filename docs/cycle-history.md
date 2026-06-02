@@ -5,6 +5,8 @@
 
 ## 목차
 
+- [사이클 158 (157 회고 5+1+cross-verify — docs 정합 봉인: cycle-history 157 섹션 부재 P1 + docs P2 3건 + db.md env.py 함정 노트, 2026-06-03)](#사이클-158)
+- [사이클 157 (156 회고 반영 메타 scope — round_trip CI 활성화 + WCAG tap-target silent-skip→fail-fast, 2 PR, 2026-06-02)](#사이클-157)
 - [사이클 156 (Theme B 안전망 회귀가드 봉인 — "존재하나 미실행" 가드 활성화: SSRF·4채널·legacy CI·PG SKIP LOCKED, 4 PR, 2026-06-02)](#사이클-156)
 - [사이클 155 (154 회고 메타학습 봉인 — 발신 경로 한국어 AST 소스 스캔 자동 가드, 3연속 과대선언 패턴 영구 차단, 2026-06-02)](#사이클-155)
 - [사이클 154 (153 회고 발견 잔여 발신 경로 i18n — telegram 반자동 body P0 + P2 6건 + 호출 역추적 seam, 2026-06-02)](#사이클-154)
@@ -66,9 +68,44 @@
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
 
+## 사이클 158
+
+**날짜**: 2026-06-03 | **PR**: (이 PR — cycle158 docs cleanup) | **상태**: 회고 + docs 정합 봉인
+
+**작업 내용**: 사이클 157 회고 — **5+1 다중 에이전트(관점 5 + cross-verify, Workflow 오케스트레이션)**. 직전 세션이 사이클 158 진입 직후 중단(브랜치만 생성, 커밋 0건 — 6파일 "수정"은 CRLF/LF 노이즈로 HEAD 바이트 동일) → 회고 재실행으로 컨텍스트 복원. 5 관점(test-guard·ci-infra·security-ssrf·docs-sync·policy-meta) 14건 발견 → cross-verify 독립 재검증으로 **real 12(P1 1 + P2 11) / FP 1 차단 / duplicate 1**. 회고 보고서: [`docs/_archive/reports/2026-06-03-cycle-156-157-retrospective.md`](_archive/reports/2026-06-03-cycle-156-157-retrospective.md).
+
+**P1 (1건, 두 관점 독립 식별)**: `docs/cycle-history.md` 사이클 157(#739/#740) 섹션 전면 부재 — STATE.md 는 157 기재하나 cycle-history 는 156→155 직행 (6-step §⑤ STATE↔history 비대칭). → 본 PR 에서 157 섹션 추가로 해소.
+
+**범위 A (안전 docs 묶음 — 사용자 결정, 정책 17 안정성 우선)**: P1 수정 + docs P2 3건 (cycle-history:71 'S3 작업 완료' → 머지 완료 stale 정정 / STATE.md:9 'neednew job' typo / 회고 보고서 경로 추적성) + db.md `env.py:30` override 함정 노트(신규 발견 ROI 최고). **src·테스트·CI 무변경 (4712 불변)**.
+
+**회고 백로그 (P2 8건 보류 — 사용자 결정 영역)**: 테스트/CI 하드닝 (security_scan rollback secret 단언 / round_trip clean-base 가드 / `_http.py:73` DNS except OSError 확장 / `_min_height_px` fail-fast 정합 / postgres:16.x 핀 / pg-concurrency job name) + src (`scan_all_repos` 외부 루프 db.rollback) + 신규 (ci.yml node-id 핀 가드 / `_measure_injected_btn` 자매 헬퍼 silent 0.0).
+
+**테스트 카운트 실측** (정책 8 진화 3): `pytest --collect-only` = 4712 (단위 4559 + 통합 153) — STATE·README 정확 일치.
+
+**Codex mutual** (정책 18): push 전 검증 의뢰.
+
+---
+
+## 사이클 157
+
+**날짜**: 2026-06-02 | **PR**: #739~#740 (#8·#9) | **상태**: 머지 완료
+
+**작업 내용**: 사이클 156 Theme B 회고 반영 — 메타 scope 완성. Theme B 회고가 발견한 **인접 false-confidence 2건** 활성화 (156 의 "존재하나 미실행 가드" 패턴 연장). 근거 회고: 사이클 156 Theme B (cycle-history 사이클 156 참조).
+
+| # | PR | 내용 |
+|---|----|----|
+| #8 | #739 | round_trip 마이그레이션 테스트 CI 활성화 — `test_0020_round_trip` 의 alembic 왕복이 모든 CI(SQLite)서 영구 skip → `pg-concurrency` job 에 편입. **활성화가 잠재 결함 노출**: `alembic/env.py:30` 가 cfg URL 을 `settings.database_url` 로 덮어써 SQLite 실행 → `patch.object(app_settings, "database_url")` 싱글톤 patch 로 fix-up (메모리 'skip 가드 활성화 = 버그 노출' 교훈 실증). |
+| #9 | #740 | WCAG tap-target E2E silent-skip→fail-fast — 셀렉터 미존재 시 회귀를 skip 으로 흡수하던 것을 fail 로 전환. `base.html .nav-hamburger`·overview `.btn--sm` 은 항상 렌더되므로 미존재 = 회귀. conftest `get_current_user` override 로 항상 렌더 보장. |
+
+**테스트**: round_trip 활성화(skip→pass 상태전환) + WCAG fail-fast 가드. **신규 수집 0** (단위 4559 / 통합 153 불변 — 기존 skip 테스트 활성화·동작 전환 위주). pylint 10.00 유지(src 무변경).
+
+**핵심**: 156 회고의 "인접 false-confidence" 식별 → 활성화. 메모리 `feedback_activate_skipped_guard_reveals_bug.md` 패턴(영구 skip 가드 CI 활성화 시 잠재 버그 노출) 재실증 — #8 env.py override 함정을 동일 PR fix-up 으로 봉인.
+
+---
+
 ## 사이클 156
 
-**날짜**: 2026-06-02 | **PR**: #735~#738 (S1·S2·S4·S3) | **상태**: S1·S2·S4 머지, S3 작업 완료
+**날짜**: 2026-06-02 | **PR**: #735~#738 (S1·S2·S4·S3) | **상태**: S1~S4 전부 머지 완료 (#735~#738)
 
 **작업 내용**: Theme B "안전망 회귀가드 봉인" — 차기 영역 조사(6관점 워크플로 → 5 Theme) 후 사용자 선택. **"가드는 존재하나 절대 실행되지 않는" false-confidence** 영역을 mutation 검증으로 활성화. **전 Sprint src 무변경** (테스트/CI만).
 
