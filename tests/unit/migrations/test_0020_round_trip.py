@@ -93,13 +93,15 @@ def test_migration_alembic_round_trip():
     Note: Legacy migrations (e.g. 0009) use ALTER TABLE UNIQUE which SQLite does not support,
     so full history replay is not possible on SQLite. This test runs on PostgreSQL only.
     """
-    db_url = os.environ.get("DATABASE_URL", "sqlite:///:memory:")
-
-    # SQLite 환경(로컬 단위 테스트)에서는 건너뜀 — PostgreSQL CI/프로덕션에서만 실행
-    # Skip on SQLite (local unit tests) — run only on PostgreSQL CI/production.
-    if db_url.startswith("sqlite"):
+    # PG 전용 — DATABASE_URL_TEST_POSTGRES 설정 시에만 실행 (사이클 157 #8: CI 활성화).
+    # conftest.py 가 DATABASE_URL 을 sqlite 로 강제하므로 별도 PG 전용 env 를 읽는다
+    # (S3 의 test_retry_concurrency_postgres 와 동일 패턴 — pg-concurrency CI job 에서 실행).
+    # PG-only — runs only when DATABASE_URL_TEST_POSTGRES is set (Cycle 157 #8: CI activation).
+    # conftest forces DATABASE_URL to sqlite, so we read a dedicated PG env (same pattern as S3).
+    db_url = os.environ.get("DATABASE_URL_TEST_POSTGRES", "")
+    if not db_url:
         pytest.skip(
-            "Alembic full-history replay requires PostgreSQL "
+            "Alembic full-history replay requires PostgreSQL — set DATABASE_URL_TEST_POSTGRES "
             "(SQLite does not support ALTER TABLE UNIQUE constraint)"
         )
 

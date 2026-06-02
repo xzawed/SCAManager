@@ -150,12 +150,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
 
-      - name: Run PG SKIP LOCKED concurrency tests
+      - name: Run PG-only tests (SKIP LOCKED 동시성 + 마이그레이션 round-trip)
         # DATABASE_URL_TEST_POSTGRES 단일 env 가 필수 — DATABASE_URL 은 conftest.py 가 sqlite 로 덮어씀(무의미).
         # Only DATABASE_URL_TEST_POSTGRES matters — conftest.py overrides DATABASE_URL with sqlite.
-        # 명시 단일 파일 경로만 실행 — e2e/integration 혼입 방지 (testing.md 🔴 격리 규칙). --timeout=60 deadlock guard.
-        # Run only this one file — avoid e2e/integration mixing (testing.md isolation rule).
+        # 명시 파일 경로만 실행 — e2e/integration 혼입 방지 (testing.md 🔴 격리 규칙). --timeout=60 deadlock guard.
+        # 순서: 동시성 테스트(drop_all cleanup) → round-trip(clean DB 에서 alembic from base) (사이클 157 #8).
+        # Order: concurrency tests (drop_all cleanup) → round-trip (alembic from a clean base, Cycle 157 #8).
         env:
           DATABASE_URL_TEST_POSTGRES: "postgresql://scatest:scatest@localhost:5432/scatest"
         run: |
-          python -m pytest tests/integration/test_retry_concurrency_postgres.py -v -rs --timeout=60
+          python -m pytest \
+            tests/integration/test_retry_concurrency_postgres.py \
+            tests/unit/migrations/test_0020_round_trip.py::test_migration_alembic_round_trip \
+            -v -rs --timeout=60

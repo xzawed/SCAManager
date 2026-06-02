@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-06-02 기준 — **사이클 156 Theme B 완료**: 안전망 회귀가드 봉인 — "존재하나 미실행" false-confidence 가드 활성화. S1 SSRF `_http.py` fail-closed(#735) + S2 4채널 SSRF 차단(#736) + S4 coverage-tail (checks.py legacy CI 매핑·security_scan 본체, #737) + S3 PG SKIP LOCKED 동시성 CI container (test_retry_concurrency_postgres CI 영구 skip→pass, barrier 결정성). mutation 전부 KILLED, src 무변경): 162+ PR #188~#738+ — 누적 정책 본문 18건 + 메모리 18건. 전체 4712 수집 (단위 4559 + 통합 153) / E2E 112 (100 표준 + 12 perf) / pylint **10.00/10**
+## 현재 수치 (2026-06-02 기준 — **사이클 156 Theme B 완료**: 안전망 회귀가드 봉인 — "존재하나 미실행" false-confidence 가드 활성화. S1 SSRF `_http.py` fail-closed(#735) + S2 4채널 SSRF 차단(#736) + S4 coverage-tail (checks.py legacy CI 매핑·security_scan 본체, #737) + S3 PG SKIP LOCKED 동시성 CI container (test_retry_concurrency_postgres CI 영구 skip→pass, barrier 결정성). mutation 전부 KILLED, src 무변경. **사이클 157 (156 회고 반영 — 메타 scope 완성)**: #8 round_trip 마이그레이션 테스트 CI 활성화 (Theme B 회고가 발견한 인접 동일 클래스 false-confidence — alembic upgrade/downgrade 왕복이 모든 CI서 영구 skip이던 것 → pg-concurrency job 추가)): 162+ PR #188~#739+ — 누적 정책 본문 18건 + 메모리 18건. 전체 4712 수집 (단위 4559 + 통합 153) / E2E 112 (100 표준 + 12 perf) / pylint **10.00/10**
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
