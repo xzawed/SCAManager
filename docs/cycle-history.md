@@ -70,7 +70,7 @@
 
 ## 사이클 158
 
-**날짜**: 2026-06-03 | **PR**: (이 PR — cycle158 docs cleanup) | **상태**: 회고 + docs 정합 봉인
+**날짜**: 2026-06-03 | **PR**: #741 | **상태**: 회고 + docs 정합 봉인
 
 **작업 내용**: 사이클 157 회고 — **5+1 다중 에이전트(관점 5 + cross-verify, Workflow 오케스트레이션)**. 직전 세션이 사이클 158 진입 직후 중단(브랜치만 생성, 커밋 0건 — 6파일 "수정"은 CRLF/LF 노이즈로 HEAD 바이트 동일) → 회고 재실행으로 컨텍스트 복원. 5 관점(test-guard·ci-infra·security-ssrf·docs-sync·policy-meta) 14건 발견 → cross-verify 독립 재검증으로 **real 12(P1 1 + P2 11) / FP 1 차단 / duplicate 1**. 회고 보고서: [`docs/_archive/reports/2026-06-03-cycle-156-157-retrospective.md`](_archive/reports/2026-06-03-cycle-156-157-retrospective.md).
 
