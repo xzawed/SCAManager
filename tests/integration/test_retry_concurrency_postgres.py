@@ -137,6 +137,10 @@ def test_concurrent_claim_no_double_processing():
         # Result storage and error collector.
         results: list = [None, None]
         errors: list = []
+        # barrier — 두 워커의 claim_batch SELECT 가 동시에 실행되도록 동기화.
+        # 미동반 시 SELECT 윈도우 비중첩으로 회귀(SKIP LOCKED 제거)조차 spurious-pass 가능.
+        # timeout=30 — 한 워커가 barrier 도달 전 예외 시 다른 워커 무기한 block 방지 (deadlock guard).
+        barrier = threading.Barrier(2, timeout=30)
 
         def worker(i: int) -> None:
             """스레드 워커 — 독립 세션으로 claim_batch 호출.
@@ -144,6 +148,7 @@ def test_concurrent_claim_no_double_processing():
             """
             try:
                 with Session() as db:
+                    barrier.wait()  # 두 워커 동시 진입 강제 / force concurrent entry
                     claimed = claim_batch(
                         db,
                         now=datetime.now(timezone.utc).replace(tzinfo=None),
@@ -303,6 +308,10 @@ def test_skip_locked_prevents_concurrent_double_claim():
         # Result storage and error collector.
         results: list = [None, None]
         errors: list = []
+        # barrier — 두 세션이 동일 행을 두고 동시에 SELECT...FOR UPDATE SKIP LOCKED 를 치도록 강제.
+        # 이 동시성이 SKIP LOCKED 의 non-blocking 획득(한 쪽만 성공)을 실제로 검증하는 핵심 조건.
+        # timeout=30 — deadlock guard (한 워커 조기 예외 시 무기한 block 방지).
+        barrier = threading.Barrier(2, timeout=30)
 
         def worker(i: int) -> None:
             """스레드 워커 — 독립 세션으로 동일 행 claim 시도.
@@ -310,6 +319,7 @@ def test_skip_locked_prevents_concurrent_double_claim():
             """
             try:
                 with Session() as db:
+                    barrier.wait()  # 두 워커 동시 진입 강제 / force concurrent entry
                     claimed = claim_batch(
                         db,
                         now=datetime.now(timezone.utc).replace(tzinfo=None),

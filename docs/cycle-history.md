@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [사이클 156 (Theme B 안전망 회귀가드 봉인 — "존재하나 미실행" 가드 활성화: SSRF·4채널·legacy CI·PG SKIP LOCKED, 4 PR, 2026-06-02)](#사이클-156)
 - [사이클 155 (154 회고 메타학습 봉인 — 발신 경로 한국어 AST 소스 스캔 자동 가드, 3연속 과대선언 패턴 영구 차단, 2026-06-02)](#사이클-155)
 - [사이클 154 (153 회고 발견 잔여 발신 경로 i18n — telegram 반자동 body P0 + P2 6건 + 호출 역추적 seam, 2026-06-02)](#사이클-154)
 - [사이클 153 (i18n 로드맵 완결 — railway Issue·cron 알림 i18n, 발신 경로 한국어 0건 ⚠️회고서 부정확 판정, 2026-06-01)](#사이클-153)
@@ -64,6 +65,29 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 사이클 156
+
+**날짜**: 2026-06-02 | **PR**: #735~#738 (S1·S2·S4·S3) | **상태**: S1·S2·S4 머지, S3 작업 완료
+
+**작업 내용**: Theme B "안전망 회귀가드 봉인" — 차기 영역 조사(6관점 워크플로 → 5 Theme) 후 사용자 선택. **"가드는 존재하나 절대 실행되지 않는" false-confidence** 영역을 mutation 검증으로 활성화. **전 Sprint src 무변경** (테스트/CI만).
+
+| Sprint | PR | 내용 | mutation |
+|--------|----|----|----------|
+| S1 | #735 | SSRF `_http.py` fail-closed 분기 — 빈 host(L54-55)·DNS gaierror(L73-75). 기존 11테스트가 scheme 단계서 막혀 미도달 | KILLED (가드 flip→FAIL) |
+| S2 | #736 | 4채널(discord/slack/webhook/n8n) `validate_external_url`=False 차단 early-return — 기존 테스트 `validate=True` 고정으로 0회 실행 | KILLED ×4 |
+| S4 | #737 | checks.py `_legacy_state_to_ci_status`(auto-merge gate fallback 정확성) parametrize 6+e2e 1 + security_scan 본체 happy/rollback 2 (kwargs 값 단언 PR-5C 봉인) | KILLED ×2 |
+| S3 | #738 | PG SKIP LOCKED 동시성 — `test_retry_concurrency_postgres` 3건이 CI(SQLite)서 영구 skip → `pg-concurrency` job(postgres:16 service) 추가로 활성화 + barrier 결정성 | CI 실측 (PG) |
+
+**계획 프로세스**: 4 클러스터 실측 deep-dive → Sprint 계획 → **적대적 검토**(조건부 승인, 4건 정정 반영: S3 env 단일 `DATABASE_URL_TEST_POSTGRES`·barrier `timeout` deadlock guard·security_scan kwargs 단언 의무화·카운트 표현).
+
+**핵심**: 정책 4(단언+회귀가드 동반) 정합. 각 Sprint mutation 논증으로 "테스트가 진짜 회귀를 잡는가" 입증 (PR-5C 트랩 회피). 검증은 Codex 샌드박스 지속 불능으로 Claude 직접 mutation 검증 대체(세션 확립 선호).
+
+**신규 테스트**: +15 단위 (S1 +2, S2 +4, S4 +9) — 4544→4559. S3 +0(skip→pass 상태전환, 통합 153 불변). pylint 10.00 유지(전 Sprint src 무변경 — 테스트/CI yaml/barrier만).
+
+**보류**: railway_issue.py body 영문 라벨 P2(사이클 154 cross-verify 식별 — 사용자 결정 영역).
+
+---
 
 ## 사이클 155
 

@@ -111,3 +111,51 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
+
+  # SKIP LOCKED 동시성 증명 — Postgres service container (SQLite 미지원 FOR UPDATE SKIP LOCKED).
+  # claim_batch 의 SKIP LOCKED 회귀를 CI 에서 실측 차단 (Theme B S3). test-and-analyze 와 병렬(needs: secret-scan).
+  # SKIP LOCKED concurrency proof — needs a real Postgres (SQLite has no FOR UPDATE SKIP LOCKED).
+  pg-concurrency:
+    name: PG SKIP LOCKED concurrency
+    runs-on: ubuntu-latest
+    needs: secret-scan
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: scatest
+          POSTGRES_PASSWORD: scatest
+          POSTGRES_DB: scatest
+        ports:
+          - 5432:5432
+        # health-check 로 DB 준비 완료까지 대기 (부팅 ~20-40s)
+        # Wait for DB readiness via health-check (boot ~20-40s)
+        options: >-
+          --health-cmd "pg_isready -U scatest"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run PG SKIP LOCKED concurrency tests
+        # DATABASE_URL_TEST_POSTGRES 단일 env 가 필수 — DATABASE_URL 은 conftest.py 가 sqlite 로 덮어씀(무의미).
+        # Only DATABASE_URL_TEST_POSTGRES matters — conftest.py overrides DATABASE_URL with sqlite.
+        # 명시 단일 파일 경로만 실행 — e2e/integration 혼입 방지 (testing.md 🔴 격리 규칙). --timeout=60 deadlock guard.
+        # Run only this one file — avoid e2e/integration mixing (testing.md isolation rule).
+        env:
+          DATABASE_URL_TEST_POSTGRES: "postgresql://scatest:scatest@localhost:5432/scatest"
+        run: |
+          python -m pytest tests/integration/test_retry_concurrency_postgres.py -v -rs --timeout=60
