@@ -691,6 +691,34 @@ def test_add_repo_post_rejects_duplicate():
     assert r.headers["location"].startswith("/repos/add?error=")
 
 
+def test_add_repo_post_blocks_unowned_transfer_without_github_access():
+    """user_id=NULL 리포라도 GitHub 접근 권한 없으면 소유권 이전 차단 — 403 (WBS P1 IDOR-인접 회귀 가드).
+
+    폼 repo_full_name 만 신뢰해 미소유 리포를 탈취하던 결함을 봉인 — list_user_repos 멤버십 미포함 시 403.
+    """
+    from unittest.mock import AsyncMock, patch, MagicMock
+    from src.models.repository import Repository
+
+    existing = MagicMock(spec=Repository)
+    existing.full_name = "victim/private-repo"
+    existing.user_id = None
+
+    with patch("src.ui.routes.add_repo.list_user_repos", new_callable=AsyncMock,
+               return_value=[{"full_name": "attacker/own-repo"}]):  # 대상 리포 미포함
+        with patch("src.ui.routes.add_repo.SessionLocal") as mock_sl:
+            mock_db = MagicMock()
+            mock_db.query.return_value.filter.return_value.first.return_value = existing
+            mock_sl.return_value.__enter__.return_value = mock_db
+            r = client.post(
+                "/repos/add",
+                data={"repo_full_name": "victim/private-repo"},
+                follow_redirects=False,
+            )
+
+    assert r.status_code == 403
+    assert not mock_db.commit.called  # 소유권 이전 안 됨
+
+
 # ── 분석 상세 페이지 테스트 ──────────────────────────
 # ── Analysis detail page tests ──────────────────────────
 
@@ -1486,8 +1514,11 @@ def test_add_repo_missing_name_returns_400():
 
 
 def test_add_repo_ownership_transfer_when_user_id_null():
-    """user_id=NULL인 기존 리포 → 현재 사용자 소유로 이전 후 리다이렉트 (line 118-120)."""
-    from unittest.mock import patch
+    """user_id=NULL 기존 리포 → GitHub 접근 권한 있는 현재 사용자 소유로 이전 (WBS P1 접근 검증 추가).
+
+    이전 경로에 list_user_repos 멤버십 검증 추가됨 — 접근 권한 있을 때만 이전 성공.
+    """
+    from unittest.mock import AsyncMock, patch
     from src.models.repository import Repository
 
     existing = MagicMock(spec=Repository)
@@ -1497,13 +1528,15 @@ def test_add_repo_ownership_transfer_when_user_id_null():
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = existing
 
-    with patch("src.ui.routes.add_repo.SessionLocal") as mock_sl:
-        mock_sl.return_value.__enter__.return_value = mock_db
-        r = client.post(
-            "/repos/add",
-            data={"repo_full_name": "owner/legacy-repo"},
-            follow_redirects=False,
-        )
+    with patch("src.ui.routes.add_repo.list_user_repos", new_callable=AsyncMock,
+               return_value=[{"full_name": "owner/legacy-repo"}]):
+        with patch("src.ui.routes.add_repo.SessionLocal") as mock_sl:
+            mock_sl.return_value.__enter__.return_value = mock_db
+            r = client.post(
+                "/repos/add",
+                data={"repo_full_name": "owner/legacy-repo"},
+                follow_redirects=False,
+            )
 
     assert r.status_code == 303
     assert "/repos/owner/legacy-repo" in r.headers["location"]
