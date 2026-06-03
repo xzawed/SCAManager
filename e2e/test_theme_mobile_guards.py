@@ -109,9 +109,9 @@ _DESKTOP_VIEWPORT = {"width": 1024, "height": 768}
 def _min_height_px(page, selector: str) -> float:
     """헬퍼 — 셀렉터의 computed min-height 를 px 단위 float 반환.
 
-    'auto' / 'normal' 등 비숫자 반환 시 0.0 으로 처리 (가드 통과 X).
+    미존재 셀렉터 / 'auto'·'normal' 등 비px 값 = 둘 다 fail-fast (silent skip·0.0 금지, 사이클 158 회고 P2).
     """
-    # Helper — return computed min-height in px as float; 'auto'/'normal' → 0.0 (fail-fast).
+    # Helper — return computed min-height in px; missing selector OR non-px value → fail-fast (no silent 0.0).
     # Playwright page.evaluate 는 단일 expression 또는 arrow function 만 허용
     # Playwright page.evaluate accepts a single expression OR an arrow function.
     raw = page.evaluate(
@@ -127,7 +127,9 @@ def _min_height_px(page, selector: str) -> float:
         # Missing selector = structural regression — fail rather than silently skip.
         pytest.fail(f"셀렉터 '{selector}' 미존재 — 페이지 구조 회귀 (fail-fast)")
     if not raw.endswith("px"):
-        return 0.0
+        # 비px(auto/normal) = WCAG 타깃 CSS 룰 미적용 회귀 — silent 0.0 대신 raw 값과 함께 fail-fast.
+        # Non-px (auto/normal) = CSS rule not applied (regression) — fail-fast with raw value.
+        pytest.fail(f"셀렉터 '{selector}' min-height='{raw}' (비px) — CSS 룰 미적용 회귀 (fail-fast)")
     return float(raw[:-2])
 
 
@@ -136,6 +138,7 @@ def _measure_injected_btn_min_height(page, btn_class: str) -> float:
 
     overview 페이지가 `.btn--sm` 만 가지므로 정적 셀렉터로는 base `.btn` 규칙 측정 불가.
     DOM 주입 방식이 매체 쿼리 + 클래스 룰을 모두 적용한 결과를 안정적으로 노출한다.
+    비px 값 = .btn CSS 룰 미적용 회귀 → fail-fast (silent 0.0 금지 — `_min_height_px` 와 일관, #740).
     """
     # Helper — inject a stub <a> with the desired class to measure CSS @media + class rule output.
     raw = page.evaluate(
@@ -152,7 +155,9 @@ def _measure_injected_btn_min_height(page, btn_class: str) -> float:
         btn_class,
     )
     if not raw or not raw.endswith("px"):
-        return 0.0
+        # 주입 요소 min-height 가 비px = .btn CSS 룰 미적용 회귀 — silent 0.0 대신 fail-fast (#740 일관).
+        # Injected element non-px min-height = .btn CSS rule not applied — fail-fast (consistent with #740).
+        pytest.fail(f"주입 '{btn_class}' min-height='{raw}' (비px) — .btn CSS 룰 미적용 회귀 (fail-fast)")
     return float(raw[:-2])
 
 
