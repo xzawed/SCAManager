@@ -268,3 +268,29 @@ class TestExtractUsage:
         input_tok, output_tok = claude_metrics.extract_anthropic_usage(mock_response)
         assert input_tok == 0
         assert output_tok == 0
+
+
+class TestAcloseAnthropicClient:
+    """aclose_anthropic_client — AsyncAnthropic httpx 풀 안전 종료 (WBS P1 누수 차단 회귀 가드)."""
+
+    @pytest.mark.asyncio
+    async def test_awaits_async_aclose(self):
+        # 실제 SDK 패턴: aclose 가 코루틴 → await 됨 (풀 해제 보장).
+        from unittest.mock import AsyncMock
+        client = MagicMock()
+        client.aclose = AsyncMock()
+        await claude_metrics.aclose_anthropic_client(client)
+        client.aclose.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_skips_sync_aclose_without_error(self):
+        # 테스트 더블 패턴: sync MagicMock aclose() → 코루틴 아님 → await 생략, 에러 없음.
+        client = MagicMock()  # client.aclose 는 동기 MagicMock
+        await claude_metrics.aclose_anthropic_client(client)  # 예외 미발생
+        client.aclose.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_no_aclose_attribute_is_noop(self):
+        # aclose 속성 부재 → no-op (AttributeError 미발생).
+        client = MagicMock(spec=[])  # 속성 없음
+        await claude_metrics.aclose_anthropic_client(client)  # 예외 미발생

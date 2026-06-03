@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from src.config import settings
 from src.models.analysis import Analysis
 from src.scorer.calculator import calculate_grade
-from src.shared.claude_metrics import extract_anthropic_usage, log_claude_api_call
+from src.shared.claude_metrics import aclose_anthropic_client, extract_anthropic_usage, log_claude_api_call
 from src.shared.lang_names import LANG_NAMES
 
 logger = logging.getLogger(__name__)
@@ -411,6 +411,10 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
                 language=language, error_type=type(exc).__name__, now=_now,
             )
         return {"text": "", "status": "api_error"}
+    finally:
+        # 호출당 생성한 AsyncAnthropic httpx 커넥션 풀 해제 — 미종료 시 FD 누수 (WBS P1).
+        # Close the per-call AsyncAnthropic httpx pool — leaks FDs/connections if left open.
+        await aclose_anthropic_client(client)
 
     if user_id is not None:
         # pylint: disable=import-outside-toplevel

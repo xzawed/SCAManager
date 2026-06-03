@@ -21,7 +21,7 @@ from src.analyzer.pure.review_prompt import build_review_prompt, get_system_prom
 from src.config import settings
 from src.constants import AI_DEFAULT_COMMIT_RAW, AI_DEFAULT_DIRECTION_RAW, AI_RAW_COMMIT_MAX, AI_RAW_DIRECTION_MAX
 from src.shared.anthropic_caching import build_cached_system_param
-from src.shared.claude_metrics import extract_anthropic_usage, log_claude_api_call
+from src.shared.claude_metrics import aclose_anthropic_client, extract_anthropic_usage, log_claude_api_call
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +142,10 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
         )
         logger.exception("AI review failed, using default scores")
         return _default_result("api_error")
+    finally:
+        # 호출당 생성한 AsyncAnthropic httpx 커넥션 풀 해제 — 미종료 시 FD 누수 (WBS P1).
+        # Close the per-call AsyncAnthropic httpx pool — leaks FDs/connections if left open.
+        await aclose_anthropic_client(client)
 
 
 def _extract_test_score(data: dict) -> int:

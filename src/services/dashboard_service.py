@@ -37,7 +37,7 @@ from src.models.merge_attempt import MergeAttempt
 from src.models.repository import Repository
 from src.scorer.calculator import calculate_grade
 from src.shared.anthropic_caching import build_cached_system_param
-from src.shared.claude_metrics import extract_anthropic_usage, log_claude_api_call
+from src.shared.claude_metrics import aclose_anthropic_client, extract_anthropic_usage, log_claude_api_call
 from src.repositories import insight_narrative_cache_repo
 from src.shared.lang_names import LANG_NAMES
 
@@ -905,6 +905,9 @@ async def insight_narrative(  # pylint: disable=too-many-locals
     # Phase 2 d-🅓 (사이클 74) — Insight 영역 한정 Haiku (67% 비용 절감, AI 리뷰 Sonnet 보존)
     # Phase 2 d-🅓 (Cycle 74) — Insight-only Haiku (67% cheaper, AI review keeps Sonnet)
     text = await _call_insight_claude_api(client, settings.claude_insight_model, user_prompt)
+    # 헬퍼 호출 직후 AsyncAnthropic httpx 커넥션 풀 해제 (이후 client 미사용) — FD 누수 차단 (WBS P1).
+    # Close the AsyncAnthropic pool right after the helper call (client is unused afterward).
+    await aclose_anthropic_client(client)
     if text is None:
         return _handle_insight_error(
             db, user_id=user_id, days=days, language=language, error_type="api_error", now=_now,

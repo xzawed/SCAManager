@@ -13,9 +13,26 @@ Anthropic API 가격 정책 (USD per 1M tokens, **2026-04 기준**):
   - 월별 실제 청구액 vs 본 모듈 합계 차이 10% 초과 시 즉시 가격표 갱신.
   - 미지의 모델 이름은 sonnet 요율로 fallback — typo 시 과소/과대 추정 가능.
 """
+import inspect
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+async def aclose_anthropic_client(client) -> None:
+    """호출당 생성한 AsyncAnthropic(httpx 풀)를 안전 종료 — awaitable 일 때만 await (WBS P1 누수 차단).
+
+    실제 SDK 의 aclose 는 코루틴 → await. MagicMock 등 테스트 더블의 sync aclose 는 코루틴이
+    아니므로 조용히 무시 — 프로덕션/테스트 양쪽 호환. 정책 16 (≥3 사용처 헬퍼화).
+    Close a per-call AsyncAnthropic httpx pool; await only when aclose is awaitable (real SDK),
+    silently skip for sync test doubles.
+    """
+    closer = getattr(client, "aclose", None)
+    if closer is None:
+        return
+    result = closer()
+    if inspect.isawaitable(result):
+        await result
 
 # 모델 패밀리별 가격 (USD per 1M tokens, input/output)
 _PRICING_USD_PER_MTOK = {

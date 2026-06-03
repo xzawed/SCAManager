@@ -388,3 +388,17 @@ def test_build_review_prompt_backwards_compat_unchanged():
     if "python" in langs:
         # 단일 언어 시 ## Per-language review criteria inline
         assert "## Per-language review criteria" in user_prompt or "(none)" not in user_prompt
+
+
+async def test_review_code_closes_anthropic_client():
+    """review_code 가 호출 후 AsyncAnthropic httpx 풀을 닫는지 검증 — FD 누수 차단 회귀 가드 (WBS P1).
+
+    finally 가 성공/에러 양 경로에서 aclose_anthropic_client 호출 → 풀 해제. 에러 경로로 검증.
+    """
+    fake_client = MagicMock()
+    fake_client.messages = MagicMock()
+    fake_client.messages.create = AsyncMock(side_effect=httpx.ConnectError("boom"))
+    fake_client.aclose = AsyncMock()
+    with patch("src.analyzer.io.ai_review.anthropic.AsyncAnthropic", return_value=fake_client):
+        await review_code("sk-test", "feat: x", [("app.py", "+ x = 1")])
+    fake_client.aclose.assert_awaited_once()
