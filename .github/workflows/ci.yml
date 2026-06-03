@@ -116,7 +116,10 @@ jobs:
   # claim_batch 의 SKIP LOCKED 회귀를 CI 에서 실측 차단 (Theme B S3). test-and-analyze 와 병렬(needs: secret-scan).
   # SKIP LOCKED concurrency proof — needs a real Postgres (SQLite has no FOR UPDATE SKIP LOCKED).
   pg-concurrency:
-    name: PG SKIP LOCKED concurrency
+    # job name 은 step(SKIP LOCKED + round-trip)을 모두 반영 — 사이클 157 #8 에서 round-trip 추가됐으나
+    # 명칭이 미반영이라 GitHub checks UI 에서 round-trip 회귀 담당이 가려졌음 (사이클 159 — 158 회고 P2).
+    # main 은 branch protection 미적용 — required-check 명 변경 영향 없음(2026-06-03 실측 확인).
+    name: PG-only tests (SKIP LOCKED + migration round-trip)
     runs-on: ubuntu-latest
     needs: secret-scan
     services:
