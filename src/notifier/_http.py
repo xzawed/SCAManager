@@ -70,8 +70,14 @@ async def validate_external_url(url: str) -> bool:
     try:
         raw = await asyncio.to_thread(socket.getaddrinfo, hostname, None)
         addrs = [sockaddr[0] for _f, _t, _p, _c, sockaddr in raw]
-    except socket.gaierror:
-        logger.warning("SSRF guard: DNS resolution failed for hostname '%s'", hostname)
+    except OSError as exc:
+        # gaierror(이름 해석 실패) 외에 socket.timeout·일반 OSError(네트워크 실패) 도 fail-closed.
+        # 이 분기가 gaierror 만 잡으면 DNS timeout/OSError 가 notify 태스크로 전파돼 크래시
+        # (사이클 159 — 158 회고 P2). gaierror·timeout 모두 OSError 서브클래스라 한 번에 포섭.
+        # Catch gaierror plus socket.timeout / general OSError — all fail closed, never crash.
+        logger.warning(
+            "SSRF guard: DNS resolution failed for hostname '%s' (%s)", hostname, type(exc).__name__
+        )
         return False
 
     bad_addr = next((a for a in addrs if _is_dangerous_ip(a)), None)
