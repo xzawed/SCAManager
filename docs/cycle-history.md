@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [사이클 159 (157 회고 백로그 P2 전량 해소 — 4 PR: security_scan/e2e fail-fast·CI 결정성·DNS OSError·job name + Codex 게이트 비활성화, 2026-06-03)](#사이클-159)
 - [사이클 158 (157 회고 5+1+cross-verify — docs 정합 봉인: cycle-history 157 섹션 부재 P1 + docs P2 3건 + db.md env.py 함정 노트, 2026-06-03)](#사이클-158)
 - [사이클 157 (156 회고 반영 메타 scope — round_trip CI 활성화 + WCAG tap-target silent-skip→fail-fast, 2 PR, 2026-06-02)](#사이클-157)
 - [사이클 156 (Theme B 안전망 회귀가드 봉인 — "존재하나 미실행" 가드 활성화: SSRF·4채널·legacy CI·PG SKIP LOCKED, 4 PR, 2026-06-02)](#사이클-156)
@@ -67,6 +68,27 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 사이클 159
+
+**날짜**: 2026-06-03 | **PR**: #743~#746 (PR-A/B/C/D) + #742 | **상태**: 157 회고 백로그 P2 전량 해소
+
+**작업 내용**: 사이클 157 회고(사이클 158 수행)가 식별한 백로그 P2 8건 + cross-verify 신규 2건을 4 PR 로 분할 해소 (정책 7 응집 단위 + 정책 17 위험 티어 분리). 테스트 4712→4716 (단위 4559→4563), pylint 10.00 유지. **Codex stop-time mutual 게이트는 미로그인으로 불능 → 사용자 지시로 비활성화(`reviewGateEnabled:false`) — 정책 18 면제, Claude 직접 검증** (메모리 `feedback_codex_sandbox_precheck.md` 갱신).
+
+| PR | 묶음 | 항목 |
+|----|------|----|
+| A (#743) | 테스트 하드닝 | ⑤ security_scan rollback 후 secret-scanning 지속 회귀가드 (unit +1) + ⑧·자매 `_min_height_px`/`_measure_injected_btn` 비px silent 0.0 → fail-fast 통일 (e2e) |
+| C (#744) | CI 결정성 | ⑨ `postgres:16`→`16.4` minor 핀 + ⑥ round_trip `DROP/CREATE SCHEMA` clean-base self-isolating + ci.yml node-id 핀 가드 주석(신규) |
+| B (#745) | src 정합 | ⑦ `_http.py` DNS `except socket.gaierror`→`except OSError` (timeout/OSError fail-closed, 가드 +2) + ⑪ `scan_all_repos` 외부 루프 `db.rollback()` 세션 격리 (가드 +1, unit +3) |
+| D (#746) | CI 가독성 | ⑩ pg-concurrency job name `PG SKIP LOCKED concurrency` → `PG-only tests (SKIP LOCKED + migration round-trip)` (step name 일치) |
+
+**위험 영역 실측 (정책 15/17#4)**: PR-D job name 변경 전 `gh api .../branches/main/protection` = 404 'Branch not protected' → main 보호 규칙 부재 확정 → required-check 명 변경 영향 없음.
+
+**부수 정리**: stale 잡파일 삭제(`.playwright-mcp/`·사이클 135/142 잔여물) + `.gitignore` `.playwright-mcp/` 추가 (#742).
+
+**자율 판단 보고 (정책 3)**: ⑥ round_trip clean-base 를 PR-A→PR-C 이관(PG-only/required-check 영역 분리). STATE.md 충돌 회피로 PR-D 는 ci.yml 만 수정 → 본 wrap-up 에서 cycle-history 159 엔트리 + STATE 서사 PR-D 반영 (6-step §⑤ — 사이클 158 P1 패턴 재발 방지).
+
+---
 
 ## 사이클 158
 
