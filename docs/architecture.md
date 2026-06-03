@@ -45,7 +45,7 @@ src/
 ├── i18n/                        # 다국어 지원 인프라 (Babel 미사용 JSON dict 자체 구현)
 │   ├── loader.py                # TranslationLoader + LRU cache + 영문 fallback
 │   ├── filters.py               # Jinja2 i18n / i18n_args 필터
-│   └── translations/            # en.json / ko.json / ja.json (8 namespace × 3 언어)
+│   └── translations/            # en.json / ko.json / ja.json (15 namespace × 3 언어)
 ├── services/
 │   ├── analytics_service.py     # 집계 단일 출처 — weekly_summary, moving_average, resolve_chat_id
 │   ├── cron_service.py          # 주기 실행 — run_weekly_reports, run_trend_check
@@ -72,7 +72,7 @@ src/
 ├── analyzer/
 │   ├── pure/                    # registry / language / review_prompt / review_guides (tier1~3 + generic, 50 언어)
 │   ├── io/                      # static.py (Registry 위임) + ai_review.py (Claude API)
-│   │   └── tools/               # 8 분석기 — python (pylint/flake8/bandit) + semgrep + eslint + shellcheck + cppcheck + slither + rubocop + golangci_lint
+│   │   └── tools/               # 23 분석기 모듈 (Tier1 25종 — python 모듈이 pylint/flake8/bandit 3종 번들): python·semgrep·eslint·shellcheck·cppcheck·slither·rubocop·golangci_lint·hadolint·ktlint·tflint·tsc·sqlfluff·yamllint·phpstan·swiftlint·stylelint·htmlhint·buf_lint·dart_analyze·psscriptanalyzer·dotnet_format·clippy (STATE.md 정적분석 도구 단일출처)
 │   └── configs/                 # eslint.config.json 등 외부 도구 설정
 ├── scorer/calculator.py         # calculate_score(ai_review), ScoreResult, _grade
 ├── config_manager/manager.py    # get_repo_config(), upsert_repo_config(), RepoConfigData
@@ -100,7 +100,7 @@ src/
 │   ├── auth.py                  # require_api_key Depends
 │   ├── deps.py                  # get_repo_or_404
 │   ├── repos.py / stats.py / hook.py (_resolve_hook_locale — repo owner 언어 해소, 사이클 151) / users.py
-│   └── repo_report.py               # Repo별 분석 레포트 JSON API (list + detail)
+│   ├── repo_report.py           # Repo별 분석 레포트 JSON API (list + detail)
 │   ├── internal_cron.py         # POST /api/internal/cron/{weekly,trend,scan-security,retry-pending-merges}
 │   ├── issue_registration.py    # POST /api/issues/register + GET /api/issues/status + GET /api/issues/repo-summary (소유권 검증 포함)
 │   └── admin.py                 # GET /api/admin/{tenants,rls-audit,operations}

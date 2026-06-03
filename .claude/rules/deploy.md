@@ -6,7 +6,6 @@ paths:
   - "requirements.txt"
   - "requirements-dev.txt"
   - ".env.example"
-  - "Procfile"
   - "alembic.ini"
   - "sonar-project.properties"
 ---

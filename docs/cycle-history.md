@@ -1,6 +1,6 @@
-# SCAManager 사이클 작업 이력 (사이클 60~92 archive)
+# SCAManager 사이클 작업 이력 (사이클 60~159, 최신순)
 
-> CLAUDE.md tail entry 분리본. 사이클 60~92 historical entries.
+> CLAUDE.md tail entry 분리본. 사이클 60~159 이력 (본문 최신순 — 목차는 159부터, 하단에 60~92 archive).
 > 본 파일은 회고 시점 (정책 8 5+1 패턴) 또는 영역 reference 시 read 의무.
 
 ## 목차
