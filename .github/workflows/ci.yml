@@ -121,7 +121,11 @@ jobs:
     needs: secret-scan
     services:
       postgres:
-        image: postgres:16
+        # minor 핀 — `postgres:16` 은 패치 릴리스마다 silently 변경됨. 이 job 은 FOR UPDATE
+        # SKIP LOCKED + alembic ALTER constraint 등 PG 버전 민감 동작을 검증하므로 재현성을
+        # 위해 minor 고정 (사이클 159 — 158 회고 P2). 주기적으로 최신 16.x 로 bump 권장.
+        # Minor pin for reproducibility — `postgres:16` drifts on each patch release.
+        image: postgres:16.4
         env:
           POSTGRES_USER: scatest
           POSTGRES_PASSWORD: scatest
@@ -154,8 +158,12 @@ jobs:
         # DATABASE_URL_TEST_POSTGRES 단일 env 가 필수 — DATABASE_URL 은 conftest.py 가 sqlite 로 덮어씀(무의미).
         # Only DATABASE_URL_TEST_POSTGRES matters — conftest.py overrides DATABASE_URL with sqlite.
         # 명시 파일 경로만 실행 — e2e/integration 혼입 방지 (testing.md 🔴 격리 규칙). --timeout=60 deadlock guard.
-        # 순서: 동시성 테스트(drop_all cleanup) → round-trip(clean DB 에서 alembic from base) (사이클 157 #8).
-        # Order: concurrency tests (drop_all cleanup) → round-trip (alembic from a clean base, Cycle 157 #8).
+        # 순서: 동시성 테스트(drop_all cleanup) → round-trip (사이클 157 #8). round-trip 은 사이클 159 부터
+        #   DROP/CREATE SCHEMA 로 self-isolating — 순서·선행 cleanup 에 의존하지 않는다 (158 회고 P2).
+        # 🔴 round_trip 파일에 PG 전용 테스트를 추가하면 아래 ::node-id 핀에 함께 등재해야 자동 수집됨
+        #    (node-id 고정이라 신규 테스트는 자동 미수집 — 사이클 159 cross-verify 신규).
+        # Order: concurrency → round-trip (self-isolating since Cycle 159). Add new PG-only tests in
+        #   test_0020_round_trip.py to the ::node-id pin below, else they won't be collected.
         env:
           DATABASE_URL_TEST_POSTGRES: "postgresql://scatest:scatest@localhost:5432/scatest"
         run: |
