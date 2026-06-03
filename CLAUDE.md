@@ -297,17 +297,7 @@ Why + How to apply (자가 검토 4 자문) 상세: [.claude/policies/active.md#
 4. **사이클 종료 = 3 조건 AND 의무** (정책 5 강화 페어) — (a) 사용자 신호 + (b) Claude OK + (c) Codex OK. 1 조건 부재 시 종료 보류.
 5. **5+1 cross-verify ↔ mutual = 2-layer 격리 의무** — 정책 8 5+1 = Claude 내부 self-verify (관점 다양성) / mutual = 외부 LLM (모델 다양성). "Codex OK 받았으니 5+1 6차 생략 OK" 오해 차단 — 양 layer 독립 의무 보존.
 
-**🔴 17 정책 cross-reference 표** (충돌/페어 7건 본문 명시):
-
-| 정책 | mutual 페어 영역 |
-|------|----------------|
-| 3 (자율 판단) | 자율 판단 = mutual OK 받은 영역으로 한정 |
-| 5 (사이클 종료) | 종료 신호 = 두 LLM 동의 의무 구성요소 (3 조건 AND) |
-| 7 (PR 단위) | mutual = **push 전** Codex 검증 OK 후 push (사이클 94 정정) — push 후 의뢰 안티패턴 |
-| 8 (회고 5+1) | 5+1 (Claude 내부) ↔ mutual (외부 LLM) 2-layer 격리 — cross-verify 6차 생략 시도 mutual 별도 의무 |
-| 10 (PR 직접 생성) | Codex/Claude 생성 PR = **push 전 상호 검증 OK 후 push** (사이클 94 정정 — Codex NG #2 학습) — push 후 의뢰 안티패턴 |
-| 12 (MCP scope) | MCP destructive = 사용자 사전 승인 우선 (mutual 면제 — 사용자 직접 결정 영역) |
-| 16 (단순화 5번 토큰 효율) | mutual = 사용자 명시 의무 (단순화 5번 default 위반 면제) |
+**🔴 17 정책 cross-reference 표** (충돌/페어 7건 — 정책 3/5/7/8/10/12/16): 상세 표는 [.claude/policies/active.md#정책-18](.claude/policies/active.md#정책-18) §"17 정책 cross-reference 표" 참조.
 
 **예외 영역 4종** (mutual 검증 면제):
 - 사용자가 "mutual 생략 OK" 명시 발화 시
