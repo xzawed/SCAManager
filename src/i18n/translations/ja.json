@@ -672,6 +672,7 @@
     "github_api_error": "GitHub APIエラー",
     "invalid_url": "無効なURL: {field}。内部ネットワークアドレスは使用できません。",
     "repo_name_required": "リポジトリ名が必要です",
+    "repo_access_denied": "このリポジトリへのGitHubアクセス権限がありません",
     "hook_token_required": "トークンが必要です",
     "hook_invalid_repo_or_token": "未登録のリポジトリまたは無効なトークン",
     "hook_invalid_token": "無効なトークン",

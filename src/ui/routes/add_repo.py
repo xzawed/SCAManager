@@ -103,6 +103,16 @@ async def add_repo(
                     url="/repos/add?error=already_registered",
                     status_code=303,
                 )
+            # 🔴 소유권 이전 전 GitHub 접근 검증 (WBS P1 — IDOR-인접 차단): user_id=NULL 미소유 리포를
+            # 폼 입력(repo_full_name)만으로 탈취하는 것을 막는다. 신규 repo 경로의 create_webhook(token)
+            # 암묵 검증과 대칭 — 접근 권한 없으면 403.
+            # Verify GitHub access before ownership transfer — blocks claiming an unowned repo via form alone.
+            accessible = await list_user_repos(current_user.plaintext_token or "")
+            if repo_full_name not in {r.get("full_name") for r in accessible}:
+                raise HTTPException(
+                    status_code=403,
+                    detail=get_text("errors.repo_access_denied", locale),
+                )
             existing.user_id = current_user.id
             db.commit()
             return RedirectResponse(url=f"/repos/{repo_full_name}", status_code=303)
