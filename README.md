@@ -309,7 +309,7 @@ git push origin main
 | **Database** | PostgreSQL · SQLAlchemy 2 · Alembic · FailoverSessionFactory |
 | **AI (Server)** | Anthropic Claude API (claude-sonnet-4-6) |
 | **AI (Local Hook)** | Claude Code CLI (`claude -p`) |
-| **Static Analysis** | pylint · flake8 · bandit (Python) + Semgrep (22+) + ESLint (JS/TS) + ShellCheck (shell) + cppcheck (C/C++) + slither (Solidity) + RuboCop (Ruby) + golangci-lint (Go) |
+| **Static Analysis** | **Tier1 25 tools** — pylint · flake8 · bandit (Python) + Semgrep (22+) + ESLint + ShellCheck + cppcheck + slither + RuboCop + golangci-lint + 15 more (hadolint · ktlint · tflint · tsc · sqlfluff · yamllint · phpstan · swiftlint · stylelint · htmlhint · buf_lint · dart_analyze · psscriptanalyzer · dotnet_format · clippy) — see [docs/reference/language-coverage.md](docs/reference/language-coverage.md) |
 | **Testing** | pytest · pytest-asyncio · httpx TestClient |
 | **E2E Testing** | Playwright (Chromium) |
 | **Web UI** | Jinja2 · Chart.js · CSS Variables (4 themes) |
