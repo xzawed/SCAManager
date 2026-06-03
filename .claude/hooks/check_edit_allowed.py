@@ -8,7 +8,6 @@
 - alembic/versions/  : DB 마이그레이션 (pytest로 검증 불가, 데이터 손실 위험)
 - src/templates/     : HTML 템플릿 (렌더링 오류는 pytest 미감지)
 - railway.toml       : 프로덕션 배포 설정
-- Procfile           : 프로덕션 시작 명령
 - alembic.ini        : Alembic 설정
 
 [허용 조건]
@@ -46,7 +45,6 @@ PROTECTED_PATTERNS = [
     (r"alembic/versions/",  "DB 마이그레이션 파일 — 잘못된 수정은 데이터 손실로 이어집니다"),
     (r"src/templates/",     "HTML 템플릿 — 렌더링 오류와 변수명 오류는 pytest로 감지되지 않습니다"),
     (r"railway\.toml$",     "프로덕션 배포 설정 — 오류는 실제 배포 시점에만 드러납니다"),
-    (r"(^|/)Procfile$",     "프로덕션 시작 명령 — 오류는 실제 배포 시점에만 드러납니다"),
     (r"alembic\.ini$",      "Alembic 설정 — 경로 오류는 앱 시작 시에만 드러납니다"),
 ]
 
