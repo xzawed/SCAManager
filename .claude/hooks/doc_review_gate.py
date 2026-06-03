@@ -12,10 +12,6 @@ from pathlib import Path
 # ─── 파일 등급 분류 ──────────────────────────────────────────────────────────
 # File grade classification
 
-_PROJECT_PREFIXES = (
-    "d:/source/scamanager/",
-)
-
 _CRITICAL = [
     r"^CLAUDE\.md$",
     r"^docs/STATE\.md$",
@@ -38,15 +34,20 @@ _LOW_RISK = [
 ]
 
 
+def _project_root() -> str:
+    """프로젝트 루트를 런타임 결정 — 훅은 `.claude/hooks/` 에 위치 (WBS P0 회귀 복구, 사이클 160).
+    하드코딩 절대경로(commit 7d20dc6 회귀 — `d:/source/scamanager/`) 제거: 드라이브/대소문자/구분자 무관.
+    Resolve project root at runtime (hook lives in .claude/hooks/); no hardcoded path."""
+    return str(Path(__file__).resolve().parents[2]).replace("\\", "/").rstrip("/").lower() + "/"
+
+
 def _normalise(path: str) -> str:
-    """경로를 슬래시로 정규화하고 프로젝트 루트 접두사를 제거한다.
-    Normalise path to forward-slashes and strip project root prefix."""
+    """경로를 슬래시 정규화 + 런타임 프로젝트 루트 접두사 제거 (절대/상대 모두 처리).
+    Normalise to forward-slashes and strip the runtime-resolved project root prefix."""
     p = path.replace("\\", "/")
-    lower = p.lower()
-    for prefix in _PROJECT_PREFIXES:
-        if lower.startswith(prefix.lower()):
-            p = p[len(prefix):]
-            break
+    root = _project_root()
+    if p.lower().startswith(root):
+        return p[len(root):]
     return p
 
 
