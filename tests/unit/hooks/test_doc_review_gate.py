@@ -49,17 +49,23 @@ class TestClassifyFileGrade:
     def test_python_source_is_skip(self):
         assert classify_file_grade("src/main.py") == "skip"
 
-    def test_absolute_windows_path_normalized(self):
-        grade = classify_file_grade(
-            "d:/Source/SCAManager/CLAUDE.md"
-        )
-        assert grade == "critical"
+    def test_absolute_path_from_runtime_root_is_critical(self):
+        # 런타임 프로젝트 루트 기반 절대경로 — 하드코딩 경로 회귀 차단 (WBS P0, 사이클 160).
+        # 기존 'd:/Source/SCAManager' 하드코딩 테스트는 버그 prefix 와 동일해 결함을 은폐했음.
+        # Absolute path from the real repo root must classify regardless of drive/case/separator.
+        root = Path(__file__).resolve().parents[3]  # repo root (test: tests/unit/hooks/)
+        assert classify_file_grade(str(root / "CLAUDE.md")) == "critical"
 
-    def test_backslash_path_normalized(self):
-        grade = classify_file_grade(
-            "d:\\Source\\SCAManager\\.claude\\agents\\test-writer.md"
-        )
-        assert grade == "critical"
+    def test_absolute_path_uppercase_drive_backslash_is_critical(self):
+        # 대문자 드라이브 + 백슬래시 변형도 critical (Windows 경로 회귀 가드).
+        root = Path(__file__).resolve().parents[3]
+        p = str(root / ".claude" / "agents" / "test-writer.md").replace("/", "\\")
+        assert classify_file_grade(p) == "critical"
+
+    def test_stale_hardcoded_prefix_not_relied_on(self):
+        # 과거 버그 prefix(d:/source/scamanager/)에 더 이상 의존하지 않음 — 실 루트와 다른
+        # 임의 절대경로는 strip 되지 않아 'skip' 이 정상 (상대경로만 분류).
+        assert classify_file_grade("d:/source/scamanager/CLAUDE.md") == "skip"
 
 
 class TestApplyVetoMatrix:
