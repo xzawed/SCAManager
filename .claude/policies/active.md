@@ -389,6 +389,20 @@ git push -u origin <branch>
   2. Codex GitHub App + GitHub Actions workflow `codex-mutual-review.yml` (사이클 94+ 옵션, 사용자 confirm 후)
 - ⚠️ **`.codex/hooks.json` Windows hard-coded path** — `f:\DEVELOPMENT\...` 경로 → Codespaces (Linux) 환경에서 hook 0% 발화. mutual 자동화 검토 시 사전 인지 의무 (사이클 93 관점 5 발견).
 
+### 17 정책 cross-reference 표 (CLAUDE.md 정책 18 본문서 이관 — docs reorg Phase 3d)
+
+mutual 검증이 다른 정책과 맺는 충돌/페어 7건:
+
+| 정책 | mutual 페어 영역 |
+|------|----------------|
+| 3 (자율 판단) | 자율 판단 = mutual OK 받은 영역으로 한정 |
+| 5 (사이클 종료) | 종료 신호 = 두 LLM 동의 의무 구성요소 (3 조건 AND) |
+| 7 (PR 단위) | mutual = **push 전** Codex 검증 OK 후 push (사이클 94 정정) — push 후 의뢰 안티패턴 |
+| 8 (회고 5+1) | 5+1 (Claude 내부) ↔ mutual (외부 LLM) 2-layer 격리 — cross-verify 6차 생략 시도 mutual 별도 의무 |
+| 10 (PR 직접 생성) | Codex/Claude 생성 PR = **push 전 상호 검증 OK 후 push** (사이클 94 정정 — Codex NG #2 학습) — push 후 의뢰 안티패턴 |
+| 12 (MCP scope) | MCP destructive = 사용자 사전 승인 우선 (mutual 면제 — 사용자 직접 결정 영역) |
+| 16 (단순화 5번 토큰 효율) | mutual = 사용자 명시 의무 (단순화 5번 default 위반 면제) |
+
 ### NG 회기 ≤ 3회 default 가드
 
 | 회기 | default 동작 |
