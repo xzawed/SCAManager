@@ -164,6 +164,30 @@ async def test_scan_all_repos_iterates_repos(monkeypatch):
     assert totals["code_scanning"] == 2
 
 
+@pytest.mark.asyncio
+async def test_scan_all_repos_rollback_on_repo_error(monkeypatch):
+    """repo 처리 중 에러 전파 시 db.rollback() 으로 세션 오염 차단 (사이클 159 — 158 회고 P2).
+
+    회귀 가드: outer except 에 rollback 부재 시 poisoned session 이 다음 repo 로 연쇄 실패.
+    Regression guard: without rollback, a poisoned session cascades into the next repo.
+    """
+    monkeypatch.delenv("SECURITY_AUTO_PROCESS_DISABLED", raising=False)
+    from sqlalchemy.exc import SQLAlchemyError
+    fake_db = MagicMock()
+    repo1 = MagicMock(full_name="a/b", id=1)
+    repo2 = MagicMock(full_name="c/d", id=2)
+    fake_db.query.return_value.all.return_value = [repo1, repo2]
+    with patch.object(
+        security_scan_service, "scan_repo_alerts",
+        new=AsyncMock(side_effect=SQLAlchemyError("boom")),
+    ):
+        totals = await security_scan_service.scan_all_repos(fake_db)
+    # 두 repo 모두 에러 → repos 카운트 증가, repo 당 rollback 1회 (총 2회)
+    # Both repos error → repos counted, rollback called once per repo (2 total)
+    assert totals["repos"] == 2
+    assert fake_db.rollback.call_count == 2
+
+
 def test_resolve_token_user_plaintext_none_falls_back_to_env(monkeypatch):
     """user.plaintext_token=None 이어도 GITHUB_TOKEN 환경변수 fallback 보장.
     Falls back to GITHUB_TOKEN env when user.plaintext_token is None, even if github_access_token exists."""

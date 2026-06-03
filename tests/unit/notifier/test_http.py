@@ -99,6 +99,22 @@ async def test_validate_dns_resolution_failure_blocked():
         assert await validate_external_url("https://nonexistent.invalid/hook") is False
 
 
+async def test_validate_dns_timeout_blocked():
+    # DNS 조회가 timeout 되어도 fail-closed 차단 (사이클 159 — 158 회고 P2)
+    # socket.timeout(=TimeoutError) 은 gaierror 형제 예외 — 기존 except gaierror 는 미포착해
+    # notify 태스크로 전파됐음. except OSError 확장으로 graceful 차단.
+    # DNS timeout → fail-closed block; socket.timeout was previously uncaught and crashed the task.
+    with patch("socket.getaddrinfo", side_effect=socket.timeout("timed out")):
+        assert await validate_external_url("https://slow.example.com/hook") is False
+
+
+async def test_validate_dns_oserror_blocked():
+    # 일반 OSError(예: 네트워크 도달 불가) 도 fail-closed 차단 — except OSError 포섭 (158 회고 P2)
+    # General OSError (e.g. network unreachable) → fail-closed block via the widened except OSError.
+    with patch("socket.getaddrinfo", side_effect=OSError("network is unreachable")):
+        assert await validate_external_url("https://unreachable.example.com/hook") is False
+
+
 # ---------------------------------------------------------------------------
 # build_safe_client 테스트
 # ---------------------------------------------------------------------------

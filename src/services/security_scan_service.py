@@ -193,4 +193,9 @@ async def scan_all_repos(db: Session) -> dict[str, int]:
                 "security_scan: repo=%s 처리 실패 err=%s",
                 sanitize_for_log(repo.full_name), type(exc).__name__,
             )
+            # 세션 오염 방지 — repo 처리 중 에러로 세션이 failed 상태면 다음 repo 가
+            # InvalidRequestError 로 연쇄 실패 (사이클 159 — 158 회고 P2, api.md 세션 격리 원칙).
+            # 단일 repo 함수 내부 롤백은 upsert 실패만 커버하므로 그 밖의 전파 에러를 여기서 격리한다.
+            # Roll back to avoid a poisoned session cascading into the next repo.
+            db.rollback()
     return totals
