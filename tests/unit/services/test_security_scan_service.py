@@ -221,3 +221,33 @@ async def test_scan_repo_alerts_rollback_on_db_error():
         counts = await security_scan_service.scan_repo_alerts(db, repo)
     assert counts["code_scanning"] == 0
     db.rollback.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_scan_repo_alerts_rollback_does_not_abort_secret_scanning():
+    """code-scanning upsert 실패(rollback) 후에도 outer loop 가 secret-scanning 을 계속 처리.
+
+    회귀 가드: except 절(L164-169)에 break/return 이 추가되면 secret-scanning 처리가 통째
+    건너뛰어짐 — 기존 rollback 테스트는 secret=[] 라 이 동작을 구분 못 함 (사이클 158 회고 P2).
+    Regression guard: a future break/return in the except block would skip secret scanning
+    entirely; the prior rollback test used secret=[] so it could not distinguish this.
+    """
+    from sqlalchemy.exc import SQLAlchemyError
+    repo = MagicMock(id=7, full_name="owner/test")
+    db = MagicMock()
+    code_alert = {"number": 5, "rule": {"id": "py/test", "severity": "error"}}
+    secret_alert = {"number": 9, "secret_type": "github_pat"}
+    with patch.object(security_scan_service, "is_kill_switch_active", return_value=False), \
+         patch.object(security_scan_service, "_resolve_token", return_value="tok"), \
+         patch.object(security_scan_service, "_fetch_alerts",
+                      new=AsyncMock(side_effect=[[code_alert], [secret_alert]])), \
+         patch.object(security_scan_service.security_alert_log_repo, "upsert_alert_log",
+                      side_effect=[SQLAlchemyError("boom"), None]):
+        counts = await security_scan_service.scan_repo_alerts(db, repo)
+    # code-scanning upsert 실패 → counts 미증가 + rollback 1회
+    # code-scanning upsert failed → count not incremented + rollback once
+    assert counts["code_scanning"] == 0
+    db.rollback.assert_called_once()
+    # 핵심: rollback 후에도 outer loop 가 secret-scanning 을 계속 처리해 1건 집계
+    # Key: after rollback, the outer loop continues to secret-scanning and counts 1
+    assert counts["secret_scanning"] == 1
