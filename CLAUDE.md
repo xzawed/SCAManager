@@ -101,7 +101,7 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 모든 AI 에이전트(Claude Code 및 서브에이전트)는 SCAManager 작업 시 아래 규칙을 **반드시** 따른다.
 `.claude/` 디렉토리에 정의된 스킬과 에이전트는 선택이 아닌 의무적 도구다.
 
-> **📚 협업 회고 + 사용자 합의 정책**: 2026-05-01 회고 결과 사용자가 합의한 협업 정책 5건은 [docs/reports/2026-05-01-collaboration-retrospective.md](docs/reports/2026-05-01-collaboration-retrospective.md) 참조. 다음 세션의 Claude 는 본 정책을 default 로 적용. 핵심 5건은 아래 "사용자 협업 정책 (2026-05-01 합의)" 섹션 명시.
+> **📚 협업 회고 + 사용자 합의 정책**: 2026-05-01 회고 결과 사용자가 합의한 협업 정책 5건은 [docs/_archive/reports/2026-05-01-collaboration-retrospective.md](docs/_archive/reports/2026-05-01-collaboration-retrospective.md) 참조. 다음 세션의 Claude 는 본 정책을 default 로 적용. 핵심 5건은 아래 "사용자 협업 정책 (2026-05-01 합의)" 섹션 명시.
 
 ### 사용자 협업 정책 (2026-05-01 합의)
 
@@ -368,11 +368,11 @@ GitHub Code Scanning 점검 detail 절차 + 운영 통합 = `docs/runbooks/opera
   | `docs/architecture.md` `services/` 한 줄 | 신규 service 함수 목록 갱신 |
   | `docs/architecture.md` 핵심 데이터 흐름 | 신규 경로가 흐름도에 포함되어야 하면 추가 |
   | `docs/reference/env-vars.md` | **신규 환경변수 (`*_DISABLED` kill-switch / `SAAS_*` / 모델 분기 / DB 등) 추가 시 적정 섹션 등재 의무** (사이클 82 5+1 cross-verify P0 학습 — 4건 누적 누락). **+ `config.py` `field_validator`/최솟값 제약 추가·변경 시에도** env-vars.md 해당 행 설명·예시 동기화 의무 (사이클 119 P0-C/P1-D 재발 방지 — SESSION_SECRET 32자 이상 예시 누락·MERGE_UNKNOWN_RETRY 미등재) |
-  | `.claude/rules/<area>.md` | **🔴 사이클 86 Q2 신설 (사용자 명시 결정)** — 영역별 path-scoped rules 본문 sync 의무. `tests/**` / `alembic/**` / `src/<area>/**` 등 path 매칭 영역 변경 시 해당 `.claude/rules/<area>.md` 본문 갱신 의무. 8 영역 매트릭스: testing.md (`tests/**`, `e2e/**`, `pytest.ini`) / db.md (`alembic/**`, `src/models/**`, `src/database.py`, `src/repositories/**`) / pipeline.md (`src/worker/`, `src/analyzer/`, `src/scorer/`, `src/webhook/`, `src/gate/`) / api.md (`src/api/**`, `src/notifier/**`, `src/webhook/**`, `src/gate/**`, `src/main.py`) / security.md (`src/auth/**`, `src/crypto.py`, `src/shared/log_safety.py`) / ui.md (`src/templates/**`, `src/static/**`, `src/ui/**`) / i18n.md (`src/i18n/**`, `src/middleware/locale.py`) / deploy.md (`railway.toml`, `nixpacks.toml`, `requirements.txt` 등). path 매칭 시 자동 로드 (Anthropic 공식 패턴) — 본문 stale 시 Claude rule guidance drift 위험 |
+  | `.claude/rules/<area>.md` | **🔴 사이클 86 Q2 신설 (사용자 명시 결정)** — 영역별 path-scoped rules 본문 sync 의무. `tests/**` / `alembic/**` / `src/<area>/**` 등 path 매칭 영역 변경 시 해당 `.claude/rules/<area>.md` 본문 갱신 의무. 8 영역 매트릭스: testing.md (`tests/**`, `e2e/**`, `pytest.ini`) / db.md (`alembic/**`, `src/models/**`, `src/database.py`, `src/repositories/**`) / pipeline.md (`src/worker/`, `src/analyzer/`, `src/scorer/`, `src/webhook/`, `src/gate/`) / api.md (`src/api/**`, `src/notifier/**`, `src/webhook/**`, `src/gate/**`, `src/main.py`) / security.md (`src/auth/**`, `src/crypto.py`, `src/shared/log_safety.py`, `src/api/auth.py`, `src/webhook/validator.py`, `src/main.py`) / ui.md (`src/templates/**`, `src/static/**`, `src/ui/**`) / i18n.md (`src/i18n/**`, `src/middleware/locale.py`, `src/notifier/_language.py`, `src/analyzer/pure/review_guides/**`) / deploy.md (`railway.toml`, `nixpacks.toml`, `requirements.txt`, `sonar-project.properties` 등). path 매칭 시 자동 로드 (Anthropic 공식 패턴) — 본문 stale 시 Claude rule guidance drift 위험 |
 
 ### 모바일 환경 보호 — 수정 금지 파일
 
-🔴 수정 금지 파일(`alembic/versions/`, `src/templates/*.html`, `railway.toml`, `Procfile`, `alembic.ini`) — 테스트 환경 없을 때 PreToolUse Hook 자동 차단. 상세: [docs/runbooks/workflow.md](docs/runbooks/workflow.md#모바일-환경-보호--수정-금지-파일)
+🔴 수정 금지 파일(`alembic/versions/`, `src/templates/*.html`, `railway.toml`, `alembic.ini`) — 테스트 환경 없을 때 PreToolUse Hook 자동 차단. 상세: [docs/runbooks/workflow.md](docs/runbooks/workflow.md#모바일-환경-보호--수정-금지-파일)
 
 **예외:** `make test` 가 정상 실행되는 환경(로컬 PC, GitHub Codespaces)에서는 모든 파일 수정이 허용된다.
 

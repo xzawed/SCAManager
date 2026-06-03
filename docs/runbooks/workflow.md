@@ -70,7 +70,6 @@ PreToolUse Hook(`.claude/hooks/check_edit_allowed.py`)이 자동으로 차단한
 | `alembic/versions/` | DB 스키마 손상, 데이터 손실 | 테스트 환경 없을 때 |
 | `src/templates/*.html` | Jinja2 렌더링 오류 (pytest 미감지) | 테스트 환경 없을 때 |
 | `railway.toml` | 프로덕션 배포 실패 | 테스트 환경 없을 때 |
-| `Procfile` | 프로덕션 시작 명령 오류 | 테스트 환경 없을 때 |
 | `alembic.ini` | Alembic 경로 설정 오류 | 테스트 환경 없을 때 |
 
 **예외:** `make test` 가 정상 실행되는 환경(로컬 PC, GitHub Codespaces)에서는 모든 파일 수정이 허용된다.
