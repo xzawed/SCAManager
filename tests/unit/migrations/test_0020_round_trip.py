@@ -14,7 +14,7 @@ os.environ.setdefault("TELEGRAM_BOT_TOKEN", "123:ABC")
 os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 
 import pytest
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine, inspect, text
 
 from src.database import Base
 import src.models.merge_retry  # ensure model is registered on Base.metadata
@@ -120,6 +120,18 @@ def test_migration_alembic_round_trip():
     # env.py overrides cfg URL with settings.database_url (singleton fixed to sqlite at import),
     # so patch the singleton attribute to the PG URL; patch.object restores it automatically.
     with patch.object(app_settings, "database_url", db_url):
+        # 🔴 clean-base 보장 (사이클 159 — 158 회고 P2): 동일 pg-concurrency job 의 선행 테스트가
+        # Base.metadata.create_all 로 만든 잔여 테이블이 비정상 종료(barrier timeout 등)로 남으면
+        # from-base upgrade 가 DuplicateTable 로 spurious-fail — 격리를 CI 실행 순서에만 의존하지
+        # 않도록 스키마를 명시적으로 리셋해 round-trip 을 self-isolating 으로 만든다.
+        # Reset schema to guarantee a clean base — prior tests in the same PG job may leave residual
+        # tables on abnormal exit, which would make the from-base upgrade fail with DuplicateTable.
+        reset_eng = create_engine(db_url)
+        with reset_eng.begin() as conn:
+            conn.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
+            conn.execute(text("CREATE SCHEMA public"))
+        reset_eng.dispose()
+
         # 0020mergeretryqueue 로 업그레이드 / Upgrade to 0020mergeretryqueue.
         alembic_command.upgrade(cfg, "0020mergeretryqueue")
 
