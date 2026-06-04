@@ -8,25 +8,11 @@ from urllib.parse import urlparse
 import httpx
 
 from src.constants import HTTP_CLIENT_TIMEOUT
+from src.shared.ssrf import is_dangerous_ip
 
 logger = logging.getLogger(__name__)
 
 _ALLOWED_SCHEMES = {"https"}
-
-
-def _is_dangerous_ip(addr: str) -> bool:
-    """Return True if the IP address should be blocked (private/loopback/link-local/etc.)."""
-    try:
-        ip = ipaddress.ip_address(addr)
-        return (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_reserved
-            or ip.is_multicast
-        )
-    except ValueError:
-        return False
 
 
 async def validate_external_url(url: str) -> bool:
@@ -57,7 +43,7 @@ async def validate_external_url(url: str) -> bool:
     # Direct IP literal — check immediately without DNS lookup
     try:
         ipaddress.ip_address(hostname)
-        is_bad = _is_dangerous_ip(hostname)
+        is_bad = is_dangerous_ip(hostname)
         if is_bad:
             logger.warning("SSRF guard: rejected private/loopback IP literal '%s'", hostname)
         return not is_bad
@@ -80,7 +66,7 @@ async def validate_external_url(url: str) -> bool:
         )
         return False
 
-    bad_addr = next((a for a in addrs if _is_dangerous_ip(a)), None)
+    bad_addr = next((a for a in addrs if is_dangerous_ip(a)), None)
     if bad_addr:
         logger.warning(
             "SSRF guard: hostname '%s' resolved to blocked IP '%s'", hostname, bad_addr

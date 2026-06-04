@@ -7,6 +7,7 @@ from urllib.parse import quote
 import httpx
 
 from src.constants import GITHUB_API
+from src.github_client.helpers import repo_path as _repo_path
 from src.shared.http_client import get_http_client
 from src.shared.log_safety import sanitize_for_log
 
@@ -21,14 +22,6 @@ WEBHOOK_EVENTS = ["push", "pull_request", "issues", "check_suite"]
 
 def _auth_headers(token: str) -> dict:
     return {**_HEADERS, "Authorization": f"Bearer {token}"}
-
-
-def _repo_path(full_name: str) -> str:
-    """owner/repo 를 URL 안전하게 인코딩 (슬래시는 유지).
-
-    GitHub 저장소 이름은 신뢰 입력이지만 방어적 인코딩으로 path injection 차단.
-    """
-    return quote(full_name, safe="/")
 
 
 async def list_user_repos(token: str) -> list[dict]:
@@ -154,7 +147,7 @@ REPO=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['rep
 [ -n "${SERVER}" ] || exit 0
 
 REPO_ENC=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "${REPO}")
-STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${SERVER}/api/hook/verify?repo=${REPO_ENC}&token=${TOKEN}" 2>/dev/null)
+STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer ${TOKEN}" "${SERVER}/api/hook/verify?repo=${REPO_ENC}" 2>/dev/null)
 [ "${STATUS}" = "200" ] || exit 0
 
 read -r LOCAL_REF LOCAL_SHA REMOTE_REF REMOTE_SHA < /dev/stdin 2>/dev/null || true

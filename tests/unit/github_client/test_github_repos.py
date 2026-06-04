@@ -277,6 +277,21 @@ def test_install_hook_sh_uses_anthropic_api():
     )
 
 
+def test_install_hook_sh_verify_uses_bearer_not_query_token():
+    """verify 호출이 토큰을 Authorization: Bearer 헤더로 전달하고 query param 으로는 노출 안 함.
+    The verify call sends the token via Authorization: Bearer header, not as a query param.
+
+    WBS 감사 P2 — 토큰이 URL(서버/프록시 access 로그·히스토리)에 노출되던 결함 봉인.
+    WBS audit P2 — seals the leak where the token appeared in the URL (server/proxy logs, history).
+    """
+    from src.github_client.repos import _INSTALL_HOOK_SH
+    verify_lines = [l for l in _INSTALL_HOOK_SH.splitlines() if "/api/hook/verify" in l]
+    assert verify_lines, "verify 호출 라인을 찾지 못함"
+    verify_line = verify_lines[0]
+    assert 'Authorization: Bearer ${TOKEN}' in verify_line, "verify 가 Bearer 헤더를 쓰지 않음"
+    assert "token=${TOKEN}" not in verify_line, "verify URL 에 token query param 이 남아있음"
+
+
 def test_install_hook_sh_reads_anthropic_api_key():
     """pre-push hook 스크립트가 ANTHROPIC_API_KEY 환경변수를 사용해야 한다."""
     from src.github_client.repos import _INSTALL_HOOK_SH
