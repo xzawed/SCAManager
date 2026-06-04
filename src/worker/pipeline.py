@@ -96,7 +96,9 @@ def build_analysis_result_dict(
 def _extract_commit_message(event: str, data: dict) -> str:
     """Extract the commit or PR message from the webhook payload."""
     if event == "pull_request":
-        pr = data.get("pull_request", {})
+        # pull_request 키가 present-but-None 일 수 있어 `or {}` 정규화 (PR #124 패턴)
+        # pull_request key may be present-but-None — normalize with `or {}` (PR #124 pattern)
+        pr = data.get("pull_request") or {}
         title = pr.get("title", "")
         body = pr.get("body") or ""
         return f"{title}\n\n{body}".strip() if body else title
@@ -117,9 +119,24 @@ def _extract_author_login(event_type: str, data: dict) -> str | None:
     On missing keys, returns None silently.
     """
     if event_type == "pull_request":
-        return (data.get("pull_request") or {}).get("user", {}).get("login")
+        # user 키도 present-but-None 가능 — 한 단계 더 `or {}` 정규화 (PR #124 패턴)
+        # user key may also be present-but-None — normalize one more level (PR #124 pattern)
+        return ((data.get("pull_request") or {}).get("user") or {}).get("login")
     head = data.get("head_commit") or {}
     return (head.get("author") or {}).get("username")
+
+
+def _extract_pr_head_ref(event: str, data: dict) -> str | None:
+    """PR 이벤트에서 head 브랜치 ref 를 추출한다 (PR 외 이벤트는 None).
+    Extract the head branch ref from a PR event (None for non-PR events).
+
+    pull_request / head 키가 present-but-None 일 수 있어 `or {}` 정규화 (PR #124 패턴).
+    pull_request / head keys may be present-but-None — normalize with `or {}` (PR #124 pattern).
+    """
+    if event != "pull_request":
+        return None
+    pr = data.get("pull_request") or {}
+    return (pr.get("head") or {}).get("ref")
 
 
 async def _run_static_analysis(
@@ -224,7 +241,9 @@ def _extract_event_metadata(event: str, data: dict) -> tuple[str, str, str, int 
     commit_message = _extract_commit_message(event, data)
     if event == "pull_request":
         pr_number: int | None = data["number"]
-        commit_sha: str = (data.get("pull_request") or {}).get("head", {}).get("sha", "")
+        # head 키도 present-but-None 가능 — 한 단계 더 `or {}` 정규화 (PR #124 패턴)
+        # head key may also be present-but-None — normalize one more level (PR #124 pattern)
+        commit_sha: str = ((data.get("pull_request") or {}).get("head") or {}).get("sha", "")
     else:
         pr_number = None
         # 브랜치 삭제 시 "after"가 없거나 0000...000일 수 있음 — .get() 방어
@@ -476,10 +495,7 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
             repo_name, commit_sha, commit_message, pr_number = _extract_event_metadata(event, data)
             # user-controlled webhook 입력이므로 로그 인젝션 방어 (CLAUDE.md 규약)
             repo_log = sanitize_for_log(repo_name)
-            pr_head_ref = (
-                data.get("pull_request", {}).get("head", {}).get("ref")
-                if event == "pull_request" else None
-            )
+            pr_head_ref = _extract_pr_head_ref(event, data)
 
             with SessionLocal() as db:
                 ensure_result = _ensure_repo(db, repo_name, commit_sha)
