@@ -16,7 +16,6 @@ import pytest
 from src.gate.retry_policy import (
     compute_next_retry_at,
     is_expired,
-    mergeable_state_terminality,
     parse_reason_tag,
     should_retry,
 )
@@ -58,31 +57,6 @@ def test_parse_reason_tag_whitespace_stripped():
     # Returns tag with surrounding whitespace stripped
     result = parse_reason_tag("  branch_protection_blocked  : details here")
     assert result == "branch_protection_blocked"
-
-
-# ---------------------------------------------------------------------------
-# mergeable_state_terminality — 8-state matrix
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "state,expected",
-    [
-        ("clean", "terminal"),
-        ("unstable", "needs_disambiguation"),
-        ("unknown", "retriable"),
-        ("blocked", "terminal"),
-        ("behind", "terminal"),
-        ("dirty", "terminal"),
-        ("draft", "terminal"),
-        ("has_hooks", "retriable"),
-        ("totally_made_up_state", "terminal"),
-    ],
-)
-def test_mergeable_state_terminality_matrix(state, expected):
-    # 8가지 GitHub mergeable_state 값 + 미지 상태 반환값 검증
-    # Validates return value for the 8 known GitHub mergeable_state values plus unknown
-    assert mergeable_state_terminality(state) == expected
 
 
 # ---------------------------------------------------------------------------

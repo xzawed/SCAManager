@@ -346,6 +346,69 @@ class TestProcessPendingRetries:
         assert row.status == "abandoned"
         assert row.last_failure_reason == "sha_drift"
 
+    # PR #124 패턴: pr_data["head"] 가 present-but-None 일 때 AttributeError 없이 처리
+    # PR #124 pattern: head present-but-None must not raise AttributeError
+    async def test_process_head_present_but_none_no_attribute_error(self, db_session):
+        """pr_data['head'] is None → head_sha 빈 문자열 fallback, sha_drift 건너뜀, 머지 진행.
+        When pr_data['head'] is None, head_sha falls back to '' and merge proceeds (no crash).
+        """
+        row = _seed_queue_row(db_session, commit_sha="abc123")
+
+        patches = _standard_patches(
+            pr_data={"merged": False, "head": None, "state": "open"},
+            merge_return=(True, None, "abc123"),
+        )
+        with (
+            patches["token"],
+            patches["repo_config"],
+            patches["pr_data"],
+            patches["merge_pr"] as mock_merge,
+            patches["ci"],
+            patches["notify_succeeded"],
+            patches["notify_terminal"],
+            patches["notify_config"],
+            patches["log_attempt"],
+        ):
+            result = await process_pending_retries(db_session, only_ids=[row.id])
+
+        # head_sha='' → sha_drift 미발동 → merge_pr 호출됨
+        # head_sha='' → no sha_drift → merge_pr is called
+        mock_merge.assert_called_once()
+        assert result["succeeded"] == 1
+
+    # PR #124 패턴: pr_data["base"] 가 present-but-None 일 때 base_ref 'main' fallback
+    # PR #124 pattern: base present-but-None falls back to 'main' without crash
+    async def test_process_base_present_but_none_falls_back_to_main(self, db_session):
+        """머지 실패 경로에서 pr_data['base'] is None → base_ref='main' fallback (no crash)."""
+        row = _seed_queue_row(db_session, commit_sha="abc123")
+
+        ci_mock_holder = {}
+        patches = _standard_patches(
+            pr_data={"merged": False, "head": {"sha": "abc123"}, "base": None, "state": "open"},
+            merge_return=(False, "unstable_ci: state=unstable", ""),
+            ci_return="running",
+        )
+        with (
+            patches["token"],
+            patches["repo_config"],
+            patches["pr_data"],
+            patches["merge_pr"],
+            patches["ci"] as mock_ci,
+            patches["notify_succeeded"],
+            patches["notify_terminal"],
+            patches["notify_config"],
+            patches["log_attempt"],
+        ):
+            ci_mock_holder["ci"] = mock_ci
+            # AttributeError 없이 완료되어야 함
+            # Must complete without AttributeError
+            result = await process_pending_retries(db_session, only_ids=[row.id])
+
+        # base_ref='main' 으로 _get_ci_status_safe 호출됨
+        # _get_ci_status_safe called with base_ref='main'
+        assert ci_mock_holder["ci"].call_args.kwargs["base_ref"] == "main"
+        assert result["claimed"] == 1
+
     # T9-6: 머지 성공 → 알림 전송, log_merge_attempt 호출
     # T9-6: Merge succeeds → notify, log_merge_attempt called
     async def test_process_merge_succeeds_notifies(self, db_session):

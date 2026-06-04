@@ -90,6 +90,13 @@ def test_pr_event_missing_user_key_returns_none():
     assert result is None
 
 
+def test_pr_event_user_present_but_none_returns_none():
+    # PR 이벤트에서 user 키가 present-but-None 이면 AttributeError 없이 None (PR #124 패턴)
+    # Returns None without AttributeError when user is present-but-None (PR #124 pattern).
+    result = _extract_author_login("pull_request", {"pull_request": {"user": None}})
+    assert result is None
+
+
 def test_push_event_missing_username_key_returns_none():
     # push 이벤트에서 head_commit.author.username 키가 없으면 None을 반환한다
     # Returns None when head_commit.author.username key is absent.

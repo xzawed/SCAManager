@@ -159,7 +159,9 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
         return
 
     # SHA drift — force-push 감지
-    head_sha = pr_data.get("head", {}).get("sha", "")
+    # head 키가 present-but-None 일 수 있어 `or {}` 정규화 (PR #124 패턴)
+    # head key may be present-but-None — normalize with `or {}` (PR #124 pattern)
+    head_sha = (pr_data.get("head") or {}).get("sha", "")
     if head_sha and head_sha != row.commit_sha:
         merge_retry_repo.mark_abandoned(db, row.id, reason="sha_drift")
         counts["abandoned"] += 1
@@ -185,7 +187,9 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
     # ── f. 실패 분류 ──────────────────────────────────────────────
     reason_tag = parse_reason_tag(reason)
     # F1: pr_data 에 이미 base.ref 가 있으므로 추가 호출 없이 활용
-    base_ref = pr_data.get("base", {}).get("ref", "main")
+    # base 키가 present-but-None 일 수 있어 `or {}` 정규화 (PR #124 패턴)
+    # base key may be present-but-None — normalize with `or {}` (PR #124 pattern)
+    base_ref = (pr_data.get("base") or {}).get("ref", "main")
     ci_status = await _get_ci_status_safe(
         token, row.repo_full_name, row.commit_sha, base_ref=base_ref,
     )

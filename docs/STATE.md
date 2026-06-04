@@ -46,7 +46,7 @@
 | `src/worker/pipeline.py` | 분석 파이프라인 + build_analysis_result_dict |
 | `src/models/merge_retry.py` | MergeRetryQueue ORM — 재시도 큐 (append-only claim 패턴) |
 | `src/repositories/merge_retry_repo.py` | enqueue_or_bump · claim_batch · mark_succeeded/terminal/expired — 원자적 SKIP LOCKED 클레임 |
-| `src/gate/retry_policy.py` | 순수 함수: should_retry · compute_next_retry_at · is_expired · mergeable_state_terminality |
+| `src/gate/retry_policy.py` | 순수 함수: parse_reason_tag · should_retry · compute_next_retry_at · is_expired |
 | `src/github_client/checks.py` | get_ci_status · get_required_check_contexts (5분 TTL 캐시) |
 | `src/services/merge_retry_service.py` | process_pending_retries — CI-aware 재시도 워커 |
 | `src/gate/native_automerge.py` | enable_or_fallback() — GraphQL `enablePullRequestAutoMerge` 우선 + REST `merge_pr` 폴백 (Tier 3 PR-A, 그룹 52) |

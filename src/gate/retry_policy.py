@@ -30,45 +30,6 @@ def parse_reason_tag(reason: str | None) -> str:
     return reason.split(":")[0].strip() or "unknown"
 
 
-# mergeable_state → terminality 매핑 상수 (순수 데이터)
-# Constant mapping of mergeable_state → terminality (pure data)
-_STATE_TERMINALITY: dict[str, str] = {
-    # GitHub가 여전히 계산 중 — 잠시 대기 후 재시도
-    # GitHub is still computing — wait briefly and retry
-    "unknown": "retriable",
-    # CI 진행 중일 수도, 실패했을 수도 있음 — 추가 판단 필요
-    # Could be CI running or a failing check — needs further disambiguation
-    "unstable": "needs_disambiguation",
-    # has_hooks: GitHub Branch Protection hook 대기 — CI 완료 후 해소되므로 재시도 가능
-    # has_hooks: GitHub Branch Protection hook pending — resolves after CI completes, so retriable
-    "has_hooks": "retriable",
-    # 이하 모두 즉시 종료 (재시도 불가)
-    # All states below are immediately terminal (no retry)
-    "clean": "terminal",
-    "blocked": "terminal",
-    "behind": "terminal",
-    "dirty": "terminal",
-    "draft": "terminal",
-}
-
-
-def mergeable_state_terminality(state: str) -> str:
-    """mergeable_state → 'retriable'|'terminal'|'needs_disambiguation'.
-
-    Args:
-        state: GitHub PR mergeable_state 문자열.
-               GitHub PR mergeable_state string.
-
-    Returns:
-        'retriable'            — 잠시 후 재시도 가능 / can retry shortly
-        'terminal'             — 재시도해도 결과 변화 없음 / no point retrying
-        'needs_disambiguation' — CI 상태 추가 조회 필요 / needs CI status check
-    """
-    # 알 수 없는 상태는 terminal 로 안전하게 처리
-    # Unknown states default to terminal for safety
-    return _STATE_TERMINALITY.get(state, "terminal")
-
-
 def should_retry(reason_tag: str, ci_status: str) -> bool:
     """재시도 여부 결정 — reason_tag 와 ci_status 조합으로 판단.
     Determines whether to retry based on reason_tag and ci_status combination.
