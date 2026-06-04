@@ -61,3 +61,22 @@ def test_delete_by_full_name_returns_row_count(db_session):
     db_session.commit()
     assert deleted == 1
     assert repo_config_repo.find_by_full_name(db_session, "owner/repo") is None
+
+
+def test_find_by_full_names_batch_maps_existing(db_session):
+    # 다건 full_name 을 단일 IN 쿼리로 조회해 dict 로 매핑 (N+1 방지)
+    # Batch-fetch multiple full_names in one IN query, mapped to a dict (avoids N+1)
+    _seed(db_session, full_name="owner/a")
+    _seed(db_session, full_name="owner/b")
+    result = repo_config_repo.find_by_full_names(
+        db_session, ["owner/a", "owner/b", "owner/missing"]
+    )
+    assert set(result.keys()) == {"owner/a", "owner/b"}
+    assert result["owner/a"].repo_full_name == "owner/a"
+    assert "owner/missing" not in result
+
+
+def test_find_by_full_names_empty_list_returns_empty_dict(db_session):
+    # 빈 리스트 입력 시 빈 dict (쿼리 미실행)
+    # Empty list input returns an empty dict (no query executed)
+    assert repo_config_repo.find_by_full_names(db_session, []) == {}

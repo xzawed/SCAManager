@@ -275,3 +275,33 @@ async def test_scan_repo_alerts_rollback_does_not_abort_secret_scanning():
     # 핵심: rollback 후에도 outer loop 가 secret-scanning 을 계속 처리해 1건 집계
     # Key: after rollback, the outer loop continues to secret-scanning and counts 1
     assert counts["secret_scanning"] == 1
+
+
+@pytest.mark.asyncio
+async def test_scan_repo_alerts_fetches_kinds_concurrently():
+    """code/secret scanning 2종 fetch 가 asyncio.gather 로 병렬 실행됨을 검증.
+    Verifies code/secret scanning fetches run concurrently via asyncio.gather.
+
+    회귀 가드: 직렬 await 로 되돌리면 max 동시성이 1 로 떨어져 실패.
+    Regression guard: reverting to serial awaits drops max concurrency to 1 and fails.
+    """
+    import asyncio
+    repo = MagicMock(id=7, full_name="owner/test")
+    db = MagicMock()
+    concurrency = {"cur": 0, "max": 0}
+
+    async def fake_fetch(_token, _full_name, _kind):
+        concurrency["cur"] += 1
+        concurrency["max"] = max(concurrency["max"], concurrency["cur"])
+        await asyncio.sleep(0.02)  # 다른 코루틴이 동시 진입할 윈도우 / window for concurrent entry
+        concurrency["cur"] -= 1
+        return []
+
+    with patch.object(security_scan_service, "is_kill_switch_active", return_value=False), \
+         patch.object(security_scan_service, "_resolve_token", return_value="tok"), \
+         patch.object(security_scan_service, "_fetch_alerts", new=fake_fetch):
+        await security_scan_service.scan_repo_alerts(db, repo)
+
+    # gather 병렬이면 두 fetch 가 동시에 진입 → max 동시성 2
+    # With gather, both fetches enter concurrently → max concurrency 2
+    assert concurrency["max"] == 2
