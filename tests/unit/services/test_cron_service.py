@@ -8,11 +8,12 @@ telegram_post_message is isolated via AsyncMock to prevent real HTTP calls.
 """
 # pylint: disable=redefined-outer-name
 from datetime import datetime, timezone, timedelta
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 from sqlalchemy import create_engine
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.database import Base
@@ -218,6 +219,63 @@ class TestRunWeeklyReports:
         assert mock_tg.call_count == 2
         assert sent == 1
 
+    @patch("src.services.cron_service.telegram_post_message", new_callable=AsyncMock)
+    @patch("src.services.cron_service._format_weekly_message", return_value="msg")
+    @patch("src.services.cron_service.weekly_summary")
+    async def test_run_weekly_reports_rolls_back_on_db_error(
+        self, mock_ws, _mock_fmt, mock_tg, db, monkeypatch
+    ):
+        """첫 repo 에서 SQLAlchemyError → db.rollback() 호출 + 다음 repo 정상 처리 (세션 격리).
+        SQLAlchemyError on first repo → db.rollback() called + next repo still processed.
+        """
+        import src.services.cron_service as cs
+        monkeypatch.setattr(cs.settings, "telegram_chat_id", "")
+        u1 = User(github_id=20, github_login="r1", email="r1@x.com", display_name="R1")
+        u2 = User(github_id=21, github_login="r2", email="r2@x.com", display_name="R2")
+        db.add_all([u1, u2])
+        db.commit()
+        r1 = Repository(full_name="owner/db-fail", user_id=u1.id, telegram_chat_id="-100a")
+        r2 = Repository(full_name="owner/db-ok", user_id=u2.id, telegram_chat_id="-100b")
+        db.add_all([r1, r2])
+        db.commit()
+
+        # 첫 repo weekly_summary 가 DB 에러, 둘째는 정상 summary 반환
+        # First repo's weekly_summary raises a DB error; second returns a valid summary
+        mock_ws.side_effect = [SQLAlchemyError("db boom"), {"avg_score": 80.0, "count": 5}]
+        rollback_spy = MagicMock(side_effect=db.rollback)
+        monkeypatch.setattr(db, "rollback", rollback_spy)
+
+        sent = await cs.run_weekly_reports(db, now=datetime.now(timezone.utc))
+
+        rollback_spy.assert_called()  # DB 에러 시 rollback 호출됨
+        assert sent == 1  # 둘째 repo 정상 처리 (연쇄 실패 없음)
+
+    @patch("src.services.cron_service.telegram_post_message", new_callable=AsyncMock)
+    async def test_run_weekly_reports_batches_config_lookup(self, _mock_tg, db, monkeypatch):
+        """config 조회는 루프 진입 전 batch 1회 — per-repo find_by_full_name 미호출 (N+1 방지).
+        Config lookup is a single pre-loop batch — per-repo find_by_full_name is not called (no N+1).
+        """
+        import src.services.cron_service as cs
+        monkeypatch.setattr(cs.settings, "telegram_chat_id", "")
+        u1 = User(github_id=30, github_login="b1", email="b1@x.com", display_name="B1")
+        u2 = User(github_id=31, github_login="b2", email="b2@x.com", display_name="B2")
+        db.add_all([u1, u2])
+        db.commit()
+        db.add_all([
+            Repository(full_name="owner/b1", user_id=u1.id, telegram_chat_id="-100a"),
+            Repository(full_name="owner/b2", user_id=u2.id, telegram_chat_id="-100b"),
+        ])
+        db.commit()
+
+        with patch.object(
+            cs.repo_config_repo, "find_by_full_names",
+            wraps=cs.repo_config_repo.find_by_full_names,
+        ) as batch_spy, patch.object(cs.repo_config_repo, "find_by_full_name") as per_repo_spy:
+            await cs.run_weekly_reports(db, now=datetime.now(timezone.utc))
+
+        batch_spy.assert_called_once()      # batch 조회 1회
+        per_repo_spy.assert_not_called()    # 루프 내 per-repo 조회 없음 (N+1 제거)
+
 
 # ---------------------------------------------------------------------------
 # Test: run_trend_check
@@ -306,3 +364,34 @@ class TestRunTrendCheck:
         # drop=9 < _TREND_DROP_THRESHOLD=10 → no alert
         mock_tg.assert_not_called()
         assert alerted == 0
+
+    @patch("src.services.cron_service.telegram_post_message", new_callable=AsyncMock)
+    @patch("src.services.cron_service.moving_average")
+    async def test_run_trend_check_rolls_back_on_db_error(
+        self, mock_ma, mock_tg, db, monkeypatch
+    ):
+        """첫 repo 에서 SQLAlchemyError → db.rollback() 호출 + 다음 repo 정상 경고 발송.
+        SQLAlchemyError on first repo → db.rollback() called + next repo's alert still sent.
+        """
+        import src.services.cron_service as cs
+        monkeypatch.setattr(cs.settings, "telegram_chat_id", "")
+        u1 = User(github_id=40, github_login="t1", email="t1@x.com", display_name="T1")
+        u2 = User(github_id=41, github_login="t2", email="t2@x.com", display_name="T2")
+        db.add_all([u1, u2])
+        db.commit()
+        db.add_all([
+            Repository(full_name="owner/t-fail", user_id=u1.id, telegram_chat_id="-100a"),
+            Repository(full_name="owner/t-ok", user_id=u2.id, telegram_chat_id="-100b"),
+        ])
+        db.commit()
+
+        # 첫 repo: moving_average DB 에러 / 둘째 repo: current=70, prev=80 → drop=10 경고
+        # First repo: moving_average DB error / second: current=70, prev=80 → drop=10 alert
+        mock_ma.side_effect = [SQLAlchemyError("db boom"), 70.0, 80.0]
+        rollback_spy = MagicMock(side_effect=db.rollback)
+        monkeypatch.setattr(db, "rollback", rollback_spy)
+
+        alerted = await cs.run_trend_check(db, now=datetime.now(timezone.utc))
+
+        rollback_spy.assert_called()  # DB 에러 시 rollback 호출됨
+        assert alerted == 1  # 둘째 repo 정상 경고 (연쇄 실패 없음)

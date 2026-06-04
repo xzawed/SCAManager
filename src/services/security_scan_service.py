@@ -14,6 +14,7 @@ Phase 1 = read-only (자동 dismiss X). 사용자 1-click confirm 은 dashboard 
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from typing import Any
@@ -145,8 +146,15 @@ async def scan_repo_alerts(
         counts[_SKIPPED_KEY] = 1
         return counts
 
-    for kind, key in (("code-scanning", _CODE_SCANNING_KEY), ("secret-scanning", _SECRET_SCANNING_KEY)):
-        alerts = await _fetch_alerts(token, repo.full_name, kind)
+    # 두 종류 alert 를 병렬 fetch (독립 read-only GET) — DB upsert 는 단일 세션 직렬 유지
+    # Fetch both alert kinds in parallel (independent read-only GETs); DB upserts stay serial
+    # (_fetch_alerts 는 자체적으로 에러 시 None 반환 — gather return_exceptions 불요)
+    # (_fetch_alerts returns None on error itself — no need for gather return_exceptions)
+    kinds = (("code-scanning", _CODE_SCANNING_KEY), ("secret-scanning", _SECRET_SCANNING_KEY))
+    fetched = await asyncio.gather(
+        *(_fetch_alerts(token, repo.full_name, kind) for kind, _ in kinds)
+    )
+    for (kind, key), alerts in zip(kinds, fetched):
         if alerts is None:
             continue
         for alert in alerts:

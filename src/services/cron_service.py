@@ -41,11 +41,15 @@ async def run_weekly_reports(db: Session, *, now: datetime | None = None) -> int
     # Fetch all repository records
     repos = repository_repo.find_all(db)
 
+    # N+1 방지 — 전체 repo config 를 단일 IN 쿼리로 batch 조회
+    # Avoid N+1 — batch-fetch all repo configs in one IN query
+    configs = repo_config_repo.find_by_full_names(db, [r.full_name for r in repos])
+
     for repo in repos:
         try:
             # 리포별 설정 조회 (없으면 None)
             # Fetch per-repo config (None if absent)
-            config = repo_config_repo.find_by_full_name(db, repo.full_name)
+            config = configs.get(repo.full_name)
 
             # chat_id 우선순위 라우팅 — None 이면 skip
             # Resolve chat_id with priority routing — skip if None
@@ -79,6 +83,10 @@ async def run_weekly_reports(db: Session, *, now: datetime | None = None) -> int
             logger.warning(
                 "weekly_report: failed for repo=%s: %s", repo.full_name, exc
             )
+            # 세션 오염 방지 — DB 에러로 세션이 failed 상태면 다음 repo 가 연쇄 실패
+            # (security_scan_service.scan_all_repos 와 동일 패턴, #745 / api.md 세션 격리)
+            # Roll back so a poisoned session doesn't cascade into the next repo
+            db.rollback()
 
     return sent
 
@@ -109,7 +117,11 @@ def _format_weekly_message(
     )
 
 
-async def run_trend_check(db: Session, *, now: datetime | None = None) -> int:
+# N+1 방지용 configs batch 지역변수 추가로 16/15 — 함수 응집 보호 위해 inline disable (testing.md R0914)
+# configs batch local for N+1 fix pushes to 16/15 — inline disable to keep function cohesion
+async def run_trend_check(  # pylint: disable=too-many-locals
+    db: Session, *, now: datetime | None = None
+) -> int:
     """7일 이동 평균이 10점 이상 하락한 리포에 트렌드 경고를 발송한다.
     Send trend alerts for repos whose 7-day moving average drops by 10+ points.
 
@@ -124,11 +136,15 @@ async def run_trend_check(db: Session, *, now: datetime | None = None) -> int:
     # Fetch all repository records
     repos = repository_repo.find_all(db)
 
+    # N+1 방지 — 전체 repo config 를 단일 IN 쿼리로 batch 조회
+    # Avoid N+1 — batch-fetch all repo configs in one IN query
+    configs = repo_config_repo.find_by_full_names(db, [r.full_name for r in repos])
+
     for repo in repos:
         try:
             # 리포별 설정 조회 (없으면 None)
             # Fetch per-repo config (None if absent)
-            config = repo_config_repo.find_by_full_name(db, repo.full_name)
+            config = configs.get(repo.full_name)
 
             # chat_id 우선순위 라우팅 — None 이면 skip
             # Resolve chat_id with priority routing — skip if None
@@ -176,6 +192,10 @@ async def run_trend_check(db: Session, *, now: datetime | None = None) -> int:
             logger.warning(
                 "trend_check: failed for repo=%s: %s", repo.full_name, exc
             )
+            # 세션 오염 방지 — DB 에러로 세션이 failed 상태면 다음 repo 가 연쇄 실패
+            # (security_scan_service.scan_all_repos 와 동일 패턴, #745 / api.md 세션 격리)
+            # Roll back so a poisoned session doesn't cascade into the next repo
+            db.rollback()
 
     return alerted
 
