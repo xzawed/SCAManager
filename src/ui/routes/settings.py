@@ -1,7 +1,6 @@
 """리포 설정 관련 페이지/폼/webhook 재설치 엔드포인트."""
 from __future__ import annotations
 
-import ipaddress
 import secrets
 from dataclasses import fields as dataclass_fields
 from typing import Annotated
@@ -31,6 +30,7 @@ from src.i18n.loader import get_text
 from src.models.repo_config import RepoConfig
 from src.repositories import repo_config_repo
 from src.shared.log_safety import sanitize_for_log
+from src.shared.ssrf import is_dangerous_ip
 from src.ui._helpers import (
     GITHUB_WEBHOOK_PATH,
     get_accessible_repo,
@@ -63,21 +63,23 @@ def _is_safe_webhook_url(url: str | None) -> bool:  # pylint: disable=too-many-r
         return True
     try:
         parsed = urlparse(url)
-        if parsed.scheme not in ("http", "https"):
+        # https-only — 발신 가드(_http.py _ALLOWED_SCHEMES)와 동일 정책. http 는 send-time 에 거부되므로
+        # 폼에서도 일관 차단 (저장됐으나 발송 안 되는 혼란 방지, WBS 감사 P2 — 스킴 비대칭 해소).
+        # https-only — matches the outbound guard (_http.py); http is rejected at send time anyway,
+        # so block it at the form too (avoids "saved but never sends" confusion).
+        if parsed.scheme != "https":
             return False
         host = (parsed.hostname or "").lower()
         if not host:
             return False
         if host in _BLOCKED_HOSTS:
             return False
-        # 사설 IP 대역, 루프백, 링크-로컬 주소 차단
-        # Block private/loopback/link-local IP ranges.
-        try:
-            ip = ipaddress.ip_address(host)
-            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
-                return False
-        except ValueError:
-            pass  # 호스트명(도메인)은 IP 파싱 실패가 정상 / Domain names will fail IP parsing — that is fine.
+        # 위험 IP 대역 차단 (사설/루프백/링크로컬/예약/멀티캐스트/CGNAT) — 발신 가드와 단일 출처 헬퍼 공유.
+        # 도메인명은 IP 가 아니므로 False → send-time validate_external_url 가 DNS 해석 후 차단.
+        # Block dangerous IP ranges via the shared single-source helper (same as the outbound guard).
+        # Domain names are not IPs (False) → resolved+blocked at send time by validate_external_url.
+        if is_dangerous_ip(host):
+            return False
         return True
     except Exception:  # pylint: disable=broad-except
         return False

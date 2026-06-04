@@ -136,6 +136,41 @@ async def test_get_ci_status_passed_when_all_success():
     assert mock_client.get.call_count == 1
 
 
+# ── WBS 감사 P2: URL path 인코딩 일관성 (repos.py _repo_path 패턴 정합) ──────────
+# ── WBS audit P2: URL path encoding consistency (matches repos.py _repo_path) ──
+
+
+async def test_get_ci_status_encodes_repo_and_sha_in_url():
+    """repo_full_name/commit_sha 특수문자가 URL 인코딩됨 (슬래시 보존, path injection 방어).
+    repo_full_name/commit_sha special chars are URL-encoded (slash preserved, path-injection defence).
+    """
+    body = {"check_runs": [_check_run("ci", "completed", "success")], "total_count": 1}
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(return_value=_resp(200, body))
+
+    with patch("src.github_client.checks.get_http_client", return_value=mock_client):
+        await get_ci_status(TOKEN, "owner/re po", "ab cd")
+
+    called_url = mock_client.get.call_args[0][0]
+    assert "owner/re%20po" in called_url   # 슬래시 보존 + 공백 인코딩 / slash kept, space encoded
+    assert "ab%20cd" in called_url
+    assert "re po" not in called_url       # raw 미인코딩 문자열 미포함 / no raw unencoded value
+
+
+async def test_get_required_check_contexts_encodes_branch_in_url():
+    """branch 특수문자가 URL 인코딩되되 슬래시는 보존된다 (feature/x 정합).
+    branch special chars are URL-encoded while slashes are preserved (feature/x semantics).
+    """
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(return_value=_resp(200, {"contexts": ["ci/build"]}))
+
+    with patch("src.github_client.checks.get_http_client", return_value=mock_client):
+        await get_required_check_contexts(TOKEN, "owner/myrepo", "feat/x y")
+
+    called_url = mock_client.get.call_args[0][0]
+    assert "branches/feat/x%20y/" in called_url   # 슬래시 보존 + 공백 인코딩 / slash kept, space encoded
+
+
 async def test_get_ci_status_failed_when_any_failed():
     """completed 체크런 중 하나라도 failure이면 'failed' 반환.
     Returns 'failed' when any completed check run has a failure conclusion.

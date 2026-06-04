@@ -233,7 +233,7 @@ def test_post_settings_redirects():
                     "approve_threshold": "85",
                     "reject_threshold": "55",
                     "notify_chat_id": "-123",
-                    "n8n_webhook_url": "http://n8n.local/webhook/abc",
+                    "n8n_webhook_url": "https://n8n.example.com/webhook/abc",
                 },
                 follow_redirects=False,
             )
@@ -242,7 +242,7 @@ def test_post_settings_redirects():
     assert called_config.approve_mode == "auto"
     assert called_config.approve_threshold == 85
     assert called_config.reject_threshold == 55
-    assert called_config.n8n_webhook_url == "http://n8n.local/webhook/abc"
+    assert called_config.n8n_webhook_url == "https://n8n.example.com/webhook/abc"
     assert r.status_code == 303
 
 

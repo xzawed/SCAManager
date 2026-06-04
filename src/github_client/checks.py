@@ -4,10 +4,12 @@ GitHub Check Runs / Status API — Phase 12 CI status queries.
 import logging
 import re
 import time
+from urllib.parse import quote
 
 import httpx
 
 from src.constants import GITHUB_API
+from src.github_client.helpers import repo_path
 from src.shared.http_client import get_http_client
 from src.shared.log_safety import sanitize_for_log
 
@@ -92,7 +94,7 @@ async def get_ci_status(
     # ── 1. Collect check runs via paginated API ────────────────────────
     all_check_runs: list[dict] = []
     url: str | None = (
-        f"{GITHUB_API}/repos/{repo_full_name}/commits/{commit_sha}/check-runs"
+        f"{GITHUB_API}/repos/{repo_path(repo_full_name)}/commits/{quote(commit_sha, safe='')}/check-runs"
     )
     page_count = 0
 
@@ -133,7 +135,7 @@ async def get_ci_status(
     # ── 4. 레거시 Commit Status fallback ─────────────────────────────
     # ── 4. Legacy Commit Status fallback ──────────────────────────────
     legacy_resp = await client.get(
-        f"{GITHUB_API}/repos/{repo_full_name}/commits/{commit_sha}/status",
+        f"{GITHUB_API}/repos/{repo_path(repo_full_name)}/commits/{quote(commit_sha, safe='')}/status",
         headers=_auth_headers(token),
     )
     legacy_resp.raise_for_status()
@@ -259,7 +261,9 @@ async def get_required_check_contexts(
 
     try:
         resp = await client.get(
-            f"{GITHUB_API}/repos/{repo_full_name}/branches/{branch}"
+            # branch 는 슬래시 포함 가능(feature/x) → safe='/' 로 슬래시 보존 (GitHub path 정합)
+            # branch may contain slashes (feature/x) → safe='/' preserves them (GitHub path semantics)
+            f"{GITHUB_API}/repos/{repo_path(repo_full_name)}/branches/{quote(branch, safe='/')}"
             f"/protection/required_status_checks",
             headers=_auth_headers(token),
         )
