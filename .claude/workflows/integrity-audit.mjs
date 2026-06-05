@@ -90,7 +90,50 @@ function parseArgs(a) {
   return a ?? {}
 }
 
-// ── 오케스트레이션 (Task 1 범위: scope 해소 + dryRun 조기 반환) ──
+// ── 구조화 스키마 ────────────────────────────────────────
+// Structured output schemas (StructuredOutput 강제 — 파싱 0)
+const FINDINGS_SCHEMA = {
+  type: 'object',
+  properties: {
+    findings: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          domain: { type: 'string' },
+          severity: { type: 'string', enum: ['P0', 'P1', 'P2'] },
+          title: { type: 'string' },
+          file: { type: 'string' },
+          line: { type: 'integer' },
+          claim: { type: 'string' },
+          evidence: { type: 'string' },
+        },
+        required: ['domain', 'severity', 'title', 'file', 'line', 'claim'],
+      },
+    },
+  },
+  required: ['findings'],
+}
+
+// ── 프롬프트 빌더 ────────────────────────────────────────
+// Prompt builders
+function auditPrompt(domain, changedFiles, round) {
+  const scopeNote = changedFiles
+    ? `변경 파일에 한정: ${changedFiles.filter((f) => domain.paths.some((p) => f.includes(p))).join(', ') || '(이 도메인 직접 변경 없음 — 인접 영향만 점검)'}`
+    : `도메인 전체 경로: ${domain.paths.join(', ')}`
+  return [
+    `당신은 SCAManager 정합성 감사관입니다. 도메인 "${domain.id}" 를 감사합니다.`,
+    `감사 초점: ${domain.focus}`,
+    scopeNote,
+    round > 1 ? '이전 라운드에서 이미 보고된 결함은 제외하고, 더 깊은/놓친 결함만 보고하세요.' : '',
+    '각 결함은 P0(운영 사고/보안)/P1(정합성 결함)/P2(품질) 으로 분류.',
+    '🔴 정책 6 강제: 모든 file:line 은 `grep -n` 실측 후 작성. 추정 line 금지. evidence 필드에 실측 근거 인용.',
+    'false-positive 회피: 단순 스타일·취향 차이는 보고 금지. 동작/보안/정합 영향이 있는 것만.',
+    'findings 배열로 반환 (없으면 빈 배열).',
+  ].filter(Boolean).join('\n')
+}
+
+// ── 오케스트레이션 (Task 2 범위: 단일 발견 라운드) ──
 const opts = parseArgs(args)
 const scope = opts.scope ?? 'full'
 const dryRun = opts.dryRun === true
@@ -105,5 +148,10 @@ if (dryRun) {
   return { scope, dryRun: true, domains: domains.map((d) => d.id), changedFiles }
 }
 
-// (Task 2 이후 발견·검증·리포트 단계 추가)
-return { scope, domains: domains.map((d) => d.id), confirmed: [], note: 'orchestration not yet implemented' }
+phase('Discover')
+const round1 = (await parallel(domains.map((d) => () =>
+  agent(auditPrompt(d, changedFiles, 1), { label: `audit:${d.id}:r1`, phase: 'Discover', schema: FINDINGS_SCHEMA })
+))).filter(Boolean).flatMap((r) => r.findings ?? [])
+
+log(`발견 라운드 1: 총 ${round1.length}건 (검증 전)`)
+return { scope, rounds: 1, findings: dedupe(round1) }
