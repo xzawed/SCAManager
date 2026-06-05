@@ -20,6 +20,7 @@ SCAManager 의 주요 설계 문서 목록. 파일명 날짜 순.
 | 2026-05-25 | [phase1-preparation-plan](2026-05-25-phase1-preparation-plan.md) | Claude Design UI 재설계 Phase 1 — Preparation Package 구현 계획 |
 | 2026-05-31 | [cycle-143-i18n-process-design](2026-05-31-cycle-143-i18n-process-design.md) | 사이클 143 — i18n 완성 + 프로세스 강화 설계 |
 | 2026-05-31 | [cycle-143-implementation-plan](2026-05-31-cycle-143-implementation-plan.md) | 사이클 143 — i18n 완성 + 프로세스 강화 구현 계획 |
+| 2026-06-05 | [integrity-audit-workflow-design](2026-06-05-integrity-audit-workflow-design.md) | **다이나믹 워크플로우 1단계** — 전체 정합성 감사 Workflow (B+C 결합: loop-until-dry 탐색 + 다관점 verify + completeness critic + 비용 상한). scope 파라미터화(full/diff/area), read-only P0/P1/P2 리포트. 사이클 104/109 수동 5+1 감사의 결정론적 코드화. **설계 승인 완료 → 구현 계획 대기** |
 
 > 각 문서는 당시 설계 시점의 결정을 반영하며, 이후 변경이 있다면 [docs/STATE.md](../STATE.md) 그룹 이력과 코드가 최우선 출처입니다.
 
