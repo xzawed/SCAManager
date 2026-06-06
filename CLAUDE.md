@@ -317,9 +317,9 @@ Why + How to apply (자가 검토 4 자문) 상세: [.claude/policies/active.md#
 gh run list --limit 3                                       # CI status (기존 vs 신규 실패 구분)
 gh api repos/xzawed/SCAManager/code-scanning/alerts \      # Code Scanning open alert 카운트 (정책 14)
   --jq '[.[] | select(.state=="open")] | length'            # CI/auth 부재 시 GitHub Security 탭 직접 확인
-ls ~/.claude/projects/f--DEVELOPMENT-SOURCE-CLAUDE-SCAManager/memory/ | \   # 신규 fixture/테스트/패턴 작성 전 메모리 grep
+ls ~/.claude/projects/d--Source-SCAManager/memory/ | \      # 신규 fixture/테스트/패턴 작성 전 메모리 grep
   grep -E "pytest-|test-|feedback-"                         # 해당 영역 메모리 본문 read 후 default 적용 의무
-ls docs/reports/ | tail -1                                  # 직전 회고 보고서 회신 회수 확인 (정책 9 강화 페어)
+ls docs/_archive/reports/ | tail -1                         # 직전 회고 보고서 회신 회수 확인 (정책 9 강화 페어)
 git status                                                  # 미커밋 변경 없는지 확인
 git checkout -b <브랜치명>                                  # 브랜치 생성 (main 직접 커밋 금지)
 ```
@@ -408,4 +408,4 @@ GitHub Code Scanning 점검 detail 절차 + 운영 통합 = `docs/runbooks/opera
 
 ## 현재 상태
 
-최신 수치는 [docs/STATE.md](docs/STATE.md) 참조. 사이클 이력: [`docs/cycle-history.md`](docs/cycle-history.md) (사이클 60~92 archive).
+최신 수치는 [docs/STATE.md](docs/STATE.md) 참조. 사이클 이력: [`docs/cycle-history.md`](docs/cycle-history.md) (사이클 60~159).

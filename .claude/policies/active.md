@@ -3,7 +3,7 @@
 > CLAUDE.md tail entry / 정책 본문 detail 분리본 (사이클 88 #338 진입, 2026-05-06).
 > 본 파일 = **활성 정책 본문 detail** (default rule 외 검증 사례 / Why / How to apply / 금지 패턴 등).
 > CLAUDE.md 본문 = 정책 N 표제 + 핵심 default rule 1줄 + 진화 default 1~2줄 + 본 파일 reference link.
-> 정책 진화 history (이전 사이클 진화 entry) = `docs/policies/history.md` (사이클 85 #320 + 사이클 86 #321 분리).
+> 정책 진화 history (이전 사이클 진화 entry) = `.claude/policies/history.md` (사이클 85 #320 + 사이클 86 #321 분리).
 
 <a id="정책-2"></a>
 
@@ -103,7 +103,7 @@ git push -u origin <branch>
 
 ## 정책 11 강화 (사이클 62 P0 OAuth 사고 후속): 인증 flow 검증 추가
 
-🔴 **진화 default 요약**: 인증/외부 통합 변경 PR 시 8 조합 시각 체크리스트 + **인증 flow 4 endpoint 종단간 검증** 의무 — `/login` 200 + `/auth/github` 302 + `/auth/callback` redirect + `/auth/logout` redirect. 상세: [docs/policies/history.md#정책-11-강화](history.md#정책-11-강화).
+🔴 **진화 default 요약**: 인증/외부 통합 변경 PR 시 8 조합 시각 체크리스트 + **인증 flow 4 endpoint 종단간 검증** 의무 — `/login` 200 + `/auth/github` 302 + `/auth/callback` redirect + `/auth/logout` redirect. 상세: [.claude/policies/history.md#정책-11-강화](history.md#정책-11-강화).
 
 ---
 
@@ -441,8 +441,8 @@ mutual 검증이 다른 정책과 맺는 충돌/페어 7건:
 |------|---------|-----------|
 | default 흐름 본문 | AGENTS.md §"Claude ↔ Codex 양방향 mutual 검증 의무" | 흐름 변경 시 4-way sync 의무 |
 | CLAUDE.md 정책 18 default rule | CLAUDE.md §"사용자 협업 정책" 정책 17 직후 | default rule 변경 시 sync |
-| detail · 검증 사례 · Why · How | docs/policies/active.md §"정책 18" (본 섹션) | detail 영역 변경 시 sync |
-| 진화 default 추적 | docs/policies/history.md §"보존 영역" — 정책 18 entry | 사이클 94+ 진화 시 추가 |
+| detail · 검증 사례 · Why · How | .claude/policies/active.md §"정책 18" (본 섹션) | detail 영역 변경 시 sync |
+| 진화 default 추적 | .claude/policies/history.md §"보존 영역" — 정책 18 entry | 사이클 94+ 진화 시 추가 |
 | Claude 측 숙지 | 메모리 `feedback-codex-post-validation-mandatory.md` | 매 사이클 30초 grep 의무 |
 
 **5-way sync 가드** — 본문 충돌 시 **CLAUDE.md 정책 18 우선** (정책 일관성 — Claude 가 SCAManager 운영 주체).
@@ -469,10 +469,10 @@ mutual 검증이 다른 정책과 맺는 충돌/페어 7건:
 | 에이전트 # | 담당 도메인 | 주요 파일 |
 |-----------|------------|---------|
 | Agent-1 | 핵심 정책 문서 | `CLAUDE.md` / `.claude/` (skills, rules 제외) |
-| Agent-2 | 활성 정책 + 이력 | `docs/policies/active.md` / `docs/policies/history.md` |
+| Agent-2 | 활성 정책 + 이력 | `.claude/policies/active.md` / `.claude/policies/history.md` |
 | Agent-3 | 아키텍처 + 상태 | `docs/architecture.md` / `docs/STATE.md` / `docs/cycle-history.md` |
 | Agent-4 | Path-scoped rules | `.claude/rules/*.md` (8 영역 전체) |
-| Agent-5 | 참조 + 운영 문서 | `docs/reference/*.md` / `docs/runbooks/*.md` / `docs/reports/` (최근 3건) |
+| Agent-5 | 참조 + 운영 문서 | `docs/reference/*.md` / `docs/runbooks/*.md` / `docs/_archive/reports/` (최근 3건) |
 | Agent-6 (cross-verify) | 전체 합성 | 1~5 결과 종합 + false-positive 제거 + P0/P1/P2 정렬 |
 
 **적용 시 의무 조건** (CLAUDE.md 정책 8 기존 조건 전부 유지):
