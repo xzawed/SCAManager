@@ -25,7 +25,7 @@ from src.gate.github_review import (
 )
 from src.gate import _merge_attempt_states as _states
 from src.gate.merge_failure_advisor import get_advice
-from src.gate.merge_reasons import UNSTABLE_CI, UNKNOWN_STATE_TIMEOUT, DEFERRED
+from src.gate.merge_reasons import is_retriable_tag, DEFERRED
 from src.gate.native_automerge import (
     PATH_NATIVE_ENABLE,
     enable_or_fallback_with_path as native_enable_with_path,
@@ -199,7 +199,11 @@ async def _run_auto_merge_retry(  # pylint: disable=too-many-arguments,too-many-
     # 4. 실패 분류 — 터미널이면 즉시 처리
     # 4. Classify failure — handle terminal immediately
     reason_tag = parse_reason_tag(reason)
-    if reason_tag not in (UNSTABLE_CI, UNKNOWN_STATE_TIMEOUT):
+    # 재시도 가능 태그 판별을 merge_reasons.is_retriable_tag 단일 출처로 위임.
+    # (기존: (UNSTABLE_CI, UNKNOWN_STATE_TIMEOUT) 튜플 하드코딩 — _RETRIABLE_TAGS 와 drift 위험)
+    # Delegate retriable-tag check to the single source merge_reasons.is_retriable_tag.
+    # (was: hardcoded (UNSTABLE_CI, UNKNOWN_STATE_TIMEOUT) tuple — could drift from _RETRIABLE_TAGS)
+    if not is_retriable_tag(reason_tag):
         await _handle_terminal_merge_failure(
             config=config, github_token=github_token, repo_name=repo_name,
             pr_number=pr_number, score=score, reason=reason, reason_tag=reason_tag,
