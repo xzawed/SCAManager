@@ -19,7 +19,10 @@ import anthropic
 
 from src.analyzer.pure.review_prompt import build_review_prompt, get_system_prompt
 from src.config import settings
-from src.constants import AI_DEFAULT_COMMIT_RAW, AI_DEFAULT_DIRECTION_RAW, AI_RAW_COMMIT_MAX, AI_RAW_DIRECTION_MAX
+from src.constants import (
+    AI_DEFAULT_COMMIT_RAW, AI_DEFAULT_DIRECTION_RAW,
+    AI_RAW_COMMIT_MAX, AI_RAW_DIRECTION_MAX, AI_RAW_TEST_MAX,
+)
 from src.shared.anthropic_caching import build_cached_system_param
 from src.shared.claude_metrics import aclose_anthropic_client, extract_anthropic_usage, log_claude_api_call
 
@@ -151,8 +154,8 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
 def _extract_test_score(data: dict) -> int:
     """test_score 추출. 구 포맷(has_tests boolean) 하위 호환."""
     if "test_score" in data:
-        return max(0, min(10, int(data["test_score"])))
-    return 10 if data.get("has_tests", False) else 0
+        return max(0, min(AI_RAW_TEST_MAX, int(data["test_score"])))
+    return AI_RAW_TEST_MAX if data.get("has_tests", False) else 0
 
 
 def _extract_json_payload(text: str) -> str:
