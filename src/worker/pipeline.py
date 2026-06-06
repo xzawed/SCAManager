@@ -26,8 +26,8 @@ from src.repositories import repository_repo, analysis_repo
 
 logger = logging.getLogger(__name__)
 
-# 정적 분석 타임아웃 (초) — 초과 시 빈 리스트 반환, AI 리뷰는 계속 진행
-# Static analysis timeout (seconds) — returns empty list on timeout, AI review continues
+# 정적 분석 전체 타임아웃 단일 출처 (초) — 초과 시 빈 리스트 반환, AI 리뷰는 계속 진행
+# Single source of truth for the static-analysis timeout (seconds) — returns empty list on timeout; AI review continues
 PIPELINE_ANALYSIS_TIMEOUT = 60
 
 

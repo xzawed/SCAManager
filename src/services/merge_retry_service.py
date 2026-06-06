@@ -124,6 +124,10 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
         return
 
     # ── b-0. 최대 시도 횟수 초과 ───────────────────────────────────
+    # claim 시 attempts_count 가 선증가하므로(merge_retry_repo.claim_batch) 이 검사는 merge_pr 호출 이전 단계다.
+    # 따라서 max_attempts=N 설정 시 실제 머지 시도는 N-1회 — 의도된 fail-safe(시도 횟수가 적은 보수적 방향).
+    # attempts_count is pre-incremented at claim time, so this check runs BEFORE merge_pr →
+    # with max_attempts=N the actual merge attempts are N-1 (intended fail-safe: errs toward fewer tries).
     if row.attempts_count >= row.max_attempts:
         merge_retry_repo.mark_abandoned(db, row.id, reason="max_attempts_exceeded")
         counts["abandoned"] += 1
