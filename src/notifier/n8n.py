@@ -90,6 +90,9 @@ async def notify_n8n_issue(
         body = body_bytes[:N8N_BODY_MAX_BYTES].decode(errors="replace")
         issue = {**issue, "body": body}
 
+    # 방어 심화: repo_token 은 HMAC 서명 시크릿이 설정된 인증 채널로만 전송 (시크릿 없으면 토큰 생략)
+    # Defense-in-depth: relay repo_token only over an authenticated channel (HMAC secret set); omit otherwise
+    relayed_token = repo_token if (repo_token and n8n_secret) else ""
     payload = _build_envelope(
         event_type="issue",
         repo=repo_full_name,
@@ -98,7 +101,7 @@ async def notify_n8n_issue(
             "issue": issue,
             "sender": sender,
             "body_truncated": body_truncated,
-            "repo_token": repo_token,
+            "repo_token": relayed_token,
         },
     )
     await _post_to_n8n(webhook_url, payload, n8n_secret)

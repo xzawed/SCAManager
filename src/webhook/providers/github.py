@@ -244,9 +244,12 @@ async def _handle_issues_event(data: dict, background_tasks: BackgroundTasks) ->
         with SessionLocal() as db:
             config = get_repo_config(db, repo_name)
             n8n_url = config.n8n_webhook_url
-            repo = repository_repo.find_by_full_name(db, repo_name)
-            if repo and repo.owner:
-                repo_token = repo.owner.plaintext_token
+            # n8n 으로의 GitHub 토큰 릴레이는 명시적 opt-in(N8N_RELAY_REPO_TOKEN) + HMAC 시크릿 설정 시에만 수행 (자격증명 유출 차단)
+            # Relay the GitHub token only when opted-in AND an HMAC secret is set (credential-leak guard)
+            if settings.n8n_relay_repo_token and settings.n8n_webhook_secret:
+                repo = repository_repo.find_by_full_name(db, repo_name)
+                if repo and repo.owner:
+                    repo_token = repo.owner.plaintext_token
     except (SQLAlchemyError, KeyError, AttributeError) as exc:
         logger.warning(
             "issues relay: repo config lookup failed for %s: %s",

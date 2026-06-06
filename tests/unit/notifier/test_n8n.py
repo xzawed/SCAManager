@@ -109,6 +109,7 @@ async def test_notify_n8n_issue_includes_repo_token_in_payload():
             action="opened",
             issue={"number": 1, "title": "test", "body": ""},
             sender={"login": "octocat"},
+            n8n_secret="shh",
             repo_token="ghp_abc",
         )
 
@@ -146,3 +147,32 @@ async def test_notify_n8n_issue_repo_token_defaults_empty():
         "data 딕셔너리에 'repo_token' 키가 없음 — notify_n8n_issue()에 repo_token 파라미터 추가 필요"
     assert data["repo_token"] == "", \
         f"repo_token 기본값이 ''이어야 하지만 실제 값: {data.get('repo_token')!r}"
+
+
+async def test_notify_n8n_issue_omits_repo_token_without_secret():
+    # 자격증명 유출 가드: n8n_secret 미설정 시 repo_token 이 전달돼도 페이로드에서 빈 문자열로 생략돼야 한다
+    # Credential-leak guard: with no n8n_secret, a passed repo_token must be omitted (empty) from the payload
+    from src.notifier.n8n import notify_n8n_issue
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.post = AsyncMock(return_value=mock_response)
+
+    with patch("src.notifier.n8n.validate_external_url", return_value=True), \
+         patch("src.notifier.n8n.build_safe_client", return_value=mock_client):
+        await notify_n8n_issue(
+            webhook_url="https://n8n.example.com/webhook/abc",
+            repo_full_name="owner/repo",
+            action="opened",
+            issue={"number": 1, "title": "test", "body": ""},
+            sender={"login": "octocat"},
+            repo_token="ghp_secret_token",  # n8n_secret 미설정 → 토큰 유출 금지 / no secret → must not leak
+        )
+
+    mock_client.post.assert_called_once()
+    payload = mock_client.post.call_args.kwargs.get("json") or mock_client.post.call_args.args[1]
+    data = payload["data"]
+    assert data["repo_token"] == "", \
+        f"시크릿 없이 repo_token 이 유출됨 (자격증명 유출 결함): {data.get('repo_token')!r}"
