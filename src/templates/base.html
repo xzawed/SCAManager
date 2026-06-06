@@ -985,8 +985,15 @@
 
     // hx-boost popstate/historyRestore 후 .reveal 요소 재초기화 (opacity:0 고착 방지)
     // Re-initialize reveal elements after hx-boost popstate/historyRestore (prevent opacity:0 freeze)
-    document.addEventListener('htmx:afterSettle', _initReveal);
-    document.addEventListener('htmx:historyRestore', _initReveal);
+    // hx-boost 재실행마다 누적 방지 — remove-before-add 패턴 (핸들러 단일 슬롯 저장)
+    // Prevent accumulation on each hx-boost re-execution — remove-before-add (single document slot)
+    if (document._initRevealHandler) {
+      document.removeEventListener('htmx:afterSettle', document._initRevealHandler);
+      document.removeEventListener('htmx:historyRestore', document._initRevealHandler);
+    }
+    document._initRevealHandler = _initReveal;
+    document.addEventListener('htmx:afterSettle', document._initRevealHandler);
+    document.addEventListener('htmx:historyRestore', document._initRevealHandler);
 
     // KPI 카운트업 (data-count 속성 기반)
     // KPI count-up (data-count attribute based)
@@ -1093,10 +1100,17 @@
 
       // hx-boost 네비게이션 완료 → 프로그레스 바 완료 (실제 지연 제거 핵심)
       // hx-boost navigation settled → finish progress bar (key to real latency elimination)
-      document.addEventListener('htmx:afterSettle', _finishProgress);
+      // hx-boost 재실행마다 누적 방지 — remove-before-add 패턴 (핸들러 단일 슬롯 저장)
+      // Prevent accumulation on each hx-boost re-execution — remove-before-add (single document slot)
+      if (document._finishProgressHandler) {
+        document.removeEventListener('htmx:afterSettle', document._finishProgressHandler);
+        document.removeEventListener('htmx:historyRestore', document._finishProgressHandler);
+      }
+      document._finishProgressHandler = _finishProgress;
+      document.addEventListener('htmx:afterSettle', document._finishProgressHandler);
       // 뒤로가기(historyRestore) 시 mid-animation 고착 방지
       // Prevent progress bar from freezing mid-animation on back navigation
-      document.addEventListener('htmx:historyRestore', _finishProgress);
+      document.addEventListener('htmx:historyRestore', document._finishProgressHandler);
 
       // 일반 페이지 언로드 폴백 (외부 링크, HTMX 미개입 경우)
       // Fallback for non-HTMX navigations (external links, forms bypassing HTMX)
