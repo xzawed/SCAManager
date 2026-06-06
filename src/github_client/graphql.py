@@ -28,6 +28,7 @@ import httpx
 from src.constants import GITHUB_API
 from src.github_client.helpers import github_api_headers
 from src.shared.http_client import get_http_client
+from src.shared.log_safety import sanitize_for_log
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +163,7 @@ async def get_pr_node_id(
     except httpx.HTTPError as exc:
         logger.warning(
             "get_pr_node_id 실패 (repo=%s, pr=%d): %s",
-            repo_full_name, pr_number, exc,
+            sanitize_for_log(repo_full_name), pr_number, type(exc).__name__,
         )
         return None
 

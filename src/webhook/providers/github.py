@@ -133,7 +133,7 @@ async def _handle_merged_pr_event(data: dict) -> dict:
             # Log only the exception type — exc body may contain GitHub API response details.
             logger.warning(
                 "Auto-close failed (repo=%s, issue=%d): %s",
-                repo_name, issue_number, type(exc).__name__,
+                sanitize_for_log(repo_name), issue_number, type(exc).__name__,
             )
 
     return {"status": "accepted"}
@@ -459,7 +459,7 @@ async def _handle_check_suite_completed(  # NOSONAR python:S7503 — caller awai
     now = time.monotonic()
     if now - _check_suite_debounce.get(key, 0.0) < _CHECK_SUITE_DEBOUNCE_TTL:
         logger.debug(
-            "check_suite: debounced (repo=%s, sha=%.7s)", repo_full_name, head_sha
+            "check_suite: debounced (repo=%s, sha=%.7s)", sanitize_for_log(repo_full_name), sanitize_for_log(head_sha)
         )
         return {"status": "debounced"}
     _check_suite_debounce[key] = now
@@ -498,7 +498,7 @@ async def _trigger_retry_for_sha(repo_full_name: str, commit_sha: str) -> None:
     except Exception as exc:  # pylint: disable=broad-except
         logger.warning(
             "_trigger_retry_for_sha 실패 (repo=%s, sha=%.7s): %s",
-            repo_full_name, commit_sha, type(exc).__name__,
+            sanitize_for_log(repo_full_name), sanitize_for_log(commit_sha), type(exc).__name__,
         )
 
 

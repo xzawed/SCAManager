@@ -5,6 +5,7 @@ from github import Auth, Github, GithubException
 
 from src.constants import HTTP_CLIENT_TIMEOUT
 from src.github_client.models import ChangedFile
+from src.shared.log_safety import sanitize_for_log
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,7 @@ def _collect_changed_files(repo, files, ref: str) -> list[ChangedFile]:
         try:
             content = repo.get_contents(f.filename, ref=ref).decoded_content.decode("utf-8")
         except (GithubException, UnicodeDecodeError) as exc:
-            logger.debug("파일 내용 로드 실패 %s@%s: %s", f.filename, ref, exc)
+            logger.debug("파일 내용 로드 실패 %s@%s: %s", sanitize_for_log(f.filename), sanitize_for_log(ref), exc)
             content = ""
         result.append(ChangedFile(
             filename=f.filename,
