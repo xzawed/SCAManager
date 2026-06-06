@@ -231,9 +231,11 @@ async def test_config_changed_abandons_row(db):
     assert counts["abandoned"] == 1
 
 
-async def test_expired_row_marks_terminal(db):
-    """max_age_hours 초과 행 → terminal 처리됨.
-    Row older than max_age_hours → marked as failed_terminal.
+async def test_expired_row_marks_expired(db):
+    """max_age_hours 초과(재시도 가능했으나 만료) 행 → 'expired' 처리됨.
+    Row older than max_age_hours (retriable but aged out) → marked as 'expired'.
+
+    정합성 감사 P1: 과거엔 failed_terminal 로 오기록(mark_expired dead code)됐다.
     """
     # created_at 을 25시간 전으로 설정 (기본 max_age_hours=24 초과)
     # Set created_at to 25 hours ago (exceeds default max_age_hours=24)
@@ -260,5 +262,6 @@ async def test_expired_row_marks_terminal(db):
         counts = await process_pending_retries(db)
 
     db.refresh(row)
-    assert row.status == "failed_terminal"
-    assert counts["terminal"] == 1
+    assert row.status == "expired"
+    assert counts["expired"] == 1
+    assert counts["terminal"] == 0

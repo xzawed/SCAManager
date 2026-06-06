@@ -73,6 +73,7 @@ async def process_pending_retries(
         "claimed": len(claimed),
         "succeeded": 0,
         "terminal": 0,
+        "expired": 0,
         "abandoned": 0,
         "released": 0,
         "skipped": 0,
@@ -100,7 +101,7 @@ async def process_pending_retries(
     return counts
 
 
-async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-return-statements
+async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-return-statements,too-many-statements
     db: Session,
     row,
     now: datetime,
@@ -199,20 +200,30 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
     )
     expired = is_expired(row, now=now, max_age_hours=settings.merge_retry_max_age_hours)
 
-    if (not should_retry(reason_tag, ci_status)) or expired:
-        # 재시도 불가 또는 만료 → terminal
+    is_terminal_failure = not should_retry(reason_tag, ci_status)
+    if is_terminal_failure or expired:
+        # 재시도 불가(terminal) 또는 max_age 초과(expired) → 재시도 중단
+        # 두 경우를 상태로 구분: 실제 종료 실패는 failed_terminal, 재시도 가능했으나
+        # 만료된 행은 'expired' (정합성 감사 P1 — mark_expired dead code 활성화, 오기록 방지).
+        # Non-retriable (terminal) or aged out (expired) → stop retrying. Distinguish by status:
+        # a genuine terminal failure → failed_terminal; a retriable row that aged out → 'expired'.
         log_merge_attempt(
             db, analysis_id=row.analysis_id, repo_name=row.repo_full_name,
             pr_number=row.pr_number, score=row.score,
             threshold=row.threshold_at_enqueue, success=False, reason=reason,
         )
-        merge_retry_repo.mark_terminal(db, row.id, reason=reason_tag)
+        if is_terminal_failure:
+            merge_retry_repo.mark_terminal(db, row.id, reason=reason_tag)
+            counts["terminal"] += 1
+        else:
+            # 재시도 가능했으나 max_age 초과 — terminal 실패와 구분해 'expired' 기록
+            merge_retry_repo.mark_expired(db, row.id, reason=reason_tag)
+            counts["expired"] += 1
         # 사이클 149 Sprint 3/4 — 알림 + Issue 사용자 언어 (상단 b 단계에서 결정)
         # Cycle 149 Sprint 3/4 — user language for notify + Issue (resolved in step b above)
         await _notify_merge_terminal(row, cfg, reason, reason_tag, language=language)
         if cfg.auto_merge_issue_on_failure:
             await _create_failure_issue_safe(token, row, cfg, reason, reason_tag, language=language)
-        counts["terminal"] += 1
         return
 
     # ── g. 일시적 실패 — 백오프 후 재시도 대기로 복귀 ────────────
