@@ -544,6 +544,64 @@ async def test_pipeline_passes_new_gate_signature(mock_deps):
     assert call_kwargs["config"] is not None, "config가 None으로 전달됨 — get_repo_config 재조회 발생"
 
 
+async def test_pipeline_marks_result_incomplete_on_static_timeout(mock_deps):
+    """정적분석 타임아웃 시 run_gate_check 에 전달되는 result 에 static_analysis_incomplete=True 마커가 있어야 한다.
+
+    이 마커가 AutoMergeAction 의 auto-merge 차단 신호 — 미분석 코드 자동 머지 방지(관측 마커 겸용).
+    """
+    from src.worker.pipeline import run_analysis_pipeline
+    from unittest.mock import AsyncMock, patch
+
+    mock_db = mock_deps["db"]
+    mock_db.query.return_value.filter_by.return_value.first.side_effect = [
+        MagicMock(id=1), None, MagicMock(id=1), None,
+    ]
+    mock_db.refresh = MagicMock()
+
+    from src.config_manager.manager import RepoConfigData
+
+    # 정적분석이 타임아웃 → ([], True) 반환
+    # Static analysis times out → returns ([], True)
+    with patch("src.worker.pipeline._run_static_with_timeout",
+               new=AsyncMock(return_value=([], True))):
+        with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock) as mock_gate:
+            with patch("src.worker.pipeline.get_repo_config",
+                       return_value=RepoConfigData(repo_full_name="owner/repo")):
+                await run_analysis_pipeline("pull_request", PR_DATA)
+
+    mock_gate.assert_called_once()
+    result_arg = mock_gate.call_args.kwargs["result"]
+    assert result_arg.get("static_analysis_incomplete") is True, \
+        "정적분석 타임아웃 시 result 에 static_analysis_incomplete=True 마커가 없음 — auto-merge 차단 불가"
+
+
+async def test_pipeline_no_incomplete_marker_when_static_ok(mock_deps):
+    """정적분석 정상 완료 시 result 에 static_analysis_incomplete 마커가 없어야 한다 (회귀 가드)."""
+    from src.worker.pipeline import run_analysis_pipeline
+    from unittest.mock import AsyncMock, patch
+    from src.analyzer.io.static import StaticAnalysisResult
+
+    mock_db = mock_deps["db"]
+    mock_db.query.return_value.filter_by.return_value.first.side_effect = [
+        MagicMock(id=1), None, MagicMock(id=1), None,
+    ]
+    mock_db.refresh = MagicMock()
+
+    from src.config_manager.manager import RepoConfigData
+
+    with patch("src.worker.pipeline._run_static_with_timeout",
+               new=AsyncMock(return_value=([StaticAnalysisResult(filename="a.py", issues=[])], False))):
+        with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock) as mock_gate:
+            with patch("src.worker.pipeline.get_repo_config",
+                       return_value=RepoConfigData(repo_full_name="owner/repo")):
+                await run_analysis_pipeline("pull_request", PR_DATA)
+
+    mock_gate.assert_called_once()
+    result_arg = mock_gate.call_args.kwargs["result"]
+    assert "static_analysis_incomplete" not in result_arg, \
+        "정상 완료인데 static_analysis_incomplete 마커가 잘못 설정됨"
+
+
 # ---------------------------------------------------------------------------
 # Task 1 — SHA 중복 체크 이동 및 result dict ai_review_status 필드 테스트
 # (Red 단계: SHA 중복 체크가 아직 review_code 이전으로 이동하지 않음)
@@ -992,7 +1050,10 @@ async def test_collect_files_wrapped_in_asyncio_to_thread(mock_deps):
 
 @pytest.mark.asyncio
 async def test_run_static_with_timeout_returns_empty_on_timeout():
-    """분석이 PIPELINE_ANALYSIS_TIMEOUT 초과 시 빈 리스트를 반환해야 한다."""
+    """분석이 PIPELINE_ANALYSIS_TIMEOUT 초과 시 (빈 리스트, timed_out=True) 를 반환해야 한다.
+
+    timed_out=True 는 auto-merge 차단 신호 — 미분석 코드 자동 머지 방지.
+    """
     import asyncio
     from src.worker.pipeline import _run_static_with_timeout
 
@@ -1004,12 +1065,12 @@ async def test_run_static_with_timeout_returns_empty_on_timeout():
         with patch("src.worker.pipeline.PIPELINE_ANALYSIS_TIMEOUT", 0.01):
             result = await _run_static_with_timeout([])
 
-    assert result == []
+    assert result == ([], True)
 
 
 @pytest.mark.asyncio
 async def test_run_static_with_timeout_returns_results_when_fast():
-    """분석이 타임아웃 내에 완료되면 정상 결과를 반환해야 한다."""
+    """분석이 타임아웃 내에 완료되면 (정상 결과, timed_out=False) 를 반환해야 한다."""
     from src.worker.pipeline import _run_static_with_timeout
     from src.analyzer.io.static import StaticAnalysisResult
 
@@ -1021,7 +1082,7 @@ async def test_run_static_with_timeout_returns_results_when_fast():
     with patch("src.worker.pipeline._run_static_analysis", side_effect=_fast):
         result = await _run_static_with_timeout([])
 
-    assert result == fake_result
+    assert result == (fake_result, False)
 
 
 # ---------------------------------------------------------------------------

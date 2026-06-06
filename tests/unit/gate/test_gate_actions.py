@@ -194,6 +194,25 @@ async def test_auto_merge_action_execute_delegates_to_impl():
 
 
 @pytest.mark.asyncio
+async def test_auto_merge_action_skips_when_static_analysis_incomplete():
+    """정적분석 불완전(타임아웃) 시 score 충족이어도 _run_auto_merge 를 호출하지 않아야 한다.
+
+    result["static_analysis_incomplete"]=True → 미분석 코드 자동 머지 차단 (auto-merge 안전성).
+    """
+    from src.gate.actions.auto_merge import AutoMergeAction  # pylint: disable=import-outside-toplevel
+    from src.gate.actions import GateContext  # pylint: disable=import-outside-toplevel
+    cfg = _make_config(auto_merge=True)
+    ctx = GateContext(
+        repo_name="owner/repo", pr_number=42, analysis_id=1,
+        result={"score": 90, "static_analysis_incomplete": True},  # 90 >= threshold 이나 불완전
+        github_token="ghp_test", config=cfg, score=90,
+    )
+    with patch("src.gate.engine._run_auto_merge", new=AsyncMock()) as mock_impl:
+        await AutoMergeAction().execute(ctx)
+    mock_impl.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_auto_merge_action_skips_when_score_below_threshold():
     """score < merge_threshold이면 execute()가 내부 구현을 호출하지 않아야 한다."""
     from src.gate.actions.auto_merge import AutoMergeAction  # pylint: disable=import-outside-toplevel

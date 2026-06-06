@@ -37,7 +37,18 @@ class AutoMergeAction(GateAction):
     async def execute(self, ctx: GateContext) -> None:
         """engine.py의 _run_auto_merge에 위임한다.
         Delegates to engine.py's _run_auto_merge.
+
+        정적분석 불완전(타임아웃) 시 auto-merge 차단 — 미분석 코드는 점수가 인플레이션될 수
+        있으므로 자동 머지하지 않는다 (Approve/Review 옵션은 영향 없음).
+        Block auto-merge when static analysis is incomplete (timeout) — unanalyzed code may have an
+        inflated score, so never auto-merge it (Approve/Review options are unaffected).
         """
+        if ctx.result.get("static_analysis_incomplete"):
+            logger.warning(
+                "static analysis incomplete — auto-merge skipped (repo=%s, pr=%s)",
+                ctx.repo_name, ctx.pr_number,
+            )
+            return
         from src.gate import engine  # pylint: disable=import-outside-toplevel
         await engine._run_auto_merge(  # pylint: disable=protected-access
             ctx.config,

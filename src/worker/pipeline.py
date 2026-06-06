@@ -44,6 +44,9 @@ class _AnalysisSaveParams:  # pylint: disable=too-many-instance-attributes
     ai_review: object  # AiReviewResult
     score_result: object  # ScoreResult
     author_login: str | None = None
+    # 정적분석 타임아웃 등 불완전 분석 여부 — True 시 result 에 마커 + auto-merge 차단
+    # Static analysis incomplete (e.g. timeout) — when True, marks result + blocks auto-merge
+    static_incomplete: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -154,23 +157,29 @@ async def _run_static_analysis(
 
 async def _run_static_with_timeout(
     files: list[ChangedFile], repo_config: object | None = None
-) -> list[StaticAnalysisResult]:
+) -> tuple[list[StaticAnalysisResult], bool]:
     """_run_static_analysis를 PIPELINE_ANALYSIS_TIMEOUT 초 상한으로 실행한다.
     Run _run_static_analysis bounded by PIPELINE_ANALYSIS_TIMEOUT seconds.
-    타임아웃 초과 시 빈 리스트 반환 — AI 리뷰는 계속 진행.
-    Returns empty list on timeout — AI review continues unaffected.
+
+    Returns:
+        (results, timed_out). 타임아웃 시 ([], True) — 빈 결과가 "이슈 없음"(만점)으로
+        오인되어 미분석 코드가 auto-merge 되는 것을 막기 위해 timed_out 신호를 함께 반환한다.
+        On timeout returns ([], True) — the bool flags incomplete analysis so the empty list
+        is not mistaken for "no issues" (perfect score) and auto-merging unanalyzed code.
+        AI 리뷰는 계속 진행 / AI review continues unaffected.
     """
     try:
-        return await asyncio.wait_for(
+        results = await asyncio.wait_for(
             _run_static_analysis(files, repo_config=repo_config),
             timeout=PIPELINE_ANALYSIS_TIMEOUT,
         )
+        return results, False
     except asyncio.TimeoutError:
         logger.warning(
-            "static analysis timed out after %ss — continuing with empty results",
+            "static analysis timed out after %ss — marking incomplete (auto-merge blocked)",
             PIPELINE_ANALYSIS_TIMEOUT,
         )
-        return []
+        return [], True
 
 
 def build_notification_tasks(  # pylint: disable=too-many-positional-arguments,too-many-arguments
@@ -407,6 +416,11 @@ async def _save_and_gate(db: Session, params: _AnalysisSaveParams):
         params.ai_review, params.score_result, params.analysis_results,
         source="pr" if params.pr_number else "push",
     )
+    # 정적분석 불완전(타임아웃) 시 마커 — run_gate_check 가 읽어 auto-merge 차단 + DB 관측 보존
+    # Mark incomplete static analysis (timeout) — run_gate_check reads it to block
+    # auto-merge; also persisted on the Analysis row for observability.
+    if params.static_incomplete:
+        result_dict["static_analysis_incomplete"] = True
     ai = params.ai_review
     analysis = analysis_repo.save_new(db, Analysis(
         repo_id=repo.id,
@@ -546,7 +560,7 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
                 )
 
             with stage_timer("analyze", repo=repo_log) as ctx:
-                analysis_results, ai_review = await asyncio.gather(
+                static_outcome, ai_review = await asyncio.gather(
                     _run_static_with_timeout(files, repo_config=_static_repo_cfg),
                     review_code(
                         settings.anthropic_api_key, commit_message, patches,
@@ -554,6 +568,9 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
                         model=repo_review_model,
                     ),
                 )
+                # (결과 리스트, 타임아웃 여부) — 타임아웃 시 auto-merge 차단 신호로 전파
+                # (results, timed_out) — timed_out propagates as the auto-merge block signal
+                analysis_results, static_timed_out = static_outcome
                 ctx["file_count"] = len(analysis_results)
                 ctx["issue_count"] = sum(len(r.issues) for r in analysis_results)
 
@@ -570,6 +587,7 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
                     ai_review=ai_review,
                     score_result=score_result,
                     author_login=_extract_author_login(event, data),
+                    static_incomplete=static_timed_out,
                 )
                 with SessionLocal() as db:
                     repo_config, analysis_id, result_dict = await _save_and_gate(db, save_params)
