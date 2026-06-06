@@ -62,10 +62,19 @@ class TestClassifyFileGrade:
         p = str(root / ".claude" / "agents" / "test-writer.md").replace("/", "\\")
         assert classify_file_grade(p) == "critical"
 
-    def test_stale_hardcoded_prefix_not_relied_on(self):
-        # 과거 버그 prefix(d:/source/scamanager/)에 더 이상 의존하지 않음 — 실 루트와 다른
-        # 임의 절대경로는 strip 되지 않아 'skip' 이 정상 (상대경로만 분류).
-        assert classify_file_grade("d:/source/scamanager/CLAUDE.md") == "skip"
+    def test_non_runtime_root_absolute_path_is_skip(self):
+        # 실 런타임 루트가 아닌 절대경로는 strip 되지 않아 'skip' 이 정상 (상대 doc 경로만 분류).
+        # 루트에 접미사를 붙인 형제 경로 — 어떤 머신에서도 런타임 루트와 불일치 보장.
+        # An absolute path NOT under the runtime root stays unstripped → 'skip' (only relative doc paths classify).
+        # Use a sibling of the real root (root + suffix) so it never equals the root on any machine.
+        #
+        # 🔴 기존 하드코딩 'd:/source/scamanager/' 는 본 리포 실제 루트와 우연히 일치 →
+        # 루트가 d:\Source\SCAManager 인 머신에서만 strip 되어 'critical' 로 분류, 머신 의존 실패 유발
+        # (CI Linux 루트는 불일치해 통과 → 결함 은폐). 런타임 루트 파생으로 머신 독립 보장.
+        # The old hardcoded 'd:/source/scamanager/' collided with this repo's real root —
+        # it failed only on machines rooted at d:\Source\SCAManager (CI Linux root differed → passed, hiding the flaw).
+        root = str(Path(__file__).resolve().parents[3]).replace("\\", "/")
+        assert classify_file_grade(f"{root}_external/CLAUDE.md") == "skip"
 
 
 class TestApplyVetoMatrix:
