@@ -422,7 +422,7 @@ async def _save_and_gate(db: Session, params: _AnalysisSaveParams):
     if params.static_incomplete:
         result_dict["static_analysis_incomplete"] = True
     ai = params.ai_review
-    analysis = analysis_repo.save_new(db, Analysis(
+    analysis, created = analysis_repo.save_new(db, Analysis(
         repo_id=repo.id,
         commit_sha=params.commit_sha,
         commit_message=params.commit_message,
@@ -435,6 +435,19 @@ async def _save_and_gate(db: Session, params: _AnalysisSaveParams):
         input_tokens=getattr(ai, "input_tokens", None) or None,
         output_tokens=getattr(ai, "output_tokens", None) or None,
     ))
+    if not created:
+        # 동시 insert 가 find_by_sha 재확인(410)을 통과했으나 DB unique 제약이 차단 →
+        # 기존 레코드 반환. find_by_sha race 경로와 동일 처리: 중복 알림/PR 코멘트 방지
+        # (result_dict=None race-recovery 신호 재사용).
+        # Concurrent insert raced past the find_by_sha re-check but was blocked by the DB
+        # constraint → existing returned. Same handling as the find_by_sha race path:
+        # prevent duplicate notify/PR-comment via the result_dict=None race-recovery signal.
+        logger.info(
+            "Concurrent insert blocked by DB constraint (sha=%s) — race-recovery, skipping duplicate gate/notify",
+            params.commit_sha,
+        )
+        repo_config = await _race_recover_existing(db, params, analysis)
+        return repo_config, None, None
     analysis_id = analysis.id
     try:
         repo_config = get_repo_config(db, params.repo_name)

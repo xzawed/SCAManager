@@ -156,6 +156,28 @@ async def test_non_python_files_still_run_ai_review(mock_deps):
     mock_deps["telegram"].assert_called_once()
 
 
+async def test_concurrent_insert_race_skips_duplicate_notify(mock_deps):
+    """save_new 가 DB unique 제약으로 기존 레코드(created=False)를 반환하면 알림을 재발송하지 않는다.
+
+    동시 webhook 가 find_by_sha 재확인을 통과해도 마지막 안전망인 DB 제약이 중복 삽입을 차단한다.
+    이때 기존 레코드가 이미 알림/게이트를 처리했으므로 중복 알림·PR 코멘트를 방지해야 한다
+    (정합성 감사 P1 — result_dict=None race-recovery 신호 재사용).
+    """
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from src.worker.pipeline import run_analysis_pipeline
+
+    # 이미 존재하는 레코드 (다른 webhook 가 처리 완료, pr_number 이미 설정)
+    # Existing record already handled by a concurrent webhook (pr_number already set)
+    existing = MagicMock(id=99, pr_number=7, result={"score": 85})
+    with patch("src.worker.pipeline.analysis_repo.save_new", return_value=(existing, False)):
+        with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
+            await run_analysis_pipeline("pull_request", PR_DATA)
+
+    # 중복 알림 차단 — result_dict=None 으로 notify 스킵
+    # Duplicate notification blocked — notify skipped via result_dict=None
+    mock_deps["telegram"].assert_not_called()
+
+
 async def test_no_python_files_still_creates_repository(mock_deps):
     """Even when no Python files changed, the Repository should be created in DB."""
     mock_deps["push"].return_value = []

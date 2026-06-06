@@ -45,7 +45,8 @@ def test_find_by_sha_returns_none_when_missing(db_session):
 def test_save_new_persists_and_returns_analysis(db_session):
     repo = _seed_repo(db_session)
     a = Analysis(repo_id=repo.id, commit_sha="abc123", score=80, grade="B")
-    saved = analysis_repo.save_new(db_session, a)
+    saved, created = analysis_repo.save_new(db_session, a)
+    assert created is True  # 신규 삽입
     assert saved.id is not None
     assert saved.commit_sha == "abc123"
     assert db_session.query(Analysis).count() == 1
@@ -61,14 +62,16 @@ def test_find_by_sha_returns_existing(db_session):
 
 
 def test_save_new_returns_existing_on_duplicate_sha(db_session):
-    """DB unique constraint 위반 시 기존 레코드를 반환 — race condition 안전망."""
+    """DB unique constraint 위반 시 (기존 레코드, created=False) 반환 — race condition 안전망."""
     repo = _seed_repo(db_session)
     first = Analysis(repo_id=repo.id, commit_sha="dup123", score=75, grade="B")
-    saved_first = analysis_repo.save_new(db_session, first)
+    saved_first, created_first = analysis_repo.save_new(db_session, first)
+    assert created_first is True
 
     second = Analysis(repo_id=repo.id, commit_sha="dup123", score=90, grade="A")
-    result = analysis_repo.save_new(db_session, second)
+    result, created_second = analysis_repo.save_new(db_session, second)
 
+    assert created_second is False  # 동시 insert race — 신규 아님 (중복 알림/게이트 차단 신호)
     assert result.id == saved_first.id
     assert result.score == 75  # 첫 번째 레코드 그대로
     assert db_session.query(Analysis).count() == 1
