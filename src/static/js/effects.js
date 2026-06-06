@@ -259,6 +259,21 @@
   }
 
   /* ----- 7. Tabs sliding indicator --------------------------------------- */
+  // 모든 탭 인디케이터를 활성 탭 위치로 재배치 (resize 단일 전역 핸들러용)
+  // Reposition every tab indicator onto its active tab (used by the single resize handler).
+  function repositionAllTabIndicators() {
+    document.querySelectorAll(".tabs").forEach((group) => {
+      const ind = group.querySelector(".tabs__indicator");
+      const active = group.querySelector(".tabs__tab.is-active");
+      if (!ind || !active) return;
+      const groupRect = group.getBoundingClientRect();
+      const r = active.getBoundingClientRect();
+      ind.style.transition = "none";
+      ind.style.width = `${r.width}px`;
+      ind.style.transform = `translateX(${r.left - groupRect.left}px)`;
+    });
+  }
+
   function setupTabs() {
     document.querySelectorAll(".tabs").forEach((group) => {
       let ind = group.querySelector(".tabs__indicator");
@@ -286,11 +301,15 @@
           position(t);
         });
       });
-      // re-measure on layout shift
-      window.addEventListener("resize", () => {
-        position(group.querySelector(".tabs__tab.is-active"), false);
-      });
     });
+
+    // re-measure on layout shift — remove-before-add 단일 전역 핸들러 (hx-boost 재방문 시 누적 차단)
+    // Single global resize handler via remove-before-add: prevents listener pile-up across hx-boost re-navigations.
+    if (document._tabsResizeHandler) {
+      window.removeEventListener("resize", document._tabsResizeHandler);
+    }
+    document._tabsResizeHandler = repositionAllTabIndicators;
+    window.addEventListener("resize", document._tabsResizeHandler);
   }
 
   /* ----- 8. Nav sliding active indicator --------------------------------- */
