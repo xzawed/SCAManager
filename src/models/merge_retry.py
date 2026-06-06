@@ -7,7 +7,7 @@ When a merge fails because CI is still running, enqueue and retry.
   pending → succeeded        — 재시도 성공
   pending → failed_terminal  — 재시도 가능하지 않은 오류 (권한 없음, branch protection 등)
   pending → abandoned        — max_attempts 초과
-  pending → expired          — 커밋 SHA 가 더 이상 PR head 가 아님
+  pending → expired          — 커밋 SHA 가 더 이상 PR head 가 아님(force-push) 또는 max_age 초과
 """
 from datetime import datetime, timezone
 
