@@ -518,15 +518,18 @@ class TestProcessPendingRetries:
 
     # T9-9: 만료된 행 → terminal 마킹
     # T9-9: Expired row → terminal
-    async def test_process_expired_row_marks_terminal(self, db_session):
-        """만료된 행은 CI 상태가 running 이어도 terminal 처리.
-        Expired rows are terminal even when CI status is running.
+    async def test_process_expired_row_marks_expired(self, db_session):
+        """만료(max_age 초과)된 retriable 행은 terminal 실패가 아니라 'expired' 로 기록.
+        Age-expired retriable rows are recorded as 'expired', not a terminal CI failure.
+
+        정합성 감사 P1: mark_expired(status='expired') 가 dead code 였고, 만료 행이
+        mark_terminal(reason=CI태그)로 오기록돼 'expired' 상태가 운영에 발생하지 않던 결함.
         """
         row = _seed_queue_row(db_session)
 
         patches = _standard_patches(
             merge_return=(False, "unstable_ci: state=unstable, merged=False", ""),
-            ci_return="running",
+            ci_return="running",  # 재시도 가능 상태이나 max_age 초과 → expired
         )
         with (
             patches["token"],
@@ -545,13 +548,14 @@ class TestProcessPendingRetries:
         ):
             result = await process_pending_retries(db_session, only_ids=[row.id])
 
-        assert result["terminal"] == 1
+        assert result["expired"] == 1       # 만료는 expired 카운트
+        assert result["terminal"] == 0      # terminal 실패 아님
         assert result["released"] == 0
-        mock_notify_t.assert_called_once()
+        mock_notify_t.assert_called_once()  # 재시도 중단 알림은 유지
         mock_log.assert_called_once()
 
         db_session.refresh(row)
-        assert row.status == "failed_terminal"
+        assert row.status == "expired"      # failed_terminal 아님
 
     # T9-10: 인프라 에러 → 30초 백오프로 클레임 해제
     # T9-10: Infra error → release with 30s backoff

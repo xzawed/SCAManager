@@ -391,8 +391,10 @@ def mark_expired(
     reason: str | None = None,
     now: datetime | None = None,
 ) -> bool:
-    """status='expired' 마킹 — SHA 가 PR head 가 아닐 때 (force-push 등).
-    Mark status as 'expired' — when SHA is no longer PR head (e.g. force-push).
+    """status='expired' 마킹 — 더 이상 머지 시도하지 않는 비-실패 종료.
+    SHA 가 PR head 가 아닐 때(force-push 등) 또는 max_age 초과로 만료된 경우.
+    Mark status as 'expired' — a non-failure stop: SHA no longer PR head (e.g. force-push)
+    or the row aged out past max_age (merge_retry_service terminal 분기에서 사용).
     행 없으면 False 반환.
     Returns False if row not found.
     """
