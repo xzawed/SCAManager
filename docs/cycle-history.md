@@ -1,10 +1,12 @@
-# SCAManager 사이클 작업 이력 (사이클 60~159, 최신순)
+# SCAManager 사이클 작업 이력 (사이클 60~161, 최신순)
 
-> CLAUDE.md tail entry 분리본. 사이클 60~159 이력 (본문 최신순 — 목차는 159부터, 하단에 60~92 archive).
+> CLAUDE.md tail entry 분리본. 사이클 60~161 이력 (본문 최신순 — 목차는 161부터, 하단에 60~92 archive).
 > 본 파일은 회고 시점 (정책 8 5+1 패턴) 또는 영역 reference 시 read 의무.
 
 ## 목차
 
+- [사이클 161 (정합성 감사 P1 백로그 해소 — hook 클램프·gate 단일출처·hx-boost 가드·로컬 테스트 루트 독립, 4 PR #764~#767, 2026-06-06)](#사이클-161)
+- [사이클 160 (integrity-audit 워크플로우 세션 — 문서 stale 경로·n8n 토큰 차단·timeout 단일출처·RLS 0037, 4 PR #760~#763, 2026-06-06)](#사이클-160)
 - [사이클 159 (157 회고 백로그 P2 전량 해소 — 4 PR: security_scan/e2e fail-fast·CI 결정성·DNS OSError·job name + Codex 게이트 비활성화, 2026-06-03)](#사이클-159)
 - [사이클 158 (157 회고 5+1+cross-verify — docs 정합 봉인: cycle-history 157 섹션 부재 P1 + docs P2 3건 + db.md env.py 함정 노트, 2026-06-03)](#사이클-158)
 - [사이클 157 (156 회고 반영 메타 scope — round_trip CI 활성화 + WCAG tap-target silent-skip→fail-fast, 2 PR, 2026-06-02)](#사이클-157)
@@ -68,6 +70,34 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 사이클 161
+
+**날짜**: 2026-06-06 | **PR**: #764~#767 | **상태**: 정합성 감사 P1 백로그 해소 (직전 #759 full 감사 confirmed)
+
+**작업 내용**: 직전 integrity-audit 세션(사이클 160)의 #759 full 감사 confirmed P1 3건 + 머지 후 발견 로컬 테스트 결함 1건을 단일 도메인 PR 4건으로 해소. 착수 전 적대적 분석 워크플로우(analyze+refute, 6 에이전트)로 3건 모두 `diff_is_safe=true` + 정확 최소 diff·회귀 위험·필요 테스트 사전 도출 (정책 15 사전 사고).
+
+- **#764 (hook 클램프)** — CLI hook(`POST /api/hook/result`)이 `ai_result` raw 점수를 클램프 없이 `int()` 캐스팅만 해 범위 밖 값(예: commit 999)이 `calculator.py:66-68` 스케일링을 거쳐 breakdown 카테고리 점수가 cap(commit 15 / ai 25 / test 15)을 초과·음수가 되는 정합 위반. `ai_review.py:184-185` 의 `max(0, min(AI_RAW_*_MAX, int(...)))` 패턴을 `hook.py:165-167` 에 미러 + `hook.py:24` 상수 import. 유효 범위 입력은 동작 100% 보존. 회귀 가드 2건(범위초과→cap / 음수→0, `result["breakdown"]` 기준 assert — raw 는 직렬화 안 됨을 적대적 검증이 정정). 단위 +2.
+- **#765 (gate 단일출처)** — `merge_reasons.is_retriable_tag()` 가 "단일 출처" 문서화됐으나 src 호출처 0인 dead code, `engine.py:202` 가 `(UNSTABLE_CI, UNKNOWN_STATE_TIMEOUT)` 튜플 멤버십으로 중복 하드코딩(`_RETRIABLE_TAGS` frozenset 과 drift 위험). `not is_retriable_tag(reason_tag)` 로 교체 + `engine.py:28` import 원자 정리(`DEFERRED` 보존). frozenset/tuple 멤버십 동치로 동작 보존. 기존 테스트(T8-1 retriable / T8-4 terminal + test_merge_reasons)로 완전 커버 — 신규 테스트 미추가(정책 16). 메모 "engine 3곳"은 실측 1곳으로 정정.
+- **#766 (hx-boost UI 가드)** — `base.html` `<script>` 가 hx-boost body swap 마다 재실행되는데 `_initReveal`(988-989)·`_finishProgress`(1096-1099) 가 `htmx:afterSettle`/`historyRestore` 에 remove-before-add 없이 등록돼 재방문 N회마다 N개 누적. `_baseNavHandler` 미러로 `document._initRevealHandler`/`_finishProgressHandler` 단일 슬롯 가드. 940-1120 전수 결과 가드 누락은 이 2곳뿐. E2E 회귀 가드 1건(`test_reveal_progress_handlers_use_remove_before_add` — 3회 hx-boost 후 핸들러 단일 슬롯 검증, TDD RED→GREEN) + nav E2E 11 passed. 8조합 시각검증 사용자 수행 후 머지. E2E +1.
+- **#767 (로컬 테스트 루트 독립)** — 머지 후 전체 스위트 실측 중 `test_doc_review_gate.py::test_stale_hardcoded_prefix_not_relied_on` 1건 실패 발견. 하드코딩 `d:/source/scamanager/CLAUDE.md` 를 "비-루트 경로"로 가정했으나 본 리포 실제 루트(`d:\Source\SCAManager`)와 정규화 시 일치 → `_normalise` strip → `critical` → **루트가 `d:\Source\SCAManager` 인 머신에서만 실패**(CI Linux 루트 불일치로 통과 → 결함 은폐). 런타임 루트(`parents[3]`) + `_external` 접미사 형제 경로로 교체해 머신 독립화 + 테스트명 `test_non_runtime_root_absolute_path_is_skip` 개명. src 무변경.
+
+**검증**: Codex 액세스 토큰 만료(`refresh token already used`) → 사용자 승인 하 **Claude 직접검증 fallback** (사이클 119/125 전례, PR 일괄 승인). 각 PR 본문에 fallback 사유 + 근거 명시. 테스트 4716→4768 수집 (단위 4563→4615 [#760~763 미추적분 실측 포함 + #764 +2], E2E 112→113 [#766 +1]), pylint 10.00 유지.
+
+**학습**: ① 적대적 분석 워크플로우(analyze→refute)가 테스트 assertion 결함(raw vs breakdown) 사전 차단 — High tier 작업 전 적대적 self-verify ROI 양성. ② **CI green ≠ 로컬 green** — `test_doc_review_gate` 가 CI(Linux) 통과로 머신 의존 결함을 은폐 → 머지 후 전체 스위트 실측의 가치 재확인 (정책 17 §5 누적 결함 정기 검증 정신). ③ STATE.md 가 사이클 160(#760~763)부터 stale — 6-step §⑤ 머지 후 즉시 동기화 의무 재확인.
+
+## 사이클 160
+
+**날짜**: 2026-06-06 | **PR**: #760~#763 | **상태**: integrity-audit 다이나믹 워크플로우 검증 + 현재 main 정합성 감사 fix
+
+**작업 내용**: integrity-audit 다이나믹 워크플로우의 옵션 검증(원 요청)에서 출발 → 워크플로우 verify 단계 회복력 수정 + 현재 origin/main 전수 감사 → 정합성 fix 4건 머지.
+
+- **#760** 운영 문서 stale 경로 7건 (CLAUDE.md 메모리-grep 경로 `f--DEVELOPMENT`→`d--Source-SCAManager` silent-skip 등).
+- **#761** n8n issue 릴레이 GitHub 토큰 유출 차단 — 전역 env `N8N_RELAY_REPO_TOKEN`(default off) **opt-in + `n8n_webhook_secret` 둘 다 충족 시에만** 토큰 전송. github.py 조회 게이트 + n8n.py 방어 심화.
+- **#762** timeout 단일출처 정리 (미사용 `constants.py` 300 제거, `pipeline.py` 60 유지, 동작 무변경) + merge off-by-one(N-1) 문서화.
+- **#763** `issue_registrations` RLS policy `alembic/versions/0037_*` (repo_id→repositories.user_id 1-hop, PG 전용).
+
+**핵심 학습**: ① 감사는 반드시 현재 origin/main 기준 실행 — 초기 감사를 stale feat 브랜치(당시 origin/main보다 102 커밋 뒤)에서 돌려 이미 main 에서 고쳐진 결함을 헛수정. ② 워크플로우 verify 단계가 고동시성(~100 에이전트)에서 StructuredOutput 누락으로 전면 붕괴(33발견→0검증) → 재시도+소배치(4)+`unverified` 버킷으로 수정. ③ Codex 토큰 만료 → Claude 직접검증 fallback. ⚠️ 본 사이클 STATE.md/cycle-history 동기화는 사이클 161 에서 일괄 수행 (사이클 160 당시 미반영 stale).
 
 ## 사이클 159
 
