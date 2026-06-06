@@ -53,6 +53,7 @@ def test_breakdown_keys_present():
 
 
 from src.analyzer.io.ai_review import AiReviewResult
+from src.constants import COMMIT_MSG_MAX, AI_REVIEW_MAX, TEST_COVERAGE_MAX
 
 
 def _make_ai_review(commit_score=18, ai_score=17, test_score=10):
@@ -88,6 +89,35 @@ def test_calculate_score_test_coverage_graduated():
     """test_score=7 → round(7*15/10) = round(10.5) = 10."""
     result = calculate_score([_make_result([])], ai_review=_make_ai_review(test_score=7))
     assert result.breakdown["test_coverage"] == 10
+
+
+def test_calculate_score_clamps_breakdown_to_caps():
+    """범위 밖 raw 점수(producer 클램프 누락 가정)도 calculator 중앙 방어로 breakdown 이 cap 이내.
+    Central defense: even if a producer forgets to clamp raw scores, breakdown stays within caps.
+
+    회고 P2: 클램프가 producer(ai_review/hook)에만 있고 calculator 자체는 미클램프였음 — 4번째
+    producer 가 클램프를 빠뜨리면 breakdown 카테고리가 cap 을 초과해 정합성 위반. 본 가드로 봉인.
+    """
+    result = calculate_score(
+        [_make_result([])],
+        ai_review=_make_ai_review(commit_score=999, ai_score=999, test_score=999),
+    )
+    assert result.breakdown["commit_message"] == COMMIT_MSG_MAX
+    assert result.breakdown["ai_review"] == AI_REVIEW_MAX
+    assert result.breakdown["test_coverage"] == TEST_COVERAGE_MAX
+    assert result.total <= 100
+
+
+def test_calculate_score_clamps_negative_breakdown_to_zero():
+    """음수 raw 점수도 calculator 중앙 방어로 breakdown 이 0 미만으로 내려가지 않는다.
+    Negative raw scores never drive a breakdown category below 0 (central defense floor)."""
+    result = calculate_score(
+        [_make_result([])],
+        ai_review=_make_ai_review(commit_score=-50, ai_score=-50, test_score=-50),
+    )
+    assert result.breakdown["commit_message"] == 0
+    assert result.breakdown["ai_review"] == 0
+    assert result.breakdown["test_coverage"] == 0
 
 
 def test_calculate_score_fallback_when_no_ai_review():

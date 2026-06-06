@@ -61,11 +61,14 @@ def calculate_score(
 
     ai_defaults_applied = False
     if ai_review is not None and ai_review.status == "success":
-        # AI 점수를 새 배점으로 스케일링 (raw → 배점)
-        # Scale AI raw scores to the configured point allocation (raw → weighted).
-        commit_score = round(ai_review.commit_score * COMMIT_MSG_MAX / AI_RAW_COMMIT_MAX)
-        ai_score = round(ai_review.ai_score * AI_REVIEW_MAX / AI_RAW_DIRECTION_MAX)
-        test_score = round(ai_review.test_score * TEST_COVERAGE_MAX / AI_RAW_TEST_MAX)
+        # AI 점수를 새 배점으로 스케일링 (raw → 배점) 후 [0, cap] 중앙 클램프.
+        # producer(ai_review/hook)가 raw 클램프를 빠뜨려도 breakdown 카테고리가 cap 초과·음수가
+        # 되지 않도록 calculator 가 최종 방어 (유효 입력은 무영향 — 동작 보존).
+        # Scale AI raw scores to the point allocation, then clamp to [0, cap] as central defense —
+        # keeps breakdown within caps even if a producer forgets to clamp raw (no-op for valid input).
+        commit_score = max(0, min(round(ai_review.commit_score * COMMIT_MSG_MAX / AI_RAW_COMMIT_MAX), COMMIT_MSG_MAX))
+        ai_score = max(0, min(round(ai_review.ai_score * AI_REVIEW_MAX / AI_RAW_DIRECTION_MAX), AI_REVIEW_MAX))
+        test_score = max(0, min(round(ai_review.test_score * TEST_COVERAGE_MAX / AI_RAW_TEST_MAX), TEST_COVERAGE_MAX))
     else:
         # AI 리뷰 없거나 기본값 적용 시 중립적 기본값
         # No AI review or failed call — fall back to neutral defaults.
