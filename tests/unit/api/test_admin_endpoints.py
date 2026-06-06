@@ -82,8 +82,8 @@ def test_get_rls_audit_returns_matrix(client):
     data = response.json()
     assert "summary" in data
     assert "matrix" in data
-    assert data["summary"]["total"] == 10
-    assert data["summary"]["applied"] == 10
+    assert data["summary"]["total"] == 11
+    assert data["summary"]["applied"] == 11
 
 
 def test_admin_tenants_html_renders(client):
