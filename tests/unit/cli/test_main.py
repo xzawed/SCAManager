@@ -46,7 +46,9 @@ def test_main_no_files_exits_zero(m_diff, capsys):
     with pytest.raises(SystemExit) as exc_info:
         main(["review"])
     assert exc_info.value.code == 0
-    assert "변경" in capsys.readouterr().out or True  # message printed
+    # "변경된 파일이 없습니다." 안내 메시지가 실제 출력되는지 검증 (dead `or True` 제거)
+    # Verify the "no changed files" notice is actually printed (removed dead `or True`).
+    assert "변경된 파일이 없습니다." in capsys.readouterr().out
 
 
 @patch("src.cli.__main__.format_result", return_value="output")
