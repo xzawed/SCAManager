@@ -126,6 +126,27 @@ const VERDICT_SCHEMA = {
   required: ['real', 'lens', 'reason'],
 }
 
+// completeness critic 가 식별한 미검증 영역(gap) 목록 스키마
+// Gap list schema — uncovered areas surfaced by the completeness critic
+const GAPS_SCHEMA = {
+  type: 'object',
+  properties: {
+    items: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          domain: { type: 'string' },
+          modality: { type: 'string' },
+          why: { type: 'string' },
+        },
+        required: ['domain', 'modality', 'why'],
+      },
+    },
+  },
+  required: ['items'],
+}
+
 // ── 프롬프트 빌더 ────────────────────────────────────────
 // Prompt builders
 function auditPrompt(domain, changedFiles, round) {
@@ -156,6 +177,30 @@ function verifyPrompt(f, lens) {
     `주장된 결함: [${f.severity}] ${f.title} @ ${f.file}:${f.line}`,
     `근거: ${f.claim}`,
     '확신이 없으면 real=false. 명확히 진짜일 때만 real=true.',
+  ].join('\n')
+}
+
+// completeness 비평가 프롬프트 — 5+1 의 +1 cross-verify 역할 (미검증 영역 식별)
+// Completeness critic prompt — the +1 cross-verify of the 5+1 pattern (surface uncovered areas)
+function completenessPrompt(domains, confirmed, scope) {
+  return [
+    '당신은 완전성 비평가입니다 (5+1 의 +1 cross-verify 역할).',
+    `감사 scope: ${scope}. 커버된 도메인: ${domains.map((d) => d.id).join(', ')}.`,
+    `현재까지 confirmed 결함 ${confirmed.length}건.`,
+    '다음 미검증 영역을 식별하라:',
+    '(a) 깊이 점검 안 된 도메인',
+    '(b) 미검증 modality — 마이그레이션 ORM drift, 신규 env-var 의 docs/reference/env-vars.md 등재, .claude/rules path-scoped sync, 테스트 수 배지 동기화 등',
+    '각 gap 은 {domain, modality, why}. 진짜 누락만 — 추측 금지. 없으면 빈 배열.',
+  ].join('\n')
+}
+
+// 표적 gap 감사 프롬프트 — completeness 가 지목한 미검증 영역 집중 감사
+// Targeted gap-audit prompt — focused audit of an area the completeness critic flagged
+function gapAuditPrompt(gap) {
+  return [
+    '당신은 표적 감사관입니다. 다음 gap 을 집중 감사하세요:',
+    `도메인: ${gap.domain} / 미검증 양식: ${gap.modality} / 사유: ${gap.why}`,
+    '🔴 정책 6 강제: file:line `grep -n` 실측. findings 배열 반환 (없으면 빈 배열).',
   ].join('\n')
 }
 
@@ -203,7 +248,7 @@ async function verifyFresh(fresh) {
   return out
 }
 
-// ── 오케스트레이션 (Task 3 범위: 발견 + 다관점 verify) ──
+// ── 오케스트레이션 (Task 5 범위: loop-until-dry + 다관점 verify + completeness critic) ──
 const opts = parseArgs(args)
 const scope = opts.scope ?? 'full'
 const dryRun = opts.dryRun === true
@@ -218,26 +263,69 @@ if (dryRun) {
   return { scope, dryRun: true, domains: domains.map((d) => d.id), changedFiles }
 }
 
+// ── loop-until-dry (Task 4) ──
+// seen = 이미 발견된 모든 결함 키 (verify reject/unverified 포함) — 재등장·무한루프 차단.
+// seen = every finding key ever surfaced (incl. verify-rejected/unverified) — blocks re-emergence/infinite loop.
+const seen = new Set()
+const confirmed = []
+const unverifiedAll = []
+let dry = 0
+let round = 0
+// budget 설정 시 5라운드, 미설정 시 보수적 3라운드 / 5 rounds with budget, conservative 3 without
+const MAX_ROUNDS = budget.total ? 5 : 3
+
 phase('Discover')
-const round1 = (await parallel(domains.map((d) => () =>
-  agent(auditPrompt(d, changedFiles, 1), { label: `audit:${d.id}:r1`, phase: 'Discover', schema: FINDINGS_SCHEMA })
-))).filter(Boolean).flatMap((r) => r.findings ?? [])
+while (dry < 2 && round < MAX_ROUNDS && (!budget.total || budget.remaining() > 60_000)) {
+  round++
+  const found = (await parallel(domains.map((d) => () =>
+    agent(auditPrompt(d, changedFiles, round), { label: `audit:${d.id}:r${round}`, phase: 'Discover', schema: FINDINGS_SCHEMA })
+  ))).filter(Boolean).flatMap((r) => r.findings ?? [])
 
-const fresh1 = dedupe(round1)
-log(`발견 라운드 1: ${fresh1.length}건 (검증 전)`)
+  const fresh = found.filter((f) => !seen.has(key(f)))
+  if (!fresh.length) { dry++; log(`라운드 ${round}: 신규 0 (dry ${dry}/2)`); continue }
+  dry = 0
+  fresh.forEach((f) => seen.add(key(f)))
+  log(`라운드 ${round}: 신규 ${fresh.length}건 → 검증`)
 
-phase('Verify')
-const judged1 = await verifyFresh(fresh1)
-const confirmed1 = judged1.filter((j) => j.real)
-const unverified1 = judged1.filter((j) => j.unverified)
-// fp_blocked = 검증 응답을 받았으나 다수결에서 reject 된 것 (검증 실패 unverified 와 구분)
-// fp_blocked = got verdicts but rejected by majority (distinct from unverified infra failures)
-const fpBlocked1 = judged1.filter((j) => !j.real && !j.unverified).length
-log(`검증: ${fresh1.length}건 중 confirmed ${confirmed1.length} / fp ${fpBlocked1} / unverified ${unverified1.length}`)
+  const judged = await verifyFresh(fresh)
+  confirmed.push(...judged.filter((j) => j.real))
+  unverifiedAll.push(...judged.filter((j) => j.unverified))
+}
+
+// ── completeness critic + 표적 gap 라운드 (Task 5) ──
+phase('Completeness')
+const gaps = await agent(completenessPrompt(domains, confirmed, scope), { label: 'completeness', phase: 'Completeness', schema: GAPS_SCHEMA })
+if (gaps?.items?.length) {
+  log(`completeness: gap ${gaps.items.length}건 → 표적 라운드`)
+  const gapFound = (await parallel(gaps.items.map((g) => () =>
+    agent(gapAuditPrompt(g), { label: `gap:${g.domain}`, phase: 'Discover', schema: FINDINGS_SCHEMA })
+  ))).filter(Boolean).flatMap((r) => r.findings ?? []).filter((f) => !seen.has(key(f)))
+  gapFound.forEach((f) => seen.add(key(f)))
+  if (gapFound.length) {
+    const gapJudged = await verifyFresh(gapFound)
+    confirmed.push(...gapJudged.filter((j) => j.real))
+    unverifiedAll.push(...gapJudged.filter((j) => j.unverified))
+  }
+}
+
+// ── Report (구조화 데이터 반환 — 리포트 파일 작성은 호출자 책임) ──
+phase('Report')
+const finalConfirmed = dedupe(confirmed)
+// fp_blocked = seen 전체 − confirmed − unverified = 검증 응답 받았으나 다수결 reject 된 것
+// fp_blocked = total seen − confirmed − unverified = got verdicts but rejected by majority
+const fpBlocked = seen.size - finalConfirmed.length - unverifiedAll.length
+log(`종료: 라운드 ${round} / confirmed ${finalConfirmed.length} / fp ${fpBlocked} / unverified ${unverifiedAll.length}`)
 return {
-  scope, rounds: 1,
-  confirmed: confirmed1,
-  fp_blocked: fpBlocked1,
-  unverified: unverified1.length,
-  unverified_findings: unverified1.map((u) => ({ domain: u.domain, severity: u.severity, title: u.title, file: u.file, line: u.line })),
+  scope,
+  rounds: round,
+  confirmed: finalConfirmed,
+  unverified: unverifiedAll.length,
+  unverified_findings: unverifiedAll.map((u) => ({ domain: u.domain, severity: u.severity, title: u.title, file: u.file, line: u.line })),
+  roi: {
+    fp_blocked: fpBlocked,
+    new: finalConfirmed.length,
+    p0: count(finalConfirmed, 'P0'),
+    p1: count(finalConfirmed, 'P1'),
+    p2: count(finalConfirmed, 'P2'),
+  },
 }
