@@ -388,6 +388,8 @@ git push -u origin <branch>
   1. PR template `[ ] Codex OK 회신 받음` 체크박스 (즉시 — 위험 0)
   2. Codex GitHub App + GitHub Actions workflow `codex-mutual-review.yml` (사이클 94+ 옵션, 사용자 confirm 후)
 - ⚠️ **`.codex/hooks.json` Windows hard-coded path** — `f:\DEVELOPMENT\...` 경로 → Codespaces (Linux) 환경에서 hook 0% 발화. mutual 자동화 검토 시 사전 인지 의무 (사이클 93 관점 5 발견).
+- 🔴 **토큰 만료/런타임 오류 fallback 예외 (사이클 161 회고 신설)** — Codex 액세스 토큰 만료(`refresh token already used`)·샌드박스 제약·CLI 런타임 오류로 mutual 자동 검증 불능 시 = **사용자 명시 승인 하 Claude 직접검증 fallback** 정당 (정책 18 예외 "사용자 직접 결정 영역" + 사이클 119/125/161 전례). fallback PR 본문에 ① 만료/오류 사유 ② 사용자 승인 ③ 직접검증 근거(적대적 분석·TDD·lint) 3종 명시 의무.
+  - 🔴 **복구 강제 가드 (mutual 2-layer 가치 회귀 차단)** — 동일 fallback 이 **≥ 2 사이클 또는 ≥ 5 PR 연속** 시 = 다음 세션 진입 전 `codex logout; codex login` 복구를 **사용자 1줄 확인으로 강제 트리거** (메모리 [[feedback-codex-post-validation-mandatory]] + [[integrity-audit-session]] 재개법 "codex login 권장" → "복구 강제"로 강화). mutual = 외부 LLM 다양성 핵심 가치이므로 장기 1-layer 운영 금지.
 
 ### 17 정책 cross-reference 표 (CLAUDE.md 정책 18 본문서 이관 — docs reorg Phase 3d)
 
