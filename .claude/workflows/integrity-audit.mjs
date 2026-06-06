@@ -115,6 +115,17 @@ const FINDINGS_SCHEMA = {
   required: ['findings'],
 }
 
+const VERDICT_SCHEMA = {
+  type: 'object',
+  properties: {
+    real: { type: 'boolean' },
+    lens: { type: 'string', enum: ['correctness', 'security', 'repro'] },
+    reason: { type: 'string' },
+    citation_verified: { type: 'boolean' },
+  },
+  required: ['real', 'lens', 'reason'],
+}
+
 // ── 프롬프트 빌더 ────────────────────────────────────────
 // Prompt builders
 function auditPrompt(domain, changedFiles, round) {
@@ -133,7 +144,66 @@ function auditPrompt(domain, changedFiles, round) {
   ].filter(Boolean).join('\n')
 }
 
-// ── 오케스트레이션 (Task 2 범위: 단일 발견 라운드) ──
+function verifyPrompt(f, lens) {
+  const lensQ = {
+    correctness: '이 결함 주장이 실제 동작을 파손하는가? 코드를 직접 읽고 확인하라.',
+    security: '이 결함이 실제 데이터/권한 노출·보안 영향을 갖는가?',
+    repro: '구체적 트리거 경로가 존재하는가? 그리고 인용된 file:line 이 실제로 존재하는지 grep 으로 재확인하라 (citation_verified 에 반영).',
+  }[lens]
+  return [
+    '당신은 적대적 검증관입니다. 기본 입장은 "반증(real=false)" 입니다.',
+    `검증 렌즈: ${lens} — ${lensQ}`,
+    `주장된 결함: [${f.severity}] ${f.title} @ ${f.file}:${f.line}`,
+    `근거: ${f.claim}`,
+    '확신이 없으면 real=false. 명확히 진짜일 때만 real=true.',
+  ].join('\n')
+}
+
+// 단일 렌즈로 결함 1건 판정 (적대적 검증관 에이전트)
+// Judge one finding through a single lens (adversarial verifier agent)
+// 고동시성에서 서브에이전트가 StructuredOutput 호출을 누락(flake)할 수 있으므로 1회 재시도.
+// Subagents can skip the StructuredOutput call under high concurrency (flake), so retry once.
+async function judgeLens(f, lens) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const v = await agent(verifyPrompt(f, lens), {
+        label: `verify:${f.file}:${lens}${attempt ? ':retry' : ''}`, phase: 'Verify', schema: VERDICT_SCHEMA,
+      })
+      if (v) return v
+    } catch {
+      // StructuredOutput 누락/오류 — 재시도로 넘어감 / missed StructuredOutput — fall through to retry
+    }
+  }
+  return null
+}
+
+// 결함 1건을 3 렌즈 병렬 판정 — 2/3 이상 real=true 시 confirmed.
+// 검증 렌즈가 2개 미만만 응답하면 다수결 불가 → unverified 로 표시(조용한 false-negative 방지).
+// Judge one finding across 3 lenses — confirmed when >= 2/3 vote real.
+// If fewer than 2 lenses returned a verdict, majority is impossible → mark unverified (avoid silent false-negatives).
+function verifyOne(f) {
+  return parallel(['correctness', 'security', 'repro'].map((lens) => () => judgeLens(f, lens)))
+    .then((vs) => {
+      const valid = vs.filter(Boolean)
+      const unverified = valid.length < 2
+      return { ...f, real: !unverified && valid.filter((v) => v.real).length >= 2, unverified, verdicts: valid }
+    })
+}
+
+// fresh 결함들을 소배치로 순차 검증 — area=gate(무결) 프로파일 모사로 고동시성 StructuredOutput 누락 차단.
+// Verify fresh findings in small sequential batches — mirrors the clean area=gate profile to avoid
+// high-concurrency StructuredOutput misses (full 33건 동시 검증 시 전면 붕괴 회귀 가드).
+async function verifyFresh(fresh) {
+  const VERIFY_BATCH = 4 // 배치당 4결함 × 3렌즈 = 12 에이전트 (area=gate 무결 수준)
+  const out = []
+  for (let i = 0; i < fresh.length; i += VERIFY_BATCH) {
+    const chunk = fresh.slice(i, i + VERIFY_BATCH)
+    out.push(...(await parallel(chunk.map((f) => () => verifyOne(f)))).filter(Boolean))
+  }
+  return out
+}
+
+// ── 오케스트레이션 (Task 3 범위: 발견 + 다관점 verify) ──
 const opts = parseArgs(args)
 const scope = opts.scope ?? 'full'
 const dryRun = opts.dryRun === true
@@ -153,5 +223,21 @@ const round1 = (await parallel(domains.map((d) => () =>
   agent(auditPrompt(d, changedFiles, 1), { label: `audit:${d.id}:r1`, phase: 'Discover', schema: FINDINGS_SCHEMA })
 ))).filter(Boolean).flatMap((r) => r.findings ?? [])
 
-log(`발견 라운드 1: 총 ${round1.length}건 (검증 전)`)
-return { scope, rounds: 1, findings: dedupe(round1) }
+const fresh1 = dedupe(round1)
+log(`발견 라운드 1: ${fresh1.length}건 (검증 전)`)
+
+phase('Verify')
+const judged1 = await verifyFresh(fresh1)
+const confirmed1 = judged1.filter((j) => j.real)
+const unverified1 = judged1.filter((j) => j.unverified)
+// fp_blocked = 검증 응답을 받았으나 다수결에서 reject 된 것 (검증 실패 unverified 와 구분)
+// fp_blocked = got verdicts but rejected by majority (distinct from unverified infra failures)
+const fpBlocked1 = judged1.filter((j) => !j.real && !j.unverified).length
+log(`검증: ${fresh1.length}건 중 confirmed ${confirmed1.length} / fp ${fpBlocked1} / unverified ${unverified1.length}`)
+return {
+  scope, rounds: 1,
+  confirmed: confirmed1,
+  fp_blocked: fpBlocked1,
+  unverified: unverified1.length,
+  unverified_findings: unverified1.map((u) => ({ domain: u.domain, severity: u.severity, title: u.title, file: u.file, line: u.line })),
+}
