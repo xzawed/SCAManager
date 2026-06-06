@@ -89,6 +89,26 @@ def test_should_retry_matrix(reason_tag, ci_status, expected):
     assert should_retry(reason_tag, ci_status) is expected
 
 
+def test_retriable_tags_parity_with_should_retry():
+    """_RETRIABLE_TAGS 의 모든 태그는 should_retry 에서 최소 1개 ci_status 로 True 를 내야 한다.
+    Every tag in _RETRIABLE_TAGS must yield True from should_retry for at least one ci_status.
+
+    드리프트 가드: retriable 멤버십 단일 출처(merge_reasons._RETRIABLE_TAGS)에 새 태그를 추가하면서
+    retry_policy.should_retry 의 타이밍 분기를 빠뜨리면, is_retriable_tag 는 통과하지만 should_retry 가
+    어떤 ci_status 로도 True 를 못 내 silent 미재시도(즉시 터미널)가 발생한다. 본 테스트가 그 누락을 차단.
+    Drift guard: adding a tag to the single-source _RETRIABLE_TAGS without a matching timing branch in
+    should_retry would let is_retriable_tag pass yet should_retry never return True → silent no-retry.
+    """
+    from src.gate.merge_reasons import _RETRIABLE_TAGS
+
+    ci_statuses = ("running", "passed", "failed", "unknown")
+    for tag in _RETRIABLE_TAGS:
+        assert any(should_retry(tag, ci) for ci in ci_statuses), (
+            f"'{tag}' 가 _RETRIABLE_TAGS 에 있으나 should_retry 가 어떤 ci_status 로도 True 를 내지 못함 "
+            f"— retry_policy.should_retry 에 타이밍 분기 추가 필요 (단일출처 drift)"
+        )
+
+
 # ---------------------------------------------------------------------------
 # compute_next_retry_at
 # ---------------------------------------------------------------------------

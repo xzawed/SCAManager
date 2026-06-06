@@ -7,7 +7,7 @@ No DB / HTTP dependencies — enables fast unit testing.
 import random
 from datetime import datetime, timedelta
 
-from src.gate.merge_reasons import UNKNOWN_STATE_TIMEOUT, UNSTABLE_CI
+from src.gate.merge_reasons import UNKNOWN_STATE_TIMEOUT, UNSTABLE_CI, is_retriable_tag
 
 
 def parse_reason_tag(reason: str | None) -> str:
@@ -44,6 +44,13 @@ def should_retry(reason_tag: str, ci_status: str) -> bool:
         True이면 재시도 큐에 추가, False이면 최종 실패 처리.
         True to enqueue for retry, False to treat as terminal failure.
     """
+    # 재시도 가능 태그가 아니면 즉시 종료 — retriable 판별은 merge_reasons.is_retriable_tag 단일 출처.
+    # (아래 태그별 분기는 '언제(ci_status)' 재시도할지 세부 타이밍만 담당)
+    # Non-retriable tags terminate immediately — retriable membership is single-sourced via
+    # merge_reasons.is_retriable_tag. (The per-tag branches below only decide the WHEN/ci_status timing.)
+    if not is_retriable_tag(reason_tag):
+        return False
+
     if reason_tag == UNSTABLE_CI:
         # CI 진행 중이거나 방금 통과했으면 재시도 — merge API 갱신 지연 가능
         # Retry when CI is still running or just passed — merge API may lag
@@ -56,8 +63,8 @@ def should_retry(reason_tag: str, ci_status: str) -> bool:
         # Retry only while GitHub is still computing its state
         return ci_status == "running"
 
-    # 충돌·차단·뒤처짐·draft 등 재시도해도 해결 안 됨
-    # Conflict / blocked / behind / draft — retrying won't help
+    # _RETRIABLE_TAGS 에 추가됐으나 위 타이밍 분기가 없는 태그 — drift 방어 (parity 테스트가 가드)
+    # A tag in _RETRIABLE_TAGS but missing a timing branch above — drift guard (parity test enforces)
     return False
 
 
