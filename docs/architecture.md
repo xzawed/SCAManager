@@ -61,7 +61,7 @@ src/
 ├── auth/
 │   ├── session.py               # get_current_user() + require_login + require_admin (3-layer SaaS 검증)
 │   └── github.py                # /login (301→/auth/github, 하위호환), /auth/github, /auth/callback, /auth/logout
-├── models/                      # 11 ORM 모델 — repository, analysis, analysis_feedback, repo_config (0036: disabled_tools JSON 컬럼), gate_decision (0034: analysis_id UNIQUE constraint), merge_attempt, merge_retry, security_alert_log, insight_narrative_cache (0031: repo_id FK; 0033: last_error_at/error_count/last_error_type), user, issue_registration (0035: repo_id+issue_key UniqueConstraint + CASCADE FK)
+├── models/                      # 11 ORM 모델 — repository, analysis, analysis_feedback, repo_config (0036: disabled_tools JSON 컬럼), gate_decision (0034: analysis_id UNIQUE constraint), merge_attempt, merge_retry, security_alert_log, insight_narrative_cache (0031: repo_id FK; 0033: last_error_at/error_count/last_error_type), user, issue_registration (0035: repo_id+issue_key UniqueConstraint + CASCADE FK; 0037: RLS policy — repo_id→repositories.user_id 1-hop, PG 전용)
 ├── webhook/
 │   ├── _helpers.py              # get_webhook_secret() + cache (TTL 300s)
 │   ├── validator.py             # HMAC-SHA256 서명 검증

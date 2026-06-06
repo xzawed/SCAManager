@@ -18,8 +18,8 @@
 [![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=xzawed_SCAManager&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=xzawed_SCAManager)
 [![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=xzawed_SCAManager&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=xzawed_SCAManager)
 
-[![Tests](https://img.shields.io/badge/Tests-4716%2B_total_(4563_unit_+_153_integration)-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
-[![E2E](https://img.shields.io/badge/E2E-112_passing-brightgreen?style=flat-square&logo=playwright&logoColor=white)](e2e/)
+[![Tests](https://img.shields.io/badge/Tests-4768%2B_total_(4615_unit_+_153_integration)-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
+[![E2E](https://img.shields.io/badge/E2E-113_passing-brightgreen?style=flat-square&logo=playwright&logoColor=white)](e2e/)
 [![pylint](https://img.shields.io/badge/pylint-10.00%2F10-brightgreen?style=flat-square&logo=python&logoColor=white)](src/)
 [![bandit](https://img.shields.io/badge/bandit-HIGH_0-brightgreen?style=flat-square&logo=security&logoColor=white)](src/)
 [![Coverage](https://img.shields.io/badge/Coverage-95%25-brightgreen?style=flat-square&logo=codecov&logoColor=white)](tests/)
@@ -73,9 +73,9 @@ GitHub가 Webhook을 재전달하는 경우가 있었습니다. 응답이 조금
 
 대시보드 차트가 이상하게 튀는 걸 보고서야 발견했습니다.
 
-첫 번째 세션에서 SHA 중복 체크를 하고, `_save_and_gate` 직전에 한 번 더 확인하는 이중 방어를 넣었습니다. 
+첫 번째 세션에서 SHA 중복 체크를 하고, `_save_and_gate` 직전에 한 번 더 확인하는 이중 방어를 넣었습니다.
 
-두 번째 체크는 진짜 동시 요청이 레이스를 뚫고 들어오는 걸 막기 위한 것이었습니다. 
+두 번째 체크는 진짜 동시 요청이 레이스를 뚫고 들어오는 걸 막기 위한 것이었습니다.
 
 완벽한 해결은 아니지만 실제 운영에서 중복 레코드는 더 이상 생기지 않았습니다.
 
