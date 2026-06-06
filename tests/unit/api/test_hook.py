@@ -14,6 +14,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 from src.main import app
+from src.constants import COMMIT_MSG_MAX, AI_REVIEW_MAX, TEST_COVERAGE_MAX
 
 client = TestClient(app)
 
@@ -178,6 +179,82 @@ def test_hook_result_calculates_score():
     analysis_obj = saved_analyses[0]
     assert analysis_obj.score == 90
     assert analysis_obj.grade == "A"
+
+
+# ------------------------------------------------------------------
+# AI 점수 클램핑 회귀 가드 — CLI hook 의 raw 점수가 범위(0~MAX)를 벗어나면
+# breakdown 카테고리 점수가 cap 을 초과/미만해 정합성이 깨지는 결함 방지.
+# ai_review.py 의 max(0, min(MAX, ...)) 패턴을 hook.py 가 동일하게 미러하는지 검증.
+# AI score clamping regression guard — out-of-range raw scores from the CLI hook
+# must not push breakdown category scores past their caps (or below 0), mirroring
+# the max(0, min(MAX, ...)) clamp pattern already used in ai_review.py.
+# ------------------------------------------------------------------
+
+def _post_hook_capturing(ai_result: dict) -> list:
+    """주어진 ai_result 로 /api/hook/result 를 호출하고 저장된 Analysis 객체 목록을 반환.
+    Call /api/hook/result with the given ai_result and return captured Analysis objects."""
+    mock_db = MagicMock()
+    mock_config = MagicMock()
+    mock_config.hook_token = "clamp-token"
+    mock_repo = MagicMock()
+    mock_repo.id = 99
+
+    call_count = {"n": 0}
+
+    def _first_side_effect():
+        idx = call_count["n"]
+        call_count["n"] += 1
+        return {0: mock_config, 1: mock_repo}.get(idx)
+
+    mock_db.query.return_value.filter.return_value.first.side_effect = _first_side_effect
+    mock_db.query.return_value.filter_by.return_value.first.return_value = None  # no duplicate
+    saved: list = []
+    mock_db.add.side_effect = lambda obj: saved.append(obj)
+
+    with patch("src.api.hook.SessionLocal", return_value=_make_session_mock(mock_db)):
+        r = client.post("/api/hook/result", json={
+            "repo": "owner/repo",
+            "token": "clamp-token",
+            "commit_sha": "shaclamp",
+            "commit_message": "feat: clamp",
+            "ai_result": ai_result,
+        })
+    assert r.status_code == 200
+    return saved
+
+
+def test_hook_result_clamps_overrange_scores():
+    # 범위 초과 raw 점수(commit=999/direction=50/test=99, 모든 키 존재 → success)는
+    # 상한(20/20/10)으로 클램프되어 breakdown 카테고리 점수가 cap 을 넘지 않는다.
+    saved = _post_hook_capturing({
+        **_AI_RESULT,
+        "commit_message_score": 999,
+        "direction_score": 50,
+        "test_score": 99,
+    })
+    assert len(saved) == 1
+    breakdown = saved[0].result["breakdown"]
+    # 클램프 후 raw 20/20/10 → 스케일 결과가 정확히 각 cap 과 동일
+    # After clamp raw 20/20/10 → scaled exactly to each cap
+    assert breakdown["commit_message"] == COMMIT_MSG_MAX
+    assert breakdown["ai_review"] == AI_REVIEW_MAX
+    assert breakdown["test_coverage"] == TEST_COVERAGE_MAX
+
+
+def test_hook_result_negative_scores_clamped_to_zero():
+    # 음수 raw 점수는 하한 0 으로 클램프되어 breakdown 카테고리 점수가 음수가 되지 않는다.
+    # Negative raw scores clamp to a 0 floor so breakdown categories never go negative.
+    saved = _post_hook_capturing({
+        **_AI_RESULT,
+        "commit_message_score": -5,
+        "direction_score": -1,
+        "test_score": -3,
+    })
+    assert len(saved) == 1
+    breakdown = saved[0].result["breakdown"]
+    assert breakdown["commit_message"] == 0
+    assert breakdown["ai_review"] == 0
+    assert breakdown["test_coverage"] == 0
 
 
 def test_hook_result_invalid_token():

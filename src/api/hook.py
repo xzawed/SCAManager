@@ -21,7 +21,14 @@ from src.repositories import repo_config_repo
 from src.analyzer.io.ai_review import AiReviewResult
 from src.scorer.calculator import calculate_score
 from src.worker.pipeline import build_analysis_result_dict
-from src.constants import AI_DEFAULT_COMMIT_RAW, AI_DEFAULT_DIRECTION_RAW, AI_DEFAULT_TEST_RAW
+from src.constants import (
+    AI_DEFAULT_COMMIT_RAW,
+    AI_DEFAULT_DIRECTION_RAW,
+    AI_DEFAULT_TEST_RAW,
+    AI_RAW_COMMIT_MAX,
+    AI_RAW_DIRECTION_MAX,
+    AI_RAW_TEST_MAX,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -162,9 +169,13 @@ def save_hook_result(request: Request, body: HookResultRequest):  # pylint: disa
         required_keys = ("commit_message_score", "direction_score", "test_score")
         ai_status = "success" if all(k in ar for k in required_keys) else "parse_error"
         ai_review = AiReviewResult(
-            commit_score=int(ar.get("commit_message_score", AI_DEFAULT_COMMIT_RAW)),
-            ai_score=int(ar.get("direction_score", AI_DEFAULT_DIRECTION_RAW)),
-            test_score=int(ar.get("test_score", AI_DEFAULT_TEST_RAW)),
+            # raw 점수를 0~MAX 범위로 클램프 — ai_review.py 의 클램프 패턴 미러.
+            # 범위 밖 값이 calculator 스케일링을 거쳐 breakdown cap 을 넘는 정합성 위반 방지.
+            # Clamp raw scores to 0~MAX, mirroring ai_review.py — prevents out-of-range
+            # values from pushing breakdown categories past their caps after scaling.
+            commit_score=max(0, min(AI_RAW_COMMIT_MAX, int(ar.get("commit_message_score", AI_DEFAULT_COMMIT_RAW)))),
+            ai_score=max(0, min(AI_RAW_DIRECTION_MAX, int(ar.get("direction_score", AI_DEFAULT_DIRECTION_RAW)))),
+            test_score=max(0, min(AI_RAW_TEST_MAX, int(ar.get("test_score", AI_DEFAULT_TEST_RAW)))),
             summary=ar.get("summary", ""),
             suggestions=ar.get("suggestions", []),
             commit_message_feedback=ar.get("commit_message_feedback", ""),
