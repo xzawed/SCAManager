@@ -7,7 +7,7 @@ Phase 1 = read-only (no auto action — user 1-click confirm required).
 
 함수:
 - tenant_inventory(db) — 사용자별 (id, github_login, email, repo_count, analysis_count, last_active_at)
-- rls_audit_matrix() — 정적 RLS policy 적용 매트릭스 (alembic 0026 + 0027 + 0028 + 0029 영역)
+- rls_audit_matrix() — 정적 RLS policy 적용 매트릭스 (alembic 0026 + 0027 + 0028 + 0029 + 0037 영역)
 
 Phase 2 영역 (본 PR X): 결제 / 사용량 cap / API key per-tenant — 별도 PR 진입 의무 (High tier).
 """
@@ -64,9 +64,11 @@ def tenant_inventory(db: Session) -> list[dict[str, Any]]:
 # ─── RLS audit matrix (정적 — alembic 마이그레이션 결과) ─────────────────
 
 
-# RLS policy 적용 매트릭스 — alembic 0026/0027/0028/0029 누적 결과
-# RLS policy matrix — cumulative result of alembic 0026/0027/0028/0029
+# RLS policy 적용 매트릭스 — alembic 0026/0027/0028/0029/0037 누적 결과
+# RLS policy matrix — cumulative result of alembic 0026/0027/0028/0029/0037
 # 각 항목 = (table, isolation_pattern, since_alembic, status)
+# 🔴 신규 RLS 테이블 추가 시 본 매트릭스 동기화 의무 — tests/unit/test_rls_matrix_completeness.py 가드
+# When a new table gets RLS, this matrix MUST be updated — guarded by test_rls_matrix_completeness.py
 _RLS_MATRIX: tuple[dict[str, str], ...] = (
     {
         "table": "repositories",
@@ -126,6 +128,12 @@ _RLS_MATRIX: tuple[dict[str, str], ...] = (
         "table": "analysis_feedbacks",
         "pattern": "user_id 직접 (NULL 허용 X — FK NOT NULL)",
         "since": "0029",
+        "status": "applied",
+    },
+    {
+        "table": "issue_registrations",
+        "pattern": "repo_id 간접 1-hop (repositories.user_id 페어, legacy NULL 호환)",
+        "since": "0037",
         "status": "applied",
     },
 )

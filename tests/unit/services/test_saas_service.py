@@ -91,9 +91,9 @@ class TestTenantInventory:
 
 
 class TestRlsAuditMatrix:
-    def test_returns_10_tables(self):
+    def test_returns_11_tables(self):
         matrix = saas_service.rls_audit_matrix()
-        assert len(matrix) == 10  # 0026 (3) + 0027 (1) + 0028 (1) + 0029 (5)
+        assert len(matrix) == 11  # 0026 (3) + 0027 (1) + 0028 (1) + 0029 (5) + 0037 (1)
 
     def test_all_tables_applied(self):
         matrix = saas_service.rls_audit_matrix()
@@ -108,10 +108,18 @@ class TestRlsAuditMatrix:
             "merge_retry_queue", "analysis_feedbacks",
         }
 
+    def test_includes_issue_registrations_0037(self):
+        """0037 issue_registrations RLS 항목이 매트릭스에 등재됐는지 확인."""
+        matrix = saas_service.rls_audit_matrix()
+        entry = next((m for m in matrix if m["table"] == "issue_registrations"), None)
+        assert entry is not None, "issue_registrations 매트릭스 누락 (alembic 0037 적용됨)"
+        assert entry["since"] == "0037"
+        assert entry["status"] == "applied"
+
 
 class TestRlsCoverageSummary:
     def test_summary_counts(self):
         summary = saas_service.rls_coverage_summary()
-        assert summary["total"] == 10
-        assert summary["applied"] == 10
+        assert summary["total"] == 11
+        assert summary["applied"] == 11
         assert summary["missing"] == 0
