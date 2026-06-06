@@ -542,6 +542,15 @@ def test_malformed_json_payload_returns_401(integration_db, mock_deps):
     # signature 자체는 유효하므로 200/202/422 중 하나, mock_deps 미호출 보장이 핵심
     assert response.status_code in (200, 202, 400, 401, 422)
 
+    # 핵심 보장: malformed JSON 은 파이프라인에 진입하면 안 됨 (run_gate_check 미호출 + Analysis 0).
+    # Key guarantee: malformed JSON must never reach the pipeline (gate not called + no Analysis).
+    mock_deps.assert_not_called()
+    session = integration_db()
+    try:
+        assert session.query(Analysis).count() == 0
+    finally:
+        session.close()
+
 
 # ──────────────────────────────────────────────────────────────────────────
 # G. Repository / ownership integration
