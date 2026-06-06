@@ -64,3 +64,27 @@ def test_get_pr_files_handles_content_error():
         MockGithub.return_value.get_repo.return_value = mock_repo
         result = get_pr_files("token", "owner/repo", 1)
     assert result[0].content == ""
+
+
+def test_collect_changed_files_log_sanitizes_filename_and_ref(caplog):
+    """파일 로드 실패 debug 로그가 filename·ref 를 sanitize 해 CR/LF 로그 인젝션을 차단한다.
+    The file-load-failure log sanitizes filename/ref so CR/LF cannot inject fake log lines."""
+    import logging
+    from github import GithubException
+    from src.github_client.diff import _collect_changed_files
+
+    mock_repo = MagicMock()
+    mock_repo.get_contents.side_effect = GithubException(404, "Not found")
+    f = MagicMock()
+    f.filename = "evil.py\nINJECTED-FAKE-LOG-LINE"
+    f.patch = ""
+
+    with caplog.at_level(logging.DEBUG, logger="src.github_client.diff"):
+        _collect_changed_files(mock_repo, [f], "main\nINJECTED-REF")
+
+    msgs = [r.getMessage() for r in caplog.records]
+    assert msgs, "파일 로드 실패 시 debug 로그가 기록되어야 함"
+    # 개행이 그대로 들어가면 가짜 로그 라인 주입 가능 — sanitize_for_log 가 제거해야 함
+    # Raw newlines would allow fake log-line injection — sanitize_for_log must strip them.
+    for m in msgs:
+        assert "\n" not in m, f"로그 라인에 개행 주입됨 (sanitize 누락): {m!r}"
