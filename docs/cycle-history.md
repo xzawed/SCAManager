@@ -1,10 +1,11 @@
-# SCAManager 사이클 작업 이력 (사이클 60~161, 최신순)
+# SCAManager 사이클 작업 이력 (사이클 60~162, 최신순)
 
-> CLAUDE.md tail entry 분리본. 사이클 60~161 이력 (본문 최신순 — 목차는 161부터, 하단에 60~92 archive).
+> CLAUDE.md tail entry 분리본. 사이클 60~162 이력 (본문 최신순 — 목차는 162부터, 하단에 60~92 archive).
 > 본 파일은 회고 시점 (정책 8 5+1 패턴) 또는 영역 reference 시 read 의무.
 
 ## 목차
 
+- [사이클 162 (잔여 백로그 전량 + integrity-audit 워크플로우 Task1~8 + area=gate P1 fix 3건 — RLS 자동탐지·test-quality·effects.js·정적분석 타임아웃·insert race·merge_retry expired, 8 PR #774~#781, 2026-06-07)](#사이클-162)
 - [사이클 161 (정합성 감사 P1 백로그 해소 — hook 클램프·gate 단일출처·hx-boost 가드·로컬 테스트 루트 독립, 4 PR #764~#767, 2026-06-06)](#사이클-161)
 - [사이클 160 (integrity-audit 워크플로우 세션 — 문서 stale 경로·n8n 토큰 차단·timeout 단일출처·RLS 0037, 4 PR #760~#763, 2026-06-06)](#사이클-160)
 - [사이클 159 (157 회고 백로그 P2 전량 해소 — 4 PR: security_scan/e2e fail-fast·CI 결정성·DNS OSError·job name + Codex 게이트 비활성화, 2026-06-03)](#사이클-159)
@@ -70,6 +71,24 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 사이클 162
+
+**날짜**: 2026-06-07 | **PR**: #774~#781 (8건 머지) | **상태**: 잔여 백로그 전량 처리 + integrity-audit 워크플로우 완성 + 워크플로우 발견 area=gate P1 fix 3건
+
+**작업 내용**: 사이클 160~161 잔여 백로그(RLS 자동탐지 가드·test-quality·effects.js·워크플로우 Task4~9)를 전량 처리하고, integrity-audit 워크플로우를 area=gate 라이브 실행으로 검증하던 중 워크플로우가 발견한 gate·pipeline P1 결함 3건을 추가 fix. 전 PR Codex 토큰 무효화(`refresh_token_reused`, 4연속)로 정책 18 #773 fallback(사용자 승인 하 Claude 단독 적대적 self-verify) 적용.
+
+- **#775 (RLS 자동탐지 가드)** — `_RLS_MATRIX`(admin RLS 감사 단일 출처)가 0037 issue_registrations 적용 후 미갱신(10→11 누락). `tests/unit/test_rls_matrix_completeness.py` 신설(alembic `ENABLE ROW LEVEL SECURITY` 테이블 집합 ↔ `_RLS_MATRIX` bijection 4 가드, 정규식 schema/quote 정규화) + 매트릭스 동기화 + db.md 가드 노트. 단위 +5.
+- **#776 (test-quality)** — `test_main.py` dead `or True` 제거 + `test_e2e_pipeline_scenarios` malformed JSON 파이프라인 미진입 단언(`assert_not_called`+`Analysis.count()==0`). mutation test 로 비-vacuity 입증. 기존 테스트 정정(무증가).
+- **#777 (effects.js hx-boost)** — `setupTabs` window resize 리스너가 hx-boost 재방문마다 누적 → remove-before-add 단일 전역 핸들러(`document._tabsResizeHandler`). 8조합 시각검증 사용자 수행 후 머지.
+- **#778 (integrity-audit 워크플로우 Task1~8)** — 수동 5+1 감사의 결정론적 코드화: `.claude/workflows/integrity-audit.mjs`(scope 팬아웃 → loop-until-dry → 3-렌즈 adversarial verify → completeness critic) + `/integrity-audit` 스킬 + runbook + CLAUDE.md 1줄 + area=gate 검증 리포트. area=gate 실측 5.7M토큰/75에이전트(plan "소" 초과)·confirmed 14(P1 4·P2 10)·fp_blocked 8·unverified 0. Task 9(full 골든)는 비용으로 사용자 승인 보류.
+- **#779 (P1: 정적분석 타임아웃 → auto-merge 차단)** — `_run_static_with_timeout` 타임아웃 시 `[]` → `calculate_score([])` 가 만점(45/45)으로 환산 → 무분석 코드 auto-merge 가능. `(results, timed_out)` 튜플 + `result["static_analysis_incomplete"]` 마커 → `AutoMergeAction.execute` skip(Approve/Review 무영향). 사용자 결정 ⓐ. 단위 +3.
+- **#780 (P1: 동시 insert race 중복 알림)** — `save_new` 가 DB 제약 위반 시 기존 레코드 반환을 신규와 미구분 → run_gate_check 재실행·중복 notify. `(analysis, created)` 반환 + `not created` 시 `_race_recover_existing`+result_dict=None(find_by_sha race 경로 일관). 단위 +1.
+- **#781 (P1: merge_retry expired 상태)** — `(not should_retry) or expired` 를 한 분기로 묶어 만료 행도 `mark_terminal` 오기록(`mark_expired` dead code). `is_terminal_failure` vs `expired` 분기 → 만료는 `mark_expired`(status='expired')+`counts["expired"]`, terminal 우선. 기존 버그-인코딩 테스트 2건(unit+integration) 정정.
+
+**검증**: 각 PR TDD red→green + 적대적 self-verify 워크플로우/에이전트(P0/P1/P2 0). 테스트 4768→4781 수집(단위 4615→4628), pylint 10.00 유지.
+
+**학습**: ① integrity-audit 워크플로우가 검증 실행 중 실 결함(`mark_expired` dead code·만료 오기록·버그-인코딩 테스트) 발견 — 결정론적 감사 ROI 양성. ② area=gate 실측 5.7M토큰 = plan "소" 추정 대폭 초과(loop-until-dry×3라운드) → full(8도메인) 비용 가드 필요. ③ Codex 4연속 무효화 — 정책 18 복구 강제 가드 도달, 다음 세션 `codex login` 필수.
 
 ## 사이클 161
 
