@@ -259,7 +259,10 @@ def test_issues_event_passes_repo_token_to_notify():
          patch("src.webhook.providers.github.SessionLocal", return_value=mock_db), \
          patch("src.webhook.providers.github.get_repo_config", return_value=repo_config):
         mock_settings.github_webhook_secret = SECRET
-        mock_settings.n8n_webhook_secret = ""
+        # opt-in(N8N_RELAY_REPO_TOKEN) + HMAC 시크릿 둘 다 충족 시에만 토큰 릴레이
+        # token relayed only when opt-in flag AND HMAC secret are both set
+        mock_settings.n8n_webhook_secret = "shh"
+        mock_settings.n8n_relay_repo_token = True
         with patch("fastapi.BackgroundTasks.add_task", side_effect=_capture_add_task):
             resp = client.post(
                 "/webhooks/github",
@@ -275,3 +278,52 @@ def test_issues_event_passes_repo_token_to_notify():
         f"notify_n8n_issue 호출 시 repo_token kwarg가 전달되지 않음. 실제 kwargs: {captured_kwargs}"
     assert captured_kwargs["repo_token"] == "ghp_owner_token", \
         f"repo_token이 'ghp_owner_token'이어야 하지만 실제 값: {captured_kwargs.get('repo_token')!r}"
+
+
+def test_issues_event_omits_repo_token_when_not_opted_in():
+    # 자격증명 유출 가드: opt-in(N8N_RELAY_REPO_TOKEN) 미설정 시 시크릿이 있어도 owner 토큰을 읽지 않고 repo_token=""로 전달
+    # Credential-leak guard: without the opt-in flag, the owner token is NOT read even if a secret is set; repo_token passed as ""
+    payload = _issues_payload()
+    repo_config = _mock_repo_config(n8n_webhook_url="https://n8n.example.com/webhook/abc")
+
+    mock_owner = MagicMock()
+    mock_owner.plaintext_token = "ghp_owner_token"
+    mock_repo_obj = MagicMock()
+    mock_repo_obj.full_name = "owner/repo"
+    mock_repo_obj.owner = mock_owner
+    mock_repo_obj.webhook_secret = None
+
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = mock_repo_obj
+    mock_db.query.return_value.filter_by.return_value.first.return_value = mock_repo_obj
+    mock_db.__enter__ = MagicMock(return_value=mock_db)
+    mock_db.__exit__ = MagicMock(return_value=None)
+
+    captured_kwargs = {}
+
+    def _capture_add_task(func, *args, **kwargs):
+        func_name = getattr(func, "__name__", "") or str(func)
+        if "notify_n8n_issue" in func_name or "issue" in func_name.lower():
+            captured_kwargs.update(kwargs)
+
+    with patch("src.webhook.providers.github.settings") as mock_settings, \
+         patch("src.webhook.providers.github.get_webhook_secret", return_value=SECRET), \
+         patch("src.webhook.providers.github.SessionLocal", return_value=mock_db), \
+         patch("src.webhook.providers.github.get_repo_config", return_value=repo_config):
+        mock_settings.github_webhook_secret = SECRET
+        # 시크릿은 설정됐으나 opt-in off → 토큰 생략 / secret set but opt-in off → omit token
+        mock_settings.n8n_webhook_secret = "shh"
+        mock_settings.n8n_relay_repo_token = False
+        with patch("fastapi.BackgroundTasks.add_task", side_effect=_capture_add_task):
+            resp = client.post(
+                "/webhooks/github",
+                content=payload,
+                headers={
+                    "X-Hub-Signature-256": _sign(payload),
+                    "X-GitHub-Event": "issues",
+                },
+            )
+
+    assert resp.status_code == 202
+    assert captured_kwargs.get("repo_token") == "", \
+        f"opt-in off 인데 owner 토큰이 유출됨 (자격증명 유출 결함): {captured_kwargs.get('repo_token')!r}"

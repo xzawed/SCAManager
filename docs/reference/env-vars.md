@@ -27,6 +27,7 @@
 | `DISABLE_PROMPT_CACHE` | Anthropic prompt caching (5분 ephemeral) opt-out — `1` 시 비활성 (Phase 3 PR 1 #218 신설). 운영 비용 통제용 — default `0` (caching 적용) | `0` (기본) / `1` (비활성) |
 | `TELEGRAM_WEBHOOK_SECRET` | Telegram `setWebhook` 시크릿 토큰 — **미설정 시 401 fail-closed** (사이클 142 Phase B S1 #674 보안 강화 — 이전 "헤더 검증 생략"에서 변경). Railway에서 반드시 설정 필요, 미설정 시 Telegram gate callback 전체 비활성 | 빈 문자열 (기본, **운영 시 반드시 설정**) |
 | `N8N_WEBHOOK_SECRET` | n8n 전송 HMAC 서명 시크릿 (미설정 시 서명 생략) | 빈 문자열 (기본) |
+| `N8N_RELAY_REPO_TOKEN` | n8n issue 릴레이에 GitHub repo OAuth 토큰 포함 여부 — 명시적 opt-in (자격증명 유출 차단). `1`/`true` 이고 `N8N_WEBHOOK_SECRET` 설정 시에만 토큰 전송 | `false` (기본) |
 
 ## 내부 인증 (cron · admin · loop guard)
 

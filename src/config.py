@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     # a token_encryption_key. Defaults to False for backwards-compatible warnings.
     strict_token_encryption: bool = False
     n8n_webhook_secret: str = ""  # n8n 전송 HMAC 서명 시크릿 (빈 문자열이면 서명 생략)
+    # n8n issue 릴레이에 GitHub repo 토큰 포함 여부 — 명시적 opt-in (default off, 자격증명 유출 차단)
+    # Whether to include the GitHub repo token in the n8n issue relay — explicit opt-in (default off)
+    n8n_relay_repo_token: bool = False
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_user: str = ""
