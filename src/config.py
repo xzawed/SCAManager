@@ -1,7 +1,7 @@
 """Application settings loaded from environment variables via pydantic-settings."""
 import logging
 from pydantic_settings import BaseSettings
-from pydantic import field_validator
+from pydantic import Field, field_validator, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -76,18 +76,23 @@ class Settings(BaseSettings):
     # Phase 12: CI-aware Auto Merge retry configuration
     # False 시 레거시 단일 시도 동작 / False falls back to legacy single-attempt behavior
     merge_retry_enabled: bool = True
-    # 큐 행당 최대 재시도 횟수 / Maximum retry attempts per queue row
-    merge_retry_max_attempts: int = 30
-    # 큐 행 만료 시간 (시간) / Queue row expiry time (hours)
-    merge_retry_max_age_hours: int = 24
-    # 첫 재시도 백오프 (초) / Initial retry backoff (seconds)
-    merge_retry_initial_backoff_seconds: int = 60
-    # 최대 백오프 (초) / Maximum retry backoff (seconds)
-    merge_retry_max_backoff_seconds: int = 600
+    # 큐 행당 최대 재시도 횟수 (>= 1 — 0·음수 시 재시도 즉시 terminal)
+    # Maximum retry attempts per queue row (>= 1 — 0/negative makes retries immediately terminal)
+    merge_retry_max_attempts: int = Field(default=30, ge=1)
+    # 큐 행 만료 시간 (시간, >= 1 — 0 시 즉시 만료)
+    # Queue row expiry time in hours (>= 1 — 0 expires instantly)
+    merge_retry_max_age_hours: int = Field(default=24, ge=1)
+    # 첫 재시도 백오프 (초, >= 1 — 0·음수 시 백오프 소멸)
+    # Initial retry backoff in seconds (>= 1 — 0/negative removes backoff)
+    merge_retry_initial_backoff_seconds: int = Field(default=60, ge=1)
+    # 최대 백오프 (초, >= 1, initial 이상 — model_validator 로 경계 강제)
+    # Maximum retry backoff in seconds (>= 1, >= initial — enforced by model_validator)
+    merge_retry_max_backoff_seconds: int = Field(default=600, ge=1)
     # check_suite 웹훅 활성화 / Enable check_suite webhook
     merge_retry_check_suite_webhook_enabled: bool = True
-    # cron sweep 1회 처리 최대 행 수 / Max rows per cron sweep
-    merge_retry_worker_batch_size: int = 50
+    # cron sweep 1회 처리 최대 행 수 (>= 1 — 0 시 sweep 무처리)
+    # Max rows per cron sweep (>= 1 — 0 processes nothing)
+    merge_retry_worker_batch_size: int = Field(default=50, ge=1)
 
     # Phase 1 PR-1a (사이클 84 — 다국어 지원 i18n 인프라)
     # 다국어 지원 (영어/한국어/일본어) — 5 환경변수 + I18N_DISABLED kill-switch
@@ -171,6 +176,25 @@ class Settings(BaseSettings):
         if not v:
             return v
         return cls._normalize_pg_url(v)
+
+    @model_validator(mode="after")
+    def _validate_retry_backoff_bounds(self) -> "Settings":
+        """최대 백오프는 초기 백오프 이상이어야 한다 (지수 백오프 단조성 보장).
+        Max backoff must be >= initial backoff (preserves exponential backoff monotonicity).
+
+        max < initial 이면 compute_next_retry_at 의 min(initial*2^n, max) 가 항상 max 로
+        capped 되어 백오프 증가가 소멸한다 (retry_policy.py compute_next_retry_at 페어).
+        If max < initial, compute_next_retry_at's min(initial*2^n, max) is always capped at max,
+        so the intended growth disappears (paired with retry_policy.py compute_next_retry_at).
+        """
+        if self.merge_retry_max_backoff_seconds < self.merge_retry_initial_backoff_seconds:
+            raise ValueError(
+                "merge_retry_max_backoff_seconds "
+                f"({self.merge_retry_max_backoff_seconds}) must be >= "
+                "merge_retry_initial_backoff_seconds "
+                f"({self.merge_retry_initial_backoff_seconds})"
+            )
+        return self
 
     # Phase 1 PR-1a — i18n 환경변수 4 field_validator (사이클 84)
     # i18n env var validators (Cycle 84)
