@@ -1243,3 +1243,25 @@ async def test_empty_sha_push_skips_pipeline(mock_deps):
     # Empty SHA also has no commit to analyze → neither repo lookup nor file fetch runs
     mock_deps["find_repo"].assert_not_called()
     mock_deps["push"].assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "sha,expected_blank",
+    [
+        ("0" * 40, True),    # GitHub zero-SHA (40-zero branch/tag delete) — blank
+        ("", True),          # 빈 SHA / empty SHA — blank
+        ("0" * 7, True),     # short-SHA all-zeros (길이 무관) — blank
+        ("abc123def456", False),               # 정상 SHA / normal SHA
+        ("0a1b2c3d4e5f60718293a4b5c6d7e8f901020304", False),  # 0 포함 실 40-hex — not blank
+        ("0000000a", False),                   # 한 글자만 비-0 → not blank
+    ],
+)
+def test_is_blank_sha_classifies_zero_and_empty(sha, expected_blank):
+    """_is_blank_sha 는 빈/all-zeros SHA 만 blank 로 판정하고 정상 hex SHA 는 통과시킨다.
+    _is_blank_sha flags only empty/all-zeros SHAs; any SHA with a non-zero char passes.
+
+    set(sha)=={"0"} 오탐(예: <= 로 잘못 수정) 회귀를 직접 봉인 (pipeline-reviewer P2-B).
+    Directly seals regressions in the set comparison (e.g. an accidental <= rewrite).
+    """
+    from src.worker.pipeline import _is_blank_sha  # pylint: disable=import-outside-toplevel
+    assert _is_blank_sha(sha) is expected_blank

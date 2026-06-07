@@ -541,7 +541,10 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
             # Branch/tag-delete push carries a zero-SHA (all-zeros) or empty SHA — no commit to analyze.
             # Without this guard, _collect_files queries a nonexistent SHA on GitHub → a 404 + exception log every time.
             if _is_blank_sha(commit_sha):
-                logger.info("Skipping %s — no analyzable commit SHA (branch/tag delete)", repo_log)
+                logger.info(
+                    "Skipping %s — no analyzable commit SHA (branch/tag delete or missing head)",
+                    repo_log,
+                )
                 return
 
             with SessionLocal() as db:
