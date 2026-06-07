@@ -168,6 +168,30 @@ async def test_approve_action_semi_auto_calls_send_gate_request():
     mock_gate.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+async def test_approve_action_auto_skips_when_static_analysis_incomplete():
+    """정적분석 불완전(타임아웃) 시 score 충족이어도 post_github_review 를 호출하지 않아야 한다.
+    Must not call post_github_review even when score qualifies, if static analysis is incomplete.
+
+    result["static_analysis_incomplete"]=True → 인플레 점수의 auto-approve 차단 (#779 approve 경로 확장).
+    """
+    from src.gate.actions.approve import ApproveAction  # pylint: disable=import-outside-toplevel
+    from src.gate.actions import GateContext  # pylint: disable=import-outside-toplevel
+    cfg = _make_config(approve_mode="auto")
+    ctx = GateContext(
+        repo_name="owner/repo", pr_number=42, analysis_id=1,
+        result={"score": 90, "static_analysis_incomplete": True},  # 90 >= threshold(70) 이나 불완전
+        github_token="ghp_test", config=cfg, score=90,
+    )
+    with patch("src.gate.actions.approve.post_github_review", new=AsyncMock()) as mock_review, \
+         patch("src.gate.actions.approve.gate_decision_repo"), \
+         patch("src.gate.actions.approve.SessionLocal") as mock_sess:
+        mock_sess.return_value.__enter__ = MagicMock(return_value=MagicMock())
+        mock_sess.return_value.__exit__ = MagicMock(return_value=False)
+        await ApproveAction().execute(ctx)
+    mock_review.assert_not_awaited()
+
+
 # ─── AutoMergeAction ─────────────────────────────────────────────────────────
 
 def test_auto_merge_action_is_applicable_when_enabled():

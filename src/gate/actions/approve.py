@@ -43,7 +43,21 @@ class ApproveAction(GateAction):
             await self._run_semi_auto(ctx)
 
     async def _run_auto(self, ctx: GateContext) -> None:
-        """Auto Approve — score 기준 approve/reject/skip."""
+        """Auto Approve — score 기준 approve/reject/skip.
+
+        정적분석 불완전(타임아웃) 시 자동 approve 보류 — 미분석 코드는 점수가 인플레이션될 수
+        있고, auto-approve 가 branch-protection "approval 시 자동머지" 를 간접 트리거할 수
+        있으므로 결정을 내리지 않는다 (#779 auto-merge 가드의 approve 경로 확장).
+        Hold auto-approve when static analysis is incomplete (timeout) — unanalyzed code may have an
+        inflated score, and an auto-approve could indirectly trigger branch-protection
+        "auto-merge on approval", so make no decision (#779 auto-merge guard extended to approve).
+        """
+        if ctx.result.get("static_analysis_incomplete"):
+            logger.warning(
+                "static analysis incomplete — auto-approve skipped (repo=%s, pr=%s)",
+                ctx.repo_name, ctx.pr_number,
+            )
+            return
         # 알림 언어 결정 (3-layer fallback) — GitHub PR 댓글을 리포 소유자 언어로 게시
         # Resolve notification language (3-layer fallback) — post PR review in owner's language
         with SessionLocal() as db:

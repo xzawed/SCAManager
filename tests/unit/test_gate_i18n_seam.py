@@ -25,6 +25,7 @@ async def test_approve_auto_threads_japanese_language_to_review():
 
     ctx = MagicMock()
     ctx.score = 90
+    ctx.result = {"score": 90}  # 정적분석 완료(불완전 마커 부재) — 가드 통과 / static analysis complete
     ctx.config.approve_mode = "auto"
     ctx.config.approve_threshold = 75
     ctx.config.reject_threshold = 40
@@ -58,6 +59,7 @@ async def test_approve_auto_threads_english_language_to_review():
 
     ctx = MagicMock()
     ctx.score = 90
+    ctx.result = {"score": 90}  # 정적분석 완료(불완전 마커 부재) — 가드 통과 / static analysis complete
     ctx.config.approve_mode = "auto"
     ctx.config.approve_threshold = 75
     ctx.config.reject_threshold = 40
@@ -91,6 +93,7 @@ async def test_approve_auto_reject_threads_language_to_review():
 
     ctx = MagicMock()
     ctx.score = 10
+    ctx.result = {"score": 10}  # 정적분석 완료(불완전 마커 부재) — 가드 통과 / static analysis complete
     ctx.config.approve_mode = "auto"
     ctx.config.approve_threshold = 75
     ctx.config.reject_threshold = 40
