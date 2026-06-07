@@ -612,17 +612,21 @@ def test_hook_result_none_score_value_returns_parse_error():
     assert 0 <= breakdown["test_coverage"] <= TEST_COVERAGE_MAX
 
 
-def test_hook_result_infinity_score_value_returns_parse_error():
-    # JSON 비표준 리터럴 Infinity 는 json.loads 가 float('inf') 로 파싱 → int(float('inf'))
-    # 는 OverflowError. (TypeError, ValueError) 만 잡으면 500 으로 샌다 — OverflowError 도
-    # 흡수해 default 폴백 + parse_error 로 200 을 반환해야 한다 (적대적 self-verify 발견).
-    # The non-standard JSON literal Infinity is parsed by json.loads to float('inf'); int(float('inf'))
-    # raises OverflowError. Catching only (TypeError, ValueError) would leak a 500 — OverflowError must
-    # also be absorbed (default fallback + parse_error, 200). Found by adversarial self-verify.
-    r, saved = _post_hook_non_numeric({**_AI_RESULT, "commit_message_score": float("inf")})
-
-    assert r.status_code == 200
-    assert len(saved) == 1
-    assert saved[0].result["ai_review_status"] == "parse_error"
-    breakdown = saved[0].result["breakdown"]
-    assert 0 <= breakdown["commit_message"] <= COMMIT_MSG_MAX
+def test_coerce_raw_score_absorbs_infinity_overflow():
+    # int(float('inf')) → OverflowError. 운영에서 JSON 비표준 리터럴 Infinity 는 json.loads 가
+    # float('inf') 로 파싱하므로 핸들러가 이를 만난다 (적대적 self-verify 발견). _coerce_raw_score 가
+    # OverflowError 를 흡수해 default 폴백 + ok=False 를 반환해야 한다 (parse_error 분류 → 200).
+    # 헬퍼를 직접 단위 검증한다 — TestClient json= 직렬화는 inf 를 환경에 따라 거부하므로
+    # (CI httpx: "Out of range float values are not JSON compliant") HTTP 경로 테스트는 fragile.
+    # int(float('inf')) raises OverflowError. In production json.loads parses the non-standard literal
+    # Infinity to float('inf'), so the handler hits it (found by adversarial self-verify). _coerce_raw_score
+    # must absorb the OverflowError → default fallback + ok=False (parse_error → 200). Verified at the helper
+    # level directly — TestClient json= serialization rejects inf env-dependently, so an HTTP-path test is fragile.
+    from src.api.hook import _coerce_raw_score  # pylint: disable=import-outside-toplevel
+    assert _coerce_raw_score(float("inf"), 20, 17) == (17, False)
+    assert _coerce_raw_score(float("-inf"), 10, 7) == (7, False)
+    # NaN 은 int(float('nan')) → ValueError 로 흡수됨 (기존 except 로 안전) / NaN absorbed via ValueError
+    assert _coerce_raw_score(float("nan"), 20, 17) == (17, False)
+    # 정상 정수·숫자문자열은 ok=True 로 통과 (동등성) / valid int & numeric string stay ok=True
+    assert _coerce_raw_score(18, 20, 17) == (18, True)
+    assert _coerce_raw_score("15", 20, 17) == (15, True)
