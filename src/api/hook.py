@@ -60,17 +60,20 @@ def _coerce_raw_score(raw: Any, max_val: int, default: int) -> tuple[int, bool]:
     """raw 점수를 [0, max_val] 정수로 안전 클램프. 비숫자 타입/값은 default 로 폴백.
     Safely clamp a raw score to [0, max_val]; fall back to default on non-numeric type/value.
 
-    오작동·악성 CLI 가 점수 필드에 문자열·None 등을 보내면 int() 가 ValueError/TypeError 를
-    던져 500 이 된다. 이를 흡수해 default 폴백 + parse_error 분류로 graceful 처리한다.
-    A malfunctioning/malicious CLI may send a string/None for a score field, making int() raise
-    ValueError/TypeError → 500. Absorb it: fall back to the default and signal parse_error.
+    오작동·악성 CLI 가 점수 필드에 문자열·None·Infinity 등을 보내면 int() 가
+    TypeError/ValueError/OverflowError 를 던져 500 이 된다 (Infinity 는 json.loads 가
+    float('inf') 로 파싱 → int(float('inf')) OverflowError). 이를 흡수해 default 폴백 +
+    parse_error 분류로 graceful 처리한다.
+    A malfunctioning/malicious CLI may send a string/None/Infinity for a score field, making int()
+    raise TypeError/ValueError/OverflowError → 500 (json.loads parses Infinity to float('inf'),
+    and int(float('inf')) raises OverflowError). Absorb it: fall back to the default and signal parse_error.
 
     반환 (clamped, ok) — ok=False 시 호출자가 ai_review_status='parse_error' 로 분류.
     Returns (clamped, ok) — ok=False signals the caller to mark ai_review_status='parse_error'.
     """
     try:
         value = int(raw)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return max(0, min(max_val, default)), False
     return max(0, min(max_val, value)), True
 

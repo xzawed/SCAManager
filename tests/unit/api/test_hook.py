@@ -610,3 +610,19 @@ def test_hook_result_none_score_value_returns_parse_error():
     assert saved[0].result["ai_review_status"] == "parse_error"
     breakdown = saved[0].result["breakdown"]
     assert 0 <= breakdown["test_coverage"] <= TEST_COVERAGE_MAX
+
+
+def test_hook_result_infinity_score_value_returns_parse_error():
+    # JSON 비표준 리터럴 Infinity 는 json.loads 가 float('inf') 로 파싱 → int(float('inf'))
+    # 는 OverflowError. (TypeError, ValueError) 만 잡으면 500 으로 샌다 — OverflowError 도
+    # 흡수해 default 폴백 + parse_error 로 200 을 반환해야 한다 (적대적 self-verify 발견).
+    # The non-standard JSON literal Infinity is parsed by json.loads to float('inf'); int(float('inf'))
+    # raises OverflowError. Catching only (TypeError, ValueError) would leak a 500 — OverflowError must
+    # also be absorbed (default fallback + parse_error, 200). Found by adversarial self-verify.
+    r, saved = _post_hook_non_numeric({**_AI_RESULT, "commit_message_score": float("inf")})
+
+    assert r.status_code == 200
+    assert len(saved) == 1
+    assert saved[0].result["ai_review_status"] == "parse_error"
+    breakdown = saved[0].result["breakdown"]
+    assert 0 <= breakdown["commit_message"] <= COMMIT_MSG_MAX
