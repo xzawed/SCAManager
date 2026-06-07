@@ -1,10 +1,11 @@
-# SCAManager 사이클 작업 이력 (사이클 60~162, 최신순)
+# SCAManager 사이클 작업 이력 (사이클 60~163, 최신순)
 
-> CLAUDE.md tail entry 분리본. 사이클 60~162 이력 (본문 최신순 — 목차는 162부터, 하단에 60~92 archive).
+> CLAUDE.md tail entry 분리본. 사이클 60~163 이력 (본문 최신순 — 목차는 163부터, 하단에 60~92 archive).
 > 본 파일은 회고 시점 (정책 8 5+1 패턴) 또는 영역 reference 시 read 의무.
 
 ## 목차
 
+- [사이클 163 (area=gate P2 백로그 해소 — ApproveAction 정적분석 가드·hook 점수 비숫자/Infinity 안전변환·merge_retry 백오프 validator·zero-SHA 조기종료·_ensure_repo race 복구, 5 PR #783~#787, 2026-06-07)](#사이클-163)
 - [사이클 162 (잔여 백로그 전량 + integrity-audit 워크플로우 Task1~8 + area=gate P1 fix 3건 — RLS 자동탐지·test-quality·effects.js·정적분석 타임아웃·insert race·merge_retry expired, 8 PR #774~#781, 2026-06-07)](#사이클-162)
 - [사이클 161 (정합성 감사 P1 백로그 해소 — hook 클램프·gate 단일출처·hx-boost 가드·로컬 테스트 루트 독립, 4 PR #764~#767, 2026-06-06)](#사이클-161)
 - [사이클 160 (integrity-audit 워크플로우 세션 — 문서 stale 경로·n8n 토큰 차단·timeout 단일출처·RLS 0037, 4 PR #760~#763, 2026-06-06)](#사이클-160)
@@ -71,6 +72,24 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 사이클 163
+
+**날짜**: 2026-06-07 | **PR**: #783~#787 (5건 머지) | **상태**: area=gate P2 백로그 해소 (자기완결적 5건)
+
+**작업 내용**: 사이클 162 integrity-audit 워크플로우가 area=gate 라이브 실행에서 confirmed 한 P2 중 자기완결적 5건을 단일 도메인 PR + TDD + 적대적 self-verify(독립 skeptic 5~7렌즈)로 해소. Codex 토큰 만료 지속(본 세션 exec 시 401) → 정책 18 #773 fallback(사용자 standing 승인 하 Claude 단독 적대적 self-verify) 적용. pipeline 변경 2건(#786/#787)은 pipeline-reviewer 병행.
+
+- **#783 (ApproveAction 정적분석 가드)** — `_run_auto` 진입부에 `static_analysis_incomplete` 마커 가드(#779 auto_merge 가드의 approve 경로 확장). `approve_mode='auto'` + branch-protection "approval 시 자동머지" 시 인플레 점수 간접 머지 차단. semi-auto(human-in-loop) 의도적 제외. fix-up: i18n seam approve auto 3 테스트 `ctx.result` dict 명시(MagicMock 첫-읽기 gotcha). 단위 +1.
+- **#784 (hook 점수 안전 변환)** — `POST /api/hook/result` 점수 필드 비숫자/None/Infinity 입력이 `int()` TypeError/ValueError/OverflowError → 500. `_coerce_raw_score`/`_coerce_ai_scores`(예외 흡수 → default 폴백 + parse_error, 200). self-verify 가 OverflowError(Infinity, json.loads→float('inf')) 갭 발견·차단. Infinity 검증은 TestClient json= 직렬화 환경 의존 → 헬퍼 직접 단위 테스트. 단위 +3.
+- **#785 (merge_retry 백오프 validator)** — 백오프/재시도 정수 5필드 `Field(ge=1)` 양수 + `model_validator(mode="after")` max>=initial 경계(max<initial 시 백오프 단조성 소멸 차단). 기본값 전부 충족(startup 무영향), env-vars.md sync. self-verify 7렌즈(운영 config 전수 grep — 배포 crash 위험 0). merge_unknown_* 별도 self-clamp 경로 의도적 제외. 단위 +6.
+- **#786 (zero-SHA 조기 종료)** — GitHub branch/tag 삭제 push 의 after=40-zero SHA 가 `_collect_files` 진입 → 존재하지 않는 SHA 404 반복. `_is_blank_sha`(빈/all-zeros set 비교) 가드를 `run_analysis_pipeline` 진입부(`_ensure_repo` 전) 추가. pipeline-reviewer APPROVE + self-verify 6렌즈. 단위 +8(skip 2 + `_is_blank_sha` parametrize 6, P2-B 반영).
+- **#787 (`_ensure_repo` race 복구)** — 동시 webhook 의 같은 신규 repo INSERT race(full_name unique IntegrityError) → 워커 abort. `try/except IntegrityError` → rollback+재조회(다른 워커 repo 복구), 재조회 None re-raise(진짜 오류 전파). 복구는 caller(`_ensure_repo`) 책임 — `repository_repo.save_new` add-only 계약 유지. pipeline-reviewer APPROVE + self-verify 7렌즈(reraises seal 강화 반영). 단위 +2.
+
+**검증**: 각 PR TDD red→green + 적대적 self-verify(독립 skeptic) + pipeline-reviewer(#786/#787). 전체 단위 4628→4648, pylint 10.00 유지, CI 전부 green(#784/#785 1회 fix-up — 환경 의존 테스트).
+
+**학습**: ① 적대적 self-verify ROI 양성 — #784 OverflowError(Infinity) 실 결함 1건 push 전 차단. ② MagicMock 필드 첫-읽기 gotcha — 새 가드가 기존 미사용 필드(`ctx.result`)를 처음 읽으면 MagicMock(truthy)이라 해당 필드를 mock 으로만 두던 테스트 광범위 fail(#783 i18n seam 3건). ③ `float('inf')` 서버 처리 검증은 TestClient json= 직렬화 환경 의존(CI httpx reject) → 순수 헬퍼 직접 단위 테스트가 견고. ④ Codex 토큰 만료 지속 — 정책 18 복구 강제 가드, 다음 세션 `codex login` 필수.
+
+---
 
 ## 사이클 162
 
