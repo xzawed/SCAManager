@@ -1265,3 +1265,116 @@ def test_is_blank_sha_classifies_zero_and_empty(sha, expected_blank):
     """
     from src.worker.pipeline import _is_blank_sha  # pylint: disable=import-outside-toplevel
     assert _is_blank_sha(sha) is expected_blank
+
+
+# ---------------------------------------------------------------------------
+# _ensure_repo 동시 INSERT race (IntegrityError) 복구 회귀 테스트 (정합성 감사 area=gate P2)
+# _ensure_repo concurrent-INSERT race (IntegrityError) recovery regression tests
+# (integrity audit area=gate P2 — pipeline.py:263)
+#
+# 동시 webhook 2건이 같은 신규 repo 를 처리하면 둘 다 find_by_full_name → None →
+# save_new → db.commit() 시도 → Repository.full_name unique 제약으로 한 워커가
+# IntegrityError 를 맞는다. 곧 추가할 수정은 save_new+commit 을 try/except IntegrityError
+# 로 감싸 — IntegrityError 시 db.rollback() + find_by_full_name 재조회로 복구한다.
+# When two concurrent webhooks process the same new repo, both find_by_full_name → None →
+# save_new → db.commit(); one worker hits IntegrityError on the full_name unique constraint.
+# The upcoming fix wraps save_new+commit in try/except IntegrityError — on IntegrityError it
+# rolls back and re-queries find_by_full_name to recover the row another worker created.
+# ---------------------------------------------------------------------------
+
+
+def test_ensure_repo_recovers_from_concurrent_insert_race():
+    """동시 INSERT race 로 commit 이 IntegrityError 면 rollback 후 재조회한 repo 로 복구해야 한다.
+    On a concurrent-INSERT IntegrityError at commit, must roll back and recover via re-fetch.
+
+    현재 구현(_ensure_repo 가 IntegrityError 를 잡지 않음)에서는 db.commit() 의
+    IntegrityError 가 그대로 전파되어 (mock_existing, "ghp_test") 반환 단언 도달 전에
+    호출 자체가 raise → 테스트가 에러로 실패 = Red.
+    With the current impl (no try/except), the commit IntegrityError propagates and the call
+    raises before the (mock_existing, "ghp_test") assertion is reached → test errors out = Red.
+    """
+    from src.worker.pipeline import _ensure_repo  # pylint: disable=import-outside-toplevel
+    from sqlalchemy.exc import IntegrityError  # pylint: disable=import-outside-toplevel
+
+    # db.commit() 이 unique 제약 위반으로 IntegrityError 를 던지도록 mock
+    # Mock db.commit() to raise IntegrityError on the unique-constraint violation
+    mock_db = MagicMock()
+    mock_db.commit.side_effect = IntegrityError(
+        "INSERT repositories", {}, Exception("duplicate key full_name")
+    )
+
+    # 다른 워커가 이미 만든 repo (재조회로 복구되는 대상)
+    # The repo another worker already created (recovered via re-fetch)
+    mock_existing = MagicMock(id=5)
+    mock_existing.owner = None  # owner_token 분기 skip → owner_token 은 "ghp_test" 유지
+    #                            # skip owner_token branch → owner_token stays "ghp_test"
+
+    with (
+        # 1차 None → save_new 진입 / 2차 mock_existing → race 복구 재조회
+        # 1st None → enters save_new / 2nd mock_existing → race-recovery re-fetch
+        patch(
+            "src.worker.pipeline.repository_repo.find_by_full_name",
+            side_effect=[None, mock_existing],
+        ) as mock_find_repo,
+        patch(
+            "src.worker.pipeline.repository_repo.save_new",
+            return_value=MagicMock(),
+        ),
+        # 중복 분석 없음 → None 반환 끝까지 진행
+        # No duplicate analysis → returns None, proceeds to the end
+        patch("src.worker.pipeline.analysis_repo.find_by_sha", return_value=None),
+        patch("src.worker.pipeline.settings") as mock_settings,
+    ):
+        mock_settings.github_token = "ghp_test"
+        mock_settings.telegram_chat_id = "-100"
+
+        # 핵심(Red): 예외 없이 (mock_existing, "ghp_test") 반환해야 한다
+        # Core (Red): must return (mock_existing, "ghp_test") without raising
+        result = _ensure_repo(mock_db, "owner/repo", "sha123")
+
+    assert result == (mock_existing, "ghp_test")
+    mock_db.rollback.assert_called_once()  # IntegrityError 시 정확히 1회 rollback
+    assert mock_find_repo.call_count == 2  # 최초 조회 + race 복구 재조회
+
+
+def test_ensure_repo_reraises_when_refetch_also_none():
+    """재조회도 None 이면 (unique race 가 아닌 진짜 오류) IntegrityError 를 그대로 전파해야 한다.
+    If the re-fetch is also None (a real error, not a unique race), must re-raise IntegrityError.
+
+    현재 구현도 commit 시점에서 IntegrityError 를 raise 하나, rollback 미호출 + 재조회 경로
+    부재 — 구현 후엔 rollback → 재조회 None → re-raise 경로가 핵심 검증 대상이다.
+    The current impl already raises at commit, but without rollback or the re-fetch path; after
+    the fix the rollback → re-fetch-None → re-raise path is the behavior under test.
+    """
+    from src.worker.pipeline import _ensure_repo  # pylint: disable=import-outside-toplevel
+    from sqlalchemy.exc import IntegrityError  # pylint: disable=import-outside-toplevel
+
+    mock_db = MagicMock()
+    mock_db.commit.side_effect = IntegrityError(
+        "INSERT repositories", {}, Exception("duplicate key full_name")
+    )
+
+    with (
+        # 1차 None → save_new 진입 / 2차도 None → unique race 아님 → 진짜 오류 전파
+        # 1st None → enters save_new / 2nd also None → not a unique race → propagate real error
+        patch(
+            "src.worker.pipeline.repository_repo.find_by_full_name",
+            side_effect=[None, None],
+        ) as mock_find_repo,
+        patch(
+            "src.worker.pipeline.repository_repo.save_new",
+            return_value=MagicMock(),
+        ),
+        patch("src.worker.pipeline.analysis_repo.find_by_sha", return_value=None),
+        patch("src.worker.pipeline.settings") as mock_settings,
+    ):
+        mock_settings.github_token = "ghp_test"
+        mock_settings.telegram_chat_id = "-100"
+
+        with pytest.raises(IntegrityError):
+            _ensure_repo(mock_db, "owner/repo", "sha123")
+
+    # bare commit raise 와 구별되게 rollback → 재조회 → re-raise 경로를 봉인한다 (review 수렴 지적).
+    # Seal the rollback → re-fetch → re-raise path distinctly from a bare commit raise (converged review note).
+    mock_db.rollback.assert_called_once()
+    assert mock_find_repo.call_count == 2
