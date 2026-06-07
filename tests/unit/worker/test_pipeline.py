@@ -1189,3 +1189,79 @@ async def test_race_recover_existing_skips_when_result_is_none():
 
     mock_gate.assert_not_called()
     assert result is mock_repo_config
+
+
+# ---------------------------------------------------------------------------
+# branch/tag 삭제 push (zero-SHA) 조기 종료 회귀 테스트 (정합성 감사 area=gate P2)
+# Branch/tag-delete push (zero-SHA) early-termination regression tests
+#
+# GitHub 은 브랜치/태그 삭제 push 시 data["after"] 를 all-zeros SHA("0"*40, zero-SHA
+# 컨벤션)로, head_commit 을 None 으로 보낸다. 분석할 커밋이 없으므로 _ensure_repo
+# (repo 등록) + _collect_files (get_push_files API) 진입 전에 즉시 종료해야 한다.
+# 가드 부재 시 존재하지 않는 SHA 조회 → 매번 404 + 예외 로그 (pipeline.py:251).
+#
+# GitHub sends data["after"] as an all-zeros SHA ("0"*40, the zero-SHA convention)
+# and head_commit as None on a branch/tag-delete push. With no commit to analyze, the
+# pipeline must terminate before _ensure_repo / _collect_files. Without the guard it
+# queries a nonexistent SHA → 404 + exception log on every delete push.
+# ---------------------------------------------------------------------------
+
+
+async def test_branch_delete_zero_sha_push_skips_pipeline(mock_deps):
+    """all-zeros SHA(brach/tag 삭제 push)는 repo 등록·파일 수집 전에 조기 종료해야 한다.
+    An all-zeros SHA (branch/tag-delete push) must terminate before repo lookup / file collection.
+    """
+    zero_sha_data = {
+        "repository": {"full_name": "owner/repo"},
+        "after": "0" * 40,       # GitHub zero-SHA (branch/tag delete) / GitHub zero-SHA(브랜치·태그 삭제)
+        "head_commit": None,     # 삭제 push 는 head_commit None / delete push sends head_commit None
+        "commits": [],
+    }
+    from src.worker.pipeline import run_analysis_pipeline
+    await run_analysis_pipeline("push", zero_sha_data)
+
+    # 가드로 _ensure_repo / _collect_files 진입 전 return → repo 조회·파일 수집 모두 미호출
+    # Guard returns before _ensure_repo / _collect_files → neither repo lookup nor file fetch runs
+    mock_deps["find_repo"].assert_not_called()
+    mock_deps["push"].assert_not_called()
+
+
+async def test_empty_sha_push_skips_pipeline(mock_deps):
+    """빈 SHA("") push 도 동일하게 repo 등록·파일 수집 전에 조기 종료해야 한다.
+    An empty SHA ("") push must likewise terminate before repo lookup / file collection.
+    """
+    empty_sha_data = {
+        "repository": {"full_name": "owner/repo"},
+        "after": "",             # 빈 SHA — after 키 누락 시 _extract_event_metadata default
+        "head_commit": None,     # 삭제 push 는 head_commit None / delete push sends head_commit None
+        "commits": [],
+    }
+    from src.worker.pipeline import run_analysis_pipeline
+    await run_analysis_pipeline("push", empty_sha_data)
+
+    # 빈 SHA 도 분석 대상 커밋 없음 → repo 조회·파일 수집 모두 미호출
+    # Empty SHA also has no commit to analyze → neither repo lookup nor file fetch runs
+    mock_deps["find_repo"].assert_not_called()
+    mock_deps["push"].assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "sha,expected_blank",
+    [
+        ("0" * 40, True),    # GitHub zero-SHA (40-zero branch/tag delete) — blank
+        ("", True),          # 빈 SHA / empty SHA — blank
+        ("0" * 7, True),     # short-SHA all-zeros (길이 무관) — blank
+        ("abc123def456", False),               # 정상 SHA / normal SHA
+        ("0a1b2c3d4e5f60718293a4b5c6d7e8f901020304", False),  # 0 포함 실 40-hex — not blank
+        ("0000000a", False),                   # 한 글자만 비-0 → not blank
+    ],
+)
+def test_is_blank_sha_classifies_zero_and_empty(sha, expected_blank):
+    """_is_blank_sha 는 빈/all-zeros SHA 만 blank 로 판정하고 정상 hex SHA 는 통과시킨다.
+    _is_blank_sha flags only empty/all-zeros SHAs; any SHA with a non-zero char passes.
+
+    set(sha)=={"0"} 오탐(예: <= 로 잘못 수정) 회귀를 직접 봉인 (pipeline-reviewer P2-B).
+    Directly seals regressions in the set comparison (e.g. an accidental <= rewrite).
+    """
+    from src.worker.pipeline import _is_blank_sha  # pylint: disable=import-outside-toplevel
+    assert _is_blank_sha(sha) is expected_blank

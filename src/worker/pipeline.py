@@ -261,6 +261,18 @@ def _extract_event_metadata(event: str, data: dict) -> tuple[str, str, str, int 
     return repo_name, commit_sha, commit_message, pr_number
 
 
+def _is_blank_sha(sha: str) -> bool:
+    """SHA 가 비었거나 all-zeros 인지 판정 (브랜치/태그 삭제 push 의 GitHub zero-SHA).
+    True if the SHA is empty or all-zeros (GitHub's zero-SHA for branch/tag-delete pushes).
+
+    GitHub 는 브랜치/태그 삭제 시 after 를 40-zero SHA 로 보낸다 (예: src/github_client/repos.py
+    의 REMOTE_SHA 비교와 동일 컨벤션). 길이에 무관하게 all-zeros 를 포착하도록 set 비교 사용.
+    GitHub sends a 40-zero after-SHA on branch/tag deletion (same convention as the REMOTE_SHA
+    check in src/github_client/repos.py). Uses a set comparison to catch all-zeros of any length.
+    """
+    return not sha or set(sha) == {"0"}
+
+
 def _ensure_repo(db: Session, repo_name: str, commit_sha: str) -> tuple[Repository, str] | None:
     """리포를 조회·등록하고 owner token을 결정한다. SHA 중복이면 None을 반환한다."""
     owner_token: str = settings.github_token
@@ -523,6 +535,17 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
             # user-controlled webhook 입력이므로 로그 인젝션 방어 (CLAUDE.md 규약)
             repo_log = sanitize_for_log(repo_name)
             pr_head_ref = _extract_pr_head_ref(event, data)
+
+            # 브랜치/태그 삭제 push 는 zero-SHA(all-zeros) 또는 빈 SHA — 분석할 커밋이 없다.
+            # 가드 없이 진입하면 _collect_files 가 존재하지 않는 SHA 를 GitHub 에 조회 → 매번 404 + 예외 로그.
+            # Branch/tag-delete push carries a zero-SHA (all-zeros) or empty SHA — no commit to analyze.
+            # Without this guard, _collect_files queries a nonexistent SHA on GitHub → a 404 + exception log every time.
+            if _is_blank_sha(commit_sha):
+                logger.info(
+                    "Skipping %s — no analyzable commit SHA (branch/tag delete or missing head)",
+                    repo_log,
+                )
+                return
 
             with SessionLocal() as db:
                 ensure_result = _ensure_repo(db, repo_name, commit_sha)
