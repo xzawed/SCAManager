@@ -1360,7 +1360,7 @@ def test_ensure_repo_reraises_when_refetch_also_none():
         patch(
             "src.worker.pipeline.repository_repo.find_by_full_name",
             side_effect=[None, None],
-        ),
+        ) as mock_find_repo,
         patch(
             "src.worker.pipeline.repository_repo.save_new",
             return_value=MagicMock(),
@@ -1373,3 +1373,8 @@ def test_ensure_repo_reraises_when_refetch_also_none():
 
         with pytest.raises(IntegrityError):
             _ensure_repo(mock_db, "owner/repo", "sha123")
+
+    # bare commit raise 와 구별되게 rollback → 재조회 → re-raise 경로를 봉인한다 (review 수렴 지적).
+    # Seal the rollback → re-fetch → re-raise path distinctly from a bare commit raise (converged review note).
+    mock_db.rollback.assert_called_once()
+    assert mock_find_repo.call_count == 2
