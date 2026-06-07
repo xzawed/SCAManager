@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass
 
 import httpx
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.database import SessionLocal
@@ -278,10 +278,22 @@ def _ensure_repo(db: Session, repo_name: str, commit_sha: str) -> tuple[Reposito
     owner_token: str = settings.github_token
     repo = repository_repo.find_by_full_name(db, repo_name)
     if not repo:
-        repo = repository_repo.save_new(
-            db, Repository(full_name=repo_name, telegram_chat_id=settings.telegram_chat_id)
-        )
-        db.commit()
+        try:
+            repo = repository_repo.save_new(
+                db, Repository(full_name=repo_name, telegram_chat_id=settings.telegram_chat_id)
+            )
+            db.commit()
+        except IntegrityError:
+            # 동시 webhook race — 다른 워커가 같은 repo 를 먼저 INSERT (full_name unique 위반).
+            # rollback 후 재조회로 복구해 uncaught IntegrityError 의 워커 abort 를 방지한다.
+            # Concurrent webhook race — another worker INSERTed the same repo first (full_name unique).
+            # Recover via rollback + re-fetch to prevent an uncaught IntegrityError from aborting the worker.
+            db.rollback()
+            repo = repository_repo.find_by_full_name(db, repo_name)
+            if repo is None:
+                # 재조회도 None = unique-race 가 아닌 진짜 오류 → 전파 (복구로 삼키지 않음)
+                # Re-fetch is None too = a genuine error, not the unique-race → propagate (don't swallow)
+                raise
     if repo.owner and repo.owner.plaintext_token:
         owner_token = repo.owner.plaintext_token
     if analysis_repo.find_by_sha(db, commit_sha, repo.id):
