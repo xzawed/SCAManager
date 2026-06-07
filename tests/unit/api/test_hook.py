@@ -517,3 +517,96 @@ def test_verify_no_token_returns_401():
         )
 
     assert r.status_code == 401
+
+
+# ------------------------------------------------------------------
+# 비숫자 점수 필드 방어 회귀 가드 — CLI hook 의 점수 필드가 비숫자 타입
+# ("abc"/None/list 등)으로 오염돼도 int() ValueError/TypeError 가 500 으로
+# 새지 않고, default 폴백 + ai_review_status="parse_error" 분류로 graceful
+# 하게 처리되어 200 을 반환하는지 검증한다 (정합성 감사 area=gate P2).
+# Non-numeric score field defense regression guard — a CLI hook score field
+# polluted with a non-numeric type ("abc"/None/list) must NOT leak an int()
+# ValueError/TypeError as a 500. Instead it should fall back to defaults,
+# classify ai_review_status="parse_error", and still return 200 (integrity
+# audit area=gate P2).
+# ------------------------------------------------------------------
+
+def _post_hook_non_numeric(ai_result: dict):
+    """주어진 (비정상 가능) ai_result 로 /api/hook/result 를 호출하고 (response, saved) 반환.
+    Call /api/hook/result with the given (possibly malformed) ai_result and
+    return (response, saved) — status 단언을 호출자에게 맡겨 Red(500) 신호를 보존한다.
+
+    참고: _post_hook_capturing 헬퍼는 내부에서 status_code == 200 을 단언하므로,
+    현재 500 동작을 그 assert 가 가려 버린다. 따라서 여기서는 직접 client.post 후
+    status 단언을 호출자에게 위임한다 (test_hook_result_partial_ai_result_marks_parse_error
+    의 mock 설정을 정확히 미러).
+    Note: _post_hook_capturing asserts status == 200 internally, which would mask
+    the current 500. So this helper leaves the status assertion to the caller,
+    mirroring the mock setup of test_hook_result_partial_ai_result_marks_parse_error.
+    """
+    mock_db = MagicMock()
+    mock_config = MagicMock()
+    mock_config.hook_token = "coerce-token"
+    mock_repo = MagicMock()
+    mock_repo.id = 77
+
+    call_count = {"n": 0}
+
+    def _first_side_effect():
+        idx = call_count["n"]
+        call_count["n"] += 1
+        return {0: mock_config, 1: mock_repo}.get(idx)
+
+    mock_db.query.return_value.filter.return_value.first.side_effect = _first_side_effect
+    mock_db.query.return_value.filter_by.return_value.first.return_value = None  # no duplicate
+    saved: list = []
+    mock_db.add.side_effect = lambda obj: saved.append(obj)
+
+    with patch("src.api.hook.SessionLocal", return_value=_make_session_mock(mock_db)):
+        r = client.post("/api/hook/result", json={
+            "repo": "owner/repo",
+            "token": "coerce-token",
+            "commit_sha": "shacoerce",
+            "commit_message": "feat: coerce",
+            "ai_result": ai_result,
+        })
+    return r, saved
+
+
+def test_hook_result_non_numeric_score_returns_parse_error_not_500():
+    # 점수 필드 중 하나가 비숫자 문자열("abc")이면 int() ValueError 가 500 으로 새면 안 되고,
+    # default 폴백 + ai_review_status="parse_error" 로 graceful 처리되어 200 을 반환해야 한다.
+    # When one score field is a non-numeric string ("abc"), the int() ValueError must
+    # not leak as a 500; it must fall back to defaults, mark ai_review_status="parse_error",
+    # and return 200.
+    r, saved = _post_hook_non_numeric({**_AI_RESULT, "commit_message_score": "abc"})
+
+    # 핵심 단언: 현재 구현은 int("abc") → ValueError → 500 (= Red). 가드 추가 후 200.
+    # Core assertion: current impl raises ValueError → 500 (= Red). After the guard, 200.
+    assert r.status_code == 200
+    # 비숫자 점수는 parse_error 로 분류되어 fallback 경고 배너가 노출 가능해야 한다.
+    # A non-numeric score must be classified as parse_error so the fallback banner can show.
+    assert len(saved) == 1
+    assert saved[0].result["ai_review_status"] == "parse_error"
+    # 오염된 필드가 default 로 폴백돼 breakdown 카테고리 점수가 정상 범위(0~cap)여야 한다.
+    # The polluted field falls back to a default so the breakdown category stays in range (0~cap).
+    breakdown = saved[0].result["breakdown"]
+    assert 0 <= breakdown["commit_message"] <= COMMIT_MSG_MAX
+    assert 0 <= breakdown["ai_review"] <= AI_REVIEW_MAX
+    assert 0 <= breakdown["test_coverage"] <= TEST_COVERAGE_MAX
+
+
+def test_hook_result_none_score_value_returns_parse_error():
+    # 점수 필드 값이 None 이면 int(None) → TypeError 가 500 으로 새면 안 되고,
+    # default 폴백 + ai_review_status="parse_error" 로 graceful 처리되어 200 을 반환해야 한다.
+    # When a score field value is None, int(None) raises TypeError which must not leak as a 500;
+    # it must fall back to defaults, mark ai_review_status="parse_error", and return 200.
+    r, saved = _post_hook_non_numeric({**_AI_RESULT, "test_score": None})
+
+    # 핵심 단언: 현재 구현은 int(None) → TypeError → 500 (= Red). 가드 추가 후 200.
+    # Core assertion: current impl raises TypeError → 500 (= Red). After the guard, 200.
+    assert r.status_code == 200
+    assert len(saved) == 1
+    assert saved[0].result["ai_review_status"] == "parse_error"
+    breakdown = saved[0].result["breakdown"]
+    assert 0 <= breakdown["test_coverage"] <= TEST_COVERAGE_MAX
