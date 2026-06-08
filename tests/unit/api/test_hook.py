@@ -198,6 +198,50 @@ def test_hook_result_calculates_score():
     assert analysis_obj.grade == "A"
 
 
+def test_hook_result_concurrent_insert_race_returns_duplicate_not_500():
+    """동시 동일 SHA hook 이 existing 체크(L197)를 통과한 뒤 DB unique 제약(uq_analyses_repo_sha)에
+    막히면, 500 대신 duplicate 응답을 반환해야 한다 (#5 멱등성 — analysis_repo.save_new race-safe).
+
+    수정 전: db.add+db.commit() 가 IntegrityError 를 미처리로 전파 → 500.
+    수정 후: save_new 가 rollback+재조회로 흡수 → (existing, created=False) → duplicate 응답.
+    """
+    from sqlalchemy.exc import IntegrityError
+    mock_db = MagicMock()
+    mock_config = MagicMock(); mock_config.hook_token = "race-token"
+    mock_repo = MagicMock(); mock_repo.id = 9
+
+    call_count = {"n": 0}
+
+    def _first_side_effect():
+        idx = call_count["n"]; call_count["n"] += 1
+        return {0: mock_config, 1: mock_repo}.get(idx)
+
+    mock_db.query.return_value.filter.return_value.first.side_effect = _first_side_effect
+    # filter_by().first(): (1) L197 existing 체크 → None, (2) save_new find_by_sha(race 후) → existing
+    existing = MagicMock(id=555, score=88, grade="B")
+    mock_db.query.return_value.filter_by.return_value.first.side_effect = [None, existing]
+    mock_db.add = MagicMock()
+    mock_db.commit = MagicMock(side_effect=IntegrityError("INSERT", {}, Exception("duplicate key")))
+    mock_db.rollback = MagicMock()
+    mock_db.refresh = MagicMock()
+
+    with patch("src.api.hook.SessionLocal", return_value=_make_session_mock(mock_db)):
+        r = client.post("/api/hook/result", json={
+            "repo": "owner/repo",
+            "token": "race-token",
+            "commit_sha": "raceSHA123",
+            "commit_message": "feat: race",
+            "ai_result": _AI_RESULT,
+        })
+
+    assert r.status_code == 200, f"동시 insert race 가 500 을 유발하면 안 됨: {r.status_code}"
+    body = r.json()
+    assert body["status"] == "duplicate"
+    assert body["analysis_id"] == 555
+    assert body["score"] == 88
+    mock_db.rollback.assert_called_once()
+
+
 # ------------------------------------------------------------------
 # AI 점수 클램핑 회귀 가드 — CLI hook 의 raw 점수가 범위(0~MAX)를 벗어나면
 # breakdown 카테고리 점수가 cap 을 초과/미만해 정합성이 깨지는 결함 방지.
