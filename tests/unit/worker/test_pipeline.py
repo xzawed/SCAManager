@@ -643,6 +643,22 @@ async def test_pipeline_no_incomplete_marker_when_static_ok(mock_deps):
         "정상 완료인데 static_analysis_incomplete 마커가 잘못 설정됨"
 
 
+async def test_run_static_with_timeout_incomplete_on_tool_subprocess_timeout():
+    """도구 subprocess 타임아웃으로 StaticAnalysisResult.incomplete=True 면
+    _run_static_with_timeout 가 incomplete=True 를 전파해야 한다 (#7 fail-closed).
+
+    per-tool 타임아웃(30s)은 파일 deadline(60s)을 트립하지 않으므로, analyze_file 의 incomplete
+    신호가 없으면 미분석 코드가 만점 인플레로 auto-merge 될 수 있다.
+    """
+    import subprocess
+    from src.worker.pipeline import _run_static_with_timeout
+    from src.github_client.diff import ChangedFile
+    f = ChangedFile(filename="app.py", content="import os\nx = 1\n", patch="@@")
+    with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="pylint", timeout=30)):
+        _results, incomplete = await _run_static_with_timeout([f])
+    assert incomplete is True
+
+
 # ---------------------------------------------------------------------------
 # Task 1 — SHA 중복 체크 이동 및 result dict ai_review_status 필드 테스트
 # (Red 단계: SHA 중복 체크가 아직 review_code 이전으로 이동하지 않음)

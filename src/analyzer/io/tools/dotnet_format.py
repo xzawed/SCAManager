@@ -77,6 +77,7 @@ class _DotnetFormatAnalyzer:
                 ))
             return issues
         except subprocess.TimeoutExpired:
+            ctx.timed_out = True
             logger.warning("dotnet_format timed out for %s", ctx.tmp_path)
             return []
         except OSError as exc:

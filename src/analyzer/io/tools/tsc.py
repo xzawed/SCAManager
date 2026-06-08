@@ -83,6 +83,7 @@ class _TscAnalyzer:
                 ))
             return issues
         except subprocess.TimeoutExpired:
+            ctx.timed_out = True
             logger.warning("tsc timed out for %s", ctx.tmp_path)
             return []
         except OSError as exc:

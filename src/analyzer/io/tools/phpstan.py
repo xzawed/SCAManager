@@ -71,6 +71,7 @@ class _PhpstanAnalyzer:
                     ))
             return issues
         except subprocess.TimeoutExpired:
+            ctx.timed_out = True
             logger.warning("phpstan timed out for %s", ctx.tmp_path)
             return []
         except (json.JSONDecodeError, OSError) as exc:

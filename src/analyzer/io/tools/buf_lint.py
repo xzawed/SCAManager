@@ -71,6 +71,7 @@ class _BufLintAnalyzer:
                 ))
             return issues
         except subprocess.TimeoutExpired:
+            ctx.timed_out = True
             logger.warning("buf_lint timed out for %s", ctx.tmp_path)
             return []
         except OSError as exc:

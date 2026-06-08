@@ -72,6 +72,7 @@ class _ESLintAnalyzer:
                     ))
             return issues
         except subprocess.TimeoutExpired:
+            ctx.timed_out = True
             logger.warning("eslint timed out for %s", ctx.tmp_path)
             return []
         except (json.JSONDecodeError, OSError) as exc:

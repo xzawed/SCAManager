@@ -104,6 +104,7 @@ class _ClippyAnalyzer:
                 ))
             return issues
         except subprocess.TimeoutExpired:
+            ctx.timed_out = True
             logger.warning("clippy timed out for %s", ctx.tmp_path)
             return []
         except OSError as exc:

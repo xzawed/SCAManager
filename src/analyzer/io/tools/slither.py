@@ -57,6 +57,7 @@ class _SlitherAnalyzer:
                 return []
             return _parse_slither_json(r.stdout, ctx.language)
         except subprocess.TimeoutExpired:
+            ctx.timed_out = True
             logger.warning("slither timed out for %s", ctx.tmp_path)
             return []
         except (OSError, json.JSONDecodeError, ValueError,

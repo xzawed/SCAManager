@@ -69,6 +69,7 @@ class _KtlintAnalyzer:
                     ))
             return issues
         except subprocess.TimeoutExpired:
+            ctx.timed_out = True
             logger.warning("ktlint timed out for %s", ctx.tmp_path)
             return []
         except (json.JSONDecodeError, OSError) as exc:

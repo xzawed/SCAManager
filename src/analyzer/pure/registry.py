@@ -54,6 +54,11 @@ class AnalyzeContext:
     is_test: bool
     tmp_path: str       # 임시 파일 경로 (분석 도구에 전달)
     repo_config: object | None = None
+    # 도구 subprocess 타임아웃 발생 신호 — 타임아웃 도구가 True 로 설정하면 analyze_file 이
+    # StaticAnalysisResult.incomplete 로 승격해 미분석 코드의 만점 인플레 auto-merge 를 차단(#7).
+    # Tool subprocess-timeout signal — a timed-out tool sets this True; analyze_file promotes it to
+    # StaticAnalysisResult.incomplete so unanalyzed code is not auto-merged with an inflated score.
+    timed_out: bool = False
 
 
 @runtime_checkable
