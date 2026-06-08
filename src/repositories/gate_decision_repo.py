@@ -28,6 +28,15 @@ def claim_decision(
     replays; the replay guard calls this before side effects (GitHub review, auto-merge), so losers
     skip them. Unlike the upsert (save_gate_decision) there is no update branch — decisions cannot flip.
     (#780 save_new / #787 _ensure_repo 와 동일 race-safe 패턴 / same race-safe pattern.)
+
+    ⚠️ **흡수 범위 주의**: `except IntegrityError` 는 UNIQUE 위반 외 FK(analyses.id ondelete)·
+    NOT NULL 위반도 함께 False 로 흡수한다. 따라서 호출자(handle_gate_callback)는 호출 전에
+    analysis 존재를 보장할 책임이 있다(현재 telegram.py 가 analysis 조회 후 호출). claim 호출 직전에
+    DB write 를 추가하지 말 것 — IntegrityError 시 `db.rollback()` 이 세션 전체 트랜잭션을 되돌려
+    그 write 까지 silent 폐기된다(현재 claim 전 read-only 라 무해).
+    ⚠️ The bare `except IntegrityError` also absorbs FK / NOT NULL violations as False, so the caller
+    must guarantee the analysis exists beforehand, and must NOT add a DB write right before this call
+    (the rollback reverts the whole session transaction).
     """
     db.add(
         GateDecision(

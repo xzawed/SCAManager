@@ -201,10 +201,11 @@ GitHub Push/PR
           └─ notify_n8n()
 
 Telegram 반자동 콜백:
-  → POST /api/webhook/telegram
-  → gate:{decision}:{id}:{token} 파싱 (HMAC 인증)
-  → post_github_review() + GateDecision DB 저장
-  → decision=approve & auto_merge=on & not static_analysis_incomplete
+  → POST /api/webhook/telegram (본문 robustness: malformed/비-dict → 400, #13)
+  → gate:{decision}:{id}:{token} 파싱 (HMAC 인증) + 리포 소유권 authz (#1)
+  → gate_decision_repo.claim_decision() — 결정 원자적 claim (first-writer-wins, 리플레이/더블클릭 패자 skip, #11)
+  → post_github_review() (GitHub PR 리뷰 게시)
+  → decision=approve & auto_merge=on & not static_analysis_incomplete & not ai_review_failed
       → engine._run_auto_merge() 위임 — 자동 경로와 완전 대칭 (사이클 164 Q1):
         retry 큐잉 · SHA 원자성 가드 · CI 재판별 · terminal/deferred 알림 · 관측(log_merge_attempt) 공유
 
