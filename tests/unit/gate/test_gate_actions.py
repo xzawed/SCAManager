@@ -192,6 +192,54 @@ async def test_approve_action_auto_skips_when_static_analysis_incomplete():
     mock_review.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+async def test_approve_action_auto_skips_when_ai_review_failed():
+    """AI 리뷰 실제 실패(api_error/parse_error) 시 score 충족이어도 auto-approve 보류.
+    Hold auto-approve when the AI review genuinely failed — neutral defaults inflate the score.
+
+    result["ai_review_status"]="api_error" → 미수행 AI 점수의 auto-approve 차단 (#8 fail-closed).
+    """
+    from src.gate.actions.approve import ApproveAction  # pylint: disable=import-outside-toplevel
+    from src.gate.actions import GateContext  # pylint: disable=import-outside-toplevel
+    cfg = _make_config(approve_mode="auto")
+    ctx = GateContext(
+        repo_name="owner/repo", pr_number=42, analysis_id=1,
+        # 90 >= threshold(70) 이나 AI 리뷰 실패 → 차단
+        result={"score": 90, "ai_review_status": "api_error"},
+        github_token="ghp_test", config=cfg, score=90,
+    )
+    with patch("src.gate.actions.approve.post_github_review", new=AsyncMock()) as mock_review, \
+         patch("src.gate.actions.approve.gate_decision_repo"), \
+         patch("src.gate.actions.approve.SessionLocal") as mock_sess:
+        mock_sess.return_value.__enter__ = MagicMock(return_value=MagicMock())
+        mock_sess.return_value.__exit__ = MagicMock(return_value=False)
+        await ApproveAction().execute(ctx)
+    mock_review.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_approve_action_auto_proceeds_when_ai_no_api_key():
+    """AI 리뷰 의도적 미수행(no_api_key)은 실패가 아니므로 auto-approve 보존 (회귀 가드).
+    Intentional AI skip (no_api_key) is not a failure — auto-approve must still proceed.
+    """
+    from src.gate.actions.approve import ApproveAction  # pylint: disable=import-outside-toplevel
+    from src.gate.actions import GateContext  # pylint: disable=import-outside-toplevel
+    cfg = _make_config(approve_mode="auto")
+    ctx = GateContext(
+        repo_name="owner/repo", pr_number=42, analysis_id=1,
+        result={"score": 90, "ai_review_status": "no_api_key"},  # 의도적 미수행 — 차단 대상 아님
+        github_token="ghp_test", config=cfg, score=90,
+    )
+    with patch("src.gate.actions.approve.post_github_review", new=AsyncMock()) as mock_review, \
+         patch("src.gate.actions.approve.gate_decision_repo"), \
+         patch("src.gate.actions.approve.resolve_notification_language", return_value="en"), \
+         patch("src.gate.actions.approve.SessionLocal") as mock_sess:
+        mock_sess.return_value.__enter__ = MagicMock(return_value=MagicMock())
+        mock_sess.return_value.__exit__ = MagicMock(return_value=False)
+        await ApproveAction().execute(ctx)
+    mock_review.assert_awaited_once()
+
+
 # ─── AutoMergeAction ─────────────────────────────────────────────────────────
 
 def test_auto_merge_action_is_applicable_when_enabled():
@@ -234,6 +282,41 @@ async def test_auto_merge_action_skips_when_static_analysis_incomplete():
     with patch("src.gate.engine._run_auto_merge", new=AsyncMock()) as mock_impl:
         await AutoMergeAction().execute(ctx)
     mock_impl.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_auto_merge_action_skips_when_ai_review_failed():
+    """AI 리뷰 실제 실패(api_error/parse_error) 시 score 충족이어도 _run_auto_merge 미호출.
+
+    result["ai_review_status"]="parse_error" → 미수행 AI 점수의 자동 머지 차단 (#8 fail-closed).
+    """
+    from src.gate.actions.auto_merge import AutoMergeAction  # pylint: disable=import-outside-toplevel
+    from src.gate.actions import GateContext  # pylint: disable=import-outside-toplevel
+    cfg = _make_config(auto_merge=True)
+    ctx = GateContext(
+        repo_name="owner/repo", pr_number=42, analysis_id=1,
+        result={"score": 90, "ai_review_status": "parse_error"},  # 90 >= threshold 이나 AI 실패
+        github_token="ghp_test", config=cfg, score=90,
+    )
+    with patch("src.gate.engine._run_auto_merge", new=AsyncMock()) as mock_impl:
+        await AutoMergeAction().execute(ctx)
+    mock_impl.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_auto_merge_action_proceeds_when_ai_no_api_key():
+    """AI 의도적 미수행(no_api_key)은 차단 대상 아님 — 자동 머지 보존 (회귀 가드)."""
+    from src.gate.actions.auto_merge import AutoMergeAction  # pylint: disable=import-outside-toplevel
+    from src.gate.actions import GateContext  # pylint: disable=import-outside-toplevel
+    cfg = _make_config(auto_merge=True)
+    ctx = GateContext(
+        repo_name="owner/repo", pr_number=42, analysis_id=1,
+        result={"score": 90, "ai_review_status": "no_api_key"},  # 의도적 미수행 — 차단 대상 아님
+        github_token="ghp_test", config=cfg, score=90,
+    )
+    with patch("src.gate.engine._run_auto_merge", new=AsyncMock()) as mock_impl:
+        await AutoMergeAction().execute(ctx)
+    mock_impl.assert_awaited_once()
 
 
 @pytest.mark.asyncio
