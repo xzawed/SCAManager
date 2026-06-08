@@ -192,6 +192,30 @@ async def test_handle_gate_callback_merge_error_does_not_propagate():
                         await handle_gate_callback(analysis_id=42, decision="approve", decided_by="john")
 
 
+async def test_handle_gate_callback_below_threshold_still_delegates_to_engine():
+    """score < merge_threshold 여도 telegram 은 _run_auto_merge 에 위임한다 (사이클 164 회고 P1 — layer 격리 봉인).
+
+    임계 가드(score>=merge_threshold)는 engine._run_auto_merge 단일 layer(engine.py:109)가 담당하고
+    telegram 위임은 무조건(approve+auto_merge+not incomplete)이다. telegram 이 임계를 잘못 추가하면
+    이 테스트가 회귀를 잡는다 — 실제 머지 차단은 engine layer 테스트(tests/unit/gate/)가 봉인.
+    """
+    from src.webhook.router import handle_gate_callback
+    mock_analysis = MagicMock(id=42, repo_id=1, pr_number=5, score=85, result={"score": 85})
+    mock_repo = MagicMock(id=1, full_name="owner/repo")
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter_by.return_value.first.side_effect = [mock_analysis, mock_repo]
+    config = RepoConfigData(repo_full_name="owner/repo", auto_merge=True, merge_threshold=90)  # 85 < 90
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock):
+            with patch("src.webhook.providers.telegram.save_gate_decision"):
+                with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
+                    with patch("src.gate.engine._run_auto_merge", new_callable=AsyncMock) as mock_am:
+                        await handle_gate_callback(analysis_id=42, decision="approve", decided_by="john")
+                        mock_am.assert_called_once()
+                        # score 가 임계 미달이어도 그대로 engine 에 전달 — engine 이 차단 결정
+                        assert mock_am.call_args.args[4] == 85
+
+
 # --- 추가 테스트: HMAC 검증 실패·파트 형식 오류·analysis 미존재·내부 예외 ---
 
 INVALID_TOKEN_PAYLOAD = {

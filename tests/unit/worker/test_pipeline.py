@@ -597,6 +597,25 @@ async def test_pipeline_marks_result_incomplete_on_static_timeout(mock_deps):
         "정적분석 타임아웃 시 result 에 static_analysis_incomplete=True 마커가 없음 — auto-merge 차단 불가"
 
 
+async def test_pipeline_persists_incomplete_marker_to_saved_analysis(mock_deps):
+    """정적분석 incomplete 시 DB 저장되는 Analysis.result 에도 마커가 영속돼야 한다 (사이클 164 회고 P1 종단 봉인).
+
+    기존 test 는 마커→run_gate_check 전파만 검증 — 본 테스트는 _save_and_gate 가 result_dict 에
+    마커를 심어 db.add 되는 Analysis.result 에 영속되는지(관측 마커 겸용) end-to-end 봉인.
+    """
+    from src.worker.pipeline import run_analysis_pipeline
+    from unittest.mock import AsyncMock, patch
+
+    with patch("src.worker.pipeline._run_static_with_timeout",
+               new=AsyncMock(return_value=([], True))):
+        with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock):
+            await run_analysis_pipeline("pull_request", PR_DATA)
+
+    analysis_added = mock_deps["db"].add.call_args_list[-1][0][0]
+    assert analysis_added.result.get("static_analysis_incomplete") is True, \
+        "저장된 Analysis.result 에 incomplete 마커가 영속되지 않음 — 관측/재게이트 회귀 위험"
+
+
 async def test_pipeline_no_incomplete_marker_when_static_ok(mock_deps):
     """정적분석 정상 완료 시 result 에 static_analysis_incomplete 마커가 없어야 한다 (회귀 가드)."""
     from src.worker.pipeline import run_analysis_pipeline
@@ -1274,6 +1293,41 @@ async def test_race_recover_existing_skips_when_result_is_none():
             result = await _race_recover_existing(mock_db, params, mock_existing)
 
     mock_gate.assert_not_called()
+    assert result is mock_repo_config
+
+
+async def test_race_recover_existing_skips_when_pr_number_already_set():
+    """existing.pr_number 가 이미 다른 non-None 값이면 덮어쓰지 않고 run_gate_check 미호출 (first-writer-wins).
+
+    `_regate_pr_if_needed`(#794)와 대칭 — 동일 head SHA 를 두 PR 이 공유하는 race 경로에서도
+    잘못된 PR 에 gate 가 적용되는 것을 차단한다 (사이클 164 회고 P2 — 대칭 가드 봉인).
+    """
+    from src.worker.pipeline import _race_recover_existing  # pylint: disable=import-outside-toplevel
+    from src.worker.pipeline import _AnalysisSaveParams  # pylint: disable=import-outside-toplevel
+
+    mock_db = MagicMock()
+    # existing.pr_number=10 (이미 PR #10 으로 gate됨), 신규 params.pr_number=11
+    mock_existing = MagicMock(id=20, pr_number=10, result={"score": 80})
+    mock_repo_config = MagicMock()
+
+    params = _AnalysisSaveParams(
+        repo_name="owner/repo",
+        commit_sha="abc123",
+        commit_message="feat: test",
+        pr_number=11,
+        owner_token="tok",
+        analysis_results=[],
+        ai_review=MagicMock(),
+        score_result=MagicMock(),
+    )
+
+    with patch("src.worker.pipeline.get_repo_config", return_value=mock_repo_config):
+        with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock) as mock_gate:
+            result = await _race_recover_existing(mock_db, params, mock_existing)
+
+    mock_gate.assert_not_called()
+    assert mock_existing.pr_number == 10, "pr_number 가 덮어써짐 — first-writer-wins 위반"
+    mock_db.commit.assert_not_called()
     assert result is mock_repo_config
 
 
