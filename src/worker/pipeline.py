@@ -317,6 +317,21 @@ async def _regate_pr_if_needed(
     existing = analysis_repo.find_by_sha(db, commit_sha, repo.id)
     if existing is None or existing.pr_number == pr_number:
         return
+    if existing.pr_number is not None:
+        # 동일 SHA가 이미 다른 PR#로 gate된 경우 덮어쓰지 않는다 (first-writer-wins) —
+        # _race_recover_existing(existing.pr_number is not None → return)과 대칭.
+        # 동일 head SHA를 두 PR이 공유할 때 댓글/승인/auto-merge가 잘못된 PR에
+        # 적용되는 것을 차단한다.
+        # Don't overwrite when this SHA was already gated for a different PR
+        # (first-writer-wins), mirroring _race_recover_existing. Prevents gate
+        # actions (comment/approve/auto-merge) from hitting the wrong PR when the
+        # same head SHA is shared by multiple PRs.
+        logger.warning(
+            "_regate_pr_if_needed: sha=%s already gated for PR #%d, "
+            "skipping re-gate for PR #%d (first-writer-wins)",
+            commit_sha[:8], existing.pr_number, pr_number,
+        )
+        return
     try:
         existing.pr_number = pr_number
         db.commit()
