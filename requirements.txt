@@ -19,7 +19,7 @@ itsdangerous>=2.2.0
 # starlette CVE patches are bundled via fastapi>=0.136.3 — no standalone pin needed
 python-telegram-bot==22.7
 anthropic>=0.104.1
-aiosmtplib>=5.1.0
+aiosmtplib>=5.1.1
 pylint==4.0.5
 flake8==7.3.0
 bandit>=1.9.4
