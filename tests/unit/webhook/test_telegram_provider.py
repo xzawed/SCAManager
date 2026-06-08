@@ -93,103 +93,103 @@ def test_missing_secret_returns_401():
     assert r.status_code == 401
 
 
-# --- handle_gate_callback auto_merge 테스트 (Red: handle_gate_callback에 auto_merge 로직이 없음) ---
+# --- handle_gate_callback auto_merge 위임 테스트 (Q1 A: engine._run_auto_merge 로 자동/반자동 완전 대칭) ---
 
 async def test_handle_gate_callback_approve_with_auto_merge():
-    # approve 결정 + auto_merge=True → merge_pr이 호출되고 log_merge_attempt(success=True) 기록
+    # approve + auto_merge=True + score>=threshold → engine._run_auto_merge 에 위임
     from src.webhook.router import handle_gate_callback
-    mock_analysis = MagicMock(id=42, repo_id=1, pr_number=5, score=85,
-                              result={"score": 85})
+    mock_analysis = MagicMock(id=42, repo_id=1, pr_number=5, score=85, result={"score": 85})
     mock_repo = MagicMock(id=1, full_name="owner/repo")
     mock_db = MagicMock()
-    mock_db.query.return_value.filter_by.return_value.first.side_effect = [
-        mock_analysis, mock_repo
-    ]
+    mock_db.query.return_value.filter_by.return_value.first.side_effect = [mock_analysis, mock_repo]
     config = RepoConfigData(repo_full_name="owner/repo", auto_merge=True, merge_threshold=75)
     with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock):
             with patch("src.webhook.providers.telegram.save_gate_decision") as mock_save:
                 with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
-                    with patch("src.webhook.providers.telegram.merge_pr", new_callable=AsyncMock) as mock_merge:
-                        with patch("src.webhook.providers.telegram.log_merge_attempt") as mock_log:
-                            mock_merge.return_value = (True, None, "abc123")
-                            await handle_gate_callback(analysis_id=42, decision="approve",
-                                                       decided_by="john")
-                            mock_save.assert_called_once()
-                            mock_merge.assert_called_once()
-                            mock_log.assert_called_once()
-                            _, kw = mock_log.call_args
-                            assert kw["success"] is True
-                            assert kw["analysis_id"] == 42
+                    with patch("src.gate.engine._run_auto_merge", new_callable=AsyncMock) as mock_am:
+                        await handle_gate_callback(analysis_id=42, decision="approve", decided_by="john")
+                        mock_save.assert_called_once()
+                        mock_am.assert_called_once()
+                        args, kw = mock_am.call_args
+                        # 자동 경로와 동일 시그니처: (config, github_token, repo_name, pr_number, score)
+                        assert args[0] is config
+                        assert args[2] == "owner/repo"
+                        assert args[3] == 5
+                        assert args[4] == 85
+                        assert kw["analysis_id"] == 42
 
 
 async def test_handle_gate_callback_approve_without_auto_merge():
-    # approve 결정 + auto_merge=False → merge_pr이 호출되지 않는지 검증
+    # auto_merge=False → _run_auto_merge 미호출
     from src.webhook.router import handle_gate_callback
-    mock_analysis = MagicMock(id=42, repo_id=1, pr_number=5)
+    mock_analysis = MagicMock(id=42, repo_id=1, pr_number=5, score=85, result={"score": 85})
     mock_repo = MagicMock(id=1, full_name="owner/repo")
     mock_db = MagicMock()
-    mock_db.query.return_value.filter_by.return_value.first.side_effect = [
-        mock_analysis, mock_repo
-    ]
+    mock_db.query.return_value.filter_by.return_value.first.side_effect = [mock_analysis, mock_repo]
     config = RepoConfigData(repo_full_name="owner/repo", auto_merge=False)
     with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock):
             with patch("src.webhook.providers.telegram.save_gate_decision") as mock_save:
                 with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
-                    with patch("src.webhook.providers.telegram.merge_pr", new_callable=AsyncMock) as mock_merge:
-                        await handle_gate_callback(analysis_id=42, decision="approve",
-                                                   decided_by="john")
+                    with patch("src.gate.engine._run_auto_merge", new_callable=AsyncMock) as mock_am:
+                        await handle_gate_callback(analysis_id=42, decision="approve", decided_by="john")
                         mock_save.assert_called_once()
-                        mock_merge.assert_not_called()
+                        mock_am.assert_not_called()
 
 
 async def test_handle_gate_callback_reject_does_not_merge():
-    # reject 결정 시 auto_merge=True여도 score가 낮아 merge_pr이 호출되지 않는지 검증
+    # reject 시 auto_merge=True + 높은 score(>=threshold) 여도 머지 금지 (decision 가드 — 잠재 버그 차단)
     from src.webhook.router import handle_gate_callback
-    mock_analysis = MagicMock(id=42, repo_id=1, pr_number=5, score=0)
+    mock_analysis = MagicMock(id=42, repo_id=1, pr_number=5, score=90, result={"score": 90})
     mock_repo = MagicMock(id=1, full_name="owner/repo")
     mock_db = MagicMock()
-    mock_db.query.return_value.filter_by.return_value.first.side_effect = [
-        mock_analysis, mock_repo
-    ]
-    config = RepoConfigData(repo_full_name="owner/repo", auto_merge=True)
-    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock):
-            with patch("src.webhook.providers.telegram.save_gate_decision") as mock_save:
-                with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
-                    with patch("src.webhook.providers.telegram.merge_pr", new_callable=AsyncMock) as mock_merge:
-                        await handle_gate_callback(analysis_id=42, decision="reject",
-                                                   decided_by="john")
-                        mock_save.assert_called_once()
-                        mock_merge.assert_not_called()
-
-
-async def test_handle_gate_callback_merge_failure_does_not_propagate():
-    # merge_pr 실패(False) 시 log_merge_attempt(success=False) 기록 + 콜백 정상 완료
-    from src.webhook.router import handle_gate_callback
-    mock_analysis = MagicMock(id=42, repo_id=1, pr_number=5, score=90,
-                              result={"score": 90})
-    mock_repo = MagicMock(id=1, full_name="owner/repo")
-    mock_db = MagicMock()
-    mock_db.query.return_value.filter_by.return_value.first.side_effect = [
-        mock_analysis, mock_repo
-    ]
+    mock_db.query.return_value.filter_by.return_value.first.side_effect = [mock_analysis, mock_repo]
     config = RepoConfigData(repo_full_name="owner/repo", auto_merge=True, merge_threshold=75)
     with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock):
             with patch("src.webhook.providers.telegram.save_gate_decision") as mock_save:
                 with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
-                    with patch("src.webhook.providers.telegram.merge_pr", new_callable=AsyncMock) as mock_merge:
-                        with patch("src.webhook.providers.telegram.log_merge_attempt") as mock_log:
-                            mock_merge.return_value = (False, "forbidden: no permission", "abc123")
-                            await handle_gate_callback(analysis_id=42, decision="approve",
-                                                       decided_by="john")
-                            mock_save.assert_called_once()
-                            mock_log.assert_called_once()
-                            _, kw = mock_log.call_args
-                            assert kw["success"] is False
-                            assert kw["reason"] == "forbidden: no permission"
+                    with patch("src.gate.engine._run_auto_merge", new_callable=AsyncMock) as mock_am:
+                        await handle_gate_callback(analysis_id=42, decision="reject", decided_by="john")
+                        mock_save.assert_called_once()
+                        mock_am.assert_not_called()
+
+
+async def test_handle_gate_callback_incomplete_static_skips_merge():
+    # approve + auto_merge=True 여도 정적분석 불완전 마커 시 머지 차단 (자동 AutoMergeAction 대칭, #779/#783)
+    from src.webhook.router import handle_gate_callback
+    mock_analysis = MagicMock(id=42, repo_id=1, pr_number=5, score=85,
+                              result={"score": 85, "static_analysis_incomplete": True})
+    mock_repo = MagicMock(id=1, full_name="owner/repo")
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter_by.return_value.first.side_effect = [mock_analysis, mock_repo]
+    config = RepoConfigData(repo_full_name="owner/repo", auto_merge=True, merge_threshold=75)
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock):
+            with patch("src.webhook.providers.telegram.save_gate_decision"):
+                with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
+                    with patch("src.gate.engine._run_auto_merge", new_callable=AsyncMock) as mock_am:
+                        await handle_gate_callback(analysis_id=42, decision="approve", decided_by="john")
+                        mock_am.assert_not_called()
+
+
+async def test_handle_gate_callback_merge_error_does_not_propagate():
+    # _run_auto_merge 가 RuntimeError 누출 시에도 콜백이 격리되어 정상 완료 (except RuntimeError 보강)
+    from src.webhook.router import handle_gate_callback
+    mock_analysis = MagicMock(id=42, repo_id=1, pr_number=5, score=90, result={"score": 90})
+    mock_repo = MagicMock(id=1, full_name="owner/repo")
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter_by.return_value.first.side_effect = [mock_analysis, mock_repo]
+    config = RepoConfigData(repo_full_name="owner/repo", auto_merge=True, merge_threshold=75)
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock):
+            with patch("src.webhook.providers.telegram.save_gate_decision"):
+                with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
+                    with patch("src.gate.engine._run_auto_merge", new_callable=AsyncMock,
+                               side_effect=RuntimeError("merge boom")):
+                        # 예외가 전파되지 않아야 한다 (handle_gate_callback except 격리)
+                        await handle_gate_callback(analysis_id=42, decision="approve", decided_by="john")
 
 
 # --- 추가 테스트: HMAC 검증 실패·파트 형식 오류·analysis 미존재·내부 예외 ---
@@ -299,90 +299,12 @@ async def test_handle_gate_callback_exception_does_not_propagate():
                 await handle_gate_callback(analysis_id=42, decision="approve", decided_by="user")
 
 
-# --- Phase F.2: log_merge_attempt 관측 테스트 ---
-
-async def test_log_merge_attempt_called_on_auto_merge_success():
-    """반자동 merge 성공 시 log_merge_attempt(success=True) 가 호출된다."""
-    from src.webhook.router import handle_gate_callback
-    mock_analysis = MagicMock(id=42, repo_id=1, pr_number=7, score=80,
-                              result={"score": 80})
-    mock_repo = MagicMock(id=1, full_name="org/myrepo")
-    mock_db = MagicMock()
-    mock_db.query.return_value.filter_by.return_value.first.side_effect = [
-        mock_analysis, mock_repo
-    ]
-    config = RepoConfigData(repo_full_name="org/myrepo", auto_merge=True, merge_threshold=70)
-    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock):
-            with patch("src.webhook.providers.telegram.save_gate_decision"):
-                with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
-                    with patch("src.webhook.providers.telegram.merge_pr",
-                               new_callable=AsyncMock, return_value=(True, None, "abc123")):
-                        with patch("src.webhook.providers.telegram.log_merge_attempt") as mock_log:
-                            await handle_gate_callback(
-                                analysis_id=42, decision="approve", decided_by="alice"
-                            )
-    mock_log.assert_called_once()
-    _, kw = mock_log.call_args
-    assert kw["success"] is True
-    assert kw["analysis_id"] == 42
-    assert kw["repo_name"] == "org/myrepo"
-    assert kw["pr_number"] == 7
-    assert kw["score"] == 80
-    assert kw["threshold"] == 70
-
-
-async def test_log_merge_attempt_called_on_auto_merge_failure():
-    """반자동 merge 실패 시 log_merge_attempt(success=False, reason=...) 가 호출된다."""
-    from src.webhook.router import handle_gate_callback
-    mock_analysis = MagicMock(id=55, repo_id=2, pr_number=9, score=85,
-                              result={"score": 85})
-    mock_repo = MagicMock(id=2, full_name="org/protected")
-    mock_db = MagicMock()
-    mock_db.query.return_value.filter_by.return_value.first.side_effect = [
-        mock_analysis, mock_repo
-    ]
-    config = RepoConfigData(repo_full_name="org/protected", auto_merge=True, merge_threshold=80)
-    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock):
-            with patch("src.webhook.providers.telegram.save_gate_decision"):
-                with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
-                    with patch("src.webhook.providers.telegram.merge_pr",
-                               new_callable=AsyncMock,
-                               return_value=(False, "branch_protection_blocked: required status check", "abc123")):
-                        with patch("src.webhook.providers.telegram.log_merge_attempt") as mock_log:
-                            await handle_gate_callback(
-                                analysis_id=55, decision="approve", decided_by="bob"
-                            )
-    mock_log.assert_called_once()
-    _, kw = mock_log.call_args
-    assert kw["success"] is False
-    assert kw["reason"] == "branch_protection_blocked: required status check"
-
-
-async def test_log_merge_attempt_exception_does_not_abort_callback():
-    """log_merge_attempt 예외 시 WARNING 로그만 남기고 콜백은 정상 완료된다."""
-    from src.webhook.router import handle_gate_callback
-    mock_analysis = MagicMock(id=77, repo_id=3, pr_number=11, score=90,
-                              result={"score": 90})
-    mock_repo = MagicMock(id=3, full_name="org/repo3")
-    mock_db = MagicMock()
-    mock_db.query.return_value.filter_by.return_value.first.side_effect = [
-        mock_analysis, mock_repo
-    ]
-    config = RepoConfigData(repo_full_name="org/repo3", auto_merge=True, merge_threshold=80)
-    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
-        with patch("src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock):
-            with patch("src.webhook.providers.telegram.save_gate_decision"):
-                with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
-                    with patch("src.webhook.providers.telegram.merge_pr",
-                               new_callable=AsyncMock, return_value=(True, None, "abc123")):
-                        with patch("src.webhook.providers.telegram.log_merge_attempt",
-                                   side_effect=RuntimeError("DB connection lost")):
-                            # 예외가 전파되지 않아야 한다 (nested try/except 격리)
-                            await handle_gate_callback(
-                                analysis_id=77, decision="approve", decided_by="carol"
-                            )
+# --- Phase F.2 관측 테스트 — Q1 A 이후 engine._run_auto_merge 로 이관됨 ---
+# 반자동 merge 시도의 log_merge_attempt 관측은 이제 engine._run_auto_merge 내부에서
+# 수행된다(자동/반자동 단일 출처). 해당 동작은 tests/unit/gate/ 의 engine 테스트가 커버하고,
+# 위 위임 테스트(test_handle_gate_callback_*)가 telegram → engine 위임을 검증한다.
+# The semi-auto merge_attempt observation now lives in engine._run_auto_merge (single source);
+# engine tests cover it, and the delegation tests above verify telegram hands off to engine.
 
 
 # ---------------------------------------------------------------------------

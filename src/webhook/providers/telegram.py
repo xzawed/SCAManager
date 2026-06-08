@@ -20,13 +20,12 @@ from src.config import settings
 from src.config_manager.manager import get_repo_config
 from src.database import SessionLocal
 from src.gate.engine import save_gate_decision
-from src.gate.github_review import merge_pr, post_github_review
+from src.gate.github_review import post_github_review
 from src.i18n.loader import get_text
 from src.notifier._language import resolve_notification_language
 from src.notifier.telegram import telegram_post_message
 from src.notifier.telegram_commands import handle_message_command, parse_cmd_callback
 from src.repositories import analysis_repo, repository_repo
-from src.shared.merge_metrics import log_merge_attempt
 
 logger = logging.getLogger(__name__)
 
@@ -68,27 +67,6 @@ def _parse_gate_callback(data: str) -> "tuple[str, int, str] | None":
         logger.warning("Telegram gate callback: invalid token for analysis_id=%d", analysis_id)
         return None
     return decision, analysis_id, callback_token
-
-
-def _log_merge_attempt_safe(
-    db, analysis_id, repo_name, pr_number, score, threshold, ok, reason
-) -> None:
-    """merge_attempt 기록 실패가 게이트 콜백을 중단시키지 않도록 격리한다.
-    Isolate merge_attempt logging failures so they do not abort the gate callback.
-    """
-    try:
-        log_merge_attempt(
-            db,
-            analysis_id=analysis_id,
-            repo_name=repo_name,
-            pr_number=pr_number,
-            score=score,
-            threshold=threshold,
-            success=ok,
-            reason=reason,
-        )
-    except Exception as log_exc:  # pylint: disable=broad-except
-        logger.warning("merge_attempt 기록 실패 (pr=%d): %s", pr_number, log_exc)
 
 
 async def handle_gate_callback(
@@ -136,22 +114,29 @@ async def handle_gate_callback(
             save_gate_decision(db, analysis_id, decision, "manual", decided_by)
             result_dict = analysis.result if isinstance(analysis.result, dict) else {}
             score = result_dict.get("score", analysis.score or 0)
-            if config.auto_merge and score >= config.merge_threshold:
-                ok, reason, *_ = await merge_pr(github_token, repo.full_name, analysis.pr_number)
-                _log_merge_attempt_safe(
-                    db, analysis_id, repo.full_name, analysis.pr_number,
-                    score, config.merge_threshold, ok, reason,
+            # 반자동 auto-merge 를 자동 경로(engine._run_auto_merge)에 위임 — retry 큐잉·
+            # SHA 원자성 가드·CI 재판별·terminal/deferred 알림까지 자동/반자동 완전 대칭 (Q1 A).
+            # _run_auto_merge 가 자체 SessionLocal 을 열고 auto_merge/threshold 가드를 내부 수행한다.
+            # 가드는 자동 경로 AutoMergeAction 미러링: (1) 승인 결정만 머지(reject 시 금지),
+            # (2) auto_merge 활성, (3) 정적분석 불완전(타임아웃) 시 차단(#779/#783).
+            # Delegate semi-auto merge to the automatic path for full parity (retry queue, SHA guard,
+            # CI re-check, terminal/deferred notifications). _run_auto_merge opens its own session and
+            # applies the auto_merge/threshold guard internally. Guards mirror AutoMergeAction:
+            # (1) merge only on approve, (2) auto_merge enabled, (3) skip on incomplete static analysis.
+            if (
+                decision == "approve"
+                and config.auto_merge
+                and not result_dict.get("static_analysis_incomplete")
+            ):
+                from src.gate import engine  # pylint: disable=import-outside-toplevel
+                await engine._run_auto_merge(  # pylint: disable=protected-access
+                    config, github_token, repo.full_name, analysis.pr_number, score,
+                    analysis_id=analysis_id,
                 )
-                if ok:
-                    logger.info("PR #%d manual-approved+auto-merged: %s",
-                                analysis.pr_number, repo.full_name)
-                else:
-                    logger.warning(
-                        "PR #%d manual-approved but auto-merge 실패: %s",
-                        analysis.pr_number, reason,
-                    )
-        except (httpx.HTTPError, KeyError, ValueError, SQLAlchemyError):
+        except (httpx.HTTPError, KeyError, ValueError, RuntimeError, SQLAlchemyError):
             # Phase H PR-6A: logger.exception 으로 stack trace 보존
+            # RuntimeError 포함 — _run_auto_merge(legacy 경로)가 누출할 수 있어 콜백 격리 보강
+            # Include RuntimeError — _run_auto_merge (legacy path) may leak it; isolate the callback
             logger.exception("Gate callback failed")
 
 
