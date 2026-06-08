@@ -1,10 +1,11 @@
-# SCAManager 사이클 작업 이력 (사이클 60~164, 최신순)
+# SCAManager 사이클 작업 이력 (사이클 60~165, 최신순)
 
-> CLAUDE.md tail entry 분리본. 사이클 60~164 이력 (본문 최신순 — 목차는 164부터, 하단에 60~92 archive).
+> CLAUDE.md tail entry 분리본. 사이클 60~165 이력 (본문 최신순 — 목차는 165부터, 하단에 60~92 archive).
 > 본 파일은 회고 시점 (정책 8 5+1 패턴) 또는 영역 reference 시 read 의무.
 
 ## 목차
 
+- [사이클 165 (Task9 골든 리메디에이션 — P1 #802~810 + P2 보안·파이프라인 하드닝 클러스터 #811~814: 게이트 원자적 리플레이 claim·webhook 본문 파싱·ai_review per-field PARITY·SSRF docstring·hook parse_error NULL+overview, Codex true mutual 실결함 4건 적발, 11 PR, 2026-06-08~09)](#사이클-165)
 - [사이클 164 (area=gate 잔여 6 결함 — 사용자 Q1~Q4 결정: 정적분석 파일격리+타임아웃 부분결과 보존, telegram 반자동 auto-merge 완전 대칭, regate first-writer-wins, 3 PR #794~#796, 2026-06-08)](#사이클-164)
 - [사이클 163 (area=gate P2 백로그 해소 — ApproveAction 정적분석 가드·hook 점수 비숫자/Infinity 안전변환·merge_retry 백오프 validator·zero-SHA 조기종료·_ensure_repo race 복구, 5 PR #783~#787, 2026-06-07)](#사이클-163)
 - [사이클 162 (잔여 백로그 전량 + integrity-audit 워크플로우 Task1~8 + area=gate P1 fix 3건 — RLS 자동탐지·test-quality·effects.js·정적분석 타임아웃·insert race·merge_retry expired, 8 PR #774~#781, 2026-06-07)](#사이클-162)
@@ -73,6 +74,27 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 사이클 165
+
+**날짜**: 2026-06-08~09 | **PR**: #802~#814 (11건 머지) | **상태**: Task9 골든 리메디에이션 — P1 9/10 + P2 보안·파이프라인 하드닝 클러스터 5/5
+
+**작업 내용**: Task9 full 골든 감사(#801, 36 confirmed = P1 10 / P2 26)의 P1 리메디에이션 + 사용자 선택 P2 클러스터(보안·파이프라인 하드닝). Codex mutual 복구 하에 전 PR push 전 Codex OK 의무(정책 18) — 이번 사이클에서 Codex 가 단독 진행이었다면 운영 반영됐을 **실결함 4건 적발**(핵심 성과). 11 PR 순차 머지는 사용자 위임.
+
+**P1 리메디에이션 (#802~#810, 9/10 — #2 RLS 근본해결은 SaaS 전환 항목)**:
+- #802(#1) telegram 반자동 콜백 리포 소유권 authz · #803(#9/#10 + 비-ASCII 변종 #26/#27/#29/#30) `secure_str_compare` 전 compare_digest 호출처(validator/hook/telegram/railway/auth) 적용 · #804(#8) AI 리뷰 genuine 실패(api_error/parse_error)만 auto-merge 차단(`ai_review_failed`, no_api_key/empty_diff 제외) · #805(#6) content-fetch transient(403/5xx) 실패 → incomplete · #806(#7) per-tool subprocess 타임아웃 → `AnalyzeContext.timed_out` → incomplete(ctx-신호 설계, re-raise 회귀 회피) · #807(#5) hook SHA insert race → `analysis_repo.save_new` race-safe · #808(#4) check_suite.completed `only_ids` force-due · #809(#3) docs architecture gate/actions · #810(#2-D) rls-audit FORCE RLS 미설정 owner-bypass 경고 가시화.
+
+**P2 보안·파이프라인 하드닝 클러스터 (사용자 AskUserQuestion 선택, #811~#814)**:
+- **#811 (#11+#13)** — #11 게이트 콜백 리플레이 가드: `gate_decision_repo.claim_decision`(insert-only UNIQUE analysis_id, IntegrityError→False)로 부수효과 전 결정 원자적 claim(first-writer-wins, save_gate_decision upsert 대체 — 결정 뒤집기 차단). #13 telegram_webhook `request.json()` try/except→400 + isinstance(dict)→400(railway 대칭). 🔴 **Codex 3라운드**: R1 NG(find 기반 비원자 TOCTOU)→사용자 옵션A→원자 claim / R2 NG(타 파일 save_gate_decision stale mock 3건)→claim 전환 / R3 OK.
+- **#812 (#24)** — ai_review `_parse_response` bare int()→`_coerce_score`(hook `_coerce_raw_score` PARITY GUARD 인라인). 단일 비숫자/Infinity 필드가 리뷰 전체 붕괴 차단 — feedback·정상 점수 보존 + status=parse_error 유지(#804 게이트 fail-closed 불변, 설계 'success 복구' 대신 보수적 안 채택).
+- **#813 (#12)** — SSRF DNS-rebinding docstring 정직화(옵션 B, 사용자 결정 — 코드 0줄). validate-time 1차 차단 한계 + connect 재해석 TOCTOU 명시(httpx native IP 핀 미지원으로 옵션 A 거부, 정책17 안정성).
+- **#814 (#25)** — hook parse_error 시 인플레 89/B 점수 NULL 저장(집계 오염 차단, 컬럼 nullable+집계 NULL 제외 재사용 쿼리 0줄). 🔴 **Codex 적발 회귀**: overview.py 가 count(parse_error 포함)↔func.avg(NULL 제외) 불일치로 score-전부-NULL 리포 grade=F 오분류 → grade 를 avg_raw 기준으로 수정 + 전 read-path 감사(analytics/dashboard 안전 확인).
+
+**검증**: 각 PR TDD red→green + Codex true mutual(정책 18, push 전). 전체 단위 4655→4713, 통합 153 불변, pylint 10.00, 전 PR CI green(codecov/patch tiny-diff 아티팩트 #813 non-blocking).
+
+**학습**: ① **Codex mutual 검증 ROI 결정적** — #811 비원자 TOCTOU·타 파일 stale mock 3건, #814 overview F-오분류 등 단독 진행 시 누락될 실결함 4건 적발(외부 LLM 모델 다양성 layer, 정책 18 §5). ② NULL 저장 같은 데이터 변경은 **모든 read-path 영향** → 전수 감사 의무(overview 가 유일 미처리 경로였다). ③ Codex exec 안정 호출 = `codex exec --skip-git-repo-check "단일라인" < /dev/null`(멀티라인/stdin 미차단 시 "Reading additional input from stdin..." 만 출력하고 리뷰 미생성). ④ #11 원자성은 사용자 옵션 A 결정(claim 후 GitHub 실패 시 retry 억제 트레이드오프 수용) — NG 시 자율 수정 금지·옵션 표·사용자 confirm(정책 18 §3). ⑤ #26/#27/#29/#30 비-ASCII compare_digest P2 변종은 #803 으로 이미 해소 실측 확인 → P2 잔여 26→실질 ~21.
+
+---
 
 ## 사이클 164
 
