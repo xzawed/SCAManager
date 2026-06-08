@@ -319,18 +319,13 @@ async def _regate_pr_if_needed(
         return
     if existing.pr_number is not None:
         # 동일 SHA가 이미 다른 PR#로 gate된 경우 덮어쓰지 않는다 (first-writer-wins) —
-        # _race_recover_existing(existing.pr_number is not None → return)과 대칭.
-        # 동일 head SHA를 두 PR이 공유할 때 댓글/승인/auto-merge가 잘못된 PR에
-        # 적용되는 것을 차단한다.
-        # Don't overwrite when this SHA was already gated for a different PR
-        # (first-writer-wins), mirroring _race_recover_existing. Prevents gate
-        # actions (comment/approve/auto-merge) from hitting the wrong PR when the
-        # same head SHA is shared by multiple PRs.
-        # 단일 라인 유지 — codecov/patch 가 멀티라인 statement continuation 줄을 미커버로
-        # 오집계하는 것을 회피 (로직은 회귀 테스트 + SonarCloud New Code 100% 로 검증).
-        # Keep on one line — codecov/patch miscounts multi-line statement continuations as
-        # uncovered on small diffs (logic is covered by the regression test, SonarCloud 100%).
-        logger.warning("sha %s already gated for PR #%d (first-writer-wins)", commit_sha[:8], existing.pr_number)
+        # _race_recover_existing 과 대칭. 동일 head SHA 멀티 PR 시 잘못된 PR 에 gate 적용 차단.
+        # Don't overwrite when this SHA was already gated for a different PR (first-writer-wins),
+        # mirroring _race_recover_existing — prevents gate actions hitting the wrong PR.
+        logger.warning(
+            "_regate_pr_if_needed: sha=%s already gated for PR #%d, skip PR #%d (first-writer-wins)",
+            commit_sha[:8], existing.pr_number, pr_number,
+        )
         return
     try:
         existing.pr_number = pr_number
