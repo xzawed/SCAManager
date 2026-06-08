@@ -66,6 +66,67 @@ def test_get_pr_files_handles_content_error():
     assert result[0].content == ""
 
 
+def test_collect_changed_files_marks_fetch_failed_on_transient_403():
+    """transient 403(rate-limit) fetch 실패 시 fetch_failed=True (content='' 인플레 방어, #6).
+    Transient 403 (rate limit) marks fetch_failed=True so the pipeline can fail-closed (#6)."""
+    from github import GithubException
+    from src.github_client.diff import _collect_changed_files
+    mock_repo = MagicMock()
+    mock_repo.get_contents.side_effect = GithubException(403, "rate limit")
+    f = MagicMock(); f.filename = "src/app.py"; f.patch = "@@"
+    result = _collect_changed_files(mock_repo, [f], "abc123")
+    assert result[0].content == ""
+    assert result[0].fetch_failed is True
+
+
+def test_collect_changed_files_marks_fetch_failed_on_5xx():
+    """transient 5xx fetch 실패 시 fetch_failed=True (#6)."""
+    from github import GithubException
+    from src.github_client.diff import _collect_changed_files
+    mock_repo = MagicMock()
+    mock_repo.get_contents.side_effect = GithubException(502, "bad gateway")
+    f = MagicMock(); f.filename = "src/app.py"; f.patch = "@@"
+    result = _collect_changed_files(mock_repo, [f], "abc123")
+    assert result[0].fetch_failed is True
+
+
+def test_collect_changed_files_404_not_fetch_failed():
+    """404(삭제 파일)는 정상 — fetch_failed=False (content='' 적절, 인플레 아님, #6).
+    404 (deleted file) is legitimate — fetch_failed=False (empty content is correct, #6)."""
+    from github import GithubException
+    from src.github_client.diff import _collect_changed_files
+    mock_repo = MagicMock()
+    mock_repo.get_contents.side_effect = GithubException(404, "Not found")
+    f = MagicMock(); f.filename = "deleted.py"; f.patch = "@@"
+    result = _collect_changed_files(mock_repo, [f], "abc123")
+    assert result[0].content == ""
+    assert result[0].fetch_failed is False
+
+
+def test_collect_changed_files_unicode_decode_not_fetch_failed():
+    """바이너리/비-UTF8 파일 decode 실패는 정상(분석 불가) — fetch_failed=False (#6)."""
+    from src.github_client.diff import _collect_changed_files
+    mock_repo = MagicMock()
+    contents = MagicMock(); contents.decoded_content = b"\xff\xff"  # UTF-8 decode 실패
+    mock_repo.get_contents.return_value = contents
+    f = MagicMock(); f.filename = "bin.dat"; f.patch = "@@"
+    result = _collect_changed_files(mock_repo, [f], "abc123")
+    assert result[0].content == ""
+    assert result[0].fetch_failed is False
+
+
+def test_collect_changed_files_success_not_fetch_failed():
+    """정상 fetch 시 fetch_failed=False (#6)."""
+    from src.github_client.diff import _collect_changed_files
+    mock_repo = MagicMock()
+    contents = MagicMock(); contents.decoded_content = b"import os\n"
+    mock_repo.get_contents.return_value = contents
+    f = MagicMock(); f.filename = "src/app.py"; f.patch = "@@"
+    result = _collect_changed_files(mock_repo, [f], "abc123")
+    assert result[0].content == "import os\n"
+    assert result[0].fetch_failed is False
+
+
 def test_collect_changed_files_log_sanitizes_filename_and_ref(caplog):
     """파일 로드 실패 debug 로그가 filename·ref 를 sanitize 해 CR/LF 로그 인젝션을 차단한다.
     The file-load-failure log sanitizes filename/ref so CR/LF cannot inject fake log lines."""
