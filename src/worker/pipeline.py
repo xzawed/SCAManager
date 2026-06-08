@@ -241,6 +241,18 @@ async def _run_static_with_timeout(
             "all %d files failed static analysis — marking incomplete (auto-merge blocked)",
             len(files),
         )
+    # 콘텐츠 fetch 가 transient(403 rate-limit/5xx)로 실패한 파일이 있으면 미분석 코드다 —
+    # 빈 content 는 이슈0=만점 인플레로 이어지므로 incomplete 로 fail-closed 처리(#6).
+    # AutoMergeAction/ApproveAction(#779/#783)이 이 마커로 자동 머지/승인을 차단한다.
+    # Files whose content fetch failed transiently are unanalyzed — empty content inflates the
+    # score, so mark incomplete (fail-closed, #6) to block auto-merge/approve.
+    fetch_failed_count = sum(1 for f in files if getattr(f, "fetch_failed", False))
+    if fetch_failed_count:
+        incomplete = True
+        logger.warning(
+            "%d/%d files had transient content-fetch failures — marking incomplete (auto-merge blocked)",
+            fetch_failed_count, len(files),
+        )
     return results, incomplete
 
 
