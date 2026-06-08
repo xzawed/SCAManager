@@ -26,8 +26,10 @@ from src.repositories import repository_repo, analysis_repo
 
 logger = logging.getLogger(__name__)
 
-# 정적 분석 전체 타임아웃 단일 출처 (초) — 초과 시 빈 리스트 반환, AI 리뷰는 계속 진행
-# Single source of truth for the static-analysis timeout (seconds) — returns empty list on timeout; AI review continues
+# 정적 분석 전체 타임아웃(deadline) 단일 출처 (초) — 초과 시 완료된 파일 부분결과 보존 +
+# incomplete 신호 반환(auto-merge 차단), AI 리뷰는 계속 진행
+# Single source of truth for the static-analysis deadline (seconds) — on overrun keeps the
+# partial results of completed files and returns an incomplete flag (blocks auto-merge); AI review continues
 PIPELINE_ANALYSIS_TIMEOUT = 60
 
 
@@ -145,7 +147,12 @@ def _extract_pr_head_ref(event: str, data: dict) -> str | None:
 async def _run_static_analysis(
     files: list[ChangedFile], repo_config: object | None = None
 ) -> list[StaticAnalysisResult]:
-    """Run registered analyzers on all changed files; each Analyzer filters by language.
+    """Run registered analyzers on the given changed files in one worker thread.
+
+    _run_static_with_timeout 가 파일별로 호출하며, 파일 단위 격리·deadline·실패 집계는
+    호출측(_run_static_with_timeout)이 담당한다. 여기서는 동기 분석 루프만 to_thread 로 offload.
+    Called per-file by _run_static_with_timeout; per-file isolation, deadline, and failure
+    counting live in the caller. This only offloads the sync analysis loop to a thread.
 
     repo_config: RepoConfig 인스턴스 — disabled_tools 필터링에 사용.
     repo_config: RepoConfig instance — used for disabled_tools filtering.
@@ -158,28 +165,83 @@ async def _run_static_analysis(
 async def _run_static_with_timeout(
     files: list[ChangedFile], repo_config: object | None = None
 ) -> tuple[list[StaticAnalysisResult], bool]:
-    """_run_static_analysis를 PIPELINE_ANALYSIS_TIMEOUT 초 상한으로 실행한다.
-    Run _run_static_analysis bounded by PIPELINE_ANALYSIS_TIMEOUT seconds.
+    """정적분석을 PIPELINE_ANALYSIS_TIMEOUT 초 deadline 으로 파일 단위 순차 실행한다.
+    Run static analysis file-by-file under a PIPELINE_ANALYSIS_TIMEOUT-second deadline.
+
+    각 파일을 독립 to_thread 로 순차 await 하므로 (1) subprocess 동시 폭주가 없고,
+    (2) deadline 초과 시 그때까지 완료된 파일의 부분결과를 보존하며,
+    (3) 타임아웃으로 고아가 되는 워커 스레드는 진행 중이던 단일 파일 1개로 한정된다
+    (파일당 도구 subprocess timeout=STATIC_ANALYSIS_TIMEOUT 합산으로 bounded — 자연 종료).
+    Each file runs in its own to_thread, awaited sequentially, so (1) there is no concurrent
+    subprocess blow-up, (2) partial results of completed files are preserved on deadline, and
+    (3) at most one in-flight file's worker thread can be orphaned on timeout (bounded by the
+    sum of that file's per-tool subprocess timeouts).
+
+    파일 단위 격리(Q2): 한 파일의 analyze_file 예외(디스크/encoding/tempfile 오류 등)는
+    빈 StaticAnalysisResult 로 격리하고 다음 파일을 계속 분석한다 (배치/AI리뷰 미중단).
+    Per-file isolation (Q2): a single file's analyze_file failure is isolated as an empty result
+    and the loop continues — it does not abort the batch or AI review.
 
     Returns:
-        (results, timed_out). 타임아웃 시 ([], True) — 빈 결과가 "이슈 없음"(만점)으로
-        오인되어 미분석 코드가 auto-merge 되는 것을 막기 위해 timed_out 신호를 함께 반환한다.
-        On timeout returns ([], True) — the bool flags incomplete analysis so the empty list
-        is not mistaken for "no issues" (perfect score) and auto-merging unanalyzed code.
-        AI 리뷰는 계속 진행 / AI review continues unaffected.
+        (results, incomplete). incomplete=True 는 (a) deadline 초과, 또는 (b) 비어있지 않은
+        배치의 모든 파일이 실패한 경우의 신호로, 부분/누락 분석이 "이슈 없음"(만점)으로 오인되어
+        미분석 코드가 auto-merge 되는 것을 막는다. 일부 파일만 실패(나머지 정상 분석)는 Q2=A
+        결정에 따라 incomplete 로 처리하지 않는다. AI 리뷰는 계속 진행.
+        incomplete=True flags (a) a deadline overrun or (b) every file in a non-empty batch
+        failing, so partial/missing analysis is not mistaken for "no issues" and auto-merged.
+        A partial failure (some files analyzed) is NOT incomplete per the Q2=A decision.
     """
-    try:
-        results = await asyncio.wait_for(
-            _run_static_analysis(files, repo_config=repo_config),
-            timeout=PIPELINE_ANALYSIS_TIMEOUT,
-        )
-        return results, False
-    except asyncio.TimeoutError:
+    results: list[StaticAnalysisResult] = []
+    incomplete = False
+    failed = 0
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + PIPELINE_ANALYSIS_TIMEOUT
+    for f in files:
+        remaining = deadline - loop.time()
+        if remaining <= 0:
+            incomplete = True
+            logger.warning(
+                "static analysis deadline (%ss) reached — %d/%d files analyzed, "
+                "marking incomplete (auto-merge blocked, partial preserved)",
+                PIPELINE_ANALYSIS_TIMEOUT, len(results), len(files),
+            )
+            break
+        try:
+            part = await asyncio.wait_for(
+                _run_static_analysis([f], repo_config=repo_config),
+                timeout=remaining,
+            )
+            results.extend(part)
+        except asyncio.TimeoutError:
+            incomplete = True
+            logger.warning(
+                "static analysis deadline (%ss) reached during %s — %d/%d files analyzed, "
+                "marking incomplete (auto-merge blocked, partial preserved)",
+                PIPELINE_ANALYSIS_TIMEOUT, f.filename, len(results), len(files),
+            )
+            break
+        except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+            # 파일 단위 격리(Q2) — 실패 파일은 빈 결과(이슈0)로 처리하고 다음 파일 진행
+            # Per-file isolation (Q2) — failed file yields an empty result; loop continues
+            failed += 1
+            results.append(StaticAnalysisResult(filename=f.filename))
+            logger.warning(
+                "static analysis failed for %s — isolated as empty result",
+                f.filename, exc_info=True,
+            )
+    # 안전망: 비어있지 않은 배치의 모든 파일이 예외 실패 → 실 분석 0건 → 미분석 코드
+    # auto-merge 차단(fail-closed). 변경 전 동작(파일 예외 시 파이프라인 abort)이 Q2=A 격리로
+    # 바뀌며 생길 수 있는 전량-실패 fail-open 회귀를 막는다.
+    # Safety net: every file in a non-empty batch failed → zero real analysis → block auto-merge
+    # of unanalyzed code (fail-closed). Prevents the total-failure fail-open regression that Q2=A
+    # isolation could introduce versus the previous abort-on-exception behavior.
+    if files and failed == len(files):
+        incomplete = True
         logger.warning(
-            "static analysis timed out after %ss — marking incomplete (auto-merge blocked)",
-            PIPELINE_ANALYSIS_TIMEOUT,
+            "all %d files failed static analysis — marking incomplete (auto-merge blocked)",
+            len(files),
         )
-        return [], True
+    return results, incomplete
 
 
 def build_notification_tasks(  # pylint: disable=too-many-positional-arguments,too-many-arguments

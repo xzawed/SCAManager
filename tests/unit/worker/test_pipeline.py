@@ -1072,12 +1072,13 @@ async def test_collect_files_wrapped_in_asyncio_to_thread(mock_deps):
 
 @pytest.mark.asyncio
 async def test_run_static_with_timeout_returns_empty_on_timeout():
-    """분석이 PIPELINE_ANALYSIS_TIMEOUT 초과 시 (빈 리스트, timed_out=True) 를 반환해야 한다.
+    """완료된 파일이 하나도 없는 채 deadline 초과 시 (빈 리스트, incomplete=True) 반환.
 
-    timed_out=True 는 auto-merge 차단 신호 — 미분석 코드 자동 머지 방지.
+    incomplete=True 는 auto-merge 차단 신호 — 미분석 코드 자동 머지 방지.
     """
     import asyncio
     from src.worker.pipeline import _run_static_with_timeout
+    from src.github_client.diff import ChangedFile
 
     async def _slow(files, repo_config=None):          # 타임아웃보다 오래 걸리는 가짜 분석
         await asyncio.sleep(10)
@@ -1085,16 +1086,17 @@ async def test_run_static_with_timeout_returns_empty_on_timeout():
 
     with patch("src.worker.pipeline._run_static_analysis", side_effect=_slow):
         with patch("src.worker.pipeline.PIPELINE_ANALYSIS_TIMEOUT", 0.01):
-            result = await _run_static_with_timeout([])
+            result = await _run_static_with_timeout([ChangedFile("a.py", "x=1\n", "@@")])
 
     assert result == ([], True)
 
 
 @pytest.mark.asyncio
 async def test_run_static_with_timeout_returns_results_when_fast():
-    """분석이 타임아웃 내에 완료되면 (정상 결과, timed_out=False) 를 반환해야 한다."""
+    """분석이 타임아웃 내에 완료되면 (정상 결과, incomplete=False) 를 반환해야 한다."""
     from src.worker.pipeline import _run_static_with_timeout
     from src.analyzer.io.static import StaticAnalysisResult
+    from src.github_client.diff import ChangedFile
 
     fake_result = [StaticAnalysisResult(filename="app.py", issues=[])]
 
@@ -1102,9 +1104,93 @@ async def test_run_static_with_timeout_returns_results_when_fast():
         return fake_result
 
     with patch("src.worker.pipeline._run_static_analysis", side_effect=_fast):
-        result = await _run_static_with_timeout([])
+        result = await _run_static_with_timeout([ChangedFile("app.py", "x=1\n", "@@")])
 
     assert result == (fake_result, False)
+
+
+@pytest.mark.asyncio
+async def test_run_static_with_timeout_preserves_partial_results_on_deadline():
+    """배치 deadline 초과 시 그때까지 완료된 파일 결과를 보존하고 incomplete=True 반환 (Q3 B).
+
+    이전 동작은 타임아웃 시 전량 폐기 ([], True) 였으나, 부분결과 보존으로
+    완료된 파일 분석은 점수에 반영되고 incomplete 마커로 auto-merge 만 차단한다.
+    """
+    import asyncio
+    from src.worker.pipeline import _run_static_with_timeout
+    from src.analyzer.io.static import StaticAnalysisResult
+    from src.github_client.diff import ChangedFile
+
+    f1 = ChangedFile("a.py", "x=1\n", "@@")
+    f2 = ChangedFile("b.py", "y=2\n", "@@")
+    r1 = StaticAnalysisResult(filename="a.py", issues=[])
+
+    async def _per_file(files, repo_config=None):
+        # _run_static_with_timeout 는 파일별로 [f] 단일 리스트로 호출한다
+        f = files[0]
+        if f.filename == "a.py":
+            return [r1]
+        await asyncio.sleep(10)  # b.py: 느림 → deadline 초과
+        return [StaticAnalysisResult(filename="b.py", issues=[])]
+
+    with patch("src.worker.pipeline._run_static_analysis", side_effect=_per_file):
+        with patch("src.worker.pipeline.PIPELINE_ANALYSIS_TIMEOUT", 0.2):
+            results, incomplete = await _run_static_with_timeout([f1, f2])
+
+    assert incomplete is True            # deadline 초과 → auto-merge 차단 신호
+    assert results == [r1]               # a.py 부분 결과 보존, b.py 는 폐기 (deadline)
+
+
+@pytest.mark.asyncio
+async def test_run_static_with_timeout_isolates_single_file_exception():
+    """한 파일의 analyze_file 예외가 다른 파일 분석·AI리뷰를 막지 않고 빈 결과로 격리된다 (Q2 A).
+
+    이전 동작은 list comprehension 이라 한 파일 예외가 전체 배치를 중단시켰으나,
+    파일 단위 격리로 실패 파일은 빈 StaticAnalysisResult 가 되고 나머지는 정상 분석된다.
+    일부 파일만 실패하면 incomplete=False (Q2=A — 나머지 정상 분석 보존).
+    """
+    from src.worker.pipeline import _run_static_with_timeout
+    from src.analyzer.io.static import StaticAnalysisResult
+    from src.github_client.diff import ChangedFile
+
+    good = StaticAnalysisResult(filename="good.py", issues=[])
+
+    async def _per_file(files, repo_config=None):
+        f = files[0]
+        if f.filename == "bad.py":
+            raise OSError("disk full")
+        return [good]
+
+    files = [ChangedFile("bad.py", "x\n", "@@"), ChangedFile("good.py", "y\n", "@@")]
+    with patch("src.worker.pipeline._run_static_analysis", side_effect=_per_file):
+        results, incomplete = await _run_static_with_timeout(files)
+
+    assert len(results) == 2
+    assert results[0].filename == "bad.py" and results[0].issues == []  # 격리된 빈 결과
+    assert results[1] is good                                            # 정상 파일 보존
+    assert incomplete is False                                           # 일부 실패는 incomplete 아님
+
+
+@pytest.mark.asyncio
+async def test_run_static_with_timeout_marks_incomplete_when_all_files_fail():
+    """비어있지 않은 배치의 모든 파일이 analyze_file 예외로 실패하면 incomplete=True (안전망).
+
+    실 분석 0건이므로 빈 결과의 만점 인플레가 미분석 코드 auto-merge 로 이어지지 않도록
+    fail-closed 처리한다 (Q2=A 격리가 전량-실패 시 만들 수 있는 fail-open 회귀 방지).
+    """
+    from src.worker.pipeline import _run_static_with_timeout
+    from src.github_client.diff import ChangedFile
+
+    async def _all_fail(files, repo_config=None):
+        raise OSError("disk full")
+
+    files = [ChangedFile("a.py", "x\n", "@@"), ChangedFile("b.py", "y\n", "@@")]
+    with patch("src.worker.pipeline._run_static_analysis", side_effect=_all_fail):
+        results, incomplete = await _run_static_with_timeout(files)
+
+    assert len(results) == 2                       # 빈 결과 2개 보존 (관측용)
+    assert all(r.issues == [] for r in results)
+    assert incomplete is True                      # 전량 실패 → auto-merge 차단 신호
 
 
 # ---------------------------------------------------------------------------
