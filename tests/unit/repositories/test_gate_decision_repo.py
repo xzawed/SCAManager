@@ -91,3 +91,17 @@ def test_claim_decision_duplicate_loses_no_flip(db_session):
     rec = gate_decision_repo.find_by_analysis_id(db_session, a.id)
     assert rec.decision == "approve"
     assert rec.decided_by == "alice"
+
+
+def test_claim_decision_absorbs_non_unique_integrity_error(db_session):
+    """correctness 회귀 가드: claim_decision 의 broad `except IntegrityError` 는 UNIQUE 외
+    NOT NULL/FK 위반도 흡수해 graceful False 를 반환한다(크래시 아님). 호출자는 호출 전
+    analysis 존재를 보장할 책임이 있다(docstring 명시). 사이클 165 회고 correctness P1-1.
+
+    analysis_id=None → NOT NULL(nullable=False) 위반 → IntegrityError → 흡수 → False.
+    (UNIQUE 충돌이 아닌 IntegrityError 도 동일 경로로 흡수됨을 봉인.)
+    """
+    won = gate_decision_repo.claim_decision(db_session, None, "approve", "manual", "alice")
+    assert won is False
+    # 아무 행도 영속되지 않아야 한다 (rollback)
+    assert db_session.query(GateDecision).count() == 0

@@ -387,4 +387,102 @@ def test_skip_locked_prevents_concurrent_double_claim():
         # 테스트 후 정리
         # Clean up after test.
         Base.metadata.drop_all(engine)
+
+
+def _seed_postgres_analysis(session, repo_name: str, sha: str) -> int:
+    """Postgres 세션에 Repository + Analysis 시드 — analysis.id 반환 (claim_decision race 용).
+    Seed a Repository + Analysis into the Postgres session; return analysis.id.
+    """
+    from src.models.analysis import Analysis
+    from src.models.repository import Repository
+
+    repo = session.query(Repository).filter_by(full_name=repo_name).first()
+    if repo is None:
+        repo = Repository(full_name=repo_name)
+        session.add(repo)
+        session.flush()
+    analysis = Analysis(
+        repo_id=repo.id, commit_sha=sha, score=80, grade="B", result={}, pr_number=1,
+    )
+    session.add(analysis)
+    session.commit()
+    return analysis.id
+
+
+@_requires_postgres
+def test_claim_decision_concurrent_first_writer_wins_invariant():
+    """claim_decision first-writer-wins **invariant** — 실 PG, barrier 동기화 동시 claim.
+    claim_decision first-writer-wins **invariant** on real PG under barrier-synchronized concurrent claims.
+
+    #11 게이트 콜백 리플레이 가드의 핵심 보장: 두 워커가 동일 analysis 를 동시에 claim 할 때 정확히
+    한 쪽만 True(승자), 다른 쪽은 IntegrityError→False(패자) — 중복행 0·crash 0.
+    barrier 로 진입을 동기화해 실 PG 에서 경합을 극대화하지만, 본 테스트가 증명하는 것은 **타이밍이
+    직렬화되든 겹치든 항상 성립해야 하는 invariant**(정확히 1 승자)이다. **직렬화 지점은 DB 의
+    UNIQUE(analysis_id) 인덱스** — 제약이 사라지면(2 행) 또는 IntegrityError 흡수가 깨지면(crash) 본
+    테스트가 fail 한다. 순차 SQLite 단위 테스트와 달리 실 PG + 동시 스레드 + 실제 IntegrityError 타입을
+    탄다 (사이클 165 회고 testing P1-1 / Codex mutual: 'in-flight 결정론 증명' 과장 표현 정직화).
+    What this guards is the INVARIANT (exactly one winner) that must hold whether timing serializes or
+    overlaps; the UNIQUE(analysis_id) index is the serialization point. A dropped constraint (2 rows) or a
+    broken IntegrityError absorb (crash) fails this — on real PG with the real IntegrityError type.
+    """
+    from src.database import Base
+    from src.models.gate_decision import GateDecision
+    from src.repositories import gate_decision_repo
+
+    engine = _make_engine()
+    try:
+        Base.metadata.drop_all(engine)
+        Base.metadata.create_all(engine)
+        Session = sessionmaker(bind=engine)
+
+        # 시드: GateDecision 미존재 analysis 1건 — 두 워커가 이 결정을 두고 경쟁.
+        # Seed: one analysis with no GateDecision yet — both workers race to claim its decision.
+        with Session() as seed_session:
+            analysis_id = _seed_postgres_analysis(seed_session, "owner/repo-claim", "sha_claim_race")
+
+        results: list = [None, None]
+        errors: list = []
+        # barrier — 두 세션이 동일 analysis_id claim 진입을 동기화해 실 PG 경합을 극대화한다.
+        # (직렬화 지점은 DB UNIQUE 인덱스 — barrier 는 invariant 검증을 위한 경합 최대화 수단이지
+        #  in-flight 겹침을 결정론적으로 강제하지는 못함, 본 테스트는 invariant 를 검증.)
+        # timeout=30 — deadlock guard (한 워커 조기 예외 시 무기한 block 방지).
+        barrier = threading.Barrier(2, timeout=30)
+
+        def worker(i: int) -> None:
+            """독립 세션으로 동일 analysis 의 결정을 claim 시도.
+            Attempt to claim the same analysis's decision in an independent session.
+            """
+            try:
+                with Session() as db:
+                    barrier.wait()  # 두 워커 동시 INSERT 강제 / force concurrent INSERT
+                    results[i] = gate_decision_repo.claim_decision(
+                        db, analysis_id, "approve", "manual", f"user{i}",
+                    )
+            except Exception as exc:  # pylint: disable=broad-except
+                errors.append(exc)
+
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(2)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # 크래시 없이 완료 — IntegrityError 는 claim_decision 내부에서 흡수되어 False 로 반환.
+        # Must complete without errors — IntegrityError is absorbed inside claim_decision as False.
+        assert not errors, f"Unexpected errors from worker threads: {errors}"
+
+        # invariant: 정확히 한 워커만 True(first-writer), 다른 워커 False(패자).
+        # invariant: exactly one True (first-writer) and one False (loser).
+        assert sorted([results[0], results[1]]) == [False, True], (
+            f"Expected exactly one True (first-writer-wins invariant), got {results}"
+        )
+
+        # invariant: GateDecision 행 정확히 1개 (UNIQUE 제약 누락 시 2 행 → fail).
+        # invariant: exactly one GateDecision row (a dropped UNIQUE constraint → 2 rows → fail).
+        with Session() as verify:
+            count = verify.query(GateDecision).filter_by(analysis_id=analysis_id).count()
+        assert count == 1, f"Expected exactly 1 GateDecision row, got {count}"
+
+    finally:
+        Base.metadata.drop_all(engine)
         engine.dispose()
