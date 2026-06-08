@@ -67,12 +67,19 @@ def overview(
 
             for r in repos:
                 count = count_map.get(r.id, 0)
-                avg = round(avg_map.get(r.id) or 0)
+                # 🔴 #25: avg_map 은 func.avg(Analysis.score) — SQL AVG 가 NULL(parse_error) 을 자동
+                # 제외하므로 score 가 전부 NULL 인 리포는 avg=None. 반면 count 는 parse_error 를 포함한다.
+                # grade 를 count(>0) 가 아닌 '실제 평균 존재(avg_raw is not None)' 기준으로 판정해야
+                # parse_error-only 리포가 calculate_grade(0)=F 로 오분류되지 않는다(#25 NULL 저장 회귀 차단).
+                # avg_map is func.avg (auto-excludes NULL); a parse_error-only repo yields None while count
+                # still includes it. Gate the grade on an actual average, not the count, to avoid an F.
+                avg_raw = avg_map.get(r.id)
+                avg = round(avg_raw) if avg_raw is not None else 0
                 repo_data.append({
                     "full_name": r.full_name,
                     "analysis_count": count,
                     "avg_score": avg,
-                    "avg_grade": calculate_grade(avg) if count > 0 else None,
+                    "avg_grade": calculate_grade(avg) if avg_raw is not None else None,
                 })
 
         # Phase E.3-d — AI 점수 정합도 지표 (전역)
