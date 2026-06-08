@@ -318,3 +318,49 @@ async def test_regate_pr_if_needed_rolls_back_on_commit_error(caplog):
     db.commit.assert_called_once()
     run_gate.assert_not_called()
     assert any("pr_number update failed" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# 시나리오 E: 동일 SHA가 이미 다른 non-None PR#로 gate됨 → first-writer-wins skip
+# Scenario E: same SHA already gated for a different non-None PR# → first-writer-wins skip
+# (area=gate 감사 P2 pipeline.py:288 — _regate_pr_if_needed last-writer-wins 비대칭 해소)
+# ---------------------------------------------------------------------------
+
+async def test_regate_does_not_overwrite_different_existing_pr_number(caplog):
+    """기존 Analysis가 이미 다른 PR#(=10)로 gate된 경우, 새 PR#(=11) 이벤트가 와도
+    pr_number를 덮어쓰지 않고 WARNING 후 조용히 return 해야 한다 (first-writer-wins).
+
+    _race_recover_existing(`existing.pr_number is not None → return`)과 대칭.
+    동일 head SHA를 두 PR이 공유할 때 댓글/승인/auto-merge가 잘못된 PR에
+    적용되는 것을 차단한다.
+    """
+    import logging
+    from src.worker import pipeline as pipeline_mod
+
+    db = MagicMock()
+
+    existing = MagicMock()
+    existing.pr_number = 10  # 이미 PR #10으로 gate됨 / already gated for PR #10
+    existing.id = 99
+    existing.result = {"score": 80}
+
+    repo = MagicMock()
+    repo.id = 1
+    repo.owner = None
+
+    with patch.object(pipeline_mod.repository_repo, "find_by_full_name", return_value=repo), \
+         patch.object(pipeline_mod.analysis_repo, "find_by_sha", return_value=existing), \
+         patch.object(pipeline_mod, "run_gate_check", new=AsyncMock()) as run_gate, \
+         caplog.at_level(logging.WARNING, logger="src.worker.pipeline"):
+        await pipeline_mod._regate_pr_if_needed(
+            db=db, repo_name="o/r", commit_sha="deadbeef", pr_number=11,
+        )
+
+    # Then: pr_number는 10 그대로 (덮어쓰기 안 됨) + commit 미호출 + gate 미실행
+    assert existing.pr_number == 10, f"pr_number가 덮어써졌습니다: {existing.pr_number}"
+    db.commit.assert_not_called()
+    run_gate.assert_not_called()
+    assert any(
+        "already gated for PR #10" in r.message and "first-writer-wins" in r.message
+        for r in caplog.records
+    ), "first-writer-wins skip WARNING 로그가 없습니다"
