@@ -215,7 +215,7 @@ async def test_gate_callback_approve_threads_japanese_to_review_body():
     ), patch(
         "src.webhook.providers.telegram.resolve_notification_language", return_value="ja"
     ), patch(
-        "src.webhook.providers.telegram.save_gate_decision"
+        "src.webhook.providers.telegram.gate_decision_repo.claim_decision"
     ), patch(
         "src.webhook.providers.telegram.user_repo.find_by_telegram_user_id", return_value=MagicMock(id=1)
     ), patch(
@@ -246,7 +246,7 @@ async def test_gate_callback_reject_threads_english_no_korean():
     ), patch(
         "src.webhook.providers.telegram.resolve_notification_language", return_value="en"
     ), patch(
-        "src.webhook.providers.telegram.save_gate_decision"
+        "src.webhook.providers.telegram.gate_decision_repo.claim_decision"
     ), patch(
         "src.webhook.providers.telegram.user_repo.find_by_telegram_user_id", return_value=MagicMock(id=1)
     ), patch(
@@ -275,7 +275,7 @@ async def test_gate_callback_approve_threads_korean_default():
     ), patch(
         "src.webhook.providers.telegram.resolve_notification_language", return_value="ko"
     ), patch(
-        "src.webhook.providers.telegram.save_gate_decision"
+        "src.webhook.providers.telegram.gate_decision_repo.claim_decision"
     ), patch(
         "src.webhook.providers.telegram.user_repo.find_by_telegram_user_id", return_value=MagicMock(id=1)
     ), patch(
