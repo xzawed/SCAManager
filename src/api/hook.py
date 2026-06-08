@@ -2,7 +2,6 @@
 
 X-API-Key 없이 hook_token으로 인증 (훅은 일반 개발자 터미널에서 실행됨).
 """
-import hmac
 import logging
 from typing import Any
 
@@ -11,6 +10,7 @@ from pydantic import BaseModel
 
 from src.middleware.rate_limiter import limiter, RATE_LIMIT_API
 from src.config import settings
+from src.shared.secure_compare import secure_str_compare
 from src.database import SessionLocal
 from src.i18n.loader import get_text
 from src.shared.log_safety import sanitize_for_log
@@ -141,7 +141,7 @@ def verify_hook(
             )
 
         config = repo_config_repo.find_by_full_name(db, repo)
-        if config is None or not hmac.compare_digest(config.hook_token or "", effective_token):
+        if config is None or not secure_str_compare(config.hook_token, effective_token):
             locale = _resolve_hook_locale(db, repo)
             raise HTTPException(
                 status_code=404,
@@ -174,7 +174,7 @@ def save_hook_result(request: Request, body: HookResultRequest):  # pylint: disa
     with SessionLocal() as db:
         config = repo_config_repo.find_by_full_name(db, body.repo)
 
-        if config is None or not hmac.compare_digest(config.hook_token or "", body.token):
+        if config is None or not secure_str_compare(config.hook_token, body.token):
             # locale 해소는 에러 시에만 (정상 경로 쿼리 순서 불변)
             # Resolve locale only on error (keep happy-path query order intact)
             locale = _resolve_hook_locale(db, body.repo)

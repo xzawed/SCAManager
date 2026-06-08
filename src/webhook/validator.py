@@ -1,6 +1,7 @@
 """HMAC-SHA256 GitHub webhook signature verification."""
 import hashlib
 import hmac
+from src.shared.secure_compare import secure_str_compare
 
 
 def verify_github_signature(
@@ -14,4 +15,4 @@ def verify_github_signature(
     expected = "sha256=" + hmac.new(
         secret.encode("utf-8"), payload, hashlib.sha256
     ).hexdigest()
-    return hmac.compare_digest(expected, signature_header)
+    return secure_str_compare(expected, signature_header)

@@ -92,19 +92,15 @@ def test_api_key_empty_string_allows_access(monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_api_key_uses_safe_comparison(monkeypatch):
-    # _check_api_key 내부에서 hmac.compare_digest가 호출되는지 확인.
-    # 현재 코드(!=)는 hmac을 import하지 않으므로 이 테스트는 FAIL해야 함(Red).
-    # patch 전략: hmac 모듈 자체를 src.api.auth 네임스페이스에 주입 후 compare_digest 감시.
-    import hmac as _hmac
-    mock_hmac = MagicMock(wraps=_hmac)
-    mock_hmac.compare_digest = MagicMock(return_value=True)
+    # _check_api_key 내부에서 timing-safe 비교(secure_str_compare)가 호출되는지 확인.
+    # Task 9 P1 #9/#10: hmac.compare_digest 직접 호출 → secure_str_compare 단일 헬퍼로 통일
+    # (내부 UTF-8 bytes compare_digest — 비-ASCII TypeError 방지 + timing-safe).
+    mock_cmp = MagicMock(return_value=True)
     monkeypatch.setattr("src.api.auth.settings.api_key", _TEST_KEY)
-    # src.api.auth 모듈에 hmac 심기 (현재 코드엔 없으므로 setattr로 삽입)
-    import src.api.auth as _auth_mod
-    monkeypatch.setattr(_auth_mod, "hmac", mock_hmac, raising=False)
+    monkeypatch.setattr("src.api.auth.secure_str_compare", mock_cmp)
     r = client.get("/protected", headers={"X-API-Key": _TEST_KEY})
-    # hmac.compare_digest가 실제로 한 번 이상 호출됐어야 함
-    mock_hmac.compare_digest.assert_called()
+    # secure_str_compare 가 실제로 한 번 이상 호출됐어야 함 (timing-safe 비교 사용)
+    mock_cmp.assert_called()
     assert r.status_code == 200
 
 

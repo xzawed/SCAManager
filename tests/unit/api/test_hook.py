@@ -86,6 +86,23 @@ def test_verify_unknown_repo():
     assert r.status_code == 404
 
 
+def test_verify_non_ascii_token_returns_404_not_500():
+    """비-ASCII hook_token 입력이 TypeError(→500) 가 아닌 404(불일치)를 반환해야 한다 (Task 9 P1 #10).
+
+    compare_digest(str, str) 의 비-ASCII TypeError 로 인증 엔드포인트가 500 을 내던 결함 —
+    secure_str_compare(UTF-8 bytes) 로 정상 불일치(404) 처리.
+    """
+    mock_db = MagicMock()
+    mock_config = MagicMock()
+    mock_config.hook_token = "correct-token"
+    mock_db.query.return_value.filter.return_value.first.return_value = mock_config
+
+    with patch("src.api.hook.SessionLocal", return_value=_make_session_mock(mock_db)):
+        r = client.get("/api/hook/verify", params={"repo": "owner/repo", "token": "비ASCII토큰🔑"})
+
+    assert r.status_code == 404
+
+
 # ------------------------------------------------------------------
 # POST /api/hook/result
 # ------------------------------------------------------------------
