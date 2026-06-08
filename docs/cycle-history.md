@@ -94,6 +94,8 @@
 
 **학습**: ① **Codex mutual 검증 ROI 결정적** — #811 비원자 TOCTOU·타 파일 stale mock 3건, #814 overview F-오분류 등 단독 진행 시 누락될 실결함 4건 적발(외부 LLM 모델 다양성 layer, 정책 18 §5). ② NULL 저장 같은 데이터 변경은 **모든 read-path 영향** → 전수 감사 의무(overview 가 유일 미처리 경로였다). ③ Codex exec 안정 호출 = `codex exec --skip-git-repo-check "단일라인" < /dev/null`(멀티라인/stdin 미차단 시 "Reading additional input from stdin..." 만 출력하고 리뷰 미생성). ④ #11 원자성은 사용자 옵션 A 결정(claim 후 GitHub 실패 시 retry 억제 트레이드오프 수용) — NG 시 자율 수정 금지·옵션 표·사용자 confirm(정책 18 §3). ⑤ #26/#27/#29/#30 비-ASCII compare_digest P2 변종은 #803 으로 이미 해소 실측 확인 → P2 잔여 26→실질 ~21.
 
+**회고 + follow-up (#816/#817)**: 5+1 다중 에이전트 회고(6 에이전트, P0 0/확정 P1 6~7, cross-verify: false-positive 강등 1·신규 P2 2·completeness gap 4) → 즉시 반영 2 묶음. **(A) #816** docs/rule 정합: architecture.md 텔레그램 흐름(claim 단계+순서)·pipeline.md auto-merge fail-open 봉인 3종(#804 ai_review_failed·#805 content-fetch·#806 tool-timeout)·정책18 §3 NG 2-tier(설계방향 옵션표 / 단일정답 즉시수정)·gate_decision_repo docstring(broad IntegrityError 흡수)·api/testing 룰. **(B) #817** 회고 P1 테스트 갭: claim_decision PG first-writer-wins invariant(실 PG `threading.Barrier(2)`, pg-concurrency CI job 실측 PASSED)·broad IntegrityError 흡수(NOT NULL→False)·seam 실DB(StaticPool, claim_decision 미patch → 심볼 리네임 fail-fast). 🔴 **Codex mutual 이 follow-up 에서도 정합오류 적발**: #816 정책18 §3 NG 회기 off-by-one(3→4회차 정정)·#817 PG 테스트 'in-flight 결정론 증명' 과장 → invariant 로 정직화. 단위 4713→4715·통합 153→154(4869 수집).
+
 ---
 
 ## 사이클 164
