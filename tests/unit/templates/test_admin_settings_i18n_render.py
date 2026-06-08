@@ -90,7 +90,7 @@ def _rls_ctx(**overrides) -> dict:
             {"table": "repositories", "pattern": "user_id", "since": "0026", "status": "applied"},
             {"table": "missing_table", "pattern": "tenant_id", "since": "TBD", "status": "missing"},
         ],
-        "summary": {"total": 2, "applied": 1, "missing": 1},
+        "summary": {"total": 2, "applied": 1, "missing": 1, "force_applied": False},
     }
     base.update(overrides)
     return base
@@ -105,6 +105,8 @@ def test_admin_rls_audit_renders_korean():
     assert ">테이블</th>" in out
     assert ">격리 패턴</th>" in out
     assert "💡 RLS 운영 안내" in out
+    # FORCE 미설정 경고 배너 (Task9 P1 #2 — owner-bypass 가시화)
+    assert "FORCE ROW LEVEL SECURITY 미설정" in out
 
 
 def test_admin_rls_audit_renders_english():
@@ -115,6 +117,7 @@ def test_admin_rls_audit_renders_english():
     assert "❌ Missing 1" in out
     assert ">Table</th>" in out
     assert ">Isolation pattern</th>" in out
+    assert "FORCE ROW LEVEL SECURITY not set" in out
 
 
 def test_admin_rls_audit_renders_japanese():
@@ -123,6 +126,16 @@ def test_admin_rls_audit_renders_japanese():
     assert "総テーブル数" in out
     assert "✅ 適用 1件" in out
     assert ">分離パターン</th>" in out
+    assert "FORCE ROW LEVEL SECURITY 未設定" in out
+
+
+def test_admin_rls_audit_hides_force_warning_when_applied():
+    """force_applied=True 면 경고 배너 미표시 — FORCE 마이그레이션 도입 시 회귀 가드 (#2)."""
+    out = _render(
+        "admin_rls_audit.html", locale="ko",
+        **_rls_ctx(summary={"total": 2, "applied": 2, "missing": 0, "force_applied": True}),
+    )
+    assert "FORCE ROW LEVEL SECURITY 미설정" not in out
 
 
 # ── admin_operations.html ───────────────────────────────────────────────────

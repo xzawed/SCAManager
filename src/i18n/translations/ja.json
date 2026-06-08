@@ -622,8 +622,10 @@
       "info_li1": "<strong>RLS 適用</strong> = PostgreSQL のみ (SQLite 単体テストは自動 skip)",
       "info_li2": "ランタイム有効化ミドルウェア = `src/middleware/rls_session.py` (サイクル 66 #228)",
       "info_li3": "contextvars bridge = `src/shared/rls_context.py` + DB event listener (`SET LOCAL app.user_id`)",
-      "info_li4": "2-layer 安全網 = (1) アプリレベルフィルタ (`_apply_*_user_filter`) + (2) DB RLS policy (PG/Supabase)",
-      "info_li5": "backfill 診断 = `docs/runbooks/saas-phase0-backfill-readiness.md` (サイクル 78 PR 3 — null=0 確認)"
+      "info_li4": "2-layer 安全網 = (1) アプリレベルフィルタ (`_apply_*_user_filter`) + (2) DB RLS policy (PG/Supabase) — ⚠️ FORCE 未設定なら owner 接続は (2) を回避可能",
+      "info_li5": "backfill 診断 = `docs/runbooks/saas-phase0-backfill-readiness.md` (サイクル 78 PR 3 — null=0 確認)",
+      "force_warning_title": "⚠️ FORCE ROW LEVEL SECURITY 未設定 — 2次安全網が回避される可能性",
+      "force_warning_body": "いずれの alembic マイグレーションも FORCE ROW LEVEL SECURITY を適用していません。アプリ接続 role がテーブル owner の場合、PostgreSQL は owner に対して RLS を回避するため、上記「適用」マトリクスにもかかわらず DB レベルの 2次安全網が実際には回避される可能性があります。運用 DB で connection role の owner 状態(pg_class.relowner / relforcerowsecurity)の確認を推奨します。"
     },
     "operations": {
       "title_prefix": "Operations",
