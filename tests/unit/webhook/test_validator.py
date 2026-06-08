@@ -28,6 +28,15 @@ def test_wrong_prefix():
     assert verify_github_signature(b"payload", "md5=abc123", "secret") is False
 
 
+def test_non_ascii_signature_returns_false_not_typeerror():
+    """비-ASCII 서명 헤더가 TypeError(→500) 가 아닌 False 를 반환해야 한다 (Task 9 P1 #9).
+
+    'sha256=' prefix 통과 후 compare_digest 에 도달하는 비-ASCII 입력이 이전엔
+    uncaught TypeError → 500. secure_str_compare(UTF-8 bytes) 로 False 반환.
+    """
+    assert verify_github_signature(b"payload", "sha256=비ASCII서명", "secret") is False
+
+
 def test_tampered_payload():
     secret = "my_secret"
     original = b'{"action": "opened"}'

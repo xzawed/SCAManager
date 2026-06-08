@@ -26,6 +26,7 @@ from src.notifier._language import resolve_notification_language
 from src.notifier.telegram import telegram_post_message
 from src.notifier.telegram_commands import handle_message_command, parse_cmd_callback
 from src.repositories import analysis_repo, repository_repo, user_repo
+from src.shared.secure_compare import secure_str_compare
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +64,7 @@ def _parse_gate_callback(data: str) -> "tuple[str, int, str] | None":
         f"gate:{analysis_id}".encode(),
         digestmod=hashlib.sha256,
     ).hexdigest()[:32]
-    if not hmac.compare_digest(expected, callback_token):
+    if not secure_str_compare(expected, callback_token):
         logger.warning("Telegram gate callback: invalid token for analysis_id=%d", analysis_id)
         return None
     return decision, analysis_id, callback_token
@@ -225,7 +226,7 @@ async def telegram_webhook(  # pylint: disable=too-many-locals
         logger.warning("Telegram webhook: TELEGRAM_WEBHOOK_SECRET not configured, rejecting request")
         raise HTTPException(status_code=401, detail="Webhook not configured")
     provided = x_telegram_bot_api_secret_token or ""
-    if not hmac.compare_digest(provided, settings.telegram_webhook_secret):
+    if not secure_str_compare(provided, settings.telegram_webhook_secret):
         logger.warning("Telegram webhook: invalid or missing secret token")
         raise HTTPException(status_code=401, detail="Invalid secret token")
 

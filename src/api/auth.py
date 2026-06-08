@@ -1,9 +1,9 @@
 """API key authentication dependency for REST API endpoints."""
-import hmac
 import logging
 from fastapi import Depends, HTTPException, Security
 from fastapi.security import APIKeyHeader
 from src.config import settings
+from src.shared.secure_compare import secure_str_compare
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ async def _check_api_key(api_key: str | None = Security(_api_key_header)) -> Non
         # In development (HTTP or no URL), log a warning but allow through.
         logger.warning("API_KEY is not configured — all requests are allowed (development mode only)")
         return
-    if not hmac.compare_digest(api_key or "", settings.api_key):
+    if not secure_str_compare(api_key, settings.api_key):
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 

@@ -6,7 +6,6 @@ Auth: INTERNAL_CRON_API_KEY header (separate from admin api_key).
 """
 from __future__ import annotations
 
-import hmac as _hmac
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Security
@@ -14,6 +13,7 @@ from fastapi.security import APIKeyHeader
 
 from src.config import settings
 from src.database import SessionLocal
+from src.shared.secure_compare import secure_str_compare
 from src.services.cron_service import run_trend_check, run_weekly_reports
 from src.services.merge_retry_service import process_pending_retries
 from src.services.security_scan_service import scan_all_repos
@@ -44,9 +44,9 @@ async def _require_cron_key(
             status_code=503,
             detail="Cron API key not configured",
         )
-    # 타이밍 공격 방지를 위해 hmac.compare_digest 사용
-    # Use hmac.compare_digest to prevent timing attacks
-    if api_key is None or not _hmac.compare_digest(expected, api_key):
+    # 타이밍 공격 방지 + 비-ASCII TypeError 방지를 위해 secure_str_compare 사용 (Task9 #9/#10)
+    # Use secure_str_compare for timing-safety + non-ASCII TypeError protection
+    if api_key is None or not secure_str_compare(expected, api_key):
         raise HTTPException(
             status_code=401,
             detail="Invalid cron API key",
