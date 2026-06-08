@@ -187,6 +187,42 @@ async def test_handle_gate_callback_incomplete_static_skips_merge():
                         mock_am.assert_not_called()
 
 
+async def test_handle_gate_callback_ai_review_failed_skips_merge():
+    # approve + auto_merge=True 여도 AI 리뷰 실제 실패(api_error) 시 머지 차단 (자동 AutoMergeAction 대칭, #8)
+    from src.webhook.router import handle_gate_callback
+    mock_analysis = MagicMock(id=42, repo_id=1, pr_number=5, score=85,
+                              result={"score": 85, "ai_review_status": "api_error"})
+    mock_repo = MagicMock(id=1, full_name="owner/repo", user_id=1)
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter_by.return_value.first.side_effect = [mock_analysis, mock_repo]
+    config = RepoConfigData(repo_full_name="owner/repo", auto_merge=True, merge_threshold=75)
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock):
+            with patch("src.webhook.providers.telegram.save_gate_decision"):
+                with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
+                    with patch("src.gate.engine._run_auto_merge", new_callable=AsyncMock) as mock_am:
+                        await handle_gate_callback(analysis_id=42, decision="approve", decided_by="john", telegram_user_id="1")
+                        mock_am.assert_not_called()
+
+
+async def test_handle_gate_callback_ai_no_api_key_still_merges():
+    # AI 의도적 미수행(no_api_key)은 실패가 아니므로 반자동 머지 보존 (회귀 가드, #8)
+    from src.webhook.router import handle_gate_callback
+    mock_analysis = MagicMock(id=42, repo_id=1, pr_number=5, score=85,
+                              result={"score": 85, "ai_review_status": "no_api_key"})
+    mock_repo = MagicMock(id=1, full_name="owner/repo", user_id=1)
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter_by.return_value.first.side_effect = [mock_analysis, mock_repo]
+    config = RepoConfigData(repo_full_name="owner/repo", auto_merge=True, merge_threshold=75)
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock):
+            with patch("src.webhook.providers.telegram.save_gate_decision"):
+                with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
+                    with patch("src.gate.engine._run_auto_merge", new_callable=AsyncMock) as mock_am:
+                        await handle_gate_callback(analysis_id=42, decision="approve", decided_by="john", telegram_user_id="1")
+                        mock_am.assert_called_once()
+
+
 async def test_handle_gate_callback_merge_error_does_not_propagate():
     # _run_auto_merge 가 RuntimeError 누출 시에도 콜백이 격리되어 정상 완료 (except RuntimeError 보강)
     from src.webhook.router import handle_gate_callback
