@@ -21,8 +21,17 @@ async def validate_external_url(url: str) -> bool:
     Blocks:
     - Non-https schemes (http, ftp, file, …)
     - IP literals in private/loopback/link-local/reserved/multicast ranges
-    - Hostnames that DNS-resolve to any such address (DNS-rebinding defence)
+    - Hostnames whose DNS *currently* resolves to such an address
     - Empty or malformed URLs
+
+    🔴 한계 (정직화 — Task9 P2 #12): 이것은 validate 시점 1차 차단일 뿐 **완전한 DNS-rebinding
+    방어가 아니다**. httpx 는 connect 시점에 호스트명을 독립적으로 재해석하므로(이 함수의 getaddrinfo
+    와 별개), validate→connect 사이 DNS 가 내부 IP 로 rebind 되면 우회 가능한 TOCTOU 가 잔존한다.
+    완전 방어는 connect 시 검증된 IP 핀이 필요하나 httpx 가 native 미지원이라 미적용.
+    🔴 Limitation (Task9 P2 #12): only a validate-time first block, NOT a full DNS-rebinding defence.
+    httpx re-resolves the hostname independently at connect time, so a TOCTOU remains if DNS rebinds
+    to an internal IP between validate and connect. A full fix needs a connect-time pinned IP, which
+    httpx does not natively support.
 
     DNS 조회는 asyncio.to_thread 으로 실행 — 이벤트 루프 블로킹 방지.
     DNS lookup runs in asyncio.to_thread to avoid blocking the event loop.
@@ -79,5 +88,12 @@ def build_safe_client() -> httpx.AsyncClient:
 
     - timeout=10 seconds for all operations
     - follow_redirects=False to prevent redirect-based SSRF
+
+    🔴 한계 (Task9 P2 #12): 목적지 호스트는 connect 시 httpx 가 재해석하므로 validate_external_url
+    의 1차 IP 차단 이후의 DNS-rebinding TOCTOU 를 막지 못한다(검증된 IP 핀 미적용). 외부 webhook 은
+    재시도 금지 채널이고 follow_redirects=False 라 잔여 위험은 제한적.
+    🔴 Limitation (Task9 P2 #12): httpx re-resolves the destination host at connect time, so this does
+    NOT close the DNS-rebinding TOCTOU after validate_external_url's first block (no pinned IP).
+    External webhooks are non-retried and follow_redirects=False, so residual risk is limited.
     """
     return httpx.AsyncClient(timeout=HTTP_CLIENT_TIMEOUT, follow_redirects=False)

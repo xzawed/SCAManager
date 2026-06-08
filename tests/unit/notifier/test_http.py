@@ -154,3 +154,26 @@ async def test_validate_logs_warning_on_private_ip(caplog):
     assert result is False
     assert len(caplog.records) >= 1
     assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# #12 — SSRF docstring 정직화 회귀 가드 (DNS-rebinding 과대표현 재발 차단)
+# DNS-rebinding overclaim regression guard.
+# ---------------------------------------------------------------------------
+
+
+def test_validate_docstring_no_dns_rebinding_overclaim():
+    """#12: validate_external_url docstring 이 'DNS-rebinding defence' 를 방어 단언으로 과대표현하지
+    않고, validate 시점 한계(connect 재해석 TOCTOU)를 명시해야 한다 — 정직화 봉인."""
+    doc = validate_external_url.__doc__ or ""
+    assert "NOT a full DNS-rebinding defence" in doc  # 정직한 한계 명시
+    assert "validate-time" in doc
+    assert "connect time" in doc
+    assert "TOCTOU" in doc
+
+
+def test_build_safe_client_docstring_notes_toctou_limitation():
+    """#12: build_safe_client docstring 이 connect-time 재해석 TOCTOU 한계를 명시해야 한다."""
+    doc = build_safe_client.__doc__ or ""
+    assert "TOCTOU" in doc
+    assert "connect time" in doc
