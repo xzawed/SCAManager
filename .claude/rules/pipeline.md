@@ -10,7 +10,8 @@ paths:
 
 # 파이프라인 / 비즈니스 로직 규칙
 
-- **멱등성**: `run_analysis_pipeline`은 commit SHA로 중복 체크 — 같은 SHA는 재분석 건너뜀. 단, push 이벤트 먼저 처리 후 PR 이벤트 도착 시(`pr_number=None` Analysis 존재) `_regate_pr_if_needed()`가 `pr_number`만 업데이트하고 `run_gate_check` 재실행 — 알림 재발송 없음.
+- **멱등성**: `run_analysis_pipeline`은 commit SHA로 중복 체크 — 같은 SHA는 재분석 건너뜀. 단, push 이벤트 먼저 처리 후 PR 이벤트 도착 시(`pr_number=None` Analysis 존재) `_regate_pr_if_needed()`가 `pr_number`를 부여하고 `run_gate_check` 재실행 — 알림 재발송 없음. 🔴 **first-writer-wins (사이클 164 #794)**: 기존 Analysis 의 `pr_number`가 이미 **다른 non-None 값**이면 덮어쓰지 않고 WARNING 후 skip — `_race_recover_existing`(동시 insert race 경로)과 대칭. 동일 head SHA를 두 PR이 공유할 때 댓글/승인/auto-merge가 잘못된 PR에 적용되는 것을 차단. 즉 `pr_number` 갱신은 **None → 최초 PR# 1회만** (동일 PR# 재수신은 no-op).
+- 🔴 **정적분석 타임아웃/격리 (사이클 164 #795)**: `_run_static_with_timeout`는 `PIPELINE_ANALYSIS_TIMEOUT`(60s) **deadline 기반 파일별 순차** 실행 — (1) 타임아웃 시 완료된 파일 **부분결과 보존**(이전: 전량 폐기) + `incomplete=True`, (2) 단일 파일 `analyze_file` 예외는 빈 `StaticAnalysisResult`로 **격리**(나머지 파일·AI리뷰 계속), (3) **비어있지 않은 배치 전량 실패 → `incomplete=True`**(fail-closed 안전망). `incomplete`(`static_analysis_incomplete` 마커)는 `_save_and_gate`가 `Analysis.result`에 영속 → `AutoMergeAction`/`ApproveAction`이 읽어 auto-merge/auto-approve 차단(#779/#783). 일부 파일만 실패는 incomplete 아님(만점 인플레 미세 위험 수용 — Q2=A 결정).
 - **PR action 필터링**: `pull_request` 이벤트 중 `opened`/`synchronize`/`reopened`만 처리, `closed`/`labeled` 등은 무시.
 - **AI 점수 스케일링**: Claude는 commit 0-20, direction 0-20, test 0-10으로 반환 → calculator가 commit 0-15, direction 0-25, test 0-15로 스케일링. `round()` 사용으로 banker's rounding 적용.
 - **commit_scamanager_files**: GitHub Contents API `PUT /repos/{owner}/{repo}/contents/{path}` 사용. 파일 이미 있으면 GET으로 sha 조회 후 body에 포함해야 200 성공 (sha 누락 시 422 에러).

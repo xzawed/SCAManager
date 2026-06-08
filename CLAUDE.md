@@ -409,4 +409,4 @@ GitHub Code Scanning 점검 detail 절차 + 운영 통합 = `docs/runbooks/opera
 
 ## 현재 상태
 
-최신 수치는 [docs/STATE.md](docs/STATE.md) 참조. 사이클 이력: [`docs/cycle-history.md`](docs/cycle-history.md) (사이클 60~163).
+최신 수치는 [docs/STATE.md](docs/STATE.md) 참조. 사이클 이력: [`docs/cycle-history.md`](docs/cycle-history.md) (사이클 60~164).

@@ -1,10 +1,11 @@
-# SCAManager 사이클 작업 이력 (사이클 60~163, 최신순)
+# SCAManager 사이클 작업 이력 (사이클 60~164, 최신순)
 
-> CLAUDE.md tail entry 분리본. 사이클 60~163 이력 (본문 최신순 — 목차는 163부터, 하단에 60~92 archive).
+> CLAUDE.md tail entry 분리본. 사이클 60~164 이력 (본문 최신순 — 목차는 164부터, 하단에 60~92 archive).
 > 본 파일은 회고 시점 (정책 8 5+1 패턴) 또는 영역 reference 시 read 의무.
 
 ## 목차
 
+- [사이클 164 (area=gate 잔여 6 결함 — 사용자 Q1~Q4 결정: 정적분석 파일격리+타임아웃 부분결과 보존, telegram 반자동 auto-merge 완전 대칭, regate first-writer-wins, 3 PR #794~#796, 2026-06-08)](#사이클-164)
 - [사이클 163 (area=gate P2 백로그 해소 — ApproveAction 정적분석 가드·hook 점수 비숫자/Infinity 안전변환·merge_retry 백오프 validator·zero-SHA 조기종료·_ensure_repo race 복구, 5 PR #783~#787, 2026-06-07)](#사이클-163)
 - [사이클 162 (잔여 백로그 전량 + integrity-audit 워크플로우 Task1~8 + area=gate P1 fix 3건 — RLS 자동탐지·test-quality·effects.js·정적분석 타임아웃·insert race·merge_retry expired, 8 PR #774~#781, 2026-06-07)](#사이클-162)
 - [사이클 161 (정합성 감사 P1 백로그 해소 — hook 클램프·gate 단일출처·hx-boost 가드·로컬 테스트 루트 독립, 4 PR #764~#767, 2026-06-06)](#사이클-161)
@@ -72,6 +73,22 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 사이클 164
+
+**날짜**: 2026-06-08 | **PR**: #795·#796·#794 (3건 머지) | **상태**: area=gate 감사 잔여 6 결함 — 사용자 Q1~Q4 결정 이행
+
+**작업 내용**: 이전 세션 중단 복구 — area=gate 감사(2026-06-06) confirmed 잔여 6 결함을 read-only 재분석(워크플로우 7에이전트, 전부 still_present 확인 + 라인 drift 보정 + 부분 해소 검증 + tier 분류) → 사용자 4 결정(Q1~Q4) → 3 PR 구현. Codex exec 401 만료 지속(`refresh token already used`) → 정책 18 standing 승인 하 Claude 적대적 self-verify(pipeline-reviewer 4회 + 독립 skeptic 7렌즈) fallback.
+
+- **#795 (Q2+Q3 정적분석 코어 재구성)** — `_run_static_analysis`/`_run_static_with_timeout` 재구성. **Q2-A 파일 단위 격리**: list comprehension → 파일별 try/except(실패 파일 빈 결과, 나머지+AI리뷰 보존). **Q3-B 타임아웃 부분결과 보존**: 전량 폐기([], True) → `loop.time()` deadline 파일별 순차(완료분 보존 + incomplete 마커, 고아 스레드 in-flight 1파일로 한정). self-verify 발견 **안전망**: 전량 실패 → incomplete=True fail-closed(Q2 격리가 만들 수 있는 전량-실패 fail-open 회귀 차단). pipeline-reviewer APPROVE×2. 단위 +3.
+- **#796 (Q1-A telegram 반자동 대칭화)** — `handle_gate_callback` 인라인 단발 merge(merge_pr + 실패 reason 폐기) 제거 → `engine._run_auto_merge` 위임. 자동/반자동 **완전 대칭**(retry 큐잉·SHA 가드·CI 재판별·terminal/deferred 알림·관측 단일 출처). 가드 AutoMergeAction 미러링(approve + auto_merge + not incomplete). **부수 버그 수정**: reject+고score 시 거부 PR 머지되던 결함 차단. except RuntimeError 보강 + dead code(`_log_merge_attempt_safe`) 제거 + `.claude/rules/api.md` sync. 단위 −2(Block2 관측 테스트 engine 이관).
+- **#794 (Q4-A regate first-writer-wins)** — `_regate_pr_if_needed` last-writer-wins → first-writer-wins(기존 pr_number non-None 시 skip+WARNING, `_race_recover_existing` 대칭). 동일 head SHA 멀티 PR 시 잘못된 PR 에 auto-merge/댓글/승인 적용 차단. 단위 +1. ⚠️ codecov/patch tiny-diff 아티팩트 fail(SonarCloud New Code 100% — non-blocking, main branch protection 부재).
+
+**검증**: 각 PR TDD red→green + 적대적 self-verify(pipeline-reviewer + 독립 skeptic 2~3렌즈) — 전 PR **P0·P1 0건**. 전체 단위 4648→4650, pylint 10.00 유지, #795/#796 CI 전부 green, #794 codecov/patch 외 green.
+
+**학습**: ① read-only 워크플로우 선행(7에이전트)으로 라인 drift 보정·부분 해소 검증·tier 분류 → 결정 패키지화로 사용자 Q1~Q4 효율 결정. ② self-verify 가 안전 회귀 1건 발견(Q2 격리의 전량-실패 fail-open) → 안전망 동봉(정책 4). ③ #796 위임 리팩터가 reject 오머지 잠재 버그를 노출·수정. ④ codecov/patch tiny-diff 집계 아티팩트(test파일/주석 줄 오집계) — SonarCloud New Code 가 권위, main branch protection 부재로 non-blocking. ⑤ Codex 만료 지속 — 정책 18 복구 강제, 다음 세션 `codex login` 필수.
+
+---
 
 ## 사이클 163
 
