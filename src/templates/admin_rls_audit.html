@@ -27,6 +27,15 @@
     <a href="/admin/tenants" class="admin-link">{{ 'admin.rls_audit.tenants_link' | i18n_args(locale | default('ko')) }}</a>
   </div>
 
+  {% if not summary.force_applied %}
+  {# FORCE ROW LEVEL SECURITY 미설정 경고 — owner 연결 시 2차 안전망 우회 가능 (Task9 P1 #2) #}
+  {# Warn that FORCE RLS is unset — an owner connection may bypass the 2nd safety layer (Task9 P1 #2) #}
+  <div class="admin-info-card reveal" style="border-left: 4px solid var(--warning); margin-bottom: 16px;">
+    <strong>{{ 'admin.rls_audit.force_warning_title' | i18n_args(locale | default('ko')) }}</strong>
+    <p style="margin: 6px 0 0; font-size: 13px; line-height: 1.5;">{{ 'admin.rls_audit.force_warning_body' | i18n_args(locale | default('ko')) }}</p>
+  </div>
+  {% endif %}
+
   <div class="admin-table-wrap">
     <table class="admin-table tbl">
       <thead>

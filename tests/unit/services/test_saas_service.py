@@ -123,3 +123,12 @@ class TestRlsCoverageSummary:
         assert summary["total"] == 11
         assert summary["applied"] == 11
         assert summary["missing"] == 0
+
+    def test_summary_reports_force_not_applied(self):
+        """어느 마이그레이션도 FORCE ROW LEVEL SECURITY 를 적용하지 않으므로 force_applied=False.
+
+        owner-bypass 경고(rls-audit) 의 단일 출처 — owner 연결 시 2차 안전망 우회 가능성 가시화
+        (Task9 P1 #2 false-confidence 갭). FORCE 마이그레이션 도입 시 True 로 갱신 + 본 가드 갱신.
+        """
+        summary = saas_service.rls_coverage_summary()
+        assert summary["force_applied"] is False

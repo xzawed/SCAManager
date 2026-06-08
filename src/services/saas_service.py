@@ -147,10 +147,17 @@ def rls_audit_matrix() -> list[dict[str, str]]:
     return list(_RLS_MATRIX)
 
 
-def rls_coverage_summary() -> dict[str, int]:
-    """RLS 적용 vs 미적용 카운트 요약.
+def rls_coverage_summary() -> dict[str, int | bool]:
+    """RLS 적용 vs 미적용 카운트 요약 + FORCE 상태 경고 플래그.
+    RLS applied vs missing summary, plus a FORCE-status warning flag.
 
-    RLS applied vs missing summary.
+    force_applied: 어느 alembic 마이그레이션도 FORCE ROW LEVEL SECURITY 를 적용하지 않으므로
+    정적 False. 앱 연결 role 이 테이블 owner 면 PostgreSQL 이 RLS USING 절을 owner-bypass 하여
+    2차 안전망(DB RLS)이 실제로는 우회될 수 있다(Task9 P1 #2 — false-confidence 갭 가시화).
+    FORCE 마이그레이션 도입 시 True 로 갱신 + test_summary_reports_force_not_applied 가드 갱신.
+    force_applied: no migration applies FORCE ROW LEVEL SECURITY, so this is statically False —
+    an owner connection may bypass RLS, leaving the 2nd safety layer ineffective (Task9 P1 #2).
+    Flip to True when a FORCE migration lands (and update the guard test).
     """
     matrix = rls_audit_matrix()
     applied = sum(1 for m in matrix if m["status"] == "applied")
@@ -158,4 +165,5 @@ def rls_coverage_summary() -> dict[str, int]:
         "total": len(matrix),
         "applied": applied,
         "missing": len(matrix) - applied,
+        "force_applied": False,
     }

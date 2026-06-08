@@ -15,13 +15,23 @@ SCAManager 는 Supabase Auth 미사용 (GitHub OAuth) — auth.uid() 미적용.
 
 SQLite (단위 테스트) 분기: op.execute 모두 skip — RLS 미지원 환경 호환.
 앱 레벨 filter (`src/services/dashboard_service.py::_apply_*_user_filter`) 가 1차 안전망.
-본 RLS policy 는 운영 환경 (Supabase) 의 2차 안전망 (DB 레벨 격리 — 앱 버그 시에도 데이터 누출 차단).
+본 RLS policy 는 운영 환경 (Supabase) 의 2차 안전망 (DB 레벨 격리).
+
+⚠️ owner-bypass 주의 (Task9 P1 #2): 본 마이그레이션은 RLS 를 ENABLE 만 하고 FORCE ROW LEVEL
+SECURITY 를 적용하지 않는다. 앱 연결 role 이 테이블 owner 면 PostgreSQL 이 owner 에 대해 RLS 를
+기본 우회하므로, '앱 버그 시에도 데이터 누출 차단' 은 owner 연결에서 실제로 보장되지 않을 수 있다.
+2차 안전망을 실효화하려면 FORCE 도입 + background 경로(app.user_id 미설정) 차단 회피 설계가 선행돼야
+한다(High-tier — 설계 검토: docs/reports/2026-06-08-integrity-audit-full.md #2). admin /admin/rls-audit
+페이지가 FORCE 미설정을 경고 표기한다.
+⚠️ owner-bypass caveat (#2): this migration only ENABLEs RLS (no FORCE), so an owner connection may
+bypass it — the 2nd safety layer is not guaranteed for the owner role until FORCE is introduced.
 
 회귀 가드: tests/unit/migrations/test_0026_rls_policies.py (3 테스트).
 """
 # Phase 3 PR 5 — Supabase RLS permission model (PostgreSQL only)
 # Provides DB-level isolation as a 2nd safety layer; app-level filter
 # (src/services/dashboard_service.py::_apply_*_user_filter) is the 1st layer.
+# NOTE (#2): ENABLE-only without FORCE — owner connections may bypass RLS.
 from alembic import op
 
 from src.shared.alembic_dialect import is_postgresql
