@@ -88,6 +88,10 @@
 
 **학습**: ① read-only 워크플로우 선행(7에이전트)으로 라인 drift 보정·부분 해소 검증·tier 분류 → 결정 패키지화로 사용자 Q1~Q4 효율 결정. ② self-verify 가 안전 회귀 1건 발견(Q2 격리의 전량-실패 fail-open) → 안전망 동봉(정책 4). ③ #796 위임 리팩터가 reject 오머지 잠재 버그를 노출·수정. ④ codecov/patch tiny-diff 집계 아티팩트(test파일/주석 줄 오집계) — SonarCloud New Code 가 권위, main branch protection 부재로 non-blocking. ⑤ Codex 만료 지속 — 정책 18 복구 강제, 다음 세션 `codex login` 필수.
 
+**5+1 회고 + follow-up (#798/#799)**: 6 에이전트 회고(cross-verify false-positive 0건) — P1 6건 + P2 4건 confirmed. 즉시 반영 2건(#797 fix-up: STATE.md 셀 stale·pipeline.md rule sync) + 후속 PR 2건: **#798** PR 코멘트 incomplete 경고 배너(인플레 점수 무경고 노출 차단, i18n 3언어, `notifier.github_pr_comment.static_incomplete_warning`) — 회고 운영 가시성 P1 최우선. **#799** 회귀 가드 3건(incomplete 종단 영속·_race_recover 대칭 first-writer-wins·semi-auto 임계 layer 격리) — 정책 4 봉인 깊이 보강. **🔴 Codex mutual 복구**(2026-06-08 사용자 재로그인 → exec CODEX_OK): 6사이클 self-verify fallback 종료, #798/#799 push 전 정상 mutual(CODEX OK) — #798 은 Codex 제안(배너 ordering assertion) 반영. 단위 4650→4655.
+
+**Task 9 (full 골든 감사)**: 사용자 cost 승인(~20M토큰) → integrity-audit scope=full 8 도메인 실행 — 별도 리포트(`docs/reports/`).
+
 ---
 
 ## 사이클 163
