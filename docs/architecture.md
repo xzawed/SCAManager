@@ -78,6 +78,11 @@ src/
 ├── scorer/calculator.py         # calculate_score(ai_review), ScoreResult, _grade
 ├── config_manager/manager.py    # get_repo_config(), upsert_repo_config(), RepoConfigData
 ├── gate/
+│   ├── actions/                 # Gate 실행 액션 패키지 — engine 이 GATE_ACTIONS Registry 로 디스패치
+│   │   ├── __init__.py          # GateAction(ABC) + GateContext(frozen) + GATE_ACTIONS + register()
+│   │   ├── approve.py           # ApproveAction — auto/semi-auto approve·reject (GitHub Review / Telegram)
+│   │   ├── auto_merge.py        # AutoMergeAction — score>=merge_threshold 시 squash merge (engine 위임)
+│   │   └── review_comment.py    # ReviewCommentAction — PR 에 AI 리뷰 상세 댓글
 │   ├── _common.py               # score_from_result()
 │   ├── engine.py                # run_gate_check() — 3-옵션 독립 처리
 │   ├── github_review.py         # post_github_review(), merge_pr() (REST 폴백)
