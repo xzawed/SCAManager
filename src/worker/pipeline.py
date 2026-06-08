@@ -241,6 +241,17 @@ async def _run_static_with_timeout(
             "all %d files failed static analysis — marking incomplete (auto-merge blocked)",
             len(files),
         )
+    # 도구 subprocess 타임아웃(per-tool 30s, 파일 deadline 60s 미트립)으로 일부 분석이 누락된
+    # 파일이 있으면 incomplete 로 전파 — 무음 폐기된 이슈가 만점 인플레로 auto-merge 되는 것 차단(#7).
+    # Any file with a tool subprocess-timeout (per-tool 30s, below the 60s file deadline) is
+    # partially unanalyzed → propagate incomplete so silently-dropped issues can't inflate (#7).
+    timed_out_files = sum(1 for r in results if getattr(r, "incomplete", False))
+    if timed_out_files:
+        incomplete = True
+        logger.warning(
+            "%d/%d files had tool subprocess timeouts — marking incomplete (auto-merge blocked)",
+            timed_out_files, len(files),
+        )
     # 콘텐츠 fetch 가 transient(403 rate-limit/5xx)로 실패한 파일이 있으면 미분석 코드다 —
     # 빈 content 는 이슈0=만점 인플레로 이어지므로 incomplete 로 fail-closed 처리(#6).
     # AutoMergeAction/ApproveAction(#779/#783)이 이 마커로 자동 머지/승인을 차단한다.

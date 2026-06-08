@@ -55,6 +55,7 @@ class _PylintAnalyzer:
                 for item in items
             ]
         except subprocess.TimeoutExpired:
+            ctx.timed_out = True
             logger.warning("pylint timed out for %s", ctx.tmp_path)
             return []
         except (json.JSONDecodeError, FileNotFoundError) as exc:
@@ -102,6 +103,7 @@ class _Flake8Analyzer:
                         continue
             return issues
         except subprocess.TimeoutExpired:
+            ctx.timed_out = True
             logger.warning("flake8 timed out for %s", ctx.tmp_path)
             return []
         except FileNotFoundError as exc:
@@ -141,6 +143,7 @@ class _BanditAnalyzer:
                 for item in data.get("results", [])
             ]
         except subprocess.TimeoutExpired:
+            ctx.timed_out = True
             logger.warning("bandit timed out for %s", ctx.tmp_path)
             return []
         except (json.JSONDecodeError, FileNotFoundError) as exc:

@@ -54,6 +54,7 @@ class _RuboCopAnalyzer:
                 return []
             return _parse_rubocop_json(r.stdout, ctx.language)
         except subprocess.TimeoutExpired:
+            ctx.timed_out = True
             logger.warning("rubocop timed out for %s", ctx.tmp_path)
             return []
         except (OSError, json.JSONDecodeError, ValueError,

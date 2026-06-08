@@ -63,6 +63,7 @@ class _GolangciLintAnalyzer:
                 return []
             return _parse_golangci_json(r.stdout, ctx.language)
         except subprocess.TimeoutExpired:
+            ctx.timed_out = True
             logger.warning("golangci-lint timed out for %s", ctx.tmp_path)
             return []
         except (OSError, json.JSONDecodeError, ValueError,

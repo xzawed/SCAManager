@@ -78,6 +78,7 @@ class _DartAnalyzer:
                 ))
             return issues
         except subprocess.TimeoutExpired:
+            ctx.timed_out = True
             logger.warning("dart_analyze timed out for %s", ctx.tmp_path)
             return []
         except (json.JSONDecodeError, OSError) as exc:

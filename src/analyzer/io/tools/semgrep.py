@@ -73,6 +73,7 @@ class _SemgrepAnalyzer:
                 ))
             return issues
         except subprocess.TimeoutExpired:
+            ctx.timed_out = True
             logger.warning("semgrep timed out for %s", ctx.tmp_path)
             return []
         except (json.JSONDecodeError, FileNotFoundError) as exc:

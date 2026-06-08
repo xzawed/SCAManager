@@ -57,6 +57,7 @@ class _CppCheckAnalyzer:
                 return []
             return _parse_cppcheck_xml(r.stderr, ctx.language)
         except subprocess.TimeoutExpired:
+            ctx.timed_out = True
             logger.warning("cppcheck timed out for %s", ctx.tmp_path)
             return []
         except (OSError, ET.ParseError) as exc:

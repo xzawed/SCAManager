@@ -41,6 +41,11 @@ class StaticAnalysisResult:
 
     filename: str
     issues: list[AnalysisIssue] = field(default_factory=list)
+    # 도구 subprocess 타임아웃으로 일부 분석이 누락됐는지 — 파이프라인이 이를 모아
+    # static_analysis_incomplete 마커로 승격해 auto-merge/auto-approve 를 차단(#7 fail-closed).
+    # Whether a tool subprocess timed out (analysis partially missing) — the pipeline aggregates
+    # this into the static_analysis_incomplete marker to block auto-merge/approve (#7 fail-closed).
+    incomplete: bool = False
 
 
 def analyze_file(  # pylint: disable=too-many-locals
@@ -99,6 +104,13 @@ def analyze_file(  # pylint: disable=too-many-locals
                 result.issues.extend(analyzer.run(ctx))
             except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
                 logger.warning("analyzer %s failed for %s: %s", analyzer.name, ctx.filename, exc)
+
+    # 도구 subprocess 타임아웃 신호를 결과로 승격 — 타임아웃 도구는 이슈를 무음 폐기하므로
+    # incomplete 로 표시해 파이프라인이 미분석 코드 auto-merge 를 차단하게 한다(#7 fail-closed).
+    # Promote the tool subprocess-timeout signal — timed-out tools silently drop issues, so flag
+    # incomplete to let the pipeline block auto-merge of unanalyzed code (#7 fail-closed).
+    if ctx.timed_out:
+        result.incomplete = True
 
     return result
 
