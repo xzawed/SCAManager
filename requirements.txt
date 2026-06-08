@@ -25,7 +25,7 @@ flake8==7.3.0
 bandit>=1.9.4
 semgrep==1.165.0
 slither-analyzer>=0.11.5
-sqlfluff>=4.2.1
+sqlfluff>=4.2.2
 jinja2==3.1.6
 # python-multipart>=0.0.30 — CVE-2026-40347 (preamble/epilogue CPU DoS) fix
 python-multipart>=0.0.30
