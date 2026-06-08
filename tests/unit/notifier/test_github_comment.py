@@ -234,6 +234,36 @@ def test_build_comment_from_result_grade_f():
     assert "🔴" in body  # GRADE_EMOJI["F"]
 
 
+# ── 정적분석 incomplete 경고 배너 (사이클 164 follow-up #5) ─────────────────
+
+def _has_incomplete_warning(body: str) -> bool:
+    """경고 배너가 en/ko/ja 중 하나로 노출됐는지 (default locale=en)."""
+    return (
+        "Static analysis incomplete" in body
+        or "정적분석 미완료" in body
+        or "静的解析が未完了" in body
+    )
+
+
+def test_build_comment_shows_incomplete_warning_when_marked():
+    """static_analysis_incomplete=True 시 점수 위에 신뢰 불가 경고 배너가 노출돼야 한다.
+
+    타임아웃/전량실패로 인플레된 점수가 PR 코멘트에 무경고 노출되면 사람이 수동 머지 시
+    오판할 수 있으므로(사이클 164 회고 P1 — 운영 가시성), 경고 배너로 차단한다.
+    """
+    body = _build_comment_from_result(_make_result(score=45, static_analysis_incomplete=True))
+    assert _has_incomplete_warning(body), "incomplete 경고 배너가 없습니다"
+    assert "⚠️" in body
+    # 배너는 점수 위에 위치해야 한다 — 사람이 점수를 읽기 전 신뢰 불가를 먼저 인지 (Codex 제안)
+    assert body.index("⚠️") < body.index("45/100"), "경고 배너가 점수보다 아래에 있습니다"
+
+
+def test_build_comment_no_incomplete_warning_when_complete():
+    """정상(마커 없음) 분석은 경고 배너를 노출하지 않아야 한다 (false 경고 방지)."""
+    body = _build_comment_from_result(_make_result(score=80))
+    assert not _has_incomplete_warning(body), "정상 분석에 incomplete 경고가 잘못 노출됨"
+
+
 # ── post_pr_comment_from_result 테스트 (164-172 커버) ───────────────────────
 
 async def test_post_pr_comment_from_result_calls_api():

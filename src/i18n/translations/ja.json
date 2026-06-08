@@ -726,6 +726,7 @@
     },
     "github_pr_comment": {
       "title": "## {emoji} SCAManager 分析結果",
+      "static_incomplete_warning": "> ⚠️ **静的解析が未完了 (タイムアウトまたはエラー)** — 以下のスコアは過大評価され信頼できない可能性があります。マージ前に手動で確認してください。",
       "total_line": "**合計: {score}/100** (グレード {grade})",
       "breakdown_header": "### スコア詳細",
       "table_header": "| 項目 | スコア | 満点 |",

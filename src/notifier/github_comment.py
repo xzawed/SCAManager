@@ -154,10 +154,25 @@ def _static_issues_lines(result: dict, language: str = "en") -> list[str]:
     return lines
 
 
+def _incomplete_warning_lines(result: dict, language: str = "en") -> list[str]:
+    """정적분석 불완전(타임아웃/전량실패) 시 점수 신뢰 불가 경고 배너 (사이클 164 follow-up #5).
+    Warning banner when static analysis is incomplete — the score may be inflated/unreliable.
+
+    `static_analysis_incomplete` 마커는 auto-merge/auto-approve 만 차단(#779/#783)할 뿐
+    PR 코멘트 점수에는 무경고 노출돼 사람 수동 머지 시 오판 위험 → 점수 위에 배너 삽입.
+    The marker only blocks auto-merge/approve; surface it in the PR comment so manual
+    reviewers do not trust an inflated score.
+    """
+    if not result.get("static_analysis_incomplete"):
+        return []
+    return [get_text("notifier.github_pr_comment.static_incomplete_warning", language), ""]
+
+
 def _build_comment_from_result(result: dict, language: str = "en") -> str:
     """Build a formatted PR comment body from a stored analysis result dict (Phase 3 PR-11 — i18n)."""
     return "\n".join(
-        _header_lines(result, language)
+        _incomplete_warning_lines(result, language)
+        + _header_lines(result, language)
         + _ai_summary_lines(result, language)
         + _category_feedback_lines(result, language)
         + _file_feedback_lines(result, language)
