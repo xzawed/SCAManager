@@ -17,7 +17,7 @@ from src.shared.log_safety import sanitize_for_log
 from src.models.analysis import Analysis
 from src.models.repository import Repository
 from src.models.user import User
-from src.repositories import repo_config_repo
+from src.repositories import repo_config_repo, analysis_repo
 from src.analyzer.io.ai_review import AiReviewResult
 from src.scorer.calculator import calculate_score
 from src.worker.pipeline import build_analysis_result_dict
@@ -166,7 +166,14 @@ class HookResultRequest(BaseModel):
 
 @router.post("/result")
 @limiter.limit(RATE_LIMIT_API)
-def save_hook_result(request: Request, body: HookResultRequest):  # pylint: disable=unused-argument
+def save_hook_result(  # pylint: disable=unused-argument,too-many-locals
+    request: Request, body: HookResultRequest,
+):
+    # too-many-locals: race-safe save_new 도입(#5)으로 created 지역변수 1개 추가(16/15).
+    # 함수 응집 단위(토큰검증→파싱→점수→저장)를 깨지 않기 위해 헬퍼 추출 대신 inline disable
+    # (testing.md R0914 결정 트리 — 기존 함수 시그니처 확장 경로).
+    # too-many-locals: +1 local (created) from the race-safe save_new (#5); inline-disabled per the
+    # testing.md R0914 tree (existing-function expansion) to keep the function cohesive.
     """pre-push 훅이 코드리뷰 결과를 전송하는 엔드포인트.
 
     토큰 검증 후 Analysis 레코드를 저장하고 점수를 반환한다.
@@ -240,9 +247,23 @@ def save_hook_result(request: Request, body: HookResultRequest):  # pylint: disa
             result=build_analysis_result_dict(ai_review, score_result, [], "cli"),
         )
 
-        db.add(analysis)
-        db.commit()
-        db.refresh(analysis)
+        # 동시 동일 SHA insert race 안전 저장 — 두 hook 이 위 existing 체크(멱등성)를 동시에
+        # 통과한 뒤 DB unique 제약(uq_analyses_repo_sha)에 막히는 TOCTOU 를 흡수한다(#5).
+        # save_new 가 IntegrityError 를 rollback+재조회로 처리해 500 대신 기존 레코드를 반환.
+        # Race-safe save — absorbs the TOCTOU where two hooks pass the idempotency check and then
+        # collide on the unique constraint; save_new returns the existing row instead of a 500 (#5).
+        analysis, created = analysis_repo.save_new(db, analysis)
+        if not created:
+            logger.info(
+                "CLI hook concurrent insert blocked — returning existing (repo=%s sha=%s)",
+                sanitize_for_log(body.repo), sanitize_for_log(body.commit_sha),
+            )
+            return {
+                "status": "duplicate",
+                "score": analysis.score,
+                "grade": analysis.grade,
+                "analysis_id": analysis.id,
+            }
 
         # 로그 인젝션 방지: sanitize_for_log() 로 사용자 입력 정제
         # NOSONAR 이유: SonarCloud taint analysis 가 str.replace 기반 커스텀
