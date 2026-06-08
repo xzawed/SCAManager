@@ -191,6 +191,7 @@ def _make_gate_callback_mocks(*, decision: str):
     repo = MagicMock()
     repo.full_name = "owner/repo"
     repo.owner.plaintext_token = "ghp_x"
+    repo.user_id = 1  # authz: 콜백 소유권 검증용 (사이클 164 P1 #1)
     config = MagicMock()
     config.auto_merge = False  # 머지 분기 skip — body 생성만 검증
     return db_cm, analysis, repo, config
@@ -216,9 +217,11 @@ async def test_gate_callback_approve_threads_japanese_to_review_body():
     ), patch(
         "src.webhook.providers.telegram.save_gate_decision"
     ), patch(
+        "src.webhook.providers.telegram.user_repo.find_by_telegram_user_id", return_value=MagicMock(id=1)
+    ), patch(
         "src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock
     ) as mock_review:
-        await telegram.handle_gate_callback(1, "approve", "alice")
+        await telegram.handle_gate_callback(1, "approve", "alice", telegram_user_id="1")
 
     assert mock_review.await_count == 1
     # post_github_review(token, full_name, pr_number, decision, body) — body = 5번째 positional
@@ -245,9 +248,11 @@ async def test_gate_callback_reject_threads_english_no_korean():
     ), patch(
         "src.webhook.providers.telegram.save_gate_decision"
     ), patch(
+        "src.webhook.providers.telegram.user_repo.find_by_telegram_user_id", return_value=MagicMock(id=1)
+    ), patch(
         "src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock
     ) as mock_review:
-        await telegram.handle_gate_callback(1, "reject", "bob")
+        await telegram.handle_gate_callback(1, "reject", "bob", telegram_user_id="1")
 
     assert mock_review.await_count == 1
     body = mock_review.await_args.args[4]
@@ -272,9 +277,11 @@ async def test_gate_callback_approve_threads_korean_default():
     ), patch(
         "src.webhook.providers.telegram.save_gate_decision"
     ), patch(
+        "src.webhook.providers.telegram.user_repo.find_by_telegram_user_id", return_value=MagicMock(id=1)
+    ), patch(
         "src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock
     ) as mock_review:
-        await telegram.handle_gate_callback(1, "approve", "carol")
+        await telegram.handle_gate_callback(1, "approve", "carol", telegram_user_id="1")
 
     assert mock_review.await_count == 1
     body = mock_review.await_args.args[4]

@@ -25,7 +25,7 @@ from src.i18n.loader import get_text
 from src.notifier._language import resolve_notification_language
 from src.notifier.telegram import telegram_post_message
 from src.notifier.telegram_commands import handle_message_command, parse_cmd_callback
-from src.repositories import analysis_repo, repository_repo
+from src.repositories import analysis_repo, repository_repo, user_repo
 
 logger = logging.getLogger(__name__)
 
@@ -69,10 +69,13 @@ def _parse_gate_callback(data: str) -> "tuple[str, int, str] | None":
     return decision, analysis_id, callback_token
 
 
-async def handle_gate_callback(
+async def handle_gate_callback(  # pylint: disable=too-many-locals
+    # too-many-locals: authz 검증(user) 추가로 16/15 — 함수 응집 단위 보호 위해 inline disable
+    # (testing.md R0914 결정 트리: 기존 함수 시그니처 확장 시 inline disable + 사유)
     analysis_id: int,
     decision: str,
     decided_by: str,
+    telegram_user_id: str | None = None,
 ) -> None:
     """Telegram 인라인 키보드 콜백을 처리해 GitHub Review 결정을 실행한다."""
     with SessionLocal() as db:
@@ -83,6 +86,23 @@ async def handle_gate_callback(
                 return
             repo = repository_repo.find_by_id(db, analysis.repo_id)
             if not repo:
+                return
+            # 🔴 authorization (보안): 콜백을 클릭한 Telegram 사용자가 해당 repo 소유자인지 검증.
+            # 텍스트 명령 경로(telegram_commands.py: repo.user_id != user.id)와 대칭 — HMAC 토큰은
+            # gate:{analysis_id} 만 서명(사용자 신원 무관)하므로, 이 검증이 없으면 버튼을 받은 임의
+            # 사용자가 PR 승인/머지를 실행할 수 있다 (broken access control). 미연동/비소유자는 차단.
+            # Authorization: verify the clicking Telegram user owns the repo (mirrors the
+            # text-command path). The HMAC token signs only gate:{analysis_id} (identity-agnostic),
+            # so without this any user who receives the button could approve/merge a PR.
+            user = (
+                user_repo.find_by_telegram_user_id(db, telegram_user_id)
+                if telegram_user_id else None
+            )
+            if user is None or repo.user_id != user.id:
+                logger.warning(
+                    "handle_gate_callback: unauthorized tg_user=%s for repo=%s (analysis %d) — skipping",
+                    telegram_user_id, repo.full_name, analysis_id,
+                )
                 return
             github_token = (
                 repo.owner.plaintext_token
@@ -187,7 +207,8 @@ def _handle_message(
 
 
 @router.post("/api/webhook/telegram", responses={401: {"description": "Invalid secret token"}})
-async def telegram_webhook(
+async def telegram_webhook(  # pylint: disable=too-many-locals
+    # too-many-locals: 콜백 소유권 전달용 telegram_user_id 추가로 16/15 (inline disable + 사유)
     request: Request,
     background_tasks: BackgroundTasks,
     x_telegram_bot_api_secret_token: Annotated[str | None, Header()] = None,
@@ -243,10 +264,14 @@ async def telegram_webhook(
     user_id = from_data.get("id", "unknown")
     username = from_data.get("username", "")
     decided_by = f"{username}(id:{user_id})" if username else f"id:{user_id}"
+    # 클릭 사용자 telegram_user_id 를 소유권 검증용으로 전달 (str 정규화, 부재 시 None → 차단)
+    # Pass the clicking user's telegram_user_id for the ownership check (None → blocked)
+    telegram_user_id = str(user_id) if user_id != "unknown" else None
     background_tasks.add_task(
         handle_gate_callback,
         analysis_id=analysis_id,
         decision=decision,
         decided_by=decided_by,
+        telegram_user_id=telegram_user_id,
     )
     return {"status": "ok"}
