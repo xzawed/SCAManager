@@ -691,3 +691,52 @@ def test_coerce_raw_score_absorbs_infinity_overflow():
     # 정상 정수·숫자문자열은 ok=True 로 통과 (동등성) / valid int & numeric string stay ok=True
     assert _coerce_raw_score(18, 20, 17) == (18, True)
     assert _coerce_raw_score("15", 20, 17) == (15, True)
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# #25 — parse_error 시 인플레 fallback 점수를 DB 에 저장하지 않음 (집계 오염 차단)
+# Don't persist the inflated fallback score on parse_error (no aggregation pollution).
+# ──────────────────────────────────────────────────────────────────────────
+
+
+def test_hook_result_parse_error_stores_null_score():
+    """#25: 비숫자 점수(parse_error)면 인플레 fallback(89/B)을 저장하지 않고 score/grade NULL 저장."""
+    r, saved = _post_hook_non_numeric({**_AI_RESULT, "commit_message_score": "abc"})
+    assert r.status_code == 200
+    assert len(saved) == 1
+    assert saved[0].score is None    # 인플레 점수 미저장 → 대시보드/리더보드 집계 오염 차단
+    assert saved[0].grade is None
+
+
+def test_hook_result_empty_ai_result_stores_null_score():
+    """#25: 빈 ai_result(parse_error)도 score/grade NULL 저장."""
+    saved = _post_hook_capturing({})
+    assert len(saved) == 1
+    assert saved[0].score is None
+    assert saved[0].grade is None
+
+
+def test_hook_result_parse_error_response_score_none():
+    """#25: parse_error 시 HTTP 응답 body 의 score/grade 도 None (훅 CLI 가 인플레 점수 표시 안 함)."""
+    r, saved = _post_hook_non_numeric({**_AI_RESULT, "commit_message_score": "abc"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["score"] is None
+    assert body["grade"] is None
+
+
+def test_hook_result_parse_error_preserves_result_dict():
+    """#25: score 컬럼은 NULL 이지만 result dict 의 ai_review_status·breakdown 은 보존(대시보드 배너)."""
+    r, saved = _post_hook_non_numeric({**_AI_RESULT, "commit_message_score": "abc"})
+    assert r.status_code == 200
+    assert saved[0].score is None                               # 컬럼 NULL (집계 제외)
+    assert saved[0].result["ai_review_status"] == "parse_error"  # 정성 정보 보존
+    assert "breakdown" in saved[0].result                        # 배너용 breakdown 보존
+
+
+def test_hook_result_valid_score_persists_non_null():
+    """#25 회귀 가드: 정상(success) 점수는 NULL 화 영향 없이 그대로 저장."""
+    saved = _post_hook_capturing(_AI_RESULT)
+    assert len(saved) == 1
+    assert saved[0].score is not None
+    assert saved[0].grade is not None

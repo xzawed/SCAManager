@@ -237,13 +237,25 @@ def save_hook_result(  # pylint: disable=unused-argument,too-many-locals
         # CLI 훅은 정적 분석 없음 → 빈 리스트 (code_quality=25, security=20 만점)
         score_result = calculate_score([], ai_review=ai_review)
 
+        # 🔴 #25: parse_error(비숫자/누락 점수) 시 인플레 fallback 점수(89/B)를 score/grade 컬럼에
+        # 저장하지 않는다(NULL). score/grade 는 nullable 이고 모든 집계(_kpi_avg·func.avg·leaderboard)
+        # 가 NULL 을 자연 제외하므로, NULL 저장만으로 대시보드/리더보드 오염을 차단한다(쿼리 변경 0).
+        # result dict 의 breakdown·ai_review_status='parse_error' 는 보존 → 대시보드 fallback 배너·
+        # 정성 정보 유지(컬럼=집계용 NULL / result=진단용 보존, 의도적 비대칭).
+        # #25: on parse_error don't persist the inflated fallback score (89/B) — store NULL. score/grade
+        # are nullable and every aggregation already excludes NULL, so NULL alone stops dashboard/
+        # leaderboard pollution (0 query change). The result dict keeps breakdown + ai_review_status for
+        # the fallback banner (column = NULL for aggregation / result = preserved for diagnostics).
+        persisted_score = score_result.total if scores_ok else None
+        persisted_grade = score_result.grade if scores_ok else None
+
         analysis = Analysis(
             repo_id=repo.id,
             commit_sha=body.commit_sha,
             commit_message=body.commit_message,
             pr_number=None,
-            score=score_result.total,
-            grade=score_result.grade,
+            score=persisted_score,
+            grade=persisted_grade,
             result=build_analysis_result_dict(ai_review, score_result, [], "cli"),
         )
 
@@ -269,15 +281,15 @@ def save_hook_result(  # pylint: disable=unused-argument,too-many-locals
         # NOSONAR 이유: SonarCloud taint analysis 가 str.replace 기반 커스텀
         # sanitizer 를 인식하지 못함 — log_safety 모듈에서 실제 방어 완료.
         logger.info(  # NOSONAR python:S5145 — sanitized via log_safety
-            "CLI hook result saved: repo=%s sha=%s score=%d",
+            "CLI hook result saved: repo=%s sha=%s score=%s",  # %s — parse_error 시 None 안전
             sanitize_for_log(body.repo),
             sanitize_for_log(body.commit_sha),
-            score_result.total,
+            persisted_score,
         )
 
         return {
             "status": "saved",
-            "score": score_result.total,
-            "grade": score_result.grade,
+            "score": persisted_score,
+            "grade": persisted_grade,
             "analysis_id": analysis.id,
         }

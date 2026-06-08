@@ -1732,6 +1732,31 @@ def test_overview_grade_derived_from_avg_score():
     assert '<span class="grade grade--a">' in r.text
 
 
+def test_overview_parse_error_only_repo_shows_no_grade_not_f():
+    """#25 회귀 가드: 점수가 전부 NULL(parse_error)인 리포는 등급 F 로 오분류되지 않고 등급 없음.
+
+    count_map 은 parse_error 분석을 포함(count=1)하지만 avg_map 은 func.avg(NULL 제외)로 avg=None.
+    grade 를 count 가 아닌 avg_raw(실제 평균 존재) 기준으로 판정 → calculate_grade(0)=F 미발생.
+    Codex mutual 검토가 적발한 #25 NULL 저장 회귀(overview avg_grade=F 오분류) 봉인.
+    """
+    mock_db = MagicMock()
+    mock_repo = MagicMock(id=1, full_name="owner/repo", user_id=1, created_at="2026-01-01")
+    mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [mock_repo]
+    # count_map 은 parse_error 분석 1건 포함, avg_map 은 func.avg(NULL 제외) → avg=None
+    mock_db.query.return_value.filter.return_value.group_by.return_value.all.side_effect = [
+        [(1, 1)],       # count_map: [(repo_id, count)] — parse_error 분석 카운트됨
+        [(1, None)],    # avg_map: [(repo_id, avg)] — 모든 score NULL → func.avg=None
+    ]
+    mock_db.query.return_value.filter.return_value.all.return_value = []
+
+    with patch("src.ui.routes.overview.SessionLocal", return_value=_ctx(mock_db)):
+        r = client.get("/")
+    assert r.status_code == 200
+    # F 등급 뱃지가 렌더되면 안 된다 (점수 없음 → 등급 미표시)
+    # No F-grade badge must render (no valid score → no grade)
+    assert '<span class="grade grade--f">' not in r.text
+
+
 # ── Settings 페이지 재설계 스모크 테스트 (2026-04-21) ──────────────────────────
 
 def test_settings_form_fields_preserved():
