@@ -43,6 +43,7 @@ paths:
   - `RATE_LIMIT_HEAVY = "10/minute"` — 쓰기/삭제 엔드포인트 (PUT, DELETE, POST 고비용)
   - `src/middleware/rate_limiter.py:20-21` 상수 정의 출처 — 직접 문자열 작성 금지, import 사용
   - **예외**: `Depends(require_login)` 과 `@limiter.limit()` 조합 시 FastAPI 422 충돌 발생 가능 — `users.py` 인증 엔드포인트처럼 require_login 이 이미 DoS 보호 역할이면 미적용 허용 (PR 본문 정책 3 보고 의무)
+  - 🔴 **예외 (webhook provider) — 사이클 165 회고 P2**: secret/HMAC 인증 webhook provider (`src/webhook/providers/*` — github/telegram/railway) 는 `@limiter` **미적용 컨벤션** (3 provider 전부 일관). 이유: (1) webhook secret + per-event HMAC 인증이 미인증 폭주를 동기 경로 401 에서 차단(claim INSERT 등 비용은 인증 통과 후 background task), (2) IP 기반 limiter(`get_remote_address`)가 단일 출처(Telegram/GitHub/Railway 서버 IP 풀) webhook 에 부정확 → 정상 콜백 오차단 위험이 추가 방어 이득보다 큼. 신규 webhook provider 추가 시 동일 컨벤션. (신규 **API** 엔드포인트는 위 의무 적용 — webhook 흉내로 limiter 누락 금지.)
 - 🔴 **`asyncio.gather` 내부 shared Session 금지 (사이클 113 P0-H)**: `asyncio.gather()` 로 동시 실행되는 코루틴들이 단일 `Session` 인스턴스를 공유하면 SQLAlchemy identity map 오염 + 동시 `commit()` 충돌 발생. 각 코루틴은 `with SessionLocal() as db:` 블록을 독립적으로 열어야 함. 전례: `src/gate/engine.py` — `_run_approve_decision` + `_run_auto_merge` 를 gather 전에 db 파라미터 제거 후 각 함수 내부에서 독립 Session 생성으로 수정 (사이클 113 P0-H).
   - **올바른 패턴**: `await asyncio.gather(_run_approve_decision(...), _run_auto_merge(...))` — 각 함수 내부에서 `with SessionLocal() as db:` 독립 사용
   - **금지 패턴**: `await asyncio.gather(_run_approve_decision(db=db, ...), _run_auto_merge(db=db, ...))` — 동일 db 공유
