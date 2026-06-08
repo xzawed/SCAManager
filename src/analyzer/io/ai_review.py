@@ -20,7 +20,7 @@ import anthropic
 from src.analyzer.pure.review_prompt import build_review_prompt, get_system_prompt
 from src.config import settings
 from src.constants import (
-    AI_DEFAULT_COMMIT_RAW, AI_DEFAULT_DIRECTION_RAW,
+    AI_DEFAULT_COMMIT_RAW, AI_DEFAULT_DIRECTION_RAW, AI_DEFAULT_TEST_RAW,
     AI_RAW_COMMIT_MAX, AI_RAW_DIRECTION_MAX, AI_RAW_TEST_MAX,
 )
 from src.shared.anthropic_caching import build_cached_system_param
@@ -151,11 +151,34 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
         await aclose_anthropic_client(client)
 
 
-def _extract_test_score(data: dict) -> int:
-    """test_score 추출. 구 포맷(has_tests boolean) 하위 호환."""
+def _coerce_score(raw: object, max_val: int, default: int) -> "tuple[int, bool]":
+    """raw 점수를 [0, max_val] 정수로 안전 클램프 — 비숫자/Infinity 시 default 폴백 + ok=False.
+    Safely clamp a raw score to [0, max_val]; fall back to default on non-numeric/Infinity (ok=False).
+
+    🔴 PARITY GUARD: src/api/hook.py::_coerce_raw_score 와 행동 동등(반환 (int, ok)). 둘 중 하나
+    변경 시 양쪽 동시 수정 + parity 회귀 가드(test_ai_review_errors.py) 갱신 의무 (testing.md
+    의도적 중복 패턴 — 사용처 2곳이라 공유 추출 대신 인라인+가드, 정책16 최소 추상화).
+    int(raw) 가 TypeError/ValueError(float-string)/OverflowError(Infinity)를 던지면 default·ok=False.
+    🔴 PARITY GUARD with src/api/hook.py::_coerce_raw_score — keep behaviour identical; update both
+    plus the parity regression test together when changing either.
+    """
+    try:
+        value = int(raw)
+    except (TypeError, ValueError, OverflowError):
+        return max(0, min(max_val, default)), False
+    return max(0, min(max_val, value)), True
+
+
+def _coerce_test_score(data: dict) -> "tuple[int, bool]":
+    """test_score 안전 추출 (int, ok). 구 포맷(has_tests boolean) 하위 호환 — 키 부재는 ok=True."""
     if "test_score" in data:
-        return max(0, min(AI_RAW_TEST_MAX, int(data["test_score"])))
-    return AI_RAW_TEST_MAX if data.get("has_tests", False) else 0
+        return _coerce_score(data["test_score"], AI_RAW_TEST_MAX, AI_DEFAULT_TEST_RAW)
+    return (AI_RAW_TEST_MAX if data.get("has_tests", False) else 0), True
+
+
+def _extract_test_score(data: dict) -> int:
+    """test_score 추출(int) — 하위 호환 wrapper. 안전 변환·ok 플래그는 _coerce_test_score 사용."""
+    return _coerce_test_score(data)[0]
 
 
 def _extract_json_payload(text: str) -> str:
@@ -183,22 +206,49 @@ def _extract_json_payload(text: str) -> str:
 def _parse_response(text: str) -> AiReviewResult:
     try:
         data = json.loads(_extract_json_payload(text))
-        return AiReviewResult(
-            commit_score=max(0, min(AI_RAW_COMMIT_MAX, int(data.get("commit_message_score", AI_DEFAULT_COMMIT_RAW)))),
-            ai_score=max(0, min(AI_RAW_DIRECTION_MAX, int(data.get("direction_score", AI_DEFAULT_DIRECTION_RAW)))),
-            test_score=_extract_test_score(data),
-            summary=str(data.get("summary", "")),
-            suggestions=[str(s) for s in data.get("suggestions", [])],
-            commit_message_feedback=str(data.get("commit_message_feedback", "")),
-            code_quality_feedback=str(data.get("code_quality_feedback", "")),
-            security_feedback=str(data.get("security_feedback", "")),
-            direction_feedback=str(data.get("direction_feedback", "")),
-            test_feedback=str(data.get("test_feedback", "")),
-            file_feedbacks=list(data.get("file_feedbacks", [])),
-        )
-    except (json.JSONDecodeError, ValueError, KeyError):
+    except json.JSONDecodeError:
+        # 진짜 구조 붕괴(JSON 파싱 실패)만 전량 parse_error — 점수 필드 문제는 아래서 per-field 흡수.
+        # Only genuine structural failure (JSON decode) collapses to parse_error; score-field issues
+        # are absorbed per-field below.
         logger.warning("Failed to parse AI review response: %s", text[:200])
         return _default_result("parse_error")
+    if not isinstance(data, dict):
+        # JSON array/scalar 등 비-dict 페이로드 — data.get 불가 → parse_error
+        # Non-dict payload (array/scalar) — data.get unavailable → parse_error
+        logger.warning("AI review response is not a JSON object: %s", text[:200])
+        return _default_result("parse_error")
+    # 🔴 #24: 점수 필드 per-field 안전 변환 — 단일 필드 float-string("88.0")/Infinity 가 리뷰 전체
+    # (복구 가능한 점수 + 모든 feedback 텍스트)를 붕괴시키지 않도록 한다. hook.py _coerce_raw_score
+    # 하드닝(#784)과 대칭(PARITY GUARD).
+    # #24: per-field score coercion so one bad numeric field (float-string/Infinity) doesn't collapse
+    # the whole review (recoverable scores + all feedback text); mirrors hook.py _coerce_raw_score.
+    commit, commit_ok = _coerce_score(
+        data.get("commit_message_score", AI_DEFAULT_COMMIT_RAW), AI_RAW_COMMIT_MAX, AI_DEFAULT_COMMIT_RAW)
+    direction, direction_ok = _coerce_score(
+        data.get("direction_score", AI_DEFAULT_DIRECTION_RAW), AI_RAW_DIRECTION_MAX, AI_DEFAULT_DIRECTION_RAW)
+    test, test_ok = _coerce_test_score(data)
+    result = AiReviewResult(
+        commit_score=commit,
+        ai_score=direction,
+        test_score=test,
+        summary=str(data.get("summary", "")),
+        suggestions=[str(s) for s in data.get("suggestions", [])],
+        commit_message_feedback=str(data.get("commit_message_feedback", "")),
+        code_quality_feedback=str(data.get("code_quality_feedback", "")),
+        security_feedback=str(data.get("security_feedback", "")),
+        direction_feedback=str(data.get("direction_feedback", "")),
+        test_feedback=str(data.get("test_feedback", "")),
+        file_feedbacks=list(data.get("file_feedbacks", [])),
+    )
+    if not (commit_ok and direction_ok and test_ok):
+        # 점수 필드 비숫자/Infinity — feedback·복구가능 점수는 보존하되 parse_error 로 표시해
+        # #804(#8) ai_review_failed 게이트의 fail-closed(auto-merge/approve 차단)를 유지한다.
+        # (이전: 전량 _default_result 로 feedback 까지 폐기. 게이트 동작은 동일, 데이터만 보존.)
+        # Non-numeric/Infinity score field: keep feedback/recoverable scores but mark parse_error so
+        # the #804 gate stays fail-closed (was: total discard via _default_result; gate behaviour
+        # unchanged, only the data is preserved).
+        result.status = "parse_error"
+    return result
 
 
 def _default_result(reason: str = "no_api_key") -> AiReviewResult:

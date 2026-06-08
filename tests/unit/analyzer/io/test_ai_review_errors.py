@@ -28,6 +28,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 
 from src.analyzer.io.ai_review import (
+    _coerce_score,
     _default_result,
     _extract_json_payload,
     _parse_response,
@@ -251,6 +252,77 @@ def test_parse_response_clamps_out_of_range_scores():
     assert result.commit_score == 20  # clamped to max
     assert result.ai_score == 0       # clamped to min
     assert result.test_score == 10    # clamped to test max
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# #24 — 점수 필드 per-field 안전 변환 (단일 비숫자/Infinity 가 리뷰 전체를 붕괴시키지 않음)
+# ──────────────────────────────────────────────────────────────────────────
+
+
+def test_coerce_score_parity_with_hook_coerce_raw_score():
+    """🔴 PARITY GUARD: ai_review._coerce_score 가 hook._coerce_raw_score 와 행동 동등 (#24/#784).
+
+    의도적 중복(인라인, 정책16 사용처 2곳) 두 구현이 drift 하지 않도록 입력 배터리로 (int, ok)
+    동등성을 봉인한다. 한쪽 변경 시 본 테스트가 fail → 양쪽 동시 수정 강제.
+    """
+    from src.api.hook import _coerce_raw_score  # pylint: disable=import-outside-toplevel
+    battery = [
+        ("88.0", 20, 17),        # float-string → ValueError → default
+        (float("inf"), 20, 17),  # Infinity → OverflowError → default
+        (float("nan"), 20, 17),  # NaN → ValueError → default
+        ("abc", 20, 17),         # 비숫자 문자열 → ValueError → default
+        (None, 20, 17),          # None → TypeError → default
+        (18, 20, 17),            # 정상 → 18
+        (99, 20, 17),            # 범위 초과 → clamp 20
+        (-5, 20, 17),            # 음수 → clamp 0
+        (3.9, 20, 17),           # float → int 절단 3
+        (10, 10, 7),             # test 범위
+    ]
+    for raw, mx, default in battery:
+        assert _coerce_score(raw, mx, default) == _coerce_raw_score(raw, mx, default), \
+            f"parity drift for raw={raw!r}"
+
+
+def test_parse_response_preserves_feedback_on_nonnumeric_score():
+    """#24: 단일 점수 필드 float-string 이어도 리뷰 전체를 폐기하지 않고 feedback·정상 점수 보존.
+
+    상태는 parse_error 로 표시(#804 게이트 fail-closed 유지)하되, 이전처럼 _default_result 로
+    feedback 까지 폐기하지 않는다.
+    """
+    text = json.dumps({
+        "commit_message_score": "88.0",  # float-string → ValueError → default + parse_error
+        "direction_score": 18,
+        "test_score": 9,
+        "summary": "great review",
+        "security_feedback": "no issues",
+        "suggestions": ["add tests"],
+    })
+    result = _parse_response(text)
+    assert result.status == "parse_error"          # 비숫자 필드 → 게이트 fail-closed 유지
+    assert result.commit_score == 17               # 복구 불가 필드는 default
+    assert result.ai_score == 18                   # 정상 필드 보존 (전량 폐기 아님)
+    assert result.test_score == 9                  # 정상 필드 보존
+    assert result.summary == "great review"        # 🔴 feedback 보존 (이전엔 _default_result 로 폐기)
+    assert result.security_feedback == "no issues"
+    assert "add tests" in result.suggestions
+
+
+def test_parse_response_infinity_marked_parse_error_preserves():
+    """#24: direction_score=Infinity(int(inf) OverflowError) → 전량 폐기/api_error 아닌 parse_error + 보존."""
+    text = '{"commit_message_score": 18, "direction_score": Infinity, "test_score": 9, "summary": "ok"}'
+    result = _parse_response(text)
+    assert result.status == "parse_error"
+    assert result.commit_score == 18    # 보존
+    assert result.ai_score == 17        # Infinity → default
+    assert result.test_score == 9       # 보존
+    assert result.summary == "ok"       # feedback 보존
+
+
+def test_parse_response_non_dict_payload_returns_parse_error():
+    """#24: JSON 이 유효해도 비-dict(array/scalar) 페이로드는 parse_error (data.get AttributeError 방어)."""
+    # _extract_json_payload 는 {} 구간을 찾지만, 중괄호 없는 순수 배열/스칼라는 그대로 통과 가능
+    assert _parse_response("[1, 2, 3]").status == "parse_error"
+    assert _parse_response("42").status == "parse_error"
 
 
 # ──────────────────────────────────────────────────────────────────────────
