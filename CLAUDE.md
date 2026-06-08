@@ -294,7 +294,7 @@ Why + How to apply (자가 검토 4 자문) 상세: [.claude/policies/active.md#
 **default 의무 5 영역**:
 1. **양방향 대칭 흐름 (push 전 검증 default)** — Claude 작업 (로컬 commit) → Codex 검증 → OK 후 push / Codex 작업 (로컬 commit) → Claude 검증 → OK 후 push. **push 전 단독 완료 금지**.
 2. **검증 의뢰 1줄 명시 의무 (push 전)** — 로컬 commit 후 응답에 "🔍 <상대 LLM> 검증 의뢰 (push 전)" 1줄 의무. 누락 시 다음 응답 회복 의무 (정책 1 진화 회귀 가드 사이클 86 Q4 페어). **push 보류 default — Codex/Claude OK 회신 받기 전까지 `git push` 금지**.
-3. **NG 회신 시 자율 수정 금지** — 사유 분석 + 수정 plan 옵션 표 (정책 1) + 사용자 confirm 의무. **NG 회기 ≤ 3회 default** — 4회차 = 사용자 직접 결정 영역 escalation (옵션 표 의무).
+3. **NG 회신 시 자율 수정 — 2-tier 구분 (사이클 165 회고 진화)**: (a) **설계방향·트레이드오프 동반 NG** = 자율 수정 금지 → 사유 분석 + 수정 plan 옵션 표 (정책 1) + 사용자 confirm 의무 (예: 사이클 165 #811 비원자 TOCTOU → 옵션 A/B 표 + confirm). (b) **단일 정답 버그 회귀 NG**(검증 가능한 객관 정답 1개, 트레이드오프 없음) = 동일 PR 내 즉시 수정 후 재검증 OK, 옵션 표 면제 (예: 사이클 165 #814 overview NULL→F 오분류 = 정답 avg_raw 기준 1개). 판별 애매 시 (a) 로 처리(보수). **NG 회기 ≤ 3회 default** — 4회차 = 사용자 직접 결정 영역 escalation (옵션 표 의무).
 4. **사이클 종료 = 3 조건 AND 의무** (정책 5 강화 페어) — (a) 사용자 신호 + (b) Claude OK + (c) Codex OK. 1 조건 부재 시 종료 보류.
 5. **5+1 cross-verify ↔ mutual = 2-layer 격리 의무** — 정책 8 5+1 = Claude 내부 self-verify (관점 다양성) / mutual = 외부 LLM (모델 다양성). "Codex OK 받았으니 5+1 6차 생략 OK" 오해 차단 — 양 layer 독립 의무 보존.
 

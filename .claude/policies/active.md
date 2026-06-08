@@ -405,15 +405,18 @@ mutual 검증이 다른 정책과 맺는 충돌/페어 7건:
 | 12 (MCP scope) | MCP destructive = 사용자 사전 승인 우선 (mutual 면제 — 사용자 직접 결정 영역) |
 | 16 (단순화 5번 토큰 효율) | mutual = 사용자 명시 의무 (단순화 5번 default 위반 면제) |
 
+🔴 **NG 성격별 2-tier (사이클 165 회고 — CLAUDE.md 정책18 §3 페어)**: NG 처리는 NG 의 성격으로 분기한다. (a) **설계방향·트레이드오프 동반 NG** = 자율 수정 금지 → 옵션 표(정책 1) + 사용자 confirm 의무. (b) **단일 정답 버그 회귀 NG**(검증 가능한 객관 정답 1개·트레이드오프 없음) = 동일 PR 내 즉시 수정 후 재검증 OK, 옵션 표 면제. 사이클 165 사례: #811 비원자 TOCTOU = (a, 옵션 A/B 표 + confirm) / #814 overview NULL→F 오분류 = (b, 정답 avg_raw 기준 1개 → 즉시 수정). 판별 애매 시 (a) 로 보수 처리.
+
 ### NG 회기 ≤ 3회 default 가드
 
 | 회기 | default 동작 |
 |------|-------------|
 | 1회차 NG | Claude 수정 plan 옵션 표 → 사용자 confirm → 재진입 |
 | 2회차 NG | Claude 수정 + **1차 회기 NG 사유와 차이 분석** PR body 명시 |
-| **3회차 NG = 사용자 직접 결정 영역 escalation** | 옵션 표 (🅐 수용 머지 / 🅑 보류 / 🅒 다른 접근) → 사용자 결정 |
+| 3회차 NG | Claude 수정 + **누적 차이 분석** PR body 명시 — Claude 최종 시도 |
+| **4회차 NG = 사용자 직접 결정 영역 escalation** | 옵션 표 (🅐 수용 머지 / 🅑 보류 / 🅒 다른 접근) → 사용자 결정 |
 
-**Why 3회 default**: 정책 8 5+1 cross-verify 패턴과 정합 (5 회기 = blind spot 가능 / 3 회기 = 대화 단위 합리적 상한). 사이클 73 #244 Copilot Autofix 5 commits 사례 학습 — 3 회기 후 자동화 안티패턴.
+**Why ≤ 3회 default**: 정책 8 5+1 cross-verify 패턴과 정합 (5 회기 = blind spot 가능 / 3 Claude 회기 = 대화 단위 합리적 상한). 사이클 73 #244 Copilot Autofix 5 commits 사례 학습 — **3 회기 후(=4회차) escalation** 으로 자동화 안티패턴 차단. CLAUDE.md 정책18 §3 "≤ 3회 default — 4회차 escalation" 과 정합 (사이클 165 회고 Codex 적발 off-by-one 정정 — 구 표 '3회차 escalation' = 오기).
 
 ### 회복 가드 (정책 1 진화 사이클 86 Q4 페어)
 
