@@ -10,6 +10,7 @@ import httpx
 
 from src.config import settings
 from src.database import SessionLocal
+from src.gate._common import ai_review_failed
 from src.gate._common import score_from_result as _score_from_result
 from src.gate.actions import GateAction, GateContext, register
 from src.gate.github_review import post_github_review
@@ -56,6 +57,17 @@ class ApproveAction(GateAction):
             logger.warning(
                 "static analysis incomplete — auto-approve skipped (repo=%s, pr=%s)",
                 ctx.repo_name, ctx.pr_number,
+            )
+            return
+        # AI 리뷰 실제 실패(api_error/parse_error) 시도 보류 — 중립-고점 기본값이 점수를
+        # 인플레이션하고, auto-approve 가 branch-protection "approval 시 자동머지" 를 간접
+        # 트리거할 수 있으므로 결정을 내리지 않는다 (#8, auto-merge 가드의 approve 경로 확장).
+        # Also hold auto-approve when the AI review genuinely failed — inflated defaults could
+        # indirectly trigger branch-protection "auto-merge on approval" (#8, extends the merge guard).
+        if ai_review_failed(ctx.result):
+            logger.warning(
+                "AI review failed (%s) — auto-approve skipped (repo=%s, pr=%s)",
+                ctx.result.get("ai_review_status"), ctx.repo_name, ctx.pr_number,
             )
             return
         # 알림 언어 결정 (3-layer fallback) — GitHub PR 댓글을 리포 소유자 언어로 게시

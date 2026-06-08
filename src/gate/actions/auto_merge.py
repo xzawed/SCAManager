@@ -7,6 +7,7 @@ Delegates to engine.py's _run_auto_merge(). Tests can patch engine namespace sym
 """
 import logging
 
+from src.gate._common import ai_review_failed
 from src.gate.actions import GateAction, GateContext, register
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,16 @@ class AutoMergeAction(GateAction):
             logger.warning(
                 "static analysis incomplete — auto-merge skipped (repo=%s, pr=%s)",
                 ctx.repo_name, ctx.pr_number,
+            )
+            return
+        # AI 리뷰 실제 실패(api_error/parse_error) 시도 차단 — 중립-고점 기본값(44점)이
+        # 점수를 인플레이션해 미검증 코드가 자동 머지되는 fail-open 방지 (#8, 정적분석 대칭).
+        # Also block when the AI review genuinely failed — its neutral-high defaults inflate
+        # the score, which would auto-merge unvetted code (#8, symmetric with static analysis).
+        if ai_review_failed(ctx.result):
+            logger.warning(
+                "AI review failed (%s) — auto-merge skipped (repo=%s, pr=%s)",
+                ctx.result.get("ai_review_status"), ctx.repo_name, ctx.pr_number,
             )
             return
         from src.gate import engine  # pylint: disable=import-outside-toplevel

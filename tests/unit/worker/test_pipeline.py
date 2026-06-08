@@ -659,6 +659,28 @@ async def test_run_static_with_timeout_incomplete_on_tool_subprocess_timeout():
     assert incomplete is True
 
 
+async def test_run_static_with_timeout_incomplete_when_content_fetch_failed():
+    """content fetch 실패(transient 403/5xx) 파일이 있으면 incomplete=True 여야 한다 (#6 fail-closed).
+
+    빈 content 는 이슈0 → 만점 인플레로 이어지므로, fetch 실패를 incomplete 로 전파해
+    AutoMergeAction/ApproveAction(#779/#783)이 미분석 코드 자동 머지를 차단하게 한다.
+    """
+    from src.worker.pipeline import _run_static_with_timeout
+    from src.github_client.diff import ChangedFile
+    f = ChangedFile(filename="src/app.py", content="", patch="@@", fetch_failed=True)
+    _results, incomplete = await _run_static_with_timeout([f])
+    assert incomplete is True
+
+
+async def test_run_static_with_timeout_complete_when_fetch_ok():
+    """정상 fetch 파일만 있으면 incomplete=False 여야 한다 (회귀 가드, #6)."""
+    from src.worker.pipeline import _run_static_with_timeout
+    from src.github_client.diff import ChangedFile
+    f = ChangedFile(filename="README.md", content="# hi\n", patch="@@", fetch_failed=False)
+    _results, incomplete = await _run_static_with_timeout([f])
+    assert incomplete is False
+
+
 # ---------------------------------------------------------------------------
 # Task 1 — SHA 중복 체크 이동 및 result dict ai_review_status 필드 테스트
 # (Red 단계: SHA 중복 체크가 아직 review_code 이전으로 이동하지 않음)
