@@ -236,10 +236,15 @@ def claim_batch(
     클레임 대상 조건:
     Claimable condition:
       - status = 'pending'
-      - next_retry_at <= now (재시도 예정 시각 도달)
-      - next_retry_at <= now (retry due time reached)
+      - next_retry_at <= now (재시도 예정 시각 도달) — 단, only_ids 지정 시 우회(force-due, #4)
+      - next_retry_at <= now (retry due) — bypassed when only_ids is given (force-due, #4)
       - claimed_at IS NULL  OR  claimed_at < now - stale_after_seconds (stale 클레임 재획득)
       - claimed_at IS NULL  OR  claimed_at < now - stale_after_seconds (reclaim stale)
+
+    only_ids: check_suite.completed 이벤트 트리거가 CI 완료 직후 특정 행을 즉시 재시도할 때 전달.
+    next_retry_at 백오프를 우회하되 claimed_at(in-flight) 가드는 유지한다. cron sweep 은 미지정.
+    only_ids: passed by the check_suite.completed trigger to retry named rows immediately once CI
+    finished — bypasses the next_retry_at backoff but keeps the claimed_at guard. Cron sweep omits it.
 
     클레임 처리: claimed_at=now, claim_token=uuid, attempts_count+=1, last_attempt_at=now
     Claim action: claimed_at=now, claim_token=uuid, attempts_count+=1, last_attempt_at=now
@@ -254,7 +259,6 @@ def claim_batch(
     # Query claimable rows.
     query = db.query(MergeRetryQueue).filter(
         MergeRetryQueue.status == "pending",
-        MergeRetryQueue.next_retry_at <= _now,
         # claimed_at IS NULL 또는 stale 기준 초과
         # claimed_at IS NULL or exceeds stale threshold.
         (
@@ -263,7 +267,18 @@ def claim_batch(
         ),
     )
     if only_ids:
+        # check_suite.completed 이벤트 트리거 — CI 완료 직후 명시 행을 즉시 재시도(force-due).
+        # 백오프(next_retry_at) 게이트를 우회한다(#4). 백오프는 CI 진행 중 과도한 폴링을 막기
+        # 위함이고, CI 완료 시점엔 불필요하므로 즉시 클레임이 맞다. claimed_at(in-flight) 가드는
+        # 유지돼 중복 재시도/타이트 루프를 방지한다. cron sweep(only_ids 없음)은 게이트 적용.
+        # check_suite.completed trigger — retry the named rows immediately once CI finished
+        # (force-due, #4). The backoff guards against polling while CI runs and is unneeded once
+        # CI completes; the claimed_at (in-flight) guard still prevents duplicate/tight-loop retries.
         query = query.filter(MergeRetryQueue.id.in_(only_ids))
+    else:
+        # cron sweep / overdue fallback — next_retry_at 백오프 게이트 적용.
+        # cron sweep / overdue fallback — apply the next_retry_at backoff gate.
+        query = query.filter(MergeRetryQueue.next_retry_at <= _now)
 
     # PostgreSQL: FOR UPDATE SKIP LOCKED로 동시 실행 클레임 방지 (SQLite: 단일 연결로 자동 원자적)
     # PostgreSQL: FOR UPDATE SKIP LOCKED prevents concurrent duplicate claims (SQLite: atomic under single conn)

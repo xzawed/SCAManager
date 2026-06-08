@@ -332,6 +332,59 @@ def test_claim_batch_skips_recently_claimed_rows(db_session):
     assert claimed == []
 
 
+def test_claim_batch_only_ids_bypasses_backoff(db_session):
+    """only_ids(check_suite.completed 이벤트 트리거)는 next_retry_at 백오프를 우회해
+    미래 예정(백오프 윈도우 내) 행도 즉시 클레임한다 (#4 force-due — CI 완료 직후 즉시 머지).
+
+    수정 전: only_ids 가 next_retry_at<=now AND 조건에 추가될 뿐 게이트를 우회 못 해 미클레임.
+    """
+    analysis = _seed_analysis(db_session, commit_sha="sha_force")
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    future = now + timedelta(seconds=55)  # 백오프 윈도우 내 (next_retry_at 미도달)
+    row = _make_queue_row(
+        db_session, analysis_id=analysis.id, commit_sha="sha_force", next_retry_at=future,
+    )
+
+    claimed = merge_retry_repo.claim_batch(db_session, now=now, only_ids=[row.id])
+
+    assert len(claimed) == 1
+    assert claimed[0].id == row.id
+
+
+def test_claim_batch_cron_sweep_still_respects_backoff(db_session):
+    """only_ids 없는 cron sweep 은 next_retry_at 백오프 게이트를 유지한다 (회귀 가드, #4)."""
+    analysis = _seed_analysis(db_session, commit_sha="sha_sweep")
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    future = now + timedelta(seconds=55)
+    _make_queue_row(
+        db_session, analysis_id=analysis.id, commit_sha="sha_sweep", next_retry_at=future,
+    )
+
+    claimed = merge_retry_repo.claim_batch(db_session, now=now)  # only_ids 없음
+
+    assert claimed == []
+
+
+def test_claim_batch_only_ids_still_skips_recently_claimed(db_session):
+    """only_ids force-due 여도 최근 claimed_at(stale 미달) 행은 재클레임하지 않는다 —
+    in-flight 재시도 중복/타이트 루프 방지 (claimed_at 가드 보존, #4)."""
+    analysis = _seed_analysis(db_session, commit_sha="sha_inprog")
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    future = now + timedelta(seconds=55)
+    row = _make_queue_row(
+        db_session, analysis_id=analysis.id, commit_sha="sha_inprog",
+        next_retry_at=future,
+        claimed_at=now - timedelta(seconds=30),  # 30초 전 — stale(300s) 미만
+        claim_token="inflight",
+    )
+
+    claimed = merge_retry_repo.claim_batch(
+        db_session, now=now, only_ids=[row.id], stale_after_seconds=300,
+    )
+
+    assert claimed == []
+
+
 def test_claim_batch_reclaims_stale_claims(db_session):
     """stale 기준 초과한 오래된 클레임은 재클레임한다.
     claim_batch() reclaims rows whose claimed_at is older than stale threshold.
