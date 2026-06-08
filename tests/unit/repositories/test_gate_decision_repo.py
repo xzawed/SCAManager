@@ -62,3 +62,32 @@ def test_upsert_updates_existing(db_session):
 
 def test_find_by_analysis_id_not_found(db_session):
     assert gate_decision_repo.find_by_analysis_id(db_session, 9999) is None
+
+
+def test_claim_decision_first_wins(db_session):
+    """claim_decision: 최초 claim 은 True 반환 + 결정 INSERT (#11 원자적 first-writer)."""
+    a = _seed_analysis(db_session)
+    won = gate_decision_repo.claim_decision(db_session, a.id, "approve", "manual", "alice")
+    assert won is True
+    rec = gate_decision_repo.find_by_analysis_id(db_session, a.id)
+    assert rec.decision == "approve"
+    assert rec.mode == "manual"
+    assert rec.decided_by == "alice"
+    assert db_session.query(GateDecision).count() == 1
+
+
+def test_claim_decision_duplicate_loses_no_flip(db_session):
+    """claim_decision: 동일 analysis_id 2차 claim 은 False(UNIQUE 위반 흡수) + 결정 뒤집기 차단.
+
+    리플레이/동시 패자가 부수효과를 skip 하도록 False 를 반환하며, 기존 결정은 변경되지 않는다.
+    """
+    a = _seed_analysis(db_session)
+    assert gate_decision_repo.claim_decision(db_session, a.id, "approve", "manual", "alice") is True
+    # 2차 claim (다른 결정으로 뒤집기 시도) — UNIQUE(analysis_id) 위반 → False
+    lost = gate_decision_repo.claim_decision(db_session, a.id, "reject", "manual", "mallory")
+    assert lost is False
+    # 중복 INSERT 없음 + 최초 결정 보존 (뒤집기 차단)
+    assert db_session.query(GateDecision).count() == 1
+    rec = gate_decision_repo.find_by_analysis_id(db_session, a.id)
+    assert rec.decision == "approve"
+    assert rec.decided_by == "alice"

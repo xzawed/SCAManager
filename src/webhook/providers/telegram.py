@@ -20,13 +20,17 @@ from src.config import settings
 from src.config_manager.manager import get_repo_config
 from src.database import SessionLocal
 from src.gate._common import ai_review_failed
-from src.gate.engine import save_gate_decision
 from src.gate.github_review import post_github_review
 from src.i18n.loader import get_text
 from src.notifier._language import resolve_notification_language
 from src.notifier.telegram import telegram_post_message
 from src.notifier.telegram_commands import handle_message_command, parse_cmd_callback
-from src.repositories import analysis_repo, repository_repo, user_repo
+from src.repositories import (
+    analysis_repo,
+    gate_decision_repo,
+    repository_repo,
+    user_repo,
+)
 from src.shared.secure_compare import secure_str_compare
 
 logger = logging.getLogger(__name__)
@@ -106,11 +110,6 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
                     telegram_user_id, repo.full_name, analysis_id,
                 )
                 return
-            github_token = (
-                repo.owner.plaintext_token
-                if repo.owner and repo.owner.plaintext_token
-                else settings.github_token
-            )
             if analysis.pr_number is None:
                 # push 이벤트로 생성된 Analysis는 pr_number=None — GitHub Review 불가
                 # Analysis created from push event has no pr_number — GitHub Review unavailable
@@ -119,6 +118,28 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
                     analysis_id,
                 )
                 return
+            # 🔴 리플레이 가드 (#11): 부수효과(GitHub 리뷰·결정 뒤집기·auto-merge) 전에 결정을
+            # 원자적으로 claim 한다 — UNIQUE(analysis_id) INSERT 로 first-writer-wins. 이미 결정됐거나
+            # 동시 리플레이(더블클릭/Telegram 재전송) 패자는 IntegrityError→False 로 부수효과를 skip.
+            # callback_data HMAC 은 gate:{analysis_id} 만 서명(nonce 무관)이라 동일 버튼이 무한 재사용
+            # 가능 → claim 이 단일 동기화 지점. save_gate_decision(upsert) 대신 insert-only claim 으로
+            # 결정 뒤집기까지 차단(#780 save_new / #787 _ensure_repo 동형 race-safe 패턴).
+            # Replay guard (#11): atomically claim the decision before any side effect. A UNIQUE
+            # (analysis_id) INSERT makes it first-writer-wins; an existing decision or a concurrent
+            # replay (double-click / Telegram retry) loses with IntegrityError→False and skips side
+            # effects. The HMAC signs only gate:{analysis_id} (no nonce), so the claim is the single
+            # synchronization point — insert-only (no flip), mirroring #780/#787 race-safe pattern.
+            if not gate_decision_repo.claim_decision(db, analysis_id, decision, "manual", decided_by):
+                logger.info(
+                    "handle_gate_callback: analysis %d already decided — skipping replay",
+                    analysis_id,
+                )
+                return
+            github_token = (
+                repo.owner.plaintext_token
+                if repo.owner and repo.owner.plaintext_token
+                else settings.github_token
+            )
             # GitHub PR Review body 는 리포 협업자 전체에게 영구 노출 — 발신 언어 i18n (사이클 154 P0)
             # The PR Review body is permanently visible to all collaborators — i18n it (Cycle 154 P0)
             config = get_repo_config(db, repo.full_name)
@@ -133,7 +154,8 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
                 github_token, repo.full_name,
                 analysis.pr_number, decision, body,
             )
-            save_gate_decision(db, analysis_id, decision, "manual", decided_by)
+            # 결정은 위 claim 단계에서 이미 원자적으로 기록됨 (save_gate_decision 중복 제거)
+            # The decision was already recorded atomically by the claim above (no save needed)
             result_dict = analysis.result if isinstance(analysis.result, dict) else {}
             score = result_dict.get("score", analysis.score or 0)
             # 반자동 auto-merge 를 자동 경로(engine._run_auto_merge)에 위임 — retry 큐잉·
@@ -211,7 +233,13 @@ def _handle_message(
     return {"status": "ok"}
 
 
-@router.post("/api/webhook/telegram", responses={401: {"description": "Invalid secret token"}})
+@router.post(
+    "/api/webhook/telegram",
+    responses={
+        400: {"description": "Invalid request body"},
+        401: {"description": "Invalid secret token"},
+    },
+)
 async def telegram_webhook(  # pylint: disable=too-many-locals
     # too-many-locals: 콜백 소유권 전달용 telegram_user_id 추가로 16/15 (inline disable + 사유)
     request: Request,
@@ -234,7 +262,19 @@ async def telegram_webhook(  # pylint: disable=too-many-locals
         logger.warning("Telegram webhook: invalid or missing secret token")
         raise HTTPException(status_code=401, detail="Invalid secret token")
 
-    payload = await request.json()
+    # 🔴 본문 파싱 robustness (#13): secret 통과 후 비정형/비-dict 본문이 미처리 500 을 내지
+    # 않도록 방어 — railway provider 와 대칭(잘못된 client 요청은 400). malformed JSON 은
+    # JSONDecodeError, 비-dict(array/scalar) 본문은 이어지는 payload.get 의 AttributeError 유발.
+    # Body-parse robustness (#13): after the secret check, guard against malformed/non-dict bodies
+    # that would otherwise raise an unhandled 500 — reject as 400 (symmetric with railway provider).
+    try:
+        payload = await request.json()
+    except Exception:  # pylint: disable=broad-except
+        logger.warning("Telegram webhook: malformed JSON body")
+        raise HTTPException(status_code=400, detail="Invalid JSON body") from None
+    if not isinstance(payload, dict):
+        logger.warning("Telegram webhook: non-dict JSON body (%s)", type(payload).__name__)
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
 
     # message.text 분기: 텍스트 명령 처리
     # message.text branch: handle text commands
