@@ -15,7 +15,7 @@ class Repository(Base):
     full_name      = Column(String, unique=True, nullable=False, index=True)
     telegram_chat_id = Column(String, nullable=True)
     created_at     = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    user_id        = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    user_id        = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     webhook_secret = Column(String, nullable=True)
     webhook_id     = Column(Integer, nullable=True)
 

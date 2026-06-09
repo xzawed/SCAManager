@@ -74,9 +74,9 @@ _ALLOWLIST_PATTERNS = (
     #    (ORM postgresql_where 선언 차기 후보 — WHERE 정규화 FP 주의)
     ("remove_index", "uq_insight_cache_global"),
     ("remove_index", "uq_insight_cache_repo"),
-    # ⑤ repositories.user_id FK — 0005 가 컬럼만 추가(DB FK 제약 미생성), ORM 은 ForeignKey('users.id') 선언
-    #    (#14-class, DB 레벨 FK 부재). (신규 마이그레이션 FK 추가 차기 후보 — 고아 user_id 검증 필요)
-    ("add_fk", "repositories", "user_id", "users.id"),
+    # ⑤ repositories.user_id FK — **해소(alembic 0039, ondelete=SET NULL)**: 0005 가 컬럼만 추가했던
+    #    DB FK 부재를 0039 가 추가(고아 정리 선행). ORM↔DB 정합 → allowlist 불요(제거). 잔존 시 가드가
+    #    실제 FK 누락(회귀)을 잡도록 의도적 미등재. (#14-class 중 데이터 무결성 영향분 — drift ①③④ 는 잔존)
 )
 
 
