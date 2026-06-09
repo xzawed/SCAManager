@@ -448,80 +448,6 @@ button { font-family: inherit; }
 .input--mono { font-family: var(--font-mono); font-size: var(--fs-xs); }
 
 /* ==========================================================================
-   NAV — top app bar
-   ========================================================================== */
-.nav {
-  position: sticky;
-  top: 0;
-  z-index: 50;
-  background: var(--bg-nav);
-  backdrop-filter: saturate(140%) blur(14px);
-  -webkit-backdrop-filter: saturate(140%) blur(14px);
-  border-bottom: 1px solid var(--border-subtle);
-  height: 56px;
-  display: flex;
-  align-items: center;
-  padding: 0 var(--space-6);
-  gap: var(--space-6);
-}
-.nav__brand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-weight: 700;
-  font-size: var(--fs-md);
-  letter-spacing: var(--ls-tight);
-}
-.nav__mark {
-  width: 28px; height: 28px;
-  border-radius: var(--radius-md);
-  background: var(--accent-grad);
-  display: grid;
-  place-items: center;
-  box-shadow: var(--elev-1);
-  color: white;
-  font-size: 14px;
-}
-.nav__links {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  margin-left: var(--space-3);
-}
-.nav__link {
-  padding: 6px var(--space-3);
-  font-size: var(--fs-sm);
-  color: var(--text-2);
-  border-radius: var(--radius-sm);
-  text-decoration: none;
-  transition: all var(--dur-fast) var(--ease-out);
-}
-.nav__link:hover { color: var(--text-1); background: var(--bg-mute); }
-.nav__link.is-active {
-  color: var(--text-1);
-  background: var(--bg-mute);
-  font-weight: 580;
-}
-.nav__spacer { flex: 1 1 auto; }
-.nav__chip {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 4px 10px;
-  font-size: var(--fs-xs);
-  background: var(--bg-mute);
-  border-radius: var(--radius-pill);
-  color: var(--text-2);
-  border: 1px solid var(--border-subtle);
-}
-.nav__avatar {
-  width: 28px; height: 28px;
-  border-radius: 50%;
-  background: var(--accent-grad);
-  color: white;
-  display: grid; place-items: center;
-  font-size: var(--fs-xs); font-weight: 700;
-}
-
-/* ==========================================================================
    KPI CARD
    ========================================================================== */
 .kpi {
@@ -700,35 +626,6 @@ button { font-family: inherit; }
 }
 
 /* ==========================================================================
-   TAB BAR
-   ========================================================================== */
-.tabs {
-  display: inline-flex;
-  background: var(--bg-mute);
-  border-radius: var(--radius-md);
-  padding: 3px;
-  gap: 2px;
-}
-.tabs__tab {
-  padding: 6px var(--space-3);
-  font-size: var(--fs-xs);
-  font-weight: 540;
-  color: var(--text-2);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: all var(--dur-fast) var(--ease-out);
-  border: 0;
-  background: transparent;
-  display: inline-flex; align-items: center; gap: 6px;
-}
-.tabs__tab:hover { color: var(--text-1); }
-.tabs__tab.is-active {
-  background: var(--bg-card-hi);
-  color: var(--text-1);
-  box-shadow: var(--elev-1);
-}
-
-/* ==========================================================================
    KBD
    ========================================================================== */
 .kbd {
@@ -832,58 +729,6 @@ body.fx-ready .fx-enter.is-in-view {
 
 /* press feedback */
 .btn:active { transition-duration: 60ms; transform: scale(0.96); }
-
-/* ==========================================================================
-   TABS — sliding indicator
-   ========================================================================== */
-.tabs {
-  position: relative;
-  z-index: 0;
-}
-.tabs__indicator {
-  position: absolute;
-  top: 3px;
-  left: 0;
-  height: calc(100% - 6px);
-  background: var(--bg-card-hi);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--elev-1);
-  z-index: 0;
-  pointer-events: none;
-  transition: transform var(--dur-base) var(--ease-spring),
-              width var(--dur-base) var(--ease-spring);
-}
-.tabs__tab { position: relative; z-index: 1; }
-.tabs__tab.is-active {
-  background: transparent !important;
-  box-shadow: none !important;
-}
-
-/* ==========================================================================
-   NAV — sliding active pill
-   ========================================================================== */
-.nav__links {
-  position: relative;
-}
-.nav__indicator {
-  position: absolute;
-  top: 50%;
-  left: 0;
-  height: calc(100% - 16px);
-  transform: translate(0, -50%);
-  background: var(--bg-mute);
-  border-radius: var(--radius-sm);
-  z-index: 0;
-  pointer-events: none;
-  opacity: 0;
-  transition: transform var(--dur-base) var(--ease-spring),
-              width var(--dur-base) var(--ease-spring),
-              opacity var(--dur-base) ease;
-}
-.nav__link { position: relative; z-index: 1; }
-.nav__link.is-active {
-  background: transparent !important;
-}
 
 /* ==========================================================================
    CARDS — hover lift + subtle tilt (driven by JS --tilt-x/y)
@@ -1038,4 +883,3 @@ body.fx-ready .fx-enter.is-in-view {
   font-size: 11px;
   color: var(--text-3);
 }
-
