@@ -159,6 +159,8 @@ def _coerce_score(raw: object, max_val: int, default: int) -> "tuple[int, bool]"
     변경 시 양쪽 동시 수정 + parity 회귀 가드(test_ai_review_errors.py) 갱신 의무 (testing.md
     의도적 중복 패턴 — 사용처 2곳이라 공유 추출 대신 인라인+가드, 정책16 최소 추상화).
     int(raw) 가 TypeError/ValueError(float-string)/OverflowError(Infinity)를 던지면 default·ok=False.
+    유효한 float(예: 8.9)은 int() 가 0 방향 절삭(양수=floor, 반올림 X) → 8 — 점수 보수적 하향(인플레 방지), ok=True.
+    A valid float (e.g. 8.9) is truncated toward zero by int() (floor for positives, no rounding) → 8 (ok=True).
     🔴 PARITY GUARD with src/api/hook.py::_coerce_raw_score — keep behaviour identical; update both
     plus the parity regression test together when changing either.
     """

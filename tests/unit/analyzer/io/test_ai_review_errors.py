@@ -283,6 +283,22 @@ def test_coerce_score_parity_with_hook_coerce_raw_score():
             f"parity drift for raw={raw!r}"
 
 
+def test_coerce_score_truncates_valid_float_toward_zero():
+    """유효한 float 은 int() 0방향 절삭(반올림 X) — docstring 정수 의미 가드 (사이클166 follow-up).
+
+    문서화한 '정수 변환 의미'(8.9 → 8, 반올림이면 9)를 값으로 명시 봉인. int()→round() 같은
+    무심코 변경 시 본 가드가 fail. PARITY 대상이라 양쪽 동일 단언.
+    Valid floats are truncated toward zero (no rounding) — guards the documented int() semantics.
+    """
+    from src.api.hook import _coerce_raw_score  # pylint: disable=import-outside-toplevel
+    # 8.9 → 8 (절삭; 반올림이면 9), 유효 숫자라 ok=True
+    assert _coerce_score(8.9, 20, 17) == (8, True)
+    assert _coerce_raw_score(8.9, 20, 17) == (8, True)
+    # 음수 float 은 0 방향 절삭(-2.9 → -2) 후 [0,max] clamp → 0
+    assert _coerce_score(-2.9, 20, 17) == (0, True)
+    assert _coerce_raw_score(-2.9, 20, 17) == (0, True)
+
+
 def test_parse_response_preserves_feedback_on_nonnumeric_score():
     """#24: 단일 점수 필드 float-string 이어도 리뷰 전체를 폐기하지 않고 feedback·정상 점수 보존.
 

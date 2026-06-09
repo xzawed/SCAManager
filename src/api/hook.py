@@ -70,6 +70,9 @@ def _coerce_raw_score(raw: Any, max_val: int, default: int) -> tuple[int, bool]:
 
     반환 (clamped, ok) — ok=False 시 호출자가 ai_review_status='parse_error' 로 분류.
     Returns (clamped, ok) — ok=False signals the caller to mark ai_review_status='parse_error'.
+
+    유효한 float(예: 8.9)은 int() 가 0 방향 절삭(양수=floor, 반올림 X) → 8 — 점수 보수적 하향(인플레 방지), ok=True.
+    A valid float (e.g. 8.9) is truncated toward zero by int() (floor for positives, no rounding) → 8 (ok=True).
     """
     try:
         value = int(raw)
