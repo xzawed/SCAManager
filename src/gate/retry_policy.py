@@ -52,8 +52,17 @@ def should_retry(reason_tag: str, ci_status: str) -> bool:
         return False
 
     if reason_tag == UNSTABLE_CI:
-        # CI 진행 중이거나 방금 통과했으면 재시도 — merge API 갱신 지연 가능
-        # Retry when CI is still running or just passed — merge API may lag
+        # CI 진행 중이거나 방금 통과했으면 재시도 — merge API 갱신 지연(lag) 또는 일부 check suite pending 대비
+        # Retry when CI is still running or just passed — merge API may lag, or some check suites still pending.
+        # 🔴 'passed' 재시도는 의도적·bounded (정합성 감사 #23, 사용자 결정 A — 현 설계 유지):
+        #    재시도 예산은 (a) is_expired(created_at + max_age, 기본 24h=MERGE_RETRY_MAX_AGE_HOURS) +
+        #    (b) 재시도 서비스의 max_attempts cap(기본 30=MERGE_RETRY_MAX_ATTEMPTS, 초과 시 abandoned)으로 상한.
+        #    (is_expired 자체는 max_age 만 검사 — max_attempts 는 process_pending_retries 가 강제.)
+        #    비머지 PR 의 예산 소모는 merge-API-lag 허용을 위한 수용된 트레이드오프이며 '영구 재시도'가 아니다.
+        #    terminal 로 바꾸면 CI 통과 직후 mergeable_state 미반영(lag) 정상 케이스를 오판(false terminal)한다.
+        # 🔴 'passed' retry is intentional and bounded (#23): capped by is_expired (max_age, ~24h) AND a
+        #    separate max_attempts cap (~30, enforced in the retry service → abandoned), not is_expired alone;
+        #    making it terminal would falsely fail legitimate merge-API-lag cases.
         # unknown: GitHub API 일시 오류 시 영구 종료 방지 — running으로 간주 재시도
         # unknown: prevents permanent terminal on transient GitHub API errors — treat as running
         return ci_status in ("running", "passed", "unknown")
