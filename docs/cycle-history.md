@@ -7,6 +7,7 @@
 
 - [사이클 166 (Task9 full 감사 P2 백로그 해소 — 빠른 정합 docs/db·test/effects.js dead-code + UI Medium hx-boost 리스너 누적·i18n 이중이스케이프[Option A], 5 PR #820~#824, Codex mutual 5/5, 2026-06-09)](#사이클-166)
 - [사이클 166 적대 재검증 후속 (STATE overclaim + #32 'resolved' 위양성 적발 → #838 docs정정·#839 #32 tojson·#840 drift④ FK·#841 drift① rename, 4 PR, 2026-06-09)](#사이클-166-적대-재검증-후속-2026-06-09--838841)
+- [잔여작업 라운드 (사용자 결정 C — #843 drift③④' ORM 부분 인덱스 정합·#844 #2 RLS owner-bypass 근본 runbook, 2 PR, 2026-06-09~10)](#잔여작업-라운드-2026-06-0910--843844-사용자-결정-c)
 - [사이클 165 (Task9 골든 리메디에이션 — P1 #802~810 + P2 보안·파이프라인 하드닝 클러스터 #811~814: 게이트 원자적 리플레이 claim·webhook 본문 파싱·ai_review per-field PARITY·SSRF docstring·hook parse_error NULL+overview, Codex true mutual 실결함 4건 적발, 11 PR, 2026-06-08~09)](#사이클-165)
 - [사이클 164 (area=gate 잔여 6 결함 — 사용자 Q1~Q4 결정: 정적분석 파일격리+타임아웃 부분결과 보존, telegram 반자동 auto-merge 완전 대칭, regate first-writer-wins, 3 PR #794~#796, 2026-06-08)](#사이클-164)
 - [사이클 163 (area=gate P2 백로그 해소 — ApproveAction 정적분석 가드·hook 점수 비숫자/Infinity 안전변환·merge_retry 백오프 validator·zero-SHA 조기종료·_ensure_repo race 복구, 5 PR #783~#787, 2026-06-07)](#사이클-163)
@@ -137,7 +138,24 @@
 
 **🔴 핵심 학습**: (1) **감사 항목은 리포트 지목 EXACT line 확인 의무** — 파일 내 tojson 존재 ≠ 해당 위치 적용(#32 위양성 근원). (2) **스택 마이그레이션 패턴**: 병렬 open PR 둘 다 마이그레이션 추가 시 두 번째는 첫 head 를 down_revision(0038→0039→0040) + base=앞 브랜치 스택 PR. 둘 다 0038 기반이면 alembic multiple heads. squash 머지 후 스택 PR 충돌 → `git rebase --onto main <앞PR 마지막커밋>` 으로 해소(이미 머지된 변경 drop).
 
-**잔여**: #2(RLS·SaaS 보류) + drift ③④'(부분인덱스 allowlist 무해 유지 — 사용자 결정 A: ①만 처리, ③④'은 WHERE-FP 리스크+운영무해로 보류). full 감사 36건 실질 종결.
+**잔여**: #2(RLS·SaaS 보류) + drift ③④'(부분인덱스 allowlist 무해 유지). 🔴 **이후 잔여작업 라운드(#843/#844)에서 drift ③④' 해소 + #2 근본 runbook — 아래 §"잔여작업 라운드" 참조**.
+
+---
+
+## 잔여작업 라운드 (2026-06-09~10) — #843/#844 (사용자 결정 C)
+
+**날짜**: 2026-06-09~10 | **PR**: #843~#844 (2건 머지) | **트리거**: 사용자 "잔여 작업 수행을 원합니다" → AskUserQuestion 결정 **C(둘 다 순차: ③④' → #2)** | **상태**: full 감사 36건 drift·#32 전부 해소, #2 근본 runbook 준비
+
+이전 보류 결정(③④' allowlist 유지 / #2 SaaS 유지)을 사용자 재결정(C)으로 수행.
+
+- **#843 (drift ③④' ORM 정합)**: alembic 0032 `ix_analyses_repo_id_created_at_tokens`(WHERE input_tokens IS NOT NULL) + 0031 `uq_insight_cache_global/repo`(부분 UNIQUE, WHERE repo_id IS NULL/NOT NULL) 를 ORM `__table_args__` 에 선언. 🔴 **postgresql_where + sqlite_where 양 방언 필수**: postgresql_where 만 쓰면 SQLite create_all 이 전체 유니크 인덱스를 만들어 전역+리포 캐시 공존 붕괴 → 양 방언 partial 선언(sqlite_master 실측 확인). allowlist ③④ 제거(잔존=② email 표현 FP 뿐) + 필터 fixture ②로 교체 + 가드 test_orm_partial_indexes(양 방언 WHERE 술어 정확 비교, Codex mutual 강화). 🔴 **WHERE-FP 미발생** — pg-concurrency CI compare_metadata green(ORM postgresql_where 술어가 반영 PG WHERE 와 정합, 사전 우려된 WHERE 정규화 FP 실측상 無). 단위 4733→4735.
+- **#844 (#2 RLS owner-bypass 근본 runbook)**: `docs/runbooks/rls-role-separation.md` — RLS 2차 안전망 실효 0(앱=postgres BYPASSRLS 접속, FORCE 단독 무의미) 근본 해결 4단계 절차(비-BYPASSRLS 앱 role + BYPASSRLS worker role 프로비저닝 → background 전략 3옵션 → FORCE 마이그레이션 → DATABASE_URL 전환) + 검증/롤백/pre-flight. 🔴 **핵심 설계 요건**: background 경로(webhook/cron/worker) app.user_id 미설정 → FORCE+비-BYPASSRLS 전환 시 user-owned repo 차단(파이프라인 붕괴) → service role 분리 선행 필수. db.md RLS 규칙 참조 추가. docs-only(실제 실행=사용자 운영 작업+Phase 2 코드 PR).
+
+**검증**: 전 PR Codex mutual OK(push 전). 🔴 Codex mutual ROI: #843 가드 술어 미고정(단일정답 버그) + #844 runbook 3건(ALTER DEFAULT PRIVILEGES FOR ROLE·11테이블 출처·worker role SQL 누락) 적발→정정. 단위 4733→4735, 통합 154, pylint 10.00.
+
+**🔴 핵심 학습**: (1) **부분 유니크 인덱스 ORM 선언 = postgresql_where + sqlite_where 양 방언 의무** — 한쪽만 쓰면 SQLite 가 전체 유니크화로 도메인 무결성 붕괴. (2) **#2 류 RLS owner-bypass 는 코드만으로 미완결** — BYPASSRLS 접속이면 FORCE 도 무의미, role 분리(운영) + background 전략(코드 설계) 선행 필수. runbook 으로 절차 문서화가 actionable 산출물.
+
+**최종 잔여**: **#2(RLS·SaaS — role 분리 runbook 준비완료, 운영 실행 + Phase 2 background 코드 PR 대기)만**. full 감사 36건 = drift①③④'·#32 전부 해소/#22/#23/#14 결정 + #2 근본 절차 문서화. 실질 종결.
 
 ---
 
