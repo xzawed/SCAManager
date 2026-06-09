@@ -11,7 +11,7 @@ When a merge fails because CI is still running, enqueue and retry.
 """
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, Text, text
 
 from src.database import Base
 
@@ -120,4 +120,13 @@ class MergeRetryQueue(Base):
         # SHA 조회 인덱스 — 특정 커밋의 큐 상태 빠른 조회
         # SHA lookup index — fast lookup of queue status for a specific commit.
         Index("ix_merge_retry_queue_sha_lookup", "repo_full_name", "commit_sha", "status"),
+        # 부분 유일 인덱스 — status='pending' 활성 행 중복 방지. alembic 0020 raw DDL 과 ORM 양쪽 선언 (#16)
+        # Partial unique index — prevents duplicate active (pending) rows; declared in ORM + alembic 0020.
+        Index(
+            "uq_merge_retry_queue_active",
+            "repo_full_name", "pr_number", "commit_sha",
+            unique=True,
+            sqlite_where=text("status = 'pending'"),
+            postgresql_where=text("status = 'pending'"),
+        ),
     )
