@@ -446,7 +446,7 @@
             border-left: 3px solid var(--accent); border-radius: 6px;">
     {{ 'settings_page.simple_only_hint' | i18n_args(locale | default('ko')) | safe }}
   </p>
-  
+
 
   <form id="settingsForm" method="post" action="/repos/{{ repo_name }}/settings">
     <input type="hidden" name="approve_mode" id="approveModeValue" value="{{ config.approve_mode }}">
@@ -1171,9 +1171,9 @@
     },
   };
   var PRESET_LABELS = {
-    minimal: '{{ 'settings.preset_minimal' | i18n_args(locale | default('ko')) }}',
-    standard: '{{ 'settings.preset_standard' | i18n_args(locale | default('ko')) }}',
-    strict: '{{ 'settings.preset_strict' | i18n_args(locale | default('ko')) }}',
+    minimal: {{ 'settings.preset_minimal' | i18n_args(locale | default('ko')) | tojson }},
+    standard: {{ 'settings.preset_standard' | i18n_args(locale | default('ko')) | tojson }},
+    strict: {{ 'settings.preset_strict' | i18n_args(locale | default('ko')) | tojson }},
   };
 
   // 아코디언 토글 — 펼치면 diff 미리보기(자동 적용 아님), 다른 카드는 닫힘
@@ -1193,15 +1193,15 @@
     if (!tbody) return;
 
     const labels = {
-      pr_review_comment: '{{ 'settings.field_pr_review_comment' | i18n_args(locale | default('ko')) }}',
-      commit_comment: '{{ 'settings.field_commit_comment' | i18n_args(locale | default('ko')) }}',
-      create_issue: '{{ 'settings.field_create_issue' | i18n_args(locale | default('ko')) }}',
-      railway_deploy_alerts: '{{ 'settings.field_railway_deploy_alerts' | i18n_args(locale | default('ko')) }}',
-      approve_mode: '{{ 'settings.field_approve_mode' | i18n_args(locale | default('ko')) }}',
-      auto_merge: '{{ 'settings.field_auto_merge' | i18n_args(locale | default('ko')) }}',
-      approve_threshold: '{{ 'settings.field_approve_threshold' | i18n_args(locale | default('ko')) }}',
-      reject_threshold: '{{ 'settings.field_reject_threshold' | i18n_args(locale | default('ko')) }}',
-      merge_threshold: '{{ 'settings.field_merge_threshold' | i18n_args(locale | default('ko')) }}',
+      pr_review_comment: {{ 'settings.field_pr_review_comment' | i18n_args(locale | default('ko')) | tojson }},
+      commit_comment: {{ 'settings.field_commit_comment' | i18n_args(locale | default('ko')) | tojson }},
+      create_issue: {{ 'settings.field_create_issue' | i18n_args(locale | default('ko')) | tojson }},
+      railway_deploy_alerts: {{ 'settings.field_railway_deploy_alerts' | i18n_args(locale | default('ko')) | tojson }},
+      approve_mode: {{ 'settings.field_approve_mode' | i18n_args(locale | default('ko')) | tojson }},
+      auto_merge: {{ 'settings.field_auto_merge' | i18n_args(locale | default('ko')) | tojson }},
+      approve_threshold: {{ 'settings.field_approve_threshold' | i18n_args(locale | default('ko')) | tojson }},
+      reject_threshold: {{ 'settings.field_reject_threshold' | i18n_args(locale | default('ko')) | tojson }},
+      merge_threshold: {{ 'settings.field_merge_threshold' | i18n_args(locale | default('ko')) | tojson }},
     };
 
     function curVal(key) {
@@ -1218,8 +1218,8 @@
       if (val === true) return '✅';
       if (val === false) return '⬜';
       if (val === 'disabled') return '🚫';
-      if (val === 'auto') return '{{ 'settings.mode_auto' | i18n_args(locale | default('ko')) }}';
-      if (val === 'semi-auto') return '{{ 'settings.mode_semi_auto' | i18n_args(locale | default('ko')) }}';
+      if (val === 'auto') return {{ 'settings.mode_auto' | i18n_args(locale | default('ko')) | tojson }};
+      if (val === 'semi-auto') return {{ 'settings.mode_semi_auto' | i18n_args(locale | default('ko')) | tojson }};
       return String(val);
     }
 
@@ -1350,7 +1350,7 @@
     toast.id = 'presetToast';
     toast.className = 'save-toast save-toast-ok';
     toast.innerHTML = '✅ <strong>' + label + '</strong> ' +
-      '{{ 'settings.preset_applied_suffix' | i18n_args(locale | default('ko')) }}';
+      {{ 'settings.preset_applied_suffix' | i18n_args(locale | default('ko')) | tojson }};
     toast.style.cursor = 'pointer';
     toast.addEventListener('click', () => toast.remove());
     document.body.appendChild(toast);
@@ -1380,8 +1380,8 @@
     input.type = isHidden ? 'text' : 'password';
     btn.textContent = isHidden ? '🙈' : '👁️';
     btn.setAttribute('aria-label', isHidden
-      ? '{{ 'settings.hide_value' | i18n_args(locale | default('ko')) }}'
-      : '{{ 'settings.show_value' | i18n_args(locale | default('ko')) }}');
+      ? {{ 'settings.hide_value' | i18n_args(locale | default('ko')) | tojson }}
+      : {{ 'settings.show_value' | i18n_args(locale | default('ko')) | tojson }});
   }
 
   function toggleMergeIssueOption(show) {

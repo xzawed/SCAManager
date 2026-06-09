@@ -11,11 +11,14 @@ Phase 2 PR-8 regression guards — settings + admin 3 templates multilingual ren
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime
+from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from src.i18n.filters import register_i18n_filters
+from src.i18n.loader import get_text
 
 
 def _render(template_name: str, **context) -> str:
@@ -26,6 +29,15 @@ def _render(template_name: str, **context) -> str:
     register_i18n_filters(env)
     tmpl = env.get_template(template_name)
     return tmpl.render(**context)
+
+
+def _js(key: str, locale: str) -> str:
+    """렌더된 JS 출력에서 기대되는 `| tojson` 직렬화 문자열 (#32 — JS 리터럴 안전 주입).
+
+    Expected tojson-serialized string in rendered JS output (#32 — JS-literal safe injection).
+    Jinja `| tojson` == json.dumps(ensure_ascii=True) — 라벨 문자열에 <>&' 없어 동치.
+    """
+    return json.dumps(get_text(key, locale))
 
 
 class _FakeUser:
@@ -462,18 +474,18 @@ def test_settings_renders_korean_settings_namespace_keys():
     assert "AI 코드리뷰 모델" in out
     assert "전역 기본값 사용" in out
     assert "리포별 AI 리뷰 모델을 선택합니다" in out  # model_hint
-    # JS 인라인 PRESET_LABELS (settings.html:1174~1176) — 렌더 출력에 문자열로 포함
-    # JS inline PRESET_LABELS appear as literal strings in rendered output
-    assert "minimal: '최소'" in out
-    assert "standard: '표준'" in out
-    assert "strict: '엄격'" in out
+    # JS 인라인 PRESET_LABELS (settings.html:1174~1176) — #32 이후 `| tojson` 직렬화(JS-안전)
+    # JS inline PRESET_LABELS — tojson-serialized after #32 (ensure_ascii escaped, JS-safe)
+    assert f"minimal: {_js('settings.preset_minimal', 'ko')}" in out
+    assert f"standard: {_js('settings.preset_standard', 'ko')}" in out
+    assert f"strict: {_js('settings.preset_strict', 'ko')}" in out
     # JS 인라인 field 라벨 (settings.html:1196~1204)
-    assert "pr_review_comment: 'PR 코드리뷰 댓글'" in out
-    assert "approve_threshold: '승인 기준점'" in out
-    assert "merge_threshold: 'Merge 임계값'" in out
-    # mode 라벨 (settings.html:1221~1222)
-    assert "⚡ 자동" in out
-    assert "📱 반자동" in out
+    assert f"pr_review_comment: {_js('settings.field_pr_review_comment', 'ko')}" in out
+    assert f"approve_threshold: {_js('settings.field_approve_threshold', 'ko')}" in out
+    assert f"merge_threshold: {_js('settings.field_merge_threshold', 'ko')}" in out
+    # mode 라벨 (settings.html:1221~1222) — tojson 직렬화
+    assert _js('settings.mode_auto', 'ko') in out
+    assert _js('settings.mode_semi_auto', 'ko') in out
 
 
 def test_settings_renders_english_settings_namespace_keys():
@@ -481,9 +493,9 @@ def test_settings_renders_english_settings_namespace_keys():
     out = _render("settings.html", locale="en", **_settings_ctx_146())
     assert "AI Code Review Model" in out
     assert "Use global default" in out
-    assert "minimal: 'Minimal'" in out
-    assert "standard: 'Standard'" in out
-    assert "strict: 'Strict'" in out
+    assert f"minimal: {_js('settings.preset_minimal', 'en')}" in out
+    assert f"standard: {_js('settings.preset_standard', 'en')}" in out
+    assert f"strict: {_js('settings.preset_strict', 'en')}" in out
 
 
 def test_settings_renders_japanese_settings_namespace_keys():
@@ -491,7 +503,7 @@ def test_settings_renders_japanese_settings_namespace_keys():
     out = _render("settings.html", locale="ja", **_settings_ctx_146())
     assert "AIコードレビューモデル" in out
     assert "グローバルデフォルトを使用" in out
-    assert "minimal: '最小'" in out
+    assert f"minimal: {_js('settings.preset_minimal', 'ja')}" in out
 
 
 def test_settings_renders_save_toast_ok_when_saved():
@@ -537,3 +549,24 @@ def test_settings_no_raw_settings_namespace_keys_leak():
 
     leaks = re.findall(r"(?<![\w-])settings\.[a-z_]+", out)
     assert not leaks, f"raw settings 키 노출: {leaks}"
+
+
+# ── #32 회귀 가드 — JS 리터럴 i18n 은 tojson 직렬화 의무 ─────────────────────
+# Cycle 166 'resolved' 위양성(cycle-history.md:83) → 적대 재검증 후 실제 수정.
+
+
+def test_settings_js_literals_use_tojson_not_html_escape():
+    """#32 회귀 가드 — settings.html <script> 의 i18n_args 가 JS 문자열 리터럴에
+    HTML-escape(autoescape)로 주입되지 않고 `| tojson` 으로 JS-안전 직렬화되는지 검증.
+
+    #32 regression guard — i18n_args inside settings.html JS string literals must use
+    `| tojson` (JS-safe), NOT single-quote HTML-escape wrapping.
+    `i18n_args` 는 raw + HTML autoescape(JS-escape 아님)라 JS 리터럴 컨텍스트 부정합 —
+    번역문에 따옴표/백슬래시 유입 시 JS 깨짐·주입 위험. tojson 이 JS-안전 직렬화.
+    """
+    src = Path("src/templates/settings.html").read_text(encoding="utf-8")
+    # 안티패턴: '{{ 'settings.<key>' | i18n_args(...) }}' (단일 따옴표 래핑 = HTML-escape)
+    assert "'{{ 'settings." not in src, (
+        "JS 문자열 리터럴 i18n 은 `| tojson` 직렬화 의무 (#32) — "
+        "'{{ ... | i18n_args(...) }}' 단일따옴표 래핑(HTML-escape) 금지"
+    )
