@@ -142,6 +142,10 @@ scripts/
 │                                # Backfill repository user_id — migration helper script
 ├── check_memory_refs.py         # 메모리 참조 유효성 검사 — CLAUDE.md/active.md/history.md 슬러그 ↔ 실제 파일 비교 (사이클 101 #469)
 │                                # Memory reference validator — slug ↔ actual file cross-check
+├── capture_design_screenshots.py # 디자인 스크린샷 자동 캡처 — 12페이지 × 4테마 (Claude Design 브리프 패키지용, 사이클 131)
+│                                # Auto-capture design screenshots — 12 pages × 4 themes (Claude Design brief)
+├── extract_design_tokens.py     # 디자인 토큰 추출 — tokens.css/themes.css → Claude Design 입력 JSON
+│                                # Extract design tokens — tokens.css/themes.css → structured JSON
 └── README.md                    # 사용자 실행 가이드 + 비용 안내
 ```
 
