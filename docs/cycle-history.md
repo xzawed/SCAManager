@@ -6,6 +6,7 @@
 ## 목차
 
 - [사이클 166 (Task9 full 감사 P2 백로그 해소 — 빠른 정합 docs/db·test/effects.js dead-code + UI Medium hx-boost 리스너 누적·i18n 이중이스케이프[Option A], 5 PR #820~#824, Codex mutual 5/5, 2026-06-09)](#사이클-166)
+- [사이클 166 적대 재검증 후속 (STATE overclaim + #32 'resolved' 위양성 적발 → #838 docs정정·#839 #32 tojson·#840 drift④ FK·#841 drift① rename, 4 PR, 2026-06-09)](#사이클-166-적대-재검증-후속-2026-06-09--838841)
 - [사이클 165 (Task9 골든 리메디에이션 — P1 #802~810 + P2 보안·파이프라인 하드닝 클러스터 #811~814: 게이트 원자적 리플레이 claim·webhook 본문 파싱·ai_review per-field PARITY·SSRF docstring·hook parse_error NULL+overview, Codex true mutual 실결함 4건 적발, 11 PR, 2026-06-08~09)](#사이클-165)
 - [사이클 164 (area=gate 잔여 6 결함 — 사용자 Q1~Q4 결정: 정적분석 파일격리+타임아웃 부분결과 보존, telegram 반자동 auto-merge 완전 대칭, regate first-writer-wins, 3 PR #794~#796, 2026-06-08)](#사이클-164)
 - [사이클 163 (area=gate P2 백로그 해소 — ApproveAction 정적분석 가드·hook 점수 비숫자/Infinity 안전변환·merge_retry 백오프 validator·zero-SHA 조기종료·_ensure_repo race 복구, 5 PR #783~#787, 2026-06-07)](#사이클-163)
@@ -115,9 +116,28 @@
 
 - **#836 (#18, 사용자 착수 승인)**: 전역 ORM↔alembic `compare_metadata` 정합 가드(PG-only, pg-concurrency CI) — `alembic upgrade head` 스키마 ↔ `Base.metadata` 구조적 diff==0 단언, **신규 drift 차단**. FP 제거: compare_type/server_default off + 단일 PK 컬럼 인덱스 중복 FP 제너릭 필터 + 사전존재 8건 allowlist(문서화). 첫 CI 14 diff → 2차 PASS. 🔴 **#18 이 사전존재 실 drift 4종 추가 발견(allowlist 문서화, 차기 fix 후보)**: ① users `ix_users_google_id` legacy 인덱스명(컬럼 github_id 리네임 미반영) ② analyses `ix_analyses_repo_id_created_at_tokens`(0032 alembic-only, #15류) ③ insight_cache `uq_insight_cache_global/repo` 부분유일(0031, #16류) ④ `repositories.user_id` FK(0005 컬럼만, DB FK 부재, #14류) + email unique index↔constraint 표현 FP. 필터 로직 로컬 가드(PG 불필요) 동반. 단위 +2.
 
-**잔여 (full 감사 36건 중 #2·#18 발견 drift 4종·#32 외 전부 해소/결정)**: **#2**(RLS FORCE — SaaS 전환 근본 항목, #810 갭 가시화로 운영 경고만, 보류·아키텍처). + **#18 발견 사전존재 drift 4종**(users 인덱스명·analyses _tokens·insight_cache 부분유일·repositories.user_id FK — allowlist 문서화, 차기 fix 후보; **FK 만 데이터 무결성 영향**[고아 user_id 가능], 나머지 3종 운영 무해). + **#32**(settings.html JS-리터럴 `| tojson` 미사용 — 위 사이클166 'resolved' 위양성 정정, 라이브 XSS 無·구조적 비일관, 차기 fix).
+**잔여 (full 감사 36건 — #2 + drift ③④' 만, 나머지 전부 해소/결정)**: **#2**(RLS FORCE — SaaS 전환 근본 항목, #810 갭 가시화로 운영 경고만, 보류·아키텍처). + **drift ③④'**(analyses `ix_analyses_repo_id_created_at_tokens` · insight_cache `uq_insight_cache_global/repo` 부분유일 인덱스 — ORM 미선언, WHERE 정규화 FP 리스크+운영무해라 allowlist '문서화된 무해' 유지). 🔴 **#32·drift ④(FK)·①(users 인덱스명)은 2026-06-09 적대 재검증 후속(#838~#841)에서 해소 — 아래 §"적대 재검증 후속" 참조**.
 
 **사이클 종료 (정책 18 §4 3조건)**: 회고 수행 완료 + 전 PR(#820~#836) Codex true mutual OK(push 전) + CI green. ⚠️ 회고 follow-up 'background UX silent' = '구체 지점 미발견' soft-close(결함 미입증 종료) — 차기 정합성 감사 시 background task 사용자 가시성 명시 재확인 권장.
+
+---
+
+## 사이클 166 적대 재검증 후속 (2026-06-09) — #838~#841
+
+**날짜**: 2026-06-09 | **PR**: #838~#841 (4건 머지) | **트리거**: 사용자 "잔여 작업 및 후속 작업 확인" (재요청) | **상태**: STATE overclaim + #32 위양성 적발 → 해소
+
+**작업 내용**: 사이클166 종료 후 사용자 재요청 → 4에이전트 적대 재검증 워크플로우(wf_688dd1f2)로 골든 36건 실제 상태를 main 코드와 대조. **STATE '#2 외 전부 해소/결정' overclaim 적발** + **#32 'resolved' 위양성 적발**(사이클166 검증이 `confirm()` 1114/1130 의 tojson 을 #32 가 지목한 PRESET_LABELS JS-리터럴 1174 로 오인). 사용자 결정 4건(AskUserQuestion 3회) → 4 PR.
+
+- **#838 (docs 정합 정정)**: cycle-history:83 #32 위양성 정정 + STATE:5/:65 헤더 잔여 명시 + 사이클166 종료 3조건. docs-only.
+- **#839 (#32, 결정 A=tojson)**: settings.html 17 JS-리터럴 `'{{ ... | i18n_args }}'` → `{{ ... | tojson }}` (PRESET_LABELS 3·labels 9·mode 2·suffix/hide/show 3). render-parity 단언 12건 `_js()` tojson 형식 갱신 + 정적 가드. 🔴 tojson=ensure_ascii=True → 한국어 `\uXXXX`(브라우저 정상 복원), 테스트 `_js=json.dumps(get_text())`. 라이브 XSS 無·구조적 비일관 해소. 단위 +1.
+- **#840 (drift ④, 결정 A=SET NULL+고아정리)**: repositories.user_id→users.id DB FK 추가(0039, ondelete=SET NULL, 고아 user_id→NULL 정리 선행). ORM ondelete 추가 + allowlist ⑤ 제거 + test_0039. **drift 4종 중 유일 데이터 무결성 영향분**(고아 user_id 가능). 단위 +1.
+- **#841 (drift ①, 결정 A=①만 처리)**: users 인덱스명 `ix_users_google_id`→`ix_users_github_id` rename(0040, 0005 생성·0006 컬럼리네임 시 인덱스명 stale). allowlist ① 제거 + 필터 로직 fixture 잔존 ③ 으로 교체 + test_0040. **#840 스택**(0040 down_rev=0039), 머지 순서 #840→#841(squash 충돌 → `rebase --onto main` 해소).
+
+**검증**: 전 PR Codex mutual OK(push 전, 정책 18) · 전 CI green(**PG-only tests 포함 — FK·rename 의 compare_metadata 정합 실 PG 검증**). 🔴 Codex NG 2회(#839/#841)는 환경/메타 사유(샌드박스 pytest 차단·검증서 경로 오타)로 **코드 결함 0** — 로컬 증거 제공 후 OK 전환. 단위 4730→4733(+3), 통합 154, pylint 10.00.
+
+**🔴 핵심 학습**: (1) **감사 항목은 리포트 지목 EXACT line 확인 의무** — 파일 내 tojson 존재 ≠ 해당 위치 적용(#32 위양성 근원). (2) **스택 마이그레이션 패턴**: 병렬 open PR 둘 다 마이그레이션 추가 시 두 번째는 첫 head 를 down_revision(0038→0039→0040) + base=앞 브랜치 스택 PR. 둘 다 0038 기반이면 alembic multiple heads. squash 머지 후 스택 PR 충돌 → `git rebase --onto main <앞PR 마지막커밋>` 으로 해소(이미 머지된 변경 drop).
+
+**잔여**: #2(RLS·SaaS 보류) + drift ③④'(부분인덱스 allowlist 무해 유지 — 사용자 결정 A: ①만 처리, ③④'은 WHERE-FP 리스크+운영무해로 보류). full 감사 36건 실질 종결.
 
 ---
 
