@@ -4,7 +4,7 @@
 
 **Automated Code Quality Analysis · AI Review · PR Gate Service for GitHub**
 
-[![Python](https://img.shields.io/badge/Python-3.14-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.136-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-SQLAlchemy_2-336791?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Claude AI](https://img.shields.io/badge/Claude_AI-Sonnet_4.6_(default)-CC6600?style=flat-square&logo=anthropic&logoColor=white)](https://www.anthropic.com/)
@@ -303,7 +303,7 @@ git push origin main
 
 | Category | Technology |
 |----------|------------|
-| **Language** | Python 3.14 |
+| **Language** | Python 3.12 |
 | **Web Framework** | FastAPI + Uvicorn |
 | **Auth** | GitHub OAuth2 (authlib) + Starlette SessionMiddleware |
 | **Database** | PostgreSQL · SQLAlchemy 2 · Alembic · FailoverSessionFactory |
@@ -322,7 +322,7 @@ git push origin main
 
 ### 📋 Requirements
 
-- Python **3.14** or later
+- Python **3.12** or later
 - PostgreSQL
 - GitHub OAuth App (Client ID / Client Secret)
 - (Optional) Telegram Bot Token · SMTP server · ANTHROPIC_API_KEY

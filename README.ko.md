@@ -4,7 +4,7 @@
 
 **GitHub Push / PR 이벤트 기반 자동 코드 품질 분석 · AI 리뷰 · Gate 서비스**
 
-[![Python](https://img.shields.io/badge/Python-3.14-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.136-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-SQLAlchemy_2-336791?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Claude AI](https://img.shields.io/badge/Claude_AI-Sonnet_4.6_(default)-CC6600?style=flat-square&logo=anthropic&logoColor=white)](https://www.anthropic.com/)
@@ -362,7 +362,7 @@ git push origin main
 
 | 분류 | 기술 |
 |------|------|
-| **언어** | Python 3.14 |
+| **언어** | Python 3.12 |
 | **웹 프레임워크** | FastAPI + Uvicorn |
 | **인증** | GitHub OAuth2 (authlib) + Starlette SessionMiddleware |
 | **데이터베이스** | PostgreSQL · SQLAlchemy 2 · Alembic · FailoverSessionFactory |
@@ -381,7 +381,7 @@ git push origin main
 
 ### 📋 요구사항
 
-- Python **3.14** 이상
+- Python **3.12** 이상
 - PostgreSQL
 - GitHub OAuth App (Client ID / Client Secret)
 - (선택) Telegram Bot Token · SMTP 서버 · ANTHROPIC_API_KEY
