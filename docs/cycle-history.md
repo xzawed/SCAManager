@@ -95,7 +95,14 @@
 
 **🔴 핵심 학습**: (1) #34 — 감사 에이전트가 overview.html 1곳만 보고 `| safe` 22건 놓침 → 보안 수정은 호출처 전수 grep + Codex mutual 2-layer 필수. (2) #17 — 리포트 인덱스명 부정확(partial 재판정), grep 실측이 추정 의존보다 우선. (3) #33 — CSS 동반 제거 권장이었으나 정책 11/17 기준 JS-only 축소.
 
-**잔여**: DB High-tier #14(FK ondelete)·#15/#16(인덱스 ORM 미선언)·#18(전역 compare_metadata 가드) — 정책 15 사전 확인 / 결정 영역 #22(Python 3.14↔CI 3.12)·#23(gate retry 'passed' 설계)·#2(RLS FORCE·SaaS) / 고아 CSS follow-up.
+**후속 머지 (사용자 "순차적 작업", 3 PR #826~#828)**:
+- **#826 (#15/#16)**: ORM↔alembic 인덱스 정합 — `ix_merge_attempts_state_repo`(state,repo_name) + `uq_merge_retry_queue_active`(부분 유일, sqlite/postgresql_where status='pending') ORM `__table_args__` 선언. **운영 PG DDL 무변경**(인덱스 이미 alembic 0020/0022 존재). 가드 +2(test_0023 inspect).
+- **#827 (#33 follow-up)**: 고아 CSS −156줄 제거 — components.css dead `.nav`/`.nav__*`/`.tabs`/`.tabs__*`(0 element match). 실제 nav=base.html 인라인 `nav{}`+하이픈 `.nav-*`. S4666 중복 셀렉터 해소.
+- **#828 (#14)**: `analyses.repo_id` FK ON DELETE CASCADE — 신규 마이그레이션 0038(0024 동일 패턴, PG only, FK명 `analyses_repo_id_fkey`). SET NULL=NOT NULL 불가, RESTRICT=delete_repo_cascade 충돌 → **CASCADE 사용자 confirm**. **PG-only round-trip CI 가 실 마이그레이션 검증**. 가드 +1(test_0038).
+
+전 PR Codex true mutual OK·CI green. 단위 4723→4726.
+
+**잔여**: #18(전역 compare_metadata 가드 — 대형/fragile, dialect diff 필터 필요) 자율 가능 / 결정 영역 #22(Python 3.14↔CI 3.12)·#23(gate retry 'passed' 설계)·#2(RLS FORCE·SaaS).
 
 ---
 
