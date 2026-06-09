@@ -5,8 +5,6 @@
    - Count-up animation for KPI numbers
    - Score-bar / frequency-bar grow-in
    - SVG chart line draw + donut segment grow
-   - Tabs sliding indicator
-   - Nav active pill slide
    - Smooth in-page scroll
    All effects respect [data-motion="still"] and prefers-reduced-motion.
    ========================================================================== */
@@ -258,94 +256,7 @@
     });
   }
 
-  /* ----- 7. Tabs sliding indicator --------------------------------------- */
-  // 모든 탭 인디케이터를 활성 탭 위치로 재배치 (resize 단일 전역 핸들러용)
-  // Reposition every tab indicator onto its active tab (used by the single resize handler).
-  function repositionAllTabIndicators() {
-    document.querySelectorAll(".tabs").forEach((group) => {
-      const ind = group.querySelector(".tabs__indicator");
-      const active = group.querySelector(".tabs__tab.is-active");
-      if (!ind || !active) return;
-      const groupRect = group.getBoundingClientRect();
-      const r = active.getBoundingClientRect();
-      ind.style.transition = "none";
-      ind.style.width = `${r.width}px`;
-      ind.style.transform = `translateX(${r.left - groupRect.left}px)`;
-    });
-  }
-
-  function setupTabs() {
-    document.querySelectorAll(".tabs").forEach((group) => {
-      let ind = group.querySelector(".tabs__indicator");
-      if (!ind) {
-        ind = document.createElement("span");
-        ind.className = "tabs__indicator";
-        group.prepend(ind);
-      }
-      function position(tab, animated = true) {
-        if (!tab) return;
-        const groupRect = group.getBoundingClientRect();
-        const r = tab.getBoundingClientRect();
-        ind.style.transition = animated
-          ? "transform var(--dur-base) var(--ease-spring), width var(--dur-base) var(--ease-spring)"
-          : "none";
-        ind.style.width = `${r.width}px`;
-        ind.style.transform = `translateX(${r.left - groupRect.left}px)`;
-      }
-      const active = group.querySelector(".tabs__tab.is-active");
-      position(active, false);
-      group.querySelectorAll(".tabs__tab").forEach((t) => {
-        t.addEventListener("click", () => {
-          group.querySelectorAll(".tabs__tab").forEach((x) => x.classList.remove("is-active"));
-          t.classList.add("is-active");
-          position(t);
-        });
-      });
-    });
-
-    // re-measure on layout shift — remove-before-add 단일 전역 핸들러 (hx-boost 재방문 시 누적 차단)
-    // Single global resize handler via remove-before-add: prevents listener pile-up across hx-boost re-navigations.
-    if (document._tabsResizeHandler) {
-      window.removeEventListener("resize", document._tabsResizeHandler);
-    }
-    document._tabsResizeHandler = repositionAllTabIndicators;
-    window.addEventListener("resize", document._tabsResizeHandler);
-  }
-
-  /* ----- 8. Nav sliding active indicator --------------------------------- */
-  function setupNavMagnet() {
-    document.querySelectorAll(".nav__links").forEach((group) => {
-      let ind = group.querySelector(".nav__indicator");
-      if (!ind) {
-        ind = document.createElement("span");
-        ind.className = "nav__indicator";
-        group.appendChild(ind);
-      }
-      function position(link, animated = true) {
-        if (!link) return;
-        const groupRect = group.getBoundingClientRect();
-        const r = link.getBoundingClientRect();
-        ind.style.transition = animated
-          ? "transform var(--dur-base) var(--ease-spring), width var(--dur-base) var(--ease-spring), opacity var(--dur-base) ease"
-          : "none";
-        ind.style.width = `${r.width}px`;
-        ind.style.transform = `translateX(${r.left - groupRect.left}px)`;
-        ind.style.opacity = "1";
-      }
-      const active = group.querySelector(".nav__link.is-active");
-      position(active, false);
-      group.querySelectorAll(".nav__link").forEach((l) => {
-        l.addEventListener("click", (e) => {
-          e.preventDefault();
-          group.querySelectorAll(".nav__link").forEach((x) => x.classList.remove("is-active"));
-          l.classList.add("is-active");
-          position(l);
-        });
-      });
-    });
-  }
-
-  /* ----- 9. Smooth scroll for in-page anchors ---------------------------- */
+  /* ----- 7. Smooth scroll for in-page anchors ---------------------------- */
   function setupSmoothScroll() {
     document.querySelectorAll('a[href^="#"]').forEach((a) => {
       a.addEventListener("click", (e) => {
@@ -361,7 +272,7 @@
     });
   }
 
-  /* ----- 10. Subtle magnetic hover on cards ----------------------------- */
+  /* ----- 8. Subtle magnetic hover on cards ------------------------------- */
   function setupMagnetic() {
     if (reduced()) return;
     const targets = document.querySelectorAll(".kpi, .repo-card, .principle");
@@ -387,8 +298,6 @@
   }
 
   function init() {
-    setupTabs();
-    setupNavMagnet();
     setupEntryAnimations();
     setupCountUp();
     setupScoreBars();
