@@ -1,7 +1,7 @@
 """Analysis ORM 모델 — 분석 이력(정적 분석 + AI 리뷰 점수) 저장."""
 from datetime import datetime, timezone
 from sqlalchemy import (
-    Column, Integer, String, JSON, DateTime, ForeignKey, UniqueConstraint, Index,
+    Column, Integer, String, JSON, DateTime, ForeignKey, UniqueConstraint, Index, text,
 )
 from sqlalchemy.orm import relationship
 from src.database import Base
@@ -22,6 +22,15 @@ class Analysis(Base):
         UniqueConstraint("repo_id", "commit_sha", name="uq_analyses_repo_sha"),
         Index("ix_analyses_repo_id_created_at", "repo_id", "created_at"),
         Index("ix_analyses_repo_id_author_login", "repo_id", "author_login"),
+        # 0032: 월별 토큰 합산 쿼리용 부분 인덱스 (input_tokens IS NOT NULL).
+        # ORM↔alembic 정합 (#18 drift ③) — postgresql/sqlite 양 방언 부분 인덱스 선언.
+        # 0032: partial index for monthly token aggregation; declared for ORM↔alembic parity.
+        Index(
+            "ix_analyses_repo_id_created_at_tokens",
+            "repo_id", "created_at",
+            postgresql_where=text("input_tokens IS NOT NULL"),
+            sqlite_where=text("input_tokens IS NOT NULL"),
+        ),
     )
 
     id = Column(Integer, primary_key=True, index=True)

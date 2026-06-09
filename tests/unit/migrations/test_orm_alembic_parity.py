@@ -66,16 +66,12 @@ _ALLOWLIST_PATTERNS = (
     #    기능 동등(둘 다 email 유일성) — 표현 FP. (ORM/마이그레이션 표현 통일 차기 후보)
     ("remove_index", "ix_users_email"),
     ("add_constraint", "users", "email"),
-    # ③ analyses 보조 복합 인덱스 — 0032 가 ix_analyses_repo_id_created_at_tokens 생성, ORM __table_args__ 미선언
-    #    (#15-class, alembic 전용). (ORM 선언 차기 후보)
-    ("remove_index", "ix_analyses_repo_id_created_at_tokens"),
-    # ④ insight_narrative_cache 부분 유일 인덱스 — 0031 raw DDL(WHERE 절), ORM 미선언 (#16-class).
-    #    (ORM postgresql_where 선언 차기 후보 — WHERE 정규화 FP 주의)
-    ("remove_index", "uq_insight_cache_global"),
-    ("remove_index", "uq_insight_cache_repo"),
+    # ③④' analyses 토큰 인덱스 + insight_cache 부분 유일 인덱스 — **해소(ORM postgresql_where+sqlite_where 선언)**:
+    #    0032 ix_analyses_repo_id_created_at_tokens + 0031 uq_insight_cache_global/repo 를 ORM __table_args__ 에
+    #    양 방언 partial 로 선언 → compare_metadata 정합. allowlist 불요(제거). 잔존 시 가드가 누락(회귀)을 잡도록 미등재.
     # ⑤ repositories.user_id FK — **해소(alembic 0039, ondelete=SET NULL)**: 0005 가 컬럼만 추가했던
     #    DB FK 부재를 0039 가 추가(고아 정리 선행). ORM↔DB 정합 → allowlist 불요(제거). 잔존 시 가드가
-    #    실제 FK 누락(회귀)을 잡도록 의도적 미등재. (#14-class 데이터 무결성 영향분 — ③④' 부분인덱스만 잔존)
+    #    실제 FK 누락(회귀)을 잡도록 의도적 미등재. (잔존 allowlist = ② email 유일성 표현 FP 뿐)
 )
 
 
@@ -186,11 +182,11 @@ def test_structural_diffs_filter_logic():
     t_pk = Table("merge_attempts", md, Column("id", Integer, primary_key=True))
     assert _structural_diffs([("add_index", Index("ix_merge_attempts_id", t_pk.c.id))]) == []
 
-    # 2) allowlist 사전 존재 항목(인덱스명 repr) 제외 — ③ analyses tokens 부분인덱스(잔존 allowlist).
-    #    (① users 인덱스명·⑤ FK 는 0040/0039 로 해소돼 allowlist 제거 — 잔존 항목으로 fixture 교체)
-    t_idx_fx = Table("idx_fixture_tbl", md, Column("created_at", Integer))
+    # 2) allowlist 사전 존재 항목(인덱스명 repr) 제외 — ② email 유일성 표현 FP (유일 잔존 allowlist).
+    #    (①⑤ 0040/0039 · ③④' ORM postgresql_where 선언으로 해소돼 제거 — ② 만 잔존)
+    t_email_fx = Table("users_email_fx", md, Column("email", Integer))
     assert _structural_diffs(
-        [("remove_index", Index("ix_analyses_repo_id_created_at_tokens", t_idx_fx.c.created_at))]
+        [("remove_index", Index("ix_users_email", t_email_fx.c.email))]
     ) == []
 
     # 3) 신규(non-allowlisted, non-PK) 인덱스 drift 는 포착 → fail 신호
