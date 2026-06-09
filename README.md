@@ -496,8 +496,10 @@ POST /api/users/me/telegram-otp      Issue 6-digit OTP for Telegram /connect lin
 
 **Internal Cron** (INTERNAL_CRON_API_KEY required)
 ```
-POST /api/internal/cron/weekly       Trigger weekly Telegram summary report
-POST /api/internal/cron/trend        Trigger trend alert check (7-day moving avg)
+POST /api/internal/cron/weekly                Trigger weekly Telegram summary report
+POST /api/internal/cron/trend                 Trigger trend alert check (7-day moving avg)
+POST /api/internal/cron/scan-security         Trigger GitHub Code/Secret Scanning alert poll
+POST /api/internal/cron/retry-pending-merges  Trigger CI-aware auto-merge retry queue processing
 ```
 
 **Health Check**
