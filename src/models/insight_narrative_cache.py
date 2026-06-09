@@ -9,7 +9,7 @@ InsightNarrativeCache ORM — Insight mode Claude AI narrative 1h TTL cache.
 """
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, Column, DateTime, ForeignKey, Index, Integer, String
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, Index, Integer, String, text
 
 from src.database import Base
 
@@ -25,13 +25,29 @@ class InsightNarrativeCache(Base):
     __table_args__ = (
         # 0031: old (user_id, days) UniqueConstraint removed — repo_id 추가로 다중 행 허용.
         # 0031: old (user_id, days) UniqueConstraint removed — multiple rows allowed with repo_id.
-        # Partial uniqueness enforced by migration 0031 partial indexes (PG only).
         Index(
             "ix_insight_cache_user_days_language",
             "user_id", "days", "language",
         ),
         Index("ix_insight_cache_repo_id", "repo_id"),
         Index("ix_insight_cache_last_error_at", "last_error_at"),
+        # 0031: 전역(repo_id IS NULL) / 리포별(repo_id IS NOT NULL) 부분 유니크 인덱스.
+        # ORM↔alembic 정합 (#18 drift ④') — postgresql/sqlite 양 방언 선언으로 전역+리포 공존 보장.
+        # 0031: partial UNIQUE indexes — global (repo_id IS NULL) vs repo-specific; declared for parity.
+        Index(
+            "uq_insight_cache_global",
+            "user_id", "days", "language",
+            unique=True,
+            postgresql_where=text("repo_id IS NULL"),
+            sqlite_where=text("repo_id IS NULL"),
+        ),
+        Index(
+            "uq_insight_cache_repo",
+            "user_id", "days", "language", "repo_id",
+            unique=True,
+            postgresql_where=text("repo_id IS NOT NULL"),
+            sqlite_where=text("repo_id IS NOT NULL"),
+        ),
     )
 
     id = Column(Integer, primary_key=True, index=True)
