@@ -6,6 +6,7 @@ paths:
   - "requirements.txt"
   - "requirements-dev.txt"
   - ".env.example"
+  - ".python-version"
   - "alembic.ini"
   - "sonar-project.properties"
 ---
@@ -26,6 +27,7 @@ paths:
 - **gem/npm transitive 의존성 핀**: Ruby gem 또는 npm 패키지의 **직접 의존성만 버전 고정해도 transitive 의존성은 시간에 따라 바뀐다**. rubocop 1.57.2 는 pure Ruby 지만 transitive `rubocop-ast` 가 2024년 이후 prism 네이티브 확장을 필수로 요구하게 변경됨 → Railway 빌드 실패. 해결책은 `gem install rubocop-ast -v 1.36.2` (prism-free 마지막 버전) 를 rubocop 설치 **이전에** 명시 핀.
 - **requirements.txt 분리**: `requirements.txt`(프로덕션 — Railway 자동 감지)와 `requirements-dev.txt`(개발 — `-r requirements.txt` 포함 + pytest/playwright) 분리. `pytest`, `playwright`는 `requirements-dev.txt`에만 유지.
 - **FastAPI 버전 핀**: `requirements.txt` — `fastapi>=0.136.1` (CVE-2024-47874 / CVE-2025-54121 패치 버전). 다운그레이드 금지.
+- 🔴 **Python 버전 핀 — `.python-version` (Railway nixpacks + pyenv, SSOT)**: 루트 `.python-version`(현재 `3.12`)이 **Railway nixpacks Python provider 의 빌드 버전을 핀**한다. nixpacks 는 `NIXPACKS_PYTHON_VERSION` env → `.python-version` → `runtime.txt` → `.tool-versions` 순으로 읽으며 **미지정 시 default 3.11**(nixpacks 공식 — 지원 2.7/3.8~3.13). **SSOT 의무(사이클 166 #22)**: CI(`.github/workflows/ci.yml` `python-version`) · `.python-version` · docs(README/README.ko/STATE 배지·표·Requirements) 3종을 동일 버전 유지. 버전 변경 시 3종 동시 갱신 + nixpacks 지원 범위 확인 + Railway 빌드 로그 직접 검증(`git push` ≠ 빌드 성공). 로컬 dev 는 pyenv 가 `.python-version` 적용(미설치 시 system python fallback — 3.12+ 호환). ⚠️ `.python-version` 미확인으로 'Railway 핀 없음' 오판 금지(#22 정정 학습 — Railway 는 핀 없음이 아니라 `.python-version`=3.12 로 이미 핀).
 - **SMTP_PORT 빈 문자열**: Railway 환경에서 `SMTP_PORT=""`로 설정해도 `config.py`의 `coerce_smtp_port` field_validator가 587로 자동 변환 (크래시 없음). 다만 Railway Variables에서 빈 값 대신 명시적 숫자 설정 권장.
 - **postgres:// URL**: Railway PostgreSQL이 `postgres://`로 제공하는 경우 `config.py`에서 `postgresql://`로 자동 변환.
 - **SonarCloud CPD 제외 (`sonar.cpd.exclusions`)**: 신규 기능 PR 에 테스트 파일(반복 패치 블록)과 Jinja2 HTML 템플릿(구조적 반복)이 포함될 경우 `sonar.cpd.exclusions=tests/**,src/templates/**` 가 이미 설정되어 있음. 서비스/API 계층 내 중복 블록(≥10 토큰)은 추출 헬퍼로 제거 의무. 사이클 129 학습: 13줄 TTL 동기화 중복이 `get_analysis_issue_status`·`get_repo_issue_summary` 양쪽에 존재 → CPD 4.8% → `_sync_state_if_stale` 헬퍼 추출로 0.0% 해소. **체크포인트**: 신규 서비스 함수 2개 이상이 동일 로직 블록을 공유하면 PR 완성 전 헬퍼 추출.

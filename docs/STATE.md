@@ -21,7 +21,7 @@
 | 지원 언어 (AI 리뷰) | **50개** | language.py — Tier1/2/3 가이드 |
 | 지원 언어 (정적분석) | **52개+** | Semgrep 22 + ESLint/tsc 2 + ShellCheck 1 + cppcheck 1 + slither 1 + rubocop 1 + golangci-lint 1 + Python 3 + **신규 15**: Dockerfile(hadolint)·Kotlin(ktlint)·HCL(tflint)·SQL(sqlfluff)·YAML(yamllint)·PHP(phpstan)·Swift(swiftlint)·CSS(stylelint)·SCSS(stylelint)·HTML(htmlhint)·Protobuf(buf_lint)·Dart(dart_analyze)·PowerShell(psscriptanalyzer)·C#(dotnet_format)·Rust(clippy) |
 | Tier1 정적분석 도구 | **25종** | pylint·flake8·bandit·semgrep·eslint·shellcheck·cppcheck·slither·rubocop·golangci-lint·**hadolint**·**ktlint**·**tflint**·**tsc**·**sqlfluff**·**yamllint**·**phpstan**·**swiftlint**·**stylelint**·**htmlhint**·**buf_lint**·**dart_analyze**·**psscriptanalyzer**·**dotnet_format**·**clippy** |
-| pytest-asyncio | **1.3.0** | Python 3.12+ DeprecationWarning 제거 완료 · SSOT=Python 3.12 (CI 기준, `.github/workflows/ci.yml` python-version) — 3.14 미검증 선언 정정 (#22) |
+| pytest-asyncio | **1.3.0** | Python 3.12+ DeprecationWarning 제거 완료 · **SSOT=Python 3.12** — CI(`.github/workflows/ci.yml` python-version) + Railway(`.python-version`=3.12, nixpacks 핀; default 3.11) + docs 동일 (로컬 dev 3.13 = 3.12+ 호환). 3.14 미검증 선언 정정 (#22) |
 | CodeQL | **✅ pass** | `.github/workflows/codeql.yml` — 주 1회 실행. 본 README 배지 (L15) 와 페어 |
 
 ## 주요 파일 역할 (빠른 참조)
