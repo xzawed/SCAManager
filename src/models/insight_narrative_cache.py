@@ -43,9 +43,13 @@ class InsightNarrativeCache(Base):
     language = Column(String(5), nullable=False, default="en", server_default="en")
     # 0031 — repo-specific cache key (NULL = global dashboard narrative)
     # 0031 — 리포별 캐시 키 (NULL = 전체 대시보드 내러티브)
+    # repo_id 인덱스는 위 __table_args__ 의 명시 Index("ix_insight_cache_repo_id") + alembic 0031:62 로 정합.
+    # index=True 를 쓰지 않음 — 자동명 ix_insight_narrative_cache_repo_id 중복/유령 인덱스(운영 PG 미존재) 방지 (#17).
+    # repo_id is indexed via the explicit Index above + alembic 0031; index=True omitted to avoid a
+    # duplicate auto-named ghost index that never exists in production PG (#17).
     repo_id = Column(
         Integer, ForeignKey("repositories.id", ondelete="CASCADE"),
-        nullable=True, index=True,
+        nullable=True,
     )
     response_json = Column(JSON, nullable=False)
     created_at = Column(

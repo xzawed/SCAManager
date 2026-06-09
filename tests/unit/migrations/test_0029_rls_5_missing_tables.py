@@ -161,12 +161,16 @@ def test_alembic_0029_analysis_feedbacks_direct_isolation():
 def test_alembic_0029_users_self_rls():
     """C.6 — users 가 self-RLS (id 직접 비교)."""
     captured = _capture_pg_upgrade_sql()
+    # 0029 가 users 에 ALTER TABLE users ENABLE ROW LEVEL SECURITY 를 발화하는지 검증
+    # Verify 0029 emits ALTER TABLE users ENABLE ROW LEVEL SECURITY
+    # (구 `or "ON users" in s.lower()` 서브분기 제거: s.lower() 라 대문자 "ON users" 절대 미매칭 dead-branch #31)
     users_sql = next(
-        (s for s in captured if "ALTER TABLE users" in s or "ON users" in s.lower()),
+        (s for s in captured if "ALTER TABLE users" in s),
         None,
     )
-    # 5 SQL 중 첫 번째가 users
-    assert users_sql is not None or "users" in " ".join(captured).lower()
+    # users RLS SQL 이 반드시 존재해야 함 (구 dead `or` fallback 제거 — 가드 강화 #31)
+    # The users RLS statement must be present (removed the dead `or` fallback)
+    assert users_sql is not None, "users RLS (ALTER TABLE users) SQL 누락"
     joined = " ".join(captured).upper()
     # users.id = current_setting (self-RLS)
     assert "ID = NULLIF" in joined, (
