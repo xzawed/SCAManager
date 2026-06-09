@@ -59,10 +59,9 @@ _IGNORED_OPS = frozenset({
 # Pre-existing ORM↔alembic structural diffs (legacy/representation), harmless and tracked as separate
 # fix candidates. This guard blocks NEW drift; pre-existing items below are allowlisted by repr substrings.
 _ALLOWLIST_PATTERNS = (
-    # ① users 인덱스 legacy 명 — 0005 가 google_id 컬럼에 ix_users_google_id 생성, 이후 컬럼이 github_id 로
-    #    리네임됐으나 인덱스명 미반영. ORM 은 ix_users_github_id 선언. (인덱스 리네임 마이그레이션 차기 후보)
-    ("remove_index", "ix_users_google_id"),
-    ("add_index", "ix_users_github_id"),
+    # ① users 인덱스 legacy 명 — **해소(alembic 0040, ALTER INDEX RENAME)**: 0005 ix_users_google_id →
+    #    0006 컬럼 리네임 시 인덱스명 미반영 → 0040 이 ix_users_github_id 로 리네임(ORM 자동명 정합).
+    #    allowlist 불요(제거) — 잔존 시 가드가 회귀를 잡도록 미등재.
     # ② email 유일성 표현 차이 — ORM unique=True(UniqueConstraint) ↔ DB unique INDEX ix_users_email(0005).
     #    기능 동등(둘 다 email 유일성) — 표현 FP. (ORM/마이그레이션 표현 통일 차기 후보)
     ("remove_index", "ix_users_email"),
@@ -76,7 +75,7 @@ _ALLOWLIST_PATTERNS = (
     ("remove_index", "uq_insight_cache_repo"),
     # ⑤ repositories.user_id FK — **해소(alembic 0039, ondelete=SET NULL)**: 0005 가 컬럼만 추가했던
     #    DB FK 부재를 0039 가 추가(고아 정리 선행). ORM↔DB 정합 → allowlist 불요(제거). 잔존 시 가드가
-    #    실제 FK 누락(회귀)을 잡도록 의도적 미등재. (#14-class 중 데이터 무결성 영향분 — drift ①③④ 는 잔존)
+    #    실제 FK 누락(회귀)을 잡도록 의도적 미등재. (#14-class 데이터 무결성 영향분 — ③④' 부분인덱스만 잔존)
 )
 
 
@@ -187,9 +186,12 @@ def test_structural_diffs_filter_logic():
     t_pk = Table("merge_attempts", md, Column("id", Integer, primary_key=True))
     assert _structural_diffs([("add_index", Index("ix_merge_attempts_id", t_pk.c.id))]) == []
 
-    # 2) allowlist 사전 존재 항목(인덱스명 repr) 제외
-    t_users = Table("users", md, Column("github_id", Integer))
-    assert _structural_diffs([("add_index", Index("ix_users_github_id", t_users.c.github_id))]) == []
+    # 2) allowlist 사전 존재 항목(인덱스명 repr) 제외 — ③ analyses tokens 부분인덱스(잔존 allowlist).
+    #    (① users 인덱스명·⑤ FK 는 0040/0039 로 해소돼 allowlist 제거 — 잔존 항목으로 fixture 교체)
+    t_idx_fx = Table("idx_fixture_tbl", md, Column("created_at", Integer))
+    assert _structural_diffs(
+        [("remove_index", Index("ix_analyses_repo_id_created_at_tokens", t_idx_fx.c.created_at))]
+    ) == []
 
     # 3) 신규(non-allowlisted, non-PK) 인덱스 drift 는 포착 → fail 신호
     t_an = Table("analyses", md, Column("score", Integer))
