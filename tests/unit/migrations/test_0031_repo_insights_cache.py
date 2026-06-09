@@ -50,6 +50,32 @@ def test_repo_id_is_nullable(engine):
     assert col["nullable"] is True
 
 
+def test_repo_id_no_duplicate_ghost_index(engine):
+    """repo_id 인덱스는 명시 ix_insight_cache_repo_id 단일 — 중복/유령 인덱스 부재 (#17).
+
+    repo_id index is the single explicit ix_insight_cache_repo_id — no duplicate ghost (#17).
+
+    과거 `Column(..., index=True)` 가 자동명 ix_insight_narrative_cache_repo_id 를 추가 생성해
+    SQLite create_all 에만 존재하고 운영 PG(alembic 0031)에는 없는 유령/중복 인덱스가 됐다.
+    index=True 제거로 명시 Index 만 남겨 ORM↔alembic 정합을 회복했음을 회귀 가드한다.
+    Previously `Column(..., index=True)` created an auto-named ghost index absent from production PG.
+    """
+    insp = inspect(engine)
+    indexes = insp.get_indexes("insight_narrative_cache")
+    repo_id_indexes = [ix for ix in indexes if ix["column_names"] == ["repo_id"]]
+    # repo_id 단일 컬럼 인덱스는 정확히 1개 (명시 ix_insight_cache_repo_id)
+    # Exactly one single-column repo_id index (the explicit ix_insight_cache_repo_id)
+    assert len(repo_id_indexes) == 1, (
+        f"repo_id 단일 컬럼 인덱스가 {len(repo_id_indexes)}개 — "
+        "중복/유령 인덱스(index=True 재도입?) 의심"
+    )
+    assert repo_id_indexes[0]["name"] == "ix_insight_cache_repo_id"
+    # 자동명 유령 인덱스가 부재해야 함
+    # The auto-named ghost index must be absent
+    names = {ix["name"] for ix in indexes}
+    assert "ix_insight_narrative_cache_repo_id" not in names
+
+
 def test_global_and_repo_rows_coexist(engine):
     """같은 (user_id, days) 에 repo_id=NULL 과 repo_id=N 행이 공존 가능하다."""
     from datetime import datetime, timedelta, timezone
