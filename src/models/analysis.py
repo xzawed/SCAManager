@@ -25,7 +25,13 @@ class Analysis(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    repo_id = Column(Integer, ForeignKey("repositories.id"), nullable=False)
+    # repo_id FK — ondelete=CASCADE: repositories 삭제 시 analyses(+child 4종 CASCADE) 동반 삭제 (#14)
+    # repo_id FK — CASCADE: deleting a repository cascades to analyses (+ its 4 CASCADE children).
+    repo_id = Column(
+        Integer,
+        ForeignKey("repositories.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     commit_sha = Column(String, nullable=False, index=True)
     commit_message = Column(String, nullable=True)
     pr_number = Column(Integer, nullable=True)
