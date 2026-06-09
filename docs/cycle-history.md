@@ -82,6 +82,8 @@
 
 **작업 내용**: Task9 full 감사(2026-06-08, 36 confirmed)의 자율 가능 P2 항목을 코드 실측 검증 후 해소. 잔여 백로그 검증 워크플로우(wf_d1e440d5, 6에이전트 read-only — db/docs/gate·sec·test/ui/RLS/completeness critic)로 still_present 16 + partial 1(#17) + resolved 1(#32 이미 `| tojson`) 판정 → 응집 단위 5 PR 분할. 사용자 AskUserQuestion 2회(빠른 정합 → UI Medium) + #34 escape 전략 결정 1회.
 
+> 🔴 **정정 (2026-06-09, 사이클166 후 4에이전트 적대 재검증 — wf_688dd1f2)**: 위 `resolved 1(#32 이미 | tojson)` 판정은 **위양성**. 검증자가 `confirm()` 라인(settings.html:1114/1130)의 `| tojson` 을 #32 가 지목한 `PRESET_LABELS` JS-리터럴(settings.html:1174-1176 등 ~15곳)으로 오인 — 실제 이 위치들은 `'{{ ... | i18n_args(...) }}'` 형태로 `| tojson` 미적용. [`filters.py`](../src/i18n/filters.py) `i18n_args` 는 raw 텍스트 + Jinja HTML autoescape(JS-escape 아님)라 JS 문자열 리터럴 컨텍스트 부정합. **#32 = 미해소 잔여**(라이브 XSS 無·구조적 비일관, 차기 fix). still_present 정정 = 17, resolved = 0.
+
 **빠른 정합 묶음 (Low)**:
 - **#820 (docs/rule)**: #19 README internal cron 2개(scan-security·retry-pending-merges) 추가 · #20 architecture.md scripts/ 2파일(capture_design_screenshots·extract_design_tokens) 추가 · #21 env-vars.md config.py line drift 60/61→63/64 · #28 security.md SESSION_SECRET 기본값 'dev-secret-key'→'dev-secret-change-in-production'(main.py:101 정합). 코드 0.
 - **#821 (db/test)**: #17 insight_narrative_cache `repo_id index=True` 제거 — 명시 Index `ix_insight_cache_repo_id`+alembic 0031 이미 정합, 자동명 `ix_insight_narrative_cache_repo_id` 중복/유령 인덱스(SQLite create_all 전용, 운영 PG 미존재) 제거, **마이그레이션 불필요** + 회귀 가드(inspect Red 2→Green 1) · #31 test_0029 dead-branch 2개 제거(`s.lower()` 'ON users' 미매칭·`or` fallback unreachable). 단위 +1.
@@ -113,7 +115,9 @@
 
 - **#836 (#18, 사용자 착수 승인)**: 전역 ORM↔alembic `compare_metadata` 정합 가드(PG-only, pg-concurrency CI) — `alembic upgrade head` 스키마 ↔ `Base.metadata` 구조적 diff==0 단언, **신규 drift 차단**. FP 제거: compare_type/server_default off + 단일 PK 컬럼 인덱스 중복 FP 제너릭 필터 + 사전존재 8건 allowlist(문서화). 첫 CI 14 diff → 2차 PASS. 🔴 **#18 이 사전존재 실 drift 4종 추가 발견(allowlist 문서화, 차기 fix 후보)**: ① users `ix_users_google_id` legacy 인덱스명(컬럼 github_id 리네임 미반영) ② analyses `ix_analyses_repo_id_created_at_tokens`(0032 alembic-only, #15류) ③ insight_cache `uq_insight_cache_global/repo` 부분유일(0031, #16류) ④ `repositories.user_id` FK(0005 컬럼만, DB FK 부재, #14류) + email unique index↔constraint 표현 FP. 필터 로직 로컬 가드(PG 불필요) 동반. 단위 +2.
 
-**잔여 (full 감사 36건 중 #2 외 전부 해소/결정)**: **#2**(RLS FORCE — SaaS 전환 근본 항목, #810 갭 가시화로 운영 경고만, 보류). + **#18 발견 사전존재 drift 4종**(users 인덱스명·analyses _tokens·insight_cache 부분유일·repositories FK — allowlist 문서화, 차기 fix 후보).
+**잔여 (full 감사 36건 중 #2·#18 발견 drift 4종·#32 외 전부 해소/결정)**: **#2**(RLS FORCE — SaaS 전환 근본 항목, #810 갭 가시화로 운영 경고만, 보류·아키텍처). + **#18 발견 사전존재 drift 4종**(users 인덱스명·analyses _tokens·insight_cache 부분유일·repositories.user_id FK — allowlist 문서화, 차기 fix 후보; **FK 만 데이터 무결성 영향**[고아 user_id 가능], 나머지 3종 운영 무해). + **#32**(settings.html JS-리터럴 `| tojson` 미사용 — 위 사이클166 'resolved' 위양성 정정, 라이브 XSS 無·구조적 비일관, 차기 fix).
+
+**사이클 종료 (정책 18 §4 3조건)**: 회고 수행 완료 + 전 PR(#820~#836) Codex true mutual OK(push 전) + CI green. ⚠️ 회고 follow-up 'background UX silent' = '구체 지점 미발견' soft-close(결함 미입증 종료) — 차기 정합성 감사 시 background task 사용자 가시성 명시 재확인 권장.
 
 ---
 
