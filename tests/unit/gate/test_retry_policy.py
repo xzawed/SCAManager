@@ -109,6 +109,29 @@ def test_retriable_tags_parity_with_should_retry():
         )
 
 
+def test_unstable_ci_passed_retry_is_intentional_lag_tolerance():
+    """UNSTABLE_CI + ci_status='passed' 재시도는 의도적 설계 — 무심코 terminal 전환 회귀 차단 (#23).
+
+    정합성 감사 #23 은 'passed' 재시도를 '영구 재시도'로 표현했으나 부정확 — 재시도 예산은
+    is_expired(max_age, 기본 24h)와 재시도 서비스의 max_attempts cap(기본 30 → abandoned)으로 bounded
+    (is_expired 자체는 max_age 만 검사; test_is_expired_* 가드). 'passed' 분기 =
+    CI 통과했으나 mergeable_state 미반영(merge API lag) 또는 일부 check suite pending 시 재시도를
+    위한 수용된 트레이드오프 (사용자 결정 A — 현 설계 유지). 본 가드는 향후 'passed'→terminal 회귀를
+    차단한다(정상 lag 케이스 false terminal 방지).
+
+    'passed' retry is intentional (merge-API lag tolerance) — this guard blocks a regression that
+    would make it terminal. Budget is bounded by is_expired (24h / 30 attempts), not infinite.
+    """
+    assert should_retry("unstable_ci", "passed") is True
+    # 동일 분기의 running/unknown 도 의도적 재시도 (lag/transient 보호)
+    # running/unknown in the same branch are also intentional retries (lag / transient protection)
+    assert should_retry("unstable_ci", "running") is True
+    assert should_retry("unstable_ci", "unknown") is True
+    # 'failed' 는 재시도 아님 (실제 CI 실패)
+    # 'failed' is not retried (genuine CI failure)
+    assert should_retry("unstable_ci", "failed") is False
+
+
 # ---------------------------------------------------------------------------
 # compute_next_retry_at
 # ---------------------------------------------------------------------------
