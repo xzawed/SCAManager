@@ -65,12 +65,41 @@ def test_merge_attempts_has_attempted_at_index(engine):
     assert cols == ["attempted_at"]
 
 
+def test_merge_attempts_has_state_repo_index(engine):
+    """ix_merge_attempts_state_repo 복합 인덱스 ORM↔alembic 정합 (#15).
+
+    alembic 0022 전용이던 인덱스를 ORM __table_args__ 에도 선언 — create_all 정합.
+    """
+    cols = _index_columns(engine, "merge_attempts", "ix_merge_attempts_state_repo")
+    assert cols is not None, (
+        "ix_merge_attempts_state_repo 미존재 — ORM __table_args__ 미선언(alembic 0022 drift)"
+    )
+    assert cols == ["state", "repo_name"], f"인덱스 컬럼 순서 불일치: {cols}"
+
+
+def test_merge_retry_has_partial_unique_active_index(engine):
+    """uq_merge_retry_queue_active 부분 유일 인덱스 ORM↔alembic 정합 (#16).
+
+    status='pending' 활성 행 중복 방지 — ORM __table_args__(sqlite/postgresql_where) + alembic 0020 양쪽 선언.
+    """
+    inspector = inspect(engine)
+    indexes = {ix["name"]: ix for ix in inspector.get_indexes("merge_retry_queue")}
+    assert "uq_merge_retry_queue_active" in indexes, (
+        "uq_merge_retry_queue_active 미존재 — ORM __table_args__ 미선언(alembic 0020 drift)"
+    )
+    idx = indexes["uq_merge_retry_queue_active"]
+    assert idx["column_names"] == ["repo_full_name", "pr_number", "commit_sha"], (
+        f"인덱스 컬럼 불일치: {idx['column_names']}"
+    )
+    assert idx["unique"], "부분 유일 인덱스는 unique=True 여야 함"
+
+
 def test_existing_orm_indexes_preserved(engine):
     """기존 ORM 인덱스 회귀 가드 — Phase 2 추가 단일 인덱스 보존.
 
-    Note: 일부 인덱스(예: ix_merge_attempts_state_repo from 0022)는 마이그레이션
-    전용이라 ORM `Base.metadata.create_all` 에서 생성되지 않음. 본 테스트는
-    ORM 측 인덱스만 검증.
+    Note: 사이클 166 #15/#16 으로 ix_merge_attempts_state_repo(0022)·uq_merge_retry_queue_active(0020)
+    도 ORM __table_args__ 에 선언됨 — 각각 위 전용 테스트(state_repo/partial_unique)로 검증. 본 테스트는
+    그 외 ORM 측 단일 인덱스만 검증.
     """
     # 0021 — analyses.created_at 단일 인덱스 (ORM index=True 명시)
     assert _index_columns(engine, "analyses", "ix_analyses_created_at") == ["created_at"]

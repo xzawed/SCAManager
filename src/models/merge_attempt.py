@@ -31,6 +31,9 @@ class MergeAttempt(Base):
     # Phase H PR-4A — single index for Phase F.4 dashboard time-series queries.
     __table_args__ = (
         Index("ix_merge_attempts_attempted_at", "attempted_at"),
+        # (state, repo_name) 그룹 집계용 복합 인덱스 — alembic 0022 와 ORM 양쪽 선언 (ORM↔alembic 정합 #15)
+        # Composite index for (state, repo_name) aggregation — declared in both ORM and alembic 0022.
+        Index("ix_merge_attempts_state_repo", "state", "repo_name"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
