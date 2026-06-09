@@ -103,7 +103,7 @@
 전 PR Codex true mutual OK·CI green. 단위 4723→4726.
 
 **결정 영역 처리 (사용자 순차 결정, #830~#831)**:
-- **#830 (#22)**: Python 버전 SSOT 3.12 정렬 — README/README.ko/STATE 의 3.14 미검증 선언 → CI(3.12) 기준. 4환경 불일치(CI 3.12·로컬 3.13·Railway nixpacks 핀없음·docs 3.14) 중 CI 권위. docs-only. nixpacks Railway 핀은 별도 follow-up.
+- **#830 (#22)**: Python 버전 SSOT 3.12 정렬 — README/README.ko/STATE 의 3.14 미검증 선언 → CI(3.12) 기준. docs-only. ⚠️ **#830 후속 정정(#22 부정확)**: 당시 'Railway nixpacks 핀없음'으로 기술했으나 **부정확** — 루트 `.python-version`=`3.12` 가 nixpacks Python provider 를 **이미 핀**(nixpacks 는 `.python-version`/`runtime.txt` 등을 읽음, 미지정 시 default 3.11; context7 nixpacks 공식 확인). #830/Codex 둘 다 `.python-version` 미확인 → 'follow-up nixpacks 핀'은 실제로 **이미 완료 상태**였고, 후속 PR 은 핀 추가가 아니라 **deploy.md 핀 메커니즘 문서화 + 본 정정**으로 종결. 즉 Railway·CI·docs 3종 모두 3.12 정합.
 - **#831 (#23)**: gate retry `'passed'` 의도 설계 명시 — 사용자 결정 **A(현 설계 유지, 코드 동작 0)**. `should_retry(UNSTABLE_CI,'passed')=True` 는 merge API lag / 다중 check suite pending 대비 의도적·bounded(감사 '영구 재시도' 표현 부정확). docstring + 회귀 가드. 🔴 **Codex mutual 적발(2-layer ROI)**: 초안이 예산을 `is_expired(max_age/max_attempts)` 로 오기 → 실측 is_expired=max_age 만, max_attempts=process_pending_retries(abandoned) 별도 → 정정 후 OK.
 
 단위 4726→4727.
