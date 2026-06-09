@@ -80,12 +80,19 @@
     }
 
     // Keyboard shortcut: T toggles tweaks
-    document.addEventListener("keydown", (e) => {
+    // 🔴 remove-before-add 단일 핸들러 — hx-boost body swap 시 document keydown 누적 차단 (#36)
+    // Single handler via remove-before-add: prevents document keydown pile-up across hx-boost body swaps.
+    if (document._tweaksKeydown) {
+      document.removeEventListener("keydown", document._tweaksKeydown);
+    }
+    document._tweaksKeydown = function (e) {
       if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
       if (e.key === "t" || e.key === "T") {
-        panel && panel.classList.toggle("is-collapsed");
+        const p = document.querySelector(".tweaks");
+        if (p) p.classList.toggle("is-collapsed");
       }
-    });
+    };
+    document.addEventListener("keydown", document._tweaksKeydown);
 
     apply();
   }

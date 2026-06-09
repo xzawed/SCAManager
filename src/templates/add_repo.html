@@ -212,7 +212,15 @@
   // 페이지 이탈 시 fetch abort 제어 — hx-boost 뒤로가기 freezing 방지
   // AbortController to cancel in-flight fetch on page leave — prevents stale DOM updates after hx-boost navigation
   var _repoCtrl = new AbortController();
-  window.addEventListener('pagehide', () => _repoCtrl.abort());
+  // 🔴 remove-before-add 단일 핸들러 — hx-boost 재방문 시 pagehide 리스너 누적 차단 (#35)
+  // Single handler via remove-before-add: prevents pagehide listener pile-up across hx-boost re-navigations.
+  // 저장은 document._ (effects.js _tabsResizeHandler 동일 패턴), pagehide 는 window 이벤트라 add/remove 만 window.
+  // Handler stored on document._ (same pattern as effects.js); pagehide is a window event so add/remove use window.
+  if (document._addRepoPagehide) {
+    window.removeEventListener('pagehide', document._addRepoPagehide);
+  }
+  document._addRepoPagehide = function () { _repoCtrl.abort(); };
+  window.addEventListener('pagehide', document._addRepoPagehide);
 
   async function loadRepos() {
     try {
