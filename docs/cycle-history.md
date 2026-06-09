@@ -106,9 +106,12 @@
 - **#830 (#22)**: Python 버전 SSOT 3.12 정렬 — README/README.ko/STATE 의 3.14 미검증 선언 → CI(3.12) 기준. docs-only. ⚠️ **#830 후속 정정(#22 부정확)**: 당시 'Railway nixpacks 핀없음'으로 기술했으나 **부정확** — 루트 `.python-version`=`3.12` 가 nixpacks Python provider 를 **이미 핀**(nixpacks 는 `.python-version`/`runtime.txt` 등을 읽음, 미지정 시 default 3.11; context7 nixpacks 공식 확인). #830/Codex 둘 다 `.python-version` 미확인 → 'follow-up nixpacks 핀'은 실제로 **이미 완료 상태**였고, 후속 PR 은 핀 추가가 아니라 **deploy.md 핀 메커니즘 문서화 + 본 정정**으로 종결. 즉 Railway·CI·docs 3종 모두 3.12 정합.
 - **#831 (#23)**: gate retry `'passed'` 의도 설계 명시 — 사용자 결정 **A(현 설계 유지, 코드 동작 0)**. `should_retry(UNSTABLE_CI,'passed')=True` 는 merge API lag / 다중 check suite pending 대비 의도적·bounded(감사 '영구 재시도' 표현 부정확). docstring + 회귀 가드. 🔴 **Codex mutual 적발(2-layer ROI)**: 초안이 예산을 `is_expired(max_age/max_attempts)` 로 오기 → 실측 is_expired=max_age 만, max_attempts=process_pending_retries(abandoned) 별도 → 정정 후 OK.
 
-단위 4726→4727.
+- **#833 (#22 follow-up)**: Railway Python 핀 발견·정정 — `.python-version`=3.12 가 이미 nixpacks Python 을 핀(context7 nixpacks 공식, default 3.11), #830 'Railway 핀없음' 부정확 정정 + deploy.md `.python-version` 핀 메커니즘 규칙(docs-only). Railway·CI·docs 3종 모두 3.12 정합.
+- **#834 (회고 follow-up)**: `_coerce_score`/`_coerce_raw_score` 정수 변환 의미(`int()` 0방향 절삭 8.9→8, 반올림 X) docstring 명시 + 절삭 값 가드(+1). 🔴 회고 follow-up 분류 결과: **#795 안전망 비율화**=사이클164 Q2=A 결정(부분실패≠incomplete) 코드+rule 봉인 → 무작업(재결정 영역) · **background UX silent**=전 background task 가 webhook 콜백(사용자 버튼 무관)·버튼 액션은 동기+에러 UX → 구체 지점 미발견 · **#18**(compare_metadata)=미착수.
 
-**잔여 (full 감사 36건 중 #2 외 전부 해소/결정)**: **#18**(전역 compare_metadata 가드 — 자율 가능하나 대형/fragile: PG dialect diff 필터 + 로컬 PG 없어 CI 반복 검증, 미착수) · **#2**(RLS FORCE — SaaS 전환 근본 항목, #810 갭 가시화로 운영 경고만, 보류).
+단위 4726→4728.
+
+**잔여 (full 감사 36건 중 #2·#18 외 전부 해소/결정)**: **#18**(전역 compare_metadata 가드 — 자율 가능하나 대형/fragile: PG dialect diff 필터 + 로컬 PG 없어 CI 반복 검증, 미착수) · **#2**(RLS FORCE — SaaS 전환 근본 항목, #810 갭 가시화로 운영 경고만, 보류).
 
 ---
 
