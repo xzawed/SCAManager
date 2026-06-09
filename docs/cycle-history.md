@@ -1,10 +1,11 @@
-# SCAManager 사이클 작업 이력 (사이클 60~165, 최신순)
+# SCAManager 사이클 작업 이력 (사이클 60~166, 최신순)
 
-> CLAUDE.md tail entry 분리본. 사이클 60~165 이력 (본문 최신순 — 목차는 165부터, 하단에 60~92 archive).
+> CLAUDE.md tail entry 분리본. 사이클 60~166 이력 (본문 최신순 — 목차는 166부터, 하단에 60~92 archive).
 > 본 파일은 회고 시점 (정책 8 5+1 패턴) 또는 영역 reference 시 read 의무.
 
 ## 목차
 
+- [사이클 166 (Task9 full 감사 P2 백로그 해소 — 빠른 정합 docs/db·test/effects.js dead-code + UI Medium hx-boost 리스너 누적·i18n 이중이스케이프[Option A], 5 PR #820~#824, Codex mutual 5/5, 2026-06-09)](#사이클-166)
 - [사이클 165 (Task9 골든 리메디에이션 — P1 #802~810 + P2 보안·파이프라인 하드닝 클러스터 #811~814: 게이트 원자적 리플레이 claim·webhook 본문 파싱·ai_review per-field PARITY·SSRF docstring·hook parse_error NULL+overview, Codex true mutual 실결함 4건 적발, 11 PR, 2026-06-08~09)](#사이클-165)
 - [사이클 164 (area=gate 잔여 6 결함 — 사용자 Q1~Q4 결정: 정적분석 파일격리+타임아웃 부분결과 보존, telegram 반자동 auto-merge 완전 대칭, regate first-writer-wins, 3 PR #794~#796, 2026-06-08)](#사이클-164)
 - [사이클 163 (area=gate P2 백로그 해소 — ApproveAction 정적분석 가드·hook 점수 비숫자/Infinity 안전변환·merge_retry 백오프 validator·zero-SHA 조기종료·_ensure_repo race 복구, 5 PR #783~#787, 2026-06-07)](#사이클-163)
@@ -74,6 +75,29 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 사이클 166
+
+**날짜**: 2026-06-09 | **PR**: #820~#824 (5건 머지) | **트리거**: 사용자 "잔여 작업 및 후속 작업 확인" | **상태**: Task9 full 감사 P2 백로그 자율 가능 10건 해소
+
+**작업 내용**: Task9 full 감사(2026-06-08, 36 confirmed)의 자율 가능 P2 항목을 코드 실측 검증 후 해소. 잔여 백로그 검증 워크플로우(wf_d1e440d5, 6에이전트 read-only — db/docs/gate·sec·test/ui/RLS/completeness critic)로 still_present 16 + partial 1(#17) + resolved 1(#32 이미 `| tojson`) 판정 → 응집 단위 5 PR 분할. 사용자 AskUserQuestion 2회(빠른 정합 → UI Medium) + #34 escape 전략 결정 1회.
+
+**빠른 정합 묶음 (Low)**:
+- **#820 (docs/rule)**: #19 README internal cron 2개(scan-security·retry-pending-merges) 추가 · #20 architecture.md scripts/ 2파일(capture_design_screenshots·extract_design_tokens) 추가 · #21 env-vars.md config.py line drift 60/61→63/64 · #28 security.md SESSION_SECRET 기본값 'dev-secret-key'→'dev-secret-change-in-production'(main.py:101 정합). 코드 0.
+- **#821 (db/test)**: #17 insight_narrative_cache `repo_id index=True` 제거 — 명시 Index `ix_insight_cache_repo_id`+alembic 0031 이미 정합, 자동명 `ix_insight_narrative_cache_repo_id` 중복/유령 인덱스(SQLite create_all 전용, 운영 PG 미존재) 제거, **마이그레이션 불필요** + 회귀 가드(inspect Red 2→Green 1) · #31 test_0029 dead-branch 2개 제거(`s.lower()` 'ON users' 미매칭·`or` fallback unreachable). 단위 +1.
+- **#822 (UI)**: #33 effects.js `setupTabs`/`setupNavMagnet`/`repositionAllTabIndicators` dead-code 제거 — `.tabs`/`.nav__*` BEM 셀렉터 템플릿 사용 0(grep 실측), `setupNavMagnet` preventDefault 함정 제거, #777 `_tabsResizeHandler` 도 함께 제거(누적 우려 완전 해소). −91줄. 🔴 고아 CSS(components.css `.tabs`/`.nav__*`) follow-up 분리(정책 11 시각 비대칭).
+
+**UI Medium 묶음**:
+- **#823 (#35/#36)**: add_repo.html pagehide + tweaks.js document keydown 익명 리스너 → named handler(`document._addRepoPagehide`·`_tweaksKeydown`) + remove-before-add(effects.js `_tabsResizeHandler` 패턴). 정적 가드 2건(`test_hx_boost_listener_guards`). 단위 +2.
+- **#824 (#34, 보안 민감)**: i18n_args 이중이스케이프 = 필터 수동 `_html_escape` + Jinja2 autoescape 재escape('Tom & Jerry'→'Tom &amp;amp; Jerry'). **Option A**(사용자 결정): 수동 escape 제거 → autoescape 위임(표준 Jinja2 패턴). 🔴 감사 원안이 "`| safe` 22건 XSS 노출"처럼 보였으나 실측=사용자 자유문자열 kwarg **0건**(config 정수·Markup span `_otp_countdown_span`·placeholder뿐)→A 안전. B′(Markup 전체 래핑)은 literal-< 번역문(`reject_threshold_hint:716`·`range_summary`) 깨짐으로 기각. 방어선 가드 `test_i18n_args_safe_contract`(`| safe`+kwarg 호출처 allowlist). 단위 +2.
+
+**검증**: 전 PR Codex true mutual OK(push 전, 정책 18), 모든 CI green(pytest·SonarCloud·CodeQL·TruffleHog·PG-tests·codecov). 단위 4718→4723(+5), 통합 154, pylint 10.00.
+
+**🔴 핵심 학습**: (1) #34 — 감사 에이전트가 overview.html 1곳만 보고 `| safe` 22건 놓침 → 보안 수정은 호출처 전수 grep + Codex mutual 2-layer 필수. (2) #17 — 리포트 인덱스명 부정확(partial 재판정), grep 실측이 추정 의존보다 우선. (3) #33 — CSS 동반 제거 권장이었으나 정책 11/17 기준 JS-only 축소.
+
+**잔여**: DB High-tier #14(FK ondelete)·#15/#16(인덱스 ORM 미선언)·#18(전역 compare_metadata 가드) — 정책 15 사전 확인 / 결정 영역 #22(Python 3.14↔CI 3.12)·#23(gate retry 'passed' 설계)·#2(RLS FORCE·SaaS) / 고아 CSS follow-up.
+
+---
 
 ## 사이클 165
 
