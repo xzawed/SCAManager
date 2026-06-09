@@ -111,7 +111,9 @@
 
 단위 4726→4728.
 
-**잔여 (full 감사 36건 중 #2·#18 외 전부 해소/결정)**: **#18**(전역 compare_metadata 가드 — 자율 가능하나 대형/fragile: PG dialect diff 필터 + 로컬 PG 없어 CI 반복 검증, 미착수) · **#2**(RLS FORCE — SaaS 전환 근본 항목, #810 갭 가시화로 운영 경고만, 보류).
+- **#836 (#18, 사용자 착수 승인)**: 전역 ORM↔alembic `compare_metadata` 정합 가드(PG-only, pg-concurrency CI) — `alembic upgrade head` 스키마 ↔ `Base.metadata` 구조적 diff==0 단언, **신규 drift 차단**. FP 제거: compare_type/server_default off + 단일 PK 컬럼 인덱스 중복 FP 제너릭 필터 + 사전존재 8건 allowlist(문서화). 첫 CI 14 diff → 2차 PASS. 🔴 **#18 이 사전존재 실 drift 4종 추가 발견(allowlist 문서화, 차기 fix 후보)**: ① users `ix_users_google_id` legacy 인덱스명(컬럼 github_id 리네임 미반영) ② analyses `ix_analyses_repo_id_created_at_tokens`(0032 alembic-only, #15류) ③ insight_cache `uq_insight_cache_global/repo` 부분유일(0031, #16류) ④ `repositories.user_id` FK(0005 컬럼만, DB FK 부재, #14류) + email unique index↔constraint 표현 FP. 필터 로직 로컬 가드(PG 불필요) 동반. 단위 +2.
+
+**잔여 (full 감사 36건 중 #2 외 전부 해소/결정)**: **#2**(RLS FORCE — SaaS 전환 근본 항목, #810 갭 가시화로 운영 경고만, 보류). + **#18 발견 사전존재 drift 4종**(users 인덱스명·analyses _tokens·insight_cache 부분유일·repositories FK — allowlist 문서화, 차기 fix 후보).
 
 ---
 
