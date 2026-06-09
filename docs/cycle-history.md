@@ -102,7 +102,13 @@
 
 전 PR Codex true mutual OK·CI green. 단위 4723→4726.
 
-**잔여**: #18(전역 compare_metadata 가드 — 대형/fragile, dialect diff 필터 필요) 자율 가능 / 결정 영역 #22(Python 3.14↔CI 3.12)·#23(gate retry 'passed' 설계)·#2(RLS FORCE·SaaS).
+**결정 영역 처리 (사용자 순차 결정, #830~#831)**:
+- **#830 (#22)**: Python 버전 SSOT 3.12 정렬 — README/README.ko/STATE 의 3.14 미검증 선언 → CI(3.12) 기준. 4환경 불일치(CI 3.12·로컬 3.13·Railway nixpacks 핀없음·docs 3.14) 중 CI 권위. docs-only. nixpacks Railway 핀은 별도 follow-up.
+- **#831 (#23)**: gate retry `'passed'` 의도 설계 명시 — 사용자 결정 **A(현 설계 유지, 코드 동작 0)**. `should_retry(UNSTABLE_CI,'passed')=True` 는 merge API lag / 다중 check suite pending 대비 의도적·bounded(감사 '영구 재시도' 표현 부정확). docstring + 회귀 가드. 🔴 **Codex mutual 적발(2-layer ROI)**: 초안이 예산을 `is_expired(max_age/max_attempts)` 로 오기 → 실측 is_expired=max_age 만, max_attempts=process_pending_retries(abandoned) 별도 → 정정 후 OK.
+
+단위 4726→4727.
+
+**잔여 (full 감사 36건 중 #2 외 전부 해소/결정)**: **#18**(전역 compare_metadata 가드 — 자율 가능하나 대형/fragile: PG dialect diff 필터 + 로컬 PG 없어 CI 반복 검증, 미착수) · **#2**(RLS FORCE — SaaS 전환 근본 항목, #810 갭 가시화로 운영 경고만, 보류).
 
 ---
 
