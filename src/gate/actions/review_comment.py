@@ -8,7 +8,7 @@ import logging
 
 import httpx
 
-from src.database import SessionLocal
+from src.database import WorkerSessionLocal as SessionLocal
 from src.gate.actions import GateAction, GateContext, register
 from src.notifier.github_comment import post_pr_comment_from_result as post_pr_comment
 from src.notifier._language import resolve_notification_language

@@ -9,6 +9,7 @@
 - [사이클 166 적대 재검증 후속 (STATE overclaim + #32 'resolved' 위양성 적발 → #838 docs정정·#839 #32 tojson·#840 drift④ FK·#841 drift① rename, 4 PR, 2026-06-09)](#사이클-166-적대-재검증-후속-2026-06-09--838841)
 - [잔여작업 라운드 (사용자 결정 C — #843 drift③④' ORM 부분 인덱스 정합·#844 #2 RLS owner-bypass 근본 runbook, 2 PR, 2026-06-09~10)](#잔여작업-라운드-2026-06-0910--843844-사용자-결정-c)
 - [잔여 정리 라운드 A옵션 (PR #838~#845 본문 `@-` 소실 복원 + 정책 10 본문 검증 의무 + Code Scanning 12건 처분 + RLS stale docs 정정, 1 PR #846, 2026-06-10)](#잔여-정리-라운드-a옵션-2026-06-10)
+- [RLS Phase 2 — background 전용 worker 세션 분리 (옵션 A: DATABASE_URL_WORKER + WorkerSessionLocal + 16 모듈 alias + ast 가드 48, 1 PR, 2026-06-10)](#rls-phase-2--background-전용-worker-세션-분리-2026-06-10)
 - [사이클 165 (Task9 골든 리메디에이션 — P1 #802~810 + P2 보안·파이프라인 하드닝 클러스터 #811~814: 게이트 원자적 리플레이 claim·webhook 본문 파싱·ai_review per-field PARITY·SSRF docstring·hook parse_error NULL+overview, Codex true mutual 실결함 4건 적발, 11 PR, 2026-06-08~09)](#사이클-165)
 - [사이클 164 (area=gate 잔여 6 결함 — 사용자 Q1~Q4 결정: 정적분석 파일격리+타임아웃 부분결과 보존, telegram 반자동 auto-merge 완전 대칭, regate first-writer-wins, 3 PR #794~#796, 2026-06-08)](#사이클-164)
 - [사이클 163 (area=gate P2 백로그 해소 — ApproveAction 정적분석 가드·hook 점수 비숫자/Infinity 안전변환·merge_retry 백오프 validator·zero-SHA 조기종료·_ensure_repo race 복구, 5 PR #783~#787, 2026-06-07)](#사이클-163)
@@ -175,6 +176,25 @@
 **검증**: 주석/docs-only (src 변경 = `rls_session.py` docstring 1곳 — 런타임 무변경, rls 단위 9 passed. 테스트 4889 불변). Codex mutual (push 전, 정책 18 — R1 NG 2건·R2 NG 1건 정정 후 OK).
 
 **잔여 (불변)**: **#2(RLS owner-bypass — Phase 2 background 코드 PR + 운영 role 분리)**. 본 라운드 신규 식별 백로그: 정책 11 일괄 회신 대기 (#822/#823/#824/#827/#839 8조합), 사이클 164~166 회고 보고서 미보관 + #838~#845 라운드 회고 미수행, claude_metrics 가격표 분기 재확인 (2026-07 초), 온프레미스 PG rolbypassrls 미측정 (#2 선행).
+
+---
+
+## RLS Phase 2 — background 전용 worker 세션 분리 (2026-06-10)
+
+**날짜**: 2026-06-10 | **PR**: 본 라운드 1건 (번호는 PR 생성 후 fix-up 반영) | **트리거**: 사용자 "다음단계는 가장 권장하는 옵션으로" → runbook 권장안 **옵션 A (service role 분리)** 위임 결정 (정책 15 High tier — 위임 근거 PR 본문 명시) | **상태**: Phase 2 코드 완료 — #2 잔여 = 운영 Phase 1/4 + Phase 3 FORCE(운영 선행 후 코드)
+
+정합성 감사 #2 (RLS owner-bypass) 의 선행 필수 코드 — role 분리 후 background 경로가 `app.user_id` 미설정으로 차단되는 파이프라인 붕괴(runbook L32/L57)를 막는 이중 세션 라우팅.
+
+- **config**: `database_url_worker: str = ""` + postgres:// 스킴 변환 validator (`_normalize_pg_url` 공유 — fallback 패턴 미러).
+- **database.py**: `_build_worker_session_factory(worker_url, web_factory)` — **미설정 시 web_factory 동일 객체 반환 (현행 동작 bit-identical 보존)** / 설정 시 독립 `FailoverSessionFactory` 단일 엔진 (failover 없음 + RLS `SET LOCAL` listener 미등록 — BYPASSRLS worker 전제 + 활성 시 INFO 로그 1줄 [pipeline-reviewer P2-1]).
+- **background 16 모듈 alias 전환**: `from src.database import WorkerSessionLocal as SessionLocal` — 모듈 심볼명 유지로 기존 테스트 patch 대상 (`src.worker.pipeline.SessionLocal` 등) 불변 (사이클 165 #811 stale-mock 함정 회피). 대상: worker/pipeline · webhook/providers 3종 + _helpers · gate/engine + actions(review_comment·approve — auto_merge 는 engine 위임 커버) · notifier lazy 6종 · api/internal_cron · api/hook. `services/merge_retry_service` 는 cron 세션 주입 — 자동 커버.
+- **TDD**: test-writer 선행 48 테스트 (Red 45 → Green 48) — config 변환 / factory identity·독립 인스턴스 / RLS listener 범위 / **ast 기반 정적 라우팅 가드** (16 모듈 alias 강제 + bare import 차단 + 웹 모듈 negative — 신규 background 진입점 누락 자동 fail).
+- **pipeline-reviewer APPROVE** (P0 0): (a) 미설정 시 동일성 검증 (b) 전환 누락/과잉 0 — 잔존 bare import 16곳 전부 웹 경로 실측 (c) P0-H gather 독립 세션 보존 (d) P2 — failover 미지원·이중 풀 트레이드오프 env-vars.md 명시, scripts/backfill 은 범위 외 보류(정책 3 보고).
+- **docs sync**: env-vars.md(트레이드오프 포함) · .env.example · db.md(WorkerSessionLocal 라우팅 규칙 — 사이클 86 Q2 path-scoped sync) · runbook Phase 2 ✅ 구현 완료 표기 · README 배지.
+
+**검증**: 전체 4931 passed (수집 4889→4937, 단위 4735→4783 +48) · pylint 10.00 · flake8 E501 15 (main baseline 동일 — notifier lazy import 5건 괄호 분리로 신규 0). Codex mutual (push 전, 정책 18).
+
+**잔여**: #2 = **Phase 1 (scamanager_app/worker role 생성 SQL — 운영, 사용자)** → **Phase 4 (DATABASE_URL/DATABASE_URL_WORKER 전환 + 검증 4종 — 운영, 사용자)** + **Phase 3 (0041 FORCE 마이그레이션 + force_applied 실측 쿼리 — Phase 1·2 적용 확인 후 코드 PR)**. 미설정 동안 운영 동작 변화 0.
 
 ---
 

@@ -168,7 +168,9 @@ class _IssueNotifier:
 
     async def send(self, ctx: NotifyContext) -> None:
         """알림을 전송한다 (Phase 3 PR-11 — 3-layer fallback)."""
-        from src.database import SessionLocal  # noqa: WPS433  # pylint: disable=import-outside-toplevel
+        from src.database import (  # noqa: WPS433  # pylint: disable=import-outside-toplevel
+            WorkerSessionLocal as SessionLocal,
+        )
         from src.notifier._language import resolve_notification_language  # noqa: WPS433  # pylint: disable=import-outside-toplevel
         with SessionLocal() as db:
             language = resolve_notification_language(db, config=ctx.config)

@@ -265,6 +265,37 @@ if hasattr(engine, "dialect"):  # 정상 SQLAlchemy Engine 일 때만
     event.listen(engine, "before_cursor_execute", _set_rls_user_id_per_query)
 
 
+def _build_worker_session_factory(worker_url: str, web_factory):
+    """background 전용 세션 팩토리 빌더 — RLS role 분리 옵션 A (Phase 2).
+
+    DATABASE_URL_WORKER 미설정(빈 문자열) 시 웹 팩토리를 그대로 재사용해
+    현행 동작을 보존한다. 설정 시 독립 FailoverSessionFactory (단일 엔진 모드,
+    fallback 없음) 를 생성 — BYPASSRLS worker role 접속용이므로 RLS SET LOCAL
+    listener 는 등록하지 않는다 (worker role 은 RLS 미평가).
+
+    Builds the background-only session factory — RLS role separation Option A (Phase 2).
+    Empty worker_url reuses the web factory unchanged (preserves current behavior).
+    A non-empty URL creates an independent single-engine FailoverSessionFactory without
+    the RLS SET LOCAL listener (the BYPASSRLS worker role never evaluates RLS).
+    절차: docs/runbooks/rls-role-separation.md
+    """
+    if not worker_url:
+        return web_factory
+    # 오설정 관찰성 — worker 분리 활성 시 시작 로그 1줄 (비-BYPASSRLS role 오지정 진단 단서)
+    # Misconfiguration observability — one startup log when the dedicated worker engine activates
+    logger.info(
+        "WorkerSessionLocal: dedicated worker engine active (no failover, no RLS listener)"
+    )
+    return FailoverSessionFactory(worker_url)
+
+
+# background 경로 (webhook/worker/gate/notifier/cron/CLI hook) 전용 세션 팩토리.
+# 웹 요청 경로는 SessionLocal (비-BYPASSRLS app role 전환 대상) 을 그대로 사용한다.
+# Background-only session factory (webhook/worker/gate/notifier/cron/CLI hook).
+# Web request paths keep using SessionLocal (target of the non-BYPASSRLS app role switch).
+WorkerSessionLocal = _build_worker_session_factory(settings.database_url_worker, SessionLocal)
+
+
 def get_db():
     """FastAPI dependency injection용 세션 제너레이터.
     Session generator for FastAPI dependency injection."""

@@ -12,7 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from src.config import settings
 from src.constants import WEBHOOK_SECRET_CACHE_TTL
-from src.database import SessionLocal
+from src.database import WorkerSessionLocal as SessionLocal
 from src.repositories import repository_repo
 
 logger = logging.getLogger("src.webhook")

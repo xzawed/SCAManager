@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     # DB Failover 설정 (빈 문자열이면 failover 비활성)
     database_url_fallback: str = ""
     db_failover_probe_interval: int = 30  # Primary 복구 확인 주기(초)
+    # background 전용 DB URL — RLS role 분리 옵션 A (rls-role-separation.md Phase 2)
+    # 빈 문자열이면 DATABASE_URL 팩토리 재사용 (현행 동작 보존)
+    # Background-only DB URL — RLS role separation Option A (Phase 2).
+    # Empty string reuses the DATABASE_URL factory (preserves current behavior).
+    database_url_worker: str = ""
     # Auto-merge unknown 상태 재시도 (Phase F Quick Win) — 운영 중 튜닝용
     merge_unknown_retry_limit: int = 3        # 기본 3회
     merge_unknown_retry_delay: float = 3.0    # 기본 3초 간격 (총 최대 9초)
@@ -173,6 +178,15 @@ class Settings(BaseSettings):
     @classmethod
     def fix_fallback_url(cls, v: str) -> str:
         """DATABASE_URL_FALLBACK의 postgres:// 스킴을 postgresql://로 변환한다."""
+        if not v:
+            return v
+        return cls._normalize_pg_url(v)
+
+    @field_validator("database_url_worker")
+    @classmethod
+    def fix_worker_url(cls, v: str) -> str:
+        """DATABASE_URL_WORKER의 postgres:// 스킴을 postgresql://로 변환한다.
+        Normalize the postgres:// scheme of DATABASE_URL_WORKER to postgresql://."""
         if not v:
             return v
         return cls._normalize_pg_url(v)

@@ -11,7 +11,7 @@ from html import escape
 import httpx
 from sqlalchemy.orm import Session
 from src.config import settings
-from src.database import SessionLocal  # 독립 세션 열기용 — asyncio.gather 공유 세션 오염 방지
+from src.database import WorkerSessionLocal as SessionLocal  # 독립 세션 열기용 — asyncio.gather 공유 세션 오염 방지
 # SessionLocal imported at module level for independent sessions in asyncio.gather coroutines.
 from src.config_manager.manager import get_repo_config, RepoConfigData
 # Action Registry — 3개 옵션을 GATE_ACTIONS 리스트로 관리. import 시 자동 등록.
