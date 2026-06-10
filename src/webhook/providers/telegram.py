@@ -32,6 +32,7 @@ from src.repositories import (
     user_repo,
 )
 from src.shared.secure_compare import secure_str_compare
+from src.shared.log_safety import sanitize_for_log
 
 logger = logging.getLogger(__name__)
 
@@ -105,9 +106,9 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
                 if telegram_user_id else None
             )
             if user is None or repo.user_id != user.id:
-                logger.warning(
+                logger.warning(  # NOSONAR python:S5145 — sanitized via log_safety
                     "handle_gate_callback: unauthorized tg_user=%s for repo=%s (analysis %d) — skipping",
-                    telegram_user_id, repo.full_name, analysis_id,
+                    sanitize_for_log(telegram_user_id), repo.full_name, analysis_id,
                 )
                 return
             if analysis.pr_number is None:
