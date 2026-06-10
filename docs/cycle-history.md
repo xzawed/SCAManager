@@ -192,7 +192,7 @@
 - **pipeline-reviewer APPROVE** (P0 0): (a) 미설정 시 동일성 검증 (b) 전환 누락/과잉 0 — 잔존 bare import 16곳 전부 웹 경로 실측 (c) P0-H gather 독립 세션 보존 (d) P2 — failover 미지원·이중 풀 트레이드오프 env-vars.md 명시, scripts/backfill 은 범위 외 보류(정책 3 보고).
 - **docs sync**: env-vars.md(트레이드오프 포함) · .env.example · db.md(WorkerSessionLocal 라우팅 규칙 — 사이클 86 Q2 path-scoped sync) · runbook Phase 2 ✅ 구현 완료 표기 · README 배지.
 
-**검증**: 전체 4934 passed + 가드 52 (수집 4889→4941, 단위 4735→4787 +52) · pylint 10.00 · flake8 E501 15 (main baseline 동일 — notifier lazy import 5건 괄호 분리로 신규 0). Codex mutual (push 전, 정책 18 — R1 NG 3건 [AST 가드 우회·.env.example exclude 평가·README/deploy 등재 누락] → inventory/재바인딩 가드 +3·훅 ID 정정·docs 등재·exclude 는 반증 [placeholder 변경 시 SESSION_SECRET 32자 validator 가 dev flow 파손] 제시 → R2 동의 / R2 잔여 NG 2건 [모듈 객체 import 우회·runbook 48 stale] 정정 후 OK).
+**검증**: 전체 4935 passed / 6 skipped (수집 4889→4941, 단위 4735→4787 +52) · pylint 10.00 · flake8 E501 15 (main baseline 동일 — notifier lazy import 5건 괄호 분리로 신규 0). Codex mutual (push 전, 정책 18 — R1 NG 3건 [AST 가드 우회·.env.example exclude 평가·README/deploy 등재 누락] → inventory/재바인딩 가드·훅 ID 정정·docs 등재·exclude 반증 [placeholder 변경 시 SESSION_SECRET 32자 validator 가 dev flow 파손, R2 동의] → R2/R3 잔여 [모듈 객체 import 우회·수치 정밀] 라운드별 정정. push 는 mutual OK 수신 후에만 수행 — 최종 판정 기록 = PR 본문 §Codex 검증 의뢰).
 
 **잔여**: #2 = **Phase 1 (scamanager_app/worker role 생성 SQL — 운영, 사용자)** → **Phase 4 (DATABASE_URL/DATABASE_URL_WORKER 전환 + 검증 4종 — 운영, 사용자)** + **Phase 3 (0041 FORCE 마이그레이션 + force_applied 실측 쿼리 — Phase 1·2 적용 확인 후 코드 PR)**. 미설정 동안 운영 동작 변화 0.
 
