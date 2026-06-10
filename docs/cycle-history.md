@@ -171,9 +171,9 @@
 전수 스캔(1차 42건 → critic 검증 후 고유 ~24건, 허위 2건 부분 기각)이 STATE '잔여 #2만' 선언 밖에서 신규 P1 사고를 적발 — 본 라운드로 정리.
 
 - **PR #838~#845 본문 8건 복원** (GitHub-side): `gh pr create` 본문 인자 결함으로 전건 리터럴 `@-` 2자 저장 → squash 커밋 메시지에서 복원 + #839 에 정책 11 8조합 체크리스트 회복 섹션 추가. 정책 2/11/18 의무 섹션 GitHub 기록 소실 사고.
-- **재발 방지 (정책 10 진화)**: 본문 임시 파일 + `--body-file <경로>` 전달 의무 + 생성/수정 직후 `gh pr view --json body` 길이 검증 1줄 의무 — CLAUDE.md 1줄 + active.md detail (본 PR).
+- **재발 방지 (정책 10 진화)**: 본문 임시 파일 + `--body-file <경로>` 전달 의무 + 생성/수정 직후 `gh pr view --json body` 길이 검증 1줄 의무 — CLAUDE.md 1줄 + active.md detail (#846).
 - **Code Scanning 12건 처분** (정책 14): #492~#502 unused-import 11건 = parity 테스트 의도적 ORM side-effect import (testing.md 'empty `__init__` + 명시 import' 규칙) → used-in-tests dismiss / #491 ineffectual-statement = `claude_metrics.py:35` `await result` 실효 코루틴 await → false-positive dismiss. open alert 12→0.
-- **stale docs 정정**: operational-smoke-checks.md §8.7 — 'RLS 운영 활성화' 행이 '사용자 별도 PR 의무 + 부재 메모리 파일 참조' 로 stale (미들웨어 `rls_session.py` + `_set_rls_user_id_per_query` 구현 완료) → 구현 완료 + role 분리 선행 필요로 갱신, rls-role-separation.md cross-link + `rls_session.py` docstring 동일 stale 참조 정정 (본 PR — Codex mutual P2 적발).
+- **stale docs 정정**: operational-smoke-checks.md §8.7 — 'RLS 운영 활성화' 행이 '사용자 별도 PR 의무 + 부재 메모리 파일 참조' 로 stale (미들웨어 `rls_session.py` + `_set_rls_user_id_per_query` 구현 완료) → 구현 완료 + role 분리 선행 필요로 갱신, rls-role-separation.md cross-link + `rls_session.py` docstring 동일 stale 참조 정정 (#846 — Codex mutual P2 적발).
 - **메모리 동기화**: dangling commit 7d0fa1fe Support 요청 기록 상충 2곳 (`project_security_3layer_guard` 미체크 ↔ `project_cycle_theme_nav_fix` 완료) → 2026-06-10 실측(API 200 — purge 미반영, 결과 확인/재요청 잔여) 반영 통일.
 
 **검증**: 주석/docs-only (src 변경 = `rls_session.py` docstring 1곳 — 런타임 무변경, rls 단위 9 passed. 테스트 4889 불변). Codex mutual (push 전, 정책 18 — R1 NG 2건·R2 NG 1건 정정 후 OK).
@@ -184,7 +184,7 @@
 
 ## RLS #2 Phase 4 admin 대시보드 cross-tenant 보존 — api/admin·ui/routes/admin hybrid (#849 후속) (2026-06-10)
 
-**날짜**: 2026-06-10 | **PR**: 본 PR (#850 예정) | **트리거**: #849 머지 후 사용자 "이후 작업을 수행해주세요" → 마지막 코드 가능 #2 항목(/admin cross-tenant under-report) 해소 | **상태**: 코드 완료 — **Phase 4 코드 차단 경로 전부 해소**, #2 잔여 = Phase 4 운영 전환만(사용자)
+**날짜**: 2026-06-10 | **PR**: #850 | **트리거**: #849 머지 후 사용자 "이후 작업을 수행해주세요" → 마지막 코드 가능 #2 항목(/admin cross-tenant under-report) 해소 | **상태**: 코드 완료(#850 머지) — **Phase 4 코드 차단 경로 전부 해소**, #2 잔여 = Phase 4 운영 전환만(사용자)
 
 - **문제**: admin 은 `require_admin` **세션**이 있지만, `/admin/tenants`(`tenant_inventory` — User/Repository/Analysis)·`/admin/operations`(`operations_kpi` — MergeAttempt/User)는 **전체 테넌트 집계**다. Phase 4 비-BYPASSRLS app role 전환 시 admin 세션 RLS(`app.user_id=admin`)가 admin 본인 행만 남겨 under-report(admin 대시보드 붕괴). api/admin.py + ui/routes/admin.py 양쪽 동일.
 - **해소 (엔드포인트별 hybrid)**: 신규 `_get_worker_db`(WorkerSessionLocal, BYPASSRLS) 의존성 도입 → `tenants`·`operations` 만 분기. cross-tenant 가시성 보존(현 BYPASSRLS postgres 동작 = Phase 4 후에도 동일).
