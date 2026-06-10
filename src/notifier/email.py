@@ -126,7 +126,11 @@ async def send_email_notification(  # pylint: disable=too-many-arguments
     )
     msg["Subject"] = Header(subject_text, "utf-8")
     msg["From"] = smtp_user or "sca@localhost"
-    msg["To"] = recipients
+    # 🔴 헤더 인젝션 차단 — recipients(repo 설정 email_recipients)의 CR/LF 제거 후 To 헤더 설정.
+    # email 모듈은 raw string 헤더에 개행을 그대로 넣어 추가 헤더 주입이 가능하므로 명시 제거.
+    # Strip CR/LF from recipients (repo email_recipients config) — the email module would otherwise
+    # let embedded newlines inject extra headers (To-header injection).
+    msg["To"] = recipients.replace("\r", "").replace("\n", "")
     msg.attach(MIMEText(html, "html"))
 
     # SMTP hang 방어: aiosmtplib 기본 timeout=60s 가 길어 운영 hang 시

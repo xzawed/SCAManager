@@ -4,7 +4,7 @@ from __future__ import annotations
 import secrets
 from dataclasses import fields as dataclass_fields
 from typing import Annotated
-from urllib.parse import quote, urlparse
+from urllib.parse import quote
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -30,7 +30,7 @@ from src.i18n.loader import get_text
 from src.models.repo_config import RepoConfig
 from src.repositories import repo_config_repo
 from src.shared.log_safety import sanitize_for_log
-from src.shared.ssrf import is_dangerous_ip
+from src.shared.ssrf import is_safe_webhook_url
 from src.ui._helpers import (
     GITHUB_WEBHOOK_PATH,
     get_accessible_repo,
@@ -42,47 +42,9 @@ from src.ui._helpers import (
 
 router = APIRouter()
 
-# SSRF 방어: 내부 네트워크 및 클라우드 메타데이터 주소 차단
-# SSRF defence: block internal network and cloud metadata addresses.
-_BLOCKED_HOSTS = frozenset({
-    "localhost", "127.0.0.1", "::1",
-    "0.0.0.0",  # nosec B104
-    "169.254.169.254",  # AWS/GCP IMDS
-    "metadata.google.internal",  # GCP metadata
-    "fd00::ec2",  # AWS IPv6 IMDS
-})
-
-
-def _is_safe_webhook_url(url: str | None) -> bool:  # pylint: disable=too-many-return-statements
-    """사용자 제공 URL이 SSRF 공격에 안전한지 검증한다.
-    Validates that a user-supplied URL is safe against SSRF attacks.
-
-    반환값 7개는 SSRF 방어 경로 각각이 명확한 실패 사유를 나타내므로 의도적.
-    7 return statements are intentional — each guards a distinct SSRF failure path."""
-    if not url:
-        return True
-    try:
-        parsed = urlparse(url)
-        # https-only — 발신 가드(_http.py _ALLOWED_SCHEMES)와 동일 정책. http 는 send-time 에 거부되므로
-        # 폼에서도 일관 차단 (저장됐으나 발송 안 되는 혼란 방지, WBS 감사 P2 — 스킴 비대칭 해소).
-        # https-only — matches the outbound guard (_http.py); http is rejected at send time anyway,
-        # so block it at the form too (avoids "saved but never sends" confusion).
-        if parsed.scheme != "https":
-            return False
-        host = (parsed.hostname or "").lower()
-        if not host:
-            return False
-        if host in _BLOCKED_HOSTS:
-            return False
-        # 위험 IP 대역 차단 (사설/루프백/링크로컬/예약/멀티캐스트/CGNAT) — 발신 가드와 단일 출처 헬퍼 공유.
-        # 도메인명은 IP 가 아니므로 False → send-time validate_external_url 가 DNS 해석 후 차단.
-        # Block dangerous IP ranges via the shared single-source helper (same as the outbound guard).
-        # Domain names are not IPs (False) → resolved+blocked at send time by validate_external_url.
-        if is_dangerous_ip(host):
-            return False
-        return True
-    except Exception:  # pylint: disable=broad-except
-        return False
+# SSRF 방어 webhook URL 검증은 src/shared/ssrf.py::is_safe_webhook_url 단일 출처 (REST API repos.py 와 공유).
+# Storage-time webhook-URL SSRF validation lives in src/shared/ssrf.py::is_safe_webhook_url
+# (single source, shared with the REST API repos.py).
 
 
 def _validate_webhook_urls(form, locale: str) -> None:
@@ -94,7 +56,7 @@ def _validate_webhook_urls(form, locale: str) -> None:
     )
     for field in webhook_fields:
         url = form.get(field) or ""
-        if url and not _is_safe_webhook_url(url):
+        if url and not is_safe_webhook_url(url):
             raise HTTPException(
                 status_code=400,
                 detail=get_text("errors.invalid_url", locale, field=field),
