@@ -9,7 +9,7 @@
 - [사이클 166 적대 재검증 후속 (STATE overclaim + #32 'resolved' 위양성 적발 → #838 docs정정·#839 #32 tojson·#840 drift④ FK·#841 drift① rename, 4 PR, 2026-06-09)](#사이클-166-적대-재검증-후속-2026-06-09--838841)
 - [잔여작업 라운드 (사용자 결정 C — #843 drift③④' ORM 부분 인덱스 정합·#844 #2 RLS owner-bypass 근본 runbook, 2 PR, 2026-06-09~10)](#잔여작업-라운드-2026-06-0910--843844-사용자-결정-c)
 - [잔여 정리 라운드 A옵션 (PR #838~#845 본문 `@-` 소실 복원 + 정책 10 본문 검증 의무 + Code Scanning 12건 처분 + RLS stale docs 정정, 1 PR #846, 2026-06-10)](#잔여-정리-라운드-a옵션-2026-06-10)
-- [RLS Phase 2 — background 전용 worker 세션 분리 (옵션 A: DATABASE_URL_WORKER + WorkerSessionLocal + 16 모듈 alias + ast 가드 52, 1 PR, 2026-06-10)](#rls-phase-2--background-전용-worker-세션-분리-2026-06-10)
+- [RLS Phase 2 — background 전용 worker 세션 분리 (옵션 A: DATABASE_URL_WORKER + WorkerSessionLocal + 16 모듈 alias + ast 가드 52, 1 PR #847, 2026-06-10)](#rls-phase-2--background-전용-worker-세션-분리-2026-06-10)
 - [사이클 165 (Task9 골든 리메디에이션 — P1 #802~810 + P2 보안·파이프라인 하드닝 클러스터 #811~814: 게이트 원자적 리플레이 claim·webhook 본문 파싱·ai_review per-field PARITY·SSRF docstring·hook parse_error NULL+overview, Codex true mutual 실결함 4건 적발, 11 PR, 2026-06-08~09)](#사이클-165)
 - [사이클 164 (area=gate 잔여 6 결함 — 사용자 Q1~Q4 결정: 정적분석 파일격리+타임아웃 부분결과 보존, telegram 반자동 auto-merge 완전 대칭, regate first-writer-wins, 3 PR #794~#796, 2026-06-08)](#사이클-164)
 - [사이클 163 (area=gate P2 백로그 해소 — ApproveAction 정적분석 가드·hook 점수 비숫자/Infinity 안전변환·merge_retry 백오프 validator·zero-SHA 조기종료·_ensure_repo race 복구, 5 PR #783~#787, 2026-06-07)](#사이클-163)
@@ -181,7 +181,7 @@
 
 ## RLS Phase 2 — background 전용 worker 세션 분리 (2026-06-10)
 
-**날짜**: 2026-06-10 | **PR**: 본 라운드 1건 (번호는 PR 생성 후 fix-up 반영) | **트리거**: 사용자 "다음단계는 가장 권장하는 옵션으로" → runbook 권장안 **옵션 A (service role 분리)** 위임 결정 (정책 15 High tier — 위임 근거 PR 본문 명시) | **상태**: Phase 2 코드 완료 — #2 잔여 = 운영 Phase 1/4 + Phase 3 FORCE(운영 선행 후 코드)
+**날짜**: 2026-06-10 | **PR**: #847 (번호는 생성 후 fix-up 반영 — Codex R1 처방 흐름) | **트리거**: 사용자 "다음단계는 가장 권장하는 옵션으로" → runbook 권장안 **옵션 A (service role 분리)** 위임 결정 (정책 15 High tier — 위임 근거 PR 본문 명시) | **상태**: Phase 2 코드 완료 — #2 잔여 = 운영 Phase 1/4 + Phase 3 FORCE(운영 선행 후 코드)
 
 정합성 감사 #2 (RLS owner-bypass) 의 선행 필수 코드 — role 분리 후 background 경로가 `app.user_id` 미설정으로 차단되는 파이프라인 붕괴(runbook L32/L57)를 막는 이중 세션 라우팅.
 
