@@ -56,6 +56,29 @@ _WEB_API_MODULES = [
     "src/api/admin.py",
 ]
 
+# bare SessionLocal import 허용 웹 모듈 전수 allowlist (16 파일 — Codex R1 강화 가드).
+# 신규 src 모듈이 SessionLocal 계열을 import 하면 BACKGROUND/WEB 중 한쪽에 분류 의무 —
+# 미등재 시 inventory 테스트가 자동 fail (db.md WorkerSessionLocal 라우팅 규칙 페어).
+# Exhaustive allowlist of web modules permitted to import bare SessionLocal (16 files).
+# Any new src module importing the SessionLocal family must be classified into BACKGROUND
+# or WEB — unlisted imports automatically fail the inventory test (pairs with db.md rule).
+_WEB_DB_MODULES = _WEB_API_MODULES + [
+    "src/auth/session.py",
+    "src/auth/github.py",
+    "src/ui/routes/dashboard.py",
+    "src/ui/routes/actions.py",
+    "src/ui/routes/settings.py",
+    "src/ui/routes/admin.py",
+    "src/ui/routes/repo_insights.py",
+    "src/ui/routes/add_repo.py",
+    "src/ui/routes/detail.py",
+    "src/ui/routes/overview.py",
+]
+
+# 세션 팩토리 계열 심볼 — inventory/재바인딩 가드 대상
+# Session-factory family symbols — targets of the inventory/rebinding guards
+_SESSION_SYMBOLS = {"SessionLocal", "WorkerSessionLocal"}
+
 
 def _read_source(rel_path: str) -> str:
     """리포 루트 기준 상대 경로의 소스 텍스트를 읽는다.
@@ -330,4 +353,120 @@ class TestWebModulesDoNotUseWorkerSession:
                 violations.append(str(path.relative_to(_REPO_ROOT)))
         assert not violations, (
             f"웹 모듈에서 WorkerSessionLocal 사용 발견 / found in web modules: {violations}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 테스트 7: 전수 inventory 가드 — src 전체 SessionLocal 계열 import 분류 강제
+# Test 7: exhaustive inventory guard — every src import of the SessionLocal family
+#         must be classified (Codex R1 강화 — 신규 모듈 누락 자동 fail)
+# ---------------------------------------------------------------------------
+
+def _iter_src_py() -> list:
+    """src/ 하위 전체 .py 파일 경로를 수집한다 (database.py 자신 포함).
+    Collects every .py file under src/ (including database.py itself)."""
+    return sorted((_REPO_ROOT / "src").rglob("*.py"))
+
+
+class TestSessionFactoryInventory:
+    """src 전체에서 SessionLocal 계열 import 를 전수 수집해 분류 누락을 차단한다.
+    Sweeps every src module for SessionLocal-family imports and blocks unclassified ones.
+
+    수동 목록(_BACKGROUND_MODULES/_WEB_DB_MODULES) 밖의 신규 모듈이 SessionLocal 계열을
+    import 하면 본 테스트가 fail — BACKGROUND(worker alias) / WEB(bare) 분류를 강제한다.
+    A new module outside the manual lists importing the family fails this test,
+    forcing an explicit BACKGROUND (worker alias) vs WEB (bare) classification.
+    """
+
+    def _inventory(self) -> dict:
+        """파일별 (원본 이름, alias) import 목록 — SessionLocal 계열만.
+        Per-file (name, alias) import list — SessionLocal family only."""
+        result = {}
+        for path in _iter_src_py():
+            rel = path.relative_to(_REPO_ROOT).as_posix()
+            bindings = [
+                (name, asname)
+                for name, asname in _db_import_bindings(path.read_text(encoding="utf-8"))
+                if name in _SESSION_SYMBOLS
+            ]
+            if bindings:
+                result[rel] = bindings
+        return result
+
+    def test_every_worker_alias_importer_is_listed_background(self):
+        # WorkerSessionLocal 을 import 하는 src 파일 집합 == _BACKGROUND_MODULES 집합 (양방향)
+        # The set of src files importing WorkerSessionLocal == _BACKGROUND_MODULES (bijection)
+        importers = {
+            rel for rel, bindings in self._inventory().items()
+            if any(name == "WorkerSessionLocal" for name, _ in bindings)
+        }
+        assert importers == set(_BACKGROUND_MODULES), (
+            "WorkerSessionLocal import 파일 집합이 _BACKGROUND_MODULES 와 불일치 — "
+            f"누락/잉여: {importers ^ set(_BACKGROUND_MODULES)} / "
+            "신규 background 모듈은 _BACKGROUND_MODULES 등재 의무 (db.md 규칙)"
+        )
+
+    def test_every_bare_sessionlocal_importer_is_listed_web(self):
+        # bare SessionLocal 을 import 하는 src 파일 집합 == _WEB_DB_MODULES 집합 (양방향)
+        # The set of src files importing bare SessionLocal == _WEB_DB_MODULES (bijection)
+        importers = {
+            rel for rel, bindings in self._inventory().items()
+            if any(name == "SessionLocal" for name, _ in bindings)
+        }
+        assert importers == set(_WEB_DB_MODULES), (
+            "bare SessionLocal import 파일 집합이 _WEB_DB_MODULES 와 불일치 — "
+            f"누락/잉여: {importers ^ set(_WEB_DB_MODULES)} / "
+            "신규 모듈은 BACKGROUND(worker alias)/WEB(bare) 분류 의무 (db.md 규칙)"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 테스트 8: 재바인딩 금지 가드 — alias 우회 차단 (Codex R1 강화)
+# Test 8: rebinding ban guard — blocks alias bypass via reassignment (Codex R1)
+# ---------------------------------------------------------------------------
+
+class TestNoSessionFactoryRebinding:
+    """src 전체에서 SessionLocal/WorkerSessionLocal 재할당을 금지한다 (database.py 제외).
+    Bans any reassignment of SessionLocal/WorkerSessionLocal across src (except database.py).
+
+    올바른 alias import 후 `SessionLocal = src.database.SessionLocal` 재바인딩으로
+    worker 라우팅을 우회하는 형태를 ast Assign/AnnAssign/AugAssign 대상 검사로 차단.
+    Blocks bypassing the worker routing via post-import rebinding by inspecting
+    Assign/AnnAssign/AugAssign targets in the AST.
+    """
+
+    @staticmethod
+    def _assigned_names(node) -> set:
+        """할당 노드의 대상 이름 집합을 수집한다 (Name id + Attribute attr).
+        Collects assigned target names from an assignment node (Name ids + Attribute attrs)."""
+        targets = []
+        if isinstance(node, ast.Assign):
+            targets = node.targets
+        elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
+            targets = [node.target]
+        names = set()
+        for target in targets:
+            for sub in ast.walk(target):
+                if isinstance(sub, ast.Name):
+                    names.add(sub.id)
+                elif isinstance(sub, ast.Attribute):
+                    names.add(sub.attr)
+        return names
+
+    def test_no_rebinding_of_session_factories_in_src(self):
+        # database.py(정의부) 외 어떤 src 파일도 SessionLocal 계열을 재할당하면 안 된다
+        # No src file other than database.py (the definition site) may reassign the family
+        violations = []
+        for path in _iter_src_py():
+            rel = path.relative_to(_REPO_ROOT).as_posix()
+            if rel == "src/database.py":
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                hit = self._assigned_names(node) & _SESSION_SYMBOLS
+                if hit:
+                    violations.append(f"{rel}:{node.lineno} {sorted(hit)}")
+        assert not violations, (
+            "SessionLocal 계열 재바인딩 발견 — worker 라우팅 우회 금지 / "
+            f"rebinding bypasses worker routing: {violations}"
         )
