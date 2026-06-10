@@ -625,7 +625,9 @@
       "info_li4": "2-layer 安全網 = (1) アプリレベルフィルタ (`_apply_*_user_filter`) + (2) DB RLS policy (PG/Supabase) — ⚠️ FORCE 未設定なら owner 接続は (2) を回避可能",
       "info_li5": "backfill 診断 = `docs/runbooks/saas-phase0-backfill-readiness.md` (サイクル 78 PR 3 — null=0 確認)",
       "force_warning_title": "⚠️ FORCE ROW LEVEL SECURITY 未設定 — 2次安全網が回避される可能性",
-      "force_warning_body": "いずれの alembic マイグレーションも FORCE ROW LEVEL SECURITY を適用していません。アプリ接続 role がテーブル owner の場合、PostgreSQL は owner に対して RLS を回避するため、上記「適用」マトリクスにもかかわらず DB レベルの 2次安全網が実際には回避される可能性があります。運用 DB で connection role の owner 状態(pg_class.relowner / relforcerowsecurity)の確認を推奨します。"
+      "force_warning_body": "FORCE ROW LEVEL SECURITY が 11 個の RLS テーブル全部に適用されていることが確認できませんでした (pg_class 実測 — alembic 0041 未適用/部分適用、または非 PostgreSQL 環境)。アプリ接続 role がテーブル owner の場合、PostgreSQL は owner に対して RLS を回避するため、上記「適用」マトリクスにもかかわらず DB レベルの 2次安全網が実際には回避される可能性があります。`alembic upgrade head` の適用 + 非 BYPASSRLS アプリ role への切替 (docs/runbooks/rls-role-separation.md) を確認してください。",
+      "bypass_warning_title": "⚠️ 接続 role が RLS を回避中 — FORCE 適用でも 2次安全網は無効",
+      "bypass_warning_body": "FORCE ROW LEVEL SECURITY は 11 テーブル全部に適用されていますが、現在の接続 role が BYPASSRLS または superuser のため RLS は評価されません (pg_roles.rolbypassrls/rolsuper 実測)。DATABASE_URL を非 BYPASSRLS アプリ role に切り替える (Phase 4 — docs/runbooks/rls-role-separation.md) まで、DB レベルの 2次安全網は有効になりません。"
     },
     "operations": {
       "title_prefix": "Operations",

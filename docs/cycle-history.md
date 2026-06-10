@@ -9,6 +9,7 @@
 - [사이클 166 적대 재검증 후속 (STATE overclaim + #32 'resolved' 위양성 적발 → #838 docs정정·#839 #32 tojson·#840 drift④ FK·#841 drift① rename, 4 PR, 2026-06-09)](#사이클-166-적대-재검증-후속-2026-06-09--838841)
 - [잔여작업 라운드 (사용자 결정 C — #843 drift③④' ORM 부분 인덱스 정합·#844 #2 RLS owner-bypass 근본 runbook, 2 PR, 2026-06-09~10)](#잔여작업-라운드-2026-06-0910--843844-사용자-결정-c)
 - [잔여 정리 라운드 A옵션 (PR #838~#845 본문 `@-` 소실 복원 + 정책 10 본문 검증 의무 + Code Scanning 12건 처분 + RLS stale docs 정정, 1 PR #846, 2026-06-10)](#잔여-정리-라운드-a옵션-2026-06-10)
+- [RLS Phase 1 운영 + Phase 3 — 0041 FORCE + force_applied/connection_bypasses_rls 실측 (Phase 4 OAuth blocker 식별, 2026-06-10)](#rls-phase-1-운영--phase-3--0041-force--실측-가시화-2026-06-10)
 - [RLS Phase 2 — background 전용 worker 세션 분리 (옵션 A: DATABASE_URL_WORKER + WorkerSessionLocal + 16 모듈 alias + ast 가드 52, 1 PR #847, 2026-06-10)](#rls-phase-2--background-전용-worker-세션-분리-2026-06-10)
 - [사이클 165 (Task9 골든 리메디에이션 — P1 #802~810 + P2 보안·파이프라인 하드닝 클러스터 #811~814: 게이트 원자적 리플레이 claim·webhook 본문 파싱·ai_review per-field PARITY·SSRF docstring·hook parse_error NULL+overview, Codex true mutual 실결함 4건 적발, 11 PR, 2026-06-08~09)](#사이클-165)
 - [사이클 164 (area=gate 잔여 6 결함 — 사용자 Q1~Q4 결정: 정적분석 파일격리+타임아웃 부분결과 보존, telegram 반자동 auto-merge 완전 대칭, regate first-writer-wins, 3 PR #794~#796, 2026-06-08)](#사이클-164)
@@ -176,6 +177,21 @@
 **검증**: 주석/docs-only (src 변경 = `rls_session.py` docstring 1곳 — 런타임 무변경, rls 단위 9 passed. 테스트 4889 불변). Codex mutual (push 전, 정책 18 — R1 NG 2건·R2 NG 1건 정정 후 OK).
 
 **잔여 (불변)**: **#2(RLS owner-bypass — Phase 2 background 코드 PR + 운영 role 분리)**. 본 라운드 신규 식별 백로그: 정책 11 일괄 회신 대기 (#822/#823/#824/#827/#839 8조합), 사이클 164~166 회고 보고서 미보관 + #838~#845 라운드 회고 미수행, claude_metrics 가격표 분기 재확인 (2026-07 초), 온프레미스 PG rolbypassrls 미측정 (#2 선행).
+
+---
+
+## RLS Phase 1 운영 + Phase 3 — 0041 FORCE + 실측 가시화 (2026-06-10)
+
+**날짜**: 2026-06-10 | **PR**: 본 PR (번호는 생성 후 fix-up 반영 — Codex R1 처방 흐름) | **트리거**: 사용자 "Claude가 MCP로 수행하기를 원합니다" (Phase 1 — 정책 12 DDL 사전 승인) → "네 바로 수행을 부탁드립니다" (Phase 3) | **상태**: Phase 1 운영 완료 + Phase 3 코드 완료 — #2 잔여 = Phase 4 (운영, 🔴 OAuth blocker 결정 선행)
+
+- **Phase 1 (운영, Claude MCP `execute_sql` 직접 실행)**: Supabase 에 `scamanager_app`(LOGIN, NOBYPASSRLS) + `scamanager_worker`(LOGIN, BYPASSRLS) 생성 + GRANT(테이블 12/12 full DML·시퀀스 11/11) + `ALTER DEFAULT PRIVILEGES FOR ROLE postgres`. **기능 실증**: `SET LOCAL ROLE scamanager_app` → repositories 0/8 가시(owner-bypass 해소 실증) / worker → 8/8(BYPASSRLS 보존). 임시 PW 채팅 전달 — 사용자 `ALTER ROLE ... PASSWORD` 교체 의무(Phase 4 전). ⚠️ 부수 실측: `alembic_version` = RLS enabled + policy 0건(비-owner default-deny). 적용 범위 = Supabase 만(사용자 결정).
+- **Phase 3 (코드)**: alembic **0041** — 11 테이블 리터럴 `FORCE ROW LEVEL SECURITY`(PG-only, downgrade=`NO FORCE`) + `rls_coverage_summary(db)` 실측 2종 — `force_applied`(pg_class.relforcerowsecurity 11/11, bound parameter) + **`connection_bypasses_rls`**(rolbypassrls OR rolsuper) → `/admin/rls-audit` BYPASSRLS 우회 경고 배너(3 locale 신설)로 **Phase 3~4 사이 거짓 안심 창 봉인**. 라우트 2곳 db 전달 + `scripts/backfill_repository_user_id.py` worker 세션 alias. i18n `force_warning_body` 실측 의미 갱신.
+- **가드**: `test_0041_rls_force` 7건(**ENABLE↔FORCE bijection** — 미래 RLS 테이블 FORCE 누락 자동 fail + NO FORCE 오염 차단 2중) + `test_migration_0041_force_round_trip_postgres`(실 PG upgrade/downgrade + 실측 양성 경로 — ci.yml pg-concurrency 핀 등재) + 라우트 db-전달 가드 2 + worker routing 재바인딩/모듈객체 가드 scripts 확장.
+- **적대적 3-렌즈 verify (wf_fde4d85b, 정책 8 내부 layer)**: **P1 1건 — Phase 4 전환 시 OAuth 콜백(users self-RLS, `app.user_id` 미설정)이 SELECT/INSERT 차단 → 전원 로그인 장애**(FORCE 무관, 0041 롤백으로도 미해소) → runbook §Phase 4 **P1 blocker** + 로그인/admin 크로스테넌트 smoke + pre-flight 항목으로 문서 봉인. 근본 전략(① users OAuth upsert 정책/컨텍스트 키 ② auth worker 세션 경유 ③ WITH CHECK 분리) = **사용자 결정 영역(High tier)**. P2 8건 중 6 반영(bypass 배너·PG-live 테스트·가드 확장·fallback listener 문서·FORCE defense-in-depth 표현 정정).
+
+**검증**: 전체 4956 passed / 7 skipped (수집 4941→4963, 단위 4787→4809 +22) · pylint 10.00 · flake8 E501 15 (baseline 동일). TDD test-writer 선행(Red 14 → Green). Codex mutual (push 전, 정책 18 — R1 NG 1건 [STATE/cycle-history/README 수치 stale] → 본 sync 반영 후 재검증).
+
+**잔여**: #2 = **Phase 4 (운영, 사용자)** — 임시 PW 교체 + 🔴 **OAuth users self-RLS 전략 결정 선행 의무** + DATABASE_URL/WORKER 전환 + runbook §4 검증 6종.
 
 ---
 

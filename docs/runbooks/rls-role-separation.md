@@ -8,7 +8,7 @@
 
 ## 1. 문제 (왜 RLS 2차 안전망이 지금은 작동하지 않는가)
 
-`alembic/versions/0026_supabase_rls_policies.py`(외 0027/0028/0029/0037 누적)가 **총 11개 테이블**에 RLS policy를 **ENABLE**하지만 **FORCE ROW LEVEL SECURITY는 적용하지 않는다** (0026 자체는 repositories/analyses/merge_attempts 3개 — 나머지 8개는 후속 마이그레이션, 단일 출처 = `saas_service.py::_RLS_MATRIX`). 그리고 운영 앱은 DB에 **`postgres`(또는 테이블 owner + `BYPASSRLS`) role로 접속**한다 (`DATABASE_URL`).
+`alembic/versions/0026_supabase_rls_policies.py`(외 0027/0028/0029/0037 누적)가 **총 11개 테이블**에 RLS policy를 **ENABLE**한다 (0026 자체는 repositories/analyses/merge_attempts 3개 — 나머지 8개는 후속 마이그레이션, 단일 출처 = `saas_service.py::_RLS_MATRIX`). **FORCE ROW LEVEL SECURITY 는 `0041_rls_force.py`(RLS Phase 3, 2026-06-10)가 11개 테이블 일괄 적용** — 운영 반영 여부는 `/admin/rls-audit` 의 `force_applied`(pg_class 실측)로 확인. 그리고 운영 앱은 현재 DB에 **`postgres`(테이블 owner + `BYPASSRLS`) role로 접속**한다 (`DATABASE_URL` — Phase 4 전환 전까지).
 
 PostgreSQL RLS 우회 규칙:
 - **테이블 owner**는 RLS를 기본 우회한다 (FORCE 미설정 시).
@@ -56,6 +56,8 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
 
 🔴 **Phase 1 직후 검증** (FORCE 도입 전): `scamanager_app`로 접속해도 RLS는 아직 `app.user_id` 없는 background 경로에서 owner가 아니므로 RLS가 평가된다 — 즉 **Phase 2 없이 DATABASE_URL만 바꾸면 background 파이프라인이 깨진다**. Phase 2를 먼저 설계·배포할 것.
 
+> ✅ **Phase 1 운영 완료 (2026-06-10 — Claude MCP `execute_sql` 직접 실행, 사용자 정책 12 승인)**: `scamanager_app`(LOGIN, NOBYPASSRLS) + `scamanager_worker`(LOGIN, BYPASSRLS) 생성 + GRANT(테이블 12/12 full DML·시퀀스 11/11) + `ALTER DEFAULT PRIVILEGES FOR ROLE postgres` 등록 완료. **기능 실증**: `SET LOCAL ROLE scamanager_app` → repositories 가시 0/8 행(RLS 평가 = owner-bypass 해소) / `scamanager_worker` → 8/8(BYPASSRLS 동작 보존). 검증용 `GRANT scamanager_app/scamanager_worker TO postgres` 멤버십 유지(SET ROLE 재검증용). 🔴 임시 비밀번호는 채팅 전달됨 — **Phase 4 전 `ALTER ROLE ... PASSWORD` 교체 의무**. ⚠️ 부수 실측: `alembic_version` 이 relrowsecurity=true + policy 0건 → 비-owner role 은 default-deny(마이그레이션은 owner `postgres` 실행이라 무해 — Phase 4 후 앱 런타임이 이 테이블을 읽는 코드 추가 금지). 적용 범위 = Supabase 만(사용자 결정 — 온프레미스는 활성화 시 동일 SQL).
+
 ### Phase 2 — background 경로 RLS 전략 (코드 설계 — 선행 필수)
 
 background DB 세션(webhook 처리·`merge_retry_service`·cron·worker)은 특정 사용자 컨텍스트가 없으므로 `app.user_id` 미설정 → RLS USING이 차단한다. 세 옵션 (택1):
@@ -88,22 +90,22 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
 
 ### Phase 3 — FORCE 적용 + 상태 반영 (Phase 1·2 완료 후)
 
+> ✅ **Phase 3 코드 완료 (2026-06-10)**: `alembic/versions/0041_rls_force.py` — 11 테이블 리터럴 `FORCE ROW LEVEL SECURITY`(PG-only, is_postgresql 가드, downgrade=`NO FORCE`) + `saas_service.py::rls_coverage_summary(db)` 가 `pg_class.relforcerowsecurity` **실측**(bound parameter, 11/11 일치 시만 True — 마이그레이션 미적용 DB 거짓 안심 차단) + **`connection_bypasses_rls` 실측**(rolbypassrls OR rolsuper — FORCE 적용 후에도 BYPASSRLS 접속이면 `/admin/rls-audit` 에 우회 경고 배너 표시, Phase 3~4 사이 거짓 안심 창 봉인) + 호출처 2곳(`api/admin.py`/`ui/routes/admin.py`) db 전달 + `scripts/backfill_repository_user_id.py` worker 세션 alias 전환. 회귀 가드 `tests/unit/migrations/test_0041_rls_force.py`(**ENABLE↔FORCE bijection** — 신규 RLS 테이블이 FORCE 누락 시 자동 fail) + `test_0020_round_trip.py::test_migration_0041_force_round_trip_postgres`(실 PG upgrade/downgrade + 실측 양성 경로, pg-concurrency CI). **운영 반영 = 배포 시 `alembic upgrade head`**(owner `postgres` 자격) — 현 postgres 접속에서는 무해(BYPASSRLS 가 FORCE 무시). ⚠️ 표현 주의: Phase 4 의 2차 안전망 실효는 **role 전환에서 오고**, FORCE 는 비-BYPASSRLS owner 연결 사고 대비 defense-in-depth (비-owner 앱 role 은 ENABLE 만으로 RLS 평가).
+
 ```python
-# 신규 마이그레이션 (예: 0041_rls_force.py, PG-only, is_postgresql 가드)
-for tbl in (  # _RLS_MATRIX 11 테이블
-    "repositories", "analyses", "merge_attempts", "security_alert_process_logs",
-    "insight_narrative_cache", "users", "repo_configs", "gate_decisions",
-    "merge_retry_queue", "analysis_feedbacks", "issue_registrations",
-):
-    op.execute(f"ALTER TABLE {tbl} FORCE ROW LEVEL SECURITY")
+# 0041_rls_force.py 핵심 형태 (실제 파일은 11 테이블 리터럴 SQL — bijection 가드가
+# raw 텍스트 정규식 추출이므로 f-string 루프 조립 금지)
+ALTER TABLE repositories FORCE ROW LEVEL SECURITY;  # ... _RLS_MATRIX 11 테이블 전부
 ```
 
-동반:
-- `saas_service.py::rls_coverage_summary` `force_applied` → 정적 `False` 대신 **`pg_class.relforcerowsecurity` 실측 쿼리**로 전환 (또는 마이그레이션 적용 후 `True`).
-- `test_admin_settings_i18n_render.py::test_admin_rls_audit_hides_force_warning_when_applied` 가드는 이미 `force_applied=True` 시 경고 미표시 검증 — Phase 3 후 실제 동작 정합.
-- `0026` docstring·`db.md`·본 runbook의 "FORCE 미적용" 서술 갱신.
+동반 (전부 완료):
+- ✅ `saas_service.py::rls_coverage_summary` `force_applied` → **`pg_class.relforcerowsecurity` 실측 쿼리** 전환.
+- ✅ `test_admin_settings_i18n_render.py::test_admin_rls_audit_hides_force_warning_when_applied` 가드 — `force_applied=True` 시 경고 미표시 (실측 도입 후 실제 동작 정합).
+- ✅ `0026` docstring·`db.md`·본 runbook·i18n `force_warning_body`(3 locale)의 "FORCE 미적용" 서술 갱신.
 
 ### Phase 4 — DATABASE_URL 전환 (운영, 사용자)
+
+🔴 **Phase 4 착수 전 미해결 blocker (적대적 검증 P1, 2026-06-10)**: **OAuth 로그인 경로가 users self-RLS 에 차단된다** — `auth_callback`(`src/auth/github.py:82-95`)은 웹 `SessionLocal` 로 `find_by_github_id` SELECT + 신규 User INSERT 를 수행하는데, 콜백 시점에는 `session["user_id"]` 가 아직 없어 `app.user_id=''` → `users_self_isolation`(0029, `id = app.user_id`, FOR ALL = implicit WITH CHECK) 이 SELECT/INSERT 모두 거부. `scamanager_app`(비-owner) 전환 즉시 **기존+신규 사용자 전원 로그인 불가** (FORCE 무관 — 비-owner 는 ENABLE 만으로 RLS 평가, 0041 롤백으로도 미해소). **auth 경로 RLS 전략 결정(High tier — 옵션: ① users OAuth upsert 용 별도 policy/컨텍스트 키 ② auth upsert 만 worker 세션 경유[+_WEB_DB_MODULES 가드 재설계] ③ users policy WITH CHECK 분리) 전 Phase 4 금지.** 부수: `/admin/tenants`(`tenant_inventory`)도 웹 세션이라 admin 의 타 사용자 행이 은닉되어 under-report (fail-safe 방향이나 admin 기능 회귀 — 동일 결정에 포함).
 
 ```
 DATABASE_URL=postgresql://scamanager_app:<시크릿>@<host>/<db>      # 웹 요청 (비-BYPASSRLS)
@@ -123,7 +125,9 @@ WHERE relname IN ('repositories','analyses', ...) ORDER BY relname;
 ```
 - 앱(`scamanager_app`) 접속 + `app.user_id` 미설정 → user-owned 행 **0건**(격리 동작 확인).
 - 앱 접속 + `SET LOCAL app.user_id='<id>'` → 해당 사용자 행만.
-- `GET /admin/rls-audit` → `force_applied=True` + 경고 배너 미표시.
+- `GET /admin/rls-audit` → `force_applied=True` + `connection_bypasses_rls=False` + 경고 배너 미표시. (Phase 4 전 = `connection_bypasses_rls=True` → BYPASSRLS 우회 경고 배너 표시가 정상 — 거짓 안심 창 가시화, RLS Phase 3.)
+- 🔴 **로그인 smoke (Phase 4 P1 blocker 페어)**: 기존 사용자 재로그인 + 신규 GitHub 계정 가입이 모두 성공해야 한다 — auth 경로 RLS 전략 적용 검증.
+- 🔴 **admin 크로스테넌트 가시성**: `/admin/tenants` 가 전체 사용자를 표시하는지 확인 (웹 세션 RLS 로 admin 1명만 보이면 under-report 회귀).
 - 🔴 **background 파이프라인 smoke**: 옵션 A worker role로 webhook 분석·cron 재시도가 user-owned repo에 정상 동작(차단 0).
 
 ## 5. 롤백
@@ -133,8 +137,10 @@ WHERE relname IN ('repositories','analyses', ...) ORDER BY relname;
 
 ## 6. Pre-flight 체크리스트 (RLS 작업 착수 전 의무)
 
-- [ ] **접속 role의 `rolbypassrls` 실측** — `SELECT rolbypassrls FROM pg_roles WHERE rolname=current_user;` (메모리 `project_rls_owner_bypass_finding` 의무)
+- [ ] **접속 role의 `rolbypassrls` 실측** — `SELECT rolbypassrls FROM pg_roles WHERE rolname=current_user;` (메모리 `project_rls_owner_bypass_finding` 의무) — `/admin/rls-audit` 의 `connection_bypasses_rls` 가 동일 실측(rolbypassrls OR rolsuper)을 자동 표기
+- [ ] 🔴 **OAuth 로그인 경로(users self-RLS) 전략 확정** — 미확정 시 Phase 4 금지 (§Phase 4 P1 blocker 참조)
 - [ ] Phase 2(background 전략) **설계·배포 완료** 확인 — 미완 시 Phase 4(URL 전환) 금지(파이프라인 붕괴)
+- [ ] **fallback/온프레미스 DB 에 0041 수동 적용 시 해당 접속 role rolbypassrls 실측 의무** — fallback engine 은 RLS `SET LOCAL` listener 미등록(`src/database.py` — primary engine 한정)이라, 비-BYPASSRLS owner 접속이면 failover 중 web 쿼리가 `app.user_id` 미설정 상태로 차단될 수 있다
 - [ ] 백업/스냅샷 (Supabase PITR) 확보
 - [ ] 저트래픽 시간대 (사용자 생활 패턴: 저녁 작업)
 

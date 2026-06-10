@@ -60,10 +60,11 @@ def admin_tenants(
 def admin_rls_audit(
     request: Request,
     admin: Annotated[CurrentUser, Depends(require_admin)],
+    db: Annotated[Session, Depends(_get_db)],
 ) -> HTMLResponse:
-    """RLS policy 적용 매트릭스 admin dashboard.
+    """RLS policy 적용 매트릭스 admin dashboard + FORCE 실측 (RLS Phase 3).
 
-    RLS policy matrix admin dashboard.
+    RLS policy matrix admin dashboard + live FORCE check (RLS Phase 3).
     """
     return templates.TemplateResponse(
         request,
@@ -71,7 +72,7 @@ def admin_rls_audit(
         {
             "current_user": admin,
             "matrix": saas_service.rls_audit_matrix(),
-            "summary": saas_service.rls_coverage_summary(),
+            "summary": saas_service.rls_coverage_summary(db),
             "locale": get_locale(request),
         },
     )

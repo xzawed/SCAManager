@@ -7,7 +7,8 @@ TDD Red Phase: RLS Phase 2 — dedicated background DB session split (Option A) 
   - src/config.py: database_url_worker 필드 + postgres:// → postgresql:// validator
   - src/database.py: _build_worker_session_factory pure 함수 + WorkerSessionLocal 모듈 심볼
   - RLS listener (_set_rls_user_id_per_query) — 분리 worker engine 미등록 가드
-  - background 모듈 16개 import alias 전환 + 웹 모듈 WorkerSessionLocal 미사용 정적 가드
+  - background 모듈 17개 (scripts/backfill 포함) import alias 전환
+    + 웹 모듈 WorkerSessionLocal 미사용 정적 가드
 
 구현 전이므로 신규 기능 테스트는 실패(Red)해야 정상이다.
 Most tests must fail (Red) until the implementation lands.
@@ -24,8 +25,8 @@ import pytest
 # Derive repo root — never hardcode absolute paths (lesson from test_doc_review_gate #767)
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
-# background 전용 모듈 16개 — WorkerSessionLocal alias 전환 의무 대상
-# 16 background-only modules — must switch to the WorkerSessionLocal alias
+# background 전용 모듈 17개 (scripts/backfill 포함) — WorkerSessionLocal alias 전환 의무 대상
+# 17 background-only modules (incl. scripts/backfill) — must use the WorkerSessionLocal alias
 _BACKGROUND_MODULES = [
     "src/worker/pipeline.py",
     "src/webhook/providers/github.py",
@@ -43,6 +44,11 @@ _BACKGROUND_MODULES = [
     "src/notifier/email.py",
     "src/notifier/github_issue.py",
     "src/notifier/github_commit_comment.py",
+    # RLS Phase 3 — Phase 4 role 전환 후 app role 의 users self-RLS 가
+    # backfill 스크립트를 silent skip 시키는 것 방어 (worker 세션 경유 의무)
+    # RLS Phase 3 — after the Phase 4 role switch, the app role's users self-RLS
+    # would silently skip the backfill; the script must go through the worker session
+    "scripts/backfill_repository_user_id.py",
 ]
 
 # 웹 경로 명시 파일 — WorkerSessionLocal 사용 금지 대상 (api 6 파일)
@@ -283,13 +289,15 @@ class TestRlsListenerScope:
 
 
 # ---------------------------------------------------------------------------
-# 테스트 5: 정적 라우팅 가드 — background 16 모듈 alias 전환 (회귀 차단 핵심)
-# Test 5: static routing guard — 16 background modules use the alias (core regression guard)
+# 테스트 5: 정적 라우팅 가드 — background 17 모듈 (scripts/backfill 포함) alias 전환 (회귀 차단 핵심)
+# Test 5: static routing guard — 17 background modules (incl. scripts/backfill) use the alias
+#         (core regression guard)
 # ---------------------------------------------------------------------------
 
 class TestBackgroundModulesUseWorkerAlias:
-    """background 모듈 16개가 WorkerSessionLocal alias 로 import 하는지 정적 검증.
-    Statically verifies all 16 background modules import via the WorkerSessionLocal alias."""
+    """background 모듈 17개 (scripts/backfill 포함) 가 WorkerSessionLocal alias 로 import 하는지 정적 검증.
+    Statically verifies all 17 background modules (incl. scripts/backfill) import via the
+    WorkerSessionLocal alias."""
 
     @pytest.mark.parametrize("rel_path", _BACKGROUND_MODULES)
     def test_background_module_imports_worker_alias(self, rel_path):
@@ -368,6 +376,22 @@ def _iter_src_py() -> list:
     return sorted((_REPO_ROOT / "src").rglob("*.py"))
 
 
+def _iter_guarded_py() -> list:
+    """src 전체 + _BACKGROUND_MODULES 의 non-src(scripts) 파일 — 재바인딩/모듈객체 가드 공통 대상.
+    Every src .py plus the non-src (scripts) entries of _BACKGROUND_MODULES — shared
+    scan set for the rebinding and module-object-import guards.
+
+    inventory(테스트 7)는 src 전용 bijection 을 유지하지만, 정책 도메인에 편입된 scripts
+    파일은 재바인딩/모듈객체 우회 가드도 동일하게 받아야 한다 (가드 커버리지 비대칭 차단).
+    The inventory (test 7) keeps its src-only bijection, but scripts files adopted into
+    the policy domain must receive the rebinding/module-object guards too.
+    """
+    extra = [
+        _REPO_ROOT / rel for rel in _BACKGROUND_MODULES if not rel.startswith("src/")
+    ]
+    return _iter_src_py() + sorted(extra)
+
+
 class TestSessionFactoryInventory:
     """src 전체에서 SessionLocal 계열 import 를 전수 수집해 분류 누락을 차단한다.
     Sweeps every src module for SessionLocal-family imports and blocks unclassified ones.
@@ -394,15 +418,20 @@ class TestSessionFactoryInventory:
         return result
 
     def test_every_worker_alias_importer_is_listed_background(self):
-        # WorkerSessionLocal 을 import 하는 src 파일 집합 == _BACKGROUND_MODULES 집합 (양방향)
-        # The set of src files importing WorkerSessionLocal == _BACKGROUND_MODULES (bijection)
+        # WorkerSessionLocal 을 import 하는 src 파일 집합 == _BACKGROUND_MODULES 의 src 부분집합 (양방향)
+        # scripts/ 항목은 src 전수 스캔(_iter_src_py) 범위 밖 — parametrize 정적 가드
+        # (test_background_module_imports_worker_alias) 가 직접 검증한다 (RLS Phase 3)
+        # The set of src files importing WorkerSessionLocal == the src/ subset of
+        # _BACKGROUND_MODULES (bijection). scripts/ entries live outside the src sweep
+        # (_iter_src_py) — the parametrized static guard covers them directly (RLS Phase 3)
         importers = {
             rel for rel, bindings in self._inventory().items()
             if any(name == "WorkerSessionLocal" for name, _ in bindings)
         }
-        assert importers == set(_BACKGROUND_MODULES), (
-            "WorkerSessionLocal import 파일 집합이 _BACKGROUND_MODULES 와 불일치 — "
-            f"누락/잉여: {importers ^ set(_BACKGROUND_MODULES)} / "
+        expected = {m for m in _BACKGROUND_MODULES if m.startswith("src/")}
+        assert importers == expected, (
+            "WorkerSessionLocal import 파일 집합이 _BACKGROUND_MODULES(src 부분집합) 와 불일치 — "
+            f"누락/잉여: {importers ^ expected} / "
             "신규 background 모듈은 _BACKGROUND_MODULES 등재 의무 (db.md 규칙)"
         )
 
@@ -454,10 +483,12 @@ class TestNoSessionFactoryRebinding:
         return names
 
     def test_no_rebinding_of_session_factories_in_src(self):
-        # database.py(정의부) 외 어떤 src 파일도 SessionLocal 계열을 재할당하면 안 된다
-        # No src file other than database.py (the definition site) may reassign the family
+        # database.py(정의부) 외 어떤 가드 대상 파일도 SessionLocal 계열을 재할당하면 안 된다
+        # (src 전체 + scripts background 모듈 — _iter_guarded_py)
+        # No guarded file other than database.py (the definition site) may reassign the
+        # family (all of src plus scripts background modules — _iter_guarded_py)
         violations = []
-        for path in _iter_src_py():
+        for path in _iter_guarded_py():
             rel = path.relative_to(_REPO_ROOT).as_posix()
             if rel == "src/database.py":
                 continue
@@ -491,9 +522,11 @@ class TestNoDatabaseModuleObjectImport:
 
     def test_no_module_object_import_of_database(self):
         # plain `import src.database[.* as X]` + `from src import database` 전면 금지
+        # (src 전체 + scripts background 모듈 — _iter_guarded_py)
         # Bans both plain `import src.database[.* as X]` and `from src import database`
+        # (all of src plus scripts background modules — _iter_guarded_py)
         violations = []
-        for path in _iter_src_py():
+        for path in _iter_guarded_py():
             rel = path.relative_to(_REPO_ROOT).as_posix()
             tree = ast.parse(path.read_text(encoding="utf-8"))
             for node in ast.walk(tree):
