@@ -15,7 +15,11 @@ from sqlalchemy.orm import Session
 
 from src.auth.session import CurrentUser, require_admin
 from src.shared.feature_kill_switch import is_disabled
-from src.database import SessionLocal
+# SessionLocal = 웹 RLS 경로(rls-audit 진단). WorkerSessionLocal = 시스템 컨텍스트(tenants/operations).
+# 분기 사유 상세: src/api/admin.py 주석 (UI 라우트도 동일 계약).
+# SessionLocal = web RLS path (rls-audit). WorkerSessionLocal = system context (tenants/operations).
+# Rationale detail: src/api/admin.py (the UI routes share the same contract).
+from src.database import SessionLocal, WorkerSessionLocal
 from src.services import operations_service, saas_service
 from src.ui._helpers import get_locale, templates
 
@@ -23,8 +27,25 @@ router = APIRouter()
 
 
 def _get_db():
-    """DB 세션 의존성 (FastAPI 패턴 — api/admin.py 와 동일)."""
+    """웹 RLS 경로 세션 의존성 — rls-audit 진단 전용 (api/admin.py::_get_db 와 동일 계약).
+
+    rls-audit 의 connection_bypasses_rls 실측이 웹 app role 로 평가돼야 정확 (worker = 항상 우회 오진단).
+    Web RLS-path session — rls-audit only; must run as web app role for accurate bypass diagnosis.
+    """
     db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def _get_worker_db():
+    """시스템 컨텍스트 세션 의존성 — tenants/operations cross-tenant 집계 전용 (RLS Phase 4).
+
+    api/admin.py::_get_worker_db 와 동일 계약 — Phase 4 admin 세션 RLS under-report 방어.
+    Same contract as api/admin.py::_get_worker_db — avoids Phase 4 admin-session-RLS under-report.
+    """
+    db = WorkerSessionLocal()
     try:
         yield db
     finally:
@@ -35,7 +56,7 @@ def _get_db():
 def admin_tenants(
     request: Request,
     admin: Annotated[CurrentUser, Depends(require_admin)],
-    db: Annotated[Session, Depends(_get_db)],
+    db: Annotated[Session, Depends(_get_worker_db)],
 ) -> HTMLResponse:
     """tenant 인벤토리 admin dashboard.
 
@@ -82,7 +103,7 @@ def admin_rls_audit(
 def admin_operations(
     request: Request,
     admin: Annotated[CurrentUser, Depends(require_admin)],
-    db: Annotated[Session, Depends(_get_db)],
+    db: Annotated[Session, Depends(_get_worker_db)],
     days: int = 7,
 ) -> HTMLResponse:
     """운영 모니터링 KPI 5 카드 admin dashboard (Cycle 80 PR 2 — 영역 🅔).

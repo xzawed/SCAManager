@@ -9,7 +9,8 @@
 - [사이클 166 적대 재검증 후속 (STATE overclaim + #32 'resolved' 위양성 적발 → #838 docs정정·#839 #32 tojson·#840 drift④ FK·#841 drift① rename, 4 PR, 2026-06-09)](#사이클-166-적대-재검증-후속-2026-06-09--838841)
 - [잔여작업 라운드 (사용자 결정 C — #843 drift③④' ORM 부분 인덱스 정합·#844 #2 RLS owner-bypass 근본 runbook, 2 PR, 2026-06-09~10)](#잔여작업-라운드-2026-06-0910--843844-사용자-결정-c)
 - [잔여 정리 라운드 A옵션 (PR #838~#845 본문 `@-` 소실 복원 + 정책 10 본문 검증 의무 + Code Scanning 12건 처분 + RLS stale docs 정정, 1 PR #846, 2026-06-10)](#잔여-정리-라운드-a옵션-2026-06-10)
-- [RLS #2 Phase 4 코드 차단 경로 해소 — auth_callback worker 세션(옵션 2) + 시스템 API 라우트 3종(Codex mutual 발견) worker 재라우팅, +8 단위, 2026-06-10](#rls-2-phase-4-oauth-로그인-blocker-해소--auth_callback-worker-세션-전환-옵션-2-2026-06-10)
+- [RLS #2 Phase 4 admin 대시보드 cross-tenant 보존 — api/admin·ui/routes/admin hybrid (tenants/operations=worker·rls-audit=web), #849 후속, +7 단위, 2026-06-10](#rls-2-phase-4-admin-대시보드-cross-tenant-보존--apiadminuiroutesadmin-hybrid-849-후속-2026-06-10)
+- [RLS #2 Phase 4 코드 차단 경로 해소 — auth_callback worker 세션(옵션 2) + 시스템 API 라우트 3종(Codex mutual 발견) worker 재라우팅, #849, +8 단위, 2026-06-10](#rls-2-phase-4-oauth-로그인-blocker-해소--auth_callback-worker-세션-전환-옵션-2-2026-06-10)
 - [RLS Phase 1 운영 + Phase 3 — 0041 FORCE + force_applied/connection_bypasses_rls 실측 (Phase 4 OAuth blocker 식별, 2026-06-10)](#rls-phase-1-운영--phase-3--0041-force--실측-가시화-2026-06-10)
 - [RLS Phase 2 — background 전용 worker 세션 분리 (옵션 A: DATABASE_URL_WORKER + WorkerSessionLocal + 16 모듈 alias + ast 가드 52, 1 PR #847, 2026-06-10)](#rls-phase-2--background-전용-worker-세션-분리-2026-06-10)
 - [사이클 165 (Task9 골든 리메디에이션 — P1 #802~810 + P2 보안·파이프라인 하드닝 클러스터 #811~814: 게이트 원자적 리플레이 claim·webhook 본문 파싱·ai_review per-field PARITY·SSRF docstring·hook parse_error NULL+overview, Codex true mutual 실결함 4건 적발, 11 PR, 2026-06-08~09)](#사이클-165)
@@ -181,9 +182,25 @@
 
 ---
 
+## RLS #2 Phase 4 admin 대시보드 cross-tenant 보존 — api/admin·ui/routes/admin hybrid (#849 후속) (2026-06-10)
+
+**날짜**: 2026-06-10 | **PR**: 본 PR (#850 예정) | **트리거**: #849 머지 후 사용자 "이후 작업을 수행해주세요" → 마지막 코드 가능 #2 항목(/admin cross-tenant under-report) 해소 | **상태**: 코드 완료 — **Phase 4 코드 차단 경로 전부 해소**, #2 잔여 = Phase 4 운영 전환만(사용자)
+
+- **문제**: admin 은 `require_admin` **세션**이 있지만, `/admin/tenants`(`tenant_inventory` — User/Repository/Analysis)·`/admin/operations`(`operations_kpi` — MergeAttempt/User)는 **전체 테넌트 집계**다. Phase 4 비-BYPASSRLS app role 전환 시 admin 세션 RLS(`app.user_id=admin`)가 admin 본인 행만 남겨 under-report(admin 대시보드 붕괴). api/admin.py + ui/routes/admin.py 양쪽 동일.
+- **해소 (엔드포인트별 hybrid)**: 신규 `_get_worker_db`(WorkerSessionLocal, BYPASSRLS) 의존성 도입 → `tenants`·`operations` 만 분기. cross-tenant 가시성 보존(현 BYPASSRLS postgres 동작 = Phase 4 후에도 동일).
+- 🔴 **`rls-audit` 는 `_get_db`(web) 유지 의무**: `connection_bypasses_rls` 가 **현재 connection 의 rolbypassrls** 를 실측하는 진단이라 웹 app role 로 평가돼야 정확하다. worker(BYPASSRLS) 세션이면 항상 우회=TRUE 로 오진단 → Phase 3~4 거짓 안심 창 가시화가 무력화. (이 subtlety 가 blanket 모듈 이동을 막고 per-endpoint 분기를 강제.)
+- **가드**: api/admin·ui/routes/admin 2 모듈 `_HYBRID_DB_MODULES` 편입(github.py 와 동일 — bare+worker 둘 다 import, alias 금지). 엔드포인트별 세션 라우팅 = **sentinel 회귀 가드 3**(`test_admin_endpoints.py` — worker/web distinct 세션 주입 후 tenant_inventory=worker·operations_kpi=worker·rls_coverage_summary=web 검증; 정적 import 가드가 못 잡는 endpoint swap 차단).
+- **불변성**: `DATABASE_URL_WORKER` 미설정 시 `WorkerSessionLocal is SessionLocal` = 현행 동일. src 2파일 + 테스트 2파일 + docs.
+
+**검증**: 전체 4971 passed / 7 skipped (수집 4971→4978, 단위 4817→4824 +7: test 10 hybrid 계약 확장 4 + sentinel 3) · pylint 10.00 · flake8 0. Codex mutual 검증.
+
+**잔여**: #2 = **Phase 4 운영 전환만**(사용자) — 임시 PW 교체 + `DATABASE_URL`/`DATABASE_URL_WORKER` 설정 + runbook §4 검증. 코드 차단 경로(OAuth·시스템 API·admin) 전부 해소.
+
+---
+
 ## RLS #2 Phase 4 OAuth 로그인 blocker 해소 — auth_callback worker 세션 전환 (옵션 2) (2026-06-10)
 
-**날짜**: 2026-06-10 | **PR**: 본 PR | **트리거**: 사용자 "잔여 작업을 확인해주세요" → 잔여 #2 Phase 4 선행 blocker(OAuth users self-RLS) 옵션 표 제시 → 사용자 **옵션 ② (auth upsert worker 세션 경유)** 결정 위임 | **상태**: 코드 완료 — #2 잔여 = Phase 4 운영(URL 전환·PW 교체) + `/admin/tenants` under-report(권한 상승 별도 결정)
+**날짜**: 2026-06-10 | **PR**: #849 | **트리거**: 사용자 "잔여 작업을 확인해주세요" → 잔여 #2 Phase 4 선행 blocker(OAuth users self-RLS) 옵션 표 제시 → 사용자 **옵션 ② (auth upsert worker 세션 경유)** 결정 위임 | **상태**: 코드 완료(#849 머지) — #2 잔여 = Phase 4 운영(URL 전환·PW 교체) + `/admin/tenants` under-report(후속 PR 해소)
 
 - **문제 (직전 RLS Phase 3 적대 verify P1 blocker)**: `auth_callback`(`src/auth/github.py`)은 웹 `SessionLocal` 로 users upsert(`find_by_github_id` SELECT + 신규 User INSERT) 수행 — 콜백 시점 `session["user_id"]` 부재 → `app.user_id=''` → `users_self_isolation`(0029, `id = NULLIF(current_setting('app.user_id',true),'')::integer`) 이 SELECT/INSERT 모두 거부. `scamanager_app`(비-owner) 전환 즉시 전원 로그인 장애(FORCE 무관, 0041 롤백으로도 미해소).
 - **해소 (옵션 2)**: `auth_callback` upsert 블록만 `WorkerSessionLocal`(BYPASSRLS worker role, 시스템 컨텍스트 — 사용자 식별 프로비저닝)로 전환 → RLS 우회로 SELECT/INSERT 통과. `logout` 은 세션 존재(본인 행, `id == user_id`)라 bare `SessionLocal`(웹 RLS 경로) 유지 — defense-in-depth 보존(본인 토큰만 삭제 가능).
@@ -200,7 +217,7 @@
 
 ## RLS Phase 1 운영 + Phase 3 — 0041 FORCE + 실측 가시화 (2026-06-10)
 
-**날짜**: 2026-06-10 | **PR**: 본 PR (번호는 생성 후 fix-up 반영 — Codex R1 처방 흐름) | **트리거**: 사용자 "Claude가 MCP로 수행하기를 원합니다" (Phase 1 — 정책 12 DDL 사전 승인) → "네 바로 수행을 부탁드립니다" (Phase 3) | **상태**: Phase 1 운영 완료 + Phase 3 코드 완료 — #2 잔여 = Phase 4 (운영, 🔴 OAuth blocker 결정 선행)
+**날짜**: 2026-06-10 | **PR**: #848 | **트리거**: 사용자 "Claude가 MCP로 수행하기를 원합니다" (Phase 1 — 정책 12 DDL 사전 승인) → "네 바로 수행을 부탁드립니다" (Phase 3) | **상태**: Phase 1 운영 완료 + Phase 3 코드 완료 — #2 잔여 = Phase 4 (운영, 🔴 OAuth blocker 결정 선행)
 
 - **Phase 1 (운영, Claude MCP `execute_sql` 직접 실행)**: Supabase 에 `scamanager_app`(LOGIN, NOBYPASSRLS) + `scamanager_worker`(LOGIN, BYPASSRLS) 생성 + GRANT(테이블 12/12 full DML·시퀀스 11/11) + `ALTER DEFAULT PRIVILEGES FOR ROLE postgres`. **기능 실증**: `SET LOCAL ROLE scamanager_app` → repositories 0/8 가시(owner-bypass 해소 실증) / worker → 8/8(BYPASSRLS 보존). 임시 PW 채팅 전달 — 사용자 `ALTER ROLE ... PASSWORD` 교체 의무(Phase 4 전). ⚠️ 부수 실측: `alembic_version` = RLS enabled + policy 0건(비-owner default-deny). 적용 범위 = Supabase 만(사용자 결정).
 - **Phase 3 (코드)**: alembic **0041** — 11 테이블 리터럴 `FORCE ROW LEVEL SECURITY`(PG-only, downgrade=`NO FORCE`) + `rls_coverage_summary(db)` 실측 2종 — `force_applied`(pg_class.relforcerowsecurity 11/11, bound parameter) + **`connection_bypasses_rls`**(rolbypassrls OR rolsuper) → `/admin/rls-audit` BYPASSRLS 우회 경고 배너(3 locale 신설)로 **Phase 3~4 사이 거짓 안심 창 봉인**. 라우트 2곳 db 전달 + `scripts/backfill_repository_user_id.py` worker 세션 alias. i18n `force_warning_body` 실측 의미 갱신.
