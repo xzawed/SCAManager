@@ -141,6 +141,7 @@ WHERE relname IN ('repositories','analyses', ...) ORDER BY relname;
 - 🔴 **로그인 smoke (Phase 4 P1 blocker 페어)**: 기존 사용자 재로그인 + 신규 GitHub 계정 가입이 모두 성공해야 한다 — auth 경로 RLS 전략 적용 검증.
 - 🔴 **admin 크로스테넌트 가시성**: `/admin/tenants` 가 전체 사용자를 표시하는지 확인 (웹 세션 RLS 로 admin 1명만 보이면 under-report 회귀).
 - 🔴 **background 파이프라인 smoke**: 옵션 A worker role로 webhook 분석·cron 재시도가 user-owned repo에 정상 동작(차단 0).
+- 🔴 **pooler 테넌트 격리 smoke (deep-research 외부 검증 P1, 2026-06-10)**: Supabase pooler(Supavisor) 경유 시 **세션 변수의 풀링 안전성 실측 의무**. AWS RDS 가이드는 "세션 변수는 server-side pooling(pgBouncer)과 비호환일 수 있으니 풀링 전략이 세션 상태를 공유하는지 테스트하라"고 명시. SCAManager 는 `SET LOCAL`(트랜잭션 스코프) + `_set_rls_user_id_per_query`(매 쿼리 직전 재발화) + `sessionmaker(autocommit=False)` 조합이라 transaction-pooling 모드에서 안전(SET LOCAL 이 매 트랜잭션 재설정)이 **설계상 기대**되나, **운영 pooler 모드(transaction 6543 vs session 5432) + 실제 엔진 isolation_level 이 autocommit 아님**을 Phase 4 전환 시 실측 확인. 검증: 두 테넌트 A/B 의 요청을 풀 재사용이 발생하도록 교차 부하 → A 가 B 행을 보지 못함(누출 0) + `app.user_id` 미설정 쿼리가 default-deny(0행) 확인. 🔴 **autocommit 엔진이면 `SET LOCAL` 이 별도 트랜잭션으로 분리돼 다음 쿼리에 미적용 → 테넌트 누출/전면 차단 위험** — `create_engine(..., isolation_level=...)` 비-autocommit 보장 의무.
 
 ## 5. 롤백
 
