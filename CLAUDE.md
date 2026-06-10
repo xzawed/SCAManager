@@ -230,6 +230,8 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 
 **fix-up commit default**: 머지 전 CI fail / 회귀 = 동일 PR 브랜치 추가 commit (정책 7 강화 응집 단위). 머지 후 발견 = 별도 fix PR. PR body 템플릿 + 환경별 detail: [.claude/policies/active.md#정책-10](.claude/policies/active.md#정책-10).
 
+🔴 **PR 본문 전달 + 생성 직후 검증 의무 (2026-06-10 사고 학습)**: 본문은 임시 파일 + `--body-file <경로>` 로만 전달 (`@-` / stdin 관용구 금지) + `gh pr create`/`edit` 직후 `gh pr view --json body` 길이 검증 — PR #838~#845 8건 본문이 리터럴 `@-` 로 소실된 사고 (2026-06-10 복원). 상세: [.claude/policies/active.md#정책-10](.claude/policies/active.md#정책-10).
+
 #### 정책 11: **UI/시각 변경 PR 본문에 "Claude 시각 검증 불가" 의무 명시**
 
 사용자 발화 (2026-05-02 Phase 1 회고): *"PR본문 검증의 경우 디테일한 검증은 없었습니다."* — Claude 가 만든 UI/시각 변경 (template, css, html 파일) 은 정적 코드만 검증 가능. 4-테마 (dark/light/pastel/catppuccin) × 모바일/데스크탑 8 조합 시각 정합성은 사용자 의무.

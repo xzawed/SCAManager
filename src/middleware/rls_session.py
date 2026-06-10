@@ -6,8 +6,11 @@ request 시작 시 session.user_id (Starlette SessionMiddleware 가 scope["sessi
 SQLAlchemy event listener (`src/database.py::_set_rls_user_id_per_query`) 가
 매 query 직전에 본 contextvars 읽고 `SET LOCAL app.user_id = '<id>'` 발화 (PG only).
 
-Phase 3 postlude — alembic 0026 RLS policy (메모리 `phase3-rls-runtime-activation-pending.md`)
-운영 활성화. 본 미들웨어 부재 시 RLS = "deny-all + legacy admin only 모드" 동작 (운영 사고 위험).
+Phase 3 postlude — alembic 0026 RLS policy 운영 활성화. 본 미들웨어 부재 시
+RLS = "deny-all + legacy admin only 모드" 동작 (운영 사고 위험).
+⚠️ 운영 실효는 role 분리 선행 필요 — 현재 postgres(BYPASSRLS) 접속이면 RLS 미평가
+(`docs/runbooks/rls-role-separation.md`, 정합성 감사 #2).
+Operational effect requires non-BYPASSRLS role separation first (see runbook).
 
 🔴 ASGI middleware 패턴 의무 (BaseHTTPMiddleware 우회):
 Starlette `BaseHTTPMiddleware.dispatch` 는 별도 anyio task 에서 `call_next` 호출 →
