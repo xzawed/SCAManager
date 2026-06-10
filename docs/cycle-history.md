@@ -172,7 +172,7 @@
 - **stale docs 정정**: operational-smoke-checks.md §8.7 — 'RLS 운영 활성화' 행이 '사용자 별도 PR 의무 + 부재 메모리 파일 참조' 로 stale (미들웨어 `rls_session.py` + `_set_rls_user_id_per_query` 구현 완료) → 구현 완료 + role 분리 선행 필요로 갱신, rls-role-separation.md cross-link + `rls_session.py` docstring 동일 stale 참조 정정 (본 PR — Codex mutual P2 적발).
 - **메모리 동기화**: dangling commit 7d0fa1fe Support 요청 기록 상충 2곳 (`project_security_3layer_guard` 미체크 ↔ `project_cycle_theme_nav_fix` 완료) → 2026-06-10 실측(API 200 — purge 미반영, 결과 확인/재요청 잔여) 반영 통일.
 
-**검증**: docs-only (src/tests 무변경 — 테스트 4889 불변). Codex mutual (push 전, 정책 18).
+**검증**: 주석/docs-only (src 변경 = `rls_session.py` docstring 1곳 — 런타임 무변경, rls 단위 9 passed. 테스트 4889 불변). Codex mutual (push 전, 정책 18 — R1 NG 2건·R2 NG 1건 정정 후 OK).
 
 **잔여 (불변)**: **#2(RLS owner-bypass — Phase 2 background 코드 PR + 운영 role 분리)**. 본 라운드 신규 식별 백로그: 정책 11 일괄 회신 대기 (#822/#823/#824/#827/#839 8조합), 사이클 164~166 회고 보고서 미보관 + #838~#845 라운드 회고 미수행, claude_metrics 가격표 분기 재확인 (2026-07 초), 온프레미스 PG rolbypassrls 미측정 (#2 선행).
 
