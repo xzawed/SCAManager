@@ -100,17 +100,28 @@ _WEB_DB_MODULES = _WEB_API_MODULES + [
 ]
 
 # hybrid 모듈 — bare SessionLocal(웹 RLS 경로) + WorkerSessionLocal(시스템 컨텍스트) 둘 다 import 허용.
-# 유일 사례: src/auth/github.py — OAuth 콜백(auth_callback)은 session["user_id"] 가 아직 없어
-# 웹 app role(비-BYPASSRLS) 에서 users self-RLS(0029) 가 SELECT/INSERT 를 차단한다. 따라서 콜백
-# upsert 만 WorkerSessionLocal(BYPASSRLS, 시스템 컨텍스트)로 보내고, logout 은 세션이 있으므로
-# bare SessionLocal(웹 RLS 경로 — 본인 행만)을 유지한다 (RLS owner-bypass #2 Phase 4 P1 blocker 해소).
-# Hybrid modules — permitted to import BOTH bare SessionLocal (web RLS path) and
-# WorkerSessionLocal (system context). Sole case: src/auth/github.py — the OAuth callback has no
-# session["user_id"] yet, so under the non-BYPASSRLS app role the users self-RLS (0029) blocks the
-# SELECT/INSERT. The callback upsert therefore uses WorkerSessionLocal (BYPASSRLS, system context),
-# while logout keeps bare SessionLocal (web RLS path — own row only). Resolves RLS #2 Phase 4 blocker.
+# 같은 모듈 안에서 일부 경로는 사용자 세션(웹 RLS), 일부는 세션 없는 cross-tenant(시스템 컨텍스트)이다.
+#  - src/auth/github.py: auth_callback(콜백 시점 session 부재 → users self-RLS 차단)만 worker,
+#    logout(세션 존재 → 본인 행)은 bare.
+#  - src/api/admin.py · src/ui/routes/admin.py: tenants(tenant_inventory)·operations(operations_kpi)는
+#    cross-tenant 집계(User/Repository/Analysis/MergeAttempt) → worker(BYPASSRLS) 의무 (Phase 4 admin
+#    세션 RLS under-report 방어). rls-audit(rls_coverage_summary)는 **현재 connection 의 BYPASSRLS 여부
+#    진단**이라 반드시 웹 app role 세션으로 실행돼야 정확 → bare 유지(worker 로 돌리면 항상 우회=오진단).
+# Hybrid modules — permitted to import BOTH bare SessionLocal (web RLS path) and WorkerSessionLocal
+# (system context). Within one module some routes run under a user session (web RLS), others are
+# sessionless cross-tenant (system context):
+#  - src/auth/github.py: only auth_callback (no session at callback → users self-RLS blocks) uses
+#    worker; logout (session present → own row) stays bare.
+#  - src/api/admin.py · src/ui/routes/admin.py: tenants/operations are cross-tenant aggregates → worker
+#    (BYPASSRLS) to avoid Phase 4 admin-session-RLS under-report; rls-audit diagnoses the CURRENT
+#    connection's BYPASSRLS status, so it must run as the web app role (worker would always report
+#    bypass = misdiagnosis) → stays bare.
 # 절차: docs/runbooks/rls-role-separation.md §Phase 4.
-_HYBRID_DB_MODULES = ["src/auth/github.py"]
+_HYBRID_DB_MODULES = [
+    "src/auth/github.py",
+    "src/api/admin.py",
+    "src/ui/routes/admin.py",
+]
 
 # WorkerSessionLocal alias(`as SessionLocal`) 경유 의무 모듈 전체 = background + 시스템 컨텍스트 API.
 # 양쪽 모두 사용자 세션이 없어 RLS 우회(BYPASSRLS)가 필요하며 라우팅 메커니즘이 동일하다.
