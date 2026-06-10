@@ -9,6 +9,7 @@ TDD Red Phase: RLS Phase 2 — dedicated background DB session split (Option A) 
   - RLS listener (_set_rls_user_id_per_query) — 분리 worker engine 미등록 가드
   - background 모듈 17개 (scripts/backfill 포함) import alias 전환
     + 웹 모듈 WorkerSessionLocal 미사용 정적 가드
+    + hybrid 모듈 1개 (src/auth/github.py — OAuth 콜백 upsert 만 worker 세션, RLS #2 Phase 4)
 
 구현 전이므로 신규 기능 테스트는 실패(Red)해야 정상이다.
 Most tests must fail (Red) until the implementation lands.
@@ -80,6 +81,19 @@ _WEB_DB_MODULES = _WEB_API_MODULES + [
     "src/ui/routes/detail.py",
     "src/ui/routes/overview.py",
 ]
+
+# hybrid 모듈 — bare SessionLocal(웹 RLS 경로) + WorkerSessionLocal(시스템 컨텍스트) 둘 다 import 허용.
+# 유일 사례: src/auth/github.py — OAuth 콜백(auth_callback)은 session["user_id"] 가 아직 없어
+# 웹 app role(비-BYPASSRLS) 에서 users self-RLS(0029) 가 SELECT/INSERT 를 차단한다. 따라서 콜백
+# upsert 만 WorkerSessionLocal(BYPASSRLS, 시스템 컨텍스트)로 보내고, logout 은 세션이 있으므로
+# bare SessionLocal(웹 RLS 경로 — 본인 행만)을 유지한다 (RLS owner-bypass #2 Phase 4 P1 blocker 해소).
+# Hybrid modules — permitted to import BOTH bare SessionLocal (web RLS path) and
+# WorkerSessionLocal (system context). Sole case: src/auth/github.py — the OAuth callback has no
+# session["user_id"] yet, so under the non-BYPASSRLS app role the users self-RLS (0029) blocks the
+# SELECT/INSERT. The callback upsert therefore uses WorkerSessionLocal (BYPASSRLS, system context),
+# while logout keeps bare SessionLocal (web RLS path — own row only). Resolves RLS #2 Phase 4 blocker.
+# 절차: docs/runbooks/rls-role-separation.md §Phase 4.
+_HYBRID_DB_MODULES = ["src/auth/github.py"]
 
 # 세션 팩토리 계열 심볼 — inventory/재바인딩 가드 대상
 # Session-factory family symbols — targets of the inventory/rebinding guards
@@ -353,12 +367,18 @@ class TestWebModulesDoNotUseWorkerSession:
 
     def test_web_modules_do_not_mention_worker_session_local(self):
         # 웹 모듈 소스에 WorkerSessionLocal 문자열이 존재하면 안 된다 (RLS 적용 경로 보존)
+        # — 단 hybrid 모듈(_HYBRID_DB_MODULES, src/auth/github.py)은 명시 예외:
+        #   OAuth 콜백 upsert 의 시스템 컨텍스트 worker 세션 사용이 의도된 설계다.
         # Web module sources must not contain the WorkerSessionLocal string (keeps RLS path intact)
+        # — except hybrid modules (_HYBRID_DB_MODULES, src/auth/github.py) where the OAuth callback's
+        #   system-context worker session is intentional.
         violations = []
         for path in self._web_module_paths():
-            source = path.read_text(encoding="utf-8")
-            if "WorkerSessionLocal" in source:
-                violations.append(str(path.relative_to(_REPO_ROOT)))
+            rel = path.relative_to(_REPO_ROOT).as_posix()
+            if rel in _HYBRID_DB_MODULES:
+                continue
+            if "WorkerSessionLocal" in path.read_text(encoding="utf-8"):
+                violations.append(rel)
         assert not violations, (
             f"웹 모듈에서 WorkerSessionLocal 사용 발견 / found in web modules: {violations}"
         )
@@ -428,11 +448,15 @@ class TestSessionFactoryInventory:
             rel for rel, bindings in self._inventory().items()
             if any(name == "WorkerSessionLocal" for name, _ in bindings)
         }
-        expected = {m for m in _BACKGROUND_MODULES if m.startswith("src/")}
+        # hybrid 모듈(_HYBRID_DB_MODULES, src/auth/github.py)도 WorkerSessionLocal 을 import 한다 —
+        # 단 alias(`as SessionLocal`) 없이 자체 이름으로 (콜백 upsert 전용). expected 에 포함.
+        # Hybrid modules also import WorkerSessionLocal (under its own name, callback-upsert only) —
+        # include them in the expected set.
+        expected = {m for m in _BACKGROUND_MODULES if m.startswith("src/")} | set(_HYBRID_DB_MODULES)
         assert importers == expected, (
-            "WorkerSessionLocal import 파일 집합이 _BACKGROUND_MODULES(src 부분집합) 와 불일치 — "
+            "WorkerSessionLocal import 파일 집합이 _BACKGROUND_MODULES(src 부분집합) + _HYBRID 와 불일치 — "
             f"누락/잉여: {importers ^ expected} / "
-            "신규 background 모듈은 _BACKGROUND_MODULES 등재 의무 (db.md 규칙)"
+            "신규 background 모듈은 _BACKGROUND_MODULES, hybrid 는 _HYBRID_DB_MODULES 등재 의무 (db.md 규칙)"
         )
 
     def test_every_bare_sessionlocal_importer_is_listed_web(self):
@@ -541,4 +565,50 @@ class TestNoDatabaseModuleObjectImport:
         assert not violations, (
             "database 모듈 객체 import 금지 — attribute 경유 세션 우회 차단 / "
             f"module-object import enables an attribute bypass: {violations}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 테스트 10: hybrid 모듈 계약 가드 — auth/github.py 는 두 세션 팩토리를 모두 import
+# Test 10: hybrid module contract guard — auth/github.py imports both session factories
+#          (RLS #2 Phase 4 P1 blocker — OAuth 콜백 upsert 만 worker 세션 경유)
+# ---------------------------------------------------------------------------
+
+class TestHybridAuthModuleContract:
+    """hybrid 모듈(src/auth/github.py)이 bare SessionLocal + WorkerSessionLocal 을 모두 import 하고
+    WorkerSessionLocal 을 alias 없이 자체 이름으로 가져오는지 검증한다.
+    Verifies the hybrid module (src/auth/github.py) imports both bare SessionLocal and
+    WorkerSessionLocal, with WorkerSessionLocal under its own (non-aliased) name.
+
+    logout(웹 RLS 경로) 은 bare SessionLocal, OAuth 콜백 upsert(시스템 컨텍스트) 는
+    WorkerSessionLocal 를 써야 한다 — 한쪽 import 가 사라지면 둘 중 한 경로가 깨진다.
+    logout (web RLS path) needs bare SessionLocal; the OAuth callback upsert (system context)
+    needs WorkerSessionLocal — dropping either import breaks one of the two paths.
+    """
+
+    @pytest.mark.parametrize("rel_path", _HYBRID_DB_MODULES)
+    def test_hybrid_module_imports_both_factories(self, rel_path):
+        # hybrid 모듈은 bare SessionLocal + WorkerSessionLocal(alias 없음) 둘 다 import 해야 한다
+        # The hybrid module must import both bare SessionLocal and non-aliased WorkerSessionLocal
+        bindings = _db_import_bindings(_read_source(rel_path))
+        assert ("SessionLocal", None) in bindings, (
+            f"{rel_path}: bare `from src.database import SessionLocal` 가 없습니다 (logout 웹 RLS 경로) / "
+            "missing bare SessionLocal import (logout web RLS path)"
+        )
+        assert ("WorkerSessionLocal", None) in bindings, (
+            f"{rel_path}: `from src.database import WorkerSessionLocal` (alias 없음) 가 없습니다 "
+            "(OAuth 콜백 upsert worker 세션) / missing non-aliased WorkerSessionLocal import "
+            "(OAuth callback upsert worker session)"
+        )
+
+    @pytest.mark.parametrize("rel_path", _HYBRID_DB_MODULES)
+    def test_hybrid_module_does_not_alias_worker_as_session(self, rel_path):
+        # WorkerSessionLocal 을 `as SessionLocal` 로 alias 하면 logout 의 웹 RLS 경로가 worker 로
+        # 잘못 라우팅된다 — alias 금지 (background 모듈과 달리 hybrid 는 두 심볼 구분 유지 의무)
+        # Aliasing WorkerSessionLocal as SessionLocal would misroute logout's web RLS path to the
+        # worker — banned (unlike background modules, the hybrid must keep the two symbols distinct)
+        bindings = _db_import_bindings(_read_source(rel_path))
+        assert ("WorkerSessionLocal", "SessionLocal") not in bindings, (
+            f"{rel_path}: WorkerSessionLocal 을 `as SessionLocal` 로 alias 금지 (logout 오라우팅 위험) / "
+            "must not alias WorkerSessionLocal as SessionLocal (would misroute logout)"
         )
