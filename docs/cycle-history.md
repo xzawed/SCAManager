@@ -9,7 +9,7 @@
 - [사이클 166 적대 재검증 후속 (STATE overclaim + #32 'resolved' 위양성 적발 → #838 docs정정·#839 #32 tojson·#840 drift④ FK·#841 drift① rename, 4 PR, 2026-06-09)](#사이클-166-적대-재검증-후속-2026-06-09--838841)
 - [잔여작업 라운드 (사용자 결정 C — #843 drift③④' ORM 부분 인덱스 정합·#844 #2 RLS owner-bypass 근본 runbook, 2 PR, 2026-06-09~10)](#잔여작업-라운드-2026-06-0910--843844-사용자-결정-c)
 - [잔여 정리 라운드 A옵션 (PR #838~#845 본문 `@-` 소실 복원 + 정책 10 본문 검증 의무 + Code Scanning 12건 처분 + RLS stale docs 정정, 1 PR #846, 2026-06-10)](#잔여-정리-라운드-a옵션-2026-06-10)
-- [RLS #2 Phase 4 admin 대시보드 cross-tenant 보존 — api/admin·ui/routes/admin hybrid (tenants/operations=worker·rls-audit=web), #849 후속, +7 단위, 2026-06-10](#rls-2-phase-4-admin-대시보드-cross-tenant-보존--apiadminuiroutesadmin-hybrid-849-후속-2026-06-10)
+- [RLS #2 Phase 4 admin 대시보드 cross-tenant 보존 — api/admin·ui/routes/admin hybrid (tenants/operations=worker·rls-audit=web), #849 후속, +9 단위, 2026-06-10](#rls-2-phase-4-admin-대시보드-cross-tenant-보존--apiadminuiroutesadmin-hybrid-849-후속-2026-06-10)
 - [RLS #2 Phase 4 코드 차단 경로 해소 — auth_callback worker 세션(옵션 2) + 시스템 API 라우트 3종(Codex mutual 발견) worker 재라우팅, #849, +8 단위, 2026-06-10](#rls-2-phase-4-oauth-로그인-blocker-해소--auth_callback-worker-세션-전환-옵션-2-2026-06-10)
 - [RLS Phase 1 운영 + Phase 3 — 0041 FORCE + force_applied/connection_bypasses_rls 실측 (Phase 4 OAuth blocker 식별, 2026-06-10)](#rls-phase-1-운영--phase-3--0041-force--실측-가시화-2026-06-10)
 - [RLS Phase 2 — background 전용 worker 세션 분리 (옵션 A: DATABASE_URL_WORKER + WorkerSessionLocal + 16 모듈 alias + ast 가드 52, 1 PR #847, 2026-06-10)](#rls-phase-2--background-전용-worker-세션-분리-2026-06-10)
@@ -192,7 +192,7 @@
 - **가드**: api/admin·ui/routes/admin 2 모듈 `_HYBRID_DB_MODULES` 편입(github.py 와 동일 — bare+worker 둘 다 import, alias 금지). 엔드포인트별 세션 라우팅 = **sentinel 회귀 가드 3**(`test_admin_endpoints.py` — worker/web distinct 세션 주입 후 tenant_inventory=worker·operations_kpi=worker·rls_coverage_summary=web 검증; 정적 import 가드가 못 잡는 endpoint swap 차단).
 - **불변성**: `DATABASE_URL_WORKER` 미설정 시 `WorkerSessionLocal is SessionLocal` = 현행 동일. src 2파일 + 테스트 2파일 + docs.
 
-**검증**: 전체 4971 passed / 7 skipped (수집 4971→4978, 단위 4817→4824 +7: test 10 hybrid 계약 확장 4 + sentinel 3) · pylint 10.00 · flake8 0. Codex mutual 검증.
+**검증**: 전체 4973 passed / 7 skipped (수집 4971→4980, 단위 4817→4826 +9: test 10 hybrid 계약 확장 4 + sentinel 3 + `_get_worker_db` 제너레이터 커버 2[CI codecov/SonarCloud coverage-on-new-code fix-up]) · pylint 10.00 · flake8 0. Codex mutual 검증(6/6).
 
 **잔여**: #2 = **Phase 4 운영 전환만**(사용자) — 임시 PW 교체 + `DATABASE_URL`/`DATABASE_URL_WORKER` 설정 + runbook §4 검증. 코드 차단 경로(OAuth·시스템 API·admin) 전부 해소.
 

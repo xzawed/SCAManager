@@ -239,6 +239,41 @@ def test_rls_audit_uses_web_session_not_worker(_sentinel_client):
     assert db_arg is not worker_session
 
 
+def test_api_get_worker_db_yields_and_closes():
+    """api/admin._get_worker_db 제너레이터가 WorkerSessionLocal 세션을 yield 후 close 한다.
+
+    엔드포인트 경로는 의존성 override 로 본문이 실행되지 않으므로 제너레이터를 직접 호출해
+    커버 (test_failover::TestGetDb 패턴 미러).
+    """
+    from unittest.mock import MagicMock, patch
+    from src.api import admin as admin_mod
+    mock_session = MagicMock()
+    with patch.object(admin_mod, "WorkerSessionLocal", return_value=mock_session):
+        gen = admin_mod._get_worker_db()
+        assert next(gen) is mock_session
+        # 제너레이터 소진 → finally → close
+        try:
+            next(gen)
+        except StopIteration:
+            pass
+    mock_session.close.assert_called_once()
+
+
+def test_ui_get_worker_db_yields_and_closes():
+    """ui/routes/admin._get_worker_db 제너레이터도 동일 계약 (yield + close)."""
+    from unittest.mock import MagicMock, patch
+    from src.ui.routes import admin as ui_admin_mod
+    mock_session = MagicMock()
+    with patch.object(ui_admin_mod, "WorkerSessionLocal", return_value=mock_session):
+        gen = ui_admin_mod._get_worker_db()
+        assert next(gen) is mock_session
+        try:
+            next(gen)
+        except StopIteration:
+            pass
+    mock_session.close.assert_called_once()
+
+
 def test_admin_endpoints_blocked_when_kill_switch(monkeypatch):
     """kill-switch 활성 시 admin endpoint 모두 503 — require_admin Layer 1 통합 검증."""
     # require_admin override 제거 — 실제 require_admin 동작 검증
