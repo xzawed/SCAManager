@@ -52,15 +52,32 @@ _BACKGROUND_MODULES = [
     "scripts/backfill_repository_user_id.py",
 ]
 
-# 웹 경로 명시 파일 — WorkerSessionLocal 사용 금지 대상 (api 6 파일)
-# Explicit web-path files — must NOT use WorkerSessionLocal (6 api files)
+# 웹 경로 명시 파일 — WorkerSessionLocal 사용 금지 대상 (api 3 파일, 전부 세션 기반).
+# users(require_login)·issue_registration(get_current_user+user_id 필터)·admin(require_saas_admin):
+# 모두 로그인 사용자 세션 컨텍스트가 있어 app.user_id 가 설정됨 → RLS 가 본인 행을 허용한다.
+# Explicit web-path files — must NOT use WorkerSessionLocal (3 api files, all session-based).
+# users / issue_registration / admin all run within a logged-in user session (app.user_id set),
+# so RLS permits their own rows.
 _WEB_API_MODULES = [
     "src/api/users.py",
+    "src/api/issue_registration.py",
+    "src/api/admin.py",
+]
+
+# 시스템 컨텍스트 API 모듈 — `require_api_key`(글로벌 키) 인증, 사용자 세션 없음.
+# repos/stats/repo_report 는 cross-tenant 전체 데이터를 반환하는 시스템/관리 엔드포인트라
+# Phase 4 비-BYPASSRLS app role 전환 시 `app.user_id=''` 로 RLS 가 owned 행을 은닉/차단한다.
+# 따라서 background 모듈과 동일하게 `WorkerSessionLocal as SessionLocal`(BYPASSRLS) 경유 의무 —
+# 현 BYPASSRLS postgres 의 cross-tenant 동작을 Phase 4 후에도 보존 (Codex mutual #2 Phase 4 갭).
+# System-context API modules — authenticated by the global `require_api_key`, no user session.
+# repos/stats/repo_report are system/admin endpoints returning cross-tenant data; after the Phase 4
+# non-BYPASSRLS app-role switch (`app.user_id=''`) RLS would hide/block owned rows. They must route
+# through `WorkerSessionLocal as SessionLocal` (BYPASSRLS) like background modules, preserving the
+# current cross-tenant behavior through Phase 4 (Codex mutual #2 Phase 4 gap).
+_SYSTEM_API_MODULES = [
     "src/api/repos.py",
     "src/api/stats.py",
     "src/api/repo_report.py",
-    "src/api/issue_registration.py",
-    "src/api/admin.py",
 ]
 
 # bare SessionLocal import 허용 웹 모듈 전수 allowlist (16 파일 — Codex R1 강화 가드).
@@ -94,6 +111,12 @@ _WEB_DB_MODULES = _WEB_API_MODULES + [
 # while logout keeps bare SessionLocal (web RLS path — own row only). Resolves RLS #2 Phase 4 blocker.
 # 절차: docs/runbooks/rls-role-separation.md §Phase 4.
 _HYBRID_DB_MODULES = ["src/auth/github.py"]
+
+# WorkerSessionLocal alias(`as SessionLocal`) 경유 의무 모듈 전체 = background + 시스템 컨텍스트 API.
+# 양쪽 모두 사용자 세션이 없어 RLS 우회(BYPASSRLS)가 필요하며 라우팅 메커니즘이 동일하다.
+# All modules required to import via the WorkerSessionLocal alias = background + system-context API.
+# Both lack a user session and need RLS bypass (BYPASSRLS); the routing mechanism is identical.
+_WORKER_ALIAS_MODULES = _BACKGROUND_MODULES + _SYSTEM_API_MODULES
 
 # 세션 팩토리 계열 심볼 — inventory/재바인딩 가드 대상
 # Session-factory family symbols — targets of the inventory/rebinding guards
@@ -309,11 +332,12 @@ class TestRlsListenerScope:
 # ---------------------------------------------------------------------------
 
 class TestBackgroundModulesUseWorkerAlias:
-    """background 모듈 17개 (scripts/backfill 포함) 가 WorkerSessionLocal alias 로 import 하는지 정적 검증.
-    Statically verifies all 17 background modules (incl. scripts/backfill) import via the
-    WorkerSessionLocal alias."""
+    """worker alias 의무 모듈(_WORKER_ALIAS_MODULES = background 17 + 시스템 API 3)이
+    `WorkerSessionLocal as SessionLocal` 로 import 하는지 정적 검증.
+    Statically verifies every worker-alias module (_WORKER_ALIAS_MODULES = 17 background +
+    3 system API) imports via the `WorkerSessionLocal as SessionLocal` alias."""
 
-    @pytest.mark.parametrize("rel_path", _BACKGROUND_MODULES)
+    @pytest.mark.parametrize("rel_path", _WORKER_ALIAS_MODULES)
     def test_background_module_imports_worker_alias(self, rel_path):
         # 각 background 모듈은 `WorkerSessionLocal as SessionLocal` import 를 포함해야 한다
         # (모듈 심볼명 유지 — 기존 patch 대상 `src.worker.pipeline.SessionLocal` 등 불변)
@@ -325,7 +349,7 @@ class TestBackgroundModulesUseWorkerAlias:
             "import 가 없습니다 / import is missing"
         )
 
-    @pytest.mark.parametrize("rel_path", _BACKGROUND_MODULES)
+    @pytest.mark.parametrize("rel_path", _WORKER_ALIAS_MODULES)
     def test_background_module_has_no_bare_sessionlocal_import(self, rel_path):
         # 각 background 모듈은 bare `from src.database import SessionLocal` 을 가지면 안 된다
         # (Worker 미경유 web 세션 직접 import = RLS Phase 2 라우팅 우회 회귀)
@@ -361,8 +385,8 @@ class TestWebModulesDoNotUseWorkerSession:
         # glob 이 빈 결과면 가드 자체가 무력화되므로 최소 파일 수를 단언한다 (silent pass 방지)
         # An empty glob would neuter the guard — assert a minimum file count (prevents silent pass)
         paths = self._web_module_paths()
-        # api 6 + ui/routes 최소 1 + auth 최소 1
-        # 6 api files + at least 1 ui/routes + at least 1 auth
+        # api 3(세션 기반) + ui/routes(다수) + auth(다수) — 실측 ~18, 하한 8 로 silent pass 방지
+        # 3 session-based api + many ui/routes + many auth — actual ~18, floor 8 prevents silent pass
         assert len(paths) >= 8, f"웹 모듈 수집 실패 / web module collection failed: {paths}"
 
     def test_web_modules_do_not_mention_worker_session_local(self):
@@ -452,11 +476,12 @@ class TestSessionFactoryInventory:
         # 단 alias(`as SessionLocal`) 없이 자체 이름으로 (콜백 upsert 전용). expected 에 포함.
         # Hybrid modules also import WorkerSessionLocal (under its own name, callback-upsert only) —
         # include them in the expected set.
-        expected = {m for m in _BACKGROUND_MODULES if m.startswith("src/")} | set(_HYBRID_DB_MODULES)
+        expected = {m for m in _WORKER_ALIAS_MODULES if m.startswith("src/")} | set(_HYBRID_DB_MODULES)
         assert importers == expected, (
-            "WorkerSessionLocal import 파일 집합이 _BACKGROUND_MODULES(src 부분집합) + _HYBRID 와 불일치 — "
+            "WorkerSessionLocal import 파일 집합이 _WORKER_ALIAS_MODULES(src 부분집합) + _HYBRID 와 불일치 — "
             f"누락/잉여: {importers ^ expected} / "
-            "신규 background 모듈은 _BACKGROUND_MODULES, hybrid 는 _HYBRID_DB_MODULES 등재 의무 (db.md 규칙)"
+            "신규 background/시스템 API 모듈은 _BACKGROUND_MODULES/_SYSTEM_API_MODULES, "
+            "hybrid 는 _HYBRID_DB_MODULES 등재 의무 (db.md 규칙)"
         )
 
     def test_every_bare_sessionlocal_importer_is_listed_web(self):

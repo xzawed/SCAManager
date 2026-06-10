@@ -11,7 +11,13 @@ from src.constants import (
     GATE_DEFAULT_REJECT_THRESHOLD,
     GATE_DEFAULT_MERGE_THRESHOLD,
 )
-from src.database import SessionLocal
+# require_api_key(글로벌 키) 시스템 엔드포인트 — 사용자 세션 없이 cross-tenant 전체 데이터 조회.
+# Phase 4 비-BYPASSRLS app role 전환 시 RLS 가 owned 행을 은닉/차단하므로 worker 세션(BYPASSRLS) 경유.
+# DATABASE_URL_WORKER 미설정 시 WorkerSessionLocal is SessionLocal — 현행 동작 동일.
+# Global-API-key system endpoints — cross-tenant reads with no user session. After the Phase 4
+# non-BYPASSRLS app-role switch, RLS would hide/block owned rows, so route via the worker (BYPASSRLS)
+# session. With DATABASE_URL_WORKER unset, WorkerSessionLocal is SessionLocal (behavior unchanged).
+from src.database import WorkerSessionLocal as SessionLocal
 from src.models.repository import Repository
 from src.models.analysis import Analysis
 from src.models.gate_decision import GateDecision
