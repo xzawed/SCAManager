@@ -470,3 +470,42 @@ class TestNoSessionFactoryRebinding:
             "SessionLocal 계열 재바인딩 발견 — worker 라우팅 우회 금지 / "
             f"rebinding bypasses worker routing: {violations}"
         )
+
+
+# ---------------------------------------------------------------------------
+# 테스트 9: 모듈 객체 import 금지 가드 — `import src.database` 우회 차단 (Codex R2)
+# Test 9: module-object import ban — blocks the `import src.database` bypass (Codex R2)
+# ---------------------------------------------------------------------------
+
+class TestNoDatabaseModuleObjectImport:
+    """src 전체에서 database 모듈 객체 import 를 금지한다 (attribute 우회 차단).
+    Bans importing the database module object anywhere in src (blocks attribute bypass).
+
+    `import src.database as db; db.SessionLocal()` 형태는 ImportFrom inventory 가
+    못 잡는다 — 모듈 객체 import 자체를 금지해 attribute 경유 우회를 원천 차단.
+    src 실측 기존 사용처 0건 (정합 비용 없음) — DB 접근은 항상
+    `from src.database import <symbol>` 형식만 허용 (inventory/재바인딩 가드 페어).
+    `import src.database as db; db.SessionLocal()` escapes the ImportFrom inventory —
+    banning the module-object import closes the attribute-access bypass at the source.
+    """
+
+    def test_no_module_object_import_of_database(self):
+        # plain `import src.database[.* as X]` + `from src import database` 전면 금지
+        # Bans both plain `import src.database[.* as X]` and `from src import database`
+        violations = []
+        for path in _iter_src_py():
+            rel = path.relative_to(_REPO_ROOT).as_posix()
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name == "src.database" or alias.name.startswith("src.database."):
+                            violations.append(f"{rel}:{node.lineno} import {alias.name}")
+                elif isinstance(node, ast.ImportFrom) and node.module == "src":
+                    for alias in node.names:
+                        if alias.name == "database":
+                            violations.append(f"{rel}:{node.lineno} from src import database")
+        assert not violations, (
+            "database 모듈 객체 import 금지 — attribute 경유 세션 우회 차단 / "
+            f"module-object import enables an attribute bypass: {violations}"
+        )
