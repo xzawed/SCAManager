@@ -56,7 +56,7 @@ src/
 │   ├── issue_registration_service.py  # make_ai/static_issue_key + register_issue(IntegrityError TOCTOU 처리) + get_analysis_issue_status + get_repo_issue_summary (TTL 300초 캐시)
 │   ├── merge_retry_service.py   # process_pending_retries 워커 (CI-aware)
 │   ├── security_scan_service.py # Code/Secret Scanning 폴링 + audit log + GHAS graceful degradation
-│   ├── saas_service.py          # tenant_inventory + rls_audit_matrix (Cycle 79 PR 3a)
+│   ├── saas_service.py          # tenant_inventory + rls_audit_matrix + rls_coverage_summary(db) FORCE 실측 (0041, RLS Phase 3)
 │   └── operations_service.py    # operations_kpi 7 카드 — admin 운영 모니터링
 ├── auth/
 │   ├── session.py               # get_current_user() + require_login + require_admin (3-layer SaaS 검증)

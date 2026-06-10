@@ -47,13 +47,14 @@ def get_tenants(
 @router.get("/rls-audit")
 def get_rls_audit(
     _admin: Annotated[CurrentUser, Depends(require_admin)],
+    db: Annotated[Session, Depends(_get_db)],
 ) -> dict[str, Any]:
-    """RLS policy 적용 매트릭스 (정적).
+    """RLS policy 적용 매트릭스 (정적) + FORCE 실측 요약 (RLS Phase 3).
 
-    RLS policy matrix (static).
+    RLS policy matrix (static) + live FORCE summary (RLS Phase 3).
     """
     return {
-        "summary": saas_service.rls_coverage_summary(),
+        "summary": saas_service.rls_coverage_summary(db),
         "matrix": saas_service.rls_audit_matrix(),
     }
 

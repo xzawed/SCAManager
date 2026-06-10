@@ -34,6 +34,13 @@
     <strong>{{ 'admin.rls_audit.force_warning_title' | i18n_args(locale | default('ko')) }}</strong>
     <p style="margin: 6px 0 0; font-size: 13px; line-height: 1.5;">{{ 'admin.rls_audit.force_warning_body' | i18n_args(locale | default('ko')) }}</p>
   </div>
+  {% elif summary.connection_bypasses_rls %}
+  {# FORCE 적용됐으나 접속 role 이 BYPASSRLS/superuser — Phase 3~4 사이 거짓 안심 창 가시화 (RLS Phase 3) #}
+  {# FORCE applied but the connection role bypasses RLS — surfaces the Phase 3~4 false-confidence window #}
+  <div class="admin-info-card reveal" style="border-left: 4px solid var(--warning); margin-bottom: 16px;">
+    <strong>{{ 'admin.rls_audit.bypass_warning_title' | i18n_args(locale | default('ko')) }}</strong>
+    <p style="margin: 6px 0 0; font-size: 13px; line-height: 1.5;">{{ 'admin.rls_audit.bypass_warning_body' | i18n_args(locale | default('ko')) }}</p>
+  </div>
   {% endif %}
 
   <div class="admin-table-wrap">

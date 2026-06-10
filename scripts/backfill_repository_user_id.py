@@ -34,7 +34,12 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.database import SessionLocal  # pylint: disable=import-error
+# background/admin 스크립트 — worker 세션 사용 (RLS Phase 2~4: app role 의 users
+# self-RLS 가 backfill 조회를 silent skip 시키는 것 방어, DATABASE_URL_WORKER 미설정 시 동일 객체)
+# Background/admin script — uses the worker session (RLS Phase 2~4: prevents the app
+# role's users self-RLS from silently skipping backfill lookups; identical object
+# when DATABASE_URL_WORKER is unset)
+from src.database import WorkerSessionLocal as SessionLocal  # pylint: disable=import-error
 from src.models.analysis import Analysis  # pylint: disable=import-error
 from src.models.repository import Repository  # pylint: disable=import-error
 from src.models.user import User  # pylint: disable=import-error

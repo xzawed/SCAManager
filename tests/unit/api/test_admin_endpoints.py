@@ -111,6 +111,64 @@ def test_admin_rls_audit_html_renders(client):
     assert "analysis_feedbacks" in response.text
 
 
+# ─── RLS Phase 3 — rls_coverage_summary db 전달 가드 ──────────────────
+# ─── RLS Phase 3 — rls_coverage_summary db-forwarding guards ─────────
+
+
+# mock summary — force_applied 실측 도입 후에도 직렬화/렌더링 호환 형태
+# Mock summary — serialization/render-compatible shape after the force live-check lands
+_SUMMARY_STUB = {"total": 11, "applied": 11, "missing": 0, "force_applied": False}
+
+
+def _passed_arguments(mock_call) -> list:
+    """mock 호출의 positional + keyword 인자값을 단일 리스트로 평탄화.
+
+    Flattens positional + keyword argument values of a mock call into one list.
+    """
+    return list(mock_call.args) + list(mock_call.kwargs.values())
+
+
+def test_get_rls_audit_passes_db_to_coverage_summary(client):
+    """GET /api/admin/rls-audit — rls_coverage_summary 에 non-None db 전달 (RLS Phase 3).
+
+    GET /api/admin/rls-audit must forward a non-None db session into
+    rls_coverage_summary so force_applied reflects live pg_class state.
+    """
+    from unittest.mock import patch
+
+    with patch(
+        "src.api.admin.saas_service.rls_coverage_summary", return_value=_SUMMARY_STUB
+    ) as mock_summary:
+        response = client.get("/api/admin/rls-audit")
+    assert response.status_code == 200
+    mock_summary.assert_called_once()
+    passed = _passed_arguments(mock_summary.call_args)
+    # db 인자 (positional 또는 keyword) 가 non-None 으로 전달돼야 한다
+    # The db argument (positional or keyword) must be forwarded as non-None
+    assert passed, "rls_coverage_summary 가 db 인자 없이 호출됨 / called without a db argument"
+    assert passed[0] is not None, "db 인자가 None — 실측 경로 비활성 / db is None, live check disabled"
+
+
+def test_admin_rls_audit_html_passes_db_to_coverage_summary(client):
+    """GET /admin/rls-audit (UI) — rls_coverage_summary 에 non-None db 전달 (RLS Phase 3).
+
+    The UI route GET /admin/rls-audit must forward a non-None db session into
+    rls_coverage_summary — same contract as the REST endpoint.
+    """
+    from unittest.mock import patch
+
+    with patch(
+        "src.ui.routes.admin.saas_service.rls_coverage_summary",
+        return_value=_SUMMARY_STUB,
+    ) as mock_summary:
+        response = client.get("/admin/rls-audit")
+    assert response.status_code == 200
+    mock_summary.assert_called_once()
+    passed = _passed_arguments(mock_summary.call_args)
+    assert passed, "rls_coverage_summary 가 db 인자 없이 호출됨 / called without a db argument"
+    assert passed[0] is not None, "db 인자가 None — 실측 경로 비활성 / db is None, live check disabled"
+
+
 def test_admin_endpoints_blocked_when_kill_switch(monkeypatch):
     """kill-switch 활성 시 admin endpoint 모두 503 — require_admin Layer 1 통합 검증."""
     # require_admin override 제거 — 실제 require_admin 동작 검증

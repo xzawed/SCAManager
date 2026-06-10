@@ -149,3 +149,101 @@ def test_migration_alembic_round_trip():
         assert "merge_retry_queue" not in tables2, (
             "다운그레이드 후 테이블이 제거되어야 한다 / Table must be gone after downgrade"
         )
+
+
+def test_migration_0041_force_round_trip_postgres():
+    """0041 FORCE 실 PG 왕복 + force_applied/connection_bypasses_rls 실측 양성 경로 검증.
+
+    Mock 가드(test_0041_rls_force.py)가 못 덮는 3가지를 실 PostgreSQL 로 봉인한다:
+    (a) 0041 upgrade 멀티 스테이트먼트가 실 PG 에서 11/11 FORCE 를 만드는지
+    (b) downgrade(NO FORCE) 가 실 PG 에서 실행되는지 (mock SQL 캡처만으로는 미검증)
+    (c) `_measure_force_applied` 의 expanding bindparam 쿼리가 실 PG 에서 True 를
+        반환하는지 + CI 'scatest'(superuser) 접속에서 connection_bypasses_rls=True 실측.
+
+    Live-PG seal for three gaps the mock guards cannot cover: (a) 0041 upgrade really
+    FORCEs 11/11 tables, (b) the downgrade (NO FORCE) actually runs on PG, and
+    (c) `_measure_force_applied`'s expanding-bindparam query returns True on real PG,
+    with connection_bypasses_rls=True for the superuser 'scatest' CI role.
+
+    🔴 ci.yml pg-concurrency job 의 ::node-id 핀에 등재됨 — 핀 미등재 시 자동 미수집.
+    🔴 Pinned by ::node-id in the ci.yml pg-concurrency job — unpinned tests are not collected.
+    """
+    db_url = os.environ.get("DATABASE_URL_TEST_POSTGRES", "")
+    if not db_url:
+        pytest.skip(
+            "0041 FORCE round-trip requires PostgreSQL — set DATABASE_URL_TEST_POSTGRES"
+        )
+
+    from unittest.mock import patch
+
+    from alembic.config import Config
+    from alembic import command as alembic_command
+    from sqlalchemy.orm import sessionmaker
+
+    from src.config import settings as app_settings
+    from src.services.saas_service import _RLS_MATRIX, rls_coverage_summary
+
+    cfg = Config("alembic.ini")
+    cfg.set_main_option("sqlalchemy.url", db_url)
+
+    # env.py 가 cfg URL 을 settings.database_url 로 덮어씀 — 싱글톤 patch 의무 (db.md 규칙)
+    # env.py overrides the cfg URL with settings.database_url — must patch the singleton
+    with patch.object(app_settings, "database_url", db_url):
+        # clean-base self-isolating (사이클 159 round-trip 패턴 미러)
+        # Clean-base self-isolating (mirrors the Cycle 159 round-trip pattern)
+        reset_eng = create_engine(db_url)
+        with reset_eng.begin() as conn:
+            conn.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
+            conn.execute(text("CREATE SCHEMA public"))
+        reset_eng.dispose()
+
+        alembic_command.upgrade(cfg, "head")
+
+        eng = create_engine(db_url)
+        try:
+            session_factory = sessionmaker(bind=eng)
+            with session_factory() as session:
+                summary = rls_coverage_summary(session)
+                assert summary["force_applied"] is True, (
+                    "upgrade head 후 실 PG 실측 force_applied=True 여야 한다 / "
+                    "force_applied must be True on real PG after upgrade head"
+                )
+                # CI 'scatest' 는 superuser — 우회 실측 양성 경로 동시 검증
+                # CI 'scatest' is a superuser — also validates the bypass-positive path
+                assert summary["connection_bypasses_rls"] is True, (
+                    "superuser 접속의 connection_bypasses_rls=True 실측 실패 / "
+                    "superuser connection must report connection_bypasses_rls=True"
+                )
+            # 카탈로그 직접 대조 (서비스 쿼리와 독립적인 이중 검증)
+            # Direct catalog cross-check, independent of the service query
+            with eng.connect() as conn:
+                forced = conn.execute(text(
+                    "SELECT count(*) FROM pg_class c "
+                    "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                    "WHERE n.nspname = 'public' AND c.relkind = 'r' "
+                    "AND c.relforcerowsecurity"
+                )).scalar()
+            assert forced == len(_RLS_MATRIX), (
+                f"FORCE 테이블 {forced}/{len(_RLS_MATRIX)} — 0041 부분 적용 / "
+                "0041 applied only partially on real PG"
+            )
+        finally:
+            eng.dispose()
+
+        # downgrade — NO FORCE 가 실 PG 에서 실행되는지 검증 후 head 복원
+        # Downgrade to verify NO FORCE runs on real PG, then restore head
+        alembic_command.downgrade(cfg, "0040")
+        eng2 = create_engine(db_url)
+        try:
+            session_factory2 = sessionmaker(bind=eng2)
+            with session_factory2() as session:
+                assert rls_coverage_summary(session)["force_applied"] is False, (
+                    "downgrade 0040 후 force_applied=False 여야 한다 / "
+                    "force_applied must be False after downgrade to 0040"
+                )
+        finally:
+            eng2.dispose()
+
+        # 후속 테스트(orm parity 등)가 head 를 기대 — job 내 실행 순서 무관성 보존
+        # Later tests (orm parity, etc.) expect head — keep the job order-independent
+        alembic_command.upgrade(cfg, "head")

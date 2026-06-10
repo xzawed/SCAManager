@@ -625,7 +625,9 @@
       "info_li4": "2-layer safety = (1) app-level filter (`_apply_*_user_filter`) + (2) DB RLS policy (PG/Supabase) — ⚠️ without FORCE, an owner connection can bypass (2)",
       "info_li5": "Backfill diagnostic = `docs/runbooks/saas-phase0-backfill-readiness.md` (Cycle 78 PR 3 — null=0 confirmed)",
       "force_warning_title": "⚠️ FORCE ROW LEVEL SECURITY not set — 2nd safety layer may be bypassed",
-      "force_warning_body": "No alembic migration applies FORCE ROW LEVEL SECURITY. If the app connection role owns the tables, PostgreSQL bypasses RLS for the owner, so despite the 'applied' matrix above the DB-level 2nd safety layer may not actually take effect. Verify whether the runtime connection role owns the tables on the operational DB (pg_class.relowner / relforcerowsecurity)."
+      "force_warning_body": "FORCE ROW LEVEL SECURITY is not confirmed on all 11 RLS tables (live pg_class check — alembic 0041 not applied / partially applied, or a non-PostgreSQL environment). If the app connection role owns the tables, PostgreSQL bypasses RLS for the owner, so despite the 'applied' matrix above the DB-level 2nd safety layer may not actually take effect. Verify `alembic upgrade head` and the switch to the non-BYPASSRLS app role (docs/runbooks/rls-role-separation.md).",
+      "bypass_warning_title": "⚠️ Connection role bypasses RLS — 2nd safety layer ineffective despite FORCE",
+      "bypass_warning_body": "FORCE ROW LEVEL SECURITY is applied on all 11 tables, but the current connection role is BYPASSRLS or superuser, so RLS is never evaluated (live pg_roles.rolbypassrls/rolsuper check). The DB-level 2nd safety layer stays ineffective until DATABASE_URL switches to the non-BYPASSRLS app role (Phase 4 — docs/runbooks/rls-role-separation.md)."
     },
     "operations": {
       "title_prefix": "Operations",

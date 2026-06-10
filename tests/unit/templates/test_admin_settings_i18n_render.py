@@ -150,6 +150,46 @@ def test_admin_rls_audit_hides_force_warning_when_applied():
     assert "FORCE ROW LEVEL SECURITY 미설정" not in out
 
 
+def test_admin_rls_audit_shows_bypass_warning_when_connection_bypasses():
+    """FORCE 적용 + 접속 role BYPASSRLS → 우회 경고 배너 표시 (Phase 3~4 거짓 안심 창 봉인).
+
+    render-parity 가드 겸용 — bypass_warning 신규 키의 번역 텍스트 출현을 3 locale 단언.
+    Shows the bypass banner when FORCE is applied but the connection role bypasses RLS
+    (seals the Phase 3~4 false-confidence window). Doubles as the render-parity guard
+    for the new bypass_warning keys across all 3 locales.
+    """
+    summary = {
+        "total": 2, "applied": 2, "missing": 0,
+        "force_applied": True, "connection_bypasses_rls": True,
+    }
+    out_ko = _render("admin_rls_audit.html", locale="ko", **_rls_ctx(summary=summary))
+    assert "접속 role 이 RLS 우회 중" in out_ko
+    assert "FORCE ROW LEVEL SECURITY 미설정" not in out_ko
+
+    out_en = _render("admin_rls_audit.html", locale="en", **_rls_ctx(summary=summary))
+    assert "Connection role bypasses RLS" in out_en
+
+    out_ja = _render("admin_rls_audit.html", locale="ja", **_rls_ctx(summary=summary))
+    assert "接続 role が RLS を回避中" in out_ja
+
+
+def test_admin_rls_audit_hides_bypass_warning_on_app_role():
+    """FORCE 적용 + 비-BYPASSRLS 앱 role (Phase 4 목표 상태) → 경고 배너 전부 미표시.
+
+    With FORCE applied and the non-BYPASSRLS app role (the Phase 4 target state),
+    neither warning banner may render.
+    """
+    out = _render(
+        "admin_rls_audit.html", locale="ko",
+        **_rls_ctx(summary={
+            "total": 2, "applied": 2, "missing": 0,
+            "force_applied": True, "connection_bypasses_rls": False,
+        }),
+    )
+    assert "FORCE ROW LEVEL SECURITY 미설정" not in out
+    assert "접속 role 이 RLS 우회 중" not in out
+
+
 # ── admin_operations.html ───────────────────────────────────────────────────
 
 
