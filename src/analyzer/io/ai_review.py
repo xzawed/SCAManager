@@ -260,9 +260,11 @@ def _default_result(reason: str = "no_api_key") -> AiReviewResult:
     # summary stays empty — notifiers localize via status (resolve_ai_summary);
     # the dashboard renders its own i18n banner from ai_review_status (사이클 155 P1).
     return AiReviewResult(
-        commit_score=17,
-        ai_score=17,
-        test_score=7,
+        # 상수 단일 출처 — literal 17/17/7 drift 방지 (값 동일, AI_DEFAULT_*_RAW 와 일치)
+        # Single-source constants — avoids literal 17/17/7 drift (identical values)
+        commit_score=AI_DEFAULT_COMMIT_RAW,
+        ai_score=AI_DEFAULT_DIRECTION_RAW,
+        test_score=AI_DEFAULT_TEST_RAW,
         summary="",
         suggestions=[],
         status=reason,
