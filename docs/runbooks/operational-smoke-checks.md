@@ -257,8 +257,8 @@ pytest tests/integration/test_insight_caching.py -v
 | 모드 토글 + localStorage persist | 사용자 시각 + DevTools | e2e/test_dashboard_insight.py §B |
 | Anthropic prompt caching 적용 | Railway 로그 `cache_*_tokens` 확인 | tests/integration/test_insight_caching.py C.1 |
 | user_id 격리 (Claude API context) | 다중 사용자 운영 검증 | tests/integration/test_insight_caching.py C.2 |
-| Supabase RLS policy 적용 | Supabase Dashboard `SELECT * FROM pg_policies` | (자동화 미적용 — 운영 환경 별도 검증) |
-| RLS 운영 활성화 (`SET LOCAL app.user_id`) | 사용자 별도 PR 의무 (메모리 `phase3-rls-runtime-activation-pending.md`) | (미들웨어 PR 진행 시 동시 추가) |
+| Supabase RLS policy 적용 | Supabase Dashboard `SELECT * FROM pg_policies` + role 분리 검증 SQL ([rls-role-separation.md §4](rls-role-separation.md)) | (자동화 미적용 — 운영 환경 별도 검증) |
+| RLS 운영 활성화 (`SET LOCAL app.user_id`) | ✅ 코드 구현 완료 — `src/middleware/rls_session.py` + `database.py::_set_rls_user_id_per_query`. ⚠️ 운영 실효는 **role 분리 선행 필요** (현재 `postgres` BYPASSRLS 접속으로 무력 — [rls-role-separation.md](rls-role-separation.md), 감사 #2) | tests/unit/middleware/test_rls_session.py + tests/unit/test_rls_event_listener.py |
 
 ---
 

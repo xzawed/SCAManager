@@ -8,6 +8,7 @@
 - [사이클 166 (Task9 full 감사 P2 백로그 해소 — 빠른 정합 docs/db·test/effects.js dead-code + UI Medium hx-boost 리스너 누적·i18n 이중이스케이프[Option A], 5 PR #820~#824, Codex mutual 5/5, 2026-06-09)](#사이클-166)
 - [사이클 166 적대 재검증 후속 (STATE overclaim + #32 'resolved' 위양성 적발 → #838 docs정정·#839 #32 tojson·#840 drift④ FK·#841 drift① rename, 4 PR, 2026-06-09)](#사이클-166-적대-재검증-후속-2026-06-09--838841)
 - [잔여작업 라운드 (사용자 결정 C — #843 drift③④' ORM 부분 인덱스 정합·#844 #2 RLS owner-bypass 근본 runbook, 2 PR, 2026-06-09~10)](#잔여작업-라운드-2026-06-0910--843844-사용자-결정-c)
+- [잔여 정리 라운드 A옵션 (PR #838~#845 본문 `@-` 소실 복원 + 정책 10 본문 검증 의무 + Code Scanning 12건 처분 + RLS stale docs 정정, 1 PR #846, 2026-06-10)](#잔여-정리-라운드-a옵션-2026-06-10--846)
 - [사이클 165 (Task9 골든 리메디에이션 — P1 #802~810 + P2 보안·파이프라인 하드닝 클러스터 #811~814: 게이트 원자적 리플레이 claim·webhook 본문 파싱·ai_review per-field PARITY·SSRF docstring·hook parse_error NULL+overview, Codex true mutual 실결함 4건 적발, 11 PR, 2026-06-08~09)](#사이클-165)
 - [사이클 164 (area=gate 잔여 6 결함 — 사용자 Q1~Q4 결정: 정적분석 파일격리+타임아웃 부분결과 보존, telegram 반자동 auto-merge 완전 대칭, regate first-writer-wins, 3 PR #794~#796, 2026-06-08)](#사이클-164)
 - [사이클 163 (area=gate P2 백로그 해소 — ApproveAction 정적분석 가드·hook 점수 비숫자/Infinity 안전변환·merge_retry 백오프 validator·zero-SHA 조기종료·_ensure_repo race 복구, 5 PR #783~#787, 2026-06-07)](#사이클-163)
@@ -156,6 +157,24 @@
 **🔴 핵심 학습**: (1) **부분 유니크 인덱스 ORM 선언 = postgresql_where + sqlite_where 양 방언 의무** — 한쪽만 쓰면 SQLite 가 전체 유니크화로 도메인 무결성 붕괴. (2) **#2 류 RLS owner-bypass 는 코드만으로 미완결** — BYPASSRLS 접속이면 FORCE 도 무의미, role 분리(운영) + background 전략(코드 설계) 선행 필수. runbook 으로 절차 문서화가 actionable 산출물.
 
 **최종 잔여**: **#2(RLS·SaaS — role 분리 runbook 준비완료, 운영 실행 + Phase 2 background 코드 PR 대기)만**. full 감사 36건 = drift①③④'·#32 전부 해소/#22/#23/#14 결정 + #2 근본 절차 문서화. 실질 종결.
+
+---
+
+## 잔여 정리 라운드 A옵션 (2026-06-10) — #846
+
+**날짜**: 2026-06-10 | **PR**: #846 (docs 1건) + GitHub-side 작업 (repo 변경 없음) | **트리거**: 사용자 "잔여 작업 및 후속 작업 확인" → 전수 스캔 워크플로우(wf_851d8529, 5 스캔 + completeness critic, read-only) → 옵션 표 결정 **A(신규 P1+P2 정리 라운드)** | **상태**: 신규 발견 P1 2건 + P2 4건 처리
+
+전수 스캔(1차 42건 → critic 검증 후 고유 ~24건, 허위 2건 부분 기각)이 STATE '잔여 #2만' 선언 밖에서 신규 P1 사고를 적발 — 본 라운드로 정리.
+
+- **PR #838~#845 본문 8건 복원** (GitHub-side): `gh pr create` 본문 인자 결함으로 전건 리터럴 `@-` 2자 저장 → squash 커밋 메시지에서 복원 + #839 에 정책 11 8조합 체크리스트 회복 섹션 추가. 정책 2/11/18 의무 섹션 GitHub 기록 소실 사고.
+- **재발 방지 (정책 10 진화)**: 본문 임시 파일 + `--body-file <경로>` 전달 의무 + 생성/수정 직후 `gh pr view --json body` 길이 검증 1줄 의무 — CLAUDE.md 1줄 + active.md detail (#846).
+- **Code Scanning 12건 처분** (정책 14): #492~#502 unused-import 11건 = parity 테스트 의도적 ORM side-effect import (testing.md 'empty `__init__` + 명시 import' 규칙) → used-in-tests dismiss / #491 ineffectual-statement = `claude_metrics.py:35` `await result` 실효 코루틴 await → false-positive dismiss. open alert 12→0.
+- **stale docs 정정**: operational-smoke-checks.md §8.7 — 'RLS 운영 활성화' 행이 '사용자 별도 PR 의무 + 부재 메모리 파일 참조' 로 stale (미들웨어 `rls_session.py` + `_set_rls_user_id_per_query` 구현 완료) → 구현 완료 + role 분리 선행 필요로 갱신, rls-role-separation.md cross-link (#846).
+- **메모리 동기화**: dangling commit 7d0fa1fe Support 요청 기록 상충 2곳 (`project_security_3layer_guard` 미체크 ↔ `project_cycle_theme_nav_fix` 완료) → 2026-06-10 실측(API 200 — purge 미반영, 결과 확인/재요청 잔여) 반영 통일.
+
+**검증**: docs-only (src/tests 무변경 — 테스트 4889 불변). Codex mutual (push 전, 정책 18).
+
+**잔여 (불변)**: **#2(RLS owner-bypass — Phase 2 background 코드 PR + 운영 role 분리)**. 본 라운드 신규 식별 백로그: 정책 11 일괄 회신 대기 (#822/#823/#824/#827/#839 8조합), 사이클 164~166 회고 보고서 미보관 + #838~#845 라운드 회고 미수행, claude_metrics 가격표 분기 재확인 (2026-07 초), 온프레미스 PG rolbypassrls 미측정 (#2 선행).
 
 ---
 
