@@ -3,7 +3,11 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, Request
 from src.api.auth import require_api_key
 from src.api.deps import get_repo_or_404
-from src.database import SessionLocal
+# require_api_key 시스템 엔드포인트 — 세션 없는 cross-tenant 조회 → Phase 4 RLS 우회용 worker 세션.
+# 미설정 시 WorkerSessionLocal is SessionLocal (현행 동일). 상세: src/api/repos.py 주석.
+# Global-API-key system endpoint — sessionless cross-tenant reads → worker (BYPASSRLS) session for
+# Phase 4. Unset → WorkerSessionLocal is SessionLocal (unchanged). See src/api/repos.py for detail.
+from src.database import WorkerSessionLocal as SessionLocal
 from src.middleware.rate_limiter import limiter, RATE_LIMIT_API
 from src.models.analysis import Analysis
 

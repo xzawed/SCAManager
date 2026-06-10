@@ -9,7 +9,9 @@ from sqlalchemy import update
 
 from src.config import settings
 from src.crypto import encrypt_token
-from src.database import SessionLocal
+# SessionLocal = 웹 RLS 경로(logout 등 본인 행). WorkerSessionLocal = 시스템 컨텍스트(OAuth 콜백 upsert).
+# SessionLocal = web RLS path (logout etc., own row). WorkerSessionLocal = system context (OAuth callback upsert).
+from src.database import SessionLocal, WorkerSessionLocal
 from src.models.user import User
 from src.repositories import user_repo
 
@@ -79,7 +81,18 @@ async def auth_callback(request: Request):
         github_login = user_info.get("login", "")
         display_name = user_info.get("name") or github_login
 
-        with SessionLocal() as db:
+        # 콜백 시점에는 session["user_id"] 가 아직 없어 app.user_id='' — 비-BYPASSRLS app role 전환 후
+        # (RLS #2 Phase 4) users self-RLS(0029) 가 find_by_github_id SELECT 와 신규 User INSERT 를
+        # 모두 차단해 전원 로그인 장애가 발생한다. 사용자 식별 자체를 위한 시스템 컨텍스트 작업이므로
+        # WorkerSessionLocal(BYPASSRLS worker role) 로 RLS 를 우회한다. DATABASE_URL_WORKER 미설정 시
+        # WorkerSessionLocal is SessionLocal — 현행 동작과 완전 동일. (logout 은 세션이 있어 SessionLocal 유지)
+        # At callback time there is no session["user_id"] yet (app.user_id=''), so after the
+        # non-BYPASSRLS app-role switch (RLS #2 Phase 4) the users self-RLS (0029) would block both the
+        # find_by_github_id SELECT and the new-User INSERT, locking every user out. This is a
+        # system-context identity-provisioning step, so it goes through WorkerSessionLocal (the BYPASSRLS
+        # worker role). With DATABASE_URL_WORKER unset, WorkerSessionLocal is SessionLocal (behavior
+        # unchanged). logout keeps SessionLocal since it runs within the user's session.
+        with WorkerSessionLocal() as db:
             user = user_repo.find_by_github_id(db, github_id)
             if not user:
                 user = User(

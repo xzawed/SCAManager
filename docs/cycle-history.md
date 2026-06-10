@@ -9,6 +9,7 @@
 - [사이클 166 적대 재검증 후속 (STATE overclaim + #32 'resolved' 위양성 적발 → #838 docs정정·#839 #32 tojson·#840 drift④ FK·#841 drift① rename, 4 PR, 2026-06-09)](#사이클-166-적대-재검증-후속-2026-06-09--838841)
 - [잔여작업 라운드 (사용자 결정 C — #843 drift③④' ORM 부분 인덱스 정합·#844 #2 RLS owner-bypass 근본 runbook, 2 PR, 2026-06-09~10)](#잔여작업-라운드-2026-06-0910--843844-사용자-결정-c)
 - [잔여 정리 라운드 A옵션 (PR #838~#845 본문 `@-` 소실 복원 + 정책 10 본문 검증 의무 + Code Scanning 12건 처분 + RLS stale docs 정정, 1 PR #846, 2026-06-10)](#잔여-정리-라운드-a옵션-2026-06-10)
+- [RLS #2 Phase 4 코드 차단 경로 해소 — auth_callback worker 세션(옵션 2) + 시스템 API 라우트 3종(Codex mutual 발견) worker 재라우팅, +8 단위, 2026-06-10](#rls-2-phase-4-oauth-로그인-blocker-해소--auth_callback-worker-세션-전환-옵션-2-2026-06-10)
 - [RLS Phase 1 운영 + Phase 3 — 0041 FORCE + force_applied/connection_bypasses_rls 실측 (Phase 4 OAuth blocker 식별, 2026-06-10)](#rls-phase-1-운영--phase-3--0041-force--실측-가시화-2026-06-10)
 - [RLS Phase 2 — background 전용 worker 세션 분리 (옵션 A: DATABASE_URL_WORKER + WorkerSessionLocal + 16 모듈 alias + ast 가드 52, 1 PR #847, 2026-06-10)](#rls-phase-2--background-전용-worker-세션-분리-2026-06-10)
 - [사이클 165 (Task9 골든 리메디에이션 — P1 #802~810 + P2 보안·파이프라인 하드닝 클러스터 #811~814: 게이트 원자적 리플레이 claim·webhook 본문 파싱·ai_review per-field PARITY·SSRF docstring·hook parse_error NULL+overview, Codex true mutual 실결함 4건 적발, 11 PR, 2026-06-08~09)](#사이클-165)
@@ -177,6 +178,23 @@
 **검증**: 주석/docs-only (src 변경 = `rls_session.py` docstring 1곳 — 런타임 무변경, rls 단위 9 passed. 테스트 4889 불변). Codex mutual (push 전, 정책 18 — R1 NG 2건·R2 NG 1건 정정 후 OK).
 
 **잔여 (불변)**: **#2(RLS owner-bypass — Phase 2 background 코드 PR + 운영 role 분리)**. 본 라운드 신규 식별 백로그: 정책 11 일괄 회신 대기 (#822/#823/#824/#827/#839 8조합), 사이클 164~166 회고 보고서 미보관 + #838~#845 라운드 회고 미수행, claude_metrics 가격표 분기 재확인 (2026-07 초), 온프레미스 PG rolbypassrls 미측정 (#2 선행).
+
+---
+
+## RLS #2 Phase 4 OAuth 로그인 blocker 해소 — auth_callback worker 세션 전환 (옵션 2) (2026-06-10)
+
+**날짜**: 2026-06-10 | **PR**: 본 PR | **트리거**: 사용자 "잔여 작업을 확인해주세요" → 잔여 #2 Phase 4 선행 blocker(OAuth users self-RLS) 옵션 표 제시 → 사용자 **옵션 ② (auth upsert worker 세션 경유)** 결정 위임 | **상태**: 코드 완료 — #2 잔여 = Phase 4 운영(URL 전환·PW 교체) + `/admin/tenants` under-report(권한 상승 별도 결정)
+
+- **문제 (직전 RLS Phase 3 적대 verify P1 blocker)**: `auth_callback`(`src/auth/github.py`)은 웹 `SessionLocal` 로 users upsert(`find_by_github_id` SELECT + 신규 User INSERT) 수행 — 콜백 시점 `session["user_id"]` 부재 → `app.user_id=''` → `users_self_isolation`(0029, `id = NULLIF(current_setting('app.user_id',true),'')::integer`) 이 SELECT/INSERT 모두 거부. `scamanager_app`(비-owner) 전환 즉시 전원 로그인 장애(FORCE 무관, 0041 롤백으로도 미해소).
+- **해소 (옵션 2)**: `auth_callback` upsert 블록만 `WorkerSessionLocal`(BYPASSRLS worker role, 시스템 컨텍스트 — 사용자 식별 프로비저닝)로 전환 → RLS 우회로 SELECT/INSERT 통과. `logout` 은 세션 존재(본인 행, `id == user_id`)라 bare `SessionLocal`(웹 RLS 경로) 유지 — defense-in-depth 보존(본인 토큰만 삭제 가능).
+- **가드 재설계 (Phase 2 라우팅 가드)**: `github.py` 가 bare `SessionLocal`(logout) + `WorkerSessionLocal`(callback) 둘 다 import 하는 **hybrid** 모듈이 됨. `_HYBRID_DB_MODULES`(github.py 1건) 카테고리 도입 — test 6(웹 모듈 WorkerSessionLocal 금지) 예외 처리 + test 7a(worker importer bijection) expected 확장 + **hybrid 계약 가드 2종**(test 10: 양 import 존재 + `as SessionLocal` alias 금지 — logout 오라우팅 차단). `as` alias 미사용(자체 이름 import)로 두 세션 심볼 구분 유지.
+- **테스트**: test_github.py 콜백 patch 8건 `WorkerSessionLocal` 전환(logout 2건 `SessionLocal` 유지 — 12-space 들여쓰기로 구분). TDD Red(`WorkerSessionLocal` 속성 부재 AttributeError) → Green. `DATABASE_URL_WORKER` 미설정 시 `WorkerSessionLocal is SessionLocal` 이라 mock 동작 동일.
+- **Codex mutual(정책 18, push 전) 발견 — 시스템 API 라우트 3종**: Codex 가 OAuth 코드(a~d) CORRECT 확인 + (e) 추가 갭 적발 — `src/api/repos.py`·`stats.py`·`repo_report.py` 가 `require_api_key`(글로벌 키) 인증으로 **세션 없이** cross-tenant 전체 데이터를 bare `SessionLocal` 로 조회 → Phase 4 후 RLS 가 owned 행 은닉/차단(list_repos under-report·analyses 404·config/delete 차단). 제 잔여 문서가 `/admin/tenants` 만 적은 건 overclaim(메모리 STATE overclaim 패턴 재발). 사용자 "함께 수정" 결정 → 3종을 `WorkerSessionLocal as SessionLocal`(background 패턴, 모듈 심볼 `SessionLocal` 유지로 기존 `patch("src.api.repos.SessionLocal")` 불변) 전환 + `_SYSTEM_API_MODULES` 라우팅 가드 신설(`_WEB_API_MODULES` 6→3 분리, `_WORKER_ALIAS_MODULES` = background 17 + 시스템 API 3). `issue_registration`(get_current_user+user_id 필터)·`users`(require_login) 는 세션 기반이라 WEB 유지.
+- **불변성**: `DATABASE_URL_WORKER` 미설정 동안 `WorkerSessionLocal is SessionLocal` = 현행 동작 완전 동일 — Phase 4 worker URL 설정 시 자동 발효. src 4파일(github + api 3) + 테스트 2파일 + docs.
+
+**검증**: 전체 4964 passed / 7 skipped (수집 4963→4971, 단위 4809→4817 +8: hybrid 계약 2 + 시스템 API 재라우팅 가드 6) · pylint 10.00 · flake8 0. require_admin·internal_cron subset 실패 = main 동일 재현(settings 싱글톤 reload subset-ordering 오염, CI 전체 순서 무영향 — 격리 시 전부 pass) — 본 변경 무관 실측 확인.
+
+**잔여**: #2 = **Phase 4 (운영, 사용자)** — 임시 PW 교체 + DATABASE_URL/DATABASE_URL_WORKER 전환 + runbook §4 검증 6종. **+ `/admin/tenants` under-report**(admin 크로스테넌트 가시성 = 권한 상승 별도 PR + 사용자 확인).
 
 ---
 

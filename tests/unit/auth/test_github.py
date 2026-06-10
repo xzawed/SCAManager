@@ -167,7 +167,7 @@ def test_callback_creates_new_user_and_redirects():
         with patch("src.auth.github.oauth.github.get",
                    new_callable=AsyncMock,
                    side_effect=[mock_user_info, mock_emails_resp]):
-            with patch("src.auth.github.SessionLocal") as mock_sl:
+            with patch("src.auth.github.WorkerSessionLocal") as mock_sl:
                 mock_sl.return_value.__enter__.return_value = mock_db
                 r = client.get(
                     "/auth/callback?code=test-code&state=test-state",
@@ -209,7 +209,7 @@ def test_callback_updates_existing_user_and_redirects():
         with patch("src.auth.github.oauth.github.get",
                    new_callable=AsyncMock,
                    side_effect=[mock_user_info, mock_emails_resp]):
-            with patch("src.auth.github.SessionLocal") as mock_sl:
+            with patch("src.auth.github.WorkerSessionLocal") as mock_sl:
                 mock_sl.return_value.__enter__.return_value = mock_db
                 r = client.get(
                     "/auth/callback?code=test-code&state=test-state",
@@ -276,7 +276,7 @@ def test_callback_no_primary_email_uses_fallback():
                new_callable=AsyncMock, return_value=mock_token):
         with patch("src.auth.github.oauth.github.get",
                    new_callable=AsyncMock, side_effect=[mock_user_info, mock_emails_resp]):
-            with patch("src.auth.github.SessionLocal") as mock_sl:
+            with patch("src.auth.github.WorkerSessionLocal") as mock_sl:
                 mock_sl.return_value.__enter__.return_value = mock_db
                 client.get("/auth/callback?code=test&state=test", follow_redirects=False)
 
@@ -312,7 +312,7 @@ def test_callback_no_email_anywhere_uses_noreply_address():
                new_callable=AsyncMock, return_value=mock_token):
         with patch("src.auth.github.oauth.github.get",
                    new_callable=AsyncMock, side_effect=[mock_user_info, mock_emails_resp]):
-            with patch("src.auth.github.SessionLocal") as mock_sl:
+            with patch("src.auth.github.WorkerSessionLocal") as mock_sl:
                 mock_sl.return_value.__enter__.return_value = mock_db
                 client.get("/auth/callback?code=test&state=test", follow_redirects=False)
 
@@ -390,7 +390,7 @@ def test_callback_missing_user_id_redirects_to_error():
                new_callable=AsyncMock, return_value=mock_token):
         with patch("src.auth.github.oauth.github.get",
                    new_callable=AsyncMock, side_effect=[mock_user_info, mock_emails_resp]):
-            with patch("src.auth.github.SessionLocal") as mock_sl:
+            with patch("src.auth.github.WorkerSessionLocal") as mock_sl:
                 mock_sl.return_value.__enter__.return_value = MagicMock()
                 r = client.get("/auth/callback?code=test&state=test", follow_redirects=False)
     assert r.status_code == 302
@@ -427,7 +427,7 @@ def test_callback_display_name_falls_back_to_login_when_name_none():
                new_callable=AsyncMock, return_value=mock_token):
         with patch("src.auth.github.oauth.github.get",
                    new_callable=AsyncMock, side_effect=[mock_user_info, mock_emails_resp]):
-            with patch("src.auth.github.SessionLocal") as mock_sl:
+            with patch("src.auth.github.WorkerSessionLocal") as mock_sl:
                 mock_sl.return_value.__enter__.return_value = mock_db
                 client.get("/auth/callback?code=test&state=test", follow_redirects=False)
 
@@ -461,7 +461,7 @@ def test_callback_display_name_falls_back_to_login_when_name_empty():
                new_callable=AsyncMock, return_value=mock_token):
         with patch("src.auth.github.oauth.github.get",
                    new_callable=AsyncMock, side_effect=[mock_user_info, mock_emails_resp]):
-            with patch("src.auth.github.SessionLocal") as mock_sl:
+            with patch("src.auth.github.WorkerSessionLocal") as mock_sl:
                 mock_sl.return_value.__enter__.return_value = mock_db
                 client.get("/auth/callback?code=test&state=test", follow_redirects=False)
 
@@ -630,7 +630,7 @@ def test_callback_clears_session_before_setting_user_id():
         with patch("src.auth.github.oauth.github.get",
                    new_callable=AsyncMock,
                    side_effect=[mock_user_info, mock_emails_resp]):
-            with patch("src.auth.github.SessionLocal") as mock_sl:
+            with patch("src.auth.github.WorkerSessionLocal") as mock_sl:
                 mock_db.query.return_value.filter.return_value.first.return_value = None
                 mock_sl.return_value.__enter__.return_value = mock_db
                 client.get("/auth/callback?code=test&state=test", follow_redirects=False)
