@@ -18,7 +18,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from src.config import settings
 from src.config_manager.manager import get_repo_config
-from src.database import SessionLocal
+from src.database import WorkerSessionLocal as SessionLocal
 from src.gate._common import ai_review_failed
 from src.gate.github_review import post_github_review
 from src.i18n.loader import get_text

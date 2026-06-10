@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Security
 from fastapi.security import APIKeyHeader
 
 from src.config import settings
-from src.database import SessionLocal
+from src.database import WorkerSessionLocal as SessionLocal
 from src.shared.secure_compare import secure_str_compare
 from src.services.cron_service import run_trend_check, run_weekly_reports
 from src.services.merge_retry_service import process_pending_retries

@@ -9,7 +9,7 @@ import logging
 import httpx
 
 from src.config import settings
-from src.database import SessionLocal
+from src.database import WorkerSessionLocal as SessionLocal
 from src.gate._common import ai_review_failed
 from src.gate._common import score_from_result as _score_from_result
 from src.gate.actions import GateAction, GateContext, register

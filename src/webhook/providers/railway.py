@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from src.config import settings
 from src.shared.secure_compare import secure_str_compare
 from src.crypto import decrypt_token
-from src.database import SessionLocal
+from src.database import WorkerSessionLocal as SessionLocal
 from src.models.user import User as UserModel
 from src.notifier.railway_issue import create_deploy_failure_issue
 from src.railway_client.logs import RailwayLogFetchError, fetch_deployment_logs

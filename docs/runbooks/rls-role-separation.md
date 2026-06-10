@@ -84,6 +84,8 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
 
 🔴 **옵션 A 선택 시 코드 작업**(별도 PR, 정책 15 High tier 사전 확인): `DATABASE_URL_WORKER` env + `WorkerSessionLocal` 팩토리 + background 진입점(`webhook/providers`, `worker/pipeline`, `services/merge_retry_service`, cron)의 세션을 worker 팩토리로 전환 + 회귀 가드(background는 worker 세션, 웹은 app 세션). `env-vars.md`·`deploy.md` 등재.
 
+> ✅ **Phase 2 코드 구현 완료 (2026-06-10, 옵션 A — 사용자 권장안 위임 결정)**: `DATABASE_URL_WORKER` env + `database.py::WorkerSessionLocal`(`_build_worker_session_factory` — 미설정 시 `SessionLocal` 동일 객체 재사용으로 현행 보존) + background 16 모듈 alias 전환(`worker/pipeline`·`webhook/providers/*`·`webhook/_helpers`·`gate/engine`+actions 2종·`notifier` lazy 6종·`api/internal_cron`·`api/hook` — `services/merge_retry_service` 는 cron 에서 세션 주입받아 자동 커버) + ast 정적 라우팅 가드 52 테스트(`tests/unit/test_worker_session_routing.py` — alias 강제 + 전수 inventory 양방향 + 재바인딩 금지 + 모듈 객체 import 금지). **운영 활성화 잔여**: Phase 1 role 생성 → `DATABASE_URL_WORKER` env 설정(Phase 4) — 미설정 동안은 현행 동작과 완전 동일.
+
 ### Phase 3 — FORCE 적용 + 상태 반영 (Phase 1·2 완료 후)
 
 ```python

@@ -221,7 +221,9 @@ class _TelegramNotifier:
         chat_id = (ctx.config.notify_chat_id if ctx.config else None) or settings.telegram_chat_id
         # Phase 3 PR-9 — 3-layer 사용자 언어 결정 (User → RepoConfig → settings.default_locale)
         # Phase 3 PR-9 — 3-layer language resolve (User → RepoConfig → settings.default_locale)
-        from src.database import SessionLocal  # noqa: WPS433  # pylint: disable=import-outside-toplevel
+        from src.database import (  # noqa: WPS433  # pylint: disable=import-outside-toplevel
+            WorkerSessionLocal as SessionLocal,
+        )
         from src.notifier._language import resolve_notification_language  # noqa: WPS433  # pylint: disable=import-outside-toplevel
         with SessionLocal() as db:
             language = resolve_notification_language(db, config=ctx.config)

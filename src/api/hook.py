@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from src.middleware.rate_limiter import limiter, RATE_LIMIT_API
 from src.config import settings
 from src.shared.secure_compare import secure_str_compare
-from src.database import SessionLocal
+from src.database import WorkerSessionLocal as SessionLocal
 from src.i18n.loader import get_text
 from src.shared.log_safety import sanitize_for_log
 from src.models.analysis import Analysis

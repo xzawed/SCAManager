@@ -19,7 +19,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from src.config import settings
 from src.config_manager.manager import get_repo_config
 from src.constants import HANDLED_EVENTS, PR_HANDLED_ACTIONS
-from src.database import SessionLocal
+from src.database import WorkerSessionLocal as SessionLocal
 from src.github_client.issues import close_issue
 from src.notifier.n8n import notify_n8n_issue
 from src.repositories import merge_attempt_repo, merge_retry_repo, repository_repo

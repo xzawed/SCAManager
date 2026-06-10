@@ -40,12 +40,18 @@ repos:
         name: "🔐 diff 내 주요 시크릿 패턴 차단"
         language: pygrep
         entry: "(TELEGRAM_BOT_TOKEN|ANTHROPIC_API_KEY|GITHUB_CLIENT_SECRET|SESSION_SECRET|TOKEN_ENCRYPTION_KEY)\\s*=\\s*['\"]?[^${'\"\\s]{10,}"
-        exclude: "^(README\\.md|README\\.ko\\.md|docs/|tests/|e2e/)"
+        exclude: "^(README\\.md|README\\.ko\\.md|docs/|tests/|e2e/|\\.env\\.example)"
         stages: [pre-commit]
         description: |
           환경변수에 실제 값이 하드코딩된 경우 차단.
           os.getenv() 또는 os.environ 참조 방식만 허용.
           README/docs 는 문서 예시값 허용을 위해 제외.
+          .env.example 제외 사유: placeholder 문서 파일 (README 동일 사유 — 2026-06-10,
+          기존 placeholder 줄 your-telegram-bot-token/dev-secret-change-in-production 오탐.
+          placeholder 를 빈 값/${...} 로 바꾸는 대안은 SESSION_SECRET 32자 validator 가
+          `cp .env.example .env` dev flow 를 깨뜨려 기각. 실제 .env 는 Layer 1-B
+          check-env-not-staged 훅이 staged 자체를 차단하고, gitleaks(Layer 1-A)와
+          CI TruffleHog 는 .env.example 도 계속 스캔한다).
           tests/e2e 제외 사유: Python os.environ["KEY"] = "value" 형식은 값 앞뒤 따옴표로 인해
           패턴 [^${'"\s]{10,} 이 매칭되지 않아 실질적 탐지 불필요.
           단, .env 스타일 KEY=value (따옴표 없음) 형식은 매칭되므로 forward-looking 보호로 제외 유지.

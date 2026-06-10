@@ -18,7 +18,7 @@
 [![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=xzawed_SCAManager&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=xzawed_SCAManager)
 [![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=xzawed_SCAManager&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=xzawed_SCAManager)
 
-[![Tests](https://img.shields.io/badge/Tests-4889%2B_total_(4735_unit_+_154_integration)-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-4941%2B_total_(4787_unit_+_154_integration)-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
 [![E2E](https://img.shields.io/badge/E2E-113_passing-brightgreen?style=flat-square&logo=playwright&logoColor=white)](e2e/)
 [![pylint](https://img.shields.io/badge/pylint-10.00%2F10-brightgreen?style=flat-square&logo=python&logoColor=white)](src/)
 [![bandit](https://img.shields.io/badge/bandit-HIGH_0-brightgreen?style=flat-square&logo=security&logoColor=white)](src/)
@@ -374,6 +374,7 @@ cp .env.example .env
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` | Email notification SMTP settings |
 | `DATABASE_URL_FALLBACK` | Secondary DB URL for failover (single-engine mode if unset) |
 | `DB_FAILOVER_PROBE_INTERVAL` | Primary DB recovery check interval in seconds (default 30) |
+| `DATABASE_URL_WORKER` | Background-only DB URL for RLS role separation Option A (reuses `DATABASE_URL` if unset — must be BYPASSRLS worker role credentials) |
 | `DB_SSLMODE` | PostgreSQL SSL mode (`require` / `disable`) |
 | `DB_FORCE_IPV4` | Force IPv4 connection (`true` — Railway environments) |
 

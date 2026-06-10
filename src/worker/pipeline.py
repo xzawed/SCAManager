@@ -7,7 +7,7 @@ import httpx
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from src.database import SessionLocal
+from src.database import WorkerSessionLocal as SessionLocal
 from src.config import settings
 from src.shared.log_safety import sanitize_for_log
 from src.shared.stage_metrics import stage_timer
