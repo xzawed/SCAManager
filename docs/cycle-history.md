@@ -8,7 +8,7 @@
 - [사이클 166 (Task9 full 감사 P2 백로그 해소 — 빠른 정합 docs/db·test/effects.js dead-code + UI Medium hx-boost 리스너 누적·i18n 이중이스케이프[Option A], 5 PR #820~#824, Codex mutual 5/5, 2026-06-09)](#사이클-166)
 - [사이클 166 적대 재검증 후속 (STATE overclaim + #32 'resolved' 위양성 적발 → #838 docs정정·#839 #32 tojson·#840 drift④ FK·#841 drift① rename, 4 PR, 2026-06-09)](#사이클-166-적대-재검증-후속-2026-06-09--838841)
 - [잔여작업 라운드 (사용자 결정 C — #843 drift③④' ORM 부분 인덱스 정합·#844 #2 RLS owner-bypass 근본 runbook, 2 PR, 2026-06-09~10)](#잔여작업-라운드-2026-06-0910--843844-사용자-결정-c)
-- [잔여 정리 라운드 A옵션 (PR #838~#845 본문 `@-` 소실 복원 + 정책 10 본문 검증 의무 + Code Scanning 12건 처분 + RLS stale docs 정정, 1 PR, 2026-06-10)](#잔여-정리-라운드-a옵션-2026-06-10)
+- [잔여 정리 라운드 A옵션 (PR #838~#845 본문 `@-` 소실 복원 + 정책 10 본문 검증 의무 + Code Scanning 12건 처분 + RLS stale docs 정정, 1 PR #846, 2026-06-10)](#잔여-정리-라운드-a옵션-2026-06-10)
 - [사이클 165 (Task9 골든 리메디에이션 — P1 #802~810 + P2 보안·파이프라인 하드닝 클러스터 #811~814: 게이트 원자적 리플레이 claim·webhook 본문 파싱·ai_review per-field PARITY·SSRF docstring·hook parse_error NULL+overview, Codex true mutual 실결함 4건 적발, 11 PR, 2026-06-08~09)](#사이클-165)
 - [사이클 164 (area=gate 잔여 6 결함 — 사용자 Q1~Q4 결정: 정적분석 파일격리+타임아웃 부분결과 보존, telegram 반자동 auto-merge 완전 대칭, regate first-writer-wins, 3 PR #794~#796, 2026-06-08)](#사이클-164)
 - [사이클 163 (area=gate P2 백로그 해소 — ApproveAction 정적분석 가드·hook 점수 비숫자/Infinity 안전변환·merge_retry 백오프 validator·zero-SHA 조기종료·_ensure_repo race 복구, 5 PR #783~#787, 2026-06-07)](#사이클-163)
@@ -162,7 +162,7 @@
 
 ## 잔여 정리 라운드 A옵션 (2026-06-10)
 
-**날짜**: 2026-06-10 | **PR**: 본 라운드 docs 1건 (번호는 PR 생성 후 fix-up 반영) + GitHub-side 작업 (repo 변경 없음) | **트리거**: 사용자 "잔여 작업 및 후속 작업 확인" → 전수 스캔 워크플로우(wf_851d8529, 5 스캔 + completeness critic, read-only) → 옵션 표 결정 **A(신규 P1+P2 정리 라운드)** | **상태**: 신규 발견 P1 2건 + P2 4건 처리
+**날짜**: 2026-06-10 | **PR**: #846 (docs 1건 — 번호는 생성 후 fix-up 반영, Codex R1 처방) + GitHub-side 작업 (repo 변경 없음) | **트리거**: 사용자 "잔여 작업 및 후속 작업 확인" → 전수 스캔 워크플로우(wf_851d8529, 5 스캔 + completeness critic, read-only) → 옵션 표 결정 **A(신규 P1+P2 정리 라운드)** | **상태**: 신규 발견 P1 2건 + P2 4건 처리
 
 전수 스캔(1차 42건 → critic 검증 후 고유 ~24건, 허위 2건 부분 기각)이 STATE '잔여 #2만' 선언 밖에서 신규 P1 사고를 적발 — 본 라운드로 정리.
 
