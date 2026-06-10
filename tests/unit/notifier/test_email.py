@@ -357,3 +357,5 @@ async def test_send_email_strips_crlf_from_recipients():
     # CR/LF 제거로 추가 헤더(Bcc) 주입 불가 — 단일 라인으로 평탄화
     assert "\r" not in to_header and "\n" not in to_header
     assert "a@test.com" in to_header
+    # 주입 시도한 Bcc 헤더가 실제로 생성되지 않았는지 직접 단언 (Codex mutual 강화)
+    assert not msg.get_all("Bcc")
