@@ -39,7 +39,8 @@ src/
 │   ├── feature_kill_switch.py   # is_disabled(feature) helper (Cycle 78 NEW-P0-2)
 │   ├── alembic_dialect.py       # is_postgresql(bind_or_conn) (Cycle 82 PR 1 — 사용처 12)
 │   ├── lang_names.py            # LANG_NAMES dict — locale 코드 → Claude 프롬프트 언어명 (단일 출처)
-│   └── ssrf.py                  # is_dangerous_ip() — SSRF IP 분류 단일 출처 (_http.py 발신 가드 + settings.py 폼 검증)
+│   ├── ssrf.py                  # is_dangerous_ip() — SSRF IP 분류 단일 출처 (_http.py 발신 가드 + settings.py 폼 검증)
+│   └── openai_metrics.py        # OpenAI 토큰/비용 계측 + aclose_openai_client (2nd-LLM 검증자, claude_metrics 대칭)
 ├── middleware/
 │   ├── rls_session.py           # RLSSessionMiddleware (ASGI, BaseHTTPMiddleware 우회)
 │   └── locale.py                # LocaleMiddleware — 5단계 locale 감지 (Cookie > Accept-Language q-weight > User > settings > fallback)
@@ -91,7 +92,8 @@ src/
 │   ├── telegram_gate.py         # send_gate_request() — 인라인 키보드
 │   ├── merge_failure_advisor.py # get_advice(reason, language) — i18n (사이클 149)
 │   ├── retry_policy.py          # 순수 함수 — should_retry, compute_next_retry_at, is_expired
-│   └── _merge_attempt_states.py # MergeAttempt.state lifecycle 정규 상수
+│   ├── _merge_attempt_states.py # MergeAttempt.state lifecycle 정규 상수
+│   └── merge_verifier.py        # 2nd-LLM 머지 검증자 (cross-vendor) — is_in_verification_band/should_verify/build_verifier_prompt/interpret_verdict/verify_merge_safety
 ├── notifier/                    # `__init__.py` 가 자동 로드 → REGISTRY 등록
 │   ├── _common.py               # format_ref, get_all_issues, truncate_message
 │   ├── _http.py                 # build_safe_client() — SSRF 방어
@@ -119,6 +121,7 @@ src/
 │   ├── __init__.py              # MCP tool 선언 패키지
 │   └── repo_report_tools.py     # list_repo_reports / get_repo_report tool 스키마
 ├── cli/                         # python -m src.cli review (git_diff + formatter)
+├── verifier/                    # 2nd-LLM 머지 검증자 (cross-vendor 거버넌스) — openai_client.py (SDK 우선 + httpx fallback)
 ├── repositories/                # DB 접근 계층 11종 — repository_repo (`find_by_full_name` + `find_all_by_user` shared+owned repos + Phase H `find_by_full_name_with_owner`), issue_registration_repo (find_by_key/create/list_by_analysis/list_by_repo/update_state)
 └── worker/pipeline.py           # run_analysis_pipeline, build_analysis_result_dict
 ```
@@ -188,7 +191,10 @@ GitHub Push/PR
           [approve_mode=auto]    → score ≥ approve_threshold → GitHub APPROVE
                                    score < reject_threshold → GitHub REQUEST_CHANGES
           [approve_mode=semi]    → Telegram 인라인 키보드 → POST /api/webhook/telegram 콜백
-          [auto_merge=on, score ≥ merge_threshold] → enable_or_fallback()
+          [auto_merge=on, score ≥ merge_threshold]
+              → (경계밴드 merge_threshold~+MERGE_VERIFIER_BAND & OPENAI_API_KEY 설정 시) 2nd-LLM 검증자(GPT cross-vendor)
+                  → unsafe / 조작 의심 / 검증자 오류 시 자동머지 차단 + PR 코멘트 (fail-closed)
+              → enable_or_fallback()
               ├─ enable_pull_request_auto_merge GraphQL mutation (우선)
               ├─ ENABLE_DISABLED_IN_REPO / ENABLE_PERMISSION_DENIED → REST merge_pr 폴백
               └─ ENABLE_API_ERROR (분류 외) → REST merge_pr 폴백

@@ -77,6 +77,17 @@ Sentry 외 자동 로깅은 별도 환경변수 없이 동작:
 | `SMTP_USER` | SMTP 인증 사용자 |
 | `SMTP_PASS` | SMTP 인증 비밀번호 |
 
+## 머지 검증자 (2nd-LLM cross-vendor, opt-in)
+
+> Claude 리뷰를 OpenAI GPT 가 독립 검증 — **경계 점수 자동머지 후보**(`merge_threshold ~ +N`)만. `OPENAI_API_KEY` 미설정 시 완전 비활성(비용 0, 동작 변화 0 — 순수 opt-in). 불안전/조작/검증자 오류 시 자동머지 차단 + PR 코멘트(fail-closed).
+
+| 변수 | 설명 | 기본값 |
+|------|------|--------|
+| `OPENAI_API_KEY` | 검증자 OpenAI 키 — **미설정 시 검증자 완전 비활성** (BYO key, 운영자 본인 토큰만 소비) | 빈 문자열 |
+| `OPENAI_VERIFIER_MODEL` | 검증자 모델 ID (저비용 소형 권장) | `gpt-5-mini` |
+| `MERGE_VERIFIER_BAND` | 경계 밴드 폭(점) — `merge_threshold ~ +N` 만 검증 (고득점 skip = 비용 절감) | `10` |
+| `MERGE_VERIFIER_DISABLED` | kill-switch (`1` 시 비활성) | `0` |
+
 ## DB 연결 고급 설정
 
 | 변수 | 설명 | 기본값 |
