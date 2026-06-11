@@ -9,6 +9,10 @@ import logging
 
 from src.gate._common import ai_review_failed
 from src.gate.actions import GateAction, GateContext, register
+from src.gate.merge_verifier import (
+    VERIFIER_OK, should_verify, verify_merge_safety,
+)
+from src.notifier.github_comment import post_plain_pr_comment
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +64,29 @@ class AutoMergeAction(GateAction):
                 ctx.result.get("ai_review_status"), ctx.repo_name, ctx.pr_number,
             )
             return
+        # 2nd-LLM 검증 가드 — 경계 밴드 자동머지만 OpenAI 검증자로 안전성/조작 판정.
+        # 키 미설정/밴드 밖/kill-switch 면 should_verify=False → 검증 skip(현행 동작 보존).
+        # 2nd-LLM verifier guard — only borderline-band auto-merges are verified.
+        # When key unset / outside band / kill-switch off → should_verify=False → skip (behavior preserved).
+        if should_verify(score=ctx.score, merge_threshold=ctx.config.merge_threshold):
+            verdict = await verify_merge_safety(ctx)
+            if verdict.status != VERIFIER_OK or not verdict.safe or verdict.manipulation_detected:
+                reason = "; ".join(verdict.reasons) or verdict.status
+                logger.warning(
+                    "merge verifier blocked auto-merge (status=%s) — repo=%s pr=%s: %s",
+                    verdict.status, ctx.repo_name, ctx.pr_number, reason,
+                )
+                try:
+                    await post_plain_pr_comment(
+                        ctx.github_token, ctx.repo_name, ctx.pr_number,
+                        f"🛑 자동 머지 보류 — 2nd-LLM(Claude 리뷰 ↔ GPT 검증) cross-vendor "
+                        f"검증자가 머지 안전성 확인 실패.\nAuto-merge withheld by the cross-vendor "
+                        f"verifier.\n\n- status: `{verdict.status}`\n- reasons: {reason}",
+                    )
+                except Exception:  # pylint: disable=broad-exception-caught  # noqa: BLE001
+                    logger.exception("verifier block comment failed (repo=%s pr=%s)",
+                                     ctx.repo_name, ctx.pr_number)
+                return
         from src.gate import engine  # pylint: disable=import-outside-toplevel
         await engine._run_auto_merge(  # pylint: disable=protected-access
             ctx.config,
