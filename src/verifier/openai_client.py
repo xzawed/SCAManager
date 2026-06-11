@@ -7,6 +7,7 @@ Mirrors the anthropic.AsyncAnthropic pattern (explicit timeout/max_retries, per-
 import logging
 import time
 
+from src.constants import VERIFIER_MAX_OUTPUT_TOKENS
 from src.shared.http_client import get_http_client
 from src.shared.openai_metrics import aclose_openai_client, extract_openai_usage, log_openai_api_call
 
@@ -19,12 +20,16 @@ _OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
 
 async def call_openai_verifier(
     system_prompt: str, user_prompt: str, *, api_key: str, model: str, timeout: float,
+    max_output_tokens: int = VERIFIER_MAX_OUTPUT_TOKENS,
 ) -> str:
     """OpenAI Chat Completions 로 검증 호출 -> 응답 텍스트(JSON 문자열) 반환.
     Call OpenAI Chat Completions for verification -> return response text (JSON string).
 
     네트워크/API 오류는 raise (호출자가 fail-closed 처리). SDK 미설치 시 httpx fallback.
     Network/API errors are re-raised (caller handles fail-closed). Falls back to httpx if SDK absent.
+
+    max_output_tokens: 응답 토큰 상한(비용 폭증 방어, #859 회고 P1-4) — gpt-5 계열 reasoning 포함.
+    max_output_tokens: response token cap (cost-blowup guard, #859 retro P1-4) — incl. gpt-5 reasoning.
     """
     start = time.perf_counter()
     client = None
@@ -40,6 +45,7 @@ async def call_openai_verifier(
                 {"role": "user", "content": user_prompt},
             ],
             response_format={"type": "json_object"},
+            max_completion_tokens=max_output_tokens,
         )
         in_tok, out_tok = extract_openai_usage(resp)
         log_openai_api_call(
@@ -51,7 +57,8 @@ async def call_openai_verifier(
         # SDK 미설치 → httpx 직접 호출 fallback
         # SDK not installed → fall back to direct httpx call
         return await _call_via_http(
-            system_prompt, user_prompt, api_key=api_key, model=model, timeout=timeout, start=start)
+            system_prompt, user_prompt, api_key=api_key, model=model, timeout=timeout,
+            start=start, max_output_tokens=max_output_tokens)
     except Exception as exc:  # pylint: disable=broad-exception-caught  # noqa: BLE001
         # 오류 메트릭 기록 후 재 raise — 호출자 fail-closed 처리
         # Log error metrics then re-raise — caller performs fail-closed handling
@@ -67,6 +74,7 @@ async def call_openai_verifier(
 
 async def _call_via_http(
     system_prompt: str, user_prompt: str, *, api_key: str, model: str, timeout: float, start: float,
+    max_output_tokens: int = VERIFIER_MAX_OUTPUT_TOKENS,
 ) -> str:
     """openai SDK 미설치 fallback — 신뢰 API httpx 풀로 직접 호출.
     Fallback when openai SDK is absent — calls the API directly via the shared httpx pool.
@@ -82,6 +90,7 @@ async def _call_via_http(
                 {"role": "user", "content": user_prompt},
             ],
             "response_format": {"type": "json_object"},
+            "max_completion_tokens": max_output_tokens,
         },
         timeout=timeout,
     )

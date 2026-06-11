@@ -97,6 +97,10 @@ OPENAI_VERIFIER_TIMEOUT = 60.0      # OpenAI 검증 호출 타임아웃(초) —
 # OpenAI verifier call timeout (seconds) — symmetric with Claude review 60s
 MERGE_VERIFIER_BAND_DEFAULT = 10    # 경계 밴드 폭(점) — merge_threshold ~ +10 점만 검증
 # Band width in points — only verify scores within merge_threshold ~ +10
+VERIFIER_DIFF_CHAR_CAP = 60000      # 검증자 diff 상한(문자, ~15k 토큰) — 초과 시 OpenAI 미호출 + fail-closed 차단(대형 PR 수동 머지)
+# Verifier diff cap (chars, ~15k tokens) — over cap → skip OpenAI + fail-closed block (large PRs go to manual merge)
+VERIFIER_MAX_OUTPUT_TOKENS = 8192   # 검증자 응답 토큰 상한 — 소형 JSON + (gpt-5 계열) reasoning 여유 (2048 은 소진 위험, Codex mutual)
+# Verifier response token cap — small JSON + headroom for (gpt-5-class) reasoning (2048 risked exhaustion)
 
 # ── 분석 도구 설정 ─────────────────────────────────────────────────────────
 # ── Analysis tool configuration ───────────────────────────────────────────
