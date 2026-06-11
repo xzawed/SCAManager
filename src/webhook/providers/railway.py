@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 
 from src.config import settings
 from src.shared.secure_compare import secure_str_compare
+from src.shared.log_safety import sanitize_for_log
 from src.crypto import decrypt_token
 from src.database import WorkerSessionLocal as SessionLocal
 from src.models.user import User as UserModel
@@ -106,7 +107,9 @@ async def _handle_railway_deploy_failure(
             # railway_issue 가 i18n 키(notifier.railway.log_fetch_failed)로 대체 (사이클 154 P2)
             # Keep exc detail in operator logs only; leave body None so railway_issue
             # substitutes the i18n key (avoids leaking hardcoded Korean into the Issue)
-            logger.warning("Railway 로그 조회 실패 (%s): %s", event.deployment_id, exc)
+            logger.warning(  # NOSONAR python:S5145 — sanitized via log_safety
+                "Railway 로그 조회 실패 (%s): %s", sanitize_for_log(event.deployment_id), exc,
+            )
             logs_tail = None
 
     await create_deploy_failure_issue(

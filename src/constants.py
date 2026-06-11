@@ -99,6 +99,11 @@ STATIC_ANALYSIS_TIMEOUT = 30    # 도구 1개당 subprocess 타임아웃 (초)
 
 # ── Webhook 시크릿 캐시 설정 ─────────────────────────────────────────────────
 WEBHOOK_SECRET_CACHE_TTL = 300  # per-repo webhook secret 캐시 TTL (초, 5분)
+# 🔴 캐시 엔트리 상한 — 서명 검증 전(pre-auth) 위조 repository.full_name 으로 캐시가
+# 무한 증가하는 메모리 고갈을 차단 (초과 시 만료분 정리 후 가장 빨리 만료될 엔트리 evict).
+# Cache entry cap — bounds memory against pre-auth unbounded growth from forged
+# repository.full_name (on overflow, purge expired then evict the soonest-expiring entry).
+WEBHOOK_SECRET_CACHE_MAX = 2048
 
 # ── 파이프라인 이벤트 필터 ─────────────────────────────────────────────────
 # ── Pipeline event filter ─────────────────────────────────────────────────
