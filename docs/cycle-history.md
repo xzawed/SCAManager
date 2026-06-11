@@ -5,7 +5,7 @@
 
 ## 목차
 
-- [2nd-LLM 머지 검증자 도입 (cross-vendor AI 거버넌스 가드 — OpenAI GPT 가 경계밴드 자동머지의 머지안전성+조작/환각 독립검증, 순수 opt-in, SDK 우선+httpx fallback, 브레인스토밍→spec→subagent-driven 9 task, +24 단위, feat/merge-verifier, 2026-06-11)](#2nd-llm-머지-검증자-도입-cross-vendor-ai-거버넌스-가드-2026-06-11)
+- [2nd-LLM 머지 검증자 도입 (cross-vendor AI 거버넌스 가드 — OpenAI GPT 가 경계밴드 자동머지의 머지안전성+조작/환각 독립검증, 순수 opt-in, SDK 우선+httpx fallback, 브레인스토밍→spec→subagent-driven 9 task, +26 단위, feat/merge-verifier, 2026-06-11)](#2nd-llm-머지-검증자-도입-cross-vendor-ai-거버넌스-가드-2026-06-11)
 - [정합성 감사 + deep-research follow-up (integrity-audit full + deep-research 미검증 후보 직접 실측 → pipeline AI-fail NULL-persist·webhook secret 캐시 상한·SSRF 단일출처·KPI historyRestore·docs 정합, 5 PR #852~856, Codex mutual OK, 2026-06-11)](#정합성-감사--deep-research-follow-up-2026-06-11--852856)
 - [사이클 166 (Task9 full 감사 P2 백로그 해소 — 빠른 정합 docs/db·test/effects.js dead-code + UI Medium hx-boost 리스너 누적·i18n 이중이스케이프[Option A], 5 PR #820~#824, Codex mutual 5/5, 2026-06-09)](#사이클-166)
 - [사이클 166 적대 재검증 후속 (STATE overclaim + #32 'resolved' 위양성 적발 → #838 docs정정·#839 #32 tojson·#840 drift④ FK·#841 drift① rename, 4 PR, 2026-06-09)](#사이클-166-적대-재검증-후속-2026-06-09--838841)
@@ -97,7 +97,7 @@
 
 **거버넌스 효과**: "AI 활용 거버넌스" → **"AI 출력을 cross-vendor 독립 검증하는 AI 거버넌스"** 격상. 🔴 **순수 opt-in**: `OPENAI_API_KEY` 미설정 시 검증자 완전 비활성 = 도입 전과 100% 동일(비용 0·동작 변화 0, BYO key). 켜도 경계밴드 표적화 + 저가 소형 모델로 비용 최소(정책 16 정합).
 
-**검증**: 최종 코드리뷰(opus, fresh context) — **Critical 0**(fail-closed 3중 try + 비용불변 코드경로 추적 확인) + Important 2 반영: ① merge_attempt DB row 는 `log_merge_attempt` engine 단일출처 규칙(api.md)상 descope → 구조화 로그 VERIFIER_BLOCKED/ERROR 태그 + PR 코멘트로 감사(형제 가드 static_incomplete/ai_failed 와 동일 패턴) ② `merge_verifier_band` `Field(ge=1)` validator(0/음수 시 silent 무효화 차단) + 비용불변 종단 테스트(실 should_verify + 빈 키 → 검증자 미진입) 추가. 🔴 발신 한국어 가드(#155) 위반(검증자 프롬프트·차단 코멘트 하드코딩 한국어) → English-only 수정(i18n 은 spec §16 deferred). 단위 4838→4862(+24: merge_verifier 13 + openai_client 5 + github_comment 1 + auto_merge_verifier 5), 통합 154, 전체 5016, E2E 113, pylint 10.00.
+**검증**: 최종 코드리뷰(opus, fresh context) — **Critical 0**(fail-closed 3중 try + 비용불변 코드경로 추적 확인) + Important 2 반영: ① merge_attempt DB row 는 `log_merge_attempt` engine 단일출처 규칙(api.md)상 descope → 구조화 로그 VERIFIER_BLOCKED/ERROR 태그 + PR 코멘트로 감사(형제 가드 static_incomplete/ai_failed 와 동일 패턴) ② `merge_verifier_band` `Field(ge=1)` validator(0/음수 시 silent 무효화 차단) + 비용불변 종단 테스트(실 should_verify + 빈 키 → 검증자 미진입) 추가. 🔴 발신 한국어 가드(#155) 위반(검증자 프롬프트·차단 코멘트 하드코딩 한국어) → English-only 수정(i18n 은 spec §16 deferred). 단위 4838→4864(+26: merge_verifier 15[Codex-fix interpret 무예외·band=0 거부 2 포함] + openai_client 5 + github_comment 1 + auto_merge_verifier 5), 통합 154, 전체 5018, E2E 113, pylint 10.00.
 
 **잔여/사용자 검증 필요**: `OPENAI_API_KEY` 운영 설정 시 실 PR 경계점수 차단 동작(사용자) + 모델 ID `gpt-5-mini` 기본값 운영 확정(저가 최신 모델) + httpx fallback 경로 무테스트(openai 가 hard dep 라 dead-branch, minor 수용). 설계/계획: `docs/superpowers/specs/2026-06-11-merge-verifier-design.md` · `docs/superpowers/plans/2026-06-11-merge-verifier.md`(gitignore working).
 
