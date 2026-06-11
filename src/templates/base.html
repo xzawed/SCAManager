@@ -1031,9 +1031,13 @@
     _initKpiCountup();
     if (document._kpiCountupHandler) {
       document.removeEventListener('htmx:afterSettle', document._kpiCountupHandler);
+      document.removeEventListener('htmx:historyRestore', document._kpiCountupHandler);
     }
     document._kpiCountupHandler = _initKpiCountup;
     document.addEventListener('htmx:afterSettle', document._kpiCountupHandler);
+    // 뒤로가기(historyRestore) 시에도 KPI count-up 재초기화 — 다른 핸들러(_initReveal 등 #766)와 대칭.
+    // Re-init KPI count-up on back-nav (historyRestore) too — symmetry with other handlers (#766).
+    document.addEventListener('htmx:historyRestore', document._kpiCountupHandler);
 
     // 네비게이션 로딩 피드백 / Navigation loading feedback
     // fake progress 0→70% → hx-boost afterSettle / beforeunload 100% → pageshow reset
