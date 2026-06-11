@@ -23,7 +23,9 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_verifier_model: str = "gpt-5-mini"  # 저비용 소형 — 구현 시 최신 저가 모델로 확정/오버라이드
     # Low-cost small model — confirm/override with latest cheap model at implementation time
-    merge_verifier_band: int = MERGE_VERIFIER_BAND_DEFAULT
+    # 경계 밴드 폭(점) — >= 1 강제 (0/음수면 모든 score 가 밴드 밖 = 검증 silent 무효화 방지)
+    # Band width in points — enforce >= 1 (0/negative would silently disable verification while key set)
+    merge_verifier_band: int = Field(default=MERGE_VERIFIER_BAND_DEFAULT, ge=1)
     claude_review_model: str = "claude-sonnet-4-6"  # AI 코드리뷰 모델 (환경변수 CLAUDE_REVIEW_MODEL로 오버라이드)
     # Phase 2 d-🅓 (사이클 74) — Insight narrative 영역 한정 모델 (default Haiku — 67% 비용 절감)
     # AI 리뷰 (review_code) 는 claude_review_model (Sonnet) 보존 — 명시 제외 영역 (메모리 feedback-ai-review-quality-protect.md)

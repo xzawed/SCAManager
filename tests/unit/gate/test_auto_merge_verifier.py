@@ -83,3 +83,25 @@ async def test_api_error_failclosed_blocks(monkeypatch):
 
     await AutoMergeAction().execute(_ctx())
     assert merged["called"] is False
+
+
+@pytest.mark.asyncio
+async def test_no_key_uses_real_should_verify_and_skips(monkeypatch):
+    # 실제 should_verify(mock 아님) + 빈 키 → 검증자 진입 0, 머지 진행 (비용 불변 종단 검증)
+    # Real should_verify (not mocked) + empty key → verifier never entered, merge proceeds (cost-invariant E2E)
+    from src.config import settings
+    monkeypatch.setattr(settings, "openai_api_key", "")
+    monkeypatch.delenv("MERGE_VERIFIER_DISABLED", raising=False)
+    entered = {"verify": False}
+    async def _v(ctx):
+        entered["verify"] = True
+        return mv.VerifierVerdict(True, False, (), mv.VERIFIER_OK)
+    monkeypatch.setattr("src.gate.actions.auto_merge.verify_merge_safety", _v)
+    merged = {"called": False}
+    async def _merge(*a, **k):
+        merged["called"] = True
+    monkeypatch.setattr("src.gate.engine._run_auto_merge", _merge)
+
+    await AutoMergeAction().execute(_ctx(score=80))
+    assert entered["verify"] is False   # 키 없음 → 검증자 미진입 (비용 0)
+    assert merged["called"] is True     # 기존대로 머지

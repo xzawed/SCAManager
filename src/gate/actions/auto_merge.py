@@ -9,6 +9,7 @@ import logging
 
 from src.gate._common import ai_review_failed
 from src.gate.actions import GateAction, GateContext, register
+from src.gate.merge_reasons import VERIFIER_BLOCKED, VERIFIER_ERROR
 from src.gate.merge_verifier import (
     VERIFIER_OK, should_verify, verify_merge_safety,
 )
@@ -72,9 +73,14 @@ class AutoMergeAction(GateAction):
             verdict = await verify_merge_safety(ctx)
             if verdict.status != VERIFIER_OK or not verdict.safe or verdict.manipulation_detected:
                 reason = "; ".join(verdict.reasons) or verdict.status
+                # 검증자 오류(api/parse) = VERIFIER_ERROR / 정상 판정의 unsafe·조작 = VERIFIER_BLOCKED.
+                # 구조화 로그에 정규 태그 기록(merge_attempt DB row 는 engine 단일출처 규칙 보존 — api.md).
+                # Verifier error → VERIFIER_ERROR; a successful unsafe/manipulation verdict → VERIFIER_BLOCKED.
+                # Tag emitted in the structured log (merge_attempt DB row stays engine-single-source per api.md).
+                block_tag = VERIFIER_ERROR if verdict.status != VERIFIER_OK else VERIFIER_BLOCKED
                 logger.warning(
-                    "merge verifier blocked auto-merge (status=%s) — repo=%s pr=%s: %s",
-                    verdict.status, ctx.repo_name, ctx.pr_number, reason,
+                    "merge verifier blocked auto-merge (tag=%s status=%s) — repo=%s pr=%s: %s",
+                    block_tag, verdict.status, ctx.repo_name, ctx.pr_number, reason,
                 )
                 try:
                     await post_plain_pr_comment(
