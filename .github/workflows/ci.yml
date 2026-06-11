@@ -83,7 +83,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements-dev.txt
+          pip install --retries 5 --timeout 60 -r requirements-dev.txt
 
       - name: Run pytest with coverage (XML for Codecov + SonarCloud)
         env:
@@ -100,7 +100,7 @@ jobs:
             --cov-report=xml:coverage.xml \
             --cov-report=term-missing \
             --junitxml=pytest-results.xml \
-            -q
+            -rs -q
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v6
@@ -164,7 +164,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements-dev.txt
+          pip install --retries 5 --timeout 60 -r requirements-dev.txt
 
       - name: Run PG-only tests (SKIP LOCKED 동시성 + 마이그레이션 round-trip)
         # DATABASE_URL_TEST_POSTGRES 단일 env 가 필수 — DATABASE_URL 은 conftest.py 가 sqlite 로 덮어씀(무의미).

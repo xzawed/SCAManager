@@ -116,7 +116,18 @@ def interpret_verdict(raw: object) -> VerifierVerdict:
     # Limit reasons to 3 — non-list (int/None etc.) → empty tuple (interpret_verdict never raises)
     reasons_raw = raw.get("reasons")
     reasons = tuple(str(r) for r in reasons_raw[:3]) if isinstance(reasons_raw, list) else ()
-    return VerifierVerdict(bool(raw["safe"]), bool(raw["manipulation_detected"]), reasons, VERIFIER_OK)
+    # fail-closed 엄격 파싱 — bool() truthy 함정 회피 (#859 회고 P2):
+    #   safe = 명시적 True 만 안전 (문자열 "false"/정수/None 등은 모두 unsafe 로 차단)
+    #   manipulation = 명시적 False 만 무조작 (그 외 전부 조작 의심으로 차단)
+    # 게이트(auto_merge.py)는 `not safe or manipulation` 으로 차단하므로 양쪽 모두 차단 쪽 fallback.
+    # Strict fail-closed parse — avoid bool() truthiness trap:
+    #   safe is True only when literally True; manipulation clear only when literally False.
+    return VerifierVerdict(
+        raw["safe"] is True,
+        raw["manipulation_detected"] is not False,
+        reasons,
+        VERIFIER_OK,
+    )
 
 
 async def verify_merge_safety(ctx) -> VerifierVerdict:

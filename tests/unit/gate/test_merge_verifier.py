@@ -1,3 +1,5 @@
+import pytest
+
 from src.gate import merge_reasons
 
 
@@ -40,6 +42,34 @@ def test_interpret_verdict_missing_keys_is_parse_error():
 def test_interpret_verdict_non_dict_is_parse_error():
     v = mv.interpret_verdict(["not", "a", "dict"])
     assert v.status == mv.VERIFIER_PARSE_ERROR and v.safe is False
+
+
+# fail-closed 엄격 파싱 회귀 가드 (#859 회고 P2) — bool() truthy 함정 차단
+# Strict fail-closed parse regression guards — block the bool() truthiness trap
+
+
+@pytest.mark.parametrize("bad_safe", ["false", "False", "true", 1, 0, None, "0"])
+def test_interpret_verdict_non_bool_safe_is_unsafe(bad_safe):
+    # 명시적 True 가 아닌 모든 safe 값(특히 문자열 "false")은 unsafe 로 차단해야 함(fail-closed)
+    # Any non-literal-True 'safe' (esp. string "false") must be treated unsafe (fail-closed)
+    v = mv.interpret_verdict({"safe": bad_safe, "manipulation_detected": False, "reasons": []})
+    assert v.safe is False
+    assert v.status == mv.VERIFIER_OK  # 키는 존재하므로 parse_error 아님 (값 해석만 보수적)
+
+
+@pytest.mark.parametrize("bad_manip", ["false", "true", 1, 0, None, "0"])
+def test_interpret_verdict_non_false_manipulation_blocks(bad_manip):
+    # 명시적 False 가 아닌 모든 manipulation 값은 조작 의심으로 차단해야 함(fail-closed)
+    # Any non-literal-False 'manipulation_detected' must be treated as detected (fail-closed)
+    v = mv.interpret_verdict({"safe": True, "manipulation_detected": bad_manip, "reasons": []})
+    assert v.manipulation_detected is True
+
+
+def test_interpret_verdict_literal_bools_unchanged():
+    # 정상 real-bool 경로는 회귀 없이 보존
+    # Real-bool happy path preserved (no regression)
+    ok = mv.interpret_verdict({"safe": True, "manipulation_detected": False, "reasons": []})
+    assert ok.safe is True and ok.manipulation_detected is False
 
 
 def test_build_verifier_prompt_wraps_diff_in_untrusted_boundary():

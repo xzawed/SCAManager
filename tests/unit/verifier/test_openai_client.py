@@ -87,3 +87,62 @@ async def test_call_openai_verifier_raises_on_api_error(monkeypatch):
     with pytest.raises(RuntimeError):
         await openai_client.call_openai_verifier(
             "SYS", "USER", api_key="k", model="gpt-5-mini", timeout=5.0)
+
+
+# httpx fallback 경로 (#859 회고 P2) — openai SDK 미설치 시 _call_via_http 강제
+# httpx fallback path — force ImportError so _call_via_http is exercised (SDK-less env)
+
+
+class _FakeHttpResp:
+    def __init__(self, payload, *, boom=False):
+        self._payload = payload
+        self._boom = boom
+
+    def raise_for_status(self):
+        if self._boom:
+            raise RuntimeError("http 500")
+
+    def json(self):
+        return self._payload
+
+
+def _force_sdk_absent(monkeypatch):
+    import sys
+    # sys.modules["openai"] = None → `import openai` 가 ImportError 발생 (SDK 미설치 모사)
+    # None in sys.modules makes `import openai` raise ImportError (simulates SDK absence)
+    monkeypatch.setitem(sys.modules, "openai", None)
+
+
+@pytest.mark.asyncio
+async def test_call_openai_verifier_falls_back_to_http_when_sdk_absent(monkeypatch):
+    _force_sdk_absent(monkeypatch)
+    payload = {"choices": [{"message": {"content": json.dumps({"safe": True})}}],
+               "usage": {"prompt_tokens": 11, "completion_tokens": 3}}
+
+    class _FakeHttpClient:
+        async def post(self, url, **kwargs):
+            assert "openai.com" in url
+            assert kwargs["json"]["response_format"] == {"type": "json_object"}
+            assert kwargs["headers"]["Authorization"] == "Bearer k"
+            return _FakeHttpResp(payload)
+
+    monkeypatch.setattr(openai_client, "get_http_client", lambda: _FakeHttpClient())
+    text = await openai_client.call_openai_verifier(
+        "SYS", "USER", api_key="k", model="gpt-5-mini", timeout=5.0)
+    assert json.loads(text)["safe"] is True
+
+
+@pytest.mark.asyncio
+async def test_http_fallback_reraises_on_api_error_fail_closed(monkeypatch):
+    # fallback 경로도 API 오류를 re-raise 해야 호출자가 fail-closed 처리 가능
+    # The fallback path must also re-raise so the caller can fail closed
+    _force_sdk_absent(monkeypatch)
+
+    class _BoomHttpClient:
+        async def post(self, url, **kwargs):
+            return _FakeHttpResp({}, boom=True)
+
+    monkeypatch.setattr(openai_client, "get_http_client", lambda: _BoomHttpClient())
+    with pytest.raises(RuntimeError):
+        await openai_client.call_openai_verifier(
+            "SYS", "USER", api_key="k", model="gpt-5-mini", timeout=5.0)
