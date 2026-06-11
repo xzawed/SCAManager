@@ -335,3 +335,27 @@ async def test_send_email_smtp_server_disconnected_propagates():
                 analysis_results=_make_analysis(),
                 smtp_host="smtp.example.com",
             )
+
+
+async def test_send_email_strips_crlf_from_recipients():
+    """recipients(repo 설정)에 CR/LF 가 있으면 To 헤더에서 제거 — 이메일 헤더 인젝션 차단."""
+    with patch("src.notifier.email.aiosmtplib") as mock_smtp:
+        mock_smtp.send = AsyncMock()
+        await send_email_notification(
+            recipients="a@test.com\r\nBcc: evil@test.com",
+            repo_name="owner/repo",
+            commit_sha="abc1234",
+            score_result=_make_score(),
+            analysis_results=_make_analysis(),
+            smtp_host="smtp.test.com",
+            smtp_port=587,
+            smtp_user="user",
+            smtp_pass="pass",
+        )
+    msg = mock_smtp.send.call_args[0][0]
+    to_header = str(msg["To"])
+    # CR/LF 제거로 추가 헤더(Bcc) 주입 불가 — 단일 라인으로 평탄화
+    assert "\r" not in to_header and "\n" not in to_header
+    assert "a@test.com" in to_header
+    # 주입 시도한 Bcc 헤더가 실제로 생성되지 않았는지 직접 단언 (Codex mutual 강화)
+    assert not msg.get_all("Bcc")

@@ -449,6 +449,30 @@ def test_repo_config_rejects_invalid_notification_language():
         )
 
 
+def test_repo_config_rejects_unsafe_webhook_url():
+    """REST 저장-시 SSRF 검증 — http/내부 호스트 webhook URL 은 ValidationError (settings 폼과 대칭)."""
+    from src.api.repos import RepoConfigUpdate  # pylint: disable=import-outside-toplevel
+    import pytest  # pylint: disable=import-outside-toplevel
+    for field, bad in (
+        ("n8n_webhook_url", "http://hooks.example.com/x"),     # 비-https
+        ("discord_webhook_url", "https://127.0.0.1/x"),        # loopback
+        ("slack_webhook_url", "https://169.254.169.254/x"),    # IMDS
+        ("custom_webhook_url", "https://localhost/x"),         # blocked host
+    ):
+        with pytest.raises(Exception):  # noqa: B017  # pydantic ValidationError
+            RepoConfigUpdate(approve_threshold=80, reject_threshold=40, **{field: bad})
+
+
+def test_repo_config_allows_safe_https_webhook_url():
+    """안전한 https 공개 도메인 webhook URL 은 통과 (회귀 가드)."""
+    from src.api.repos import RepoConfigUpdate  # pylint: disable=import-outside-toplevel
+    cfg = RepoConfigUpdate(
+        approve_threshold=80, reject_threshold=40,
+        discord_webhook_url="https://hooks.example.com/abc",
+    )
+    assert cfg.discord_webhook_url == "https://hooks.example.com/abc"
+
+
 def test_repo_config_allows_none_notification_language():
     """notification_language=None 은 fallback 의도 — 허용."""
     from src.api.repos import RepoConfigUpdate  # pylint: disable=import-outside-toplevel

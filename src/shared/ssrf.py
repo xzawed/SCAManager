@@ -8,10 +8,21 @@ Duplicating the IP-danger check in two validators causes drift (e.g. a missing C
 range) when only one is updated — this module unifies it (WBS audit P2 — validation consistency).
 """
 import ipaddress
+from urllib.parse import urlparse
 
 # CGNAT(Carrier-Grade NAT) 대역 — RFC 6598. ip.is_private/is_reserved 어디에도 안 잡혀 명시 차단.
 # CGNAT (Carrier-Grade NAT) range — RFC 6598. Not covered by is_private/is_reserved, so block it explicitly.
 _CGNAT_NETWORK = ipaddress.ip_network("100.64.0.0/10")
+
+# webhook URL 저장-시(storage-time) 차단 호스트 — IMDS/메타데이터/루프백 (이름 기반, IP 리터럴은 is_dangerous_ip).
+# Storage-time blocked webhook hosts — IMDS/metadata/loopback (name-based; IP literals via is_dangerous_ip).
+_BLOCKED_WEBHOOK_HOSTS = frozenset({
+    "localhost", "127.0.0.1", "::1",  # NOSONAR python:S1313 — 의도된 SSRF 차단 blocklist
+    "0.0.0.0",  # nosec B104  # NOSONAR python:S1313 — 의도된 SSRF 차단 blocklist
+    "169.254.169.254",  # AWS/GCP IMDS  # NOSONAR python:S1313 — 의도된 SSRF 차단 blocklist
+    "metadata.google.internal",  # GCP metadata
+    "fd00::ec2",  # AWS IPv6 IMDS  # NOSONAR python:S1313 — 의도된 SSRF 차단 blocklist
+})
 
 
 def is_dangerous_ip(addr: str) -> bool:
@@ -40,3 +51,31 @@ def is_dangerous_ip(addr: str) -> bool:
         or ip.is_multicast
         or ip in _CGNAT_NETWORK
     )
+
+
+def is_safe_webhook_url(url: str | None) -> bool:  # pylint: disable=too-many-return-statements
+    """사용자 제공 webhook URL 의 저장-시(storage-time) SSRF 안전성 판정 — settings 폼 + REST API 공유.
+
+    https-only(발신 가드 정책 일치) + 차단 호스트 + 위험 IP 리터럴 거부. 빈/None 은 안전(미설정).
+    도메인명은 IP 가 아니라 통과 → send-time validate_external_url 가 DNS 해석 후 최종 차단.
+    반환 7개는 SSRF 방어 경로별 명확한 실패 사유라 의도적.
+    Storage-time SSRF safety check for user-supplied webhook URLs — shared by settings form + REST API.
+    https-only + blocked hosts + dangerous IP literals. Empty/None is safe (unset). Domain names pass
+    (not IPs) and are resolved+blocked at send time by validate_external_url.
+    """
+    if not url:
+        return True
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme != "https":
+            return False
+        host = (parsed.hostname or "").lower()
+        if not host:
+            return False
+        if host in _BLOCKED_WEBHOOK_HOSTS:
+            return False
+        if is_dangerous_ip(host):
+            return False
+        return True
+    except Exception:  # pylint: disable=broad-except
+        return False

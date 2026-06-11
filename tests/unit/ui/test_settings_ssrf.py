@@ -1,5 +1,5 @@
-"""src/ui/routes/settings.py::_is_safe_webhook_url SSRF 폼 검증 단위 테스트.
-Unit tests for the settings form SSRF validator (_is_safe_webhook_url).
+"""src/shared/ssrf.py::is_safe_webhook_url SSRF 저장-시 검증 단위 테스트 (settings 폼 + REST repos 공유).
+Unit tests for the shared storage-time SSRF validator (is_safe_webhook_url) — settings form + REST.
 
 WBS 감사 P2 — 발신 가드(_http.py)와의 검증 일관성 회귀 가드:
 https-only + CGNAT(100.64.0.0/10) 차단 + 위험 IP/호스트 차단.
@@ -19,18 +19,18 @@ os.environ.setdefault("SESSION_SECRET", "test-session-secret-32-chars-long!")
 
 import pytest
 
-from src.ui.routes.settings import _is_safe_webhook_url
+from src.shared.ssrf import is_safe_webhook_url
 
 
 def test_none_and_empty_allowed():
     # 미설정(None/빈문자열) webhook 은 허용 — 선택 필드
     # Unset (None/empty) webhook is allowed — optional field
-    assert _is_safe_webhook_url(None) is True
-    assert _is_safe_webhook_url("") is True
+    assert is_safe_webhook_url(None) is True
+    assert is_safe_webhook_url("") is True
 
 
 def test_https_public_domain_allowed():
-    assert _is_safe_webhook_url("https://hooks.example.com/abc") is True
+    assert is_safe_webhook_url("https://hooks.example.com/abc") is True
 
 
 @pytest.mark.parametrize(
@@ -42,7 +42,7 @@ def test_https_public_domain_allowed():
     ],
 )
 def test_non_https_scheme_rejected(url):
-    assert _is_safe_webhook_url(url) is False
+    assert is_safe_webhook_url(url) is False
 
 
 @pytest.mark.parametrize(
@@ -55,7 +55,7 @@ def test_non_https_scheme_rejected(url):
     ],
 )
 def test_dangerous_ip_literals_rejected(url):
-    assert _is_safe_webhook_url(url) is False
+    assert is_safe_webhook_url(url) is False
 
 
 @pytest.mark.parametrize(
@@ -66,4 +66,4 @@ def test_dangerous_ip_literals_rejected(url):
     ],
 )
 def test_blocked_hosts_rejected(url):
-    assert _is_safe_webhook_url(url) is False
+    assert is_safe_webhook_url(url) is False
