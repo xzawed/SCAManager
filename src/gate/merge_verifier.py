@@ -128,39 +128,48 @@ async def verify_merge_safety(ctx) -> VerifierVerdict:
     Steps: 1) Fetch PR diff (PyGithub sync → to_thread)  2) Build prompt
     3) Call OpenAI  4) Interpret verdict. Any step failure → block verdict.
     """
-    # 지연 임포트 — 순환 방지
-    # Deferred import — avoids circular dependency
-    from src.config import settings  # pylint: disable=import-outside-toplevel
+    # 🔴 최외곽 try/except — settings import·interpret_verdict 등 모든 예외를 차단 verdict 로 귀결
+    #    (Codex round2 CHECK1c 반영: fail-closed 를 구조적으로 보장, 향후 변경에도 예외 누출 0).
+    # Outermost try/except routes ALL errors (incl. settings import / interpret) to a block verdict —
+    # structural fail-closed guarantee, robust to future changes.
     try:
-        # PyGithub 동기 호출을 to_thread 로 래핑 — 이벤트 루프 블록 방지
-        # Wrap PyGithub sync call in to_thread — prevents event loop blocking
-        changed = await asyncio.to_thread(
-            get_pr_files, ctx.github_token, ctx.repo_name, ctx.pr_number)
-        # patches 추출 + 프롬프트 구성도 동일 fail-closed 블록 안에서 — 예외 전파 차단 (Codex 검증 반영)
-        # Patch extraction + prompt build inside the same fail-closed block — no exception escapes.
-        patches = [(cf.filename, getattr(cf, "patch", "") or "") for cf in changed]
-        user_prompt = build_verifier_prompt(patches, ctx.result, ctx.score)
+        # 지연 임포트 — 순환 방지
+        # Deferred import — avoids circular dependency
+        from src.config import settings  # pylint: disable=import-outside-toplevel
+        try:
+            # PyGithub 동기 호출을 to_thread 로 래핑 — 이벤트 루프 블록 방지
+            # Wrap PyGithub sync call in to_thread — prevents event loop blocking
+            changed = await asyncio.to_thread(
+                get_pr_files, ctx.github_token, ctx.repo_name, ctx.pr_number)
+            patches = [(cf.filename, getattr(cf, "patch", "") or "") for cf in changed]
+            user_prompt = build_verifier_prompt(patches, ctx.result, ctx.score)
+        except Exception:  # pylint: disable=broad-exception-caught  # noqa: BLE001
+            logger.exception(
+                "verifier: diff fetch / prompt build failed (repo=%s pr=%s)",
+                ctx.repo_name, ctx.pr_number)
+            return VerifierVerdict(False, False, ("diff fetch failed",), VERIFIER_API_ERROR)
+        try:
+            text = await call_openai_verifier(
+                _VERIFIER_SYSTEM_PROMPT, user_prompt,
+                api_key=settings.openai_api_key, model=settings.openai_verifier_model,
+                timeout=OPENAI_VERIFIER_TIMEOUT,
+            )
+        except Exception:  # pylint: disable=broad-exception-caught  # noqa: BLE001
+            logger.exception(
+                "verifier: OpenAI call failed (repo=%s pr=%s)", ctx.repo_name, ctx.pr_number)
+            return VerifierVerdict(False, False, ("verifier call failed",), VERIFIER_API_ERROR)
+        try:
+            raw = json.loads(text)
+        except (json.JSONDecodeError, TypeError):
+            logger.warning(
+                "verifier: non-JSON response (repo=%s pr=%s): %s",
+                ctx.repo_name, ctx.pr_number, str(text)[:200],
+            )
+            return VerifierVerdict(False, False, ("verifier returned non-JSON",), VERIFIER_PARSE_ERROR)
+        return interpret_verdict(raw)
     except Exception:  # pylint: disable=broad-exception-caught  # noqa: BLE001
+        # 최후 fail-closed 안전망 — 위에서 못 잡은 예측 못한 예외도 차단 verdict.
+        # Last-resort fail-closed net — any unexpected error also yields a block verdict.
         logger.exception(
-            "verifier: diff fetch / prompt build failed (repo=%s pr=%s)",
-            ctx.repo_name, ctx.pr_number)
-        return VerifierVerdict(False, False, ("diff fetch failed",), VERIFIER_API_ERROR)
-    try:
-        text = await call_openai_verifier(
-            _VERIFIER_SYSTEM_PROMPT, user_prompt,
-            api_key=settings.openai_api_key, model=settings.openai_verifier_model,
-            timeout=OPENAI_VERIFIER_TIMEOUT,
-        )
-    except Exception:  # pylint: disable=broad-exception-caught  # noqa: BLE001
-        logger.exception(
-            "verifier: OpenAI call failed (repo=%s pr=%s)", ctx.repo_name, ctx.pr_number)
-        return VerifierVerdict(False, False, ("verifier call failed",), VERIFIER_API_ERROR)
-    try:
-        raw = json.loads(text)
-    except (json.JSONDecodeError, TypeError):
-        logger.warning(
-            "verifier: non-JSON response (repo=%s pr=%s): %s",
-            ctx.repo_name, ctx.pr_number, str(text)[:200],
-        )
-        return VerifierVerdict(False, False, ("verifier returned non-JSON",), VERIFIER_PARSE_ERROR)
-    return interpret_verdict(raw)
+            "verifier: unexpected error (repo=%s pr=%s)", ctx.repo_name, ctx.pr_number)
+        return VerifierVerdict(False, False, ("verifier unexpected error",), VERIFIER_API_ERROR)
