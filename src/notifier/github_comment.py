@@ -198,3 +198,15 @@ async def post_pr_comment_from_result(
         headers=github_api_headers(github_token),
     )
     r.raise_for_status()
+
+
+async def post_plain_pr_comment(
+    github_token: str, repo_name: str, pr_number: int, body: str,
+) -> None:
+    """임의 텍스트를 PR 에 코멘트로 게시 (검증자 차단 사유 등 — 분석 포맷과 무관한 plain 메시지).
+    Post an arbitrary text comment to a PR (e.g. verifier block reason — not the analysis format).
+    """
+    url = f"{GITHUB_API}/repos/{repo_name}/issues/{pr_number}/comments"
+    client = get_http_client()
+    r = await client.post(url, json={"body": body}, headers=github_api_headers(github_token))
+    r.raise_for_status()

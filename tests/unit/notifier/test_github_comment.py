@@ -344,3 +344,26 @@ async def test_post_pr_comment_from_result_sends_auth_header():
 
     headers = mock_client.post.call_args[1]["headers"]
     assert headers["Authorization"] == "Bearer ghp_secret"
+
+
+# ── post_plain_pr_comment 테스트 (Task 7 — 검증자 차단 코멘트용) ─────────────
+
+import pytest
+
+from src.notifier import github_comment
+
+
+@pytest.mark.asyncio
+async def test_post_plain_pr_comment_posts_body(monkeypatch):
+    captured = {}
+
+    class _FakeClient:
+        async def post(self, url, json, headers):
+            captured["url"] = url
+            captured["body"] = json["body"]
+            return type("R", (), {"raise_for_status": lambda self: None})()
+
+    monkeypatch.setattr(github_comment, "get_http_client", lambda: _FakeClient())
+    await github_comment.post_plain_pr_comment("tok", "o/r", 7, "hello body")
+    assert captured["url"].endswith("/repos/o/r/issues/7/comments")
+    assert captured["body"] == "hello body"
