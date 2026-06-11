@@ -18,6 +18,7 @@ from src.scorer.calculator import calculate_score
 from src.models.repository import Repository
 from src.models.analysis import Analysis
 from src.gate.engine import run_gate_check
+from src.gate._common import ai_review_failed
 from src.config_manager.manager import get_repo_config
 # src.notifier 임포트 시 각 채널 모듈이 자동으로 REGISTRY 에 등록됨
 import src.notifier  # noqa: F401 — 자동 등록 트리거  # pylint: disable=unused-import
@@ -541,13 +542,22 @@ async def _save_and_gate(db: Session, params: _AnalysisSaveParams):
     if params.static_incomplete:
         result_dict["static_analysis_incomplete"] = True
     ai = params.ai_review
+    # 🔴 #25/#814 미러 (hook 경로 대칭): AI 리뷰 genuine 실패(api_error/parse_error) 시
+    # 인플레 기본 점수(17/17/7 → ~89/B)를 score/grade 컬럼에 저장하지 않는다(NULL) — 대시보드/
+    # 리더보드 집계(_kpi_avg·func.avg·leaderboard)가 NULL 을 자연 제외하므로 오염 차단(쿼리 변경 0).
+    # result dict 의 ai_review_status·breakdown 은 보존(진단/배너용 — 컬럼=집계 NULL / result=진단 보존).
+    # no_api_key/empty_diff(의도적 미수행)는 ai_review_failed=False 라 정상 점수 유지(회귀 방지).
+    # Mirror hook #25/#814: on a genuine AI-review failure don't persist the inflated default score
+    # (NULL) — every aggregation excludes NULL, stopping dashboard/leaderboard pollution (0 query change);
+    # the result dict keeps status/breakdown. Intentional skips (no_api_key/empty_diff) keep their score.
+    _ai_failed = ai_review_failed(result_dict)
     analysis, created = analysis_repo.save_new(db, Analysis(
         repo_id=repo.id,
         commit_sha=params.commit_sha,
         commit_message=params.commit_message,
         pr_number=params.pr_number,
-        score=params.score_result.total,
-        grade=params.score_result.grade,
+        score=None if _ai_failed else params.score_result.total,
+        grade=None if _ai_failed else params.score_result.grade,
         result=result_dict,
         author_login=params.author_login,
         review_model=getattr(ai, "used_model", None),

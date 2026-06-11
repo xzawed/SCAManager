@@ -294,6 +294,86 @@ async def test_save_and_gate_race_recovery_with_repo_config_load_failure():
     assert run_gate.await_args.kwargs["config"] is None
 
 
+# ---------------------------------------------------------------------------
+# #25/#814 미러 — AI 리뷰 genuine 실패 시 인플레 점수 NULL-persist (집계 오염 차단)
+# Pipeline mirrors the hook NULL-persist so a failed AI review doesn't pollute aggregates.
+# ---------------------------------------------------------------------------
+
+
+def _new_save_params(ai_status: str):
+    """신규 저장 경로(find_by_sha=None)용 _AnalysisSaveParams + status 지정 ai_review."""
+    ai = MagicMock()
+    ai.status = ai_status
+    ai.used_model = None
+    ai.input_tokens = None
+    ai.output_tokens = None
+    score_result = MagicMock()
+    score_result.total = 89
+    score_result.grade = "B"
+    return _AnalysisSaveParams(
+        repo_name="o/r",
+        commit_sha="deadbeefcafe",
+        commit_message="feat: test",
+        pr_number=7,
+        owner_token="ghp_test",
+        analysis_results=[],
+        ai_review=ai,
+        score_result=score_result,
+    )
+
+
+async def _run_new_save(params):
+    """신규 Analysis 저장 경로를 실행하고 save_new 에 전달된 Analysis 를 캡처."""
+    db = MagicMock()
+    repo = MagicMock()
+    repo.id = 1
+    captured = {}
+
+    def _capture_save(_db, analysis):
+        analysis.id = 42
+        captured["analysis"] = analysis
+        return analysis, True  # created=True (신규)
+
+    with patch.object(pipeline_mod.repository_repo, "find_by_full_name", return_value=repo), \
+         patch.object(pipeline_mod.analysis_repo, "find_by_sha", return_value=None), \
+         patch.object(pipeline_mod.analysis_repo, "save_new", side_effect=_capture_save), \
+         patch.object(pipeline_mod, "get_repo_config", return_value=MagicMock()), \
+         patch.object(pipeline_mod, "run_gate_check", new=AsyncMock()):
+        await pipeline_mod._save_and_gate(db, params)
+    return captured["analysis"]
+
+
+async def test_save_and_gate_nulls_score_on_ai_api_error():
+    """AI 리뷰 api_error(genuine 실패) 시 score/grade NULL 저장 — 대시보드/리더보드 집계 오염 차단."""
+    analysis = await _run_new_save(_new_save_params("api_error"))
+    assert analysis.score is None, "api_error 인데 인플레 점수가 저장됨 — 집계 오염"
+    assert analysis.grade is None
+    # 진단용 status·breakdown 은 result dict 에 보존 (컬럼=NULL / result=보존 비대칭)
+    assert analysis.result["ai_review_status"] == "api_error"
+
+
+async def test_save_and_gate_nulls_score_on_ai_parse_error():
+    """AI 리뷰 parse_error 시에도 score/grade NULL 저장 (hook #25/#814 대칭)."""
+    analysis = await _run_new_save(_new_save_params("parse_error"))
+    assert analysis.score is None
+    assert analysis.grade is None
+
+
+async def test_save_and_gate_persists_score_on_ai_success():
+    """AI 리뷰 success 시 정상 점수 저장 (회귀 가드 — 실패 분기가 정상 경로를 침범하지 않음)."""
+    analysis = await _run_new_save(_new_save_params("success"))
+    assert analysis.score == 89
+    assert analysis.grade == "B"
+
+
+async def test_save_and_gate_persists_score_on_intentional_skip():
+    """no_api_key/empty_diff(의도적 미수행)는 ai_review_failed=False — 점수 유지 (회귀 방지)."""
+    for skip_status in ("no_api_key", "empty_diff"):
+        analysis = await _run_new_save(_new_save_params(skip_status))
+        assert analysis.score == 89, f"{skip_status} 는 의도적 미수행 — 점수 유지여야 함"
+        assert analysis.grade == "B"
+
+
 async def test_regate_pr_if_needed_logs_exception_with_traceback(caplog):
     """Phase 2: _regate_pr_if_needed 의 except 가 logger.exception 으로 stack 보존."""
     db = MagicMock()

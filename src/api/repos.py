@@ -6,6 +6,7 @@ from src.config import settings
 from src.middleware.rate_limiter import limiter, RATE_LIMIT_API, RATE_LIMIT_HEAVY
 from src.api.auth import require_api_key
 from src.api.deps import get_repo_or_404
+from src.shared.ssrf import is_safe_webhook_url
 from src.constants import (
     GATE_DEFAULT_APPROVE_THRESHOLD,
     GATE_DEFAULT_REJECT_THRESHOLD,
@@ -77,6 +78,24 @@ class RepoConfigUpdate(BaseModel):
             raise ValueError(
                 f"notification_language '{v}' not in SUPPORTED_LOCALES "
                 f"({settings.supported_locales})"
+            )
+        return v
+
+    @field_validator(
+        "n8n_webhook_url", "discord_webhook_url", "slack_webhook_url", "custom_webhook_url"
+    )
+    @classmethod
+    def validate_webhook_url(cls, v):
+        """저장-시 SSRF 검증 — UI 폼(settings._validate_webhook_urls)과 동일 단일 출처.
+
+        send-time(`validate_external_url`)이 최종 차단하나, REST 저장 경로도 https + 비-내부 호스트를
+        조기 거부해 폼과 대칭(저장됐으나 발송 안 되는 혼란·방어 심층). None/빈값/도메인명은 허용.
+        Storage-time SSRF check — same single source as the UI form. Send-time validation is the final
+        control, but the REST path rejects non-https / internal-host URLs early (symmetry + defense-in-depth).
+        """
+        if v and not is_safe_webhook_url(v):
+            raise ValueError(
+                "webhook URL must be https and not point to an internal/metadata host (SSRF guard)"
             )
         return v
 
