@@ -75,3 +75,53 @@ def test_should_verify_off_when_kill_switch(monkeypatch):
     monkeypatch.setattr(settings, "merge_verifier_band", 10)
     monkeypatch.setenv("MERGE_VERIFIER_DISABLED", "1")
     assert mv.should_verify(score=80, merge_threshold=75) is False
+
+
+import pytest
+
+from src.gate.actions import GateContext
+
+
+def _ctx(score=80):
+    cfg = type("Cfg", (), {"merge_threshold": 75})()
+    return GateContext(
+        repo_name="o/r", pr_number=1, analysis_id=5,
+        result={"score": score, "grade": "B", "ai_summary": "ok", "issues": []},
+        github_token="t", config=cfg, score=score,
+    )
+
+
+@pytest.mark.asyncio
+async def test_verify_merge_safety_safe(monkeypatch):
+    from src.gate import merge_verifier as mv
+    cf = type("CF", (), {"filename": "a.py", "patch": "+x"})()
+    monkeypatch.setattr(mv, "get_pr_files", lambda *a, **k: [cf])
+    async def _fake_call(system, user, **kw):
+        return '{"safe": true, "manipulation_detected": false, "reasons": []}'
+    monkeypatch.setattr(mv, "call_openai_verifier", _fake_call)
+    v = await mv.verify_merge_safety(_ctx())
+    assert v.safe is True and v.status == mv.VERIFIER_OK
+
+
+@pytest.mark.asyncio
+async def test_verify_merge_safety_api_error_failclosed(monkeypatch):
+    from src.gate import merge_verifier as mv
+    cf = type("CF", (), {"filename": "a.py", "patch": "+x"})()
+    monkeypatch.setattr(mv, "get_pr_files", lambda *a, **k: [cf])
+    async def _boom(system, user, **kw):
+        raise RuntimeError("api down")
+    monkeypatch.setattr(mv, "call_openai_verifier", _boom)
+    v = await mv.verify_merge_safety(_ctx())
+    assert v.safe is False and v.status == mv.VERIFIER_API_ERROR
+
+
+@pytest.mark.asyncio
+async def test_verify_merge_safety_bad_json_parse_error(monkeypatch):
+    from src.gate import merge_verifier as mv
+    cf = type("CF", (), {"filename": "a.py", "patch": "+x"})()
+    monkeypatch.setattr(mv, "get_pr_files", lambda *a, **k: [cf])
+    async def _bad(system, user, **kw):
+        return "not json at all"
+    monkeypatch.setattr(mv, "call_openai_verifier", _bad)
+    v = await mv.verify_merge_safety(_ctx())
+    assert v.safe is False and v.status == mv.VERIFIER_PARSE_ERROR
