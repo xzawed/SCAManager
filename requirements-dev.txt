@@ -8,6 +8,6 @@ pytest-cov>=7.1.0
 pytest-timeout>=2.4.0
 playwright>=1.60.0
 pytest-playwright>=0.8.0
-# 사이클 93 Step 2: src/scripts/generate_illustrations.py (DALL-E 3) — 사용자 로컬 1회 실행 도구.
-# Cycle 93 Step 2: local one-shot tool for UI illustration generation (OpenAI DALL-E 3).
-openai>=2.41.0
+# openai 는 머지 검증자(2nd-LLM) 런타임 의존으로 requirements.txt(프로덕션)로 이동 — 위 `-r` 로 포함.
+# openai moved to requirements.txt (prod, 2nd-LLM verifier runtime dep); included here via `-r` above.
+# 개발 전용 추가 사용처: src/scripts/generate_illustrations.py (DALL-E 3 일러스트 생성, 사이클 93).

@@ -30,6 +30,15 @@ CONFLICT_SHA_CHANGED = "conflict_sha_changed"  # HTTP 409
 NETWORK_ERROR = "network_error"           # httpx.HTTPError (non-status)
 UNKNOWN = "unknown"                       # 분류 불가
 
+# --- 2nd-LLM 머지 검증자 (cross-vendor 거버넌스 가드) ---------------------
+# --- 2nd-LLM merge verifier (cross-vendor governance guard) ---------------
+# 검증자가 머지 불안전/조작 의심 판정 → 자동머지 차단 (터미널, 재시도 불가)
+# Verifier judged merge unsafe / manipulation suspected → auto-merge blocked (terminal, not retriable)
+VERIFIER_BLOCKED = "verifier_blocked"
+# 검증자 자체 실패(API/파싱) → fail-closed 차단 (터미널)
+# Verifier itself failed (API/parse error) → fail-closed block (terminal)
+VERIFIER_ERROR = "verifier_error"
+
 # --- Phase 12 재시도 큐 전용 태그 -------------------------------------------
 # --- Phase 12 retry queue specific tags -------------------------------------
 # 재시도 대기 중 (첫 번째 지연 항목) / Waiting for retry (initial deferral entry)

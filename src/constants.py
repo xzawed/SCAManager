@@ -91,6 +91,13 @@ LANG_GUIDE_TIER1_FULL_MAX = 6  # 4<=N<=6: Tier1 full, 나머지 compact
 LANG_GUIDE_TOP3_FULL_MAX = 10  # 7<=N<=10: 상위 3개 full, 나머지 compact
 LANG_GUIDE_COMPACT_LIMIT = 5   # N>10: 상위 5개만 compact, 나머지 이름만
 
+# ── 머지 검증자 (2nd-LLM cross-vendor 거버넌스 가드) ─────────────────────
+# ── Merge verifier (2nd-LLM cross-vendor governance guard) ────────────────
+OPENAI_VERIFIER_TIMEOUT = 60.0      # OpenAI 검증 호출 타임아웃(초) — Claude review 60s 와 대칭
+# OpenAI verifier call timeout (seconds) — symmetric with Claude review 60s
+MERGE_VERIFIER_BAND_DEFAULT = 10    # 경계 밴드 폭(점) — merge_threshold ~ +10 점만 검증
+# Band width in points — only verify scores within merge_threshold ~ +10
+
 # ── 분석 도구 설정 ─────────────────────────────────────────────────────────
 # ── Analysis tool configuration ───────────────────────────────────────────
 STATIC_ANALYSIS_TIMEOUT = 30    # 도구 1개당 subprocess 타임아웃 (초)
