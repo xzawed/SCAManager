@@ -121,7 +121,10 @@ async def test_call_openai_verifier_falls_back_to_http_when_sdk_absent(monkeypat
 
     class _FakeHttpClient:
         async def post(self, url, **kwargs):
-            assert "openai.com" in url
+            # 정확한 엔드포인트 URL 비교 — 부분 문자열 검사(`"openai.com" in url`)는
+            # CodeQL py/incomplete-url-substring-sanitization(우회 가능) 이라 정확 비교 사용
+            # Exact endpoint comparison — substring checks trip CodeQL's URL sanitization rule
+            assert url == openai_client._OPENAI_CHAT_URL
             assert kwargs["json"]["response_format"] == {"type": "json_object"}
             assert kwargs["headers"]["Authorization"] == "Bearer k"
             return _FakeHttpResp(payload)
