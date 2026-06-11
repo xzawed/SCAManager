@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [잔여/후속 세션 — docs 정합·사이클 166~#859 5+1 회고·P2 하드닝 (#860/#861 — db-migration/INDEX 백필·회고 아카이브·verifier fail-closed 엄격파싱+CI 하드닝·CodeQL fix-up, 단위 +16, 2026-06-11)](#잔여후속-세션--docs-정합회고p2-하드닝-860861-2026-06-11)
 - [2nd-LLM 머지 검증자 도입 (cross-vendor AI 거버넌스 가드 — OpenAI GPT 가 경계밴드 자동머지의 머지안전성+조작/환각 독립검증, 순수 opt-in, SDK 우선+httpx fallback, 브레인스토밍→spec→subagent-driven 9 task, +26 단위, feat/merge-verifier, 2026-06-11)](#2nd-llm-머지-검증자-도입-cross-vendor-ai-거버넌스-가드-2026-06-11)
 - [정합성 감사 + deep-research follow-up (integrity-audit full + deep-research 미검증 후보 직접 실측 → pipeline AI-fail NULL-persist·webhook secret 캐시 상한·SSRF 단일출처·KPI historyRestore·docs 정합, 5 PR #852~856, Codex mutual OK, 2026-06-11)](#정합성-감사--deep-research-follow-up-2026-06-11--852856)
 - [사이클 166 (Task9 full 감사 P2 백로그 해소 — 빠른 정합 docs/db·test/effects.js dead-code + UI Medium hx-boost 리스너 누적·i18n 이중이스케이프[Option A], 5 PR #820~#824, Codex mutual 5/5, 2026-06-09)](#사이클-166)
@@ -84,6 +85,24 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 잔여/후속 세션 — docs 정합·회고·P2 하드닝 (#860/#861, 2026-06-11)
+
+**날짜**: 2026-06-11 | **트리거**: 사용자 "잔여 작업 및 후속 작업 확인" | **상태**: 2 PR 머지 완료 (#860/#861)
+
+**흐름**: read-only sweep 워크플로(wf_08d70ad8, 5 소스 병렬 + 종합 + completeness critic) → 사용자 결정 C(CI 재실행·docs PR·회고 진행).
+
+- **메인 CI flake 복구**: run 27332085798 PG-only 잡 실패 = `httpcore==1.*` pypi 네트워크 timeout(코드결함 아님) → 재실행 3잡 green.
+- **#860 (docs 정합 + 회고 아카이브)**: db-migration.md 0032~0041 등재(CLAUDE.md 마이그레이션 목록 의무 위반 해소) · `.env.example` SMTP_FROM 유령 제거(config 필드·src 사용처 0) + OPENAI_API_KEY 주석 이중용도 정정(#859 후 'Production 사용 X' stale) + 검증자 env 2종 등재 · `env-vars.md` 내부상수 2종(WEBHOOK_SECRET_CACHE_MAX·OPENAI_VERIFIER_TIMEOUT) · `Makefile` test-local .PHONY · `reports/INDEX.md` 미등재 13건 백필(2026-05-05 stale) · **사이클 166~#859 5+1 회고 보고서** 아카이브(`docs/_archive/reports/2026-06-11-cycle-166-859-retrospective.md`).
+- **#861 (회고 P2 하드닝)**: `merge_verifier.interpret_verdict` fail-closed 엄격 파싱 — `bool(raw["safe"])` → `raw["safe"] is True`(문자열 "false"→bool 함정 fail-OPEN 차단), `manipulation_detected` → `is not False`(🔴 회고 권장 `is True` 는 manip fail-OPEN 회귀라 정정) + 게이트(`auto_merge.py:74`) 정합 · `_call_via_http` httpx fallback 테스트(ImportError 분기 강제) · ci.yml `-rs`(PG-gated skip 가시화)+pip `--retries 5 --timeout 60`(flake 복원력) · **CodeQL fix-up**: 테스트 `assert "openai.com" in url` → 정확 URL 비교(`py/incomplete-url-substring-sanitization` HIGH 해소). 회귀 +16.
+- **회고 (5+1+cross-verify, 24건 중 22 TRUE)**: P0 1(정책10 본문 @- 소실 — 단 라이브 PR 본문 실측 시 **이미 2026-06-10 복원됨 = 위양성**) · P1 8(반자동 verifier parity 갭·secret purge·#504·diff cap·env 주석·STATE overclaim self-caught 실패·회고 미보관·임시 PW) · P2 다수. 자성: STATE 범위 단언 self-verify 누락·정책10 @- 재발·추정 카운트(81→실측 66).
+- **Code Scanning**: #504(`openai_metrics.py:32` `await result` py/ineffectual FP) dismiss → open 0 복구.
+- **Secret Scanning**: alert #1 `telegram_bot_token` state=resolved/revoked(2026-05-04) 확정 → dangling commit `7d0fa1fe` 실위험 0.
+- **사용자 결정 3건**: ① 2nd-LLM 검증자 INACTIVE 유지(봉인 P1 2건[반자동 parity·diff cap] 백로그, interpret_verdict 엄격파싱은 #861 선제 완료) ② secret purge = Secret Scanning revoked 확인 후 보류 권고 ③ 자율 후속 수행(#504 dismiss·본문 회복[FP 불필요]·P2 하드닝).
+
+전 PR Codex mutual OK(정책 18)·CI 8/8 green. 단위 4864→4880(+16, #861)·통합 154·전체 5034. pylint 10.00.
+
+---
 
 ## 2nd-LLM 머지 검증자 도입 (cross-vendor AI 거버넌스 가드, 2026-06-11)
 
