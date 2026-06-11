@@ -221,6 +221,16 @@ alembic history --verbose
 | `0029_rls_5_missing_tables.py` | RLS 누락 테이블 5개 추가 |
 | `0030_add_i18n_columns.py` | 다국어 지원 컬럼 |
 | `0031_repo_insights_cache.py` | Repo insights 캐시 |
+| `0032_add_review_model_and_tokens.py` | Review 모델 + 토큰 컬럼 |
+| `0033_insight_error_tracking.py` | InsightNarrativeCache 에러 추적 컬럼 3종 (last_error_at/error_count/last_error_type) |
+| `0034_gate_decisions_unique_analysis_id.py` | gate_decisions UNIQUE(analysis_id) — 결정 중복 INSERT 방지 |
+| `0035_issue_registrations.py` | IssueRegistration 테이블 (AI 분석 결과 GitHub Issue 등록) |
+| `0036_repo_config_disabled_tools.py` | repo_config disabled_tools 컬럼 (정적분석 도구 선택적 비활성) |
+| `0037_issue_registrations_rls.py` | issue_registrations RLS 정책 (PG 전용, repo_id→repositories.user_id 1-hop) |
+| `0038_analyses_repo_id_cascade.py` | analyses.repo_id FK ON DELETE CASCADE (PG 전용 round-trip CI) |
+| `0039_repositories_user_id_fk.py` | repositories.user_id FK (SET NULL + 고아 정리) |
+| `0040_rename_users_github_id_index.py` | users github_id 인덱스명 rename |
+| `0041_rls_force.py` | 11 테이블 FORCE ROW LEVEL SECURITY (PG 전용, downgrade NO FORCE) |
 
 ---
 

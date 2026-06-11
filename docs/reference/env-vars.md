@@ -146,6 +146,8 @@ Sentry 외 자동 로깅은 별도 환경변수 없이 동작:
 | 상수 | 위치 | 값 | 의미 |
 |------|------|------|------|
 | `WEBHOOK_SECRET_CACHE_TTL` | `src/constants.py` | `300` (초) | 리포 시크릿 캐시 TTL — 변경 후 최대 5분간 구 시크릿으로 검증 |
+| `WEBHOOK_SECRET_CACHE_MAX` | `src/constants.py` | `2048` | pre-auth 시크릿 캐시 엔트리 상한 — forged `full_name` DoS 방어 (#854) |
+| `OPENAI_VERIFIER_TIMEOUT` | `src/constants.py` | `60.0` (초) | 2nd-LLM 머지 검증자 OpenAI 호출 타임아웃 — Claude review 60s 와 대칭 (#859) |
 | `STATIC_ANALYSIS_TIMEOUT` | `src/constants.py` | `30` (초) | 정적 분석 도구 (slither 등) subprocess 타임아웃 |
 | `HTTP_CLIENT_TIMEOUT` | `src/constants.py` | `10.0` (초) | 신뢰 API HTTP 호출 타임아웃 (GitHub/Telegram/Railway/SMTP — Anthropic SDK 만 60s 별도) |
 | `TELEGRAM_RETRY_AFTER_MAX_SECONDS` | `src/notifier/telegram.py` | `30` | Telegram 429 응답의 retry_after 최대 sleep 시간 (cap) — Phase H PR-2B |
