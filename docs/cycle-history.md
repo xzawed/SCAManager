@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [정합성 감사 + deep-research follow-up (integrity-audit full + deep-research 미검증 후보 직접 실측 → pipeline AI-fail NULL-persist·webhook secret 캐시 상한·SSRF 단일출처·KPI historyRestore·docs 정합, 5 PR #852~856, Codex mutual OK, 2026-06-11)](#정합성-감사--deep-research-follow-up-2026-06-11--852856)
 - [사이클 166 (Task9 full 감사 P2 백로그 해소 — 빠른 정합 docs/db·test/effects.js dead-code + UI Medium hx-boost 리스너 누적·i18n 이중이스케이프[Option A], 5 PR #820~#824, Codex mutual 5/5, 2026-06-09)](#사이클-166)
 - [사이클 166 적대 재검증 후속 (STATE overclaim + #32 'resolved' 위양성 적발 → #838 docs정정·#839 #32 tojson·#840 drift④ FK·#841 drift① rename, 4 PR, 2026-06-09)](#사이클-166-적대-재검증-후속-2026-06-09--838841)
 - [잔여작업 라운드 (사용자 결정 C — #843 drift③④' ORM 부분 인덱스 정합·#844 #2 RLS owner-bypass 근본 runbook, 2 PR, 2026-06-09~10)](#잔여작업-라운드-2026-06-0910--843844-사용자-결정-c)
@@ -82,6 +83,31 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 정합성 감사 + deep-research follow-up (2026-06-11) — #852~856
+
+**날짜**: 2026-06-11 | **PR**: #852~856 (5건 머지) | **트리거**: 사용자 "잔여작업 및 후속작업 확인" → "PR 우선 머지 + 이후 순차 진행" | **상태**: 직전 세션(2026-06-10/11) integrity-audit full + deep-research 검토 발견 후보 5 PR 머지 완료 + sync
+
+**배경**: #848(RLS Phase 3) 머지 후 사용자 "정리작업 + deep-research + 다이나믹 워크플로우 검토" 요청 → integrity-audit full(8 도메인) + deep-research(RLS/SaaS·아키텍처·문서 3 초점) 실행. 두 워크플로우 모두 서버측 rate-limit 으로 verify/synthesize 부분 실패 → 코드 후보 10건 직접 실측(verdict: REAL 4 + 하드닝 P2 4 + borderline 1 + FP 1).
+
+**코드 4 PR**:
+- **#853 (pipeline, P1+P2)**: AI 리뷰 genuine 실패(`ai_review_status ∈ {api_error, parse_error}`) 시 webhook pipeline(`_save_and_gate`)이 인플레 기본 점수(17/17/7→~89/B)를 `Analysis.score/grade` 에 영속 → 대시보드/리더보드 집계 오염. hook 경로(#25/#814)는 이미 NULL-persist 였으나 **pipeline 경로 비대칭** → `ai_review_failed(result_dict)` 게이트로 NULL 저장 통일(status/breakdown 보존). `no_api_key`/`empty_diff`(의도적 미수행)는 점수 유지(회귀 방지). P2 `ai_review.py::_default_result` literal 17/17/7→`AI_DEFAULT_*_RAW` 상수(값 동일, drift 방지). 회귀 가드 4. Codex 5/5. 단위 +4.
+- **#854 (webhook, P1+P2)**: pre-auth secret 캐시 무한 증가 차단 — `_store_secret` 가 forged `full_name` 마다 엔트리 생성 → DoS. `WEBHOOK_SECRET_CACHE_MAX=2048` 상한. P2 telegram/railway provider 로그 `sanitize_for_log`. Codex 5/5. 단위 +3(test_secret_cache_bound 신규).
+- **#855 (api, P2)**: webhook URL SSRF 검증 storage 단일출처화 — `shared/ssrf.py::is_safe_webhook_url`(settings + repos field_validator 공유, 저장 시점 차단). email To 헤더 CRLF strip(헤더 인젝션). Codex 5/5. 단위 +3(test_repos/test_email 추가·test_settings_ssrf refactor).
+- **#856 (ui, P2)**: base.html `_kpiCountupHandler` 를 `htmx:historyRestore` 에도 등록(#473 대칭) — 뒤로가기 bfcache 복원 시 KPI count-up 재초기화 누락 해소. Codex 4/4. 단위 +2(test_base_kpi_handler 신규).
+
+**docs 1 PR**:
+- **#852 (docs)**: 검증 drift 3 정정 — architecture.md WorkerSessionLocal 항목·STATE 60~166 cycle 범위·i18n.md 쿠키명(preferred_language) + runbook §4 Phase 4 prerequisite(pgbouncer/Supavisor `SET LOCAL` 테넌트 격리 실측 항목). 무증가.
+
+**기각 (2건)**: (borderline) gate `merge_retry_service.py:142` 재시도 재확인은 LIVE threshold 평가 = 결정 정확, observability nit 보류. (FP) `test_engine.py:39` "dead patch" — `save_gate_decision`(engine.py:632) 존재 + auto 경로 사용 중이라 patch 유효, dead 아님.
+
+**deep-research 핵심**: ✅ SCAManager RLS = AWS 권장 모델 일치(비-owner + NOBYPASSRLS + runtime param + FORCE). 🔴 Phase 4 prerequisite = pooler(pgbouncer/Supavisor) + `SET LOCAL` 테넌트 격리(SET LOCAL + autocommit=False 설계상 안전, 운영 pooler 모드 실측 의무 — #852 runbook §4 반영). ⚠️ CLAUDE.md 18 정책 비대(Anthropic "최소 고신호 토큰") — 미조치(정책 17 안정성 우선, 사용자 사전 확인 영역).
+
+**검증**: 전 PR Codex true mutual OK(push 전, 정책 18) + 전 CI green(pytest·SonarCloud·CodeQL·TruffleHog·PG-tests·codecov). 단위 4826→4838(+12: #853 +4·#854 +3·#855 +3·#856 +2·#852 0, 각 머지 커밋 collect-only 실측), 통합 154 불변, 전체 4992, E2E 113, pylint 10.00.
+
+**최종 잔여**: **#2 RLS owner-bypass — Phase 4 운영 전환만**(코드 Phase 1~4 전부 완료). 사용자 작업 = ① 임시 PW 교체 ② `DATABASE_URL`(app role)/`DATABASE_URL_WORKER`(worker role) 운영 설정 ③ pooler `SET LOCAL` 테넌트 격리 실측([runbook](runbooks/rls-role-separation.md) §Phase 4). full 감사 36건 = #2 외 전부 해소/결정.
+
+---
 
 ## 사이클 166
 
