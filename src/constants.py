@@ -23,8 +23,10 @@ BANDIT_LOW_PENALTY = 2      # security warning 1건당 감점
 AI_DEFAULT_COMMIT = 13      # commit_score 기본값 (스케일링 후)
 AI_DEFAULT_DIRECTION = 21   # ai_score 기본값 (스케일링 후)
 AI_DEFAULT_TEST = 10        # test_score 기본값 (스케일링 후)
-# hook.py: AiReviewResult 생성 시 사용하는 raw 스케일 기본값 (스케일링 전)
-# hook.py: Raw-scale defaults used when constructing AiReviewResult (before scaling)
+# AiReviewResult 생성 시 사용하는 raw 스케일 기본값 (스케일링 전) — hook.py(_coerce_ai_scores 폴백) +
+# analyzer/io/ai_review.py(_default_result) 양쪽 사용.
+# Raw-scale defaults for constructing AiReviewResult (before scaling) — used by both
+# hook.py (_coerce_ai_scores fallback) and analyzer/io/ai_review.py (_default_result).
 # 스케일링 후 결과가 파이프라인 기본값(AI_DEFAULT_*)과 일치하도록 역산
 # Back-calculated so post-scaling values equal pipeline defaults (AI_DEFAULT_*)
 AI_DEFAULT_COMMIT_RAW = 17  # raw 0-20 → round(17*15/20) = 13 = AI_DEFAULT_COMMIT
