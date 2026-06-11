@@ -125,3 +125,22 @@ async def test_verify_merge_safety_bad_json_parse_error(monkeypatch):
     monkeypatch.setattr(mv, "call_openai_verifier", _bad)
     v = await mv.verify_merge_safety(_ctx())
     assert v.safe is False and v.status == mv.VERIFIER_PARSE_ERROR
+
+
+def test_interpret_verdict_non_list_reasons_no_crash():
+    # reasons 가 비-리스트(int/None)여도 예외 없이 빈 reasons 로 처리 (Codex CHECK1 — interpret 무예외)
+    # Non-list reasons (int/None) must not raise — interpret_verdict stays exception-free.
+    from src.gate import merge_verifier as _mv
+    v = _mv.interpret_verdict({"safe": True, "manipulation_detected": False, "reasons": 5})
+    assert v.status == _mv.VERIFIER_OK and v.reasons == ()
+    v2 = _mv.interpret_verdict({"safe": False, "manipulation_detected": False, "reasons": None})
+    assert v2.reasons == ()
+
+
+def test_merge_verifier_band_zero_rejected():
+    # band <= 0 은 ValidationError 로 거부 — silent 무효화 차단 (Codex CHECK9, Field(ge=1))
+    # band <= 0 must be rejected (silent disable guard).
+    from pydantic import ValidationError
+    from src.config import Settings
+    with pytest.raises(ValidationError):
+        Settings(merge_verifier_band=0)

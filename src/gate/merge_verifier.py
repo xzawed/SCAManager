@@ -112,9 +112,10 @@ def interpret_verdict(raw: object) -> VerifierVerdict:
         return VerifierVerdict(False, False, ("verifier returned non-object",), VERIFIER_PARSE_ERROR)
     if "safe" not in raw or "manipulation_detected" not in raw:
         return VerifierVerdict(False, False, ("verifier response missing keys",), VERIFIER_PARSE_ERROR)
-    # reasons 최대 3개로 제한 — 프롬프트 명세와 일치
-    # Limit reasons to 3 — matches the prompt spec
-    reasons = tuple(str(r) for r in (raw.get("reasons") or [])[:3])
+    # reasons 최대 3개로 제한 — 비-리스트(int/None 등)면 빈 튜플로 안전 처리(interpret_verdict 무예외 보장, Codex 검증 반영)
+    # Limit reasons to 3 — non-list (int/None etc.) → empty tuple (interpret_verdict never raises)
+    reasons_raw = raw.get("reasons")
+    reasons = tuple(str(r) for r in reasons_raw[:3]) if isinstance(reasons_raw, list) else ()
     return VerifierVerdict(bool(raw["safe"]), bool(raw["manipulation_detected"]), reasons, VERIFIER_OK)
 
 
@@ -135,12 +136,15 @@ async def verify_merge_safety(ctx) -> VerifierVerdict:
         # Wrap PyGithub sync call in to_thread — prevents event loop blocking
         changed = await asyncio.to_thread(
             get_pr_files, ctx.github_token, ctx.repo_name, ctx.pr_number)
+        # patches 추출 + 프롬프트 구성도 동일 fail-closed 블록 안에서 — 예외 전파 차단 (Codex 검증 반영)
+        # Patch extraction + prompt build inside the same fail-closed block — no exception escapes.
+        patches = [(cf.filename, getattr(cf, "patch", "") or "") for cf in changed]
+        user_prompt = build_verifier_prompt(patches, ctx.result, ctx.score)
     except Exception:  # pylint: disable=broad-exception-caught  # noqa: BLE001
         logger.exception(
-            "verifier: diff fetch failed (repo=%s pr=%s)", ctx.repo_name, ctx.pr_number)
+            "verifier: diff fetch / prompt build failed (repo=%s pr=%s)",
+            ctx.repo_name, ctx.pr_number)
         return VerifierVerdict(False, False, ("diff fetch failed",), VERIFIER_API_ERROR)
-    patches = [(cf.filename, getattr(cf, "patch", "") or "") for cf in changed]
-    user_prompt = build_verifier_prompt(patches, ctx.result, ctx.score)
     try:
         text = await call_openai_verifier(
             _VERIFIER_SYSTEM_PROMPT, user_prompt,
