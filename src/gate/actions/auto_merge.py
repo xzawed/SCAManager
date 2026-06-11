@@ -79,9 +79,9 @@ class AutoMergeAction(GateAction):
                 try:
                     await post_plain_pr_comment(
                         ctx.github_token, ctx.repo_name, ctx.pr_number,
-                        f"🛑 자동 머지 보류 — 2nd-LLM(Claude 리뷰 ↔ GPT 검증) cross-vendor "
-                        f"검증자가 머지 안전성 확인 실패.\nAuto-merge withheld by the cross-vendor "
-                        f"verifier.\n\n- status: `{verdict.status}`\n- reasons: {reason}",
+                        f"🛑 Auto-merge withheld by the 2nd-LLM cross-vendor verifier "
+                        f"(Claude review ↔ GPT verification) — merge-safety check failed.\n\n"
+                        f"- status: `{verdict.status}`\n- reasons: {reason}",
                     )
                 except Exception:  # pylint: disable=broad-exception-caught  # noqa: BLE001
                     logger.exception("verifier block comment failed (repo=%s pr=%s)",
