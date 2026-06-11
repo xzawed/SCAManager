@@ -27,7 +27,7 @@ src/
 ├── config.py                    # pydantic-settings 환경변수 관리, postgres:// URL 자동 변환
 ├── constants.py                 # 전역 상수 단일 출처 — 점수배점/감점가중치/AI기본값/등급/알림한도/HTTP타임아웃/캐시TTL
 ├── crypto.py                    # encrypt_token()/decrypt_token() — TOKEN_ENCRYPTION_KEY
-├── database.py                  # SQLAlchemy engine, Base, FailoverSessionFactory + RLS event listener
+├── database.py                  # SQLAlchemy engine, Base, FailoverSessionFactory + RLS event listener + WorkerSessionLocal (background/시스템 컨텍스트 BYPASSRLS 라우팅, RLS Phase 2~4)
 ├── shared/
 │   ├── http_client.py           # httpx.AsyncClient lifespan 싱글톤 (내부 신뢰 API)
 │   ├── log_safety.py            # sanitize_for_log() — 로그 인젝션 방지
