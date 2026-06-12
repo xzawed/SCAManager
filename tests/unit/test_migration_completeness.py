@@ -23,12 +23,22 @@ import re
 import pytest
 
 # --- import every ORM model so SQLAlchemy registers the tables ---
+# 🔴 11종 ORM 전수 명시 import (C5): 누락 시 conftest→src.main 전이 import 에 우발 의존(self-contained
+# 아님) — 그 4종(insight_narrative_cache·issue_registration·merge_retry·security_alert_log)의 컬럼이
+# 마이그레이션 완전성 검사에서 빠져 ORM↔alembic drift 를 못 잡는다. testing.md "empty __init__ + explicit
+# ORM import 의무" 정합. 신규 ORM 모델 추가 시 이 목록에 등재 의무.
+# Explicitly import all 11 ORM models (C5): otherwise 4 of them rely on the conftest→src.main side-effect
+# import chain (not self-contained), excluding their columns from the completeness check.
 import src.models.analysis  # noqa: F401
 import src.models.analysis_feedback  # noqa: F401
 import src.models.gate_decision  # noqa: F401
+import src.models.insight_narrative_cache  # noqa: F401
+import src.models.issue_registration  # noqa: F401
 import src.models.merge_attempt  # noqa: F401
+import src.models.merge_retry  # noqa: F401
 import src.models.repo_config  # noqa: F401
 import src.models.repository  # noqa: F401
+import src.models.security_alert_log  # noqa: F401
 import src.models.user  # noqa: F401
 from src.database import Base
 
