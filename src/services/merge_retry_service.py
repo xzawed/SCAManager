@@ -217,7 +217,7 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
         log_merge_attempt(
             db, analysis_id=row.analysis_id, repo_name=row.repo_full_name,
             pr_number=row.pr_number, score=row.score,
-            threshold=row.threshold_at_enqueue, success=True, reason=None,
+            threshold=cfg.merge_threshold, success=True, reason=None,
         )
         merge_retry_repo.mark_succeeded(db, row.id)
         await _notify_merge_succeeded(row, cfg, language=language)
@@ -245,7 +245,7 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
         log_merge_attempt(
             db, analysis_id=row.analysis_id, repo_name=row.repo_full_name,
             pr_number=row.pr_number, score=row.score,
-            threshold=row.threshold_at_enqueue, success=False, reason=reason,
+            threshold=cfg.merge_threshold, success=False, reason=reason,
         )
         if is_terminal_failure:
             merge_retry_repo.mark_terminal(db, row.id, reason=reason_tag)
@@ -469,7 +469,9 @@ async def _notify_merge_terminal(
 async def _create_failure_issue_safe(
     token: str,
     row: MergeRetryQueue,
-    cfg: RepoConfigData,  # pylint: disable=unused-argument
+    # C11: threshold 로그를 live cfg.merge_threshold 로 정합 (이제 사용됨)
+    # C11: align the logged threshold with the live cfg.merge_threshold (now used)
+    cfg: RepoConfigData,
     reason: str | None,
     reason_tag: str,
     *,
@@ -485,7 +487,7 @@ async def _create_failure_issue_safe(
             repo_name=row.repo_full_name,
             pr_number=row.pr_number,
             score=row.score,
-            threshold=row.threshold_at_enqueue,
+            threshold=cfg.merge_threshold,
             reason=reason or reason_tag,
             advice=advice,
             language=language,

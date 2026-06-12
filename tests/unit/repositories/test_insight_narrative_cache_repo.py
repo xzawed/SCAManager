@@ -87,6 +87,21 @@ def test_invalidate_returns_false_when_absent(db):
     assert deleted is False
 
 
+def test_invalidate_deletes_all_languages(db):
+    """🔴 C14: 전역 캐시는 (user_id, days, language) 키라 언어별 다중 행 공존 → invalidate 가
+    모든 언어 행을 결정론적으로 삭제(이전 .first() 단일 삭제는 비결정적 wrong-language eviction)."""
+    insight_narrative_cache_repo.upsert(db, user_id=1, days=7, language="en", response={"l": "en"})
+    insight_narrative_cache_repo.upsert(db, user_id=1, days=7, language="ko", response={"l": "ko"})
+    insight_narrative_cache_repo.upsert(db, user_id=1, days=7, language="ja", response={"l": "ja"})
+
+    deleted = insight_narrative_cache_repo.invalidate(db, user_id=1, days=7)
+    assert deleted is True
+    # 세 언어 모두 삭제 (cross-language eviction 잔존 0)
+    assert insight_narrative_cache_repo.get_fresh(db, user_id=1, days=7, language="en") is None
+    assert insight_narrative_cache_repo.get_fresh(db, user_id=1, days=7, language="ko") is None
+    assert insight_narrative_cache_repo.get_fresh(db, user_id=1, days=7, language="ja") is None
+
+
 def test_per_user_isolation(db):
     """(user_id, days) 키 격리 — user_id 다르면 독립 캐시."""
     insight_narrative_cache_repo.upsert(db, user_id=1, days=7, response={"u": 1})

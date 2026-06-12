@@ -508,6 +508,29 @@ class TestProcessPendingRetries:
         db_session.refresh(row)
         assert row.status == "succeeded"
 
+    async def test_log_merge_attempt_uses_live_threshold_not_snapshot(self, db_session):
+        """🔴 C11: 관측 로그의 threshold 가 게이팅에 쓴 live cfg.merge_threshold 와 일치해야 한다.
+
+        게이트(:177)는 live cfg.merge_threshold 로 판정하나 이전엔 로그/Issue 가 enqueue 스냅샷
+        (row.threshold_at_enqueue)을 기록 → '실제 머지를 가른 임계값'과 '관측 기록' 발산(감사 부정확).
+        seed snapshot=75, 운영 config=85 일 때 로그 threshold=85(live) 여야 한다.
+        """
+        row = _seed_queue_row(db_session)             # threshold_at_enqueue=75 (스냅샷)
+        live_cfg = _make_fake_cfg(merge_threshold=85)  # 운영 현재값 (스냅샷과 발산)
+
+        patches = _standard_patches(cfg=live_cfg, merge_return=(True, None, "abc123"))
+        with (
+            patches["token"], patches["repo_config"], patches["pr_data"],
+            patches["merge_pr"], patches["ci"], patches["notify_succeeded"],
+            patches["notify_terminal"], patches["notify_config"],
+            patches["log_attempt"] as mock_log,
+        ):
+            await process_pending_retries(db_session, only_ids=[row.id])
+
+        mock_log.assert_called_once()
+        # 로그 threshold = live(85), 스냅샷(75) 아님
+        assert mock_log.call_args.kwargs["threshold"] == 85
+
     # T9-7: CI 진행 중 → 일시적 실패, 클레임 해제
     # T9-7: CI running → transient, release claim
     async def test_process_transient_ci_running_releases(self, db_session):
@@ -730,6 +753,32 @@ class TestProcessPendingRetries:
 
         assert result["terminal"] == 1
         mock_issue.assert_called_once()
+
+    async def test_failure_log_and_issue_use_live_threshold(self, db_session):
+        """🔴 C11 failure 경로: terminal 실패 로그(success=False)와 failure Issue 의 threshold 가
+        enqueue 스냅샷이 아니라 live cfg.merge_threshold 와 일치해야 한다 (3곳 중 248·488 봉인)."""
+        row = _seed_queue_row(db_session)                                   # 스냅샷=75
+        live_cfg = _make_fake_cfg(auto_merge_issue_on_failure=True, merge_threshold=85)
+        patches = _standard_patches(
+            merge_return=(False, "branch_protection_blocked: admin override required", ""),
+            ci_return="failed",
+            cfg=live_cfg,
+        )
+        with (
+            patches["token"], patches["repo_config"], patches["pr_data"],
+            patches["merge_pr"], patches["ci"], patches["notify_succeeded"],
+            patches["notify_terminal"], patches["notify_config"],
+            patches["log_attempt"] as mock_log,
+            patch("src.services.merge_retry_service.create_merge_failure_issue",
+                  new_callable=AsyncMock) as mock_issue,
+        ):
+            await process_pending_retries(db_session, only_ids=[row.id])
+
+        # 실패 로그(248) + failure Issue(488) 모두 live(85), 스냅샷(75) 아님
+        assert mock_log.call_args.kwargs["success"] is False
+        assert mock_log.call_args.kwargs["threshold"] == 85
+        mock_issue.assert_called_once()
+        assert mock_issue.call_args.kwargs["threshold"] == 85
 
     # T9-13: max_attempts 초과 행 → abandoned 처리
     # T9-13: Row exceeding max_attempts → abandoned

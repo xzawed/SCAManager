@@ -189,7 +189,12 @@ def get_text(key: str, locale: str | None = None, **kwargs) -> str:
 
     try:
         return value.format(**kwargs)
-    except (KeyError, IndexError) as exc:
+    except (KeyError, IndexError, ValueError) as exc:
+        # C28: ValueError 포함 — 번역문에 불균형/리터럴 중괄호(예: 'a { b {name}')가 있으면
+        # str.format() 이 ValueError("unexpected '{' in field name")를 던진다. 미포착 시 페이지
+        # 렌더 500 → graceful 'unformatted 반환' 의도 보존.
+        # C28: include ValueError — an unbalanced/literal brace makes str.format() raise ValueError;
+        # uncaught it would 500 the render instead of the graceful unformatted fallback.
         logger.warning(
             "Format substitution failed for key '%s': %s — returning unformatted",
             key,
