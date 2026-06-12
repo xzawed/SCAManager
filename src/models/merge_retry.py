@@ -6,8 +6,8 @@ When a merge fails because CI is still running, enqueue and retry.
 상태 전이 (status transitions):
   pending → succeeded        — 재시도 성공
   pending → failed_terminal  — 재시도 가능하지 않은 오류 (권한 없음, branch protection 등)
-  pending → abandoned        — max_attempts 초과
-  pending → expired          — 커밋 SHA 가 더 이상 PR head 가 아님(force-push) 또는 max_age 초과
+  pending → abandoned        — max_attempts 초과 / 설정 변경(auto_merge 해제) / SHA drift(force-push 로 커밋 SHA 변경)
+  pending → expired          — max_age 초과 (aged out) — 🔴 force-push/SHA-drift 는 abandoned (감사 C26 정정)
 """
 from datetime import datetime, timezone
 

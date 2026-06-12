@@ -49,8 +49,6 @@ ALREADY_MERGED = "already_merged"
 SHA_DRIFT = "sha_drift"
 # 사용자가 설정 변경 (auto_merge 해제 등) / User changed config (auto_merge disabled etc.)
 CONFIG_CHANGED = "config_changed"
-# 실패 체크가 선택적(optional)만 포함 / Only optional checks are failing
-OPTIONAL_CHECK_ONLY = "optional_check_only"
 
 # 재시도 시스템이 대기할 수 있는 태그 집합 (is_retriable_tag 단일 출처)
 # Tag set the retry system can wait out (single source for is_retriable_tag)
@@ -71,19 +69,19 @@ def http_status_to_reason(code: int) -> str:
     return _HTTP_STATUS_TO_REASON.get(code, f"http_{code}")
 
 
-# mergeable_state → reason tag 매핑
-# "unknown" 은 포함하지 않음 — mergeable_state_to_reason 이 UNKNOWN 태그로 처리
-# "unknown" is not included — mergeable_state_to_reason handles it as UNKNOWN tag
+# mergeable_state → reason tag 매핑 — 차단 상태(_MERGEABLE_BLOCK)만 등재.
+# 🔴 호출처(github_review.py:152)는 `if state in _MERGEABLE_BLOCK`(dirty/blocked/behind/draft/unstable)
+# 가드 내부에서만 호출되므로 그 5종만 조회된다. non-block 상태(has_hooks/clean 등)는 lookup 도달 불가라
+# 등재하지 않는다(도달 불가 데이터=오인 소지, 정합성 감사 C24 제거). 미지 상태는 .get(state, UNKNOWN).
+# Only the blocking states (_MERGEABLE_BLOCK) are mapped — the sole caller (github_review.py:152) runs
+# inside `if state in _MERGEABLE_BLOCK`, so non-block states (has_hooks/clean) can never be looked up;
+# unreachable entries were removed (audit C24). Unknown states fall through to .get(state, UNKNOWN).
 _MERGEABLE_STATE_TO_REASON: dict[str, str] = {
     "dirty": DIRTY_CONFLICT,
     "blocked": BRANCH_PROTECTION_BLOCKED,
     "behind": BEHIND_BASE,
     "draft": DRAFT_PR,
     "unstable": UNSTABLE_CI,
-    "has_hooks": "has_hooks",  # 훅 검사 중 — 대기 상태
-                               # Awaiting hook checks — transient hold state
-    "clean": "clean",          # 병합 가능 — 실패 아님
-                               # Mergeable — not a failure state
 }
 
 

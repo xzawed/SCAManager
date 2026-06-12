@@ -406,12 +406,12 @@ def mark_expired(
     reason: str | None = None,
     now: datetime | None = None,
 ) -> bool:
-    """status='expired' 마킹 — 더 이상 머지 시도하지 않는 비-실패 종료.
-    SHA 가 PR head 가 아닐 때(force-push 등) 또는 max_age 초과로 만료된 경우.
-    Mark status as 'expired' — a non-failure stop: SHA no longer PR head (e.g. force-push)
-    or the row aged out past max_age (merge_retry_service terminal 분기에서 사용).
-    행 없으면 False 반환.
-    Returns False if row not found.
+    """status='expired' 마킹 — 더 이상 머지 시도하지 않는 비-실패 종료(max_age 초과 = aged out).
+    🔴 force-push/SHA-drift 는 expired 가 아니라 abandoned(reason='sha_drift') 로 라우팅된다
+    (merge_retry_service:206). expired 의 유일 producer 는 max_age 분기(:255) — 감사 C26 정정.
+    Mark status as 'expired' — a non-failure stop when the row aged out past max_age. Force-push /
+    SHA-drift route to abandoned (not expired); expired's only producer is the max_age branch (C26).
+    행 없으면 False 반환. / Returns False if row not found.
     """
     _now = now or _now_naive()
     return _mark_status(db, row_id, status="expired", reason=reason, now=_now)
