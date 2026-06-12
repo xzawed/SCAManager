@@ -112,7 +112,9 @@ class TestDashboardKpi:
 
         result = dashboard_kpi(db, days=7, now=now)
         assert result["avg_score"]["value"] == pytest.approx(85.0, abs=0.1)
-        assert result["avg_score"]["grade"] in ("A", "B", "C", "D", "F", "B+")
+        # 🔴 C30: avg=85 → calculate_grade(85) 는 결정론적 'B' (GRADE_THRESHOLDS B=75). 이전 dead
+        # assertion 은 모든 등급 + 가공의 'B+' 까지 허용해 grade 계산 회귀(예: 85→'A')를 못 잡았다.
+        assert result["avg_score"]["grade"] == "B"
 
     def test_avg_score_delta_compares_previous_window(self, db, repos):
         """delta = 현재 days 평균 - 직전 동일 days 평균 (양수 = 개선)."""
