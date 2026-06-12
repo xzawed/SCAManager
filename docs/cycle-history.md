@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [잔여/후속 세션 — #863 머지 (검증자 봉인 P1-4 diff/token cap fail-closed + max_completion_tokens, 단위 +6, 2026-06-12)](#잔여후속-세션--863-머지-검증자-봉인-p1-4-2026-06-12)
 - [잔여/후속 세션 — docs 정합·사이클 166~#859 5+1 회고·P2 하드닝 (#860/#861 — db-migration/INDEX 백필·회고 아카이브·verifier fail-closed 엄격파싱+CI 하드닝·CodeQL fix-up, 단위 +16, 2026-06-11)](#잔여후속-세션--docs-정합회고p2-하드닝-860861-2026-06-11)
 - [2nd-LLM 머지 검증자 도입 (cross-vendor AI 거버넌스 가드 — OpenAI GPT 가 경계밴드 자동머지의 머지안전성+조작/환각 독립검증, 순수 opt-in, SDK 우선+httpx fallback, 브레인스토밍→spec→subagent-driven 9 task, +26 단위, feat/merge-verifier, 2026-06-11)](#2nd-llm-머지-검증자-도입-cross-vendor-ai-거버넌스-가드-2026-06-11)
 - [정합성 감사 + deep-research follow-up (integrity-audit full + deep-research 미검증 후보 직접 실측 → pipeline AI-fail NULL-persist·webhook secret 캐시 상한·SSRF 단일출처·KPI historyRestore·docs 정합, 5 PR #852~856, Codex mutual OK, 2026-06-11)](#정합성-감사--deep-research-follow-up-2026-06-11--852856)
@@ -85,6 +86,17 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 잔여/후속 세션 — #863 머지 (검증자 봉인 P1-4) (2026-06-12)
+
+**날짜**: 2026-06-12 | **트리거**: 사용자 "잔여/후속 작업 확인 → 순서대로 수행" | **상태**: #863 머지 완료 (열린 PR 0)
+
+**흐름**: 잔여/후속 다중 소스 적대 교차검증(워크플로 rate-limit → 6 도메인 인라인 대체 실측 — GitHub 라이브·STATE·메모리·코드 마커·회고 백로그·runbook) → 사용자 "순서대로 수행" → ① #863 머지.
+
+- **#863 (검증자 활성화 봉인 P1-4 — diff/token cap)**: `diff_exceeds_cap(patches)` True 시 OpenAI **미호출 + fail-closed 차단**(`VerifierVerdict(False,False,...)` → `auto_merge.py` VERIFIER_BLOCKED 매핑, 비용 0). 절단 후 전송(초안)은 위험 hunk safe 오판 비결정론 → Codex Option A 채택. `_assemble_diff_text` 단일출처(프롬프트↔cap 측정 포맷 일치) · `VERIFIER_DIFF_CHAR_CAP=60000` · `VERIFIER_MAX_OUTPUT_TOKENS=8192`(2048→8192, gpt-5 reasoning 소진 방지) · `max_completion_tokens`(SDK+httpx). 회귀 +6.
+- **잔여**: ① #2 RLS owner-bypass **Phase 4 운영 전환**(사용자 — 임시 PW 교체 + `DATABASE_URL`/`DATABASE_URL_WORKER` 설정 + pooler `SET LOCAL` 테넌트 격리 검증; 코드 Phase 1~4 완료, 절차 [`docs/runbooks/rls-role-separation.md`](runbooks/rls-role-separation.md) §Phase 4) ② 검증자 활성화 봉인 **P1-1 반자동 Telegram parity**(`engine._run_auto_merge` 단일출처화, 설계 confirm 대기 — 정책 18 §3a + gate High tier) ③ 검증자 활성화(`OPENAI_API_KEY` BYO, 사용자).
+
+Codex mutual OK(#863, 머지 전 완료)·CI 8/8 green. 단위 4880→4886(+6)·통합 154·전체 5040. pylint 10.00.
 
 ## 잔여/후속 세션 — docs 정합·회고·P2 하드닝 (#860/#861, 2026-06-11)
 
