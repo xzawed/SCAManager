@@ -29,18 +29,28 @@ import pytest
 # ORM import 의무" 정합. 신규 ORM 모델 추가 시 이 목록에 등재 의무.
 # Explicitly import all 11 ORM models (C5): otherwise 4 of them rely on the conftest→src.main side-effect
 # import chain (not self-contained), excluding their columns from the completeness check.
-import src.models.analysis  # noqa: F401
-import src.models.analysis_feedback  # noqa: F401
-import src.models.gate_decision  # noqa: F401
-import src.models.insight_narrative_cache  # noqa: F401
-import src.models.issue_registration  # noqa: F401
-import src.models.merge_attempt  # noqa: F401
-import src.models.merge_retry  # noqa: F401
-import src.models.repo_config  # noqa: F401
-import src.models.repository  # noqa: F401
-import src.models.security_alert_log  # noqa: F401
-import src.models.user  # noqa: F401
+from src.models.analysis import Analysis
+from src.models.analysis_feedback import AnalysisFeedback
+from src.models.gate_decision import GateDecision
+from src.models.insight_narrative_cache import InsightNarrativeCache
+from src.models.issue_registration import IssueRegistration
+from src.models.merge_attempt import MergeAttempt
+from src.models.merge_retry import MergeRetryQueue
+from src.models.repo_config import RepoConfig
+from src.models.repository import Repository
+from src.models.security_alert_log import SecurityAlertProcessLog
+from src.models.user import User
 from src.database import Base
+
+# CodeQL py/unused-import 회피 + 등록 의도 명시 — 모델 클래스를 참조해 'used' 로 표시한다
+# (import 자체가 테이블을 Base.metadata 에 등록하는 부작용 보장). `# noqa: F401` 은 flake8 만
+# 억제하고 CodeQL py/unused-import 는 별도 룰이라 alert 발생(#507~514) → 명시 참조로 해소.
+# Reference the model classes so CodeQL py/unused-import doesn't fire (the import itself registers
+# the table in Base.metadata). `# noqa: F401` only silences flake8, not CodeQL's separate rule.
+_REGISTERED_MODELS = (
+    Analysis, AnalysisFeedback, GateDecision, InsightNarrativeCache, IssueRegistration,
+    MergeAttempt, MergeRetryQueue, RepoConfig, Repository, SecurityAlertProcessLog, User,
+)
 
 # 마이그레이션 파일을 통합한 검색 텍스트 — 모든 버전 파일 내용을 합침
 # Concatenation of all migration file contents used as the search blob.
