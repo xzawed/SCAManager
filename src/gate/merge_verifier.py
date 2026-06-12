@@ -14,6 +14,7 @@ import logging
 from dataclasses import dataclass
 
 from src.constants import OPENAI_VERIFIER_TIMEOUT, VERIFIER_DIFF_CHAR_CAP
+from src.gate.merge_reasons import VERIFIER_BLOCKED, VERIFIER_ERROR
 from src.github_client.diff import get_pr_files
 from src.verifier.openai_client import call_openai_verifier
 
@@ -219,3 +220,66 @@ async def verify_merge_safety(ctx) -> VerifierVerdict:
         logger.exception(
             "verifier: unexpected error (repo=%s pr=%s)", ctx.repo_name, ctx.pr_number)
         return VerifierVerdict(False, False, ("verifier unexpected error",), VERIFIER_API_ERROR)
+
+
+@dataclass(frozen=True)
+class _MergeVerifyContext:
+    """verify_merge_safety 가 읽는 최소 컨텍스트 — 자동/반자동 공용 단일 출처 가드용.
+    Minimal context read by verify_merge_safety — for the shared single-source guard.
+
+    GateContext 전체가 아닌 5 필드만 받아 반자동(telegram) 경로처럼 GateContext 가 없는
+    호출자도 동일 가드를 쓸 수 있게 한다(#859 P1-1 parity).
+    Only the 5 fields verify_merge_safety reads, so callers without a GateContext
+    (e.g. the semi-auto telegram path) can share the same guard (#859 P1-1 parity).
+    """
+    github_token: str
+    repo_name: str
+    pr_number: int
+    result: dict
+    score: int
+
+
+async def verifier_blocks_merge(
+    *, github_token: str, repo_name: str, pr_number: int,
+    result: dict, score: int, merge_threshold: int,
+) -> bool:
+    """단일 출처 2nd-LLM 검증 가드 — 경계 밴드 자동머지를 검증하고 차단해야 하면 True.
+    Single-source 2nd-LLM verifier guard — verifies a borderline-band auto-merge; returns True to block.
+
+    자동(AutoMergeAction)·반자동(telegram handle_gate_callback) 양 경로가 engine._run_auto_merge
+    진입부에서 공유한다(#859 P1-1 parity — 이전엔 자동 경로에만 존재해 반자동이 검증자를 우회).
+    차단 시 구조화 로그(VERIFIER_BLOCKED/ERROR 태그) + PR 코멘트. merge_attempt DB row 는 engine
+    단일 출처 규칙 보존(api.md) — 가드 차단은 로그/코멘트로만 감사. fail-closed: 검증자 오류도 차단.
+    Shared by automatic and semi-automatic paths at engine._run_auto_merge entry (#859 P1-1 parity —
+    previously only the automatic path had it, so the semi-auto path bypassed verification).
+    On block: structured log (VERIFIER_BLOCKED/ERROR tag) + PR comment. The merge_attempt DB row stays
+    engine-single-source (api.md) — a guard block is audited via log/comment only. Fail-closed: a
+    verifier error also blocks.
+    """
+    if not should_verify(score=score, merge_threshold=merge_threshold):
+        return False
+    ctx = _MergeVerifyContext(github_token, repo_name, pr_number, result, score)
+    verdict = await verify_merge_safety(ctx)
+    if verdict.status == VERIFIER_OK and verdict.safe and not verdict.manipulation_detected:
+        return False
+    reason = "; ".join(verdict.reasons) or verdict.status
+    # 검증자 오류(api/parse) = VERIFIER_ERROR / 정상 판정의 unsafe·조작 = VERIFIER_BLOCKED.
+    # Verifier error → VERIFIER_ERROR; a successful unsafe/manipulation verdict → VERIFIER_BLOCKED.
+    block_tag = VERIFIER_ERROR if verdict.status != VERIFIER_OK else VERIFIER_BLOCKED
+    logger.warning(
+        "merge verifier blocked auto-merge (tag=%s status=%s) — repo=%s pr=%s: %s",
+        block_tag, verdict.status, repo_name, pr_number, reason,
+    )
+    # 지연 임포트 — github_comment ↔ gate 순환 가능성 회피
+    # Deferred import — avoids a potential github_comment ↔ gate import cycle
+    from src.notifier.github_comment import post_plain_pr_comment  # pylint: disable=import-outside-toplevel
+    try:
+        await post_plain_pr_comment(
+            github_token, repo_name, pr_number,
+            f"🛑 Auto-merge withheld by the 2nd-LLM cross-vendor verifier "
+            f"(Claude review ↔ GPT verification) — merge-safety check failed.\n\n"
+            f"- status: `{verdict.status}`\n- reasons: {reason}",
+        )
+    except Exception:  # pylint: disable=broad-exception-caught  # noqa: BLE001
+        logger.exception("verifier block comment failed (repo=%s pr=%s)", repo_name, pr_number)
+    return True

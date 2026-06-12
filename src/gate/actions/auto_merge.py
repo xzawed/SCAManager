@@ -9,11 +9,6 @@ import logging
 
 from src.gate._common import ai_review_failed
 from src.gate.actions import GateAction, GateContext, register
-from src.gate.merge_reasons import VERIFIER_BLOCKED, VERIFIER_ERROR
-from src.gate.merge_verifier import (
-    VERIFIER_OK, should_verify, verify_merge_safety,
-)
-from src.notifier.github_comment import post_plain_pr_comment
 
 logger = logging.getLogger(__name__)
 
@@ -65,34 +60,10 @@ class AutoMergeAction(GateAction):
                 ctx.result.get("ai_review_status"), ctx.repo_name, ctx.pr_number,
             )
             return
-        # 2nd-LLM 검증 가드 — 경계 밴드 자동머지만 OpenAI 검증자로 안전성/조작 판정.
-        # 키 미설정/밴드 밖/kill-switch 면 should_verify=False → 검증 skip(현행 동작 보존).
-        # 2nd-LLM verifier guard — only borderline-band auto-merges are verified.
-        # When key unset / outside band / kill-switch off → should_verify=False → skip (behavior preserved).
-        if should_verify(score=ctx.score, merge_threshold=ctx.config.merge_threshold):
-            verdict = await verify_merge_safety(ctx)
-            if verdict.status != VERIFIER_OK or not verdict.safe or verdict.manipulation_detected:
-                reason = "; ".join(verdict.reasons) or verdict.status
-                # 검증자 오류(api/parse) = VERIFIER_ERROR / 정상 판정의 unsafe·조작 = VERIFIER_BLOCKED.
-                # 구조화 로그에 정규 태그 기록(merge_attempt DB row 는 engine 단일출처 규칙 보존 — api.md).
-                # Verifier error → VERIFIER_ERROR; a successful unsafe/manipulation verdict → VERIFIER_BLOCKED.
-                # Tag emitted in the structured log (merge_attempt DB row stays engine-single-source per api.md).
-                block_tag = VERIFIER_ERROR if verdict.status != VERIFIER_OK else VERIFIER_BLOCKED
-                logger.warning(
-                    "merge verifier blocked auto-merge (tag=%s status=%s) — repo=%s pr=%s: %s",
-                    block_tag, verdict.status, ctx.repo_name, ctx.pr_number, reason,
-                )
-                try:
-                    await post_plain_pr_comment(
-                        ctx.github_token, ctx.repo_name, ctx.pr_number,
-                        f"🛑 Auto-merge withheld by the 2nd-LLM cross-vendor verifier "
-                        f"(Claude review ↔ GPT verification) — merge-safety check failed.\n\n"
-                        f"- status: `{verdict.status}`\n- reasons: {reason}",
-                    )
-                except Exception:  # pylint: disable=broad-exception-caught  # noqa: BLE001
-                    logger.exception("verifier block comment failed (repo=%s pr=%s)",
-                                     ctx.repo_name, ctx.pr_number)
-                return
+        # 2nd-LLM 검증 가드는 engine._run_auto_merge 진입부로 단일출처화됨(#859 P1-1 parity) —
+        # 자동/반자동 양 경로가 공유한다. result 를 전달해 가드가 diff/리뷰 요약을 검증할 수 있게 한다.
+        # The 2nd-LLM verifier guard is single-sourced into engine._run_auto_merge (#859 P1-1 parity),
+        # shared by auto/semi-auto paths. Pass result so the guard can judge the diff/review summary.
         from src.gate import engine  # pylint: disable=import-outside-toplevel
         await engine._run_auto_merge(  # pylint: disable=protected-access
             ctx.config,
@@ -101,6 +72,7 @@ class AutoMergeAction(GateAction):
             ctx.pr_number,
             ctx.score,
             analysis_id=ctx.analysis_id,
+            result=ctx.result,
         )
 
 
