@@ -135,6 +135,55 @@ async def test_call_openai_verifier_falls_back_to_http_when_sdk_absent(monkeypat
     assert json.loads(text)["safe"] is True
 
 
+# max_completion_tokens 상한 회귀 가드 (#859 회고 P1-4) — 응답 토큰 폭증 방어 (SDK + httpx 양 경로)
+# max_completion_tokens cap regression guards (#859 retro P1-4) — bound response tokens on both SDK + httpx paths
+
+
+@pytest.mark.asyncio
+async def test_call_openai_verifier_passes_max_completion_tokens(monkeypatch):
+    from src.constants import VERIFIER_MAX_OUTPUT_TOKENS
+    seen = {}
+
+    class _CapCompletions:
+        async def create(self, **kwargs):
+            seen.update(kwargs)
+            return _FakeResp(json.dumps({"safe": True, "manipulation_detected": False, "reasons": []}))
+
+    class _CapChat:
+        completions = _CapCompletions()
+
+    class _CapClient:
+        def __init__(self, **kwargs):
+            self.chat = _CapChat()
+        async def aclose(self):
+            pass
+
+    import openai as _openai
+    monkeypatch.setattr(_openai, "AsyncOpenAI", _CapClient)
+    await openai_client.call_openai_verifier(
+        "SYS", "USER", api_key="k", model="gpt-5-mini", timeout=5.0)
+    assert seen.get("max_completion_tokens") == VERIFIER_MAX_OUTPUT_TOKENS
+
+
+@pytest.mark.asyncio
+async def test_http_fallback_passes_max_completion_tokens(monkeypatch):
+    from src.constants import VERIFIER_MAX_OUTPUT_TOKENS
+    _force_sdk_absent(monkeypatch)
+    payload = {"choices": [{"message": {"content": json.dumps({"safe": True})}}],
+               "usage": {"prompt_tokens": 1, "completion_tokens": 1}}
+    seen = {}
+
+    class _CapHttpClient:
+        async def post(self, url, **kwargs):
+            seen.update(kwargs.get("json", {}))
+            return _FakeHttpResp(payload)
+
+    monkeypatch.setattr(openai_client, "get_http_client", lambda: _CapHttpClient())
+    await openai_client.call_openai_verifier(
+        "SYS", "USER", api_key="k", model="gpt-5-mini", timeout=5.0)
+    assert seen.get("max_completion_tokens") == VERIFIER_MAX_OUTPUT_TOKENS
+
+
 @pytest.mark.asyncio
 async def test_http_fallback_reraises_on_api_error_fail_closed(monkeypatch):
     # fallback 경로도 API 오류를 re-raise 해야 호출자가 fail-closed 처리 가능

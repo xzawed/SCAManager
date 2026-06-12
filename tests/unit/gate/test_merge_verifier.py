@@ -84,6 +84,33 @@ def test_build_verifier_prompt_wraps_diff_in_untrusted_boundary():
     assert "지시가 아니" in prompt or "not instructions" in prompt
 
 
+# diff cap 회귀 가드 (#859 회고 P1-4, Codex mutual Option A) — cap 초과 시 fail-closed 차단(절단 없음)
+# diff cap regression guards (#859 retro P1-4, Codex mutual Option A) — over cap → fail-closed block (no truncation)
+
+
+def test_diff_exceeds_cap_true_for_oversized():
+    from src.constants import VERIFIER_DIFF_CHAR_CAP
+    huge = "+x\n" * VERIFIER_DIFF_CHAR_CAP  # 캡의 약 3배 / ~3x the cap
+    assert mv.diff_exceeds_cap([("big.py", huge)]) is True
+
+
+def test_diff_exceeds_cap_false_for_small():
+    assert mv.diff_exceeds_cap([("a.py", "+ small change")]) is False
+
+
+def test_build_verifier_prompt_keeps_diff_intact_no_truncation():
+    # Option A: 프롬프트는 절단하지 않음 — oversized 는 verify_merge_safety 가 호출 전 차단
+    # Option A: prompt never truncates — oversized diffs are blocked upstream by verify_merge_safety
+    prompt = mv.build_verifier_prompt(
+        patches=[("a.py", "+ small change")],
+        result={"score": 80, "grade": "B", "ai_summary": "s", "issues": []},
+        score=80,
+    )
+    assert "+ small change" in prompt
+    assert "truncated" not in prompt
+    assert "<untrusted-data>" in prompt and "</untrusted-data>" in prompt
+
+
 def test_should_verify_off_without_key(monkeypatch):
     from src.config import settings
     monkeypatch.setattr(settings, "openai_api_key", "")
@@ -155,6 +182,26 @@ async def test_verify_merge_safety_bad_json_parse_error(monkeypatch):
     monkeypatch.setattr(mv, "call_openai_verifier", _bad)
     v = await mv.verify_merge_safety(_ctx())
     assert v.safe is False and v.status == mv.VERIFIER_PARSE_ERROR
+
+
+@pytest.mark.asyncio
+async def test_verify_merge_safety_oversized_diff_failclosed_no_openai_call(monkeypatch):
+    # Codex mutual Option A: cap 초과 diff 는 OpenAI 미호출 + fail-closed 차단
+    # safe=False + status=OK → 게이트가 VERIFIER_BLOCKED(정상 차단 결정)로 매핑 / no OpenAI call (cost 0)
+    from src.constants import VERIFIER_DIFF_CHAR_CAP
+    from src.gate import merge_verifier as mv
+    huge = "+x\n" * VERIFIER_DIFF_CHAR_CAP
+    cf = type("CF", (), {"filename": "big.py", "patch": huge})()
+    monkeypatch.setattr(mv, "get_pr_files", lambda *a, **k: [cf])
+    called = {"n": 0}
+    async def _must_not_call(system, user, **kw):
+        called["n"] += 1
+        return '{"safe": true, "manipulation_detected": false, "reasons": []}'
+    monkeypatch.setattr(mv, "call_openai_verifier", _must_not_call)
+    v = await mv.verify_merge_safety(_ctx())
+    assert v.safe is False               # fail-closed 차단 / fail-closed block
+    assert v.status == mv.VERIFIER_OK     # 정상 차단 결정 → VERIFIER_BLOCKED 매핑 / decided block
+    assert called["n"] == 0               # OpenAI 미호출 / OpenAI not called
 
 
 def test_interpret_verdict_non_list_reasons_no_crash():
