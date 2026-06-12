@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [정합성 감사 P2 백로그 처리 — 6 PR (#874 dead-code·#875 보안 escape/sanitize·#876 pipeline 방어·#877 db/i18n/관측·#878 test/UI·#879 CodeQL, 단위 +8, 백로그 보류 5, 2026-06-12)](#정합성-감사-p2-백로그-처리--6-pr-874879-2026-06-12)
 - [전체 정합성 감사 — 보안/correctness P1 4 PR (#868 P0 hook auth·#869 U0 cross-tenant·#870 C6+C2 AI-fail fail-open·#871 C3 retry 격리, 단위 +12, 2026-06-12)](#전체-정합성-감사--보안correctness-p1-4-pr-868871-2026-06-12)
 - [잔여/후속 세션 — #865 검증자 봉인 P1-1 반자동 parity (verifier_blocks_merge engine 단일출처화, Option A, 단위 +9, 2026-06-12)](#잔여후속-세션--865-검증자-봉인-p1-1-반자동-parity-2026-06-12)
 - [잔여/후속 세션 — #863 머지 (검증자 봉인 P1-4 diff/token cap fail-closed + max_completion_tokens, 단위 +6, 2026-06-12)](#잔여후속-세션--863-머지-검증자-봉인-p1-4-2026-06-12)
@@ -88,6 +89,21 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 정합성 감사 P2 백로그 처리 — 6 PR (#874~879) (2026-06-12)
+
+**날짜**: 2026-06-12 | **트리거**: 사용자 "C1 + P2 전부" 결정 | **상태**: 6 PR 머지 완료, 백로그 보류 5건
+
+**흐름**: 직전 P1 4 PR(#868~871) 머지 후 사용자가 "나머지 P1/P2 스코프" 질문에 **C1 + P2 전부**(장기·PR 다수) 선택 → integrity-audit full 백로그(P2 22 + 미검증 4)를 테마별 cohesive 배치로 처리. 각 PR = 직접 EXACT 재검증 → TDD → 구현 → Codex mutual(push 전) → 머지.
+
+- **#874 dead-code/docstring**: C23 `review_prompt.has_test_files`(src 호출처 0, test_score=LLM 위임) 제거 + `is_test_file` import 정리 · C24 `merge_reasons._MERGEABLE_STATE_TO_REASON` has_hooks/clean 엔트리 제거(호출처 `_MERGEABLE_BLOCK` 가드 내부라 도달 불가, 테스트 non-block→UNKNOWN 갱신) · C25 `OPTIONAL_CHECK_ONLY` dead 상수 제거 · C26 merge_retry expired docstring 정정(force-push→abandoned:206, expired=max_age만:255).
+- **#875 webhook/notifier 보안**: C13 railway `logger.warning` exc → `sanitize_for_log(str(exc))`(NOSONAR 단언 정합) · C20 telegram 비인가 경고 repo.full_name sanitize · C27 telegram 봇 명령 응답(parse_mode=HTML, telegram.py:232)의 사용자 제어값(display_name/github_login·repo_name 3곳·repo.full_name) **전수 html.escape**(분석-알림 경로 대칭). 🔴 C12(OTP rate-limit) 백로그 보류.
+- **#876 pipeline 하드닝**: C10 python.py pylint/bandit 파서 `item["key"]` 직접 subscript → `item.get()` 방어(키 누락/None 시 KeyError 가 analyzer 전체 중단→이슈 전량 무음 폐기+incomplete 미설정 fail-open 차단, golangci_lint 패턴, 6키 missing+None 안전) · C18 `detect_languages_from_patches` content 전달(shebang-only 확장자 없는 스크립트 감지, 정적분석 경로 대칭). 🔴 C22(diff 절단) 백로그 보류.
+- **#877 db/i18n/관측**: C14 `insight_narrative_cache_repo.invalidate` .first() 단일삭제 → bulk delete(전역 캐시 user_id,days,language 다중 행 중 비결정적 wrong-language eviction → Claude API 재생성 차단) · C28 i18n `loader.get_text` format except 에 ValueError 추가(불균형/리터럴 중괄호 번역문 렌더 500 차단) · C11 merge_retry 관측 로그/Issue threshold enqueue 스냅샷 → live `cfg.merge_threshold`(게이트 :177 정합, '머지 가른 임계값'↔'관측 기록' 발산 해소).
+- **#878 test/UI**: C30 dashboard grade dead assertion(value=85 고정인데 grade in 전체+가공 'B+' 허용 → `==B`) · U3 analysis_detail 트렌드 차트 클릭 nav REPO_NAME 미인코딩 → `encodeURIComponent`(형제 feedback URL 대칭, 라우트 경로 분절 nav 깨짐 해소).
+- **#879 CodeQL fix-up**: C5(#873) ORM 부작용 import 가 CodeQL py/unused-import #507~514(8건) 유발(`# noqa: F401`는 flake8만 억제) → 클래스 import + `_REGISTERED_MODELS` 튜플 참조로 'used' 표시(테이블 등록 부작용 유지).
+
+전 PR TDD·Codex mutual OK(다수 NG 적발→동일 PR 즉시 수정→재검증, 정책 18 §3b — C10 None 미봉인·C11 failure 경로·C9 주석 이중언어·C30 테스트 등)·CI green·pylint 10.00. 단위 4907→4915(+8)·통합 154·전체 5069. **🔴 백로그 보류 5건** (`project-audit-backlog-2026-06-12` 메모리): **C1**(`save_gate_decision` dead wrapper + 55 inert patch — 🔴 git `-S` 로 #712[사이클 149]에서 마지막 호출 제거 확인 = CONFIRMED dead, 2026-06-11 deep-research FP-기각["auto 경로 사용 중"]이 부정확했음 reconcile; 대규모 테스트 리팩토링이라 별도 세션) · **C12**(OTP brute-force rate-limit feature) · **C22**(AI리뷰 diff 절단 score-integrity 다층 신호) · **U1**(0027 RLS legacy NULL, migration 민감·미검증) · **U2**(effects.js hx-boost 애니메이션, E2E 필요).
 
 ## 전체 정합성 감사 — 보안/correctness P1 4 PR (#868~871) (2026-06-12)
 
