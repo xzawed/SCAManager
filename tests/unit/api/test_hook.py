@@ -338,6 +338,78 @@ def test_hook_result_invalid_token():
     mock_db.add.assert_not_called()
 
 
+def test_hook_result_empty_token_with_null_config_token_rejected():
+    # 🔴 핵심 Red (P0 인증 우회 회귀 가드):
+    # config.hook_token=None 행 + body.token="" 빈 문자열 → secure_str_compare(None, "")
+    # 이 None/"" 둘 다 b"" 로 인코딩되어 b""==b"" True 를 반환 → 현재 코드는 인증 통과(200).
+    # fix 후엔 빈/NULL 토큰 가드가 403 + add 미호출을 보장해야 한다.
+    # CORE Red guard: a config row with hook_token=None plus an empty body.token bypasses auth
+    # because secure_str_compare(None, "") encodes both sides to b"" → b""==b"" is True (current
+    # code returns 200). After the fix the empty/NULL-token guard must reject with 403 + no add().
+    mock_db = MagicMock()
+    mock_config = MagicMock()
+    mock_config.hook_token = None
+    mock_db.query.return_value.filter.return_value.first.return_value = mock_config
+
+    with patch("src.api.hook.SessionLocal", return_value=_make_session_mock(mock_db)):
+        r = client.post("/api/hook/result", json={
+            "repo": "owner/repo",
+            "token": "",
+            "commit_sha": "abc123",
+            "commit_message": "feat: 테스트",
+            "ai_result": _AI_RESULT,
+        })
+
+    assert r.status_code == 403
+    mock_db.add.assert_not_called()
+
+
+def test_hook_result_empty_token_with_set_config_token_rejected():
+    # 빈 제출 토큰 자체 차단 회귀 가드: config.hook_token="real-token" + body.token="" → 403.
+    # 현재도 secure_str_compare("real-token","")=False 라 이미 403(통과 OK) — 빈 토큰 거부 고정.
+    # Regression guard for empty submitted token: hook_token set + body.token="" → 403 (already
+    # passes today since secure_str_compare("real-token","") is False; pins empty-token rejection).
+    mock_db = MagicMock()
+    mock_config = MagicMock()
+    mock_config.hook_token = "real-token"
+    mock_db.query.return_value.filter.return_value.first.return_value = mock_config
+
+    with patch("src.api.hook.SessionLocal", return_value=_make_session_mock(mock_db)):
+        r = client.post("/api/hook/result", json={
+            "repo": "owner/repo",
+            "token": "",
+            "commit_sha": "abc123",
+            "commit_message": "feat: 테스트",
+            "ai_result": _AI_RESULT,
+        })
+
+    assert r.status_code == 403
+    mock_db.add.assert_not_called()
+
+
+def test_hook_result_null_config_token_nonempty_token_rejected():
+    # NULL config 토큰은 어떤 제출 토큰도 거부 회귀 가드: hook_token=None + body.token="anything" → 403.
+    # 현재도 secure_str_compare(None,"anything")=False 라 이미 403(통과 OK) — NULL config 거부 고정.
+    # Regression guard: a NULL config token rejects any submitted token (None + "anything" → 403;
+    # already passes today since secure_str_compare(None,"anything") is False; pins NULL rejection).
+    mock_db = MagicMock()
+    mock_config = MagicMock()
+    mock_config.hook_token = None
+    mock_db.query.return_value.filter.return_value.first.return_value = mock_config
+
+    with patch("src.api.hook.SessionLocal", return_value=_make_session_mock(mock_db)):
+        r = client.post("/api/hook/result", json={
+            "repo": "owner/repo",
+            "token": "anything",
+            "commit_sha": "abc123",
+            "commit_message": "feat: 테스트",
+            "ai_result": _AI_RESULT,
+        })
+
+    assert r.status_code == 403
+    mock_db.add.assert_not_called()
+
+
 def test_hook_result_missing_fields():
     # 필수 필드(token) 누락 → 422 Unprocessable Entity 반환
     r = client.post("/api/hook/result", json={
