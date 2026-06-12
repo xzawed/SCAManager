@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [잔여/후속 세션 — #865 검증자 봉인 P1-1 반자동 parity (verifier_blocks_merge engine 단일출처화, Option A, 단위 +9, 2026-06-12)](#잔여후속-세션--865-검증자-봉인-p1-1-반자동-parity-2026-06-12)
 - [잔여/후속 세션 — #863 머지 (검증자 봉인 P1-4 diff/token cap fail-closed + max_completion_tokens, 단위 +6, 2026-06-12)](#잔여후속-세션--863-머지-검증자-봉인-p1-4-2026-06-12)
 - [잔여/후속 세션 — docs 정합·사이클 166~#859 5+1 회고·P2 하드닝 (#860/#861 — db-migration/INDEX 백필·회고 아카이브·verifier fail-closed 엄격파싱+CI 하드닝·CodeQL fix-up, 단위 +16, 2026-06-11)](#잔여후속-세션--docs-정합회고p2-하드닝-860861-2026-06-11)
 - [2nd-LLM 머지 검증자 도입 (cross-vendor AI 거버넌스 가드 — OpenAI GPT 가 경계밴드 자동머지의 머지안전성+조작/환각 독립검증, 순수 opt-in, SDK 우선+httpx fallback, 브레인스토밍→spec→subagent-driven 9 task, +26 단위, feat/merge-verifier, 2026-06-11)](#2nd-llm-머지-검증자-도입-cross-vendor-ai-거버넌스-가드-2026-06-11)
@@ -86,6 +87,21 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 잔여/후속 세션 — #865 검증자 봉인 P1-1 반자동 parity (2026-06-12)
+
+**날짜**: 2026-06-12 | **트리거**: 사용자 "순서대로 수행 → 머지후 다음작업" | **상태**: #863·#864·#865 머지 완료 (열린 PR 0)
+
+**흐름**: 사용자 "순서대로 수행" → ① #863 머지 + sync #864 → ② RLS Phase 4 운영 가이드 제공(사용자 영역) → ③ 검증자 봉인 P1-1 = **AskUserQuestion Option A confirm** → TDD(test-writer) → 구현 → pipeline-reviewer + Codex mutual → #865 → 머지 + combined sync.
+
+- **#865 (검증자 봉인 P1-1 — 반자동 Telegram parity)**: 검증 가드(should_verify→verify_merge_safety→차단 시 PR 코멘트)가 자동 경로(`AutoMergeAction.execute`)에만 존재 → 반자동 Telegram(`handle_gate_callback`)이 `engine._run_auto_merge` 직접 위임 시 **검증자 우회**(parity 갭). 가드를 신규 `merge_verifier.verifier_blocks_merge(*, github_token, repo_name, pr_number, result, score, merge_threshold) -> bool`(+ `_MergeVerifyContext` frozen dataclass)로 추출 + `_run_auto_merge` 진입부(threshold 직후·`SessionLocal` 전) **단일출처화** → 자동·반자동 양 경로 공유. 양 호출자 `result` 전달(자동 `ctx.result`·반자동 `result_dict`, 미전달 시 빈 dict). 🔴 retry 서비스(`process_pending_retries`)는 `_run_auto_merge` 미경유(`merge_pr` 직접)라 CI 완료 재시도마다 재검증 안 됨(초기 머지 1회만 — 의도). fail-closed 보존(api_error/parse_error → 차단). `post_plain_pr_comment` deferred import(순환 회피).
+- **설계 결정**: 사용자 **Option A confirm**(정책 18 §3a + gate High tier — AskUserQuestion 3옵션[A 단일출처화·B 미러링·C 백로그] 중 A). A = parity 완전 보장 + DRY + 형제 가드 일관(B=2곳 중복 drift 위험·C=활성화 시 봉인 의무 잔존).
+- **검증**: TDD 14 신규(`verifier_blocks_merge` 7 + `engine` 가드 6 + telegram parity 1, 기존 `test_auto_merge_verifier.py` 5 seam 이동 재작성). gate+webhook 404 pass. pipeline-reviewer **APPROVE**(P0 0 — 6항목 실측: retry 미경유·자동 경로 동작 보존·순서 변경 무해·fail-closed 유지·NPE 안전·import 순환 0). Codex mutual **OK**(5항목 + AST 파싱 + git diff --check). pylint 10.00, flake8 신규 0.
+- **검증자 INACTIVE라 운영 동작 영향 0**(`OPENAI_API_KEY` 미설정 시 `should_verify=False`). 활성화 시 자동/반자동 양 경로 검증 발효.
+- **P1(reviewer 권고, INACTIVE라 영향 0)**: 검증자 차단 시 `MergeAttempt` DB row 미기록(로그+PR코멘트만, engine 단일출처 규칙 api.md). 반자동도 동일 가드 타나 운영 활성화 PR에서 "verifier-blocked DB 기록"(#859 회고 P2 백로그) 재검토.
+- **docs sync**: `.claude/rules/api.md`(반자동 위임 룰 + 검증자 단일출처 문단)·`docs/architecture.md`(`verifier_blocks_merge` 추가). 본 combined sync = STATE/README/cycle-history 수치(#863 sync #864 의 4886 → #865 의 4895·전체 5049) — #864 스택 충돌 회피로 분리했던 것 통합.
+
+Codex mutual OK(#865 push 전)·CI 8/8 green. **검증자 봉인 P1 코드상 3건 전부 완료**(interpret_verdict #861·diff cap #863·parity #865) → 활성화(`OPENAI_API_KEY` BYO, 사용자)만 잔여. 단위 4886→4895(+9)·통합 154·전체 5049. pylint 10.00.
 
 ## 잔여/후속 세션 — #863 머지 (검증자 봉인 P1-4) (2026-06-12)
 
