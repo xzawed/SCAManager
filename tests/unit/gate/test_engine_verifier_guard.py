@@ -21,7 +21,6 @@ os.environ.setdefault("TELEGRAM_BOT_TOKEN", "123:ABC")
 os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 os.environ.setdefault("ANTHROPIC_API_KEY", "")
 
-import pytest
 from unittest.mock import AsyncMock, patch
 
 from src.gate.engine import _run_auto_merge
