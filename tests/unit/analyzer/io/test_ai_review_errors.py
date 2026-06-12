@@ -37,6 +37,48 @@ from src.analyzer.io.ai_review import (
 
 
 # ──────────────────────────────────────────────────────────────────────────
+# 점수 키 누락 → parse_error (C2 — hook keys_present 와 parity, 인플레 fail-open 봉인)
+# ──────────────────────────────────────────────────────────────────────────
+
+
+def test_parse_response_missing_commit_score_key_is_parse_error():
+    """🔴 commit_message_score 키 누락 → parse_error (인플레 default 17 로 success 위장 차단).
+
+    data.get(key, DEFAULT) 가 키 부재 시 17(인플레)을 ok=True 로 반환 → 이전엔 success →
+    #804 ai_review_failed 게이트 미작동(auto-merge/approve fail-open). 키 누락은 채점 안 된
+    응답이므로 parse_error 로 표시해 NULL-persist + 게이트 차단을 유지한다.
+    """
+    result = _parse_response('{"direction_score": 18, "test_score": 9, "summary": "ok"}')
+    assert result.status == "parse_error"
+
+
+def test_parse_response_missing_direction_score_key_is_parse_error():
+    """direction_score 키 누락 → parse_error (commit 과 동일 인플레 봉인)."""
+    result = _parse_response('{"commit_message_score": 15, "test_score": 9, "summary": "ok"}')
+    assert result.status == "parse_error"
+
+
+def test_parse_response_all_score_keys_present_is_success():
+    """commit/direction/test 키 모두 존재 + 숫자 → success 보존 (회귀 가드)."""
+    result = _parse_response(
+        '{"commit_message_score": 15, "direction_score": 18, "test_score": 9, "summary": "ok"}'
+    )
+    assert result.status == "success"
+
+
+def test_parse_response_missing_test_score_key_stays_success():
+    """test_score 키 부재 → has_tests 폴백(부재=0, 인플레 X)이라 success 보존 (정당 처리).
+
+    test_score 는 commit/direction 과 달리 _coerce_test_score 의 has_tests 레거시 폴백으로
+    부재 시 0(보수적, 인플레 아님)을 정당하게 처리하므로 keys_present 검사에서 제외한다.
+    """
+    result = _parse_response(
+        '{"commit_message_score": 15, "direction_score": 18, "summary": "ok"}'
+    )
+    assert result.status == "success"
+
+
+# ──────────────────────────────────────────────────────────────────────────
 # anthropic API 예외 경로 — 모든 케이스 graceful "api_error" fallback
 # ──────────────────────────────────────────────────────────────────────────
 

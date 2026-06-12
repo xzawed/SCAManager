@@ -100,7 +100,28 @@ class ApproveAction(GateAction):
             logger.error("GitHub Review 실패: %s", type(exc).__name__)
 
     async def _run_semi_auto(self, ctx: GateContext) -> None:
-        """Semi-auto Approve — Telegram 인라인 키보드 발송."""
+        """Semi-auto Approve — Telegram 인라인 키보드 발송.
+
+        🔴 정적분석 불완전·AI 리뷰 실패 시 가드(_run_auto 와 대칭): 인플레 기본 점수를 사람에게
+        승인 버튼으로 노출하면 오해된 점수로 approve+merge 될 수 있으므로 발송하지 않는다
+        (#8/#779 fail-open 봉인의 semi-auto 경로 — 이전엔 자동 경로에만 가드 존재).
+        Hold the semi-auto approval request when static analysis is incomplete or the AI review
+        genuinely failed (mirrors _run_auto): showing an inflated default score on a human approval
+        button could lead to approve+merge of unvetted code (#8/#779 fail-open seal for the semi-auto
+        path — previously only the auto path had the guard).
+        """
+        if ctx.result.get("static_analysis_incomplete"):
+            logger.warning(
+                "static analysis incomplete — semi-auto approve skipped (repo=%s, pr=%s)",
+                ctx.repo_name, ctx.pr_number,
+            )
+            return
+        if ai_review_failed(ctx.result):
+            logger.warning(
+                "AI review failed (%s) — semi-auto approve skipped (repo=%s, pr=%s)",
+                ctx.result.get("ai_review_status"), ctx.repo_name, ctx.pr_number,
+            )
+            return
         if not ctx.config.notify_chat_id:
             logger.warning(
                 "semi-auto 모드이나 notify_chat_id 미설정: %s",

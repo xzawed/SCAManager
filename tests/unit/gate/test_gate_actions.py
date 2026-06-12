@@ -169,6 +169,44 @@ async def test_approve_action_semi_auto_calls_send_gate_request():
 
 
 @pytest.mark.asyncio
+async def test_approve_action_semi_auto_skips_when_ai_review_failed():
+    """🔴 C6: AI 리뷰 실제 실패(api_error/parse_error) 시 semi-auto 승인 요청 미발송.
+
+    인플레 기본 점수를 사람에게 승인 버튼으로 노출하면 오해된 점수로 approve+merge 될 수
+    있으므로 발송하지 않는다 (_run_auto 가드 대칭 — 이전엔 자동 경로에만 가드 존재).
+    """
+    from src.gate.actions.approve import ApproveAction  # pylint: disable=import-outside-toplevel
+    from src.gate.actions import GateContext  # pylint: disable=import-outside-toplevel
+    cfg = _make_config(approve_mode="semi-auto")
+    cfg.notify_chat_id = "-100123"
+    ctx = GateContext(
+        repo_name="owner/repo", pr_number=42, analysis_id=1,
+        result={"score": 89, "ai_review_status": "api_error"},  # 인플레 default, 실제 AI 실패
+        github_token="ghp_test", config=cfg, score=89,
+    )
+    with patch("src.gate.actions.approve.send_gate_request", new=AsyncMock()) as mock_gate:
+        await ApproveAction().execute(ctx)
+    mock_gate.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_approve_action_semi_auto_skips_when_static_analysis_incomplete():
+    """🔴 C6: 정적분석 불완전(타임아웃) 시 semi-auto 승인 요청 미발송 (_run_auto 가드 대칭)."""
+    from src.gate.actions.approve import ApproveAction  # pylint: disable=import-outside-toplevel
+    from src.gate.actions import GateContext  # pylint: disable=import-outside-toplevel
+    cfg = _make_config(approve_mode="semi-auto")
+    cfg.notify_chat_id = "-100123"
+    ctx = GateContext(
+        repo_name="owner/repo", pr_number=42, analysis_id=1,
+        result={"score": 90, "static_analysis_incomplete": True},
+        github_token="ghp_test", config=cfg, score=90,
+    )
+    with patch("src.gate.actions.approve.send_gate_request", new=AsyncMock()) as mock_gate:
+        await ApproveAction().execute(ctx)
+    mock_gate.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_approve_action_auto_skips_when_static_analysis_incomplete():
     """정적분석 불완전(타임아웃) 시 score 충족이어도 post_github_review 를 호출하지 않아야 한다.
     Must not call post_github_review even when score qualifies, if static analysis is incomplete.
