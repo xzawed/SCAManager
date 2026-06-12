@@ -100,25 +100,29 @@ def upsert(
 
 
 def invalidate(db: Session, *, user_id: int, days: int) -> bool:
-    """전체 대시보드 캐시 강제 무효화 (DELETE, repo_id=NULL).
+    """전체 대시보드 캐시 강제 무효화 (DELETE, repo_id=NULL — 모든 언어 행).
 
-    Force invalidate global dashboard cache (DELETE, repo_id=NULL).
-    Returns True if deleted, False if not found.
+    Force invalidate global dashboard cache (DELETE, repo_id=NULL — all language rows).
+    Returns True if any row deleted, False if none.
+
+    🔴 C14: 전역 캐시는 부분 유니크 (user_id, days, language) 키라 동일 (user_id, days)에 언어별
+    다중 행이 공존한다. 이전 `.first()` 단일 삭제는 ORDER BY 없이 비결정적으로 무관한 언어 행을
+    지워 cross-language eviction(타 언어 캐시 부수 손실 → 불필요한 Claude API 재생성)을 유발했다.
+    bulk delete 로 (user_id, days, global)의 모든 언어 행을 결정론적으로 무효화한다.
+    C14: the global cache is keyed (user_id, days, language) so multiple language rows coexist; the old
+    `.first()` single-delete non-deterministically evicted an unrelated language. Bulk-delete all.
     """
-    row = (
+    deleted = (
         db.query(InsightNarrativeCache)
         .filter(
             InsightNarrativeCache.user_id == user_id,
             InsightNarrativeCache.days == days,
             InsightNarrativeCache.repo_id.is_(None),
         )
-        .first()
+        .delete(synchronize_session=False)
     )
-    if row is None:
-        return False
-    db.delete(row)
     db.commit()
-    return True
+    return deleted > 0
 
 
 # ─── 0031: repo-scoped cache helpers ─────────────────────────────────────────

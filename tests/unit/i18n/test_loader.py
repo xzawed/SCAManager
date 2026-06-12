@@ -94,6 +94,19 @@ def test_get_text_format_substitution_failure_returns_unformatted():
     assert result == "Dashboard"
 
 
+def test_get_text_unbalanced_brace_returns_unformatted(monkeypatch):
+    """🔴 C28: 번역문에 불균형/리터럴 중괄호 + kwargs → str.format() ValueError 를 graceful 처리.
+
+    'a { b {name}'.format(name='x') 는 ValueError 를 던진다(KeyError/IndexError 아님). 미포착 시
+    페이지 렌더 500 → ValueError 도 포착해 unformatted 원본 반환(의도된 fallback 보존).
+    """
+    from src.i18n import loader  # pylint: disable=import-outside-toplevel
+    monkeypatch.setattr(loader, "_lookup_key", lambda translations, key: "a { b {name}")
+    # ValueError 가 전파되지 않고 unformatted 원본을 반환해야 한다 (이전엔 미포착 → 500)
+    result = loader.get_text("any.key", "en", name="x")
+    assert result == "a { b {name}"
+
+
 def test_get_text_lru_cache_hit():
     """LRU cache 동작 검증 — 동일 locale 재호출 시 캐시 hit."""
     load_translations.cache_clear()
