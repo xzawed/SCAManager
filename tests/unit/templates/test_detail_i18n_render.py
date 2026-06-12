@@ -367,3 +367,13 @@ def test_analysis_detail_cycle143_issue_form_renders():
     """analysis_detail.html ko — 사이클 143 issue_form 라벨 렌더."""
     out = _render("analysis_detail.html", locale="ko", **_analysis_ctx())
     assert "제목" in out  # issue_form.title
+
+
+def test_analysis_detail_trend_nav_encodes_repo_name():
+    """🔴 U3: 트렌드 차트 클릭 nav 가 REPO_NAME 을 encodeURIComponent 로 인코딩(형제 feedback URL 대칭).
+
+    REPO_NAME='owner/repo' 의 '/' 미인코딩 시 라우트 경로 분절로 nav 깨짐 → 인코딩 패턴 봉인.
+    """
+    out = _render("analysis_detail.html", locale="ko", **_analysis_ctx())
+    assert "encodeURIComponent(REPO_NAME)" in out          # 인코딩 적용
+    assert "'/repos/' + REPO_NAME + '/analyses/'" not in out  # 미인코딩 패턴 부재

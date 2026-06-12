@@ -929,7 +929,11 @@
           var idx = elements[0].index;
           var targetId = TREND[idx].id;
           if (targetId !== CURRENT_ID) {
-            window.location.href = '/repos/' + REPO_NAME + '/analyses/' + targetId;
+            // 🔴 U3: REPO_NAME(owner/repo)의 '/' 인코딩 — 형제 feedback URL(encodeURIComponent)과
+            // 대칭. 미인코딩 시 라우트(/repos/{repo}/analyses/{id}) 경로 분절로 nav 깨짐.
+            // U3: encode REPO_NAME (its '/') to mirror the sibling feedback URL; otherwise the route
+            // path is mis-segmented and navigation breaks.
+            window.location.href = '/repos/' + encodeURIComponent(REPO_NAME) + '/analyses/' + targetId;
           }
         }
       },
