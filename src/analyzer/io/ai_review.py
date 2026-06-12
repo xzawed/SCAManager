@@ -242,13 +242,23 @@ def _parse_response(text: str) -> AiReviewResult:
         test_feedback=str(data.get("test_feedback", "")),
         file_feedbacks=list(data.get("file_feedbacks", [])),
     )
-    if not (commit_ok and direction_ok and test_ok):
-        # 점수 필드 비숫자/Infinity — feedback·복구가능 점수는 보존하되 parse_error 로 표시해
+    # 🔴 점수 키 누락 = parse_error (hook _coerce_ai_scores keys_present 와 대칭 — PARITY GUARD).
+    # data.get(key, DEFAULT) 는 키 부재 시 인플레 기본값(17/17→~89/B)을 ok=True 로 반환하므로,
+    # 키 자체가 없으면(채점 안 된 응답) success 로 위장돼 #804 fail-closed 가 작동하지 않는다.
+    # commit/direction 만 검사 — test_score 는 _coerce_test_score 가 has_tests 폴백(부재=0, 인플레 X)
+    # 으로 정당 처리하므로 제외(인플레 위험 없음).
+    # Missing score key = parse_error (mirrors hook _coerce_ai_scores keys_present — PARITY GUARD).
+    # data.get(key, DEFAULT) returns the inflated default (17/17→~89/B) with ok=True when a key is
+    # absent, so a non-scored response would masquerade as success and #804 fail-closed would not fire.
+    # Only commit/direction are checked — test_score's has_tests fallback (absent → 0, not inflated)
+    # legitimately handles absence.
+    score_keys_present = "commit_message_score" in data and "direction_score" in data
+    if not (score_keys_present and commit_ok and direction_ok and test_ok):
+        # 점수 필드 비숫자/Infinity/키누락 — feedback·복구가능 점수는 보존하되 parse_error 로 표시해
         # #804(#8) ai_review_failed 게이트의 fail-closed(auto-merge/approve 차단)를 유지한다.
         # (이전: 전량 _default_result 로 feedback 까지 폐기. 게이트 동작은 동일, 데이터만 보존.)
-        # Non-numeric/Infinity score field: keep feedback/recoverable scores but mark parse_error so
-        # the #804 gate stays fail-closed (was: total discard via _default_result; gate behaviour
-        # unchanged, only the data is preserved).
+        # Non-numeric/Infinity/missing-key score field: keep feedback/recoverable scores but mark
+        # parse_error so the #804 gate stays fail-closed (was: total discard via _default_result).
         result.status = "parse_error"
     return result
 
