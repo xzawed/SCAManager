@@ -101,12 +101,27 @@ async def _run_auto_merge(  # pylint: disable=too-many-arguments,too-many-locals
     score: int,
     *,
     analysis_id: int | None = None,
+    result: dict | None = None,
 ) -> None:
-    """Auto Merge 옵션 — AutoMergeAction이 위임받는 실제 구현.
-    Actual implementation delegated to by AutoMergeAction.
+    """Auto Merge 옵션 — AutoMergeAction(자동)·handle_gate_callback(반자동)이 위임받는 실제 구현.
+    Actual implementation delegated to by AutoMergeAction (auto) and handle_gate_callback (semi-auto).
     P0-H: 독립 SessionLocal() 사용.
+
+    result: 2nd-LLM 검증 가드용 분석 결과 dict(미전달 시 빈 dict — 가드는 키 미설정/밴드 밖이면 skip).
+    result: analysis result dict for the 2nd-LLM verifier guard (defaults to empty; the guard skips
+    when no key / outside band).
     """
     if not (config.auto_merge and score >= config.merge_threshold):
+        return
+    # 2nd-LLM 검증 가드 (단일 출처) — 자동/반자동 양 경로 공유(#859 P1-1 parity).
+    # DB 세션 열기 전 수행 — OpenAI 호출(타임아웃) 동안 세션 점유 방지. 차단 시 머지 미진행.
+    # 2nd-LLM verifier guard (single source) — shared by auto/semi-auto paths (#859 P1-1 parity).
+    # Run before opening the DB session so the OpenAI call doesn't hold one. Block → no merge.
+    from src.gate.merge_verifier import verifier_blocks_merge  # pylint: disable=import-outside-toplevel
+    if await verifier_blocks_merge(
+        github_token=github_token, repo_name=repo_name, pr_number=pr_number,
+        result=result or {}, score=score, merge_threshold=config.merge_threshold,
+    ):
         return
     with SessionLocal() as db:
         if not settings.merge_retry_enabled:

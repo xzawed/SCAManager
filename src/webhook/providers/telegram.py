@@ -179,7 +179,7 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
                 from src.gate import engine  # pylint: disable=import-outside-toplevel
                 await engine._run_auto_merge(  # pylint: disable=protected-access
                     config, github_token, repo.full_name, analysis.pr_number, score,
-                    analysis_id=analysis_id,
+                    analysis_id=analysis_id, result=result_dict,
                 )
         except (httpx.HTTPError, KeyError, ValueError, RuntimeError, SQLAlchemyError):
             # Phase H PR-6A: logger.exception 으로 stack trace 보존

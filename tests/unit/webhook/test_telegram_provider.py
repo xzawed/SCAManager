@@ -177,6 +177,36 @@ async def test_handle_gate_callback_approve_with_auto_merge():
                         assert kw["analysis_id"] == 42
 
 
+# --- P1-1 반자동 parity 핵심 테스트 (검증자 단일출처화 → result 전파) ---
+# Semi-auto verifier parity: handle_gate_callback 의 반자동 auto-merge 가 engine._run_auto_merge
+# 에 위임할 때 result=result_dict 를 함께 전달해야 한다 — engine 진입부의 단일출처 검증 가드
+# (verifier_blocks_merge) 가 실제 diff/리뷰 요약을 판정하려면 result dict 가 필요하기 때문.
+# result 누락 시 가드가 빈 dict 로 검증 → 반자동 경로만 검증 품질 저하 = parity 갭 회귀.
+
+async def test_handle_gate_callback_passes_result_dict_to_engine():
+    """반자동 auto-merge 위임 시 result=result_dict(analysis.result) 를 engine 에 전달한다 (P1-1 parity)."""
+    from src.webhook.router import handle_gate_callback
+    analysis_result = {"score": 85, "grade": "B", "ai_summary": "semi-auto-marker", "issues": []}
+    mock_analysis = MagicMock(id=42, repo_id=1, pr_number=5, score=85, result=analysis_result)
+    mock_repo = MagicMock(id=1, full_name="owner/repo", user_id=1)
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter_by.return_value.first.side_effect = [mock_analysis, mock_repo]
+    config = RepoConfigData(repo_full_name="owner/repo", auto_merge=True, merge_threshold=75)
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock):
+            with patch("src.webhook.providers.telegram.gate_decision_repo.claim_decision"):
+                with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
+                    with patch("src.gate.engine._run_auto_merge", new_callable=AsyncMock) as mock_am:
+                        await handle_gate_callback(analysis_id=42, decision="approve",
+                                                   decided_by="john", telegram_user_id="1")
+                        mock_am.assert_called_once()
+                        kw = mock_am.call_args.kwargs
+                        # 🔴 P1-1: result 가 keyword 인자로 전달되고 analysis.result 와 동일해야 한다.
+                        # The verifier guard inside engine needs the real result to judge merge safety.
+                        assert "result" in kw, "반자동 경로가 result 를 engine 에 전달하지 않음 (parity 갭)"
+                        assert kw["result"] == analysis_result
+
+
 # --- #11 리플레이 가드 테스트 (원자적 claim 패자 = 부수효과 skip) ---
 
 async def test_handle_gate_callback_replay_claim_lost_skips_side_effects():

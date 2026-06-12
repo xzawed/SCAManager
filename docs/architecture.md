@@ -93,7 +93,7 @@ src/
 │   ├── merge_failure_advisor.py # get_advice(reason, language) — i18n (사이클 149)
 │   ├── retry_policy.py          # 순수 함수 — should_retry, compute_next_retry_at, is_expired
 │   ├── _merge_attempt_states.py # MergeAttempt.state lifecycle 정규 상수
-│   └── merge_verifier.py        # 2nd-LLM 머지 검증자 (cross-vendor) — is_in_verification_band/should_verify/build_verifier_prompt/interpret_verdict/verify_merge_safety
+│   └── merge_verifier.py        # 2nd-LLM 머지 검증자 (cross-vendor) — is_in_verification_band/should_verify/build_verifier_prompt/interpret_verdict/verify_merge_safety/verifier_blocks_merge (자동·반자동 단일출처 가드 #859 P1-1)
 ├── notifier/                    # `__init__.py` 가 자동 로드 → REGISTRY 등록
 │   ├── _common.py               # format_ref, get_all_issues, truncate_message
 │   ├── _http.py                 # build_safe_client() — SSRF 방어
