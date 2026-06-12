@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [전체 정합성 감사 — 보안/correctness P1 4 PR (#868 P0 hook auth·#869 U0 cross-tenant·#870 C6+C2 AI-fail fail-open·#871 C3 retry 격리, 단위 +12, 2026-06-12)](#전체-정합성-감사--보안correctness-p1-4-pr-868871-2026-06-12)
 - [잔여/후속 세션 — #865 검증자 봉인 P1-1 반자동 parity (verifier_blocks_merge engine 단일출처화, Option A, 단위 +9, 2026-06-12)](#잔여후속-세션--865-검증자-봉인-p1-1-반자동-parity-2026-06-12)
 - [잔여/후속 세션 — #863 머지 (검증자 봉인 P1-4 diff/token cap fail-closed + max_completion_tokens, 단위 +6, 2026-06-12)](#잔여후속-세션--863-머지-검증자-봉인-p1-4-2026-06-12)
 - [잔여/후속 세션 — docs 정합·사이클 166~#859 5+1 회고·P2 하드닝 (#860/#861 — db-migration/INDEX 백필·회고 아카이브·verifier fail-closed 엄격파싱+CI 하드닝·CodeQL fix-up, 단위 +16, 2026-06-11)](#잔여후속-세션--docs-정합회고p2-하드닝-860861-2026-06-11)
@@ -87,6 +88,19 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 전체 정합성 감사 — 보안/correctness P1 4 PR (#868~871) (2026-06-12)
+
+**날짜**: 2026-06-12 | **트리거**: 사용자 "다음 작업" 위임 (1,2번 수행) | **상태**: 4 PR 머지 완료
+
+**흐름**: 사용자 "다음 작업" → 사이클 종료 점검(Code Scanning #506 fix #867 머지) → `/integrity-audit full`(wf_7fb7c8f8, 179 에이전트·3라운드·14M 토큰) → 확정 32(P0 1·P1 9·P2 22)+미검증 4·위양성 11 차단 → AskUserQuestion(U0 방향=per-user·스코프=보안/correctness P1만) → 4 PR(TDD→Codex mutual→머지) → docs 백로그 sync.
+
+- **#868 (P0 보안 — hook 인증 우회)**: `POST /api/hook/result`(`hook.py:187`)가 `config.hook_token=NULL` + `body.token=""` 시 `secure_str_compare(None,"")`(None·"" 둘 다 `b""` 인코딩 → `b""==b""`=True) → hook_token 미설정 행에 빈 토큰 인증 통과 → 위조 Analysis 저장/점수 오염. NULL 도달: `upsert_repo_config`(`manager.py:73`)가 RepoConfigData field만 생성(hook_token 미포함). 수정: verify 엔드포인트(`hook.py:139`) 대칭 `not body.token or config is None or not config.hook_token` 가드. 🔴 `secure_str_compare` **8 호출처 전수 확인** — 나머지 7(verify L139·internal_cron L42·auth·validator/telegram callback computed HMAC·telegram webhook L259·railway NULL-lookup)은 상류 가드 안전.
+- **#869 (보안 — U0 cross-tenant 노출)**: `/dashboard?mode=security`가 모든 로그인 사용자(require_login)에게 타 테넌트 보안 알림 노출. 라우트(`dashboard.py:224`)는 `user_id=current_user.id` 전달하나 `dashboard_security`가 무시(unused-argument)하고 `list_pending(db)`/`count_by_classification(db)` 전체 조회. RLS owner-bypass(Phase 4 전)라 앱 1차 필터가 유일 방어인데 부재. 수정: `security_alert_log_repo._apply_owner_filter`(`repo_id→Repository.user_id == user_id OR IS NULL`, `_apply_analysis_user_filter` 의미론) + `user_id` 파라미터 + `dashboard_security` 전달. 🔴 alert.user_id 는 pending 시 NULL(`record_user_decision`에서만 설정)이라 repo 소유권 격리. 사용자 결정 = per-user.
+- **#870 (P1 correctness — AI-fail fail-open 2건)**: **C6** approve `_run_semi_auto`가 AI genuine 실패/정적 불완전 시 가드 없이 인플레 점수를 Telegram 승인 버튼 노출 → `_run_auto` 가드(static_incomplete+ai_review_failed) 미러링(발송 skip). **C2** ai_review `_parse_response`가 commit/direction 키 누락 시 `data.get(key,DEFAULT)`로 인플레 default(17/17)를 success 위장 → `keys_present` 검사 추가(hook `_coerce_ai_scores` parity, PARITY GUARD). test_score는 has_tests 폴백(부재=0)이라 제외.
+- **#871 (P1 resilience — C3 retry 격리)**: `process_pending_retries` per-row 핸들러가 `(httpx,SQLAlchemy)`만 포착 → 단일 행 예상외 예외(KeyError 등)가 전체 배치 중단 + 무고한 잔여 행 미처리. broad-except 격리(rollback+release_claim+다음 행 계속). 🔴 **Codex mutual NG**: terminal status 커밋 후 부수효과 예외 시 release_claim이 완료 행 last_failure_reason 오염 → `db.refresh` 후 status='pending'일 때만 release 가드 추가(동일 PR 즉시 수정, 정책 18 §3b) → 재검증 OK.
+
+전 PR TDD(+12: #868+3·#869+1·#870+6·#871+2)·**Codex mutual OK**·CI green·pylint 10.00. 단위 4895→4907·통합 154·전체 5061. **docs 백로그 정정**: 커버리지 95→97%(8497줄/291 실측, C4)·pytest-asyncio 1.3.0→1.4.0(C29, requirements-dev `>=1.4.0` 정합)·env-vars.md VERIFIER 상수 2종(`VERIFIER_DIFF_CHAR_CAP`/`VERIFIER_MAX_OUTPUT_TOKENS`)+`.env.example` `MERGE_VERIFIER_DISABLED`(C7/C9). **나머지 백로그**(P1 tests C1/C5 · P2 22 · 미검증 4) = `project-audit-backlog-2026-06-12` 메모리 차기 세션.
 
 ## 잔여/후속 세션 — #865 검증자 봉인 P1-1 반자동 parity (2026-06-12)
 
