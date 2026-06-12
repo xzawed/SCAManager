@@ -135,3 +135,15 @@ def test_column_appears_in_migration(table_name: str, column_name: str) -> None:
         f"  # 생성된 파일에 op.add_column('{table_name}', sa.Column('{column_name}', ...)) 추가\n"
         f"  # Then add op.add_column('{table_name}', sa.Column('{column_name}', ...)) in the new file\n"
     )
+
+
+def test_all_registered_models_have_tables() -> None:
+    """🔴 11종 ORM 이 import 부작용으로 Base.metadata 에 테이블을 등록했는지 전수 확인.
+
+    _REGISTERED_MODELS 를 실제로 읽어 (a) CodeQL py/unused-global-variable(#515) 해소 +
+    (b) self-contained import 가 의도대로 테이블을 등록함을 봉인(부작용이 사라지면 fail).
+    """
+    registered = set(Base.metadata.tables.keys())
+    missing = [m.__name__ for m in _REGISTERED_MODELS if m.__tablename__ not in registered]
+    assert not missing, f"미등록 ORM 모델: {missing}"
+    assert len(_REGISTERED_MODELS) == 11  # 11종 전수 (신규 ORM 추가 시 동반 갱신)
