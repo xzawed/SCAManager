@@ -931,7 +931,7 @@ async def insight_narrative(  # pylint: disable=too-many-locals
 
 # ── Cycle 73 F2 — Security Mode (Code Scanning + Secret Scanning audit) ──
 # Cycle 73 F2 — Security mode: Code Scanning + Secret Scanning audit overview.
-def dashboard_security(  # pylint: disable=unused-argument
+def dashboard_security(
     db: Session, *, user_id: int | None = None,
 ) -> dict[str, Any]:
     """`/dashboard?mode=security` 카드 데이터 — F2 Phase 1 MVP (read-only).
@@ -943,10 +943,13 @@ def dashboard_security(  # pylint: disable=unused-argument
     # Inline import — keeps top-level import surface minimal (policy 16 default).
     from src.repositories import security_alert_log_repo  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
-    # 사용자별 격리: pending list 만 user_id 별 (audit 카운트는 전체 — admin 영역)
-    # Per-user isolation: pending list filtered by user_id (counts admin-wide for audit).
-    pending = security_alert_log_repo.list_pending(db, limit=5)
-    counts = security_alert_log_repo.count_by_classification(db)
+    # 🔴 사용자별 격리 (1차 앱 필터 — U0 cross-tenant 노출 차단): pending list·audit 카운트 모두
+    # user_id(repo 소유권)로 필터. user_id None(admin/legacy) 시 전체. 라우트는 require_login +
+    # current_user.id 전달 — 이전엔 미전달돼 모든 로그인 사용자가 타 테넌트 알림 노출했다.
+    # Per-user isolation (app-level 1st layer — blocks U0 cross-tenant exposure): both the pending list
+    # and audit counts are filtered by user_id (repo ownership). None → admin/legacy = all.
+    pending = security_alert_log_repo.list_pending(db, user_id=user_id, limit=5)
+    counts = security_alert_log_repo.count_by_classification(db, user_id=user_id)
 
     # AI 분류 분포 정규화 (4 카테고리 — false_positive / used_in_tests / actual_violation / deferred)
     classification_keys = ("false_positive", "used_in_tests", "actual_violation", "deferred", "unclassified")

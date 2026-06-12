@@ -7,7 +7,26 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
+from src.models.repository import Repository
 from src.models.security_alert_log import SecurityAlertProcessLog
+
+
+def _apply_owner_filter(query, user_id: int | None):
+    """🔴 user_id 기반 repo 소유권 격리 (1차 앱 필터 — cross-tenant 노출 차단, U0).
+    Apply repo-ownership isolation by user_id (app-level 1st layer — blocks cross-tenant exposure).
+
+    user_id None → 미적용(admin/legacy). 명시 → repo 소유자 == user_id OR repo 소유자 NULL(legacy 호환).
+    dashboard_service._apply_analysis_user_filter 와 동일 의미론. alert 의 user_id 컬럼은
+    pending 시 NULL(record_user_decision 에서만 설정)이라 repo_id→Repository.user_id 로 격리한다.
+    user_id None → no-op (admin/legacy). Otherwise repo owner == user_id OR owner NULL (legacy compat).
+    Mirrors _apply_analysis_user_filter; the alert.user_id column is NULL while pending, so isolate via
+    repo_id → Repository.user_id.
+    """
+    if user_id is None:
+        return query
+    return query.join(Repository, SecurityAlertProcessLog.repo_id == Repository.id).filter(
+        (Repository.user_id == user_id) | (Repository.user_id.is_(None))
+    )
 
 
 def upsert_alert_log(  # pylint: disable=too-many-arguments
@@ -88,12 +107,16 @@ def record_user_decision(
     return log
 
 
-def list_pending(db: Session, *, repo_id: int | None = None, limit: int = 50) -> list[SecurityAlertProcessLog]:
+def list_pending(
+    db: Session, *, user_id: int | None = None, repo_id: int | None = None, limit: int = 50,
+) -> list[SecurityAlertProcessLog]:
     """user_decision IS NULL 인 pending alert 목록 (dashboard 진입 시 표시).
 
     List pending alerts (user_decision IS NULL) for dashboard display.
+    user_id 명시 시 repo 소유권으로 cross-tenant 격리 (U0).
     """
     q = db.query(SecurityAlertProcessLog).filter(SecurityAlertProcessLog.user_decision.is_(None))
+    q = _apply_owner_filter(q, user_id)
     if repo_id is not None:
         q = q.filter(SecurityAlertProcessLog.repo_id == repo_id)
     return q.order_by(SecurityAlertProcessLog.processed_at.desc()).limit(limit).all()
@@ -102,14 +125,17 @@ def list_pending(db: Session, *, repo_id: int | None = None, limit: int = 50) ->
 def count_by_classification(
     db: Session,
     *,
+    user_id: int | None = None,
     repo_id: int | None = None,
 ) -> dict[str, int]:
     """분류별 alert 카운트 (dashboard baseline 측정 카드).
 
     Count alerts by classification (dashboard baseline measurement card).
     Returns: {classification: count, "total": N, "pending": M}.
+    user_id 명시 시 repo 소유권으로 cross-tenant 격리 (U0).
     """
     q = db.query(SecurityAlertProcessLog)
+    q = _apply_owner_filter(q, user_id)
     if repo_id is not None:
         q = q.filter(SecurityAlertProcessLog.repo_id == repo_id)
     rows = q.all()

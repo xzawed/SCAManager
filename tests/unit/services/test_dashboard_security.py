@@ -68,6 +68,42 @@ def test_dashboard_security_with_pending(db, repo):
     assert row["ai_classification"] == "false_positive"
 
 
+def test_dashboard_security_isolates_by_repo_owner(db):
+    """🔴 U0 cross-tenant 격리: user_id 명시 시 본인 소유 repo 알림만 노출 (타 테넌트 차단).
+
+    이전 결함: dashboard_security 가 user_id 를 무시하고 list_pending/count_by_classification
+    을 전체 조회 → 모든 로그인 사용자가 타 테넌트 보안 알림 노출 (1차 앱 필터 부재).
+    """
+    repo_a = Repository(full_name="alice/repo", user_id=1)
+    repo_b = Repository(full_name="bob/repo", user_id=2)
+    db.add_all([repo_a, repo_b])
+    db.commit()
+    db.refresh(repo_a)
+    db.refresh(repo_b)
+    security_alert_log_repo.upsert_alert_log(
+        db, repo_id=repo_a.id, alert_type="code_scanning", alert_number=1,
+        severity="high", rule_id="alice-rule",
+        ai_classification="actual_violation", ai_confidence=0.9,
+    )
+    security_alert_log_repo.upsert_alert_log(
+        db, repo_id=repo_b.id, alert_type="code_scanning", alert_number=2,
+        severity="high", rule_id="bob-secret",
+        ai_classification="actual_violation", ai_confidence=0.9,
+    )
+
+    # user 1(alice) 관점 — 본인 repo 알림 1건만, bob 알림 미노출
+    result = dashboard_service.dashboard_security(db, user_id=1)
+    assert result["total_alerts"] == 1
+    assert len(result["recent_pending"]) == 1
+    assert result["recent_pending"][0]["rule_id"] == "alice-rule"
+    rule_ids = {r["rule_id"] for r in result["recent_pending"]}
+    assert "bob-secret" not in rule_ids  # 🔴 타 테넌트 시크릿 룰 미노출
+
+    # admin(user_id 미전달) — 전체 노출 (기존 동작 보존)
+    admin_view = dashboard_service.dashboard_security(db)
+    assert admin_view["total_alerts"] == 2
+
+
 def test_dashboard_security_kill_switch_flag(db, monkeypatch):
     """kill-switch 환경변수 활성 시 flag True."""
     monkeypatch.setenv("SECURITY_AUTO_PROCESS_DISABLED", "1")
