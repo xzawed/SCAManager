@@ -237,6 +237,71 @@ class TestProcessPendingRetries:
         # Check claimed_at was reset to None
         assert row.claimed_at is None
 
+    # C3: 단일 행 예상외 예외 격리 — 전체 배치 미중단
+    async def test_unexpected_error_isolates_row_and_continues_batch(self, db_session):
+        """🔴 C3: 한 행의 예상외 예외(ValueError 등)가 전체 배치를 중단하지 않고 격리된다.
+
+        좁은 except (httpx/SQLAlchemy) 만 있으면 한 행의 KeyError/ValueError 가
+        process_pending_retries 전체를 중단해 무고한 잔여 행이 처리 안 되고 claim 이 5분 stale 까지
+        묶였다. broad-except 격리로 실패 행은 클레임 해제 + 나머지 행 계속 처리.
+        """
+        row1 = _seed_queue_row(db_session, commit_sha="aaa111")
+        row2 = _seed_queue_row(db_session, commit_sha="bbb222")
+        calls: list[int] = []
+
+        async def _flaky(_db, row, _now, _counts):
+            calls.append(row.id)
+            if row.id == row1.id:
+                raise ValueError("unexpected single-row defect")
+            # row2 는 정상 (no-op)
+
+        with patch(
+            "src.services.merge_retry_service._process_single_retry",
+            side_effect=_flaky,
+        ):
+            result = await process_pending_retries(
+                db_session, only_ids=[row1.id, row2.id]
+            )
+
+        # 두 행 모두 처리 시도됨 (배치 미중단) + 예외 미전파 (함수 정상 반환)
+        assert row1.id in calls and row2.id in calls
+        # 실패 행은 격리되어 released 카운트 증가
+        assert result["released"] >= 1
+        # 실패 행 클레임 해제 확인 (다음 사이클 재시도 가능)
+        db_session.refresh(row1)
+        assert row1.claimed_at is None
+
+    # C3 (Codex mutual): terminal 커밋 후 예외 → 완료 행 미오염 (release_claim skip)
+    async def test_unexpected_error_after_terminal_commit_does_not_corrupt_row(self, db_session):
+        """🔴 C3 Codex NG fix: 예외가 status 확정(succeeded) 커밋 후 부수효과에서 나면 완료 행을
+        release_claim 으로 건드리지 않는다 (last_failure_reason 오염·재시도 부활 차단).
+
+        broad-except 가 무조건 release_claim 하면 완료(succeeded)된 행의 last_failure_reason 을
+        'unexpected_error'로 덮어써 감사 추적이 오염된다. status='pending' 가드로 방어.
+        """
+        row = _seed_queue_row(db_session, commit_sha="ccc333")
+
+        async def _commit_then_raise(_db, r, _now, _counts):
+            # status 확정 커밋(머지 성공 등) 후 알림 단계에서 예외 — 부분 진행 시나리오
+            db_session.query(MergeRetryQueue).filter_by(id=r.id).update(
+                {"status": "succeeded", "last_failure_reason": None}
+            )
+            db_session.commit()
+            raise ValueError("notification failed after success commit")
+
+        with patch(
+            "src.services.merge_retry_service._process_single_retry",
+            side_effect=_commit_then_raise,
+        ):
+            result = await process_pending_retries(db_session, only_ids=[row.id])
+
+        db_session.refresh(row)
+        # 완료 행 보존: status=succeeded 유지 + last_failure_reason 미오염
+        assert row.status == "succeeded"
+        assert row.last_failure_reason != "unexpected_error"
+        # terminal 행은 released 카운트 미증가 (release_claim 미호출)
+        assert result["released"] == 0
+
     # T9-3: 설정 변경 시 abandoned 마킹
     # T9-3: Config changed → abandoned
     async def test_process_config_changed_abandons(self, db_session):

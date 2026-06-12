@@ -97,6 +97,41 @@ async def process_pending_retries(
                 "retry worker infra error row_id=%d: %s", row.id, type(exc).__name__
             )
             counts["released"] += 1
+        except Exception as exc:  # pylint: disable=broad-exception-caught  # noqa: BLE001
+            # 🔴 예상외 단일 행 결함(KeyError/ValueError 등) 격리 — 전체 배치 중단 방지(C3).
+            # 좁은 except 만 있을 때는 한 행의 예상외 예외가 process_pending_retries 전체를 중단해
+            # 무고한 잔여 claimed 행이 처리 안 되고 claim 이 5분 stale 까지 묶였다. rollback 후 클레임을
+            # 해제(다음 사이클 재시도)하고 전체 traceback 을 보존한 뒤 다음 행을 계속 처리한다.
+            # Isolate an unexpected single-row failure (KeyError/ValueError etc.) so it can't abort the
+            # whole batch (C3): a narrow except let one row's surprise exception abort
+            # process_pending_retries, leaving innocent remaining rows unprocessed and claims held until
+            # the 5-min stale window. Rollback, release the claim (retry next cycle), keep the traceback,
+            # and continue with the next row.
+            logger.exception("retry worker unexpected error row_id=%d", row.id)
+            try:
+                db.rollback()
+                # 🔴 이미 terminal(succeeded/terminal/abandoned/expired)로 커밋된 뒤 부수효과(알림 등)
+                # 에서 예외가 났을 수 있다 — 그 완료 행에 release_claim 을 하면 last_failure_reason 을
+                # 'unexpected_error'로 덮어써 감사 추적을 오염시킨다(Codex mutual 적발). 현재 status 가
+                # 'pending'(미확정·claimed)일 때만 클레임 해제 — terminal 행은 작업 완료라 건드리지 않음.
+                # The exception may have fired after a terminal status was committed (e.g. during the
+                # post-merge notification); calling release_claim then would overwrite last_failure_reason
+                # on a finished row (Codex mutual finding). Only release when status is still 'pending'.
+                db.refresh(row)
+                if row.status == "pending":
+                    _now_naive = now.replace(tzinfo=None) + timedelta(seconds=30)
+                    merge_retry_repo.release_claim(
+                        db,
+                        row.id,
+                        next_retry_at=_now_naive,
+                        last_failure_reason="unexpected_error",
+                        last_detail_message=str(exc)[:200],
+                    )
+                    counts["released"] += 1
+            except Exception:  # pylint: disable=broad-exception-caught  # noqa: BLE001
+                # 클레임 해제 자체 실패해도 배치는 계속 (다음 행 처리). 5분 stale 재클레임이 안전망.
+                # Even if claim release fails, keep the batch going; the 5-min stale reclaim is the net.
+                logger.exception("retry worker: claim release failed row_id=%d", row.id)
 
     return counts
 
