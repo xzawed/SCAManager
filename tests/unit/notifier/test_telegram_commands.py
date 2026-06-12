@@ -199,6 +199,23 @@ def test_handle_connect_accepts_valid_otp(db):
     assert "연결" in result or "linked" in result.lower()
 
 
+def test_handle_connect_escapes_html_in_display_name(db):
+    """🔴 C27: 봇 응답(parse_mode=HTML)의 사용자 제어 display_name HTML 이스케이프.
+
+    display_name 에 <,>,& 가 있으면 raw 노출 시 (a) 자기 채팅 서식 주입 (b) malformed HTML →
+    Telegram API 400 → 봇 silent 실패(가용성). 분석-알림 경로(escape)와 대칭.
+    """
+    future = datetime.now(timezone.utc) + timedelta(minutes=10)
+    _make_user(
+        db, github_id="gh-xss", email="xss@example.com",
+        display_name="Evil<b>Name</b>", telegram_otp="654321",
+        telegram_otp_expires_at=future,
+    )
+    result = handle_message_command(db, "tg-xss", "/connect 654321")
+    assert "Evil&lt;b&gt;Name&lt;/b&gt;" in result   # 이스케이프됨
+    assert "<b>" not in result                       # raw 태그 미노출
+
+
 def test_handle_connect_rejects_expired_otp(db):
     """만료된 OTP는 오류 메시지를 반환해야 한다 (find_by_otp가 None).
     Expired OTP must return an error message (find_by_otp returns None).

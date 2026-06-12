@@ -108,7 +108,7 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
             if user is None or repo.user_id != user.id:
                 logger.warning(  # NOSONAR python:S5145 — sanitized via log_safety
                     "handle_gate_callback: unauthorized tg_user=%s for repo=%s (analysis %d) — skipping",
-                    sanitize_for_log(telegram_user_id), repo.full_name, analysis_id,
+                    sanitize_for_log(telegram_user_id), sanitize_for_log(repo.full_name), analysis_id,  # C20
                 )
                 return
             if analysis.pr_number is None:
