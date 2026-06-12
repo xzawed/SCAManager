@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from html import escape  # C27: 봇 명령 응답(parse_mode=HTML)의 사용자 입력 HTML 이스케이프
 from typing import Any
 
 from sqlalchemy import select
@@ -194,7 +195,8 @@ def _handle_connect(db: Session, telegram_user_id: str, otp: str) -> str:
     # Connect success = linked User.preferred_language (immediate i18n activation)
     user_lang = _resolve_user_language(found)
     default_name = get_text("notifier.commands.connect_default_name", user_lang)
-    name = found.display_name or found.github_login or default_name
+    # C27: display_name/github_login 은 사용자 제어값 — HTML 모드 응답 전 이스케이프 (분석-알림 경로 대칭)
+    name = escape(found.display_name or found.github_login or default_name)
     return get_text("notifier.commands.connect_success", user_lang, name=name)
 
 
@@ -217,7 +219,7 @@ def _handle_stats(db: Session, user: Any, repo_name: str, language: str) -> str:
     # Verify repo existence and ownership
     repo = repository_repo.find_by_full_name(db, repo_name)
     if repo is None or repo.user_id != user.id:
-        return get_text("notifier.commands.stats_repo_not_found", language, repo=repo_name)
+        return get_text("notifier.commands.stats_repo_not_found", language, repo=escape(repo_name))
 
     # 주간 집계 — 현재 시각 기준 7일 전부터
     # Weekly summary — from 7 days before current time
@@ -226,7 +228,7 @@ def _handle_stats(db: Session, user: Any, repo_name: str, language: str) -> str:
     summary = weekly_summary(db, repo.id, week_start, now=now)
 
     if summary is None:
-        title = get_text("notifier.commands.stats_no_data_title", language, repo=repo_name)
+        title = get_text("notifier.commands.stats_no_data_title", language, repo=escape(repo_name))
         body = get_text("notifier.commands.stats_no_data_body", language)
         return f"{title}\n{body}"
 
@@ -246,7 +248,7 @@ def _handle_stats(db: Session, user: Any, repo_name: str, language: str) -> str:
     return get_text(
         "notifier.commands.stats_summary",
         language,
-        repo=repo_name,
+        repo=escape(repo_name),
         count=count,
         avg=f"{avg:.1f}",
         trend=trend,
@@ -277,5 +279,5 @@ def _handle_settings(db: Session, user: Any, language: str) -> str:
 
     lines = [get_text("notifier.commands.settings_header", language)]
     for repo in repos:
-        lines.append(f"  • {repo.full_name}")
+        lines.append(f"  • {escape(repo.full_name)}")  # C27: HTML 모드 응답 — repo명 이스케이프
     return "\n".join(lines)

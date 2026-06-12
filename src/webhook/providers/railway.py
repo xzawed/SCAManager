@@ -108,7 +108,8 @@ async def _handle_railway_deploy_failure(
             # Keep exc detail in operator logs only; leave body None so railway_issue
             # substitutes the i18n key (avoids leaking hardcoded Korean into the Issue)
             logger.warning(  # NOSONAR python:S5145 — sanitized via log_safety
-                "Railway 로그 조회 실패 (%s): %s", sanitize_for_log(event.deployment_id), exc,
+                "Railway 로그 조회 실패 (%s): %s",
+                sanitize_for_log(event.deployment_id), sanitize_for_log(str(exc)),  # C13: exc 도 sanitize
             )
             logs_tail = None
 
