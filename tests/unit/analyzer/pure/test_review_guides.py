@@ -5,7 +5,6 @@ from src.analyzer.pure.review_guides import get_guide, get_tier, supported_langu
 from src.analyzer.pure.review_prompt import (
     build_review_prompt,
     detect_languages_from_patches,
-    has_test_files,
 )
 
 
@@ -135,20 +134,3 @@ class TestBuildReviewPrompt:
         patches = [("main.rs", "fn main() {}")]
         prompt, _ = build_review_prompt("feat: add main", patches)
         assert "rust" in prompt.lower() or "감지" in prompt
-
-
-class TestHasTestFiles:
-    def test_python_test_file(self):
-        assert has_test_files([("test_foo.py", "def test_x(): pass")])
-
-    def test_non_test_file(self):
-        assert not has_test_files([("app.py", "x = 1")])
-
-    def test_go_test_file(self):
-        assert has_test_files([("foo_test.go", "func TestFoo(t *testing.T) {}")])
-
-    def test_js_test_file(self):
-        assert has_test_files([("foo.test.ts", "test('x', () => {})")])
-
-    def test_empty_patches(self):
-        assert not has_test_files([])

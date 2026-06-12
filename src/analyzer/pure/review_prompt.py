@@ -19,7 +19,7 @@ Token budget strategy:
 """
 from __future__ import annotations
 
-from src.analyzer.pure.language import detect_language, is_test_file
+from src.analyzer.pure.language import detect_language
 from src.analyzer.pure.review_guides import get_guide, get_tier
 from src.constants import (
     LANG_GUIDE_ALL_FULL_MAX,
@@ -344,12 +344,3 @@ def build_review_prompt(
         diff_text=diff_text,
     )
     return user_prompt, languages
-
-
-def has_test_files(patches: list[tuple[str, str]]) -> bool:
-    """패치 목록에 테스트 파일이 포함되어 있는지 확인."""
-    for fname, _ in patches:
-        lang = detect_language(fname)
-        if is_test_file(fname, lang):
-            return True
-    return False

@@ -15,7 +15,6 @@ from src.gate.merge_reasons import (
     ALREADY_MERGED,
     CONFIG_CHANGED,
     DEFERRED,
-    OPTIONAL_CHECK_ONLY,
     SHA_DRIFT,
     UNKNOWN_STATE_TIMEOUT,
     UNSTABLE_CI,
@@ -72,16 +71,14 @@ def test_is_retriable_tag_terminal_tags_return_false(tag):
 # ---------------------------------------------------------------------------
 
 
-def test_mergeable_state_to_reason_has_hooks():
-    # "has_hooks" 상태는 "has_hooks" 태그를 반환해야 함
-    # "has_hooks" state should return the "has_hooks" tag
-    assert mergeable_state_to_reason("has_hooks") == "has_hooks"
-
-
-def test_mergeable_state_to_reason_clean():
-    # "clean" 상태는 "clean" 태그를 반환해야 함 (병합 성공, 실패 아님)
-    # "clean" state should return "clean" tag (merge succeeded, not a failure)
-    assert mergeable_state_to_reason("clean") == "clean"
+def test_mergeable_state_to_reason_non_block_states_return_unknown():
+    # 🔴 비-차단 상태(has_hooks/clean)는 호출처(_MERGEABLE_BLOCK 가드)에서 도달 불가라
+    # 매핑에서 제거됨(감사 C24) → .get(state, UNKNOWN) 로 UNKNOWN 반환.
+    # Non-block states are unreachable at the call site (_MERGEABLE_BLOCK guard) and were removed
+    # from the map (audit C24); they now fall through to UNKNOWN.
+    from src.gate.merge_reasons import UNKNOWN  # pylint: disable=import-outside-toplevel
+    assert mergeable_state_to_reason("has_hooks") == UNKNOWN
+    assert mergeable_state_to_reason("clean") == UNKNOWN
 
 
 # ---------------------------------------------------------------------------
@@ -97,4 +94,3 @@ def test_new_constants_are_importable_and_correct():
     assert ALREADY_MERGED == "already_merged"
     assert SHA_DRIFT == "sha_drift"
     assert CONFIG_CHANGED == "config_changed"
-    assert OPTIONAL_CHECK_ONLY == "optional_check_only"
