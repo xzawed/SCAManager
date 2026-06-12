@@ -178,9 +178,14 @@ def detect_languages_from_patches(
     patches: list[tuple[str, str]],
 ) -> list[str]:
     """패치 목록에서 등장 언어를 빈도순으로 반환 (중복 제거)."""
+    # C18: content 전달 — 확장자 없고 shebang 으로만 식별되는 스크립트(예: 'bin/deploy' +
+    # '#!/usr/bin/env python3')를 정적분석 경로(static.py:64 detect_language(fname, content))와
+    # 동일하게 인식해 언어별 리뷰 가이드 누락을 방지한다.
+    # C18: pass content so shebang-only (extensionless) scripts are detected like the static path,
+    # preventing the language-specific review guide from being skipped.
     freq: dict[str, int] = {}
-    for fname, _ in patches:
-        lang = detect_language(fname)
+    for fname, content in patches:
+        lang = detect_language(fname, content)
         if lang != "unknown":
             freq[lang] = freq.get(lang, 0) + 1
     return sorted(freq, key=lambda lang: -freq[lang])
