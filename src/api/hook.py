@@ -184,7 +184,20 @@ def save_hook_result(  # pylint: disable=unused-argument,too-many-locals
     with SessionLocal() as db:
         config = repo_config_repo.find_by_full_name(db, body.repo)
 
-        if config is None or not secure_str_compare(config.hook_token, body.token):
+        # 🔴 빈/NULL 토큰 인증 우회 차단 (보안 P0): secure_str_compare 는 None·"" 를 모두
+        # b"" 로 인코딩하므로 secure_str_compare(None, "") == True → hook_token 미설정(NULL)
+        # 행에 body.token="" 로 인증 통과 가능. verify 엔드포인트(L139 `if not effective_token`)
+        # 와 대칭으로, 제출 토큰 또는 저장된 hook_token 이 비면 비교 전에 거부한다.
+        # Block empty/NULL-token auth bypass (security P0): secure_str_compare encodes both None and
+        # "" to b"", so secure_str_compare(None, "") == True — a NULL-hook_token row would authenticate
+        # with body.token="". Mirroring the verify endpoint (L139), reject before the compare when
+        # either the submitted token or the stored hook_token is empty.
+        if (
+            not body.token
+            or config is None
+            or not config.hook_token
+            or not secure_str_compare(config.hook_token, body.token)
+        ):
             # locale 해소는 에러 시에만 (정상 경로 쿼리 순서 불변)
             # Resolve locale only on error (keep happy-path query order intact)
             locale = _resolve_hook_locale(db, body.repo)
