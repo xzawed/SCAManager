@@ -88,6 +88,13 @@ class TestDetectLanguagesFromPatches:
     def test_empty_patches(self):
         assert detect_languages_from_patches([]) == []
 
+    def test_shebang_only_extensionless_script_detected(self):
+        # 🔴 C18: 확장자 없고 shebang 으로만 식별되는 스크립트 — content 전달로 정적분석 경로와
+        # 동일하게 'python' 감지(이전엔 content 미전달로 'unknown' → 언어별 리뷰 가이드 누락).
+        patches = [("bin/deploy", "#!/usr/bin/env python3\nprint('hi')\n")]
+        langs = detect_languages_from_patches(patches)
+        assert langs == ["python"]
+
 
 class TestBuildReviewPrompt:
     def test_returns_prompt_and_languages(self):

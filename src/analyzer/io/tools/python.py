@@ -43,12 +43,16 @@ class _PylintAnalyzer:
                 capture_output=True, text=True, timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
             items = json.loads(r.stdout) if r.stdout.strip().startswith("[") else []
+            # C10: item.get() 방어 접근 — 도구가 키 누락 JSON 을 내도 KeyError 로 analyzer 전체가
+            # 중단(이슈 전량 무음 폐기 + incomplete 미설정 = fail-open)되지 않게 한다(golangci_lint 패턴).
+            # C10: defensive .get() — a missing key must not raise KeyError and silently drop the whole
+            # analyzer's issues without an incomplete marker (golangci_lint pattern).
             return [
                 AnalysisIssue(
                     tool="pylint",
-                    severity=Severity.ERROR if item["type"] in ("error", "fatal") else Severity.WARNING,
-                    message=item["message"],
-                    line=item["line"],
+                    severity=Severity.ERROR if item.get("type") in ("error", "fatal") else Severity.WARNING,
+                    message=str(item.get("message") or ""),  # None/비-str 도 안전
+                    line=item.get("line") or 0,              # None → 0
                     category=self.category,
                     language=ctx.language,
                 )
@@ -131,12 +135,15 @@ class _BanditAnalyzer:
                 capture_output=True, text=True, timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
             data = json.loads(r.stdout) if r.stdout.strip().startswith("{") else {}
+            # C10: item.get() 방어 접근 (pylint 대칭) — 키 누락 JSON 의 KeyError fail-open 차단.
+            # C10: defensive .get() (mirrors pylint) — block the KeyError fail-open on missing keys.
             return [
                 AnalysisIssue(
                     tool="bandit",
-                    severity=Severity.ERROR if item["issue_severity"].upper() == "HIGH" else Severity.WARNING,
-                    message=item["issue_text"],
-                    line=item["line_number"],
+                    severity=(Severity.ERROR if str(item.get("issue_severity") or "").upper() == "HIGH"
+                              else Severity.WARNING),
+                    message=str(item.get("issue_text") or ""),  # None/비-str 도 안전
+                    line=item.get("line_number") or 0,          # None → 0
                     category=self.category,
                     language=ctx.language,
                 )

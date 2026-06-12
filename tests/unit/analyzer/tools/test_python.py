@@ -468,3 +468,76 @@ class TestBanditRunGracefulDegradation:
         with patch("subprocess.run", return_value=_mock_proc("{broken json")):
             issues = _BanditAnalyzer().run(py_ctx)
         assert issues == []
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# C10 — 키 누락 JSON item 방어 (KeyError fail-open 차단)
+# C10 — defensive parsing of key-missing JSON items (block KeyError fail-open)
+# ──────────────────────────────────────────────────────────────────────────
+
+
+class TestC10DefensiveParsing:
+    """도구가 키 누락 JSON 을 내도 KeyError 로 analyzer 전체가 중단(이슈 전량 무음 폐기)되지 않아야 한다."""
+
+    def test_pylint_missing_message_key_does_not_crash(self, py_ctx):
+        # "message" 키 누락 — 이전엔 KeyError → 전량 폐기(fail-open). 이제 빈 message 로 이슈 보존.
+        payload = '[{"type": "warning", "line": 5}]'
+        with patch("subprocess.run", return_value=_mock_proc(payload)):
+            issues = _PylintAnalyzer().run(py_ctx)
+        assert len(issues) == 1               # 이슈 보존 (무음 폐기 X)
+        assert issues[0].message == ""
+        assert issues[0].line == 5
+        assert issues[0].severity == Severity.WARNING
+
+    def test_pylint_missing_type_and_line_defaults(self, py_ctx):
+        payload = '[{"message": "bad"}]'
+        with patch("subprocess.run", return_value=_mock_proc(payload)):
+            issues = _PylintAnalyzer().run(py_ctx)
+        assert len(issues) == 1
+        assert issues[0].severity == Severity.WARNING  # type 누락 → WARNING
+        assert issues[0].line == 0
+
+    def test_bandit_missing_issue_text_key_does_not_crash(self, py_ctx):
+        payload = '{"results": [{"issue_severity": "HIGH", "line_number": 3}]}'
+        with patch("subprocess.run", return_value=_mock_proc(payload)):
+            issues = _BanditAnalyzer().run(py_ctx)
+        assert len(issues) == 1               # 이슈 보존
+        assert issues[0].message == ""
+        assert issues[0].line == 3
+        assert issues[0].severity == Severity.ERROR  # HIGH 보존
+
+    def test_bandit_missing_severity_and_line_keys_does_not_crash(self, py_ctx):
+        # issue_severity·line_number 둘 다 누락 — 직접 subscript 재도입 시 KeyError 회귀 봉인(Codex NG fix).
+        payload = '{"results": [{"issue_text": "found"}]}'
+        with patch("subprocess.run", return_value=_mock_proc(payload)):
+            issues = _BanditAnalyzer().run(py_ctx)
+        assert len(issues) == 1
+        assert issues[0].message == "found"
+        assert issues[0].line == 0                       # line_number 누락 → 0
+        assert issues[0].severity == Severity.WARNING    # issue_severity 누락 → 비-HIGH → WARNING
+
+    def test_bandit_none_severity_does_not_crash(self, py_ctx):
+        # issue_severity=None — str() 래핑이 .upper() AttributeError 를 방지하는지 봉인.
+        payload = '{"results": [{"issue_severity": null, "issue_text": "x", "line_number": 2}]}'
+        with patch("subprocess.run", return_value=_mock_proc(payload)):
+            issues = _BanditAnalyzer().run(py_ctx)
+        assert len(issues) == 1
+        assert issues[0].severity == Severity.WARNING
+
+    def test_pylint_none_message_and_line_values_safe(self, py_ctx):
+        # message/line 값이 None — `or` 폴백이 None 을 ""/0 으로 정규화하는지 봉인(Codex NG fix).
+        payload = '[{"type": "warning", "message": null, "line": null}]'
+        with patch("subprocess.run", return_value=_mock_proc(payload)):
+            issues = _PylintAnalyzer().run(py_ctx)
+        assert len(issues) == 1
+        assert issues[0].message == ""
+        assert issues[0].line == 0
+
+    def test_bandit_none_text_and_line_values_safe(self, py_ctx):
+        payload = '{"results": [{"issue_severity": "HIGH", "issue_text": null, "line_number": null}]}'
+        with patch("subprocess.run", return_value=_mock_proc(payload)):
+            issues = _BanditAnalyzer().run(py_ctx)
+        assert len(issues) == 1
+        assert issues[0].message == ""
+        assert issues[0].line == 0
+        assert issues[0].severity == Severity.ERROR
