@@ -14,6 +14,9 @@ Phase 3 PR-9 (Cycle 84 — i18n) — `/connect` uses settings default (user not 
 from __future__ import annotations
 
 import logging
+import threading
+import time
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from html import escape  # C27: 봇 명령 응답(parse_mode=HTML)의 사용자 입력 HTML 이스케이프
@@ -23,6 +26,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.config import settings
+from src.constants import (
+    OTP_ATTEMPT_WINDOW_SECONDS,
+    OTP_LIMITER_MAX_KEYS,
+    OTP_MAX_FAILED_ATTEMPTS,
+)
 from src.i18n.loader import get_text
 from src.models.repository import Repository
 from src.repositories import repository_repo, user_repo
@@ -36,6 +44,98 @@ logger = logging.getLogger(__name__)
 # 백워드 호환 — 기존 단위 테스트 (`test_telegram_commands.py`) `_NOT_CONNECTED_MSG` 직접 비교 영역.
 # Backwards-compat — preserved for legacy tests doing direct equality comparisons.
 _NOT_CONNECTED_MSG = get_text("notifier.commands.not_connected", settings.default_locale)
+
+
+class _OtpAttemptLimiter:  # pylint: disable=too-few-public-methods
+    """telegram_user_id별 OTP 실패 시도 슬라이딩 윈도우 레이트 리미터 (C12).
+    Per-telegram_user_id sliding-window rate limiter for failed OTP attempts (C12).
+
+    잘못된 `/connect` 시도만 기록하고(성공 시 clear), 윈도우 내 실패가
+    OTP_MAX_FAILED_ATTEMPTS 이상이면 추가 조회 전에 차단해 brute-force 를 막는다.
+    `BotInteractionLimiter`(webhook/loop_guard.py)와 동형 — deque 슬라이딩 윈도우 + lock.
+    Records only failed `/connect` attempts (cleared on success); once failures within
+    the window reach OTP_MAX_FAILED_ATTEMPTS it blocks before the next lookup.
+    Mirrors `BotInteractionLimiter` (webhook/loop_guard.py): deque sliding window + lock.
+
+    수용된 한계 (단일 worker 전제): is_blocked → 조회 → record_failure 가 별도 lock
+    구간이라 동시 요청이 차단 검사를 함께 통과해 한 버스트에서 한도를 소폭 초과할 수
+    있다(TOCTOU). 실패는 여전히 기록되어 다음 요청부터 차단되므로 brute-force 차단
+    기능은 유지되며, 단일 worker(railway.toml) 환경에서 실용 위험은 낮다. 다중 worker
+    전환 시 atomic check-and-record 로 재검토.
+    Accepted limit (single-worker): is_blocked → lookup → record_failure span separate
+    lock regions, so concurrent requests may overshoot the cap slightly in one burst
+    (TOCTOU). Failures are still recorded and subsequent requests are blocked, so the
+    brute-force guard holds; practical risk is low on a single worker (railway.toml).
+    Revisit with an atomic check-and-record when moving to multiple workers.
+    """
+
+    def __init__(self) -> None:
+        # telegram_user_id → 실패 타임스탬프 deque
+        # telegram_user_id → deque of failure timestamps
+        self._failures: dict[str, deque[float]] = {}
+        # 멀티스레드(asyncio.to_thread 등) 환경에서 _failures 접근 보호
+        # Protect _failures access under multi-threaded execution (asyncio.to_thread, etc.)
+        self._lock = threading.Lock()
+
+    def is_blocked(self, key: str) -> bool:
+        """현재 윈도우 내 실패 횟수가 한도 이상이면 True (차단).
+        Return True when failures within the current window have reached the cap.
+        """
+        now = time.time()
+        cutoff = now - OTP_ATTEMPT_WINDOW_SECONDS
+        with self._lock:
+            window = self._failures.get(key)
+            if not window:
+                return False
+            # 만료(윈도우 밖) 타임스탬프 제거 후 카운트
+            # Evict expired timestamps, then count
+            while window and window[0] <= cutoff:
+                window.popleft()
+            return len(window) >= OTP_MAX_FAILED_ATTEMPTS
+
+    def record_failure(self, key: str) -> None:
+        """실패 시도 1건을 기록한다 (만료분 제거 + 키 상한 적용).
+        Record one failed attempt (evict expired entries + enforce the key cap).
+        """
+        now = time.time()
+        cutoff = now - OTP_ATTEMPT_WINDOW_SECONDS
+        with self._lock:
+            window = self._failures.get(key)
+            if window is None:
+                # 신규 키 추가 전 상한 도달 시 만료 키부터 정리 (메모리 고갈 방지)
+                # At the cap before adding a new key, evict stale keys first (memory guard)
+                if len(self._failures) >= OTP_LIMITER_MAX_KEYS:
+                    self._evict_stale(cutoff)
+                window = self._failures.setdefault(key, deque())
+            while window and window[0] <= cutoff:
+                window.popleft()
+            window.append(now)
+
+    def clear(self, key: str) -> None:
+        """성공 시 해당 키의 실패 기록을 제거한다 (정상 사용자 오타 보호).
+        Clear failure history for the key on success (don't penalize legit typos).
+        """
+        with self._lock:
+            self._failures.pop(key, None)
+
+    def _evict_stale(self, cutoff: float) -> None:
+        """만료(윈도우 전부 지난) 키를 제거한다 — 호출자가 lock 보유 중.
+        Drop keys whose entire window has expired — caller holds the lock.
+        """
+        stale = [k for k, w in self._failures.items() if not w or w[-1] <= cutoff]
+        for k in stale:
+            del self._failures[k]
+        # 정리 후에도 상한 초과면 가장 오래된 활동 키부터 제거 (안전망)
+        # If still over the cap, drop oldest-active keys as a safety net
+        if len(self._failures) >= OTP_LIMITER_MAX_KEYS:
+            oldest = sorted(self._failures, key=lambda k: self._failures[k][-1])
+            for k in oldest[: len(self._failures) - OTP_LIMITER_MAX_KEYS + 1]:
+                del self._failures[k]
+
+
+# 모듈 레벨 싱글톤 — 테스트는 conftest `_clear_otp_attempt_limiter` autouse fixture 로 클리어
+# Module-level singleton — tests clear it via the conftest `_clear_otp_attempt_limiter` autouse fixture
+_otp_limiter = _OtpAttemptLimiter()
 
 
 @dataclass(frozen=True)
@@ -176,10 +276,18 @@ def _handle_connect(db: Session, telegram_user_id: str, otp: str) -> str:
     if not otp:
         return get_text("notifier.commands.connect_usage", default_lang)
 
+    # C12: brute-force 방어 — 동일 telegram_user_id 의 실패 누적이 한도 초과 시 조회 전 차단
+    # C12: brute-force guard — block before lookup once this telegram_user_id's failures exceed the cap
+    if _otp_limiter.is_blocked(telegram_user_id):
+        return get_text("notifier.commands.connect_rate_limited", default_lang)
+
     # 만료되지 않은 OTP로 사용자 조회
     # Look up user by unexpired OTP
     found = user_repo.find_by_otp(db, otp)
     if found is None:
+        # C12: 실패 기록 — 반복 추측이 윈도우 내 누적되면 차단으로 이어진다
+        # C12: record the failure — repeated guesses accumulate within the window toward a block
+        _otp_limiter.record_failure(telegram_user_id)
         return get_text("notifier.commands.connect_invalid_otp", default_lang)
 
     try:
@@ -187,9 +295,15 @@ def _handle_connect(db: Session, telegram_user_id: str, otp: str) -> str:
         # Map telegram_user_id and nullify OTP
         user_repo.set_telegram_user_id(db, found.id, telegram_user_id)
     except ValueError:
-        # 이미 다른 사용자에게 연결된 Telegram ID
-        # Telegram ID already linked to another user
+        # 이미 다른 사용자에게 연결된 Telegram ID — 연결 실패이므로 카운터 미초기화
+        # Telegram ID already linked to another user — connect failed, so do NOT clear the counter
         return get_text("notifier.commands.connect_already_linked", default_lang)
+
+    # C12: 연결 성공 = brute-force 아님 → 실패 카운터 초기화 (정상 사용자 오타 보호)
+    # set_telegram_user_id 성공 이후에만 clear — 실패(ValueError) 시 카운터 보존
+    # C12: a successful link means this isn't a brute-force → clear the counter (protect legit typos)
+    # Clear only after set_telegram_user_id succeeds — preserve the counter on failure (ValueError)
+    _otp_limiter.clear(telegram_user_id)
 
     # 연결 성공 응답 = 연결된 User 의 preferred_language 적용 (즉시 다국어 활성화)
     # Connect success = linked User.preferred_language (immediate i18n activation)

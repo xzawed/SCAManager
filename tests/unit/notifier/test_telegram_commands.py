@@ -281,6 +281,121 @@ def test_handle_connect_requires_otp_argument(db):
 
 
 # ---------------------------------------------------------------------------
+# Test: handle_message_command — /connect OTP brute-force rate-limit (C12)
+# ---------------------------------------------------------------------------
+
+
+def test_handle_connect_blocks_after_repeated_wrong_otp(db):
+    """동일 telegram_user_id 의 반복된 잘못된 OTP 시도는 한도 초과 시 차단된다.
+    Repeated wrong-OTP guesses from the same telegram_user_id are blocked past the cap.
+    """
+    from src.constants import OTP_MAX_FAILED_ATTEMPTS
+
+    # 한도까지는 "잘못된 OTP" 응답 (find_by_otp None → 실패 기록)
+    # Up to the cap: each returns the invalid-OTP message and records a failure
+    for _ in range(OTP_MAX_FAILED_ATTEMPTS):
+        result = handle_message_command(db, "tg-brute", "/connect 000000")
+        assert "OTP" in result
+
+    # 한도 초과 — rate-limit 메시지 (DB 조회조차 하지 않음)
+    # Past the cap — rate-limit message (no DB lookup performed)
+    blocked = handle_message_command(db, "tg-brute", "/connect 000000")
+    assert "OTP" not in blocked  # invalid_otp 가 아닌 별도 메시지
+    assert "많" in blocked or "many" in blocked.lower() or "시도" in blocked
+
+
+def test_handle_connect_block_is_per_telegram_user(db):
+    """한 사용자가 차단돼도 다른 telegram_user_id 는 정상 시도 가능하다.
+    Blocking one user does not affect a different telegram_user_id.
+    """
+    from src.constants import OTP_MAX_FAILED_ATTEMPTS
+
+    for _ in range(OTP_MAX_FAILED_ATTEMPTS + 1):
+        handle_message_command(db, "tg-attacker", "/connect 999999")
+
+    # 차단된 공격자
+    blocked = handle_message_command(db, "tg-attacker", "/connect 999999")
+    assert "many" in blocked.lower() or "많" in blocked or "시도" in blocked
+
+    # 다른 사용자는 정상적으로 invalid_otp 응답을 받는다
+    # A different user still gets the normal invalid-OTP response
+    other = handle_message_command(db, "tg-innocent", "/connect 111111")
+    assert "OTP" in other
+
+
+def test_handle_connect_success_resets_failure_counter(db):
+    """잘못된 시도 후 유효 OTP 로 성공하면 실패 카운터가 초기화된다.
+    A successful connect after some wrong tries resets the failure counter.
+    """
+    from src.constants import OTP_MAX_FAILED_ATTEMPTS
+
+    future = datetime.now(timezone.utc) + timedelta(minutes=10)
+    _make_user(
+        db,
+        github_id="gh-reset",
+        email="reset@example.com",
+        display_name="ResetUser",
+        telegram_otp="555555",
+        telegram_otp_expires_at=future,
+    )
+
+    # 한도 미만의 실패 (한도-1)
+    # Fewer failures than the cap (cap - 1)
+    for _ in range(OTP_MAX_FAILED_ATTEMPTS - 1):
+        handle_message_command(db, "tg-reset", "/connect 000000")
+
+    # 유효 OTP 성공 → 카운터 초기화
+    # Valid OTP succeeds → counter cleared
+    ok = handle_message_command(db, "tg-reset", "/connect 555555")
+    assert "ResetUser" in ok
+
+    # 초기화되었으므로 다시 한도-1 회 실패해도 차단되지 않는다
+    # Counter cleared → another (cap - 1) failures still not blocked
+    for _ in range(OTP_MAX_FAILED_ATTEMPTS - 1):
+        result = handle_message_command(db, "tg-reset", "/connect 000000")
+        assert "OTP" in result  # 여전히 invalid_otp (차단 아님)
+
+
+def test_handle_connect_already_linked_preserves_failure_counter(db):
+    """🔴 C12 NG fix (Codex mutual): 유효 OTP 를 맞췄으나 set 이 already_linked
+    (ValueError)로 실패하면 연결 실패이므로 실패 카운터를 초기화하지 않는다.
+    A valid OTP that fails at set (already linked) must NOT reset the counter —
+    clear() runs only after set_telegram_user_id succeeds.
+    """
+    from src.constants import OTP_MAX_FAILED_ATTEMPTS
+    from src.notifier.telegram_commands import _otp_limiter
+
+    future = datetime.now(timezone.utc) + timedelta(minutes=10)
+    _make_user(
+        db,
+        github_id="gh-linked",
+        email="linked@example.com",
+        display_name="LinkedUser",
+        telegram_otp="777777",
+        telegram_otp_expires_at=future,
+    )
+
+    # 한도-1 회 실패 누적
+    # Accumulate (cap - 1) failures
+    for _ in range(OTP_MAX_FAILED_ATTEMPTS - 1):
+        handle_message_command(db, "tg-linked", "/connect 000000")
+    assert len(_otp_limiter._failures.get("tg-linked", [])) == OTP_MAX_FAILED_ATTEMPTS - 1
+
+    # 유효 OTP 이지만 set 이 ValueError → already_linked 응답 (연결 실패)
+    # Valid OTP but set raises ValueError → already_linked response (connect failed)
+    with patch(
+        "src.notifier.telegram_commands.user_repo.set_telegram_user_id",
+        side_effect=ValueError("already mapped"),
+    ):
+        result = handle_message_command(db, "tg-linked", "/connect 777777")
+    assert "이미" in result or "already" in result.lower()
+
+    # 카운터 미초기화 — 여전히 한도-1 (clear 가 set 성공 후에만 실행되므로)
+    # Counter preserved — still (cap - 1), because clear runs only after set succeeds
+    assert len(_otp_limiter._failures.get("tg-linked", [])) == OTP_MAX_FAILED_ATTEMPTS - 1
+
+
+# ---------------------------------------------------------------------------
 # Test: handle_message_command — /stats
 # ---------------------------------------------------------------------------
 

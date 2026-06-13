@@ -813,6 +813,7 @@
       "unknown_command": "지원하지 않는 명령입니다. 사용 가능: /stats <repo>, /settings, /connect <코드>",
       "connect_usage": "사용법: /connect <6자리 코드>",
       "connect_invalid_otp": "OTP가 잘못되었거나 만료되었습니다.",
+      "connect_rate_limited": "시도 횟수가 너무 많습니다. 몇 분 후 다시 시도해 주세요.",
       "connect_already_linked": "이 Telegram 계정은 이미 다른 사용자에게 연결되어 있습니다.",
       "connect_success": "✅ {name} 님의 계정이 연결되었습니다!",
       "connect_default_name": "사용자",
