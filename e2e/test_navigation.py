@@ -198,3 +198,60 @@ def test_reveal_progress_handlers_use_remove_before_add(seeded_page, base_url):
         "document._finishProgressHandler 가 function 이 아님 "
         "— _finishProgress remove-before-add 가드 누락 (hx-boost 핸들러 누적 회귀)"
     )
+
+
+def test_effects_init_reruns_on_hx_boost(seeded_page, base_url):
+    """hx-boost 재방문 후 effects.js 애니메이션 init 이 재실행되도록
+    document._fxEffectsHandler 슬롯에 단일 저장돼야 한다 (U2).
+    After hx-boost re-navigation, effects.js animation init must re-run via the
+    document._fxEffectsHandler single slot (U2).
+
+    수정 전: effects.js IIFE 가 DOMContentLoaded 에만 바인딩 → 슬롯 미사용 →
+    typeof === "undefined" → RED (애니메이션 미재실행 = score-bar 0% / opacity:0 고착).
+    수정 후: init 이 document._fxEffectsHandler 에 저장되고 htmx:afterSettle/
+    historyRestore 에 remove-before-add 로 등록 → 매 hx-boost swap 시 재실행.
+    Before fix: IIFE binds DOMContentLoaded only → slot unused → "undefined" → RED.
+    After fix: init stored on document._fxEffectsHandler, registered on
+    htmx:afterSettle/historyRestore via remove-before-add → re-runs on each swap.
+
+    시나리오: goto(full load) → settings(hx#1) → detail(hx#2) → settings(hx#3)
+    Scenario: full load → settings(hx#1) → detail(hx#2) → settings(hx#3)
+    """
+    # 초기 full load — JS 컨텍스트 초기화 (script 1번째 실행)
+    # Initial full load — fresh JS context (1st script execution)
+    seeded_page.goto(f"{base_url}/repos/owner%2Ftestrepo")
+    seeded_page.wait_for_load_state("networkidle")
+
+    # hx-boost 3회 재방문 (script 2~4번째 실행 — 누적/재실행 검증 지점)
+    # 3 hx-boost re-navigations (2nd–4th executions — accumulation/re-run point)
+    seeded_page.click(".settings-btn")
+    seeded_page.wait_for_url("**/settings", timeout=5000)
+    seeded_page.click("a.back-btn")
+    seeded_page.wait_for_url(
+        lambda url: "owner" in url and "testrepo" in url and "/settings" not in url,
+        timeout=5000,
+    )
+    seeded_page.click(".settings-btn")
+    seeded_page.wait_for_url("**/settings", timeout=5000)
+
+    # 수정 후: init 이 document 슬롯에 function 으로 저장됨 (remove-before-add 증거).
+    # 수정 전: 슬롯 미사용 → typeof === "undefined" → RED.
+    # After fix: init stored as a function on the document slot (remove-before-add).
+    # Before fix: slot unused → typeof === "undefined" → RED.
+    fx_handler_type = seeded_page.evaluate("typeof document._fxEffectsHandler")
+    assert fx_handler_type == "function", (
+        "document._fxEffectsHandler 가 function 이 아님 "
+        "— effects.js init hx-boost 재실행 가드 누락 (U2 애니메이션 미재실행 회귀)"
+    )
+
+    # 재실행 행동 증거: setupEntryAnimations 가 body.fx-ready 를 부여 →
+    # 재방문된 body 에 fx-ready 존재 = init 재실행 확인 (동기 실행, 타이밍 무관).
+    # Behavioral proof: setupEntryAnimations adds body.fx-ready → presence on the
+    # re-navigated body proves init re-ran (synchronous, timing-independent).
+    body_fx_ready = seeded_page.evaluate(
+        "document.body.classList.contains('fx-ready')"
+    )
+    assert body_fx_ready is True, (
+        "hx-boost 재방문된 body 에 fx-ready 클래스 부재 "
+        "— setupEntryAnimations 미재실행 (effects.js init hx-boost 재실행 누락)"
+    )
