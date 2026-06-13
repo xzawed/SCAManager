@@ -130,3 +130,31 @@ def test_issues_json_empty_when_no_issues() -> None:
         source="cli",
     )
     assert result["issues"] == [], "이슈 0건 시 빈 리스트여야 함 (None 또는 누락 X)"
+
+
+# ─── C22: ai_review_truncated 마커 전파 ──────────────────────────────────────
+
+
+def test_result_dict_propagates_ai_review_truncated() -> None:
+    """🔴 C22: ai_review.truncated=True → result["ai_review_truncated"]=True (auto-merge 차단 마커)."""
+    ai = _make_ai_review()
+    ai.truncated = True
+    result = build_analysis_result_dict(
+        ai_review=ai,
+        score_result=_make_score_result(),
+        analysis_results=[_StubAnalysisResult(issues=[])],
+        source="pr",
+    )
+    assert result["ai_review_truncated"] is True
+
+
+def test_result_dict_truncated_defaults_false_when_attr_absent() -> None:
+    """🔴 C22: ai_review 에 truncated 속성이 없어도(구 더블/레코드) getattr 기본 False."""
+    # _make_ai_review() 더블은 truncated 속성 미보유 → getattr 기본값 검증
+    result = build_analysis_result_dict(
+        ai_review=_make_ai_review(),
+        score_result=_make_score_result(),
+        analysis_results=[_StubAnalysisResult(issues=[])],
+        source="pr",
+    )
+    assert result["ai_review_truncated"] is False

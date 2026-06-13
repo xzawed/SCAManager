@@ -50,6 +50,16 @@ class AutoMergeAction(GateAction):
                 ctx.repo_name, ctx.pr_number,
             )
             return
+        # C22: AI 리뷰 diff 절단(truncated) 시 차단 — 잘린 부분 미검토로 점수가 인플레될 수
+        # 있어 자동 머지하지 않는다 (static_analysis_incomplete 대칭).
+        # C22: block when the AI-review diff was truncated — the unseen part may inflate the score,
+        # so never auto-merge it (mirrors static_analysis_incomplete).
+        if ctx.result.get("ai_review_truncated"):
+            logger.warning(
+                "AI review diff truncated — auto-merge skipped (repo=%s, pr=%s)",
+                ctx.repo_name, ctx.pr_number,
+            )
+            return
         # AI 리뷰 실제 실패(api_error/parse_error) 시도 차단 — 중립-고점 기본값(44점)이
         # 점수를 인플레이션해 미검증 코드가 자동 머지되는 fail-open 방지 (#8, 정적분석 대칭).
         # Also block when the AI review genuinely failed — its neutral-high defaults inflate

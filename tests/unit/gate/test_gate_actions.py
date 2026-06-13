@@ -207,6 +207,25 @@ async def test_approve_action_semi_auto_skips_when_static_analysis_incomplete():
 
 
 @pytest.mark.asyncio
+async def test_approve_action_semi_auto_skips_when_ai_review_truncated():
+    """🔴 C22: AI 리뷰 diff 절단(truncated) 시 semi-auto 승인 요청 미발송 (static 가드 대칭).
+    절단된 일부만 보고 매긴 점수가 인플레될 수 있으므로 사람 승인 버튼으로 노출하지 않는다.
+    """
+    from src.gate.actions.approve import ApproveAction  # pylint: disable=import-outside-toplevel
+    from src.gate.actions import GateContext  # pylint: disable=import-outside-toplevel
+    cfg = _make_config(approve_mode="semi-auto")
+    cfg.notify_chat_id = "-100123"
+    ctx = GateContext(
+        repo_name="owner/repo", pr_number=42, analysis_id=1,
+        result={"score": 90, "ai_review_truncated": True},  # 90 >= threshold 이나 diff 절단
+        github_token="ghp_test", config=cfg, score=90,
+    )
+    with patch("src.gate.actions.approve.send_gate_request", new=AsyncMock()) as mock_gate:
+        await ApproveAction().execute(ctx)
+    mock_gate.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_approve_action_auto_skips_when_static_analysis_incomplete():
     """정적분석 불완전(타임아웃) 시 score 충족이어도 post_github_review 를 호출하지 않아야 한다.
     Must not call post_github_review even when score qualifies, if static analysis is incomplete.
@@ -219,6 +238,28 @@ async def test_approve_action_auto_skips_when_static_analysis_incomplete():
     ctx = GateContext(
         repo_name="owner/repo", pr_number=42, analysis_id=1,
         result={"score": 90, "static_analysis_incomplete": True},  # 90 >= threshold(70) 이나 불완전
+        github_token="ghp_test", config=cfg, score=90,
+    )
+    with patch("src.gate.actions.approve.post_github_review", new=AsyncMock()) as mock_review, \
+         patch("src.gate.actions.approve.gate_decision_repo"), \
+         patch("src.gate.actions.approve.SessionLocal") as mock_sess:
+        mock_sess.return_value.__enter__ = MagicMock(return_value=MagicMock())
+        mock_sess.return_value.__exit__ = MagicMock(return_value=False)
+        await ApproveAction().execute(ctx)
+    mock_review.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_approve_action_auto_skips_when_ai_review_truncated():
+    """🔴 C22: AI 리뷰 diff 절단(truncated) 시 score 충족이어도 auto-approve 보류 (static 가드 대칭).
+    절단된 부분 미검토로 점수가 인플레될 수 있어 결정을 내리지 않는다.
+    """
+    from src.gate.actions.approve import ApproveAction  # pylint: disable=import-outside-toplevel
+    from src.gate.actions import GateContext  # pylint: disable=import-outside-toplevel
+    cfg = _make_config(approve_mode="auto")
+    ctx = GateContext(
+        repo_name="owner/repo", pr_number=42, analysis_id=1,
+        result={"score": 90, "ai_review_truncated": True},  # 90 >= threshold(70) 이나 diff 절단
         github_token="ghp_test", config=cfg, score=90,
     )
     with patch("src.gate.actions.approve.post_github_review", new=AsyncMock()) as mock_review, \
@@ -315,6 +356,24 @@ async def test_auto_merge_action_skips_when_static_analysis_incomplete():
     ctx = GateContext(
         repo_name="owner/repo", pr_number=42, analysis_id=1,
         result={"score": 90, "static_analysis_incomplete": True},  # 90 >= threshold 이나 불완전
+        github_token="ghp_test", config=cfg, score=90,
+    )
+    with patch("src.gate.engine._run_auto_merge", new=AsyncMock()) as mock_impl:
+        await AutoMergeAction().execute(ctx)
+    mock_impl.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_auto_merge_action_skips_when_ai_review_truncated():
+    """🔴 C22: AI 리뷰 diff 절단(truncated) 시 score 충족이어도 _run_auto_merge 미호출 (static 가드 대칭).
+    절단된 부분 미검토로 점수가 인플레될 수 있어 자동 머지하지 않는다.
+    """
+    from src.gate.actions.auto_merge import AutoMergeAction  # pylint: disable=import-outside-toplevel
+    from src.gate.actions import GateContext  # pylint: disable=import-outside-toplevel
+    cfg = _make_config(auto_merge=True)
+    ctx = GateContext(
+        repo_name="owner/repo", pr_number=42, analysis_id=1,
+        result={"score": 90, "ai_review_truncated": True},  # 90 >= threshold 이나 diff 절단
         github_token="ghp_test", config=cfg, score=90,
     )
     with patch("src.gate.engine._run_auto_merge", new=AsyncMock()) as mock_impl:

@@ -164,17 +164,19 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
             # _run_auto_merge 가 자체 SessionLocal 을 열고 auto_merge/threshold 가드를 내부 수행한다.
             # 가드는 자동 경로 AutoMergeAction 미러링: (1) 승인 결정만 머지(reject 시 금지),
             # (2) auto_merge 활성, (3) 정적분석 불완전(타임아웃) 시 차단(#779/#783),
-            # (4) AI 리뷰 실제 실패(api_error/parse_error) 시 차단(#8 — 인플레 점수 자동 머지 방지).
+            # (4) AI 리뷰 실제 실패(api_error/parse_error) 시 차단(#8 — 인플레 점수 자동 머지 방지),
+            # (5) AI 리뷰 diff 절단 시 차단(C22 — 잘린 일부만 본 인플레 점수 자동 머지 방지).
             # Delegate semi-auto merge to the automatic path for full parity (retry queue, SHA guard,
             # CI re-check, terminal/deferred notifications). _run_auto_merge opens its own session and
             # applies the auto_merge/threshold guard internally. Guards mirror AutoMergeAction:
             # (1) merge only on approve, (2) auto_merge enabled, (3) skip on incomplete static analysis,
-            # (4) skip on genuine AI review failure (#8).
+            # (4) skip on genuine AI review failure (#8), (5) skip on truncated AI-review diff (C22).
             if (
                 decision == "approve"
                 and config.auto_merge
                 and not result_dict.get("static_analysis_incomplete")
                 and not ai_review_failed(result_dict)
+                and not result_dict.get("ai_review_truncated")
             ):
                 from src.gate import engine  # pylint: disable=import-outside-toplevel
                 await engine._run_auto_merge(  # pylint: disable=protected-access
