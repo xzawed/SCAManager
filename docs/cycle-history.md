@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [회고(5+1) P1 follow-up — README.ko 배지·#888 정적 가드·db.md U1 divergence (C12/C22/U1 머지 세션 회고 → P0 0·P1 3·P2 3·FP 9, 단위 +1, 2026-06-14)](#회고51-p1-follow-up--readmeko-배지888-정적-가드dbmd-u1-divergence-2026-06-14)
 - [정합성 감사 백로그 C12·C22·U1 머지 — 3 PR (#884 C12 OTP rate-limit·#885 C22 diff 절단 마커·#886 U1 0027 RLS 의도적 divergence, 단위 +23, code-side 백로그 전량 해소, 2026-06-13)](#정합성-감사-백로그-c12c22u1-머지--3-pr-884886-2026-06-13)
 - [잔여/후속 세션 — C1 save_gate_decision dead wrapper 제거 (호출처 0 dead code + 35 inert patch de-indent + 죽은-래퍼 테스트 2개 제거, 기능 영향 0, 단위 −2, 2026-06-13)](#잔여후속-세션--c1-save_gate_decision-dead-wrapper-제거-2026-06-13)
 - [잔여/후속 세션 — U2 effects.js hx-boost 애니메이션 재초기화 (named init + document._fxEffectsHandler remove-before-add + effect별 WeakMap 멱등 가드, Codex mutual NG 1회 적발→수정, 단위 +1·E2E +2, 2026-06-13)](#잔여후속-세션--u2-effectsjs-hx-boost-애니메이션-재초기화-2026-06-13)
@@ -92,6 +93,19 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 회고(5+1) P1 follow-up — README.ko 배지·#888 정적 가드·db.md U1 divergence (2026-06-14)
+
+**날짜**: 2026-06-14 | **트리거**: 사용자 "회고를 수행해주세요" → 5+1 다중 에이전트 회고(wf_7adc2655) → 사용자 결정 "P1 3건 fix PR" | **상태**: 1 PR, Codex mutual
+
+**회고 결과**: C12/C22/U1 머지 세션을 5 관점 병렬 finder(코드 correctness·테스트 품질·문서 정합·프로세스/정책·보안/운영) + 1 cross-verify 로 적대 검토 → **P0 0 · confirmed P1 3 · P2 3 · false-positive 9 차단**. 최대 정정: 관점 4 "NG→fix commit 비대칭" P1 → squash 머지 환경서 merged main 에 zero 차이라 cross-verify 가 FP 로 강등(finding 본문도 "fold 자체 위반 아님" 인정).
+
+**P1 3건 정정 (본 PR)**:
+- **① README.ko.md 배지**: Coverage 95→97%(#872[2026-06-12]에서 95→97 상향 시 README.md 만 갱신된 비대칭 — README.ko 는 한 번도 97% 였던 적 없음, 한국어 사용자에 2%p 낮게 오표기) + Tests 배지 구분자 리터럴 `+`→`%2B`(shields.io 에서 리터럴 `+` 는 공백 렌더 → README.md 와 시각 비대칭 해소).
+- **② #888 회귀 가드**: `test_dispatcher_returns_not_connected_constant_directly` — 디스패처가 `_NOT_CONNECTED_MSG` 상수를 직접 반환함을 ast(`ast.Return` value `ast.Name`)로 단언. 기존 3 테스트(`== _NOT_CONNECTED_MSG`)는 값 동등 비교라 디스패처를 inline `get_text` 로 되돌려도 통과 → 상수 재고아화(CodeQL #516 재발) 미검출. CodeQL 은 비동기 Code Scanning(머지 후 alert)이라 PR-CI 에서 못 잡음 → 정적 가드로 PR-CI 차단 보완(#883/#839 동형 패턴). 단위 +1.
+- **③ db.md U1 노트**(`.claude/rules/db.md` + `.codex/rules/db.md` 미러): 활성 app-layer 필터(`security_alert_log_repo._apply_owner_filter` + dashboard 의 `OR Repository.user_id.is_(None)`)가 legacy 보안알림을 전역 노출 → 0027 RLS strict(legacy 비노출) 의도와 **정반대 방향**. #2 미완(BYPASSRLS) 동안 충돌 0이나 Phase 4 비-BYPASSRLS 전환 시 legacy 행에서 두 레이어 상반(app=노출 vs RLS=차단) → 더 제한적 RLS 우선. strict 통일 시 app 필터 `is_(None)` 절도 동시 제거(#2 묶음·사용자 결정).
+
+- **수치**: 단위 4938→**4939**(+1) · 통합 154 · 전체 5092→**5093** · E2E 115 불변 · pylint **10.00/10**. **P2 3건 백로그**: brute-force 통합 테스트 substring 결합(en 문구 취약) / C22 절단 점수 analytics 집계 비대칭(ai_review_failed NULL-persist 대비) / C12 OTP 리미터 per-telegram_user_id 키 → 계정 로테이션 시 전역 OTP 풀 상한 부재 — 후 2건은 정책15 High tier(데이터모델) 사용자 결정. 상세: [[project-audit-backlog-2026-06-12]].
 
 ## 정합성 감사 백로그 C12·C22·U1 머지 — 3 PR (#884~#886) (2026-06-13)
 
