@@ -35,8 +35,7 @@ from src.github_client.checks import get_ci_status, get_required_check_contexts
 from src.i18n.loader import get_text
 from src.notifier.merge_failure_issue import create_merge_failure_issue
 from src.notifier.telegram import telegram_post_message
-from src.models.gate_decision import GateDecision
-from src.repositories import gate_decision_repo, merge_retry_repo
+from src.repositories import merge_retry_repo
 from src.shared.log_safety import sanitize_for_log
 from src.shared.merge_metrics import log_merge_attempt
 
@@ -642,17 +641,3 @@ async def _notify_merge_deferred(
         )
     except Exception as exc:  # pylint: disable=broad-except
         logger.warning("_notify_merge_deferred 전송 실패: %s", type(exc).__name__)
-
-
-def save_gate_decision(
-    db: Session,
-    analysis_id: int,
-    decision: str,
-    mode: str,
-    decided_by: str | None = None,
-) -> GateDecision:
-    """GateDecision 레코드를 저장하고 반환한다 (재시도 시 upsert).
-
-    Thin wrapper — 실제 구현은 `src/repositories/gate_decision_repo.py::upsert`.
-    """
-    return gate_decision_repo.upsert(db, analysis_id, decision, mode, decided_by)

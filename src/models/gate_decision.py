@@ -15,7 +15,7 @@ class GateDecision(Base):
     # `delete_repo_cascade` (ui/_helpers.py) 가 application-level 보완 중이지만,
     # 다른 경로 (admin script, future API) 에서 Analysis 삭제 시 안전망 필요.
     # MergeAttempt/MergeRetryQueue/AnalysisFeedback 은 이미 CASCADE — 일관성 확보.
-    # P0-A: unique=True 추가 — save_gate_decision() 은 분석 당 1건 upsert 이므로
+    # P0-A: unique=True 추가 — gate_decision_repo.upsert() 는 분석 당 1건 upsert 이므로
     # UNIQUE constraint 필수. unique=True 는 자동으로 인덱스를 생성하므로 index=True 제거.
     # Phase H — Critical C7: add ondelete=CASCADE so direct Analysis deletion
     # propagates here too (mirrors MergeAttempt/MergeRetryQueue/AnalysisFeedback).

@@ -733,6 +733,6 @@ async def test_handle_gate_callback_skips_when_pr_number_is_none():
                    new_callable=AsyncMock) as mock_review:
             with patch("src.webhook.providers.telegram.gate_decision_repo.claim_decision") as mock_save:
                 await handle_gate_callback(analysis_id=55, decision="approve", decided_by="john", telegram_user_id="1")
-    # pr_number=None → post_github_review·save_gate_decision 모두 호출되지 않아야 한다
+    # pr_number=None → post_github_review·gate_decision_repo.claim_decision 모두 호출되지 않아야 한다
     mock_review.assert_not_called()
     mock_save.assert_not_called()

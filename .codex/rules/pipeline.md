@@ -17,7 +17,7 @@ paths:
 - **category 기반 점수**: `AnalysisIssue.category` ("code_quality"|"security") 기준. tool 이름 무관.
 - **봇 PR 루프 방지**: `pr_head_ref` 가 `_BOT_PR_PREFIXES` (`claude-fix/`, `bot/`, `renovate/`, `dependabot/`) 시작 시 `create_issue` 건너뜀.
 - **AI 리뷰 JSON 파싱**: `re.search` 로 코드 블록 내 JSON 만 추출 (설명 텍스트 앞에 붙을 수 있음).
-- **GateDecision upsert**: `save_gate_decision()` 은 동일 `analysis_id` 존재 시 UPDATE, 없으면 INSERT.
+- **GateDecision upsert**: auto 경로(`ApproveAction`)는 `gate_decision_repo.upsert()` 직접 호출 — 동일 `analysis_id` 존재 시 UPDATE, 없으면 INSERT. (구 `engine.save_gate_decision()` thin wrapper 는 호출처 0 dead code 로 제거됨.) 반자동(telegram)은 `gate_decision_repo.claim_decision()`(insert-only, first-writer-wins).
 - **build_analysis_result_dict**: `src/worker/pipeline.py` 모듈 레벨 함수 — `score`·`grade` 필드 포함. pipeline 과 hook.py 양쪽에서 사용.
 - 🔴 **RailwayDeployEvent nested 구조**: `src/railway_client/models.py` 의 `RailwayDeployEvent` 는 3-그룹 nested dataclass — `event.project.project_id`, `event.commit.commit_sha` 등 sub-dataclass 경로로 접근. 평면 접근 (`event.project_id`) 은 2026-04-22 이후 제거됨.
 - **golangci-lint go.mod 자동생성**: `_GolangciLintAnalyzer.run()` 은 tmp_path 에 `go.mod` 가 없으면 `_ensure_go_mod()` 로 최소 모듈 정의 (`module tempmod\n\ngo 1.21\n`) 를 자동 생성.

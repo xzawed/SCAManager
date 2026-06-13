@@ -87,11 +87,11 @@ def test_gate_decision_analysis_id_unique_constraint(db: Session, analysis: Anal
     Inserting two GateDecisions with the same analysis_id raises IntegrityError.
 
     사이클 113 P0-E 회귀 가드: GateDecision.analysis_id에 unique=True 제약이
-    실제 DB 레벨에서 작동함을 검증한다. 제약이 없으면 save_gate_decision()의
+    실제 DB 레벨에서 작동함을 검증한다. 제약이 없으면 gate_decision_repo.upsert()의
     upsert semantic이 깨져 중복 결정 레코드가 생성될 수 있다.
     Cycle 113 P0-E regression guard: verifies unique=True constraint on
     GateDecision.analysis_id works at the DB level. Without this constraint,
-    the upsert semantic of save_gate_decision() breaks, allowing duplicate records.
+    the upsert semantic of gate_decision_repo.upsert() breaks, allowing duplicate records.
     """
     first = GateDecision(
         analysis_id=analysis.id,

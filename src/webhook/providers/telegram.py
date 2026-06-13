@@ -123,7 +123,7 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
             # 원자적으로 claim 한다 — UNIQUE(analysis_id) INSERT 로 first-writer-wins. 이미 결정됐거나
             # 동시 리플레이(더블클릭/Telegram 재전송) 패자는 IntegrityError→False 로 부수효과를 skip.
             # callback_data HMAC 은 gate:{analysis_id} 만 서명(nonce 무관)이라 동일 버튼이 무한 재사용
-            # 가능 → claim 이 단일 동기화 지점. save_gate_decision(upsert) 대신 insert-only claim 으로
+            # 가능 → claim 이 단일 동기화 지점. upsert 대신 insert-only claim 으로
             # 결정 뒤집기까지 차단(#780 save_new / #787 _ensure_repo 동형 race-safe 패턴).
             # Replay guard (#11): atomically claim the decision before any side effect. A UNIQUE
             # (analysis_id) INSERT makes it first-writer-wins; an existing decision or a concurrent
@@ -155,7 +155,7 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
                 github_token, repo.full_name,
                 analysis.pr_number, decision, body,
             )
-            # 결정은 위 claim 단계에서 이미 원자적으로 기록됨 (save_gate_decision 중복 제거)
+            # 결정은 위 claim 단계에서 이미 원자적으로 기록됨 (별도 저장 불필요)
             # The decision was already recorded atomically by the claim above (no save needed)
             result_dict = analysis.result if isinstance(analysis.result, dict) else {}
             score = result_dict.get("score", analysis.score or 0)
