@@ -255,3 +255,51 @@ def test_effects_init_reruns_on_hx_boost(seeded_page, base_url):
         "hx-boost 재방문된 body 에 fx-ready 클래스 부재 "
         "— setupEntryAnimations 미재실행 (effects.js init hx-boost 재실행 누락)"
     )
+
+
+def test_magnetic_hover_registers_on_overlapping_cards(seeded_page, base_url):
+    """effects.js setupMagnetic 이 .repo-card 에 mousemove 핸들러를 등록해야 한다.
+    setupMagnetic registers a mousemove handler on .repo-card.
+
+    회귀 가드 (U2 Codex mutual): `.repo-card` 는 setupEntryAnimations 와 setupMagnetic 가
+    모두 대상으로 삼는 셀렉터다. effect 간 멱등 추적이 공유되면(단일 seen 집합) entry 가
+    먼저 노드를 소비해 magnetic 이 freshOnly 에서 전부 skip → magnetic hover 가 초기 로드·
+    hx-boost swap 양쪽에서 등록되지 않는다. effect 별 독립 추적이어야 mousemove 가 발화한다.
+    Regression guard: .repo-card is targeted by BOTH setupEntryAnimations and setupMagnetic.
+    If idempotency tracking is shared (single seen set), entry consumes the nodes first and
+    magnetic is skipped → no mousemove handler. Per-effect tracking is required.
+
+    수정 전(공유 seen): magnetic 미등록 → 인라인 --mx 미설정 → RED.
+    수정 후(effect 별 추적): mousemove rAF 가 --mx 설정 → GREEN.
+    Before fix (shared seen): no handler → inline --mx unset → RED.
+    After fix (per-effect tracking): mousemove rAF sets --mx → GREEN.
+    """
+    seeded_page.goto(base_url)
+    seeded_page.wait_for_load_state("networkidle")
+
+    card = seeded_page.query_selector(".repo-card")
+    assert card is not None, "overview 에 .repo-card 부재 — seeded_page 시드 실패"
+    box = card.bounding_box()
+    assert box is not None, ".repo-card bounding_box 없음 (비가시)"
+
+    # 카드 위로 마우스 이동 → magnetic mousemove 핸들러 발화 (rAF 로 인라인 --mx 설정)
+    # Move mouse over the card → fires magnetic mousemove handler (sets inline --mx via rAF)
+    cx = box["x"] + box["width"] / 2
+    cy = box["y"] + box["height"] / 2
+    seeded_page.mouse.move(cx, cy)
+    seeded_page.mouse.move(cx + 6, cy + 6)
+
+    # 핸들러 등록 시 rAF 후 인라인 --mx 설정됨. 미등록 시 빈 문자열 유지 → 타임아웃 RED.
+    # If registered, the rAF sets inline --mx; if not, it stays empty → timeout RED.
+    seeded_page.wait_for_function(
+        "() => { const c = document.querySelector('.repo-card');"
+        " return !!c && c.style.getPropertyValue('--mx').trim() !== ''; }",
+        timeout=3000,
+    )
+    mx = seeded_page.eval_on_selector(
+        ".repo-card", "el => el.style.getPropertyValue('--mx')"
+    )
+    assert mx.strip() != "", (
+        "magnetic mousemove 핸들러 미등록 — setupMagnetic 이 effect 간 공유 seen 충돌로 "
+        ".repo-card 를 전부 skip (entry/magnetic 독립 추적 누락 회귀)"
+    )

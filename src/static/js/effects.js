@@ -24,17 +24,26 @@
     document.documentElement.getAttribute("data-motion") === "still" ||
     matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  // 처리 완료 노드 집합 — 재실행 멱등 가드. 새 DOM 노드(swap)는 미포함 → 처리됨.
-  // Processed-node set — re-run idempotency guard. New DOM nodes (swap) are absent → processed.
-  const seen = new WeakSet();
+  // 노드별 처리 완료 effect 태그 집합 — 재실행 멱등 가드. 새 DOM 노드(swap)는 미포함 → 처리됨.
+  // effect 마다 독립 태그로 추적 — 한 노드를 여러 effect 가 대상으로 삼아도(예: .repo-card 는
+  // entry + magnetic 양쪽) 각 effect 가 독립적으로 1회만 처리한다 (공유 집합 충돌 방지).
+  // Per-node set of completed effect tags — re-run idempotency guard. New DOM nodes (swap) are
+  // absent → processed. Tracked per-effect so a node targeted by multiple effects (e.g. .repo-card
+  // by both entry + magnetic) is processed exactly once by EACH effect (no shared-set collision).
+  const seen = new WeakMap();
 
-  // 아직 처리하지 않은 노드만 반환 + 처리 표시 (중복 애니메이션/리스너 방지).
-  // Return only not-yet-processed nodes + mark them (prevents duplicate animation/listeners).
-  function freshOnly(nodeList) {
+  // 해당 effect(tag)가 아직 처리하지 않은 노드만 반환 + 처리 표시 (중복 애니메이션/리스너 방지).
+  // Return only nodes this effect (tag) has not yet processed + mark them (no duplicate anim/listener).
+  function freshOnly(nodeList, tag) {
     const out = [];
     nodeList.forEach((el) => {
-      if (seen.has(el)) return;
-      seen.add(el);
+      let tags = seen.get(el);
+      if (!tags) {
+        tags = new Set();
+        seen.set(el, tags);
+      }
+      if (tags.has(tag)) return;
+      tags.add(tag);
       out.push(el);
     });
     return out;
@@ -101,7 +110,8 @@
     const targets = freshOnly(
       document.querySelectorAll(
         ".fx, .kpi, .principle, .full-card, .repo-card, .demo-grid, .detail-hero, .swatch, .tk-card, .freq-row, .reason-row, .breakdown__row, .issue, .pager, .alert, .section__head, .frame"
-      )
+      ),
+      "entry"
     );
     targets.forEach((el) => el.classList.add("fx-enter"));
 
@@ -146,7 +156,8 @@
   function setupCountUp() {
     // Match: leading number in elements with count-up role
     const candidates = freshOnly(
-      document.querySelectorAll(".kpi__value, .repo-card__score, .detail-hero__num, .reason-row__count, .freq-row__count, .breakdown__val")
+      document.querySelectorAll(".kpi__value, .repo-card__score, .detail-hero__num, .reason-row__count, .freq-row__count, .breakdown__val"),
+      "countup"
     );
     const targets = [];
     candidates.forEach((el) => {
@@ -174,7 +185,7 @@
 
   /* ----- 3. Score-bar grow-in -------------------------------------------- */
   function setupScoreBars() {
-    const fresh = freshOnly(document.querySelectorAll(".score-bar"));
+    const fresh = freshOnly(document.querySelectorAll(".score-bar"), "scorebar");
     fresh.forEach((bar) => {
       const inline = bar.style.getPropertyValue("--sb-pct").trim();
       if (!inline) return;
@@ -195,7 +206,7 @@
 
   /* ----- 4. Frequent issue bars ------------------------------------------ */
   function setupFreqBars() {
-    const fresh = freshOnly(document.querySelectorAll(".freq-row__bar-fill"));
+    const fresh = freshOnly(document.querySelectorAll(".freq-row__bar-fill"), "freqbar");
     fresh.forEach((fill) => {
       const target = fill.style.width;
       fill.dataset.targetWidth = target || "100%";
@@ -217,7 +228,7 @@
 
   /* ----- 5. SVG chart line draw-in --------------------------------------- */
   function setupChartLines() {
-    const fresh = freshOnly(document.querySelectorAll("svg path[d]"));
+    const fresh = freshOnly(document.querySelectorAll("svg path[d]"), "chartline");
     fresh.forEach((path) => {
       // Only animate stroked lines, not filled areas
       const stroke = path.getAttribute("stroke");
@@ -269,7 +280,8 @@
     const donutSvgs = freshOnly(
       Array.from(document.querySelectorAll("svg")).filter(
         (svg) => svg.querySelectorAll("circle[stroke-dasharray]").length >= 2
-      )
+      ),
+      "donut"
     );
     donutSvgs.forEach((svg) => {
       svg.querySelectorAll("circle[stroke-dasharray]").forEach((seg) => {
@@ -298,7 +310,7 @@
 
   /* ----- 7. Smooth scroll for in-page anchors ---------------------------- */
   function setupSmoothScroll() {
-    freshOnly(document.querySelectorAll('a[href^="#"]')).forEach((a) => {
+    freshOnly(document.querySelectorAll('a[href^="#"]'), "smoothscroll").forEach((a) => {
       a.addEventListener("click", (e) => {
         const id = a.getAttribute("href").slice(1);
         if (!id) return;
@@ -315,7 +327,7 @@
   /* ----- 8. Subtle magnetic hover on cards ------------------------------- */
   function setupMagnetic() {
     if (reduced()) return;
-    const targets = freshOnly(document.querySelectorAll(".kpi, .repo-card, .principle"));
+    const targets = freshOnly(document.querySelectorAll(".kpi, .repo-card, .principle"), "magnetic");
     targets.forEach((el) => {
       let raf = null;
       el.addEventListener("mousemove", (e) => {
