@@ -17,7 +17,7 @@
    hx-boost re-run: init() runs once on first load + on every htmx:afterSettle /
    htmx:historyRestore (single-slot remove-before-add via document._fxEffectsHandler),
    fixing the post-body-swap animation freeze (U2). Each setup uses the helper `freshOnly(nodeList,
-   tag)` to fetch+register only the nodes this effect tag has not yet processed, so the `seen`
+   tag)` to fetch, register, and return only the nodes this effect tag has not yet processed, so the `seen`
    WeakMap (node → set of effect tags) keeps re-runs idempotent per-effect — only freshly inserted
    DOM nodes are processed and surviving nodes are skipped (a node targeted by multiple effects is
    handled once by EACH).
