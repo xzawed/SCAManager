@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [정합성 감사 백로그 C12·C22·U1 머지 — 3 PR (#884 C12 OTP rate-limit·#885 C22 diff 절단 마커·#886 U1 0027 RLS 의도적 divergence, 단위 +23, code-side 백로그 전량 해소, 2026-06-13)](#정합성-감사-백로그-c12c22u1-머지--3-pr-884886-2026-06-13)
 - [잔여/후속 세션 — C1 save_gate_decision dead wrapper 제거 (호출처 0 dead code + 35 inert patch de-indent + 죽은-래퍼 테스트 2개 제거, 기능 영향 0, 단위 −2, 2026-06-13)](#잔여후속-세션--c1-save_gate_decision-dead-wrapper-제거-2026-06-13)
 - [잔여/후속 세션 — U2 effects.js hx-boost 애니메이션 재초기화 (named init + document._fxEffectsHandler remove-before-add + effect별 WeakMap 멱등 가드, Codex mutual NG 1회 적발→수정, 단위 +1·E2E +2, 2026-06-13)](#잔여후속-세션--u2-effectsjs-hx-boost-애니메이션-재초기화-2026-06-13)
 - [정합성 감사 P2 백로그 처리 — 6 PR (#874 dead-code·#875 보안 escape/sanitize·#876 pipeline 방어·#877 db/i18n/관측·#878 test/UI·#879 CodeQL, 단위 +8, 백로그 보류 5, 2026-06-12)](#정합성-감사-p2-백로그-처리--6-pr-874879-2026-06-12)
@@ -91,6 +92,17 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 정합성 감사 백로그 C12·C22·U1 머지 — 3 PR (#884~#886) (2026-06-13)
+
+**날짜**: 2026-06-13 | **트리거**: 사용자 "잔여/후속 작업 확인" → 상태 실측(메모리 stale 정정 — C12/C22 결정이 이미 내려져 PR 생성됨) → "순차 머지 위임" | **상태**: 3 PR squash 머지, 전 PR Codex mutual OK·CI+CodeQL green
+
+**흐름**: integrity-audit full(wf_7fb7c8f8) 백로그 잔여 code-side 3건(C12·C22·U1)을 `#883` 기반 분기 순차 squash 머지(#884→#885→#886, 각 머지 후 다음 PR mergeable 재확인 = 실충돌 0). 3건 모두 사용자 결정 반영 + Codex mutual OK 완료 상태였음(머지 신호만 잔여).
+
+- **#884 C12 — Telegram OTP brute-force in-memory rate-limit**(사용자 결정 ⓐ): `/connect <otp>` 가 `find_by_otp`(만료 전 *모든* 사용자 OTP 매칭) 호출 전 시도횟수 체크 0 → 6자리 OTP 무작위 추측 위험(동시 유효 OTP N개면 적중률 ~N배, webhook HMAC·IP limiter 부적합). `_OtpAttemptLimiter`(deque 슬라이딩 윈도우 + `threading.Lock`, `BotInteractionLimiter` 동형) per-telegram_user_id 실패 시도 5회/300s 초과 시 조회 전 차단 + 성공 시에만 clear(오타 비페널티) + 키 상한 2048(`WEBHOOK_SECRET_CACHE_MAX` 패턴). 상수 3종(`OTP_MAX_FAILED_ATTEMPTS`/`OTP_ATTEMPT_WINDOW_SECONDS`/`OTP_LIMITER_MAX_KEYS`) + i18n 3언어. 🔴 Codex R1 NG(`clear()` 가 `set_telegram_user_id` 전 → already_linked 시 카운터 오초기화, 정책18 §3b 단일정답 버그) → clear 를 set 성공 후로 이동 + 회귀 테스트 + TOCTOU docstring(단일 worker 실용 위험 낮음·다중 worker 전환 시 atomic 재검토) → R2 OK. 단위 +11.
+- **#885 C22 — AI리뷰 diff 무음 절단 마커**(사용자 결정 ⓐ): `review_prompt.py` `MAX_DIFF_CHARS=16000` 무음 절단인데 `AiReviewResult` 에 절단 신호 부재 → 큰 PR 일부만 채점돼 점수 인플레돼도 incomplete 미전파 = `static_analysis_incomplete`(auto-merge 차단)와 비대칭. `AiReviewResult.truncated`(success 경로 `len(diff)>MAX_DIFF_CHARS`) + pipeline `ai_review_truncated` 전파 + auto_merge/approve/telegram 반자동 4 caller 가드(기존 마커 동일 레이어 = engine 단일출처 대신 유지보수 일관성). 🔴 정책16 §명시제외(`build_review_prompt` 토큰예산/prompt 구조) 인접하나 prompt·예산 미접촉(절단 여부 관측만). 🔴 Codex R1 NG 2건(parse_error 시 truncated 오설정·telegram 반자동이 AutoMergeAction 우회) → success 경로 한정 + 인라인 가드 추가(둘 다 단일정답 버그) → R3 OK(로컬 테스트 증거 제출 후). 단위 +10.
+- **#886 U1 — alembic 0027 RLS 의도적 divergence 종결**: 0027 RLS 정책이 0026 형제(analyses/merge_attempts/repositories) 대비 `OR user_id IS NULL` 절을 의도적 생략(더 엄격한 격리 = legacy 보안알림 비노출, #869 per-user 방향 정합)임을 EXACT 재검증 → false-positive 종결. alembic SQL 무변경(주석-only) → 운영 영향 0 + 구조단언 가드 `test_0027_rls_intentional_divergence.py`. 🔴 Codex R1 NG(가드가 `current_setting`+정책명만 단언 → 골격 제거돼도 통과 무력) → 구조단언 3종(`repo_id IN`/`SELECT id FROM repositories`/`WHERE user_id = NULLIF(...)`) 강화·mutation 4변형 포착 확인 + dangling docstring 참조(`test_0027_security_alert_log.py` 미존재) 정정 → OK. 🔴 학습: 0027 에 `user_id IS NULL` 추가 금지(legacy 보안알림 cross-tenant 노출). 단위 +2.
+- **수치**: 단위 4915→**4938**(+23) · 통합 154 · 전체 5069→**5092** · E2E 115 불변 · pylint **10.00/10** · Code Scanning open 0. architecture.md 무변경(신규 src 파일 없음 — 신규는 테스트/상수/i18n). **integrity-audit full 백로그 code-side 전량 해소** — 잔여 = ops 2건(#2 RLS owner-bypass Phase 4 운영 전환·2nd-LLM 검증자 활성화, 둘 다 코드 100% 완료·사용자 운영 영역). 상세: [[project-audit-backlog-2026-06-12]].
 
 ## 잔여/후속 세션 — C1 save_gate_decision dead wrapper 제거 (2026-06-13)
 
