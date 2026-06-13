@@ -106,6 +106,7 @@
 - **③ db.md U1 노트**(`.claude/rules/db.md` + `.codex/rules/db.md` 미러): 활성 app-layer 필터(`security_alert_log_repo._apply_owner_filter` + dashboard 의 `OR Repository.user_id.is_(None)`)가 legacy 보안알림을 전역 노출 → 0027 RLS strict(legacy 비노출) 의도와 **정반대 방향**. #2 미완(BYPASSRLS) 동안 충돌 0이나 Phase 4 비-BYPASSRLS 전환 시 legacy 행에서 두 레이어 상반(app=노출 vs RLS=차단) → 더 제한적 RLS 우선. strict 통일 시 app 필터 `is_(None)` 절도 동시 제거(#2 묶음·사용자 결정).
 
 - **수치**: 단위 4938→**4939**(+1) · 통합 154 · 전체 5092→**5093** · E2E 115 불변 · pylint **10.00/10**. **P2 3건 백로그**: brute-force 통합 테스트 substring 결합(en 문구 취약) / C22 절단 점수 analytics 집계 비대칭(ai_review_failed NULL-persist 대비) / C12 OTP 리미터 per-telegram_user_id 키 → 계정 로테이션 시 전역 OTP 풀 상한 부재 — 후 2건은 정책15 High tier(데이터모델) 사용자 결정. 상세: [[project-audit-backlog-2026-06-12]].
+- 🔴 **#891 CodeQL #517 후속** (두 번째 self-inflicted alert): 위 #888 정적 가드 테스트가 `import src.notifier.telegram_commands as mod` 를 추가했는데 파일 상단 `from ... import` 와 이중 → `py/import-and-import-from`(note, open 0→1) — #888(#516)과 동일하게 **main 전체 스캔서만 노출**(PR-diff CodeQL green). **수정**: 이미 import 된 `handle_message_command` 심볼로 `inspect.getsourcefile()` 사용 → 모듈 재import 제거(테스트 동작 동일 26 passed·단위 4939 불변). main 재스캔서 #517 auto-fixed → **Code Scanning open 0**. 🔴 학습: 정적 가드서 모듈 소스 필요 시 `import as`(이미 `from import` 공존) 금지 — `inspect.getsourcefile(이미_import된_심볼)` 사용. (PR-diff CodeQL ≠ main 전체 스캔 = #888/#891 2회 반복 확인 → 머지 후 정책14 점검 필수.)
 
 ## 정합성 감사 백로그 C12·C22·U1 머지 — 3 PR (#884~#886) (2026-06-13)
 
