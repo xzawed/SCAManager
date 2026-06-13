@@ -44,11 +44,21 @@ def _load_0027():
 
 
 def test_0027_policy_has_owner_isolation():
-    """0027 정책은 owner 격리(user_id = current app user)를 포함한다."""
+    """0027 정책은 owner 격리(repo_id → repositories.user_id = current app user) 구조를 포함한다.
+
+    구조 단언으로 격리 골격을 잠근다 — `current_setting`·정책명만 확인하면 `repo_id IN` /
+    `SELECT id FROM repositories` / `WHERE user_id =` 가 제거돼도 통과(가드 무력화). (Codex mutual NG fix)
+    """
     module = _load_0027()
     sql = module._RLS_SECURITY_ALERT_LOGS  # pylint: disable=protected-access
-    assert "current_setting('app.user_id'" in sql, "app.user_id 세션 격리 누락"
     assert "security_alert_logs_isolation" in sql, "정책명 누락"
+    # owner 격리 골격 (repo_id 간접 → repositories.user_id = 현재 app 사용자)
+    # Owner-isolation skeleton (repo_id indirect → repositories.user_id = current app user)
+    assert "repo_id IN" in sql, "repo_id 간접 격리(IN 서브쿼리) 누락"
+    assert "SELECT id FROM repositories" in sql, "repositories 서브쿼리 누락"
+    assert "WHERE user_id = NULLIF(current_setting('app.user_id'" in sql, (
+        "owner(user_id = current app user) 격리 절 누락"
+    )
 
 
 def test_0027_intentionally_omits_user_id_is_null():

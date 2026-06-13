@@ -11,7 +11,8 @@ GitHub Code Scanning + Secret Scanning alert process audit log.
 - RLS policy: repo_id → repositories.user_id 간접 격리 (analyses 패턴 차용)
 - 신규 테이블 = legacy NULL 허용 X (Phase 3 RLS 정합 — 신규 데이터만 user_id 명시)
 
-회귀 가드: tests/unit/migrations/test_0027_security_alert_log.py
+RLS policy 회귀 가드: tests/unit/migrations/test_0027_rls_intentional_divergence.py
+(0027 정책의 owner 격리 골격 + legacy 전역노출 절 의도적 생략을 잠금 — 정합성 감사 U1)
 """
 import sqlalchemy as sa
 from alembic import op
