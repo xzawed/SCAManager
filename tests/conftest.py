@@ -45,6 +45,16 @@ def _clear_user_repos_cache():
 
 
 @pytest.fixture(autouse=True)
+def _clear_otp_attempt_limiter():
+    # Telegram OTP brute-force 슬라이딩 윈도우 (C12) — 모듈 레벨 싱글톤, 테스트 간 격리
+    # Telegram OTP brute-force sliding window (C12) — module-level singleton, isolate per test
+    from src.notifier.telegram_commands import _otp_limiter  # pylint: disable=import-outside-toplevel
+    _otp_limiter._failures.clear()
+    yield
+    _otp_limiter._failures.clear()
+
+
+@pytest.fixture(autouse=True)
 def _reset_rate_limiter():
     """Rate limiter 인메모리 카운터를 테스트마다 초기화한다 — 테스트 간 rate limit 누적 방지.
     Reset in-memory rate limiter counters between tests to prevent cross-test leakage.

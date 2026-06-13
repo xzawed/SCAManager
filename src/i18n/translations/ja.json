@@ -813,6 +813,7 @@
       "unknown_command": "対応していないコマンドです。利用可能: /stats <repo>, /settings, /connect <コード>",
       "connect_usage": "使い方: /connect <6桁コード>",
       "connect_invalid_otp": "OTP が無効または期限切れです。",
+      "connect_rate_limited": "試行回数が多すぎます。数分後にもう一度お試しください。",
       "connect_already_linked": "この Telegram アカウントは既に他のユーザーに連携されています。",
       "connect_success": "✅ {name} さんのアカウントが連携されました!",
       "connect_default_name": "ユーザー",
