@@ -27,6 +27,19 @@ depends_on = None
 
 # RLS policy SQL — repo_id 간접 격리 (analyses 패턴 차용 — 0026 L60-67)
 # RLS policy SQL — repo_id indirect isolation (analyses pattern — 0026 L60-67)
+#
+# 의도적 divergence (정합성 감사 U1, 2026-06-13 재확인): 이 정책은 0026 형제 정책
+# analyses 및 merge_attempts 에 있는 legacy 전역 노출 절을 의도적으로 생략한다.
+# 신규 audit-log 테이블이라 user_id 가 비어있는 legacy repo 데이터가 없고, legacy
+# 보안알림을 전역 노출하지 않는 더 엄격한 격리가 strict multi-tenancy 방향에 정합한다.
+# 운영 실측(legacy repo 0건)으로 영향 없음 확인 → 감사 U1 을 false-positive 로 종결.
+# 회귀 가드: tests/unit/migrations/test_0027_rls_intentional_divergence.py
+# Intentional divergence (integrity-audit U1, re-confirmed 2026-06-13): this policy
+# deliberately omits the legacy global-visibility clause that the 0026 sibling policies
+# analyses and merge_attempts carry. As a new audit-log table it has no legacy rows with
+# an empty user_id, and keeping legacy security alerts non-global is the stricter,
+# multi-tenancy-aligned choice. Do not reintroduce that clause without updating the guard
+# test above (it would expose legacy security alerts cross-tenant).
 _RLS_SECURITY_ALERT_LOGS = """
 ALTER TABLE security_alert_process_logs ENABLE ROW LEVEL SECURITY;
 

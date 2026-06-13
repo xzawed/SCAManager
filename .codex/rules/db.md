@@ -17,3 +17,4 @@ paths:
 - **DB 세션**: `get_current_user()` 는 `db.expunge(user)` 후 반환 — 관계 lazy-load 사용 금지.
 - **ThreadPoolExecutor**: `with` 문 금지 (shutdown hang) — `try/finally` + `executor.shutdown(wait=False)`.
 - **`(data.get("key") or {}).get(...)` 패턴**: GitHub 페이로드의 None-able 키 접근 시 `or {}` 정규화 필수.
+- 🔴 **RLS legacy 노출 비대칭 (감사 U1, 2026-06-13)**: `0026`(analyses/merge_attempts/repositories)는 `OR user_id IS NULL`(legacy 전역 노출)을 갖지만 `0027`(security_alert_process_logs)는 **의도적으로 생략**(더 엄격). **0027 에 `user_id IS NULL` 추가 금지** — legacy 보안알림 cross-tenant 노출. 가드: `tests/unit/migrations/test_0027_rls_intentional_divergence.py`.
