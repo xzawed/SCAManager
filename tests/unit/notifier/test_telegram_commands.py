@@ -513,3 +513,36 @@ def test_unknown_command_not_connected_prompts_connect(db):
     """
     result = handle_message_command(db, "tg-disconnected", "/unknown")
     assert result == _NOT_CONNECTED_MSG
+
+
+def test_dispatcher_returns_not_connected_constant_directly():
+    """회귀 가드(#888 / CodeQL #516): 디스패처가 `_NOT_CONNECTED_MSG` 상수를 직접 반환해야 한다.
+    Regression guard (#888 / CodeQL #516): the dispatcher must return the
+    `_NOT_CONNECTED_MSG` constant directly.
+
+    위 3개 테스트는 반환'값' 동등(== _NOT_CONNECTED_MSG)만 검증하므로, 디스패처를 inline
+    `get_text(...)` 로 되돌려도(값이 글자 그대로 동일) 통과한다 → 모듈 상수가 src 에서 고아화돼
+    `py/unused-global-variable`(#516) 가 재발해도 pytest 는 green. CodeQL 은 비동기 Code
+    Scanning(머지 후 alert)이라 PR-CI 에서 못 잡는다. 따라서 상수 '심볼' 사용을 ast 로 직접 단언.
+    The three tests above only assert value-equality, so reverting the dispatcher to an inline
+    `get_text(...)` (byte-identical value) would still pass while the module global re-orphans
+    and CodeQL #516 resurfaces — and async Code Scanning can't gate it at PR-CI. So assert the
+    symbol usage via ast.
+    """
+    import ast
+    from pathlib import Path
+
+    import src.notifier.telegram_commands as mod
+
+    source = Path(mod.__file__).read_text(encoding="utf-8")
+    returns_constant = any(
+        isinstance(node, ast.Return)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "_NOT_CONNECTED_MSG"
+        for node in ast.walk(ast.parse(source))
+    )
+    assert returns_constant, (
+        "디스패처가 _NOT_CONNECTED_MSG 를 inline get_text 로 되돌리면 상수가 고아화돼 "
+        "CodeQL py/unused-global-variable(#516) 가 재발한다 — 상수 직접 반환 유지 의무 / "
+        "dispatcher must keep returning the _NOT_CONNECTED_MSG constant"
+    )
