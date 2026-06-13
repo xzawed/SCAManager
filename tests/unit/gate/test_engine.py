@@ -73,16 +73,15 @@ async def test_review_comment_on_calls_post_pr_comment():
             with patch("src.gate.actions.approve.post_github_review", new_callable=AsyncMock):
                 with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
                     with patch("src.gate.actions.approve.send_gate_request", new_callable=AsyncMock):
-                        with patch("src.gate.engine.save_gate_decision"):
-                            await run_gate_check(
-                                repo_name="owner/repo",
-                                pr_number=1,
-                                analysis_id=1,
-                                result={"ai_summary": "ok", "suggestions": []},
-                                github_token="tok",
-                                db=mock_db,
-                            )
-                            mock_comment.assert_called_once()
+                        await run_gate_check(
+                            repo_name="owner/repo",
+                            pr_number=1,
+                            analysis_id=1,
+                            result={"ai_summary": "ok", "suggestions": []},
+                            github_token="tok",
+                            db=mock_db,
+                        )
+                        mock_comment.assert_called_once()
 
 
 async def test_review_comment_off_skips_post_pr_comment():
@@ -91,16 +90,15 @@ async def test_review_comment_off_skips_post_pr_comment():
     config = _config(pr_review_comment=False, approve_mode="disabled")
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock) as mock_comment:
-            with patch("src.gate.engine.save_gate_decision"):
-                await run_gate_check(
-                    repo_name="owner/repo",
-                    pr_number=1,
-                    analysis_id=1,
-                    result={"score": 80, "grade": "B"},
-                    github_token="tok",
-                    db=mock_db,
-                )
-                mock_comment.assert_not_called()
+            await run_gate_check(
+                repo_name="owner/repo",
+                pr_number=1,
+                analysis_id=1,
+                result={"score": 80, "grade": "B"},
+                github_token="tok",
+                db=mock_db,
+            )
+            mock_comment.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -113,22 +111,21 @@ async def test_auto_approve_high_score():
     config = _config(approve_mode="auto", approve_threshold=75, reject_threshold=50)
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.actions.approve.post_github_review", new_callable=AsyncMock) as mock_review:
-            with patch("src.gate.engine.save_gate_decision"):
-                with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
-                    with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
-                        await run_gate_check(
-                            repo_name="owner/repo",
-                            pr_number=1,
-                            analysis_id=1,
-                            result={"score": 80, "grade": "B"},
-                            github_token="tok",
-                            db=mock_db,
-                        )
-                        mock_review.assert_called_once()
-                        # 네 번째 positional 인자 또는 keyword 'decision'이 "approve"
-                        call = mock_review.call_args
-                        decision = call.kwargs.get("decision") or call.args[3]
-                        assert decision == "approve"
+            with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
+                with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
+                    await run_gate_check(
+                        repo_name="owner/repo",
+                        pr_number=1,
+                        analysis_id=1,
+                        result={"score": 80, "grade": "B"},
+                        github_token="tok",
+                        db=mock_db,
+                    )
+                    mock_review.assert_called_once()
+                    # 네 번째 positional 인자 또는 keyword 'decision'이 "approve"
+                    call = mock_review.call_args
+                    decision = call.kwargs.get("decision") or call.args[3]
+                    assert decision == "approve"
 
 
 async def test_auto_reject_low_score():
@@ -137,21 +134,20 @@ async def test_auto_reject_low_score():
     config = _config(approve_mode="auto", approve_threshold=75, reject_threshold=50)
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.actions.approve.post_github_review", new_callable=AsyncMock) as mock_review:
-            with patch("src.gate.engine.save_gate_decision"):
-                with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
-                    with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
-                        await run_gate_check(
-                            repo_name="owner/repo",
-                            pr_number=1,
-                            analysis_id=1,
-                            result={"score": 40, "grade": "F"},
-                            github_token="tok",
-                            db=mock_db,
-                        )
-                        mock_review.assert_called_once()
-                        call = mock_review.call_args
-                        decision = call.kwargs.get("decision") or call.args[3]
-                        assert decision == "reject"
+            with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
+                with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
+                    await run_gate_check(
+                        repo_name="owner/repo",
+                        pr_number=1,
+                        analysis_id=1,
+                        result={"score": 40, "grade": "F"},
+                        github_token="tok",
+                        db=mock_db,
+                    )
+                    mock_review.assert_called_once()
+                    call = mock_review.call_args
+                    decision = call.kwargs.get("decision") or call.args[3]
+                    assert decision == "reject"
 
 
 async def test_auto_skip_middle_score():
@@ -160,18 +156,17 @@ async def test_auto_skip_middle_score():
     config = _config(approve_mode="auto", approve_threshold=75, reject_threshold=50)
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.actions.approve.post_github_review", new_callable=AsyncMock) as mock_review:
-            with patch("src.gate.engine.save_gate_decision"):
-                with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
-                    with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
-                        await run_gate_check(
-                            repo_name="owner/repo",
-                            pr_number=1,
-                            analysis_id=1,
-                            result={"score": 62, "grade": "C"},
-                            github_token="tok",
-                            db=mock_db,
-                        )
-                        mock_review.assert_not_called()
+            with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
+                with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
+                    await run_gate_check(
+                        repo_name="owner/repo",
+                        pr_number=1,
+                        analysis_id=1,
+                        result={"score": 62, "grade": "C"},
+                        github_token="tok",
+                        db=mock_db,
+                    )
+                    mock_review.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -185,18 +180,17 @@ async def test_semi_auto_sends_telegram():
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.actions.approve.send_gate_request", new_callable=AsyncMock) as mock_send:
             with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
-                with patch("src.gate.engine.save_gate_decision"):
-                    await run_gate_check(
-                        repo_name="owner/repo",
-                        pr_number=7,
-                        analysis_id=5,
-                        result={"score": 65, "grade": "C"},
-                        github_token="tok",
-                        db=mock_db,
-                    )
-                    mock_send.assert_called_once()
-                    assert mock_send.call_args.kwargs["analysis_id"] == 5
-                    assert mock_send.call_args.kwargs["chat_id"] == "-100999"
+                await run_gate_check(
+                    repo_name="owner/repo",
+                    pr_number=7,
+                    analysis_id=5,
+                    result={"score": 65, "grade": "C"},
+                    github_token="tok",
+                    db=mock_db,
+                )
+                mock_send.assert_called_once()
+                assert mock_send.call_args.kwargs["analysis_id"] == 5
+                assert mock_send.call_args.kwargs["chat_id"] == "-100999"
 
 
 # ---------------------------------------------------------------------------
@@ -210,16 +204,15 @@ async def test_approve_disabled_no_review():
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.actions.approve.post_github_review", new_callable=AsyncMock) as mock_review:
             with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
-                with patch("src.gate.engine.save_gate_decision"):
-                    await run_gate_check(
-                        repo_name="owner/repo",
-                        pr_number=1,
-                        analysis_id=1,
-                        result={"score": 80, "grade": "B"},
-                        github_token="tok",
-                        db=mock_db,
-                    )
-                    mock_review.assert_not_called()
+                await run_gate_check(
+                    repo_name="owner/repo",
+                    pr_number=1,
+                    analysis_id=1,
+                    result={"score": 80, "grade": "B"},
+                    github_token="tok",
+                    db=mock_db,
+                )
+                mock_review.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -242,18 +235,17 @@ async def test_auto_merge_independent_of_approve_mode():
         with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge:
             with patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state:
                 with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
-                    with patch("src.gate.engine.save_gate_decision"):
-                        mock_state.return_value = ("clean", "abc123")
-                        mock_merge.return_value = MergeOutcome(ok=True, reason=None, head_sha="abc123", path=PATH_REST_FALLBACK)
-                        await run_gate_check(
-                            repo_name="owner/repo",
-                            pr_number=3,
-                            analysis_id=10,
-                            result={"score": 80, "grade": "B"},
-                            github_token="tok",
-                            db=mock_db,
-                        )
-                        mock_merge.assert_called_once()
+                    mock_state.return_value = ("clean", "abc123")
+                    mock_merge.return_value = MergeOutcome(ok=True, reason=None, head_sha="abc123", path=PATH_REST_FALLBACK)
+                    await run_gate_check(
+                        repo_name="owner/repo",
+                        pr_number=3,
+                        analysis_id=10,
+                        result={"score": 80, "grade": "B"},
+                        github_token="tok",
+                        db=mock_db,
+                    )
+                    mock_merge.assert_called_once()
 
 
 async def test_auto_merge_with_auto_approve():
@@ -271,19 +263,18 @@ async def test_auto_merge_with_auto_approve():
             with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge:
                 with patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state:
                     with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
-                        with patch("src.gate.engine.save_gate_decision"):
-                            mock_state.return_value = ("clean", "abc123")
-                            mock_merge.return_value = MergeOutcome(ok=True, reason=None, head_sha="abc123", path=PATH_REST_FALLBACK)
-                            await run_gate_check(
-                                repo_name="owner/repo",
-                                pr_number=5,
-                                analysis_id=20,
-                                result={"score": 90, "grade": "A"},
-                                github_token="tok",
-                                db=mock_db,
-                            )
-                            mock_review.assert_called_once()
-                            mock_merge.assert_called_once()
+                        mock_state.return_value = ("clean", "abc123")
+                        mock_merge.return_value = MergeOutcome(ok=True, reason=None, head_sha="abc123", path=PATH_REST_FALLBACK)
+                        await run_gate_check(
+                            repo_name="owner/repo",
+                            pr_number=5,
+                            analysis_id=20,
+                            result={"score": 90, "grade": "A"},
+                            github_token="tok",
+                            db=mock_db,
+                        )
+                        mock_review.assert_called_once()
+                        mock_merge.assert_called_once()
 
 
 async def test_auto_merge_below_threshold():
@@ -298,16 +289,15 @@ async def test_auto_merge_below_threshold():
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge:
             with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
-                with patch("src.gate.engine.save_gate_decision"):
-                    await run_gate_check(
-                        repo_name="owner/repo",
-                        pr_number=3,
-                        analysis_id=10,
-                        result={"score": 60, "grade": "C"},
-                        github_token="tok",
-                        db=mock_db,
-                    )
-                    mock_merge.assert_not_called()
+                await run_gate_check(
+                    repo_name="owner/repo",
+                    pr_number=3,
+                    analysis_id=10,
+                    result={"score": 60, "grade": "C"},
+                    github_token="tok",
+                    db=mock_db,
+                )
+                mock_merge.assert_not_called()
 
 
 async def test_auto_merge_false_no_merge():
@@ -324,16 +314,15 @@ async def test_auto_merge_false_no_merge():
         with patch("src.gate.actions.approve.post_github_review", new_callable=AsyncMock):
             with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge:
                 with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
-                    with patch("src.gate.engine.save_gate_decision"):
-                        await run_gate_check(
-                            repo_name="owner/repo",
-                            pr_number=5,
-                            analysis_id=20,
-                            result={"score": 90, "grade": "A"},
-                            github_token="tok",
-                            db=mock_db,
-                        )
-                        mock_merge.assert_not_called()
+                    await run_gate_check(
+                        repo_name="owner/repo",
+                        pr_number=5,
+                        analysis_id=20,
+                        result={"score": 90, "grade": "A"},
+                        github_token="tok",
+                        db=mock_db,
+                    )
+                    mock_merge.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -356,19 +345,18 @@ async def test_push_event_no_gate_actions():
             with patch("src.gate.actions.approve.post_github_review", new_callable=AsyncMock) as mock_review:
                 with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge:
                     with patch("src.gate.actions.approve.send_gate_request", new_callable=AsyncMock) as mock_send:
-                        with patch("src.gate.engine.save_gate_decision"):
-                            await run_gate_check(
-                                repo_name="owner/repo",
-                                pr_number=None,  # push 이벤트
-                                analysis_id=99,
-                                result={"score": 90, "grade": "A"},
-                                github_token="tok",
-                                db=mock_db,
-                            )
-                            mock_comment.assert_not_called()
-                            mock_review.assert_not_called()
-                            mock_merge.assert_not_called()
-                            mock_send.assert_not_called()
+                        await run_gate_check(
+                            repo_name="owner/repo",
+                            pr_number=None,  # push 이벤트
+                            analysis_id=99,
+                            result={"score": 90, "grade": "A"},
+                            github_token="tok",
+                            db=mock_db,
+                        )
+                        mock_comment.assert_not_called()
+                        mock_review.assert_not_called()
+                        mock_merge.assert_not_called()
+                        mock_send.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -492,14 +480,13 @@ async def test_post_pr_comment_exception_does_not_abort_gate():
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock, side_effect=httpx.ConnectError("comment failed")):
             with patch("src.gate.actions.approve.post_github_review", new_callable=AsyncMock) as mock_review:
-                with patch("src.gate.engine.save_gate_decision"):
-                    with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
-                        await run_gate_check(
-                            repo_name="owner/repo", pr_number=1, analysis_id=1,
-                            result={"score": 80, "grade": "B"}, github_token="tok", db=mock_db,
-                        )
-                        # comment 실패해도 approve는 실행되어야 한다
-                        mock_review.assert_called_once()
+                with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
+                    await run_gate_check(
+                        repo_name="owner/repo", pr_number=1, analysis_id=1,
+                        result={"score": 80, "grade": "B"}, github_token="tok", db=mock_db,
+                    )
+                    # comment 실패해도 approve는 실행되어야 한다
+                    mock_review.assert_called_once()
 
 
 async def test_post_github_review_exception_does_not_crash():
@@ -508,15 +495,14 @@ async def test_post_github_review_exception_does_not_crash():
     config = _config(approve_mode="auto", approve_threshold=75, reject_threshold=50, pr_review_comment=False)
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.actions.approve.post_github_review", new_callable=AsyncMock, side_effect=httpx.ConnectError("GitHub API error")):
-            with patch("src.gate.engine.save_gate_decision"):
-                with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
-                    with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
-                        # 예외 없이 완료되어야 한다
-                        # Must complete without raising an exception.
-                        await run_gate_check(
-                            repo_name="owner/repo", pr_number=1, analysis_id=1,
-                            result={"score": 80, "grade": "B"}, github_token="tok", db=mock_db,
-                        )
+            with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
+                with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
+                    # 예외 없이 완료되어야 한다
+                    # Must complete without raising an exception.
+                    await run_gate_check(
+                        repo_name="owner/repo", pr_number=1, analysis_id=1,
+                        result={"score": 80, "grade": "B"}, github_token="tok", db=mock_db,
+                    )
 
 
 async def test_merge_pr_exception_does_not_crash():
@@ -526,11 +512,10 @@ async def test_merge_pr_exception_does_not_crash():
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock, side_effect=httpx.ConnectError("merge error")):
             with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
-                with patch("src.gate.engine.save_gate_decision"):
-                    await run_gate_check(
-                        repo_name="owner/repo", pr_number=3, analysis_id=10,
-                        result={"score": 90, "grade": "A"}, github_token="tok", db=mock_db,
-                    )
+                await run_gate_check(
+                    repo_name="owner/repo", pr_number=3, analysis_id=10,
+                    result={"score": 90, "grade": "A"}, github_token="tok", db=mock_db,
+                )
 
 
 async def test_semi_auto_no_notify_chat_id_skips_telegram():
@@ -540,12 +525,11 @@ async def test_semi_auto_no_notify_chat_id_skips_telegram():
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.actions.approve.send_gate_request", new_callable=AsyncMock) as mock_send:
             with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
-                with patch("src.gate.engine.save_gate_decision"):
-                    await run_gate_check(
-                        repo_name="owner/repo", pr_number=1, analysis_id=1,
-                        result={"score": 70, "grade": "C"}, github_token="tok", db=mock_db,
-                    )
-                    mock_send.assert_not_called()
+                await run_gate_check(
+                    repo_name="owner/repo", pr_number=1, analysis_id=1,
+                    result={"score": 70, "grade": "C"}, github_token="tok", db=mock_db,
+                )
+                mock_send.assert_not_called()
 
 
 async def test_send_gate_request_exception_does_not_crash():
@@ -555,11 +539,10 @@ async def test_send_gate_request_exception_does_not_crash():
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.actions.approve.send_gate_request", new_callable=AsyncMock, side_effect=httpx.ConnectError("Telegram error")):
             with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
-                with patch("src.gate.engine.save_gate_decision"):
-                    await run_gate_check(
-                        repo_name="owner/repo", pr_number=1, analysis_id=1,
-                        result={"score": 70, "grade": "C"}, github_token="tok", db=mock_db,
-                    )
+                await run_gate_check(
+                    repo_name="owner/repo", pr_number=1, analysis_id=1,
+                    result={"score": 70, "grade": "C"}, github_token="tok", db=mock_db,
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -572,17 +555,16 @@ async def test_config_none_calls_get_repo_config():
     config = _config(pr_review_comment=False, approve_mode="disabled", auto_merge=False)
     with patch("src.gate.engine.get_repo_config", return_value=config) as mock_get:
         with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
-            with patch("src.gate.engine.save_gate_decision"):
-                await run_gate_check(
-                    repo_name="owner/repo",
-                    pr_number=1,
-                    analysis_id=1,
-                    result={"score": 80},
-                    github_token="tok",
-                    db=mock_db,
-                    config=None,  # 명시적 None — DB 조회 분기
-                )
-                mock_get.assert_called_once_with(mock_db, "owner/repo")
+            await run_gate_check(
+                repo_name="owner/repo",
+                pr_number=1,
+                analysis_id=1,
+                result={"score": 80},
+                github_token="tok",
+                db=mock_db,
+                config=None,  # 명시적 None — DB 조회 분기
+            )
+            mock_get.assert_called_once_with(mock_db, "owner/repo")
 
 
 async def test_config_provided_skips_get_repo_config():
@@ -591,17 +573,16 @@ async def test_config_provided_skips_get_repo_config():
     config = _config(pr_review_comment=False, approve_mode="disabled", auto_merge=False)
     with patch("src.gate.engine.get_repo_config") as mock_get:
         with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
-            with patch("src.gate.engine.save_gate_decision"):
-                await run_gate_check(
-                    repo_name="owner/repo",
-                    pr_number=1,
-                    analysis_id=1,
-                    result={"score": 80},
-                    github_token="tok",
-                    db=mock_db,
-                    config=config,  # 이미 로드된 config 전달
-                )
-                mock_get.assert_not_called()
+            await run_gate_check(
+                repo_name="owner/repo",
+                pr_number=1,
+                analysis_id=1,
+                result={"score": 80},
+                github_token="tok",
+                db=mock_db,
+                config=config,  # 이미 로드된 config 전달
+            )
+            mock_get.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -645,16 +626,15 @@ async def test_approve_at_exact_threshold():
     config = _config(approve_mode="auto", approve_threshold=75, reject_threshold=50)
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.actions.approve.post_github_review", new_callable=AsyncMock) as mock_review:
-            with patch("src.gate.engine.save_gate_decision"):
-                with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
-                    with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
-                        await run_gate_check(
-                            repo_name="owner/repo", pr_number=1, analysis_id=1,
-                            result={"score": 75}, github_token="tok", db=mock_db,
-                        )
-                        call = mock_review.call_args
-                        decision = call.kwargs.get("decision") or call.args[3]
-                        assert decision == "approve"
+            with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
+                with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
+                    await run_gate_check(
+                        repo_name="owner/repo", pr_number=1, analysis_id=1,
+                        result={"score": 75}, github_token="tok", db=mock_db,
+                    )
+                    call = mock_review.call_args
+                    decision = call.kwargs.get("decision") or call.args[3]
+                    assert decision == "approve"
 
 
 async def test_reject_threshold_boundary_is_excluded():
@@ -686,14 +666,13 @@ async def test_merge_at_exact_threshold():
         with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge:
             with patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state:
                 with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
-                    with patch("src.gate.engine.save_gate_decision"):
-                        mock_state.return_value = ("clean", "abc123")
-                        mock_merge.return_value = MergeOutcome(ok=True, reason=None, head_sha="abc123", path=PATH_REST_FALLBACK)
-                        await run_gate_check(
-                            repo_name="owner/repo", pr_number=1, analysis_id=1,
-                            result={"score": 75}, github_token="tok", db=mock_db,
-                        )
-                        mock_merge.assert_called_once()
+                    mock_state.return_value = ("clean", "abc123")
+                    mock_merge.return_value = MergeOutcome(ok=True, reason=None, head_sha="abc123", path=PATH_REST_FALLBACK)
+                    await run_gate_check(
+                        repo_name="owner/repo", pr_number=1, analysis_id=1,
+                        result={"score": 75}, github_token="tok", db=mock_db,
+                    )
+                    mock_merge.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -708,13 +687,12 @@ async def test_post_pr_comment_keyerror_does_not_abort_gate():
         with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock,
                    side_effect=KeyError("missing_field")):
             with patch("src.gate.actions.approve.post_github_review", new_callable=AsyncMock) as mock_review:
-                with patch("src.gate.engine.save_gate_decision"):
-                    with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
-                        await run_gate_check(
-                            repo_name="owner/repo", pr_number=1, analysis_id=1,
-                            result={"score": 80}, github_token="tok", db=mock_db,
-                        )
-                        mock_review.assert_called_once()
+                with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
+                    await run_gate_check(
+                        repo_name="owner/repo", pr_number=1, analysis_id=1,
+                        result={"score": 80}, github_token="tok", db=mock_db,
+                    )
+                    mock_review.assert_called_once()
 
 
 async def test_post_github_review_keyerror_does_not_crash():
@@ -724,13 +702,12 @@ async def test_post_github_review_keyerror_does_not_crash():
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.actions.approve.post_github_review", new_callable=AsyncMock,
                    side_effect=KeyError("pr_number")):
-            with patch("src.gate.engine.save_gate_decision"):
-                with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
-                    with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
-                        await run_gate_check(
-                            repo_name="owner/repo", pr_number=1, analysis_id=1,
-                            result={"score": 80}, github_token="tok", db=mock_db,
-                        )
+            with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
+                with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
+                    await run_gate_check(
+                        repo_name="owner/repo", pr_number=1, analysis_id=1,
+                        result={"score": 80}, github_token="tok", db=mock_db,
+                    )
 
 
 # ---------------------------------------------------------------------------
@@ -751,19 +728,18 @@ async def test_auto_merge_success_no_telegram():
         with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge:
             with patch("src.gate.engine.telegram_post_message", new_callable=AsyncMock) as mock_tg:
                 with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
-                    with patch("src.gate.engine.save_gate_decision"):
-                        # merge 성공 → (True, None)
-                        mock_merge.return_value = MergeOutcome(ok=True, reason=None, head_sha="abc123", path=PATH_REST_FALLBACK)
-                        await run_gate_check(
-                            repo_name="owner/repo",
-                            pr_number=3,
-                            analysis_id=10,
-                            result={"score": 80, "grade": "B"},
-                            github_token="tok",
-                            db=mock_db,
-                        )
-                        # merge 성공 시 Telegram 알림 없음
-                        mock_tg.assert_not_called()
+                    # merge 성공 → (True, None)
+                    mock_merge.return_value = MergeOutcome(ok=True, reason=None, head_sha="abc123", path=PATH_REST_FALLBACK)
+                    await run_gate_check(
+                        repo_name="owner/repo",
+                        pr_number=3,
+                        analysis_id=10,
+                        result={"score": 80, "grade": "B"},
+                        github_token="tok",
+                        db=mock_db,
+                    )
+                    # merge 성공 시 Telegram 알림 없음
+                    mock_tg.assert_not_called()
 
 
 async def test_auto_merge_failure_sends_telegram():
@@ -781,32 +757,31 @@ async def test_auto_merge_failure_sends_telegram():
             with patch("src.gate.engine.telegram_post_message", new_callable=AsyncMock) as mock_tg:
                 with patch("src.gate.engine.settings") as mock_settings:
                     with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
-                        with patch("src.gate.engine.save_gate_decision"):
-                            mock_settings.telegram_bot_token = "123:ABC"
-                            mock_settings.telegram_chat_id = ""
-                            # 레거시 경로 사용 — get_pr_mergeable_state 불필요
-                            # Use legacy path — get_pr_mergeable_state not needed
-                            mock_settings.merge_retry_enabled = False
-                            # merge 실패 → (False, "forbidden: Resource not accessible")
-                            mock_merge.return_value = MergeOutcome(ok=False, reason="forbidden: Resource not accessible", head_sha="abc123", path=PATH_REST_FALLBACK)
-                            await run_gate_check(
-                                repo_name="owner/repo",
-                                pr_number=3,
-                                analysis_id=10,
-                                result={"score": 80, "grade": "B"},
-                                github_token="tok",
-                                db=mock_db,
-                            )
-                            # Telegram 1회 호출
-                            mock_tg.assert_called_once()
-                            call_args = mock_tg.call_args
-                            # positional 3번째 인자가 payload dict
-                            payload = call_args.args[2]
-                            text = payload.get("text", "")
-                            # repo 이름, PR 번호, 실패 사유 모두 포함
-                            assert "owner/repo" in text
-                            assert "3" in text
-                            assert "forbidden" in text
+                        mock_settings.telegram_bot_token = "123:ABC"
+                        mock_settings.telegram_chat_id = ""
+                        # 레거시 경로 사용 — get_pr_mergeable_state 불필요
+                        # Use legacy path — get_pr_mergeable_state not needed
+                        mock_settings.merge_retry_enabled = False
+                        # merge 실패 → (False, "forbidden: Resource not accessible")
+                        mock_merge.return_value = MergeOutcome(ok=False, reason="forbidden: Resource not accessible", head_sha="abc123", path=PATH_REST_FALLBACK)
+                        await run_gate_check(
+                            repo_name="owner/repo",
+                            pr_number=3,
+                            analysis_id=10,
+                            result={"score": 80, "grade": "B"},
+                            github_token="tok",
+                            db=mock_db,
+                        )
+                        # Telegram 1회 호출
+                        mock_tg.assert_called_once()
+                        call_args = mock_tg.call_args
+                        # positional 3번째 인자가 payload dict
+                        payload = call_args.args[2]
+                        text = payload.get("text", "")
+                        # repo 이름, PR 번호, 실패 사유 모두 포함
+                        assert "owner/repo" in text
+                        assert "3" in text
+                        assert "forbidden" in text
 
 
 async def test_auto_merge_failure_no_chat_id_only_logs():
@@ -824,20 +799,19 @@ async def test_auto_merge_failure_no_chat_id_only_logs():
             with patch("src.gate.engine.telegram_post_message", new_callable=AsyncMock) as mock_tg:
                 with patch("src.gate.engine.settings") as mock_settings:
                     with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
-                        with patch("src.gate.engine.save_gate_decision"):
-                            mock_settings.telegram_bot_token = "123:ABC"
-                            mock_settings.telegram_chat_id = ""  # global chat_id도 없음
-                            mock_merge.return_value = MergeOutcome(ok=False, reason="forbidden: no permission", head_sha="abc123", path=PATH_REST_FALLBACK)
-                            await run_gate_check(
-                                repo_name="owner/repo",
-                                pr_number=3,
-                                analysis_id=10,
-                                result={"score": 80, "grade": "B"},
-                                github_token="tok",
-                                db=mock_db,
-                            )
-                            # chat_id가 없으므로 Telegram 미호출
-                            mock_tg.assert_not_called()
+                        mock_settings.telegram_bot_token = "123:ABC"
+                        mock_settings.telegram_chat_id = ""  # global chat_id도 없음
+                        mock_merge.return_value = MergeOutcome(ok=False, reason="forbidden: no permission", head_sha="abc123", path=PATH_REST_FALLBACK)
+                        await run_gate_check(
+                            repo_name="owner/repo",
+                            pr_number=3,
+                            analysis_id=10,
+                            result={"score": 80, "grade": "B"},
+                            github_token="tok",
+                            db=mock_db,
+                        )
+                        # chat_id가 없으므로 Telegram 미호출
+                        mock_tg.assert_not_called()
 
 
 async def test_auto_merge_failure_global_fallback_chat_id():
@@ -855,26 +829,25 @@ async def test_auto_merge_failure_global_fallback_chat_id():
             with patch("src.gate.engine.telegram_post_message", new_callable=AsyncMock) as mock_tg:
                 with patch("src.gate.engine.settings") as mock_settings:
                     with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
-                        with patch("src.gate.engine.save_gate_decision"):
-                            mock_settings.telegram_bot_token = "123:ABC"
-                            mock_settings.telegram_chat_id = "-100999"  # global fallback 존재
-                            # 레거시 경로 사용 — get_pr_mergeable_state 불필요
-                            # Use legacy path — get_pr_mergeable_state not needed
-                            mock_settings.merge_retry_enabled = False
-                            mock_merge.return_value = MergeOutcome(ok=False, reason="forbidden: no permission", head_sha="abc123", path=PATH_REST_FALLBACK)
-                            await run_gate_check(
-                                repo_name="owner/repo",
-                                pr_number=3,
-                                analysis_id=10,
-                                result={"score": 80, "grade": "B"},
-                                github_token="tok",
-                                db=mock_db,
-                            )
-                            # global chat_id로 전송
-                            mock_tg.assert_called_once()
-                            call_args = mock_tg.call_args
-                            # positional 2번째 인자가 chat_id
-                            assert call_args.args[1] == "-100999"
+                        mock_settings.telegram_bot_token = "123:ABC"
+                        mock_settings.telegram_chat_id = "-100999"  # global fallback 존재
+                        # 레거시 경로 사용 — get_pr_mergeable_state 불필요
+                        # Use legacy path — get_pr_mergeable_state not needed
+                        mock_settings.merge_retry_enabled = False
+                        mock_merge.return_value = MergeOutcome(ok=False, reason="forbidden: no permission", head_sha="abc123", path=PATH_REST_FALLBACK)
+                        await run_gate_check(
+                            repo_name="owner/repo",
+                            pr_number=3,
+                            analysis_id=10,
+                            result={"score": 80, "grade": "B"},
+                            github_token="tok",
+                            db=mock_db,
+                        )
+                        # global chat_id로 전송
+                        mock_tg.assert_called_once()
+                        call_args = mock_tg.call_args
+                        # positional 2번째 인자가 chat_id
+                        assert call_args.args[1] == "-100999"
 
 
 # ---------------------------------------------------------------------------
@@ -912,45 +885,6 @@ async def test_notify_merge_failure_skipped_when_no_chat_id():
 
 
 # ---------------------------------------------------------------------------
-# save_gate_decision UPDATE 분기 테스트
-# ---------------------------------------------------------------------------
-
-def test_save_gate_decision_updates_existing_record():
-    """동일 analysis_id 재호출 시 INSERT 가 아닌 UPDATE 가 일어난다."""
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from src.models.repository import Repository
-    from src.models.analysis import Analysis
-    from src.models.gate_decision import GateDecision
-    from src.gate.engine import save_gate_decision
-
-    engine = create_engine("sqlite:///:memory:")
-    # src.database 가 reload 되더라도 모델 클래스가 등록된 실제 메타데이터를 사용
-    Repository.metadata.create_all(engine)
-    Session = sessionmaker(engine)
-
-    with Session() as db:
-        repo = Repository(full_name="o/r", webhook_secret="s")
-        db.add(repo)
-        db.commit()
-        a = Analysis(repo_id=repo.id, commit_sha="deadbeef", score=80, grade="B", result={})
-        db.add(a)
-        db.commit()
-        aid = a.id
-
-        r1 = save_gate_decision(db, aid, "approve", "auto")
-        r2 = save_gate_decision(db, aid, "reject", "manual", decided_by="user@x")
-
-        assert r2.decision == "reject"
-        assert r2.mode == "manual"
-        assert r2.decided_by == "user@x"
-
-    with Session() as verify_db:
-        count = verify_db.query(GateDecision).filter(GateDecision.analysis_id == aid).count()
-        assert count == 1
-
-
-# ---------------------------------------------------------------------------
 # Phase F.1 — _run_auto_merge 가 log_merge_attempt 로 시도를 기록한다
 # ---------------------------------------------------------------------------
 
@@ -969,29 +903,28 @@ async def test_run_auto_merge_records_successful_merge_attempt():
             with patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state:
                 with patch("src.gate.engine.log_merge_attempt") as mock_log:
                     with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
-                        with patch("src.gate.engine.save_gate_decision"):
-                            mock_state.return_value = ("clean", "abc123")
-                            mock_merge.return_value = MergeOutcome(ok=True, reason=None, head_sha="abc123", path=PATH_REST_FALLBACK)
-                            await run_gate_check(
-                                repo_name="owner/repo",
-                                pr_number=3,
-                                analysis_id=10,
-                                result={"score": 80, "grade": "B"},
-                                github_token="tok",
-                                db=mock_db,
-                            )
-                            # log_merge_attempt 가 호출되어야 함
-                            mock_log.assert_called_once()
-                            call = mock_log.call_args
-                            # db 는 positional 또는 keyword
-                            # keyword 인자 기준으로 검증
-                            assert call.kwargs.get("success") is True
-                            assert call.kwargs.get("reason") is None
-                            assert call.kwargs.get("analysis_id") == 10
-                            assert call.kwargs.get("repo_name") == "owner/repo"
-                            assert call.kwargs.get("pr_number") == 3
-                            assert call.kwargs.get("score") == 80
-                            assert call.kwargs.get("threshold") == 75
+                        mock_state.return_value = ("clean", "abc123")
+                        mock_merge.return_value = MergeOutcome(ok=True, reason=None, head_sha="abc123", path=PATH_REST_FALLBACK)
+                        await run_gate_check(
+                            repo_name="owner/repo",
+                            pr_number=3,
+                            analysis_id=10,
+                            result={"score": 80, "grade": "B"},
+                            github_token="tok",
+                            db=mock_db,
+                        )
+                        # log_merge_attempt 가 호출되어야 함
+                        mock_log.assert_called_once()
+                        call = mock_log.call_args
+                        # db 는 positional 또는 keyword
+                        # keyword 인자 기준으로 검증
+                        assert call.kwargs.get("success") is True
+                        assert call.kwargs.get("reason") is None
+                        assert call.kwargs.get("analysis_id") == 10
+                        assert call.kwargs.get("repo_name") == "owner/repo"
+                        assert call.kwargs.get("pr_number") == 3
+                        assert call.kwargs.get("score") == 80
+                        assert call.kwargs.get("threshold") == 75
 
 
 async def test_run_auto_merge_records_failed_merge_attempt_with_reason_tag():
@@ -1011,26 +944,25 @@ async def test_run_auto_merge_records_failed_merge_attempt_with_reason_tag():
                 with patch("src.gate.engine.log_merge_attempt") as mock_log:
                     with patch("src.gate.engine.telegram_post_message", new_callable=AsyncMock):
                         with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
-                            with patch("src.gate.engine.save_gate_decision"):
-                                mock_state.return_value = ("clean", "abc123")
-                                mock_merge.return_value = MergeOutcome(
-                                    ok=False, reason=full_reason,
-                                    head_sha="abc123", path=PATH_REST_FALLBACK,
-                                )
-                                await run_gate_check(
-                                    repo_name="owner/repo",
-                                    pr_number=3,
-                                    analysis_id=10,
-                                    result={"score": 80, "grade": "B"},
-                                    github_token="tok",
-                                    db=mock_db,
-                                )
-                                mock_log.assert_called_once()
-                                call = mock_log.call_args
-                                assert call.kwargs.get("success") is False
-                                # 전체 reason 문자열을 그대로 전달 — log_merge_attempt 내부에서 태그 추출
-                                assert call.kwargs.get("reason") == full_reason
-                                assert call.kwargs.get("analysis_id") == 10
+                            mock_state.return_value = ("clean", "abc123")
+                            mock_merge.return_value = MergeOutcome(
+                                ok=False, reason=full_reason,
+                                head_sha="abc123", path=PATH_REST_FALLBACK,
+                            )
+                            await run_gate_check(
+                                repo_name="owner/repo",
+                                pr_number=3,
+                                analysis_id=10,
+                                result={"score": 80, "grade": "B"},
+                                github_token="tok",
+                                db=mock_db,
+                            )
+                            mock_log.assert_called_once()
+                            call = mock_log.call_args
+                            assert call.kwargs.get("success") is False
+                            # 전체 reason 문자열을 그대로 전달 — log_merge_attempt 내부에서 태그 추출
+                            assert call.kwargs.get("reason") == full_reason
+                            assert call.kwargs.get("analysis_id") == 10
 
 
 async def test_run_auto_merge_log_merge_attempt_db_failure_does_not_block_notification():
@@ -1049,25 +981,24 @@ async def test_run_auto_merge_log_merge_attempt_db_failure_does_not_block_notifi
                 with patch("src.gate.engine.telegram_post_message", new_callable=AsyncMock) as mock_tg:
                     with patch("src.gate.engine.settings") as mock_settings:
                         with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
-                            with patch("src.gate.engine.save_gate_decision"):
-                                mock_settings.telegram_bot_token = "123:ABC"
-                                mock_settings.telegram_chat_id = ""
-                                # 레거시 경로 사용 — get_pr_mergeable_state 불필요
-                                # Use legacy path — get_pr_mergeable_state not needed
-                                mock_settings.merge_retry_enabled = False
-                                mock_merge.return_value = MergeOutcome(ok=False, reason="forbidden: no permission", head_sha="abc123", path=PATH_REST_FALLBACK)
-                                # log_merge_attempt 가 RuntimeError 를 던져도 전체는 중단 없이 완료
-                                await run_gate_check(
-                                    repo_name="owner/repo",
-                                    pr_number=3,
-                                    analysis_id=10,
-                                    result={"score": 80, "grade": "B"},
-                                    github_token="tok",
-                                    db=mock_db,
-                                )
-                                # Telegram 알림은 여전히 발송되어야 함
-                                # Telegram notification must still be sent.
-                                mock_tg.assert_called_once()
+                            mock_settings.telegram_bot_token = "123:ABC"
+                            mock_settings.telegram_chat_id = ""
+                            # 레거시 경로 사용 — get_pr_mergeable_state 불필요
+                            # Use legacy path — get_pr_mergeable_state not needed
+                            mock_settings.merge_retry_enabled = False
+                            mock_merge.return_value = MergeOutcome(ok=False, reason="forbidden: no permission", head_sha="abc123", path=PATH_REST_FALLBACK)
+                            # log_merge_attempt 가 RuntimeError 를 던져도 전체는 중단 없이 완료
+                            await run_gate_check(
+                                repo_name="owner/repo",
+                                pr_number=3,
+                                analysis_id=10,
+                                result={"score": 80, "grade": "B"},
+                                github_token="tok",
+                                db=mock_db,
+                            )
+                            # Telegram 알림은 여전히 발송되어야 함
+                            # Telegram notification must still be sent.
+                            mock_tg.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -1254,8 +1185,7 @@ async def test_run_auto_merge_retry_native_enable_records_pending_state():
          patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_native, \
          patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
          patch("src.gate.engine.log_merge_attempt") as mock_log, \
-         patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock), \
-         patch("src.gate.engine.save_gate_decision"):
+         patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
         mock_state.return_value = ("clean", "abc123")
         mock_native.return_value = MergeOutcome(
             ok=True, reason=None, head_sha="abc123", path=PATH_NATIVE_ENABLE,
@@ -1289,8 +1219,7 @@ async def test_run_auto_merge_retry_rest_fallback_records_direct_merged_state():
          patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_native, \
          patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
          patch("src.gate.engine.log_merge_attempt") as mock_log, \
-         patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock), \
-         patch("src.gate.engine.save_gate_decision"):
+         patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
         mock_state.return_value = ("clean", "abc123")
         mock_native.return_value = MergeOutcome(
             ok=True, reason=None, head_sha="abc123", path=PATH_REST_FALLBACK,
@@ -1321,7 +1250,6 @@ async def test_run_auto_merge_legacy_native_enable_records_pending_state():
          patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_native, \
          patch("src.gate.engine.log_merge_attempt") as mock_log, \
          patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock), \
-         patch("src.gate.engine.save_gate_decision"), \
          patch("src.gate.engine.settings") as mock_settings:
         mock_settings.merge_retry_enabled = False  # legacy 경로 강제
         mock_settings.telegram_bot_token = ""
@@ -1356,7 +1284,6 @@ async def test_run_auto_merge_legacy_failure_records_legacy_state():
          patch("src.gate.engine.log_merge_attempt") as mock_log, \
          patch("src.gate.engine.create_merge_failure_issue", new_callable=AsyncMock), \
          patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock), \
-         patch("src.gate.engine.save_gate_decision"), \
          patch("src.gate.engine.settings") as mock_settings:
         mock_settings.merge_retry_enabled = False
         mock_settings.telegram_bot_token = ""
@@ -1471,19 +1398,18 @@ async def test_post_pr_comment_timeout_does_not_abort_gate():
             side_effect=httpx.TimeoutException("timed out"),
         ):
             with patch("src.gate.actions.approve.post_github_review", new_callable=AsyncMock) as mock_review:
-                with patch("src.gate.engine.save_gate_decision"):
-                    with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
-                        await run_gate_check(
-                            repo_name="owner/repo",
-                            pr_number=1,
-                            analysis_id=1,
-                            result={"score": 80, "grade": "B"},
-                            github_token="tok",
-                            db=mock_db,
-                        )
-                        # 타임아웃 시에도 approve 옵션은 실행되어야 한다
-                        # Approve option must run even on timeout.
-                        mock_review.assert_called_once()
+                with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
+                    await run_gate_check(
+                        repo_name="owner/repo",
+                        pr_number=1,
+                        analysis_id=1,
+                        result={"score": 80, "grade": "B"},
+                        github_token="tok",
+                        db=mock_db,
+                    )
+                    # 타임아웃 시에도 approve 옵션은 실행되어야 한다
+                    # Approve option must run even on timeout.
+                    mock_review.assert_called_once()
 
 
 async def test_post_github_review_timeout_does_not_crash():
@@ -1500,19 +1426,18 @@ async def test_post_github_review_timeout_does_not_crash():
             new_callable=AsyncMock,
             side_effect=httpx.TimeoutException("timed out"),
         ):
-            with patch("src.gate.engine.save_gate_decision"):
-                with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
-                    with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
-                        # 예외 없이 완료되어야 한다
-                        # Must complete without raising an exception.
-                        await run_gate_check(
-                            repo_name="owner/repo",
-                            pr_number=1,
-                            analysis_id=1,
-                            result={"score": 80, "grade": "B"},
-                            github_token="tok",
-                            db=mock_db,
-                        )
+            with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
+                with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
+                    # 예외 없이 완료되어야 한다
+                    # Must complete without raising an exception.
+                    await run_gate_check(
+                        repo_name="owner/repo",
+                        pr_number=1,
+                        analysis_id=1,
+                        result={"score": 80, "grade": "B"},
+                        github_token="tok",
+                        db=mock_db,
+                    )
 
 
 async def test_merge_pr_timeout_does_not_crash():
@@ -1530,17 +1455,16 @@ async def test_merge_pr_timeout_does_not_crash():
             side_effect=httpx.TimeoutException("timed out"),
         ):
             with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
-                with patch("src.gate.engine.save_gate_decision"):
-                    # 타임아웃 시에도 gate 는 계속 실행되어야 한다
-                    # Gate must continue even on timeout.
-                    await run_gate_check(
-                        repo_name="owner/repo",
-                        pr_number=3,
-                        analysis_id=10,
-                        result={"score": 90, "grade": "A"},
-                        github_token="tok",
-                        db=mock_db,
-                    )
+                # 타임아웃 시에도 gate 는 계속 실행되어야 한다
+                # Gate must continue even on timeout.
+                await run_gate_check(
+                    repo_name="owner/repo",
+                    pr_number=3,
+                    analysis_id=10,
+                    result={"score": 90, "grade": "A"},
+                    github_token="tok",
+                    db=mock_db,
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -1567,19 +1491,18 @@ async def test_post_pr_comment_http_status_error_does_not_abort_gate():
             side_effect=httpx.HTTPStatusError("403 Forbidden", request=mock_req, response=mock_resp),
         ):
             with patch("src.gate.actions.approve.post_github_review", new_callable=AsyncMock) as mock_review:
-                with patch("src.gate.engine.save_gate_decision"):
-                    with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
-                        await run_gate_check(
-                            repo_name="owner/repo",
-                            pr_number=1,
-                            analysis_id=1,
-                            result={"score": 80, "grade": "B"},
-                            github_token="tok",
-                            db=mock_db,
-                        )
-                        # 403 에러에도 approve 옵션은 실행되어야 한다
-                        # Approve option must run even on 403 error.
-                        mock_review.assert_called_once()
+                with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
+                    await run_gate_check(
+                        repo_name="owner/repo",
+                        pr_number=1,
+                        analysis_id=1,
+                        result={"score": 80, "grade": "B"},
+                        github_token="tok",
+                        db=mock_db,
+                    )
+                    # 403 에러에도 approve 옵션은 실행되어야 한다
+                    # Approve option must run even on 403 error.
+                    mock_review.assert_called_once()
 
 
 async def test_post_github_review_http_status_error_does_not_crash():
@@ -1599,59 +1522,18 @@ async def test_post_github_review_http_status_error_does_not_crash():
             new_callable=AsyncMock,
             side_effect=httpx.HTTPStatusError("422 Unprocessable", request=mock_req, response=mock_resp),
         ):
-            with patch("src.gate.engine.save_gate_decision"):
-                with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
-                    with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
-                        # 예외 없이 완료되어야 한다
-                        # Must complete without raising an exception.
-                        await run_gate_check(
-                            repo_name="owner/repo",
-                            pr_number=1,
-                            analysis_id=1,
-                            result={"score": 80, "grade": "B"},
-                            github_token="tok",
-                            db=mock_db,
-                        )
-
-
-# ---------------------------------------------------------------------------
-# DB commit 실패 — save_gate_decision 예외 격리
-# DB commit failure — save_gate_decision exception isolation
-# ---------------------------------------------------------------------------
-
-
-async def test_save_gate_decision_db_failure_does_not_crash_other_options():
-    """save_gate_decision 이 RuntimeError 를 던져도 run_gate_check 가 예외 없이 완료된다.
-    Gather 가 각 옵션을 격리하므로 DB 실패가 다른 옵션을 중단시키지 않는다.
-    run_gate_check must complete without exception even when save_gate_decision raises RuntimeError.
-    asyncio.gather isolates each option so DB failure does not abort other options.
-    """
-    mock_db = MagicMock()
-    # approve_mode="auto" + pr_review_comment=True 로 두 옵션 모두 활성화
-    # Enable both options: approve_mode="auto" and pr_review_comment=True.
-    config = _config(pr_review_comment=True, approve_mode="auto", approve_threshold=75, reject_threshold=50)
-    with patch("src.gate.engine.get_repo_config", return_value=config):
-        with patch(
-            "src.gate.engine.save_gate_decision",
-            side_effect=RuntimeError("DB commit failed"),
-        ):
-            with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock) as mock_comment:
-                with patch("src.gate.actions.approve.post_github_review", new_callable=AsyncMock) as mock_review:
-                    with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
-                        # DB 실패에도 gate 는 완료되어야 한다
-                        # Gate must complete even when DB fails.
-                        await run_gate_check(
-                            repo_name="owner/repo",
-                            pr_number=1,
-                            analysis_id=1,
-                            result={"score": 80, "grade": "B"},
-                            github_token="tok",
-                            db=mock_db,
-                        )
-                        # comment 와 review 는 save_gate_decision 과 별도 옵션이므로 호출된다
-                        # comment and review belong to separate options from save_gate_decision.
-                        mock_comment.assert_called_once()
-                        mock_review.assert_called_once()
+            with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock):
+                with patch("src.gate.actions.review_comment.post_pr_comment", new_callable=AsyncMock):
+                    # 예외 없이 완료되어야 한다
+                    # Must complete without raising an exception.
+                    await run_gate_check(
+                        repo_name="owner/repo",
+                        pr_number=1,
+                        analysis_id=1,
+                        result={"score": 80, "grade": "B"},
+                        github_token="tok",
+                        db=mock_db,
+                    )
 
 
 # ---------------------------------------------------------------------------
@@ -1735,4 +1617,3 @@ async def test_run_gate_check_all_options_exception_logged(caplog):
     assert "ReviewCommentAction" in logged_text
     assert "ApproveAction" in logged_text
     assert "AutoMergeAction" in logged_text
-

@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [잔여/후속 세션 — C1 save_gate_decision dead wrapper 제거 (호출처 0 dead code + 35 inert patch de-indent + 죽은-래퍼 테스트 2개 제거, 기능 영향 0, 단위 −2, 2026-06-13)](#잔여후속-세션--c1-save_gate_decision-dead-wrapper-제거-2026-06-13)
 - [잔여/후속 세션 — U2 effects.js hx-boost 애니메이션 재초기화 (named init + document._fxEffectsHandler remove-before-add + effect별 WeakMap 멱등 가드, Codex mutual NG 1회 적발→수정, 단위 +1·E2E +2, 2026-06-13)](#잔여후속-세션--u2-effectsjs-hx-boost-애니메이션-재초기화-2026-06-13)
 - [정합성 감사 P2 백로그 처리 — 6 PR (#874 dead-code·#875 보안 escape/sanitize·#876 pipeline 방어·#877 db/i18n/관측·#878 test/UI·#879 CodeQL, 단위 +8, 백로그 보류 5, 2026-06-12)](#정합성-감사-p2-백로그-처리--6-pr-874879-2026-06-12)
 - [전체 정합성 감사 — 보안/correctness P1 4 PR (#868 P0 hook auth·#869 U0 cross-tenant·#870 C6+C2 AI-fail fail-open·#871 C3 retry 격리, 단위 +12, 2026-06-12)](#전체-정합성-감사--보안correctness-p1-4-pr-868871-2026-06-12)
@@ -90,6 +91,17 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 잔여/후속 세션 — C1 save_gate_decision dead wrapper 제거 (2026-06-13)
+
+**날짜**: 2026-06-13 | **트리거**: U2 머지(#882) 후 사용자 "머지 확인 + 다음 작업" → integrity-audit 백로그 C1 (결정 게이트 없는 유일한 자율-안전 항목) | **상태**: 1 PR, Codex mutual
+
+**흐름**: 잔여 백로그 4건(C1·C12·C22·U1) 중 C12(in-memory↔DB 설계 선택)·C22(정책16 인접)·U1(migration 민감)은 사용자 결정 필요 → 결정 게이트 없는 **C1** 진행. `grep -S` 로 호출처 0 재확인(#712 사이클 149에서 마지막 호출 제거) + `test_gate_decision_repo::test_upsert_updates_existing` 로 upsert UPDATE 커버리지 중복 확인.
+
+- **dead wrapper 제거**: `src/gate/engine.py::save_gate_decision()` (gate_decision_repo.upsert 위임 thin wrapper, 호출처 0) 제거. auto 경로는 `ApproveAction` 이 자체 `SessionLocal()` + `gate_decision_repo.upsert()` 직접 호출이라 **기능 영향 0**. `GateDecision`·`gate_decision_repo` unused import 정리(pylint 10.00 유지, merge_retry_repo 는 잔존).
+- **테스트 정리**: `test_engine.py` 의 inert `with patch("src.gate.engine.save_gate_decision")` 35개 de-indent(mock_db 가 이미 DB 격리 → patch 무동작) + multi-patch 4건 절 제거 + 죽은-래퍼 전용 테스트 2개 제거 — `test_save_gate_decision_updates_existing_record`(upsert UPDATE 분기 = `test_gate_decision_repo::test_upsert_updates_existing` 중복) + `test_save_gate_decision_db_failure_does_not_crash_other_options`(래퍼 미호출로 `side_effect` 미발화 = false-confidence, testing.md "왜 통과하는가" 트랩). `testsave_*_called_on_*` 3건은 `gate_decision_repo.upsert` 검증 실테스트라 함수명만 legacy(유지).
+- **stale 주석/문서 정정**: `gate_decision.py`·`gate_decision_repo.py`·`telegram.py`·`test_gate_decision.py`·`test_telegram_provider.py` 의 save_gate_decision 언급 5건 → upsert/claim 으로 정정 + `.claude/rules/pipeline.md` GateDecision upsert/claim 항목 동기화.
+- **수치**: 단위 4917→**4915**(−2) · 전체 5071→**5069** · E2E 115 불변 · pylint **10.00/10**. architecture.md 무변경(파일 변동 없음). 잔여 백로그 3건(C12·C22·U1) + ops 2건. 상세: [[project-audit-backlog-2026-06-12]].
 
 ## 잔여/후속 세션 — U2 effects.js hx-boost 애니메이션 재초기화 (2026-06-13)
 
