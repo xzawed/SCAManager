@@ -11,13 +11,16 @@
    hx-boost 재실행: init() 은 최초 로드 1회 + htmx:afterSettle / htmx:historyRestore
    마다 재실행 (remove-before-add 단일 슬롯 document._fxEffectsHandler). body swap 후
    애니메이션이 재생되지 않던 고착(opacity:0 / 0%)을 봉인한다 (U2). 부분 swap 재애니메이션은
-   `seen` WeakMap(노드→effect 태그 집합) 멱등 가드로 차단 — effect 마다 독립적으로 새로 삽입된
-   DOM 노드만 처리하고, 잔존 노드는 건너뛴다(한 노드를 여러 effect 가 대상으로 삼아도 각 1회).
+   `seen` WeakMap(노드→effect 태그 집합) 멱등 가드로 차단 — 각 setup 은 헬퍼 `freshOnly(nodeList,
+   tag)` 로 해당 effect 태그가 미처리한 노드만 조회·등록해 반환한다. effect 마다 독립적으로 새로
+   삽입된 DOM 노드만 처리하고 잔존 노드는 건너뛴다(한 노드를 여러 effect 가 대상으로 삼아도 각 1회).
    hx-boost re-run: init() runs once on first load + on every htmx:afterSettle /
    htmx:historyRestore (single-slot remove-before-add via document._fxEffectsHandler),
-   fixing the post-body-swap animation freeze (U2). The `seen` WeakMap (node → set of effect
-   tags) keeps re-runs idempotent per-effect — only freshly inserted DOM nodes are processed and
-   surviving nodes are skipped (a node targeted by multiple effects is handled once by EACH).
+   fixing the post-body-swap animation freeze (U2). Each setup uses the helper `freshOnly(nodeList,
+   tag)` to fetch+register only the nodes this effect tag has not yet processed, so the `seen`
+   WeakMap (node → set of effect tags) keeps re-runs idempotent per-effect — only freshly inserted
+   DOM nodes are processed and surviving nodes are skipped (a node targeted by multiple effects is
+   handled once by EACH).
    ========================================================================== */
 (function () {
   "use strict";
