@@ -198,3 +198,108 @@ def test_reveal_progress_handlers_use_remove_before_add(seeded_page, base_url):
         "document._finishProgressHandler 가 function 이 아님 "
         "— _finishProgress remove-before-add 가드 누락 (hx-boost 핸들러 누적 회귀)"
     )
+
+
+def test_effects_init_reruns_on_hx_boost(seeded_page, base_url):
+    """hx-boost 재방문 후 effects.js 애니메이션 init 이 재실행되도록
+    document._fxEffectsHandler 슬롯에 단일 저장돼야 한다 (U2).
+    After hx-boost re-navigation, effects.js animation init must re-run via the
+    document._fxEffectsHandler single slot (U2).
+
+    수정 전: effects.js IIFE 가 DOMContentLoaded 에만 바인딩 → 슬롯 미사용 →
+    typeof === "undefined" → RED (애니메이션 미재실행 = score-bar 0% / opacity:0 고착).
+    수정 후: init 이 document._fxEffectsHandler 에 저장되고 htmx:afterSettle/
+    historyRestore 에 remove-before-add 로 등록 → 매 hx-boost swap 시 재실행.
+    Before fix: IIFE binds DOMContentLoaded only → slot unused → "undefined" → RED.
+    After fix: init stored on document._fxEffectsHandler, registered on
+    htmx:afterSettle/historyRestore via remove-before-add → re-runs on each swap.
+
+    시나리오: goto(full load) → settings(hx#1) → detail(hx#2) → settings(hx#3)
+    Scenario: full load → settings(hx#1) → detail(hx#2) → settings(hx#3)
+    """
+    # 초기 full load — JS 컨텍스트 초기화 (script 1번째 실행)
+    # Initial full load — fresh JS context (1st script execution)
+    seeded_page.goto(f"{base_url}/repos/owner%2Ftestrepo")
+    seeded_page.wait_for_load_state("networkidle")
+
+    # hx-boost 3회 재방문 (script 2~4번째 실행 — 누적/재실행 검증 지점)
+    # 3 hx-boost re-navigations (2nd–4th executions — accumulation/re-run point)
+    seeded_page.click(".settings-btn")
+    seeded_page.wait_for_url("**/settings", timeout=5000)
+    seeded_page.click("a.back-btn")
+    seeded_page.wait_for_url(
+        lambda url: "owner" in url and "testrepo" in url and "/settings" not in url,
+        timeout=5000,
+    )
+    seeded_page.click(".settings-btn")
+    seeded_page.wait_for_url("**/settings", timeout=5000)
+
+    # 수정 후: init 이 document 슬롯에 function 으로 저장됨 (remove-before-add 증거).
+    # 수정 전: 슬롯 미사용 → typeof === "undefined" → RED.
+    # After fix: init stored as a function on the document slot (remove-before-add).
+    # Before fix: slot unused → typeof === "undefined" → RED.
+    fx_handler_type = seeded_page.evaluate("typeof document._fxEffectsHandler")
+    assert fx_handler_type == "function", (
+        "document._fxEffectsHandler 가 function 이 아님 "
+        "— effects.js init hx-boost 재실행 가드 누락 (U2 애니메이션 미재실행 회귀)"
+    )
+
+    # 재실행 행동 증거: setupEntryAnimations 가 body.fx-ready 를 부여 →
+    # 재방문된 body 에 fx-ready 존재 = init 재실행 확인 (동기 실행, 타이밍 무관).
+    # Behavioral proof: setupEntryAnimations adds body.fx-ready → presence on the
+    # re-navigated body proves init re-ran (synchronous, timing-independent).
+    body_fx_ready = seeded_page.evaluate(
+        "document.body.classList.contains('fx-ready')"
+    )
+    assert body_fx_ready is True, (
+        "hx-boost 재방문된 body 에 fx-ready 클래스 부재 "
+        "— setupEntryAnimations 미재실행 (effects.js init hx-boost 재실행 누락)"
+    )
+
+
+def test_magnetic_hover_registers_on_overlapping_cards(seeded_page, base_url):
+    """effects.js setupMagnetic 이 .repo-card 에 mousemove 핸들러를 등록해야 한다.
+    setupMagnetic registers a mousemove handler on .repo-card.
+
+    회귀 가드 (U2 Codex mutual): `.repo-card` 는 setupEntryAnimations 와 setupMagnetic 가
+    모두 대상으로 삼는 셀렉터다. effect 간 멱등 추적이 공유되면(단일 seen 집합) entry 가
+    먼저 노드를 소비해 magnetic 이 freshOnly 에서 전부 skip → magnetic hover 가 초기 로드·
+    hx-boost swap 양쪽에서 등록되지 않는다. effect 별 독립 추적이어야 mousemove 가 발화한다.
+    Regression guard: .repo-card is targeted by BOTH setupEntryAnimations and setupMagnetic.
+    If idempotency tracking is shared (single seen set), entry consumes the nodes first and
+    magnetic is skipped → no mousemove handler. Per-effect tracking is required.
+
+    수정 전(공유 seen): magnetic 미등록 → 인라인 --mx 미설정 → RED.
+    수정 후(effect 별 추적): mousemove rAF 가 --mx 설정 → GREEN.
+    Before fix (shared seen): no handler → inline --mx unset → RED.
+    After fix (per-effect tracking): mousemove rAF sets --mx → GREEN.
+    """
+    seeded_page.goto(base_url)
+    seeded_page.wait_for_load_state("networkidle")
+
+    card = seeded_page.query_selector(".repo-card")
+    assert card is not None, "overview 에 .repo-card 부재 — seeded_page 시드 실패"
+    box = card.bounding_box()
+    assert box is not None, ".repo-card bounding_box 없음 (비가시)"
+
+    # 카드 위로 마우스 이동 → magnetic mousemove 핸들러 발화 (rAF 로 인라인 --mx 설정)
+    # Move mouse over the card → fires magnetic mousemove handler (sets inline --mx via rAF)
+    cx = box["x"] + box["width"] / 2
+    cy = box["y"] + box["height"] / 2
+    seeded_page.mouse.move(cx, cy)
+    seeded_page.mouse.move(cx + 6, cy + 6)
+
+    # 핸들러 등록 시 rAF 후 인라인 --mx 설정됨. 미등록 시 빈 문자열 유지 → 타임아웃 RED.
+    # If registered, the rAF sets inline --mx; if not, it stays empty → timeout RED.
+    seeded_page.wait_for_function(
+        "() => { const c = document.querySelector('.repo-card');"
+        " return !!c && c.style.getPropertyValue('--mx').trim() !== ''; }",
+        timeout=3000,
+    )
+    mx = seeded_page.eval_on_selector(
+        ".repo-card", "el => el.style.getPropertyValue('--mx')"
+    )
+    assert mx.strip() != "", (
+        "magnetic mousemove 핸들러 미등록 — setupMagnetic 이 effect 간 공유 seen 충돌로 "
+        ".repo-card 를 전부 skip (entry/magnetic 독립 추적 누락 회귀)"
+    )

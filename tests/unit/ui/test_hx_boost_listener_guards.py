@@ -43,3 +43,29 @@ def test_tweaks_keydown_uses_remove_before_add():
     # 익명 keydown 리스너 회귀 차단
     # Block regression to an anonymous keydown listener
     assert 'addEventListener("keydown", (e) =>' not in src
+
+
+def test_effects_animations_reinit_on_hx_boost():
+    """effects.js 애니메이션 init 이 hx-boost 재방문 시 재실행되도록 htmx:afterSettle/
+    historyRestore 에 named handler + remove-before-add 로 등록돼야 한다 (U2).
+
+    effects.js animation init must re-run after hx-boost navigation by registering on
+    htmx:afterSettle/historyRestore via a named handler with the remove-before-add pattern (U2).
+
+    수정 전: IIFE 가 DOMContentLoaded 에만 init() 을 바인딩 → hx-boost body swap 후
+    score-bar / SVG draw / count-up 애니메이션이 재실행되지 않아 opacity:0 / 0% 고착.
+    Before fix: the IIFE binds init() only to DOMContentLoaded → after an hx-boost body
+    swap the score-bar / SVG draw / count-up animations never re-run (opacity:0 / 0% freeze).
+    """
+    src = _read("src/static/js/effects.js")
+    # named handler 단일 슬롯 저장 + 선행 removeEventListener (누적 방지)
+    # Single-slot named handler storage + preceding removeEventListener (no accumulation)
+    assert "document._fxEffectsHandler" in src
+    assert 'removeEventListener("htmx:afterSettle", document._fxEffectsHandler)' in src
+    assert 'removeEventListener("htmx:historyRestore", document._fxEffectsHandler)' in src
+    assert 'addEventListener("htmx:afterSettle", document._fxEffectsHandler)' in src
+    assert 'addEventListener("htmx:historyRestore", document._fxEffectsHandler)' in src
+    # 익명 리스너 회귀 차단 (제거 불가 → 누적)
+    # Block regression to an anonymous listener (unremovable → pile-up)
+    assert 'addEventListener("htmx:afterSettle", function' not in src
+    assert 'addEventListener("htmx:afterSettle", () =>' not in src

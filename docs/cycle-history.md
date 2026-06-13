@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [잔여/후속 세션 — U2 effects.js hx-boost 애니메이션 재초기화 (named init + document._fxEffectsHandler remove-before-add + effect별 WeakMap 멱등 가드, Codex mutual NG 1회 적발→수정, 단위 +1·E2E +2, 2026-06-13)](#잔여후속-세션--u2-effectsjs-hx-boost-애니메이션-재초기화-2026-06-13)
 - [정합성 감사 P2 백로그 처리 — 6 PR (#874 dead-code·#875 보안 escape/sanitize·#876 pipeline 방어·#877 db/i18n/관측·#878 test/UI·#879 CodeQL, 단위 +8, 백로그 보류 5, 2026-06-12)](#정합성-감사-p2-백로그-처리--6-pr-874879-2026-06-12)
 - [전체 정합성 감사 — 보안/correctness P1 4 PR (#868 P0 hook auth·#869 U0 cross-tenant·#870 C6+C2 AI-fail fail-open·#871 C3 retry 격리, 단위 +12, 2026-06-12)](#전체-정합성-감사--보안correctness-p1-4-pr-868871-2026-06-12)
 - [잔여/후속 세션 — #865 검증자 봉인 P1-1 반자동 parity (verifier_blocks_merge engine 단일출처화, Option A, 단위 +9, 2026-06-12)](#잔여후속-세션--865-검증자-봉인-p1-1-반자동-parity-2026-06-12)
@@ -89,6 +90,18 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 잔여/후속 세션 — U2 effects.js hx-boost 애니메이션 재초기화 (2026-06-13)
+
+**날짜**: 2026-06-13 | **트리거**: 사용자 "잔여작업과 후속작업 확인" → 7항목 직접 재검증(read-only 워크플로 wf_6fea0937, 7 에이전트) → 사용자 결정 **U2** | **상태**: 1 PR, Codex mutual 대기
+
+**흐름**: integrity-audit full 백로그 잔여 7건(code 5·ops 2)을 현재 코드로 직접 재검증(EXACT line 인용)해 전부 still_open 확정. 사용자가 code-side 중 **U2**(사용자 눈에 보이는 실결함) 선택 → 나머지(C1·C12·C22·U1)는 백로그 유지. TDD: RED(정적 가드 + E2E) → GREEN → 전체 회귀 0.
+
+- **U2 effects.js 재초기화**: `effects.js` IIFE 가 `DOMContentLoaded` 에만 `init()` 바인딩 → hx-boost body swap 후 score-bar/SVG draw/count-up/entry 애니메이션 미재실행(opacity:0/0% 고착). **수정**: IIFE 유지하되 `init` 을 `document._fxEffectsHandler` 단일 슬롯에 저장 + `htmx:afterSettle`/`htmx:historyRestore` 에 remove-before-add 로 등록(ui.md PR #473 패턴) + 부분 swap 재애니메이션 방지를 위한 `seen` WeakMap effect별 태그 멱등 가드(`freshOnly(nodeList, tag)` — 새 DOM 노드만, effect 마다 독립 처리).
+- 🔴 **Codex mutual NG 1회 적발 → 수정**(정책 18 §3b 단일정답 버그): 초기 구현은 단일 공유 `seen` WeakSet → `setupEntryAnimations` 가 `.repo-card`/`.kpi`/`.principle` 선점 → `setupMagnetic` 의 `freshOnly` 가 동일 셀렉터 전부 skip = **magnetic hover 가 초기 로드·swap 양쪽에서 미등록되는 회귀**. effect별 태그 추적(WeakMap)으로 수정 + 회귀 가드 E2E 추가 후 재검증.
+- **TDD**: 정적 가드 `test_hx_boost_listener_guards.test_effects_animations_reinit_on_hx_boost`(remove-before-add 소스 단언, 단위 +1) + E2E `test_navigation.test_effects_init_reruns_on_hx_boost`(3회 hx-boost 재방문 후 `typeof document._fxEffectsHandler === "function"` + `body.fx-ready`) + E2E `test_magnetic_hover_registers_on_overlapping_cards`(Codex 발견 회귀 가드 — `.repo-card` mousemove 후 인라인 `--mx` 설정, E2E +2). RED 전부 실패 확인 → GREEN.
+- **수치**: 단위 4916→**4917** · E2E 113→**115** · 전체 수집 5070→**5071**. pylint 영향 없음(static JS). architecture.md 무변경(신규 파일 없음).
+- 🔴 **잔여 백로그 4건**(code-side): C1(save_gate_decision dead wrapper+39 inert patch) · C12(OTP brute-force rate-limit) · C22(AI리뷰 diff 16000자 무음 절단, 정책16 인접·결정 필요) · U1(0027 RLS legacy user_id NULL 제외, migration 민감·결정 필요). **후속 2건**(ops-side, 사용자 운영): #2 RLS Phase 4 운영 전환 · 2nd-LLM 검증자 활성화(OPENAI_API_KEY). 상세: [[project-audit-backlog-2026-06-12]].
 
 ## 정합성 감사 P2 백로그 처리 — 6 PR (#874~879) (2026-06-12)
 

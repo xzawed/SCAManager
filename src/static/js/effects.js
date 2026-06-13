@@ -7,6 +7,20 @@
    - SVG chart line draw + donut segment grow
    - Smooth in-page scroll
    All effects respect [data-motion="still"] and prefers-reduced-motion.
+
+   hx-boost 재실행: init() 은 최초 로드 1회 + htmx:afterSettle / htmx:historyRestore
+   마다 재실행 (remove-before-add 단일 슬롯 document._fxEffectsHandler). body swap 후
+   애니메이션이 재생되지 않던 고착(opacity:0 / 0%)을 봉인한다 (U2). 부분 swap 재애니메이션은
+   `seen` WeakMap(노드→effect 태그 집합) 멱등 가드로 차단 — 각 setup 은 헬퍼 `freshOnly(nodeList,
+   tag)` 로 해당 effect 태그가 미처리한 노드만 조회·등록해 반환한다. effect 마다 독립적으로 새로
+   삽입된 DOM 노드만 처리하고 잔존 노드는 건너뛴다(한 노드를 여러 effect 가 대상으로 삼아도 각 1회).
+   hx-boost re-run: init() runs once on first load + on every htmx:afterSettle /
+   htmx:historyRestore (single-slot remove-before-add via document._fxEffectsHandler),
+   fixing the post-body-swap animation freeze (U2). Each setup uses the helper `freshOnly(nodeList,
+   tag)` to fetch, register, and return only the nodes this effect tag has not yet processed, so the `seen`
+   WeakMap (node → set of effect tags) keeps re-runs idempotent per-effect — only freshly inserted
+   DOM nodes are processed and surviving nodes are skipped (a node targeted by multiple effects is
+   handled once by EACH).
    ========================================================================== */
 (function () {
   "use strict";
@@ -15,11 +29,46 @@
     document.documentElement.getAttribute("data-motion") === "still" ||
     matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+  // 노드별 처리 완료 effect 태그 집합 — 재실행 멱등 가드. 새 DOM 노드(swap)는 미포함 → 처리됨.
+  // effect 마다 독립 태그로 추적 — 한 노드를 여러 effect 가 대상으로 삼아도(예: .repo-card 는
+  // entry + magnetic 양쪽) 각 effect 가 독립적으로 1회만 처리한다 (공유 집합 충돌 방지).
+  // Per-node set of completed effect tags — re-run idempotency guard. New DOM nodes (swap) are
+  // absent → processed. Tracked per-effect so a node targeted by multiple effects (e.g. .repo-card
+  // by both entry + magnetic) is processed exactly once by EACH effect (no shared-set collision).
+  const seen = new WeakMap();
+
+  // 해당 effect(tag)가 아직 처리하지 않은 노드만 반환 + 처리 표시 (중복 애니메이션/리스너 방지).
+  // Return only nodes this effect (tag) has not yet processed + mark them (no duplicate anim/listener).
+  function freshOnly(nodeList, tag) {
+    const out = [];
+    nodeList.forEach((el) => {
+      let tags = seen.get(el);
+      if (!tags) {
+        tags = new Set();
+        seen.set(el, tags);
+      }
+      if (tags.has(tag)) return;
+      tags.add(tag);
+      out.push(el);
+    });
+    return out;
+  }
+
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);
   } else {
     init();
   }
+
+  // hx-boost body swap / 뒤로가기 복원 후 재초기화 — remove-before-add 단일 슬롯 패턴.
+  // Re-initialize after hx-boost body swap / back-nav restore — remove-before-add single slot.
+  if (document._fxEffectsHandler) {
+    document.removeEventListener("htmx:afterSettle", document._fxEffectsHandler);
+    document.removeEventListener("htmx:historyRestore", document._fxEffectsHandler);
+  }
+  document._fxEffectsHandler = init;
+  document.addEventListener("htmx:afterSettle", document._fxEffectsHandler);
+  document.addEventListener("htmx:historyRestore", document._fxEffectsHandler);
 
   /* ----- shared IntersectionObserver factory ------------------------------ */
   function onceInView(elements, callback, opts = { threshold: 0.15, rootMargin: "0px 0px -60px 0px" }) {
@@ -63,8 +112,11 @@
       });
     });
 
-    const targets = document.querySelectorAll(
-      ".fx, .kpi, .principle, .full-card, .repo-card, .demo-grid, .detail-hero, .swatch, .tk-card, .freq-row, .reason-row, .breakdown__row, .issue, .pager, .alert, .section__head, .frame"
+    const targets = freshOnly(
+      document.querySelectorAll(
+        ".fx, .kpi, .principle, .full-card, .repo-card, .demo-grid, .detail-hero, .swatch, .tk-card, .freq-row, .reason-row, .breakdown__row, .issue, .pager, .alert, .section__head, .frame"
+      ),
+      "entry"
     );
     targets.forEach((el) => el.classList.add("fx-enter"));
 
@@ -73,7 +125,7 @@
       return;
     }
 
-    onceInView(Array.from(targets), (el) => {
+    onceInView(targets, (el) => {
       el.classList.add("is-in-view");
     });
   }
@@ -108,7 +160,10 @@
 
   function setupCountUp() {
     // Match: leading number in elements with count-up role
-    const candidates = document.querySelectorAll(".kpi__value, .repo-card__score, .detail-hero__num, .reason-row__count, .freq-row__count, .breakdown__val");
+    const candidates = freshOnly(
+      document.querySelectorAll(".kpi__value, .repo-card__score, .detail-hero__num, .reason-row__count, .freq-row__count, .breakdown__val"),
+      "countup"
+    );
     const targets = [];
     candidates.forEach((el) => {
       // Find first text node with numeric content
@@ -135,13 +190,14 @@
 
   /* ----- 3. Score-bar grow-in -------------------------------------------- */
   function setupScoreBars() {
-    document.querySelectorAll(".score-bar").forEach((bar) => {
+    const fresh = freshOnly(document.querySelectorAll(".score-bar"), "scorebar");
+    fresh.forEach((bar) => {
       const inline = bar.style.getPropertyValue("--sb-pct").trim();
       if (!inline) return;
       bar.dataset.sbPct = inline;
       bar.style.setProperty("--sb-pct", "0%");
     });
-    const bars = Array.from(document.querySelectorAll(".score-bar[data-sb-pct]"));
+    const bars = fresh.filter((b) => b.dataset.sbPct);
     if (reduced()) {
       bars.forEach((b) => b.style.setProperty("--sb-pct", b.dataset.sbPct));
       return;
@@ -155,12 +211,13 @@
 
   /* ----- 4. Frequent issue bars ------------------------------------------ */
   function setupFreqBars() {
-    document.querySelectorAll(".freq-row__bar-fill").forEach((fill) => {
+    const fresh = freshOnly(document.querySelectorAll(".freq-row__bar-fill"), "freqbar");
+    fresh.forEach((fill) => {
       const target = fill.style.width;
       fill.dataset.targetWidth = target || "100%";
       fill.style.width = "0%";
     });
-    const fills = Array.from(document.querySelectorAll(".freq-row__bar-fill[data-target-width]"));
+    const fills = fresh.filter((f) => f.dataset.targetWidth);
     if (reduced()) {
       fills.forEach((f) => (f.style.width = f.dataset.targetWidth));
       return;
@@ -176,7 +233,8 @@
 
   /* ----- 5. SVG chart line draw-in --------------------------------------- */
   function setupChartLines() {
-    document.querySelectorAll("svg path[d]").forEach((path) => {
+    const fresh = freshOnly(document.querySelectorAll("svg path[d]"), "chartline");
+    fresh.forEach((path) => {
       // Only animate stroked lines, not filled areas
       const stroke = path.getAttribute("stroke");
       if (!stroke || stroke === "none") return;
@@ -192,53 +250,52 @@
         path.style.strokeDashoffset = `${len}`;
       } catch (e) {}
     });
-    const paths = Array.from(document.querySelectorAll("svg path[data-len]"));
+    const paths = fresh.filter((p) => p.dataset.len);
     if (reduced()) {
       paths.forEach((p) => (p.style.strokeDashoffset = "0"));
       return;
     }
-    onceInView(
-      paths.map((p) => p.closest("svg")).filter(Boolean),
-      (svg) => {
-        svg.querySelectorAll("path[data-len]").forEach((p, idx) => {
-          p.style.transition = "stroke-dashoffset 1500ms cubic-bezier(0.16, 1, 0.3, 1)";
-          p.style.transitionDelay = `${idx * 100}ms`;
-          // Use rAF to ensure transition kicks in
-          requestAnimationFrame(() => {
-            p.style.strokeDashoffset = "0";
-          });
+    const svgs = Array.from(new Set(paths.map((p) => p.closest("svg")).filter(Boolean)));
+    onceInView(svgs, (svg) => {
+      svg.querySelectorAll("path[data-len]").forEach((p, idx) => {
+        p.style.transition = "stroke-dashoffset 1500ms cubic-bezier(0.16, 1, 0.3, 1)";
+        p.style.transitionDelay = `${idx * 100}ms`;
+        // Use rAF to ensure transition kicks in
+        requestAnimationFrame(() => {
+          p.style.strokeDashoffset = "0";
         });
-        // also fade-in circles (data points)
-        svg.querySelectorAll("circle").forEach((c, idx) => {
-          c.style.opacity = "0";
-          c.style.transform = "scale(0.4)";
-          c.style.transformOrigin = "center";
-          c.style.transformBox = "fill-box";
-          c.style.transition = "opacity 400ms ease-out, transform 400ms cubic-bezier(0.34, 1.56, 0.64, 1)";
-          setTimeout(() => {
-            c.style.opacity = "1";
-            c.style.transform = "scale(1)";
-          }, 600 + idx * 80);
-        });
-      }
-    );
+      });
+      // also fade-in circles (data points)
+      svg.querySelectorAll("circle").forEach((c, idx) => {
+        c.style.opacity = "0";
+        c.style.transform = "scale(0.4)";
+        c.style.transformOrigin = "center";
+        c.style.transformBox = "fill-box";
+        c.style.transition = "opacity 400ms ease-out, transform 400ms cubic-bezier(0.34, 1.56, 0.64, 1)";
+        setTimeout(() => {
+          c.style.opacity = "1";
+          c.style.transform = "scale(1)";
+        }, 600 + idx * 80);
+      });
+    });
   }
 
   /* ----- 6. SVG donut segments grow -------------------------------------- */
   function setupChartDonuts() {
-    document.querySelectorAll("svg").forEach((svg) => {
-      const segments = svg.querySelectorAll("circle[stroke-dasharray]");
-      if (segments.length < 2) return;
-      segments.forEach((seg) => {
+    const donutSvgs = freshOnly(
+      Array.from(document.querySelectorAll("svg")).filter(
+        (svg) => svg.querySelectorAll("circle[stroke-dasharray]").length >= 2
+      ),
+      "donut"
+    );
+    donutSvgs.forEach((svg) => {
+      svg.querySelectorAll("circle[stroke-dasharray]").forEach((seg) => {
         const orig = seg.getAttribute("stroke-dasharray");
         if (!orig) return;
         seg.dataset.dasharray = orig;
         seg.setAttribute("stroke-dasharray", "0 9999");
       });
     });
-    const donutSvgs = Array.from(document.querySelectorAll("svg")).filter((s) =>
-      s.querySelector("circle[data-dasharray]")
-    );
     if (reduced()) {
       donutSvgs.forEach((svg) =>
         svg.querySelectorAll("circle[data-dasharray]").forEach((seg) => {
@@ -258,7 +315,7 @@
 
   /* ----- 7. Smooth scroll for in-page anchors ---------------------------- */
   function setupSmoothScroll() {
-    document.querySelectorAll('a[href^="#"]').forEach((a) => {
+    freshOnly(document.querySelectorAll('a[href^="#"]'), "smoothscroll").forEach((a) => {
       a.addEventListener("click", (e) => {
         const id = a.getAttribute("href").slice(1);
         if (!id) return;
@@ -275,7 +332,7 @@
   /* ----- 8. Subtle magnetic hover on cards ------------------------------- */
   function setupMagnetic() {
     if (reduced()) return;
-    const targets = document.querySelectorAll(".kpi, .repo-card, .principle");
+    const targets = freshOnly(document.querySelectorAll(".kpi, .repo-card, .principle"), "magnetic");
     targets.forEach((el) => {
       let raf = null;
       el.addEventListener("mousemove", (e) => {
