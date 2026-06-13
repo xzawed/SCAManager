@@ -530,11 +530,13 @@ def test_dispatcher_returns_not_connected_constant_directly():
     symbol usage via ast.
     """
     import ast
+    import inspect
     from pathlib import Path
 
-    import src.notifier.telegram_commands as mod
-
-    source = Path(mod.__file__).read_text(encoding="utf-8")
+    # 이미 import 된 디스패처 심볼로 모듈 소스 경로 획득 (모듈 재import 회피 — py/import-and-import-from).
+    # Resolve the module source via the already-imported dispatcher symbol (avoids re-importing
+    # the module, which would trip py/import-and-import-from).
+    source = Path(inspect.getsourcefile(handle_message_command)).read_text(encoding="utf-8")
     returns_constant = any(
         isinstance(node, ast.Return)
         and isinstance(node.value, ast.Name)
