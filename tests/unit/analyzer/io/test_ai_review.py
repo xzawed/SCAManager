@@ -124,6 +124,73 @@ async def test_review_code_calls_anthropic_and_parses():
     assert result.test_score == 10
 
 
+def test_ai_review_result_truncated_defaults_false():
+    """🔴 C22: AiReviewResult.truncated 기본값은 False (잘리지 않음)."""
+    assert AiReviewResult(commit_score=1, ai_score=1, test_score=1, summary="").truncated is False
+
+
+async def test_review_code_marks_truncated_when_diff_exceeds_limit():
+    """🔴 C22: 합쳐진 diff 가 MAX_DIFF_CHARS 초과 시 result.truncated=True (성공 경로).
+    Truncation marker is set when the assembled diff exceeds MAX_DIFF_CHARS.
+    """
+    from src.analyzer.pure.review_prompt import MAX_DIFF_CHARS  # pylint: disable=import-outside-toplevel
+
+    mock_response = MagicMock()
+    mock_text = json.dumps({"commit_message_score": 18, "direction_score": 17,
+                            "test_score": 10, "summary": "ok", "suggestions": []})
+    mock_response.content = [MagicMock(text=mock_text)]
+
+    big_patch = [("big.py", "x" * (MAX_DIFF_CHARS + 5000))]  # 절단 유발
+    with patch("src.analyzer.io.ai_review.anthropic.AsyncAnthropic") as mock_cls:
+        mock_client = AsyncMock()
+        mock_client.messages.create = AsyncMock(return_value=mock_response)
+        mock_cls.return_value = mock_client
+
+        result = await review_code("sk-test", "feat: big change", big_patch)
+
+    assert result.truncated is True
+    assert result.status == "success"  # 절단이어도 리뷰 자체는 성공
+
+
+async def test_review_code_truncated_false_when_parse_error_on_large_diff():
+    """🔴 C22 NG-1 fix (Codex mutual): 큰 diff 라도 응답 파싱 실패(parse_error)면
+    truncated=False 유지 — success 경로 한정 불변식 (차단은 ai_review_failed 담당).
+    A large diff with a parse_error must NOT set truncated (success-path-only invariant).
+    """
+    from src.analyzer.pure.review_prompt import MAX_DIFF_CHARS  # pylint: disable=import-outside-toplevel
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text="not valid json at all")]  # → parse_error
+
+    big_patch = [("big.py", "x" * (MAX_DIFF_CHARS + 5000))]
+    with patch("src.analyzer.io.ai_review.anthropic.AsyncAnthropic") as mock_cls:
+        mock_client = AsyncMock()
+        mock_client.messages.create = AsyncMock(return_value=mock_response)
+        mock_cls.return_value = mock_client
+
+        result = await review_code("sk-test", "feat: big", big_patch)
+
+    assert result.status == "parse_error"
+    assert result.truncated is False  # success 경로 아님 → 마커 미설정
+
+
+async def test_review_code_not_truncated_for_small_diff():
+    """🔴 C22: 작은 diff 는 result.truncated=False."""
+    mock_response = MagicMock()
+    mock_text = json.dumps({"commit_message_score": 18, "direction_score": 17,
+                            "test_score": 10, "summary": "ok", "suggestions": []})
+    mock_response.content = [MagicMock(text=mock_text)]
+
+    with patch("src.analyzer.io.ai_review.anthropic.AsyncAnthropic") as mock_cls:
+        mock_client = AsyncMock()
+        mock_client.messages.create = AsyncMock(return_value=mock_response)
+        mock_cls.return_value = mock_client
+
+        result = await review_code("sk-test", "feat: small", [("app.py", "+ x = 1")])
+
+    assert result.truncated is False
+
+
 async def test_review_code_returns_default_on_api_exception():
     with patch("src.analyzer.io.ai_review.anthropic.AsyncAnthropic") as mock_cls:
         mock_client = AsyncMock()

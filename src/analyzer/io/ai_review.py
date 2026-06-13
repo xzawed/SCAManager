@@ -17,7 +17,11 @@ from dataclasses import dataclass, field
 
 import anthropic
 
-from src.analyzer.pure.review_prompt import build_review_prompt, get_system_prompt
+from src.analyzer.pure.review_prompt import (
+    MAX_DIFF_CHARS,
+    build_review_prompt,
+    get_system_prompt,
+)
 from src.config import settings
 from src.constants import (
     AI_DEFAULT_COMMIT_RAW, AI_DEFAULT_DIRECTION_RAW, AI_DEFAULT_TEST_RAW,
@@ -52,6 +56,11 @@ class AiReviewResult:  # pylint: disable=too-many-instance-attributes
     # 실제 사용된 모델명 — None = 전역 기본값 사용
     # Actual model used — None means global default was used
     used_model: str | None = None
+    # C22: diff 가 MAX_DIFF_CHARS 로 잘렸는지 — 잘린 부분 미검토로 점수가 인플레될 수 있어
+    # auto-merge/auto-approve 차단 마커(ai_review_truncated)로 전파된다(static_analysis_incomplete 대칭).
+    # C22: whether the diff was truncated at MAX_DIFF_CHARS — the unseen part may inflate the score,
+    # so it propagates as an auto-merge/approve block marker (mirrors static_analysis_incomplete).
+    truncated: bool = False
 
 
 async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching + 예외 분기로 인한 누적 (사이클 84 i18n)
@@ -83,6 +92,12 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
     )
     if not diff_text.strip():
         return _default_result("empty_diff")
+
+    # C22: 프롬프트에 들어가는 diff 가 MAX_DIFF_CHARS 로 잘렸는지 판정 (build_review_prompt 와 동일 길이 기준).
+    # 잘렸다면 리뷰는 성공해도 일부만 보고 채점한 것이라 점수가 인플레될 수 있어 마커로 전파한다.
+    # C22: detect whether the diff fed into the prompt was truncated at MAX_DIFF_CHARS (same length basis
+    # as build_review_prompt). If so, the review scored only a partial diff → propagate as a marker.
+    was_truncated = len(diff_text) > MAX_DIFF_CHARS
 
     # Anthropic SDK 기본 timeout=600s 는 BackgroundTask 슬롯을 10분 점유 위험.
     # HTTP_CLIENT_TIMEOUT 보다 여유 두고 60s 로 설정 — 평균 응답 5-15s 대비 충분.
@@ -131,6 +146,12 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
         result.input_tokens = input_tokens
         result.output_tokens = output_tokens
         result.used_model = model
+        # C22: 절단 마커 — 파싱까지 성공(status=="success")한 경우에만 설정. parse_error 는
+        # ai_review_failed 가 차단을 담당하므로 truncated 는 False 유지(success 경로 한정 불변식).
+        # C22: set the truncation marker only on a genuine success (status=="success"). parse_error is
+        # handled by ai_review_failed, so leave truncated False (success-path-only invariant).
+        if result.status == "success":
+            result.truncated = was_truncated
         return result
     except Exception as exc:  # pylint: disable=broad-exception-caught  # noqa: BLE001
         # anthropic/httpx 는 다양한 예외를 발생시킬 수 있음 — 모두 graceful fallback

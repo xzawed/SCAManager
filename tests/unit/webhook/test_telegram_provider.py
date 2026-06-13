@@ -177,6 +177,28 @@ async def test_handle_gate_callback_approve_with_auto_merge():
                         assert kw["analysis_id"] == 42
 
 
+async def test_handle_gate_callback_skips_auto_merge_when_ai_review_truncated():
+    """🔴 C22: 반자동 승인이어도 ai_review_truncated=True 면 engine._run_auto_merge 미위임.
+    절단된 일부만 본 인플레 점수의 자동 머지 방지 — AutoMergeAction 가드 미러링(parity).
+    """
+    from src.webhook.router import handle_gate_callback
+    # 90 >= threshold(75) 이나 diff 절단 마커 존재
+    mock_analysis = MagicMock(id=42, repo_id=1, pr_number=5, score=90,
+                              result={"score": 90, "ai_review_truncated": True})
+    mock_repo = MagicMock(id=1, full_name="owner/repo", user_id=1)
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter_by.return_value.first.side_effect = [mock_analysis, mock_repo]
+    config = RepoConfigData(repo_full_name="owner/repo", auto_merge=True, merge_threshold=75)
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock):
+            with patch("src.webhook.providers.telegram.gate_decision_repo.claim_decision"):
+                with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
+                    with patch("src.gate.engine._run_auto_merge", new_callable=AsyncMock) as mock_am:
+                        await handle_gate_callback(analysis_id=42, decision="approve",
+                                                   decided_by="john", telegram_user_id="1")
+                        mock_am.assert_not_called()  # 절단 → 자동 머지 위임 차단
+
+
 # --- P1-1 반자동 parity 핵심 테스트 (검증자 단일출처화 → result 전파) ---
 # Semi-auto verifier parity: handle_gate_callback 의 반자동 auto-merge 가 engine._run_auto_merge
 # 에 위임할 때 result=result_dict 를 함께 전달해야 한다 — engine 진입부의 단일출처 검증 가드

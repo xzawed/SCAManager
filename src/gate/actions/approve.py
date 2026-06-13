@@ -59,6 +59,16 @@ class ApproveAction(GateAction):
                 ctx.repo_name, ctx.pr_number,
             )
             return
+        # C22: AI 리뷰 diff 절단(truncated) 시 보류 — 잘린 부분 미검토로 점수가 인플레될 수
+        # 있고, auto-approve 가 branch-protection 자동머지를 간접 트리거할 수 있어 결정하지 않는다.
+        # C22: hold auto-approve when the AI-review diff was truncated — the unseen part may inflate
+        # the score and auto-approve could indirectly trigger branch-protection auto-merge.
+        if ctx.result.get("ai_review_truncated"):
+            logger.warning(
+                "AI review diff truncated — auto-approve skipped (repo=%s, pr=%s)",
+                ctx.repo_name, ctx.pr_number,
+            )
+            return
         # AI 리뷰 실제 실패(api_error/parse_error) 시도 보류 — 중립-고점 기본값이 점수를
         # 인플레이션하고, auto-approve 가 branch-protection "approval 시 자동머지" 를 간접
         # 트리거할 수 있으므로 결정을 내리지 않는다 (#8, auto-merge 가드의 approve 경로 확장).
@@ -113,6 +123,16 @@ class ApproveAction(GateAction):
         if ctx.result.get("static_analysis_incomplete"):
             logger.warning(
                 "static analysis incomplete — semi-auto approve skipped (repo=%s, pr=%s)",
+                ctx.repo_name, ctx.pr_number,
+            )
+            return
+        # C22: AI 리뷰 diff 절단(truncated) 시 미발송 — 절단된 일부만 보고 매긴 인플레 점수를
+        # 사람 승인 버튼으로 노출하면 오해된 점수로 approve+merge 될 수 있다 (_run_auto 가드 대칭).
+        # C22: don't send when the AI-review diff was truncated — showing a partial-diff inflated
+        # score on a human approval button could lead to approve+merge (mirrors _run_auto).
+        if ctx.result.get("ai_review_truncated"):
+            logger.warning(
+                "AI review diff truncated — semi-auto approve skipped (repo=%s, pr=%s)",
                 ctx.repo_name, ctx.pr_number,
             )
             return

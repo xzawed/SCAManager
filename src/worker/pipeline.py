@@ -74,6 +74,11 @@ def build_analysis_result_dict(
         "grade": score_result.grade,
         "breakdown": score_result.breakdown,
         "ai_review_status": ai_review.status,
+        # C22: diff 절단 마커 — auto-merge/auto-approve 차단 (static_analysis_incomplete 대칭).
+        # getattr 기본 False: truncated 미보유 구 레코드/더블 안전.
+        # C22: diff-truncation marker — blocks auto-merge/approve (mirrors static_analysis_incomplete).
+        # getattr default False keeps legacy records/doubles without the field safe.
+        "ai_review_truncated": bool(getattr(ai_review, "truncated", False)),
         "ai_summary": ai_review.summary,
         "ai_suggestions": ai_review.suggestions,
         "commit_message_feedback": ai_review.commit_message_feedback,
