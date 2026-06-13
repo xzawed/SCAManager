@@ -41,8 +41,8 @@ logger = logging.getLogger(__name__)
 
 # Phase 3 PR-9 (사이클 84) — 미연결 사용자 공통 안내 메시지 (settings.default_locale 적용).
 # Phase 3 PR-9 (Cycle 84) — common prompt for disconnected users (settings.default_locale).
-# 백워드 호환 — 기존 단위 테스트 (`test_telegram_commands.py`) `_NOT_CONNECTED_MSG` 직접 비교 영역.
-# Backwards-compat — preserved for legacy tests doing direct equality comparisons.
+# 디스패처(handle_telegram_command)의 미연결 응답 단일 출처 + 단위 테스트 직접 비교 영역.
+# Single source for the dispatcher's unlinked-user reply, also compared directly in unit tests.
 _NOT_CONNECTED_MSG = get_text("notifier.commands.not_connected", settings.default_locale)
 
 
@@ -237,7 +237,7 @@ def handle_message_command(db: Session, telegram_user_id: str, text: str) -> str
     if user is None:
         # 미연결 사용자 응답 = settings.default_locale (User row 없음)
         # Unlinked user reply = settings.default_locale (no User row)
-        return get_text("notifier.commands.not_connected", settings.default_locale)
+        return _NOT_CONNECTED_MSG
 
     lang = _resolve_user_language(user)
 
