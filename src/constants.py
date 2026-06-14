@@ -118,9 +118,11 @@ WEBHOOK_SECRET_CACHE_MAX = 2048
 
 # ── Telegram OTP brute-force 방어 (C12) ──────────────────────────────────────
 # per-telegram_user_id 슬라이딩 윈도우 — 잘못된 /connect 시도만 카운트한다.
-# 6자리 숫자 OTP(공간 10^6) + TTL 5분이라 무제한 추측 시 brute-force 가능 → 한도 차단.
+# 8자리 숫자 OTP(공간 10^8, C12 — 6→8) + TTL 5분이라 무제한 추측 시 brute-force 가능 → 한도 차단.
+# 리미터는 per-sender 라 계정 로테이션 시 전역 상한이 없으므로 자릿수 확대(_OTP_LENGTH)와 곱연산으로 방어.
 # Per-telegram_user_id sliding window — counts only failed /connect attempts.
-# A 6-digit OTP (10^6 space) with a 5-min TTL is brute-forceable without a cap.
+# An 8-digit OTP (10^8 space, C12 — 6→8) with a 5-min TTL is brute-forceable without a cap.
+# The limiter is per-sender (no global ceiling under account rotation), so digit widening compounds it.
 OTP_MAX_FAILED_ATTEMPTS = 5          # 윈도우 내 허용 실패 횟수 / allowed failures per window
 OTP_ATTEMPT_WINDOW_SECONDS = 300     # 슬라이딩 윈도우(초) — OTP TTL(5분)과 동일 / window = OTP TTL
 # 🔴 추적 키 상한 — telegram_user_id 가 많아져도 dict 무한 증가를 막는다(메모리 고갈 방지).

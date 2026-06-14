@@ -52,9 +52,9 @@ def _make_db_session_mock(db_mock: MagicMock) -> MagicMock:
 # ── T9-A: POST /api/users/me/telegram-otp ──
 
 
-def test_post_telegram_otp_returns_six_digit_code():
-    """인증된 사용자 호출 시 200과 6자리 숫자 OTP, expires_at을 반환한다.
-    Returns 200 with a 6-digit numeric OTP and expires_at for an authenticated user.
+def test_post_telegram_otp_returns_eight_digit_code():
+    """인증된 사용자 호출 시 200과 8자리 숫자 OTP, expires_at을 반환한다.
+    Returns 200 with an 8-digit numeric OTP and expires_at for an authenticated user.
     """
     mock_db = MagicMock()
     # execute/commit은 부작용만 — 반환값 불필요
@@ -67,10 +67,10 @@ def test_post_telegram_otp_returns_six_digit_code():
 
     assert r.status_code == 200
     body = r.json()
-    # OTP는 6자리 숫자 문자열이어야 한다
-    # OTP must be a 6-digit numeric string.
+    # OTP는 8자리 숫자 문자열이어야 한다 (C12 — 6→8, brute-force 공간 10^8)
+    # OTP must be an 8-digit numeric string (C12 — 6→8, brute-force space 10^8).
     assert "otp" in body
-    assert len(body["otp"]) == 6
+    assert len(body["otp"]) == 8
     assert body["otp"].isdigit()
     # 만료 시각과 TTL 필드가 있어야 한다
     # expires_at and ttl_minutes must be present.
@@ -106,18 +106,18 @@ def test_post_telegram_otp_overwrites_previous_otp():
     otp1 = r1.json()["otp"]
     otp2 = r2.json()["otp"]
 
-    # 두 OTP 모두 6자리 숫자 형식
-    # Both OTPs must be 6-digit numeric strings.
-    assert len(otp1) == 6 and otp1.isdigit()
-    assert len(otp2) == 6 and otp2.isdigit()
+    # 두 OTP 모두 8자리 숫자 형식
+    # Both OTPs must be 8-digit numeric strings.
+    assert len(otp1) == 8 and otp1.isdigit()
+    assert len(otp2) == 8 and otp2.isdigit()
 
     # DB execute가 각 요청마다 호출되어야 한다 (덮어쓰기 보장)
     # DB execute must be called once per request (overwrite guarantee).
     assert mock_db.execute.call_count == 2
     assert mock_db.commit.call_count == 2
 
-    # 연속으로 발급된 OTP가 동일할 확률은 1/1,000,000 — 실용적으로 다름을 기대
-    # Probability of collision is 1/1,000,000 — expect different values in practice.
+    # 연속으로 발급된 OTP가 동일할 확률은 1/100,000,000 (10^8) — 실용적으로 다름을 기대
+    # Probability of collision is 1/100,000,000 (10^8) — expect different values in practice.
     collected_otps.extend([otp1, otp2])
     assert len(collected_otps) == 2
 
@@ -161,7 +161,7 @@ def test_post_telegram_otp_uses_secrets_for_randomness():
     # 숫자 문자만 포함 — secrets.choice("0123456789") 보장
     # Only digit chars — guaranteed by secrets.choice("0123456789").
     assert all(c in "0123456789" for c in otp)
-    assert len(otp) == 6
+    assert len(otp) == 8
 
 
 # ── T-3: asyncio.to_thread 래핑 검증 (사이클 113 P0-D 회귀 가드) ──
