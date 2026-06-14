@@ -811,7 +811,7 @@
     "commands": {
       "not_connected": "Connect your account first: /connect <code>",
       "unknown_command": "Unknown command. Available: /stats <repo>, /settings, /connect <code>",
-      "connect_usage": "Usage: /connect <6-digit code>",
+      "connect_usage": "Usage: /connect <8-digit code>",
       "connect_invalid_otp": "Invalid or expired OTP.",
       "connect_rate_limited": "Too many attempts. Please try again in a few minutes.",
       "connect_already_linked": "This Telegram account is already linked to another user.",

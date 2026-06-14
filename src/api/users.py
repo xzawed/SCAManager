@@ -24,7 +24,13 @@ logger = logging.getLogger(__name__)
 LOCALE_COOKIE_VALUE_RE = re.compile(r"^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$")
 
 # OTP 자릿수 — One-time passcode digit count.
-_OTP_LENGTH = 6
+# C12 (회고 P2-c): 6→8 자리. find_by_otp 는 user 무관 전역 풀 조회 + 리미터는 per-sender 라
+# 계정 로테이션 시 전역 brute-force 상한이 없다 → 탐색 공간을 10^6→10^8(100배)로 확대해
+# per-sender 리미터(OTP_MAX_FAILED_ATTEMPTS)와 곱연산으로 추측 비용을 높인다.
+# C12: 6→8 digits. find_by_otp looks up the global (user-agnostic) OTP pool while the limiter is
+# per-sender, so account rotation has no global ceiling → widen the space 10^6→10^8 (100x) to
+# compound with the per-sender limiter.
+_OTP_LENGTH = 8
 # OTP 유효 시간(분) — OTP validity window in minutes.
 _OTP_TTL_MINUTES = 5
 
@@ -35,8 +41,8 @@ router = APIRouter(prefix="/api/users", tags=["users"])
 async def issue_telegram_otp(
     current_user: Annotated[CurrentUser, Depends(require_login)],
 ) -> dict:
-    """Telegram 연동용 6자리 OTP를 발급한다.
-    Issue a 6-digit OTP for Telegram account linking.
+    """Telegram 연동용 8자리 OTP를 발급한다.
+    Issue an 8-digit OTP for Telegram account linking.
 
     기존 OTP가 있으면 덮어쓴다 — 마지막 OTP만 유효.
     Overwrites any existing OTP — only the last issued OTP is valid.
