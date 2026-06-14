@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [회고 P2 백로그 해소 — P2-a/C22/C12 3 PR (#893 테스트 i18n 키 고정·#894 C22 절단 점수 NULL-persist·#895 C12 OTP 6→8, 단위 +1, 회고 P2 잔여 0, 2026-06-14)](#회고-p2-백로그-해소--p2-ac22c12-3-pr-893895-2026-06-14)
 - [회고(5+1) P1 follow-up — README.ko 배지·#888 정적 가드·db.md U1 divergence (C12/C22/U1 머지 세션 회고 → P0 0·P1 3·P2 3·FP 9, 단위 +1, 2026-06-14)](#회고51-p1-follow-up--readmeko-배지888-정적-가드dbmd-u1-divergence-2026-06-14)
 - [정합성 감사 백로그 C12·C22·U1 머지 — 3 PR (#884 C12 OTP rate-limit·#885 C22 diff 절단 마커·#886 U1 0027 RLS 의도적 divergence, 단위 +23, code-side 백로그 전량 해소, 2026-06-13)](#정합성-감사-백로그-c12c22u1-머지--3-pr-884886-2026-06-13)
 - [잔여/후속 세션 — C1 save_gate_decision dead wrapper 제거 (호출처 0 dead code + 35 inert patch de-indent + 죽은-래퍼 테스트 2개 제거, 기능 영향 0, 단위 −2, 2026-06-13)](#잔여후속-세션--c1-save_gate_decision-dead-wrapper-제거-2026-06-13)
@@ -93,6 +94,18 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 회고 P2 백로그 해소 — P2-a/C22/C12 3 PR (#893~#895) (2026-06-14)
+
+**날짜**: 2026-06-14 | **트리거**: 사용자 "권장하는 순서로 진행" 위임 → integrity-audit 회고 P2 잔여 3건(P2-a 자율 + C22/C12 정책15 High tier 사용자 결정 A/A) 순차 처리 | **상태**: 3 PR squash 머지, 전 PR Codex mutual OK(genuine `completed` 실측)·CI green·pylint 10.00
+
+**처리 (권장 순서)**:
+- **#893 P2-a (테스트 견고성)**: `test_telegram_commands.py` C12 brute-force 클러스터 3 테스트의 substring/OR 단언(`"OTP" in`/`"많"`/`"many"`/`"시도"`)을 i18n 키 직접 == 비교(`_RATE_LIMITED_MSG`/`_INVALID_OTP_MSG`)로 교체 → 영어/로케일 문구 변경 회귀 차단. 프로덕션과 동일 `settings.default_locale` 대조. 테스트 수 불변(26 passed).
+- **#894 C22 (analytics 집계 오염, 사용자 결정 A)**: AI diff 절단(`ai_review_truncated`) 리뷰는 status=success 라 `ai_review_failed=False` 지만 부분-diff 인플레 점수 → `_save_and_gate` 에서 score/grade NULL 저장(`_persisted_score_is_unreliable` 헬퍼 = `ai_review_failed or ai_review_truncated`). 집계(func.avg·leaderboard, `score IS NOT NULL` 필터)가 자연 제외. auto-merge 차단은 #885 별도. hook 경로는 `AiReviewResult.truncated` 미설정이라 대칭 불필요(pipeline-reviewer + Codex 확인). 🔴 **SonarCloud S3776 fix-up**: C22 의 `or` 가 `_save_and_gate` Cognitive Complexity 16>15 초과 → 판정을 모듈 헬퍼로 추출(사이클93 `_race_recover_existing` 동일 패턴)해 16→15 복원(동일 PR fix-up commit, Codex 재검증). pipeline-reviewer APPROVE. `.claude`+`.codex` rules/pipeline.md NULL-persist 노트 동기화. TDD +1.
+- **#895 C12 (OTP brute-force 상한, 사용자 결정 A)**: Telegram 연동 OTP `_OTP_LENGTH` 6→8 → brute-force 공간 10^6→10^8(100배). `find_by_otp` 가 user 무관 전역 풀 조회 + 리미터는 per-telegram_user_id 라 계정 로테이션 시 전역 상한 부재 → 자릿수 확대로 per-sender 리미터와 곱연산. 스키마 변경 0(telegram_otp 임시 문자열). i18n `connect_usage` 3언어(ko/en/ja) 동기화 + constants.py C12 주석 10^6→10^8. 테스트 수 불변(단언/생성 변경).
+
+- **수치**: 단위 4939→**4940**(+1 #894 C22) · 통합 154 · 전체 5093→**5094** · E2E 115 불변 · pylint **10.00/10** · Code Scanning open 0. **integrity-audit 회고 P2 잔여 = 0** — 코드 사이드 잔여 작업 0. **잔여 = ops 2건**(#2 RLS Phase 4 운영 전환[🛑 명시 보류] · 2nd-LLM 검증자 활성화[`OPENAI_API_KEY` BYO]). 상세: [[project-audit-backlog-2026-06-12]].
+- 🔴 **프로세스 학습**: (1) Codex companion 이 프롬프트의 "pytest 실행" 요청을 model 파라미터로 오파싱(`The 'pytest' model is not supported`) → pytest 실행 요청 제거 + 로컬 증거 제공 정적 리뷰로 전환 시 genuine Codex OK(정책18 무결성은 companion status `completed` 실측으로 확인). (2) C12 i18n JSON 3건 edit 1차 commit 누락("3 files") → 즉시 grep 적발·amend("6 files"). (3) C22 SonarCloud S3776 는 PR-CI 에서 검출 → fix-up 으로 머지 전 해소(PR-diff CodeQL 한계와 대비 — Sonar 는 PR 차단).
 
 ## 회고(5+1) P1 follow-up — README.ko 배지·#888 정적 가드·db.md U1 divergence (2026-06-14)
 
