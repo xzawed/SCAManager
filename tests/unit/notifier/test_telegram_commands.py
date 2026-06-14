@@ -22,7 +22,9 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
+from src.config import settings
 from src.database import Base
+from src.i18n.loader import get_text
 from src.models.analysis import Analysis
 from src.models.repository import Repository
 from src.models.user import User
@@ -32,6 +34,12 @@ from src.notifier.telegram_commands import (
     handle_message_command,
     parse_cmd_callback,
 )
+
+# C12 OTP brute-force 테스트 — i18n 키 고정 비교 (영어 문구 변경에 깨지지 않도록 키 직접 대조)
+# C12 OTP brute-force tests — pin to i18n keys so wording changes don't break assertions
+_OTP_LANG = settings.default_locale
+_RATE_LIMITED_MSG = get_text("notifier.commands.connect_rate_limited", _OTP_LANG)
+_INVALID_OTP_MSG = get_text("notifier.commands.connect_invalid_otp", _OTP_LANG)
 
 
 # ---------------------------------------------------------------------------
@@ -295,13 +303,13 @@ def test_handle_connect_blocks_after_repeated_wrong_otp(db):
     # Up to the cap: each returns the invalid-OTP message and records a failure
     for _ in range(OTP_MAX_FAILED_ATTEMPTS):
         result = handle_message_command(db, "tg-brute", "/connect 000000")
-        assert "OTP" in result
+        assert result == _INVALID_OTP_MSG
 
     # 한도 초과 — rate-limit 메시지 (DB 조회조차 하지 않음)
     # Past the cap — rate-limit message (no DB lookup performed)
     blocked = handle_message_command(db, "tg-brute", "/connect 000000")
-    assert "OTP" not in blocked  # invalid_otp 가 아닌 별도 메시지
-    assert "많" in blocked or "many" in blocked.lower() or "시도" in blocked
+    assert blocked == _RATE_LIMITED_MSG
+    assert blocked != _INVALID_OTP_MSG  # 차단 메시지는 invalid_otp 와 구별된다
 
 
 def test_handle_connect_block_is_per_telegram_user(db):
@@ -315,12 +323,12 @@ def test_handle_connect_block_is_per_telegram_user(db):
 
     # 차단된 공격자
     blocked = handle_message_command(db, "tg-attacker", "/connect 999999")
-    assert "many" in blocked.lower() or "많" in blocked or "시도" in blocked
+    assert blocked == _RATE_LIMITED_MSG
 
     # 다른 사용자는 정상적으로 invalid_otp 응답을 받는다
     # A different user still gets the normal invalid-OTP response
     other = handle_message_command(db, "tg-innocent", "/connect 111111")
-    assert "OTP" in other
+    assert other == _INVALID_OTP_MSG
 
 
 def test_handle_connect_success_resets_failure_counter(db):
@@ -353,7 +361,7 @@ def test_handle_connect_success_resets_failure_counter(db):
     # Counter cleared → another (cap - 1) failures still not blocked
     for _ in range(OTP_MAX_FAILED_ATTEMPTS - 1):
         result = handle_message_command(db, "tg-reset", "/connect 000000")
-        assert "OTP" in result  # 여전히 invalid_otp (차단 아님)
+        assert result == _INVALID_OTP_MSG  # 여전히 invalid_otp (차단 아님)
 
 
 def test_handle_connect_already_linked_preserves_failure_counter(db):
