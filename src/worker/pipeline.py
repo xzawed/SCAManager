@@ -556,13 +556,22 @@ async def _save_and_gate(db: Session, params: _AnalysisSaveParams):
     # (NULL) — every aggregation excludes NULL, stopping dashboard/leaderboard pollution (0 query change);
     # the result dict keeps status/breakdown. Intentional skips (no_api_key/empty_diff) keep their score.
     _ai_failed = ai_review_failed(result_dict)
+    # 🔴 C22 (회고 P2-b): AI diff 절단(ai_review_truncated)도 점수 신뢰 불가 → score/grade NULL 저장.
+    # 절단 리뷰는 status="success" 라 ai_review_failed=False 지만 부분 diff 기반이라 점수가 인플레됨
+    # → analytics 집계(func.avg·leaderboard)가 NULL 을 제외하도록 _ai_failed 와 대칭 처리(쿼리 변경 0).
+    # auto-merge 차단은 #885(static_analysis_incomplete 대칭 가드)에서 완료 — 본 변경은 집계 오염만 봉인.
+    # result dict 의 ai_review_truncated·breakdown 은 보존(진단/배너용 — 컬럼=집계 NULL / result=진단 보존).
+    # C22: a truncated AI diff yields a partial-diff inflated score (status stays "success") →
+    # NULL-persist score/grade like ai_review_failed so aggregations exclude it; merge-blocking
+    # already guarded in #885. The result dict keeps the truncation marker for diagnostics/banner.
+    _score_unreliable = _ai_failed or bool(result_dict.get("ai_review_truncated"))
     analysis, created = analysis_repo.save_new(db, Analysis(
         repo_id=repo.id,
         commit_sha=params.commit_sha,
         commit_message=params.commit_message,
         pr_number=params.pr_number,
-        score=None if _ai_failed else params.score_result.total,
-        grade=None if _ai_failed else params.score_result.grade,
+        score=None if _score_unreliable else params.score_result.total,
+        grade=None if _score_unreliable else params.score_result.grade,
         result=result_dict,
         author_login=params.author_login,
         review_model=getattr(ai, "used_model", None),
