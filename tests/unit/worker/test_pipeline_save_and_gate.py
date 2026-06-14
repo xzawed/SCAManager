@@ -300,10 +300,17 @@ async def test_save_and_gate_race_recovery_with_repo_config_load_failure():
 # ---------------------------------------------------------------------------
 
 
-def _new_save_params(ai_status: str):
-    """신규 저장 경로(find_by_sha=None)용 _AnalysisSaveParams + status 지정 ai_review."""
+def _new_save_params(ai_status: str, *, truncated: bool = False):
+    """신규 저장 경로(find_by_sha=None)용 _AnalysisSaveParams + status 지정 ai_review.
+
+    truncated: AI diff 절단 여부 (C22 — 절단 시 부분-diff 인플레 점수 → 집계 NULL 대상).
+    truncated: whether the AI diff was truncated (C22 — partial-diff inflated score).
+    MagicMock 의 .truncated 는 기본 truthy 라 명시 대입 필수 (미설정 시 전 테스트 오염).
+    MagicMock auto-attrs are truthy → must set .truncated explicitly.
+    """
     ai = MagicMock()
     ai.status = ai_status
+    ai.truncated = truncated
     ai.used_model = None
     ai.input_tokens = None
     ai.output_tokens = None
@@ -357,6 +364,23 @@ async def test_save_and_gate_nulls_score_on_ai_parse_error():
     analysis = await _run_new_save(_new_save_params("parse_error"))
     assert analysis.score is None
     assert analysis.grade is None
+
+
+async def test_save_and_gate_nulls_score_on_ai_truncated():
+    """🔴 C22 (회고 P2-b): AI diff 절단 시 score/grade NULL 저장.
+
+    절단 리뷰는 status="success" 라 ai_review_failed=False 지만, 부분 diff 기반이라 점수가
+    인플레된다 → analytics 집계(func.avg·leaderboard)가 NULL 을 제외하도록 ai_review_failed 와
+    대칭 처리(쿼리 변경 0). auto-merge 차단은 #885 에서 별도 가드 완료 — 본 변경은 집계 오염만 봉인.
+    C22: a truncated AI diff (status=success → ai_review_failed=False, but partial-diff inflated)
+    NULL-persists score/grade so aggregations exclude it, mirroring ai_review_failed.
+    """
+    analysis = await _run_new_save(_new_save_params("success", truncated=True))
+    assert analysis.score is None, "절단(truncated)인데 인플레 점수가 저장됨 — 집계 오염"
+    assert analysis.grade is None
+    # 진단/배너용 절단 마커는 result dict 에 보존 (컬럼=NULL / result=보존 비대칭, #885 가드용)
+    # The truncation marker stays in the result dict for diagnostics/banner (column NULL / result kept)
+    assert analysis.result["ai_review_truncated"] is True
 
 
 async def test_save_and_gate_persists_score_on_ai_success():
