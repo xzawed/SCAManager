@@ -11,6 +11,7 @@ paths:
 
 - 🔴 **ORM 컬럼 추가 시 마이그레이션 필수**: `models/*.py` 에 `Column(...)` 추가 후 반드시 `make revision m="설명"` 실행. 단위 테스트(in-memory SQLite)는 마이그레이션 없이도 통과하지만, 운영 DB에는 컬럼이 없어 500 에러 발생.
 - 🔴 **`batch_alter_table` 금지**: PostgreSQL 에서 `op.create_unique_constraint('이름', '테이블', ['컬럼'])` 직접 사용.
+- 🔴 **alembic `env.py:30` 무조건 `settings.database_url` override → RLS Phase 4 마이그레이션 credential 게이트 (2026-06-15)**: alembic 은 항상 `DATABASE_URL` 로 실행. Phase 4 에서 `DATABASE_URL`=`scamanager_app`(비-BYPASSRLS) 전환 시 pre-deploy/lifespan 마이그레이션이 app role 로 돌아 `alembic_version` default-deny(relrowsecurity=true·policy 0)에 막힘. **Phase 4 전 `MIGRATION_DATABASE_URL`(owner) 분리 선행 의무**(별도 PR, High tier). 런타임 `DATABASE_URL`/`DATABASE_URL_WORKER` 를 마이그레이션 credential 로 재사용 금지. 절차: `docs/runbooks/rls-role-separation.md` §6.
 - **dialect 분기**: `from src.shared.alembic_dialect import is_postgresql; if not is_postgresql(op.get_bind()): return`
 - **DB 인덱스 이중 정의**: `models/*.py` 의 `__table_args__ = (Index(...),)` + `alembic/versions/` 의 `op.create_index(...)` 양쪽 모두 필수.
 - **FK ondelete CASCADE**: `analyses.id` 참조 child 4종 모두 CASCADE — 신규 child FK 추가 시 동일.

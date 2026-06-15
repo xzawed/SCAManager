@@ -22,4 +22,5 @@ paths:
 - **requirements.txt 분리**: 프로덕션 = `requirements.txt` / 개발 = `requirements-dev.txt`. `pytest`/`playwright` 는 dev only.
 - **slither + solc**: `railway.toml` buildCommand 에 `solc-select install 0.8.20 && solc-select use 0.8.20` 체인.
 - **postgres:// → postgresql://**: `config.py` 에서 자동 변환됨.
+- 🔴 **Supabase 연결 장애 = host 재도출 + 로컬 secret-safe probe (2026-06-15 prod 다운)**: redeploy/사용자 outsource 로 검증 금지. canonical host 는 Supabase MCP `get_project`/Dashboard Connect 재도출(pooler `aws-N` prefix 가변 — 로그 복사값=가설, 2026-06-15 `aws-0`→정답 `aws-1`). gitignore 된 `.dbpw` + 1회성 psycopg2 probe 로 `{host}×{user}×{port}` 매트릭스 직접 실행 `select 1` 확인. secret-in-local-file probe = 검증 capability(블로커 아님). 상세: `docs/runbooks/railway.md` §연결 invariants.
 - 🔴 **Tailwind v4 빌드**: `railway.toml` buildCommand 끝의 `npm ci && npm run build`가 `@tailwindcss/cli`로 `src/static/css/dist/tailwind.css`를 생성. 이 두 명령 제거 시 UI 깨짐 — buildCommand에서 제거 금지.
