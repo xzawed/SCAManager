@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [잔여/후속 — Railway pre-deploy + 연결 invariants docs + MIGRATION_DATABASE_URL (#906~#908 — railway.toml preDeployCommand 배포 차단 fix·Railway↔Supabase 연결 invariants+Phase 4 마이그레이션 게이트 docs[Codex NG 2→정정]·MIGRATION_DATABASE_URL owner 분리, 단위 +7, 2026-06-16)](#잔여후속--railway-pre-deploy--연결-invariants-docs--migration_database_url-906908-2026-06-16)
 - [마이그레이션 0039/0040 멱등화 — 운영 alembic 0038 고착 해소 (#904, 0039 DROP IF EXISTS→SET NULL·0040 end-state 보장 3-statement·PG drift 행동 테스트, RLS Phase 4 step 0 선행 차단 해소, 단위 +3, 2026-06-15)](#마이그레이션-00390040-멱등화--운영-alembic-0038-고착-해소-904-2026-06-15)
 - [starlette 1.0.1+ 마이그레이션 + dependabot 배치 — #902 (fastapi>=0.137.0·starlette>=1.0.1·PYSEC-2026-161 패치·_IncludedRouter 라우트 테스트 적응) + #897~#900 자동 머지·#901 close, 단위 +2, 2026-06-15)](#starlette-101-마이그레이션--dependabot-배치--902--897900-2026-06-15)
 - [회고 P2 백로그 해소 — P2-a/C22/C12 3 PR (#893 테스트 i18n 키 고정·#894 C22 절단 점수 NULL-persist·#895 C12 OTP 6→8, 단위 +1, 회고 P2 잔여 0, 2026-06-14)](#회고-p2-백로그-해소--p2-ac22c12-3-pr-893895-2026-06-14)
@@ -96,6 +97,15 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 잔여/후속 — Railway pre-deploy + 연결 invariants docs + MIGRATION_DATABASE_URL (#906~#908) (2026-06-16)
+
+- **잔여/후속 — Railway pre-deploy fix + 연결 invariants docs + MIGRATION_DATABASE_URL (#906~#908, 2026-06-16)** — 사용자 "잔여/후속 작업 진행" → 2026-06-15 Railway↔Supabase 장애 회고 follow-up 3 PR + post-merge docs sync.
+  - **#906 Railway pre-deploy fix** — 운영 배포 차단 사고 해소. 대시보드 pre-deploy 명령이 `npm run migrate`(`package.json` 미존재 스크립트)로 설정돼 "Deploy › Pre-deploy command failed" → 배포 미완료·alembic 0038 고착. `railway.toml [deploy] preDeployCommand = "alembic upgrade head"`(config-as-code, loud-fail — lifespan silent-fail 보완). `.claude`/`.codex` deploy.md 규칙 동기화. 🔴 운영 잔여 = 대시보드 Pre-deploy Command 동기화 후 재배포(사용자). Codex mutual OK.
+  - **#907 연결 invariants + Phase 4 게이트 docs** — `docs/runbooks/railway.md` "Railway↔Supabase 연결 invariants" 섹션(IPv4-only egress → pooler 사용·direct `db.<ref>` IPv6-only 도달 불가·`DB_FORCE_IPV4` 정확한 역할[dual-stack IPv6 선호 교정]·pooler `aws-N` prefix 가변[`get_project` 재도출]·8단계 probe 프로토콜) + `rls-role-separation.md §6` 연결 probe 의무 + 마이그레이션 credential 게이트 + line 59/126 내부 모순 정정 + `.gitignore` `.dbpw`/`db_probe.py` 가드. **검증** = 3-agent 적대(0 findings) + Codex mutual **NG 2건**(DB_FORCE_IPV4 가 IPv6-only 호스트 도달 불가[`getaddrinfo(AF_INET)`→`{}` no-op]·DNS ENOTFOUND↔Supavisor "Tenant or user not found" 계층 혼동)→정정→OK. 🔴 학습: 내부 5+1 통과해도 Codex 모델 다양성이 기술 오류 적발(mutual 2-layer 가치 실증).
+  - **#908 MIGRATION_DATABASE_URL** — RLS Phase 4 "두 번째 벽". `alembic/env.py` 가 `settings.database_url` 무조건 override → Phase 4 에서 `DATABASE_URL`=app(비-BYPASSRLS) 전환 시 pre-deploy/lifespan 마이그레이션이 app role 로 돌아 `alembic_version` default-deny 차단. `config.py` `migration_database_url` 필드 + validator + **`effective_migration_url` property**(= `migration_database_url or database_url`) + `env.py` 적용(offline/online+pre-deploy CLI+lifespan 단일 결정점). `"sqlalchemy.url"` 3건 `_SQLALCHEMY_URL` 상수화(SonarCloud S1192 선제). **미설정 시 발효 0**(`DATABASE_URL_WORKER` 패턴). TDD 7(config 5 + env.py ast 회귀 가드 2 — `effective_migration_url` 사용 강제·`database_url` 직접 사용 금지). `railway.toml` 미변경(#906 충돌 0). Codex mutual OK.
+  - **post-merge docs sync** — #907 게이트 문구("별도 코드 PR 미구현")를 "✅ 구현됨 #908"로 갱신(rls-role-separation.md §6/line 59/126 + db.md + .codex/rules/db.md) + STATE/cycle-history/README 배지.
+  - 단위 4945→**4952**(+7)·전체 5099→**5106**·E2E 115 불변·pylint 10.00. 전 PR CI green·Codex mutual OK. 🔴 **잔여 = ops**(#2 RLS Phase 4 운영 전환 — #906 대시보드 + PW 교체/URL 전환 + secret rotate, 사용자 영역).
 
 ## 마이그레이션 0039/0040 멱등화 — 운영 alembic 0038 고착 해소 (#904) (2026-06-15)
 
