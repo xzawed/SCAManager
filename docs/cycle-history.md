@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [마이그레이션 0039/0040 멱등화 — 운영 alembic 0038 고착 해소 (#904, 0039 DROP IF EXISTS→SET NULL·0040 end-state 보장 3-statement·PG drift 행동 테스트, RLS Phase 4 step 0 선행 차단 해소, 단위 +3, 2026-06-15)](#마이그레이션-00390040-멱등화--운영-alembic-0038-고착-해소-904-2026-06-15)
 - [starlette 1.0.1+ 마이그레이션 + dependabot 배치 — #902 (fastapi>=0.137.0·starlette>=1.0.1·PYSEC-2026-161 패치·_IncludedRouter 라우트 테스트 적응) + #897~#900 자동 머지·#901 close, 단위 +2, 2026-06-15)](#starlette-101-마이그레이션--dependabot-배치--902--897900-2026-06-15)
 - [회고 P2 백로그 해소 — P2-a/C22/C12 3 PR (#893 테스트 i18n 키 고정·#894 C22 절단 점수 NULL-persist·#895 C12 OTP 6→8, 단위 +1, 회고 P2 잔여 0, 2026-06-14)](#회고-p2-백로그-해소--p2-ac22c12-3-pr-893895-2026-06-14)
 - [회고(5+1) P1 follow-up — README.ko 배지·#888 정적 가드·db.md U1 divergence (C12/C22/U1 머지 세션 회고 → P0 0·P1 3·P2 3·FP 9, 단위 +1, 2026-06-14)](#회고51-p1-follow-up--readmeko-배지888-정적-가드dbmd-u1-divergence-2026-06-14)
@@ -95,6 +96,24 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 마이그레이션 0039/0040 멱등화 — 운영 alembic 0038 고착 해소 (#904) (2026-06-15)
+
+**날짜**: 2026-06-15 | **트리거**: RLS Phase 4 step 0 배포 후 사용자 "재배포 완료, MCP 확인" → MCP 진단으로 alembic 0038 고착 발견 | **상태**: #904 squash 머지, Codex mutual round1/2 NG→round3 OK · 전체 CI green(PG-only job 포함)
+
+**근본 원인 (운영 MCP 실측)**:
+- Supabase 운영 DB(`qaoirpyhldlkeoyppfwq`)가 **alembic 0038 고착 / FORCE 0/11**. postgres 로그: `ERROR: constraint "repositories_user_id_fkey" for relation "repositories" already exists`.
+- `repositories_user_id_fkey`가 **NO ACTION으로 사전 존재**(0039 의도는 SET NULL) → 0039의 무조건 `create_foreign_key`가 "already exists"로 실패 → 0039 롤백 → 0038 고착(0040 rename·0041 FORCE 미적용).
+- lifespan(`main.py:160` broad-except)이 마이그레이션 실패를 잡고 앱은 기동(무중단) → **~2026-06-09(0039 추가) 이후 모든 배포에서 조용히 실패**(미발견). CI는 clean DB(FK 미존재)서 시작해 미검출.
+
+**처리 (#904)**:
+- 0039: orphan 정리 후 `DROP CONSTRAINT IF EXISTS` → create SET NULL (멱등 + 사전 NO ACTION FK를 SET NULL로 교정).
+- 0040: 단순 RENAME → end-state 보장 3-statement (조건부 rename으로 정의 보존 + neither 상태 시 ORM 정합 `CREATE UNIQUE INDEX IF NOT EXISTS` + stale source `DROP`). 시작 상태 무관 `ix_users_github_id`(UNIQUE) 존재 보장. github_id unique 실측(ORM·0005·prod 일치).
+- test_0039/0040: 멱등 가드 정적 단언. test_0020_round_trip: PG 행동 테스트 `test_migrations_idempotent_over_prod_drift_postgres`(0038+NO ACTION FK 주입→upgrade head→FK=SET NULL·FORCE 검증) + ci.yml pg-concurrency `::node-id` 핀.
+
+- **수치**: 단위 4942→**4945**(+3) · 통합 154 · 전체 5096→**5099** · E2E 115 불변 · pylint **10.00/10** · Code Scanning open 0.
+- 🔴 **프로세스 학습**: (1) **운영 마이그레이션 silent fail** — lifespan broad-except가 마이그레이션 실패를 흡수해 앱은 뜨지만 schema는 stale, ~6일간 미발견. 운영 배포 후 alembic_version 실측(MCP) 검증 의무. (2) **마이그레이션 비-멱등 = drift 환경서 실패** — CI clean DB는 사전 존재 객체를 못 잡음. DDL 추가 마이그레이션은 `IF EXISTS`/`IF NOT EXISTS` 멱등화 + PG drift 행동 테스트로 봉인. (3) Codex mutual이 0040 collision/neither 상태 미처리를 2라운드 적발 → end-state 보장 설계.
+- 🔴 **잔여**: 사용자 재배포 → `/admin/rls-audit force_applied=True` → RLS Phase 4 step 2(URL 전환) → step 3 종단 검증.
 
 ## starlette 1.0.1+ 마이그레이션 + dependabot 배치 — #902 · #897~#900 (2026-06-15)
 
