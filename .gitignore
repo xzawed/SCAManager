@@ -19,6 +19,14 @@ env/
 .env.local
 .env.*.local
 
+# 로컬 연결 진단용 시크릿/프로브 (절대 커밋 금지 — feedback-connectivity-probe-first)
+# Local connectivity-probe secrets / scratch scripts (NEVER commit — see retrospective 2026-06-15)
+#   .dbpw = DB 비번을 gitignore 된 로컬 파일에 적어 secret-safe probe 가 read (출력은 scrub),
+#   db_probe.py = host/user/port 매트릭스를 직접 도는 1회성 진단 스크립트.
+.dbpw
+*.dbpw
+db_probe.py
+
 # IDE
 .vscode/
 .idea/

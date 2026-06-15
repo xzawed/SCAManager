@@ -8,6 +8,28 @@ Supabase PostgreSQL + 온프레미스 PostgreSQL 이중 setup. Railway PostgreSQ
 
 운영 SQL 검증 도구 `scripts/dev/verify_phase2_data.sql` + runbook [`docs/runbooks/phase2-data-readiness.md`](phase2-data-readiness.md) 가 4 환경 (Supabase Dashboard / Supabase MCP / 온프레미스 psql / Railway) 모두 호환 (`\echo` meta-command 미사용 + `section` 라벨 컬럼).
 
+## 🔴 Railway ↔ Supabase 연결 invariants (2026-06-15 사고 학습)
+
+> 2026-06-15 prod 수 시간 다운(pooler host `aws-0`→`aws-1` 한 줄)의 재발 방지. 연결/credential 장애 진단 시 이 박스를 먼저 읽는다. 핵심 메모리: `feedback-connectivity-probe-first`.
+
+**① Railway egress = IPv4-only → pooler(IPv4 도달 경로) 사용 의무.**
+Railway 컨테이너는 IPv6 아웃바운드를 차단한다(`src/database.py:23` 주석). 따라서 **Supabase pooler 엔드포인트(`*.pooler.supabase.com` — IPv4 도달 경로)** 를 사용한다. 🔴 direct 호스트(`db.<ref>.supabase.co`)는 2024년 이후 **IPv6-only**(IPv4 A 레코드 없음 — 유료 IPv4 add-on 별매)라 Railway 에서 **도달 불가** → pooler 사용 또는 유료 IPv4 add-on 필요. `DB_FORCE_IPV4=true`(`src/config.py` `db_force_ipv4`, default `false` → `src/database.py::_ipv4_connect_args`)는 `socket.getaddrinfo(..., AF_INET)` 로 **A 레코드(IPv4)를 강제 선택**해 psycopg2 `hostaddr` 로 전달(SSL 은 hostname 으로 검증)하는 옵션이다 — **dual-stack 호스트에서 기본 해석이 라우팅 불가한 IPv6 을 고르는 것을 교정**하는 용도이며, A 레코드가 없는 IPv6-only 호스트에 IPv4 를 만들어내지는 못한다(해석 실패 시 `{}` 반환 = no-op → 원래 IPv6 해석으로 `Network unreachable`). 즉 *도달성*은 pooler(또는 유료 add-on)가 보장하고, `DB_FORCE_IPV4` 는 dual-stack 의 IPv6 선호를 교정하는 보조 수단이다. 🔴 **direct `db.<ref>` (IPv6-only) 직접 사용 금지**.
+
+**② pooler `aws-N` 클러스터 prefix 는 project-specific·가변 — stale 로그 가정 금지.**
+pooler 호스트의 `aws-0`/`aws-1`/`aws-2…` prefix 는 프로젝트가 올라간 Supavisor 클러스터에 따라 다르고 **이전될 수 있다**. canonical 호스트는 **Supabase Dashboard → Connect** 또는 **Supabase MCP `get_project`** 에서 매번 **재도출**한다. 🔴 첫 배포 로그·기존 `.env`·다른 문서에서 복사한 호스트 값은 *사실이 아니라 가설* 이다(2026-06-15 = `aws-0` 을 미검증 상속 → 수 시간 낭비. 정답 `aws-1` 은 repo `docs/guides/onpremise-migration-guide.md:339` 에 내내 존재 → `grep aws-1` 한 줄이면 발견). 호스트를 의심할 땐 `grep` 으로 repo 안 대안 호스트를 먼저 표면화한다.
+
+**③ 유료 IPv4 add-on 은 최후 수단** — 무료 secret-safe probe 가 전 permutation(host·user·접미사·port·sslmode·IP-family)을 반증한 *후에만* 검토. 비용 결정 전에 "어떤 단일 변수가 틀렸는가"를 probe 로 먼저 좁힌다.
+
+**④ 연결 장애 검증 프로토콜 (turn 1 부터 — prod 변경/사용자 outsource 가 아니라 *내가 통제하는* 검증면 우선):**
+1. 모든 연결 파라미터를 가설로 열거 + 출처 태그. **로그 복사값 = 최우선 테스트 대상**(가설이지 사실 아님). `grep <값>` 으로 repo 대안 표면화.
+2. canonical host = Dashboard Connect / MCP `get_project` 재도출 (stale 로그 금지).
+3. **secret-safe probe = 정공법**: 사용자가 비번을 gitignore 된 로컬 파일(`.dbpw`)에 기록 → 내가 read 하는 1회성 probe(psycopg2 는 이미 의존성) 실행, 출력 `scrub()`(`<pw>` 치환), 실행 후 파일 삭제 + `.gitignore` 확인. "비번 echo 불가" 는 검증 *방법* 제약이지 *여부* 제약이 아니다.
+4. **one-shot 매트릭스**: {host}×{user}×{port} 전 cross-product(틀렸다고 생각 안 한 고정 차원 포함), `connect_timeout=8`. redeploy 루프가 수 시간 덮는 공간을 1회로.
+5. **에러 레이어 분류 (서로 다른 계층 — 혼동 금지)**: DNS `ENOTFOUND`/`getaddrinfo` 실패(호스트 자체가 미해석) = 잘못된 host·클러스터 prefix → ②번 host 재도출 / Supavisor `Tenant or user not found`(pooler 에 **도달했으나** tenant/user 거부) = 잘못된 user 접미사(`postgres.<ref>`)·tenant 라우팅 / `password authentication failed`·SCRAM = PG 까지 도달·credential 문제 / `Network unreachable` = transport(IPv6 direct 를 IPv4-only egress 에서 사용 — ①번).
+6. 동일 입력이 시간차로 다른 레이어 실패 → "내 변경 탓"이 아니라 "환경이 움직였다" 1순위 가설 + ground truth 재fetch.
+7. **확신은 내가 실행한 통과 검증(probe `select 1` OK) 후에만** — 그 전엔 `[가설 확신도 X%; 반증 테스트=…; 실행 중]`. "100%"·"마지막"은 검증 완료 후에만.
+8. probe 산출물(`.dbpw`·`db_probe.py`)은 작업 종료 시 삭제 + `.gitignore` 가드 확인(이미 등재).
+
 ## 시작 명령
 
 ```bash
