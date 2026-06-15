@@ -18,6 +18,8 @@ from unittest.mock import patch, AsyncMock
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.unit._route_helpers import route_name_count
+
 
 @pytest.fixture()
 def client():
@@ -98,17 +100,22 @@ def test_auth_callback_route_name_unchanged():
 
     P0 회귀 가드 — 라우트 함수 rename 또는 name 인자 변경 시 즉시 fail.
     """
+    # fastapi 0.137 `_IncludedRouter`(지연 include)로 app.routes 가 평탄화되지 않으므로,
+    # (1) name 이 정확히 1개(중복/부재 아님)인지 `route_name_count` 로 확인하고,
+    # (2) url_for fallback 이 실제 사용하는 `app.url_path_for` 로 경로를 직접 검증한다.
+    # fastapi 0.137 no longer flattens app.routes (lazy `_IncludedRouter`): assert exactly one
+    # route owns the name, then assert the path via `app.url_path_for` (what url_for resolves through).
     from src.main import app  # pylint: disable=import-outside-toplevel
+    from starlette.routing import NoMatchFound  # pylint: disable=import-outside-toplevel
 
-    callback_routes = [
-        r for r in app.routes
-        if hasattr(r, "name") and r.name == "auth_callback"
-    ]
-    assert len(callback_routes) == 1, (
-        f"auth_callback 라우트 name 변경됨 — url_for fallback 깨짐. "
-        f"발견된 라우트: {[r.name for r in app.routes if hasattr(r, 'name')]}"
+    count = route_name_count(app, "auth_callback")
+    assert count == 1, (
+        f"auth_callback name 라우트가 정확히 1개가 아님 (중복/부재) — url_for fallback 위험 (개수: {count})"
     )
-    # 경로도 검증
-    assert callback_routes[0].path == "/auth/callback", (
-        f"auth_callback 경로 변경됨: {callback_routes[0].path} (기대: /auth/callback)"
+    try:
+        path = app.url_path_for("auth_callback")
+    except NoMatchFound:
+        path = None
+    assert path == "/auth/callback", (
+        f"auth_callback 경로 변경됨 — url_for fallback 깨짐 (현재: {path})"
     )

@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 
 from src.main import app
+from tests.unit._route_helpers import registered_paths
 
 client = TestClient(app)
 
@@ -229,23 +230,17 @@ def test_callback_updates_existing_user_and_redirects():
 
 def test_auth_github_route_exists():
     """/auth/github 라우트가 앱에 등록되어 있는지 확인한다."""
-    from src.main import app  # noqa: PLC0415
-    routes = [r.path for r in app.routes]
-    assert "/auth/github" in routes
+    assert "/auth/github" in registered_paths(app)
 
 
 def test_auth_callback_route_exists():
     """/auth/callback 라우트가 앱에 등록되어 있는지 확인한다."""
-    from src.main import app  # noqa: PLC0415
-    routes = [r.path for r in app.routes]
-    assert "/auth/callback" in routes
+    assert "/auth/callback" in registered_paths(app)
 
 
 def test_logout_route_exists():
     """POST /auth/logout 라우트가 앱에 등록되어 있는지 확인한다."""
-    from src.main import app  # noqa: PLC0415
-    routes = [r.path for r in app.routes]
-    assert "/auth/logout" in routes
+    assert "/auth/logout" in registered_paths(app)
 
 
 def test_callback_no_primary_email_uses_fallback():
