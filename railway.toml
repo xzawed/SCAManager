@@ -4,6 +4,15 @@ buildCommand = "(npm install -g eslint@9 @typescript-eslint/parser @typescript-e
 
 [deploy]
 startCommand = "uvicorn src.main:app --host 0.0.0.0 --port $PORT --proxy-headers"
+# Pre-deploy: 새 컨테이너가 트래픽 받기 전 DB 마이그레이션 실행 (loud-fail — 실패 시 배포 중단).
+#   main.py lifespan 도 alembic upgrade head 를 돌리나 (30s 타임아웃·broad-except = silent-fail),
+#   pre-deploy 는 실패 시 배포를 중단해 schema drift(0038 고착 같은)를 즉시 가시화한다. 양쪽 멱등 = 중복 무해.
+# Run DB migrations before the new container takes traffic (loud-fail: a failed migration aborts the deploy).
+#   The lifespan also runs `alembic upgrade head` (30s timeout + broad-except = silent-fail); the pre-deploy
+#   surfaces schema drift loudly. Both are idempotent (alembic stamps the head), so the overlap is harmless.
+# 🔴 Railway 대시보드 Settings→Deploy→Pre-deploy Command 도 동일 값(`alembic upgrade head`)으로 설정하거나
+#   비워서 제거할 것 — 대시보드 값이 이 config 를 override 하면 이전 `npm run migrate`(미존재 스크립트)로 실패한다.
+preDeployCommand = "alembic upgrade head"
 healthcheckPath = "/health"
 healthcheckTimeout = 60
 restartPolicyType = "ON_FAILURE"
