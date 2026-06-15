@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [starlette 1.0.1+ 마이그레이션 + dependabot 배치 — #902 (fastapi>=0.137.0·starlette>=1.0.1·PYSEC-2026-161 패치·_IncludedRouter 라우트 테스트 적응) + #897~#900 자동 머지·#901 close, 단위 +2, 2026-06-15)](#starlette-101-마이그레이션--dependabot-배치--902--897900-2026-06-15)
 - [회고 P2 백로그 해소 — P2-a/C22/C12 3 PR (#893 테스트 i18n 키 고정·#894 C22 절단 점수 NULL-persist·#895 C12 OTP 6→8, 단위 +1, 회고 P2 잔여 0, 2026-06-14)](#회고-p2-백로그-해소--p2-ac22c12-3-pr-893895-2026-06-14)
 - [회고(5+1) P1 follow-up — README.ko 배지·#888 정적 가드·db.md U1 divergence (C12/C22/U1 머지 세션 회고 → P0 0·P1 3·P2 3·FP 9, 단위 +1, 2026-06-14)](#회고51-p1-follow-up--readmeko-배지888-정적-가드dbmd-u1-divergence-2026-06-14)
 - [정합성 감사 백로그 C12·C22·U1 머지 — 3 PR (#884 C12 OTP rate-limit·#885 C22 diff 절단 마커·#886 U1 0027 RLS 의도적 divergence, 단위 +23, code-side 백로그 전량 해소, 2026-06-13)](#정합성-감사-백로그-c12c22u1-머지--3-pr-884886-2026-06-13)
@@ -94,6 +95,26 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## starlette 1.0.1+ 마이그레이션 + dependabot 배치 — #902 · #897~#900 (2026-06-15)
+
+**날짜**: 2026-06-15 | **트리거**: 사용자 "잔여/후속 작업 확인" → RLS Phase 4 + dependabot 트랙 착수. dependabot 5건(#897~#901) CI fail 조사 | **상태**: #902 squash 머지 + dependabot #897~#900 rebase→green 자동 머지·#901 close, Codex mutual round1 NG→round2 OK·전체 CI green
+
+**근본 원인 (2중)**:
+- **테스트 break**: `requirements.txt` `fastapi>=0.136.3`(상한 무)가 fresh install 시 starlette **1.3.1** 유입. fastapi 0.137 `include_router`가 `_IncludedRouter`(지연 include)로 바뀌어 `app.routes` 평탄화 제거 → `[r.path for r in app.routes]`가 `_IncludedRouter.path` AttributeError → 라우트 등록 테스트 6건 fail (dependabot 전건 차단, `6 failed/5081 passed`).
+- **보안**: `starlette<1.0`(0.52.1)은 **PYSEC-2026-161 / CVE-2026-48710**(Host 헤더 미검증→`request.url.path` 오염→경로 인증 우회; ≤1.0.0 전체 취약, **1.0.1 단독 수정**) 미패치 → 핀 다운그레이드 = 보안 회귀. secure 1.0.1+ 만 안전.
+
+**처리 (#902)**:
+- requirements.txt: `fastapi>=0.137.0` + `starlette>=1.0.1` (이전 starlette CVE 승계, dependabot #901 해소).
+- `tests/unit/_route_helpers.py` 신규: `registered_paths`(`_IncludedRouter`·`include_router(prefix=)`·`APIRouter(prefix=)`·중첩 include·`Mount` 재귀 평탄화) + `route_name_count`(중복 name 탐지).
+- `test_main.py`/`test_github.py` 5 경로 등록 테스트 → `registered_paths` 적응. `test_oauth_redirect_uri_smoke.py` auth_callback 가드 → `route_name_count==1` + `app.url_path_for`.
+- `tests/unit/test_route_helpers.py` 신규: 견고성 가드(prefix/Mount/중첩 6케이스 + count unique/missing/duplicate).
+- `.claude/rules/deploy.md` FastAPI/starlette 핀 규칙 + `_IncludedRouter` 가이드 동기화.
+
+**dependabot**: #897~#900 rebase 후 전부 green 자동 머지(cryptography 48→49 = Fernet-only 사용·49 변경 무관 = 안전 평가). #901(fastapi)은 #902의 `>=0.137.0` 핀으로 superseded → close.
+
+- **수치**: 단위 4940→**4942**(+2 test_route_helpers) · 통합 154 · 전체 5094→**5096** · E2E 115 불변 · pylint **10.00/10** · Code Scanning open 0. **잔여 = ops 2건 불변**(#2 RLS Phase 4 운영 · 검증자 활성화 — #902로 RLS step 0 배포 안전 확보).
+- 🔴 **프로세스 학습**: (1) **Codex mutual 이 보안 회귀 차단** — 첫 시도 `starlette<1.0` 핀이 PYSEC-2026-161 미패치 버전(0.52.1) 고정 → Codex NG → secure 1.0.1+ 전환. mutual 검증의 보안 효용 실증. (2) round1 NG(헬퍼 prefix/Mount 미처리·url_path_for 중복 name 미탐지·deploy.md 과장·robustness 테스트 부재) → 공유 robust 헬퍼 + count==1 + 견고성 테스트로 해소 → round2 OK. (3) `_IncludedRouter`는 fastapi 0.137 구조(starlette 아님) — `original_router.routes`로 하강·`include_context.prefix` 누적. (4) 로컬 dev 구버전(starlette 0.38.6)은 평탄화라 미재현 — 격리 venv(0.137+1.3.1) 실측으로 forward-compat 검증.
 
 ## 회고 P2 백로그 해소 — P2-a/C22/C12 3 PR (#893~#895) (2026-06-14)
 
