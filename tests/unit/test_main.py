@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.main import app
+from tests.unit._route_helpers import registered_paths
 
 
 @pytest.fixture
@@ -49,15 +50,15 @@ def test_health_tools_removed(client):
 # --- Route registration verification ---
 
 def test_health_route_is_registered():
-    # /health 경로가 app.routes 에 등록되어 있는지 검증
-    paths = [r.path for r in app.routes]
-    assert "/health" in paths
+    # /health 경로가 등록되어 있는지 검증
+    # Verify the /health route is registered.
+    assert "/health" in registered_paths(app)
 
 
 def test_webhooks_route_is_registered():
-    # /webhooks/github 경로가 app.routes 에 등록되어 있는지 검증
-    paths = [r.path for r in app.routes]
-    assert "/webhooks/github" in paths
+    # /webhooks/github 경로가 등록되어 있는지 검증
+    # Verify the /webhooks/github route is registered.
+    assert "/webhooks/github" in registered_paths(app)
 
 
 # --- lifespan 동작 검증 ---
