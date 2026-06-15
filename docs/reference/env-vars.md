@@ -125,6 +125,7 @@ Sentry 외 자동 로깅은 별도 환경변수 없이 동작:
 | `DATABASE_URL_FALLBACK` | Failover용 보조 DB URL (빈 값이면 failover 비활성) | `postgresql://user:pass@supabase.co/db?sslmode=require` |
 | `DB_FAILOVER_PROBE_INTERVAL` | Primary DB 복구 확인 주기 (초) | `30` |
 | `DATABASE_URL_WORKER` | background(webhook/worker/gate/notifier/cron/CLI hook) 전용 DB URL — RLS role 분리 옵션 A ([rls-role-separation.md](../runbooks/rls-role-separation.md) Phase 2). 빈 값이면 `DATABASE_URL` 팩토리 재사용 (현행 동작). 반드시 `BYPASSRLS` worker role(`scamanager_worker`) 자격 지정 — 비-BYPASSRLS role 지정 시 FORCE 활성 후 background 차단. ⚠️ 트레이드오프: worker 경로 failover 미지원 (primary 장애 시 background 중단) + 동일 프로세스 연결 풀 2배 (Supabase 연결 상한 고려) | `postgresql://scamanager_worker:pass@host/db` |
+| `MIGRATION_DATABASE_URL` | alembic 마이그레이션 전용 DB URL (**owner role**) — RLS Phase 4 "두 번째 벽" ([rls-role-separation.md](../runbooks/rls-role-separation.md) §6 마이그레이션 credential 게이트). `alembic/env.py` 가 `effective_migration_url`(= 이 값 또는 `DATABASE_URL`)을 `sqlalchemy.url` 로 사용 → pre-deploy `alembic upgrade head` + lifespan 양쪽에 적용. 빈 값이면 `DATABASE_URL` 사용 (**현행 동작 보존 — 미설정 시 발효 0**). 🔴 Phase 4 에서 `DATABASE_URL` 이 비-BYPASSRLS app role(`scamanager_app`)로 전환될 때 설정 — 미설정 시 마이그레이션이 app role 로 돌아 `alembic_version` default-deny 차단. 🔴 런타임 `DATABASE_URL`/`DATABASE_URL_WORKER` 를 마이그레이션 credential 로 재사용 금지 | `postgresql://postgres:pass@host/db` |
 
 **주의:** `.env` 파일은 절대 git commit 하지 말 것 (`.gitignore`에 포함됨)
 

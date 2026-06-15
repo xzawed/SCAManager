@@ -114,6 +114,65 @@ def test_supabase_url_ssl_added(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# MIGRATION_DATABASE_URL — RLS Phase 4 마이그레이션 credential 분리 (owner role)
+# MIGRATION_DATABASE_URL — RLS Phase 4 migration credential separation (owner role)
+#   alembic/env.py 가 effective_migration_url 을 sqlalchemy.url 로 사용:
+#   설정 시 owner credential 로 마이그레이션, 미설정 시 DATABASE_URL 재사용(현행 보존).
+# ---------------------------------------------------------------------------
+
+
+def test_migration_database_url_default_empty(monkeypatch):
+    # MIGRATION_DATABASE_URL 미설정 시 빈 문자열이어야 한다 (inert-when-unset).
+    # Unset MIGRATION_DATABASE_URL must default to an empty string (inert-when-unset).
+    s = _reload_settings(monkeypatch)
+    assert s.migration_database_url == ""
+
+
+def test_migration_database_url_normalizes_postgres_scheme(monkeypatch):
+    # postgres:// → postgresql:// 정규화 (database_url 과 동일 validator).
+    # postgres:// → postgresql:// normalization (same validator as database_url).
+    s = _reload_settings(
+        monkeypatch,
+        extra={"MIGRATION_DATABASE_URL": "postgres://owner:pw@localhost/db"},
+    )
+    assert s.migration_database_url.startswith("postgresql://")
+
+
+def test_migration_database_url_supabase_ssl_added(monkeypatch):
+    # supabase.co 호스트면 sslmode=require 자동 추가 (database_url 과 동일).
+    # supabase.co host auto-adds sslmode=require (same as database_url).
+    s = _reload_settings(
+        monkeypatch,
+        extra={"MIGRATION_DATABASE_URL": "postgresql://owner:pw@db.abc.supabase.co/postgres"},
+    )
+    assert "sslmode=require" in s.migration_database_url
+
+
+def test_effective_migration_url_falls_back_to_database_url(monkeypatch):
+    # MIGRATION_DATABASE_URL 미설정 → effective_migration_url 은 database_url 과 동일 (현행 동작).
+    # Unset → effective_migration_url equals database_url (current behavior preserved).
+    s = _reload_settings(
+        monkeypatch,
+        extra={"DATABASE_URL": "postgresql://app:pw@localhost/db"},
+    )
+    assert s.effective_migration_url == s.database_url
+
+
+def test_effective_migration_url_prefers_migration_url(monkeypatch):
+    # MIGRATION_DATABASE_URL 설정 → effective_migration_url 은 그것을 우선 사용 (owner credential).
+    # Set → effective_migration_url prefers it (owner credential), not database_url.
+    s = _reload_settings(
+        monkeypatch,
+        extra={
+            "DATABASE_URL": "postgresql://app:pw@localhost/db",
+            "MIGRATION_DATABASE_URL": "postgresql://owner:pw@localhost/db",
+        },
+    )
+    assert s.effective_migration_url == "postgresql://owner:pw@localhost/db"
+    assert s.effective_migration_url != s.database_url
+
+
+# ---------------------------------------------------------------------------
 # Phase 1 PR-1a — i18n 환경변수 5건 + field_validator 4건 검증 (Cycle 84+)
 # Phase 1 PR-1a — i18n env vars 5 + field_validators 4 (Cycle 84+)
 # ---------------------------------------------------------------------------

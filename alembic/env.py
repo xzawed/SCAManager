@@ -9,6 +9,10 @@ from alembic import context
 # access to the values within the .ini file in use.
 config = context.config
 
+# alembic config 의 DB URL 키 (중복 리터럴 제거 — SonarCloud S1192)
+# Alembic config key for the DB URL (single literal — SonarCloud S1192)
+_SQLALCHEMY_URL = "sqlalchemy.url"
+
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
 if config.config_file_name is not None:
@@ -26,8 +30,12 @@ from src.config import settings
 
 target_metadata = Base.metadata
 
-# Override sqlalchemy.url from application settings
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# Override sqlalchemy.url from application settings.
+# effective_migration_url = MIGRATION_DATABASE_URL or DATABASE_URL — RLS Phase 4 마이그레이션
+# credential 게이트(owner role 분리). 미설정 시 DATABASE_URL 그대로 사용(현행 동작 보존).
+# effective_migration_url = MIGRATION_DATABASE_URL or DATABASE_URL — RLS Phase 4 migration
+# credential gate (owner role separation). Unset reuses DATABASE_URL (current behavior).
+config.set_main_option(_SQLALCHEMY_URL, settings.effective_migration_url)
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
@@ -47,7 +55,7 @@ def run_migrations_offline() -> None:
     script output.
 
     """
-    url = config.get_main_option("sqlalchemy.url")
+    url = config.get_main_option(_SQLALCHEMY_URL)
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -66,7 +74,7 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    url = config.get_main_option("sqlalchemy.url", "")
+    url = config.get_main_option(_SQLALCHEMY_URL, "")
     # db_force_ipv4/db_sslmode 설정을 동일하게 적용, connect_timeout=10으로 hang 방지
     # Apply db_force_ipv4/db_sslmode settings identically; connect_timeout=10 prevents hangs
     if url.startswith("postgresql"):
