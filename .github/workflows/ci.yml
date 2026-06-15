@@ -183,5 +183,6 @@ jobs:
             tests/integration/test_retry_concurrency_postgres.py \
             tests/unit/migrations/test_0020_round_trip.py::test_migration_alembic_round_trip \
             tests/unit/migrations/test_0020_round_trip.py::test_migration_0041_force_round_trip_postgres \
+            tests/unit/migrations/test_0020_round_trip.py::test_migrations_idempotent_over_prod_drift_postgres \
             tests/unit/migrations/test_orm_alembic_parity.py::test_orm_metadata_matches_migrations \
             -v -rs --timeout=60

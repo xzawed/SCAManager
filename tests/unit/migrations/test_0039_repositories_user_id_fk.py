@@ -33,3 +33,21 @@ def test_repositories_user_id_fk_has_set_null_delete():
         f"repositories.user_id FK ondelete='{fk.ondelete}' — "
         "'SET NULL' 이어야 함 (#18 drift ④ 회귀, nullable 컬럼)"
     )
+
+
+def test_0039_upgrade_idempotent_drops_existing_fk():
+    """0039 upgrade 가 DROP CONSTRAINT IF EXISTS 로 멱등한지 정적 단언 (운영 사고 회귀 가드).
+
+    2026-06-15 운영: `repositories_user_id_fkey` 가 NO ACTION 으로 사전 존재 → 무조건
+    `create_foreign_key` 가 "already exists" 로 실패 → 0039 롤백 → alembic 0038 고착
+    (이후 0040/0041 FORCE 전부 미적용). CI clean DB(FK 미존재)는 미검출 → 마이그레이션
+    소스에 멱등 가드 존재를 정적 단언한다.
+    """
+    from pathlib import Path  # noqa: PLC0415
+    src = (
+        Path(__file__).resolve().parents[3]
+        / "alembic" / "versions" / "0039_repositories_user_id_fk.py"
+    ).read_text(encoding="utf-8")
+    assert "DROP CONSTRAINT IF EXISTS repositories_user_id_fkey" in src, (
+        "0039 멱등성 가드(DROP IF EXISTS) 제거됨 — 사전 존재 FK 에 create 실패 시 alembic 고착 회귀"
+    )

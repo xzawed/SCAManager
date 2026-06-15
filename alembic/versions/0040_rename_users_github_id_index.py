@@ -38,7 +38,28 @@ def upgrade() -> None:
     if not is_postgresql(bind):
         return
 
-    op.execute("ALTER INDEX ix_users_google_id RENAME TO ix_users_github_id")
+    # 🔴 멱등성 + end-state 보장 (Codex mutual) — 시작 상태와 무관하게 종료 시 항상
+    # `ix_users_github_id`(UNIQUE) 존재 + `ix_users_google_id` 부재가 되도록 3단계 구성.
+    # github_id 는 ORM `unique=True` (0005 도 unique 인덱스) — CREATE UNIQUE 정합.
+    #   (1) 정상(google 존재·github 부재): 이름만 stale 한 인덱스를 rename — 인덱스 정의 보존.
+    #   (2) neither(둘 다 부재): ORM 정합 UNIQUE 인덱스 신규 생성으로 end-state 보장.
+    #   (3) 병존/재실행: 잔존 stale source(google) 제거. CI clean DB 는 (1) 경로(=rename).
+    # Guarantees the end state regardless of the starting state: rename when only the old index
+    # exists (preserves its definition), create the ORM-matching UNIQUE index if neither exists,
+    # then drop any stale source. github_id is UNIQUE in the ORM (and 0005), so CREATE UNIQUE matches.
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'ix_users_google_id')
+               AND NOT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'ix_users_github_id') THEN
+                ALTER INDEX ix_users_google_id RENAME TO ix_users_github_id;
+            END IF;
+        END $$;
+        """
+    )
+    op.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_github_id ON users (github_id)")
+    op.execute("DROP INDEX IF EXISTS ix_users_google_id")
 
 
 def downgrade() -> None:

@@ -58,6 +58,12 @@ def upgrade() -> None:
         "WHERE user_id IS NOT NULL "
         "AND user_id NOT IN (SELECT id FROM users)"
     )
+    # 🔴 멱등성 — 운영 DB 에 이미 FK 가 (다른 ondelete 로) 존재할 수 있다.
+    # 2026-06-15 운영 실측: `repositories_user_id_fkey` 가 NO ACTION 으로 사전 존재 →
+    # 무조건 create 가 "already exists" 로 실패해 0039 전체 롤백·alembic 0038 고착.
+    # DROP IF EXISTS 로 먼저 제거(이름·ondelete 무관) 후 SET NULL 로 재생성 → 멱등 + NO ACTION 교정.
+    # CI clean DB 에서는 DROP 이 no-op. Idempotent: drop any pre-existing FK, then (re)create as SET NULL.
+    op.execute("ALTER TABLE repositories DROP CONSTRAINT IF EXISTS repositories_user_id_fkey")
     op.create_foreign_key(
         _FK_NAME,
         "repositories",
