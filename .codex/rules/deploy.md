@@ -19,6 +19,7 @@ paths:
 - **APP_BASE_URL**: Railway 필수 — OAuth redirect_uri + GitHub Webhook URL 양쪽 HTTPS 강제.
 - **Railway 빌드 검증**: `git push` 성공 ≠ Railway 빌드 성공. `railway.toml`/`nixpacks.toml`/`requirements.txt` 변경 후 대시보드 빌드 로그 직접 확인.
 - **빌드 실패 시 로그 우선**: 즉각 수정 PR 금지 — 전체 빌드 로그(실패 구간 위아래 30줄) 먼저 확인.
+- 🔴 **Railway pre-deploy = `alembic upgrade head`** (`railway.toml [deploy] preDeployCommand`, 2026-06-15): 트래픽 전 DB 마이그레이션 loud-fail(실패 시 배포 중단). lifespan 도 동일 실행하나 silent-fail 이라 pre-deploy 가 schema drift 가시화. 🔴 **Railway 대시보드 Settings→Deploy→Pre-deploy Command 동기화 의무** — 대시보드 값이 config override 가능. 전례(2026-06-15): 대시보드 `npm run migrate`(`package.json` 미존재 스크립트) → "Deploy › Pre-deploy command failed" → 배포 미완료·alembic 0038 고착. **build 성공해도 deploy 단계서 차단** — Deploy/Pre-deploy 로그까지 확인.
 - **requirements.txt 분리**: 프로덕션 = `requirements.txt` / 개발 = `requirements-dev.txt`. `pytest`/`playwright` 는 dev only.
 - **slither + solc**: `railway.toml` buildCommand 에 `solc-select install 0.8.20 && solc-select use 0.8.20` 체인.
 - **postgres:// → postgresql://**: `config.py` 에서 자동 변환됨.
