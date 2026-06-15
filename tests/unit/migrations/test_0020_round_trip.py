@@ -247,3 +247,87 @@ def test_migration_0041_force_round_trip_postgres():
         # 후속 테스트(orm parity 등)가 head 를 기대 — job 내 실행 순서 무관성 보존
         # Later tests (orm parity, etc.) expect head — keep the job order-independent
         alembic_command.upgrade(cfg, "head")
+
+
+def test_migrations_idempotent_over_prod_drift_postgres():
+    """0039/0040 가 운영 drift(사전 존재 NO ACTION FK)에서도 head 까지 적용되는지 실 PG 검증.
+
+    2026-06-15 운영 사고 재현 — alembic 0038 + `repositories_user_id_fkey`(NO ACTION) 가
+    사전 존재한 상태에서 (수정 전) 0039 의 무조건 `create_foreign_key` 가 "already exists" 로
+    실패해 0038 고착(0040/0041 FORCE 전부 미적용)했다. 본 테스트는 drift 를 인위 주입한 뒤
+    `upgrade head` 가 성공 + FK 가 SET NULL 로 교정 + 인덱스 rename + FORCE 적용까지 도달함을
+    봉인한다. 정적 가드(test_0039/0040)가 못 덮는 실행 멱등 경로.
+
+    Reproduces the 2026-06-15 prod incident (pre-existing NO ACTION FK at 0038 stuck alembic
+    because the unguarded create_foreign_key failed) and seals that the idempotent 0039/0040
+    apply head cleanly over the drift.
+
+    🔴 ci.yml pg-concurrency job 의 ::node-id 핀에 등재됨 — 핀 미등재 시 자동 미수집.
+    🔴 Pinned by ::node-id in the ci.yml pg-concurrency job — unpinned tests are not collected.
+    """
+    db_url = os.environ.get("DATABASE_URL_TEST_POSTGRES", "")
+    if not db_url:
+        pytest.skip(
+            "prod-drift idempotency replay requires PostgreSQL — set DATABASE_URL_TEST_POSTGRES"
+        )
+
+    from unittest.mock import patch
+
+    from alembic.config import Config
+    from alembic import command as alembic_command
+    from sqlalchemy.orm import sessionmaker
+
+    from src.config import settings as app_settings
+    from src.services.saas_service import rls_coverage_summary
+
+    cfg = Config("alembic.ini")
+    cfg.set_main_option("sqlalchemy.url", db_url)
+
+    # env.py 가 cfg URL 을 settings.database_url 로 덮어씀 — 싱글톤 patch 의무 (db.md 규칙)
+    with patch.object(app_settings, "database_url", db_url):
+        # clean-base self-isolating (round-trip 패턴 미러)
+        reset_eng = create_engine(db_url)
+        with reset_eng.begin() as conn:
+            conn.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
+            conn.execute(text("CREATE SCHEMA public"))
+        reset_eng.dispose()
+
+        # 0039 직전(0038)까지 적용
+        alembic_command.upgrade(cfg, "0038")
+
+        # 운영 drift 인위 주입: NO ACTION FK 사전 생성 (0039 가 만들 SET NULL 과 불일치, 동일 이름)
+        drift_eng = create_engine(db_url)
+        with drift_eng.begin() as conn:
+            conn.execute(text(
+                "ALTER TABLE repositories ADD CONSTRAINT repositories_user_id_fkey "
+                "FOREIGN KEY (user_id) REFERENCES users (id)"
+            ))
+        drift_eng.dispose()
+
+        # 멱등 0039(DROP IF EXISTS) → 0040(DO block) → 0041 가 drift 위에서 성공해야 한다
+        alembic_command.upgrade(cfg, "head")
+
+        eng = create_engine(db_url)
+        try:
+            with eng.connect() as conn:
+                ondelete = conn.execute(text(
+                    "SELECT confdeltype FROM pg_constraint "
+                    "WHERE conname = 'repositories_user_id_fkey' AND contype = 'f'"
+                )).scalar()
+                github_idx = conn.execute(text(
+                    "SELECT count(*) FROM pg_indexes "
+                    "WHERE schemaname = 'public' AND indexname = 'ix_users_github_id'"
+                )).scalar()
+            # confdeltype 'n' = SET NULL — 사전 NO ACTION FK 가 교정됐는지
+            assert ondelete == "n", (
+                f"0039 후 repositories_user_id_fkey ondelete='{ondelete}' — SET NULL('n') 여야 한다 "
+                "(사전 NO ACTION FK 교정 실패 — 멱등 DROP+recreate 회귀)"
+            )
+            assert github_idx == 1, "0040 후 ix_users_github_id 인덱스가 존재해야 한다 (rename 회귀)"
+            session_factory = sessionmaker(bind=eng)
+            with session_factory() as session:
+                assert rls_coverage_summary(session)["force_applied"] is True, (
+                    "drift 위 upgrade head 후 force_applied=True 여야 한다 (0041 미도달)"
+                )
+        finally:
+            eng.dispose()

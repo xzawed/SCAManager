@@ -31,3 +31,22 @@ def test_users_github_id_index_name_not_legacy_google():
     assert "ix_users_google_id" not in index_names, (
         "legacy ix_users_google_id 가 ORM 에 잔존 — github_id 컬럼명 정합 위반"
     )
+
+
+def test_0040_upgrade_idempotent_if_exists():
+    """0040 upgrade 가 ALTER INDEX IF EXISTS 로 멱등한지 정적 단언 (부분 적용 상태 방어).
+
+    0039 사전 실패로 0040 이 미적용으로 남거나(2026-06-15) 재실행되는 상태에서도 안전하도록
+    `IF EXISTS` 로 source 부재 시 no-op. CI clean DB 미검출 → 소스 정적 단언.
+    """
+    from pathlib import Path  # noqa: PLC0415
+    src = (
+        Path(__file__).resolve().parents[3]
+        / "alembic" / "versions" / "0040_rename_users_github_id_index.py"
+    ).read_text(encoding="utf-8")
+    assert "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_github_id" in src, (
+        "0040 end-state 보장(neither 상태 시 UNIQUE 인덱스 생성) 제거됨 — github_id 인덱스 미보장 회귀"
+    )
+    assert "DROP INDEX IF EXISTS ix_users_google_id" in src, (
+        "0040 멱등성 가드(stale source DROP) 제거됨 — 병존/재실행 상태 회귀"
+    )
