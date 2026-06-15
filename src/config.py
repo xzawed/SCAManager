@@ -73,6 +73,15 @@ class Settings(BaseSettings):
     # Background-only DB URL — RLS role separation Option A (Phase 2).
     # Empty string reuses the DATABASE_URL factory (preserves current behavior).
     database_url_worker: str = ""
+    # 마이그레이션 전용 DB URL (owner role) — RLS Phase 4 "두 번째 벽" (rls-role-separation.md §6)
+    # alembic/env.py 가 effective_migration_url(= 이 값 or DATABASE_URL)을 sqlalchemy.url 로 사용.
+    # 빈 문자열이면 DATABASE_URL 사용(현행 동작 보존). Phase 4 에서 DATABASE_URL 이
+    # 비-BYPASSRLS app role 로 바뀔 때, owner 자격 마이그레이션을 위해 이 값을 설정한다.
+    # Migration-only DB URL (owner role) — RLS Phase 4 "second wall" (rls-role-separation.md §6).
+    # alembic/env.py uses effective_migration_url (= this or DATABASE_URL) as sqlalchemy.url.
+    # Empty reuses DATABASE_URL (current behavior). Set this in Phase 4 — when DATABASE_URL
+    # switches to the non-BYPASSRLS app role — so migrations still run with owner credentials.
+    migration_database_url: str = ""
     # Auto-merge unknown 상태 재시도 (Phase F Quick Win) — 운영 중 튜닝용
     merge_unknown_retry_limit: int = 3        # 기본 3회
     merge_unknown_retry_delay: float = 3.0    # 기본 3초 간격 (총 최대 9초)
@@ -199,6 +208,28 @@ class Settings(BaseSettings):
         if not v:
             return v
         return cls._normalize_pg_url(v)
+
+    @field_validator("migration_database_url")
+    @classmethod
+    def fix_migration_url(cls, v: str) -> str:
+        """MIGRATION_DATABASE_URL의 postgres:// 스킴을 postgresql://로 변환한다.
+        Normalize the postgres:// scheme of MIGRATION_DATABASE_URL to postgresql://."""
+        if not v:
+            return v
+        return cls._normalize_pg_url(v)
+
+    @property
+    def effective_migration_url(self) -> str:
+        """alembic 마이그레이션 실행에 쓸 URL — MIGRATION_DATABASE_URL 우선, 미설정 시 DATABASE_URL.
+
+        RLS Phase 4 에서 DATABASE_URL 이 비-BYPASSRLS app role 로 전환돼도 owner 자격으로
+        마이그레이션을 돌리기 위한 단일 결정점. 미설정 시 DATABASE_URL 재사용(현행 동작 보존).
+
+        URL for running alembic migrations — prefers MIGRATION_DATABASE_URL, else DATABASE_URL.
+        Single decision point so migrations keep owner credentials even after RLS Phase 4
+        switches DATABASE_URL to the non-BYPASSRLS app role. Unset reuses DATABASE_URL.
+        """
+        return self.migration_database_url or self.database_url
 
     @model_validator(mode="after")
     def _validate_retry_backoff_bounds(self) -> "Settings":
