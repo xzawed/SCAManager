@@ -20,8 +20,6 @@ DATABASE_URL). This guard statically blocks a regression back to `settings.datab
 import ast
 import pathlib
 
-import pytest
-
 _ENV_PY = pathlib.Path(__file__).resolve().parents[3] / "alembic" / "env.py"
 
 
@@ -45,7 +43,9 @@ def _set_main_option_url_arg() -> ast.AST:
         if node.args and _is_sqlalchemy_url_arg(node.args[0]):
             assert len(node.args) >= 2, "set_main_option(sqlalchemy.url, ...) 두 번째 인자 필요"
             return node.args[1]
-    pytest.fail("alembic/env.py 에서 set_main_option(sqlalchemy.url, ...) 호출을 찾지 못함")
+    # 호출을 못 찾으면 명시적 raise — 함수 끝 fall-through(암묵 None) 제거로 py/mixed-returns 해소.
+    # Explicit raise when not found — removes the implicit-None fall-through (resolves py/mixed-returns).
+    raise AssertionError("alembic/env.py 에서 set_main_option(sqlalchemy.url, ...) 호출을 찾지 못함")
 
 
 def test_env_uses_effective_migration_url():
