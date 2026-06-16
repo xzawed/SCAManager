@@ -397,6 +397,20 @@ git push -u origin <branch>
 - 🔴 **토큰 만료/런타임 오류 fallback 예외 (사이클 161 회고 신설)** — Codex 액세스 토큰 만료(`refresh token already used`)·샌드박스 제약·CLI 런타임 오류로 mutual 자동 검증 불능 시 = **사용자 명시 승인 하 Claude 직접검증 fallback** 정당 (정책 18 예외 "사용자 직접 결정 영역" + 사이클 119/125/161 전례). fallback PR 본문에 ① 만료/오류 사유 ② 사용자 승인 ③ 직접검증 근거(적대적 분석·TDD·lint) 3종 명시 의무.
   - 🔴 **복구 강제 가드 (mutual 2-layer 가치 회귀 차단)** — 동일 fallback 이 **≥ 2 사이클 또는 ≥ 5 PR 연속** 시 = 다음 세션 진입 전 `codex logout; codex login` 복구를 **사용자 1줄 확인으로 강제 트리거** (메모리 [[feedback-codex-post-validation-mandatory]] + [[integrity-audit-session]] 재개법 "codex login 권장" → "복구 강제"로 강화). mutual = 외부 LLM 다양성 핵심 가치이므로 장기 1-layer 운영 금지.
 
+### codex mutual 운용 도구 default (사이클 167 신설 — 2026-06-16 회고 PROC-1/3)
+
+본 Windows 호스트 환경은 `codex-cli` 가용 → Claude 가 `codex exec` 로 직접 mutual 검증 가능 (위 "운영 흐름" 의 사용자-대리 시나리오 A 와 별개 경로). 이때 도구 마찰 재발 방지 default:
+
+🔴 **쉘 주의**: codex stdin 파이프 호출은 **Bash 툴(POSIX sh) 로 수행** — PowerShell 은 `<` 입력 리다이렉션·`/dev/null` 미지원이라 codex 파이프엔 부적합 (PowerShell 은 git/lint 용). 아래 관용구·`/dev/null` 규칙은 **Bash 툴 기준**.
+
+- 🔴 **입력(프롬프트/diff) 전달 = `codex exec -` stdin 파이프 또는 repo 밖 임시파일만**. argv 직접 전달은 거대 입력서 `Argument list too long` (STATE 거대 라인 전례). 권장 관용구 (Bash 툴): `{ echo "<prompt>"; git diff main...HEAD; } | codex exec -s read-only --skip-git-repo-check -`.
+- 🔴 **repo 내부 임시파일 + `git add -A` 금지** — `.codex_*` scratch 가 staging 되면 trailing-whitespace pre-commit hook fail → **commit 무음 실패** → Codex 가 구(pre-fix) diff 리뷰 = false NG (2026-06-15 사고). 명시 path `git add <file>` 의무. `.codex_*` 은 `.gitignore` 가드(probe 가드 아래) — `.codex/`(추적 설정 디렉토리)는 패턴 비매칭이라 안전.
+- 🔴 **(Bash 툴) `< /dev/null` 은 prompt 를 arg 로 줄 때만** (stdin 대기 방지). stdin 파이프로 prompt 전달 시 `< /dev/null` 은 파이프를 덮어써 `No prompt provided via stdin` → 동시 사용 금지.
+- 정적 리뷰만 요청 (pytest **실행** 요청 금지 — Codex 가 `pytest` 를 model 명으로 오파싱). 로컬 test/lint 증거를 본문에 첨부 → genuine OK.
+- **검증 직후 `git status` 로 임시파일 staging 0 확인 후 commit** (PowerShell 다중 commit 메시지는 here-string 깨짐 주의 → repo 밖 파일 + `git commit -F` 권장).
+
+cross-ref: 메모리 [[feedback-codex-post-validation-mandatory]].
+
 ### 17 정책 cross-reference 표 (CLAUDE.md 정책 18 본문서 이관 — docs reorg Phase 3d)
 
 mutual 검증이 다른 정책과 맺는 충돌/페어 7건:
