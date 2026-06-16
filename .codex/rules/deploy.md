@@ -19,7 +19,7 @@ paths:
 - **APP_BASE_URL**: Railway 필수 — OAuth redirect_uri + GitHub Webhook URL 양쪽 HTTPS 강제.
 - **Railway 빌드 검증**: `git push` 성공 ≠ Railway 빌드 성공. `railway.toml`/`nixpacks.toml`/`requirements.txt` 변경 후 대시보드 빌드 로그 직접 확인.
 - **빌드 실패 시 로그 우선**: 즉각 수정 PR 금지 — 전체 빌드 로그(실패 구간 위아래 30줄) 먼저 확인.
-- 🔴 **Railway pre-deploy = `alembic upgrade head`** (`railway.toml [deploy] preDeployCommand`, 2026-06-15): 트래픽 전 DB 마이그레이션 loud-fail(실패 시 배포 중단). lifespan 도 동일 실행하나 silent-fail 이라 pre-deploy 가 schema drift 가시화. 🔴 **Railway 대시보드 Settings→Deploy→Pre-deploy Command 동기화 의무** — 대시보드 값이 config override 가능. 전례(2026-06-15): 대시보드 `npm run migrate`(`package.json` 미존재 스크립트) → "Deploy › Pre-deploy command failed" → 배포 미완료·alembic 0038 고착. **build 성공해도 deploy 단계서 차단** — Deploy/Pre-deploy 로그까지 확인.
+- 🔴 **Railway pre-deploy = `alembic upgrade head`** (`railway.toml [deploy] preDeployCommand`, 2026-06-15): 트래픽 전 DB 마이그레이션 loud-fail(실패 시 배포 중단). lifespan 도 동일 실행하나 silent-fail 이라 pre-deploy 가 schema drift 가시화. 🔴 **Railway 대시보드 Settings→Deploy→Pre-deploy Command = 빈 값 권장**(railway.toml 단일 출처 — stale 설정 혼동/drift 차단; 부득이 설정 시 `alembic upgrade head` 동일 값 유지). ⚠️ 양쪽 정의 시 우선순위 Railway 버전/필드별 혼동 가능(일반 config-as-code=코드 우선, 대시보드 command 필드 예외 보고 존재) — Deploy 로그 확인. 전례(2026-06-15): railway.toml preDeployCommand **미정의** 상태라 대시보드 stale `npm run migrate`(`package.json` 미존재 스크립트) 사용됨 → "Deploy › Pre-deploy command failed" → 배포 미완료·alembic 0038 고착. **build 성공해도 deploy 단계서 차단** — Deploy/Pre-deploy 로그까지 확인.
 - **requirements.txt 분리**: 프로덕션 = `requirements.txt` / 개발 = `requirements-dev.txt`. `pytest`/`playwright` 는 dev only.
 - **slither + solc**: `railway.toml` buildCommand 에 `solc-select install 0.8.20 && solc-select use 0.8.20` 체인.
 - **postgres:// → postgresql://**: `config.py` 에서 자동 변환됨.

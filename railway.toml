@@ -10,8 +10,14 @@ startCommand = "uvicorn src.main:app --host 0.0.0.0 --port $PORT --proxy-headers
 # Run DB migrations before the new container takes traffic (loud-fail: a failed migration aborts the deploy).
 #   The lifespan also runs `alembic upgrade head` (30s timeout + broad-except = silent-fail); the pre-deploy
 #   surfaces schema drift loudly. Both are idempotent (alembic stamps the head), so the overlap is harmless.
-# 🔴 Railway 대시보드 Settings→Deploy→Pre-deploy Command 도 동일 값(`alembic upgrade head`)으로 설정하거나
-#   비워서 제거할 것 — 대시보드 값이 이 config 를 override 하면 이전 `npm run migrate`(미존재 스크립트)로 실패한다.
+# 🔴 Railway 대시보드 Settings→Deploy→Pre-deploy Command 는 **빈 값 권장**(railway.toml 단일 출처).
+#   전례 2026-06-15: railway.toml 에 preDeployCommand 가 **미정의**일 때 대시보드 stale `npm run migrate`
+#   (미존재 스크립트)가 사용됨 → "Pre-deploy command failed"·0038 고착. #906 으로 여기 정의했으니 대시보드를
+#   비워 railway.toml 를 단일 출처로 두면 stale 설정 혼동/drift 를 차단한다(부득이 설정 시 동일 값 유지).
+#   ⚠️ 대시보드 ↔ railway.toml 양쪽 정의 시 적용 우선순위는 Railway 버전/필드별로 혼동될 수 있으므로,
+#   transition-day 에는 Railway Deploy 로그에서 실제 실행된 pre-deploy 명령을 직접 확인할 것.
+# 🔴 Prefer leaving the dashboard Pre-deploy Command BLANK (railway.toml = single source); the 2026-06-15
+#   failure occurred while railway.toml did NOT define preDeployCommand, so a stale dashboard value was used.
 preDeployCommand = "alembic upgrade head"
 healthcheckPath = "/health"
 healthcheckTimeout = 60
