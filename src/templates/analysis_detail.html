@@ -854,7 +854,7 @@
 {% block scripts %}
 {% if trend_data is defined and trend_data|length > 1 %}
 <!-- Step C: Chart.js vendoring — CDN 차단/오프라인 환경에서 빈 차트 회피 / Vendored Chart.js -->
-<script src="/static/vendor/chart.umd.min.js"></script>
+<script src="/static/vendor/chart.umd.min.js" fetchpriority="high" onload="if(document._adChartReady)document._adChartReady()"></script>
 <script>
 (function() {
   /* TREND/CURRENT_ID/REPO_NAME — Jinja 주입값, 스크립트 최초 실행 시 1회 확정
@@ -868,6 +868,9 @@
   function _buildAnalysisChart(animate) {
     var canvas = document.getElementById('trendChart');
     if (!canvas) return;
+    // Chart.js 비동기 로드 미완료 시 안전 종료 (hx-boost swap race 가드 — throw 대신 graceful)
+    // Guard against async Chart.js load race on hx-boost swap (graceful return, not throw)
+    if (typeof Chart === 'undefined') return;
 
     var s = getComputedStyle(document.body);
     /* --accent-rgb 기반 accent 색상 (테마 호환) / --accent-rgb based accent color (theme compatible) */
@@ -976,6 +979,10 @@
 
   /* 최초 렌더 / Initial render */
   _buildAnalysisChart();
+
+  /* Chart.js async 로드 완료 시 즉시 재빌드 (노출 속도 향상) — <script onload> 가 호출 (no-anim)
+     Repaint the instant Chart.js finishes loading (faster display) — invoked by <script onload> (no-anim) */
+  document._adChartReady = function() { _buildAnalysisChart(false); };
 
   /* themechange — remove-before-add 패턴 (ui.md: _<pageScope><Domain>Handler)
      Prevent stale closure on hx-boost revisit; rebuild chart colors on theme change */
