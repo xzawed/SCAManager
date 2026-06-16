@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [잔여/후속 — broad-docs Railway IPv6 opt-in 정확화 (#918 railway.md ① IPv4-only 절대화→IPv6 opt-in 한정·database.py docstring, override 방향은 #916서 정정 완료, 카운트 불변, 2026-06-16)](#잔여후속--broad-docs-railway-ipv6-opt-in-정확화-918-2026-06-16)
 - [잔여/후속 — 회고 P2 백로그 Phase 4 transition 안전 하드닝 (#915 config Supabase SSL host/query-param 파싱·#916 runbook lifespan/pooler/대시보드 docs, Codex 사실 정정 2건, 단위 +3, 2026-06-16)](#잔여후속--회고-p2-백로그-phase-4-transition-안전-하드닝-915916-2026-06-16)
 - [잔여/후속 — 2026-06-16 세션 회고(정책 8, 5+1) + Option A follow-up (#912~#914 — CodeQL #518 py/mixed-returns 해소·codex mutual 도구 default codify·architecture.md 6-step ⑥ 회복, P0 0·P1 1·P2 10·FP 0, 카운트 불변, 2026-06-16)](#잔여후속--2026-06-16-세션-회고정책-8-51--option-a-follow-up-912914-2026-06-16)
 - [잔여/후속 — Railway pre-deploy + 연결 invariants docs + MIGRATION_DATABASE_URL (#906~#908 — railway.toml preDeployCommand 배포 차단 fix·Railway↔Supabase 연결 invariants+Phase 4 마이그레이션 게이트 docs[Codex NG 2→정정]·MIGRATION_DATABASE_URL owner 분리, 단위 +7, 2026-06-16)](#잔여후속--railway-pre-deploy--연결-invariants-docs--migration_database_url-906908-2026-06-16)
@@ -99,6 +100,15 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 잔여/후속 — broad-docs Railway IPv6 opt-in 정확화 (#918) (2026-06-16)
+
+- **broad-docs Railway IPv6 opt-in 정확화 (#918, 2026-06-16)** — 사용자 "권장·타당 방안으로 진행" → #916 에서 Codex 가 공식 docs 근거로 적발한 broad-docs 사실 오류 중 **LIVE 가이드**(미래 독자가 따르는 문서) 일괄 정정.
+  - **railway.md ① 연결 invariants** — "Railway egress = IPv4-only"(절대화) → **"기본 IPv4-only (Railway Outbound IPv6 = service별 opt-in·기본 비활성)"**. "IPv6 아웃바운드 차단" → "기본적으로 미사용(opt-in)". direct 호스트(IPv6-only) 도달 불가는 **"Outbound IPv6 미활성 기본 Railway" 기준**으로 한정 + "Supabase IPv4 add-on 있으면 direct 도 IPv4" 예외 명시 + "pooler 사용(권장) / Outbound IPv6 opt-in / IPv4 add-on" 3택 정리.
+  - **src/database.py:23** `_ipv4_connect_args` docstring(한·영) 동일 정확화 — railway.md 가 이 주석을 근거로 인용하므로 일관성 유지(주석-only, 로직 무변경).
+  - **override 방향**(공식 = 코드 우선·대시보드 비움 권장)은 **#916 deploy.md(.claude/.codex)/railway.toml 에서 이미 정정** — railway.md 엔 override 주장 없음(grep 확인).
+  - 🔴 **STATE/cycle-history 과거 narrative**(예: #907 "IPv4-only egress")는 **append-only 기록**이라 보존(과거 PR 이 그렇게 문서화한 사실은 정확 — 본 정정 자체가 forward-log). LIVE 가이드만 정정하는 것이 정확·일관(역사 재작성 회피).
+  - 카운트 불변(단위 4955·전체 5109 — docstring-only). Codex mutual OK(railway.md IPv6 표현 정확·database.py 주석 일치·override 방향은 #916 정정 확인). 🔴 잔여 = ops(#2 RLS Phase 4 step 1~3·secret rotate).
 
 ## 잔여/후속 — 회고 P2 백로그 Phase 4 transition 안전 하드닝 (#915/#916) (2026-06-16)
 

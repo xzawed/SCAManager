@@ -20,13 +20,13 @@ _HEALTH_QUERY = text("SELECT 1")
 
 
 def _ipv4_connect_args(url: str) -> dict:
-    """Railway 컨테이너에서 IPv6 아웃바운드 차단 문제 해결.
+    """Railway 컨테이너의 기본 IPv6 아웃바운드 미사용(Outbound IPv6 = service별 opt-in·기본 비활성) 대응.
     Python socket으로 IPv4 주소를 조회한 뒤 psycopg2 hostaddr에 전달.
     libpq는 hostaddr로 직접 TCP 연결하고, SSL 인증서는 host(hostname)로 검증.
     SQLite는 hostaddr를 지원하지 않으므로 건너뜀.
     DNS 조회 hang 방지: executor.shutdown(wait=False)로 스레드 완료 대기 없이 반환.
 
-    Resolves IPv6 outbound blocking in Railway containers.
+    Handles IPv6 outbound being unavailable by default in Railway containers (outbound IPv6 is opt-in).
     Resolves the hostname to an IPv4 address via Python socket, then passes it as
     psycopg2 hostaddr. libpq connects directly via hostaddr while validating the SSL
     certificate against host (hostname). Skipped for SQLite (no hostaddr support).
