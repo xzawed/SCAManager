@@ -186,6 +186,18 @@ def test_migration_database_url_supabase_ssl_added(monkeypatch):
     assert "sslmode=require" in s.migration_database_url
 
 
+def test_effective_migration_url_normalizes_postgres_scheme(monkeypatch):
+    # 🔴 회귀 가드: MIGRATION_DATABASE_URL=postgres://... → effective_migration_url 도 postgresql:// 시작.
+    # field validator(정규화) + property(precedence) 결합을 단일 케이스로 봉인 (기존엔 transitive 만 보장).
+    # Combined field-normalize + property-precedence in one case (previously only transitive).
+    s = _reload_settings(
+        monkeypatch,
+        extra={"MIGRATION_DATABASE_URL": "postgres://owner:pw@db.abc.supabase.co/postgres"},
+    )
+    assert s.effective_migration_url.startswith("postgresql://")
+    assert "sslmode=require" in s.effective_migration_url  # supabase 호스트 SSL 도 property 통과 확인
+
+
 def test_effective_migration_url_falls_back_to_database_url(monkeypatch):
     # MIGRATION_DATABASE_URL 미설정 → effective_migration_url 은 database_url 과 동일 (현행 동작).
     # Unset → effective_migration_url equals database_url (current behavior preserved).

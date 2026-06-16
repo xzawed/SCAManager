@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [잔여/후속 — 회고 P2 마지막 테스트 하드닝 CODE-3/TEST-2 (#919 env online connect_args URL 흐름 AST 가드·effective_migration_url 정규화 결합, 단위 +2, 회고 P2 백로그=0, 2026-06-16)](#잔여후속--회고-p2-마지막-테스트-하드닝-code-3test-2-919-2026-06-16)
 - [잔여/후속 — broad-docs Railway IPv6 opt-in 정확화 (#918 railway.md ① IPv4-only 절대화→IPv6 opt-in 한정·database.py docstring, override 방향은 #916서 정정 완료, 카운트 불변, 2026-06-16)](#잔여후속--broad-docs-railway-ipv6-opt-in-정확화-918-2026-06-16)
 - [잔여/후속 — 회고 P2 백로그 Phase 4 transition 안전 하드닝 (#915 config Supabase SSL host/query-param 파싱·#916 runbook lifespan/pooler/대시보드 docs, Codex 사실 정정 2건, 단위 +3, 2026-06-16)](#잔여후속--회고-p2-백로그-phase-4-transition-안전-하드닝-915916-2026-06-16)
 - [잔여/후속 — 2026-06-16 세션 회고(정책 8, 5+1) + Option A follow-up (#912~#914 — CodeQL #518 py/mixed-returns 해소·codex mutual 도구 default codify·architecture.md 6-step ⑥ 회복, P0 0·P1 1·P2 10·FP 0, 카운트 불변, 2026-06-16)](#잔여후속--2026-06-16-세션-회고정책-8-51--option-a-follow-up-912914-2026-06-16)
@@ -100,6 +101,13 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 잔여/후속 — 회고 P2 마지막 테스트 하드닝 CODE-3/TEST-2 (#919) (2026-06-16)
+
+- **회고 P2 마지막 테스트 하드닝 (#919, 2026-06-16)** — 사용자 "후속작업 수행" → 회고 P2 잔여 2건(CODE-3·TEST-2) de-scope 해제. #918 이 IPv4/SSL 연결 경로(회귀 민감 영역)를 직접 수정 → retro 의 CODE-3 de-scope 근거("운영 IPv4 불변이 회귀 민감 영역일 때만 추가") 충족. src 무변경(테스트-only).
+  - **CODE-3** `test_alembic_env_migration_url.py` AST 가드 +1 — `run_migrations_online` 이 `config.get_main_option(_SQLALCHEMY_URL=effective_migration_url)` 로 얻은 url 을 그대로 `_build_connect_args` 에 넘기는지 정적 검증(헬퍼 3종 early-continue 구조, pylint R0916 회피). 회귀(`_build_connect_args(settings.database_url)` 등) 시 마이그레이션 connect_args(IPv4 hostaddr/sslmode)가 owner credential URL 과 어긋날 위험 차단. Codex caveat = 변수명 동등성 검증(완전 data-flow 증명 아님)이나 현실적 회귀 차단 충분.
+  - **TEST-2** `test_config.py` +1 — `MIGRATION_DATABASE_URL=postgres://...supabase.co` → `effective_migration_url` 이 `postgresql://` 시작 + `sslmode=require`(field 정규화 + property precedence 결합을 단일 케이스로 봉인, 기존엔 transitive 만).
+  - 단위 4955→**4957**(+2)·전체 5109→**5111**·E2E 115·pylint 10.00·flake8 clean. Codex mutual OK. **회고 P2 백로그 = 0**(Claude 실행 가능 전량 완료). 🔴 잔여 = ops only(#2 RLS Phase 4 step 1~3·secret rotate — 사용자).
 
 ## 잔여/후속 — broad-docs Railway IPv6 opt-in 정확화 (#918) (2026-06-16)
 
