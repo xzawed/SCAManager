@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [RLS Phase 4 운영 전환 검증 완료 (앱 `scamanager_app` 전환·DATABASE_URL/WORKER/MIGRATION 설정 → pg_stat_activity 라이브 + /admin/rls-audit UI 2 독립 신호 일치 = connection_bypasses_rls=False, docs sync #920, 2026-06-16)](#rls-phase-4-운영-전환-검증-완료-2026-06-16)
 - [잔여/후속 — 회고 P2 마지막 테스트 하드닝 CODE-3/TEST-2 (#919 env online connect_args URL 흐름 AST 가드·effective_migration_url 정규화 결합, 단위 +2, 회고 P2 백로그=0, 2026-06-16)](#잔여후속--회고-p2-마지막-테스트-하드닝-code-3test-2-919-2026-06-16)
 - [잔여/후속 — broad-docs Railway IPv6 opt-in 정확화 (#918 railway.md ① IPv4-only 절대화→IPv6 opt-in 한정·database.py docstring, override 방향은 #916서 정정 완료, 카운트 불변, 2026-06-16)](#잔여후속--broad-docs-railway-ipv6-opt-in-정확화-918-2026-06-16)
 - [잔여/후속 — 회고 P2 백로그 Phase 4 transition 안전 하드닝 (#915 config Supabase SSL host/query-param 파싱·#916 runbook lifespan/pooler/대시보드 docs, Codex 사실 정정 2건, 단위 +3, 2026-06-16)](#잔여후속--회고-p2-백로그-phase-4-transition-안전-하드닝-915916-2026-06-16)
@@ -101,6 +102,16 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## RLS Phase 4 운영 전환 검증 완료 (2026-06-16)
+
+- **#2 RLS owner-bypass Phase 4 운영 전환 검증 (docs sync #920, 2026-06-16)** — 사용자가 step 1(PW 교체, SQL Editor 직접)+step 2(Railway env 3종 설정·재배포) 완료 → "진행 부탁" → Claude 재확인 검증(앱 자체보고 ↔ DB 실측 2 독립 신호 교차, cycle-166 overclaim 재발 방지).
+  - **step 2 URL 전환 실측**: `DATABASE_URL`→`scamanager_app`(rolbypassrls=false) · `DATABASE_URL_WORKER`→`scamanager_worker`(true) · `MIGRATION_DATABASE_URL`→postgres/owner(#908 게이트 — pre-deploy `alembic upgrade head` 가 owner 자격 실행해 app role default-deny 회피).
+  - **신호 ① DB 실측(MCP read-only, 정책 12)**: `pg_stat_activity` 라이브 = 앱이 `scamanager_app` 로 접속(조회 시점 새 backend) — **운영 앱이 더 이상 postgres(BYPASSRLS) 아님** + alembic **0041** + `relforcerowsecurity` **11/11** + `scamanager_app` rolbypassrls=false → **connection_bypasses_rls=False 등가**.
+  - **신호 ② 앱 자체보고(Playwright 실브라우저)**: `SAAS_ADMIN_EMAILS` 설정 후 `/admin/rls-audit` UI 접근 = RLS 매트릭스 11/11 applied · **BYPASSRLS 경고 배너 없음**(비-BYPASSRLS 연결 반영) + 로그인 smoke(`xzawed`) + 대시보드 실데이터 정상(RLS 과차단 0).
+  - → 2 신호 일치 = **#2 owner-bypass 근본 해결 운영 전환 LIVE**(2차 RLS 안전망 실평가 활성). 장기 잔여 1순위 #2 운영 전환 닫힘.
+  - 🔴 **선택 심층검증 잔여**(비차단): 신규 GitHub 가입 smoke · cross-tenant 누출 테스트(2 테넌트 pooler 격리, deep-research P1) · `/admin/tenants` cross-tenant 가시성(admin 활성화로 확인 가능). secret rotate = Phase 4 신규 PW로 RLS 임시 PW 폐기 = 사실상 완료.
+  - docs-only(카운트 불변 단위 4957·전체 5111·E2E 115·pylint 10.00). 코드 무변경. [[rls-owner-bypass-finding]] 갱신.
 
 ## 잔여/후속 — 회고 P2 마지막 테스트 하드닝 CODE-3/TEST-2 (#919) (2026-06-16)
 
