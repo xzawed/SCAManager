@@ -24,7 +24,7 @@ src/
 ├── scripts/                     # src/scripts/ — DALL-E 3 일러스트 생성 도구 (production import X; 최상위 scripts/ 와 별도)
 │   ├── illustration_prompts.py  # 5장 isometric prompt 정의 (login_hero/dashboard_empty/overview_onboarding/add_repo_hero/filter_empty)
 │   └── generate_illustrations.py # OpenAI DALL-E 3 CLI (--all/--name/--dry-run)
-├── config.py                    # pydantic-settings 환경변수 관리, postgres:// URL 자동 변환
+├── config.py                    # pydantic-settings 환경변수 관리, postgres:// URL 자동 변환 + effective_migration_url(= MIGRATION_DATABASE_URL or DATABASE_URL — alembic 마이그레이션 owner credential 게이트, RLS Phase 4 "두 번째 벽")
 ├── constants.py                 # 전역 상수 단일 출처 — 점수배점/감점가중치/AI기본값/등급/알림한도/HTTP타임아웃/캐시TTL
 ├── crypto.py                    # encrypt_token()/decrypt_token() — TOKEN_ENCRYPTION_KEY
 ├── database.py                  # SQLAlchemy engine, Base, FailoverSessionFactory + RLS event listener + WorkerSessionLocal (background/시스템 컨텍스트 BYPASSRLS 라우팅, RLS Phase 2~4)

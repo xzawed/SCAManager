@@ -68,6 +68,7 @@
 | 2026-05-07 | [cycle-89-91-end-multi-agent-retrospective](2026-05-07-cycle-89-91-end-multi-agent-retrospective.md) | 사이클 89~91 회고 — fixture/i18n/flake8 통합 수정 + slow test mock (4 PR) |
 | 2026-06-03 | [cycle-156-157-retrospective](2026-06-03-cycle-156-157-retrospective.md) | 사이클 156/157 회고 — Theme B SSRF 회귀가드 봉인 (4채널), 5+1 다중 에이전트 재검증 |
 | 2026-06-11 | [cycle-166-859-retrospective](2026-06-11-cycle-166-859-retrospective.md) | 사이클 166~#859 회고 — Task9 백로그·RLS Phase 2~4·2nd-LLM 머지 검증자(#859) 종결, 5+1+cross-verify (P0 1·P1 8·P2 다수) |
+| 2026-06-16 | [session-retrospective](2026-06-16-session-retrospective.md) | 2026-06-16 Railway follow-up 세션(#906~#910 + RLS Phase 4 step 0) 5+1 회고 — P0 0·P1 1·P2 10·FP 0, Option A follow-up #912~#914 (CodeQL #518·codex 도구 codify·architecture 6-step ⑥) |
 
 ---
 
