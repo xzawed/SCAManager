@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [잔여/후속 — 2026-06-16 세션 회고(정책 8, 5+1) + Option A follow-up (#912~#914 — CodeQL #518 py/mixed-returns 해소·codex mutual 도구 default codify·architecture.md 6-step ⑥ 회복, P0 0·P1 1·P2 10·FP 0, 카운트 불변, 2026-06-16)](#잔여후속--2026-06-16-세션-회고정책-8-51--option-a-follow-up-912914-2026-06-16)
 - [잔여/후속 — Railway pre-deploy + 연결 invariants docs + MIGRATION_DATABASE_URL (#906~#908 — railway.toml preDeployCommand 배포 차단 fix·Railway↔Supabase 연결 invariants+Phase 4 마이그레이션 게이트 docs[Codex NG 2→정정]·MIGRATION_DATABASE_URL owner 분리, 단위 +7, 2026-06-16)](#잔여후속--railway-pre-deploy--연결-invariants-docs--migration_database_url-906908-2026-06-16)
 - [마이그레이션 0039/0040 멱등화 — 운영 alembic 0038 고착 해소 (#904, 0039 DROP IF EXISTS→SET NULL·0040 end-state 보장 3-statement·PG drift 행동 테스트, RLS Phase 4 step 0 선행 차단 해소, 단위 +3, 2026-06-15)](#마이그레이션-00390040-멱등화--운영-alembic-0038-고착-해소-904-2026-06-15)
 - [starlette 1.0.1+ 마이그레이션 + dependabot 배치 — #902 (fastapi>=0.137.0·starlette>=1.0.1·PYSEC-2026-161 패치·_IncludedRouter 라우트 테스트 적응) + #897~#900 자동 머지·#901 close, 단위 +2, 2026-06-15)](#starlette-101-마이그레이션--dependabot-배치--902--897900-2026-06-15)
@@ -97,6 +98,15 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 잔여/후속 — 2026-06-16 세션 회고(정책 8, 5+1) + Option A follow-up (#912~#914) (2026-06-16)
+
+- **2026-06-16 세션 회고 + Option A follow-up (#912~#914, 2026-06-16)** — 사용자 "후속 작업을 수행" → 메모리에 "🔵 다음 세션 우선 task"로 명시된 **2026-06-16 Railway follow-up 세션(#906~#910 + RLS Phase 4 step 0) 5+1 다중 에이전트 회고**(정책 8) + Claude 자유 발언(정책 9) + Option A(의무+저위험) follow-up.
+  - **회고(workflow `wf_74404088`, 6 에이전트 = 5 도메인 병렬 + 1 cross-verify)** — 13 finding(11 distinct). cross-verify = **8 TRUE · 5 SEVERITY_ADJUST(전부 P1→P2) · 0 FALSE_POSITIVE**. 순 **P0 0 · P1 1 · P2 10**. 회고 후보 (b) "게이트 도입부 stale" = cross-verify 가 **이미 #908/#909 에서 완전 해소** 확인(캐리포워드 방지). cross-verify ROI = severity 정정 5(CodeQL #518 3 도메인 수렴 + PROC-1 + ops railway P1→P2) + completeness critic 6건(단위 카운트 machine-verify 누락 → `pytest --collect-only` 5106/4952/154 실측 확정). positives = #908 게이트 설계 정합·Codex mutual 2-layer ROI 실증·README↔STATE 배지 정합·PR 본문 무결성 100%.
+  - **#912 (P2, 정책 14)** CodeQL alert #518 `py/mixed-returns`(note, #908 self-inflicted, 전례 #516/#517 계열) 해소 — `test_alembic_env_migration_url.py` 헬퍼 끝 `pytest.fail()`→`raise AssertionError`(명시 raise=CodeQL 종단 인식) + `import pytest` 제거(단일 사용처 소실 → `py/unused-import` #517 cascade 선제 차단). Codex mutual OK.
+  - **#913 (P2, PROC-1/3)** codex mutual(정책 18) 운용 도구 default codify — `active.md` "codex mutual 운용 도구 default" 서브섹션(입력=`codex exec -` stdin/repo 밖 임시파일·`git add -A` 금지[`.codex_*` staging→hook fail→commit 무음 실패→false NG, 2026-06-15 사고]·정적 리뷰만·Bash 툴 한정) + `.gitignore` `.codex_*` 가드(`.codex/` 설정 디렉토리 비매칭 — `git check-ignore` 실측). Codex mutual **NG 1[관용구 POSIX-shell 한정 누락 — PowerShell 오해 소지]→정정→OK**(정책 18 §3b 단일정답).
+  - **#914 (P1, DOC-1)** `architecture.md:27` config.py 트리 설명에 `effective_migration_url`/`MIGRATION_DATABASE_URL` 반영 — #908 이 config.py 변경했으나 architecture.md(src/ 트리 SSOT)만 미동기화한 **6-step ⑥ 누락 회복**(db.md/env-vars/runbook 은 갱신됐음) + 본 회고 아카이브(`docs/_archive/reports/2026-06-16-session-retrospective.md`) + STATE/cycle-history sync.
+  - **카운트 불변** (단위 4952·전체 5106·E2E 115·pylint 10.00·Code Scanning #518 머지 후 main 전체 스캔서 auto-resolve 예정). 전 PR Codex mutual OK. 정책 9 회고 질문(wf3sn621a + 이번 세션) = 사용자 **"모두 OK"** 회신. 🔴 **잔여 = ops 불변**(#2 RLS Phase 4 step 1 PW 교체·step 2 URL 전환·step 3 검증·secret rotate — 사용자 운영 영역).
 
 ## 잔여/후속 — Railway pre-deploy + 연결 invariants docs + MIGRATION_DATABASE_URL (#906~#908) (2026-06-16)
 
