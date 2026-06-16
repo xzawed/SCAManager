@@ -67,3 +67,55 @@ def test_env_does_not_use_database_url_directly():
         "RLS Phase 4 에서 app role 마이그레이션 → alembic_version default-deny 차단. "
         "settings.effective_migration_url 사용 필수."
     )
+
+
+def _online_function() -> ast.FunctionDef:
+    """alembic/env.py 의 run_migrations_online 함수 AST 를 반환."""
+    tree = ast.parse(_ENV_PY.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "run_migrations_online":
+            return node
+    raise AssertionError("alembic/env.py 에서 run_migrations_online 함수를 찾지 못함")
+
+
+def _online_migration_url_var(fn: ast.FunctionDef) -> str:
+    """run_migrations_online 에서 config.get_main_option(sqlalchemy.url, ...) 결과가 대입된 변수명."""
+    for node in ast.walk(fn):
+        if not (isinstance(node, ast.Assign) and isinstance(node.value, ast.Call)):
+            continue
+        func = node.value.func
+        if not (isinstance(func, ast.Attribute) and func.attr == "get_main_option"):
+            continue
+        if not (node.value.args and _is_sqlalchemy_url_arg(node.value.args[0])):
+            continue
+        if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            return node.targets[0].id
+    raise AssertionError("run_migrations_online 에서 get_main_option(sqlalchemy.url, ...) 대입을 찾지 못함")
+
+
+def _online_connect_args_arg(fn: ast.FunctionDef) -> str:
+    """run_migrations_online 에서 _build_connect_args(<arg>) 호출의 <arg> 변수명."""
+    for node in ast.walk(fn):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id == "_build_connect_args"
+                and node.args and isinstance(node.args[0], ast.Name)):
+            return node.args[0].id
+    raise AssertionError("run_migrations_online 에서 _build_connect_args(<name>) 호출을 찾지 못함")
+
+
+def test_env_online_passes_migration_url_to_connect_args():
+    """online 마이그레이션 경로가 sqlalchemy.url(= effective_migration_url)에서 얻은 URL 을 그대로
+    _build_connect_args 에 넘겨야 한다 — 마이그레이션도 IPv4 hostaddr/sslmode connect_args 적용 보장.
+
+    회귀 가드: 누군가 `_build_connect_args(settings.database_url)` 등 다른 URL 로 바꾸면 Phase 4
+    마이그레이션 connect_args 가 owner credential URL 과 어긋나 IPv4/SSL 누락(2026-06-15 맥락) 위험.
+    The online path must feed the sqlalchemy.url-derived URL into _build_connect_args so migrations
+    get IPv4/SSL connect_args too (RLS Phase 4 / 2026-06-15 IPv4-only egress incident context).
+    """
+    online = _online_function()
+    url_var = _online_migration_url_var(online)
+    connect_arg = _online_connect_args_arg(online)
+    assert connect_arg == url_var, (
+        f"_build_connect_args 가 sqlalchemy.url 유래 변수('{url_var}')가 아닌 '{connect_arg}' 를 사용 — "
+        "마이그레이션 connect_args(IPv4 hostaddr/sslmode)가 다른 URL 기준이 될 회귀 위험."
+    )
