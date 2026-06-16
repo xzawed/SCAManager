@@ -1,5 +1,6 @@
 """Application settings loaded from environment variables via pydantic-settings."""
 import logging
+from urllib.parse import urlparse, parse_qs
 from pydantic_settings import BaseSettings
 from pydantic import Field, field_validator, model_validator
 from src.constants import MERGE_VERIFIER_BAND_DEFAULT
@@ -150,8 +151,19 @@ class Settings(BaseSettings):
         """postgres:// → postgresql:// 변환 + Supabase SSL 자동 추가."""
         if v.startswith("postgres://"):
             v = v.replace("postgres://", "postgresql://", 1)
-        if 'supabase.co' in v and 'sslmode' not in v:
-            v += '?sslmode=require'
+        # Supabase 호스트는 SSL 필수 — direct(db.<ref>.supabase.co) + pooler(aws-N.pooler.supabase.com).
+        # 전체 URL substring 대신 hostname 을 파싱해 .supabase.co/.supabase.com 으로 endswith 판정 —
+        # credential/path/query 에 'supabase.com' 이 섞인 비-Supabase URL 의 SSL 오강제(false-positive)와
+        # 'evil-supabase.com' 류 유사 도메인을 배제. pooler(.com) 누락 회귀도 함께 차단(2026-06-15 맥락).
+        # sslmode 존재 판정은 query param 기준(password 내 'sslmode' 문자열 false-negative 방지),
+        # append 는 기존 query 유무로 separator 선택(? vs &)해 '?...?' query 손상 방지. urlunparse
+        # 전체 재구성은 round-trip 재인코딩 위험이 있어 append-only 유지(정책 16 — URL 원형 보존).
+        # Host-parse for SSL targeting; sslmode checked per query-param; append uses ?/& by existing query.
+        parsed = urlparse(v)
+        host = parsed.hostname or ''
+        is_supabase = host.endswith('.supabase.co') or host.endswith('.supabase.com')
+        if is_supabase and 'sslmode' not in parse_qs(parsed.query):
+            v += ('&' if parsed.query else '?') + 'sslmode=require'
         return v
 
     @field_validator("session_secret")

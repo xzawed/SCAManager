@@ -113,6 +113,44 @@ def test_supabase_url_ssl_added(monkeypatch):
     assert "sslmode=require" in s.database_url
 
 
+def test_supabase_pooler_url_ssl_added(monkeypatch):
+    # 🔴 회귀 가드: pooler 호스트(aws-N...pooler.supabase.com, .com TLD)에도 sslmode=require 자동 추가.
+    # Railway IPv4-only egress 는 pooler(.supabase.com) 강제 → 매칭이 '.supabase.co' 만으로 좁혀지면
+    # pooler SSL 누락 → 마이그레이션/연결 운영 장애. _normalize_pg_url 의 hostname endswith 매칭을 잠근다.
+    # Regression guard: pooler host (.supabase.com TLD) must also auto-add sslmode=require.
+    s = _reload_settings(
+        monkeypatch,
+        extra={"DATABASE_URL": "postgresql://u:p@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres"},
+    )
+    assert "sslmode=require" in s.database_url
+
+
+def test_supabase_substring_in_credential_no_ssl(monkeypatch):
+    # 🔴 회귀 가드: hostname 파싱 — 'supabase.com' 이 host 가 아니라 credential 에 있으면 SSL 미강제.
+    # full-URL substring 매칭이었다면 SSL 이 오강제됐을 케이스(실제 host=onprem-db.internal).
+    # Host-parsing guard: 'supabase.com' in the credential (not the host) must NOT force SSL.
+    s = _reload_settings(
+        monkeypatch,
+        extra={"DATABASE_URL": "postgresql://supabase.com:pw@onprem-db.internal:5432/app"},
+    )
+    assert "sslmode" not in s.database_url
+
+
+def test_supabase_url_preserves_existing_query(monkeypatch):
+    # 🔴 회귀 가드: 기존 query 가 있으면 '&' 로 병합(? 중복 금지), 이미 sslmode 있으면 중복 추가 안 함.
+    # Existing query merges with '&' (no double '?'); an existing sslmode param is not duplicated.
+    s = _reload_settings(
+        monkeypatch,
+        extra={"DATABASE_URL": "postgresql://u:p@db.abc.supabase.co/postgres?connect_timeout=10"},
+    )
+    assert s.database_url.endswith("?connect_timeout=10&sslmode=require")
+    s2 = _reload_settings(
+        monkeypatch,
+        extra={"DATABASE_URL": "postgresql://u:p@db.abc.supabase.co/postgres?sslmode=disable"},
+    )
+    assert s2.database_url.count("sslmode") == 1
+
+
 # ---------------------------------------------------------------------------
 # MIGRATION_DATABASE_URL — RLS Phase 4 마이그레이션 credential 분리 (owner role)
 # MIGRATION_DATABASE_URL — RLS Phase 4 migration credential separation (owner role)
