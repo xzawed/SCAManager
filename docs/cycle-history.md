@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [잔여/후속 — 회고 P2 백로그 Phase 4 transition 안전 하드닝 (#915 config Supabase SSL host/query-param 파싱·#916 runbook lifespan/pooler/대시보드 docs, Codex 사실 정정 2건, 단위 +3, 2026-06-16)](#잔여후속--회고-p2-백로그-phase-4-transition-안전-하드닝-915916-2026-06-16)
 - [잔여/후속 — 2026-06-16 세션 회고(정책 8, 5+1) + Option A follow-up (#912~#914 — CodeQL #518 py/mixed-returns 해소·codex mutual 도구 default codify·architecture.md 6-step ⑥ 회복, P0 0·P1 1·P2 10·FP 0, 카운트 불변, 2026-06-16)](#잔여후속--2026-06-16-세션-회고정책-8-51--option-a-follow-up-912914-2026-06-16)
 - [잔여/후속 — Railway pre-deploy + 연결 invariants docs + MIGRATION_DATABASE_URL (#906~#908 — railway.toml preDeployCommand 배포 차단 fix·Railway↔Supabase 연결 invariants+Phase 4 마이그레이션 게이트 docs[Codex NG 2→정정]·MIGRATION_DATABASE_URL owner 분리, 단위 +7, 2026-06-16)](#잔여후속--railway-pre-deploy--연결-invariants-docs--migration_database_url-906908-2026-06-16)
 - [마이그레이션 0039/0040 멱등화 — 운영 alembic 0038 고착 해소 (#904, 0039 DROP IF EXISTS→SET NULL·0040 end-state 보장 3-statement·PG drift 행동 테스트, RLS Phase 4 step 0 선행 차단 해소, 단위 +3, 2026-06-15)](#마이그레이션-00390040-멱등화--운영-alembic-0038-고착-해소-904-2026-06-15)
@@ -98,6 +99,14 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 잔여/후속 — 회고 P2 백로그 Phase 4 transition 안전 하드닝 (#915/#916) (2026-06-16)
+
+- **회고 P2 백로그 Phase 4 transition 안전 하드닝 (#915/#916, 2026-06-16)** — 사용자 "이후 작업을 수행" → 2026-06-16 회고 P2 백로그 중 Claude 실행 가능 + 사용자 다음 ops(RLS Phase 4 step 1~3 transition-day)와 직결되는 안전 하드닝 클러스터.
+  - **#915 (CODE-2)** `config.py` `_normalize_pg_url` Supabase SSL 자동추가를 **host 파싱**(`urlparse(v).hostname` 의 `.supabase.co`/`.supabase.com` endswith) + **query-param 기준**(`parse_qs(parsed.query)`)으로 강화. 기존 `'supabase.co' in v` 전체 substring 은 pooler `.supabase.com` 을 우연히 매칭(부수효과)이라 엄격매칭 '정정' 시 pooler SSL 누락 회귀 위험. credential/path 의 `supabase.com` false-positive + `evil-supabase.com` 유사도메인 배제 · password 내 `sslmode` false-negative 방지 · 기존 query `?...?` 손상 방지(separator `?`/`&`). **동작 불변**(진짜 supabase host SSL 보존). 테스트 +3(pooler SSL / credential 미강제 / 기존 query 병합·sslmode 중복 방지). 🔴 Codex mutual **NG 2회**(전체 substring→host 파싱→query-param 강화, 매 라운드 robustness ↑)→OK. `urlunparse` 전체 재구성은 round-trip 재인코딩 위험으로 지양(append-only, 정책 16).
+  - **#916 (DOC-2/DOC-3/ops-DOC1)** runbook Phase 4 transition-day 운영 안전 docs(코드 무변경). **DOC-2**: step 2 게이트 `/health` 200 ≠ 마이그레이션 성공(lifespan 30s timeout+broad-except silent-fail) → Deploy 로그서 alembic head 직접 확인. **DOC-3**: `MIGRATION_DATABASE_URL` = owner + session-pooling(5432)/direct 권장(transaction 6543 DDL 비호환). **ops-DOC1**: 대시보드 Pre-deploy Command 빈 값 권장(railway.toml 단일출처) — railway.toml 주석 + deploy.md(.claude/.codex). 🔴 Codex mutual **NG 1**(공식 docs 근거 **사실 오류 2건 적발**: "Railway IPv4-only egress" 절대화 → Outbound IPv6 opt-in(기본 비활성) 한정 · "대시보드가 railway.toml override" 방향 → Railway 공식 config-as-code 는 **코드 우선**, 2026-06-15 사고는 railway.toml preDeployCommand **미정의** 상태라 대시보드 stale `npm run migrate` 사용된 것)→정정→OK.
+  - 🔴 **broad-docs follow-up**: override 방향·IPv6 표현은 STATE/railway.md 등에도 동일(pre-existing) — 내가 만진 파일만 정정, 더 넓은 정정은 사용자 운영 경험 확인 후 별도 PR 권장.
+  - 단위 4952→**4955**(+3, #915)·전체 5106→**5109**·E2E 115 불변·pylint 10.00. 전 PR Codex mutual OK. **de-scope**: CODE-3(online connect_args 행동 테스트)·TEST-2(config 결합 회귀 테스트) = 정책 16 과투자 금지(retro 명시 optional). 🔴 **잔여 = ops 불변**(#2 RLS Phase 4 step 1~3·secret rotate — 사용자) + P2 백로그(CODE-3·TEST-2·override/IPv6 broad-docs).
 
 ## 잔여/후속 — 2026-06-16 세션 회고(정책 8, 5+1) + Option A follow-up (#912~#914) (2026-06-16)
 
