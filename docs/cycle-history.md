@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [품질 감사 P2 백로그 해소 — 코드 nit + 문서 인용 2 PR (#926 resilience logs JSON 래핑·openai fallback 메트릭 대칭·config validator DRY +6 · #927 repo_config 0035→0036·architecture diff_exceeds_cap·env-vars 라인 정정, doccon-4 FP 드롭·simplicity-1/bp-2 보류, 단위 4971·전체 5125, 2026-06-17)](#품질-감사-p2-백로그-해소--코드-nit--문서-인용-2-pr-926927-2026-06-17)
 - [전체 문서·코드 품질 감사 세션 — 9차원 다이나믹 워크플로우 + P1 2건 해소 (#923 rules path 메타 정합·#924 STATE SSOT 복원, P0 0·P1 2·P2 11·FP 1차단, 브랜치 정리 13개, 2026-06-17)](#전체-문서코드-품질-감사-세션--9차원-다이나믹-워크플로우--p1-2건-해소-923924-2026-06-17)
 - [차트 hx-boost async 로드 race 가드 LIVE 머지 + sync (#921 — hx-boost body swap 중 htmx 가 Chart.js vendor `<script>` 를 비동기 재삽입하는 동안 인라인 `buildXChart()` 동기 실행 → `Chart is not defined` → 4 차트 템플릿 `typeof Chart` undefined early-return + vendor onload 즉시 no-anim 재빌드 + fetchpriority, 회귀 가드 +8, 단위 4965·전체 5119, 2026-06-17)](#차트-hx-boost-async-로드-race-가드-live-머지--sync-921-2026-06-17)
 - [RLS Phase 4 운영 전환 검증 완료 (앱 `scamanager_app` 전환·DATABASE_URL/WORKER/MIGRATION 설정 → pg_stat_activity 라이브 + /admin/rls-audit UI 2 독립 신호 일치 = connection_bypasses_rls=False, docs sync #920, 2026-06-16)](#rls-phase-4-운영-전환-검증-완료-2026-06-16)
@@ -104,6 +105,15 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 품질 감사 P2 백로그 해소 — 코드 nit + 문서 인용 2 PR (#926/#927) (2026-06-17)
+
+- **품질 감사 P2 백로그 후속 (2026-06-17)** — 사용자 "후속 작업 부탁드립니다" → 품질 감사 세션(`wf_c9b58749`) confirmed P2 11건 중 잔여 처리. P1 2건(#923/#924)·doccon-1/3 은 직전 세션 머지 완료. **사용자 결정**(정책 1 옵션 표): simplicity 범위 = config validator만 통합·bp-2 = 보류.
+  - 🔴 **ground-truth 직접 재검증 default**(메모리 "audit verdict 맹신 금지") — 9건 전부 실측 후 진행. 그 결과 **doccon-4(`[[memory]]` slug) = FALSE POSITIVE 적발·드롭**: 감사가 "파일명(`project_audit_backlog_*.md`) 불일치"를 근거로 underscore 정정 권고했으나, wikilink `[[name]]` 은 파일명이 아닌 **frontmatter `name:` 슬러그**(실측 = `project-audit-backlog-2026-06-12`/`rls-owner-bypass-finding`, 둘 다 하이픈) 참조 → 현재 docs 이미 정확. underscore 변경 시 오히려 링크 파손.
+  - **#926 코드 nit 묶음** (TDD, +6 단위): ⓐ resilience-1 `railway_client/logs.py` — `resp.json()` `JSONDecodeError`(ValueError 하위) 미래핑 → `except ValueError` 확장(미래핑 시 deploy-failure Issue BackgroundTask 까지 전파돼 알림 silent skip, docstring Raises 계약 강제) · ⓑ bp-1 `verifier/openai_client.py` — `_call_via_http` fallback 실패 시 `status="error"` 메트릭 소실(예외가 부모 `except ImportError` 안에서 발생해 형제 `except Exception` 로깅 우회) → 내부 try/except 로 로깅 후 re-raise(SDK 경로 대칭·fail-closed 보존) · ⓒ simplicity-2 `config.py` — postgres URL 정규화 validator 3개 byte-identical → pydantic v2 멀티필드 `@field_validator(...)` 단일화(`fix_optional_pg_url`, required `database_url` 은 빈-값 가드 절 차이로 별도 유지·wrapper 0).
+  - **#927 문서/주석 인용 정정** (회귀 가드 불요): consistency-1 `repo_config.py:52-53` 주석 `Alembic 0035`→`0036`(실제 추가 = `0036_repo_config_disabled_tools.py`) · docacc-1 `architecture.md:96` merge_verifier 함수 목록 `diff_exceeds_cap` 추가(7 public 중 #863 진입점 누락) · doccon-5 `env-vars.md:115-116` `config.py:63/64`(db_sslmode/force_ipv4 오인용)→`87/88`.
+  - **Codex(o3) mutual 검증** — 양 PR 전부 OK(push 전, `git show`/`git ls-files` 실측·이중 로깅 위험 없음 명시 확인·라인 87/88 직접 실측). 순수 git 명령만 지시(파이프/pytest 금지 — 샌드박스 차단·model 오파싱 회피)로 genuine OK.
+  - **보류**(사용자 결정): simplicity-1 `insight_cache` 3쌍(get_fresh/upsert/record_error) 통합 = 현행 유지(wrapper 간접화/call-site 회귀 위험 > 가독 이득, 정책 16 최소 추상화) · bp-2 `railway.toml` `FORWARDED_ALLOW_IPS` = 운영 rate-limit 부정확 관측 데이터 후 결정(정책 17). 단위 4965→**4971**·전체 5119→**5125**·E2E 115·pylint 10.00. [[project-session-2026-06-16-17]]
 
 ## 전체 문서·코드 품질 감사 세션 — 9차원 다이나믹 워크플로우 + P1 2건 해소 (#923/#924) (2026-06-17)
 
