@@ -223,6 +223,44 @@ def test_effective_migration_url_prefers_migration_url(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# postgres:// URL 정규화 — fallback/worker/migration 3 필드 공유 validator 회귀 가드
+#   (simplicity-2: 3개 byte-identical validator → pydantic 멀티필드 단일화 전후 동등성 봉인)
+# postgres:// URL normalization — shared validator across fallback/worker/migration
+#   (locks behavior before/after collapsing 3 identical validators into one multi-field validator)
+# ---------------------------------------------------------------------------
+
+
+def test_database_url_fallback_normalizes_postgres_scheme(monkeypatch):
+    # DATABASE_URL_FALLBACK 의 postgres:// → postgresql:// 정규화.
+    # DATABASE_URL_FALLBACK normalizes postgres:// → postgresql://.
+    s = _reload_settings(
+        monkeypatch, extra={"DATABASE_URL_FALLBACK": "postgres://u:p@localhost/db"})
+    assert s.database_url_fallback.startswith("postgresql://")
+
+
+def test_database_url_fallback_empty_passthrough(monkeypatch):
+    # 미설정 시 빈 문자열 그대로 통과 (정규화 시도 없이 — required database_url 과 구분되는 가드 절).
+    # Unset passes through as empty string (the guard clause distinguishing it from required database_url).
+    s = _reload_settings(monkeypatch)
+    assert s.database_url_fallback == ""
+
+
+def test_database_url_worker_normalizes_postgres_scheme(monkeypatch):
+    # DATABASE_URL_WORKER 의 postgres:// → postgresql:// 정규화.
+    # DATABASE_URL_WORKER normalizes postgres:// → postgresql://.
+    s = _reload_settings(
+        monkeypatch, extra={"DATABASE_URL_WORKER": "postgres://w:p@localhost/db"})
+    assert s.database_url_worker.startswith("postgresql://")
+
+
+def test_database_url_worker_empty_passthrough(monkeypatch):
+    # 미설정 시 빈 문자열 그대로 통과.
+    # Unset passes through as empty string.
+    s = _reload_settings(monkeypatch)
+    assert s.database_url_worker == ""
+
+
+# ---------------------------------------------------------------------------
 # Phase 1 PR-1a — i18n 환경변수 5건 + field_validator 4건 검증 (Cycle 84+)
 # Phase 1 PR-1a — i18n env vars 5 + field_validators 4 (Cycle 84+)
 # ---------------------------------------------------------------------------

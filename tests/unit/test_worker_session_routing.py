@@ -182,8 +182,8 @@ class TestDatabaseUrlWorkerConfig:
     Validates the database_url_worker default and postgres:// → postgresql:// conversion."""
 
     def test_worker_url_postgres_scheme_converted(self):
-        # postgres:// 스킴이 postgresql:// 로 변환되어야 한다 (fix_fallback_url 패턴 미러)
-        # The postgres:// scheme must be converted to postgresql:// (mirrors fix_fallback_url)
+        # postgres:// 스킴이 postgresql:// 로 변환되어야 한다 (fix_optional_pg_url 멀티필드 validator)
+        # The postgres:// scheme must be converted to postgresql:// (fix_optional_pg_url multi-field validator)
         s = _make_settings(database_url_worker="postgres://u:p@h:5432/db")
         assert s.database_url_worker == "postgresql://u:p@h:5432/db"
 

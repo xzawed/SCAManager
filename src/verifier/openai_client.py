@@ -80,22 +80,34 @@ async def _call_via_http(
     Fallback when openai SDK is absent — calls the API directly via the shared httpx pool.
     """
     client = get_http_client()
-    resp = await client.post(
-        _OPENAI_CHAT_URL,
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json={
-            "model": model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            "response_format": {"type": "json_object"},
-            "max_completion_tokens": max_output_tokens,
-        },
-        timeout=timeout,
-    )
-    resp.raise_for_status()
-    data = resp.json()
+    try:
+        resp = await client.post(
+            _OPENAI_CHAT_URL,
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "response_format": {"type": "json_object"},
+                "max_completion_tokens": max_output_tokens,
+            },
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as exc:  # pylint: disable=broad-exception-caught  # noqa: BLE001
+        # SDK 경로(call_openai_verifier except Exception)와 대칭 — fallback 실패도 메트릭 기록 후 re-raise.
+        # 이 try/except 가 없으면 예외가 부모의 `except ImportError` 안에서 발생해 형제
+        # `except Exception` 메트릭 로깅을 우회 → 관측성 비대칭(status=error 소실).
+        # Mirrors the SDK path: log status=error then re-raise. Without this, the exception raised
+        # inside the parent's ImportError handler would bypass the sibling except Exception logger.
+        log_openai_api_call(
+            model=model, duration_ms=(time.perf_counter() - start) * 1000,
+            input_tokens=0, output_tokens=0, status="error", error_type=type(exc).__name__,
+        )
+        raise
     usage = data.get("usage") or {}
     log_openai_api_call(
         model=model, duration_ms=(time.perf_counter() - start) * 1000,

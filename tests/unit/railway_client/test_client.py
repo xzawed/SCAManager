@@ -169,3 +169,24 @@ async def test_fetch_deployment_logs_graphql_error():
     with patch("src.railway_client.logs.get_http_client", return_value=mock_client):
         with pytest.raises(RailwayLogFetchError):
             await fetch_deployment_logs("tok", "deploy-123")
+
+
+@pytest.mark.asyncio
+async def test_fetch_deployment_logs_invalid_json():
+    """응답 본문이 JSON 파싱 실패(ValueError) 시 RailwayLogFetchError 로 래핑돼야 한다.
+    A response body that fails to parse as JSON must be wrapped as RailwayLogFetchError.
+
+    docstring Raises 계약("응답 파싱 오류")을 강제하는 회귀 가드 — 미래핑 시 ValueError 가
+    deploy-failure Issue 생성 BackgroundTask 까지 uncaught 전파돼 알림이 silent skip 된다.
+    Regression guard for the documented Raises contract — an unwrapped ValueError would
+    propagate to the deploy-failure Issue BackgroundTask and silently skip the alert.
+    """
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status = MagicMock()
+    mock_resp.json.side_effect = ValueError("Expecting value: line 1 column 1 (char 0)")
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=mock_resp)
+
+    with patch("src.railway_client.logs.get_http_client", return_value=mock_client):
+        with pytest.raises(RailwayLogFetchError):
+            await fetch_deployment_logs("tok", "deploy-123")

@@ -198,3 +198,27 @@ async def test_http_fallback_reraises_on_api_error_fail_closed(monkeypatch):
     with pytest.raises(RuntimeError):
         await openai_client.call_openai_verifier(
             "SYS", "USER", api_key="k", model="gpt-5-mini", timeout=5.0)
+
+
+@pytest.mark.asyncio
+async def test_http_fallback_logs_error_metric_on_failure(monkeypatch):
+    # bp-1: fallback 경로 실패 시에도 SDK 경로와 대칭으로 status="error" 메트릭을 남겨야 한다.
+    # 기존 fallback 은 _call_via_http 의 raise_for_status 예외가 except ImportError 안에서 발생해
+    # 형제 except Exception 메트릭 로깅을 우회 → 관측성 소실. 이 가드가 대칭을 강제한다.
+    # bp-1: the fallback path must log a status="error" metric symmetrically with the SDK path.
+    _force_sdk_absent(monkeypatch)
+    calls: list[dict] = []
+    monkeypatch.setattr(openai_client, "log_openai_api_call", lambda **kw: calls.append(kw))
+
+    class _BoomHttpClient:
+        async def post(self, url, **kwargs):
+            return _FakeHttpResp({}, boom=True)
+
+    monkeypatch.setattr(openai_client, "get_http_client", lambda: _BoomHttpClient())
+    with pytest.raises(RuntimeError):
+        await openai_client.call_openai_verifier(
+            "SYS", "USER", api_key="k", model="gpt-5-mini", timeout=5.0)
+
+    error_calls = [c for c in calls if c.get("status") == "error"]
+    assert error_calls, "fallback 실패 시 status='error' 메트릭이 기록돼야 한다"
+    assert error_calls[0]["error_type"] == "RuntimeError"
