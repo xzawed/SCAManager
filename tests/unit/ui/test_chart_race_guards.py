@@ -48,6 +48,17 @@ def test_chart_template_has_async_load_race_guard(tpl):
         f"{tpl}: Chart.js async 로드 race 가드 누락 → hx-boost swap 시 "
         "'Chart is not defined' throw 로 차트 미표시 회귀"
     )
+    # 🔴 모든 `new Chart(` 호출이 각각 가드돼야 한다 — 단순 substring 존재 검사는 한 템플릿에
+    # 차트가 2개 이상일 때 그중 하나만 가드해도 통과한다. dashboard.html 의 buildRepoTrendChart
+    # (repos 모드 점수추이 차트)가 미가드로 이 갭을 통해 #921 회귀 가드를 통과 → 영구 공백 사고.
+    # Every `new Chart(` must be guarded: substring presence passes even when only one of multiple
+    # charts is guarded. dashboard.html's buildRepoTrendChart slipped through this gap (blank chart).
+    n_charts = src.count("new Chart(")
+    n_guards = src.count("if (typeof Chart === 'undefined') return;")
+    assert n_guards >= n_charts, (
+        f"{tpl}: `new Chart(` {n_charts}개 중 가드 {n_guards}개만 — 미가드 차트가 async/hx-boost "
+        "로드 race 시 'Chart is not defined' throw 로 영구 공백"
+    )
 
 
 @pytest.mark.parametrize("tpl,ready", sorted(_CHART_TEMPLATES.items()))
@@ -62,9 +73,13 @@ def test_chart_vendor_script_has_onload_repaint(tpl, ready):
     assert '<script src="/static/vendor/chart.umd.min.js"></script>' not in src, (
         f"{tpl}: bare chart vendor script 회귀 (onload 미부착)"
     )
-    # onload 가 ready 핸들러를 호출 (존재 가드 동반 — onload 가 정의 전 발화해도 안전)
-    # onload invokes the ready handler (existence-guarded — safe even if it fires early)
-    assert f'onload="if(document.{ready})document.{ready}()"' in src, (
+    # onload 가 ready 핸들러를 호출 (존재 가드 동반 — onload 가 정의 전 발화해도 안전).
+    # 한 onload 가 여러 ready 핸들러를 호출할 수 있으므로(예: dashboard 는 _dash + _repos 둘 다)
+    # 끝의 닫는 따옴표를 요구하지 않고 '존재 가드 + 호출' 패턴만 검사한다.
+    # onload invokes the ready handler (existence-guarded). A single onload may call multiple
+    # ready handlers (dashboard calls both _dash and _repos), so we don't require a trailing quote.
+    assert 'onload="' in src, f"{tpl}: vendor script onload 속성 누락 (async 로드 후 자동 페인트 불가)"
+    assert f'if(document.{ready})document.{ready}()' in src, (
         f"{tpl}: vendor script onload 재빌드({ready}) 누락"
     )
     assert 'fetchpriority="high"' in src, f"{tpl}: chart vendor fetchpriority 다운로드 우선 hint 누락"
@@ -72,4 +87,27 @@ def test_chart_vendor_script_has_onload_repaint(tpl, ready):
     # ready handler exposed as a no-animation rebuild (avoids double-animation on full load)
     assert f"document.{ready} = function()" in src, (
         f"{tpl}: document.{ready} ready 핸들러 노출 누락"
+    )
+
+
+def test_dashboard_loads_chartjs_in_repos_mode():
+    """dashboard.html 의 Chart.js vendor <script> 로드 조건이 repos 모드 점수추이 차트를 포함해야 한다.
+
+    🔴 회귀(#921 후속): vendor <script> 가 overview `trend` 만 검사하면 repos 모드에서는 trend 가
+    비어 Chart.js 가 로드조차 안 돼 repoTrendChart 가 영구 공백(`Chart is not defined`). repos 차트
+    렌더 조건(_show_repos_trend)이 로드 조건에 OR 로 포함되고, onload 가 _reposChartReady 를 호출하며,
+    repos 차트가 _reposChartReady 핸들러를 노출하는지 정적으로 봉인한다.
+    dashboard.html must load Chart.js in repos mode too (vendor <script> condition includes the
+    repos-mode chart), invoke _reposChartReady on onload, and expose that ready handler.
+    """
+    src = _read("src/templates/dashboard.html")
+    assert "_show_repos_trend" in src, (
+        "dashboard.html: Chart.js vendor 로드 조건에 repos 모드 차트 조건(_show_repos_trend) 누락 "
+        "→ repos 모드 Chart.js 미로드 → repoTrendChart 영구 공백"
+    )
+    assert "document._reposChartReady = function()" in src, (
+        "dashboard.html: _reposChartReady ready 핸들러 노출 누락 (repos 차트 async 로드 복구 불가)"
+    )
+    assert "if(document._reposChartReady)document._reposChartReady()" in src, (
+        "dashboard.html: vendor onload 가 _reposChartReady 미호출 → repos 모드 async 로드 후 차트 미재빌드"
     )
