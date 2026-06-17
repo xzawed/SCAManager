@@ -541,6 +541,13 @@
       function buildRepoTrendChart(animate) {
         var ctx = document.getElementById('repoTrendChart');
         if (!ctx) return;
+        // Chart.js 비동기 로드 race 가드 (#921 패턴) — 이 인라인 스크립트는 vendor
+        // <script src=chart.umd.min.js>(문서 하단) 보다 앞서 실행되므로 Chart 미로드 시
+        // graceful return (throw 방지). 로드 완료 시 vendor onload→_reposChartReady 재빌드.
+        // Async-load race guard (#921) — this inline script runs before the vendored Chart.js
+        // <script> at the bottom of the document, so return gracefully if Chart isn't loaded yet
+        // (no throw); the vendor onload→_reposChartReady rebuilds once it loads.
+        if (typeof Chart === 'undefined') return;
         var cs = getComputedStyle(document.body);
         // CSS 변수로만 색상 결정 — hex 직접 사용 금지 (ui.md 의무)
         // Color determined solely via CSS variables — no hex fallbacks (ui.md rule)
@@ -599,6 +606,12 @@
       }
 
       buildRepoTrendChart();
+
+      // Chart.js async 로드 완료 시 vendor <script> onload 가 호출 (#921 패턴) — 이 인라인
+      // 스크립트가 vendor <script> 보다 앞서 실행돼 초기 빌드가 가드로 skip 된 경우 복구.
+      // Invoked by the vendor <script> onload once Chart.js finishes loading (#921), recovering
+      // the initial guard-skipped build because this inline script runs before the vendor <script>.
+      document._reposChartReady = function() { buildRepoTrendChart(false); };
 
       // themechange remove-before-add 패턴
       // themechange remove-before-add pattern
@@ -1169,8 +1182,17 @@
 {% block scripts %}
 {# Phase 3 PR 3 — Insight 모드는 차트 미사용 (4 카드 narrative). overview 모드 + trend 데이터 있을 때만 차트 #}
 {# Phase 3 PR 3 — Insight mode skips the chart (4-card narrative). Chart only when overview mode + trend data exists #}
-{% if mode != 'insight' and trend %}
-<script src="/static/vendor/chart.umd.min.js" fetchpriority="high" onload="if(document._dashChartReady)document._dashChartReady()"></script>
+{# Chart.js vendor 로드 — overview trend 차트(dashTrendChart) 또는 repos 모드 점수추이 차트(repoTrendChart) #}
+{# 둘 중 하나라도 렌더될 때 로드. 🔴 이전엔 overview `trend` 만 검사 → repos 모드는 trend 가 비어 #}
+{# Chart.js 미로드 → repoTrendChart 영구 공백 회귀(#921 후속). repos 차트 조건을 OR 로 포함. #}
+{# Load Chart.js when EITHER the overview trend chart OR the repos-mode score-trend chart renders. #}
+{# Previously only the overview `trend` was checked, so in repos mode Chart.js never loaded → blank chart. #}
+{% set _show_dash_trend = (mode != 'insight' and trend) %}
+{% set _show_repos_trend = (mode == 'repos' and repo_report and (repo_report.score_trend | length > 1)) %}
+{% if _show_dash_trend or _show_repos_trend %}
+<script src="/static/vendor/chart.umd.min.js" fetchpriority="high" onload="if(document._dashChartReady)document._dashChartReady();if(document._reposChartReady)document._reposChartReady();"></script>
+{% endif %}
+{% if _show_dash_trend %}
 <script>
   // 추세 데이터 (서버 주입) — autoescape 안전
   // Trend data (server-injected) — autoescape safe

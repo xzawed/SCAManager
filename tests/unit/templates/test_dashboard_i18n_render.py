@@ -471,3 +471,71 @@ def test_dashboard_locale_none_defaults_to_ko():
     )
     assert "평균 점수" in out
     assert "대시보드 · SCAManager" in out
+
+
+# ── repos mode — 점수추이 차트 Chart.js 로드 (렌더 기반 회귀 가드) ──────────────
+# ── repos mode — score-trend chart Chart.js load (render-based regression guard) ──
+#
+# 🔴 repos 모드 점수추이 차트(repoTrendChart) 공백 회귀 봉인 (#921 후속, 2026-06-17).
+# vendor `chart.umd.min.js` <script> 로드 조건이 overview `trend` 만 검사하던 탓에 repos 모드는
+# Chart.js 가 로드조차 안 돼(scriptCount=0) 차트가 영구 공백이었다. E2E 는 CI 미실행이라
+# 이 렌더 단위 테스트가 fast-CI 의 1차 봉인이다 (Codex mutual 검증 보강 제안).
+
+
+def _repos_context(score_trend):
+    """repos 모드 dashboard.html 렌더 컨텍스트 — route(_build_repo_summary + repo_report_data) shape 미러."""
+    return dict(
+        current_user=_FakeUser(),
+        locale="ko",
+        mode="repos",
+        initial_mode="repos",
+        days=30,
+        selected_repo="owner/testrepo",
+        summary={
+            "repos": [{"repo_id": 1, "full_name": "owner/testrepo", "avg_score": 80,
+                       "grade": "B", "score_delta": 0, "warning": False}],
+            "summary": {"total_repos": 1, "avg_score": 80,
+                        "grade_distribution": {"A": 0, "B": 1, "C": 0, "D": 0, "F": 0},
+                        "warning_count": 0},
+            "warning_repos": [],
+        },
+        repo_report={
+            "repo_full_name": "owner/testrepo",
+            "kpi": {"avg_score": 80, "grade": "B", "score_delta": 0,
+                    "high_security_count": 0, "analysis_count": 2},
+            "recurring_issues": [],
+            "category_breakdown": {"security_error": 0, "security_warning": 0,
+                                   "code_quality_error": 0, "code_quality_warning": 0},
+            "ai_suggestions": [],
+            "score_trend": score_trend,
+        },
+    )
+
+
+def test_dashboard_repos_mode_loads_chartjs_when_trend_present():
+    """repos 모드 + score_trend>1 → Chart.js vendor <script> + repoTrendChart 렌더.
+
+    🔴 회귀(#921 후속): 이전 로드 조건(`mode != 'insight' and trend`)은 repos 모드에서 `trend` 가
+    비어 Chart.js 미로드 → repoTrendChart 영구 공백. _show_repos_trend OR 분기로 봉인.
+    """
+    out = _render("dashboard.html", **_repos_context(
+        [{"date": "2026-06-14", "avg_score": 70}, {"date": "2026-06-17", "avg_score": 90}]))
+    assert "/static/vendor/chart.umd.min.js" in out, (
+        "repos 모드 + score_trend>1 인데 Chart.js vendor <script> 미로드 → 점수추이 차트 영구 공백"
+    )
+    assert 'id="repoTrendChart"' in out
+    # onload 가 _reposChartReady 를 호출해야 async 로드 후 재빌드됨
+    assert "if(document._reposChartReady)document._reposChartReady()" in out
+
+
+def test_dashboard_repos_mode_no_chartjs_when_single_trend_point():
+    """repos 모드 + score_trend 1개 → 차트 미렌더 → Chart.js 미로드 (로드 조건 정밀성).
+
+    `score_trend | length > 1` 경계 — 1개면 repoTrendChart 도, vendor <script> 도 렌더 안 함.
+    off-by-one(>0 등)으로 조건이 느슨해지는 회귀를 차단한다.
+    """
+    out = _render("dashboard.html", **_repos_context([{"date": "2026-06-17", "avg_score": 90}]))
+    assert 'id="repoTrendChart"' not in out, "score_trend 1개면 트렌드 차트 미렌더여야 함"
+    assert "/static/vendor/chart.umd.min.js" not in out, (
+        "차트가 없는데 Chart.js 로드 → 로드 조건이 너무 느슨함(off-by-one 회귀)"
+    )
