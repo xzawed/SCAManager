@@ -49,8 +49,8 @@ class RepoConfig(Base):
     # NULL = fall back to settings.claude_review_model global default
     review_model = Column(String(50), nullable=True)
 
-    # per-repo 비활성화 도구 목록 — JSON 배열, 기본값 빈 배열 (Alembic 0035)
-    # Per-repo disabled analyzer names — JSON array, defaults to empty list (Alembic 0035)
+    # per-repo 비활성화 도구 목록 — JSON 배열, 기본값 빈 배열 (Alembic 0036)
+    # Per-repo disabled analyzer names — JSON array, defaults to empty list (Alembic 0036)
     # server_default='[]' — SQLite create_all + PG 양쪽 DDL DEFAULT 적용
     # server_default='[]' — ensures DDL DEFAULT for both SQLite create_all and PostgreSQL
     disabled_tools = Column(JSON, default=list, server_default='[]', nullable=False)
