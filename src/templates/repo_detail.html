@@ -683,7 +683,7 @@
 
 {% block scripts %}
 <!-- Step C: Chart.js vendoring — CDN 차단/오프라인 환경에서 빈 차트 회피 / Vendored Chart.js -->
-<script src="/static/vendor/chart.umd.min.js"></script>
+<script src="/static/vendor/chart.umd.min.js" fetchpriority="high" onload="if(document._repoChartReady)document._repoChartReady()"></script>
 <script>
   /* ── 테마 토큰 읽기 — body 기준 (themes.css가 body[data-theme]에 변수 정의)
      Read theme tokens from body — themes.css defines variables on body[data-theme] */
@@ -842,6 +842,10 @@
   document._repoHtmxHandler = function() { buildChart(undefined, false); };
   document.addEventListener('htmx:afterSettle', document._repoHtmxHandler);
   document.addEventListener('htmx:historyRestore', document._repoHtmxHandler);
+
+  /* Chart.js async 로드 완료 시 즉시 재빌드 (노출 속도 향상) — <script onload> 가 호출 (no-anim)
+     Repaint the instant Chart.js finishes loading (faster display) — invoked by <script onload> (no-anim) */
+  document._repoChartReady = function() { buildChart(undefined, false); };
 </script>
 <script>
 (function() {

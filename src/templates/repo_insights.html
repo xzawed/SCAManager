@@ -257,7 +257,7 @@
 
 {% block scripts %}
 {% if breakdown.total > 0 %}
-<script src="/static/vendor/chart.umd.min.js"></script>
+<script src="/static/vendor/chart.umd.min.js" fetchpriority="high" onload="if(document._riChartReady)document._riChartReady()"></script>
 <script>
 (function() {
   const breakdown = {{ breakdown | tojson }};
@@ -271,6 +271,9 @@
   function buildRiChart(animate) {
     const ctx = document.getElementById('riDonutChart');
     if (!ctx) return;
+    // Chart.js 비동기 로드 미완료 시 안전 종료 (hx-boost swap race 가드 — throw 대신 graceful)
+    // Guard against async Chart.js load race on hx-boost swap (graceful return, not throw)
+    if (typeof Chart === 'undefined') return;
     if (riChart) riChart.destroy();
     // 차트 라벨은 canvas data-i18n-chart-* 속성에서 읽음 (locale별 i18n)
     // Chart labels read from canvas data-i18n-chart-* attributes (locale-aware i18n)
@@ -309,6 +312,9 @@
   }
 
   buildRiChart();
+  /* Chart.js async 로드 완료 시 즉시 재빌드 (노출 속도 향상) — <script onload> 가 호출 (no-anim)
+     Repaint the instant Chart.js finishes loading (faster display) — invoked by <script onload> (no-anim) */
+  document._riChartReady = function() { buildRiChart(false); };
   // hx-boost 재방문 시 이전 리스너 제거 후 현재 스코프 함수 재등록 (stale closure 방지)
   // Remove stale listener then re-register fresh function on each hx-boost activation
   if (document._riThemeHandler) {

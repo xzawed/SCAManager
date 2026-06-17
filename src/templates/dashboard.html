@@ -1170,7 +1170,7 @@
 {# Phase 3 PR 3 — Insight 모드는 차트 미사용 (4 카드 narrative). overview 모드 + trend 데이터 있을 때만 차트 #}
 {# Phase 3 PR 3 — Insight mode skips the chart (4-card narrative). Chart only when overview mode + trend data exists #}
 {% if mode != 'insight' and trend %}
-<script src="/static/vendor/chart.umd.min.js"></script>
+<script src="/static/vendor/chart.umd.min.js" fetchpriority="high" onload="if(document._dashChartReady)document._dashChartReady()"></script>
 <script>
   // 추세 데이터 (서버 주입) — autoescape 안전
   // Trend data (server-injected) — autoescape safe
@@ -1192,6 +1192,9 @@
   function buildDashChart(animate) {
     const ctx = document.getElementById('dashTrendChart');
     if (!ctx) return;
+    // Chart.js 비동기 로드 미완료 시 안전 종료 (hx-boost swap race 가드 — throw 대신 graceful)
+    // Guard against async Chart.js load race on hx-boost swap (graceful return, not throw)
+    if (typeof Chart === 'undefined') return;
     if (dashChart) dashChart.destroy();
 
     const accent    = readVar('--d-accent', readVar('--accent', '#6366f1'));
@@ -1250,6 +1253,9 @@
   }
 
   buildDashChart();
+  // Chart.js async 로드 완료 시 즉시 재빌드 (노출 속도 향상) — <script onload> 가 호출 (no-anim, 멱등 destroy)
+  // Repaint the instant Chart.js finishes loading (faster display) — invoked by <script onload> (no-anim, idempotent destroy)
+  document._dashChartReady = function() { buildDashChart(false); };
   // base.html dispatchEvent('themechange') ↔ dashboard 차트 재빌드 (UI 감사 Step C 패턴 통일)
   // base.html dispatchEvent('themechange') ↔ dashboard chart rebuild (UI audit Step C pattern unified)
   // hx-boost 재방문 시 이전 리스너 제거 후 현재 스코프 함수 재등록 (stale closure 방지)
