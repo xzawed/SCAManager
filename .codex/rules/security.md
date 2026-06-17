@@ -6,6 +6,7 @@ paths:
   - "src/shared/log_safety.py"
   - "src/api/auth.py"
   - "src/webhook/validator.py"
+  - "src/main.py"
 ---
 
 # 보안 규칙 (Codex)

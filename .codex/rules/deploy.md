@@ -6,8 +6,9 @@ paths:
   - "requirements.txt"
   - "requirements-dev.txt"
   - ".env.example"
-  - "Procfile"
+  - ".python-version"
   - "alembic.ini"
+  - "sonar-project.properties"
 ---
 
 # 배포 규칙 (Codex)

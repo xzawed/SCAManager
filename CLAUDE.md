@@ -401,10 +401,10 @@ GitHub Code Scanning 점검 detail 절차 + 운영 통합 = `docs/runbooks/opera
 | DB / 마이그레이션 | [`.claude/rules/db.md`](.claude/rules/db.md) | `alembic/**`, `src/models/**`, `src/database.py`, `src/repositories/**` |
 | 파이프라인 / 비즈니스 로직 | [`.claude/rules/pipeline.md`](.claude/rules/pipeline.md) | `src/worker/pipeline.py`, `src/analyzer/**`, `src/scorer/**`, `src/webhook/**`, `src/gate/**` |
 | API / 알림 채널 | [`.claude/rules/api.md`](.claude/rules/api.md) | `src/api/**`, `src/notifier/**`, `src/webhook/**`, `src/gate/**`, `src/main.py` |
-| 보안 | [`.claude/rules/security.md`](.claude/rules/security.md) | `src/auth/**`, `src/crypto.py`, `src/shared/log_safety.py`, `src/api/auth.py`, `src/webhook/validator.py` |
+| 보안 | [`.claude/rules/security.md`](.claude/rules/security.md) | `src/auth/**`, `src/crypto.py`, `src/shared/log_safety.py`, `src/api/auth.py`, `src/webhook/validator.py`, `src/main.py` |
 | UI / 템플릿 | [`.claude/rules/ui.md`](.claude/rules/ui.md) | `src/templates/**`, `src/static/**`, `src/ui/**` |
 | 다국어 / i18n | [`.claude/rules/i18n.md`](.claude/rules/i18n.md) | `src/i18n/**`, `src/middleware/locale.py`, `src/notifier/_language.py`, `src/analyzer/pure/review_guides/**` |
-| 배포 | [`.claude/rules/deploy.md`](.claude/rules/deploy.md) | `railway.toml`, `nixpacks.toml`, `requirements.txt`, `requirements-dev.txt`, `.env.example` |
+| 배포 | [`.claude/rules/deploy.md`](.claude/rules/deploy.md) | `railway.toml`, `nixpacks.toml`, `requirements.txt`, `requirements-dev.txt`, `.env.example`, `.python-version`, `alembic.ini`, `sonar-project.properties` |
 
 🔴 표시는 과거 사고로 검증된 고위험 규칙이다 (각 `.claude/rules/<area>.md` 파일 본문 참조).
 
