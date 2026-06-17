@@ -204,28 +204,14 @@ class Settings(BaseSettings):
         """DATABASE_URL의 postgres:// 스킴을 postgresql://로 변환한다."""
         return cls._normalize_pg_url(v)
 
-    @field_validator("database_url_fallback")
+    @field_validator("database_url_fallback", "database_url_worker", "migration_database_url")
     @classmethod
-    def fix_fallback_url(cls, v: str) -> str:
-        """DATABASE_URL_FALLBACK의 postgres:// 스킴을 postgresql://로 변환한다."""
-        if not v:
-            return v
-        return cls._normalize_pg_url(v)
-
-    @field_validator("database_url_worker")
-    @classmethod
-    def fix_worker_url(cls, v: str) -> str:
-        """DATABASE_URL_WORKER의 postgres:// 스킴을 postgresql://로 변환한다.
-        Normalize the postgres:// scheme of DATABASE_URL_WORKER to postgresql://."""
-        if not v:
-            return v
-        return cls._normalize_pg_url(v)
-
-    @field_validator("migration_database_url")
-    @classmethod
-    def fix_migration_url(cls, v: str) -> str:
-        """MIGRATION_DATABASE_URL의 postgres:// 스킴을 postgresql://로 변환한다.
-        Normalize the postgres:// scheme of MIGRATION_DATABASE_URL to postgresql://."""
+    def fix_optional_pg_url(cls, v: str) -> str:
+        """선택적 postgres URL 3종(fallback/worker/migration)의 postgres:// → postgresql:// 정규화.
+        빈 값은 그대로 통과(미설정 = inert) — required database_url 과 달리 빈-값 가드 절을 보존한다.
+        Normalize postgres:// → postgresql:// for the 3 optional URLs (fallback/worker/migration).
+        Empty values pass through (unset = inert), unlike the required database_url's validator.
+        """
         if not v:
             return v
         return cls._normalize_pg_url(v)

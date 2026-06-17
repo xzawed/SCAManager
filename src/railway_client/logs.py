@@ -47,6 +47,12 @@ async def fetch_deployment_logs(
         data = resp.json()
     except httpx.HTTPError as exc:
         raise RailwayLogFetchError(f"HTTP 오류: {exc}") from exc
+    except ValueError as exc:
+        # resp.json() 의 JSONDecodeError(ValueError 하위) 래핑 — docstring Raises 계약 준수.
+        # 미래핑 시 deploy-failure Issue 생성 BackgroundTask 까지 전파돼 알림이 silent skip 됨.
+        # Wrap JSONDecodeError (a ValueError subclass) from resp.json() per the Raises contract;
+        # otherwise it propagates to the deploy-failure Issue task and silently skips the alert.
+        raise RailwayLogFetchError(f"응답 파싱 오류: {exc}") from exc
 
     errors = data.get("errors")
     if errors:
