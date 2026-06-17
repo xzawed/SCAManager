@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [차트 hx-boost async 로드 race 가드 LIVE 머지 + sync (#921 — hx-boost body swap 중 htmx 가 Chart.js vendor `<script>` 를 비동기 재삽입하는 동안 인라인 `buildXChart()` 동기 실행 → `Chart is not defined` → 4 차트 템플릿 `typeof Chart` undefined early-return + vendor onload 즉시 no-anim 재빌드 + fetchpriority, 회귀 가드 +8, 단위 4965·전체 5119, 2026-06-17)](#차트-hx-boost-async-로드-race-가드-live-머지--sync-921-2026-06-17)
 - [RLS Phase 4 운영 전환 검증 완료 (앱 `scamanager_app` 전환·DATABASE_URL/WORKER/MIGRATION 설정 → pg_stat_activity 라이브 + /admin/rls-audit UI 2 독립 신호 일치 = connection_bypasses_rls=False, docs sync #920, 2026-06-16)](#rls-phase-4-운영-전환-검증-완료-2026-06-16)
 - [잔여/후속 — 회고 P2 마지막 테스트 하드닝 CODE-3/TEST-2 (#919 env online connect_args URL 흐름 AST 가드·effective_migration_url 정규화 결합, 단위 +2, 회고 P2 백로그=0, 2026-06-16)](#잔여후속--회고-p2-마지막-테스트-하드닝-code-3test-2-919-2026-06-16)
 - [잔여/후속 — broad-docs Railway IPv6 opt-in 정확화 (#918 railway.md ① IPv4-only 절대화→IPv6 opt-in 한정·database.py docstring, override 방향은 #916서 정정 완료, 카운트 불변, 2026-06-16)](#잔여후속--broad-docs-railway-ipv6-opt-in-정확화-918-2026-06-16)
@@ -102,6 +103,15 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 차트 hx-boost async 로드 race 가드 LIVE 머지 + sync (#921) (2026-06-17)
+
+- **차트 hx-boost async 로드 race 가드 (#921, 2026-06-17)** — 사용자 "머지 이후 후속작업 수행" → 지난 세션 머지 대기 PR #921 squash 머지(CI 8/8 green·CLEAN·Codex PUSH OK 6/6) + 본 sync.
+  - **증상**: 라이브 대시보드/분석 상세 차트가 "늦게 뜨거나 안 보임". 콘솔 = `Chart is not defined at buildDashChart`.
+  - **근본원인**(workflow `wil4i5lbi` 4각도 적대검증 HIGH): hx-boost body swap 시 htmx 가 vendored `<script src=chart.umd.min.js>` 를 **비동기** 재삽입하는 동안 인라인 `buildXChart()` 가 **동기 즉시** 실행 → `new Chart` throw → 차트 미표시 + 이후 핸들러(themechange 등) 등록 중단. full reload 는 파서 동기라 정상(증상 hx-boost 경로 한정).
+  - **수정**(Option B + 속도, 사용자 결정): 4 차트 템플릿(dashboard/analysis_detail/repo_insights/repo_detail) — ⓐ `new Chart` 앞 `if (typeof Chart === 'undefined') return;` early-return 가드(throw→graceful) · ⓑ vendor `<script>` `onload="if(document._xChartReady)document._xChartReady()"` (async 로드 즉시 no-anim 재빌드) + `fetchpriority="high"`(속도) · ⓒ `document._<scope>ChartReady` 노출(IIFE 외부 호출 대응) + `.claude/rules/ui.md` 규칙 codify.
+  - 🔴 **학습**: `analysis_detail.html:897 (window.Chart && Chart.getChart)` = 기존 차트 destroy-가드일 뿐 race 가드 아님(적대검증이 "가드 있음" 으로 오분류 → 정정). 진짜 race-safe 기준 = `repo_detail:729`.
+  - 회귀 가드 `tests/unit/ui/test_chart_race_guards.py` +8. 단위 4957→**4965**·전체 5111→**5119**·E2E 115·pylint 10.00·UI 323 pass. [[feedback-hxboost-themechange-pattern]] [[project-session-2026-06-16-17]].
 
 ## RLS Phase 4 운영 전환 검증 완료 (2026-06-16)
 
