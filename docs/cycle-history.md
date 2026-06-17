@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [repos 모드 점수추이 차트 미표시 수정 — #921 후속 다중 차트 가드 + 전 모드 Chart.js 로드 (#929 — buildRepoTrendChart typeof Chart 가드 + vendor 로드 조건 _show_repos_trend OR 확장 + onload _reposChartReady 재빌드, Playwright RED→GREEN+스크린샷, 회귀 가드 3겹, 단위 4974·E2E 116·전체 5128, 2026-06-17)](#repos-모드-점수추이-차트-미표시-수정--921-후속-다중-차트-가드--전-모드-chartjs-로드-929-2026-06-17)
 - [품질 감사 P2 백로그 해소 — 코드 nit + 문서 인용 2 PR (#926 resilience logs JSON 래핑·openai fallback 메트릭 대칭·config validator DRY +6 · #927 repo_config 0035→0036·architecture diff_exceeds_cap·env-vars 라인 정정, doccon-4 FP 드롭·simplicity-1/bp-2 보류, 단위 4971·전체 5125, 2026-06-17)](#품질-감사-p2-백로그-해소--코드-nit--문서-인용-2-pr-926927-2026-06-17)
 - [전체 문서·코드 품질 감사 세션 — 9차원 다이나믹 워크플로우 + P1 2건 해소 (#923 rules path 메타 정합·#924 STATE SSOT 복원, P0 0·P1 2·P2 11·FP 1차단, 브랜치 정리 13개, 2026-06-17)](#전체-문서코드-품질-감사-세션--9차원-다이나믹-워크플로우--p1-2건-해소-923924-2026-06-17)
 - [차트 hx-boost async 로드 race 가드 LIVE 머지 + sync (#921 — hx-boost body swap 중 htmx 가 Chart.js vendor `<script>` 를 비동기 재삽입하는 동안 인라인 `buildXChart()` 동기 실행 → `Chart is not defined` → 4 차트 템플릿 `typeof Chart` undefined early-return + vendor onload 즉시 no-anim 재빌드 + fetchpriority, 회귀 가드 +8, 단위 4965·전체 5119, 2026-06-17)](#차트-hx-boost-async-로드-race-가드-live-머지--sync-921-2026-06-17)
@@ -105,6 +106,15 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## repos 모드 점수추이 차트 미표시 수정 — #921 후속 다중 차트 가드 + 전 모드 Chart.js 로드 (#929) (2026-06-17)
+
+- **repos 모드 점수추이 차트 미표시 수정 (#929, 2026-06-17)** — 사용자 보고 "점수추이 그래프가 #921 수정 후에도 여전히 안 나타남. E2E·Playwright 로 확인 부탁". systematic-debugging + Playwright 실증으로 진행.
+  - **근본 원인 2겹** (Playwright evidence): `dashboard.html` 의 점수추이 차트(`buildRepoTrendChart`, repos 모드 개별 repo 리포트)가 #921 봉인에서 누락. ① **`typeof Chart` 가드 부재** — 이 인라인 스크립트가 vendor `<script src=chart.umd.min.js>`(문서 하단)보다 **앞서 실행** → `new Chart` 가 `Chart is not defined` throw(full-load 부터). #921 은 같은 파일 `buildDashChart` 만 가드. ② 🔴 **더 깊은 원인 — repos 모드 Chart.js 미로드** — vendor `<script>` 로드 조건이 `{% if mode != 'insight' and trend %}`(overview `trend`)만 검사 → repos 모드는 `trend` 가 비어 Chart.js 가 DOM 에 아예 없음(진단 evaluate: scriptCount=0·window.Chart=undefined). 가드만으론 불충분.
+  - **Playwright RED 재현**: `pageerror: Chart is not defined` + `Chart.getChart('repoTrendChart')` 6000ms 미부착(영구 공백).
+  - **수정** (`src/templates/dashboard.html`): (a) `buildRepoTrendChart` 앞 `if (typeof Chart === 'undefined') return;` graceful 가드 · (b) `document._reposChartReady = function(){ buildRepoTrendChart(false); }` 노출 + vendor `onload` 이 `_dashChartReady`·`_reposChartReady` 둘 다(존재 가드 동반) 호출 · (c) vendor `<script>` 로드 조건을 `{% set _show_repos_trend = (mode == 'repos' and repo_report and (repo_report.score_trend | length > 1)) %}` 추가해 `_show_dash_trend OR _show_repos_trend` 로 확장(buildDashChart 블록은 `_show_dash_trend` 로만 gate → overview 불변). **GREEN**: Chart 인스턴스 부착 + 시각 스크린샷(SCORE TREND 라인 70→90) 확인.
+  - **회귀 가드 3겹**: E2E `test_repos_mode_score_trend_chart_renders`(repo 선택 + score_trend≥2 서로 다른 날짜 seed → `Chart.getChart` 부착 + pageerror trap) · 정적 `test_chart_race_guards` 강화(**`new Chart(` 카운트 ≤ 가드 카운트** — 파일당 다중 차트 각각 가드, substring 존재 검사 갭 봉인 + `test_dashboard_loads_chartjs_in_repos_mode`) · **렌더 단위** `test_dashboard_repos_mode_loads_chartjs_when_trend_present`/`_no_chartjs_when_single_trend_point`(🔴 **e2e 가 CI 미실행**[e2e job 부재]이라 렌더 후 `chart.umd.min.js` 포함/경계 단언이 fast-CI 1차 봉인 — Codex mutual 보강 제안 반영). 전부 수정 전 템플릿에서 RED 실측.
+  - **Codex(o3) mutual OK 양 commit**(683ca5d fix 5/5 + 89a4864 test 4/5, push 전 `git show` 실측·line:span 인용). `.claude/rules/ui.md` #921 규칙에 후속(다중 차트 가드 + 전 모드 vendor 로드) 추가. 자율 판단: `.codex/rules/ui.md`(의도적 축약본)는 미수정. 단위 4971→**4974**(+3 정적 1·렌더 2)·E2E 115→**116**(+1)·전체 5125→**5128**·pylint 10.00. [[feedback-hxboost-themechange-pattern]] [[project-session-2026-06-16-17]]
 
 ## 품질 감사 P2 백로그 해소 — 코드 nit + 문서 인용 2 PR (#926/#927) (2026-06-17)
 
