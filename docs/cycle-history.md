@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [전체 문서·코드 품질 감사 세션 — 9차원 다이나믹 워크플로우 + P1 2건 해소 (#923 rules path 메타 정합·#924 STATE SSOT 복원, P0 0·P1 2·P2 11·FP 1차단, 브랜치 정리 13개, 2026-06-17)](#전체-문서코드-품질-감사-세션--9차원-다이나믹-워크플로우--p1-2건-해소-923924-2026-06-17)
 - [차트 hx-boost async 로드 race 가드 LIVE 머지 + sync (#921 — hx-boost body swap 중 htmx 가 Chart.js vendor `<script>` 를 비동기 재삽입하는 동안 인라인 `buildXChart()` 동기 실행 → `Chart is not defined` → 4 차트 템플릿 `typeof Chart` undefined early-return + vendor onload 즉시 no-anim 재빌드 + fetchpriority, 회귀 가드 +8, 단위 4965·전체 5119, 2026-06-17)](#차트-hx-boost-async-로드-race-가드-live-머지--sync-921-2026-06-17)
 - [RLS Phase 4 운영 전환 검증 완료 (앱 `scamanager_app` 전환·DATABASE_URL/WORKER/MIGRATION 설정 → pg_stat_activity 라이브 + /admin/rls-audit UI 2 독립 신호 일치 = connection_bypasses_rls=False, docs sync #920, 2026-06-16)](#rls-phase-4-운영-전환-검증-완료-2026-06-16)
 - [잔여/후속 — 회고 P2 마지막 테스트 하드닝 CODE-3/TEST-2 (#919 env online connect_args URL 흐름 AST 가드·effective_migration_url 정규화 결합, 단위 +2, 회고 P2 백로그=0, 2026-06-16)](#잔여후속--회고-p2-마지막-테스트-하드닝-code-3test-2-919-2026-06-16)
@@ -103,6 +104,16 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 전체 문서·코드 품질 감사 세션 — 9차원 다이나믹 워크플로우 + P1 2건 해소 (#923/#924) (2026-06-17)
+
+- **품질 감사 세션 (2026-06-17)** — 사용자 "전체 문서와 전체 코드의 품질상태 점검 — 딥리서치 및 다이나믹 워크플로우 승인" → ① 브랜치 정리 ② 9차원 품질 감사 워크플로우 ③ P1 2건 해소.
+  - **브랜치 정리**: [gone] 상태(원격 삭제=squash 머지 완료) 로컬 브랜치 13개 전부 삭제 → `main` 단독.
+  - **품질 감사 워크플로우** (`wf_c9b58749`·24에이전트·~8분): 코드 5차원(정확성·보안·단순성/정책16·복원력·정합성) + 문서 3차원(정확도·일관성·명료성) + 딥리서치 1차원(스택 best-practice) → 각 finding 적대 검증(기본값 의심) → 합성 + completeness critic. 결과 **raw 14 → confirmed 13 (FP 1 차단)·P0 0·P1 2·P2 11**. 코어(정확성·보안) **건전 0건**.
+  - **#923 PR-② rules path 메타 정합** (doccon-1/2/3, P1): `.codex/rules/deploy.md` 유령 `Procfile`(dead glob) 제거 + 실재 `.python-version`·`sonar-project.properties` 추가 · `.codex/rules/security.md` `src/main.py` 추가 · `CLAUDE.md` 보안/배포 행 권위 rules 정합. 전 8쌍(.claude↔.codex) paths `Compare-Object` IDENTICAL. **자율 판단**: CLAUDE.md:407 배포 행도 동일 부류 정합화(정책 3 보고).
+  - **#924 PR-① STATE.md SSOT 복원** (docclr-1, P1): 헤더가 32KB(31,986자) 단일 라인에 '직전' 서사 25건 누적 → 표준 Read token cap 초과로 SSOT 무력화 → [최신 1건(#921) + 종합 수치 + cycle-history.md 포인터]로 축약. 누적 서사 손실 0(헤더 110 PR 중 108개 cycle-history 보존 실측). UTF-8 BOM+LF 보존(Python utf-8-sig splice). **다음 세션 갱신 규칙 명시**(직전 서사 cycle-history 이관, 헤더 '직전' 체인 누적 금지 — 회귀 방지).
+  - 🔴 **mutual 검증 학습**: PR-② 1차 Codex(o3 codex-rescue)가 존재하지 않는 `Dockerfile`/`.github/workflows/**` paths 를 환각해 false-NG → *audit verdict 맹신 금지* 원칙대로 ground-truth 직접 재검증(`git ls-files`)으로 거짓 확정 → built-in 리뷰어가 실파일 기반 OK 독립 확증. PR-① 은 codex-rescue 가 `git`/`rg` 실측으로 genuine OK(A~E). 환각 검증자를 직접 검증으로 적발한 사례.
+  - 🔴 **P2 11건 백로그**: [코드] railway logs.py JSONDecodeError silent skip·openai_client httpx fallback 메트릭 비대칭·insight_cache 3쌍 + config validator 3개 DRY·repo_config 주석 0035→0036 / [문서] architecture.md `diff_exceeds_cap` 누락·cycle-history `[[memory]]` slug 6회·env-vars 라인 인용 drift / [딥리서치] railway.toml `FORWARDED_ALLOW_IPS` (보류 권장). 카운트 불변(전부 docs-only, 단위 4965·전체 5119). [[project-session-2026-06-16-17]]
 
 ## 차트 hx-boost async 로드 race 가드 LIVE 머지 + sync (#921) (2026-06-17)
 
