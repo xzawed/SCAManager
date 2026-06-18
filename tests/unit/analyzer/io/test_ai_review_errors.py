@@ -554,13 +554,16 @@ _FULL_REVIEW_JSON = json.dumps({
 })
 
 
-async def test_review_code_passes_sufficient_max_tokens_to_create():
-    """🔴 회귀 가드 — messages.create 의 max_tokens 가 충분히 커야 함 (1500 절단 사고 재발 방지).
+async def test_review_code_passes_sufficient_max_tokens_to_create(monkeypatch):
+    """🔴 회귀 가드 — messages.create 의 기본 max_tokens 가 충분히 커야 함 (1500 절단 사고 재발 방지).
 
     max_tokens=1500 은 한국어 리뷰 JSON(~2660 토큰)을 잘라 stop_reason=max_tokens →
-    불완전 JSON → parse_error 로 출시 이래 ~80% 실패. 작은 값으로 복귀하면 본 테스트 fail.
-    Regression guard: max_tokens must stay large enough to avoid the 1500-token truncation.
+    불완전 JSON → parse_error 로 출시 이래 ~80% 실패. 기본값으로 복귀하면 본 테스트 fail.
+    🔴 ambient CLAUDE_REVIEW_MAX_TOKENS(ge=1 허용)에 독립적이도록 의도된 기본값으로 고정 (Codex P3 —
+    환경변수가 낮게 설정된 배포 환경에서 suite 가 실패하지 않도록).
+    Regression guard: pin the intended default so a valid low env override cannot fail the suite.
     """
+    monkeypatch.setattr("src.analyzer.io.ai_review.settings.claude_review_max_tokens", 8192)
     response_obj = MagicMock()
     response_obj.content = [MagicMock(text=_FULL_REVIEW_JSON)]
     response_obj.usage = MagicMock(input_tokens=10, output_tokens=20)
