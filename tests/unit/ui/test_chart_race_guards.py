@@ -111,3 +111,37 @@ def test_dashboard_loads_chartjs_in_repos_mode():
     assert "if(document._reposChartReady)document._reposChartReady()" in src, (
         "dashboard.html: vendor onload 가 _reposChartReady 미호출 → repos 모드 async 로드 후 차트 미재빌드"
     )
+
+
+def test_repo_detail_i18n_accessible_to_buildchart():
+    """🔴 repo_detail.html: I18N 이 buildChart 에서 접근 가능(전역)해야 + onload race graceful 가드.
+
+    운영 사고(2026-06-18, F12 `Uncaught ReferenceError: I18N is not defined at buildChart`):
+    `I18N` 이 block2 IIFE 내 `const` 로 격리(repo_detail.html:860)돼 있어, block1 의 `buildChart`
+    (:722)가 stats 배지에서 `I18N.chartAvg`(:751)를 참조하면 전역 스코프만 탐색 → IIFE const 가
+    안 보여 ReferenceError → buildChart throw → `new Chart` 미도달 → scoreChart 영구 미표시.
+    호출 경로: vendor chart.umd.min.js onload(:686) → _repoChartReady(:848) → buildChart.
+    캐시 즉시 로드(라이브 immutable)가 onload 를 I18N 정의보다 앞당겨 트리거.
+
+    수정 봉인: (1) I18N 을 window 전역으로 노출(IIFE const 격리 회귀 차단 — buildChart 가 전역
+    탐색으로 접근) + (2) buildChart 가 I18N 미정의 시 graceful return(onload race: I18N 정의 전
+    호출 시 throw 대신 skip, 이후 applyFilters→buildChart 가 정상 렌더).
+    """
+    src = _read("src/templates/repo_detail.html")
+    # (1) repo 고유 전역 노출 — buildChart(별도 block)가 접근. IIFE-격리 const 단독이면 ReferenceError.
+    assert "window._repoChartI18N" in src, (
+        "repo_detail.html: I18N 을 repo 고유 전역(window._repoChartI18N)으로 미노출 → IIFE const "
+        "격리 시 buildChart 의 I18N 참조가 ReferenceError (운영 scoreChart 미표시 사고)"
+    )
+    # 🔴 범용 window.I18N 전역 회귀 차단 — 다른 페이지(add_repo 의 var I18N 등)와 충돌해 hx-boost
+    # 왕복 시 덮어써져 차트 재빌드가 깨진다(Codex P2). repo 고유 네임스페이스만 허용.
+    # `window.I18N = {` 할당 패턴만 검사(주석의 'window.I18N' 언급은 허용)
+    assert "window.I18N = {" not in src, (
+        "repo_detail.html: 범용 window.I18N 전역 할당 회귀 → 다른 페이지 var I18N(add_repo.html:201)과 "
+        "충돌(hx-boost 왕복 시 덮어쓰기, Codex P2). window._repoChartI18N 고유 네임스페이스 사용"
+    )
+    # (2) buildChart 가 고유 전역을 지역 참조 + onload race graceful (미정의 시 return)
+    assert "var I18N = window._repoChartI18N" in src, (
+        "repo_detail.html: buildChart 가 고유 전역(window._repoChartI18N) 지역 참조 누락 → 스코프/충돌 "
+        "회귀. onload race(I18N block 정의 전 호출) 시 graceful return 동반 필요"
+    )
