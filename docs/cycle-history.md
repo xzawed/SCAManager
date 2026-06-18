@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [개요 점수 0/100 count-up 고착 — IO 미발동 안전망 + 이중 init dispose 회귀 P1 (1c0a483 안전망 + 75f942e Option A=init 일괄 dispose 제거, e2e 계측으로 IIFE 재실행 이중 init 실측, Codex 3R NG P1 ground-truth 재검증 OK, 단위 4980·E2E 120, 2026-06-18)](#개요-점수-0100-count-up-고착--io-미발동-안전망--이중-init-dispose-회귀-p1-1c0a48375f942e-2026-06-18)
 - [repo_detail 점수추이 차트 미표시 — I18N 스코프 격리 버그 (#933 — F12 `I18N is not defined at buildChart`, block IIFE const ↔ buildChart 스코프 격리, window._repoChartI18N 고유 전역, Codex P2 전역충돌 적발→고유 네임스페이스, 단위 4979·E2E 117, 2026-06-18)](#repo_detail-점수추이-차트-미표시--i18n-스코프-격리-버그-933-2026-06-18)
 - [AI 리뷰 parse_error 근본 수정 — max_tokens 1500→8192 + stop_reason 절단 감지 (#931 — 출시 이래 ~80% parse_error 만성 실패, 운영 DB 월별 success율 추적 + 실제 API 재현, #853 NULL-persist 가시화, env configurable Codex P2, 단위 4978·전체 5132, 2026-06-18)](#ai-리뷰-parse_error-근본-수정-931-2026-06-18)
 - [repos 모드 점수추이 차트 미표시 수정 — #921 후속 다중 차트 가드 + 전 모드 Chart.js 로드 (#929 — buildRepoTrendChart typeof Chart 가드 + vendor 로드 조건 _show_repos_trend OR 확장 + onload _reposChartReady 재빌드, Playwright RED→GREEN+스크린샷, 회귀 가드 3겹, 단위 4974·E2E 116·전체 5128, 2026-06-17)](#repos-모드-점수추이-차트-미표시-수정--921-후속-다중-차트-가드--전-모드-chartjs-로드-929-2026-06-17)
@@ -108,6 +109,14 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 개요 점수 0/100 count-up 고착 — IO 미발동 안전망 + 이중 init dispose 회귀 P1 (1c0a483/75f942e) (2026-06-18)
+
+- **개요(`/`) repo 카드 점수 "0/100" 고착 (commit 1c0a483 + 75f942e, 2026-06-18)** — effects.js `setupCountUp` 이 `.repo-card__score` 를 "0" pre-fill 후 `onceInView`(IntersectionObserver) 로 0→점수 count-up. hx-boost body swap race 로 IO 콜백 미발동 시 점수가 "0/100" 에 고착(등급은 별도 요소라 정상).
+  - **① 안전망 (commit 1c0a483)**: `onceInView` 에 `fired` WeakSet + `pending` Set + rAF 2회 후 `getBoundingClientRect` 로 화면 내 미발동 요소 강제 fire + scroll/resize 지속 sweep(below-fold 복구) + `!el.isConnected` detached 자가정리. 회귀: 정적 `test_oncein_view_has_io_miss_safety_net` + E2E `test_overview_score_survives_io_miss`/`test_overview_score_renders_full_load`.
+  - **② 이중 init P1 회귀 수정 (commit 75f942e, Codex 3R NG)**: systematic-debugging Phase 1~4. **ground-truth 실측(e2e 계측)**: effects.js 는 `<body>` 외부 스크립트라 hx-boost swap 마다 IIFE 재실행(즉시 init — `document._fxEffectsHandler` setter 카운트 nav 당 Δ1) + `htmx:afterSettle` 로 init 이 nav 당 2~3회 호출(IntersectionObserver 생성 수 ~2-3×). init 첫 줄 `while(_disposers){pop()()}` 가 1번째 init 안전망(observer + scroll/resize 리스너)을 dispose 하는데, 같은 closure 의 `freshOnly(seen)` 이 이미 처리한 노드를 EMPTY 반환 → 재등록 차단 → below-fold count-up 영구 "0" 고착. 게다가 `_disposers` 는 IIFE 재실행마다 fresh 라 이전 nav 누수도 못 잡았다(P2 목적 미달성 = 순수 해악).
+  - **수정 (Option A, 사용자 선택)**: init 일괄 dispose + `_disposers`/`const dispose`/`_disposers.push` 전부 제거. 누수는 sweep `!el.isConnected` 자가정리가 담당(다음 scroll/resize 1회에 detached drop → pending 비면 리스너 해제). 회귀: TDD `test_overview_score_survives_double_init`(작은 뷰포트 below-fold + IO no-op + `document._fxEffectsHandler()` 직접 호출로 이중 init 결정론 재현, RED→GREEN) + 정적 가드 교체(`_disposers.pop/push`·`while (_disposers` 부재 단언 — 기존 `_disposers in src` 가 주석으로 false-pass 하던 것 교정).
+  - **Codex mutual (정책 18, push 전)**: 1차 stale 상태 검토(이미 제거한 `let _disposers`/`const dispose` 인용)로 혼란 → ground-truth git 명령 직접 재확인 지시 → 2차 **VERDICT OK**(leak=acceptable WARN·blocker 아님 / re-init stuck 경로 없음 [forward=fresh seen·historyRestore=노드 객체 상이→재등록·double-init=fired WeakSet 멱등] / 가드 P1 봉인). 단위 4979→**4980** · E2E 117→**120**(3종) · UI 단위 205 · pylint 10.00 · flake8 clean. e2e 9 실패는 stash baseline 동일(CSP/MIME/theme 타이밍=환경). 🔍 배포 후 운영 overview 점수 표시 + F12 재확인이 최종 검증. [[project-session-2026-06-18]]
 
 ## repo_detail 점수추이 차트 미표시 — I18N 스코프 격리 버그 (#933) (2026-06-18)
 
