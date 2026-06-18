@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [AI 리뷰 parse_error 근본 수정 — max_tokens 1500→8192 + stop_reason 절단 감지 (#931 — 출시 이래 ~80% parse_error 만성 실패, 운영 DB 월별 success율 추적 + 실제 API 재현, #853 NULL-persist 가시화, env configurable Codex P2, 단위 4978·전체 5132, 2026-06-18)](#ai-리뷰-parse_error-근본-수정-931-2026-06-18)
 - [repos 모드 점수추이 차트 미표시 수정 — #921 후속 다중 차트 가드 + 전 모드 Chart.js 로드 (#929 — buildRepoTrendChart typeof Chart 가드 + vendor 로드 조건 _show_repos_trend OR 확장 + onload _reposChartReady 재빌드, Playwright RED→GREEN+스크린샷, 회귀 가드 3겹, 단위 4974·E2E 116·전체 5128, 2026-06-17)](#repos-모드-점수추이-차트-미표시-수정--921-후속-다중-차트-가드--전-모드-chartjs-로드-929-2026-06-17)
 - [품질 감사 P2 백로그 해소 — 코드 nit + 문서 인용 2 PR (#926 resilience logs JSON 래핑·openai fallback 메트릭 대칭·config validator DRY +6 · #927 repo_config 0035→0036·architecture diff_exceeds_cap·env-vars 라인 정정, doccon-4 FP 드롭·simplicity-1/bp-2 보류, 단위 4971·전체 5125, 2026-06-17)](#품질-감사-p2-백로그-해소--코드-nit--문서-인용-2-pr-926927-2026-06-17)
 - [전체 문서·코드 품질 감사 세션 — 9차원 다이나믹 워크플로우 + P1 2건 해소 (#923 rules path 메타 정합·#924 STATE SSOT 복원, P0 0·P1 2·P2 11·FP 1차단, 브랜치 정리 13개, 2026-06-17)](#전체-문서코드-품질-감사-세션--9차원-다이나믹-워크플로우--p1-2건-해소-923924-2026-06-17)
@@ -106,6 +107,15 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## AI 리뷰 parse_error 근본 수정 (#931) (2026-06-18)
+
+- **AI 코드리뷰 parse_error 출시 이래 ~80% 만성 실패 근본 수정 (#931, 2026-06-18)** — 사용자 "잔여작업 확인" → 이전 미해결 "점수추이 차트 미표시" 재개. systematic-debugging 으로 데이터 파이프라인 역추적: ① 차트 코드 정상(로컬 렌더) ② overview `trend`(`dashboard_trend` `score IS NOT NULL`)가 비어 일러스트 → 운영 DB 최근 분석 82% score NULL ③ score NULL = `ai_review_status=parse_error`(`_persisted_score_is_unreliable`) ④ 운영 DB 월별 success율 4월 ~17%/5월 ~25%/6월 ~16% = 출시 이래 ~80% 만성 실패 ⑤ 근본 = `ai_review.py max_tokens=1500`(PR #3 이후 불변)이 한국어 리뷰 JSON(점수3 + feedback5 + file_feedbacks) 절단 → JSONDecodeError → parse_error.
+- **가시화 트리거**: #853(2026-06-11)이 AI 실패 시 score=NULL 저장 시작 → 그 전엔 인플레 기본점수(89/B)가 차트에 가짜로 찍히다가 NULL로 빠지며 사라짐. #853은 버그가 아니라 숨겨진 만성 장애를 드러낸 것.
+- **실제 API 재현**(운영 동일 모델 sonnet-4-6 + 실제 git diff): max_tokens=1500 → stop_reason=`max_tokens`(절단)·parse_error / 8192 → stop_reason=`end_turn`·success(output 2660). end-to-end `review_code(8192)` → success·scores 정상.
+- **수정**: (1) max_tokens 1500→8192(`settings.claude_review_max_tokens`, 실측 필요량 ~2660 대비 여유) (2) `stop_reason=="max_tokens"` 출력 절단 감지 → 경고 로깅 + success 경로 truncated 마커(C22 입력 절단 `was_truncated` OR 결합) (3) `CLAUDE_REVIEW_MAX_TOKENS` env configurable(`config.py Field(default=8192, ge=1)`, Codex P2 — 저한도 모델 override 대응) + env-vars.md 등재 (4) 회귀 가드 +4(max_tokens 충분성·절단 마커·정상 보존·settings configurable).
+- **Codex mutual 검증**(`codex exec review` 서브커맨드 — gpt-5.5 spawn_agent 버그/o3 계정 미지원으로 review 경유): P2(per-repo 저한도 모델)는 claude-api 실측 현재 영향 0(운영 haiku-4-5/sonnet-4-6 모두 64K, 우려 claude-3-haiku/opus 4096 deprecated) → env로 충분(사용자 결정). P3(테스트 ambient env 의존) → monkeypatch 고정.
+- 단위 4974→**4978**(+4) · 전체 5128→**5132** · pylint 10.00 · flake8 clean. 🔍 사용자 검증: Railway 배포 후 AI success율 ~20%→대폭 상승 + 차트 자연 복구(며칠). [[project-session-2026-06-18]]
 
 ## repos 모드 점수추이 차트 미표시 수정 — #921 후속 다중 차트 가드 + 전 모드 Chart.js 로드 (#929) (2026-06-17)
 
