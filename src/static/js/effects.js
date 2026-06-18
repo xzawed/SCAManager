@@ -37,6 +37,20 @@
   // by both entry + magnetic) is processed exactly once by EACH effect (no shared-set collision).
   const seen = new WeakMap();
 
+  // 안전망(onceInView) 누적 방지: init() 에서 일괄 dispose 하지 않는다. effects.js 는 <body> 외부
+  // 스크립트라 hx-boost swap 마다 IIFE 가 재실행(즉시 init) + htmx:afterSettle 로 init 이 한 번 더
+  // 호출된다(nav 당 2~3회). init 첫 줄에서 직전 안전망을 일괄 dispose 하면, 같은 closure 의
+  // freshOnly(seen) 이 이미 처리한 노드를 EMPTY 로 반환해 재등록을 막아 → count-up 이 observer·리스너
+  // 없이 "0" pre-fill 에 영구 고착됐다(Codex P1 회귀). 게다가 _disposers 는 IIFE 재실행마다 fresh 라
+  // 이전 nav 의 누수도 못 잡았다. 대신 scroll/resize 리스너는 sweep 의 `!el.isConnected` 검사가
+  // 자가 정리한다(다음 scroll/resize 때 detached 노드를 pending 에서 제거 → 비면 리스너 해제).
+  // No blanket dispose in init(): effects.js is an external <body> script, so the IIFE re-executes on
+  // every hx-boost swap (immediate init) AND htmx:afterSettle fires init again (2-3x per nav). Tearing
+  // down the prior safety net at init start left count-up nodes with no observer/listener — the same
+  // closure's freshOnly(seen) returns EMPTY for already-seen nodes, blocking re-registration → "0"
+  // pre-fill sticks forever (Codex P1 regression). Instead, sweep's `!el.isConnected` check self-cleans
+  // the scroll/resize listeners (detached nodes are dropped from pending → listeners released when empty).
+
   // 해당 effect(tag)가 아직 처리하지 않은 노드만 반환 + 처리 표시 (중복 애니메이션/리스너 방지).
   // Return only nodes this effect (tag) has not yet processed + mark them (no duplicate anim/listener).
   function freshOnly(nodeList, tag) {
@@ -76,15 +90,62 @@
       elements.forEach((el) => callback(el));
       return;
     }
+    // fired 가드 — IO 콜백과 아래 안전망의 중복 실행 방지(요소당 1회). pending = 아직 실행 안 된 요소.
+    // fired guard prevents double-run between IO callback and safety net; pending = not-yet-fired set.
+    const fired = new WeakSet();
+    const pending = new Set(elements);
+    const fire = (el) => {
+      if (fired.has(el)) return;
+      fired.add(el);
+      pending.delete(el);
+      callback(el);
+    };
     const io = new IntersectionObserver((entries) => {
       entries.forEach((e) => {
         if (e.isIntersecting) {
-          callback(e.target);
+          fire(e.target);
           io.unobserve(e.target);
         }
       });
     }, opts);
     elements.forEach((el) => io.observe(el));
+    // 🔴 안전망: hx-boost body swap race / IntersectionObserver 콜백 영구 미발동 시 "0" 으로
+    // pre-fill 된 count-up 숫자(점수 등)가 고착된다(운영 사고 2026-06-18). 화면 안의 미실행 요소를
+    // 강제 실행하되 one-shot 이 아니라 scroll/resize 에도 지속 sweep — 처음엔 화면 밖이던 아래쪽
+    // repo 카드/차트/카운터가 스크롤로 보일 때도 복구한다(Codex P2). pending 이 비면 리스너 해제.
+    // Safety net: if the IO callback never fires (hx-boost swap race / permanent miss), the
+    // "0"-prefilled count-up sticks. Force-run in-viewport elements, and keep sweeping on
+    // scroll/resize (not one-shot) so below-fold elements recover when scrolled into view.
+    const sweep = () => {
+      const vh = window.innerHeight || document.documentElement.clientHeight;
+      pending.forEach((el) => {
+        // detached(hx-boost swap 으로 분리된) 요소는 pending 에서 제거 — rect 가 0 이라 영원히
+        // 미발동해 scroll/resize 리스너가 해제되지 않고 누적(메모리 누수)되는 것을 차단(Codex P2).
+        // Drop detached elements (removed by hx-boost swap): their rect is 0 so they never fire
+        // and would keep the scroll/resize listeners alive forever (Codex P2).
+        if (!el.isConnected) {
+          pending.delete(el);
+          io.unobserve(el);
+          return;
+        }
+        const r = el.getBoundingClientRect();
+        if (r.top < vh && r.bottom > 0) {
+          fire(el);
+          io.unobserve(el);
+        }
+      });
+      if (pending.size === 0) {
+        window.removeEventListener("scroll", sweep);
+        window.removeEventListener("resize", sweep);
+      }
+    };
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      sweep();
+      if (pending.size > 0) {
+        window.addEventListener("scroll", sweep, { passive: true });
+        window.addEventListener("resize", sweep, { passive: true });
+      }
+    }));
   }
 
   /* ----- 1. Entry animations (stagger via --idx) -------------------------- */
@@ -355,6 +416,8 @@
   }
 
   function init() {
+    // 일괄 dispose 없음 — 사유는 상단 `seen`/안전망 주석 참조 (Codex P1 회귀 가드).
+    // No blanket dispose here — see the safety-net comment above (Codex P1 regression guard).
     setupEntryAnimations();
     setupCountUp();
     setupScoreBars();
