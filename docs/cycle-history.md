@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [정적 자산 immutable 캐시 → 배포 미전파 stale 사고 수정 (개요 "0/100" 지속 = #936 라이브 미반영 — `/static` immutable+1년 캐시가 버전 해시 없는 effects.js 를 최대 1년 서빙, `no-cache` ETag 재검증 전환, TDD RED→GREEN, 단위 4981, 2026-06-18)](#정적-자산-immutable-캐시--배포-미전파-stale-사고-수정-2026-06-18)
 - [개요 점수 0/100 count-up 고착 — IO 미발동 안전망 + 이중 init dispose 회귀 P1 (1c0a483 안전망 + 75f942e Option A=init 일괄 dispose 제거, e2e 계측으로 IIFE 재실행 이중 init 실측, Codex 3R NG P1 ground-truth 재검증 OK, 단위 4980·E2E 120, 2026-06-18)](#개요-점수-0100-count-up-고착--io-미발동-안전망--이중-init-dispose-회귀-p1-1c0a48375f942e-2026-06-18)
 - [repo_detail 점수추이 차트 미표시 — I18N 스코프 격리 버그 (#933 — F12 `I18N is not defined at buildChart`, block IIFE const ↔ buildChart 스코프 격리, window._repoChartI18N 고유 전역, Codex P2 전역충돌 적발→고유 네임스페이스, 단위 4979·E2E 117, 2026-06-18)](#repo_detail-점수추이-차트-미표시--i18n-스코프-격리-버그-933-2026-06-18)
 - [AI 리뷰 parse_error 근본 수정 — max_tokens 1500→8192 + stop_reason 절단 감지 (#931 — 출시 이래 ~80% parse_error 만성 실패, 운영 DB 월별 success율 추적 + 실제 API 재현, #853 NULL-persist 가시화, env configurable Codex P2, 단위 4978·전체 5132, 2026-06-18)](#ai-리뷰-parse_error-근본-수정-931-2026-06-18)
@@ -109,6 +110,14 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 정적 자산 immutable 캐시 → 배포 미전파 stale 사고 수정 (2026-06-18)
+
+- **개요(`/`) 모든 repo 카드 점수 "0/100" 지속 — 사용자 운영 화면 보고 (2026-06-18)** — 등급 배지 A/B 정상(=score 데이터 정상)인데 점수만 "0/100" = JS count-up 미작동. count-up fix #936 머지·배포(success 13:34) 후에도 지속.
+  - **진단(systematic-debugging)**: 라이브 effects.js 직접 fetch(curl) → **우리 수정 반영됨**(구 `_disposers` 마커 0개·"No blanket dispose" 존재·`last-modified 13:24`). 서버는 새 코드, 화면은 고착 → 클라이언트 캐시 의심. 응답 헤더 `Cache-Control: public, max-age=31536000, immutable` 확인.
+  - **근본**: `src/main.py` `CachedStaticFiles` 가 **버전 해시 없는** URL(`/static/js/effects.js`)에 1년 `immutable` 캐시 → 브라우저가 첫 방문 캐시본을 최대 1년 서빙(immutable=일반 새로고침에도 재검증 안 함) → 모든 `/static` JS·CSS 수정이 재방문 사용자에게 도달 못 함. (HTML·인라인 템플릿 스크립트는 동적 렌더라 정상 전파 = 차트 fix 는 보였고 effects.js count-up 만 stale — 이전 "fix 해도 안 보임" 의 진짜 원인.)
+  - **수정(Option A — 사용자 결정)**: `immutable`+1년 → `no-cache`(ETag 재검증). 변경 시 즉시 전파 / 미변경 시 304(본문 재다운로드 없음 = 대역폭 보존). 200/304 양쪽 헤더 주입(재검증 directive 지속). 무버전 자산의 표준 패턴.
+  - 회귀 가드: `test_static_file_cache_control_revalidates`(no-cache 존재 + immutable/31536000 부재 단언 — 재유입 차단) + `test_static_file_304_on_matching_etag`(매칭 ETag 재검증 304) + 기존 immutable 가드(`test_static_file_has_cache_control_immutable`) 교체. 단위 4980→**4981**. LIVE docs 정정(architecture.md main.py 트리·STATE 파일 역할 2곳 immutable→no-cache; 과거 #423 narrative 는 append-only 보존). 🔴 사용자 즉시 완화 = 하드 리프레시(Ctrl+Shift+R), 근본 = 배포 후 전 사용자 자동 전파. 🔴 교훈: **버전 해시 없는 정적 자산에 `immutable` 장기 캐시 금지** — 배포가 재방문 사용자에게 silent 미도달. [[project-session-2026-06-18]]
 
 ## 개요 점수 0/100 count-up 고착 — IO 미발동 안전망 + 이중 init dispose 회귀 P1 (1c0a483/75f942e) (2026-06-18)
 

@@ -369,32 +369,44 @@ def test_static_missing_file_returns_404(client):
     assert response.status_code == 404
 
 
-# --- Issue #408 G1: CachedStaticFiles Cache-Control 회귀 가드 ---
-# 정적 자원 응답에 장기 캐시 헤더가 포함되는지 확인
-# Regression guard: static assets must include long-term Cache-Control header
+# --- 캐시 stale 운영 사고 (2026-06-18): CachedStaticFiles 재검증 회귀 가드 ---
+# 정적 자원은 버전 해시 없는 URL(`/static/js/effects.js` 등)이므로 immutable 장기 캐시 금지 —
+# ETag 재검증(`no-cache`)으로 배포 즉시 전파. (구 Issue #408 G1 의 immutable 가드를 교체)
+# Static assets use un-versioned URLs → no immutable long cache; ETag revalidation propagates deploys.
 
-def test_static_file_has_cache_control_immutable(client):
-    """200 응답에 `public, max-age=31536000, immutable` Cache-Control 헤더가 포함된다.
-    Verify CachedStaticFiles adds 1-year immutable Cache-Control on 200 responses.
+def test_static_file_cache_control_revalidates(client):
+    """200 응답 Cache-Control 은 재검증(`no-cache`)이어야 한다 — immutable/1년 금지.
 
-    회귀 위험: src/main.py 의 CachedStaticFiles 가 StaticFiles 로 되돌아갈 때 차단.
-    Regression guard: blocks downgrade from CachedStaticFiles back to plain StaticFiles.
+    🔴 회귀(2026-06-18 운영 사고): `public, max-age=31536000, immutable` 은 버전 해시 없는
+    `/static/js/effects.js` 등에 붙어, 배포 후에도 브라우저가 구 캐시본을 최대 1년 서빙 →
+    JS/CSS 수정이 재방문 사용자에게 도달 못 함(count-up "0/100" 고착 fix #936 이 라이브 미반영).
+    `no-cache` 재검증이면 변경 시 즉시 전파(미변경 시 304 — 본문 재다운로드 없음, 대역폭 보존).
     """
     response = client.get("/static/vendor/chart.umd.min.js")
     assert response.status_code == 200
     cc = response.headers.get("cache-control", "")
-    assert "public" in cc, f"Cache-Control 에 'public' 없음: {cc!r}"
-    assert "max-age=31536000" in cc, f"Cache-Control 에 'max-age=31536000' 없음: {cc!r}"
-    assert "immutable" in cc, f"Cache-Control 에 'immutable' 없음: {cc!r}"
+    assert "no-cache" in cc, f"Cache-Control 에 'no-cache'(재검증) 없음: {cc!r}"
+    assert "immutable" not in cc, f"immutable 재유입 → 배포 미전파 회귀: {cc!r}"
+    assert "31536000" not in cc, f"1년 max-age 재유입 → 배포 미전파 회귀: {cc!r}"
 
 
-def test_static_404_no_cache_control_immutable(client):
-    """404 응답에는 장기 캐시 헤더를 붙이지 않는다.
-    Verify CachedStaticFiles does NOT add immutable Cache-Control on 404 responses."""
+def test_static_file_304_on_matching_etag(client):
+    """변경 없는 자산은 ETag 재검증으로 304 반환 — 본문 재다운로드 없이 freshness 보장(대역폭 보존)."""
+    r1 = client.get("/static/vendor/chart.umd.min.js")
+    assert r1.status_code == 200
+    etag = r1.headers.get("etag")
+    assert etag, "ETag 헤더 부재 — 재검증 304 불가"
+    r2 = client.get("/static/vendor/chart.umd.min.js", headers={"If-None-Match": etag})
+    assert r2.status_code == 304, f"매칭 ETag 재검증 시 304 기대, got {r2.status_code}"
+
+
+def test_static_404_no_long_cache(client):
+    """404 응답에는 immutable/1년 캐시 헤더를 붙이지 않는다."""
     response = client.get("/static/vendor/nonexistent.js")
     assert response.status_code == 404
     cc = response.headers.get("cache-control", "")
     assert "immutable" not in cc, f"404 응답에 immutable 헤더가 붙으면 안 됨: {cc!r}"
+    assert "31536000" not in cc, f"404 응답에 1년 캐시가 붙으면 안 됨: {cc!r}"
 
 
 # --- S2: SESSION_SECRET 프로덕션 강제 (Phase B) ---

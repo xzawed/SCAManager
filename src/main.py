@@ -241,16 +241,21 @@ app.add_middleware(
 )
 
 
-# 정적 파일 장기 캐시 — 불변 에셋(CSS/JS/이미지)에 1년 Cache-Control 헤더 추가
-# Long-term cache for static assets — adds 1-year Cache-Control header for immutable files
+# 정적 파일 캐시 — 버전 해시 없는 URL(`/static/js/effects.js` 등)이라 immutable 장기 캐시 금지.
+# immutable+1년은 배포 후에도 브라우저가 구 캐시본을 최대 1년 서빙 → JS/CSS 수정이 재방문 사용자에게
+# 도달 못 하는 stale 사고(2026-06-18, count-up "0/100" fix 라이브 미반영). `no-cache`(ETag 재검증)로
+# 변경 시 즉시 전파 — 미변경 시 304(본문 재다운로드 없음, 대역폭 보존). 무버전 자산의 표준 패턴.
+# Static cache — un-versioned URLs, so NO immutable long cache (it served stale JS/CSS for up to a year
+# after deploy — 2026-06-18 incident). `no-cache` revalidates via ETag: fresh on change, 304 (no
+# re-download) when unchanged. Set on 200 + 304 so the directive persists on the cached entry.
 class CachedStaticFiles(StaticFiles):
-    """1년 Cache-Control 헤더를 200 응답에 추가한다.
-    Adds a 1-year Cache-Control header to 200 responses for immutable static assets."""
+    """정적 응답에 `no-cache`(ETag 재검증) Cache-Control 을 붙인다 — 무버전 자산 stale 방지.
+    Adds `no-cache` (ETag-revalidating) Cache-Control so un-versioned static assets never go stale."""
 
     async def get_response(self, path: str, scope: Any) -> Response:
         response = await super().get_response(path, scope)
-        if response.status_code == 200:
-            response.headers["cache-control"] = "public, max-age=31536000, immutable"
+        if response.status_code in (200, 304):
+            response.headers["cache-control"] = "no-cache"
         return response
 
 

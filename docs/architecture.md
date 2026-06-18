@@ -6,7 +6,7 @@
 
 ```
 src/
-├── main.py                     # FastAPI 앱, lifespan(DB 마이그레이션 + http_client), 전체 라우터 등록 + CachedStaticFiles `/static` mount (Cache-Control immutable 1년) + 미들웨어 LIFO 등록 (SecurityHeaders → RLSSessionMiddleware → SessionMiddleware → LocaleMiddleware)
+├── main.py                     # FastAPI 앱, lifespan(DB 마이그레이션 + http_client), 전체 라우터 등록 + CachedStaticFiles `/static` mount (Cache-Control `no-cache` ETag 재검증 — 무버전 자산 stale 방지) + 미들웨어 LIFO 등록 (SecurityHeaders → RLSSessionMiddleware → SessionMiddleware → LocaleMiddleware)
 ├── static/
 │   ├── vendor/chart.umd.min.js  # Chart.js 4.4.0 UMD min vendoring
 │   ├── vendor/htmx.min.js       # HTMX 1.9.12 hx-boost 네비게이션 (전체 페이지 리로드 제거)
