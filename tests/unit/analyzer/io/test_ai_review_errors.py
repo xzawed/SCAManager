@@ -532,3 +532,81 @@ async def test_review_code_closes_anthropic_client():
     with patch("src.analyzer.io.ai_review.anthropic.AsyncAnthropic", return_value=fake_client):
         await review_code("sk-test", "feat: x", [("app.py", "+ x = 1")])
     fake_client.aclose.assert_awaited_once()
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# 🔴 출력 토큰 절단 봉인 — max_tokens 상향 + stop_reason="max_tokens" 감지
+# 🔴 Output-token truncation seal — raise max_tokens + detect stop_reason="max_tokens"
+#
+# 근본 사고: max_tokens=1500 이 한국어 리뷰 JSON(점수 + 5 feedback + file_feedbacks,
+# 실측 ~2660 토큰)을 잘라 stop_reason=max_tokens → 불완전 JSON → parse_error 로 출시
+# 이래 ~80% AI 리뷰 실패. 운영 DB + 실제 API 재현으로 확정 (2026-06-18).
+# Root incident: max_tokens=1500 truncated Korean review JSON (~2660 tokens measured),
+# yielding stop_reason=max_tokens → broken JSON → parse_error ~80% since launch.
+# ──────────────────────────────────────────────────────────────────────────
+
+_FULL_REVIEW_JSON = json.dumps({
+    "commit_message_score": 15, "direction_score": 18, "test_score": 9,
+    "summary": "ok", "suggestions": [],
+    "commit_message_feedback": "", "code_quality_feedback": "",
+    "security_feedback": "", "direction_feedback": "", "test_feedback": "",
+    "file_feedbacks": [],
+})
+
+
+async def test_review_code_passes_sufficient_max_tokens_to_create():
+    """🔴 회귀 가드 — messages.create 의 max_tokens 가 충분히 커야 함 (1500 절단 사고 재발 방지).
+
+    max_tokens=1500 은 한국어 리뷰 JSON(~2660 토큰)을 잘라 stop_reason=max_tokens →
+    불완전 JSON → parse_error 로 출시 이래 ~80% 실패. 작은 값으로 복귀하면 본 테스트 fail.
+    Regression guard: max_tokens must stay large enough to avoid the 1500-token truncation.
+    """
+    response_obj = MagicMock()
+    response_obj.content = [MagicMock(text=_FULL_REVIEW_JSON)]
+    response_obj.usage = MagicMock(input_tokens=10, output_tokens=20)
+    response_obj.stop_reason = "end_turn"
+    fake_client = MagicMock()
+    fake_client.messages.create = AsyncMock(return_value=response_obj)
+    with patch("src.analyzer.io.ai_review.anthropic.AsyncAnthropic", return_value=fake_client):
+        await review_code("sk-test", "feat: x", [("a.py", "+ x = 1")])
+    create_kwargs = fake_client.messages.create.call_args.kwargs
+    assert "max_tokens" in create_kwargs
+    assert create_kwargs["max_tokens"] >= 4096, (
+        "max_tokens 가 작으면 리뷰 응답 절단 → parse_error 재발 (실측 필요량 ~2660)"
+    )
+
+
+async def test_review_code_marks_truncated_on_max_tokens_stop_reason():
+    """🔴 stop_reason='max_tokens'(출력 절단) → result.truncated=True (부분 응답 점수 신뢰 불가).
+
+    출력이 잘리면 대부분 parse_error 지만, 운좋게 유효 JSON(success)이어도 부분 응답이라
+    점수 인플레 위험 → truncated 마커로 auto-merge/approve 차단(C22 입력 절단과 대칭).
+    Output truncation: even a parsable partial response is unreliable → mark truncated.
+    """
+    response_obj = MagicMock()
+    response_obj.content = [MagicMock(text=_FULL_REVIEW_JSON)]
+    response_obj.usage = MagicMock(input_tokens=10, output_tokens=20)
+    response_obj.stop_reason = "max_tokens"
+    fake_client = MagicMock()
+    fake_client.messages.create = AsyncMock(return_value=response_obj)
+    with patch("src.analyzer.io.ai_review.anthropic.AsyncAnthropic", return_value=fake_client):
+        result = await review_code("sk-test", "feat: x", [("a.py", "+ x = 1")])
+    assert result.status == "success"
+    assert result.truncated is True
+
+
+async def test_review_code_no_truncation_marker_on_normal_stop():
+    """stop_reason='end_turn' + 작은 diff → result.truncated=False (정상 회귀 가드).
+
+    정상 완료 응답에 truncated 마커가 잘못 붙으면 모든 리뷰가 auto-merge 차단됨 → 보존 가드.
+    """
+    response_obj = MagicMock()
+    response_obj.content = [MagicMock(text=_FULL_REVIEW_JSON)]
+    response_obj.usage = MagicMock(input_tokens=10, output_tokens=20)
+    response_obj.stop_reason = "end_turn"
+    fake_client = MagicMock()
+    fake_client.messages.create = AsyncMock(return_value=response_obj)
+    with patch("src.analyzer.io.ai_review.anthropic.AsyncAnthropic", return_value=fake_client):
+        result = await review_code("sk-test", "feat: x", [("a.py", "+ x = 1")])
+    assert result.status == "success"
+    assert result.truncated is False
