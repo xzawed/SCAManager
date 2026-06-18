@@ -110,6 +110,11 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
     # max_retries=2 — explicit so SDK upgrades cannot silently change retry behavior.
     client = anthropic.AsyncAnthropic(api_key=api_key, timeout=60.0, max_retries=2)
     model = model or settings.claude_review_model
+    # 출력 토큰 상한 — settings 경유 configurable (저한도 모델 override 대응, Codex P2).
+    # 구값 1500 은 한국어 리뷰 JSON(~2660 토큰)을 잘라 stop_reason=max_tokens → parse_error 로
+    # 출시 이래 ~80% 실패 (운영 DB + 실제 API 재현, 2026-06-18). default 8192.
+    # Output-token cap via settings — configurable for low-output-limit model overrides.
+    max_output_tokens = settings.claude_review_max_tokens
     # Phase 4 PR-12 — language 별 system prompt (출력 언어 지시 포함).
     # Phase 4 PR-12 — per-language system prompt (with output language directive).
     system_text = get_system_prompt(language)
@@ -121,7 +126,7 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
         # `settings.disable_prompt_cache=True` opts out (cache_control omitted).
         response = await client.messages.create(
             model=model,
-            max_tokens=1500,
+            max_tokens=max_output_tokens,
             system=build_cached_system_param(system_text),
             messages=[{"role": "user", "content": prompt}],
         )
@@ -146,12 +151,24 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
         result.input_tokens = input_tokens
         result.output_tokens = output_tokens
         result.used_model = model
+        # 🔴 출력 토큰 절단 감지 — stop_reason=="max_tokens" 면 응답 JSON 이 _REVIEW_MAX_TOKENS
+        # 에서 잘림. 대부분 불완전 JSON → parse_error(ai_review_failed 가 차단)지만, 운좋게
+        # 유효 JSON(success)이어도 부분 응답이라 점수 인플레 위험 → 명시 로깅 + truncated 마커.
+        # Output truncation: stop_reason=="max_tokens" means the JSON was cut at _REVIEW_MAX_TOKENS.
+        # Usually parse_error; even a parsable partial is unreliable → log + mark truncated.
+        output_truncated = getattr(response, "stop_reason", None) == "max_tokens"
+        if output_truncated:
+            logger.warning(
+                "AI review truncated at max_tokens=%d (status=%s) — raise CLAUDE_REVIEW_MAX_TOKENS if frequent",
+                max_output_tokens, result.status,
+            )
         # C22: 절단 마커 — 파싱까지 성공(status=="success")한 경우에만 설정. parse_error 는
         # ai_review_failed 가 차단을 담당하므로 truncated 는 False 유지(success 경로 한정 불변식).
-        # C22: set the truncation marker only on a genuine success (status=="success"). parse_error is
-        # handled by ai_review_failed, so leave truncated False (success-path-only invariant).
+        # 입력 diff 절단(was_truncated, C22) + 출력 토큰 절단(output_truncated) 양쪽 OR 결합.
+        # C22: set the marker only on success (parse_error is handled by ai_review_failed).
+        # Combines input-diff truncation (was_truncated) and output-token truncation.
         if result.status == "success":
-            result.truncated = was_truncated
+            result.truncated = was_truncated or output_truncated
         return result
     except Exception as exc:  # pylint: disable=broad-exception-caught  # noqa: BLE001
         # anthropic/httpx 는 다양한 예외를 발생시킬 수 있음 — 모두 graceful fallback
