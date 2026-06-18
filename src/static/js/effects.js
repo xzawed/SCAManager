@@ -37,11 +37,19 @@
   // by both entry + magnetic) is processed exactly once by EACH effect (no shared-set collision).
   const seen = new WeakMap();
 
-  // onceInView 안전망 정리 함수 목록 — init() 재실행(hx-boost) 시 이전 observer + scroll/resize
-  // 리스너를 해제해 detached 요소로 인한 리스너/observer 누적(메모리 누수)을 막는다 (Codex P2).
-  // onceInView safety-net disposers — released on init() re-run (hx-boost) to prevent
-  // listener/observer accumulation from detached elements (Codex P2).
-  let _disposers = [];
+  // 안전망(onceInView) 누적 방지: init() 에서 일괄 dispose 하지 않는다. effects.js 는 <body> 외부
+  // 스크립트라 hx-boost swap 마다 IIFE 가 재실행(즉시 init) + htmx:afterSettle 로 init 이 한 번 더
+  // 호출된다(nav 당 2~3회). init 첫 줄에서 직전 안전망을 일괄 dispose 하면, 같은 closure 의
+  // freshOnly(seen) 이 이미 처리한 노드를 EMPTY 로 반환해 재등록을 막아 → count-up 이 observer·리스너
+  // 없이 "0" pre-fill 에 영구 고착됐다(Codex P1 회귀). 게다가 _disposers 는 IIFE 재실행마다 fresh 라
+  // 이전 nav 의 누수도 못 잡았다. 대신 scroll/resize 리스너는 sweep 의 `!el.isConnected` 검사가
+  // 자가 정리한다(다음 scroll/resize 때 detached 노드를 pending 에서 제거 → 비면 리스너 해제).
+  // No blanket dispose in init(): effects.js is an external <body> script, so the IIFE re-executes on
+  // every hx-boost swap (immediate init) AND htmx:afterSettle fires init again (2-3x per nav). Tearing
+  // down the prior safety net at init start left count-up nodes with no observer/listener — the same
+  // closure's freshOnly(seen) returns EMPTY for already-seen nodes, blocking re-registration → "0"
+  // pre-fill sticks forever (Codex P1 regression). Instead, sweep's `!el.isConnected` check self-cleans
+  // the scroll/resize listeners (detached nodes are dropped from pending → listeners released when empty).
 
   // 해당 effect(tag)가 아직 처리하지 않은 노드만 반환 + 처리 표시 (중복 애니메이션/리스너 방지).
   // Return only nodes this effect (tag) has not yet processed + mark them (no duplicate anim/listener).
@@ -131,14 +139,6 @@
         window.removeEventListener("resize", sweep);
       }
     };
-    // dispose — init() 재실행 시 observer + 리스너 강제 해제 (위 _disposers 로 호출).
-    // dispose — force-release the observer + listeners on init() re-run (invoked via _disposers).
-    const dispose = () => {
-      io.disconnect();
-      window.removeEventListener("scroll", sweep);
-      window.removeEventListener("resize", sweep);
-    };
-    _disposers.push(dispose);
     requestAnimationFrame(() => requestAnimationFrame(() => {
       sweep();
       if (pending.size > 0) {
@@ -416,11 +416,8 @@
   }
 
   function init() {
-    // hx-boost 재초기화 시 이전 onceInView 안전망(observer + scroll/resize 리스너) 정리 —
-    // detached 요소로 인한 리스너/observer 누적(메모리 누수) 차단 (Codex P2).
-    // Dispose previous onceInView safety nets on hx-boost re-init to prevent listener/observer
-    // accumulation from detached elements (Codex P2).
-    while (_disposers.length) { _disposers.pop()(); }
+    // 일괄 dispose 없음 — 사유는 상단 `seen`/안전망 주석 참조 (Codex P1 회귀 가드).
+    // No blanket dispose here — see the safety-net comment above (Codex P1 regression guard).
     setupEntryAnimations();
     setupCountUp();
     setupScoreBars();

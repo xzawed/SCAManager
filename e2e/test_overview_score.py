@@ -73,3 +73,46 @@ def test_overview_score_renders_full_load(seeded_page: Page, base_url: str):
     _seed_score(db_path, 85)
     seeded_page.goto(f"{base_url}/")
     expect(seeded_page.locator(".repo-card__score").first).not_to_have_text("0/100", timeout=4000)
+
+
+@pytest.mark.e2e
+def test_overview_score_survives_double_init(seeded_page: Page, base_url: str):
+    """hx-boost 이중 init(즉시 IIFE 재실행 + afterSettle) 후에도 below-fold count-up 이 복구돼야 한다.
+
+    🔴 회귀(Codex 3R NG P1): effects.js 는 <body> 외부 스크립트라 hx-boost body swap 마다
+    IIFE 가 재실행(즉시 init) 되고 htmx:afterSettle 로 init 이 한 번 더 호출된다(nav 당 init 2~3회).
+    2번째 init 의 `while(_disposers) dispose` 가 1번째 init 의 onceInView 안전망(observer +
+    scroll/resize 리스너)을 해제하는데, 같은 closure 의 `freshOnly(seen)` 이 EMPTY 를 반환해
+    재등록을 차단 → below-fold 점수가 "0/100" pre-fill 에 영구 고착(스크롤해도 복구 안 됨).
+
+    결정론 재현: 작은 뷰포트로 score 를 화면 밖에 두고(IO no-op 로 count-up 미발동 → "0" 고착),
+    `document._fxEffectsHandler()` 로 2번째 init 을 직접 호출한 뒤 스크롤한다. 안전망이 살아
+    있으면(수정 후) scroll sweep 이 count-up 을 발동해 "0/100" 고착이 풀린다.
+
+    The 2nd init must NOT tear down the 1st init's surviving safety net.
+    """
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    _seed_score(db_path, 85)
+    seeded_page.set_viewport_size({"width": 800, "height": 120})
+    seeded_page.add_init_script(_IO_NOOP)
+    seeded_page.goto(f"{base_url}/")
+    seeded_page.wait_for_selector(".repo-card__score")
+    score = seeded_page.locator(".repo-card__score").first
+    seeded_page.wait_for_timeout(200)  # 1번째 init 의 rAF 안전망(scroll 리스너) 등록 대기
+
+    # 전제 검증: 점수가 화면 밖(below fold) + "0" pre-fill 고착 상태여야 의미 있는 재현이다
+    box = score.bounding_box()
+    vh = seeded_page.evaluate("window.innerHeight")
+    assert box is not None and box["y"] >= vh, (
+        f"테스트 전제 실패: score 가 화면 안에 있음 (y={box['y'] if box else None}, vh={vh}) — 뷰포트 조정 필요"
+    )
+    assert (score.text_content() or "").strip().startswith("0"), "테스트 전제 실패: score 가 '0' pre-fill 상태가 아님"
+
+    # 2번째 init 직접 호출 (hx-boost afterSettle 시뮬) — 현 코드: 1번째 init 안전망 dispose + freshOnly EMPTY 재등록 차단
+    seeded_page.evaluate("if (document._fxEffectsHandler) document._fxEffectsHandler();")
+
+    # 점수를 화면 안으로 스크롤 — 안전망(scroll sweep)이 살아 있으면 count-up 발동
+    score.scroll_into_view_if_needed()
+    seeded_page.wait_for_timeout(1600)  # animateNumber(1100ms) + 여유
+
+    expect(score).not_to_have_text("0/100", timeout=2000)

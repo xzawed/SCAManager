@@ -108,11 +108,22 @@ def test_oncein_view_has_io_miss_safety_net():
     assert 'addEventListener("scroll"' in body, (
         "onceInView scroll 지속 안전망 누락 → below-fold 요소 IO 영구 미발동 시 '0' 고착 (Codex P2)"
     )
-    # 🔴 detached(hx-boost swap 분리) 요소 제거 + init 재초기화 dispose — 리스너/observer 누수 차단 (Codex P2).
-    # Drop detached elements + dispose on re-init — prevents scroll/resize listener & observer leak.
+    # 🔴 detached(hx-boost swap 분리) 요소 제거 — scroll/resize 리스너 자가 정리(누수 차단).
+    # init() 일괄 dispose 를 제거한 뒤(Codex P1 수정) 이 isConnected 검사가 누수 방지의 단일 수단.
+    # Drop detached elements so scroll/resize listeners self-clean; after removing the init() blanket
+    # dispose (Codex P1 fix) this isConnected check is the sole leak-prevention mechanism.
     assert "isConnected" in body, (
-        "sweep detached 제거 누락 → hx-boost swap 후 scroll/resize 리스너 누적·메모리 누수 (Codex P2)"
+        "sweep detached 제거 누락 → hx-boost swap 후 scroll/resize 리스너 누적·메모리 누수"
     )
-    assert "_disposers" in src, (
-        "init 재초기화 시 onceInView dispose 누락 → 리스너/observer 누적 (Codex P2)"
-    )
+    # 🔴 Codex P1 회귀 가드: init() 일괄 dispose 재유입 금지. effects.js 는 <body> 외부 스크립트라
+    # hx-boost swap 마다 IIFE 재실행(즉시 init) + htmx:afterSettle 로 init 이 nav 당 2~3회 호출된다.
+    # 직전 안전망을 dispose 하면 같은 closure 의 freshOnly(seen) 이 EMPTY 를 반환해 재등록을 막아
+    # count-up 이 "0" pre-fill 에 영구 고착(below-fold). 런타임 검증 = e2e/test_overview_score.py::
+    # test_overview_score_survives_double_init.
+    # Codex P1 regression guard: no blanket dispose may return to init() (it tears down the prior
+    # init's safety net while freshOnly(seen) blocks re-registration → count-up "0" freeze).
+    assert (
+        "_disposers.pop" not in src
+        and "_disposers.push" not in src
+        and "while (_disposers" not in src
+    ), "init() 일괄 dispose 재유입 → Codex P1 count-up '0' 고착 회귀 (이중 init + freshOnly 재등록 차단)"
