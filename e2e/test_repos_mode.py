@@ -63,6 +63,30 @@ def test_repos_mode_score_trend_chart_renders(seeded_page: Page, base_url: str):
 
 
 @pytest.mark.e2e
+def test_repo_detail_score_chart_renders(seeded_page: Page, base_url: str):
+    """repo_detail(`/repos/{name}`) 의 점수 추이 차트(scoreChart)가 실제로 렌더돼야 한다.
+
+    🔴 운영 사고 회귀(2026-06-18): `I18N` 이 한 `<script>` block(IIFE) 내 `const` 로 격리돼,
+    별도 block 의 `buildChart` 가 stats 배지에서 `I18N.chartAvg` 참조 시 `ReferenceError:
+    I18N is not defined` → buildChart throw → `new Chart` 미도달 → scoreChart 영구 미표시.
+    호출 경로: vendor chart.umd.min.js onload → _repoChartReady → buildChart. 캐시 즉시 로드
+    (라이브 immutable)가 onload 를 I18N 정의보다 앞당겨 트리거. window.I18N 전역화 +
+    buildChart typeof I18N 가드로 봉인. conftest pageerror trap 이 throw 를, wait_for_function
+    이 Chart 인스턴스 부착을 양방향 검증한다(repos 모드 차트와 다른 템플릿/canvas).
+    """
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    _seed_trend_analyses(db_path)
+    seeded_page.goto(f"{base_url}/repos/owner/testrepo")
+    expect(seeded_page.locator("#scoreChart")).to_be_visible()
+    # Chart.js 로드 후 scoreChart canvas 에 Chart 인스턴스 부착(미부착=I18N throw 로 차트 공백)
+    # After Chart.js loads, a Chart instance must be attached to the scoreChart canvas.
+    seeded_page.wait_for_function(
+        "() => !!(window.Chart && Chart.getChart && Chart.getChart('scoreChart'))",
+        timeout=6000,
+    )
+
+
+@pytest.mark.e2e
 def test_repos_tab_visible(page: Page, base_url: str):
     """repos 탭 링크가 Dashboard에 표시된다."""
     page.goto(f"{base_url}/dashboard")
