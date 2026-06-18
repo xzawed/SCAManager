@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     # Phase 2 d-🅓 (Cycle 74) — model for Insight narrative only (default Haiku — 67% cheaper).
     # AI review (review_code) keeps Sonnet (memory feedback-ai-review-quality-protect.md exclusion).
     claude_insight_model: str = "claude-haiku-4-5"
+    # AI 리뷰 응답 출력 토큰 상한 (환경변수 CLAUDE_REVIEW_MAX_TOKENS) — 한국어 리뷰 JSON(~2660 토큰) 여유값.
+    # 🔴 저한도 모델(claude-3-haiku/opus = 4096)을 claude_review_model 로 쓰면 8192 가 Anthropic 400
+    #    거부 → api_error 이므로 그 경우 이 값을 모델 출력 한도 이하로 낮춰야 한다 (Codex P2).
+    # Output-token cap for AI review (env CLAUDE_REVIEW_MAX_TOKENS); lower it for low-output-limit models.
+    claude_review_max_tokens: int = Field(default=8192, ge=1)
     # 운영 opt-out — Anthropic prompt caching (5분 ephemeral) 비활성화 (default-on)
     # Operational opt-out — disables Anthropic prompt caching (default-on, 5-min ephemeral)
     disable_prompt_cache: bool = False

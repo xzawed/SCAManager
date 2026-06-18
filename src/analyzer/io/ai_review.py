@@ -32,13 +32,6 @@ from src.shared.claude_metrics import aclose_anthropic_client, extract_anthropic
 
 logger = logging.getLogger(__name__)
 
-# AI 리뷰 응답 출력 토큰 상한 — 한국어 리뷰 JSON(점수 + 5 feedback + file_feedbacks,
-# 실측 ~2660 토큰)을 담을 여유값. 구값 1500 은 응답을 잘라 stop_reason=max_tokens →
-# 불완전 JSON → parse_error 로 출시 이래 ~80% 리뷰 실패 (운영 DB + 실제 API 재현, 2026-06-18).
-# Output-token cap for AI review: headroom for the Korean review JSON (~2660 tokens measured).
-# The old 1500 truncated responses → parse_error for ~80% of reviews since launch (confirmed 2026-06-18).
-_REVIEW_MAX_TOKENS = 8192
-
 
 @dataclass
 class AiReviewResult:  # pylint: disable=too-many-instance-attributes
@@ -117,6 +110,11 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
     # max_retries=2 — explicit so SDK upgrades cannot silently change retry behavior.
     client = anthropic.AsyncAnthropic(api_key=api_key, timeout=60.0, max_retries=2)
     model = model or settings.claude_review_model
+    # 출력 토큰 상한 — settings 경유 configurable (저한도 모델 override 대응, Codex P2).
+    # 구값 1500 은 한국어 리뷰 JSON(~2660 토큰)을 잘라 stop_reason=max_tokens → parse_error 로
+    # 출시 이래 ~80% 실패 (운영 DB + 실제 API 재현, 2026-06-18). default 8192.
+    # Output-token cap via settings — configurable for low-output-limit model overrides.
+    max_output_tokens = settings.claude_review_max_tokens
     # Phase 4 PR-12 — language 별 system prompt (출력 언어 지시 포함).
     # Phase 4 PR-12 — per-language system prompt (with output language directive).
     system_text = get_system_prompt(language)
@@ -128,7 +126,7 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
         # `settings.disable_prompt_cache=True` opts out (cache_control omitted).
         response = await client.messages.create(
             model=model,
-            max_tokens=_REVIEW_MAX_TOKENS,
+            max_tokens=max_output_tokens,
             system=build_cached_system_param(system_text),
             messages=[{"role": "user", "content": prompt}],
         )
@@ -161,8 +159,8 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
         output_truncated = getattr(response, "stop_reason", None) == "max_tokens"
         if output_truncated:
             logger.warning(
-                "AI review response truncated at max_tokens=%d (status=%s) — raise _REVIEW_MAX_TOKENS if frequent",
-                _REVIEW_MAX_TOKENS, result.status,
+                "AI review truncated at max_tokens=%d (status=%s) — raise CLAUDE_REVIEW_MAX_TOKENS if frequent",
+                max_output_tokens, result.status,
             )
         # C22: 절단 마커 — 파싱까지 성공(status=="success")한 경우에만 설정. parse_error 는
         # ai_review_failed 가 차단을 담당하므로 truncated 는 False 유지(success 경로 한정 불변식).

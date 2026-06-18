@@ -23,6 +23,7 @@
 | `TOKEN_ENCRYPTION_KEY` | GitHub Access Token 암호화 키 (미설정 시 평문 저장) | `32자 이상 랜덤` |
 | `STRICT_TOKEN_ENCRYPTION` | `true` 설정 시 `TOKEN_ENCRYPTION_KEY` 미설정이면 lifespan startup 차단 (기본값 `false` = 평문 저장 허용 + WARNING 출력) | `false` (기본) |
 | `CLAUDE_REVIEW_MODEL` | AI 코드리뷰에 사용할 Claude 모델 ID | `claude-sonnet-4-6` (기본) |
+| `CLAUDE_REVIEW_MAX_TOKENS` | AI 코드리뷰 응답 출력 토큰 상한 — 한국어 리뷰 JSON(~2660 토큰) 여유값. 🔴 저한도 모델(claude-3-haiku/opus=4096)을 `CLAUDE_REVIEW_MODEL` 로 쓰면 이 값을 모델 출력 한도 이하로 낮춰야 함(8192 일괄 적용 시 Anthropic 400 → `api_error`). 구값 1500 이 응답을 절단해 `parse_error` 로 출시 이래 ~80% 리뷰 실패한 사고 fix (제약 `ge=1`) | `8192` (기본) |
 | `CLAUDE_INSIGHT_MODEL` | Insight narrative (`/dashboard?mode=insight`) 4 카드 생성용 Claude 모델 ID — 코드리뷰보다 단순 task → Haiku 분기로 토큰 비용 ↓ (Cycle 74 PR-A #247) | `claude-haiku-4-5` (기본) |
 | `DISABLE_PROMPT_CACHE` | Anthropic prompt caching (5분 ephemeral) opt-out — `1` 시 비활성 (Phase 3 PR 1 #218 신설). 운영 비용 통제용 — default `0` (caching 적용) | `0` (기본) / `1` (비활성) |
 | `TELEGRAM_WEBHOOK_SECRET` | Telegram `setWebhook` 시크릿 토큰 — **미설정 시 401 fail-closed** (사이클 142 Phase B S1 #674 보안 강화 — 이전 "헤더 검증 생략"에서 변경). Railway에서 반드시 설정 필요, 미설정 시 Telegram gate callback 전체 비활성 | 빈 문자열 (기본, **운영 시 반드시 설정**) |

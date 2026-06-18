@@ -610,3 +610,23 @@ async def test_review_code_no_truncation_marker_on_normal_stop():
         result = await review_code("sk-test", "feat: x", [("a.py", "+ x = 1")])
     assert result.status == "success"
     assert result.truncated is False
+
+
+async def test_review_code_max_tokens_configurable_via_settings(monkeypatch):
+    """🔴 max_tokens 는 settings.claude_review_max_tokens 에서 가져옴 (Codex P2 — 저한도 모델 대응).
+
+    claude-3-haiku/opus(출력 한도 4096)를 CLAUDE_REVIEW_MODEL/repo override 로 선택하면 8192 일괄
+    적용 시 Anthropic 이 400 거부 → api_error(1500 일 땐 작동하던 모델 회귀). env 로 낮춰 대응.
+    Configurable so low-output-limit models (e.g. claude-3-haiku/opus=4096) still work.
+    """
+    monkeypatch.setattr("src.analyzer.io.ai_review.settings.claude_review_max_tokens", 4096)
+    response_obj = MagicMock()
+    response_obj.content = [MagicMock(text=_FULL_REVIEW_JSON)]
+    response_obj.usage = MagicMock(input_tokens=10, output_tokens=20)
+    response_obj.stop_reason = "end_turn"
+    fake_client = MagicMock()
+    fake_client.messages.create = AsyncMock(return_value=response_obj)
+    with patch("src.analyzer.io.ai_review.anthropic.AsyncAnthropic", return_value=fake_client):
+        await review_code("sk-test", "feat: x", [("a.py", "+ x = 1")])
+    create_kwargs = fake_client.messages.create.call_args.kwargs
+    assert create_kwargs["max_tokens"] == 4096
