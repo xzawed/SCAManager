@@ -37,6 +37,12 @@
   // by both entry + magnetic) is processed exactly once by EACH effect (no shared-set collision).
   const seen = new WeakMap();
 
+  // onceInView 안전망 정리 함수 목록 — init() 재실행(hx-boost) 시 이전 observer + scroll/resize
+  // 리스너를 해제해 detached 요소로 인한 리스너/observer 누적(메모리 누수)을 막는다 (Codex P2).
+  // onceInView safety-net disposers — released on init() re-run (hx-boost) to prevent
+  // listener/observer accumulation from detached elements (Codex P2).
+  let _disposers = [];
+
   // 해당 effect(tag)가 아직 처리하지 않은 노드만 반환 + 처리 표시 (중복 애니메이션/리스너 방지).
   // Return only nodes this effect (tag) has not yet processed + mark them (no duplicate anim/listener).
   function freshOnly(nodeList, tag) {
@@ -76,15 +82,70 @@
       elements.forEach((el) => callback(el));
       return;
     }
+    // fired 가드 — IO 콜백과 아래 안전망의 중복 실행 방지(요소당 1회). pending = 아직 실행 안 된 요소.
+    // fired guard prevents double-run between IO callback and safety net; pending = not-yet-fired set.
+    const fired = new WeakSet();
+    const pending = new Set(elements);
+    const fire = (el) => {
+      if (fired.has(el)) return;
+      fired.add(el);
+      pending.delete(el);
+      callback(el);
+    };
     const io = new IntersectionObserver((entries) => {
       entries.forEach((e) => {
         if (e.isIntersecting) {
-          callback(e.target);
+          fire(e.target);
           io.unobserve(e.target);
         }
       });
     }, opts);
     elements.forEach((el) => io.observe(el));
+    // 🔴 안전망: hx-boost body swap race / IntersectionObserver 콜백 영구 미발동 시 "0" 으로
+    // pre-fill 된 count-up 숫자(점수 등)가 고착된다(운영 사고 2026-06-18). 화면 안의 미실행 요소를
+    // 강제 실행하되 one-shot 이 아니라 scroll/resize 에도 지속 sweep — 처음엔 화면 밖이던 아래쪽
+    // repo 카드/차트/카운터가 스크롤로 보일 때도 복구한다(Codex P2). pending 이 비면 리스너 해제.
+    // Safety net: if the IO callback never fires (hx-boost swap race / permanent miss), the
+    // "0"-prefilled count-up sticks. Force-run in-viewport elements, and keep sweeping on
+    // scroll/resize (not one-shot) so below-fold elements recover when scrolled into view.
+    const sweep = () => {
+      const vh = window.innerHeight || document.documentElement.clientHeight;
+      pending.forEach((el) => {
+        // detached(hx-boost swap 으로 분리된) 요소는 pending 에서 제거 — rect 가 0 이라 영원히
+        // 미발동해 scroll/resize 리스너가 해제되지 않고 누적(메모리 누수)되는 것을 차단(Codex P2).
+        // Drop detached elements (removed by hx-boost swap): their rect is 0 so they never fire
+        // and would keep the scroll/resize listeners alive forever (Codex P2).
+        if (!el.isConnected) {
+          pending.delete(el);
+          io.unobserve(el);
+          return;
+        }
+        const r = el.getBoundingClientRect();
+        if (r.top < vh && r.bottom > 0) {
+          fire(el);
+          io.unobserve(el);
+        }
+      });
+      if (pending.size === 0) {
+        window.removeEventListener("scroll", sweep);
+        window.removeEventListener("resize", sweep);
+      }
+    };
+    // dispose — init() 재실행 시 observer + 리스너 강제 해제 (위 _disposers 로 호출).
+    // dispose — force-release the observer + listeners on init() re-run (invoked via _disposers).
+    const dispose = () => {
+      io.disconnect();
+      window.removeEventListener("scroll", sweep);
+      window.removeEventListener("resize", sweep);
+    };
+    _disposers.push(dispose);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      sweep();
+      if (pending.size > 0) {
+        window.addEventListener("scroll", sweep, { passive: true });
+        window.addEventListener("resize", sweep, { passive: true });
+      }
+    }));
   }
 
   /* ----- 1. Entry animations (stagger via --idx) -------------------------- */
@@ -355,6 +416,11 @@
   }
 
   function init() {
+    // hx-boost 재초기화 시 이전 onceInView 안전망(observer + scroll/resize 리스너) 정리 —
+    // detached 요소로 인한 리스너/observer 누적(메모리 누수) 차단 (Codex P2).
+    // Dispose previous onceInView safety nets on hx-boost re-init to prevent listener/observer
+    // accumulation from detached elements (Codex P2).
+    while (_disposers.length) { _disposers.pop()(); }
     setupEntryAnimations();
     setupCountUp();
     setupScoreBars();

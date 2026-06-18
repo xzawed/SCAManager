@@ -69,3 +69,50 @@ def test_effects_animations_reinit_on_hx_boost():
     # Block regression to an anonymous listener (unremovable → pile-up)
     assert 'addEventListener("htmx:afterSettle", function' not in src
     assert 'addEventListener("htmx:afterSettle", () =>' not in src
+
+
+def test_oncein_view_has_io_miss_safety_net():
+    """effects.js onceInView 는 IntersectionObserver 콜백 미발동 시 화면 내 요소를 강제
+    실행하는 rAF 안전망을 가져야 한다 — count-up "0" pre-fill 고착 봉인 (2026-06-18 운영 사고).
+
+    🔴 운영 사고: setupCountUp 이 `.repo-card__score` 를 "0" pre-fill 후 onceInView
+    (IntersectionObserver)로 0→점수 count-up. hx-boost swap race 로 IO 콜백이 미발동하면
+    점수가 "0" 에 고착(등급은 별도 요소라 정상)된다. 안전망(rAF 2회 후 getBoundingClientRect
+    로 화면 내 미발동 요소 강제 fire)으로 봉인. 런타임 검증 = e2e/test_overview_score.py
+    (IntersectionObserver no-op 주입 → 안전망이 점수를 서버값으로 강제).
+
+    effects.js onceInView must keep a rAF safety net that force-runs in-viewport elements
+    when the IntersectionObserver callback never fires (count-up "0"-prefill freeze).
+    e2e is not run in fast CI, so this static guard seals the regression there.
+    """
+    src = _read("src/static/js/effects.js")
+    idx = src.find("function onceInView")
+    assert idx >= 0, "onceInView 함수 부재 — 테스트 stale"
+    # onceInView 함수 전체 범위 (다음 함수 선언 전까지) — scroll 안전망 포함
+    # Whole onceInView function (up to the next function declaration) — includes scroll safety net
+    nxt = src.find("function ", idx + 1)
+    body = src[idx:nxt] if nxt > idx else src[idx:]
+    # IO 콜백 ↔ 안전망 중복 실행 방지 fired 가드
+    # fired guard prevents double-run between the IO callback and the safety net
+    assert "fired" in body and "WeakSet" in body, "onceInView fired 중복 가드 누락"
+    # rAF 안전망 + viewport 체크 (미발동 시 화면 내 강제) — getBoundingClientRect 누락 시 0 고착 회귀
+    # rAF safety net + viewport check; missing getBoundingClientRect → count-up "0" freeze regression
+    assert "requestAnimationFrame" in body, "onceInView rAF 안전망 누락"
+    assert "getBoundingClientRect" in body, (
+        "onceInView viewport 강제 안전망 누락 → IO 미발동 시 count-up '0' 고착 회귀 (2026-06-18 사고)"
+    )
+    # 🔴 one-shot 금지 — scroll/resize 지속 sweep 으로 below-fold 요소도 복구 (Codex P2).
+    # IO 영구 미발동 + 처음 화면 밖이던 아래쪽 카드가 스크롤로 보일 때도 강제 실행해야 한다.
+    # Not one-shot — keep sweeping on scroll/resize so below-fold elements recover when scrolled in.
+    assert "pending" in body, "onceInView pending(미실행 요소) 추적 누락 → 지속 sweep 불가"
+    assert 'addEventListener("scroll"' in body, (
+        "onceInView scroll 지속 안전망 누락 → below-fold 요소 IO 영구 미발동 시 '0' 고착 (Codex P2)"
+    )
+    # 🔴 detached(hx-boost swap 분리) 요소 제거 + init 재초기화 dispose — 리스너/observer 누수 차단 (Codex P2).
+    # Drop detached elements + dispose on re-init — prevents scroll/resize listener & observer leak.
+    assert "isConnected" in body, (
+        "sweep detached 제거 누락 → hx-boost swap 후 scroll/resize 리스너 누적·메모리 누수 (Codex P2)"
+    )
+    assert "_disposers" in src, (
+        "init 재초기화 시 onceInView dispose 누락 → 리스너/observer 누적 (Codex P2)"
+    )
