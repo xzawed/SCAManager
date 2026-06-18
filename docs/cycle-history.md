@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [repo_detail 점수추이 차트 미표시 — I18N 스코프 격리 버그 (#933 — F12 `I18N is not defined at buildChart`, block IIFE const ↔ buildChart 스코프 격리, window._repoChartI18N 고유 전역, Codex P2 전역충돌 적발→고유 네임스페이스, 단위 4979·E2E 117, 2026-06-18)](#repo_detail-점수추이-차트-미표시--i18n-스코프-격리-버그-933-2026-06-18)
 - [AI 리뷰 parse_error 근본 수정 — max_tokens 1500→8192 + stop_reason 절단 감지 (#931 — 출시 이래 ~80% parse_error 만성 실패, 운영 DB 월별 success율 추적 + 실제 API 재현, #853 NULL-persist 가시화, env configurable Codex P2, 단위 4978·전체 5132, 2026-06-18)](#ai-리뷰-parse_error-근본-수정-931-2026-06-18)
 - [repos 모드 점수추이 차트 미표시 수정 — #921 후속 다중 차트 가드 + 전 모드 Chart.js 로드 (#929 — buildRepoTrendChart typeof Chart 가드 + vendor 로드 조건 _show_repos_trend OR 확장 + onload _reposChartReady 재빌드, Playwright RED→GREEN+스크린샷, 회귀 가드 3겹, 단위 4974·E2E 116·전체 5128, 2026-06-17)](#repos-모드-점수추이-차트-미표시-수정--921-후속-다중-차트-가드--전-모드-chartjs-로드-929-2026-06-17)
 - [품질 감사 P2 백로그 해소 — 코드 nit + 문서 인용 2 PR (#926 resilience logs JSON 래핑·openai fallback 메트릭 대칭·config validator DRY +6 · #927 repo_config 0035→0036·architecture diff_exceeds_cap·env-vars 라인 정정, doccon-4 FP 드롭·simplicity-1/bp-2 보류, 단위 4971·전체 5125, 2026-06-17)](#품질-감사-p2-백로그-해소--코드-nit--문서-인용-2-pr-926927-2026-06-17)
@@ -107,6 +108,15 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## repo_detail 점수추이 차트 미표시 — I18N 스코프 격리 버그 (#933) (2026-06-18)
+
+- **repo_detail(`/repos/{name}`) scoreChart 영구 미표시 (#933, 2026-06-18)** — 사용자 운영 스크린샷 보고. F12: `Uncaught ReferenceError: I18N is not defined at buildChart`. 5+1 다중 에이전트 + 적대적 검증 + 라이브 DB + F12 진단(추정 3회 정정: empty-state→데이터빈약→렌더실패→I18N 스코프).
+  - **근본**: `I18N` 이 block2 `<script>`(IIFE) 내 `const` (수정 후 `window._repoChartI18N`, repo_detail.html:874) → 별도 block1 `buildChart`(:722)가 stats 배지 `I18N.chartAvg`(:758) 참조 시 전역 스코프만 탐색 → IIFE const 안 보여 ReferenceError → throw → `new Chart`(:776) 미도달 → 차트 미표시(empty-state 도 length===0 기준이라 미발동 → 일러스트 없는 빈 공간). 🔴 **구조적 스코프 격리이므로 timing 무관** — block1 의 전역 buildChart 는 block2 IIFE 의 I18N 을 초기화 여부와 무관하게 영구 resolve 못 함. nonempty 데이터가 stats 코드(`I18N.chartAvg`)에 도달하면 **항상** ReferenceError(로컬·라이브 공통; repo_detail 차트는 로컬 미확인이었음). vendor chart.umd.min.js onload(:686)→_repoChartReady(:855)→buildChart 는 nonempty 데이터 도달 트리거 경로 중 하나(가장 이른 호출)일 뿐 — "onload race(timing)" narrative 는 Codex P3 정정으로 폐기. (line:span = 수정 후 grep -n 실측, 정책 6)
+  - 🔴 **#929/#930 은 dashboard.html(다른 페이지)만 수정** → repo_detail 무관(이전 '#929 후에도 안 보임' 진짜 이유). 차트 데이터 정상(최근 100건 중 score 24건, 라이브 DB 실측 — applyFilters scoreMin=0 이 NULL 제외).
+  - **수정**: I18N → repo 고유 전역(`window._repoChartI18N`) 노출(buildChart 가 전역 탐색 접근) + buildChart 지역 var 참조 + 미정의 가드(onload race graceful). const I18N(block 내부 참조)은 유지.
+  - **Codex mutual 적대적 2라운드**: 1차 P2 적발 — 초기 범용 `window.I18N` 전역화가 `add_repo.html:201` var I18N 과 전역 네임스페이스 충돌(hx-boost 왕복 repo_detail→/repos/add→Back 시 덮어쓰기 → undefined labels + tooltip TypeError, ground-truth 직접 확인) → 고유 네임스페이스 재수정. 2차 재검증 OK.
+  - 회귀 가드: 정적(`test_chart_race_guards.py` — 고유 전역 노출 + 범용 window.I18N 할당 회귀 차단 + buildChart 지역 참조; 기존 typeof Chart 가드는 I18N 스코프 미검사 갭) + E2E(`test_repos_mode.py` — repo_detail scoreChart 렌더 + pageerror trap, 런타임 봉인). 단위 4978→**4979** · E2E 116→**117** · pylint 10.00 · flake8 clean. 🔍 배포 후 운영 F12 재확인(차트 표시 복구)이 최종 검증. [[project-session-2026-06-18]]
 
 ## AI 리뷰 parse_error 근본 수정 (#931) (2026-06-18)
 
