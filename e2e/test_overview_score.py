@@ -76,6 +76,50 @@ def test_overview_score_renders_full_load(seeded_page: Page, base_url: str):
 
 
 @pytest.mark.e2e
+def test_overview_score_survives_repo_to_overview_nav(seeded_page: Page, base_url: str):
+    """repo 상세 페이지 → 개요 hx-boost 네비게이션 후 score count-up 이 "0/100" 고착되지 않아야 한다.
+
+    🔴 운영 사고 재현(2026-06-19 사용자 보고): "Repo별 화면 이후 페이지 이동 시" 개요의 모든
+    repo 카드 점수가 "0/100" 으로 고착. hx-boost body swap 시 effects.js 이중 init(외부 <body>
+    스크립트 IIFE 재실행 + htmx:afterSettle)이 count-up 안전망을 해제하던 회귀(#936)의 **실제
+    네비게이션 경로** 재현. 기존 테스트(test_overview_score_survives_double_init)는 IO no-op +
+    직접 `document._fxEffectsHandler()` 호출로 이중 init 을 인위 시뮬했고, 실제 page→page
+    hx-boost 경로는 미검증(coverage gap) — 이 테스트가 사용자 보고 경로를 그대로 재현한다.
+
+    Real-navigation reproduction of the user-reported (2026-06-19) "0/100 stuck after visiting a
+    repo page" incident. Existing tests simulated double-init artificially; this drives the actual
+    repo-detail → overview hx-boost path.
+
+    시나리오: goto(repo 상세, full load) → 개요 로고 클릭(hx-boost #1) → score "0/100" 미고착 검증.
+    """
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    _seed_score(db_path, 85)
+    # 1. repo 상세 페이지 full load — fresh JS 컨텍스트 (effects.js init 1회)
+    seeded_page.goto(f"{base_url}/repos/owner%2Ftestrepo")
+    seeded_page.wait_for_load_state("networkidle")
+    # 2. repo ↔ 개요 hx-boost 왕복 3회 (testing.md "3회 이상 hx-boost 재방문" 규칙) —
+    #    매 swap 마다 effects.js 이중 init(IIFE 재실행 + htmx:afterSettle) 발생, 마지막은 개요에서 종료.
+    for _ in range(3):
+        seeded_page.click(".nav-logo")  # → 개요 (hx-boost)
+        seeded_page.wait_for_url(
+            lambda url: url.rstrip("/") == base_url.rstrip("/"), timeout=5000
+        )
+        seeded_page.wait_for_selector(".repo-card__score")
+        seeded_page.click(".repo-card")  # → repo 상세 (hx-boost)
+        seeded_page.wait_for_url(
+            lambda url: "owner" in url and "testrepo" in url, timeout=5000
+        )
+        seeded_page.wait_for_load_state("networkidle")
+    # 3. 마지막으로 개요 진입 후 count-up 정상 발동 → "0/100" 고착 없어야 함 (회귀 시 고착)
+    seeded_page.click(".nav-logo")
+    seeded_page.wait_for_url(
+        lambda url: url.rstrip("/") == base_url.rstrip("/"), timeout=5000
+    )
+    seeded_page.wait_for_selector(".repo-card__score")
+    expect(seeded_page.locator(".repo-card__score").first).not_to_have_text("0/100", timeout=4000)
+
+
+@pytest.mark.e2e
 def test_overview_score_survives_double_init(seeded_page: Page, base_url: str):
     """hx-boost 이중 init(즉시 IIFE 재실행 + afterSettle) 후에도 below-fold count-up 이 복구돼야 한다.
 
