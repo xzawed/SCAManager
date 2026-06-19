@@ -24,6 +24,14 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_verifier_model: str = "gpt-5-mini"  # 저비용 소형 — 구현 시 최신 저가 모델로 확정/오버라이드
     # Low-cost small model — confirm/override with latest cheap model at implementation time
+    # 검증자 엔드포인트 base_url — 빈 값이면 OpenAI 기본. OpenAI-호환 무료/저가 공급자(GitHub Models·
+    # Groq·OpenRouter 등) 전환용 → openai_api_key 에 해당 공급자 키, openai_verifier_model 에 모델명.
+    # 추가 비용 0/최소 활성화 경로(OpenAI 비구독자 = 무료 공급자 / OpenAI 보유자 = 빈 값 유지 + 저가 모델).
+    # Verifier endpoint base_url — empty = OpenAI default. Set to an OpenAI-compatible free/cheap
+    # provider (GitHub Models / Groq / OpenRouter) to avoid paid OpenAI; put that provider's key in
+    # openai_api_key and its model in openai_verifier_model. Provider must support chat completions
+    # with response_format=json_object.
+    verifier_base_url: str = ""
     # 경계 밴드 폭(점) — >= 1 강제 (0/음수면 모든 score 가 밴드 밖 = 검증 silent 무효화 방지)
     # Band width in points — enforce >= 1 (0/negative would silently disable verification while key set)
     merge_verifier_band: int = Field(default=MERGE_VERIFIER_BAND_DEFAULT, ge=1)

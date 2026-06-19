@@ -184,6 +184,104 @@ async def test_http_fallback_passes_max_completion_tokens(monkeypatch):
     assert seen.get("max_completion_tokens") == VERIFIER_MAX_OUTPUT_TOKENS
 
 
+# base_url 일반화 (OpenAI-호환 무료/저가 공급자 지원 — GitHub Models/Groq/OpenRouter 등) 회귀 가드
+# base_url generalization (support free/cheap OpenAI-compatible providers — GitHub Models/Groq/OpenRouter)
+
+
+@pytest.mark.asyncio
+async def test_call_openai_verifier_passes_base_url_to_sdk(monkeypatch):
+    """base_url 지정 시 SDK 클라이언트가 해당 엔드포인트로 생성돼야 한다 (공급자 전환)."""
+    seen = {}
+
+    class _Completions:
+        async def create(self, **kwargs):
+            return _FakeResp(json.dumps({"safe": True, "manipulation_detected": False, "reasons": []}))
+
+    class _Chat:
+        completions = _Completions()
+
+    class _Client:
+        def __init__(self, **kwargs):
+            seen.update(kwargs)
+            self.chat = _Chat()
+
+        async def aclose(self):
+            pass
+
+    import openai as _openai
+    monkeypatch.setattr(_openai, "AsyncOpenAI", _Client)
+    await openai_client.call_openai_verifier(
+        "SYS", "USER", api_key="k", model="m", timeout=5.0,
+        base_url="https://models.github.ai/inference")
+    assert seen.get("base_url") == "https://models.github.ai/inference"
+
+
+@pytest.mark.asyncio
+async def test_call_openai_verifier_default_base_url_passes_none_to_sdk(monkeypatch):
+    """base_url 미지정(기본)이면 SDK base_url=None → OpenAI 기본 엔드포인트 유지 (회귀 방지)."""
+    seen = {}
+
+    class _Completions:
+        async def create(self, **kwargs):
+            return _FakeResp(json.dumps({"safe": True, "manipulation_detected": False, "reasons": []}))
+
+    class _Chat:
+        completions = _Completions()
+
+    class _Client:
+        def __init__(self, **kwargs):
+            seen.update(kwargs)
+            self.chat = _Chat()
+
+        async def aclose(self):
+            pass
+
+    import openai as _openai
+    monkeypatch.setattr(_openai, "AsyncOpenAI", _Client)
+    await openai_client.call_openai_verifier(
+        "SYS", "USER", api_key="k", model="m", timeout=5.0)
+    assert seen.get("base_url") is None
+
+
+@pytest.mark.asyncio
+async def test_http_fallback_uses_custom_base_url_endpoint(monkeypatch):
+    """base_url 지정 + SDK 미설치 시 httpx 가 {base_url}/chat/completions 로 POST (trailing slash 정규화)."""
+    _force_sdk_absent(monkeypatch)
+    payload = {"choices": [{"message": {"content": json.dumps({"safe": True})}}],
+               "usage": {"prompt_tokens": 1, "completion_tokens": 1}}
+    seen = {}
+
+    class _Http:
+        async def post(self, url, **kwargs):
+            seen["url"] = url
+            return _FakeHttpResp(payload)
+
+    monkeypatch.setattr(openai_client, "get_http_client", lambda: _Http())
+    await openai_client.call_openai_verifier(
+        "SYS", "USER", api_key="k", model="m", timeout=5.0,
+        base_url="https://models.github.ai/inference/")  # 후행 슬래시 → 정규화 검증
+    assert seen["url"] == "https://models.github.ai/inference/chat/completions"
+
+
+@pytest.mark.asyncio
+async def test_http_fallback_default_base_url_uses_openai_endpoint(monkeypatch):
+    """base_url 미지정 + SDK 미설치 시 기본 OpenAI 엔드포인트 유지 (회귀 방지)."""
+    _force_sdk_absent(monkeypatch)
+    payload = {"choices": [{"message": {"content": json.dumps({"safe": True})}}],
+               "usage": {"prompt_tokens": 1, "completion_tokens": 1}}
+    seen = {}
+
+    class _Http:
+        async def post(self, url, **kwargs):
+            seen["url"] = url
+            return _FakeHttpResp(payload)
+
+    monkeypatch.setattr(openai_client, "get_http_client", lambda: _Http())
+    await openai_client.call_openai_verifier(
+        "SYS", "USER", api_key="k", model="m", timeout=5.0)
+    assert seen["url"] == openai_client._OPENAI_CHAT_URL
+
+
 @pytest.mark.asyncio
 async def test_http_fallback_reraises_on_api_error_fail_closed(monkeypatch):
     # fallback 경로도 API 오류를 re-raise 해야 호출자가 fail-closed 처리 가능
