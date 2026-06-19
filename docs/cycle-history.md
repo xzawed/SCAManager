@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [2nd-LLM 머지 검증자 OpenAI-호환 base_url 일반화 — 추가 비용 0/최소 활성화 (OpenAI 비구독자도 무료 호환 공급자[GitHub Models·Groq·OpenRouter]로 cross-vendor 검증, `VERIFIER_BASE_URL` config + SDK/httpx 양 경로 전달, TDD +7, 단위 4988, 2026-06-19)](#2nd-llm-머지-검증자-openai-호환-base_url-일반화-2026-06-19)
 - [개요 점수 0/100 실제 repo→개요 hx-boost 네비게이션 회귀 가드 e2e 추가 (사용자 보고 2026-06-19 = 브라우저 스테일 immutable 캐시 근본, 라이브 코드 #936/#938 이미 수정·배포 — 실제 page→page hx-boost 경로 미검증 coverage gap 보완, `test_overview_score_survives_repo_to_overview_nav`, E2E 120→121, 정책18 Codex-다운 예외, 2026-06-19)](#개요-점수-0100-실제-repo개요-hx-boost-네비게이션-회귀-가드-e2e-추가-2026-06-19)
 - [정적 자산 immutable 캐시 → 배포 미전파 stale 사고 수정 (개요 "0/100" 지속 = #936 라이브 미반영 — `/static` immutable+1년 캐시가 버전 해시 없는 effects.js 를 최대 1년 서빙, `no-cache` ETag 재검증 전환, TDD RED→GREEN, 단위 4981, 2026-06-18)](#정적-자산-immutable-캐시--배포-미전파-stale-사고-수정-2026-06-18)
 - [개요 점수 0/100 count-up 고착 — IO 미발동 안전망 + 이중 init dispose 회귀 P1 (1c0a483 안전망 + 75f942e Option A=init 일괄 dispose 제거, e2e 계측으로 IIFE 재실행 이중 init 실측, Codex 3R NG P1 ground-truth 재검증 OK, 단위 4980·E2E 120, 2026-06-18)](#개요-점수-0100-count-up-고착--io-미발동-안전망--이중-init-dispose-회귀-p1-1c0a48375f942e-2026-06-18)
@@ -111,6 +112,18 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 2nd-LLM 머지 검증자 OpenAI-호환 base_url 일반화 (2026-06-19)
+
+사용자 잔여작업 확인 중 2nd-LLM 머지 검증자 활성화 문의 — "OPENAI_API_KEY 를 API 아닌 SDK 또는 다른 방법으로 가능한지" + "추가 비용 0/최소(OpenAI 비구독자 또는 보유자 최소 비용)". 조사 결과:
+
+- **"SDK" 로는 키 면제 안 됨**: [openai_client.py](../src/verifier/openai_client.py)는 이미 SDK 우선(`openai.AsyncOpenAI`) + httpx fallback 이고 **둘 다 api_key 필요**. 진짜 쟁점 = 유료 OpenAI 없이 2차 검증.
+- **검증자는 서버(Railway) 측 실행** → 로컬 Codex CLI / ChatGPT 구독 사용 불가(인증 로컬 전용·게다가 Codex 다운). 운영 머지 게이트엔 부적합.
+- **결정(사용자)**: OpenAI-호환 `base_url` 일반화 — OpenAI 비구독자는 무료 OpenAI-호환 공급자(GitHub Models·Groq·OpenRouter) 엔드포인트, OpenAI 보유자는 빈 값+저가 모델. cross-vendor governance(정책18 §5) 보존.
+
+**구현(TDD RED→GREEN, +7 단위)**: `config.verifier_base_url: str = ""`(빈 값=OpenAI 기본) + `call_openai_verifier(..., base_url="")` → SDK `AsyncOpenAI(base_url=base_url or None)` + httpx `{base_url}/chat/completions`(후행 슬래시 정규화) + `verify_merge_safety` 가 `settings.verifier_base_url` 전파. 공급자는 `chat/completions` + `response_format=json_object` 지원 필요. 무료 티어 rate-limit 실패는 fail-closed(자동머지 보류=안전·수동 검토 폴백)라 위험 아님. `should_verify` 게이트(openai_api_key 존재)·band·kill-switch 불변. 회귀 가드: 기본값 base_url=None(SDK)·`_OPENAI_CHAT_URL`(httpx) 유지 단언 2 + 커스텀 전달 2 + config default/env 2 + 전파 1. docs: env-vars.md `VERIFIER_BASE_URL` 행 + 비용 0 활성화 가이드. pylint 10.00·flake8 clean.
+
+🔍 Codex mutual: companion 다운(spawn_agent 400 전 경로) → 정책18 예외(사용자 승인). Claude 자체검증 = 영향 suite(verifier/config/merge_verifier/auto_merge/engine_guard) 108/108 PASS · TDD RED(5 실패)→GREEN · pylint 10.00 · flake8 clean.
 
 ## 개요 점수 0/100 실제 repo→개요 hx-boost 네비게이션 회귀 가드 e2e 추가 (2026-06-19)
 

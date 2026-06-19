@@ -80,12 +80,15 @@ Sentry 외 자동 로깅은 별도 환경변수 없이 동작:
 
 ## 머지 검증자 (2nd-LLM cross-vendor, opt-in)
 
-> Claude 리뷰를 OpenAI GPT 가 독립 검증 — **경계 점수 자동머지 후보**(`merge_threshold ~ +N`)만. `OPENAI_API_KEY` 미설정 시 완전 비활성(비용 0, 동작 변화 0 — 순수 opt-in). 불안전/조작/검증자 오류 시 자동머지 차단 + PR 코멘트(fail-closed).
+> Claude 리뷰를 **다른 vendor 의 LLM** 이 독립 검증 — **경계 점수 자동머지 후보**(`merge_threshold ~ +N`)만. `OPENAI_API_KEY` 미설정 시 완전 비활성(비용 0, 동작 변화 0 — 순수 opt-in). 불안전/조작/검증자 오류 시 자동머지 차단 + PR 코멘트(fail-closed).
+>
+> 🔴 **추가 비용 0/최소 활성화** (OpenAI 구독 무관): 클라이언트는 **OpenAI-호환 엔드포인트**면 모두 동작한다. **OpenAI 비구독자** = `VERIFIER_BASE_URL` 에 무료 OpenAI-호환 공급자(GitHub Models / Groq / OpenRouter 등) 엔드포인트 + `OPENAI_API_KEY` 에 그 공급자 키 + `OPENAI_VERIFIER_MODEL` 에 그 모델명. **OpenAI 보유자** = `VERIFIER_BASE_URL` 빈 값 유지 + 저가 모델. 공급자는 `chat/completions` + `response_format=json_object` 지원 필요. 무료 티어 rate-limit 으로 검증 실패 시 fail-closed(해당 PR 자동머지 보류=안전, 수동 검토로 폴백).
 
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
-| `OPENAI_API_KEY` | 검증자 OpenAI 키 — **미설정 시 검증자 완전 비활성** (BYO key, 운영자 본인 토큰만 소비) | 빈 문자열 |
-| `OPENAI_VERIFIER_MODEL` | 검증자 모델 ID (저비용 소형 권장) | `gpt-5-mini` |
+| `OPENAI_API_KEY` | 검증자 키 — **미설정 시 검증자 완전 비활성** (BYO key). OpenAI 키 또는 `VERIFIER_BASE_URL` 지정 시 해당 OpenAI-호환 공급자 키 | 빈 문자열 |
+| `VERIFIER_BASE_URL` | 검증자 엔드포인트 base_url — 빈 값=OpenAI 기본. OpenAI-호환 무료/저가 공급자(GitHub Models·Groq·OpenRouter) 전환용 (`{base_url}/chat/completions` 로 호출) | 빈 문자열 |
+| `OPENAI_VERIFIER_MODEL` | 검증자 모델 ID (저비용 소형 권장 / 공급자별 모델명) | `gpt-5-mini` |
 | `MERGE_VERIFIER_BAND` | 경계 밴드 폭(점) — `merge_threshold ~ +N` 만 검증 (고득점 skip = 비용 절감) | `10` |
 | `MERGE_VERIFIER_DISABLED` | kill-switch (`1` 시 비활성) | `0` |
 
