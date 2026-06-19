@@ -161,6 +161,28 @@ async def test_verify_merge_safety_safe(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_verify_merge_safety_propagates_base_url(monkeypatch):
+    """verify_merge_safety 가 settings.verifier_base_url 을 call_openai_verifier 에 전달해야 한다.
+
+    공급자 전환(무료/저가 OpenAI-호환 — GitHub Models 등) 지원의 핵심 배선 회귀 가드.
+    """
+    from src.config import settings
+    from src.gate import merge_verifier as mv
+    monkeypatch.setattr(settings, "verifier_base_url", "https://models.github.ai/inference", raising=False)
+    cf = type("CF", (), {"filename": "a.py", "patch": "+x"})()
+    monkeypatch.setattr(mv, "get_pr_files", lambda *a, **k: [cf])
+    seen = {}
+
+    async def _fake_call(system, user, **kw):
+        seen.update(kw)
+        return '{"safe": true, "manipulation_detected": false, "reasons": []}'
+
+    monkeypatch.setattr(mv, "call_openai_verifier", _fake_call)
+    await mv.verify_merge_safety(_ctx())
+    assert seen.get("base_url") == "https://models.github.ai/inference"
+
+
+@pytest.mark.asyncio
 async def test_verify_merge_safety_api_error_failclosed(monkeypatch):
     from src.gate import merge_verifier as mv
     cf = type("CF", (), {"filename": "a.py", "patch": "+x"})()

@@ -87,6 +87,20 @@ def test_db_force_ipv4_reads_from_env(monkeypatch):
     assert s.db_force_ipv4 is True
 
 
+def test_verifier_base_url_default_empty(monkeypatch):
+    # verifier_base_url 기본값은 빈 문자열 → OpenAI 기본 엔드포인트 (회귀 방지)
+    # verifier_base_url default is empty → OpenAI default endpoint (regression guard)
+    s = _reload_settings(monkeypatch)
+    assert s.verifier_base_url == ""
+
+
+def test_verifier_base_url_reads_from_env(monkeypatch):
+    # VERIFIER_BASE_URL 설정 시 반영 → 무료/저가 OpenAI-호환 공급자(GitHub Models 등) 전환
+    # When VERIFIER_BASE_URL is set, it is reflected → switch to free/cheap OpenAI-compatible provider
+    s = _reload_settings(monkeypatch, extra={"VERIFIER_BASE_URL": "https://models.github.ai/inference"})
+    assert s.verifier_base_url == "https://models.github.ai/inference"
+
+
 def test_db_pool_size_reads_from_env(monkeypatch):
     # DB_POOL_SIZE 환경변수 설정 시 해당 정수값이 반영되어야 한다
     # When DB_POOL_SIZE env var is set, the integer value must be reflected.

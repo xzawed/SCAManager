@@ -20,7 +20,7 @@ _OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
 
 async def call_openai_verifier(
     system_prompt: str, user_prompt: str, *, api_key: str, model: str, timeout: float,
-    max_output_tokens: int = VERIFIER_MAX_OUTPUT_TOKENS,
+    max_output_tokens: int = VERIFIER_MAX_OUTPUT_TOKENS, base_url: str = "",
 ) -> str:
     """OpenAI Chat Completions 로 검증 호출 -> 응답 텍스트(JSON 문자열) 반환.
     Call OpenAI Chat Completions for verification -> return response text (JSON string).
@@ -30,14 +30,18 @@ async def call_openai_verifier(
 
     max_output_tokens: 응답 토큰 상한(비용 폭증 방어, #859 회고 P1-4) — gpt-5 계열 reasoning 포함.
     max_output_tokens: response token cap (cost-blowup guard, #859 retro P1-4) — incl. gpt-5 reasoning.
+
+    base_url: 빈 값이면 OpenAI 기본 엔드포인트. OpenAI-호환 무료/저가 공급자(GitHub Models 등) 전환용.
+    base_url: empty = OpenAI default endpoint; set to switch to an OpenAI-compatible provider.
     """
     start = time.perf_counter()
     client = None
     try:
         import openai  # pylint: disable=import-outside-toplevel
-        # 호출당 클라이언트 생성 — anthropic.AsyncAnthropic 패턴 미러
-        # Per-call client creation — mirrors anthropic.AsyncAnthropic pattern
-        client = openai.AsyncOpenAI(api_key=api_key, timeout=timeout, max_retries=2)
+        # 호출당 클라이언트 생성 — anthropic.AsyncAnthropic 패턴 미러. base_url 빈 값이면 None → OpenAI 기본.
+        # Per-call client creation — mirrors anthropic.AsyncAnthropic pattern. Empty base_url → None → OpenAI default.
+        client = openai.AsyncOpenAI(
+            api_key=api_key, base_url=(base_url or None), timeout=timeout, max_retries=2)
         resp = await client.chat.completions.create(
             model=model,
             messages=[
@@ -58,7 +62,7 @@ async def call_openai_verifier(
         # SDK not installed → fall back to direct httpx call
         return await _call_via_http(
             system_prompt, user_prompt, api_key=api_key, model=model, timeout=timeout,
-            start=start, max_output_tokens=max_output_tokens)
+            start=start, max_output_tokens=max_output_tokens, base_url=base_url)
     except Exception as exc:  # pylint: disable=broad-exception-caught  # noqa: BLE001
         # 오류 메트릭 기록 후 재 raise — 호출자 fail-closed 처리
         # Log error metrics then re-raise — caller performs fail-closed handling
@@ -74,15 +78,19 @@ async def call_openai_verifier(
 
 async def _call_via_http(
     system_prompt: str, user_prompt: str, *, api_key: str, model: str, timeout: float, start: float,
-    max_output_tokens: int = VERIFIER_MAX_OUTPUT_TOKENS,
+    max_output_tokens: int = VERIFIER_MAX_OUTPUT_TOKENS, base_url: str = "",
 ) -> str:
     """openai SDK 미설치 fallback — 신뢰 API httpx 풀로 직접 호출.
     Fallback when openai SDK is absent — calls the API directly via the shared httpx pool.
+
+    base_url 지정 시 {base_url}/chat/completions 로 POST(후행 슬래시 정규화), 빈 값이면 OpenAI 기본.
+    With base_url set, POST to {base_url}/chat/completions (trailing-slash normalized); empty = OpenAI default.
     """
+    chat_url = (base_url.rstrip("/") + "/chat/completions") if base_url else _OPENAI_CHAT_URL
     client = get_http_client()
     try:
         resp = await client.post(
-            _OPENAI_CHAT_URL,
+            chat_url,
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             json={
                 "model": model,

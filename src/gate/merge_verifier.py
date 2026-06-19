@@ -199,7 +199,7 @@ async def verify_merge_safety(ctx) -> VerifierVerdict:
             text = await call_openai_verifier(
                 _VERIFIER_SYSTEM_PROMPT, user_prompt,
                 api_key=settings.openai_api_key, model=settings.openai_verifier_model,
-                timeout=OPENAI_VERIFIER_TIMEOUT,
+                timeout=OPENAI_VERIFIER_TIMEOUT, base_url=settings.verifier_base_url,
             )
         except Exception:  # pylint: disable=broad-exception-caught  # noqa: BLE001
             logger.exception(
