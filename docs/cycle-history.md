@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [개요 점수 0/100 실제 repo→개요 hx-boost 네비게이션 회귀 가드 e2e 추가 (사용자 보고 2026-06-19 = 브라우저 스테일 immutable 캐시 근본, 라이브 코드 #936/#938 이미 수정·배포 — 실제 page→page hx-boost 경로 미검증 coverage gap 보완, `test_overview_score_survives_repo_to_overview_nav`, E2E 120→121, 정책18 Codex-다운 예외, 2026-06-19)](#개요-점수-0100-실제-repo개요-hx-boost-네비게이션-회귀-가드-e2e-추가-2026-06-19)
 - [정적 자산 immutable 캐시 → 배포 미전파 stale 사고 수정 (개요 "0/100" 지속 = #936 라이브 미반영 — `/static` immutable+1년 캐시가 버전 해시 없는 effects.js 를 최대 1년 서빙, `no-cache` ETag 재검증 전환, TDD RED→GREEN, 단위 4981, 2026-06-18)](#정적-자산-immutable-캐시--배포-미전파-stale-사고-수정-2026-06-18)
 - [개요 점수 0/100 count-up 고착 — IO 미발동 안전망 + 이중 init dispose 회귀 P1 (1c0a483 안전망 + 75f942e Option A=init 일괄 dispose 제거, e2e 계측으로 IIFE 재실행 이중 init 실측, Codex 3R NG P1 ground-truth 재검증 OK, 단위 4980·E2E 120, 2026-06-18)](#개요-점수-0100-count-up-고착--io-미발동-안전망--이중-init-dispose-회귀-p1-1c0a48375f942e-2026-06-18)
 - [repo_detail 점수추이 차트 미표시 — I18N 스코프 격리 버그 (#933 — F12 `I18N is not defined at buildChart`, block IIFE const ↔ buildChart 스코프 격리, window._repoChartI18N 고유 전역, Codex P2 전역충돌 적발→고유 네임스페이스, 단위 4979·E2E 117, 2026-06-18)](#repo_detail-점수추이-차트-미표시--i18n-스코프-격리-버그-933-2026-06-18)
@@ -110,6 +111,19 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 개요 점수 0/100 실제 repo→개요 hx-boost 네비게이션 회귀 가드 e2e 추가 (2026-06-19)
+
+사용자 운영 화면 보고: repo 상세 화면을 거친 뒤 개요(`/`)로 이동 시 모든 repo 카드 점수가 "0/100" 고착(등급 A/B 정상 = score 데이터 정상, count-up JS 만 미작동).
+
+**진단(systematic-debugging) = 코드 버그 아님 / 브라우저 스테일 캐시가 근본**:
+- 라이브 [effects.js](../src/static/js/effects.js) 응답 헤더 = `Cache-Control: no-cache`(#938 배포됨) + 내용 = #936 수정본("No blanket dispose" 마커, last-modified 6/18 15:06 GMT) — curl 실측.
+- 실제 repo상세 → 개요 hx-boost 왕복 3회 e2e 재현 = **현재 코드 PASS** → 코드측 회귀 배제(H2 기각).
+- 근본 = `CachedStaticFiles`(#423 이래)가 버전 해시 없는 `/static` 자산에 `immutable, max-age=1년` 캐시를 붙여 → #936 배포돼도 재방문자 브라우저가 옛 버그 코드를 최대 1년 실행(immutable = 일반 새로고침에도 재검증 X). #938 이 no-cache 로 전환했으나 **이미 immutable 로 캐시된 항목**은 하드 리프레시(Ctrl+Shift+R) 1회로만 무효화. 증상이 hx-boost 네비게이션 시에만(이중 init) 나타나고 첫 직접 로드(단일 init)는 정상인 것도 pre-#936 버그 시그니처와 일치.
+
+**조치**: (사용자) 개요에서 하드 리프레시 1회 → 정상화·이후 ETag 재검증으로 자동 전파. (코드) 기존 e2e 는 이중 init 을 IO no-op + `document._fxEffectsHandler()` 직접 호출로 인위 시뮬했고 실제 page→page hx-boost 경로는 미검증(testing.md "3회 이상 hx-boost 재방문" 규칙 미충족)이었다 → 사용자 보고 경로를 그대로 재현하는 회귀 가드 `test_overview_score_survives_repo_to_overview_nav` 추가(repo 상세 full load → repo↔개요 hx-boost 왕복 3회 → `.repo-card__score` "0/100" 미고착, seed score 85 → non-tautological, pageerror 트랩). 현재 코드 PASS. E2E 120→121.
+
+🔍 Codex mutual: companion 다운(spawn_agent 400 전 경로 확산) → 정책18 예외(사용자 승인). Claude 자체검증 = 단일/전체파일 4/4 PASS · flake8 clean · assertion non-tautological · 사용자 경로 충실 재현.
 
 ## 정적 자산 immutable 캐시 → 배포 미전파 stale 사고 수정 (2026-06-18)
 
