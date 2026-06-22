@@ -249,6 +249,10 @@
     "history_count_filtered": "{filtered}건 / 전체 {total}건",
     "search_placeholder": "커밋 메시지 또는 SHA 검색…",
     "score_range_label": "점수",
+    "date_from_aria": "시작 날짜",
+    "date_to_aria": "종료 날짜",
+    "score_min_aria": "최소 점수",
+    "score_max_aria": "최대 점수",
     "table": {
       "date": "날짜",
       "commit": "커밋",
