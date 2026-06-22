@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [AI 리뷰 점수 NULL 폐기 분리 — 입력 diff 절단 시 점수 보존 (#960 — 운영 Supabase 실측: 6월 score NULL 256건 다수가 절단형·일 점수 성공률 24~57% 급락, `_persisted_score_is_unreliable`에서 `ai_review_truncated` 트리거 제거 → NULL은 genuine 실패[api_error/parse_error] 한정, auto-merge 차단[#885]은 마커 직접 참조라 안전성 영향 0, 사용자 결정 A, Codex mutual OK, 2026-06-22)](#ai-리뷰-점수-null-폐기-분리--입력-diff-절단-시-점수-보존-960-2026-06-22)
 - [SonarCloud S6853 폼 라벨 7건 해소 + edit-guard hook 견고화 + 의존성 (2026-06-22 후속)](#sonarcloud-s6853-폼-라벨-7건-해소--edit-guard-hook-견고화--의존성-2026-06-22-후속)
 - [SonarCloud 잔여 CRITICAL 전부 해소 (#951 docs sync·#952 CodeQL py/import-and-import-from fix·#953 S1192 2건+S8415 6건 가드 헬퍼 추출·#954 S3776 4건 extract-method[clippy·repo_kpi·narrative·merge_retry], CRITICAL 6→0·code smells 126→116, S8415 라우트 직접 raise만 검출/S107 0건 실측으로 보류 해소, Codex mutual OK, 2026-06-22)](#sonarcloud-잔여-critical-전부-해소-951954-2026-06-22)
 - [SonarCloud BLOCKER 및 고복잡도 CRITICAL 정리 (#948 CORS S8414 outermost·#949 S1192 merge_retry·#950 S3776 고복잡도 3건 extract-method[dashboard 22·repo_category 20·lifespan 16], BLOCKER 1→0·CRITICAL 10→6·code smells 131→126, S1192 2건/merge_retry 18/경계 3건 정책 16·S8415 재부상 보류, Codex mutual OK, 단위 5013·전체 5167, 2026-06-22)](#sonarcloud-blocker-및-고복잡도-critical-정리-948950-2026-06-22)
@@ -116,6 +117,20 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## AI 리뷰 점수 NULL 폐기 분리 — 입력 diff 절단 시 점수 보존 (#960, 2026-06-22)
+
+**날짜**: 2026-06-22 | **PR**: #960 | **트리거**: 사용자 "Supabase 데이터 확인" → 점검 중 운영 이슈 발견 → "확인된 문제점 수행" | **상태**: 머지 대기
+
+**작업 내용**: 운영 Supabase(`qaoirpyhldlkeoyppfwq`) 데이터 점검 중, 6월 분석의 `score` 컬럼 NULL 256건(월 성공률 100%→71% 급락)의 **다수가 입력 diff 절단형**(`ai_review_truncated=true`)임을 발견. AI 리뷰는 성공(`ai_review_status="success"`)하고 유효 점수(67~98)도 산출됐는데 **점수 컬럼만 NULL** 저장 → 개요/차트/리더보드 점수 소실. 일일 점수 성공률 6/20 **24%**·6/21 **41%**·6/22 **57%**(4·5월 100%), 3개 활성 repo 모두 systemic.
+
+**근본 원인**: `src/worker/pipeline.py::_persisted_score_is_unreliable()`가 `ai_review_truncated`를 NULL-persist 트리거로 사용(#894 C22). diff가 `MAX_DIFF_CHARS`(16,000자)를 넘는 대형 commit/PR(입력토큰 중앙값 **10,658** vs 정상 2,759·최소 8,027)의 절반이 절단되어 점수 통째로 NULL. 출력 토큰은 8192에 미도달(최대 6442)이라 출력 절단이 아닌 **입력 diff 절단**(`was_truncated = len(diff_text) > MAX_DIFF_CHARS`)이 원인임을 코드+데이터 대조로 확정.
+
+**수정 (#960, 사용자 결정 A)**: `_persisted_score_is_unreliable = ai_review_failed(result_dict)` 단독(`ai_review_truncated` OR 제거). NULL 대상을 genuine AI 실패(api_error/parse_error)로 한정. 입력 diff 절단은 NULL 제외(점수 유지) — 점수의 대부분(code_quality/security)은 **전체 파일 정적분석 기반**이라 절단과 무관하게 신뢰 가능. TDD: `test_save_and_gate_nulls_score_on_ai_truncated` → `test_save_and_gate_persists_score_on_ai_truncated`(절단→점수 유지 + 마커 보존), 단위 카운트 불변(rename). `.claude/rules/pipeline.md` C22 규칙 동기화.
+
+**🔒 안전성 영향 0**: 절단 시 auto-merge/auto-approve 차단은 result dict `ai_review_truncated` 마커를 직접 읽는 #885 가드(auto_merge.py:57·approve.py:66/133·telegram.py)가 담당 — 점수 컬럼 NULL 여부와 무관. 마커는 result dict에 **계속 보존**(pipeline.py:81)되므로 절단 PR은 여전히 자동머지 차단. fail-open 신규 0(Codex mutual 적대 검증 4/4 OK).
+
+**핵심 학습**: (1) `was_truncated`(입력 diff 절단)와 `output_truncated`(stop_reason=max_tokens 출력 절단)는 별개 — 운영 NULL은 8192 출력 절단이 아니라 16,000자 입력 절단이 원인(데이터로 판별). (2) 집계 오염 차단(NULL-persist)과 auto-merge 안전 차단은 **별개 메커니즘** — 후자는 마커 직접 참조라 점수 NULL 분리해도 안전성 무영향. (3) #894 C22 NULL-persist가 대형 diff(절반)에서 점수를 과도하게 폐기 → 운영 가시성 손실. **옵션 B/C(`MAX_DIFF_CHARS` 상향)은 보류**(절단 자체 감소·리뷰 품질 개선은 별도 결정 영역). [[project-session-2026-06-22-sonar-a11y]]
 
 ## SonarCloud S6853 폼 라벨 7건 해소 + edit-guard hook 견고화 + 의존성 (2026-06-22 후속)
 
