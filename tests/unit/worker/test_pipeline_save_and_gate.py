@@ -366,20 +366,24 @@ async def test_save_and_gate_nulls_score_on_ai_parse_error():
     assert analysis.grade is None
 
 
-async def test_save_and_gate_nulls_score_on_ai_truncated():
-    """🔴 C22 (회고 P2-b): AI diff 절단 시 score/grade NULL 저장.
+async def test_save_and_gate_persists_score_on_ai_truncated():
+    """🔴 입력-diff 절단(truncated)은 score/grade NULL 대상에서 제외 — 점수 유지 (C22 분리).
 
-    절단 리뷰는 status="success" 라 ai_review_failed=False 지만, 부분 diff 기반이라 점수가
-    인플레된다 → analytics 집계(func.avg·leaderboard)가 NULL 을 제외하도록 ai_review_failed 와
-    대칭 처리(쿼리 변경 0). auto-merge 차단은 #885 에서 별도 가드 완료 — 본 변경은 집계 오염만 봉인.
-    C22: a truncated AI diff (status=success → ai_review_failed=False, but partial-diff inflated)
-    NULL-persists score/grade so aggregations exclude it, mirroring ai_review_failed.
+    절단 리뷰는 status="success" 이고 점수의 대부분(code_quality/security)은 전체 파일 정적분석
+    기반이라 신뢰할 수 있다. 입력 diff 가 16,000자를 넘는 대형 commit/PR 의 절반이 절단되는데,
+    이를 전부 NULL-persist 하면 운영 대시보드/리더보드에서 점수가 통째로 사라진다(운영 DB 실측:
+    6월 NULL 256건 중 다수가 절단형). 따라서 NULL 은 genuine 실패(api_error/parse_error)에만 적용.
+    🔴 절단 시 auto-merge/auto-approve 차단은 result dict 의 `ai_review_truncated` 마커를 직접
+    읽는 #885 가드가 그대로 담당(점수 컬럼 NULL 여부와 무관) — 본 분리로 안전성 영향 0.
+    Input-diff truncation no longer NULL-persists the score: the score is mostly full-file static
+    analysis (reliable), and NULLing ~half of large-diff analyses wiped scores off the dashboard.
+    Auto-merge/approve still blocks on the `ai_review_truncated` marker (#885), independent of column.
     """
     analysis = await _run_new_save(_new_save_params("success", truncated=True))
-    assert analysis.score is None, "절단(truncated)인데 인플레 점수가 저장됨 — 집계 오염"
-    assert analysis.grade is None
-    # 진단/배너용 절단 마커는 result dict 에 보존 (컬럼=NULL / result=보존 비대칭, #885 가드용)
-    # The truncation marker stays in the result dict for diagnostics/banner (column NULL / result kept)
+    assert analysis.score == 89, "절단(truncated)이어도 점수는 유지되어야 함 (NULL 분리)"
+    assert analysis.grade == "B"
+    # 🔴 절단 마커는 result dict 에 보존 — auto-merge/auto-approve 차단(#885) 가드가 직접 읽음.
+    # The truncation marker stays in the result dict — the #885 auto-merge/approve guard reads it.
     assert analysis.result["ai_review_truncated"] is True
 
 

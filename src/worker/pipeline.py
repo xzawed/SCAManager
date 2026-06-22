@@ -108,19 +108,26 @@ def _persisted_score_is_unreliable(result_dict: dict) -> bool:
     """score/grade 컬럼을 NULL 로 저장해야 하는지 판정한다 (analytics 집계 오염 방지).
     Decide whether score/grade must be NULL-persisted (so aggregations exclude this row).
 
-    NULL 대상 2종:
-    - AI 리뷰 genuine 실패(`api_error`/`parse_error`) — `ai_review_failed` (hook #25/#814 대칭).
-    - 🔴 C22 (회고 P2-b) AI diff 절단(`ai_review_truncated`) — status="success" 라
-      `ai_review_failed=False` 지만 부분 diff 기반 인플레 점수.
-    `no_api_key`/`empty_diff`(의도적 미수행)는 `ai_review_failed=False` + 마커 없음 → 점수 유지(회귀 방지).
-    대시보드/리더보드 집계(`func.avg`·leaderboard)가 NULL 을 자연 제외하므로 오염 차단(쿼리 변경 0).
-    auto-merge 차단은 #885(`static_analysis_incomplete` 대칭)에서 별도 처리 — 여기선 집계 오염만 봉인.
+    NULL 대상 = AI 리뷰 genuine 실패(`api_error`/`parse_error`) 한정 — `ai_review_failed`
+    (hook #25/#814 대칭). 실패 시 인플레 기본 점수(`_default_result` 17/17/7 → ~89/B)가
+    저장돼 집계를 오염시키므로 NULL. `no_api_key`/`empty_diff`(의도적 미수행)는
+    `ai_review_failed=False` → 점수 유지(회귀 방지).
 
-    NULL targets: a genuine AI-review failure (ai_review_failed) OR a truncated AI diff (C22 —
-    partial-diff inflated though status stays "success"). Intentional skips keep their score.
-    Aggregations exclude NULL (0 query change). Merge-blocking lives in #885.
+    🔴 입력-diff 절단(`ai_review_truncated`)은 NULL 대상에서 **제외**한다(C22 분리):
+    절단 리뷰는 status="success" 이고 점수의 대부분(code_quality/security)은 전체 파일 정적분석
+    기반이라 신뢰할 수 있다. diff 가 `MAX_DIFF_CHARS`(16,000자)를 넘는 대형 commit/PR 의 절반이
+    절단되는데, 이를 전부 NULL-persist 하면 대시보드/리더보드에서 점수가 통째로 사라진다
+    (운영 DB 실측: 6월 NULL 256건 다수가 절단형, 일 성공률 24~57% 로 급락). 절단 시
+    auto-merge/auto-approve 차단은 result dict 의 `ai_review_truncated` 마커를 직접 읽는 #885
+    가드(`static_analysis_incomplete` 대칭)가 담당 — 점수 컬럼 NULL 여부와 무관하므로 안전성 영향 0.
+    대시보드/리더보드 집계(`func.avg`·leaderboard)가 NULL 을 자연 제외하므로 오염 차단(쿼리 변경 0).
+
+    NULL target = a genuine AI-review failure (api_error/parse_error) only. Input-diff truncation is
+    EXCLUDED: the score is mostly full-file static analysis (reliable), and NULLing ~half of
+    large-diff analyses wiped scores off the dashboard. Auto-merge/approve still blocks on the
+    `ai_review_truncated` marker (#885), independent of the score column. Intentional skips keep score.
     """
-    return ai_review_failed(result_dict) or bool(result_dict.get("ai_review_truncated"))
+    return ai_review_failed(result_dict)
 
 
 def _extract_commit_message(event: str, data: dict) -> str:
@@ -566,9 +573,9 @@ async def _save_and_gate(db: Session, params: _AnalysisSaveParams):
     if params.static_incomplete:
         result_dict["static_analysis_incomplete"] = True
     ai = params.ai_review
-    # AI 실패(#25/#814) 또는 C22 diff 절단 시 score/grade NULL 저장 → 집계 오염 차단(쿼리 변경 0).
-    # 판정 2종·근거·예외(no_api_key/empty_diff 점수 유지)는 _persisted_score_is_unreliable 도크스트링 참조.
-    # NULL-persist score/grade when unreliable (AI failure / C22 truncated diff) — see helper docstring.
+    # AI genuine 실패(#25/#814) 시에만 score/grade NULL 저장 → 집계 오염 차단(쿼리 변경 0).
+    # 입력-diff 절단은 NULL 제외(점수 유지)·예외(no_api_key/empty_diff)는 _persisted_score_is_unreliable 도크스트링 참조.
+    # NULL-persist score/grade only on a genuine AI failure — see helper docstring (truncation excluded).
     _score_unreliable = _persisted_score_is_unreliable(result_dict)
     analysis, created = analysis_repo.save_new(db, Analysis(
         repo_id=repo.id,
