@@ -10,7 +10,7 @@ paths:
 
 # API / 알림 채널 규칙
 
-- **keyword-only 강제 (`*`)**: 모든 `send_*` notifier 함수와 `run_gate_check()` 등은 `def fn(*, arg1, arg2)` 형태. 테스트에서 positional 호출 시 TypeError — 반드시 키워드 인자로 호출.
+- **keyword-only 강제 (`*`)**: 모든 `send_*` notifier 함수는 `def fn(*, arg1, arg2)` 형태 — 테스트에서 positional 호출 시 TypeError, 반드시 키워드 인자로 호출. 🔴 **단, `run_gate_check` 는 positional** (`src/gate/engine.py:45`, 시그니처는 본 파일 아래 항목 참조 — 2026-06-23 정정: 이전 'keyword-only' 단언은 같은 파일 시그니처 항목과 자기모순이었음).
 - **RepoConfig 필드명**: `approve_mode`(구 `gate_mode`), `approve_threshold`(구 `auto_approve_threshold`), `reject_threshold`(구 `auto_reject_threshold`) — 구 필드명 사용 시 AttributeError.
 - **알림 채널 추가 체크리스트**: `RepoConfig` ORM → `RepoConfigData` dataclass → `RepoConfigUpdate` API body → UI 폼 4곳 반드시 동기화. 누락 시 REST API 업데이트 시 해당 필드가 NULL로 덮어써지는 버그 발생.
 - **Webhook 서명**: `X-Hub-Signature-256` 헤더 없거나 서명 불일치 시 401 반환 — 로컬 테스트 시 서명 생성 필요. 빈 시크릿(`GITHUB_WEBHOOK_SECRET` 미설정)이면 즉시 401.

@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [정밀 감사(69-에이전트 다차원 워크플로우) + docs-drift 13건 정정 (#961 — 정합성/코드품질/보안 11차원 read-only 감사 raw 41→confirmed 30 전부 P2·P0/P1 0, 사용자 선택 docs-drift 13건 grep -n 실측 일괄 정정[security/api/i18n/pipeline/db/testing rules + env-vars 심볼참조 + architecture e2e + .env.example 3토글], Codex 1차 8/9 OK→testing.md NG 즉시 재작성, 보안/게이트 4건 High tier 별도, 2026-06-23)](#정밀-감사69-에이전트-다차원-워크플로우--docs-drift-13건-정정-961-2026-06-23)
 - [AI 리뷰 점수 NULL 폐기 분리 — 입력 diff 절단 시 점수 보존 (#960 — 운영 Supabase 실측: 6월 score NULL 256건 다수가 절단형·일 점수 성공률 24~57% 급락, `_persisted_score_is_unreliable`에서 `ai_review_truncated` 트리거 제거 → NULL은 genuine 실패[api_error/parse_error] 한정, auto-merge 차단[#885]은 마커 직접 참조라 안전성 영향 0, 사용자 결정 A, Codex mutual OK, 2026-06-22)](#ai-리뷰-점수-null-폐기-분리--입력-diff-절단-시-점수-보존-960-2026-06-22)
 - [SonarCloud S6853 폼 라벨 7건 해소 + edit-guard hook 견고화 + 의존성 (2026-06-22 후속)](#sonarcloud-s6853-폼-라벨-7건-해소--edit-guard-hook-견고화--의존성-2026-06-22-후속)
 - [SonarCloud 잔여 CRITICAL 전부 해소 (#951 docs sync·#952 CodeQL py/import-and-import-from fix·#953 S1192 2건+S8415 6건 가드 헬퍼 추출·#954 S3776 4건 extract-method[clippy·repo_kpi·narrative·merge_retry], CRITICAL 6→0·code smells 126→116, S8415 라우트 직접 raise만 검출/S107 0건 실측으로 보류 해소, Codex mutual OK, 2026-06-22)](#sonarcloud-잔여-critical-전부-해소-951954-2026-06-22)
@@ -117,6 +118,18 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 정밀 감사(69-에이전트 다차원 워크플로우) + docs-drift 13건 정정 (#961, 2026-06-23)
+
+**날짜**: 2026-06-22~23 | **PR**: #961 (docs-drift) | **트리거**: 사용자 "전체 문서·코드 정합성·코드품질·보안강화 정밀 검증 (딥리서치 + 다이나믹 워크플로우)" | **상태**: #961 머지 / 보안·게이트 4건 항목별 확인 대기
+
+**감사**: 11차원(정합성 4·코드품질 4·보안 3) read-only 다이나믹 워크플로우(`wf_bb8affb6`, 69 에이전트) — fan-out finder → finding별 적대 검증(회의적 기본·파일 직접 확인) → completeness critic 갭 추적 → 종합. **raw 41 → 적대 검증 FP 17 차단 → critic 갭 6 → confirmed 30 (P0/P1 0·전부 P2)**. 차원횡단 근본원인 4종: (A) line/count 자연 drift(정책 6 자기위반 다수) (B) fail-open/fail-closed 비대칭(timeout만 막고 crash·미설치·fetch-fail·verdict-stale는 우회) (C) 단일출처 우회(literal·직접 hmac·재구현) (D) untrusted 값 escape 부재(아웃바운드 알림 3채널 markdown 인젝션).
+
+**사용자 선택 2 클러스터**: docs-drift 13건(즉시) + 보안/게이트 4건(High tier 항목별 확인). 테스트/단일출처·markdown-injection 클러스터는 미선택.
+
+**#961 (docs-drift 13건)**: 각 항목 `grep -n` 직접 재실측 후 정정(새 drift 유입 차단). rules — security.md(secure_str_compare 단일출처·require_admin session.py:87/99·LimitBodySize 이미 처리됨)·api.md(run_gate_check positional 정정)·i18n.md(8→15 namespace)·pipeline.md(8→23 tools)·db.md(env.py:96·is_postgresql 시점)·testing.md(R0914 하드코딩 카운트→드리프트-방지형 grep 정본 + ~28 근사). docs — env-vars.md(MERGE_UNKNOWN config.py 심볼참조)·architecture.md(e2e test_overview_score.py)·.env.example(VERIFIER_BASE_URL·CLAUDE_REVIEW_MAX_TOKENS·N8N_RELAY_REPO_TOKEN 3 토글). 🔴 수정 중 빈 `CLAUDE_REVIEW_MAX_TOKENS=`(int)가 `cp .env.example .env` 시 pydantic ValidationError로 startup crash됨을 실측 차단 → 기본값 8192 명시. Codex 1차 8/9 OK → testing.md "7건" NG(특정 파일만 grep한 실수) → 단일 정답 버그(정책 18 #3b) 즉시 드리프트-방지형 재작성 + ground-truth 28개 재검증. 코드/테스트 무변경.
+
+**잔여(보안/게이트 4건 — High tier 별도 PR)**: (1) auth.py dev-mode 무인증 cross-tenant 노출(http 오판) (2) native_automerge head_sha fetch 실패 시 SHA-atomicity 우회 (3) merge_retry 2nd-LLM verifier-staleness TOCTOU (4) static.py crash/미설치 fail-open. 정책 15 High tier + 정책 18 Codex mutual 의무라 항목별 사전 확인 후 진행. [[project-score-null-truncation-decouple]]
 
 ## AI 리뷰 점수 NULL 폐기 분리 — 입력 diff 절단 시 점수 보존 (#960, 2026-06-22)
 

@@ -116,8 +116,8 @@ Sentry 외 자동 로깅은 별도 환경변수 없이 동작:
 | `MERGE_RETRY_MAX_BACKOFF_SECONDS` | 최대 백오프 (초, **>= 1 AND >= INITIAL_BACKOFF** — `Field(ge=1)` + `model_validator` 경계 강제, max<initial 시 startup ValidationError) | `600` |
 | `MERGE_RETRY_CHECK_SUITE_WEBHOOK_ENABLED` | `check_suite.completed` 웹훅 즉각 트리거 활성화 | `true` |
 | `MERGE_RETRY_WORKER_BATCH_SIZE` | cron sweep 1회 처리 최대 행 수 (**>= 1** 제약 — `Field(ge=1)`) | `50` |
-| `MERGE_UNKNOWN_RETRY_LIMIT` | `mergeable_state=unknown` 상태 폴링 최대 재시도 횟수 (`config.py:87`) | `3` |
-| `MERGE_UNKNOWN_RETRY_DELAY` | `mergeable_state=unknown` 재시도 간격 (초, `config.py:88`) | `3.0` |
+| `MERGE_UNKNOWN_RETRY_LIMIT` | `mergeable_state=unknown` 상태 폴링 최대 재시도 횟수 (`config.py` `merge_unknown_retry_limit`) | `3` |
+| `MERGE_UNKNOWN_RETRY_DELAY` | `mergeable_state=unknown` 재시도 간격 (초, `config.py` `merge_unknown_retry_delay`) | `3.0` |
 
 > 기본값으로 운영 환경에 최적화되어 있어 별도 설정 없이 즉시 동작한다.
 > 운영 runbook: `docs/runbooks/merge-retry.md`

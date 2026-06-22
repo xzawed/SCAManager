@@ -164,6 +164,7 @@ e2e/
 ├── test_dashboard_insight.py      # /dashboard?mode=insight E2E — AI narrative 카드 렌더링
 ├── test_i18n_visual_regression.py # 3-언어 × 4-페이지 i18n 시각 회귀 테스트 (Cycle 84 PR-16)
 ├── test_navigation.py             # hx-boost 네비게이션 + 뒤로가기 흐름 E2E
+├── test_overview_score.py         # 개요 score count-up "0/100" 고착 회귀 — IO 미발동/이중 init 안전망·실제 네비 (#936/#939, 2026-06-18~19)
 ├── test_repos_mode.py             # /repos/add + /repos/{name} 기능 흐름 E2E (Cycle 94)
 ├── test_settings.py               # /repos/{name}/settings 저장 흐름 E2E
 ├── test_theme.py                  # 4-테마 토글 E2E (desktop)
