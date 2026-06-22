@@ -7,6 +7,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
 from src.auth.session import CurrentUser, require_login
 from src.constants import CLAUDE_MODEL_PRICING, CLAUDE_PRICING_FALLBACK
@@ -55,6 +56,19 @@ def _serialize_feedback(fb: object | None) -> dict:
     }
 
 
+def _load_analysis_or_404(db: Session, repo_id: int, analysis_id: int) -> Analysis:
+    """repo_id + analysis_id 로 Analysis 조회, 없으면 404 (3 라우트 공통 — S1192 중복 가드 추출).
+
+    Load an Analysis by repo_id + analysis_id, or raise 404 (shared by 3 routes).
+    """
+    analysis = db.query(Analysis).filter(
+        Analysis.id == analysis_id, Analysis.repo_id == repo_id,
+    ).first()
+    if not analysis:
+        raise HTTPException(status_code=404, detail="Analysis not found")
+    return analysis
+
+
 @router.get("/repos/{repo_name:path}/analyses/{analysis_id}", response_class=HTMLResponse)
 def analysis_detail(
     request: Request, repo_name: str, analysis_id: int,
@@ -63,11 +77,7 @@ def analysis_detail(
     """분석 상세 페이지(AI 리뷰·점수·피드백)를 렌더링한다."""
     with SessionLocal() as db:
         repo = get_accessible_repo(db, repo_name, current_user)
-        analysis = db.query(Analysis).filter(
-            Analysis.id == analysis_id, Analysis.repo_id == repo.id
-        ).first()
-        if not analysis:
-            raise HTTPException(status_code=404, detail="Analysis not found")
+        analysis = _load_analysis_or_404(db, repo.id, analysis_id)
         result = analysis.result or {}
         source = result.get("source") or ("pr" if analysis.pr_number else "push")
         data = {
@@ -116,11 +126,7 @@ def post_analysis_feedback(
     """분석에 thumbs up/down 피드백을 upsert — Phase E.3."""
     with SessionLocal() as db:
         repo = get_accessible_repo(db, repo_name, current_user)
-        analysis = db.query(Analysis).filter(
-            Analysis.id == analysis_id, Analysis.repo_id == repo.id,
-        ).first()
-        if not analysis:
-            raise HTTPException(status_code=404, detail="Analysis not found")
+        _load_analysis_or_404(db, repo.id, analysis_id)
         fb = analysis_feedback_repo.upsert_feedback(
             db,
             analysis_id=analysis_id,
@@ -140,11 +146,7 @@ def get_analysis_feedback(
     """현재 사용자의 분석 피드백 조회 — UI 상태 복원용."""
     with SessionLocal() as db:
         repo = get_accessible_repo(db, repo_name, current_user)
-        analysis = db.query(Analysis).filter(
-            Analysis.id == analysis_id, Analysis.repo_id == repo.id,
-        ).first()
-        if not analysis:
-            raise HTTPException(status_code=404, detail="Analysis not found")
+        _load_analysis_or_404(db, repo.id, analysis_id)
         fb = analysis_feedback_repo.find_by_analysis_and_user(
             db, analysis_id=analysis_id, user_id=current_user.id,
         )
