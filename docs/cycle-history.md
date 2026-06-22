@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [SonarCloud BLOCKER 및 고복잡도 CRITICAL 정리 (#948 CORS S8414 outermost·#949 S1192 merge_retry·#950 S3776 고복잡도 3건 extract-method[dashboard 22·repo_category 20·lifespan 16], BLOCKER 1→0·CRITICAL 10→6·code smells 131→126, S1192 2건/merge_retry 18/경계 3건 정책 16·S8415 재부상 보류, Codex mutual OK, 단위 5013·전체 5167, 2026-06-22)](#sonarcloud-blocker-및-고복잡도-critical-정리-948950-2026-06-22)
 - [SonarCloud Quality Gate ERROR 복구 — 폼 입력 20건 aria-label (settings 15 + repo_detail 5 라벨 없는 input/select = `Web:InputWithoutLabelCheck` MAJOR 신뢰성 버그 → new_reliability_rating C→A, 권위 룰 소스가 `hasProperty("aria-label")` 통과 확인, i18n 바인딩 aria-label[기존 16키 + 신규 4키 ko/en/ja], TDD 정적 가드 20 + render-parity, Codex mutual OK, #946 머지, 단위 5011·전체 5165, 2026-06-22)](#sonarcloud-quality-gate-error-복구-폼-입력-20건-aria-label-2026-06-22)
 - [2nd-LLM 머지 검증자 OpenAI-호환 base_url 일반화 — 추가 비용 0/최소 활성화 (OpenAI 비구독자도 무료 호환 공급자[GitHub Models·Groq·OpenRouter]로 cross-vendor 검증, `VERIFIER_BASE_URL` config + SDK/httpx 양 경로 전달, TDD +7, 단위 4988, 2026-06-19)](#2nd-llm-머지-검증자-openai-호환-base_url-일반화-2026-06-19)
 - [개요 점수 0/100 실제 repo→개요 hx-boost 네비게이션 회귀 가드 e2e 추가 (사용자 보고 2026-06-19 = 브라우저 스테일 immutable 캐시 근본, 라이브 코드 #936/#938 이미 수정·배포 — 실제 page→page hx-boost 경로 미검증 coverage gap 보완, `test_overview_score_survives_repo_to_overview_nav`, E2E 120→121, 정책18 Codex-다운 예외, 2026-06-19)](#개요-점수-0100-실제-repo개요-hx-boost-네비게이션-회귀-가드-e2e-추가-2026-06-19)
@@ -113,6 +114,20 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## SonarCloud BLOCKER 및 고복잡도 CRITICAL 정리 (#948~#950, 2026-06-22)
+
+폼 입력 aria-label 게이트 복구(#946) 후 사용자 잔여 작업 점검 → SonarCloud 코드 스멜 정리. 게이트는 이미 OK·전 등급 A 라 **품질 개선 성격**(차단성 무). BLOCKER 1 + CRITICAL 10 중 고가치/저위험 항목 처리.
+
+**#948 — BLOCKER `python:S8414`(CORS)**: `CORSMiddleware` 가 SecurityHeaders/LimitBodySize 다음·Session/RLS/Locale 보다 먼저 `add_middleware` 되어 **inner** 위치. Starlette LIFO 상 마지막 등록이 outermost 이므로 CORS 가 inner 면 Session/RLS 인증·세션 거부 응답에 CORS 헤더 누락 + preflight inner. 수정 = CORS 블록을 SessionMiddleware 뒤로 이동(마지막=outermost). 흐름 `CORS → Session → RLS → Locale → ...`, Session→RLS 의도 순서 보존. 정적 가드(add_middleware 마지막=CORS) + 런타임 실측(`user_middleware[0]`=CORS). 🔴 **조건부 CORS 블록(`app_base_url`)은 테스트 기본 env 미실행 → new_coverage 33% 게이트 fail** → main reload 테스트로 실측 커버(fix-up). +2 단위.
+
+**#949 — CRITICAL `python:S1192`(merge_retry)**: i18n 키 `"notifier.gate.retry_repo_line"` 3회 중복 → `_RETRY_REPO_LINE_KEY` 상수. 🔴 **당초 3 파일이었으나 `issue_registration.py`·`detail.py` 의 `raise HTTPException(detail="...")` 라인 수정이 그 라인의 잠재 `S8415`(MAJOR — HTTPException 을 `responses=` 문서화) 6건을 "신규 코드"로 재부상시켜 new_maintainability B → 2 파일 되돌림, merge_retry 만 유지**(HTTPException 없어 재부상 0). 🔴 교훈 = **라인 수정 = 그 라인의 잠재 스멜 재부상**(스멜 교환 위험 — 리팩터 전 해당 라인 latent 이슈 확인).
+
+**#950 — CRITICAL `python:S3776`(고복잡도 3건 extract-method)**: dashboard `repo_insight_cards`(22)→`_build_repo_card` · repo_insight `repo_category_breakdown`(20)→`_classify_issue_bucket` · main `lifespan`(16)→`_validate_startup_config`(0-param). 동작 보존(Codex 확인: `repo_id`≡`repo.id`·분류 분기 등가·검증 raise/warning 등가·실행 순서 유지). 헬퍼 param 3/1/0 → `S107` 무위험. S3776 은 로직 블록 이동이라 S8415-류 재부상 없음(게이트 OK).
+
+🔴 **보류 (정책 16)**: merge_retry `_process_single_retry`(18) = 깔끔 추출이 8~9 param 헬퍼 → `S107` 신규 유발(스멜 교환)·선형 guard 이미 가독성 양호 / 16→15 경계 3건(clippy·repo_insight:75·:312) = 메트릭 위한 단일 사용 헬퍼 강제 회피 / S1192 2건 = S8415 재부상.
+
+결과: **BLOCKER 1→0 · CRITICAL 10→6 · code smells 131→126**. 게이트 OK·전 등급 A 유지. 잔여 CRITICAL 6 = 차단성 무. 전 PR Codex mutual OK. 단위 5011→5013·전체 5167.
 
 ## SonarCloud Quality Gate ERROR 복구 (폼 입력 20건 aria-label, 2026-06-22)
 
