@@ -1,4 +1,6 @@
 """Tests for src/main.py — FastAPI app entry point, lifespan, and route registration."""
+import re
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -37,6 +39,20 @@ def test_health_security_headers(client):
     response = client.get("/health")
     assert response.headers.get("x-content-type-options") == "nosniff"
     assert response.headers.get("x-frame-options") == "DENY"
+
+
+def test_cors_middleware_registered_last_outermost():
+    # CORSMiddleware 는 마지막 add_middleware (outermost) 여야 함 — SonarCloud S8414 (BLOCKER).
+    # Starlette LIFO: 마지막 등록 = outermost (request 먼저 처리). CORS 가 outermost 여야
+    # preflight OPTIONS + CORS 헤더가 인증/세션 거부 응답에도 적용된다.
+    # CORSMiddleware must be the last-registered (outermost) middleware (SonarCloud S8414).
+    # Outermost CORS ensures preflight + CORS headers apply even to auth/session rejections.
+    src = Path("src/main.py").read_text(encoding="utf-8")
+    order = re.findall(r"app\.add_middleware\(\s*(\w+)", src)
+    assert "CORSMiddleware" in order, "CORSMiddleware 등록 누락"
+    assert order[-1] == "CORSMiddleware", (
+        f"CORSMiddleware 가 마지막(outermost)이 아님 — S8414 위반. 등록 순서={order}"
+    )
 
 
 def test_health_tools_removed(client):

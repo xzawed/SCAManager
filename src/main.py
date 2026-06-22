@@ -203,17 +203,6 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(LimitBodySizeMiddleware)
-# A4: CORS — APP_BASE_URL 기반 명시적 출처 허용 (allow_origins=["*"] 금지)
-# A4: CORS — explicit origin from APP_BASE_URL, never allow_origins=["*"]
-if settings.app_base_url:
-    _origin = settings.app_base_url.rstrip("/")
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[_origin],
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE"],
-        allow_headers=["*"],
-    )
 # Phase 3 postlude — RLS 운영 활성화 미들웨어. Starlette LIFO 미들웨어 스택:
 # add_middleware 마지막 호출이 outer (request 먼저 처리). 원하는 흐름 = SessionMiddleware → RLSSessionMiddleware → route
 # 따라서 RLS 먼저 등록 (inner), SessionMiddleware 나중 등록 (outer — RLS 보다 먼저 호출).
@@ -239,6 +228,23 @@ app.add_middleware(
     same_site="lax",
     max_age=60 * 60 * 24 * 7,  # 7 days
 )
+
+# A4: CORS — APP_BASE_URL 기반 명시적 출처 허용 (allow_origins=["*"] 금지).
+# 🔴 CORSMiddleware 는 반드시 마지막 add_middleware (outermost) — SonarCloud S8414.
+# outermost 여야 preflight OPTIONS + CORS 헤더가 Session/RLS 등 inner 미들웨어의
+# 인증·세션 거부 응답에도 적용된다 (CORS 가 inner 면 거부 응답에 CORS 헤더 누락).
+# A4: CORS — explicit origin from APP_BASE_URL, never allow_origins=["*"].
+# CORSMiddleware MUST be the last add_middleware (outermost) — SonarCloud S8414 — so that
+# preflight + CORS headers apply even when inner middleware (Session/RLS) reject the request.
+if settings.app_base_url:
+    _origin = settings.app_base_url.rstrip("/")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[_origin],
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "DELETE"],
+        allow_headers=["*"],
+    )
 
 
 # 정적 파일 캐시 — 버전 해시 없는 URL(`/static/js/effects.js` 등)이라 immutable 장기 캐시 금지.
