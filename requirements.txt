@@ -24,7 +24,7 @@ python-telegram-bot==22.8
 anthropic>=0.111.0
 # openai — 머지 검증자(2nd-LLM cross-vendor) 런타임 의존 + (dev) DALL-E 일러스트 도구. 키 미설정 시 비활성
 # openai — runtime dep for the 2nd-LLM merge verifier (+ dev DALL-E tool). Inert without OPENAI_API_KEY.
-openai>=2.41.1
+openai>=2.43.0
 aiosmtplib>=5.1.2
 pylint==4.0.6
 flake8==7.3.0
