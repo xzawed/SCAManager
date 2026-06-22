@@ -41,7 +41,7 @@ pylint R0914 발생 시 두 패턴 중 선택:
 1. **헬퍼 추출 default** — 신규 함수 작성 시. 단일 책임 원칙 + 테스트 격리 + 향후 재사용 가능성 시 default.
 2. **inline `# pylint: disable=too-many-locals` + 사유 주석** — 기존 함수 시그니처 확장 시. 함수 자체의 응집 단위 보호 + 헬퍼 추출이 응집 깨뜨릴 때.
 
-현재 inline disable 사용처 (5건): `gate/github_review.py:108` (merge_pr) / `notifier/merge_failure_issue.py:59` / `services/merge_retry_service.py:100` / `services/dashboard_service.py:77` (dashboard_kpi) + `:224` (frequent_issues_v2). 모두 시그니처 확장 사례.
+현재 inline disable 사용처: src/ 전반 다수 (2026-06-23 기준 ~28개 함수 — **전체·정확 목록은 `grep -rn "too-many-locals" src/` 실측**, 하드코딩 카운트는 자연 drift라 지양). 대표 사례: `gate/github_review.py:108` (merge_pr) · `gate/engine.py:95/144/395` (_run_auto_merge*) · `services/merge_retry_service.py:143` (_process_single_retry) · `services/dashboard_service.py` (dashboard_kpi/frequent_issues_v2/repo_insight_cards/insight_narrative) · notifier `_build_*` 다수 · `worker/pipeline.py:657` (run_analysis_pipeline). 모두 시그니처 확장 사례(헬퍼 추출이 응집 깨뜨릴 때).
 
 🔴 **line:span drift 주의**: 위 목록의 line 번호는 코드 변경 시 자연 drift 발생 — 인용 또는 업데이트 시 `grep -n` 실측 의무 (정책 6). 가능 시 commit hash 병기 권장 (예: `github_review.py:108 (#586)`).
 
