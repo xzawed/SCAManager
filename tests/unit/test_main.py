@@ -1,4 +1,5 @@
 """Tests for src/main.py — FastAPI app entry point, lifespan, and route registration."""
+import importlib
 import re
 from pathlib import Path
 from unittest.mock import patch
@@ -53,6 +54,29 @@ def test_cors_middleware_registered_last_outermost():
     assert order[-1] == "CORSMiddleware", (
         f"CORSMiddleware 가 마지막(outermost)이 아님 — S8414 위반. 등록 순서={order}"
     )
+
+
+def test_cors_block_registers_outermost_when_app_base_url_set(monkeypatch):
+    # APP_BASE_URL 설정 시 CORS 블록(app.add_middleware(CORSMiddleware, ...))이 실행되어
+    # CORSMiddleware 가 outermost(user_middleware[0])로 등록되고 origin/credentials 가 적용되는지 검증.
+    # main 을 reload 해 조건부 CORS 블록을 실제 실행(테스트 기본 env 는 app_base_url 빈 값).
+    # Reload main with APP_BASE_URL set so the conditional CORS block actually executes.
+    import src.config as config_mod
+    import src.main as main_mod
+    monkeypatch.setenv("APP_BASE_URL", "https://cors-test.example.com")
+    try:
+        importlib.reload(config_mod)
+        reloaded = importlib.reload(main_mod)
+        outermost = reloaded.app.user_middleware[0]
+        assert outermost.cls.__name__ == "CORSMiddleware"  # 마지막 등록 = outermost
+        assert outermost.kwargs["allow_origins"] == ["https://cors-test.example.com"]
+        assert outermost.kwargs["allow_credentials"] is True
+    finally:
+        # main/config 를 원래 상태(app_base_url 빈 값, CORS 미등록)로 복원 — 전역 누수 방지
+        # Restore main/config to original state to avoid global state leak.
+        monkeypatch.delenv("APP_BASE_URL", raising=False)
+        importlib.reload(config_mod)
+        importlib.reload(main_mod)
 
 
 def test_health_tools_removed(client):
