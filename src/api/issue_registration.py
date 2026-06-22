@@ -74,15 +74,24 @@ def _make_issue_key(req: RegisterRequest) -> str:
     return make_static_issue_key(tool, category, message)
 
 
+def _require_api_user(request: Request):
+    """세션 사용자 반환, 미인증 시 401 (3 라우트 공통 — S1192 중복 가드 추출).
+
+    Return the session user or raise 401 (shared by 3 routes).
+    """
+    current_user = get_current_user(request)
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Login required")
+    return current_user
+
+
 @router.post("/register", status_code=201)
 @limiter.limit(RATE_LIMIT_HEAVY)
 async def register(request: Request, req: RegisterRequest):
     """AI 분석 이슈를 GitHub Issue로 등록한다.
     Register an AI analysis issue as a GitHub Issue.
     """
-    current_user = get_current_user(request)
-    if not current_user:
-        raise HTTPException(status_code=401, detail="Login required")
+    current_user = _require_api_user(request)
 
     locale = get_locale(request)
     issue_key = _make_issue_key(req)
@@ -139,9 +148,7 @@ async def get_status(request: Request, analysis_id: int):
     """analysis_detail용 등록 이력 + GitHub 상태 동기화 결과를 반환한다.
     Return registration history and synced GitHub state for analysis_detail.
     """
-    current_user = get_current_user(request)
-    if not current_user:
-        raise HTTPException(status_code=401, detail="Login required")
+    current_user = _require_api_user(request)
 
     def _check():
         with SessionLocal() as _db:
@@ -180,9 +187,7 @@ async def repo_summary(request: Request, repo_id: int):
     """repo_detail용 등록 이력 + GitHub 상태를 반환한다.
     Return registration history and GitHub state for repo_detail.
     """
-    current_user = get_current_user(request)
-    if not current_user:
-        raise HTTPException(status_code=401, detail="Login required")
+    current_user = _require_api_user(request)
 
     def _check():
         with SessionLocal() as _db:
