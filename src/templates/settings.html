@@ -833,13 +833,13 @@
           <div class="s-section-label">{{ 'settings_page.notify.section_telegram' | i18n_args(locale | default('ko')) }}</div>
           <div class="channel-grid">
             <div class="field-row">
-              <label class="field-label">
+              <label class="field-label" for="notify_chat_id">
                 <span class="conn-dot {% if config.notify_chat_id %}is-on{% else %}is-off{% endif %}"></span>
                 {{ 'settings_page.notify.telegram_chat_id_label' | i18n_args(locale | default('ko')) }}
               </label>
               <span class="field-hint">{{ 'settings_page.notify.telegram_chat_id_hint' | i18n_args(locale | default('ko')) }}</span>
               <div class="masked-field">
-                <input class="field-input" type="password" name="notify_chat_id"
+                <input class="field-input" type="password" name="notify_chat_id" id="notify_chat_id"
                        aria-label="{{ 'settings_page.notify.telegram_chat_id_label' | i18n_args(locale | default('ko')) }}"
                        value="{{ config.notify_chat_id or '' }}"
                        placeholder="-100xxxxxxxxx" autocomplete="off">
@@ -850,7 +850,7 @@
 
             {# Telegram OTP / Phase 2 PR-8 — i18n #}
             <div class="field-row">
-              <label class="field-label">{{ 'settings_page.notify.telegram_link_label' | i18n_args(locale | default('ko')) }}</label>
+              <div class="field-label">{{ 'settings_page.notify.telegram_link_label' | i18n_args(locale | default('ko')) }}</div>
               <div id="telegram-connect-section-notify">
                 {% if current_user.is_telegram_connected %}
                 <p class="text-success" style="font-size:13px;margin:0;">{{ 'settings_page.notify.telegram_link_connected' | i18n_args(locale | default('ko')) }}</p>
@@ -919,12 +919,12 @@
               <div class="s-section-label" style="grid-column:1/-1;margin:.6rem 0 .25rem;">{{ 'settings_page.notify.section_messengers' | i18n_args(locale | default('ko')) }}</div>
             </div>
             <div class="field-row adv-only">
-              <label class="field-label">
+              <label class="field-label" for="discord_webhook_url">
                 <span class="conn-dot {% if config.discord_webhook_url %}is-on{% else %}is-off{% endif %}"></span>
                 {{ 'settings_page.notify.discord_label' | i18n_args(locale | default('ko')) }}
               </label>
               <div class="masked-field">
-                <input class="field-input" type="password" name="discord_webhook_url"
+                <input class="field-input" type="password" name="discord_webhook_url" id="discord_webhook_url"
                        aria-label="{{ 'settings_page.notify.discord_label' | i18n_args(locale | default('ko')) }}"
                        value="{{ config.discord_webhook_url or '' }}"
                        placeholder="https://discord.com/api/webhooks/..." autocomplete="off">
@@ -933,12 +933,12 @@
               </div>
             </div>
             <div class="field-row adv-only">
-              <label class="field-label">
+              <label class="field-label" for="slack_webhook_url">
                 <span class="conn-dot {% if config.slack_webhook_url %}is-on{% else %}is-off{% endif %}"></span>
                 {{ 'settings_page.notify.slack_label' | i18n_args(locale | default('ko')) }}
               </label>
               <div class="masked-field">
-                <input class="field-input" type="password" name="slack_webhook_url"
+                <input class="field-input" type="password" name="slack_webhook_url" id="slack_webhook_url"
                        aria-label="{{ 'settings_page.notify.slack_label' | i18n_args(locale | default('ko')) }}"
                        value="{{ config.slack_webhook_url or '' }}"
                        placeholder="https://hooks.slack.com/services/..." autocomplete="off">
@@ -947,13 +947,13 @@
               </div>
             </div>
             <div class="field-row adv-only">
-              <label class="field-label">
+              <label class="field-label" for="email_recipients">
                 <span class="conn-dot {% if config.email_recipients %}is-on{% else %}is-off{% endif %}"></span>
                 {{ 'settings_page.notify.email_label' | i18n_args(locale | default('ko')) }} <span class="field-tag">{{ 'settings_page.notify.email_tag' | i18n_args(locale | default('ko')) }}</span>
               </label>
               <span class="field-hint">{{ 'settings_page.notify.email_hint' | i18n_args(locale | default('ko')) }}</span>
               <div class="masked-field">
-                <input class="field-input" type="password" name="email_recipients"
+                <input class="field-input" type="password" name="email_recipients" id="email_recipients"
                        aria-label="{{ 'settings_page.notify.email_label' | i18n_args(locale | default('ko')) }}"
                        value="{{ config.email_recipients or '' }}"
                        placeholder="admin@example.com, dev@example.com" autocomplete="off">
@@ -962,12 +962,12 @@
               </div>
             </div>
             <div class="field-row adv-only">
-              <label class="field-label">
+              <label class="field-label" for="custom_webhook_url">
                 <span class="conn-dot {% if config.custom_webhook_url %}is-on{% else %}is-off{% endif %}"></span>
                 {{ 'settings_page.notify.custom_label' | i18n_args(locale | default('ko')) }}
               </label>
               <div class="masked-field">
-                <input class="field-input" type="password" name="custom_webhook_url"
+                <input class="field-input" type="password" name="custom_webhook_url" id="custom_webhook_url"
                        aria-label="{{ 'settings_page.notify.custom_label' | i18n_args(locale | default('ko')) }}"
                        value="{{ config.custom_webhook_url or '' }}"
                        placeholder="https://example.com/webhook/..." autocomplete="off">
@@ -979,12 +979,12 @@
               <div class="s-section-label" style="grid-column:1/-1;margin:.6rem 0 .25rem;">{{ 'settings_page.notify.section_automation' | i18n_args(locale | default('ko')) }}</div>
             </div>
             <div class="field-row adv-only">
-              <label class="field-label">
+              <label class="field-label" for="n8n_webhook_url">
                 <span class="conn-dot {% if config.n8n_webhook_url %}is-on{% else %}is-off{% endif %}"></span>
                 {{ 'settings_page.notify.n8n_label' | i18n_args(locale | default('ko')) }}
               </label>
               <div class="masked-field">
-                <input class="field-input" type="password" name="n8n_webhook_url"
+                <input class="field-input" type="password" name="n8n_webhook_url" id="n8n_webhook_url"
                        aria-label="{{ 'settings_page.notify.n8n_label' | i18n_args(locale | default('ko')) }}"
                        value="{{ config.n8n_webhook_url or '' }}"
                        placeholder="https://n8n.example.com/webhook/..." autocomplete="off">
