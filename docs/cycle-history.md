@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [SonarCloud Quality Gate ERROR 복구 — 폼 입력 20건 aria-label (settings 15 + repo_detail 5 라벨 없는 input/select = `Web:InputWithoutLabelCheck` MAJOR 신뢰성 버그 → new_reliability_rating C→A, 권위 룰 소스가 `hasProperty("aria-label")` 통과 확인, i18n 바인딩 aria-label[기존 16키 + 신규 4키 ko/en/ja], TDD 정적 가드 20 + render-parity, Codex mutual OK, #946 머지, 단위 5011·전체 5165, 2026-06-22)](#sonarcloud-quality-gate-error-복구-폼-입력-20건-aria-label-2026-06-22)
 - [2nd-LLM 머지 검증자 OpenAI-호환 base_url 일반화 — 추가 비용 0/최소 활성화 (OpenAI 비구독자도 무료 호환 공급자[GitHub Models·Groq·OpenRouter]로 cross-vendor 검증, `VERIFIER_BASE_URL` config + SDK/httpx 양 경로 전달, TDD +7, 단위 4988, 2026-06-19)](#2nd-llm-머지-검증자-openai-호환-base_url-일반화-2026-06-19)
 - [개요 점수 0/100 실제 repo→개요 hx-boost 네비게이션 회귀 가드 e2e 추가 (사용자 보고 2026-06-19 = 브라우저 스테일 immutable 캐시 근본, 라이브 코드 #936/#938 이미 수정·배포 — 실제 page→page hx-boost 경로 미검증 coverage gap 보완, `test_overview_score_survives_repo_to_overview_nav`, E2E 120→121, 정책18 Codex-다운 예외, 2026-06-19)](#개요-점수-0100-실제-repo개요-hx-boost-네비게이션-회귀-가드-e2e-추가-2026-06-19)
 - [정적 자산 immutable 캐시 → 배포 미전파 stale 사고 수정 (개요 "0/100" 지속 = #936 라이브 미반영 — `/static` immutable+1년 캐시가 버전 해시 없는 effects.js 를 최대 1년 서빙, `no-cache` ETag 재검증 전환, TDD RED→GREEN, 단위 4981, 2026-06-18)](#정적-자산-immutable-캐시--배포-미전파-stale-사고-수정-2026-06-18)
@@ -112,6 +113,20 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## SonarCloud Quality Gate ERROR 복구 (폼 입력 20건 aria-label, 2026-06-22)
+
+사용자 SonarQube 상태 점검 요청 → 공개 API 실측으로 **Quality Gate ERROR** 발견 (유일 실패 조건 `new_reliability_rating` C(3) > A(1) — 나머지 보안 A·커버리지 96.6%·중복 0.1%·핫스팟 0 정상). 근본 = `settings.html`(15) + `repo_detail.html`(5) 의 라벨 없는 input/select **20건** = `Web:InputWithoutLabelCheck` MAJOR 신뢰성 버그. 프로젝트 버전 `1.0` 동결로 "신규 코드"가 전체 이력을 포괄 → 전체 신뢰성 C 가 게이트에 그대로 반영된 구조.
+
+**핵심 정확성 확인**: 편집 중 IDE 라이브 진단이 aria-label 추가 후에도 계속 플래그(stale — 라인 번호가 편집 전 위치와 일치) → 추측 대신 권위 룰 소스 직접 확인. SonarSource sonar-html [`InputWithoutLabelCheck.registerControl`](https://raw.githubusercontent.com/SonarSource/sonar-html/master/sonar-html-plugin/src/main/java/org/sonar/plugins/html/checks/sonar/InputWithoutLabelCheck.java) 가 `hasProperty("aria-label")` 시 즉시 return → **aria-label 이 룰을 만족**. 이어 라이브 진단이 재분석 후 실제로 클리어됨을 실측 확인 (소스 + 실측 양면 확증). 추측 회피 → 권위 소스 우선 학습.
+
+**수정**: 각 컨트롤에 **i18n 바인딩 aria-label** 부여 (하드코딩 금지 — `i18n.md` 규칙, 사이클 147 #707 S6853 aria-label 선례와 일관). 16건 기존 가시 라벨 키 재사용 + 신규 4키(`repo_detail.date_from_aria`/`date_to_aria`/`score_min_aria`/`score_max_aria` × ko/en/ja — 두 슬라이더 등 중복 라벨 방지 위해 min/max·from/to 구분).
+
+**검증(TDD)**: `tests/unit/ui/test_input_aria_labels.py` — 20 컨트롤 raw 템플릿 aria-label 정적 가드(SonarCloud 와 동일 raw HTML 검사) parametrize + count-lock(20). RED 20 fail → GREEN. + `test_detail_i18n_render.py` render-parity 신규 4키 ko/en(오타 키 회귀 차단). 전 33 aria-label i18n 바인딩 3 로케일 해소 OK(오타 0). 전체 `pytest tests/` 5157 passed/8 skipped · pylint 10.00 · flake8 clean. **단위 4988→5011(+23)·전체 5165.**
+
+🔍 Codex mutual: `codex exec` 독립 검증 **OK** — (1) 룰 소스 `getPropertyValue("aria-label") != null → return` 동일 출처 독립 도달 (2) Jinja2 `{{ }}` 바인딩 Python HTMLParser 속성 인식 (3) 두 템플릿 스캔 미라벨 0건·i18n 키 ko/en/ja 존재·테스트 47 재실행.
+
+PR #946 머지 → PR 게이트 `new_reliability_rating` A 확인(C→A 복구). 범위 외 = 동일 영역 `Web:S6853` 7건(`<label>` 코드 스멜·maintainability A 유지·게이트 무영향) → 별도 정리 대상. 머지 후 docs sync(STATE/README/cycle-history/ui.md) 별도 PR(#947).
 
 ## 2nd-LLM 머지 검증자 OpenAI-호환 base_url 일반화 (2026-06-19)
 
