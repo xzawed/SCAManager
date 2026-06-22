@@ -369,6 +369,30 @@ def test_analysis_detail_cycle143_issue_form_renders():
     assert "제목" in out  # issue_form.title
 
 
+def test_repo_detail_filter_input_aria_labels_render_korean():
+    """repo_detail.html ko — 필터 input aria-label 신규 키 렌더 (date_from/to · score_min/max + search 재사용).
+
+    SonarCloud Web:InputWithoutLabelCheck 해소용 aria-label 의 i18n 키가
+    raw 키가 아닌 번역 텍스트로 렌더되는지 검증 (오타 키 회귀 차단 — render-parity).
+    """
+    out = _render("repo_detail.html", locale="ko", **_repo_ctx())
+    assert 'aria-label="시작 날짜"' in out          # date_from_aria
+    assert 'aria-label="종료 날짜"' in out          # date_to_aria
+    assert 'aria-label="최소 점수"' in out          # score_min_aria
+    assert 'aria-label="최대 점수"' in out          # score_max_aria
+    assert 'aria-label="커밋 메시지 또는 SHA 검색…"' in out  # search_placeholder 재사용
+
+
+def test_repo_detail_filter_input_aria_labels_render_english():
+    """repo_detail.html en — 필터 input aria-label 신규 키 렌더."""
+    out = _render("repo_detail.html", locale="en", **_repo_ctx())
+    assert 'aria-label="From date"' in out          # date_from_aria
+    assert 'aria-label="To date"' in out            # date_to_aria
+    assert 'aria-label="Minimum score"' in out      # score_min_aria
+    assert 'aria-label="Maximum score"' in out      # score_max_aria
+    assert 'aria-label="Search commit message or SHA…"' in out  # search_placeholder 재사용
+
+
 def test_analysis_detail_trend_nav_encodes_repo_name():
     """🔴 U3: 트렌드 차트 클릭 nav 가 REPO_NAME 을 encodeURIComponent 로 인코딩(형제 feedback URL 대칭).
 

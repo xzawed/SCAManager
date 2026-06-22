@@ -249,6 +249,10 @@
     "history_count_filtered": "{filtered} / total {total} entries",
     "search_placeholder": "Search commit message or SHA…",
     "score_range_label": "Score",
+    "date_from_aria": "From date",
+    "date_to_aria": "To date",
+    "score_min_aria": "Minimum score",
+    "score_max_aria": "Maximum score",
     "table": {
       "date": "Date",
       "commit": "Commit",

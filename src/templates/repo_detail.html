@@ -543,6 +543,7 @@
   <!-- 필터 바 / Filter bar -->
   <div class="filter-bar">
     <input type="search" class="filter-search" id="searchInput"
+      aria-label="{{ 'repo_detail.search_placeholder' | i18n_args(locale | default('ko')) }}"
       placeholder="{{ 'repo_detail.search_placeholder' | i18n_args(locale | default('ko')) }}" autocomplete="off">
     <div class="filter-group" id="dateFilter">
       <button class="filter-btn active" data-date="all">{{ 'repo_detail.filter_all' | i18n_args(locale | default('ko')) }}</button>
@@ -553,9 +554,11 @@
       <button class="filter-btn" data-date="custom">{{ 'repo_detail.date_filter.custom' | i18n_args(locale | default('ko')) }}</button>
     </div>
     <div class="custom-date-wrap" id="customDateWrap">
-      <input type="date" class="date-input" id="dateFrom">
+      <input type="date" class="date-input" id="dateFrom"
+        aria-label="{{ 'repo_detail.date_from_aria' | i18n_args(locale | default('ko')) }}">
       <span style="color:var(--text-2);font-size:11px">–</span>
-      <input type="date" class="date-input" id="dateTo">
+      <input type="date" class="date-input" id="dateTo"
+        aria-label="{{ 'repo_detail.date_to_aria' | i18n_args(locale | default('ko')) }}">
     </div>
     <div class="filter-divider"></div>
     <div class="filter-group" id="gradeFilter">
@@ -579,8 +582,10 @@
       <div class="dual-slider-track" id="dualSliderTrack">
         <div class="dual-slider-bg"></div>
         <div class="dual-slider-fill" id="sliderFill"></div>
-        <input type="range" id="scoreMin" min="0" max="100" value="0" step="1">
-        <input type="range" id="scoreMax" min="0" max="100" value="100" step="1">
+        <input type="range" id="scoreMin" min="0" max="100" value="0" step="1"
+          aria-label="{{ 'repo_detail.score_min_aria' | i18n_args(locale | default('ko')) }}">
+        <input type="range" id="scoreMax" min="0" max="100" value="100" step="1"
+          aria-label="{{ 'repo_detail.score_max_aria' | i18n_args(locale | default('ko')) }}">
       </div>
       <span class="score-val-label" id="scoreMinLabel">0</span>
       <span style="color:var(--text-2);font-size:11px">–</span>

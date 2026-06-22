@@ -249,6 +249,10 @@
     "history_count_filtered": "{filtered}件 / 全体 {total}件",
     "search_placeholder": "コミットメッセージまたはSHA検索…",
     "score_range_label": "スコア",
+    "date_from_aria": "開始日",
+    "date_to_aria": "終了日",
+    "score_min_aria": "最小スコア",
+    "score_max_aria": "最大スコア",
     "table": {
       "date": "日付",
       "commit": "コミット",

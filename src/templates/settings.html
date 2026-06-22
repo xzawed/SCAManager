@@ -660,9 +660,11 @@
               </div>
               <div class="threshold-ctrl">
                 <input type="range" class="approve-range" name="merge_threshold"
+                       aria-label="{{ 'settings_page.pr_rules.merge_threshold_label' | i18n_args(locale | default('ko')) }}"
                        min="0" max="100" value="{{ config.merge_threshold }}"
                        oninput="document.getElementById('mergeVal').value=this.value">
                 <input type="number" id="mergeVal" class="num-input"
+                       aria-label="{{ 'settings_page.pr_rules.merge_threshold_label' | i18n_args(locale | default('ko')) }}"
                        min="0" max="100" value="{{ config.merge_threshold }}"
                        oninput="this.previousElementSibling.value=this.value">
               </div>
@@ -703,9 +705,11 @@
                 </div>
                 <div class="threshold-ctrl">
                   <input type="range" class="approve-range" name="approve_threshold"
+                         aria-label="{{ 'settings_page.pr_rules.approve_threshold_label' | i18n_args(locale | default('ko')) }}"
                          min="0" max="100" value="{{ config.approve_threshold }}"
                          oninput="document.getElementById('approveVal').value=this.value">
                   <input type="number" id="approveVal" class="num-input"
+                         aria-label="{{ 'settings_page.pr_rules.approve_threshold_label' | i18n_args(locale | default('ko')) }}"
                          min="0" max="100" value="{{ config.approve_threshold }}"
                          oninput="this.previousElementSibling.value=this.value">
                 </div>
@@ -717,9 +721,11 @@
                 </div>
                 <div class="threshold-ctrl">
                   <input type="range" class="reject-range" name="reject_threshold"
+                         aria-label="{{ 'settings_page.pr_rules.reject_threshold_label' | i18n_args(locale | default('ko')) }}"
                          min="0" max="100" value="{{ config.reject_threshold }}"
                          oninput="document.getElementById('rejectVal').value=this.value">
                   <input type="number" id="rejectVal" class="num-input danger"
+                         aria-label="{{ 'settings_page.pr_rules.reject_threshold_label' | i18n_args(locale | default('ko')) }}"
                          min="0" max="100" value="{{ config.reject_threshold }}"
                          oninput="this.previousElementSibling.value=this.value">
                 </div>
@@ -834,6 +840,7 @@
               <span class="field-hint">{{ 'settings_page.notify.telegram_chat_id_hint' | i18n_args(locale | default('ko')) }}</span>
               <div class="masked-field">
                 <input class="field-input" type="password" name="notify_chat_id"
+                       aria-label="{{ 'settings_page.notify.telegram_chat_id_label' | i18n_args(locale | default('ko')) }}"
                        value="{{ config.notify_chat_id or '' }}"
                        placeholder="-100xxxxxxxxx" autocomplete="off">
                 <button type="button" class="mask-toggle" onclick="toggleFieldMask(this)"
@@ -918,6 +925,7 @@
               </label>
               <div class="masked-field">
                 <input class="field-input" type="password" name="discord_webhook_url"
+                       aria-label="{{ 'settings_page.notify.discord_label' | i18n_args(locale | default('ko')) }}"
                        value="{{ config.discord_webhook_url or '' }}"
                        placeholder="https://discord.com/api/webhooks/..." autocomplete="off">
                 <button type="button" class="mask-toggle" onclick="toggleFieldMask(this)"
@@ -931,6 +939,7 @@
               </label>
               <div class="masked-field">
                 <input class="field-input" type="password" name="slack_webhook_url"
+                       aria-label="{{ 'settings_page.notify.slack_label' | i18n_args(locale | default('ko')) }}"
                        value="{{ config.slack_webhook_url or '' }}"
                        placeholder="https://hooks.slack.com/services/..." autocomplete="off">
                 <button type="button" class="mask-toggle" onclick="toggleFieldMask(this)"
@@ -945,6 +954,7 @@
               <span class="field-hint">{{ 'settings_page.notify.email_hint' | i18n_args(locale | default('ko')) }}</span>
               <div class="masked-field">
                 <input class="field-input" type="password" name="email_recipients"
+                       aria-label="{{ 'settings_page.notify.email_label' | i18n_args(locale | default('ko')) }}"
                        value="{{ config.email_recipients or '' }}"
                        placeholder="admin@example.com, dev@example.com" autocomplete="off">
                 <button type="button" class="mask-toggle" onclick="toggleFieldMask(this)"
@@ -958,6 +968,7 @@
               </label>
               <div class="masked-field">
                 <input class="field-input" type="password" name="custom_webhook_url"
+                       aria-label="{{ 'settings_page.notify.custom_label' | i18n_args(locale | default('ko')) }}"
                        value="{{ config.custom_webhook_url or '' }}"
                        placeholder="https://example.com/webhook/..." autocomplete="off">
                 <button type="button" class="mask-toggle" onclick="toggleFieldMask(this)"
@@ -974,6 +985,7 @@
               </label>
               <div class="masked-field">
                 <input class="field-input" type="password" name="n8n_webhook_url"
+                       aria-label="{{ 'settings_page.notify.n8n_label' | i18n_args(locale | default('ko')) }}"
                        value="{{ config.n8n_webhook_url or '' }}"
                        placeholder="https://n8n.example.com/webhook/..." autocomplete="off">
                 <button type="button" class="mask-toggle" onclick="toggleFieldMask(this)"
@@ -1038,6 +1050,7 @@
         <div class="masked-field">
           <input class="field-input" type="password" name="railway_api_token"
                  form="settingsForm"
+                 aria-label="{{ 'settings_page.inbound.section_railway_token' | i18n_args(locale | default('ko')) }}"
                  placeholder="{{ 'settings_page.inbound.railway_token_placeholder' | i18n_args(locale | default('ko')) }}"
                  value="{{ '****' if railway_api_token_set else '' }}"
                  autocomplete="off">
@@ -1055,6 +1068,7 @@
       <div class="field-row">
         <div style="display:flex;gap:.5rem;align-items:center">
           <input type="text" readonly class="field-input" id="railway-webhook-url"
+                 aria-label="{{ 'settings_page.inbound.section_railway_webhook' | i18n_args(locale | default('ko')) }}"
                  value="{{ railway_webhook_url }}" style="font-family:monospace;font-size:12px;flex:1">
           <button type="button" class="hook-btn"
                   onclick="navigator.clipboard.writeText(document.getElementById('railway-webhook-url').value)">📋</button>
@@ -1077,7 +1091,8 @@
     </div>
     <div class="s-card-body">
       <div class="field-row">
-        <select name="review_model" form="settingsForm" class="field-input" style="max-width:420px;">
+        <select name="review_model" form="settingsForm" class="field-input" style="max-width:420px;"
+                aria-label="{{ 'settings.model_card_title' | i18n_args(locale | default('ko')) }}">
           <option value="">{{ 'settings.use_global_default' | i18n_args(locale | default('ko')) }}</option>
           {% for m in claude_models %}
           <option value="{{ m.id }}" {% if config.review_model == m.id %}selected{% endif %}>{{ m.label }}</option>
