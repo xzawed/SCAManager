@@ -58,20 +58,41 @@ if matched_reason is None:
     sys.exit(0)  # 보호 대상 아님 → 통과
 
 # 테스트 환경 확인 (pytest, fastapi, sqlalchemy import 가능한지)
-# PATH 의 python 우선 (= `make test` 가 사용하는 동일 인터프리터). 시스템 minimal
-# python (/usr/bin/python3, pytest 미설치) 으로 hook 이 호출되어도 정상 검증.
-# Order: python (PATH) → python3 (PATH) → sys.executable (hook runner 의 python).
-PY_CMD = shutil.which("python") or shutil.which("python3") or sys.executable
-try:
-    result = subprocess.run(
-        [PY_CMD, "-c", "import pytest, fastapi, sqlalchemy"],
-        capture_output=True,
-        timeout=5,
-        check=False,
-    )
-    can_test = result.returncode == 0
-except Exception:  # pylint: disable=broad-except
-    can_test = False
+# 여러 후보 인터프리터를 **모두** 시도하고, 하나라도 import 성공하면 통과.
+# Try every candidate interpreter; allow if ANY can import the test stack.
+#
+# [2026-06-22 fix — fall-through 버그 수정]
+# 기존: `shutil.which("python") or ... or sys.executable` 로 **첫 후보 1개만** 검증.
+# harness 가 hook 을 PATH 상 패키지 없는 python (예: Windows Store WindowsApps 스텁)
+# 으로 호출하면 첫 후보에서 import 실패 → 나머지 capable 인터프리터를 시도하지 않고
+# 차단 (false positive). `make test` 가 정상인 로컬 PC 에서도 settings.html 등
+# 템플릿 수정이 막히는 사고 발생.
+# Previously only the first existing candidate was probed; if the harness invoked the
+# hook via a package-less python (e.g. the Windows Store stub on PATH), it denied
+# without falling through to a capable interpreter. Now probe all candidates.
+#
+# Candidates: sys.executable (hook 실행 인터프리터) → PATH 의 python/python3/py.
+_seen: set[str] = set()
+candidates = []
+for _cand in (sys.executable, shutil.which("python"), shutil.which("python3"), shutil.which("py")):
+    if _cand and _cand.lower() not in _seen:
+        _seen.add(_cand.lower())
+        candidates.append(_cand)
+
+can_test = False
+for _py in candidates:
+    try:
+        result = subprocess.run(
+            [_py, "-c", "import pytest, fastapi, sqlalchemy"],
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+        if result.returncode == 0:
+            can_test = True
+            break
+    except Exception:  # pylint: disable=broad-except
+        continue
 
 if can_test:
     sys.exit(0)  # 테스트 환경 OK → 통과
