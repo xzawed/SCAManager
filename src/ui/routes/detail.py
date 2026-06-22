@@ -17,10 +17,6 @@ from src.ui._helpers import get_accessible_repo, get_locale, templates
 
 router = APIRouter()
 
-# 분석 미존재 404 detail (3곳 공통 — S1192 중복 리터럴 상수화)
-# 404 detail for a missing analysis (shared by 3 call sites)
-_ANALYSIS_NOT_FOUND = "Analysis not found"
-
 
 def _calc_monthly_cost(rows: list) -> float:
     """분석 행 목록에서 Anthropic API 예상 비용(USD)을 계산한다.
@@ -71,7 +67,7 @@ def analysis_detail(
             Analysis.id == analysis_id, Analysis.repo_id == repo.id
         ).first()
         if not analysis:
-            raise HTTPException(status_code=404, detail=_ANALYSIS_NOT_FOUND)
+            raise HTTPException(status_code=404, detail="Analysis not found")
         result = analysis.result or {}
         source = result.get("source") or ("pr" if analysis.pr_number else "push")
         data = {
@@ -124,7 +120,7 @@ def post_analysis_feedback(
             Analysis.id == analysis_id, Analysis.repo_id == repo.id,
         ).first()
         if not analysis:
-            raise HTTPException(status_code=404, detail=_ANALYSIS_NOT_FOUND)
+            raise HTTPException(status_code=404, detail="Analysis not found")
         fb = analysis_feedback_repo.upsert_feedback(
             db,
             analysis_id=analysis_id,
@@ -148,7 +144,7 @@ def get_analysis_feedback(
             Analysis.id == analysis_id, Analysis.repo_id == repo.id,
         ).first()
         if not analysis:
-            raise HTTPException(status_code=404, detail=_ANALYSIS_NOT_FOUND)
+            raise HTTPException(status_code=404, detail="Analysis not found")
         fb = analysis_feedback_repo.find_by_analysis_and_user(
             db, analysis_id=analysis_id, user_id=current_user.id,
         )
