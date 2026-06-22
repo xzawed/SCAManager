@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [SonarCloud 잔여 CRITICAL 전부 해소 (#951 docs sync·#952 CodeQL py/import-and-import-from fix·#953 S1192 2건+S8415 6건 가드 헬퍼 추출·#954 S3776 4건 extract-method[clippy·repo_kpi·narrative·merge_retry], CRITICAL 6→0·code smells 126→116, S8415 라우트 직접 raise만 검출/S107 0건 실측으로 보류 해소, Codex mutual OK, 2026-06-22)](#sonarcloud-잔여-critical-전부-해소-951954-2026-06-22)
 - [SonarCloud BLOCKER 및 고복잡도 CRITICAL 정리 (#948 CORS S8414 outermost·#949 S1192 merge_retry·#950 S3776 고복잡도 3건 extract-method[dashboard 22·repo_category 20·lifespan 16], BLOCKER 1→0·CRITICAL 10→6·code smells 131→126, S1192 2건/merge_retry 18/경계 3건 정책 16·S8415 재부상 보류, Codex mutual OK, 단위 5013·전체 5167, 2026-06-22)](#sonarcloud-blocker-및-고복잡도-critical-정리-948950-2026-06-22)
 - [SonarCloud Quality Gate ERROR 복구 — 폼 입력 20건 aria-label (settings 15 + repo_detail 5 라벨 없는 input/select = `Web:InputWithoutLabelCheck` MAJOR 신뢰성 버그 → new_reliability_rating C→A, 권위 룰 소스가 `hasProperty("aria-label")` 통과 확인, i18n 바인딩 aria-label[기존 16키 + 신규 4키 ko/en/ja], TDD 정적 가드 20 + render-parity, Codex mutual OK, #946 머지, 단위 5011·전체 5165, 2026-06-22)](#sonarcloud-quality-gate-error-복구-폼-입력-20건-aria-label-2026-06-22)
 - [2nd-LLM 머지 검증자 OpenAI-호환 base_url 일반화 — 추가 비용 0/최소 활성화 (OpenAI 비구독자도 무료 호환 공급자[GitHub Models·Groq·OpenRouter]로 cross-vendor 검증, `VERIFIER_BASE_URL` config + SDK/httpx 양 경로 전달, TDD +7, 단위 4988, 2026-06-19)](#2nd-llm-머지-검증자-openai-호환-base_url-일반화-2026-06-19)
@@ -114,6 +115,20 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## SonarCloud 잔여 CRITICAL 전부 해소 (#951~#954, 2026-06-22)
+
+#948~#950(BLOCKER + 고복잡도 CRITICAL 3) 후속. 사용자 "잔여 CRITICAL 추가 정리" 위임 → #948~#950 에서 정책 16/재부상 리스크로 보류한 항목을 **동반 이슈까지 해소**하며 CRITICAL **6→0** 달성.
+
+**#951 docs sync · #952 자기유발 CodeQL fix**: #948 CORS reload 테스트의 dual-import(`import src.main as ...` ↔ 상단 `from src.main import app`)가 **main 전체 CodeQL 스캔에서만** `py/import-and-import-from`(note) 노출(PR-scoped 미검출, 정책 14) → `importlib.import_module` 로 해소.
+
+**#953 — S1192 2건 + 동반 S8415 6건 (가드 헬퍼 추출)**: issue_registration `"Login required"`(401)·detail `"Analysis not found"`(404) 3회 중복 → `_require_api_user`/`_load_analysis_or_404` 가드 헬퍼. 🔴 **핵심**: `S8415`(HTTPException 을 라우트 `responses=` 문서화)는 **라우트 함수의 직접 raise 만 검출**(기존 `_get_analysis_and_repo` 헬퍼 내 raise 미플래그 실측) → raise 를 헬퍼로 이동하면 라우트 S8415(401×3·404×3=6) 소멸 + 헬퍼 raise 미플래그 = **S1192 + S8415 동시 해소·재부상 0**. #949 에서 상수 추출이 S8415 재부상시킨 문제를 가드 헬퍼로 해결.
+
+**#954 — S3776 잔여 4건 (extract-method)**: clippy `run`(16)→`_parse_clippy_line` · `repo_kpi`(17)→`_count_issues_and_high_security` · `repo_insight_narrative`(16)→`_record_narrative_error`(user_id 가드 내장) · merge_retry `_process_single_retry`(18)→`_handle_merge_failure`. 🔴 **S107 보류 근거 불성립 실측**: `python:S107`(too-many-parameters) = 0건이고 10-param `repo_insight_narrative` 도 미플래그 → 9-param `_handle_merge_failure` 안전(#950 보류 근거였던 S107 가정 틀림). pylint R0913 은 `# pylint: disable=too-many-arguments`(코드베이스 일관).
+
+🔴 **함정**: #954 replace_all 순서 실수(헬퍼 추가 후 replace_all → 헬퍼 자기참조 무한재귀, 17 test fail) → 즉시 복구. S1192 상수(#949) 때와 달리 헬퍼 본문이 교체 패턴을 포함해 발생 — **replace_all 은 헬퍼 정의 추가 전 수행 의무**.
+
+결과: **BLOCKER 0 · CRITICAL 0 · code smells 131→116(MAJOR 94·MINOR 22) · 게이트 OK · 전 등급 A**. 전 PR Codex mutual OK. 테스트 5167(#948 reload 테스트 +2 외 순수 refactor 무증가). 잔여 = MAJOR 94·MINOR 22(게이트 무영향·차단성 무) + ops only(#2 RLS·2nd-LLM·품질감사 P2).
 
 ## SonarCloud BLOCKER 및 고복잡도 CRITICAL 정리 (#948~#950, 2026-06-22)
 
