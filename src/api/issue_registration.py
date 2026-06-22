@@ -25,6 +25,10 @@ from src.ui._helpers import get_locale
 
 router = APIRouter(prefix="/api/issues")
 
+# 미인증 요청 401 detail (3곳 공통 — S1192 중복 리터럴 상수화)
+# 401 detail for unauthenticated requests (shared by 3 call sites)
+_LOGIN_REQUIRED = "Login required"
+
 
 class RegisterRequest(BaseModel):
     """Issue 등록 요청 본문. Register issue request body."""
@@ -82,7 +86,7 @@ async def register(request: Request, req: RegisterRequest):
     """
     current_user = get_current_user(request)
     if not current_user:
-        raise HTTPException(status_code=401, detail="Login required")
+        raise HTTPException(status_code=401, detail=_LOGIN_REQUIRED)
 
     locale = get_locale(request)
     issue_key = _make_issue_key(req)
@@ -141,7 +145,7 @@ async def get_status(request: Request, analysis_id: int):
     """
     current_user = get_current_user(request)
     if not current_user:
-        raise HTTPException(status_code=401, detail="Login required")
+        raise HTTPException(status_code=401, detail=_LOGIN_REQUIRED)
 
     def _check():
         with SessionLocal() as _db:
@@ -182,7 +186,7 @@ async def repo_summary(request: Request, repo_id: int):
     """
     current_user = get_current_user(request)
     if not current_user:
-        raise HTTPException(status_code=401, detail="Login required")
+        raise HTTPException(status_code=401, detail=_LOGIN_REQUIRED)
 
     def _check():
         with SessionLocal() as _db:
