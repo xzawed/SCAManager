@@ -94,9 +94,12 @@ def _run_migrations() -> None:
     command.upgrade(alembic_cfg, "head")
 
 
-@asynccontextmanager
-async def lifespan(_app: FastAPI):
-    """Run DB migrations on startup, then yield control to the application."""
+def _validate_startup_config() -> None:
+    """프로덕션 시작 전 필수 설정 검증 — 위험 설정 시 RuntimeError 또는 경고 로그.
+
+    Validate critical config before startup; raise RuntimeError or log a warning on risky settings.
+    프로덕션(HTTPS) 판정은 APP_BASE_URL 기준. lifespan 에서 startup 직전 1회 호출.
+    """
     is_prod_like = settings.app_base_url.startswith("https")
     _DEFAULT_SESSION_SECRET = "dev-secret-change-in-production"  # nosec B105
     if settings.session_secret == _DEFAULT_SESSION_SECRET:  # nosec B105
@@ -152,6 +155,12 @@ async def lifespan(_app: FastAPI):
             "the value configured in your Telegram bot's webhook settings.",
             settings.app_base_url,
         )
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Run DB migrations on startup, then yield control to the application."""
+    _validate_startup_config()
     try:
         await asyncio.wait_for(asyncio.to_thread(_run_migrations), timeout=30)
         logger.info("DB migration completed")

@@ -504,6 +504,37 @@ def _group_analyses_by_repo(
     return by_repo
 
 
+def _build_repo_card(repo, cur: list, prev: list) -> dict[str, Any]:
+    """단일 리포의 인사이트 카드 dict 생성 — current/previous 분석 윈도우 기반.
+
+    Build one repo's insight card dict from its current/previous analysis windows.
+    """
+    from src.services.repo_insight_service import compute_score_kpi  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    avg_score, score_delta, grade = compute_score_kpi(cur, prev)
+
+    # 이슈 빈도 카운트 → count >= 2 만 recurring 집계 (1회성 이슈 제외)
+    # Count issue frequency → only issues appearing >= 2 times are "recurring"
+    issue_counter: dict[str, int] = {}
+    for a in cur:
+        for issue in (a.result or {}).get("issues", []):
+            if not isinstance(issue, dict):
+                continue
+            key = issue.get("message") or issue.get("code")
+            if key:
+                issue_counter[key] = issue_counter.get(key, 0) + 1
+    recurring_count = sum(1 for cnt in issue_counter.values() if cnt >= 2)
+
+    return {
+        "repo_id": repo.id,
+        "full_name": repo.full_name,
+        "avg_score": avg_score,
+        "grade": grade,
+        "recurring_issue_count": recurring_count,
+        "score_trend": _score_trend(score_delta),
+        "insights_url": f"/repos/{repo.full_name}/insights",
+    }
+
+
 def repo_insight_cards(  # pylint: disable=too-many-locals
     db: Session,
     days: int = 30,
@@ -563,37 +594,8 @@ def repo_insight_cards(  # pylint: disable=too-many-locals
         cur = cur_by_repo.get(repo_id, [])
         if not cur:
             continue  # 해당 기간 내 분석 없는 리포 제외 / Skip repos with no analyses in window
-
         prev = prev_by_repo.get(repo_id, [])
-
-        from src.services.repo_insight_service import compute_score_kpi  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
-        avg_score, score_delta, grade = compute_score_kpi(cur, prev)
-
-        # 이슈 빈도 카운트 (recurring 이슈 수)
-        # Count recurring issues
-        issue_counter: dict[str, int] = {}
-        for a in cur:
-            for issue in (a.result or {}).get("issues", []):
-                if not isinstance(issue, dict):
-                    continue
-                key = issue.get("message") or issue.get("code")
-                if key:
-                    issue_counter[key] = issue_counter.get(key, 0) + 1
-        # count >= 2인 항목만 recurring으로 집계 (1회만 등장한 이슈는 제외)
-        # Count only issues appearing >= 2 times (single-occurrence issues excluded)
-        recurring_count = sum(1 for cnt in issue_counter.values() if cnt >= 2)
-
-        trend = _score_trend(score_delta)
-
-        cards.append({
-            "repo_id": repo_id,
-            "full_name": repo.full_name,
-            "avg_score": avg_score,
-            "grade": grade,
-            "recurring_issue_count": recurring_count,
-            "score_trend": trend,
-            "insights_url": f"/repos/{repo.full_name}/insights",
-        })
+        cards.append(_build_repo_card(repo, cur, prev))
 
     # avg_score 내림차순 정렬 후 최대 10개 반환
     # Sort by avg_score descending, return max 10

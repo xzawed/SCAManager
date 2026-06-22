@@ -259,6 +259,22 @@ def repo_ai_suggestions(
     ]
 
 
+def _classify_issue_bucket(issue: object) -> str | None:
+    """이슈를 category×severity 4-way 버킷 키로 분류 (해당 없으면 None).
+
+    Classify an issue into one of the 4-way category×severity bucket keys (None if not applicable).
+    """
+    if not isinstance(issue, dict):
+        return None
+    category = issue.get("category", "")
+    is_error = issue.get("severity", "").upper() in ("HIGH", "ERROR")
+    if category == "security":
+        return "security_error" if is_error else "security_warning"
+    if category == "code_quality":
+        return "code_quality_error" if is_error else "code_quality_warning"
+    return None
+
+
 def repo_category_breakdown(
     db: Session, repo_id: int, days: int = 30, now: datetime | None = None
 ) -> dict[str, int]:
@@ -277,15 +293,9 @@ def repo_category_breakdown(
     }
     for a in analyses:
         for issue in (a.result or {}).get("issues", []):
-            if not isinstance(issue, dict):
-                continue
-            category = issue.get("category", "")
-            severity = issue.get("severity", "").upper()
-            is_error = severity in ("HIGH", "ERROR")
-            if category == "security":
-                counts["security_error" if is_error else "security_warning"] += 1
-            elif category == "code_quality":
-                counts["code_quality_error" if is_error else "code_quality_warning"] += 1
+            key = _classify_issue_bucket(issue)
+            if key:
+                counts[key] += 1
 
     counts["total"] = sum(counts.values())
     return counts
