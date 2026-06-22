@@ -40,6 +40,10 @@ from src.shared.merge_metrics import log_merge_attempt
 
 logger = logging.getLogger(__name__)
 
+# 재시도 알림 메시지의 repo 라인 i18n 키 (3곳 공통 — S1192 중복 리터럴 상수화)
+# i18n key for the repo line in retry notification messages (shared by 3 call sites)
+_RETRY_REPO_LINE_KEY = "notifier.gate.retry_repo_line"
+
 
 async def process_pending_retries(
     db: Session,
@@ -378,7 +382,7 @@ async def _notify_config_changed(
     msg = (
         get_text("notifier.gate.retry_stopped_title", language) + "\n"
         + get_text(
-            "notifier.gate.retry_repo_line", language,
+            _RETRY_REPO_LINE_KEY, language,
             repo=escape(row.repo_full_name), pr=row.pr_number,
         ) + "\n"
         + get_text("notifier.gate.retry_stopped_reason", language)
@@ -406,7 +410,7 @@ async def _notify_merge_succeeded(
     msg = (
         get_text("notifier.gate.retry_succeeded_title", language) + "\n"
         + get_text(
-            "notifier.gate.retry_repo_line", language,
+            _RETRY_REPO_LINE_KEY, language,
             repo=escape(row.repo_full_name), pr=row.pr_number,
         ) + "\n"
         + get_text(
@@ -444,7 +448,7 @@ async def _notify_merge_terminal(
     msg = (
         get_text("notifier.gate.retry_terminal_title", language) + "\n"
         + get_text(
-            "notifier.gate.retry_repo_line", language,
+            _RETRY_REPO_LINE_KEY, language,
             repo=escape(row.repo_full_name), pr=row.pr_number,
         ) + "\n"
         + get_text(
