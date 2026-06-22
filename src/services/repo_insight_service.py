@@ -72,6 +72,28 @@ def compute_score_kpi(
     return avg_score, score_delta, grade
 
 
+def _count_issues_and_high_security(analyses: list) -> tuple[dict[str, int], int]:
+    """분석 목록에서 이슈 빈도 카운터 + 보안 HIGH/ERROR 카운트 집계.
+
+    Aggregate the issue-frequency counter + count of HIGH/ERROR security issues from analyses.
+    """
+    issue_counter: dict[str, int] = {}
+    high_security = 0
+    for a in analyses:
+        for issue in (a.result or {}).get("issues", []):
+            if not isinstance(issue, dict):
+                continue
+            key = issue.get("message") or issue.get("code")
+            if key:
+                issue_counter[key] = issue_counter.get(key, 0) + 1
+            if (
+                issue.get("category") == "security"
+                and issue.get("severity", "").upper() in ("HIGH", "ERROR")
+            ):
+                high_security += 1
+    return issue_counter, high_security
+
+
 def repo_kpi(  # pylint: disable=too-many-locals
     db: Session, repo_id: int, days: int = 30, now: datetime | None = None
 ) -> dict[str, Any]:
@@ -100,22 +122,7 @@ def repo_kpi(  # pylint: disable=too-many-locals
 
     avg_score, score_delta, grade = compute_score_kpi(cur, prev)
 
-    # 이슈 빈도 카운트
-    # Issue frequency count
-    issue_counter: dict[str, int] = {}
-    high_security = 0
-    for a in cur:
-        for issue in (a.result or {}).get("issues", []):
-            if not isinstance(issue, dict):
-                continue
-            key = issue.get("message") or issue.get("code")
-            if key:
-                issue_counter[key] = issue_counter.get(key, 0) + 1
-            if (
-                issue.get("category") == "security"
-                and issue.get("severity", "").upper() in ("HIGH", "ERROR")
-            ):
-                high_security += 1
+    issue_counter, high_security = _count_issues_and_high_security(cur)
 
     top_issue, top_count = None, 0
     if issue_counter:
@@ -319,6 +326,23 @@ def _extract_narrative_json(text: str) -> str:
     return cleaned
 
 
+def _record_narrative_error(
+    db: Session, *, user_id: int | None, repo_id: int, days: int,
+    language: str, error_type: str, now: datetime,
+) -> None:
+    """user_id 가 있으면 내러티브 캐시에 에러 기록 (no_data/api_error 경로 공통).
+
+    Record a narrative error in the cache when user_id is set (shared by no_data/api_error paths).
+    """
+    if user_id is None:
+        return
+    from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    insight_narrative_cache_repo.record_error_repo(
+        db, user_id=user_id, repo_id=repo_id, days=days,
+        language=language, error_type=error_type, now=now,
+    )
+
+
 async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many-locals
     db: Session,
     repo_id: int,
@@ -359,12 +383,10 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
                 return cached
 
     if not kpi.get("analysis_count"):
-        if user_id is not None:
-            from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
-            insight_narrative_cache_repo.record_error_repo(
-                db, user_id=user_id, repo_id=repo_id, days=days,
-                language=language, error_type="no_data", now=_now,
-            )
+        _record_narrative_error(
+            db, user_id=user_id, repo_id=repo_id, days=days,
+            language=language, error_type="no_data", now=_now,
+        )
         return {"text": "", "status": "no_data"}
 
     user_prompt = (
@@ -414,12 +436,10 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
             error_type=type(exc).__name__,
         )
         logger.exception("repo_insight_narrative API call failed")
-        if user_id is not None:
-            from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
-            insight_narrative_cache_repo.record_error_repo(
-                db, user_id=user_id, repo_id=repo_id, days=days,
-                language=language, error_type=type(exc).__name__, now=_now,
-            )
+        _record_narrative_error(
+            db, user_id=user_id, repo_id=repo_id, days=days,
+            language=language, error_type=type(exc).__name__, now=_now,
+        )
         return {"text": "", "status": "api_error"}
     finally:
         # 호출당 생성한 AsyncAnthropic httpx 커넥션 풀 해제 — 미종료 시 FD 누수 (WBS P1).

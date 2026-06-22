@@ -42,6 +42,37 @@ def _build_temp_cargo_project(rs_content: str) -> str:
     return tmp_dir
 
 
+def _parse_clippy_line(line: str, ctx: AnalyzeContext) -> AnalysisIssue | None:
+    """cargo clippy JSON 행 1개를 AnalysisIssue 로 파싱 (compiler-message 아니면 None).
+
+    Parse one cargo clippy JSON line into an AnalysisIssue (None if not a compiler-message).
+    """
+    line = line.strip()
+    if not line:
+        return None
+    try:
+        obj = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    # compiler-message 이외의 행(build-script-executed 등)은 무시
+    # Skip non-compiler-message lines (e.g. build-script-executed)
+    if obj.get("reason") != "compiler-message":
+        return None
+    msg = obj.get("message", {})
+    level = msg.get("level", "warning").lower()
+    severity = Severity.ERROR if level == "error" else Severity.WARNING
+    spans = msg.get("spans", [{}])
+    line_no = spans[0].get("line_start", 0) if spans else 0
+    return AnalysisIssue(
+        tool="clippy",
+        severity=severity,
+        message=msg.get("message", ""),
+        line=line_no,
+        category=Category.CODE_QUALITY,
+        language=ctx.language,
+    )
+
+
 class _ClippyAnalyzer:
     """cargo clippy Rust 분석기 — JSONL compiler-message 파싱.
     cargo clippy Rust analyzer — parses JSONL compiler-message output.
@@ -78,30 +109,9 @@ class _ClippyAnalyzer:
             )
             issues = []
             for line in (r.stdout or "").splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                # compiler-message 이외의 행(build-script-executed 등)은 무시
-                # Skip non-compiler-message lines (e.g. build-script-executed)
-                if obj.get("reason") != "compiler-message":
-                    continue
-                msg = obj.get("message", {})
-                level = msg.get("level", "warning").lower()
-                severity = Severity.ERROR if level == "error" else Severity.WARNING
-                spans = msg.get("spans", [{}])
-                line_no = spans[0].get("line_start", 0) if spans else 0
-                issues.append(AnalysisIssue(
-                    tool="clippy",
-                    severity=severity,
-                    message=msg.get("message", ""),
-                    line=line_no,
-                    category=Category.CODE_QUALITY,
-                    language=ctx.language,
-                ))
+                issue = _parse_clippy_line(line, ctx)
+                if issue is not None:
+                    issues.append(issue)
             return issues
         except subprocess.TimeoutExpired:
             ctx.timed_out = True

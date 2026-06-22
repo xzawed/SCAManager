@@ -228,7 +228,28 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
         counts["succeeded"] += 1
         return
 
-    # ── f. 실패 분류 ──────────────────────────────────────────────
+    # ── f. 실패 처리 (terminal/expired/transient 분류 + 로깅·알림·큐 복귀) ──
+    await _handle_merge_failure(
+        db, row=row, cfg=cfg, token=token, pr_data=pr_data,
+        reason=reason, now=now, language=language, counts=counts,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Private helpers
+# 비공개 헬퍼 함수
+# ---------------------------------------------------------------------------
+
+
+async def _handle_merge_failure(  # pylint: disable=too-many-arguments
+    db: Session, *, row, cfg: RepoConfigData, token: str, pr_data: dict,
+    reason: str, now: datetime, language: str, counts: dict[str, int],
+) -> None:
+    """merge_pr 실패 후 처리 — terminal/expired/transient 분류 + 로깅·알림·큐 복귀.
+
+    Handle a failed merge_pr outcome: classify terminal/expired/transient, log, notify, requeue.
+    `_process_single_retry` 의 실패 경로(f/g)를 분리 — 인지 복잡도 감소.
+    """
     reason_tag = parse_reason_tag(reason)
     # F1: pr_data 에 이미 base.ref 가 있으므로 추가 호출 없이 활용
     # base 키가 present-but-None 일 수 있어 `or {}` 정규화 (PR #124 패턴)
@@ -265,7 +286,7 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
             await _create_failure_issue_safe(token, row, cfg, reason, reason_tag, language=language)
         return
 
-    # ── g. 일시적 실패 — 백오프 후 재시도 대기로 복귀 ────────────
+    # ── 일시적 실패 — 백오프 후 재시도 대기로 복귀 ────────────
     next_retry_at = compute_next_retry_at(
         row.attempts_count,
         now=now,
@@ -278,12 +299,6 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
         last_failure_reason=reason_tag, last_detail_message=reason,
     )
     counts["released"] += 1
-
-
-# ---------------------------------------------------------------------------
-# Private helpers
-# 비공개 헬퍼 함수
-# ---------------------------------------------------------------------------
 
 
 def _resolve_github_token(db: Session, repo_full_name: str) -> str | None:
