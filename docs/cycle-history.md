@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [SonarCloud S6853 폼 라벨 7건 해소 + edit-guard hook 견고화 + 의존성 (2026-06-22 후속)](#sonarcloud-s6853-폼-라벨-7건-해소--edit-guard-hook-견고화--의존성-2026-06-22-후속)
 - [SonarCloud 잔여 CRITICAL 전부 해소 (#951 docs sync·#952 CodeQL py/import-and-import-from fix·#953 S1192 2건+S8415 6건 가드 헬퍼 추출·#954 S3776 4건 extract-method[clippy·repo_kpi·narrative·merge_retry], CRITICAL 6→0·code smells 126→116, S8415 라우트 직접 raise만 검출/S107 0건 실측으로 보류 해소, Codex mutual OK, 2026-06-22)](#sonarcloud-잔여-critical-전부-해소-951954-2026-06-22)
 - [SonarCloud BLOCKER 및 고복잡도 CRITICAL 정리 (#948 CORS S8414 outermost·#949 S1192 merge_retry·#950 S3776 고복잡도 3건 extract-method[dashboard 22·repo_category 20·lifespan 16], BLOCKER 1→0·CRITICAL 10→6·code smells 131→126, S1192 2건/merge_retry 18/경계 3건 정책 16·S8415 재부상 보류, Codex mutual OK, 단위 5013·전체 5167, 2026-06-22)](#sonarcloud-blocker-및-고복잡도-critical-정리-948950-2026-06-22)
 - [SonarCloud Quality Gate ERROR 복구 — 폼 입력 20건 aria-label (settings 15 + repo_detail 5 라벨 없는 input/select = `Web:InputWithoutLabelCheck` MAJOR 신뢰성 버그 → new_reliability_rating C→A, 권위 룰 소스가 `hasProperty("aria-label")` 통과 확인, i18n 바인딩 aria-label[기존 16키 + 신규 4키 ko/en/ja], TDD 정적 가드 20 + render-parity, Codex mutual OK, #946 머지, 단위 5011·전체 5165, 2026-06-22)](#sonarcloud-quality-gate-error-복구-폼-입력-20건-aria-label-2026-06-22)
@@ -115,6 +116,21 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## SonarCloud S6853 폼 라벨 7건 해소 + edit-guard hook 견고화 + 의존성 (2026-06-22 후속)
+
+**날짜**: 2026-06-22 | **PR**: #957·#958·#956·#944·#945 | **트리거**: 사용자 "후속작업" + "PR #944/#945 머지" | **상태**: 직전 세션(#948~#955) deferred 2건 + 선행 blocker + 의존성 머지
+
+**작업 내용**: 직전 SonarCloud 정리가 "범위 외(미수정)"로 명시한 deferred 2건 처리.
+
+- **#957 `Web:S6853`(LabelHasAssociatedControlCheck) MAJOR 7건** — settings.html 알림 채널 카드의 dangling `<label class="field-label">`. 권위 룰 소스 실측 = 위반 조건 `!foundControl`(라벨에 `for` 없고 내부 컨트롤 없음). 6 채널 라벨(telegram/discord/slack/email/custom/n8n)은 `for`/`id` 연결(의미적 정확 + click-to-focus, 기존 aria-label 유지 = InputWithoutLabelCheck 보존), telegram_link 캡션(OTP 버튼 기반·폼 컨트롤 없음)은 `<label>`→`<div class="field-label">` 전환(`.field-label` 클래스 셀렉터라 시각 동일). 회귀 가드 `test_label_associated_control.py` 9(for/id 6 + dangling 부재 + div 전환 + count-lock). **main 재스캔 실측 = S6853 0·code smells 116→109·게이트 OK·전 등급 A**. 단위 5013→5022.
+- **#958 cycle-history TOC 끊긴 앵커 2건** — `#phase-f-phase-12`→`#phase-f--phase-12`(헤딩 `Phase F ~ Phase 12` 의 ` ~ ` 양옆 공백 → github-slugger 가 `~` 제거 후 더블 하이픈 생성)·`#사이클-110116`→`#사이클-110111`(실제 헤딩 `사이클 110~111`). slugger 동등 구현으로 양 링크 RESOLVES 실측.
+- **#956 edit-guard hook 견고화** — `.claude/hooks/check_edit_allowed.py` 가 `shutil.which("python") or … or sys.executable` 로 첫 후보 인터프리터 1개만 검증 → harness 가 패키지 없는 python(Windows Store 스텁 등)으로 hook 호출 시 fall-through 없이 차단(false-positive, `make test` 정상 로컬 PC 에서도 `src/templates/*` 수정 막힘). sys.executable + PATH python/python3/py 후보 전부 시도, 하나라도 `import pytest, fastapi, sqlalchemy` 성공 시 통과(테스트 불가 시 여전히 차단 = 보호 약화 아님).
+- **의존성 #944/#945** — Dependabot `openai>=2.41.1→2.43.0`(2nd-LLM 검증자 런타임 의존·키 미설정 시 비활성)·`python-multipart>=0.0.30→0.0.32`(CVE-2026-40347 preamble/epilogue CPU DoS fix). CI 전부 pass, 사용자 명시 요청으로 머지.
+
+**검증**: 전 PR Codex true mutual OK(push 전, 정책 18 — #956/#957 동시 검사 VERDICT OK·#958 docs-anchor OK) + 전 CI green. 단위 5013→5022(+9: #957 회귀 가드), 통합 154 불변, 전체 5167→5176, E2E 121, pylint 10.00. #956/#957 사용자 머지·#944/#945 Claude 머지·#958 머지 대기.
+
+---
 
 ## SonarCloud 잔여 CRITICAL 전부 해소 (#951~#954, 2026-06-22)
 
