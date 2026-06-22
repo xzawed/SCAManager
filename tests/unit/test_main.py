@@ -61,8 +61,11 @@ def test_cors_block_registers_outermost_when_app_base_url_set(monkeypatch):
     # CORSMiddleware 가 outermost(user_middleware[0])로 등록되고 origin/credentials 가 적용되는지 검증.
     # main 을 reload 해 조건부 CORS 블록을 실제 실행(테스트 기본 env 는 app_base_url 빈 값).
     # Reload main with APP_BASE_URL set so the conditional CORS block actually executes.
-    import src.config as config_mod
-    import src.main as main_mod
+    # importlib.import_module 사용 — `import src.main as ...` 와 모듈 상단 `from src.main import app`
+    # 의 dual-import(CodeQL py/import-and-import-from) 회피.
+    # Use importlib.import_module to avoid dual-import with the top-level `from src.main import app`.
+    config_mod = importlib.import_module("src.config")
+    main_mod = importlib.import_module("src.main")
     monkeypatch.setenv("APP_BASE_URL", "https://cors-test.example.com")
     try:
         importlib.reload(config_mod)
