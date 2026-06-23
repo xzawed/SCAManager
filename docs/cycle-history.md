@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [repo-automation PR-S — 정책 흐름 스킬 3종 (docs-sync · retrospective · codex-verify — STATE/cycle-history/README 동기화 가이드·정책 8 5+1 회고 진입점[retrospective.mjs]·정책 18 push 전 Codex mutual 흐름+다운 시 자체검증, CLAUDE.md /retrospective 참조 추가, 테스트 무변경·단위 5077, 2026-06-23)](#repo-automation-pr-s--정책-흐름-스킬-3종-docs-sync--retrospective--codex-verify-2026-06-23)
 - [repo-automation PR-W — 워크플로우 loop 단일출처화 + 회고 워크플로우 신규 (W1 sibling import 불가 실측[정적 SyntaxError·동적 `import()` not available]→정본 template+inline+drift 가드, W2 integrity-audit 명명 상수 파라미터화[행동 불변], W3 retrospective.mjs 5+1 loop-until-dry+cross-verify=finding 강제[13/8 한계 해소], CodeQL #522 dead import #973, TDD +4·단위 5077·전체 5231, 2026-06-23)](#repo-automation-pr-w--워크플로우-loop-단일출처화--회고-워크플로우-신규-2026-06-23)
 - [회고 P2 백로그 — .env.example 무인증 footgun 제거 + 2nd-LLM 검증자 활성화 runbook (#971 NEW-GAP-1/GAP-5 — `.env.example` 이 `API_AUTH_DISABLED=1` 활성 출하 → `cp .env.example .env` 신규 배포 무인증 REST API 시작 footgun 제거[주석 처리=fail-closed 기본]·conftest 음성검증 마스킹 추적 강화·Codex mutual NG #2 가드 파서 견고화, TDD +9·단위 5073 + DQ-3 verifier 활성화 runbook 신설[무료 GitHub Models 비용 0], 2026-06-23)](#회고-p2-백로그--envexample-무인증-footgun-제거--2nd-llm-검증자-활성화-runbook-2026-06-23)
 - [repo-automation PR-H 신규 pre-commit 훅 3종 (brainstorming→spec→writing-plans→subagent-driven-development 흐름 — env-vars 싱크[config.py AST↔env-vars.md]·이중언어 주석[staged 보수 휴리스틱]·5-way config 싱크[RepoConfig ORM↔Data↔Update AST] stdlib 체커 추가+.pre-commit wiring, Task별 fresh 구현+2단계 리뷰, TDD +15·단위 5064·전체 5218, 2026-06-23)](#repo-automation-pr-h-신규-pre-commit-훅-3종-2026-06-23)
@@ -126,6 +127,24 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## repo-automation PR-S — 정책 흐름 스킬 3종 (docs-sync · retrospective · codex-verify) (2026-06-23)
+
+**날짜**: 2026-06-23 | **브랜치**: feat/repo-automation-pr-s-skills | **출처**: repo-automation spec(`docs/design/2026-06-23-repo-automation-design.md`) Area 3(PR-S)
+
+**배경**: repo-automation spec 의 마지막 영역 — 반복 정책 흐름을 `.claude/skills/` 로 결정론화. PR-H(#969 훅) + PR-W(#974 워크플로우) 완성 후 진입점 스킬 추가.
+
+**S1 `/docs-sync`**: PR 후 수치·서사 동기화 가이드 — STATE 4 갱신점(종합·추적셀 헤더·추적셀 trail·최신 블록) + cycle-history TOC/섹션(slug `check_toc_anchors.github_slug` 실측) + README.md/README.ko.md 배지 쌍(`%2B` 인코딩). `check_docs_sync`(검증)·`check_toc_anchors`(앵커) 훅과 페어 — 스킬이 생성, 훅이 차단. 카운트 무변경 PR 은 최신·cycle-history 만 갱신 명시.
+
+**S2 `/retrospective`**: 정책 8 5+1 회고 진입점 — `retrospective.mjs`(W3) 워크플로우 `scriptPath` 호출 + 보고서 작성 절차. `verdict_coverage < 1.0` = 13/8 한계 재발 신호 권고. 5+1(내부 self-verify) ↔ mutual(외부 LLM) 2-layer 독립·cross-verify 생략 정량 기준·자유 발언(정책 9) 명시. W3 와 페어(스킬=진입점·워크플로우=엔진).
+
+**S3 `/codex-verify`**: 정책 18 push 전 Codex mutual 흐름 codify — codex-rescue ground-truth 프롬프트(self-contained·`git show` 직접·추측 금지) → OK 후 push. NG 2-tier(설계방향=옵션 표 confirm / 단일정답 버그=즉시 수정)·NG ≤ 3회·**Codex 다운 시 자체검증 분기**(사용자 승인 + pylint/flake8/TDD/실측). push 전 OK 의무·면제 영역·2-layer 독립 명시.
+
+**CLAUDE.md**: 아키텍처 섹션에 `/retrospective` 워크플로우 참조 추가(/integrity-audit 병렬) + loop-until-dry 정본·drift 가드 경로 + /docs-sync·/codex-verify 스킬 언급.
+
+**검증**: 스킬 markdown(테스트 무변경·단위 5077). 기존 스킬(integrity-audit.md) 동형 frontmatter + 절차. check_docs_sync/check_toc_anchors ✅. Codex mutual OK.
+
+**잔여**: repo-automation spec 3 영역(PR-H/PR-W/PR-S) 전량 완료. ops only(RLS Phase4·verifier 운영 활성화) + 회고 P2 P2-2·GAP-4. [[project-deep-audit-2026-06-23]]
 
 ## repo-automation PR-W — 워크플로우 loop 단일출처화 + 회고 워크플로우 신규 (2026-06-23)
 
