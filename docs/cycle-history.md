@@ -5,7 +5,7 @@
 
 ## 목차
 
-- [repo-automation PR-H 신규 pre-commit 훅 3종 (brainstorming→spec→writing-plans→subagent-driven-development 흐름 — env-vars 싱크[config.py AST↔env-vars.md]·이중언어 주석[staged 보수 휴리스틱]·5-way config 싱크[RepoConfig ORM↔Data↔Update AST] stdlib 체커 추가+.pre-commit wiring, Task별 fresh 구현+2단계 리뷰, TDD +13·단위 5062·전체 5216, 2026-06-23)](#repo-automation-pr-h-신규-pre-commit-훅-3종-2026-06-23)
+- [repo-automation PR-H 신규 pre-commit 훅 3종 (brainstorming→spec→writing-plans→subagent-driven-development 흐름 — env-vars 싱크[config.py AST↔env-vars.md]·이중언어 주석[staged 보수 휴리스틱]·5-way config 싱크[RepoConfig ORM↔Data↔Update AST] stdlib 체커 추가+.pre-commit wiring, Task별 fresh 구현+2단계 리뷰, TDD +15·단위 5064·전체 5218, 2026-06-23)](#repo-automation-pr-h-신규-pre-commit-훅-3종-2026-06-23)
 - [회고 도구 개선 docs repo-integrity pre-commit 훅 (회고 WF 관점 — STATE↔README 수치 정합·cycle-history TOC 앵커·메모리 슬러그 stdlib 체커 3종을 pre-commit local hook wiring[turn-0 drift 차단], WF-1 import-dup 훅은 28 idiom EXACT 재평가로 DROP→testing.md 가이드 대체, TDD +7·단위 5049·전체 5203, 2026-06-23)](#회고-도구-개선-docs-repo-integrity-pre-commit-훅-2026-06-23)
 - [세션 다중 에이전트 회고 follow-up P2 (markdown escape 4번째 채널 — #962~#966 세션 5+1 회고[P0/P1 0·P2 8 confirmed + critic 갭 5] 적발 P2 해소: github_issue.py escape 누락 4번째 채널 추가[#965 가 놓침]·cycle-history #961 stale 정정·static 주석 메커니즘 정정·api.md ai_summary 2차 인젝션 비대칭 명문화, cross-verify 가 자기보고 'CodeQL 4회 반복' 과장 정정, TDD +2·단위 5042·전체 5196, 2026-06-23)](#세션-다중-에이전트-회고-follow-up-p2-markdown-escape-4번째-채널-2026-06-23)
 - [감사 P2 하드닝 — 아웃바운드 markdown 인젝션 escape + 단일출처 2건 (감사 D — untrusted issue.message 를 github/discord[GFM 백슬래시]·slack[`&<>` 엔티티] escape, AI 프로즈는 보존[Option A·정책 16], merge_retry literal→merge_reasons 상수, test_config 8192 가드, pg-concurrency/registry/telegram 3건은 이미 커버됨 → 드롭, TDD +13·단위 5040·전체 5194, 2026-06-23)](#감사-p2-하드닝--아웃바운드-markdown-인젝션-escape--단일출처-2건-2026-06-23)
@@ -138,7 +138,7 @@
 
 **리뷰 반영(SDD fix 루프)**: H1 allowlist 테스트 실효화 + AST Settings 한정(전파일 regex 제거) · H2 flush 단순화 + 면제 라인 블록 보존 · H3 오타 정정 + dead 폼 헬퍼 제거(3-way 확정) + 타입 정밀화. 각 Task 2단계 리뷰 후 재리뷰 Approved.
 
-**검증**: TDD +13(H1 3·H2 7·H3 3). 단위 5049→5062·전체 5216. scripts/ pylint 게이트(src/ 한정) 외·flake8 0. 3 훅 현재 repo 통과(dogfooding — docs sync 커밋이 check_docs_sync/check_toc_anchors 훅 통과). Codex mutual OK. 잔여 = PR-S(스킬 3)·PR-W(워크플로우 loop) 각자 plan→구현. [[project-deep-audit-2026-06-23]]
+**검증**: TDD +15(H1 3·H2 7·H3 5). 단위 5049→5064·전체 5218. scripts/ pylint 게이트(src/ 한정) 외·flake8 0. 3 훅 현재 repo 통과(dogfooding — docs sync 커밋이 check_docs_sync/check_toc_anchors 훅 통과). Codex mutual OK. 잔여 = PR-S(스킬 3)·PR-W(워크플로우 loop) 각자 plan→구현. [[project-deep-audit-2026-06-23]]
 
 ## 회고 도구 개선 docs repo-integrity pre-commit 훅 (2026-06-23)
 
