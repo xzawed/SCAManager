@@ -21,19 +21,35 @@ _WORKFLOWS = ["integrity-audit.mjs", "retrospective.mjs"]
 # 정본 파라미터 4종 / the 4 canonical params
 _PARAMS = ["DRY_THRESHOLD", "MAX_ROUNDS_WITH_BUDGET", "MAX_ROUNDS_NO_BUDGET", "BUDGET_FLOOR"]
 
-# 각 워크플로우가 반드시 포함해야 하는 loop-until-dry 핵심 불변식 토큰
-# Core loop-until-dry invariant tokens every workflow must contain
+# 각 워크플로우가 반드시 포함해야 하는 loop-until-dry 핵심 불변식 토큰 (주석 제외 실코드 기준)
+# Core loop-until-dry invariant tokens every workflow must contain (matched against code, not comments)
 _INVARIANTS = [
-    "seen.has(key(",                    # (1) dedup: 발견된 finding 키 재출현 차단 / dedup re-emergence
-    "dry < DRY_THRESHOLD",              # (2) dry counter: 연속 신규-0 종료 / consecutive-dry stop
-    "dry++",                            # (2) dry 증가 / dry increment
-    "budget.remaining() > BUDGET_FLOOR",  # (4) budget floor: 잔여 예산 하한 / budget floor guard
+    "seen.has(key(",                       # (1) dedup: finding 키 재출현 차단 / dedup re-emergence
+    "seen.add(",                           # (1) dedup: 발견 키 기록 / record surfaced key
+    "dry < DRY_THRESHOLD",                 # (2) dry 종료 조건 / consecutive-dry stop
+    "dry++",                               # (2) dry 증가 / dry increment
+    "dry = 0",                             # (2) 신규 발견 시 dry 리셋 / reset dry on fresh
+    "round < MAX_ROUNDS",                  # (3) round cap
+    # (3) MAX_ROUNDS 파생 — 두 상수가 실제 사용됨을 강제(declared-but-unused 우회 차단)
+    # (3) MAX_ROUNDS derivation — forces both consts to be USED (blocks declared-but-unused bypass)
+    "budget.total ? MAX_ROUNDS_WITH_BUDGET : MAX_ROUNDS_NO_BUDGET",
+    "budget.remaining() > BUDGET_FLOOR",   # (4) budget floor guard
 ]
 
 
 def _strip_num(raw: str) -> int:
     """JS 숫자 구분자(_) 제거 후 정수 변환 / drop JS numeric separators then int."""
     return int(raw.replace("_", ""))
+
+
+def _strip_comments(text: str) -> str:
+    """JS 주석(블록·라인) 제거 — 불변식이 주석에만 있는 false-pass 차단 (#936 학습).
+    Strip JS block/line comments so invariant tokens are matched against real code only
+    (seals the #936 'comment false-pass' anti-pattern). 워크플로우 관련 영역엔 문자열 내 '//' 가
+    없어 단순 제거로 충분(보수적 휴리스틱)."""
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)  # 블록 주석 / block comments
+    text = re.sub(r"//.*", "", text)                         # 라인 주석 / line comments
+    return text
 
 
 def _parse_template_params(text: str) -> dict:
@@ -77,15 +93,17 @@ def _check_loop_sync(root: Path):
         if not wf.exists():
             msgs.append(f"워크플로우 없음 / workflow missing: {wf_name}")
             continue
-        text = wf.read_text(encoding="utf-8")
-        params = _parse_workflow_params(text)
+        # 주석 제외 실코드 기준 — 선언·불변식이 주석에만 존재하는 false-pass 차단 (#936)
+        # Match against comment-stripped code so declarations/invariants in comments don't false-pass (#936)
+        code = _strip_comments(wf.read_text(encoding="utf-8"))
+        params = _parse_workflow_params(code)
         for name in _PARAMS:
             if name not in params:
                 msgs.append(f"{wf_name}: 상수 미선언 / const not declared: {name}")
             elif name in canon and params[name] != canon[name]:
                 msgs.append(f"{wf_name}: {name} drift {params[name]} != 정본/canonical {canon[name]}")
         for token in _INVARIANTS:
-            if token not in text:
+            if token not in code:
                 msgs.append(f"{wf_name}: 불변식 토큰 누락 / invariant token missing: {token!r}")
     return (not msgs), msgs
 
@@ -116,8 +134,11 @@ _GOOD_TEMPLATE = (
 _GOOD_WF = (
     "const DRY_THRESHOLD = 2\nconst MAX_ROUNDS_WITH_BUDGET = 5\n"
     "const MAX_ROUNDS_NO_BUDGET = 3\nconst BUDGET_FLOOR = 60_000\n"
-    "if (!seen.has(key(f))) {}\nwhile (dry < DRY_THRESHOLD) { dry++ }\n"
-    "if (budget.remaining() > BUDGET_FLOOR) {}\n"
+    "const MAX_ROUNDS = budget.total ? MAX_ROUNDS_WITH_BUDGET : MAX_ROUNDS_NO_BUDGET\n"
+    "while (dry < DRY_THRESHOLD && round < MAX_ROUNDS) {\n"
+    "  if (!seen.has(key(f))) { dry++; continue }\n"
+    "  dry = 0\n  seen.add(key(f))\n"
+    "  if (budget.remaining() > BUDGET_FLOOR) {}\n}\n"
 )
 
 
@@ -133,6 +154,19 @@ def test_loop_sync_flags_missing_invariant(tmp_path):
     # 불변식 토큰(budget floor) 제거 → 적발 / strip a budget-floor invariant → caught
     broken = _GOOD_WF.replace("budget.remaining() > BUDGET_FLOOR", "true")
     root = _seed(tmp_path, _GOOD_TEMPLATE, broken)
+    ok, msgs = _check_loop_sync(root)
+    assert not ok
+    assert any("invariant token missing" in m for m in msgs)
+
+
+def test_loop_sync_flags_invariant_only_in_comment(tmp_path):
+    # 불변식이 실제 코드가 아닌 주석에만 존재하면 적발 (false-pass 봉인 — #936 학습).
+    # invariant present only in a comment (not real code) must be flagged (#936 false-pass lesson).
+    commented = _GOOD_WF.replace(
+        "if (budget.remaining() > BUDGET_FLOOR) {}",
+        "// budget.remaining() > BUDGET_FLOOR (주석으로만 존재 / comment only)",
+    )
+    root = _seed(tmp_path, _GOOD_TEMPLATE, commented)
     ok, msgs = _check_loop_sync(root)
     assert not ok
     assert any("invariant token missing" in m for m in msgs)

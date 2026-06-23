@@ -1,0 +1,51 @@
+# 회고 워크플로우 운영 가이드 (retrospective.mjs)
+
+> 정책 8 (5+1 다중 에이전트 회고)의 결정론적 코드화. 진입점 스킬 = [`/retrospective`](../../.claude/skills/retrospective.md),
+> 실행 엔진 = [`.claude/workflows/retrospective.mjs`](../../.claude/workflows/retrospective.mjs) (PR-W W3 신설).
+> peer = [`/integrity-audit`](integrity-audit.md) (정합성 감사). 두 워크플로우는 loop-until-dry 정본
+> [`_lib/loop-until-dry.template.mjs`](../../.claude/workflows/_lib/loop-until-dry.template.mjs)을 인라인 공유
+> (drift 가드: `tests/unit/scripts/test_workflow_loop_sync.py`).
+
+## 목적
+직전 세션/사이클을 5 관점(process·code·docs·decision·tooling)으로 회고 — loop-until-dry finder +
+completeness critic + **cross-verify=finding 강제**(모든 finding 이 verdict 수신 → 단일 패스 회고의
+"13건 중 8건만 검증" 한계 해소). read-only 분석 — 코드/문서 수정은 호출자/사용자 책임.
+
+## 실행
+워크플로우는 명명 레지스트리 미등록(빌트인 아님) → **`scriptPath` 절대경로 호출**:
+```
+Workflow({ scriptPath: '<repo-abs>/.claude/workflows/retrospective.mjs',
+           args: { scope: 'session', context: '<머지 커밋·PR·범위>', domains?: [...] } })
+```
+- `scope`: 'session'(기본) — 직전 세션 전체.
+- `context`: 머지 커밋 SHA·PR 번호·작업 범위 문자열 (finder/verify 프롬프트로 전달 — 충실할수록 정확).
+- `domains`(선택): 부분 회고 시 `['process','code',...]` (생략 = 5 관점 전체).
+- `dryRun: true`: 에이전트 0 — 관점 resolve 만 확인하는 smoke.
+
+## 반환 스키마
+```
+{ scope, rounds, findings_total, verdict_coverage,
+  confirmed: [{domain, severity, title, file, line, claim, recommendation, verdict, reason}],
+  unverified_findings: [{domain, severity, title}],
+  roi: { fp_blocked, confirmed, severity_adjusted, p0, p1, p2 } }
+```
+- **verdict**: `CONFIRMED`(실제 결함/개선) · `FALSE_POSITIVE`(차단) · `SEVERITY_ADJUST`(adjusted_severity) · `UNVERIFIED`(재시도 3회 소진).
+- 보고서 작성: `docs/_archive/reports/YYYY-MM-DD-retrospective.md` (ROI + verdict_coverage + 클러스터). **아카이브는 6-step 의무**(회고 P1 #39 = 미아카이브 반복 근본).
+
+## verdict_coverage 해석
+- `1.0` = 모든 finding 이 verdict 수신(목표). 단일 패스 13/8 한계 해소 입증.
+- `< 1.0` = UNVERIFIED 존재(고동시성 StructuredOutput 누락 등) → 재실행 또는 수동 확인 권고. 보고서에 unverified 별도 표 노출.
+
+## 비용 · 거버넌스
+- 5 관점 × 다라운드(loop-until-dry, MAX_ROUNDS budget 시 5 / 미설정 3) + 전건 cross-verify = 다수 에이전트
+  (2026-06-23 첫 실행 = 85 에이전트·~7.2M 토큰·3 라운드). **실행 전 예상 비용 1줄 보고**(정책 16#5).
+- 5+1(내부 self-verify, 관점 다양성) ↔ Codex mutual(외부 LLM, 정책 18) = **2-layer 독립** — 한쪽으로 다른 쪽 생략 금지.
+- cross-verify(6차) 생략 정량 기준(정책 8 진화): 1차 P0 ≥ 8 + 5 관점 모두 P0 ≥ 1 + 사용자 빠른 진행 신호 — **3 조건 AND** 시만.
+- 회고 종합 직후 **자유 발언(정책 9, 4 섹션)** + **회고 질문(사용자 회신 의무)** 별도 수행(워크플로우 스키마 밖).
+- **fix 는 사용자 결정**(정책 7 PR 단위 / 15 사전 사고 / 18 Codex mutual) — 자동 수정 금지.
+
+## 알려진 한계 (2026-06-23 첫 dogfooding)
+- completeness critic 라운드가 API 일시 오류 시 미복구(gap 라운드 누락 가능) — 본체 회고는 완료되나 표적 gap 미수행.
+- finder/verifier 의 evidence·citation_verified 가 최종 반환에서 소실(현재 title/claim/reason 만 보존).
+- 자유 발언·회고 질문·cross-verify 생략 정량 표는 워크플로우 출력 밖 = 스킬/Claude 절차 의존.
+- 위 항목은 [`docs/_archive/reports/2026-06-23-retrospective.md`](../_archive/reports/2026-06-23-retrospective.md) §C10 백로그.

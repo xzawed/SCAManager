@@ -288,7 +288,7 @@ while (dry < DRY_THRESHOLD && round < MAX_ROUNDS && (!budget.total || budget.rem
   ))).filter(Boolean).flatMap((r) => r.findings ?? [])
 
   const fresh = found.filter((f) => !seen.has(key(f)))
-  if (!fresh.length) { dry++; log(`라운드 ${round}: 신규 0 (dry ${dry}/2)`); continue }
+  if (!fresh.length) { dry++; log(`라운드 ${round}: 신규 0 (dry ${dry}/${DRY_THRESHOLD})`); continue }
   dry = 0
   fresh.forEach((f) => seen.add(key(f)))
   log(`라운드 ${round}: 신규 ${fresh.length}건 → 검증`)

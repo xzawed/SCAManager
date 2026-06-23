@@ -1,8 +1,8 @@
 # repo-automation 강화 설계 — 신규 훅 3 · 신규 스킬 3 · 워크플로우 loop-engineering
 
-> **상태**: 승인됨 (2026-06-23 brainstorming) → writing-plans 대기
+> **상태**: ✅ 완료 (PR-H #969 훅 · PR-W #974 워크플로우 · PR-S #975 스킬 전량 머지, 2026-06-23). 회고 follow-up = `fix/retrospective-followup-hardening`.
 > **출처**: 2026-06-23 정밀 감사 세션 5+1 회고 도구 관점(WF) + 사용자 합의
-> **구현**: 3 PR 순차 (PR-H 훅 → PR-S 스킬 → PR-W 워크플로우), 각자 TDD + Codex mutual + docs sync
+> **구현**: 3 PR (PR-H 훅 → PR-W 워크플로우 → PR-S 스킬), 각자 TDD + Codex mutual + docs sync. 운영 가이드: [`docs/runbooks/retrospective.md`](../runbooks/retrospective.md) · [`docs/runbooks/integrity-audit.md`](../runbooks/integrity-audit.md).
 
 ---
 
