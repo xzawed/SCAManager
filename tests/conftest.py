@@ -23,11 +23,19 @@ os.environ["SESSION_SECRET"] = "test-session-secret-32-chars-long!"
 os.environ["CLAUDE_REVIEW_MODEL"] = "claude-sonnet-4-6"
 os.environ["CLAUDE_INSIGHT_MODEL"] = "claude-haiku-4-5"
 # 테스트 환경 = 개발 모드 명시 opt-out — API_KEY 미설정 시 REST API fail-closed(503) 기본값을
-# 우회해 기존 endpoint 테스트(repos/stats 등 키 없이 200 의존)를 보존한다. fail-closed 기본값
-# 자체는 tests/unit/api/test_auth.py 가 api_auth_disabled=False 로 직접 검증.
+# 우회해 기존 endpoint 테스트(repos/stats 등 키 없이 200 의존)를 보존한다.
+# 🔴 음성검증 마스킹 완화 (GAP-5, 2026-06-23 회고 P2): 이 전역 opt-out 은 모든 endpoint 테스트를
+#   무인증으로 돌려 fail-closed 회귀를 가릴 수 있다. 마스킹은 tests/unit/api/test_auth.py 의 전용
+#   가드가 완화한다 — api_auth_disabled=False 로 명시 override 후 503 단언:
+#   test_api_key_empty_default_fail_closed_503 / test_api_key_empty_fail_closed_regardless_of_base_url
+#   / test_api_key_empty_default_ignores_provided_key_503. 이 가드 삭제 시 마스킹 재노출 주의.
 # Test env = explicit dev opt-out — bypass the fail-closed(503) default for unset API_KEY so existing
-# endpoint tests (repos/stats relying on keyless 200) keep passing. The fail-closed default itself is
-# verified directly by test_auth.py with api_auth_disabled=False.
+# endpoint tests (repos/stats relying on keyless 200) keep passing.
+# 🔴 Negative-verification masking mitigation (GAP-5): this global opt-out runs every endpoint test
+#   keyless, which could hide a fail-closed regression. The masking is mitigated by the dedicated guards
+#   in tests/unit/api/test_auth.py — they override api_auth_disabled=False and assert 503
+#   (test_api_key_empty_default_fail_closed_503 / ..._regardless_of_base_url / ..._ignores_provided_key_503).
+#   Removing those guards re-exposes the masking.
 os.environ["API_AUTH_DISABLED"] = "1"
 
 from src.main import app
