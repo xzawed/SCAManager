@@ -1,19 +1,16 @@
 #!/usr/bin/env python3
 """
-5-way config 싱크 점검 — RepoConfig ORM ↔ RepoConfigData ↔ RepoConfigUpdate 필드 집합 정합.
-5-way config sync checker — field-set parity across the RepoConfig definitions.
+3-way config 싱크 점검 — RepoConfig ORM ↔ RepoConfigData ↔ RepoConfigUpdate 필드 집합 정합.
+3-way config sync checker — field-set parity across the three RepoConfig Python layers.
 
-채널/필드 추가 시 일부 레이어 누락 → NULL 덮어쓰기 운영 버그(api.md 5-way) 차단. Python 3자는
-AST 견고 비교. settings 폼(HTML name=)은 best-effort 비교(파싱 실패 시 skip). PRESETS(JS)는
-파싱 fragile 로 범위 외. 의도적 비대칭 필드는 _ALLOWLIST 제외. stdlib 전용.
+채널/필드 추가 시 일부 레이어 누락 → NULL 덮어쓰기 운영 버그(api.md 5-way) 차단.
+Python 3자(ORM·Data·Update)는 AST 견고 비교. 의도적 비대칭 필드는 _ALLOWLIST 제외. stdlib 전용.
 
 Channel/field additions that miss a layer can silently NULL-overwrite DB values (api.md 5-way rule).
-Three Python layers compared via AST (reliable). The settings HTML form is compared best-effort
-(skip on parse failure). JS PRESETS are excluded (fragile parsing). stdlib only.
+Three Python layers (ORM, Data, Update) are compared via AST (reliable). stdlib only.
 """
 import ast
 import io
-import re
 import sys
 from pathlib import Path
 
@@ -55,7 +52,7 @@ _ALLOWLIST = frozenset({
 })
 
 
-def _orm_columns(src: str, class_name: str = "RepoConfig") -> set:
+def _orm_columns(src: str, class_name: str = "RepoConfig") -> set[str]:
     """ORM 클래스의 `field = Column(...)` 필드명 집합을 반환한다.
 
     Return the set of field names declared as `field = Column(...)` in the given ORM class.
@@ -78,7 +75,7 @@ def _orm_columns(src: str, class_name: str = "RepoConfig") -> set:
     return out
 
 
-def _annotated_fields(src: str, class_name: str) -> set:
+def _annotated_fields(src: str, class_name: str) -> set[str]:
     """dataclass/Pydantic 클래스의 `field: type` 어노테이션 필드명 집합을 반환한다.
 
     Return the set of annotated field names (`field: type`) from a dataclass or Pydantic class.
@@ -94,15 +91,7 @@ def _annotated_fields(src: str, class_name: str) -> set:
     return set()
 
 
-def _form_names(html: str) -> set:
-    """settings 폼의 name="..." 속성 집합을 반환한다 (best-effort 정규식 파싱).
-
-    Return the set of `name="..."` attribute values found in the HTML form (best-effort regex).
-    """
-    return set(re.findall(r'name="([a-z][a-z0-9_]*)"', html))
-
-
-def check_sync(project_root: Path) -> tuple:
+def check_sync(project_root: Path) -> tuple[bool, list[str]]:
     """RepoConfig ORM ↔ RepoConfigData ↔ RepoConfigUpdate 3자 필드 집합 정합 검사.
 
     ORM 필드 집합을 정본으로 삼고, RepoConfigData·RepoConfigUpdate 각각에 대해
@@ -146,7 +135,7 @@ def check_sync(project_root: Path) -> tuple:
             )
         if extra:
             msgs.append(
-                f"❌ {label} 잌여(ORM 미존재): {sorted(extra)}"
+                f"❌ {label} 잉여(ORM 미존재): {sorted(extra)}"
             )
 
     return (not msgs), msgs
@@ -159,7 +148,7 @@ def main() -> int:
     """
     project_root = Path(__file__).resolve().parents[1]
     ok, msgs = check_sync(project_root)
-    print("=== 5-way config 싱크 점검 / Config 5-Way Sync Check ===\n")
+    print("=== 3-way config 싱크 점검 / Config 3-Way Sync Check ===\n")
     if ok:
         print(
             "✅ RepoConfig ORM ↔ RepoConfigData ↔ RepoConfigUpdate "
@@ -169,8 +158,8 @@ def main() -> int:
     for m in msgs:
         print(m)
     print(
-        "\n해결: 신규 RepoConfig 필드를 ORM/Data/Update/폼/PRESETS "
-        "5곳 동기화 (api.md 5-way). 의도적 비대칭은 _ALLOWLIST."
+        "\n해결: 신규 RepoConfig 필드를 ORM/Data/Update "
+        "3곳 동기화 (api.md 5-way). 의도적 비대칭은 _ALLOWLIST."
     )
     return 1
 
