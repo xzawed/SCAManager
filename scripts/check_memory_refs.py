@@ -106,8 +106,12 @@ def main() -> int:
     project_root = Path(__file__).resolve().parents[1]
 
     if not MEMORY_DIR.exists():
-        print(f"❌ 메모리 디렉토리 없음: {MEMORY_DIR}")
-        return 1
+        # 메모리 디렉토리는 repo 밖(머신별 ~/.claude)이라 CI·타 개발자 환경엔 없을 수 있다.
+        # pre-commit local hook 으로 wiring 해도 안전하도록 부재 시 skip(0) — 실패(1) 금지.
+        # The memory dir lives outside the repo (~/.claude, per-machine); absent in CI / other devs.
+        # Skip gracefully (exit 0) so this is safe to wire as a pre-commit hook — never fail on absence.
+        print(f"⏭️  메모리 디렉토리 없음 — 점검 skip (CI/타 환경 정상): {MEMORY_DIR}")
+        return 0
 
     referenced = collect_referenced(project_root)
     actual = {f.name for f in MEMORY_DIR.glob("*.md") if f.name != "MEMORY.md"}

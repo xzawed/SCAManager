@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [회고 도구 개선 docs repo-integrity pre-commit 훅 (회고 WF 관점 — STATE↔README 수치 정합·cycle-history TOC 앵커·메모리 슬러그 stdlib 체커 3종을 pre-commit local hook wiring[turn-0 drift 차단], WF-1 import-dup 훅은 28 idiom EXACT 재평가로 DROP→testing.md 가이드 대체, TDD +7·단위 5049·전체 5203, 2026-06-23)](#회고-도구-개선-docs-repo-integrity-pre-commit-훅-2026-06-23)
 - [세션 다중 에이전트 회고 follow-up P2 (markdown escape 4번째 채널 — #962~#966 세션 5+1 회고[P0/P1 0·P2 8 confirmed + critic 갭 5] 적발 P2 해소: github_issue.py escape 누락 4번째 채널 추가[#965 가 놓침]·cycle-history #961 stale 정정·static 주석 메커니즘 정정·api.md ai_summary 2차 인젝션 비대칭 명문화, cross-verify 가 자기보고 'CodeQL 4회 반복' 과장 정정, TDD +2·단위 5042·전체 5196, 2026-06-23)](#세션-다중-에이전트-회고-follow-up-p2-markdown-escape-4번째-채널-2026-06-23)
 - [감사 P2 하드닝 — 아웃바운드 markdown 인젝션 escape + 단일출처 2건 (감사 D — untrusted issue.message 를 github/discord[GFM 백슬래시]·slack[`&<>` 엔티티] escape, AI 프로즈는 보존[Option A·정책 16], merge_retry literal→merge_reasons 상수, test_config 8192 가드, pg-concurrency/registry/telegram 3건은 이미 커버됨 → 드롭, TDD +13·단위 5040·전체 5194, 2026-06-23)](#감사-p2-하드닝--아웃바운드-markdown-인젝션-escape--단일출처-2건-2026-06-23)
 - [감사 보안 게이트 fail-open 봉인 3건 (auth fail-closed·static crash·retry sha-bound — ① API_KEY 미설정 시 http 휴리스틱 통과 제거→기본 503 + `API_AUTH_DISABLED` opt-out[cross-tenant 노출 차단], ④ analyzer crash→incomplete[미설치 FileNotFoundError 는 현행], ③ retry sha-bound 불변식 가드[REFUTED→동작 변경 없이 가드+문서], EXACT 재검증, TDD +4·단위 5027·전체 5181, 2026-06-23)](#감사-보안-게이트-fail-open-봉인-3건-auth-fail-closed-static-crash-retry-sha-bound-2026-06-23)
@@ -122,6 +123,18 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 회고 도구 개선 docs repo-integrity pre-commit 훅 (2026-06-23)
+
+**날짜**: 2026-06-23 | **PR**: chore/repo-integrity-hooks | **트리거**: 세션 5+1 회고 도구 관점(WF-1~5) | **상태**: 머지
+
+**배경**: 회고 도구 관점이 반복 수작업·과거 drift 사고를 turn-0 자동화 기회로 식별 — `.pre-commit-config.yaml` 에 이미 local hook 4종 + `scripts/` stdlib 선례(check_memory_refs.py)가 있어 wiring 만 비어있었음. CI-safe stdlib 체커로 일괄 wiring.
+
+**구현**: **WF-2** `scripts/check_docs_sync.py` — STATE 종합 수치·추적셀 시작 헤더 ↔ README.md/README.ko.md Tests 배지 전체/단위 카운트 4지점 일치(과거 #931/#933 STATE 추적셀 헤더 미갱신 Codex 적발 차단). **WF-3** `scripts/check_toc_anchors.py` — cycle-history.md TOC `](#...)` 앵커가 헤딩 GitHub slug(소문자·비단어 제거·공백→하이픈·중복 -1·em-dash 더블하이픈)과 일치(#958 끊긴 앵커 사후 수정 차단). **WF-5** 기존 `check_memory_refs.py` 에 graceful-skip(memory dir 부재 시 exit 0 — repo 밖 ~/.claude 경로라 CI/타 개발자 환경엔 없음) 추가 후 wiring. 3 훅 모두 `language: system`·`pass_filenames: false`·해당 문서 `files:` 필터로 변경 시만 실행. 현재 repo 통과 실측(dogfooding — PR2 자체 커밋이 훅 검증 통과).
+
+**🔴 WF-1 import-dup 훅 DROP (회고 P0 EXACT 재평가)**: 도구 관점이 `import X as`+`from X import` 이중 import(CodeQL py/import-and-import-from #520) 차단 훅을 P0 로 권장했으나, EXACT 스캔 결과 테스트에 **28개 idiomatic** occurrence(`import X as mod`[모듈 패치] + `from X import fn`[호출])가 존재 — 차단 훅은 28 파일 churn 또는 legacy 편집 차단을 유발(정책 16/17 안정성 우선 충돌). cross-verify 도 PROC-1 을 P1→P2 하향(import-and-import-from 은 #517/#520 2회, '4회 반복' framing 과장). → 훅/스크립트 DROP, `testing.md` 에 신규 테스트 string-path 우선 가이드로 대체(자율 판단 보고, 정책 3·감사 verdict 맹신 금지 양방향).
+
+**검증**: TDD +7(check_docs_sync/check_toc_anchors 양방향 회귀 가드 + github_slug em-dash/dedup + 인라인 코드 오탐 가드). 단위 5042→5049·전체 5203. scripts/ 는 pylint 게이트(src/ 한정) 외 — 기존 스크립트 컨벤션 정합. Codex mutual OK. [[project-deep-audit-2026-06-23]]
 
 ## 세션 다중 에이전트 회고 follow-up P2 (markdown escape 4번째 채널, 2026-06-23)
 
