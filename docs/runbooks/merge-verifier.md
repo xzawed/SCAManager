@@ -31,8 +31,8 @@ Invoked only when all three hold:
 
 | 조건 | 설명 |
 |------|------|
-| kill-switch off | `MERGE_VERIFIER_DISABLED != 1` |
-| 키 존재 | `OPENAI_API_KEY` 설정됨 |
+| kill-switch off | `MERGE_VERIFIER_DISABLED` 이 truthy(`1`/`true`/`yes`) 가 아님 (`feature_kill_switch.py` `_TRUTHY_VALUES`) |
+| 키 존재 | `OPENAI_API_KEY` 가 빈 문자열이 아님 |
 | 경계 밴드 | `merge_threshold <= score < merge_threshold + MERGE_VERIFIER_BAND` |
 
 고득점(`>= mt + band`)·머지 미달(`< mt`)은 **skip**(비용 절감). 검증 가드는 [`engine._run_auto_merge`](../../src/gate/engine.py) **단일 출처**에서 1회 — **자동**(`AutoMergeAction`)·**반자동**(Telegram `handle_gate_callback`) 양 경로 공유(#859 P1-1 parity). **재시도 경로**(`process_pending_retries`)는 재검증하지 않으나, `expected_sha` 바인딩(#962)+`sha_drift` 검사로 **검증자가 승인한 동일 SHA 만 머지**하므로 verdict 가 stale 될 수 없다(api.md §검증자 staleness 안전).
@@ -54,7 +54,7 @@ The client works with any **OpenAI-compatible** provider. Recommended = **free G
 
 1. **공급자 선택 + 키 발급** — GitHub Models 면 GitHub Settings → Developer settings → PAT 발급(`models:read`).
 2. **Railway Variables 설정** (대시보드 또는 CLI):
-   - `OPENAI_API_KEY` = 공급자 키 (**필수** — 이 값이 활성화 트리거)
+   - `OPENAI_API_KEY` = 공급자 키 (**활성화 트리거** — `config.py` 기본값은 빈 문자열이라 미설정 시 검증자 비활성)
    - `VERIFIER_BASE_URL` = 비-OpenAI 공급자 엔드포인트 (OpenAI 직접이면 비워둠)
    - `OPENAI_VERIFIER_MODEL` = 공급자 모델 ID (저비용 소형 권장)
    - `MERGE_VERIFIER_BAND` = 경계 밴드 폭(기본 10 — 필요 시 조정)
@@ -67,7 +67,7 @@ The client works with any **OpenAI-compatible** provider. Recommended = **free G
 When an auto-merge for a borderline-band PR triggers:
 
 - **안전 판정** → 정상 squash-merge (추가 코멘트 없음).
-- **차단 판정** → PR 에 코멘트 `🛑 Auto-merge withheld by the 2nd-LLM cross-vendor verifier (Claude review ↔ GPT verification)` + 구조화 로그:
+- **차단 판정** → PR 에 코멘트 `🛑 Auto-merge withheld by the 2nd-LLM cross-vendor verifier (Claude review ↔ GPT verification) — merge-safety check failed.` + 구조화 로그:
   - `merge verifier blocked auto-merge (tag=<VERIFIER_BLOCKED|VERIFIER_ERROR> status=<...>) — repo=... pr=...: <reasons>`
   - `VERIFIER_BLOCKED` = 정상 판정의 unsafe/조작 / `VERIFIER_ERROR` = 검증자 api/parse 오류(fail-closed).
 
@@ -84,7 +84,7 @@ When an auto-merge for a borderline-band PR triggers:
 
 ## 비활성화 / Disable
 
-- **즉시 kill-switch**(운영 사고 시): `MERGE_VERIFIER_DISABLED=1` → `should_verify` 즉시 `False`.
+- **즉시 kill-switch**(운영 사고 시): `MERGE_VERIFIER_DISABLED=1`(또는 `true`/`yes`) → `should_verify` 즉시 `False`.
 - **완전 비활성**: `OPENAI_API_KEY` 제거 → 검증자 완전 off(원래 동작 복귀).
 
 ## 비용 통제 / Cost control
