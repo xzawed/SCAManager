@@ -11,6 +11,7 @@ from src.config import settings
 from src.constants import GITHUB_API
 from src.github_client.helpers import github_api_headers
 from src.i18n.loader import get_text
+from src.notifier._common import escape_markdown
 from src.shared.http_client import get_http_client
 from src.shared.log_safety import sanitize_for_log
 
@@ -71,9 +72,11 @@ def _build_issue_body(  # pylint: disable=too-many-locals,too-many-positional-ar
             get_text("notifier.github_issue.security_header", language),
         ]
         for issue in high_issues[:10]:
+            # 감사 D: untrusted 정적 도구 메시지 → markdown 이스케이프 (Issue 본문 링크/이미지 인젝션 차단)
+            # Audit D: escape untrusted static-tool message for the markdown Issue body (link/image injection)
             lines.append(get_text(
                 "notifier.github_issue.security_item", language,
-                message=issue.get("message", ""), line=issue.get("line", "?"),
+                message=escape_markdown(str(issue.get("message", ""))), line=issue.get("line", "?"),
             ))
 
     suggestions = result.get("ai_suggestions") or []
