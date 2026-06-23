@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [native auto-merge SHA-atomicity fail-closed (#962 — `head_sha` 미확보 시 SHA 빈 값으로 guardless merge 하던 경로 차단, `effective_sha` 미확보 시 terminal[NETWORK_ERROR] 반환, Codex 1차 NG valid 적발[retriable 초안이 should_retry/빈 commit_sha 로 실제 미작동]→terminal 정직 전환 2차 OK, 사용자 결정 A, 감사 보안/게이트 4건 중 #2, TDD +1·단위 5023·전체 5177, 2026-06-23)](#native-auto-merge-sha-atomicity-fail-closed-962-2026-06-23)
 - [정밀 감사(69-에이전트 다차원 워크플로우) + docs-drift 13건 정정 (#961 — 정합성/코드품질/보안 11차원 read-only 감사 raw 41→confirmed 30 전부 P2·P0/P1 0, 사용자 선택 docs-drift 13건 grep -n 실측 일괄 정정[security/api/i18n/pipeline/db/testing rules + env-vars 심볼참조 + architecture e2e + .env.example 3토글], Codex 1차 8/9 OK→testing.md NG 즉시 재작성, 보안/게이트 4건 High tier 별도, 2026-06-23)](#정밀-감사69-에이전트-다차원-워크플로우--docs-drift-13건-정정-961-2026-06-23)
 - [AI 리뷰 점수 NULL 폐기 분리 — 입력 diff 절단 시 점수 보존 (#960 — 운영 Supabase 실측: 6월 score NULL 256건 다수가 절단형·일 점수 성공률 24~57% 급락, `_persisted_score_is_unreliable`에서 `ai_review_truncated` 트리거 제거 → NULL은 genuine 실패[api_error/parse_error] 한정, auto-merge 차단[#885]은 마커 직접 참조라 안전성 영향 0, 사용자 결정 A, Codex mutual OK, 2026-06-22)](#ai-리뷰-점수-null-폐기-분리--입력-diff-절단-시-점수-보존-960-2026-06-22)
 - [SonarCloud S6853 폼 라벨 7건 해소 + edit-guard hook 견고화 + 의존성 (2026-06-22 후속)](#sonarcloud-s6853-폼-라벨-7건-해소--edit-guard-hook-견고화--의존성-2026-06-22-후속)
@@ -119,6 +120,16 @@
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
 
+## native auto-merge SHA-atomicity fail-closed (#962, 2026-06-23)
+
+**날짜**: 2026-06-23 | **PR**: #962 (브랜치 fix/automerge-sha-atomicity-failclosed, main 5eb2348) | **트리거**: 69-에이전트 정밀 감사 보안/게이트 4건 중 #2 | **상태**: 머지
+
+**문제**: native auto-merge 활성화 경로에서 GitHub `head_sha` 미확보(fetch 실패·응답 누락 등) 시 SHA를 빈 값으로 둔 채 머지를 진행 → "이 SHA 기준 가드 통과" 원자성 보장이 깨진 guardless merge 가능(fail-open 비대칭, 감사 근본원인 B).
+
+**수정**: `effective_sha` 미확보 시 terminal 상태(`NETWORK_ERROR`) 반환 → 머지 차단·재시도 enqueue 안 함(사용자 결정 A = "정직하게 terminal"). 🔴 **Codex 1차 NG valid 적발**: 초안은 retriable(`UNKNOWN_STATE_TIMEOUT`) 반환이었으나 (a) `should_retry(UNKNOWN_STATE_TIMEOUT, ci)`는 `ci=="running"`일 때만 True인데 `effective_sha=""` → `ci="unknown"` → terminal 로 빠지고 (b) enqueue `commit_sha=effective_sha or ""`라 가드가 빈 값 → "stored commit_sha 로 재시도"가 실제로 작동 안 함. 직접 코드 재추적으로 확인 후 terminal 로 정직 변경, 2차 OK 5/5(정책 18 mutual ROI 양성 — 내 fix 설계결함 적발).
+
+**테스트**: +1 — 신규 `test_retry_path_fail_closed_network_error_goes_terminal_no_enqueue`(retry path `effective_sha` 빈 값 시 terminal·enqueue 미발생) + native_automerge fail-open→fail-closed 행동 반영 2건 rename(`test_get_pr_state_failure_blocks_enable_fail_closed`·`test_enable_with_path_get_pr_state_failure_fail_closed`). 단위 5022→5023·전체 5177. CI green·CodeQL pass·Code Scanning open 0. [[project-deep-audit-2026-06-23]]
+
 ## 정밀 감사(69-에이전트 다차원 워크플로우) + docs-drift 13건 정정 (#961, 2026-06-23)
 
 **날짜**: 2026-06-22~23 | **PR**: #961 (docs-drift) | **트리거**: 사용자 "전체 문서·코드 정합성·코드품질·보안강화 정밀 검증 (딥리서치 + 다이나믹 워크플로우)" | **상태**: #961 머지 / 보안·게이트 4건 항목별 확인 대기
@@ -129,7 +140,7 @@
 
 **#961 (docs-drift 13건)**: 각 항목 `grep -n` 직접 재실측 후 정정(새 drift 유입 차단). rules — security.md(secure_str_compare 단일출처·require_admin session.py:87/99·LimitBodySize 이미 처리됨)·api.md(run_gate_check positional 정정)·i18n.md(8→15 namespace)·pipeline.md(8→23 tools)·db.md(env.py:96·is_postgresql 시점)·testing.md(R0914 하드코딩 카운트→드리프트-방지형 grep 정본 + ~28 근사). docs — env-vars.md(MERGE_UNKNOWN config.py 심볼참조)·architecture.md(e2e test_overview_score.py)·.env.example(VERIFIER_BASE_URL·CLAUDE_REVIEW_MAX_TOKENS·N8N_RELAY_REPO_TOKEN 3 토글). 🔴 수정 중 빈 `CLAUDE_REVIEW_MAX_TOKENS=`(int)가 `cp .env.example .env` 시 pydantic ValidationError로 startup crash됨을 실측 차단 → 기본값 8192 명시. Codex 1차 8/9 OK → testing.md "7건" NG(특정 파일만 grep한 실수) → 단일 정답 버그(정책 18 #3b) 즉시 드리프트-방지형 재작성 + ground-truth 28개 재검증. 코드/테스트 무변경.
 
-**잔여(보안/게이트 4건 — High tier 별도 PR)**: (1) auth.py dev-mode 무인증 cross-tenant 노출(http 오판) (2) native_automerge head_sha fetch 실패 시 SHA-atomicity 우회 (3) merge_retry 2nd-LLM verifier-staleness TOCTOU (4) static.py crash/미설치 fail-open. 정책 15 High tier + 정책 18 Codex mutual 의무라 항목별 사전 확인 후 진행. [[project-score-null-truncation-decouple]]
+**잔여(보안/게이트 — High tier 별도 PR)**: (1) auth.py dev-mode 무인증 cross-tenant 노출(http 오판) (2) ✅ native_automerge head_sha fetch 실패 시 SHA-atomicity 우회 → **#962 머지(2026-06-23)** (3) merge_retry 2nd-LLM verifier-staleness TOCTOU (4) static.py crash/미설치 fail-open. **#2 완료 → 잔여 3건**. 정책 15 High tier + 정책 18 Codex mutual 의무라 항목별 사전 확인 후 진행. [[project-score-null-truncation-decouple]]
 
 ## AI 리뷰 점수 NULL 폐기 분리 — 입력 diff 절단 시 점수 보존 (#960, 2026-06-22)
 
