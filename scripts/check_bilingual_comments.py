@@ -66,33 +66,41 @@ def check_lines(added_comment_lines: list[str]) -> tuple[bool, list[str]]:
 
     블록(연속 주석 라인)에 영어 단어 동반 라인이 하나라도 있으면 통과(병행 간주).
     A block passes if any line in the consecutive comment block contains a Latin word.
+
+    보수성 원칙: 면제 태그 라인은 블록을 끊지 않고 건너뜀 — 면제 라인이 한글-영어
+    블록 사이에 끼어도 블록 단위 판정이 유지됨.
+    Conservative principle: exempt tag lines skip without breaking the block — block-level
+    judgment is preserved even when exempt lines appear between Korean and English lines.
     """
     msgs: list[str] = []
-    # 현재 블록에 영어 동반 라인이 있는지 추적
-    # Track whether the current block has any English-bearing line
-    block_has_latin = False
+    # 현재 블록(비면제 연속 주석)과 영어 동반 여부 추적
+    # Track current block (non-exempt consecutive comments) and whether it has English
     block: list[str] = []
+    block_has_latin = False
 
-    def flush() -> None:
-        """블록을 평가하고 초기화.
-        Evaluate and reset the current comment block.
+    def _flush_block() -> None:
+        """현재 블록을 평가하고 초기화.
+        Evaluate the current block and reset state.
         """
-        nonlocal block_has_latin
         # 블록에 영어 라인이 없을 때만 한글-only 위반 검사
-        # Only check for Korean-only violation if no English line exists in the block
+        # Only flag Korean-only violations when no English line exists in the block
         if block and not block_has_latin:
             for ln in block:
                 if _has_hangul(ln) and not _has_latin_word(ln):
                     msgs.append(f"❌ 한글-only 주석(영어 병행 없음): {ln.strip()}")
         block.clear()
-        block_has_latin = False
 
     for line in added_comment_lines:
         m = _COMMENT.match(line)
-        # 주석 라인이 아니거나 면제 태그 라인이면 블록을 끊음
-        # Non-comment or exempt tag line breaks the current block
-        if not m or _is_exempt(line):
-            flush()
+        if not m:
+            # 주석 아닌 라인 — 블록 경계로 처리
+            # Non-comment line — treat as block boundary
+            _flush_block()
+            block_has_latin = False
+            continue
+        if _is_exempt(line):
+            # 면제 태그 라인 — 블록을 끊지 않고 건너뜀 (보수성)
+            # Exempt tag line — skip without breaking the block (conservative)
             continue
         block.append(line)
         # 주석 내용(# 이후)에 영어 단어가 있으면 블록 플래그 설정
@@ -102,7 +110,7 @@ def check_lines(added_comment_lines: list[str]) -> tuple[bool, list[str]]:
 
     # 마지막 블록 평가
     # Evaluate the final block
-    flush()
+    _flush_block()
     return (not msgs), msgs
 
 
