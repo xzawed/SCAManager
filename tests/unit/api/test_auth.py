@@ -1,9 +1,10 @@
 """tests/test_api_auth.py — API 키 인증 의존성(_check_api_key) 단위 테스트.
 
-P0-1 보안 수정 대상:
-  - 타이밍 공격 방지: hmac.compare_digest 사용 여부
-  - API_KEY 미설정(빈 문자열) 시 open access 동작 유지
-  - API_KEY 미설정 시 logger.warning 경고 출력
+보안 수정 대상:
+  - 타이밍 공격 방지: secure_str_compare(hmac.compare_digest) 사용 여부
+  - 🔴 API_KEY 미설정 시 **기본 fail-closed(503)** — 명시적 API_AUTH_DISABLED=1 opt-out 시에만 통과
+    (감사 ①: 이전엔 http/빈 APP_BASE_URL 이면 무인증 통과 → 오설정 cross-tenant 노출 위험)
+  - API_AUTH_DISABLED=1 통과 시 logger.warning 경고 출력
 
 테스트 대상 엔드포인트: 미니멀 FastAPI 앱 + GET /protected
   → require_api_key 의존성만 격리 테스트
@@ -75,20 +76,30 @@ def test_api_key_missing_when_required_returns_401(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# 테스트 4: API_KEY 미설정(빈 문자열)이면 키 없어도 200 (기존 동작 유지)
-# Test 4: API_KEY not set (empty string) → 200 even without a key (preserve existing behaviour).
+# 테스트 4 (감사 ① — fail-closed 기본): API_KEY 미설정 + API_AUTH_DISABLED 미설정 → 503
+# Test 4 (audit ① — fail-closed default): API_KEY unset + API_AUTH_DISABLED unset → 503.
 # ---------------------------------------------------------------------------
 
-def test_api_key_empty_string_allows_access(monkeypatch):
-    # settings.api_key = "" 환경에서 헤더 없어도 통과 → 200 (open access)
+def test_api_key_empty_default_fail_closed_503(monkeypatch):
+    # settings.api_key = "" + api_auth_disabled=False → 모든 요청 차단(503) — 명시적 opt-out 없으면 안전
     monkeypatch.setattr("src.api.auth.settings.api_key", "")
+    monkeypatch.setattr("src.api.auth.settings.api_auth_disabled", False)
     r = client.get("/protected")
-    assert r.status_code == 200
+    assert r.status_code == 503
+
+
+def test_api_key_empty_fail_closed_regardless_of_base_url(monkeypatch):
+    # 🔴 감사 ① 회귀 가드: 이전엔 http/빈 APP_BASE_URL 이면 무인증 통과(fail-open).
+    # 이제 app_base_url 값과 무관하게 api_auth_disabled=False 면 503 (http 오판 노출 차단).
+    monkeypatch.setattr("src.api.auth.settings.api_key", "")
+    monkeypatch.setattr("src.api.auth.settings.api_auth_disabled", False)
+    for base_url in ("http://localhost:8000", "https://scamanager.example.com", ""):
+        monkeypatch.setattr("src.api.auth.settings.app_base_url", base_url)
+        assert client.get("/protected").status_code == 503
 
 
 # ---------------------------------------------------------------------------
-# 테스트 5: 타이밍 공격 안전성 — hmac.compare_digest 호출 여부 직접 검증
-# 현재 코드(!=)는 hmac.compare_digest를 import/호출하지 않으므로 FAIL(Red).
+# 테스트 5: 타이밍 공격 안전성 — secure_str_compare 호출 여부 직접 검증
 # ---------------------------------------------------------------------------
 
 def test_api_key_uses_safe_comparison(monkeypatch):
@@ -105,26 +116,35 @@ def test_api_key_uses_safe_comparison(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# 테스트 6 (보조): API_KEY 미설정 시 어떤 키를 보내도 200 (open access)
+# 테스트 6 (fail-closed): API_KEY 미설정 + opt-out 없음 → 키를 보내도 503
+# Test 6 (fail-closed): API_KEY unset + no opt-out → 503 even with a provided key.
 # ---------------------------------------------------------------------------
 
-def test_api_key_empty_string_ignores_provided_key(monkeypatch):
-    # settings.api_key = "" 환경에서는 아무 키를 보내도 통과
+def test_api_key_empty_default_ignores_provided_key_503(monkeypatch):
     monkeypatch.setattr("src.api.auth.settings.api_key", "")
+    monkeypatch.setattr("src.api.auth.settings.api_auth_disabled", False)
     r = client.get("/protected", headers={"X-API-Key": "any-random-key"})
+    assert r.status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# 테스트 7 (명시 opt-out): API_AUTH_DISABLED=1 → 키 없어도 200 + 경고
+# Test 7 (explicit opt-out): API_AUTH_DISABLED=1 → keyless 200 + warning.
+# ---------------------------------------------------------------------------
+
+def test_api_auth_disabled_allows_access(monkeypatch):
+    # 명시적 개발 opt-out — api_key 미설정이라도 통과(개발 편의)
+    monkeypatch.setattr("src.api.auth.settings.api_key", "")
+    monkeypatch.setattr("src.api.auth.settings.api_auth_disabled", True)
+    r = client.get("/protected")
     assert r.status_code == 200
 
 
-# ---------------------------------------------------------------------------
-# 테스트 7: API_KEY 미설정 시 logger.warning 호출 여부
-# 현재 코드에는 logger가 없으므로 FAIL(Red).
-# ---------------------------------------------------------------------------
-
-def test_api_key_empty_logs_warning(monkeypatch):
-    # settings.api_key = "" 환경에서 요청 시 logger.warning이 호출돼야 함.
-    # 현재 코드에 logger가 없으므로 이 테스트는 FAIL해야 함(Red).
+def test_api_auth_disabled_logs_warning(monkeypatch):
+    # API_AUTH_DISABLED=1 통과 시 logger.warning(무인증 경고) 호출돼야 함
     import src.api.auth as _auth_mod
     monkeypatch.setattr("src.api.auth.settings.api_key", "")
+    monkeypatch.setattr("src.api.auth.settings.api_auth_disabled", True)
     mock_logger = MagicMock()
     monkeypatch.setattr(_auth_mod, "logger", mock_logger, raising=False)
     client.get("/protected")
@@ -132,23 +152,13 @@ def test_api_key_empty_logs_warning(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# 테스트 8: 운영환경(HTTPS URL)에서 API_KEY 미설정 시 503 반환
-# Test 8: production (https APP_BASE_URL) + no API_KEY → 503.
+# 테스트 8: API_KEY 설정 시 api_auth_disabled 무관 — 키 검증 경로 우선 (opt-out 우회 불가)
+# Test 8: with API_KEY set, api_auth_disabled is irrelevant — key validation path wins.
 # ---------------------------------------------------------------------------
 
-def test_api_key_empty_prod_returns_503(monkeypatch):
-    # 운영환경(APP_BASE_URL=https://)에서 API_KEY 미설정 시 모든 요청 차단 → 503
-    # In production (https APP_BASE_URL) without API_KEY, all requests must be blocked.
-    monkeypatch.setattr("src.api.auth.settings.api_key", "")
-    monkeypatch.setattr("src.api.auth.settings.app_base_url", "https://scamanager.example.com")
-    r = client.get("/protected")
-    assert r.status_code == 503
-
-
-def test_api_key_empty_dev_http_allows_access(monkeypatch):
-    # 개발환경(http URL)에서 API_KEY 미설정 시 경고 후 통과 — 기존 동작 유지
-    # In development (http URL) without API_KEY, requests pass through with a warning.
-    monkeypatch.setattr("src.api.auth.settings.api_key", "")
-    monkeypatch.setattr("src.api.auth.settings.app_base_url", "http://localhost:8000")
-    r = client.get("/protected")
-    assert r.status_code == 200
+def test_api_key_set_overrides_disabled_flag(monkeypatch):
+    # api_key 설정 + api_auth_disabled=True 라도 잘못된 키는 401 (opt-out 으로 우회 불가)
+    monkeypatch.setattr("src.api.auth.settings.api_key", _TEST_KEY)
+    monkeypatch.setattr("src.api.auth.settings.api_auth_disabled", True)
+    r = client.get("/protected", headers={"X-API-Key": "wrong-key"})
+    assert r.status_code == 401

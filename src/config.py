@@ -49,7 +49,13 @@ class Settings(BaseSettings):
     # 운영 opt-out — Anthropic prompt caching (5분 ephemeral) 비활성화 (default-on)
     # Operational opt-out — disables Anthropic prompt caching (default-on, 5-min ephemeral)
     disable_prompt_cache: bool = False
-    api_key: str = ""  # 빈 문자열이면 인증 건너뜀
+    api_key: str = ""  # 빈 문자열이면 인증 건너뜀 (단, fail-closed 기본 — api_auth_disabled 참조)
+    # REST API 무인증 명시 opt-out — API_KEY 미설정 시 기본은 fail-closed(503). 로컬 개발에서만
+    # API_AUTH_DISABLED=1 로 무인증 통과 허용 (오설정으로 인한 cross-tenant 노출 방지).
+    # Explicit opt-out for unauthenticated REST API — when API_KEY is unset the default is fail-closed
+    # (503). Only local dev may set API_AUTH_DISABLED=1 to allow keyless access (prevents accidental
+    # cross-tenant exposure from misconfiguration, e.g. http/empty APP_BASE_URL in production).
+    api_auth_disabled: bool = False
     internal_cron_api_key: str = ""  # 내부 cron 엔드포인트 전용 키 (admin api_key와 분리)
     # Internal cron endpoint key — separate from admin api_key
     github_client_id: str = ""

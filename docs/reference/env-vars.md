@@ -18,7 +18,8 @@
 | `GITHUB_WEBHOOK_SECRET` | GitHub Webhook HMAC 서명 시크릿 (Phase 8B 이후 선택적) | `your-secret-here` |
 | `GITHUB_TOKEN` | GitHub API Personal Access Token (레거시 리포 fallback) | `your-github-token` |
 | `ANTHROPIC_API_KEY` | Claude AI 리뷰 API 키 (없으면 AI 항목 기본값 적용) | `your-anthropic-api-key` |
-| `API_KEY` | Dashboard REST API 인증 키 (없으면 인증 생략) | `any-secret-string` |
+| `API_KEY` | Dashboard REST API 인증 키. 🔴 **미설정 시 기본 fail-closed(503)** — `API_AUTH_DISABLED=1` opt-out 없으면 `/api/repos`·`/api/stats`·`/api/.../report` 전체 차단 (감사 ①, 이전 'http 시 인증 생략'에서 변경) | `any-secret-string` |
+| `API_AUTH_DISABLED` | `1` 설정 시 `API_KEY` 미설정이어도 REST API 무인증 통과 허용 — **로컬 개발 전용 명시 opt-out** (운영 절대 설정 금지). 미설정(기본 `0`) + `API_KEY` 미설정 = 503 fail-closed. `*_DISABLED` kill-switch | `1` (로컬 dev) / 미설정 (운영) |
 | `APP_BASE_URL` | Railway 등 리버스 프록시에서 HTTPS redirect_uri 강제 지정 + **CORS allow_origins 출처 결정** (사이클 142 Phase C — `src/main.py` CORSMiddleware, 미설정 시 CORS 미등록) | `https://your-app.railway.app` |
 | `TOKEN_ENCRYPTION_KEY` | GitHub Access Token 암호화 키 (미설정 시 평문 저장) | `32자 이상 랜덤` |
 | `STRICT_TOKEN_ENCRYPTION` | `true` 설정 시 `TOKEN_ENCRYPTION_KEY` 미설정이면 lifespan startup 차단 (기본값 `false` = 평문 저장 허용 + WARNING 출력) | `false` (기본) |

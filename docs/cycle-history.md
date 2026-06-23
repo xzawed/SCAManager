@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [감사 보안 게이트 fail-open 봉인 3건 (auth fail-closed·static crash·retry sha-bound — ① API_KEY 미설정 시 http 휴리스틱 통과 제거→기본 503 + `API_AUTH_DISABLED` opt-out[cross-tenant 노출 차단], ④ analyzer crash→incomplete[미설치 FileNotFoundError 는 현행], ③ retry sha-bound 불변식 가드[REFUTED→동작 변경 없이 가드+문서], EXACT 재검증, TDD +4·단위 5027·전체 5181, 2026-06-23)](#감사-보안-게이트-fail-open-봉인-3건-auth-fail-closed-static-crash-retry-sha-bound-2026-06-23)
 - [native auto-merge SHA-atomicity fail-closed (#962 — `head_sha` 미확보 시 SHA 빈 값으로 guardless merge 하던 경로 차단, `effective_sha` 미확보 시 terminal[NETWORK_ERROR] 반환, Codex 1차 NG valid 적발[retriable 초안이 should_retry/빈 commit_sha 로 실제 미작동]→terminal 정직 전환 2차 OK, 사용자 결정 A, 감사 보안/게이트 4건 중 #2, TDD +1·단위 5023·전체 5177, 2026-06-23)](#native-auto-merge-sha-atomicity-fail-closed-962-2026-06-23)
 - [정밀 감사(69-에이전트 다차원 워크플로우) + docs-drift 13건 정정 (#961 — 정합성/코드품질/보안 11차원 read-only 감사 raw 41→confirmed 30 전부 P2·P0/P1 0, 사용자 선택 docs-drift 13건 grep -n 실측 일괄 정정[security/api/i18n/pipeline/db/testing rules + env-vars 심볼참조 + architecture e2e + .env.example 3토글], Codex 1차 8/9 OK→testing.md NG 즉시 재작성, 보안/게이트 4건 High tier 별도, 2026-06-23)](#정밀-감사69-에이전트-다차원-워크플로우--docs-drift-13건-정정-961-2026-06-23)
 - [AI 리뷰 점수 NULL 폐기 분리 — 입력 diff 절단 시 점수 보존 (#960 — 운영 Supabase 실측: 6월 score NULL 256건 다수가 절단형·일 점수 성공률 24~57% 급락, `_persisted_score_is_unreliable`에서 `ai_review_truncated` 트리거 제거 → NULL은 genuine 실패[api_error/parse_error] 한정, auto-merge 차단[#885]은 마커 직접 참조라 안전성 영향 0, 사용자 결정 A, Codex mutual OK, 2026-06-22)](#ai-리뷰-점수-null-폐기-분리--입력-diff-절단-시-점수-보존-960-2026-06-22)
@@ -119,6 +120,17 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 감사 보안 게이트 fail-open 봉인 3건 (auth fail-closed, static crash, retry sha-bound, 2026-06-23)
+
+**날짜**: 2026-06-23 | **PR**: fix/audit-failopen-hardening | **트리거**: 69-에이전트 정밀 감사 보안/게이트 잔여 3건 (High tier — 사용자 항목별 결정) | **상태**: 머지
+
+**EXACT 재검증** (🔴 감사 verdict 맹신 금지 — live 코드 직접 추적):
+- **① auth.py CONFIRMED**: `_check_api_key` 가 `API_KEY` 미설정 시 `app_base_url.startswith("https")` 면 503, 아니면(http/빈 값) 통과. 오설정(prod 인데 APP_BASE_URL=http 또는 미설정)이면 `require_api_key` 보호 엔드포인트(`/api/repos`·`/api/stats`·`/api/.../report`) 전체 무인증 노출(cross-tenant). **사용자 결정 A** = 명시 opt-out fail-closed.
+- **③ retry verifier-staleness 사실상 REFUTED**: retry 경로(`merge_retry_service._process_single_retry`)는 이미 `sha_drift` 검사(head_sha != commit_sha → abandon) + `merge_pr(expected_sha=row.commit_sha)`(#962)로 검증자가 승인한 동일 SHA 만 머지 → 동일 커밋은 diff/요약 불변이라 verdict stale 불가 + 검증자 INACTIVE. **사용자 결정** = 동작 변경 없이 회귀 가드 + 문서.
+- **④ static.py CONFIRMED**: 도구는 `FileNotFoundError`(미설치)·`JSONDecodeError` 를 내부에서 잡아 [] 반환·`ctx.timed_out` 미설정 → 미설치/crash 가 fail-open(타임아웃만 fail-closed 인 비대칭, 감사 근본원인 B). **사용자 결정 B** = crash→incomplete, 미설치는 현행.
+
+**구현**: ① `config.api_auth_disabled` 필드 + `_check_api_key` 재구성(기본 503·`API_AUTH_DISABLED=1` opt-out·`app_base_url` 휴리스틱 제거) + `conftest.py API_AUTH_DISABLED=1`(테스트=dev opt-out → keyless endpoint 테스트 보존). ④ `static.py` broad except 에 `result.incomplete = True`(미설치 `FileNotFoundError` 는 도구 내부 처리라 이 분기 미도달 = 현행 경계). ③ `merge_retry_service.py` merge_pr 호출부 sha-bound 불변식 주석 + api.md 명문화(동작 변경 0). **TDD +4** — auth fail-closed 재구성(+1, 기존 5 케이스 교체) · static crash/미설치 경계(+2) · retry expected_sha 바인딩 가드(+1). 단위 5023→5027·전체 5181. pylint 10.00. docs: env-vars(`API_AUTH_DISABLED` 등재)·security.md/api.md 룰·.env.example. Codex mutual OK. [[project-deep-audit-2026-06-23]]
 
 ## native auto-merge SHA-atomicity fail-closed (#962, 2026-06-23)
 

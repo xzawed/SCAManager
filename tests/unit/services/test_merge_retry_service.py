@@ -508,6 +508,38 @@ class TestProcessPendingRetries:
         db_session.refresh(row)
         assert row.status == "succeeded"
 
+    # 감사 ③ — retry 경로 SHA-bound 불변식 회귀 가드
+    # audit ③ — retry path SHA-bound invariant regression guard
+    async def test_retry_passes_expected_sha_binds_to_queued_commit(self, db_session):
+        """🔴 감사 ③ sha-bound 불변식: retry 는 큐에 적재된 정확한 commit_sha 만 머지한다.
+
+        retry 서비스는 2nd-LLM 검증자를 재실행하지 않지만(초기 머지 1회만), force-push 시
+        sha_drift 로 abandon 하고 merge_pr 에 `expected_sha=row.commit_sha` 를 전달해 GitHub 가
+        다른 SHA 머지를 차단한다(#962). 따라서 retry 는 '검증자가 승인한 동일 SHA' 만 머지 →
+        검증자 staleness 가 실질적으로 발생할 수 없다. 이 불변식(expected_sha 바인딩)이
+        회귀하면 검증자 우회 + 잘못된 코드 머지 위험이 생기므로 고정한다.
+        """
+        row = _seed_queue_row(db_session, commit_sha="abc123")
+
+        patches = _standard_patches(merge_return=(True, None, "abc123"))
+        with (
+            patches["token"],
+            patches["repo_config"],
+            patches["pr_data"],
+            patches["merge_pr"] as mock_merge,
+            patches["ci"],
+            patches["notify_succeeded"],
+            patches["notify_terminal"],
+            patches["notify_config"],
+            patches["log_attempt"],
+        ):
+            await process_pending_retries(db_session, only_ids=[row.id])
+
+        mock_merge.assert_called_once()
+        # merge_pr 는 expected_sha=row.commit_sha 로 호출돼야 한다 (SHA 원자성 바인딩)
+        # merge_pr must be called with expected_sha=row.commit_sha (SHA atomicity binding)
+        assert mock_merge.call_args.kwargs.get("expected_sha") == "abc123"
+
     async def test_log_merge_attempt_uses_live_threshold_not_snapshot(self, db_session):
         """🔴 C11: 관측 로그의 threshold 가 게이팅에 쓴 live cfg.merge_threshold 와 일치해야 한다.
 

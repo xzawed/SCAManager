@@ -35,3 +35,30 @@ def test_analyze_file_not_incomplete_on_normal_run():
     """
     result = analyze_file("README.md", "# hello\n")
     assert result.incomplete is False
+
+
+def test_analyze_file_marks_incomplete_on_analyzer_crash():
+    """감사 ④ (옵션 B): 분석기 run()이 예상외 예외로 crash 하면 incomplete=True (fail-closed).
+
+    이전엔 static.py 의 broad except 가 crash 를 로깅만 하고 삼켜 — 미분석 코드가 만점 인플레로
+    auto-merge 되는 fail-open 이었다(타임아웃만 fail-closed 인 비대칭). 도구가 내부에서 못 잡는
+    예외(RuntimeError 등)는 incomplete 로 승격해 게이트가 차단한다.
+    """
+    code = "import os\nx = 1\n"  # python → pylint/flake8/bandit 적용
+    # subprocess.run 이 도구 내부 except 가 못 잡는 예외(RuntimeError)를 던지면 run() 밖으로 전파됨
+    with patch("subprocess.run", side_effect=RuntimeError("boom")):
+        result = analyze_file("app.py", code)
+    assert result.incomplete is True
+
+
+def test_analyze_file_not_incomplete_on_missing_tool():
+    """감사 ④ (옵션 B 경계): 도구 미설치(FileNotFoundError)는 incomplete 아님 — 현행 유지.
+
+    미설치는 도구 내부 `except (..., FileNotFoundError)` 가 잡아 빈 목록을 반환하므로
+    static.py 의 broad except 에 도달하지 않는다 → incomplete=False (의도적 미설치 = opt-out).
+    이 경계를 명문화해 옵션 B(crash→incomplete, 미설치→현행) 회귀를 차단한다.
+    """
+    code = "import os\nx = 1\n"
+    with patch("subprocess.run", side_effect=FileNotFoundError("pylint")):
+        result = analyze_file("app.py", code)
+    assert result.incomplete is False

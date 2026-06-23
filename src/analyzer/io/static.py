@@ -103,7 +103,18 @@ def analyze_file(  # pylint: disable=too-many-locals
             try:
                 result.issues.extend(analyzer.run(ctx))
             except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+                # 🔴 감사 ④ (옵션 B): 도구가 내부에서 못 잡은 예상외 crash 는 이슈를 무음 폐기하므로
+                # incomplete 로 승격 — 타임아웃(ctx.timed_out)과 동일하게 fail-closed 처리해 미분석
+                # 코드의 auto-merge/auto-approve 를 차단한다(이전엔 로깅만 하고 삼켜 fail-open).
+                # 의도적 미설치(FileNotFoundError)는 각 도구가 내부에서 잡아 [] 반환하므로 이 분기에
+                # 도달하지 않는다 → 미설치는 현행 유지(opt-out, 옵션 B 경계).
+                # Audit ④ (option B): an unexpected crash a tool failed to catch silently drops its
+                # issues, so promote to incomplete — fail-closed like the timeout path (ctx.timed_out)
+                # to block auto-merge/approve of unanalyzed code (previously logged-and-swallowed =
+                # fail-open). Intentional absence (FileNotFoundError) is caught inside each tool (returns
+                # []) and never reaches here → missing tools keep current behaviour (opt-out, option B).
                 logger.warning("analyzer %s failed for %s: %s", analyzer.name, ctx.filename, exc)
+                result.incomplete = True
 
     # 도구 subprocess 타임아웃 신호를 결과로 승격 — 타임아웃 도구는 이슈를 무음 폐기하므로
     # incomplete 로 표시해 파이프라인이 미분석 코드 auto-merge 를 차단하게 한다(#7 fail-closed).
