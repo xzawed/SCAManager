@@ -14,7 +14,6 @@ import io
 import re
 import subprocess  # nosec B404 — git diff 읽기 전용 / read-only git diff
 import sys
-from pathlib import Path
 
 # Windows cp949 출력 보호 — UTF-8 강제
 # Protect output on Windows cp949 — force UTF-8
@@ -33,10 +32,6 @@ _COMMENT = re.compile(r"^\s*#\s?(.*)$")
 # 면제 단어태그 패턴 (TODO/FIXME/type:/noqa 등)
 # Exempt word-tag pattern (TODO/FIXME/type:/noqa etc.)
 _EXEMPT_TAG = re.compile(r"^\s*#\s*(TODO|FIXME|NOTE|XXX|type:|noqa|pylint:|nosec|pragma)", re.I)
-
-# 스크립트 루트 경로 (stdlib 전용 — 직접 사용하지 않으나 경로 참조 보조)
-# Script root path (stdlib only — not used directly, for path reference)
-_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _has_hangul(s: str) -> bool:
@@ -79,9 +74,10 @@ def check_lines(added_comment_lines: list[str]) -> tuple[bool, list[str]]:
     block_has_latin = False
 
     def _flush_block() -> None:
-        """현재 블록을 평가하고 초기화.
-        Evaluate the current block and reset state.
+        """현재 블록을 평가하고 상태 초기화 (block + block_has_latin 모두 리셋).
+        Evaluate the current block and reset all state (block and block_has_latin).
         """
+        nonlocal block_has_latin
         # 블록에 영어 라인이 없을 때만 한글-only 위반 검사
         # Only flag Korean-only violations when no English line exists in the block
         if block and not block_has_latin:
@@ -89,6 +85,9 @@ def check_lines(added_comment_lines: list[str]) -> tuple[bool, list[str]]:
                 if _has_hangul(ln) and not _has_latin_word(ln):
                     msgs.append(f"❌ 한글-only 주석(영어 병행 없음): {ln.strip()}")
         block.clear()
+        # 블록 플래그 초기화 — _flush_block 내부에서 일괄 리셋 (외부 중복 불필요)
+        # Reset block flag here so callers don't need to repeat it
+        block_has_latin = False
 
     for line in added_comment_lines:
         m = _COMMENT.match(line)
@@ -96,7 +95,6 @@ def check_lines(added_comment_lines: list[str]) -> tuple[bool, list[str]]:
             # 주석 아닌 라인 — 블록 경계로 처리
             # Non-comment line — treat as block boundary
             _flush_block()
-            block_has_latin = False
             continue
         if _is_exempt(line):
             # 면제 태그 라인 — 블록을 끊지 않고 건너뜀 (보수성)

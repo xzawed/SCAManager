@@ -19,8 +19,8 @@ from pathlib import Path
 if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
-# 의도적 비대칭 필드 집합 — 3자 정합 체크에서 제외.
-# Intentionally asymmetric fields — exempt from the three-way parity check.
+# 의도적 비대칭 필드 집합 — ORM·Data·Update 3자 정합 체크 전체에서 제외.
+# Intentionally asymmetric fields — exempt from all three-way parity comparisons.
 #
 # 제외 사유 / Exclusion rationale:
 #   id               — DB 자동 PK (사용자 설정 불가)
@@ -37,10 +37,6 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
 #                           (RepoConfigData 외부 관리 — settings.py:219 주석 참조)
 #                           Fernet-encrypted, set directly on ORM in settings.py
 #                           (managed outside RepoConfigData — see settings.py:219)
-#   repo_full_name   — RepoConfigData에는 있으나 RepoConfigUpdate에는 없음.
-#                      URL 경로 파라미터로 전달되므로 Update body에서 제외 (의도적 설계).
-#                      Present in RepoConfigData but absent from RepoConfigUpdate:
-#                      passed as a URL path param, intentionally excluded from Update body.
 _ALLOWLIST = frozenset({
     "id",
     "created_at",
@@ -48,6 +44,19 @@ _ALLOWLIST = frozenset({
     "hook_token",
     "railway_webhook_token",
     "railway_api_token",
+})
+
+# RepoConfigUpdate 비교에서만 추가로 제외하는 필드.
+# Fields additionally exempt only from the ORM↔RepoConfigUpdate comparison.
+#
+# 제외 사유 / Exclusion rationale:
+#   repo_full_name — ORM·RepoConfigData 양쪽에 존재하므로 ORM↔Data 검사는 통과 (정상).
+#                    RepoConfigUpdate에서만 없음: URL 경로 파라미터로 전달되므로
+#                    Update 요청 body에서 의도적으로 제외 (설계 결정).
+#                    Present in both ORM and RepoConfigData (ORM↔Data check passes normally).
+#                    Absent only from RepoConfigUpdate: passed as a URL path param,
+#                    intentionally excluded from the Update request body.
+_UPDATE_ONLY_EXEMPT = frozenset({
     "repo_full_name",
 })
 
@@ -96,11 +105,15 @@ def check_sync(project_root: Path) -> tuple[bool, list[str]]:
 
     ORM 필드 집합을 정본으로 삼고, RepoConfigData·RepoConfigUpdate 각각에 대해
     누락(ORM 대비) 및 잉여(ORM 미존재) 필드를 보고한다.
-    _ALLOWLIST 에 등재된 의도적 비대칭 필드는 검사에서 제외한다.
+    _ALLOWLIST 에 등재된 필드는 모든 비교에서 제외한다.
+    _UPDATE_ONLY_EXEMPT 에 등재된 필드는 ORM↔RepoConfigUpdate 비교에서만 추가 제외한다.
+    (ORM↔RepoConfigData 비교에서는 정상 검사됨.)
 
     The ORM column set is the source of truth. For both RepoConfigData and RepoConfigUpdate,
     report fields that are missing (present in ORM but not in the layer) or surplus (present in
-    the layer but not in ORM). Fields in _ALLOWLIST are excluded from the check.
+    the layer but not in ORM). Fields in _ALLOWLIST are excluded from all comparisons.
+    Fields in _UPDATE_ONLY_EXEMPT are additionally excluded only from the ORM↔Update comparison
+    (they are still checked in the ORM↔Data comparison).
 
     Returns:
         (ok, msgs): ok=True 시 drift 없음 / ok=False 시 msgs 에 위반 내역 포함.
@@ -111,24 +124,31 @@ def check_sync(project_root: Path) -> tuple[bool, list[str]]:
     orm_src = (project_root / "src" / "models" / "repo_config.py").read_text(encoding="utf-8")
     orm = _orm_columns(orm_src) - _ALLOWLIST
 
-    # RepoConfigData 필드 집합 (allowlist 제외)
-    # RepoConfigData field set (minus allowlist)
+    # RepoConfigData 필드 집합 (allowlist 제외 — _UPDATE_ONLY_EXEMPT 는 여기서 검사됨)
+    # RepoConfigData field set (minus allowlist only — _UPDATE_ONLY_EXEMPT is checked here)
     data_src = (
         project_root / "src" / "config_manager" / "manager.py"
     ).read_text(encoding="utf-8")
     data = _annotated_fields(data_src, "RepoConfigData") - _ALLOWLIST
 
-    # RepoConfigUpdate 필드 집합 (allowlist 제외)
-    # RepoConfigUpdate field set (minus allowlist)
+    # RepoConfigUpdate 필드 집합 (allowlist + Update 전용 면제 모두 제외)
+    # RepoConfigUpdate field set (minus both allowlist and Update-only exemptions)
     update_src = (project_root / "src" / "api" / "repos.py").read_text(encoding="utf-8")
     update = _annotated_fields(update_src, "RepoConfigUpdate") - _ALLOWLIST
+
+    # Update 전용 면제 필드는 ORM↔Update 비교의 기준 ORM 집합에서도 제외
+    # Remove Update-only exempt fields from the ORM reference set for the Update comparison
+    orm_for_update = orm - _UPDATE_ONLY_EXEMPT
 
     msgs = []
     # ORM 대비 각 레이어의 누락/잉여 필드 보고
     # Report missing/surplus fields for each layer relative to ORM
-    for label, fields in (("RepoConfigData", data), ("RepoConfigUpdate", update)):
-        missing = orm - fields
-        extra = fields - orm
+    for label, layer_fields, orm_ref in (
+        ("RepoConfigData", data, orm),
+        ("RepoConfigUpdate", update, orm_for_update),
+    ):
+        missing = orm_ref - layer_fields
+        extra = layer_fields - orm_ref
         if missing:
             msgs.append(
                 f"❌ {label} 누락(ORM 대비): {sorted(missing)}"
