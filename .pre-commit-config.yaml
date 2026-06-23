@@ -90,6 +90,32 @@ repos:
         stages: [pre-commit]
         description: CLAUDE.md/policies 의 메모리 슬러그 참조 ↔ 실제 메모리 파일 정합 (메모리 dir 부재 시 skip — CI/타 환경 안전).
 
+      - id: check-env-vars-sync
+        name: "🔑 env-vars 싱크 (config.py ↔ env-vars.md)"
+        language: system
+        entry: python scripts/check_env_vars_sync.py
+        files: "^(src/config\\.py|docs/reference/env-vars\\.md)$"
+        pass_filenames: false
+        stages: [pre-commit]
+        description: config.py Settings env 필드 ↔ env-vars.md 등재 정합 (사이클 82/119 누락 차단).
+
+      - id: check-config-5way-sync
+        name: "🧩 5-way config 싱크 (RepoConfig ORM↔Data↔Update)"
+        language: system
+        entry: python scripts/check_config_5way_sync.py
+        files: "^(src/models/repo_config\\.py|src/config_manager/manager\\.py|src/api/repos\\.py)$"
+        pass_filenames: false
+        stages: [pre-commit]
+        description: RepoConfig 5-way 필드 집합 정합 (필드 추가 시 NULL 덮어쓰기 운영 버그 차단).
+
+      - id: check-bilingual-comments
+        name: "🌐 이중언어 주석 (보수적·staged 한정)"
+        language: system
+        entry: python scripts/check_bilingual_comments.py
+        files: "^src/.*\\.py$"
+        stages: [pre-commit]
+        description: staged 추가 주석의 한글-only(영어 병행 없음) 보수적 탐지 (CLAUDE.md 이중언어). pre-commit only.
+
   # Layer 1-C: 기본 코드 품질 훅
   # Layer 1-C: Basic code quality hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks
