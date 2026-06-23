@@ -142,11 +142,12 @@ def test_api_auth_disabled_allows_access(monkeypatch):
 
 def test_api_auth_disabled_logs_warning(monkeypatch):
     # API_AUTH_DISABLED=1 통과 시 logger.warning(무인증 경고) 호출돼야 함
-    import src.api.auth as _auth_mod
+    # 🔴 모듈은 파일 상단에서 from-import 로 이미 들어옴 — 모듈 객체 별칭 import 를 추가하지 않고
+    # string-path 패치로 통일해 CodeQL py/import-and-import-from(#520) 이중 import 를 회피.
     monkeypatch.setattr("src.api.auth.settings.api_key", "")
     monkeypatch.setattr("src.api.auth.settings.api_auth_disabled", True)
     mock_logger = MagicMock()
-    monkeypatch.setattr(_auth_mod, "logger", mock_logger, raising=False)
+    monkeypatch.setattr("src.api.auth.logger", mock_logger, raising=False)
     client.get("/protected")
     mock_logger.warning.assert_called()
 
