@@ -22,6 +22,13 @@ os.environ["SESSION_SECRET"] = "test-session-secret-32-chars-long!"
 # Explicitly set Claude model defaults — .env.example sets empty values that would override Python defaults
 os.environ["CLAUDE_REVIEW_MODEL"] = "claude-sonnet-4-6"
 os.environ["CLAUDE_INSIGHT_MODEL"] = "claude-haiku-4-5"
+# 테스트 환경 = 개발 모드 명시 opt-out — API_KEY 미설정 시 REST API fail-closed(503) 기본값을
+# 우회해 기존 endpoint 테스트(repos/stats 등 키 없이 200 의존)를 보존한다. fail-closed 기본값
+# 자체는 tests/unit/api/test_auth.py 가 api_auth_disabled=False 로 직접 검증.
+# Test env = explicit dev opt-out — bypass the fail-closed(503) default for unset API_KEY so existing
+# endpoint tests (repos/stats relying on keyless 200) keep passing. The fail-closed default itself is
+# verified directly by test_auth.py with api_auth_disabled=False.
+os.environ["API_AUTH_DISABLED"] = "1"
 
 from src.main import app
 from src.ui.routes import add_repo as _add_repo_module

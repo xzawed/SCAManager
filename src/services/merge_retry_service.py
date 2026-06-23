@@ -212,6 +212,18 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
         return
 
     # ── d. merge_pr 호출 ──────────────────────────────────────────
+    # 🔴 감사 ③ — SHA-bound 불변식: retry 경로는 2nd-LLM 검증자(merge_verifier)를 재실행하지 않는다
+    # (검증은 초기 _run_auto_merge 진입부에서 1회). 그래도 안전한 이유 = 이 경로가 (1) 위 sha_drift
+    # 검사(head_sha != row.commit_sha → abandon)와 (2) `expected_sha=row.commit_sha` 전달로 GitHub
+    # 측 SHA 원자성(#962)을 보장하므로, retry 는 '검증자가 승인한 정확히 동일한 SHA' 만 머지할 수 있다.
+    # 동일 커밋은 diff/리뷰 요약이 불변이라 검증자 verdict 가 stale 될 수 없다. expected_sha 바인딩을
+    # 제거하면 force-push 된 미검증 코드가 머지될 수 있으니 절대 빼지 말 것
+    # (회귀 가드: test_merge_retry_service.py::test_retry_passes_expected_sha_binds_to_queued_commit).
+    # Audit ③ — SHA-bound invariant: the retry path does NOT re-run the 2nd-LLM verifier (verification
+    # happens once at the initial _run_auto_merge). It is still safe because this path (1) aborts on
+    # sha_drift above and (2) passes expected_sha=row.commit_sha for GitHub-side SHA atomicity (#962),
+    # so a retry can only ever merge the exact SHA the verifier approved — and a fixed commit's diff /
+    # review summary cannot change, so the verdict cannot go stale. Never drop the expected_sha binding.
     ok, reason, _ = await merge_pr(
         token, row.repo_full_name, row.pr_number, expected_sha=row.commit_sha,
     )
