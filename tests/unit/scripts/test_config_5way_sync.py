@@ -43,7 +43,6 @@ def test_repo_full_name_is_checked_in_data_comparison():
     #
     # ORM 에 repo_full_name 존재, Data 에 없음 → 누락 보고 기대.
     # repo_full_name exists in ORM but not in Data → expect a missing-field violation.
-    import types
     from pathlib import Path
 
     def _fake_read(self: Path, **_kw: object) -> str:
@@ -62,8 +61,6 @@ def test_repo_full_name_is_checked_in_data_comparison():
         # Update: repo_full_name 없음 (_UPDATE_ONLY_EXEMPT 에 의해 면제)
         # Update: repo_full_name absent (exempted by _UPDATE_ONLY_EXEMPT)
         return "class RepoConfigUpdate:\n    auto_merge: bool = False\n"
-
-    orig = Path.read_text
 
     class _FakeRoot:
         """경로 조합 연산자를 지원하는 가짜 루트 객체.
