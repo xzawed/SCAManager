@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [repo-automation PR-H 신규 pre-commit 훅 3종 (brainstorming→spec→writing-plans→subagent-driven-development 흐름 — env-vars 싱크[config.py AST↔env-vars.md]·이중언어 주석[staged 보수 휴리스틱]·5-way config 싱크[RepoConfig ORM↔Data↔Update AST] stdlib 체커 추가+.pre-commit wiring, Task별 fresh 구현+2단계 리뷰, TDD +15·단위 5064·전체 5218, 2026-06-23)](#repo-automation-pr-h-신규-pre-commit-훅-3종-2026-06-23)
 - [회고 도구 개선 docs repo-integrity pre-commit 훅 (회고 WF 관점 — STATE↔README 수치 정합·cycle-history TOC 앵커·메모리 슬러그 stdlib 체커 3종을 pre-commit local hook wiring[turn-0 drift 차단], WF-1 import-dup 훅은 28 idiom EXACT 재평가로 DROP→testing.md 가이드 대체, TDD +7·단위 5049·전체 5203, 2026-06-23)](#회고-도구-개선-docs-repo-integrity-pre-commit-훅-2026-06-23)
 - [세션 다중 에이전트 회고 follow-up P2 (markdown escape 4번째 채널 — #962~#966 세션 5+1 회고[P0/P1 0·P2 8 confirmed + critic 갭 5] 적발 P2 해소: github_issue.py escape 누락 4번째 채널 추가[#965 가 놓침]·cycle-history #961 stale 정정·static 주석 메커니즘 정정·api.md ai_summary 2차 인젝션 비대칭 명문화, cross-verify 가 자기보고 'CodeQL 4회 반복' 과장 정정, TDD +2·단위 5042·전체 5196, 2026-06-23)](#세션-다중-에이전트-회고-follow-up-p2-markdown-escape-4번째-채널-2026-06-23)
 - [감사 P2 하드닝 — 아웃바운드 markdown 인젝션 escape + 단일출처 2건 (감사 D — untrusted issue.message 를 github/discord[GFM 백슬래시]·slack[`&<>` 엔티티] escape, AI 프로즈는 보존[Option A·정책 16], merge_retry literal→merge_reasons 상수, test_config 8192 가드, pg-concurrency/registry/telegram 3건은 이미 커버됨 → 드롭, TDD +13·단위 5040·전체 5194, 2026-06-23)](#감사-p2-하드닝--아웃바운드-markdown-인젝션-escape--단일출처-2건-2026-06-23)
@@ -123,6 +124,21 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## repo-automation PR-H 신규 pre-commit 훅 3종 (2026-06-23)
+
+**날짜**: 2026-06-23 | **브랜치**: docs/repo-automation-spec | **spec**: docs/design/2026-06-23-repo-automation-design.md (Area 2) | **상태**: 머지
+
+**흐름**: superpowers brainstorming(설계 합의)→writing-plans(bite-sized TDD plan)→subagent-driven-development(Task별 fresh 구현 서브에이전트 + 2단계 리뷰[spec 준수 + 코드 품질] + fix 루프). 회고 도구 관점의 "신규 훅 추가" 영역.
+
+**구현 (3 stdlib 체커 + .pre-commit Layer 1-D wiring)**:
+- **H1** `scripts/check_env_vars_sync.py` — `src/config.py` Settings env 필드(AST `ClassDef("Settings")` AnnAssign 한정)가 `docs/reference/env-vars.md` 테이블에 전부 등재됐는지 검사. 신규 환경변수 env-vars.md 미등재(사이클 82/119 Codex 반복 적발) turn-0 차단. `_INTERNAL_FIELDS` allowlist(현재 공집합 — 56 필드 전부 등재).
+- **H2** `scripts/check_bilingual_comments.py` — staged diff 신규 주석 라인 중 한글-only(영어 병행 없음) 보수적 탐지. 블록(연속 주석) 단위 판정·단어태그(TODO/type: 등) 면제·면제 라인은 블록 보존(false positive 차단)·pre-commit only. 🔴 3자 약어(CPU/URL/API) false-negative = 의도된 보수적 trade-off(오탐 최소화 우선).
+- **H3** `scripts/check_config_5way_sync.py` — RepoConfig ORM(`Column(...)` ast.Assign)↔RepoConfigData↔RepoConfigUpdate(AnnAssign) 필드 집합 AST 정합. 채널/필드 추가 시 NULL 덮어쓰기 운영 버그(api.md 5-way) 차단. `_ALLOWLIST` 7 의도적 비대칭(id·created_at·updated_at·hook_token·railway_webhook_token·railway_api_token·repo_full_name) 검증 후 등재. 🔴 settings 폼(HTML)·PRESETS(JS)는 파싱 fragile 로 범위 외 = 견고한 3자 핵심(spec §7).
+
+**리뷰 반영(SDD fix 루프)**: H1 allowlist 테스트 실효화 + AST Settings 한정(전파일 regex 제거) · H2 flush 단순화 + 면제 라인 블록 보존 · H3 오타 정정 + dead 폼 헬퍼 제거(3-way 확정) + 타입 정밀화. 각 Task 2단계 리뷰 후 재리뷰 Approved.
+
+**검증**: TDD +15(H1 3·H2 7·H3 5). 단위 5049→5064·전체 5218. scripts/ pylint 게이트(src/ 한정) 외·flake8 0. 3 훅 현재 repo 통과(dogfooding — docs sync 커밋이 check_docs_sync/check_toc_anchors 훅 통과). Codex mutual OK. 잔여 = PR-S(스킬 3)·PR-W(워크플로우 loop) 각자 plan→구현. [[project-deep-audit-2026-06-23]]
 
 ## 회고 도구 개선 docs repo-integrity pre-commit 훅 (2026-06-23)
 
