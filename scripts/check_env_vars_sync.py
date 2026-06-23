@@ -8,6 +8,7 @@ env-vars sync checker — Settings env fields ↔ env-vars.md table entries.
 Block newly added env vars missing from env-vars.md (cycle 82/119 repeated findings).
 Internal/derived-only fields are excluded via _INTERNAL_FIELDS allowlist. stdlib only. Exit 0 if none missing.
 """
+import ast
 import io
 import re
 import sys
@@ -24,13 +25,40 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
 # Step 1 pre-survey (2026-06-23): all 56 fields confirmed in env-vars.md — no internal-only fields.
 _INTERNAL_FIELDS: frozenset[str] = frozenset()
 
-# Settings 클래스 본문의 4칸 들여쓰기 필드 패턴 (pydantic BaseSettings 규칙)
-# 4-space indented field pattern inside Settings class body (pydantic BaseSettings convention)
-_FIELD_RE = re.compile(r"^    ([a-z][a-z0-9_]*)\s*:", re.MULTILINE)
-
 # env-vars.md 테이블 등재 패턴: | `ENV_NAME` | ... |
 # env-vars.md table entry pattern: | `ENV_NAME` | ... |
 _DOCUMENTED_RE = re.compile(r"\|\s*`([A-Z][A-Z0-9_]*)`")
+
+
+def _extract_settings_fields(cfg_source: str) -> list[str]:
+    """AST 로 config.py 를 파싱해 Settings 클래스 본문의 env 필드명만 추출.
+    Parse config.py via AST and return only env field names from the Settings class body.
+
+    전파일 regex 스캔을 피하고 Settings 클래스 선언 범위만 한정해 오탐(non-Settings 클래스
+    동명 속성, 함수 내 지역변수 등) 을 방지한다.
+    Avoids whole-file regex scan; restricts to Settings class scope to prevent false positives
+    from same-named attributes in other classes or local variables inside functions.
+
+    반환값: 소문자 필드명 리스트 (선언 순서 유지)
+    Returns: list of lowercase field names (preserving declaration order)
+    """
+    tree = ast.parse(cfg_source)
+    fields: list[str] = []
+    for node in ast.walk(tree):
+        # Settings 클래스 노드 탐색 / Find the Settings class node
+        if not (isinstance(node, ast.ClassDef) and node.name == "Settings"):
+            continue
+        for item in node.body:
+            # 클래스 레벨 AnnAssign (= 타입 어노테이션 있는 필드 선언) 만 수집
+            # Collect only class-level AnnAssign nodes (annotated field declarations)
+            if isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name):
+                name = item.target.id
+                # 소문자 시작 필드만 (model_config 같은 대문자 제외)
+                # Only lowercase-starting names (excludes model_config and similar)
+                if name and name[0].islower():
+                    fields.append(name)
+        break  # Settings 클래스 발견 후 조기 종료 / Early exit after Settings found
+    return fields
 
 
 def check_sync(project_root: Path) -> tuple[bool, list[str]]:
@@ -45,8 +73,8 @@ def check_sync(project_root: Path) -> tuple[bool, list[str]]:
     cfg = (project_root / "src" / "config.py").read_text(encoding="utf-8")
     ev = (project_root / "docs" / "reference" / "env-vars.md").read_text(encoding="utf-8")
 
-    # Settings 필드 추출 / Extract Settings fields
-    fields = _FIELD_RE.findall(cfg)
+    # AST 로 Settings 클래스 필드만 추출 / Extract only Settings class fields via AST
+    fields = _extract_settings_fields(cfg)
 
     # env-vars.md 등재 항목 집합 / Set of documented env var names
     documented = set(_DOCUMENTED_RE.findall(ev))
