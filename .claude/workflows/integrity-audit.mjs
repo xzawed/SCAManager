@@ -263,7 +263,14 @@ if (dryRun) {
   return { scope, dryRun: true, domains: domains.map((d) => d.id), changedFiles }
 }
 
-// ── loop-until-dry (Task 4) ──
+// ── loop-until-dry (Task 4) — 정본 파라미터 (W2) ──
+// 🔴 정본 값: .claude/workflows/_lib/loop-until-dry.template.mjs 와 동일 유지 의무.
+//    drift 는 tests/unit/scripts/test_workflow_loop_sync.py 가드 테스트가 차단.
+// Canonical params: must match _lib/loop-until-dry.template.mjs (drift blocked by the guard test).
+const DRY_THRESHOLD = 2            // 연속 신규-0 라운드 N회 시 종료 / stop after N consecutive dry rounds
+const MAX_ROUNDS_WITH_BUDGET = 5   // budget 설정 시 라운드 상한 / round cap with budget
+const MAX_ROUNDS_NO_BUDGET = 3     // budget 미설정 시 보수적 상한 / conservative cap without budget
+const BUDGET_FLOOR = 60_000        // 잔여 budget 하한 / remaining-budget floor
 // seen = 이미 발견된 모든 결함 키 (verify reject/unverified 포함) — 재등장·무한루프 차단.
 // seen = every finding key ever surfaced (incl. verify-rejected/unverified) — blocks re-emergence/infinite loop.
 const seen = new Set()
@@ -271,11 +278,10 @@ const confirmed = []
 const unverifiedAll = []
 let dry = 0
 let round = 0
-// budget 설정 시 5라운드, 미설정 시 보수적 3라운드 / 5 rounds with budget, conservative 3 without
-const MAX_ROUNDS = budget.total ? 5 : 3
+const MAX_ROUNDS = budget.total ? MAX_ROUNDS_WITH_BUDGET : MAX_ROUNDS_NO_BUDGET
 
 phase('Discover')
-while (dry < 2 && round < MAX_ROUNDS && (!budget.total || budget.remaining() > 60_000)) {
+while (dry < DRY_THRESHOLD && round < MAX_ROUNDS && (!budget.total || budget.remaining() > BUDGET_FLOOR)) {
   round++
   const found = (await parallel(domains.map((d) => () =>
     agent(auditPrompt(d, changedFiles, round), { label: `audit:${d.id}:r${round}`, phase: 'Discover', schema: FINDINGS_SCHEMA })

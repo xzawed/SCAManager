@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [repo-automation PR-W — 워크플로우 loop 단일출처화 + 회고 워크플로우 신규 (W1 sibling import 불가 실측[정적 SyntaxError·동적 `import()` not available]→정본 template+inline+drift 가드, W2 integrity-audit 명명 상수 파라미터화[행동 불변], W3 retrospective.mjs 5+1 loop-until-dry+cross-verify=finding 강제[13/8 한계 해소], CodeQL #522 dead import #973, TDD +4·단위 5077·전체 5231, 2026-06-23)](#repo-automation-pr-w--워크플로우-loop-단일출처화--회고-워크플로우-신규-2026-06-23)
 - [회고 P2 백로그 — .env.example 무인증 footgun 제거 + 2nd-LLM 검증자 활성화 runbook (#971 NEW-GAP-1/GAP-5 — `.env.example` 이 `API_AUTH_DISABLED=1` 활성 출하 → `cp .env.example .env` 신규 배포 무인증 REST API 시작 footgun 제거[주석 처리=fail-closed 기본]·conftest 음성검증 마스킹 추적 강화·Codex mutual NG #2 가드 파서 견고화, TDD +9·단위 5073 + DQ-3 verifier 활성화 runbook 신설[무료 GitHub Models 비용 0], 2026-06-23)](#회고-p2-백로그--envexample-무인증-footgun-제거--2nd-llm-검증자-활성화-runbook-2026-06-23)
 - [repo-automation PR-H 신규 pre-commit 훅 3종 (brainstorming→spec→writing-plans→subagent-driven-development 흐름 — env-vars 싱크[config.py AST↔env-vars.md]·이중언어 주석[staged 보수 휴리스틱]·5-way config 싱크[RepoConfig ORM↔Data↔Update AST] stdlib 체커 추가+.pre-commit wiring, Task별 fresh 구현+2단계 리뷰, TDD +15·단위 5064·전체 5218, 2026-06-23)](#repo-automation-pr-h-신규-pre-commit-훅-3종-2026-06-23)
 - [회고 도구 개선 docs repo-integrity pre-commit 훅 (회고 WF 관점 — STATE↔README 수치 정합·cycle-history TOC 앵커·메모리 슬러그 stdlib 체커 3종을 pre-commit local hook wiring[turn-0 drift 차단], WF-1 import-dup 훅은 28 idiom EXACT 재평가로 DROP→testing.md 가이드 대체, TDD +7·단위 5049·전체 5203, 2026-06-23)](#회고-도구-개선-docs-repo-integrity-pre-commit-훅-2026-06-23)
@@ -125,6 +126,24 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## repo-automation PR-W — 워크플로우 loop 단일출처화 + 회고 워크플로우 신규 (2026-06-23)
+
+**날짜**: 2026-06-23 | **브랜치**: feat/repo-automation-pr-w-workflows | **출처**: repo-automation spec(`docs/design/2026-06-23-repo-automation-design.md`) Area 1(PR-W) + 정밀 감사 세션 잔여
+
+**배경**: 사용자 "잔여작업 수행" → repo-automation 완성(PR-W+PR-S) 선택. PR-H(#969) 완료 후 PR-W(워크플로우 loop-engineering) 착수.
+
+**CodeQL #522 (#973, 선행 머지)**: #970(CodeQL #521 fix)이 `test_config_5way` 의 `os` 사용 코드를 제거하며 `import os` 가 dead import 로 남음(main full-scan `py/unused-import` note). 단독 제거 → fixed. 자초 CodeQL = PR-diff green·main 전체 스캔만 노출(정책 14).
+
+**W1 (sibling import 실측 게이트)**: 워크플로우 스크립트가 `_lib/*.mjs` 를 ES import 할 수 있는지 실측 — 정적 `import { x } from './y.mjs'` = SyntaxError("import call expects one or two arguments"), 동적 `await import('./y.mjs')` = "import() is not available in workflow scripts." → **불가 확정**. 폴백: `.claude/workflows/_lib/loop-until-dry.template.mjs` 정본 스니펫 + 각 워크플로우 인라인 + drift 가드 테스트(`tests/unit/scripts/test_workflow_loop_sync.py`)로 정책 16 단일출처 효과 대체.
+
+**W2 (integrity-audit.mjs 리팩터)**: 하드코딩 dry 임계 K(2)·MAX_ROUNDS(budget 시 5/미설정 3)·budget floor(60k) → 명명 상수(`DRY_THRESHOLD`/`MAX_ROUNDS_WITH_BUDGET`/`MAX_ROUNDS_NO_BUDGET`/`BUDGET_FLOOR`) 파라미터화. 동일 값 유지(행동 회귀 0) — dryRun smoke 로 8 도메인 정상 resolve 확인.
+
+**W3 (retrospective.mjs 신규)**: 정책 8 5+1 회고의 결정론적 코드화 — 5 관점 finder(process/code/docs/decision/tooling, args 로 도메인 주입) loop-until-dry + completeness critic + **cross-verify=finding 강제**(모든 finding 이 CONFIRMED/FALSE_POSITIVE/SEVERITY_ADJUST verdict 수신 — 최대 3회 재시도, 소진 시 UNVERIFIED 명시). `verdict_coverage` 지표로 단일 패스 회고의 "13건 중 8건만 검증" 한계 가시화·해소. dryRun smoke 로 domain 필터링 확인.
+
+**검증**: TDD +4(loop-sync drift 가드 — 현재 repo 통과 + 합성 param-drift/invariant-missing/template-missing 적발 양방향). 단위 5073→5077·전체 5231. flake8 clean. 두 워크플로우 dryRun smoke OK. Codex mutual OK.
+
+**잔여**: PR-S(스킬 3 — docs-sync/retrospective/codex-verify, S2 ↔ W3 페어) · ops only(RLS Phase4·verifier 운영 활성화) · 회고 P2 P2-2·GAP-4. [[project-deep-audit-2026-06-23]]
 
 ## 회고 P2 백로그 — .env.example 무인증 footgun 제거 + 2nd-LLM 검증자 활성화 runbook (2026-06-23)
 
