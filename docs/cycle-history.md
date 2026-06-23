@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [회고 follow-up — retrospective.mjs dogfooding + 하드닝 (/retrospective 첫 실전 verdict_coverage 1.0[69 전건]·confirmed 55, Option A: 회고 보고서 아카이브[P1 #39]·W2 `/2`→`/${DRY_THRESHOLD}` 정정·drift 가드 false-pass 봉인[#936]·retrospective runbook·spec 헤더 정정, TDD +1·단위 5078·전체 5232, 2026-06-23)](#회고-follow-up--retrospectivemjs-dogfooding--하드닝-2026-06-23)
 - [repo-automation PR-S — 정책 흐름 스킬 3종 (docs-sync · retrospective · codex-verify — STATE/cycle-history/README 동기화 가이드·정책 8 5+1 회고 진입점[retrospective.mjs]·정책 18 push 전 Codex mutual 흐름+다운 시 자체검증, CLAUDE.md /retrospective 참조 추가, 테스트 무변경·단위 5077, 2026-06-23)](#repo-automation-pr-s--정책-흐름-스킬-3종-docs-sync--retrospective--codex-verify-2026-06-23)
 - [repo-automation PR-W — 워크플로우 loop 단일출처화 + 회고 워크플로우 신규 (W1 sibling import 불가 실측[정적 SyntaxError·동적 `import()` not available]→정본 template+inline+drift 가드, W2 integrity-audit 명명 상수 파라미터화[행동 불변], W3 retrospective.mjs 5+1 loop-until-dry+cross-verify=finding 강제[13/8 한계 해소], CodeQL #522 dead import #973, TDD +4·단위 5077·전체 5231, 2026-06-23)](#repo-automation-pr-w--워크플로우-loop-단일출처화--회고-워크플로우-신규-2026-06-23)
 - [회고 P2 백로그 — .env.example 무인증 footgun 제거 + 2nd-LLM 검증자 활성화 runbook (#971 NEW-GAP-1/GAP-5 — `.env.example` 이 `API_AUTH_DISABLED=1` 활성 출하 → `cp .env.example .env` 신규 배포 무인증 REST API 시작 footgun 제거[주석 처리=fail-closed 기본]·conftest 음성검증 마스킹 추적 강화·Codex mutual NG #2 가드 파서 견고화, TDD +9·단위 5073 + DQ-3 verifier 활성화 runbook 신설[무료 GitHub Models 비용 0], 2026-06-23)](#회고-p2-백로그--envexample-무인증-footgun-제거--2nd-llm-검증자-활성화-runbook-2026-06-23)
@@ -127,6 +128,23 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 회고 follow-up — retrospective.mjs dogfooding + 하드닝 (2026-06-23)
+
+**날짜**: 2026-06-23 | **브랜치**: fix/retrospective-followup-hardening | **출처**: `/retrospective` 워크플로우 첫 실전(`wf_fbf8355f-538`) 회고 결과 Option A
+
+**회고 dogfooding**: 사용자 "회고 부탁" → 이번 세션 신설 `retrospective.mjs`(PR-W W3) 첫 실전. 85 에이전트·3 라운드·**verdict_coverage 1.0**(69 전건 verdict)·confirmed 55(P1 2/P2 53)·FP 차단 14·SEVERITY_ADJUST 12. cross-verify=finding 강제가 단일 패스 회고의 "13건 중 8건만 검증" 한계를 실데이터로 해소 = 도구 핵심 ROI 입증. ⚠️ completeness critic 라운드만 마지막에 API 500(서버측 일시)으로 실패(본체 회고 완료). 회고 보고서 = [`docs/_archive/reports/2026-06-23-retrospective.md`](_archive/reports/2026-06-23-retrospective.md)(12 테마).
+
+**Option A 처리(P1 2 + 실버그 + 메모리 교훈)**:
+- **C2** 회고 보고서 아카이브 — P1 #39(회고 보고서 미아카이브 반복 = GAP-4/P2-2 "범위 모호" 근본) 직접 해소.
+- **C3** W2 파라미터화 미완(실버그) — `integrity-audit.mjs:291` 로그 `dry ${dry}/2` 하드코딩 `/2` → `/${DRY_THRESHOLD}` 정정(PR #974 "명명 상수화" 단언과 불일치 봉인).
+- **C4** drift 가드 false-pass 봉인 — `token not in text` substring 이 주석 내 불변식을 false-pass(#936 학습 미적용) → `_strip_comments` 후 매칭 + 불변식 확장(seen.add·dry=0·round<MAX_ROUNDS·`budget.total ? MAX_ROUNDS_WITH_BUDGET : MAX_ROUNDS_NO_BUDGET` 사용 강제 = declared-but-unused 우회 차단). TDD +1(주석-only false-pass 회귀).
+- **C6** `docs/runbooks/retrospective.md` 신설 — peer integrity-audit runbook 비대칭 해소. CLAUDE.md /retrospective 운영 가이드 링크 추가.
+- **C7** `docs/design/2026-06-23-repo-automation-design.md` 상태 헤더 stale("승인됨→writing-plans 대기"→"완료 #969/#974/#975") 정정.
+
+**검증**: TDD +1·단위 5077→**5078**·전체 5232. drift 가드 5 passed(false-pass 봉인 GREEN). Codex mutual OK.
+
+**백로그**(사용자 결정/저우선): C1 자초 CodeQL cascade 근본(tests/ dead-symbol pre-commit 가드 — spec 8 비-목표 충돌) · C5 .mjs 순수 로직 단위 테스트 · C8 integrity-audit runbook/architecture scripts/ sync · C9 drift 가드 pre-commit 승격 · C10 retrospective.mjs 자체 결함(evidence 출력 소실·completeness resilience) · C11 자기 스펙 과대기술 가드 · C12 clean_gone/enrollment. [[project-deep-audit-2026-06-23]]
 
 ## repo-automation PR-S — 정책 흐름 스킬 3종 (docs-sync · retrospective · codex-verify) (2026-06-23)
 
