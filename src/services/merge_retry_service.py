@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from src.config import settings
 from src.config_manager.manager import RepoConfigData, get_repo_config
 from src.constants import GITHUB_API
+from src.gate import merge_reasons
 from src.gate.github_review import merge_pr
 from src.gate.merge_failure_advisor import get_advice
 from src.gate.retry_policy import (
@@ -181,7 +182,7 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
     if not (cfg.auto_merge and row.score >= cfg.merge_threshold):
         # 설정이 변경되어 자동 머지 조건 미충족 → 포기
         # Config changed so auto-merge condition no longer met → abandon
-        merge_retry_repo.mark_abandoned(db, row.id, reason="config_changed")
+        merge_retry_repo.mark_abandoned(db, row.id, reason=merge_reasons.CONFIG_CHANGED)
         await _notify_config_changed(row, cfg, language=language)
         counts["abandoned"] += 1
         return
@@ -198,7 +199,7 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
 
     # 이미 머지된 PR — 성공
     if pr_data.get("merged") is True:
-        merge_retry_repo.mark_succeeded(db, row.id, reason="already_merged")
+        merge_retry_repo.mark_succeeded(db, row.id, reason=merge_reasons.ALREADY_MERGED)
         counts["succeeded"] += 1
         return
 
@@ -207,7 +208,7 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
     # head key may be present-but-None — normalize with `or {}` (PR #124 pattern)
     head_sha = (pr_data.get("head") or {}).get("sha", "")
     if head_sha and head_sha != row.commit_sha:
-        merge_retry_repo.mark_abandoned(db, row.id, reason="sha_drift")
+        merge_retry_repo.mark_abandoned(db, row.id, reason=merge_reasons.SHA_DRIFT)
         counts["abandoned"] += 1
         return
 

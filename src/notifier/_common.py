@@ -60,3 +60,37 @@ def truncate_message(text: str, max_length: int, suffix: str = "...") -> str:
 def truncate_issue_msg(msg: str) -> str:
     """이슈 메시지를 표준 표시 길이(NOTIFIER_MESSAGE_TRUNCATE)로 절단한다."""
     return msg[:NOTIFIER_MESSAGE_TRUNCATE]
+
+
+# GFM/CommonMark 활성 문자 — 링크/이미지/코드/강조/표/헤딩 인젝션 차단 대상
+# GFM/CommonMark active chars — neutralize link/image/code/emphasis/table/heading injection
+_MD_SPECIAL_CHARS = set("\\`*_[]()<>~|#!")
+
+
+def escape_markdown(text: str) -> str:
+    """untrusted plain-text(정적 도구 issue.message)를 GFM/CommonMark 채널(GitHub·Discord)에
+    안전하게 삽입하도록 markdown 활성 문자를 백슬래시 이스케이프한다 (감사 D — 아웃바운드 인젝션).
+
+    Backslash-escape markdown-active chars so untrusted plain text (static-tool issue messages)
+    can be safely embedded in GFM/CommonMark channels (GitHub, Discord) — blocks link/image/code/
+    mention injection. 🔴 AI 요약·피드백(Claude 의도 markdown 프로즈)에는 적용 금지 — 렌더링
+    품질 보존(정책 16 명시 제외). NOT for AI summary/feedback (intended markdown prose).
+    """
+    out = []
+    for ch in text:
+        if ch in _MD_SPECIAL_CHARS:
+            out.append("\\")
+        out.append(ch)
+    return "".join(out)
+
+
+def escape_slack_mrkdwn(text: str) -> str:
+    """untrusted plain-text 를 Slack mrkdwn 에 안전하게 삽입 — Slack 공식 escape(`&` `<` `>`)로
+    `<url|text>` 링크·`<!channel>` 멘션 인젝션 차단 (Slack 은 백슬래시 escape 미지원).
+
+    Escape for Slack mrkdwn using Slack's documented entities (& < >) — neutralizes
+    `<url|text>` links and `<!channel>` mentions (Slack does not support backslash escaping).
+    `&` 를 먼저 치환해 새로 삽입한 엔티티의 `&` 가 이중 이스케이프되지 않게 한다.
+    Replace `&` first so the `&` in the entities we insert is not double-escaped.
+    """
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")

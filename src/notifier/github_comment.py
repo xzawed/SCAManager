@@ -6,7 +6,7 @@ Phase 3 PR-11 (Cycle 84) — i18n: language arg + 3-layer fallback.
 from src.constants import GITHUB_API, GRADE_EMOJI, NOTIFIER_MAX_ISSUES_LONG
 from src.github_client.helpers import github_api_headers
 from src.i18n.loader import get_text
-from src.notifier._common import resolve_ai_summary
+from src.notifier._common import escape_markdown, resolve_ai_summary
 from src.shared.http_client import get_http_client
 from src.scorer.calculator import ScoreResult
 from src.analyzer.io.static import StaticAnalysisResult
@@ -147,8 +147,10 @@ def _static_issues_lines(result: dict, language: str = "en") -> list[str]:
         ),
     ]
     for issue in result["issues"][:NOTIFIER_MAX_ISSUES_LONG]:
+        # 감사 D: untrusted 정적 도구 메시지 → markdown 이스케이프 (링크/이미지/HTML 인젝션 차단)
+        # Audit D: escape untrusted static-tool message for markdown (block link/image/HTML injection)
         lines.append(
-            f"- **[{issue.get('tool', '?')}]** {issue.get('message', '')} "
+            f"- **[{issue.get('tool', '?')}]** {escape_markdown(str(issue.get('message', '')))} "
             f"(line {issue.get('line', '?')})"
         )
     return lines
