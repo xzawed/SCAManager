@@ -22,6 +22,7 @@ from unittest.mock import AsyncMock, patch
 import httpx
 
 from src.gate.native_automerge import enable_or_fallback
+from src.gate.merge_reasons import NETWORK_ERROR
 from src.github_client.graphql import (
     ENABLE_API_ERROR,
     ENABLE_DISABLED_IN_REPO,
@@ -234,23 +235,25 @@ async def test_expected_sha_none_calls_get_pr_state():
     assert sha == HEAD_SHA
 
 
-async def test_get_pr_state_failure_does_not_block_enable():
-    """get_pr_mergeable_state 가 httpx.HTTPError 던져도 enable 시도는 진행 (head_sha="").
-    Even if get_pr_mergeable_state raises httpx.HTTPError, enable is still attempted (head_sha="").
+async def test_get_pr_state_failure_blocks_enable_fail_closed():
+    """🔴 fail-closed: head_sha 미확보(expected_sha 미전달 + 조회 실패) 시 SHA 원자성 가드 없는
+    enable/merge 를 시도하지 않고 terminal(NETWORK_ERROR)로 반환 — engine 이 머지 없이 실패로
+    가시화(force-push 차단 계약 보존, guardless merge 차단). NETWORK_ERROR 는 _RETRIABLE_TAGS 미포함.
+    Fail-closed: when head_sha is unavailable (no expected_sha + fetch failed), do NOT attempt a
+    guardless enable/merge — return terminal NETWORK_ERROR so no merge happens (preserves the
+    SHA-atomicity / force-push protection contract).
     """
     p_enable, p_merge, p_node, p_state, enable_mock, _, _, _ = _patch_native(
         enable_result=EnableAutoMergeResult(ENABLE_OK),
         state_result=httpx.ConnectError("DNS down"),
     )
     with p_enable, p_merge, p_node, p_state:
-        ok, _reason, sha = await enable_or_fallback(TOKEN, REPO, PR, expected_sha=None)
+        ok, reason, sha = await enable_or_fallback(TOKEN, REPO, PR, expected_sha=None)
 
-    enable_mock.assert_awaited_once()
-    # head_sha 가 빈 문자열인 채로 enable 호출 → expected_head_oid 는 None 으로 전달
-    # head_sha is empty → expected_head_oid is passed as None
-    call_kwargs = enable_mock.await_args.kwargs
-    assert call_kwargs.get("expected_head_oid") is None
-    assert ok is True
+    # SHA 가드 없이 머지 시도 금지 — enable 자체가 호출되지 않아야 함
+    enable_mock.assert_not_awaited()
+    assert ok is False
+    assert reason == NETWORK_ERROR
     assert sha == ""
 
 
@@ -400,20 +403,23 @@ async def test_enable_with_path_fallback_failure_propagates_reason():
     assert outcome.path == PATH_REST_FALLBACK
 
 
-async def test_enable_with_path_handles_get_pr_state_failure():
-    """Phase 3 PR-B1: get_pr_mergeable_state 실패 → head_sha="" 로 진행."""
+async def test_enable_with_path_get_pr_state_failure_fail_closed():
+    """🔴 fail-closed (path 버전): expected_sha 미전달 + 조회 실패 → enable 미시도, terminal
+    (NETWORK_ERROR) + PATH_NO_ATTEMPT 반환. SHA 가드 없는 머지 차단."""
     from src.gate.native_automerge import (
-        PATH_NATIVE_ENABLE, enable_or_fallback_with_path,
+        PATH_NO_ATTEMPT, enable_or_fallback_with_path,
     )
 
-    p_enable, p_merge, p_node, p_state, _, _, _, _ = _patch_native(
+    p_enable, p_merge, p_node, p_state, enable_mock, _, _, _ = _patch_native(
         enable_result=EnableAutoMergeResult(ENABLE_OK),
         state_result=httpx.HTTPError("network down"),
     )
     with p_enable, p_merge, p_node, p_state:
-        # expected_sha 미전달 → 자체 조회 → HTTPError → head_sha="" 로 진행
+        # expected_sha 미전달 → 자체 조회 → HTTPError → head_sha 미확보 → fail-closed
         outcome = await enable_or_fallback_with_path(TOKEN, REPO, PR)
 
-    assert outcome.ok is True
-    assert outcome.path == PATH_NATIVE_ENABLE
+    enable_mock.assert_not_awaited()
+    assert outcome.ok is False
+    assert outcome.reason == NETWORK_ERROR
     assert outcome.head_sha == ""
+    assert outcome.path == PATH_NO_ATTEMPT

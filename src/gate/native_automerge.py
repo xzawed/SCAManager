@@ -37,6 +37,7 @@ from src.gate.github_review import (
     get_pr_mergeable_state,
     merge_pr,
 )
+from src.gate.merge_reasons import NETWORK_ERROR
 from src.github_client.graphql import (  # noqa: F401  # pylint: disable=unused-import
     # ENABLE_DISABLED_IN_REPO + ENABLE_PERMISSION_DENIED 는 외부 (tests/unit/gate/test_native_automerge.py
     # + tests/unit/gate/test_engine_defensive_guards.py) 에서 본 모듈 경로로 import 하는 re-export 영역.
@@ -136,6 +137,24 @@ async def enable_or_fallback_with_path(
             )
         except httpx.HTTPError as exc:
             logger.warning("get_pr_mergeable_state 실패 (pr=%d): %s", pr_number, exc)
+        # 🔴 fail-closed (감사 보안 #2 — 2026-06-23): head_sha 미확보(전달 X + 조회 실패/빈값) 시
+        # SHA 원자성 가드 없이 enable/merge_pr 을 하면 expected_head_oid=None / expected_sha=None 으로
+        # 전달돼 force-push 차단 계약이 사라진다. 머지를 시도하지 않고 terminal 실패(NETWORK_ERROR)로
+        # 반환한다 — engine 의 is_retriable_tag(NETWORK_ERROR)=False 라 _handle_terminal_merge_failure
+        # 로 가시화(머지 안 함). 이벤트성 auto-merge 1회 드롭은 다음 webhook 이 재트리거(희소).
+        # (genuine retry 미선택 사유: effective_sha="" 면 should_retry(unknown)=False + enqueue
+        #  commit_sha="" 라 retriable 경로가 실제로 작동 안 함 — 사용자 결정 A=terminal.)
+        # fail-closed: never enable/merge without a head-SHA guard (would lose force-push protection).
+        # Return terminal NETWORK_ERROR (not retriable) → surfaced via _handle_terminal_merge_failure,
+        # no merge happens. A rare double-fetch failure drops this one auto-merge; next webhook re-triggers.
+        if not head_sha:
+            logger.warning(
+                "head_sha 미확보 — SHA 가드 없는 머지 차단 (terminal, repo=%s, pr=%d)",
+                repo_full_name, pr_number,
+            )
+            return MergeOutcome(
+                ok=False, reason=NETWORK_ERROR, head_sha="", path=PATH_NO_ATTEMPT,
+            )
 
     # 2. PR node_id 조회
     pr_node_id = await get_pr_node_id(github_token, repo_full_name, pr_number)

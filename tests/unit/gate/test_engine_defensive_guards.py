@@ -46,7 +46,8 @@ from src.gate.engine import (
     _run_auto_merge,
     _run_auto_merge_retry,
 )
-from src.gate.native_automerge import MergeOutcome, PATH_REST_FALLBACK
+from src.gate.merge_reasons import NETWORK_ERROR
+from src.gate.native_automerge import MergeOutcome, PATH_NO_ATTEMPT, PATH_REST_FALLBACK
 from src.repositories.merge_retry_repo import EnqueueResult
 
 
@@ -114,6 +115,37 @@ async def test_retry_path_handles_get_mergeable_state_httperror(caplog):
     mock_terminal.assert_called_once()
     # WARNING 로그가 남음
     assert any("get_pr_mergeable_state" in r.message for r in caplog.records)
+
+
+async def test_retry_path_fail_closed_network_error_goes_terminal_no_enqueue():
+    """🔴 감사 보안 #2 (fail-closed 종단): native 가 head_sha 미확보로 NETWORK_ERROR(터미널) 반환 시
+    engine 은 _handle_terminal_merge_failure 로 처리하고 retry 큐에 넣지 않는다 — guardless merge 차단.
+    NETWORK_ERROR 는 _RETRIABLE_TAGS 미포함이라 is_retriable_tag=False → 즉시 터미널(머지/enqueue 없음).
+    """
+    mock_db = MagicMock()
+    config = _config()
+
+    with patch("src.gate.engine.settings") as mock_settings, \
+         patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
+         patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_enable, \
+         patch("src.gate.engine._handle_terminal_merge_failure", new_callable=AsyncMock) as mock_terminal, \
+         patch("src.gate.engine._enqueue_merge_retry", new_callable=AsyncMock) as mock_enqueue, \
+         patch("src.gate.engine.log_merge_attempt"):
+        mock_settings.merge_retry_enabled = True
+        # engine 자체 fetch 실패 → head_sha="" → native 에 expected_sha=None 전달
+        mock_state.side_effect = httpx.ConnectError("DNS down")
+        # native 가 head_sha 미확보로 fail-closed (NETWORK_ERROR, PATH_NO_ATTEMPT) 반환
+        mock_enable.return_value = MergeOutcome(
+            ok=False, reason=NETWORK_ERROR, head_sha="", path=PATH_NO_ATTEMPT,
+        )
+        await _run_auto_merge_retry(
+            config, "ghp_token", "owner/repo", 42, 80,
+            analysis_id=1, db=mock_db,
+        )
+
+    # 터미널 처리 (머지 안 함) + retry 큐 미진입
+    mock_terminal.assert_called_once()
+    mock_enqueue.assert_not_called()
 
 
 # ──────────────────────────────────────────────────────────────────────────
