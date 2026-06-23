@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [회고 P2 백로그 — .env.example 무인증 footgun 제거 + 2nd-LLM 검증자 활성화 runbook (#971 NEW-GAP-1/GAP-5 — `.env.example` 이 `API_AUTH_DISABLED=1` 활성 출하 → `cp .env.example .env` 신규 배포 무인증 REST API 시작 footgun 제거[주석 처리=fail-closed 기본]·conftest 음성검증 마스킹 추적 강화·Codex mutual NG #2 가드 파서 견고화, TDD +9·단위 5073 + DQ-3 verifier 활성화 runbook 신설[무료 GitHub Models 비용 0], 2026-06-23)](#회고-p2-백로그--envexample-무인증-footgun-제거--2nd-llm-검증자-활성화-runbook-2026-06-23)
 - [repo-automation PR-H 신규 pre-commit 훅 3종 (brainstorming→spec→writing-plans→subagent-driven-development 흐름 — env-vars 싱크[config.py AST↔env-vars.md]·이중언어 주석[staged 보수 휴리스틱]·5-way config 싱크[RepoConfig ORM↔Data↔Update AST] stdlib 체커 추가+.pre-commit wiring, Task별 fresh 구현+2단계 리뷰, TDD +15·단위 5064·전체 5218, 2026-06-23)](#repo-automation-pr-h-신규-pre-commit-훅-3종-2026-06-23)
 - [회고 도구 개선 docs repo-integrity pre-commit 훅 (회고 WF 관점 — STATE↔README 수치 정합·cycle-history TOC 앵커·메모리 슬러그 stdlib 체커 3종을 pre-commit local hook wiring[turn-0 drift 차단], WF-1 import-dup 훅은 28 idiom EXACT 재평가로 DROP→testing.md 가이드 대체, TDD +7·단위 5049·전체 5203, 2026-06-23)](#회고-도구-개선-docs-repo-integrity-pre-commit-훅-2026-06-23)
 - [세션 다중 에이전트 회고 follow-up P2 (markdown escape 4번째 채널 — #962~#966 세션 5+1 회고[P0/P1 0·P2 8 confirmed + critic 갭 5] 적발 P2 해소: github_issue.py escape 누락 4번째 채널 추가[#965 가 놓침]·cycle-history #961 stale 정정·static 주석 메커니즘 정정·api.md ai_summary 2차 인젝션 비대칭 명문화, cross-verify 가 자기보고 'CodeQL 4회 반복' 과장 정정, TDD +2·단위 5042·전체 5196, 2026-06-23)](#세션-다중-에이전트-회고-follow-up-p2-markdown-escape-4번째-채널-2026-06-23)
@@ -124,6 +125,22 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 회고 P2 백로그 — .env.example 무인증 footgun 제거 + 2nd-LLM 검증자 활성화 runbook (2026-06-23)
+
+**날짜**: 2026-06-23 | **브랜치**: fix/env-example-auth-footgun (#971) · docs/verifier-runbook-session-sync | **출처**: 2026-06-23 정밀 감사 세션 5+1 회고(`wf_ba64fd24`) P2 백로그
+
+**배경**: 2026-06-23 감사 세션 회고가 식별한 P2 백로그를 신뢰도 순으로 해소. 사용자 결정 = "회고 P2 백로그 먼저".
+
+**#971 (보안 — NEW-GAP-1 + GAP-5)**:
+- **NEW-GAP-1** — `.env.example` 이 `API_AUTH_DISABLED=1` 을 **활성 라인으로 출하** → CLAUDE.md 최초 설정 절차 `cp .env.example .env` 한 신규 배포가 **REST API 무인증으로 시작**하던 footgun. 주석 처리(`#API_AUTH_DISABLED=1`) → 미설정 시 `config.py` 기본 `api_auth_disabled=False` = **fail-closed(503)**. 로컬 dev 만 명시 주석 해제 opt-in. 운영 코드(`src/api/auth.py`·`config.py`) 무변경. 가드 테스트 `test_env_example_does_not_ship_keyless_api_auth`(+1).
+- **GAP-5** — conftest 전역 `API_AUTH_DISABLED=1` opt-out 의 음성검증 마스킹(모든 endpoint 테스트가 무인증으로 돌아 fail-closed 회귀를 가릴 수 있음)을 추적 가능하게 — 완화하는 `test_auth.py` 전용 fail-closed 가드 3종(`api_auth_disabled=False`→503)을 conftest 주석에 명시. EXACT 재검증 = 이미 완화됨(메타테스트 회피, 정책 16). 주석만 변경(무증가).
+- **Codex mutual NG #2** — Codex push-전 검증이 가드 파서(`_active_env_assignments`) false-pass 홀 적발: 값 미정규화로 `API_AUTH_DISABLED=1 # x`·`="1"` 가 `_TRUTHY` 비매칭 통과. 인라인 주석(# 이후)·감싼 따옴표·`export ` 접두 정규화로 봉인. 회귀 가드 `test_active_env_assignments_normalizes_value`(+8 parametrize). 단일 정답 버그 회귀 NG → 동일 PR 즉시 수정(정책 18 §3b). 1차 NG → fix-up 8b219d5 → 2차 VERDICT OK.
+
+**DQ-3 (verifier 활성화 runbook)**:
+- 2nd-LLM 머지 검증자(#859, built-but-INACTIVE) 활성화 운영 가이드 [`docs/runbooks/merge-verifier.md`](runbooks/merge-verifier.md) 신설. 무료 GitHub Models(비용 0) 활성화 절차·언제 호출되나(should_verify 3조건·경계 밴드)·fail-closed 동작(diff cap·api/parse 오류)·kill-switch(`MERGE_VERIFIER_DISABLED=1`)·검증 방법(차단 PR 코멘트/로그 태그). `merge_verifier.py` 코드 실측 기반.
+
+**검증**: TDD +9(가드 1 + 파서 견고성 parametrize 8)·단위 5064→**5073**·전체 5227. 운영 코드 무변경(템플릿/테스트/docs). Codex mutual: NG #2 → fix → OK(ground-truth git 직접 검증). 잔여 = ops only(RLS Phase4·verifier 운영 활성화) + 회고 P2 P2-2(legacy fail-closed 드롭 문서)·GAP-4(Codex artifact-level) = 회고 보고서 미아카이브로 범위 모호 → 조사/PR-S 귀속. [[project-deep-audit-2026-06-23]]
 
 ## repo-automation PR-H 신규 pre-commit 훅 3종 (2026-06-23)
 
