@@ -71,6 +71,7 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 - **핵심 데이터 흐름** (Webhook → pipeline → notify → gate): [`docs/architecture.md#핵심-데이터-흐름`](docs/architecture.md#핵심-데이터-흐름)
 - **점수 체계** (배점 + 등급 + AI 스케일링): [`docs/reference/scoring.md`](docs/reference/scoring.md)
 - **전체 정합성 감사 자동화**: `/integrity-audit [full|diff|area=<name>]` → `.claude/workflows/integrity-audit.mjs` (수동 5+1 감사의 결정론적 코드화 — loop-until-dry + 3-렌즈 adversarial verify + completeness critic, read-only P0/P1/P2 리포트). 운영 가이드: [`docs/runbooks/integrity-audit.md`](docs/runbooks/integrity-audit.md).
+- **5+1 회고 자동화**: `/retrospective [area=<관점>]` → `.claude/workflows/retrospective.mjs` (정책 8 5+1 회고의 결정론적 코드화 — 5 관점 finder loop-until-dry + completeness critic + cross-verify=finding 강제[verdict_coverage 지표]). loop-until-dry 정본 = `.claude/workflows/_lib/loop-until-dry.template.mjs` (drift 가드: `tests/unit/scripts/test_workflow_loop_sync.py`). 스킬: `/docs-sync`(수치·서사 동기화), `/codex-verify`(정책 18 push 전 흐름).
 
 > 🔴 **신규 파일 추가 시 [`docs/architecture.md`](docs/architecture.md) 동기화 의무** — src/ 트리 항목 + 핵심 데이터 흐름 갱신.
 
