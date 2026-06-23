@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [세션 다중 에이전트 회고 follow-up P2 (markdown escape 4번째 채널 — #962~#966 세션 5+1 회고[P0/P1 0·P2 8 confirmed + critic 갭 5] 적발 P2 해소: github_issue.py escape 누락 4번째 채널 추가[#965 가 놓침]·cycle-history #961 stale 정정·static 주석 메커니즘 정정·api.md ai_summary 2차 인젝션 비대칭 명문화, cross-verify 가 자기보고 'CodeQL 4회 반복' 과장 정정, TDD +2·단위 5042·전체 5196, 2026-06-23)](#세션-다중-에이전트-회고-follow-up-p2-markdown-escape-4번째-채널-2026-06-23)
 - [감사 P2 하드닝 — 아웃바운드 markdown 인젝션 escape + 단일출처 2건 (감사 D — untrusted issue.message 를 github/discord[GFM 백슬래시]·slack[`&<>` 엔티티] escape, AI 프로즈는 보존[Option A·정책 16], merge_retry literal→merge_reasons 상수, test_config 8192 가드, pg-concurrency/registry/telegram 3건은 이미 커버됨 → 드롭, TDD +13·단위 5040·전체 5194, 2026-06-23)](#감사-p2-하드닝--아웃바운드-markdown-인젝션-escape--단일출처-2건-2026-06-23)
 - [감사 보안 게이트 fail-open 봉인 3건 (auth fail-closed·static crash·retry sha-bound — ① API_KEY 미설정 시 http 휴리스틱 통과 제거→기본 503 + `API_AUTH_DISABLED` opt-out[cross-tenant 노출 차단], ④ analyzer crash→incomplete[미설치 FileNotFoundError 는 현행], ③ retry sha-bound 불변식 가드[REFUTED→동작 변경 없이 가드+문서], EXACT 재검증, TDD +4·단위 5027·전체 5181, 2026-06-23)](#감사-보안-게이트-fail-open-봉인-3건-auth-fail-closed-static-crash-retry-sha-bound-2026-06-23)
 - [native auto-merge SHA-atomicity fail-closed (#962 — `head_sha` 미확보 시 SHA 빈 값으로 guardless merge 하던 경로 차단, `effective_sha` 미확보 시 terminal[NETWORK_ERROR] 반환, Codex 1차 NG valid 적발[retriable 초안이 should_retry/빈 commit_sha 로 실제 미작동]→terminal 정직 전환 2차 OK, 사용자 결정 A, 감사 보안/게이트 4건 중 #2, TDD +1·단위 5023·전체 5177, 2026-06-23)](#native-auto-merge-sha-atomicity-fail-closed-962-2026-06-23)
@@ -122,6 +123,16 @@
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
 
+## 세션 다중 에이전트 회고 follow-up P2 (markdown escape 4번째 채널, 2026-06-23)
+
+**날짜**: 2026-06-23 | **PR**: fix/retro-p2-github-issue-escape | **트리거**: #962~#966 세션 5+1 다중 에이전트 회고(`wf_ba64fd24`) | **상태**: 머지
+
+**회고**: 5 관점(프로세스/정책·코드/테스트·문서정합·의사결정·도구관찰) 병렬 + 6차 general-purpose cross-verify. **P0/P1 0 · P2 8 confirmed(FALSE_POSITIVE 0·SEVERITY_ADJUST 1) + completeness critic 신규 갭 5**. 🔴 cross-verify 가 세션 중 Claude 자기보고 '자초 CodeQL 4회 반복' framing 을 메모리 실측으로 정정 — `py/import-and-import-from` 은 #517/#520 **2회**(#516 unused-global·#518 mixed-returns 는 다른 룰). 회고 양방향 경계(과대/과소) 중 과대평가 측 자기비판 사례.
+
+**적발 P2 일괄 해소(이 PR)**: **P2-1** `github_issue.py::_build_issue_body` high_issues 루프가 동일 untrusted bandit `issue.message` 를 escape 없이 Issue markdown 본문에 삽입(#965 가 discord/slack/github_comment 3채널만 escape, **4번째 채널 누락**) → `escape_markdown` 적용(Option A 일관) + TDD 2(escape 회귀 + ai_summary 보존 경계). **DOC-DRIFT-1** cycle-history #961 '잔여 보안/게이트 3건' note 가 #964 전량 해소 후 stale(실제 0건) → ✅ 항목별 정정. **DQ-2** static.py crash 주석이 미설치 보호를 'FileNotFoundError catch(4/23 도구)'로 부정확 기술 → 실제 메커니즘(`shutil.which` 게이트 + `except OSError`[FileNotFoundError 포괄])으로 정정. **DQ-1** api.md 에 ai_summary 2차 인젝션(diff→AI→summary) 잔여 위험 + email/telegram↔markdown 3채널 escape 비대칭 명문화.
+
+**검증**: TDD +2(단위 5040→5042·전체 5196). pylint 10.00. Codex mutual OK. 잔여 P2(P2-2 legacy 드롭 문서·DQ-3 검증자 활성화 runbook·PROC-2 docs sync 패턴·critic 갭 5)는 백로그/문서 차원. [[project-deep-audit-2026-06-23]]
+
 ## 감사 P2 하드닝 — 아웃바운드 markdown 인젝션 escape + 단일출처 2건 (2026-06-23)
 
 **날짜**: 2026-06-23 | **PR**: fix/audit-markdown-injection-singlesource | **트리거**: 69-에이전트 정밀 감사 P2(테스트/단일출처 + markdown 인젝션) | **상태**: 머지
@@ -165,7 +176,7 @@
 
 **#961 (docs-drift 13건)**: 각 항목 `grep -n` 직접 재실측 후 정정(새 drift 유입 차단). rules — security.md(secure_str_compare 단일출처·require_admin session.py:87/99·LimitBodySize 이미 처리됨)·api.md(run_gate_check positional 정정)·i18n.md(8→15 namespace)·pipeline.md(8→23 tools)·db.md(env.py:96·is_postgresql 시점)·testing.md(R0914 하드코딩 카운트→드리프트-방지형 grep 정본 + ~28 근사). docs — env-vars.md(MERGE_UNKNOWN config.py 심볼참조)·architecture.md(e2e test_overview_score.py)·.env.example(VERIFIER_BASE_URL·CLAUDE_REVIEW_MAX_TOKENS·N8N_RELAY_REPO_TOKEN 3 토글). 🔴 수정 중 빈 `CLAUDE_REVIEW_MAX_TOKENS=`(int)가 `cp .env.example .env` 시 pydantic ValidationError로 startup crash됨을 실측 차단 → 기본값 8192 명시. Codex 1차 8/9 OK → testing.md "7건" NG(특정 파일만 grep한 실수) → 단일 정답 버그(정책 18 #3b) 즉시 드리프트-방지형 재작성 + ground-truth 28개 재검증. 코드/테스트 무변경.
 
-**잔여(보안/게이트 — High tier 별도 PR)**: (1) auth.py dev-mode 무인증 cross-tenant 노출(http 오판) (2) ✅ native_automerge head_sha fetch 실패 시 SHA-atomicity 우회 → **#962 머지(2026-06-23)** (3) merge_retry 2nd-LLM verifier-staleness TOCTOU (4) static.py crash/미설치 fail-open. **#2 완료 → 잔여 3건**. 정책 15 High tier + 정책 18 Codex mutual 의무라 항목별 사전 확인 후 진행. [[project-score-null-truncation-decouple]]
+**잔여(보안/게이트 — High tier 별도 PR) — ✅ 전량 해소(2026-06-23)**: (1) ✅ auth.py dev-mode 무인증 cross-tenant 노출(http 오판) → **#964**(CONFIRMED → fail-closed) (2) ✅ native_automerge head_sha fetch 실패 시 SHA-atomicity 우회 → **#962** (3) ✅ merge_retry 2nd-LLM verifier-staleness TOCTOU → **#964**(REFUTED → sha-bound 가드+문서) (4) ✅ static.py crash/미설치 fail-open → **#964**(crash→incomplete, 미설치 현행). **보안/게이트 4건 전량 해소 → 잔여 0건**. P2 클러스터(markdown 인젝션·단일출처)는 **#965**. [[project-score-null-truncation-decouple]]
 
 ## AI 리뷰 점수 NULL 폐기 분리 — 입력 diff 절단 시 점수 보존 (#960, 2026-06-22)
 

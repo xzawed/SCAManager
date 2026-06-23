@@ -12,6 +12,29 @@ import httpx
 import pytest
 
 
+def test_build_issue_body_escapes_security_issue_message():
+    # 감사 D 회고 P2-1: github_issue 본문도 untrusted bandit issue.message 를 markdown escape 해야 한다
+    # (#965 가 discord/slack/github_comment 만 escape 하고 이 채널을 누락). Option A = issue.message 한정.
+    from src.notifier.github_issue import _build_issue_body
+    result = {
+        "score": 35, "grade": "F",
+        "issues": [{"tool": "bandit", "severity": "HIGH", "message": "[evil](http://x)", "line": 10}],
+    }
+    high = list(result["issues"])
+    body = _build_issue_body("owner/repo", "abc1234", 1, result, high, "en")
+    assert "\\[evil\\]\\(http://x\\)" in body
+    assert "[evil](http://x)" not in body
+
+
+def test_build_issue_body_preserves_ai_summary_markdown():
+    # Option A 경계: AI 요약은 Claude 의도 markdown 프로즈라 escape 금지 (정책 16)
+    from src.notifier.github_issue import _build_issue_body
+    result = {"score": 35, "grade": "F", "issues": [], "ai_summary": "**굵게** 그리고 [링크](http://ok)"}
+    body = _build_issue_body("owner/repo", "abc1234", 1, result, [], "en")
+    assert "**굵게**" in body
+    assert "[링크](http://ok)" in body
+
+
 def _make_result(score=35, with_security_high=False):
     issues = []
     if with_security_high:
