@@ -449,15 +449,23 @@ _TRUTHY = {"1", "true", "yes", "on"}
 
 
 def _active_env_assignments(path: Path) -> dict:
-    # 주석(#)·빈 줄을 제외한 활성 KEY=VALUE 할당만 추출.
-    # Extract only active KEY=VALUE assignments, skipping comments(#) and blank lines.
+    # 주석(#)·빈 줄을 제외한 활성 KEY=VALUE 할당만 추출. 값은 인라인 주석(# ...)·감싼 따옴표를
+    # 제거해 정규화하고, `export ` 접두를 벗긴다 (Codex mutual NG #2 false-pass 차단).
+    # Extract active KEY=VALUE assignments, skipping comments(#)/blank lines. Normalize the value
+    # by stripping inline comments and wrapping quotes, and drop an `export ` prefix
+    # (closes the Codex mutual NG #2 false-pass hole).
     result = {}
     for raw in path.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
+        if line.startswith("export "):
+            line = line[len("export "):].lstrip()
         key, _, value = line.partition("=")
-        result[key.strip()] = value.strip()
+        # 인라인 주석 제거 후 좌우 공백·감싼 따옴표 제거.
+        # Strip inline comment, then surrounding whitespace and wrapping quotes.
+        value = value.split("#", 1)[0].strip().strip("\"'")
+        result[key.strip()] = value
     return result
 
 
@@ -472,3 +480,25 @@ def test_env_example_does_not_ship_keyless_api_auth():
         "API_AUTH_DISABLED must not be shipped enabled in .env.example — "
         "comment it out so `cp .env.example .env` defaults to fail-closed(503)."
     )
+
+
+# 🔴 파서 견고성 회귀 가드 (Codex mutual NG #2, 2026-06-23): 인라인 주석/따옴표/export 접두가
+# 정규화되지 않으면 `API_AUTH_DISABLED=1 # x` 나 `API_AUTH_DISABLED="1"` 같은 위험 출하가
+# _TRUTHY 비매칭으로 가드를 false-pass 로 통과. 정규화 후 truthy 탐지 보장.
+# Parser-robustness regression guard (Codex mutual NG #2): without normalizing inline comments,
+# quotes, and the export prefix, a dangerous `API_AUTH_DISABLED=1 # x` or `="1"` line would
+# false-pass the guard by not matching _TRUTHY. Normalization must still detect it as truthy.
+@pytest.mark.parametrize("line,expected", [
+    ("API_AUTH_DISABLED=1", "1"),                      # plain
+    ("API_AUTH_DISABLED=1   # 인라인 주석", "1"),       # inline comment stripped
+    ('API_AUTH_DISABLED="1"', "1"),                    # double-quoted
+    ("API_AUTH_DISABLED='1'", "1"),                    # single-quoted
+    ('API_AUTH_DISABLED="1"  # quoted+comment', "1"),  # quoted then comment
+    ("export API_AUTH_DISABLED=1", "1"),               # export prefix
+    ("#API_AUTH_DISABLED=1", None),                    # commented → absent
+    ("  # API_AUTH_DISABLED=1", None),                 # indented comment → absent
+])
+def test_active_env_assignments_normalizes_value(tmp_path, line, expected):
+    env_file = tmp_path / "env.under_test"
+    env_file.write_text(line + "\n", encoding="utf-8")
+    assert _active_env_assignments(env_file).get("API_AUTH_DISABLED") == expected
