@@ -15,7 +15,8 @@ from src.scorer.calculator import ScoreResult
 from src.analyzer.io.static import StaticAnalysisResult
 from src.analyzer.io.ai_review import AiReviewResult
 from src.notifier._common import (
-    format_ref, get_all_issues, resolve_ai_summary, truncate_issue_msg, truncate_message,
+    escape_markdown, format_ref, get_all_issues, resolve_ai_summary,
+    truncate_issue_msg, truncate_message,
 )
 
 logger = logging.getLogger(__name__)
@@ -55,7 +56,9 @@ def _build_embed(  # pylint: disable=too-many-positional-arguments,too-many-loca
             "notifier.discord.issues_header", language, count=len(all_issues),
         ))
         for issue in all_issues[:NOTIFIER_MAX_ISSUES_SHORT]:
-            lines.append(f"- [{issue.tool}] {truncate_issue_msg(issue.message)}")
+            # 감사 D: untrusted 정적 도구 메시지 → markdown 이스케이프 (링크/멘션 인젝션 차단)
+            # Audit D: escape untrusted static-tool message for markdown (block link/mention injection)
+            lines.append(f"- [{issue.tool}] {escape_markdown(truncate_issue_msg(issue.message))}")
 
     desc = truncate_message("\n".join(lines), DISCORD_EMBED_DESC_MAX_LENGTH)
 

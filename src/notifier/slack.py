@@ -11,7 +11,9 @@ from src.i18n.loader import get_text
 from src.scorer.calculator import ScoreResult
 from src.analyzer.io.static import StaticAnalysisResult
 from src.analyzer.io.ai_review import AiReviewResult
-from src.notifier._common import format_ref, get_all_issues, truncate_issue_msg, truncate_message
+from src.notifier._common import (
+    escape_slack_mrkdwn, format_ref, get_all_issues, truncate_issue_msg, truncate_message,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +61,9 @@ def _build_payload(  # pylint: disable=too-many-positional-arguments,too-many-lo
             "notifier.slack.issues_header", language, count=len(all_issues),
         ))
         for issue in all_issues[:NOTIFIER_MAX_ISSUES_SHORT]:
-            blocks.append(f"• [{issue.tool}] {truncate_issue_msg(issue.message)}")
+            # 감사 D: untrusted 정적 도구 메시지 → Slack mrkdwn 이스케이프 (`<url|text>`·멘션 차단)
+            # Audit D: escape untrusted static-tool message for Slack mrkdwn (block link/mention)
+            blocks.append(f"• [{issue.tool}] {escape_slack_mrkdwn(truncate_issue_msg(issue.message))}")
 
     footer_text = "\n".join(blocks) if blocks else ""
 

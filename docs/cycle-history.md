@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [감사 P2 하드닝 — 아웃바운드 markdown 인젝션 escape + 단일출처 2건 (감사 D — untrusted issue.message 를 github/discord[GFM 백슬래시]·slack[`&<>` 엔티티] escape, AI 프로즈는 보존[Option A·정책 16], merge_retry literal→merge_reasons 상수, test_config 8192 가드, pg-concurrency/registry/telegram 3건은 이미 커버됨 → 드롭, TDD +13·단위 5040·전체 5194, 2026-06-23)](#감사-p2-하드닝--아웃바운드-markdown-인젝션-escape--단일출처-2건-2026-06-23)
 - [감사 보안 게이트 fail-open 봉인 3건 (auth fail-closed·static crash·retry sha-bound — ① API_KEY 미설정 시 http 휴리스틱 통과 제거→기본 503 + `API_AUTH_DISABLED` opt-out[cross-tenant 노출 차단], ④ analyzer crash→incomplete[미설치 FileNotFoundError 는 현행], ③ retry sha-bound 불변식 가드[REFUTED→동작 변경 없이 가드+문서], EXACT 재검증, TDD +4·단위 5027·전체 5181, 2026-06-23)](#감사-보안-게이트-fail-open-봉인-3건-auth-fail-closed-static-crash-retry-sha-bound-2026-06-23)
 - [native auto-merge SHA-atomicity fail-closed (#962 — `head_sha` 미확보 시 SHA 빈 값으로 guardless merge 하던 경로 차단, `effective_sha` 미확보 시 terminal[NETWORK_ERROR] 반환, Codex 1차 NG valid 적발[retriable 초안이 should_retry/빈 commit_sha 로 실제 미작동]→terminal 정직 전환 2차 OK, 사용자 결정 A, 감사 보안/게이트 4건 중 #2, TDD +1·단위 5023·전체 5177, 2026-06-23)](#native-auto-merge-sha-atomicity-fail-closed-962-2026-06-23)
 - [정밀 감사(69-에이전트 다차원 워크플로우) + docs-drift 13건 정정 (#961 — 정합성/코드품질/보안 11차원 read-only 감사 raw 41→confirmed 30 전부 P2·P0/P1 0, 사용자 선택 docs-drift 13건 grep -n 실측 일괄 정정[security/api/i18n/pipeline/db/testing rules + env-vars 심볼참조 + architecture e2e + .env.example 3토글], Codex 1차 8/9 OK→testing.md NG 즉시 재작성, 보안/게이트 4건 High tier 별도, 2026-06-23)](#정밀-감사69-에이전트-다차원-워크플로우--docs-drift-13건-정정-961-2026-06-23)
@@ -120,6 +121,18 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 감사 P2 하드닝 — 아웃바운드 markdown 인젝션 escape + 단일출처 2건 (2026-06-23)
+
+**날짜**: 2026-06-23 | **PR**: fix/audit-markdown-injection-singlesource | **트리거**: 69-에이전트 정밀 감사 P2(테스트/단일출처 + markdown 인젝션) | **상태**: 머지
+
+**markdown 인젝션 (감사 근본원인 D, 사용자 결정 Option A)**: untrusted 정적 도구 `issue.message`(분석 대상 코드에서 파생)를 github_comment/discord/slack markdown 채널에 escape 없이 삽입 → 악성 협업자가 코드로 PR 코멘트/알림에 가짜 링크·`<!channel>` 멘션 주입 가능(self-targeting·RCE 아님). **EXACT 재검증으로 감사 권장 정정**: telegram 은 이미 전 동적 값 `html.escape`(HTML mode)라 안전. 🔴 **`ai_summary`·`*_feedback`·`ai_suggestions` 는 Claude 의도 markdown 프로즈라 escape 시 렌더링 품질 저하**(정책 16 명시 제외) → **Option A = issue.message 만 escape**, AI 프로즈 보존. 구현: `_common.escape_markdown`(GFM 백슬래시 — github/discord) + `escape_slack_mrkdwn`(`& < >` 엔티티 — Slack 백슬래시 미지원). TDD +11.
+
+**단일출처 2건**: ① `merge_retry_service` 가 literal `"sha_drift"`·`"config_changed"`·`"already_merged"` 를 쓰던 것을 **이미 존재하던** `merge_reasons.SHA_DRIFT/CONFIG_CHANGED/ALREADY_MERGED` 상수로 교체(3 src + 5 test 파일 broad 사용 → src↔test drift 방어, 동작 불변 refactor). ② `test_config` 에 `claude_review_max_tokens` 기본 8192 회귀 가드 +2(#931 1500 절단 parse_error 회귀 차단 — 기본값 가드 부재였음).
+
+**드롭 3건 (🔴 감사 verdict 맹신 금지 — EXACT 재검증 결과 이미 커버됨)**: pg-concurrency CI node-id pin = 이미 🔴 주석으로 한계 문서화(`ci.yml`) · registry vacuous-pass = dedup 등 테스트 정상(특정 vacuous 테스트 식별 불가) · telegram 경계 = `test_callback_data_within_64_bytes_all_commands` 64-byte 경계 테스트 기존재. 자율 판단 보고(정책 3).
+
+**검증**: TDD +13(단위 5027→5040·전체 5194). pylint 10.00·flake8 신규 E501 0. Codex mutual OK. [[project-deep-audit-2026-06-23]]
 
 ## 감사 보안 게이트 fail-open 봉인 3건 (auth fail-closed, static crash, retry sha-bound, 2026-06-23)
 

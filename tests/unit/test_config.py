@@ -50,6 +50,21 @@ def test_db_force_ipv4_default_false(monkeypatch):
     assert s.db_force_ipv4 is False
 
 
+def test_claude_review_max_tokens_default_8192(monkeypatch):
+    # 🔴 감사 단일출처: AI 리뷰 max_tokens 기본값은 8192 여야 한다 (#931 — 1500 절단 parse_error
+    # 만성 실패 근본 수정). 이 기본값이 낮아지면 한국어 JSON 응답 절단으로 회귀하므로 가드.
+    # Audit single-source: AI review max_tokens default must be 8192 (#931 root fix for chronic
+    # 1500-truncation parse_error). Lowering it regresses Korean JSON truncation — guard it.
+    s = _reload_settings(monkeypatch)
+    assert s.claude_review_max_tokens == 8192
+
+
+def test_claude_review_max_tokens_env_override(monkeypatch):
+    # env 로 재정의 가능 + ge=1 제약 (config.py Field(default=8192, ge=1))
+    s = _reload_settings(monkeypatch, {"CLAUDE_REVIEW_MAX_TOKENS": "4096"})
+    assert s.claude_review_max_tokens == 4096
+
+
 def test_db_pool_size_default_5(monkeypatch):
     # db_pool_size 필드는 기본값이 5여야 한다
     s = _reload_settings(monkeypatch)
