@@ -11,10 +11,9 @@ os.environ.setdefault("API_KEY", "")
 
 import logging
 import socket
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import httpx
-import pytest
 
 from src.notifier._http import validate_external_url, build_safe_client
 

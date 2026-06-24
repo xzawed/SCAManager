@@ -6,13 +6,11 @@ import pytest
 from src.analyzer.io.static import (
     analyze_file,
     StaticAnalysisResult,
-    AnalysisIssue,
     _run_pylint,
     _run_flake8,
     _run_bandit,
     _is_test_file,
 )
-from src.analyzer.io.tools.python import _PylintAnalyzer, _Flake8Analyzer
 
 CLEAN_CODE = """\
 def add(a: int, b: int) -> int:

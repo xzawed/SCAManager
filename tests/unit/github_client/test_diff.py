@@ -1,5 +1,5 @@
 from unittest.mock import MagicMock, patch
-from src.github_client.diff import get_pr_files, get_push_files, ChangedFile
+from src.github_client.diff import get_pr_files, get_push_files
 from src.constants import HTTP_CLIENT_TIMEOUT
 
 

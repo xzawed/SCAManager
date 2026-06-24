@@ -9,10 +9,9 @@ os.environ.setdefault("GITHUB_TOKEN", "ghp_test")
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "123:ABC")
 os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
-import pytest
 
 from src.github_client.repos import commit_scamanager_files
 

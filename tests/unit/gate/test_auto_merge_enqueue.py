@@ -80,13 +80,13 @@ async def test_run_auto_merge_enqueues_when_ci_running():
          patch("src.gate.engine.SessionLocal", _mock_session_local(mock_db)), \
          patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
-         patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main") as mock_base_ref, \
+         patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main"), \
          patch("src.gate.engine.get_required_check_contexts", new_callable=AsyncMock) as mock_required, \
          patch("src.gate.engine.get_ci_status", new_callable=AsyncMock) as mock_ci, \
          patch("src.gate.engine.merge_retry_repo") as mock_repo, \
          patch("src.gate.engine._notify_merge_failure", new_callable=AsyncMock) as mock_fail_notify, \
          patch("src.gate.engine._notify_merge_deferred", new_callable=AsyncMock) as mock_deferred_notify, \
-         patch("src.gate.engine.log_merge_attempt") as mock_log:
+         patch("src.gate.engine.log_merge_attempt"):
 
         mock_settings.merge_retry_enabled = True
         mock_settings.merge_retry_max_attempts = 30
@@ -133,13 +133,13 @@ async def test_run_auto_merge_terminal_when_ci_failed():
          patch("src.gate.engine.SessionLocal", _mock_session_local(mock_db)), \
          patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
-         patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main") as mock_base_ref, \
+         patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main"), \
          patch("src.gate.engine.get_required_check_contexts", new_callable=AsyncMock) as mock_required, \
          patch("src.gate.engine.get_ci_status", new_callable=AsyncMock) as mock_ci, \
          patch("src.gate.engine.merge_retry_repo") as mock_repo, \
          patch("src.gate.engine._notify_merge_failure", new_callable=AsyncMock) as mock_fail_notify, \
          patch("src.gate.engine._notify_merge_deferred", new_callable=AsyncMock) as mock_deferred_notify, \
-         patch("src.gate.engine.log_merge_attempt") as mock_log:
+         patch("src.gate.engine.log_merge_attempt"):
 
         mock_settings.merge_retry_enabled = True
         mock_settings.merge_retry_max_attempts = 30
@@ -182,13 +182,13 @@ async def test_run_auto_merge_success_no_enqueue():
          patch("src.gate.engine.SessionLocal", _mock_session_local(mock_db)), \
          patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
-         patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main") as mock_base_ref, \
-         patch("src.gate.engine.get_required_check_contexts", new_callable=AsyncMock) as mock_required, \
-         patch("src.gate.engine.get_ci_status", new_callable=AsyncMock) as mock_ci, \
+         patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main"), \
+         patch("src.gate.engine.get_required_check_contexts", new_callable=AsyncMock), \
+         patch("src.gate.engine.get_ci_status", new_callable=AsyncMock), \
          patch("src.gate.engine.merge_retry_repo") as mock_repo, \
          patch("src.gate.engine._notify_merge_failure", new_callable=AsyncMock) as mock_fail_notify, \
          patch("src.gate.engine._notify_merge_deferred", new_callable=AsyncMock) as mock_deferred_notify, \
-         patch("src.gate.engine.log_merge_attempt") as mock_log:
+         patch("src.gate.engine.log_merge_attempt"):
 
         mock_settings.merge_retry_enabled = True
         mock_settings.telegram_chat_id = "-100123"
@@ -222,11 +222,11 @@ async def test_run_auto_merge_terminal_on_dirty_conflict():
          patch("src.gate.engine.SessionLocal", _mock_session_local(mock_db)), \
          patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
-         patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main") as mock_base_ref, \
+         patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main"), \
          patch("src.gate.engine.merge_retry_repo") as mock_repo, \
          patch("src.gate.engine._notify_merge_failure", new_callable=AsyncMock) as mock_fail_notify, \
          patch("src.gate.engine._notify_merge_deferred", new_callable=AsyncMock) as mock_deferred_notify, \
-         patch("src.gate.engine.log_merge_attempt") as mock_log:
+         patch("src.gate.engine.log_merge_attempt"):
 
         mock_settings.merge_retry_enabled = True
         mock_settings.merge_retry_max_attempts = 30
@@ -265,13 +265,13 @@ async def test_run_auto_merge_deferred_no_notify_on_bump():
          patch("src.gate.engine.SessionLocal", _mock_session_local(mock_db)), \
          patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
-         patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main") as mock_base_ref, \
+         patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main"), \
          patch("src.gate.engine.get_required_check_contexts", new_callable=AsyncMock) as mock_required, \
          patch("src.gate.engine.get_ci_status", new_callable=AsyncMock) as mock_ci, \
          patch("src.gate.engine.merge_retry_repo") as mock_repo, \
          patch("src.gate.engine._notify_merge_failure", new_callable=AsyncMock) as mock_fail_notify, \
          patch("src.gate.engine._notify_merge_deferred", new_callable=AsyncMock) as mock_deferred_notify, \
-         patch("src.gate.engine.log_merge_attempt") as mock_log:
+         patch("src.gate.engine.log_merge_attempt"):
 
         mock_settings.merge_retry_enabled = True
         mock_settings.merge_retry_max_attempts = 30
@@ -397,13 +397,13 @@ async def test_run_auto_merge_enqueue_when_ci_status_unknown():
          patch("src.gate.engine.SessionLocal", _mock_session_local(mock_db)), \
          patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
-         patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main") as mock_base_ref, \
+         patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main"), \
          patch("src.gate.engine.get_required_check_contexts", new_callable=AsyncMock) as mock_required, \
          patch("src.gate.engine.get_ci_status", new_callable=AsyncMock) as mock_ci, \
          patch("src.gate.engine.merge_retry_repo") as mock_repo, \
          patch("src.gate.engine._notify_merge_failure", new_callable=AsyncMock) as mock_fail_notify, \
          patch("src.gate.engine._notify_merge_deferred", new_callable=AsyncMock) as mock_deferred_notify, \
-         patch("src.gate.engine.log_merge_attempt") as mock_log:
+         patch("src.gate.engine.log_merge_attempt"):
 
         mock_settings.merge_retry_enabled = True
         mock_settings.telegram_chat_id = "-100123"
@@ -444,7 +444,7 @@ async def test_run_auto_merge_no_analysis_id_skips_enqueue():
          patch("src.gate.engine.SessionLocal", _mock_session_local(mock_db)), \
          patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
-         patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main") as mock_base_ref, \
+         patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main"), \
          patch("src.gate.engine.get_required_check_contexts", new_callable=AsyncMock) as mock_required, \
          patch("src.gate.engine.get_ci_status", new_callable=AsyncMock) as mock_ci, \
          patch("src.gate.engine.merge_retry_repo") as mock_repo, \

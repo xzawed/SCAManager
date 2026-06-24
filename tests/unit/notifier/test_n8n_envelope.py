@@ -99,7 +99,7 @@ async def test_notify_n8n_payload_has_source_scamanager():
 
 async def test_notify_n8n_payload_has_delivered_at_iso8601():
     # notify_n8n() 전송 payload 최상위에 delivered_at 필드가 ISO8601 UTC 형식으로 있어야 한다
-    from datetime import datetime, timezone
+    from datetime import datetime
     mock_client = _mock_client()
     with patch("src.notifier.n8n.validate_external_url", return_value=True), \
          patch("src.notifier.n8n.build_safe_client", return_value=mock_client):

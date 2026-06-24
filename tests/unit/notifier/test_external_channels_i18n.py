@@ -12,7 +12,7 @@ Phase 3 PR-10 regression guards — Discord + Slack + Email i18n + RFC 2047 base
 from __future__ import annotations
 
 from email.header import Header, decode_header
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from src.notifier.discord import _build_embed
 from src.notifier.email import _build_html_body

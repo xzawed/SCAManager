@@ -13,7 +13,7 @@ from sqlalchemy.orm import sessionmaker
 
 from src.database import Base
 from src.models.repo_config import RepoConfig
-from src.models.repository import Repository
+from src.models.repository import Repository  # noqa: F401
 from src.repositories import repo_config_repo
 
 

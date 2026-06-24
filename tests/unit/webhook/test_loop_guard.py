@@ -5,7 +5,6 @@ TDD Red phase — tests for src/webhook/loop_guard.py.
 All tests must fail with ImportError because the implementation file does not exist yet.
 """
 
-import time
 from unittest.mock import patch
 
 from src.webhook.loop_guard import (

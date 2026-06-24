@@ -11,7 +11,6 @@ TDD Red Phase: DB Failover 기능 테스트.
 실제 DB 연결 없이 mock으로만 처리한다.
 """
 import importlib
-import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -66,9 +65,7 @@ class TestSingleEngineNoFallback:
     def test_no_probe_thread_when_no_fallback_url(self, monkeypatch):
         # Fallback URL 없으면 백그라운드 probe 스레드가 생성되지 않아야 한다
         db_mod = _reload_db_module(monkeypatch, fallback_url="")
-        daemon_before = {t.ident for t in threading.enumerate() if t.daemon}
         factory = db_mod.FailoverSessionFactory(db_mod.engine, fallback_url="")
-        daemon_after = {t.ident for t in threading.enumerate() if t.daemon}
         # probe 스레드가 추가되지 않았는지 확인 (생성 전후 daemon 스레드 수 변화 없음)
         # Verify no probe thread was added (daemon thread count must not change before/after creation).
         assert factory._probe_thread is None
@@ -179,7 +176,7 @@ class TestActivePrimaryByDefault:
         # Fallback URL이 있으면 probe 스레드가 생성되어야 한다 (daemon=True)
         db_mod = _reload_db_module(monkeypatch, fallback_url="sqlite:///:memory:")
         with patch.object(db_mod.FailoverSessionFactory, "_start_probe_thread") as mock_start:
-            factory = db_mod.FailoverSessionFactory(
+            db_mod.FailoverSessionFactory(
                 db_mod.engine,
                 fallback_url="sqlite:///:memory:",
             )

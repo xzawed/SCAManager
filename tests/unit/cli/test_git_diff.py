@@ -4,7 +4,6 @@ import subprocess
 import pytest
 
 from src.cli.git_diff import (
-    ChangedFile,
     GitError,
     get_diff_files,
     get_commit_message,

@@ -19,7 +19,7 @@ os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 os.environ.setdefault("ANTHROPIC_API_KEY", "")
 os.environ.setdefault("API_KEY", "")
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from src.api.auth import require_api_key

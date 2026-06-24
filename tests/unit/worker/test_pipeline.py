@@ -359,7 +359,7 @@ async def test_pipeline_skips_gate_for_push(mock_deps):
 @pytest.mark.asyncio
 async def test_pipeline_uses_owner_github_token():
     """리포 owner의 github_access_token이 있으면 settings.github_token 대신 사용한다."""
-    from unittest.mock import AsyncMock, MagicMock, patch
+    from unittest.mock import MagicMock, patch
     from src.models.user import User
     from src.models.repository import Repository
 
@@ -398,7 +398,7 @@ async def test_pipeline_uses_owner_github_token():
 @pytest.mark.asyncio
 async def test_pipeline_falls_back_to_settings_token_when_no_owner():
     """owner나 github_access_token이 없으면 settings.github_token을 사용한다."""
-    from unittest.mock import AsyncMock, MagicMock, patch
+    from unittest.mock import MagicMock, patch
     from src.models.repository import Repository
 
     repo = MagicMock(spec=Repository)

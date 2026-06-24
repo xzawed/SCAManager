@@ -1,5 +1,5 @@
 """Tests for src.cli.__main__ — CLI entry point orchestration."""
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 import pytest
 
 from src.cli.git_diff import ChangedFile

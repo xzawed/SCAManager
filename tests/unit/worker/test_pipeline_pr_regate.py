@@ -13,7 +13,7 @@ run_analysis_pipeline이 gate 재실행(re-gate)을 올바르게 수행하는지
     → pr_number 업데이트 + run_gate_check 1회 호출 + 알림 dispatcher 미호출
 """
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -263,7 +263,7 @@ async def test_scenario_c_same_sha_same_pr_number_skips_gate(
         patch("src.worker.pipeline.review_code", new_callable=AsyncMock, return_value=mock_ai_result),
         patch("src.worker.pipeline.calculate_score", return_value=mock_score_result),
         patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock) as mock_gate,
-        patch("src.worker.pipeline.build_notification_tasks", return_value=([], [])) as mock_notify,
+        patch("src.worker.pipeline.build_notification_tasks", return_value=([], [])),
         patch("src.worker.pipeline.settings") as mock_settings,
         patch("src.worker.pipeline._run_static_analysis",
               new_callable=AsyncMock, return_value=[]),
