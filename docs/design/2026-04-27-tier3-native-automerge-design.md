@@ -1,7 +1,7 @@
 # Tier 3 — GitHub Native Auto-Merge 통합 설계
 
 > 작성일: 2026-04-27
-> 상태: **계획안 (Draft) — 사용자 승인 후 구현 PR 진행**
+> 상태: **구현 완료 — PR-A #103 + PR-B1 #114 + PR-B2 #115 머지** · PR-B3(`merge_retry_service` 폐기 평가, ~600줄 감소)는 7모듈 현행 사용 중이라 미수행 — 별도 결정 대기
 > 선행 의존: PR #100 (Loop Guard 화이트리스트 봇 한정) 머지 완료
 
 ---
@@ -251,4 +251,3 @@ ORM 변경:
 - 선행 PR: #93 (BPR 미설정 큐잉), #97 (BPR base ref 동적), #100 (Loop Guard 봇 한정)
 
 > **Audit roundtrip test 2** (2026-04-29) — 자동 처리 일관성 검증.
-
