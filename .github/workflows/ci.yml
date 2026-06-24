@@ -49,6 +49,44 @@ jobs:
           head: ${{ github.sha }}
           extra_args: --only-verified
 
+  # PR 변경 test 파일 dead-symbol 차단 — 신규 미사용 import(F401)·변수(F841)가 main full-scan
+  # CodeQL 에 사후 포착돼 별도 fix PR(#516/#517/#520/#521/#522)을 반복 유발한 cascade 근본 차단(회고 C1, A2: PR diff 한정).
+  # Block dead imports/vars in PR-changed test files — newly introduced ones get caught post-merge by
+  # the main full-scan CodeQL, causing recurring self-inflicted fix PRs (retro C1, A2 diff-scoped).
+  lint-changed-tests:
+    name: Lint changed test files (F401/F841 — C1)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history for diff)
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install flake8
+        # 버전 고정(requirements.txt 와 동일) + wheel-only — 재현성 + setup-script 실행 차단.
+        # Pinned (matches requirements.txt) + wheel-only — reproducible + blocks setup-script execution.
+        run: "pip install --only-binary=:all: flake8==7.3.0"
+
+      - name: Lint PR-changed tests/ for dead symbols (F401/F841)
+        # 🔴 --isolated 필수 — setup.cfg per-file-ignore(tests/*:F401,F841)를 우회. 없으면 검사 무력화(false-pass).
+        # PR 변경 test 파일만 검사 — 기존 legacy 위반 무관, 신규 도입만 차단. 변경 없으면 통과.
+        # --isolated bypasses the setup.cfg per-file-ignore (else it false-passes). PR-changed test files only.
+        run: |
+          base_sha="${{ github.event.pull_request.base.sha }}"
+          changed=$(git diff --name-only --diff-filter=ACMR "$base_sha" HEAD -- 'tests/' | grep -E '\.py$' || true)
+          if [ -z "$changed" ]; then
+            echo "변경된 test 파일 없음 — skip / no changed test files"
+            exit 0
+          fi
+          echo "검사 대상 / checking:"; echo "$changed"
+          python -m flake8 --isolated --select=F401,F841 $changed
+
   test-and-analyze:
     name: pytest + Codecov + SonarCloud
     runs-on: ubuntu-latest
