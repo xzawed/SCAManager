@@ -280,6 +280,26 @@ try {
   log(`completeness 라운드 실패 — best-effort 건너뜀 (verified ${verified.length}건 보존): ${e?.message ?? e}`)
 }
 
+// ── coverage<1.0 보강: UNVERIFIED 만 1회 bounded 재검증 (C10-d 반자동→자동) ──
+// 고동시성 StructuredOutput flake 로 verdict 미수신된 소수만 추가 1라운드 — 토큰 비용 최소(UNVERIFIED 한정).
+// One bounded re-verify pass over only the UNVERIFIED findings to raise verdict_coverage toward 1.0
+// (C10-d). Low cost — re-runs just the few StructuredOutput-flake misses, not the whole set.
+const unresolved = verified.filter((v) => v.verdict === 'UNVERIFIED')
+if (unresolved.length) {
+  log(`UNVERIFIED ${unresolved.length}건 → coverage 보강 1회 bounded 재검증`)
+  const reResolved = new Map(
+    (await verifyAll(unresolved, context))
+      .filter((v) => v.verdict !== 'UNVERIFIED')
+      .map((v) => [key(v), v]),
+  )
+  if (reResolved.size) {
+    verified.forEach((v, i) => {
+      if (v.verdict === 'UNVERIFIED' && reResolved.has(key(v))) verified[i] = reResolved.get(key(v))
+    })
+    log(`재검증으로 ${reResolved.size}건 verdict 해소 (coverage ↑)`)
+  }
+}
+
 // ── Report (구조화 데이터 반환 — 리포트 파일 작성은 호출자/스킬 책임) ──
 // Report (returns structured data — writing the report file is the caller/skill's job)
 phase('Report')

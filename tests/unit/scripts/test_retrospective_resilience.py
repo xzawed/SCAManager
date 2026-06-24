@@ -79,3 +79,26 @@ def test_resilience_guard_rejects_comment_only_try():
         "phase('Report')\n"
     )
     assert not _completeness_is_resilient(_strip_comments(fake))
+
+
+# --- coverage<1.0 보강: UNVERIFIED 1회 bounded 재검증 (C10-d) ---
+
+def _has_coverage_boost(code: str) -> bool:
+    """coverage<1.0 시 UNVERIFIED 만 1회 bounded 재검증하는가 (C10-d)."""
+    return "verified.filter" in code and "verifyAll(unresolved" in code
+
+
+def test_coverage_boost_reverifies_unverified():
+    """UNVERIFIED 만 1회 bounded 재검증으로 verdict_coverage 보강 (C10-d, 실코드 기준)."""
+    assert _has_coverage_boost(_code()), \
+        "coverage 보강 재검증(UNVERIFIED 1회 bounded) 누락 (C10-d 회귀)"
+
+
+def test_coverage_boost_guard_rejects_comment_only():
+    """재검증 토큰이 주석에만 있으면 false-pass 하지 않음 (#936 봉인)."""
+    fake = (
+        "// const unresolved = verified.filter((v) => v.verdict === 'UNVERIFIED')\n"
+        "// verifyAll(unresolved, context)\n"
+        "phase('Report')\n"
+    )
+    assert not _has_coverage_boost(_strip_comments(fake))
