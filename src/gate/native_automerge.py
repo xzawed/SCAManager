@@ -10,16 +10,20 @@ the existing synchronous `merge_pr()`.
 
 운영 상태 (R13 평가 결정, 2026-06-24 — 운영 DB + GitHub API 실측):
 Operational status (R13 evaluation, 2026-06-24 — verified against prod DB + GitHub API):
-  - 하이브리드 공존이 최종 설계 — native enable(primary) + merge_pr 폴백 + retry 큐(CI-pending fallback).
-    Hybrid coexistence is the final design — native enable (primary) + merge_pr fallback + retry queue (CI-pending fallback).
-  - 🔴 native 작동 = GitHub 리포 "Allow auto-merge" ON 필수 — OFF 시 enable 이 422 → 폴백(전량 legacy).
-    🔴 native works only when the repo's GitHub "Allow auto-merge" = ON; when OFF, enable 422s → fallback (all legacy).
-    2026-04~06 전 리포 OFF 라 native enable 성공 0회였음 → 2026-06-24 allow_auto_merge ON 시작(SCAManager canary).
-    All repos were OFF so native enable never succeeded → allow_auto_merge ON from 2026-06-24 (SCAManager canary).
-  - `merge_retry_service` 폐기 보류(사용자 결정) — native 정착 전엔 retry 큐가 유일 작동 머지 경로.
-    merge_retry_service deprecation is on hold (user decision) — until native settles, the retry queue is the only working merge path.
-    native 정착 후 retry 큐 = 영구 fallback 유지(폐기는 선택사항).
-    After native settles, the retry queue stays as a permanent fallback (deprecation optional).
+  - 🔴 retry 큐(merge_retry_service)가 운영 PRIMARY 머지 메커니즘 — native enable 은 매번 시도되나
+    SCAManager 에선 성공 불가(전체 이력 0회). 따라서 본 native 경로는 사실상 항상 REST/retry 로 폴백.
+    🔴 The retry queue is the production PRIMARY merge path — native enable is attempted every time but
+    never succeeds for SCAManager (0 in all history); this native path effectively always falls back.
+  - native enable 은 PR 이 required status checks 로 BLOCKED 일 때만 가능. SCAManager 는 branch protection
+    부재 → PR 이 항상 UNSTABLE → enable 이 "unstable status"(UNPROCESSABLE) 로 실패. (allow_auto_merge 는
+    필요조건일 뿐 충분조건 아님 — 2026-06-24 canary 로 ON 했으나 여전히 실패 확인 후 원복.)
+    native enable requires the PR to be BLOCKED by required status checks; SCAManager has no branch
+    protection so PRs are always UNSTABLE → enable fails with "unstable status". (allow_auto_merge is
+    necessary but not sufficient — 2026-06-24 canary ON still failed, reverted.)
+  - 사용자 결정(2026-06-24): native 미추구 — required checks 추가 시 수동 머지 포함 전 머지가 차단돼
+    점수 기반 워크플로우와 부정합. **`merge_retry_service` 폐기 X (영구 primary)**, 938 머지 실적.
+    User decision (2026-06-24): do not pursue native — adding required checks would gate all merges
+    (incl. manual), mismatching the score-based model. merge_retry_service is NOT deprecated (permanent primary).
   - **MergeAttempt 로깅은 호출자(engine.py) 책임** — 본 모듈은 결과 튜플만 반환,
     `merge_pr()` 와 동일한 시그니처/의미. 호출자가 ok/reason 으로 분기 + 로깅.
 

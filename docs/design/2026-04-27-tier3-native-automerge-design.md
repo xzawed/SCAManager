@@ -176,12 +176,14 @@ ORM 변경:
 
 ### PR-B: 1주일 dogfooding 검증 후 큐 폐기 (~600 줄 감소)
 
-> 🔴 **R13 평가 (2026-06-24) — 보류 결정**: 운영 DB 실측 결과 native enable 성공 **0회**(전 리포 GitHub
-> "Allow auto-merge" OFF → 422 → 전량 legacy/REST). retry 큐가 fallback 이 아닌 **유일 작동 머지 경로(primary)**
-> 였으므로 즉시 폐기 = auto-merge 중단 위험. **결정**: native 운영화(`allow_auto_merge` 리포별 ON — 2026-06-24
-> SCAManager canary 시작, 검증 후 전 리포 롤아웃) 선행 → native 정착 후 retry 큐 = **영구 fallback 유지**
-> (폐기 선택사항). §1.3 의 "merge_retry 폐기" 목표는 **"하이브리드 공존"으로 재해석**. 즉 본 PR-B 는 PR-C
-> ("Allow auto-merge" 활성화)를 **선행 조건**으로 흡수.
+> 🔴 **R13 평가 (2026-06-24) — 폐기 철회, retry 큐 = 영구 primary**: 운영 DB + GitHub API 실측 = native
+> enable 성공 **0회**(전체 이력). 근본 2겹: (1) 전 리포 "Allow auto-merge" OFF, (2) **branch protection 부재로
+> PR 이 항상 UNSTABLE** → enable 이 `"unstable status"`(UNPROCESSABLE)로 실패 — native 는 PR 이 required status
+> checks 로 **BLOCKED** 일 때만 enable 가능. `allow_auto_merge` ON(2026-06-24 SCAManager canary)만으론 부족
+> 확인 후 원복. **아키텍처 부정합**: native=GitHub 체크 기반 / SCAManager=자체 점수 기반 — required checks 추가
+> 시 수동 머지 포함 전 머지가 차단돼 워크플로우 disruption. **사용자 결정(2026-06-24)**: native 미추구 — retry
+> 큐가 운영 유일 작동 머지 경로(938 머지)이자 **영구 primary**. 본 PR-B(폐기)는 **실행 안 함**, §1.3 "merge_retry
+> 폐기" 목표 **철회**(점수 기반 retry 큐 = SCAManager 최종 머지 메커니즘).
 
 - `merge_retry_service.py` 및 관련 모듈 삭제
 - 1분 cron 엔드포인트 제거
