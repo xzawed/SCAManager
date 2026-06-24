@@ -8,9 +8,18 @@ Try GitHub `enablePullRequestAutoMerge` first; on conditions like
 auto-merge-disabled-in-repo, permission denied, or force-push, fall back to
 the existing synchronous `merge_pr()`.
 
-설계 의도 (Tier 3 PR-A):
-  - PR-A 단계는 폴백 + Issue 생성 양쪽 유지 — 기존 동작과 호환 (gentle migration)
-  - PR-B 에서 1주일 검증 후 폴백 제거 + `merge_retry_service` 폐기 평가
+운영 상태 (R13 평가 결정, 2026-06-24 — 운영 DB + GitHub API 실측):
+Operational status (R13 evaluation, 2026-06-24 — verified against prod DB + GitHub API):
+  - 하이브리드 공존이 최종 설계 — native enable(primary) + merge_pr 폴백 + retry 큐(CI-pending fallback).
+    Hybrid coexistence is the final design — native enable (primary) + merge_pr fallback + retry queue (CI-pending fallback).
+  - 🔴 native 작동 = GitHub 리포 "Allow auto-merge" ON 필수 — OFF 시 enable 이 422 → 폴백(전량 legacy).
+    🔴 native works only when the repo's GitHub "Allow auto-merge" = ON; when OFF, enable 422s → fallback (all legacy).
+    2026-04~06 전 리포 OFF 라 native enable 성공 0회였음 → 2026-06-24 allow_auto_merge ON 시작(SCAManager canary).
+    All repos were OFF so native enable never succeeded → allow_auto_merge ON from 2026-06-24 (SCAManager canary).
+  - `merge_retry_service` 폐기 보류(사용자 결정) — native 정착 전엔 retry 큐가 유일 작동 머지 경로.
+    merge_retry_service deprecation is on hold (user decision) — until native settles, the retry queue is the only working merge path.
+    native 정착 후 retry 큐 = 영구 fallback 유지(폐기는 선택사항).
+    After native settles, the retry queue stays as a permanent fallback (deprecation optional).
   - **MergeAttempt 로깅은 호출자(engine.py) 책임** — 본 모듈은 결과 튜플만 반환,
     `merge_pr()` 와 동일한 시그니처/의미. 호출자가 ok/reason 으로 분기 + 로깅.
 

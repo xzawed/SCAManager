@@ -62,3 +62,26 @@ def test_exempt_in_middle_preserves_block():
         "    # Retry on rate limit exceeded",
     ])
     assert ok
+
+
+# --- cp949 인코딩 크래시 회귀 가드 (Windows 한국어 .py 주석 커밋 차단 버그) ---
+# Regression guards for the cp949 crash (blocked committing Korean .py comments on Windows).
+
+def test_git_diff_subprocess_specifies_utf8():
+    """git diff subprocess 가 encoding='utf-8' 명시 — bare text=True 는 Windows cp949 로
+    디코딩해 한국어 UTF-8 diff 에서 UnicodeDecodeError 크래시(스테이지 한국어 .py 주석 커밋 불가)."""
+    import re
+    src = (_ROOT / "scripts" / "check_bilingual_comments.py").read_text(encoding="utf-8")
+    m = re.search(r"subprocess\.run\(.*?\)\.stdout", src, re.DOTALL)
+    assert m, "subprocess.run(...).stdout 호출 미발견"
+    call = m.group(0)
+    assert 'encoding="utf-8"' in call or "encoding='utf-8'" in call, \
+        "git diff subprocess 에 encoding='utf-8' 누락 (cp949 한국어 크래시 회귀)"
+
+
+def test_added_comment_lines_survives_none_stdout(monkeypatch):
+    """subprocess.stdout 가 None(디코드 실패 등)이어도 크래시 없이 [] 반환 (`or \"\"` 견고화)."""
+    class _R:
+        stdout = None
+    monkeypatch.setattr(mod.subprocess, "run", lambda *a, **k: _R())
+    assert mod._added_comment_lines(["x.py"]) == []

@@ -176,6 +176,13 @@ ORM 변경:
 
 ### PR-B: 1주일 dogfooding 검증 후 큐 폐기 (~600 줄 감소)
 
+> 🔴 **R13 평가 (2026-06-24) — 보류 결정**: 운영 DB 실측 결과 native enable 성공 **0회**(전 리포 GitHub
+> "Allow auto-merge" OFF → 422 → 전량 legacy/REST). retry 큐가 fallback 이 아닌 **유일 작동 머지 경로(primary)**
+> 였으므로 즉시 폐기 = auto-merge 중단 위험. **결정**: native 운영화(`allow_auto_merge` 리포별 ON — 2026-06-24
+> SCAManager canary 시작, 검증 후 전 리포 롤아웃) 선행 → native 정착 후 retry 큐 = **영구 fallback 유지**
+> (폐기 선택사항). §1.3 의 "merge_retry 폐기" 목표는 **"하이브리드 공존"으로 재해석**. 즉 본 PR-B 는 PR-C
+> ("Allow auto-merge" 활성화)를 **선행 조건**으로 흡수.
+
 - `merge_retry_service.py` 및 관련 모듈 삭제
 - 1분 cron 엔드포인트 제거
 - railway.toml cronJobs 정리
