@@ -144,7 +144,7 @@
 
 **검증**: TDD +7·단위 5078→**5085**·전체 5239. 🔴 **Codex 5라운드 메타테스트 봉인**: C1 가드 변조 저항성 결함 4건 연달아 적발(R1 job 스코프·R2 `$changed` 긍정단언·R3 주석 strip·R4 단독 인자) — 전부 (b) 단일 정답 버그 즉시 수정, R4(4회차)=정책 18 §3 escalation→사용자 승인 후 수정. 3 PR Codex mutual OK·전체 CI green(#979 가드 dogfood SUCCESS).
 
-**잔여**: ops only(RLS Phase4 선택검증·verifier 활성화) + 사용자 결정(R6 결함3/4·R7 JS 테스트 인프라·R13 tier3 PR-B3 폐기 평가·R8 telegram cmd — 권장 보류/현행·C1 legacy 76건). [[project-session-2026-06-24-backlog-c1]]
+**잔여**: ops only(RLS Phase4 선택검증·verifier 활성화) + 사용자 결정(R6 결함3/4·R7 JS 테스트 인프라·R13 tier3 PR-B3 폐기 평가·R8 telegram cmd — 권장 보류/현행). C1 legacy 76건은 #981 에서 정리 완료. [[project-session-2026-06-24-backlog-c1]]
 
 ## 회고 follow-up — retrospective.mjs dogfooding + 하드닝 (2026-06-23)
 
