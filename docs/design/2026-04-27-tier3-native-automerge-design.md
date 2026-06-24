@@ -142,6 +142,8 @@ GitHub 가 auto-merge 를 자동으로 OFF 하는 시나리오:
 
 ### 4.3 폐기 후보 (다음 PR 또는 같은 PR 후반부)
 
+> 🔴 **R13(2026-06-24) 철회 — 아래 폐기 후보는 미실행** (native 부정합 → retry 큐 = 영구 primary, §5 PR-B 참조). 아래 표·주석은 원안(참고 보존).
+
 | 파일 | 폐기 이유 |
 |------|-----------|
 | `src/services/merge_retry_service.py` | GitHub 네이티브가 동일 역할 수행 |
@@ -153,7 +155,7 @@ GitHub 가 auto-merge 를 자동으로 OFF 하는 시나리오:
 | `railway.toml` 의 1분 retry cron | 제거 |
 | **합계 ~600 줄 감소** | |
 
-> ⚠️ 폐기는 새 흐름이 production 에서 1주일 이상 안정 동작 검증 후 별도 cleanup PR.
+> ⚠️ ~~폐기는 새 흐름이 production 에서 1주일 이상 안정 동작 검증 후 별도 cleanup PR.~~ **(R13 철회 — 미실행)**
 
 ### 4.4 마이그레이션
 
@@ -161,7 +163,7 @@ ORM 변경:
 - `MergeAttempt.failure_reason` 에 새 태그 3개 추가 (CHECK constraint 없으면 마이그레이션 불필요, 단 ENUM 타입이면 Alembic op 필요 — 확인 필요)
 
 데이터:
-- 기존 `merge_retry_queue` 행은 cleanup PR 시점에 archive 또는 truncate
+- ~~기존 `merge_retry_queue` 행은 cleanup PR 시점에 archive 또는 truncate~~ (R13 철회)
 
 ---
 
