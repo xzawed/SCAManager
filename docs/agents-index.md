@@ -56,7 +56,7 @@
 
 ## CLAUDE.md Agent 작업 규칙과의 관계
 
-`CLAUDE.md`의 "Agent 작업 규칙" 섹션은 **언제 무엇을 써야 하는지** 규칙을 정의한다.  
+`CLAUDE.md`의 "Agent 작업 규칙" 섹션은 **언제 무엇을 써야 하는지** 규칙을 정의한다.
 이 파일은 **무엇이 있는지** 목록을 제공한다. 두 파일이 서로 보완 관계다.
 
 > **갱신 방법**: 새 에이전트·스킬 추가 시 이 파일과 CLAUDE.md "도구 사용 시점 요약" 표를 동기화한다.
@@ -67,7 +67,7 @@
 
 | 모듈 | 역할 |
 |------|------|
-| `src/services/merge_retry_service.py` | CI-aware Auto Merge 재시도 워커 (`process_pending_retries`) — **PR-B3(~2026-05-06) 폐기 평가 대상**: Tier 3 PR-A 의 native auto-merge enable 신뢰성이 정량 기준 충족 시 retry queue 단순화 가능. 평가 기준은 STATE.md 그룹 53 §잔여 후속 참조. |
+| `src/services/merge_retry_service.py` | CI-aware Auto Merge 재시도 워커 (`process_pending_retries`) — **운영 PRIMARY 머지 메커니즘** (R13 2026-06-24: 운영 DB 실측 native enable 0회·native auto-merge 부적합[branch protection 부재→PR UNSTABLE, 아키텍처 부정합] → 폐기 **철회**, retry 큐 영구 유지. 상세 `docs/design/2026-04-27-tier3-native-automerge-design.md` §5). |
 | `src/gate/retry_policy.py` | 재시도 정책 순수 함수 (`should_retry`, `compute_next_retry_at`, `is_expired`) |
 | `src/models/merge_retry.py` | MergeRetryQueue ORM (append-only claim 패턴) |
 
