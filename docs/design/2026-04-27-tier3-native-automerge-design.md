@@ -1,7 +1,7 @@
 # Tier 3 — GitHub Native Auto-Merge 통합 설계
 
 > 작성일: 2026-04-27
-> 상태: **구현 완료 — PR-A #103 + PR-B1 #114 + PR-B2 #115 머지** · PR-B3(`merge_retry_service` 폐기 평가, ~600줄 감소)는 7모듈 현행 사용 중이라 미수행 — 별도 결정 대기
+> 상태: **구현 완료 — PR-A #103 + PR-B1 #114 + PR-B2 #115 머지** · **PR-B3 폐기 철회 (R13 2026-06-24 — native 부정합[required checks 부재 → PR UNSTABLE]·retry 큐 = 영구 primary, §5 참조)**
 > 선행 의존: PR #100 (Loop Guard 화이트리스트 봇 한정) 머지 완료
 
 ---
@@ -41,8 +41,9 @@ SCAManager 는 PR 분석 후 점수가 `merge_threshold` 이상이면 직접 머
 ### 1.3 목표
 
 GitHub 네이티브 `enablePullRequestAutoMerge` GraphQL mutation 을 채택해:
-- 머지 대기/재시도/CI-aware 의 책임을 GitHub 에 위임
-- `merge_retry_service.py` 폐기 → 코드 ~600 줄 감소
+> 🔴 **R13(2026-06-24) 철회**: 아래 "머지 위임 + merge_retry 폐기" 목표는 native 부정합(required checks 부재 → PR UNSTABLE → enable 실패)으로 **철회**. retry 큐 = 영구 primary (§5 PR-B 참조).
+- ~~머지 대기/재시도/CI-aware 의 책임을 GitHub 에 위임~~ (철회)
+- ~~`merge_retry_service.py` 폐기 → 코드 ~600 줄 감소~~ (철회 — retry 큐 영구 유지)
 - `MergeAttempt` 관측 + `failure_reason` 태깅 + 실패 Issue 생성 (Phase F.3) 은 유지
 
 ---
@@ -141,6 +142,8 @@ GitHub 가 auto-merge 를 자동으로 OFF 하는 시나리오:
 
 ### 4.3 폐기 후보 (다음 PR 또는 같은 PR 후반부)
 
+> 🔴 **R13(2026-06-24) 철회 — 아래 폐기 후보는 미실행** (native 부정합 → retry 큐 = 영구 primary, §5 PR-B 참조). 아래 표·주석은 원안(참고 보존).
+
 | 파일 | 폐기 이유 |
 |------|-----------|
 | `src/services/merge_retry_service.py` | GitHub 네이티브가 동일 역할 수행 |
@@ -150,9 +153,9 @@ GitHub 가 auto-merge 를 자동으로 OFF 하는 시나리오:
 | `src/api/internal_cron.py` 의 retry 엔드포인트 | 동일 |
 | `tests/unit/services/test_merge_retry_service.py` 등 | 동일 |
 | `railway.toml` 의 1분 retry cron | 제거 |
-| **합계 ~600 줄 감소** | |
+| ~~**합계 ~600 줄 감소**~~ (R13 철회·미실행) | |
 
-> ⚠️ 폐기는 새 흐름이 production 에서 1주일 이상 안정 동작 검증 후 별도 cleanup PR.
+> ⚠️ ~~폐기는 새 흐름이 production 에서 1주일 이상 안정 동작 검증 후 별도 cleanup PR.~~ **(R13 철회 — 미실행)**
 
 ### 4.4 마이그레이션
 
@@ -160,7 +163,7 @@ ORM 변경:
 - `MergeAttempt.failure_reason` 에 새 태그 3개 추가 (CHECK constraint 없으면 마이그레이션 불필요, 단 ENUM 타입이면 Alembic op 필요 — 확인 필요)
 
 데이터:
-- 기존 `merge_retry_queue` 행은 cleanup PR 시점에 archive 또는 truncate
+- ~~기존 `merge_retry_queue` 행은 cleanup PR 시점에 archive 또는 truncate~~ (R13 철회)
 
 ---
 
@@ -176,10 +179,21 @@ ORM 변경:
 
 ### PR-B: 1주일 dogfooding 검증 후 큐 폐기 (~600 줄 감소)
 
-- `merge_retry_service.py` 및 관련 모듈 삭제
-- 1분 cron 엔드포인트 제거
-- railway.toml cronJobs 정리
-- `merge_retry_queue` 테이블 truncate (선택: drop 마이그레이션)
+> 🔴 **R13 평가 (2026-06-24) — 폐기 철회, retry 큐 = 영구 primary**: 운영 DB + GitHub API 실측 = native
+> enable 성공 **0회**(전체 이력). 근본 2겹: (1) 전 리포 "Allow auto-merge" OFF, (2) **branch protection 부재로
+> PR 이 항상 UNSTABLE** → enable 이 `"unstable status"`(UNPROCESSABLE)로 실패 — native 는 PR 이 required status
+> checks 로 **BLOCKED** 일 때만 enable 가능. `allow_auto_merge` ON(2026-06-24 SCAManager canary)만으론 부족
+> 확인 후 원복. **아키텍처 부정합**: native=GitHub 체크 기반 / SCAManager=자체 점수 기반 — required checks 추가
+> 시 수동 머지 포함 전 머지가 차단돼 워크플로우 disruption. **사용자 결정(2026-06-24)**: native 미추구 — retry
+> 큐가 운영 유일 작동 머지 경로(938 머지)이자 **영구 primary**. 본 PR-B(폐기)는 **실행 안 함**, §1.3 "merge_retry
+> 폐기" 목표 **철회**(점수 기반 retry 큐 = SCAManager 최종 머지 메커니즘).
+
+**↓ 아래는 원안 (R13 으로 미실행 — 참고 보존):**
+
+- ~~`merge_retry_service.py` 및 관련 모듈 삭제~~
+- ~~1분 cron 엔드포인트 제거~~
+- ~~railway.toml cronJobs 정리~~
+- ~~`merge_retry_queue` 테이블 truncate (선택: drop 마이그레이션)~~
 
 ### PR-C (선택): "Allow auto-merge" 자동 활성화 안내
 

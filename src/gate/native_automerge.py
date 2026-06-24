@@ -8,9 +8,22 @@ Try GitHub `enablePullRequestAutoMerge` first; on conditions like
 auto-merge-disabled-in-repo, permission denied, or force-push, fall back to
 the existing synchronous `merge_pr()`.
 
-설계 의도 (Tier 3 PR-A):
-  - PR-A 단계는 폴백 + Issue 생성 양쪽 유지 — 기존 동작과 호환 (gentle migration)
-  - PR-B 에서 1주일 검증 후 폴백 제거 + `merge_retry_service` 폐기 평가
+운영 상태 (R13 평가 결정, 2026-06-24 — 운영 DB + GitHub API 실측):
+Operational status (R13 evaluation, 2026-06-24 — verified against prod DB + GitHub API):
+  - 🔴 retry 큐(merge_retry_service)가 운영 PRIMARY 머지 메커니즘 — native enable 은 매번 시도되나
+    SCAManager 에선 성공 불가(전체 이력 0회). 따라서 본 native 경로는 사실상 항상 REST/retry 로 폴백.
+    🔴 The retry queue is the production PRIMARY merge path — native enable is attempted every time but
+    never succeeds for SCAManager (0 in all history); this native path effectively always falls back.
+  - native enable 은 PR 이 required status checks 로 BLOCKED 일 때만 가능. SCAManager 는 branch protection
+    부재 → PR 이 항상 UNSTABLE → enable 이 "unstable status"(UNPROCESSABLE) 로 실패. (allow_auto_merge 는
+    필요조건일 뿐 충분조건 아님 — 2026-06-24 canary 로 ON 했으나 여전히 실패 확인 후 원복.)
+    native enable requires the PR to be BLOCKED by required status checks; SCAManager has no branch
+    protection so PRs are always UNSTABLE → enable fails with "unstable status". (allow_auto_merge is
+    necessary but not sufficient — 2026-06-24 canary ON still failed, reverted.)
+  - 사용자 결정(2026-06-24): native 미추구 — required checks 추가 시 수동 머지 포함 전 머지가 차단돼
+    점수 기반 워크플로우와 부정합. **`merge_retry_service` 폐기 X (영구 primary)**, 938 머지 실적.
+    User decision (2026-06-24): do not pursue native — adding required checks would gate all merges
+    (incl. manual), mismatching the score-based model. merge_retry_service is NOT deprecated (permanent primary).
   - **MergeAttempt 로깅은 호출자(engine.py) 책임** — 본 모듈은 결과 튜플만 반환,
     `merge_pr()` 와 동일한 시그니처/의미. 호출자가 ok/reason 으로 분기 + 로깅.
 

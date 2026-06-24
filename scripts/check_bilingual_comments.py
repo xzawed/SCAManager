@@ -120,10 +120,14 @@ def _added_comment_lines(files: list[str]) -> list[str]:
         return []
     # staged diff에서 추가 라인만 수집
     # Collect only added lines from staged diff
+    # 🔴 encoding="utf-8" 명시 의무 — text=True 단독은 플랫폼 로케일(Windows cp949)로 디코딩해
+    # 한국어 UTF-8 diff 에서 UnicodeDecodeError 크래시 → stdout None. errors="replace" + `or ""` 로 견고화.
+    # encoding="utf-8" is mandatory — bare text=True decodes with the platform locale (Windows cp949)
+    # and crashes on Korean UTF-8 diffs. errors="replace" + `or ""` harden against decode/None.
     out = subprocess.run(  # nosec B603 B607
         ["git", "diff", "--cached", "--unified=0", "--", *files],
-        capture_output=True, text=True, check=False,
-    ).stdout
+        capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
+    ).stdout or ""
     added = []
     for ln in out.splitlines():
         # '+' 로 시작하되 '+++' (파일 헤더) 제외
