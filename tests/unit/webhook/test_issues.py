@@ -20,8 +20,7 @@ os.environ.setdefault("TELEGRAM_BOT_TOKEN", "123:ABC")
 os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 os.environ.setdefault("ANTHROPIC_API_KEY", "")
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 from src.main import app
 
@@ -99,7 +98,7 @@ def test_issues_event_with_valid_signature_returns_202():
          patch("src.webhook.providers.github.get_webhook_secret", return_value=SECRET), \
          patch("src.webhook.providers.github.SessionLocal", return_value=_mock_db()), \
          patch("src.webhook.providers.github.get_repo_config", return_value=repo_config), \
-         patch("src.webhook.providers.github.notify_n8n_issue") as mock_notify:
+         patch("src.webhook.providers.github.notify_n8n_issue"):
         mock_settings.github_webhook_secret = SECRET
         mock_settings.n8n_webhook_secret = ""
         resp = client.post(
@@ -142,7 +141,6 @@ def test_issues_event_registers_background_task_when_n8n_url_present():
             )
     assert resp.status_code == 202
     # notify_n8n_issue 관련 task가 등록되었는지 확인
-    from src.notifier.n8n import notify_n8n_issue
     task_funcs = [f.__name__ if hasattr(f, "__name__") else str(f) for f in registered_tasks]
     assert any("notify_n8n_issue" in str(f) or "issue" in str(f).lower() for f in registered_tasks), \
         f"notify_n8n_issue task가 등록되지 않음. 등록된 tasks: {task_funcs}"
@@ -175,7 +173,6 @@ def test_issues_event_ignored_when_no_n8n_webhook_url():
             )
     # 202여야 하고 notify_n8n_issue task는 등록되지 않아야 한다
     assert resp.status_code == 202
-    from src.notifier.n8n import notify_n8n_issue
     assert not any("notify_n8n_issue" in str(f) or (hasattr(f, "__name__") and f.__name__ == "notify_n8n_issue")
                    for f in registered_tasks), \
         "n8n_webhook_url 없는 리포에서 notify_n8n_issue가 등록됨"

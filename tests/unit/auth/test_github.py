@@ -573,8 +573,6 @@ def test_callback_clears_session_before_setting_user_id():
     """인증 완료 후 session.clear() 가 user_id 설정보다 먼저 호출되어야 한다.
     session.clear() must be called before session['user_id'] is set.
     """
-    from src.models.user import User  # noqa: PLC0415
-
     mock_token = {"access_token": "gho_token"}
     mock_user_info = MagicMock()
     mock_user_info.json.return_value = {

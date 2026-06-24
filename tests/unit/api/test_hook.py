@@ -10,7 +10,6 @@ os.environ.setdefault("GITHUB_CLIENT_ID", "test-github-client-id")
 os.environ.setdefault("GITHUB_CLIENT_SECRET", "test-github-client-secret")
 os.environ.setdefault("SESSION_SECRET", "test-session-secret-32-chars-long!")
 
-import pytest
 from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 from src.main import app

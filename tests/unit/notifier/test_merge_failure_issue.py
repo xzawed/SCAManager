@@ -1,5 +1,4 @@
 """tests/unit/notifier/test_merge_failure_issue.py"""
-import pytest
 import httpx
 from unittest.mock import AsyncMock, MagicMock, patch
 

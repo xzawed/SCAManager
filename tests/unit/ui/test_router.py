@@ -670,7 +670,7 @@ def test_add_repo_post_creates_repo_and_webhook():
 
 def test_add_repo_post_rejects_duplicate():
     """POST /repos/add는 이미 소유자가 있는 리포에 대해 /repos/add?error= 로 리다이렉트한다."""
-    from unittest.mock import AsyncMock, patch, MagicMock
+    from unittest.mock import patch, MagicMock
     from src.models.repository import Repository
 
     existing = MagicMock(spec=Repository)
@@ -1317,8 +1317,6 @@ def test_analysis_detail_trend_data_returned():
     - 각 항목에 id·score·label 키 포함
     - context에 trend_data 키가 존재
     """
-    from unittest.mock import call
-    import json
 
     mock_db = MagicMock()
 

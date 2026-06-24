@@ -489,7 +489,7 @@ class TestSemgrepRegistration:
 
     def test_double_import_does_not_duplicate_registry_entry(self):
         # 동일 모듈을 두 번 로드해도 REGISTRY에 "semgrep"이 중복 등록되지 않아야 한다
-        from src.analyzer.pure.registry import REGISTRY, register
+        from src.analyzer.pure.registry import REGISTRY
         import src.analyzer.io.tools.semgrep  # noqa: F401
         import importlib
         importlib.reload(src.analyzer.io.tools.semgrep)
@@ -512,7 +512,6 @@ class TestSemgrepAnalyzeFileIntegration:
     def test_semgrep_runs_for_python_file_when_installed(self):
         # semgrep 설치 환경에서 python 파일 분석 시 _SemgrepAnalyzer.run()이 호출된다
         from src.analyzer.io.static import analyze_file
-        from src.analyzer.pure.registry import REGISTRY
         import src.analyzer.io.tools.semgrep  # noqa: F401
 
         # semgrep이 "설치된" 것으로 가장하고, run()은 빈 리스트 반환
@@ -538,8 +537,6 @@ class TestSemgrepAnalyzeFileIntegration:
             run_called.append(ctx)
             return []
 
-        import src.analyzer.io.tools.semgrep
-        from src.analyzer.pure.registry import REGISTRY
 
         # REGISTRY에서 semgrep analyzer를 찾아 run을 교체
         with patch("shutil.which", return_value=None):

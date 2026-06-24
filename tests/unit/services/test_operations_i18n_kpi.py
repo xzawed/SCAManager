@@ -11,7 +11,6 @@ Phase 5 PR-17 regression guards — operations_service i18n KPI (language_distri
 """
 from __future__ import annotations
 
-from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy import create_engine

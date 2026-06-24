@@ -11,10 +11,8 @@ Phase 3 PR-9 regression guards — Telegram + telegram_commands i18n + 3-layer f
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
 
 from src.notifier._language import resolve_notification_language
 from src.notifier.telegram import _build_message

@@ -6,7 +6,6 @@ os.environ.setdefault("TELEGRAM_BOT_TOKEN", "123:ABC")
 os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 
 import json
-import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 from fastapi.testclient import TestClient
 from src.main import app

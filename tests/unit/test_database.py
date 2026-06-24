@@ -3,11 +3,9 @@
 src/database.py의 _build_connect_args() 함수와 engine pool 설정을 검증한다.
 _build_connect_args는 Task 2 구현 전까지 존재하지 않으므로 현재 테스트는 실패(Red)해야 한다.
 """
-import os
 import importlib
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-import pytest
 
 # conftest.py가 먼저 환경변수를 주입하므로 src import 전 추가 설정 불필요.
 # 단, 각 테스트에서 settings를 재구성할 때 monkeypatch로 제어한다.

@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from src.database import Base
 from src.models.analysis import Analysis
-from src.models.repo_config import RepoConfig
+from src.models.repo_config import RepoConfig  # noqa: F401
 from src.models.repository import Repository
 from src.models.user import User
 

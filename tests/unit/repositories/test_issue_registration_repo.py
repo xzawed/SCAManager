@@ -69,7 +69,6 @@ def test_update_state_changes_state_and_synced_at(db):
 
 
 def test_list_by_repo_returns_newest_first(db):
-    from datetime import timedelta
     # 순서 보장을 위해 created_at 명시
     # Explicitly set created_at to guarantee ordering
     older = issue_registration_repo.create(db, repo_id=1, analysis_id=1,

@@ -24,7 +24,7 @@ import hmac
 import json
 import pytest
 import httpx
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 
 from src.main import app

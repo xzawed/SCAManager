@@ -465,7 +465,7 @@ def test_claim_batch_uses_for_update_skip_locked_on_postgresql():
     """PostgreSQL dialect 일 때 WITH FOR UPDATE SKIP LOCKED 경로가 활성화된다.
     When dialect is 'postgresql', claim_batch() calls with_for_update(skip_locked=True).
     """
-    from unittest.mock import MagicMock, call  # noqa: PLC0415
+    from unittest.mock import MagicMock  # noqa: PLC0415
 
     # db.bind.dialect.name = 'postgresql' 로 mock
     # Mock db so that db.bind.dialect.name returns 'postgresql'.

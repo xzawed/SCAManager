@@ -116,7 +116,7 @@ async def test_get_analysis_issue_status_empty(db):
 @pytest.mark.asyncio
 async def test_get_analysis_issue_status_syncs_stale(db):
     from src.repositories import issue_registration_repo
-    _unused_rec = issue_registration_repo.create(
+    issue_registration_repo.create(
         db, analysis_id=1, repo_id=1, issue_type="ai_suggestion",
         issue_key="k1", github_issue_number=44,
     )
