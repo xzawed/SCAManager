@@ -145,6 +145,16 @@ scripts/
 │                                # Backfill repository user_id — migration helper script
 ├── check_memory_refs.py         # 메모리 참조 유효성 검사 — CLAUDE.md/active.md/history.md 슬러그 ↔ 실제 파일 비교 (사이클 101 #469)
 │                                # Memory reference validator — slug ↔ actual file cross-check
+├── check_docs_sync.py           # docs 수치 정합 — STATE.md 종합/추적셀 헤더 ↔ README/README.ko 배지 drift 차단 (repo-integrity pre-commit, #967/#968)
+│                                # docs count-sync — STATE totals/header ↔ README badges; blocks drift at pre-commit
+├── check_toc_anchors.py         # cycle-history TOC 앵커 정합 — 목차 `](#anchor)` 링크 ↔ 실제 헤딩 slug (GitHub slug 모사, #958)
+│                                # cycle-history TOC anchor checker — TOC links ↔ heading slugs
+├── check_env_vars_sync.py       # env-vars 싱크 — src/config.py Settings 필드 ↔ env-vars.md 등재 정합 (사이클 82/119 반복 적발 차단)
+│                                # env-vars sync — Settings fields ↔ env-vars.md entries (AST)
+├── check_config_5way_sync.py    # config 싱크 — RepoConfig ORM ↔ Data ↔ Update 3-레이어 필드 정합 (NULL 덮어쓰기 차단, api.md 5-way 규칙)
+│                                # config sync — 3-layer RepoConfig field parity via AST
+├── check_bilingual_comments.py  # 이중언어 주석 점검 — staged 신규 주석 한글-only 탐지 (CLAUDE.md 한+영 규칙 보조, pre-commit only)
+│                                # bilingual-comment checker — flag Korean-only added comment lines
 ├── capture_design_screenshots.py # 디자인 스크린샷 자동 캡처 — 12페이지 × 4테마 (Claude Design 브리프 패키지용, 사이클 131)
 │                                # Auto-capture design screenshots — 12 pages × 4 themes (Claude Design brief)
 ├── extract_design_tokens.py     # 디자인 토큰 추출 — tokens.css/themes.css → Claude Design 입력 JSON

@@ -2,7 +2,7 @@
 # Integrity Audit Workflow Design
 
 > **작성일**: 2026-06-05
-> **상태**: 설계 승인 완료 (브레인스토밍 산출물) → 구현 계획 대기
+> **상태**: 구현 완료 — `.claude/workflows/integrity-audit.mjs` + `docs/runbooks/integrity-audit.md` runbook + CLAUDE.md `/integrity-audit` 참조 (운영 사용 중)
 > **범위**: 다이나믹 워크플로우 적용 1단계 (개발/운영 프로세스 코드화) — 첫 워크플로우
 > **상위 목표**: Claude 기능 극대화를 위한 분석·프로세스 고도화. 2개 하위 프로젝트로 분해됨:
 >   1. **(본 문서)** 개발/운영 프로세스를 Workflow로 코드화·검증
