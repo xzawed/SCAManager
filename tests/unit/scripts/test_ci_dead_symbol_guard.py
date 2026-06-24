@@ -62,9 +62,11 @@ def test_lint_job_is_pr_diff_scoped():
     code = _lint_run_code()
     assert "github.event.pull_request.base.sha" in code, "lint job 이 PR base SHA diff 미사용 (변경 파일 스코프 아님)"
     assert "git diff" in code and "tests/" in code, "lint job 이 변경 파일 diff 미산출"
-    # 🔴 flake8 는 변경 파일 변수($changed)에 실행 — 리터럴 경로 full-scan 금지 (R2 긍정 단언).
-    assert re.search(r"--select=F401,F841\s+\$changed\b", code), \
-        "flake8 가 $changed(변경 파일)이 아닌 리터럴 경로를 스캔 — PR diff 한정이어야 함"
+    # 🔴 flake8 인자는 변경 파일 변수($changed) 단독이어야 함 — 뒤에 리터럴 경로(`$changed tests/`)
+    #    덧붙이기 = 전체 스캔 차단 (R4: $changed 가 마지막/유일 인자임을 `\s*$`(MULTILINE)로 강제).
+    #    flake8 arg must be the lone $changed — forbids appending a literal path that re-enables full-scan (Codex R4).
+    assert re.search(r"--select=F401,F841\s+\$changed\s*$", code, re.MULTILINE), \
+        "flake8 인자가 $changed(변경 파일) 단독이 아님 — 리터럴 경로 덧붙이기 = 전체 스캔 위험"
     # find 기반 전체 스캔 금지 (diff 우회 변조 차단 — R1 적발 케이스)
     assert "find tests" not in code, "find 기반 전체 스캔 금지 — git diff 변경 파일 한정이어야 함"
 
