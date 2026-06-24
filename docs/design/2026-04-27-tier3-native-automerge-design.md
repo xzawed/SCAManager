@@ -1,7 +1,7 @@
 # Tier 3 — GitHub Native Auto-Merge 통합 설계
 
 > 작성일: 2026-04-27
-> 상태: **구현 완료 — PR-A #103 + PR-B1 #114 + PR-B2 #115 머지** · PR-B3(`merge_retry_service` 폐기 평가, ~600줄 감소)는 7모듈 현행 사용 중이라 미수행 — 별도 결정 대기
+> 상태: **구현 완료 — PR-A #103 + PR-B1 #114 + PR-B2 #115 머지** · **PR-B3 폐기 철회 (R13 2026-06-24 — native 부정합[required checks 부재 → PR UNSTABLE]·retry 큐 = 영구 primary, §5 참조)**
 > 선행 의존: PR #100 (Loop Guard 화이트리스트 봇 한정) 머지 완료
 
 ---
@@ -41,8 +41,9 @@ SCAManager 는 PR 분석 후 점수가 `merge_threshold` 이상이면 직접 머
 ### 1.3 목표
 
 GitHub 네이티브 `enablePullRequestAutoMerge` GraphQL mutation 을 채택해:
-- 머지 대기/재시도/CI-aware 의 책임을 GitHub 에 위임
-- `merge_retry_service.py` 폐기 → 코드 ~600 줄 감소
+> 🔴 **R13(2026-06-24) 철회**: 아래 "머지 위임 + merge_retry 폐기" 목표는 native 부정합(required checks 부재 → PR UNSTABLE → enable 실패)으로 **철회**. retry 큐 = 영구 primary (§5 PR-B 참조).
+- ~~머지 대기/재시도/CI-aware 의 책임을 GitHub 에 위임~~ (철회)
+- ~~`merge_retry_service.py` 폐기 → 코드 ~600 줄 감소~~ (철회 — retry 큐 영구 유지)
 - `MergeAttempt` 관측 + `failure_reason` 태깅 + 실패 Issue 생성 (Phase F.3) 은 유지
 
 ---
@@ -185,10 +186,12 @@ ORM 변경:
 > 큐가 운영 유일 작동 머지 경로(938 머지)이자 **영구 primary**. 본 PR-B(폐기)는 **실행 안 함**, §1.3 "merge_retry
 > 폐기" 목표 **철회**(점수 기반 retry 큐 = SCAManager 최종 머지 메커니즘).
 
-- `merge_retry_service.py` 및 관련 모듈 삭제
-- 1분 cron 엔드포인트 제거
-- railway.toml cronJobs 정리
-- `merge_retry_queue` 테이블 truncate (선택: drop 마이그레이션)
+**↓ 아래는 원안 (R13 으로 미실행 — 참고 보존):**
+
+- ~~`merge_retry_service.py` 및 관련 모듈 삭제~~
+- ~~1분 cron 엔드포인트 제거~~
+- ~~railway.toml cronJobs 정리~~
+- ~~`merge_retry_queue` 테이블 truncate (선택: drop 마이그레이션)~~
 
 ### PR-C (선택): "Allow auto-merge" 자동 활성화 안내
 
