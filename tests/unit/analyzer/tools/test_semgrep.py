@@ -531,14 +531,6 @@ class TestSemgrepAnalyzeFileIntegration:
         # semgrep 미설치 환경에서는 _SemgrepAnalyzer가 is_enabled()=False → run() 호출 안 됨
         from src.analyzer.io.static import analyze_file
 
-        run_called = []
-
-        def fake_run(ctx):
-            run_called.append(ctx)
-            return []
-
-
-        # REGISTRY에서 semgrep analyzer를 찾아 run을 교체
         with patch("shutil.which", return_value=None):
             result = analyze_file("module.py", "x = 1\n")
 

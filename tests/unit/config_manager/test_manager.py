@@ -11,7 +11,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from src.database import Base
 from src.models.repo_config import RepoConfig
-from src.models.gate_decision import GateDecision  # noqa: F401
 from src.config_manager.manager import get_repo_config, upsert_repo_config, RepoConfigData
 
 

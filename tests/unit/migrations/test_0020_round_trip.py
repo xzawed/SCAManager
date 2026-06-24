@@ -17,7 +17,6 @@ import pytest
 from sqlalchemy import create_engine, inspect, text
 
 from src.database import Base
-import src.models.merge_retry  # noqa: F401  # ensure model is registered on Base.metadata
 
 
 def test_orm_creates_merge_retry_queue_table():
