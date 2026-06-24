@@ -138,7 +138,9 @@
 
 **#978 회고 C10/C11**: `retrospective.mjs` (C10) completeness/gap 라운드 **try/catch 격리**(best-effort) — 2026-06-23 회고가 API 500으로 gap 라운드를 통째 소실한 사고 재발 차단, 본체 회고·Report 보존 + confirmed 출력에 **evidence·citation_verified·adjusted_severity 환류**(보고서 추적성 복원, 이전엔 소실). (C11) `codex-verify.md` "자동화·훅 동작 단언=소스 grep 실측" 체크포인트 신설. TDD `test_retrospective_resilience.py` +4(try/catch + evidence 출력 + 주석 false-pass 봉인 합성 2). 결함 3(SEVERITY_ADJUST 스키마 if/then)·4(coverage<1.0 자동재시도)는 트레이드오프 동반 → 사용자 결정 백로그.
 
-**#979 회고 C1 (P1, 사용자 결정 A2)**: 자초 CodeQL cascade(tests/ dead-symbol pre-merge 무력 → main full-scan 사후 포착 → fix PR #516/#517/#520/#521/#522 5건 반복) 근본 차단. CI 신규 job `lint-changed-tests` = PR 변경 `tests/*.py` 만 `flake8 --isolated --select=F401,F841 $changed`. 🔴 **`--isolated` 필수**: `setup.cfg per-file-ignores=tests/*:F401,F841` 가 일반 `--select` 무력화(false-pass) 실증 → 초기 "0 위반" 오측, 실제 76건(A2 결정으로 legacy 미정리). TDD `test_ci_dead_symbol_guard.py` +3.
+**#979 회고 C1 (P1, 사용자 결정 A2)**: 자초 CodeQL cascade(tests/ dead-symbol pre-merge 무력 → main full-scan 사후 포착 → fix PR #516/#517/#520/#521/#522 5건 반복) 근본 차단. CI 신규 job `lint-changed-tests` = PR 변경 `tests/*.py` 만 `flake8 --isolated --select=F401,F841 $changed`. 🔴 **`--isolated` 필수**: `setup.cfg per-file-ignores=tests/*:F401,F841` 가 일반 `--select` 무력화(false-pass) 실증 → 초기 "0 위반" 오측, 실제 76건. TDD `test_ci_dead_symbol_guard.py` +3.
+
+**#981 C1 legacy dead-symbol 정리 (A2 가드 마찰 제거)**: #979 가드는 PR 에서 변경된 _파일 전체_ 를 flake8 검사하므로, legacy dead-symbol 이 있는 39파일 중 하나를 향후 수정하면 기존 위반으로 CI 가 실패(마찰). → 76건(F401 55 + F841 21) 정리로 tests/ 0 위반. load-bearing 4건(create_all ORM 등록 side-effect)은 `# noqa: F401` 보존 · side-effect 호출은 LHS 만 제거해 호출 보존. 단위 5085 불변(dead symbol 만 제거). Codex mutual OK · 가드 dogfood SUCCESS(39파일 변경 PR 에서 가드 통과).
 
 **검증**: TDD +7·단위 5078→**5085**·전체 5239. 🔴 **Codex 5라운드 메타테스트 봉인**: C1 가드 변조 저항성 결함 4건 연달아 적발(R1 job 스코프·R2 `$changed` 긍정단언·R3 주석 strip·R4 단독 인자) — 전부 (b) 단일 정답 버그 즉시 수정, R4(4회차)=정책 18 §3 escalation→사용자 승인 후 수정. 3 PR Codex mutual OK·전체 CI green(#979 가드 dogfood SUCCESS).
 
