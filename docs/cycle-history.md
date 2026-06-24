@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [잔여작업 — docs drift 정정 · 회고 C10/C11 · C1 CodeQL cascade 가드 (#977 설계헤더 3건 stale 정정 + scripts/ 5종 등재 · #978 retrospective.mjs try/catch 회복력 + evidence 출력 환류[C10] + codex-verify 소스-grep 체크포인트[C11] · #979 C1 PR-diff 한정 dead-symbol CI 가드[`--isolated` 필수 · per-file-ignore 무력화 실증] · Codex 5라운드 메타테스트 봉인, TDD +7 · 단위 5085 · 전체 5239, 2026-06-24)](#잔여작업--docs-drift-정정--회고-c10c11--c1-codeql-cascade-가드-2026-06-24)
 - [회고 follow-up — retrospective.mjs dogfooding + 하드닝 (/retrospective 첫 실전 verdict_coverage 1.0[69 전건]·confirmed 55, Option A: 회고 보고서 아카이브[P1 #39]·W2 `/2`→`/${DRY_THRESHOLD}` 정정·drift 가드 false-pass 봉인[#936]·retrospective runbook·spec 헤더 정정, TDD +1·단위 5078·전체 5232, 2026-06-23)](#회고-follow-up--retrospectivemjs-dogfooding--하드닝-2026-06-23)
 - [repo-automation PR-S — 정책 흐름 스킬 3종 (docs-sync · retrospective · codex-verify — STATE/cycle-history/README 동기화 가이드·정책 8 5+1 회고 진입점[retrospective.mjs]·정책 18 push 전 Codex mutual 흐름+다운 시 자체검증, CLAUDE.md /retrospective 참조 추가, 테스트 무변경·단위 5077, 2026-06-23)](#repo-automation-pr-s--정책-흐름-스킬-3종-docs-sync--retrospective--codex-verify-2026-06-23)
 - [repo-automation PR-W — 워크플로우 loop 단일출처화 + 회고 워크플로우 신규 (W1 sibling import 불가 실측[정적 SyntaxError·동적 `import()` not available]→정본 template+inline+drift 가드, W2 integrity-audit 명명 상수 파라미터화[행동 불변], W3 retrospective.mjs 5+1 loop-until-dry+cross-verify=finding 강제[13/8 한계 해소], CodeQL #522 dead import #973, TDD +4·단위 5077·전체 5231, 2026-06-23)](#repo-automation-pr-w--워크플로우-loop-단일출처화--회고-워크플로우-신규-2026-06-23)
@@ -128,6 +129,20 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 잔여작업 — docs drift 정정 · 회고 C10/C11 · C1 CodeQL cascade 가드 (2026-06-24)
+
+**날짜**: 2026-06-24 | **PR**: #977 / #978 / #979 (전부 머지) | **출처**: 사용자 "잔여작업 확인" → 4-투자자 감사(`wf_95bc1f45`, 코드 P0/P1 0) → "Claude 수행 가능 작업 우선 처리"
+
+**#977 docs drift 정정**: 전량 머지됐는데 "계획/대기"로 stale 한 설계 문서 상태 헤더 3건 정정 — tier3-native-automerge(`계획안 Draft`→완료 PR-A #103·B1 #114·B2 #115) · integrity-audit-workflow(`구현 계획 대기`→완료 .mjs+runbook) · claude-design-ui-redesign(`구현 계획 작성 대기`→완료 #625~#633+#638) + INDEX.md 동기화 + **architecture.md scripts/ 트리에 누락 체커 5종 등재**(check_docs_sync·check_toc_anchors·check_env_vars_sync·check_config_5way_sync·check_bilingual_comments — 6-step ⑥ 위반·회고 C8). docs-only 무증가.
+
+**#978 회고 C10/C11**: `retrospective.mjs` (C10) completeness/gap 라운드 **try/catch 격리**(best-effort) — 2026-06-23 회고가 API 500으로 gap 라운드를 통째 소실한 사고 재발 차단, 본체 회고·Report 보존 + confirmed 출력에 **evidence·citation_verified·adjusted_severity 환류**(보고서 추적성 복원, 이전엔 소실). (C11) `codex-verify.md` "자동화·훅 동작 단언=소스 grep 실측" 체크포인트 신설. TDD `test_retrospective_resilience.py` +4(try/catch + evidence 출력 + 주석 false-pass 봉인 합성 2). 결함 3(SEVERITY_ADJUST 스키마 if/then)·4(coverage<1.0 자동재시도)는 트레이드오프 동반 → 사용자 결정 백로그.
+
+**#979 회고 C1 (P1, 사용자 결정 A2)**: 자초 CodeQL cascade(tests/ dead-symbol pre-merge 무력 → main full-scan 사후 포착 → fix PR #516/#517/#520/#521/#522 5건 반복) 근본 차단. CI 신규 job `lint-changed-tests` = PR 변경 `tests/*.py` 만 `flake8 --isolated --select=F401,F841 $changed`. 🔴 **`--isolated` 필수**: `setup.cfg per-file-ignores=tests/*:F401,F841` 가 일반 `--select` 무력화(false-pass) 실증 → 초기 "0 위반" 오측, 실제 76건(A2 결정으로 legacy 미정리). TDD `test_ci_dead_symbol_guard.py` +3.
+
+**검증**: TDD +7·단위 5078→**5085**·전체 5239. 🔴 **Codex 5라운드 메타테스트 봉인**: C1 가드 변조 저항성 결함 4건 연달아 적발(R1 job 스코프·R2 `$changed` 긍정단언·R3 주석 strip·R4 단독 인자) — 전부 (b) 단일 정답 버그 즉시 수정, R4(4회차)=정책 18 §3 escalation→사용자 승인 후 수정. 3 PR Codex mutual OK·전체 CI green(#979 가드 dogfood SUCCESS).
+
+**잔여**: ops only(RLS Phase4 선택검증·verifier 활성화) + 사용자 결정(R6 결함3/4·R7 JS 테스트 인프라·R13 tier3 PR-B3 폐기 평가·R8 telegram cmd — 권장 보류/현행·C1 legacy 76건). [[project-session-2026-06-24-backlog-c1]]
 
 ## 회고 follow-up — retrospective.mjs dogfooding + 하드닝 (2026-06-23)
 
