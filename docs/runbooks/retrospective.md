@@ -25,7 +25,7 @@ Workflow({ scriptPath: '<repo-abs>/.claude/workflows/retrospective.mjs',
 ## 반환 스키마
 ```
 { scope, rounds, findings_total, verdict_coverage,
-  confirmed: [{domain, severity, title, file, line, claim, recommendation, verdict, reason}],
+  confirmed: [{domain, severity, adjusted_severity, title, file, line, claim, evidence, citation_verified, recommendation, verdict, reason}],
   unverified_findings: [{domain, severity, title}],
   roi: { fp_blocked, confirmed, severity_adjusted, p0, p1, p2 } }
 ```
@@ -44,8 +44,10 @@ Workflow({ scriptPath: '<repo-abs>/.claude/workflows/retrospective.mjs',
 - 회고 종합 직후 **자유 발언(정책 9, 4 섹션)** + **회고 질문(사용자 회신 의무)** 별도 수행(워크플로우 스키마 밖).
 - **fix 는 사용자 결정**(정책 7 PR 단위 / 15 사전 사고 / 18 Codex mutual) — 자동 수정 금지.
 
-## 알려진 한계 (2026-06-23 첫 dogfooding)
-- completeness critic 라운드가 API 일시 오류 시 미복구(gap 라운드 누락 가능) — 본체 회고는 완료되나 표적 gap 미수행.
-- finder/verifier 의 evidence·citation_verified 가 최종 반환에서 소실(현재 title/claim/reason 만 보존).
+## 알려진 한계 (2026-06-23 첫 dogfooding → C10 일부 해소)
+- ✅ **completeness 라운드 회복력**(C10): try/catch 격리 — API 일시 오류 시 gap 라운드만 건너뛰고 본체 회고·Report 는 보존(이전엔 전체 소실 위험). 단 gap 라운드 자체는 미수행(best-effort).
+- ✅ **evidence·citation_verified 환류**(C10): 최종 confirmed 출력에 포함(보고서 추적성 복원, 이전엔 소실). adjusted_severity 도 명시 노출.
+- ⚠️ verdict_coverage < 1.0 자동 재시도 부재(반자동) — 수동 재실행 권고(백로그 C10-d, 토큰 비용 트레이드오프 = 사용자 결정).
+- ⚠️ SEVERITY_ADJUST 시 adjusted_severity 미수신이면 count 가 원 severity 로 graceful fallback — 스키마 강제(if/then) 미적용(백로그 C10-c, 검증기 스키마 위험 회피).
 - 자유 발언·회고 질문·cross-verify 생략 정량 표는 워크플로우 출력 밖 = 스킬/Claude 절차 의존.
-- 위 항목은 [`docs/_archive/reports/2026-06-23-retrospective.md`](../_archive/reports/2026-06-23-retrospective.md) §C10 백로그.
+- 회귀 가드: `tests/unit/scripts/test_retrospective_resilience.py` (try/catch + evidence 출력, 주석 false-pass 봉인). 추적: [`docs/_archive/reports/2026-06-23-retrospective.md`](../_archive/reports/2026-06-23-retrospective.md) §C10.
