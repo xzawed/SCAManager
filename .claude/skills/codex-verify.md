@@ -27,6 +27,7 @@ description: 정책 18 push 전 Codex mutual 검증 표준 흐름 — 브랜치 
 - **부분 차단**(Codex 가 정적은 OK, 실행은 차단) 시: 검증된 항목 OK + 미검증 항목은 Claude 로컬 실증으로 보완 명시(NG 아님).
 
 ## 주의
+- 🔴 **자동화·훅 동작 단언 = 소스 grep 실측 의무 (C11)**: 워크플로우/훅/스크립트가 "X 를 한다"는 단언은 docs·스펙 기술이 아닌 **실제 소스**(`.claude/workflows/*.mjs` · `.pre-commit-config.yaml` · `scripts/*.py`) `grep` 으로 동작 확인 후 작성. 스펙 과대 기술(예: 자기 자동화 스펙 오기) 재발 차단 — 정책 15(코드 전 사전 사고) 페어.
 - **push 전 OK 의무**: OK 회신 받기 전 `git push` 금지. 누락 시 다음 응답 회복(정책 1 진화 회귀 가드 페어).
 - mutual **면제 영역**: 사용자 "생략 OK" 명시 · read-only 보고 · 메모리 grep · 사용자 직접 결정 영역.
 - 5+1(정책 8 내부 self-verify) ↔ mutual(외부 LLM) = **2-layer 독립** — "Codex OK 받았으니 5+1 6차 생략" 오해 금지.

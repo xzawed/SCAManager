@@ -259,15 +259,25 @@ while (dry < DRY_THRESHOLD && round < MAX_ROUNDS && (!budget.total || budget.rem
 
 // ── completeness critic + 표적 gap 라운드 ──
 // Completeness critic + targeted gap round
+// completeness/gap 라운드는 best-effort — API 오류(예: 일시 500)가 이미 검증된 verified[] 와
+// Report 단계를 무효화하지 않도록 격리 (C10: 2026-06-23 회고가 마지막 500 으로 gap 라운드 소실).
+// Completeness/gap is best-effort — isolate API errors (e.g. a transient 500) so they can't void the
+// already-verified findings or the Report phase (C10: the 2026-06-23 retro lost its gap round to a 500).
 phase('Completeness')
-const gaps = await agent(completenessPrompt(domains, verified, scope), { label: 'completeness', phase: 'Completeness', schema: GAPS_SCHEMA })
-if (gaps?.items?.length) {
-  log(`completeness: gap ${gaps.items.length}건 → 표적 라운드`)
-  const gapFound = (await parallel(gaps.items.map((g) => () =>
-    agent(gapFinderPrompt(g, context), { label: `gap:${g.domain}`, phase: 'Discover', schema: FINDINGS_SCHEMA })
-  ))).filter(Boolean).flatMap((r) => r.findings ?? []).filter((f) => !seen.has(key(f)))
-  gapFound.forEach((f) => seen.add(key(f)))
-  if (gapFound.length) verified.push(...(await verifyAll(gapFound, context)))
+try {
+  const gaps = await agent(completenessPrompt(domains, verified, scope), { label: 'completeness', phase: 'Completeness', schema: GAPS_SCHEMA })
+  if (gaps?.items?.length) {
+    log(`completeness: gap ${gaps.items.length}건 → 표적 라운드`)
+    const gapFound = (await parallel(gaps.items.map((g) => () =>
+      agent(gapFinderPrompt(g, context), { label: `gap:${g.domain}`, phase: 'Discover', schema: FINDINGS_SCHEMA })
+    ))).filter(Boolean).flatMap((r) => r.findings ?? []).filter((f) => !seen.has(key(f)))
+    gapFound.forEach((f) => seen.add(key(f)))
+    if (gapFound.length) verified.push(...(await verifyAll(gapFound, context)))
+  }
+} catch (e) {
+  // 검증된 verified[] 는 그대로 Report 로 진행 — 부분 결과 보존 (조용한 전체 실패 방지).
+  // Proceed to Report with verified[] intact — preserve partial results (avoid silent total failure).
+  log(`completeness 라운드 실패 — best-effort 건너뜀 (verified ${verified.length}건 보존): ${e?.message ?? e}`)
 }
 
 // ── Report (구조화 데이터 반환 — 리포트 파일 작성은 호출자/스킬 책임) ──
@@ -288,8 +298,14 @@ return {
   findings_total: all.length,
   verdict_coverage: coverage,
   confirmed: confirmed.map((f) => ({
-    domain: f.domain, severity: f.adjusted_severity ?? f.severity, title: f.title,
+    domain: f.domain, severity: f.adjusted_severity ?? f.severity,
+    // SEVERITY_ADJUST 시 조정 심각도를 명시 노출(미수신이면 null — count 는 원 severity 로 graceful).
+    // Surface the adjusted severity on SEVERITY_ADJUST (null if absent — count falls back gracefully).
+    adjusted_severity: f.adjusted_severity ?? null, title: f.title,
     file: f.file ?? null, line: f.line ?? null, claim: f.claim,
+    // evidence·citation_verified 환류 — 회고 보고서 추적성 (C10: 이전엔 출력에서 소실).
+    // Surface evidence·citation_verified — retro report traceability (C10: previously dropped).
+    evidence: f.evidence ?? null, citation_verified: f.citation_verified ?? null,
     recommendation: f.recommendation ?? null, verdict: f.verdict, reason: f.reason,
   })),
   unverified_findings: unverified.map((f) => ({ domain: f.domain, severity: f.severity, title: f.title })),
