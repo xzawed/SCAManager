@@ -140,7 +140,9 @@
 
 **#979 회고 C1 (P1, 사용자 결정 A2)**: 자초 CodeQL cascade(tests/ dead-symbol pre-merge 무력 → main full-scan 사후 포착 → fix PR #516/#517/#520/#521/#522 5건 반복) 근본 차단. CI 신규 job `lint-changed-tests` = PR 변경 `tests/*.py` 만 `flake8 --isolated --select=F401,F841 $changed`. 🔴 **`--isolated` 필수**: `setup.cfg per-file-ignores=tests/*:F401,F841` 가 일반 `--select` 무력화(false-pass) 실증 → 초기 "0 위반" 오측, 실제 76건. TDD `test_ci_dead_symbol_guard.py` +3.
 
-**#981 C1 legacy dead-symbol 정리 (A2 가드 마찰 제거)**: #979 가드는 PR 에서 변경된 _파일 전체_ 를 flake8 검사하므로, legacy dead-symbol 이 있는 39파일 중 하나를 향후 수정하면 기존 위반으로 CI 가 실패(마찰). → 76건(F401 55 + F841 21) 정리로 tests/ 0 위반. load-bearing 4건(create_all ORM 등록 side-effect)은 `# noqa: F401` 보존 · side-effect 호출은 LHS 만 제거해 호출 보존. 단위 5085 불변(dead symbol 만 제거). Codex mutual OK · 가드 dogfood SUCCESS(39파일 변경 PR 에서 가드 통과).
+**#981 C1 legacy dead-symbol 정리 (A2 가드 마찰 제거)**: #979 가드는 PR 에서 변경된 _파일 전체_ 를 flake8 검사하므로, legacy dead-symbol 이 있는 39파일 중 하나를 향후 수정하면 기존 위반으로 CI 가 실패(마찰). → 76건(F401 55 + F841 21) 정리로 tests/ 0 위반. load-bearing 추정 4건은 `# noqa: F401` 보존(→ #983 에서 실제 非load-bearing 실증·제거) · side-effect 호출은 LHS 만 제거해 호출 보존. 단위 5085 불변(dead symbol 만 제거). Codex mutual OK · 가드 dogfood SUCCESS(39파일 변경 PR 에서 가드 통과).
+
+**#983 자초 CodeQL 5건 해소 (정책 14)**: #981 머지 후 main 전체 스캔서 `py/unused-import` 4 + `py/unused-local-variable` 1 노출. 근본 = #981 이 4 ORM import 를 load-bearing 추정해 `# noqa: F401` 보호했으나 🔴 (1) **`# noqa: F401` 은 flake8 전용·CodeQL py/unused-import 무관**(여전히 적발) (2) **실제 4건 전부 非load-bearing**(각 제거+테스트 실증 — `test_orm_creates_merge_retry_queue_table` 도 import 없이 PASS, 모델은 conftest/repo 모듈서 등록·"ensure registered" 주석 obsolete) → 4 import 제거 + test_semgrep `run_called`/`fake_run` dead 스파이(patch 미wiring·flake8 F841 은 append 를 "사용"으로 봐 놓침) 제거. main 재스캔 Code Scanning **0** 확인. 단위 5085 불변. 🔴 교훈: load-bearing 추정 금지(제거+테스트 실증) · `# noqa: F401` ≠ CodeQL 억제.
 
 **검증**: TDD +7·단위 5078→**5085**·전체 5239. 🔴 **Codex 5라운드 메타테스트 봉인**: C1 가드 변조 저항성 결함 4건 연달아 적발(R1 job 스코프·R2 `$changed` 긍정단언·R3 주석 strip·R4 단독 인자) — 전부 (b) 단일 정답 버그 즉시 수정, R4(4회차)=정책 18 §3 escalation→사용자 승인 후 수정. 3 PR Codex mutual OK·전체 CI green(#979 가드 dogfood SUCCESS).
 
