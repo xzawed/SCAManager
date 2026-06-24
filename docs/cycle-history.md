@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [R13 평가 — native auto-merge 부적합·retry 큐 영구 primary (운영 DB 실측: native enable 0회 · branch protection 부재→PR UNSTABLE→enable "unstable status" 실패 · 아키텍처 부정합[native=체크/SCAManager=점수] → 사용자 결정 native 미추구·retry 큐 영구 primary·폐기 철회 · 부수 bilingual 훅 cp949 버그픽스, TDD +2 · 단위 5087 · 전체 5241, 2026-06-24)](#r13-평가--native-auto-merge-부적합retry-큐-영구-primary-2026-06-24)
 - [잔여작업 — docs drift 정정 · 회고 C10/C11 · C1 CodeQL cascade 가드 (#977 설계헤더 3건 stale 정정 + scripts/ 5종 등재 · #978 retrospective.mjs try/catch 회복력 + evidence 출력 환류[C10] + codex-verify 소스-grep 체크포인트[C11] · #979 C1 PR-diff 한정 dead-symbol CI 가드[`--isolated` 필수 · per-file-ignore 무력화 실증] · Codex 5라운드 메타테스트 봉인, TDD +7 · 단위 5085 · 전체 5239, 2026-06-24)](#잔여작업--docs-drift-정정--회고-c10c11--c1-codeql-cascade-가드-2026-06-24)
 - [회고 follow-up — retrospective.mjs dogfooding + 하드닝 (/retrospective 첫 실전 verdict_coverage 1.0[69 전건]·confirmed 55, Option A: 회고 보고서 아카이브[P1 #39]·W2 `/2`→`/${DRY_THRESHOLD}` 정정·drift 가드 false-pass 봉인[#936]·retrospective runbook·spec 헤더 정정, TDD +1·단위 5078·전체 5232, 2026-06-23)](#회고-follow-up--retrospectivemjs-dogfooding--하드닝-2026-06-23)
 - [repo-automation PR-S — 정책 흐름 스킬 3종 (docs-sync · retrospective · codex-verify — STATE/cycle-history/README 동기화 가이드·정책 8 5+1 회고 진입점[retrospective.mjs]·정책 18 push 전 Codex mutual 흐름+다운 시 자체검증, CLAUDE.md /retrospective 참조 추가, 테스트 무변경·단위 5077, 2026-06-23)](#repo-automation-pr-s--정책-흐름-스킬-3종-docs-sync--retrospective--codex-verify-2026-06-23)
@@ -129,6 +130,22 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## R13 평가 — native auto-merge 부적합·retry 큐 영구 primary (2026-06-24)
+
+**날짜**: 2026-06-24 | **PR**: #985 (머지) | **출처**: 사용자 "merge_retry_service 폐기 평가 보고서" → 5-차원 워크플로우(`wf_f8ef92a3`) + MCP 운영 DB 실측
+
+**R13 평가(merge_retry_service 폐기 타당성)**: 5-차원 병렬 분석 → "조건부 폐기" 잠정 → **MCP 운영 DB 실측으로 결론 2회 역전**.
+
+🔴 **핵심 발견**: native auto-merge enable **성공 0회**(전체 이력 2223 시도) · retry 큐(merge_retry_service)가 운영 유일 작동 머지 메커니즘(`merge_retry_queue` succeeded 938 · `unstable_ci` 401/30일 · pending 0). native 실패 근본 **2겹**(canary 규명): (1) 전 5 리포 GitHub "Allow auto-merge" OFF, (2) **branch protection 부재 → PR 항상 UNSTABLE → `enablePullRequestAutoMerge` 가 `"unstable status"`(UNPROCESSABLE) 실패** — native 는 PR 이 required status checks 로 BLOCKED 일 때만 enable 가능. `allow_auto_merge` ON(SCAManager canary)만으론 불충분 실증(PR #985 직접 GraphQL 재현) → false 원복.
+
+🔴 **아키텍처 부정합**: native=GitHub 체크 기반 / SCAManager=자체 점수 기반. required checks 추가 시 수동 머지 포함 전 머지가 차단(워크플로우 disruption).
+
+✅ **사용자 결정(B)**: **native 미추구 — retry 큐 = 영구 primary**(938 머지·점수 기반 정합). merge_retry_service 폐기 **철회**(설계 §1.3 목표 철회). #985: native_automerge.py 주석·설계 §1.3/§4.3/§5·INDEX 의 stale "폐기" 전부 철회/strikethrough(Codex 3R 일관성 — 다곳 분산 stale 적발).
+
+**부수**: bilingual 훅 cp949 크래시 버그픽스 — `scripts/check_bilingual_comments.py` `git diff` subprocess `text=True` 단독 → Windows cp949 한국어 디코딩 실패 → 한국어 .py 주석 커밋 전면 차단(#968/PR-H 이래 잠재). 수정=`encoding="utf-8", errors="replace"` + `.stdout or ""`, TDD +2.
+
+**검증**: 단위 5085→**5087** · 전체 5241. 전 커밋 Codex mutual OK(R13 docs 일관성 3R · 훅 버그픽스). [[project-r13-native-automerge-mismatch]]
 
 ## 잔여작업 — docs drift 정정 · 회고 C10/C11 · C1 CodeQL cascade 가드 (2026-06-24)
 
