@@ -153,7 +153,7 @@ GitHub 가 auto-merge 를 자동으로 OFF 하는 시나리오:
 | `src/api/internal_cron.py` 의 retry 엔드포인트 | 동일 |
 | `tests/unit/services/test_merge_retry_service.py` 등 | 동일 |
 | `railway.toml` 의 1분 retry cron | 제거 |
-| **합계 ~600 줄 감소** | |
+| ~~**합계 ~600 줄 감소**~~ (R13 철회·미실행) | |
 
 > ⚠️ ~~폐기는 새 흐름이 production 에서 1주일 이상 안정 동작 검증 후 별도 cleanup PR.~~ **(R13 철회 — 미실행)**
 
