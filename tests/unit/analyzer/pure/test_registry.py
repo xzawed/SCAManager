@@ -314,7 +314,7 @@ class TestPythonAnalyzers:
         )
 
     @pytest.fixture
-    def test_py_ctx(self):
+    def py_test_file_ctx(self):
         """테스트 파일 Python 컨텍스트 — bandit은 비활성화되어야 한다."""
         from src.analyzer.pure.registry import AnalyzeContext
         return AnalyzeContext(
@@ -350,10 +350,10 @@ class TestPythonAnalyzers:
         from src.analyzer.io.tools.python import _BanditAnalyzer
         assert _BanditAnalyzer().is_enabled(py_ctx) is True
 
-    def test_bandit_analyzer_is_disabled_for_test_file(self, test_py_ctx):
+    def test_bandit_analyzer_is_disabled_for_test_file(self, py_test_file_ctx):
         # _BanditAnalyzer.is_enabled()는 is_test=True 컨텍스트에서 False를 반환한다
         from src.analyzer.io.tools.python import _BanditAnalyzer
-        assert _BanditAnalyzer().is_enabled(test_py_ctx) is False
+        assert _BanditAnalyzer().is_enabled(py_test_file_ctx) is False
 
     def test_flake8_analyzer_category_is_code_quality(self):
         # _Flake8Analyzer.category는 "code_quality"이다

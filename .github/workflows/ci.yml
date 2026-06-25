@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 # 최소 권한 원칙 — GITHUB_TOKEN 을 읽기 전용으로 제한 (회고 P2 공급망 하드닝).
-# 모든 job(secret-scan/test-and-analyze/pg-concurrency)이 read 만 필요 — write 필요 step 없음.
+# 모든 job(secret-scan/lint-changed-tests/test-and-analyze/pg-concurrency)이 read 만 필요 — write 필요 step 없음.
 # (SonarCloud PR 데코레이션은 SonarCloud GitHub App 경유 — GITHUB_TOKEN write 불필요.)
 # Least-privilege — restrict GITHUB_TOKEN to read-only (retro P2 supply-chain hardening).
 # All jobs need read only — no write step. (SonarCloud PR decoration goes via the SonarCloud

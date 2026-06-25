@@ -3,10 +3,13 @@
 3-way config 싱크 점검 — RepoConfig ORM ↔ RepoConfigData ↔ RepoConfigUpdate 필드 집합 정합.
 3-way config sync checker — field-set parity across the three RepoConfig Python layers.
 
-채널/필드 추가 시 일부 레이어 누락 → NULL 덮어쓰기 운영 버그(api.md 5-way) 차단.
+채널/필드 추가 시 Python 레이어 누락 → NULL 덮어쓰기 운영 버그(api.md 5-way)의 일부를 차단.
 Python 3자(ORM·Data·Update)는 AST 견고 비교. 의도적 비대칭 필드는 _ALLOWLIST 제외. stdlib 전용.
+🔴 범위 외(수동 검토 의무): settings.html 폼·PRESETS(JS) 2-layer 는 HTML/JS 파싱 fragile 로 의도적
+미검사(design 2026-06-23). 즉 파일명의 "5way"와 달리 실제 가드 범위는 Python 3-layer 다.
 
-Channel/field additions that miss a layer can silently NULL-overwrite DB values (api.md 5-way rule).
+Blocks the Python-layer subset of the api.md 5-way NULL-overwrite bug. The settings.html form and
+PRESETS (JS) layers are intentionally OUT OF SCOPE (fragile HTML/JS parsing) — manual review required.
 Three Python layers (ORM, Data, Update) are compared via AST (reliable). stdlib only.
 """
 import ast

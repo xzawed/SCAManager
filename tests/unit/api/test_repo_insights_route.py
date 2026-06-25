@@ -33,7 +33,7 @@ def db_session():
 
 
 @pytest.fixture()
-def test_user(db_session):
+def owner_user(db_session):
     u = User(github_id=1, github_login="owner", email="owner@x.com", display_name="O")
     db_session.add(u)
     db_session.commit()
@@ -51,8 +51,8 @@ def other_user(db_session):
 
 
 @pytest.fixture()
-def repo(db_session, test_user):
-    r = Repository(full_name="owner/myrepo", user_id=test_user.id)
+def repo(db_session, owner_user):
+    r = Repository(full_name="owner/myrepo", user_id=owner_user.id)
     db_session.add(r)
     db_session.commit()
     db_session.refresh(r)
@@ -84,8 +84,8 @@ def _make_client(db_session, user):
 
 
 @pytest.fixture()
-def client(db_session, test_user):
-    yield from _make_client(db_session, test_user)
+def client(db_session, owner_user):
+    yield from _make_client(db_session, owner_user)
 
 
 @pytest.fixture()

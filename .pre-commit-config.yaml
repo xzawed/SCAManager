@@ -100,13 +100,13 @@ repos:
         description: config.py Settings env 필드 ↔ env-vars.md 등재 정합 (사이클 82/119 누락 차단).
 
       - id: check-config-5way-sync
-        name: "🧩 5-way config 싱크 (RepoConfig ORM↔Data↔Update)"
+        name: "🧩 config 싱크 — RepoConfig 3-layer (ORM↔Data↔Update)"
         language: system
         entry: python scripts/check_config_5way_sync.py
         files: "^(src/models/repo_config\\.py|src/config_manager/manager\\.py|src/api/repos\\.py)$"
         pass_filenames: false
         stages: [pre-commit]
-        description: RepoConfig 5-way 필드 집합 정합 (필드 추가 시 NULL 덮어쓰기 운영 버그 차단).
+        description: "RepoConfig 3-layer(Python: ORM↔Data↔Update) 필드 정합. 폼/PRESETS 2-layer 는 HTML/JS 파싱 fragile 로 범위 외(수동 검토 — design 2026-06-23)."
 
       - id: check-bilingual-comments
         name: "🌐 이중언어 주석 (보수적·staged 한정)"
