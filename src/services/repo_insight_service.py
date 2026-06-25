@@ -116,6 +116,9 @@ def repo_kpi(  # pylint: disable=too-many-locals
             .where(Analysis.created_at >= prev_since)
             .where(Analysis.created_at < prev_until)
             .where(Analysis.result.isnot(None))
+            # cur(_fetch_analyses)와 동일하게 정렬 — limit(_MAX_ANALYSES) 결정성 확보(감사 services-002)
+            # Order like cur so the limited window is deterministic (avoids flaky score_delta).
+            .order_by(Analysis.created_at.desc())
             .limit(_MAX_ANALYSES)
         ).all()
     )

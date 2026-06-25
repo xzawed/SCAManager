@@ -366,7 +366,9 @@ def _extract_event_metadata(event: str, data: dict) -> tuple[str, str, str, int 
     repo_name: str = (data.get("repository") or {}).get("full_name", "")
     commit_message = _extract_commit_message(event, data)
     if event == "pull_request":
-        pr_number: int | None = data["number"]
+        # data.get — 같은 블록의 다른 키(repository/head)와 방어 일관성(감사 worker-core-003)
+        # data.get for defensive consistency with the other keys in this block.
+        pr_number: int | None = data.get("number")
         # head 키도 present-but-None 가능 — 한 단계 더 `or {}` 정규화 (PR #124 패턴)
         # head key may also be present-but-None — normalize one more level (PR #124 pattern)
         commit_sha: str = ((data.get("pull_request") or {}).get("head") or {}).get("sha", "")
