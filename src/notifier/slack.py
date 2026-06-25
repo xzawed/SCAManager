@@ -12,7 +12,8 @@ from src.scorer.calculator import ScoreResult
 from src.analyzer.io.static import StaticAnalysisResult
 from src.analyzer.io.ai_review import AiReviewResult
 from src.notifier._common import (
-    escape_slack_mrkdwn, format_ref, get_all_issues, truncate_issue_msg, truncate_message,
+    escape_slack_mrkdwn, format_ref, get_all_issues, resolve_ai_summary,
+    truncate_issue_msg, truncate_message,
 )
 
 logger = logging.getLogger(__name__)
@@ -52,8 +53,12 @@ def _build_payload(  # pylint: disable=too-many-positional-arguments,too-many-lo
     )
 
     blocks = []
-    if ai_review and ai_review.summary:
-        blocks.append(ai_review.summary)
+    # AI 요약은 resolve_ai_summary 경유 — 실패(status != success) 시 현지화된 unavailable 메시지로 대체
+    # (5채널 동일 패턴 — Slack i18n 비대칭 봉인, 감사 notifier-001)
+    # Route AI summary through resolve_ai_summary so failures show the localized unavailable message.
+    ai_summary = resolve_ai_summary(ai_review, language)
+    if ai_summary:
+        blocks.append(ai_summary)
 
     all_issues = get_all_issues(analysis_results)
     if all_issues:
