@@ -285,12 +285,14 @@ Environment Variables:
 ```
 Value: {{ $json.exitCode }}
 Rules:
-  0   → 성공 분기
-  1   → NO_CHANGE_NEEDED 분기
-  2   → claude 실패 분기
-  3   → push 실패 분기
-  124 → timeout 분기
+  0   → 성공 분기 (output 0, 미연결)
+  1   → NO_CHANGE_NEEDED 분기 (output 1 → Issue 코멘트)
+  2   → claude 실패 분기 (output 2 → Issue 코멘트 + Telegram)
+  3   → push 실패 분기 (output 3 → Issue 코멘트 + Telegram)
+  124 / 그 외 → fallbackOutput (output 4 → Telegram 알림)
 ```
+
+> timeout(124) 등 0~3 외 종료코드는 Switch 의 `fallbackOutput`(output 4)으로 떨어진다 — 번들 JSON 은 output 4 → Telegram 알림으로 연결한다(Telegram 노드는 기본 disabled, Node 9 참조).
 
 ### Node 8 — GitHub Issue Comment
 

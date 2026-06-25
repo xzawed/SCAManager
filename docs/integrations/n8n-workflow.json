@@ -154,7 +154,8 @@
       [],
       [{"node": "GitHub Issue Comment", "type": "main", "index": 0}],
       [{"node": "GitHub Issue Comment", "type": "main", "index": 0}, {"node": "Telegram 알림", "type": "main", "index": 0}],
-      [{"node": "GitHub Issue Comment", "type": "main", "index": 0}, {"node": "Telegram 알림", "type": "main", "index": 0}]
+      [{"node": "GitHub Issue Comment", "type": "main", "index": 0}, {"node": "Telegram 알림", "type": "main", "index": 0}],
+      [{"node": "Telegram 알림", "type": "main", "index": 0}]
     ]}
   },
   "active": true,
