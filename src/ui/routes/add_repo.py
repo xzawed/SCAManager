@@ -29,6 +29,20 @@ _user_repos_cache: dict[int, tuple[list[dict], float]] = {}
 # _required_contexts_cache / _webhook_secret_cache 와 동일 5분 TTL
 # Same 5-minute TTL as _required_contexts_cache / _webhook_secret_cache.
 _USER_REPOS_CACHE_TTL = 300
+# 🔴 상한 — 인증 사용자 누적 증가에 따른 무한 캐시 성장 차단 (api.md webhook-secret 캐시 패턴, 감사 api-ui-001)
+# Cap entries to bound growth across distinct authenticated users (mirrors the webhook-secret cache).
+_USER_REPOS_CACHE_MAX = 1024
+
+
+def _store_user_repos(user_id: int, repos: list[dict], now: float) -> None:
+    """TTL 캐시에 저장하되 상한 초과 시 만료분 정리 + 가장 빨리 만료될 엔트리 evict."""
+    # Store with TTL; on overflow purge expired then evict the soonest-to-expire entry.
+    if user_id not in _user_repos_cache and len(_user_repos_cache) >= _USER_REPOS_CACHE_MAX:
+        for k in [k for k, (_, exp) in _user_repos_cache.items() if now >= exp]:
+            del _user_repos_cache[k]
+        if len(_user_repos_cache) >= _USER_REPOS_CACHE_MAX:
+            del _user_repos_cache[min(_user_repos_cache, key=lambda k: _user_repos_cache[k][1])]
+    _user_repos_cache[user_id] = (repos, now + _USER_REPOS_CACHE_TTL)
 
 
 @router.get("/repos/add", response_class=HTMLResponse)
@@ -67,7 +81,7 @@ async def github_repos_list(
             # GitHub API 오류(401/403/429/timeout) 시 빈 목록 반환
             # Return empty list on GitHub API error (401/403/429/timeout)
             return []
-        _user_repos_cache[current_user.id] = (all_repos, now + _USER_REPOS_CACHE_TTL)
+        _store_user_repos(current_user.id, all_repos, now)
 
     with SessionLocal() as db:
         existing_names = {

@@ -100,7 +100,9 @@ def calculate_score(
 
 def calculate_grade(score: int) -> str:
     """점수(0–100)를 등급 문자열(A/B/C/D/F)로 변환한다."""
-    for grade, threshold in GRADE_THRESHOLDS.items():
+    # 임계값 내림차순 정렬 — dict 삽입 순서 의존 제거(순서 바뀌어도 정답, 감사 worker-core-001)
+    # Sort thresholds descending so the result is independent of dict insertion order.
+    for grade, threshold in sorted(GRADE_THRESHOLDS.items(), key=lambda kv: kv[1], reverse=True):
         if score >= threshold:
             return grade
     return "F"
