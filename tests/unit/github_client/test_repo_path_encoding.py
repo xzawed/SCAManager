@@ -64,3 +64,14 @@ async def test_get_pr_node_id_url_uses_repo_path_encoding():
         await get_pr_node_id("token", _REPO, 7)
     url = client.get.call_args[0][0]
     assert _ENC in url and "re po" not in url
+
+
+async def test_normal_repo_full_name_url_unchanged():
+    """특수문자 없는 평문 owner/repo 는 슬래시 보존·인코딩 artifact 없이 그대로 (정상 케이스 회귀)."""
+    client = AsyncMock()
+    client.get = AsyncMock(return_value=_resp({"state": "open"}))
+    with patch("src.github_client.issues.get_http_client", return_value=client):
+        await get_issue_state("token", "owner/myrepo", 1)
+    url = client.get.call_args[0][0]
+    assert "/repos/owner/myrepo/issues/1" in url
+    assert "%" not in url  # 인코딩 artifact 없음 (슬래시는 safe='/' 로 보존)

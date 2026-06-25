@@ -60,3 +60,16 @@ def test_pool_recycle_negative_one_allowed():
     """db_pool_recycle=-1(SQLAlchemy recycle 비활성 sentinel)은 미제약 → 허용 (회귀 가드)."""
     s = Settings(**_REQUIRED_KWARGS, db_pool_recycle=-1)
     assert s.db_pool_recycle == -1
+
+
+def test_ge1_boundary_value_one_allowed():
+    """ge=1 경계값 1 은 허용되어야 한다 (off-by-one 회귀 — 1 까지 거부하면 안 됨)."""
+    s = Settings(
+        **_REQUIRED_KWARGS,
+        db_pool_size=1,
+        db_pool_timeout=1,
+        db_failover_probe_interval=1,
+    )
+    assert s.db_pool_size == 1
+    assert s.db_pool_timeout == 1
+    assert s.db_failover_probe_interval == 1
