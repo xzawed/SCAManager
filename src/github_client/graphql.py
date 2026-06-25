@@ -26,7 +26,7 @@ from typing import Any
 import httpx
 
 from src.constants import GITHUB_API
-from src.github_client.helpers import github_api_headers
+from src.github_client.helpers import github_api_headers, repo_path
 from src.shared.http_client import get_http_client
 from src.shared.log_safety import sanitize_for_log
 
@@ -154,7 +154,7 @@ async def get_pr_node_id(
     실패 시 None 반환 (호출자가 분기 처리).
     Returns None on failure (caller handles fallback).
     """
-    url = f"{GITHUB_API}/repos/{repo_full_name}/pulls/{pr_number}"
+    url = f"{GITHUB_API}/repos/{repo_path(repo_full_name)}/pulls/{pr_number}"
     try:
         client = get_http_client()
         r = await client.get(url, headers=github_api_headers(token))

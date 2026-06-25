@@ -81,13 +81,18 @@ class Settings(BaseSettings):
     # DB 연결 설정 (온프레미스 PostgreSQL 지원)
     db_sslmode: str = ""        # "require", "verify-full" 등 (빈 문자열=미적용)
     db_force_ipv4: bool = False  # True=Railway IPv4 강제 (온프레미스에서는 False)
-    db_pool_size: int = 5
-    db_max_overflow: int = 10
-    db_pool_timeout: int = 30   # seconds
-    db_pool_recycle: int = 1800  # seconds
+    # 🔴 하한 검증 (감사 data-layer-003) — <1 이 무조건 오동작인 필드만 ge=1.
+    # max_overflow(-1=무제한)·pool_recycle(-1=비활성)은 -1 sentinel 이 유효해 미제약(SQLAlchemy 의미론 보존).
+    # Lower-bound validation: only fields where <1 is always broken get ge=1; max_overflow/pool_recycle
+    # keep the valid SQLAlchemy -1 sentinel (unlimited / disabled) so they are intentionally unconstrained.
+    db_pool_size: int = Field(default=5, ge=1)
+    db_max_overflow: int = 10  # -1=무제한 sentinel 허용 (미제약)
+    db_pool_timeout: int = Field(default=30, ge=1)   # seconds
+    db_pool_recycle: int = 1800  # seconds (-1=recycle 비활성 sentinel 허용, 미제약)
     # DB Failover 설정 (빈 문자열이면 failover 비활성)
     database_url_fallback: str = ""
-    db_failover_probe_interval: int = 30  # Primary 복구 확인 주기(초)
+    # 🔴 ge=1 — 0/음수 시 _probe_primary_loop 가 time.sleep(0) busy-loop (100% CPU) (감사 data-layer-003)
+    db_failover_probe_interval: int = Field(default=30, ge=1)  # Primary 복구 확인 주기(초)
     # background 전용 DB URL — RLS role 분리 옵션 A (rls-role-separation.md Phase 2)
     # 빈 문자열이면 DATABASE_URL 팩토리 재사용 (현행 동작 보존)
     # Background-only DB URL — RLS role separation Option A (Phase 2).

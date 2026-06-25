@@ -99,10 +99,10 @@ Sentry 외 자동 로깅은 별도 환경변수 없이 동작:
 |------|------|--------|
 | `DB_SSLMODE` | PostgreSQL SSL 모드 (`require`, `verify-full`, `disable` 등, 빈 값=미적용) | 빈 문자열 |
 | `DB_FORCE_IPV4` | Railway IPv4 강제 연결 (온프레미스에서는 `false`) | `false` |
-| `DB_POOL_SIZE` | SQLAlchemy 연결 풀 크기 (PostgreSQL 전용) | `5` |
-| `DB_MAX_OVERFLOW` | 풀 초과 허용 연결 수 | `10` |
-| `DB_POOL_TIMEOUT` | 풀 대기 타임아웃 (초) | `30` |
-| `DB_POOL_RECYCLE` | 연결 재활용 주기 (초) | `1800` |
+| `DB_POOL_SIZE` | SQLAlchemy 연결 풀 크기 (PostgreSQL 전용, **최소 1**) | `5` |
+| `DB_MAX_OVERFLOW` | 풀 초과 허용 연결 수 (`-1`=무제한 sentinel) | `10` |
+| `DB_POOL_TIMEOUT` | 풀 대기 타임아웃 (초, **최소 1**) | `30` |
+| `DB_POOL_RECYCLE` | 연결 재활용 주기 (초, `-1`=비활성 sentinel) | `1800` |
 
 ## CI-aware Auto Merge 재시도 (Phase 12)
 
@@ -128,7 +128,7 @@ Sentry 외 자동 로깅은 별도 환경변수 없이 동작:
 | 변수 | 설명 | 예시 |
 |------|------|------|
 | `DATABASE_URL_FALLBACK` | Failover용 보조 DB URL (빈 값이면 failover 비활성) | `postgresql://user:pass@supabase.co/db?sslmode=require` |
-| `DB_FAILOVER_PROBE_INTERVAL` | Primary DB 복구 확인 주기 (초) | `30` |
+| `DB_FAILOVER_PROBE_INTERVAL` | Primary DB 복구 확인 주기 (초, **최소 1** — 0 시 busy-loop) | `30` |
 | `DATABASE_URL_WORKER` | background(webhook/worker/gate/notifier/cron/CLI hook) 전용 DB URL — RLS role 분리 옵션 A ([rls-role-separation.md](../runbooks/rls-role-separation.md) Phase 2). 빈 값이면 `DATABASE_URL` 팩토리 재사용 (현행 동작). 반드시 `BYPASSRLS` worker role(`scamanager_worker`) 자격 지정 — 비-BYPASSRLS role 지정 시 FORCE 활성 후 background 차단. ⚠️ 트레이드오프: worker 경로 failover 미지원 (primary 장애 시 background 중단) + 동일 프로세스 연결 풀 2배 (Supabase 연결 상한 고려) | `postgresql://scamanager_worker:pass@host/db` |
 | `MIGRATION_DATABASE_URL` | alembic 마이그레이션 전용 DB URL (**owner role**) — RLS Phase 4 "두 번째 벽" ([rls-role-separation.md](../runbooks/rls-role-separation.md) §6 마이그레이션 credential 게이트). `alembic/env.py` 가 `effective_migration_url`(= 이 값 또는 `DATABASE_URL`)을 `sqlalchemy.url` 로 사용 → pre-deploy `alembic upgrade head` + lifespan 양쪽에 적용. 빈 값이면 `DATABASE_URL` 사용 (**현행 동작 보존 — 미설정 시 발효 0**). 🔴 Phase 4 에서 `DATABASE_URL` 이 비-BYPASSRLS app role(`scamanager_app`)로 전환될 때 설정 — 미설정 시 마이그레이션이 app role 로 돌아 `alembic_version` default-deny 차단. 🔴 런타임 `DATABASE_URL`/`DATABASE_URL_WORKER` 를 마이그레이션 credential 로 재사용 금지 | `postgresql://postgres:pass@host/db` |
 
