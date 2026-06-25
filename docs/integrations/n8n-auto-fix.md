@@ -29,7 +29,9 @@ PR open
         · Issue 자동 close (Closes #N)
 ```
 
-**SCAManager 코드 변경 없음.** 기존 `notify_n8n_issue()`가 이미 envelope을 전송한다.
+**토큰 릴레이 모델**: `notify_n8n_issue()`(`src/notifier/n8n.py`)가 GitHub 토큰을 envelope `data.repo_token`으로 릴레이한다 — **HMAC 서명 시크릿(`N8N_WEBHOOK_SECRET`)이 설정된 인증 채널로만 전송**(미설정 시 토큰 생략, `n8n.py:93-95` 방어 심화). 따라서 n8n 워크플로는 별도 GitHub credential 없이 이 payload 토큰을 `GH_TOKEN`으로 주입한다(아래 Node 6 참조).
+
+> ⚠️ `repo_token` 파라미터 + 릴레이 로직은 SCAManager 측 코드(`notify_n8n_issue(repo_token=...)`)에 포함된 기능이다 — 본 가이드의 "코드 변경 없음"이라는 과거 서술은 부정확했다(2026-06-25 정정).
 
 ---
 
@@ -71,8 +73,9 @@ echo "0 4 * * * n8n find /var/lib/n8n/claude-workspace -mindepth 2 -mtime +1 -ex
 ```bash
 #!/bin/bash
 # /opt/claude-runner/claude_fix.sh
-# n8n Execute Command 노드가 env로 주입하는 변수:
-#   REPO, ISSUE_NUMBER, ISSUE_TITLE, ISSUE_BODY, GH_TOKEN, ANTHROPIC_API_KEY
+# n8n 실행 노드가 env로 주입하는 변수: REPO, ISSUE_NUMBER, ISSUE_TITLE, ISSUE_BODY, GH_TOKEN
+# (GH_TOKEN = SCAManager payload 릴레이 repo_token — Node 6 참조)
+# ANTHROPIC_API_KEY 는 노드가 주입하지 않음 — n8n 호스트 프로세스 env 또는 claude 로그인 상태에서 제공.
 set -euo pipefail
 
 WORK_ROOT="/var/lib/n8n/claude-workspace"
@@ -117,7 +120,12 @@ EOP
 CLAUDE_OUT=$(mktemp); CLAUDE_ERR=$(mktemp)
 
 # claude cli — 15분 타임아웃
-if ! timeout 900 sh -c 'printf "%s" "$PROMPT" | claude -p --permission-mode acceptEdits' \
+# 🔴 PROMPT 은 부모 셸 변수다. `sh -c '...'` 서브셸은 export 안 된 부모 변수를 상속하지 않으므로
+# `sh -c 'printf "%s" "$PROMPT" | ...'` 로 감싸면 $PROMPT 가 빈 문자열이 되어 claude 가 무지시 실행된다.
+# printf 를 부모 셸에서 직접 실행해 파이프로 stdin 전달 (timeout 은 claude 만 래핑, set -o pipefail 로 실패 전파).
+# 🔴 PROMPT is a parent-shell var; a `sh -c '...'` subshell does NOT inherit non-exported vars → empty prompt.
+# Run printf in the parent shell and pipe into claude (timeout wraps claude only).
+if ! printf '%s' "$PROMPT" | timeout 900 claude -p --permission-mode acceptEdits \
       > "${CLAUDE_OUT}" 2> "${CLAUDE_ERR}"; then
   head -c 4000 "${CLAUDE_ERR}" >&2
   exit 2
@@ -206,14 +214,22 @@ if (!valid) {
 return $input.all();
 ```
 
+> 🔴 **보안 — HMAC 검증 (hard-reject) 의무 + 직렬화 주의**: claude_fix.sh 는 GitHub 토큰으로 clone·push·PR 을 수행하는 고권한 경로이므로 **불일치 시 거부(hard-reject)가 운영 기본값**이어야 한다. 위 코드는 그 권장 구현이며 **반드시 Node 1 의 "Raw Body" 옵션을 켜고 `rawBody`(원본 바이트)로 검증**해야 한다.
+>
+> ⚠️ **이유**: SCAManager 는 Python `json.dumps(payload)`(키 사이 공백 O)로 서명하는데, n8n 의 `JSON.stringify(parsedBody)`(공백 X)는 **바이트가 달라 HMAC 이 항상 불일치**한다. 따라서 파싱된 body 를 재직렬화해 검증하면 정상 webhook 도 전부 거부된다 → 반드시 **수신 원본 바이트(`rawBody`)** 로 검증할 것.
+>
+> 🔴 **번들 `n8n-workflow.json` 주의**: 출하 JSON 의 HMAC 노드는 위 직렬화 불일치를 회피하려 **soft-pass(불일치 시 경고만 남기고 통과)** 로 되어 있다 — 즉 **무인증 트리거를 차단하지 못한다**. 운영 배포 전 위 hard-reject 구현으로 교체하고 Raw Body 검증이 동작하는지 **반드시 실 n8n 인스턴스에서 확인**할 것(Claude 정적 검증 불가 영역 — 운영자 의무).
+
 ### Node 3 — 이벤트 필터 (IF)
 
 ```
-Condition: {{ $json.event_type }} == "issue"
-AND: {{ $json.data.action }} == "opened"
+Condition: {{ $json.body.event_type }} == "issue"
+AND: {{ $json.body.data.action }} ∈ {"opened", "reopened"}
 ```
 
 False 경로는 NoOp으로 연결 (무시).
+
+> ⚠️ **이벤트 필터 로직 주의 (번들 JSON 결함)**: 출하 `n8n-workflow.json` 의 이벤트 필터 IF 노드는 세 조건 `[event_type==issue, action==opened, action==reopened]` 를 `combineOperation: any` 로 결합한다. `any` 는 **셋 중 하나만 참이면 통과**하므로 `event_type==issue` 이기만 하면 `closed`·`edited` 등에서도 트리거되어 불필요한 claude_fix.sh 실행이 발생한다. 의도는 `event_type==issue AND action∈{opened,reopened}` 다. 단일 IF(v1) 로는 `A AND (B OR C)` 를 표현할 수 없으므로 **(a) `event_type==issue` 선행 IF(all) + `action∈{opened,reopened}` 후행 IF(any) 2단 분리**, 또는 **(b) Code 노드에서 `event_type==='issue' && ['opened','reopened'].includes(action) ? items : []` 명시 평가**로 교체할 것(운영자 검증 영역).
 
 ### Node 4 — 작업 변수 세팅 (Set)
 
@@ -239,7 +255,7 @@ staticData[key] = Date.now();
 return $input.all();
 ```
 
-### Node 6 — Execute Command
+### Node 6 — claude_fix.sh 실행
 
 ```
 Command: /opt/claude-runner/claude_fix.sh
@@ -248,9 +264,13 @@ Environment Variables:
   ISSUE_NUMBER  = {{ $json.issue_number }}
   ISSUE_TITLE   = {{ $json.issue_title }}
   ISSUE_BODY    = {{ $json.issue_body }}
-  GH_TOKEN      = {{ $credentials.githubPat.token }}
-  ANTHROPIC_API_KEY = {{ $credentials.anthropic.apiKey }}
+  GH_TOKEN      = {{ $json.repo_token }}   # ← SCAManager payload 릴레이(Node 4 repo_token), credential 아님
 ```
+
+> ⚠️ **번들 JSON 구현 차이 (정합 주의)**:
+> - **GH_TOKEN 출처** = `repo_token`(SCAManager 가 HMAC 인증 채널로 릴레이한 payload 토큰, 위 "토큰 릴레이 모델" 참조) — **n8n GitHub credential 이 아니다**.
+> - **`ANTHROPIC_API_KEY` 는 노드 env 로 주입하지 않는다** — 번들 JSON 의 실행 노드 env 에 없으며, claude CLI 는 **n8n 호스트 프로세스 env 또는 claude 설정**에서 키를 읽는다. 호스트에 `ANTHROPIC_API_KEY` 를 export 하거나 `claude` 로그인 상태를 준비할 것.
+> - **실행 방식**: 번들 `n8n-workflow.json` 은 이 단계를 "Execute Command" 노드가 아니라 **Code 노드의 `execFileSync('/opt/claude-runner/claude_fix.sh')`** 로 구현한다(exitCode/stdout/stderr 캡처). UI 로 직접 구성 시 동등 동작이면 무방.
 
 ### Node 7 — Switch (exit code)
 
@@ -276,6 +296,8 @@ Rules:
 
 ### Node 9 — Telegram 알림 (실패 케이스)
 
+> ⚠️ 번들 `n8n-workflow.json` 의 Telegram 노드는 **기본 `disabled: true`** 다(자격증명 미설정 환경 보호). 실패 알림을 받으려면 n8n UI 에서 노드를 활성화(`disabled: false`)하고 Telegram credential·chat_id 를 설정할 것.
+
 기존 SCAManager Telegram Bot Token 재사용:
 
 ```
@@ -292,11 +314,12 @@ Text:
 
 ### n8n Credential 등록
 
-| Credential 이름 | 값 | 용도 |
-|----------------|---|------|
-| `N8N_WEBHOOK_SECRET` | SCAManager `.env`의 `N8N_WEBHOOK_SECRET` 동일 값 | HMAC 검증 |
-| `GH_TOKEN` | GitHub Fine-grained PAT | clone · push · PR 생성 |
-| `ANTHROPIC_API_KEY` | Anthropic Console에서 발급 | claude cli |
+| 항목 | 값 | 용도 | 위치 |
+|------|---|------|------|
+| HMAC 시크릿 | SCAManager `.env`의 `N8N_WEBHOOK_SECRET` 동일 값 | HMAC 검증 | 번들 JSON 은 `/etc/n8n-secrets/hmac_secret` 파일에서 읽음 (n8n credential 로 대체 가능) |
+| GitHub PAT (`githubApi` credential) | GitHub Fine-grained PAT | **Issue 코멘트 작성**(Node 8) | n8n credential |
+| clone·push·PR 용 토큰 | SCAManager 가 릴레이한 `repo_token` | clone · push · PR 생성 | **n8n credential 아님** — payload 릴레이(위 "토큰 릴레이 모델"). SCAManager 측에 토큰 설정 |
+| `ANTHROPIC_API_KEY` | Anthropic Console 발급 | claude cli | **n8n credential 아님** — n8n 호스트 프로세스 env 또는 claude 로그인 |
 
 ### GitHub PAT 권한 (Fine-grained 권장)
 
@@ -333,12 +356,18 @@ Text:
 
 SCAManager의 `create_issue` 기능이 활성화된 리포에서, claude PR이 낮은 점수를 받으면 또 이슈가 생성되어 루프가 발생할 수 있다.
 
-**구현 완료 (Phase 2)**: `src/worker/pipeline.py`의 `_build_notify_tasks()`가 PR `head.ref`를 검사해 `claude-fix/`로 시작하는 브랜치에서는 `create_issue`를 건너뜀 — 토글 off 없이도 무한 루프 자동 차단.
+**구현 완료 (Phase 2)**: `src/notifier/github_issue.py`의 `_IssueNotifier.is_enabled()`가 PR `head.ref`를 `_BOT_PR_PREFIXES`(`claude-fix/`·`bot/`·`renovate/`·`dependabot/`) 중 하나로 시작하는지 검사해 봇/자동화 PR에서는 `create_issue`를 건너뜀 — 토글 off 없이도 무한 루프 자동 차단.
 
 ```python
-is_bot_pr = pr_head_ref and pr_head_ref.startswith("claude-fix/")
-if repo_config and repo_config.create_issue and result_dict and not is_bot_pr:
-    ...  # 봇 PR은 이 블록 전체 스킵
+# src/notifier/github_issue.py:22
+_BOT_PR_PREFIXES = ("claude-fix/", "bot/", "renovate/", "dependabot/")
+
+# _IssueNotifier.is_enabled() 내부
+is_bot_pr = ctx.pr_head_ref and any(
+    ctx.pr_head_ref.startswith(prefix) for prefix in _BOT_PR_PREFIXES
+)
+if is_bot_pr:
+    return False  # 봇 PR은 create_issue 채널 비활성
 ```
 
 ---
@@ -346,7 +375,7 @@ if repo_config and repo_config.create_issue and result_dict and not is_bot_pr:
 ## End-to-end 검증 체크리스트
 
 ```
-[ ] 1. curl로 잘못된 HMAC 서명 전송 → workflow 중단 로그 확인
+[ ] 1. curl로 잘못된 HMAC 서명 전송 → (hard-reject 적용 시) workflow 중단 / (번들 JSON soft-pass 시) "HMAC mismatch — soft pass" 경고 로그 확인 후 hard-reject 로 하드닝
 [ ] 2. "안녕하세요 문의입니다" 이슈 → exit 1 + Issue 코멘트 (코드 변경 없음)
 [ ] 3. "README 오타 수정" 이슈 → PR 생성 → SCAManager 분석 → auto_merge → Issue close
 [ ] 4. 테스트가 있는 리포에 기능 추가 이슈 → claude가 테스트까지 커밋 → PR CI 통과
@@ -362,7 +391,7 @@ if repo_config and repo_config.create_issue and result_dict and not is_bot_pr:
 
 | 증상 | 원인 | 해결 |
 |------|------|------|
-| workflow 2단계에서 중단 | HMAC 불일치 | SCAManager `.env`의 `N8N_WEBHOOK_SECRET` == n8n Credential 값 확인 |
+| (hard-reject 시) workflow 2단계 중단 / (soft-pass 시) "HMAC mismatch" 경고 | HMAC 불일치 | SCAManager `.env`의 `N8N_WEBHOOK_SECRET` == n8n 시크릿 값 확인 + Node 2 가 **rawBody**로 검증하는지 확인(Python json.dumps↔JS JSON.stringify 직렬화 차이) |
 | exit 3 루프 | PAT 권한 부족 또는 만료 | GitHub Fine-grained PAT `contents:write` + `pull_requests:write` 재발급 |
 | claude exit 2, "No such file" | claude cli 미설치 | n8n 호스트에서 `npm i -g @anthropic-ai/claude-code` 재실행 |
 | PR 생성됐지만 SCAManager 분석 안 됨 | 리포에 n8n_webhook_url 미설정 | SCAManager 설정 페이지 → 알림 채널 → n8n URL 입력 |
