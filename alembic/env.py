@@ -42,6 +42,28 @@ from src.config import settings
 
 target_metadata = Base.metadata
 
+# 🔴 전 ORM 모델(11) 실참조 — CodeQL py/unused-import(#528~536) 봉인.
+# 각 import 의 `# noqa: F401` 은 flake8 만 억제하고 CodeQL py/unused-import 는 별도 룰이라
+# 명시 참조로만 'used' 처리된다 (test_migration_completeness.py 의 _REGISTERED_MODELS 동일 패턴, #507~515).
+# 이어지는 단언이 튜플을 실제로 읽어 py/unused-global-variable(상수 고아화, #515 류)도 함께 회피하며,
+# import 부작용이 사라진 비정상 상태를 런타임에서 loud-fail 로 잡아 autogenerate drop_table 함정을 잠근다.
+# 🔴 Reference every ORM model (11) so CodeQL py/unused-import (#528-536) is sealed; the per-import
+# `# noqa: F401` silences flake8 only. The following assertion reads the tuple (avoiding an
+# unused-global alert too) and loud-fails if the import side-effect ever breaks — locking the
+# autogenerate drop_table footgun. Same pattern as test_migration_completeness.py.
+_REGISTERED_MODELS = (
+    Repository, Analysis, AnalysisFeedback, RepoConfig, GateDecision,
+    MergeAttempt, MergeRetryQueue, IssueRegistration,
+    InsightNarrativeCache, SecurityAlertProcessLog, User,
+)
+_unregistered_models = [
+    m.__name__ for m in _REGISTERED_MODELS if m.__tablename__ not in target_metadata.tables
+]
+if _unregistered_models:  # pragma: no cover — import 부작용 소실 시에만 도달 / only if side-effect breaks
+    raise RuntimeError(
+        f"ORM 모델 테이블이 Base.metadata 에 미등록 — autogenerate drop_table 위험: {_unregistered_models}"
+    )
+
 # Override sqlalchemy.url from application settings.
 # effective_migration_url = MIGRATION_DATABASE_URL or DATABASE_URL — RLS Phase 4 마이그레이션
 # credential 게이트(owner role 분리). 미설정 시 DATABASE_URL 그대로 사용(현행 동작 보존).
