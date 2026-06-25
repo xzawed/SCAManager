@@ -20,11 +20,23 @@ if config.config_file_name is not None:
 
 # add your model's MetaData object here
 # for 'autogenerate' support
+# 🔴 전 ORM 모델(11종) 명시 import 의무 — 일부만 import 하면 autogenerate 가 미등록 테이블을
+# "삭제됨"으로 보고 drop_table 을 생성하는 데이터 손실 함정 (감사 migration-integrity-001, 2026-06-25).
+# empty __init__.py 규칙(testing.md) 보존 — aggregate import 대신 여기서 전수 명시.
+# 회귀 가드: tests/unit/migrations/test_alembic_env_model_completeness.py (신규 모델 추가 시 자동 fail).
+# 🔴 Import EVERY ORM model (11) — a partial import makes autogenerate emit destructive drop_table for
+# the unimported tables. The empty-__init__ convention is preserved; all models are listed here explicitly.
 from src.models.repository import Repository  # noqa: F401
 from src.models.analysis import Analysis      # noqa: F401
+from src.models.analysis_feedback import AnalysisFeedback  # noqa: F401
 from src.models.repo_config import RepoConfig  # noqa: F401
 from src.models.gate_decision import GateDecision  # noqa: F401
+from src.models.merge_attempt import MergeAttempt  # noqa: F401
 from src.models.merge_retry import MergeRetryQueue  # noqa: F401
+from src.models.issue_registration import IssueRegistration  # noqa: F401
+from src.models.insight_narrative_cache import InsightNarrativeCache  # noqa: F401
+from src.models.security_alert_log import SecurityAlertProcessLog  # noqa: F401
+from src.models.user import User  # noqa: F401
 from src.database import Base, _build_connect_args
 from src.config import settings
 
