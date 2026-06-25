@@ -296,9 +296,9 @@ Rules:
 
 ### Node 8 — GitHub Issue Comment
 
-실패 케이스별 메시지로 Issue에 코멘트 작성:
+> ⚠️ **번들 JSON 구현**: 출하 `n8n-workflow.json` 의 Issue Comment 노드는 **단일 generic body** (`={{ $json.stdout || '자동 처리 완료.' }}`)로 모든 exit 케이스에 claude stdout(또는 기본 문구)을 그대로 코멘트한다. 아래 케이스별 메시지는 **권장 커스터마이징**이다 — Switch 출력(output 1/2/3)을 각각 다른 메시지의 Issue Comment 노드로 분기하면 케이스별 문구를 적용할 수 있다.
 
-| 케이스 | 메시지 |
+| 케이스 | 권장 메시지 |
 |--------|--------|
 | exit 1 | `🤖 코드 변경이 필요하지 않은 이슈로 판단됐습니다. 수동 검토가 필요한 경우 재오픈 해주세요.` |
 | exit 2 | `🤖 자동 처리 중 오류가 발생했습니다:\n\n\`\`\`\n{{ $json.stderr }}\n\`\`\`` |
@@ -306,13 +306,16 @@ Rules:
 
 ### Node 9 — Telegram 알림 (실패 케이스)
 
-> ⚠️ 번들 `n8n-workflow.json` 의 Telegram 노드는 **기본 `disabled: true`** 다(자격증명 미설정 환경 보호). 실패 알림을 받으려면 n8n UI 에서 노드를 활성화(`disabled: false`)하고 Telegram credential·chat_id 를 설정할 것.
+> ⚠️ **번들 `n8n-workflow.json` 구현 + 운영자 필수 조치**:
+> - Telegram 노드는 **기본 `disabled: true`** 다(자격증명 미설정 환경 보호). 알림을 받으려면 노드를 활성화(`disabled: false`)하고 Telegram credential 을 설정할 것.
+> - **출하 JSON 은 `chatId` 가 하드코딩**(`1984552353`)되어 있다 — **반드시 본인 chat_id 로 교체**(또는 아래처럼 `{{ $env.TELEGRAM_CHAT_ID }}` 표현식으로 변경)할 것.
+> - 출하 JSON 의 텍스트는 **단일 generic 문구**(`❌ Issue #N 처리 실패 (exit N)`)다. 아래 exit별 문구는 **권장 커스터마이징**(Switch 출력별 분기).
 
-기존 SCAManager Telegram Bot Token 재사용:
+권장 — 기존 SCAManager Telegram Bot Token 재사용 + exit별 문구:
 
 ```
-Chat ID: {{ $env.TELEGRAM_CHAT_ID }}
-Text:
+Chat ID: {{ $env.TELEGRAM_CHAT_ID }}   # 번들 JSON 은 하드코딩값 — 교체 의무
+Text (권장 — exit별 분기):
   exit 2: ❌ *Issue #{{ $json.issue_number }}* 자동 처리 실패\n`{{ $json.repo }}`
   exit 3: ❌ *Issue #{{ $json.issue_number }}* push 실패\n`{{ $json.repo }}`
   exit 124: ⏱️ *Issue #{{ $json.issue_number }}* 타임아웃 (15분 초과)
