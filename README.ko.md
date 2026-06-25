@@ -279,7 +279,7 @@ PR 분석 완료
 `auto_merge=true` 상태에서 CI가 실행 중(`mergeable_state=unstable` 또는 `unknown`)이어서 머지에 실패하면, 포기하는 대신 재시도 큐에 등록합니다:
 
 - 첫 큐 등록 시 Telegram "⏳ merge queued" 알림 (1회)
-- `check_suite.completed` Webhook 또는 5분 cron으로 최대 30회, 24시간 재시도
+- `check_suite.completed` Webhook 또는 1분 cron으로 최대 30회, 24시간 재시도
 - 최종 결과: Telegram 성공/실패 알림 (1회)
 
 > **기존 리포**는 `check_suite` 이벤트 구독을 위해 Webhook 재등록 필요 (설정 → Card ⑤ → "Webhook 재등록")

@@ -220,7 +220,7 @@ Analysis complete
 When `auto_merge=true` and the merge fails because CI is still running (`mergeable_state=unstable` or `unknown`), SCAManager queues the PR for retry instead of giving up:
 
 - First queue: Telegram "⏳ merge queued" notification (1×)
-- Up to 30 retries over 24 hours via `check_suite.completed` webhook or 5-min cron
+- Up to 30 retries over 24 hours via `check_suite.completed` webhook or 1-min cron
 - Final result: Telegram success/failure notification (1×)
 
 > **Existing repos** need Webhook re-registration (Settings → Card ⑤ → "Reinstall Webhook") to subscribe to `check_suite` events.
