@@ -55,3 +55,50 @@ def test_env_imports_every_orm_model_module():
         "autogenerate(target_metadata=Base.metadata) 시 해당 테이블에 drop_table 생성 위험. "
         "env.py 상단에 `from src.models.<module> import <Model>  # noqa: F401` 추가 의무."
     )
+
+
+def _env_imported_model_class_names() -> set[str]:
+    """alembic/env.py 가 src.models.* 에서 import 하는 클래스명 집합 (AST 실측)."""
+    # Class names env.py imports from src.models.* (measured via AST).
+    tree = ast.parse(_ENV_PY.read_text(encoding="utf-8"))
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("src.models."):
+            for alias in node.names:
+                names.add(alias.asname or alias.name)
+    return names
+
+
+def _env_registered_model_names() -> set[str]:
+    """alembic/env.py 의 `_REGISTERED_MODELS` 튜플이 참조하는 모델 클래스명 집합 (AST 실측)."""
+    # Class names referenced by env.py's `_REGISTERED_MODELS` tuple (measured via AST).
+    tree = ast.parse(_ENV_PY.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and any(
+            isinstance(t, ast.Name) and t.id == "_REGISTERED_MODELS" for t in node.targets
+        ):
+            elts = getattr(node.value, "elts", [])
+            return {e.id for e in elts if isinstance(e, ast.Name)}
+    return set()
+
+
+def test_env_registers_every_imported_model_for_codeql():
+    """import 한 모든 ORM 모델을 `_REGISTERED_MODELS` 가 참조해야 CodeQL py/unused-import(#528~536) 재발이 차단된다.
+
+    각 import 의 `# noqa: F401` 은 flake8 전용 — CodeQL py/unused-import 는 별도 룰이라 명시 참조로만
+    'used' 처리된다. 신규 모델을 import 만 하고 튜플 등재를 잊으면 alert 가 재발하므로 이 가드가 fail 한다.
+    test_migration_completeness.py 의 `_REGISTERED_MODELS` 패턴(#507~515 봉인)과 동일.
+
+    The per-import `# noqa: F401` only silences flake8; CodeQL's separate py/unused-import rule treats
+    the imports as used only via an explicit reference. Adding a model import without tuple membership
+    would resurface the alert, so this guard fails — same pattern as test_migration_completeness.py.
+    """
+    imported = _env_imported_model_class_names()
+    # 선행 가드: import 자체가 존재해야 의미 있는 검사 (vacuous pass 방지)
+    # Guard: imports must exist for a meaningful check (avoid a vacuous pass).
+    assert imported, "alembic/env.py 가 src.models.* 모델을 import 하지 않음 (선행 가드 위반)"
+    missing = imported - _env_registered_model_names()
+    assert not missing, (
+        f"alembic/env.py `_REGISTERED_MODELS` 가 import 한 모델 {sorted(missing)} 를 참조하지 않음 — "
+        "CodeQL py/unused-import(#528~536) 재발 위험. env.py `_REGISTERED_MODELS` 튜플에 추가 의무."
+    )
