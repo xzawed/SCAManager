@@ -61,3 +61,35 @@ def test_store_user_repos_purges_expired_first():
         assert 10_000_000 in mod._user_repos_cache
     finally:
         mod._user_repos_cache.clear()
+
+
+def test_store_user_repos_existing_user_update_does_not_grow():
+    """기존 user 갱신은 크기를 늘리지 않고 evict 도 트리거하지 않는다 (user_id in cache 분기)."""
+    import src.ui.routes.add_repo as mod
+    mod._user_repos_cache.clear()
+    try:
+        now = 1000.0
+        for i in range(mod._USER_REPOS_CACHE_MAX):
+            mod._user_repos_cache[i] = ([], now + mod._USER_REPOS_CACHE_TTL)
+        before = len(mod._user_repos_cache)
+        mod._store_user_repos(0, [{"updated": 1}], now)  # 기존 key 0 갱신
+        assert len(mod._user_repos_cache) == before  # 크기 불변
+        assert mod._user_repos_cache[0][0] == [{"updated": 1}]  # 값 갱신됨
+    finally:
+        mod._user_repos_cache.clear()
+
+
+def test_store_user_repos_evicts_soonest_to_expire():
+    """상한 초과(만료분 없음) 시 가장 빨리 만료될 엔트리를 evict 한다."""
+    import src.ui.routes.add_repo as mod
+    mod._user_repos_cache.clear()
+    try:
+        now = 1000.0
+        # 전부 미래-만료, key 0 이 가장 빨리 만료 (expiry 최소)
+        for i in range(mod._USER_REPOS_CACHE_MAX):
+            mod._user_repos_cache[i] = ([], now + 10 + i)
+        mod._store_user_repos(10_000_000, [{"x": 1}], now)
+        assert 0 not in mod._user_repos_cache  # 가장 빨리 만료될 엔트리 evict
+        assert 10_000_000 in mod._user_repos_cache
+    finally:
+        mod._user_repos_cache.clear()
