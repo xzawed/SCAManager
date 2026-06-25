@@ -16,7 +16,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const fs = require('fs');\nconst crypto = require('crypto');\n\nconst secret = fs.readFileSync('/etc/n8n-secrets/hmac_secret', 'utf8').trim();\nconst all = items[0].json;\nconst header = (all.headers && all.headers['x-scamanager-signature-256']) || '';\nconst body = all.body || {};\nconst rawBody = JSON.stringify(body);\n\nconst expected = 'sha256=' + crypto.createHmac('sha256', secret)\n  .update(rawBody, 'utf8').digest('hex');\n\n// HMAC soft-pass: JSON.stringify 재직렬화로 인한 불일치 허용\nif (header && header !== expected) {\n  console.warn('HMAC mismatch — soft pass');\n}\nreturn items;"
+        "jsCode": "const fs = require('fs');\nconst crypto = require('crypto');\n\nconst secret = fs.readFileSync('/etc/n8n-secrets/hmac_secret', 'utf8').trim();\nconst all = items[0].json;\nconst header = (all.headers && all.headers['x-scamanager-signature-256']) || '';\nconst body = all.body || {};\nconst rawBody = JSON.stringify(body);\n\nconst expected = 'sha256=' + crypto.createHmac('sha256', secret)\n  .update(rawBody, 'utf8').digest('hex');\n\n// ⚠️ HMAC soft-pass (보안 약화 — 운영 배포 전 하드닝 의무): JS JSON.stringify(공백X) != Python json.dumps(공백O)\n// 직렬화 불일치를 회피하려 불일치 시에도 통과시킨다. 무인증 트리거를 차단하지 못하므로, 운영에서는 Webhook Raw Body\n// + rawBody 기반 hard-reject 로 교체할 것 (docs/integrations/n8n-auto-fix.md Node 2 보안 주석 참조).\nif (header && header !== expected) {\n  console.warn('HMAC mismatch — soft pass (INSECURE: harden to hard-reject for production)');\n}\nreturn items;"
       },
       "id": "a36d145a-79c2-4a0d-bb2d-2a7d8abb0ca3",
       "name": "HMAC 검증",
@@ -154,7 +154,8 @@
       [],
       [{"node": "GitHub Issue Comment", "type": "main", "index": 0}],
       [{"node": "GitHub Issue Comment", "type": "main", "index": 0}, {"node": "Telegram 알림", "type": "main", "index": 0}],
-      [{"node": "GitHub Issue Comment", "type": "main", "index": 0}, {"node": "Telegram 알림", "type": "main", "index": 0}]
+      [{"node": "GitHub Issue Comment", "type": "main", "index": 0}, {"node": "Telegram 알림", "type": "main", "index": 0}],
+      [{"node": "Telegram 알림", "type": "main", "index": 0}]
     ]}
   },
   "active": true,
