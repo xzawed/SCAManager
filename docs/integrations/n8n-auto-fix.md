@@ -125,8 +125,13 @@ CLAUDE_OUT=$(mktemp); CLAUDE_ERR=$(mktemp)
 # printf 를 부모 셸에서 직접 실행해 파이프로 stdin 전달 (timeout 은 claude 만 래핑, set -o pipefail 로 실패 전파).
 # 🔴 PROMPT is a parent-shell var; a `sh -c '...'` subshell does NOT inherit non-exported vars → empty prompt.
 # Run printf in the parent shell and pipe into claude (timeout wraps claude only).
-if ! printf '%s' "$PROMPT" | timeout 900 claude -p --permission-mode acceptEdits \
-      > "${CLAUDE_OUT}" 2> "${CLAUDE_ERR}"; then
+# rc 캡처(|| rc=$?)로 set -e 중단 회피 + pipefail 로 claude/timeout 종료코드 전파.
+# Capture rc to avoid set -e abort; pipefail propagates claude/timeout's status.
+rc=0
+printf '%s' "$PROMPT" | timeout 900 claude -p --permission-mode acceptEdits \
+      > "${CLAUDE_OUT}" 2> "${CLAUDE_ERR}" || rc=$?
+if [ "${rc}" -ne 0 ]; then
+  [ "${rc}" -eq 124 ] && exit 124   # timeout 은 124 보존 (exit code 표 참조)
   head -c 4000 "${CLAUDE_ERR}" >&2
   exit 2
 fi
@@ -234,12 +239,15 @@ False 경로는 NoOp으로 연결 (무시).
 ### Node 4 — 작업 변수 세팅 (Set)
 
 ```
-repo         = {{ $json.repo }}
-issue_number = {{ $json.data.issue.number }}
-issue_title  = {{ $json.data.issue.title }}
-issue_body   = {{ $json.data.issue.body }}
-work_key     = {{ $json.repo + '#' + $json.data.issue.number }}
+repo         = {{ $json.body.repo }}
+issue_number = {{ $json.body.data.issue.number }}
+issue_title  = {{ $json.body.data.issue.title }}
+issue_body   = {{ $json.body.data.issue.body || '' }}
+work_key     = {{ $json.body.repo + '#' + $json.body.data.issue.number }}
+repo_token   = {{ $json.body.data.repo_token || '' }}
 ```
+
+> envelope 은 webhook body 아래 중첩되므로 표현식은 `$json.body.*` 경로다(출하 JSON Set 노드와 일치). `repo_token` 은 SCAManager 가 릴레이한 GitHub 토큰(Node 6 `GH_TOKEN` 출처).
 
 ### Node 5 — 세마포어 락 (Code)
 
