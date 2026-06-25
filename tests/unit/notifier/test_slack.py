@@ -68,6 +68,26 @@ def test_build_payload_includes_ai_summary():
     assert "좋은 리팩토링입니다." in attachment_text
 
 
+def test_build_payload_localizes_ai_summary_on_failure():
+    """notifier-001: AI 리뷰 실패(status != success) 시 Slack 도 raw summary 대신 현지화 메시지.
+
+    Slack 만 resolve_ai_summary 를 우회해 parse_error 등에서 원시 요약을 현지화 없이 노출하던
+    i18n 비대칭(타 4채널은 헬퍼 경유) 회귀 가드. status=parse_error 는 summary 가 비어있지 않을 수 있다.
+    """
+    ai = AiReviewResult(
+        commit_score=17, ai_score=15, test_score=10,
+        summary="원시 한국어 요약 누출",  # non-empty raw summary on failure path
+        suggestions=[],
+        status="parse_error",
+    )
+    payload = _build_payload(
+        "owner/repo", "abc1234", _make_score(), _make_analysis(), None, ai_review=ai, language="ko",
+    )
+    attachment_text = payload["attachments"][0].get("text", "")
+    assert "AI 리뷰 불가" in attachment_text  # 현지화된 unavailable 메시지 노출
+    assert "원시 한국어 요약 누출" not in attachment_text  # 원시 요약 누출 차단
+
+
 def test_build_payload_includes_issues():
     issues = [AnalysisIssue(tool="pylint", severity="error", message="undefined variable x", line=5)]
     payload = _build_payload("owner/repo", "abc1234", _make_score(), _make_analysis(issues), None)

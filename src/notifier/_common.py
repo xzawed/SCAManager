@@ -51,10 +51,16 @@ def get_all_issues(analysis_results: list) -> list:
 
 
 def truncate_message(text: str, max_length: int, suffix: str = "...") -> str:
-    """텍스트를 max_length 이하로 절단하고 suffix를 붙인다."""
+    """텍스트를 max_length 이하로 절단하고 suffix를 붙인다 (출력 길이 ≤ max_length 보장).
+
+    Truncate to <= max_length and append suffix (output length never exceeds max_length).
+    """
     if len(text) <= max_length:
         return text
-    return text[:max_length - len(suffix)] + suffix
+    # max_length < len(suffix) 시 음수 슬라이스 방지 + 최종 클램프로 계약 보장 (감사 notifier-004)
+    # Guard against negative slice when max_length < len(suffix); final clamp enforces the contract.
+    cut = max(max_length - len(suffix), 0)
+    return (text[:cut] + suffix)[:max_length]
 
 
 def truncate_issue_msg(msg: str) -> str:
