@@ -53,7 +53,7 @@ Most code review tools make you choose between static analysis precision and AI 
 - **Score-based PR Gate** — automatically approve, reject, or request human decision via Telegram based on numeric thresholds
 - **Approve from phone** — Telegram inline buttons let you review and merge PRs from anywhere, no laptop required
 - **Push + PR analysis** — not just PRs; bare pushes also trigger analysis, auto-create GitHub Issues, and post commit comments
-- **50-language AI review** — language-specific checklists for every supported language, not a generic prompt
+- **49-language AI review** — language-specific checklists for every supported language, not a generic prompt
 
 **Best for:** Solo developers and small teams who want full control over their code quality pipeline.
 
@@ -67,7 +67,7 @@ SCAManager supports **3 languages** across the entire user-facing surface — UI
 |---------|------------|-----------------|
 | **Web UI** (login / dashboard / settings / admin) | All labels, buttons, hints | Header dropdown 🌐 (top nav) |
 | **Notifications** (Telegram / Discord / Slack / Email / GitHub PR Comment / Commit Comment / Issue) | All message templates | 3-layer fallback: User language → Repo notification language → default |
-| **AI Code Review** (Claude — 50 languages) | Tier1/Tier2/Tier3 + generic guides | 2-layer fallback: Repo owner language → User language → default |
+| **AI Code Review** (Claude — 49 languages) | Tier1/Tier2/Tier3 + generic guides | 2-layer fallback: Repo owner language → User language → default |
 
 **How to switch**: Click the language dropdown 🌐 in the top header. Changes apply immediately and persist via cookie.
 
@@ -94,7 +94,7 @@ Detailed environment variables: [docs/reference/env-vars.md](docs/reference/env-
 | Solidity | slither | `.sol` — reentrancy · tx.origin · weak-prng · Category-aware |
 | Ruby | RuboCop | `.rb` — Security cops detected separately |
 | Go | golangci-lint | `.go` — meta-linter (gosec / errcheck / staticcheck / unused, auto `go.mod`) |
-| AI Review | Claude Sonnet 4.6 | **50 languages** with language-specific checklists |
+| AI Review | Claude Sonnet 4.6 | **49 languages** with language-specific checklists |
 | Commit Message | Claude AI | Push / PR messages |
 
 - Handles `push` and PR (`opened` / `synchronize` / `reopened`) events automatically
@@ -523,7 +523,7 @@ GitHub Push/PR
             │
             ├─ asyncio.gather() ── parallel execution
             │    ├─ analyze_file() × N  (pylint · flake8 · bandit · semgrep · eslint · shellcheck · cppcheck · slither · rubocop · golangci-lint)
-            │    └─ review_code()       (Claude AI — 50-language checklists, token budget 8000)
+            │    └─ review_code()       (Claude AI — 49-language checklists, token budget 8000)
             │
             ├─ calculate_score()  →  score · grade
             ├─ Save Analysis to DB

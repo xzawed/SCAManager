@@ -75,7 +75,7 @@ src/
 ├── github_client/               # diff / issues (create_issue, get_issue_state, close_issue) / repos / checks (5분 TTL) / graphql (Tier 3 PR-A) / helpers (github_api_headers, ChangedFile) / models (ChangedFile 정의)
 ├── railway_client/              # models (RailwayDeployEvent 3-그룹 nested dataclass) / logs (fetch_deployment_logs) / webhook (parse_railway_payload)
 ├── analyzer/
-│   ├── pure/                    # registry / language / review_prompt / review_guides (tier1~3 + generic, 50 언어)
+│   ├── pure/                    # registry / language / review_prompt / review_guides (tier1~3 + generic, 49 언어)
 │   ├── io/                      # static.py (Registry 위임) + ai_review.py (Claude API)
 │   │   └── tools/               # 23 분석기 모듈 (Tier1 25종 — python 모듈이 pylint/flake8/bandit 3종 번들): python·semgrep·eslint·shellcheck·cppcheck·slither·rubocop·golangci_lint·hadolint·ktlint·tflint·tsc·sqlfluff·yamllint·phpstan·swiftlint·stylelint·htmlhint·buf_lint·dart_analyze·psscriptanalyzer·dotnet_format·clippy (STATE.md 정적분석 도구 단일출처)
 │   └── configs/                 # eslint.config.json 등 외부 도구 설정
@@ -197,7 +197,7 @@ GitHub Push/PR
       → get_pr_files / get_push_files (모든 변경 파일 수집)
       → asyncio.gather() 병렬 실행:
           ├─ analyze_file() × N  (.py만 정적 분석, 테스트 파일은 bandit 제외)
-          └─ review_code()       (Claude AI — 50개 언어 체크리스트 + 토큰 예산 관리)
+          └─ review_code()       (Claude AI — 49개 언어 체크리스트 + 토큰 예산 관리)
       → calculate_score(ai_review) (코드품질25 + 보안20 + 커밋15 + AI방향성25 + 테스트15)
       → DB 저장 (Analysis 레코드)
       → run_gate_check() [PR 이벤트만] — 3-옵션 완전 독립 처리

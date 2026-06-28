@@ -24,7 +24,7 @@
 | 커버리지 | **Python 97% / JS: E2E 커버** | Python: `make test-cov` (`--cov=src` — 8497줄 중 291 미커버, 97% — 2026-06-12 실측). JS: E2E pageerror 트랩(PR #605) + 정적 스캐너(PR #606) + ESLint(PR #607)으로 보완. `src/templates/*.html` 인라인 JS는 Python 커버리지 미측정 — 언어별 분리 보고 의무 (사이클 127 P0 학습). |
 | bandit HIGH | **0개** | bandit 1.9.4 (Python 3.12+ 대응) |
 | flake8 | **0건** (E501 16건 soft-pass — `|| true` 가드, CI 차단 없음) | `flake8 src/` |
-| 지원 언어 (AI 리뷰) | **50개** | language.py — Tier1/2/3 가이드 |
+| 지원 언어 (AI 리뷰) | **49개** | language.py — Tier1/2/3 가이드 (도달불가 json_schema dead 가이드 제거, analyzer-pure-001) |
 | 지원 언어 (정적분석) | **52개+** | Semgrep 22 + ESLint/tsc 2 + ShellCheck 1 + cppcheck 1 + slither 1 + rubocop 1 + golangci-lint 1 + Python 3 + **신규 15**: Dockerfile(hadolint)·Kotlin(ktlint)·HCL(tflint)·SQL(sqlfluff)·YAML(yamllint)·PHP(phpstan)·Swift(swiftlint)·CSS(stylelint)·SCSS(stylelint)·HTML(htmlhint)·Protobuf(buf_lint)·Dart(dart_analyze)·PowerShell(psscriptanalyzer)·C#(dotnet_format)·Rust(clippy) |
 | Tier1 정적분석 도구 | **25종** | pylint·flake8·bandit·semgrep·eslint·shellcheck·cppcheck·slither·rubocop·golangci-lint·**hadolint**·**ktlint**·**tflint**·**tsc**·**sqlfluff**·**yamllint**·**phpstan**·**swiftlint**·**stylelint**·**htmlhint**·**buf_lint**·**dart_analyze**·**psscriptanalyzer**·**dotnet_format**·**clippy** |
 | pytest-asyncio | **1.4.0** | Python 3.12+ DeprecationWarning 제거 완료 · **SSOT=Python 3.12** — CI(`.github/workflows/ci.yml` python-version) + Railway(`.python-version`=3.12, nixpacks 핀; default 3.11) + docs 동일 (로컬 dev 3.13 = 3.12+ 호환). 3.14 미검증 선언 정정 (#22) |

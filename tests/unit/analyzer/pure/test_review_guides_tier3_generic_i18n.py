@@ -20,11 +20,11 @@ _TIER3 = [
     "erlang", "ocaml", "julia", "zig", "nim", "crystal", "gleam",
     "elm", "vimscript", "gdscript", "dockerfile", "makefile",
     "terraform", "yaml", "toml", "graphql", "protobuf", "xml",
-    "latex", "json_schema",
+    "latex",
 ]
 
 
-# ── Tier3 20 언어 × 3 출력 언어 헤더 검증 ──────────────────────────────
+# ── Tier3 19 언어 × 3 출력 언어 헤더 검증 ──────────────────────────────
 
 
 @pytest.mark.parametrize("lang", _TIER3)

@@ -176,5 +176,5 @@ def test_tier1_japanese_full_has_review_header(lang):
 
 
 def test_supported_languages_unchanged():
-    """supported_languages — 50 언어 보존 (i18n 적용 후 변경 0)."""
-    assert len(supported_languages()) == 50
+    """supported_languages — 49 언어 보존 (i18n 적용 후 변경 0)."""
+    assert len(supported_languages()) == 49
