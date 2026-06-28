@@ -84,7 +84,6 @@ _GUIDE_MAP: dict[str, tuple[str, str]] = {
     "protobuf": ("tier3", "protobuf"),
     "xml": ("tier3", "xml"),
     "latex": ("tier3", "latex"),
-    "json_schema": ("tier3", "json_schema"),
 }
 
 _BASE = "src.analyzer.pure.review_guides"

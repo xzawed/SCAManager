@@ -38,7 +38,7 @@ class TestGuideLoading:
         "erlang", "ocaml", "julia", "zig", "nim", "crystal", "gleam",
         "elm", "vimscript", "gdscript", "dockerfile", "makefile",
         "terraform", "yaml", "toml", "graphql", "protobuf", "xml",
-        "latex", "json_schema",
+        "latex",
     ])
     def test_tier3_guides_load(self, lang):
         full = get_guide(lang, "full")
@@ -56,9 +56,9 @@ class TestGuideLoading:
 
     def test_supported_languages_count(self):
         langs = supported_languages()
-        assert len(langs) == 50
+        assert len(langs) == 49
 
-    def test_all_50_languages_have_guides(self):
+    def test_all_languages_have_guides(self):
         for lang in supported_languages():
             assert get_guide(lang, "full"), f"Missing full guide for {lang}"
             assert get_guide(lang, "compact"), f"Missing compact guide for {lang}"

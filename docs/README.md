@@ -23,7 +23,7 @@
 |------|------|
 | [reference/env-vars.md](reference/env-vars.md) | 전체 환경변수 단일 출처 (kill-switch·SaaS·DB·모델 분기 포함) |
 | [reference/scoring.md](reference/scoring.md) | 점수 배점·등급 임계·AI 스케일링 |
-| [reference/language-coverage.md](reference/language-coverage.md) | AI 리뷰 50 언어 + 정적분석 25종 커버리지 |
+| [reference/language-coverage.md](reference/language-coverage.md) | AI 리뷰 49 언어 + 정적분석 25종 커버리지 |
 | [STATE.md](STATE.md) | 현재 수치 단일 출처 (테스트·pylint·SonarCloud·커버리지) |
 | [cycle-history.md](cycle-history.md) | 사이클 60~159 작업 이력 (최신순) |
 | [agents-index.md](agents-index.md) | `.claude/agents`·`skills` 인덱스 |

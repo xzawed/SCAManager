@@ -19,7 +19,7 @@ paths:
 - **PR action 필터링**: `pull_request` 이벤트 중 `opened`/`synchronize`/`reopened`만 처리, `closed`/`labeled` 등은 무시.
 - **AI 점수 스케일링**: Claude는 commit 0-20, direction 0-20, test 0-10으로 반환 → calculator가 commit 0-15, direction 0-25, test 0-15로 스케일링. `round()` 사용으로 banker's rounding 적용.
 - **commit_scamanager_files**: GitHub Contents API `PUT /repos/{owner}/{repo}/contents/{path}` 사용. 파일 이미 있으면 GET으로 sha 조회 후 body에 포함해야 200 성공 (sha 누락 시 422 에러).
-- **다언어 AI 리뷰**: `language.py`가 50개 언어를 감지(확장자·shebang·파일명), `review_prompt.py`가 언어별 체크리스트를 토큰 예산(8000 토큰) 내에서 조립. 비-코드 파일만 변경 시 테스트 점수 면제(test_score=10 → 15/15).
+- **다언어 AI 리뷰**: `language.py`가 49개 언어를 감지(확장자·shebang·파일명), `review_prompt.py`가 언어별 체크리스트를 토큰 예산(8000 토큰) 내에서 조립. 비-코드 파일만 변경 시 테스트 점수 면제(test_score=10 → 15/15).
 - **Analyzer Registry**: `src/analyzer/pure/registry.py` 의 REGISTRY 전역 목록 + `register()` (동일 name 중복 등록 방지). `src/analyzer/io/static.py` 가 `tools/` 하위 **23개 tool 모듈**(buf_lint·clippy·cppcheck·dart_analyze·dotnet_format·eslint·golangci_lint·hadolint·htmlhint·ktlint·phpstan·psscriptanalyzer·python·rubocop·semgrep·shellcheck·slither·sqlfluff·stylelint·swiftlint·tflint·tsc·yamllint)을 `import` → 모듈 import 시점에 자동 `register()` 호출. 전체 목록 단일 출처는 `docs/architecture.md` `tools/` 항목 (2026-06-23 실측 정정 — 이전 8종 예시는 stale). Phase S.3-B 이후 `pure/` vs `io/` 분리 구조.
 - **category 기반 점수 집계**: `AnalysisIssue.category`("code_quality"|"security") 기준으로 점수 계산. tool 이름 무관 — 새 정적분석 도구 추가 시 category만 올바르게 설정하면 점수에 자동 반영. `CQ_WARNING_CAP=25` 단일 cap (구 pylint 15 + flake8 10 통합).
 - **review_guides 구조**: `get_guide(lang, "full"|"compact")` — Tier1 full ~500토큰, compact 1줄. N≤3 전체 full, N≤6 Tier1 full+나머지 compact, N>10 상위 5개 compact만.
