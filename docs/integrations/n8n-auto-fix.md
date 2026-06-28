@@ -308,13 +308,13 @@ Rules:
 
 > ⚠️ **번들 `n8n-workflow.json` 구현 + 운영자 필수 조치**:
 > - Telegram 노드는 **기본 `disabled: true`** 다(자격증명 미설정 환경 보호). 알림을 받으려면 노드를 활성화(`disabled: false`)하고 Telegram credential 을 설정할 것.
-> - **출하 JSON 은 `chatId` 가 하드코딩**(`1984552353`)되어 있다 — **반드시 본인 chat_id 로 교체**(또는 아래처럼 `{{ $env.TELEGRAM_CHAT_ID }}` 표현식으로 변경)할 것.
+> - **출하 JSON 의 `chatId` 는 `{{ $env.TELEGRAM_CHAT_ID }}` 표현식**(n8n 환경변수)으로 설정돼 있다 — **n8n 인스턴스에 `TELEGRAM_CHAT_ID` 환경변수를 설정**(또는 본인 chat_id 리터럴로 교체)할 것. (이전 출하본은 실제 chat_id 가 하드코딩돼 있었음 — notifier-002 정정.)
 > - 출하 JSON 의 텍스트는 **단일 generic 문구**(`❌ Issue #N 처리 실패 (exit N)`)다. 아래 exit별 문구는 **권장 커스터마이징**(Switch 출력별 분기).
 
 권장 — 기존 SCAManager Telegram Bot Token 재사용 + exit별 문구:
 
 ```
-Chat ID: {{ $env.TELEGRAM_CHAT_ID }}   # 번들 JSON 은 하드코딩값 — 교체 의무
+Chat ID: {{ $env.TELEGRAM_CHAT_ID }}   # 번들 JSON 기본값 — n8n 환경변수 TELEGRAM_CHAT_ID 설정
 Text (권장 — exit별 분기):
   exit 2: ❌ *Issue #{{ $json.issue_number }}* 자동 처리 실패\n`{{ $json.repo }}`
   exit 3: ❌ *Issue #{{ $json.issue_number }}* push 실패\n`{{ $json.repo }}`
