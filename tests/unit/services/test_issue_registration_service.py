@@ -1,11 +1,12 @@
 # tests/unit/services/test_issue_registration_service.py
+import logging
 from datetime import datetime
 from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from src.database import Base
 from src.models.issue_registration import IssueRegistration  # noqa: F401
 from src.services.issue_registration_service import (
@@ -238,6 +239,49 @@ async def test_register_issue_toctou_integrity_error_raises_duplicate(db):
                 github_token="tok", issue_type="ai_suggestion", issue_key="race_key",
                 title="T", body="B", labels=[],
             )
+
+
+# ── orphan 가드 (services-001): 비-IntegrityError DB 실패 시 GitHub Issue orphan 로깅 ──
+# orphan guard (services-001): log orphan GitHub Issue on non-IntegrityError DB failure
+
+@pytest.mark.asyncio
+async def test_register_issue_db_failure_logs_orphan_and_reraises(db, caplog):
+    # GitHub Issue 생성 성공 후 DB INSERT 가 비-IntegrityError(OperationalError 등)로 실패하면
+    # 이미 생성된 GitHub Issue 가 orphan 으로 남는다 — 운영자 보정용 구조화 ERROR 로그 + 예외 재전파.
+    # GitHub Issue is created, then DB INSERT fails with a non-IntegrityError (e.g. OperationalError):
+    # the created GitHub Issue is orphaned — emit a structured ERROR log for reconciliation and re-raise.
+    from src.repositories import issue_registration_repo
+    with (
+        patch(
+            "src.services.issue_registration_service.create_issue",
+            new=AsyncMock(return_value={
+                "number": 77, "html_url": "https://github.com/o/r/issues/77", "state": "open"
+            }),
+        ),
+        patch.object(
+            issue_registration_repo, "create",
+            side_effect=OperationalError("db connection lost", None, None),
+        ),
+    ):
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(OperationalError):
+                await register_issue(
+                    db, analysis_id=1, repo_id=1, repo_full_name="owner/repo",
+                    github_token="tok", issue_type="ai_suggestion", issue_key="orphan_key",
+                    title="T", body="B", labels=[],
+                )
+
+    orphan_logs = [
+        r.getMessage() for r in caplog.records
+        if r.levelno >= logging.ERROR and "orphan" in r.getMessage().lower()
+    ]
+    assert orphan_logs, "orphan ERROR 로그가 없습니다"
+    msg = orphan_logs[0]
+    # 운영자 보정에 필요한 식별자 — issue number + url + repo
+    # Reconciliation identifiers — issue number + url + repo
+    assert "77" in msg
+    assert "https://github.com/o/r/issues/77" in msg
+    assert "owner/repo" in msg
 
 
 # ── get_analysis_issue_status — httpx.HTTPError silent pass (lines 113-116) ──
