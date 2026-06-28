@@ -2,15 +2,18 @@
 issue_registration_service — Issue registration and GitHub state sync logic.
 """
 import hashlib
+import logging
 from datetime import datetime, timezone
 
 import httpx
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.github_client.issues import create_issue, get_issue_state
 from src.models.issue_registration import IssueRegistration
 from src.repositories import issue_registration_repo
+
+logger = logging.getLogger(__name__)
 
 # GitHub 상태 캐시 TTL (초) — 만료 시 재조회
 # GitHub state cache TTL in seconds — refresh after expiry
@@ -75,6 +78,23 @@ async def register_issue(  # pylint: disable=too-many-arguments
         existing = issue_registration_repo.find_by_key(db, repo_id=repo_id, issue_key=issue_key)
         issue_num = existing.github_issue_number if existing else gh_result["number"]
         raise ValueError(f"DUPLICATE:{issue_num}") from None
+    except SQLAlchemyError:
+        # GitHub Issue 는 이미 생성됐는데 DB 기록이 비-IntegrityError(연결 끊김 등)로 실패 →
+        # 추적되지 않는 orphan Issue 가 남는다. 운영자가 수동 보정할 수 있도록 식별자
+        # (issue number/url/repo)를 ERROR 로그로 남기고 예외를 그대로 전파한다.
+        # GitHub Issue was already created but the DB write failed with a non-IntegrityError
+        # (e.g. dropped connection), leaving an untracked orphan Issue. Emit an ERROR log with
+        # the reconciliation identifiers (issue number/url/repo) and re-raise.
+        db.rollback()
+        logger.error(
+            "issue_registration orphan — GitHub Issue created but DB persist failed: "
+            "repo=%s issue_number=%s url=%s issue_key=%s",
+            repo_full_name,
+            gh_result["number"],
+            gh_result["html_url"],
+            issue_key,
+        )
+        raise
     return {
         "github_issue_number": record.github_issue_number,
         "github_issue_url": gh_result["html_url"],
