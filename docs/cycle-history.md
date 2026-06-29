@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [전체 품질 감사 — 2R 다중에이전트 wf + 6 PR(#989~#994) + CodeQL #996 봉인 (env.py 11 ORM 전수 import=autogenerate drop_table footgun 차단·운영 P0=0·코드 활성 P1=0, 단위 5089→5117, 2026-06-25)](#전체-품질-감사-2라운드-다중에이전트-6-pr-codeql-봉인-2026-06-25)
 - [R13 평가 — native auto-merge 부적합·retry 큐 영구 primary (운영 DB 실측: native enable 0회 · branch protection 부재→PR UNSTABLE→enable "unstable status" 실패 · 아키텍처 부정합[native=체크/SCAManager=점수] → 사용자 결정 native 미추구·retry 큐 영구 primary·폐기 철회 · 부수 bilingual 훅 cp949 버그픽스, TDD +2 · 단위 5087 · 전체 5241, 2026-06-24)](#r13-평가--native-auto-merge-부적합retry-큐-영구-primary-2026-06-24)
 - [잔여작업 — docs drift 정정 · 회고 C10/C11 · C1 CodeQL cascade 가드 (#977 설계헤더 3건 stale 정정 + scripts/ 5종 등재 · #978 retrospective.mjs try/catch 회복력 + evidence 출력 환류[C10] + codex-verify 소스-grep 체크포인트[C11] · #979 C1 PR-diff 한정 dead-symbol CI 가드[`--isolated` 필수 · per-file-ignore 무력화 실증] · Codex 5라운드 메타테스트 봉인, TDD +7 · 단위 5085 · 전체 5239, 2026-06-24)](#잔여작업--docs-drift-정정--회고-c10c11--c1-codeql-cascade-가드-2026-06-24)
 - [회고 follow-up — retrospective.mjs dogfooding + 하드닝 (/retrospective 첫 실전 verdict_coverage 1.0[69 전건]·confirmed 55, Option A: 회고 보고서 아카이브[P1 #39]·W2 `/2`→`/${DRY_THRESHOLD}` 정정·drift 가드 false-pass 봉인[#936]·retrospective runbook·spec 헤더 정정, TDD +1·단위 5078·전체 5232, 2026-06-23)](#회고-follow-up--retrospectivemjs-dogfooding--하드닝-2026-06-23)
@@ -130,6 +131,21 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 전체 품질 감사 2라운드 다중에이전트 6 PR CodeQL 봉인 (2026-06-25)
+
+전체 코드(src 244 .py 26K LOC) + 문서(docs 48K LOC) 2라운드 다중에이전트 품질 감사(`wf_f0e831cf` 15 클러스터 + `wf_00706a61` 5 클러스터, 67 발견·적대 검증·**운영 P0=0·코드 활성 P1=0**) → 6 PR 정책 18 Codex mutual 검증 후 머지:
+
+- **#989** `alembic/env.py` 11 ORM 모델 전수 import — autogenerate `drop_table` **데이터손실 footgun 차단**(5/11만 import→미등록 6 테이블 drop 위험) + 완전성 정적 가드(P1, +1)
+- **#990** n8n 통합 가이드 산문↔출하 JSON↔코드 divergence 정합($PROMPT 빈프롬프트·HMAC soft-pass·토큰모델 P1×3 + Switch fallback/Node 경로 P2 — Codex 적대 전수대조 4건 추가 적발)
+- **#991** quick wins(retry cron 5분→1분 drift·check_config "5-way"→3-layer 정직화·CI 주석·fixture rename)
+- **#992** notifier P2(Slack AI요약 i18n 비대칭→resolve_ai_summary·truncate_message 음수슬라이스 봉인, +7)
+- **#993** robustness P2(github_client `repo_path()` 인코딩 정합·DB config `ge=1` 하한[probe_interval=0 busy-loop 차단], +13)
+- **#994** minor P2 묶음(calculate_grade dict 순서 독립·repo_kpi `order_by` 결정성·`_extract_event_metadata` KeyError·user_repos 캐시 상한, +6)
+
+단위 5089→5116(+27). 🔴 **wf 교훈**: 15 무거운 Opus 리뷰 에이전트 동시 실행 → 서버 rate-limit 전멸 → 웨이브 3개씩 분할. 🔴 **CodeQL 후속 #996**: #989(env.py 11 모델 전수 import)가 self-inflict 한 `py/unused-import` 9건(#528~536)을 env.py `_REGISTERED_MODELS` 튜플 명시 참조 + 런타임 완전성 단언으로 봉인(정책 14, test_migration_completeness.py 선례) + AST 회귀 가드 +1 (5116→**5117**). 🔴 잔여 보류(사용자 결정) → 2026-06-29 세션에서 구현: notifier-002(B-1)·services-001(B-2)·analyzer-pure-001(B-3). [[project-full-quality-audit-2026-06-25]]
+
+---
 
 ## R13 평가 — native auto-merge 부적합·retry 큐 영구 primary (2026-06-24)
 
