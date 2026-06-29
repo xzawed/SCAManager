@@ -145,6 +145,28 @@ def _validate_startup_config() -> None:
                 "TOKEN_ENCRYPTION_KEY required when STRICT_TOKEN_ENCRYPTION=true"
             )
         logger.warning("%s", warning_msg)
+    # P1-①: 비-empty 이지만 형식이 잘못된 키는 _get_fernet() 예외→silent 평문 fallback 을 유발한다.
+    # startup 에서 Fernet 생성 가능 여부를 검증해, strict/prod 면 fail-fast (false assurance 차단).
+    # P1-①: a non-empty but malformed key triggers a silent plaintext fallback in _get_fernet().
+    # Validate it can build a Fernet here; under strict/prod, fail fast (close the false-assurance gap).
+    token_key = settings.token_encryption_key
+    if is_prod_like and isinstance(token_key, str) and token_key.strip():
+        from cryptography.fernet import Fernet  # pylint: disable=import-outside-toplevel
+        try:
+            Fernet(token_key.strip().encode())
+        except (ValueError, TypeError) as exc:
+            invalid_msg = (
+                "SECURITY: TOKEN_ENCRYPTION_KEY is set but is not a valid Fernet key "
+                "(must be a 32-byte url-safe base64 key). Tokens would be stored in "
+                "PLAINTEXT. Generate with: python -c \"from cryptography.fernet import "
+                "Fernet; print(Fernet.generate_key().decode())\""
+            )
+            if settings.strict_token_encryption:
+                logger.error("%s", invalid_msg)
+                raise RuntimeError(
+                    "TOKEN_ENCRYPTION_KEY is invalid when STRICT_TOKEN_ENCRYPTION=true"
+                ) from exc
+            logger.warning("%s", invalid_msg)
     if is_prod_like and not (settings.telegram_webhook_secret or "").strip():
         # Telegram webhook 시크릿 미설정 시 /webhooks/telegram 인증이 완전히 우회됨.
         # When TELEGRAM_WEBHOOK_SECRET is not set, /webhooks/telegram auth is bypassed entirely.
