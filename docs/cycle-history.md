@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [B 백로그 3건 구현(#997~#999) + C-1 RLS LIVE 검증 (services-001 orphan 가드·analyzer-pure-001 json_schema dead 가이드 제거[49]·notifier-002 n8n chatId C-safe + RLS `SET ROLE scamanager_app` 동적 cross-tenant 누출 0 증명·단위 5117→5113, 2026-06-29)](#b-백로그-3건-구현-c-1-rls-live-검증-2026-06-29)
 - [전체 품질 감사 — 2R 다중에이전트 wf + 6 PR(#989~#994) + CodeQL #996 봉인 (env.py 11 ORM 전수 import=autogenerate drop_table footgun 차단·운영 P0=0·코드 활성 P1=0, 단위 5089→5117, 2026-06-25)](#전체-품질-감사-2라운드-다중에이전트-6-pr-codeql-봉인-2026-06-25)
 - [R13 평가 — native auto-merge 부적합·retry 큐 영구 primary (운영 DB 실측: native enable 0회 · branch protection 부재→PR UNSTABLE→enable "unstable status" 실패 · 아키텍처 부정합[native=체크/SCAManager=점수] → 사용자 결정 native 미추구·retry 큐 영구 primary·폐기 철회 · 부수 bilingual 훅 cp949 버그픽스, TDD +2 · 단위 5087 · 전체 5241, 2026-06-24)](#r13-평가--native-auto-merge-부적합retry-큐-영구-primary-2026-06-24)
 - [잔여작업 — docs drift 정정 · 회고 C10/C11 · C1 CodeQL cascade 가드 (#977 설계헤더 3건 stale 정정 + scripts/ 5종 등재 · #978 retrospective.mjs try/catch 회복력 + evidence 출력 환류[C10] + codex-verify 소스-grep 체크포인트[C11] · #979 C1 PR-diff 한정 dead-symbol CI 가드[`--isolated` 필수 · per-file-ignore 무력화 실증] · Codex 5라운드 메타테스트 봉인, TDD +7 · 단위 5085 · 전체 5239, 2026-06-24)](#잔여작업--docs-drift-정정--회고-c10c11--c1-codeql-cascade-가드-2026-06-24)
@@ -131,6 +132,18 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## B 백로그 3건 구현 C-1 RLS LIVE 검증 (2026-06-29)
+
+2026-06-25 품질 감사의 잔여 보류 3건을 사용자 결정 후 PR 단위 구현(각 정책 18 Codex mutual) + RLS 운영 LIVE 심층검증:
+
+- **#997** (services-001) `register_issue` orphan 가드 — GitHub Issue 생성 후 DB INSERT 가 비-IntegrityError 실패 시 추적불가 orphan 이 남던 문제에 `except SQLAlchemyError` 구조화 ERROR 로깅(운영자 보정용)+예외 재전파(기존 500 보존), TDD +1
+- **#998** (analyzer-pure-001) 도달불가 `json_schema` dead 리뷰 가이드 제거 — `detect_language` 가 절대 산출 못 하는 유일 dead 가이드(49/50 도달), `supported_languages()` 50→49 정직화(README/architecture/STATE/language-coverage active 동기화, archive 보존), parametrize −5
+- **#999** (notifier-002, 사용자 C-safe 결정) 출하 `n8n-workflow.json` chatId 하드코딩(`1984552353`) footgun → `{{ $env.TELEGRAM_CHAT_ID }}` 정정 + HMAC 하드닝 안내 명확화(HMAC 로직 불변 — raw-body hard-reject 는 n8n 버전의존 테스트불가→산문 운영자 의무), docs-only
+
+🔴 **C-1 RLS 동적 증명** (운영 Supabase, 정책 12 SELECT-only): `SET LOCAL ROLE scamanager_app` + `SET LOCAL app.user_id` 로 RLS 강제 직접 검증 — user 999(미존재)·legacy unset 모두 노출 **0(cross-tenant 누출 0)**, 실소유자만 가시. 11/11 테이블 ENABLE+FORCE·`scamanager_app` rolbypassrls=false·커버리지 갭 0 실측, 운영 단일 테넌트(users 1). 단위 5117→5113. 부수: Dependabot #1000~#1004(alembic/semgrep/starlette/pytest/fastapi/anthropic) + STATE sync #1005. 🔴 교훈: B-3 1차 Codex NG = `.gitignore` 대상 `docs/superpowers/` grep 미탐 → Codex 직접 읽기 4곳 추가 발견(양방향 검증 가치). [[project-session-handoff-2026-06-26]]
+
+---
 
 ## 전체 품질 감사 2라운드 다중에이전트 6 PR CodeQL 봉인 (2026-06-25)
 
