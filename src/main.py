@@ -186,13 +186,26 @@ async def lifespan(_app: FastAPI):
     try:
         await asyncio.wait_for(asyncio.to_thread(_run_migrations), timeout=30)
         logger.info("DB migration completed")
-    except asyncio.TimeoutError:
-        logger.error("DB migration timed out after 30s — starting app anyway")
-    except Exception:  # pylint: disable=broad-exception-caught  # noqa: BLE001
+    except asyncio.TimeoutError as exc:
+        logger.error("DB migration timed out after 30s")
+        # P1-②: STRICT_MIGRATION=true 면 fail-fast — 마이그레이션 없는 stale 스키마로 서비스 차단.
+        # P1-②: with STRICT_MIGRATION=true, fail fast instead of serving on a stale schema.
+        if settings.strict_migration:
+            raise RuntimeError(
+                "DB migration timed out and STRICT_MIGRATION=true — refusing to start"
+            ) from exc
+        logger.error("starting app anyway (set STRICT_MIGRATION=true to fail fast)")
+    except Exception as exc:  # pylint: disable=broad-exception-caught  # noqa: BLE001
         # Phase H PR-6A: logger.exception 으로 stack trace 보존
         # Railway 로그에서 마이그레이션 실패 원인 추적 가능
         # logger.exception preserves stack trace; Railway logs surface failure cause
         logger.exception("DB migration failed")
+        # P1-②: STRICT_MIGRATION=true 면 fail-fast (온프레미스/비-Railway prod 의 fail-open 차단).
+        # P1-②: with STRICT_MIGRATION=true, fail fast (closes the fail-open on non-Railway prod).
+        if settings.strict_migration:
+            raise RuntimeError(
+                "DB migration failed and STRICT_MIGRATION=true — refusing to start"
+            ) from exc
     await init_http_client()
 
     # Phase 2 — GitHub API warm-up ping. PR #105 silent skip 사고 분석에서 cold
