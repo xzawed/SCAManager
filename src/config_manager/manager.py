@@ -36,8 +36,8 @@ class RepoConfigData:  # pylint: disable=too-many-instance-attributes
     # 리포별 Claude 코드리뷰 모델 override (Alembic 0032)
     # NULL = settings.claude_review_model 전역 기본값 사용
     review_model: str | None = None
-    # per-repo 비활성화 도구 목록 — JSON 배열, 기본값 빈 배열 (Alembic 0035)
-    # Per-repo disabled analyzer names — JSON array, defaults to empty list (Alembic 0035)
+    # per-repo 비활성화 도구 목록 — JSON 배열, 기본값 빈 배열 (Alembic 0036)
+    # Per-repo disabled analyzer names — JSON array, defaults to empty list (Alembic 0036)
     disabled_tools: list = field(default_factory=list)
     # leaderboard_opt_in 폐기 (그룹 60 사용자 결정 정정 — alembic 0025)
 

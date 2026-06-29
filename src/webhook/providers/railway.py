@@ -40,6 +40,12 @@ async def railway_webhook(  # pylint: disable=too-many-locals
         body = await request.json()
     except Exception:  # pylint: disable=broad-except
         body = {}
+    # 유효 JSON 이지만 비-dict(배열/스칼라) 면 {} 로 정규화 — parse_railway_payload 의
+    # body.get(...) AttributeError→500 차단 (telegram provider 와 대칭, 감사 P2).
+    # Normalize a valid-but-non-dict JSON body (array/scalar) to {} so parse_railway_payload's
+    # body.get(...) doesn't raise AttributeError→500 (symmetry with the telegram provider).
+    if not isinstance(body, dict):
+        body = {}
 
     with SessionLocal() as db:
         config = repo_config_repo.find_by_railway_webhook_token(db, token)
