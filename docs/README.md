@@ -25,7 +25,7 @@
 | [reference/scoring.md](reference/scoring.md) | 점수 배점·등급 임계·AI 스케일링 |
 | [reference/language-coverage.md](reference/language-coverage.md) | AI 리뷰 49 언어 + 정적분석 25종 커버리지 |
 | [STATE.md](STATE.md) | 현재 수치 단일 출처 (테스트·pylint·SonarCloud·커버리지) |
-| [cycle-history.md](cycle-history.md) | 사이클 60~159 작업 이력 (최신순) |
+| [cycle-history.md](cycle-history.md) | 사이클 60~166 작업 이력 (최신순) |
 | [agents-index.md](agents-index.md) | `.claude/agents`·`skills` 인덱스 |
 
 ## 🛠 How-to — "어떻게 하는가?" (작업 절차)
@@ -43,6 +43,10 @@
 | [runbooks/self-analysis.md](runbooks/self-analysis.md) | 자기 분석 루프 방지 |
 | [runbooks/static-assets.md](runbooks/static-assets.md) | 정적 자산(Tailwind 빌드) 관리 |
 | [runbooks/phase2-data-readiness.md](runbooks/phase2-data-readiness.md) | Phase 2 데이터 준비 |
+| [runbooks/integrity-audit.md](runbooks/integrity-audit.md) | 정합성 감사 워크플로우 운영 (`/integrity-audit`) |
+| [runbooks/retrospective.md](runbooks/retrospective.md) | 5+1 회고 워크플로우 운영 (`/retrospective`) |
+| [runbooks/merge-verifier.md](runbooks/merge-verifier.md) | 2nd-LLM 머지 검증자 활성화 (운영 안전) |
+| [runbooks/rls-role-separation.md](runbooks/rls-role-separation.md) | RLS 앱 role 분리 운영 (owner-bypass 차단) |
 | [guides/github-integration-guide.md](guides/github-integration-guide.md) | GitHub 연동 가이드 |
 | [guides/onpremise-migration-guide.md](guides/onpremise-migration-guide.md) | 온프레미스 DB 전환 가이드 |
 | [guides/operational-verification.md](guides/operational-verification.md) | 운영 검증 가이드 |
@@ -56,7 +60,7 @@
 | 문서 | 내용 |
 |------|------|
 | [architecture.md](architecture.md) | `src/` 트리 + 핵심 데이터 흐름 (Webhook → pipeline → notify → gate) — 구조 단일 출처 |
-| [design/INDEX.md](design/INDEX.md) | 설계 문서 16건 인덱스 (시스템·인증·Gate·차트·UI 재설계·i18n 등 — 설계 시점 결정 기록) |
+| [design/INDEX.md](design/INDEX.md) | 설계 문서 18건 인덱스 (시스템·인증·Gate·차트·UI 재설계·i18n·repo-automation 등 — 설계 시점 결정 기록) |
 
 ## 🎓 Tutorial — "처음부터 배우기" (학습)
 
@@ -69,8 +73,10 @@
 
 | 경로 | 용도 |
 |------|------|
-| [_archive/](_archive/) | 회고 보고서·폐기 계획·과거 산출물 아카이브 (히스토리 보존, 활성 참조 아님) |
-| `samples/` · `superpowers/` | 샘플·플랜 산출물 (참조 빈도 낮음) |
+| [_archive/](_archive/) | 회고 보고서·폐기 계획·과거 산출물 아카이브 (히스토리 보존, 활성 참조 아님) — `_archive/superpowers/` = 완료 plan/spec **tracked** 보존본 |
+| `reports/` | `/integrity-audit`·`/retrospective` 워크플로우 실행 시 생성되는 리포트 산출물 (활성) — 과거 회고 보존본은 `_archive/reports/` |
+| `samples/` | 샘플 산출물 (tracked, 참조 빈도 낮음) |
+| `superpowers/` | 🔴 **로컬 전용 working dir** (`.gitignore` 등재 · GitHub 미푸시) — 완료된 plan/spec 은 `_archive/superpowers/` 로 수동 이동 |
 
 > **유지보수 원칙**: 새 문서 추가 시 본 인덱스의 해당 유형 표에 한 줄 등재. Diátaxis 유형 혼합
 > (한 문서가 how-to + explanation 을 섞음) 은 지양 — 유형별 분리가 문서 명확성의 핵심이다.
