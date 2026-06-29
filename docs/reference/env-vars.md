@@ -22,7 +22,8 @@
 | `API_AUTH_DISABLED` | `1` 설정 시 `API_KEY` 미설정이어도 REST API 무인증 통과 허용 — **로컬 개발 전용 명시 opt-out** (운영 절대 설정 금지). 미설정(기본 `0`) + `API_KEY` 미설정 = 503 fail-closed. `*_DISABLED` kill-switch | `1` (로컬 dev) / 미설정 (운영) |
 | `APP_BASE_URL` | Railway 등 리버스 프록시에서 HTTPS redirect_uri 강제 지정 + **CORS allow_origins 출처 결정** (사이클 142 Phase C — `src/main.py` CORSMiddleware, 미설정 시 CORS 미등록) | `https://your-app.railway.app` |
 | `TOKEN_ENCRYPTION_KEY` | GitHub Access Token 암호화 키 (미설정 시 평문 저장) | `32자 이상 랜덤` |
-| `STRICT_TOKEN_ENCRYPTION` | `true` 설정 시 `TOKEN_ENCRYPTION_KEY` 미설정이면 lifespan startup 차단 (기본값 `false` = 평문 저장 허용 + WARNING 출력) | `false` (기본) |
+| `STRICT_TOKEN_ENCRYPTION` | `true` 설정 시 `TOKEN_ENCRYPTION_KEY` 미설정 **또는 형식 오류**면 lifespan startup 차단 (기본값 `false` = 평문 저장 허용 + WARNING 출력). P1-① 2026-06-29 감사로 invalid 키도 차단 대상 추가 | `false` (기본) |
+| `STRICT_MIGRATION` | `true` 설정 시 lifespan DB 마이그레이션 실패/timeout 면 앱 기동 차단(fail-fast). 기본 `false` = 기존 동작(로그 후 "starting app anyway"). Railway 는 pre-deploy `alembic upgrade head` 가 1차 게이트라 무해하나 온프레미스/비-Railway prod 는 lifespan 이 유일 게이트 (P1-② 2026-06-29 감사) | `false` (기본) |
 | `CLAUDE_REVIEW_MODEL` | AI 코드리뷰에 사용할 Claude 모델 ID | `claude-sonnet-4-6` (기본) |
 | `CLAUDE_REVIEW_MAX_TOKENS` | AI 코드리뷰 응답 출력 토큰 상한 — 한국어 리뷰 JSON(~2660 토큰) 여유값. 🔴 저한도 모델(claude-3-haiku/opus=4096)을 `CLAUDE_REVIEW_MODEL` 로 쓰면 이 값을 모델 출력 한도 이하로 낮춰야 함(8192 일괄 적용 시 Anthropic 400 → `api_error`). 구값 1500 이 응답을 절단해 `parse_error` 로 출시 이래 ~80% 리뷰 실패한 사고 fix (제약 `ge=1`) | `8192` (기본) |
 | `CLAUDE_INSIGHT_MODEL` | Insight narrative (`/dashboard?mode=insight`) 4 카드 생성용 Claude 모델 ID — 코드리뷰보다 단순 task → Haiku 분기로 토큰 비용 ↓ (Cycle 74 PR-A #247) | `claude-haiku-4-5` (기본) |

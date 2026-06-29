@@ -130,6 +130,50 @@ def test_lifespan_exception_does_not_crash():
     assert response.status_code == 200
 
 
+# --- P1-② (2026-06-29 감사): STRICT_MIGRATION fail-fast ---
+
+def test_lifespan_strict_migration_raises_on_timeout():
+    """P1-②: STRICT_MIGRATION=true + 마이그레이션 timeout → 기동 차단(stale 스키마 fail-open 방지)."""
+    with patch("src.main._run_migrations", side_effect=TimeoutError), \
+         patch("src.main.settings") as mock_settings:
+        mock_settings.session_secret = "test-session-secret-32-chars-long!"
+        mock_settings.anthropic_api_key = "sk-ant-test-key"
+        mock_settings.app_base_url = ""
+        mock_settings.token_encryption_key = ""
+        mock_settings.strict_migration = True
+        with pytest.raises(RuntimeError, match="STRICT_MIGRATION"):
+            with TestClient(app):
+                pass
+
+
+def test_lifespan_strict_migration_raises_on_exception():
+    """P1-②: STRICT_MIGRATION=true + 마이그레이션 일반 예외 → 기동 차단."""
+    with patch("src.main._run_migrations", side_effect=RuntimeError("db error")), \
+         patch("src.main.settings") as mock_settings:
+        mock_settings.session_secret = "test-session-secret-32-chars-long!"
+        mock_settings.anthropic_api_key = "sk-ant-test-key"
+        mock_settings.app_base_url = ""
+        mock_settings.token_encryption_key = ""
+        mock_settings.strict_migration = True
+        with pytest.raises(RuntimeError, match="STRICT_MIGRATION"):
+            with TestClient(app):
+                pass
+
+
+def test_lifespan_default_migration_continues_on_failure():
+    """P1-②: STRICT_MIGRATION 미설정(기본 False) → 마이그레이션 실패해도 기존대로 기동(하위호환)."""
+    with patch("src.main._run_migrations", side_effect=RuntimeError("db error")), \
+         patch("src.main.settings") as mock_settings:
+        mock_settings.session_secret = "test-session-secret-32-chars-long!"
+        mock_settings.anthropic_api_key = "sk-ant-test-key"
+        mock_settings.app_base_url = ""
+        mock_settings.token_encryption_key = ""
+        mock_settings.strict_migration = False
+        with TestClient(app) as c:
+            response = c.get("/health")
+    assert response.status_code == 200
+
+
 # --- ANTHROPIC_API_KEY 부재 경고 ---
 
 def test_lifespan_warns_when_anthropic_key_missing(caplog):

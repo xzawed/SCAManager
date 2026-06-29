@@ -70,6 +70,13 @@ class Settings(BaseSettings):
     # Strict mode (Phase 2): when True, refuses to start in prod (HTTPS) without
     # a token_encryption_key. Defaults to False for backwards-compatible warnings.
     strict_token_encryption: bool = False
+    # STRICT_MIGRATION (P1-② 2026-06-29 감사): True 면 lifespan DB 마이그레이션 실패/timeout 시
+    # 앱 기동 차단(fail-fast). 기본 False = 기존 동작(로그 후 "starting app anyway").
+    # Railway 는 pre-deploy `alembic upgrade head` 가 1차 게이트라 무해하나, 온프레미스/비-Railway
+    # prod 는 lifespan 이 유일 게이트이므로 명시 opt-in 으로 fail-fast.
+    # STRICT_MIGRATION: when True, abort startup if the lifespan DB migration fails/times out.
+    # Default False keeps the legacy "start anyway" behavior (Railway pre-deploy is the primary gate).
+    strict_migration: bool = False
     n8n_webhook_secret: str = ""  # n8n 전송 HMAC 서명 시크릿 (빈 문자열이면 서명 생략)
     # n8n issue 릴레이에 GitHub repo 토큰 포함 여부 — 명시적 opt-in (default off, 자격증명 유출 차단)
     # Whether to include the GitHub repo token in the n8n issue relay — explicit opt-in (default off)
