@@ -89,3 +89,4 @@
 | FK ondelete CASCADE 일관성 | `src/models/gate_decision.py` (alembic 0024) | child 모델 4종 모두 CASCADE — 신규 child 모델 추가 시 동일 정책 적용 권장. |
 
 > 최종 갱신: 2026-05-01 (Phase H+I 16 PR + 회고/문서 동기화 후)
+> 🔴 본 표는 **Phase H+I(2026-05-01) 시점 스냅샷**이다 — 이후 신규 모듈(verifier·config_manager·railway_client·shared/secure_compare 등)의 live 인덱스는 [architecture.md](architecture.md) `src/` 트리가 단일 출처. 신규 모듈은 본 스냅샷이 아닌 architecture.md 에 등재한다 (스냅샷에 후속 모듈 추가 시 phase 오귀속).

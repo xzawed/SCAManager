@@ -6,7 +6,7 @@
 
 ```
 src/
-├── main.py                     # FastAPI 앱, lifespan(DB 마이그레이션 + http_client), 전체 라우터 등록 + CachedStaticFiles `/static` mount (Cache-Control `no-cache` ETag 재검증 — 무버전 자산 stale 방지) + 미들웨어 LIFO 등록 (SecurityHeaders → RLSSessionMiddleware → SessionMiddleware → LocaleMiddleware)
+├── main.py                     # FastAPI 앱, lifespan(DB 마이그레이션 + http_client), 전체 라우터 등록 + CachedStaticFiles `/static` mount (Cache-Control `no-cache` ETag 재검증 — 무버전 자산 stale 방지) + 미들웨어 LIFO 등록 (add_middleware 순서 = SecurityHeaders → LimitBodySize → Locale → RLSSession → Session → CORS; 마지막 CORS = outermost·request 먼저 처리 → 요청 흐름 Session → RLS → route)
 ├── static/
 │   ├── vendor/chart.umd.min.js  # Chart.js 4.4.0 UMD min vendoring
 │   ├── vendor/htmx.min.js       # HTMX 1.9.12 hx-boost 네비게이션 (전체 페이지 리로드 제거)
@@ -43,9 +43,11 @@ src/
 │   ├── alembic_dialect.py       # is_postgresql(bind_or_conn) (Cycle 82 PR 1 — 사용처 12)
 │   ├── lang_names.py            # LANG_NAMES dict — locale 코드 → Claude 프롬프트 언어명 (단일 출처)
 │   ├── ssrf.py                  # is_dangerous_ip() — SSRF IP 분류 단일 출처 (_http.py 발신 가드 + settings.py 폼 검증)
+│   ├── secure_compare.py        # secure_str_compare() — hmac.compare_digest 타이밍 안전 비교 (hook/webhook HMAC 인증 단일출처)
 │   └── openai_metrics.py        # OpenAI 토큰/비용 계측 + aclose_openai_client (2nd-LLM 검증자, claude_metrics 대칭)
 ├── middleware/
 │   ├── rls_session.py           # RLSSessionMiddleware (ASGI, BaseHTTPMiddleware 우회)
+│   ├── rate_limiter.py          # slowapi limiter — RATE_LIMIT_API(60/min)/RATE_LIMIT_HEAVY(10/min) DoS 방어
 │   └── locale.py                # LocaleMiddleware — 5단계 locale 감지 (Cookie > Accept-Language q-weight > User > settings > fallback)
 ├── i18n/                        # 다국어 지원 인프라 (Babel 미사용 JSON dict 자체 구현)
 │   ├── loader.py                # TranslationLoader + LRU cache + 영문 fallback
