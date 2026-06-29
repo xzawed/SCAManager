@@ -1,6 +1,6 @@
 -r requirements.txt
-# pytest>=9.0.3 — CVE-2025-71176 (tmpdir race condition) fix
-pytest>=9.0.3
+# pytest>=9.1.1 — CVE-2025-71176 (tmpdir race condition) fix
+pytest>=9.1.1
 pytest-asyncio>=1.4.0
 pytest-cov>=7.1.0
 # subprocess hang 방지 — Windows 환경 특히 중요 (pytest.ini addopts --timeout=30 페어)
