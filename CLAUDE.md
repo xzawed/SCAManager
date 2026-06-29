@@ -362,7 +362,7 @@ GitHub Code Scanning 점검 detail 절차 + 운영 통합 = `docs/runbooks/opera
   | `docs/architecture.md` `services/` 한 줄 | 신규 service 함수 목록 갱신 |
   | `docs/architecture.md` 핵심 데이터 흐름 | 신규 경로가 흐름도에 포함되어야 하면 추가 |
   | `docs/reference/env-vars.md` | **신규 환경변수 (`*_DISABLED` kill-switch / `SAAS_*` / 모델 분기 / DB 등) 추가 시 적정 섹션 등재 의무** (사이클 82 5+1 cross-verify P0 학습 — 4건 누적 누락). **+ `config.py` `field_validator`/최솟값 제약 추가·변경 시에도** env-vars.md 해당 행 설명·예시 동기화 의무 (사이클 119 P0-C/P1-D 재발 방지 — SESSION_SECRET 32자 이상 예시 누락·MERGE_UNKNOWN_RETRY 미등재) |
-  | `.claude/rules/<area>.md` | **🔴 사이클 86 Q2 신설 (사용자 명시 결정)** — 영역별 path-scoped rules 본문 sync 의무. `tests/**` / `alembic/**` / `src/<area>/**` 등 path 매칭 영역 변경 시 해당 `.claude/rules/<area>.md` 본문 갱신 의무. 8 영역 매트릭스: testing.md (`tests/**`, `e2e/**`, `pytest.ini`) / db.md (`alembic/**`, `src/models/**`, `src/database.py`, `src/repositories/**`) / pipeline.md (`src/worker/pipeline.py`, `src/analyzer/**`, `src/scorer/**`, `src/webhook/**`, `src/gate/**`) / api.md (`src/api/**`, `src/notifier/**`, `src/webhook/**`, `src/gate/**`, `src/main.py`) / security.md (`src/auth/**`, `src/crypto.py`, `src/shared/log_safety.py`, `src/api/auth.py`, `src/webhook/validator.py`, `src/main.py`) / ui.md (`src/templates/**`, `src/static/**`, `src/ui/**`) / i18n.md (`src/i18n/**`, `src/middleware/locale.py`, `src/notifier/_language.py`, `src/analyzer/pure/review_guides/**`) / deploy.md (`railway.toml`, `nixpacks.toml`, `requirements.txt`, `sonar-project.properties` 등). path 매칭 시 자동 로드 (Anthropic 공식 패턴) — 본문 stale 시 Claude rule guidance drift 위험 |
+  | `.claude/rules/<area>.md` | **🔴 사이클 86 Q2 신설 (사용자 명시 결정)** — 영역별 path-scoped rules 본문 sync 의무. `tests/**` / `alembic/**` / `src/<area>/**` 등 path 매칭 영역 변경 시 해당 `.claude/rules/<area>.md` 본문 갱신 의무. 9 영역 매트릭스: testing.md (`tests/**`, `e2e/**`, `pytest.ini`) / db.md (`alembic/**`, `src/models/**`, `src/database.py`, `src/repositories/**`) / pipeline.md (`src/worker/pipeline.py`, `src/analyzer/**`, `src/scorer/**`, `src/webhook/**`, `src/gate/**`) / api.md (`src/api/**`, `src/notifier/**`, `src/webhook/**`, `src/gate/**`, `src/main.py`) / security.md (`src/auth/**`, `src/crypto.py`, `src/shared/log_safety.py`, `src/api/auth.py`, `src/webhook/validator.py`, `src/main.py`) / ui.md (`src/templates/**`, `src/static/**`, `src/ui/**`) / i18n.md (`src/i18n/**`, `src/middleware/locale.py`, `src/notifier/_language.py`, `src/analyzer/pure/review_guides/**`) / deploy.md (`railway.toml`, `nixpacks.toml`, `requirements.txt`, `sonar-project.properties` 등) / services.md (`src/services/**`, `src/verifier/**`, `src/config_manager/**`, `src/railway_client/**`, `src/mcp/**`, `src/cli/**`). path 매칭 시 자동 로드 (Anthropic 공식 패턴) — 본문 stale 시 Claude rule guidance drift 위험 |
 
 ### 모바일 환경 보호 — 수정 금지 파일
 
@@ -394,7 +394,7 @@ GitHub Code Scanning 점검 detail 절차 + 운영 통합 = `docs/runbooks/opera
 
 ## 주의사항 (카테고리별 — `.claude/rules/<area>.md` path-scoped)
 
-> **사이클 85 정리**: 8 카테고리 본문은 `.claude/rules/<area>.md` 로 분리 (Anthropic 공식 path-scoped rules 패턴). Claude Code 가 해당 영역 파일 작업 시 자동 로드. 매 세션 의무 read 부담 0.
+> **사이클 85 정리**: 9 카테고리 본문은 `.claude/rules/<area>.md` 로 분리 (Anthropic 공식 path-scoped rules 패턴). Claude Code 가 해당 영역 파일 작업 시 자동 로드. 매 세션 의무 read 부담 0.
 
 | 영역 | path-scoped 파일 | 매칭 경로 |
 |------|----------------|----------|
@@ -406,6 +406,7 @@ GitHub Code Scanning 점검 detail 절차 + 운영 통합 = `docs/runbooks/opera
 | UI / 템플릿 | [`.claude/rules/ui.md`](.claude/rules/ui.md) | `src/templates/**`, `src/static/**`, `src/ui/**` |
 | 다국어 / i18n | [`.claude/rules/i18n.md`](.claude/rules/i18n.md) | `src/i18n/**`, `src/middleware/locale.py`, `src/notifier/_language.py`, `src/analyzer/pure/review_guides/**` |
 | 배포 | [`.claude/rules/deploy.md`](.claude/rules/deploy.md) | `railway.toml`, `nixpacks.toml`, `requirements.txt`, `requirements-dev.txt`, `.env.example`, `.python-version`, `alembic.ini`, `sonar-project.properties` |
+| 서비스 계층 | [`.claude/rules/services.md`](.claude/rules/services.md) | `src/services/**`, `src/verifier/**`, `src/config_manager/**`, `src/railway_client/**`, `src/mcp/**`, `src/cli/**` |
 
 🔴 표시는 과거 사고로 검증된 고위험 규칙이다 (각 `.claude/rules/<area>.md` 파일 본문 참조).
 
