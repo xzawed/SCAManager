@@ -33,6 +33,11 @@ db_probe.py
 #   The `.codex_*` pattern does NOT match the tracked `.codex/` config dir.
 .codex_*
 
+# codex-rescue / 리뷰 도구가 repo 루트에서 pytest 실행 시 생성하는 임시 디렉토리 (절대 커밋 금지)
+# Temp dirs created when codex-rescue / review tooling runs pytest with cwd = repo root (NEVER commit).
+codex-pytest-*/
+review-tmp-*/
+
 # IDE
 .vscode/
 .idea/
