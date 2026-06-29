@@ -7,8 +7,14 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
+from cryptography.fernet import Fernet
+
 from src.main import app
 from tests.unit._route_helpers import registered_paths
+
+# 검증 통과용 실제 Fernet 키 — 가짜 placeholder 키는 startup Fernet 검증에서 거부됨
+# A real Fernet key for tests intending a valid key (fake placeholders are rejected by startup validation)
+_VALID_FERNET_KEY = Fernet.generate_key().decode()
 
 
 @pytest.fixture
@@ -193,7 +199,7 @@ def test_lifespan_no_warning_token_encryption_key_set_in_prod(caplog):
         mock_settings.session_secret = "test-session-secret-32-chars-long!"
         mock_settings.anthropic_api_key = "sk-ant-test-key"
         mock_settings.app_base_url = "https://scamanager.example.com"
-        mock_settings.token_encryption_key = "some-valid-fernet-key-value"
+        mock_settings.token_encryption_key = _VALID_FERNET_KEY
         mock_settings.strict_token_encryption = False
         with caplog.at_level(_logging.WARNING, logger="src.main"):
             with TestClient(app):
@@ -259,10 +265,45 @@ def test_lifespan_strict_mode_passes_when_key_set():
         mock_settings.session_secret = "test-session-secret-32-chars-long!"
         mock_settings.anthropic_api_key = "sk-ant-test-key"
         mock_settings.app_base_url = "https://scamanager.example.com"
-        mock_settings.token_encryption_key = "valid-fernet-key"
+        mock_settings.token_encryption_key = _VALID_FERNET_KEY
         mock_settings.strict_token_encryption = True
         with TestClient(app):
             pass
+
+
+# --- P1-① (2026-06-29 감사): 비-empty 이지만 잘못된 키 → 평문 fallback 차단 ---
+
+def test_lifespan_strict_mode_raises_when_key_invalid_in_prod():
+    """P1-①: strict + prod + 비-empty 이나 형식이 잘못된 키 → lifespan 차단 (평문 fallback 방지)."""
+    with patch("src.main._run_migrations"), \
+         patch("src.main.settings") as mock_settings:
+        mock_settings.session_secret = "test-session-secret-32-chars-long!"
+        mock_settings.anthropic_api_key = "sk-ant-test-key"
+        mock_settings.app_base_url = "https://scamanager.example.com"
+        mock_settings.token_encryption_key = "not-a-valid-fernet-key"  # 비-empty 이나 형식 오류
+        mock_settings.strict_token_encryption = True
+        with pytest.raises(RuntimeError, match="TOKEN_ENCRYPTION_KEY"):
+            with TestClient(app):
+                pass
+
+
+def test_lifespan_warns_when_key_invalid_non_strict_prod(caplog):
+    """P1-①: strict 아님 + prod + 잘못된 키 → 경고만(차단 X) — 평문 저장 위험 가시화."""
+    import logging as _logging
+    with patch("src.main._run_migrations"), \
+         patch("src.main.settings") as mock_settings:
+        mock_settings.session_secret = "test-session-secret-32-chars-long!"
+        mock_settings.anthropic_api_key = "sk-ant-test-key"
+        mock_settings.app_base_url = "https://scamanager.example.com"
+        mock_settings.token_encryption_key = "not-a-valid-fernet-key"
+        mock_settings.strict_token_encryption = False
+        with caplog.at_level(_logging.WARNING, logger="src.main"):
+            with TestClient(app):
+                pass
+    assert any(
+        "TOKEN_ENCRYPTION_KEY" in rec.message and "not a valid Fernet key" in rec.message
+        for rec in caplog.records
+    ), "잘못된 키에 대한 경고가 로그에 남지 않았습니다"
 
 
 # --- Phase 2 PR #112: GitHub API warmup ping ---
@@ -328,7 +369,7 @@ def test_lifespan_warns_telegram_webhook_secret_missing_in_prod(caplog):
         mock_settings.session_secret = "test-session-secret-32-chars-long!"
         mock_settings.anthropic_api_key = "sk-ant-test-key"
         mock_settings.app_base_url = "https://scamanager.example.com"
-        mock_settings.token_encryption_key = "valid-fernet-key"
+        mock_settings.token_encryption_key = _VALID_FERNET_KEY
         mock_settings.strict_token_encryption = False
         mock_settings.telegram_webhook_secret = ""
         with caplog.at_level(_logging.WARNING, logger="src.main"):
@@ -348,7 +389,7 @@ def test_lifespan_no_warning_telegram_webhook_secret_set_in_prod(caplog):
         mock_settings.session_secret = "test-session-secret-32-chars-long!"
         mock_settings.anthropic_api_key = "sk-ant-test-key"
         mock_settings.app_base_url = "https://scamanager.example.com"
-        mock_settings.token_encryption_key = "valid-fernet-key"
+        mock_settings.token_encryption_key = _VALID_FERNET_KEY
         mock_settings.strict_token_encryption = False
         mock_settings.telegram_webhook_secret = "some-secret-token"
         with caplog.at_level(_logging.WARNING, logger="src.main"):
