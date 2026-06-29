@@ -1,8 +1,8 @@
-# fastapi>=0.137.0 — starlette 1.0 지원 첫 릴리스 (include_router → _IncludedRouter 지연 포함).
+# fastapi>=0.138.1 — starlette 1.0 지원 첫 릴리스 (include_router → _IncludedRouter 지연 포함).
 #   이전 CVE-2024-47874 / CVE-2025-54121(starlette) 패치는 아래 starlette>=1.3.1 로 승계.
-# fastapi>=0.137.0 — first release supporting starlette 1.0 (include_router → lazy _IncludedRouter).
+# fastapi>=0.138.1 — first release supporting starlette 1.0 (include_router → lazy _IncludedRouter).
 #   Prior CVE-2024-47874 / CVE-2025-54121 (starlette) fixes are carried by starlette>=1.3.1 below.
-fastapi>=0.137.0
+fastapi>=0.138.1
 slowapi==0.1.10
 uvicorn[standard]==0.49.0
 pydantic-settings==2.14.2
