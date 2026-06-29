@@ -12,6 +12,7 @@ from pathlib import Path
 # 리포 루트 / repo root
 _ROOT = Path(__file__).resolve().parents[3]
 _RETRO = _ROOT / ".claude" / "workflows" / "retrospective.mjs"
+_INTEGRITY = _ROOT / ".claude" / "workflows" / "integrity-audit.mjs"
 
 
 def _strip_comments(text: str) -> str:
@@ -55,6 +56,14 @@ def test_confirmed_output_surfaces_evidence_and_citation():
 def test_completeness_round_is_resilient():
     assert _completeness_is_resilient(_code()), \
         "Completeness 라운드가 try/catch 로 보호되지 않음 (C10 회귀 — 2026-06-23 500 사고)"
+
+
+def test_integrity_audit_completeness_round_is_resilient():
+    """integrity-audit.mjs 도 Completeness 라운드를 try/catch 로 격리 (C10 패턴 계승, 2026-06-29 구조검토).
+    integrity-audit.mjs's Completeness round is also try/catch-isolated (C10 pattern inherited)."""
+    code = _strip_comments(_INTEGRITY.read_text(encoding="utf-8"))
+    assert _completeness_is_resilient(code), \
+        "integrity-audit.mjs Completeness 라운드가 try/catch 로 보호되지 않음 (C10 회귀)"
 
 
 # --- 합성 위반 적발 (주석 false-pass 봉인) / synthetic violation caught ---
