@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [cross-vendor 감사 및 구조검토 (#1006~#1008 P1×2 Codex-only + #1010~#1013 정리·구조 4 PR — 은닉코드 양 LLM CLEAN·services.md rule 신설 8→9영역·integrity-audit C10·단위 5113→5121, 2026-06-29)](#cross-vendor-감사-및-구조검토-2026-06-29)
 - [B 백로그 3건 구현(#997~#999) + C-1 RLS LIVE 검증 (services-001 orphan 가드·analyzer-pure-001 json_schema dead 가이드 제거[49]·notifier-002 n8n chatId C-safe + RLS `SET ROLE scamanager_app` 동적 cross-tenant 누출 0 증명·단위 5117→5113, 2026-06-29)](#b-백로그-3건-구현-c-1-rls-live-검증-2026-06-29)
 - [전체 품질 감사 — 2R 다중에이전트 wf + 6 PR(#989~#994) + CodeQL #996 봉인 (env.py 11 ORM 전수 import=autogenerate drop_table footgun 차단·운영 P0=0·코드 활성 P1=0, 단위 5089→5117, 2026-06-25)](#전체-품질-감사-2라운드-다중에이전트-6-pr-codeql-봉인-2026-06-25)
 - [R13 평가 — native auto-merge 부적합·retry 큐 영구 primary (운영 DB 실측: native enable 0회 · branch protection 부재→PR UNSTABLE→enable "unstable status" 실패 · 아키텍처 부정합[native=체크/SCAManager=점수] → 사용자 결정 native 미추구·retry 큐 영구 primary·폐기 철회 · 부수 bilingual 훅 cp949 버그픽스, TDD +2 · 단위 5087 · 전체 5241, 2026-06-24)](#r13-평가--native-auto-merge-부적합retry-큐-영구-primary-2026-06-24)
@@ -132,6 +133,17 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## cross-vendor 감사 및 구조검토 (2026-06-29)
+
+전체 코드(src 244 .py)+문서 Claude 8-차원 다중에이전트 wf(`wf_b30ca2e6`) + Codex 독립 cross-vendor 심층 감사 → 정리·구조 검토까지:
+
+- **은닉/악성 코드 양 LLM 독립 CLEAN** (백도어·exfil·난독화·타임밤·매직토큰·하드코딩 시크릿·eval/exec·shell=True 0)·**운영 P0=0**. 🔴 **P1 2건은 Codex 만 발견**(Claude 8-에이전트 deep sweep 이 놓침 — cross-vendor 가치): **#1006** `TOKEN_ENCRYPTION_KEY` invalid-key 평문 fallback false-assurance(startup Fernet 검증, TDD +2) · **#1007** `STRICT_MIGRATION` opt-in fail-fast(온프레미스 stale-스키마 fail-open 차단, +3) · **#1008** P2 저위험 3(disabled_tools 주석·`_sync_state` 예외확장·railway 비-dict 가드, +2). 단위 5113→5120.
+- **정리·구조 검토 (다중에이전트 4-차원)** → apply-now-safe + propose-confirm 반영 4 PR: **#1010** apply-now-safe docs 9건(architecture 미들웨어 LIFO 순서·secure_compare/rate_limiter 트리 등재·design INDEX·agents-index Phase 스냅샷 redirect) · **#1011** `.claude/rules/services.md` path-scoped rule 신설 — `src/services/**`+verifier/config_manager/railway_client/mcp/cli **6 디렉토리가 어떤 rule frontmatter 에도 매칭 안 되던 자동로드 갭** 해소(8→9 영역, cross-ref db/api/pipeline/i18n 포인터·중복 0) · **#1012** integrity-audit.mjs Completeness try/catch C10 회복력 계승(retrospective.mjs 패턴) + 동시성·회복력 교훈 런북(≤3 동시·StructuredOutput placeholder·cross-vendor) + 가드 +1 · **#1013** `codex-pytest-*/`·`review-tmp-*/` gitignore 정리. 단위 5120→**5121**.
+
+🔴 **교훈**: cross-vendor 필수(단일 LLM 다중에이전트 ≠ 충분 — P1 2건 Codex-only) · wf 차원5(notifier) finder StructuredOutput placeholder 소실→단일 Agent 재감사 보완 · 무거운 Opus 동시 ≤3 웨이브 분할 · 정적 감사 ≠ 운영 정상(정책 11/12/13 별도 트랙). 🔵 보류 backlog ~10(hook_token·RLS fallback listener·gate upsert TOCTOU·n8n HMAC byte-pin 등 — 설계/마이그레이션 영역, 사용자 미결정). [[project-deep-security-quality-audit-2026-06-29]]
+
+---
 
 ## B 백로그 3건 구현 C-1 RLS LIVE 검증 (2026-06-29)
 
