@@ -299,19 +299,29 @@ while (dry < DRY_THRESHOLD && round < MAX_ROUNDS && (!budget.total || budget.rem
 }
 
 // ── completeness critic + 표적 gap 라운드 (Task 5) ──
+// completeness/gap 라운드는 best-effort — API 오류(예: 일시 500)가 이미 confirmed 결함과
+// Report 단계를 무효화하지 않도록 try/catch 로 격리 (C10 — retrospective.mjs 동일 패턴 계승).
+// Completeness/gap is best-effort — isolate API errors (e.g. a transient 500) via try/catch so they
+// can't void the already-confirmed findings or the Report phase (C10 — same pattern as retrospective.mjs).
 phase('Completeness')
-const gaps = await agent(completenessPrompt(domains, confirmed, scope), { label: 'completeness', phase: 'Completeness', schema: GAPS_SCHEMA })
-if (gaps?.items?.length) {
-  log(`completeness: gap ${gaps.items.length}건 → 표적 라운드`)
-  const gapFound = (await parallel(gaps.items.map((g) => () =>
-    agent(gapAuditPrompt(g), { label: `gap:${g.domain}`, phase: 'Discover', schema: FINDINGS_SCHEMA })
-  ))).filter(Boolean).flatMap((r) => r.findings ?? []).filter((f) => !seen.has(key(f)))
-  gapFound.forEach((f) => seen.add(key(f)))
-  if (gapFound.length) {
-    const gapJudged = await verifyFresh(gapFound)
-    confirmed.push(...gapJudged.filter((j) => j.real))
-    unverifiedAll.push(...gapJudged.filter((j) => j.unverified))
+try {
+  const gaps = await agent(completenessPrompt(domains, confirmed, scope), { label: 'completeness', phase: 'Completeness', schema: GAPS_SCHEMA })
+  if (gaps?.items?.length) {
+    log(`completeness: gap ${gaps.items.length}건 → 표적 라운드`)
+    const gapFound = (await parallel(gaps.items.map((g) => () =>
+      agent(gapAuditPrompt(g), { label: `gap:${g.domain}`, phase: 'Discover', schema: FINDINGS_SCHEMA })
+    ))).filter(Boolean).flatMap((r) => r.findings ?? []).filter((f) => !seen.has(key(f)))
+    gapFound.forEach((f) => seen.add(key(f)))
+    if (gapFound.length) {
+      const gapJudged = await verifyFresh(gapFound)
+      confirmed.push(...gapJudged.filter((j) => j.real))
+      unverifiedAll.push(...gapJudged.filter((j) => j.unverified))
+    }
   }
+} catch (e) {
+  // confirmed[] 는 그대로 Report 로 진행 — 부분 결과 보존 (조용한 전체 실패 방지).
+  // Proceed to Report with confirmed[] intact — preserve partial results (avoid silent total failure).
+  log(`completeness 라운드 실패 — best-effort 건너뜀 (confirmed ${confirmed.length}건 보존): ${e?.message ?? e}`)
 }
 
 // ── Report (구조화 데이터 반환 — 리포트 파일 작성은 호출자 책임) ──

@@ -66,3 +66,12 @@
 
 scope 인식 팬아웃(C)으로 감싼 loop-until-dry 도메인 탐색(B) + 다관점 adversarial verify(B) + completeness critic(C)
 + `MAX_ROUNDS`·`budget` 비용 상한(C). 설계 상세: [docs/design/2026-06-05-integrity-audit-workflow-design.md](../design/2026-06-05-integrity-audit-workflow-design.md).
+
+## 🔴 워크플로우 작성·운영 교훈 (동시성·회복력)
+
+다중 에이전트 워크플로우(integrity-audit·retrospective·구조검토 등) 작성/실행 시 검증된 운영 제약:
+
+- **무거운 Opus 에이전트 동시 실행 ≤ 3 (웨이브 분할 의무)** — 무거운 리뷰/감사 에이전트 15개 동시 실행 시 서버 버스트 rate-limit("not your usage limit")로 전멸한 사고(2026-06-25). `chunk(items, 3)` + 웨이브별 `await parallel` 로 분할. verify 등 경량 단계는 무관.
+- **StructuredOutput placeholder 소실 위험** — 장시간(수 분)·고 tool-호출 에이전트가 schema 강제 최종 출력에서 placeholder(예: `"test summary"`)로 결과를 소실하는 사례(2026-06-29 구조검토 차원 5). 핵심 차원 결과가 placeholder 면 단일 Agent 재감사로 보완. finder/verify 는 `try { ... } catch { 재시도 }` 로 StructuredOutput flake 1회 재시도.
+- **completeness/gap 라운드 try/catch 격리 (C10)** — 마지막 best-effort 라운드의 일시 API 오류가 이미 confirmed 결함·Report 를 무효화하지 않도록 try/catch 로 격리. integrity-audit.mjs + retrospective.mjs 동일 패턴. 회귀 가드: `tests/unit/scripts/test_retrospective_resilience.py`.
+- **cross-vendor 필수 (정책 18)** — 단일 LLM 다중에이전트 sweep 도 P1 누락 가능. Codex(또는 타 vendor) 독립 감사로 교차 검증 — 2026-06-29 감사서 Codex 가 Claude 8-에이전트가 놓친 P1 2건(crypto invalid-key·migration fail-open) 발견.
