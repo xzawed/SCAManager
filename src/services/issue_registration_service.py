@@ -125,9 +125,15 @@ async def _sync_state_if_stale(
     try:
         state = await get_issue_state(github_token, repo_full_name, rec.github_issue_number)
         issue_registration_repo.update_state(db, record=rec, state=state)
-    except httpx.HTTPError:
-        # 동기화 실패 시 기존 상태 유지 — 사용자에게 오류 미노출
-        # Keep existing state on sync failure — silent fallback
+    except (httpx.HTTPError, KeyError, ValueError):
+        # 동기화 실패 시 기존 상태 유지 — 사용자에게 오류 미노출.
+        # httpx.HTTPError(5xx/네트워크) 외에 GitHub 응답이 malformed 면 get_issue_state 의
+        # resp.json()["state"] 가 KeyError/JSONDecodeError(ValueError) 를 던질 수 있어 함께 포착
+        # (동기화 실패가 API 라우트 500 으로 전파되지 않도록 — silent fallback 의도 일관, 감사 P2).
+        # Keep existing state on sync failure — silent fallback. Besides httpx.HTTPError
+        # (5xx/network), a malformed GitHub response makes get_issue_state's
+        # resp.json()["state"] raise KeyError/JSONDecodeError(ValueError); catch those too
+        # so a sync failure never surfaces as a 500 from the API route.
         pass
 
 

@@ -107,3 +107,17 @@ def test_non_deploy_type_returns_200_ignored():
         resp = client.post(f"/webhooks/railway/{_TOKEN}", content=payload)
     assert resp.status_code == 200
     assert resp.json()["status"] == "ignored"
+
+
+def test_non_dict_json_body_returns_200_ignored():
+    """유효 토큰 + 비-dict JSON 바디(배열) → 500 아닌 graceful 200 ignored.
+
+    감사 P2: 비-dict 바디는 parse_railway_payload 의 body.get(...) AttributeError→500 을
+    유발했으나, isinstance(dict) 정규화로 telegram provider 와 대칭(graceful ignore).
+    """
+    payload = json.dumps([1, 2, 3]).encode()  # 유효 JSON 이나 dict 아님
+    mock_db = _db_with_config(_mock_config())
+    with patch("src.webhook.providers.railway.SessionLocal", return_value=_ctx(mock_db)):
+        resp = client.post(f"/webhooks/railway/{_TOKEN}", content=payload)
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "ignored"

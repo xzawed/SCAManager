@@ -352,3 +352,24 @@ async def test_get_repo_issue_summary_keeps_state_on_sync_error(db):
             db, repo_id=1, repo_full_name="o/r", github_token="tok"
         )
     assert result[0]["github_issue_state"] == "open"
+
+
+@pytest.mark.asyncio
+async def test_sync_keeps_state_on_malformed_github_response(db):
+    # get_issue_state 가 malformed 응답으로 KeyError/JSONDecodeError(ValueError) 를 던져도
+    # httpx.HTTPError 와 동일하게 silent fallback — API 라우트 500 전파 차단 (감사 P2)
+    # A malformed GitHub response (KeyError/ValueError) is swallowed like httpx.HTTPError.
+    from src.repositories import issue_registration_repo
+    issue_registration_repo.create(
+        db, analysis_id=1, repo_id=1, issue_type="static_issue",
+        issue_key="malformed_key", github_issue_number=99,
+    )
+    with patch(
+        "src.services.issue_registration_service.get_issue_state",
+        new=AsyncMock(side_effect=KeyError("state")),  # resp.json()["state"] 키 부재 모사
+    ):
+        result = await get_repo_issue_summary(
+            db, repo_id=1, repo_full_name="o/r", github_token="tok"
+        )
+    # 예외가 전파되지 않고 기존 "open" 상태 유지
+    assert result[0]["github_issue_state"] == "open"
