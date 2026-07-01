@@ -2,8 +2,8 @@
 
 Phase E.2b — Claude API cost/latency/token 추적 기반.
 
-Anthropic API 가격 정책 (USD per 1M tokens, **2026-04 기준**):
-  - Opus : $15 input / $75 output
+Anthropic API 가격 정책 (USD per 1M tokens, **2026-07 기준**):
+  - Opus : $5 input / $25 output   (Opus 4.8/4.7/4.6 — 분기 재확인 2026-07, 이전 $15/$75 대비 3× 인하)
   - Sonnet: $3 input / $15 output  ← 기본값 (claude-sonnet-4-6 등)
   - Haiku : $1 input / $5 output
 
@@ -34,9 +34,11 @@ async def aclose_anthropic_client(client) -> None:
     if inspect.isawaitable(result):
         await result
 
-# 모델 패밀리별 가격 (USD per 1M tokens, input/output)
+# 모델 패밀리별 가격 (USD per 1M tokens, input/output) — 2026-07 기준
+# Model family pricing (USD per 1M tokens, input/output) — 2026-07 basis
 _PRICING_USD_PER_MTOK = {
-    "opus": (15.0, 75.0),
+    "opus": (5.0, 25.0),    # Opus 4.8/4.7/4.6 — 이전 (15.0, 75.0) 대비 3× 인하 (2026-07 확인)
+                             # Previously (15.0, 75.0) — 3× price drop confirmed 2026-07
     "sonnet": (3.0, 15.0),
     "haiku": (1.0, 5.0),
 }
