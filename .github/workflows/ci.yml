@@ -31,7 +31,7 @@ jobs:
         # PR diff 범위만 스캔 — 2026-05-03 사고 유형 방어
         # Scans PR diff range only — guards against 2026-05-03 incident type
         if: github.event_name == 'pull_request'
-        uses: trufflesecurity/trufflehog@d411fff7b8879a62509f3fa98c07f247ac089a51  # v3.95.5 (SHA 핀 — 공급망 무결성, @main 가변 태그 위험 차단)
+        uses: trufflesecurity/trufflehog@f446421baf832d6356c42c1743d99abff52ff334  # v3.95.5 (SHA 핀 — 공급망 무결성, @main 가변 태그 위험 차단)
         with:
           path: ./
           base: ${{ github.event.pull_request.base.sha }}
@@ -42,7 +42,7 @@ jobs:
         # before == zeros(첫 push / force-push) 시 invalid SHA 오류 방지를 위해 건너뜀
         # Skip when before is zeros (first push / force-push) to avoid invalid SHA error
         if: github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000'
-        uses: trufflesecurity/trufflehog@d411fff7b8879a62509f3fa98c07f247ac089a51  # v3.95.5 (SHA 핀 — 공급망 무결성, @main 가변 태그 위험 차단)
+        uses: trufflesecurity/trufflehog@f446421baf832d6356c42c1743d99abff52ff334  # v3.95.5 (SHA 핀 — 공급망 무결성, @main 가변 태그 위험 차단)
         with:
           path: ./
           base: ${{ github.event.before }}
