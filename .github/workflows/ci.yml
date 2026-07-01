@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout (full history for commit message scan)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -59,7 +59,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout (full history for diff)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -93,7 +93,7 @@ jobs:
     needs: secret-scan
     steps:
       - name: Checkout (with full history for SonarCloud)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           # SonarCloud 가 새 파일/변경 이력을 제대로 분석하려면 shallow-clone 금지
           # Full history required so SonarCloud can analyse new files and change history correctly.
@@ -191,7 +191,7 @@ jobs:
           --health-retries 5
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v6
