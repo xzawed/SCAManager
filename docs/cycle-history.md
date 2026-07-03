@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [5+1 회고 및 8 클러스터 fix 6 PR (#1024~#1029 — 회고 카덴스 갭[4세션·~30 PR 무회고] 회복·retrospective.mjs wf_ca72074b 92에이전트·verdict_coverage 1.0·confirmed 66[P0 1·P1 12·P2 53]·C3 가격 parity 가드·C2 dual-import 가드·C1/C4 정책 진화·C7 의존성 ==핀+SCA 게이트·단위 5134→5150, 2026-07-03)](#51-회고-및-8-클러스터-fix-6-pr-2026-07-03)
 - [심층 감사 및 note 하드닝 (#1015~#1021 — PR 머지 3 + 후속 3·다중에이전트 wf 10차원 17에이전트·실테스트 5267 passed·운영 P0/P1/P2=0·은닉코드 8벡터 CLEAN·가격 3-소스 정합·Codex mutual 이 N1 HTML 라우트 누락 적발, 2026-07-03)](#심층-감사-및-note-하드닝-2026-07-03)
 - [cross-vendor 감사 및 구조검토 (#1006~#1008 P1×2 Codex-only + #1010~#1013 정리·구조 4 PR — 은닉코드 양 LLM CLEAN·services.md rule 신설 8→9영역·integrity-audit C10·단위 5113→5121, 2026-06-29)](#cross-vendor-감사-및-구조검토-2026-06-29)
 - [B 백로그 3건 구현(#997~#999) + C-1 RLS LIVE 검증 (services-001 orphan 가드·analyzer-pure-001 json_schema dead 가이드 제거[49]·notifier-002 n8n chatId C-safe + RLS `SET ROLE scamanager_app` 동적 cross-tenant 누출 0 증명·단위 5117→5113, 2026-06-29)](#b-백로그-3건-구현-c-1-rls-live-검증-2026-06-29)
@@ -134,6 +135,22 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 5+1 회고 및 8 클러스터 fix 6 PR (2026-07-03)
+
+사용자 "이전 세션 이후 작업 이어서" → 이전 세션(#1015~#1023) 완결 확인 → **회고 카덴스 갭 식별**(직전 정식 회고 2026-06-23 이후 4세션[06-25/06-29×2/07-03]·~30 PR[#989~#1023] 무회고, 06-25 "75줄 규모" 자기회고 갈음) → 사용자 "5+1 회고 진행" 선택.
+
+**5+1 회고** (`retrospective.mjs` `wf_ca72074b`, scope=2026-06-25~07-03): **92 에이전트·3 라운드·7.3M 토큰·0 오류·verdict_coverage 1.0**(전건 검증). ROI: confirmed **66**(P0 1·P1 12·P2 53)·FP 차단 6·SEVERITY_ADJUST 16. 운영 P0(코드/보안)=0, 유일 P0=프로세스(회고 카덴스 갭). 회고가 자기 과대주장도 정정(SEVERITY_ADJUST #57). 보고서 = [`docs/_archive/reports/2026-07-03-retrospective.md`](_archive/reports/2026-07-03-retrospective.md).
+
+**8 클러스터 → 사용자 4 트랙 → 6 PR** (각 정책 18 Codex mutual):
+- **#1024 C3** Claude 가격 3-소스 parity 회귀 가드 — `claude_metrics._PRICING_USD_PER_MTOK` SSOT ↔ `constants.CLAUDE_MODELS` ↔ i18n `model_hint` 정합 assert(`test_pricing_parity.py`, 🔴 PARITY GUARD 마커, 정책 4 위반 해소). mutation·end-to-end 검증. 단위 +5.
+- **#1026 C5** docs SSOT drift 4건 — STATE:5 날짜헤더 2026-06-29→07-03·STATE:7 갱신규칙 (0)날짜헤더 단계·cycle-history #1023 엔트리·env-vars 검증요약(field_validator 4→3 + model_validator 1).
+- **#1027 C2** 신규 이중 import PR 가드 — `scripts/check_dual_import.py`(diff ADDED `from X import`+기존 `import X` 공존 검출) + ci.yml `lint-changed-tests` step. #1023형 self-inflicted CodeQL `py/import-and-import-from` pre-merge 봉인. 🔴 신규 diff 한정=기존 28 legacy idiom 무churn(2026-06-23 WF-1 DROP 존중). 단위 +11.
+- **#1025 A** 회고 보고서 아카이브 + INDEX 등재(트레일 누락 반복 #43 해소).
+- **#1028 C1+C4** 정책 진화 — C1 회고 카덴스 강제 트리거(직전 정식 회고 이후 ≥3 세션/≥15 PR → 5+1 강제·자기회고 갈음=사용자 승인 시만, 정책 8) + C4 공유 로직 grep 전수 default(수정 직전 `grep -rn`+"전수 확인 N곳", 정책 16, mutual=backstop). CLAUDE.md default rule + active.md detail(정책 17).
+- **#1029 C7** 의존성 == 완전 핀(20건 >=→==, pip dry-run 해석=CI 가 이미 설치하던 latest·inter-dep 정합) + `pip-audit` SCA 게이트(`dependency-audit` job). **CI≠Railway 버전 drift 봉인**. deploy.md sync. #1029 pytest green=핀 검증 완료.
+
+🔴 **교훈**: (1) Codex mutual 이 **실질 NG 2건 적발**(cross-vendor 실효) — 회고 보고서 미배정 finding 6건 + 정책 문서의 **미머지 PR #1024 참조**(git history 부재 검증 불가 → 검증가능 표현 교체). (2) 로컬 env stale(fastapi 0.115 vs req 0.138.1)=#62 CI≠Railway drift 실증 → C7 봉인, 🔴 핀 검증은 CI 가 최종(로컬 stale `make test`=구버전 테스트). (3) branch 전환=Codex false-NG → `git show <branch>:<path>` blob 검증. (4) SCAManager 게이트가 자기 repo 고득점 PR 자동머지 → C7 ci.yml 충돌 rebase(dual-import step + dependency-audit job 양립). 미선택 백로그 C6(개별 코드 P2)·C8(tooling ROI). C7 Railway 검증=사용자 의무(정책 11/13). 단위 5134→**5150**(+16). [[project-retrospective-2026-07-03]]
 
 ## 심층 감사 및 note 하드닝 (2026-07-03)
 
