@@ -61,9 +61,9 @@ Sentry 외 자동 로깅은 별도 환경변수 없이 동작:
 
 | 변수 | 설명 | 기본값 | 예시 |
 |------|------|-------|------|
-| `DEFAULT_LOCALE` | 신규 사용자 기본 언어 (User.preferred_language 초기값 — alembic 0030 페어, Phase 1 PR-1c 영역) | `en` | `en` / `ko` / `ja` |
+| `DEFAULT_LOCALE` | 신규 사용자 기본 언어 (User.preferred_language 초기값 — alembic 0030 페어, Phase 1 PR-1c 영역). 🔴 **`SUPPORTED_LOCALES` 에 포함된 값이어야 함** — 미포함 시 startup ValidationError (config.py `_validate_locale_membership`, 2026-07-03 하드닝 N2) | `en` | `en` / `ko` / `ja` |
 | `SUPPORTED_LOCALES` | 지원 언어 목록 (쉼표 구분, 공백 제거 의무 — pydantic field_validator 검증) | `en,ko,ja` | `en,ko,ja` / `en,ko` |
-| `LOCALE_FALLBACK` | 극한 fallback 언어 (모든 감지 실패 시 / 번역 파일 미존재 등) | `en` | `en` |
+| `LOCALE_FALLBACK` | 극한 fallback 언어 (모든 감지 실패 시 / 번역 파일 미존재 등). 🔴 **`SUPPORTED_LOCALES` 에 포함된 값이어야 함** — 미포함 시 startup ValidationError (config.py `_validate_locale_membership`, 2026-07-03 하드닝 N2) | `en` | `en` |
 | `I18N_TRANSLATIONS_DIR` | JSON dict 번역 파일 위치 (en.json/ko.json/ja.json — 상대 또는 절대 경로) | `src/i18n/translations` | 개발: `src/i18n/translations` / 운영: `/app/src/i18n/translations` |
 | `I18N_DISABLED` | i18n 기능 kill-switch (1=비활성, 운영 사고 시 응급 차단용) | `0` | `0` (활성) / `1` (긴급 차단) |
 
