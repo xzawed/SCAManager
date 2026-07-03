@@ -94,6 +94,31 @@ jobs:
         # Diff-scoped: only NEW `from X import` coexisting with an `import X` is blocked (retro C2, #1023 pattern).
         run: python scripts/check_dual_import.py "${{ github.event.pull_request.base.sha }}" HEAD
 
+  # 의존성 취약점 SCA 게이트 — PyPI Advisory DB(OSV) 대조로 known CVE 차단(회고 2026-07-03 C7).
+  # requirements 가 == 핀(CI==Railway 버전 일치)이므로 스캔 대상 = 실제 배포 버전. 신규 CVE 발표 시 CI fail →
+  # 의존성 bump 강제(현재 취약점 0 실측). 프로덕션+개발 의존성 모두 대상.
+  # Dependency SCA gate — blocks known CVEs via PyPI Advisory DB (OSV) (retro 2026-07-03 C7).
+  # requirements are == pinned (CI==Railway versions), so the scan targets the actual deployed set.
+  dependency-audit:
+    name: pip-audit (SCA — 의존성 취약점 게이트)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install pip-audit
+        run: "pip install --only-binary=:all: pip-audit==2.10.1"
+
+      - name: Audit requirements for known vulnerabilities
+        # -r 로 requirements 파일 직접 스캔(설치 불필요). vuln 발견 시 exit 1 → CI fail(게이트).
+        # Scan requirements files directly (no install). Non-zero exit on any vuln → gate.
+        run: python -m pip_audit -r requirements.txt -r requirements-dev.txt --desc on
+
   test-and-analyze:
     name: pytest + Codecov + SonarCloud
     runs-on: ubuntu-latest

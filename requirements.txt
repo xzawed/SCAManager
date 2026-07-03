@@ -2,7 +2,7 @@
 #   이전 CVE-2024-47874 / CVE-2025-54121(starlette) 패치는 아래 starlette>=1.3.1 로 승계.
 # fastapi>=0.138.1 — first release supporting starlette 1.0 (include_router → lazy _IncludedRouter).
 #   Prior CVE-2024-47874 / CVE-2025-54121 (starlette) fixes are carried by starlette>=1.3.1 below.
-fastapi>=0.138.1
+fastapi==0.139.0
 slowapi==0.1.10
 uvicorn[standard]==0.49.0
 pydantic-settings==2.14.2
@@ -13,28 +13,28 @@ alembic==1.18.5
 psycopg2-binary==2.9.12
 PyGithub==2.9.1
 httpx==0.28.1
-defusedxml>=0.7.1
+defusedxml==0.7.1
 # authlib>=1.7.2 — GHSA-jj8c-mmj3-mmgv (OAuth cache CSRF) fix
-authlib>=1.7.2
-itsdangerous>=2.2.0
+authlib==1.7.2
+itsdangerous==2.2.0
 # starlette>=1.3.1 — PYSEC-2026-161 / CVE-2026-48710 패치 (Host 헤더 미검증 → request.url.path 오염 → 경로 인증 우회; ≤1.0.0 전체 취약, 1.0.1 단독 수정).
 # starlette>=1.3.1 — fixes PYSEC-2026-161 / CVE-2026-48710 (Host header not validated → request.url.path poisoning → path-auth bypass; all ≤1.0.0 affected, fixed only in 1.0.1).
-starlette>=1.3.1
+starlette==1.3.1
 python-telegram-bot==22.8
-anthropic>=0.112.0
+anthropic==0.116.0
 # openai — 머지 검증자(2nd-LLM cross-vendor) 런타임 의존 + (dev) DALL-E 일러스트 도구. 키 미설정 시 비활성
 # openai — runtime dep for the 2nd-LLM merge verifier (+ dev DALL-E tool). Inert without OPENAI_API_KEY.
-openai>=2.43.0
-aiosmtplib>=5.1.2
+openai==2.44.0
+aiosmtplib==5.1.2
 pylint==4.0.6
 flake8==7.3.0
-bandit>=1.9.4
+bandit==1.9.4
 semgrep==1.168.0
-slither-analyzer>=0.11.5
-sqlfluff>=4.2.2
+slither-analyzer==0.11.5
+sqlfluff==4.2.2
 jinja2==3.1.6
 # python-multipart>=0.0.32 — CVE-2026-40347 (preamble/epilogue CPU DoS) fix
-python-multipart>=0.0.32
-yamllint>=1.38.0
+python-multipart==0.0.32
+yamllint==1.38.0
 # cryptography>=49.0.0 — CVE-2026-26007/34073/39892 fix
-cryptography>=49.0.0
+cryptography==49.0.0
