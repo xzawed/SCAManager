@@ -348,3 +348,29 @@ def test_admin_operations_active_returns_200(client):
     ):
         response = client.get("/admin/operations")
     assert response.status_code == 200
+
+
+# ── operations days 범위 검증 (감사 하드닝 N1) ────────────────────
+# operations days-parameter range validation (audit hardening N1)
+
+@pytest.mark.parametrize("bad_days", [0, -1, 366, 1000000000])
+def test_operations_rejects_out_of_range_days(client, bad_days):
+    """days 가 1~365 밖이면 endpoint body 진입 전 422 로 차단.
+
+    상한 없으면 거대 days 가 operations_service 의 timedelta(days=...) 에서
+    OverflowError → HTTP 500 (repo_report.py 와 동일한 Query(ge=1, le=365) 대칭).
+    """
+    response = client.get(f"/api/admin/operations?days={bad_days}")
+    assert response.status_code == 422
+
+
+def test_operations_accepts_valid_days(client):
+    """1~365 범위 내 days 는 정상 처리."""
+    from unittest.mock import patch
+    with patch(
+        "src.api.admin.operations_service.operations_kpi",
+        return_value={"ok": True},
+    ):
+        response = client.get("/api/admin/operations?days=7")
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}

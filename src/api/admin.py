@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from src.auth.session import CurrentUser, require_admin
@@ -91,9 +91,14 @@ def get_rls_audit(
 def get_operations(
     _admin: Annotated[CurrentUser, Depends(require_admin)],
     db: Annotated[Session, Depends(_get_worker_db)],
-    days: int = 7,
+    days: Annotated[int, Query(ge=1, le=365)] = 7,
 ) -> dict[str, Any]:
     """admin 운영 모니터링 KPI 5 카드 (Cycle 80 PR 2 — 영역 🅔).
+
+    days 는 1~365 범위 강제 (repo_report.py 와 대칭) — 상한 없으면 거대값이
+    operations_service 의 timedelta(days=...) 에서 OverflowError → HTTP 500.
+    days is clamped to 1~365 (mirrors repo_report.py); without an upper bound a
+    huge value overflows timedelta(days=...) in operations_service → HTTP 500.
 
     Admin operations dashboard KPI 5 cards (Cycle 80 PR 2).
     """

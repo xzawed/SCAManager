@@ -501,3 +501,32 @@ def test_active_env_assignments_normalizes_value(tmp_path, line, expected):
     env_file = tmp_path / "env.under_test"
     env_file.write_text(line + "\n", encoding="utf-8")
     assert _active_env_assignments(env_file).get("API_AUTH_DISABLED") == expected
+
+
+# ── locale membership 교차검증 (감사 하드닝 N2) ──────────────────
+# locale membership cross-validation (audit hardening N2)
+
+def test_default_locale_must_be_in_supported_locales():
+    """DEFAULT_LOCALE 가 SUPPORTED_LOCALES 밖 → ValidationError (startup fail-fast)."""
+    from pydantic import ValidationError
+    from src.config import Settings
+    with pytest.raises(ValidationError) as exc:
+        Settings(default_locale="fr", supported_locales="en,ko,ja", locale_fallback="en")
+    assert "SUPPORTED_LOCALES" in str(exc.value)
+
+
+def test_locale_fallback_must_be_in_supported_locales():
+    """LOCALE_FALLBACK 가 SUPPORTED_LOCALES 밖 → ValidationError."""
+    from pydantic import ValidationError
+    from src.config import Settings
+    with pytest.raises(ValidationError) as exc:
+        Settings(default_locale="en", supported_locales="en,ko,ja", locale_fallback="de")
+    assert "SUPPORTED_LOCALES" in str(exc.value)
+
+
+def test_locale_membership_valid_config_constructs():
+    """세 locale 모두 supported 안이면 정상 생성 (기본값 회귀 가드)."""
+    from src.config import Settings
+    s = Settings(default_locale="ko", supported_locales="en,ko,ja", locale_fallback="en")
+    assert s.default_locale == "ko"
+    assert s.locale_fallback == "en"

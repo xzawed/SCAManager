@@ -162,3 +162,26 @@ def test_get_repo_name_no_remote(mock_run):
     """Falls back to empty string when no remote."""
     mock_run.side_effect = subprocess.CalledProcessError(128, "git")
     assert get_repo_name() == ""
+
+
+# ── --name-status 리네임 라인 파싱 (감사 하드닝 N3) ──────────────
+# --name-status rename-line parsing (audit hardening N3)
+
+@patch("subprocess.run")
+def test_get_diff_files_rename_uses_destination_filename(mock_run):
+    """R### 리네임 라인(status<TAB>old<TAB>new)은 대상(new) 파일명으로 파싱 — 탭 혼입 금지.
+
+    이전 split('\\t', 1) 은 filename='old.py\\tnew.py' 로 오염 → patch/content 조회 실패.
+    """
+    mock_run.side_effect = [
+        # 1) git diff --name-status : 리네임 라인 (탭 2개)
+        _run_result(stdout="R100\told_name.py\tnew_name.py\n"),
+        # 2) patch for new_name.py
+        _run_result(stdout="--- a/new_name.py\n+++ b/new_name.py\n@@ -1 +1 @@\n-x\n+y"),
+        # 3) content (git show HEAD:new_name.py)
+        _run_result(stdout="renamed content"),
+    ]
+    files = get_diff_files(base="HEAD~1")
+    assert len(files) == 1
+    assert files[0].filename == "new_name.py"
+    assert "\t" not in files[0].filename

@@ -36,10 +36,15 @@ def _collect_file(
     line: str, base: str, staged: bool
 ) -> ChangedFile | None:
     """`--name-status` 한 줄을 ChangedFile 로 변환. 바이너리·스킵 케이스는 None."""
-    parts = line.split("\t", 1)
+    parts = line.split("\t")
     if len(parts) < 2:
         return None
-    status, filename = parts[0], parts[1]
+    status = parts[0]
+    # 리네임(R###)·복사(C###) 라인은 `status\told\tnew` (탭 2개) → 대상(new) 파일명 사용.
+    # 일반 라인은 `status\tfile` → parts[-1] 이 곧 파일명 (양쪽 모두 정확).
+    # Rename(R###)/copy(C###) lines are `status<TAB>old<TAB>new`; use the destination (new)
+    # filename. Normal lines are `status<TAB>file`, so parts[-1] is correct in both cases.
+    filename = parts[-1]
 
     patch_args = ("diff", "--cached", "--", filename) if staged else ("diff", base, "--", filename)
     patch = _git(*patch_args, check=False).stdout
