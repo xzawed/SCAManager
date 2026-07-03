@@ -453,7 +453,7 @@
     "show_value": "Show value",
     "save_toast_ok": "✅ Settings saved.",
     "save_toast_err": "❌ Save failed. The approve threshold is lower than the reject threshold.",
-    "model_hint": "Select an AI review model per repo. Haiku → fast & cheap ($0.80/1M) · Sonnet → balanced ($3/1M) · Opus → high quality ($15/1M). Leave empty to use the server global default (claude-sonnet-4-6). ※ Prices are based on Anthropic official rates (actual billing may differ)."
+    "model_hint": "Select an AI review model per repo. Haiku → fast & cheap ($1/1M) · Sonnet → balanced ($3/1M) · Opus → high quality ($5/1M). Leave empty to use the server global default (claude-sonnet-4-6). ※ Prices are based on Anthropic official rates (actual billing may differ)."
   },
   "settings_page": {
     "title_prefix": "Settings",
