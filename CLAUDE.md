@@ -203,6 +203,7 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 - **(1) 강화** (사이클 84): **dispatch 횟수** vs **agent invocation** 구분 — dispatch 기준 default + 누적 invocation ≥ 30 시 동등 사전 확인 의무.
 - **(2) cross-verify ROI commit body 정량 명시 의무** — false-positive 차단 N건 / 신규 발견 N건 / Tier A 정정 N건 (정책 6 페어).
 - **(3) cross-verify Round 2 도메인 카운트 = `pytest --collect-only -q` 실측 의무** (사이클 92). 추정 카운트 보고 = 자동 false-positive 처리. 사이클 89 Round 1 추정 부정확 사례 (middleware 5/실측 17, worker 22/실측 78, github_client 15/실측 74) 학습 페어. 정책 6 (line:span `grep -n` 실측 — 정적 line 영역) 와 시점·대상 차별 (정책 8 진화 = 동적 테스트 분포 카운트).
+- **(4) 🔴 회고 카덴스 강제 트리거** (2026-07-03 회고 C1 — 직전 정식 회고 2026-06-23 이후 4세션·~30 PR 무회고 갭 학습): 직전 정식 회고 이후 **≥3 세션 경과 또는 ≥15 PR 머지** 시 5+1 회고 강제 ("사이클 종료 = 회고 진입" 판정 — 감사/수정만 한 세션도 포함, 정책 5 페어). 자기회고 갈음(단독 작성)은 **사용자 명시 승인 시에만** — "규모가 작아서"는 사유 불가(정책 8 예외 금지). 정책 17-5 정기 검증 트리거(≥5 사이클/≥18 PR)와 시점·목적 차별(정책 8 진화 = 회고 카덴스). 상세: [.claude/policies/active.md#정책-8-회고-카덴스](.claude/policies/active.md#정책-8-회고-카덴스).
 
 상세: [.claude/policies/history.md#정책-8-진화](.claude/policies/history.md#정책-8-진화).
 #### 정책 9: **회고 후 반드시 Claude 자유 발언 시간 의무**
@@ -270,6 +271,8 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 사용자 발화: *"코드를 단순화 하여 작성을 해주세요. 단 정확성과 성능은 유지가 되야합니다. 되도록 코드는 이해하기가 쉽게 작성을 해주세요."*
 
 **default 의무 5 원칙** (우선순위 순): 1. 정확성 / 2. 성능 / 3. 가독성 / 4. 최소 추상화 (사용처 ≥ 3 시 도입) / 5. **🔴 토큰 비용 효율** (caching + 분산 + 호출 빈도 제한 — caching 4 단계 사이클 63→74 활성화).
+
+🔴 **정책 16 진화 — 공유 로직 grep 전수 default** (2026-07-03 회고 C4 — #1015 가격 3-소스·#1021 operations API+HTML 동형 "한 곳만 수정" 안티패턴 학습): 같은 값/로직이 2+곳에 있을 때, 수정 **직전** `grep -rn <심볼>` 으로 전 호출처를 열거하고 diff/PR 본문에 "전수 확인 N곳" 1줄 명시. 공유 서비스가 API+HTML 양 라우트에서 호출되는 영역 = High-tier 사전 grep. 🔴 mutual(정책 18)을 proactive discipline 대체물로 쓰지 말 것(§5) — grep 전수는 turn-0 규율, Codex 는 backstop. 가능 시 회귀 가드 동반(정책 4 — 예: 가격 3-소스 parity 테스트, 회고 C3). 상세: [.claude/policies/active.md#정책-16-공유-로직-grep-전수](.claude/policies/active.md#정책-16-공유-로직-grep-전수).
 
 **🚫 명시 제외 영역** (AI 리뷰 품질 보존 — 사이클 72 사용자 명시 보류): `build_review_prompt` 토큰 예산 8000 축소 / `review_guides/` Tier1 full 압축. 신규 토큰 절약 영역 도입 시 사용자 사전 확인 의무 (정책 15 High tier 페어).
 
