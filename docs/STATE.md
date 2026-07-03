@@ -2,9 +2,9 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-06-29 기준)
+## 현재 수치 (2026-07-03 기준)
 
-> 📌 **이전 세션·PR별 누적 작업 서사는 [`docs/cycle-history.md`](cycle-history.md) 단일 출처** (사이클 60~166, 최신순). 본 헤더는 **최신 1건 + 종합 수치만** 유지 — 32KB 단일 라인 SSOT 가독성 복원 (품질감사 docclr-1, 2026-06-17, cycle-history.md 에 서사 전량 보존[append-only] 확인 후 트리밍). 🔴 **다음 세션 갱신 규칙**: 신규 작업 완료 시 (1) 본 "최신" 블록을 새 작업으로 교체 + 종합 수치 갱신, (2) 직전 작업의 전체 서사는 `docs/cycle-history.md` 최신순 맨 앞에 본문 섹션으로 이관 (헤더에 "직전" 체인 누적 금지 — 본 정리의 회귀 방지).
+> 📌 **이전 세션·PR별 누적 작업 서사는 [`docs/cycle-history.md`](cycle-history.md) 단일 출처** (사이클 60~166, 최신순). 본 헤더는 **최신 1건 + 종합 수치만** 유지 — 32KB 단일 라인 SSOT 가독성 복원 (품질감사 docclr-1, 2026-06-17, cycle-history.md 에 서사 전량 보존[append-only] 확인 후 트리밍). 🔴 **다음 세션 갱신 규칙**: 신규 작업 완료 시 (0) **본 섹션 날짜 헤더(line 5 `## 현재 수치 (YYYY-MM-DD 기준)`)를 최신 세션 날짜로 갱신** (회고 2026-07-03 C5 #60 — 절차에서 상시 누락되던 필드), (1) 본 "최신" 블록을 새 작업으로 교체 + 종합 수치 갱신, (2) 직전 작업의 전체 서사는 `docs/cycle-history.md` 최신순 맨 앞에 본문 섹션으로 이관 (헤더에 "직전" 체인 누적 금지 — 본 정리의 회귀 방지).
 
 **최신 (PR 검토·머지 + 다중에이전트 심층 감사 + note 하드닝, 2026-07-03)** — 열린 3 PR(**#1015** Opus 가격 $15/$75→$5/$25·**#1018** actions/checkout v7·**#1016** trufflehog v3.95.7) 머지 + 발견 갭 후속 3 PR: **#1019** Opus+Haiku 가격 3-소스 정합 완결(#1015 가 `claude_metrics.py` 만 고쳐 `constants.py`+i18n stale → Opus $5/$25·Haiku $1/$5 단일화)·**#1020** trufflehog 버전주석 v3.95.5→v3.95.7·**#1021** 심층 감사 note 3건 하드닝. **심층 감사**(다중에이전트 wf `wf_df542848` 10차원 17에이전트 + 실테스트): 단위 5117 + 통합 150 = **5267 passed**·flake8/bandit med-high 0·**운영 P0/P1/P2=0**·**은닉/악성 코드 8벡터 전부 CLEAN**(백도어·exfil·난독화·타임밤·매직토큰·하드코딩시크릿·eval/exec·shell=True — Codex cross-vendor 2026-06-29 일치). Code Scanning #537(`py/ineffectual-statement` `await result`)=false-positive dismiss → open alert 0. **#1021 하드닝**(각 정책 18 Codex mutual): N1 operations `days` 상한(API+**HTML** 2 라우트 `Query(ge=1,le=365)` — 없으면 거대값→`timedelta` OverflowError→500)·N2 `config.py` default_locale·locale_fallback ∈ supported_locales `model_validator(after)` **startup fail-fast**·N3 `cli/git_diff.py` `--name-status` R### 리네임 탭2개 파싱(`split("\t")`+`parts[-1]`), 회귀 +13. 🔴 **교훈**: Codex mutual 이 N1 을 API 라우트만 고친 것 적발(동일 `operations_kpi` 호출 HTML 라우트 500 노출)=#1015 가격 3-소스 갭과 **동형**→공유 서비스 호출처 `grep -rn` 전수 의무. 단위 5121→**5134**(#1021 +13). [[project-pr-merge-session-2026-07-03]]
 
