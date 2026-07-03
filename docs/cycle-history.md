@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [심층 감사 및 note 하드닝 (#1015~#1021 — PR 머지 3 + 후속 3·다중에이전트 wf 10차원 17에이전트·실테스트 5267 passed·운영 P0/P1/P2=0·은닉코드 8벡터 CLEAN·가격 3-소스 정합·Codex mutual 이 N1 HTML 라우트 누락 적발, 2026-07-03)](#심층-감사-및-note-하드닝-2026-07-03)
 - [cross-vendor 감사 및 구조검토 (#1006~#1008 P1×2 Codex-only + #1010~#1013 정리·구조 4 PR — 은닉코드 양 LLM CLEAN·services.md rule 신설 8→9영역·integrity-audit C10·단위 5113→5121, 2026-06-29)](#cross-vendor-감사-및-구조검토-2026-06-29)
 - [B 백로그 3건 구현(#997~#999) + C-1 RLS LIVE 검증 (services-001 orphan 가드·analyzer-pure-001 json_schema dead 가이드 제거[49]·notifier-002 n8n chatId C-safe + RLS `SET ROLE scamanager_app` 동적 cross-tenant 누출 0 증명·단위 5117→5113, 2026-06-29)](#b-백로그-3건-구현-c-1-rls-live-검증-2026-06-29)
 - [전체 품질 감사 — 2R 다중에이전트 wf + 6 PR(#989~#994) + CodeQL #996 봉인 (env.py 11 ORM 전수 import=autogenerate drop_table footgun 차단·운영 P0=0·코드 활성 P1=0, 단위 5089→5117, 2026-06-25)](#전체-품질-감사-2라운드-다중에이전트-6-pr-codeql-봉인-2026-06-25)
@@ -133,6 +134,18 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 심층 감사 및 note 하드닝 (2026-07-03)
+
+사용자 요청: 열린 PR 검토·머지 + 서비스 안정성·잠재버그·은닉/악성코드·의도불일치 세밀 검증 + 실테스트.
+
+**PR 처리 (6 PR, open 0)**: 열린 3건 머지 — #1015(Opus 가격 $15/$75→$5/$25, draft→ready·claude-api 레퍼런스로 $5/$25 검증)·#1018(actions/checkout v7)·#1016(trufflehog v3.95.7). 발견 갭 후속 3건 — **#1019** Opus+Haiku 가격 3-소스 정합 완결(#1015 가 `claude_metrics.py::_PRICING_USD_PER_MTOK` 만 고쳐 `constants.py::CLAUDE_MODELS`+i18n model_hint stale → Opus $5/$25·Haiku $1/$5 단일화)·**#1020** trufflehog SHA 핀 버전주석 v3.95.5→v3.95.7(dependabot 미갱신 stale, SHA 는 정확)·**#1021** 감사 note 3건 하드닝. 🔴 gh 토큰 `workflow` 스코프 부재로 workflow 파일 수정 PR(#1018/#1016) 머지 거부 → 사용자 `gh auth refresh -s workflow` 후 머지.
+
+**심층 감사** (`scamanager-deep-audit` wf `wf_df542848` — 10차원 finder[보안/은닉 4 + 서브시스템 버그 6] → 3렌즈 adversarial verify → synth, 17 에이전트 0 오류): candidates 6 → confirmed 3(전부 note)/refuted 3. **운영 P0/P1/P2=0**. **은닉/악성 코드 8벡터 전부 CLEAN**(backdoor·exfil·난독화·타임밤·매직토큰·하드코딩시크릿·eval-exec·shell=True) — Codex cross-vendor(2026-06-29)와 일치. **실테스트**: 단위 5117 + 통합 150 = 5267 passed(fail 0)·flake8 치명 0·bandit med/high 0·CI green. E2E(Playwright) 미실행(브라우저 필요). Code Scanning #537(`py/ineffectual-statement` `claude_metrics.py:35 await result`)=false positive dismiss(await 는 httpx 풀 종료 코루틴 실행 — 효과 있음) → open alert 0.
+
+**#1021 하드닝** (각 정책 18 Claude+Codex mutual): N1 `/operations` `days` 상한 — API(`api/admin.py:94`) + **HTML**(`ui/routes/admin.py:107`) 2 라우트 `Annotated[int, Query(ge=1, le=365)]`(없으면 거대값→`operations_service` `timedelta(days=)` OverflowError→HTTP 500, repo_report.py 대칭) / N2 `config.py` `default_locale`·`locale_fallback` ∈ `supported_locales` `model_validator(mode=after)` **startup fail-fast**(api/repos.py 대칭·env-vars.md 동기화) / N3 `cli/git_diff.py:39` `--name-status` R### 리네임(탭 2개) 파싱 → 탭 전체 split + `parts[-1]` 대상 파일명. 회귀 +13, 단위 5121→5134.
+
+🔴 **교훈**: (1) Codex mutual 검증이 **Claude 가 놓친 실제 결함 적발** — N1 을 API 라우트만 고쳤는데 동일 `operations_kpi` 호출하는 HTML 라우트 미수정(동일 500 노출). #1015 가격 3-소스 갭과 **동형 패턴**(같은 로직 2+곳 → 한 곳만 수정). default = 공유 서비스 호출처 `grep -rn` 전 라우트 전수 확인. (2) 정적 감사 ≠ 운영 정상(정책 11/12/13 별도 트랙 — E2E·4-테마 시각·운영 데이터는 사용자 검증 영역). [[project-pr-merge-session-2026-07-03]]
 
 ## cross-vendor 감사 및 구조검토 (2026-06-29)
 
