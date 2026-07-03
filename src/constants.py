@@ -167,14 +167,16 @@ BREAKDOWN_KEY_TEST_COVERAGE = "test_coverage"
 
 # ── Claude AI 모델 목록 + 요금 (Anthropic 공식 기준, USD/1M 토큰) ─────────
 # ── Claude AI model catalog + pricing (Anthropic official, USD per 1M tokens) ─
-# 출처: https://www.anthropic.com/pricing (2025-05 기준 — 실제 청구와 다를 수 있음)
-# Source: https://www.anthropic.com/pricing (as of 2025-05 — actual billing may differ)
+# 출처: https://www.anthropic.com/pricing (2026-07 재확인 — 실제 청구와 다를 수 있음)
+# Source: https://www.anthropic.com/pricing (reconfirmed 2026-07 — actual billing may differ)
+# 2026-07 갱신: Opus $15/$75 → $5/$25 (3× 인하), Haiku $0.80/$4 → $1/$5 — claude_metrics.py 와 단일 기준 정합
+# 2026-07 update: Opus $15/$75 → $5/$25 (3× drop), Haiku $0.80/$4 → $1/$5 — unified with claude_metrics.py
 CLAUDE_MODELS: list[dict] = [
     {
         "id": "claude-haiku-4-5-20251001",
         "label": "Claude Haiku 4.5 (빠름/저렴 · Fast/Cheap)",
-        "input_price": 0.80,
-        "output_price": 4.00,
+        "input_price": 1.00,
+        "output_price": 5.00,
     },
     {
         "id": "claude-sonnet-4-6",
@@ -185,8 +187,8 @@ CLAUDE_MODELS: list[dict] = [
     {
         "id": "claude-opus-4-7",
         "label": "Claude Opus 4.7 (고품질 · High Quality)",
-        "input_price": 15.00,
-        "output_price": 75.00,
+        "input_price": 5.00,
+        "output_price": 25.00,
     },
 ]
 
