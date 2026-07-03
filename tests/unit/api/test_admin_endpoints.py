@@ -353,14 +353,16 @@ def test_admin_operations_active_returns_200(client):
 # ── operations days 범위 검증 (감사 하드닝 N1) ────────────────────
 # operations days-parameter range validation (audit hardening N1)
 
+@pytest.mark.parametrize("path", ["/api/admin/operations", "/admin/operations"])
 @pytest.mark.parametrize("bad_days", [0, -1, 366, 1000000000])
-def test_operations_rejects_out_of_range_days(client, bad_days):
-    """days 가 1~365 밖이면 endpoint body 진입 전 422 로 차단.
+def test_operations_rejects_out_of_range_days(client, path, bad_days):
+    """API·HTML 두 라우트 모두 days 1~365 밖 → endpoint body 진입 전 422 차단.
 
     상한 없으면 거대 days 가 operations_service 의 timedelta(days=...) 에서
     OverflowError → HTTP 500 (repo_report.py 와 동일한 Query(ge=1, le=365) 대칭).
+    두 경로(API admin.py + HTML ui/routes/admin.py)가 동일 operations_kpi 를 호출하므로 둘 다 가드.
     """
-    response = client.get(f"/api/admin/operations?days={bad_days}")
+    response = client.get(f"{path}?days={bad_days}")
     assert response.status_code == 422
 
 
