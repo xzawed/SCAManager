@@ -87,6 +87,13 @@ jobs:
           echo "검사 대상 / checking:"; echo "$changed"
           python -m flake8 --isolated --select=F401,F841 $changed
 
+      - name: Block new dual-import in PR-changed tests (py/import-and-import-from — C2)
+        # 🔴 신규 diff 한정 — PR 에서 ADDED 된 `from X import` 가 기존 `import X` 와 공존하는 경우만 차단.
+        # #1023 형(test_config.py 이중 import → self-inflicted CodeQL)의 pre-merge 봉인(회고 2026-07-03 C2).
+        # flake8 F401/F841 는 양쪽 import 모두 used 라 미검출 — 별도 stdlib 가드 필요. 기존 legacy idiom 무관.
+        # Diff-scoped: only NEW `from X import` coexisting with an `import X` is blocked (retro C2, #1023 pattern).
+        run: python scripts/check_dual_import.py "${{ github.event.pull_request.base.sha }}" HEAD
+
   test-and-analyze:
     name: pytest + Codecov + SonarCloud
     runs-on: ubuntu-latest
