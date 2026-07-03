@@ -171,6 +171,10 @@ BREAKDOWN_KEY_TEST_COVERAGE = "test_coverage"
 # Source: https://www.anthropic.com/pricing (reconfirmed 2026-07 — actual billing may differ)
 # 2026-07 갱신: Opus $15/$75 → $5/$25 (3× 인하), Haiku $0.80/$4 → $1/$5 — claude_metrics.py 와 단일 기준 정합
 # 2026-07 update: Opus $15/$75 → $5/$25 (3× drop), Haiku $0.80/$4 → $1/$5 — unified with claude_metrics.py
+# 🔴 PARITY GUARD: 가격 SSOT = claude_metrics._PRICING_USD_PER_MTOK. 여기 input/output_price 변경 시
+#   SSOT + i18n model_hint(en/ko/ja) 3곳 동시 수정 의무 (test_pricing_parity.py 가 CI 차단 — 정책 4).
+# 🔴 PARITY GUARD: pricing SSOT = claude_metrics._PRICING_USD_PER_MTOK. Changing input/output_price here
+#   requires updating the SSOT + i18n model_hint (en/ko/ja) too; test_pricing_parity.py blocks drift (policy 4).
 CLAUDE_MODELS: list[dict] = [
     {
         "id": "claude-haiku-4-5-20251001",
