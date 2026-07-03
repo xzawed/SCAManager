@@ -69,7 +69,7 @@ Sentry 외 자동 로깅은 별도 환경변수 없이 동작:
 
 > **🔴 운영 안전**: `I18N_DISABLED` 는 운영 사고 (번역 파일 손상 등) 시 즉각 비활성용 — Railway Variables 에 미리 배치 권장. 사이클 78 NEW-P0-2 패턴 (`is_disabled("I18N")` helper) 페어. 신규 환경변수 추가 시 `src/shared/feature_kill_switch.py::is_disabled(feature)` helper 사용 default.
 
-> **검증**: pydantic `field_validator` 4건 신설 (supported_locales / default_locale / locale_fallback) — 공백 제거 + 길이 2~10 + 영숫자/하이픈 제한. 단위 테스트 = `tests/unit/test_config.py` (Phase 1 PR-1a 회귀 가드 16건+).
+> **검증**: pydantic `field_validator` 3건 (supported_locales / default_locale / locale_fallback) — 공백 제거 + 길이 2~10 + 영숫자/하이픈 제한 — **+ `model_validator(mode=after)` 1건** (default_locale·locale_fallback ∈ supported_locales 멤버십 startup fail-fast, 2026-07-03 하드닝 N2). 단위 테스트 = `tests/unit/test_config.py` (Phase 1 PR-1a 회귀 가드 16건+).
 
 ## 알림 채널 (선택)
 

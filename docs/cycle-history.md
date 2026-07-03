@@ -145,7 +145,9 @@
 
 **#1021 하드닝** (각 정책 18 Claude+Codex mutual): N1 `/operations` `days` 상한 — API(`api/admin.py:94`) + **HTML**(`ui/routes/admin.py:107`) 2 라우트 `Annotated[int, Query(ge=1, le=365)]`(없으면 거대값→`operations_service` `timedelta(days=)` OverflowError→HTTP 500, repo_report.py 대칭) / N2 `config.py` `default_locale`·`locale_fallback` ∈ `supported_locales` `model_validator(mode=after)` **startup fail-fast**(api/repos.py 대칭·env-vars.md 동기화) / N3 `cli/git_diff.py:39` `--name-status` R### 리네임(탭 2개) 파싱 → 탭 전체 split + `parts[-1]` 대상 파일명. 회귀 +13, 단위 5121→5134.
 
-🔴 **교훈**: (1) Codex mutual 검증이 **Claude 가 놓친 실제 결함 적발** — N1 을 API 라우트만 고쳤는데 동일 `operations_kpi` 호출하는 HTML 라우트 미수정(동일 500 노출). #1015 가격 3-소스 갭과 **동형 패턴**(같은 로직 2+곳 → 한 곳만 수정). default = 공유 서비스 호출처 `grep -rn` 전 라우트 전수 확인. (2) 정적 감사 ≠ 운영 정상(정책 11/12/13 별도 트랙 — E2E·4-테마 시각·운영 데이터는 사용자 검증 영역). [[project-pr-merge-session-2026-07-03]]
+**#1023 self-inflicted CodeQL 봉인** (#1021 후속): #1021 N2 테스트가 `from src.config import Settings` 추가 → 기존 `import src.config as cfg` 와 공존 → CodeQL `py/import-and-import-from`(note) #538/#539 **자초**. `testing.md` "이중 import 회피" 규칙 위반 → fix = `import src.config as cfg`+`cfg.Settings` 통일. 선례 `#996`(env.py py/unused-import) 과 동형(자초 CodeQL → 파일 터치 재스캔 노출 → 봉인). main 재스캔 후 auto-close, open alert 0.
+
+🔴 **교훈**: (1) Codex mutual 검증이 **Claude 가 놓친 실제 결함 적발** — N1 을 API 라우트만 고쳤는데 동일 `operations_kpi` 호출하는 HTML 라우트 미수정(동일 500 노출). #1015 가격 3-소스 갭과 **동형 패턴**(같은 로직 2+곳 → 한 곳만 수정). default = 공유 서비스 호출처 `grep -rn` 전 라우트 전수 확인. (2) 정적 감사 ≠ 운영 정상(정책 11/12/13 별도 트랙 — E2E·4-테마 시각·운영 데이터는 사용자 검증 영역). (3) **신규 테스트에 `from src.x import` 추가 전 파일에 `import src.x as` 존재 여부 확인 의무** (#1023 self-inflicted CodeQL 재발 — testing.md 규칙 실전 미적용). [[project-pr-merge-session-2026-07-03]]
 
 ## cross-vendor 감사 및 구조검토 (2026-06-29)
 
