@@ -31,13 +31,14 @@ class TestEstimateCostUsd:
         assert cost == pytest.approx(15.0)
 
     def test_opus_rates(self):
-        # opus: $15/M input, $75/M output
+        # opus: $5/M input, $25/M output (2026-07 기준 — 이전 $15/$75 대비 3× 인하)
+        # opus: $5/M input, $25/M output (2026-07 basis — 3× drop from prior $15/$75)
         cost = claude_metrics.estimate_claude_cost_usd(
             model="claude-opus-4",
             input_tokens=1_000_000,
             output_tokens=1_000_000,
         )
-        assert cost == pytest.approx(15.0 + 75.0)
+        assert cost == pytest.approx(5.0 + 25.0)
 
     def test_haiku_rates(self):
         # haiku: $1/M input, $5/M output
