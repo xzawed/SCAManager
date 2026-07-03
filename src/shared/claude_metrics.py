@@ -36,6 +36,10 @@ async def aclose_anthropic_client(client) -> None:
 
 # 모델 패밀리별 가격 (USD per 1M tokens, input/output) — 2026-07 기준
 # Model family pricing (USD per 1M tokens, input/output) — 2026-07 basis
+# 🔴 PARITY GUARD: 본 dict 가 가격 SSOT. 변경 시 constants.CLAUDE_MODELS + i18n model_hint(en/ko/ja)
+#   3곳 동시 수정 의무 (tests/unit/shared/test_pricing_parity.py 가 drift 를 CI 에서 차단 — 정책 4).
+# 🔴 PARITY GUARD: this dict is the pricing SSOT. On change, also update constants.CLAUDE_MODELS and
+#   the i18n model_hint (en/ko/ja); test_pricing_parity.py blocks any drift in CI (policy 4).
 _PRICING_USD_PER_MTOK = {
     "opus": (5.0, 25.0),    # Opus 4.8/4.7/4.6 — 이전 (15.0, 75.0) 대비 3× 인하 (2026-07 확인)
                              # Previously (15.0, 75.0) — 3× price drop confirmed 2026-07
