@@ -368,5 +368,33 @@ class Settings(BaseSettings):
             )
         return v
 
+    @model_validator(mode="after")
+    def _validate_locale_membership(self) -> "Settings":
+        """default_locale·locale_fallback 가 supported_locales 에 포함되는지 교차검증.
+
+        Cross-check that default_locale and locale_fallback are members of supported_locales.
+
+        field_validator 는 형식만 검사 → 오타 시 조용히 영어 fallback(또는 loader
+        fallback 오타 시 raw 키 노출)으로 열화한다. startup 에서 fail-fast 하여 운영자
+        설정 오류를 즉시 드러낸다 (api/repos.py per-repo 검증과 대칭).
+        The field_validators check format only, so a typo silently degrades to English
+        fallback (or raw i18n keys if LOCALE_FALLBACK itself is mistyped). Fail fast at
+        startup instead, surfacing the operator config error (mirrors api/repos.py).
+        """
+        supported = {
+            loc.strip() for loc in self.supported_locales.split(",") if loc.strip()
+        }
+        if self.default_locale not in supported:
+            raise ValueError(
+                f"DEFAULT_LOCALE '{self.default_locale}' must be one of "
+                f"SUPPORTED_LOCALES {sorted(supported)}"
+            )
+        if self.locale_fallback not in supported:
+            raise ValueError(
+                f"LOCALE_FALLBACK '{self.locale_fallback}' must be one of "
+                f"SUPPORTED_LOCALES {sorted(supported)}"
+            )
+        return self
+
 
 settings = Settings()

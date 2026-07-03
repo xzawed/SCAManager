@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
@@ -104,9 +104,14 @@ def admin_operations(
     request: Request,
     admin: Annotated[CurrentUser, Depends(require_admin)],
     db: Annotated[Session, Depends(_get_worker_db)],
-    days: int = 7,
+    days: Annotated[int, Query(ge=1, le=365)] = 7,
 ) -> HTMLResponse:
     """운영 모니터링 KPI 5 카드 admin dashboard (Cycle 80 PR 2 — 영역 🅔).
+
+    days 는 1~365 범위 강제 (API /api/admin/operations 대칭) — 상한 없으면 거대값이
+    operations_service timedelta(days=...) 에서 OverflowError → HTTP 500.
+    days is clamped to 1~365 (mirrors the API route); an unbounded huge value overflows
+    timedelta(days=...) in operations_service → HTTP 500.
 
     Operations dashboard admin (Cycle 80 PR 2 — area 🅔).
     """
