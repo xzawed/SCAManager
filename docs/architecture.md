@@ -160,6 +160,8 @@ scripts/
 │                                # config sync — 3-layer RepoConfig field parity via AST
 ├── check_bilingual_comments.py  # 이중언어 주석 점검 — staged 신규 주석 한글-only 탐지 (CLAUDE.md 한+영 규칙 보조, pre-commit only)
 │                                # bilingual-comment checker — flag Korean-only added comment lines
+├── check_dual_import.py         # 신규 이중 import PR 가드 — diff ADDED `from X import` + 기존 `import X` 공존 검출 (self-inflicted CodeQL py/import-and-import-from 봉인, 회고 C2, ci.yml lint-changed-tests)
+│                                # new dual-import guard — diff-scoped `from X import` + coexisting `import X` (retro C2, CI)
 ├── capture_design_screenshots.py # 디자인 스크린샷 자동 캡처 — 12페이지 × 4테마 (Claude Design 브리프 패키지용, 사이클 131)
 │                                # Auto-capture design screenshots — 12 pages × 4 themes (Claude Design brief)
 ├── extract_design_tokens.py     # 디자인 토큰 추출 — tokens.css/themes.css → Claude Design 입력 JSON
