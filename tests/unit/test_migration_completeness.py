@@ -23,14 +23,15 @@ import re
 import pytest
 
 # --- import every ORM model so SQLAlchemy registers the tables ---
-# 🔴 11종 ORM 전수 명시 import (C5): 누락 시 conftest→src.main 전이 import 에 우발 의존(self-contained
+# 🔴 12종 ORM 전수 명시 import (C5): 누락 시 conftest→src.main 전이 import 에 우발 의존(self-contained
 # 아님) — 그 4종(insight_narrative_cache·issue_registration·merge_retry·security_alert_log)의 컬럼이
 # 마이그레이션 완전성 검사에서 빠져 ORM↔alembic drift 를 못 잡는다. testing.md "empty __init__ + explicit
 # ORM import 의무" 정합. 신규 ORM 모델 추가 시 이 목록에 등재 의무.
-# Explicitly import all 11 ORM models (C5): otherwise 4 of them rely on the conftest→src.main side-effect
+# Explicitly import all 12 ORM models (C5): otherwise 4 of them rely on the conftest→src.main side-effect
 # import chain (not self-contained), excluding their columns from the completeness check.
 from src.models.analysis import Analysis
 from src.models.analysis_feedback import AnalysisFeedback
+from src.models.claude_api_call import ClaudeApiCall
 from src.models.gate_decision import GateDecision
 from src.models.insight_narrative_cache import InsightNarrativeCache
 from src.models.issue_registration import IssueRegistration
@@ -48,7 +49,7 @@ from src.database import Base
 # Reference the model classes so CodeQL py/unused-import doesn't fire (the import itself registers
 # the table in Base.metadata). `# noqa: F401` only silences flake8, not CodeQL's separate rule.
 _REGISTERED_MODELS = (
-    Analysis, AnalysisFeedback, GateDecision, InsightNarrativeCache, IssueRegistration,
+    Analysis, AnalysisFeedback, ClaudeApiCall, GateDecision, InsightNarrativeCache, IssueRegistration,
     MergeAttempt, MergeRetryQueue, RepoConfig, Repository, SecurityAlertProcessLog, User,
 )
 
@@ -138,7 +139,7 @@ def test_column_appears_in_migration(table_name: str, column_name: str) -> None:
 
 
 def test_all_registered_models_have_tables() -> None:
-    """🔴 11종 ORM 이 import 부작용으로 Base.metadata 에 테이블을 등록했는지 전수 확인.
+    """🔴 12종 ORM 이 import 부작용으로 Base.metadata 에 테이블을 등록했는지 전수 확인.
 
     _REGISTERED_MODELS 를 실제로 읽어 (a) CodeQL py/unused-global-variable(#515) 해소 +
     (b) self-contained import 가 의도대로 테이블을 등록함을 봉인(부작용이 사라지면 fail).
@@ -146,4 +147,4 @@ def test_all_registered_models_have_tables() -> None:
     registered = set(Base.metadata.tables.keys())
     missing = [m.__name__ for m in _REGISTERED_MODELS if m.__tablename__ not in registered]
     assert not missing, f"미등록 ORM 모델: {missing}"
-    assert len(_REGISTERED_MODELS) == 11  # 11종 전수 (신규 ORM 추가 시 동반 갱신)
+    assert len(_REGISTERED_MODELS) == 12  # 12종 전수 (신규 ORM 추가 시 동반 갱신)

@@ -20,11 +20,11 @@ if config.config_file_name is not None:
 
 # add your model's MetaData object here
 # for 'autogenerate' support
-# 🔴 전 ORM 모델(11종) 명시 import 의무 — 일부만 import 하면 autogenerate 가 미등록 테이블을
+# 🔴 전 ORM 모델(12종) 명시 import 의무 — 일부만 import 하면 autogenerate 가 미등록 테이블을
 # "삭제됨"으로 보고 drop_table 을 생성하는 데이터 손실 함정 (감사 migration-integrity-001, 2026-06-25).
 # empty __init__.py 규칙(testing.md) 보존 — aggregate import 대신 여기서 전수 명시.
 # 회귀 가드: tests/unit/migrations/test_alembic_env_model_completeness.py (신규 모델 추가 시 자동 fail).
-# 🔴 Import EVERY ORM model (11) — a partial import makes autogenerate emit destructive drop_table for
+# 🔴 Import EVERY ORM model (12) — a partial import makes autogenerate emit destructive drop_table for
 # the unimported tables. The empty-__init__ convention is preserved; all models are listed here explicitly.
 from src.models.repository import Repository  # noqa: F401
 from src.models.analysis import Analysis      # noqa: F401
@@ -37,24 +37,25 @@ from src.models.issue_registration import IssueRegistration  # noqa: F401
 from src.models.insight_narrative_cache import InsightNarrativeCache  # noqa: F401
 from src.models.security_alert_log import SecurityAlertProcessLog  # noqa: F401
 from src.models.user import User  # noqa: F401
+from src.models.claude_api_call import ClaudeApiCall  # noqa: F401
 from src.database import Base, _build_connect_args
 from src.config import settings
 
 target_metadata = Base.metadata
 
-# 🔴 전 ORM 모델(11) 실참조 — CodeQL py/unused-import(#528~536) 봉인.
+# 🔴 전 ORM 모델(12) 실참조 — CodeQL py/unused-import(#528~536) 봉인.
 # 각 import 의 `# noqa: F401` 은 flake8 만 억제하고 CodeQL py/unused-import 는 별도 룰이라
 # 명시 참조로만 'used' 처리된다 (test_migration_completeness.py 의 _REGISTERED_MODELS 동일 패턴, #507~515).
 # 이어지는 단언이 튜플을 실제로 읽어 py/unused-global-variable(상수 고아화, #515 류)도 함께 회피하며,
 # import 부작용이 사라진 비정상 상태를 런타임에서 loud-fail 로 잡아 autogenerate drop_table 함정을 잠근다.
-# 🔴 Reference every ORM model (11) so CodeQL py/unused-import (#528-536) is sealed; the per-import
+# 🔴 Reference every ORM model (12) so CodeQL py/unused-import (#528-536) is sealed; the per-import
 # `# noqa: F401` silences flake8 only. The following assertion reads the tuple (avoiding an
 # unused-global alert too) and loud-fails if the import side-effect ever breaks — locking the
 # autogenerate drop_table footgun. Same pattern as test_migration_completeness.py.
 _REGISTERED_MODELS = (
     Repository, Analysis, AnalysisFeedback, RepoConfig, GateDecision,
     MergeAttempt, MergeRetryQueue, IssueRegistration,
-    InsightNarrativeCache, SecurityAlertProcessLog, User,
+    InsightNarrativeCache, SecurityAlertProcessLog, User, ClaudeApiCall,
 )
 _unregistered_models = [
     m.__name__ for m in _REGISTERED_MODELS if m.__tablename__ not in target_metadata.tables
