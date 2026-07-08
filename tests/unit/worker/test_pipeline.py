@@ -284,6 +284,35 @@ async def test_pipeline_enabled_true_when_repo_config_fetch_raises(mock_deps):
     assert mock_deps["ai"].call_args.kwargs["enabled"] is True
 
 
+async def test_pipeline_passes_repo_id_to_review_code(mock_deps):
+    """리포가 이미 존재하면 review_code 가 repo.id 를 repo_id kwarg 로 전달받는다 (C1 T3.2 비용 귀속).
+    When the repo already exists, review_code receives repo.id via the repo_id kwarg
+    (C1 T3.2 cost attribution)."""
+    from src.worker.pipeline import run_analysis_pipeline
+
+    # 기존 리포(생성 스킵) — find_by_full_name 최초 호출에서 바로 발견되는 경로
+    # Existing repo (creation skipped) — found on the very first find_by_full_name call
+    mock_deps["find_repo"].side_effect = None
+    mock_deps["find_repo"].return_value = mock_deps["mock_repo"]  # id=1
+
+    await run_analysis_pipeline("push", PUSH_DATA)
+
+    assert mock_deps["ai"].call_args.kwargs["repo_id"] == 1
+
+
+async def test_pipeline_passes_repo_id_none_when_repo_newly_created(mock_deps):
+    """신규 리포 생성 경로에서는 repo_id 확보가 불가하면 None 전달(fail-safe — 오류 아님).
+    On the newly-created-repo path, when repo_id can't be captured, None is passed
+    (fail-safe — not an error)."""
+    from src.worker.pipeline import run_analysis_pipeline
+
+    # 기본 fixture 동작: 1차 조회 None(신규 생성) — 회귀 가드
+    # Default fixture behavior: 1st lookup returns None (new repo created) — regression guard
+    await run_analysis_pipeline("push", PUSH_DATA)
+
+    assert mock_deps["ai"].call_args.kwargs["repo_id"] is None
+
+
 async def test_db_result_stores_ai_summary(mock_deps):
     from src.worker.pipeline import run_analysis_pipeline
     await run_analysis_pipeline("push", PUSH_DATA)

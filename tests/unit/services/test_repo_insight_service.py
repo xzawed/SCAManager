@@ -423,3 +423,60 @@ class TestRepoInsightNarrative:
         assert result["status"] == "success"
         rows = db.query(InsightNarrativeCache).filter_by(repo_id=repo.id).all()
         assert rows == []
+
+    @pytest.mark.asyncio
+    async def test_success_path_passes_repo_id_and_user_id_to_log(self, db, repo, user):
+        """C1 T3.3 — 성공 응답 시 log_claude_api_call 에 repo_id/user_id 가 전달된다.
+        C1 T3.3 — repo_id/user_id are forwarded to log_claude_api_call on the success path."""
+        from src.services.repo_insight_service import repo_insight_narrative
+
+        mock_msg = MagicMock()
+        mock_msg.content = [MagicMock(text='{"text": "great repo"}')]
+        mock_msg.usage = MagicMock(input_tokens=10, output_tokens=20)
+        mock_client = AsyncMock()
+        mock_client.messages.create = AsyncMock(return_value=mock_msg)
+
+        with patch("src.services.repo_insight_service.settings") as s, \
+             patch("src.services.repo_insight_service.anthropic.AsyncAnthropic", return_value=mock_client), \
+             patch("src.services.repo_insight_service.log_claude_api_call") as mock_log:
+            s.anthropic_api_key = "sk-ant-test"
+            s.claude_insight_model = "claude-haiku-4-5-20251001"
+            await repo_insight_narrative(
+                db, repo.id, user_id=user.id,
+                kpi={"analysis_count": 3, "avg_score": 75, "grade": "C",
+                     "score_delta": -2, "high_security_count": 1,
+                     "top_recurring_issue": "sql injection", "top_recurring_count": 2},
+                recurring=[],
+            )
+
+        mock_log.assert_called_once()
+        kwargs = mock_log.call_args.kwargs
+        assert kwargs.get("repo_id") == repo.id
+        assert kwargs.get("user_id") == user.id
+
+    @pytest.mark.asyncio
+    async def test_error_path_passes_repo_id_and_user_id_to_log(self, db, repo, user):
+        """C1 T3.3 — 예외 발생 시에도 log_claude_api_call 에 repo_id/user_id 가 전달된다.
+        C1 T3.3 — repo_id/user_id are forwarded to log_claude_api_call even on the error path."""
+        from src.services.repo_insight_service import repo_insight_narrative
+
+        mock_client = AsyncMock()
+        mock_client.messages.create = AsyncMock(side_effect=RuntimeError("network down"))
+
+        with patch("src.services.repo_insight_service.settings") as s, \
+             patch("src.services.repo_insight_service.anthropic.AsyncAnthropic", return_value=mock_client), \
+             patch("src.services.repo_insight_service.log_claude_api_call") as mock_log:
+            s.anthropic_api_key = "sk-ant-test"
+            s.claude_insight_model = "claude-haiku-4-5-20251001"
+            await repo_insight_narrative(
+                db, repo.id, user_id=user.id,
+                kpi={"analysis_count": 2, "avg_score": 60, "grade": "D",
+                     "score_delta": None, "high_security_count": 0,
+                     "top_recurring_issue": None, "top_recurring_count": 0},
+                recurring=[],
+            )
+
+        mock_log.assert_called_once()
+        kwargs = mock_log.call_args.kwargs
+        assert kwargs.get("repo_id") == repo.id
+        assert kwargs.get("user_id") == user.id

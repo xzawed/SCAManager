@@ -762,12 +762,16 @@ def _build_insight_user_prompt(
 
 
 async def _call_insight_claude_api(
-    client: anthropic.AsyncAnthropic, model: str, user_prompt: str
+    client: anthropic.AsyncAnthropic, model: str, user_prompt: str,
+    *, user_id: int | None = None,
 ) -> str | None:
     """Claude Messages API 호출 + caching system 인자 + 토큰 로깅. 실패 시 None.
 
     Calls the Claude Messages API with cached system param and logs tokens.
     Returns response text on success, None on any exception (caller maps to api_error).
+
+    C1 Phase 3 T3.3 — user_id 는 비용 귀속용(log_claude_api_call 로 그대로 전달).
+    C1 Phase 3 T3.3 — user_id is for cost attribution (forwarded to log_claude_api_call).
     """
     start = time.perf_counter()
     try:
@@ -788,6 +792,7 @@ async def _call_insight_claude_api(
             status="success",
             cache_read_tokens=getattr(usage, "cache_read_input_tokens", 0) or 0,
             cache_creation_tokens=getattr(usage, "cache_creation_input_tokens", 0) or 0,
+            user_id=user_id,
         )
         return response.content[0].text
     except Exception as exc:  # pylint: disable=broad-exception-caught  # noqa: BLE001
@@ -801,6 +806,7 @@ async def _call_insight_claude_api(
             output_tokens=0,
             status="error",
             error_type=type(exc).__name__,
+            user_id=user_id,
         )
         logger.exception("insight_narrative API call failed, returning api_error")
         return None
@@ -912,7 +918,9 @@ async def insight_narrative(  # pylint: disable=too-many-locals,too-many-return-
     client = anthropic.AsyncAnthropic(api_key=effective_key, timeout=60.0, max_retries=2)
     # Phase 2 d-🅓 (사이클 74) — Insight 영역 한정 Haiku (67% 비용 절감, AI 리뷰 Sonnet 보존)
     # Phase 2 d-🅓 (Cycle 74) — Insight-only Haiku (67% cheaper, AI review keeps Sonnet)
-    text = await _call_insight_claude_api(client, settings.claude_insight_model, user_prompt)
+    text = await _call_insight_claude_api(
+        client, settings.claude_insight_model, user_prompt, user_id=user_id,
+    )
     # 헬퍼 호출 직후 AsyncAnthropic httpx 커넥션 풀 해제 (이후 client 미사용) — FD 누수 차단 (WBS P1).
     # Close the AsyncAnthropic pool right after the helper call (client is unused afterward).
     await aclose_anthropic_client(client)

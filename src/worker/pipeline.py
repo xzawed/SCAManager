@@ -698,7 +698,15 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
                     if event == "pull_request" and pr_number is not None:
                         await _regate_pr_if_needed(db, repo_name, commit_sha, pr_number)
                     return
-                _, owner_token = ensure_result
+                _ensured_repo, owner_token = ensure_result
+                # C1 T3.2 — Anthropic 비용 귀속용 repo id. 세션이 아직 열려있는 동안(이 with
+                # 블록 내부) 스칼라만 추출 — 세션 종료 후 접근 시 lazy-load 위험 회피.
+                # 신규 생성 직후(첫 commit 전)라 id 가 아직 없으면 None(fail-safe, 오류 아님).
+                # C1 T3.2 — repo id for Anthropic cost attribution. Extract the scalar while
+                # the session is still open (inside this with-block) to avoid a lazy-load
+                # after the session closes. None if the repo was just created and has no id
+                # yet (fail-safe, not an error).
+                _review_repo_id = _ensured_repo.id
 
             with stage_timer("collect_files", repo=repo_log) as ctx:
                 # Phase H PR-3A: PyGithub 동기 I/O 를 별도 스레드로 격리
@@ -752,6 +760,7 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
                         language=review_language,
                         model=repo_review_model,
                         enabled=_ai_review_enabled,
+                        repo_id=_review_repo_id,
                     ),
                 )
                 # (결과 리스트, 타임아웃 여부) — 타임아웃 시 auto-merge 차단 신호로 전파
