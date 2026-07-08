@@ -269,6 +269,21 @@ async def test_pipeline_passes_enabled_true_by_default(mock_deps):
     assert mock_deps["ai"].call_args.kwargs["enabled"] is True
 
 
+async def test_pipeline_enabled_true_when_repo_config_fetch_raises(mock_deps):
+    """get_repo_config 조회 중 예외 발생 시에도 _ai_review_enabled 는 fail-safe default(True)를
+    유지 → review_code 가 enabled=True 로 호출된다(일시적 설정 조회 실패가 AI 리뷰를 실수로
+    비활성화/오설정하지 않음).
+    Even when get_repo_config raises, _ai_review_enabled stays at its fail-safe default
+    (True) → review_code is still called with enabled=True (a transient config-fetch
+    failure must not accidentally disable AI review)."""
+    from src.worker.pipeline import run_analysis_pipeline
+
+    mock_deps["get_config"].side_effect = RuntimeError("db down")
+    await run_analysis_pipeline("push", PUSH_DATA)
+
+    assert mock_deps["ai"].call_args.kwargs["enabled"] is True
+
+
 async def test_db_result_stores_ai_summary(mock_deps):
     from src.worker.pipeline import run_analysis_pipeline
     await run_analysis_pipeline("push", PUSH_DATA)
