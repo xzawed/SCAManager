@@ -866,7 +866,8 @@
     },
     "common": {
       "commit_ref": "コミット {sha}",
-      "ai_unavailable": "AIレビュー不可 (デフォルト適用)"
+      "ai_unavailable": "AIレビュー不可 (デフォルト適用)",
+      "ai_disabled": "AIコードレビューは設定で無効化されており、静的解析スコアのみ反映されています。"
     },
     "railway": {
       "build_failed": "Railwayビルド失敗",

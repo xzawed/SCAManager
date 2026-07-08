@@ -36,9 +36,13 @@ def resolve_ai_summary(ai_review, language: str = "ko") -> "str | None":
         return None
     # 실패 fallback (no_api_key/api_error/empty_diff/parse_error) → 수신자 언어로 현지화
     # Failure fallback → localize in the recipient's language
-    if getattr(ai_review, "status", "success") != "success":
+    status = getattr(ai_review, "status", "success")
+    if status != "success":
         from src.i18n.loader import get_text  # noqa: WPS433  # pylint: disable=import-outside-toplevel
-        return get_text("notifier.common.ai_unavailable", language)
+        # 의도적 비활성(disabled)은 "실패/불가"가 아니라 "설정으로 끔"으로 안내 — 그 외 실패는 generic.
+        # disabled (intentional off) → "turned off by config"; other non-success → generic unavailable.
+        key = "notifier.common.ai_disabled" if status == "disabled" else "notifier.common.ai_unavailable"
+        return get_text(key, language)
     return ai_review.summary or None
 
 
