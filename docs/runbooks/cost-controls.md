@@ -1,6 +1,6 @@
 # 비용 제어 (Anthropic API) 운영·검증 런북
 
-Anthropic API(Claude) 호출 비용을 통제하는 3종 스위치(전역 kill-switch 2개 + 리포별 컬럼 1개)의 운영·검증 가이드. 메트릭이 로그 전용(DB 미영속)이라 "비용이 실제로 줄었는지"는 자동 회귀 검증이 불가능 — 이 문서가 **살아있는 수동 검증 절차**의 단일 출처다.
+Anthropic API(Claude) 호출 비용을 통제하는 3종 스위치(전역 kill-switch 2개 + 리포별 컬럼 1개)의 운영·검증 가이드. C1(비용 메트릭 DB 영속화, `claude_api_calls` 테이블 0043) 이후 실비용을 DB 로 직접 조회할 수 있다 — 이 문서가 **살아있는 수동 검증 절차**의 단일 출처다.
 
 ## 1. 제어 수단 요약
 
@@ -24,11 +24,13 @@ Anthropic API(Claude) 호출 비용을 통제하는 3종 스위치(전역 kill-s
 - **L2 통합**: `ai_review_enabled=False` 인 리포는 `review_code(enabled=False)` 로 호출되어 API 호출 없이 `disabled` 상태를 반환하고, 파이프라인은 정적분석 점수를 정상 저장한다. `disabled` 는 `AI_REVIEW_FAILED_STATUSES`(`api_error`/`parse_error`) 에 **포함되지 않으므로** auto-merge/auto-approve 를 차단하지 않고, 점수 컬럼도 NULL 이 되지 않는다(§4 참조).
 - **L3 운영**: env 설정 후 Railway 로그에서 `claude_api_call model=...sonnet`(AI 리뷰) 또는 `model=...haiku`(인사이트) 라인이 **신규로 발생하지 않는지** 확인 + Anthropic Console 사용량 대시보드에서 호출 건수 정체 관찰.
   - 예시: `AI_REVIEW_DISABLED=1` 설정 후 Railway Logs 에서 `claude_api_call` 검색 → 설정 시각 이후 신규 라인이 없어야 정상.
+  - 🔴 **이제 DB 조회 가능 (C1, 0043)**: `cost_metrics_service.user_cost_summary(db, user_id=..., days=N)` 또는 `SELECT model, cost_usd, created_at FROM claude_api_calls WHERE created_at >= now() - interval '1 day'` 로 실비용/모델별 분포를 직접 조회 — 로그 grep 을 대체·보완한다. 대시보드 `/dashboard` 의 `monthly_cost` KPI(고정 30일 윈도우)로도 사용자 귀속 비용을 확인할 수 있다.
 
 ## 3. 🔴 한계 & 백로그
 
-- **메트릭은 로그 전용**(`src/shared/claude_metrics.py::log_claude_api_call` = logger 출력만, DB 미영속) — "비용이 실제로 얼마나 줄었는지"에 대한 **자동 회귀 검증이 불가능**하다. §2 L3 의 로그 grep 이 유일한 신호.
-- **백로그**: 비용 메트릭 DB 영속화(향후 L3 자동화 + 예산 캡 알림 기반 마련 시 선행 과제).
+- **메트릭 로그전용 → DB 영속화 완료 (C1)**: `src/shared/claude_metrics.py::log_claude_api_call` 이 구조화 로그 출력에 더해 `claude_api_cost_repo.record()` 로 `claude_api_calls` 테이블(0043, RLS)에 1행 fail-safe INSERT — DB 실패가 API 흐름을 절대 차단하지 않는다. §2 L3 의 로그 grep 은 여전히 유효한 신호이며, DB 조회로 보완된다.
+- **보존기간 무제한 (prune 없음)**: 현재 `claude_api_calls` 는 삭제/보존기간 정책이 없다 — 백로그로 향후 볼륨 증가 시 prune 정책(예: N개월 초과 행 배치 삭제) 도입 검토.
+- **백로그**: L3 자동 회귀 검증(현재는 여전히 수동 grep/조회) + 예산 캡 알림(비용 DB 적재 완료로 기반 마련됨, 알림 로직은 미구현).
 
 ## 4. disabled 상태의 gate 동작
 
@@ -54,7 +56,7 @@ AI 리뷰가 꺼진 리포(전역 또는 리포별)는 `_default_result("disable
 ## 관련 / References
 
 - 환경변수: [`docs/reference/env-vars.md`](../reference/env-vars.md#비용-제어-ai-리뷰인사이트-kill-switch)
-- 코드: [`src/analyzer/io/ai_review.py`](../../src/analyzer/io/ai_review.py) · [`src/worker/pipeline.py`](../../src/worker/pipeline.py) · [`src/services/dashboard_service.py`](../../src/services/dashboard_service.py) · [`src/services/repo_insight_service.py`](../../src/services/repo_insight_service.py) · [`src/shared/feature_kill_switch.py`](../../src/shared/feature_kill_switch.py)
+- 코드: [`src/analyzer/io/ai_review.py`](../../src/analyzer/io/ai_review.py) · [`src/worker/pipeline.py`](../../src/worker/pipeline.py) · [`src/services/dashboard_service.py`](../../src/services/dashboard_service.py) · [`src/services/repo_insight_service.py`](../../src/services/repo_insight_service.py) · [`src/shared/feature_kill_switch.py`](../../src/shared/feature_kill_switch.py) · [`src/shared/claude_metrics.py`](../../src/shared/claude_metrics.py)(로그+비용영속화) · [`src/services/cost_metrics_service.py`](../../src/services/cost_metrics_service.py) · [`src/repositories/claude_api_cost_repo.py`](../../src/repositories/claude_api_cost_repo.py)
 - 파이프라인 게이트 규칙: [`.claude/rules/pipeline.md`](../../.claude/rules/pipeline.md)
 - 서비스 계층 규칙: [`.claude/rules/services.md`](../../.claude/rules/services.md)
 - API/알림 규칙(5-way 동기화): [`.claude/rules/api.md`](../../.claude/rules/api.md)

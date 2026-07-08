@@ -33,6 +33,7 @@ paths:
 - 🔴 **2nd-LLM verifier (`src/verifier/`)**: **fail-closed** — `merge_verifier.verifier_blocks_merge` 가드(should_verify + verify_merge_safety + 차단 시 PR 코멘트)는 `gate/engine._run_auto_merge` **단일출처**(자동·반자동 공유). `OPENAI_API_KEY` 미설정=완전 비활성(순수 opt-in·비용 0). 활성화 절차: [`docs/runbooks/merge-verifier.md`](../../docs/runbooks/merge-verifier.md). cross-ref [`api.md`](api.md) §2nd-LLM 검증자 가드.
 - 🔴 **`config_manager` 5-way sync**: RepoConfig 신규 필드 = ORM(`models/repo_config.py`)↔`RepoConfigData`↔`RepoConfigUpdate`↔`settings.html` 폼↔PRESETS 동기화 의무 — 누락 시 REST 업데이트가 해당 필드를 NULL 로 덮어씀. pre-commit `check-config-5way-sync` 훅은 **3-layer(ORM↔Data↔Update) Python 자동 검증만**, 폼·PRESETS 2-layer 는 HTML/JS 파싱 fragile 로 수동 검토(범위 외). cross-ref [`api.md`](api.md) §알림 채널 추가 체크리스트(ORM↔Data↔Update↔폼 4곳) + [`pipeline.md`](pipeline.md) §5-way 동기화(PRESETS 5번째).
 - **N+1 배치**: 집계 함수 신규 추가 시 `dashboard_service._fetch_analyses_for_window`/`_group_analyses_by_repo` 배치 패턴 사용 — repo 별 개별 쿼리 루프 금지.
+- **`cost_metrics_service`**: Anthropic 비용 집계 진입점(`user_cost_summary`) — `claude_api_cost_repo`(record + 집계) 위임 thin wrapper. `dashboard_kpi` 의 `monthly_cost` 카드(고정 30일 윈도우)가 소비 (C1 Phase 2/4, 0043 `claude_api_calls` 테이블). 검증 절차: [`docs/runbooks/cost-controls.md`](../../docs/runbooks/cost-controls.md).
 - 🔴 **메모리 캐시 상한 의무**: 서비스/클라이언트 모듈 레벨 캐시(dict)는 **상한 + 만료 evict** 패턴(`webhook/_helpers._store_secret`·`add_repo._store_user_repos` 미러). pre-auth 도달 가능 캐시는 특히 필수(무한 증가 DoS). 신규 캐시 도입 시 `tests/conftest.py` autouse 클리어 fixture 동반.
 
 ## 발신 메시지 i18n (cross-ref i18n.md)

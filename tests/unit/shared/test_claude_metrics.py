@@ -3,7 +3,7 @@
 TDD Red: src/shared/claude_metrics.py 모듈은 아직 없음.
 """
 import logging
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -174,6 +174,15 @@ class TestCacheStats:
 
 class TestLogClaudeApiCall:
     """log_claude_api_call — 구조화된 로그 출력"""
+
+    @pytest.fixture(autouse=True)
+    def _no_persist(self):
+        # 본 클래스는 로깅 동작만 검증 — 비용 영속화(_persist_cost)는 별도 테스트 파일
+        # (test_claude_metrics_persist.py) 책임이므로 여기선 no-op 처리해 격리한다.
+        # This class only verifies logging behavior — cost persistence (_persist_cost) is
+        # covered by test_claude_metrics_persist.py, so no-op it here to isolate concerns.
+        with patch("src.shared.claude_metrics._persist_cost"):
+            yield
 
     def test_success_log_contains_core_fields(self, caplog):
         with caplog.at_level(logging.INFO, logger="src.shared.claude_metrics"):

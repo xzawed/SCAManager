@@ -25,10 +25,6 @@ os.environ.setdefault("GITHUB_TOKEN", "ghp_test")
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "123:ABC")
 os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 
-# 단일 출처 대조 — 하드코딩 11 테이블 중복 대신 _RLS_MATRIX import
-# Single-source comparison — import _RLS_MATRIX instead of duplicating 11 table names
-from src.services.saas_service import _RLS_MATRIX
-
 # alembic versions 디렉토리 — 테스트 파일 기준 상대 경로 (절대경로 하드코딩 금지)
 # Alembic versions directory, resolved relative to this test file (no hardcoded paths)
 _VERSIONS_DIR = pathlib.Path(__file__).resolve().parents[3] / "alembic" / "versions"
@@ -59,12 +55,20 @@ _RLS_ENABLE_RE = re.compile(
 )
 
 
-def _matrix_tables() -> set[str]:
-    """_RLS_MATRIX 의 table 키 집합 (단일 출처).
-
-    Return the set of table names declared in _RLS_MATRIX (single source).
-    """
-    return {entry["table"] for entry in _RLS_MATRIX}
+# 0041 작성 시점의 _RLS_MATRIX 스냅샷(11 테이블) — 0041 은 알려진 11 테이블만 FORCE 하는
+# 불변 이력 마이그레이션이므로, F.2/F.5 는 (계속 성장하는) 라이브 _RLS_MATRIX 대신 이 고정
+# 스냅샷과 대조한다. 이후 신규 RLS 테이블(예: 0043 claude_api_calls)은 각자의 마이그레이션에서
+# 자체 FORCE 문을 실행하며, 누적 정합성은 F.6(cumulative bijection)이 담당한다.
+# Snapshot of _RLS_MATRIX as it existed when 0041 was authored (11 tables) — 0041 is an
+# immutable historical migration that FORCEs only those known 11 tables, so F.2/F.5 compare
+# against this frozen snapshot instead of the (ever-growing) live _RLS_MATRIX. Later RLS
+# tables (e.g. 0043 claude_api_calls) apply their own FORCE statement in their own migration;
+# cumulative correctness across all migrations is covered by F.6 (cumulative bijection).
+_RLS_MATRIX_AT_0041: frozenset[str] = frozenset({
+    "repositories", "analyses", "merge_attempts", "security_alert_process_logs",
+    "insight_narrative_cache", "users", "repo_configs", "gate_decisions",
+    "merge_retry_queue", "analysis_feedbacks", "issue_registrations",
+})
 
 
 def _extract_force_tables(text: str) -> set[str]:
@@ -161,11 +165,11 @@ def test_alembic_0041_postgresql_upgrade_forces_all_rls_matrix_tables():
     assert len(captured) >= 1, "PG dialect 시 op.execute 호출 0회 — FORCE 분기 미진입"
 
     forced = _extract_force_tables(" ".join(captured))
-    assert forced == _matrix_tables(), (
-        f"\n\nFORCE 적용 테이블 ≠ _RLS_MATRIX 테이블 (단일 출처 대조)\n"
+    assert forced == _RLS_MATRIX_AT_0041, (
+        f"\n\nFORCE 적용 테이블 ≠ 0041 작성 시점 _RLS_MATRIX 스냅샷 (11 테이블)\n"
         f"forced: {sorted(forced)}\n"
-        f"matrix: {sorted(_matrix_tables())}\n"
-        f"누락/잉여: {sorted(forced ^ _matrix_tables())}\n"
+        f"matrix(0041 시점): {sorted(_RLS_MATRIX_AT_0041)}\n"
+        f"누락/잉여: {sorted(forced ^ _RLS_MATRIX_AT_0041)}\n"
     )
 
 
@@ -214,10 +218,10 @@ def test_alembic_0041_postgresql_downgrade_no_force_all_rls_matrix_tables():
         match.group(1)
         for match in _RLS_NO_FORCE_RE.finditer(" ".join(captured))
     }
-    assert no_forced == _matrix_tables(), (
-        f"\n\nNO FORCE 적용 테이블 ≠ _RLS_MATRIX 테이블\n"
+    assert no_forced == _RLS_MATRIX_AT_0041, (
+        f"\n\nNO FORCE 적용 테이블 ≠ 0041 작성 시점 _RLS_MATRIX 스냅샷 (11 테이블)\n"
         f"no_forced: {sorted(no_forced)}\n"
-        f"matrix   : {sorted(_matrix_tables())}\n"
+        f"matrix(0041 시점): {sorted(_RLS_MATRIX_AT_0041)}\n"
     )
 
 

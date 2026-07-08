@@ -72,6 +72,7 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
     model: str | None = None,
     *,
     enabled: bool = True,
+    repo_id: int | None = None,
 ) -> AiReviewResult:
     """Claude API로 코드를 리뷰하고 점수를 반환한다. API key가 없으면 기본값 반환.
 
@@ -80,6 +81,12 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
 
     Phase 4 PR-12 (Cycle 84) — language arg added. System prompt determines output language.
     Cache key (system text hash) auto-diverges per language → independent cache per language.
+
+    C1 Phase 3 T3.2 — repo_id 는 비용 귀속용(log_claude_api_call 로 그대로 전달).
+    호출자가 확보하지 못하면 None(귀속 미확보 — fail-safe, 오류 아님).
+    C1 Phase 3 T3.2 — repo_id is for cost attribution (forwarded to log_claude_api_call
+    as-is). None when the caller couldn't obtain it (missing attribution is fail-safe,
+    not an error).
     """
     # 비용 제어 — 전역 kill-switch(AI_REVIEW_DISABLED) 또는 리포별 enabled=False 시
     # API 호출 없이 disabled 반환. api_key 검사보다 우선(전역이 리포별·키부재보다 우선).
@@ -155,6 +162,7 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
             status="success",
             cache_read_tokens=cache_read,
             cache_creation_tokens=cache_creation,
+            repo_id=repo_id,
         )
         result = _parse_response(response.content[0].text)
         result.detected_languages = languages
@@ -190,6 +198,7 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
             output_tokens=0,
             status="error",
             error_type=type(exc).__name__,
+            repo_id=repo_id,
         )
         logger.exception("AI review failed, using default scores")
         return _default_result("api_error")

@@ -67,7 +67,9 @@
       "high_security": "보안 이슈 (HIGH)",
       "active_repos": "활성 리포",
       "auto_merge_success": "자동 머지 성공률 (PR 기준)",
-      "auto_merge_tooltip": "PR 기준 최종 success rate (retry 후 결과). 단순 시도 success rate 는 sub-text 참고."
+      "auto_merge_tooltip": "PR 기준 최종 success rate (retry 후 결과). 단순 시도 success rate 는 sub-text 참고.",
+      "monthly_cost": "이번 달 AI 비용",
+      "monthly_cost_tooltip": "최근 30일 고정 (페이지 조회 기간과 무관)"
     },
     "delta": {
       "improvement": "개선",

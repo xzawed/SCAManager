@@ -94,9 +94,9 @@ class TestTenantInventory:
 
 
 class TestRlsAuditMatrix:
-    def test_returns_11_tables(self):
+    def test_returns_12_tables(self):
         matrix = saas_service.rls_audit_matrix()
-        assert len(matrix) == 11  # 0026 (3) + 0027 (1) + 0028 (1) + 0029 (5) + 0037 (1)
+        assert len(matrix) == 12  # 0026 (3) + 0027 (1) + 0028 (1) + 0029 (5) + 0037 (1) + 0043 (1)
 
     def test_all_tables_applied(self):
         matrix = saas_service.rls_audit_matrix()
@@ -119,12 +119,23 @@ class TestRlsAuditMatrix:
         assert entry["since"] == "0037"
         assert entry["status"] == "applied"
 
+    def test_includes_claude_api_calls_0043(self):
+        """0043 claude_api_calls RLS 항목이 매트릭스에 등재됐는지 확인.
+
+        Verify the 0043 claude_api_calls RLS entry is registered in the matrix.
+        """
+        matrix = saas_service.rls_audit_matrix()
+        entry = next((m for m in matrix if m["table"] == "claude_api_calls"), None)
+        assert entry is not None, "claude_api_calls 매트릭스 누락 (alembic 0043 적용됨)"
+        assert entry["since"] == "0043"
+        assert entry["status"] == "applied"
+
 
 class TestRlsCoverageSummary:
     def test_summary_counts(self):
         summary = saas_service.rls_coverage_summary()
-        assert summary["total"] == 11
-        assert summary["applied"] == 11
+        assert summary["total"] == 12
+        assert summary["applied"] == 12
         assert summary["missing"] == 0
 
     # ── RLS Phase 3 — force_applied 실측 (pg_class.relforcerowsecurity) ──
@@ -173,26 +184,26 @@ class TestRlsCoverageSummary:
         assert summary["force_applied"] is False
 
     def test_summary_force_true_on_postgresql_all_forced(self):
-        """PG + relforcerowsecurity=true 11/11 → force_applied=True (실측 양성 경로).
+        """PG + relforcerowsecurity=true 12/12 → force_applied=True (실측 양성 경로).
 
-        PG with 11/11 relforcerowsecurity=true must report force_applied=True.
+        PG with 12/12 relforcerowsecurity=true must report force_applied=True.
         total/applied/missing 기존 키 동작 불변도 함께 고정.
         Also pins that total/applied/missing keys stay unchanged.
         """
-        summary = saas_service.rls_coverage_summary(self._pg_mock(11))
+        summary = saas_service.rls_coverage_summary(self._pg_mock(12))
         assert summary["force_applied"] is True
         # 기존 키 불변 — force 실측 도입이 카운트 키를 깨지 않아야 한다
         # Existing keys unchanged — the live check must not break the count keys
-        assert summary["total"] == 11
-        assert summary["applied"] == 11
+        assert summary["total"] == 12
+        assert summary["applied"] == 12
         assert summary["missing"] == 0
 
     def test_summary_force_false_on_postgresql_partial(self):
-        """PG + relforcerowsecurity=true 10/11 (부분 적용) → force_applied=False.
+        """PG + relforcerowsecurity=true 11/12 (부분 적용) → force_applied=False.
 
-        PG with only 10/11 forced tables (partial) must report force_applied=False.
+        PG with only 11/12 forced tables (partial) must report force_applied=False.
         """
-        summary = saas_service.rls_coverage_summary(self._pg_mock(10))
+        summary = saas_service.rls_coverage_summary(self._pg_mock(11))
         assert summary["force_applied"] is False
 
     # ── connection_bypasses_rls 실측 — Phase 3~4 거짓 안심 창 가시화 ──
@@ -217,12 +228,12 @@ class TestRlsCoverageSummary:
     def test_summary_bypass_true_on_postgresql_bypass_role(self):
         """PG + 접속 role rolbypassrls/rolsuper → connection_bypasses_rls=True.
 
-        FORCE 11/11 이어도 BYPASSRLS 접속이면 2차 안전망 미실효 — 거짓 안심 창 가시화
+        FORCE 12/12 이어도 BYPASSRLS 접속이면 2차 안전망 미실효 — 거짓 안심 창 가시화
         (운영 postgres 접속 = Phase 4 전환 전 상태).
         PG with a BYPASSRLS/superuser connection role → connection_bypasses_rls=True,
         even when force_applied=True (surfaces the pre-Phase-4 false-confidence window).
         """
-        summary = saas_service.rls_coverage_summary(self._pg_mock(11, bypasses=True))
+        summary = saas_service.rls_coverage_summary(self._pg_mock(12, bypasses=True))
         assert summary["force_applied"] is True
         assert summary["connection_bypasses_rls"] is True
 
@@ -232,7 +243,7 @@ class TestRlsCoverageSummary:
         PG with the non-BYPASSRLS app role (the Phase 4 target) → False — the warning
         banner must disappear only in this state.
         """
-        summary = saas_service.rls_coverage_summary(self._pg_mock(11, bypasses=False))
+        summary = saas_service.rls_coverage_summary(self._pg_mock(12, bypasses=False))
         assert summary["force_applied"] is True
         assert summary["connection_bypasses_rls"] is False
 
@@ -248,7 +259,7 @@ class TestRlsCoverageSummary:
         behavior "table names travel as parameters" is pinned here.
         """
         matrix_tables = {entry["table"] for entry in _RLS_MATRIX}
-        mock_db = self._pg_mock(11)
+        mock_db = self._pg_mock(12)
         saas_service.rls_coverage_summary(mock_db)
 
         assert mock_db.execute.called, (

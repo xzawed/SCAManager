@@ -137,6 +137,12 @@ _RLS_MATRIX: tuple[dict[str, str], ...] = (
         "since": "0037",
         "status": "applied",
     },
+    {
+        "table": "claude_api_calls",
+        "pattern": "user_id 직접 + repo_id 간접 (repositories 페어)",
+        "since": "0043",
+        "status": "applied",
+    },
 )
 
 
@@ -211,14 +217,14 @@ def rls_coverage_summary(db: Session | None = None) -> dict[str, int | bool]:
     RLS applied vs missing summary, plus a live FORCE-status flag.
 
     force_applied (RLS Phase 3, alembic 0041): db 전달 + PostgreSQL 이면
-    pg_class.relforcerowsecurity 실측 — _RLS_MATRIX 11 테이블 전부 FORCE 일 때만 True.
+    pg_class.relforcerowsecurity 실측 — _RLS_MATRIX 12 테이블 전부 FORCE 일 때만 True.
     db 미전달 또는 비-PG 는 False (하위 호환 + SQLite 단위 테스트 안전).
     connection_bypasses_rls: 접속 role 의 rolbypassrls OR rolsuper 실측 — True 면
     FORCE 가 전부 적용돼도 2차 안전망이 미실효 (Phase 3~4 사이 거짓 안심 창 가시화).
     🔴 FORCE 는 owner-bypass 만 막는다 — 실효는 비-BYPASSRLS 앱 role 전환(Phase 4)과
     페어 (docs/runbooks/rls-role-separation.md).
     force_applied (RLS Phase 3, alembic 0041): with a db on PostgreSQL this live-checks
-    pg_class.relforcerowsecurity — True only when all 11 _RLS_MATRIX tables are FORCEd.
+    pg_class.relforcerowsecurity — True only when all 12 _RLS_MATRIX tables are FORCEd.
     Without a db, or on non-PG, it stays False (backward compatible + SQLite-safe).
     connection_bypasses_rls: live rolbypassrls OR rolsuper of the connection role —
     when True the 2nd safety layer stays ineffective even with FORCE everywhere

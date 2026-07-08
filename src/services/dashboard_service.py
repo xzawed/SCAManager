@@ -3,7 +3,7 @@
 Dashboard service for the /dashboard route.
 
 Phase 1 함수 (MVP-B):
-- dashboard_kpi — KPI 4 카드 (평균 점수 / 분석 건수 / 보안 HIGH / 활성 리포)
+- dashboard_kpi — KPI 5 카드 (평균 점수 / 분석 건수 / 보안 HIGH / 활성 리포 / 이번 달 AI 비용)
 - dashboard_trend — 날짜별 평균 점수 추세 (라인 차트)
 - frequent_issues_v2 — global 자주 발생 이슈 (Q7 신규 · category/language/tool)
 
@@ -14,6 +14,8 @@ Phase 2 함수 (운영 데이터 기반 — MCP 검증 결과: success_rate 16.6
 Phase 3 함수 (PR 2):
 - insight_narrative — Claude AI 기반 4 카드 인사이트 (positive / focus / metrics / next).
   PR 1 의 `build_cached_system_param` 헬퍼로 system prompt cache 5분 적용.
+
+C1 Phase 4 — dashboard_kpi 에 monthly_cost 카드 추가 (Phase 2 cost_metrics_service.user_cost_summary 위임).
 
 now 인자 의존성 주입 패턴 (analytics_service 와 동일).
 """
@@ -85,12 +87,14 @@ def dashboard_kpi(  # pylint: disable=too-many-locals
     now: datetime | None = None,
     user_id: int | None = None,
 ) -> dict[str, Any]:
-    """KPI 4 카드 데이터 — 현재 days 윈도우 + 직전 동일 days 윈도우 비교 (delta).
+    """KPI 5 카드 데이터 — 현재 days 윈도우 + 직전 동일 days 윈도우 비교 (delta).
 
     Phase 3 PR 5: `user_id` 명시 시 Repository.user_id 기반 격리 + legacy NULL 호환.
     user_id=None (default) 시 모든 리포 (admin / 단위 테스트 호환).
     pylint too-many-locals — Phase 3 PR 5 user_id 필터 추가로 16/15. cur/prev/total
-    3 윈도우 페어 (각 query + 결과) = 6 + delta calc + KPI 4 카드 빌더 = 본 한도 자연.
+    3 윈도우 페어 (각 query + 결과) = 6 + delta calc + KPI 5 카드 빌더(C1 Phase 4 monthly_cost 추가) = 본 한도 자연.
+
+    C1 Phase 4: `monthly_cost` — 항상 30일 고정 윈도우 (`days` 인자와 무관, "이번 달" 의미 고정).
 
     Returns:
         {
@@ -98,6 +102,7 @@ def dashboard_kpi(  # pylint: disable=too-many-locals
           "analysis_count": {"value": int, "delta": int},
           "high_security_issues": {"value": int, "delta": int},
           "active_repos": {"value": int, "total": int, "delta": int},
+          "monthly_cost": {"value": float, "delta": float|None, "by_model": dict[str, float]},
         }
     """
     _now = now or datetime.now(timezone.utc)
@@ -138,7 +143,26 @@ def dashboard_kpi(  # pylint: disable=too-many-locals
         },
         "high_security_issues": _kpi_security(cur_analyses, prev_analyses),
         "active_repos": _kpi_active_repos(cur_analyses, prev_analyses, int(total_repos or 0)),
+        "monthly_cost": _kpi_cost(db, user_id, _now),
     }
+
+
+def _kpi_cost(db: Session, user_id: int | None, now: datetime) -> dict[str, Any]:
+    """이번 달(30일 고정) Anthropic 비용 KPI — 사용자 귀속. user_id 없으면 집계 skip(0).
+
+    Monthly (fixed 30d) Anthropic cost KPI — user-attributed. Skips aggregation (0) when
+    user_id is None (admin/legacy path — no owner to attribute cost to).
+
+    C1 Phase 4 — Phase 2 의 cost_metrics_service.user_cost_summary 위임. 항상 30일 고정
+    윈도우 사용 (dashboard_kpi 의 `days` 인자와 무관 — "이번 달" 의미 고정).
+    C1 Phase 4 — delegates to Phase 2's cost_metrics_service.user_cost_summary. Always uses
+    a fixed 30-day window (independent of dashboard_kpi's `days` arg — "this month" is fixed).
+    """
+    if user_id is None:
+        return {"value": 0.0, "delta": None, "by_model": {"sonnet": 0.0, "haiku": 0.0, "opus": 0.0, "other": 0.0}}
+    from src.services import cost_metrics_service  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    s = cost_metrics_service.user_cost_summary(db, user_id=user_id, days=30, now=now)
+    return {"value": s["total_usd"], "delta": s["delta_usd"], "by_model": s["by_model"]}
 
 
 def _kpi_avg(cur: list[Any], prev: list[Any]) -> dict[str, Any]:
@@ -762,12 +786,16 @@ def _build_insight_user_prompt(
 
 
 async def _call_insight_claude_api(
-    client: anthropic.AsyncAnthropic, model: str, user_prompt: str
+    client: anthropic.AsyncAnthropic, model: str, user_prompt: str,
+    *, user_id: int | None = None,
 ) -> str | None:
     """Claude Messages API 호출 + caching system 인자 + 토큰 로깅. 실패 시 None.
 
     Calls the Claude Messages API with cached system param and logs tokens.
     Returns response text on success, None on any exception (caller maps to api_error).
+
+    C1 Phase 3 T3.3 — user_id 는 비용 귀속용(log_claude_api_call 로 그대로 전달).
+    C1 Phase 3 T3.3 — user_id is for cost attribution (forwarded to log_claude_api_call).
     """
     start = time.perf_counter()
     try:
@@ -788,6 +816,7 @@ async def _call_insight_claude_api(
             status="success",
             cache_read_tokens=getattr(usage, "cache_read_input_tokens", 0) or 0,
             cache_creation_tokens=getattr(usage, "cache_creation_input_tokens", 0) or 0,
+            user_id=user_id,
         )
         return response.content[0].text
     except Exception as exc:  # pylint: disable=broad-exception-caught  # noqa: BLE001
@@ -801,6 +830,7 @@ async def _call_insight_claude_api(
             output_tokens=0,
             status="error",
             error_type=type(exc).__name__,
+            user_id=user_id,
         )
         logger.exception("insight_narrative API call failed, returning api_error")
         return None
@@ -912,7 +942,9 @@ async def insight_narrative(  # pylint: disable=too-many-locals,too-many-return-
     client = anthropic.AsyncAnthropic(api_key=effective_key, timeout=60.0, max_retries=2)
     # Phase 2 d-🅓 (사이클 74) — Insight 영역 한정 Haiku (67% 비용 절감, AI 리뷰 Sonnet 보존)
     # Phase 2 d-🅓 (Cycle 74) — Insight-only Haiku (67% cheaper, AI review keeps Sonnet)
-    text = await _call_insight_claude_api(client, settings.claude_insight_model, user_prompt)
+    text = await _call_insight_claude_api(
+        client, settings.claude_insight_model, user_prompt, user_id=user_id,
+    )
     # 헬퍼 호출 직후 AsyncAnthropic httpx 커넥션 풀 해제 (이후 client 미사용) — FD 누수 차단 (WBS P1).
     # Close the AsyncAnthropic pool right after the helper call (client is unused afterward).
     await aclose_anthropic_client(client)

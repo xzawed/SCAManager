@@ -430,6 +430,8 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             status="success",
+            repo_id=repo_id,
+            user_id=user_id,
         )
         raw = response.content[0].text
         data = json.loads(_extract_narrative_json(raw))
@@ -443,6 +445,8 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
             output_tokens=0,
             status="error",
             error_type=type(exc).__name__,
+            repo_id=repo_id,
+            user_id=user_id,
         )
         logger.exception("repo_insight_narrative API call failed")
         _record_narrative_error(

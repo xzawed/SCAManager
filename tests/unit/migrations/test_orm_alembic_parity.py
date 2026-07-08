@@ -32,10 +32,11 @@ from sqlalchemy import create_engine, text
 
 from src.database import Base
 
-# 🔴 Base.metadata 완성을 위해 전 ORM 모델(11종) 명시 import (empty __init__ 규칙, testing.md).
+# 🔴 Base.metadata 완성을 위해 전 ORM 모델(12종) 명시 import (empty __init__ 규칙, testing.md).
 # Explicitly import every ORM model so Base.metadata is complete before the comparison.
 import src.models.analysis  # noqa: F401  pylint: disable=unused-import
 import src.models.analysis_feedback  # noqa: F401  pylint: disable=unused-import
+import src.models.claude_api_call  # noqa: F401  pylint: disable=unused-import
 import src.models.gate_decision  # noqa: F401  pylint: disable=unused-import
 import src.models.insight_narrative_cache  # noqa: F401  pylint: disable=unused-import
 import src.models.issue_registration  # noqa: F401  pylint: disable=unused-import

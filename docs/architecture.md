@@ -63,11 +63,12 @@ src/
 │   ├── merge_retry_service.py   # process_pending_retries 워커 (CI-aware)
 │   ├── security_scan_service.py # Code/Secret Scanning 폴링 + audit log + GHAS graceful degradation
 │   ├── saas_service.py          # tenant_inventory + rls_audit_matrix + rls_coverage_summary(db) FORCE 실측 (0041, RLS Phase 3)
-│   └── operations_service.py    # operations_kpi 7 카드 — admin 운영 모니터링
+│   ├── operations_service.py    # operations_kpi 7 카드 — admin 운영 모니터링
+│   └── cost_metrics_service.py  # user_cost_summary — Anthropic 비용 집계 진입점, claude_api_cost_repo 위임 (C1 Phase 2, dashboard_kpi monthly_cost 소비)
 ├── auth/
 │   ├── session.py               # get_current_user() + require_login + require_admin (3-layer SaaS 검증)
 │   └── github.py                # /login (301→/auth/github, 하위호환), /auth/github, /auth/callback, /auth/logout
-├── models/                      # 11 ORM 모델 — repository (0039: user_id→users.id FK ondelete=SET NULL), analysis (0038: repo_id FK ondelete=CASCADE; 0032 토큰 부분 인덱스 ORM 선언), analysis_feedback, repo_config (0036: disabled_tools JSON 컬럼; 0042: ai_review_enabled Boolean 컬럼 — 리포별 AI 코드리뷰 kill-switch, 기본 True, 비용 제어), gate_decision (0034: analysis_id UNIQUE constraint), merge_attempt, merge_retry, security_alert_log, insight_narrative_cache (0031: repo_id FK + 부분유일 인덱스 ORM 선언; 0033: last_error_at/error_count/last_error_type), user (0040: github_id 인덱스명 정합 rename), issue_registration (0035: repo_id+issue_key UniqueConstraint + CASCADE FK; 0037: RLS policy — repo_id→repositories.user_id 1-hop, PG 전용)
+├── models/                      # 12 ORM 모델 — repository (0039: user_id→users.id FK ondelete=SET NULL), analysis (0038: repo_id FK ondelete=CASCADE; 0032 토큰 부분 인덱스 ORM 선언), analysis_feedback, repo_config (0036: disabled_tools JSON 컬럼; 0042: ai_review_enabled Boolean 컬럼 — 리포별 AI 코드리뷰 kill-switch, 기본 True, 비용 제어), gate_decision (0034: analysis_id UNIQUE constraint), merge_attempt, merge_retry, security_alert_log, insight_narrative_cache (0031: repo_id FK + 부분유일 인덱스 ORM 선언; 0033: last_error_at/error_count/last_error_type), user (0040: github_id 인덱스명 정합 rename), issue_registration (0035: repo_id+issue_key UniqueConstraint + CASCADE FK; 0037: RLS policy — repo_id→repositories.user_id 1-hop, PG 전용), claude_api_call (0043: Anthropic API 호출 비용/토큰 메트릭 — repo_id/user_id 귀속 CASCADE FK, RLS policy PG 전용)
 ├── webhook/
 │   ├── _helpers.py              # get_webhook_secret() + cache (TTL 300s)
 │   ├── validator.py             # HMAC-SHA256 서명 검증
@@ -127,7 +128,7 @@ src/
 │   └── repo_report_tools.py     # list_repo_reports / get_repo_report tool 스키마
 ├── cli/                         # python -m src.cli review (git_diff + formatter)
 ├── verifier/                    # 2nd-LLM 머지 검증자 (cross-vendor 거버넌스) — openai_client.py (SDK 우선 + httpx fallback)
-├── repositories/                # DB 접근 계층 11종 — repository_repo (`find_by_full_name` + `find_all_by_user` shared+owned repos + Phase H `find_by_full_name_with_owner`), issue_registration_repo (find_by_key/create/list_by_analysis/list_by_repo/update_state)
+├── repositories/                # DB 접근 계층 12종 — repository_repo (`find_by_full_name` + `find_all_by_user` shared+owned repos + Phase H `find_by_full_name_with_owner`), issue_registration_repo (find_by_key/create/list_by_analysis/list_by_repo/update_state), claude_api_cost_repo (record + user_cost_summary — Anthropic 비용 영속화/집계 단일 출처, 0043)
 └── worker/pipeline.py           # run_analysis_pipeline, build_analysis_result_dict
 ```
 
@@ -204,6 +205,8 @@ GitHub Push/PR
           └─ review_code()       (Claude AI — 49개 언어 체크리스트 + 토큰 예산 관리)
               🔴 비용 제어 kill-switch — 전역 `AI_REVIEW_DISABLED` OR 리포별 `RepoConfig.ai_review_enabled=False` 시
               API 호출 없이 disabled 반환(정적분석은 계속 진행). 상세: `docs/runbooks/cost-controls.md`
+              → log_claude_api_call() → claude_api_cost_repo.record() — `claude_api_calls` 테이블(0043, RLS) 영속화
+                cost_metrics_service.user_cost_summary 가 대시보드 monthly_cost KPI 로 재소비 (C1 Phase 1-4)
       → calculate_score(ai_review) (코드품질25 + 보안20 + 커밋15 + AI방향성25 + 테스트15)
       → DB 저장 (Analysis 레코드)
       → run_gate_check() [PR 이벤트만] — 3-옵션 완전 독립 처리
