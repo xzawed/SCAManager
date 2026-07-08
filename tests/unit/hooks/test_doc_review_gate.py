@@ -302,3 +302,20 @@ class TestHookMain:
         assert "[문서 심의]" in output
         assert "quality" in output
         mock_exit.assert_called_with(0)
+
+
+class TestGateKillSwitch:
+    """DOC_REVIEW_GATE_DISABLED env kill-switch (로컬 Anthropic 비용 제어)."""
+
+    def test_disabled_when_env_truthy(self, monkeypatch):
+        from doc_review_gate import gate_disabled
+        for v in ("1", "true", "TRUE", "yes"):
+            monkeypatch.setenv("DOC_REVIEW_GATE_DISABLED", v)
+            assert gate_disabled() is True
+
+    def test_enabled_when_env_unset_or_falsy(self, monkeypatch):
+        from doc_review_gate import gate_disabled
+        monkeypatch.delenv("DOC_REVIEW_GATE_DISABLED", raising=False)
+        assert gate_disabled() is False
+        monkeypatch.setenv("DOC_REVIEW_GATE_DISABLED", "0")
+        assert gate_disabled() is False

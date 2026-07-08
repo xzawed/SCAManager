@@ -71,6 +71,12 @@ def classify_file_grade(file_path: str) -> str:
     return "skip"
 
 
+def gate_disabled() -> bool:
+    """DOC_REVIEW_GATE_DISABLED=1 시 True — 문서 리뷰 게이트 비용 kill-switch(로컬 Anthropic 호출 0).
+    Return True when DOC_REVIEW_GATE_DISABLED is truthy — cost kill-switch (zero local Anthropic calls)."""
+    return os.environ.get("DOC_REVIEW_GATE_DISABLED", "").strip().lower() in ("1", "true", "yes")
+
+
 # ─── 거부권 매트릭스 ──────────────────────────────────────────────────────────
 # Veto matrix
 
@@ -261,6 +267,11 @@ def _format_warn(file_path: str, results: list[dict], reasons: list[str]) -> str
 def main() -> None:
     """PreToolUse Hook 진입점 — stdin에서 payload 읽고 심의 결과 출력.
     PreToolUse hook entry point — reads payload from stdin and outputs review result."""
+    # 비용 제어 — kill-switch 시 리뷰 없이 즉시 허용(sys.exit(0)=편집 통과, API 호출 0).
+    # Cost control — when the kill-switch is on, allow the edit immediately with no review (no API call).
+    if gate_disabled():
+        sys.exit(0)
+
     try:
         data = json.load(sys.stdin)
     except Exception:  # pylint: disable=broad-exception-caught
