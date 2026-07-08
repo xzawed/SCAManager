@@ -48,19 +48,29 @@ def _owned_repo_ids_subquery(user_id: int):
     return select(Repository.id).where(Repository.user_id == user_id)
 
 
-def _window_cost_rows(db: Session, owner, since: datetime, until: datetime):
-    """윈도우 (since, until] 내 owner 필터링된 (model, cost_usd) 로우 조회.
-    Query (model, cost_usd) rows filtered by owner within the (since, until] window.
+def _window_cost_rows(  # pylint: disable=too-many-arguments
+    db: Session, owner, since: datetime, until: datetime, *, until_inclusive: bool,
+):
+    """윈도우 [since, until) 또는 [since, until] 내 owner 필터링된 (model, cost_usd) 로우 조회.
+    Query (model, cost_usd) rows filtered by owner within [since, until) or [since, until].
 
-    하한 배타/상한 포함 — cur_since 경계 이중 집계 방지 + "지금"(now) 정확히 일치하는 레코드 포함.
-    Exclusive lower / inclusive upper — avoids double-count at the cur_since seam while still
-    including a row whose created_at exactly equals "now"."""
-    return db.execute(
+    하한은 항상 포함 — dashboard_kpi(dashboard_service.py) 와 동일 컨벤션.
+    current 윈도우는 상한 포함(until_inclusive=True, "지금" 정확 일치 레코드 포함),
+    previous 윈도우는 상한 배타(until_inclusive=False, cur_since 경계 이중 집계 방지).
+    Lower bound is always inclusive — same convention as dashboard_kpi (dashboard_service.py).
+    The current window's upper bound is inclusive (until_inclusive=True, includes a row whose
+    created_at exactly equals "now"); the previous window's upper bound is exclusive
+    (until_inclusive=False, avoids double-count at the cur_since seam)."""
+    query = (
         select(ClaudeApiCall.model, ClaudeApiCall.cost_usd)
         .where(owner)
-        .where(ClaudeApiCall.created_at > since)
-        .where(ClaudeApiCall.created_at <= until)
-    ).all()
+        .where(ClaudeApiCall.created_at >= since)
+    )
+    if until_inclusive:
+        query = query.where(ClaudeApiCall.created_at <= until)
+    else:
+        query = query.where(ClaudeApiCall.created_at < until)
+    return db.execute(query).all()
 
 
 def user_cost_summary(db: Session, *, user_id: int, days: int = 30, now: datetime | None = None) -> dict:
@@ -73,8 +83,8 @@ def user_cost_summary(db: Session, *, user_id: int, days: int = 30, now: datetim
         ClaudeApiCall.user_id == user_id,
         ClaudeApiCall.repo_id.in_(_owned_repo_ids_subquery(user_id)),
     )
-    cur = _window_cost_rows(db, owner, cur_since, _now)
-    prev = _window_cost_rows(db, owner, prev_since, cur_since)
+    cur = _window_cost_rows(db, owner, cur_since, _now, until_inclusive=True)
+    prev = _window_cost_rows(db, owner, prev_since, cur_since, until_inclusive=False)
     by_model = {"sonnet": 0.0, "haiku": 0.0, "opus": 0.0, "other": 0.0}
     for model, cost in cur:
         by_model[_family(model)] += float(cost or 0.0)
