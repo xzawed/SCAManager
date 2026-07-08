@@ -136,7 +136,7 @@ def extract_anthropic_usage(response: object) -> tuple[int, int]:
     return int(input_tok), int(output_tok)
 
 
-def log_claude_api_call(
+def log_claude_api_call(  # pylint: disable=too-many-arguments
     *,
     model: str,
     duration_ms: float,
@@ -146,6 +146,8 @@ def log_claude_api_call(
     error_type: str = "",
     cache_read_tokens: int = 0,
     cache_creation_tokens: int = 0,
+    repo_id: int | None = None,
+    user_id: int | None = None,
 ) -> None:
     """Claude API 호출 1건의 구조화된 메트릭 로그.
 
@@ -164,6 +166,10 @@ def log_claude_api_call(
         cache_creation_tokens: prompt cache 생성 토큰 수 (기본 0).
             정가 대비 1.25× 비용 (캐시 등록 비용 — 5분 TTL 내 재사용 시 절감 회수).
             Tokens written to prompt cache (1.25× normal cost; recouped on hits).
+        repo_id: 비용 귀속 대상 리포 id (기본 None — 시스템/미귀속 호출).
+            Repo id to attribute cost to (default None — system/unattributed call).
+        user_id: 비용 귀속 대상 사용자 id (기본 None).
+            User id to attribute cost to (default None).
     """
     # defensive — 호출자 (특히 mock 테스트) 가 비-int 전달 시 0 으로 정규화
     # Defensive coercion — callers (esp. mocks) may pass non-int; normalize to 0.
@@ -226,4 +232,44 @@ def log_claude_api_call(
             "claude_api_call model=%s duration_ms=%.0f status=%s error_type=%s",
             model, duration_ms, status, error_type,
             extra=extra,
+        )
+
+    # 비용 영속화 — fail-safe(DB 에러가 API 흐름을 절대 차단하지 않음).
+    # Cost persistence — fail-safe (a DB error must never break the API flow).
+    try:
+        _persist_cost(
+            model=model, status=status, input_tokens=input_tokens, output_tokens=output_tokens,
+            cache_read_tokens=cache_read_tokens, cache_creation_tokens=cache_creation_tokens,
+            cost_usd=cost_usd, duration_ms=duration_ms,
+            repo_id=repo_id, user_id=user_id, error_type=error_type,
+        )
+    except Exception as exc:  # pylint: disable=broad-exception-caught  # noqa: BLE001
+        logger.warning("claude_api_call cost persistence skipped (fail-safe): %s", exc)
+
+
+def _persist_cost(*, model, status, input_tokens, output_tokens,  # pylint: disable=too-many-arguments
+                  cache_read_tokens, cache_creation_tokens, cost_usd, duration_ms,
+                  repo_id, user_id, error_type):
+    """단발 WorkerSessionLocal 세션으로 비용 1행 INSERT (호출자가 fail-safe 로 감쌈).
+    RLS 우회 필요 — claude_api_calls 정책은 repo_id/user_id 미설정(system 호출) 행만
+    app.user_id 무관 허용하고, 설정된 행은 세션 컨텍스트 일치를 요구한다(0043). 호출 시점이
+    웹 요청/백그라운드 어느 쪽이든 이 메트릭 write 는 세션 컨텍스트와 무관하게 성공해야 하므로
+    BYPASSRLS worker 세션을 일관 사용한다 — alias(`as SessionLocal`) 는 background 모듈
+    컨벤션(db.md) 과 동일한 patch 대상 심볼명 유지 목적.
+    Insert one cost row via a short-lived WorkerSessionLocal (caller wraps fail-safe).
+    RLS bypass is required — the claude_api_calls policy (0043) only allows session-context-
+    independent rows when repo_id/user_id are unset (system calls); rows with either set require
+    a matching session context. Since this metric write must succeed regardless of whether the
+    caller runs in a web request or background context, it consistently uses the BYPASSRLS worker
+    session — aliased (`as SessionLocal`) to keep the same patch-target symbol name as other
+    background modules (db.md convention)."""
+    # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from src.database import WorkerSessionLocal as SessionLocal
+    from src.repositories import claude_api_cost_repo
+    with SessionLocal() as db:
+        claude_api_cost_repo.record(
+            db, model=model, status=status, input_tokens=input_tokens, output_tokens=output_tokens,
+            cache_read_tokens=cache_read_tokens, cache_creation_tokens=cache_creation_tokens,
+            cost_usd=cost_usd, duration_ms=duration_ms, repo_id=repo_id, user_id=user_id,
+            error_type=error_type,
         )

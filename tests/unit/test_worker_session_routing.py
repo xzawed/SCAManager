@@ -7,7 +7,7 @@ TDD Red Phase: RLS Phase 2 — dedicated background DB session split (Option A) 
   - src/config.py: database_url_worker 필드 + postgres:// → postgresql:// validator
   - src/database.py: _build_worker_session_factory pure 함수 + WorkerSessionLocal 모듈 심볼
   - RLS listener (_set_rls_user_id_per_query) — 분리 worker engine 미등록 가드
-  - background 모듈 17개 (scripts/backfill 포함) import alias 전환
+  - background 모듈 18개 (scripts/backfill 포함) import alias 전환
     + 웹 모듈 WorkerSessionLocal 미사용 정적 가드
     + hybrid 모듈 1개 (src/auth/github.py — OAuth 콜백 upsert 만 worker 세션, RLS #2 Phase 4)
 
@@ -26,8 +26,8 @@ import pytest
 # Derive repo root — never hardcode absolute paths (lesson from test_doc_review_gate #767)
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
-# background 전용 모듈 17개 (scripts/backfill 포함) — WorkerSessionLocal alias 전환 의무 대상
-# 17 background-only modules (incl. scripts/backfill) — must use the WorkerSessionLocal alias
+# background 전용 모듈 18개 (scripts/backfill 포함) — WorkerSessionLocal alias 전환 의무 대상
+# 18 background-only modules (incl. scripts/backfill) — must use the WorkerSessionLocal alias
 _BACKGROUND_MODULES = [
     "src/worker/pipeline.py",
     "src/webhook/providers/github.py",
@@ -50,6 +50,13 @@ _BACKGROUND_MODULES = [
     # RLS Phase 3 — after the Phase 4 role switch, the app role's users self-RLS
     # would silently skip the backfill; the script must go through the worker session
     "scripts/backfill_repository_user_id.py",
+    # C1 Phase 3 T3.1 — _persist_cost(claude_api_calls 비용 영속화)는 웹/백그라운드 어느 호출
+    # 컨텍스트든 세션 컨텍스트 무관하게 성공해야 함(0043 RLS 정책, repo_id/user_id 설정 시
+    # app.user_id 일치 요구) → worker 세션 일관 사용.
+    # C1 Phase 3 T3.1 — _persist_cost (claude_api_calls cost persistence) must succeed
+    # regardless of caller context (web or background), since the 0043 RLS policy requires
+    # app.user_id to match once repo_id/user_id is set → always uses the worker session.
+    "src/shared/claude_metrics.py",
 ]
 
 # 웹 경로 명시 파일 — WorkerSessionLocal 사용 금지 대상 (api 3 파일, 전부 세션 기반).
@@ -337,15 +344,15 @@ class TestRlsListenerScope:
 
 
 # ---------------------------------------------------------------------------
-# 테스트 5: 정적 라우팅 가드 — background 17 모듈 (scripts/backfill 포함) alias 전환 (회귀 차단 핵심)
-# Test 5: static routing guard — 17 background modules (incl. scripts/backfill) use the alias
+# 테스트 5: 정적 라우팅 가드 — background 18 모듈 (scripts/backfill 포함) alias 전환 (회귀 차단 핵심)
+# Test 5: static routing guard — 18 background modules (incl. scripts/backfill) use the alias
 #         (core regression guard)
 # ---------------------------------------------------------------------------
 
 class TestBackgroundModulesUseWorkerAlias:
-    """worker alias 의무 모듈(_WORKER_ALIAS_MODULES = background 17 + 시스템 API 3)이
+    """worker alias 의무 모듈(_WORKER_ALIAS_MODULES = background 18 + 시스템 API 3)이
     `WorkerSessionLocal as SessionLocal` 로 import 하는지 정적 검증.
-    Statically verifies every worker-alias module (_WORKER_ALIAS_MODULES = 17 background +
+    Statically verifies every worker-alias module (_WORKER_ALIAS_MODULES = 18 background +
     3 system API) imports via the `WorkerSessionLocal as SessionLocal` alias."""
 
     @pytest.mark.parametrize("rel_path", _WORKER_ALIAS_MODULES)
