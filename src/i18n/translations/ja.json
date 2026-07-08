@@ -464,6 +464,7 @@
     "back": "← 詳細",
     "page_title": "リポジトリ設定",
     "save": "💾 設定を保存",
+    "saving": "保存中…",
     "mode_toggle_label": "表示モード",
     "mode_simple": "✨ Simple",
     "mode_simple_hint": "必須項目のみ",

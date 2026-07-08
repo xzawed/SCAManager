@@ -464,6 +464,7 @@
     "back": "← 상세",
     "page_title": "리포지토리 설정",
     "save": "💾 설정 저장",
+    "saving": "저장 중…",
     "mode_toggle_label": "보기 모드",
     "mode_simple": "✨ Simple",
     "mode_simple_hint": "필수 항목만",
