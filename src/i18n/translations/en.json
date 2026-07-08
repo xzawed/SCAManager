@@ -502,6 +502,8 @@
       "header": "PR Behavior Rules",
       "pr_comment_title": "PR review comment",
       "pr_comment_desc": "Auto-post the AI review as a PR comment when analysis completes",
+      "ai_review_title": "AI code review (Claude)",
+      "ai_review_desc": "Enable or disable AI code review (Claude, paid) for this repo. When off, only static analysis runs — no Anthropic cost.",
       "auto_merge_title": "Auto-merge",
       "auto_merge_desc": "Squash merge when score is above threshold.<br><code style=\"font-size:10px;\">pull_requests: write</code> permission required",
       "merge_threshold_label": "Merge threshold",

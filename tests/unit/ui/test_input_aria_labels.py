@@ -80,5 +80,15 @@ def test_flagged_control_has_i18n_aria_label(template: str, attr: str):
 
 
 def test_flagged_control_count_is_locked():
-    """가드 대상 컨트롤 수 = 20 (SonarCloud 검출 건수와 동결 — 누락/중복 방지)."""
+    """가드 대상 컨트롤 수 = 20 (SonarCloud 검출 건수와 동결 — 누락/중복 방지).
+
+    Note (Task 2.4): the new `ai_review_enabled` toggle is NOT added here —
+    it is a toggle-switch checkbox wrapped in `<label class="toggle-switch">`,
+    which already satisfies SonarCloud's Web:InputWithoutLabelCheck via the
+    "wrapping <label>" exemption (see .claude/rules/ui.md). None of the other
+    5 existing toggle-switch checkboxes (pr_review_comment, auto_merge,
+    commit_comment, create_issue, railway_deploy_alerts) are in this list
+    either — this list is scoped to the original 20 SonarCloud-flagged plain
+    inputs/selects, not toggle-switches.
+    """
     assert len(_FLAGGED_CONTROLS) == 20

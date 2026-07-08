@@ -637,6 +637,20 @@
             </label>
           </div>
 
+          {# Task 2.4 — AI 리뷰 독립 토글 (프리셋 미관리, 비용 제어) #}
+          {# Task 2.4 — standalone AI-review toggle (not preset-managed, cost control) #}
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="t-title">{{ 'settings_page.pr_rules.ai_review_title' | i18n_args(locale | default('ko')) }}</div>
+              <div class="t-desc">{{ 'settings_page.pr_rules.ai_review_desc' | i18n_args(locale | default('ko')) }}</div>
+            </div>
+            <label class="toggle-switch" aria-label="{{ 'settings_page.pr_rules.ai_review_title' | i18n_args(locale | default('ko')) }}">
+              <input type="checkbox" name="ai_review_enabled" value="on"
+                     {% if config.ai_review_enabled %}checked{% endif %}>
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+
           {# Simple-mode visible: auto-merge + threshold #}
           <div class="s-divider"></div>
           <div class="toggle-row">

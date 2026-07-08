@@ -502,6 +502,8 @@
       "header": "PR 동작 규칙",
       "pr_comment_title": "PR 코드리뷰 댓글",
       "pr_comment_desc": "분석 완료 시 AI 리뷰를 PR 댓글로 자동 발송",
+      "ai_review_title": "AI 코드리뷰 (Claude)",
+      "ai_review_desc": "이 리포의 AI 코드리뷰(Claude, 유료)를 켜거나 끕니다. 끄면 정적 분석만 수행되어 Anthropic 비용이 발생하지 않습니다.",
       "auto_merge_title": "자동 Merge",
       "auto_merge_desc": "점수 이상 시 squash merge.<br><code style=\"font-size:10px;\">pull_requests: write</code> 권한 필요",
       "merge_threshold_label": "Merge 임계값",

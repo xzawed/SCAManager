@@ -502,6 +502,8 @@
       "header": "PR 動作ルール",
       "pr_comment_title": "PR コードレビューコメント",
       "pr_comment_desc": "分析完了時 AI レビューを PR コメントとして自動投稿",
+      "ai_review_title": "AIコードレビュー (Claude)",
+      "ai_review_desc": "このリポジトリのAIコードレビュー(Claude・有料)をオン/オフします。オフの場合は静的解析のみ実行され、Anthropicコストは発生しません。",
       "auto_merge_title": "自動マージ",
       "auto_merge_desc": "スコアがしきい値以上の場合 squash merge。<br><code style=\"font-size:10px;\">pull_requests: write</code> 権限が必要",
       "merge_threshold_label": "Merge しきい値",
