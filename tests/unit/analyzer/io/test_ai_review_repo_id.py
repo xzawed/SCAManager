@@ -7,19 +7,6 @@ Unit tests for review_code's repo_id attribution threading (C1 Phase 3 T3.2).
 Verifies the keyword-only `repo_id` argument is forwarded to log_claude_api_call
 on both the success and error paths (cost attribution, follow-up to T3.1 persistence).
 """
-import os
-
-os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
-os.environ.setdefault("GITHUB_WEBHOOK_SECRET", "test-secret")
-os.environ.setdefault("GITHUB_TOKEN", "test-token")
-os.environ.setdefault("TELEGRAM_BOT_TOKEN", "123456:test")
-os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123456")
-os.environ.setdefault("ANTHROPIC_API_KEY", "sk-test-key")
-os.environ.setdefault("GITHUB_CLIENT_ID", "test-client-id")
-os.environ.setdefault("GITHUB_CLIENT_SECRET", "test-client-secret")
-os.environ.setdefault("SESSION_SECRET", "test-session-secret-32-chars-long!")
-
-# pylint: disable=wrong-import-position
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 

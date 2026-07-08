@@ -87,12 +87,12 @@ def dashboard_kpi(  # pylint: disable=too-many-locals
     now: datetime | None = None,
     user_id: int | None = None,
 ) -> dict[str, Any]:
-    """KPI 4 카드 데이터 — 현재 days 윈도우 + 직전 동일 days 윈도우 비교 (delta).
+    """KPI 5 카드 데이터 — 현재 days 윈도우 + 직전 동일 days 윈도우 비교 (delta).
 
     Phase 3 PR 5: `user_id` 명시 시 Repository.user_id 기반 격리 + legacy NULL 호환.
     user_id=None (default) 시 모든 리포 (admin / 단위 테스트 호환).
     pylint too-many-locals — Phase 3 PR 5 user_id 필터 추가로 16/15. cur/prev/total
-    3 윈도우 페어 (각 query + 결과) = 6 + delta calc + KPI 4 카드 빌더 = 본 한도 자연.
+    3 윈도우 페어 (각 query + 결과) = 6 + delta calc + KPI 5 카드 빌더(C1 Phase 4 monthly_cost 추가) = 본 한도 자연.
 
     C1 Phase 4: `monthly_cost` — 항상 30일 고정 윈도우 (`days` 인자와 무관, "이번 달" 의미 고정).
 

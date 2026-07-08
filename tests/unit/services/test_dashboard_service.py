@@ -413,3 +413,27 @@ class TestDashboardKpiMonthlyCost:
         result = dashboard_kpi(db, days=7, user_id=None)
         assert result["monthly_cost"]["value"] == 0.0
         assert result["high_security_issues"]["value"] == 0
+
+    def test_monthly_cost_uses_fixed_30d_window_independent_of_days_arg(self, db, user):
+        """monthly_cost 는 `days` 인자와 무관하게 고정 30일 윈도우 — days=7 이 아닌 30d 적용 증명.
+
+        비용 행을 NOW-10일(7일 윈도우 밖, 30일 윈도우 안)에 seed 하면 days=7 호출에서도
+        monthly_cost.value 에 포함되어야 한다(고정 30d 임을 증명).
+        monthly_cost always uses a fixed 30-day window regardless of the `days` arg — proves
+        the fixed-30d behavior (not `days=7`).
+
+        A cost row seeded at NOW-10 days (outside the 7-day window, inside the 30-day window)
+        must still be included in monthly_cost.value even when dashboard_kpi is called with
+        days=7 (proves the fixed-30d window, not the `days` arg).
+        """
+        from src.services.dashboard_service import dashboard_kpi
+
+        now = datetime.now(timezone.utc)
+        claude_api_cost_repo.record(
+            db, model="claude-sonnet-4-6", status="success",
+            input_tokens=100, output_tokens=50, cache_read_tokens=0, cache_creation_tokens=0,
+            cost_usd=0.009, duration_ms=100.0, user_id=user.id, now=now - timedelta(days=10),
+        )
+
+        result = dashboard_kpi(db, days=7, user_id=user.id, now=now)
+        assert result["monthly_cost"]["value"] == pytest.approx(0.009)
