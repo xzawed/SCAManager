@@ -824,7 +824,7 @@ def _parse_insight_cards(text: str) -> dict[str, list] | None:
     }
 
 
-async def insight_narrative(  # pylint: disable=too-many-locals
+async def insight_narrative(  # pylint: disable=too-many-locals,too-many-return-statements
     db: Session,
     days: int = 7,
     *,
@@ -989,7 +989,6 @@ def _is_security_kill_switch_active() -> bool:
 
     Check kill-switch env — for UI display (Cycle 78 helper delegation).
     """
-    from src.shared.feature_kill_switch import is_disabled  # pylint: disable=import-outside-toplevel  # noqa: PLC0415
     return is_disabled("SECURITY_AUTO_PROCESS")
 
 

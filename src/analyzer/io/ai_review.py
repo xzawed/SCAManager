@@ -70,6 +70,7 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
     patches: list[tuple[str, str]],
     language: str = "en",
     model: str | None = None,
+    *,
     enabled: bool = True,
 ) -> AiReviewResult:
     """Claude API로 코드를 리뷰하고 점수를 반환한다. API key가 없으면 기본값 반환.
