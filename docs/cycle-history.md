@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [Anthropic 비용 제어 3종 (#1033 — 비용 조사[GitHub Actions PUBLIC=$0·실과금원 private 리포·Anthropic 6 경로] → `AI_REVIEW_DISABLED`/`INSIGHT_DISABLED` env kill-switch + `RepoConfig.ai_review_enabled` 리포별 토글[0042·4-way PRESETS 제외] + `disabled` 의도적-skip[중립 89/B·fail-open 없음]·check-config-5way 원자커밋·C2 dual-import fix·SDD 11 task+opus whole-branch·Codex 미설치 waiver·단위 5150→5158, 2026-07-08)](#anthropic-비용-제어-3종-2026-07-08)
 - [5+1 회고 및 8 클러스터 fix 6 PR (#1024~#1029 — 회고 카덴스 갭[4세션·~30 PR 무회고] 회복·retrospective.mjs wf_ca72074b 92에이전트·verdict_coverage 1.0·confirmed 66[P0 1·P1 12·P2 53]·C3 가격 parity 가드·C2 dual-import 가드·C1/C4 정책 진화·C7 의존성 ==핀+SCA 게이트·단위 5134→5150, 2026-07-03)](#51-회고-및-8-클러스터-fix-6-pr-2026-07-03)
 - [심층 감사 및 note 하드닝 (#1015~#1021 — PR 머지 3 + 후속 3·다중에이전트 wf 10차원 17에이전트·실테스트 5267 passed·운영 P0/P1/P2=0·은닉코드 8벡터 CLEAN·가격 3-소스 정합·Codex mutual 이 N1 HTML 라우트 누락 적발, 2026-07-03)](#심층-감사-및-note-하드닝-2026-07-03)
 - [cross-vendor 감사 및 구조검토 (#1006~#1008 P1×2 Codex-only + #1010~#1013 정리·구조 4 PR — 은닉코드 양 LLM CLEAN·services.md rule 신설 8→9영역·integrity-audit C10·단위 5113→5121, 2026-06-29)](#cross-vendor-감사-및-구조검토-2026-06-29)
@@ -135,6 +136,14 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## Anthropic 비용 제어 3종 (2026-07-08)
+
+**비용 조사** → 사용자 GitHub Actions 비용 문의 발단. 다중에이전트 wf: **SCAManager는 PUBLIC 리포+전부 `ubuntu-latest` 표준 러너 = Actions 과금 $0**(무료·무제한). 실과금원=계정 private 리포(`xzawed-pais` 1102 runs[macos-13 10x·windows 2x]·`KeyCloakSDK` 20 워크플로·`TravellerInfo` 248) → 사용자 public 전환으로 해소. SonarCloud/Codecov도 public 무료. Anthropic 조사: 6 호출경로(서버키 3=ai_review Sonnet+dashboard/repo_insight Haiku·로컬키 3=pre-push 훅+`.claude/hooks/doc_review_gate.py` 문서편집마다 3× Haiku+번역 스크립트)·세밀 제어 전무·메트릭 로그전용.
+
+**비용 제어 3종 신설** (#1033, brainstorm→spec→WBS→SDD 11 task): (1) **`AI_REVIEW_DISABLED`** env — `review_code` 진입부 가드(keyword-only `enabled` 파라미터, api_key보다 우선). (2) **`INSIGHT_DISABLED`** env — 두 내러티브(dashboard/repo_insight) 진입부 가드. (3) **`RepoConfig.ai_review_enabled`**(alembic 0042·default True·**4-way[PRESETS 직교 제외]**) — pipeline 게이트(config 조회 실패시 fail-safe True)+settings 카드 ② 독립 토글. 신규 **`disabled`** 상태=`no_api_key`와 동일 의도적-skip(`AI_REVIEW_FAILED_STATUSES` 미포함→auto-merge 미차단·점수 NULL 아님·중립 44/55→최대 89/B=fail-open 없음). 전부 default-on. 검증 런북 `docs/runbooks/cost-controls.md` 신설(3-레이어 L1 mock/L2 통합/L3 운영 로그grep·살아있는 문서).
+
+🔴 **교훈**: (1) **`check-config-5way-sync` 훅=전체상태(diff 아님) 검사** → RepoConfig 신규 필드는 ORM+RepoConfigData+RepoConfigUpdate 원자 단일커밋 강제(Task 2.1+2.2 병합·ORM-only 단독 불가). (2) **`check_dual_import`(C2 CI `lint-changed-tests`)=diff-scoped** → 신규 `from X import`가 기존 `import X` 공존 시 fail(self-inflicted CodeQL); fix=유일 `import X as`→`from parent import X`(로컬 Windows cp949 이모지 크래시=`PYTHONUTF8=1`). (3) ORM Boolean=`server_default=true()` 필수(raw-SQL insert NOT NULL). (4) aria-label count-lock=`<input>` 검사(toggle-switch=`<label>`이라 미포함). (5) **Codex CLI 미설치→정책 18 사용자 waiver(예외1)**·Claude 2-layer(5+1 opus whole-branch+pipeline-reviewer) 갈음. 잔여=L3 Railway 로그검증·8조합 시각(정책 11)·비용메트릭 DB영속화 백로그. 단위 5150→**5158**. [[project-anthropic-cost-controls-2026-07-08]]
 
 ## 5+1 회고 및 8 클러스터 fix 6 PR (2026-07-03)
 
