@@ -866,7 +866,8 @@
     },
     "common": {
       "commit_ref": "커밋 {sha}",
-      "ai_unavailable": "AI 리뷰 불가 (기본값 적용)"
+      "ai_unavailable": "AI 리뷰 불가 (기본값 적용)",
+      "ai_disabled": "AI 코드리뷰가 설정으로 비활성화되어 정적 분석 점수만 반영되었습니다."
     },
     "railway": {
       "build_failed": "Railway 빌드 실패",

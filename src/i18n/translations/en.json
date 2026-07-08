@@ -866,7 +866,8 @@
     },
     "common": {
       "commit_ref": "Commit {sha}",
-      "ai_unavailable": "AI review unavailable (defaults applied)"
+      "ai_unavailable": "AI review unavailable (defaults applied)",
+      "ai_disabled": "AI code review is disabled by configuration; only static-analysis scores apply."
     },
     "railway": {
       "build_failed": "Railway Build Failed",
