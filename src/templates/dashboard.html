@@ -882,6 +882,10 @@
     <div class="dash-insight-status">
       {{ 'dashboard.insight.no_data' | i18n_args(locale | default('ko'), days=days) }}
     </div>
+    {% elif insight and insight.status == 'disabled' %}
+    <div class="dash-insight-status">
+      {{ 'dashboard.insight.disabled' | i18n_args(locale | default('ko')) }}
+    </div>
     {% else %}
     <div class="dash-insight-status">
       {{ 'dashboard.insight.load_failed' | i18n_args(locale | default('ko'), status=(insight.status if insight else 'unknown')) }}

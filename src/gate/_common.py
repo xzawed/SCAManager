@@ -4,10 +4,10 @@ from __future__ import annotations
 from src.scorer.calculator import ScoreResult
 
 # AI 리뷰가 실제로 실패(API 호출/JSON 파싱 오류)한 상태 — auto-merge/auto-approve 차단 대상.
-# 정상(success)·의도적 미수행(no_api_key/empty_diff)은 제외하여 기존 동작을 보존한다
+# 정상(success)·의도적 미수행(no_api_key/empty_diff/disabled)은 제외하여 기존 동작을 보존한다
 # (AI 미사용 리포가 영구히 자동 머지 불가가 되는 회귀 방지).
 # AI review statuses that mean a genuine failure (API/parse error) — block auto actions.
-# success and intentional skips (no_api_key/empty_diff) are excluded to preserve behavior
+# success and intentional skips (no_api_key/empty_diff/disabled) are excluded to preserve behavior
 # (so AI-disabled repos are not permanently blocked from auto-merge).
 AI_REVIEW_FAILED_STATUSES = frozenset({"api_error", "parse_error"})
 

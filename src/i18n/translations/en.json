@@ -150,7 +150,8 @@
       "next_title": "💬 Next",
       "no_api_key": "🔑 ANTHROPIC_API_KEY not set — Insight mode requires AI analysis. Please set the key in Railway Variables.",
       "no_data": "📭 Insufficient analysis data in the last {days} days — please try again after results accumulate.",
-      "load_failed": "⚠️ AI Insight generation failed ({status}) — please try again later."
+      "load_failed": "⚠️ AI Insight generation failed ({status}) — please try again later.",
+      "disabled": "AI insight is disabled by configuration (INSIGHT_DISABLED)."
     },
     "select_repo_placeholder": "— Select a Repo —",
     "score_trend": "Score Trend",
@@ -370,7 +371,8 @@
       "api_error": "AI API call failed, so defaults were applied. Please check server logs.",
       "empty_diff": "No analyzable code changes — defaults applied.",
       "parse_error": "AI response parsing failed — defaults applied.",
-      "other": "AI review could not run — defaults applied."
+      "other": "AI review could not run — defaults applied.",
+      "disabled": "AI code review is disabled by configuration; only static-analysis scores apply."
     },
     "breakdown": {
       "section_title": "📊 Score Breakdown",
