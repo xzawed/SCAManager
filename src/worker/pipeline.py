@@ -656,7 +656,7 @@ async def _send_notifications(notify_tasks: list, task_names: list[str]) -> None
                          exc_info=(type(exc), exc, exc.__traceback__))
 
 
-async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disable=too-many-locals
+async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disable=too-many-locals,too-many-statements
     """Webhook 이벤트를 받아 정적분석 + AI 리뷰 → 점수 → Gate → 알림 파이프라인을 실행한다.
 
     Args:
