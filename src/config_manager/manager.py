@@ -39,6 +39,9 @@ class RepoConfigData:  # pylint: disable=too-many-instance-attributes
     # per-repo 비활성화 도구 목록 — JSON 배열, 기본값 빈 배열 (Alembic 0036)
     # Per-repo disabled analyzer names — JSON array, defaults to empty list (Alembic 0036)
     disabled_tools: list = field(default_factory=list)
+    # 리포별 AI 코드리뷰 on/off (Alembic 0042) — default True (기존 동작 보존)
+    # Per-repo AI code review on/off — default True (preserves existing behavior)
+    ai_review_enabled: bool = True
     # leaderboard_opt_in 폐기 (그룹 60 사용자 결정 정정 — alembic 0025)
 
 

@@ -71,3 +71,10 @@ def test_repo_config_custom_commit_comment_and_create_issue():
     )
     assert config.commit_comment is True
     assert config.create_issue is True
+
+
+def test_ai_review_enabled_defaults_true():
+    """신규 RepoConfig 는 ai_review_enabled 기본 True (기존 리포 동작 보존).
+    New RepoConfig defaults ai_review_enabled to True (preserves existing behavior)."""
+    cfg = RepoConfig(repo_full_name="o/r")
+    assert cfg.ai_review_enabled is True

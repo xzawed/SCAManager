@@ -32,6 +32,9 @@ class RepoConfigUpdate(BaseModel):
     """Request body for PUT /api/repos/{repo}/config."""
 
     pr_review_comment: bool = True
+    # 리포별 AI 코드리뷰 on/off (Alembic 0042) — default True (기존 동작 보존)
+    # Per-repo AI code review on/off — default True (preserves existing behavior)
+    ai_review_enabled: bool = True
     approve_mode: Literal["disabled", "auto", "semi-auto"] = "disabled"
     approve_threshold: int = Field(GATE_DEFAULT_APPROVE_THRESHOLD, ge=0, le=100)
     reject_threshold: int = Field(GATE_DEFAULT_REJECT_THRESHOLD, ge=0, le=100)
