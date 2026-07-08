@@ -363,7 +363,7 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
     """리포별 Claude AI 진단 내러티브 — 1h TTL 캐시 + refresh 지원.
 
     Repo-level Claude AI narrative — 1h TTL cache + refresh support.
-    Returns: {"text": str, "status": "success"|"no_api_key"|"no_data"|"api_error"}
+    Returns: {"text": str, "status": "success"|"no_api_key"|"no_data"|"api_error"|"disabled"}
     """
     # 비용 제어 — INSIGHT_DISABLED=1 시 리포 내러티브 전면 차단(API 호출 0).
     # Cost control — INSIGHT_DISABLED=1 disables the per-repo narrative entirely.

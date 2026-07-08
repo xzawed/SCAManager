@@ -854,7 +854,7 @@ async def insight_narrative(  # pylint: disable=too-many-locals,too-many-return-
             "focus_areas": list[str],           # 🔍 신경 쓸 것 (3~5건)
             "key_metrics": list[dict],          # 📊 숫자 [{"label", "value", "delta"}] × 4
             "next_actions": list[str],          # 💬 다음 (2~4건)
-            "status": "success" | "no_api_key" | "no_data" | "api_error" | "parse_error",
+            "status": "success" | "no_api_key" | "no_data" | "api_error" | "parse_error" | "disabled",
             "generated_at": "YYYY-MM-DDTHH:MM:SSZ",
             "days": int,
         }
