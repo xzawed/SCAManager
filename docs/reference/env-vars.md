@@ -80,6 +80,15 @@ Sentry 외 자동 로깅은 별도 환경변수 없이 동작:
 | `SMTP_USER` | SMTP 인증 사용자 |
 | `SMTP_PASS` | SMTP 인증 비밀번호 |
 
+## 비용 제어 (AI 리뷰 / 인사이트 kill-switch)
+
+> Anthropic API(Claude) 호출 비용을 전역으로 즉시 차단하는 kill-switch 2종 — `src/shared/feature_kill_switch.py::is_disabled(feature)` 패턴(`SECURITY_AUTO_PROCESS_DISABLED` 등과 동일 helper, pydantic `Settings` 필드가 아니라 `os.environ` 직접 read). 리포별 세분화는 `RepoConfig.ai_review_enabled` DB 컬럼(기본 `True`, env 아님 — settings 페이지 PR 규칙 카드에서 토글)이 담당. 3-레이어 검증 절차 + gate 동작(disabled 리포 최대 89/B) + 로컬 키 경로(pre-push 훅 등): [`docs/runbooks/cost-controls.md`](../runbooks/cost-controls.md).
+
+| 변수 | 설명 | 기본값 |
+|------|------|--------|
+| `AI_REVIEW_DISABLED` | `1` 설정 시 AI 코드리뷰(Claude Sonnet) 전역 차단(웹훅 파이프라인 + CLI pre-push hook 공통). 정적분석·게이트·인사이트는 영향 없음 | `0` (기본) |
+| `INSIGHT_DISABLED` | `1` 설정 시 대시보드 인사이트 + 리포별 인사이트 내러티브(Claude Haiku) 전역 차단 | `0` (기본) |
+
 ## 머지 검증자 (2nd-LLM cross-vendor, opt-in)
 
 > Claude 리뷰를 **다른 vendor 의 LLM** 이 독립 검증 — **경계 점수 자동머지 후보**(`merge_threshold ~ +N`)만. `OPENAI_API_KEY` 미설정 시 완전 비활성(비용 0, 동작 변화 0 — 순수 opt-in). 불안전/조작/검증자 오류 시 자동머지 차단 + PR 코멘트(fail-closed).
