@@ -38,6 +38,7 @@ from src.models.repository import Repository
 from src.scorer.calculator import calculate_grade
 from src.shared.anthropic_caching import build_cached_system_param
 from src.shared.claude_metrics import aclose_anthropic_client, extract_anthropic_usage, log_claude_api_call
+from src.shared.feature_kill_switch import is_disabled
 from src.repositories import insight_narrative_cache_repo
 from src.shared.lang_names import LANG_NAMES
 
@@ -858,6 +859,11 @@ async def insight_narrative(  # pylint: disable=too-many-locals
             "days": int,
         }
     """
+    # 비용 제어 — INSIGHT_DISABLED=1 시 대시보드 내러티브 전면 차단(API 호출 0).
+    # Cost control — INSIGHT_DISABLED=1 disables the dashboard narrative entirely.
+    if is_disabled("INSIGHT"):
+        return _build_insight_response(status="disabled", days=days)
+
     # API key fallback — 명시 인자 우선, 없으면 settings
     # API key fallback — explicit arg wins, otherwise settings
     effective_key = api_key if api_key is not None else settings.anthropic_api_key
