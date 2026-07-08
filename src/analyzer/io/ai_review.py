@@ -29,6 +29,7 @@ from src.constants import (
 )
 from src.shared.anthropic_caching import build_cached_system_param
 from src.shared.claude_metrics import aclose_anthropic_client, extract_anthropic_usage, log_claude_api_call
+from src.shared.feature_kill_switch import is_disabled
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,7 @@ class AiReviewResult:  # pylint: disable=too-many-instance-attributes
     direction_feedback: str = ""         # 구현 방향성 평가 상세
     test_feedback: str = ""              # 테스트 평가 상세
     file_feedbacks: list[dict] = field(default_factory=list)  # 파일별 피드백
-    status: str = "success"  # "success" | "no_api_key" | "empty_diff" | "api_error" | "parse_error"
+    status: str = "success"  # "success" | "no_api_key" | "disabled" | "empty_diff" | "api_error" | "parse_error"
     detected_languages: list[str] = field(default_factory=list)  # 감지된 언어 목록
     # Anthropic API 실제 토큰 사용량 — 비용 추적용 (0 = API 미호출 또는 오류)
     # Actual Anthropic API token usage — for cost tracking (0 = not called or error)
@@ -69,6 +70,8 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
     patches: list[tuple[str, str]],
     language: str = "en",
     model: str | None = None,
+    *,
+    enabled: bool = True,
 ) -> AiReviewResult:
     """Claude API로 코드를 리뷰하고 점수를 반환한다. API key가 없으면 기본값 반환.
 
@@ -78,6 +81,13 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
     Phase 4 PR-12 (Cycle 84) — language arg added. System prompt determines output language.
     Cache key (system text hash) auto-diverges per language → independent cache per language.
     """
+    # 비용 제어 — 전역 kill-switch(AI_REVIEW_DISABLED) 또는 리포별 enabled=False 시
+    # API 호출 없이 disabled 반환. api_key 검사보다 우선(전역이 리포별·키부재보다 우선).
+    # Cost control — global kill-switch or per-repo enabled=False short-circuits before any
+    # API call; checked before api_key so disabled wins over no_api_key.
+    if not enabled or is_disabled("AI_REVIEW"):
+        return _default_result("disabled")
+
     if not api_key:
         return _default_result("no_api_key")
 

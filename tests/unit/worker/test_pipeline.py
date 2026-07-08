@@ -244,6 +244,46 @@ async def test_ai_review_result_passed_to_scorer(mock_deps):
     assert isinstance(ai_review_arg, AiReviewResult)
 
 
+async def test_pipeline_passes_enabled_false_when_repo_ai_disabled(mock_deps):
+    """ai_review_enabled=False 리포 → review_code 가 enabled=False 로 호출(비용 0).
+    Repo with ai_review_enabled=False → review_code called with enabled=False (no cost)."""
+    from src.worker.pipeline import run_analysis_pipeline
+    from src.config_manager.manager import RepoConfigData
+
+    mock_deps["get_config"].return_value = RepoConfigData(
+        repo_full_name="owner/repo", ai_review_enabled=False,
+    )
+    await run_analysis_pipeline("push", PUSH_DATA)
+
+    assert mock_deps["ai"].call_args.kwargs["enabled"] is False
+
+
+async def test_pipeline_passes_enabled_true_by_default(mock_deps):
+    """ai_review_enabled 미설정(default True) 리포 → review_code 가 enabled=True 로 호출(회귀 가드).
+    Repo without an ai_review_enabled override (default True) → review_code called with
+    enabled=True (regression guard)."""
+    from src.worker.pipeline import run_analysis_pipeline
+
+    await run_analysis_pipeline("push", PUSH_DATA)
+
+    assert mock_deps["ai"].call_args.kwargs["enabled"] is True
+
+
+async def test_pipeline_enabled_true_when_repo_config_fetch_raises(mock_deps):
+    """get_repo_config 조회 중 예외 발생 시에도 _ai_review_enabled 는 fail-safe default(True)를
+    유지 → review_code 가 enabled=True 로 호출된다(일시적 설정 조회 실패가 AI 리뷰를 실수로
+    비활성화/오설정하지 않음).
+    Even when get_repo_config raises, _ai_review_enabled stays at its fail-safe default
+    (True) → review_code is still called with enabled=True (a transient config-fetch
+    failure must not accidentally disable AI review)."""
+    from src.worker.pipeline import run_analysis_pipeline
+
+    mock_deps["get_config"].side_effect = RuntimeError("db down")
+    await run_analysis_pipeline("push", PUSH_DATA)
+
+    assert mock_deps["ai"].call_args.kwargs["enabled"] is True
+
+
 async def test_db_result_stores_ai_summary(mock_deps):
     from src.worker.pipeline import run_analysis_pipeline
     await run_analysis_pipeline("push", PUSH_DATA)
@@ -526,7 +566,7 @@ async def test_pipeline_pr_review_comment_not_in_notify_tasks(mock_deps):
     # 신규 설계: pipeline이 직접 post_pr_comment를 호출하지 않는다
     # post_pr_comment는 gate engine 내부에서 pr_review_comment 플래그에 따라 처리된다
     # (pipeline에서 직접 import하지 않으므로 import 여부로 검증)
-    import src.worker.pipeline as pl_module
+    from src.worker import pipeline as pl_module
     assert not hasattr(pl_module, "post_pr_comment"), \
         "pipeline은 post_pr_comment를 직접 import하지 않아야 한다"
 

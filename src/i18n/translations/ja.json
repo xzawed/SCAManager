@@ -150,7 +150,8 @@
       "next_title": "💬 次",
       "no_api_key": "🔑 ANTHROPIC_API_KEY 未設定 — Insight モードは AI 分析が必要です。Railway Variables で key を設定してください。",
       "no_data": "📭 最近 {days} 日の分析データが不足しています — 分析結果が蓄積された後に再試行してください。",
-      "load_failed": "⚠️ AI Insight 生成失敗 ({status}) — しばらくしてから再試行してください。"
+      "load_failed": "⚠️ AI Insight 生成失敗 ({status}) — しばらくしてから再試行してください。",
+      "disabled": "AIインサイトは設定で無効化されています (INSIGHT_DISABLED)。"
     },
     "select_repo_placeholder": "— Repoを選択 —",
     "score_trend": "スコアトレンド",
@@ -370,7 +371,8 @@
       "api_error": "AI API 呼び出しに失敗したためデフォルト値が適用されました。サーバーログをご確認ください。",
       "empty_diff": "分析可能なコード変更がないためデフォルト値が適用されました。",
       "parse_error": "AI レスポンスのパース失敗のためデフォルト値が適用されました。",
-      "other": "AI レビューを実行できなかったためデフォルト値が適用されました。"
+      "other": "AI レビューを実行できなかったためデフォルト値が適用されました。",
+      "disabled": "AIコードレビューは設定で無効化されており、静的解析スコアのみ反映されています。"
     },
     "breakdown": {
       "section_title": "📊 スコア詳細",
@@ -500,6 +502,8 @@
       "header": "PR 動作ルール",
       "pr_comment_title": "PR コードレビューコメント",
       "pr_comment_desc": "分析完了時 AI レビューを PR コメントとして自動投稿",
+      "ai_review_title": "AIコードレビュー (Claude)",
+      "ai_review_desc": "このリポジトリのAIコードレビュー(Claude・有料)をオン/オフします。オフの場合は静的解析のみ実行され、Anthropicコストは発生しません。",
       "auto_merge_title": "自動マージ",
       "auto_merge_desc": "スコアがしきい値以上の場合 squash merge。<br><code style=\"font-size:10px;\">pull_requests: write</code> 権限が必要",
       "merge_threshold_label": "Merge しきい値",

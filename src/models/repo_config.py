@@ -1,6 +1,6 @@
 """RepoConfig ORM 모델 — 리포별 분석·Gate·알림 설정."""
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, JSON
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, JSON, true
 from src.constants import (
     GATE_DEFAULT_APPROVE_THRESHOLD,
     GATE_DEFAULT_REJECT_THRESHOLD,
@@ -55,12 +55,23 @@ class RepoConfig(Base):
     # server_default='[]' — ensures DDL DEFAULT for both SQLite create_all and PostgreSQL
     disabled_tools = Column(JSON, default=list, server_default='[]', nullable=False)
 
+    # 리포별 AI 코드리뷰(Sonnet) on/off — False 시 pipeline 이 review_code 미호출(비용 0). 인사이트 무관.
+    # default True·NOT NULL (기존 리포 전부 유지). Alembic 0042.
+    # server_default=true() — raw SQL INSERT(컬럼 미명시)에도 DDL 레벨 기본값 적용 보장
+    # (disabled_tools 0036 패턴과 동일 — Python-side default 만으로는 raw SQL 경로 미보호).
+    # Per-repo AI code review (Sonnet) on/off — False makes the pipeline skip review_code (zero cost).
+    # server_default=true() ensures a DDL-level default even for raw SQL INSERTs that omit
+    # this column (mirrors the disabled_tools 0036 pattern — a Python-side default alone
+    # would not cover that path).
+    ai_review_enabled = Column(Boolean, default=True, server_default=true(), nullable=False)
+
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
 
     def __init__(self, **kwargs):
         kwargs.setdefault("pr_review_comment", True)
+        kwargs.setdefault("ai_review_enabled", True)
         kwargs.setdefault("approve_mode", "disabled")
         kwargs.setdefault("approve_threshold", GATE_DEFAULT_APPROVE_THRESHOLD)
         kwargs.setdefault("reject_threshold", GATE_DEFAULT_REJECT_THRESHOLD)

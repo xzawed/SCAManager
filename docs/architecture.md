@@ -56,8 +56,8 @@ src/
 ├── services/
 │   ├── analytics_service.py     # 집계 단일 출처 — weekly_summary, moving_average, resolve_chat_id
 │   ├── cron_service.py          # 주기 실행 — run_weekly_reports, run_trend_check
-│   ├── dashboard_service.py     # /dashboard 10 공개 함수 (dashboard_kpi + dashboard_trend + frequent_issues_v2 + auto_merge_kpi + merge_failure_distribution + feedback_status + repo_insight_cards + insight_narrative + dashboard_security + dashboard_usage) + RLS 격리 헬퍼 2건 + N+1 배치 헬퍼 2건 (_fetch_analyses_for_window / _group_analyses_by_repo)
-│   ├── repo_insight_service.py  # 리포별 집계 7 함수 (repo_kpi/repo_score_trend/recurring_issues/problem_files/ai_suggestions/category_breakdown/insight_narrative) + compute_score_kpi 공유 헬퍼 (dashboard_service CPD 제거)
+│   ├── dashboard_service.py     # /dashboard 10 공개 함수 (dashboard_kpi + dashboard_trend + frequent_issues_v2 + auto_merge_kpi + merge_failure_distribution + feedback_status + repo_insight_cards + insight_narrative + dashboard_security + dashboard_usage) + RLS 격리 헬퍼 2건 + N+1 배치 헬퍼 2건 (_fetch_analyses_for_window / _group_analyses_by_repo) — insight_narrative 는 `INSIGHT_DISABLED` kill-switch 전역 차단 대상
+│   ├── repo_insight_service.py  # 리포별 집계 7 함수 (repo_kpi/repo_score_trend/recurring_issues/problem_files/ai_suggestions/category_breakdown/insight_narrative) + compute_score_kpi 공유 헬퍼 (dashboard_service CPD 제거) — insight_narrative 는 `INSIGHT_DISABLED` kill-switch 전역 차단 대상(dashboard_service 와 동일)
 │   │                            # Per-repo aggregation 7 functions (repo_score_trend added cycle 99) + compute_score_kpi shared helper
 │   ├── issue_registration_service.py  # make_ai/static_issue_key + register_issue(IntegrityError TOCTOU 처리) + get_analysis_issue_status + get_repo_issue_summary (TTL 300초 캐시)
 │   ├── merge_retry_service.py   # process_pending_retries 워커 (CI-aware)
@@ -67,7 +67,7 @@ src/
 ├── auth/
 │   ├── session.py               # get_current_user() + require_login + require_admin (3-layer SaaS 검증)
 │   └── github.py                # /login (301→/auth/github, 하위호환), /auth/github, /auth/callback, /auth/logout
-├── models/                      # 11 ORM 모델 — repository (0039: user_id→users.id FK ondelete=SET NULL), analysis (0038: repo_id FK ondelete=CASCADE; 0032 토큰 부분 인덱스 ORM 선언), analysis_feedback, repo_config (0036: disabled_tools JSON 컬럼), gate_decision (0034: analysis_id UNIQUE constraint), merge_attempt, merge_retry, security_alert_log, insight_narrative_cache (0031: repo_id FK + 부분유일 인덱스 ORM 선언; 0033: last_error_at/error_count/last_error_type), user (0040: github_id 인덱스명 정합 rename), issue_registration (0035: repo_id+issue_key UniqueConstraint + CASCADE FK; 0037: RLS policy — repo_id→repositories.user_id 1-hop, PG 전용)
+├── models/                      # 11 ORM 모델 — repository (0039: user_id→users.id FK ondelete=SET NULL), analysis (0038: repo_id FK ondelete=CASCADE; 0032 토큰 부분 인덱스 ORM 선언), analysis_feedback, repo_config (0036: disabled_tools JSON 컬럼; 0042: ai_review_enabled Boolean 컬럼 — 리포별 AI 코드리뷰 kill-switch, 기본 True, 비용 제어), gate_decision (0034: analysis_id UNIQUE constraint), merge_attempt, merge_retry, security_alert_log, insight_narrative_cache (0031: repo_id FK + 부분유일 인덱스 ORM 선언; 0033: last_error_at/error_count/last_error_type), user (0040: github_id 인덱스명 정합 rename), issue_registration (0035: repo_id+issue_key UniqueConstraint + CASCADE FK; 0037: RLS policy — repo_id→repositories.user_id 1-hop, PG 전용)
 ├── webhook/
 │   ├── _helpers.py              # get_webhook_secret() + cache (TTL 300s)
 │   ├── validator.py             # HMAC-SHA256 서명 검증
@@ -202,6 +202,8 @@ GitHub Push/PR
       → asyncio.gather() 병렬 실행:
           ├─ analyze_file() × N  (.py만 정적 분석, 테스트 파일은 bandit 제외)
           └─ review_code()       (Claude AI — 49개 언어 체크리스트 + 토큰 예산 관리)
+              🔴 비용 제어 kill-switch — 전역 `AI_REVIEW_DISABLED` OR 리포별 `RepoConfig.ai_review_enabled=False` 시
+              API 호출 없이 disabled 반환(정적분석은 계속 진행). 상세: `docs/runbooks/cost-controls.md`
       → calculate_score(ai_review) (코드품질25 + 보안20 + 커밋15 + AI방향성25 + 테스트15)
       → DB 저장 (Analysis 레코드)
       → run_gate_check() [PR 이벤트만] — 3-옵션 완전 독립 처리

@@ -589,6 +589,7 @@
           {% elif ai_status == 'api_error' %}{{ 'analysis_detail.ai_defaults.api_error' | i18n_args(locale | default('ko')) }}
           {% elif ai_status == 'empty_diff' %}{{ 'analysis_detail.ai_defaults.empty_diff' | i18n_args(locale | default('ko')) }}
           {% elif ai_status == 'parse_error' %}{{ 'analysis_detail.ai_defaults.parse_error' | i18n_args(locale | default('ko')) }}
+          {% elif ai_status == 'disabled' %}{{ 'analysis_detail.ai_defaults.disabled' | i18n_args(locale | default('ko')) }}
           {% else %}{{ 'analysis_detail.ai_defaults.other' | i18n_args(locale | default('ko')) }}
           {% endif %}
         </div>

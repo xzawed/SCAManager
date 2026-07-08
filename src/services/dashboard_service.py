@@ -38,6 +38,7 @@ from src.models.repository import Repository
 from src.scorer.calculator import calculate_grade
 from src.shared.anthropic_caching import build_cached_system_param
 from src.shared.claude_metrics import aclose_anthropic_client, extract_anthropic_usage, log_claude_api_call
+from src.shared.feature_kill_switch import is_disabled
 from src.repositories import insight_narrative_cache_repo
 from src.shared.lang_names import LANG_NAMES
 
@@ -823,7 +824,7 @@ def _parse_insight_cards(text: str) -> dict[str, list] | None:
     }
 
 
-async def insight_narrative(  # pylint: disable=too-many-locals
+async def insight_narrative(  # pylint: disable=too-many-locals,too-many-return-statements
     db: Session,
     days: int = 7,
     *,
@@ -853,11 +854,16 @@ async def insight_narrative(  # pylint: disable=too-many-locals
             "focus_areas": list[str],           # 🔍 신경 쓸 것 (3~5건)
             "key_metrics": list[dict],          # 📊 숫자 [{"label", "value", "delta"}] × 4
             "next_actions": list[str],          # 💬 다음 (2~4건)
-            "status": "success" | "no_api_key" | "no_data" | "api_error" | "parse_error",
+            "status": "success" | "no_api_key" | "no_data" | "api_error" | "parse_error" | "disabled",
             "generated_at": "YYYY-MM-DDTHH:MM:SSZ",
             "days": int,
         }
     """
+    # 비용 제어 — INSIGHT_DISABLED=1 시 대시보드 내러티브 전면 차단(API 호출 0).
+    # Cost control — INSIGHT_DISABLED=1 disables the dashboard narrative entirely.
+    if is_disabled("INSIGHT"):
+        return _build_insight_response(status="disabled", days=days)
+
     # API key fallback — 명시 인자 우선, 없으면 settings
     # API key fallback — explicit arg wins, otherwise settings
     effective_key = api_key if api_key is not None else settings.anthropic_api_key
@@ -983,7 +989,6 @@ def _is_security_kill_switch_active() -> bool:
 
     Check kill-switch env — for UI display (Cycle 78 helper delegation).
     """
-    from src.shared.feature_kill_switch import is_disabled  # pylint: disable=import-outside-toplevel  # noqa: PLC0415
     return is_disabled("SECURITY_AUTO_PROCESS")
 
 

@@ -656,7 +656,7 @@ async def _send_notifications(notify_tasks: list, task_names: list[str]) -> None
                          exc_info=(type(exc), exc, exc.__traceback__))
 
 
-async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disable=too-many-locals
+async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disable=too-many-locals,too-many-statements
     """Webhook 이벤트를 받아 정적분석 + AI 리뷰 → 점수 → Gate → 알림 파이프라인을 실행한다.
 
     Args:
@@ -729,11 +729,15 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
             # Single DB fetch — used for both review_model and disabled_tools
             repo_review_model: str | None = None
             _static_repo_cfg: object | None = None
+            # 리포별 AI 리뷰 on/off — 조회 실패/부재 시 default True(기존 동작 보존)
+            # Per-repo AI review on/off — default True on fetch failure/absence
+            _ai_review_enabled = True
             try:
                 with SessionLocal() as db_cfg:
                     _cfg = get_repo_config(db_cfg, repo_name)
                     repo_review_model = _cfg.review_model or None
                     _static_repo_cfg = _cfg
+                    _ai_review_enabled = getattr(_cfg, "ai_review_enabled", True)
             except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
                 logger.debug(
                     "repo_config fetch failed for %s — using defaults for model and disabled_tools",
@@ -747,6 +751,7 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
                         settings.anthropic_api_key, commit_message, patches,
                         language=review_language,
                         model=repo_review_model,
+                        enabled=_ai_review_enabled,
                     ),
                 )
                 # (결과 리스트, 타임아웃 여부) — 타임아웃 시 auto-merge 차단 신호로 전파

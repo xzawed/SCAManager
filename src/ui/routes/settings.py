@@ -198,6 +198,9 @@ async def update_repo_settings(
             upsert_repo_config(db, RepoConfigData(
                 repo_full_name=repo_name,
                 pr_review_comment=form.get("pr_review_comment") == "on",
+                # AI 리뷰 독립 토글 — 프리셋과 무관 (비용 제어, Task 2.4)
+                # Standalone AI-review toggle — independent of presets (cost control, Task 2.4)
+                ai_review_enabled=form.get("ai_review_enabled") == "on",
                 approve_mode=form.get("approve_mode", "disabled"),
                 approve_threshold=int(form.get("approve_threshold", GATE_DEFAULT_APPROVE_THRESHOLD)),
                 reject_threshold=int(form.get("reject_threshold", GATE_DEFAULT_REJECT_THRESHOLD)),
