@@ -566,7 +566,7 @@ async def test_pipeline_pr_review_comment_not_in_notify_tasks(mock_deps):
     # 신규 설계: pipeline이 직접 post_pr_comment를 호출하지 않는다
     # post_pr_comment는 gate engine 내부에서 pr_review_comment 플래그에 따라 처리된다
     # (pipeline에서 직접 import하지 않으므로 import 여부로 검증)
-    import src.worker.pipeline as pl_module
+    from src.worker import pipeline as pl_module
     assert not hasattr(pl_module, "post_pr_comment"), \
         "pipeline은 post_pr_comment를 직접 import하지 않아야 한다"
 
