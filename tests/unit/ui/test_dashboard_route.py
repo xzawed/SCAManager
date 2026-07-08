@@ -369,6 +369,7 @@ def test_dashboard_mode_toggle_links_present():
         "analysis_count": {"value": 0, "delta": 0},
         "high_security_issues": {"value": 0, "delta": 0},
         "active_repos": {"value": 0, "total": 0, "delta": 0},
+        "monthly_cost": {"value": 0.0, "delta": None, "by_model": {"sonnet": 0.0, "haiku": 0.0, "opus": 0.0, "other": 0.0}},
     }
     fake_auto_merge = {
         "value": None,

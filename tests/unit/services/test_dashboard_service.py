@@ -20,8 +20,10 @@ from sqlalchemy.orm import Session
 
 from src.database import Base
 from src.models.analysis import Analysis
+from src.models.claude_api_call import ClaudeApiCall  # noqa: F401  C1 Phase 4 — monthly_cost 테이블 등록
 from src.models.repository import Repository
 from src.models.user import User
+from src.repositories import claude_api_cost_repo
 
 
 # ─── Fixtures ──────────────────────────────────────────────────────────────
@@ -367,4 +369,47 @@ class TestCountHighSecurityErrorSeverity:
         result = dashboard_kpi(db, days=7, now=now)
         # LOW/MEDIUM severity 보안 이슈는 카운트 0
         # LOW/MEDIUM severity security issues → count 0
+        assert result["high_security_issues"]["value"] == 0
+
+
+# ─── monthly_cost (C1 Phase 4 — Anthropic 비용 KPI, Phase 2 user_cost_summary 위임) ───────
+# ─── monthly_cost (C1 Phase 4 — Anthropic cost KPI, delegates to Phase 2's user_cost_summary) ─
+
+
+class TestDashboardKpiMonthlyCost:
+    """dashboard_kpi 의 monthly_cost 카드 — cost_metrics_service.user_cost_summary 위임 검증.
+
+    dashboard_kpi's monthly_cost card — verifies delegation to cost_metrics_service.user_cost_summary.
+    """
+
+    def test_includes_monthly_cost_summed_for_owned_user(self, db, user):
+        """user 소유 ClaudeApiCall 비용(30일 윈도우)이 monthly_cost.value 로 합산된다.
+        Cost rows attributed to the user (within the 30-day window) sum into monthly_cost.value.
+        """
+        from src.services.dashboard_service import dashboard_kpi
+
+        now = datetime.now(timezone.utc)
+        claude_api_cost_repo.record(
+            db, model="claude-sonnet-4-6", status="success",
+            input_tokens=100, output_tokens=50, cache_read_tokens=0, cache_creation_tokens=0,
+            cost_usd=0.005, duration_ms=100.0, user_id=user.id, now=now - timedelta(hours=1),
+        )
+        claude_api_cost_repo.record(
+            db, model="claude-haiku-4-5", status="success",
+            input_tokens=100, output_tokens=50, cache_read_tokens=0, cache_creation_tokens=0,
+            cost_usd=0.007, duration_ms=80.0, user_id=user.id, now=now - timedelta(hours=2),
+        )
+
+        result = dashboard_kpi(db, days=30, user_id=user.id, now=now)
+        assert "monthly_cost" in result
+        assert result["monthly_cost"]["value"] == pytest.approx(0.012)
+
+    def test_monthly_cost_zero_when_no_user(self, db):
+        """user_id=None (admin/legacy) 시 비용 집계 skip → 0.0.
+        user_id=None (admin/legacy) skips aggregation → 0.0.
+        """
+        from src.services.dashboard_service import dashboard_kpi
+
+        result = dashboard_kpi(db, days=7, user_id=None)
+        assert result["monthly_cost"]["value"] == 0.0
         assert result["high_security_issues"]["value"] == 0

@@ -56,6 +56,7 @@ from sqlalchemy.orm import Session
 # Top-level ORM imports register Base.metadata (no lazy imports allowed)
 from src.database import Base
 from src.models.analysis import Analysis
+from src.models.claude_api_call import ClaudeApiCall  # noqa: F401  C1 Phase 4 — monthly_cost 테이블 등록
 from src.models.insight_narrative_cache import InsightNarrativeCache  # noqa: F401
 from src.models.merge_attempt import MergeAttempt
 from src.models.repository import Repository

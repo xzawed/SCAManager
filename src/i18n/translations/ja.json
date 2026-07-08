@@ -67,7 +67,9 @@
       "high_security": "セキュリティ問題 (HIGH)",
       "active_repos": "アクティブなリポ",
       "auto_merge_success": "自動マージ成功率 (PR基準)",
-      "auto_merge_tooltip": "PR基準の最終 success rate (リトライ後の結果)。単純試行 success rate は sub-text 参照。"
+      "auto_merge_tooltip": "PR基準の最終 success rate (リトライ後の結果)。単純試行 success rate は sub-text 参照。",
+      "monthly_cost": "今月のAIコスト",
+      "monthly_cost_tooltip": "常に直近30日固定(ページの期間選択とは無関係)"
     },
     "delta": {
       "improvement": "改善",

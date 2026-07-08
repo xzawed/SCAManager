@@ -38,12 +38,13 @@ class _FakeUser:
 
 
 def _kpi_dict() -> dict:
-    """Common KPI fixture — overview mode 렌더 의존."""
+    """Common KPI fixture — overview mode 렌더 의존. C1 Phase 4 — monthly_cost 6번째 카드 포함."""
     return {
         "avg_score": {"value": 75, "grade": "B", "delta": 3},
         "analysis_count": {"value": 12, "delta": 2},
         "high_security_issues": {"value": 0, "delta": -1},
         "active_repos": {"value": 3, "total": 5, "delta": 0},
+        "monthly_cost": {"value": 0.0123, "delta": -0.002, "by_model": {"sonnet": 0.0123, "haiku": 0.0, "opus": 0.0, "other": 0.0}},
     }
 
 
@@ -78,12 +79,15 @@ def test_dashboard_overview_renders_korean_kpi_titles():
         merge_failures=[],
         feedback={"show_cta": False, "count": 0},
     )
-    # KPI 5 카드 라벨
+    # KPI 6 카드 라벨 (C1 Phase 4 — monthly_cost 추가)
     assert "평균 점수" in out
     assert "분석 건수" in out
     assert "보안 이슈 (HIGH)" in out
     assert "활성 리포" in out
     assert "자동 머지 성공률 (PR 기준)" in out
+    assert "이번 달 AI 비용" in out
+    assert "$0.0123" in out
+    assert "vs 직전 30일" in out
     # Section
     assert "점수 추세 (7일)" in out
     assert "자주 발생 이슈 (최근 7일)" in out
@@ -117,6 +121,8 @@ def test_dashboard_overview_renders_english_kpi_titles():
     assert "Security Issues (HIGH)" in out
     assert "Active Repos" in out
     assert "Auto-Merge Success Rate (PR-based)" in out
+    assert "AI cost (30d)" in out
+    assert "$0.0123" in out
     assert "Score Trend (7d)" in out
     assert "No analysis data in the last 7 days." in out
     assert ">📊 Overview</a>" in out
@@ -147,6 +153,8 @@ def test_dashboard_overview_renders_japanese_kpi_titles():
     assert "セキュリティ問題 (HIGH)" in out
     assert "アクティブなリポ" in out
     assert "自動マージ成功率 (PR基準)" in out
+    assert "今月のAIコスト" in out
+    assert "$0.0123" in out
     assert "スコアトレンド (30日)" in out
     assert "頻発する問題 (最近 30 日)" in out
     assert ">📊 概要</a>" in out

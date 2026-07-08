@@ -32,10 +32,10 @@
     color: var(--text-2, rgba(255,255,255,0.6));
     margin: 0;
   }
-  /* KPI grid — responsive 5→3→2→1 columns */
+  /* KPI grid — responsive 6→3→2→1 columns (C1 Phase 4 — 6th monthly_cost card added) */
   .kpi-row {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     gap: var(--space-4, 1rem);
     margin-bottom: var(--space-7, 2rem);
   }
@@ -367,6 +367,9 @@
     .dash-kpi:nth-child(1) { order: 3; }  /* 평균 점수 = 3 (overall 건강도) */
     .dash-kpi:nth-child(2) { order: 4; }  /* 분석 건수 = 4 (활동량) */
     .dash-kpi:nth-child(4) { order: 5; }  /* 활성 리포 = 5 (확산) */
+    /* C1 Phase 4 — 이번 달 AI 비용 = 6 (신규 카드, 기존 5 우선순위 보존 + 마지막 추가)
+       C1 Phase 4 — monthly AI cost = 6 (new card, appended last, existing 5 priorities preserved) */
+    .dash-kpi:nth-child(6) { order: 6; }
   }
 
   /* Grade badge fallback — these are also in base.html after PR-T2 merges */
@@ -915,7 +918,7 @@
   </div>
   {% endif %}
 
-  {# KPI 5 카드 (Phase 1 4 + Phase 2 Auto-merge) / Phase 2 PR-6 — i18n #}
+  {# KPI 6 카드 (Phase 1 4 + Phase 2 Auto-merge + C1 Phase 4 monthly_cost) / Phase 2 PR-6 — i18n #}
   {# Redesigned with BEM .kpi structure — Phase 3 CSS design system migration #}
   <div class="kpi-row">
 
@@ -1036,6 +1039,26 @@
             — {{ 'dashboard.delta.no_comparison' | i18n_args(locale | default('ko')) }}
           {%- endif -%}
         </div>
+      {% endif %}
+    </div>
+
+    {# ⑥ 이번 달 AI 비용 — C1 Phase 4, cost_metrics_service.user_cost_summary 위임 (30일 고정)
+       ⑥ Monthly AI cost — C1 Phase 4, delegates to cost_metrics_service.user_cost_summary (fixed 30d) #}
+    <div class="kpi dash-kpi" title="{{ 'dashboard.kpi.monthly_cost_tooltip' | i18n_args(locale | default('ko')) }}">
+      <div class="kpi__label"><span>{{ 'dashboard.kpi.monthly_cost' | i18n_args(locale | default('ko')) }}</span></div>
+      <div class="kpi__value">
+        <span class="t-num">${{ '%.4f' | format(kpi.monthly_cost.value) }}</span>
+      </div>
+      {% if kpi.monthly_cost.delta is not none %}
+        {% if kpi.monthly_cost.delta > 0 %}
+          <div class="kpi__delta kpi__delta--down">▲ +${{ '%.4f' | format(kpi.monthly_cost.delta) }} {{ 'dashboard.delta.vs_period' | i18n_args(locale | default('ko'), days=30) }}</div>
+        {% elif kpi.monthly_cost.delta < 0 %}
+          <div class="kpi__delta kpi__delta--up">▼ ${{ '%.4f' | format(-kpi.monthly_cost.delta) }} {{ 'dashboard.delta.vs_period' | i18n_args(locale | default('ko'), days=30) }}</div>
+        {% else %}
+          <div class="kpi__delta kpi__delta--flat">— {{ 'dashboard.delta.no_change' | i18n_args(locale | default('ko')) }}</div>
+        {% endif %}
+      {% else %}
+        <div class="kpi__delta kpi__delta--flat">— {{ 'dashboard.delta.no_comparison' | i18n_args(locale | default('ko')) }}</div>
       {% endif %}
     </div>
 

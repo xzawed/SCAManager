@@ -3,7 +3,7 @@
 Dashboard service for the /dashboard route.
 
 Phase 1 함수 (MVP-B):
-- dashboard_kpi — KPI 4 카드 (평균 점수 / 분석 건수 / 보안 HIGH / 활성 리포)
+- dashboard_kpi — KPI 5 카드 (평균 점수 / 분석 건수 / 보안 HIGH / 활성 리포 / 이번 달 AI 비용)
 - dashboard_trend — 날짜별 평균 점수 추세 (라인 차트)
 - frequent_issues_v2 — global 자주 발생 이슈 (Q7 신규 · category/language/tool)
 
@@ -14,6 +14,8 @@ Phase 2 함수 (운영 데이터 기반 — MCP 검증 결과: success_rate 16.6
 Phase 3 함수 (PR 2):
 - insight_narrative — Claude AI 기반 4 카드 인사이트 (positive / focus / metrics / next).
   PR 1 의 `build_cached_system_param` 헬퍼로 system prompt cache 5분 적용.
+
+C1 Phase 4 — dashboard_kpi 에 monthly_cost 카드 추가 (Phase 2 cost_metrics_service.user_cost_summary 위임).
 
 now 인자 의존성 주입 패턴 (analytics_service 와 동일).
 """
@@ -92,12 +94,15 @@ def dashboard_kpi(  # pylint: disable=too-many-locals
     pylint too-many-locals — Phase 3 PR 5 user_id 필터 추가로 16/15. cur/prev/total
     3 윈도우 페어 (각 query + 결과) = 6 + delta calc + KPI 4 카드 빌더 = 본 한도 자연.
 
+    C1 Phase 4: `monthly_cost` — 항상 30일 고정 윈도우 (`days` 인자와 무관, "이번 달" 의미 고정).
+
     Returns:
         {
           "avg_score": {"value": float|None, "grade": str|None, "delta": float|None},
           "analysis_count": {"value": int, "delta": int},
           "high_security_issues": {"value": int, "delta": int},
           "active_repos": {"value": int, "total": int, "delta": int},
+          "monthly_cost": {"value": float, "delta": float|None, "by_model": dict[str, float]},
         }
     """
     _now = now or datetime.now(timezone.utc)
@@ -138,7 +143,26 @@ def dashboard_kpi(  # pylint: disable=too-many-locals
         },
         "high_security_issues": _kpi_security(cur_analyses, prev_analyses),
         "active_repos": _kpi_active_repos(cur_analyses, prev_analyses, int(total_repos or 0)),
+        "monthly_cost": _kpi_cost(db, user_id, _now),
     }
+
+
+def _kpi_cost(db: Session, user_id: int | None, now: datetime) -> dict[str, Any]:
+    """이번 달(30일 고정) Anthropic 비용 KPI — 사용자 귀속. user_id 없으면 집계 skip(0).
+
+    Monthly (fixed 30d) Anthropic cost KPI — user-attributed. Skips aggregation (0) when
+    user_id is None (admin/legacy path — no owner to attribute cost to).
+
+    C1 Phase 4 — Phase 2 의 cost_metrics_service.user_cost_summary 위임. 항상 30일 고정
+    윈도우 사용 (dashboard_kpi 의 `days` 인자와 무관 — "이번 달" 의미 고정).
+    C1 Phase 4 — delegates to Phase 2's cost_metrics_service.user_cost_summary. Always uses
+    a fixed 30-day window (independent of dashboard_kpi's `days` arg — "this month" is fixed).
+    """
+    if user_id is None:
+        return {"value": 0.0, "delta": None, "by_model": {"sonnet": 0.0, "haiku": 0.0, "opus": 0.0, "other": 0.0}}
+    from src.services import cost_metrics_service  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    s = cost_metrics_service.user_cost_summary(db, user_id=user_id, days=30, now=now)
+    return {"value": s["total_usd"], "delta": s["delta_usd"], "by_model": s["by_model"]}
 
 
 def _kpi_avg(cur: list[Any], prev: list[Any]) -> dict[str, Any]:

@@ -67,7 +67,9 @@
       "high_security": "Security Issues (HIGH)",
       "active_repos": "Active Repos",
       "auto_merge_success": "Auto-Merge Success Rate (PR-based)",
-      "auto_merge_tooltip": "PR-based final success rate (after retries). Simple-attempt success rate is shown in sub-text."
+      "auto_merge_tooltip": "PR-based final success rate (after retries). Simple-attempt success rate is shown in sub-text.",
+      "monthly_cost": "AI cost (30d)",
+      "monthly_cost_tooltip": "Fixed 30-day window (independent of the page's date range)"
     },
     "delta": {
       "improvement": "improved",
