@@ -464,6 +464,7 @@
     "back": "← Detail",
     "page_title": "Repository Settings",
     "save": "💾 Save settings",
+    "saving": "Saving…",
     "mode_toggle_label": "View mode",
     "mode_simple": "✨ Simple",
     "mode_simple_hint": "Essentials only",

@@ -269,6 +269,20 @@
   @keyframes toastIn  { from { opacity:0; transform:translateX(-50%) translateY(-10px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
   @keyframes toastOut { from { opacity:1; } to { opacity:0; pointer-events:none; } }
 
+  /* Save button in-flight — htmx 가 저장 요청 중 #saveBtn 에 .htmx-request 부착 */
+  /* Save button in-flight loading state (htmx adds .htmx-request during the AJAX POST) */
+  .save-spinner { display: none; }
+  #saveBtn.htmx-request { cursor: progress; opacity: .85; }
+  #saveBtn.htmx-request .save-label { display: none; }
+  #saveBtn.htmx-request .save-spinner { display: inline-flex; align-items: center; gap: .4rem; }
+  .save-spinner::before {
+    content: ""; width: 13px; height: 13px; border-radius: 50%;
+    border: 2px solid currentColor; border-top-color: transparent;
+    animation: saveSpin .7s linear infinite;
+  }
+  @keyframes saveSpin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .save-spinner::before { animation: none; } }
+
   /* Save bar */
   .save-bar {
     position: sticky; bottom: 0;
@@ -448,7 +462,10 @@
   </p>
 
 
-  <form id="settingsForm" method="post" action="/repos/{{ repo_name }}/settings">
+  <!-- hx-indicator/hx-disabled-elt: 저장 요청 중 #saveBtn 에 .htmx-request 부착 + 자동 비활성(중복 제출 방지) -->
+  <!-- htmx marks #saveBtn with .htmx-request during the save request and auto-disables it (double-submit guard) -->
+  <form id="settingsForm" method="post" action="/repos/{{ repo_name }}/settings"
+        hx-indicator="#saveBtn" hx-disabled-elt="#saveBtn">
     <input type="hidden" name="approve_mode" id="approveModeValue" value="{{ config.approve_mode }}">
 
     {% if onboarding_needed %}
@@ -1013,7 +1030,10 @@
     </div><!-- /settings-grid -->
 
     <div class="save-bar">
-      <button type="submit" class="btn btn--primary" id="saveBtn" form="settingsForm">{{ 'settings_page.save' | i18n_args(locale | default('ko')) }}</button>
+      <button type="submit" class="btn btn--primary" id="saveBtn" form="settingsForm">
+        <span class="save-label">{{ 'settings_page.save' | i18n_args(locale | default('ko')) }}</span>
+        <span class="save-spinner" aria-hidden="true">{{ 'settings_page.saving' | i18n_args(locale | default('ko')) }}</span>
+      </button>
     </div>
 
   </form>
