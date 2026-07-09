@@ -34,14 +34,26 @@ def test_ai_review_group_hierarchy():
 
 
 def test_ai_review_dependent_greyout_css_has():
-    """AI 리뷰 OFF 시 종속 블록 회색·비활성 = CSS :has() (JS 0)."""
-    # Grey-out on AI-off via CSS :has() — no JS handler.
+    """AI 리뷰 OFF 시 종속 블록(.ai-review-dependent) + 모델 선택(.ai-review-model) 모두 회색·비활성 = CSS :has() (JS 0)."""
+    # Grey-out on AI-off via CSS :has() — no JS handler. Fix M1: the selector is now a
+    # comma group so BOTH .ai-review-dependent AND .ai-review-model (the folded review_model
+    # select, moot when AI review is off) are greyed out.
     html = _read()
     assert 'ai-review-group:has(' in html and 'ai_review_enabled"]:not(:checked)' in html, (
         "CSS :has() 회색 셀렉터 없음 — .ai-review-group:has(input[name=ai_review_enabled]:not(:checked)) .ai-review-dependent"
     )
-    m = re.search(r"\.ai-review-group:has\([^{]*ai_review_enabled[^{]*\)\s*\.ai-review-dependent\s*\{([^}]*)\}", html)
-    assert m, "종속 회색 규칙 셀렉터 매칭 실패"
+    m = re.search(
+        r"\.ai-review-group:has\([^{]*ai_review_enabled[^{]*\)\s*\.ai-review-dependent\s*,\s*"
+        r"\.ai-review-group:has\([^{]*ai_review_enabled[^{]*\)\s*\.ai-review-model\s*"
+        r"\{([^}]*)\}",
+        html,
+    )
+    assert m, "종속+모델 회색 규칙 셀렉터(콤마 그룹) 매칭 실패"
+    # 비-공허(non-vacuous) 검증 — .ai-review-model 이 실제로 매칭 문자열 안에 포함됐는지 별도 재확인.
+    # Non-vacuous check — re-assert .ai-review-model literally appears in the matched selector group.
+    assert ".ai-review-model" in m.group(0), (
+        ".ai-review-model 이 AI OFF 시 회색 처리 셀렉터에 포함되지 않음 — 모델 선택이 여전히 활성 상태로 남음"
+    )
     body = m.group(1)
     assert "pointer-events" in body and "opacity" in body, "회색(opacity)+비활성(pointer-events) 누락"
 
@@ -60,8 +72,14 @@ def test_review_model_folded_into_ai_group():
     # review_model lives inside the AI-review group, not as a standalone orphan card.
     html = _read()
     i_group = html.find('class="ai-review-group"')
-    # CSS :has() 셀렉터(문서 상단 <style>)에도 동일 문자열이 등장하므로 i_group 이후로 검색 범위 한정.
-    # The CSS :has() selector (top-of-doc <style> block) also contains this literal string, so scope the search to after i_group.
+    # i_group 이후로 검색 범위 한정 — 단, review_model 은 CSS :has() 셀렉터에 등장하지 않는다
+    # (그 셀렉터는 ai_review_enabled 만 참조). 위 test_ai_review_group_hierarchy 의
+    # ai_review_enabled 검색과 달리 여기서는 CSS 중복 매치를 피하려는 목적이 아니라,
+    # 검색 anchor 를 AI 리뷰 그룹 마크업 내부로 한정하기 위함이다.
+    # Scope the search to after i_group — but unlike the ai_review_enabled search above,
+    # review_model never appears in the CSS :has() selector (which only references
+    # ai_review_enabled), so there's no CSS literal to dodge here. i_group scoping simply
+    # anchors the lookup inside the AI-review group markup.
     i_model = html.find('name="review_model"', i_group)
     # ai-review-group 다음, 그리고 그 그룹 종료(다음 s-divider) 전에 위치
     i_divider = html.find('s-divider', i_group)
@@ -86,18 +104,30 @@ def test_review_model_orphan_card_removed():
 
 
 def test_preset_diff_omits_inert_thresholds():
-    """renderPresetDiff 가 approve_mode=disabled 프리셋에서 approve/reject 임계 행을 생략한다."""
-    # The diff JS skips approve/reject threshold rows when the preset's mode is 'disabled'.
+    """renderPresetDiff 가 무효(inert) 임계값 행 2종을 모두 생략한다.
+
+    (1) approve_mode==='disabled' 시 approve/reject_threshold 행 생략
+    (2) auto_merge===false 시 merge_threshold 행 생략
+    """
+    # The diff JS skips inert threshold rows: approve/reject when the preset's mode is
+    # 'disabled' AND merge_threshold when auto_merge is false.
     html = _read()
     i_fn = html.find("function renderPresetDiff")
     assert i_fn != -1, "renderPresetDiff 없음 — 테스트 stale"
     body = html[i_fn:html.find("function applyPreset", i_fn)]
-    # disabled 시 임계 skip 가드 존재 (approve_mode 값 'disabled' 참조 + threshold 키 skip)
+    # (1) disabled 시 approve/reject 임계 skip 가드 존재 (approve_mode 값 'disabled' 참조 + threshold 키 skip)
     assert "disabled" in body and "approve_threshold" in body and "reject_threshold" in body, (
         "임계값 생략 로직 없음 — mode=disabled 시 approve/reject_threshold 행 skip 필요"
     )
     assert re.search(r"approve_mode\s*===?\s*'disabled'|p\.approve_mode\s*===?\s*'disabled'", body), (
         "approve_mode=='disabled' 조건 가드 부재"
+    )
+    # (2) auto_merge=false 시 merge_threshold 임계 skip 가드 존재
+    assert "merge_threshold" in body and "auto_merge" in body, (
+        "merge_threshold 임계값 생략 로직 없음 — auto_merge=false 시 merge_threshold 행 skip 필요"
+    )
+    assert re.search(r"auto_merge\s*===?\s*false|p\.auto_merge\s*===?\s*false", body), (
+        "auto_merge===false 조건 가드 부재 — merge_threshold 행 skip 브랜치 없음"
     )
 
 

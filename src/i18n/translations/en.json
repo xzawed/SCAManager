@@ -535,7 +535,6 @@
       "commit_comment_desc": "Post AI review results as<br>GitHub commit comments on push",
       "create_issue_title": "Create Issue on low score",
       "create_issue_desc": "Auto-create a GitHub Issue when<br>score is low or HIGH security finding detected",
-      "section_railway": "Railway deploy",
       "railway_alerts_title": "Railway build failure alerts",
       "railway_alerts_desc": "Auto-create an Issue with logs<br>when Railway build fails"
     },

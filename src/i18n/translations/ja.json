@@ -535,7 +535,6 @@
       "commit_comment_desc": "Push コミットに AI レビュー結果を<br>GitHub コミットコメントとして投稿",
       "create_issue_title": "スコア低下時に Issue 作成",
       "create_issue_desc": "スコア低下またはセキュリティ HIGH 検出時<br>GitHub Issue を自動作成",
-      "section_railway": "Railway デプロイ",
       "railway_alerts_title": "Railway ビルド失敗アラート",
       "railway_alerts_desc": "Railway ビルド失敗イベント受信時<br>該当リポにログ付き Issue を自動作成"
     },

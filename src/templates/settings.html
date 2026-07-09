@@ -160,7 +160,8 @@
   /* AI 리뷰 그룹 — 종속(게시 위치) 들여쓰기 + AI 실행 OFF 시 회색·비활성 (CSS :has(), JS 0) */
   /* AI-review group — indent the dependent (post location) + grey it out when the run toggle is off */
   .ai-review-dependent { margin-left: 1.25rem; padding-left: .85rem; border-left: 2px solid var(--border-subtle); }
-  .ai-review-group:has(input[name="ai_review_enabled"]:not(:checked)) .ai-review-dependent {
+  .ai-review-group:has(input[name="ai_review_enabled"]:not(:checked)) .ai-review-dependent,
+  .ai-review-group:has(input[name="ai_review_enabled"]:not(:checked)) .ai-review-model {
     opacity: .5; pointer-events: none;
   }
 
