@@ -127,3 +127,37 @@ def test_oncein_view_has_io_miss_safety_net():
         and "_disposers.push" not in src
         and "while (_disposers" not in src
     ), "init() 일괄 dispose 재유입 → Codex P1 count-up '0' 고착 회귀 (이중 init + freshOnly 재등록 차단)"
+
+
+def test_setupcountup_has_cross_closure_guard():
+    """effects.js setupCountUp 은 cross-closure target 오염을 DOM 속성으로 차단해야 한다.
+
+    🔴 운영 사고(개요 0/100 고착, 2026-07-09): hx-boost body swap 은 effects.js(`<body>`
+    외부 스크립트)를 재실행해 새 IIFE 클로저(독립 `seen` WeakMap)를 만든다. 먼저 실행된
+    클로저가 점수 텍스트를 "0" 으로 pre-fill 한 뒤 다른 클로저의 setupCountUp 이 그 "0" 을
+    target 으로 재-parse → 0→0 애니메이션으로 "0/100" 고착(등급 배지는 서버 렌더라 정상).
+    `seen`(클로저별 WeakMap)은 이를 못 막으므로 DOM 속성(모든 클로저 공유)으로 이미 바인딩된
+    노드를 skip 해야 한다. onceInView 안전망은 콜백 fire(발동)만 보장하고 오염된 target 은
+    못 고친다 — 오염은 상류(target 캡처)에서 이미 확정되기 때문.
+
+    setupCountUp must block cross-closure target corruption via a shared DOM attribute:
+    an hx-boost re-exec spawns a new closure whose setupCountUp would re-parse an already
+    "0"-prefilled node as target=0 (0→0 freeze). The per-closure `seen` cannot stop it; the
+    onceInView safety net only guarantees the callback fires, not the (already-corrupted) target.
+    """
+    src = _read("src/static/js/effects.js")
+    idx = src.find("function setupCountUp")
+    assert idx >= 0, "setupCountUp 함수 부재 — 테스트 stale"
+    nxt = src.find("function ", idx + 1)
+    body = src[idx:nxt] if nxt > idx else src[idx:]
+    # cross-closure 소유 표식: 이미 바인딩된 노드는 skip (재-parse/재-pre-fill 차단)
+    # Cross-closure ownership stamp: skip already-bound nodes (block re-parse/re-pre-fill)
+    assert "dataset.cuBound" in body, (
+        "setupCountUp cross-closure 가드(dataset.cuBound) 누락 → hx-boost 재실행 시 다른 "
+        "클로저가 pre-fill된 '0'을 target으로 재캡처 → 개요 점수 '0/100' 고착 회귀 (2026-07-09 사고)"
+    )
+    # 가드는 early-return 형태여야 함 (바인딩된 노드는 처리 스킵)
+    # Guard must early-return so an already-bound node is skipped entirely
+    assert "if (el.dataset.cuBound) return" in body, (
+        "dataset.cuBound early-return 가드 누락 → 이미 바인딩된 노드 재처리(재-pre-fill) 차단 실패"
+    )

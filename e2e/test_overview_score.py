@@ -160,3 +160,47 @@ def test_overview_score_survives_double_init(seeded_page: Page, base_url: str):
     seeded_page.wait_for_timeout(1600)  # animateNumber(1100ms) + 여유
 
     expect(score).not_to_have_text("0/100", timeout=2000)
+
+
+@pytest.mark.e2e
+def test_overview_score_survives_single_nav_cross_closure(seeded_page: Page, base_url: str):
+    """단일 hx-boost nav(warmup 없이)로 개요 착지 시 score 가 "0/100" 에 고착되지 않아야 한다.
+
+    🔴 운영 사고(2026-07-09 사용자 보고): 설정/repo 등에서 상단 네비로 개요 이동 시 모든 카드
+    점수가 "0/100" 고착(등급 배지는 서버 렌더라 정상). 근본원인 = effects.js 는 <body> 외부
+    스크립트라 hx-boost body swap 시 (a) htmx:afterSettle 가 먼저 '이전 페이지 클로저'의 init 으로
+    새 개요 점수를 "0" pre-fill 하고, (b) 뒤늦게 async 재실행된 '새 IIFE 클로저'가 그 "0" 을
+    target 으로 재-parse(target=0) → 0→0 애니메이션으로 고착. seen(클로저별 WeakMap)이 못 막는
+    cross-closure target 오염이며, onceInView 안전망은 콜백 fire 만 보장하고 오염된 target 은
+    못 고친다. 수정 = setupCountUp 의 `dataset.cuBound` cross-closure 가드(최초 클로저만 소유).
+
+    기존 test_overview_score_survives_repo_to_overview_nav 는 3회 warmup 루프가 이 단일-nav race 를
+    마스킹했다(5/5 green — coverage gap). 이 테스트는 매 시행 fresh full-load → 단일 nav 로 race 를
+    노출한다. 간헐 race(수정 전 로컬 ~40-60% 고착)이므로 N 회 반복해 '전 시행 비고착'을 요구한다 —
+    수정 후 결정론적 통과, 수정 전 높은 확률로 최소 1회 고착(정적 백스톱 = test_hx_boost_listener_guards
+    ::test_setupcountup_has_cross_closure_guard).
+
+    Single-hop hx-boost nav (no warmup) must not leave the score stuck at "0/100" (cross-closure
+    count-up target corruption). Stochastic: N trials from a fresh full-load, all must be non-'0/100'.
+    """
+    db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
+    _seed_score(db_path, 85)
+    trials = 8
+    stuck = []
+    for i in range(trials):
+        # 매 시행 fresh full-load (새 JS 컨텍스트, 단일 closure) — 다음 nav 가 첫 hx-boost.
+        # settings 는 무거운 폼이라 스크립트 재실행 지연이 커 race 노출률이 높다(repro: settings ~62%).
+        seeded_page.goto(f"{base_url}/repos/owner%2Ftestrepo/settings")
+        seeded_page.wait_for_load_state("networkidle")
+        # 단일 hx-boost nav → 개요 (warmup 없음)
+        seeded_page.click(".nav-logo")
+        seeded_page.wait_for_url(lambda url: url.rstrip("/") == base_url.rstrip("/"), timeout=5000)
+        seeded_page.wait_for_selector(".repo-card__score")
+        seeded_page.wait_for_timeout(1500)  # animateNumber(1100ms) + 여유
+        txt = (seeded_page.locator(".repo-card__score").first.text_content() or "").strip()
+        if txt.startswith("0/100"):
+            stuck.append(i)
+    assert not stuck, (
+        f"{len(stuck)}/{trials} 단일 nav 시행에서 score '0/100' 고착 "
+        f"(cross-closure count-up race, stuck trials={stuck}) — dataset.cuBound 가드 회귀"
+    )
