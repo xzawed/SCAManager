@@ -33,14 +33,14 @@ def test_ai_review_group_hierarchy():
     )
 
 
-def test_ai_review_dependent_greyout_css_has():
-    """AI 리뷰 OFF 시 종속 블록(.ai-review-dependent) + 모델 선택(.ai-review-model) 모두 회색·비활성 = CSS :has() (JS 0)."""
-    # Grey-out on AI-off via CSS :has() — no JS handler. Fix M1: the selector is now a
-    # comma group so BOTH .ai-review-dependent AND .ai-review-model (the folded review_model
-    # select, moot when AI review is off) are greyed out.
+def test_ai_review_dependent_hidden_when_off_css_has():
+    """AI 리뷰 OFF 시 종속 블록(.ai-review-dependent) + 모델 선택(.ai-review-model) 모두 숨김 = CSS :has() (JS 0)."""
+    # Hide-on-AI-off via CSS :has() — no JS handler. The dependent (PR-comment toggle) + folded
+    # model select are display:none when AI review is off (consistent with the auto_merge /
+    # approve_mode hide-when-off pattern), so a disabled toggle shows no cluttering detail.
     html = _read()
     assert 'ai-review-group:has(' in html and 'ai_review_enabled"]:not(:checked)' in html, (
-        "CSS :has() 회색 셀렉터 없음 — .ai-review-group:has(input[name=ai_review_enabled]:not(:checked)) .ai-review-dependent"
+        "CSS :has() 숨김 셀렉터 없음 — .ai-review-group:has(input[name=ai_review_enabled]:not(:checked)) .ai-review-dependent"
     )
     m = re.search(
         r"\.ai-review-group:has\([^{]*ai_review_enabled[^{]*\)\s*\.ai-review-dependent\s*,\s*"
@@ -48,23 +48,28 @@ def test_ai_review_dependent_greyout_css_has():
         r"\{([^}]*)\}",
         html,
     )
-    assert m, "종속+모델 회색 규칙 셀렉터(콤마 그룹) 매칭 실패"
+    assert m, "종속+모델 숨김 규칙 셀렉터(콤마 그룹) 매칭 실패"
     # 비-공허(non-vacuous) 검증 — .ai-review-model 이 실제로 매칭 문자열 안에 포함됐는지 별도 재확인.
     # Non-vacuous check — re-assert .ai-review-model literally appears in the matched selector group.
     assert ".ai-review-model" in m.group(0), (
-        ".ai-review-model 이 AI OFF 시 회색 처리 셀렉터에 포함되지 않음 — 모델 선택이 여전히 활성 상태로 남음"
+        ".ai-review-model 이 AI OFF 시 숨김 셀렉터에 포함되지 않음 — 모델 선택이 여전히 노출됨"
     )
     body = m.group(1)
-    assert "pointer-events" in body and "opacity" in body, "회색(opacity)+비활성(pointer-events) 누락"
+    # 🔴 회색(opacity/pointer-events)이 아니라 완전 숨김(display:none) — 비활성 세부 노출 clutter 제거.
+    # Full hide (display:none), not grey-out — removes clutter of showing detail while disabled.
+    assert "display" in body and "none" in body, "숨김(display:none) 누락 — AI OFF 시 종속 세부 완전 숨김 의무"
+    assert "opacity" not in body and "pointer-events" not in body, (
+        "회색(opacity/pointer-events) 잔존 — 숨김(display:none)으로 교체 의무 (회색-보임 clutter 제거)"
+    )
 
 
 def test_pr_review_comment_not_disabled_attr():
-    """종속 회색은 pointer-events(시각)만 — pr_review_comment 는 disabled 속성 없이 폼 제출 정상."""
-    # Grey-out must NOT use the disabled attribute (value must still submit).
+    """종속 숨김은 display:none(값 보존) — pr_review_comment 는 disabled 속성 없이 폼 제출 정상."""
+    # Hide via display:none must NOT use the disabled attribute (value must still submit when re-shown).
     html = _read()
     m = re.search(r'<input[^>]*name="pr_review_comment"[^>]*>', html)
     assert m, "pr_review_comment input 없음"
-    assert "disabled" not in m.group(0), "pr_review_comment 에 disabled 속성 — 회색은 CSS pointer-events 로만"
+    assert "disabled" not in m.group(0), "pr_review_comment 에 disabled 속성 — 숨김은 CSS display:none 로만(값 보존)"
 
 
 def test_review_model_folded_into_ai_group():
