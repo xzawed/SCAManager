@@ -157,6 +157,13 @@
   .toggle-switch input:checked + .toggle-track { background: var(--success); border-color: var(--success); }
   .toggle-switch input:checked + .toggle-track::after { transform:translateX(20px); background: var(--btn-on-accent); }
 
+  /* AI 리뷰 그룹 — 종속(게시 위치) 들여쓰기 + AI 실행 OFF 시 회색·비활성 (CSS :has(), JS 0) */
+  /* AI-review group — indent the dependent (post location) + grey it out when the run toggle is off */
+  .ai-review-dependent { margin-left: 1.25rem; padding-left: .85rem; border-left: 2px solid var(--border-subtle); }
+  .ai-review-group:has(input[name="ai_review_enabled"]:not(:checked)) .ai-review-dependent {
+    opacity: .5; pointer-events: none;
+  }
+
   /* Gate mode buttons */
   .gate-btns { display:grid; grid-template-columns:repeat(3,1fr); gap:.4rem; margin-bottom:1rem; }
   .gate-mode-btn {
@@ -641,31 +648,37 @@
         </div>
         <div class="s-card-body">
 
-          {# Phase 2 PR-8 — i18n / Simple-mode visible: PR comment #}
-          <div class="toggle-row">
-            <div class="toggle-info">
-              <div class="t-title">{{ 'settings_page.pr_rules.pr_comment_title' | i18n_args(locale | default('ko')) }}</div>
-              <div class="t-desc">{{ 'settings_page.pr_rules.pr_comment_desc' | i18n_args(locale | default('ko')) }}</div>
+          {# AI 리뷰 그룹 — 상위(실행/비용 스위치) + 종속(게시 위치). 백엔드 종속 강제 아님(시각 안내). #}
+          {# AI-review group — parent (run/cost switch) + dependent (post location); visual hierarchy only. #}
+          <div class="ai-review-group">
+            {# 상위: AI 코드리뷰 실행 (ai_review_enabled) — 기존 659-669 블록 이동 #}
+            {# Parent: run AI code review (ai_review_enabled) — moved from former 659-669 block #}
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <div class="t-title">{{ 'settings_page.pr_rules.ai_review_title' | i18n_args(locale | default('ko')) }}</div>
+                <div class="t-desc">{{ 'settings_page.pr_rules.ai_review_desc' | i18n_args(locale | default('ko')) }}</div>
+              </div>
+              <label class="toggle-switch" aria-label="{{ 'settings_page.pr_rules.ai_review_title' | i18n_args(locale | default('ko')) }}">
+                <input type="checkbox" name="ai_review_enabled" value="on"
+                       {% if config.ai_review_enabled %}checked{% endif %}>
+                <span class="toggle-track"></span>
+              </label>
             </div>
-            <label class="toggle-switch" aria-label="{{ 'settings_page.pr_rules.pr_comment_title' | i18n_args(locale | default('ko')) }}">
-              <input type="checkbox" name="pr_review_comment" value="on"
-                     {% if config.pr_review_comment %}checked{% endif %}>
-              <span class="toggle-track"></span>
-            </label>
-          </div>
-
-          {# Task 2.4 — AI 리뷰 독립 토글 (프리셋 미관리, 비용 제어) #}
-          {# Task 2.4 — standalone AI-review toggle (not preset-managed, cost control) #}
-          <div class="toggle-row">
-            <div class="toggle-info">
-              <div class="t-title">{{ 'settings_page.pr_rules.ai_review_title' | i18n_args(locale | default('ko')) }}</div>
-              <div class="t-desc">{{ 'settings_page.pr_rules.ai_review_desc' | i18n_args(locale | default('ko')) }}</div>
+            {# 종속: 리뷰를 PR 댓글로 게시 (pr_review_comment) — 기존 645-655 블록 이동, 들여쓰기 #}
+            {# Dependent: post review as PR comment (pr_review_comment) — moved from former 645-655 block, indented #}
+            <div class="ai-review-dependent">
+              <div class="toggle-row">
+                <div class="toggle-info">
+                  <div class="t-title">{{ 'settings_page.pr_rules.pr_comment_title' | i18n_args(locale | default('ko')) }}</div>
+                  <div class="t-desc">{{ 'settings_page.pr_rules.pr_comment_desc' | i18n_args(locale | default('ko')) }}</div>
+                </div>
+                <label class="toggle-switch" aria-label="{{ 'settings_page.pr_rules.pr_comment_title' | i18n_args(locale | default('ko')) }}">
+                  <input type="checkbox" name="pr_review_comment" value="on"
+                         {% if config.pr_review_comment %}checked{% endif %}>
+                  <span class="toggle-track"></span>
+                </label>
+              </div>
             </div>
-            <label class="toggle-switch" aria-label="{{ 'settings_page.pr_rules.ai_review_title' | i18n_args(locale | default('ko')) }}">
-              <input type="checkbox" name="ai_review_enabled" value="on"
-                     {% if config.ai_review_enabled %}checked{% endif %}>
-              <span class="toggle-track"></span>
-            </label>
           </div>
 
           {# Simple-mode visible: auto-merge + threshold #}
