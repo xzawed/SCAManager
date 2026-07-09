@@ -43,9 +43,17 @@ def record(  # pylint: disable=too-many-arguments,too-many-locals
 
 
 def _owned_repo_ids_subquery(user_id: int):
-    """사용자 소유 repo id 서브쿼리 (dashboard owner 필터 방향과 동일).
-    Subquery of the user's owned repo ids (same direction as the dashboard owner filter)."""
-    return select(Repository.id).where(Repository.user_id == user_id)
+    """사용자 소유 repo id 서브쿼리 — 레거시 repo(user_id IS NULL) 포함, dashboard owner 필터와 동일 컨벤션
+    (`dashboard_service._apply_analysis_user_filter`/`_apply_merge_attempt_user_filter`, db.md: 레거시
+    repo 전역 노출). 레거시 repo 는 분석/머지 KPI 에는 이미 노출되므로 비용 KPI 에서만 누락되면
+    동일 대시보드 내 owner 시맨틱이 불일치한다.
+    Subquery of the user's owned repo ids — includes legacy repos (user_id IS NULL), matching the
+    dashboard owner-filter convention (`_apply_analysis_user_filter`/`_apply_merge_attempt_user_filter`,
+    db.md: legacy repos are globally visible). Legacy repos already show up in the analysis/merge
+    KPIs, so omitting them here alone would make owner semantics inconsistent on the same dashboard."""
+    return select(Repository.id).where(
+        (Repository.user_id == user_id) | (Repository.user_id.is_(None))
+    )
 
 
 def _window_cost_rows(  # pylint: disable=too-many-arguments

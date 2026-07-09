@@ -60,6 +60,24 @@ def test_user_cost_summary_by_model_owner_filter_delta(db):
     assert s["total_usd"] == pytest.approx(0.012)
 
 
+def test_user_cost_summary_includes_legacy_repo_cost(db):
+    """레거시 repo(user_id IS NULL) 소유 비용도 user_cost_summary 에 포함 — dashboard KPI 와 동일 컨벤션.
+    Legacy-repo (user_id IS NULL) owned cost is included in user_cost_summary — matches the
+    dashboard KPI convention (`_apply_analysis_user_filter`/`_apply_merge_attempt_user_filter`
+    both include `Repository.user_id.is_(None)`); without this, a legacy repo would show up in
+    the analysis/merge KPIs but its Anthropic cost would be silently missing from this one."""
+    _seed_user_repo(db)
+    legacy_repo = Repository(id=11, full_name="legacy/repo", user_id=None)
+    db.add(legacy_repo); db.commit()
+    claude_api_cost_repo.record(db, model="claude-sonnet-4-6", status="success",
+        input_tokens=0, output_tokens=0, cache_read_tokens=0, cache_creation_tokens=0,
+        cost_usd=0.03, duration_ms=1, repo_id=11, user_id=None, now=NOW)  # 레거시 repo 소유 비용 — 포함돼야 함
+
+    s = claude_api_cost_repo.user_cost_summary(db, user_id=7, days=30, now=NOW)
+    assert s["call_count"] == 1
+    assert s["total_usd"] == pytest.approx(0.03)
+
+
 def test_user_cost_summary_window_boundaries_match_dashboard_kpi_convention(db):
     """윈도우 경계 3종 — dashboard_kpi 컨벤션(하한 항상 포함) 회귀 가드.
     Three window-boundary cases — regression guard for the dashboard_kpi convention
