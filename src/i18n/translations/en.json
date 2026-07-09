@@ -499,7 +499,10 @@
       "th_preset": "Preset",
       "channel_unchanged": "This preset does not modify notification channel URLs.",
       "apply_btn": "Apply this preset →",
-      "applied_label": "✅ Applied — please click Save"
+      "applied_label": "✅ Applied — please click Save",
+      "minimal_diff_summary": "Minimal — PR review comment only; no auto approve/merge",
+      "standard_diff_summary": "Standard = Minimal + auto-approve + commit comment + deploy alerts",
+      "strict_diff_summary": "Strict = Standard + auto-merge + issue creation + higher bar (85)"
     },
     "pr_rules": {
       "header": "PR Behavior Rules",

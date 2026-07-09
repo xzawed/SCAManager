@@ -539,6 +539,9 @@
               </div>
             </summary>
             <div class="preset-detail-body">
+              <p class="preset-diff-summary" style="font-size:12px;color:var(--text-2);margin:0 0 .6rem;line-height:1.5;">
+                {{ 'settings_page.preset_card.minimal_diff_summary' | i18n_args(locale | default('ko')) }}
+              </p>
               <table class="preset-table">
                 <thead>
                   <tr style="font-size:11px;color:var(--text-2);font-weight:600;">
@@ -574,6 +577,9 @@
               </div>
             </summary>
             <div class="preset-detail-body">
+              <p class="preset-diff-summary" style="font-size:12px;color:var(--text-2);margin:0 0 .6rem;line-height:1.5;">
+                {{ 'settings_page.preset_card.standard_diff_summary' | i18n_args(locale | default('ko')) }}
+              </p>
               <table class="preset-table">
                 <thead>
                   <tr style="font-size:11px;color:var(--text-2);font-weight:600;">
@@ -609,6 +615,9 @@
               </div>
             </summary>
             <div class="preset-detail-body">
+              <p class="preset-diff-summary" style="font-size:12px;color:var(--text-2);margin:0 0 .6rem;line-height:1.5;">
+                {{ 'settings_page.preset_card.strict_diff_summary' | i18n_args(locale | default('ko')) }}
+              </p>
               <table class="preset-table">
                 <thead>
                   <tr style="font-size:11px;color:var(--text-2);font-weight:600;">
@@ -1277,6 +1286,10 @@
 
     let html = '';
     Object.keys(labels).forEach(function(key) {
+      // 무효(inert) 임계값 생략 — mode=disabled 면 approve/reject, auto_merge=off 면 merge 기준 미노출
+      // Omit inert thresholds: approve/reject when mode is disabled, merge when auto_merge is off
+      if ((key === 'approve_threshold' || key === 'reject_threshold') && p.approve_mode === 'disabled') return;
+      if (key === 'merge_threshold' && p.auto_merge === false) return;
       const cur = curVal(key);
       const next = p[key];
       const curNorm = (cur === 'true') ? true : (cur === 'false') ? false :

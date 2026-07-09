@@ -499,7 +499,10 @@
       "th_preset": "프리셋값",
       "channel_unchanged": "알림 채널 URL은 이 프리셋이 변경하지 않습니다.",
       "apply_btn": "이 프리셋 적용 →",
-      "applied_label": "✅ 적용됨 — 저장 버튼을 눌러주세요"
+      "applied_label": "✅ 적용됨 — 저장 버튼을 눌러주세요",
+      "minimal_diff_summary": "최소 개입 — PR 리뷰 댓글만, 자동 승인·머지 없음",
+      "standard_diff_summary": "표준 = 최소 + 자동 승인 + 커밋 코멘트 + 배포 알림",
+      "strict_diff_summary": "엄격 = 표준 + 자동 머지 + Issue 생성 + 높은 기준점(85)"
     },
     "pr_rules": {
       "header": "PR 동작 규칙",

@@ -499,7 +499,10 @@
       "th_preset": "プリセット値",
       "channel_unchanged": "通知チャンネル URL はこのプリセットでは変更しません。",
       "apply_btn": "このプリセットを適用 →",
-      "applied_label": "✅ 適用済み — 保存ボタンを押してください"
+      "applied_label": "✅ 適用済み — 保存ボタンを押してください",
+      "minimal_diff_summary": "最小 — PR レビューコメントのみ、自動承認・マージなし",
+      "standard_diff_summary": "標準 = 最小 + 自動承認 + コミットコメント + デプロイ通知",
+      "strict_diff_summary": "厳格 = 標準 + 自動マージ + Issue 作成 + 高い基準(85)"
     },
     "pr_rules": {
       "header": "PR 動作ルール",

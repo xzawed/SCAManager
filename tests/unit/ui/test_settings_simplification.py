@@ -83,3 +83,29 @@ def test_review_model_orphan_card_removed():
     header_blocks = re.findall(r'<div class="s-card-hdr[^"]*"[^>]*>(.*?)</div>', html, re.DOTALL)
     orphan_headers = [h for h in header_blocks if "settings.model_card_title" in h]
     assert not orphan_headers, "review_model 단독 카드 헤더(model_card_title)가 여전히 존재 — 흡수 미완"
+
+
+def test_preset_diff_omits_inert_thresholds():
+    """renderPresetDiff 가 approve_mode=disabled 프리셋에서 approve/reject 임계 행을 생략한다."""
+    # The diff JS skips approve/reject threshold rows when the preset's mode is 'disabled'.
+    html = _read()
+    i_fn = html.find("function renderPresetDiff")
+    assert i_fn != -1, "renderPresetDiff 없음 — 테스트 stale"
+    body = html[i_fn:html.find("function applyPreset", i_fn)]
+    # disabled 시 임계 skip 가드 존재 (approve_mode 값 'disabled' 참조 + threshold 키 skip)
+    assert "disabled" in body and "approve_threshold" in body and "reject_threshold" in body, (
+        "임계값 생략 로직 없음 — mode=disabled 시 approve/reject_threshold 행 skip 필요"
+    )
+    assert re.search(r"approve_mode\s*===?\s*'disabled'|p\.approve_mode\s*===?\s*'disabled'", body), (
+        "approve_mode=='disabled' 조건 가드 부재"
+    )
+
+
+def test_preset_diff_summary_keys_exist_3locales():
+    """프리셋별 1줄 차이 요약 i18n 키가 ko/en/ja 3로케일에 존재."""
+    import json
+    for loc in ("ko", "en", "ja"):
+        data = json.loads(Path(f"src/i18n/translations/{loc}.json").read_text(encoding="utf-8"))
+        pc = data.get("settings_page", {}).get("preset_card", {})
+        for k in ("minimal_diff_summary", "standard_diff_summary", "strict_diff_summary"):
+            assert k in pc and pc[k].strip(), f"{loc}: preset_card.{k} 누락/빈값"
