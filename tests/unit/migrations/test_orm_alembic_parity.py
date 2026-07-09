@@ -47,6 +47,26 @@ import src.models.repository  # noqa: F401  pylint: disable=unused-import
 import src.models.security_alert_log  # noqa: F401  pylint: disable=unused-import
 import src.models.user  # noqa: F401  pylint: disable=unused-import
 
+# 🔴 CodeQL py/unused-import(#542/#543) 봉인 — 위 side-effect 모듈 import 를 실참조로 'used' 처리.
+# 각 `# noqa: F401` 은 flake8 만 억제하고 CodeQL py/unused-import(별도 룰)는 명시 참조로만 해소된다
+# (alembic/env.py `_REGISTERED_MODELS` 동일 패턴). 아래 검증이 튜플을 읽어 py/unused-global 도 회피하며,
+# import 부작용(Base.metadata 테이블 등록) 소실 시 loud-fail 로 잡아 autogenerate drop_table 함정을 잠근다.
+# 🔴 Seal CodeQL py/unused-import (#542/#543): reference every side-effect module import so CodeQL
+# treats them as used (`# noqa: F401` silences flake8 only). Same pattern as alembic/env.py's
+# _REGISTERED_MODELS; the check below reads the tuple (avoids an unused-global alert) and loud-fails
+# if the import side-effect (table registration into Base.metadata) ever breaks.
+_REGISTERED_MODEL_MODULES = (
+    src.models.analysis, src.models.analysis_feedback, src.models.claude_api_call,
+    src.models.gate_decision, src.models.insight_narrative_cache, src.models.issue_registration,
+    src.models.merge_attempt, src.models.merge_retry, src.models.repo_config,
+    src.models.repository, src.models.security_alert_log, src.models.user,
+)
+if len(_REGISTERED_MODEL_MODULES) != 12 or not Base.metadata.tables:
+    raise RuntimeError(
+        "ORM 모델 side-effect import 소실 — Base.metadata 미완성 (autogenerate drop 위험) / "
+        "ORM model side-effect imports lost — Base.metadata incomplete"
+    )
+
 
 # 방언 정규화 차이로 FP 인 attribute-level diff op (type/default 은 opts 로 이미 미생성).
 # Attribute-level diff ops that are dialect-normalization FPs (type/default already disabled via opts).
