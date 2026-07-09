@@ -157,6 +157,14 @@
   .toggle-switch input:checked + .toggle-track { background: var(--success); border-color: var(--success); }
   .toggle-switch input:checked + .toggle-track::after { transform:translateX(20px); background: var(--btn-on-accent); }
 
+  /* AI 리뷰 그룹 — 종속(게시 위치) 들여쓰기 + AI 실행 OFF 시 회색·비활성 (CSS :has(), JS 0) */
+  /* AI-review group — indent the dependent (post location) + grey it out when the run toggle is off */
+  .ai-review-dependent { margin-left: 1.25rem; padding-left: .85rem; border-left: 2px solid var(--border-subtle); }
+  .ai-review-group:has(input[name="ai_review_enabled"]:not(:checked)) .ai-review-dependent,
+  .ai-review-group:has(input[name="ai_review_enabled"]:not(:checked)) .ai-review-model {
+    opacity: .5; pointer-events: none;
+  }
+
   /* Gate mode buttons */
   .gate-btns { display:grid; grid-template-columns:repeat(3,1fr); gap:.4rem; margin-bottom:1rem; }
   .gate-mode-btn {
@@ -532,6 +540,9 @@
               </div>
             </summary>
             <div class="preset-detail-body">
+              <p class="preset-diff-summary" style="font-size:12px;color:var(--text-2);margin:0 0 .6rem;line-height:1.5;">
+                {{ 'settings_page.preset_card.minimal_diff_summary' | i18n_args(locale | default('ko')) }}
+              </p>
               <table class="preset-table">
                 <thead>
                   <tr style="font-size:11px;color:var(--text-2);font-weight:600;">
@@ -567,6 +578,9 @@
               </div>
             </summary>
             <div class="preset-detail-body">
+              <p class="preset-diff-summary" style="font-size:12px;color:var(--text-2);margin:0 0 .6rem;line-height:1.5;">
+                {{ 'settings_page.preset_card.standard_diff_summary' | i18n_args(locale | default('ko')) }}
+              </p>
               <table class="preset-table">
                 <thead>
                   <tr style="font-size:11px;color:var(--text-2);font-weight:600;">
@@ -602,6 +616,9 @@
               </div>
             </summary>
             <div class="preset-detail-body">
+              <p class="preset-diff-summary" style="font-size:12px;color:var(--text-2);margin:0 0 .6rem;line-height:1.5;">
+                {{ 'settings_page.preset_card.strict_diff_summary' | i18n_args(locale | default('ko')) }}
+              </p>
               <table class="preset-table">
                 <thead>
                   <tr style="font-size:11px;color:var(--text-2);font-weight:600;">
@@ -641,31 +658,50 @@
         </div>
         <div class="s-card-body">
 
-          {# Phase 2 PR-8 — i18n / Simple-mode visible: PR comment #}
-          <div class="toggle-row">
-            <div class="toggle-info">
-              <div class="t-title">{{ 'settings_page.pr_rules.pr_comment_title' | i18n_args(locale | default('ko')) }}</div>
-              <div class="t-desc">{{ 'settings_page.pr_rules.pr_comment_desc' | i18n_args(locale | default('ko')) }}</div>
+          {# AI 리뷰 그룹 — 상위(실행/비용 스위치) + 종속(게시 위치). 백엔드 종속 강제 아님(시각 안내). #}
+          {# AI-review group — parent (run/cost switch) + dependent (post location); visual hierarchy only. #}
+          <div class="ai-review-group">
+            {# 상위: AI 코드리뷰 실행 (ai_review_enabled) — 기존 659-669 블록 이동 #}
+            {# Parent: run AI code review (ai_review_enabled) — moved from former 659-669 block #}
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <div class="t-title">{{ 'settings_page.pr_rules.ai_review_title' | i18n_args(locale | default('ko')) }}</div>
+                <div class="t-desc">{{ 'settings_page.pr_rules.ai_review_desc' | i18n_args(locale | default('ko')) }}</div>
+              </div>
+              <label class="toggle-switch" aria-label="{{ 'settings_page.pr_rules.ai_review_title' | i18n_args(locale | default('ko')) }}">
+                <input type="checkbox" name="ai_review_enabled" value="on"
+                       {% if config.ai_review_enabled %}checked{% endif %}>
+                <span class="toggle-track"></span>
+              </label>
             </div>
-            <label class="toggle-switch" aria-label="{{ 'settings_page.pr_rules.pr_comment_title' | i18n_args(locale | default('ko')) }}">
-              <input type="checkbox" name="pr_review_comment" value="on"
-                     {% if config.pr_review_comment %}checked{% endif %}>
-              <span class="toggle-track"></span>
-            </label>
-          </div>
+            {# 종속: 리뷰를 PR 댓글로 게시 (pr_review_comment) — 기존 645-655 블록 이동, 들여쓰기 #}
+            {# Dependent: post review as PR comment (pr_review_comment) — moved from former 645-655 block, indented #}
+            <div class="ai-review-dependent">
+              <div class="toggle-row">
+                <div class="toggle-info">
+                  <div class="t-title">{{ 'settings_page.pr_rules.pr_comment_title' | i18n_args(locale | default('ko')) }}</div>
+                  <div class="t-desc">{{ 'settings_page.pr_rules.pr_comment_desc' | i18n_args(locale | default('ko')) }}</div>
+                </div>
+                <label class="toggle-switch" aria-label="{{ 'settings_page.pr_rules.pr_comment_title' | i18n_args(locale | default('ko')) }}">
+                  <input type="checkbox" name="pr_review_comment" value="on"
+                         {% if config.pr_review_comment %}checked{% endif %}>
+                  <span class="toggle-track"></span>
+                </label>
+              </div>
+            </div>
 
-          {# Task 2.4 — AI 리뷰 독립 토글 (프리셋 미관리, 비용 제어) #}
-          {# Task 2.4 — standalone AI-review toggle (not preset-managed, cost control) #}
-          <div class="toggle-row">
-            <div class="toggle-info">
-              <div class="t-title">{{ 'settings_page.pr_rules.ai_review_title' | i18n_args(locale | default('ko')) }}</div>
-              <div class="t-desc">{{ 'settings_page.pr_rules.ai_review_desc' | i18n_args(locale | default('ko')) }}</div>
+            {# 고급: AI 리뷰 모델 선택 (review_model) — 기존 단독 카드에서 흡수, form=settingsForm 유지 #}
+            {# Advanced: AI review model select, folded from the standalone card (form assoc preserved). #}
+            <div class="ai-review-model adv-only" style="margin-top:.6rem;">
+              <select name="review_model" form="settingsForm" class="field-input" style="max-width:420px;"
+                      aria-label="{{ 'settings.model_card_title' | i18n_args(locale | default('ko')) }}">
+                <option value="">{{ 'settings.use_global_default' | i18n_args(locale | default('ko')) }}</option>
+                {% for m in claude_models %}
+                <option value="{{ m.id }}" {% if config.review_model == m.id %}selected{% endif %}>{{ m.label }}</option>
+                {% endfor %}
+              </select>
+              <span class="field-hint">{{ 'settings.model_hint' | i18n_args(locale | default('ko')) }}</span>
             </div>
-            <label class="toggle-switch" aria-label="{{ 'settings_page.pr_rules.ai_review_title' | i18n_args(locale | default('ko')) }}">
-              <input type="checkbox" name="ai_review_enabled" value="on"
-                     {% if config.ai_review_enabled %}checked{% endif %}>
-              <span class="toggle-track"></span>
-            </label>
           </div>
 
           {# Simple-mode visible: auto-merge + threshold #}
@@ -791,8 +827,10 @@
       </div>
     </div>
 
-    <!-- ⑤ 이벤트 후 자동화 (Push 이벤트 + Railway 배포) — 전체 .adv-only 카드 -->
-    <!-- ⑤ Post-event Automation (push events + Railway deploy) — entire card .adv-only -->
+    <!-- ⑤ 이벤트 후 자동화 (Push 이벤트) — 전체 .adv-only 카드. Railway 배포 알림은
+         railway-group(카드 ⑥ 인바운드) 으로 이동 — Task 4(B-2). -->
+    <!-- ⑤ Post-event Automation (push events) — entire card .adv-only. The Railway
+         deploy-alert toggle moved to the railway-group (inbound card) — Task 4 (B-2). -->
     <!-- 그룹 60 (2026-05-02) 사용자 결정 정정: 팀 리더보드 기능 폐기 (alembic 0025) -->
     <div class="settings-grid adv-only">
       <div class="s-card">
@@ -829,19 +867,8 @@
             </label>
           </div>
 
-          <div class="s-divider"></div>
-          <div class="s-section-label">{{ 'settings_page.post_event.section_railway' | i18n_args(locale | default('ko')) }}</div>
-          <div class="toggle-row">
-            <div class="toggle-info">
-              <div class="t-title">{{ 'settings_page.post_event.railway_alerts_title' | i18n_args(locale | default('ko')) }}</div>
-              <div class="t-desc">{{ 'settings_page.post_event.railway_alerts_desc' | i18n_args(locale | default('ko')) | safe }}</div>
-            </div>
-            <label class="toggle-switch" aria-label="{{ 'settings_page.post_event.railway_alerts_title' | i18n_args(locale | default('ko')) }}">
-              <input type="checkbox" name="railway_deploy_alerts" id="railway_deploy_alerts" value="on"
-                     {% if config.railway_deploy_alerts %}checked{% endif %}>
-              <span class="toggle-track"></span>
-            </label>
-          </div>
+          {# railway_deploy_alerts 토글은 railway-group(카드 ⑥ 인바운드) 으로 이동 — Task 4(B-2).
+             The railway_deploy_alerts toggle moved to the railway-group (inbound card) — Task 4 (B-2). #}
 
           {# 팀 리더보드 공개 — 그룹 60 사용자 결정 정정 (2026-05-02) 으로 폐기.
              leaderboard() 함수 (Phase 1 PR 3) + leaderboard_opt_in 컬럼 (alembic 0025) 모두 폐기.
@@ -1054,88 +1081,103 @@
         {{ 'settings_page.inbound.behavior_notice' | i18n_args(locale | default('ko')) | safe }}
       </p>
 
-      <div class="s-section-label">{{ 'settings_page.inbound.section_github_webhook' | i18n_args(locale | default('ko')) }}</div>
-      <div class="hook-btns" style="margin-bottom:.5rem;">
-        <button type="submit" class="hook-btn" form="reinstall_webhook_form"
-                data-reinstall-webhook>{{ 'settings_page.inbound.github_reinstall_btn' | i18n_args(locale | default('ko')) }}</button>
-      </div>
-      <span class="field-hint">{{ 'settings_page.inbound.github_reinstall_hint' | i18n_args(locale | default('ko')) }}</span>
+      {# 일회성 셋업 액션(Webhook 재등록·Hook 재커밋)을 접힘 <details> 로 분리 —
+         저장 설정(Railway 토큰 등)과 구분해 카드를 간소화 (Task 5 / B-3).
+         Moved the one-time setup actions (webhook re-register, hook re-commit)
+         into a collapsed <details> — separates them visually from saved
+         settings below (Task 5 / B-3). #}
+      <details class="setup-actions" style="margin-top:.5rem;">
+        <summary class="danger-summary" style="color:var(--text-2);">
+          {{ 'settings_page.inbound.setup_actions_summary' | i18n_args(locale | default('ko')) }}
+        </summary>
+        <div style="padding-top:.6rem;">
+          <div class="s-section-label">{{ 'settings_page.inbound.section_github_webhook' | i18n_args(locale | default('ko')) }}</div>
+          <div class="hook-btns" style="margin-bottom:.5rem;">
+            <button type="submit" class="hook-btn" form="reinstall_webhook_form"
+                    data-reinstall-webhook>{{ 'settings_page.inbound.github_reinstall_btn' | i18n_args(locale | default('ko')) }}</button>
+          </div>
+          <span class="field-hint">{{ 'settings_page.inbound.github_reinstall_hint' | i18n_args(locale | default('ko')) }}</span>
+
+          <div class="s-divider"></div>
+          <div class="s-section-label">{{ 'settings_page.inbound.section_cli_hook' | i18n_args(locale | default('ko')) }}</div>
+          {% if hook_ok %}
+          <div class="hook-alert ok">{{ 'settings_page.inbound.hook_ok' | i18n_args(locale | default('ko')) | safe }}</div>
+          {% endif %}
+          {% if hook_fail %}
+          <div class="hook-alert fail">{{ 'settings_page.inbound.hook_fail' | i18n_args(locale | default('ko')) }}</div>
+          {% endif %}
+          <div class="hook-code">git pull &amp;&amp; bash .scamanager/install-hook.sh</div>
+          <div class="hook-btns">
+            <button type="submit" class="hook-btn" form="reinstall_hook_form">{{ 'settings_page.inbound.hook_recommit_btn' | i18n_args(locale | default('ko')) }}</button>
+          </div>
+        </div>
+      </details>
 
       <div class="s-divider"></div>
-      <div class="s-section-label">{{ 'settings_page.inbound.section_cli_hook' | i18n_args(locale | default('ko')) }}</div>
-      {% if hook_ok %}
-      <div class="hook-alert ok">{{ 'settings_page.inbound.hook_ok' | i18n_args(locale | default('ko')) | safe }}</div>
-      {% endif %}
-      {% if hook_fail %}
-      <div class="hook-alert fail">{{ 'settings_page.inbound.hook_fail' | i18n_args(locale | default('ko')) }}</div>
-      {% endif %}
-      <div class="hook-code">git pull &amp;&amp; bash .scamanager/install-hook.sh</div>
-      <div class="hook-btns">
-        <button type="submit" class="hook-btn" form="reinstall_hook_form">{{ 'settings_page.inbound.hook_recommit_btn' | i18n_args(locale | default('ko')) }}</button>
-      </div>
 
-      <div class="s-divider"></div>
-
-      <div class="s-section-label">
-        <span class="conn-dot {% if railway_api_token_set %}is-on{% else %}is-off{% endif %}"></span>
-        {{ 'settings_page.inbound.section_railway_token' | i18n_args(locale | default('ko')) }}
-      </div>
-      <div class="field-row">
-        <div class="masked-field">
-          <input class="field-input" type="password" name="railway_api_token"
-                 form="settingsForm"
-                 aria-label="{{ 'settings_page.inbound.section_railway_token' | i18n_args(locale | default('ko')) }}"
-                 placeholder="{{ 'settings_page.inbound.railway_token_placeholder' | i18n_args(locale | default('ko')) }}"
-                 value="{{ '****' if railway_api_token_set else '' }}"
-                 autocomplete="off">
-          <button type="button" class="mask-toggle" onclick="toggleFieldMask(this)"
-                  aria-label="{{ 'settings_page.notify.mask_aria' | i18n_args(locale | default('ko')) }}">👁️</button>
+      <div class="railway-group">
+        <div class="s-section-label">
+          <span class="conn-dot {% if railway_api_token_set %}is-on{% else %}is-off{% endif %}"></span>
+          {{ 'settings_page.inbound.section_railway_token' | i18n_args(locale | default('ko')) }}
         </div>
-        <span class="field-hint">{{ 'settings_page.inbound.railway_token_hint' | i18n_args(locale | default('ko')) }}</span>
-      </div>
-
-      <div class="s-section-label" style="margin-top:.85rem">
-        <span class="conn-dot {% if railway_webhook_url %}is-on{% else %}is-off{% endif %}"></span>
-        {{ 'settings_page.inbound.section_railway_webhook' | i18n_args(locale | default('ko')) }}
-      </div>
-      {% if railway_webhook_url %}
-      <div class="field-row">
-        <div style="display:flex;gap:.5rem;align-items:center">
-          <input type="text" readonly class="field-input" id="railway-webhook-url"
-                 aria-label="{{ 'settings_page.inbound.section_railway_webhook' | i18n_args(locale | default('ko')) }}"
-                 value="{{ railway_webhook_url }}" style="font-family:monospace;font-size:12px;flex:1">
-          <button type="button" class="hook-btn"
-                  onclick="navigator.clipboard.writeText(document.getElementById('railway-webhook-url').value)">📋</button>
+        <div class="field-row">
+          <div class="masked-field">
+            <input class="field-input" type="password" name="railway_api_token"
+                   form="settingsForm"
+                   aria-label="{{ 'settings_page.inbound.section_railway_token' | i18n_args(locale | default('ko')) }}"
+                   placeholder="{{ 'settings_page.inbound.railway_token_placeholder' | i18n_args(locale | default('ko')) }}"
+                   value="{{ '****' if railway_api_token_set else '' }}"
+                   autocomplete="off">
+            <button type="button" class="mask-toggle" onclick="toggleFieldMask(this)"
+                    aria-label="{{ 'settings_page.notify.mask_aria' | i18n_args(locale | default('ko')) }}">👁️</button>
+          </div>
+          <span class="field-hint">{{ 'settings_page.inbound.railway_token_hint' | i18n_args(locale | default('ko')) }}</span>
         </div>
-        <span class="field-hint">{{ 'settings_page.inbound.railway_webhook_hint' | i18n_args(locale | default('ko')) }}</span>
-      </div>
-      {% else %}
-      <span class="field-hint">{{ 'settings_page.inbound.railway_webhook_pending' | i18n_args(locale | default('ko')) }}</span>
-      {% endif %}
 
-    </div>
-  </div>
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <div class="t-title">{{ 'settings_page.post_event.railway_alerts_title' | i18n_args(locale | default('ko')) }}</div>
+            <div class="t-desc">{{ 'settings_page.post_event.railway_alerts_desc' | i18n_args(locale | default('ko')) | safe }}</div>
+          </div>
+          <label class="toggle-switch" aria-label="{{ 'settings_page.post_event.railway_alerts_title' | i18n_args(locale | default('ko')) }}">
+            <input type="checkbox" name="railway_deploy_alerts" id="railway_deploy_alerts" value="on"
+                   form="settingsForm"
+                   {% if config.railway_deploy_alerts %}checked{% endif %}>
+            <span class="toggle-track"></span>
+          </label>
+        </div>
 
-  {# AI 리뷰 모델 선택 카드 — Alembic 0032 / 위험 구역 바로 위 #}
-  <div class="s-card adv-only" style="margin-bottom:1rem;">
-    <div class="s-card-hdr" style="background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 80%, #000), var(--accent));">
-      <span class="hdr-icon">🤖</span>
-      <span class="hdr-title">{{ 'settings.model_card_title' | i18n_args(locale | default('ko')) }}</span>
-      <span class="hdr-badge">{{ 'settings.badge_advanced' | i18n_args(locale | default('ko')) }}</span>
-    </div>
-    <div class="s-card-body">
-      <div class="field-row">
-        <select name="review_model" form="settingsForm" class="field-input" style="max-width:420px;"
-                aria-label="{{ 'settings.model_card_title' | i18n_args(locale | default('ko')) }}">
-          <option value="">{{ 'settings.use_global_default' | i18n_args(locale | default('ko')) }}</option>
-          {% for m in claude_models %}
-          <option value="{{ m.id }}" {% if config.review_model == m.id %}selected{% endif %}>{{ m.label }}</option>
-          {% endfor %}
-        </select>
-        <span class="field-hint">
-          {{ 'settings.model_hint' | i18n_args(locale | default('ko')) }}
-        </span>
+        <div class="s-section-label" style="margin-top:.85rem">
+          <span class="conn-dot {% if railway_webhook_url %}is-on{% else %}is-off{% endif %}"></span>
+          {{ 'settings_page.inbound.section_railway_webhook' | i18n_args(locale | default('ko')) }}
+        </div>
+        {% if railway_webhook_url %}
+        <div class="field-row">
+          <div style="display:flex;gap:.5rem;align-items:center">
+            <input type="text" readonly class="field-input" id="railway-webhook-url"
+                   aria-label="{{ 'settings_page.inbound.section_railway_webhook' | i18n_args(locale | default('ko')) }}"
+                   value="{{ railway_webhook_url }}" style="font-family:monospace;font-size:12px;flex:1">
+            <button type="button" class="hook-btn"
+                    onclick="navigator.clipboard.writeText(document.getElementById('railway-webhook-url').value)">📋</button>
+          </div>
+          <span class="field-hint">{{ 'settings_page.inbound.railway_webhook_hint' | i18n_args(locale | default('ko')) }}</span>
+        </div>
+        {% else %}
+        <span class="field-hint">{{ 'settings_page.inbound.railway_webhook_pending' | i18n_args(locale | default('ko')) }}</span>
+        {% endif %}
+        {# Railway 연동 블록(Task 4/B-2, 게이팅 제거 정정): 토큰·배포 알림 토글(카드 ⑤ post-event 에서 이동)·
+           Webhook URL 섹션 모두 Railway API 토큰 설정 여부와 무관하게 상시 노출 — 배포 알림은
+           인바운드 Webhook 토큰으로 동작하며 API 토큰을 요구하지 않으므로, 토큰 미설정 상태에서도
+           설정 가능해야 한다(토큰-비의존 셋업 흐름 보존). Webhook URL 값 유무만 내부적으로
+           분기(원본 동작 유지). #}
+        {# Railway integration block (Task 4/B-2, gating removed): the token input, the
+           deploy-alert toggle (moved from the post-event card), and the webhook URL section
+           are all shown regardless of whether the Railway API token is set — deploy alerts
+           run off the inbound webhook token, not the API token, so gating them behind it
+           blocked the legitimate token-free setup flow. Only the presence of the webhook
+           URL value still branches internally (original, unchanged behavior). #}
       </div>
+
     </div>
   </div>
 
@@ -1274,6 +1316,10 @@
 
     let html = '';
     Object.keys(labels).forEach(function(key) {
+      // 무효(inert) 임계값 생략 — mode=disabled 면 approve/reject, auto_merge=off 면 merge 기준 미노출
+      // Omit inert thresholds: approve/reject when mode is disabled, merge when auto_merge is off
+      if ((key === 'approve_threshold' || key === 'reject_threshold') && p.approve_mode === 'disabled') return;
+      if (key === 'merge_threshold' && p.auto_merge === false) return;
       const cur = curVal(key);
       const next = p[key];
       const curNorm = (cur === 'true') ? true : (cur === 'false') ? false :

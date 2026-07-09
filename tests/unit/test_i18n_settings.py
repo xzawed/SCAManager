@@ -12,7 +12,7 @@ import pytest
 _TRANS_DIR = pathlib.Path("src/i18n/translations")
 _LOCALES = ["ko", "en", "ja"]
 _KEYS = [
-    "model_card_title", "badge_advanced", "use_global_default",
+    "model_card_title", "use_global_default",
     "preset_minimal", "preset_standard", "preset_strict",
     "field_pr_review_comment", "field_commit_comment", "field_create_issue",
     "field_railway_deploy_alerts", "field_approve_mode", "field_auto_merge",
