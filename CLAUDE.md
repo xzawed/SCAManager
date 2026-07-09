@@ -318,9 +318,10 @@ Why + How to apply (자가 검토 4 자문) 상세: [.claude/policies/active.md#
 
 ### 작업 시작 전 필수 체크리스트 (매 작업마다)
 
-모든 작업 착수 전 아래 다섯 가지를 순서대로 확인한다. 30초면 충분하다.
+모든 작업 착수 전 아래 여섯 가지를 순서대로 확인한다. 30초면 충분하다.
 
 ```bash
+codex exec -s read-only --skip-git-repo-check 'reply OK' </dev/null  # 🔴 정책18 turn-0 Codex 가용 probe (exit 0=가용→mutual 의무 / cp949 stderr noise 무시). 정적 '부재' 단정 금지 — 실측이 단일 권위 (2026-07-09 P0: 거짓 waiver 12 PR 재발 차단)
 gh run list --limit 3                                       # CI status (기존 vs 신규 실패 구분)
 gh api repos/xzawed/SCAManager/code-scanning/alerts \      # Code Scanning open alert 카운트 (정책 14)
   --jq '[.[] | select(.state=="open")] | length'            # CI/auth 부재 시 GitHub Security 탭 직접 확인
@@ -354,6 +355,7 @@ GitHub Code Scanning 점검 detail 절차 + 운영 통합 = `docs/runbooks/opera
 - **Hook 신뢰**: `src/` 파일 편집 후 PostToolUse Hook이 자동 실행하는 pytest 결과를 확인한다. 실패 시 다음 단계로 진행하지 않는다.
 - **Phase 완료 조건**: 테스트 전체 통과 + `/lint` 통과 + (파이프라인 변경 시 `pipeline-reviewer` 승인) 세 조건이 모두 충족될 때만 Phase 완료를 선언한다.
 - **완료 시 필수 6-step**: 작업이 완료되면 반드시 ① 커밋 → ② Codex 검증 의뢰 (push 전, 정책 18) + **push 전 `pytest tests/unit` 전체 통과 실측** (영역 서브셋 대체 금지 — 정책 18 §2 게이트, #1041 6-fail 학습) → ③ `git push` → ④ PR 생성(`gh pr create`) — **PR 본문에 `## 🔍 Codex 검증 의뢰 (push 전, 정책 18)` 섹션 필수 포함** (`.github/pull_request_template.md` 자동 삽입 또는 수동 추가) → ⑤ `docs/STATE.md` 수치 갱신 + `docs/cycle-history.md` 사이클 이력 동기화 → ⑥ **docs/architecture.md 동기화** (신규 파일 추가·삭제·이름 변경 시 `src/` 트리와 `### 핵심 데이터 흐름` 내 언급 갱신) 를 순서대로 수행한다. 예외 없음.
+  - 🔴 **⑤ 배치-PR 이월 분기 (2026-07-09 rank6 — 병렬 STATE/badge 충돌 자초 학습)**: 세션 내 **동일 파일(STATE.md 수치 라인·README 배지)을 건드리는 미머지 PR 이 1건 이상 in-flight** 이면, per-PR ⑤는 **commit body 에 카운트 delta 만 기록**하고 STATE/배지 실갱신은 **세션 종료 시 단일 trailing sync PR 로 이월**한다. 이유: 여러 PR 이 STATE 동일 라인을 연속 write 하면 git merge conflict 자초(본 세션 ⑤ #1048 이 ③ 머지 후 README 인접-라인 충돌 자초 → 사후 수습). PR 착수 전 `git log --oneline main..<open-branches>` 또는 `gh pr list` 로 동일 파일 touch 미머지 PR 존재 여부 1줄 확인 의무.
 - **README.md 배지 동기화**: 테스트 수·pylint·커버리지 수치가 바뀌면 `README.md` 21~25줄 배지도 함께 갱신한다. 수치 출처는 항상 `docs/STATE.md`.
 - **CLAUDE.md 아키텍처 동기화 체크리스트**: `src/` 하위에 파일 추가 시 아래 항목을 순서대로 확인한다. 누락 시 다음 Phase 착수 전 반드시 보완한다. **전례 3건** (Phase 11 PR #73 / 2026-05-01 UI 감사 cleanup PR-D1 / 2026-05-05 사이클 78~82 5+1 cross-verify 환경변수 4건 누락).
 
