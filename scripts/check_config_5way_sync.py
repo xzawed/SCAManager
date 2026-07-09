@@ -5,12 +5,20 @@
 
 채널/필드 추가 시 Python 레이어 누락 → NULL 덮어쓰기 운영 버그(api.md 5-way)의 일부를 차단.
 Python 3자(ORM·Data·Update)는 AST 견고 비교. 의도적 비대칭 필드는 _ALLOWLIST 제외. stdlib 전용.
-🔴 범위 외(수동 검토 의무): settings.html 폼·PRESETS(JS) 2-layer 는 HTML/JS 파싱 fragile 로 의도적
-미검사(design 2026-06-23). 즉 파일명의 "5way"와 달리 실제 가드 범위는 Python 3-layer 다.
+🔴 범위 외(수동 검토 의무): settings.html 폼·PRESETS(JS) 2-layer 의 **필드-parity**(필드 이름 semantic
+대조)는 HTML/JS 파싱 fragile 로 의도적 미검사(design 2026-06-23). 즉 파일명의 "5way"와 달리 실제
+가드 범위는 Python 3-layer 다.
+🔴 단, settings.html 폼 컨트롤의 **구조적 멤버십**(orphan = 어느 <form> 에도 안 속하고 form= 없음 →
+제출 안 돼 clobber, #1041 form= 데이터손실 유형)은 필드 이름 대조가 불필요해 fragility 를 회피하므로
+별도 정적 가드가 커버한다: tests/unit/ui/test_settings_form_membership.py (2026-07-09 회고 후속 ⑤).
 
 Blocks the Python-layer subset of the api.md 5-way NULL-overwrite bug. The settings.html form and
-PRESETS (JS) layers are intentionally OUT OF SCOPE (fragile HTML/JS parsing) — manual review required.
-Three Python layers (ORM, Data, Update) are compared via AST (reliable). stdlib only.
+PRESETS (JS) layers' FIELD-PARITY (semantic field-name matching) are intentionally OUT OF SCOPE
+(fragile HTML/JS parsing) — manual review required. Three Python layers (ORM, Data, Update) are
+compared via AST (reliable). stdlib only.
+The settings.html form controls' STRUCTURAL MEMBERSHIP (orphan = belongs to no <form> and lacks form=
+→ never submitted → clobber, the #1041 form= data-loss class) needs no field-name matching, so it avoids
+the fragility and is covered separately by tests/unit/ui/test_settings_form_membership.py.
 """
 import ast
 import io

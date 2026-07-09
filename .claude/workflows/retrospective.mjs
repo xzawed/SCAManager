@@ -21,9 +21,12 @@ export const meta = {
 
 // ── 회고 관점 도메인 (정책 8 — 비중복 5종) ──
 // Retrospective perspective domains (policy 8 — 5 non-overlapping lenses)
+// 🔴 UX/시각 회귀는 별도 6번째 도메인 대신 'code' focus 에 명시 편입 (정책 8 "5종" 프레임 보존).
+//    #1041 form= 데이터손실·#1039 count-up cross-closure 같은 UX 회귀가 회고 blind spot 이던 갭 봉인.
+// 🔴 UX/visual regressions folded into the 'code' focus rather than a 6th domain (preserve policy-8 "5 lenses").
 const DEFAULT_DOMAINS = [
   { id: 'process', focus: '정책 준수·협업 흐름·사이클 종료 신호 / policy compliance, collaboration flow, cycle-close signals' },
-  { id: 'code', focus: '코드 품질·회귀·테스트 커버리지·시간차 결함 / code quality, regressions, coverage, time-lag defects' },
+  { id: 'code', focus: '코드 품질·회귀·테스트 커버리지·시간차 결함·UX/시각/템플릿 회귀(form= 미제출·hx-boost 클로저 오염·i18n 키 drift·CSS :has 종속) / code quality, regressions, coverage, time-lag defects, UX/visual/template regressions (form= non-submit, hx-boost closure corruption, i18n key drift, CSS :has dependencies)' },
   { id: 'docs', focus: '문서 정합·drift·STATE/README 동기화 / doc consistency, drift, STATE/README sync' },
   { id: 'decision', focus: '의사결정 추적성·위임 경계·자율 판단 보고 / decision traceability, delegation, autonomy reporting' },
   { id: 'tooling', focus: '도구·자동화·워크플로우·훅 ROI / tooling, automation, workflows, hook ROI' },
