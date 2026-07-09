@@ -27,10 +27,10 @@
 3. `/webhook-test` → 로컬 서버에서 실제 엔드-투-엔드 검증
 4. 서명 검증 로직 변경 시 401/202 응답 코드 직접 확인
 
-**4. 다음 Phase 착수 시**
-1. 현행 Phase 완료 조건 모두 충족 확인 (`/test`, `/lint`)
-2. `/phase-next` → 브레인스토밍 및 설계 시작
-3. 설계 문서 작성 후 `test-writer` 에이전트로 Phase 첫 테스트 작성
+**4. 다음 기능/Phase 착수 시**
+1. 현행 완료 조건 모두 충족 확인 (`/test`, `/lint`)
+2. `superpowers:brainstorming` → 설계 합의 → `superpowers:writing-plans` → 계획 → SDD 실행
+3. 설계 문서 작성 후 `test-writer` 에이전트로 첫 테스트 작성
 
 **5. P0 긴급 버그 수정 시 (다중 에이전트 병렬 패턴)**
 1. P0 수정 에이전트 디스패치 (`isolation: worktree`) — 각 에이전트 독립 브랜치
@@ -53,7 +53,7 @@
 | `/test coverage` | Phase 완료 전 커버리지 확인 | 커버리지 유지 또는 향상 |
 | `/lint` | 테스트 통과 후 (Refactor 단계), Phase 완료 전 | pylint 8.0+, bandit HIGH 0 |
 | `/webhook-test` | Webhook·파이프라인·알림 경로 변경 후 | 202 Accepted 응답 |
-| `/phase-next` | Phase 완료 조건 충족 후, 다음 Phase 착수 전 | — |
+| `superpowers:brainstorming` → `writing-plans` → SDD | 신규 기능/Phase 착수 시 | 설계 합의 → 계획 → 구현 |
 | `test-writer` 에이전트 | 모든 신규 기능·모듈 구현 착수 전 + P0 긴급 수정 시 병렬 실행 | 테스트 파일 먼저 생성 |
 | `pipeline-reviewer` 에이전트 | 파이프라인 핵심 파일 변경 후 | 전 항목 ✅ |
 

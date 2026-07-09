@@ -1,4 +1,5 @@
 ---
+name: lint
 description: SCAManager 코드 품질 검사 — pylint, flake8, bandit 실행
 ---
 

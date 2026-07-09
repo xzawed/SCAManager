@@ -46,6 +46,11 @@ description: SCAManager 파이프라인 코드 리뷰 에이전트. src/worker/p
 - 새 쿼리가 `Analysis(repo_id, created_at)` / `Analysis(repo_id, author_login)` / `MergeAttempt(attempted_at)` 복합 인덱스를 활용하는지 (`EXPLAIN ANALYZE` 권장)
 - 신규 인덱스 추가 시 ORM `__table_args__` + alembic 양쪽 정의 필수
 
+### 10. 비용 제어 분기 무결성 (#1033 Anthropic 비용 제어)
+- `AI_REVIEW_DISABLED`/`INSIGHT_DISABLED` env 또는 `RepoConfig.ai_review_enabled=False` 시 파이프라인이 **fail-open 없이 중립 처리** 하는지 (disabled → 중립 AI 기본 44/55·최대 89/B, 만점 아님 = auto-merge fail-open 없음)
+- `disabled`(의도적 skip) 상태가 `AI_REVIEW_FAILED_STATUSES`(api_error/parse_error) 와 **구분** 유지되는지 (점수 NULL = genuine 실패 한정, disabled ≠ NULL — auto-merge 차단 로직 오염 금지)
+- 비용제어 게이트 조회 실패 시 fail-safe 기본값(`enabled=True`) 보존 여부
+
 ## 출력 형식
 
 각 검토 항목에 대해 ✅/⚠️/❌ 로 표시하고, 문제 발견 시 해당 파일:라인번호와 수정 제안을 제공한다.

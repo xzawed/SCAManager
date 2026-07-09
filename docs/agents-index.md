@@ -23,7 +23,6 @@
 | `/lint` | pylint + flake8 + bandit 결과 요약 |
 | `/test` | pytest 전체 또는 특정 모듈 실행 |
 | `/webhook-test` | 로컬 서버에 서명된 GitHub webhook 페이로드 전송 |
-| `/phase-next` | 현 Phase 완료 확인 후 다음 Phase 브레인스토밍 시작 |
 | `/integrity-audit` | 전체 정합성 감사 자동화 (loop-until-dry + 3-렌즈 adversarial verify, `.claude/workflows/integrity-audit.mjs`) |
 | `/retrospective` | 5+1 회고 자동화 (5 관점 finder + completeness critic, `.claude/workflows/retrospective.mjs`) |
 | `/docs-sync` | 문서 수치·서사 동기화 |
