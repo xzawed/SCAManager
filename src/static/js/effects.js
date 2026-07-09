@@ -227,6 +227,19 @@
     );
     const targets = [];
     candidates.forEach((el) => {
+      // 🔴 cross-closure 가드: hx-boost body swap 은 effects.js(<body> 외부 스크립트)를 재실행해
+      // 새 IIFE 클로저(독립 seen WeakMap)를 만든다. 먼저 실행된 클로저가 점수 텍스트를 "0" 으로
+      // pre-fill 한 뒤, 다른 클로저의 setupCountUp 이 그 "0" 을 target 으로 재-parse 하면 0→0
+      // 애니메이션으로 "0/100" 에 고착된다(운영 사고 2026-07-09). seen(클로저별)은 이를 못 막으므로
+      // DOM 속성(모든 클로저 공유)으로 최초 캡처한 클로저만 소유하게 하고, 이후 어떤 클로저도
+      // 재-parse/재-pre-fill 하지 않게 한다 — target 오염을 원천 차단(안전망은 fire 만 보장, target 무관).
+      // Cross-closure guard: an hx-boost body swap re-runs effects.js (an external <body> script),
+      // spawning a new IIFE closure with its own `seen` WeakMap. If an earlier closure pre-filled the
+      // score text to "0", a later closure's setupCountUp would re-parse that "0" as target=0 → 0→0
+      // freeze ("0/100"). The per-closure `seen` can't stop it, so a DOM attribute (shared across all
+      // closures) lets only the first closure own the node; later closures skip it — sealing the target
+      // corruption at its source (the onceInView safety net only guarantees fire, not the target value).
+      if (el.dataset.cuBound) return;
       // Find first text node with numeric content
       for (const node of el.childNodes) {
         if (node.nodeType === 3) {
@@ -235,6 +248,9 @@
           if (m) {
             const target = parseFloat(m[0]);
             const suffix = txt.slice(m.index + m[0].length); // anything after number (e.g., %)
+            // 최초 캡처한 클로저가 이 노드를 소유 — 이후 클로저는 위 가드로 skip (재캡처 차단).
+            // The first closure to capture owns this node; later closures skip it via the guard above.
+            el.dataset.cuBound = "1";
             targets.push({ node, target, suffix, host: el });
             // pre-fill 0 so the initial paint isn't the final number
             node.nodeValue = "0" + suffix;
@@ -251,14 +267,23 @@
 
   /* ----- 3. Score-bar grow-in -------------------------------------------- */
   function setupScoreBars() {
+    // 🔴 cross-closure 가드 (count-up dataset.cuBound 와 동형): hx-boost 재실행으로 생긴
+    // 다른 IIFE 클로저가 먼저 pre-fill 한 "0%" 를 dataset.sbPct 로 재캡처(→ 바 폭 0% 고착)하는
+    // 것을 DOM 속성(전 클로저 공유)으로 차단 — 최초 클로저만 소유(개요 카드: 점수 숫자 바로 위 바).
+    // Cross-closure guard (mirrors count-up's dataset.cuBound): block a later hx-boost closure
+    // from re-capturing the pre-filled "0%" into dataset.sbPct (→ 0%-width freeze on the same
+    // overview card, directly above the score number). Only the first closure owns a bar.
     const fresh = freshOnly(document.querySelectorAll(".score-bar"), "scorebar");
+    const bars = [];
     fresh.forEach((bar) => {
+      if (bar.dataset.sbBound) return;
       const inline = bar.style.getPropertyValue("--sb-pct").trim();
       if (!inline) return;
+      bar.dataset.sbBound = "1";
       bar.dataset.sbPct = inline;
       bar.style.setProperty("--sb-pct", "0%");
+      bars.push(bar);
     });
-    const bars = fresh.filter((b) => b.dataset.sbPct);
     if (reduced()) {
       bars.forEach((b) => b.style.setProperty("--sb-pct", b.dataset.sbPct));
       return;
@@ -272,13 +297,20 @@
 
   /* ----- 4. Frequent issue bars ------------------------------------------ */
   function setupFreqBars() {
+    // 🔴 cross-closure 가드 (score-bar 와 동형): 다른 클로저가 pre-fill 된 "0%" 폭을
+    // dataset.targetWidth 로 재캡처하는 것을 DOM 속성으로 차단 — 최초 클로저만 소유.
+    // Cross-closure guard (mirrors score-bar): block a later closure re-capturing the
+    // pre-filled "0%" width into dataset.targetWidth. Only the first closure owns a fill.
     const fresh = freshOnly(document.querySelectorAll(".freq-row__bar-fill"), "freqbar");
+    const fills = [];
     fresh.forEach((fill) => {
+      if (fill.dataset.fbBound) return;
       const target = fill.style.width;
+      fill.dataset.fbBound = "1";
       fill.dataset.targetWidth = target || "100%";
       fill.style.width = "0%";
+      fills.push(fill);
     });
-    const fills = fresh.filter((f) => f.dataset.targetWidth);
     if (reduced()) {
       fills.forEach((f) => (f.style.width = f.dataset.targetWidth));
       return;
