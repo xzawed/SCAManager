@@ -436,7 +436,6 @@
       "ja": "Japanese"
     },
     "model_card_title": "AI Code Review Model",
-    "badge_advanced": "Advanced",
     "use_global_default": "Use global default",
     "preset_minimal": "Minimal",
     "preset_standard": "Standard",

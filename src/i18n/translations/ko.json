@@ -436,7 +436,6 @@
       "ja": "일본어"
     },
     "model_card_title": "AI 코드리뷰 모델",
-    "badge_advanced": "고급",
     "use_global_default": "전역 기본값 사용",
     "preset_minimal": "최소",
     "preset_standard": "표준",

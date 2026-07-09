@@ -436,7 +436,6 @@
       "ja": "日本語"
     },
     "model_card_title": "AIコードレビューモデル",
-    "badge_advanced": "高度",
     "use_global_default": "グローバルデフォルトを使用",
     "preset_minimal": "最小",
     "preset_standard": "標準",
