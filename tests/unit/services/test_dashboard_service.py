@@ -25,6 +25,16 @@ from src.models.repository import Repository
 from src.models.user import User
 from src.repositories import claude_api_cost_repo
 
+# 🔴 CodeQL py/unused-import(#540) 봉인 — side-effect import(claude_api_calls 테이블 등록) 실참조.
+# `# noqa: F401` 은 flake8 전용이라 CodeQL py/unused-import(별도 룰)는 명시 참조로만 'used' 처리된다
+# (alembic/env.py `_REGISTERED_MODELS` 동일 패턴). 아래 검증이 튜플을 읽어 py/unused-global 도 회피하고,
+# import 부작용(테이블 등록) 소실 시 loud-fail 한다.
+# 🔴 Seal CodeQL py/unused-import (#540): reference the side-effect ORM import (registers the
+# claude_api_calls table). `# noqa: F401` silences flake8 only; CodeQL needs an explicit reference.
+_SIDE_EFFECT_MODELS = (ClaudeApiCall,)
+if any(m.__tablename__ not in Base.metadata.tables for m in _SIDE_EFFECT_MODELS):
+    raise RuntimeError("side-effect ORM import 소실 — 테이블 미등록 / side-effect ORM import lost")
+
 
 # ─── Fixtures ──────────────────────────────────────────────────────────────
 

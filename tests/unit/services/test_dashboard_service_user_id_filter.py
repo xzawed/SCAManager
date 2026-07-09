@@ -62,6 +62,15 @@ from src.models.merge_attempt import MergeAttempt
 from src.models.repository import Repository
 from src.models.user import User
 
+# 🔴 CodeQL py/unused-import(#541) 봉인 — side-effect import 실참조 (alembic/env.py `_REGISTERED_MODELS` 패턴).
+# `# noqa: F401` 은 flake8 전용이라 CodeQL py/unused-import(별도 룰)는 명시 참조로만 'used' 처리된다.
+# InsightNarrativeCache 도 동일 side-effect 라 선제 포함(향후 재-flag 방지). 튜플 read → py/unused-global 회피.
+# 🔴 Seal CodeQL py/unused-import (#541): reference the side-effect ORM imports (register their tables).
+# `# noqa: F401` silences flake8 only; CodeQL needs an explicit reference.
+_SIDE_EFFECT_MODELS = (ClaudeApiCall, InsightNarrativeCache)
+if any(m.__tablename__ not in Base.metadata.tables for m in _SIDE_EFFECT_MODELS):
+    raise RuntimeError("side-effect ORM import 소실 — 테이블 미등록 / side-effect ORM import lost")
+
 
 # ─── Fixtures ──────────────────────────────────────────────────────────────
 
