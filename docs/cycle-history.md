@@ -5,6 +5,7 @@
 
 ## 목차
 
+- [설정 간소화 · 개요 count-up 봉인 · 회고 후속 (#1034~#1046 — 비용제어 마무리[#1037 `claude_api_calls` 0043 DB 영속화+월비용 KPI] · 개요 0/100 count-up cross-closure 봉인[#1039 effects.js hx-boost 클로저 2개 target 오염→`dataset.cuBound` owned-array early-return·count-up+score-bar+freq-bar 3종] · 설정 간소화 UI-only[#1041~#1044 반직관=백엔드 결합 적대검증 탈락→UI 재구성·form= 데이터손실 opus 적발] · 정기 5+1 회고[P0=거짓 Codex waiver 정정] · 후속 4트랙[④ #1045 비용 legacy+RLS 0044·② #1046 push-전 전체테스트 게이트+i18n 양방향 가드·③ docs drift] · 단위 5150→5265·E2E 121→122, 2026-07-09)](#설정-간소화--개요-count-up-봉인--회고-후속-2026-07-09)
 - [Anthropic 비용 제어 3종 (#1033 — 비용 조사[GitHub Actions PUBLIC=$0·실과금원 private 리포·Anthropic 6 경로] → `AI_REVIEW_DISABLED`/`INSIGHT_DISABLED` env kill-switch + `RepoConfig.ai_review_enabled` 리포별 토글[0042·4-way PRESETS 제외] + `disabled` 의도적-skip[중립 89/B·fail-open 없음]·check-config-5way 원자커밋·C2 dual-import fix·SDD 11 task+opus whole-branch·Codex 미설치 waiver·단위 5150→5158, 2026-07-08)](#anthropic-비용-제어-3종-2026-07-08)
 - [5+1 회고 및 8 클러스터 fix 6 PR (#1024~#1029 — 회고 카덴스 갭[4세션·~30 PR 무회고] 회복·retrospective.mjs wf_ca72074b 92에이전트·verdict_coverage 1.0·confirmed 66[P0 1·P1 12·P2 53]·C3 가격 parity 가드·C2 dual-import 가드·C1/C4 정책 진화·C7 의존성 ==핀+SCA 게이트·단위 5134→5150, 2026-07-03)](#51-회고-및-8-클러스터-fix-6-pr-2026-07-03)
 - [심층 감사 및 note 하드닝 (#1015~#1021 — PR 머지 3 + 후속 3·다중에이전트 wf 10차원 17에이전트·실테스트 5267 passed·운영 P0/P1/P2=0·은닉코드 8벡터 CLEAN·가격 3-소스 정합·Codex mutual 이 N1 HTML 라우트 누락 적발, 2026-07-03)](#심층-감사-및-note-하드닝-2026-07-03)
@@ -136,6 +137,20 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 설정 간소화 · 개요 count-up 봉인 · 회고 후속 (2026-07-09)
+
+2026-07-08~09 세션 아크 (#1034~#1046). #1033 Anthropic 비용 제어 후속으로 설정 UX 간소화 + 개요 표시버그 봉인 + 정기 5+1 회고 + 회고 후속 4트랙.
+
+**비용 제어 마무리 (#1034~#1037)**: #1034 STATE narrative/ui.md 정정 · #1035 `resolve_ai_summary` disabled 전용 알림 메시지(3로케일) · #1036 `DOC_REVIEW_GATE_DISABLED` 로컬 훅 kill-switch(`.claude`/`.codex` doc_review_gate — 문서편집마다 3× Haiku 로컬 비용 제어) · #1037 **비용 메트릭 DB 영속화**(신규 `claude_api_calls` 테이블 0043 + RLS ENABLE/FORCE/policy + `_RLS_MATRIX` 동기화 + `claude_api_cost_repo`[record+user_cost_summary] + `log_claude_api_call` fail-safe 영속화[DB장애가 API흐름 미차단] + 대시보드 월비용 KPI). SDD 풀사이클 + whole-branch opus.
+
+**개요 count-up 0/100 고착 봉인 (#1039)**: 설정 저장 후 상단 nav 로 개요 hx-boost 재진입 시 전 리포 카드 점수 "0/100" 고착(등급 배지는 서버렌더라 정상 = **표시버그**). 근본 = effects.js `<body>` 외부 스크립트가 hx-boost swap 마다 IIFE 재실행 → **클로저 2개 공존**: afterSettle 가 이전 클로저로 점수 "0" pre-fill → 재실행된 새 클로저가 그 "0" 을 target=0 재-parse → 0→0 덮어쓰기. per-closure `seen` WeakMap 은 cross-closure 오염 못 막음 → **DOM 속성 `dataset.cuBound`/`sbBound`/`fbBound`(전 클로저 공유) owned-array early-return** 봉인(count-up+score-bar+freq-bar 3종 — opus 리뷰가 동일 카드 score-bar 동형버그 트레이스). 로컬 green/운영 near-deterministic 비대칭 = no-cache 304 지연(#938)이 "이전 클로저 먼저" 순서 지배. E2E `test_overview_score_survives_single_nav_cross_closure`(fresh full-load 단일 nav ×8, TDD OFF 6/8→ON 0/8). [[project-overview-countup-cross-closure-2026-07-09]]
+
+**설정 옵션 간소화 UI-only (#1040~#1044)**: #1040 CodeQL py/unused-import 봉인(#540~543). 간소화 = 21에이전트 분석 → 🔴 **반직관 결론=백엔드 필드 결합(threshold/gate 통합)은 적대검증 탈락**(정보손실 or 이미 Simple/Advanced progressive disclosure 처리) → 안전·유효 간소화=**UI 재구성**. #1041 AI 리뷰 상위-종속 계층화(CSS `:has()` 회색)·고아 카드 흡수(7→6)·Railway 단일블록·셋업 접힘. 🔴 **form= gotcha**: 폼 컨트롤을 `<form>` 밖 이동 시 `form="settingsForm"` 필수(누락=form-owner null=미제출→매 저장 False clobber **데이터손실**) — **opus whole-branch 리뷰가 Critical 적발**(per-task sonnet 놓침·리스크최고 task=opus 배정 적중). #1042 비활성 토글 세부 `display:none` 완전숨김 · #1043 설명 가독성(`color-mix` 중간대비·11→12px·copy 간결화) · #1044 model select 세로배치(`.field-row` 대신 bespoke 래퍼 회귀 → `flex-direction:column`). 🔴 i18n 키 제거=`test_i18n_settings._KEYS` parametrize 연쇄 CI 6-fail(로컬 서브셋만 돌려 놓침). [[project-settings-simplification-2026-07-09]]
+
+**정기 5+1 회고 + P0 정정**: 회고 카덴스 갭(≥15 PR) 회복 — `retrospective.mjs` 103에이전트·77 confirmed. 🔴 **P0 = 거짓 Codex waiver**: 세션 내내 'Codex CLI 미설치'로 정책 18 mutual 을 12 PR waiver 했으나 실측 = codex-cli 0.130.0 설치·인증·`exec </dev/null` 정상 → 거짓 전제(회고 P0). 메모리 정정([[feedback-codex-post-validation-mandatory]]) + turn-0 codex probe 의무화. #1037/#1041 사후 Codex 검증 = 둘 다 OK(실 산출물 건전했으나 mutual 은 사전 실행돼야 가치).
+
+**회고 후속 4트랙 (#1045~#1046)**: **④ #1045** 비용 KPI legacy repo(user_id NULL) 누락 + `_persist_cost` 실배선 테스트 + **RLS 0044**(🔴 Codex mutual 적발 — app-layer `_owned_repo_ids_subquery` legacy 포함 수정이 0043 claude_api_calls RLS 정책[repo 서브쿼리 `WHERE user_id=app.user_id` 만]으로 Phase 4 앱-롤 읽기에서 무효화 → 0044 로 정책에 `user_id IS NULL` 추가·0026 analyses/merge 컨벤션 정합). **② #1046** push-전 전체 `pytest tests/unit` 게이트(CLAUDE.md 6-step + 정책 18 §2) + i18n `_KEYS`↔`settings.html` settings.* 참조 양방향 가드(손유지 목록 drift 봉인). **③** docs drift(본 이관·E2E 121→122·`.env.example` `AI_REVIEW_DISABLED`/`INSIGHT_DISABLED` kill-switch). 🔴 SCAManager 자체 게이트가 고득점 PR 자동머지(#1045 603600a·#1046 6baac6e7). 단위 5150→5265 · E2E 121→122.
 
 ## Anthropic 비용 제어 3종 (2026-07-08)
 
