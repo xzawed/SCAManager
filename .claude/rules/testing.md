@@ -46,6 +46,11 @@ pylint R0914 발생 시 두 패턴 중 선택:
 
 🔴 **line:span drift 주의**: 위 목록의 line 번호는 코드 변경 시 자연 drift 발생 — 인용 또는 업데이트 시 `grep -n` 실측 의무 (정책 6). 가능 시 commit hash 병기 권장 (예: `github_review.py:108 (#586)`).
 
+## 손유지 i18n 키 목록 ↔ 템플릿 양방향 가드 (2026-07-09 #1041 6-fail 학습)
+
+- 🔴 **`_KEYS` 같은 손유지 parametrize 목록은 SSOT(템플릿)와 drift 한다**: `tests/unit/test_i18n_settings.py::_KEYS` 는 `settings.*` i18n 키를 손으로 나열한다. #1041 에서 settings 키 제거 시 `_KEYS` 잔존 → `test_settings_key_exists`/`non_empty` parametrize 연쇄가 **다른 영역**(i18n)에서 CI 6-fail (3 로케일 × 2 함수). 근본 = (a) 로컬에서 `tests/unit/ui`+`i18n` 서브셋만 실행 (전체 미실행 = 정책 18 §2 push-전 전체 게이트로 봉인) + (b) `_KEYS` 단방향 검증(키 존재만). **가드**: `test_keys_match_template` 이 `set(_KEYS) == settings.html 의 settings.* 참조 집합`을 강제 → 양방향 drift(템플릿 추가/`_KEYS` 누락 = silent 커버리지 갭, `_KEYS` 잔존/템플릿 제거 = dead 참조) 가시화. 신규 손유지 i18n 키 목록 도입 시 동일 템플릿-대조 가드 동반 권장.
+- **settings.* 키 추가/제거 시**: `src/i18n/translations/{ko,en,ja}.json` 의 `settings` 블록 + `settings.html` 참조 + `test_i18n_settings._KEYS` **3곳 동시 갱신** (하나라도 누락 시 위 가드 또는 존재 테스트가 CI fail). JS/base.html 전용 예외 키는 `test_keys_match_template` docstring 규칙대로 명시적 예외 집합 추가.
+
 ## JavaScript 테스트 정책 (사이클 127 P0 학습)
 
 사이클 127 PR #604 회귀 분석: hx-boost `const` 재선언 SyntaxError 는 Python 커버리지 95.7% + 103개 E2E `page.goto()` 테스트 모두 통과했으나 검출 실패. 구조적 원인 3가지 → 아래 규칙으로 봉인.
