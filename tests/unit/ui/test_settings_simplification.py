@@ -72,6 +72,21 @@ def test_pr_review_comment_not_disabled_attr():
     assert "disabled" not in m.group(0), "pr_review_comment 에 disabled 속성 — 숨김은 CSS display:none 로만(값 보존)"
 
 
+def test_ai_review_model_stacks_select_and_hint():
+    """AI 리뷰 모델 블록(.ai-review-model)은 select 위·설명(field-hint) 아래로 세로 배치 — 같은 줄 흐름 방지."""
+    # The folded review_model block must stack the select over its long model_hint (column layout,
+    # like .field-row) — otherwise select + hint render inline on the same line (awkward, user-reported).
+    html = _read()
+    # 독립 규칙 `.ai-review-model { ... }`(줄 시작) 매칭 — `:has() ... .ai-review-model`(숨김) 규칙과 구별.
+    # Match the standalone `.ai-review-model { ... }` rule (line-start), not the `:has()` hide rule.
+    m = re.search(r"^\s*\.ai-review-model\s*\{([^}]*)\}", html, re.MULTILINE)
+    assert m, ".ai-review-model 세로 배치 규칙 없음 — select/설명이 같은 줄에 inline 노출됨"
+    body = m.group(1)
+    assert "flex-direction" in body and "column" in body, (
+        ".ai-review-model 세로 배치(flex-direction:column) 누락 → select 와 model_hint 가 같은 줄 inline"
+    )
+
+
 def test_review_model_folded_into_ai_group():
     """review_model select 이 단독 카드가 아니라 카드 ② .ai-review-group 안에 위치 (7→6 카드)."""
     # review_model lives inside the AI-review group, not as a standalone orphan card.
