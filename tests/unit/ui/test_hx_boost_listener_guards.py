@@ -161,3 +161,31 @@ def test_setupcountup_has_cross_closure_guard():
     assert "if (el.dataset.cuBound) return" in body, (
         "dataset.cuBound early-return 가드 누락 → 이미 바인딩된 노드 재처리(재-pre-fill) 차단 실패"
     )
+
+
+def test_setup_bars_have_cross_closure_guard():
+    """effects.js score-bar/freq-bar pre-fill 도 count-up 과 동일 cross-closure 가드를 가져야 한다.
+
+    🔴 count-up 과 동형 결함: `setupScoreBars`/`setupFreqBars` 도 hx-boost 재실행 시 다른 IIFE
+    클로저가 먼저 pre-fill 한 "0%" 를 `dataset.sbPct`/`dataset.targetWidth` 로 재캡처 → 바 폭이
+    0% 에 고착된다(score-bar 는 개요 카드의 점수 숫자 바로 위 = 사용자에게 동일 카드 부분 고착).
+    `seen`(클로저별)은 못 막으므로 DOM 속성(`dataset.sbBound`/`dataset.fbBound`)으로 최초 클로저만
+    소유하고 이후 클로저는 skip 해야 한다.
+
+    setupScoreBars/setupFreqBars must carry the same cross-closure DOM guard as count-up so a later
+    hx-boost closure cannot re-capture the pre-filled "0%" (→ 0%-width bar freeze on the same card).
+    """
+    src = _read("src/static/js/effects.js")
+    for fn, stamp in (("function setupScoreBars", "sbBound"), ("function setupFreqBars", "fbBound")):
+        idx = src.find(fn)
+        assert idx >= 0, f"{fn} 부재 — 테스트 stale"
+        nxt = src.find("function ", idx + 1)
+        body = src[idx:nxt] if nxt > idx else src[idx:]
+        # cross-closure 소유 표식 + early-return (이미 바인딩된 요소 재-pre-fill 차단)
+        # Cross-closure ownership stamp + early-return (block re-pre-fill of already-bound elements)
+        assert f"dataset.{stamp}" in body, (
+            f"{fn} cross-closure 가드(dataset.{stamp}) 누락 → hx-boost 재실행 시 바 폭 '0%' 고착 회귀"
+        )
+        assert f"dataset.{stamp}) return" in body, (
+            f"{fn} dataset.{stamp} early-return 가드 누락 → 이미 바인딩된 요소 재처리 차단 실패"
+        )

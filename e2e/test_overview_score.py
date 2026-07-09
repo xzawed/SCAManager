@@ -196,11 +196,20 @@ def test_overview_score_survives_single_nav_cross_closure(seeded_page: Page, bas
         seeded_page.click(".nav-logo")
         seeded_page.wait_for_url(lambda url: url.rstrip("/") == base_url.rstrip("/"), timeout=5000)
         seeded_page.wait_for_selector(".repo-card__score")
-        seeded_page.wait_for_timeout(1500)  # animateNumber(1100ms) + 여유
+        seeded_page.wait_for_timeout(1500)  # animateNumber(1100ms) + score-bar stagger(≤200ms) + 여유
         txt = (seeded_page.locator(".repo-card__score").first.text_content() or "").strip()
+        # 점수 숫자(count-up, dataset.cuBound) 고착 검사
         if txt.startswith("0/100"):
-            stuck.append(i)
+            stuck.append(f"num#{i}")
+        # 🔴 동일 카드 score-bar(setupScoreBars, dataset.sbBound) 폭 0% 고착 검사 — 리뷰 발견
+        #    (숫자만 고치면 바로 위 바가 0% 고착 → 카드가 여전히 부분 깨짐으로 보임)
+        sb_pct = seeded_page.evaluate(
+            "() => { const b = document.querySelector('.score-bar');"
+            " return b ? b.style.getPropertyValue('--sb-pct').trim() : null; }"
+        )
+        if sb_pct == "0%":
+            stuck.append(f"bar#{i}")
     assert not stuck, (
-        f"{len(stuck)}/{trials} 단일 nav 시행에서 score '0/100' 고착 "
-        f"(cross-closure count-up race, stuck trials={stuck}) — dataset.cuBound 가드 회귀"
+        f"{len(stuck)} 건 단일 nav 시행에서 score 숫자/바 '0' 고착 "
+        f"(cross-closure count-up/score-bar race, stuck={stuck}) — dataset.cuBound/sbBound 가드 회귀"
     )
