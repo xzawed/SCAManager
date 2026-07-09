@@ -10,6 +10,7 @@ developer_instructions = """
 # setdefault 는 셸 env export 시 무시돼 운영 토큰이 settings 로 유입 + SESSION_SECRET(32자)
 # 누락 시 config field_validator ValidationError 로 `from src.main import app` import 실패.
 # 아래는 tests/conftest.py 실제 정본 부분집합 — 전체는 conftest.py 참조.
+# Direct assignment (NOT setdefault) so test env always wins; SESSION_SECRET must be >=32 chars.
 import os
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 os.environ["GITHUB_WEBHOOK_SECRET"] = "test_secret"
