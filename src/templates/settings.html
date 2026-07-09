@@ -1080,25 +1080,37 @@
         {{ 'settings_page.inbound.behavior_notice' | i18n_args(locale | default('ko')) | safe }}
       </p>
 
-      <div class="s-section-label">{{ 'settings_page.inbound.section_github_webhook' | i18n_args(locale | default('ko')) }}</div>
-      <div class="hook-btns" style="margin-bottom:.5rem;">
-        <button type="submit" class="hook-btn" form="reinstall_webhook_form"
-                data-reinstall-webhook>{{ 'settings_page.inbound.github_reinstall_btn' | i18n_args(locale | default('ko')) }}</button>
-      </div>
-      <span class="field-hint">{{ 'settings_page.inbound.github_reinstall_hint' | i18n_args(locale | default('ko')) }}</span>
+      {# 일회성 셋업 액션(Webhook 재등록·Hook 재커밋)을 접힘 <details> 로 분리 —
+         저장 설정(Railway 토큰 등)과 구분해 카드를 간소화 (Task 5 / B-3).
+         Moved the one-time setup actions (webhook re-register, hook re-commit)
+         into a collapsed <details> — separates them visually from saved
+         settings below (Task 5 / B-3). #}
+      <details class="setup-actions" style="margin-top:.5rem;">
+        <summary class="danger-summary" style="color:var(--text-2);">
+          {{ 'settings_page.inbound.setup_actions_summary' | i18n_args(locale | default('ko')) }}
+        </summary>
+        <div style="padding-top:.6rem;">
+          <div class="s-section-label">{{ 'settings_page.inbound.section_github_webhook' | i18n_args(locale | default('ko')) }}</div>
+          <div class="hook-btns" style="margin-bottom:.5rem;">
+            <button type="submit" class="hook-btn" form="reinstall_webhook_form"
+                    data-reinstall-webhook>{{ 'settings_page.inbound.github_reinstall_btn' | i18n_args(locale | default('ko')) }}</button>
+          </div>
+          <span class="field-hint">{{ 'settings_page.inbound.github_reinstall_hint' | i18n_args(locale | default('ko')) }}</span>
 
-      <div class="s-divider"></div>
-      <div class="s-section-label">{{ 'settings_page.inbound.section_cli_hook' | i18n_args(locale | default('ko')) }}</div>
-      {% if hook_ok %}
-      <div class="hook-alert ok">{{ 'settings_page.inbound.hook_ok' | i18n_args(locale | default('ko')) | safe }}</div>
-      {% endif %}
-      {% if hook_fail %}
-      <div class="hook-alert fail">{{ 'settings_page.inbound.hook_fail' | i18n_args(locale | default('ko')) }}</div>
-      {% endif %}
-      <div class="hook-code">git pull &amp;&amp; bash .scamanager/install-hook.sh</div>
-      <div class="hook-btns">
-        <button type="submit" class="hook-btn" form="reinstall_hook_form">{{ 'settings_page.inbound.hook_recommit_btn' | i18n_args(locale | default('ko')) }}</button>
-      </div>
+          <div class="s-divider"></div>
+          <div class="s-section-label">{{ 'settings_page.inbound.section_cli_hook' | i18n_args(locale | default('ko')) }}</div>
+          {% if hook_ok %}
+          <div class="hook-alert ok">{{ 'settings_page.inbound.hook_ok' | i18n_args(locale | default('ko')) | safe }}</div>
+          {% endif %}
+          {% if hook_fail %}
+          <div class="hook-alert fail">{{ 'settings_page.inbound.hook_fail' | i18n_args(locale | default('ko')) }}</div>
+          {% endif %}
+          <div class="hook-code">git pull &amp;&amp; bash .scamanager/install-hook.sh</div>
+          <div class="hook-btns">
+            <button type="submit" class="hook-btn" form="reinstall_hook_form">{{ 'settings_page.inbound.hook_recommit_btn' | i18n_args(locale | default('ko')) }}</button>
+          </div>
+        </div>
+      </details>
 
       <div class="s-divider"></div>
 

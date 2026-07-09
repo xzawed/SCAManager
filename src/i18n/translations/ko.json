@@ -566,6 +566,7 @@
       "header": "통합 & 인증 (수신)",
       "badge": "⚡ + 💾 혼합",
       "behavior_notice": "💡 <strong>각 항목 동작 방식이 다릅니다</strong> — 🔗 GitHub Webhook 재등록 / 🔄 CLI Hook 재커밋 버튼은 <strong>클릭 시 즉시 실행</strong>됩니다. Railway API 토큰만 페이지 하단의 <strong>💾 설정 저장</strong> 버튼으로 적용됩니다.",
+      "setup_actions_summary": "🔧 일회성 셋업 · 재등록 (필요 시 펼치기)",
       "section_github_webhook": "GitHub 수신 Webhook",
       "github_reinstall_btn": "🔗 GitHub 수신 Webhook 재등록",
       "github_reinstall_hint": "GitHub이 SCAManager로 push·PR·check_suite 이벤트를 전송합니다.",

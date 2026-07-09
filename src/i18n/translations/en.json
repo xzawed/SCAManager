@@ -566,6 +566,7 @@
       "header": "Integration & Auth (Inbound)",
       "badge": "⚡ + 💾 mixed",
       "behavior_notice": "💡 <strong>Each item behaves differently</strong> — 🔗 Reinstall GitHub Webhook / 🔄 Recommit CLI Hook buttons execute <strong>immediately on click</strong>. Only the Railway API token is applied via the <strong>💾 Save settings</strong> button at the bottom.",
+      "setup_actions_summary": "🔧 One-time setup & re-register (expand if needed)",
       "section_github_webhook": "GitHub Inbound Webhook",
       "github_reinstall_btn": "🔗 Reinstall GitHub Webhook",
       "github_reinstall_hint": "GitHub sends push · PR · check_suite events to SCAManager.",

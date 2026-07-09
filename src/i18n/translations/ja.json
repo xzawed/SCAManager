@@ -566,6 +566,7 @@
       "header": "統合 & 認証 (受信)",
       "badge": "⚡ + 💾 混合",
       "behavior_notice": "💡 <strong>各項目で動作が異なります</strong> — 🔗 GitHub Webhook 再登録 / 🔄 CLI Hook 再コミットボタンは <strong>クリック時に即時実行</strong> されます。Railway API トークンのみページ下部の <strong>💾 設定を保存</strong> ボタンで適用されます。",
+      "setup_actions_summary": "🔧 一回限りのセットアップ・再登録 (必要時に展開)",
       "section_github_webhook": "GitHub 受信 Webhook",
       "github_reinstall_btn": "🔗 GitHub 受信 Webhook を再登録",
       "github_reinstall_hint": "GitHub から SCAManager に push · PR · check_suite イベントが送信されます。",

@@ -141,3 +141,17 @@ def test_railway_controls_in_single_block():
     assert 'form="settingsForm"' in input_tag, (
         "railway_deploy_alerts input 에 form=\"settingsForm\" 없음 (데이터 유실 버그)"
     )
+
+
+def test_setup_actions_collapsed_in_details():
+    """카드 ⑤ 일회성 셋업 액션(Webhook 재등록·Hook 재커밋)이 <details> 접힘 안에 있다."""
+    # One-time setup actions (webhook re-register, hook re-commit) are wrapped in a collapsed <details>.
+    html = _read()
+    i_det = html.find('class="setup-actions"')
+    assert i_det != -1, "setup-actions <details> 접힘 래퍼 없음"
+    # <details> 요소인지 + 두 액션 form 참조 포함
+    seg = html[i_det:i_det + 2500]
+    assert 'reinstall_webhook_form' in seg, "접힘 안에 Webhook 재등록 액션 없음"
+    assert 'reinstall_hook_form' in seg, "접힘 안에 Hook 재커밋 액션 없음"
+    # <details 태그로 감쌈 확인 (setup-actions 가 details 클래스)
+    assert re.search(r'<details[^>]*class="[^"]*setup-actions', html), "setup-actions 가 <details> 요소 아님"
