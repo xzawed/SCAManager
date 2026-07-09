@@ -429,12 +429,15 @@ def test_settings_renders_korean_notify_labels():
 
 
 def test_settings_renders_korean_inbound():
-    # railway_api_token_set=True — railway-group 하위 조건부(배포 알림 토글 + Webhook URL
-    # 섹션 라벨)를 노출시켜 렌더 검증 (Task 4/B-2, 카드 ③에서 이동한 toggle 포함).
-    # railway_api_token_set=True exposes the railway-group's dependent block
-    # (deploy-alert toggle + webhook URL section label) for render verification
-    # (Task 4/B-2, including the toggle moved from the post-event card).
-    out = _render("settings.html", locale="ko", **_settings_ctx(railway_api_token_set=True))
+    # 게이팅 제거 정정(리뷰 Fix 2): railway_deploy_alerts 토글 + Webhook URL 섹션이 더 이상
+    # railway_api_token_set 조건부가 아니므로 기본 컨텍스트(_settings_ctx() 기본값
+    # railway_api_token_set=False)로 렌더해도 railway-group 의 3항목(토큰 입력·배포 알림
+    # 토글·Webhook URL 섹션 라벨)이 모두 노출된다 — 토큰 미설정(흔한 케이스)의 커버리지 복원.
+    # Gating removed (review Fix 2): the railway_deploy_alerts toggle + webhook URL section
+    # are no longer conditional on railway_api_token_set, so rendering with the default
+    # context (_settings_ctx() default railway_api_token_set=False) still exposes all 3
+    # railway-group controls — this restores coverage of the common (no-token) case.
+    out = _render("settings.html", locale="ko", **_settings_ctx())
     assert "GitHub 수신 Webhook" in out
     assert "🔗 GitHub 수신 Webhook 재등록" in out
     assert "CLI Hook (pre-push)" in out

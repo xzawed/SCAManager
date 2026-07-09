@@ -1121,7 +1121,6 @@
           <span class="field-hint">{{ 'settings_page.inbound.railway_token_hint' | i18n_args(locale | default('ko')) }}</span>
         </div>
 
-        {% if railway_api_token_set %}
         <div class="toggle-row">
           <div class="toggle-info">
             <div class="t-title">{{ 'settings_page.post_event.railway_alerts_title' | i18n_args(locale | default('ko')) }}</div>
@@ -1129,6 +1128,7 @@
           </div>
           <label class="toggle-switch" aria-label="{{ 'settings_page.post_event.railway_alerts_title' | i18n_args(locale | default('ko')) }}">
             <input type="checkbox" name="railway_deploy_alerts" id="railway_deploy_alerts" value="on"
+                   form="settingsForm"
                    {% if config.railway_deploy_alerts %}checked{% endif %}>
             <span class="toggle-track"></span>
           </label>
@@ -1152,12 +1152,17 @@
         {% else %}
         <span class="field-hint">{{ 'settings_page.inbound.railway_webhook_pending' | i18n_args(locale | default('ko')) }}</span>
         {% endif %}
-        {% endif %}
-        {# Railway 연동 블록(Task 4/B-2): 토큰은 상시, 배포 알림 토글(카드 ⑤ post-event 에서 이동)과
-           Webhook URL 은 railway_api_token_set 하위 조건부. #}
-        {# Railway integration block (Task 4/B-2): the token is always shown; the deploy-alert
-           toggle (moved from the post-event card) and the webhook URL are conditional on
-           railway_api_token_set. #}
+        {# Railway 연동 블록(Task 4/B-2, 게이팅 제거 정정): 토큰·배포 알림 토글(카드 ⑤ post-event 에서 이동)·
+           Webhook URL 섹션 모두 Railway API 토큰 설정 여부와 무관하게 상시 노출 — 배포 알림은
+           인바운드 Webhook 토큰으로 동작하며 API 토큰을 요구하지 않으므로, 토큰 미설정 상태에서도
+           설정 가능해야 한다(토큰-비의존 셋업 흐름 보존). Webhook URL 값 유무만 내부적으로
+           분기(원본 동작 유지). #}
+        {# Railway integration block (Task 4/B-2, gating removed): the token input, the
+           deploy-alert toggle (moved from the post-event card), and the webhook URL section
+           are all shown regardless of whether the Railway API token is set — deploy alerts
+           run off the inbound webhook token, not the API token, so gating them behind it
+           blocked the legitimate token-free setup flow. Only the presence of the webhook
+           URL value still branches internally (original, unchanged behavior). #}
       </div>
 
     </div>

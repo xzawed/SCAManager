@@ -112,8 +112,14 @@ def test_preset_diff_summary_keys_exist_3locales():
 
 
 def test_railway_controls_in_single_block():
-    """Railway 3항목(deploy_alerts·api_token·webhook_url)이 단일 railway 블록에 인접 + 하위 조건부."""
-    # The three Railway controls are grouped in one block; the dependent items are server-conditional.
+    """Railway 3항목(deploy_alerts·api_token·webhook_url)이 단일 railway 블록에 인접.
+
+    게이팅 제거 정정(리뷰 Fix 2): 배포 알림은 Railway API 토큰이 아니라 인바운드
+    Webhook 토큰으로 동작하므로 railway_api_token_set 조건부는 제거됐다 — 토큰
+    미설정 상태에서도 3항목 모두 노출된다.
+    """
+    # The three Railway controls are grouped in one block, unconditionally (Fix 2:
+    # the token gating was removed — deploy alerts don't require the Railway API token).
     html = _read()
     i_block = html.find('class="railway-group"')
     assert i_block != -1, "railway-group 단일 블록 없음"
@@ -121,5 +127,17 @@ def test_railway_controls_in_single_block():
     assert 'name="railway_api_token"' in block, "블록에 railway_api_token 없음"
     assert 'name="railway_deploy_alerts"' in block, "블록에 railway_deploy_alerts 없음"
     assert 'id="railway-webhook-url"' in block, "블록에 Railway Webhook URL 없음"
-    # 토큰 미설정 시 하위 숨김 = 서버 렌더 조건부
-    assert 'railway_api_token_set' in block, "railway_api_token_set Jinja 조건부 부재 (하위 조건 노출)"
+    # 🔴 CRITICAL fix (리뷰 Fix 1): railway_deploy_alerts 토글이 카드 밖(railway-group)으로
+    # 이동하며 #settingsForm 밖에 위치 — form="settingsForm" 없이는 제출되지 않아 저장 시
+    # 매번 False 로 덮어써지는 데이터 유실 버그가 있었다. 형제 railway_api_token 과 동일하게
+    # form 속성을 명시적으로 부여했는지 정적 검증한다.
+    # The railway_deploy_alerts toggle moved outside #settingsForm (into the card-level
+    # railway-group) — without form="settingsForm" it is never submitted, silently
+    # overwriting the saved value with False on every save. Assert it carries the same
+    # form attribute as its sibling railway_api_token input.
+    i_input = block.find('name="railway_deploy_alerts"')
+    input_tag_end = block.find('>', i_input)
+    input_tag = block[i_input:input_tag_end + 1]
+    assert 'form="settingsForm"' in input_tag, (
+        "railway_deploy_alerts input 에 form=\"settingsForm\" 없음 (데이터 유실 버그)"
+    )
