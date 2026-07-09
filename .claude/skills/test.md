@@ -1,4 +1,5 @@
 ---
+name: test
 description: SCAManager 테스트 실행 — 전체 또는 특정 모듈
 ---
 
@@ -12,7 +13,7 @@ description: SCAManager 테스트 실행 — 전체 또는 특정 모듈
 make test-isolated
 ```
 
-`.env` 파일이 stash 되어 단위 테스트가 깨끗한 환경변수로 실행. CLAUDE.md 메모리 규약 — 로컬 devcontainer 에서 `make test` 직접 실행 시 7건 false failure 가능.
+`.env` 파일이 stash 되어 단위 테스트가 깨끗한 환경변수로 실행. 🔴 **신규 실패 판정 = 하드코딩 수치 아닌 baseline 실측 대비** — 로컬 환경/경로 차이로 false failure 가능하나, 판정 기준은 `pytest tests/unit` **baseline 출력의 실패집합**(현 main CI green = 0; 수치 출처 `docs/STATE.md` SSOT). 고정 카운트 인용 금지 — 자연 drift(정책 6).
 
 빠른 단위 테스트만 (통합 제외):
 
@@ -54,5 +55,5 @@ make test-cov
 
 ## 테스트 실행 후
 
-- 통과: "✅ X/X 테스트 통과" 요약 + 사전 실패 (현재 12건) 와 신규 실패 명확히 분리
+- 통과: "✅ X/X 테스트 통과" 요약 + 사전 실패 (baseline 실측 집합 — 현 main CI green = 0) 와 신규 실패 명확히 분리 (하드코딩 카운트 금지)
 - 실패: 실패한 테스트명, 오류 메시지, 원인 분석, 수정 제안 제공

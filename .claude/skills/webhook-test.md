@@ -1,4 +1,5 @@
 ---
+name: webhook-test
 description: GitHub Webhook 로컬 테스트 — 서명된 페이로드 전송
 ---
 
