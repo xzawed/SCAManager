@@ -410,12 +410,14 @@ def test_settings_renders_english_gate_buttons():
 
 
 def test_settings_renders_korean_post_event_toggles():
+    # railway_deploy_alerts 토글은 railway-group(카드 ⑥ 인바운드) 으로 이동(Task 4/B-2) —
+    # 해당 텍스트 검증은 test_settings_renders_korean_inbound 로 이전.
+    # The railway_deploy_alerts toggle moved to the railway-group (inbound card, Task 4/B-2) —
+    # its text assertion moved to test_settings_renders_korean_inbound.
     out = _render("settings.html", locale="ko", **_settings_ctx())
     assert "Push 이벤트" in out
     assert "커밋 코멘트" in out
     assert "점수 미달 시 Issue 생성" in out
-    assert "Railway 배포" in out
-    assert "Railway 빌드 실패 알림" in out
 
 
 def test_settings_renders_korean_notify_labels():
@@ -427,11 +429,17 @@ def test_settings_renders_korean_notify_labels():
 
 
 def test_settings_renders_korean_inbound():
-    out = _render("settings.html", locale="ko", **_settings_ctx())
+    # railway_api_token_set=True — railway-group 하위 조건부(배포 알림 토글 + Webhook URL
+    # 섹션 라벨)를 노출시켜 렌더 검증 (Task 4/B-2, 카드 ③에서 이동한 toggle 포함).
+    # railway_api_token_set=True exposes the railway-group's dependent block
+    # (deploy-alert toggle + webhook URL section label) for render verification
+    # (Task 4/B-2, including the toggle moved from the post-event card).
+    out = _render("settings.html", locale="ko", **_settings_ctx(railway_api_token_set=True))
     assert "GitHub 수신 Webhook" in out
     assert "🔗 GitHub 수신 Webhook 재등록" in out
     assert "CLI Hook (pre-push)" in out
     assert "Railway API 토큰" in out
+    assert "Railway 빌드 실패 알림" in out
     assert "Railway Webhook URL" in out
 
 

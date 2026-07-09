@@ -109,3 +109,17 @@ def test_preset_diff_summary_keys_exist_3locales():
         pc = data.get("settings_page", {}).get("preset_card", {})
         for k in ("minimal_diff_summary", "standard_diff_summary", "strict_diff_summary"):
             assert k in pc and pc[k].strip(), f"{loc}: preset_card.{k} 누락/빈값"
+
+
+def test_railway_controls_in_single_block():
+    """Railway 3항목(deploy_alerts·api_token·webhook_url)이 단일 railway 블록에 인접 + 하위 조건부."""
+    # The three Railway controls are grouped in one block; the dependent items are server-conditional.
+    html = _read()
+    i_block = html.find('class="railway-group"')
+    assert i_block != -1, "railway-group 단일 블록 없음"
+    block = html[i_block:i_block + 2500]
+    assert 'name="railway_api_token"' in block, "블록에 railway_api_token 없음"
+    assert 'name="railway_deploy_alerts"' in block, "블록에 railway_deploy_alerts 없음"
+    assert 'id="railway-webhook-url"' in block, "블록에 Railway Webhook URL 없음"
+    # 토큰 미설정 시 하위 숨김 = 서버 렌더 조건부
+    assert 'railway_api_token_set' in block, "railway_api_token_set Jinja 조건부 부재 (하위 조건 노출)"
