@@ -679,6 +679,19 @@
                 </label>
               </div>
             </div>
+
+            {# 고급: AI 리뷰 모델 선택 (review_model) — 기존 단독 카드에서 흡수, form=settingsForm 유지 #}
+            {# Advanced: AI review model select, folded from the standalone card (form assoc preserved). #}
+            <div class="ai-review-model adv-only" style="margin-top:.6rem;">
+              <select name="review_model" form="settingsForm" class="field-input" style="max-width:420px;"
+                      aria-label="{{ 'settings.model_card_title' | i18n_args(locale | default('ko')) }}">
+                <option value="">{{ 'settings.use_global_default' | i18n_args(locale | default('ko')) }}</option>
+                {% for m in claude_models %}
+                <option value="{{ m.id }}" {% if config.review_model == m.id %}selected{% endif %}>{{ m.label }}</option>
+                {% endfor %}
+              </select>
+              <span class="field-hint">{{ 'settings.model_hint' | i18n_args(locale | default('ko')) }}</span>
+            </div>
           </div>
 
           {# Simple-mode visible: auto-merge + threshold #}
@@ -1126,29 +1139,6 @@
       <span class="field-hint">{{ 'settings_page.inbound.railway_webhook_pending' | i18n_args(locale | default('ko')) }}</span>
       {% endif %}
 
-    </div>
-  </div>
-
-  {# AI 리뷰 모델 선택 카드 — Alembic 0032 / 위험 구역 바로 위 #}
-  <div class="s-card adv-only" style="margin-bottom:1rem;">
-    <div class="s-card-hdr" style="background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 80%, #000), var(--accent));">
-      <span class="hdr-icon">🤖</span>
-      <span class="hdr-title">{{ 'settings.model_card_title' | i18n_args(locale | default('ko')) }}</span>
-      <span class="hdr-badge">{{ 'settings.badge_advanced' | i18n_args(locale | default('ko')) }}</span>
-    </div>
-    <div class="s-card-body">
-      <div class="field-row">
-        <select name="review_model" form="settingsForm" class="field-input" style="max-width:420px;"
-                aria-label="{{ 'settings.model_card_title' | i18n_args(locale | default('ko')) }}">
-          <option value="">{{ 'settings.use_global_default' | i18n_args(locale | default('ko')) }}</option>
-          {% for m in claude_models %}
-          <option value="{{ m.id }}" {% if config.review_model == m.id %}selected{% endif %}>{{ m.label }}</option>
-          {% endfor %}
-        </select>
-        <span class="field-hint">
-          {{ 'settings.model_hint' | i18n_args(locale | default('ko')) }}
-        </span>
-      </div>
     </div>
   </div>
 
