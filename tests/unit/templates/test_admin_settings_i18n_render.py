@@ -524,7 +524,7 @@ def test_settings_renders_korean_settings_namespace_keys():
     # model 카드 (사이클 146 — alembic 0032) / model card
     assert "AI 코드리뷰 모델" in out
     assert "전역 기본값 사용" in out
-    assert "리포별 AI 리뷰 모델을 선택합니다" in out  # model_hint
+    assert "AI 리뷰 모델" in out  # model_hint (사이클 167 카피 간결화 — description readability)
     # JS 인라인 PRESET_LABELS (settings.html:1174~1176) — #32 이후 `| tojson` 직렬화(JS-안전)
     # JS inline PRESET_LABELS — tojson-serialized after #32 (ensure_ascii escaped, JS-safe)
     assert f"minimal: {_js('settings.preset_minimal', 'ko')}" in out

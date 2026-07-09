@@ -456,7 +456,7 @@
     "show_value": "값 보이기",
     "save_toast_ok": "✅ 설정이 저장되었습니다.",
     "save_toast_err": "❌ 저장에 실패했습니다. 승인 기준점이 반려 기준점보다 낮습니다.",
-    "model_hint": "리포별 AI 리뷰 모델을 선택합니다. Haiku → 빠름·저렴 ($1/1M) · Sonnet → 균형 ($3/1M) · Opus → 고품질 ($5/1M). 비어두면 서버 전역 기본값(claude-sonnet-4-6)을 따릅니다. ※ 가격은 Anthropic 공식 기준 (실제 청구와 다를 수 있습니다)."
+    "model_hint": "AI 리뷰 모델. Haiku 빠름·저렴($1/1M) · Sonnet 균형($3/1M) · Opus 고품질($5/1M). 비우면 전역 기본(claude-sonnet-4-6). ※ 가격은 Anthropic 공식 기준."
   },
   "settings_page": {
     "title_prefix": "설정",
@@ -508,9 +508,9 @@
       "pr_comment_title": "PR 코드리뷰 댓글",
       "pr_comment_desc": "분석 완료 시 AI 리뷰를 PR 댓글로 자동 발송",
       "ai_review_title": "AI 코드리뷰 (Claude)",
-      "ai_review_desc": "이 리포의 AI 코드리뷰(Claude, 유료)를 켜거나 끕니다. 끄면 정적 분석만 수행되어 Anthropic 비용이 발생하지 않습니다.",
+      "ai_review_desc": "AI 코드리뷰(Claude·유료) 실행. 끄면 정적 분석만 — Anthropic 비용 0.",
       "auto_merge_title": "자동 Merge",
-      "auto_merge_desc": "점수 이상 시 squash merge.<br><code style=\"font-size:10px;\">pull_requests: write</code> 권한 필요",
+      "auto_merge_desc": "점수 이상 시 squash merge. <code style=\"font-size:10px;\">pull_requests: write</code> 권한 필요",
       "merge_threshold_label": "Merge 임계값",
       "merge_threshold_hint": "이상 → Merge",
       "approve_section": "Approve 자동화 (고급)",
@@ -524,18 +524,18 @@
       "range_summary": "💡 <strong>{approve}점 이상</strong> 자동 승인 · <strong>{reject}점 미만</strong> 자동 반려 · 그 사이 스킵",
       "semi_auto_hint": "💡 반자동 Approve는 <a href=\"#notifyCard\" style=\"color:var(--accent);font-weight:600;\">알림 채널 카드의 Telegram Chat ID</a>로 전송됩니다.",
       "merge_issue_title": "Auto-merge 실패 시 Issue 자동 생성",
-      "merge_issue_desc": "실패 사유 + 권장 조치를 담은<br>GitHub Issue 자동 생성"
+      "merge_issue_desc": "실패 사유·권장 조치를 담은 GitHub Issue 자동 생성"
     },
     "post_event": {
       "header": "이벤트 후 자동화",
       "badge": "Push · Railway · 팀",
       "section_push": "Push 이벤트",
       "commit_comment_title": "커밋 코멘트",
-      "commit_comment_desc": "Push 커밋에 AI 리뷰 결과를<br>GitHub 커밋 코멘트로 게시",
+      "commit_comment_desc": "Push 커밋 AI 리뷰를 GitHub 커밋 코멘트로 게시",
       "create_issue_title": "점수 미달 시 Issue 생성",
-      "create_issue_desc": "점수 미달 또는 보안 HIGH 발견 시<br>GitHub Issue 자동 생성",
+      "create_issue_desc": "점수 미달·보안 HIGH 시 GitHub Issue 자동 생성",
       "railway_alerts_title": "Railway 빌드 실패 알림",
-      "railway_alerts_desc": "Railway 빌드 실패 이벤트 수신 시<br>해당 리포에 로그 포함 Issue 자동 생성"
+      "railway_alerts_desc": "Railway 빌드 실패 시 로그 포함 Issue 자동 생성"
     },
     "notify": {
       "header": "알림 채널 (발신)",
@@ -585,7 +585,7 @@
       "behavior_notice": "💡 이 카드의 작업은 <strong>버튼 클릭 시 즉시 실행</strong>됩니다 (저장 불필요).",
       "summary": "⚠️ 위험한 작업 펼치기",
       "delete_repo_title": "리포지토리 삭제",
-      "delete_repo_desc": "SCAManager에서 이 리포지토리를 제거합니다.<br>GitHub Webhook과 모든 분석 이력이 영구 삭제됩니다.",
+      "delete_repo_desc": "이 리포를 SCAManager에서 제거 — Webhook·분석 이력 영구 삭제.",
       "delete_btn": "🗑️ 삭제",
       "delete_confirm": "정말 「{repo_name}」 리포지토리를 삭제하시겠습니까?\\n\\n모든 분석 이력과 GitHub Webhook이 영구 삭제됩니다.",
       "webhook_reinstall_confirm": "GitHub Webhook을 재등록합니다.\\n기존 Webhook이 삭제되고 새로 생성됩니다."

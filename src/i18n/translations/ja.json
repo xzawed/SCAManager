@@ -456,7 +456,7 @@
     "show_value": "値を表示",
     "save_toast_ok": "✅ 設定が保存されました。",
     "save_toast_err": "❌ 保存に失敗しました。承認基準点が却下基準点より低いです。",
-    "model_hint": "リポジトリ別のAIレビューモデルを選択します。Haiku → 高速・低コスト ($1/1M) · Sonnet → バランス ($3/1M) · Opus → 高品質 ($5/1M)。空欄の場合はサーバー全体のデフォルト(claude-sonnet-4-6)を使用します。※ 価格はAnthropic公式基準です(実際の請求と異なる場合があります)。"
+    "model_hint": "AIレビューモデル。Haiku 高速・低コスト($1/1M)・Sonnet バランス($3/1M)・Opus 高品質($5/1M)。空欄でグローバルデフォルト(claude-sonnet-4-6)。※ 価格はAnthropic公式基準。"
   },
   "settings_page": {
     "title_prefix": "設定",
@@ -508,9 +508,9 @@
       "pr_comment_title": "PR コードレビューコメント",
       "pr_comment_desc": "分析完了時 AI レビューを PR コメントとして自動投稿",
       "ai_review_title": "AIコードレビュー (Claude)",
-      "ai_review_desc": "このリポジトリのAIコードレビュー(Claude・有料)をオン/オフします。オフの場合は静的解析のみ実行され、Anthropicコストは発生しません。",
+      "ai_review_desc": "AIコードレビュー(Claude・有料)を実行。オフなら静的解析のみ — Anthropicコスト0。",
       "auto_merge_title": "自動マージ",
-      "auto_merge_desc": "スコアがしきい値以上の場合 squash merge。<br><code style=\"font-size:10px;\">pull_requests: write</code> 権限が必要",
+      "auto_merge_desc": "しきい値以上で squash merge。 <code style=\"font-size:10px;\">pull_requests: write</code> 権限が必要",
       "merge_threshold_label": "Merge しきい値",
       "merge_threshold_hint": "≥ → Merge",
       "approve_section": "Approve 自動化 (詳細)",
@@ -524,18 +524,18 @@
       "range_summary": "💡 <strong>{approve}点以上</strong> 自動承認 · <strong>{reject}点未満</strong> 自動却下 · 中間はスキップ",
       "semi_auto_hint": "💡 半自動 Approve は <a href=\"#notifyCard\" style=\"color:var(--accent);font-weight:600;\">通知チャンネルカードの Telegram Chat ID</a> に送信されます。",
       "merge_issue_title": "Auto-merge 失敗時に Issue を自動作成",
-      "merge_issue_desc": "失敗理由 + 推奨アクションを含む<br>GitHub Issue を自動作成"
+      "merge_issue_desc": "失敗理由・推奨アクションを含む GitHub Issue を自動作成"
     },
     "post_event": {
       "header": "イベント後の自動化",
       "badge": "Push · Railway · Team",
       "section_push": "Push イベント",
       "commit_comment_title": "コミットコメント",
-      "commit_comment_desc": "Push コミットに AI レビュー結果を<br>GitHub コミットコメントとして投稿",
+      "commit_comment_desc": "Push コミットの AI レビューを GitHub コミットコメントとして投稿",
       "create_issue_title": "スコア低下時に Issue 作成",
-      "create_issue_desc": "スコア低下またはセキュリティ HIGH 検出時<br>GitHub Issue を自動作成",
+      "create_issue_desc": "スコア未達・セキュリティ HIGH 検出時に GitHub Issue を自動作成",
       "railway_alerts_title": "Railway ビルド失敗アラート",
-      "railway_alerts_desc": "Railway ビルド失敗イベント受信時<br>該当リポにログ付き Issue を自動作成"
+      "railway_alerts_desc": "Railway ビルド失敗時にログ付き Issue を自動作成"
     },
     "notify": {
       "header": "通知チャンネル (発信)",
@@ -585,7 +585,7 @@
       "behavior_notice": "💡 このカードのアクションは <strong>ボタンクリック時に即時実行</strong> されます (保存不要)。",
       "summary": "⚠️ 危険な作業を展開",
       "delete_repo_title": "リポジトリ削除",
-      "delete_repo_desc": "SCAManager からこのリポジトリを削除します。<br>GitHub Webhook と全ての分析履歴が永久に削除されます。",
+      "delete_repo_desc": "このリポを SCAManager から削除 — Webhook・分析履歴は永久に削除されます。",
       "delete_btn": "🗑️ 削除",
       "delete_confirm": "本当に「{repo_name}」リポジトリを削除しますか?\\n\\n全ての分析履歴と GitHub Webhook が永久に削除されます。",
       "webhook_reinstall_confirm": "GitHub Webhook を再登録します。\\n既存の Webhook が削除され、新規作成されます。"

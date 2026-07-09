@@ -2,6 +2,15 @@
 {% block title %}{{ 'settings_page.title_prefix' | i18n_args(locale | default('ko')) }} — {{ repo_name }}{% endblock %}
 {% block content %}
 <style>
+  :root {
+    /* 옵션 설명(desc) 전용 medium-contrast 텍스트 — 본문(--text-1)보다 여리고
+       기존 muted(--text-2)보다 또렷함. 신규 raw 토큰 없이 color-mix 로 파생. */
+    /* Medium-contrast text for option descriptions — softer than body text
+       (--text-1) but brighter than the muted (--text-2). Derived via color-mix,
+       no new raw token. */
+    --text-desc: color-mix(in srgb, var(--text-1) 55%, var(--text-2));
+  }
+
   .settings-wrap {
     max-width: 860px; margin: 0 auto;
     padding: var(--space-7) var(--space-6) calc(var(--space-8, 48px) + env(safe-area-inset-bottom, 0px));
@@ -84,7 +93,7 @@
 
   /* Preset accordion */
   .preset-cards { display:flex; flex-direction:column; gap:.5rem; }
-  .preset-desc { font-size:12px; color:var(--text-2); margin-bottom:.85rem; line-height:1.5; }
+  .preset-desc { font-size:12px; color:var(--text-desc); margin-bottom:.85rem; line-height:1.5; }
   .preset-details {
     border:1.5px solid var(--border-subtle); border-radius:10px;
     background:var(--bg-input); overflow:hidden;
@@ -110,7 +119,7 @@
   .preset-details[open] .preset-summary::after { transform:rotate(180deg); }
   .preset-icon { font-size:20px; line-height:1; flex-shrink:0; }
   .preset-name { font-size:13px; font-weight:700; }
-  .preset-hint { font-size:11px; color:var(--text-2); margin-top:.1rem; line-height:1.3; }
+  .preset-hint { font-size:12px; color:var(--text-desc); margin-top:.1rem; line-height:1.45; }
   .preset-detail-body { padding:.65rem 1rem 1rem; border-top:1px solid var(--border-subtle); }
   .preset-table { width:100%; font-size:12px; border-collapse:collapse; }
   .preset-table td { padding:.28rem .2rem; color:var(--text-2); vertical-align:middle; }
@@ -136,8 +145,8 @@
   .toggle-row { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; }
   .toggle-row .toggle-switch { align-self:center; flex-shrink:0; }
   .toggle-row + .toggle-row { margin-top:.85rem; }
-  .toggle-info .t-title { font-size:13px; font-weight:600; margin-bottom:.2rem; }
-  .toggle-info .t-desc  { font-size:11px; color:var(--text-2); line-height:1.4; }
+  .toggle-info .t-title { font-size:13px; font-weight:600; margin-bottom:.28rem; }
+  .toggle-info .t-desc  { font-size:12px; color:var(--text-desc); line-height:1.55; }
   .toggle-switch { position:relative; display:inline-flex; align-items:center; flex-shrink:0; }
   .toggle-switch input[type="checkbox"] { width:0; height:0; opacity:0; position:absolute; }
   .toggle-switch .toggle-track {
@@ -218,7 +227,7 @@
   .field-row:last-child { margin-bottom:0; }
   .field-label { font-size:12px; font-weight:600; color:var(--text-1); display:flex; align-items:center; gap:6px; }
   .field-tag { font-size:10px; font-weight:600; padding:2px 6px; border-radius:4px; background:rgba(99,102,241,.12); color:var(--accent); letter-spacing:.04em; }
-  .field-hint { font-size:11px; color:var(--text-2); }
+  .field-hint { font-size:12px; color:var(--text-desc); line-height:1.5; }
   .field-input {
     width:100%; padding:.55rem .875rem; border-radius:8px;
     border:1.5px solid var(--border-subtle); background:var(--bg-input);

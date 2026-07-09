@@ -456,7 +456,7 @@
     "show_value": "Show value",
     "save_toast_ok": "✅ Settings saved.",
     "save_toast_err": "❌ Save failed. The approve threshold is lower than the reject threshold.",
-    "model_hint": "Select an AI review model per repo. Haiku → fast & cheap ($1/1M) · Sonnet → balanced ($3/1M) · Opus → high quality ($5/1M). Leave empty to use the server global default (claude-sonnet-4-6). ※ Prices are based on Anthropic official rates (actual billing may differ)."
+    "model_hint": "AI review model. Haiku fast & cheap ($1/1M) · Sonnet balanced ($3/1M) · Opus high quality ($5/1M). Leave empty for the global default (claude-sonnet-4-6). ※ Prices per Anthropic's official rates."
   },
   "settings_page": {
     "title_prefix": "Settings",
@@ -508,9 +508,9 @@
       "pr_comment_title": "PR review comment",
       "pr_comment_desc": "Auto-post the AI review as a PR comment when analysis completes",
       "ai_review_title": "AI code review (Claude)",
-      "ai_review_desc": "Enable or disable AI code review (Claude, paid) for this repo. When off, only static analysis runs — no Anthropic cost.",
+      "ai_review_desc": "Run AI code review (Claude, paid). Off = static analysis only — $0 Anthropic cost.",
       "auto_merge_title": "Auto-merge",
-      "auto_merge_desc": "Squash merge when score is above threshold.<br><code style=\"font-size:10px;\">pull_requests: write</code> permission required",
+      "auto_merge_desc": "Squash merge above threshold. <code style=\"font-size:10px;\">pull_requests: write</code> permission required",
       "merge_threshold_label": "Merge threshold",
       "merge_threshold_hint": "≥ → Merge",
       "approve_section": "Approve automation (advanced)",
@@ -524,18 +524,18 @@
       "range_summary": "💡 <strong>≥ {approve}</strong> auto-approve · <strong>< {reject}</strong> auto-reject · in-between skip",
       "semi_auto_hint": "💡 Semi-auto Approve is sent to the <a href=\"#notifyCard\" style=\"color:var(--accent);font-weight:600;\">Telegram Chat ID in the notification channel card</a>.",
       "merge_issue_title": "Auto-create Issue on auto-merge failure",
-      "merge_issue_desc": "Auto-create a GitHub Issue with<br>failure reason + recommended action"
+      "merge_issue_desc": "Auto-create a GitHub Issue with the failure reason and recommended action"
     },
     "post_event": {
       "header": "Post-event automation",
       "badge": "Push · Railway · Team",
       "section_push": "Push events",
       "commit_comment_title": "Commit comment",
-      "commit_comment_desc": "Post AI review results as<br>GitHub commit comments on push",
+      "commit_comment_desc": "Post push-commit AI review results as GitHub commit comments",
       "create_issue_title": "Create Issue on low score",
-      "create_issue_desc": "Auto-create a GitHub Issue when<br>score is low or HIGH security finding detected",
+      "create_issue_desc": "Auto-create a GitHub Issue when the score is low or a HIGH security issue is found",
       "railway_alerts_title": "Railway build failure alerts",
-      "railway_alerts_desc": "Auto-create an Issue with logs<br>when Railway build fails"
+      "railway_alerts_desc": "Auto-create an Issue with logs when a Railway build fails"
     },
     "notify": {
       "header": "Outbound Channels",
@@ -585,7 +585,7 @@
       "behavior_notice": "💡 Actions in this card execute <strong>immediately on click</strong> (no save needed).",
       "summary": "⚠️ Expand dangerous actions",
       "delete_repo_title": "Delete repository",
-      "delete_repo_desc": "Remove this repository from SCAManager.<br>The GitHub Webhook and all analysis history will be permanently deleted.",
+      "delete_repo_desc": "Remove this repo from SCAManager — Webhook and analysis history are permanently deleted.",
       "delete_btn": "🗑️ Delete",
       "delete_confirm": "Are you sure you want to delete \"{repo_name}\" repository?\\n\\nAll analysis history and the GitHub Webhook will be permanently deleted.",
       "webhook_reinstall_confirm": "Reinstall GitHub Webhook.\\nThe existing webhook will be deleted and a new one created."
