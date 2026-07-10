@@ -31,16 +31,6 @@ db_probe.py
 # Temp dirs created when review tooling runs pytest with cwd = repo root (NEVER commit).
 review-tmp-*/
 
-# ⛔ 폐기된 Codex 도구(2026-07-10 구독 해지·제거)가 남긴 임시 디렉토리.
-#    Windows 권한 잠금으로 삭제 불가(takeown/icacls/rd 전부 거부) → git 이 스캔 시
-#    "Permission denied" warning 을 뿜으므로 무시 패턴만 유지한다. 정책이 아닌 기능적 가드.
-# Leftover temp dirs from the removed Codex tooling; permission-locked and undeletable on Windows,
-# so we keep the ignore patterns to suppress git's "Permission denied" scan warnings.
-.codex_tmp/
-.codex_*
-codex-pytest-*/
-codex-write-test-*/
-
 # IDE
 .vscode/
 .idea/
