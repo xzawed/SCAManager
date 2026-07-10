@@ -1,5 +1,9 @@
 # PR-H: 신규 pre-commit 훅 3종 Implementation Plan
 
+> ⛔ **정책 18 (Claude ↔ Codex mutual 검증) 은 2026-07-10 폐기되었다** — 사용자가 Codex 구독을 해지해 `codex` 실행 파일이 없다.
+> **본 문서에 남아 있는 "Codex 검증 의뢰 / Codex OK 후 push" 류 단계는 수행하지 않는다** (완료된 작업의 역사 기록).  ⛔ *(폐기 2026-07-10 — Codex 단계 수행 안 함)*
+> 대체: Claude 단독 2-layer (정책 8 5+1 + `pipeline-reviewer` / opus whole-branch 적대 리뷰). push 전 게이트 = `pytest tests/unit` 전체 통과.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** repo-automation 강화 1/3 — env-vars 싱크 · 이중언어 주석 · 5-way config 싱크 pre-commit 훅을 stdlib 스크립트로 추가하고 `.pre-commit-config.yaml`에 wiring한다.
@@ -15,7 +19,7 @@
 - 코드 주석 한국어+영어 병행 (CLAUDE.md). `core(root)->(ok, list[str])` + `main()->int`(0=통과,1=위반) 분리.
 - scripts/ 는 pylint 게이트(src/ 한정) 외 — 8.x 허용(기존 스크립트 정합), 단 flake8 0건.
 - 신규 훅은 현재 repo 통과 의무(dogfooding). 위반 발견 시 = fix 또는 allowlist 등재(사유 PR 본문 명시).
-- 모든 작업 PR 단위(정책 7), push 전 Codex mutual(정책 18), 완료 시 docs sync(STATE/cycle-history/README).
+- 모든 작업 PR 단위(정책 7), push 전 Codex mutual(정책 18), 완료 시 docs sync(STATE/cycle-history/README).  ⛔ *(폐기 2026-07-10 — Codex 단계 수행 안 함)*
 - 브랜치: `chore/repo-integrity-hooks-batch2` (main 분기).
 
 ---
@@ -661,13 +665,13 @@ Expected: 5049 + (신규 테스트 수: H1 3 + H2 5 + H3 4 = 12) = **5061**. 전
 Run: `python scripts/check_docs_sync.py && python scripts/check_toc_anchors.py`
 Expected: 둘 다 ✅
 
-- [ ] **Step 5: 커밋 + Codex mutual + push + PR**
+- [ ] **Step 5: 커밋 + Codex mutual + push + PR**  ⛔ *(폐기 2026-07-10 — Codex 단계 수행 안 함)*
 
 ```bash
 git add docs/STATE.md docs/cycle-history.md README.md README.ko.md
 git commit -m "docs: PR-H 신규 훅 3종 반영 동기화"
 ```
-→ Codex(codex-rescue) push 전 검증(정책 18) → push → `gh pr create` (본문에 Codex 섹션 + 사용자 검증 섹션) → CI green 후 머지.
+→ Codex(codex-rescue) push 전 검증(정책 18) → push → `gh pr create` (본문에 Codex 섹션 + 사용자 검증 섹션) → CI green 후 머지.  ⛔ *(폐기 2026-07-10 — Codex 단계 수행 안 함)*
 
 ---
 

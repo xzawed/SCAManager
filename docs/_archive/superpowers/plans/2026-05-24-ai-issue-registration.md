@@ -1,5 +1,9 @@
 # AI 분석 결과 GitHub Issue 등록 기능 — 구현 계획
 
+> ⛔ **정책 18 (Claude ↔ Codex mutual 검증) 은 2026-07-10 폐기되었다** — 사용자가 Codex 구독을 해지해 `codex` 실행 파일이 없다.
+> **본 문서에 남아 있는 "Codex 검증 의뢰 / Codex OK 후 push" 류 단계는 수행하지 않는다** (완료된 작업의 역사 기록).  ⛔ *(폐기 2026-07-10 — Codex 단계 수행 안 함)*
+> 대체: Claude 단독 2-layer (정책 8 5+1 + `pipeline-reviewer` / opus whole-branch 적대 리뷰). push 전 게이트 = `pytest tests/unit` 전체 통과.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** AI 분석 결과(AI 제안사항 + 정적 분석 이슈)를 사용자가 확인·편집해 GitHub Issue로 등록하고, 등록 이력과 GitHub 상태를 실시간 동기화하는 기능을 analysis_detail(Phase 1) + repo_detail(Phase 2)에 추가한다.
@@ -2099,7 +2103,7 @@ git commit -m "feat(ui): repo_detail 반복 이슈 일괄 등록 패널 (Phase 2
 - [ ] analysis_detail 페이지에서 AI 제안사항 탭 → Issue 등록 → 모달 → 생성 → 뱃지 전환 동작 확인
 - [ ] repo_detail 페이지에서 일괄 등록 패널 → 체크박스 선택 → 일괄 모달 → 순서대로 생성 동작 확인
 - [ ] 중복 등록 시 409 + "이미 등록된 이슈입니다" 메시지 확인
-- [ ] **정책 18 Codex mutual 검증 의뢰 (push 전)**
+- [ ] **정책 18 Codex mutual 검증 의뢰 (push 전)**  ⛔ *(폐기 2026-07-10 — Codex 단계 수행 안 함)*
 - [ ] `git push` + PR 생성 (`gh pr create`)
 - [ ] `docs/STATE.md` 수치 갱신 + `docs/cycle-history.md` 사이클 이력 추가
 - [ ] `docs/architecture.md` — 신규 파일 5종 + 엔드포인트 3개 동기화
