@@ -1,8 +1,12 @@
 # repo-automation 강화 설계 — 신규 훅 3 · 신규 스킬 3 · 워크플로우 loop-engineering
 
+> ⛔ **정책 18 (Claude ↔ Codex mutual 검증) 은 2026-07-10 폐기되었다** — 사용자가 Codex 구독을 해지해 `codex` 실행 파일이 없다.
+> **본 문서에 남아 있는 "Codex 검증 의뢰 / Codex OK 후 push" 류 단계는 수행하지 않는다** (완료된 작업의 역사 기록).  ⛔ *(폐기 2026-07-10 — Codex 단계 수행 안 함)*
+> 대체: Claude 단독 2-layer (정책 8 5+1 + `pipeline-reviewer` / opus whole-branch 적대 리뷰). push 전 게이트 = `pytest tests/unit` 전체 통과.
+
 > **상태**: ✅ 완료 (PR-H #969 훅 · PR-W #974 워크플로우 · PR-S #975 스킬 전량 머지, 2026-06-23). 회고 follow-up = `fix/retrospective-followup-hardening`.
 > **출처**: 2026-06-23 정밀 감사 세션 5+1 회고 도구 관점(WF) + 사용자 합의
-> **구현**: 3 PR (PR-H 훅 → PR-W 워크플로우 → PR-S 스킬), 각자 TDD + Codex mutual + docs sync. 운영 가이드: [`docs/runbooks/retrospective.md`](../runbooks/retrospective.md) · [`docs/runbooks/integrity-audit.md`](../runbooks/integrity-audit.md).
+> **구현**: 3 PR (PR-H 훅 → PR-W 워크플로우 → PR-S 스킬), 각자 TDD + Codex mutual + docs sync. 운영 가이드: [`docs/runbooks/retrospective.md`](../runbooks/retrospective.md) · [`docs/runbooks/integrity-audit.md`](../runbooks/integrity-audit.md).  ⛔ *(폐기 2026-07-10 — Codex 단계 수행 안 함)*
 
 ---
 
@@ -17,7 +21,7 @@
 ## 2. 공통 원칙 (3 영역 일관)
 
 - **stdlib 전용** + `Path(__file__).resolve().parents[1]` 루트 + Windows cp949 UTF-8 wrapper + `core(root)->(ok, msgs)` 테스트 가능 구조 (#968 / `scripts/check_memory_refs.py` 컨벤션 계승).
-- 각 영역 **별도 PR** (정책 7 응집 단위 분할) — 각자 TDD + Codex mutual(정책 18) + STATE/cycle-history/README docs sync(6-step ⑤).
+- 각 영역 **별도 PR** (정책 7 응집 단위 분할) — 각자 TDD + Codex mutual(정책 18) + STATE/cycle-history/README docs sync(6-step ⑤).  ⛔ *(폐기 2026-07-10 — Codex 단계 수행 안 함)*
 - 신규 훅은 **모두 현재 repo 통과 의무**(dogfooding). 통과 못 하는 기존 위반 발견 시 = 그 자체가 fix 대상 또는 allowlist 등재(사유 명시).
 - 신규 스킬은 `.claude/skills/*.md` 형식(기존 integrity-audit.md/lint.md/test.md 동형).
 - 워크플로우는 `.claude/workflows/*.mjs`, 주입 글로벌(agent/parallel/phase/log/budget/args)만 사용(자체 import 0 — 단 Area 1 검증 게이트 참조).
@@ -89,8 +93,8 @@
 - **역할**: Area 1의 `retrospective.mjs`(loop-until-dry) 호출을 codify — 정책 8 5+1 다중 에이전트 회고 결정론화. `integrity-audit.md` 스킬과 동형 구조(Workflow 호출 안내 + args 주입).
 - **연계**: Area 1 W3와 페어(스킬=진입점, 워크플로우=실행).
 
-### (S3) `.claude/skills/codex-verify.md`
-- **역할**: 정책 18 push 전 표준 흐름 codify — 브랜치 diff → Codex(codex-rescue) ground-truth 프롬프트(self-contained·직접 git show 지시·인라인 diff 길이 한도 회피) → OK 후 push / **Codex 다운 감지 시 자체검증 분기**(pylint+flake8+TDD RED→GREEN, 정책 18 예외).
+### (S3) `.claude/skills/codex-verify.md`  ⛔ *(폐기 2026-07-10 — Codex 단계 수행 안 함)*
+- **역할**: 정책 18 push 전 표준 흐름 codify — 브랜치 diff → Codex(codex-rescue) ground-truth 프롬프트(self-contained·직접 git show 지시·인라인 diff 길이 한도 회피) → OK 후 push / **Codex 다운 감지 시 자체검증 분기**(pylint+flake8+TDD RED→GREEN, 정책 18 예외).  ⛔ *(폐기 2026-07-10 — Codex 단계 수행 안 함)*
 
 ---
 

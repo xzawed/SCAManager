@@ -1,5 +1,9 @@
 # 사이클 143 설계 문서 — i18n 완성 + 프로세스 강화
 
+> ⛔ **정책 18 (Claude ↔ Codex mutual 검증) 은 2026-07-10 폐기되었다** — 사용자가 Codex 구독을 해지해 `codex` 실행 파일이 없다.
+> **본 문서에 남아 있는 "Codex 검증 의뢰 / Codex OK 후 push" 류 단계는 수행하지 않는다** (완료된 작업의 역사 기록).  ⛔ *(폐기 2026-07-10 — Codex 단계 수행 안 함)*
+> 대체: Claude 단독 2-layer (정책 8 5+1 + `pipeline-reviewer` / opus whole-branch 적대 리뷰). push 전 게이트 = `pytest tests/unit` 전체 통과.
+
 **작성일**: 2026-05-31
 **상태**: 승인됨
 **범위**: repo_detail.html HTML i18n · analysis_detail.html i18n · GitHub PR 템플릿 · 정책 보강
@@ -81,8 +85,8 @@ src/i18n/translations/{ko,en,ja}.json
     ├── ## 🔍 사용자 검증 필요
     │   └── [ ] CI 통과 확인
     │   └── [ ] (UI 변경 시) 4테마 × 2뷰포트 8조합 시각 확인
-    └── ## 🔍 Codex 검증 의뢰 (push 전, 정책 18)
-        └── [ ] Codex OK / Claude 직접 검증 대체 OK
+    └── ## 🔍 Codex 검증 의뢰 (push 전, 정책 18)  ⛔ *(폐기 2026-07-10 — Codex 단계 수행 안 함)*
+        └── [ ] Codex OK / Claude 직접 검증 대체 OK  ⛔ *(폐기 2026-07-10 — Codex 단계 수행 안 함)*
 ```
 
 ---
@@ -110,7 +114,7 @@ src/i18n/translations/{ko,en,ja}.json
 **신규 파일**: `.github/pull_request_template.md`
 
 - 자동 적용 (단일 파일 방식, GitHub 공식 확인)
-- Codex 검증 의뢰 섹션 포함 (정책 18)
+- Codex 검증 의뢰 섹션 포함 (정책 18)  ⛔ *(폐기 2026-07-10 — Codex 단계 수행 안 함)*
 - UI 변경 8조합 체크리스트 포함 (정책 11) — UI 변경 PR에서 해당 항목만 체크
 - 기존 `gh pr create --body "$(cat <<'EOF'..."` 패턴과 병존 가능
 
@@ -119,7 +123,7 @@ src/i18n/translations/{ko,en,ja}.json
 #### Sprint 1-C: CLAUDE.md + 정책 보강
 
 **변경 파일**:
-- `CLAUDE.md` 완료 6-step: "PR 본문 Codex 검증 의뢰 섹션 포함" 명시 추가
+- `CLAUDE.md` 완료 6-step: "PR 본문 Codex 검증 의뢰 섹션 포함" 명시 추가  ⛔ *(폐기 2026-07-10 — Codex 단계 수행 안 함)*
 - `.claude/policies/active.md` 정책 11: 8조합 체크리스트 코드블록 표준 형식 구체화
 
 **테스트**: 없음 (정책 문서)
