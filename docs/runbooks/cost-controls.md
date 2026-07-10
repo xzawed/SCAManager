@@ -43,7 +43,7 @@ AI 리뷰가 꺼진 리포(전역 또는 리포별)는 `_default_result("disable
 | 경로 | 위치 | 모델 | 차단 방법 |
 |------|------|------|-----------|
 | ④ pre-push 훅 | `src/github_client/repos.py` `_INSTALL_HOOK_SH` | Haiku | 로컬 `ANTHROPIC_API_KEY` 미설정 또는 `.git/hooks/pre-push` 제거 |
-| ⑤ Claude Code 문서훅 | `.claude/hooks/doc_review_gate.py` (+`.codex` 트윈) | Haiku (문서 편집마다 최대 3회) | 로컬 `ANTHROPIC_API_KEY` 미설정 또는 `DOC_REVIEW_GATE_DISABLED=1` 환경변수 설정(훅 제거 없이 on/off, Haiku 호출 skip) |
+| ⑤ Claude Code 문서훅 | `.claude/hooks/doc_review_gate.py` | Haiku (문서 편집마다 최대 3회) | 로컬 `ANTHROPIC_API_KEY` 미설정 또는 `DOC_REVIEW_GATE_DISABLED=1` 환경변수 설정(훅 제거 없이 on/off, Haiku 호출 skip) |
 
 ## 6. 살아있는 문서 유지 규칙
 

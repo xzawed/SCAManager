@@ -26,7 +26,6 @@
 | `/integrity-audit` | 전체 정합성 감사 자동화 (loop-until-dry + 3-렌즈 adversarial verify, `.claude/workflows/integrity-audit.mjs`) |
 | `/retrospective` | 5+1 회고 자동화 (5 관점 finder + completeness critic, `.claude/workflows/retrospective.mjs`) |
 | `/docs-sync` | 문서 수치·서사 동기화 |
-| `/codex-verify` | 정책 18 push 전 Claude↔Codex mutual 검증 흐름 |
 
 ---
 
