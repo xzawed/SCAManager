@@ -19,13 +19,13 @@ completeness critic + **cross-verify=finding 강제**(모든 finding 이 verdict
 3. 반환 `{ scope, rounds, findings_total, verdict_coverage, confirmed[], unverified_findings[], roi }` 를
    `docs/_archive/reports/YYYY-MM-DD-retrospective.md` 로 작성 (P0/P1/P2 + ROI + verdict_coverage 표).
 4. ROI(P0/P1/P2 + fp_blocked + severity_adjusted) + verdict_coverage 보고.
-   **fix 는 사용자 결정(정책 7 PR 단위 / 15 사전 사고 / 18 Codex mutual) — 자동 수정 금지.**
+   **fix 는 사용자 결정(정책 7 PR 단위 / 15 사전 사고) — 자동 수정 금지.**
 
 > 🔴 `verdict_coverage < 1.0` = 일부 finding 이 verdict 미수신(UNVERIFIED). 단일 패스 회고의 13/8
 > 한계 재발 신호 — 재실행 또는 수동 확인 권고 (리포트에 unverified 별도 표 노출).
 
 ## 정책 8 / 거버넌스
-- 5+1 = **내부 self-verify**(관점 다양성). 외부 LLM mutual(정책 18)과 **2-layer 독립** — 한쪽으로 다른 쪽 생략 금지.
+- 5+1 = **내부 self-verify**(관점 다양성). `pipeline-reviewer`/opus whole-branch 적대 리뷰와 **2-layer 독립** — 한쪽으로 다른 쪽 생략 금지 (구 외부 LLM mutual = 정책 18 폐기 2026-07-10).
 - cross-verify(6차) 생략 정량 기준(정책 8 진화): 1차 P0 합계 ≥ 8 + 5 관점 모두 P0 ≥ 1 + 사용자 빠른 진행 신호 — **3 조건 AND 시만** 생략 OK.
 - 회고 종합 보고 직후 **자유 발언(정책 9, 4 섹션)** + **회고 질문(사용자 회신 의무)** 별도 수행.
 - 단일 작업일 5+1 dispatch ≥ 5회 = 사용자 사전 확인(정책 8 진화).

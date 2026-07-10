@@ -39,10 +39,10 @@ Workflow({ scriptPath: '<repo-abs>/.claude/workflows/retrospective.mjs',
 ## 비용 · 거버넌스
 - 5 관점 × 다라운드(loop-until-dry, MAX_ROUNDS budget 시 5 / 미설정 3) + 전건 cross-verify = 다수 에이전트
   (2026-06-23 첫 실행 = 85 에이전트·~7.2M 토큰·3 라운드). **실행 전 예상 비용 1줄 보고**(정책 16#5).
-- 5+1(내부 self-verify, 관점 다양성) ↔ Codex mutual(외부 LLM, 정책 18) = **2-layer 독립** — 한쪽으로 다른 쪽 생략 금지.
+- 5+1(내부 self-verify, 관점 다양성) ↔ `pipeline-reviewer`/opus whole-branch 적대 리뷰(리뷰 계층 다양성) = **2-layer 독립** — 한쪽으로 다른 쪽 생략 금지. (구 외부 LLM mutual = 정책 18, 2026-07-10 폐기.)
 - cross-verify(6차) 생략 정량 기준(정책 8 진화): 1차 P0 ≥ 8 + 5 관점 모두 P0 ≥ 1 + 사용자 빠른 진행 신호 — **3 조건 AND** 시만.
 - 회고 종합 직후 **자유 발언(정책 9, 4 섹션)** + **회고 질문(사용자 회신 의무)** 별도 수행(워크플로우 스키마 밖).
-- **fix 는 사용자 결정**(정책 7 PR 단위 / 15 사전 사고 / 18 Codex mutual) — 자동 수정 금지.
+- **fix 는 사용자 결정**(정책 7 PR 단위 / 15 사전 사고) — 자동 수정 금지.
 
 ## 알려진 한계 (2026-06-23 첫 dogfooding → C10 일부 해소)
 - ✅ **completeness 라운드 회복력**(C10): try/catch 격리 — API 일시 오류 시 gap 라운드만 건너뛰고 본체 회고·Report 는 보존(이전엔 전체 소실 위험). 단 gap 라운드 자체는 미수행(best-effort).

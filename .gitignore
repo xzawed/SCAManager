@@ -27,16 +27,19 @@ env/
 *.dbpw
 db_probe.py
 
-# codex mutual 검증 임시파일 (프롬프트/diff scratch — 절대 커밋 금지, 2026-06-16 회고 PROC-1/3)
-# codex mutual-verification scratch files (prompt/diff — NEVER commit).
-#   ⚠️ 패턴 `.codex_*` 은 추적되는 설정 디렉토리 `.codex/`(agents/hooks/rules)는 매칭하지 않음.
-#   The `.codex_*` pattern does NOT match the tracked `.codex/` config dir.
-.codex_*
-
-# codex-rescue / 리뷰 도구가 repo 루트에서 pytest 실행 시 생성하는 임시 디렉토리 (절대 커밋 금지)
-# Temp dirs created when codex-rescue / review tooling runs pytest with cwd = repo root (NEVER commit).
-codex-pytest-*/
+# 리뷰 도구가 repo 루트에서 pytest 실행 시 생성하는 임시 디렉토리 (절대 커밋 금지)
+# Temp dirs created when review tooling runs pytest with cwd = repo root (NEVER commit).
 review-tmp-*/
+
+# ⛔ 폐기된 Codex 도구(2026-07-10 구독 해지·제거)가 남긴 임시 디렉토리.
+#    Windows 권한 잠금으로 삭제 불가(takeown/icacls/rd 전부 거부) → git 이 스캔 시
+#    "Permission denied" warning 을 뿜으므로 무시 패턴만 유지한다. 정책이 아닌 기능적 가드.
+# Leftover temp dirs from the removed Codex tooling; permission-locked and undeletable on Windows,
+# so we keep the ignore patterns to suppress git's "Permission denied" scan warnings.
+.codex_tmp/
+.codex_*
+codex-pytest-*/
+codex-write-test-*/
 
 # IDE
 .vscode/

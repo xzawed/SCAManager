@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-07-09 기준)
+## 현재 수치 (2026-07-10 기준)
 
 > 📌 **이전 세션·PR별 누적 작업 서사는 [`docs/cycle-history.md`](cycle-history.md) 단일 출처** (사이클 60~166, 최신순). 본 헤더는 **최신 1건 + 종합 수치만** 유지 — 32KB 단일 라인 SSOT 가독성 복원 (품질감사 docclr-1, 2026-06-17, cycle-history.md 에 서사 전량 보존[append-only] 확인 후 트리밍). 🔴 **다음 세션 갱신 규칙**: 신규 작업 완료 시 (0) **본 섹션 날짜 헤더(line 5 `## 현재 수치 (YYYY-MM-DD 기준)`)를 최신 세션 날짜로 갱신** (회고 2026-07-03 C5 #60 — 절차에서 상시 누락되던 필드), (1) 본 "최신" 블록을 새 작업으로 교체 + 종합 수치 갱신, (2) 직전 작업의 전체 서사는 `docs/cycle-history.md` 최신순 맨 앞에 본문 섹션으로 이관 (헤더에 "직전" 체인 누적 금지 — 본 정리의 회귀 방지), (3) **"최신" 블록은 불릿 5~8줄로 작성 — 단일 라인 금지** (2026-07-09 rank14: 단일 라인은 diff 심의·가독성 저해, doc_review_gate CRITICAL 게이팅 대상. 종합 수치 표·추적셀[테이블 셀]은 단일 라인 유지).
 
@@ -12,8 +12,9 @@
 - **설정 간소화 UI-only** #1041~#1044 = 🔴 반직관 결론(백엔드 필드 결합은 적대검증 탈락 → UI 재구성만 안전) + 🔴 **form= 데이터손실 gotcha**(폼 밖 컨트롤 `form="settingsForm"` 누락=미제출 clobber, opus whole-branch 가 Critical 적발·per-task sonnet 놓침).
 - **정기 회고** 103에이전트·77 confirmed + 🔴 **P0=거짓 Codex waiver 정정**(codex-cli 0.130.0 실설치·turn-0 probe 의무화).
 - **후속 5트랙** ④ #1045 비용 KPI legacy repo 누락 + `_persist_cost` 실배선 + RLS 0044(Codex mutual 적발 app-layer↔0043 정책 무효화 → 0026 컨벤션 정합) · ② #1046 push-전 전체 tests/unit 게이트 + i18n `_KEYS`↔템플릿 양방향 가드 · ③ docs drift(E2E 121→122·kill-switch env) · ⑤ #1048 form= orphan 데이터손실 가드 + 회고 UX 렌즈.
-- **인프라 감사**(5차원 wf·33 findings·adopt 18/reject 5) → quick-win 조치(P0 turn-0 Codex probe 배선·stale 문서 정정 등).
-- 단위 5150→**5267** · E2E 121→**122**. [[project-settings-simplification-2026-07-09]] [[project-overview-countup-cross-closure-2026-07-09]] [[project-anthropic-cost-controls-2026-07-08]]
+- **인프라 감사**(5차원 wf·33 findings·adopt 18/reject 5) → quick-win 조치 2 PR(#1049·#1050 — turn-0 Codex probe 배선·stale 도구 정정·db pre-flight 등).
+- **⛔ 정책 18 폐기 (2026-07-10)** — 사용자가 Codex 유료 구독 해지 → `codex` 실행 파일 부재로 mutual 검증 **수행 불가**. `AGENTS.md`·`.codex/`(17파일)·`/codex-verify` 스킬·PR 템플릿 §Codex·시작 체크리스트 probe 제거. 대체 = **Claude 단독 2-layer**(5+1 + `pipeline-reviewer`/opus whole-branch). 🔴 구 §2 **push 전 전체 `pytest tests/unit` 게이트는 존치**(6-step ②). cross-vendor 가치 실증 근거(2026-06-29 P1 2건 Codex-only)는 대체 검증자 도입 시 참조.
+- 단위 5150→**5267** · E2E 121→**122**. [[project-settings-simplification-2026-07-09]] [[project-overview-countup-cross-closure-2026-07-09]] [[project-infra-audit-2026-07-09]] [[feedback-codex-post-validation-mandatory]]
 
 **종합 수치**: 전체 **5421** 수집 (단위 **5267** + 통합 154) / E2E 122 (110 표준 + 12 perf) / pylint **10.00/10** (src/ — scripts/ 미게이트).
 

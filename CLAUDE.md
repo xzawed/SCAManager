@@ -71,7 +71,7 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 - **핵심 데이터 흐름** (Webhook → pipeline → notify → gate): [`docs/architecture.md#핵심-데이터-흐름`](docs/architecture.md#핵심-데이터-흐름)
 - **점수 체계** (배점 + 등급 + AI 스케일링): [`docs/reference/scoring.md`](docs/reference/scoring.md)
 - **전체 정합성 감사 자동화**: `/integrity-audit [full|diff|area=<name>]` → `.claude/workflows/integrity-audit.mjs` (수동 5+1 감사의 결정론적 코드화 — loop-until-dry + 3-렌즈 adversarial verify + completeness critic, read-only P0/P1/P2 리포트). 운영 가이드: [`docs/runbooks/integrity-audit.md`](docs/runbooks/integrity-audit.md).
-- **5+1 회고 자동화**: `/retrospective [area=<관점>]` → `.claude/workflows/retrospective.mjs` (정책 8 5+1 회고의 결정론적 코드화 — 5 관점 finder loop-until-dry + completeness critic + cross-verify=finding 강제[verdict_coverage 지표]). loop-until-dry 정본 = `.claude/workflows/_lib/loop-until-dry.template.mjs` (drift 가드: `tests/unit/scripts/test_workflow_loop_sync.py`). 운영 가이드: [`docs/runbooks/retrospective.md`](docs/runbooks/retrospective.md). 스킬: `/docs-sync`(수치·서사 동기화), `/codex-verify`(정책 18 push 전 흐름).
+- **5+1 회고 자동화**: `/retrospective [area=<관점>]` → `.claude/workflows/retrospective.mjs` (정책 8 5+1 회고의 결정론적 코드화 — 5 관점 finder loop-until-dry + completeness critic + cross-verify=finding 강제[verdict_coverage 지표]). loop-until-dry 정본 = `.claude/workflows/_lib/loop-until-dry.template.mjs` (drift 가드: `tests/unit/scripts/test_workflow_loop_sync.py`). 운영 가이드: [`docs/runbooks/retrospective.md`](docs/runbooks/retrospective.md). 스킬: `/docs-sync`(수치·서사 동기화).
 
 > 🔴 **신규 파일 추가 시 [`docs/architecture.md`](docs/architecture.md) 동기화 의무** — src/ 트리 항목 + 핵심 데이터 흐름 갱신.
 
@@ -272,7 +272,7 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 
 **default 의무 5 원칙** (우선순위 순): 1. 정확성 / 2. 성능 / 3. 가독성 / 4. 최소 추상화 (사용처 ≥ 3 시 도입) / 5. **🔴 토큰 비용 효율** (caching + 분산 + 호출 빈도 제한 — caching 4 단계 사이클 63→74 활성화).
 
-🔴 **정책 16 진화 — 공유 로직 grep 전수 default** (2026-07-03 회고 C4 — #1015 가격 3-소스·#1021 operations API+HTML 동형 "한 곳만 수정" 안티패턴 학습): 같은 값/로직이 2+곳에 있을 때, 수정 **직전** `grep -rn <심볼>` 으로 전 호출처를 열거하고 diff/PR 본문에 "전수 확인 N곳" 1줄 명시. 공유 서비스가 API+HTML 양 라우트에서 호출되는 영역 = High-tier 사전 grep. 🔴 mutual(정책 18)을 proactive discipline 대체물로 쓰지 말 것(§5) — grep 전수는 turn-0 규율, Codex 는 backstop. 가능 시 회귀 가드 동반(정책 4 — 예: 가격 3-소스 parity 테스트, 회고 C3). 상세: [.claude/policies/active.md#정책-16-공유-로직-grep-전수](.claude/policies/active.md#정책-16-공유-로직-grep-전수).
+🔴 **정책 16 진화 — 공유 로직 grep 전수 default** (2026-07-03 회고 C4 — #1015 가격 3-소스·#1021 operations API+HTML 동형 "한 곳만 수정" 안티패턴 학습): 같은 값/로직이 2+곳에 있을 때, 수정 **직전** `grep -rn <심볼>` 으로 전 호출처를 열거하고 diff/PR 본문에 "전수 확인 N곳" 1줄 명시. 공유 서비스가 API+HTML 양 라우트에서 호출되는 영역 = High-tier 사전 grep. 🔴 사후 리뷰(5+1·whole-branch)를 proactive discipline 대체물로 쓰지 말 것 — grep 전수는 turn-0 규율, 리뷰는 backstop. 가능 시 회귀 가드 동반(정책 4 — 예: 가격 3-소스 parity 테스트, 회고 C3). 상세: [.claude/policies/active.md#정책-16-공유-로직-grep-전수](.claude/policies/active.md#정책-16-공유-로직-grep-전수).
 
 **🚫 명시 제외 영역** (AI 리뷰 품질 보존 — 사이클 72 사용자 명시 보류): `build_review_prompt` 토큰 예산 8000 축소 / `review_guides/` Tier1 full 압축. 신규 토큰 절약 영역 도입 시 사용자 사전 확인 의무 (정책 15 High tier 페어).
 
@@ -291,37 +291,27 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 
 Why + How to apply (자가 검토 4 자문) 상세: [.claude/policies/active.md#정책-17-why-how](.claude/policies/active.md#정책-17-why-how).
 
-#### 정책 18 신설 (2026-05-09 사이클 93): Claude ↔ Codex 양방향 mutual 검증 의무
+#### ⛔ 정책 18 폐기 (2026-07-10 — Codex 구독 해지): 구 "Claude ↔ Codex 양방향 mutual 검증"
 
-사용자 발화 (2026-05-09, 사이클 93 CI 분석 사고 직후): *"Claude 또는 Codex가 작업을 수행시 반드시 두 LLM모델이 OK확인을 받아야 통과합니다. 상호간의 작업 내용을 검증 검토를 수행합니다. Claude 도 Codex도 이 내용은 반드시 숙지합니다."*
+**폐기 사유**: 사용자가 Codex 유료 구독을 해지 (2026-07-10). `@openai/codex` npm 패키지·Claude Code 플러그인 제거로 **`codex` 실행 파일 부재** → mutual 검증 수행 **불가능**.
 
-🔴 **사이클 94 사용자 정정 (2026-05-10)**: Codex 검증 = PR push 전 의무. push 후 의뢰 안티패턴 상세: [.claude/policies/active.md#정책-18](.claude/policies/active.md#정책-18).
+**지금부터 적용**:
+- **Codex mutual 검증 = 전건 면제.** `codex exec` probe 실패는 **정상** — 이상 징후로 보고하거나 사용자 확인을 요청하지 말 것.
+- **대체 = Claude 단독 2-layer 자체 검증**: (a) 정책 8 5+1 다중 에이전트 cross-verify (관점 다양성) + (b) `pipeline-reviewer` / opus whole-branch 적대적 리뷰 (리뷰 계층 다양성). 🔴 **whole-branch 리뷰는 cross-cutting 결함(예: `form=` 데이터손실)의 유일 방어선** — 비용 절감 명목으로 생략·강등 금지.
+- **사이클 종료 = 2 조건 AND** (정책 5 페어) — (a) 사용자 신호 + (b) Claude OK. (구 (c) Codex OK 삭제.)
+- **존치된 규칙**: 구 §2 의 **push 전 전체 단위 테스트 게이트**는 Codex 와 무관하게 유효 → [필수 원칙 6-step ②](#필수-원칙) 로 이관.
 
-**default 의무 5 영역**:
-1. **양방향 대칭 흐름 (push 전 검증 default)** — Claude 작업 (로컬 commit) → Codex 검증 → OK 후 push / Codex 작업 (로컬 commit) → Claude 검증 → OK 후 push. **push 전 단독 완료 금지**.
-2. **검증 의뢰 1줄 명시 의무 (push 전)** — 로컬 commit 후 응답에 "🔍 <상대 LLM> 검증 의뢰 (push 전)" 1줄 의무. 누락 시 다음 응답 회복 의무 (정책 1 진화 회귀 가드 사이클 86 Q4 페어). **push 보류 default — Codex/Claude OK 회신 받기 전까지 `git push` 금지**. 🔴 **push 전 전체 단위 테스트 게이트 (2026-07-09 #1041 6-fail 학습)**: push 직전 `pytest tests/unit` **전체** 통과 실측 의무 — 영역 서브셋(`tests/unit/ui`+`i18n` 등)만 실행으로 대체 금지. #1041 에서 i18n 키 제거가 타 영역 `test_i18n_settings._KEYS` parametrize 연쇄를 깨뜨렸으나 서브셋만 돌려 놓침 → CI 6-fail. 인라인 cleanup·docs-only 예외 없음.
-3. **NG 회신 시 자율 수정 — 2-tier 구분 (사이클 165 회고 진화)**: (a) **설계방향·트레이드오프 동반 NG** = 자율 수정 금지 → 사유 분석 + 수정 plan 옵션 표 (정책 1) + 사용자 confirm 의무 (예: 사이클 165 #811 비원자 TOCTOU → 옵션 A/B 표 + confirm). (b) **단일 정답 버그 회귀 NG**(검증 가능한 객관 정답 1개, 트레이드오프 없음) = 동일 PR 내 즉시 수정 후 재검증 OK, 옵션 표 면제 (예: 사이클 165 #814 overview NULL→F 오분류 = 정답 avg_raw 기준 1개). 판별 애매 시 (a) 로 처리(보수). **NG 회기 ≤ 3회 default** — 4회차 = 사용자 직접 결정 영역 escalation (옵션 표 의무).
-4. **사이클 종료 = 3 조건 AND 의무** (정책 5 강화 페어) — (a) 사용자 신호 + (b) Claude OK + (c) Codex OK. 1 조건 부재 시 종료 보류.
-5. **5+1 cross-verify ↔ mutual = 2-layer 격리 의무** — 정책 8 5+1 = Claude 내부 self-verify (관점 다양성) / mutual = 외부 LLM (모델 다양성). "Codex OK 받았으니 5+1 6차 생략 OK" 오해 차단 — 양 layer 독립 의무 보존.
+**역사 (실증된 가치)**: cross-vendor 검증은 실효가 있었다 — 2026-06-29 심층 감사에서 **P1 2건은 Codex 만 발견**(Claude 8 에이전트 미검출). 향후 대체 검증자(무료 OpenAI-호환 등) 도입 검토 시 이 근거를 참조. 폐기 이전 정책 본문·진화 이력은 [.claude/policies/history.md](.claude/policies/history.md) 에 역사 기록으로 보존.
 
-**🔴 17 정책 cross-reference 표** (충돌/페어 7건 — 정책 3/5/7/8/10/12/16): 상세 표는 [.claude/policies/active.md#정책-18](.claude/policies/active.md#정책-18) §"17 정책 cross-reference 표" 참조.
-
-**예외 영역 4종** (mutual 검증 면제):
-- 사용자가 "mutual 생략 OK" 명시 발화 시
-- 단순 read-only 보고 (수정/검증 X — 단, 결정 영역 영향 시 의뢰 의무)
-- 메모리 grep / 단순 정보 제공
-- **사용자 직접 결정 영역** (사용자 명시 결정 = 최종, 두 LLM 검증 면제)
-
-상세: [.claude/policies/active.md#정책-18](.claude/policies/active.md#정책-18).
+> ⚠️ 코드·문서 곳곳의 "Codex mutual 적발/발견" 주석은 **당시 사실 기록(출처 표기)** 이므로 그대로 둔다 — 재작성 금지.
 
 ---
 
 ### 작업 시작 전 필수 체크리스트 (매 작업마다)
 
-모든 작업 착수 전 아래 여섯 가지를 순서대로 확인한다. 30초면 충분하다.
+모든 작업 착수 전 아래 다섯 가지를 순서대로 확인한다. 30초면 충분하다.
 
 ```bash
-codex exec -s read-only --skip-git-repo-check 'reply OK' </dev/null  # 🔴 정책18 turn-0 Codex 가용 probe (exit 0=가용→mutual 의무 / cp949 stderr noise 무시). 정적 '부재' 단정 금지 — 실측이 단일 권위 (2026-07-09 P0: 거짓 waiver 12 PR 재발 차단)
 gh run list --limit 3                                       # CI status (기존 vs 신규 실패 구분)
 gh api repos/xzawed/SCAManager/code-scanning/alerts \      # Code Scanning open alert 카운트 (정책 14)
   --jq '[.[] | select(.state=="open")] | length'            # CI/auth 부재 시 GitHub Security 탭 직접 확인
@@ -354,7 +344,7 @@ GitHub Code Scanning 점검 detail 절차 + 운영 통합 = `docs/runbooks/opera
 - **TDD 우선**: 구현 코드 작성 전 반드시 `test-writer` 에이전트로 테스트를 먼저 작성한다.
 - **Hook 신뢰**: `src/` 파일 편집 후 PostToolUse Hook이 자동 실행하는 pytest 결과를 확인한다. 실패 시 다음 단계로 진행하지 않는다.
 - **Phase 완료 조건**: 테스트 전체 통과 + `/lint` 통과 + (파이프라인 변경 시 `pipeline-reviewer` 승인) 세 조건이 모두 충족될 때만 Phase 완료를 선언한다.
-- **완료 시 필수 6-step**: 작업이 완료되면 반드시 ① 커밋 → ② Codex 검증 의뢰 (push 전, 정책 18) + **push 전 `pytest tests/unit` 전체 통과 실측** (영역 서브셋 대체 금지 — 정책 18 §2 게이트, #1041 6-fail 학습) → ③ `git push` → ④ PR 생성(`gh pr create`) — **PR 본문에 `## 🔍 Codex 검증 의뢰 (push 전, 정책 18)` 섹션 필수 포함** (`.github/pull_request_template.md` 자동 삽입 또는 수동 추가) → ⑤ `docs/STATE.md` 수치 갱신 + `docs/cycle-history.md` 사이클 이력 동기화 → ⑥ **docs/architecture.md 동기화** (신규 파일 추가·삭제·이름 변경 시 `src/` 트리와 `### 핵심 데이터 흐름` 내 언급 갱신) 를 순서대로 수행한다. 예외 없음.
+- **완료 시 필수 6-step**: 작업이 완료되면 반드시 ① 커밋 → ② 🔴 **push 전 `pytest tests/unit` 전체 통과 실측** (영역 서브셋[`tests/unit/ui`+`i18n` 등]만 실행으로 대체 금지 — #1041 에서 i18n 키 제거가 타 영역 `test_i18n_settings._KEYS` parametrize 연쇄를 깨뜨렸으나 서브셋만 돌려 놓쳐 CI 6-fail. **인라인 cleanup·docs-only 예외 없음**) → ③ `git push` → ④ PR 생성(`gh pr create`) → ⑤ `docs/STATE.md` 수치 갱신 + `docs/cycle-history.md` 사이클 이력 동기화 → ⑥ **docs/architecture.md 동기화** (신규 파일 추가·삭제·이름 변경 시 `src/` 트리와 `### 핵심 데이터 흐름` 내 언급 갱신) 를 순서대로 수행한다. 예외 없음.
   - 🔴 **⑤ 배치-PR 이월 분기 (2026-07-09 rank6 — 병렬 STATE/badge 충돌 자초 학습)**: 세션 내 **동일 파일(STATE.md 수치 라인·README 배지)을 건드리는 미머지 PR 이 1건 이상 in-flight** 이면, per-PR ⑤는 **commit body 에 카운트 delta 만 기록**하고 STATE/배지 실갱신은 **세션 종료 시 단일 trailing sync PR 로 이월**한다. 이유: 여러 PR 이 STATE 동일 라인을 연속 write 하면 git merge conflict 자초(본 세션 ⑤ #1048 이 ③ 머지 후 README 인접-라인 충돌 자초 → 사후 수습). PR 착수 전 `git log --oneline main..<open-branches>` 또는 `gh pr list` 로 동일 파일 touch 미머지 PR 존재 여부 1줄 확인 의무.
 - **README.md 배지 동기화**: 테스트 수·pylint·커버리지 수치가 바뀌면 `README.md` 21~25줄 배지도 함께 갱신한다. 수치 출처는 항상 `docs/STATE.md`.
 - **CLAUDE.md 아키텍처 동기화 체크리스트**: `src/` 하위에 파일 추가 시 아래 항목을 순서대로 확인한다. 누락 시 다음 Phase 착수 전 반드시 보완한다. **전례 3건** (Phase 11 PR #73 / 2026-05-01 UI 감사 cleanup PR-D1 / 2026-05-05 사이클 78~82 5+1 cross-verify 환경변수 4건 누락).

@@ -33,14 +33,9 @@
 
 🔴 **현재 SCAManager 환경**: gh CLI v2.89.0 설치 완료 + xzawed 계정 인증 완료 → **옵션 🅐 (gh pr create) default 운영**.
 
-**기본 PR body 템플릿**: §Summary + §🔍 사용자 검증 필요 (정책 2) + §자율 판단 보고 (정책 3) + §🔍 Codex 검증 의뢰 (정책 18) + 🤖 Generated with [Claude Code](https://claude.com/claude-code) 푸터.
+**기본 PR body 템플릿**: §Summary + §🔍 사용자 검증 필요 (정책 2) + §자율 판단 보고 (정책 3) + 🤖 Generated with [Claude Code](https://claude.com/claude-code) 푸터.
 
-```markdown
-## 🔍 Codex 검증 의뢰 (push 전, 정책 18)
-- [ ] Codex 검증 의뢰 완료 — push 전 Codex OK 회신 대기 중
-```
-
-> 🔴 **누락 시**: 다음 응답에서 회복 의무 (자성 1줄 + 의뢰 1줄). 사이클 99 PR #441/442/443 전체 누락 → 본 항목 신설 (cross-verify 실측 확인). 예외: 사용자 명시 `mutual 생략 OK` 발화 시.
+> ⛔ 구 §🔍 Codex 검증 의뢰 (정책 18) 항목은 **2026-07-10 Codex 구독 해지로 폐기** — PR 본문에 넣지 않는다.
 
 🔴 **PR 본문 전달 + 생성 직후 검증 의무 (2026-06-10 사고 학습)**:
 
@@ -305,7 +300,7 @@ git push -u origin <branch>
 **배경 (동형 안티패턴 2회 재발)**: 같은 값/로직이 2+곳에 존재할 때 "한 곳만 수정"하는 결함이 한 세션 창에서 2회 재발.
 - **#1015 → #1019**: Claude 가격을 `claude_metrics.py` 한 곳만 갱신 → `constants.py`·i18n `model_hint` stale → split-fix.
 - **#1021 N1**: `operations_kpi` 상한을 API 라우트(`api/admin.py`)만 추가 → 동일 서비스 호출 HTML 라우트(`ui/routes/admin.py`) 미수정(HTTP 500 노출) → **Codex mutual 이 사후 적발**.
-두 번째 사례가 내부 self-review 가 아닌 외부 Codex 로만 잡힌 것 = 정책 18 §5 위반 (mutual 을 proactive discipline 대체물로 사용).
+두 번째 사례가 turn-0 grep 규율이 아닌 **사후 리뷰**(당시 외부 Codex)로만 잡힌 것이 핵심 — 🔴 **사후 리뷰(5+1·whole-branch·외부 검증자)를 proactive discipline 의 대체물로 쓰지 말 것.** 리뷰는 backstop 이지 1차 방어선이 아니다.
 
 **default rule**:
 1. 값/로직 수정 **직전** `grep -rn <심볼>` 으로 전 호출처 열거 → diff/PR 본문에 "전수 확인 N곳" 1줄 명시.
@@ -368,134 +363,21 @@ git push -u origin <branch>
 
 <a id="정책-18"></a>
 
-## 정책 18: Claude ↔ Codex 양방향 mutual 검증 의무 (사이클 93 신설)
+## ⛔ 정책 18 폐기: 구 "Claude ↔ Codex 양방향 mutual 검증 의무" (2026-05-09 신설 → 2026-07-10 폐기)
 
-사용자 발화 (2026-05-09, 사이클 93 CI 분석 사고 직후 — 2회 진화):
-1차: *"앞으로 모든 작업의 후처리는 Codex가 검증 검토를 수행합니다. Claude 단독으로 수정 및 검증 검토에서 끝내지 않고 Codex의 동의까지 완료되야 마무리 된것으로 간주 하겠습니다."*
-2차 (양방향화): *"Claude 또는 Codex가 작업을 수행시 반드시 두 LLM모델이 OK확인을 받아야 통과합니다. 상호간의 작업 내용을 검증 검토를 수행합니다. Claude 도 Codex도 이 내용은 반드시 숙지합니다."*
+**폐기 사유**: 사용자가 Codex 유료 구독을 해지 (2026-07-10). `@openai/codex` npm 패키지 · Claude Code 플러그인 제거로 `codex` 실행 파일이 존재하지 않는다 → mutual 검증 **수행 불가능**.
 
-### 양방향 default 흐름 (대칭, push 전 검증 — 사이클 94 정정)
+**지금부터**:
+- Codex mutual 검증은 **전건 면제**. `codex exec` probe 실패는 **정상**이며 이상 징후로 보고하거나 사용자 확인을 요청하지 않는다.
+- 대체 = **Claude 단독 2-layer 자체 검증** — (a) 정책 8 5+1 다중 에이전트 cross-verify(관점 다양성) + (b) `pipeline-reviewer` / opus whole-branch 적대적 리뷰(리뷰 계층 다양성). 🔴 whole-branch 리뷰는 cross-cutting 결함(`form=` 데이터손실 등)의 유일 방어선 — 비용 절감 명목 생략·강등 금지.
+- **사이클 종료 = 2 조건 AND** (사용자 신호 + Claude OK). 구 (c) Codex OK 조건 삭제 (정책 5 페어).
+- 구 §2 의 **push 전 전체 `pytest tests/unit` 게이트**는 Codex 와 무관하게 유효 → CLAUDE.md 필수 원칙 6-step ② 로 이관·존치.
 
-🔴 **사이클 94 사용자 정정 (2026-05-10)**: *"Codex에게 검토를 받으려면 PR을 올리기 전에 수행을 해야합니다. 그리고 현재는 PR이 이미 머지가 되었으므로 다음 사이클 진입을 해주세요."*
+**함께 제거된 자산** (2026-07-10): `AGENTS.md` · `.codex/`(agents 5 · rules 8 · hooks) · `.claude/skills/codex-verify.md`(`/codex-verify`) · PR 템플릿 §Codex 검증 의뢰 · 시작 체크리스트 turn-0 probe.
 
-→ **검증 = PR push 전 수행 의무**. 사이클 93 안티패턴 (PR #366/#368/#369/#370 = push 후 의뢰 명시 = mutual 의도 정합 X) 학습.
+**역사 (실증된 가치)**: cross-vendor 검증은 실효가 있었다 — 2026-06-29 심층 감사에서 **P1 2건(crypto 평문 fallback · STRICT_MIGRATION)은 Codex 만 발견**하고 Claude 8 에이전트가 놓쳤다. 향후 대체 검증자(무료 OpenAI-호환 등) 도입 검토 시 이 근거를 참조. 폐기 이전 상세 본문(양방향 흐름 · 환경 통합 · `codex exec` 운용 도구 · 17 정책 cross-ref 표 · NG 회기 가드 · 4-way sync)은 **git 이력**에 보존한다.
 
-| 단계 | Claude 작업 → Codex 검증 | Codex 작업 → Claude 검증 |
-|------|---------------------------|--------------------------|
-| 1. 작업 | Claude 수정/구현/회귀 가드 (로컬 commit 까지 — push X) | Codex 반복 구현/테스트/리팩토링 (로컬 commit 까지 — push X) |
-| 2. 1차 검증 | Claude test + lint + smoke | Codex 자가 검증 |
-| 3. **검증 의뢰 의무 명시 (push 전)** | "🔍 Codex 검증 의뢰 (push 전)" 1줄 — 변경 본문 + commit body + 로컬 검증 결과 첨부 | "🔍 Claude 검증 의뢰 (push 전)" 1줄 |
-| 4. 검증 결과 | Codex OK / NG 회신 | Claude OK / NG 회신 |
-| 5. NG 시 재진입 | Claude 수정 → 3 단계 반복 (≤ 3회) | Codex 수정 → 3 단계 반복 (≤ 3회) |
-| 6. **상대 OK → push + PR 생성** | Codex OK 후 `git push` (사용자 머지 영역) | Claude OK 후 `git push` (사용자 머지 영역) |
-
-### 운영 흐름 (현 SCAManager Codespaces 환경 default)
-
-- Claude 가 변경 본문 작성 + 로컬 commit 까지 (`git push` 보류)
-- Claude 응답 = "🔍 Codex 검증 의뢰 (push 전)" 1줄 + 변경 본문 / commit body / `make test-fast` 결과 첨부 → 사용자가 Codex 환경 (Codex CLI / Codex Web / VSCode plugin) 에서 검토 의뢰 → 결과 채팅 회신
-- Codex OK 회신 → Claude `git push` + PR 생성 (사용자 머지 영역)
-- Codex NG 회신 → Claude 수정 plan 옵션 표 (정책 1) + 사용자 confirm + 재진입 (회기 ≤ 3)
-
-### 사이클 93 안티패턴 영역 (학습 보존)
-
-사이클 93 본 정책 신설 직후 모든 PR (#366 / #368 / #369 / #370) = push 후 Codex 의뢰 명시 패턴 적용 → **사용자 정정 영역 (사이클 94)**. 사이클 93 메모리 + AGENTS.md + CLAUDE.md 정책 18 본문 = "Codex 검증 의뢰 의무" 만 명시 → 시점 (push 전 vs push 후) 명시 부재 → Claude 자율 해석 = push 후. 사이클 94 정정 = push 전 의무 명시 강화.
-
-### 환경 통합 (현 SCAManager 기준)
-
-- 🔴 **환경 가정 금지 — turn-0 probe 실측이 단일 권위 (2026-07-09 P0 정정)**: 사이클 93 당시 *Codespaces* 환경은 Codex CLI 부재였으나, **현 Windows 호스트는 `codex-cli` 0.130.0 가용**(아래 "사이클 167" 섹션 + 시작 체크리스트 turn-0 probe). **정적 "부재" 단정 금지** — 매 세션 `codex exec` probe 실측이 유일 권위. 실측으로 부재 확정된 환경에서만 아래 사용자-대리 시나리오 A 적용. (본 세션 #1033~1044 12 PR 이 stale "부재" 단정으로 mutual 전건 waive 한 거버넌스 게이트 silent defeat — [[feedback-codex-post-validation-mandatory]] 정정.)
-- **default 시나리오 A** = 사용자가 별도 환경 (Windows 호스트 / Codex Web / VSCode plugin)에서 Codex 실행 → 결과 채팅 회신
-- **사용자 회신 형식 3종 표준화**: `Codex OK` / `Codex NG: <사유>` / Codex 출력 본문 채팅 붙여넣기
-- **시나리오 C 보류** (Claude 가 본 환경에 nodejs+npm+Codex CLI 설치) = 사용자 사전 확인 의무 (정책 15 High tier — apt 권한 + OPENAI_API_KEY 발급 의향 + 정책 7 PR 단위 위반 위험)
-- **자동화 권장 영역** (≥ 2):
-  1. PR template `[ ] Codex OK 회신 받음` 체크박스 (즉시 — 위험 0)
-  2. Codex GitHub App + GitHub Actions workflow `codex-mutual-review.yml` (사이클 94+ 옵션, 사용자 confirm 후)
-- ⚠️ **`.codex/hooks.json` Windows hard-coded path** — `f:\DEVELOPMENT\...` 경로 → Codespaces (Linux) 환경에서 hook 0% 발화. mutual 자동화 검토 시 사전 인지 의무 (사이클 93 관점 5 발견).
-- 🔴 **토큰 만료/런타임 오류 fallback 예외 (사이클 161 회고 신설)** — Codex 액세스 토큰 만료(`refresh token already used`)·샌드박스 제약·CLI 런타임 오류로 mutual 자동 검증 불능 시 = **사용자 명시 승인 하 Claude 직접검증 fallback** 정당 (정책 18 예외 "사용자 직접 결정 영역" + 사이클 119/125/161 전례). fallback PR 본문에 ① 만료/오류 사유 ② 사용자 승인 ③ 직접검증 근거(적대적 분석·TDD·lint) ④ **turn-0 `codex exec` probe 출력(exit code) — 부재/오류 실측 증거** 4종 명시 의무 (④ 는 2026-07-09 P0 신설 — "미설치" 정적 단정 waiver 금지, 실측만 근거).
-  - 🔴 **복구 강제 가드 (mutual 2-layer 가치 회귀 차단)** — 동일 fallback 이 **≥ 2 사이클 또는 ≥ 5 PR 연속** 시 = 다음 세션 진입 전 `codex logout; codex login` 복구를 **사용자 1줄 확인으로 강제 트리거** (메모리 [[feedback-codex-post-validation-mandatory]] + [[integrity-audit-session]] 재개법 "codex login 권장" → "복구 강제"로 강화). mutual = 외부 LLM 다양성 핵심 가치이므로 장기 1-layer 운영 금지.
-
-### codex mutual 운용 도구 default (사이클 167 신설 — 2026-06-16 회고 PROC-1/3)
-
-본 Windows 호스트 환경은 `codex-cli` 가용 → Claude 가 `codex exec` 로 직접 mutual 검증 가능 (위 "운영 흐름" 의 사용자-대리 시나리오 A 와 별개 경로). 이때 도구 마찰 재발 방지 default:
-
-🔴 **쉘 주의**: codex stdin 파이프 호출은 **Bash 툴(POSIX sh) 로 수행** — PowerShell 은 `<` 입력 리다이렉션·`/dev/null` 미지원이라 codex 파이프엔 부적합 (PowerShell 은 git/lint 용). 아래 관용구·`/dev/null` 규칙은 **Bash 툴 기준**.
-
-- 🔴 **입력(프롬프트/diff) 전달 = `codex exec -` stdin 파이프 또는 repo 밖 임시파일만**. argv 직접 전달은 거대 입력서 `Argument list too long` (STATE 거대 라인 전례). 권장 관용구 (Bash 툴): `{ echo "<prompt>"; git diff main...HEAD; } | codex exec -s read-only --skip-git-repo-check -`.
-- 🔴 **repo 내부 임시파일 + `git add -A` 금지** — `.codex_*` scratch 가 staging 되면 trailing-whitespace pre-commit hook fail → **commit 무음 실패** → Codex 가 구(pre-fix) diff 리뷰 = false NG (2026-06-15 사고). 명시 path `git add <file>` 의무. `.codex_*` 은 `.gitignore` 가드(probe 가드 아래) — `.codex/`(추적 설정 디렉토리)는 패턴 비매칭이라 안전.
-- 🔴 **(Bash 툴) `< /dev/null` 은 prompt 를 arg 로 줄 때만** (stdin 대기 방지). stdin 파이프로 prompt 전달 시 `< /dev/null` 은 파이프를 덮어써 `No prompt provided via stdin` → 동시 사용 금지.
-- 정적 리뷰만 요청 (pytest **실행** 요청 금지 — Codex 가 `pytest` 를 model 명으로 오파싱). 로컬 test/lint 증거를 본문에 첨부 → genuine OK.
-- **검증 직후 `git status` 로 임시파일 staging 0 확인 후 commit** (PowerShell 다중 commit 메시지는 here-string 깨짐 주의 → repo 밖 파일 + `git commit -F` 권장).
-
-cross-ref: 메모리 [[feedback-codex-post-validation-mandatory]].
-
-### 17 정책 cross-reference 표 (CLAUDE.md 정책 18 본문서 이관 — docs reorg Phase 3d)
-
-mutual 검증이 다른 정책과 맺는 충돌/페어 7건:
-
-| 정책 | mutual 페어 영역 |
-|------|----------------|
-| 3 (자율 판단) | 자율 판단 = mutual OK 받은 영역으로 한정 |
-| 5 (사이클 종료) | 종료 신호 = 두 LLM 동의 의무 구성요소 (3 조건 AND) |
-| 7 (PR 단위) | mutual = **push 전** Codex 검증 OK 후 push (사이클 94 정정) — push 후 의뢰 안티패턴 |
-| 8 (회고 5+1) | 5+1 (Claude 내부) ↔ mutual (외부 LLM) 2-layer 격리 — cross-verify 6차 생략 시도 mutual 별도 의무 |
-| 10 (PR 직접 생성) | Codex/Claude 생성 PR = **push 전 상호 검증 OK 후 push** (사이클 94 정정 — Codex NG #2 학습) — push 후 의뢰 안티패턴 |
-| 12 (MCP scope) | MCP destructive = 사용자 사전 승인 우선 (mutual 면제 — 사용자 직접 결정 영역) |
-| 16 (단순화 5번 토큰 효율) | mutual = 사용자 명시 의무 (단순화 5번 default 위반 면제) |
-
-🔴 **NG 성격별 2-tier (사이클 165 회고 — CLAUDE.md 정책18 §3 페어)**: NG 처리는 NG 의 성격으로 분기한다. (a) **설계방향·트레이드오프 동반 NG** = 자율 수정 금지 → 옵션 표(정책 1) + 사용자 confirm 의무. (b) **단일 정답 버그 회귀 NG**(검증 가능한 객관 정답 1개·트레이드오프 없음) = 동일 PR 내 즉시 수정 후 재검증 OK, 옵션 표 면제. 사이클 165 사례: #811 비원자 TOCTOU = (a, 옵션 A/B 표 + confirm) / #814 overview NULL→F 오분류 = (b, 정답 avg_raw 기준 1개 → 즉시 수정). 판별 애매 시 (a) 로 보수 처리.
-
-### NG 회기 ≤ 3회 default 가드
-
-| 회기 | default 동작 |
-|------|-------------|
-| 1회차 NG | Claude 수정 plan 옵션 표 → 사용자 confirm → 재진입 |
-| 2회차 NG | Claude 수정 + **1차 회기 NG 사유와 차이 분석** PR body 명시 |
-| 3회차 NG | Claude 수정 + **누적 차이 분석** PR body 명시 — Claude 최종 시도 |
-| **4회차 NG = 사용자 직접 결정 영역 escalation** | 옵션 표 (🅐 수용 머지 / 🅑 보류 / 🅒 다른 접근) → 사용자 결정 |
-
-**Why ≤ 3회 default**: 정책 8 5+1 cross-verify 패턴과 정합 (5 회기 = blind spot 가능 / 3 Claude 회기 = 대화 단위 합리적 상한). 사이클 73 #244 Copilot Autofix 5 commits 사례 학습 — **3 회기 후(=4회차) escalation** 으로 자동화 안티패턴 차단. CLAUDE.md 정책18 §3 "≤ 3회 default — 4회차 escalation" 과 정합 (사이클 165 회고 Codex 적발 off-by-one 정정 — 구 표 '3회차 escalation' = 오기).
-
-### 회복 가드 (정책 1 진화 사이클 86 Q4 페어)
-
-작업 완료 보고 시 검증 의뢰 명시 누락 시 = **다음 응답에서 회복 의무** (자성 1줄 + 의뢰 1줄 추가). 회복 누락 시 = 다음 사이클 회고 §자성 명시 의무.
-
-**양방향 비대칭 위험**: Claude 측 회복 가드 = 메모리 `feedback-codex-post-validation-mandatory.md` 적용. Codex 측 회복 가드 = AGENTS.md hooks 또는 Codex system prompt 영역 (SCAManager 통제 외 — Codex 측 적용 검증 불가). default 보고: AGENTS.md 본문에 "Codex 환경 진입 시 본 섹션 read 의무" 명시 (PR #368 머지) — Codex 측 강제력 = 0 (자율 적용 영역).
-
-### 검증 사례 (사이클 93 첫 운영)
-
-- **PR #368** (AGENTS.md mutual 신설) — Codex OK 받고 사용자 머지 ✅
-- **PR #366** (Step 2-A + fix-up) — Codex OK 받고 사용자 머지 ✅
-- 사용자 라운드트립 부담 정량 = PR당 ~수분 (양성 ROI 검증)
-- 사이클 93 CI 분석 사고 (Claude 단독 false-positive) 차단 가치 ≫ 라운드트립 비용
-- **net positive 검증** (1 사이클 데이터) — ≥ 5 사이클 누적 시 ROI 재검증 의무 (정책 17 5번 default 페어)
-
-### 운영 P0 가드 영역 (3건 — 5+1 검토 도출)
-
-| # | P0 영역 | 본문 명시 가드 |
-|---|--------|--------------|
-| 1 | mutual ↔ 5+1 cross-verify 중복 오해 | "Codex OK 받았으니 5+1 6차 생략 OK" 단정 X — 양 layer 독립 의무 |
-| 2 | 5+1 dispatch 에 Codex 슬롯 추가 | self-contained 보호 깨짐 + 병렬성 손상 — 5+1 = Claude 내부 / mutual = 결과물 검증 시점 분리 |
-| 3 | 사이클 종료 = 사용자 신호만으로 종료 | 정책 5 강화 회귀 — 3 조건 AND 의무 (사용자 + Claude OK + Codex OK) |
-
-### 4-way Single Source of Truth + sync 가드
-
-| 영역 | 본문 위치 | sync 트리거 |
-|------|---------|-----------|
-| default 흐름 본문 | AGENTS.md §"Claude ↔ Codex 양방향 mutual 검증 의무" | 흐름 변경 시 4-way sync 의무 |
-| CLAUDE.md 정책 18 default rule | CLAUDE.md §"사용자 협업 정책" 정책 17 직후 | default rule 변경 시 sync |
-| detail · 검증 사례 · Why · How | .claude/policies/active.md §"정책 18" (본 섹션) | detail 영역 변경 시 sync |
-| 진화 default 추적 | .claude/policies/history.md §"보존 영역" — 정책 18 entry | 사이클 94+ 진화 시 추가 |
-| Claude 측 숙지 | 메모리 `feedback-codex-post-validation-mandatory.md` | 매 사이클 30초 grep 의무 |
-
-**5-way sync 가드** — 본문 충돌 시 **CLAUDE.md 정책 18 우선** (정책 일관성 — Claude 가 SCAManager 운영 주체).
-
-### Cross-ref
-
-- 정책 5 강화 페어 (사이클 종료 신호 = 두 LLM 동의 의무 구성요소)
-- 정책 8 페어 (5+1 cross-verify ↔ mutual 2-layer 격리 의무)
-- 정책 9 페어 (회고 자유 발언 = Claude 단독 / 회고 결과물 = Codex 검증 의뢰 의무)
-- 정책 17 5번 default 페어 (정기 검증 ≥ 5 사이클 ↔ mutual 매 PR 시점 차별)
-- 메모리 `feedback-codex-post-validation-mandatory.md` (Claude 측 숙지)
-- 메모리 `feedback-pr-scoped-ci-endpoint-pattern.md` (사이클 93 사고 학습 페어)
+> ⚠️ 코드·문서의 "Codex mutual 적발/발견" 주석은 **당시 사실 기록(출처 표기)** 이므로 재작성하지 않는다.
 
 ---
 

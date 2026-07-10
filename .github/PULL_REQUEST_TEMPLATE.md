@@ -59,9 +59,4 @@
 
 <!-- Claude가 위임받은 작업 중 자율 판단한 항목 명시 (없으면 이 섹션 삭제) -->
 
-## 🔍 Codex 검증 의뢰 (push 전, 정책 18)
-
-- [ ] Codex 검증 의뢰 완료 — push 전 Codex OK 회신 대기 중
-- [ ] (예외) Codex 샌드박스 오류 시 Claude 직접 검증 대체 — 사유 명시
-
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
