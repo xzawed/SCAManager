@@ -34,7 +34,17 @@ async def list_user_repos(token: str) -> list[dict]:
     # GitHub API pagination: Link 헤더의 next URL을 따라 모든 페이지 수집
     # Follow Link header next URLs to collect all pages from GitHub API
     url: str | None = f"{GITHUB_API}/user/repos"
-    params: dict | None = {"per_page": 100, "sort": "updated", "affiliation": "owner,collaborator"}
+    # 🔴 affiliation 3값 전부 필수 — organization_member 를 빼면 org 팀 권한으로만 접근하는
+    # 저장소가 목록에서 사라진다. 이 목록은 `POST /repos/add` 의 소유권 획득 검증
+    # (ui/routes/add_repo.py) 에도 쓰이므로, 누락 시 NULL-owner org 저장소를 영영 획득하지 못한다.
+    # 🔴 All three affiliation values are required — dropping organization_member hides repos the
+    # user reaches only via org team permissions. This list also gates ownership claim in
+    # `POST /repos/add`, so a missing value makes NULL-owner org repos permanently unclaimable.
+    params: dict | None = {
+        "per_page": 100,
+        "sort": "updated",
+        "affiliation": "owner,collaborator,organization_member",
+    }
     while url:
         resp = await client.get(url, params=params, headers=_auth_headers(token))
         resp.raise_for_status()

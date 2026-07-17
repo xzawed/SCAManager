@@ -690,6 +690,7 @@
     "invalid_url": "Invalid URL: {field}. Internal network addresses are not allowed.",
     "repo_name_required": "Repository name is required",
     "repo_access_denied": "You do not have GitHub access to this repository",
+    "github_unavailable": "Could not reach GitHub to verify your access. Please try again shortly.",
     "hook_token_required": "Token is required",
     "hook_invalid_repo_or_token": "Unregistered repository or invalid token",
     "hook_invalid_token": "Invalid token",

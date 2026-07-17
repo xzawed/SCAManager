@@ -11,6 +11,8 @@ os.environ.setdefault("GITHUB_CLIENT_SECRET", "test-github-client-secret")
 os.environ.setdefault("SESSION_SECRET", "test-session-secret")
 
 from unittest.mock import AsyncMock, MagicMock, patch
+import httpx
+import pytest
 from fastapi.testclient import TestClient
 from src.main import app
 from src.auth.session import CurrentUser, get_current_user, require_login
@@ -717,6 +719,78 @@ def test_add_repo_post_blocks_unowned_transfer_without_github_access():
 
     assert r.status_code == 403
     assert not mock_db.commit.called  # 소유권 이전 안 됨
+
+
+@pytest.mark.parametrize("exc", [
+    # GitHub 이 4xx/5xx 반환 (토큰 만료/폐기 등) — repos.py:40 resp.raise_for_status() 가 던짐
+    # GitHub returns 4xx/5xx (expired/revoked token) — raised by repos.py:40 resp.raise_for_status().
+    httpx.HTTPStatusError("401 Unauthorized", request=MagicMock(), response=MagicMock(status_code=401)),
+    # 네트워크/DNS/타임아웃 — HTTPStatusError 가 아니므로 broad catch 필요
+    # Network/DNS/timeout — not an HTTPStatusError, so a broad catch is required.
+    httpx.ConnectError("dns failure"),
+    # 예상 밖 예외 (GitHub 응답 스키마 변경 등) — GET 경로(add_repo.py:80)의 broad catch 와 대칭
+    # Unexpected error (e.g. GitHub schema change) — mirrors the GET path's broad catch at add_repo.py:80.
+    Exception("unexpected"),
+], ids=["http_status_error", "connect_error", "generic_exception"])
+def test_add_repo_post_returns_502_when_github_lookup_fails(exc):
+    """NULL-owner 재등록 중 list_user_repos 실패 시 500 이 아니라 502 + 소유권 미변경.
+
+    🔴 add_repo.py:124 는 list_user_repos 를 감싸지 않아 토큰 만료/GitHub 장애 시 500(서버 버그 신호)이
+    난다. 같은 파일 GET 경로(:78-83)는 try/except 로 감싸므로 비대칭. 상류(GitHub) 장애이므로 502 가 옳다.
+    상태코드만 보면 부분 커밋을 놓치므로 user_id 불변도 함께 단언.
+    """
+    from src.models.repository import Repository
+
+    existing = MagicMock(spec=Repository)
+    existing.full_name = "acme/api"
+    existing.user_id = None
+
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = existing
+
+    with patch("src.ui.routes.add_repo.list_user_repos", new_callable=AsyncMock, side_effect=exc):
+        with patch("src.ui.routes.add_repo.SessionLocal") as mock_sl:
+            mock_sl.return_value.__enter__.return_value = mock_db
+            r = client.post(
+                "/repos/add",
+                data={"repo_full_name": "acme/api"},
+                follow_redirects=False,
+            )
+
+    assert r.status_code == 502, (
+        f"GitHub 상류 장애는 502 여야 함 (500=서버 버그 신호). 실제: {r.status_code}"
+    )
+    # 🔴 상태코드만으로는 부분 커밋 결함을 못 잡는다 — 소유권이 이전되지 않았음을 함께 단언
+    # Status code alone would miss a partial commit — assert ownership did not transfer.
+    assert existing.user_id is None, "GitHub 조회 실패인데 소유권이 이전됨"
+    assert not mock_db.commit.called, "GitHub 조회 실패인데 db.commit() 호출됨"
+
+
+def test_add_repo_post_502_detail_is_not_raw_exception():
+    """502 응답 본문이 원시 예외 문자열을 노출하지 않고 i18n 안내 메시지를 담는다."""
+    from src.models.repository import Repository
+
+    existing = MagicMock(spec=Repository)
+    existing.full_name = "acme/api"
+    existing.user_id = None
+
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = existing
+
+    with patch("src.ui.routes.add_repo.list_user_repos", new_callable=AsyncMock,
+               side_effect=Exception("gho_leaked_token_in_message")):
+        with patch("src.ui.routes.add_repo.SessionLocal") as mock_sl:
+            mock_sl.return_value.__enter__.return_value = mock_db
+            r = client.post(
+                "/repos/add",
+                data={"repo_full_name": "acme/api"},
+                follow_redirects=False,
+            )
+
+    assert r.status_code == 502
+    detail = r.json()["detail"]
+    assert detail, "502 detail 이 비어 있음 — 재시도 안내 메시지 필요"
+    assert "gho_leaked_token_in_message" not in detail, "원시 예외 문자열이 응답에 노출됨"
 
 
 # ── 분석 상세 페이지 테스트 ──────────────────────────

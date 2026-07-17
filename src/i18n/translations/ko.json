@@ -690,6 +690,7 @@
     "invalid_url": "유효하지 않은 URL: {field}. 내부 네트워크 주소는 사용할 수 없습니다.",
     "repo_name_required": "리포 이름이 필요합니다",
     "repo_access_denied": "이 리포지토리에 대한 GitHub 접근 권한이 없습니다",
+    "github_unavailable": "GitHub에 연결하지 못해 권한을 확인할 수 없습니다. 잠시 후 다시 시도해 주세요.",
     "hook_token_required": "토큰이 필요합니다",
     "hook_invalid_repo_or_token": "등록되지 않은 리포 또는 유효하지 않은 토큰",
     "hook_invalid_token": "유효하지 않은 토큰",

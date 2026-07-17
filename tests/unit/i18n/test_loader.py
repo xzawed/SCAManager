@@ -123,3 +123,43 @@ def test_get_text_supports_all_three_locales():
         assert result != "notifier.no_issues"  # key 자체 X
         assert isinstance(result, str)
         assert len(result) > 0
+
+
+def _flatten_keys(node: dict, prefix: str = "") -> set[str]:
+    """중첩 dict 를 dot-path leaf key 집합으로 평탄화.
+
+    Flatten a nested dict into a set of dot-path leaf keys.
+    """
+    keys: set[str] = set()
+    for key, value in node.items():
+        path = f"{prefix}.{key}" if prefix else key
+        if isinstance(value, dict):
+            keys |= _flatten_keys(value, path)
+        else:
+            keys.add(path)
+    return keys
+
+
+def test_all_locales_have_identical_key_sets():
+    """🔴 en/ko/ja 키 집합 완전 일치 — 로케일 drift 차단.
+
+    🔴 en/ko/ja key sets must match exactly — blocks locale drift.
+
+    i18n.md 의무: "새 키 추가 시 3 언어 모두 동시 추가 (en 누락 시 fallback 깨짐 — 운영 사고)".
+    기존 `test_get_text_supports_all_three_locales` 는 하드코딩 키 1개만 검사해
+    신규 키를 2 로케일에만 추가하는 실수를 못 잡는다. 여기서 전수 강제한다.
+    누락 로케일은 en fallback → 최종적으로 **키 문자열 자체가 사용자에게 노출**된다.
+
+    i18n.md requires every new key to land in all three locales at once. The existing
+    test only probes one hardcoded key, so a key added to just two locales slips through.
+    A missing locale falls back to en and ultimately renders the raw key to the user.
+    """
+    key_sets = {
+        locale: _flatten_keys(load_translations(locale)) for locale in ("en", "ko", "ja")
+    }
+    en_keys = key_sets["en"]
+    for locale in ("ko", "ja"):
+        missing = en_keys - key_sets[locale]
+        extra = key_sets[locale] - en_keys
+        assert not missing, f"{locale}.json 에 누락된 키: {sorted(missing)}"
+        assert not extra, f"{locale}.json 에만 있는 키(en 누락 → fallback 붕괴): {sorted(extra)}"
