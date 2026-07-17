@@ -530,3 +530,34 @@ def test_locale_membership_valid_config_constructs():
     s = cfg.Settings(default_locale="ko", supported_locales="en,ko,ja", locale_fallback="en")
     assert s.default_locale == "ko"
     assert s.locale_fallback == "en"
+
+
+# ── is_production 프로퍼티 — prod 하드닝 명시 신호 (준비도 감사 #14) ──────────
+
+def test_is_production_https_heuristic():
+    """ENVIRONMENT 미설정 + https APP_BASE_URL → prod (기존 휴리스틱 하위 호환)."""
+    import src.config as cfg
+    s = cfg.Settings(environment="", app_base_url="https://x.railway.app")
+    assert s.is_production is True
+
+
+def test_is_production_dev_default():
+    """ENVIRONMENT 미설정 + 빈/http APP_BASE_URL → dev."""
+    import src.config as cfg
+    assert cfg.Settings(environment="", app_base_url="").is_production is False
+    assert cfg.Settings(environment="", app_base_url="http://localhost:8000").is_production is False
+
+
+def test_is_production_explicit_environment_forces_prod():
+    """🔴 ENVIRONMENT=production 은 http/빈 APP_BASE_URL 오설정에도 하드닝을 강제한다 (#14 핵심)."""
+    import src.config as cfg
+    assert cfg.Settings(environment="production", app_base_url="").is_production is True
+    assert cfg.Settings(environment="production", app_base_url="http://x").is_production is True
+    # 대소문자·공백 정규화
+    assert cfg.Settings(environment="  Production  ", app_base_url="").is_production is True
+
+
+def test_is_production_development_does_not_weaken_https():
+    """🔴 ENVIRONMENT=development 라도 https 배포면 prod — 명시 신호는 강제만 하고 해제 못 함."""
+    import src.config as cfg
+    assert cfg.Settings(environment="development", app_base_url="https://x").is_production is True

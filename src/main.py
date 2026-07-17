@@ -81,7 +81,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-
             "font-src 'self' data:; "
             "frame-ancestors 'none';"
         )
-        if settings.app_base_url.startswith("https"):
+        if settings.is_production:
             response.headers["Strict-Transport-Security"] = (
                 "max-age=31536000; includeSubDomains"
             )
@@ -100,7 +100,16 @@ def _validate_startup_config() -> None:
     Validate critical config before startup; raise RuntimeError or log a warning on risky settings.
     프로덕션(HTTPS) 판정은 APP_BASE_URL 기준. lifespan 에서 startup 직전 1회 호출.
     """
-    is_prod_like = settings.app_base_url.startswith("https")
+    is_prod_like = settings.is_production
+    # 🔴 유효 모드를 startup 에 명시 로깅 — prod 하드닝이 무성 다운그레이드되지 않도록 가시화(#14).
+    # 운영자가 Railway 로그에서 "production hardening = OFF"를 보면 오설정을 즉시 인지한다.
+    # 🔴 Log the effective mode at startup so a silent prod→dev downgrade is visible (#14).
+    logger.info(
+        "startup: production hardening = %s (ENVIRONMENT=%s, APP_BASE_URL=%s)",
+        "ON" if is_prod_like else "OFF",
+        settings.environment or "(unset)",
+        settings.app_base_url or "(unset)",
+    )
     _DEFAULT_SESSION_SECRET = "dev-secret-change-in-production"  # nosec B105
     if settings.session_secret == _DEFAULT_SESSION_SECRET:  # nosec B105
         if is_prod_like:
@@ -177,6 +186,17 @@ def _validate_startup_config() -> None:
             "the value configured in your Telegram bot's webhook settings.",
             settings.app_base_url,
         )
+    if is_prod_like and not (settings.internal_cron_api_key or "").strip():
+        # 🔴 INTERNAL_CRON_API_KEY 미설정 시 모든 스케줄 작업(주간 리포트·트렌드 경보·머지 재시도
+        # sweep)이 503 으로 조용히 실패한다(internal_cron.py:42 — "Cron API key not configured").
+        # railway.toml cron 의 curl 은 -f 없이 성공 종료해 운영자가 인지하기 어렵다 → startup 경고(#15).
+        # 🔴 Without INTERNAL_CRON_API_KEY every scheduled job (weekly report, trend alert, merge-retry
+        # sweep) fails silently with 503. Surface it at startup so the operator notices.
+        logger.warning(
+            "INTERNAL_CRON_API_KEY is not set in production — all scheduled cron jobs "
+            "(weekly report, trend alert, merge-retry sweep) will return 503 and never run. "
+            "Set INTERNAL_CRON_API_KEY to enable the /api/internal/cron/* endpoints."
+        )
 
 
 @asynccontextmanager
@@ -229,7 +249,7 @@ async def lifespan(_app: FastAPI):
         await close_http_client()
 
 
-_is_prod = settings.app_base_url.startswith("https")
+_is_prod = settings.is_production
 
 app = FastAPI(
     title="SCAManager",

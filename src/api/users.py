@@ -182,7 +182,7 @@ async def update_preferred_language(
     # Cookie sync — LocaleMiddleware checks Cookie first per request
     # 만료 = 1년 (사용자 명시 변경 시까지 유지)
     # max-age = 1 year (until user explicitly changes)
-    is_prod = settings.app_base_url.startswith("https")
+    is_prod = settings.is_production
     # Phase 2 PR-5 (사이클 84 — cross-verify 옵션 C) — httponly=True 보안 강화
     # Phase 2 PR-5 (Cycle 84 — cross-verify option C) — httponly=True security
     # 변경 사유: JS 가 cookie 직접 읽지 않음 (LocaleMiddleware scope.state → Jinja

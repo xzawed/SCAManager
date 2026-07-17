@@ -62,6 +62,11 @@ class Settings(BaseSettings):
     github_client_secret: str = ""
     session_secret: str = "dev-secret-change-in-production"
     app_base_url: str = ""  # Railway 등 리버스 프록시 환경에서 HTTPS redirect_uri 강제 지정
+    # 명시 환경 신호 — "production" 이면 APP_BASE_URL 과 무관하게 프로덕션 하드닝 강제.
+    # 미설정 시 기존 HTTPS 휴리스틱으로 판정(하위 호환). is_production 프로퍼티 참조.
+    # Explicit environment signal — "production" forces prod hardening regardless of APP_BASE_URL.
+    # When unset, falls back to the HTTPS heuristic (backward compatible). See is_production.
+    environment: str = ""
     # GitHub OAuth 토큰 Fernet 암호화 키 (없으면 평문 저장 — 운영환경 필수 설정)
     # 생성: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     token_encryption_key: str = ""
@@ -220,6 +225,24 @@ class Settings(BaseSettings):
                 f"Generate one with: openssl rand -hex 32"
             )
         return v
+
+    @property
+    def is_production(self) -> bool:
+        """프로덕션 하드닝(HSTS·쿠키 Secure·/docs 비노출·시작 검증) 활성 여부 — 단일 판정.
+
+        Whether production hardening is active — single source of truth.
+
+        🔴 명시 신호(`ENVIRONMENT=production`)가 있으면 APP_BASE_URL 오설정(http/빈값)에도 하드닝을
+        **강제**한다 — 이전엔 `app_base_url.startswith("https")` 단일 휴리스틱이라 http/빈 APP_BASE_URL
+        오설정 하나로 /docs 노출·쿠키 Secure 소실·HSTS 미주입이 **무성 다운그레이드**됐다(준비도 감사 #14).
+        명시 신호는 하드닝을 강제만 하고 **해제하지 못한다** — `ENVIRONMENT=development` 라도 HTTPS
+        배포면 prod 로 판정(secure 방향 우선). `api_auth` 의 명시 opt-out 패턴과 대칭(security.md).
+        🔴 An explicit ENVIRONMENT=production forces hardening even if APP_BASE_URL is misconfigured;
+        the explicit signal can only strengthen, never weaken (https deploy stays prod regardless).
+        """
+        if self.environment.strip().lower() == "production":
+            return True
+        return self.app_base_url.startswith("https")
 
     @field_validator("smtp_port", mode="before")
     @classmethod

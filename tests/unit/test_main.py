@@ -145,6 +145,7 @@ def test_lifespan_strict_migration_raises_on_timeout():
         mock_settings.session_secret = "test-session-secret-32-chars-long!"
         mock_settings.anthropic_api_key = "sk-ant-test-key"
         mock_settings.app_base_url = ""
+        mock_settings.is_production = False  # is_production 프로퍼티는 MagicMock 미계산 — 명시 설정
         mock_settings.token_encryption_key = ""
         mock_settings.strict_migration = True
         with pytest.raises(RuntimeError, match="STRICT_MIGRATION"):
@@ -159,6 +160,7 @@ def test_lifespan_strict_migration_raises_on_exception():
         mock_settings.session_secret = "test-session-secret-32-chars-long!"
         mock_settings.anthropic_api_key = "sk-ant-test-key"
         mock_settings.app_base_url = ""
+        mock_settings.is_production = False  # is_production 프로퍼티는 MagicMock 미계산 — 명시 설정
         mock_settings.token_encryption_key = ""
         mock_settings.strict_migration = True
         with pytest.raises(RuntimeError, match="STRICT_MIGRATION"):
@@ -173,6 +175,7 @@ def test_lifespan_default_migration_continues_on_failure():
         mock_settings.session_secret = "test-session-secret-32-chars-long!"
         mock_settings.anthropic_api_key = "sk-ant-test-key"
         mock_settings.app_base_url = ""
+        mock_settings.is_production = False  # is_production 프로퍼티는 MagicMock 미계산 — 명시 설정
         mock_settings.token_encryption_key = ""
         mock_settings.strict_migration = False
         with TestClient(app) as c:
@@ -190,6 +193,7 @@ def test_lifespan_warns_when_anthropic_key_missing(caplog):
         mock_settings.session_secret = "test-session-secret-32-chars-long!"
         mock_settings.anthropic_api_key = ""
         mock_settings.app_base_url = ""
+        mock_settings.is_production = False  # is_production 프로퍼티는 MagicMock 미계산 — 명시 설정
         mock_settings.token_encryption_key = ""
         with caplog.at_level(_logging.WARNING, logger="src.main"):
             with TestClient(app):
@@ -206,6 +210,7 @@ def test_lifespan_no_warning_when_anthropic_key_set(caplog):
         mock_settings.session_secret = "test-session-secret-32-chars-long!"
         mock_settings.anthropic_api_key = "sk-ant-test-key"
         mock_settings.app_base_url = ""
+        mock_settings.is_production = False  # is_production 프로퍼티는 MagicMock 미계산 — 명시 설정
         mock_settings.token_encryption_key = ""
         with caplog.at_level(_logging.WARNING, logger="src.main"):
             with TestClient(app):
@@ -224,6 +229,7 @@ def test_lifespan_warns_token_encryption_key_missing_in_prod(caplog):
         mock_settings.session_secret = "test-session-secret-32-chars-long!"
         mock_settings.anthropic_api_key = "sk-ant-test-key"
         mock_settings.app_base_url = "https://scamanager.example.com"
+        mock_settings.is_production = True  # is_production 프로퍼티는 MagicMock 미계산 — 명시 설정
         mock_settings.token_encryption_key = ""
         # Phase 2: strict 모드 비활성 (기본값) — warning 만 출력
         # Phase 2: strict mode disabled (default) — emits warning only
@@ -235,6 +241,68 @@ def test_lifespan_warns_token_encryption_key_missing_in_prod(caplog):
         "prod 환경에서 TOKEN_ENCRYPTION_KEY 부재 경고가 로그에 남지 않았습니다"
 
 
+# --- INTERNAL_CRON_API_KEY 부재 경고 (prod 환경) — 준비도 감사 #15 ---
+
+def test_lifespan_warns_cron_key_missing_in_prod(caplog):
+    """🔴 prod 에서 INTERNAL_CRON_API_KEY 미설정 시 경고 — cron 이 무성 503 으로 실패함을 가시화."""
+    import logging as _logging
+    with patch("src.main._run_migrations"), \
+         patch("src.main.settings") as mock_settings:
+        mock_settings.session_secret = "test-session-secret-32-chars-long!"
+        mock_settings.anthropic_api_key = "sk-ant-test-key"
+        mock_settings.app_base_url = "https://scamanager.example.com"
+        mock_settings.is_production = True
+        mock_settings.token_encryption_key = "x" * 44
+        mock_settings.strict_token_encryption = False
+        mock_settings.telegram_webhook_secret = "tg-secret"
+        mock_settings.internal_cron_api_key = ""
+        with caplog.at_level(_logging.WARNING, logger="src.main"):
+            with TestClient(app):
+                pass
+    assert any("INTERNAL_CRON_API_KEY" in rec.message for rec in caplog.records), \
+        "prod 에서 INTERNAL_CRON_API_KEY 부재 경고가 로그에 남지 않았습니다"
+
+
+def test_lifespan_no_cron_key_warning_when_set(caplog):
+    """INTERNAL_CRON_API_KEY 설정 시 경고 없음 (false 경고 방지)."""
+    import logging as _logging
+    with patch("src.main._run_migrations"), \
+         patch("src.main.settings") as mock_settings:
+        mock_settings.session_secret = "test-session-secret-32-chars-long!"
+        mock_settings.anthropic_api_key = "sk-ant-test-key"
+        mock_settings.app_base_url = "https://scamanager.example.com"
+        mock_settings.is_production = True
+        mock_settings.token_encryption_key = "x" * 44
+        mock_settings.strict_token_encryption = False
+        mock_settings.telegram_webhook_secret = "tg-secret"
+        mock_settings.internal_cron_api_key = "cron-key-set"
+        with caplog.at_level(_logging.WARNING, logger="src.main"):
+            with TestClient(app):
+                pass
+    assert not any("INTERNAL_CRON_API_KEY" in rec.message for rec in caplog.records), \
+        "키가 설정됐는데도 cron 경고가 남았습니다"
+
+
+def test_lifespan_no_cron_key_warning_in_dev(caplog):
+    """🔴 dev 환경(is_production=False)에서는 cron 키 미설정이어도 경고 없음 — 로컬 개발 노이즈 0."""
+    import logging as _logging
+    with patch("src.main._run_migrations"), \
+         patch("src.main.settings") as mock_settings:
+        mock_settings.session_secret = "test-session-secret-32-chars-long!"
+        mock_settings.anthropic_api_key = "sk-ant-test-key"
+        mock_settings.app_base_url = ""
+        mock_settings.is_production = False
+        mock_settings.token_encryption_key = ""
+        mock_settings.strict_token_encryption = False
+        mock_settings.telegram_webhook_secret = ""
+        mock_settings.internal_cron_api_key = ""
+        with caplog.at_level(_logging.WARNING, logger="src.main"):
+            with TestClient(app):
+                pass
+    assert not any("INTERNAL_CRON_API_KEY" in rec.message for rec in caplog.records), \
+        "dev 환경에서 cron 경고가 잘못 노출됨"
+
+
 def test_lifespan_no_warning_token_encryption_key_set_in_prod(caplog):
     """prod 환경이라도 TOKEN_ENCRYPTION_KEY 가 설정되어 있으면 경고 없음."""
     import logging as _logging
@@ -243,6 +311,7 @@ def test_lifespan_no_warning_token_encryption_key_set_in_prod(caplog):
         mock_settings.session_secret = "test-session-secret-32-chars-long!"
         mock_settings.anthropic_api_key = "sk-ant-test-key"
         mock_settings.app_base_url = "https://scamanager.example.com"
+        mock_settings.is_production = True  # is_production 프로퍼티는 MagicMock 미계산 — 명시 설정
         mock_settings.token_encryption_key = _VALID_FERNET_KEY
         mock_settings.strict_token_encryption = False
         with caplog.at_level(_logging.WARNING, logger="src.main"):
@@ -260,6 +329,7 @@ def test_lifespan_no_warning_token_encryption_key_dev_env(caplog):
         mock_settings.session_secret = "test-session-secret-32-chars-long!"
         mock_settings.anthropic_api_key = "sk-ant-test-key"
         mock_settings.app_base_url = "http://localhost:8000"
+        mock_settings.is_production = False  # is_production 프로퍼티는 MagicMock 미계산 — 명시 설정
         mock_settings.token_encryption_key = ""
         mock_settings.strict_token_encryption = False
         with caplog.at_level(_logging.WARNING, logger="src.main"):
@@ -281,6 +351,7 @@ def test_lifespan_strict_mode_raises_when_key_missing_in_prod():
         mock_settings.session_secret = "test-session-secret-32-chars-long!"
         mock_settings.anthropic_api_key = "sk-ant-test-key"
         mock_settings.app_base_url = "https://scamanager.example.com"
+        mock_settings.is_production = True  # is_production 프로퍼티는 MagicMock 미계산 — 명시 설정
         mock_settings.token_encryption_key = ""
         mock_settings.strict_token_encryption = True  # 신규 모드 활성
         with pytest.raises(RuntimeError, match="STRICT_TOKEN_ENCRYPTION"):
@@ -295,6 +366,7 @@ def test_lifespan_strict_mode_skipped_in_dev_env():
         mock_settings.session_secret = "test-session-secret-32-chars-long!"
         mock_settings.anthropic_api_key = "sk-ant-test-key"
         mock_settings.app_base_url = "http://localhost:8000"
+        mock_settings.is_production = False  # is_production 프로퍼티는 MagicMock 미계산 — 명시 설정
         mock_settings.token_encryption_key = ""
         mock_settings.strict_token_encryption = True
         # 차단 없이 정상 진행
@@ -309,6 +381,7 @@ def test_lifespan_strict_mode_passes_when_key_set():
         mock_settings.session_secret = "test-session-secret-32-chars-long!"
         mock_settings.anthropic_api_key = "sk-ant-test-key"
         mock_settings.app_base_url = "https://scamanager.example.com"
+        mock_settings.is_production = True  # is_production 프로퍼티는 MagicMock 미계산 — 명시 설정
         mock_settings.token_encryption_key = _VALID_FERNET_KEY
         mock_settings.strict_token_encryption = True
         with TestClient(app):
@@ -324,6 +397,7 @@ def test_lifespan_strict_mode_raises_when_key_invalid_in_prod():
         mock_settings.session_secret = "test-session-secret-32-chars-long!"
         mock_settings.anthropic_api_key = "sk-ant-test-key"
         mock_settings.app_base_url = "https://scamanager.example.com"
+        mock_settings.is_production = True  # is_production 프로퍼티는 MagicMock 미계산 — 명시 설정
         mock_settings.token_encryption_key = "not-a-valid-fernet-key"  # 비-empty 이나 형식 오류
         mock_settings.strict_token_encryption = True
         with pytest.raises(RuntimeError, match="TOKEN_ENCRYPTION_KEY"):
@@ -339,6 +413,7 @@ def test_lifespan_warns_when_key_invalid_non_strict_prod(caplog):
         mock_settings.session_secret = "test-session-secret-32-chars-long!"
         mock_settings.anthropic_api_key = "sk-ant-test-key"
         mock_settings.app_base_url = "https://scamanager.example.com"
+        mock_settings.is_production = True  # is_production 프로퍼티는 MagicMock 미계산 — 명시 설정
         mock_settings.token_encryption_key = "not-a-valid-fernet-key"
         mock_settings.strict_token_encryption = False
         with caplog.at_level(_logging.WARNING, logger="src.main"):
@@ -413,6 +488,7 @@ def test_lifespan_warns_telegram_webhook_secret_missing_in_prod(caplog):
         mock_settings.session_secret = "test-session-secret-32-chars-long!"
         mock_settings.anthropic_api_key = "sk-ant-test-key"
         mock_settings.app_base_url = "https://scamanager.example.com"
+        mock_settings.is_production = True  # is_production 프로퍼티는 MagicMock 미계산 — 명시 설정
         mock_settings.token_encryption_key = _VALID_FERNET_KEY
         mock_settings.strict_token_encryption = False
         mock_settings.telegram_webhook_secret = ""
@@ -433,6 +509,7 @@ def test_lifespan_no_warning_telegram_webhook_secret_set_in_prod(caplog):
         mock_settings.session_secret = "test-session-secret-32-chars-long!"
         mock_settings.anthropic_api_key = "sk-ant-test-key"
         mock_settings.app_base_url = "https://scamanager.example.com"
+        mock_settings.is_production = True  # is_production 프로퍼티는 MagicMock 미계산 — 명시 설정
         mock_settings.token_encryption_key = _VALID_FERNET_KEY
         mock_settings.strict_token_encryption = False
         mock_settings.telegram_webhook_secret = "some-secret-token"
@@ -453,6 +530,7 @@ def test_lifespan_no_warning_telegram_webhook_secret_dev_env(caplog):
         mock_settings.session_secret = "test-session-secret-32-chars-long!"
         mock_settings.anthropic_api_key = "sk-ant-test-key"
         mock_settings.app_base_url = "http://localhost:8000"
+        mock_settings.is_production = False  # is_production 프로퍼티는 MagicMock 미계산 — 명시 설정
         mock_settings.token_encryption_key = ""
         mock_settings.strict_token_encryption = False
         mock_settings.telegram_webhook_secret = ""
@@ -549,6 +627,7 @@ def test_lifespan_raises_when_default_session_secret_in_prod():
         mock_settings.session_secret = "dev-secret-change-in-production"
         mock_settings.anthropic_api_key = "sk-ant-test"
         mock_settings.app_base_url = "https://scamanager.example.com"
+        mock_settings.is_production = True  # is_production 프로퍼티는 MagicMock 미계산 — 명시 설정
         mock_settings.token_encryption_key = "valid-key"
         mock_settings.strict_token_encryption = False
         mock_settings.telegram_webhook_secret = "some-secret"
@@ -567,6 +646,7 @@ def test_lifespan_warns_default_session_secret_in_dev(caplog):
         mock_settings.session_secret = "dev-secret-change-in-production"
         mock_settings.anthropic_api_key = "sk-ant-test"
         mock_settings.app_base_url = "http://localhost:8000"
+        mock_settings.is_production = False  # is_production 프로퍼티는 MagicMock 미계산 — 명시 설정
         mock_settings.token_encryption_key = ""
         mock_settings.strict_token_encryption = False
         mock_settings.telegram_webhook_secret = ""
