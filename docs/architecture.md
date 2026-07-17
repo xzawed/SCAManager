@@ -68,7 +68,7 @@ src/
 ├── auth/
 │   ├── session.py               # get_current_user() + require_login + require_admin (3-layer SaaS 검증)
 │   └── github.py                # /login (301→/auth/github, 하위호환), /auth/github, /auth/callback, /auth/logout
-├── models/                      # 12 ORM 모델 — repository (0039: user_id→users.id FK ondelete=SET NULL), analysis (0038: repo_id FK ondelete=CASCADE; 0032 토큰 부분 인덱스 ORM 선언), analysis_feedback, repo_config (0036: disabled_tools JSON 컬럼; 0042: ai_review_enabled Boolean 컬럼 — 리포별 AI 코드리뷰 kill-switch, 기본 True, 비용 제어), gate_decision (0034: analysis_id UNIQUE constraint), merge_attempt, merge_retry, security_alert_log, insight_narrative_cache (0031: repo_id FK + 부분유일 인덱스 ORM 선언; 0033: last_error_at/error_count/last_error_type), user (0040: github_id 인덱스명 정합 rename), issue_registration (0035: repo_id+issue_key UniqueConstraint + CASCADE FK; 0037: RLS policy — repo_id→repositories.user_id 1-hop, PG 전용), claude_api_call (0043: Anthropic API 호출 비용/토큰 메트릭 — repo_id/user_id 귀속 CASCADE FK, RLS policy PG 전용)
+├── models/                      # 13 ORM 모델 — repository (0039: user_id→users.id FK ondelete=SET NULL), analysis (0038: repo_id FK ondelete=CASCADE; 0032 토큰 부분 인덱스 ORM 선언), analysis_feedback, repo_config (0036: disabled_tools JSON 컬럼; 0042: ai_review_enabled Boolean 컬럼 — 리포별 AI 코드리뷰 kill-switch, 기본 True, 비용 제어), gate_decision (0034: analysis_id UNIQUE constraint), merge_attempt, merge_retry, security_alert_log, insight_narrative_cache (0031: repo_id FK + 부분유일 인덱스 ORM 선언; 0033: last_error_at/error_count/last_error_type), user (0040: github_id 인덱스명 정합 rename), issue_registration (0035: repo_id+issue_key UniqueConstraint + CASCADE FK; 0037: RLS policy — repo_id→repositories.user_id 1-hop, PG 전용), claude_api_call (0043: Anthropic API 호출 비용/토큰 메트릭 — repo_id/user_id 귀속 CASCADE FK, RLS policy PG 전용), analysis_attempt (0045: 진행 중 분석 흔적 — 비싼 작업 전 INSERT/정상 종료 시 DELETE, 남은 오래된 행 = 파이프라인 소실 신호. repo_id CASCADE FK + (repo_id, commit_sha) UNIQUE, RLS policy PG 전용)
 ├── webhook/
 │   ├── _helpers.py              # get_webhook_secret() + cache (TTL 300s)
 │   ├── validator.py             # HMAC-SHA256 서명 검증
@@ -128,7 +128,7 @@ src/
 │   └── repo_report_tools.py     # list_repo_reports / get_repo_report tool 스키마
 ├── cli/                         # python -m src.cli review (git_diff + formatter)
 ├── verifier/                    # 2nd-LLM 머지 검증자 (cross-vendor 거버넌스) — openai_client.py (SDK 우선 + httpx fallback)
-├── repositories/                # DB 접근 계층 12종 — repository_repo (`find_by_full_name` + `find_all_by_user` shared+owned repos + Phase H `find_by_full_name_with_owner`), issue_registration_repo (find_by_key/create/list_by_analysis/list_by_repo/update_state), claude_api_cost_repo (record + user_cost_summary — Anthropic 비용 영속화/집계 단일 출처, 0043)
+├── repositories/                # DB 접근 계층 13종 — repository_repo (`find_by_full_name` + `find_all_by_user` shared+owned repos + Phase H `find_by_full_name_with_owner`), issue_registration_repo (find_by_key/create/list_by_analysis/list_by_repo/update_state), claude_api_cost_repo (record + user_cost_summary — Anthropic 비용 영속화/집계 단일 출처, 0043), analysis_attempt_repo (begin_attempt/finish_attempt/find_orphaned — 파이프라인 소실 탐지 단일 출처, 0045)
 └── worker/pipeline.py           # run_analysis_pipeline, build_analysis_result_dict
 ```
 
@@ -198,6 +198,10 @@ GitHub Push/PR
   → BackgroundTasks 비동기 등록
   → run_analysis_pipeline()
       → Repository DB 등록 (API 호출 전, 실패해도 목록 노출 보장)
+      → 🔴 analysis_attempt_repo.begin_attempt() — **비싼 작업 전** 소실 탐지 흔적 기록 (0045)
+        파이프라인은 내구 큐 없는 in-process BackgroundTask 이고 GitHub 에 200 이 이미 반환된 상태다.
+        여기부터 Analysis 저장까지의 수 분 창에서 SIGTERM(재배포)/OOM/크래시가 나면 분석이 조용히
+        증발하므로, 이 행이 유일한 증거가 된다. dedup 게이트 아님(중복 차단은 find_by_sha 단독).
       → _extract_commit_message() — PR: title+body, Push: head_commit 우선
       → get_pr_files / get_push_files (모든 변경 파일 수집)
       → asyncio.gather() 병렬 실행:
@@ -208,7 +212,7 @@ GitHub Push/PR
               → log_claude_api_call() → claude_api_cost_repo.record() — `claude_api_calls` 테이블(0043, RLS) 영속화
                 cost_metrics_service.user_cost_summary 가 대시보드 monthly_cost KPI 로 재소비 (C1 Phase 1-4)
       → calculate_score(ai_review) (코드품질25 + 보안20 + 커밋15 + AI방향성25 + 테스트15)
-      → DB 저장 (Analysis 레코드)
+      → DB 저장 (Analysis 레코드) — **파이프라인 최초의 내구 기록**
       → run_gate_check() [PR 이벤트만] — 3-옵션 완전 독립 처리
           [pr_review_comment=on] → post_pr_comment_from_result()
           [approve_mode=auto]    → score ≥ approve_threshold → GitHub APPROVE

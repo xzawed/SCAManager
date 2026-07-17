@@ -143,6 +143,12 @@ _RLS_MATRIX: tuple[dict[str, str], ...] = (
         "since": "0043",
         "status": "applied",
     },
+    {
+        "table": "analysis_attempts",
+        "pattern": "repo_id 간접 1-hop (repositories 페어, legacy NULL 호환)",
+        "since": "0045",
+        "status": "applied",
+    },
 )
 
 
