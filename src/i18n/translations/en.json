@@ -749,6 +749,7 @@
     "github_pr_comment": {
       "title": "## {emoji} SCAManager Analysis Result",
       "static_incomplete_warning": "> ⚠️ **Static analysis incomplete (timeout or error)** — the score below may be inflated and is not reliable. Review manually before merging.",
+      "ai_failed_warning": "> ⚠️ **AI review failed (API error or parse failure)** — the AI portion of the score fell back to defaults, so the total below is inflated. Review manually before merging.",
       "total_line": "**Total: {score}/100** (Grade {grade})",
       "breakdown_header": "### Score Breakdown",
       "table_header": "| Item | Score | Max |",
