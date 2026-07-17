@@ -577,7 +577,8 @@
       "railway_token_hint": "Railway ダッシュボード → Account Settings → Tokens で発行。変更しない場合はそのまま残してください。",
       "section_railway_webhook": "Railway Webhook URL",
       "railway_webhook_hint": "Railway Project Settings → Webhooks に上記 URL を追加してください。",
-      "railway_webhook_pending": "設定保存後 Railway Webhook URL が自動生成されます。"
+      "railway_webhook_pending": "設定保存後 Railway Webhook URL が自動生成されます。",
+      "railway_webhook_unclaimed": "Webhook URL は設定済みですが、このリポジトリに所有者が登録されていないため表示しません。「リポジトリ追加」から登録して所有権を取得すると表示されます。"
     },
     "danger": {
       "header": "危険ゾーン",

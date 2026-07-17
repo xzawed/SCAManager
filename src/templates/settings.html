@@ -1177,6 +1177,15 @@
           </div>
           <span class="field-hint">{{ 'settings_page.inbound.railway_webhook_hint' | i18n_args(locale | default('ko')) }}</span>
         </div>
+        {% elif railway_webhook_unclaimed %}
+        {# 🔴 토큰은 설정돼 있으나 저장소에 소유자가 없다 — 살아있는 토큰을 렌더하지 않는다.
+           그 토큰은 세션 없는 POST /webhooks/railway/{token} 의 인증 수단이라, 조회가 열린
+           NULL-owner 저장소에서 평문 노출되면 비소유자가 그대로 도달한다. 'pending' 으로
+           안내하면 실제로는 설정된 상태라 거짓이 되므로 별도 문구를 쓴다. #}
+        {# 🔴 Token exists but the repo has no owner — do not render the live token. It is the
+           credential for the session-less railway webhook endpoint, so exposing it on a
+           read-open unclaimed repo hands it to non-owners. A 'pending' hint would be a lie. #}
+        <span class="field-hint">{{ 'settings_page.inbound.railway_webhook_unclaimed' | i18n_args(locale | default('ko')) }}</span>
         {% else %}
         <span class="field-hint">{{ 'settings_page.inbound.railway_webhook_pending' | i18n_args(locale | default('ko')) }}</span>
         {% endif %}

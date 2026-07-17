@@ -577,7 +577,8 @@
       "railway_token_hint": "Issue from Railway Dashboard → Account Settings → Tokens. Leave as-is to keep unchanged.",
       "section_railway_webhook": "Railway Webhook URL",
       "railway_webhook_hint": "Add the URL above under Railway Project Settings → Webhooks.",
-      "railway_webhook_pending": "Railway Webhook URL will be auto-generated after saving settings."
+      "railway_webhook_pending": "Railway Webhook URL will be auto-generated after saving settings.",
+      "railway_webhook_unclaimed": "A Webhook URL is configured but hidden because this repository has no registered owner. Claim it via 'Add Repository' to reveal it."
     },
     "danger": {
       "header": "Danger zone",
