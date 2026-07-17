@@ -6,6 +6,7 @@
 
 ## 목차
 
+- [Grok 백로그 NULL-owner IDOR + 워커 내구성 6 PR (#1060~#1066 — P1-2 워커 내구성[`analysis_attempts` 0045·비싼 작업 전 흔적→남은 오래된 행=소실된 분석] · P1-3 NULL-owner 쓰기 차단[require_write 5곳+인라인 2곳·서버 전역 토큰 권한 상승 봉인] · 선결 #1061 복구 경로[affiliation organization_member·502] · R4 threshold `merge≥reject` 불변식 · R3 railway 토큰 평문 렌더 차단[세션 없는 엔드포인트 유일 방어] · R2 NULL-owner 가시화[생성 경고+개요 배너] · #1066 CodeQL py/unused-import 봉인 · 🔴 "lockout 없음" 단언이 적대검증에 뒤집힘 · RLS 0026 이 노출 보증 · 단위 5267→5365, 2026-07-17)](#grok-백로그-null-owner-idor--워커-내구성-6-pr-2026-07-17)
 - [설정 간소화 · 개요 count-up 봉인 · 회고 후속 (#1034~#1046 — 비용제어 마무리[#1037 `claude_api_calls` 0043 DB 영속화+월비용 KPI] · 개요 0/100 count-up cross-closure 봉인[#1039 effects.js hx-boost 클로저 2개 target 오염→`dataset.cuBound` owned-array early-return·count-up+score-bar+freq-bar 3종] · 설정 간소화 UI-only[#1041~#1044 반직관=백엔드 결합 적대검증 탈락→UI 재구성·form= 데이터손실 opus 적발] · 정기 5+1 회고[P0=거짓 Codex waiver 정정] · 후속 4트랙[④ #1045 비용 legacy+RLS 0044·② #1046 push-전 전체테스트 게이트+i18n 양방향 가드·③ docs drift] · 단위 5150→5265·E2E 121→122, 2026-07-09)](#설정-간소화--개요-count-up-봉인--회고-후속-2026-07-09)
 - [Anthropic 비용 제어 3종 (#1033 — 비용 조사[GitHub Actions PUBLIC=$0·실과금원 private 리포·Anthropic 6 경로] → `AI_REVIEW_DISABLED`/`INSIGHT_DISABLED` env kill-switch + `RepoConfig.ai_review_enabled` 리포별 토글[0042·4-way PRESETS 제외] + `disabled` 의도적-skip[중립 89/B·fail-open 없음]·check-config-5way 원자커밋·C2 dual-import fix·SDD 11 task+opus whole-branch·Codex 미설치 waiver·단위 5150→5158, 2026-07-08)](#anthropic-비용-제어-3종-2026-07-08)
 - [5+1 회고 및 8 클러스터 fix 6 PR (#1024~#1029 — 회고 카덴스 갭[4세션·~30 PR 무회고] 회복·retrospective.mjs wf_ca72074b 92에이전트·verdict_coverage 1.0·confirmed 66[P0 1·P1 12·P2 53]·C3 가격 parity 가드·C2 dual-import 가드·C1/C4 정책 진화·C7 의존성 ==핀+SCA 게이트·단위 5134→5150, 2026-07-03)](#51-회고-및-8-클러스터-fix-6-pr-2026-07-03)
@@ -138,6 +139,24 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## Grok 백로그 NULL-owner IDOR + 워커 내구성 6 PR (2026-07-17)
+
+[[project-grok-full-review-2026-07-17]] 의 확정 P1 백로그(P1-2 워커 내구성·P1-3 NULL-owner IDOR)와 그 파생 결함(R2/R3/R4)을 전량 착수 → **PR 6건 + CodeQL fix 1건 = 7 PR 전부 머지**. 방법론·gotcha 는 [[project-null-owner-idor-2026-07-17]].
+
+**P1-2 워커 내구성 (#1060 — `analysis_attempts` 0045)**: 분석 파이프라인은 내구 큐 없는 in-process BackgroundTask 이고 webhook 핸들러가 `add_task` 직후 GitHub 에 200 을 선반환한다. 유일한 내구 기록 `Analysis` 행은 파일 수집 + Claude 리뷰(수 분) **끝난 뒤** 저장되므로, 그 창의 SIGTERM(Railway 재배포)·OOM·크래시는 분석을 **조용히 증발**시키고 "아직 분석 안 됨"과 영영 구별되지 않았다. 수정 = **막지 않고 탐지 가능하게** — `analysis_attempts` 신설, 비싼 작업 **전**(`_ensure_repo` 직후) 흔적 남기고 정상 종료 3곳에서 삭제 → **남은 오래된 행 = 소실된 분석**(`find_orphaned`). 🔴 승인안(Analysis pending 행 선기록)은 **코드 실측 결과 동작이 깨져** 별도 테이블로 선회: `_save_and_gate` 의 `find_by_sha` 멱등성 재확인이 자기 pending 행을 발견 → "already saved" → 결과 영영 미저장. RLS 3종(ENABLE+FORCE+policy legacy NULL 포함) + `_RLS_MATRIX` + `alembic/env.py` `_REGISTERED_MODELS`(12→13종).
+
+**P1-3 NULL-owner 쓰기 차단 (#1062 + 선결 #1061)**: `get_accessible_repo` 가 `user_id is not None and != me` 일 때만 거부 → **`user_id IS NULL` 저장소는 모든 인증 세션 통과**. NULL-owner 유입 3종(전부 실측): `pipeline.py:425` `_ensure_repo`(진행형) · `models/repository.py:18` `ondelete="SET NULL"`(계정 삭제 시 일괄 강등, 원 보고서 미언급) · 0039 고아 backfill. 🔴 **실제 피해가 보고서보다 큼**: `merge_threshold` 하한 검증 부재 + NULL-owner 라 `pipeline.py:420` 이 **서버 전역 `settings.github_token`** 사용 → 공격자가 `auto_merge=on`+`merge_threshold=0` 저장 시 **자신의 GitHub 권한과 무관하게** 피해자 PR 전부 squash merge = **권한 상승**(2nd-LLM 검증자도 `should_verify` 밴드 밖이라 skip). 🔴 **RLS 는 백스톱이 아님** — `0026:59` 가 `user_id IS NULL` 을 policy USING 절에 명시 whitelist → 오히려 전역 노출 보증(FOR ALL 단일 USING·permissive OR→좁은 정책 no-op·`AS RESTRICTIVE` 여야 함). → **앱 계층이 유일**. 수정 = 쓰기만 403(조회 현행 — 0039 docstring 이 노출을 의도 선택). 가드 3계층: `get_accessible_repo(*, require_write=False)` 5 호출처(default False 라 읽기 4곳 구조적 보존) + `issue_registration.register()` 인라인(🔴 공유 헬퍼 `_get_analysis_and_repo` 안에 넣으면 읽기 `GET /status` 배지 무음소실) + `repo_insights refresh=1` 인라인(🔴 GET 인데 캐시 DELETE+Anthropic 유료 = "쓰기=POST" 오답). 🔴 **배선이 진짜 작업** — 파라미터만·미배선=dead code 인데 **전 스위트 green**(감사 중 실관측) → mutation "파라미터 존치+배선 제거→6 fail" 봉인·`grep require_write=True` 정확히 5줄. 🔴 **선결 #1061 필수** — Claude 가 "복구 경로 있으니 lockout 없음" 단언했으나 60에이전트 적대검증이 뒤집음: `list_user_repos` affiliation 이 `organization_member` **명시 제외**(repos.py:37) → org 팀-권한 저장소는 `/repos/add` 획득 영영 불가(**add_repo 로직만 읽고 호출 함수 쿼리 파라미터 미확인**). #1061 = affiliation 3값 전부 + POST 경로 GitHub 장애 시 500→502(같은 파일 GET 은 try/except 로 감싸는데 POST 만 미포장 = 비대칭) + 전역 i18n 키 정합 가드 신설.
+
+**R4 threshold 불변식 (#1063)**: 🔴 전제 정정 — "하한 검증"의 단순 범위(0~100)는 공격 미차단(`0` 이 범위 안·`score>=0` 항상참=`-999` 동일). REST(`RepoConfigUpdate`)는 이미 `ge=0,le=100`, UI 폼만 무검증 = 계층 비대칭. 두 경로 공유 choke point `upsert_repo_config` 에 `_validate_thresholds` — 범위 3종 + `approve≥reject`(기존) + **`merge≥reject`**(반려할 점수를 머지=자기모순, 이것만이 관계로 모순 포착). `reject=0` 시 `merge=0` 은 의도적 "전부 머지"라 허용. 프리셋 3종 전수 대조로 비회귀 확인.
+
+**R3 railway 토큰 노출 (#1064)**: 🔴 `POST /webhooks/railway/{token}` 은 **HMAC 아님**(URL 토큰 DB 조회 인증) + **세션 없음** → NULL-owner 쓰기 가드가 물리적으로 미적용(1차 finder 가 "webhook=HMAC" 일괄배제→**완결성 비평이 발견**). 유일 방어 = 유출 지점 차단. `GET settings` 가 읽기라 NULL-owner 에 열려 있는데 살아있는 토큰을 평문 렌더(같은 화면 `railway_api_token` 은 `****` 마스킹 = 비대칭)했다. 수정 = 소유권 분기(`if token and repo_is_claimed`) — 전면 마스킹은 셋업 흐름 파괴라 오답, 소유자 본인만 봄. pending 대신 unclaimed 안내(토큰이 실제 설정돼 있어 pending 은 거짓).
+
+**R2 NULL-owner 가시화 (#1065)**: #1062 가 쓰기를 막았지만 모집단은 안 줄어든다 → 운영자가 403 을 만나기 전에 인지하도록 표면화(막지 않고 탐지 — #1060 철학). 검토 후 기각: owner.login 매칭(org 실패)·sender.login 매칭(멤버십 미검증 비대칭)·생성 차단(기존 동작 파괴) → **알림/로깅 채택**(사용자 결정). `_ensure_repo` 생성 시 `logger.warning`(이름+조치) + 개요 배너(추가 쿼리 0 — 이미 조회한 목록에서 `sum`). CSS 시맨틱 토큰 `--warning`+`color-mix` 로 4-테마 자동 대응.
+
+**#1066 CodeQL 봉인**: #1062 머지 후 main 전체 스캔에서 `py/unused-import`(note #544) — 신규 API 테스트의 `import ...insight_narrative_cache # noqa: F401`(mock 대체라 실제 미사용). 🔴 `# noqa: F401` 은 flake8 만 억제·CodeQL 별도 룰·**PR CI diff 스코프라 못 잡고 main 전체 스캔만 노출**(#996/#507~514 선례). 테이블 실제 미사용 확인 → 삭제(우회 아님·정책 16). main 재스캔 open alert 0 복구 실측.
+
+🔴 **세션 운영 학습**: SCAManager 자체 게이트가 아닌 사용자 직접 머지(#1061→#1062 순서 준수). i18n 키를 서로 다른 앵커에 배치해 병렬 PR 충돌 회피(main 816→821 로케일 정합 0 drift). 통합 후 실측 = 단위 5267→**5365**(5282 baseline + 30+7+23+11+3+5, 산수 정확). 읽기전용 의도 분석 에이전트가 워킹트리 실편집(probe 후 self-revert) — 워크플로 후 `git status` 확인 습관.
 
 ## 설정 간소화 · 개요 count-up 봉인 · 회고 후속 (2026-07-09)
 
