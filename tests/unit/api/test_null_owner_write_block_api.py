@@ -36,7 +36,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-import src.models.insight_narrative_cache  # noqa: F401  (register table for create_all)
 from src.auth.session import CurrentUser, require_login
 from src.database import Base
 from src.i18n.loader import get_text
