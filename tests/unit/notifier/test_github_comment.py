@@ -264,6 +264,70 @@ def test_build_comment_no_incomplete_warning_when_complete():
     assert not _has_incomplete_warning(body), "정상 분석에 incomplete 경고가 잘못 노출됨"
 
 
+# ── AI 리뷰 실패 경고 배너 + 요약 parity (5채널 대칭 — premium audit #7) ──────
+#
+# 🔴 AI 리뷰가 genuine 실패(api_error/parse_error)하면 calculator 가 중립 기본 점수(44/55)를
+# 적용해 총점이 인플레된다(pipeline.py:73 score_result.total). 점수 컬럼은 NULL 이지만
+# result dict 의 score 필드는 인플레값을 유지(#814 의도적 비대칭)하므로 PR 코멘트 헤더가
+# 인플레 점수를 렌더한다. 다른 4채널(telegram/slack/discord/email)은 resolve_ai_summary 로
+# "AI 불가"를 표시하는데 PR 코멘트만 raw ai_summary 를 노출 = 비대칭 → 리뷰어 수동머지 오도.
+
+def _has_ai_failed_warning(body: str) -> bool:
+    """AI 실패 경고 배너가 en/ko/ja 중 하나로 노출됐는지 (default locale=en)."""
+    return (
+        "AI review failed" in body
+        or "AI 리뷰 실패" in body
+        or "AIレビュー失敗" in body
+    )
+
+
+def test_build_comment_shows_ai_failed_warning_on_api_error():
+    """ai_review_status=api_error 시 인플레 점수 위에 신뢰 불가 경고 배너 노출."""
+    body = _build_comment_from_result(_make_result(score=89, ai_review_status="api_error"))
+    assert _has_ai_failed_warning(body), "AI 실패 경고 배너가 없습니다"
+    assert "⚠️" in body
+    # 배너는 점수 위에 위치 — 사람이 점수를 읽기 전 신뢰 불가를 먼저 인지
+    assert body.index("⚠️") < body.index("89/100"), "경고 배너가 점수보다 아래에 있습니다"
+
+
+def test_build_comment_shows_ai_failed_warning_on_parse_error():
+    """parse_error 도 동일하게 경고 (AI_REVIEW_FAILED_STATUSES 전체 대칭)."""
+    body = _build_comment_from_result(_make_result(score=89, ai_review_status="parse_error"))
+    assert _has_ai_failed_warning(body), "parse_error 에 AI 실패 경고가 없습니다"
+
+
+def test_build_comment_no_ai_failed_warning_on_success():
+    """정상 리뷰(success)는 AI 실패 경고를 노출하지 않는다."""
+    body = _build_comment_from_result(_make_result(score=80, ai_review_status="success"))
+    assert not _has_ai_failed_warning(body), "정상 리뷰에 AI 실패 경고가 잘못 노출됨"
+
+
+def test_build_comment_no_ai_failed_warning_on_intentional_skip():
+    """🔴 의도적 skip(no_api_key/empty_diff/disabled)은 실패가 아니므로 경고 X (fail-open 봉인 대칭).
+
+    AI_REVIEW_FAILED_STATUSES 는 api_error/parse_error 만 — 의도적 미수행은 점수 유지·비차단.
+    이 경고도 동일 집합을 따라야 gate 판정(ai_review_failed)과 일관.
+    """
+    for status in ("no_api_key", "empty_diff", "disabled"):
+        body = _build_comment_from_result(_make_result(score=44, ai_review_status=status))
+        assert not _has_ai_failed_warning(body), f"{status} 는 실패가 아닌데 경고가 노출됨"
+
+
+def test_build_comment_ai_summary_shows_unavailable_on_failure():
+    """🔴 AI 실패 시 요약 섹션은 raw ai_summary 대신 현지화된 '불가' 메시지 (4채널 parity).
+
+    다른 채널은 resolve_ai_summary 로 status != success 시 unavailable 표시. PR 코멘트만
+    raw ai_summary(실패 fallback 문자열)를 노출하던 비대칭을 해소.
+    """
+    from src.i18n.loader import get_text  # pylint: disable=import-outside-toplevel
+    body = _build_comment_from_result(_make_result(
+        ai_summary="원시 실패 요약 문자열", ai_review_status="api_error",
+    ))
+    assert "원시 실패 요약 문자열" not in body, "실패 시 raw ai_summary 가 노출됨 (parity 위반)"
+    unavailable = get_text("notifier.common.ai_unavailable", "en")
+    assert unavailable in body, "AI 불가 현지화 메시지가 없습니다"
+
+
 # ── post_pr_comment_from_result 테스트 (164-172 커버) ───────────────────────
 
 async def test_post_pr_comment_from_result_calls_api():

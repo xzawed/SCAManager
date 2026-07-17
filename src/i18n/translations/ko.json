@@ -749,6 +749,7 @@
     "github_pr_comment": {
       "title": "## {emoji} SCAManager 분석 결과",
       "static_incomplete_warning": "> ⚠️ **정적분석 미완료 (타임아웃 또는 오류)** — 아래 점수는 인플레이션되었을 수 있어 신뢰할 수 없습니다. 머지 전 수동 검토하세요.",
+      "ai_failed_warning": "> ⚠️ **AI 리뷰 실패 (API 오류 또는 파싱 실패)** — AI 항목 점수가 기본값으로 대체되어 아래 총점이 인플레이션되었습니다. 머지 전 수동 검토하세요.",
       "total_line": "**총점: {score}/100** (등급 {grade})",
       "breakdown_header": "### 점수 상세",
       "table_header": "| 항목 | 점수 | 만점 |",

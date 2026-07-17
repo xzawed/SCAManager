@@ -4,6 +4,7 @@ Phase 3 PR-11 (사이클 84) — i18n: language 인자 + 3-layer fallback (resol
 Phase 3 PR-11 (Cycle 84) — i18n: language arg + 3-layer fallback.
 """
 from src.constants import GITHUB_API, GRADE_EMOJI, NOTIFIER_MAX_ISSUES_LONG
+from src.gate._common import ai_review_failed
 from src.github_client.helpers import github_api_headers
 from src.i18n.loader import get_text
 from src.notifier._common import escape_markdown, resolve_ai_summary
@@ -85,7 +86,19 @@ def _header_lines(result: dict, language: str = "en") -> list[str]:
 
 
 def _ai_summary_lines(result: dict, language: str = "en") -> list[str]:
-    """AI 요약 섹션."""
+    """AI 요약 섹션.
+
+    🔴 AI 리뷰 실패(api_error/parse_error) 시 raw ai_summary(실패 fallback 문자열) 대신
+    현지화된 '불가' 메시지를 노출한다 — 다른 4채널(resolve_ai_summary 경유)과 parity.
+    🔴 On AI failure show the localized "unavailable" message instead of the raw fallback,
+    matching the other four channels (which route through resolve_ai_summary).
+    """
+    if ai_review_failed(result):
+        return [
+            "",
+            get_text("notifier.github_pr_comment.ai_summary_header", language),
+            get_text("notifier.common.ai_unavailable", language),
+        ]
     if not result.get("ai_summary"):
         return []
     return [
@@ -156,24 +169,31 @@ def _static_issues_lines(result: dict, language: str = "en") -> list[str]:
     return lines
 
 
-def _incomplete_warning_lines(result: dict, language: str = "en") -> list[str]:
-    """정적분석 불완전(타임아웃/전량실패) 시 점수 신뢰 불가 경고 배너 (사이클 164 follow-up #5).
-    Warning banner when static analysis is incomplete — the score may be inflated/unreliable.
+def _unreliable_score_warning_lines(result: dict, language: str = "en") -> list[str]:
+    """점수 신뢰 불가 경고 배너 — 정적분석 미완료 + AI 리뷰 실패 (premium audit #7, 5채널 대칭).
+    Warning banner when the rendered score is inflated/unreliable — static-incomplete or AI-failed.
 
-    `static_analysis_incomplete` 마커는 auto-merge/auto-approve 만 차단(#779/#783)할 뿐
-    PR 코멘트 점수에는 무경고 노출돼 사람 수동 머지 시 오판 위험 → 점수 위에 배너 삽입.
-    The marker only blocks auto-merge/approve; surface it in the PR comment so manual
-    reviewers do not trust an inflated score.
+    두 마커 모두 auto-merge/auto-approve 만 차단(#779/#783/#804)할 뿐 PR 코멘트 점수에는
+    무경고 노출된다 → 사람이 수동 머지 시 인플레 점수를 신뢰하는 오판 위험. 점수 위에 배너 삽입.
+    🔴 AI 실패는 `ai_review_failed`(gate/_common 단일출처, api_error/parse_error) 로 판정 —
+    의도적 skip(no_api_key/empty_diff/disabled)은 점수 유지·비차단이므로 경고 대상 아님.
+    Both markers block only auto-merge/approve; surface them so a manual reviewer does not trust
+    an inflated score. AI failure uses ai_review_failed (single source, mirrors the gate guard).
     """
-    if not result.get("static_analysis_incomplete"):
-        return []
-    return [get_text("notifier.github_pr_comment.static_incomplete_warning", language), ""]
+    lines: list[str] = []
+    if result.get("static_analysis_incomplete"):
+        lines.append(get_text("notifier.github_pr_comment.static_incomplete_warning", language))
+    if ai_review_failed(result):
+        lines.append(get_text("notifier.github_pr_comment.ai_failed_warning", language))
+    if lines:
+        lines.append("")  # 배너와 헤더 사이 빈 줄 / blank line between banner and header
+    return lines
 
 
 def _build_comment_from_result(result: dict, language: str = "en") -> str:
     """Build a formatted PR comment body from a stored analysis result dict (Phase 3 PR-11 — i18n)."""
     return "\n".join(
-        _incomplete_warning_lines(result, language)
+        _unreliable_score_warning_lines(result, language)
         + _header_lines(result, language)
         + _ai_summary_lines(result, language)
         + _category_feedback_lines(result, language)
