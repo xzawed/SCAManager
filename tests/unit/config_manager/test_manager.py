@@ -258,6 +258,88 @@ def test_upsert_allows_approve_greater_than_reject(db):
 
 
 # ---------------------------------------------------------------------------
+# 🔴 threshold 범위(0~100) + merge >= reject 불변식 — UI 폼 경로의 검증 부재 봉인
+#
+# REST API(`RepoConfigUpdate`)는 이미 `Field(ge=0, le=100)` 로 검증하지만 **UI 폼 경로는
+# `int(form.get(...))` 뿐**이라 -999 / 101 이 그대로 저장됐다 = 계층 비대칭.
+# 두 경로 모두 `upsert_repo_config` 를 지나므로 여기서 막으면 양쪽이 동시에 닫힌다.
+# (UI 는 기존 `except ValueError → ?save_error=1` 핸들러가 그대로 표면화한다.)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("field,value", [
+    ("approve_threshold", -1),
+    ("approve_threshold", 101),
+    ("reject_threshold", -1),
+    ("reject_threshold", 101),
+    ("merge_threshold", -1),
+    ("merge_threshold", 101),
+])
+def test_upsert_raises_when_threshold_out_of_range(db, field, value):
+    """threshold 가 0~100 밖이면 ValueError — 점수 범위(0~100)와 정합."""
+    kwargs = {"repo_full_name": f"owner/range-{field}-{value}"}
+    # approve >= reject 불변식에 먼저 걸리지 않도록 나머지 필드는 안전한 값으로 고정
+    if field == "reject_threshold" and value == 101:
+        kwargs["approve_threshold"] = 101  # approve >= reject 는 만족시키고 범위만 위반
+    kwargs[field] = value
+    with pytest.raises(ValueError, match="0~100|0-100"):
+        upsert_repo_config(db, RepoConfigData(**kwargs))
+
+
+@pytest.mark.parametrize("value", [0, 100])
+def test_upsert_allows_threshold_boundary_values(db, value):
+    """경계값 0/100 은 유효 — 배타가 아니라 포함 범위다."""
+    record = upsert_repo_config(db, RepoConfigData(
+        repo_full_name=f"owner/boundary-{value}",
+        approve_threshold=value,
+        reject_threshold=value,
+        merge_threshold=value,
+    ))
+    assert record.merge_threshold == value
+
+
+def test_upsert_raises_when_merge_threshold_below_reject(db):
+    """🔴 merge_threshold < reject_threshold = 자기모순 — 반려할 점수를 머지한다.
+
+    이것이 이 가드의 **보안적 의미**다. 단순 범위 검증만으로는 공격을 못 막는다 —
+    `merge_threshold=0` 은 0~100 범위 **안**이고 `score >= 0` 은 항상 참이라
+    `-999` 와 효과가 동일하기 때문이다. reject 와의 관계로만 자기모순을 잡을 수 있다.
+    """
+    with pytest.raises(ValueError, match="merge_threshold"):
+        upsert_repo_config(db, RepoConfigData(
+            repo_full_name="owner/contradiction",
+            approve_threshold=75,
+            reject_threshold=50,
+            merge_threshold=0,   # 50점 미만은 반려하면서 0점도 머지 = 모순
+        ))
+
+
+def test_upsert_allows_merge_threshold_equal_to_reject(db):
+    """merge_threshold == reject_threshold 는 유효 — 경계는 모순이 아니다."""
+    record = upsert_repo_config(db, RepoConfigData(
+        repo_full_name="owner/merge-eq-reject",
+        approve_threshold=75,
+        reject_threshold=50,
+        merge_threshold=50,
+    ))
+    assert record.merge_threshold == 50
+
+
+def test_upsert_allows_merge_zero_when_reject_zero(db):
+    """🔴 reject_threshold=0 이면 merge_threshold=0 도 유효 — 의도적 '전부 머지'.
+
+    아무것도 반려하지 않겠다고 선언한 사용자에게 "전부 머지"는 모순이 아니다.
+    이 가드는 **모순**을 막는 것이지 관대한 설정 자체를 금지하는 게 아니다.
+    """
+    record = upsert_repo_config(db, RepoConfigData(
+        repo_full_name="owner/permissive",
+        approve_threshold=0,
+        reject_threshold=0,
+        merge_threshold=0,
+    ))
+    assert record.merge_threshold == 0
+
+
+# ---------------------------------------------------------------------------
 # 신규 필드 — commit_comment, create_issue
 # ---------------------------------------------------------------------------
 
