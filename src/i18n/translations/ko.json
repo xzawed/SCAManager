@@ -577,7 +577,8 @@
       "railway_token_hint": "Railway 대시보드 → Account Settings → Tokens 에서 발급. 변경하지 않으려면 그대로 두세요.",
       "section_railway_webhook": "Railway Webhook URL",
       "railway_webhook_hint": "Railway Project Settings → Webhooks 에 위 URL 을 추가하세요.",
-      "railway_webhook_pending": "설정 저장 후 Railway Webhook URL 이 자동 생성됩니다."
+      "railway_webhook_pending": "설정 저장 후 Railway Webhook URL 이 자동 생성됩니다.",
+      "railway_webhook_unclaimed": "Webhook URL 은 설정되어 있으나, 이 저장소에 소유자가 등록되지 않아 표시하지 않습니다. '리포 추가'에서 등록해 소유권을 확보하면 표시됩니다."
     },
     "danger": {
       "header": "위험 구역",

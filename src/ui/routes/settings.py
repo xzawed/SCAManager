@@ -138,11 +138,28 @@ async def repo_settings(  # pylint: disable=too-many-positional-arguments,too-ma
         railway_webhook_token = config_orm.railway_webhook_token if config_orm else None
         railway_api_token_set = bool(config_orm and config_orm.railway_api_token)
         repo_webhook_id = repo.webhook_id
+        repo_is_claimed = repo.user_id is not None
 
+    # 🔴 소유자 미등록(NULL-owner) 저장소에는 **살아있는 토큰을 절대 렌더하지 않는다**.
+    # 이 페이지는 읽기라 NULL-owner 에게도 열려 있는데(의도된 설계), 그 토큰이 곧
+    # `POST /webhooks/railway/{token}` 의 인증 수단이다 — 그 엔드포인트는 **세션이 없어**
+    # NULL-owner 쓰기 차단 가드가 물리적으로 붙지 않으므로(HMAC 아닌 DB 토큰 조회 인증),
+    # 유출 지점을 막는 것이 유일한 방어다. 같은 화면 `railway_api_token` 의 '****' 마스킹과 대칭.
+    # 소유 저장소는 `get_accessible_repo` 가 타인을 404 로 막으므로 소유자 본인만 본다 →
+    # 소유권으로 분기하면 정상 셋업 흐름(토큰 복사)은 그대로 보존된다.
+    # 🔴 Never render the live token for an unclaimed (NULL-owner) repo. This page is a read, so
+    # unclaimed repos are viewable by design — but the token IS the credential for
+    # `POST /webhooks/railway/{token}`, which has no session (DB-token auth, not HMAC), so the
+    # write-block guard cannot reach it. Sealing the leak is the only defence. Owned repos are
+    # already 404-gated to their owner, so branching on ownership preserves the setup flow.
     railway_webhook_url = ""
-    if railway_webhook_token:
+    if railway_webhook_token and repo_is_claimed:
         base = webhook_base_url(request)
         railway_webhook_url = f"{base}/webhooks/railway/{railway_webhook_token}"
+    # 토큰은 있으나 소유자가 없는 상태 — 템플릿이 "미설정(pending)" 대신 "소유권 확보 필요"로
+    # 안내하도록 구분한다(토큰이 실제로는 설정돼 있으므로 pending 은 거짓 안내).
+    # Distinguish "configured but unclaimed" so the template does not lie with a "pending" hint.
+    railway_webhook_unclaimed = bool(railway_webhook_token) and not repo_is_claimed
 
     # check_suite 이벤트 구독 여부 확인 — 없으면 재등록 배너 표시 (Phase 12)
     # Check whether check_suite is subscribed — show reinstall banner if missing (Phase 12)
@@ -169,6 +186,7 @@ async def repo_settings(  # pylint: disable=too-many-positional-arguments,too-ma
         "saved": bool(saved), "save_error": bool(save_error),
         "current_user": current_user,
         "railway_webhook_url": railway_webhook_url,
+        "railway_webhook_unclaimed": railway_webhook_unclaimed,
         "railway_api_token_set": railway_api_token_set,
         "webhook_stale": webhook_stale,
         "onboarding_needed": onboarding_needed,
