@@ -24,14 +24,27 @@ async def post_github_review(
     pr_number: int,
     decision: str,
     body: str,
+    *,
+    commit_id: str | None = None,
 ) -> None:
-    """Post an APPROVE or REQUEST_CHANGES review on a GitHub pull request."""
+    """Post an APPROVE or REQUEST_CHANGES review on a GitHub pull request.
+
+    🔴 `commit_id` = 분석된 SHA. 전달 시 GitHub 은 그 커밋에만 리뷰를 부착하고, PR head 가
+    그 사이 이동했으면 **422 로 거부**한다 → 이동한 head 에 SCAManager 의 APPROVE 가 붙어
+    branch protection 의 auto-merge-on-approval 이 **미분석 커밋을 머지**하는 것을 차단(fail-closed).
+    merge 의 `expected_sha`(#1057)와 대칭(준비도 감사 #8). 빈 값/None 은 결속 미적용(하위 호환).
+    🔴 With `commit_id` (the analyzed SHA), GitHub attaches the review only to that commit and 422s
+    if the PR head has moved — closing the window where an APPROVE lands on an unanalyzed head.
+    """
     event = "APPROVE" if decision == "approve" else "REQUEST_CHANGES"
     url = f"{GITHUB_API}/repos/{repo_full_name}/pulls/{pr_number}/reviews"
+    payload: dict = {"body": body, "event": event}
+    if commit_id:
+        payload["commit_id"] = commit_id
     client = get_http_client()  # 싱글톤
     r = await client.post(
         url,
-        json={"body": body, "event": event},
+        json=payload,
         headers=github_api_headers(github_token),
     )
     r.raise_for_status()

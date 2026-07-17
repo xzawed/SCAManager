@@ -103,11 +103,23 @@ class ApproveAction(GateAction):
         try:
             await post_github_review(
                 ctx.github_token, ctx.repo_name, ctx.pr_number, decision, body,
+                commit_id=ctx.commit_sha,  # 🔴 분석 SHA 결속 — 이동한 head 는 GitHub 422 (준비도 감사 #8)
             )
             with SessionLocal() as db:
                 gate_decision_repo.upsert(db, ctx.analysis_id, decision, "auto")
         except (httpx.HTTPError, KeyError) as exc:
-            logger.error("GitHub Review 실패: %s", type(exc).__name__)
+            # 🔴 SHA 결속 422 = head 이동으로 인한 **정상 fail-closed** — ERROR 아닌 INFO 로 강등.
+            # force-push 잦은 리포에서 매 드리프트마다 ERROR 가 쌓여 진짜 실패(500/네트워크)를 노이즈로
+            # 은폐하지 않도록 구분한다(pipeline-reviewer P2). gate_decision 은 upsert 미도달로 미기록.
+            # 🔴 A 422 from the SHA binding is an expected fail-closed (head moved) — log INFO, not ERROR.
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            if status == 422:
+                logger.info(
+                    "GitHub Review skipped — head moved since analysis (commit_id 불일치, fail-closed): %s",
+                    ctx.repo_name,
+                )
+            else:
+                logger.error("GitHub Review 실패: %s", type(exc).__name__)
 
     async def _run_semi_auto(self, ctx: GateContext) -> None:
         """Semi-auto Approve — Telegram 인라인 키보드 발송.
