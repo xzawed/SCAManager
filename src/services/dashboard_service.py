@@ -454,32 +454,46 @@ def merge_failure_distribution(
 # ─── Phase 2 PR 2: feedback CTA ────────────────────────────────────────────
 
 
-def feedback_status(db: Session, *, threshold: int = 10) -> dict[str, Any]:
+def feedback_status(db: Session, *, threshold: int = 10, user_id: int | None = None) -> dict[str, Any]:
     """Dashboard CTA 카드 데이터 — feedback 누적 부족 시 사용자 행동 유도.
 
     운영 데이터 (MCP 검증, 2026-05-02): analysis_feedbacks row=0
     → CTA 카드로 thumbs +/- 클릭 유도. count >= threshold 시 자동 숨김.
 
-    Returns:
-        {
-          "show_cta": bool,
-          "count": int,
-          "recent_analysis": {"id": int, "repo_full_name": str} | None,
-        }
-    """
-    count = db.scalar(
-        select(func.count(AnalysisFeedback.id))  # pylint: disable=not-callable
-    ) or 0
+    🔴 `user_id` 명시 시 count·recent_analysis 를 소유자 스코프로 필터한다(== user_id OR NULL,
+    6 형제 집계와 동일 컨벤션). 미전달 시 owner 무관 전역 최신 1건을 뽑아 **타 테넌트 private repo
+    full_name + analysis id 를 CTA 링크로 노출**했다(준비도 감사 #9 — app-layer 방어심층 갭, overview
+    7 집계 중 유일하게 owner 필터 부재). RLS 2차가 prod 에서 막으나 1차 앱-필터를 형제와 일치시킨다.
+    🔴 With user_id, scope count/recent to the owner (matches the 6 sibling aggregates); without it
+    the recent query leaked another tenant's private repo full_name + analysis id via the CTA link.
 
-    recent: dict[str, Any] | None = None
-    row = db.execute(
+    Returns:
+        {"show_cta": bool, "count": int, "recent_analysis": {"id": int, "repo_full_name": str} | None}
+    """
+    count_q = select(func.count(AnalysisFeedback.id))  # pylint: disable=not-callable
+    recent_q = (
         select(Analysis.id, Repository.full_name)
         .join(Repository, Analysis.repo_id == Repository.id)
         .order_by(Analysis.created_at.desc())
         .limit(1)
-    ).first()
-    if row is not None:
-        recent = {"id": row.id, "repo_full_name": row.full_name}
+    )
+    if user_id is not None:
+        _owner = (Repository.user_id == user_id) | (Repository.user_id.is_(None))
+        # count 는 AnalysisFeedback → Analysis → Repository 조인 후 owner 필터
+        count_q = (
+            count_q
+            .join(Analysis, AnalysisFeedback.analysis_id == Analysis.id)
+            .join(Repository, Analysis.repo_id == Repository.id)
+            .where(_owner)
+        )
+        # recent 는 이미 Repository 조인이 있으므로 where 만 추가 (이중 조인 회피)
+        recent_q = recent_q.where(_owner)
+
+    count = db.scalar(count_q) or 0
+    row = db.execute(recent_q).first()
+    recent: dict[str, Any] | None = (
+        {"id": row.id, "repo_full_name": row.full_name} if row is not None else None
+    )
 
     return {
         "show_cta": count < threshold,

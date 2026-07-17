@@ -162,6 +162,32 @@ def test_dashboard_respects_days_param():
         assert days_val == 30, f"{mock} days=30 미전달 (실제: {days_val})"
 
 
+def test_dashboard_passes_user_id_to_feedback_status():
+    """🔴 feedback_status 도 6 형제 집계처럼 user_id 를 전달받는다 (준비도 감사 #9 배선 가드).
+
+    미전달 시 recent_analysis 가 owner 무관 전역 최신 1건 → 타 테넌트 private repo 노출.
+    """
+    client = TestClient(app)
+    mock_db = MagicMock()
+
+    with patch("src.ui.routes.dashboard.SessionLocal", return_value=_ctx(mock_db)), \
+         patch("src.ui.routes.dashboard.dashboard_service.dashboard_kpi", return_value={}), \
+         patch("src.ui.routes.dashboard.dashboard_service.dashboard_trend", return_value=[]), \
+         patch("src.ui.routes.dashboard.dashboard_service.frequent_issues_v2", return_value=[]), \
+         patch("src.ui.routes.dashboard.dashboard_service.auto_merge_kpi", return_value={}), \
+         patch("src.ui.routes.dashboard.dashboard_service.merge_failure_distribution", return_value=[]), \
+         patch("src.ui.routes.dashboard.dashboard_service.feedback_status",
+               return_value={"show_cta": False, "count": 0, "recent_analysis": None}) as mock_fb, \
+         patch("src.ui.routes.dashboard.templates.TemplateResponse") as mock_tr:
+        from fastapi.responses import HTMLResponse
+        mock_tr.return_value = HTMLResponse(content="<html>x</html>", status_code=200)
+        client.get("/dashboard")
+
+    assert mock_fb.called, "feedback_status 미호출"
+    assert mock_fb.call_args.kwargs.get("user_id") == 1, \
+        "feedback_status 에 user_id(=로그인 사용자 1) 미전달 — 형제 집계와 배선 불일치"
+
+
 def test_dashboard_context_includes_kpi_trend_issues():
     """템플릿 컨텍스트에 kpi/trend/frequent_issues/days 키 포함."""
     client = TestClient(app)
