@@ -76,7 +76,7 @@ Sentry 외 자동 로깅은 별도 환경변수 없이 동작:
 | 변수 | 설명 |
 |------|------|
 | `SMTP_HOST` | SMTP 메일 서버 호스트 (예: `smtp.gmail.com`) |
-| `SMTP_PORT` | SMTP 포트 (기본 587) — `config.py`의 `coerce_smtp_port` validator가 빈 문자열을 587로 자동 변환 (크래시 없음). 명시적 숫자 설정 권장 |
+| `SMTP_PORT` | SMTP 포트 (기본 587) — `config.py`의 `coerce_smtp_port` validator가 빈 문자열을 587로 자동 변환 (크래시 없음). 명시적 숫자 설정 권장. 🔴 **TLS 모드는 포트가 결정**: `465` = implicit TLS(SMTPS, 연결 즉시 핸드셰이크) / **그 외 전부(587·25·2525…) = STARTTLS**(평문 연결 후 승격). Gmail·SES 등 표준 제출 포트는 587이므로 기본값 그대로 두면 된다. 전송은 **항상 암호화** — STARTTLS 미지원 서버는 fail-closed(평문 전송 대신 예외). 별도 TLS 토글 env 없음 |
 | `SMTP_USER` | SMTP 인증 사용자 |
 | `SMTP_PASS` | SMTP 인증 비밀번호 |
 

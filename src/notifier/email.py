@@ -20,6 +20,14 @@ from src.notifier._common import format_ref, get_all_issues, resolve_ai_summary,
 
 logger = logging.getLogger(__name__)
 
+# implicit TLS(SMTPS) 전용 포트 — 이 포트만 연결 즉시 TLS 핸드셰이크를 한다.
+# 나머지(587 제출 포트 · 25 등)는 평문으로 열고 STARTTLS 로 승격한다.
+# 사용처 1곳이라 constants.py 로 올리지 않고 모듈 상수로 둔다(정책 16 최소 추상화).
+# The only implicit-TLS (SMTPS) port — TLS handshake starts immediately on connect.
+# All others (587 submission, 25, …) open in plaintext and upgrade via STARTTLS.
+# Kept module-local rather than in constants.py: single use site (Policy 16, minimal abstraction).
+SMTP_IMPLICIT_TLS_PORT = 465
+
 
 def _build_html_body(  # pylint: disable=too-many-positional-arguments,too-many-locals
     repo_name: str,
@@ -91,7 +99,15 @@ def _build_html_body(  # pylint: disable=too-many-positional-arguments,too-many-
 </div>"""
 
 
-async def send_email_notification(  # pylint: disable=too-many-arguments
+async def send_email_notification(  # pylint: disable=too-many-arguments,too-many-locals
+    # too-many-locals (16/15): TLS 모드 판정용 implicit_tls 지역변수 1개 추가 — 기존 함수 확장
+    # 사례. use_tls/start_tls 에 `smtp_port == PORT` / `!= PORT` 를 각각 인라인하면 두 표현이
+    # 갈라질 수 있어(한쪽만 수정) 명명 변수로 단일 출처 유지 (testing.md R0914 결정 트리:
+    # 기존 함수 확장 → inline disable + 사유).
+    # too-many-locals (16/15): one added local (implicit_tls) for the TLS-mode decision — an
+    # extension of an existing function. Inlining `smtp_port == PORT` / `!= PORT` separately into
+    # use_tls/start_tls would let the two drift apart, so a named local keeps a single source
+    # (testing.md R0914 decision tree: extending an existing function → inline disable + reason).
     *,
     recipients: str | None,
     repo_name: str,
@@ -133,6 +149,22 @@ async def send_email_notification(  # pylint: disable=too-many-arguments
     msg["To"] = recipients.replace("\r", "").replace("\n", "")
     msg.attach(MIMEText(html, "html"))
 
+    # 🔴 TLS 모드는 포트로 결정한다 — 465 만 implicit TLS, 나머지(587 제출 포트 등)는 STARTTLS.
+    # 이전엔 use_tls=True 고정이라 기본 포트 587 에 바이트 0 부터 ClientHello 를 보냈고, 587 은
+    # 평문 배너(220 ...)로 응답하므로 핸드셰이크가 깨져 **이메일이 100% 실패**했다.
+    # aiosmtplib 의 자동 STARTTLS 폴백(smtp.py:551-556)은 `not use_tls` 뒤라 실행되지 않았다.
+    # start_tls=True 는 명시적 fail-closed — start_tls=None(기본)이면 STARTTLS 미지원 서버에
+    # 자격증명과 리포트를 **평문으로 조용히** 보낸다. use_tls 와 start_tls 동시 True 는
+    # aiosmtplib 이 ValueError 로 거부하므로(smtp.py:304-305) 둘은 항상 배타.
+    # 🔴 Pick the TLS mode from the port — only 465 is implicit TLS; everything else (e.g. the 587
+    # submission port) uses STARTTLS. The previous hardcoded use_tls=True sent a ClientHello at byte
+    # 0 to port 587, which answers with a plaintext banner → handshake failure → 100% of emails
+    # failed. aiosmtplib's auto-STARTTLS fallback is gated behind `not use_tls` and never ran.
+    # start_tls=True is an explicit fail-closed: with start_tls=None (the default) aiosmtplib would
+    # silently send credentials and the report in PLAINTEXT to a non-STARTTLS server. The two flags
+    # are mutually exclusive — aiosmtplib raises ValueError if both are True (smtp.py:304-305).
+    implicit_tls = smtp_port == SMTP_IMPLICIT_TLS_PORT
+
     # SMTP hang 방어: aiosmtplib 기본 timeout=60s 가 길어 운영 hang 시
     # BackgroundTask 슬롯 점유 위험. HTTP_CLIENT_TIMEOUT(=10s) 과 동일 정책.
     # SMTP hang guard: aiosmtplib's default 60s timeout is too long; align to
@@ -143,7 +175,8 @@ async def send_email_notification(  # pylint: disable=too-many-arguments
         port=smtp_port,
         username=smtp_user,
         password=smtp_pass,
-        use_tls=True,
+        use_tls=implicit_tls,
+        start_tls=not implicit_tls,
         timeout=HTTP_CLIENT_TIMEOUT,
     )
 

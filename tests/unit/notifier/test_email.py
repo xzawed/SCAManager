@@ -278,9 +278,20 @@ def test_build_html_escapes_xss_in_issue_message():
 # TLS / SMTP connection edge cases (Phase C new)
 # ---------------------------------------------------------------------------
 
-async def test_send_email_called_with_use_tls_true():
-    """aiosmtplib.send()가 use_tls=True로 호출되어야 한다.
-    aiosmtplib.send() must be called with use_tls=True.
+async def test_send_email_transport_is_always_encrypted():
+    """전송은 항상 암호화된다 — 포트에 맞는 메커니즘으로.
+
+    🔴 본 테스트는 구 `test_send_email_called_with_use_tls_true` 를 대체한다.
+    구 테스트는 의도("TLS 는 켜져 있어야 한다")는 옳았으나 **메커니즘을 잘못 고정**해
+    (포트 587 에 `use_tls is True` 단언) 결함을 지켜왔다 — 587 은 STARTTLS 제출 포트라
+    implicit TLS 를 강요하면 핸드셰이크가 깨져 이메일이 100% 실패한다.
+    의도를 보존하되 계약을 "암호화 여부"로 재정의: implicit TLS **또는** STARTTLS 중
+    정확히 하나가 켜져 있어야 한다 (둘 다 True 면 aiosmtplib 이 ValueError).
+
+    🔴 Replaces the old `test_send_email_called_with_use_tls_true`, whose intent ("TLS must be on")
+    was right but which pinned the wrong mechanism (asserting use_tls is True on port 587) and so
+    protected the defect. Intent is preserved, contract restated as "is the transport encrypted":
+    exactly one of implicit TLS / STARTTLS must be enabled (both True → aiosmtplib ValueError).
     """
     with patch("src.notifier.email.aiosmtplib") as mock_smtp:
         mock_smtp.send = AsyncMock(return_value=None)
@@ -296,7 +307,9 @@ async def test_send_email_called_with_use_tls_true():
             smtp_pass="pass",
         )
     call_kwargs = mock_smtp.send.await_args.kwargs
-    assert call_kwargs.get("use_tls") is True, "use_tls must be True"
+    # 정확히 하나 — 암호화는 반드시 켜지되, 두 방식이 동시에 켜지면 안 된다.
+    # Exactly one — encryption must be on, and the two modes must never both be on.
+    assert call_kwargs["use_tls"] ^ call_kwargs["start_tls"], "암호화 정확히 1개 모드 필요"
 
 
 async def test_send_email_smtp_tls_error_propagates():
@@ -359,3 +372,80 @@ async def test_send_email_strips_crlf_from_recipients():
     assert "a@test.com" in to_header
     # 주입 시도한 Bcc 헤더가 실제로 생성되지 않았는지 직접 단언 (Codex mutual 강화)
     assert not msg.get_all("Bcc")
+
+
+# ---------------------------------------------------------------------------
+# TLS 모드 — 포트별 STARTTLS / implicit TLS 선택 (2026-07-17 Grok 리뷰 확정 P1)
+# TLS mode — STARTTLS vs implicit TLS per port (2026-07-17 Grok review, confirmed P1)
+#
+# 🔴 이전 결함: 기본 포트 587(STARTTLS 제출 포트)에 use_tls=True(implicit TLS)를 강제해
+# 바이트 0 에 ClientHello 를 보냈다 → 서버는 평문 배너(220 ...)로 응답 → 핸드셰이크 실패
+# → 문서화된 기본 설정(SMTP_PORT=587, smtp.gmail.com)에서 이메일이 100% 실패했다.
+# aiosmtplib 의 자동 STARTTLS 폴백(smtp.py:551-556)은 `not use_tls` 뒤에 있어 실행되지 않았다.
+# 🔴 Previous defect: use_tls=True (implicit TLS) was forced on port 587 (the STARTTLS submission
+# port), sending a ClientHello at byte 0 against a plaintext banner → handshake failure → every
+# email failed on the documented default config. aiosmtplib's auto-STARTTLS fallback is gated
+# behind `not use_tls`, so it never ran.
+# ---------------------------------------------------------------------------
+
+
+async def _capture_send_kwargs(port: int) -> dict:
+    """지정 포트로 발송하고 aiosmtplib.send 에 전달된 kwargs 를 캡처한다."""
+    with patch("src.notifier.email.aiosmtplib") as mock_smtp:
+        mock_smtp.send = AsyncMock()
+        await send_email_notification(
+            recipients="a@test.com",
+            repo_name="owner/repo",
+            commit_sha="abc1234",
+            score_result=_make_score(),
+            analysis_results=_make_analysis(),
+            smtp_host="smtp.test.com",
+            smtp_port=port,
+            smtp_user="user",
+            smtp_pass="pass",
+        )
+    return mock_smtp.send.call_args.kwargs
+
+
+async def test_send_email_port_587_uses_starttls_not_implicit_tls():
+    """🔴 회귀 가드 — 기본 포트 587 은 STARTTLS: use_tls=False + start_tls=True.
+
+    use_tls=True 로 되돌리면 운영 이메일이 100% 실패한다(핸드셰이크 실패).
+    Regression guard — port 587 must use STARTTLS; use_tls=True breaks every send.
+    """
+    kwargs = await _capture_send_kwargs(587)
+    assert kwargs["use_tls"] is False
+    assert kwargs["start_tls"] is True
+
+
+async def test_send_email_port_465_uses_implicit_tls_not_starttls():
+    """포트 465 는 implicit TLS: use_tls=True + start_tls=False.
+
+    aiosmtplib 은 use_tls 와 start_tls 동시 True 시 ValueError 를 던지므로(smtp.py:304-305)
+    465 에서는 start_tls 를 반드시 False 로 둬야 한다.
+    aiosmtplib raises ValueError when both are True (smtp.py:304-305), so 465 must set
+    start_tls=False.
+    """
+    kwargs = await _capture_send_kwargs(465)
+    assert kwargs["use_tls"] is True
+    assert kwargs["start_tls"] is False
+
+
+async def test_send_email_plain_port_25_fails_closed_via_starttls():
+    """포트 25 도 start_tls=True — STARTTLS 미지원 서버면 fail-closed.
+
+    start_tls=None(aiosmtplib 기본)이면 미지원 서버에 **평문으로 조용히** 자격증명과
+    리포트를 전송한다(smtp.py:551-556 graceful failure). 명시 True 로 fail-closed.
+    start_tls=None (aiosmtplib default) silently sends credentials + report in PLAINTEXT to a
+    non-STARTTLS server. Explicit True fails closed instead.
+    """
+    kwargs = await _capture_send_kwargs(25)
+    assert kwargs["use_tls"] is False
+    assert kwargs["start_tls"] is True
+
+
+async def test_send_email_tls_flags_never_both_true():
+    """어떤 포트에서도 use_tls 와 start_tls 가 동시에 True 면 안 된다 (aiosmtplib ValueError)."""
+    for port in (25, 465, 587, 2525):
+        kwargs = await _capture_send_kwargs(port)
+        assert not (kwargs["use_tls"] and kwargs["start_tls"]), f"port {port}: 상호배타 위반"
