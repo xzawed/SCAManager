@@ -708,7 +708,9 @@
       "trend_title": "⚠️ <b>점수 하락 경고</b>",
       "trend_prev": "이전 7일 평균: {prev}",
       "trend_current": "현재 7일 평균: {current}",
-      "trend_drop": "하락: -{drop}점"
+      "trend_drop": "하락: -{drop}점",
+      "orphan_sweep_title": "🔴 <b>분석 소실 탐지</b> — {count}건이 완료 전 증발했습니다 (SIGTERM/OOM/크래시).",
+      "orphan_sweep_hint": "해당 커밋은 재분석되지 않았습니다. 필요 시 재-push 하거나 수동 재트리거하세요."
     },
     "no_issues": "이슈 없음",
     "score_label": "점수: {score}/100",

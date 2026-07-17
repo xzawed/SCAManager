@@ -874,6 +874,15 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
                 _finish_attempt(_review_repo_id, commit_sha)
                 return
 
+            # 🔴 Analysis 영속화 성공(result_dict 존재) — 이 시점 이후의 실패(notify 등)는 소실이
+            # 아니므로 흔적을 **여기서** 지운다(#21). 이전엔 finish 가 notify **뒤**(아래)에 있어,
+            # notify 단계 예외가 터미널 except 로 삼켜지면 흔적이 남아 정상 분석이 orphan 으로 오탐됐다.
+            # gate 예외(_save_and_gate 내부 삼킴)와 동일한 "영속화 후 실패는 소실 아님" 원칙의 notify 판.
+            # 🔴 Analysis is persisted here, so any later failure (notify) is not a loss — clear the
+            # breadcrumb now (#21). Previously finish ran after notify, so a swallowed notify-stage
+            # exception left the row and misreported a healthy analysis as an orphan.
+            _finish_attempt(_review_repo_id, commit_sha)
+
             with stage_timer("notify", repo=repo_log) as ctx:
                 notify_tasks, task_names = build_notification_tasks(
                     repo_config=repo_config,
@@ -891,9 +900,8 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
                 ctx["channel_count"] = len(task_names)
                 await _send_notifications(notify_tasks, task_names)
 
-            # 정상 완료 — Analysis 가 영속화됐고 알림까지 끝났으므로 흔적을 지운다.
-            # Normal completion — the Analysis is persisted and notifications sent; clear the trace.
-            _finish_attempt(_review_repo_id, commit_sha)
+            # 흔적은 위(영속화 직후)에서 이미 지웠다(#21) — 여기서 재삭제하지 않는다.
+            # The breadcrumb was already cleared right after persistence (#21); nothing to do here.
 
     except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
         # 🔴 여기서 _finish_attempt 를 호출하지 않는다 — 남은 행이 곧 "분석이 실패했다"는

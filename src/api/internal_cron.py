@@ -14,7 +14,7 @@ from fastapi.security import APIKeyHeader
 from src.config import settings
 from src.database import WorkerSessionLocal as SessionLocal
 from src.shared.secure_compare import secure_str_compare
-from src.services.cron_service import run_trend_check, run_weekly_reports
+from src.services.cron_service import run_trend_check, run_weekly_reports, sweep_analysis_attempts
 from src.services.merge_retry_service import process_pending_retries
 from src.services.security_scan_service import scan_all_repos
 
@@ -129,3 +129,17 @@ async def trigger_retry_pending_merges() -> dict:
         )
     logger.info("retry_pending_merges: counts=%s", counts)
     return {"status": "ok", "counts": counts}
+
+
+@router.post("/sweep-orphans", status_code=200)
+async def trigger_sweep_orphans() -> dict:
+    """분석 소실 탐지 흔적(analysis_attempts) sweep cron 트리거 — #1060 find_orphaned 배선.
+
+    Trigger the analysis-attempts orphan sweep (wires up #1060's loss detection).
+
+    SIGTERM/OOM 로 증발한 분석의 흔적을 로그+운영자 Telegram 으로 표면화하고 정리한다(준비도 감사 #11).
+    """
+    with SessionLocal() as db:
+        surfaced = await sweep_analysis_attempts(db)
+    logger.info("sweep_orphans: surfaced=%d", surfaced)
+    return {"status": "ok", "orphans_surfaced": surfaced}

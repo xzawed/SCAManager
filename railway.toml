@@ -44,6 +44,12 @@ command = "curl -s -X POST -H 'X-API-Key: $INTERNAL_CRON_API_KEY' http://localho
 schedule = "* * * * *"
 command = "curl -s -X POST -H 'X-API-Key: $INTERNAL_CRON_API_KEY' http://localhost:$PORT/api/internal/cron/retry-pending-merges"
 
+# 분석 소실 탐지 sweep — 10분마다 orphan(SIGTERM/OOM 로 증발한 분석) 표면화 + 정리 (준비도 감사 #11)
+# Analysis-loss sweep — surfaces + purges orphans every 10 min (wires up #1060's find_orphaned)
+[[deploy.cronJobs]]
+schedule = "*/10 * * * *"
+command = "curl -s -X POST -H 'X-API-Key: $INTERNAL_CRON_API_KEY' http://localhost:$PORT/api/internal/cron/sweep-orphans"
+
 # Fallback B (Railway native cron 제한 시): cron-job.org 외부 → curl
 # Fallback B (if Railway native cron is unavailable): use cron-job.org with:
 #   POST https://<APP_BASE_URL>/api/internal/cron/weekly   (Header: X-API-Key: $INTERNAL_CRON_API_KEY)

@@ -15,7 +15,7 @@ from src.config import settings
 from src.i18n.loader import get_text
 from src.notifier._language import resolve_notification_language
 from src.notifier.telegram import telegram_post_message
-from src.repositories import repo_config_repo, repository_repo
+from src.repositories import analysis_attempt_repo, repo_config_repo, repository_repo
 from src.services.analytics_service import moving_average, resolve_chat_id, weekly_summary
 
 logger = logging.getLogger(__name__)
@@ -23,6 +23,57 @@ logger = logging.getLogger(__name__)
 # 7일 이동평균 하락 기준점 (점수) — 이 값 이상 하락 시 경고 발송
 # Score drop threshold to trigger a trend alert
 _TREND_DROP_THRESHOLD = 10.0
+
+# 소실 판정 임계 — 정상 분석은 수 분 내 finish_attempt 로 지워지므로, 30분 초과 잔존 = 증발.
+# Loss threshold — a healthy analysis clears within minutes, so >30 min surviving = vanished.
+_ORPHAN_SWEEP_THRESHOLD_MINUTES = 30
+
+
+async def sweep_analysis_attempts(db: Session) -> int:
+    """소실 탐지 흔적(analysis_attempts)을 판독·표면화하고 정리한다 (#1060 find_orphaned 배선, 준비도 감사 #11).
+
+    Read, surface, and clean up the loss-detection breadcrumbs (wires up #1060's find_orphaned).
+
+    `#1060` 은 흔적을 **남기는** 데까지만 했고 판독 경로가 없었다 — `find_orphaned` 호출자 0. 그래서
+    SIGTERM/OOM 로 증발한 분석의 흔적이 (a) 아무도 안 읽어 소실이 미인지되고 (b) 상한 없이 무한
+    누적됐다. 이 sweep 이 orphan(=증발한 분석)을 **로그 + 운영자 Telegram** 으로 표면화한 뒤
+    **삭제**한다 — 표면화가 durable 기록(Railway 로그)이므로 삭제해도 소실 사실은 남고, 재알림·
+    무한 누적을 막는다. 반환 = 표면화한 orphan 수.
+    """
+    orphans = analysis_attempt_repo.find_orphaned(
+        db, older_than_minutes=_ORPHAN_SWEEP_THRESHOLD_MINUTES
+    )
+    if not orphans:
+        return 0
+    # durable 표면화 — Railway 로그. Telegram 실패해도 이 로그로 소실은 조회된다.
+    # Durable surfacing via logs; the loss is recorded even if the Telegram alert fails.
+    logger.warning(
+        "analysis_attempts orphan sweep — %d vanished analyses (older than %d min)",
+        len(orphans), _ORPHAN_SWEEP_THRESHOLD_MINUTES,
+    )
+    if settings.telegram_bot_token and settings.telegram_chat_id:
+        try:
+            await telegram_post_message(
+                settings.telegram_bot_token,
+                settings.telegram_chat_id,
+                {"text": _format_orphan_alert(orphans), "parse_mode": "HTML"},
+            )
+        except (httpx.HTTPError, KeyError, ValueError) as exc:
+            logger.warning("orphan sweep telegram alert failed: %s", type(exc).__name__)
+    # 표면화 완료 → **표면화한 행 id 만** 삭제 (재알림·무한 누적 방지 + TOCTOU 봉인 — pipeline-reviewer P2).
+    # Surfaced → delete exactly the surfaced ids (prevents re-alert/growth; closes the TOCTOU window).
+    analysis_attempt_repo.purge_by_ids(db, [o.id for o in orphans])
+    return len(orphans)
+
+
+def _format_orphan_alert(orphans: list) -> str:
+    """운영자 Telegram 알림 본문 — 전역 알림이라 default_locale 사용 (repo 소유자 언어 아님)."""
+    language = settings.default_locale
+    lines = [get_text("notifier.cron.orphan_sweep_title", language, count=len(orphans))]
+    for o in orphans[:5]:
+        lines.append(f"<code>repo#{o.repo_id} {escape((o.commit_sha or '')[:8])}</code>")
+    lines.append(get_text("notifier.cron.orphan_sweep_hint", language))
+    return "\n".join(lines)
 
 
 async def run_weekly_reports(db: Session, *, now: datetime | None = None) -> int:

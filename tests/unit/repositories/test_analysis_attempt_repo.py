@@ -339,3 +339,30 @@ def test_find_orphaned_spans_repos(db_session):
     orphans = analysis_attempt_repo.find_orphaned(db_session, older_than_minutes=15)
 
     assert [row.commit_sha for row in orphans] == ["sha-b", "sha-a"]
+
+
+# ── purge_by_ids — sweep 이 surfacing 후 표면화한 행만 정리 (준비도 감사 #11) ──
+
+def test_purge_by_ids_deletes_only_given_rows(db_session):
+    """🔴 주어진 id 만 삭제하고 나머지는 보존 — surfacing 스냅샷과 정확 일치 (TOCTOU 봉인)."""
+    repo = _seed_repo(db_session)
+    _insert_attempt(db_session, repo.id, "old-60", minutes_ago=60)
+    _insert_attempt(db_session, repo.id, "old-40", minutes_ago=40)
+    _insert_attempt(db_session, repo.id, "recent-5", minutes_ago=5)
+
+    # find_orphaned 로 표면화한 스냅샷 (임계 30분) — old-60, old-40
+    orphans = analysis_attempt_repo.find_orphaned(db_session, older_than_minutes=30)
+    deleted = analysis_attempt_repo.purge_by_ids(db_session, [o.id for o in orphans])
+
+    assert deleted == 2, "표면화한 2행이 삭제되지 않음"
+    remaining = [r.commit_sha for r in db_session.query(AnalysisAttempt).all()]
+    assert remaining == ["recent-5"], "표면화 안 된 최근 행이 잘못 삭제됨"
+
+
+def test_purge_by_ids_empty_is_noop(db_session):
+    """빈 id 리스트 → 0 반환 + 삭제 없음 (소실 후보 0 시 sweep 이 전달하는 케이스)."""
+    repo = _seed_repo(db_session)
+    _insert_attempt(db_session, repo.id, "recent", minutes_ago=1)
+
+    assert analysis_attempt_repo.purge_by_ids(db_session, []) == 0
+    assert db_session.query(AnalysisAttempt).count() == 1

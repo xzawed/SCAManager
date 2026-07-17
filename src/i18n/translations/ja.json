@@ -708,7 +708,9 @@
       "trend_title": "⚠️ <b>スコア低下警告</b>",
       "trend_prev": "直近7日平均(前): {prev}",
       "trend_current": "直近7日平均(現): {current}",
-      "trend_drop": "低下: -{drop}点"
+      "trend_drop": "低下: -{drop}点",
+      "orphan_sweep_title": "🔴 <b>分析の消失を検知</b> — {count}件が完了前に消失しました (SIGTERM/OOM/クラッシュ)。",
+      "orphan_sweep_hint": "該当コミットは再分析されていません。必要に応じて再pushまたは手動で再実行してください。"
     },
     "no_issues": "問題なし",
     "score_label": "スコア: {score}/100",

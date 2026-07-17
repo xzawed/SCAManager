@@ -708,7 +708,9 @@
       "trend_title": "⚠️ <b>Score Drop Alert</b>",
       "trend_prev": "Prev 7-day avg: {prev}",
       "trend_current": "Current 7-day avg: {current}",
-      "trend_drop": "Drop: -{drop}"
+      "trend_drop": "Drop: -{drop}",
+      "orphan_sweep_title": "🔴 <b>Lost analyses detected</b> — {count} vanished before completion (SIGTERM/OOM/crash).",
+      "orphan_sweep_hint": "Those commits were not re-analyzed. Re-push or manually re-trigger if needed."
     },
     "no_issues": "No issues",
     "score_label": "Score: {score}/100",

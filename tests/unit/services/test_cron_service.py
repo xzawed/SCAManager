@@ -395,3 +395,68 @@ class TestRunTrendCheck:
 
         rollback_spy.assert_called()  # DB 에러 시 rollback 호출됨
         assert alerted == 1  # 둘째 repo 정상 경고 (연쇄 실패 없음)
+
+
+# ---------------------------------------------------------------------------
+# sweep_analysis_attempts — 소실 탐지 sweep (#1060 find_orphaned 배선, 준비도 감사 #11)
+# ---------------------------------------------------------------------------
+
+from datetime import timedelta as _td  # noqa: E402
+
+
+def _insert_orphan(db, repo_id, sha, minutes_ago):
+    from src.models.analysis_attempt import AnalysisAttempt  # noqa: PLC0415
+    db.add(AnalysisAttempt(
+        repo_id=repo_id, commit_sha=sha, pr_number=None, event="push",
+        started_at=datetime.now(timezone.utc).replace(tzinfo=None) - _td(minutes=minutes_ago),
+    ))
+    db.commit()
+
+
+class TestSweepAnalysisAttempts:
+    @patch("src.services.cron_service.telegram_post_message", new_callable=AsyncMock)
+    async def test_sweep_surfaces_and_purges_orphans(self, mock_tg, db, repo, monkeypatch):
+        """🔴 소실(orphan) 탐지 → Telegram 알림 + 로그 + 삭제. 반환 = orphan 수."""
+        import src.services.cron_service as cs  # noqa: PLC0415
+        monkeypatch.setattr(cs.settings, "telegram_bot_token", "123:ABC")
+        monkeypatch.setattr(cs.settings, "telegram_chat_id", "-100999")
+        _insert_orphan(db, repo.id, "vanished-60", minutes_ago=60)
+        _insert_orphan(db, repo.id, "vanished-45", minutes_ago=45)
+        _insert_orphan(db, repo.id, "inflight-2", minutes_ago=2)  # 진행 중 — 미대상
+
+        surfaced = await cs.sweep_analysis_attempts(db)
+
+        assert surfaced == 2, "orphan 2건 표면화 실패"
+        mock_tg.assert_awaited_once()  # 운영자 알림 1회
+        # 삭제 확인 — orphan 은 지워지고 진행 중 행만 남는다 (재알림·누적 방지)
+        from src.models.analysis_attempt import AnalysisAttempt  # noqa: PLC0415
+        remaining = [r.commit_sha for r in db.query(AnalysisAttempt).all()]
+        assert remaining == ["inflight-2"]
+
+    @patch("src.services.cron_service.telegram_post_message", new_callable=AsyncMock)
+    async def test_sweep_noop_when_no_orphans(self, mock_tg, db, repo, monkeypatch):
+        """소실 후보 0 → 알림·삭제 없음, 0 반환 (정상 상태 무해)."""
+        import src.services.cron_service as cs  # noqa: PLC0415
+        monkeypatch.setattr(cs.settings, "telegram_bot_token", "123:ABC")
+        monkeypatch.setattr(cs.settings, "telegram_chat_id", "-100999")
+        _insert_orphan(db, repo.id, "inflight", minutes_ago=1)
+
+        surfaced = await cs.sweep_analysis_attempts(db)
+
+        assert surfaced == 0
+        mock_tg.assert_not_awaited()
+
+    @patch("src.services.cron_service.telegram_post_message", new_callable=AsyncMock)
+    async def test_sweep_still_purges_when_no_telegram_configured(self, mock_tg, db, repo, monkeypatch):
+        """🔴 Telegram 미설정이어도 로그 표면화 + 삭제는 수행 (durable 로그가 기록)."""
+        import src.services.cron_service as cs  # noqa: PLC0415
+        monkeypatch.setattr(cs.settings, "telegram_bot_token", "")
+        monkeypatch.setattr(cs.settings, "telegram_chat_id", "")
+        _insert_orphan(db, repo.id, "vanished", minutes_ago=60)
+
+        surfaced = await cs.sweep_analysis_attempts(db)
+
+        assert surfaced == 1
+        mock_tg.assert_not_awaited()  # 미설정 → 알림 skip
+        from src.models.analysis_attempt import AnalysisAttempt  # noqa: PLC0415
+        assert db.query(AnalysisAttempt).count() == 0  # 그래도 삭제됨
