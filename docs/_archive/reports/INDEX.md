@@ -33,6 +33,7 @@
 | 2026-04-25 | [static-analysis-baseline](2026-04-25-static-analysis-baseline.md) | G.6 병렬화 Go/No-Go 기준선 |
 | 2026-04-26 | 3-에이전트 교차 감사 (PR #73) | 문서 불일치 9건 수정 — STATE.md 그룹 44 참조 |
 | 2026-06-03 | [wbs-codebase-audit](2026-06-03-wbs-codebase-audit.md) | WBS 코드베이스 감사 — 238파일 23.8K LOC 평가, 확정 22건 (P0 1 거버넌스 통제 / P1 2 / P2 19) |
+| 2026-07-17 | [grok-full-review](2026-07-17-grok-full-review.md) | **Grok 8차원 발견 + Claude 46 에이전트 적대 검증** — Grok P0 4·P1 30 → 확정 **P0 0 · P1 4**(SHA 결속·워커 내구성·NULL-owner IDOR·SMTP 587), 반증 3. 은닉/악성 코드 CLEAN |
 
 ---
 
