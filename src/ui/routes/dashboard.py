@@ -289,7 +289,7 @@ async def dashboard(  # pylint: disable=too-many-locals
             am_ = dashboard_service.auto_merge_kpi(db, days=days, user_id=_uid)
             mf_ = dashboard_service.merge_failure_distribution(db, days=days, n=5, user_id=_uid)
             rc_ = dashboard_service.repo_insight_cards(db, days=days, user_id=_uid)
-            fb_ = dashboard_service.feedback_status(db)
+            fb_ = dashboard_service.feedback_status(db, user_id=_uid)
             return kpi_, trend_, freq_, am_, mf_, rc_, fb_
 
         # Phase 2 PR 1: Auto-merge KPI + 실패 분포.

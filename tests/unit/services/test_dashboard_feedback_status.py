@@ -147,3 +147,77 @@ class TestFeedbackStatus:
 
         result = feedback_status(db)
         assert result["recent_analysis"] is None
+
+
+# ─── owner 필터 parity — 타 테넌트 저장소/피드백 유출 차단 (준비도 감사 #9) ──────
+#
+# feedback_status 는 overview 7 집계 중 유일하게 user_id 를 안 받아, recent_analysis 쿼리가
+# owner 무관 전역 최신 1건을 뽑았다 → 테넌트 A 대시보드 CTA 에 B 의 private repo full_name +
+# analysis id 노출(방어심층 갭 — RLS 2차가 prod 에서 막으나 6 형제 집계와 불일치).
+
+class TestFeedbackStatusOwnerFilter:
+    def test_recent_excludes_other_tenant_repo(self, db):
+        """🔴 user_id 전달 시 타 테넌트 소유 저장소의 최신 분석은 recent 로 노출되지 않는다."""
+        from src.services.dashboard_service import feedback_status
+
+        a = User(github_id=10, github_login="a", email="a@x.com", display_name="A")
+        b = User(github_id=20, github_login="b", email="b@x.com", display_name="B")
+        db.add_all([a, b])
+        db.commit()
+        repo_a = Repository(full_name="a/app", user_id=a.id)
+        repo_b = Repository(full_name="b/secret-billing", user_id=b.id)
+        db.add_all([repo_a, repo_b])
+        db.commit()
+        _make_analysis(db, repo_a.id, offset_hours=24)   # A 소유, 오래됨
+        _make_analysis(db, repo_b.id, offset_hours=1)    # B 소유, 전역 최신
+
+        # A 관점 — B 의 최신 분석이 아니라 A 소유 저장소의 분석이 나와야 한다
+        result = feedback_status(db, user_id=a.id)
+        assert result["recent_analysis"] is not None
+        assert result["recent_analysis"]["repo_full_name"] == "a/app", \
+            "타 테넌트(B) private repo full_name 이 A 에게 노출됨 (IDOR-인접)"
+
+    def test_recent_includes_legacy_null_owner(self, db):
+        """legacy(user_id=NULL) 저장소는 노출 유지 — 6 형제 집계와 동일 컨벤션(== user OR IS NULL)."""
+        from src.services.dashboard_service import feedback_status
+
+        a = User(github_id=11, github_login="a2", email="a2@x.com", display_name="A2")
+        db.add(a)
+        db.commit()
+        repo_legacy = Repository(full_name="legacy/repo", user_id=None)
+        db.add(repo_legacy)
+        db.commit()
+        _make_analysis(db, repo_legacy.id, offset_hours=1)
+
+        result = feedback_status(db, user_id=a.id)
+        assert result["recent_analysis"] is not None
+        assert result["recent_analysis"]["repo_full_name"] == "legacy/repo"
+
+    def test_count_owner_scoped(self, db):
+        """🔴 count 도 owner 스코프 — 타 테넌트 피드백이 CTA show/hide 판정에 섞이지 않는다."""
+        from src.services.dashboard_service import feedback_status
+
+        a = User(github_id=12, github_login="a3", email="a3@x.com", display_name="A3")
+        b = User(github_id=22, github_login="b3", email="b3@x.com", display_name="B3")
+        db.add_all([a, b])
+        db.commit()
+        repo_a = Repository(full_name="a3/app", user_id=a.id)
+        repo_b = Repository(full_name="b3/app", user_id=b.id)
+        db.add_all([repo_a, repo_b])
+        db.commit()
+        an_a = _make_analysis(db, repo_a.id)
+        an_b = _make_analysis(db, repo_b.id)
+        _make_feedback(db, analysis_id=an_a.id, user_id=a.id)   # A 소유 repo 피드백 1
+        _make_feedback(db, analysis_id=an_b.id, user_id=b.id)   # B 소유 repo 피드백 1
+
+        # A 관점 count = 1 (A 소유 repo 분석 피드백만), 전역 2 아님
+        result = feedback_status(db, user_id=a.id)
+        assert result["count"] == 1, "count 에 타 테넌트 피드백이 섞임"
+
+    def test_user_id_none_preserves_global_behavior(self, db, repo):
+        """user_id=None(admin/기존 호출) → 전역 동작 유지 (하위 호환)."""
+        from src.services.dashboard_service import feedback_status
+
+        _make_analysis(db, repo.id, offset_hours=1)
+        result = feedback_status(db, user_id=None)
+        assert result["recent_analysis"]["repo_full_name"] == "owner/repo"
