@@ -194,6 +194,8 @@
     "add_repo": "+ 리포 추가",
     "settings_link": "설정",
     "analysis_count_unit": "{count}회",
+    "unclaimed_banner": "소유자가 등록되지 않은 저장소 {count}개가 있습니다 — Webhook 으로 자동 생성된 저장소로, 설정 변경·삭제가 차단됩니다.",
+    "unclaimed_cta": "등록해서 소유권 확보",
     "table": {
       "repository": "리포지토리",
       "analysis": "분석",

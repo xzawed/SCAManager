@@ -425,6 +425,20 @@ def _ensure_repo(db: Session, repo_name: str, commit_sha: str) -> tuple[Reposito
                 db, Repository(full_name=repo_name, telegram_chat_id=settings.telegram_chat_id)
             )
             db.commit()
+            # 🔴 소유자 없이 생성된다 (user_id 미지정) — 미등록 저장소의 웹훅이 도착했다는 뜻.
+            # 이 저장소는 설정 변경·삭제가 403 으로 차단되고(#1062), 모든 로그인 사용자에게
+            # 조회 노출된다. 운영자가 그 사실을 **403 을 만나기 전에** 알아야 하므로 경고를 남긴다.
+            # 막지 않고 탐지 가능하게 만든다 — analysis_attempts(#1060) 와 같은 철학.
+            # 🔴 Created without an owner (no user_id) — a webhook arrived for an unregistered repo.
+            # Such a repo is read-visible to every logged-in user and 403s on writes (#1062), so the
+            # operator must learn about it before hitting that 403. Detect, don't block.
+            logger.warning(
+                "소유자 미등록 저장소 생성 — 미등록 웹훅 수신: %s. "
+                "설정 변경·삭제가 차단됩니다. /repos/add 에서 등록해 소유권을 확보하세요. "
+                "Created repository without an owner (webhook from an unregistered repo): %s. "
+                "Writes are blocked; claim it via /repos/add.",
+                sanitize_for_log(repo_name), sanitize_for_log(repo_name),
+            )
         except IntegrityError:
             # 동시 webhook race — 다른 워커가 같은 repo 를 먼저 INSERT (full_name unique 위반).
             # rollback 후 재조회로 복구해 uncaught IntegrityError 의 워커 abort 를 방지한다.

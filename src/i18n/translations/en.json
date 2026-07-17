@@ -194,6 +194,8 @@
     "add_repo": "+ Add Repository",
     "settings_link": "Settings",
     "analysis_count_unit": "{count} runs",
+    "unclaimed_banner": "{count} repositories have no registered owner — they were created automatically from webhooks, and their settings cannot be changed or deleted.",
+    "unclaimed_cta": "Register to claim",
     "table": {
       "repository": "Repository",
       "analysis": "Analyses",

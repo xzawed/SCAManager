@@ -194,6 +194,8 @@
     "add_repo": "+ リポ追加",
     "settings_link": "設定",
     "analysis_count_unit": "{count}回",
+    "unclaimed_banner": "所有者が登録されていないリポジトリが {count} 件あります — Webhook から自動作成されたもので、設定変更・削除ができません。",
+    "unclaimed_cta": "登録して所有権を取得",
     "table": {
       "repository": "リポジトリ",
       "analysis": "分析",
