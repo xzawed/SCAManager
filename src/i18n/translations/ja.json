@@ -693,7 +693,8 @@
     "hook_token_required": "トークンが必要です",
     "hook_invalid_repo_or_token": "未登録のリポジトリまたは無効なトークン",
     "hook_invalid_token": "無効なトークン",
-    "hook_repo_not_found": "リポジトリが見つかりません"
+    "hook_repo_not_found": "リポジトリが見つかりません",
+    "repo_unclaimed": "このリポジトリはSCAManagerに所有者が登録されていません(Webhookから自動作成されました)。設定を変更するには「リポジトリ追加」から登録して所有権を取得してください。"
   },
   "notifier": {
     "cron": {

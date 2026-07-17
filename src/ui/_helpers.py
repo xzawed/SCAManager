@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from src.auth.session import CurrentUser
 from src.config import settings
 from src.github_client.repos import delete_webhook
+from src.i18n.loader import get_text
 from src.models.analysis import Analysis
 from src.models.gate_decision import GateDecision
 from src.models.repository import Repository
@@ -59,13 +60,50 @@ def webhook_base_url(request: Request) -> str:
     return str(request.base_url).rstrip("/")
 
 
-def get_accessible_repo(db: Session, repo_name: str, current_user: CurrentUser) -> Repository:
-    """로그인 사용자가 접근 가능한 리포를 반환. 없거나 권한 없으면 404."""
+def get_accessible_repo(
+    db: Session,
+    repo_name: str,
+    current_user: CurrentUser,
+    *,
+    require_write: bool = False,
+    locale: str | None = None,
+) -> Repository:
+    """로그인 사용자가 접근 가능한 리포를 반환. 없거나 권한 없으면 404.
+
+    Return a repo the logged-in user may access; 404 when missing or not theirs.
+
+    🔴 `require_write=True` 는 **쓰기 라우트 전용** — `user_id IS NULL`(소유자 미등록) 리포에
+    403 을 던진다. NULL-owner 리포는 `worker/pipeline.py:425` 가 미등록 저장소 웹훅마다 계속
+    만들고, `models/repository.py:18` 의 `ondelete="SET NULL"` 로 사용자 삭제 시에도 생긴다.
+    이 리포는 **모든 인증 사용자에게 보이므로**(0026 RLS 가 `user_id IS NULL` 을 명시적으로
+    whitelist — 조회 노출은 의도된 설계) 쓰기까지 열어두면 아무나 타인 리포의 알림 채널을
+    탈취하고 auto_merge 를 강제할 수 있다.
+
+    🔴 default `False` 가 핵심 — 조회 라우트는 호출부를 건드리지 않아 "조회 현행 유지"가
+    **구조적으로** 보장된다. keyword-only 라 위치 인자로 실수 주입되지 않는다.
+
+    🔴 `require_write=True` is for write routes only: it 403s repos with no owner. Such repos are
+    visible to every authenticated user by design (RLS 0026 whitelists `user_id IS NULL`), so
+    leaving writes open lets anyone hijack another repo's notification channels and force
+    auto-merge. The `False` default structurally preserves read behaviour at untouched call sites.
+
+    복구 경로: `/repos/add` 재등록 → GitHub 멤버십 검증(`add_repo.py:124`) 후 소유권 이전.
+    Recovery: re-register via `/repos/add`, which verifies GitHub membership before transfer.
+    """
     repo = repository_repo.find_by_full_name(db, repo_name)
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
     if repo.user_id is not None and repo.user_id != current_user.id:
         raise HTTPException(status_code=404)
+    if require_write and repo.user_id is None:
+        # 404 가 아니라 403 — 이 리포는 목록·상세에서 이미 보인다(조회 허용). 404 로 숨기면
+        # "저장소가 사라졌다"는 버그로 읽힌다. 403 + 복구 안내가 정확한 의미다.
+        # 403, not 404 — the repo is already visible via list/detail, so hiding it would read as
+        # "the repo vanished". 403 plus a recovery hint conveys the actual state.
+        raise HTTPException(
+            status_code=403,
+            detail=get_text("errors.repo_unclaimed", locale or settings.default_locale),
+        )
     return repo
 
 

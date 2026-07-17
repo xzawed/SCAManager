@@ -54,8 +54,12 @@ def _get_analysis_and_repo(db: Session, analysis_id: int, *, current_user_id: in
     repo = db.query(Repository).filter(Repository.id == analysis.repo_id).first()
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
-    # 리포 소유권 검증 — user_id가 None이면 공유 리포로 허용
-    # Ownership check — user_id=None means shared repo (allow all)
+    # 🔴 리포 소유권 검증 — user_id=None(소유자 미등록)은 **읽기만** 허용한다(의도된 설계).
+    # 쓰기 차단은 호출자(라우트 본문)의 책임 — 이 헬퍼는 읽기 `GET /status` 와 공유되므로
+    # 여기에 403 을 넣으면 조회까지 깨진다. `register()` 의 인라인 가드를 볼 것.
+    # 🔴 Ownership check — user_id=None (unclaimed) is readable by design; blocking writes is the
+    # caller's job. This helper is shared with the read path (`GET /status`), so a 403 here would
+    # break reads too. See the inline guard in `register()`.
     if repo.user_id is not None and repo.user_id != current_user_id:
         raise HTTPException(status_code=404)
     return analysis, repo
@@ -103,6 +107,20 @@ async def register(request: Request, req: RegisterRequest):
             return _get_analysis_and_repo(_db, req.analysis_id, current_user_id=current_user.id)
 
     _, repo = await asyncio.to_thread(_check_ownership)
+
+    # 🔴 NULL-owner 쓰기 차단 — 가드를 `_get_analysis_and_repo` 안에 넣으면 안 된다.
+    # 그 헬퍼는 읽기 `GET /status` 와 **공유**라, 안에 넣으면 analysis_detail 의 이슈 등록
+    # 이력 배지가 무음 소실한다(fetch → 403 → `r.ok ? ... : null` → early return, catch 무음).
+    # 여기서 막는 실피해: 중복 판정(`find_by_key`)이 히트하면 409 가 **영구**이고
+    # issue_registration_repo 에 삭제 함수가 없어 dedup 슬롯 스쿼팅을 되돌릴 수 없다.
+    # 🔴 Block writes to unowned repos here, NOT inside `_get_analysis_and_repo` — that helper is
+    # shared with the read path (`GET /status`), where a 403 would silently drop the history badge.
+    # Squatting the dedup slot here is irreversible: the 409 is permanent and there is no delete.
+    if repo.user_id is None:
+        raise HTTPException(
+            status_code=403,
+            detail=get_text("errors.repo_unclaimed", locale),
+        )
 
     with SessionLocal() as db:
         try:
@@ -174,8 +192,14 @@ def _get_repo_or_404(db: Session, repo_id: int, *, current_user_id: int) -> Repo
     repo = db.query(Repository).filter(Repository.id == repo_id).first()
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
-    # 리포 소유권 검증 — user_id가 None이면 공유 리포로 허용
-    # Ownership check — user_id=None means shared repo (allow all)
+    # 🔴 여기에 NULL-owner 쓰기 가드를 **추가하지 말 것**. 호출처는 `GET /repo-summary` 단 1곳
+    # = 순수 읽기다. `_get_analysis_and_repo` 와 이름이 대칭이라 "동형 패턴이니 다 잠그자"의
+    # 오폭 후보지만, 잠그면 repo_detail 의 이슈 이력 섹션만 죽고 보호되는 쓰기는 0건 = 순손실.
+    # user_id=None(소유자 미등록) 리포의 **조회 허용은 의도된 설계**(0026 RLS 가 명시 whitelist).
+    # 🔴 Do NOT add a write guard here — the only caller is `GET /repo-summary`, a pure read.
+    # Its name mirrors `_get_analysis_and_repo`, making it a tempting "lock them all" target, but
+    # locking it only kills the issue-history section and protects zero writes. Read access to
+    # unclaimed repos is intentional (RLS 0026 whitelists `user_id IS NULL`).
     if repo.user_id is not None and repo.user_id != current_user_id:
         raise HTTPException(status_code=404)
     return repo

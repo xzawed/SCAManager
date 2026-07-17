@@ -36,8 +36,12 @@ def _make_db_ctx(repo_webhook_id=42):
     Create a mock DB context manager.
     """
     mock_db = MagicMock()
-    # get_accessible_repo → returns repo (user_id=None 으로 모든 사용자 접근 허용)
-    # get_accessible_repo → repo with user_id=None allows any logged-in user
+    # get_accessible_repo → user_id=None(소유자 미등록) 리포는 **조회만** 모든 로그인 사용자에게
+    # 허용된다(의도된 설계). 이 파일은 GET settings 렌더만 검증하므로 그 계약에 부합한다.
+    # 쓰기(POST settings/delete 등)는 `require_write=True` 로 403 — `_helpers.get_accessible_repo`.
+    # get_accessible_repo → an unclaimed (user_id=None) repo is READ-accessible to any logged-in
+    # user by design. This file only renders GET settings, so it matches that contract; writes are
+    # 403 via `require_write=True`.
     mock_repo = MagicMock(id=1, full_name="owner/repo", user_id=None, webhook_id=repo_webhook_id)
     mock_db.query.return_value.filter.return_value.first.return_value = mock_repo
 

@@ -118,6 +118,7 @@ def analysis_detail(
 
 @router.post("/repos/{repo_name:path}/analyses/{analysis_id}/feedback")
 def post_analysis_feedback(
+    request: Request,
     repo_name: str,
     analysis_id: int,
     body: FeedbackRequest,
@@ -125,7 +126,9 @@ def post_analysis_feedback(
 ):
     """분석에 thumbs up/down 피드백을 upsert — Phase E.3."""
     with SessionLocal() as db:
-        repo = get_accessible_repo(db, repo_name, current_user)
+        repo = get_accessible_repo(
+            db, repo_name, current_user, require_write=True, locale=get_locale(request),
+        )
         _load_analysis_or_404(db, repo.id, analysis_id)
         fb = analysis_feedback_repo.upsert_feedback(
             db,
