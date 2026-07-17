@@ -460,3 +460,47 @@ class TestSweepAnalysisAttempts:
         mock_tg.assert_not_awaited()  # 미설정 → 알림 skip
         from src.models.analysis_attempt import AnalysisAttempt  # noqa: PLC0415
         assert db.query(AnalysisAttempt).count() == 0  # 그래도 삭제됨
+
+
+# ---------------------------------------------------------------------------
+# run_retention_sweep — 만료 캐시 + 종결 큐 GC (준비도 감사 #12·#20)
+# ---------------------------------------------------------------------------
+
+class TestRetentionSweep:
+    def test_purges_expired_cache_and_terminal_queue(self, db, repo):
+        """만료 캐시 + retention 초과 종결 큐 행을 정리하고 카운트 반환."""
+        import src.services.cron_service as cs  # noqa: PLC0415
+        from src.models.merge_retry import MergeRetryQueue  # noqa: PLC0415
+        from src.repositories import insight_narrative_cache_repo  # noqa: PLC0415
+        base = datetime.now(timezone.utc)
+
+        # 만료 캐시 행 1 (ttl 60s)
+        insight_narrative_cache_repo.upsert(
+            db, user_id=1, days=7, response={"s": 1}, ttl_seconds=60, now=base,
+        )
+        # 종결 큐 행 1 (10일 전 succeeded) — repo.id 참조
+        an = Analysis(repo_id=repo.id, commit_sha="rq1", score=80, grade="B")
+        db.add(an)
+        db.commit()
+        row = MergeRetryQueue(
+            repo_full_name=repo.full_name, pr_number=1, analysis_id=an.id,
+            commit_sha="rq1", score=80, threshold_at_enqueue=75, status="succeeded",
+            next_retry_at=base.replace(tzinfo=None),
+        )
+        db.add(row)
+        db.commit()
+        row.updated_at = base.replace(tzinfo=None) - timedelta(days=10)
+        db.commit()
+
+        # 캐시 만료 시점(120s 후)으로 sweep
+        result = cs.run_retention_sweep(db, now=base + timedelta(seconds=120))
+
+        assert result["expired_cache"] == 1
+        assert result["terminal_queue"] == 1
+        assert db.query(MergeRetryQueue).count() == 0
+
+    def test_noop_when_nothing_to_purge(self, db):
+        """정리 대상 0 → 카운트 0 (정상 상태 무해)."""
+        import src.services.cron_service as cs  # noqa: PLC0415
+        result = cs.run_retention_sweep(db)
+        assert result == {"expired_cache": 0, "terminal_queue": 0}

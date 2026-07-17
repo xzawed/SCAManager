@@ -723,3 +723,42 @@ def test_abandon_stale_for_pr_returns_zero_when_no_stale(db_session):
     )
 
     assert count == 0
+
+
+# ── purge_terminal — 종결행 retention GC (준비도 감사 #20) ─────────────────────
+
+def _set_updated_at(db_session, row, days_ago: int):
+    """updated_at 를 명시 설정 (retention 경과 시뮬레이션)."""
+    row.updated_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days_ago)
+    db_session.commit()
+
+
+def test_purge_terminal_deletes_old_terminal_rows(db_session):
+    """종결(non-pending) + retention 초과 행만 삭제. pending·최근 종결은 보존."""
+    a = _seed_analysis(db_session, commit_sha="p1")
+    old_done = _make_queue_row(db_session, analysis_id=a.id, commit_sha="p1",
+                               pr_number=1, status="succeeded")
+    recent_done = _make_queue_row(db_session, analysis_id=a.id, commit_sha="p2",
+                                  pr_number=2, status="failed_terminal")
+    still_pending = _make_queue_row(db_session, analysis_id=a.id, commit_sha="p3",
+                                    pr_number=3, status="pending")
+    _set_updated_at(db_session, old_done, days_ago=10)    # retention(7) 초과
+    _set_updated_at(db_session, recent_done, days_ago=2)  # retention 이내
+    _set_updated_at(db_session, still_pending, days_ago=30)  # 오래됐지만 pending — 보존
+
+    deleted = merge_retry_repo.purge_terminal(db_session, older_than_days=7)
+
+    assert deleted == 1, "retention 초과 종결행만 삭제해야 함"
+    remaining = {r.commit_sha for r in db_session.query(MergeRetryQueue).all()}
+    assert remaining == {"p2", "p3"}, "최근 종결/pending 행이 잘못 삭제됨"
+
+
+def test_purge_terminal_never_deletes_pending(db_session):
+    """🔴 pending 은 아무리 오래됐어도 삭제하지 않는다 (진행 중 큐 보호)."""
+    a = _seed_analysis(db_session, commit_sha="pend")
+    old_pending = _make_queue_row(db_session, analysis_id=a.id, commit_sha="pend",
+                                  pr_number=1, status="pending")
+    _set_updated_at(db_session, old_pending, days_ago=365)
+
+    assert merge_retry_repo.purge_terminal(db_session, older_than_days=7) == 0
+    assert db_session.query(MergeRetryQueue).count() == 1

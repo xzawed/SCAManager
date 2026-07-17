@@ -106,3 +106,29 @@ def test_sweep_orphans_endpoint_returns_surfaced_count(monkeypatch):
     body = resp.json()
     assert body["status"] == "ok"
     assert body["orphans_surfaced"] == 3
+
+
+# ── retention-sweep 엔드포인트 (준비도 감사 #12·#20) ──────────────────────────
+
+def test_retention_sweep_endpoint_no_key_returns_401(monkeypatch):
+    """X-API-Key 없이 /retention-sweep → 401 (router-level 인증)."""
+    monkeypatch.setattr("src.config.settings.internal_cron_api_key", _VALID_KEY)
+    resp = client.post("/api/internal/cron/retention-sweep")
+    assert resp.status_code == 401
+
+
+def test_retention_sweep_endpoint_returns_counts(monkeypatch):
+    """올바른 키로 /retention-sweep → 정리 카운트 반환."""
+    monkeypatch.setattr("src.config.settings.internal_cron_api_key", _VALID_KEY)
+    with patch(
+        "src.api.internal_cron.run_retention_sweep",
+        return_value={"expired_cache": 4, "terminal_queue": 2},
+    ):
+        resp = client.post(
+            "/api/internal/cron/retention-sweep",
+            headers={"X-API-Key": _VALID_KEY},
+        )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "ok"
+    assert body["counts"] == {"expired_cache": 4, "terminal_queue": 2}

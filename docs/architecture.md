@@ -55,7 +55,7 @@ src/
 │   └── translations/            # en.json / ko.json / ja.json (15 namespace × 3 언어)
 ├── services/
 │   ├── analytics_service.py     # 집계 단일 출처 — weekly_summary, moving_average, resolve_chat_id
-│   ├── cron_service.py          # 주기 실행 — run_weekly_reports, run_trend_check, sweep_analysis_attempts(소실 탐지, 0045)
+│   ├── cron_service.py          # 주기 실행 — run_weekly_reports, run_trend_check, sweep_analysis_attempts(소실 탐지, 0045), run_retention_sweep(만료캐시+종결큐 GC)
 │   ├── dashboard_service.py     # /dashboard 10 공개 함수 (dashboard_kpi + dashboard_trend + frequent_issues_v2 + auto_merge_kpi + merge_failure_distribution + feedback_status + repo_insight_cards + insight_narrative + dashboard_security + dashboard_usage) + RLS 격리 헬퍼 2건 + N+1 배치 헬퍼 2건 (_fetch_analyses_for_window / _group_analyses_by_repo) — insight_narrative 는 `INSIGHT_DISABLED` kill-switch 전역 차단 대상
 │   ├── repo_insight_service.py  # 리포별 집계 7 함수 (repo_kpi/repo_score_trend/recurring_issues/problem_files/ai_suggestions/category_breakdown/insight_narrative) + compute_score_kpi 공유 헬퍼 (dashboard_service CPD 제거) — insight_narrative 는 `INSIGHT_DISABLED` kill-switch 전역 차단 대상(dashboard_service 와 동일)
 │   │                            # Per-repo aggregation 7 functions (repo_score_trend added cycle 99) + compute_score_kpi shared helper
@@ -115,7 +115,7 @@ src/
 │   ├── deps.py                  # get_repo_or_404
 │   ├── repos.py / stats.py / hook.py (_resolve_hook_locale — repo owner 언어 해소, 사이클 151) / users.py
 │   ├── repo_report.py           # Repo별 분석 레포트 JSON API (list + detail)
-│   ├── internal_cron.py         # POST /api/internal/cron/{weekly,trend,scan-security,retry-pending-merges,sweep-orphans}
+│   ├── internal_cron.py         # POST /api/internal/cron/{weekly,trend,scan-security,retry-pending-merges,sweep-orphans,retention-sweep}
 │   ├── issue_registration.py    # POST /api/issues/register + GET /api/issues/status + GET /api/issues/repo-summary (소유권 검증 포함)
 │   └── admin.py                 # GET /api/admin/{tenants,rls-audit,operations}
 ├── ui/
