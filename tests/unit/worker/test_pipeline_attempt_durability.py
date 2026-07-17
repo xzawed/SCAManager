@@ -283,6 +283,27 @@ async def test_gate_failure_still_finishes_attempt_because_analysis_persisted(pi
     finish.assert_called_once()
 
 
+async def test_notify_failure_after_persist_finishes_attempt(pipeline_deps):
+    """🔴 notify 단계 실패는 오탐 orphan 을 남기지 않는다 — Analysis 는 이미 영속화됨 (준비도 감사 #21).
+
+    `_save_and_gate` 가 Analysis 를 save_new 로 영속화한 **뒤** notify 단계
+    (`build_notification_tasks`/`_send_notifications`)가 예외를 던지면, 터미널 `except` 가 이를
+    삼키지만 흔적 행은 남아 **정상 분석이 orphan 으로 오탐**됐다(finish 가 notify 뒤에 있었으므로).
+    finish 를 영속화 직후·notify 앞으로 옮겨 봉인 — gate 실패(위 테스트)와 동일한 "영속화 후 실패는
+    소실 아님" 원칙의 notify 판.
+    🔴 A notify-stage failure must NOT leave a false orphan — the Analysis is already persisted.
+    """
+    with patch(_BEGIN, return_value=True) as begin, patch(_FINISH) as finish, \
+         patch("src.worker.pipeline.build_notification_tasks",
+               side_effect=RuntimeError("notify boom")):
+        # 터미널 except 가 삼키므로 예외는 전파되지 않는다
+        await run_analysis_pipeline("push", PUSH_DATA)
+
+    begin.assert_called_once()
+    # Analysis 영속화됨 → 소실 아님 → finish 호출 (오탐 orphan 방지)
+    finish.assert_called_once()
+
+
 async def test_no_changed_files_finishes_attempt(pipeline_deps):
     """계약 9 — 변경 파일 0 은 정상 종료 → finish 호출 (orphan 오탐 방지).
 

@@ -94,3 +94,25 @@ def find_orphaned(db: Session, *, older_than_minutes: int) -> list[AnalysisAttem
         .order_by(AnalysisAttempt.started_at.asc())
         .all()
     )
+
+
+def purge_by_ids(db: Session, ids: list[int]) -> int:
+    """주어진 흔적 행 id 만 삭제하고 삭제 건수를 반환한다 — sweep 이 surfacing 후 호출.
+
+    Delete exactly the given breadcrumb rows by id and return the count.
+
+    🔴 **표면화한 행 id 만** 받아 삭제한다 — `find_orphaned` 로 로그·알림에 표면화한 스냅샷과
+    정확히 일치. 만약 `older_than` cutoff 를 여기서 재계산하면 find 시점 이후 임계를 갓 넘긴
+    행까지 지워, **표면화되지 않은 소실을 은폐**할 수 있다(TOCTOU). id 기반이라 그 창이 닫힌다.
+    🔴 Takes the exact ids that were surfaced by find_orphaned — recomputing an older-than cutoff
+    here could delete a row that just crossed the threshold, hiding an un-surfaced loss (TOCTOU).
+    """
+    if not ids:
+        return 0
+    deleted = (
+        db.query(AnalysisAttempt)
+        .filter(AnalysisAttempt.id.in_(ids))
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return deleted

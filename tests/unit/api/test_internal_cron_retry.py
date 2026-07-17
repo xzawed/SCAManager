@@ -79,3 +79,30 @@ def test_retry_endpoint_returns_counts(monkeypatch):
     body = resp.json()
     assert body["status"] == "ok"
     assert body["counts"] == mock_counts
+
+
+# ── sweep-orphans 엔드포인트 (준비도 감사 #11 — #1060 find_orphaned 배선) ──────
+
+def test_sweep_orphans_endpoint_no_key_returns_401(monkeypatch):
+    """X-API-Key 없이 /sweep-orphans → 401 (router-level 인증)."""
+    monkeypatch.setattr("src.config.settings.internal_cron_api_key", _VALID_KEY)
+    resp = client.post("/api/internal/cron/sweep-orphans")
+    assert resp.status_code == 401
+
+
+def test_sweep_orphans_endpoint_returns_surfaced_count(monkeypatch):
+    """올바른 키로 /sweep-orphans → surfaced 카운트 반환."""
+    monkeypatch.setattr("src.config.settings.internal_cron_api_key", _VALID_KEY)
+    with patch(
+        "src.api.internal_cron.sweep_analysis_attempts",
+        new_callable=AsyncMock,
+        return_value=3,
+    ):
+        resp = client.post(
+            "/api/internal/cron/sweep-orphans",
+            headers={"X-API-Key": _VALID_KEY},
+        )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "ok"
+    assert body["orphans_surfaced"] == 3

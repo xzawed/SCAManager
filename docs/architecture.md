@@ -55,7 +55,7 @@ src/
 │   └── translations/            # en.json / ko.json / ja.json (15 namespace × 3 언어)
 ├── services/
 │   ├── analytics_service.py     # 집계 단일 출처 — weekly_summary, moving_average, resolve_chat_id
-│   ├── cron_service.py          # 주기 실행 — run_weekly_reports, run_trend_check
+│   ├── cron_service.py          # 주기 실행 — run_weekly_reports, run_trend_check, sweep_analysis_attempts(소실 탐지, 0045)
 │   ├── dashboard_service.py     # /dashboard 10 공개 함수 (dashboard_kpi + dashboard_trend + frequent_issues_v2 + auto_merge_kpi + merge_failure_distribution + feedback_status + repo_insight_cards + insight_narrative + dashboard_security + dashboard_usage) + RLS 격리 헬퍼 2건 + N+1 배치 헬퍼 2건 (_fetch_analyses_for_window / _group_analyses_by_repo) — insight_narrative 는 `INSIGHT_DISABLED` kill-switch 전역 차단 대상
 │   ├── repo_insight_service.py  # 리포별 집계 7 함수 (repo_kpi/repo_score_trend/recurring_issues/problem_files/ai_suggestions/category_breakdown/insight_narrative) + compute_score_kpi 공유 헬퍼 (dashboard_service CPD 제거) — insight_narrative 는 `INSIGHT_DISABLED` kill-switch 전역 차단 대상(dashboard_service 와 동일)
 │   │                            # Per-repo aggregation 7 functions (repo_score_trend added cycle 99) + compute_score_kpi shared helper
@@ -115,7 +115,7 @@ src/
 │   ├── deps.py                  # get_repo_or_404
 │   ├── repos.py / stats.py / hook.py (_resolve_hook_locale — repo owner 언어 해소, 사이클 151) / users.py
 │   ├── repo_report.py           # Repo별 분석 레포트 JSON API (list + detail)
-│   ├── internal_cron.py         # POST /api/internal/cron/{weekly,trend,scan-security,retry-pending-merges}
+│   ├── internal_cron.py         # POST /api/internal/cron/{weekly,trend,scan-security,retry-pending-merges,sweep-orphans}
 │   ├── issue_registration.py    # POST /api/issues/register + GET /api/issues/status + GET /api/issues/repo-summary (소유권 검증 포함)
 │   └── admin.py                 # GET /api/admin/{tenants,rls-audit,operations}
 ├── ui/
@@ -128,7 +128,7 @@ src/
 │   └── repo_report_tools.py     # list_repo_reports / get_repo_report tool 스키마
 ├── cli/                         # python -m src.cli review (git_diff + formatter)
 ├── verifier/                    # 2nd-LLM 머지 검증자 (cross-vendor 거버넌스) — openai_client.py (SDK 우선 + httpx fallback)
-├── repositories/                # DB 접근 계층 13종 — repository_repo (`find_by_full_name` + `find_all_by_user` shared+owned repos + Phase H `find_by_full_name_with_owner`), issue_registration_repo (find_by_key/create/list_by_analysis/list_by_repo/update_state), claude_api_cost_repo (record + user_cost_summary — Anthropic 비용 영속화/집계 단일 출처, 0043), analysis_attempt_repo (begin_attempt/finish_attempt/find_orphaned — 파이프라인 소실 탐지 단일 출처, 0045)
+├── repositories/                # DB 접근 계층 13종 — repository_repo (`find_by_full_name` + `find_all_by_user` shared+owned repos + Phase H `find_by_full_name_with_owner`), issue_registration_repo (find_by_key/create/list_by_analysis/list_by_repo/update_state), claude_api_cost_repo (record + user_cost_summary — Anthropic 비용 영속화/집계 단일 출처, 0043), analysis_attempt_repo (begin_attempt/finish_attempt/find_orphaned/purge_orphaned — 파이프라인 소실 탐지 단일 출처, 0045; sweep cron 이 find_orphaned→표면화→purge)
 └── worker/pipeline.py           # run_analysis_pipeline, build_analysis_result_dict
 ```
 
