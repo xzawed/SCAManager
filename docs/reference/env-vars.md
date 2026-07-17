@@ -21,6 +21,7 @@
 | `API_KEY` | Dashboard REST API 인증 키. 🔴 **미설정 시 기본 fail-closed(503)** — `API_AUTH_DISABLED=1` opt-out 없으면 `/api/repos`·`/api/stats`·`/api/.../report` 전체 차단 (감사 ①, 이전 'http 시 인증 생략'에서 변경) | `any-secret-string` |
 | `API_AUTH_DISABLED` | `1` 설정 시 `API_KEY` 미설정이어도 REST API 무인증 통과 허용 — **로컬 개발 전용 명시 opt-out** (운영 절대 설정 금지). 미설정(기본 `0`) + `API_KEY` 미설정 = 503 fail-closed. `*_DISABLED` kill-switch | `1` (로컬 dev) / 미설정 (운영) |
 | `APP_BASE_URL` | Railway 등 리버스 프록시에서 HTTPS redirect_uri 강제 지정 + **CORS allow_origins 출처 결정** (사이클 142 Phase C — `src/main.py` CORSMiddleware, 미설정 시 CORS 미등록) | `https://your-app.railway.app` |
+| `ENVIRONMENT` | **프로덕션 하드닝 명시 신호** — `production` 이면 `APP_BASE_URL` 과 무관하게 HSTS·쿠키 Secure·/docs 비노출·시작 검증을 강제(`settings.is_production`, 준비도 감사 #14). 미설정 시 기존 HTTPS 휴리스틱으로 판정(하위 호환). 🔴 명시 신호는 하드닝을 **강제만** 하고 해제 못 함 — `development` 라도 HTTPS 배포면 prod 판정(secure 우선). startup 로그가 유효 모드를 명시(`production hardening = ON/OFF`) | 빈 문자열 (기본) / `production` |
 | `TOKEN_ENCRYPTION_KEY` | GitHub Access Token 암호화 키 (미설정 시 평문 저장) | `32자 이상 랜덤` |
 | `STRICT_TOKEN_ENCRYPTION` | `true` 설정 시 `TOKEN_ENCRYPTION_KEY` 미설정 **또는 형식 오류**면 lifespan startup 차단 (기본값 `false` = 평문 저장 허용 + WARNING 출력). P1-① 2026-06-29 감사로 invalid 키도 차단 대상 추가 | `false` (기본) |
 | `STRICT_MIGRATION` | `true` 설정 시 lifespan DB 마이그레이션 실패/timeout 면 앱 기동 차단(fail-fast). 기본 `false` = 기존 동작(로그 후 "starting app anyway"). Railway 는 pre-deploy `alembic upgrade head` 가 1차 게이트라 무해하나 온프레미스/비-Railway prod 는 lifespan 이 유일 게이트 (P1-② 2026-06-29 감사) | `false` (기본) |
