@@ -48,6 +48,12 @@ def overview(
         repos = db.query(Repository).filter(
             (Repository.user_id == current_user.id) | (Repository.user_id.is_(None))
         ).order_by(Repository.created_at.desc()).all()
+        # 🔴 소유자 미등록 저장소 카운트 — 이미 조회한 목록에서 세므로 추가 쿼리 0.
+        # 이 저장소들은 조회는 되지만 설정 변경·삭제가 403 이다(#1062). 운영자가 403 을
+        # 만나기 전에 인지하도록 배너로 표면화한다 (막지 않고 탐지 — #1060 과 같은 철학).
+        # 🔴 Count unclaimed repos from the already-fetched list (zero extra queries). They are
+        # readable but 403 on writes (#1062); surface them before the operator hits that 403.
+        unclaimed_count = sum(1 for r in repos if r.user_id is None)
         repo_data = []
         if repos:
             repo_ids = [r.id for r in repos]
@@ -88,5 +94,6 @@ def overview(
         "repos": repo_data,
         "current_user": current_user,
         "calibration": calibration,
+        "unclaimed_count": unclaimed_count,
         "locale": get_locale(request),
     })

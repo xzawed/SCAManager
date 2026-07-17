@@ -42,6 +42,31 @@
     border-radius: var(--radius-pill, 999px);
   }
 
+  /* 소유자 미등록 저장소 안내 배너 — 시맨틱 토큰(--warning)만 사용해 4-테마 자동 대응.
+     hex 직접 사용 금지(ui.md). color-mix 로 배경/테두리를 파생시켜 테마별 정의 중복을 피한다.
+     Unclaimed-repo banner — semantic token only (--warning) so all four themes adapt; derive the
+     background/border via color-mix instead of duplicating per-theme definitions. */
+  .ov-unclaimed-banner {
+    display: flex; align-items: center; gap: var(--space-3, 0.75rem);
+    margin-bottom: var(--space-4, 1rem);
+    padding: 0.75rem 1rem;
+    font-size: var(--fs-sm, 0.875rem);
+    color: var(--text-1, var(--text-primary));
+    background: color-mix(in srgb, var(--warning) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent);
+    border-radius: var(--radius-md, 12px);
+  }
+  .ov-unclaimed-icon { flex-shrink: 0; }
+  .ov-unclaimed-banner .btn { margin-left: auto; flex-shrink: 0; }
+  @media (max-width: 768px) {
+    .ov-unclaimed-banner { flex-wrap: wrap; }
+    /* WCAG 2.5.5 — 모바일 탭 영역 ≥44px (ui.md) */
+    .ov-unclaimed-banner .btn {
+      margin-left: 0; min-height: 44px; box-sizing: border-box;
+      display: inline-flex; align-items: center;
+    }
+  }
+
   /* 리포 그리드
      Repo grid */
   .repo-grid {
@@ -173,6 +198,17 @@
       <a href="/repos/add" class="btn btn-primary btn--sm">{{ 'overview.add_repo' | i18n_args(locale | default('ko')) }}</a>
     </div>
   </div>
+
+  {# 🔴 소유자 미등록 저장소 안내 — 조회는 되지만 설정 변경·삭제가 403 이다(#1062).
+     운영자가 403 을 만나기 전에 원인(웹훅 자동 생성)과 조치(/repos/add 재등록)를 알도록 표면화.
+     🔴 Unclaimed repos are readable but 403 on writes — surface the cause and the fix up front. #}
+  {% if unclaimed_count %}
+  <div class="ov-unclaimed-banner" role="status">
+    <span class="ov-unclaimed-icon" aria-hidden="true">⚠️</span>
+    <span>{{ 'overview.unclaimed_banner' | i18n_args(locale | default('ko'), count=unclaimed_count) }}</span>
+    <a href="/repos/add" class="btn btn--sm">{{ 'overview.unclaimed_cta' | i18n_args(locale | default('ko')) }}</a>
+  </div>
+  {% endif %}
 
   {% if repos %}
   <div class="repo-grid">
