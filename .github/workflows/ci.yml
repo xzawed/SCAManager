@@ -117,7 +117,40 @@ jobs:
       - name: Audit requirements for known vulnerabilities
         # -r 로 requirements 파일 직접 스캔(설치 불필요). vuln 발견 시 exit 1 → CI fail(게이트).
         # Scan requirements files directly (no install). Non-zero exit on any vuln → gate.
-        run: python -m pip_audit -r requirements.txt -r requirements-dev.txt --desc on
+        #
+        # 🔴 --ignore-vuln 4건 = semgrep 이 강제하는 transitive 핀 (2026-07-17).
+        # semgrep==1.169.0 이 `mcp==1.23.3`(정확 핀) + `click~=8.1.8` 을 요구한다. 최신
+        # semgrep 1.170.0 도 동일 핀이라 **버전 업으로 해결 불가** — 우리가 고를 수 있는
+        # semgrep 버전 중 패치본이 없다. 4건 모두 우리 사용 방식에선 **도달 불가**:
+        #   · semgrep 은 `["semgrep","scan","--config=p/default","--json",…]` 비대화형 CLI
+        #     subprocess 로만 호출(src/analyzer/io/tools/semgrep.py) — MCP 서버 미기동.
+        #   · CVE-2026-52870 = `server.experimental.enable_tasks()` 전제 → 전 코드 0건.
+        #   · CVE-2026-52869 = SSE/StreamableHTTP 서버 트랜스포트 전제 → 전 코드 0건.
+        #   · CVE-2026-59950 = `mcp.server.websocket.websocket_server` 전제 → 전 코드 0건.
+        #   · PYSEC-2026-2132 = `click.edit()` 명령 주입 전제 → 전 코드 0건.
+        # (src/mcp/ 는 스키마 선언만 있는 별개 모듈로 semgrep 의 mcp 패키지와 무관.)
+        #
+        # 🔴 재검토 조건 (충족 시 해당 ID 를 즉시 제거할 것):
+        #   (1) semgrep 이 mcp 핀을 >=1.27.2 / click 핀을 >=8.3.3 으로 올리면 → 전부 제거
+        #   (2) 우리가 MCP **서버**를 실제 기동하게 되면 (enable_tasks / HTTP·WS 트랜스포트)
+        #       → mcp 3건 즉시 제거 (도달 불가 근거가 무효화됨)
+        #   (3) click.edit() 를 쓰게 되면 → PYSEC-2026-2132 즉시 제거
+        # 이 목록은 "방치되면 썩는" 자산이다 — 신규 ID 를 습관적으로 추가하지 말 것.
+        # 다른 CVE 는 계속 게이트로 차단된다 (ignore 는 명시 4건 한정).
+        #
+        # 🔴 --ignore-vuln (4 IDs) = transitive pins forced by semgrep (2026-07-17).
+        # semgrep==1.169.0 requires `mcp==1.23.3` (exact) + `click~=8.1.8`; the latest semgrep
+        # (1.170.0) pins identically, so no bump fixes this. All 4 are unreachable in our usage:
+        # semgrep runs only as a non-interactive CLI subprocess (never an MCP server), and
+        # enable_tasks / SSE / StreamableHTTP / websocket_server / click.edit appear 0 times in
+        # our tree. Remove any ID the moment its precondition becomes true (see conditions above).
+        # Every other CVE still fails the gate — this ignore list is exactly 4 entries.
+        run: |
+          python -m pip_audit -r requirements.txt -r requirements-dev.txt --desc on \
+            --ignore-vuln CVE-2026-52870 \
+            --ignore-vuln CVE-2026-52869 \
+            --ignore-vuln CVE-2026-59950 \
+            --ignore-vuln PYSEC-2026-2132
 
   test-and-analyze:
     name: pytest + Codecov + SonarCloud
