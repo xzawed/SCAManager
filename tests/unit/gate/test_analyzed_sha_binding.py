@@ -113,7 +113,7 @@ async def test_retry_path_drift_blocks_merge_entirely():
          patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge, \
          patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
          patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main"), \
-         patch("src.gate.engine.merge_retry_repo") as mock_repo, \
+         patch("src.gate.engine.merge_retry_repo"), \
          patch("src.gate.engine.log_merge_attempt"):
 
         mock_settings.merge_retry_enabled = True
