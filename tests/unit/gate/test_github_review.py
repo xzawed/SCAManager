@@ -45,6 +45,50 @@ async def test_post_github_review_raises_on_error():
             await post_github_review("token", "owner/repo", 5, "approve", "OK")
 
 
+# 🔴 approve SHA 결속 (준비도 감사 #8) — commit_id 로 분석 SHA 에만 APPROVE 부착.
+# GitHub 은 commit_id 가 현재 head 와 불일치하면 422 → 이동한 head 에 승인 미부착(fail-closed).
+# merge 의 expected_sha(#1057)와 대칭.
+
+async def test_post_github_review_binds_commit_id_when_provided():
+    """commit_id 전달 시 POST body 에 포함 — 분석 SHA 에만 APPROVE 결속."""
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+    with patch("src.gate.github_review.get_http_client") as mock_get:
+        mock_client = AsyncMock()
+        mock_get.return_value = mock_client
+        mock_client.post = AsyncMock(return_value=mock_response)
+        await post_github_review("token", "owner/repo", 5, "approve", "LGTM",
+                                 commit_id="abc123def")
+    body = mock_client.post.call_args.kwargs["json"]
+    assert body["commit_id"] == "abc123def", "commit_id 가 POST body 에 결속되지 않음"
+
+
+async def test_post_github_review_omits_commit_id_when_none():
+    """commit_id 미전달(None) 시 body 에 미포함 — 하위 호환(빈 SHA 로 결속하지 않음)."""
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+    with patch("src.gate.github_review.get_http_client") as mock_get:
+        mock_client = AsyncMock()
+        mock_get.return_value = mock_client
+        mock_client.post = AsyncMock(return_value=mock_response)
+        await post_github_review("token", "owner/repo", 5, "approve", "LGTM")
+    body = mock_client.post.call_args.kwargs["json"]
+    assert "commit_id" not in body, "commit_id 미전달 시 body 에 포함되면 안 됨"
+
+
+async def test_post_github_review_omits_commit_id_when_empty_string():
+    """commit_id='' (빈 SHA) 시에도 미포함 — GitHub 이 빈 commit_id 를 422 처리하는 것 방지."""
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+    with patch("src.gate.github_review.get_http_client") as mock_get:
+        mock_client = AsyncMock()
+        mock_get.return_value = mock_client
+        mock_client.post = AsyncMock(return_value=mock_response)
+        await post_github_review("token", "owner/repo", 5, "approve", "LGTM", commit_id="")
+    body = mock_client.post.call_args.kwargs["json"]
+    assert "commit_id" not in body
+
+
 # ---------------------------------------------------------------------------
 # merge_pr() 기본 동작 — tuple[bool, str | None, str] 반환 대응
 # merge_pr() basic behavior — tuple[bool, str | None, str] return value tests

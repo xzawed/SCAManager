@@ -70,7 +70,8 @@ def test_gate_actions_list_exists():
 
 # ─── ReviewCommentAction ─────────────────────────────────────────────────────
 
-def _make_ctx(pr_review_comment=True, score=85, approve_mode="disabled", auto_merge=False):
+def _make_ctx(pr_review_comment=True, score=85, approve_mode="disabled", auto_merge=False,
+              commit_sha=None):
     from src.gate.actions import GateContext  # pylint: disable=import-outside-toplevel
     cfg = _make_config(
         pr_review_comment=pr_review_comment,
@@ -80,7 +81,7 @@ def _make_ctx(pr_review_comment=True, score=85, approve_mode="disabled", auto_me
     return GateContext(
         repo_name="owner/repo", pr_number=42, analysis_id=1,
         result={"score": score}, github_token="ghp_test",
-        config=cfg, score=score,
+        config=cfg, score=score, commit_sha=commit_sha,
     )
 
 
@@ -155,6 +156,71 @@ async def test_approve_action_auto_calls_post_github_review():
         mock_sess.return_value.__exit__ = MagicMock(return_value=False)
         await ApproveAction().execute(ctx)
     mock_review.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_approve_action_auto_binds_commit_sha(monkeypatch):
+    """🔴 auto approve 가 분석 SHA(ctx.commit_sha)를 commit_id 로 결속한다 (준비도 감사 #8).
+
+    이동한 head 에 APPROVE 가 붙어 branch-protection auto-merge 가 미분석 커밋을 머지하는 것을 차단.
+    """
+    from src.gate.actions.approve import ApproveAction  # pylint: disable=import-outside-toplevel
+    ctx = _make_ctx(approve_mode="auto", score=80, commit_sha="analyzedsha123")
+    with patch("src.gate.actions.approve.post_github_review", new=AsyncMock()) as mock_review, \
+         patch("src.gate.actions.approve.gate_decision_repo"), \
+         patch("src.gate.actions.approve.SessionLocal") as mock_sess:
+        mock_sess.return_value.__enter__ = MagicMock(return_value=MagicMock())
+        mock_sess.return_value.__exit__ = MagicMock(return_value=False)
+        await ApproveAction().execute(ctx)
+    assert mock_review.await_args.kwargs.get("commit_id") == "analyzedsha123", \
+        "auto approve 가 분석 SHA 를 commit_id 로 결속하지 않음"
+
+
+@pytest.mark.asyncio
+async def test_approve_action_auto_422_logged_as_info_not_error(caplog):
+    """🔴 SHA 결속 422(head 이동)는 정상 fail-closed → INFO 로그, ERROR 아님 (pipeline-reviewer P2).
+
+    force-push 잦은 리포에서 매 드리프트마다 ERROR 가 쌓여 진짜 실패를 은폐하지 않도록 강등.
+    """
+    import logging as _logging  # pylint: disable=import-outside-toplevel
+    import httpx  # pylint: disable=import-outside-toplevel
+    from src.gate.actions.approve import ApproveAction  # pylint: disable=import-outside-toplevel
+    ctx = _make_ctx(approve_mode="auto", score=80, commit_sha="movedsha")
+    resp = httpx.Response(422, request=httpx.Request("POST", "https://api.github.com/x"))
+    err = httpx.HTTPStatusError("422", request=resp.request, response=resp)
+    with patch("src.gate.actions.approve.post_github_review", new=AsyncMock(side_effect=err)), \
+         patch("src.gate.actions.approve.gate_decision_repo") as mock_gd, \
+         patch("src.gate.actions.approve.SessionLocal") as mock_sess:
+        mock_sess.return_value.__enter__ = MagicMock(return_value=MagicMock())
+        mock_sess.return_value.__exit__ = MagicMock(return_value=False)
+        with caplog.at_level(_logging.INFO, logger="src.gate.actions.approve"):
+            await ApproveAction().execute(ctx)
+    # gate_decision 은 upsert 미도달 (approve 미기록)
+    mock_gd.upsert.assert_not_called()
+    # 422 는 INFO 로만 — ERROR 레벨 레코드 없음
+    assert not any(r.levelno >= _logging.ERROR for r in caplog.records), \
+        "SHA 결속 422 가 ERROR 로 로깅됨 (정상 fail-closed 인데 노이즈)"
+    assert any("head moved" in r.message for r in caplog.records), \
+        "422 head-이동 INFO 로그가 없음"
+
+
+@pytest.mark.asyncio
+async def test_approve_action_auto_non_422_error_still_logged_as_error(caplog):
+    """🔴 422 가 아닌 실패(500/네트워크)는 여전히 ERROR — 진짜 실패는 강등하지 않음."""
+    import logging as _logging  # pylint: disable=import-outside-toplevel
+    import httpx  # pylint: disable=import-outside-toplevel
+    from src.gate.actions.approve import ApproveAction  # pylint: disable=import-outside-toplevel
+    ctx = _make_ctx(approve_mode="auto", score=80, commit_sha="sha")
+    err = httpx.ConnectError("network down")
+    with patch("src.gate.actions.approve.post_github_review", new=AsyncMock(side_effect=err)), \
+         patch("src.gate.actions.approve.gate_decision_repo"), \
+         patch("src.gate.actions.approve.SessionLocal") as mock_sess:
+        mock_sess.return_value.__enter__ = MagicMock(return_value=MagicMock())
+        mock_sess.return_value.__exit__ = MagicMock(return_value=False)
+        with caplog.at_level(_logging.INFO, logger="src.gate.actions.approve"):
+            await ApproveAction().execute(ctx)
+    assert any(r.levelno >= _logging.ERROR for r in caplog.records), \
+        "422 아닌 실패가 ERROR 로 로깅되지 않음"
 
 
 @pytest.mark.asyncio

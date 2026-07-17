@@ -94,6 +94,10 @@ async def test_handle_gate_callback_real_db_claims_then_replay_skips(real_sessio
             decided_by="tester", telegram_user_id="999",
         )
         assert mock_review.await_count == 1
+        # 🔴 semi-auto 승인이 분석 SHA(seamsha)를 commit_id 로 결속 — 이동한 head 에 GitHub 422
+        # (준비도 감사 #8). 무만료 버튼을 몇 시간 뒤 눌러도 미분석 커밋에 APPROVE 부착 차단.
+        assert mock_review.await_args.kwargs.get("commit_id") == "seamsha", \
+            "semi-auto approve 가 분석 SHA 를 commit_id 로 결속하지 않음"
         with real_session_factory() as db:
             assert db.query(GateDecision).filter_by(analysis_id=analysis_id).count() == 1
 

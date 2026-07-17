@@ -154,6 +154,9 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
             await post_github_review(
                 github_token, repo.full_name,
                 analysis.pr_number, decision, body,
+                # 🔴 분석 SHA 결속 — semi-auto 승인 버튼(무만료 HMAC)을 몇 시간 뒤 눌러도 그 사이
+                # 이동한 head 에는 GitHub 이 422 로 APPROVE 를 거부(fail-closed, 준비도 감사 #8).
+                commit_id=analysis.commit_sha,
             )
             # 결정은 위 claim 단계에서 이미 원자적으로 기록됨 (별도 저장 불필요)
             # The decision was already recorded atomically by the claim above (no save needed)
