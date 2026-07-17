@@ -44,6 +44,82 @@ async def test_list_user_repos_returns_repo_list():
     assert result[1]["private"] is True
 
 
+def _repos_page(data, next_url=None):
+    """list_user_repos 용 mock 응답 1페이지 — next_url 지정 시 Link 헤더 next 를 흉내낸다."""
+    # Build one mocked page for list_user_repos; next_url emulates the Link header's next entry.
+    resp = MagicMock()
+    resp.json.return_value = data
+    resp.raise_for_status = MagicMock()
+    # 미설정 시 MagicMock 이 truthy → while url: 무한 루프 (기존 테스트 주석 참조)
+    # Without this, MagicMock is truthy causing an infinite while url: loop.
+    resp.links = {"next": {"url": next_url}} if next_url else {}
+    return resp
+
+
+@pytest.mark.asyncio
+async def test_list_user_repos_affiliation_includes_organization_member():
+    """affiliation 에 organization_member 가 포함돼야 org 저장소가 복구 경로에 노출된다.
+
+    🔴 회귀 가드 — GitHub /user/repos 의 affiliation 은 owner/collaborator/organization_member 3값이고
+    기본은 셋 전부. "owner,collaborator" 로 좁히면 팀 권한으로만 접근하는 org 리포가 목록에서
+    누락 → NULL-owner org 리포의 소유권 획득이 add_repo.py:126 에서 403 으로 영구 차단된다.
+    Membership assertion (not exact-string) so param order changes don't false-fail.
+    """
+    from src.github_client.repos import list_user_repos
+
+    mock_resp = _repos_page([])
+
+    with patch("src.github_client.repos.get_http_client") as mock_get:
+        mock_client = AsyncMock()
+        mock_get.return_value = mock_client
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        await list_user_repos("gho_test_token")
+
+    params = mock_client.get.call_args.kwargs["params"]
+    affiliations = {v.strip() for v in params["affiliation"].split(",")}
+    assert "organization_member" in affiliations, (
+        f"affiliation 에 organization_member 누락 — org 저장소가 복구 경로에서 배제됨: {params['affiliation']!r}"
+    )
+    # 기존 2값 보존 확인 (회귀 방지 — organization_member 로 치환해버리면 안 됨)
+    # Ensure the original two values survive (must be added to, not swapped for).
+    assert "owner" in affiliations, f"affiliation 에서 owner 유실: {params['affiliation']!r}"
+    assert "collaborator" in affiliations, f"affiliation 에서 collaborator 유실: {params['affiliation']!r}"
+
+
+@pytest.mark.asyncio
+async def test_list_user_repos_follows_pagination_and_drops_params_after_first_page():
+    """pagination 비회귀 — Link next 를 따라 전 페이지를 수집하고 2페이지부터 params=None.
+
+    affiliation 수정이 pagination 루프(params 재사용 금지 규약)를 깨지 않는지 봉인.
+    Non-regression: the next URL already encodes the query, so params must not be re-sent.
+    """
+    from src.github_client.repos import list_user_repos
+
+    page1 = _repos_page(
+        [{"full_name": "org/repo-1", "private": True, "description": None}],
+        next_url="https://api.github.com/user/repos?page=2",
+    )
+    page2 = _repos_page([{"full_name": "org/repo-2", "private": False, "description": "second"}])
+
+    with patch("src.github_client.repos.get_http_client") as mock_get:
+        mock_client = AsyncMock()
+        mock_get.return_value = mock_client
+        mock_client.get = AsyncMock(side_effect=[page1, page2])
+
+        result = await list_user_repos("gho_test_token")
+
+    assert [r["full_name"] for r in result] == ["org/repo-1", "org/repo-2"]
+    # description None → "" 정규화 유지
+    # description None is normalized to "".
+    assert result[0]["description"] == ""
+    assert mock_client.get.call_count == 2
+    assert mock_client.get.call_args_list[0].kwargs["params"] is not None
+    assert mock_client.get.call_args_list[1].kwargs["params"] is None, (
+        "2페이지 요청은 next URL 에 쿼리가 인코딩돼 있으므로 params=None 이어야 함"
+    )
+
+
 @pytest.mark.asyncio
 async def test_create_webhook_returns_webhook_id():
     """create_webhook은 GitHub API를 호출하고 webhook_id를 반환한다."""

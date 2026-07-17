@@ -19,7 +19,14 @@ from src.i18n.loader import get_text
 from src.models.repo_config import RepoConfig
 from src.models.repository import Repository
 from src.repositories import repo_config_repo, repository_repo
-from src.ui._helpers import GITHUB_WEBHOOK_PATH, get_locale, templates, webhook_base_url
+from src.shared.log_safety import sanitize_for_log
+from src.ui._helpers import (
+    GITHUB_WEBHOOK_PATH,
+    get_locale,
+    logger,
+    templates,
+    webhook_base_url,
+)
 
 router = APIRouter()
 
@@ -93,7 +100,7 @@ async def github_repos_list(
 
 
 @router.post("/repos/add")
-async def add_repo(
+async def add_repo(  # pylint: disable=too-many-locals
     request: Request,
     current_user: Annotated[CurrentUser, Depends(require_login)],
 ):
@@ -121,7 +128,23 @@ async def add_repo(
             # 폼 입력(repo_full_name)만으로 탈취하는 것을 막는다. 신규 repo 경로의 create_webhook(token)
             # 암묵 검증과 대칭 — 접근 권한 없으면 403.
             # Verify GitHub access before ownership transfer — blocks claiming an unowned repo via form alone.
-            accessible = await list_user_repos(current_user.plaintext_token or "")
+            # 🔴 try 범위는 이 호출 한 줄 — 아래 403 raise 를 감싸면 "권한 없음"이 502 로 삼켜진다.
+            # 🔴 Scope the try to this call only — wrapping the 403 below would mask it as a 502.
+            try:
+                accessible = await list_user_repos(current_user.plaintext_token or "")
+            except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-except
+                # GitHub 상류 장애(401/403/429/timeout)는 서버 버그가 아니므로 500 이 아닌 502.
+                # 🔴 원시 예외 문구는 토큰이 섞일 수 있어 응답에 절대 노출하지 않는다.
+                # GitHub upstream failure is not a server bug → 502, not 500.
+                # 🔴 Never surface the raw exception — it can embed the token.
+                logger.warning(
+                    "add_repo: GitHub 리포 목록 조회 실패 (%s): %s",
+                    sanitize_for_log(repo_full_name), type(exc).__name__,
+                )
+                raise HTTPException(
+                    status_code=502,
+                    detail=get_text("errors.github_unavailable", locale),
+                ) from exc
             if repo_full_name not in {r.get("full_name") for r in accessible}:
                 raise HTTPException(
                     status_code=403,
