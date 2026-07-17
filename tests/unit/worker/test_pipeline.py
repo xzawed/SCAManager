@@ -98,7 +98,13 @@ async def test_push_event_calls_full_pipeline(mock_deps):
     mock_deps["ai"].assert_called_once()
     mock_deps["score"].assert_called_once()
     mock_deps["telegram"].assert_called_once()
-    assert mock_deps["db"].commit.call_count == 2  # repo creation + analysis save
+    # repo 생성 + begin_attempt + analysis 저장 + finish_attempt.
+    # mock SessionLocal() 은 모든 `with SessionLocal() as db` 에 동일 객체를 반환하므로
+    # _finish_attempt 의 독립 세션 commit 도 이 카운터에 합산된다 (0045 소실 탐지 페어).
+    # repo creation + begin_attempt + analysis save + finish_attempt.
+    # The mocked SessionLocal() returns the same object for every `with SessionLocal() as db`,
+    # so _finish_attempt's independent-session commit also lands on this counter (0045 pair).
+    assert mock_deps["db"].commit.call_count == 4
 
 
 async def test_pr_event_calls_full_pipeline(mock_deps):

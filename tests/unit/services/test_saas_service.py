@@ -94,9 +94,9 @@ class TestTenantInventory:
 
 
 class TestRlsAuditMatrix:
-    def test_returns_12_tables(self):
+    def test_returns_13_tables(self):
         matrix = saas_service.rls_audit_matrix()
-        assert len(matrix) == 12  # 0026 (3) + 0027 (1) + 0028 (1) + 0029 (5) + 0037 (1) + 0043 (1)
+        assert len(matrix) == 13  # 0026 (3) + 0027 (1) + 0028 (1) + 0029 (5) + 0037 (1) + 0043 (1) + 0045 (1)
 
     def test_all_tables_applied(self):
         matrix = saas_service.rls_audit_matrix()
@@ -134,12 +134,20 @@ class TestRlsAuditMatrix:
 class TestRlsCoverageSummary:
     def test_summary_counts(self):
         summary = saas_service.rls_coverage_summary()
-        assert summary["total"] == 12
-        assert summary["applied"] == 12
+        assert summary["total"] == 13
+        assert summary["applied"] == 13
         assert summary["missing"] == 0
 
     # ── RLS Phase 3 — force_applied 실측 (pg_class.relforcerowsecurity) ──
     # ── RLS Phase 3 — force_applied live-check (pg_class.relforcerowsecurity) ──
+
+    # 🔴 매트릭스 전 테이블이 forced 인 상태 = force_applied True 의 정의.
+    # 리터럴(12 등)로 두면 RLS 테이블이 늘 때마다 무관한 테스트가 깨진다 (0045 추가 시 실제 발생).
+    # 개수 자체의 정합은 test_returns_N_tables + test_rls_matrix_completeness 가 별도로 강제한다.
+    # 🔴 "every matrix table forced" IS the definition of force_applied=True. A literal count breaks
+    # unrelated tests whenever an RLS table is added (it did when 0045 landed); the count itself is
+    # pinned separately by test_returns_N_tables + test_rls_matrix_completeness.
+    _ALL_FORCED = len(saas_service._RLS_MATRIX)  # pylint: disable=protected-access
 
     def _pg_mock(self, forced_count: int, bypasses: bool = False) -> MagicMock:
         """postgresql dialect mock 세션 — 쿼리별 결과 주입 헬퍼.
@@ -184,18 +192,18 @@ class TestRlsCoverageSummary:
         assert summary["force_applied"] is False
 
     def test_summary_force_true_on_postgresql_all_forced(self):
-        """PG + relforcerowsecurity=true 12/12 → force_applied=True (실측 양성 경로).
+        """PG + relforcerowsecurity=true 전 테이블 → force_applied=True (실측 양성 경로).
 
-        PG with 12/12 relforcerowsecurity=true must report force_applied=True.
+        PG with every matrix table relforcerowsecurity=true must report force_applied=True.
         total/applied/missing 기존 키 동작 불변도 함께 고정.
         Also pins that total/applied/missing keys stay unchanged.
         """
-        summary = saas_service.rls_coverage_summary(self._pg_mock(12))
+        summary = saas_service.rls_coverage_summary(self._pg_mock(self._ALL_FORCED))
         assert summary["force_applied"] is True
         # 기존 키 불변 — force 실측 도입이 카운트 키를 깨지 않아야 한다
         # Existing keys unchanged — the live check must not break the count keys
-        assert summary["total"] == 12
-        assert summary["applied"] == 12
+        assert summary["total"] == 13
+        assert summary["applied"] == 13
         assert summary["missing"] == 0
 
     def test_summary_force_false_on_postgresql_partial(self):
@@ -203,7 +211,7 @@ class TestRlsCoverageSummary:
 
         PG with only 11/12 forced tables (partial) must report force_applied=False.
         """
-        summary = saas_service.rls_coverage_summary(self._pg_mock(11))
+        summary = saas_service.rls_coverage_summary(self._pg_mock(self._ALL_FORCED - 1))
         assert summary["force_applied"] is False
 
     # ── connection_bypasses_rls 실측 — Phase 3~4 거짓 안심 창 가시화 ──
@@ -233,7 +241,7 @@ class TestRlsCoverageSummary:
         PG with a BYPASSRLS/superuser connection role → connection_bypasses_rls=True,
         even when force_applied=True (surfaces the pre-Phase-4 false-confidence window).
         """
-        summary = saas_service.rls_coverage_summary(self._pg_mock(12, bypasses=True))
+        summary = saas_service.rls_coverage_summary(self._pg_mock(self._ALL_FORCED, bypasses=True))
         assert summary["force_applied"] is True
         assert summary["connection_bypasses_rls"] is True
 
@@ -243,7 +251,7 @@ class TestRlsCoverageSummary:
         PG with the non-BYPASSRLS app role (the Phase 4 target) → False — the warning
         banner must disappear only in this state.
         """
-        summary = saas_service.rls_coverage_summary(self._pg_mock(12, bypasses=False))
+        summary = saas_service.rls_coverage_summary(self._pg_mock(self._ALL_FORCED, bypasses=False))
         assert summary["force_applied"] is True
         assert summary["connection_bypasses_rls"] is False
 
@@ -259,7 +267,7 @@ class TestRlsCoverageSummary:
         behavior "table names travel as parameters" is pinned here.
         """
         matrix_tables = {entry["table"] for entry in _RLS_MATRIX}
-        mock_db = self._pg_mock(12)
+        mock_db = self._pg_mock(self._ALL_FORCED)
         saas_service.rls_coverage_summary(mock_db)
 
         assert mock_db.execute.called, (

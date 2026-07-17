@@ -23,7 +23,7 @@ from src.config_manager.manager import get_repo_config
 # src.notifier 임포트 시 각 채널 모듈이 자동으로 REGISTRY 에 등록됨
 import src.notifier  # noqa: F401 — 자동 등록 트리거  # pylint: disable=unused-import
 from src.notifier.registry import NotifyContext, REGISTRY
-from src.repositories import repository_repo, analysis_repo
+from src.repositories import repository_repo, analysis_repo, analysis_attempt_repo
 
 logger = logging.getLogger(__name__)
 
@@ -392,6 +392,29 @@ def _is_blank_sha(sha: str) -> bool:
     return not sha or set(sha) == {"0"}
 
 
+def _finish_attempt(repo_id: int, commit_sha: str) -> None:
+    """분석 흔적을 지운다 — 파이프라인 **정상 종료** 신호 (소실 탐지 페어).
+
+    Clear the analysis breadcrumb — signals a NORMAL pipeline exit (loss-detection pair).
+
+    🔴 정상 종료 경로에서만 호출한다. 예외/크래시 경로에서 호출하면 소실 증거가 사라져
+    이 메커니즘 전체가 무의미해진다. SIGTERM/OOM 은 코드가 아예 안 돌아 자동으로 행이 남는다.
+    자체 세션 사용 — 호출 시점에 원 세션이 이미 닫혀 있다.
+    관측 실패가 파이프라인을 깨뜨리지 않도록 예외를 삼킨다(로그만) — 최악의 결과는
+    false-positive orphan 1건이며, 이는 분석 소실보다 훨씬 가벼운 실패 모드다.
+    🔴 Call only on normal-exit paths. Calling it on a failure path erases the very evidence this
+    mechanism exists for. SIGTERM/OOM skip it automatically since no code runs. Uses its own
+    session (the original one is already closed here). Swallows exceptions so an observability
+    failure cannot break the pipeline — the worst case is one false-positive orphan, a far milder
+    failure mode than a lost analysis.
+    """
+    try:
+        with SessionLocal() as db:
+            analysis_attempt_repo.finish_attempt(db, repo_id=repo_id, commit_sha=commit_sha)
+    except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+        logger.warning("analysis_attempt 정리 실패 (sha=%s): %s", commit_sha[:8], exc)
+
+
 def _ensure_repo(db: Session, repo_name: str, commit_sha: str) -> tuple[Repository, str] | None:
     """리포를 조회·등록하고 owner token을 결정한다. SHA 중복이면 None을 반환한다."""
     owner_token: str = settings.github_token
@@ -711,6 +734,25 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
                 # always populated; None is a theoretical fail-safe.
                 _review_repo_id = _ensured_repo.id
 
+                # 🔴 소실 탐지 흔적 — 반드시 **비싼 작업(파일 수집·Claude 리뷰) 전**에 남긴다.
+                # 이 지점 이후 SIGTERM(Railway 재배포)/OOM/크래시가 나면 Analysis 행도 재시도도
+                # GitHub 재전송도 없어 분석이 조용히 증발한다. 이 행이 유일한 증거다.
+                # 반환값(False = 동시 webhook 이 먼저 시작)은 **의도적으로 무시** — begin_attempt 는
+                # dedup 게이트가 아니다. 중복 차단은 _ensure_repo/_save_and_gate 의 find_by_sha
+                # first-writer-wins(#794·#780) 단독 책임이며, 여기서 조기 return 하면 두 메커니즘이
+                # 얽혀 동작이 갈라진다.
+                # 🔴 Loss-detection breadcrumb — must be written BEFORE the expensive work (file
+                # collection + Claude review). Past this point a SIGTERM (Railway redeploy)/OOM/crash
+                # leaves no Analysis row, no retry and no redelivery: this row is the only evidence.
+                # The return value (False = a concurrent webhook started first) is intentionally
+                # ignored — begin_attempt is not a dedup gate. Deduplication is solely the job of
+                # find_by_sha's first-writer-wins (#794/#780) in _ensure_repo/_save_and_gate;
+                # short-circuiting here would entangle the two mechanisms and diverge.
+                analysis_attempt_repo.begin_attempt(
+                    db, repo_id=_review_repo_id, commit_sha=commit_sha,
+                    pr_number=pr_number, event=event,
+                )
+
             with stage_timer("collect_files", repo=repo_log) as ctx:
                 # Phase H PR-3A: PyGithub 동기 I/O 를 별도 스레드로 격리
                 # _collect_files 내부의 PyGithub 호출은 sync HTTP I/O — async
@@ -726,6 +768,9 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
 
             if not files:
                 logger.info("No changed files in %s @ %s", repo_log, commit_sha)
+                # 정상 종료 — 분석할 게 없었을 뿐 소실이 아니다 (false-positive orphan 방지).
+                # Normal exit — nothing to analyze, not a loss (avoids a false-positive orphan).
+                _finish_attempt(_review_repo_id, commit_sha)
                 return
 
             patches = [(f.filename, f.patch) for f in files if f.patch]
@@ -808,6 +853,11 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
                     "Race-recovery or repo missing for %s @ %s — skipping notify stage",
                     repo_log, commit_sha,
                 )
+                # 정상 종료 — 다른 워커가 이미 저장했거나(race) repo 가 사라진 경우로,
+                # 이 SHA 분석이 증발한 게 아니다 (false-positive orphan 방지).
+                # Normal exit — another worker already persisted it (race) or the repo is gone;
+                # this SHA's analysis did not vanish (avoids a false-positive orphan).
+                _finish_attempt(_review_repo_id, commit_sha)
                 return
 
             with stage_timer("notify", repo=repo_log) as ctx:
@@ -827,5 +877,13 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
                 ctx["channel_count"] = len(task_names)
                 await _send_notifications(notify_tasks, task_names)
 
+            # 정상 완료 — Analysis 가 영속화됐고 알림까지 끝났으므로 흔적을 지운다.
+            # Normal completion — the Analysis is persisted and notifications sent; clear the trace.
+            _finish_attempt(_review_repo_id, commit_sha)
+
     except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+        # 🔴 여기서 _finish_attempt 를 호출하지 않는다 — 남은 행이 곧 "분석이 실패했다"는
+        # 증거다. 로그는 아무도 안 읽지만 orphan 행은 조회된다.
+        # 🔴 Deliberately no _finish_attempt here — the surviving row IS the evidence that the
+        # analysis failed. Nobody reads logs; orphan rows get queried.
         logger.exception("Analysis pipeline failed for event=%s", event)
