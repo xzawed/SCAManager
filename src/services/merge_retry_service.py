@@ -90,55 +90,54 @@ async def process_pending_retries(
         except (httpx.HTTPError, SQLAlchemyError) as exc:
             # 인프라 에러 — 클레임 해제, 짧은 백오프, attempts_count 미증가
             # Infra error — release claim, short backoff, do NOT bump attempts_count
-            _now_naive = now.replace(tzinfo=None) + timedelta(seconds=30)
-            merge_retry_repo.release_claim(
-                db,
-                row.id,
-                next_retry_at=_now_naive,
-                last_failure_reason="infra_error",
-                last_detail_message=str(exc)[:200],
-            )
             logger.warning(
                 "retry worker infra error row_id=%d: %s", row.id, type(exc).__name__
             )
-            counts["released"] += 1
+            _recover_and_release(db, row, now, counts, reason="infra_error", exc=exc)
         except Exception as exc:  # pylint: disable=broad-exception-caught  # noqa: BLE001
-            # 🔴 예상외 단일 행 결함(KeyError/ValueError 등) 격리 — 전체 배치 중단 방지(C3).
-            # 좁은 except 만 있을 때는 한 행의 예상외 예외가 process_pending_retries 전체를 중단해
-            # 무고한 잔여 claimed 행이 처리 안 되고 claim 이 5분 stale 까지 묶였다. rollback 후 클레임을
-            # 해제(다음 사이클 재시도)하고 전체 traceback 을 보존한 뒤 다음 행을 계속 처리한다.
-            # Isolate an unexpected single-row failure (KeyError/ValueError etc.) so it can't abort the
-            # whole batch (C3): a narrow except let one row's surprise exception abort
-            # process_pending_retries, leaving innocent remaining rows unprocessed and claims held until
-            # the 5-min stale window. Rollback, release the claim (retry next cycle), keep the traceback,
-            # and continue with the next row.
+            # 예상외 단일 행 결함(KeyError/ValueError 등) 격리 — 전체 배치 중단 방지(C3).
+            # Isolate an unexpected single-row failure so it can't abort the whole batch (C3).
             logger.exception("retry worker unexpected error row_id=%d", row.id)
-            try:
-                db.rollback()
-                # 🔴 이미 terminal(succeeded/terminal/abandoned/expired)로 커밋된 뒤 부수효과(알림 등)
-                # 에서 예외가 났을 수 있다 — 그 완료 행에 release_claim 을 하면 last_failure_reason 을
-                # 'unexpected_error'로 덮어써 감사 추적을 오염시킨다(Codex mutual 적발). 현재 status 가
-                # 'pending'(미확정·claimed)일 때만 클레임 해제 — terminal 행은 작업 완료라 건드리지 않음.
-                # The exception may have fired after a terminal status was committed (e.g. during the
-                # post-merge notification); calling release_claim then would overwrite last_failure_reason
-                # on a finished row (Codex mutual finding). Only release when status is still 'pending'.
-                db.refresh(row)
-                if row.status == "pending":
-                    _now_naive = now.replace(tzinfo=None) + timedelta(seconds=30)
-                    merge_retry_repo.release_claim(
-                        db,
-                        row.id,
-                        next_retry_at=_now_naive,
-                        last_failure_reason="unexpected_error",
-                        last_detail_message=str(exc)[:200],
-                    )
-                    counts["released"] += 1
-            except Exception:  # pylint: disable=broad-exception-caught  # noqa: BLE001
-                # 클레임 해제 자체 실패해도 배치는 계속 (다음 행 처리). 5분 stale 재클레임이 안전망.
-                # Even if claim release fails, keep the batch going; the 5-min stale reclaim is the net.
-                logger.exception("retry worker: claim release failed row_id=%d", row.id)
+            _recover_and_release(db, row, now, counts, reason="unexpected_error", exc=exc)
 
     return counts
+
+
+def _recover_and_release(db: Session, row, now: datetime, counts: dict[str, int],
+                         *, reason: str, exc: Exception) -> None:
+    """실패한 행의 세션을 복구하고 클레임을 안전하게 해제한다 — 두 except 핸들러 공용.
+
+    Recover the session and safely release a failed row's claim — shared by both handlers.
+
+    🔴 이 헬퍼 도입 전에는 좁은 except(infra_error)와 넓은 except(unexpected_error)가 복구 로직을
+    각자 인라인으로 두어 **드리프트**했다 — 좁은 쪽만 `db.rollback()`·status 가드가 없어, 커밋 실패로
+    오염된 세션에서 `release_claim` 의 UPDATE 가 PendingRollbackError 로 for-loop 전체를 중단시켰다
+    (claimed 잔여 행이 5분 stale 까지 묶임). 단일 헬퍼로 통합해 그 비대칭을 원천 차단 (준비도 감사 #10).
+    🔴 Before this helper, the two handlers inlined their recovery and drifted — only the narrow one
+    lacked rollback + the status guard, so release_claim on a poisoned session aborted the batch.
+
+    복구 3단계:
+    1. `db.rollback()` — 커밋 실패로 오염된 세션 복구 (release_claim 쿼리의 PendingRollbackError 차단)
+    2. `status == "pending"` 가드 — terminal(succeeded 등) 로 이미 커밋된 뒤 부수효과에서 예외가 났으면
+       그 완료 행의 `last_failure_reason` 을 덮어쓰지 않는다 (감사 추적 오염·재시도 부활 차단).
+    3. 해제 자체 실패도 격리 — 배치는 계속 (5분 stale 재클레임이 안전망).
+    """
+    try:
+        db.rollback()
+        db.refresh(row)
+        if row.status == "pending":
+            merge_retry_repo.release_claim(
+                db,
+                row.id,
+                next_retry_at=now.replace(tzinfo=None) + timedelta(seconds=30),
+                last_failure_reason=reason,
+                last_detail_message=str(exc)[:200],
+            )
+            counts["released"] += 1
+    except Exception:  # pylint: disable=broad-exception-caught  # noqa: BLE001
+        # 클레임 해제 자체 실패해도 배치는 계속 (다음 행 처리). 5분 stale 재클레임이 안전망.
+        # Even if claim release fails, keep the batch going; the 5-min stale reclaim is the net.
+        logger.exception("retry worker: claim release failed row_id=%d", row.id)
 
 
 async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-return-statements,too-many-statements

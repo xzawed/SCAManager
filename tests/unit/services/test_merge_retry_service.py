@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy import create_engine
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -301,6 +302,70 @@ class TestProcessPendingRetries:
         assert row.last_failure_reason != "unexpected_error"
         # terminal 행은 released 카운트 미증가 (release_claim 미호출)
         assert result["released"] == 0
+
+    # 🔴 좁은 except(infra_error) 대칭화 — rollback 선행 + status 가드 (준비도 감사 #10)
+    # 넓은 except(unexpected_error, 위 2 테스트)만 rollback+가드를 가져 비대칭이었다.
+    async def test_narrow_infra_except_rolls_back_before_release(self, db_session, monkeypatch):
+        """🔴 좁은 except(httpx/SQLAlchemy)도 release_claim 전에 db.rollback() 선행.
+
+        커밋 실패로 세션이 rollback-required 상태가 되면, rollback 없이 호출한 release_claim 의
+        UPDATE 가 PendingRollbackError 로 for-loop 전체를 중단시켜 claimed 잔여 행이 5분 stale 까지
+        묶였다(넓은 핸들러만 rollback 보유 = 비대칭). rollback→release 순서를 강제해 봉인.
+        """
+        row = _seed_queue_row(db_session, commit_sha="ddd444")
+        order: list[str] = []
+        orig_rollback = db_session.rollback
+
+        def _spy_rollback():
+            order.append("rollback")
+            return orig_rollback()
+
+        def _spy_release(_db, _row_id, **_kw):
+            order.append("release")
+
+        monkeypatch.setattr(db_session, "rollback", _spy_rollback)
+        monkeypatch.setattr(
+            "src.services.merge_retry_service.merge_retry_repo.release_claim", _spy_release
+        )
+
+        async def _raise_infra(_db, _row, _now, _counts):
+            raise SQLAlchemyError("infra error on commit")
+
+        with patch(
+            "src.services.merge_retry_service._process_single_retry", side_effect=_raise_infra
+        ):
+            await process_pending_retries(db_session, only_ids=[row.id])
+
+        assert "rollback" in order, "좁은 except 가 db.rollback() 을 호출하지 않음"
+        assert "release" in order, "release_claim 미호출"
+        assert order.index("rollback") < order.index("release"), \
+            "rollback 이 release_claim 보다 뒤에 있음 (오염된 세션에서 release 쿼리 실패)"
+
+    async def test_narrow_infra_except_skips_release_on_terminal_row(self, db_session):
+        """🔴 좁은 except 도 terminal 커밋 후 예외 시 완료 행을 건드리지 않는다 (status 가드, 넓은 핸들러 대칭).
+
+        infra 예외가 status 확정(succeeded) 커밋 뒤에 나면 release_claim 이 last_failure_reason 을
+        'infra_error'로 덮어써 감사 추적 오염 + 완료 행 재시도 부활. status=='pending' 가드로 방어.
+        """
+        row = _seed_queue_row(db_session, commit_sha="eee555")
+
+        async def _commit_terminal_then_infra(_db, r, _now, _counts):
+            db_session.query(MergeRetryQueue).filter_by(id=r.id).update(
+                {"status": "succeeded", "last_failure_reason": None}
+            )
+            db_session.commit()
+            raise SQLAlchemyError("infra error after success commit")
+
+        with patch(
+            "src.services.merge_retry_service._process_single_retry",
+            side_effect=_commit_terminal_then_infra,
+        ):
+            result = await process_pending_retries(db_session, only_ids=[row.id])
+
+        db_session.refresh(row)
+        assert row.status == "succeeded", "완료 행 status 가 변경됨"
+        assert row.last_failure_reason != "infra_error", "완료 행이 infra_error 로 오염됨"
+        assert result["released"] == 0, "terminal 행에 release_claim 이 잘못 호출됨"
 
     # T9-3: 설정 변경 시 abandoned 마킹
     # T9-3: Config changed → abandoned
