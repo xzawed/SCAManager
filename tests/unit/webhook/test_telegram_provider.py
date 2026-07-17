@@ -229,6 +229,46 @@ async def test_handle_gate_callback_passes_result_dict_to_engine():
                         assert kw["result"] == analysis_result
 
 
+# --- 🔴 analyzed SHA 결속 (반자동 경로) — 레이스 없이 재현되는 최우선 회귀 가드 ---
+# handle_gate_callback 은 analysis 행을 이미 로드해 commit_sha 를 쥐고 있으면서도 이를 버리고,
+# engine 이 그 시점의 PR head 를 새로 조회해 머지한다. 승인 버튼 HMAC 은 만료가 없으므로
+# 사용자가 몇 시간 뒤(그 사이 여러 커밋 push 후) 버튼을 누르면 **분석된 적 없는 head** 가
+# 분석 당시 점수로 머지된다 — 자동 경로와 달리 동시성 레이스조차 필요 없다.
+# Semi-auto analyzed-SHA binding — the highest-value guard: it reproduces without any race.
+# handle_gate_callback already loads the analysis row (holding commit_sha) and discards it, letting
+# the engine re-query the PR head at merge time. The approval button's HMAC never expires, so
+# clicking hours later (after further pushes) merges never-analyzed code under the old score.
+
+async def test_handle_gate_callback_passes_analyzed_sha_to_engine():
+    """반자동 승인이 engine._run_auto_merge 에 analyzed_sha=analysis.commit_sha 를 전달한다.
+
+    값 단언 — 실제 전달된 SHA 가 분석된 커밋의 SHA 와 동일해야 한다 (호출 사실 단언 아님).
+    Value assertion — the SHA actually forwarded must equal the analyzed commit's SHA.
+    """
+    from src.webhook.router import handle_gate_callback
+    analyzed_sha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    mock_analysis = MagicMock(id=42, repo_id=1, pr_number=5, score=85,
+                              commit_sha=analyzed_sha, result={"score": 85})
+    mock_repo = MagicMock(id=1, full_name="owner/repo", user_id=1)
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter_by.return_value.first.side_effect = [mock_analysis, mock_repo]
+    config = RepoConfigData(repo_full_name="owner/repo", auto_merge=True, merge_threshold=75)
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(mock_db)):
+        with patch("src.webhook.providers.telegram.post_github_review", new_callable=AsyncMock):
+            with patch("src.webhook.providers.telegram.gate_decision_repo.claim_decision"):
+                with patch("src.webhook.providers.telegram.get_repo_config", return_value=config):
+                    with patch("src.gate.engine._run_auto_merge", new_callable=AsyncMock) as mock_am:
+                        await handle_gate_callback(analysis_id=42, decision="approve",
+                                                   decided_by="john", telegram_user_id="1")
+                        mock_am.assert_awaited_once()
+                        kw = mock_am.call_args.kwargs
+                        # 🔴 analysis.commit_sha 를 버리면 engine 이 그 시점 head 를 머지한다.
+                        # Dropping analysis.commit_sha lets the engine merge whatever head is current.
+                        assert "analyzed_sha" in kw, \
+                            "반자동 경로가 analyzed_sha 를 engine 에 전달하지 않음 — 미분석 커밋 머지 위험"
+                        assert kw["analyzed_sha"] == analyzed_sha
+
+
 # --- #11 리플레이 가드 테스트 (원자적 claim 패자 = 부수효과 skip) ---
 
 async def test_handle_gate_callback_replay_claim_lost_skips_side_effects():

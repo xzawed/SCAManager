@@ -17,9 +17,16 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class GateContext:
+class GateContext:  # pylint: disable=too-many-instance-attributes
     """Gate 실행 컨텍스트 — 불변 (frozen). Action 간 공유하되 수정 금지.
     Immutable execution context shared across Gate Actions. Do not mutate.
+
+    too-many-instance-attributes (8/7): 기존 컨텍스트에 commit_sha 를 확장한 사례 —
+    이 dataclass 는 게이트 1회 실행의 응집 단위라 분할하면 Action 시그니처가 쪼개져
+    응집이 깨진다 (testing.md R0914 결정 트리: 기존 시그니처 확장 → inline disable + 사유).
+    too-many-instance-attributes (8/7): commit_sha extends the existing context. This dataclass is
+    the cohesive unit of one gate run; splitting it would fragment every Action signature
+    (testing.md R0914 decision tree: extending an existing signature → inline disable + reason).
     """
     repo_name: str
     pr_number: int
@@ -28,6 +35,11 @@ class GateContext:
     github_token: str
     config: "RepoConfigData"
     score: int
+    # 실제 분석된 커밋 SHA — auto-merge 가 이 SHA 에만 결속되도록 관통시킨다.
+    # 미전달(None) 시 결속 가드 미적용(하위 호환) — 호출부는 항상 전달할 것.
+    # The commit SHA that was actually analyzed — threaded through so auto-merge binds only to it.
+    # None (omitted) disables the binding guard for backward compatibility; callers should always pass it.
+    commit_sha: str | None = None
 
 
 class GateAction(ABC):

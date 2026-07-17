@@ -474,3 +474,97 @@ async def test_pipeline_skips_notify_when_save_returns_no_analysis_id(caplog):
 
     # 핵심 검증: race-recovery 시 build_notification_tasks 는 호출되지 않아야 함
     mock_notify_build.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# SHA 결속 배선 가드 — run_gate_check 에 분석된 commit_sha 가 실제로 주입되는지.
+# SHA binding wiring guard — commit_sha must actually reach run_gate_check.
+#
+# 🔴 engine 의 SHA 결속 가드(_run_auto_merge_retry)는 analyzed_sha 가 주입돼야만 작동한다.
+# 이 배선이 빠지면 가드는 살아 있으나 analyzed_sha=None 으로 영영 무력화돼 결함이 그대로 남는다
+# — 게이트 전 구간이 배선돼 있어도 결함이 남는 유일한 지점이라 호출부 3곳 전수 가드.
+# The engine's binding guard only fires when analyzed_sha is injected. Without this wiring the
+# guard is silently disabled (analyzed_sha=None forever) — the single point where the whole
+# chain can be wired yet still defective, so all 3 call sites are guarded.
+# ---------------------------------------------------------------------------
+
+
+async def test_save_and_gate_passes_commit_sha_to_gate_check():
+    """신규 저장 경로 — run_gate_check 가 분석된 commit_sha 를 받는다."""
+    params = _new_save_params("success")
+    db = MagicMock()
+    repo = MagicMock()
+    repo.id = 1
+
+    def _capture_save(_db, analysis):
+        analysis.id = 42
+        return analysis, True  # created=True (신규)
+
+    with patch.object(pipeline_mod.repository_repo, "find_by_full_name", return_value=repo), \
+         patch.object(pipeline_mod.analysis_repo, "find_by_sha", return_value=None), \
+         patch.object(pipeline_mod.analysis_repo, "save_new", side_effect=_capture_save), \
+         patch.object(pipeline_mod, "get_repo_config", return_value=MagicMock()), \
+         patch.object(pipeline_mod, "run_gate_check", new=AsyncMock()) as run_gate:
+        await pipeline_mod._save_and_gate(db, params)
+
+    run_gate.assert_awaited_once()
+    # 분석된 SHA 가 그대로 전달돼야 한다 — 값 단언(존재 여부만 보면 배선 회귀를 놓침).
+    # Assert the value, not just presence — presence-only would miss a wiring regression.
+    assert run_gate.await_args.kwargs["commit_sha"] == params.commit_sha == "deadbeefcafe"
+
+
+async def test_save_and_gate_race_recovery_passes_commit_sha_to_gate_check():
+    """race-recovery 경로 — run_gate_check 가 분석된 commit_sha 를 받는다."""
+    db = MagicMock()
+    repo = MagicMock()
+    repo.id = 1
+
+    existing = MagicMock()
+    existing.id = 99
+    existing.pr_number = None
+    existing.result = {"score": 80}
+
+    score_result = MagicMock()
+    score_result.total = 80
+    score_result.grade = "B"
+
+    params = _AnalysisSaveParams(
+        repo_name="o/r",
+        commit_sha="deadbeef",
+        commit_message="feat: test",
+        pr_number=7,
+        owner_token="ghp_test",
+        analysis_results=[],
+        ai_review=MagicMock(),
+        score_result=score_result,
+    )
+
+    with patch.object(pipeline_mod.repository_repo, "find_by_full_name", return_value=repo), \
+         patch.object(pipeline_mod.analysis_repo, "find_by_sha", return_value=existing), \
+         patch.object(pipeline_mod, "get_repo_config", return_value=MagicMock()), \
+         patch.object(pipeline_mod, "run_gate_check", new=AsyncMock()) as run_gate:
+        await pipeline_mod._save_and_gate(db, params)
+
+    run_gate.assert_awaited_once()
+    assert run_gate.await_args.kwargs["commit_sha"] == "deadbeef"
+
+
+async def test_regate_pr_if_needed_passes_commit_sha_to_gate_check():
+    """push→PR re-gate 경로 — run_gate_check 가 분석된 commit_sha 를 받는다."""
+    db = MagicMock()
+    repo = MagicMock()
+    repo.id = 1
+    repo.owner = None  # owner_token fallback 경로 / falls back to settings token
+
+    existing = MagicMock()
+    existing.id = 99
+    existing.pr_number = None
+    existing.result = {"score": 80}
+
+    with patch.object(pipeline_mod.repository_repo, "find_by_full_name", return_value=repo), \
+         patch.object(pipeline_mod.analysis_repo, "find_by_sha", return_value=existing), \
+         patch.object(pipeline_mod, "run_gate_check", new=AsyncMock()) as run_gate:
+        await pipeline_mod._regate_pr_if_needed(db, "o/r", "cafebabe1234", 7)
+
+    run_gate.assert_awaited_once()
+    assert run_gate.await_args.kwargs["commit_sha"] == "cafebabe1234"
