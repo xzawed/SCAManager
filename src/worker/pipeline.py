@@ -472,6 +472,7 @@ async def _regate_pr_if_needed(
             result=existing.result,
             github_token=owner_token,
             db=db,
+            commit_sha=commit_sha,
         )
         logger.info("Re-gated PR #%d for existing Analysis %d (sha=%s)",
                     pr_number, existing.id, commit_sha[:8])
@@ -521,6 +522,7 @@ async def _race_recover_existing(
             github_token=params.owner_token,
             db=db,
             config=repo_config,
+            commit_sha=params.commit_sha,
         )
         logger.info(
             "Race-recovered: PR #%d re-gated on concurrent existing Analysis %d (sha=%s)",
@@ -624,6 +626,7 @@ async def _save_and_gate(db: Session, params: _AnalysisSaveParams):
                 github_token=params.owner_token,
                 db=db,
                 config=repo_config,
+                commit_sha=params.commit_sha,
             )
         except (httpx.HTTPError, SQLAlchemyError, KeyError, ValueError, OSError):
             # Phase H PR-6A: logger.exception 으로 stack trace 보존

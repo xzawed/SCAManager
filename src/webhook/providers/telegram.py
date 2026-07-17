@@ -166,6 +166,14 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
             # (2) auto_merge 활성, (3) 정적분석 불완전(타임아웃) 시 차단(#779/#783),
             # (4) AI 리뷰 실제 실패(api_error/parse_error) 시 차단(#8 — 인플레 점수 자동 머지 방지),
             # (5) AI 리뷰 diff 절단 시 차단(C22 — 잘린 일부만 본 인플레 점수 자동 머지 방지).
+            # 🔴 (6) SHA 결속(analyzed_sha=analysis.commit_sha) — 본 경로는 자동 경로보다 노출이 크다:
+            # 콜백 HMAC 은 gate:{analysis_id} 만 서명하고 만료가 없어(_make_callback_token) 승인 버튼을
+            # 몇 시간 뒤 눌러도 유효하다. 결속이 없으면 그 시점의 head(= 분석된 적 없는 커밋)가 이
+            # analysis 의 점수로 머지된다 — 레이스조차 필요 없다. engine 이 head 와 비교해 차단한다.
+            # 🔴 (6) SHA binding — this path is more exposed than the automatic one: the callback HMAC
+            # signs only gate:{analysis_id} and never expires, so a stale approve button clicked hours
+            # later would merge whatever the head is now under this analysis's score — no race needed.
+            # Passing analyzed_sha lets the engine compare against the live head and refuse.
             # Delegate semi-auto merge to the automatic path for full parity (retry queue, SHA guard,
             # CI re-check, terminal/deferred notifications). _run_auto_merge opens its own session and
             # applies the auto_merge/threshold guard internally. Guards mirror AutoMergeAction:
@@ -182,6 +190,7 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
                 await engine._run_auto_merge(  # pylint: disable=protected-access
                     config, github_token, repo.full_name, analysis.pr_number, score,
                     analysis_id=analysis_id, result=result_dict,
+                    analyzed_sha=analysis.commit_sha,
                 )
         except (httpx.HTTPError, KeyError, ValueError, RuntimeError, SQLAlchemyError):
             # Phase H PR-6A: logger.exception 으로 stack trace 보존

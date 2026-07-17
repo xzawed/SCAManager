@@ -74,6 +74,10 @@ class AutoMergeAction(GateAction):
         # 자동/반자동 양 경로가 공유한다. result 를 전달해 가드가 diff/리뷰 요약을 검증할 수 있게 한다.
         # The 2nd-LLM verifier guard is single-sourced into engine._run_auto_merge (#859 P1-1 parity),
         # shared by auto/semi-auto paths. Pass result so the guard can judge the diff/review summary.
+        # analyzed_sha: 실제 분석된 커밋 SHA 를 전달 — engine 이 머지 직전 head 와 비교해
+        # 다르면 머지를 차단한다(분석 중 push 된 미검증 커밋이 이전 점수로 머지되는 것 방지).
+        # analyzed_sha: pass the analyzed commit SHA so the engine can block the merge when the
+        # live head has moved (prevents merging an unanalyzed commit under the previous score).
         from src.gate import engine  # pylint: disable=import-outside-toplevel
         await engine._run_auto_merge(  # pylint: disable=protected-access
             ctx.config,
@@ -83,6 +87,7 @@ class AutoMergeAction(GateAction):
             ctx.score,
             analysis_id=ctx.analysis_id,
             result=ctx.result,
+            analyzed_sha=ctx.commit_sha,
         )
 
 

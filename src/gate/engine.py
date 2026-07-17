@@ -50,6 +50,7 @@ async def run_gate_check(  # pylint: disable=too-many-positional-arguments
     github_token: str,
     db: Session,
     config: RepoConfigData | None = None,
+    commit_sha: str | None = None,
 ) -> None:
     """PR 이벤트 시 3개 독립 옵션을 각각 실행한다.
 
@@ -60,6 +61,8 @@ async def run_gate_check(  # pylint: disable=too-many-positional-arguments
     세 옵션은 완전 독립 — 어떤 조합이든 가능하다.
     pr_number=None(push 이벤트)이면 모든 PR 관련 액션을 건너뛴다.
     config: 이미 로드된 RepoConfigData — None이면 DB에서 직접 조회한다.
+    commit_sha: 실제 분석된 커밋 SHA — auto-merge 의 SHA 결속 가드용(미전달 시 가드 미적용).
+    commit_sha: the analyzed commit SHA — used by the auto-merge binding guard (omitted → no guard).
     """
     if pr_number is None:
         return
@@ -75,6 +78,7 @@ async def run_gate_check(  # pylint: disable=too-many-positional-arguments
     ctx = GateContext(
         repo_name=repo_name, pr_number=pr_number, analysis_id=analysis_id,
         result=result, github_token=github_token, config=config, score=score,
+        commit_sha=commit_sha,
     )
     applicable = [a for a in GATE_ACTIONS if a.is_applicable(config)]
     outcomes = await asyncio.gather(
@@ -101,6 +105,7 @@ async def _run_auto_merge(  # pylint: disable=too-many-arguments,too-many-locals
     *,
     analysis_id: int | None = None,
     result: dict | None = None,
+    analyzed_sha: str | None = None,
 ) -> None:
     """Auto Merge 옵션 — AutoMergeAction(자동)·handle_gate_callback(반자동)이 위임받는 실제 구현.
     Actual implementation delegated to by AutoMergeAction (auto) and handle_gate_callback (semi-auto).
@@ -109,6 +114,11 @@ async def _run_auto_merge(  # pylint: disable=too-many-arguments,too-many-locals
     result: 2nd-LLM 검증 가드용 분석 결과 dict(미전달 시 빈 dict — 가드는 키 미설정/밴드 밖이면 skip).
     result: analysis result dict for the 2nd-LLM verifier guard (defaults to empty; the guard skips
     when no key / outside band).
+
+    analyzed_sha: `score` 를 산출한 실제 분석 대상 커밋 SHA — 머지를 이 SHA 에 결속한다.
+    미전달(None) 시 결속 가드 미적용(하위 호환).
+    analyzed_sha: the commit SHA that actually produced `score` — binds the merge to it.
+    None (omitted) disables the binding guard (backward compatible).
     """
     if not (config.auto_merge and score >= config.merge_threshold):
         return
@@ -126,13 +136,13 @@ async def _run_auto_merge(  # pylint: disable=too-many-arguments,too-many-locals
         if not settings.merge_retry_enabled:
             await _run_auto_merge_legacy(
                 config, github_token, repo_name, pr_number, score,
-                analysis_id=analysis_id, db=db,
+                analysis_id=analysis_id, db=db, analyzed_sha=analyzed_sha,
             )
             return
         try:
             await _run_auto_merge_retry(
                 config, github_token, repo_name, pr_number, score,
-                analysis_id=analysis_id, db=db,
+                analysis_id=analysis_id, db=db, analyzed_sha=analyzed_sha,
             )
         except (httpx.HTTPError, KeyError, RuntimeError, ValueError) as exc:
             logger.error(
@@ -150,11 +160,13 @@ async def _run_auto_merge_retry(  # pylint: disable=too-many-arguments,too-many-
     *,
     analysis_id: int | None = None,
     db: Session | None = None,
+    analyzed_sha: str | None = None,
 ) -> None:
     """Phase 12 재시도 경로의 핵심 로직 — _run_auto_merge 에서 위임받음.
     Core logic of the Phase 12 retry path — delegated from _run_auto_merge.
 
     1. PR mergeable_state + head_sha 조회
+    1-1. 🔴 SHA 결속 가드 — head 가 분석된 SHA 와 다르면 머지 금지
     2. merge_pr 즉시 시도 (SHA 원자성 가드 포함)
     3. 성공 → 기록 후 반환
     4. 실패 태그 분류 → 터미널이면 _handle_terminal_merge_failure
@@ -169,17 +181,40 @@ async def _run_auto_merge_retry(  # pylint: disable=too-many-arguments,too-many-
         logger.warning("get_pr_mergeable_state 실패 (pr=%d): %s", pr_number, exc)
         head_sha = ""
 
+    # 1-1. 🔴 SHA 결속 가드 (fail-closed) — score 를 산출한 커밋과 현재 head 가 다르면 머지 금지.
+    # 분석(정적 60s + AI 리뷰)이 도는 동안 push/force-push 로 head 가 B 로 바뀌면, 이 가드가
+    # 없을 때 B 가 A 의 점수로 머지된다(미검증 코드 자동 머지). 여기서 드롭해도 손실 없음 —
+    # B 의 synchronize 웹훅이 B 를 분석해 자체 게이트를 돌린다. 큐 등록도 하지 않는다:
+    # 잘못된 SHA 가 큐에 들어가면 나중에 재시도가 A 의 점수로 B 를 머지해버린다.
+    # 1-1. SHA binding guard (fail-closed) — refuse to merge when the live head is not the commit
+    # that produced `score`. During analysis (60s static + AI review) a push can move the head to B;
+    # without this guard B gets merged under A's score. Dropping here loses nothing — B's own
+    # synchronize webhook analyses and gates B. We also skip the retry queue on purpose: a row
+    # keyed by the wrong SHA would let a later retry merge B under A's score.
+    if analyzed_sha and head_sha and head_sha != analyzed_sha:
+        logger.warning(
+            "analysis SHA drift — auto-merge 차단 (repo=%s, pr=%d, analyzed=%s, head=%s)",
+            sanitize_for_log(repo_name), pr_number, analyzed_sha[:8], head_sha[:8],
+        )
+        return
+
     # 2. Native auto-merge enable 시도 — 실패 시 REST merge_pr 폴백 (Tier 3 PR-A)
     # Phase 3 PR-B1: enable_or_fallback_with_path 사용 — outcome.path 로 state 라벨링
     # Phase 3 PR-B1: use enable_or_fallback_with_path so outcome.path drives state
+    #
+    # 머지 대상을 분석된 SHA 로 결속 — head 조회가 실패해도(head_sha="") GitHub 이 sha 파라미터로
+    # 원자성을 검증하므로 head 가 움직였으면 409 로 거절된다(#962 SHA 원자성 계약과 동일 지점).
+    # Bind the merge to the analyzed SHA — even when the head lookup failed (head_sha=""), GitHub
+    # validates the `sha` parameter and rejects with 409 if the head moved (#962 SHA atomicity).
+    merge_sha = analyzed_sha or head_sha
     outcome = await native_enable_with_path(
-        github_token, repo_name, pr_number, expected_sha=head_sha or None
+        github_token, repo_name, pr_number, expected_sha=merge_sha or None
     )
     ok, reason, observed_sha = outcome.ok, outcome.reason, outcome.head_sha
 
-    # observed_sha (merge_pr 내부 조회) 우선 사용, 없으면 head_sha
-    # Prefer observed_sha (from merge_pr's internal call), fall back to head_sha
-    effective_sha = observed_sha or head_sha
+    # observed_sha (merge_pr 내부 조회) 우선 사용, 없으면 결속된 merge_sha
+    # Prefer observed_sha (from merge_pr's internal call), fall back to the bound merge_sha
+    effective_sha = observed_sha or merge_sha
 
     # 3. 성공 — 기록 후 반환 (Phase 3 PR-B1: path 기반 state 라벨링)
     # 3. Success — log and return (Phase 3 PR-B1: state derived from path)
@@ -401,20 +436,30 @@ async def _run_auto_merge_legacy(  # pylint: disable=too-many-arguments,too-many
     *,
     analysis_id: int | None = None,
     db: Session | None = None,
+    analyzed_sha: str | None = None,
 ) -> None:
     """Auto Merge 레거시 경로 — 재시도 없이 단일 시도.
 
     merge_retry_enabled=False 일 때 _run_auto_merge 가 이 함수로 위임한다.
     Legacy Auto Merge path — single attempt without retry.
     _run_auto_merge delegates here when merge_retry_enabled=False.
+
+    analyzed_sha: 분석된 커밋 SHA — expected_sha 로 전달해 GitHub 이 원자성을 검증하게 한다.
+    analyzed_sha: the analyzed commit SHA — passed as expected_sha so GitHub enforces atomicity.
     """
     try:
         # Tier 3 PR-A: native auto-merge 우선 시도, 실패 시 REST merge_pr 폴백
         # Phase 3 PR-B1: with_path 버전 사용 → outcome.path 로 state 라벨링
         # Tier 3 PR-A: try native auto-merge first, fall back to REST merge_pr.
         # Phase 3 PR-B1: use with_path so state can be derived from outcome.path.
+        #
+        # 🔴 expected_sha=analyzed_sha 필수 — 미전달 시 native 가 스스로 live head 를 조회해
+        # 그 SHA 로 머지하므로, 분석 중 push 된 미검증 커밋이 이전 점수로 머지된다(재시도 경로와 동일 결함).
+        # 🔴 expected_sha=analyzed_sha is required — without it native fetches the live head itself
+        # and merges that, so a commit pushed mid-analysis merges under the old score (same defect
+        # as the retry path had).
         outcome = await native_enable_with_path(
-            github_token, repo_name, pr_number,
+            github_token, repo_name, pr_number, expected_sha=analyzed_sha or None,
         )
         ok, reason = outcome.ok, outcome.reason
 
