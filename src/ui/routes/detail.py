@@ -7,6 +7,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.auth.session import CurrentUser, require_login
@@ -67,6 +68,40 @@ def _load_analysis_or_404(db: Session, repo_id: int, analysis_id: int) -> Analys
     if not analysis:
         raise HTTPException(status_code=404, detail="Analysis not found")
     return analysis
+
+
+def _load_repo_analyses(db: Session, repo_id: int, limit: int = 100) -> list[dict]:
+    """저장소 분석 이력을 최신순으로 반환 — 템플릿이 쓰는 스칼라 필드 + source 만.
+
+    Return a repo's analysis history (newest first) with only the scalar fields the
+    template needs, plus the derived `source`.
+
+    🔴 result JSON blob(file_feedbacks·ai_summary 등 최대 수백 KB)을 로드하지 않는다 —
+    이전엔 `db.query(Analysis)` full ORM 이 100개 blob 을 역직렬화하면서 그중 `source` 한 값만
+    썼다(준비도 감사 #6, monthly_analyses 의 컬럼-select 패턴과 동일). `source` 는 SQL JSON 추출
+    (`result['source']`)로 저장값을 보존하되 blob 은 미로드 — `.as_string()` 은 SQLite `JSON_EXTRACT`
+    / PG `->>` 로 컴파일돼 양 방언 모두 따옴표 없는 텍스트를 반환(동등 검증).
+    🔴 Does not load the result blob; extracts only `result['source']` via SQL JSON.
+    """
+    rows = db.execute(
+        select(
+            Analysis.id, Analysis.commit_sha, Analysis.pr_number, Analysis.commit_message,
+            Analysis.score, Analysis.grade, Analysis.created_at,
+            Analysis.result["source"].as_string(),
+        )
+        .where(Analysis.repo_id == repo_id)
+        .order_by(Analysis.created_at.desc())
+        .limit(limit)
+    ).all()
+    return [
+        {
+            "id": r_id, "commit_sha": commit_sha, "pr_number": pr_number,
+            "commit_message": commit_message, "score": score, "grade": grade,
+            "source": src or ("pr" if pr_number else "push"),
+            "created_at": created_at.isoformat() if created_at else None,
+        }
+        for (r_id, commit_sha, pr_number, commit_message, score, grade, created_at, src) in rows
+    ]
 
 
 @router.get("/repos/{repo_name:path}/analyses/{analysis_id}", response_class=HTMLResponse)
@@ -166,16 +201,7 @@ def repo_detail(  # pylint: disable=too-many-positional-arguments
     """리포 분석 이력 및 점수 차트 페이지를 렌더링한다."""
     with SessionLocal() as db:
         repo = get_accessible_repo(db, repo_name, current_user)
-        analyses = (db.query(Analysis).filter(Analysis.repo_id == repo.id)
-                    .order_by(Analysis.created_at.desc()).limit(100).all())
-        analyses_data = [
-            {"id": a.id, "commit_sha": a.commit_sha, "pr_number": a.pr_number,
-             "commit_message": a.commit_message,
-             "score": a.score, "grade": a.grade,
-             "source": (a.result or {}).get("source") or ("pr" if a.pr_number else "push"),
-             "created_at": a.created_at.isoformat() if a.created_at else None}
-            for a in analyses
-        ]
+        analyses_data = _load_repo_analyses(db, repo.id)
         rev = list(reversed(analyses_data))
 
         # 이번 달 비용 계산 (매월 1일 00:00 UTC ~ 말일 23:59 UTC 기준)

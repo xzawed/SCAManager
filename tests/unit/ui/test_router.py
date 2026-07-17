@@ -946,13 +946,11 @@ def test_repo_detail_shows_commit_message():
     mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
         id=1, full_name="owner/repo", user_id=None
     )
-    mock_analysis = MagicMock(
-        id=1, commit_sha="abc1234", commit_message="feat: new feature for users",
-        pr_number=None, score=90, grade="A", result=None,
-        created_at=MagicMock(isoformat=MagicMock(return_value="2026-04-08T10:00:00")),
-    )
-    mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [mock_analysis]
-    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
+    row = {"id": 1, "commit_sha": "abc1234", "pr_number": None,
+           "commit_message": "feat: new feature for users", "score": 90, "grade": "A",
+           "source": "push", "created_at": "2026-04-08T10:00:00"}
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)), \
+         patch("src.ui.routes.detail._load_repo_analyses", return_value=[row]):
         r = client.get("/repos/owner%2Frepo")
     assert r.status_code == 200
     assert "feat: new feature" in r.text
@@ -1155,32 +1153,42 @@ def test_nav_user_fallback_to_github_login():
 # ── Analysis history page enhanced tests ──────────────────────────
 
 def test_repo_detail_queries_limit_100():
-    """repo_detail은 최근 100건을 조회한다."""
+    """repo_detail 은 `_load_repo_analyses` 에 위임한다 (limit=100 기본값은 헬퍼 단위 테스트가 검증).
+
+    limit 100 계약은 tests/unit/ui/test_repo_detail_query.py::test_default_limit_is_100 로 이관.
+    이 route 테스트는 위임 자체만 확인 — 쿼리 메커니즘과 디커플링(준비도 감사 #6).
+    """
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
         id=1, full_name="owner/repo", user_id=None
     )
-    mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
-    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)), \
+         patch("src.ui.routes.detail._load_repo_analyses", return_value=[]) as mock_load:
         client.get("/repos/owner%2Frepo")
-    call_args = mock_db.query.return_value.filter.return_value.order_by.return_value.limit.call_args
-    assert call_args is not None
-    assert call_args[0][0] == 100
+    mock_load.assert_called_once()
+    # repo.id 로 호출 (기본 limit=100 은 헬퍼 시그니처 기본값)
+    assert mock_load.call_args.args[1] == 1
+
+
+# 🔴 source 파생 로직은 tests/unit/ui/test_repo_detail_query.py 가 실 DB 로 검증(준비도 감사 #6).
+# 아래 route 테스트는 source 값이 템플릿까지 도달하는 통합 경로만 확인 — 쿼리 메커니즘
+# (`_load_repo_analyses`)과 디커플링해 query 리팩터에 취약하지 않게 patch 한다.
+def _repo_detail_row(**kwargs):
+    base = {"id": 1, "commit_sha": "abc1234", "pr_number": 5, "commit_message": "feat: pr",
+            "score": 88, "grade": "A", "source": "pr", "created_at": "2026-04-09T10:00:00"}
+    base.update(kwargs)
+    return base
 
 
 def test_repo_detail_source_pr():
-    """pr_number가 있으면 source='pr'이 analyses JSON에 포함된다."""
+    """source='pr'이 analyses JSON 에 포함돼 템플릿까지 도달한다 (route 통합)."""
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
         id=1, full_name="owner/repo", user_id=None
     )
-    mock_analysis = MagicMock(
-        id=1, commit_sha="abc1234", commit_message="feat: pr",
-        pr_number=5, score=88, grade="A", result={},
-        created_at=MagicMock(isoformat=MagicMock(return_value="2026-04-09T10:00:00")),
-    )
-    mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [mock_analysis]
-    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)), \
+         patch("src.ui.routes.detail._load_repo_analyses",
+               return_value=[_repo_detail_row(source="pr")]):
         r = client.get("/repos/owner%2Frepo")
     assert r.status_code == 200
     assert '"source"' in r.text
@@ -1188,35 +1196,27 @@ def test_repo_detail_source_pr():
 
 
 def test_repo_detail_source_push_fallback():
-    """pr_number가 없고 result에 source 없으면 source='push' 폴백."""
+    """source='push' 가 템플릿까지 도달한다."""
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
         id=1, full_name="owner/repo", user_id=None
     )
-    mock_analysis = MagicMock(
-        id=2, commit_sha="def5678", commit_message="fix: push",
-        pr_number=None, score=70, grade="B", result=None,
-        created_at=MagicMock(isoformat=MagicMock(return_value="2026-04-09T11:00:00")),
-    )
-    mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [mock_analysis]
-    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)), \
+         patch("src.ui.routes.detail._load_repo_analyses",
+               return_value=[_repo_detail_row(pr_number=None, source="push")]):
         r = client.get("/repos/owner%2Frepo")
     assert '"push"' in r.text
 
 
 def test_repo_detail_source_cli_from_result():
-    """result에 source='cli'가 있으면 cli로 반영된다."""
+    """source='cli' 가 템플릿까지 도달한다."""
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
         id=1, full_name="owner/repo", user_id=None
     )
-    mock_analysis = MagicMock(
-        id=3, commit_sha="ghi9012", commit_message="chore: cli",
-        pr_number=None, score=75, grade="B", result={"source": "cli"},
-        created_at=MagicMock(isoformat=MagicMock(return_value="2026-04-09T12:00:00")),
-    )
-    mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [mock_analysis]
-    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)):
+    with patch("src.ui.routes.detail.SessionLocal", return_value=_ctx(mock_db)), \
+         patch("src.ui.routes.detail._load_repo_analyses",
+               return_value=[_repo_detail_row(pr_number=None, source="cli")]):
         r = client.get("/repos/owner%2Frepo")
     assert '"cli"' in r.text
 
