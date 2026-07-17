@@ -211,7 +211,9 @@ async def update_repo_settings(
     # SSRF defence: validate webhook URLs before saving — blocks internal network requests.
     _validate_webhook_urls(form, get_locale(request))
     with SessionLocal() as db:
-        get_accessible_repo(db, repo_name, current_user)
+        get_accessible_repo(
+            db, repo_name, current_user, require_write=True, locale=get_locale(request),
+        )
         try:
             upsert_repo_config(db, RepoConfigData(
                 repo_full_name=repo_name,
@@ -268,7 +270,9 @@ async def reinstall_hook(
 ):
     """기존 등록 리포에 .scamanager/ 파일을 재커밋한다."""
     with SessionLocal() as db:
-        repo = get_accessible_repo(db, repo_name, current_user)
+        repo = get_accessible_repo(
+            db, repo_name, current_user, require_write=True, locale=get_locale(request),
+        )
         config = repo_config_repo.find_by_full_name(db, repo.full_name)
         if config is None:
             config = RepoConfig(
@@ -307,7 +311,9 @@ async def reinstall_webhook(
 ):
     """GitHub Webhook을 삭제하고 새 URL(HTTPS)로 재등록한다. 중복 웹훅도 모두 정리한다."""
     with SessionLocal() as db:
-        repo = get_accessible_repo(db, repo_name, current_user)
+        repo = get_accessible_repo(
+            db, repo_name, current_user, require_write=True, locale=get_locale(request),
+        )
         token = current_user.plaintext_token or ""
 
         webhook_url = webhook_base_url(request) + GITHUB_WEBHOOK_PATH

@@ -224,7 +224,7 @@ def test_settings_mode_toggle_script_present():
 def test_post_settings_redirects():
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
-        id=1, full_name="owner/repo", user_id=None
+        id=1, full_name="owner/repo", user_id=1
     )
     with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.ui.routes.settings.upsert_repo_config") as mock_upsert:
@@ -252,7 +252,7 @@ def test_post_settings_empty_optional_fields():
     """빈 문자열 선택 필드는 None으로 저장되어야 한다."""
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
-        id=1, full_name="owner/repo", user_id=None
+        id=1, full_name="owner/repo", user_id=1
     )
     with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.ui.routes.settings.upsert_repo_config") as mock_upsert:
@@ -282,7 +282,7 @@ def test_post_settings_empty_optional_fields():
 def test_post_settings_with_auto_merge_checked():
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
-        id=1, full_name="owner/repo", user_id=None
+        id=1, full_name="owner/repo", user_id=1
     )
     with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.ui.routes.settings.upsert_repo_config") as mock_upsert:
@@ -309,7 +309,7 @@ def test_post_settings_with_auto_merge_checked():
 def test_post_settings_without_auto_merge_checkbox():
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
-        id=1, full_name="owner/repo", user_id=None
+        id=1, full_name="owner/repo", user_id=1
     )
     with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.ui.routes.settings.upsert_repo_config") as mock_upsert:
@@ -965,7 +965,7 @@ def test_reinstall_webhook_deletes_and_recreates():
     from unittest.mock import AsyncMock, patch
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
-        id=1, full_name="owner/repo", user_id=None, webhook_id=999
+        id=1, full_name="owner/repo", user_id=1, webhook_id=999
     )
     with patch("src.ui.routes.settings.list_webhooks", new_callable=AsyncMock, return_value=[]):
         with patch("src.ui.routes.settings.delete_webhook", new_callable=AsyncMock, return_value=True):
@@ -992,7 +992,7 @@ def test_reinstall_webhook_no_existing_webhook():
     from unittest.mock import AsyncMock, patch
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
-        id=1, full_name="owner/repo", user_id=None, webhook_id=None
+        id=1, full_name="owner/repo", user_id=1, webhook_id=None
     )
     with patch("src.ui.routes.settings.list_webhooks", new_callable=AsyncMock, return_value=[]):
         with patch("src.ui.routes.settings.delete_webhook", new_callable=AsyncMock) as mock_del:
@@ -1056,7 +1056,7 @@ def test_delete_repo_404_not_found():
 def test_delete_repo_webhook_failure_still_deletes_db():
     """delete_webhook이 예외를 던져도 DB 정리는 계속 진행되어야 한다."""
     from unittest.mock import AsyncMock, patch
-    mock_repo = MagicMock(id=1, full_name="owner/repo", user_id=None, webhook_id=999)
+    mock_repo = MagicMock(id=1, full_name="owner/repo", user_id=1, webhook_id=999)
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = mock_repo
     mock_db.query.return_value.filter.return_value.all.return_value = []
@@ -1653,7 +1653,7 @@ def test_post_settings_invalid_threshold_redirects_with_error():
     """threshold에 비정수 값 전송 시 ?save_error=1 리다이렉트해야 한다 (line 271-273)."""
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
-        id=1, full_name="owner/repo", user_id=None
+        id=1, full_name="owner/repo", user_id=1
     )
     with patch("src.ui.routes.settings.SessionLocal", return_value=_ctx(mock_db)):
         with patch("src.ui.routes.settings.upsert_repo_config"):
@@ -1676,7 +1676,7 @@ def test_reinstall_hook_creates_config_when_none_exists():
 
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.side_effect = [
-        MagicMock(id=1, full_name="owner/repo", user_id=None),  # _get_accessible_repo
+        MagicMock(id=1, full_name="owner/repo", user_id=1),  # _get_accessible_repo
         None,  # RepoConfig 없음
     ]
 
@@ -1699,7 +1699,7 @@ def test_reinstall_hook_generates_token_when_missing():
 
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.side_effect = [
-        MagicMock(id=1, full_name="owner/repo", user_id=None),
+        MagicMock(id=1, full_name="owner/repo", user_id=1),
         existing_config,
     ]
 
@@ -1721,7 +1721,7 @@ def test_reinstall_hook_fail_returns_hook_fail_redirect():
 
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.side_effect = [
-        MagicMock(id=1, full_name="owner/repo", user_id=None),
+        MagicMock(id=1, full_name="owner/repo", user_id=1),
         existing_config,
     ]
 
@@ -1740,7 +1740,7 @@ def test_reinstall_webhook_deletes_matching_hooks():
 
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(
-        id=1, full_name="owner/repo", user_id=None, webhook_id=None
+        id=1, full_name="owner/repo", user_id=1, webhook_id=None
     )
 
     existing_hooks = [

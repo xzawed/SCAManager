@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from src.auth.session import CurrentUser, require_login
 from src.config import settings
 from src.database import SessionLocal
+from src.i18n.loader import get_text
 from src.models.repository import Repository
 from src.services.repo_insight_service import (
     repo_ai_suggestions,
@@ -79,6 +80,21 @@ async def repo_insights(  # pylint: disable=too-many-positional-arguments
     repo = _find_repo(db, repo_name, current_user.id)
     if repo is None:
         raise HTTPException(status_code=404, detail="Repository not found")
+
+    # 🔴 GET 인데 쓰기다 — `refresh=1` 은 narrative 캐시를 DELETE 후 재생성하고
+    # **Anthropic 유료 호출**을 유발한다. 따라서 "쓰기"는 HTTP 메서드가 아니라
+    # DB 변이/외부 부수효과 기준으로 판정해야 한다(메서드 기준이면 이 경로가 그대로 열린다).
+    # `refresh=0` 조회는 현행 유지. 가드를 `_find_repo` 안에 넣으면 안 된다 — 반환 규약이
+    # `None`(→404)이라 403 을 표현할 수 없고 일반 조회까지 막힌다.
+    # 🔴 A GET that writes: `refresh=1` invalidates the narrative cache and triggers a paid
+    # Anthropic call, so "write" must be judged by DB mutation / external side effect, not by
+    # HTTP method. Plain reads (`refresh=0`) are unaffected; the guard cannot live in `_find_repo`
+    # because its contract returns `None` (→404) and cannot express a 403.
+    if refresh and repo.user_id is None:
+        raise HTTPException(
+            status_code=403,
+            detail=get_text("errors.repo_unclaimed", get_locale(request)),
+        )
 
     kpi = repo_kpi(db, repo.id, days)
     recurring = repo_recurring_issues(db, repo.id, days)

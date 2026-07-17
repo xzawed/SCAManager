@@ -695,7 +695,8 @@
     "hook_token_required": "토큰이 필요합니다",
     "hook_invalid_repo_or_token": "등록되지 않은 리포 또는 유효하지 않은 토큰",
     "hook_invalid_token": "유효하지 않은 토큰",
-    "hook_repo_not_found": "리포지토리를 찾을 수 없습니다"
+    "hook_repo_not_found": "리포지토리를 찾을 수 없습니다",
+    "repo_unclaimed": "이 저장소는 SCAManager에 소유자가 등록되어 있지 않습니다(Webhook으로 자동 생성됨). 설정을 변경하려면 '리포 추가'에서 이 저장소를 등록해 소유권을 확보하세요."
   },
   "notifier": {
     "cron": {

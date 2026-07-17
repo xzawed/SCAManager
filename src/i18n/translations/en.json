@@ -695,7 +695,8 @@
     "hook_token_required": "Token is required",
     "hook_invalid_repo_or_token": "Unregistered repository or invalid token",
     "hook_invalid_token": "Invalid token",
-    "hook_repo_not_found": "Repository not found"
+    "hook_repo_not_found": "Repository not found",
+    "repo_unclaimed": "This repository has no owner registered in SCAManager (it was created automatically from a webhook). To change its settings, register it via 'Add Repository' to claim ownership."
   },
   "notifier": {
     "cron": {
