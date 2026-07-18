@@ -6,6 +6,7 @@
 
 ## 목차
 
+- [세션2 회고 + 회고 fix 4 트랙 11 PR (#1077~#1086 — 이전 세션 잔여 CodeQL #545 봉인 → 5+1 회고[wf_331cdddf·87 에이전트·61 confirmed(P0 3·P1 15·P2 43)·verdict_coverage 1.0·FP 6]·🔴 **P0=회고 카덴스 강제 트리거[#1028] 첫 측정창 자기위반**[~46 PR 무회고·문서-only 시정 2회 실패→기계화] → 재발방지 기계 가드 4종[A1 `check_retro_cadence.py` 카덴스 카운터 48→5 리셋 실측·A2 `check_noqa_sideeffect.py` noqa-은닉 import 차단·B1 `posttool_pytest_smoke.py` hook false-green→영역 스코프·B2 `check_dead_code.py` AST 참조 find_orphaned 봉인] + C docs drift·D owed 원장·P2#41 owner-filter parity·게이트 auto-merge 레이스로 fix-up 유실·worktree 격리 누락 충돌 복구·단위 5412→5467, 2026-07-18)](#세션2-회고--회고-fix-4-트랙-11-pr-2026-07-18)
 - [프리미엄 준비도 감사 + Wave 0~2 코드전용 8 PR (#1068~#1075 — 6차원 준비도 감사[wf_2e184916·29 에이전트·구체적 실패 시나리오+적대 논파]·**P0/P1=0 견고**·완결성 비평이 3 cross-cutting[공유키 blast-radius·수평확장·관측성] 발견·착수=비대칭 결함 8건[#1068 PR 코멘트 AI-실패 경고 5채널 대칭·#1069 retry rollback 헬퍼·#1070 result JSON 컬럼-select `.as_string()`·#1071 config `is_production` 하드닝·#1072 approve SHA 결속 422 fail-closed·#1073 orphan sweep 배선+finish 위치이동·#1074 feedback_status owner 필터+배선 가드·#1075 retention sweep pending 절대보존]·남은 로드맵=사용자 결정 선행[테넌트쿼터·Redis·관측성·#18 CASCADE]·단위 5365→5412, 2026-07-18)](#프리미엄-준비도-감사--wave-02-코드전용-8-pr-2026-07-18)
 - [Grok 백로그 NULL-owner IDOR + 워커 내구성 6 PR (#1060~#1066 — P1-2 워커 내구성[`analysis_attempts` 0045·비싼 작업 전 흔적→남은 오래된 행=소실된 분석] · P1-3 NULL-owner 쓰기 차단[require_write 5곳+인라인 2곳·서버 전역 토큰 권한 상승 봉인] · 선결 #1061 복구 경로[affiliation organization_member·502] · R4 threshold `merge≥reject` 불변식 · R3 railway 토큰 평문 렌더 차단[세션 없는 엔드포인트 유일 방어] · R2 NULL-owner 가시화[생성 경고+개요 배너] · #1066 CodeQL py/unused-import 봉인 · 🔴 "lockout 없음" 단언이 적대검증에 뒤집힘 · RLS 0026 이 노출 보증 · 단위 5267→5365, 2026-07-17)](#grok-백로그-null-owner-idor--워커-내구성-6-pr-2026-07-17)
 - [설정 간소화 · 개요 count-up 봉인 · 회고 후속 (#1034~#1046 — 비용제어 마무리[#1037 `claude_api_calls` 0043 DB 영속화+월비용 KPI] · 개요 0/100 count-up cross-closure 봉인[#1039 effects.js hx-boost 클로저 2개 target 오염→`dataset.cuBound` owned-array early-return·count-up+score-bar+freq-bar 3종] · 설정 간소화 UI-only[#1041~#1044 반직관=백엔드 결합 적대검증 탈락→UI 재구성·form= 데이터손실 opus 적발] · 정기 5+1 회고[P0=거짓 Codex waiver 정정] · 후속 4트랙[④ #1045 비용 legacy+RLS 0044·② #1046 push-전 전체테스트 게이트+i18n 양방향 가드·③ docs drift] · 단위 5150→5265·E2E 121→122, 2026-07-09)](#설정-간소화--개요-count-up-봉인--회고-후속-2026-07-09)
@@ -140,6 +141,23 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 세션2 회고 + 회고 fix 4 트랙 11 PR (2026-07-18)
+
+이전 세션([[project-premium-readiness-audit-2026-07-18]])의 잔여 CodeQL #545(#1070 이 자초한 `test_repo_detail_query.py` User FK-등록 import) 봉인부터 시작해 5+1 회고 → 회고 fix 4 트랙 수행. 총 **11 PR (#1077~#1086)**. 상세·gotcha = [[project-retrospective-fixtracks-2026-07-18]].
+
+**5+1 회고** (`wf_331cdddf`·87 에이전트·8.65M 토큰·scope=#1032~#1077 ~46 PR): verdict_coverage **1.0**·61 confirmed(P0 3·P1 15·P2 43)·FP 6. 🔴 **P0 = 회고 카덴스 강제 트리거(#1028) 첫 측정창 자기위반** — 2026-07-03 회고가 무회고 갭을 막으려 신설한 바로 그 트리거가 ~46 PR·5~6 세션 무회고로 위반(~3x 임계). 문서-only 시정이 2회 연속 실패 → 기계화.
+
+**회고 fix 4 트랙 (재발방지 기계 가드 4종 신설)**:
+- **A1 카덴스 기계화(P0·#1080)** — `scripts/check_retro_cadence.py`: 직전 정식 회고(파일명 `retrospective` 한정→grok-review 오인 차단) 이후 머지 PR 카운트·≥15 loud 경고·advisory(비차단). CLAUDE.md 세션시작 체크리스트 배선. **라이브 48→5 리셋 실측**.
+- **A2 CodeQL turn-0(P1-B·#1081)** — `scripts/check_noqa_sideeffect.py`: PR diff ADDED `# noqa: F401` 은닉 side-effect import 차단(diff-scoped·legacy 무churn·정책17). lint-changed-tests flake8 이 noqa 존중해 못 잡던 갭(자초 CodeQL 3회 재발) 봉인. testing.md 튜플 패턴.
+- **B1 Hook false-green(P1-C·#1082)** — `.claude/hooks/posttool_pytest_smoke.py`: 구 훅이 전체 5566 을 60s 타임아웃에 못 끝내고 `|| true` 로 삼켜 false-green → 편집 src 영역 tests/unit 스코프(없으면 collection 스모크). '필수 원칙 Hook' 문구 정정(전체 게이트=push-time).
+- **B2 dead-code(P1#9/14/15·#1083)** — `scripts/check_dead_code.py`: ADDED repo/service 공개 함수 src 내 **AST 참조 0**(docstring 멘션 제외·grep false-negative 봉인) 차단·`# unwired-ok:` 예외. #1060 find_orphaned 13 PR 생존 봉인.
+- **C docs drift(P2·#1085)** — repo 11→13·FastAPI 배지 0.139·cron 6 EN/KO parity·env-vars 3키·saas `_RLS_MATRIX` 13. **D owed 원장(P1#13·#1084)** — `docs/runbooks/owed-verification.md` append-only(안전등급 #1058 SMTP·#1062 IDOR 회신 의무). **P2#41(#1086)** — dashboard route→service owner-filter parity AST 가드(#1074 봉인).
+
+🔴 **자율 판단 학습**: (1) 게이트 auto-merge 레이스로 #1077 fix-up 유실 → 별도 fix PR #1079(post-merge fix default). (2) Track C 를 background 서브에이전트에 **worktree 격리 누락**으로 착수 → 공유 작업트리 충돌 → TaskStop·산출물 전량 재검증·클린 브랜치 수동 커밋(파일편집 background agent = `isolation: worktree` 의무).
+
+**보류(사용자 결정)**: owed 회신(#1058/#1062)·P2#36 CI backstop·retention/reliability High-tier(P2#16/18/43). 단위 5412→**5467**(+55)·통합 154·E2E 122 불변.
 
 ## 프리미엄 준비도 감사 + Wave 0~2 코드전용 8 PR (2026-07-18)
 
