@@ -80,9 +80,23 @@ def count_ast_references(name, source):
 
 
 def _git(args):
+    """git 서브프로세스 → stdout. 실패 시 **loud 종료**(fail-CLOSED).
+
+    🔴 **PARITY GUARD** — 동일 구현이 `check_noqa_sideeffect.py`·`check_dual_import.py` 에도
+    있다. 한 곳을 고치면 셋 다 고쳐야 한다(`tests/unit/scripts/test_guard_git_failclosed.py`
+    가 동작 동등성 강제).
+    🔴 fail-OPEN 금지 (회고 2026-07-19 P1): 구 구현은 실패 시 `""` 를 반환해 "결과 없음 =
+    ✅ 위반 없음 + exit 0" 으로 귀결됐다 — 잘못된 base SHA·shallow clone 에서 가드가 조용히
+    무력화되고 로그에는 성공 배너만 남았다.
+    Fail-closed git helper; duplicated in two sibling guards (parity enforced by test).
+    """
     out = subprocess.run(
         ["git", *args], capture_output=True, text=True, check=False, encoding="utf-8"
     )
+    if out.returncode != 0:
+        print(f"🔴 git 실패 — 가드 실행 불가 (fail-closed): git {' '.join(args)}")
+        print(f"   {(out.stderr or '').strip()[:300]}")
+        sys.exit(2)
     return out.stdout or ""
 
 
