@@ -123,6 +123,37 @@ def delete_all_for_repo(
     return count
 
 
+def purge_terminal(db: Session, *, older_than_days: int, now: datetime | None = None) -> int:
+    """종결(non-pending) 행 중 `older_than_days` 보다 오래된 것을 삭제하고 건수를 반환한다.
+
+    Delete terminal (non-pending) rows older than `older_than_days`; return the count.
+
+    🔴 종결(succeeded/failed_terminal/expired/abandoned) 후에도 행은 status 만 갱신되고 삭제 경로가
+    없어 머지 유예 이벤트마다 영구 누적된다(준비도 감사 #20 — retention GC 부재). 관측(성공/실패
+    이력)은 `MergeAttempt` 에 별도 영속화되므로, 종결 후 retention 기간이 지난 큐 행은 안전하게 GC.
+    `updated_at`(종결 마킹 시각) 기준. `pending` 은 진행 중이라 절대 삭제하지 않는다.
+    🔴 Terminal rows only get a status update, never deleted, so they pile up forever. Observation
+    lives in MergeAttempt, so terminal rows past the retention window are safe to GC. Never touches
+    pending rows.
+    """
+    # updated_at 은 naive(ORM 규약) — now 가 aware 여도 naive 로 정규화해 비교 정합 보장
+    # updated_at is naive; normalize now to naive so the comparison is dialect-consistent
+    _now = (now or _now_naive())
+    if _now.tzinfo is not None:
+        _now = _now.replace(tzinfo=None)
+    cutoff = _now - timedelta(days=older_than_days)
+    deleted = (
+        db.query(MergeRetryQueue)
+        .filter(
+            MergeRetryQueue.status.notin_(_NON_TERMINAL_STATUSES),  # = 종결 상태 (non-pending)
+            MergeRetryQueue.updated_at < cutoff,
+        )
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return deleted
+
+
 # ---------------------------------------------------------------------------
 # T6: Claim semantics
 # T6: 클레임 의미론

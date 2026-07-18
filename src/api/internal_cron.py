@@ -14,7 +14,12 @@ from fastapi.security import APIKeyHeader
 from src.config import settings
 from src.database import WorkerSessionLocal as SessionLocal
 from src.shared.secure_compare import secure_str_compare
-from src.services.cron_service import run_trend_check, run_weekly_reports, sweep_analysis_attempts
+from src.services.cron_service import (
+    run_retention_sweep,
+    run_trend_check,
+    run_weekly_reports,
+    sweep_analysis_attempts,
+)
 from src.services.merge_retry_service import process_pending_retries
 from src.services.security_scan_service import scan_all_repos
 
@@ -143,3 +148,15 @@ async def trigger_sweep_orphans() -> dict:
         surfaced = await sweep_analysis_attempts(db)
     logger.info("sweep_orphans: surfaced=%d", surfaced)
     return {"status": "ok", "orphans_surfaced": surfaced}
+
+
+@router.post("/retention-sweep", status_code=200)
+async def trigger_retention_sweep() -> dict:
+    """데이터 보존 sweep cron 트리거 — 만료 캐시 + 종결 큐 행 GC (준비도 감사 #12·#20).
+
+    Trigger the retention sweep — GC expired cache + terminal queue rows.
+    """
+    with SessionLocal() as db:
+        counts = run_retention_sweep(db)
+    logger.info("retention_sweep: counts=%s", counts)
+    return {"status": "ok", "counts": counts}

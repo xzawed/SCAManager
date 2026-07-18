@@ -15,7 +15,13 @@ from src.config import settings
 from src.i18n.loader import get_text
 from src.notifier._language import resolve_notification_language
 from src.notifier.telegram import telegram_post_message
-from src.repositories import analysis_attempt_repo, repo_config_repo, repository_repo
+from src.repositories import (
+    analysis_attempt_repo,
+    insight_narrative_cache_repo,
+    merge_retry_repo,
+    repo_config_repo,
+    repository_repo,
+)
 from src.services.analytics_service import moving_average, resolve_chat_id, weekly_summary
 
 logger = logging.getLogger(__name__)
@@ -27,6 +33,10 @@ _TREND_DROP_THRESHOLD = 10.0
 # 소실 판정 임계 — 정상 분석은 수 분 내 finish_attempt 로 지워지므로, 30분 초과 잔존 = 증발.
 # Loss threshold — a healthy analysis clears within minutes, so >30 min surviving = vanished.
 _ORPHAN_SWEEP_THRESHOLD_MINUTES = 30
+
+# merge_retry_queue 종결행 보존 기간 (일) — 관측은 MergeAttempt 에 영속되므로 큐 행은 GC
+# Retention window (days) for terminal merge_retry rows — observation lives in MergeAttempt
+_MERGE_QUEUE_RETENTION_DAYS = 7
 
 
 async def sweep_analysis_attempts(db: Session) -> int:
@@ -74,6 +84,28 @@ def _format_orphan_alert(orphans: list) -> str:
         lines.append(f"<code>repo#{o.repo_id} {escape((o.commit_sha or '')[:8])}</code>")
     lines.append(get_text("notifier.cron.orphan_sweep_hint", language))
     return "\n".join(lines)
+
+
+def run_retention_sweep(db: Session, *, now: datetime | None = None) -> dict[str, int]:
+    """데이터 보존 sweep — 만료 캐시 + 종결 큐 행 GC (준비도 감사 #12·#20).
+
+    Retention sweep — GC expired cache + terminal queue rows (no user-facing side effects).
+
+    무한 증가 테이블 2종을 정리한다: (1) `insight_narrative_cache` 만료 행 —
+    days∈[1,365]×언어×저장소 키 조합이 조회마다 upsert 되나 `get_fresh` 는 만료 행을 안 지운다.
+    (2) `merge_retry_queue` 종결(non-pending) 행 — status 만 갱신되고 삭제 경로가 없다. 관측은
+    `MergeAttempt` 에 별도 영속하므로 retention 후 안전 GC. 반환 = {"expired_cache": N, "terminal_queue": M}.
+    """
+    expired_cache = insight_narrative_cache_repo.purge_expired(db, now=now)
+    terminal_queue = merge_retry_repo.purge_terminal(
+        db, older_than_days=_MERGE_QUEUE_RETENTION_DAYS, now=now,
+    )
+    if expired_cache or terminal_queue:
+        logger.info(
+            "retention sweep — purged expired_cache=%d terminal_queue=%d",
+            expired_cache, terminal_queue,
+        )
+    return {"expired_cache": expired_cache, "terminal_queue": terminal_queue}
 
 
 async def run_weekly_reports(db: Session, *, now: datetime | None = None) -> int:

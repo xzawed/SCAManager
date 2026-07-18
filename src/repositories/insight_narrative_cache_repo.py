@@ -125,6 +125,27 @@ def invalidate(db: Session, *, user_id: int, days: int) -> bool:
     return deleted > 0
 
 
+def purge_expired(db: Session, *, now: datetime | None = None) -> int:
+    """만료된 캐시 행을 삭제하고 삭제 건수를 반환한다 — retention sweep 용 GC.
+
+    Delete expired cache rows and return the count — GC for the retention sweep.
+
+    🔴 `get_fresh` 는 만료 행에 대해 None 만 반환하고 **행을 지우지 않는다** → days∈[1,365] × 언어 ×
+    저장소 키 조합이 사용자 조회마다 upsert 되어 만료 행이 영구 누적된다(준비도 감사 #12, GC 0).
+    이 함수가 `expires_at < now` 행을 정리한다. 이미 TTL 이 지난 행이라 삭제해도 캐시 손실 0.
+    🔴 get_fresh only returns None for expired rows without deleting them, so stale rows pile up
+    forever. This purges `expires_at < now`; they are already past TTL so nothing useful is lost.
+    """
+    _now = (now or datetime.now(timezone.utc)).replace(tzinfo=None)
+    deleted = (
+        db.query(InsightNarrativeCache)
+        .filter(InsightNarrativeCache.expires_at < _now)
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return deleted
+
+
 # ─── 0031: repo-scoped cache helpers ─────────────────────────────────────────
 # ─── 0031: 리포별 캐시 헬퍼 ─────────────────────────────────────────────────
 

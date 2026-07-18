@@ -200,3 +200,35 @@ def test_repo_cache_isolated_from_global(db):
     # 전체 캐시 무효화가 리포 캐시에 영향 없음
     insight_narrative_cache_repo.invalidate(db, user_id=1, days=30)
     assert insight_narrative_cache_repo.get_fresh_repo(db, user_id=1, repo_id=5, days=30) == {"scope": "repo"}
+
+
+# ── purge_expired — retention GC (준비도 감사 #12) ────────────────────────────
+
+def test_purge_expired_deletes_only_expired_rows(db):
+    """만료된 행만 삭제하고 신선 행은 보존 — 삭제 건수 반환."""
+    now = datetime.now(timezone.utc)
+    # 만료 행 (ttl 60s, now 기준 이미 지남)
+    insight_narrative_cache_repo.upsert(
+        db, user_id=1, days=7, language="en", response={"s": 1}, ttl_seconds=60, now=now,
+    )
+    # 신선 행 (ttl 3600s)
+    insight_narrative_cache_repo.upsert(
+        db, user_id=2, days=7, language="en", response={"s": 2}, ttl_seconds=3600, now=now,
+    )
+    # 120초 후 시점에 purge → 첫 행만 만료
+    deleted = insight_narrative_cache_repo.purge_expired(db, now=now + timedelta(seconds=120))
+    assert deleted == 1, "만료 행이 삭제되지 않음 (naive/aware 비교 정합 실패 가능)"
+    # 신선 행은 여전히 조회 가능
+    assert insight_narrative_cache_repo.get_fresh(
+        db, user_id=2, days=7, now=now + timedelta(seconds=120),
+    ) is not None
+
+
+def test_purge_expired_returns_zero_when_all_fresh(db):
+    """모두 신선하면 0 반환 + 삭제 없음."""
+    now = datetime.now(timezone.utc)
+    insight_narrative_cache_repo.upsert(
+        db, user_id=1, days=7, response={"s": 1}, ttl_seconds=3600, now=now,
+    )
+    assert insight_narrative_cache_repo.purge_expired(db, now=now) == 0
+    assert db.query(InsightNarrativeCache).count() == 1

@@ -50,6 +50,12 @@ command = "curl -s -X POST -H 'X-API-Key: $INTERNAL_CRON_API_KEY' http://localho
 schedule = "*/10 * * * *"
 command = "curl -s -X POST -H 'X-API-Key: $INTERNAL_CRON_API_KEY' http://localhost:$PORT/api/internal/cron/sweep-orphans"
 
+# 데이터 보존 sweep — 매일 KST 05:00 = UTC 20:00, 만료 캐시 + 종결 큐 행 GC (준비도 감사 #12·#20)
+# Retention sweep — daily at UTC 20:00, GC expired cache + terminal queue rows
+[[deploy.cronJobs]]
+schedule = "0 20 * * *"
+command = "curl -s -X POST -H 'X-API-Key: $INTERNAL_CRON_API_KEY' http://localhost:$PORT/api/internal/cron/retention-sweep"
+
 # Fallback B (Railway native cron 제한 시): cron-job.org 외부 → curl
 # Fallback B (if Railway native cron is unavailable): use cron-job.org with:
 #   POST https://<APP_BASE_URL>/api/internal/cron/weekly   (Header: X-API-Key: $INTERNAL_CRON_API_KEY)
