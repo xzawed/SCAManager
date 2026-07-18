@@ -72,6 +72,7 @@
 | 2026-06-16 | [session-retrospective](2026-06-16-session-retrospective.md) | 2026-06-16 Railway follow-up 세션(#906~#910 + RLS Phase 4 step 0) 5+1 회고 — P0 0·P1 1·P2 10·FP 0, Option A follow-up #912~#914 (CodeQL #518·codex 도구 codify·architecture 6-step ⑥) |
 | 2026-06-23 | [retrospective](2026-06-23-retrospective.md) | 잔여작업 세션(#973~#975) 회고 — retrospective.mjs 첫 dogfooding, 55 confirmed(P1 2·P2 53)·FP 14·verdict_coverage 1.0, C10 회복력 갭 식별 |
 | 2026-07-03 | [retrospective](2026-07-03-retrospective.md) | 2026-06-25~07-03 4세션(#989~#1023) 누적 갭 회복 5+1 회고 — 66 confirmed(P0 1·P1 12·P2 53)·FP 6·verdict_coverage 1.0, 8 클러스터(회고 카덴스·self-inflicted CodeQL·가격 parity 가드·grep 전수·docs drift·supply-chain 렌즈) |
+| 2026-07-18 | [retrospective](2026-07-18-retrospective.md) | 2026-07-08~18 5~6세션(#1032~#1077) 누적 갭 회복 5+1 회고 — 87 에이전트·61 confirmed(P0 **3**·P1 15·P2 43)·FP 6·verdict_coverage 1.0. **P0 = 회고 카덴스 트리거(#1028) 첫 측정창 자기위반**(~46 PR 무회고·~3x 임계·문서-only 시정 실패→기계화 필요). 테마: CodeQL turn-0 가드 진공·Hook false-green·dead-code 배선·비대칭 가드·owed 운영검증·docs drift |
 
 ---
 
