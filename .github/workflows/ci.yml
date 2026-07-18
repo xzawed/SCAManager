@@ -101,6 +101,13 @@ jobs:
         # Diff-scoped: only NEW noqa-hidden imports are blocked; flake8 respects noqa so CodeQL sees them post-merge.
         run: python scripts/check_noqa_sideeffect.py "${{ github.event.pull_request.base.sha }}" HEAD
 
+      - name: Block new dead-code in PR-changed repositories/services (declared-but-unwired — 회고 2026-07-18 P1#9/14/15)
+        # 🔴 신규 diff 한정 — ADDED 된 src/repositories·src/services 공개 함수가 src 내 AST 호출자 0 이면 차단.
+        # #1060 find_orphaned 가 호출자 0 dead code 로 13 PR 생존(전 스위트 green 은폐) → #1073 뒤늦은 배선의 재발 봉인.
+        # 의도적 미배선은 diff 에 `# unwired-ok: <name>` 마커로 예외(이월 추적). AST 참조라 docstring 멘션 오탐 없음.
+        # Diff-scoped: new public repo/service funcs with 0 in-src AST callers are blocked (find_orphaned pattern).
+        run: python scripts/check_dead_code.py "${{ github.event.pull_request.base.sha }}" HEAD
+
   # 의존성 취약점 SCA 게이트 — PyPI Advisory DB(OSV) 대조로 known CVE 차단(회고 2026-07-03 C7).
   # requirements 가 == 핀(CI==Railway 버전 일치)이므로 스캔 대상 = 실제 배포 버전. 신규 CVE 발표 시 CI fail →
   # 의존성 bump 강제(현재 취약점 0 실측). 프로덕션+개발 의존성 모두 대상.
