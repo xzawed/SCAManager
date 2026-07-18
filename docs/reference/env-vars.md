@@ -37,7 +37,7 @@
 
 | 변수 | 설명 | 예시 |
 |------|------|------|
-| `INTERNAL_CRON_API_KEY` | **`POST /api/internal/cron/*` 전용 인증 키** (admin key 와 분리). Railway `[[deploy.cronJobs]]` 트리거. `hmac.compare_digest` 타이밍 안전 비교. **미설정 시 503 반환** — Phase 10 cron (weekly_summary, trend_check) 전부 비활성화. | `cron-internal-key-xxx` |
+| `INTERNAL_CRON_API_KEY` | **`POST /api/internal/cron/*` 전용 인증 키** (admin key 와 분리). Railway `[[deploy.cronJobs]]` 트리거. `hmac.compare_digest` 타이밍 안전 비교. **미설정 시 503 반환** — cron 6종 (`weekly`=주간 리포트 · `trend`=트렌드 경보 · `scan-security`=Code/Secret Scanning 폴링 · `retry-pending-merges`=머지 재시도 큐 · `sweep-orphans`=분석 소실 탐지 · `retention-sweep`=데이터 보존 GC) 전부 비활성화. | `cron-internal-key-xxx` |
 | `SAAS_ADMIN_EMAILS` | **SaaS admin 권한 allow-list** — `,` 분리 email 문자열. `current_user.email in saas_admin_emails` 일치 시 `/admin/{tenants,rls-audit,operations}` UI + `/api/admin/*` REST 접근 허용. 미설정 시 admin 영역 자동 비활성화 (Cycle 79 PR 2 #255 — `require_admin` Depends 페어). | 빈 문자열 (기본) / `admin@example.com,owner@example.com` |
 | `SCAMANAGER_SELF_ANALYSIS_DISABLED` | **Loop Guard kill-switch** — `1` 설정 시 모든 webhook 분석 즉시 중단 (202 skipped). Phase 9 자기-분석 루프 사고 발생 시 즉각 차단용. | `0` (기본) / `1` (긴급 중단) |
 | `SECURITY_AUTO_PROCESS_DISABLED` | **Code/Secret Scanning auto-process kill-switch** — `1` 설정 시 `security_scan_service` + `dashboard_service` security 영역 자동 처리 중단 (Cycle 73 #244 신설). false-positive 누적 시 긴급 차단용. | `0` (기본) / `1` (긴급 중단) |
@@ -156,6 +156,14 @@ Sentry 외 자동 로깅은 별도 환경변수 없이 동작:
 | `PERF_PROD_URL` | `https://scamanager-production.up.railway.app` | 운영 서버 측정 URL |
 | `PERF_API_KEY` | `""` | 운영 API 키 (`X-Api-Key` 헤더 — `/api/repos` 등 API 엔드포인트 TTFB 측정용, 없으면 401 예상) |
 
+## 로컬 개발 훅 env (Railway 배포 env 아님)
+
+Claude Code 로컬 훅(`.claude/hooks/`)에서만 읽는 env — 운영 서버(Railway/온프레미스)나 `config.py` `Settings` 와 무관하다. `.env` 가 아니라 로컬 셸에서만 설정.
+
+| 변수 | 설명 | 기본값 |
+|------|------|--------|
+| `DOC_REVIEW_GATE_DISABLED` | `1`/`true`/`yes` 설정 시 문서 리뷰 게이트(`.claude/hooks/doc_review_gate.py`) 비용 kill-switch — 로컬 Anthropic 호출 0. **로컬 훅 전용** (운영 파이프라인 무관). 3-레이어 비용 제어 맥락: [`docs/runbooks/cost-controls.md`](../runbooks/cost-controls.md) | `0` (기본) |
+
 ## 내부 모듈 상수 (참고 — env var 아님)
 
 환경변수가 아닌 코드 내 모듈 상수지만, 운영 동작 가시성 / 튜닝 시 인지가 필요한 값. 변경은 코드 수정 (PR) 으로만 가능.
@@ -172,3 +180,5 @@ Sentry 외 자동 로깅은 별도 환경변수 없이 동작:
 | `TELEGRAM_RETRY_AFTER_MAX_SECONDS` | `src/notifier/telegram.py` | `30` | Telegram 429 응답의 retry_after 최대 sleep 시간 (cap) — Phase H PR-2B |
 | `_GRAPHQL_MAX_ATTEMPTS` | `src/github_client/graphql.py` | `3` | GitHub GraphQL 5xx + network error 최대 재시도 횟수 — Phase H PR-1B-2 |
 | `_GRAPHQL_INITIAL_BACKOFF_SECONDS` | `src/github_client/graphql.py` | `1.0` | GraphQL 재시도 초기 backoff (지수 증가: 1s → 2s) — Phase H PR-1B-2 |
+| `_ORPHAN_SWEEP_THRESHOLD_MINUTES` | `src/services/cron_service.py` | `30` (분) | 분석 소실 판정 임계 — `sweep-orphans` cron 이 이 시간 초과 잔존한 `analysis_attempts` 를 증발로 판정·표면화·정리 (준비도 감사 #11) |
+| `_MERGE_QUEUE_RETENTION_DAYS` | `src/services/cron_service.py` | `7` (일) | `retention-sweep` cron 의 `merge_retry_queue` 종결(non-pending) 행 보존 기간 — 관측은 `MergeAttempt` 에 영속되므로 이후 GC (준비도 감사 #12·#20) |
