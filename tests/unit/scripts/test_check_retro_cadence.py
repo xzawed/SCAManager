@@ -130,10 +130,18 @@ def test_script_runs_without_crashing():
 
     세션 시작 체크리스트에서 로컬(Windows)로 실행되므로 배너 이모지(🔴)가 cp949 stdout 에서
     UnicodeEncodeError 를 내면 안 된다. _make_stdout_safe 회귀 가드.
+
+    🔴 `encoding="utf-8"` 필수 — 미지정 시 reader 스레드가 로케일 기본(Windows cp949)으로
+    UTF-8 출력을 디코드하다 UnicodeDecodeError → `r.stderr` 가 비어 아래 단언이 **무조건 통과**
+    (가드가 정작 Windows 에서 눈이 먼다). 전 가드 스크립트가 쓰는 관용구와 동일하게 맞춘다.
+    Without an explicit encoding the reader thread decodes UTF-8 output as cp949 and dies,
+    leaving `r.stderr` empty so the assertion below spuriously passes on the very platform
+    it guards. Matches the `encoding="utf-8"` idiom used by every guard script.
     """
     r = subprocess.run(
         [sys.executable, str(_ROOT / "scripts" / "check_retro_cadence.py")],
         capture_output=True, text=True, check=False, cwd=str(_ROOT),
+        encoding="utf-8", errors="replace",
     )
     assert r.returncode == 0, f"advisory 스크립트가 non-zero 종료 (stderr={r.stderr[:300]})"
     assert "UnicodeEncodeError" not in r.stderr, "cp949 이모지 크래시 재발"

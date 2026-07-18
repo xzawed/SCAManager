@@ -142,7 +142,7 @@ def _load_manifest() -> dict:
         try:
             return json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
-            pass
+            pass  # 손상·판독불가 매니페스트 = 빈 상태로 재시작 / corrupt manifest → start empty
     return {}
 
 

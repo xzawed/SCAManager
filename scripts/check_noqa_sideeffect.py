@@ -116,5 +116,5 @@ if __name__ == "__main__":
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except (AttributeError, ValueError):
-        pass
+        pass  # 캡처된 stream 등 reconfigure 미지원 — 무시 / stream without reconfigure
     sys.exit(main(sys.argv))
