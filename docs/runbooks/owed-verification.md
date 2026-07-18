@@ -21,14 +21,29 @@
 |----|----------|----------|------|------|
 | **#1071** | prod 하드닝 — HSTS 헤더·쿠키 Secure·`/docs` 비노출이 Railway(https)에서 적용되는지 | `curl -I https://<app>/` → `Strict-Transport-Security` 헤더 존재 + `Set-Cookie … Secure` + `GET /docs` → 404 | 13 | ⏳ |
 | **#1072** | approve SHA 결속 — head 이동 PR 에 approve 시도 시 GitHub **422 fail-closed** (외부 계약 미검증) | head 가 이동한 PR 에 반자동 approve 유발 → GitHub 422 반환 + gate 가 차단하는지 운영 로그 관측 | 13 | ⏳ |
-| **#1073** | orphan sweep cron **실제 실행** — `analysis_attempts` 소실 탐지·표면화·정리 | Railway cron 로그에서 orphan sweep 실행 + `INTERNAL_CRON_API_KEY` 설정 확인(미설정 시 무음 중단) | 13 | ⏳ |
-| **#1075** | retention sweep cron **실제 DELETE** — 만료 캐시·종결 큐 GC | Railway cron 로그 `retention sweep — purged expired_cache=N terminal_queue=N` 관측 + pending 행 보존 확인 | 13 | ⏳ |
+| **#1073** | orphan sweep cron **실제 실행** — `analysis_attempts` 소실 탐지·표면화·정리 | 🔴 **로그 관측 불가 → DB 관측 대체**(§검증 수단 정정). `SELECT COUNT(*) FROM analysis_attempts WHERE started_at < NOW() - INTERVAL '1 hour'` = 0 유지면 정상. **2026-07-18 17:23 UTC 실측 = 총 0행**(관측 가능한 잔여물 없음 — 판별 보류) | 13 | ⏳ |
+| **#1075** | retention sweep cron **실제 DELETE** — 만료 캐시·종결 큐 GC | 🔴 **로그 관측 불가 → DB 관측 대체**. `SELECT COUNT(*) FROM insight_narrative_cache WHERE expires_at < NOW()` — **2026-07-18 17:23 UTC 실측 = 8건 잔존**(최고령 만료 2026-05-05·74일). 매일 20:00 UTC 스케줄 실행 후 **0 이 되면 cron 실동작 확정** ← 현재 유일한 깨끗한 단독 테스트 | 13 | ⏳ |
 
 ---
 
 ## 회신 방법
 
 사용자는 각 행의 상태를 `✅/❌/⏭️` 로 갱신하거나, Claude 에게 결과를 전달하면 Claude 가 갱신한다. `❌`(NG) 발견 시 = 즉시 fix PR 착수(정책 7). 전 행 `✅`/`⏭️` 확정 시 = 원장에서 **아카이브 섹션으로 이동**(본 상단 표는 미결만 유지).
+
+## 🔴 검증 수단 정정 — "Railway cron 로그 관측"은 실행 불가 (2026-07-18 실측)
+
+`#1073`·`#1075` 는 검증 방법으로 *"Railway cron 로그에서 sweep 실행 확인"* 을 명시했으나, **그 관측 수단이 존재하지 않는다**.
+
+| 실측 (2026-07-18, Railway CLI) | 결과 |
+|--------------------------------|------|
+| `railway logs --deployment --lines 500 --since 24h` | **총 11줄** — 컨테이너 시작 + alembic 뿐 |
+| 같은 로그에서 access log(`"GET`/`"POST`) 건수 | **0줄** (uvicorn `--no-access-log` 아닌데도 미유입) |
+| `railway logs --http` 에서 cron 경로 | **0건** — cron 은 `http://localhost:$PORT` 내부 호출이라 엣지 프록시 미경유 |
+| cron 실행이 배포 항목으로 기록되는가 | ❌ — 배포 목록은 커밋당 1건뿐 |
+
+→ **cron 실행 여부는 로그로 판별 불가.** 대체 수단 = **cron 으로만 도달 가능한 경로의 DB 부작용 관측**(위 표 참조). `retry-pending-merges` 는 webhook 으로도 트리거되므로 **cron 단독 증거가 되지 못한다**(2026-07-18 실측: `merge_retry_queue` pending 0·16:14 처리 — 정상이나 cron 증거 아님).
+
+관련 실측(같은 날): 수정 전 cron 형태(리터럴 `$INTERNAL_CRON_API_KEY` 전송)를 운영에 재현 → **HTTP 401** 확인(`/health` 200 통제군 대비). `INTERNAL_CRON_API_KEY` 는 Railway 에 **설정돼 있음** → 키가 아니라 셸 미확장이 원인이라는 진단이 운영에서 확정(#1095 로 수정).
 
 ## 🔴 집행 기전 (2026-07-19 P0 — 원장이 write-only 였던 자기위반 봉인)
 

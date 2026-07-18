@@ -45,9 +45,38 @@ def test_line_hides_f401_multi_code_list():
     assert line_hides_f401("import os  # noqa: E402,F401") is True
 
 
+def test_line_hides_f401_space_separated_trailing_prose():
+    """🔴 F401 뒤에 **공백 구분 영숫자 텍스트**가 와도 탐지 (회고 2026-07-19 P1 — 실이력 33% miss).
+
+    결함: `_NOQA` 코드 문자 클래스에 공백이 포함돼 `F401  pylint` 를 한 덩어리로 캡처하고,
+    `replace(" ","").split(",")` 가 `F401PYLINT` 로 뭉개 **False**(위반 아님)를 반환했다.
+    flake8 은 코드를 `[,\\s]+` 로 분리하므로 **실제로는 F401 이 억제**된다 → 가드 통과 +
+    CodeQL py/unused-import 재발. 실측: 머지 이력의 ADDED F401 라인 9건 중 3건(33%) 무음 통과.
+    Defect: the codes char-class included a space, so trailing prose merged into the code token.
+    flake8 splits on `[,\\s]+` and DOES suppress F401 → guard passed while CodeQL still fired.
+    """
+    assert line_hides_f401("import x  # noqa: F401  pylint: disable=unused-import") is True
+    assert line_hides_f401("import x  # noqa: F401  C1 Phase 4 note") is True
+    assert line_hides_f401("import x  # noqa: F401 registers model") is True
+
+
+def test_line_hides_f401_em_dash_form_still_works():
+    """em-dash 형은 기존에도 통과했다 — 회귀 방지 (우연한 성공을 고정).
+
+    em-dash 가 문자 클래스를 종료시켜 `F401 ` 만 캡처됐다. 수정 후에도 유지돼야 한다.
+    """
+    assert line_hides_f401("import x  # noqa: F401 — 모듈 자동 등록  # pylint: disable=unused-import") is True
+
+
 def test_line_hides_f401_other_code_only_is_false():
     """F401 없는 noqa(예: E501 단독)는 미해당 → False (오탐 차단)."""
     assert line_hides_f401("x = very_long_line  # noqa: E501") is False
+
+
+def test_line_hides_f401_other_code_with_prose_is_false():
+    """🔴 부정 통제 — F401 이 없으면 후행 텍스트가 있어도 False (수정이 오탐을 만들지 않는지)."""
+    assert line_hides_f401("import x  # noqa: E501 long line note") is False
+    assert line_hides_f401("import x  # noqa: E402 not f401 here") is False
 
 
 def test_line_hides_f401_non_import_is_false():

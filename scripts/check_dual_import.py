@@ -60,10 +60,21 @@ def find_violations_for_file(diff_text: str, head_content: str) -> list[str]:
 
 
 def _git(*args: str) -> str:
-    """git 명령 실행 → stdout (실패 시 빈 문자열). / Run git, return stdout ('' on failure)."""
+    """git 명령 실행 → stdout. 실패 시 **loud 종료**(fail-CLOSED).
+
+    🔴 **PARITY GUARD** — 동일 구현이 `check_dead_code.py`·`check_noqa_sideeffect.py` 에도
+    있다. 한 곳을 고치면 셋 다 고쳐야 한다(`tests/unit/scripts/test_guard_git_failclosed.py`).
+    🔴 fail-OPEN 금지 (회고 2026-07-19 P1): 구 구현의 `""` 반환은 "✅ 위반 없음 + exit 0" 으로
+    귀결돼 git 실패가 곧 가드 무력화였다.
+    Fail-closed git helper; duplicated in two sibling guards (parity enforced by test).
+    """
     result = subprocess.run(
         ["git", *args], capture_output=True, text=True, check=False, encoding="utf-8"
     )
+    if result.returncode != 0:
+        print(f"🔴 git 실패 — 가드 실행 불가 (fail-closed): git {' '.join(args)}")
+        print(f"   {(result.stderr or '').strip()[:300]}")
+        sys.exit(2)
     return result.stdout or ""
 
 

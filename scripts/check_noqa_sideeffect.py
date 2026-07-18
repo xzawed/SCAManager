@@ -21,13 +21,27 @@ Diff-scoped: only ADDED lines are checked; legacy noqa imports are left untouche
 import re
 import subprocess
 import sys
+from itertools import takewhile
 
 # import 문 여부 (import X / from X import Y). diff 의 `+` 는 사전에 제거하고 판정.
 # Whether a line is an import statement (the leading diff `+` is stripped before checking).
 _IMPORT = re.compile(r"^\s*(?:import\s|from\s+\S+\s+import\s)")
 # `# noqa` (bare) 또는 `# noqa: <codes>` — codes 그룹(있으면) 캡처.
 # `# noqa` (bare) or `# noqa: <codes>` — captures the codes group when present.
-_NOQA = re.compile(r"#\s*noqa(?::\s*([A-Za-z0-9, ]+))?", re.IGNORECASE)
+_NOQA = re.compile(r"#\s*noqa(?::\s*([A-Za-z0-9,\s]+))?", re.IGNORECASE)
+# 🔴 코드 분리자는 flake8 과 동형(`[,\s]+`) 이어야 한다 (회고 2026-07-19 P1).
+# 구 구현은 `.replace(" ","").split(",")` 라 `F401  pylint` 를 `F401PYLINT` 로 뭉개
+# **미탐지**했다 — flake8 은 같은 라인에서 F401 을 실제로 억제하므로 lint 는 green 인 채
+# CodeQL py/unused-import 만 재발(실이력 ADDED F401 9건 중 3건 = 33% 무음 통과).
+# Code separator must match flake8's own `[,\s]+`; the old space-strip+comma-split merged
+# trailing prose into the code token and missed real F401 suppressions.
+_CODE_SEP = re.compile(r"[,\s]+")
+# 코드 토큰 형태(`F401`·`E501`·`BLE001`) — flake8 은 **첫 비-코드 토큰에서 코드 목록을 종료**한다.
+# 따라서 `# noqa: E402 not f401 here` 의 코드는 `E402` 뿐이며 F401 은 억제되지 않는다
+# (단순 멤버십 검사로는 산문 속 'f401' 을 코드로 오인해 **오탐** — 블로킹 가드에서 비용 큼).
+# Code-token shape; flake8 terminates the code list at the first non-code token, so prose
+# containing 'f401' must NOT count as a suppression (avoids false positives in a blocking guard).
+_CODE_TOKEN = re.compile(r"^[A-Z]+[0-9]+$")
 # diff ADDED 라인(`+...`) — `+++` 파일 헤더는 제외.
 # A diff ADDED line (`+...`), excluding the `+++` file header.
 _ADDED = re.compile(r"^\+(?!\+\+)")
@@ -40,6 +54,7 @@ def line_hides_f401(line):
     - bare `# noqa`         → 전체 억제(F401 포함) → True
     - `# noqa: F401`        → True
     - `# noqa: E402,F401`   → True (목록에 F401)
+    - `# noqa: F401  pylint: disable=…` → True (공백 구분 후행 텍스트 — flake8 도 F401 억제)
     - `# noqa: E501`        → False (F401 미포함)
     - import 아닌 라인       → False
     """
@@ -51,7 +66,10 @@ def line_hides_f401(line):
     codes = m.group(1)
     if codes is None:  # bare noqa — suppresses everything, incl. F401
         return True
-    return "F401" in codes.upper().replace(" ", "").split(",")  # 정확 코드 매칭 / exact code match
+    # flake8 동형 — 선두 연속 코드 토큰만 취하고 첫 비-코드에서 종료.
+    # flake8-equivalent — take the leading run of code tokens, stop at the first non-code.
+    leading = takewhile(_CODE_TOKEN.match, _CODE_SEP.split(codes.upper().strip()))
+    return "F401" in leading
 
 
 def parse_added_noqa_imports(diff_text):
@@ -74,10 +92,21 @@ def find_violations(path, diff_text):
 
 
 def _git(args):
-    """git 서브프로세스 — stdout 반환(실패 시 빈 문자열)."""
+    """git 서브프로세스 → stdout. 실패 시 **loud 종료**(fail-CLOSED).
+
+    🔴 **PARITY GUARD** — 동일 구현이 `check_dead_code.py`·`check_dual_import.py` 에도 있다.
+    한 곳을 고치면 셋 다 고쳐야 한다(`tests/unit/scripts/test_guard_git_failclosed.py`).
+    🔴 fail-OPEN 금지 (회고 2026-07-19 P1): 구 구현의 `""` 반환은 "✅ 위반 없음 + exit 0" 으로
+    귀결돼 git 실패가 곧 가드 무력화였다.
+    Fail-closed git helper; duplicated in two sibling guards (parity enforced by test).
+    """
     out = subprocess.run(
         ["git", *args], capture_output=True, text=True, check=False, encoding="utf-8"
     )
+    if out.returncode != 0:
+        print(f"🔴 git 실패 — 가드 실행 불가 (fail-closed): git {' '.join(args)}")
+        print(f"   {(out.stderr or '').strip()[:300]}")
+        sys.exit(2)
     return out.stdout or ""
 
 
