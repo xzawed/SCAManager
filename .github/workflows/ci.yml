@@ -94,6 +94,13 @@ jobs:
         # Diff-scoped: only NEW `from X import` coexisting with an `import X` is blocked (retro C2, #1023 pattern).
         run: python scripts/check_dual_import.py "${{ github.event.pull_request.base.sha }}" HEAD
 
+      - name: Block new noqa-hidden unused import in PR-changed tests (py/unused-import — 회고 2026-07-18 B)
+        # 🔴 신규 diff 한정 — PR 에서 ADDED 된 `# noqa: F401` 은닉 import 만 차단(기존 ~115 legacy 무관).
+        # flake8 F401 은 `# noqa` 를 존중 → side-effect ORM import 가 CodeQL main 스캔에만 노출(#540~545, 3회 재발).
+        # 이 가드로 pre-merge 에 튜플-참조 패턴(`_FK_TARGET_MODELS`) 승격 강제 → 반응형 fix PR 종식.
+        # Diff-scoped: only NEW noqa-hidden imports are blocked; flake8 respects noqa so CodeQL sees them post-merge.
+        run: python scripts/check_noqa_sideeffect.py "${{ github.event.pull_request.base.sha }}" HEAD
+
   # 의존성 취약점 SCA 게이트 — PyPI Advisory DB(OSV) 대조로 known CVE 차단(회고 2026-07-03 C7).
   # requirements 가 == 핀(CI==Railway 버전 일치)이므로 스캔 대상 = 실제 배포 버전. 신규 CVE 발표 시 CI fail →
   # 의존성 bump 강제(현재 취약점 0 실측). 프로덕션+개발 의존성 모두 대상.
