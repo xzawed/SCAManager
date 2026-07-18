@@ -6,6 +6,7 @@
 
 ## 목차
 
+- [프리미엄 준비도 감사 + Wave 0~2 코드전용 8 PR (#1068~#1075 — 6차원 준비도 감사[wf_2e184916·29 에이전트·구체적 실패 시나리오+적대 논파]·**P0/P1=0 견고**·완결성 비평이 3 cross-cutting[공유키 blast-radius·수평확장·관측성] 발견·착수=비대칭 결함 8건[#1068 PR 코멘트 AI-실패 경고 5채널 대칭·#1069 retry rollback 헬퍼·#1070 result JSON 컬럼-select `.as_string()`·#1071 config `is_production` 하드닝·#1072 approve SHA 결속 422 fail-closed·#1073 orphan sweep 배선+finish 위치이동·#1074 feedback_status owner 필터+배선 가드·#1075 retention sweep pending 절대보존]·남은 로드맵=사용자 결정 선행[테넌트쿼터·Redis·관측성·#18 CASCADE]·단위 5365→5412, 2026-07-18)](#프리미엄-준비도-감사--wave-02-코드전용-8-pr-2026-07-18)
 - [Grok 백로그 NULL-owner IDOR + 워커 내구성 6 PR (#1060~#1066 — P1-2 워커 내구성[`analysis_attempts` 0045·비싼 작업 전 흔적→남은 오래된 행=소실된 분석] · P1-3 NULL-owner 쓰기 차단[require_write 5곳+인라인 2곳·서버 전역 토큰 권한 상승 봉인] · 선결 #1061 복구 경로[affiliation organization_member·502] · R4 threshold `merge≥reject` 불변식 · R3 railway 토큰 평문 렌더 차단[세션 없는 엔드포인트 유일 방어] · R2 NULL-owner 가시화[생성 경고+개요 배너] · #1066 CodeQL py/unused-import 봉인 · 🔴 "lockout 없음" 단언이 적대검증에 뒤집힘 · RLS 0026 이 노출 보증 · 단위 5267→5365, 2026-07-17)](#grok-백로그-null-owner-idor--워커-내구성-6-pr-2026-07-17)
 - [설정 간소화 · 개요 count-up 봉인 · 회고 후속 (#1034~#1046 — 비용제어 마무리[#1037 `claude_api_calls` 0043 DB 영속화+월비용 KPI] · 개요 0/100 count-up cross-closure 봉인[#1039 effects.js hx-boost 클로저 2개 target 오염→`dataset.cuBound` owned-array early-return·count-up+score-bar+freq-bar 3종] · 설정 간소화 UI-only[#1041~#1044 반직관=백엔드 결합 적대검증 탈락→UI 재구성·form= 데이터손실 opus 적발] · 정기 5+1 회고[P0=거짓 Codex waiver 정정] · 후속 4트랙[④ #1045 비용 legacy+RLS 0044·② #1046 push-전 전체테스트 게이트+i18n 양방향 가드·③ docs drift] · 단위 5150→5265·E2E 121→122, 2026-07-09)](#설정-간소화--개요-count-up-봉인--회고-후속-2026-07-09)
 - [Anthropic 비용 제어 3종 (#1033 — 비용 조사[GitHub Actions PUBLIC=$0·실과금원 private 리포·Anthropic 6 경로] → `AI_REVIEW_DISABLED`/`INSIGHT_DISABLED` env kill-switch + `RepoConfig.ai_review_enabled` 리포별 토글[0042·4-way PRESETS 제외] + `disabled` 의도적-skip[중립 89/B·fail-open 없음]·check-config-5way 원자커밋·C2 dual-import fix·SDD 11 task+opus whole-branch·Codex 미설치 waiver·단위 5150→5158, 2026-07-08)](#anthropic-비용-제어-3종-2026-07-08)
@@ -139,6 +140,22 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 프리미엄 준비도 감사 + Wave 0~2 코드전용 8 PR (2026-07-18)
+
+사용자 요청 = "새 기능보다 완성도·안정성·기능 결함 보완" (프리미엄급 서비스 대비). → **6차원 프리미엄 멀티테넌트 준비도 감사**(wf_2e184916·29 에이전트·370만 토큰) 후 코드-전용 결함 하드닝 **8 PR (#1068~#1075) 전부 머지**. 방법론·gotcha·남은 로드맵은 [[project-premium-readiness-audit-2026-07-18]].
+
+**감사 (P0=0·P1=0)**: 6차원(멀티테넌트 격리·데이터 수명주기·신뢰성/내구성·기능 정확성·성능/스케일·운영/보안/배포) finder → 각 발견에 **구체적 실패 시나리오 강제 + 적대적 논파**(Grok식 심각도 과대평가 차단). 적대 검증 후 P0·P1 0 = 최근 감사(06-25/06-29/07-03) 재확인, 코드베이스 견고. 🔴 **적대 검증이 겁나는 P1 주장 걸러냄**: "공유 ANTHROPIC_API_KEY 소진 → 나쁜 코드 auto-merge" = `gate/_common.ai_review_failed`(#804)가 fail-**closed**(api_error 는 auto-merge 차단, 통과 아님)로 반증. **완결성 비평**이 6 finder 놓친 3 cross-cutting 차원(공유 API키 blast-radius·수평확장 안전장치·관측성) 발견. 착수 대상 = **비대칭(only-one-side-guarded) 결함** 8건.
+
+**Wave 0~1 지금 버킷 (스케일 무관 이미 유효, 6 PR)**: #1068 #7 PR 코멘트 AI-실패 경고(인플레 점수 무경고 노출 → 5채널 대칭) · #1069 #10 retry 좁은 except rollback(세션 오염 시 `release_claim` PendingRollbackError 로 배치 중단 → `_recover_and_release` 헬퍼) · #1070 #6+#17 result JSON 낭비 로드(blob 로드 후 스칼라만 사용 → 컬럼-select + JSON 추출 `.as_string()` 양방언 따옴표無) · #1071 #14+#15 config 하드닝(prod 판정 `startswith("https")` 단일 휴리스틱 4곳 → `settings.is_production` ENVIRONMENT 명시 신호·강제만 + startup 모드 로그 + cron 키 미설정 경고) · #1072 #8 approve SHA 결속(merge#1057 는 결속인데 approve 미결속 → `post_github_review(commit_id=)` GitHub 422 fail-closed·🔴 P1=외부 계약 미검증) · #1073 #11+#21 orphan sweep 배선 + 오탐 봉인(#1060 `find_orphaned` 호출자0 → sweep cron 배선 + finish 를 notify 앞으로 이동해 notify 실패 오탐 봉인·🔴 purge id 기반 TOCTOU 봉인).
+
+**Wave 2 스케일 진입 전 코드전용 (2 PR)**: #1074 #9 feedback_status owner 필터(overview 7집계 중 유일 누락 → 타테넌트 private repo CTA 노출·RLS 2차 방어심층 갭 → count+recent owner 스코프 + 🔴 호출부 배선 가드[service만 mutation=route 미전달 못잡음]) · #1075 #12+#20 retention sweep(insight_cache 만료행[get_fresh 는 None 만·미삭제] + merge_queue 종결행[status 만 갱신·삭제경로0] 무한누적 → `purge_expired`+`purge_terminal` 통합 cron·pending 절대보존).
+
+🔴 **재사용 gotcha**: JSON 추출 `.as_string()`=SQLite JSON_EXTRACT/PG `->>` 양방언 따옴표無(compile 실측) · naive/aware 정합 `now.replace(tzinfo=None)` 정규화 의무 · 정책16 2-usage 예외(드리프트가 버그원인이면 헬퍼 통합이 정확성 우선) · cron_service 한국어 AST 가드가 신규 sweep 함수 스캔 → 알림은 i18n 키·로그는 대상 외.
+
+🔴 **남은 로드맵 = 전부 사용자 결정 선행**(정책 15 High-tier): 테넌트 쿼터/예산(멀티테넌트 가용성) · 수평 확장 안전화(loop-guard/rate-limit/cron in-process → Redis 결정) · 관측성(request-id/metrics/구조화로깅 0 → 코드전용 착수 후보) · #18 계정삭제 SET NULL→CASCADE(GDPR+NULL-owner 결합 시 전역 공개) · days 화이트리스트. 스케일 진입 후 코드전용 백로그: #4 repos N+1·#5 insight threadpool·#16 윈도우 캡·#13 커넥션풀 조기반납.
+
+**통합 후 실측**: 단위 5365→**5412**(+47, 5408 passed + 4 skipped) · 통합 154 불변 · E2E 122 불변 · 3 로케일 821→**824** drift 0. #1073·#1075 는 railway.toml/internal_cron/cron_service/architecture 동일 영역 충돌 → rebase 로 양 cron(orphan sweep + retention sweep) 병존 해소.
 
 ## Grok 백로그 NULL-owner IDOR + 워커 내구성 6 PR (2026-07-17)
 
