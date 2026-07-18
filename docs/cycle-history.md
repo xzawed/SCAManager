@@ -157,7 +157,7 @@
 
 🔴 **자율 판단 학습**: (1) 게이트 auto-merge 레이스로 #1077 fix-up 유실 → 별도 fix PR #1079(post-merge fix default). (2) Track C 를 background 서브에이전트에 **worktree 격리 누락**으로 착수 → 공유 작업트리 충돌 → TaskStop·산출물 전량 재검증·클린 브랜치 수동 커밋(파일편집 background agent = `isolation: worktree` 의무).
 
-**보류(사용자 결정)**: owed 회신(#1058/#1062)·P2#36 CI backstop·retention/reliability High-tier(P2#16/18/43). 단위 5412→**5467**(+55)·통합 154·E2E 122 불변.
+**후속 (#1088~#1092 — 사용자 "권장 방향" 승인)**: owed #1058 email detail + 🔴 **자성** worktree 격리 규칙 확장(단일 background 에이전트 포함·전례2) · **P2#36** repo-integrity CI backstop(4 whole-repo stdlib 가드 push+PR·memory-refs/bilingual 제외) · **P2#18** `_begin_attempt` fail-safe(흔적 write 실패가 정상분석 abort 차단·pipeline-reviewer CONFIRMED) · **P2#17** merge_retry 4 종결경로 MergeAttempt 미러링(GC 전 이력보존) · **P2#43** retention DELETE PG round-trip(naive/aware·pending 절대보존; 🔴 seed 제약 위반 2건[display_name NOT NULL·UNIQUE days] CI-only fail → 로컬 SQLite 실측 후 fix-up). gone 브랜치 17 정리. **보류(사용자 결정)**: owed 회신(#1058 SMTP/#1062 IDOR)·P2#16 claude_api_calls GC 보존기간. 단위 5412→**5475**(+63)·통합 154→**158**·E2E 122 불변.
 
 ## 프리미엄 준비도 감사 + Wave 0~2 코드전용 8 PR (2026-07-18)
 
