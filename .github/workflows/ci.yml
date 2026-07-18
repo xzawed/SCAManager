@@ -108,6 +108,35 @@ jobs:
         # Diff-scoped: new public repo/service funcs with 0 in-src AST callers are blocked (find_orphaned pattern).
         run: python scripts/check_dead_code.py "${{ github.event.pull_request.base.sha }}" HEAD
 
+  # repo 무결성 stdlib 가드 CI 백스톱 (회고 2026-07-18 P2#36) — pre-commit 우회(--no-verify)·미설치 시에도 서버측 강제.
+  # 4 whole-repo 상태 가드(docs↔README 배지·cycle-history TOC 앵커·config↔env-vars·RepoConfig 3-layer)는
+  # pre-commit-only 라 우회 가능했다 → 의존성 0(stdlib)·초 단위 완료라 push+PR 양쪽 서버측 백스톱으로 승격.
+  # (check_memory_refs=repo 밖 메모리 의존·check_bilingual_comments=staged-diff 기반은 제외 — CI whole-repo 부적합.)
+  # Repo-integrity stdlib guard CI backstop — enforces server-side even when pre-commit is bypassed/uninstalled.
+  repo-integrity:
+    name: Repo integrity guards (stdlib backstop)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: STATE↔README 배지 수치 정합 (check_docs_sync)
+        run: python scripts/check_docs_sync.py
+
+      - name: cycle-history TOC 앵커 정합 (check_toc_anchors)
+        run: python scripts/check_toc_anchors.py
+
+      - name: config.py↔env-vars.md 싱크 (check_env_vars_sync)
+        run: python scripts/check_env_vars_sync.py
+
+      - name: RepoConfig 3-layer 싱크 (check_config_5way_sync)
+        run: python scripts/check_config_5way_sync.py
+
   # 의존성 취약점 SCA 게이트 — PyPI Advisory DB(OSV) 대조로 known CVE 차단(회고 2026-07-03 C7).
   # requirements 가 == 핀(CI==Railway 버전 일치)이므로 스캔 대상 = 실제 배포 버전. 신규 CVE 발표 시 CI fail →
   # 의존성 bump 강제(현재 취약점 0 실측). 프로덕션+개발 의존성 모두 대상.
