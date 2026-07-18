@@ -107,12 +107,71 @@ def _changed_scoped_files(base, head):
     return [n for n in names.splitlines() if n.endswith(".py")]
 
 
-def _total_references(name, src_root):
-    """src/ 전체 .py 에서 name 의 AST 참조 총합.
-    Total AST references to `name` across all src/*.py."""
+def module_path_for(file_path):
+    """`src/repositories/foo.py` → `src.repositories.foo` (Windows 구분자 포함).
+    Convert a file path to its dotted module path (handles both separators)."""
+    normalized = str(file_path).replace("\\", "/")
+    return normalized[:-3].replace("/", ".") if normalized.endswith(".py") else normalized.replace("/", ".")
+
+
+def count_qualified_references(name, defining_module, source, same_module=False):
+    """`source` 에서 **정의 모듈에 한정된** `name` 참조 수.
+    Count references to `name` in `source` that are qualified to `defining_module`.
+
+    🔴 이름 전역 매칭 금지 (회고 2026-07-19 P1): 구 구현은 이름만 보고 세어, 정의 모듈을
+    import 하지도 않은 파일의 동명 속성 접근(`repo.get_by_id(1)`)을 참조로 집계했다. 그 결과
+    흔한 CRUD 명의 신규 dead 함수는 항상 통과했고, `find_orphaned` 가 잡힌 것은 이름이
+    희귀해서였을 뿐이다(가드 성립 근거가 우연).
+    Never match by bare name: unrelated `x.<name>` attribute access must not count.
+
+    집계 대상 / Counted:
+      - `from <정의모듈> import <name>[ as A]` → `A` 의 Name 참조
+      - `from <부모> import <모듈>[ as B]` / `import <정의모듈>` → `.<name>` 속성 접근
+      - `same_module=True` (정의 파일 자신) → import 없이 `name` Name 참조
+    """
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError):
+        return 0
+
+    local_names = {name} if same_module else set()
+    module_bound = False
+    parent, _, basename = defining_module.rpartition(".")
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            if node.module == defining_module:
+                for alias in node.names:
+                    if alias.name == name:
+                        local_names.add(alias.asname or alias.name)
+            elif node.module == parent and any(a.name == basename for a in node.names):
+                module_bound = True
+        elif isinstance(node, ast.Import):
+            if any(a.name == defining_module for a in node.names):
+                module_bound = True
+
+    count = 0
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and node.id in local_names:
+            count += 1
+        elif module_bound and isinstance(node, ast.Attribute) and node.attr == name:
+            count += 1
+    return count
+
+
+def _total_references(name, defining_path, src_root):
+    """src/ 전체 .py 에서 name 의 **한정** 참조 총합.
+    Total qualified references to `name` across all src/*.py."""
+    defining_module = module_path_for(defining_path)
+    defining_abs = Path(defining_path).resolve()
     total = 0
     for py in src_root.rglob("*.py"):
-        total += count_ast_references(name, py.read_text(encoding="utf-8", errors="replace"))
+        total += count_qualified_references(
+            name,
+            defining_module,
+            py.read_text(encoding="utf-8", errors="replace"),
+            same_module=(py.resolve() == defining_abs),
+        )
     return total
 
 
@@ -122,19 +181,23 @@ def main(argv):
 
     # 변경된 scoped 파일들의 ADDED 공개 def + unwired-ok 마커 수집.
     # Collect ADDED public defs + unwired-ok markers across changed scoped files.
-    candidates, whitelisted = set(), set()
+    # 🔴 name → 정의 파일 매핑 유지 — 한정 참조 계산에 정의 모듈이 필요하다(회고 P1).
+    # Keep name → defining file so references can be qualified to the defining module.
+    candidates, whitelisted = {}, set()
     for path in _changed_scoped_files(base, head):
         diff = _git(["diff", "-U0", base, head, "--", path])
-        candidates |= parse_added_public_defs(diff)
+        for defined in parse_added_public_defs(diff):
+            candidates[defined] = path
         whitelisted |= parse_unwired_ok_names(diff)
-    candidates -= whitelisted
+    for name in whitelisted:
+        candidates.pop(name, None)
 
     if not candidates:
         print("✅ 신규 dead-code 후보 없음 / no new dead-code candidates")
         return 0
 
     src_root = Path("src")
-    dead = sorted(n for n in candidates if _total_references(n, src_root) == 0)
+    dead = sorted(n for n, path in candidates.items() if _total_references(n, path, src_root) == 0)
     if not dead:
         print(f"✅ 신규 공개 함수 {len(candidates)}개 모두 src 내 호출자 有 / all wired")
         return 0
