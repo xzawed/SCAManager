@@ -30,8 +30,16 @@ from sqlalchemy.orm import sessionmaker
 from src.database import Base
 from src.models.analysis import Analysis
 from src.models.repository import Repository
-from src.models.user import User  # noqa: F401 — FK 대상 테이블 등록 (create_all)
+from src.models.user import User
 from src.ui.routes.detail import _load_repo_analyses
+
+# FK 대상 테이블 등록 — Base.metadata.create_all 이 repositories.user_id FK 가 참조하는
+# users 테이블을 만들려면 User 모델이 metadata 에 등록돼 있어야 한다. 튜플로 명시 참조하여
+# CodeQL py/unused-import(#545)를 봉인한다 (# noqa 는 flake8 전용·CodeQL 룰셋에는 미적용).
+# FK target table registration — create_all needs the User model in Base.metadata to build
+# the users table referenced by repositories.user_id. Referenced explicitly via this tuple so
+# CodeQL doesn't flag it as unused (# noqa suppresses flake8 only, not the CodeQL ruleset).
+_FK_TARGET_MODELS = (User,)
 
 
 @pytest.fixture
