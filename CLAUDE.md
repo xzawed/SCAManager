@@ -309,7 +309,7 @@ Why + How to apply (자가 검토 4 자문) 상세: [.claude/policies/active.md#
 
 ### 작업 시작 전 필수 체크리스트 (매 작업마다)
 
-모든 작업 착수 전 아래 다섯 가지를 순서대로 확인한다. 30초면 충분하다.
+모든 작업 착수 전 아래를 순서대로 확인한다. 30초면 충분하다.
 
 ```bash
 gh run list --limit 3                                       # CI status (기존 vs 신규 실패 구분)
@@ -317,10 +317,17 @@ gh api repos/xzawed/SCAManager/code-scanning/alerts \      # Code Scanning open 
   --jq '[.[] | select(.state=="open")] | length'            # CI/auth 부재 시 GitHub Security 탭 직접 확인
 ls ~/.claude/projects/d--Source-SCAManager/memory/ | \      # 신규 fixture/테스트/패턴 작성 전 메모리 grep
   grep -E "pytest-|test-|feedback-"                         # 해당 영역 메모리 본문 read 후 default 적용 의무
-ls docs/_archive/reports/ | tail -1                         # 직전 회고 보고서 회신 회수 확인 (정책 9 강화 페어)
+python scripts/check_retro_cadence.py                       # 🔴 회고 카덴스 기계 카운터 (정책 8 진화 (4))
+                                                            #   → breached(🔴) 시 5+1 회고 진입 판정 의무
 git status                                                  # 미커밋 변경 없는지 확인
 git checkout -b <브랜치명>                                  # 브랜치 생성 (main 직접 커밋 금지)
 ```
+
+> 🔴 **회고 카덴스 기계 카운터 (2026-07-18 P0 — 문서-only 트리거 자기위반 학습)**: `check_retro_cadence.py`
+> 가 직전 정식 회고 이후 머지 PR 수를 실측해 임계(≥15) 도달 시 loud 경고한다. **문서-only 정책(정책 8 진화 (4))
+> 이 두 번 연속 실패**(2026-07-03 신설 → 2026-07-18 ~46 PR 무회고 자기위반)해 기계 신호로 승격 (정책 4 단언+가드
+> 페어). breached 출력 시 = 사이클 종료 전 회고 진입 판정 (자기회고 갈음은 사용자 명시 승인 시에만). advisory
+> (비차단·exit 0) — 커밋/PR 미간섭.
 
 **메모리 인덱스**: `~/.claude/.../memory/MEMORY.md` 참조 (매 세션 자동 로드).
 - 신규 메모리 추가 시 MEMORY.md 인덱스 + 카테고리 카운트 동기화 의무 (사이클 75 분류 default).
