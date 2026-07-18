@@ -415,6 +415,29 @@ def _finish_attempt(repo_id: int, commit_sha: str) -> None:
         logger.warning("analysis_attempt 정리 실패 (sha=%s): %s", commit_sha[:8], exc)
 
 
+def _begin_attempt(repo_id: int, commit_sha: str, pr_number: int | None, event: str | None) -> None:
+    """분석 시작 흔적을 남긴다 — 자체 세션·fail-safe (소실 탐지 페어, `_finish_attempt` 대칭).
+
+    Record the analysis-start breadcrumb — own session, fail-safe (loss-detection pair).
+
+    🔴 흔적 기록은 best-effort observability — write 실패(IntegrityError 외 DB 오류)가 정상 분석을
+    중단시키면 관측용 흔적이 관측 대상을 죽이는 자기모순이다. `_finish_attempt` 와 대칭으로 예외를
+    삼킨다(로그만) — 최악은 소실 창 1건 미기록(탐지 누락)이며 정상 분석 abort 보다 훨씬 가볍다.
+    반환값(`begin_attempt` first-writer-wins False)은 의도적 무시 — dedup 게이트가 아니다.
+    🔴 자체 세션 사용 — 실패가 원 파이프라인 세션을 오염(PendingRollbackError)시키지 않게 격리(#1069 학습).
+    🔴 Breadcrumb write is best-effort — swallow non-IntegrityError DB failures (symmetric to
+    `_finish_attempt`) so a write failure can't abort a healthy analysis. Own session isolates the
+    failure from the pipeline session (avoids PendingRollbackError — #1069 lesson).
+    """
+    try:
+        with SessionLocal() as db:
+            analysis_attempt_repo.begin_attempt(
+                db, repo_id=repo_id, commit_sha=commit_sha, pr_number=pr_number, event=event,
+            )
+    except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+        logger.warning("analysis_attempt 시작 흔적 기록 실패 (sha=%s): %s", commit_sha[:8], exc)
+
+
 def _ensure_repo(db: Session, repo_name: str, commit_sha: str) -> tuple[Repository, str] | None:
     """리포를 조회·등록하고 owner token을 결정한다. SHA 중복이면 None을 반환한다."""
     owner_token: str = settings.github_token
@@ -762,10 +785,9 @@ async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disa
                 # ignored — begin_attempt is not a dedup gate. Deduplication is solely the job of
                 # find_by_sha's first-writer-wins (#794/#780) in _ensure_repo/_save_and_gate;
                 # short-circuiting here would entangle the two mechanisms and diverge.
-                analysis_attempt_repo.begin_attempt(
-                    db, repo_id=_review_repo_id, commit_sha=commit_sha,
-                    pr_number=pr_number, event=event,
-                )
+                # 🔴 자체 세션·fail-safe 헬퍼 — 흔적 write 실패가 정상 분석을 abort 하지 않는다(P2#18).
+                # Own-session, fail-safe helper — a breadcrumb-write failure never aborts the analysis.
+                _begin_attempt(_review_repo_id, commit_sha, pr_number, event)
 
             with stage_timer("collect_files", repo=repo_log) as ctx:
                 # Phase H PR-3A: PyGithub 동기 I/O 를 별도 스레드로 격리
