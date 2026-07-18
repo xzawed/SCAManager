@@ -1,5 +1,22 @@
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python scripts/check_retro_cadence.py",
+            "timeout": 20
+          },
+          {
+            "type": "command",
+            "command": "python scripts/check_owed_verification.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Write|Edit|MultiEdit",
