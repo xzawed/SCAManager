@@ -38,3 +38,24 @@ jobs:
         uses: github/codeql-action/analyze@v4
         with:
           category: "/language:${{ matrix.language }}"
+
+      - name: Gate on new CodeQL alerts (note 포함 — 회고 2026-07-19 P1)
+        # 🔴 실측 반증: 자초 alert #547~#549 는 PR 시점에 **이미 탐지**돼 있었다
+        # (instances API 로 refs/pull/1081·1082·1083/merge 인스턴스 확인). `note` 심각도라
+        # Code scanning 체크가 SUCCESS 였을 뿐 — 근본은 '게이트 부재'가 아니라 '임계값 미설정'.
+        # 룰별 stdlib 가드 증축(3회)은 이미 잡힌 것을 다시 잡는 대응이었다.
+        # 🔴 Measured: the self-inflicted alerts had PR-ref instances — PR-time CodeQL detected
+        # them; only the `note` severity threshold let the check pass. This gates them.
+        # base(main) 에 이미 열린 alert 는 제외 → legacy alert 로 무관한 PR 이 막히지 않는다.
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 🔴 head.sha 아님 — pull_request 이벤트에서 CodeQL 이 분석하는 대상은
+          # refs/pull/N/merge 의 **머지 커밋**이고 github.sha 가 그 SHA 다.
+          # head.sha 로 대조하면 분석을 영영 못 찾아 매번 fail-closed(exit 2)로 막힌다.
+          # NOT head.sha — CodeQL analyzes the merge commit for pull_request events.
+          python scripts/check_codeql_alerts.py \
+            "${{ github.repository }}" \
+            "${{ github.event.pull_request.number }}" \
+            "${{ github.sha }}"
