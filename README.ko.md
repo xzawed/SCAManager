@@ -5,7 +5,7 @@
 **GitHub Push / PR 이벤트 기반 자동 코드 품질 분석 · AI 리뷰 · Gate 서비스**
 
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.136-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.139-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-SQLAlchemy_2-336791?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Claude AI](https://img.shields.io/badge/Claude_AI-Sonnet_4.6_(default)-CC6600?style=flat-square&logo=anthropic&logoColor=white)](https://www.anthropic.com/)
 [![Railway](https://img.shields.io/badge/Deploy-Railway-0B0D0E?style=flat-square&logo=railway&logoColor=white)](https://railway.app/)
@@ -555,8 +555,12 @@ POST /api/users/me/telegram-otp      Telegram /connect 연동용 6자리 OTP 발
 
 **내부 Cron** (INTERNAL_CRON_API_KEY 필요)
 ```
-POST /api/internal/cron/weekly       주간 Telegram 요약 리포트 트리거
-POST /api/internal/cron/trend        트렌드 알림 체크 트리거 (7일 이동 평균)
+POST /api/internal/cron/weekly                주간 Telegram 요약 리포트 트리거
+POST /api/internal/cron/trend                 트렌드 알림 체크 트리거 (7일 이동 평균)
+POST /api/internal/cron/scan-security         GitHub Code/Secret Scanning 알림 폴링 트리거
+POST /api/internal/cron/retry-pending-merges  CI 인지 auto-merge 재시도 큐 처리 트리거
+POST /api/internal/cron/sweep-orphans         소실된 analysis_attempts 표면화·정리 (소실 탐지)
+POST /api/internal/cron/retention-sweep       만료 인사이트 캐시 + 종결 머지-재시도 행 GC
 ```
 
 **헬스체크**

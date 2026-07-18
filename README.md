@@ -5,7 +5,7 @@
 **Automated Code Quality Analysis · AI Review · PR Gate Service for GitHub**
 
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.136-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.139-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-SQLAlchemy_2-336791?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Claude AI](https://img.shields.io/badge/Claude_AI-Sonnet_4.6_(default)-CC6600?style=flat-square&logo=anthropic&logoColor=white)](https://www.anthropic.com/)
 [![Railway](https://img.shields.io/badge/Deploy-Railway-0B0D0E?style=flat-square&logo=railway&logoColor=white)](https://railway.app/)
@@ -501,6 +501,8 @@ POST /api/internal/cron/weekly                Trigger weekly Telegram summary re
 POST /api/internal/cron/trend                 Trigger trend alert check (7-day moving avg)
 POST /api/internal/cron/scan-security         Trigger GitHub Code/Secret Scanning alert poll
 POST /api/internal/cron/retry-pending-merges  Trigger CI-aware auto-merge retry queue processing
+POST /api/internal/cron/sweep-orphans         Surface & purge orphaned analysis_attempts (loss detection)
+POST /api/internal/cron/retention-sweep       GC expired insight cache + terminal merge-retry rows
 ```
 
 **Health Check**
