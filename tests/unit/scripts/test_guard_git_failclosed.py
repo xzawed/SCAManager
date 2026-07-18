@@ -21,10 +21,15 @@ from scripts.check_dual_import import _git as dual_import_git
 from scripts.check_noqa_sideeffect import _git as noqa_git
 
 # (이름, 호출 래퍼) — check_dual_import 는 가변인자, 나머지는 리스트 인자.
-# (name, caller) — check_dual_import takes varargs; the others take a list.
+# (name, caller) — check_dual_import 는 가변인자라 언패킹 lambda 가 필요하고,
+# 나머지 둘은 리스트 인자를 그대로 받으므로 **함수 참조 그대로** 쓴다.
+# 🔴 `lambda args: f(args)` 는 `f` 와 동일 — CodeQL py/unnecessary-lambda (alert #550·#551).
+#    본 PR 의 신규 CodeQL 게이트가 머지 전에 적발했다(자초 CodeQL 4회차, 첫 pre-merge 차단).
+# (name, caller) — dual_import takes varargs so it needs the unpacking lambda; the other two
+# take the list directly, so pass the function reference (a wrapping lambda is redundant).
 _GIT_HELPERS = [
-    ("check_dead_code", lambda args: dead_code_git(args)),
-    ("check_noqa_sideeffect", lambda args: noqa_git(args)),
+    ("check_dead_code", dead_code_git),
+    ("check_noqa_sideeffect", noqa_git),
     ("check_dual_import", lambda args: dual_import_git(*args)),
 ]
 
