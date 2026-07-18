@@ -247,20 +247,24 @@ def dashboard_trend(
     _now = now or datetime.now(timezone.utc)
     since = _now - timedelta(days=days)
 
+    # 🔴 score + created_at 만 select — 이전엔 `select(Analysis)` full ORM 이 result JSON blob
+    # 까지 로드했으나 아래 그룹화는 두 스칼라만 쓴다(준비도 감사 #17, 순수 낭비 제거).
+    # 🔴 Select only score + created_at; the grouping below uses just these two scalars, so the
+    # previous `select(Analysis)` loaded the result blob for nothing.
     base = (
-        select(Analysis)
+        select(Analysis.score, Analysis.created_at)
         .where(Analysis.created_at >= since)
         .where(Analysis.score.isnot(None))
         .order_by(Analysis.created_at.asc())
     )
-    analyses = db.scalars(_apply_analysis_user_filter(base, user_id)).all()
+    rows = db.execute(_apply_analysis_user_filter(base, user_id)).all()
 
     # Python-side 날짜별 그룹화 — SQLite/PG 날짜 함수 불일치 회피
     daily: dict[str, list[int]] = {}
-    for a in analyses:
-        date_str = a.created_at.strftime("%Y-%m-%d") if a.created_at else ""
+    for score, created_at in rows:
+        date_str = created_at.strftime("%Y-%m-%d") if created_at else ""
         if date_str:
-            daily.setdefault(date_str, []).append(a.score)
+            daily.setdefault(date_str, []).append(score)
 
     return [
         {
