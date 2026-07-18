@@ -342,7 +342,7 @@ GitHub Code Scanning 점검 detail 절차 + 운영 통합 = `docs/runbooks/opera
 ### 필수 원칙
 
 - **TDD 우선**: 구현 코드 작성 전 반드시 `test-writer` 에이전트로 테스트를 먼저 작성한다.
-- **Hook 신뢰**: `src/` 파일 편집 후 PostToolUse Hook이 자동 실행하는 pytest 결과를 확인한다. 실패 시 다음 단계로 진행하지 않는다.
+- **Hook = best-effort 조기 실패 탐지 (전체 게이트 아님)**: `src/` 파일 편집 후 PostToolUse Hook(`posttool_pytest_smoke.py`)이 **편집된 영역의 tests/unit 서브디렉토리만** 빠르게 실행(대응 없으면 collection 스모크)한다. ❌ 배너 시 즉시 조사. 🔴 **전체 게이트는 push-time(6-step ②)로 위임** — 이 훅은 스코프 스모크라 통과가 전체 통과를 보장하지 않는다 (2026-07-18 P1 테마 C — 구 훅이 전체 5566 을 60s 타임아웃에 돌려 완주 불가·`|| true` 로 삼켜 false-green 이던 것을 봉인).
 - **Phase 완료 조건**: 테스트 전체 통과 + `/lint` 통과 + (파이프라인 변경 시 `pipeline-reviewer` 승인) 세 조건이 모두 충족될 때만 Phase 완료를 선언한다.
 - **완료 시 필수 6-step**: 작업이 완료되면 반드시 ① 커밋 → ② 🔴 **push 전 `pytest tests/unit` 전체 통과 실측** (영역 서브셋[`tests/unit/ui`+`i18n` 등]만 실행으로 대체 금지 — #1041 에서 i18n 키 제거가 타 영역 `test_i18n_settings._KEYS` parametrize 연쇄를 깨뜨렸으나 서브셋만 돌려 놓쳐 CI 6-fail. **인라인 cleanup·docs-only 예외 없음**) → ③ `git push` → ④ PR 생성(`gh pr create`) → ⑤ `docs/STATE.md` 수치 갱신 + `docs/cycle-history.md` 사이클 이력 동기화 → ⑥ **docs/architecture.md 동기화** (신규 파일 추가·삭제·이름 변경 시 `src/` 트리와 `### 핵심 데이터 흐름` 내 언급 갱신) 를 순서대로 수행한다. 예외 없음.
   - 🔴 **⑤ 배치-PR 이월 분기 (2026-07-09 rank6 — 병렬 STATE/badge 충돌 자초 학습)**: 세션 내 **동일 파일(STATE.md 수치 라인·README 배지)을 건드리는 미머지 PR 이 1건 이상 in-flight** 이면, per-PR ⑤는 **commit body 에 카운트 delta 만 기록**하고 STATE/배지 실갱신은 **세션 종료 시 단일 trailing sync PR 로 이월**한다. 이유: 여러 PR 이 STATE 동일 라인을 연속 write 하면 git merge conflict 자초(본 세션 ⑤ #1048 이 ③ 머지 후 README 인접-라인 충돌 자초 → 사후 수습). PR 착수 전 `git log --oneline main..<open-branches>` 또는 `gh pr list` 로 동일 파일 touch 미머지 PR 존재 여부 1줄 확인 의무.
