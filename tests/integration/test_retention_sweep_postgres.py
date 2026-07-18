@@ -62,8 +62,8 @@ def _seed_user(session):
     from src.models.user import User  # pylint: disable=import-outside-toplevel
 
     user = User(
-        github_id="ret-p2-43", github_login="rettest",
-        github_access_token="x", email="ret@example.com",
+        github_id="ret-p2-43", github_login="rettest", github_access_token="x",
+        email="ret@example.com", display_name="Ret Test",  # display_name NOT NULL (PG 강제)
     )
     session.add(user)
     session.flush()
@@ -89,13 +89,15 @@ def _seed_repo_analysis(session, pr):
     return analysis.id
 
 
-def _seed_cache(session, user_id, *, expires_at):
+def _seed_cache(session, user_id, *, days, expires_at):
+    # 🔴 days 를 행마다 달리 준다 — insight_narrative_cache 는 UNIQUE(user_id, days, language)
+    # 라 같은 (user_id, days, language) 두 행은 IntegrityError (PG·SQLite 공통).
     from src.models.insight_narrative_cache import (  # pylint: disable=import-outside-toplevel
         InsightNarrativeCache,
     )
 
     row = InsightNarrativeCache(
-        user_id=user_id, repo_id=None, days=7, language="en",
+        user_id=user_id, repo_id=None, days=days, language="en",
         response_json={}, expires_at=expires_at,
     )
     session.add(row)
@@ -129,8 +131,8 @@ def test_purge_expired_deletes_only_past_rows_on_postgres():
     session = _fresh_session()
     try:
         uid = _seed_user(session)
-        expired = _seed_cache(session, uid, expires_at=_NAIVE_NOW - timedelta(hours=1))
-        fresh = _seed_cache(session, uid, expires_at=_NAIVE_NOW + timedelta(hours=1))
+        expired = _seed_cache(session, uid, days=7, expires_at=_NAIVE_NOW - timedelta(hours=1))
+        fresh = _seed_cache(session, uid, days=30, expires_at=_NAIVE_NOW + timedelta(hours=1))
 
         deleted = insight_narrative_cache_repo.purge_expired(session, now=_NOW)  # aware now
 
@@ -183,8 +185,8 @@ def test_purge_correct_under_non_utc_session_timezone():
     try:
         session.execute(text("SET TimeZone = 'America/New_York'"))
         uid = _seed_user(session)
-        expired = _seed_cache(session, uid, expires_at=_NAIVE_NOW - timedelta(hours=1))
-        fresh = _seed_cache(session, uid, expires_at=_NAIVE_NOW + timedelta(hours=1))
+        expired = _seed_cache(session, uid, days=7, expires_at=_NAIVE_NOW - timedelta(hours=1))
+        fresh = _seed_cache(session, uid, days=30, expires_at=_NAIVE_NOW + timedelta(hours=1))
 
         deleted = insight_narrative_cache_repo.purge_expired(session, now=_NOW)
 
