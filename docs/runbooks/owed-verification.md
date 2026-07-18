@@ -30,4 +30,19 @@
 
 사용자는 각 행의 상태를 `✅/❌/⏭️` 로 갱신하거나, Claude 에게 결과를 전달하면 Claude 가 갱신한다. `❌`(NG) 발견 시 = 즉시 fix PR 착수(정책 7). 전 행 `✅`/`⏭️` 확정 시 = 원장에서 **아카이브 섹션으로 이동**(본 상단 표는 미결만 유지).
 
+## 🔴 집행 기전 (2026-07-19 P0 — 원장이 write-only 였던 자기위반 봉인)
+
+이 원장은 **기계 배선**돼 있다. `scripts/check_owed_verification.py` 가 위 표를 파싱해 **안전등급 ⏳ 미결 건이 있으면 세션 시작 시 loud 경고**하고, 훅 stdout 이 Claude 컨텍스트에 주입된다.
+
+| 요소 | 값 |
+|------|-----|
+| 실행 주체 | `.claude/settings.json` `hooks.SessionStart` (matcher `startup\|resume`) |
+| 판정 | 안전등급 ⏳ ≥1건 → breached (운영등급 미결은 카운트만 보고 — 정책 2 진화 Phase 종료 일괄) |
+| 성격 | advisory (비차단·항상 exit 0) — 세션/커밋/PR 미간섭 (정책 17) |
+| 회귀 가드 | `tests/unit/scripts/test_check_owed_verification.py` · `test_session_start_wiring.py` |
+
+🔴 **표 형식 변경 시 파서 동반 확인 의무** — 상태 컬럼이 **마지막 셀**, PR 셀이 `**#NNNN**` 형태라는 두 계약에 파서가 의존한다. 형식이 바뀌면 파싱 0행 = 카운터가 무음으로 눈이 먼다(`test_live_ledger_parses_nonempty` 가 이 무음 실패를 차단).
+
 > 🔴 이 원장은 회고 2026-07-18 P1#13(8-PR Wave 종료 시 owed 운영검증 미취합) 조치로 신설됐다. 세션 종료 시 이 원장 갱신이 정책 5 Phase-종료 cross-reference 자가 검토(정책 2/5/8/11)의 하위 체크다.
+>
+> 🔴 **2026-07-19 회고 P0 — 신설 당시 이 원장은 어떤 집행면에도 배선되지 않은 기록 전용 장치였다.** 회고가 P0 로 규정한 '문서-only 시정은 행동을 못 바꾼다'를 같은 세션에 재생산(3회차)했고, 그 결과 안전등급 2건이 4세션째 ⏳ 로 누적됐다. 위 §집행 기전이 그 시정이다.

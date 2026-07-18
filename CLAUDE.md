@@ -317,17 +317,24 @@ gh api repos/xzawed/SCAManager/code-scanning/alerts \      # Code Scanning open 
   --jq '[.[] | select(.state=="open")] | length'            # CI/auth 부재 시 GitHub Security 탭 직접 확인
 ls ~/.claude/projects/d--Source-SCAManager/memory/ | \      # 신규 fixture/테스트/패턴 작성 전 메모리 grep
   grep -E "pytest-|test-|feedback-"                         # 해당 영역 메모리 본문 read 후 default 적용 의무
-python scripts/check_retro_cadence.py                       # 🔴 회고 카덴스 기계 카운터 (정책 8 진화 (4))
-                                                            #   → breached(🔴) 시 5+1 회고 진입 판정 의무
 git status                                                  # 미커밋 변경 없는지 확인
 git checkout -b <브랜치명>                                  # 브랜치 생성 (main 직접 커밋 금지)
 ```
 
-> 🔴 **회고 카덴스 기계 카운터 (2026-07-18 P0 — 문서-only 트리거 자기위반 학습)**: `check_retro_cadence.py`
-> 가 직전 정식 회고 이후 머지 PR 수를 실측해 임계(≥15) 도달 시 loud 경고한다. **문서-only 정책(정책 8 진화 (4))
-> 이 두 번 연속 실패**(2026-07-03 신설 → 2026-07-18 ~46 PR 무회고 자기위반)해 기계 신호로 승격 (정책 4 단언+가드
-> 페어). breached 출력 시 = 사이클 종료 전 회고 진입 판정 (자기회고 갈음은 사용자 명시 승인 시에만). advisory
-> (비차단·exit 0) — 커밋/PR 미간섭.
+> 🔴 **카운터 2종은 이제 SessionStart 훅이 자동 실행한다 (2026-07-19 P0 — 배선 누락 학습)**:
+> `check_retro_cadence.py`(회고 카덴스) + `check_owed_verification.py`(owed 원장 미결)가
+> `.claude/settings.json` `hooks.SessionStart`(matcher `startup|resume`)에 배선돼 **세션 시작 시 기계
+> 실행**되고, 훅 stdout 은 Claude 컨텍스트에 주입된다 → **위 체크리스트에 수동 명령으로 적을 필요 없다**.
+> 배선 회귀 가드: `tests/unit/scripts/test_session_start_wiring.py` (산문 문자열이 아니라 settings.json
+> 실행 기전을 단언 — 뮤테이션 3종 탐지 실증).
+>
+> - **카덴스**: 직전 정식 회고 이후 머지 PR ≥15 시 loud 경고 → 사이클 종료 전 5+1 회고 진입 판정
+>   (자기회고 갈음은 사용자 명시 승인 시에만). 문서-only 정책이 2회 연속 실패(2026-07-03 신설 →
+>   2026-07-18 ~46 PR 무회고)해 기계 신호로 승격.
+> - **owed 원장**: 안전등급(정책 5 NEW-P0-N) ⏳ 미회신 건이 있으면 loud 경고 → 다음 사이클 진입 전
+>   사용자 회신 요청 의무. #1084 가 원장만 만들고 **배선하지 않아** 같은 세션 첫 창에서 자기위반한
+>   것이 근본 (문서-only 시정 3회차).
+> - 양쪽 모두 advisory (비차단·exit 0) — 세션/커밋/PR 미간섭 (정책 17 안정성).
 
 **메모리 인덱스**: `~/.claude/.../memory/MEMORY.md` 참조 (매 세션 자동 로드).
 - 신규 메모리 추가 시 MEMORY.md 인덱스 + 카테고리 카운트 동기화 의무 (사이클 75 분류 default).
