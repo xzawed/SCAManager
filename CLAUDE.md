@@ -376,12 +376,16 @@ GitHub Code Scanning 점검 detail 절차 + 운영 통합 = `docs/runbooks/opera
 
 작업 유형별 실행 순서 (새 기능 / 파이프라인 / Webhook-API / Phase 착수): [docs/runbooks/workflow.md](docs/runbooks/workflow.md#작업-유형별-필수-실행-순서)
 
-### 병렬 에이전트 — 브랜치 충돌 방지
+### 파일 편집 에이전트 — 작업트리 격리 (병렬·단일 무관)
 
-독립 브랜치 + PR이 필요한 병렬 에이전트를 디스패치할 때 아래 세 가지를 반드시 지킨다.
-(전례: 2026-04-27 PR-A·B·C 병렬 작업에서 3개 에이전트 모두 같은 브랜치에 커밋 → PR 3개 대신 1개 생성)
+🔴 **파일을 편집하는 백그라운드 에이전트는 병렬이든 단일이든 `isolation: worktree` 의무**. 격리 없는 백그라운드 에이전트는 **메인 세션과 같은 작업트리·`.git` 을 공유**하므로, 에이전트의 `git checkout`/편집이 메인의 브랜치·working tree 를 오염시킨다 (레이스).
 
-1. **`isolation: worktree` 전원 적용** — 독립 브랜치가 필요한 모든 에이전트에 예외 없이 적용.
+- **전례 1 (병렬)**: 2026-04-27 PR-A·B·C 병렬 작업에서 3개 에이전트 모두 같은 브랜치에 커밋 → PR 3개 대신 1개 생성.
+- **전례 2 (단일 — 2026-07-18)**: Track C docs 편집을 **단일** background 에이전트에 `isolation` 없이 디스패치 → 에이전트가 만든 `git checkout -b` + README/STATE/saas 편집이 메인 세션의 다른 브랜치 working tree 에 미stage 상태로 출현(공유 트리 충돌) → TaskStop 후 산출물 재검증·수동 복구. **"단일이라 격리 불요" = 오판** — 파일 편집이 있으면 단일도 격리.
+
+독립 브랜치 + PR이 필요한 (또는 파일을 편집하는) 백그라운드 에이전트 디스패치 시 아래 세 가지를 반드시 지킨다.
+
+1. **`isolation: worktree` 전원 적용** — 파일을 편집하거나 독립 브랜치가 필요한 모든 백그라운드 에이전트에 예외 없이 적용 (병렬·단일 무관).
 2. **프롬프트 첫 단계에서 고유 브랜치명 명시** — 아래 형식을 프롬프트 Step 1로 고정.
    ```
    1. git checkout -b docs/phase12-state-readme  (이미 있으면 switch)
