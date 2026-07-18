@@ -411,3 +411,30 @@ async def test_lost_begin_race_still_runs_pipeline(pipeline_deps):
     pipeline_deps["ai"].assert_called_once()
     pipeline_deps["telegram"].assert_called_once()
     finish.assert_called_once()
+
+
+async def test_begin_attempt_failure_does_not_abort_pipeline(pipeline_deps):
+    """🔴 P2#18 — begin(흔적 기록)이 DB 오류로 실패해도 정상 분석은 계속돼야 한다.
+
+    소실 탐지 흔적은 best-effort observability — 그 write 실패(IntegrityError 외 DB 오류)가
+    정상 분석을 중단시키면 **관측용 흔적이 관측 대상을 죽이는 자기모순**이다. `_begin_attempt`
+    가 `_finish_attempt` 와 대칭으로 예외를 삼켜(로그만) 파이프라인을 계속 진행한다.
+    A breadcrumb-write failure must not abort a healthy analysis (the observability aid killing the
+    thing it observes). Symmetric to `_finish_attempt`'s swallow-and-log.
+
+    수정 전: begin 예외가 터미널 `except` 로 전파돼 조용히 abort → 알림·finish 미발생.
+    Before the fix, the exception propagated to the terminal `except` and the pipeline aborted
+    silently (no notification, no finish).
+    """
+    from sqlalchemy.exc import OperationalError  # pylint: disable=import-outside-toplevel
+
+    boom = OperationalError("INSERT analysis_attempts", {}, Exception("db connection lost"))
+    with patch(_BEGIN, side_effect=boom) as begin, patch(_FINISH) as finish:
+        await run_analysis_pipeline("push", PUSH_DATA)
+
+    begin.assert_called_once()  # 흔적 기록이 실제로 시도됐다 (spurious pass 차단)
+    # 파이프라인이 begin 실패를 넘어 계속 진행 = 분석·알림·정상 종료 도달
+    # The pipeline proceeds past the begin failure — analysis, notification, and normal finish run.
+    pipeline_deps["ai"].assert_called_once()
+    pipeline_deps["telegram"].assert_called_once()
+    finish.assert_called_once()
