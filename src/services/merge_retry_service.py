@@ -169,6 +169,15 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
     # attempts_count is pre-incremented at claim time, so this check runs BEFORE merge_pr →
     # with max_attempts=N the actual merge attempts are N-1 (intended fail-safe: errs toward fewer tries).
     if row.attempts_count >= row.max_attempts:
+        # 🔴 종결 전 MergeAttempt 미러링 — merge_retry_queue 7일 GC(#1075) 후에도 최종 결과 이력
+        # 보존(회고 P2#17). cfg 미조회 시점이라 threshold 는 enqueue 스냅샷 사용(이 경로는 live-merge
+        # 게이팅이 없어 C11 live-threshold 근거가 무관 — max_attempts 는 순수 재시도 소진).
+        # Mirror to MergeAttempt before the terminal GC so the outcome survives the 7-day sweep (#1075).
+        log_merge_attempt(
+            db, analysis_id=row.analysis_id, repo_name=row.repo_full_name,
+            pr_number=row.pr_number, score=row.score,
+            threshold=row.threshold_at_enqueue, success=False, reason="max_attempts_exceeded",
+        )
         merge_retry_repo.mark_abandoned(db, row.id, reason="max_attempts_exceeded")
         counts["abandoned"] += 1
         return
@@ -181,6 +190,12 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
     if not (cfg.auto_merge and row.score >= cfg.merge_threshold):
         # 설정이 변경되어 자동 머지 조건 미충족 → 포기
         # Config changed so auto-merge condition no longer met → abandon
+        # 🔴 종결 전 MergeAttempt 미러링 (회고 P2#17) — live cfg.merge_threshold(C11 결정).
+        log_merge_attempt(
+            db, analysis_id=row.analysis_id, repo_name=row.repo_full_name,
+            pr_number=row.pr_number, score=row.score,
+            threshold=cfg.merge_threshold, success=False, reason=merge_reasons.CONFIG_CHANGED,
+        )
         merge_retry_repo.mark_abandoned(db, row.id, reason=merge_reasons.CONFIG_CHANGED)
         await _notify_config_changed(row, cfg, language=language)
         counts["abandoned"] += 1
@@ -198,6 +213,12 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
 
     # 이미 머지된 PR — 성공
     if pr_data.get("merged") is True:
+        # 🔴 종결 전 MergeAttempt 미러링 (회고 P2#17) — PR 이 머지된 최종 상태 = success=True.
+        log_merge_attempt(
+            db, analysis_id=row.analysis_id, repo_name=row.repo_full_name,
+            pr_number=row.pr_number, score=row.score,
+            threshold=cfg.merge_threshold, success=True, reason=None,
+        )
         merge_retry_repo.mark_succeeded(db, row.id, reason=merge_reasons.ALREADY_MERGED)
         counts["succeeded"] += 1
         return
@@ -207,6 +228,12 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
     # head key may be present-but-None — normalize with `or {}` (PR #124 pattern)
     head_sha = (pr_data.get("head") or {}).get("sha", "")
     if head_sha and head_sha != row.commit_sha:
+        # 🔴 종결 전 MergeAttempt 미러링 (회고 P2#17) — force-push 로 포기, live threshold(C11).
+        log_merge_attempt(
+            db, analysis_id=row.analysis_id, repo_name=row.repo_full_name,
+            pr_number=row.pr_number, score=row.score,
+            threshold=cfg.merge_threshold, success=False, reason=merge_reasons.SHA_DRIFT,
+        )
         merge_retry_repo.mark_abandoned(db, row.id, reason=merge_reasons.SHA_DRIFT)
         counts["abandoned"] += 1
         return

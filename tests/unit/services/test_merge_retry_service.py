@@ -628,6 +628,68 @@ class TestProcessPendingRetries:
         # 로그 threshold = live(85), 스냅샷(75) 아님
         assert mock_log.call_args.kwargs["threshold"] == 85
 
+    # ── P2#17: 종결 경로 MergeAttempt 미러링 (7일 GC 전 최종 결과 이력 보존) ──
+    # 회고 2026-07-18 P2#17: 4 종결 경로(max_attempts·config_changed·already_merged·sha_drift)가
+    # log_merge_attempt 없이 mark_* 만 해 merge_retry_queue GC(#1075) 후 최종 결과가 소실됐다.
+    def _mirror_patches(self, **kw):
+        p = _standard_patches(**kw)
+        return (p["token"], p["repo_config"], p["pr_data"], p["merge_pr"], p["ci"],
+                p["notify_succeeded"], p["notify_terminal"], p["notify_config"],
+                p["log_attempt"])
+
+    async def test_already_merged_mirrors_to_merge_attempt(self, db_session):
+        """🔴 P2#17 — 이미-머지 종결이 GC 전 MergeAttempt(success=True)로 미러링."""
+        row = _seed_queue_row(db_session)
+        t, rc, pd, mp, ci, ns, nt, nc, la = self._mirror_patches(
+            pr_data={"merged": True, "head": {"sha": "abc123"}},
+        )
+        with t, rc, pd, mp, ci, ns, nt, nc, la as mock_log:
+            await process_pending_retries(db_session, only_ids=[row.id])
+        mock_log.assert_called_once()
+        assert mock_log.call_args.kwargs["success"] is True
+
+    async def test_sha_drift_mirrors_to_merge_attempt(self, db_session):
+        """🔴 P2#17 — SHA drift abandon 이 GC 전 MergeAttempt(success=False, sha_drift)로 미러링."""
+        row = _seed_queue_row(db_session, commit_sha="abc123")
+        t, rc, pd, mp, ci, ns, nt, nc, la = self._mirror_patches(
+            pr_data={"merged": False, "head": {"sha": "force_pushed_sha"}},
+        )
+        with t, rc, pd, mp, ci, ns, nt, nc, la as mock_log:
+            await process_pending_retries(db_session, only_ids=[row.id])
+        mock_log.assert_called_once()
+        assert mock_log.call_args.kwargs["success"] is False
+        assert mock_log.call_args.kwargs["reason"] == "sha_drift"
+
+    async def test_config_changed_mirrors_to_merge_attempt(self, db_session):
+        """🔴 P2#17 — config 변경(auto_merge off) abandon 이 GC 전 MergeAttempt(success=False)로 미러링."""
+        row = _seed_queue_row(db_session, score=80)
+        t, rc, pd, mp, ci, ns, nt, nc, la = self._mirror_patches(cfg=_make_fake_cfg(auto_merge=False))
+        with t, rc, pd, mp, ci, ns, nt, nc, la as mock_log:
+            await process_pending_retries(db_session, only_ids=[row.id])
+        mock_log.assert_called_once()
+        assert mock_log.call_args.kwargs["success"] is False
+        assert mock_log.call_args.kwargs["reason"] == "config_changed"
+
+    async def test_max_attempts_mirrors_to_merge_attempt(self, db_session):
+        """🔴 P2#17 — max_attempts 소진 abandon 이 GC 전 MergeAttempt(success=False)로 미러링.
+
+        이 경로는 cfg 조회 전이라 threshold 는 enqueue 스냅샷(row.threshold_at_enqueue) 사용.
+        """
+        row = _seed_queue_row(db_session, score=80)
+        row.attempts_count = row.max_attempts
+        db_session.commit()
+        with (
+            patch("src.services.merge_retry_service._resolve_github_token", return_value="ghp"),
+            patch("src.services.merge_retry_service.log_merge_attempt") as mock_log,
+        ):
+            await process_pending_retries(
+                db_session, now=datetime(2030, 1, 1, tzinfo=timezone.utc), only_ids=[row.id],
+            )
+        mock_log.assert_called_once()
+        assert mock_log.call_args.kwargs["success"] is False
+        assert mock_log.call_args.kwargs["reason"] == "max_attempts_exceeded"
+        assert mock_log.call_args.kwargs["threshold"] == row.threshold_at_enqueue
+
     # T9-7: CI 진행 중 → 일시적 실패, 클레임 해제
     # T9-7: CI running → transient, release claim
     async def test_process_transient_ci_running_releases(self, db_session):
