@@ -36,10 +36,16 @@ from src.ui.routes.detail import _load_repo_analyses
 # FK 대상 테이블 등록 — Base.metadata.create_all 이 repositories.user_id FK 가 참조하는
 # users 테이블을 만들려면 User 모델이 metadata 에 등록돼 있어야 한다. 튜플로 명시 참조하여
 # CodeQL py/unused-import(#545)를 봉인한다 (# noqa 는 flake8 전용·CodeQL 룰셋에는 미적용).
+# 아래 검증이 튜플을 읽어 py/unused-global 도 회피하고, import 부작용(테이블 등록) 소실 시 loud-fail
+# 한다 (#1040 `_SIDE_EFFECT_MODELS` 동일 패턴 — 회고 P2#4 정합).
 # FK target table registration — create_all needs the User model in Base.metadata to build
 # the users table referenced by repositories.user_id. Referenced explicitly via this tuple so
-# CodeQL doesn't flag it as unused (# noqa suppresses flake8 only, not the CodeQL ruleset).
+# CodeQL doesn't flag it as unused (# noqa suppresses flake8 only, not the CodeQL ruleset). The
+# check below reads the tuple (avoids an unused-global alert) and loud-fails if the import
+# side-effect (table registration) ever breaks — same pattern as #1040's `_SIDE_EFFECT_MODELS`.
 _FK_TARGET_MODELS = (User,)
+if any(m.__tablename__ not in Base.metadata.tables for m in _FK_TARGET_MODELS):
+    raise RuntimeError("FK 대상 ORM import 소실 — 테이블 미등록 / FK-target ORM import lost")
 
 
 @pytest.fixture
