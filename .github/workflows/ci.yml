@@ -327,6 +327,7 @@ jobs:
         run: |
           python -m pytest \
             tests/integration/test_retry_concurrency_postgres.py \
+            tests/integration/test_retention_sweep_postgres.py \
             tests/unit/migrations/test_0020_round_trip.py::test_migration_alembic_round_trip \
             tests/unit/migrations/test_0020_round_trip.py::test_migration_0041_force_round_trip_postgres \
             tests/unit/migrations/test_0020_round_trip.py::test_migrations_idempotent_over_prod_drift_postgres \
