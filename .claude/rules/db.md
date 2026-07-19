@@ -9,6 +9,11 @@ paths:
 
 # DB / 마이그레이션 규칙
 
+- 🔴 **`alembic/env.py` 의 `fileConfig` 는 앱 로깅을 파괴한다 — `is_configured()` 가드 제거 금지 (2026-07-19 P0, #1102)**: `src/main.py` lifespan 은 `configure_logging()` 직후 `command.upgrade()` 로 **인프로세스** 마이그레이션을 돌린다. 그 시점에 `fileConfig(alembic.ini)` 를 그대로 부르면 (a) `[logger_root] level = WARN` + stderr 핸들러가 앱의 stdout 핸들러를 **교체**하고 (b) `fileConfig` 기본값 `disable_existing_loggers=True` 가 `uvicorn.access` 와 **모든 `src.*` 로거를 비활성화**한다. 결과: 앱 INFO 로그·access 로그가 **출시 이래 전부 소실**됐고 `#1100`(로깅 설정 PR)이 운영에서 **무력(inert)** 이었다.
+  - **가드**: `if config.config_file_name is not None and not is_configured():` — 앱이 이미 로깅을 설정했으면 skip. **alembic CLI 단독 실행(`make migrate`)은 앱 설정이 없으므로 기존대로 ini 로깅을 적용**한다(양쪽 다 만족).
+  - 🔴 **피해 규모의 성격**: 이건 "로그가 좀 안 나온다" 가 아니라 **관측 자체가 꺼진 상태**였다. 그 때문에 cron 검증이 3 세션 동안 "로그로 판별 불가" 로 오귀인됐다(`docs/runbooks/owed-verification.md` ⛔ 폐기 섹션 참조). **관측 부재를 외부 인프라 탓으로 돌리기 전에 앱 자신이 관측을 끄고 있는지 먼저 배제할 것.**
+  - 회귀 가드: `tests/unit/migrations/test_alembic_env_logging_guard.py`.
+
 ## 🔴 마이그레이션 PR pre-flight 체크리스트 (2026-07-09 rank12 — gotcha 산발→액션화)
 
 신규 마이그레이션/ORM 변경 PR 착수 전 아래를 순서대로 확인한다 (아래 상세 규칙의 액션 요약 — 신규 지식 아님). **PG 전용문은 SQLite 단위 테스트에서 no-op 라 단위 green 이어도 운영 PG 에서만 드러나는 비대칭** 이 반복되므로 사전 점검이 사후발견보다 싸다.

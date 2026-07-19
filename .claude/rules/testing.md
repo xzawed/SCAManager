@@ -20,6 +20,11 @@ paths:
 
 ## Mock + Fixture 패턴
 
+- 🔴 **`importlib.reload(src.database)` 는 세션 전체를 오염시킨다 — `database_module_isolation` fixture 의무 (2026-07-19 회고 B1, #1114)**: `reload` 는 모듈 본문을 재실행해 **`Base = declarative_base()` 로 새 Base 객체를 만든다**. 그런데 이미 import 된 13개 ORM 모델 클래스는 **옛 Base 에 묶인 채** 남으므로 새 `Base.metadata.tables` 는 **영구히 빈다**(실측: 모델 import 후 3 테이블 → reload 후 **0 테이블**). 그 결과 `alembic/env.py` 의 모델 완전성 가드(`_REGISTERED_MODELS`)가 이후 **세션 전체**에서 `RuntimeError` 를 내고, env.py 를 실행하는 모든 테스트가 깨진다.
+  - **복구 방식 = 모듈 `__dict__` 전체 스냅샷/복원.** reload 는 네임스페이스를 통째로 갈아끼우므로 개별 속성만 되돌리면 누락이 생긴다. `tests/unit/conftest.py::database_module_isolation` 참조.
+  - 🔴 **이 사고가 드러낸 더 큰 문제 — 가드가 알파벳 순서 덕에 살아있었다**: `test_alembic_env_logging_guard.py`(#1102 회귀 가드)가 통과하던 유일한 이유는 **파일명이 알파벳 순으로 앞서 실행되기 때문**이었다. `pytest-randomly` · 파일명 변경 · 샤딩 중 **하나만 있어도 조용히 깨진다**(실측: 순서를 바꾸면 6건 FAIL). **테스트 통과가 실행 순서에 의존하고 있지 않은지 자문할 것** — 순서 의존은 통과가 아무것도 보장하지 않는 대표적 형태다.
+  - 신규로 모듈을 `reload` 하는 테스트를 작성하면 **동일 격리 fixture 동반 의무**.
+
 - **require_login 우회**: `tests/unit/ui/test_router.py`는 `app.dependency_overrides[require_login] = lambda: _test_user`로 의존성 override. 신규 UI 라우트 테스트 작성 시 동일 패턴 사용.
 - **Mock side_effect 재귀**: `mock.add.side_effect = fn` 설정 후 fn 내에서 `original_add(obj)` 호출 시 재귀 발생. side_effect 함수에서는 원본 mock을 호출하지 말 것 — 캡처만 하고 return None.
 - **모듈 레벨 캐시 격리**: `src/webhook/_helpers.py`의 `_webhook_secret_cache`는 모듈 레벨 dict. `tests/conftest.py`의 `_clear_webhook_secret_cache` autouse fixture가 테스트마다 자동 클리어. 신규 모듈 레벨 캐시 추가 시 동일한 autouse fixture 패턴 적용 필수.
