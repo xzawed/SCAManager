@@ -18,6 +18,7 @@ from slowapi.errors import RateLimitExceeded
 
 from src import scheduler
 from src.config import settings
+from src.logging_config import configure_logging
 from src.constants import GITHUB_API
 from src.middleware.rate_limiter import limiter
 from src.shared.http_client import close_http_client, init_http_client
@@ -33,6 +34,12 @@ from src.api.issue_registration import router as issue_registration_router
 from src.ui.routes.admin import router as ui_admin_router
 from src.ui.router import router as ui_router
 from src.auth.github import router as auth_router
+
+# 🔴 import 시점 설정 — 이후 모든 모듈 logger 의 INFO 가 실제로 출력된다.
+# 미호출 시 Python last-resort 핸들러가 WARNING 이상만 내보내 앱 INFO 로그가 전부 소실된다
+# (2026-07-19 발견: 출시 이래 `retention sweep — purged …` 등이 한 번도 보이지 않았음).
+# Configure at import so every module logger's INFO actually emits.
+configure_logging()
 
 logger = logging.getLogger(__name__)
 
