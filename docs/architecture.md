@@ -32,7 +32,7 @@ src/
 ├── crypto.py                    # encrypt_token()/decrypt_token() — TOKEN_ENCRYPTION_KEY
 ├── database.py                  # SQLAlchemy engine, Base, FailoverSessionFactory + RLS event listener + WorkerSessionLocal (background/시스템 컨텍스트 BYPASSRLS 라우팅, RLS Phase 2~4)
 ├── logging_config.py            # 🔴 앱 로깅 단일 설정 지점 — configure_logging()(stdout·INFO·멱등) + is_configured() + _RedactSecretsFilter(시크릿 마스킹). 2026-07-19 P0 2건: (1) `alembic/env.py` 의 `fileConfig` 가 lifespan 내 마이그레이션에서 앱 로깅을 파괴(root→WARN·`uvicorn.access` disable) → `is_configured()` 가드로 봉인(#1102) (2) httpx INFO 요청 URL 로깅이 Telegram 봇 토큰을 평문 기록 → httpx WARNING + 리댁션 필터 2계층(#1104). 가드 = `tests/unit/test_logging_config.py` · `tests/unit/migrations/test_alembic_env_logging_guard.py`
-├── scheduler.py                 # 🔴 인앱 주기 작업 스케줄러 (lifespan 기동·운영 전용·stdlib only) — JOBS 5종(retry-pending-merges 1분 · sweep-orphans 10분 · trend 03:00 UTC · retention-sweep 20:00 UTC · weekly-reports 월 00:00 UTC)이 `cron_service` 함수를 직접 호출. 2026-07-19 P0 대체: `railway.toml [[deploy.cronJobs]]` 는 Railway 스키마에 없는 키라 무시돼 5종이 한 번도 실행되지 않았음. `SCHEDULER_DISABLED` kill-switch. 배선 단언 = `tests/unit/test_scheduler.py`
+├── scheduler.py                 # 🔴 인앱 주기 작업 스케줄러 (lifespan 기동·운영 전용·stdlib only) — JOBS 6종(retry-pending-merges 1분 · sweep-orphans 10분 · trend 03:00 UTC · retention-sweep 20:00 UTC · weekly-reports 월 00:00 UTC · scan-security 04:00 UTC)이 `cron_service` 함수를 직접 호출. 2026-07-19 P0 대체: `railway.toml [[deploy.cronJobs]]` 는 Railway 스키마에 없는 키라 무시돼 5종이 한 번도 실행되지 않았음. `SCHEDULER_DISABLED` kill-switch. 배선 단언 = `tests/unit/test_scheduler.py`
 ├── shared/
 │   ├── http_client.py           # httpx.AsyncClient lifespan 싱글톤 (내부 신뢰 API)
 │   ├── log_safety.py            # sanitize_for_log() — 로그 인젝션 방지
@@ -118,7 +118,7 @@ src/
 │   ├── repos.py / stats.py / hook.py (_resolve_hook_locale — repo owner 언어 해소, 사이클 151) / users.py
 │   ├── repo_report.py           # Repo별 분석 레포트 JSON API (list + detail)
 │   ├── internal_cron.py         # POST /api/internal/cron/{weekly,trend,scan-security,retry-pending-merges,sweep-orphans,retention-sweep}
-│   │                            # 🔴 6종 중 `scan-security` 만 스케줄러 job 없음(주기 실행 0회·수동 트리거 전용) — 사유는 `scheduler.UNSCHEDULED_CRON_PATHS`, 파리티는 `tests/unit/test_cron_scheduler_parity.py` 강제
+│   │                            # 🔴 6종 전부 스케줄러 job 보유(scan-security 는 2026-07-19 사용자 결정으로 편입 — 그전엔 실행 0회) — 파리티는 `tests/unit/test_cron_scheduler_parity.py` 강제
 │   ├── issue_registration.py    # POST /api/issues/register + GET /api/issues/status + GET /api/issues/repo-summary (소유권 검증 포함)
 │   └── admin.py                 # GET /api/admin/{tenants,rls-audit,operations}
 ├── ui/

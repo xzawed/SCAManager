@@ -172,15 +172,15 @@ def test_every_unscheduled_path_documents_its_reason():
         )
 
 
-def test_scan_security_is_currently_the_only_unscheduled_endpoint():
-    """🔴 현재 상태 고정 — 미스케줄 예외는 `scan-security` 하나뿐이다.
+def test_no_cron_endpoint_is_currently_unscheduled():
+    """🔴 현재 상태 고정 — 미스케줄 예외가 **하나도 없다** (6종 전부 스케줄).
 
-    예외 목록이 조용히 늘어나면 "cron 엔드포인트는 있는데 아무도 안 부른다" 가 다시 정상처럼
-    보인다. 항목 추가는 이 단언을 **의도적으로** 고쳐야만 가능하게 만들어, 회고/PR 검토를 강제한다.
-    Pins the current state so growing the exception list requires a deliberate edit here.
+    2026-07-19 사용자 결정으로 `scan-security` 가 활성화되면서 예외 목록이 비었다.
+    예외가 조용히 늘어나면 "cron 엔드포인트는 있는데 아무도 안 부른다" 가 다시 정상처럼
+    보인다 — 항목 추가는 이 단언을 **의도적으로** 고쳐야만 가능하게 만들어 PR 검토를 강제한다.
+    Pins the empty exception list: adding one requires a deliberate edit here.
     """
-    assert set(UNSCHEDULED_CRON_PATHS) == {"scan-security"}, (
-        f"미스케줄 예외 목록이 바뀌었다: {sorted(UNSCHEDULED_CRON_PATHS)}\n"
-        "→ 항목이 늘었다면 정말 주기 실행이 불필요한지 PR 에서 검토하고, "
-        "줄었다면(= 스케줄에 편입) 이 단언을 함께 갱신할 것."
+    assert set(UNSCHEDULED_CRON_PATHS) == set(), (
+        f"미스케줄 예외가 생겼다: {sorted(UNSCHEDULED_CRON_PATHS)}\n"
+        "→ 정말 주기 실행이 불필요한지 PR 에서 검토하고, 사유를 값으로 남길 것."
     )

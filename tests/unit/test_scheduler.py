@@ -103,14 +103,17 @@ def test_kill_switch_overrides_production():
 # ── JOBS 레지스트리 (배선 단언 — 이번 사고의 핵심) ───────────────────────
 
 
-def test_all_five_cron_jobs_registered():
-    """🔴 railway.toml 이 무음으로 잃었던 5종이 전부 등록 — 배선을 테스트로 단언.
+def test_all_cron_jobs_registered():
+    """🔴 cron job 전수 등록 — 배선을 테스트로 단언.
 
     이번 사고의 근본은 '설정이 저장소 밖에 있어 어긋나도 아무도 모른다' 였다.
+    🔴 `scan-security` 는 2026-07-19 사용자 결정으로 편입 — 그전엔 **엔드포인트만 있고
+    스케줄러 job 이 없어 출시 이래 실행 0회**였고, 파리티 가드가 그 갭을 표면화했다.
     """
     names = {j.name for j in JOBS}
     assert names == {
         "retry-pending-merges", "sweep-orphans", "trend", "retention-sweep", "weekly-reports",
+        "scan-security",
     }, f"등록 누락/오타: {names}"
 
 
@@ -122,6 +125,17 @@ def test_job_schedules_match_previous_cron_expressions():
     assert by_name["trend"].daily_at == (3, 0)                          # 0 3 * * *
     assert by_name["retention-sweep"].daily_at == (20, 0)               # 0 20 * * *
     assert by_name["weekly-reports"].weekly_at == (0, 0, 0)             # 0 0 * * 1 (월 00:00)
+
+
+def test_scan_security_schedule_is_daily_at_0400():
+    """🔴 scan-security 는 구 railway.toml 에 **없던** 신규 주기 — 위 테스트와 분리한 이유다.
+
+    나머지 5종은 '구 cron 표현식과 동일'이 단언 근거지만, 이 job 은 2026-07-19 사용자 결정으로
+    처음 스케줄된다(그전엔 엔드포인트만 존재). 주기 변경은 GitHub API 쿼터 소모 패턴을 바꾼다.
+    Separate from the parity test above: this job has no prior cron expression to match.
+    """
+    by_name = {j.name: j for j in JOBS}
+    assert by_name["scan-security"].daily_at == (4, 0)                  # 0 4 * * *
 
 
 def test_every_job_has_exactly_one_schedule_kind():
@@ -240,6 +254,24 @@ async def test_weekly_job_calls_service(monkeypatch):
 
     monkeypatch.setattr("src.scheduler.run_weekly_reports", fake)
     await sched._weekly_reports()
+    assert called.get("hit")
+
+
+async def test_scan_security_job_calls_service(monkeypatch):
+    """🔴 신규 편입 job 도 본문 배선 단언 — 등록만 되고 본문이 비면 결과는 '실행 0회'와 같다.
+
+    이 PR 이 해소하는 갭(엔드포인트만 있고 스케줄 job 없음)의 거울상: job 은 있는데 서비스를
+    안 부르는 껍데기. 나머지 5종과 동일한 패턴으로 봉인한다.
+    """
+    _patch_session(monkeypatch)
+    called = {}
+
+    async def fake(db):
+        called["hit"] = True
+        return {"code_scanning": 0, "secret_scanning": 0, "skipped": 0, "repos": 0}
+
+    monkeypatch.setattr("src.scheduler.scan_all_repos", fake)
+    await sched._scan_security()
     assert called.get("hit")
 
 
