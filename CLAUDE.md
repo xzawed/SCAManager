@@ -304,7 +304,14 @@ Why + How to apply (자가 검토 4 자문) 상세: [.claude/policies/active.md#
 - **사이클 종료 = 2 조건 AND** (정책 5 페어) — (a) 사용자 신호 + (b) Claude OK. (구 (c) Codex OK 삭제.)
 - **존치된 규칙**: 구 §2 의 **push 전 전체 단위 테스트 게이트**는 Codex 와 무관하게 유효 → [필수 원칙 6-step ②](#필수-원칙) 로 이관.
 
-**역사 (실증된 가치)**: cross-vendor 검증은 실효가 있었다 — 2026-06-29 심층 감사에서 **P1 2건은 Codex 만 발견**(Claude 8 에이전트 미검출). 향후 대체 검증자(무료 OpenAI-호환 등) 도입 검토 시 이 근거를 참조. 폐기 이전 정책 본문·진화 이력은 [.claude/policies/history.md](.claude/policies/history.md) 에 역사 기록으로 보존.
+**역사 (실증된 가치)**: cross-vendor 검증은 실효가 있었다 — 2026-06-29 심층 감사에서 **P1 2건은 Codex 만 발견**(Claude 8 에이전트 미검출).
+
+🔴 **대체 검증자 도입 완료 (2026-07-19 사용자 승인) — Grok**: 위 근거대로 cross-vendor 자리를 Grok 이 대체한다. **상시 페어링 ❌ / 조건부 인터럽트 ✅**. 프로토콜 단일 출처 = [`docs/runbooks/ai-collaboration.md`](docs/runbooks/ai-collaboration.md) (Claude·Grok 2라운드 상호 회고·협의 산물).
+- **핵심 트리거**: Claude 가 **"봉인/완결/fail-closed/유출 0"** 을 주장하면 그 주장 하나만 놓고 Grok 뮤테이션 패스. 심각도 판단이 불필요한 이진 질문이라 Grok 의 알려진 편향(P0 정밀도 0/4 = 심각도 과대평가)을 우회한다.
+- **1순위 사냥 대상 = observer-lie** — *"코드의 버그는 고쳤는데 관측자는 여전히 거짓말한다"*. 2026-07-19 결함이 전부 이 형태였다(`|| echo WARNING` 이 삼킨 tflint · 무효 `[[deploy.cronJobs]]` · 무효 `[deploy] numReplicas` · 문자열 매칭 배포 폴링).
+- 🔴 **2-phase 사용자 보고 게이트**: `배포|활성|봉인|운영|cron 실행됨` 이 포함된 문장은 라이브 deploy reality 필드를 동반하거나 **`UNVERIFIED:` 접두사** 의무. 배포·RLS·cron 주장의 `STATIC-ONLY-UNVERIFIED` 는 사용자 보고 불가.
+- 🔴 **회고 카덴스(정책 8 진화 4)에 Grok full-pass 를 겹치지 않는다** — 3중 파일업 = Codex 시절 피로 재생산. 대신 **주장 트리거 + ops 불변식 단축 패스**(주장이 부재한 통제면 전용).
+- **호출 금지 영역**: 문서·STATE·정책 진화(rule drift) / 계획·WBS(`grok_build_plan` 실측 무가치) / 구현 중간. 폐기 이전 정책 본문·진화 이력은 [.claude/policies/history.md](.claude/policies/history.md) 에 역사 기록으로 보존.
 
 > ⚠️ 코드·문서 곳곳의 "Codex mutual 적발/발견" 주석은 **당시 사실 기록(출처 표기)** 이므로 그대로 둔다 — 재작성 금지.
 
