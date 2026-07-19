@@ -202,6 +202,46 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
             logger.exception("Gate callback failed")
 
 
+async def _post_message_guarded(bot_token, chat_id, payload):
+    """백그라운드 Telegram 발신 — 예외를 좁게 흡수해 ASGI 밖으로 전파시키지 않는다.
+    Guarded background send; never lets the exception escape to the ASGI layer.
+
+    🔴 왜 필요한가 (2026-07-19 2차 회고 P0): 무가드 BackgroundTask 의 예외는 응답 송신 후
+    ASGI 밖으로 탈출해 **uvicorn 이 `exc_info` 트레이스백으로 로깅**한다. Telegram API 는
+    `https://api.telegram.org/bot<TOKEN>/sendMessage` 처럼 **토큰을 URL 경로**에 담으므로
+    `raise_for_status()` 의 401/400/5xx 메시지에 credential 이 그대로 실린다.
+    실측: `RuntimeError: Client error '401 Unauthorized' for url '...bot<TOKEN>/sendMessage'`.
+    Unguarded background-task exceptions escape to uvicorn, which logs the traceback — and the
+    Telegram URL carries the bot token in its path, so the credential lands in the log.
+
+    🔴 리댁션 필터(`src/logging_config.py`)는 심층 방어일 뿐 여기가 근본 차단이다 —
+    필터가 트레이스백을 가려주면 **호출처 결함이 보이지 않게** 되므로 양쪽 다 필요하다.
+    The redaction filter is defense-in-depth; masking here at the source is the real fix.
+
+    형제 호출처(`gate/actions/approve.py`·`services/cron_service.py`·
+    `services/merge_retry_service.py`)와 동일한 좁은 `except httpx.HTTPError` 패턴.
+    """
+    try:
+        await telegram_post_message(bot_token, chat_id, payload)
+    except httpx.HTTPError as exc:
+        # 🔴 예외 객체(`%s`)가 아니라 **타입명만** 로깅 — str(exc) 에 토큰 URL 이 들어있다.
+        # Log the exception *type* only; str(exc) embeds the token-bearing URL.
+        logger.warning("telegram background send failed: %s", type(exc).__name__)
+
+
+async def _handle_gate_callback_guarded(**kwargs):
+    """백그라운드 게이트 콜백 — 위와 동일한 이유로 예외를 흡수한다.
+    Guarded gate callback; same rationale as _post_message_guarded.
+
+    `handle_gate_callback` 은 Telegram·GitHub API 를 호출하므로 동일한 credential-in-URL
+    트레이스백 노출 경로를 갖는다.
+    """
+    try:
+        await handle_gate_callback(**kwargs)
+    except (httpx.HTTPError, SQLAlchemyError) as exc:
+        logger.warning("telegram gate callback failed: %s", type(exc).__name__)
+
+
 def _handle_message(
     data: dict,
     background_tasks: BackgroundTasks,
@@ -237,10 +277,10 @@ def _handle_message(
         # Process text command and obtain reply text
         reply = handle_message_command(db=db, telegram_user_id=sender_id, text=text)
 
-    # 응답 메시지 비동기 전송 (background)
-    # Send reply message asynchronously in background
+    # 응답 메시지 비동기 전송 (background) — 🔴 반드시 가드된 래퍼로 (아래 docstring 참조).
+    # Send reply asynchronously in background — must go through the guarded wrapper.
     background_tasks.add_task(
-        telegram_post_message,
+        _post_message_guarded,
         bot_token,
         chat_id,
         {"text": reply, "parse_mode": "HTML"},
@@ -328,7 +368,7 @@ async def telegram_webhook(  # pylint: disable=too-many-locals
     # Pass the clicking user's telegram_user_id for the ownership check (None → blocked)
     telegram_user_id = str(user_id) if user_id != "unknown" else None
     background_tasks.add_task(
-        handle_gate_callback,
+        _handle_gate_callback_guarded,
         analysis_id=analysis_id,
         decision=decision,
         decided_by=decided_by,

@@ -35,9 +35,29 @@ _MARKER = "_scamanager_configured"
 # 요청 URL 을 로깅하는 라이브러리(httpx 등)가 그대로 토큰을 남긴다. 캡처 그룹 1(도메인+`/bot`)은
 # 보존하고 토큰만 `***` 로 바꿔 **운영 판독성은 유지**한다.
 # External services that put secrets in the URL *path*; keep the readable prefix, mask the token.
+# 🔴 2026-07-19 2차 회고 P1 — 정책 16 진화(공유 로직 grep 전수) 미이행 시정.
+# #1104 는 "오늘 로그에 보인" telegram 1건만 등록했으나, 구조가 동일한 채널이 4개 더 있고
+# 그 URL 전문을 **우리 코드가** WARNING 으로 직접 로깅하고 있었다(notifier 5곳).
+# Slack/Discord webhook 은 URL 자체가 credential 이다(경로의 토큰만 알면 누구나 발신 가능).
+# Added after a retrospective found 4 more secret-in-URL channels our own code logged verbatim.
 _SECRET_URL_PATTERNS = (
     re.compile(r"(api\.telegram\.org/bot)[^/\s]+"),
+    re.compile(r"(hooks\.slack\.com/services/)\S+"),
+    re.compile(r"(discord(?:app)?\.com/api/webhooks/)\S+"),
 )
+
+# 리댁션 대상이 예외 텍스트일 때 쓰는 기본 포맷터 — exc_info → 문자열 변환 전용.
+# Default formatter used only to turn exc_info into text for redaction.
+_EXC_FORMATTER = logging.Formatter()
+
+
+def _redact(text):
+    """등록된 시크릿 패턴을 `***` 로 치환 — 변경이 없으면 원본 그대로 반환.
+    Mask registered secret patterns; returns the input unchanged when nothing matched."""
+    out = text
+    for pattern in _SECRET_URL_PATTERNS:
+        out = pattern.sub(r"\1***", out)
+    return out
 
 
 class _RedactSecretsFilter(logging.Filter):  # pylint: disable=too-few-public-methods
@@ -59,23 +79,56 @@ class _RedactSecretsFilter(logging.Filter):  # pylint: disable=too-few-public-me
     """
 
     def filter(self, record):
+        self._redact_message(record)
+        self._redact_traceback(record)
+        if record.stack_info:
+            record.stack_info = _redact(record.stack_info)
+        return True
+
+    @staticmethod
+    def _redact_message(record):
+        """msg 축 — 포맷된 메시지에 시크릿이 있으면 완성 문자열로 대체.
+        Message axis; replace with the finished string when a secret was masked."""
         try:
             text = record.getMessage()
         except (TypeError, ValueError):
             # 포맷 인자 불일치 — 여기서 삼키지 않고 핸들러가 평소대로 처리하게 둔다.
             # Malformed format args; let the handler surface it as usual.
-            return True
+            return
 
-        redacted = text
-        for pattern in _SECRET_URL_PATTERNS:
-            redacted = pattern.sub(r"\1***", redacted)
-
+        redacted = _redact(text)
         if redacted != text:
             # 완성된 문자열로 대체하므로 args 를 비워야 재포맷 시 오류가 없다.
             # Replace with the finished string; args must be cleared to avoid re-formatting.
             record.msg = redacted
             record.args = ()
-        return True
+
+    @staticmethod
+    def _redact_traceback(record):
+        """exc_info 축 — 🔴 이 축이 실제 운영 유출 경로였다 (2026-07-19 2차 회고 P0).
+
+        Exception axis — the path that actually leaked in production.
+
+        `#1104` 는 msg 축만 덮어 "2계층 봉인" 을 선언했으나, Telegram 알림 실패 시
+        예외가 uvicorn 으로 전파되면 **트레이스백에 토큰이 박힌 URL 이 원문 그대로** 남았다
+        (`RuntimeError: Client error '401 ...' for url 'https://api.telegram.org/bot<TOKEN>/...'`).
+        재현으로 확인된 결함이다.
+
+        🔴 `exc_text` 를 채워두면 `Formatter.format()` 이 **그 값을 재사용**하므로,
+        uvicorn 의 자체 Formatter(ColourizedFormatter)를 교체하지 않고도 마스킹이 적용된다.
+        Populating exc_text makes Formatter.format() reuse it, so uvicorn's own formatter is
+        covered without replacing it.
+
+        🔴 이미 캐시된 `exc_text` 가 있으면 **그것을 리댁션**한다 — 앞선 핸들러가 포맷하며
+        캐시를 채웠을 수 있고, 그 경우 새로 계산하면 캐시된 원문이 그대로 출력된다.
+        If exc_text is already cached (an earlier handler formatted it), redact that value.
+        """
+        if not record.exc_info:
+            return
+        current = record.exc_text or _EXC_FORMATTER.formatException(record.exc_info)
+        redacted = _redact(current)
+        if redacted != record.exc_text:
+            record.exc_text = redacted
 
 
 def is_configured():
@@ -113,6 +166,15 @@ def configure_logging(level=logging.INFO):
     # credential. Placed before the idempotency return so a repeat call restores it.
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
+    # 🔴 계층 2b — uvicorn 계열 핸들러에 직접 부착 (2026-07-19 2차 회고 P0).
+    # uvicorn 로거는 `propagate=False` + 자체 핸들러라 **root 핸들러의 필터가 구조적으로
+    # 도달하지 못한다**. 백그라운드 태스크 예외를 uvicorn 이 `exc_info` 로 남기는 경로가
+    # 실제 유출 지점이었으므로, root 부착만으로는 봉인되지 않는다.
+    # uvicorn's loggers carry their own handlers with propagate=False, so a filter on the root
+    # handler can never see them — the actual leak path had to be covered directly.
+    # 멱등성 early-return **앞**에 둔다 — uvicorn 은 우리보다 늦게 설정될 수 있다.
+    _attach_redaction_to_uvicorn()
+
     if any(getattr(h, _MARKER, False) for h in root.handlers):
         return  # 이미 설정됨 — 중복 부착 시 로그가 배로 출력된다 / already configured
 
@@ -126,3 +188,14 @@ def configure_logging(level=logging.INFO):
     handler.addFilter(_RedactSecretsFilter())
     setattr(handler, _MARKER, True)
     root.addHandler(handler)
+
+
+def _attach_redaction_to_uvicorn():
+    """uvicorn 계열 로거의 각 핸들러에 리댁션 필터를 1개씩만 부착 (idempotent).
+    Attach the redaction filter to each uvicorn handler exactly once."""
+    for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+        for handler in logging.getLogger(name).handlers:
+            # 🔴 중복 부착 금지 — 재호출 시 필터가 쌓이면 매 레코드마다 정규식이 n배 돈다.
+            # Never stack duplicates; repeat calls would run the regexes n times per record.
+            if not any(isinstance(f, _RedactSecretsFilter) for f in handler.filters):
+                handler.addFilter(_RedactSecretsFilter())

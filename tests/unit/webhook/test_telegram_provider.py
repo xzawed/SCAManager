@@ -7,8 +7,12 @@ os.environ.setdefault("TELEGRAM_CHAT_ID", "-100123")
 os.environ.setdefault("ANTHROPIC_API_KEY", "")
 os.environ.setdefault("TELEGRAM_WEBHOOK_SECRET", "test-tg-webhook-secret-for-tests!")
 
+import contextlib
+import logging
+
 import pytest
 import httpx
+from fastapi import BackgroundTasks
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 from src.main import app
@@ -798,3 +802,136 @@ async def test_handle_gate_callback_skips_when_pr_number_is_none():
     # pr_number=None → post_github_review·gate_decision_repo.claim_decision 모두 호출되지 않아야 한다
     mock_review.assert_not_called()
     mock_save.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# 무가드 백그라운드 태스크 → uvicorn 토큰 트레이스백 (2026-07-19 P0 후속)
+#
+# 🔴 사고 경로: `_handle_message` 는 `background_tasks.add_task(telegram_post_message, ...)`
+# 를 **아무 가드 없이** 등록한다. Telegram API 가 401/400/5xx 를 돌려주면 httpx 예외가
+# 백그라운드 태스크 → ASGI 밖으로 탈출하고, uvicorn 이 `Exception in ASGI application` 을
+# exc_info 와 함께 로깅한다. httpx 예외 메시지에는 요청 URL 이 통째로 박혀 있으므로
+# (`... for url 'https://api.telegram.org/bot<토큰>/sendMessage'`) **봇 토큰이 운영 로그에
+# 평문으로 남는다**. uvicorn 로거는 propagate=False 라 앱의 root 리댁션 필터도 지나치지 않는다.
+# An unguarded background task lets httpx's exception escape to uvicorn, which logs it with
+# exc_info — and the httpx message embeds the full token URL.
+#
+# 🔴 형제 호출처는 전부 가드돼 있다 — `gate/actions/approve.py` · `services/cron_service.py` ·
+# `services/merge_retry_service.py` 가 모두 `except httpx.HTTPError` 로 감싼다. 이 한 곳만
+# 비대칭으로 빠져 있었다(only-one-side-unguarded).
+#
+# 🔴 산문 grep 금지 — 아래는 **실제로 태스크를 실행**해 예외 전파 여부를 관측한다.
+# No source-grep assertions: the queued task is actually executed and observed.
+# ---------------------------------------------------------------------------
+
+_FAKE_TG_TOKEN = "123456:FAKE_TOKEN_FOR_TEST"
+_FAKE_TG_URL = f"https://api.telegram.org/bot{_FAKE_TG_TOKEN}/sendMessage"
+_MESSAGE_UPDATE = {
+    "update_id": 9,
+    "message": {"message_id": 1, "text": "/start",
+                "from": {"id": 1, "username": "john"}, "chat": {"id": -100123}},
+}
+
+
+def _failing_post_mock():
+    """Telegram API 401 을 재현하는 mock — 예외 문자열에 토큰 URL 이 박혀 있다(httpx 실제 형태).
+    Reproduces a Telegram 401; the exception string embeds the token URL exactly like httpx.
+    """
+    return AsyncMock(side_effect=httpx.HTTPError(
+        f"Client error '401 Unauthorized' for url '{_FAKE_TG_URL}'"
+    ))
+
+
+@contextlib.contextmanager
+def _queued_reply_task(post_mock):
+    """`_handle_message` 로 응답 전송 태스크를 실제 큐에 넣고, **태스크 실행 시점까지** patch 를 유지한다.
+    Queue the reply task via _handle_message and keep the patches active *through task execution*.
+
+    🔴 patch 를 태스크 실행까지 유지해야 하는 이유: 가드 래퍼는 `telegram_post_message` 를
+    **실행 시점에** 모듈 전역에서 해석한다. 큐 등록 직후 patch 를 풀면 래퍼가 **실제 함수**를
+    호출해 http_client 로 나가버리고, 테스트는 가드가 아니라 네트워크 계층에서 실패한다
+    (실측 확인 — 이 함수가 contextmanager 인 이유다).
+    The guard wrapper resolves telegram_post_message from module globals at *call* time, so
+    releasing the patch after queueing would let the real function run and fail in the HTTP layer
+    instead of exercising the guard (measured — hence the contextmanager).
+    """
+    import src.webhook.providers.telegram as _tg  # pylint: disable=import-outside-toplevel
+
+    bg = BackgroundTasks()
+    with patch("src.webhook.providers.telegram.SessionLocal", return_value=_ctx(MagicMock())), \
+         patch("src.webhook.providers.telegram.handle_message_command", return_value="hi"), \
+         patch("src.webhook.providers.telegram.telegram_post_message", post_mock):
+        result = _tg._handle_message(_MESSAGE_UPDATE, bg, _FAKE_TG_TOKEN)  # pylint: disable=protected-access
+        assert result == {"status": "ok"}
+        assert bg.tasks, "응답 전송 태스크가 큐에 등록되지 않았다 — 가드 검증 불가(테스트 전제 붕괴)"
+        yield bg
+
+
+async def test_message_reply_background_task_does_not_propagate_http_error():
+    """🔴 핵심 — `telegram_post_message` 가 HTTPError 를 던져도 백그라운드 태스크 밖으로 새지 않는다.
+
+    예외가 전파되면 uvicorn 이 exc_info 로 받아 적고, httpx 메시지에 박힌 토큰 URL 이 운영
+    로그에 평문으로 남는다. 형제 호출처와 동일하게 좁게 흡수해야 한다.
+    A propagated exception reaches uvicorn's exc_info logging, which prints the token-bearing URL.
+    """
+    post_mock = _failing_post_mock()
+
+    with _queued_reply_task(post_mock) as bg:
+        # 🔴 실제 실행 — 여기서 예외가 새면 운영에서 uvicorn 이 토큰 트레이스백을 남긴다.
+        # Actually run it: an escape here is exactly the production leak.
+        await bg()
+
+    # 흡수하되 **전송 자체는 시도**해야 한다 — 가드가 발신을 통째로 없애면 기능 회귀다.
+    # Swallow, but still attempt the send: a guard that drops the send is a functional regression.
+    post_mock.assert_awaited_once()
+
+
+async def test_message_reply_guard_does_not_log_bot_token(caplog):
+    """🔴 흡수하면서 토큰을 로깅하지 않는다 — 예외 **타입명만** 남긴다.
+
+    가드를 달면서 `logger.exception(...)` 이나 `%s` 로 예외 객체를 찍으면 사고가 그대로
+    재현된다(httpx 예외 문자열 = 토큰 URL 포함). 관측은 유지하되 페이로드는 버려야 한다.
+    Guarding with logger.exception / %s on the exception object reproduces the leak verbatim,
+    because the httpx message *is* the token URL.
+
+    🔴 **`caplog.text` 만으로는 이 계약을 검증할 수 없다 (뮤테이션 실측으로 확인)**:
+    `logger.exception` 으로 바꿔도 `caplog.text` 에는 토큰이 안 나타난다 — `logging_config` 의
+    리댁션 필터가 root 핸들러(캡처 핸들러보다 **앞선** 순서)에서 `record.exc_text` 를 **제자리
+    변형**하기 때문이다. 즉 계층 2 가 계층을 가려 테스트가 spurious-pass 한다. 따라서
+    `record.exc_info` 자체를 단언해 **호출처가 트레이스백을 만들지 않는 것**을 직접 잠근다.
+    🔴 caplog.text alone cannot verify this (measured via mutation): swapping in logger.exception
+    still shows no token, because the redaction filter mutates record.exc_text in place on an
+    earlier root handler. Layer 2 masks the defect, so we assert on record.exc_info directly.
+    """
+    caplog.set_level(logging.WARNING)
+
+    with _queued_reply_task(_failing_post_mock()) as bg:
+        await bg()
+
+    text = caplog.text
+    assert "FAKE_TOKEN_FOR_TEST" not in text, (
+        f"🔴 봇 토큰이 가드의 로그에 평문으로 남았다 — 예외 객체/메시지를 그대로 찍고 있다.\n"
+        f"로그: {text!r}"
+    )
+    assert _FAKE_TG_URL not in text, (
+        f"🔴 토큰이 박힌 요청 URL 전문이 로그에 남았다.\n로그: {text!r}"
+    )
+    assert "HTTPError" in text, (
+        f"실패가 전혀 관측되지 않는다 — 좁게 흡수하되 `type(exc).__name__` 은 남겨야 "
+        f"운영에서 Telegram 전송 실패를 인지할 수 있다(silent swallow 금지).\n로그: {text!r}"
+    )
+
+    assert caplog.records, "가드가 아무것도 로깅하지 않았다 — silent swallow"
+    for record in caplog.records:
+        # 🔴 리댁션 필터의 in-place 변형에 영향받지 않는 축 — 호출처가 exc_info 를 붙였는지.
+        # Immune to the filter's in-place mutation: did the call site attach exc_info at all?
+        assert record.exc_info is None, (
+            "🔴 가드가 `logger.exception`/`exc_info=True` 로 트레이스백을 남겼다. 트레이스백에는 "
+            "토큰 URL 이 통째로 들어가며, 지금은 리댁션 필터(계층 2)가 우연히 가려 줄 뿐이다 — "
+            "신규 시크릿 URL 형태나 필터 미적용 핸들러에서는 그대로 유출된다. "
+            "`type(exc).__name__` 만 로깅할 것."
+        )
+        assert "FAKE_TOKEN_FOR_TEST" not in record.getMessage(), (
+            f"🔴 원본 레코드 메시지에 토큰이 들어 있다 — 필터가 가려 주기 전 단계에서 이미 "
+            f"유출됐다.\n메시지: {record.getMessage()!r}"
+        )

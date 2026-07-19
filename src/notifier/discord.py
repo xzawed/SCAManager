@@ -5,7 +5,7 @@ Phase 3 PR-10 (Cycle 84) — i18n: language arg + 3-layer fallback.
 """
 import logging
 
-from src.notifier._http import build_safe_client, validate_external_url
+from src.notifier._http import build_safe_client, url_host_for_log, validate_external_url
 from src.constants import (
     GRADE_EMOJI, GRADE_COLOR_DISCORD,
     DISCORD_EMBED_DESC_MAX_LENGTH, NOTIFIER_MAX_ISSUES_SHORT,
@@ -98,7 +98,7 @@ async def send_discord_notification(
     if not webhook_url:
         return
     if not await validate_external_url(webhook_url):
-        logger.warning("send_discord_notification: blocked unsafe URL '%s'", webhook_url)
+        logger.warning("send_discord_notification: blocked unsafe URL (host=%s)", url_host_for_log(webhook_url))
         return
     embed = _build_embed(
         repo_name, commit_sha, score_result, analysis_results, pr_number, ai_review,
