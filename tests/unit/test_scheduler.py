@@ -103,14 +103,17 @@ def test_kill_switch_overrides_production():
 # ── JOBS 레지스트리 (배선 단언 — 이번 사고의 핵심) ───────────────────────
 
 
-def test_all_five_cron_jobs_registered():
-    """🔴 railway.toml 이 무음으로 잃었던 5종이 전부 등록 — 배선을 테스트로 단언.
+def test_all_cron_jobs_registered():
+    """🔴 cron job 전수 등록 — 배선을 테스트로 단언.
 
     이번 사고의 근본은 '설정이 저장소 밖에 있어 어긋나도 아무도 모른다' 였다.
+    🔴 `scan-security` 는 2026-07-19 사용자 결정으로 편입 — 그전엔 **엔드포인트만 있고
+    스케줄러 job 이 없어 출시 이래 실행 0회**였고, 파리티 가드가 그 갭을 표면화했다.
     """
     names = {j.name for j in JOBS}
     assert names == {
         "retry-pending-merges", "sweep-orphans", "trend", "retention-sweep", "weekly-reports",
+        "scan-security",
     }, f"등록 누락/오타: {names}"
 
 
