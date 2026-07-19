@@ -23,7 +23,8 @@ curl -sf -o /dev/null -w "/health: HTTP %{http_code}\n" "$APP_URL/health"
 # 2) /auth/github → 302 + Location redirect_uri 정합성
 curl -s -L --max-redirs 0 -o /dev/null -w "/auth/github: %{redirect_url}\n" "$APP_URL/auth/github"
 
-# 3) /login (200 또는 302 — 로그인 상태 의존)
+# 3) /login → 301 /auth/github (사이클 117 — 로그인 페이지 제거, 북마크 하위호환 전용)
+#    🔴 로그인 상태와 무관하게 항상 301 — 200 이 나오면 오히려 회귀 신호다.
 curl -sf -o /dev/null -w "/login: HTTP %{http_code}\n" "$APP_URL/login"
 ```
 
@@ -31,13 +32,13 @@ curl -sf -o /dev/null -w "/login: HTTP %{http_code}\n" "$APP_URL/login"
 ```
 /health: HTTP 200
 /auth/github: https://github.com/login/oauth/authorize?response_type=code&client_id=...&redirect_uri=https%3A%2F%2Fscamanager-production.up.railway.app%2Fauth%2Fcallback&scope=...&state=...
-/login: HTTP 200
+/login: HTTP 301
 ```
 
 **실패 처리**:
 - `/health` 200 외 → SCAManager 프로세스 자체 문제 (Railway 로그 확인)
 - `/auth/github` redirect_uri 가 예상과 다름 → `APP_BASE_URL` 환경변수 확인
-- `/login` 5xx → 템플릿 렌더링 또는 세션 미들웨어 오류
+- `/login` 이 301 이 아님 → 라우트 회귀. 200 이면 로그인 페이지가 되살아난 것이고, 5xx 면 라우터 등록 문제다. 🔴 **템플릿 렌더링 오류로 진단하지 말 것** — 이 라우트는 `RedirectResponse` 만 반환하고 템플릿을 쓰지 않는다 (`src/auth/github.py::login_page`).
 
 ---
 
@@ -117,7 +118,7 @@ Railway MCP 부재 시 사용자 의무:
 
 - ✅ /health 200
 - ✅ /auth/github 302 redirect_uri = https://scamanager-production.up.railway.app/auth/callback (정합)
-- ✅ /login 200
+- ✅ /login 301 → /auth/github
 - (확장: 인증/외부 통합 변경 시)
 - ✅ /auth/callback 401 (state 검증 = 정상 거부)
 - ✅ /webhooks/github 401 (서명 누락 = 정상 거부)
@@ -134,10 +135,10 @@ UI 변경 PR 외에도 **인증/외부 통합 변경 PR** 시 의무:
 ```markdown
 ## 🚨 인증 flow 종단간 검증 (정책 11 강화)
 
-- [ ] /login 페이지 200 응답 + 로그인 버튼 표시
+- [ ] /login → 301 `/auth/github` (로그인 **페이지는 사이클 117 에 제거** — 버튼 표시는 확인 항목 아님)
 - [ ] /auth/github 302 + GitHub 동의 화면 진입
 - [ ] GitHub 동의 후 /auth/callback → / redirect + 세션 생성
-- [ ] /auth/logout → /login redirect + 세션 제거
+- [ ] /auth/logout (**POST 전용**) → `/` (landing) redirect + 세션 제거 (🔴 `/login` 아님. HTMX 요청은 200 + `HX-Redirect: /` 로 전체 재로드 — `src/auth/github.py:136`). ⚠️ `curl` 로 GET 하면 **405** 이며 이는 정상이다 — 브라우저에서 로그아웃 버튼으로 확인할 것.
 
 (Claude 정적 검증 불가 — 사용자 직접 브라우저 검증 부탁드립니다)
 ```
@@ -170,7 +171,7 @@ curl -s -L --max-redirs 0 -o /dev/null -w "%{redirect_url}\n" "$APP_URL/auth/git
 **CI / Railway 빌드 자동 실행 → 다음 OAuth/redirect_uri 같은 외부 변경 사고 즉시 발견**.
 
 ### 8.1 통합 테스트 — `tests/integration/test_oauth_flow_smoke.py` (10건)
-- TestSmokeCheckMinimal (3): /health 200 + /auth/github 302 + /login 200|302
+- TestSmokeCheckMinimal (3): /health 200 + /auth/github 302 + /login **301** (`test_login_page_returns_redirect` 가 정확히 301 단언 — 실측 확인)
 - TestAuthFlowEndpoints (3): redirect_uri 정합성 + /auth/callback 거부 + webhook 서명 누락 401
 - TestInsightsRedirect (3): /insights, /insights/me 301 redirect + 쿼리 파라미터 보존
 - TestPolicyThirteenAutomation (1): 3-endpoint 성능 < 3초
