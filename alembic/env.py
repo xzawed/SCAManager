@@ -5,6 +5,10 @@ from sqlalchemy import pool
 
 from alembic import context
 
+# 앱 로깅 설정 여부 판별 — 아래 fileConfig 가드에서 사용 (인프로세스 마이그레이션 식별).
+# Detects whether the app already configured logging; used by the fileConfig guard below.
+from src.logging_config import is_configured
+
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
@@ -15,7 +19,19 @@ _SQLALCHEMY_URL = "sqlalchemy.url"
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
-if config.config_file_name is not None:
+# 🔴 앱이 이미 로깅을 설정했으면 건너뛴다 (2026-07-19 P0 — 인프로세스 마이그레이션이 앱 로깅을 파괴).
+# `src/main.py` lifespan 은 configure_logging() 직후 `command.upgrade()` 로 이 파일을 실행한다.
+# 그때 fileConfig 를 그대로 부르면 alembic.ini 의 `[logger_root] level = WARN` + stderr 핸들러가
+# 우리 stdout 핸들러를 교체하고, 기본값 `disable_existing_loggers=True` 가 `uvicorn.access` 와
+# 모든 `src.*` 로거를 비활성화한다 → 앱 INFO 로그·access 로그가 출시 이래 전부 소실됐다(#1100 무력화).
+# alembic CLI 단독 실행(`make migrate`) 은 앱 설정이 없으므로 기존대로 ini 로깅을 적용한다.
+# 🔴 Skip when the app already configured logging (2026-07-19 P0). The FastAPI lifespan runs
+# migrations in-process right after configure_logging(); applying alembic.ini there would reset the
+# root logger to WARN/stderr and disable uvicorn.access plus every src.* logger (the default
+# disable_existing_loggers=True), silently dropping all application logs. Standalone CLI runs still
+# get the ini logging config because the app marker is absent.
+# 회귀 가드 / Regression guard: tests/unit/migrations/test_alembic_env_logging_guard.py
+if config.config_file_name is not None and not is_configured():
     fileConfig(config.config_file_name)
 
 # add your model's MetaData object here

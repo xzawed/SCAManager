@@ -30,6 +30,22 @@ _DATEFMT = "%Y-%m-%d %H:%M:%S"
 _MARKER = "_scamanager_configured"
 
 
+def is_configured():
+    """이 모듈이 root 로거를 이미 설정했는지 여부.
+    Whether this module has already configured the root logger.
+
+    🔴 용도 (2026-07-19 P0): `alembic/env.py` 가 이 함수로 **인프로세스 마이그레이션**을 식별한다.
+    앱 lifespan 이 `configure_logging()` 후 마이그레이션을 돌리는데, alembic 의
+    `fileConfig(alembic.ini)` 는 root 를 WARN + stderr 로 되돌리고
+    `disable_existing_loggers=True` 로 `uvicorn.access`·`src.*` 로거를 전부 비활성화한다.
+    → 앱이 이미 설정했으면 alembic 은 로깅에 손대지 않는다 (CLI 단독 실행은 기존대로).
+    Used by alembic/env.py to detect in-process migrations: when the app has already configured
+    logging, alembic must not re-apply alembic.ini (which would reset root to WARN/stderr and
+    disable every existing logger). Standalone alembic CLI runs are unaffected.
+    """
+    return any(getattr(h, _MARKER, False) for h in logging.getLogger().handlers)
+
+
 def configure_logging(level=logging.INFO):
     """root 로거에 stdout 핸들러를 부착하고 레벨을 설정한다 (idempotent).
     Attach a stdout handler to the root logger and set the level (idempotent).

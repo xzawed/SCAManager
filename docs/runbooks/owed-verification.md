@@ -33,7 +33,7 @@ SELECT COUNT(*) FROM insight_narrative_cache WHERE expires_at < NOW();
 | 서비스 계층(엔드포인트·인증·`cron_service`·worker DB 세션) | ✅ 정상 — 잘못된 키 **401** / 정상 키 **200 `{"status":"ok","orphans_surfaced":0}`** (비파괴 `sweep-orphans` 프로브) |
 | 앱 헬스 | ✅ `/health` 5/5 **200**, 0.5~0.8s — 재시작 루프 아님 |
 | `INTERNAL_CRON_API_KEY` | ✅ Railway 에 설정됨·유효 |
-| 🔴 Railway **deploy 로그 수집** | ❌ 컨테이너 초기 출력 이후 **끊김** — uvicorn access log 24h **0건**·최신 로그 13분 정체. **앱 문제 아님** → 로그 기반 검증 불가, **DB 관측이 유일 수단** |
+| 🔴 ~~Railway **deploy 로그 수집**~~ | ❌ **이 진단은 오귀인이었다 — 2026-07-19 반증 완료.** 원인은 Railway 가 아니라 **앱 자신**(`alembic/env.py` 의 `fileConfig` 가 마이그레이션 시 앱 로깅을 파괴). 아래 §근본 원인 참조 |
 
 ⚠️ weekly 리포트 첫 발송 = 다음 주 **월요일 00:00 UTC**(출시 이래 0회 발송).
 
@@ -75,6 +75,27 @@ SELECT COUNT(*) FROM insight_narrative_cache WHERE expires_at < NOW();
 ✅ **대체 = 인앱 스케줄러 `src/scheduler.py`** (lifespan 기동·운영 전용). 배선을 `tests/unit/test_scheduler.py` 가 단언한다 — 저장소 밖 설정이 조용히 어긋나던 실패 모드를 코드로 옮긴 것이 이 사고의 교훈이다.
 
 🔴 **따라서 #1073·#1075 는 스케줄러 배포 후에야 검증 가능**하다. 검증 기준은 아래 DB 관측을 그대로 사용한다(`insight_narrative_cache` 만료 8건 → 0).
+
+## 🔴🔴 오귀인 정정 — 로그 소실은 Railway 가 아니라 **앱 결함**이었다 (2026-07-19 반증)
+
+직전 세션이 *"Railway 로그 수집이 초기 출력 후 끊김 — **앱 문제 아님**"* 으로 기록한 진단은 **틀렸다**. 이 오귀인이 원장에 사실로 남아 다음 세션의 조사 방향을 잘못 유도했다(로그 경로 포기 → DB 관측만 남김).
+
+**진짜 원인**: `alembic/env.py` 의 `fileConfig(config.config_file_name)` 가 **앱 lifespan 안에서** 실행된다 (`src/main.py:215` `_run_migrations` → `command.upgrade`). `logging.config.fileConfig()` 의 기본값이 `disable_existing_loggers=True` 이고 `alembic.ini` 가 `[logger_root] level = WARN` + stderr 핸들러이므로, 마이그레이션이 앱 로깅 설정을 **통째로 덮어쓴다**.
+
+| 항목 | 마이그레이션 이전 | 이후 |
+|------|-----------------|------|
+| root level | INFO | **WARNING** |
+| root handler | `configure_logging()` 의 stdout 핸들러 | **alembic stderr 핸들러** (우리 것 제거) |
+| `uvicorn.access` 로거 | 정상 | **`disabled=True`** ← access log 24h 0건의 정체 |
+| `src.*` 로거 INFO | 활성 | **전부 비활성** ← scheduler·cron 로그 소실 |
+
+**운영 로그가 이 기전을 그대로 증언한다** — `[src.main] startup: production hardening = ON`(마이그레이션 **이전**, main.py:213)은 보이고, 바로 다음 줄인 `DB migration completed`(마이그레이션 **직후**, main.py:216)부터 전부 사라진다. 모든 배포에서 동일한 12줄 컷오프가 재현됐다.
+
+**따라서 #1100(로깅 설정 신설)은 운영에서 무력(inert)이었다** — `configure_logging()` 직후 마이그레이션이 즉시 되돌렸기 때문. 단위 테스트는 alembic 상호작용을 재현하지 않아 통과했다.
+
+✅ **수정**: `alembic/env.py` 가 `is_configured()` 로 인프로세스 마이그레이션을 식별해 fileConfig 를 건너뛴다 (alembic CLI 단독 실행은 기존대로). 회귀 가드 = `tests/unit/migrations/test_alembic_env_logging_guard.py` (뮤테이션 실증 — 가드 제거 시 5건 FAIL).
+
+🔴 **교훈**: 관측 부재를 외부 인프라 탓으로 돌리기 전에 **앱 자신이 관측을 끄고 있는지** 먼저 배제하라. "앱 문제 아님" 같은 단정은 반증 실험 없이 원장에 기록하지 말 것.
 
 ## 🔴 검증 수단 정정 — "Railway cron 로그 관측"은 실행 불가 (2026-07-18 실측)
 
