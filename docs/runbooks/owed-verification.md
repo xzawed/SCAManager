@@ -26,9 +26,11 @@
 | 5종 job 등록 | ✅ 기동 로그에 전부 명시 |
 | interval job 실행 | ✅ `retry-pending-merges` ~61초 · `sweep-orphans` 정확히 600초 주기 (33분 연속 관측) |
 | `#1073` orphan sweep | ✅ **종결** — cron 전용 경로가 실제 실행 중 |
-| `#1075` retention sweep | ⏳ 잔여 — **daily 20:00 UTC** 라 아직 미도래. 단 같은 스케줄러 루프이고 로그가 살아 있으므로 그날 로그의 `scheduler retention_sweep: counts={...}` 한 줄로 확인된다 |
+| `#1075` retention sweep | ✅ **종결 (2026-07-19 20:00 UTC 실측)** — 아래 표 참조 |
 
-🔴 **만료 캐시 8건을 다른 방법으로 지우지 말 것** — `#1075` 의 DELETE 실증 신호다(캐시 TTL=1h 이나 2.5개월간 8건만 생성·최신 10일 전이라 재생성 안 됨). 수동 `retention-sweep` 호출도 금지.
+~~🔴 **만료 캐시 8건을 다른 방법으로 지우지 말 것**~~ — ✅ **소임 완료.** 이 8건은 `#1075` 의 DELETE 실증 신호로 보존되던 것이고, 2026-07-19 20:00:01 UTC 에 cron 이 **정확히 그 8건을 삭제**해 신호가 소비됐다. 보존 제약 해제.
+
+🔴 **교훈 — 소진성 신호의 한계**: 이 검증은 *한 번 쓰면 사라지는* 증거에 의존했다(8건을 지우면 다음 검증에 쓸 수 없다). 그래서 원장이 "다른 방법으로 지우지 말 것" 이라는 **인지 의존 제약**을 걸어야 했다. 상시 검증 가능한 대체 = `docs/backlog.md` B7(스케줄러 실행 기록 DB) — 다만 로깅 복구(`#1102`) 이후 로그만으로도 판정 가능해져 긴급도는 낮아졌다.
 
 ### 이미 확인된 것 (재확인 불필요)
 
@@ -49,7 +51,7 @@
 | PR | 검증 항목 | 검증 방법 | 정책 | 상태 |
 |----|----------|----------|------|------|
 | **#1058** | ~~SMTP 이메일 실제 발송~~ → **검증 불가 + 운영 위험 0 확정** (2026-07-19 실측 재분류). 이메일 채널은 운영에서 **한 번도 활성인 적이 없다** — "고장난 발송이 복구됐는지"가 아니라 **"설정된 적이 없다"** 가 사실. 587 STARTTLS 수정 자체는 실재 코드 결함 교정이나 **운영 효과 0** | **재분류 근거 (실측)**: ① Railway SMTP 변수 **0개**(`SMTP_HOST`·`SMTP_PORT`·`SMTP_USER`·`SMTP_PASS` 전부 미설정) ② `repo_configs` **8건 중 `email_recipients` 설정 0건** → `src/notifier/email.py:126` 의 `if not recipients or not smtp_host: return` 에서 **즉시 반환**(발송 코드 미진입). 살아있는 이메일 경로가 없으므로 미검증 상태가 위험을 만들지 않는다. **재개 조건**: 사용자가 SMTP 4종 + 대상 리포 `email_recipients` 를 설정하면 → 상태를 ⏳ 로 되돌리고, 그 리포에 push/PR 유발 후 `email_recipients` 주소 수신함에서 `[Code Review]` 제목 메일 도착 확인 | 5·13 | ⏭️ |
-| **#1062** | NULL-owner 저장소 **쓰기 차단(IDOR)** 과잉 차단 여부 — 정상 소유자 흐름이 403 로 오차단되지 않는지 | 정상 소유 저장소에서 설정 변경·피드백 등 7 쓰기 라우트가 200 정상 동작 확인(운영 계정) | 15 | ⏳ |
+| **#1062** | NULL-owner 저장소 **쓰기 차단(IDOR)** 과잉 차단 여부 — 정상 소유자 흐름이 403 로 오차단되지 않는지 | ✅ **2026-07-19 구조적 검증 — 차단 조건이 도달 불가함을 증명.** 표본 확인(7 라우트 200)보다 강한 형태다. **차단 조건 전수**(`ui/_helpers.py:96` · `api/issue_registration.py:119` · `ui/routes/repo_insights.py:93` — 3곳 모두 동일): (a) `user_id is not None and user_id != current_user.id` → 404 (b) `require_write and user_id is None` → 403. **DB 실측**: `repositories` 8건 중 `user_id IS NULL` **0건** · 전부 `user_id=1` 소유 · `users` 총 **1명(id=1)**. → (b)는 NULL-owner 저장소가 없어 발화 불가, (a)는 사용자가 1명이고 그가 전부 소유해 발화 불가. **과잉 차단이 구조적으로 불가능**. ⚠️ **caveat**: DB+코드 조건 대조에 의한 증명이며 라이브 HTTP 왕복은 아니다. 단 조건 도달 불가 증명이 7 라우트 표본 확인보다 강하다. **재개 조건**: NULL-owner 저장소가 생기거나(신규 webhook 자동 등록 등) 사용자가 2명 이상이 되면 ⏳ 로 되돌리고 실 HTTP 확인 | 15 | ✅ |
 | **#1104** | `TELEGRAM_BOT_TOKEN` 로테이션 — 봇 토큰이 운영 로그에 **평문 기록**됨(httpx 가 요청 URL 전문을 INFO 로깅 · 실측 5건) | ⏭️ **사용자 명시 결정 (2026-07-19): 로테이션하지 않고 현 토큰 유지.** 위험 수용 근거 = ① `#1104` 리댁션이 **향후 유출을 이미 차단**해 노출이 더 누적되지 않음 ② Railway 로그 보존 기간이 짧아 기존 노출분도 자연 소멸 ③ 노출면이 비공개(Railway 프로젝트 접근자 + 대화 기록). **재개 조건**: 봇이 민감 채널·다수 수신자로 확장되거나, 토큰이 공개 표면(이슈·PR 본문·스크린샷)에 재노출될 경우 → ⏳ 로 되돌리고 BotFather `/revoke` | 5·14 | ⏭️ |
 | **#1106** | `INTERNAL_CRON_API_KEY` 로테이션 — **Claude 가 유발한 노출**: Railway 변수 조회 시 grep 패턴(`CRON`)이 **값까지 매칭**해 대화 기록에 평문 출력(정책 12 위반) | ⏭️ **사용자 명시 결정 (2026-07-19): 로테이션하지 않고 현 키 유지.** 위험 수용 근거 = 노출면이 **대화 기록 단독**(운영 로그에는 없음). 잔여 위험 = 키 보유 시 공개 URL 의 내부 cron 엔드포인트 호출 가능(retention-sweep DELETE · 리포트 발송 트리거). **재개 조건**: 대화 기록이 외부 공유되거나 cron 엔드포인트에 비정상 호출이 관측될 경우. 🔴 **재발 방지(코드 무관·항구 적용)**: `railway variables --kv` 결과를 **grep 하지 말 것** — `cut -d= -f1` 로 **이름만** 추출 후 필터 | 5·12 | ⏭️ |
 
@@ -62,7 +64,7 @@
 | **#1071** | prod 하드닝 — HSTS 헤더·쿠키 Secure·`/docs` 비노출이 Railway(https)에서 적용되는지 | ✅ **2026-07-19 실측 3/3 충족**: ① `strict-transport-security: max-age=31536000; includeSubDomains` 존재 ② `/auth/github` 세션 쿠키 = `path=/; Max-Age=604800; httponly; samesite=lax; **secure**` ③ `GET /docs` → **404** | 13 | ✅ |
 | **#1072** | approve SHA 결속 — head 이동 PR 에 approve 시도 시 GitHub **422 fail-closed** (외부 계약 미검증) | head 가 이동한 PR 에 반자동 approve 유발 → GitHub 422 반환 + gate 가 차단하는지 운영 로그 관측 | 13 | ⏳ |
 | **#1073** | orphan sweep cron **실제 실행** — `analysis_attempts` 소실 탐지·표면화·정리 | ✅ **2026-07-19 로그 직접 관측으로 종결**. `#1102` 로 로깅 복구 후 `[src.scheduler] scheduler sweep_orphans: surfaced=0` 이 **정확히 600초 간격**으로 반복 확인(04:44:51 · 04:54:52 · 05:04:53). cron 전용 경로가 실제 실행 중임이 확정 — DB 우회 관측 불필요 | 13 | ✅ |
-| **#1075** | retention sweep cron **실제 DELETE** — 만료 캐시·종결 큐 GC | ⏳ **daily 20:00 UTC 라 미도래**(스케줄 특성상 대기 외 방법 없음). 🔴 검증 수단은 이제 **로그 직접 관측**(DB 우회 불필요 — `#1102` 로 복구): 20:00 UTC 이후 로그에서 `[src.scheduler] scheduler retention_sweep: counts={...}` 확인. 교차 확인 = `SELECT COUNT(*) FROM insight_narrative_cache WHERE expires_at < NOW()` 가 **8 → 0**. 같은 스케줄러 루프의 interval job 이 이미 실동작 확정(`#1073`)이라 실행 자체는 높은 확신 | 13 | ⏳ |
+| **#1075** | retention sweep cron **실제 DELETE** — 만료 캐시·종결 큐 GC | ✅ **2026-07-19 종결 — 원장이 지정한 2축 모두 일치.** ① 로그: `2026-07-19 20:00:01 INFO [src.scheduler] scheduler retention_sweep: counts={'expired_cache': **8**, 'terminal_queue': 1407}` — 예정 시각 20:00 에 발화하고 **보존해 둔 8건을 정확히** 삭제 ② DB 교차확인: `insight_narrative_cache` 만료 행 **8 → 0**(현재 total_rows=0). 예측값과 실측값이 일치했다 | 13 | ✅ |
 
 ---
 
