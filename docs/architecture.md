@@ -118,6 +118,7 @@ src/
 │   ├── repos.py / stats.py / hook.py (_resolve_hook_locale — repo owner 언어 해소, 사이클 151) / users.py
 │   ├── repo_report.py           # Repo별 분석 레포트 JSON API (list + detail)
 │   ├── internal_cron.py         # POST /api/internal/cron/{weekly,trend,scan-security,retry-pending-merges,sweep-orphans,retention-sweep}
+│   │                            # 🔴 6종 중 `scan-security` 만 스케줄러 job 없음(주기 실행 0회·수동 트리거 전용) — 사유는 `scheduler.UNSCHEDULED_CRON_PATHS`, 파리티는 `tests/unit/test_cron_scheduler_parity.py` 강제
 │   ├── issue_registration.py    # POST /api/issues/register + GET /api/issues/status + GET /api/issues/repo-summary (소유권 검증 포함)
 │   └── admin.py                 # GET /api/admin/{tenants,rls-audit,operations}
 ├── ui/

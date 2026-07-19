@@ -132,6 +132,34 @@ JOBS = (
 )
 
 
+# 🔴 cron 엔드포인트 경로 ↔ JOBS job 이름 매핑 (**단일 출처**).
+# 이름이 다른 쌍이 있으므로(`weekly` ↔ `weekly-reports`) 테스트에 복제하면 drift 한다.
+# Single source of truth for endpoint-path → job-name (some names differ; never duplicate this
+# mapping into a test).
+CRON_PATH_TO_JOB = {
+    "weekly": "weekly-reports",
+    "trend": "trend",
+    "retry-pending-merges": "retry-pending-merges",
+    "sweep-orphans": "sweep-orphans",
+    "retention-sweep": "retention-sweep",
+}
+
+# 🔴 의도적으로 주기 실행하지 **않는** cron 경로 → 사유 (2026-07-19 회고 P1).
+# 사유를 주석이 아니라 **값**으로 두는 이유: 주석은 검증할 수 없어 "왜 예외인지 아무도 기억
+# 못 하는" 상태로 부패한다. `test_every_unscheduled_path_documents_its_reason` 가 강제한다.
+# Reasons live as values, not comments — a comment cannot be enforced and decays.
+#
+# 🔴 이 목록이 존재하는 진짜 이유: `scan-security` 는 엔드포인트가 있는데 스케줄러 job 이 없어
+# **출시 이래 주기 실행 0회**였고, 문서는 실행된다고 단언했다 — 2026-07-19 P0(Railway cron 5종
+# 전면 미실행)과 **정확히 같은 실패 모드**다. 파리티 가드가 이 갭을 구조로 고정한다.
+UNSCHEDULED_CRON_PATHS = {
+    "scan-security": (
+        "GHAS 폴링(scan_all_repos)은 GitHub API 쿼터를 소모하고 알림을 발생시키므로 "
+        "주기 실행 활성화는 사용자 결정 영역(정책 15 High tier). 현재는 수동/외부 트리거 전용."
+    ),
+}
+
+
 def _seconds_until_next(job, now):
     """다음 실행까지 남은 초 — 스케줄 종류별 계산.
     Seconds until this job's next run."""
