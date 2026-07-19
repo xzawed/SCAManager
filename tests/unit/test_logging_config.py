@@ -13,7 +13,7 @@ The app never configured logging, so every INFO log was dropped; only uvicorn/al
 """
 import logging
 
-from src.logging_config import configure_logging
+from src.logging_config import _MARKER, configure_logging
 
 
 def test_configure_logging_attaches_root_handler():
@@ -70,6 +70,53 @@ def test_debug_is_not_enabled_by_default():
     finally:
         root.handlers[:] = original
         root.setLevel(original_level)
+
+
+def test_is_configured_false_before_and_true_after(logging_isolation):
+    """🔴 `is_configured()` 계약 — 설정 전 False, 설정 후 True.
+
+    이 술어가 alembic/env.py 의 fileConfig 가드 판정 기준이다. 뒤집히면 (a) 항상 True →
+    `make migrate` 로그 소실, (b) 항상 False → 인프로세스 마이그레이션이 앱 로깅 파괴.
+    This predicate drives the fileConfig guard in alembic/env.py; inverting it either silences the
+    alembic CLI or lets in-process migrations wipe application logging.
+    """
+    # 지연 import — 미구현(TDD Red) 단계에서 이 파일의 나머지 테스트까지 collection error 로
+    # 죽이지 않기 위함. 구현 후에도 동작은 동일하다.
+    # Local import so the TDD-Red phase does not turn the whole file into a collection error.
+    from src.logging_config import is_configured  # pylint: disable=import-outside-toplevel
+
+    root = logging.getLogger()
+    # 앱 미설정 상태 재현 — conftest 의 `src.main` import 가 이미 configure_logging() 을 돌렸다.
+    # Reproduce the unconfigured state: conftest's src.main import already ran configure_logging().
+    root.handlers[:] = [h for h in root.handlers if not getattr(h, _MARKER, False)]
+    assert is_configured() is False, (
+        "marker 핸들러가 없는데 is_configured() 가 True — 가드가 항상 skip 으로 판정해 "
+        "alembic CLI(`make migrate`) 로그가 사라진다."
+    )
+
+    configure_logging()
+
+    assert is_configured() is True, (
+        "configure_logging() 후에도 is_configured() 가 False — 가드가 항상 fileConfig 를 "
+        "호출해 인프로세스 마이그레이션이 앱 로깅을 파괴한다."
+    )
+
+
+def test_is_configured_detects_marker_handler_only(logging_isolation):
+    """🔴 부정 통제 — 무관한 핸들러(예: pytest·uvicorn)만 있으면 False 여야 한다.
+
+    "root 에 핸들러가 하나라도 있으면 True" 로 구현하면, alembic CLI 단독 실행 시에도 사실상
+    항상 True 가 되어(파이썬 런타임/서드파티가 핸들러를 붙이는 경우) fileConfig 가 영영 skip 된다.
+    Implementing this as "any handler at all" would make the CLI path skip fileConfig forever.
+    """
+    from src.logging_config import is_configured  # pylint: disable=import-outside-toplevel
+
+    root = logging.getLogger()
+    root.handlers[:] = [logging.NullHandler()]
+
+    assert is_configured() is False, (
+        "marker 없는 제3자 핸들러를 앱 설정으로 오판 — is_configured() 는 _MARKER 속성만 봐야 한다."
+    )
 
 
 def test_main_configures_logging_at_import():
