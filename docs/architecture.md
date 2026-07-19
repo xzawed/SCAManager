@@ -31,6 +31,7 @@ src/
 ├── constants.py                 # 전역 상수 단일 출처 — 점수배점/감점가중치/AI기본값/등급/알림한도/HTTP타임아웃/캐시TTL
 ├── crypto.py                    # encrypt_token()/decrypt_token() — TOKEN_ENCRYPTION_KEY
 ├── database.py                  # SQLAlchemy engine, Base, FailoverSessionFactory + RLS event listener + WorkerSessionLocal (background/시스템 컨텍스트 BYPASSRLS 라우팅, RLS Phase 2~4)
+├── logging_config.py            # 🔴 앱 로깅 단일 설정 지점 — configure_logging()(stdout·INFO·멱등) + is_configured() + _RedactSecretsFilter(시크릿 마스킹). 2026-07-19 P0 2건: (1) `alembic/env.py` 의 `fileConfig` 가 lifespan 내 마이그레이션에서 앱 로깅을 파괴(root→WARN·`uvicorn.access` disable) → `is_configured()` 가드로 봉인(#1102) (2) httpx INFO 요청 URL 로깅이 Telegram 봇 토큰을 평문 기록 → httpx WARNING + 리댁션 필터 2계층(#1104). 가드 = `tests/unit/test_logging_config.py` · `tests/unit/migrations/test_alembic_env_logging_guard.py`
 ├── scheduler.py                 # 🔴 인앱 주기 작업 스케줄러 (lifespan 기동·운영 전용·stdlib only) — JOBS 5종(retry-pending-merges 1분 · sweep-orphans 10분 · trend 03:00 UTC · retention-sweep 20:00 UTC · weekly-reports 월 00:00 UTC)이 `cron_service` 함수를 직접 호출. 2026-07-19 P0 대체: `railway.toml [[deploy.cronJobs]]` 는 Railway 스키마에 없는 키라 무시돼 5종이 한 번도 실행되지 않았음. `SCHEDULER_DISABLED` kill-switch. 배선 단언 = `tests/unit/test_scheduler.py`
 ├── shared/
 │   ├── http_client.py           # httpx.AsyncClient lifespan 싱글톤 (내부 신뢰 API)
