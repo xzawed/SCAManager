@@ -8,34 +8,41 @@
 
 ---
 
-## ⏭️ 다음 세션 이어받기 — 즉시 실행 (2026-07-19 인수인계)
+## ✅ 인앱 스케줄러 실동작 확정 (2026-07-19 05:0x UTC — 로그 직접 관측)
 
-**단 하나의 미완 검증**이 남았고, 쿼리 1개면 끝난다.
+`#1102`(alembic 로깅 파괴 봉인) 배포 직후 운영 로그가 복구되면서, **3세션째 막혀 있던 cron 검증이 20:00 UTC 대기 없이 즉시 종결**됐다. 더 이상 DB 우회 관측이 필요 없다 — **로그가 직접 증거**다.
 
-```sql
--- Supabase MCP project_id = qaoirpyhldlkeoyppfwq
-SELECT COUNT(*) FROM insight_narrative_cache WHERE expires_at < NOW();
+```
+04:34:50 INFO [src.scheduler] scheduler started — 5 jobs: retry-pending-merges,
+                              sweep-orphans, trend, retention-sweep, weekly-reports
+04:35:54 INFO [src.scheduler] scheduler retry_pending_merges: counts={...}   ← 이후 ~61초 간격 연속
+04:44:51 INFO [src.scheduler] scheduler sweep_orphans: surfaced=0
+04:54:52 INFO [src.scheduler] scheduler sweep_orphans: surfaced=0            ← 정확히 600초 간격
+05:04:53 INFO [src.scheduler] scheduler sweep_orphans: surfaced=0
 ```
 
-| 결과 | 의미 | 후속 |
-|------|------|------|
-| **0** | 인앱 스케줄러(#1099) **실동작 확정** | `#1073`·`#1075` 를 ✅ 로 갱신 → 두 건 종결 |
-| **8 (그대로)** | 20:00 UTC 스윕 **미실행** — 스케줄러가 안 돌고 있다 | 🔴 P0 재개: `src/scheduler.py` 기동 경로 조사 |
+| 확인 항목 | 결과 |
+|-----------|------|
+| 5종 job 등록 | ✅ 기동 로그에 전부 명시 |
+| interval job 실행 | ✅ `retry-pending-merges` ~61초 · `sweep-orphans` 정확히 600초 주기 (33분 연속 관측) |
+| `#1073` orphan sweep | ✅ **종결** — cron 전용 경로가 실제 실행 중 |
+| `#1075` retention sweep | ⏳ 잔여 — **daily 20:00 UTC** 라 아직 미도래. 단 같은 스케줄러 루프이고 로그가 살아 있으므로 그날 로그의 `scheduler retention_sweep: counts={...}` 한 줄로 확인된다 |
 
-**전제**: 스케줄러는 매일 **20:00 UTC** 에 `retention-sweep` 을 돌린다. 만료 캐시 8건(최고령 2026-05-05)이 그 대상이며, **cron 으로만 도달 가능한 경로**라 webhook 오염이 없는 유일한 단독 테스트다. 2026-07-19 03:3x UTC 기준 아직 미도래.
-
-🔴 **이 8건을 다른 방법으로 지우지 말 것** — 지우면 검증 신호가 **영구 소실**된다(캐시 TTL=1h 이나 2.5개월간 8건만 생성·최신 10일 전이라 재생성 안 됨). 같은 이유로 수동 `retention-sweep` 호출도 금지.
+🔴 **만료 캐시 8건을 다른 방법으로 지우지 말 것** — `#1075` 의 DELETE 실증 신호다(캐시 TTL=1h 이나 2.5개월간 8건만 생성·최신 10일 전이라 재생성 안 됨). 수동 `retention-sweep` 호출도 금지.
 
 ### 이미 확인된 것 (재확인 불필요)
 
 | 항목 | 결과 |
 |------|------|
-| 서비스 계층(엔드포인트·인증·`cron_service`·worker DB 세션) | ✅ 정상 — 잘못된 키 **401** / 정상 키 **200 `{"status":"ok","orphans_surfaced":0}`** (비파괴 `sweep-orphans` 프로브) |
-| 앱 헬스 | ✅ `/health` 5/5 **200**, 0.5~0.8s — 재시작 루프 아님 |
+| 인앱 스케줄러 기동·interval job 실행 | ✅ **로그 실측 확정** (위 표) |
+| 서비스 계층(엔드포인트·인증·`cron_service`·worker DB 세션) | ✅ 정상 — 잘못된 키 **401** / 정상 키 **200 `{"status":"ok","orphans_surfaced":0}`** |
+| 앱 헬스 | ✅ `/health` **200** (0.5~0.8s) — 재시작 루프 아님 |
 | `INTERNAL_CRON_API_KEY` | ✅ Railway 에 설정됨·유효 |
-| 🔴 ~~Railway **deploy 로그 수집**~~ | ❌ **이 진단은 오귀인이었다 — 2026-07-19 반증 완료.** 원인은 Railway 가 아니라 **앱 자신**(`alembic/env.py` 의 `fileConfig` 가 마이그레이션 시 앱 로깅을 파괴). 아래 §근본 원인 참조 |
+| 🔴 ~~Railway **deploy 로그 수집**~~ | ❌ **오귀인이었다 — 2026-07-19 반증·수정 완료(`#1102`).** 원인은 Railway 가 아니라 **앱 자신**(`alembic/env.py` 의 `fileConfig` 가 마이그레이션 시 앱 로깅 파괴). 아래 §오귀인 정정 참조 |
 
 ⚠️ weekly 리포트 첫 발송 = 다음 주 **월요일 00:00 UTC**(출시 이래 0회 발송).
+
+🔴 **로깅 복구가 드러낸 잠복 결함**: 로그가 살아나자 **Telegram 봇 토큰이 URL 경로에 평문으로 남고 있음**이 드러났다(httpx 가 요청 URL 전문을 INFO 로깅 — 실측 5건). `#1104` 로 2계층 리댁션 적용. **이미 남은 토큰은 코드로 회수 불가 → 토큰 로테이션 필요**(운영자 영역).
 
 ## 🔴 안전/데이터 등급 (다음 세션 진입 전 명시 회신 의무 — 정책 5 NEW-P0-N)
 
@@ -50,10 +57,10 @@ SELECT COUNT(*) FROM insight_narrative_cache WHERE expires_at < NOW();
 
 | PR | 검증 항목 | 검증 방법 | 정책 | 상태 |
 |----|----------|----------|------|------|
-| **#1071** | prod 하드닝 — HSTS 헤더·쿠키 Secure·`/docs` 비노출이 Railway(https)에서 적용되는지 | `curl -I https://<app>/` → `Strict-Transport-Security` 헤더 존재 + `Set-Cookie … Secure` + `GET /docs` → 404 | 13 | ⏳ |
+| **#1071** | prod 하드닝 — HSTS 헤더·쿠키 Secure·`/docs` 비노출이 Railway(https)에서 적용되는지 | ✅ **2026-07-19 실측 3/3 충족**: ① `strict-transport-security: max-age=31536000; includeSubDomains` 존재 ② `/auth/github` 세션 쿠키 = `path=/; Max-Age=604800; httponly; samesite=lax; **secure**` ③ `GET /docs` → **404** | 13 | ✅ |
 | **#1072** | approve SHA 결속 — head 이동 PR 에 approve 시도 시 GitHub **422 fail-closed** (외부 계약 미검증) | head 가 이동한 PR 에 반자동 approve 유발 → GitHub 422 반환 + gate 가 차단하는지 운영 로그 관측 | 13 | ⏳ |
-| **#1073** | orphan sweep cron **실제 실행** — `analysis_attempts` 소실 탐지·표면화·정리 | 🔴 **로그 관측 불가 → DB 관측 대체**(§검증 수단 정정). `SELECT COUNT(*) FROM analysis_attempts WHERE started_at < NOW() - INTERVAL '1 hour'` = 0 유지면 정상. **2026-07-18 17:23 UTC 실측 = 총 0행**(관측 가능한 잔여물 없음 — 판별 보류) | 13 | ⏳ |
-| **#1075** | retention sweep cron **실제 DELETE** — 만료 캐시·종결 큐 GC | 🔴 **로그 관측 불가 → DB 관측 대체**. `SELECT COUNT(*) FROM insight_narrative_cache WHERE expires_at < NOW()` — **2026-07-18 17:23 UTC 실측 = 8건 잔존**(최고령 만료 2026-05-05·74일). 매일 20:00 UTC 스케줄 실행 후 **0 이 되면 cron 실동작 확정** ← 현재 유일한 깨끗한 단독 테스트 | 13 | ⏳ |
+| **#1073** | orphan sweep cron **실제 실행** — `analysis_attempts` 소실 탐지·표면화·정리 | ✅ **2026-07-19 로그 직접 관측으로 종결**. `#1102` 로 로깅 복구 후 `[src.scheduler] scheduler sweep_orphans: surfaced=0` 이 **정확히 600초 간격**으로 반복 확인(04:44:51 · 04:54:52 · 05:04:53). cron 전용 경로가 실제 실행 중임이 확정 — DB 우회 관측 불필요 | 13 | ✅ |
+| **#1075** | retention sweep cron **실제 DELETE** — 만료 캐시·종결 큐 GC | ⏳ **daily 20:00 UTC 라 미도래**(스케줄 특성상 대기 외 방법 없음). 🔴 검증 수단은 이제 **로그 직접 관측**(DB 우회 불필요 — `#1102` 로 복구): 20:00 UTC 이후 로그에서 `[src.scheduler] scheduler retention_sweep: counts={...}` 확인. 교차 확인 = `SELECT COUNT(*) FROM insight_narrative_cache WHERE expires_at < NOW()` 가 **8 → 0**. 같은 스케줄러 루프의 interval job 이 이미 실동작 확정(`#1073`)이라 실행 자체는 높은 확신 | 13 | ⏳ |
 
 ---
 
