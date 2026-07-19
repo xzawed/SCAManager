@@ -37,7 +37,8 @@
 
 | 변수 | 설명 | 예시 |
 |------|------|------|
-| `INTERNAL_CRON_API_KEY` | **`POST /api/internal/cron/*` 전용 인증 키** (admin key 와 분리). Railway `[[deploy.cronJobs]]` 트리거. `hmac.compare_digest` 타이밍 안전 비교. **미설정 시 503 반환** — cron 6종 (`weekly`=주간 리포트 · `trend`=트렌드 경보 · `scan-security`=Code/Secret Scanning 폴링 · `retry-pending-merges`=머지 재시도 큐 · `sweep-orphans`=분석 소실 탐지 · `retention-sweep`=데이터 보존 GC) 전부 비활성화. | `cron-internal-key-xxx` |
+| `INTERNAL_CRON_API_KEY` | **`POST /api/internal/cron/*` 전용 인증 키** (admin key 와 분리). `hmac.compare_digest` 타이밍 안전 비교. **미설정 시 503 반환** — 엔드포인트 6종 (`weekly` · `trend` · `scan-security` · `retry-pending-merges` · `sweep-orphans` · `retention-sweep`) 전부 비활성화. 🔴 **주기 실행은 인앱 스케줄러(`src/scheduler.py`)가 서비스 함수를 직접 호출**하므로 이 키가 없어도 스케줄 작업은 동작한다 — 이 키는 **수동/외부 트리거용**. (2026-07-19 P0: `railway.toml [[deploy.cronJobs]]` 는 Railway 스키마에 없는 키라 무시돼 5종이 한 번도 실행되지 않았음.) | `cron-internal-key-xxx` |
+| `SCHEDULER_DISABLED` | 인앱 주기 작업 스케줄러 kill-switch — `1` 시 5종 job 미기동 (`retry-pending-merges` 1분 · `sweep-orphans` 10분 · `trend` 매일 03:00 UTC · `retention-sweep` 매일 20:00 UTC · `weekly-reports` 월 00:00 UTC). 🔴 스케줄러는 **운영(`is_production`)에서만 기동** — 비운영에서는 이 값과 무관하게 미기동. 상세: `src/scheduler.py` | `0` (기본) |
 | `SAAS_ADMIN_EMAILS` | **SaaS admin 권한 allow-list** — `,` 분리 email 문자열. `current_user.email in saas_admin_emails` 일치 시 `/admin/{tenants,rls-audit,operations}` UI + `/api/admin/*` REST 접근 허용. 미설정 시 admin 영역 자동 비활성화 (Cycle 79 PR 2 #255 — `require_admin` Depends 페어). | 빈 문자열 (기본) / `admin@example.com,owner@example.com` |
 | `SCAMANAGER_SELF_ANALYSIS_DISABLED` | **Loop Guard kill-switch** — `1` 설정 시 모든 webhook 분석 즉시 중단 (202 skipped). Phase 9 자기-분석 루프 사고 발생 시 즉각 차단용. | `0` (기본) / `1` (긴급 중단) |
 | `SECURITY_AUTO_PROCESS_DISABLED` | **Code/Secret Scanning auto-process kill-switch** — `1` 설정 시 `security_scan_service` + `dashboard_service` security 영역 자동 처리 중단 (Cycle 73 #244 신설). false-positive 누적 시 긴급 차단용. | `0` (기본) / `1` (긴급 중단) |

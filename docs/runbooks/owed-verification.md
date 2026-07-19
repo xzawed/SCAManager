@@ -30,6 +30,23 @@
 
 사용자는 각 행의 상태를 `✅/❌/⏭️` 로 갱신하거나, Claude 에게 결과를 전달하면 Claude 가 갱신한다. `❌`(NG) 발견 시 = 즉시 fix PR 착수(정책 7). 전 행 `✅`/`⏭️` 확정 시 = 원장에서 **아카이브 섹션으로 이동**(본 상단 표는 미결만 유지).
 
+## 🔴🔴 근본 원인 확정 — Railway cron 은 **한 번도 실행된 적이 없다** (2026-07-19 P0)
+
+`#1073`·`#1075` 가 검증되지 않던 진짜 이유. `railway.toml` 의 `[[deploy.cronJobs]]` 는 **Railway 스키마에 존재하지 않는 키**라 조용히 무시됐다.
+
+| 실측 | 결과 |
+|------|------|
+| SCAManager 서비스 `cronSchedule` / `nextCronRunAt` | **둘 다 null** |
+| Railway cron 설정 방식 (공식 문서) | 서비스당 **단일** `deploy.cronSchedule` 또는 대시보드 — **배열 미지원** |
+| 20:00 UTC 스윕 3.5h 경과 후 만료 캐시 | **8건 잔존** (실행됐다면 `purge_expired` 가 0으로 만들었어야 함) |
+
+→ weekly · trend · retry-pending-merges · sweep-orphans · retention-sweep **5종 전부 미실행**.
+(직전 #1095 의 따옴표·`-f` 수정은 실재 결함이었으나 **명령 자체가 실행되지 않아 무의미**했다.)
+
+✅ **대체 = 인앱 스케줄러 `src/scheduler.py`** (lifespan 기동·운영 전용). 배선을 `tests/unit/test_scheduler.py` 가 단언한다 — 저장소 밖 설정이 조용히 어긋나던 실패 모드를 코드로 옮긴 것이 이 사고의 교훈이다.
+
+🔴 **따라서 #1073·#1075 는 스케줄러 배포 후에야 검증 가능**하다. 검증 기준은 아래 DB 관측을 그대로 사용한다(`insight_narrative_cache` 만료 8건 → 0).
+
 ## 🔴 검증 수단 정정 — "Railway cron 로그 관측"은 실행 불가 (2026-07-18 실측)
 
 `#1073`·`#1075` 는 검증 방법으로 *"Railway cron 로그에서 sweep 실행 확인"* 을 명시했으나, **그 관측 수단이 존재하지 않는다**.

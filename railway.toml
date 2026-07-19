@@ -24,48 +24,19 @@ healthcheckTimeout = 60
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
 
-# 🔴 cron command 작성 규칙 (회고 2026-07-19 P0 — 전면 무음 실패 학습)
-#   (1) TOML 리터럴 문자열('...') + 셸 **큰따옴표**로 헤더를 감쌀 것.
-#       작은따옴표 안의 `$INTERNAL_CRON_API_KEY` 는 셸이 확장하지 않아 리터럴이 헤더로 전송되고
-#       전 cron 이 401 로 실패한다(5종 전부 이 상태였음).
-#   (2) `curl -fsS` 필수 — `-f` 없으면 HTTP 401/503 에도 exit 0 이라 Railway 가 **성공으로 기록**한다.
-#       `-S` 는 `-s` 중에도 오류 메시지를 남겨 로그에서 원인이 보이게 한다.
-#   회귀 가드: tests/unit/scripts/test_railway_cron_guard.py (두 조건 독립 강제).
-# 🔴 Cron command rules (retro 2026-07-19 P0 — total silent failure):
-#   (1) TOML literal string + shell DOUBLE quotes — single quotes block $VAR expansion (→ 401).
-#   (2) `curl -fsS` is mandatory — without `-f`, HTTP errors still exit 0 and Railway logs success.
-
-# 주간 리포트: 매주 월요일 KST 09:00 = UTC 00:00 (0 0 * * 1)
-# Weekly report: every Monday at KST 09:00 = UTC 00:00
-[[deploy.cronJobs]]
-schedule = "0 0 * * 1"
-command = 'curl -fsS -X POST -H "X-API-Key: $INTERNAL_CRON_API_KEY" http://localhost:$PORT/api/internal/cron/weekly'
-
-# 트렌드 체크: 매일 KST 12:00 = UTC 03:00 (0 3 * * *)
-# Trend check: every day at KST 12:00 = UTC 03:00
-[[deploy.cronJobs]]
-schedule = "0 3 * * *"
-command = 'curl -fsS -X POST -H "X-API-Key: $INTERNAL_CRON_API_KEY" http://localhost:$PORT/api/internal/cron/trend'
-
-# CI-aware Auto Merge 재시도 — 1분마다 pending 큐 처리 (Phase 12 cron fallback)
-# CI-aware Auto Merge retry — process pending queue every 1 min (Phase 12 cron fallback)
-# 1분 = cron 표현식 최단 단위. webhook 미수신 시에도 머지 대기 시간 최소화.
-# 1 minute = cron's smallest unit. Minimizes merge wait time even on webhook miss.
-[[deploy.cronJobs]]
-schedule = "* * * * *"
-command = 'curl -fsS -X POST -H "X-API-Key: $INTERNAL_CRON_API_KEY" http://localhost:$PORT/api/internal/cron/retry-pending-merges'
-
-# 분석 소실 탐지 sweep — 10분마다 orphan(SIGTERM/OOM 로 증발한 분석) 표면화 + 정리 (준비도 감사 #11)
-# Analysis-loss sweep — surfaces + purges orphans every 10 min (wires up #1060's find_orphaned)
-[[deploy.cronJobs]]
-schedule = "*/10 * * * *"
-command = 'curl -fsS -X POST -H "X-API-Key: $INTERNAL_CRON_API_KEY" http://localhost:$PORT/api/internal/cron/sweep-orphans'
-
-# 데이터 보존 sweep — 매일 KST 05:00 = UTC 20:00, 만료 캐시 + 종결 큐 행 GC (준비도 감사 #12·#20)
-# Retention sweep — daily at UTC 20:00, GC expired cache + terminal queue rows
-[[deploy.cronJobs]]
-schedule = "0 20 * * *"
-command = 'curl -fsS -X POST -H "X-API-Key: $INTERNAL_CRON_API_KEY" http://localhost:$PORT/api/internal/cron/retention-sweep'
+# 🔴 Railway cron 은 여기서 설정할 수 없다 (2026-07-19 P0 — 5종 전부 미실행 사고).
+#   `[[deploy.cronJobs]]` 는 **Railway 스키마에 존재하지 않는 키**라 조용히 무시된다.
+#   Railway cron 은 서비스당 **단일** `deploy.cronSchedule`(또는 대시보드 Cron Schedule)이며
+#   배열을 지원하지 않는다. 게다가 cron 서비스는 start command 를 대신 실행하므로
+#   `curl http://localhost:$PORT` 로 자기 웹서버를 부르는 구조 자체가 성립하지 않는다.
+#   실측: SCAManager `cronSchedule=null`·`nextCronRunAt=null` → weekly/trend/retry/orphan/
+#   retention 5종이 **한 번도 실행되지 않았다**(20:00 UTC 스윕 3.5h 경과 후 만료 캐시 8건 잔존).
+# ✅ 대체 = **인앱 스케줄러** `src/scheduler.py` (lifespan 기동, 운영 전용, 5종 job 등록).
+#   배선은 `tests/unit/test_scheduler.py` 가 단언한다 — 저장소 밖 설정이 조용히 어긋나던
+#   실패 모드를 코드로 옮긴 것이 이 사고의 교훈이다.
+# 🔴 Railway cron cannot be configured here: `[[deploy.cronJobs]]` is not a Railway key and was
+#   silently ignored; all 5 jobs never ran. Replaced by the in-app scheduler (src/scheduler.py),
+#   whose wiring is asserted by tests instead of living in invisible platform config.
 
 # Fallback B (Railway native cron 제한 시): cron-job.org 외부 → curl
 # Fallback B (if Railway native cron is unavailable): use cron-job.org with:
