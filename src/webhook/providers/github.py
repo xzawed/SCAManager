@@ -232,6 +232,52 @@ async def _handle_auto_merge_disabled_event(data: dict) -> dict:
     return {"status": "accepted"}
 
 
+async def _notify_n8n_issue_guarded(  # pylint: disable=too-many-arguments
+    *,
+    webhook_url: str | None,
+    repo_full_name: str,
+    action: str,
+    issue: dict,
+    sender: dict,
+    n8n_secret: str = "",
+    repo_token: str = "",
+) -> None:
+    """백그라운드 n8n 릴레이 — 예외를 좁게 흡수해 ASGI 밖으로 전파시키지 않는다.
+    Guarded background n8n relay; never lets the exception escape to the ASGI layer.
+
+    🔴 왜 필요한가: 무가드 BackgroundTask 의 예외는 응답 송신 후 ASGI 밖으로 탈출해
+    **uvicorn 이 `exc_info` 트레이스백으로 로깅**한다. n8n webhook 은
+    `https://<host>/webhook/<UUID>` 처럼 **경로 자체가 credential** 이므로
+    `raise_for_status()` 의 4xx/5xx 메시지에 그 시크릿이 그대로 실린다.
+    Unguarded background-task exceptions escape to uvicorn, which logs the traceback — and an
+    n8n webhook URL path *is* the credential.
+
+    🔴 리댁션 필터(`src/logging_config.py`)로는 막을 수 없다 — 필터는 등재된 정규식만
+    마스킹하는데 n8n 호스트는 **사용자가 지정하는 임의 호스트**라 열거가 불가능하다.
+    따라서 여기(호출처)가 유일한 통제다. Telegram `_post_message_guarded` 와 동일 패턴.
+    The redaction filter cannot cover arbitrary user-supplied hosts, so this guard is the only
+    control — same pattern as telegram's `_post_message_guarded`.
+
+    🔴 `**kwargs` 가 아니라 **명시 파라미터**다 — kwargs 로 받으면 pylint 가 호출을 검증하지
+    못해(`missing-kwoa` 침묵) `notify_n8n_issue` 시그니처가 바뀌어도 조용히 어긋난다.
+    Explicit params (not **kwargs) so the linter verifies the call and signature drift fails loudly.
+    """
+    try:
+        await notify_n8n_issue(
+            webhook_url=webhook_url,
+            repo_full_name=repo_full_name,
+            action=action,
+            issue=issue,
+            sender=sender,
+            n8n_secret=n8n_secret,
+            repo_token=repo_token,
+        )
+    except httpx.HTTPError as exc:
+        # 🔴 예외 객체(`%s`)가 아니라 **타입명만** — str(exc) 에 시크릿 URL 이 들어있다.
+        # Log the exception *type* only; str(exc) embeds the secret-bearing URL.
+        logger.warning("n8n issue relay failed: %s", type(exc).__name__)
+
+
 async def _handle_issues_event(data: dict, background_tasks: BackgroundTasks) -> dict:
     """GitHub Issues 이벤트를 n8n으로 릴레이한다."""
     repo_name = data.get("repository", {}).get("full_name", "")
@@ -263,7 +309,7 @@ async def _handle_issues_event(data: dict, background_tasks: BackgroundTasks) ->
     issue = data.get("issue", {})
     sender = data.get("sender", {})
     background_tasks.add_task(
-        notify_n8n_issue,
+        _notify_n8n_issue_guarded,
         webhook_url=n8n_url,
         repo_full_name=repo_name,
         action=action,
