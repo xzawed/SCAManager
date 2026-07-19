@@ -18,6 +18,7 @@ application INFO log was silently dropped.
 No duplication with uvicorn: its loggers carry their own handlers and do not propagate.
 """
 import logging
+import re
 import sys
 
 # 운영 로그 포맷 — 시각·레벨·모듈명·메시지. Railway 로그 뷰에서 출처 추적이 가능해야 한다.
@@ -28,6 +29,53 @@ _DATEFMT = "%Y-%m-%d %H:%M:%S"
 # 이 핸들러가 우리가 붙인 것임을 표시 — 재호출 시 중복 부착 방지(idempotent).
 # Marks our handler so repeat calls do not stack duplicates.
 _MARKER = "_scamanager_configured"
+
+# 🔴 시크릿을 URL **경로**에 넣는 외부 서비스 — 로그 유출 마스킹 패턴 (2026-07-19 P0).
+# Telegram Bot API 는 `https://api.telegram.org/bot<TOKEN>/sendMessage` 처럼 토큰이 경로에 있어
+# 요청 URL 을 로깅하는 라이브러리(httpx 등)가 그대로 토큰을 남긴다. 캡처 그룹 1(도메인+`/bot`)은
+# 보존하고 토큰만 `***` 로 바꿔 **운영 판독성은 유지**한다.
+# External services that put secrets in the URL *path*; keep the readable prefix, mask the token.
+_SECRET_URL_PATTERNS = (
+    re.compile(r"(api\.telegram\.org/bot)[^/\s]+"),
+)
+
+
+class _RedactSecretsFilter(logging.Filter):  # pylint: disable=too-few-public-methods
+    # R0903: logging.Filter 규약이 `filter()` 단일 메서드다 — 메서드를 늘리는 것이 오히려 규약 위반.
+    # R0903: the logging.Filter contract is a single filter() method; adding more would break it.
+    """로그 레코드에서 시크릿을 마스킹하는 심층 방어 필터.
+    Defense-in-depth filter that masks secrets in log records.
+
+    🔴 배경 (2026-07-19): #1102 로 앱 로깅이 복구되자마자 Telegram 봇 토큰이 운영 로그에
+    평문으로 남고 있음이 드러났다(실측 5건). 로그가 죽어 있던 동안 잠복해 있던 유출 경로다.
+    계층 1(httpx 침묵)이 1차 차단이지만, **우리 코드가 실수로 토큰을 로깅하는 경우**나
+    httpx 의 WARNING 경로(재시도·타임아웃)는 이 필터만이 막는다.
+    Layer 1 silences httpx at INFO; this filter is the only guard for our own accidental logging
+    and for httpx's WARNING-level paths (retries/timeouts).
+
+    🔴 무해성 원칙 — 마스킹이 **발생한 경우에만** record 를 변형한다. 그래야 lazy % 포맷이
+    보존되고(대부분의 레코드는 손대지 않음) 오버헤드가 최소화된다.
+    Only mutates the record when something was actually masked, preserving lazy %-formatting.
+    """
+
+    def filter(self, record):
+        try:
+            text = record.getMessage()
+        except (TypeError, ValueError):
+            # 포맷 인자 불일치 — 여기서 삼키지 않고 핸들러가 평소대로 처리하게 둔다.
+            # Malformed format args; let the handler surface it as usual.
+            return True
+
+        redacted = text
+        for pattern in _SECRET_URL_PATTERNS:
+            redacted = pattern.sub(r"\1***", redacted)
+
+        if redacted != text:
+            # 완성된 문자열로 대체하므로 args 를 비워야 재포맷 시 오류가 없다.
+            # Replace with the finished string; args must be cleared to avoid re-formatting.
+            record.msg = redacted
+            record.args = ()
+        return True
 
 
 def is_configured():
@@ -56,10 +104,25 @@ def configure_logging(level=logging.INFO):
     root = logging.getLogger()
     root.setLevel(level)
 
+    # 🔴 계층 1 — httpx 침묵 (2026-07-19 P0 시크릿 유출 차단).
+    # httpx 는 INFO 에서 **요청 URL 전문**을 로깅한다. Telegram 처럼 토큰이 경로에 있는 API 는
+    # 그 한 줄로 credential 이 통째로 로그에 남는다. 앱 자체 관측은 `src.shared.stage_metrics`·
+    # `merge_metrics` 가 이미 담당하므로 httpx 의 요청 로그는 없어도 운영 판독에 지장이 없다.
+    # 멱등성 early-return **앞**에 둔다 — 재호출로도 복구되도록(비대칭 방지).
+    # Layer 1: httpx logs full request URLs at INFO; for token-in-path APIs that leaks the
+    # credential. Placed before the idempotency return so a repeat call restores it.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
     if any(getattr(h, _MARKER, False) for h in root.handlers):
         return  # 이미 설정됨 — 중복 부착 시 로그가 배로 출력된다 / already configured
 
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(logging.Formatter(_FORMAT, datefmt=_DATEFMT))
+    # 🔴 계층 2 — 리댁션 필터를 **핸들러**에 부착 (로거가 아니라).
+    # 로거에 붙이면 자식 로거에서 전파된 레코드를 놓친다 — 핸들러는 전파 후 최종 지점이라
+    # 어떤 로거에서 온 레코드든 반드시 통과한다.
+    # Layer 2: attach to the *handler*, not the logger — a logger-level filter would miss
+    # records propagated from child loggers; the handler sees them all.
+    handler.addFilter(_RedactSecretsFilter())
     setattr(handler, _MARKER, True)
     root.addHandler(handler)
