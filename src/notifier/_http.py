@@ -15,6 +15,25 @@ logger = logging.getLogger(__name__)
 _ALLOWED_SCHEMES = {"https"}
 
 
+def url_host_for_log(url):
+    """로그용 URL 라벨 — **host 만** 남기고 경로·쿼리를 버린다.
+    Log-safe URL label: keeps only the host, dropping path and query.
+
+    🔴 왜 필요한가 (2026-07-19 2차 회고 P1): Slack(`hooks.slack.com/services/<SECRET>`)·
+    Discord(`discord.com/api/webhooks/<id>/<TOKEN>`) webhook 은 **URL 자체가 credential** 이다.
+    경로만 알면 누구나 그 채널로 발신할 수 있으므로, URL 전문을 로그에 남기면 시크릿 유출이다.
+    호스트는 남겨 어느 채널이 막혔는지는 운영자가 판독할 수 있게 한다.
+    Slack/Discord webhook URLs *are* the credential — the path is the secret. Keep the host so
+    operators can still tell which channel was blocked.
+
+    🔴 이 헬퍼를 우회해 `webhook_url` 을 직접 로깅하지 말 것 (호출처 6곳 전부 경유).
+    """
+    try:
+        return urlparse(url).netloc or "(no-host)"
+    except ValueError:
+        return "(unparseable)"
+
+
 async def validate_external_url(url: str) -> bool:
     """Return True only if *url* is safe to use as an external webhook target.
 
@@ -43,7 +62,11 @@ async def validate_external_url(url: str) -> bool:
     hostname = parsed.hostname
 
     if parsed.scheme not in _ALLOWED_SCHEMES:
-        logger.warning("SSRF guard: rejected non-https scheme '%s' in URL: %s", parsed.scheme, url)
+        logger.warning(
+            "SSRF guard: rejected non-https scheme '%s' in URL: %s",
+            parsed.scheme,
+            url_host_for_log(url),
+        )
         return False
 
     if not hostname:

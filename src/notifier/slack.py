@@ -5,7 +5,7 @@ Phase 3 PR-10 (Cycle 84) — i18n: language arg + 3-layer fallback.
 """
 import logging
 
-from src.notifier._http import build_safe_client, validate_external_url
+from src.notifier._http import build_safe_client, url_host_for_log, validate_external_url
 from src.constants import GRADE_COLOR_HTML, NOTIFIER_MAX_ISSUES_SHORT
 from src.i18n.loader import get_text
 from src.scorer.calculator import ScoreResult
@@ -114,7 +114,7 @@ async def send_slack_notification(
     if not webhook_url:
         return
     if not await validate_external_url(webhook_url):
-        logger.warning("send_slack_notification: blocked unsafe URL '%s'", webhook_url)
+        logger.warning("send_slack_notification: blocked unsafe URL (host=%s)", url_host_for_log(webhook_url))
         return
     payload = _build_payload(
         repo_name, commit_sha, score_result, analysis_results, pr_number, ai_review,

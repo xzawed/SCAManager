@@ -2,7 +2,7 @@
 import logging
 from datetime import datetime, timezone
 
-from src.notifier._http import build_safe_client, validate_external_url
+from src.notifier._http import build_safe_client, url_host_for_log, validate_external_url
 from src.scorer.calculator import ScoreResult
 from src.analyzer.io.static import StaticAnalysisResult
 from src.analyzer.io.ai_review import AiReviewResult
@@ -51,7 +51,7 @@ async def send_webhook_notification(
     if not webhook_url:
         return
     if not await validate_external_url(webhook_url):
-        logger.warning("send_webhook_notification: blocked unsafe URL '%s'", webhook_url)
+        logger.warning("send_webhook_notification: blocked unsafe URL (host=%s)", url_host_for_log(webhook_url))
         return
     payload = _build_payload(repo_name, commit_sha, score_result, analysis_results, pr_number, ai_review)
     async with build_safe_client() as client:
