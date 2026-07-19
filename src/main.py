@@ -8,13 +8,16 @@ from typing import Any
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.middleware.sessions import SessionMiddleware
-from alembic import command
-from alembic.config import Config
-
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.sessions import SessionMiddleware
+
+# 🔴 alembic 은 저장소 루트에 동명 패키지(`alembic/`)가 있어 pylint 가 first-party 로 본다.
+# 서드파티 블록과 분리해 두어야 C0411(wrong-import-order)이 재발하지 않는다.
+# pylint treats `alembic` as first-party (a local package shares the name); keep it separated.
+from alembic import command
+from alembic.config import Config
 
 from src import scheduler
 from src.config import settings
@@ -42,6 +45,10 @@ from src.auth.github import router as auth_router
 configure_logging()
 
 logger = logging.getLogger(__name__)
+
+# `.env.example` / `config.py` 기본값과 동일한 개발용 세션 시크릿 — 운영에서 이 값이면 기동 차단.
+# The dev-only session secret; if production still carries it, startup aborts.
+_DEFAULT_SESSION_SECRET = "dev-secret-change-in-production"  # nosec B105
 
 
 class LimitBodySizeMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-methods
@@ -118,7 +125,6 @@ def _validate_startup_config() -> None:
         settings.environment or "(unset)",
         settings.app_base_url or "(unset)",
     )
-    _DEFAULT_SESSION_SECRET = "dev-secret-change-in-production"  # nosec B105
     if settings.session_secret == _DEFAULT_SESSION_SECRET:  # nosec B105
         if is_prod_like:
             # S2: 프로덕션(HTTPS)에서 공개 기본값 사용 금지 — 세션 위조 가능
@@ -317,10 +323,10 @@ app.add_middleware(
 # CORSMiddleware MUST be the last add_middleware (outermost) — SonarCloud S8414 — so that
 # preflight + CORS headers apply even when inner middleware (Session/RLS) reject the request.
 if settings.app_base_url:
-    _origin = settings.app_base_url.rstrip("/")
+    _CORS_ORIGIN = settings.app_base_url.rstrip("/")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[_origin],
+        allow_origins=[_CORS_ORIGIN],
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["*"],

@@ -14,11 +14,11 @@
 - **1차 회고(wf_b506429b·164 에이전트·확정 135[P0 11·P1 66·P2 58]·verdict 1.0·FP 7)** — 범위 #1078~#1101. P0 9건이 회고 완료 시점에 이미 수정돼 있던 **교차 확인** 형태.
 - **2차 회고(wf_201943b3·168 에이전트·확정 134[P0 8·P1 51·P2 75]·verdict 1.0·FP 13)** — 범위 = **회고를 수행한 세션 자신의 산출물**(#1102~#1107). #1104 거짓 봉인 + 인지 의존 산문 5회차 적발.
 - **owed 원장 4회 갱신(#1103·#1105·#1106·#1108)** — 미결 **6→3건**. `#1058` SMTP 는 선행 설정 부재(SMTP 변수 0·`email_recipients` 0/8)로 ⏭️ 재분류(거짓 경고 4사이클 해소), credential 로테이션 2건은 사용자 명시 **위험 수용**(⏭️ + 재개 조건 명시).
-- 단위 5475→**5653**(+178) · 통합 **158** 불변 · E2E **122** 불변 · pylint **9.99**(배지 10.00 은 stale 이었음 — 실측 정정, 잔여 7건은 `main.py` 명명/import-order 선재분). 🔴 owed 잔여 = `#1062` IDOR(안전) · `#1072` · `#1075`(20:00 UTC 미도래).
+- 단위 5475→**5653**(+178) · 통합 **158** 불변 · E2E **122** 불변 · pylint **10.00**(9.99 로 drift 했던 7건 정리 — D3 결정). 🔴 owed 잔여 = `#1062` IDOR(안전) · `#1072` · `#1075`(20:00 UTC 미도래).
 - **회고 조치 후반(#1112~#1114)** — ① `scan-security` 가 엔드포인트만 있고 스케줄러 job 이 없어 **주기 실행 0회**(2026-07-19 P0 와 동일 실패 모드) → cron 경로↔JOBS **파리티 가드** + 부팅 스모크 9건 신설(활성화는 D1 사용자 결정) ② `docs/backlog.md` 신설 — 회고 확정 269건 중 잔여분·결정대기 4건을 추적(보고서는 시점 스냅샷이라 '지금 뭐가 남았나' 를 못 답함) ③ 🔴 **#1102 가드가 알파벳 순서 덕에 살아있던 것 봉인** — `importlib.reload(src.database)` 미복구로 `Base.metadata` 가 비어 순서 바꾸면 6건 FAIL 실측 → 모듈 `__dict__` 스냅샷 fixture(autouse).
 - 🔴 **미해결 일감은 [`docs/backlog.md`](backlog.md) 단일 출처** — 회고 2회 확정 269건 중 잔여분 + 사용자 결정 대기 4건(D1 scan-security · D2 auto-merge 거버넌스 · D3 pylint · D4 스케줄러 heartbeat). 회고 보고서는 시점 스냅샷이라 '지금 뭐가 남았나' 를 답하지 못한다.
 
-**종합 수치**: 전체 **5811** 수집 (단위 **5653** + 통합 158) / E2E 122 (110 표준 + 12 perf) / pylint **9.99/10** (src/ — scripts/ 미게이트).
+**종합 수치**: 전체 **5811** 수집 (단위 **5653** + 통합 158) / E2E 122 (110 표준 + 12 perf) / pylint **10.00/10** (src/ — scripts/ 미게이트).
 
 | 지표 | 값 | 비고 |
 |------|-----|------|
@@ -30,7 +30,7 @@
 | SonarCloud Reliability Rating | **A** | Bugs **0** — #946 `Web:InputWithoutLabelCheck` 20건(reliability C) → 폼 컨트롤 aria-label 부여로 **A 복구** (2026-06-22, main bugs=0 실측) |
 | SonarCloud Maintainability Rating | **A** | Code Smells **109** (BLOCKER 0·CRITICAL 0·MAJOR 87·MINOR 22 — #948~#957 로 131→109[#957 S6853 폼 라벨 7건 추가 해소], 2026-06-22 재스캔 실측. 잔여 MAJOR/MINOR = maintainability A 유지·게이트 무영향) |
 | SonarCloud BLOCKER / CRITICAL | **0 / 0** | #948~#954 로 전부 해소 — BLOCKER `S8414` 1건(#948) + CRITICAL 10건(`S1192` 3 + `S3776` 7, #949~#954). 2026-06-22 재스캔 실측 |
-| pylint | **9.99/10** | `python -m pylint src/` — #415 잔여 21건 전체 해소 (C0415 17 lazy import inline disable + C0301 1 + R0913/R0917 3 + W0718/W0613 2 + E0401 1). **10.00 달성**. 🔴 **2026-07-19 실측 9.99 로 정정** — 배지가 stale 이었다(잔여 7건: `main.py` C0103 2·C0411 2, `scheduler.py` W0718 1·W0706 1 등 선재분). 게이트(≥9.90)는 통과. |
+| pylint | **10.00/10** | `python -m pylint src/` — #415 잔여 21건 전체 해소 (C0415 17 lazy import inline disable + C0301 1 + R0913/R0917 3 + W0718/W0613 2 + E0401 1). **10.00 달성**. 🔴 **2026-07-19: 9.99 로 drift 했던 것을 7건 정리해 10.00 복원** (D3 사용자 결정) — `main.py` 세션 시크릿 상수 모듈 승격·CORS 상수 명명·alembic import 블록 분리(로컬 동명 패키지라 pylint 가 first-party 로 봄), `scheduler.py` 의도적 broad-except 3건에 사유 주석 + inline disable. |
 | 커버리지 | **Python 97% / JS: E2E 커버** | Python: `make test-cov` (`--cov=src` — 8497줄 중 291 미커버, 97% — 2026-06-12 실측). JS: E2E pageerror 트랩(PR #605) + 정적 스캐너(PR #606) + ESLint(PR #607)으로 보완. `src/templates/*.html` 인라인 JS는 Python 커버리지 미측정 — 언어별 분리 보고 의무 (사이클 127 P0 학습). |
 | bandit HIGH | **0개** | bandit 1.9.4 (Python 3.12+ 대응) |
 | flake8 | **0건** (E501 16건 soft-pass — `|| true` 가드, CI 차단 없음) | `flake8 src/` |
