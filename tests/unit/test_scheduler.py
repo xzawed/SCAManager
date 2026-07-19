@@ -9,11 +9,19 @@
 Incident: `[[deploy.cronJobs]]` is not a Railway config key — silently ignored. All 5 crons had
 never run. Replaced with an in-app scheduler so wiring is asserted by tests, not invisible config.
 
-🔴 순수 시각 계산만 테스트 — 실제 sleep/task 기동은 단언하지 않는다(flaky).
-Pure scheduling math only; the running loop itself is not asserted (would flake).
+커버리지 구성: 순수 시각 계산 + 기동 조건 + JOBS 배선 + **job 본문 호출**·**루프 실패 격리**·
+start/stop 생명주기. 🔴 실제 대기 시간은 단언하지 않는다(flaky) — 대신 `every_seconds=0` 으로
+루프를 즉시 돌려 동작만 검증한다.
+Covers pure math, start conditions, JOBS wiring, job bodies, loop failure isolation and lifecycle.
+Real sleep durations are never asserted (would flake).
 """
+import asyncio
 from datetime import datetime, timezone
+from unittest.mock import MagicMock
 
+import pytest
+
+from src import scheduler as sched
 from src.scheduler import JOBS, next_daily_run, next_weekly_run, scheduler_enabled
 
 
@@ -127,3 +135,164 @@ def test_every_job_is_callable():
     """🔴 job 이 실제 호출 가능한 함수를 물고 있어야 한다 — 이름만 있으면 dead 배선."""
     for job in JOBS:
         assert callable(job.run), f"{job.name}: run 이 호출 불가"
+
+
+# ── job 본문 / 루프 / 기동·정지 (동작 커버리지) ──────────────────────────
+
+
+class _FakeSession:
+    """SessionLocal() 컨텍스트 매니저 대역."""
+
+    def __enter__(self):
+        return MagicMock()
+
+    def __exit__(self, *exc):
+        return False
+
+
+def _patch_session(monkeypatch):
+    monkeypatch.setattr("src.scheduler.SessionLocal", lambda: _FakeSession())
+
+
+# ── _seconds_until_next (스케줄 종류별 분기) ─────────────────────────────
+
+
+def test_seconds_until_next_interval_job():
+    job = sched.Job("t", lambda: None, every_seconds=60)
+    assert sched._seconds_until_next(job, _utc(2026, 7, 19, 10, 0)) == 60
+
+
+def test_seconds_until_next_daily_job():
+    job = sched.Job("t", lambda: None, daily_at=(20, 0))
+    got = sched._seconds_until_next(job, _utc(2026, 7, 19, 19, 30))
+    assert got == 30 * 60
+
+
+def test_seconds_until_next_weekly_job():
+    """월요일 00:00 기준 — 같은 시각이면 다음 주(7일)."""
+    job = sched.Job("t", lambda: None, weekly_at=(0, 0, 0))
+    got = sched._seconds_until_next(job, _utc(2026, 7, 20, 0, 0))
+    assert got == 7 * 24 * 3600
+
+
+# ── job 본문 — 서비스 함수를 실제로 호출하는가 ───────────────────────────
+
+
+async def test_retry_job_calls_service(monkeypatch):
+    """🔴 job 이 서비스 함수를 실제 호출 — 배선이 없으면 스케줄러는 껍데기다."""
+    _patch_session(monkeypatch)
+    called = {}
+
+    async def fake(db, limit):
+        called["limit"] = limit
+        return {"ok": 1}
+
+    monkeypatch.setattr("src.scheduler.process_pending_retries", fake)
+    await sched._retry_pending_merges()
+    assert "limit" in called, "process_pending_retries 미호출"
+
+
+async def test_sweep_orphans_job_calls_service(monkeypatch):
+    _patch_session(monkeypatch)
+    called = {}
+
+    async def fake(db):
+        called["hit"] = True
+        return 0
+
+    monkeypatch.setattr("src.scheduler.sweep_analysis_attempts", fake)
+    await sched._sweep_orphans()
+    assert called.get("hit")
+
+
+async def test_retention_job_calls_service(monkeypatch):
+    _patch_session(monkeypatch)
+    called = {}
+    monkeypatch.setattr(
+        "src.scheduler.run_retention_sweep",
+        lambda db: called.setdefault("hit", True) or {"expired_cache": 0},
+    )
+    await sched._retention_sweep()
+    assert called.get("hit")
+
+
+async def test_trend_job_calls_service(monkeypatch):
+    _patch_session(monkeypatch)
+    called = {}
+
+    async def fake(db):
+        called["hit"] = True
+        return 0
+
+    monkeypatch.setattr("src.scheduler.run_trend_check", fake)
+    await sched._trend_check()
+    assert called.get("hit")
+
+
+async def test_weekly_job_calls_service(monkeypatch):
+    _patch_session(monkeypatch)
+    called = {}
+
+    async def fake(db):
+        called["hit"] = True
+        return 0
+
+    monkeypatch.setattr("src.scheduler.run_weekly_reports", fake)
+    await sched._weekly_reports()
+    assert called.get("hit")
+
+
+# ── 루프 격리 — 실패가 스케줄러를 멈추면 안 된다 ─────────────────────────
+
+
+async def test_job_failure_does_not_kill_loop():
+    """🔴 job 이 예외를 던져도 루프는 계속 — 한 번 실패로 주기 작업이 영구 정지하면 안 된다.
+
+    이번 사고의 형태(조용히 안 도는 cron)와 같은 결과를 코드 안에서 재현하지 않기 위함.
+    """
+    calls = []
+
+    async def boom():
+        calls.append(1)
+        raise RuntimeError("의도적 실패")
+
+    task = asyncio.create_task(sched._run_job_forever(sched.Job("t", boom, every_seconds=0)))
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert len(calls) >= 2, f"실패 후 재실행 안 됨 (호출 {len(calls)}회)"
+
+
+async def test_cancellation_propagates():
+    """취소는 삼키지 않는다 — 종료 시 태스크가 남으면 안 된다."""
+    async def never():
+        await asyncio.sleep(3600)
+
+    task = asyncio.create_task(sched._run_job_forever(sched.Job("t", never, every_seconds=0)))
+    await asyncio.sleep(0.01)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+
+# ── start / stop ─────────────────────────────────────────────────────────
+
+
+def test_start_returns_no_tasks_when_disabled():
+    assert sched.start(_S(is_production=False)) == []
+
+
+async def test_start_creates_one_task_per_job_and_stop_cancels():
+    """🔴 기동 시 JOBS 수만큼 태스크 생성, 정지 시 전부 종료 — 누수 차단."""
+    tasks = sched.start(_S())
+    try:
+        assert len(tasks) == len(sched.JOBS)
+    finally:
+        await sched.stop(tasks)
+    assert all(t.done() for t in tasks), "stop 후 살아있는 태스크 존재"
+
+
+async def test_stop_is_safe_on_empty_list():
+    """미기동(빈 목록) 정지도 안전 — lifespan finally 에서 항상 호출된다."""
+    await sched.stop([])
