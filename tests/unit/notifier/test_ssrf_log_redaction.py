@@ -200,9 +200,10 @@ async def test_n8n_issue_background_task_is_guarded(caplog):
     Unguarded → uvicorn logs the traceback with the secret URL; the filter cannot cover it.
     """
     # 지역 import — 모듈 로드 순서 오염 방지.
-    from src.webhook.providers.github import (  # pylint: disable=import-outside-toplevel
-        _notify_n8n_issue_guarded,
-    )
+    # 🔴 `from ... import` 가 아니라 **모듈 객체**로 받는다 — 아래 배선 테스트가 같은 모듈을
+    # `import ... as _gh` 로 쓰므로, 두 형식을 섞으면 CodeQL `py/import-and-import-from`
+    # (CI C2 가드)에 걸린다. 한 파일 안에서는 한 형식으로 통일한다.
+    import src.webhook.providers.github as _gh  # pylint: disable=import-outside-toplevel
 
     request = httpx.Request("POST", _FAKE_WEBHOOK_URL)
     failing = httpx.HTTPStatusError(
@@ -218,7 +219,7 @@ async def test_n8n_issue_background_task_is_guarded(caplog):
         # 예외가 밖으로 나오면 여기서 터진다 = 가드 부재 (ASGI 탈출과 동형).
         # 🔴 전 인자 명시 — 래퍼가 `**kwargs` 가 아니라 명시 파라미터라 누락 시 TypeError 다
         # (그 엄격함이 `notify_n8n_issue` 시그니처 drift 를 잡아준다).
-        await _notify_n8n_issue_guarded(
+        await _gh._notify_n8n_issue_guarded(  # pylint: disable=protected-access
             webhook_url=_FAKE_WEBHOOK_URL,
             repo_full_name="owner/repo",
             action="opened",
