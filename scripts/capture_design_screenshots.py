@@ -16,6 +16,7 @@ Auto-captures 12 pages × 4 themes for Claude Design brief package.
 """
 import argparse
 import asyncio
+import sys
 from pathlib import Path
 
 from playwright.async_api import async_playwright
@@ -151,8 +152,26 @@ async def _capture_mobile(browser, repo_id: int, analysis_id: int, session_cooki
         await ctx.close()
 
 
+def _make_stdout_safe():
+    """Windows cp949 stdout 에서 이모지/한글 출력 크래시 방지 — UTF-8 재구성(errors=replace).
+    Guard against the cp949 emoji/Korean print crash on Windows (UTF-8, replace on miss).
+
+    🔴 standalone 실행(`python scripts/x.py`)이라 공유 헬퍼를 import 할 수 없다 — scripts/ 에
+    패키지 초기화가 없어 sys.path 조작이 필요해지므로, 검증된 관용구를 각 스크립트에
+    복제한다(정책 16 최소 추상화). 누락 방지는 회귀 가드가 담당:
+    `tests/unit/scripts/test_stdout_encoding_guard.py`.
+    Scripts run standalone, so the idiom is duplicated rather than imported; a regression guard
+    asserts no script is left unguarded.
+    """
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass  # 캡처된 stream 등 reconfigure 미지원 — 무시 / stream without reconfigure
+
+
 async def main(args: argparse.Namespace) -> None:
     """CLI 진입점 — 데스크탑·모바일 캡처 순서대로 실행 / CLI entry point: desktop then mobile."""
+    _make_stdout_safe()
     async with async_playwright() as p:
         browser = await p.chromium.launch()
 

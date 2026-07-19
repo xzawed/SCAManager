@@ -91,9 +91,27 @@ def find_violations(base: str, head: str) -> list[tuple[str, str]]:
     return violations
 
 
+def _make_stdout_safe():
+    """Windows cp949 stdout 에서 이모지/한글 출력 크래시 방지 — UTF-8 재구성(errors=replace).
+    Guard against the cp949 emoji/Korean print crash on Windows (UTF-8, replace on miss).
+
+    🔴 standalone 실행(`python scripts/x.py`)이라 공유 헬퍼를 import 할 수 없다 —
+    scripts/ 에 패키지 초기화가 없어 sys.path 조작이 필요해지므로, 검증된 4줄 관용구를
+    각 스크립트에 복제한다(정책 16 최소 추상화). 누락 방지는 회귀 가드가 담당:
+    `tests/unit/scripts/test_stdout_encoding_guard.py`.
+    Scripts run standalone, so the idiom is duplicated rather than imported; a regression
+    guard asserts no script is left unguarded.
+    """
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass  # 캡처된 stream 등 reconfigure 미지원 — 무시 / stream without reconfigure
+
+
 def main(argv: list[str]) -> int:
     """CLI 진입점 — 위반 시 사유 출력 후 exit 1, 없으면 exit 0 (CI 게이트).
     CLI entry point — print violations and exit 1, else exit 0 (CI gate)."""
+    _make_stdout_safe()
     base = argv[1] if len(argv) > 1 else "origin/main"
     head = argv[2] if len(argv) > 2 else "HEAD"
     violations = find_violations(base, head)
