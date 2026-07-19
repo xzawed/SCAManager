@@ -74,7 +74,13 @@ def test_debug_is_not_enabled_by_default():
 
 def test_main_configures_logging_at_import():
     """🔴 배선 단언 — main 이 실제로 호출해야 운영에 적용된다(모듈만 있으면 dead code)."""
-    import src.main  # noqa: F401  (import 자체가 배선 검증)
+    import src.main
+
+    # 🔴 `# noqa: F401` 은닉 금지 (testing.md) — 실제 참조로 'used' 를 만든다.
+    # import 는 부수효과(configure_logging 호출)가 목적이지만, 참조가 있어야 flake8·CodeQL
+    # 양쪽에서 used 로 인식되고 import 가 사라지면 loud-fail 한다.
+    # No noqa-hidden import: an actual reference keeps it 'used' for both flake8 and CodeQL.
+    assert hasattr(src.main, "app"), "src.main 로드 실패 — 배선 검증 불가"
 
     root = logging.getLogger()
     assert root.handlers, "src.main import 후에도 root 핸들러 없음 — configure_logging 미배선"
