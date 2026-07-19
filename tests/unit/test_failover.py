@@ -27,6 +27,17 @@ from sqlalchemy.exc import OperationalError
 # 헬퍼 — src.config + src.database reload
 # ---------------------------------------------------------------------------
 
+@pytest.fixture(autouse=True)
+def _isolate_database_module(database_module_isolation):
+    """이 파일은 `importlib.reload(src.database)` 를 쓰므로 격리를 **강제**한다.
+    This module reloads src.database, so isolation is mandatory — not opt-in.
+
+    autouse 인 이유: 신규 테스트 작성자가 fixture 요청을 잊으면 오염이 다시 샌다.
+    그 누락이 #1102 회귀 가드를 **알파벳 순서 의존**으로 만들었다(2026-07-19 회고 B1).
+    autouse because a forgotten fixture request is exactly how the leak returned before.
+    """
+
+
 def _reload_db_module(monkeypatch, *, fallback_url: str = "", probe_interval: int = 30):
     """Fallback URL과 probe interval 설정 후 src.config·src.database를 재로드한다.
     (reload 패턴: config 먼저, database 이후)"""

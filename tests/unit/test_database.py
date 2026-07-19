@@ -6,9 +6,22 @@ _build_connect_args는 Task 2 구현 전까지 존재하지 않으므로 현재 
 import importlib
 from unittest.mock import patch
 
+import pytest
+
 
 # conftest.py가 먼저 환경변수를 주입하므로 src import 전 추가 설정 불필요.
 # 단, 각 테스트에서 settings를 재구성할 때 monkeypatch로 제어한다.
+
+
+@pytest.fixture(autouse=True)
+def _isolate_database_module(database_module_isolation):
+    """이 파일은 `importlib.reload(src.database)` 를 쓰므로 격리를 **강제**한다.
+    This module reloads src.database, so isolation is mandatory — not opt-in.
+
+    autouse 인 이유: 신규 테스트 작성자가 fixture 요청을 잊으면 오염이 다시 샌다.
+    그 누락이 #1102 회귀 가드를 **알파벳 순서 의존**으로 만들었다(2026-07-19 회고 B1).
+    autouse because a forgotten fixture request is exactly how the leak returned before.
+    """
 
 
 def _reload_with_settings(monkeypatch, *, db_sslmode: str = "", db_force_ipv4: bool = False,

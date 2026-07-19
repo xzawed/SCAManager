@@ -101,3 +101,39 @@ def logging_isolation():
         clear_cache = getattr(manager, "_clear_cache", None)
         if callable(clear_cache):
             clear_cache()
+
+
+@pytest.fixture
+def database_module_isolation():
+    """`importlib.reload(src.database)` 부작용을 테스트 밖으로 새지 않게 복구.
+    Restore src.database/src.config after a test reloads them.
+
+    🔴 왜 필요한가 (2026-07-19 회고 B1): `reload(src.database)` 는 모듈 본문을 재실행해
+    **`Base = declarative_base()` 로 새 Base 객체를 만든다**. 그런데 이미 import 된 13개 ORM
+    모델 클래스는 **옛 Base 에 묶인 채** 남으므로, 새 `Base.metadata.tables` 는 **영구히 빈다**.
+    실측: 모델 import 후 3 테이블 → reload 후 **0 테이블**.
+
+    그 결과 `alembic/env.py` 의 모델 완전성 가드(`_REGISTERED_MODELS`)가 이후 **세션 전체**에서
+    `RuntimeError` 를 내고, env.py 를 실행하는 모든 테스트가 깨진다.
+    🔴 `tests/unit/migrations/test_alembic_env_logging_guard.py`(#1102 회귀 가드)가 지금까지
+    살아있던 이유는 **알파벳 순서상 앞서 실행되기 때문일 뿐**이다 — pytest-randomly·파일명
+    변경·샤딩 중 하나만 있어도 조용히 깨진다(실측: 순서를 바꾸면 6건 FAIL).
+    A reload rebinds Base while the already-imported model classes stay on the old one, leaving
+    Base.metadata permanently empty and breaking every later test that executes alembic/env.py.
+
+    복구 방식 = 모듈 `__dict__` 전체 스냅샷/복원. reload 는 모듈 네임스페이스를 통째로
+    갈아끼우므로 개별 속성만 되돌리면 누락이 생긴다.
+    We snapshot and restore the whole module __dict__ — reload replaces the namespace wholesale.
+    """
+    import src.config as cfg_mod
+    import src.database as db_mod
+
+    saved = [(m, dict(vars(m))) for m in (cfg_mod, db_mod)]
+    try:
+        yield
+    finally:
+        # 역순 복원 — database 가 config 를 참조하므로 config 를 먼저 되돌린다.
+        # Restore config first; database holds references into it.
+        for module, snapshot in saved:
+            vars(module).clear()
+            vars(module).update(snapshot)
