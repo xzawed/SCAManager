@@ -34,9 +34,12 @@ from src.scorer.calculator import ScoreResult
 
 # 🔴 명백한 더미만 — 실제 시크릿 형태는 gitleaks pre-commit 훅이 차단한다.
 # Obvious dummy only; a realistic secret shape would be blocked by the gitleaks hook.
-_FAKE_WEBHOOK_SECRET = "XXXXWEBHOOKSECRET"
+# 🔴 식별자·값에 "SECRET" 금지 — CodeQL py/clear-text-logging-sensitive-data 이름 휴리스틱이
+# 발화해 테스트가 자초 alert 를 만든다 (#1109 실측). 경로 꼬리표라 TAIL 로 부른다.
+# Do not name it *_SECRET: CodeQL's name heuristic makes the test self-inflict an alert.
+_FAKE_WEBHOOK_TAIL = "XXXXWEBHOOKTAIL"
 _FAKE_WEBHOOK_HOST = "hooks.example.test"
-_FAKE_WEBHOOK_URL = f"https://{_FAKE_WEBHOOK_HOST}/services/T00FAKE/{_FAKE_WEBHOOK_SECRET}"
+_FAKE_WEBHOOK_URL = f"https://{_FAKE_WEBHOOK_HOST}/services/T00FAKE/{_FAKE_WEBHOOK_TAIL}"
 
 
 def _score() -> ScoreResult:
@@ -125,7 +128,7 @@ async def test_blocked_url_log_omits_webhook_secret(module_path, call, caplog):
         "차단 로그가 아예 없다 — 관측이 죽으면 오설정을 운영에서 진단할 수 없다"
         "(로그를 지우는 것은 시크릿 제거의 올바른 방법이 아니다)."
     )
-    assert _FAKE_WEBHOOK_SECRET not in text, (
+    assert _FAKE_WEBHOOK_TAIL not in text, (
         f"🔴 webhook URL 의 시크릿 경로가 로그에 평문으로 남았다 — URL 하나로 해당 채널에 "
         f"임의 게시가 가능하다.\n로그: {text!r}"
     )

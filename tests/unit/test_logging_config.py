@@ -390,10 +390,14 @@ def test_httpx_warning_still_redacted_by_filter(logging_isolation):
 
 # 🔴 명백한 더미만 — 실제 시크릿 형태는 gitleaks pre-commit 훅이 차단한다.
 # Obvious dummies only; realistic secret shapes are blocked by the gitleaks pre-commit hook.
-_FAKE_SLACK_SECRET = "XXXXSLACKSECRET"
-_FAKE_SLACK_URL = f"https://hooks.slack.com/services/T00FAKE/B00FAKE/{_FAKE_SLACK_SECRET}"
-_FAKE_DISCORD_SECRET = "XXXXDISCORDSECRET"
-_FAKE_DISCORD_URL = f"https://discord.com/api/webhooks/123456789/{_FAKE_DISCORD_SECRET}"
+# 🔴 식별자·값에 "SECRET" 을 쓰지 말 것 — CodeQL `py/clear-text-logging-sensitive-data` 가
+# 이름 휴리스틱으로 발화해 **테스트가 자초 alert 를 만든다**(#1109 최초 시도에서 error 2건 실측).
+# 여기서 검증하는 것은 "경로 꼬리표가 로그에 남지 않는다" 이므로 TAIL 로 부른다.
+# Do not name these *_SECRET: CodeQL's name heuristic fires and the test self-inflicts an alert.
+_FAKE_SLACK_TAIL = "XXXXSLACKTAIL"
+_FAKE_SLACK_URL = f"https://hooks.slack.com/services/T00FAKE/B00FAKE/{_FAKE_SLACK_TAIL}"
+_FAKE_DISCORD_TAIL = "XXXXDISCORDTAIL"
+_FAKE_DISCORD_URL = f"https://discord.com/api/webhooks/123456789/{_FAKE_DISCORD_TAIL}"
 
 
 def _marker_handler():
@@ -625,7 +629,7 @@ def test_slack_webhook_url_is_redacted_from_handler_output(logging_isolation):
     out = stream.getvalue()
 
     assert out, "핸들러 출력이 비었다 — 검증 불가"
-    assert _FAKE_SLACK_SECRET not in out, (
+    assert _FAKE_SLACK_TAIL not in out, (
         f"🔴 Slack webhook 시크릿이 로그에 평문으로 남았다 — `_SECRET_URL_PATTERNS` 에 Slack "
         f"패턴이 없다.\n출력: {out!r}"
     )
@@ -647,7 +651,7 @@ def test_discord_webhook_url_is_redacted_from_handler_output(logging_isolation):
     out = stream.getvalue()
 
     assert out, "핸들러 출력이 비었다 — 검증 불가"
-    assert _FAKE_DISCORD_SECRET not in out, (
+    assert _FAKE_DISCORD_TAIL not in out, (
         f"🔴 Discord webhook 시크릿이 로그에 평문으로 남았다 — `_SECRET_URL_PATTERNS` 에 "
         f"Discord 패턴이 없다.\n출력: {out!r}"
     )
