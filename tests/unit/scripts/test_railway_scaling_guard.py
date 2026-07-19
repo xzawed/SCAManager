@@ -33,6 +33,8 @@ false assurance, exactly the 2026-07-19 cron failure mode.
 
 각 축은 합성 위반 입력으로 탐지력을 자가 검증한다(가드가 통과만 하고 아무것도 안 잡는 사고 차단).
 """
+import ast
+import textwrap
 import tomllib
 from pathlib import Path
 
@@ -40,9 +42,43 @@ _ROOT = Path(__file__).resolve().parents[3]
 _RAILWAY_TOML = _ROOT / "railway.toml"
 _SCHEDULER = _ROOT / "src" / "scheduler.py"
 
-# 분산 잠금 표지 — scheduler.py docstring 이 지목하는 해법(`DB 잠금(advisory lock) 도입 의무`).
-# Marker for the distributed lock the scheduler docstring prescribes.
-_LOCK_MARKER = "advisory"
+# 🔴 분산 잠금 탐지는 **AST 호출**로 한다 — 문자열 검색 금지 (2026-07-19 회고 P1).
+#
+# 구 구현은 `"advisory" in scheduler_src.lower()` 였고, `scheduler.py` docstring 의
+# **"수평 확장 시 DB 잠금(advisory lock) 도입 의무"** — 즉 *해야 할 일을 적어둔 처방 산문* —
+# 이 그 검사를 만족시켰다. 결과: 이 축은 **한 번도 발화한 적이 없다**.
+# 실측: `numReplicas = 5` 로 올려도 8 passed(가드가 막아야 할 바로 그 상황).
+#
+# 🔴 교훈: "잠금을 도입하라"고 **쓴 글**이 "잠금이 있다"는 **검사**를 통과시킨다.
+#    처방을 구현으로 오인하는 것이 observer-lie 의 전형이다.
+# The old substring check was satisfied by the docstring that PRESCRIBES the lock.
+# Detect an actual call, never a mention.
+_LOCK_CALLEES = frozenset({"pg_advisory_lock", "pg_try_advisory_lock", "pg_advisory_xact_lock"})
+
+
+def _callee_name(node: ast.Call) -> str:
+    """호출 대상 이름 — `f()` 와 `obj.f()` 양쪽 지원."""
+    fn = node.func
+    if isinstance(fn, ast.Name):
+        return fn.id
+    if isinstance(fn, ast.Attribute):
+        return fn.attr
+    return ""
+
+
+def _has_lock_call(source: str) -> bool:
+    """소스에 분산 잠금 **호출**이 실재하는가 — 주석·docstring·문자열은 세지 않는다.
+
+    Whether the source actually CALLS a lock API; mentions in prose/strings do not count.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    return any(
+        isinstance(n, ast.Call) and _callee_name(n) in _LOCK_CALLEES
+        for n in ast.walk(tree)
+    )
 
 
 def _railway_config() -> dict:
@@ -79,12 +115,13 @@ def _scale_without_lock_violation(config: dict, scheduler_src: str) -> str | Non
     total = _configured_replicas(config)
     if total <= 1:
         return None
-    if _LOCK_MARKER in scheduler_src.lower():
+    if _has_lock_call(scheduler_src):
         return None
     return (
-        f"multiRegionConfig 총 replica={total} 인데 src/scheduler.py 에 분산 잠금"
-        f"(`{_LOCK_MARKER}`)이 없다 — weekly 리포트가 **replica 수만큼 중복 발송**된다.\n"
-        "→ 수평 확장 전 DB advisory lock 을 먼저 도입할 것 (scheduler.py docstring §한계)."
+        f"multiRegionConfig 총 replica={total} 인데 src/scheduler.py 에 분산 잠금 **호출**이 없다 "
+        f"— weekly 리포트가 **replica 수만큼 중복 발송**된다.\n"
+        f"→ 수평 확장 전 {sorted(_LOCK_CALLEES)} 중 하나를 실제로 호출할 것.\n"
+        "🔴 docstring 에 '도입 의무' 라고 적는 것만으로는 통과하지 않는다(구 구현의 결함)."
     )
 
 
@@ -134,16 +171,61 @@ def test_guard_allows_valid_multi_region_form():
     assert _bare_num_replicas_violation(valid) is None
 
 
-def test_guard_detects_scale_up_without_lock():
-    """replica 2 + 잠금 없음 = 위반으로 탐지되는가."""
-    scaled = {"deploy": {"multiRegionConfig": {"us-west2": {"numReplicas": 2}}}}
-    assert _scale_without_lock_violation(scaled, "no lock here") is not None
+# ── FIX-1 freeze 3종 (2026-07-19 회고 P1 — 죽은 축을 되살린 뒤 봉인) ──────
+#
+# 🔴 구 테스트는 **합성 문자열**(`"no lock here"` / `"pg_advisory_lock(...)"`)로만 검증해
+# 통과했다. 그래서 실제 `scheduler.py` 의 docstring 이 마커를 만족시키는 것을 못 봤다.
+# 이제 **실파일**로 검증한다 — 합성 입력만 쓰는 뮤테이션은 A2 를 명목상 충족하되 무의미하다.
+# The old tests used only synthetic sources, so the real docstring's false-positive was invisible.
 
 
-def test_guard_allows_scale_up_when_lock_present():
-    """replica 2 + advisory lock 있음 = 통과 — 막기만 하지 않고 해야 할 일로 유도한다."""
+def test_scaling_up_the_real_repo_now_fails_without_a_lock():
+    """🔴 freeze ①: **실제 저장소** replica 를 올리면 이 축이 반드시 발화한다.
+
+    구 구현은 여기서 통과했다(실측: `numReplicas = 5` → 8 passed). 즉 이 단언이
+    이 가드가 살아 있는지 여부를 결정한다.
+    """
+    scaled = {"deploy": {"multiRegionConfig": {"us-east4-eqdc4a": {"numReplicas": 5}}}}
+    violation = _scale_without_lock_violation(scaled, _SCHEDULER.read_text(encoding="utf-8"))
+    assert violation is not None, (
+        "실제 scheduler.py 로 replica 5 를 올렸는데 통과했다 — 축이 죽어 있다. "
+        "구 구현이 docstring 의 'advisory lock 도입 의무' 산문에 매칭되던 결함의 재발."
+    )
+
+
+def test_prose_only_mention_does_not_satisfy_the_lock_check():
+    """🔴 freeze ②: 주석·docstring·문자열 안의 API 이름은 **잠금이 아니다**.
+
+    구 결함의 정확한 형태다 — 처방을 구현으로 오인하지 않는지 직접 단언한다.
+    """
+    prose = textwrap.dedent(
+        '''
+        """수평 확장 시 pg_advisory_lock 도입 의무."""
+        # TODO: pg_try_advisory_lock 을 붙일 것
+        SQL_RECIPE = "SELECT pg_advisory_lock(1)"
+        '''
+    )
     scaled = {"deploy": {"multiRegionConfig": {"us-west2": {"numReplicas": 2}}}}
-    assert _scale_without_lock_violation(scaled, "pg_advisory_lock(...)") is None
+    assert _scale_without_lock_violation(scaled, prose) is not None, (
+        "산문/문자열 언급이 잠금 검사를 통과시켰다 — 구 substring 결함 재발"
+    )
+
+
+def test_actual_lock_call_satisfies_the_check():
+    """🔴 freeze ③: **실제 호출**이면 통과 — 막기만 하지 않고 해야 할 일로 유도한다.
+
+    이게 없으면 가드가 영구 차단기가 되어 수평 확장 자체가 불가능해진다.
+    """
+    impl = textwrap.dedent(
+        """
+        def acquire(db):
+            return db.execute(pg_advisory_lock(42))
+        """
+    )
+    scaled = {"deploy": {"multiRegionConfig": {"us-west2": {"numReplicas": 2}}}}
+    assert _scale_without_lock_violation(scaled, impl) is None, (
+        "실제 잠금 호출이 있는데도 차단했다 — 가드가 확장을 영구 봉쇄한다"
+    )
 
 
 def test_guard_sums_replicas_across_regions():
