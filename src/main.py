@@ -16,6 +16,7 @@ from alembic.config import Config
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
+from src import scheduler
 from src.config import settings
 from src.constants import GITHUB_API
 from src.middleware.rate_limiter import limiter
@@ -243,9 +244,17 @@ async def lifespan(_app: FastAPI):
     except Exception as warmup_exc:  # pylint: disable=broad-exception-caught
         logger.info("GitHub API warm-up ping skipped: %s", type(warmup_exc).__name__)
 
+    # 🔴 인앱 주기 작업 스케줄러 기동 (2026-07-19 P0 — Railway cron 미실행 사고 대체).
+    # railway.toml `[[deploy.cronJobs]]` 는 Railway 스키마에 없는 키라 조용히 무시됐고,
+    # weekly/trend/retry/orphan/retention 5종이 한 번도 실행되지 않았다. 상세: src/scheduler.py
+    # 운영(is_production)에서만 기동 — 테스트/로컬의 lifespan 은 태스크를 띄우지 않는다.
+    # In-app scheduler replacing the Railway cron config that never ran; production-only.
+    scheduler_tasks = scheduler.start(settings)
+
     try:
         yield
     finally:
+        await scheduler.stop(scheduler_tasks)
         await close_http_client()
 
 

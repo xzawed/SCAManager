@@ -35,6 +35,11 @@ _BACKGROUND_MODULES = [
     "src/webhook/providers/railway.py",
     "src/webhook/_helpers.py",
     "src/api/internal_cron.py",
+    # 인앱 주기 작업 스케줄러 (2026-07-19 P0 — Railway cron 미실행 대체). internal_cron 과 동일
+    # 작업을 사용자 세션 없이 수행하므로 worker(BYPASSRLS) 세션 의무 — bare 사용 시 RLS 가
+    # app.user_id 미설정으로 평가돼 job 이 0건만 보고 조용히 무동작한다.
+    # In-app scheduler; same jobs as internal_cron without a user session → worker session required.
+    "src/scheduler.py",
     "src/api/hook.py",
     "src/gate/engine.py",
     "src/gate/actions/review_comment.py",

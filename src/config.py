@@ -180,6 +180,15 @@ class Settings(BaseSettings):
     # 운영 사고 시 즉각 비활성 default — 사이클 78 NEW-P0-2 패턴 페어 (`is_disabled("I18N")`)
     # Operational incident response — pairs with Cycle 78 NEW-P0-2 pattern (`is_disabled("I18N")`)
 
+    scheduler_disabled: bool = False
+    # 인앱 주기 작업 스케줄러 kill-switch — `SCHEDULER_DISABLED=1` 시 5종 job 미기동
+    # (retry-pending-merges·sweep-orphans·trend·retention-sweep·weekly-reports).
+    # 🔴 스케줄러는 **운영(is_production)에서만** 기동한다 — 비운영에서는 이 값과 무관하게 미기동.
+    # In-app periodic scheduler kill-switch; the scheduler only starts in production anyway.
+    # 배경: railway.toml `[[deploy.cronJobs]]` 가 Railway 스키마에 없는 키라 5종이 한 번도 실행되지
+    # 않았다(2026-07-19 P0) → 인앱 스케줄러로 대체. 상세: src/scheduler.py
+    # Context: the railway.toml cron blocks were an unrecognized key and never ran (2026-07-19 P0).
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
     @staticmethod

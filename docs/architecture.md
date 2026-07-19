@@ -31,6 +31,7 @@ src/
 ├── constants.py                 # 전역 상수 단일 출처 — 점수배점/감점가중치/AI기본값/등급/알림한도/HTTP타임아웃/캐시TTL
 ├── crypto.py                    # encrypt_token()/decrypt_token() — TOKEN_ENCRYPTION_KEY
 ├── database.py                  # SQLAlchemy engine, Base, FailoverSessionFactory + RLS event listener + WorkerSessionLocal (background/시스템 컨텍스트 BYPASSRLS 라우팅, RLS Phase 2~4)
+├── scheduler.py                 # 🔴 인앱 주기 작업 스케줄러 (lifespan 기동·운영 전용·stdlib only) — JOBS 5종(retry-pending-merges 1분 · sweep-orphans 10분 · trend 03:00 UTC · retention-sweep 20:00 UTC · weekly-reports 월 00:00 UTC)이 `cron_service` 함수를 직접 호출. 2026-07-19 P0 대체: `railway.toml [[deploy.cronJobs]]` 는 Railway 스키마에 없는 키라 무시돼 5종이 한 번도 실행되지 않았음. `SCHEDULER_DISABLED` kill-switch. 배선 단언 = `tests/unit/test_scheduler.py`
 ├── shared/
 │   ├── http_client.py           # httpx.AsyncClient lifespan 싱글톤 (내부 신뢰 API)
 │   ├── log_safety.py            # sanitize_for_log() — 로그 인젝션 방지
