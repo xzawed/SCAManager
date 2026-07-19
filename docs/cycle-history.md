@@ -6,7 +6,7 @@
 
 ## 목차
 
-- [관측 복구 P0 3건 + 5+1 회고 2회 9 PR (#1102~#1110 — alembic fileConfig 가 앱 로깅 런타임 파괴[#1100 무력화]·cron 검증 3세션 만에 로그 직접 관측으로 종결·Telegram 토큰 유출 2단계 봉인[#1104 '봉인' 을 2차 회고가 거짓 적발 → #1109 완결]·Bash credential 덤프 차단 훅·회고 2회 164+168 에이전트 확정 135+134)](#관측-복구-p0-3건--51-회고-2회-9-pr-2026-07-19)
+- [관측 복구 P0 3건 + 5+1 회고 2회 + 회고 조치 13 PR (#1102~#1114 — alembic fileConfig 가 앱 로깅 런타임 파괴[#1100 무력화]·cron 검증 3세션 만에 로그 직접 관측으로 종결·Telegram 토큰 유출 2단계 봉인[#1104 '봉인' 을 2차 회고가 거짓 적발 → #1109 완결]·Bash credential 덤프 차단 훅·회고 2회 164+168 에이전트 확정 135+134)](#관측-복구-p0-3건--51-회고-2회--회고-조치-13-pr-2026-07-19)
 - [세션2 회고 + 회고 fix 4 트랙 11 PR (#1077~#1086 — 이전 세션 잔여 CodeQL #545 봉인 → 5+1 회고[wf_331cdddf·87 에이전트·61 confirmed(P0 3·P1 15·P2 43)·verdict_coverage 1.0·FP 6]·🔴 **P0=회고 카덴스 강제 트리거[#1028] 첫 측정창 자기위반**[~46 PR 무회고·문서-only 시정 2회 실패→기계화] → 재발방지 기계 가드 4종[A1 `check_retro_cadence.py` 카덴스 카운터 48→5 리셋 실측·A2 `check_noqa_sideeffect.py` noqa-은닉 import 차단·B1 `posttool_pytest_smoke.py` hook false-green→영역 스코프·B2 `check_dead_code.py` AST 참조 find_orphaned 봉인] + C docs drift·D owed 원장·P2#41 owner-filter parity·게이트 auto-merge 레이스로 fix-up 유실·worktree 격리 누락 충돌 복구·단위 5412→5467, 2026-07-18)](#세션2-회고--회고-fix-4-트랙-11-pr-2026-07-18)
 - [프리미엄 준비도 감사 + Wave 0~2 코드전용 8 PR (#1068~#1075 — 6차원 준비도 감사[wf_2e184916·29 에이전트·구체적 실패 시나리오+적대 논파]·**P0/P1=0 견고**·완결성 비평이 3 cross-cutting[공유키 blast-radius·수평확장·관측성] 발견·착수=비대칭 결함 8건[#1068 PR 코멘트 AI-실패 경고 5채널 대칭·#1069 retry rollback 헬퍼·#1070 result JSON 컬럼-select `.as_string()`·#1071 config `is_production` 하드닝·#1072 approve SHA 결속 422 fail-closed·#1073 orphan sweep 배선+finish 위치이동·#1074 feedback_status owner 필터+배선 가드·#1075 retention sweep pending 절대보존]·남은 로드맵=사용자 결정 선행[테넌트쿼터·Redis·관측성·#18 CASCADE]·단위 5365→5412, 2026-07-18)](#프리미엄-준비도-감사--wave-02-코드전용-8-pr-2026-07-18)
 - [Grok 백로그 NULL-owner IDOR + 워커 내구성 6 PR (#1060~#1066 — P1-2 워커 내구성[`analysis_attempts` 0045·비싼 작업 전 흔적→남은 오래된 행=소실된 분석] · P1-3 NULL-owner 쓰기 차단[require_write 5곳+인라인 2곳·서버 전역 토큰 권한 상승 봉인] · 선결 #1061 복구 경로[affiliation organization_member·502] · R4 threshold `merge≥reject` 불변식 · R3 railway 토큰 평문 렌더 차단[세션 없는 엔드포인트 유일 방어] · R2 NULL-owner 가시화[생성 경고+개요 배너] · #1066 CodeQL py/unused-import 봉인 · 🔴 "lockout 없음" 단언이 적대검증에 뒤집힘 · RLS 0026 이 노출 보증 · 단위 5267→5365, 2026-07-17)](#grok-백로그-null-owner-idor--워커-내구성-6-pr-2026-07-17)
@@ -143,7 +143,7 @@
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
 
-## 관측 복구 P0 3건 + 5+1 회고 2회 9 PR (2026-07-19)
+## 관측 복구 P0 3건 + 5+1 회고 2회 + 회고 조치 13 PR (2026-07-19)
 
 **최신 (2026-07-19 세션3 — 관측 복구 P0 3건 + 5+1 회고 2회, 총 9 PR #1102~#1110)** — [[project-logging-wipe-token-leak-2026-07-19]] 인수인계 1건(cron 검증)에서 출발해 **관측 자체가 꺼져 있던 근본**을 찾아 봉인. 회고 2회가 자기 산출물을 반박해 재수정까지 수행.
 - 🔴🔴 **#1102 P0 — `alembic/env.py` `fileConfig` 가 앱 로깅을 런타임 파괴**: lifespan 내 `_run_migrations`(main.py:215)가 root 를 WARN/stderr 로 되돌리고 `disable_existing_loggers=True` 로 `uvicorn.access`·`src.*` 전부 비활성 → **#1100 이 운영에서 무력(inert)**. `is_configured()` 가드로 skip(CLI 단독 실행 보존). 운영 로그의 **모든 배포 12줄 컷오프**가 기전과 일치.
@@ -154,6 +154,13 @@
 - **2차 회고(wf_201943b3·168 에이전트·확정 134[P0 8·P1 51·P2 75]·verdict 1.0·FP 13)** — 범위 = **회고를 수행한 세션 자신의 산출물**(#1102~#1107). #1104 거짓 봉인 + 인지 의존 산문 5회차 적발.
 - **owed 원장 4회 갱신(#1103·#1105·#1106·#1108)** — 미결 **6→3건**. `#1058` SMTP 는 선행 설정 부재(SMTP 변수 0·`email_recipients` 0/8)로 ⏭️ 재분류(거짓 경고 4사이클 해소), credential 로테이션 2건은 사용자 명시 **위험 수용**(⏭️ + 재개 조건 명시).
 - 단위 5475→**5635**(+160) · 통합 **158** 불변 · E2E **122** 불변 · pylint **9.99**(배지 10.00 은 stale 이었음 — 실측 정정, 잔여 7건은 `main.py` 명명/import-order 선재분). 🔴 owed 잔여 = `#1062` IDOR(안전) · `#1072` · `#1075`(20:00 UTC 미도래).
+
+### 회고 조치 후반 (#1111~#1114)
+
+- **#1111 6-step ⑤ 일괄 sync** — 단위 5570→5635·pylint 배지 10.00→**9.99 실측 정정**(배지가 세션 이전부터 stale 이었음 — `main.py` C0103 2·C0411 2 등 7건 선재분). STATE 최신 블록이 16 불릿·2 날짜로 부풀어 자체 규칙("5~8 불릿") 위반 → 규칙대로 복원 + 직전 서사 이관.
+- **#1112 cron 파리티 + 부팅 스모크** — 🔴 `scan-security` 가 엔드포인트만 있고 스케줄러 job 이 없어 **출시 이래 주기 실행 0회**(2026-07-19 P0 와 **동일 실패 모드**). `cron_router.routes` 실제 열거로 파리티 강제(신규 엔드포인트 추가 시 job/예외 등재 없으면 CI FAIL) + `UNSCHEDULED_CRON_PATHS` 사유를 **값으로** 보존(주석은 검증 불가). 실제 lifespan 진입 부팅 스모크 9건 — 뮤테이션에서 `is_configured()` 제거 시 6 FAIL = **#1102 회귀 독립 재검출**. 활성화는 D1 사용자 결정.
+- **#1113 `docs/backlog.md` 신설** — 회고 보고서는 시점 스냅샷이라 "지금 뭐가 남았나" 를 못 답한다. 확정 269건 중 잔여분 + 결정대기 4건(D1~D4)·착수가능 5건(B1~B5)·보류 2건 추적. CLAUDE.md 탐색 가이드 + STATE 양쪽에 포인터(발견 불가 산문은 이 세션이 5회 진단한 실패의 재생산).
+- **#1114 모듈 reload 오염 격리** — 🔴 `#1102` 가드가 **알파벳 순서 덕에 살아있던 것** 봉인. `importlib.reload(src.database)` 가 새 `Base` 를 만들고 모델 클래스는 옛 Base 에 남아 `Base.metadata` 가 영구히 빈다(실측 3→0). 순서 바꾸면 **6 FAIL** → 모듈 `__dict__` 스냅샷 fixture(autouse) → 순열 3종 전부 pass.
 
 ### 직전 세션 서사 이관 (2026-07-18 세션2 — STATE.md 헤더에서 이관)
 
