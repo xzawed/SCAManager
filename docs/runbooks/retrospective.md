@@ -19,6 +19,23 @@ Workflow({ scriptPath: '<repo-abs>/.claude/workflows/retrospective.mjs',
 ```
 - `scope`: 'session'(기본) — 직전 세션 전체.
 - `context`: 머지 커밋 SHA·PR 번호·작업 범위 문자열 (finder/verify 프롬프트로 전달 — 충실할수록 정확).
+
+> 🔴 **범위는 손으로 적지 말 것 — 착수 직전에 기계 산출한다 (2026-07-19 회고 P0-2)**
+>
+> ```bash
+> python scripts/retro_scope.py          # 사람이 읽는 요약
+> python scripts/retro_scope.py --json   # context 에 넣을 값
+> ```
+>
+> **왜**: 정책 8 진화 (5)를 신설한 세션이 **첫 적용에서 자기 산출물 2건을 누락**했다.
+> 범위를 손으로 `#1108~#1129` 라 적었고, 회고 착수 직전 머지된 `#1130`·`#1131` 이 빠졌다.
+> 누락된 2건은 세션에서 **가장 마지막에 머지된 = 검증이 가장 덜 된** 산출물이다 —
+> 정책이 막으려던 시나리오("가장 검증이 덜 된 코드가 회고를 피해간다")가 정책 신설 당일 발생했다.
+>
+> 🔴 이건 주의력 문제가 아니다. **범위를 적는 시점과 회고가 시작되는 시점이 다른 한 구조적으로
+> 반복**된다. `retro_scope.py` 는 호출 시점의 `HEAD` 를 보므로 그 창을 없앤다.
+> 경계 판정은 `check_retro_cadence.newest_retro` 를 **공유**한다 — 각자 구현하면 카운터와
+> 회고 범위가 서로 다른 회고를 최신으로 골라 어긋난다(실제로 같은 날 회고 tie-break 버그가 있었다).
 - `domains`(선택): 부분 회고 시 `['process','code',...]` (생략 = 5 관점 전체).
 - `dryRun: true`: 에이전트 0 — 관점 resolve 만 확인하는 smoke.
 

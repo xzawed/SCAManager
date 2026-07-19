@@ -157,3 +157,49 @@ def test_checklist_wires_the_counter():
     assert "check_retro_cadence.py" in claude_md, (
         "CLAUDE.md 체크리스트에 check_retro_cadence.py 호출 누락 — 카운터가 배선 안 되면 문서-only 재발"
     )
+
+
+# ── 같은 날 회고 tie-break (2026-07-19 회고 P2 — 실제 오선택 후 신설) ──────
+#
+# 🔴 기존 두 테스트(위)는 **날짜가 서로 다른** 입력만 썼다. 그래서 같은 날 회고가
+# 2건 아카이브됐을 때 `max((date, filename))` 의 ASCII tie-break 가 **더 오래된 쪽**을
+# 고르는 것을 잡지 못했다 — `-`(0x2D) < `.`(0x2E) 이므로 `...-retrospective.md` 가
+# `...-retrospective-2.md` 를 이긴다. 실측 피해: 경계 커밋이 6 PR 어긋나 카운트 과대.
+# The two tests above used only distinct dates, so the ASCII tiebreak bug was invisible.
+
+
+def test_newest_retro_same_date_picks_higher_sequence():
+    """🔴 같은 날 회고 2건 — 파일명 사전순이 아니라 **순번**이 이겨야 한다.
+
+    사전순이면 `-2` 없는 쪽(1차)이 이긴다. 실제 최신은 `-2`(2차)다.
+    """
+    files = [
+        "2026-07-19-retrospective.md",
+        "2026-07-19-retrospective-2.md",
+        "2026-07-18-retrospective.md",
+    ]
+    assert newest_retro(files) == "2026-07-19-retrospective-2.md"
+
+
+def test_newest_retro_same_date_order_independent():
+    """입력 순서가 결과를 바꾸면 안 된다 — 리스트 순서 의존은 또 다른 순서 버그다."""
+    a = ["2026-07-19-retrospective.md", "2026-07-19-retrospective-2.md"]
+    assert newest_retro(a) == newest_retro(list(reversed(a))) == "2026-07-19-retrospective-2.md"
+
+
+def test_newest_retro_same_date_sequence_is_numeric_not_lexical():
+    """🔴 순번은 **숫자** 비교 — 문자열이면 '10' < '2' 가 되어 10차가 밀린다."""
+    files = [
+        "2026-07-19-retrospective-2.md",
+        "2026-07-19-retrospective-10.md",
+    ]
+    assert newest_retro(files) == "2026-07-19-retrospective-10.md"
+
+
+def test_newest_retro_later_date_beats_higher_sequence():
+    """날짜가 순번보다 우선 — 어제의 10차보다 오늘의 1차가 최신이다."""
+    files = [
+        "2026-07-18-retrospective-10.md",
+        "2026-07-19-retrospective.md",
+    ]
+    assert newest_retro(files) == "2026-07-19-retrospective.md"

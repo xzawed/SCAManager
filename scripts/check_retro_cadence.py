@@ -43,11 +43,29 @@ def retro_date(filename):
     return m.group(1) if m else None
 
 
+def _retro_seq(filename):
+    """같은 날 회고의 순번 — `-N.md` 접미사가 있으면 N, 없으면 1 (첫 회고).
+    Sequence within a same-day set: `-N.md` suffix → N, otherwise 1 (the first).
+
+    🔴 이게 없으면 날짜 tie 가 **파일명 ASCII 순**으로 깨진다. `-`(0x2D) < `.`(0x2E) 이므로
+    `2026-07-19-retrospective.md` 가 `...-retrospective-2.md` 를 이겨 **더 오래된 회고**가
+    최신으로 뽑혔다(2026-07-19 회고 P2 실측 — 경계가 6 PR 어긋남).
+    Without this the same-date tie falls back to ASCII filename order and picks the OLDER retro.
+    """
+    m = re.search(r"-(\d+)\.md$", filename)
+    return int(m.group(1)) if m else 1
+
+
 def newest_retro(filenames):
-    """정식 회고 파일명 목록에서 가장 최신(날짜순) 반환 — 없으면 None.
-    Return the newest (by date) formal-retro filename, or None."""
-    dated = [(d, f) for f in filenames if (d := retro_date(f))]
-    return max(dated)[1] if dated else None
+    """정식 회고 파일명 목록에서 가장 최신 반환 — 없으면 None.
+    Return the newest formal-retro filename, or None.
+
+    정렬 키 = (날짜, 같은 날 순번). 파일명 문자열은 tie-break 에 **쓰지 않는다** —
+    사전순은 최신성과 무관하고, 실제로 반대 방향으로 깨졌다(위 `_retro_seq` 주석 참조).
+    Sorted by (date, same-day sequence); the filename string is never used as a tiebreaker.
+    """
+    dated = [(d, _retro_seq(f), f) for f in filenames if (d := retro_date(f))]
+    return max(dated)[2] if dated else None
 
 
 def count_merge_prs(subjects):
@@ -122,7 +140,10 @@ def main():
 
     subjects = _git(["log", "--format=%s", f"{boundary}..HEAD"]).splitlines()
     pr_count = count_merge_prs(subjects)
-    breached, message = evaluate(pr_count)
+    # 🔴 breached 는 의도적으로 쓰지 않는다 — 이 도구는 **비차단 advisory** 라
+    #   임계 초과여도 exit 0 이고, 판정은 배너를 읽은 Claude 가 한다.
+    # Intentionally discarded: this tool is advisory (always exit 0); the banner is the signal.
+    _breached, message = evaluate(pr_count)
     print(f"직전 정식 회고 / last formal retro: {newest}")
     print(message)
     # 비차단 — breached 여도 exit 0 (Claude 가 배너 읽고 회고 진입 판정 / advisory).
