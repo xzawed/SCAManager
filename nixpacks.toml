@@ -1,7 +1,10 @@
 providers = ["python"]
 
 [phases.setup]
-aptPkgs = ["shellcheck", "cppcheck", "ruby-full", "golang-go", "build-essential", "libyaml-dev"]
+# 🔴 `unzip` 은 railway.toml buildCommand 의 tflint 설치에 필요 — 없으면 `unzip: command not found`
+# → `|| echo WARNING` 로 삼켜져 빌드는 성공하고 tflint 만 조용히 비활성화된다 (2026-07-19 발견).
+# `unzip` is required by the tflint install step in railway.toml buildCommand.
+aptPkgs = ["shellcheck", "cppcheck", "ruby-full", "golang-go", "build-essential", "libyaml-dev", "unzip"]
 cmds = [
   "curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs"
 ]
