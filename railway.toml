@@ -42,3 +42,28 @@ restartPolicyMaxRetries = 10
 # Fallback B (if Railway native cron is unavailable): use cron-job.org with:
 #   POST https://<APP_BASE_URL>/api/internal/cron/weekly   (Header: X-API-Key: $INTERNAL_CRON_API_KEY)
 #   POST https://<APP_BASE_URL>/api/internal/cron/trend    (Header: X-API-Key: $INTERNAL_CRON_API_KEY)
+
+# ── replica 핀 (인앱 스케줄러 단일 인스턴스 전제) ─────────────────────────
+# 🔴 TOML 테이블 섹션은 **뒤따르는 key=value 를 흡수**하므로 파일 맨 끝에 둔다.
+#   [deploy] 중간에 넣으면 그 아래 restartPolicyMaxRetries 가 이 블록으로 빨려 들어간다(실측).
+#   TOML sections absorb following keys — keep this last so [deploy] keys stay in [deploy].
+#
+# 🔴 인앱 스케줄러는 단일 인스턴스 전제다 (src/scheduler.py docstring §한계).
+#   replica ≥ 2 면 weekly 리포트가 **중복 발송**되고 GHAS 폴링이 쿼터를 2배 소모한다
+#   (retry 큐는 FOR UPDATE SKIP LOCKED, sweep/retention 은 멱등이라 안전).
+#   그 전제가 대시보드에만 있으면 스케일업이 조용히 깨뜨리므로 여기 핀한다.
+#
+# 🔴 `[deploy] numReplicas = 1` 로 쓰면 안 된다 — Railway config-as-code 레퍼런스의
+#   `[deploy]` 유효 키가 **아니라 조용히 무시**되고 "핀했다"는 거짓 흔적만 남는다
+#   (= `[[deploy.cronJobs]]` 가 cron 5종을 미실행으로 둔 위 P0 와 동형).
+#   replica 는 `multiRegionConfig.<region>.numReplicas` 로만 지정된다.
+#
+# 🔴 region `us-east4-eqdc4a` = **현재 운영 실측값** (railway status --json 의 적용된
+#   serviceManifest). 따라서 이 핀은 배포를 이동시키지 않고 현 상태를 코드로 고정만 한다.
+#   `numReplicas` is not a valid top-level [deploy] key (silently ignored); the region below is
+#   the measured live value, so this pin does not relocate the service.
+#
+# 가드: tests/unit/scripts/test_railway_scaling_guard.py
+#   (무효 키 차단 + multiRegionConfig 총 replica ≥ 2 시 advisory lock 강제)
+[deploy.multiRegionConfig.us-east4-eqdc4a]
+numReplicas = 1
