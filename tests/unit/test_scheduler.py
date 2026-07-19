@@ -151,7 +151,8 @@ class _FakeSession:
 
 
 def _patch_session(monkeypatch):
-    monkeypatch.setattr("src.scheduler.SessionLocal", lambda: _FakeSession())
+    # `lambda: _FakeSession()` 는 `_FakeSession` 과 동일 (py/unnecessary-lambda).
+    monkeypatch.setattr("src.scheduler.SessionLocal", _FakeSession)
 
 
 # ── _seconds_until_next (스케줄 종류별 분기) ─────────────────────────────
@@ -259,8 +260,10 @@ async def test_job_failure_does_not_kill_loop():
     task = asyncio.create_task(sched._run_job_forever(sched.Job("t", boom, every_seconds=0)))
     await asyncio.sleep(0.05)
     task.cancel()
+    # 🔴 `await task` 대신 wait_for — 취소가 전파되지 않으면 무한 대기가 되므로 상한을 둔다
+    # (부수 효과: py/ineffectual-statement 오탐도 해소).
     with pytest.raises(asyncio.CancelledError):
-        await task
+        await asyncio.wait_for(task, timeout=1)
     assert len(calls) >= 2, f"실패 후 재실행 안 됨 (호출 {len(calls)}회)"
 
 
@@ -273,7 +276,7 @@ async def test_cancellation_propagates():
     await asyncio.sleep(0.01)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
-        await task
+        await asyncio.wait_for(task, timeout=1)
 
 
 # ── start / stop ─────────────────────────────────────────────────────────
