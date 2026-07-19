@@ -21,7 +21,10 @@ patterns, and n8n/custom webhooks live on arbitrary hosts — so the *call site*
 The URLs below use a neutral host the regex can never know, so the test cannot pass by accident.
 """
 import logging
-from unittest.mock import AsyncMock, patch
+import contextlib
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import httpx
 
 import pytest
 
@@ -40,6 +43,13 @@ from src.scorer.calculator import ScoreResult
 _FAKE_WEBHOOK_TAIL = "XXXXWEBHOOKTAIL"
 _FAKE_WEBHOOK_HOST = "hooks.example.test"
 _FAKE_WEBHOOK_URL = f"https://{_FAKE_WEBHOOK_HOST}/services/T00FAKE/{_FAKE_WEBHOOK_TAIL}"
+
+
+@contextlib.contextmanager
+def _ctx(value):
+    """`with SessionLocal() as db:` 를 흉내내는 최소 컨텍스트 매니저.
+    Minimal context manager standing in for `with SessionLocal() as db:`."""
+    yield value
 
 
 def _score() -> ScoreResult:
@@ -138,4 +148,136 @@ async def test_blocked_url_log_omits_webhook_secret(module_path, call, caplog):
     assert _FAKE_WEBHOOK_HOST in text, (
         f"호스트마저 사라졌다 — 어느 채널 설정이 차단됐는지 판독 불가. 유출 차단과 운영 "
         f"판독성은 양립해야 한다(호스트는 남기고 경로만 제거).\n로그: {text!r}"
+    )
+
+
+# ── 알림 실패 집계 로그 (pipeline `_send_notifications`) ──────────────────
+#
+# 🔴 위 5 호출처와 **다른 축**이다. 위쪽은 "SSRF 로 차단했을 때" 의 로그를 잠그지만, 여기는
+# "발송을 시도했고 HTTP 로 실패했을 때" 의 로그다. httpx `raise_for_status()` 예외는
+# 메시지에 URL 전문을 담으므로(`Client error '404 Not Found' for url '<...>'`),
+# `%s`(=str(exc)) 나 `exc_info` 트레이스백으로 찍으면 경로 시크릿이 그대로 나간다.
+#
+# Telegram/Slack/Discord 는 `logging_config._SECRET_URL_PATTERNS` 가 마스킹하지만
+# **n8n·custom webhook 은 임의 호스트라 정규식으로 열거할 수 없다** — 즉 이 축에서는
+# 호출처(`_send_notifications`)가 유일한 통제다.
+
+
+async def test_notification_failure_log_omits_webhook_secret(caplog):
+    """🔴 알림 실패 로그가 webhook URL 경로(=credential)를 남기지 않는다.
+
+    `caplog` 는 리댁션 필터를 거치지 않으므로, 이 단언은 호출처가 실제로 넘긴 것을 본다 —
+    필터 강화로는 통과시킬 수 없다(n8n/custom 은 애초에 필터가 알 수 없는 호스트다).
+    """
+    # 지역 import — 모듈 로드 순서 오염 방지 (기존 pipeline 테스트 관용구).
+    from src.worker.pipeline import _send_notifications  # pylint: disable=import-outside-toplevel
+
+    request = httpx.Request("POST", _FAKE_WEBHOOK_URL)
+    response = httpx.Response(404, request=request)
+
+    async def _failing_channel() -> None:
+        response.raise_for_status()
+
+    caplog.set_level(logging.DEBUG)
+    await _send_notifications([_failing_channel()], ["n8n"])
+
+    text = caplog.text
+    assert text, "실패 로그가 아예 없다 — 관측이 죽으면 알림 장애를 진단할 수 없다"
+    assert _FAKE_WEBHOOK_TAIL not in text, (
+        f"🔴 알림 실패 로그에 webhook URL 시크릿 경로가 남았다 — httpx 예외 메시지가 URL "
+        f"전문을 담는데 str(exc)/exc_info 로 찍고 있다.\n로그: {text!r}"
+    )
+    assert "n8n" in text, (
+        f"채널명이 사라졌다 — 어느 채널이 실패했는지 판독 불가.\n로그: {text!r}"
+    )
+
+
+async def test_n8n_issue_background_task_is_guarded(caplog):
+    """🔴 n8n issue 릴레이가 **가드된 래퍼**로 디스패치돼 예외가 ASGI 밖으로 새지 않는다.
+
+    무가드면 예외가 uvicorn 까지 올라가 `exc_info` 트레이스백으로 로깅되고, 그 안에
+    시크릿 URL 이 실린다(리댁션 필터는 임의 호스트를 열거할 수 없어 못 막는다).
+    Unguarded → uvicorn logs the traceback with the secret URL; the filter cannot cover it.
+    """
+    # 지역 import — 모듈 로드 순서 오염 방지.
+    # 🔴 `from ... import` 가 아니라 **모듈 객체**로 받는다 — 아래 배선 테스트가 같은 모듈을
+    # `import ... as _gh` 로 쓰므로, 두 형식을 섞으면 CodeQL `py/import-and-import-from`
+    # (CI C2 가드)에 걸린다. 한 파일 안에서는 한 형식으로 통일한다.
+    import src.webhook.providers.github as _gh  # pylint: disable=import-outside-toplevel
+
+    request = httpx.Request("POST", _FAKE_WEBHOOK_URL)
+    failing = httpx.HTTPStatusError(
+        f"Client error '404 Not Found' for url '{_FAKE_WEBHOOK_URL}'",
+        request=request,
+        response=httpx.Response(404, request=request),
+    )
+
+    caplog.set_level(logging.DEBUG)
+    with patch(
+        "src.webhook.providers.github.notify_n8n_issue", AsyncMock(side_effect=failing)
+    ):
+        # 예외가 밖으로 나오면 여기서 터진다 = 가드 부재 (ASGI 탈출과 동형).
+        # 🔴 전 인자 명시 — 래퍼가 `**kwargs` 가 아니라 명시 파라미터라 누락 시 TypeError 다
+        # (그 엄격함이 `notify_n8n_issue` 시그니처 drift 를 잡아준다).
+        await _gh._notify_n8n_issue_guarded(  # pylint: disable=protected-access
+            webhook_url=_FAKE_WEBHOOK_URL,
+            repo_full_name="owner/repo",
+            action="opened",
+            issue={"number": 1, "title": "t", "body": "b"},
+            sender={"login": "john"},
+        )
+
+    text = caplog.text
+    assert _FAKE_WEBHOOK_TAIL not in text, (
+        f"🔴 가드가 예외 객체를 그대로 로깅해 시크릿 경로가 남았다 — 타입명만 남겨야 한다.\n"
+        f"로그: {text!r}"
+    )
+    assert "HTTPStatusError" in text, (
+        f"실패 사실이 로그에 없다 — 조용한 실패는 진단 불가.\n로그: {text!r}"
+    )
+
+
+async def test_issues_event_queues_a_guarded_task(caplog):
+    """🔴 **배선** 단언 — `_handle_issues_event` 가 큐에 넣은 태스크를 실제로 실행해도 예외가 새지 않는다.
+
+    위 테스트는 래퍼 함수만 검증한다. 래퍼를 만들어 놓고 `add_task` 가 여전히 무가드
+    `notify_n8n_issue` 를 가리키면 래퍼는 **dead code** 이고 운영은 그대로 샌다
+    (미배선 dead code 인데 전 스위트 green — 2026-07-17 학습).
+    🔴 산문 grep 이 아니라 **큐에 등록된 태스크를 실제 실행**해 관측한다 (telegram 가드와 동일 관용구).
+    Executes the queued task rather than grepping source — a wrapper that is never wired is dead code.
+    """
+    from fastapi import BackgroundTasks  # pylint: disable=import-outside-toplevel
+    import src.webhook.providers.github as _gh  # pylint: disable=import-outside-toplevel
+
+    request = httpx.Request("POST", _FAKE_WEBHOOK_URL)
+    failing = AsyncMock(side_effect=httpx.HTTPStatusError(
+        f"Client error '404 Not Found' for url '{_FAKE_WEBHOOK_URL}'",
+        request=request, response=httpx.Response(404, request=request),
+    ))
+
+    config = MagicMock(n8n_webhook_url=_FAKE_WEBHOOK_URL)
+    payload = {
+        "repository": {"full_name": "owner/repo"},
+        "action": "opened",
+        "issue": {"number": 1, "title": "t", "body": "b"},
+        "sender": {"login": "john"},
+    }
+
+    bg = BackgroundTasks()
+    caplog.set_level(logging.DEBUG)
+    # 🔴 patch 를 태스크 실행까지 유지 — 래퍼가 실행 시점에 모듈 전역을 해석하기 때문
+    # (풀면 실제 함수가 나가 네트워크 계층에서 실패한다 — telegram 가드 테스트 학습).
+    with patch.object(_gh, "SessionLocal", return_value=_ctx(MagicMock())), \
+         patch.object(_gh, "get_repo_config", return_value=config), \
+         patch.object(_gh, "notify_n8n_issue", failing):
+        result = await _gh._handle_issues_event(payload, bg)  # pylint: disable=protected-access
+        assert result == {"status": "accepted"}
+        assert bg.tasks, "릴레이 태스크가 큐에 없다 — 배선 검증 전제 붕괴"
+        # 실제 실행 — 여기서 예외가 새면 운영에서 uvicorn 이 시크릿 트레이스백을 남긴다.
+        await bg()
+
+    # 흡수하되 발송 자체는 시도해야 한다 — 가드가 발신을 없애면 기능 회귀다.
+    failing.assert_awaited_once()
+    assert _FAKE_WEBHOOK_TAIL not in caplog.text, (
+        f"🔴 배선된 경로에서 시크릿 경로가 로그에 남았다.\n로그: {caplog.text!r}"
     )

@@ -710,13 +710,35 @@ def _collect_files(
 
 
 async def _send_notifications(notify_tasks: list, task_names: list[str]) -> None:
-    """알림 채널들을 병렬 실행하고 실패를 로그로 기록한다."""
+    """알림 채널들을 병렬 실행하고 실패를 로그로 기록한다.
+
+    🔴 HTTP 실패는 **타입명 + 상태코드만** 남긴다 (2026-07-19 P0 학습 — 시크릿-in-URL).
+    httpx 예외는 메시지에 URL 전문을 담는다:
+    `Client error '404 Not Found' for url 'https://n8n.example/webhook/<TOKEN>'`.
+    n8n·custom webhook 은 **URL 경로 자체가 credential** 이라 `%s`(=str(exc)) 나 `exc_info`
+    트레이스백으로 찍으면 그대로 유출된다. Telegram/Slack/Discord 는 `logging_config`
+    리댁션 필터(계층 2)가 마스킹하지만 **n8n·custom 은 임의 호스트라 정규식으로 열거할 수
+    없어** 이 호출처가 유일한 통제다 (`tests/unit/notifier/test_ssrf_log_redaction.py`).
+    Log only the exception type + status for HTTP failures: httpx embeds the full URL in the
+    message, and webhook URLs are themselves credentials. Arbitrary hosts (n8n/custom) cannot
+    be covered by the redaction filter, so this call site is the only control.
+
+    HTTP 외 예외는 URL 을 싣지 않으므로 트레이스백을 그대로 보존한다(진단 가치 유지).
+    Non-HTTP exceptions keep their traceback — they do not carry webhook URLs.
+    """
     results = await asyncio.gather(*notify_tasks, return_exceptions=True)
     for idx, exc in enumerate(results):
         if isinstance(exc, BaseException):
             name = task_names[idx] if idx < len(task_names) else "unknown"
-            logger.error("Notification [%s] failed: %s", name, exc,
-                         exc_info=(type(exc), exc, exc.__traceback__))
+            if isinstance(exc, httpx.HTTPError):
+                response = getattr(exc, "response", None)
+                status = response.status_code if response is not None else "n/a"
+                logger.error(
+                    "Notification [%s] failed: %s (status=%s)", name, type(exc).__name__, status
+                )
+            else:
+                logger.error("Notification [%s] failed: %s", name, exc,
+                             exc_info=(type(exc), exc, exc.__traceback__))
 
 
 async def run_analysis_pipeline(event: str, data: dict) -> None:  # pylint: disable=too-many-locals,too-many-statements
