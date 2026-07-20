@@ -306,14 +306,38 @@ Why + How to apply (자가 검토 4 자문) 상세: [.claude/policies/active.md#
 
 **역사 (실증된 가치)**: cross-vendor 검증은 실효가 있었다 — 2026-06-29 심층 감사에서 **P1 2건은 Codex 만 발견**(Claude 8 에이전트 미검출).
 
-🔴 **대체 검증자 도입 완료 (2026-07-19 사용자 승인) — Grok**: 위 근거대로 cross-vendor 자리를 Grok 이 대체한다. **상시 페어링 ❌ / 조건부 인터럽트 ✅**. 프로토콜 단일 출처 = [`docs/runbooks/ai-collaboration.md`](docs/runbooks/ai-collaboration.md) (Claude·Grok 2라운드 상호 회고·협의 산물).
-- **핵심 트리거**: Claude 가 **"봉인/완결/fail-closed/유출 0"** 을 주장하면 그 주장 하나만 놓고 Grok 뮤테이션 패스. 심각도 판단이 불필요한 이진 질문이라 Grok 의 알려진 편향(P0 정밀도 0/4 = 심각도 과대평가)을 우회한다.
-- **1순위 사냥 대상 = observer-lie** — *"코드의 버그는 고쳤는데 관측자는 여전히 거짓말한다"*. 2026-07-19 결함이 전부 이 형태였다(`|| echo WARNING` 이 삼킨 tflint · 무효 `[[deploy.cronJobs]]` · 무효 `[deploy] numReplicas` · 문자열 매칭 배포 폴링).
-- 🔴 **2-phase 사용자 보고 게이트**: `배포|활성|봉인|운영|cron 실행됨` 이 포함된 문장은 라이브 deploy reality 필드를 동반하거나 **`UNVERIFIED:` 접두사** 의무. 배포·RLS·cron 주장의 `STATIC-ONLY-UNVERIFIED` 는 사용자 보고 불가.
-- 🔴 **회고 카덴스(정책 8 진화 4)에 Grok full-pass 를 겹치지 않는다** — 3중 파일업 = Codex 시절 피로 재생산. 대신 **주장 트리거 + ops 불변식 단축 패스**(주장이 부재한 통제면 전용).
-- **호출 금지 영역**: 문서·STATE·정책 진화(rule drift) / 계획·WBS(`grok_build_plan` 실측 무가치) / 구현 중간. 폐기 이전 정책 본문·진화 이력은 [.claude/policies/history.md](.claude/policies/history.md) 에 역사 기록으로 보존.
+🔴 **대체 검증자 = Grok** — 정책 18 폐기로 빈 cross-vendor 자리를 Grok 이 대체한다. **본문은 아래 정책 19 로 이관**(2026-07-19 회고 P1 — 매 발화에 걸리는 의무가 '⛔ 폐기' 제목 아래 있어 폐기된 규칙으로 오독될 구조였다). 폐기 이전 정책 18 본문·진화 이력은 [.claude/policies/history.md](.claude/policies/history.md) 에 역사 기록으로 보존.
 
 > ⚠️ 코드·문서 곳곳의 "Codex mutual 적발/발견" 주석은 **당시 사실 기록(출처 표기)** 이므로 그대로 둔다 — 재작성 금지.
+
+
+#### 정책 19: Claude ↔ Grok 협업 (2026-07-19 사용자 승인 — 정책 18 폐기 자리 대체)
+
+> 🔴 **이 정책은 '⛔ 폐기' 섹션과 무관하다.** 이전에는 정책 18(폐기) 하위에 중첩돼 있어
+> 매 발화에 걸리는 2-phase 게이트가 **폐기된 규칙처럼 보였다**(회고 P1). 독립 승격.
+
+프로토콜 단일 출처 = [`docs/runbooks/ai-collaboration.md`](docs/runbooks/ai-collaboration.md)
+(Claude·Grok 2라운드 상호 회고·협의 산물 + v2 개정).
+**상시 페어링 ❌ / 조건부 인터럽트 ✅** — Grok 은 파이프라인 단계가 아니다.
+
+- **핵심 트리거**: Claude 가 **"봉인/완결/fail-closed/유출 0"** 을 주장하면 그 주장 하나만 놓고
+  Grok 뮤테이션 패스. 심각도 판단이 불필요한 이진 질문이라 Grok 의 알려진 편향
+  (P0 정밀도 0/4 = 심각도 과대평가)을 우회한다.
+- **1순위 사냥 대상 = observer-lie** — *"코드의 버그는 고쳤는데 관측자는 여전히 거짓말한다"*.
+  핵심 질문: **보호 장치를 삭제해도 여전히 참으로 보이는 것은 무엇인가?**
+- 🔴 **2-phase 사용자 보고 게이트**: `배포|활성|봉인|운영|cron 실행됨` 이 포함된 문장은
+  라이브 deploy reality 필드를 동반하거나 **`UNVERIFIED:` 접두사** 의무.
+  배포·RLS·cron 주장의 `STATIC-ONLY-UNVERIFIED` 는 사용자 보고 불가.
+- 🔴 **A2 — 뮤테이션 대상은 실제 운영 경로다**: seal 이 보호한다고 주장하는 **실 파일/심볼**을
+  깨뜨려 red 가 되어야 HOLDS. **합성 문자열·픽스처만으로는 A2 를 충족하지 않는다**
+  (`#1121` 이 그 상태로 무동작이었다). 상세 = 프로토콜 §v2 A2-b.
+- 🔴 **경계는 '호출 금지' 가 아니라 '소유 금지'** (회고 P1 — 두 번의 경계 위반이 모두
+  실제 오류를 찾아냈다): Grok 은 backlog 처방문·정책 문구를 **저술(authoring)하지 않는다**.
+  그러나 그 문서의 **주장을 공격(claim-review)하는 것은 허용**한다 — 사용자 요청 시,
+  또는 CLAIM 이 seal/HOLDS/완전성일 때. 그 경우 브리프에 `owner-interrupt: claim-review` 명시.
+- 🔴 **회고 카덴스(정책 8 진화 4)에 Grok full-pass 를 겹치지 않는다** — 3중 파일업 =
+  Codex 시절 피로 재생산. 대신 **주장 트리거 + ops 불변식 단축 패스**(주장이 부재한 통제면 전용).
+- **호출 금지(소유 영역)**: 계획·WBS(`grok_build_plan` 실측 무가치) / 구현 중간.
 
 ---
 
