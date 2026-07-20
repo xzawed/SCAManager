@@ -39,6 +39,26 @@ _VARIANT_BLOCK_RE = re.compile(
     r'\[data-theme="([\w-]+)"\]\[data-variant="([\w-]+)"\]\s*\{([^}]*)\}', re.DOTALL
 )
 
+# 🔴 아래 3종은 **놓치고 있던 스코프**다 (2026-07-19 회고 P1 — 8블록 12선언 무음 누락).
+#   구 구현은 `:root` · `[data-theme="X"]` · 테마별 variant 만 봤고, 그 결과
+#   `--border`·`--text-muted`·`--text-subtle` 3개 이름이 통째로 사라졌으며
+#   density/radius **모드별 값**은 값 자체가 산출물에 없었다(디자인 브리프가 밀도 시스템을 못 봄).
+# Three scopes the old implementation never read — 8 blocks / 12 declarations silently dropped.
+
+# 테마 공유 기본값: `[data-theme] { ... }` (값 없는 속성 선택자).
+#   🔴 `[data-theme="X"]` 와 특이도가 같고(0,1,0) **소스상 뒤에 온다** → 겹치면 이쪽이 이긴다.
+#   현재 겹치는 키는 0개(실측)라 테마에 병합해도 무손실이다. 겹치면 가드가 CI 에서 막는다.
+_SHARED_THEME_RE = re.compile(r'(?<![\]"\w])\[data-theme\]\s*\{([^}]*)\}', re.DOTALL)
+
+# 테마 무관 variant: `[data-variant="signature"] { ... }` (테마 접두 없음).
+_BARE_VARIANT_RE = re.compile(r'(?<![\]"\w])\[data-variant="([\w-]+)"\]\s*\{([^}]*)\}', re.DOTALL)
+
+# 모디파이어 스코프: `[data-density="compact"]` · `[data-radius="soft"]` 등.
+#   밀도/모서리는 **디자인 시스템의 축**이므로 브리프에 실려야 한다.
+_MODIFIER_RE = re.compile(
+    r'(?<![\]"\w])\[data-(density|radius)="([\w-]+)"\]\s*\{([^}]*)\}', re.DOTALL
+)
+
 
 def _strip_comments(css: str) -> str:
     """CSS 블록 주석 제거 (파싱 전처리) / Strip CSS block comments before parsing."""
@@ -80,10 +100,16 @@ def collect_themes(css_texts: list[str]) -> tuple[dict, dict]:
     """테마별 plain 블록 병합 + variant 블록 분리 수집.
     Merge plain per-theme blocks; collect variant blocks separately.
 
-    반환 / Returns: (themes, variants) — variants 는 `{"dark": {"signature": {...}}}` 형태.
+    반환 / Returns: (themes, variants, shared, modifiers)
+      · themes    — 테마별 실효값(공유 기본값 병합 완료)
+      · variants  — `{"dark": {"signature": {...}}}` · 테마 무관은 키 `"*"`
+      · shared    — `[data-theme]` 원본(병합 전) — 출처 추적용
+      · modifiers — `{"density": {"compact": {...}}, "radius": {...}}`
     """
     themes: dict = {}
     variants: dict = {}
+    shared: dict = {}
+    modifiers: dict = {}
     for text in css_texts:
         clean = _strip_comments(text)
         # variant 를 먼저 걷어내야 plain 정규식이 variant 블록 본문을 삼키지 않는다.
@@ -93,26 +119,52 @@ def collect_themes(css_texts: list[str]) -> tuple[dict, dict]:
         plain_removed = _VARIANT_BLOCK_RE.sub("", clean)
         for theme, body in _THEME_BLOCK_RE.findall(plain_removed):
             themes.setdefault(theme, {}).update(parse_vars(body))
-    return themes, variants
+        # 테마 공유 기본값 / 테마 무관 variant / 모디파이어 — 구 구현이 놓치던 3 스코프
+        for body in _SHARED_THEME_RE.findall(clean):
+            shared.update(parse_vars(body))
+        for variant, body in _BARE_VARIANT_RE.findall(plain_removed):
+            variants.setdefault("*", {}).setdefault(variant, {}).update(parse_vars(body))
+        for axis, mode, body in _MODIFIER_RE.findall(clean):
+            modifiers.setdefault(axis, {}).setdefault(mode, {}).update(parse_vars(body))
+
+    # 🔴 공유 기본값을 각 테마에 병합 — "dark 는 무엇인가" 에 답하는 **실효값** 스냅샷이다.
+    #   `[data-theme]` 는 `[data-theme="X"]` 와 동일 특이도이고 소스상 뒤에 오므로 겹치면 이긴다.
+    #   현재 겹치는 키 0개(실측)라 무손실. 겹치기 시작하면 아래 가드가 CI 에서 막는다.
+    # Merge shared defaults into each theme (effective values). Equal specificity, later in source.
+    collision = {k for k in shared for t in themes.values() if k in t}
+    if collision:
+        raise ValueError(
+            f"`[data-theme]` 공유 키가 테마별 키와 충돌한다: {sorted(collision)}\n"
+            "→ 병합 순서가 값에 영향을 준다. 어느 쪽이 실효값인지 명시적으로 결정할 것."
+        )
+    for theme_map in themes.values():
+        theme_map.update(shared)
+    return themes, variants, shared, modifiers
 
 
 def declared_names(css_texts: list[str]) -> set:
-    """수집 대상 블록(`:root`·테마·variant)에 선언된 custom property 이름 전수.
-    Every custom property declared in the inventoried blocks.
+    """소스 파일에 선언된 custom property 이름 **전수** — 구현과 **독립** 산출.
 
-    🔴 완전성 관측자(`S ⊆ E`)의 좌변이다 — 파일 전체가 아니라 **우리가 읽기로 한 블록**만
-    센다. 컴포넌트 선택자의 지역 변수는 디자인 토큰이 아니므로 대상 밖이다.
-    Left-hand side of the completeness check; scoped to blocks we intend to read, not the
-    whole file (component-local custom props are not design tokens).
+    Every custom property declared in the source files — computed independently of extraction.
+
+    🔴 이것이 완전성 관측자(`S ⊆ E`)의 좌변이고, **구현과 같은 정규식을 쓰면 안 된다**.
+    구 구현은 좌변을 `_ROOT_BLOCK_RE`·`_THEME_BLOCK_RE`·`_VARIANT_BLOCK_RE` 로 만들었다 —
+    즉 **추출이 못 읽는 블록은 좌변에서도 안 보여** `S ⊆ E` 가 공허하게 참이었다.
+    실측 결과 그 상태로 174 중 171 만 산출하면서 "완전" 을 보고하고 있었다.
+
+    지금은 **블록 구조를 전혀 모르는 dumb 스캔**을 쓴다 — 선택자·중괄호를 파싱하지 않고
+    `--이름:` 패턴만 센다. 그래서 새로운 선택자 형태가 생기면 좌변에는 즉시 나타나고
+    우변(추출)에는 안 나타나 **관측자가 실패한다**.
+
+    🔴 allowlist 를 두지 않는 이유: 이 두 파일(`tokens.css`·`themes.css`)은 **정의상
+    디자인 토큰 파일**이다. 컴포넌트 지역 변수는 `components.css` 등 다른 파일에 있으므로
+    여기서 제외할 것이 없다. 예외 목록은 그 자체가 도피처가 된다.
+    The left side uses a deliberately dumb scan that knows nothing about block structure, so a
+    new selector shape shows up here but not in the extraction — making the observer fail.
     """
     names = set()
     for text in css_texts:
-        clean = _strip_comments(text)
-        bodies = list(_ROOT_BLOCK_RE.findall(clean))
-        bodies += [b for _, b in _THEME_BLOCK_RE.findall(_VARIANT_BLOCK_RE.sub("", clean))]
-        bodies += [b for _, _, b in _VARIANT_BLOCK_RE.findall(clean)]
-        for body in bodies:
-            names |= set(parse_vars(body))
+        names |= set(re.findall(r"--[\w-]+(?=\s*:)", _strip_comments(text)))
     return names
 
 
@@ -125,6 +177,10 @@ def emitted_names(output: dict) -> set:
         names |= set(theme)
     for variants in output.get("variants", {}).values():
         for block in variants.values():
+            names |= set(block)
+    names |= set(output.get("theme_shared", {}))
+    for axis in output.get("modifiers", {}).values():
+        for block in axis.values():
             names |= set(block)
     return names
 
@@ -188,11 +244,13 @@ def main() -> None:
     # Scan both files: theme definitions moved from themes.css (now a stub) into tokens.css.
     sources = [tokens_text, themes_text]
 
-    themes, variants = collect_themes(sources)
+    themes, variants, shared, modifiers = collect_themes(sources)
     output = {
         "foundation": categorize_root_vars(collect_root(sources)),
         "themes": themes,
+        "theme_shared": shared,
         "variants": variants,
+        "modifiers": modifiers,
     }
 
     # 🔴 완전성 관측자 — 수집 대상 블록에 선언된 이름은 **전부** 출력에 실려야 한다(S ⊆ E).
@@ -217,6 +275,8 @@ def main() -> None:
     print(f"    foundation categories: {list(output['foundation'].keys())}")
     print(f"    themes: {list(output['themes'].keys())}")
     print(f"    variants: { {t: list(v) for t, v in output['variants'].items()} }")
+    print(f"    theme_shared: {len(output['theme_shared'])}개")
+    print(f"    modifiers: { {a: list(m) for a, m in output['modifiers'].items()} }")
     print(f"    unique token names: {total}")
 
 

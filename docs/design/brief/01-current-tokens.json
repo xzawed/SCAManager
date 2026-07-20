@@ -194,7 +194,10 @@
       "--hook-btn-bg": "rgba(178, 137, 255, 0.10)",
       "--hook-btn-bd": "rgba(178, 137, 255, 0.30)",
       "--hook-btn-tx": "var(--accent-2)",
-      "--btn-on-accent": "var(--accent-text-on)"
+      "--btn-on-accent": "var(--accent-text-on)",
+      "--text-muted": "var(--text-2)",
+      "--text-subtle": "var(--text-3)",
+      "--border": "var(--border-subtle)"
     },
     "light": {
       "--bg-base": "#f5f5fb",
@@ -292,7 +295,10 @@
       "--hook-btn-bg": "rgba(139, 92, 246, 0.08)",
       "--hook-btn-bd": "rgba(139, 92, 246, 0.25)",
       "--hook-btn-tx": "var(--accent-2)",
-      "--btn-on-accent": "var(--accent-text-on)"
+      "--btn-on-accent": "var(--accent-text-on)",
+      "--text-muted": "var(--text-2)",
+      "--text-subtle": "var(--text-3)",
+      "--border": "var(--border-subtle)"
     },
     "pastel": {
       "--bg-base": "#f5f1ea",
@@ -390,7 +396,10 @@
       "--hook-btn-bg": "rgba(200, 154, 216, 0.10)",
       "--hook-btn-bd": "rgba(200, 154, 216, 0.28)",
       "--hook-btn-tx": "var(--accent-2)",
-      "--btn-on-accent": "var(--accent-text-on)"
+      "--btn-on-accent": "var(--accent-text-on)",
+      "--text-muted": "var(--text-2)",
+      "--text-subtle": "var(--text-3)",
+      "--border": "var(--border-subtle)"
     },
     "catppuccin": {
       "--bg-base": "#181825",
@@ -488,8 +497,16 @@
       "--hook-btn-bg": "rgba(180, 190, 254, 0.10)",
       "--hook-btn-bd": "rgba(180, 190, 254, 0.28)",
       "--hook-btn-tx": "var(--accent-2)",
-      "--btn-on-accent": "var(--accent-text-on)"
+      "--btn-on-accent": "var(--accent-text-on)",
+      "--text-muted": "var(--text-2)",
+      "--text-subtle": "var(--text-3)",
+      "--border": "var(--border-subtle)"
     }
+  },
+  "theme_shared": {
+    "--text-muted": "var(--text-2)",
+    "--text-subtle": "var(--text-3)",
+    "--border": "var(--border-subtle)"
   },
   "variants": {
     "dark": {
@@ -562,6 +579,37 @@
         "--atm-color-1": "#94e2d5",
         "--atm-color-2": "#f5c2e7",
         "--atm-color-3": "#cba6f7"
+      }
+    },
+    "*": {
+      "signature": {
+        "--fs-display-lg": "72px",
+        "--fs-display-xl": "104px",
+        "--ls-tight": "-0.028em"
+      }
+    }
+  },
+  "modifiers": {
+    "density": {
+      "compact": {
+        "--density": "0.82"
+      },
+      "comfortable": {
+        "--density": "1.00"
+      },
+      "spacious": {
+        "--density": "1.18"
+      }
+    },
+    "radius": {
+      "sharp": {
+        "--radius-mult": "0.45"
+      },
+      "balanced": {
+        "--radius-mult": "1.00"
+      },
+      "soft": {
+        "--radius-mult": "1.55"
       }
     }
   }
