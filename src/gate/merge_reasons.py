@@ -47,6 +47,11 @@ DEFERRED = "deferred"
 ALREADY_MERGED = "already_merged"
 # force-push 로 커밋 SHA 변경됨 / Commit SHA changed due to force-push
 SHA_DRIFT = "sha_drift"
+
+# 민감 경로(인증·마이그레이션·CI 워크플로) 포함 → 사람 검토 전까지 자동 머지 보류 (B6-a).
+# Sensitive paths present → hold auto-merge until a human reviews (B6-a).
+# 🔴 재시도 불가 태그다 — 기다린다고 사람이 검토하지는 않는다. 보류는 종결이지 지연이 아니다.
+SENSITIVE_PATH_HOLD = "sensitive_path_hold"
 # 사용자가 설정 변경 (auto_merge 해제 등) / User changed config (auto_merge disabled etc.)
 CONFIG_CHANGED = "config_changed"
 
