@@ -54,7 +54,8 @@ from src.gate.merge_reasons import NETWORK_ERROR
 from src.github_client.graphql import (  # noqa: F401  # pylint: disable=unused-import
     # ENABLE_DISABLED_IN_REPO + ENABLE_PERMISSION_DENIED 는 외부 (tests/unit/gate/test_native_automerge.py
     # + tests/unit/gate/test_engine_defensive_guards.py) 에서 본 모듈 경로로 import 하는 re-export 영역.
-    # 메모리 `feedback-copilot-autofix-noqa-trap.md` 페어 — side-effect re-export 패턴.
+    # side-effect re-export 패턴 (근거 메모리는 소실 — 교훈은 아래 본문에 보존).
+    # Side-effect re-export pattern; the source memo is gone, the lesson stays here.
     # ENABLE_DISABLED_IN_REPO + ENABLE_PERMISSION_DENIED are re-exported for external test consumers.
     ENABLE_DISABLED_IN_REPO,
     ENABLE_FORCE_PUSHED,

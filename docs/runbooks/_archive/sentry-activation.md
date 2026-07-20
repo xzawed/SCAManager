@@ -123,7 +123,7 @@ PR 1 머지 + Sentry 활성화 후 1주 운영 시점:
 - `src/shared/observability.py` (Phase E.2a + 사이클 80 PR 1 강화)
 - `tests/unit/shared/test_observability_before_send.py` (Cycle 80 PR 1 신규 회귀 가드 23건)
 - `tests/unit/shared/test_observability.py` (Phase E.2a 기존 9건)
-- 메모리 `feedback-phase4-area-entry-pattern.md` Phase 4 영역 진입 패턴 (안전 default 4건)
+- ~~메모리 `feedback-phase4-area-entry-pattern.md`~~ ⛔ **해당 메모리는 존재하지 않는다**(2026-07-20 실측). Phase 4 영역 진입 패턴 기록은 소실됐다
 - 정책 13 운영 smoke check (사이클 62 신설)
 - 사이클 78 PR 1 helper 모듈 (kill-switch 패턴 페어)
 

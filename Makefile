@@ -70,6 +70,10 @@ test-isolated:
 	   python -m pytest tests/ -q )
 
 # 코드 품질 검사
+# 정적 분석 **점검**(inspection) — 전부 advisory 다. 게이트가 아니다.
+# 🔴 게이트는 `make gate` 와 CI `lint-src` job 이다. 이 타깃은 위반을 **보여주는** 용도이므로
+# `|| true` 가 의도적이다 — 세 도구의 출력을 한 번에 보려면 앞 도구가 죽으면 안 된다.
+# Inspection only (advisory by design); the gate is `make gate` / CI `lint-src`.
 # Code quality checks (pylint + flake8 + bandit).
 lint:
 	pylint src/ || true
@@ -90,13 +94,23 @@ lint-strict:
 lint-js:
 	npx eslint "src/templates/**/*.html" --quiet || true
 
-# Phase 완료 게이트 — 테스트 + 정적 분석 한번에
-# Phase completion gate — tests + static analysis in one command.
+# Phase 완료 게이트 — 테스트 + 정적 분석. 🔴 이름대로 **실패할 수 있어야** 한다.
+# 이전 판은 세 린터를 전부 `|| true` 로 삼켜 **구조적으로 실패 불가**였다(회고 D13):
+# "게이트 통과" 라는 보고가 아무것도 보장하지 않았다.
+# Phase completion gate — must actually be able to fail; the old version swallowed every linter.
+#
+# 🔴 **최종 강제면은 CI 의 `lint-src` job 이다** — 로컬 fail-closed 는 강제력이 아니라 마찰이고,
+# 여기서만 막으면 사람이 이 타깃을 안 쓰게 된다(Grok 적대 검토 2026-07-20). 이 타깃은
+# CI 와 **같은 기준**을 로컬에서 미리 보는 용도다.
+# The authoritative gate is CI's `lint-src` job; this mirrors it locally for early feedback.
 gate:
 	python -m pytest tests/ -q
-	pylint src/ || true
-	flake8 src/ || true
-	bandit -r src/ -q || true
+	pylint --fail-under=9.90 src/
+	bandit -r src/ -q
+# 🔴 flake8 은 이 게이트에 넣지 않는다 — src/ 에 E501(라인 길이) 계열 15건이 있어 강제하면
+# 12개 파일을 미용 목적으로 고쳐야 한다(정책 17 안정성 > 권장 규격). 실질 결함인 F401/F841 은
+# CI `lint-changed-tests` job 이 담당한다. 전체 위반 열람은 `make lint`.
+# flake8 is intentionally excluded here; see CI lint-changed-tests for the meaningful subset.
 
 # DB 마이그레이션
 # Run database migrations.

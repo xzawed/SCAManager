@@ -137,6 +137,46 @@ jobs:
       - name: RepoConfig 3-layer 싱크 (check_config_5way_sync)
         run: python scripts/check_config_5way_sync.py
 
+  # 🔴 src/ 정적 분석 게이트 — 이전엔 **어떤 자동면에도 없었다** (회고 2026-07-03 D13).
+  # `make lint`/`make gate` 는 pylint·flake8·bandit 를 전부 `|| true` 로 삼켜 **실패할 수 없고**,
+  # `make lint-strict`(fail-under 9.90)는 CI·pre-commit 어디서도 호출되지 않는 문서-only 였다.
+  # 그 상태에서 CLAUDE.md 는 "Phase 완료 조건 = /lint 통과" 를 선언했다 — 즉 커밋 본문의
+  # "lint 통과" 주장이 **기계로 검증 불가**했다. 로컬 fail-closed 는 강제력이 아니라 마찰이므로
+  # (Grok 적대 검토 2026-07-20), 실제 게이트를 **여기** 둔다.
+  # Static-analysis gate for src/: previously enforced on NO automated surface — the Makefile
+  # swallowed every linter with `|| true` and lint-strict was never wired. Local fail-closed is
+  # friction, not enforcement; the real gate belongs in CI.
+  #
+  # 🔴 flake8 전체는 의도적 제외 — 현재 src/ 에 E501(라인 길이) 계열 15건이 있고, 이를 강제하면
+  # 12개 파일을 미용 목적으로 고쳐야 한다. 정책 17(안정성 > 권장 규격) + "과한 게이트는 사람이
+  # 게이트를 끄게 만든다". F401/F841(실질 결함)은 기존 lint-changed-tests job 이 이미 담당한다.
+  lint-src:
+    name: Static analysis gate (pylint + bandit on src/)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      # 회귀 가드 — 현재 10.00/10. floor 9.90 은 보수적(사이클 87 Tier B-1 기준 유지).
+      # Regression guard — currently 10.00/10; the 9.90 floor is deliberately conservative.
+      - name: pylint 회귀 가드 (fail-under 9.90)
+        run: pylint --fail-under=9.90 src/
+
+      # 보안 정적 분석 — nosec 주석은 통과, 신규 미주석 findings 는 fail.
+      # Security static analysis; annotated nosec passes, new unannotated findings fail.
+      - name: bandit 보안 스캔
+        run: bandit -r src/ -q
+
   # 의존성 취약점 SCA 게이트 — PyPI Advisory DB(OSV) 대조로 known CVE 차단(회고 2026-07-03 C7).
   # requirements 가 == 핀(CI==Railway 버전 일치)이므로 스캔 대상 = 실제 배포 버전. 신규 CVE 발표 시 CI fail →
   # 의존성 bump 강제(현재 취약점 0 실측). 프로덕션+개발 의존성 모두 대상.
