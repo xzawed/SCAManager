@@ -32,20 +32,47 @@ _STATE = _ROOT / "docs" / "STATE.md"
 _CYCLE = _ROOT / "docs" / "cycle-history.md"
 
 # 색인 행의 링크 대상: `| 2026-07-19 | [retrospective](2026-07-19-retrospective.md) | …`
-_LINK_RE = re.compile(r"\]\(([\w./-]+\.md)\)")
+_LINK_RE = re.compile(r"\]\(([^)]+\.md)\)")
+
+
+def _inside_reports(link: str):
+    """링크를 INDEX.md 기준으로 해석해 **reports/ 안쪽이면** 상대 경로를 돌려준다.
+
+    🔴 파일명(basename)만 비교하면 두 방향으로 틀린다:
+      · `../../CLAUDE.md` 같은 정당한 교차 링크가 '없는 보고서' 로 오신고된다(실측 3건)
+      · `pending/x.md` 와 `x.md` 가 같은 것으로 뭉개진다(하위 디렉토리 탈출로)
+    경로를 해석하고 **디렉토리 포함 여부**로 판정하면 둘 다 사라진다.
+    """
+    try:
+        resolved = (_INDEX.parent / link).resolve()
+        return resolved.relative_to(_REPORTS.resolve()).as_posix()
+    except (ValueError, OSError):
+        return None  # reports/ 바깥 — 교차 링크이므로 대상 아님
 
 
 def indexed_filenames() -> set:
-    """INDEX.md 가 링크하는 보고서 파일명 집합."""
-    return {
-        Path(m).name
-        for m in _LINK_RE.findall(_INDEX.read_text(encoding="utf-8"))
-    }
+    """INDEX.md 가 링크하는 **reports/ 내부** 보고서의 상대 경로 집합."""
+    links = _LINK_RE.findall(_INDEX.read_text(encoding="utf-8"))
+    return {rel for rel in (_inside_reports(m) for m in links) if rel}
 
 
 def report_filenames() -> set:
-    """디스크에 실제로 있는 회고 보고서 파일명 집합."""
-    return {p.name for p in _REPORTS.glob("*retrospective*.md")}
+    """디스크에 실제로 있는 보고서 파일명 집합 — **재귀 · 이름 무관**.
+
+    🔴 이전 판은 `glob("*retrospective*.md")` 였고 Grok 적대 검토가 두 탈출로를 실증했다:
+      (a) **비재귀** — `reports/pending/2026-07-21-retrospective.md` 는 집합에 안 들어온다
+      (b) **이름 의존** — `2026-07-21-5plus1.md` 처럼 부분문자열이 없으면 빠진다
+    실측으로도 디스크 53건 중 **31건만** 보고 있었다(감사·품질 리포트 22건이 사각).
+
+    "무엇이 색인 대상인가" 를 파일명으로 추측하는 순간 그 추측이 사각이 된다. 대상은
+    **`reports/` 아래 모든 `.md`**(색인 자신 제외)로 정의한다 — 추측이 없으면 사각도 없다.
+    Guessing which files "count" is what created the blind spot; the rule is now: all of them.
+    """
+    return {
+        p.relative_to(_REPORTS).as_posix()
+        for p in _REPORTS.rglob("*.md")
+        if p.name != "INDEX.md"
+    }
 
 
 # ── 1. 색인 전단사 / index bijection ─────────────────────────────────────
@@ -70,8 +97,9 @@ def test_index_does_not_link_missing_reports():
 
     한 방향만 잠그면 rename 이 조용히 통과한다("정의⇒호출" 과 "호출⇒정의" 가 다른 것과 동형).
     """
-    linked_reports = {n for n in indexed_filenames() if "retrospective" in n}
-    dangling = sorted(linked_reports - report_filenames())
+    # 🔴 이전 판은 이름에 "retrospective" 가 든 링크만 검사했다 — 정방향과 같은 추측이라
+    #   감사·품질 리포트의 죽은 링크를 통째로 놓쳤다. 이제 보고서 디렉토리 링크 전부를 본다.
+    dangling = sorted(indexed_filenames() - report_filenames())
     assert not dangling, f"색인이 존재하지 않는 보고서를 가리킨다: {dangling}"
 
 

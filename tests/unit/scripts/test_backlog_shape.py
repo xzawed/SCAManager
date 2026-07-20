@@ -114,6 +114,65 @@ def test_priority_order_only_references_open_items():
     )
 
 
+def test_open_sections_contain_no_completed_items():
+    """🔴 열린 섹션(🔴·🟡)에 **완료 표지가 붙은 행**이 있으면 안 된다.
+
+    ## Grok 적대 검토가 반증한 지점 (C2)
+
+    카운트 전단사만으로는 이 편집을 막지 못한다:
+
+        본문 §🟡 에  `| **B3** | ✅ 완료 (#1131) | … |`  를 남기고
+        요약표를  `| 🟡 착수 가능 | **3** |`  로 함께 올린다
+
+    → 수는 완전히 맞고 5개 테스트가 전부 green 인데 **원장은 거짓말한다**. 그리고 이건
+    가정이 아니라 **이 PR 이 고친 원래 결함과 정확히 같은 형태**다(완료된 B3·B4 가
+    착수 순서 1·2위에 남아 다음 세션을 오도했다).
+
+    🔴 교훈: 카운트 대응은 필요조건이지 충분조건이 아니다. "몇 개인가" 가 맞아도
+    "그것이 열린 일인가" 가 틀리면 원장은 여전히 오도한다.
+    Count bijection is necessary, not sufficient — matching counts of the WRONG rows still lies.
+
+    산문이 아니라 **표지(marker)** 를 본다 — `✅` 나 `완료` 는 사람이 붙이는 구조적 표시다.
+    """
+    text = _text()
+    offenders = []
+    for chunk in re.split(r"^## ", text, flags=re.M)[1:]:
+        title = chunk.split("\n", 1)[0]
+        if not any(title.startswith(m) for m in ("🔴", "🟡")):
+            continue
+        for line in chunk.splitlines():
+            m = _ITEM_RE.match(line)
+            if m and ("✅" in line or "완료" in line):
+                offenders.append(f"§{title[:12]} → {m.group(1)}")
+    assert not offenders, (
+        f"열린 섹션에 완료 표지가 붙은 행이 있다: {offenders}\n"
+        "→ 완료분은 헤더의 '완료분' 줄로 옮기고 요약표 수를 함께 내릴 것.\n"
+        "   (수만 맞추고 완료 항목을 남기면 원장은 green 인 채로 오도한다 — Grok C2)"
+    )
+
+
+def test_decision_items_are_not_parked_in_the_actionable_section():
+    """🔴 결정 대기 항목이 🟡(착수 가능)에 섞이면 **결정 요청 의무가 트리거되지 않는다**.
+
+    실측 사고: B6-b(AI 자기 머지 거버넌스 — 사용자 영역)가 🟡 표에 들어가 있어
+    "다음 사이클 진입 시 회신 요청" 흐름을 타지 못했다. 수는 맞았다.
+    """
+    body = body_rows(_text())
+    text = _text()
+    misplaced = []
+    for chunk in re.split(r"^## ", text, flags=re.M)[1:]:
+        if not chunk.split("\n", 1)[0].startswith("🟡"):
+            continue
+        for line in chunk.splitlines():
+            m = _ITEM_RE.match(line)
+            if m and ("사용자 결정" in line or "결정 대기" in line):
+                misplaced.append(m.group(1))
+    assert not misplaced, (
+        f"🟡(착수 가능)에 사용자 결정 항목이 있다: {misplaced} → 🔴 섹션으로 옮길 것"
+    )
+    assert body.get("🟡") is not None, "🟡 섹션이 사라졌다 — 이 가드의 전제 붕괴"
+
+
 # ── 탐지력 자가 검증 / self-verification ─────────────────────────────────
 
 
