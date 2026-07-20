@@ -97,6 +97,7 @@ src/
 │   ├── github_review.py         # post_github_review(), merge_pr() (REST 폴백)
 │   ├── native_automerge.py      # enable_or_fallback() — GraphQL 우선 + REST 폴백
 │   ├── merge_reasons.py         # 정규 태그 상수 (branch_protection_blocked, unstable_ci 등)
+│   ├── sensitive_paths.py       # 🔴 민감 경로 자동머지 보류 가드 (B6-a) — auth·마이그레이션·CI 워크플로 변경은 사람 검토까지 hold (fail-closed)
 │   ├── telegram_gate.py         # send_gate_request() — 인라인 키보드
 │   ├── merge_failure_advisor.py # get_advice(reason, language) — i18n (사이클 149)
 │   ├── retry_policy.py          # 순수 함수 — should_retry, compute_next_retry_at, is_expired

@@ -126,6 +126,16 @@ async def _run_auto_merge(  # pylint: disable=too-many-arguments,too-many-locals
     # DB 세션 열기 전 수행 — OpenAI 호출(타임아웃) 동안 세션 점유 방지. 차단 시 머지 미진행.
     # 2nd-LLM verifier guard (single source) — shared by auto/semi-auto paths (#859 P1-1 parity).
     # Run before opening the DB session so the OpenAI call doesn't hold one. Block → no merge.
+    # 🔴 민감 경로 가드 (B6-a) — 인증·마이그레이션·CI 워크플로 변경은 사람 검토 전까지 보류.
+    #   점수 게이트는 **경로 민감도를 모른다**: 60점만 넘으면 auth 변경도 무검토 머지된다
+    #   (실측 #1102~#1107 6건 전부 reviews=0 · 그중 #1104 는 토큰 유출 P0 보안 변경).
+    #   검증자 가드와 같은 자리에 둬 자동·반자동 양 경로가 공유한다.
+    # Score says nothing about path sensitivity; hold auth/migration/CI-workflow changes for review.
+    from src.gate.sensitive_paths import sensitive_paths_block_merge  # pylint: disable=import-outside-toplevel
+    if await sensitive_paths_block_merge(
+        github_token=github_token, repo_name=repo_name, pr_number=pr_number,
+    ):
+        return
     from src.gate.merge_verifier import verifier_blocks_merge  # pylint: disable=import-outside-toplevel
     if await verifier_blocks_merge(
         github_token=github_token, repo_name=repo_name, pr_number=pr_number,

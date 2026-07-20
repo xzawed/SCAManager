@@ -22,6 +22,20 @@ def get_pr_files(github_token: str, repo_name: str, pr_number: int) -> list[Chan
     return _collect_changed_files(repo, pr.get_files(), pr.head.sha)
 
 
+def get_pr_filenames(github_token: str, repo_name: str, pr_number: int) -> list[str]:
+    """PR 변경 파일의 **이름만** 조회 — 내용은 받지 않는다.
+
+    Fetch only the changed filenames of a PR (no blob contents).
+
+    🔴 `get_pr_files` 를 재사용하지 않는 이유: 그쪽은 파일 **내용**까지 받아온다.
+    경로만 판정하면 되는 자리에서 전 파일 콘텐츠를 끌어오면 레이트리밋·지연이 커진다
+    (정책 16 — 비용 프로파일이 다르면 별 함수가 맞다).
+    """
+    g = _make_github_client(github_token)
+    pr = g.get_repo(repo_name).get_pull(pr_number)
+    return [f.filename for f in pr.get_files()]
+
+
 def get_push_files(github_token: str, repo_name: str, commit_sha: str) -> list[ChangedFile]:
     """Fetch all changed files for a given push commit SHA."""
     g = _make_github_client(github_token)
