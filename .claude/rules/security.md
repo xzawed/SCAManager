@@ -7,6 +7,7 @@ paths:
   - "src/api/auth.py"
   - "src/webhook/validator.py"
   - "src/main.py"
+  - "src/logging_config.py"
 ---
 
 # 보안 규칙
