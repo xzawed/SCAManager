@@ -229,15 +229,32 @@ async def _post_message_guarded(bot_token, chat_id, payload):
         logger.warning("telegram background send failed: %s", type(exc).__name__)
 
 
-async def _handle_gate_callback_guarded(**kwargs):
+async def _handle_gate_callback_guarded(
+    *,
+    analysis_id: int,
+    decision: str,
+    decided_by: str,
+    telegram_user_id: str | None = None,
+):
     """백그라운드 게이트 콜백 — 위와 동일한 이유로 예외를 흡수한다.
     Guarded gate callback; same rationale as _post_message_guarded.
 
     `handle_gate_callback` 은 Telegram·GitHub API 를 호출하므로 동일한 credential-in-URL
     트레이스백 노출 경로를 갖는다.
+
+    🔴 `**kwargs` 가 아니라 **명시 파라미터**다 (2026-07-19 회고 P1 — #1122 가 명문화한
+    안티패턴이 이 형제 래퍼에만 남아 있었다). kwargs 로 받으면 pylint 가 호출을 검증하지
+    못해(`missing-kwoa` 침묵) `handle_gate_callback` 시그니처가 바뀌어도 조용히 어긋난다.
+    실제로 `#1122` 작업 중 같은 형태가 자기 테스트의 인자 누락을 숨기고 있었다.
+    Explicit params (not **kwargs) so the linter verifies the call and signature drift fails loudly.
     """
     try:
-        await handle_gate_callback(**kwargs)
+        await handle_gate_callback(
+            analysis_id=analysis_id,
+            decision=decision,
+            decided_by=decided_by,
+            telegram_user_id=telegram_user_id,
+        )
     except (httpx.HTTPError, SQLAlchemyError) as exc:
         logger.warning("telegram gate callback failed: %s", type(exc).__name__)
 

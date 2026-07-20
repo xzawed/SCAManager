@@ -112,6 +112,20 @@ def _boundary_commit(retro_filename):
     return sha or None
 
 
+# 🔴 **알려진 한계 — 세션 중 산출물은 이 카운터를 통과한다 (2026-07-19 회고 P1, 미봉인)**
+#
+# 이 스크립트는 `.claude/settings.json` 의 **SessionStart** 훅으로만 실행된다. 즉 세션이
+# 시작할 때 한 번 세고, 그 세션이 이후 머지하는 PR 은 **다음 세션 시작 전까지 카운트되지
+# 않는다**. 정책 8 진화 (5)가 "회고 범위" 축에서 고친 맹점이 **트리거 축에는 그대로 남아 있다**.
+#
+# 🔴 이것을 봉인했다고 말하지 않는다 — 정직한 freeze 가 없다. 막으려면 Stop 훅이나
+# 커밋 훅 같은 **세션 중 실행면**이 필요하고, 그건 별도 결정이다(비차단 advisory 성격 변경).
+# 현재 완화책은 회고 착수 직전 `scripts/retro_scope.py` 를 다시 돌리는 것뿐이며,
+# 그건 사람의 기억에 의존한다.
+# KNOWN GAP (unsealed): SessionStart-only, so this session's own merges never trigger it.
+# Sealing would need a Stop/commit hook — a separate decision. Do not claim this is closed.
+
+
 def _make_stdout_safe():
     """Windows cp949 stdout 에서 이모지(🔴) 출력 크래시 방지 — UTF-8 재구성(errors=replace).
     Guard against the cp949 emoji-print crash on Windows local runs (UTF-8, replace on miss)."""
