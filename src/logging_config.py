@@ -73,9 +73,14 @@ class _RedactSecretsFilter(logging.Filter):  # pylint: disable=too-few-public-me
     Layer 1 silences httpx at INFO; this filter is the only guard for our own accidental logging
     and for httpx's WARNING-level paths (retries/timeouts).
 
-    🔴 무해성 원칙 — 마스킹이 **발생한 경우에만** record 를 변형한다. 그래야 lazy % 포맷이
-    보존되고(대부분의 레코드는 손대지 않음) 오버헤드가 최소화된다.
-    Only mutates the record when something was actually masked, preserving lazy %-formatting.
+    🔴 무해성 원칙 — 마스킹이 **발생한 경우에만** record 를 변형한다. 마스킹이 없으면
+    `msg`/`args` 가 원본 그대로 남아 다운스트림 핸들러·포맷터가 평소대로 동작한다.
+
+    🔴 **"lazy % 포맷이 보존된다" 는 표현은 부정확했다** — `_redact_message` 는 검사를 위해
+    **모든 레코드에** `record.getMessage()` 를 호출하므로 포맷 비용은 이미 지불된다.
+    보존되는 것은 *지연 실행* 이 아니라 **레코드 불변성**이다(변형 없음 → 재포맷 오류 0).
+    Not lazy formatting — getMessage() runs for every record. What is preserved is record
+    immutability when nothing matched, not deferred formatting.
     """
 
     def filter(self, record):
@@ -160,7 +165,16 @@ def configure_logging(level=logging.INFO):
     # 🔴 계층 1 — httpx 침묵 (2026-07-19 P0 시크릿 유출 차단).
     # httpx 는 INFO 에서 **요청 URL 전문**을 로깅한다. Telegram 처럼 토큰이 경로에 있는 API 는
     # 그 한 줄로 credential 이 통째로 로그에 남는다. 앱 자체 관측은 `src.shared.stage_metrics`·
-    # `merge_metrics` 가 이미 담당하므로 httpx 의 요청 로그는 없어도 운영 판독에 지장이 없다.
+    # `merge_metrics` 가 담당한다.
+    #
+    # 🔴 **손실이 0 은 아니다** — 강등으로 사라지는 것은 httpx 의 **INFO 요청 라인**
+    # (`HTTP Request: POST https://... "200 OK"`)이고, 이는 개별 외부 호출의 URL·상태를
+    # 한 줄로 보던 디버깅 수단이다. 대체 관측(`stage_metrics`·`merge_metrics`)은
+    # **stage·merge 범위**라 그 축을 1:1 로 대신하지 못한다. 시크릿 유출 차단과 맞바꾼
+    # 의도적 손실로 읽을 것 — 필요 시 `logging.getLogger("httpx").setLevel(INFO)` 로
+    # 일시 복원하되 **토큰이 경로에 있는 API 호출이 없을 때만** 하라.
+    # The demotion does cost the per-request INFO line; the cited replacements are
+    # stage/merge-scoped and do not cover that axis 1:1.
     # 멱등성 early-return **앞**에 둔다 — 재호출로도 복구되도록(비대칭 방지).
     # Layer 1: httpx logs full request URLs at INFO; for token-in-path APIs that leaks the
     # credential. Placed before the idempotency return so a repeat call restores it.
@@ -181,10 +195,17 @@ def configure_logging(level=logging.INFO):
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(logging.Formatter(_FORMAT, datefmt=_DATEFMT))
     # 🔴 계층 2 — 리댁션 필터를 **핸들러**에 부착 (로거가 아니라).
-    # 로거에 붙이면 자식 로거에서 전파된 레코드를 놓친다 — 핸들러는 전파 후 최종 지점이라
-    # 어떤 로거에서 온 레코드든 반드시 통과한다.
-    # Layer 2: attach to the *handler*, not the logger — a logger-level filter would miss
-    # records propagated from child loggers; the handler sees them all.
+    # 로거에 붙이면 자식 로거에서 전파된 레코드를 놓친다 — 핸들러는 전파 경로의 종점이라
+    # **root 로 전파되는** 레코드는 전부 통과한다.
+    #
+    # 🔴 **"어떤 로거에서 온 레코드든 통과한다" 가 아니다** — `propagate=False` 인 로거
+    # (uvicorn 계열)는 애초에 root 까지 오지 않으므로 이 핸들러가 **구조적으로 볼 수 없다**.
+    # 그래서 계층 2b(위)가 그 로거들에 필터를 직접 부착한다. 두 계층은 **다른 집합**을 덮는다.
+    # `#1104` 가 "2계층 봉인" 을 선언하고도 실제로 유출한 이유가 정확히 이 착각이었다 —
+    # 이 주석의 이전 판이 그 착각을 그대로 가르치고 있었다(2026-07-19 2차 회고 P0).
+    # NOT "every record from any logger": propagate=False loggers never reach root, which is
+    # why layer 2b attaches directly. The two layers cover disjoint sets — conflating them is
+    # exactly the mistake that made #1104's "sealed" claim false.
     handler.addFilter(_RedactSecretsFilter())
     setattr(handler, _MARKER, True)
     root.addHandler(handler)
