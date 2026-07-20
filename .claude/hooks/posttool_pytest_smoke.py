@@ -31,9 +31,26 @@ def _norm(path):
     return (path or "").replace("\\", "/")
 
 
+# 감시 대상 최상위 디렉토리 — src/ 만이 아니다.
+# Watched top-level roots — not just src/.
+#   🔴 `alembic/` 은 이번 사이클 최다 결함 영역(#1102 fileConfig 가 앱 로깅을 파괴)이고
+#      `scripts/` 는 최다 churn(가드 스크립트 다수)인데 둘 다 훅이 **아예 발동하지 않았다**.
+#      결함이 가장 많은 곳에 조기탐지가 0이었다.
+_WATCHED_ROOTS = ("src", "alembic", "scripts")
+
+
+def is_watched_file(path):
+    """편집 파일이 감시 대상 루트 하위 Python 파일인지.
+    Whether the edited file lives under a watched root."""
+    p = _norm(path)
+    if not p.endswith(".py"):
+        return False
+    return any(f"/{r}/" in p or p.startswith(f"{r}/") for r in _WATCHED_ROOTS)
+
+
 def is_src_file(path):
-    """편집 파일이 src/ 하위 파일인지.
-    Whether the edited file lives under src/."""
+    """하위 호환 별칭 — 기존 호출부/테스트 보존.
+    Backwards-compatible alias."""
     p = _norm(path)
     return "/src/" in p or p.startswith("src/")
 
@@ -48,18 +65,78 @@ def _after_src(path):
     return ""
 
 
-def derive_test_target(path):
-    """편집된 src 파일 → 대응 tests/unit 서브영역(상대 경로). 서브영역 없으면 None.
-    Map an edited src file to its tests/unit subarea; None if there's no subarea.
+def _root_and_rest(path):
+    """감시 루트와 그 이후 상대 경로 — (`"src"`, `"gate/engine.py"`) 형태."""
+    p = _norm(path)
+    for root in _WATCHED_ROOTS:
+        if f"/{root}/" in p:
+            return root, p.split(f"/{root}/", 1)[1]
+        if p.startswith(f"{root}/"):
+            return root, p[len(root) + 1:]
+    return None, ""
 
-    src/gate/engine.py → tests/unit/gate ; src/main.py → None (collection 스모크 fallback).
+
+def derive_test_target(path, repo=None):
+    """편집 파일 → 대응 테스트 경로(디렉토리 또는 **파일**). 없으면 None.
+
+    Map an edited file to its test target — a directory OR a specific file.
+
+    · `src/gate/engine.py`  → `tests/unit/gate`            (서브영역 디렉토리)
+    · `src/scheduler.py`    → `tests/unit/test_scheduler.py`  🔴 **정확 대응 파일**
+    · `scripts/foo.py`      → `tests/unit/scripts/test_foo.py`
+    · `alembic/env.py`      → `tests/unit/migrations`
+
+    🔴 **왜 정확 대응 파일까지 보는가 (2026-07-19 회고 P2 D10)**: 이전 판은 `len(parts) < 2`
+    이면 무조건 collection 스모크로 **강등**했다. 그런데 `src/` 직속 7파일 중 **6개가 정확히
+    대응하는 테스트 파일을 갖고 있다**(config·crypto·database·logging_config·main·scheduler).
+    즉 실행 가능한 단언이 있는데 0-단언 수집으로 내려앉고 있었다 — 그중 `logging_config.py` 는
+    이 사이클의 토큰 유출 봉인 지점이고 `scheduler.py` 는 cron P0 대체 코어다.
+    The previous version demoted every src-direct file to a 0-assertion collection smoke, even
+    though 6 of 7 have an exact matching test file.
     """
-    if not is_src_file(path):
+    root, rest = _root_and_rest(path)
+    if root is None:
         return None
-    parts = [p for p in _after_src(path).split("/") if p]
-    if len(parts) < 2:  # src 직속 파일 — 서브영역 없음 / direct src file, no subarea
+    repo = repo or Path(__file__).resolve().parents[2]
+    parts = [p for p in rest.split("/") if p]
+    if not parts:
         return None
-    return f"tests/unit/{parts[0]}"
+
+    if root == "alembic":
+        return "tests/unit/migrations"
+
+    stem = parts[-1][:-3] if parts[-1].endswith(".py") else parts[-1]
+    if stem == "__init__":
+        return None
+
+    if root == "scripts":
+        exact = f"tests/unit/scripts/test_{stem}.py"
+        return exact if (repo / exact).is_file() else "tests/unit/scripts"
+
+    # root == "src"
+    if len(parts) >= 2:
+        return f"tests/unit/{parts[0]}"
+    exact = f"tests/unit/test_{stem}.py"
+    return exact if (repo / exact).is_file() else None
+
+
+def _banner(rc, asserted):
+    """결과 배너 — 🔴 **단언을 실행했는지**와 통과 여부를 구별한다.
+
+    Build the result banner, distinguishing "assertions ran" from "collection only".
+
+    🔴 사고 (2026-07-19 회고 P2 D12): 이전 판은 `--co`(수집만, **단언 0건**) 경로에도
+    `✅ 스모크 통과` 를 출력했다. 아무것도 검증하지 않은 실행이 검증 통과로 보였다 —
+    이 훅이 존재하는 이유였던 false-green 을 훅 자신이 재생산한 것이다.
+    수집 성공은 "import 가 깨지지 않았다" 이지 "동작이 옳다" 가 아니다.
+    A collection-only run asserts nothing; labelling it "passed" is the very false-green
+    this hook was created to eliminate.
+    """
+    if rc is None:
+        return "⚠️ 스모크 미완(타임아웃/오류)"
+    if rc != 0:
+        return "❌ 스모크 실패"
+    return "✅ 스모크 통과" if asserted else "ℹ️ 수집만 확인 (단언 0건 — 대응 테스트 없음)"
 
 
 def _run(cmd, cwd):
@@ -88,18 +165,18 @@ def main():
         return 0  # src 편집만 대상 / only src edits
 
     repo = Path(__file__).resolve().parents[2]
-    target = derive_test_target(path)
+    target = derive_test_target(path, repo)
     base = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"]
-    if target and (repo / target).is_dir():
+    asserted = bool(target) and (repo / target).exists()
+    if asserted:
         scope, cmd = target, [*base, target, "-x", "--timeout=15"]
     else:
-        # 대응 서브영역 없음(직속 파일 등) → collection 스모크(import/parametrize 파손 = #1041 클래스 조기 탐지).
-        # No matching subarea → collection smoke (catches import/parametrize breakage — the #1041 class).
+        # 대응 테스트 없음 → collection 스모크(import/parametrize 파손 = #1041 클래스 조기 탐지).
+        # No matching test → collection smoke (catches import/parametrize breakage).
         scope, cmd = "tests/unit (collect)", [*base, "tests/unit", "--co"]
 
     rc, tail = _run(cmd, cwd=str(repo))
-    banner = "✅ 스모크 통과" if rc == 0 else ("⚠️ 스모크 미완(타임아웃/오류)" if rc is None else "❌ 스모크 실패")
-    print(f"{banner} [{scope}] — best-effort 조기탐지 (전체 게이트=push-time 6-step ②)")
+    print(f"{_banner(rc, asserted)} [{scope}] — best-effort 조기탐지 (전체 게이트=push-time 6-step ②)")
     if rc != 0 and tail:
         print(tail)
     return 0  # 비차단 advisory / non-blocking advisory
