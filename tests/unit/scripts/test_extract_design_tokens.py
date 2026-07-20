@@ -3,6 +3,7 @@
 Unit tests for the design token extraction script.
 """
 import re
+import pytest
 import json
 import textwrap
 from pathlib import Path
@@ -185,11 +186,13 @@ def test_every_declared_token_reaches_the_output():
     import extract_design_tokens as mod
 
     sources = _real_sources()
-    themes, variants = mod.collect_themes(sources)
+    themes, variants, shared, modifiers = mod.collect_themes(sources)
     output = {
         "foundation": mod.categorize_root_vars(mod.collect_root(sources)),
         "themes": themes,
+        "theme_shared": shared,
         "variants": variants,
+        "modifiers": modifiers,
     }
     missing = sorted(mod.declared_names(sources) - mod.emitted_names(output))
     assert not missing, f"선언됐으나 출력에 없는 토큰 {len(missing)}개: {missing[:15]}"
@@ -225,7 +228,7 @@ def test_variant_blocks_are_not_folded_into_base_theme():
     """
     import extract_design_tokens as mod
 
-    themes, variants = mod.collect_themes(_real_sources())
+    themes, variants, _shared, _modifiers = mod.collect_themes(_real_sources())
     assert variants, "variant 블록이 하나도 수집되지 않았다 — 선택자 변경 의심"
     for theme, blocks in variants.items():
         for variant_name, block in blocks.items():
@@ -245,13 +248,22 @@ def test_variant_blocks_are_not_folded_into_base_theme():
     # Build the expectation independently (exact selector-string match) rather than reusing the
     # implementation's regex, so a bug in the implementation cannot be copied into the oracle.
     expected: dict = {}
+    shared_expected: dict = {}
     for text in _real_sources():
         clean = mod._strip_comments(text)
         for match in re.finditer(r"([^{}]*)\{([^}]*)\}", clean, re.DOTALL):
             selector = match.group(1).strip().split("\n")[-1].strip()
+            # 🔴 테마 공유 기본값 — `[data-theme]`(값 없는 속성 선택자)는 모든 테마에 적용된다.
+            #   특이도가 `[data-theme="X"]` 와 같고 소스상 뒤라 실효값 병합 대상이다.
+            if selector == "[data-theme]":
+                shared_expected.update(mod.parse_vars(match.group(2)))
+                continue
             for name in ("dark", "light", "pastel", "catppuccin"):
                 if selector == f'[data-theme="{name}"]':
                     expected.setdefault(name, {}).update(mod.parse_vars(match.group(2)))
+    assert shared_expected, "독립 파싱이 `[data-theme]` 공유 블록을 못 찾았다 — 오라클 전제 붕괴"
+    for _name_map in expected.values():
+        _name_map.update(shared_expected)
 
     assert expected, "독립 파싱이 plain 테마 블록을 하나도 못 찾았다 — 오라클 전제 붕괴"
     for name, want in expected.items():
@@ -275,3 +287,102 @@ def test_uncategorized_tokens_are_kept_not_dropped():
     assert set(root_vars) == kept, (
         f"카테고리 분류에서 토큰이 사라졌다: {sorted(set(root_vars) - kept)[:10]}"
     )
+
+
+# ── 관측자 독립성 (2026-07-19 회고 P1 — S⊆E 가 공허하게 참이던 것) ────────
+#
+# 🔴 구 `declared_names()` 는 좌변(S)을 **구현과 같은 정규식**으로 만들었다. 그래서
+# "추출이 못 읽는 블록" 은 좌변에서도 안 보였고 `S ⊆ E` 가 **공허하게 참**이었다.
+# 실측: 그 상태로 174 중 171 만 산출하면서 "완전" 을 보고 — 8블록 12선언 무음 누락.
+# The old left side reused the implementation's regexes, so unread blocks were invisible to both.
+
+
+def test_declared_names_does_not_use_block_regexes():
+    """🔴 좌변이 **블록 구조를 모르는** dumb 스캔이어야 한다 — 구현 정규식 재사용 금지.
+
+    이 단언이 없으면 다음 사람이 "성능" 이나 "일관성" 을 이유로 좌변을 구현과 공유하게
+    되고, 관측자는 조용히 눈이 먼다(정확히 그렇게 됐었다).
+    """
+    import ast
+    import inspect
+    import textwrap
+
+    import extract_design_tokens as mod
+
+    # 🔴 문자열 검색이 아니라 **AST 참조**로 본다.
+    #   substring 이면 이 함수의 docstring 이 "이 정규식들을 쓰지 말라" 고 설명하는 것만으로
+    #   위반 판정이 난다(실제로 그렇게 실패했다) — 산문을 코드로 오인하는 그 클래스다.
+    # AST references, not substring: the docstring explains which regexes NOT to use, and a
+    # substring check would flag that prose as a violation.
+    tree = ast.parse(textwrap.dedent(inspect.getsource(mod.declared_names)))
+    referenced = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
+    referenced |= {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
+
+    forbidden = {"_ROOT_BLOCK_RE", "_THEME_BLOCK_RE", "_VARIANT_BLOCK_RE",
+                 "_SHARED_THEME_RE", "_BARE_VARIANT_RE", "_MODIFIER_RE", "parse_vars"}
+    leaked = sorted(referenced & forbidden)
+    assert not leaked, (
+        f"declared_names 가 구현 자산 {leaked} 를 재사용한다 — 오라클이 구현을 복사하면 "
+        "'구현이 못 보는 것' 을 원리적으로 볼 수 없다"
+    )
+
+
+def test_observer_fails_when_a_new_selector_scope_appears():
+    """🔴 관측자가 **실제로 실패할 수 있는가** — 새 스코프를 주입해 확인한다.
+
+    통과만 하고 아무것도 못 잡는 관측자가 이 사고의 본체였다. 합성 CSS 에 추출기가
+    모르는 선택자를 넣으면 좌변에는 나타나고 우변에는 없어야 한다.
+    """
+    import extract_design_tokens as mod
+
+    css = _real_sources()[0] + '\n[data-motion="reduced"] {\n  --probe-unseen: 1;\n}\n'
+    sources = [css, _real_sources()[1]]
+
+    themes, variants, shared, modifiers = mod.collect_themes(sources)
+    output = {
+        "foundation": mod.categorize_root_vars(mod.collect_root(sources)),
+        "themes": themes,
+        "theme_shared": shared,
+        "variants": variants,
+        "modifiers": modifiers,
+    }
+    missing = mod.declared_names(sources) - mod.emitted_names(output)
+    assert "--probe-unseen" in missing, (
+        "추출기가 모르는 선택자의 토큰을 관측자가 못 잡았다 — S⊆E 가 공허하게 참이다"
+    )
+
+
+def test_previously_missed_scopes_are_now_captured():
+    """🔴 회고가 지목한 8블록 12선언이 실제로 산출물에 실리는가 — 회귀 차단.
+
+    `[data-theme]` 공유 3 · 테마 무관 variant · density/radius 모드별 값.
+    """
+    import extract_design_tokens as mod
+
+    themes, variants, shared, modifiers = mod.collect_themes(_real_sources())
+
+    assert set(shared) == {"--border", "--text-muted", "--text-subtle"}, (
+        f"`[data-theme]` 공유 기본값이 바뀌었다: {sorted(shared)}"
+    )
+    for name in ("dark", "light", "pastel", "catppuccin"):
+        assert set(shared) <= set(themes[name]), f"{name} 에 공유 기본값이 병합되지 않았다"
+    assert "*" in variants, "테마 무관 `[data-variant=...]` 블록이 수집되지 않았다"
+    assert set(modifiers) == {"density", "radius"}, f"모디파이어 축 누락: {sorted(modifiers)}"
+    for axis, modes in modifiers.items():
+        assert len(modes) >= 3, f"{axis} 모드가 {len(modes)}개 — 3개 미만이면 수집 회귀 의심"
+
+
+def test_shared_defaults_collision_is_loud_not_silent():
+    """🔴 공유 키가 테마 키와 겹치면 **병합 순서가 값을 바꾼다** — 조용히 넘어가면 안 된다.
+
+    현재는 겹침 0이라 무손실이지만, 겹치기 시작하는 순간 어느 쪽이 실효값인지 결정이 필요하다.
+    """
+    import extract_design_tokens as mod
+
+    collide = (
+        ':root { --x: 0; }\n'
+        '[data-theme="dark"] { --shared-key: theme; }\n'
+        '[data-theme] { --shared-key: shared; }\n'
+    )
+    with pytest.raises(ValueError, match="충돌"):
+        mod.collect_themes([collide, ""])
