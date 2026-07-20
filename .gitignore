@@ -78,3 +78,7 @@ src/static/css/dist/tailwind.css
 # Claude Design brief 스크린샷 (대용량 바이너리 — 로컬에서 생성)
 docs/design/brief/screenshots/**/*.png
 docs/design/output/screenshots/
+
+# 외부 도구(Grok CLI 등)가 리포 안에 만드는 임시 산출물 차단
+# Block temp artifacts external tools write inside the repo
+tmp/
