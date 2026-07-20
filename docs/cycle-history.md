@@ -145,7 +145,7 @@
 
 ## 관측 복구 P0 3건 + 5+1 회고 2회 + 회고 조치 13 PR (2026-07-19)
 
-**최신 (2026-07-19 세션3 — 관측 복구 P0 3건 + 5+1 회고 2회, 총 9 PR #1102~#1110)** — [[project-logging-wipe-token-leak-2026-07-19]] 인수인계 1건(cron 검증)에서 출발해 **관측 자체가 꺼져 있던 근본**을 찾아 봉인. 회고 2회가 자기 산출물을 반박해 재수정까지 수행.
+**2026-07-19 세션3 — 관측 복구 P0 3건 + 5+1 회고 2회 + 회고 조치 (총 13 PR #1102~#1114)** — [[project-logging-wipe-token-leak-2026-07-19]] 인수인계 1건(cron 검증)에서 출발해 **관측 자체가 꺼져 있던 근본**을 찾아 봉인. 회고 2회가 자기 산출물을 반박해 재수정까지 수행.
 - 🔴🔴 **#1102 P0 — `alembic/env.py` `fileConfig` 가 앱 로깅을 런타임 파괴**: lifespan 내 `_run_migrations`(main.py:215)가 root 를 WARN/stderr 로 되돌리고 `disable_existing_loggers=True` 로 `uvicorn.access`·`src.*` 전부 비활성 → **#1100 이 운영에서 무력(inert)**. `is_configured()` 가드로 skip(CLI 단독 실행 보존). 운영 로그의 **모든 배포 12줄 컷오프**가 기전과 일치.
 - ✅ **cron 검증 3세션 만에 종결** — 로깅 복구 즉시 `scheduler started — 5 jobs` + `sweep_orphans` **정확히 600초 주기 3회 연속** 실측 → `#1073`·`#1071` ✅. 20:00 UTC 대기 불요. 🔴 직전 세션의 *"Railway 로그 수집 문제·앱 문제 아님"* 은 **오귀인**이었고 원장·메모리 양쪽 정정.
 - 🔴 **#1104 → #1109 P0 (2단계) — Telegram 봇 토큰 평문 유출**: 로깅 복구가 잠복 경로를 활성화(실측 5건). #1104 가 "2계층 봉인" 을 선언했으나 **2차 회고가 거짓임을 적발** → #1109 로 완결: `exc_info` 트레이스백 축 + **uvicorn 핸들러 직접 부착**(`propagate=False` 라 root 필터 구조적 미도달) + Slack/Discord 등 **채널 4종**(우리 코드 6곳이 URL 전문 로깅) + BackgroundTask 무가드 2곳.
@@ -164,7 +164,7 @@
 
 ### 직전 세션 서사 이관 (2026-07-18 세션2 — STATE.md 헤더에서 이관)
 
-**최신 (2026-07-18 세션2 — 5+1 회고 + 회고 fix + 후속, 총 17 PR #1077~#1092)** — [[project-retrospective-fixtracks-2026-07-18]] 이전 세션 잔여(CodeQL #545) 봉인 → 5+1 회고(`wf_331cdddf`·87 에이전트·61 confirmed[P0 3·P1 15·P2 43]·verdict_coverage **1.0**·FP 6) → 회고 fix 4 트랙 + 후속(사용자 "권장 방향" 승인). 🔴 **P0 = 회고 카덴스 강제 트리거(#1028) 첫 측정창 자기위반**(~46 PR 무회고·문서-only 시정 2회 실패) → **기계화**.
+**최신 (2026-07-18 세션2 — 5+1 회고 + 회고 fix + 후속, 총 16 PR #1077~#1092)** — [[project-retrospective-fixtracks-2026-07-18]] 이전 세션 잔여(CodeQL #545) 봉인 → 5+1 회고(`wf_331cdddf`·87 에이전트·61 confirmed[P0 3·P1 15·P2 43]·verdict_coverage **1.0**·FP 6) → 회고 fix 4 트랙 + 후속(사용자 "권장 방향" 승인). 🔴 **P0 = 회고 카덴스 강제 트리거(#1028) 첫 측정창 자기위반**(~46 PR 무회고·문서-only 시정 2회 실패) → **기계화**.
 - **#1077·#1079** 잔여 CodeQL #545(User FK 등록 import → `_FK_TARGET_MODELS` 튜플-참조) + P2#4 loud-fail read(게이트 auto-merge 레이스로 fix-up 유실 → 별도 fix PR).
 - **A1(#1080)** `check_retro_cadence.py` — 직전 정식 회고 이후 머지 PR 카운터·≥15 loud 경고·세션시작 체크리스트 배선. **라이브 48→5 리셋 실측**(문서-only→측정 신호 승격).
 - **A2(#1081)** `check_noqa_sideeffect.py` — PR diff ADDED `# noqa: F401` 은닉 side-effect import 차단(diff-scoped·기존 legacy 무churn·정책17) → 자초 CodeQL py/unused-import 3회 재발 turn-0 봉인.
