@@ -52,9 +52,22 @@ def test_derive_test_target_handles_absolute_and_backslash():
     assert derive_test_target("d:\\Source\\SCAManager\\src\\notifier\\telegram.py") == "tests/unit/notifier"
 
 
-def test_derive_test_target_none_for_direct_src_file():
-    """src 직속 파일(main.py 등)은 서브영역 없음 → None (collection 스모크 fallback)."""
-    assert derive_test_target("src/main.py") is None
+def test_derive_test_target_none_only_when_no_matching_test_exists():
+    """🔴 src 직속 파일은 **정확 대응 테스트가 없을 때만** None 이다.
+
+    ## 이 테스트가 결함을 고정하고 있었다 (2026-07-19 회고 P2 D10)
+
+    구 판은 `derive_test_target("src/main.py") is None` 을 단언했다 — 즉 훅이 정확한
+    대응 테스트를 무시하고 0-단언 수집으로 강등하는 동작을 **정상으로 못박고** 있었다.
+    실제로는 `src/` 직속 7파일 중 **6개가 `tests/unit/test_<stem>.py` 를 갖고 있다**.
+
+    "기존 테스트가 왜 통과하는가" 를 물어야 하는 정확한 사례 — 테스트가 초록인 이유가
+    구현이 옳아서가 아니라 **테스트가 결함을 기술하고 있어서**였다.
+    (`.claude/rules/testing.md` §회귀 차단 트랩 · SMTP 587 과 동일 클래스)
+    """
+    # 대응 테스트가 실재 → 그 파일로 매핑돼야 한다
+    assert derive_test_target("src/main.py") == "tests/unit/test_main.py"
+    # 대응 테스트가 없음 → None (collection 스모크 fallback)
     assert derive_test_target("src/constants.py") is None
 
 
