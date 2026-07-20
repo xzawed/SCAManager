@@ -240,3 +240,51 @@ def test_guard_sums_replicas_across_regions():
     }
     assert _configured_replicas(two_regions) == 2
     assert _scale_without_lock_violation(two_regions, "no lock") is not None
+
+
+# ── C 클러스터: 핀 자체와 TOML 구조를 지키는 단언 (2026-07-19 회고 P1) ────
+#
+# 🔴 위 가드들은 "replica 를 올렸을 때" 를 막지만, **핀을 통째로 지우는 것**은 못 막았다.
+# 실측: `[deploy.multiRegionConfig...]` 섹션을 삭제해도 9 passed —
+# `_configured_replicas` 가 미설정 시 Railway 기본 1 을 반환하므로 위반이 안 잡힌다.
+# 즉 #1125 가 넣은 핀은 **어떤 테스트도 지키지 않는 상태**였다.
+# The guards above block scaling UP but not deleting the pin outright (default-1 fallback).
+
+
+def test_replica_pin_is_present_and_explicit():
+    """🔴 핀이 **실재**해야 한다 — 지워도 green 이던 것 봉인.
+
+    `_configured_replicas` 는 미설정 시 Railway 기본값 1 을 돌려주므로 "위반 없음" 으로
+    보인다. 그래서 핀 삭제가 조용히 통과했다. 존재 자체를 단언한다.
+    """
+    deploy = _railway_config().get("deploy", {})
+    regions = deploy.get("multiRegionConfig")
+    assert regions, (
+        "`[deploy.multiRegionConfig.<region>]` 핀이 없다 — 대시보드 스케일업을 설정으로 막지 못한다.\n"
+        "🔴 `_configured_replicas` 의 기본값 1 fallback 때문에 다른 가드는 이걸 못 잡는다."
+    )
+    total = sum(int(r.get("numReplicas", 1)) for r in regions.values())
+    assert total == 1, f"핀된 총 replica={total} — 단일 인스턴스 전제와 불일치"
+
+
+def test_deploy_level_keys_are_not_absorbed_by_the_region_table():
+    """🔴 TOML 테이블 섹션이 **뒤따르는 key 를 흡수**하는 결함 회귀 차단 (#1125 자백분).
+
+    `[deploy.multiRegionConfig.X]` 를 `[deploy]` 중간에 두면 그 아래 key 들이 region
+    블록으로 빨려 들어간다. 실측으로 `restartPolicyMaxRetries = 10` 이 사라졌었고,
+    deploy 레벨 재시작 정책이 **조용히 증발**했다. 파싱 결과로 소속을 단언한다.
+    A TOML table absorbs following keys; the pin section must stay last so [deploy] keys remain.
+    """
+    deploy = _railway_config().get("deploy", {})
+    for key in ("startCommand", "preDeployCommand", "healthcheckPath",
+                "healthcheckTimeout", "restartPolicyType", "restartPolicyMaxRetries"):
+        assert key in deploy, (
+            f"`[deploy] {key}` 가 사라졌다 — region 테이블이 흡수했을 가능성.\n"
+            "🔴 `[deploy.multiRegionConfig.*]` 섹션은 **파일 맨 끝**에 두어야 한다."
+        )
+    # region 블록이 deploy 레벨 키를 삼키지 않았는지 직접 확인
+    for region, body in (deploy.get("multiRegionConfig") or {}).items():
+        stray = set(body) - {"numReplicas"}
+        assert not stray, (
+            f"region `{region}` 블록이 deploy 레벨 키를 흡수했다: {sorted(stray)}"
+        )
