@@ -2,7 +2,7 @@
 
 Cycle 93 Step 2-A fix-up — generate_illustrations.py unit tests (mocked).
 
-CI patch coverage 20.51% → 80%+ 회복 영역. 메모리 `feedback-ci-fixup-patch-coverage.md`
+CI patch coverage 20.51% → 80%+ 회복 영역. 메모리 `feedback-pr-scoped-ci.md`
 페어 (사이클 73 #244 학습) — 신규 service/repo/endpoint PR push 직전 80% 사전 검증 의무.
 
 mock 패턴 = OpenAI client 전체 mock + tmp_path 출력 디렉토리 격리 + monkeypatch sys.argv.

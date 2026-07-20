@@ -18,10 +18,10 @@ so scope["session"] not yet populated). User login → preferred_language sync v
 Cookie (Phase 2 PR-4 — header dropdown).
 
 🔴 ASGI middleware 패턴 의무 (BaseHTTPMiddleware 우회) — 메모리
-`feedback-asgi-middleware-contextvars.md` 페어. RLSSessionMiddleware 패턴 차용.
+RLSSessionMiddleware 패턴 차용 (근거 메모리는 소실 — 교훈은 본문에 보존).
 
 ASGI middleware required (not BaseHTTPMiddleware) — pairs with memory
-`feedback-asgi-middleware-contextvars.md`. Pattern from RLSSessionMiddleware.
+Pattern from RLSSessionMiddleware; the source memo is gone, the lesson stays here.
 
 Kill-switch: `is_disabled("I18N")` 시 skip + scope["state"]["locale"] = "en"
 강제 (운영 사고 시 응급 비활성 — 사이클 78 NEW-P0-2 패턴 페어).

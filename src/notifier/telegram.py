@@ -62,7 +62,7 @@ async def telegram_post_message(bot_token: str, chat_id: str, payload: dict) -> 
         r = await client.post(url, json=body)
 
     # defensive int coercion — mock-safety + 정책 16 1번 원칙 정확성
-    # (메모리 `feedback-defensive-coercion-mock-safety.md` 패턴)
+    # (방어적 coercion — mock 안전성 패턴. 근거 메모리는 소실, 교훈은 본문에 보존)
     # defensive int coercion — mock-safety + Policy 16 #1 accuracy
     try:
         status = int(r.status_code or 0)
