@@ -14,7 +14,12 @@ Never treat "not indexed yet" as clean — verify the analysis exists for the he
 import os
 from pathlib import Path
 
-from scripts.check_codeql_alerts import analysis_ready, format_violations, select_new_alerts
+from scripts.check_codeql_alerts import (
+    analysis_ready,
+    format_violations,
+    select_new_alerts,
+    soft_exit2_allowed,
+)
 
 
 def _alert(number, rule="py/empty-except", severity="note", path="scripts/x.py", line=1):
@@ -146,8 +151,6 @@ def test_gate_runs_only_on_pull_request():
 
 def test_soft_exit2_requires_exact_actor_match():
     """🔴 actor 는 **정확 일치** — prefix/포함 매칭이면 사칭이 통과한다."""
-    from scripts.check_codeql_alerts import soft_exit2_allowed
-
     assert soft_exit2_allowed("dependabot[bot]", ["requirements.txt"]) is True
     for impostor in ("dependabot", "my-dependabot[bot]", "dependabot[bot]x",
                      "renovate[bot]", "xzawed", ""):
@@ -162,8 +165,6 @@ def test_soft_exit2_refused_when_code_surface_touched():
     Dependabot 은 action 버전도 올린다(#1018). 그건 **control-plane** 변경이라
     "의존성이니 안전" 논리가 성립하지 않는다 — 게이트 자신을 약화시킬 수 있는 면이다.
     """
-    from scripts.check_codeql_alerts import soft_exit2_allowed
-
     for path in ("src/main.py", "scripts/x.py", "tests/unit/t.py", "e2e/t.py",
                  "alembic/versions/0001.py", ".github/workflows/ci.yml"):
         assert soft_exit2_allowed("dependabot[bot]", ["requirements.txt", path]) is False, (
@@ -176,8 +177,6 @@ def test_soft_exit2_refused_when_paths_unknown():
 
     판정 불가를 판정하는 입력이 또 판정 불가일 때 통과시키면 완화가 무조건 통과가 된다.
     """
-    from scripts.check_codeql_alerts import soft_exit2_allowed
-
     assert soft_exit2_allowed("dependabot[bot]", ["<unknown>"]) is False
 
 
@@ -187,7 +186,7 @@ def test_violation_path_is_never_softened():
     완화는 `Undecidable` 예외 경로에서만 일어난다. 위반 판정은 그 예외를 거치지 않으므로
     actor 와 무관하게 그대로 1 을 반환해야 한다. 이 단언이 완화의 범위를 못박는다.
     """
-    import scripts.check_codeql_alerts as mod
+    from scripts import check_codeql_alerts as mod
 
     calls = {"n": 0}
 
@@ -218,7 +217,7 @@ def test_undecidable_is_a_distinct_exception_not_a_direct_exit():
 
     구 구현이 그랬고, 그래서 위반과 판정 불가가 같은 결과로 뭉개졌다.
     """
-    import scripts.check_codeql_alerts as mod
+    from scripts import check_codeql_alerts as mod
 
     assert issubclass(mod.Undecidable, Exception)
     src = (Path(__file__).resolve().parents[3] / "scripts" / "check_codeql_alerts.py").read_text(
