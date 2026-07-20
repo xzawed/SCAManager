@@ -47,6 +47,9 @@
 | [runbooks/retrospective.md](runbooks/retrospective.md) | 5+1 회고 워크플로우 운영 (`/retrospective`) |
 | [runbooks/merge-verifier.md](runbooks/merge-verifier.md) | 2nd-LLM 머지 검증자 활성화 (운영 안전) |
 | [runbooks/rls-role-separation.md](runbooks/rls-role-separation.md) | RLS 앱 role 분리 운영 (owner-bypass 차단) |
+| [runbooks/ai-collaboration.md](runbooks/ai-collaboration.md) | 🔴 Claude ↔ Grok 협업 프로토콜 — **정책 19 단일 출처** (주장 트리거·A2 뮤테이션·소유 경계) |
+| [runbooks/owed-verification.md](runbooks/owed-verification.md) | 🔴 미결 검증 원장 — SessionStart 훅이 매 세션 미회신 건을 경고 |
+| [runbooks/cost-controls.md](runbooks/cost-controls.md) | AI 리뷰 비용 제어 (kill-switch·리포별 토글) 검증 절차 |
 | [guides/github-integration-guide.md](guides/github-integration-guide.md) | GitHub 연동 가이드 |
 | [guides/onpremise-migration-guide.md](guides/onpremise-migration-guide.md) | 온프레미스 DB 전환 가이드 |
 | [guides/operational-verification.md](guides/operational-verification.md) | 운영 검증 가이드 |
