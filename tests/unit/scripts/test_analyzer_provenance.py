@@ -38,7 +38,6 @@ _RAILWAY = _ROOT / "railway.toml"
 _NIXPACKS = _ROOT / "nixpacks.toml"
 _REQUIREMENTS = _ROOT / "requirements.txt"
 _STATIC = _ROOT / "src" / "analyzer" / "io" / "static.py"
-_TOOLS = _ROOT / "src" / "analyzer" / "io" / "tools"
 
 # 조달 모드 — 닫힌 집합 / closed set of provisioning modes
 BUILD, APT, PIP, SETUP, OPTIONAL = "build_install", "apt", "pip", "nixpacks_setup", "optional_absent_ok"
