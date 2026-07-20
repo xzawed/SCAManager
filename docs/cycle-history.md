@@ -143,6 +143,24 @@
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
 
+## PR 머지 + Railway 운영 실측 + 관측자-거짓말 사냥 (2026-07-19 세션4)
+
+**2026-07-19 세션4 ( — PR 머지 + Railway 운영 실측 + 관측자-거짓말 사냥)** — 직전 세션3(관측 복구 P0 3건 + 회고 2회, 13 PR #1102~#1114)의 전체 서사는 [`cycle-history.md`](cycle-history.md) 로 이관됐다(헤더 '최신' 체인 누적 금지 — 갱신 규칙 (2)).
+열린 PR 2건 머지 후 Railway MCP 로 배포를 실측하는 과정에서 신규 결함 1건 발견.
+- **#1116·#1118 머지** — #1116 은 SonarCloud QG(new-code 50%)·codecov/patch 2건 fail 이었고, 원인은 신규 `_scan_security` 본문이 어떤 테스트에도 닿지 않은 것(나머지 5종 job 은 전부 `test_*_job_calls_service` 보유). fix-up commit 으로 본문 호출 + 주기 04:00 단언 2건 추가 → 10 체크 전부 SUCCESS 후 머지.
+- ✅ **7/19 P0 2건 운영 종결 확인 (Railway deploy 로그 실측)** — `scheduler started — 6 jobs: ... scan-security` + `retry_pending_merges` 60초 주기 반복 실행. **로깅 복구(#1100·#1102)와 cron 미실행(#1099) 양쪽이 운영에서 동작 확인**됐다(그전엔 앱 INFO 로그 전무·cron 5종 실행 0회).
+- ❌ **railway.toml 무시 의심은 반증** — `get_service_config` 가 `RAILPACK`/`npm run build` 를 보고해 cron P0 와 같은 패턴을 의심했으나, 빌드 로그에 railway.toml `buildCommand` 전문이 그대로 실행됨(`/opt/venv` + analyzer 체인). MCP 값은 대시보드 기본값이고 railway.toml 이 배포 시 오버라이드. **조치 불필요**.
+- 🔴 **신규 발견 — tflint 가 #654 도입 이래 무동작**: buildCommand 의 tflint 설치가 `unzip` 을 호출하는데 aptPkgs 에 `unzip` 이 없어 `command not found` → `|| echo WARNING` 로 삼켜짐 → `is_enabled()=False` 로 조용히 skip. **cron P0 와 같은 실패 모드**(설정 존재·실행 0·무통보). 수정 + `test_build_command_deps.py` 조달 출처 가드 5건 신설(뮤테이션 3종 탐지 실증).
+- 🟡 **문서 drift 미해결** — `docs/runbooks/operational-smoke-checks.md` 가 `/login` 기대값을 "200 또는 302"·"5xx → 템플릿 렌더링 오류"로 적고 있으나, 실제는 `/auth/github` 로의 **301**(의도된 하위호환, 템플릿 자체 없음) → 런북대로 점검 시 오탐. 사용자 결정 대기.
+- 🔴 **수치 정정** — 직전 STATE 의 단위 **5653 은 실측 5657 대비 4건 과소집계**였다(worktree 로 `0f5266d`/`98127aa`/`7b7d63e`/`cf97c64` 커밋별 `--collect-only` 실측).
+- **세션4 후반 (#1119~#1126)** — 발단은 "PR 확인 후 머지"였으나 **관측자-거짓말(observer-lie) 사냥**으로 전환됐다: 코드의 버그는 고쳤는데 관측자가 계속 거짓말하는 형태.
+  - 🔴 **#1119 tflint 가 #654 도입 이래 무동작** — `unzip` 이 `aptPkgs` 에 한 번도 없었고 `|| echo WARNING` 이 실패를 삼켜 빌드는 green, analyzer 만 조용히 skip. + buildCommand 명령의 조달 출처 등재 강제 가드.
+  - 🔴 **#1121 backlog B2 처방문 자체가 덫** — `[deploy] numReplicas = 1` 은 Railway 유효 키가 **아니라** 조용히 무시된다. 착수 전 공식 레퍼런스 대조로 발견 = **P0 재현 직전 회피**. 처방문도 검증 대상임이 드러났다.
+  - 🔴 **#1122 n8n·custom webhook URL 시크릿 유출 2경로** — `_send_notifications` 의 `str(exc)`+`exc_info` + 무가드 BackgroundTask. 리댁션 필터는 **사용자 지정 임의 호스트를 구조적으로 못 덮는다**. 현재 안전했던 건 호스트가 접속 불가였기 때문(우연).
+  - 🔴 **#1126 추출기가 174 중 35만 산출하고 exit 0** — 테스트 13건이 **전부 green 인 채로** 깨진 상태를 인증(SMTP 587 과 동일 클래스, 저장소 2회차). `S ⊆ E` 완전성 관측자 신설로 봉인, leaf 302→515 복구.
+  - **#1120 런북 6곳 정정** · **#1123 cp949 무방비 4/15 비대칭 봉인** · **#1125 replica 핀**(region 라이브 실측) · **#1124 Grok 협업 프로토콜**(+ v2 개정).
+  - 🔴 **자기 결함 9건 기록** — `**kwargs` 시그니처 은닉 · 이중 import · 검증 실행이 산출물 덮어씀 · **배포 WAITING 을 "활성"으로 오보** · TOML 섹션이 인접 키 흡수 · `assert X or True` · **folding 을 못 잡는 folding 테스트** 등. 관측자를 만들며 관측자-거짓말을 재생산했고 **뮤테이션으로만** 드러났다.
+
 ## 관측 복구 P0 3건 + 5+1 회고 2회 + 회고 조치 13 PR (2026-07-19)
 
 **2026-07-19 세션3 — 관측 복구 P0 3건 + 5+1 회고 2회 + 회고 조치 (총 13 PR #1102~#1114)** — [[project-logging-wipe-token-leak-2026-07-19]] 인수인계 1건(cron 검증)에서 출발해 **관측 자체가 꺼져 있던 근본**을 찾아 봉인. 회고 2회가 자기 산출물을 반박해 재수정까지 수행.
