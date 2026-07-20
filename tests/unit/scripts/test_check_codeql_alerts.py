@@ -11,7 +11,15 @@ detect them; the check passed only because `note` severity is below the check-fa
 나온다. '분석 존재 확인 → 그 다음 alert 조회' 순서라야 0건을 신뢰할 수 있다.
 Never treat "not indexed yet" as clean — verify the analysis exists for the head SHA first.
 """
-from scripts.check_codeql_alerts import analysis_ready, format_violations, select_new_alerts
+import os
+from pathlib import Path
+
+from scripts.check_codeql_alerts import (
+    analysis_ready,
+    format_violations,
+    select_new_alerts,
+    soft_exit2_allowed,
+)
 
 
 def _alert(number, rule="py/empty-except", severity="note", path="scripts/x.py", line=1):
@@ -124,3 +132,98 @@ def test_gate_runs_only_on_pull_request():
     steps = _codeql_workflow()["jobs"]["analyze"]["steps"]
     gate = next(s for s in steps if "check_codeql_alerts.py" in s.get("run", ""))
     assert "pull_request" in gate.get("if", ""), "게이트에 pull_request 조건 누락"
+
+
+# ── 판정 불가(exit 2) 완화 정책 freeze (2026-07-20 — Dependabot 영구 차단 사고) ──
+#
+# ## 사고
+# `#1097` 게이트는 **판정 불가**(API 실패·분석 미인덱싱)를 **위반과 같은 차단**으로 처리했다.
+# Dependabot 은 GitHub 이 read-only 토큰을 주므로 `code-scanning/analyses` 를 읽을 수 없다 —
+# 즉 **구조적으로 판정 불가**다. 실측(2026-07-20 PR #1134):
+#     🔴 GitHub API 실패 — 게이트 판정 불가: repos/.../code-scanning/analyses?ref=refs/pull/1134/merge
+# 게이트 도입(2026-07-19) 후 **첫 Dependabot PR 이 곧바로 막혔고**, 그 상태면 의존성 보안
+# 업데이트가 영영 머지되지 않는다 — 보안 게이트가 보안 패치를 막는 상태.
+#
+# ## 이 freeze 가 잠그는 것
+# 완화는 **판정 불가에만** 적용되고, **정확히 dependabot[bot]** 에만, **코드 면을 안 건드릴 때만**
+# 허용된다. 되돌리거나 예외가 넓어지면 아래가 red 가 된다.
+
+
+def test_soft_exit2_requires_exact_actor_match():
+    """🔴 actor 는 **정확 일치** — prefix/포함 매칭이면 사칭이 통과한다."""
+    assert soft_exit2_allowed("dependabot[bot]", ["requirements.txt"]) is True
+    for impostor in ("dependabot", "my-dependabot[bot]", "dependabot[bot]x",
+                     "renovate[bot]", "xzawed", ""):
+        assert soft_exit2_allowed(impostor, ["requirements.txt"]) is False, (
+            f"{impostor!r} 가 완화를 통과했다 — 정확 일치가 아니다"
+        )
+
+
+def test_soft_exit2_refused_when_code_surface_touched():
+    """🔴 코드 면을 건드리면 완화하지 않는다 — `.github/**` 포함 의무.
+
+    Dependabot 은 action 버전도 올린다(#1018). 그건 **control-plane** 변경이라
+    "의존성이니 안전" 논리가 성립하지 않는다 — 게이트 자신을 약화시킬 수 있는 면이다.
+    """
+    for path in ("src/main.py", "scripts/x.py", "tests/unit/t.py", "e2e/t.py",
+                 "alembic/versions/0001.py", ".github/workflows/ci.yml"):
+        assert soft_exit2_allowed("dependabot[bot]", ["requirements.txt", path]) is False, (
+            f"{path} 가 바뀌었는데 완화됐다 — 코드/control-plane 면은 하드 유지여야 한다"
+        )
+
+
+def test_soft_exit2_refused_when_paths_unknown():
+    """🔴 변경 경로를 못 구하면 완화하지 않는다 — 빈 목록 ≠ '코드 변경 없음'.
+
+    판정 불가를 판정하는 입력이 또 판정 불가일 때 통과시키면 완화가 무조건 통과가 된다.
+    """
+    assert soft_exit2_allowed("dependabot[bot]", ["<unknown>"]) is False
+
+
+def test_violation_path_is_never_softened():
+    """🔴 **exit 1(신규 alert 발견)은 누구에게도 완화되지 않는다.**
+
+    완화는 `Undecidable` 예외 경로에서만 일어난다. 위반 판정은 그 예외를 거치지 않으므로
+    actor 와 무관하게 그대로 1 을 반환해야 한다. 이 단언이 완화의 범위를 못박는다.
+    """
+    from scripts import check_codeql_alerts as mod
+
+    calls = {"n": 0}
+
+    def fake_api(path):
+        calls["n"] += 1
+        if "analyses" in path:
+            return [{"commit_sha": "deadbeef"}]
+        if "ref=refs/pull/" in path:  # PR alerts — 신규 1건
+            return [{"state": "open", "number": 999,
+                     "rule": {"id": "py/x", "severity": "note"},
+                     "most_recent_instance": {"location": {"path": "a.py", "start_line": 1}}}]
+        return []  # base alerts
+
+    original = mod._gh_api
+    mod._gh_api = fake_api
+    try:
+        os.environ["GITHUB_ACTOR"] = "dependabot[bot]"  # 완화 대상 actor 로 실행
+        rc = mod.main(["x", "owner/repo", "1134", "deadbeef", "refs/heads/main"])
+    finally:
+        mod._gh_api = original
+        os.environ.pop("GITHUB_ACTOR", None)
+
+    assert rc == 1, f"신규 alert 가 있는데 {rc} 를 반환했다 — 위반이 완화됐다"
+
+
+def test_undecidable_is_a_distinct_exception_not_a_direct_exit():
+    """🔴 판정 불가가 `sys.exit(2)` 직접 호출이면 완화 분기 자체가 불가능하다.
+
+    구 구현이 그랬고, 그래서 위반과 판정 불가가 같은 결과로 뭉개졌다.
+    """
+    from scripts import check_codeql_alerts as mod
+
+    assert issubclass(mod.Undecidable, Exception)
+    src = (Path(__file__).resolve().parents[3] / "scripts" / "check_codeql_alerts.py").read_text(
+        encoding="utf-8"
+    )
+    api_block = src[src.index("def _gh_api"):src.index("def _wait_for_analysis")]
+    assert "sys.exit(2)" not in api_block, (
+        "_gh_api 가 여전히 직접 exit 한다 — 완화 분기가 도달 불가가 된다"
+    )
