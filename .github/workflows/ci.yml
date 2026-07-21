@@ -134,6 +134,9 @@ jobs:
       - name: architecture 트리 싱크 (check_architecture_tree_sync)
         run: python scripts/check_architecture_tree_sync.py
 
+      - name: 가드 fail-open floor (check_guard_fail_open)
+        run: python scripts/check_guard_fail_open.py
+
       - name: config.py↔env-vars.md 싱크 (check_env_vars_sync)
         run: python scripts/check_env_vars_sync.py
 

@@ -13,6 +13,10 @@ CLAUDE.md 는 `docs/architecture.md` 를 src/ 트리 **단일 출처**로 선언
 `src/` 의 패키지(디렉토리)와 최상위 모듈이 architecture.md 트리에 **문자열로 등장**하는지 본다.
 의도적 축약(트리에 개별 나열 안 하는 것)은 `_ALLOWLIST` 에 사유와 함께. 그래야 "빠뜨림" 과
 "의도적 생략" 이 구별된다.
+
+# fail-open-reviewed: 트리 존재 검사는 본질적으로 substring 이다(마크다운 트리는 AST 파싱 대상
+#   아님). fail-open 위험(패키지명이 산문에만 있고 트리엔 없음)은 `_tree_block()` 으로 코드펜스
+#   트리 블록에 스코프해 축소한다 — B8(check_guard_fail_open) 이 이 가드를 잡아 개선한 결과.
 """
 import sys
 from pathlib import Path
@@ -32,7 +36,16 @@ _ALLOWLIST: dict[str, str] = {}
 
 
 def _tree_text() -> str:
-    return _ARCH.read_text(encoding="utf-8")
+    """architecture.md 의 **트리 코드펜스 블록만** — 산문 언급으로 인한 fail-open 축소.
+
+    (B8 검토: 전체 문서를 보면 패키지명이 산문에만 있어도 통과했다. 트리 블록에 스코프.)
+    """
+    text = _ARCH.read_text(encoding="utf-8")
+    # ``` 로 둘러싸인 코드 블록(트리)들만 이어붙인다. 없으면 전체(하위호환).
+    # Concatenate only the fenced code blocks (the tree); fall back to whole doc.
+    import re as _re
+    blocks = _re.findall(r"```[^\n]*\n(.*?)```", text, _re.DOTALL)
+    return "\n".join(blocks) if blocks else text
 
 
 def _packages() -> list[str]:
