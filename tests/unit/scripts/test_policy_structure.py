@@ -24,6 +24,7 @@ from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[3]
 _CLAUDE_MD = _ROOT / "CLAUDE.md"
+_AGENTS_MD = _ROOT / "AGENTS.md"
 
 # 살아있는 의무의 표지 — 이 문자열들이 폐기 섹션 안에 있으면 안 된다.
 _LIVE_DUTIES = (
@@ -95,10 +96,20 @@ def test_a2_specifies_what_to_mutate():
 
     실측: `#1121` 이 합성 문자열로 "뮤테이션 실증" 을 적은 채 실파일에 대해 무동작이었다.
     "뮤테이션했다" 만 요구하면 그 상태가 문면상 준수다.
+
+    🔴 **SSOT 이동 (2026-07-20 문서 재구성 Phase 2)**: A2/합성-픽스처-금지 규정의 정본이
+    CLAUDE.md 정책 19 detail → **`AGENTS.md` 3-불변식(dual-consumer SSOT)** 로 이관됐다.
+    가드는 정본을 따라간다(가드가 핀 — 콘텐츠 이동 시 같은 커밋에 가드 갱신). CLAUDE.md 는
+    A2 를 **언급·링크**만 하면 되고, 실규정은 AGENTS.md 에 있어야 한다.
     """
-    text = _CLAUDE_MD.read_text(encoding="utf-8")
-    assert "합성 문자열·픽스처만으로는" in text, (
-        "A2 에 '합성만으로는 불충족' 규정이 없다 — #1121 형 뮤테이션 연극이 다시 통과한다"
+    agents = _AGENTS_MD.read_text(encoding="utf-8")
+    assert "합성 문자열·픽스처" in agents and "불충족" in agents, (
+        "AGENTS.md 3-불변식에 '합성 픽스처만으로는 불충족' 규정이 없다 — #1121 형 연극이 통과한다"
+    )
+    # CLAUDE.md 정책 19 는 A2 를 최소 언급해야 한다(SSOT 로 가는 진입점).
+    claude = _CLAUDE_MD.read_text(encoding="utf-8")
+    assert "A2" in claude and "AGENTS.md" in claude, (
+        "CLAUDE.md 가 A2/AGENTS.md 를 가리키지 않는다 — SSOT 진입점 끊김"
     )
 
 
