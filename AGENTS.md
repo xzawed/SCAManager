@@ -77,11 +77,15 @@ HOLDS. 그리고 뮤테이션 대상은 seal 이 **보호한다고 주장하는 
 - **경계**: Grok 은 정책·backlog 처방을 **저술하지 않는다**(claim-review 는 허용).
 - 실무: 범위 좁게(2 클레임·400자 — 넓으면 타임아웃) · 절대경로 전달(`/tmp` 가 리포 드라이브로
   해석됨) · Grok 심각도 판단 불신(이진 반증 질문으로 우회).
+- 🔴 **판정 착지 규약**: Grok 판정(HOLDS/BROKEN)은 외부 `.md` 기록 → Claude 1회 triage →
+  영향 계층 라우팅(`wrong-merge`·`secret`·`fail-open` → `owed-verification.md` 안전등급 /
+  `silent-disable` → `backlog.md`). 상세 = `ai-collaboration.md` §라우팅·§findings 스키마.
 
 ## 규칙·정책 어디서 찾나 (grep 진입점)
 
-- 영역별 규칙: `.claude/rules/{testing,db,pipeline,api,security,ui,i18n,deploy,services}.md`
-  (Claude 는 매칭 파일 편집 시 자동 로드 / Grok 은 이 목록을 grep).
+- 영역별 규칙: `.claude/rules/{testing,db,pipeline,api,security,ui,i18n,deploy,services,guards}.md`
+  (Claude 는 매칭 파일 편집 시 자동 로드 / **Grok 은 auto-load 없으므로 이 목록을 grep**).
+  🔴 **`guards.md`** = 가드/훅/워크플로 저술 시 로드되는 3-불변식(위 SSOT 의 편집-표면 사본).
 - 협업 정책 1~19: `CLAUDE.md` (default rule) + `.claude/policies/{active,history}.md` (detail).
 - 미결 검증 원장: `docs/runbooks/owed-verification.md`. 미해결 일감: `docs/backlog.md`.
 - 현재 수치·상태: `docs/STATE.md`. 아키텍처·가드 배선: `docs/architecture.md`.
