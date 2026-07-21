@@ -10,12 +10,14 @@ PostToolUse·PreToolUse)에 흩어져 있는데, "모든 가드가 어딘가에 
 
 ## 🔴 배선 판정 = 실제 참조 관측 (산문 아님, AGENTS.md 불변식 3)
 
-`.pre-commit-config.yaml`·`.github/workflows/*.yml`·`.claude/settings.json` 에서 가드 파일명이
-실제로 참조되는지 본다. 참조가 없으면(= 미배선) FAIL. 의도적 비-게이트(라이브러리/공유 헬퍼)는
+`.pre-commit-config.yaml`·`.github/workflows/*.yml`·`.claude/settings.json` 에서 가드가
+**실제로 호출**(`python scripts/<stem>.py` 등)되는지 본다 — 단순 언급(주석)은 배선 아님
+(Grok 최종 검증: substring 판정은 이 파일이 강제하려는 fail-open 을 가드 자신이 범한 것). 의도적 비-게이트(라이브러리/공유 헬퍼)는
 `_ADVISORY_ALLOWLIST` 에 사유와 함께 명시해야만 면제 — 그래야 "그냥 안 배선" 과 "의도적 면제" 가
 구별된다.
 """
 import json
+import re
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[3]
@@ -46,7 +48,18 @@ def _guard_files() -> list[Path]:
 
 
 def _wired_surfaces(stem: str, surfaces: dict[str, str]) -> list[str]:
-    return [name for name, text in surfaces.items() if stem in text]
+    """가드가 각 표면에서 **실제로 호출**되는가 — 단순 언급 아님.
+
+    🔴 Grok 최종 적대검증 (2026-07-20): 이전 판은 `stem in text` substring 이었다. 그러면
+    **주석·설명이 가드 이름을 언급하기만 해도 "배선됨"** 으로 오판된다 — 이 파일이 강제하려는
+    바로 그 fail-open anti-pattern(AGENTS.md 불변식 1)을 가드 자신이 범한 것이다.
+    → `python scripts/<stem>.py` / `python .claude/hooks/<stem>.py` 형태의 **실제 호출**
+    (pre-commit `entry:`·CI `run:`·settings 훅 command)만 배선으로 인정한다.
+    Only an actual invocation counts as wired; a mere mention (comment) does not.
+    """
+    # 실제 호출 형태: scripts/<stem>.py 또는 hooks/<stem>.py 가 명령 토큰으로 등장
+    invoke = re.compile(rf"(scripts|\.claude/hooks|hooks)/{re.escape(stem)}\.py")
+    return [name for name, text in surfaces.items() if invoke.search(text)]
 
 
 # ── 핵심 불변식 ─────────────────────────────────────────────────────────
@@ -108,3 +121,16 @@ def test_settings_json_is_valid_and_referenced_guards_resolve():
         # settings 가 이 훅을 언급하면, 파일이 실제로 있어야 한다(있음 — 대조 확인)
         if hook.stem in referenced:
             assert hook.is_file()
+
+
+def test_wiring_detection_requires_invocation_not_mention():
+    """🔴 주석/설명이 가드 이름을 언급만 해도 '배선됨' 으로 잡으면 안 된다 (Grok 최종 검증).
+
+    이 파일이 강제하려는 fail-open anti-pattern 을 가드 자신이 범하지 않았는지 자가 검증.
+    """
+    surfaces = {"ci": "# check_fake_guard.py 는 중요하다(주석뿐, 실제 호출 없음)"}
+    assert _wired_surfaces("check_fake_guard", surfaces) == [], (
+        "주석 언급만으로 배선으로 오판됐다 — substring anti-pattern 재발"
+    )
+    real = {"ci": "run: python scripts/check_fake_guard.py"}
+    assert _wired_surfaces("check_fake_guard", real) == ["ci"], "실제 호출을 배선으로 못 잡았다"

@@ -14,31 +14,19 @@ paths:
 > 이곳이 이 저장소가 가장 자주 실수하는 곳이다 — #1145 훅이 자기가 없애려던 false-green 을
 > **3형태로 재생산**한 게 정확히 이 표면이었다.
 
-## 🔴🔴 3-불변식 (정본 SSOT = [`AGENTS.md`](../../AGENTS.md))
+## 🔴🔴 3-불변식 (정본 SSOT = [`AGENTS.md`](../../AGENTS.md) — 여기는 요약)
 
-새 가드/훅/워크플로/검증 스크립트를 저술할 때 **예외 없이**:
+> 🔴 **full 규정·근거는 AGENTS.md 가 단일 body.** 아래는 write-time 리마인더 요약이다(drift 방지 —
+> 상세를 여기 재서술하지 않는다). 저술 前 AGENTS.md §3-불변식을 정본으로 볼 것.
 
-### 1. fail-closed — 통과가 산문으로 충족되면 안 된다
+새 가드/훅/워크플로/검증 스크립트 저술 시 **예외 없이**:
 
-- ❌ `binary in build_command_text` — `echo 'WARNING: tsc failed'` 산문이 통과시킨다(#1136).
-- ❌ `"사용자 회신" in row` — "사용자 회신 **대기**" 가 통과시킨다(#1156).
-- ✅ AST(`ast.Call`·`ast.walk`)로 **실제 호출/값**을 보거나, 실행 결과를 관측한다.
-- 🔴 자문: *이 검사는 주석·docstring·echo 문구로 통과될 수 있는가?* 그렇다면 fail-**open** 이다.
-
-### 2. 실경로 뮤테이션 — 합성 픽스처로 HOLDS 금지
-
-- 새 가드를 만들면 **그 가드가 보호한다는 실파일/심볼을 깨뜨려 red 를 관측**해야 완료.
-- ❌ 합성 문자열만 바꾸는 뮤테이션(#1121: 실 `scheduler.py` 를 넣으면 docstring 이 만족시켜 dead 였다).
-- 🔴 **하네스 거짓 통과**: 뮤테이션 적용 여부를 먼저 단언(`assert mutated != orig`). sed 미적용을
-  "N passed" 로 오독한 사고가 이 세션에 3회. 커밋 본문 "뮤테이션 N/N red" 는 실파일·적용확인·red 3자 실증.
-
-### 3. 배선 테스트 — 정의≠배선, 순수함수 옳음≠진입점 도달
-
-- 정의만 하고 호출·배선 안 하면 dead code(전 스위트 green 인데 무동작).
-- 순수 함수(`derive_test_target`)가 옳아도 **진입점(`main()`)이 그것을 실제로 호출**하는지는 별개(#1145).
-- 배선 테스트는 **산문 grep 아닌 실제 실행/호출 관측** — 큐 태스크 실제 실행, `main()` 실 stdin 호출,
-  AST 로 진입점 호출 확인. 신규 가드는 "그 가드가 실제 게이트(ci/pre-commit/SessionStart/PostToolUse)에
-  배선됐나" 를 동반 검증.
+1. **fail-closed** — 통과가 산문/echo/advisory 로 충족되면 안 됨.
+   ❌ `binary in build_text`(echo 산문 통과·#1136) · `"사용자 회신" in row`("대기" 통과·#1156).
+   ✅ AST(`ast.Call`·`ast.walk`) 실제 호출/값, 또는 실행 결과 관측. 자문: *주석·docstring·echo 로 통과 가능한가?*
+2. **실경로 뮤테이션** — 합성 픽스처 금지. 실파일/심볼을 깨뜨려 red 관측 + `assert mutated != orig`(#1121).
+3. **배선 테스트** — 정의≠배선, 순수함수 옳음≠진입점 도달(#1145). 산문 grep 아닌 실제 실행/호출 관측 +
+   "실제 게이트(ci/pre-commit/SessionStart/PostToolUse)에 배선됐나" 동반 검증.
 
 ## 스크립트 관용구 (이 표면 전용)
 
