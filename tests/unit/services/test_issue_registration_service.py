@@ -35,8 +35,18 @@ def test_make_ai_issue_key_is_64_chars():
     assert len(key) == 64
 
 
-def test_make_ai_issue_key_deterministic():
-    assert make_ai_issue_key("text") == make_ai_issue_key("text")
+def test_make_ai_issue_key_deterministic_and_pinned():
+    # 🔴 Grok 지적: 순수 sha256 이라 "같은 입력 → 같은 출력" 단독은 near-tautology(깨질 수
+    #   없음). **실제 오라클**을 둔다 — (1) 64-hex 고정값 pin(해싱·절단 계약 회귀 탐지)
+    #   (2) 다른 입력은 다른 키(충돌 아님). S5863 은 별도 변수 비교로 회피.
+    # Real oracles beyond the tautology: pinned hex + distinctness. Pins the hashing contract.
+    key_text = make_ai_issue_key("text")
+    # 아래 64-hex 는 sha256 계약 pin(테스트 오라클)이지 시크릿이 아니다 — gitleaks generic-api-key
+    #   가 고엔트로피 hex 리터럴을 오탐하므로 그 줄에 gitleaks:allow inline(같은 줄이어야 인식).
+    #   (pinned sha256 oracle, not a credential; gitleaks:allow must sit on the finding line.)
+    assert key_text == "982d9e3eb996f559e633f4d194def3761d909f5a3b647d1a851fead67c32c9d1"  # gitleaks:allow
+    assert len(key_text) == 64 and all(c in "0123456789abcdef" for c in key_text)
+    assert make_ai_issue_key("text") != make_ai_issue_key("other")
 
 
 def test_make_static_issue_key_excludes_line():
