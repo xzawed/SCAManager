@@ -65,6 +65,14 @@ HOLDS. 그리고 뮤테이션 대상은 seal 이 **보호한다고 주장하는 
 > ⚠️ **메타 경고 (이 저장소 메모리 자인)**: "문서-only 시정이 5회 실패 → 기계화해야 했다".
 > 위 3 불변식을 **문서로만** 적고 기계 강제(A2 뮤테이션-red)가 없으면 이 파일 자체가 6번째
 > 문서-only 시정이 된다. 신규 가드는 예외 없이 실경로 뮤테이션 red 로 증명한다.
+>
+> 🔴 **정직한 미봉인 (Grok 최종 적대검증 2026-07-20)**: 현재 기계 강제는 **불변식 3(배선)**
+> 만 커버한다(`test_guard_wiring_coverage` — 실제 호출 관측). **불변식 1(AST vs 산문)·2(실경로
+> 뮤테이션-red)의 write-time 자동 게이트는 아직 없다** — fail-open 가드는 여전히 review/claim-review
+> 에서 잡힌다(rate-limiting step 미변). Grok 이 지목한 **최고 레버리지 잔여 = scripts/check_*·훅
+> 신규 저술 시 "통과 조건이 bare substring 인가" 를 AST 로 차단하고 실경로 뮤테이션-red 증거를
+> 요구하는 blocking pre-commit/CI**. 로버스트한 AST 탐지기는 그 자체가 신중한 작업(성급하면 새
+> false-green)이라 `docs/backlog.md` B8 로 등재 — 이 미봉인을 감추지 않는다.
 
 ---
 
