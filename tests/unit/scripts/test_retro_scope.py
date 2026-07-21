@@ -89,9 +89,15 @@ def test_compute_reports_failure_reason_instead_of_silent_empty(monkeypatch, tmp
 
 
 def test_script_runs_and_includes_recent_prs():
-    """🔴 실제 저장소에서 실행 — 산출 범위가 **비어 있지 않아야** 한다.
+    """🔴 실제 저장소에서 실행 — git 파싱이 **건강**한지 검증(합성-only 면 git 파손도 green).
 
-    합성 입력만 검증하면 실제 git 호출이 깨져도 green 이다(이 세션이 반복해 다룬 형태).
+    🔴 pr_count > 0 은 단언하지 않는다 — **타이밍 의존**이다. 회고를 방금 아카이브하면(경계 =
+    최근 커밋) pr_count 0 이 정상이고, 그 단언은 회고 아카이브 PR 이 머지되는 순간 main 을 red 로
+    만든다(2026-07-22 실측 — 이 테스트를 고친 PR 이 바로 그 사례였다). "git 파손 탐지" 원 의도는
+    boundary/head 해결 + pr_count↔prs 일치 + 정렬로 보존한다.
+    Runs against the real repo to verify git parsing is healthy. pr_count is timing-dependent
+    (0 right after archiving a retro is valid), so it is NOT asserted > 0 — that would turn main
+    red the moment a retro-archive PR merges. Intent kept via boundary/head + consistency.
     """
     root = Path(__file__).resolve().parents[3]
     r = subprocess.run(
@@ -104,5 +110,8 @@ def test_script_runs_and_includes_recent_prs():
 
     data = json.loads(r.stdout)
     assert data["ok"] is True
-    assert data["pr_count"] > 0, "실제 저장소에서 머지 PR 이 0건 — git 파싱이 깨졌을 가능성"
+    # git 파싱 건강성 = boundary(직전 회고 커밋)·head 가 실제 해결됐고 pr_count 가 prs 와 일치하는가.
+    # git-parsing health = boundary/head actually resolved and pr_count consistent with prs.
+    assert data["boundary"] and data["head"], "boundary/head 커밋 미해결 — git 파싱 깨짐 가능"
+    assert data["pr_count"] == len(data["prs"]), "pr_count 와 prs 길이 불일치 — 파싱 손상"
     assert data["prs"] == sorted(data["prs"]), "정렬되지 않음"
