@@ -143,6 +143,25 @@
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
 
+## 전체 문서·코드 구조 재구성 (2026-07-21 세션6, 10 PR #1157~#1166)
+
+사용자 "반복되는 실수가 문제" 우려 → Anthropic 권장 구조로 전체 재구성. 진단(deep-research 103
+에이전트 + 다중 감사 168 에이전트·확정 121건) + **Grok 최고수준 적대검증 2회**(계획 근본 전제
+2회 뒤집음) + 재감사. 산출: `AGENTS.md`(Claude·Grok dual-consumer 3-불변식 SSOT) · `guards.md`
+(저술 표면 write-time 자동로드) · CLAUDE.md 473→405줄(정책 detail 이관·행동가이드 보존, 정책 17) ·
+기계 가드 4종(anti-vacuous 매트릭스·guard-wiring 커버리지·architecture 트리·B8 fail-open floor) ·
+/login 200→301 SSOT · 6-step 충돌 해소. 🔴 **정직한 천장**: 완전 fail-open 자동 탐지는 원리적
+불가(오탐>진탐·#1136 은 test-as-guard)라 3층 방어(floor+write-time 규율+review claim-review)가
+완성임을 AGENTS.md 에 명시. 재구성이 안전망 가드로 자체 검증됨(A2 규정·트리 fail-open 이동 시 red).
+
+## 회고 P1/P2 이행 + 사용자 결정 3건 + Grok 상시 협업 (2026-07-20 세션5, 19 PR #1130~#1149)
+
+가드가 자기 병을 재생산하던 것 3건 봉인(#1145 스모크 훅 0-단언에 ✅·#1148 logging 주석이 오답
+교육·#1146 owed 원장이 종결항목을 미결로 서술). 사용자 결정 3건 이행 — B6-a/b 권장안(브랜치
+보호)이 Grok 반증돼 **민감 경로 자동 머지 보류 가드**(`sensitive_paths.py`, fail-closed)로 대체 ·
+B5 회고 보고서 journal 기계 복구(확정 147 STATE 일치) · owed 안전등급 자기인증 방지 가드. Grok
+상시 협업 default 전환(CLAIM-REVIEW 5회 전건 반증). 회고 wf_317714e4(88 에이전트·확정 61).
+
 ## PR 머지 + Railway 운영 실측 + 관측자-거짓말 사냥 (2026-07-19 세션4)
 
 **2026-07-19 세션4 ( — PR 머지 + Railway 운영 실측 + 관측자-거짓말 사냥)** — 직전 세션3(관측 복구 P0 3건 + 회고 2회, 13 PR #1102~#1114)의 전체 서사는 [`cycle-history.md`](cycle-history.md) 로 이관됐다(헤더 '최신' 체인 누적 금지 — 갱신 규칙 (2)).
