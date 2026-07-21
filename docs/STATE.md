@@ -2,7 +2,7 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-07-19 기준)
+## 현재 수치 (2026-07-20 기준)
 
 > 📌 **이전 세션·PR별 누적 작업 서사는 [`docs/cycle-history.md`](cycle-history.md) 단일 출처** (사이클 60~166, 최신순). 본 헤더는 **최신 1건 + 종합 수치만** 유지 — 32KB 단일 라인 SSOT 가독성 복원 (품질감사 docclr-1, 2026-06-17, cycle-history.md 에 서사 전량 보존[append-only] 확인 후 트리밍). 🔴 **다음 세션 갱신 규칙**: 신규 작업 완료 시 (0) **본 섹션 날짜 헤더(line 5 `## 현재 수치 (YYYY-MM-DD 기준)`)를 최신 세션 날짜로 갱신** (회고 2026-07-03 C5 #60 — 절차에서 상시 누락되던 필드), (1) 본 "최신" 블록을 새 작업으로 교체 + 종합 수치 갱신, (2) 직전 작업의 전체 서사는 `docs/cycle-history.md` 최신순 맨 앞에 본문 섹션으로 이관 (헤더에 "직전" 체인 누적 금지 — 본 정리의 회귀 방지), (3) **"최신" 블록은 불릿 5~8줄로 작성 — 단일 라인 금지** (2026-07-09 rank14: 단일 라인은 diff 심의·가독성 저해, doc_review_gate CRITICAL 게이팅 대상. 종합 수치 표·추적셀[테이블 셀]은 단일 라인 유지).
 
@@ -10,7 +10,7 @@
 - 🔴 **가드가 자기 병을 재생산하던 것 3건 봉인** — ① 스모크 훅(#1145)이 **0-단언 수집에 `✅ 통과`** 를 달고, 정확 대응 테스트가 있는 `src/` 직속 6파일을 강등하며, 최다 결함 영역(`alembic/`·`scripts/`)에 **아예 발동하지 않았다**. ② `logging_config` 주석(#1148)이 *"핸들러는 어떤 로거에서 온 레코드든 통과한다"* 고 **오답을 능동적으로 가르쳤다** — `#1104` 를 거짓 봉인으로 만든 바로 그 오신념. ③ owed 원장(#1146)이 종결(⏭️/✅)된 항목을 산문에서 "미결" 로 서술했고, 그중 하나는 **`### 이미 확인된 것 (재확인 불필요)` 헤더 아래**라 미래 세션이 **틀린 내용을 "재확인 금지" 승인과 함께** 승계할 구조였다(파서 사각이라 기계도 못 봄).
 - 🔴 **사용자 결정 3건 이행 — 권장안이 반증돼 다른 통제를 구현했다** (#1147). B6-a/b 권장안이던 **GitHub 브랜치 보호는 미채택**: (a) 필수 체크는 경로를 몰라 **사람 검토를 추가하지 않고** (b) `mergeable_state="blocked"` → `BRANCH_PROTECTION_BLOCKED` 은 `_RETRIABLE_TAGS` 에 없어 **자동 머지 종결 실패**(체크 0건 리포는 전 PR 영구 차단). 대신 **민감 경로 자동 머지 보류 가드**(`src/gate/sensitive_paths.py`) — 인증/시크릿·마이그레이션·CI 워크플로 변경은 점수 무관 보류, **fail-closed**, 자동·반자동 단일 출처 배선. 실측 근거: 6 리포 전부 `merge_threshold=60` + 브랜치 보호 0, `#1102`~`#1107` 6건이 전부 `reviews=0`·4~5분 자동 머지(그중 `#1104` 는 토큰 유출 P0).
 - ✅ **B5 = 소실 선언이 아니라 복구** (#1147) — `wf_40082e43-d00`(186 에이전트) 보고서를 워크플로 journal 에서 기계 복구, verdict 페어링 163/163. **확정 147(P0 2·P1 55·P2 90)이 STATE 기록과 완전 일치**해 교차 확인. 미페어링 7건은 심각도를 **추측해 채우지 않고** 분리.
-- 🔴 **"lint 통과" 가 기계로 검증 불가였다** (#1149) — `make lint`/`gate` 가 세 린터를 `|| true` 로 삼켜 **실패 불가**, `lint-strict` 는 **어디에도 미배선**, bandit 은 **어떤 자동면에도 없었다**. → CI job **`lint-src`** 신설(pylint `--fail-under=9.90` + bandit). flake8 전체는 E501 15건 미용 수정을 강요해 **의도적 제외**(정책 17).
+- 🔴 **"lint 통과" 가 기계로 검증 불가였다** (#1149) — `make lint`/`gate` 가 세 린터를 `|| true` 로 삼켜 **실패 불가**, `lint-strict` 는 **어디에도 미배선**, bandit 은 **어떤 자동면에도 없었다**. → CI job **`lint-src`** 신설(pylint `--fail-under=9.90` + bandit). flake8 전체(실측 **14 E501 + 1 E131 = 15건**)는 미용 수정을 강요해 **의도적 제외**(정책 17).
 - 🤝 **Grok 협업 = 상시 default** (사용자 2026-07-20 지시). **CLAIM-REVIEW 5회 전건 반증** — 색인 "전단사" 가 디스크 53건 중 31건만 보던 것 · 카운트 대응만으로는 완료 항목이 열린 섹션에 남는 것 · `~~` 전체 줄 면제 · 이름-only 상태 주장 · **주석 진위 가드가 패러프레이즈로 우회**(그 말대로 문자열 단언을 **삭제**하고 구조 관찰만 남김). 혼자서는 전건 미발견이었다.
 - **원장·색인 정합 기계화** (#1142·#1143·#1144) — backlog 요약표↔본문 **카운트 전단사** · 회고 보고서 ↔ INDEX 양방향 전단사 · runbook 색인 전단사 · `logging.Filter` 정의 모듈의 security rules 커버리지(AST). 🔴 **산문 린터는 만들지 않았다** — 통과가 아무것도 보장하지 않아 observer-lie 를 하나 더 만든다.
 - 🔴 **자기 결함 기록** — 뮤테이션 하네스가 **거짓 통과**(sed 미적용을 "13 passed" 로 오독, `assert mutated != orig` 로 봉인) · 내 가드 2건이 **소스 grep 이라 산문에 걸림**(httpx 강등 코드를 지워도 주석이 만족시킴 → 행동 관찰로 전환) · PR 머지 상태를 확인하지 않고 "동기화 실패" 로 오진 · 기존 훅 테스트 위치를 놓쳐 중복 파일 생성(전체 게이트가 적발).
@@ -31,7 +31,7 @@
 | pylint | **10.00/10** | `python -m pylint src/` — #415 잔여 21건 전체 해소 (C0415 17 lazy import inline disable + C0301 1 + R0913/R0917 3 + W0718/W0613 2 + E0401 1). **10.00 달성**. 🔴 **2026-07-19: 9.99 로 drift 했던 것을 7건 정리해 10.00 복원** (D3 사용자 결정) — `main.py` 세션 시크릿 상수 모듈 승격·CORS 상수 명명·alembic import 블록 분리(로컬 동명 패키지라 pylint 가 first-party 로 봄), `scheduler.py` 의도적 broad-except 3건에 사유 주석 + inline disable. |
 | 커버리지 | **Python 97% / JS: E2E 커버** | Python: `make test-cov` (`--cov=src` — 8497줄 중 291 미커버, 97% — 2026-06-12 실측). JS: E2E pageerror 트랩(PR #605) + 정적 스캐너(PR #606) + ESLint(PR #607)으로 보완. `src/templates/*.html` 인라인 JS는 Python 커버리지 미측정 — 언어별 분리 보고 의무 (사이클 127 P0 학습). |
 | bandit HIGH | **0개** | bandit 1.9.4 (Python 3.12+ 대응) |
-| flake8 | **0건** (E501 16건 soft-pass — `|| true` 가드, CI 차단 없음) | `flake8 src/` |
+| flake8 | **CI 미게이트** (실측 14 E501 + 1 E131 = 15건 — `|| true` advisory, 의도적 제외) | `flake8 src/` |
 | 지원 언어 (AI 리뷰) | **49개** | language.py — Tier1/2/3 가이드 (도달불가 json_schema dead 가이드 제거, analyzer-pure-001) |
 | 지원 언어 (정적분석) | **52개+** | Semgrep 22 + ESLint/tsc 2 + ShellCheck 1 + cppcheck 1 + slither 1 + rubocop 1 + golangci-lint 1 + Python 3 + **신규 15**: Dockerfile(hadolint)·Kotlin(ktlint)·HCL(tflint)·SQL(sqlfluff)·YAML(yamllint)·PHP(phpstan)·Swift(swiftlint)·CSS(stylelint)·SCSS(stylelint)·HTML(htmlhint)·Protobuf(buf_lint)·Dart(dart_analyze)·PowerShell(psscriptanalyzer)·C#(dotnet_format)·Rust(clippy) |
 | Tier1 정적분석 도구 | **25종** | pylint·flake8·bandit·semgrep·eslint·shellcheck·cppcheck·slither·rubocop·golangci-lint·**hadolint**·**ktlint**·**tflint**·**tsc**·**sqlfluff**·**yamllint**·**phpstan**·**swiftlint**·**stylelint**·**htmlhint**·**buf_lint**·**dart_analyze**·**psscriptanalyzer**·**dotnet_format**·**clippy** |

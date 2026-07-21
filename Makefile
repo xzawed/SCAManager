@@ -107,7 +107,7 @@ gate:
 	python -m pytest tests/ -q
 	pylint --fail-under=9.90 src/
 	bandit -r src/ -q
-# 🔴 flake8 은 이 게이트에 넣지 않는다 — src/ 에 E501(라인 길이) 계열 15건이 있어 강제하면
+# 🔴 flake8 은 이 게이트에 넣지 않는다 — src/ 에 실측 14 E501 + 1 E131 = 15건이 있어 강제하면
 # 12개 파일을 미용 목적으로 고쳐야 한다(정책 17 안정성 > 권장 규격). 실질 결함인 F401/F841 은
 # CI `lint-changed-tests` job 이 담당한다. 전체 위반 열람은 `make lint`.
 # flake8 is intentionally excluded here; see CI lint-changed-tests for the meaningful subset.

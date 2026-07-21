@@ -85,6 +85,37 @@ def _build_command() -> str:
     return tomllib.loads(_RAILWAY.read_text(encoding="utf-8"))["build"]["buildCommand"]
 
 
+# echo 인용 산문 제거용 — `echo '...'` / `echo "..."` 세그먼트를 통째로 지운다.
+# Strip `echo '...'`/`echo "..."` segments so their prose can't satisfy a substring check.
+_ECHO_PROSE = re.compile(r"""echo\s+(['"])[^'"]*\1""")
+
+
+def _build_command_installs_only() -> str:
+    """🔴 buildCommand 에서 **echo 경고 산문을 제거**한 실제 설치 명령만.
+
+    ## 2026-07-20 세션5 회고 P1
+
+    `_is_actually_provisioned` 이 `binary in _build_command()` 로 전체 문자열을 봐서,
+    `echo 'WARNING: tsc install failed — tsc analyzer will be disabled'` 같은 **경고 산문**이
+    검사를 통과시켰다. 즉 실제 설치가 사라져도 echo 문구만 남으면 "조달됨" 으로 오판된다 —
+    tflint 를 잡으려던 가드가 정확히 tflint 형 결함(설정 존재·실행 0)을 산문으로 눈감았다.
+    이 세션이 반복해 만난 '산문이 코드 검사를 만족' 클래스의 재현.
+    The echo warning prose contained the binary name, so removed real installs still "passed".
+    """
+    return _ECHO_PROSE.sub(" ", _build_command())
+
+
+# 🔴 바이너리명 ≠ 설치 패키지명 매핑 — 이게 없으면 echo 산문 제거 후 오탐(false-fail)이 된다.
+#   실측: `tsc` 는 npm `typescript` 가, `slither` 는 pip `slither-analyzer` 가 제공한다.
+#   버그가 아니라 사실이므로 명시 매핑으로 조달을 인정하되, **echo 산문이 아닌 실제 설치 토큰**에
+#   대해서만 매칭한다.
+# Binary→provider package: tsc←typescript(npm), slither←slither-analyzer(pip).
+_PROVIDER_PACKAGE = {
+    "tsc": "typescript",
+    "slither": "slither-analyzer",
+}
+
+
 def _apt_packages() -> list:
     return tomllib.loads(_NIXPACKS.read_text(encoding="utf-8"))["phases"]["setup"]["aptPkgs"]
 
@@ -94,15 +125,35 @@ def _setup_cmds() -> str:
 
 
 def _is_actually_provisioned(binary: str) -> bool:
-    """이 바이너리가 어딘가에서 **실제로** 조달되는가 (모드 선언과 무관한 사실 확인)."""
-    if binary in _build_command():
-        return True
-    if any(binary == p or binary in p for p in _apt_packages()):
-        return True
-    if binary in _setup_cmds():
-        return True
-    return bool(re.search(rf"^{re.escape(binary)}[=<>\[]", _REQUIREMENTS.read_text(encoding="utf-8"),
-                          re.M | re.I))
+    """이 바이너리가 어딘가에서 **실제로** 조달되는가 (모드 선언과 무관한 사실 확인).
+
+    🔴 buildCommand 는 **echo 경고 산문을 제거한** 실제 설치 명령만 본다(위 함수 참조).
+    바이너리명과 설치 패키지명이 다르면 `_PROVIDER_PACKAGE` 로 실제 설치 토큰을 매칭한다.
+    """
+    # 바이너리명 + 알려진 제공자 패키지명 — 둘 중 하나라도 실제로 조달되면 인정.
+    tokens = [binary]
+    if binary in _PROVIDER_PACKAGE:
+        tokens.append(_PROVIDER_PACKAGE[binary])
+
+    build = _build_command_installs_only()  # 🔴 echo 산문 제거본
+    reqs = _REQUIREMENTS.read_text(encoding="utf-8")
+    apt = _apt_packages()
+    setup = _setup_cmds()
+
+    for tok in tokens:
+        # 🔴 하이픈·`@`·단어 이웃을 제외한 엄격 경계 — `\b` 는 `@typescript-eslint/parser` 의
+        #   "typescript" 에 걸려 tsc 를 오탐(false-pass)시킨다(그 패키지는 tsc 를 안 준다).
+        #   실측: 이 경계가 없으면 `npm install -g typescript` 제거해도 guard 가 통과했다.
+        # Strict boundary excluding hyphen/@/word neighbours; \b would match @typescript-eslint.
+        if re.search(rf"(?<![-@\w]){re.escape(tok)}(?![-\w])", build):
+            return True
+        if any(tok == p or tok in p for p in apt):
+            return True
+        if tok in setup:
+            return True
+        if re.search(rf"^{re.escape(tok)}[=<>\[]", reqs, re.M | re.I):
+            return True
+    return False
 
 
 # ── 축 B: 등록 analyzer ↔ 조달 모드 전단사 ────────────────────────────────
