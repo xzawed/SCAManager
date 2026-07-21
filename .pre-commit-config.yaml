@@ -90,6 +90,15 @@ repos:
         stages: [pre-commit]
         description: CLAUDE.md/policies 의 메모리 슬러그 참조 ↔ 실제 메모리 파일 정합 (메모리 dir 부재 시 skip — CI/타 환경 안전).
 
+      - id: check-architecture-tree-sync
+        name: "🌲 architecture 트리 싱크 (src/ ↔ architecture.md)"
+        language: system
+        entry: python scripts/check_architecture_tree_sync.py
+        files: "^(src/[^/]+/|src/[^/]+\\.py|docs/architecture\\.md)$"
+        pass_filenames: false
+        stages: [pre-commit]
+        description: src/ 패키지·최상위 모듈 ↔ architecture.md 트리 등재 정합 (신규 파일 미등재 3회 재발 차단, 진단 P1).
+
       - id: check-env-vars-sync
         name: "🔑 env-vars 싱크 (config.py ↔ env-vars.md)"
         language: system
