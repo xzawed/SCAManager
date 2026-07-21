@@ -161,8 +161,16 @@ def main():
     except (json.JSONDecodeError, ValueError):
         return 0  # 입력 파싱 실패 — advisory 훅은 조용히 통과 / unparsable input, pass quietly
     path = data.get("tool_input", {}).get("file_path", "")
-    if not is_src_file(path):
-        return 0  # src 편집만 대상 / only src edits
+    # 🔴 `is_watched_file` — src/ + alembic/ + scripts/. **`is_src_file` 아니다.**
+    #   (2026-07-20 세션5 회고 P1, 10 에이전트 수렴): #1145 가 감시 루트를 alembic/·scripts/ 로
+    #   넓혔다고 봉인했으나, 진입점인 여기가 여전히 `is_src_file`(src 전용)로 단락시켜
+    #   그 확장이 **런타임에서 통째로 dead** 였다. 순수 함수(`is_watched_file`·`derive_test_target`)
+    #   테스트만 있었고 **main() 디스패치를 검증하는 테스트가 없어** false-green 이었다 —
+    #   이 훅이 없애려던 바로 그 결함을 봉인 선언과 함께 재생산했다.
+    # Entry point must gate on is_watched_file (src+alembic+scripts), NOT is_src_file; the D11
+    # extension was dead in the runtime path because main() still short-circuited on is_src_file.
+    if not is_watched_file(path):
+        return 0  # 감시 대상 편집만 / only watched-root edits
 
     repo = Path(__file__).resolve().parents[2]
     target = derive_test_target(path, repo)
