@@ -1,5 +1,8 @@
 # Claude ↔ Grok 협업 프로토콜
 
+> 🔴 **Grok/Codex 등 auto-load 없는 에이전트의 진입점 = [`AGENTS.md`](../../AGENTS.md)**
+> (dual-consumer SSOT — 3-불변식·트리거 inline). 이 파일은 그 프로토콜의 상세다.
+
 > **성립 근거**: 2026-07-19 사용자 승인 + Claude·Grok 2라운드 상호 회고·협의.
 > **한 줄 헌장**: *Claude 는 구현과 라이브 배포 진실을 소유하고, Grok 은 명시된 주장에 대한
 > 경로 증명과 observer-lie 사냥을 소유한다. 회고 카덴스에 full-pass 를 걸지 않는다.

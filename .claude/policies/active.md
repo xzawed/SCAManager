@@ -373,7 +373,7 @@ git push -u origin <branch>
 - **사이클 종료 = 2 조건 AND** (사용자 신호 + Claude OK). 구 (c) Codex OK 조건 삭제 (정책 5 페어).
 - 구 §2 의 **push 전 전체 `pytest tests/unit` 게이트**는 Codex 와 무관하게 유효 → CLAUDE.md 필수 원칙 6-step ② 로 이관·존치.
 
-**함께 제거된 자산** (2026-07-10): `AGENTS.md` · `.codex/`(agents 5 · rules 8 · hooks) · `.claude/skills/codex-verify.md`(`/codex-verify`) · PR 템플릿 §Codex 검증 의뢰 · 시작 체크리스트 turn-0 probe.
+**함께 제거된 자산** (2026-07-10): ~~`AGENTS.md`~~ 🔴 **2026-07-20 재신설됨**(Codex 잔재 아님 — Claude·Grok dual-consumer SSOT, 문서 재구성 Phase 0. 삭제 금지) · `.codex/`(agents 5 · rules 8 · hooks) · `.claude/skills/codex-verify.md`(`/codex-verify`) · PR 템플릿 §Codex 검증 의뢰 · 시작 체크리스트 turn-0 probe.
 
 **역사 (실증된 가치)**: cross-vendor 검증은 실효가 있었다 — 2026-06-29 심층 감사에서 **P1 2건(crypto 평문 fallback · STRICT_MIGRATION)은 Codex 만 발견**하고 Claude 8 에이전트가 놓쳤다. 향후 대체 검증자(무료 OpenAI-호환 등) 도입 검토 시 이 근거를 참조. 폐기 이전 상세 본문(양방향 흐름 · 환경 통합 · `codex exec` 운용 도구 · 17 정책 cross-ref 표 · NG 회기 가드 · 4-way sync)은 **git 이력**에 보존한다.
 
@@ -413,6 +413,16 @@ git push -u origin <branch>
 ---
 
 <a id="정책-8-회고-카덴스"></a>
+
+## 정책 8 — cross-verify 6차 에이전트 규칙 (사이클 64 학습 — 2026-07-20 CLAUDE.md 슬림 시 이관)
+
+🔴 **1차 5 에이전트 결과 받은 후 별도 cross-verify 에이전트 1건 디스패치 (= 5+1 = 6 패턴)**:
+- ❌ **cross-verify 6차 에이전트로 `doc-consistency-reviewer` 사용 금지** (사이클 64: 회고
+  cross-verify scope 거절) / ✅ **`general-purpose` 또는 task-specific specialist** — 단,
+  문서 diff 일관성 검토 단독 목적의 호출은 허용.
+- **cross-verify 생략 정량 기준** (사이클 69): (1) 1차 5 에이전트 P0 합계 ≥ 8건 + (2) 관점 5종
+  모두 P0 1건 이상 + (3) 사용자 빠른 진행 신호 명시. **3 조건 모두 충족 시만 생략 OK** (Claude
+  자가 판단 X). 생략 시 PR 본문 §"cross-verify 생략 사유" 3 조건 대조 표 default (사이클 87).
 
 ## 정책 8 진화 — 회고 카덴스 강제 트리거 (2026-07-03 회고 C1)
 
