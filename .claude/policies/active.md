@@ -104,7 +104,7 @@ git push -u origin <branch>
 
 ## 정책 11 강화 (사이클 62 P0 OAuth 사고 후속): 인증 flow 검증 추가
 
-🔴 **진화 default 요약**: 인증/외부 통합 변경 PR 시 8 조합 시각 체크리스트 + **인증 flow 4 endpoint 종단간 검증** 의무 — `/login` 200 + `/auth/github` 302 + `/auth/callback` redirect + `/auth/logout` redirect. 상세: [.claude/policies/history.md#정책-11-강화](history.md#정책-11-강화).
+🔴 **진화 default 요약**: 인증/외부 통합 변경 PR 시 8 조합 시각 체크리스트 + **인증 flow 4 endpoint 종단간 검증** 의무 — `/login` **301**(→/auth/github, 로그인 페이지 제거·북마크 하위호환) + `/auth/github` 302 + `/auth/callback` redirect + `/auth/logout` redirect (기대값 SSOT: operational-smoke-checks.md). 상세: [.claude/policies/history.md#정책-11-강화](history.md#정책-11-강화).
 
 ---
 
@@ -139,7 +139,7 @@ git push -u origin <branch>
 **default 의무** — 매 사이클 종료 시 (또는 Phase 종료 시) 최소 3-endpoint smoke check:
 - `GET /health` → 200 (lifeness)
 - `GET /auth/github` → 302 + Location 헤더의 `redirect_uri=` 정합성 검증
-- `GET /login` → 200 (또는 302 — 로그인 상태 의존)
+- `GET /login` → **301** (→/auth/github — 사이클 117 로그인 페이지 제거, SSOT: operational-smoke-checks.md §3)
 
 **확장 권장** (인증/외부 통합 변경 PR 시):
 - `GET /auth/callback` (state 검증으로 401 또는 302 — 직접 호출 시 의도된 거부 OK)
@@ -155,7 +155,7 @@ git push -u origin <branch>
 ## 운영 smoke check (정책 13)
 - ✅ /health 200
 - ✅ /auth/github 302 redirect_uri = https://...up.railway.app/auth/callback (정합)
-- ✅ /login 200
+- ✅ /login **301** (→/auth/github)
 ```
 
 **금지**: 인증/외부 통합 변경 PR 본문에 본 섹션 누락 후 머지. 빌드 성공 = 운영 정상 가정 X.
