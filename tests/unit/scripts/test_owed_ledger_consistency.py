@@ -240,3 +240,97 @@ def test_detector_flags_a_synthetic_contradiction():
         if "#9999" in line and any(w in line for w in _PENDING_WORDS)
     ]
     assert offending, "합성 모순을 탐지하지 못했다"
+
+
+# ── 안전등급 자기인증 방지 (세션5 회고 P1 — #1129 재위반) ────────────────
+
+_SAFETY_SECTION = "## 🔴 안전/데이터 등급"
+# ⏭️(보류)를 정당화하는 인용 — 사용자 결정 또는 moot 근거.
+_USER_DECISION = ("사용자 명시 결정", "사용자 회신", "사용자 확인", "사용자 검증", "사용자 결정")
+_MOOT_BASIS = ("재분류", "운영 위험 0", "위험 0")
+# 🔴 ✅(검증 완료)를 정당화하는 인용 — **긍정적 완료** 만. "사용자 회신 **대기**" 는 완료가
+#   아니라 미결이므로 여기 없다. 이 구별이 핵심: #1062 pending 행에 "사용자 회신 대기" 가
+#   있다는 이유로 ✅ 를 통과시키면, 산문이 검사를 통과시키는(이 세션 반복 결함) 함정에 빠진다.
+# Only affirmative-completion tokens justify ✅; "waiting for user reply" is pending, not done.
+_USER_VERIFIED = ("사용자 확인 완료", "사용자 회신 완료", "사용자 검증 완료",
+                  "사용자 OK", "사용자 명시 OK")
+
+
+def _safety_rows(text: str):
+    """안전등급 표의 (pid, status, body) 행 — 첫 셀이 `**#NNNN**` 인 것만."""
+    start = text.index(_SAFETY_SECTION)
+    rest = text[start + len(_SAFETY_SECTION):]
+    end = rest.index("\n## ") if "\n## " in rest else len(rest)
+    for line in rest[:end].splitlines():
+        if not line.startswith("| **#"):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        m = re.match(r"^\*\*(#\d+)\*\*$", cells[0])
+        if not m:
+            continue
+        status = next((s for s in (*_TERMINAL, _PENDING_MARK) if s in cells[-1]), None)
+        yield m.group(1), status, " ".join(cells[1:])
+
+
+def test_safety_grade_verified_status_requires_a_user_citation():
+    """🔴 안전등급 행의 ✅(검증됨)는 **사용자 검증 인용**이 있어야 한다.
+
+    ## 실제 사고 (2026-07-19 P0 → 세션5 회고 P1 재적발)
+
+    `#1129` 가 `#1062`(NULL-owner IDOR, 안전등급)를 **DB 스냅샷 구조 논증**으로 ✅ 처리해,
+    매 세션 loud 경고를 내던 **유일한 안전등급 신호를 소거**했다. 안전등급 검증은 원장이
+    "사용자만 할 수 있는 운영 검증" 으로 규정한 영역이라, Claude 가 ✅ 를 찍는 것 자체가
+    구조적으로 부당하다. 회고 P0 가 적발해 `#1132` 로 원상복구했으나, **2026-07-19 시정이
+    advisory 훅(비차단)뿐이라 재위반을 막지 못했다** — 진단은 있고 집행면이 없던 것.
+
+    🔴 이 가드가 그 집행면이다: 안전등급 ✅ 는 **사용자 검증 인용** 없이 통과할 수 없다.
+    `#1129` 형(구조 논증만) 은 인용이 없어 red 가 된다. (⏭️ 는 사용자 결정 또는 moot 근거
+    허용 — 아래 별도 단언.)
+    Safety-grade ✅ needs a user-verification citation; Claude's structural argument alone fails.
+    """
+    text = _text()
+    rows = list(_safety_rows(text))
+    assert rows, "안전등급 행을 못 찾았다 — 표 형식이 바뀌었는지 확인할 것"
+    offenders = [
+        pid for pid, status, body in rows
+        if status == "✅" and not any(k in body for k in _USER_VERIFIED)
+    ]
+    assert not offenders, (
+        f"안전등급 행이 사용자 검증 인용 없이 ✅ 다: {offenders}\n"
+        "→ 안전등급 검증은 사용자 전용이다. Claude 구조 논증으로 ✅ 처리 금지(#1129 재위반).\n"
+        "   상태를 ⏳ 로 되돌리고 사용자 회신을 기다릴 것."
+    )
+
+
+def test_safety_grade_deferred_status_cites_a_decision_or_moot_basis():
+    """🔴 안전등급 ⏭️(보류)는 **사용자 결정** 또는 **moot 근거(재분류·위험 0)** 를 인용해야 한다.
+
+    인용 없는 ⏭️ 는 "사용자 회신 없이 조용히 집행면에서 이탈" 이고, 그건 안전등급이 막으려는
+    바로 그 경로다(#1058 SMTP 가 그 축으로 나갈 뻔했다). #1058 은 moot(기능 미활성=위험 0),
+    #1104·#1106 은 사용자 명시 결정 — 둘 다 정당한 인용을 갖는다.
+    """
+    text = _text()
+    offenders = [
+        pid for pid, status, body in _safety_rows(text)
+        if status == "⏭️"
+        and not any(k in body for k in (*_USER_DECISION, *_MOOT_BASIS))
+    ]
+    assert not offenders, (
+        f"안전등급 ⏭️ 가 사용자 결정·moot 근거 인용 없이 보류됐다: {offenders}\n"
+        "→ 사용자 명시 결정을 받거나, 위험 0 근거(선행조건 부재 등)를 행에 명시할 것."
+    )
+
+
+def test_safety_selfcert_guard_catches_a_synthetic_claude_verification():
+    """합성 #1129 재현 — 구조 논증만으로 ✅ 처리한 행을 실제로 잡는가."""
+    synthetic = (
+        f"{_SAFETY_SECTION}\n\n| 항목 | 근거 | 사유 | 상태 |\n"
+        "| **#9999** | IDOR 과잉차단 | 구조 논증으로 도달 불가 증명(DB 스냅샷) | ✅ |\n\n## 다음\n"
+    )
+    rows = list(_safety_rows(synthetic))
+    assert len(rows) == 1 and rows[0][0] == "#9999" and rows[0][1] == "✅", rows
+    # 구조 논증만 있고 사용자 인용이 없으므로 위반이어야 한다
+    pid, status, body = rows[0]
+    assert "사용자" not in body, "합성 입력에 사용자 인용이 들어갔다 — 케이스 무효"
+    offenders = [pid for pid, st, body in rows if st == "✅" and not any(k in body for k in _USER_VERIFIED)]
+    assert offenders == ["#9999"], "합성 자기인증을 탐지하지 못했다"
