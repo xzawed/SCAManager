@@ -50,6 +50,32 @@ updates:
           - "minor"
           - "patch"
 
+  # npm 의존성 (package.json + package-lock.json — scamanager-ui Tailwind/eslint 빌드 툴체인)
+  # npm dependencies (UI build toolchain — all devDependencies, not shipped at runtime)
+  # 2026-07-22 회고 P1-④ 사용자 결정: monitor-only (fail-closed CI 게이트 대신 dependabot 감시).
+  #   사유 = devDeps·빌드/lint 전용이라 런타임 노출 낮음(정책 17 안정성>규격). pip 축과 대칭
+  #   커버리지를 확보하되 빌드 차단 마찰은 만들지 않음. #1169(brace-expansion) 같은 반응형 fix 예방.
+  # 2026-07-22 retro P1-④ user decision: monitor-only (dependabot watch instead of a fail-closed CI gate).
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Seoul"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "javascript"
+    # npm 의존성은 전부 devDependencies (tailwindcss·eslint) — dev 묶음만.
+    # All npm deps are devDependencies (tailwindcss·eslint) — group dev minor/patch.
+    groups:
+      npm-dev:
+        dependency-type: "development"
+        update-types:
+          - "minor"
+          - "patch"
+
   # GitHub Actions (workflows 의존성)
   # GitHub Actions workflow dependencies
   - package-ecosystem: "github-actions"
