@@ -17,6 +17,8 @@ from pathlib import Path
 from scripts.check_retro_cadence import (
     RETRO_PR_THRESHOLD,
     count_merge_prs,
+    deferral_records,
+    deferral_status,
     evaluate,
     newest_retro,
     retro_date,
@@ -203,3 +205,84 @@ def test_newest_retro_later_date_beats_higher_sequence():
         "2026-07-19-retrospective.md",
     ]
     assert newest_retro(files) == "2026-07-19-retrospective.md"
+
+
+# ── 카덴스 이월 승인 기록 (정책 8 진화 (6) — 2026-07-22 회고 P1 결정) ──────────
+#
+# 🔴 근본: advisory 배너가 3세션 연속 무시돼 15→57 PR(3.8배) 부채 재생산. 순수 배너로는
+# 크로스세션 이월을 못 막는다 → 이월 '결정 자체'를 원장에 기록해 관측 가능하게 한다.
+# 가드는 산문이 아니라 **테이블 행 구조**를 봐야 한다(guards.md 불변식 1 fail-closed).
+
+
+def test_deferral_records_parses_valid_table_row():
+    """유효 이월 행(날짜 + 비어있지 않은 승인 셀) 1건 추출."""
+    text = (
+        "| 이월 날짜 | breach | 사용자 승인 | 목표 세션 |\n"
+        "|-----------|--------|------------|-----------|\n"
+        '| 2026-07-22 | 57 | "다음에 회고합시다" | 세션7 |\n'
+    )
+    recs = deferral_records(text)
+    assert len(recs) == 1
+    assert recs[0]["date"] == "2026-07-22" and recs[0]["target"] == "세션7"
+
+
+def test_deferral_records_ignores_prose_mention_of_a_date():
+    """🔴 fail-closed 핵심 — 산문에 날짜를 적어도 이월로 인정되면 안 된다(관측자 거짓말 방지).
+
+    '2026-07-22 에 이월했다' 는 `|`-구분 4셀 테이블 행이 아니므로 유효 이월 0건이어야 한다.
+    이 단언이 깨지면 = 산문이 가드를 통과 = fail-open(#1136 클래스).
+    """
+    text = "본문 산문: 2026-07-22 에 회고를 이월하기로 했다. 사용자 승인 있었음.\n"
+    assert deferral_records(text) == []
+
+
+def test_deferral_records_rejects_empty_or_placeholder_approval():
+    """승인 셀이 비었거나 placeholder(-, TBD)면 유효 이월 아님 — 승인 인용이 실제로 있어야 함."""
+    text = (
+        "| 2026-07-22 | 57 |  | 세션7 |\n"      # 빈 승인
+        "| 2026-07-23 | 60 | - | 세션8 |\n"     # placeholder
+        "| 2026-07-24 | 61 | TBD | 세션9 |\n"   # placeholder
+    )
+    assert deferral_records(text) == []
+
+
+def test_deferral_status_breach_without_record_is_loud():
+    """breach 중 현 window 이월 기록 없음 → has_record False + 🔴 메시지."""
+    has_record, msg = deferral_status(True, "2026-07-19-retrospective-2.md", ledger_text="")
+    assert has_record is False
+    assert "🔴" in msg and "이월 승인 기록 없음" in msg
+
+
+def test_deferral_status_recognizes_record_after_retro_date():
+    """이월 날짜가 직전 회고 날짜보다 나중이면 현 window 이월로 인정 → has_record True."""
+    ledger = '| 2026-07-25 | 20 | "마무리만" | 세션8 |\n'
+    has_record, msg = deferral_status(True, "2026-07-19-retrospective-2.md", ledger_text=ledger)
+    assert has_record is True and "이월 승인 기록됨" in msg
+
+
+def test_deferral_status_stale_record_before_retro_does_not_count():
+    """🔴 회고 진입이 window 를 리셋한다 — 직전 회고보다 오래된 이월 기록은 무효.
+
+    2026-07-19 회고 이후 새 breach 인데 이월 기록이 2026-07-10(회고 이전)이면,
+    그 기록은 이전 window 것이므로 현 breach 를 덮지 못한다 → has_record False.
+    """
+    ledger = '| 2026-07-10 | 18 | "예전 이월" | 세션5 |\n'
+    has_record, _ = deferral_status(True, "2026-07-19-retrospective-2.md", ledger_text=ledger)
+    assert has_record is False
+
+
+def test_deferral_status_not_breached_is_vacuously_true():
+    """breach 아니면 이월 개념 없음 — 항상 (True, '')."""
+    assert deferral_status(False, "2026-07-19-retrospective-2.md", ledger_text="") == (True, "")
+
+
+def test_deferral_ledger_file_exists_and_is_parseable():
+    """🔴 배선 — 원장 파일이 실제로 존재하고 파서가 크래시 없이 읽는다(정의≠배선).
+
+    현재 원장은 미결 이월 0건이 정상(2026-07-22 세션은 회고 진입). 그래도 파일은 존재해야
+    check_retro_cadence 가 read_text 할 대상이 있고, 예시 주석 행이 유효 이월로 오인되지 않아야 한다.
+    """
+    ledger = _ROOT / "docs" / "runbooks" / "retro-cadence-deferrals.md"
+    assert ledger.is_file(), "이월 원장 파일 부재 — check_retro_cadence 가 읽을 대상 없음"
+    # 주석(<!-- ... -->)에 든 예시 행은 유효 이월로 카운트되면 안 된다.
+    assert deferral_records(ledger.read_text(encoding="utf-8")) == []
