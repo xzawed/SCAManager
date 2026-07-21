@@ -82,6 +82,15 @@ def item_aliases(text: str) -> dict:
     가까웠다 — *"`INTERNAL_CRON_API_KEY` … 로테이션 **미결**"*. ID 를 빼고 키 이름만 쓰면
     가드가 눈이 먼다.
     Status claims written by NAME instead of #ID were structurally invisible.
+
+    🔴 **알려진 한계 — 자연어 이름은 못 잡는다 (2026-07-20 세션5 회고 P2, 정직한 미봉인).**
+    백틱 ENV 키·`#NNNN` 은 잡지만, *"Telegram 봇 토큰은 로테이션 미결"* 처럼 **백틱도 ID 도
+    없는 자연어**로 쓴 stale 주장은 여전히 샌다. **일부러 자연어 매처를 만들지 않는다** —
+    임의 명사구를 항목에 결속하는 것은 신뢰 불가하고(과탐), '강해 보이지만 아닌 가드' 는 이
+    세션이 Grok 에게 반복해 반증당한 형태다. 대신 원장 작성 규율(상태 주장은 `**#NNNN**` 행에)
+    로 막고, 여기서는 **한계를 명시**한다. 현재 원장에 이 형태의 live 사례는 없다(실측).
+    Natural-language-only aliases are deliberately NOT matched — an unreliable matcher would be
+    exactly the "looks-strong-but-isn't" guard this session kept getting refuted on.
     """
     out = {}
     for line in text.splitlines():

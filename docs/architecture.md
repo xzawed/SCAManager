@@ -171,6 +171,18 @@ scripts/
 │                                # Auto-capture design screenshots — 12 pages × 4 themes (Claude Design brief)
 ├── extract_design_tokens.py     # 디자인 토큰 추출 — tokens.css/themes.css → Claude Design 입력 JSON
 │                                # Extract design tokens — tokens.css/themes.css → structured JSON
+├── check_noqa_sideeffect.py     # noqa side-effect import 은닉 차단 — `# noqa: F401` 단독 side-effect ORM import 을 pre-merge 차단(튜플-참조 강제, 회고 2026-07-18 P1 테마 B)
+│                                # block noqa-hidden side-effect imports (retro 2026-07-18)
+├── check_dead_code.py           # PR diff dead-symbol 가드 — 정의 모듈 한정 참조 카운트로 미배선 dead code 검출(#979/#1098)
+│                                # PR-scoped dead-symbol guard — definition-module-scoped reference count
+├── check_codeql_alerts.py       # 자초 CodeQL alert 게이트 — base 대비 신규 alert(note 포함) 차단, Dependabot 판정불가 exit 2 분리(#1137)
+│                                # self-inflicted CodeQL alert gate — new-vs-base, undecidable exit 2 for Dependabot
+├── check_retro_cadence.py       # 회고 카덴스 카운터 — 직전 정식 회고 이후 머지 PR ≥15 시 loud 경고(SessionStart 훅, #1084/#1133)
+│                                # retro cadence counter — loud warn at ≥15 merged PRs since last formal retro
+├── check_owed_verification.py   # owed 원장 미결 카운터 — 안전등급 ⏳ ≥1 시 loud 경고(SessionStart 훅, #1095)
+│                                # owed-ledger counter — loud warn on ≥1 safety-tier ⏳ (SessionStart hook)
+├── retro_scope.py               # 회고 범위 기계 산출 — 직전 정식 회고 이후 머지 PR 범위(HEAD 실측, 정책 8 진화 5, #1133)
+│                                # machine-computed retro scope — merged-PR range since last formal retro
 └── README.md                    # 사용자 실행 가이드 + 비용 안내
 ```
 
