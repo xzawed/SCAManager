@@ -46,8 +46,9 @@ B3(#1131) · B4(#1130) · D1(#1116) · D3(#1117) · H1(n8n 정리) ·
 회고 P1 클러스터 C(#1140) · B(#1141). · **B8**(write-time fail-open floor 게이트 #1165 + **정적 탐지 천장 확정**: 강한 구문 탐지기는 Grok 2회 검증으로 오탐>진탐·실패표면 미스로 폐기, floor+guards.md write-time+review claim-review 3층이 완성. AGENTS.md 명시).
 
 🔴 **owed 원장은 별도다** — [`runbooks/owed-verification.md`](runbooks/owed-verification.md)
-안전등급 **`#1062`**(NULL-owner IDOR 오차단) 1건이 ⏳ 이며 SessionStart 훅이 매 세션 경고한다.
-운영등급 `#1072` 1건 (`#1075` 는 2026-07-19 20:00 UTC 실측으로 종결).
+안전등급 **미결 0건** — `#1062`(NULL-owner IDOR 오차단)는 **2026-07-22 회고에서 사용자 명시 결정으로
+⏭️ 위험 수용 전환**(노출면[NULL-owner repo·다중 사용자]이 현재 비어 있음 + 앱계층 가드 3곳 + RLS
+Phase4 검증. 재개 조건은 원장 참조). 운영등급 `#1072` 1건 (`#1075` 는 2026-07-19 20:00 UTC 실측 종결).
 
 ---
 
