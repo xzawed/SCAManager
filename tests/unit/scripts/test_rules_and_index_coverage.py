@@ -125,6 +125,52 @@ def test_claude_md_matrix_never_promises_an_unloaded_path():
     )
 
 
+def test_every_rule_area_appears_in_the_claude_md_matrix():
+    """🔴 모든 규칙 area 가 CLAUDE.md 매트릭스에 **행을 가져야** 한다 (anti-vacuous).
+
+    ## Grok 최대엄밀 검증 C2 (2026-07-20)
+
+    위 `test_claude_md_matrix_never_promises_an_unloaded_path` 는 area 가 매트릭스에서
+    **발견되지 않으면 `continue`**(단언 없음)한다. 그래서 CLAUDE.md 를 슬림해 매트릭스를
+    옮기거나 지우면 **모든 area 가 skip → 스위트가 vacuous 하게 green** 이 된다. 즉 그 가드는
+    "거짓 약속 금지" 는 잡지만 "매트릭스가 통째로 사라짐" 은 못 잡는다.
+
+    이 단언이 그 사각을 닫는다: `_areas()` 각각이 매트릭스에서 **실제로 발견**돼야 한다.
+    CLAUDE.md 슬림 시 매트릭스가 사라지면 **fail-closed** 로 빨개진다 — 재구성의 안전핀.
+    This fails closed when a slimmed CLAUDE.md drops the matrix (the vacuous-pass trap Grok flagged).
+    """
+    claude = _CLAUDE_MD.read_text(encoding="utf-8")
+    missing = [
+        area for area in _areas()
+        if not re.search(rf"{area}\.md \(([^)]*)\)", claude)
+    ]
+    assert not missing, (
+        f"규칙 area 가 CLAUDE.md 매트릭스에 없다(vacuous-pass 위험): {missing}\n"
+        "→ CLAUDE.md 매트릭스에 해당 area 행을 추가할 것. 매트릭스를 옮기면 이 가드가 fail-closed."
+    )
+
+
+def test_matrix_extraction_is_not_empty():
+    """🔴 매트릭스 추출이 통째로 비면 위 두 가드가 공허해진다 — 추출 자체를 고정한다.
+
+    CLAUDE.md 형식이 바뀌어 `<area>.md (…)` 패턴이 하나도 안 잡히면, 위 가드들은
+    "약속한 경로가 없으니 통과" 로 무의미해진다.
+
+    🔴 **production 가드와 동일한 per-area 정규식**을 쓴다 — generic `[a-z_]+` 는 `i18n`(숫자
+    포함)을 못 잡아 오탐한다(작성 중 실측). 추출 로직은 검사 로직과 같은 형식을 봐야 한다.
+    """
+    claude = _CLAUDE_MD.read_text(encoding="utf-8")
+    rule_stems = set(_areas())
+    matched = {
+        area for area in rule_stems
+        if re.search(rf"{re.escape(area)}\.md \(([^)]*)\)", claude)
+    }
+    assert matched == rule_stems, (
+        f"매트릭스 추출이 {len(matched)}/{len(rule_stems)} area 만 잡았다 — "
+        f"누락: {sorted(rule_stems - matched)}. CLAUDE.md 매트릭스 형식 확인."
+    )
+
+
 def test_every_rules_file_declares_paths():
     """대조군 — `paths:` 가 비면 그 규칙은 **영원히 로드되지 않는다**(조용한 무력화)."""
     empty = [a for a in _areas() if not rule_paths(a)]
