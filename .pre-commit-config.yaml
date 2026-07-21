@@ -90,6 +90,15 @@ repos:
         stages: [pre-commit]
         description: CLAUDE.md/policies 의 메모리 슬러그 참조 ↔ 실제 메모리 파일 정합 (메모리 dir 부재 시 skip — CI/타 환경 안전).
 
+      - id: check-guard-fail-open
+        name: "🛡️ 가드 fail-open floor (bare-substring 판정 차단, B8)"
+        language: system
+        entry: python scripts/check_guard_fail_open.py
+        files: "^scripts/check_.*\\.py$"
+        pass_filenames: false
+        stages: [pre-commit]
+        description: 파일 읽어 판정하는 check 가드가 구조 도구(ast/re/subprocess) 없이 bare substring 만 쓰면 fail-open 으로 차단 (Grok 최종 검증 B8, floor). escape = # fail-open-reviewed.
+
       - id: check-architecture-tree-sync
         name: "🌲 architecture 트리 싱크 (src/ ↔ architecture.md)"
         language: system
