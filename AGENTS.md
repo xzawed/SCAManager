@@ -66,13 +66,29 @@ HOLDS. 그리고 뮤테이션 대상은 seal 이 **보호한다고 주장하는 
 > 위 3 불변식을 **문서로만** 적고 기계 강제(A2 뮤테이션-red)가 없으면 이 파일 자체가 6번째
 > 문서-only 시정이 된다. 신규 가드는 예외 없이 실경로 뮤테이션 red 로 증명한다.
 >
-> 🔴 **정직한 미봉인 (Grok 최종 적대검증 2026-07-20)**: 현재 기계 강제는 **불변식 3(배선)**
-> 만 커버한다(`test_guard_wiring_coverage` — 실제 호출 관측). **불변식 1(AST vs 산문)·2(실경로
-> 뮤테이션-red)의 write-time 자동 게이트는 아직 없다** — fail-open 가드는 여전히 review/claim-review
-> 에서 잡힌다(rate-limiting step 미변). Grok 이 지목한 **최고 레버리지 잔여 = scripts/check_*·훅
-> 신규 저술 시 "통과 조건이 bare substring 인가" 를 AST 로 차단하고 실경로 뮤테이션-red 증거를
-> 요구하는 blocking pre-commit/CI**. 로버스트한 AST 탐지기는 그 자체가 신중한 작업(성급하면 새
-> false-green)이라 `docs/backlog.md` B8 로 등재 — 이 미봉인을 감추지 않는다.
+> 🔴 **정적 탐지의 천장 (Grok 2회 적대검증으로 확정 — 2026-07-20)**: fail-open 방어는 아래
+> 3층이 **완성이며, 완전 자동 탐지기는 원리적으로 불가**하다(감추지 않고 명시).
+>
+> 1. **불변식 3(배선)** — `test_guard_wiring_coverage`(실제 호출 관측, 산문 언급 아님).
+> 2. **불변식 1 floor** — `check_guard_fail_open.py`(B8): 파일 읽어 판정하는 `scripts/check_*.py`
+>    가 구조 도구(ast/re/subprocess)를 **하나도** 안 쓰면 차단(가장 egregious 케이스). 실제로 이
+>    프로그램의 `check_architecture_tree_sync` 에서 fail-open 1건 적발.
+> 3. **write-time 규율** — `.claude/rules/guards.md`(paths 에 `tests/unit/scripts/**`·
+>    `.claude/hooks/**` 포함)가 **실제 실패 표면 편집 시 자동 로드**. 🔴 실측: 최다 재발 사고
+>    `#1136`·`#1156` 은 `check_*.py` 가 아니라 **test-as-guard**(`test_analyzer_provenance`·
+>    `test_owed_ledger_consistency`)에 있었다 — 그 표면에서 3-불변식이 write-time 에 로드된다.
+>
+> 🔴 **왜 "완전 탐지기" 를 안 만드는가** (Grok SURVIVES 판정): `X in file_text` 는 **마커·존재
+> 검사에 정당하게** 쓰인다(B8 자신도 `_ESCAPE in src`). 결정 표현식 substring 을 구문적으로
+> 차단하면 실측 **오탐 2 / 진탐 0**(둘 다 정당한 presence 검사) → guard-suicide(정책 17). 또
+> literal-only 정제는 `#1136`(변수 `binary in _build_command()`)을 **놓친다**. **fail-open 은
+> 산문의 진위처럼 semantic 이라 정적으로 판정 불가** — 남은 방어선은 **review-time Grok
+> claim-review**(불변식 1의 semantic 잔여)뿐이고, 그것으로 충분하다. 이 천장을 인정하는 것이
+> 성급한 완전 봉인(새 false-green)보다 정직하다.
+>
+> 🔴 **신규 seal 프로세스 규율** (Grok 대안 — AST 오라클 아니라 프로세스): 새 가드/테스트는
+> **실경로 뮤테이션-red + `assert mutated != orig`**(불변식 2)를 PR 본문에 실증. 기계 오라클이
+> 아니라 저술 규율(guards.md)·리뷰로 강제한다.
 
 ---
 

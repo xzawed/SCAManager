@@ -43,7 +43,7 @@
 
 ✅ **2026-07-19 세션4 완료분** (다음 정리 시 이 줄 제거): B1(#1114) · B2/B2-b(#1121·#1125) ·
 B3(#1131) · B4(#1130) · D1(#1116) · D3(#1117) · H1(n8n 정리) ·
-회고 P1 클러스터 C(#1140) · B(#1141). · **B8**(write-time fail-open floor 게이트, 문서 재구성 최종).
+회고 P1 클러스터 C(#1140) · B(#1141). · **B8**(write-time fail-open floor 게이트 #1165 + **정적 탐지 천장 확정**: 강한 구문 탐지기는 Grok 2회 검증으로 오탐>진탐·실패표면 미스로 폐기, floor+guards.md write-time+review claim-review 3층이 완성. AGENTS.md 명시).
 
 🔴 **owed 원장은 별도다** — [`runbooks/owed-verification.md`](runbooks/owed-verification.md)
 안전등급 **`#1062`**(NULL-owner IDOR 오차단) 1건이 ⏳ 이며 SessionStart 훅이 매 세션 경고한다.
