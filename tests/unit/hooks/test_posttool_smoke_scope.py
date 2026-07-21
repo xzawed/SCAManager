@@ -137,3 +137,75 @@ def test_windows_backslash_paths_are_normalized():
     """Windows 경로 — 훅은 실제로 이 형태를 받는다."""
     assert is_watched_file(r"D:\Source\SCAManager\src\scheduler.py")
     assert derive_test_target(r"D:\Source\SCAManager\src\gate\engine.py", _ROOT) == "tests/unit/gate"
+
+
+# ── main() 디스패치 (배선 검증 — 순수 함수만으로는 못 잡던 사각) ────────
+
+
+def _run_main_with(path, monkeypatch, captured):
+    """`main()` 을 실제 stdin 입력으로 실행하고, 어떤 pytest 명령이 조립됐는지 포착.
+
+    🔴 왜 순수 함수 테스트로 부족했나 (2026-07-20 세션5 회고 P1, 10 에이전트 수렴):
+    `is_watched_file`·`derive_test_target` 이 alembic/·scripts/ 를 올바로 매핑해도,
+    `main()` 이 `is_src_file`(src 전용)로 게이트하면 그 매핑까지 **도달하지 못한다**.
+    #1145 가 정확히 이 상태였다 — 확장은 순수 함수에 있고 진입점은 단락시켰다.
+    이 테스트는 **진입점이 실제로 어디까지 발동하는지** 를 본다.
+    """
+    import io
+    import json as _json
+
+    import posttool_pytest_smoke as hook
+
+    payload = _json.dumps({"tool_input": {"file_path": path}})
+    monkeypatch.setattr("sys.stdin", io.StringIO(payload))
+    # pytest 를 실제로 돌리지 않고 조립된 명령만 포착 (rc=0, 빈 tail).
+    monkeypatch.setattr(hook, "_run", lambda cmd, cwd: captured.append(cmd) or (0, ""))
+    rc = hook.main()
+    return rc
+
+
+@pytest.mark.parametrize("path", [
+    "alembic/env.py",
+    "scripts/check_retro_cadence.py",
+])
+def test_main_actually_fires_for_watched_non_src_roots(path, monkeypatch):
+    """🔴 `main()` 이 alembic/·scripts/ 편집에 **실제로 발동**해야 한다.
+
+    이전엔 `is_src_file` 게이트가 이 둘을 즉시 return 0 으로 흘려보냈다(hook 무발동).
+    순수 함수는 통과하는데 진입점은 죽어 있던 사각 — 여기서 잡는다.
+    """
+    captured = []
+    _run_main_with(path, monkeypatch, captured)
+    assert captured, f"{path} 편집에 main() 이 pytest 를 조립하지 않았다 — 진입점이 단락시킨다"
+
+
+def test_main_ignores_truly_unwatched_paths(monkeypatch):
+    """대조군 — docs 편집엔 발동하지 않아야 한다(오발동 = 소음)."""
+    captured = []
+    _run_main_with("docs/STATE.md", monkeypatch, captured)
+    assert not captured, "감시 대상 아닌 파일에 main() 이 발동했다"
+
+
+def test_main_gates_on_is_watched_not_is_src():
+    """🔴 진입점 게이트가 `is_watched_file` 인지 AST 로 고정한다.
+
+    문자열이 아니라 **main() 이 실제로 호출하는 함수**를 본다 — `is_src_file` 로 되돌리면
+    alembic/·scripts/ 커버리지가 조용히 다시 죽는다(이번 회고가 잡은 바로 그 회귀).
+    """
+    import ast
+    import inspect
+
+    import posttool_pytest_smoke as hook
+
+    tree = ast.parse(inspect.getsource(hook.main))
+    gate_calls = {
+        getattr(n.func, "id", None) or getattr(n.func, "attr", None)
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Call)
+    }
+    assert "is_watched_file" in gate_calls, (
+        "main() 이 is_watched_file 로 게이트하지 않는다 — alembic/·scripts/ 가 다시 dead 다"
+    )
+    assert "is_src_file" not in gate_calls, (
+        "main() 이 여전히 is_src_file 을 쓴다 — 감시 루트 확장이 무력화된다"
+    )
