@@ -173,3 +173,51 @@ def test_hold_tag_is_terminal_not_retriable():
     재시도 가능 태그로 두면 큐가 영원히 재시도하며 같은 이유로 계속 실패한다.
     """
     assert is_retriable_tag(SENSITIVE_PATH_HOLD) is False
+
+
+# ── security.md 커버리지 drift 체크 (Grok 권고 — 런타임 결합 X, CI 에서만) ──
+
+
+def test_security_designated_files_are_covered_by_the_guard():
+    """🔴 security.md 가 보안 지정한 파일은 가드가 커버해야 한다 (drift 체크).
+
+    ## 2026-07-20 세션5 회고 P1 + Grok 적대 검토
+
+    초판 가드는 `(^|/)auth/`(디렉토리)만 봐서 **`api/auth.py` 등 파일명 형태를 놓쳤다** —
+    security.md 지정 5파일이 무검토 auto-merge 로 샜다.
+
+    🔴 **security.md 를 런타임에서 파싱하지 않는다**(Grok): 목적 불일치·고객 리포 무의미·
+    .md 파싱은 새 실패 클래스. 대신 가드는 **자기 소유 명시 리스트**를 갖고, 이 테스트가
+    **CI 에서만** 두 목록의 drift 를 확인한다. security.md 에 보안 파일이 추가되면 여기서
+    빨개져 `_SENSITIVE_PATTERNS` 등재를 강제한다.
+
+    예외: `config.py`(자주 변경 — 과탐 시 가드 자살) 같은 파일은 명시 제외 가능하나,
+    현재 security.md paths 전부가 커버되므로 예외 목록은 비어 있다.
+    """
+    import re as _re
+    from pathlib import Path as _Path
+
+    import yaml as _yaml
+
+    root = _Path(__file__).resolve().parents[3]
+    sec = root / ".claude" / "rules" / "security.md"
+    fm = _re.match(r"---\n(.*?)\n---", sec.read_text(encoding="utf-8"), _re.S)
+    paths = (_yaml.safe_load(fm.group(1)) or {}).get("paths", []) if fm else []
+    assert paths, "security.md paths 를 못 읽었다 — 이 drift 체크의 전제 붕괴"
+
+    # glob(`src/auth/**`)은 대표 파일로, 단일 파일 경로는 그대로 판정한다.
+    _EXEMPT: set = set()  # 과탐 우려로 의도적 제외한 security.md 경로(현재 없음)
+    uncovered = []
+    for p in paths:
+        if p in _EXEMPT:
+            continue
+        sample = p.replace("/**", "/example_module.py") if p.endswith("/**") else p
+        if not p.endswith((".py", ".ini", "/**")):
+            continue
+        if not sensitive_paths_in([sample]):
+            uncovered.append(p)
+    assert not uncovered, (
+        f"security.md 가 보안 지정했으나 민감 경로 가드가 안 잡는 파일: {uncovered}\n"
+        "→ `src/gate/sensitive_paths.py::_SENSITIVE_PATTERNS` 에 등재하거나, 과탐 우려면\n"
+        "   이 테스트의 `_EXEMPT` 에 사유와 함께 추가할 것."
+    )

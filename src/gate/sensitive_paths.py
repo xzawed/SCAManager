@@ -37,15 +37,38 @@ from src.shared.feature_kill_switch import is_disabled
 
 logger = logging.getLogger(__name__)
 
-# 🔴 민감 경로 패턴 — 리포 공통으로 무검토 머지가 위험한 부류만.
-#   과하게 넓히면 정상 PR 이 막히고, 그러면 사용자가 가드 자체를 끈다(가드의 자살).
-# Deliberately narrow: over-blocking makes users disable the guard entirely.
+# 🔴 민감 경로 패턴 — 무검토 머지가 위험한 부류. **gate 소유 명시 리스트**다.
+#
+#   ## 2026-07-20 세션5 회고 P1 + Grok 적대 검토가 반박한 것
+#   초판은 `(^|/)auth/`(디렉토리)만 봐서 **`api/auth.py` 같은 파일명 형태를 통째로 놓쳤다**
+#   — security.md 가 보안 지정한 파일 5종(api/auth.py·webhook/validator.py·log_safety.py·
+#   main.py·logging_config.py)이 무검토 auto-merge 로 샜다.
+#
+#   🔴 **security.md frontmatter 에서 파생하지 않는 이유**(Grok): (1) 그 목록은 '편집 시 rule
+#   로드' 용이지 머지-위험 인벤토리가 아니다(목적 불일치·drift). (2) 이 가드는 **고객 리포
+#   PR 경로에도** 돈다 — SCAManager 자기 트리 목록은 고객의 `lib/jwt.py` 류를 모른다.
+#   (3) 런타임 .md 파싱은 새 실패 클래스(파일 부재·YAML 오류·rename)다.
+#   그래서 (a) **파일명 토큰**으로 보안 **클래스**를 잡고(고객 리포에도 유효) + (b) SCAManager
+#   고유 보안 파일은 **명시 리스트**로 보강하고 + (c) security.md 커버리지는 **CI drift 체크**로
+#   확인한다(런타임 결합 X). Own the list; drift-check against the md in CI, never at runtime.
+#
+#   과하게 넓히면 정상 PR 이 막히고 사용자가 가드를 끈다(가드의 자살) — config.py 류(자주
+#   변경)는 의도적 제외. Over-broad patterns get the guard disabled; config-class files excluded.
 _SENSITIVE_PATTERNS: tuple[re.Pattern, ...] = tuple(
     re.compile(p, re.IGNORECASE) for p in (
-        # 인증·인가·시크릿 / auth, authorization, secrets
+        # 인증·인가·시크릿 — 디렉토리 + **파일명 토큰**(경로 어디든) / auth dir + filename tokens anywhere
         r"(^|/)auth/",
         r"(^|/)(crypto|secrets?|credentials?)\.[a-z]+$",
-        r"(^|/)(oauth|session|login|permission)[^/]*\.[a-z]+$",
+        # 🔴 파일명이 보안 토큰으로 시작 — `api/auth.py`·`lib/jwt.py`·`x/oauth_client.py` 등 포괄
+        #   (고객 리포에도 유효 — 특정 트리에 묶이지 않는다).
+        r"(^|/)(auth|oauth|oidc|saml|session|login|logout|token|jwt|secret|secrets|"
+        r"credential|credentials|password|passwd|permission|rbac|acl)[^/]*\.[a-z]+$",
+        # SCAManager 고유 보안 파일 — 파일명 토큰으로 안 잡히는 명시 지정(security.md 대응).
+        #   신규 보안 파일 추가 시 여기에 등재 — CI drift 체크가 누락을 강제한다.
+        r"(^|/)webhook/validator\.py$",
+        r"(^|/)shared/log_safety\.py$",
+        r"(^|/)logging_config\.py$",
+        r"(^|/)main\.py$",
         # DB 마이그레이션 / DB migrations
         r"(^|/)(alembic|migrations?)/",
         r"(^|/)alembic\.ini$",
@@ -107,6 +130,16 @@ async def sensitive_paths_block_merge(
 
     hits = sensitive_paths_in(filenames)
     if not hits:
+        # 🔴 **빈 목록·민감 없음 = allow (fail-closed 아님, 의도)**. 2026-07-20 세션5 회고가
+        #   "빈 목록=fail-open" 으로 지적했으나, Grok 적대 검토가 그 처방을 반박했다:
+        #   (1) 조회는 **성공**했다(예외는 위에서 이미 보류) — `[]` 는 판정 불가가 아니라
+        #       "바뀐 파일이 없다" 는 확정 사실이고, 바뀐 게 없으면 **민감 변경도 없다**.
+        #   (2) `git commit --allow-empty`(CI 재실행)·base 따라잡기 no-op sync 는 **정상**
+        #       0-파일 mergeable PR 이다 — 이를 보류하면 영원히 자동 머지가 막힌다.
+        #   (3) 조용한 `[]`(클라이언트 버그·잘림)를 보류로 접으면 **전 리포 auto-merge 락아웃**.
+        #   예외(판정 불가)와 빈 목록(확정 무민감)은 **다른 신호**이므로 붕괴시키지 않는다.
+        # Empty ≠ undecidable: the fetch succeeded, so "no files" means "no sensitive changes".
+        # Withholding empty PRs would block legitimate --allow-empty/no-op merges (Grok review).
         return False
 
     logger.warning(
