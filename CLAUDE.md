@@ -178,37 +178,19 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 
 사용자 발화: *"가급적 회고도 모든 에이전트가 깊게 생각하여 진행했으면 합니다."*
 
-**default 회고 패턴** (Claude 단독 회고 금지):
-- **최소 4~5 에이전트 병렬 디스패치** (단일 메시지에 동시 tool_use)
-- **관점 분리** — 에이전트별 비중복 도메인 배정 (5종 예시: [.claude/policies/active.md#정책-8-doc-audit-agent-domain](.claude/policies/active.md#정책-8-doc-audit-agent-domain))
-- **각 에이전트 프롬프트 강제 조건**:
-  - `self-contained` (다른 에이전트 결과 의존 0 — 병렬성 보호)
-  - `line:span 인용 의무` (정책 6 — 환각 보고 80% 차단)
-  - 출력 포맷 강제 (P0/P1/P2 분류 또는 표 형식)
-  - "회피해야 할 false-positive 사례" 사전 명시 (가능 시)
+**default 패턴** (Claude 단독 회고 금지): **최소 4~5 에이전트 병렬 디스패치** + **관점 분리**
+(비중복 도메인) + 각 프롬프트에 `self-contained`·`line:span 인용`(정책 6)·P0/P1/P2 강제 +
+**cross-verify 1건(= 5+1)**. 실행 = `.claude/workflows/retrospective.mjs`(`/retrospective`).
+🔴 cross-verify 생략 정량 기준·6차 에이전트 규칙·진화 1~3 상세: [.claude/policies/active.md#정책-8-회고-카덴스](.claude/policies/active.md#정책-8-회고-카덴스) · [history.md#정책-8-진화](.claude/policies/history.md#정책-8-진화).
 
-**금지**:
-- ❌ "간단한 회고는 Claude 단독으로" 같은 예외
-- ❌ 1~2 에이전트만 디스패치 (관점 부족)
+🔴 **진화 default (본문 유지 — 매 세션 트리거)**:
+- **(4) 회고 카덴스 강제 트리거**: 직전 정식 회고 이후 **≥3 세션 또는 ≥15 PR** 시 5+1 회고 강제
+  (SessionStart 훅 `check_retro_cadence.py` 가 기계 경고). 자기회고 갈음은 **사용자 명시 승인 시에만**
+  ("규모가 작아서" 사유 불가). ≥18 PR 정기 검증(정책 17-5)과 시점 차별.
+- **(5) 회고 범위에 "세션 자신의 산출물" 포함 default** (2026-07-19 승인): 세션 중간 회고 시 그
+  세션 PR 이 범위 밖으로 빠져 **가장 검증 덜 된 코드가 회고를 피한다**. 범위 = `직전 회고 이후 머지
+  PR + 본 세션 산출물 전체`(기계 산출 `scripts/retro_scope.py`). 세션 중간 회고 = 잔여분 2차 회고 판정 의무.
 
-**cross-verify 단계 (2차) 의무 — 사이클 64 학습 (2026-05-04)**:
-- 1차 5 에이전트 결과 받은 후 별도 cross-verify 에이전트 1건 디스패치 (= 5+1 = 6 패턴)
-- ❌ cross-verify 6차 에이전트로 `doc-consistency-reviewer` 사용 금지 (사이클 64: 회고 cross-verify scope 거절) / ✅ `general-purpose` 또는 task-specific specialist — 단, 문서 diff 일관성 검토 단독 목적의 호출은 허용. 상세: [history.md#정책-8-진화](.claude/policies/history.md#정책-8-진화)
-- 🔴 **cross-verify 생략 정량 기준 (사이클 69 cross-verify 식별)**: "양과 깊이 충분" 의 정량 기준 = (1) 1차 5 에이전트 P0 합계 ≥ 8건 + (2) 관점 5종 모두 P0 1건 이상 식별 + (3) 사용자 빠른 진행 신호 명시 ("회고 이후 다음 작업" / "바로 진행" 등). **3 조건 모두 충족 시만 생략 OK**. Claude 자가 판단 X — 사용자 명시 신호 의무. 미충족 시 cross-verify (general-purpose) 강제.
-- 🔴 **cross-verify 생략 PR 본문 대조 표 default (사이클 87)**: 6차 생략 시 PR 본문 §"cross-verify 생략 사유" 에 사이클 69 정량 3 조건 대조 표 default. 3 조건 모두 ✅ 시만 생략 OK. 1 조건이라도 ❌ 시 cross-verify 강제. 표 형식 상세: [.claude/policies/history.md#정책-8-진화](.claude/policies/history.md#정책-8-진화).
-
-🔴 **단일 관점 회고 (사이클 75 진화)**: 관점 1~5 중 1개 단독 회고 = 5+1 패턴 미적용 (Claude 직접 작성 default). default = 5+1 진행 + 정량 기준 충족 시 생략. 상세: [.claude/policies/history.md#정책-8-진화](.claude/policies/history.md#정책-8-진화).
-
-🔴 **정책 8 진화 default 요약** (사이클 83~84, 92):
-- **(1) 단일 작업일 5+1 dispatch ≥ 5회 = 사용자 사전 확인 의무** (사이클 83). 사용자 명시 신호 시 면제 OK. 정책 16 5번 원칙 (토큰 비용 효율) 페어.
-- **(1) 강화** (사이클 84): **dispatch 횟수** vs **agent invocation** 구분 — dispatch 기준 default + 누적 invocation ≥ 30 시 동등 사전 확인 의무.
-- **(2) cross-verify ROI commit body 정량 명시 의무** — false-positive 차단 N건 / 신규 발견 N건 / Tier A 정정 N건 (정책 6 페어).
-- **(3) cross-verify Round 2 도메인 카운트 = `pytest --collect-only -q` 실측 의무** (사이클 92). 추정 카운트 보고 = 자동 false-positive 처리. 사이클 89 Round 1 추정 부정확 사례 (middleware 5/실측 17, worker 22/실측 78, github_client 15/실측 74) 학습 페어. 정책 6 (line:span `grep -n` 실측 — 정적 line 영역) 와 시점·대상 차별 (정책 8 진화 = 동적 테스트 분포 카운트).
-- **(4) 🔴 회고 카덴스 강제 트리거** (2026-07-03 회고 C1 — 직전 정식 회고 2026-06-23 이후 4세션·~30 PR 무회고 갭 학습): 직전 정식 회고 이후 **≥3 세션 경과 또는 ≥15 PR 머지** 시 5+1 회고 강제 ("사이클 종료 = 회고 진입" 판정 — 감사/수정만 한 세션도 포함, 정책 5 페어). 자기회고 갈음(단독 작성)은 **사용자 명시 승인 시에만** — "규모가 작아서"는 사유 불가(정책 8 예외 금지). 정책 17-5 정기 검증 트리거(≥5 사이클/≥18 PR)와 시점·목적 차별(정책 8 진화 = 회고 카덴스). 상세: [.claude/policies/active.md#정책-8-회고-카덴스](.claude/policies/active.md#정책-8-회고-카덴스).
-
-- **(5) 🔴 회고 범위에 "회고를 수행한 세션 자신의 산출물" 포함 default** (2026-07-19 세션3 — 사용자 승인). 회고를 세션 **중간**에 돌리면 그 세션이 그때까지 만든 PR 이 범위 밖으로 빠져, **가장 검증이 덜 된 코드가 회고를 피해간다**. 실증: 1차 회고(범위 #1078~#1101)는 당시 세션 산출물 `#1102`~`#1107` 을 보지 않았고, 2차 회고를 **그 범위로 다시 돌리자 P0 8건 중 4건이 `#1104` 를 정면 반박**했다(4 에이전트 독립 도달 + 재현 실증 — "2계층 봉인" 선언이 거짓이고 exc_info·uvicorn 축이 열려 있었음 → `#1109` 로 완결). **default 적용**: 세션 종료 회고의 범위는 `직전 정식 회고 이후 머지 PR` **+ 본 세션 산출물 전체**. 세션 중간 회고 시 = 잔여 산출물에 대한 **2차 회고 진입 판정 의무**(생략 시 사유 명시). 정책 4(단언과 회귀 가드를 같은 PR 에)의 회고판 — **자기 단언을 자기 회고 범위에 넣는다**.
-
-상세: [.claude/policies/history.md#정책-8-진화](.claude/policies/history.md#정책-8-진화).
 #### 정책 9: **회고 후 반드시 Claude 자유 발언 시간 의무**
 
 사용자 발화: *"회고 이후에 반드시 바라는 점 원하는 것 수정이 필요한 부분 등 자유롭게 말하는 시간도 있었으면 합니다."*
@@ -289,66 +271,35 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 1. **안정성 우선** — 행동 가이드 detail 보존 + 회귀 0 (Anthropic 200줄 hard target 등 외부 권장 규격은 가이드라인 — 안정성 충돌 시 거부)
 2. **default rule + 진화 default 본문 보존** — 정책 본문의 default rule + 진화 default 1~2줄 = CLAUDE.md 본문 보존 의무 / detail · 검증 사례 · Why · How to apply = `.claude/policies/active.md` 또는 `history.md` external (Phase A 검증 패턴)
 3. **단계 분할 + 단계별 검증 의무** — 매 분리 단계마다 5+1 다중 에이전트 회의 + 운영 검증 (행동 가이드 drift 0) + 사용자 옵션 표 결정 (정책 1 + 정책 8 + 정책 7 강화 페어)
-4. **분리 위험 영역 사용자 사전 확인 의무** — 매 작업/회고/PR 의무 영역 (정책 8 cross-verify 정량 기준 / 정책 11 8 조합 체크리스트 / 정책 5 NEW-P0-N 예외 / 정책 9 완화 미적용 영역) = 본문 보존 default + 분리 시 High tier 사전 확인 의무
-5. **누적 결함 정기 검증 default** (사이클 92 신설 — 사이클 89 #349/#350 시간차 결함 학습) — 단일 작업일 ≥ 18 PR 영역 도입 후 **≥ 5 사이클 경과 시 정기 5+1 다중 에이전트 검증 default** (정기 검증 트리거 = 시간/PR 기반 / 매 회고 cross-verify 트리거 정책 8 진화 와 시점·대상 차별). 사이클 89 사례 = 사이클 74/84 누적 결함 (E2E i18n hardcode + integration fixture sync) 발견 — 정기 검증 ROI 양성 검증. 상세: [.claude/policies/active.md#정책-17-5번째-default](.claude/policies/active.md#정책-17-5번째-default).
+4. **분리 위험 영역 사용자 사전 확인 의무** — 매 작업/회고/PR 의무 영역(정책 8·11·5·9 미적용 영역)은 본문 보존 default + 분리 시 High tier 사전 확인.
+5. **누적 결함 정기 검증 default** — 단일 작업일 ≥18 PR 영역 도입 후 **≥5 사이클 경과 시 정기 5+1 검증**(시간/PR 기반, 회고 cross-verify 와 시점 차별). 상세: [.claude/policies/active.md#정책-17-5번째-default](.claude/policies/active.md#정책-17-5번째-default).
 
 Why + How to apply (자가 검토 4 자문) 상세: [.claude/policies/active.md#정책-17-why-how](.claude/policies/active.md#정책-17-why-how).
 
-#### ⛔ 정책 18 폐기 (2026-07-10 — Codex 구독 해지): 구 "Claude ↔ Codex 양방향 mutual 검증"
+#### ⛔ 정책 18 폐기 (2026-07-10 — Codex 구독 해지)
 
-**폐기 사유**: 사용자가 Codex 유료 구독을 해지 (2026-07-10). `@openai/codex` npm 패키지·Claude Code 플러그인 제거로 **`codex` 실행 파일 부재** → mutual 검증 수행 **불가능**.
+Codex mutual 검증 폐기 (`codex` 실행 파일 부재). **`codex exec` probe 실패 = 정상**(이상 징후로
+보고·확인 요청 금지). 코드·문서의 "Codex 적발/발견" 주석은 **당시 사실 기록(재작성 금지)**.
+대체 = 정책 19(Grok) + Claude 단독 2-layer(5+1 + whole-branch). 상세·진화 이력:
+[.claude/policies/history.md](.claude/policies/history.md).
 
-**지금부터 적용**:
-- **Codex mutual 검증 = 전건 면제.** `codex exec` probe 실패는 **정상** — 이상 징후로 보고하거나 사용자 확인을 요청하지 말 것.
-- **대체 = Claude 단독 2-layer 자체 검증**: (a) 정책 8 5+1 다중 에이전트 cross-verify (관점 다양성) + (b) `pipeline-reviewer` / opus whole-branch 적대적 리뷰 (리뷰 계층 다양성). 🔴 **whole-branch 리뷰는 cross-cutting 결함(예: `form=` 데이터손실)의 유일 방어선** — 비용 절감 명목으로 생략·강등 금지.
-- **사이클 종료 = 2 조건 AND** (정책 5 페어) — (a) 사용자 신호 + (b) Claude OK. (구 (c) Codex OK 삭제.)
-- **존치된 규칙**: 구 §2 의 **push 전 전체 단위 테스트 게이트**는 Codex 와 무관하게 유효 → [필수 원칙 6-step ②](#필수-원칙) 로 이관.
+#### 정책 19: Claude ↔ Grok 협업 (2026-07-19 승인 · default ON 2026-07-20)
 
-**역사 (실증된 가치)**: cross-vendor 검증은 실효가 있었다 — 2026-06-29 심층 감사에서 **P1 2건은 Codex 만 발견**(Claude 8 에이전트 미검출).
+**SSOT = [`AGENTS.md`](AGENTS.md)(3-불변식·트리거) + [`docs/runbooks/ai-collaboration.md`](docs/runbooks/ai-collaboration.md)(프로토콜 v2).**
+Grok 은 파이프라인 단계가 아니라 **claim-review/인터럽트**. 별도 지시 없으면 실질 작업마다
+Grok CLAIM-REVIEW 기본 포함(2026-07-20 사용자 지시, 건너뛰려면 명시 지시). 상세: [[feedback-grok-collaboration-default]].
 
-🔴 **대체 검증자 = Grok** — 정책 18 폐기로 빈 cross-vendor 자리를 Grok 이 대체한다. **본문은 아래 정책 19 로 이관**(2026-07-19 회고 P1 — 매 발화에 걸리는 의무가 '⛔ 폐기' 제목 아래 있어 폐기된 규칙으로 오독될 구조였다). 폐기 이전 정책 18 본문·진화 이력은 [.claude/policies/history.md](.claude/policies/history.md) 에 역사 기록으로 보존.
-
-> ⚠️ 코드·문서 곳곳의 "Codex mutual 적발/발견" 주석은 **당시 사실 기록(출처 표기)** 이므로 그대로 둔다 — 재작성 금지.
-
-
-#### 정책 19: Claude ↔ Grok 협업 (2026-07-19 사용자 승인 — 정책 18 폐기 자리 대체)
-
-> 🔴 **이 정책은 '⛔ 폐기' 섹션과 무관하다.** 이전에는 정책 18(폐기) 하위에 중첩돼 있어
-> 매 발화에 걸리는 2-phase 게이트가 **폐기된 규칙처럼 보였다**(회고 P1). 독립 승격.
-
-프로토콜 단일 출처 = [`docs/runbooks/ai-collaboration.md`](docs/runbooks/ai-collaboration.md)
-(Claude·Grok 2라운드 상호 회고·협의 산물 + v2 개정).
-**상시 페어링 ❌ / 조건부 인터럽트 ✅** — Grok 은 파이프라인 단계가 아니다.
-
-🔴 **협업 default ON (2026-07-20 사용자 지시)**: *"앞으로 별도의 지시 없으면 Grok 과 같이
-협업을 했으면 합니다."* → **별도 지시 없으면 실질 작업마다 Grok CLAIM-REVIEW 를 기본 단계로
-포함**한다(건너뛰려면 사용자 명시 지시 필요). ⚠️ **"상시 페어링 ❌" 와 모순 아니다** — Grok 은
-여전히 **파이프라인 단계가 아니라** claim-review/인터럽트다. 바뀐 것은 **트리거 범위**뿐:
-seal 주장 시에만 → **실질 작업 default**. 실무: 범위 좁게(2 클레임·400자 — 넓으면 타임아웃),
-계획·구현 위임 X, 절대경로 전달(`/tmp` 가 리포 드라이브로 해석됨). 상세: [[feedback-grok-collaboration-default]].
-실증(2026-07-20): CLAIM-REVIEW 5회 전건 반증(색인 비-전단사·카운트 불충분·`~~` 면제·이름-only
-사각·주석 가드 패러프레이즈 우회) — 혼자서는 전건 미발견.
-
-- **핵심 트리거**: Claude 가 **"봉인/완결/fail-closed/유출 0"** 을 주장하면 그 주장 하나만 놓고
-  Grok 뮤테이션 패스. 심각도 판단이 불필요한 이진 질문이라 Grok 의 알려진 편향
-  (P0 정밀도 0/4 = 심각도 과대평가)을 우회한다.
-- **1순위 사냥 대상 = observer-lie** — *"코드의 버그는 고쳤는데 관측자는 여전히 거짓말한다"*.
-  핵심 질문: **보호 장치를 삭제해도 여전히 참으로 보이는 것은 무엇인가?**
-- 🔴 **2-phase 사용자 보고 게이트**: `배포|활성|봉인|운영|cron 실행됨` 이 포함된 문장은
-  라이브 deploy reality 필드를 동반하거나 **`UNVERIFIED:` 접두사** 의무.
-  배포·RLS·cron 주장의 `STATIC-ONLY-UNVERIFIED` 는 사용자 보고 불가.
-- 🔴 **A2 — 뮤테이션 대상은 실제 운영 경로다**: seal 이 보호한다고 주장하는 **실 파일/심볼**을
-  깨뜨려 red 가 되어야 HOLDS. **합성 문자열·픽스처만으로는 A2 를 충족하지 않는다**
-  (`#1121` 이 그 상태로 무동작이었다). 상세 = 프로토콜 §v2 A2-b.
-- 🔴 **경계는 '호출 금지' 가 아니라 '소유 금지'** (회고 P1 — 두 번의 경계 위반이 모두
-  실제 오류를 찾아냈다): Grok 은 backlog 처방문·정책 문구를 **저술(authoring)하지 않는다**.
-  그러나 그 문서의 **주장을 공격(claim-review)하는 것은 허용**한다 — 사용자 요청 시,
-  또는 CLAIM 이 seal/HOLDS/완전성일 때. 그 경우 브리프에 `owner-interrupt: claim-review` 명시.
-- 🔴 **회고 카덴스(정책 8 진화 4)에 Grok full-pass 를 겹치지 않는다** — 3중 파일업 =
-  Codex 시절 피로 재생산. 대신 **주장 트리거 + ops 불변식 단축 패스**(주장이 부재한 통제면 전용).
-- **호출 금지(소유 영역)**: 계획·WBS(`grok_build_plan` 실측 무가치) / 구현 중간.
-
----
+- **핵심 트리거**: "봉인/완결/fail-closed/유출 0" 주장 → 그 주장 하나로 Grok 뮤테이션 패스
+  (이진 질문이라 Grok 심각도 편향 우회). **1순위 사냥 = observer-lie**: *보호 장치를 삭제해도
+  여전히 참으로 보이는 것은?*
+- 🔴 **2-phase 사용자 보고 게이트**(매 발화 의무): `배포|활성|봉인|운영|cron 실행됨` 포함 문장은
+  라이브 deploy reality 필드 동반 또는 **`UNVERIFIED:` 접두사** 의무. `STATIC-ONLY-UNVERIFIED` 는
+  사용자 보고 불가.
+- 🔴 **A2 (신규 관측자 뮤테이션 의무)**: 새 seal 은 **실경로 뮤테이션 red** 없이 HOLDS 금지 —
+  합성 픽스처 불가(#1121). 3-불변식 상세 = [`AGENTS.md`](AGENTS.md).
+- **경계 = '소유 금지'**: Grok 은 정책·backlog 를 **저술하지 않는다**(claim-review 는 허용 —
+  seal/HOLDS/완전성 주장 시 `owner-interrupt: claim-review` 명시). 호출 금지: 계획·WBS·구현 중간.
+- **회고 카덴스에 Grok full-pass 겹치지 않음**(피로 방지) — 주장 트리거 + ops 불변식 단축 패스만.
 
 ### 작업 시작 전 필수 체크리스트 (매 작업마다)
 
