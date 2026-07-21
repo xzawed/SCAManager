@@ -9,7 +9,7 @@
     "lint:js": "eslint \"src/templates/**/*.html\" --quiet"
   },
   "devDependencies": {
-    "@tailwindcss/cli": "^4.1.0",
+    "@tailwindcss/cli": "^4.3.3",
     "tailwindcss": "^4.1.0",
     "eslint": "^8.57.0",
     "eslint-plugin-html": "^8.1.1"
