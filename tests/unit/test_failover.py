@@ -300,18 +300,20 @@ class TestFallbackUrlEmptyNoNormalization:
 
     def test_empty_fallback_url_no_exception(self):
         # database_url_fallback="" 설정 시 Settings 인스턴스화에서 예외가 발생하지 않아야 한다
+        # 예외가 나면 pytest 가 traceback 으로 그대로 실패 보고 → try/except+pytest.fail wrapper 불필요.
+        #   그 wrapper 는 S5779(except 가 AssertionError 삼킴)·py/uninitialized-local 을 유발하고
+        #   does-not-raise 가드(check_does_not_raise_wrapper) 위반이다. 직접 호출이 두 관측자 모두 만족.
+        # A raised exception already fails the test; the wrapper trips S5779 + py/uninitialized-local.
         from src.config import Settings
-        try:
-            Settings(
-                database_url="sqlite:///:memory:",
-                github_webhook_secret="x",
-                github_token="x",
-                telegram_bot_token="123:ABC",
-                telegram_chat_id="-100",
-                database_url_fallback="",
-            )
-        except Exception as exc:
-            pytest.fail(f"Settings() raised unexpected exception: {exc}")
+        settings = Settings(
+            database_url="sqlite:///:memory:",
+            github_webhook_secret="x",
+            github_token="x",
+            telegram_bot_token="123:ABC",
+            telegram_chat_id="-100",
+            database_url_fallback="",
+        )
+        assert settings.database_url_fallback == ""
 
     def test_probe_interval_default_is_30(self):
         # db_failover_probe_interval 기본값이 30 이어야 한다
