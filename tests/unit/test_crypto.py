@@ -204,13 +204,15 @@ class TestDecryptTokenFallback:
         monkeypatch.setattr("src.config.settings.token_encryption_key", key)
         _reset_fernet_cache()
         from src.crypto import decrypt_token
+        # 🔴 assert 를 try 밖에 둔다 (S5779) — try 안에 두면 `except Exception` 이
+        #   AssertionError(Exception 하위)까지 삼켜 실패가 "예외 발생" 으로 오도된다.
+        # Keep the assertion OUTSIDE the try; `except Exception` would swallow its AssertionError.
         try:
             result = decrypt_token("this_is_not_valid_fernet_ciphertext")
-            # 예외 없이 반환되어야 함
-            # Must return without raising an exception.
-            assert isinstance(result, str)
         except Exception as exc:  # noqa: BLE001
             pytest.fail(f"decrypt_token raised an unexpected exception: {exc}")
+        # 예외 없이 반환되어야 함 / Must return without raising.
+        assert isinstance(result, str)
 
     def test_decrypt_empty_string_with_key_returns_empty(self, monkeypatch):
         # 키가 설정된 상태에서도 빈 문자열 입력은 빈 문자열을 반환한다
