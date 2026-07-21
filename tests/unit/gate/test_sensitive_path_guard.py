@@ -25,10 +25,14 @@ _ARGS = {"github_token": "t", "repo_name": "o/r", "pr_number": 7}
 
 @pytest.mark.parametrize("path", [
     "src/auth/oauth.py", "app/auth/session.py",
+    "src/api/auth.py", "lib/jwt.py",  # 🔴 파일명 토큰 (디렉토리 아님) — 세션5 회고 P1
     "alembic/versions/0050_add_col.py", "db/migrations/003_x.sql", "alembic.ini",
     ".github/workflows/ci.yml", ".github/workflows/deploy.yaml",
     "src/crypto.py", "lib/secrets.py", "config/credentials.json",
     "Dockerfile", "docker/Dockerfile",
+    # 🔴 공급망 형제 — 의존성 핀·빌드 설정 (세션5 회고 P2)
+    "requirements.txt", "requirements-dev.txt", "railway.toml", "nixpacks.toml",
+    "pyproject.toml", "package.json", "package-lock.json",
 ])
 def test_sensitive_paths_are_detected(path):
     assert sensitive_paths_in([path]) == [path], f"{path} 가 민감 경로로 잡히지 않는다"
@@ -37,7 +41,7 @@ def test_sensitive_paths_are_detected(path):
 @pytest.mark.parametrize("path", [
     "README.md", "docs/STATE.md", "src/ui/routes/home.py",
     "tests/unit/gate/test_engine.py", "src/notifier/telegram.py",
-    "src/templates/base.html", "package.json",
+    "src/templates/base.html", "setup.cfg", "src/config.py",
 ])
 def test_ordinary_paths_are_not_flagged(path):
     """🔴 과탐은 가드의 자살이다 — 정상 PR 이 막히면 사용자가 가드를 끈다."""

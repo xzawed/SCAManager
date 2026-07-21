@@ -26,7 +26,7 @@ The control lives in our code and is path-aware; branch protection is neither.
 ## 판정 범위 / Classification scope
 
 리포 무관하게 "무검토 머지가 실제로 위험한" 세 부류만 본다 — 인증/시크릿 · DB 마이그레이션 ·
-CI 워크플로 정의(공급망). 넓히면 정상 PR 을 막아 사용자가 가드를 끄게 된다.
+CI 워크플로 + **공급망 정의(의존성 핀·빌드 설정)**. 넓히면 정상 PR 을 막아 사용자가 가드를 끄게 된다.
 """
 import asyncio
 import logging
@@ -72,9 +72,17 @@ _SENSITIVE_PATTERNS: tuple[re.Pattern, ...] = tuple(
         # DB 마이그레이션 / DB migrations
         r"(^|/)(alembic|migrations?)/",
         r"(^|/)alembic\.ini$",
-        # CI·배포 워크플로 정의 (공급망) / CI & deploy workflow definitions (supply chain)
+        # CI·배포 워크플로 + 공급망 정의 / CI, deploy & supply-chain definitions
         r"^\.github/workflows/",
         r"(^|/)Dockerfile$",
+        # 🔴 배포 빌드·의존성 핀 (공급망) — 2026-07-20 세션5 회고 P2.
+        #   `requirements*.txt` 변경 = 새 의존성 도입(악성 패키지 공급망 공격 벡터),
+        #   `railway.toml`/`nixpacks.toml` = buildCommand·설치 명령(임의 코드 실행).
+        #   docstring 은 "공급망" 을 범위로 적었으나 실제 패턴엔 이 형제들이 빠져 있었다.
+        # requirements pins (dep supply chain) + deploy build config (arbitrary-command surface).
+        r"(^|/)requirements[\w.-]*\.txt$",
+        r"(^|/)(railway|nixpacks|pyproject)\.toml$",
+        r"(^|/)package(-lock)?\.json$",
     )
 )
 
