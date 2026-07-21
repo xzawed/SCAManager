@@ -45,6 +45,7 @@
 | [runbooks/phase2-data-readiness.md](runbooks/phase2-data-readiness.md) | Phase 2 데이터 준비 |
 | [runbooks/integrity-audit.md](runbooks/integrity-audit.md) | 정합성 감사 워크플로우 운영 (`/integrity-audit`) |
 | [runbooks/retrospective.md](runbooks/retrospective.md) | 5+1 회고 워크플로우 운영 (`/retrospective`) |
+| [runbooks/retro-cadence-deferrals.md](runbooks/retro-cadence-deferrals.md) | 🔴 회고 카덴스 이월 원장 — breach 중 회고 미진입 시 승인 기록 의무 (정책 8 진화 (6)) |
 | [runbooks/merge-verifier.md](runbooks/merge-verifier.md) | 2nd-LLM 머지 검증자 활성화 (운영 안전) |
 | [runbooks/rls-role-separation.md](runbooks/rls-role-separation.md) | RLS 앱 role 분리 운영 (owner-bypass 차단) |
 | [runbooks/ai-collaboration.md](runbooks/ai-collaboration.md) | 🔴 Claude ↔ Grok 협업 프로토콜 — **정책 19 단일 출처** (주장 트리거·A2 뮤테이션·소유 경계) |

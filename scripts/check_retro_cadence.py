@@ -26,6 +26,9 @@ from pathlib import Path
 RETRO_PR_THRESHOLD = 15
 
 _REPORTS_DIR = Path("docs/_archive/reports")
+# 카덴스 이월 원장 — breach 중 회고 미진입으로 계속하려면 여기에 승인 기록 의무 (정책 8 진화 (6)).
+# Cadence-deferral ledger — to continue past a breach without a retro, a deferral must be recorded here.
+_DEFERRALS = Path("docs/runbooks/retro-cadence-deferrals.md")
 # 정식 회고 파일명 = YYYY-MM-DD-...retrospective....md — 'retrospective' 미포함(감사·리뷰·기획안)은 제외.
 # 🔴 2026-07-17-grok-full-review.md 같은 리뷰를 회고로 오인하면 카덴스가 잘못 리셋된다(본 회고 P0 근본).
 # Formal-retro filename must contain 'retrospective'; audits/reviews/plans are excluded so a review
@@ -72,6 +75,67 @@ def count_merge_prs(subjects):
     """커밋 제목 목록에서 squash-merge PR (끝 (#NNNN)) 수 카운트.
     Count squash-merge PR subjects (those ending with (#NNNN))."""
     return sum(1 for s in subjects if _MERGE_PR.search(s))
+
+
+# 이월 원장 승인 셀이 비어있는 것으로 취급하는 placeholder — 이 값들은 '유효 이월 아님'.
+# Placeholder approval cells treated as empty — these do NOT count as a valid deferral (fail-closed).
+_EMPTY_APPROVAL = {"", "-", "—", "–", "tbd", "n/a", "없음"}
+
+
+def deferral_records(text):
+    """이월 원장 마크다운에서 **유효 이월 기록**만 구조적으로 추출 (순수 함수).
+
+    유효 조건 (guards.md 불변식 1 fail-closed — 산문·빈칸은 불충족):
+      (a) `|`-구분 4셀 이상 테이블 행
+      (b) 첫 셀이 `YYYY-MM-DD` (헤더·구분선·산문 언급 제외)
+      (c) 승인 셀(3번째)이 비어있지 않고 placeholder 도 아님
+
+    Parse only *valid* deferral records structurally (a prose mention of a date can't satisfy this —
+    it must be a pipe-delimited row whose first cell is a date and whose approval cell is non-empty).
+    Returns list of {date, breach, approval, target}.
+    """
+    records = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line.startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if len(cells) < 4:
+            continue
+        date_cell, breach_cell, approval_cell, target_cell = cells[0], cells[1], cells[2], cells[3]
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_cell):
+            continue  # 헤더/구분선/비-데이터 행 / header, separator, non-data rows
+        if approval_cell.lower() in _EMPTY_APPROVAL:
+            continue  # 승인 인용 없으면 유효 이월 아님 (fail-closed) / no approval quote → not valid
+        records.append(
+            {"date": date_cell, "breach": breach_cell, "approval": approval_cell, "target": target_cell}
+        )
+    return records
+
+
+def deferral_status(breached, newest_retro_filename, ledger_text):
+    """breach 상태에서 **현 window 이월 승인 기록**이 있는지 판정 → (has_record, message).
+
+    현 window = 이월 날짜가 직전 정식 회고 날짜보다 나중(회고 진입 시 window 리셋). breached 아니면
+    항상 (True, '') — 이월 개념 자체가 없다. 순수 함수(파일 I/O 없음) — 테스트 용이.
+    Whether a deferral covering the current window is on record; ('' message when not breached).
+    """
+    if not breached:
+        return True, ""
+    retro_d = retro_date(newest_retro_filename) or "0000-00-00"
+    # 이월 날짜 > 직전 회고 날짜 == 현 window 이월 (ISO 날짜는 문자열 비교로 정렬 정합).
+    current = [r for r in deferral_records(ledger_text) if r["date"] > retro_d]
+    if current:
+        r = current[-1]
+        return True, (
+            f"ℹ️  카덴스 이월 승인 기록됨 — {r['date']} · 목표 {r['target']} · "
+            f"승인: {r['approval'][:60]} / deferral recorded"
+        )
+    return False, (
+        "🔴 카덴스 이월 승인 기록 없음 — 회고 진입이 default. 이월하려면 "
+        "docs/runbooks/retro-cadence-deferrals.md 에 사용자 승인 인용 + 목표 세션 기록 의무 "
+        "(정책 8 진화 (6)). / breach without a recorded deferral — enter a retro or record approval."
+    )
 
 
 def evaluate(pr_count, threshold=RETRO_PR_THRESHOLD):
@@ -157,9 +221,15 @@ def main():
     # 🔴 breached 는 의도적으로 쓰지 않는다 — 이 도구는 **비차단 advisory** 라
     #   임계 초과여도 exit 0 이고, 판정은 배너를 읽은 Claude 가 한다.
     # Intentionally discarded: this tool is advisory (always exit 0); the banner is the signal.
-    _breached, message = evaluate(pr_count)
+    breached, message = evaluate(pr_count)
     print(f"직전 정식 회고 / last formal retro: {newest}")
     print(message)
+    # breach 중이면 이월 승인 기록 여부를 함께 보고 (정책 8 진화 (6) — 이월 결정의 관측 가능성).
+    # On breach, also report whether a deferral is on record (make the deferral decision observable).
+    if breached:
+        ledger_text = _DEFERRALS.read_text(encoding="utf-8") if _DEFERRALS.is_file() else ""
+        _has_record, deferral_msg = deferral_status(breached, newest, ledger_text)
+        print(deferral_msg)
     # 비차단 — breached 여도 exit 0 (Claude 가 배너 읽고 회고 진입 판정 / advisory).
     return 0
 
