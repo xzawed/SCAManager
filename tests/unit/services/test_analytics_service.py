@@ -192,7 +192,9 @@ class TestMovingAverage:
         """
         from src.services.analytics_service import moving_average
 
-        now = datetime.now(timezone.utc)
+        # now 는 시드 이후 시점 — 운영에서 trend check 는 분석 이후 실행되므로 created_at < now.
+        # (P1-6 상한 <= now 도입 후: 시드가 now 보다 미세하게 미래면 offset=0 행이 제외되던 artifact 봉인.)
+        now = datetime.now(timezone.utc) + timedelta(minutes=1)
 
         # 6개 분석 — 점수 60, 70, 80, 90, 75, 85
         # 6 analyses — scores 60, 70, 80, 90, 75, 85
@@ -212,7 +214,8 @@ class TestMovingAverage:
         """
         from src.services.analytics_service import moving_average
 
-        now = datetime.now(timezone.utc)
+        # now 는 시드 이후 시점 (P1-6 상한 도입 후 offset=0 행 제외 artifact 봉인 — 위 테스트 참조).
+        now = datetime.now(timezone.utc) + timedelta(minutes=1)
 
         # 윈도우(3일) 내 5개, 윈도우 밖(10일 전) 1개
         # 5 inside window (3 days), 1 outside (10 days ago)
@@ -228,6 +231,29 @@ class TestMovingAverage:
         # If 10 is included, the average drops significantly — it must not be included
         expected = round(sum(inside_scores) / len(inside_scores), 1)
         assert result == expected
+
+    def test_moving_average_excludes_records_after_injected_now(self, db, repo):
+        """🔴 P1-6 (Grok REAL): 주입된 now 이후(미래) 레코드는 제외 — as-of 윈도우 상한.
+
+        run_trend_check 가 prev_now(=_now-7d)를 주입해 직전 주 baseline 을 구할 때, 상한이
+        없으면 현재 주(prev_now 이후) 데이터가 baseline 을 오염시켜 실제 점수 하락을 놓친다.
+        now 이후 행이 평균에서 제외됨을 단언. (수정 되돌리면 20점 2개 오염으로 평균이 낮아져 fail.)
+        """
+        from src.services.analytics_service import moving_average
+
+        prev_now = datetime.now(timezone.utc) - timedelta(hours=168)  # 7일 전 = 직전 주 기준점
+
+        # 직전 주 윈도우 [prev_now-7d, prev_now] 내 5개 (score 80) — offset 180~220h
+        for oh in (180, 190, 200, 210, 220):
+            _make_analysis(db, repo.id, score=80, offset_hours=oh)
+        # prev_now 이후(현재 주) 낮은 점수 — 오염원, 상한으로 제외되어야 함 (offset 24·48h)
+        for oh in (24, 48):
+            _make_analysis(db, repo.id, score=20, offset_hours=oh)
+
+        result = moving_average(db, repo.id, window_days=7, min_samples=5, now=prev_now)
+
+        # 상한 有 → 직전 주 5개(80)만 = 80.0. 상한 無 → 20점 2개 오염으로 낮아짐.
+        assert result == 80.0
 
 
 # ---------------------------------------------------------------------------
