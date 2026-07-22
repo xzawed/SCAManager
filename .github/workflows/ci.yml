@@ -265,7 +265,7 @@ jobs:
           sudo apt-get install -y shellcheck cppcheck
 
       - name: Install Node.js (eslint)
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: "20"
 
