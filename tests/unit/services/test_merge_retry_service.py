@@ -238,6 +238,27 @@ class TestProcessPendingRetries:
         # Check claimed_at was reset to None
         assert row.claimed_at is None
 
+    async def test_no_token_row_at_max_attempts_abandons_not_loops(self, db_session):
+        """🔴 P1-11 (종합감사): 토큰 없는 행이 max_attempts 도달 시 무한 release 루프가 아니라 abandon.
+
+        소유자 GitHub 연결 해제 + 전역 토큰 없음 → 매 사이클 no_token release 로 return 하면
+        max_attempts cap 에 영영 도달 못 해 30초 간격 무한 재시도. cap 을 토큰 조회 前으로 올려
+        no_token 행도 소진 시 abandon. (수정 되돌리면 released=1·abandoned=0 으로 fail — 뮤테이션 실증.)
+        """
+        row = _seed_queue_row(db_session, attempts_count=30)  # == max_attempts=30
+
+        with patch(
+            "src.services.merge_retry_service._resolve_github_token",
+            return_value=None,
+        ):
+            result = await process_pending_retries(db_session, only_ids=[row.id])
+
+        # 🔴 abandon (released 아님) — cap 이 토큰 조회보다 먼저 걸린다
+        assert result["abandoned"] == 1
+        assert result["released"] == 0
+        db_session.refresh(row)
+        assert row.status == "abandoned"
+
     # C3: 단일 행 예상외 예외 격리 — 전체 배치 미중단
     async def test_unexpected_error_isolates_row_and_continues_batch(self, db_session):
         """🔴 C3: 한 행의 예상외 예외(ValueError 등)가 전체 배치를 중단하지 않고 격리된다.
