@@ -10,7 +10,7 @@ from src.scorer.calculator import ScoreResult
 from src.analyzer.io.static import StaticAnalysisResult
 from src.analyzer.io.ai_review import AiReviewResult
 from src.notifier._common import (
-    format_ref, get_all_issues, resolve_ai_summary, truncate_issue_msg, truncate_message,
+    format_ref, get_all_issues, resolve_ai_summary, truncate_html_message, truncate_issue_msg,
 )
 
 logger = logging.getLogger(__name__)
@@ -165,7 +165,9 @@ def _build_message(  # pylint: disable=too-many-positional-arguments,too-many-lo
             issues_text,
         ]
 
-    return truncate_message("\n".join(lines), TELEGRAM_MAX_MESSAGE_LENGTH)
+    # 🔴 HTML-safe 절단 (P1-8) — parse_mode=HTML 이므로 부분 엔티티/태그·미닫힌 태그를 남기면
+    #   Telegram 400 으로 알림 전량 소실. truncate_html_message 가 엔티티/태그 경계를 존중한다.
+    return truncate_html_message("\n".join(lines), TELEGRAM_MAX_MESSAGE_LENGTH)
 
 
 async def send_analysis_result(  # pylint: disable=too-many-arguments

@@ -1,6 +1,8 @@
 """notifier 모듈 공용 헬퍼 — 이슈 수집·메시지 포매팅·truncate."""
 from __future__ import annotations
 
+import re
+
 from src.constants import (
     COMMIT_SHA_DISPLAY_LENGTH,
     NOTIFIER_MESSAGE_TRUNCATE,
@@ -70,6 +72,51 @@ def truncate_message(text: str, max_length: int, suffix: str = "...") -> str:
 def truncate_issue_msg(msg: str) -> str:
     """이슈 메시지를 표준 표시 길이(NOTIFIER_MESSAGE_TRUNCATE)로 절단한다."""
     return msg[:NOTIFIER_MESSAGE_TRUNCATE]
+
+
+# Telegram HTML 태그 매칭 — parse_mode=HTML 은 self-closing 없음(모두 열고 닫음).
+# Telegram HTML tag matcher (parse_mode=HTML has no self-closing tags).
+_HTML_TAG_RE = re.compile(r"<(/?)([a-zA-Z][a-zA-Z0-9-]*)(?:\s[^>]*)?>")
+# 닫는 태그가 더해질 여유 — cut 을 이만큼 보수적으로 잡아 최종 길이 계약(≤ max)을 지킨다.
+# Reserve for appended closing tags so the final length stays within max_length.
+_HTML_CLOSE_RESERVE = 40
+
+
+def truncate_html_message(text: str, max_length: int, suffix: str = "…") -> str:
+    """Telegram HTML(parse_mode=HTML) **안전** 절단 — 부분 엔티티/태그·미닫힌 태그로 인한 400 방지.
+
+    plain 슬라이스(`text[:n]`)는 절단점이 (a) 이스케이프 엔티티(`&lt;`→`&l`), (b) 태그(`<b`),
+    (c) 미닫힌 태그(`<b>...` 뒤 `</b>` 없음)를 남겨 Telegram 이 400(parse error) 반환 → 알림
+    전량 소실(종합감사 P1-8). 절단 후: 끝의 미완결 엔티티/태그 제거 + 열린 태그를 스택 역순으로 닫음.
+    Truncate Telegram HTML safely: strip a trailing partial entity/tag and close any unclosed tags,
+    so a cut never yields a parse error that drops the whole notification.
+    """
+    if len(text) <= max_length:
+        return text
+    cut = max(max_length - len(suffix) - _HTML_CLOSE_RESERVE, 0)
+    out = text[:cut]
+    # 1) 끝의 미완결 엔티티(마지막 '&' 이후 ';' 없음) 제거
+    # 1) Drop a trailing incomplete entity (last '&' with no following ';')
+    amp = out.rfind("&")
+    if amp != -1 and ";" not in out[amp:]:
+        out = out[:amp]
+    # 2) 끝의 미완결 태그(마지막 '<' 이후 '>' 없음) 제거
+    # 2) Drop a trailing incomplete tag (last '<' with no following '>')
+    lt = out.rfind("<")
+    if lt != -1 and ">" not in out[lt:]:
+        out = out[:lt]
+    # 3) 미닫힌 태그 닫기 — 템플릿 HTML 은 well-formed 이므로 절단점의 열린 태그 = 스택 잔여
+    # 3) Close unclosed tags — template HTML is well-formed, so the open tags at the cut = the stack
+    stack: list[str] = []
+    for m in _HTML_TAG_RE.finditer(out):
+        closing, name = m.group(1), m.group(2).lower()
+        if closing:
+            if stack and stack[-1] == name:
+                stack.pop()
+        else:
+            stack.append(name)
+    out += "".join(f"</{n}>" for n in reversed(stack))
+    return (out + suffix)[:max_length]
 
 
 # GFM/CommonMark 활성 문자 — 링크/이미지/코드/강조/표/헤딩 인젝션 차단 대상
