@@ -897,7 +897,12 @@ const I18N = window._repoChartI18N = {
 // 사이클 144 Sprint 2 — 일괄 등록 버튼/토스트 i18n (#repoBulkPanel data-i18n-*)
 // Cycle 144 Sprint 2 — bulk register button/toast i18n (#repoBulkPanel data-i18n-*)
 const _i18nBulkPanel = document.getElementById('repoBulkPanel');
-const I18N_BULK = _i18nBulkPanel ? {
+// 🔴 repo 고유 전역(window._repoBulkI18N) 노출 — _initRepoBulk 가 **별도 <script> 블록**(L1215~)
+//   에 있어 이 블록의 const I18N_BULK 를 참조하면 ReferenceError(#933 chart 와 동형 twin, 종합감사
+//   P1-3). 전역으로 노출하고 소비처는 window 에서 읽는다.
+// Expose as a repo-scoped global — _initRepoBulk lives in a separate <script> block, so referencing
+//   this block's const would ReferenceError (twin of the #933 chart bug). Consumer reads the global.
+const I18N_BULK = window._repoBulkI18N = _i18nBulkPanel ? {
   bulkRegister: _i18nBulkPanel.dataset.i18nBulkRegister,
   bulkComplete: _i18nBulkPanel.dataset.i18nBulkComplete,
   // 사이클 145 Sprint 2 — Issue 모달 라벨/상태/버튼/오류 i18n
@@ -1216,6 +1221,10 @@ applyFilters();
 function _initRepoBulk() {
   var panel = document.getElementById('repoBulkPanel');
   if (!panel) return;
+  // 🔴 별도 블록의 const I18N_BULK 대신 repo 고유 전역에서 읽는다(ReferenceError 봉인, P1-3).
+  //   panel 이 있으면 위 블록이 window._repoBulkI18N 을 채웠으므로 || {} 는 방어적 폴백.
+  // Read the repo-scoped global instead of the other block's const (seals the ReferenceError).
+  var I18N_BULK = window._repoBulkI18N || {};
 
   var repoId   = Number(panel.dataset.repoId);
   var stateMap = {};
