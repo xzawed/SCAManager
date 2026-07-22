@@ -23,8 +23,11 @@ from scripts.check_noqa_sideeffect import _git as noqa_git
 # (이름, 호출 래퍼) — check_dual_import 는 가변인자, 나머지는 리스트 인자.
 # (name, caller) — check_dual_import takes varargs; the others take a list.
 _GIT_HELPERS = [
-    ("check_dead_code", lambda args: dead_code_git(args)),
-    ("check_noqa_sideeffect", lambda args: noqa_git(args)),
+    # dead_code_git·noqa_git 는 리스트 인자 하나 — bare 함수 참조로 충분(불필요 lambda 제거,
+    #   CodeQL py/unnecessary-lambda #550·#551 봉인). dual_import_git 만 *args 언팩이라 lambda 유지.
+    # The first two take one list arg → bare refs suffice; only dual_import needs the *args unpack.
+    ("check_dead_code", dead_code_git),
+    ("check_noqa_sideeffect", noqa_git),
     ("check_dual_import", lambda args: dual_import_git(*args)),
 ]
 
