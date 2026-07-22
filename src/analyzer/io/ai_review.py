@@ -291,13 +291,19 @@ def _parse_response(text: str) -> AiReviewResult:
         ai_score=direction,
         test_score=test,
         summary=str(data.get("summary", "")),
-        suggestions=[str(s) for s in data.get("suggestions", [])],
+        suggestions=[str(s) for s in (data.get("suggestions") or [])],
         commit_message_feedback=str(data.get("commit_message_feedback", "")),
         code_quality_feedback=str(data.get("code_quality_feedback", "")),
         security_feedback=str(data.get("security_feedback", "")),
         direction_feedback=str(data.get("direction_feedback", "")),
         test_feedback=str(data.get("test_feedback", "")),
-        file_feedbacks=list(data.get("file_feedbacks", [])),
+        # 🔴 null/비-dict 방어 — LLM 이 빈 컬렉션을 [] 대신 null 로, 원소를 dict 대신 str 로
+        #   emit 하는 유효-JSON 패턴에 대비. `.get(k, [])` 는 present-null 을 coerce 안 함(→ None
+        #   순회 TypeError → 정상 리뷰가 api_error·점수 NULL 로 붕괴). 비-dict file_feedback 은
+        #   소비처(github_comment)에서 .get() AttributeError 를 유발하므로 원천에서 걸러낸다.
+        # Null/non-dict guard — a valid-JSON null collection or str element must not collapse a
+        #   scored review into api_error, nor crash the PR-comment consumer downstream.
+        file_feedbacks=[ff for ff in (data.get("file_feedbacks") or []) if isinstance(ff, dict)],
     )
     # 🔴 점수 키 누락 = parse_error (hook _coerce_ai_scores keys_present 와 대칭 — PARITY GUARD).
     # data.get(key, DEFAULT) 는 키 부재 시 인플레 기본값(17/17→~89/B)을 ok=True 로 반환하므로,

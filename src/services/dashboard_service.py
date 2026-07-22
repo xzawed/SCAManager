@@ -864,11 +864,19 @@ def _parse_insight_cards(text: str) -> dict[str, list] | None:
     except (json.JSONDecodeError, ValueError):
         logger.warning("insight_narrative parse_error: %s", text[:200])
         return None
+    # 🔴 non-dict(스칼라/배열 JSON) + null 배열 방어 — sibling(repo_insight)·ai_review 와 대칭.
+    #   `.get(k, [])` 는 present-null 을 coerce 안 하므로 `for s in None` TypeError → 이 함수는
+    #   try 밖이라 미포착 → /dashboard?mode=insight 500. `or []` + isinstance 로 parse_error 카드 경로 유지.
+    # Non-dict/null guard (mirrors sibling repo_insight + ai_review) — a scalar-JSON or null array
+    #   must yield the graceful parse_error card (None), not a 500.
+    if not isinstance(data, dict):
+        logger.warning("insight_narrative non-dict payload: %s", str(data)[:200])
+        return None
     return {
-        "positive_highlights": [str(s) for s in data.get("positive_highlights", [])],
-        "focus_areas": [str(s) for s in data.get("focus_areas", [])],
-        "key_metrics": [m for m in data.get("key_metrics", []) if isinstance(m, dict)],
-        "next_actions": [str(s) for s in data.get("next_actions", [])],
+        "positive_highlights": [str(s) for s in (data.get("positive_highlights") or [])],
+        "focus_areas": [str(s) for s in (data.get("focus_areas") or [])],
+        "key_metrics": [m for m in (data.get("key_metrics") or []) if isinstance(m, dict)],
+        "next_actions": [str(s) for s in (data.get("next_actions") or [])],
     }
 
 
