@@ -145,3 +145,22 @@ def test_repo_detail_i18n_accessible_to_buildchart():
         "repo_detail.html: buildChart 가 고유 전역(window._repoChartI18N) 지역 참조 누락 → 스코프/충돌 "
         "회귀. onload race(I18N block 정의 전 호출) 시 graceful return 동반 필요"
     )
+
+
+def test_repo_bulk_i18n_exposed_as_repo_scoped_global():
+    """🔴 종합감사 P1-3 (#933 twin): I18N_BULK 를 repo 고유 전역으로 노출 + _initRepoBulk 지역 참조.
+
+    `const I18N_BULK`(repo_detail.html:900)은 별도 <script> 블록(:1215~)에 있는 `_initRepoBulk`
+    가 참조 시 ReferenceError → 등록 이슈가 있는 리포의 bulk 패널이 조용히 깨진다(gather 격리).
+    수정: (1) window._repoBulkI18N 노출 (2) _initRepoBulk 가 지역 var 로 그 전역을 읽는다.
+    """
+    src = _read("src/templates/repo_detail.html")
+    # (1) repo 고유 전역 노출 — _initRepoBulk(별도 block)가 접근
+    assert "window._repoBulkI18N" in src, (
+        "repo_detail.html: I18N_BULK 를 repo 고유 전역(window._repoBulkI18N)으로 미노출 → 별도 블록의 "
+        "_initRepoBulk 참조가 ReferenceError (bulk 패널 조용히 깨짐)"
+    )
+    # (2) _initRepoBulk 가 고유 전역을 지역 참조 (|| {} 방어 폴백)
+    assert "var I18N_BULK = window._repoBulkI18N" in src, (
+        "repo_detail.html: _initRepoBulk 가 고유 전역(window._repoBulkI18N) 지역 참조 누락 → 스코프 회귀"
+    )
