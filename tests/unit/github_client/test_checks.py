@@ -696,3 +696,35 @@ async def test_get_ci_status_legacy_fallback_when_no_check_runs():
     with patch("src.github_client.checks.get_http_client", return_value=mock_client):
         result = await get_ci_status(TOKEN, REPO, SHA)
     assert result == "passed"
+
+
+async def test_legacy_fallback_honors_required_contexts_ignores_aggregate():
+    """🔴 P1-9 (종합감사): 레거시 Commit Status fallback 이 required_contexts 만 고려 — 집계 state 무시.
+
+    필수 jenkins/build=success, 비-필수 coverage=failure → 집계 state=failure. required 만 보면
+    passed(mergeable). 이전엔 집계 state 로 'failed' → UNSTABLE_CI → mergeable PR 오abandon.
+    (수정 되돌리면 aggregate failure 로 'failed' → fail. 뮤테이션 실증.)
+    """
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(side_effect=[
+        _resp(200, {"check_runs": [], "total_count": 0}),
+        _resp(200, {"state": "failure", "statuses": [
+            {"context": "jenkins/build", "state": "success"},
+            {"context": "coverage/coveralls", "state": "failure"},
+        ]}),
+    ])
+    with patch("src.github_client.checks.get_http_client", return_value=mock_client):
+        result = await get_ci_status(TOKEN, REPO, SHA, required_contexts={"jenkins/build"})
+    assert result == "passed"
+
+
+async def test_legacy_fallback_required_context_missing_is_running():
+    """필수 컨텍스트 status 가 아직 안 나타나면 'running'(미확정) — terminal 오판 방지."""
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(side_effect=[
+        _resp(200, {"check_runs": [], "total_count": 0}),
+        _resp(200, {"state": "success", "statuses": [{"context": "other/status", "state": "success"}]}),
+    ])
+    with patch("src.github_client.checks.get_http_client", return_value=mock_client):
+        result = await get_ci_status(TOKEN, REPO, SHA, required_contexts={"jenkins/build"})
+    assert result == "running"
