@@ -132,6 +132,12 @@ def _file_feedback_lines(result: dict, language: str = "en") -> list[str]:
         return []
     lines = ["", get_text("notifier.github_pr_comment.file_feedback_header", language)]
     for ff in result["file_feedbacks"]:
+        # 🔴 비-dict 원소 방어 — 유효 JSON 이지만 file_feedbacks 가 str 리스트면 .get() 이
+        #   AttributeError → PR 코멘트 태스크가 조용히 소실(_send_notifications gather 격리). 건너뛴다.
+        # Non-dict element guard — a valid-JSON str element would AttributeError and silently drop
+        #   the PR comment; skip it. (ai_review 원천 필터와 belt+suspenders.)
+        if not isinstance(ff, dict):
+            continue
         lines.append(f"#### `{ff.get('file', '?')}`")
         for issue in ff.get("issues", []):
             lines.append(f"- {issue}")
