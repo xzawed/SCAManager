@@ -188,6 +188,45 @@ async def test_scan_all_repos_rollback_on_repo_error(monkeypatch):
     assert fake_db.rollback.call_count == 2
 
 
+@pytest.mark.asyncio
+async def test_scan_all_repos_resolves_owner_token(monkeypatch):
+    """🔴 P1-4 (Grok REAL): scan_all_repos 가 repo 소유자를 resolve 해 scan_repo_alerts(user=owner)
+    로 전달 — 소유자 private 리포가 전역 토큰만으로 403 silent skip 되지 않도록(정책 14).
+
+    값 단언: mock 호출 사실이 아니라 실제 전달된 user 가 resolve 된 owner.
+    """
+    monkeypatch.delenv("SECURITY_AUTO_PROCESS_DISABLED", raising=False)
+    fake_db = MagicMock()
+    owner = MagicMock(id=5)
+    repo = MagicMock(full_name="owner/private", id=1, user_id=5)
+    fake_db.query.return_value.all.return_value = [repo]
+    with patch.object(security_scan_service.user_repo, "find_by_id", return_value=owner) as mock_find, \
+         patch.object(
+             security_scan_service, "scan_repo_alerts",
+             new=AsyncMock(return_value={"code_scanning": 0, "secret_scanning": 0, "skipped": 0}),
+         ) as mock_scan:
+        await security_scan_service.scan_all_repos(fake_db)
+    mock_find.assert_called_once_with(fake_db, 5)
+    assert mock_scan.await_args.kwargs["user"] is owner
+
+
+@pytest.mark.asyncio
+async def test_scan_all_repos_null_owner_passes_user_none(monkeypatch):
+    """소유자 없는(user_id=None) legacy 리포는 owner resolve 없이 user=None (전역 토큰 fallback)."""
+    monkeypatch.delenv("SECURITY_AUTO_PROCESS_DISABLED", raising=False)
+    fake_db = MagicMock()
+    repo = MagicMock(full_name="legacy/repo", id=1, user_id=None)
+    fake_db.query.return_value.all.return_value = [repo]
+    with patch.object(security_scan_service.user_repo, "find_by_id") as mock_find, \
+         patch.object(
+             security_scan_service, "scan_repo_alerts",
+             new=AsyncMock(return_value={"code_scanning": 0, "secret_scanning": 0, "skipped": 0}),
+         ) as mock_scan:
+        await security_scan_service.scan_all_repos(fake_db)
+    mock_find.assert_not_called()
+    assert mock_scan.await_args.kwargs["user"] is None
+
+
 def test_resolve_token_user_plaintext_none_falls_back_to_env(monkeypatch):
     """user.plaintext_token=None 이어도 GITHUB_TOKEN 환경변수 fallback 보장.
     Falls back to GITHUB_TOKEN env when user.plaintext_token is None, even if github_access_token exists."""

@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from src.constants import GITHUB_API
 from src.models.repository import Repository
-from src.repositories import security_alert_log_repo
+from src.repositories import security_alert_log_repo, user_repo
 from src.shared.feature_kill_switch import is_disabled
 from src.shared.http_client import get_http_client
 from src.shared.log_safety import sanitize_for_log
@@ -192,7 +192,14 @@ async def scan_all_repos(db: Session) -> dict[str, int]:
     for repo in repos:
         totals["repos"] += 1
         try:
-            counts = await scan_repo_alerts(db, repo)
+            # 🔴 소유자 토큰 우선 — 전역 GITHUB_TOKEN 만 쓰면 소유자 private 리포는 403/404 →
+            #   silent skip 으로 그 리포의 Code/Secret Scanning alert 가 영영 표면화되지 않는다
+            #   (정책 14 무력화, 종합감사 P1-4·Grok REAL). merge_retry._resolve_github_token 대칭 —
+            #   _resolve_token(user) 가 owner 토큰 우선 + 전역 fallback 이므로 owner 만 넘기면 된다.
+            # Resolve the repo owner so scan_repo_alerts uses the owner's token first (global fallback).
+            #   Without it, an owner's private repo 403/404-skips and its scanning alerts never surface.
+            owner = user_repo.find_by_id(db, repo.user_id) if repo.user_id is not None else None
+            counts = await scan_repo_alerts(db, repo, user=owner)
             totals["code_scanning"] += counts["code_scanning"]
             totals["secret_scanning"] += counts["secret_scanning"]
             totals["skipped"] += counts["skipped"]
