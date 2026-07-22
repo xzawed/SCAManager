@@ -110,6 +110,14 @@ def moving_average(
         .where(Analysis.repo_id == repo_id)
         .where(Analysis.score.isnot(None))
         .where(Analysis.created_at >= since)
+        # 🔴 상한 필수 — 이 함수는 `now` 를 주입받는데 상한이 없으면 as-of 윈도우를 표현할 수
+        #   없다(종합감사 P1-6). run_trend_check 가 prev_now(=_now-7d)를 주입해 직전 주 baseline 을
+        #   구할 때, 상한이 없으면 prev_now-7d 부터 **실제 현재까지** 모든 행을 포함해 현재 주
+        #   데이터가 baseline 을 오염 → 실제 점수 하락이 희석돼 알림이 조용히 누락된다.
+        # Upper bound required — without it, injecting now=prev_now cannot express a historical
+        #   window: the baseline pulls in current-week rows and dilutes a real decline. (weekly_summary
+        #   week_end clamp 대칭.)
+        .where(Analysis.created_at <= _now)
         .order_by(Analysis.created_at.desc())
     ).all()
 
