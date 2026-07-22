@@ -151,23 +151,16 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
     Process a single retry row (Cycle 93 PR-B — extracted from process_pending_retries).
     counts dict 직접 mutate. 호출자 (process_pending_retries) 가 try/except wrap.
     """
-    # ── a. GitHub 토큰 조회 ────────────────────────────────────────
-    token = _resolve_github_token(db, row.repo_full_name)
-    if token is None:
-        # 토큰 없음 — 30초 후 재시도 대기로 복귀
-        # No token — release back to retry queue after 30s
-        _now_naive = now.replace(tzinfo=None) + timedelta(seconds=30)
-        merge_retry_repo.release_claim(
-            db, row.id, next_retry_at=_now_naive, last_failure_reason="no_token",
-        )
-        counts["released"] += 1
-        return
-
-    # ── b-0. 최대 시도 횟수 초과 ───────────────────────────────────
+    # ── a-0. 최대 시도 횟수 초과 (🔴 토큰 조회 前 — no_token 무한루프 방지, 종합감사 P1-11) ──
     # claim 시 attempts_count 가 선증가하므로(merge_retry_repo.claim_batch) 이 검사는 merge_pr 호출 이전 단계다.
     # 따라서 max_attempts=N 설정 시 실제 머지 시도는 N-1회 — 의도된 fail-safe(시도 횟수가 적은 보수적 방향).
-    # attempts_count is pre-incremented at claim time, so this check runs BEFORE merge_pr →
-    # with max_attempts=N the actual merge attempts are N-1 (intended fail-safe: errs toward fewer tries).
+    # 🔴 이 검사는 **토큰 조회보다 먼저** 와야 한다: 소유자가 GitHub 연결 해제/PAT 로테이션 하고
+    # 전역 GITHUB_TOKEN 도 없으면, 아래 no_token release 가 매번 return 해 이 cap 에 영영 도달 못 해
+    # 30초 간격 무한 재시도가 된다(attempts_count 는 claim 마다 증가하나 소진 판정 미도달). cap 을
+    # 위로 올리면 no_token 행도 max_attempts 후 abandon 된다.
+    # attempts_count is pre-incremented at claim time (runs BEFORE merge_pr, so N=N-1 tries — fail-safe).
+    # 🔴 This cap MUST precede token resolution: a persistently token-less repo would otherwise return at
+    # the no_token release every cycle and never reach the cap → infinite 30s retry loop.
     if row.attempts_count >= row.max_attempts:
         # 🔴 종결 전 MergeAttempt 미러링 — merge_retry_queue 7일 GC(#1075) 후에도 최종 결과 이력
         # 보존(회고 P2#17). cfg 미조회 시점이라 threshold 는 enqueue 스냅샷 사용(이 경로는 live-merge
@@ -180,6 +173,18 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
         )
         merge_retry_repo.mark_abandoned(db, row.id, reason="max_attempts_exceeded")
         counts["abandoned"] += 1
+        return
+
+    # ── a. GitHub 토큰 조회 ────────────────────────────────────────
+    token = _resolve_github_token(db, row.repo_full_name)
+    if token is None:
+        # 토큰 없음 — 30초 후 재시도 대기로 복귀 (위 a-0 cap 이 무한루프를 종결시킨다)
+        # No token — release back to retry queue after 30s (the a-0 cap above bounds the loop)
+        _now_naive = now.replace(tzinfo=None) + timedelta(seconds=30)
+        merge_retry_repo.release_claim(
+            db, row.id, next_retry_at=_now_naive, last_failure_reason="no_token",
+        )
+        counts["released"] += 1
         return
 
     # ── b. 설정 재확인 (D5) ────────────────────────────────────────
