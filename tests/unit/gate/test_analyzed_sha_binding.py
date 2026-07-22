@@ -464,3 +464,57 @@ async def test_run_gate_check_without_commit_sha_yields_none_context():
 
         mock_execute.assert_awaited_once()
         assert mock_execute.await_args.args[0].commit_sha is None
+
+
+# ---------------------------------------------------------------------------
+# 계약 10: 가드 통과 후 force-push — merge_pr 이 드리프트 head 를 관측해도 큐는 analyzed SHA 결속
+# Contract 10: post-guard force-push — merge_pr observes drifted head, queue still binds to A
+# (종합감사 P1-1, Grok cross-verify REAL)
+# ---------------------------------------------------------------------------
+
+async def test_enqueue_binds_analyzed_sha_when_merge_observes_drifted_head():
+    """🔴 P1-1: 1-1 가드 통과(head==A) 직후 force-push 로 merge_pr 이 observed_sha=B 를 관측 →
+    재시도 큐 commit_sha 는 **analyzed_sha(A)** 여야 한다(observed B 아님).
+
+    B 로 결속하면 워커의 `head != row.commit_sha` 가 head==B==B 로 드리프트를 놓쳐 미검증 B 를
+    A 의 점수로 머지한다(engine.py:227 `effective_sha = observed_sha or merge_sha` 결함).
+    값 단언 — mock 호출 사실이 아니라 실제 전달된 commit_sha.
+    """
+    mock_db = MagicMock()
+    config = _config()
+
+    with patch("src.gate.engine.settings") as mock_settings, \
+         patch("src.gate.engine.SessionLocal", _mock_session_local(mock_db)), \
+         patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge, \
+         patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state, \
+         patch("src.gate.engine.get_pr_base_ref", new_callable=AsyncMock, return_value="main"), \
+         patch("src.gate.engine.get_required_check_contexts", new_callable=AsyncMock) as mock_required, \
+         patch("src.gate.engine.get_ci_status", new_callable=AsyncMock) as mock_ci, \
+         patch("src.gate.engine.merge_retry_repo") as mock_repo, \
+         patch("src.gate.engine._notify_merge_deferred", new_callable=AsyncMock), \
+         patch("src.gate.engine.log_merge_attempt"):
+
+        mock_settings.merge_retry_enabled = True
+        mock_settings.merge_retry_max_attempts = 30
+        mock_settings.merge_retry_initial_backoff_seconds = 60
+        mock_settings.telegram_chat_id = "-100123"
+        # 1-1 가드 시점: head == analyzed (A) → 가드 통과 (드리프트는 이 이후에 발생)
+        mock_state.return_value = ("clean", _ANALYZED_SHA)
+        # 그 직후 force-push → merge_pr 내부 조회가 드리프트 head B 관측 + retriable 실패
+        mock_merge.return_value = MergeOutcome(
+            ok=False, reason="unstable_ci: state=unstable",
+            head_sha=_DRIFTED_HEAD_SHA, path=PATH_REST_FALLBACK,
+        )
+        mock_required.return_value = {"ci/test"}
+        mock_ci.return_value = "running"
+        mock_repo.enqueue_or_bump.return_value = _make_enqueue_result(is_first_deferral=True)
+
+        await _run_auto_merge(
+            config, "ghp_token", "owner/repo", 42, 95,
+            analysis_id=1,
+            analyzed_sha=_ANALYZED_SHA,
+        )
+
+        # 🔴 값 단언: 큐는 analyzed_sha(A) 로 결속 — observed drifted B 가 아님
+        mock_repo.enqueue_or_bump.assert_called_once()
+        assert mock_repo.enqueue_or_bump.call_args.kwargs["commit_sha"] == _ANALYZED_SHA

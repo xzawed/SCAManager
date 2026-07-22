@@ -222,9 +222,17 @@ async def _run_auto_merge_retry(  # pylint: disable=too-many-arguments,too-many-
     )
     ok, reason, observed_sha = outcome.ok, outcome.reason, outcome.head_sha
 
-    # observed_sha (merge_pr 내부 조회) 우선 사용, 없으면 결속된 merge_sha
-    # Prefer observed_sha (from merge_pr's internal call), fall back to the bound merge_sha
-    effective_sha = observed_sha or merge_sha
+    # 🔴 재시도 큐 결속은 **분석된 SHA(A)** 우선 — observed_sha 아님 (종합감사 P1-1, Grok REAL).
+    # 1-1 가드 통과 후 force-push 로 head 가 B 로 드리프트하면 merge_pr 내부 조회가 observed_sha=B
+    # 를 관측할 수 있다. 큐를 B 로 결속하면 재시도 워커의 `head != row.commit_sha` 검사가
+    # head==B==B 로 드리프트를 놓쳐 미검증 B 를 A 의 점수로 머지한다. analyzed_sha 로 결속하면
+    # 이후 head 가 B 로 움직여도 워커가 `B != A` 로 drift 를 잡아 abandon → fail-closed 유지.
+    # analyzed_sha 미상일 때만 observed_sha/merge_sha 로 폴백(기존 동작 보존).
+    # Bind the retry queue to the ANALYZED sha (A), not the observed one: a force-push after the
+    # 1-1 guard can make merge_pr observe head=B; binding to B would let the worker's drift check
+    # (head != row.commit_sha) miss it and merge unverified B under A's score. Binding to A means
+    # a later drift to B is caught by the worker (B != A → abandon). Fall back only when A unknown.
+    effective_sha = analyzed_sha or observed_sha or merge_sha
 
     # 3. 성공 — 기록 후 반환 (Phase 3 PR-B1: path 기반 state 라벨링)
     # 3. Success — log and return (Phase 3 PR-B1: state derived from path)
