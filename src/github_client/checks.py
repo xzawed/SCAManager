@@ -145,8 +145,34 @@ async def get_ci_status(
     if not statuses:
         return "unknown"
 
+    # 🔴 required_contexts 필터 (종합감사 P1-9) — 레거시 Commit Status fallback 도 Check Runs 와
+    #   동일하게 **필수 컨텍스트만** 고려한다. 집계 `state` 는 비-필수 status(coverage/coveralls 등)의
+    #   실패까지 반영하므로, 필수 체크(jenkins/build 등)는 통과했는데 비-필수가 실패하면 mergeable
+    #   PR 이 UNSTABLE_CI → 재시도 → terminal 로 오abandon 된다.
+    # Legacy fallback must honor required_contexts too: the aggregate `state` folds in non-required
+    #   status failures, so a passing required check + failing non-required one abandons a mergeable PR.
+    if required_contexts:
+        return _legacy_required_ci_status(statuses, required_contexts)
+
     state = legacy_data.get("state", "")
     return _legacy_state_to_ci_status(state)
+
+
+def _legacy_required_ci_status(statuses: list[dict], required_contexts: set[str]) -> str:
+    """필수 컨텍스트로 필터한 개별 commit status 에서 CI 상태 판별 — 집계 state 대신 사용.
+
+    Classify CI status from the required-context subset of individual commit statuses,
+    not the aggregate `state`. 필수 status 미도착 = 'running'(미확정, terminal 오판 방지).
+    """
+    required = [s for s in statuses if s.get("context") in required_contexts]
+    if not required:
+        return "running"  # 필수 컨텍스트 status 가 아직 안 나타남 → 미확정
+    states = [s.get("state", "") for s in required]
+    if any(st == "pending" for st in states):
+        return "running"
+    if all(st == "success" for st in states):
+        return "passed"
+    return "failed"
 
 
 def _classify_check_runs(check_runs: list[dict]) -> str:
