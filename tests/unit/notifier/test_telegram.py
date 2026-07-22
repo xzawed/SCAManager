@@ -38,7 +38,11 @@ def _make_ai(summary=""):
 # ---------------------------------------------------------------------------
 
 def test_build_message_truncated_when_over_limit():
-    """메시지가 4096자를 초과하면 4096자로 절단하고 '...'로 끝나야 한다."""
+    """메시지가 4096자를 초과하면 4096자 이내로 절단하고 '…'로 끝나야 한다.
+
+    P1-8: HTML-safe 절단(truncate_html_message)으로 전환 — 부분 엔티티/태그·미닫힌 태그 방지 위해
+    닫는-태그 여유(reserve)를 두므로 정확히 max 가 아니라 **max 이내**, suffix 는 '…'.
+    """
     # 긴 summary를 넣어 강제로 초과
     long_summary = "A" * 5000
     msg = _build_message(
@@ -49,8 +53,8 @@ def test_build_message_truncated_when_over_limit():
         pr_number=None,
         ai_review=_make_ai(summary=long_summary),
     )
-    assert len(msg) == _MAX
-    assert msg.endswith("...")
+    assert len(msg) <= _MAX
+    assert msg.endswith("…")
 
 
 def test_build_message_not_truncated_when_under_limit():
@@ -86,8 +90,8 @@ def test_build_message_exactly_at_limit_not_truncated():
         assert len(short_msg) <= _MAX
 
 
-def test_build_message_truncated_length_is_exactly_max():
-    """절단된 메시지의 길이는 정확히 4096이어야 한다."""
+def test_build_message_truncated_length_within_max():
+    """절단된 메시지의 길이는 4096 이내여야 한다 (HTML-safe reserve 로 정확히 max 는 아님, P1-8)."""
     long_summary = "B" * 6000
     msg = _build_message(
         repo_name="owner/repo",
@@ -97,7 +101,7 @@ def test_build_message_truncated_length_is_exactly_max():
         pr_number=None,
         ai_review=_make_ai(summary=long_summary),
     )
-    assert len(msg) == _MAX
+    assert len(msg) <= _MAX
 
 
 # ---------------------------------------------------------------------------
