@@ -35,6 +35,30 @@ _HEADERS = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "20
 # (repo_full_name, branch) → (contexts_set, cached_at_timestamp)
 _required_contexts_cache: dict[tuple[str, str], tuple[set[str], float]] = {}
 _REQUIRED_CONTEXTS_TTL = 300  # seconds
+# 🔴 엔트리 상한 (종합감사 P2, services.md 메모리 캐시 상한 규약) — 상한 없이 (repo, branch) 쌍마다
+#   무한 누적하면 프로세스 수명 동안 메모리가 단조 증가한다(TTL 은 신선도만 관리·삭제 안 함).
+#   webhook/_helpers._store_secret 미러 — 상한 초과 시 만료분 정리 → 그래도 상한이면 최고령 1건 evict.
+# Entry cap (mirrors _store_secret): without it, each (repo, branch) accumulates for the process
+#   lifetime since TTL only governs freshness, not deletion.
+_REQUIRED_CONTEXTS_CACHE_MAX = 2048
+
+
+def _store_required_contexts(cache_key: tuple[str, str], contexts: set[str], now: float) -> None:
+    """필수 컨텍스트 캐시에 저장하되 엔트리 상한을 강제한다.
+    Store into the required-contexts cache while enforcing the entry cap.
+
+    상한 초과 시: (1) 만료된 엔트리 정리 → (2) 여전히 상한이면 가장 오래된(=최고령) 1건 evict.
+    On overflow: purge expired entries, then evict the oldest cached one if still at the cap.
+    """
+    if (len(_required_contexts_cache) >= _REQUIRED_CONTEXTS_CACHE_MAX
+            and cache_key not in _required_contexts_cache):
+        for key in [k for k, (_, at) in _required_contexts_cache.items()
+                    if now - at >= _REQUIRED_CONTEXTS_TTL]:
+            del _required_contexts_cache[key]
+        if len(_required_contexts_cache) >= _REQUIRED_CONTEXTS_CACHE_MAX:
+            oldest = min(_required_contexts_cache, key=lambda k: _required_contexts_cache[k][1])
+            del _required_contexts_cache[oldest]
+    _required_contexts_cache[cache_key] = (contexts, now)
 
 
 def _auth_headers(token: str) -> dict:
@@ -311,6 +335,6 @@ async def get_required_check_contexts(
         )
         contexts = set()
 
-    # 결과 캐시 저장 / Store result in cache
-    _required_contexts_cache[cache_key] = (contexts, now)
+    # 결과 캐시 저장 (엔트리 상한 강제) / Store result in cache (entry cap enforced)
+    _store_required_contexts(cache_key, contexts, now)
     return contexts
