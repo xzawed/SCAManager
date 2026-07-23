@@ -26,15 +26,36 @@ import sys
 # Extract module from an added `+from x import ...` line in `git diff -U0` (excludes `+++` header).
 _ADDED_FROM_IMPORT = re.compile(r"^\+\s*from\s+([\w.]+)\s+import\b")
 
+# 🔴 역방향 (2026-07-23 회고 P1-A): ADDED 된 plain `import X` / `import X as Y` 에서 모듈명 추출.
+#   `+from ...` 은 매치 안 됨(`import` 로 시작해야 함). `import a, b` 는 첫 모듈만(희소 케이스).
+# Reverse direction: extract module from an added plain `+import X` / `+import X as Y` line.
+_ADDED_PLAIN_IMPORT = re.compile(r"^\+\s*import\s+([\w.]+)(?:\s+as\s+\w+)?\s*(?:#.*)?$")
+
 
 def parse_added_from_modules(diff_text: str) -> set[str]:
     """diff -U0 텍스트에서 ADDED 된 `from <mod> import` 의 <mod> 집합 반환 (순수 함수).
     Return the set of <mod> for `from <mod> import` lines added in a `git diff -U0` text."""
+    return _parse_added(diff_text, _ADDED_FROM_IMPORT)
+
+
+def parse_added_plain_modules(diff_text: str) -> set[str]:
+    """diff -U0 텍스트에서 ADDED 된 plain `import <mod>`(`as` 포함) 의 <mod> 집합 반환 (순수 함수).
+    Return the set of <mod> for plain `import <mod>` lines added in a `git diff -U0` text.
+
+    🔴 #1196 자초 CodeQL #560 이 정확히 이 방향(신규 `import X as` + 기존 `from X import`)으로
+    통과했다 — 단방향 가드의 사각(2026-07-23 회고 P1-A). Sealed the reverse-direction blind spot.
+    """
+    return _parse_added(diff_text, _ADDED_PLAIN_IMPORT)
+
+
+def _parse_added(diff_text: str, pattern: "re.Pattern[str]") -> set[str]:
+    """ADDED 라인에서 정규식 그룹1(모듈명) 집합 추출 — `+++` 파일 헤더 제외 (공용 순수 헬퍼).
+    Extract group-1 (module) from added lines matching pattern, excluding the `+++` file header."""
     mods: set[str] = set()
     for line in diff_text.splitlines():
         if line.startswith("+++"):  # diff 파일 헤더 — 스킵 / diff file header — skip
             continue
-        match = _ADDED_FROM_IMPORT.match(line)
+        match = pattern.match(line)
         if match:
             mods.add(match.group(1))
     return mods
@@ -49,14 +70,32 @@ def content_has_plain_import(content: str, module: str) -> bool:
     return bool(pattern.search(content))
 
 
+def content_has_from_import(content: str, module: str) -> bool:
+    """파일 내용에 `from <module> import ...` 존재 여부 (순수 함수 — 역방향 검사용).
+    Whether the content has a `from <module> import ...` statement (for the reverse direction)."""
+    pattern = re.compile(rf"^\s*from\s+{re.escape(module)}\s+import\b", re.MULTILINE)
+    return bool(pattern.search(content))
+
+
 def find_violations_for_file(diff_text: str, head_content: str) -> list[str]:
-    """한 파일의 diff + 최종 내용에서 신규 이중 import 를 유발하는 모듈 목록 (순수 함수).
-    Modules that introduce a new dual-import for one file (added `from`, coexisting plain `import`)."""
-    return sorted(
-        mod
-        for mod in parse_added_from_modules(diff_text)
+    """한 파일의 diff + 최종 내용에서 신규 이중 import 를 유발하는 모듈 목록 (순수 함수, **양방향**).
+    Modules that introduce a new dual-import for one file — checks BOTH directions:
+
+    - (정방향) ADDED `from X import` + 기존 plain `import X`  (#1021/#1023 클래스)
+    - (역방향) ADDED plain `import X`/`import X as` + 기존 `from X import`  (#1196 클래스, 회고 P1-A)
+
+    두 방향 모두 CodeQL py/import-and-import-from 을 유발하므로 대칭 검사한다.
+    Both directions trigger CodeQL py/import-and-import-from, so the guard is now symmetric.
+    """
+    forward = {
+        mod for mod in parse_added_from_modules(diff_text)
         if content_has_plain_import(head_content, mod)
-    )
+    }
+    reverse = {
+        mod for mod in parse_added_plain_modules(diff_text)
+        if content_has_from_import(head_content, mod)
+    }
+    return sorted(forward | reverse)
 
 
 def _git(*args: str) -> str:
@@ -120,8 +159,8 @@ def main(argv: list[str]) -> int:
         print("🔴 New dual-import detected (self-inflicted CodeQL py/import-and-import-from risk):")
         for path, mod in violations:
             print(
-                f"  {path}: 신규 `from {mod} import ...` 가 기존 `import {mod}` 와 공존 "
-                f"→ 하나로 통일 (testing.md '모듈 패치 시 이중 import 회피 — string-path 우선')"
+                f"  {path}: 신규 import 가 `import {mod}` ↔ `from {mod} import ...` 이중 형태로 "
+                f"공존 → 하나로 통일 (testing.md '모듈 패치 시 이중 import 회피 — string-path 우선')"
             )
         return 1
     print("신규 이중 import 없음 — OK / no new dual-import — OK")

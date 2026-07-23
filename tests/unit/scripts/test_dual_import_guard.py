@@ -16,9 +16,11 @@ from pathlib import Path
 import yaml
 
 from scripts.check_dual_import import (
+    content_has_from_import,
     content_has_plain_import,
     find_violations_for_file,
     parse_added_from_modules,
+    parse_added_plain_modules,
 )
 
 _ROOT = Path(__file__).resolve().parents[3]
@@ -94,6 +96,51 @@ def test_find_violations_ignores_added_from_without_coexisting_import():
     """신규 from-import 만 있고 plain import 공존 안 하면 이중 import 아님 → 미검출."""
     diff = "+++ b/tests/unit/test_x.py\n+from src.config import Settings\n"
     head = "from src.config import Settings\n"
+    assert find_violations_for_file(diff, head) == []
+
+
+# ── 🔴 역방향 (2026-07-23 회고 P1-A) — #1196 자초 CodeQL #560 재현 봉인 ────
+# Reverse direction — seals the #1196 self-inflicted CodeQL #560 blind spot
+
+
+def test_parse_added_plain_modules_extracts_plain_and_alias():
+    """ADDED `+import X` / `+import X as Y` 에서 모듈명 추출 — `+from ...` 은 미추출."""
+    diff = (
+        "+++ b/tests/unit/api/test_hook.py\n"
+        "+import src.api.hook as _hook_module\n"   # #1196 실제 라인 / actual #1196 line
+        "+import src.config\n"
+        "+from src.other import kept\n"            # from-import — 이 함수 대상 아님
+        " import src.context as ctx\n"            # 문맥(공백) — 미추출
+    )
+    assert parse_added_plain_modules(diff) == {"src.api.hook", "src.config"}
+
+
+def test_content_has_from_import_matches_and_no_false_on_plain():
+    """`from X import ...` 존재 검출 + `import X`(plain)은 오검출 안 함."""
+    assert content_has_from_import("from src.api.hook import _coerce_raw_score\n", "src.api.hook")
+    assert content_has_from_import("    from src.x import y  # 함수-local\n", "src.x")  # 들여쓰기
+    assert not content_has_from_import("import src.api.hook as h\n", "src.api.hook")
+
+
+def test_find_violations_flags_1196_reverse_direction():
+    """🔴 #1196 재현: 기존 `from src.api.hook import _coerce_raw_score`(함수-local) + 신규
+    top-level `import src.api.hook as _hook_module` → 역방향 이중 import 위반 검출.
+    이 방향이 단방향 가드의 사각이었고 CodeQL #560 을 자초했다(회고 P1-A).
+    """
+    diff = "+++ b/tests/unit/api/test_hook.py\n+import src.api.hook as _hook_module\n"
+    head = (
+        "import src.api.hook as _hook_module\n"
+        "def test_x():\n"
+        "    from src.api.hook import _coerce_raw_score\n"  # 함수-local from-import (실제 #1196)
+        "    return _coerce_raw_score\n"
+    )
+    assert find_violations_for_file(diff, head) == ["src.api.hook"]
+
+
+def test_find_violations_reverse_ignored_without_coexisting_from():
+    """신규 plain import 만 있고 from-import 공존 안 하면 미검출 (역방향 부정통제)."""
+    diff = "+++ b/tests/unit/test_x.py\n+import src.foo as f\n"
+    head = "import src.foo as f\nx = 1\n"
     assert find_violations_for_file(diff, head) == []
 
 
