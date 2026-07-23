@@ -87,6 +87,21 @@ async def _fetch_alerts(
             sanitize_for_log(repo_full_name), type(exc).__name__,
         )
         return None
+    # 🔴 403 rate-limit ≠ GHAS 비활성 (종합감사 P2) — 둘 다 403 이라 구별 없이 "GHAS off" 로
+    #   silent skip 하면, rate-limit 시 보안 alert 을 조용히 0 으로 보고한다(관측 부재). rate-limit
+    #   신호(X-RateLimit-Remaining=0 또는 Retry-After)면 WARNING 으로 표면화 — 스캔 미수행이지
+    #   "alert 0" 이 아님을 운영자가 인지하게 한다.
+    # A 403 rate-limit is not GHAS-off — surface it as WARNING so a rate-limited scan is not
+    #   silently reported as "0 alerts".
+    if resp.status_code == 403 and (
+        resp.headers.get("X-RateLimit-Remaining") == "0" or resp.headers.get("Retry-After")
+    ):
+        logger.warning(
+            "security_scan: GitHub rate-limited repo=%s (alerts NOT scanned this cycle — retry pending, "
+            "'0 alerts' 로 오인 금지)",
+            sanitize_for_log(repo_full_name),
+        )
+        return None
     if resp.status_code in (403, 404):
         # GHAS 비활성 (private repo + Advanced Security off) — silent skip
         # GHAS inactive (private repo + Advanced Security off) — silent skip
