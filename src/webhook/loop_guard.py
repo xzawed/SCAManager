@@ -13,6 +13,13 @@ from src.constants import BOT_LOGIN_WHITELIST, MAX_BOT_EVENTS_PER_HOUR, SKIP_CI_
 # Sliding window size in seconds — 1 hour
 _WINDOW_SECONDS: int = 3600
 
+# 🔴 추적 리포 키 상한 (종합감사 P2, services.md 메모리 캐시 상한 규약) — 상한/정리가 없으면
+#   이벤트를 받은 적 있는 모든 repo_full_name 키가 (윈도우 만료 후 빈 deque 로) 영구 잔존해
+#   프로세스 수명 동안 단조 증가한다. 상한 초과 시 만료(윈도우 밖)·빈 키를 정리한다.
+# Max tracked repo keys: without a cap/prune, every repo that ever had a bot event keeps a key
+#   (empty deque after the window expires) for the process lifetime — monotonic growth.
+_MAX_TRACKED_REPOS: int = 4096
+
 
 def is_bot_sender(data: dict) -> bool:
     """봇 발신 여부 확인 — sender.type == "Bot" 이고 화이트리스트에 없으면 True.
@@ -101,6 +108,12 @@ class BotInteractionLimiter:  # pylint: disable=too-few-public-methods
         # 경쟁 조건 방지 — check-and-append 원자적 실행
         # Prevent race conditions — atomic check-and-append
         with self._lock:
+            # 🔴 키 상한 강제 (종합감사 P2) — 신규 리포 키 추가 직전에만 점검(hot path 최소 비용).
+            #   상한 초과 시 윈도우 밖·빈 deque 키를 정리한다. 위조 가능한 repo_full_name 이 무한
+            #   키를 만들지 못하게 한다(메모리 고갈 차단).
+            # Enforce the key cap only when a *new* repo key would be added (cheapest on the hot path).
+            if len(self._events) >= _MAX_TRACKED_REPOS and repo_full_name not in self._events:
+                self._evict_stale_keys(cutoff)
             # 리포 deque 초기화 (첫 이벤트)
             # Initialize deque for repo on first event
             if repo_full_name not in self._events:
@@ -123,3 +136,19 @@ class BotInteractionLimiter:  # pylint: disable=too-few-public-methods
             window.append(now)
 
         return True
+
+    def _evict_stale_keys(self, cutoff: float) -> None:
+        """윈도우 밖(만료)·빈 deque 키를 정리한다 — 호출자가 self._lock 을 이미 보유한다.
+        Prune keys whose deque is empty or fully expired (caller already holds self._lock).
+
+        그래도 상한 미달이 안 되면(모든 리포가 활성) 가장 오래 전에 삽입된 키를 evict 한다
+        (dict 삽입 순서 = 최고령). 활성 리미터를 드물게 드롭해도 안전 방향(재추적 시 빈 윈도우로 시작).
+        If pruning stale keys is not enough (all repos active), evict the oldest-inserted key.
+        """
+        stale = [k for k, w in self._events.items() if not w or w[-1] <= cutoff]
+        for k in stale:
+            del self._events[k]
+        # 정리 후에도 상한이면 최고령 삽입 키부터 드롭 (안전 방향 — 재추적은 빈 윈도우로 시작)
+        # Still at the cap → drop oldest-inserted keys (safe direction — re-tracking starts empty)
+        while len(self._events) >= _MAX_TRACKED_REPOS:
+            del self._events[next(iter(self._events))]
