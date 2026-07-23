@@ -6,6 +6,8 @@
 
 ## 목차
 
+- [종합감사 이행 + 5+1 회고 + 회고 P1 (2026-07-24 세션8, 8 PR #1194~#1201)](#종합감사-이행--51-회고--회고-p1-2026-07-24-세션8-8-pr-11941201)
+- [SonarCloud QG 복구 + 5+1 회고 + 회고 결정 이행 (2026-07-22 세션7, 8 PR #1168~#1175)](#sonarcloud-qg-복구--51-회고--회고-결정-이행-2026-07-22-세션7-8-pr-11681175)
 - [관측 복구 P0 3건 + 5+1 회고 2회 + 회고 조치 13 PR (#1102~#1114 — alembic fileConfig 가 앱 로깅 런타임 파괴[#1100 무력화]·cron 검증 3세션 만에 로그 직접 관측으로 종결·Telegram 토큰 유출 2단계 봉인[#1104 '봉인' 을 2차 회고가 거짓 적발 → #1109 완결]·Bash credential 덤프 차단 훅·회고 2회 164+168 에이전트 확정 135+134)](#관측-복구-p0-3건--51-회고-2회--회고-조치-13-pr-2026-07-19)
 - [세션2 회고 + 회고 fix 4 트랙 11 PR (#1077~#1086 — 이전 세션 잔여 CodeQL #545 봉인 → 5+1 회고[wf_331cdddf·87 에이전트·61 confirmed(P0 3·P1 15·P2 43)·verdict_coverage 1.0·FP 6]·🔴 **P0=회고 카덴스 강제 트리거[#1028] 첫 측정창 자기위반**[~46 PR 무회고·문서-only 시정 2회 실패→기계화] → 재발방지 기계 가드 4종[A1 `check_retro_cadence.py` 카덴스 카운터 48→5 리셋 실측·A2 `check_noqa_sideeffect.py` noqa-은닉 import 차단·B1 `posttool_pytest_smoke.py` hook false-green→영역 스코프·B2 `check_dead_code.py` AST 참조 find_orphaned 봉인] + C docs drift·D owed 원장·P2#41 owner-filter parity·게이트 auto-merge 레이스로 fix-up 유실·worktree 격리 누락 충돌 복구·단위 5412→5467, 2026-07-18)](#세션2-회고--회고-fix-4-트랙-11-pr-2026-07-18)
 - [프리미엄 준비도 감사 + Wave 0~2 코드전용 8 PR (#1068~#1075 — 6차원 준비도 감사[wf_2e184916·29 에이전트·구체적 실패 시나리오+적대 논파]·**P0/P1=0 견고**·완결성 비평이 3 cross-cutting[공유키 blast-radius·수평확장·관측성] 발견·착수=비대칭 결함 8건[#1068 PR 코멘트 AI-실패 경고 5채널 대칭·#1069 retry rollback 헬퍼·#1070 result JSON 컬럼-select `.as_string()`·#1071 config `is_production` 하드닝·#1072 approve SHA 결속 422 fail-closed·#1073 orphan sweep 배선+finish 위치이동·#1074 feedback_status owner 필터+배선 가드·#1075 retention sweep pending 절대보존]·남은 로드맵=사용자 결정 선행[테넌트쿼터·Redis·관측성·#18 CASCADE]·단위 5365→5412, 2026-07-18)](#프리미엄-준비도-감사--wave-02-코드전용-8-pr-2026-07-18)
@@ -142,6 +144,14 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 종합감사 이행 + 5+1 회고 + 회고 P1 (2026-07-24 세션8, 8 PR #1194~#1201)
+
+종합감사(#1186~1193) 후속 이행. **P1-5 retry claim_token CAS**(#1194 — 마지막 P1, stale-reclaim 이중처리/상태 clobber 차단) + P2 안전 5클러스터(#1195 SEC-LOG bot-token 로그유출 계층1·#1196 NULL-COERCE AI필드·#1197 DATETIME naive/aware·#1198 CACHE-BOUND 무한캐시·#1199 DOCS-COLLAB path-rule/arch/sensitive-path) — 전부 뮤테이션 red 회귀가드. 카덴스 발화(22 PR)로 **5+1 회고**(run `wf_1a8ad24b`·111 에이전트·확정 **80**[P0 0·P1 18·P2 62]·verdict_coverage 1.0·FP 10) — 지배 테마 = **본 세션 자기 산출물 결함**(정책 8-5 적중, 7 distinct P1 root). 회고 P1 이행: check_dual_import **방향 대칭 가드**(#1200 — #1196 자초 CodeQL #560 4회차 재발 봉인, `+import X as`↔`from X import` 역방향) · DATETIME **grep 전수**(#1201 — #1197 3곳→공용 `to_naive_utc`) · 감사 잔여 32 P2 backlog 이관+아카이브 보고서 · env-vars/MEMORY defer 정정. 🔴 **자기 process 사고 2건**(정책 8-5 실증): #1196 자초 CodeQL 이중 import(testing.md gotcha 4회차) · `git add -A` 로 DATETIME 작업이 #1197 커밋 무임승차. 단위 5866→5929.
+
+## SonarCloud QG 복구 + 5+1 회고 + 회고 결정 이행 (2026-07-22 세션7, 8 PR #1168~#1175)
+
+SonarCloud QG 복구(#1168~1170 — new-code reliability 2건, 🔴 S5779↔CodeQL `py/uninitialized-local` cross-tool observer 연쇄를 `try/except` wrapper 제거로 해소). **5+1 회고**(run `wf_fad44f59`·93 에이전트·확정 **65**[P0 3·P1 18·P2 44]·FP 8) — 지배 = observer-lie 메타 층 이동(카덴스·아카이브·freshness 가드가 관측만·집행 없음). 4결정 이행: owed #1062 위험수용(#1172)·npm SCA dependabot monitor(#1173)·카덴스 이월 원장 기계 관측(#1174 정책 8진화6)·does-not-raise AST 가드(#1175, `test_failover.py:304` 실위반 봉인). 자기 적발 2건(정책 8-5). 단위 5850→5866.
 
 ## 전체 문서·코드 구조 재구성 (2026-07-21 세션6, 10 PR #1157~#1166)
 
