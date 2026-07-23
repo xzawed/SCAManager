@@ -9,9 +9,17 @@
 
 ---
 
-## ▶️ 다음 세션 시작점 (2026-07-19 세션4 인수인계)
+## ▶️ 다음 세션 시작점 (2026-07-24 세션8 인수인계)
 
 **이 파일부터 읽으면 된다.**
+
+🔴 **2026-07-24 세션8 = 종합감사(#1186~1194) + P2 5클러스터(#1195~1199) + 5+1 회고(80 confirmed) + 회고 P1 이행(#1200~1201).** 상세 세션 메모리: `project-retro-2026-07-24`. **미이행 잔여**:
+- **[감사 P2 32건]** = 아래 "🟡 2026-07-23 종합감사 잔여 P2" 섹션 (스냅샷 = [`docs/_archive/reports/2026-07-23-comprehensive-review.md`](_archive/reports/2026-07-23-comprehensive-review.md)). 사용자 "전부 진행" 승인 — 명확버그·SQL·가드 = 🟡 자율 / verifier band·retry attempts·webhook Closes#N = 🔴 High-tier 옵션표(정책 15) / UI 템플릿 = 정책 11 사용자 시각검증.
+- **[회고 P1-G]** = Grok claim-review 소급(#1194 CAS·#1195 유출) — 미실행.
+
+---
+
+### (역사) 2026-07-19 세션4 인수인계 처방 오류 3건
 
 🔴 **2026-07-19 세션4 전수 점검 결과 — 이 파일의 처방문 3건이 틀려 있었다.** Grok 교차 검증 완료.
 처방문은 산문이 아니라 **실행될 코드**이므로, 틀린 처방은 틀린 코드와 같은 피해를 낸다:
@@ -26,9 +34,11 @@
 
 | 상태 | 건수 | 성격 |
 |------|------|------|
-| 🔴 결정 대기 | **1** (B6-b) | AI 자기 머지 거버넌스 넓은 범위 — 부분 해소, 결정 대기 |
-| 🟡 착수 가능 | **1** (B7) | Claude 자율 진행 가능 |
-| ⏸️ 보류 | **1** (H2) | note 등급·테스트 코드 |
+| 🔴 결정 대기 | **1** (B6-b) + 감사 High-tier **6** | AI 자기 머지 거버넌스 + verifier band·retry attempts·webhook 등(옵션표 대상) |
+| 🟡 착수 가능 | **1** (B7) + 감사 자율 **~21** | Claude 자율 (명확버그·SQL·가드 self-defect) |
+| ⏸️ 보류 | **1** (H2) + 감사 UI **5** | note 등급 + UI 템플릿(정책 11 사용자 시각검증) |
+
+> 🔴 감사 잔여 32건 상세 = "🟡 2026-07-23 종합감사 잔여 P2" 섹션. 회고 P1-G(Grok claim-review 소급) 미이행.
 
 > 🔴 **이 표는 본문 섹션의 행 수와 일치해야 한다** — 회귀 가드
 > `tests/unit/scripts/test_backlog_shape.py` 가 CI 에서 강제한다.
@@ -51,6 +61,19 @@ B3(#1131) · B4(#1130) · D1(#1116) · D3(#1117) · H1(n8n 정리) ·
 Phase4 검증. 재개 조건은 원장 참조). 운영등급 `#1072` 1건 (`#1075` 는 2026-07-19 20:00 UTC 실측 종결).
 
 ---
+
+## 🟡 2026-07-23 종합감사 잔여 P2 (32건 — 스냅샷 = [아카이브 보고서](_archive/reports/2026-07-23-comprehensive-review.md))
+
+> 회고 P1-C(2026-07-24): 감사 잔여를 메모리-only 에서 정본 원장으로 이관(observer-lie 시정). 각 행 상세·정확 line 은 아카이브 참조. 사용자 "전부 진행" 승인 하 — tier 별 처리 방식 명시.
+
+| tier | 영역 | 항목 (요약) |
+|------|------|------------|
+| 🟡 자율 | **명확 버그** | `escape_markdown` @-멘션 미차단 · security_scan 403→"GHAS 비활성" 오분류(alert 무음 0) · security_scan per_page=100 무페이지네이션 · `get_webhook_secret` transient-DB-error 시 fallback secret 캐시 poison · telegram per-repo-only chat_id 채널 dead · issue_reg IntegrityError 중복 이슈 무음 폐기 · pre-push max_tokens=2048 절단 재발 · cron weekly/trend 'already-sent' 미기록 double-send |
+| 🟡 자율 | **SQL 집계** (중간 위험) | cost/security-alert/trend/frequent_issues 전량 Python 로드(SQL SUM/AVG/GROUP BY 부재) + claude_api_calls·security_alert_process_logs retention GC 부재 |
+| 🟡 자율 | **가드 self-defect** | check_guard_fail_open B8 면제 자체 bare-substring·aliased import 미탐 · check_architecture_tree_sync cross-dir substring fail-open + scripts/ 무커버 · test_guard_wiring_coverage tautological/path-comment 오판 · security.md:36 coverage guard가 logging.Filter 만 스코프 |
+| 🟡 자율 | **misc** | gate/actions/approve auto-approve 경로 민감경로 가드 누락(비대칭) · cron notify DB 커넥션을 per-repo I/O 전체 걸쳐 보유 |
+| 🔴 High-tier (옵션표·정책 15) | **설계/동작** | verifier band 제한(고득점 시 인젝션 검사 우회) · retry `attempts_count` transient 소진(2) · abandon_stale_for_pr webhook↔worker lost-update · enqueue_or_bump find-then-INSERT IntegrityError 부재 · webhook `Closes #N` base-branch 무관 close · webhook issue-close 동기 인라인(10s 타임아웃) |
+| ⏸️ 정책 11 (사용자 시각검증) | **UI 템플릿** | analysis_detail·add_repo historyRestore 미배선(뒤로가기 후 버튼 죽음) · overview avg_score 0 Jinja truthiness 숨김 · dashboard chart label `\| e`→`\| tojson` · tweaks.js html data-theme desync |
 
 ## 🔴 사용자 결정 대기
 
