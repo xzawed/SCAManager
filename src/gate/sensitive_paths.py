@@ -67,6 +67,12 @@ _SENSITIVE_PATTERNS: tuple[re.Pattern, ...] = tuple(
         #   신규 보안 파일 추가 시 여기에 등재 — CI drift 체크가 누락을 강제한다.
         r"(^|/)webhook/validator\.py$",
         r"(^|/)shared/log_safety\.py$",
+        # 🔴 SSRF 방어·타이밍 안전 비교 (종합감사 P2, security.md paths 동기) — 파일명 토큰으로
+        #   안 잡혀 auto-merge hold 를 우회했다. security.md ↔ 가드 sync 테스트가 누락을 강제.
+        # SSRF defense + constant-time compare — not caught by filename tokens; kept in sync with
+        #   security.md paths (the coverage test enforces it).
+        r"(^|/)shared/ssrf\.py$",
+        r"(^|/)shared/secure_compare\.py$",
         r"(^|/)logging_config\.py$",
         r"(^|/)main\.py$",
         # DB 마이그레이션 / DB migrations
