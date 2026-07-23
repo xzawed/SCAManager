@@ -359,8 +359,10 @@ def release_claim(
 
     🔴 소유권 CAS (종합감사 P1-5): expected_claim_token 전달 시 그 토큰 소유 행만 write-back.
     batch 가 stale 임계(300s)를 넘겨 다른 워커가 재클레임하면 claim_token 이 바뀌므로 0행 매치
-    → False(소유권 상실, skip) → 이중 처리·상태 clobber 차단.
-    Ownership CAS — only the claiming worker writes back; a stale-reclaim changes the token → skip.
+    → False(소유권 상실, skip) → **DB 상태 clobber 차단**(낙관적 동시성). "이중 처리 전면 차단"은
+    아니다(회고 P2-M/Grok REFUTED) — 실제 이중 머지는 GitHub 멱등성+sha 가드가 별도로 막는다.
+    Ownership CAS — DB write-back clobber prevention (optimistic concurrency), not full
+    double-processing prevention (GitHub idempotency + sha guards cover the actual double-merge).
     """
     _now = now or _now_naive()
 

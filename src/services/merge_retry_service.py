@@ -174,9 +174,16 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
     # 🔴 소유권 토큰 캡처 (종합감사 P1-5) — claim_batch 가 이 워커에게 부여한 claim_token.
     # 이 함수의 모든 write-back(mark_*/release_claim/_handle_merge_failure)에 CAS 조건으로 전달해,
     # 처리 도중 batch 가 stale 임계(300s)를 넘겨 다른 워커가 재클레임하면(토큰 변경) 이 워커의
-    # 뒤늦은 write-back 이 no-op 되게 한다 → 이중 처리·종결 상태 clobber·재시도 부활 차단.
-    # Capture the ownership token this worker was granted; thread it to every write-back as a CAS
-    # guard so a stale-reclaim by another worker makes this worker's late write-back a no-op.
+    # 뒤늦은 write-back 이 no-op 되게 한다.
+    # 🔴 **정확한 범위 (2026-07-24 회고 P2-M + Grok claim-review REFUTED 정정)**: CAS 는 큐 행
+    #   write-back 의 **낙관적 동시성(DB 상태 clobber 차단)** 이다 — "이중 처리 전면 차단"이 아니다.
+    #   CAS miss 여도 이 워커는 이미 `merge_pr`(실제 머지)·`log_merge_attempt`·notify 를 호출한 뒤다.
+    #   실제 이중 **머지**는 GitHub 멱등성(이미 머지됨→ALREADY_MERGED) + sha_drift/expected_sha 가 막고,
+    #   CAS 는 stale 워커가 B 의 종결 상태를 덮어써 재시도를 부활시키는 것을 막는다. 잔여 = 중복 notify·
+    #   counts 과대(진단 지표, 제어 흐름 무관) — 낙관적 동시성의 수용된 한계.
+    # CAS = optimistic concurrency on queue write-backs (DB clobber prevention), NOT full
+    #   double-processing prevention: on a CAS miss the worker has already called merge_pr/notify;
+    #   the actual double-merge is prevented by GitHub idempotency + the sha/expected_sha guards.
     _claim_tok = row.claim_token
     # ── a-0. 최대 시도 횟수 초과 (🔴 토큰 조회 前 — no_token 무한루프 방지, 종합감사 P1-11) ──
     # claim 시 attempts_count 가 선증가하므로(merge_retry_repo.claim_batch) 이 검사는 merge_pr 호출 이전 단계다.
