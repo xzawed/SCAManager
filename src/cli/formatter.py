@@ -106,8 +106,14 @@ def _ai_file_feedback_section(ai_review: AiReviewResult, use_color: bool) -> lis
         return []
     lines = [_bold("  File Feedback:", use_color)]
     for ff in ai_review.file_feedbacks:
+        # 🔴 비-dict 원소·null issues 방어 (종합감사 P2) — CLI(`make review`)는 ai_review
+        #   _parse_response 원천 필터를 거치지 않는 경로가 있어, str 원소면 .get() AttributeError,
+        #   issues 가 present-null 이면 `for issue in None` TypeError 로 로컬 리뷰가 크래시한다.
+        # Non-dict element / null-issues guard — the CLI path can bypass the source filter.
+        if not isinstance(ff, dict):
+            continue
         lines.append(f"    {ff.get('file', '?')}:")
-        for issue in ff.get("issues", []):
+        for issue in ff.get("issues") or []:
             lines.append(f"      - {issue}")
     lines.append("")
     return lines

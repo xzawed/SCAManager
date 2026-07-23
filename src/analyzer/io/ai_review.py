@@ -290,19 +290,22 @@ def _parse_response(text: str) -> AiReviewResult:
         commit_score=commit,
         ai_score=direction,
         test_score=test,
-        summary=str(data.get("summary", "")),
+        summary=str(data.get("summary") or ""),
         suggestions=[str(s) for s in (data.get("suggestions") or [])],
-        commit_message_feedback=str(data.get("commit_message_feedback", "")),
-        code_quality_feedback=str(data.get("code_quality_feedback", "")),
-        security_feedback=str(data.get("security_feedback", "")),
-        direction_feedback=str(data.get("direction_feedback", "")),
-        test_feedback=str(data.get("test_feedback", "")),
+        commit_message_feedback=str(data.get("commit_message_feedback") or ""),
+        code_quality_feedback=str(data.get("code_quality_feedback") or ""),
+        security_feedback=str(data.get("security_feedback") or ""),
+        direction_feedback=str(data.get("direction_feedback") or ""),
+        test_feedback=str(data.get("test_feedback") or ""),
         # 🔴 null/비-dict 방어 — LLM 이 빈 컬렉션을 [] 대신 null 로, 원소를 dict 대신 str 로
         #   emit 하는 유효-JSON 패턴에 대비. `.get(k, [])` 는 present-null 을 coerce 안 함(→ None
         #   순회 TypeError → 정상 리뷰가 api_error·점수 NULL 로 붕괴). 비-dict file_feedback 은
         #   소비처(github_comment)에서 .get() AttributeError 를 유발하므로 원천에서 걸러낸다.
+        #   🔴 문자열 필드도 동일 — `str(get(k, ""))` 는 present-null 시 리터럴 "None" 을 발신
+        #   채널(요약·피드백)에 노출하므로 `str(get(k) or "")` 로 coerce (종합감사 P2).
         # Null/non-dict guard — a valid-JSON null collection or str element must not collapse a
-        #   scored review into api_error, nor crash the PR-comment consumer downstream.
+        #   scored review into api_error, nor crash the PR-comment consumer downstream. String fields
+        #   use `str(get(k) or "")` so a present-null does not surface the literal "None" to channels.
         file_feedbacks=[ff for ff in (data.get("file_feedbacks") or []) if isinstance(ff, dict)],
     )
     # 🔴 점수 키 누락 = parse_error (hook _coerce_ai_scores keys_present 와 대칭 — PARITY GUARD).
