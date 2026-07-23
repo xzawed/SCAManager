@@ -75,9 +75,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 
 class _FakeResp:
-    def __init__(self, status_code: int, payload=None):
+    def __init__(self, status_code: int, payload=None, headers=None):
         self.status_code = status_code
         self._payload = payload or []
+        self.headers = headers or {}
     def json(self):
         return self._payload
 
@@ -92,6 +93,41 @@ async def test_fetch_alerts_ghas_inactive_silent_skip():
             "tok", "owner/test", "code-scanning",
         )
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_alerts_403_rate_limit_logs_warning_not_ghas_skip(caplog):
+    """🔴 403 rate-limit(X-RateLimit-Remaining=0)은 GHAS 비활성 silent skip 이 아니라 WARNING (종합감사 P2).
+    스캔 미수행을 '0 alerts' 로 오인하지 않게 표면화한다.
+    """
+    import logging as _logging
+    fake_client = MagicMock()
+    fake_client.get = AsyncMock(return_value=_FakeResp(403, headers={"X-RateLimit-Remaining": "0"}))
+    with patch("src.services.security_scan_service.get_http_client", return_value=fake_client):
+        with caplog.at_level(_logging.WARNING, logger="src.services.security_scan_service"):
+            result = await security_scan_service._fetch_alerts(  # noqa: SLF001
+                "tok", "owner/test", "code-scanning",
+            )
+    assert result is None
+    logged = "\n".join(r.message for r in caplog.records)
+    assert "rate-limit" in logged.lower(), f"rate-limit 경고 미표면화: {logged!r}"
+    assert "비활성" not in logged, "rate-limit 을 GHAS 비활성으로 오분류"
+
+
+@pytest.mark.asyncio
+async def test_fetch_alerts_403_without_ratelimit_is_ghas_skip(caplog):
+    """403 (rate-limit 신호 없음) = GHAS 비활성 info skip (WARNING 아님)."""
+    import logging as _logging
+    fake_client = MagicMock()
+    fake_client.get = AsyncMock(return_value=_FakeResp(403))  # no rate-limit headers
+    with patch("src.services.security_scan_service.get_http_client", return_value=fake_client):
+        with caplog.at_level(_logging.WARNING, logger="src.services.security_scan_service"):
+            result = await security_scan_service._fetch_alerts(  # noqa: SLF001
+                "tok", "owner/test", "code-scanning",
+            )
+    assert result is None
+    # WARNING 레벨엔 rate-limit 경고 없어야(=info skip)
+    assert not any("rate-limit" in r.message.lower() for r in caplog.records)
 
 
 @pytest.mark.asyncio

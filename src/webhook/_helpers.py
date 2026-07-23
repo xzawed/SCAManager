@@ -56,6 +56,16 @@ def get_webhook_secret(full_name: str) -> str:
             if repo and repo.webhook_secret:
                 secret = repo.webhook_secret
     except (SQLAlchemyError, KeyError, AttributeError) as exc:
-        logger.warning("Per-repo webhook secret lookup failed, using global secret: %s", exc)
+        # 🔴 transient DB 에러 시 fallback(global) 시크릿을 **캐시하지 않는다** (종합감사 P2).
+        #   캐시하면 일시적 DB 장애가 per-repo webhook 인증을 TTL(5분) 동안 poison 한다 —
+        #   repo 전용 시크릿 대신 global 로 서명 검증해 그 repo webhook 이 5분간 전부 401.
+        #   캐시 없이 반환하면 다음 호출이 DB 를 재시도한다.
+        # Do NOT cache the fallback on a transient DB error — caching would poison per-repo auth
+        #   for the full TTL. Returning uncached lets the next call retry the DB.
+        logger.warning(
+            "Per-repo webhook secret lookup failed, using global (uncached): %s",
+            type(exc).__name__,
+        )
+        return secret
     _store_secret(full_name, secret, now)
     return secret

@@ -52,3 +52,27 @@ def test_store_secret_no_eviction_under_cap():
     _helpers._store_secret("o/add", "sx", now)
     assert "o/add" in _helpers._webhook_secret_cache
     assert "o/keep" in _helpers._webhook_secret_cache  # 상한 미만 → purge 미발동
+
+
+def test_get_webhook_secret_does_not_cache_fallback_on_db_error():
+    """🔴 transient DB 에러 시 fallback(global) 시크릿을 캐시하지 않는다 (종합감사 P2 — poison 방지).
+
+    캐시하면 일시적 DB 장애가 per-repo webhook 인증을 TTL(5분) 동안 poison 한다. 캐시 없이
+    반환하면 다음 호출이 DB 를 재시도한다.
+    """
+    from unittest.mock import MagicMock, patch
+    from sqlalchemy.exc import SQLAlchemyError
+
+    _helpers._webhook_secret_cache.clear()
+    ctx = MagicMock()
+    ctx.__enter__ = MagicMock(return_value=MagicMock())
+    ctx.__exit__ = MagicMock(return_value=False)
+    with patch.object(_helpers, "SessionLocal", return_value=ctx), \
+         patch.object(_helpers.repository_repo, "find_by_full_name",
+                      side_effect=SQLAlchemyError("db down")):
+        result = _helpers.get_webhook_secret("owner/poisontest")
+
+    assert result == _helpers.settings.github_webhook_secret, "fallback global 시크릿을 반환해야"
+    assert "owner/poisontest" not in _helpers._webhook_secret_cache, (
+        "🔴 DB 에러 시 fallback 이 캐시됨 — per-repo 인증 5분 poison"
+    )
