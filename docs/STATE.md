@@ -18,7 +18,7 @@
 - **5+1 회고** (#1171, run `wf_fad44f59`): 93 에이전트·확정 **65**(P0 3·P1 18·P2 44)·verdict_coverage 1.0·FP 8. 지배 테마 = **observer-lie 의 메타 층 이동**(카덴스·아카이브·문서 freshness 가드가 "관측만·집행 없음"). 카덴스 P0 종결(카운터 0/15 리셋).
 - **회고 4결정 이행**: owed #1062 → ⏭️ 위험수용(#1172, 안전등급 미결 **0건**) · npm SCA dependabot monitor(#1173) · **카덴스 이월 원장 기계 관측**(#1174, 정책 8 진화 (6), fail-closed·뮤테이션 red) · **does-not-raise AST 가드**(#1175, #1170 산문-only + `test_failover.py:304` 실위반 봉인).
 - 🔴 **세션 자기 적발 2건**(정책 8-5 작동 실증): #1170 문서-only 시정 + 살아있는 위반 · SonarCloud "외부 장애" 조기 귀인.
-- 단위 5850→**5866**(+16: 카덴스 이월 8 + does-not-raise 가드 8) · 통합 158 불변 · 전체 **6024** 수집.
+- 단위 5850→5866(+16: 카덴스 이월 8 + does-not-raise 가드 8) · 통합 158 불변 · 전체 6024 수집 (세션7 시점 기록 — 현재 값은 위 최신 블록·종합 수치가 SSOT).
 - ✅ **STATE 정합 remediation 완료 (회고 P2)**: 추적셀 trail 5684 갭을 세션5~7 통합 정산(+182 → 5866)으로 봉인. (세션별 재분해는 false-precision 회피로 통합 갈음.)
 - ✅ **SonarCloud #1168 회귀 복구 live 확인 (2026-07-22, MCP/API 검증)**: `api/qualitygates/project_status`=**OK** · `api/measures`=**bugs 0·Reliability A·Security A·Vuln 0** 실측 → UNVERIFIED 해소. 부수 확인: Dependabot open alert **0**(#5 brace-expansion=fixed) · CodeQL #559(py/uninitialized-local)=**fixed**(잔여 open 2 = 사전존재 note `py/unnecessary-lambda`) · Supabase #1062 전제 유효(NULL-owner repo **0**·user **1**).
 

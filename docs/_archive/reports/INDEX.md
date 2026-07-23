@@ -34,6 +34,7 @@
 | 2026-04-26 | 3-에이전트 교차 감사 (PR #73) | 문서 불일치 9건 수정 — STATE.md 그룹 44 참조 |
 | 2026-06-03 | [wbs-codebase-audit](2026-06-03-wbs-codebase-audit.md) | WBS 코드베이스 감사 — 238파일 23.8K LOC 평가, 확정 22건 (P0 1 거버넌스 통제 / P1 2 / P2 19) |
 | 2026-07-17 | [grok-full-review](2026-07-17-grok-full-review.md) | **Grok 8차원 발견 + Claude 46 에이전트 적대 검증** — Grok P0 4·P1 30 → 확정 **P0 0 · P1 4**(SHA 결속·워커 내구성·NULL-owner IDOR·SMTP 587), 반증 3. 은닉/악성 코드 CLEAN |
+| 2026-07-23 | [comprehensive-review](2026-07-23-comprehensive-review.md) | **종합 코드+문서 검증** — 10 렌즈 다이나믹 워크플로우 339 에이전트·확정 64(P0 0·P1 11·P2 53)·FP 32. P1 전건 봉인(#1186~1194)·P2 21 처리(#1195~1201)·잔여 32 = backlog. Grok cross-verify top 3 REAL |
 
 ---
 
