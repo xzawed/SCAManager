@@ -139,7 +139,10 @@ def _file_feedback_lines(result: dict, language: str = "en") -> list[str]:
         if not isinstance(ff, dict):
             continue
         lines.append(f"#### `{ff.get('file', '?')}`")
-        for issue in ff.get("issues", []):
+        # 🔴 present-null issues 방어 (종합감사 P2) — `.get("issues", [])` 는 키가 null 이면
+        #   None 반환 → `for issue in None` TypeError → PR 코멘트 태스크 무음 소실. `or []` 로 coerce.
+        # present-null issues guard — `.get(k, [])` returns None on a null value; coerce with `or []`.
+        for issue in ff.get("issues") or []:
             lines.append(f"- {issue}")
     return lines
 

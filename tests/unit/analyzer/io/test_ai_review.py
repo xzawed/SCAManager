@@ -59,6 +59,32 @@ def test_parse_response_clamps_below_min():
     assert result.test_score == 0
 
 
+def test_parse_response_present_null_string_fields_not_literal_none():
+    """🔴 present-null 문자열 필드는 리터럴 "None" 이 아니라 "" 로 정규화된다 (종합감사 P2).
+
+    LLM 이 `"summary": null` 같은 유효-JSON 을 emit 하면 `str(data.get("summary", ""))` 는
+    default(키 부재 전용)를 적용하지 않아 `str(None)` = "None" 이 되어 발신 채널(요약·피드백)에
+    리터럴 "None" 이 노출됐다. `str(data.get(k) or "")` 로 coerce.
+    A present-null value must become "" (not the literal "None") in outbound summary/feedback.
+    """
+    text = json.dumps({
+        "commit_message_score": 15, "direction_score": 16, "test_score": 8,
+        "summary": None, "suggestions": None,
+        "commit_message_feedback": None, "code_quality_feedback": None,
+        "security_feedback": None, "direction_feedback": None, "test_feedback": None,
+    })
+    result = _parse_response(text)
+    assert result.summary == ""
+    assert result.commit_message_feedback == ""
+    assert result.security_feedback == ""
+    assert result.suggestions == []
+    combined = (
+        result.summary + result.commit_message_feedback + result.code_quality_feedback
+        + result.security_feedback + result.direction_feedback + result.test_feedback
+    )
+    assert "None" not in combined, f"리터럴 'None' 이 필드에 노출됐다: {combined!r}"
+
+
 def test_parse_response_invalid_json_returns_default():
     result = _parse_response("not valid json at all")
     assert result.commit_score == 17

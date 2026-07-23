@@ -235,18 +235,23 @@ def save_hook_result(  # pylint: disable=unused-argument,too-many-locals
         # Raw scores are clamped to 0~MAX with safe coercion — out-of-range/non-numeric never 500 or exceed cap.
         ar = body.ai_result
         commit_raw, direction_raw, test_raw, scores_ok = _coerce_ai_scores(ar)
+        # 🔴 비-score 필드 coerce — ai_review._parse_response 와 PARITY (종합감사 P2). CLI ai_result
+        #   는 untrusted JSON 이라 present-null 문자열은 리터럴 "None" 을 발신 채널에 노출하고,
+        #   present-null 컬렉션·비-dict file_feedback 원소는 소비처(github_comment·formatter)에서
+        #   TypeError/AttributeError 로 코멘트를 무음 붕괴시킨다. 원천에서 동일 규칙으로 정규화.
+        # Coerce non-score fields for parity with _parse_response — the CLI ai_result is untrusted.
         ai_review = AiReviewResult(
             commit_score=commit_raw,
             ai_score=direction_raw,
             test_score=test_raw,
-            summary=ar.get("summary", ""),
-            suggestions=ar.get("suggestions", []),
-            commit_message_feedback=ar.get("commit_message_feedback", ""),
-            code_quality_feedback=ar.get("code_quality_feedback", ""),
-            security_feedback=ar.get("security_feedback", ""),
-            direction_feedback=ar.get("direction_feedback", ""),
-            test_feedback=ar.get("test_feedback", ""),
-            file_feedbacks=ar.get("file_feedbacks", []),
+            summary=str(ar.get("summary") or ""),
+            suggestions=[str(s) for s in (ar.get("suggestions") or [])],
+            commit_message_feedback=str(ar.get("commit_message_feedback") or ""),
+            code_quality_feedback=str(ar.get("code_quality_feedback") or ""),
+            security_feedback=str(ar.get("security_feedback") or ""),
+            direction_feedback=str(ar.get("direction_feedback") or ""),
+            test_feedback=str(ar.get("test_feedback") or ""),
+            file_feedbacks=[ff for ff in (ar.get("file_feedbacks") or []) if isinstance(ff, dict)],
             status="success" if scores_ok else "parse_error",
         )
 

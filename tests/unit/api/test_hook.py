@@ -12,6 +12,7 @@ os.environ.setdefault("SESSION_SECRET", "test-session-secret-32-chars-long!")
 
 from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
+import src.api.hook as _hook_module
 from src.main import app
 from src.constants import COMMIT_MSG_MAX, AI_REVIEW_MAX, TEST_COVERAGE_MAX
 
@@ -145,6 +146,64 @@ def test_hook_result_saves_analysis():
     assert r.status_code == 200
     mock_db.add.assert_called_once()
     mock_db.commit.assert_called_once()
+
+
+def test_hook_result_coerces_null_ai_fields_without_500():
+    """🔴 CLI ai_result 의 present-null 필드·비-dict file_feedback 원소가 500 을 유발하지 않는다.
+
+    hook.py 는 _parse_response 와 달리 비-score 필드를 coerce 하지 않아, `"summary": null` 등
+    untrusted CLI 입력이 리터럴 "None" 을 발신 채널에 노출하거나 소비처 크래시를 유발했다
+    (종합감사 P2 — _parse_response 와 PARITY). coerce 후 200 정상 저장돼야 한다.
+    Null/non-dict AI fields in the untrusted CLI ai_result must not 500 — coerced for parity.
+    """
+    mock_db = MagicMock()
+    mock_config = MagicMock()
+    mock_config.hook_token = "null-token"
+    mock_repo = MagicMock()
+    mock_repo.id = 7
+    call_count = {"n": 0}
+
+    def _first_side_effect():
+        idx = call_count["n"]
+        call_count["n"] += 1
+        return {0: mock_config, 1: mock_repo}.get(idx)
+
+    mock_db.query.return_value.filter.return_value.first.side_effect = _first_side_effect
+    mock_db.query.return_value.filter_by.return_value.first.return_value = None
+
+    null_ai_result = {
+        "commit_message_score": 15, "direction_score": 18, "test_score": 8,
+        "summary": None, "suggestions": None,
+        "commit_message_feedback": None, "code_quality_feedback": None,
+        "security_feedback": None, "direction_feedback": None, "test_feedback": None,
+        "file_feedbacks": ["비-dict 원소", {"file": "a.py", "issues": None}],
+    }
+    # calculate_score 에 전달되는 AiReviewResult 를 캡처해 실제 coerce 여부를 관측한다(200 만으로는
+    # 부족 — 엔드포인트 자체는 null 필드에 크래시하지 않고, 리터럴 "None"·비-dict 는 하류에서 터진다).
+    # Capture the AiReviewResult to observe actual coercion (a bare 200 wouldn't distinguish).
+    captured = {}
+    real_calc = _hook_module.calculate_score
+
+    def _spy(static_results, ai_review):
+        captured["ai_review"] = ai_review
+        return real_calc(static_results, ai_review=ai_review)
+
+    with patch("src.api.hook.SessionLocal", return_value=_make_session_mock(mock_db)), \
+         patch("src.api.hook.calculate_score", side_effect=_spy):
+        r = client.post("/api/hook/result", json={
+            "repo": "owner/repo",
+            "token": "null-token",
+            "commit_sha": "abc123def456",
+            "commit_message": "feat: x",
+            "ai_result": null_ai_result,
+        })
+
+    assert r.status_code == 200, f"present-null AI 필드가 500 유발: {r.status_code} {r.text}"
+    ai = captured["ai_review"]
+    # present-null 문자열 → "" (리터럴 "None" 금지), 컬렉션 → [], 비-dict file_feedback → 필터됨
+    assert ai.summary == "" and ai.security_feedback == "", "present-null 문자열이 coerce 안 됨"
+    assert ai.suggestions == []
+    assert all(isinstance(ff, dict) for ff in ai.file_feedbacks), "비-dict file_feedback 미필터"
 
 
 def test_hook_result_calculates_score():
