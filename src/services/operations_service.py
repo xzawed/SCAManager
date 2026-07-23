@@ -25,6 +25,7 @@ from src.shared.claude_metrics import (
     estimate_claude_cost_usd,
     get_cache_stats,
 )
+from src.shared.time_utils import to_naive_utc
 
 
 def _cache_kpi() -> dict[str, Any]:
@@ -86,7 +87,9 @@ def _merge_kpi(db: Session, days: int = 7) -> dict[str, Any]:
 
     Merge success rate — last N days (global auto_merge).
     """
-    since = datetime.now(timezone.utc) - timedelta(days=days)
+    # naive UTC — MergeAttempt.attempted_at 은 naive 컬럼 (회고 P1-B grep 전수)
+    # naive UTC — attempted_at is a naive column
+    since = to_naive_utc(datetime.now(timezone.utc)) - timedelta(days=days)
     total = db.scalar(
         select(func.count(MergeAttempt.id))  # pylint: disable=not-callable
         .where(MergeAttempt.attempted_at >= since)

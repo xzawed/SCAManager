@@ -14,6 +14,7 @@ from src.config import settings
 from src.models.analysis import Analysis
 from src.models.repo_config import RepoConfig
 from src.models.repository import Repository
+from src.shared.time_utils import to_naive_utc
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,11 @@ def weekly_summary(
     """
     # now 기본값 설정 — 테스트에서 고정 시각 주입 가능
     # Default now — allows injecting a fixed time in tests
-    _now = now or datetime.now(timezone.utc)
+    _now = to_naive_utc(now or datetime.now(timezone.utc))
+    # 🔴 week_start(호출자 주입 파라미터)도 naive UTC 정규화 — Analysis.created_at[naive] 비교 +
+    #   아래 min(week_end, _now) 가 naive/aware 혼합으로 TypeError 나지 않게 (회고 P1-B).
+    # Normalize the caller-provided week_start too, so the column compare + min() stay naive-consistent.
+    week_start = to_naive_utc(week_start)
     week_end = week_start + timedelta(days=7)
 
     # week_end가 now를 초과하면 now로 clamp
@@ -105,9 +110,7 @@ def moving_average(
     # 🔴 naive UTC 정규화 (종합감사 P2) — Analysis.created_at 은 naive DateTime 컬럼이라 aware 경계와
     #   비교하면 PG(TIMESTAMP WITHOUT TIME ZONE)에서 세션 타임존에 의존해 윈도우 경계가 흔들린다.
     # Normalize to naive UTC — comparing an aware bound against the naive column is PG session-tz dependent.
-    _now = now or datetime.now(timezone.utc)
-    if _now.tzinfo is not None:
-        _now = _now.astimezone(timezone.utc).replace(tzinfo=None)
+    _now = to_naive_utc(now or datetime.now(timezone.utc))
     since = _now - timedelta(days=window_days)
 
     rows = db.scalars(

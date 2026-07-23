@@ -43,6 +43,7 @@ from src.shared.claude_metrics import aclose_anthropic_client, extract_anthropic
 from src.shared.feature_kill_switch import is_disabled
 from src.repositories import insight_narrative_cache_repo
 from src.shared.lang_names import LANG_NAMES
+from src.shared.time_utils import to_naive_utc
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +106,7 @@ def dashboard_kpi(  # pylint: disable=too-many-locals
           "monthly_cost": {"value": float, "delta": float|None, "by_model": dict[str, float]},
         }
     """
-    _now = now or datetime.now(timezone.utc)
+    _now = to_naive_utc(now or datetime.now(timezone.utc))
     cur_since = _now - timedelta(days=days)
     prev_since = _now - timedelta(days=days * 2)
 
@@ -244,7 +245,7 @@ def dashboard_trend(
         [{"date": "YYYY-MM-DD", "avg_score": float, "count": int}, ...]
         날짜 오름차순.
     """
-    _now = now or datetime.now(timezone.utc)
+    _now = to_naive_utc(now or datetime.now(timezone.utc))
     since = _now - timedelta(days=days)
 
     # 🔴 score + created_at 만 select — 이전엔 `select(Analysis)` full ORM 이 result JSON blob
@@ -293,7 +294,7 @@ def frequent_issues_v2(  # pylint: disable=too-many-locals
         [{"message": str, "count": int, "category": str, "language": str, "tool": str}, ...]
         빈도 내림차순, 최대 n 개.
     """
-    _now = now or datetime.now(timezone.utc)
+    _now = to_naive_utc(now or datetime.now(timezone.utc))
     since = _now - timedelta(days=days)
 
     base = (
@@ -350,7 +351,7 @@ def auto_merge_kpi(
     운영 데이터 (MCP 검증, 2026-05-02): single-attempt success rate 16.6%, unstable_ci 79%
     → 단순 시도 기준 외 distinct PR 의 final success rate 도 함께 반환 (retry queue 영향 보정).
     """
-    _now = now or datetime.now(timezone.utc)
+    _now = to_naive_utc(now or datetime.now(timezone.utc))
     cur_since = _now - timedelta(days=days)
     prev_since = _now - timedelta(days=days * 2)
 
@@ -425,7 +426,7 @@ def merge_failure_distribution(
         [{"reason": str, "count": int, "share_pct": float}, ...]
         count 내림차순, 최대 n 개. share_pct = count / total_failure × 100.
     """
-    _now = now or datetime.now(timezone.utc)
+    _now = to_naive_utc(now or datetime.now(timezone.utc))
     since = _now - timedelta(days=days)
 
     base = (
@@ -595,7 +596,7 @@ def repo_insight_cards(  # pylint: disable=too-many-locals
     Returns list of dicts with: repo_id, full_name, avg_score, grade,
     recurring_issue_count, score_trend, insights_url.
     """
-    _now = now or datetime.now(timezone.utc)
+    _now = to_naive_utc(now or datetime.now(timezone.utc))
 
     # 사용자 소유 리포 조회 (legacy NULL 포함)
     # Fetch user-owned repos (legacy NULL user_id included)
@@ -926,6 +927,10 @@ async def insight_narrative(  # pylint: disable=too-many-locals,too-many-return-
     if not effective_key:
         return _build_insight_response(status="no_api_key", days=days)
 
+    # 🔴 aware 유지 (회고 P1-B) — 이 _now 는 insight_narrative_cache_repo(aware 규약)에 전달된다
+    #   (get_fresh/upsert/record_error via _handle_insight_error). 하위 dashboard_kpi/trend 등은
+    #   내부에서 to_naive_utc 로 재정규화하므로 aware 전달 무해. (repo_insight_narrative 와 동일 판단.)
+    # Keep aware — this _now feeds the aware-convention cache repo; downstream KPI fns re-normalize.
     _now = now or datetime.now(timezone.utc)
 
     # Phase 2-B 🅑 (사이클 74 PR-B) — DB 캐싱 1h TTL (UX 영향 최소 + 60% 비용 절감)
@@ -1063,7 +1068,7 @@ def dashboard_usage(
     user_id 직접 격리 (admin allow-list 외 — 본인 데이터만).
     user_id direct isolation (no admin allow-list — own data only).
     """
-    now = datetime.now(timezone.utc)
+    now = to_naive_utc(datetime.now(timezone.utc))
     since = now - timedelta(days=days)
 
     # 본인 리포 카운트 (Repository.user_id == user_id 직접)
