@@ -163,8 +163,11 @@ async def run_weekly_reports(db: Session, *, now: datetime | None = None) -> int
         except (httpx.HTTPError, SQLAlchemyError, KeyError, ValueError) as exc:
             # 리포별 예외 격리 — 한 리포 실패가 다른 리포 알림을 막지 않는다
             # Per-repo exception isolation — one failure does not block others
+            # 🔴 계층1 근본통제 (security.md) — httpx.HTTPError 는 Telegram URL(bot<TOKEN>)을
+            # 담으므로 raw exc 로깅 금지. type(exc).__name__ 만(형제 orphan sweep 과 동일).
+            # Layer-1 root control: an httpx error can carry the bot-token URL — log the type only.
             logger.warning(
-                "weekly_report: failed for repo=%s: %s", repo.full_name, exc
+                "weekly_report: failed for repo=%s: %s", repo.full_name, type(exc).__name__
             )
             # 세션 오염 방지 — DB 에러로 세션이 failed 상태면 다음 repo 가 연쇄 실패
             # (security_scan_service.scan_all_repos 와 동일 패턴, #745 / api.md 세션 격리)
@@ -272,8 +275,11 @@ async def run_trend_check(  # pylint: disable=too-many-locals
         except (httpx.HTTPError, SQLAlchemyError, KeyError, ValueError) as exc:
             # 리포별 예외 격리 — 한 리포 실패가 다른 리포 알림을 막지 않는다
             # Per-repo exception isolation — one failure does not block others
+            # 🔴 계층1 근본통제 (security.md) — httpx.HTTPError 는 Telegram URL(bot<TOKEN>)을
+            # 담으므로 raw exc 로깅 금지. type(exc).__name__ 만(형제 weekly_report 와 동일).
+            # Layer-1 root control: an httpx error can carry the bot-token URL — log the type only.
             logger.warning(
-                "trend_check: failed for repo=%s: %s", repo.full_name, exc
+                "trend_check: failed for repo=%s: %s", repo.full_name, type(exc).__name__
             )
             # 세션 오염 방지 — DB 에러로 세션이 failed 상태면 다음 repo 가 연쇄 실패
             # (security_scan_service.scan_all_repos 와 동일 패턴, #745 / api.md 세션 격리)
