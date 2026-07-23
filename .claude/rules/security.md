@@ -4,6 +4,8 @@ paths:
   - "src/auth/**"
   - "src/crypto.py"
   - "src/shared/log_safety.py"
+  - "src/shared/ssrf.py"
+  - "src/shared/secure_compare.py"
   - "src/api/auth.py"
   - "src/webhook/validator.py"
   - "src/main.py"

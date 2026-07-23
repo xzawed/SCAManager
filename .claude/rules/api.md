@@ -5,6 +5,8 @@ paths:
   - "src/notifier/**"
   - "src/webhook/**"
   - "src/gate/**"
+  - "src/github_client/**"
+  - "src/scheduler.py"
   - "src/main.py"
 ---
 

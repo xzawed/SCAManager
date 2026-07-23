@@ -201,15 +201,19 @@ def _validate_startup_config() -> None:
             settings.app_base_url,
         )
     if is_prod_like and not (settings.internal_cron_api_key or "").strip():
-        # 🔴 INTERNAL_CRON_API_KEY 미설정 시 모든 스케줄 작업(주간 리포트·트렌드 경보·머지 재시도
-        # sweep)이 503 으로 조용히 실패한다(internal_cron.py:42 — "Cron API key not configured").
-        # railway.toml cron 의 curl 은 -f 없이 성공 종료해 운영자가 인지하기 어렵다 → startup 경고(#15).
-        # 🔴 Without INTERNAL_CRON_API_KEY every scheduled job (weekly report, trend alert, merge-retry
-        # sweep) fails silently with 503. Surface it at startup so the operator notices.
+        # 🔴 정정 (종합감사 P2 — 2026-07-19 인앱 스케줄러 도입 후 사실 반전): 스케줄 작업(주간 리포트·
+        # 트렌드 경보·머지 재시도 sweep·보안 스캔)은 `src/scheduler.py` 가 `cron_service` 함수를
+        # **직접 호출**해 실행하므로 INTERNAL_CRON_API_KEY 와 **무관하게 동작**한다. 이 키는 수동/외부
+        # HTTP 트리거(`/api/internal/cron/*`)만 게이팅한다 — 미설정 시 그 엔드포인트만 503.
+        # 이전 경고문("all scheduled cron jobs will 503 and never run")은 스케줄러 도입 전 사실이라
+        # 지금은 운영자 오진단을 유발했다(스케줄 작업은 정상 실행 중).
+        # Corrected: scheduled jobs run via src/scheduler.py calling cron_service directly, independent
+        # of this key; the key only gates the manual HTTP trigger endpoints (/api/internal/cron/*).
         logger.warning(
-            "INTERNAL_CRON_API_KEY is not set in production — all scheduled cron jobs "
-            "(weekly report, trend alert, merge-retry sweep) will return 503 and never run. "
-            "Set INTERNAL_CRON_API_KEY to enable the /api/internal/cron/* endpoints."
+            "INTERNAL_CRON_API_KEY is not set in production — the manual cron trigger endpoints "
+            "(/api/internal/cron/*) will return 503. Scheduled jobs still run via the in-app "
+            "scheduler (src/scheduler.py), so weekly reports, trend alerts, and merge-retry sweeps "
+            "are unaffected. Set the key only if you need the manual/external trigger endpoints."
         )
 
 

@@ -244,7 +244,13 @@ def test_lifespan_warns_token_encryption_key_missing_in_prod(caplog):
 # --- INTERNAL_CRON_API_KEY 부재 경고 (prod 환경) — 준비도 감사 #15 ---
 
 def test_lifespan_warns_cron_key_missing_in_prod(caplog):
-    """🔴 prod 에서 INTERNAL_CRON_API_KEY 미설정 시 경고 — cron 이 무성 503 으로 실패함을 가시화."""
+    """🔴 prod 에서 INTERNAL_CRON_API_KEY 미설정 시 경고 — 단, **사실에 맞게** 가시화한다 (종합감사 P2).
+
+    인앱 스케줄러(src/scheduler.py, 2026-07-19) 도입 후 스케줄 작업은 이 키와 무관하게 실행된다.
+    경고는 '수동 HTTP 트리거 엔드포인트만 503' 을 알려야 하며, '스케줄 작업이 never run' 같은
+    사실 반대 문구는 운영자 오진단을 유발하므로 금지한다.
+    The warning must reflect reality: the key only gates manual endpoints; scheduled jobs still run.
+    """
     import logging as _logging
     with patch("src.main._run_migrations"), \
          patch("src.main.settings") as mock_settings:
@@ -259,8 +265,15 @@ def test_lifespan_warns_cron_key_missing_in_prod(caplog):
         with caplog.at_level(_logging.WARNING, logger="src.main"):
             with TestClient(app):
                 pass
-    assert any("INTERNAL_CRON_API_KEY" in rec.message for rec in caplog.records), \
-        "prod 에서 INTERNAL_CRON_API_KEY 부재 경고가 로그에 남지 않았습니다"
+    cron_warnings = [rec.message for rec in caplog.records if "INTERNAL_CRON_API_KEY" in rec.message]
+    assert cron_warnings, "prod 에서 INTERNAL_CRON_API_KEY 부재 경고가 로그에 남지 않았습니다"
+    msg = cron_warnings[0]
+    # 🔴 사실 반대 문구 금지 — 스케줄 작업은 인앱 스케줄러로 실행되므로 'never run' 은 오진단 유발
+    assert "never run" not in msg, (
+        "경고가 '스케줄 작업이 never run' 이라 주장 — 인앱 스케줄러 도입 후 사실 반대(오진단)"
+    )
+    # 정확한 안내 — 스케줄러가 작업을 실행함을 명시
+    assert "scheduler" in msg.lower(), "경고가 인앱 스케줄러로 작업이 실행됨을 안내하지 않음"
 
 
 def test_lifespan_no_cron_key_warning_when_set(caplog):
