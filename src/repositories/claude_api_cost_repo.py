@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from src.models.claude_api_call import ClaudeApiCall
 from src.models.repository import Repository
+from src.shared.time_utils import to_naive_utc
 
 # 모델 패밀리 매핑 — claude_metrics 와 동일 규칙(sonnet/haiku/opus/other)
 # Model-family mapping — same rule as claude_metrics.
@@ -87,9 +88,7 @@ def user_cost_summary(db: Session, *, user_id: int, days: int = 30, now: datetim
     # 🔴 naive UTC 정규화 (종합감사 P2) — ClaudeApiCall.created_at 은 naive DateTime 컬럼이라 aware
     #   경계와 비교하면 PG(TIMESTAMP WITHOUT TIME ZONE)에서 세션 타임존 의존 → 비용/KPI 윈도우 경계 흔들림.
     # Normalize to naive UTC — comparing aware bounds against the naive column is PG session-tz dependent.
-    _now = now or datetime.now(timezone.utc)
-    if _now.tzinfo is not None:
-        _now = _now.astimezone(timezone.utc).replace(tzinfo=None)
+    _now = to_naive_utc(now or datetime.now(timezone.utc))
     cur_since = _now - timedelta(days=days)
     prev_since = _now - timedelta(days=days * 2)
     owner = or_(

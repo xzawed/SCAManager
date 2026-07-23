@@ -23,6 +23,7 @@ from src.repositories import (
     repository_repo,
 )
 from src.services.analytics_service import moving_average, resolve_chat_id, weekly_summary
+from src.shared.time_utils import to_naive_utc
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +117,7 @@ async def run_weekly_reports(db: Session, *, now: datetime | None = None) -> int
     """
     # now 기본값 설정 — 테스트에서 고정 시각 주입 가능
     # Default now — allows injecting a fixed time in tests
-    _now = now or datetime.now(timezone.utc)
+    _now = to_naive_utc(now or datetime.now(timezone.utc))
     week_start = _now - timedelta(days=7)
     sent = 0
 
@@ -215,7 +216,7 @@ async def run_trend_check(  # pylint: disable=too-many-locals
     """
     # now 기본값 설정 — 테스트에서 고정 시각 주입 가능
     # Default now — allows injecting a fixed time in tests
-    _now = now or datetime.now(timezone.utc)
+    _now = to_naive_utc(now or datetime.now(timezone.utc))
     alerted = 0
 
     # 전체 리포 목록 조회

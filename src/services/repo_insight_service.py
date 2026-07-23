@@ -24,6 +24,7 @@ from src.scorer.calculator import calculate_grade
 from src.shared.claude_metrics import aclose_anthropic_client, extract_anthropic_usage, log_claude_api_call
 from src.shared.feature_kill_switch import is_disabled
 from src.shared.lang_names import LANG_NAMES
+from src.shared.time_utils import to_naive_utc
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +104,7 @@ def repo_kpi(  # pylint: disable=too-many-locals
     Returns KPI dict with avg_score, grade, analysis_count, top_recurring_issue,
     top_recurring_count, high_security_count, score_delta.
     """
-    _now = now or datetime.now(timezone.utc)
+    _now = to_naive_utc(now or datetime.now(timezone.utc))
     cur = _fetch_analyses(db, repo_id, days, _now)
 
     # 직전 동일 기간 (delta 비교용)
@@ -151,7 +152,7 @@ def repo_score_trend(
     Returns daily avg score series for trend chart.
     Bins analyses by date (UTC), oldest first.
     """
-    _now = now or datetime.now(timezone.utc)
+    _now = to_naive_utc(now or datetime.now(timezone.utc))
     analyses = _fetch_analyses(db, repo_id, days, _now)
 
     # 날짜별 점수 집계 (KST 아닌 UTC 기준)
@@ -180,7 +181,7 @@ def repo_recurring_issues(
 
     Top N issues by frequency, sorted descending.
     """
-    _now = now or datetime.now(timezone.utc)
+    _now = to_naive_utc(now or datetime.now(timezone.utc))
     analyses = _fetch_analyses(db, repo_id, days, _now)
 
     counter: dict[str, int] = {}
@@ -221,7 +222,7 @@ def repo_problem_files(
 
     Top N problem files by frequency, with pct relative to max count.
     """
-    _now = now or datetime.now(timezone.utc)
+    _now = to_naive_utc(now or datetime.now(timezone.utc))
     analyses = _fetch_analyses(db, repo_id, days, _now)
 
     counter: dict[str, int] = {}
@@ -251,7 +252,7 @@ def repo_ai_suggestions(
 
     Top N AI suggestions grouped by 60-char prefix, success analyses only.
     """
-    _now = now or datetime.now(timezone.utc)
+    _now = to_naive_utc(now or datetime.now(timezone.utc))
     analyses = _fetch_analyses(db, repo_id, days, _now)
 
     counter: dict[str, int] = {}
@@ -293,7 +294,7 @@ def repo_category_breakdown(
 
     4-way issue distribution for Chart.js donut chart.
     """
-    _now = now or datetime.now(timezone.utc)
+    _now = to_naive_utc(now or datetime.now(timezone.utc))
     analyses = _fetch_analyses(db, repo_id, days, _now)
 
     counts: dict[str, int] = {
@@ -374,6 +375,10 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
     if not api_key:
         return {"text": "", "status": "no_api_key"}
 
+    # 🔴 aware 유지 (회고 P1-B) — 이 함수의 _now 는 컬럼 비교가 아니라 insight_narrative_cache_repo
+    #   에만 전달된다. 캐시 repo 는 DB 읽기값을 aware 로 정규화해 비교하는 자체 규약이라 aware now 필요.
+    #   (형제 함수들은 _fetch_analyses 로 Analysis.created_at[naive] 과 비교하므로 to_naive_utc 사용.)
+    # Keep aware here — this _now only feeds the cache repo, which uses an aware-normalization convention.
     _now = now or datetime.now(timezone.utc)
 
     if user_id is not None:

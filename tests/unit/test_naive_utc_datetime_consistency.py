@@ -15,12 +15,38 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("GITHUB_WEBHOOK_SECRET", "test-secret")
 
 # pylint: disable=wrong-import-position
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 import src.repositories.claude_api_cost_repo as cost_repo
 import src.services.analytics_service as analytics_service
+import src.services.operations_service as operations_service
 from src.models.analysis_attempt import AnalysisAttempt
+from src.shared.time_utils import now_naive_utc, to_naive_utc
+
+
+# ---------------------------------------------------------------------------
+# to_naive_utc / now_naive_utc 헬퍼 (2026-07-23 회고 P1-B — grep 전수 단일 출처)
+# ---------------------------------------------------------------------------
+
+
+def test_to_naive_utc_converts_aware_to_naive_utc():
+    """aware(+09:00) → naive UTC(tzinfo=None, 벽시계 UTC 로 변환)."""
+    aware = datetime(2026, 7, 23, 21, 0, tzinfo=timezone(timedelta(hours=9)))  # 12:00 UTC
+    out = to_naive_utc(aware)
+    assert out.tzinfo is None
+    assert out == datetime(2026, 7, 23, 12, 0)  # UTC 벽시계 / UTC wall-clock
+
+
+def test_to_naive_utc_passes_naive_through():
+    """이미 naive 면 그대로 통과 (idempotent)."""
+    naive = datetime(2026, 7, 23, 12, 0)
+    assert to_naive_utc(naive) is naive
+
+
+def test_now_naive_utc_is_naive():
+    """now_naive_utc() 는 tzinfo=None 을 반환."""
+    assert now_naive_utc().tzinfo is None
 
 
 def test_analysis_attempt_started_at_default_is_naive():
@@ -71,4 +97,43 @@ def test_moving_average_uses_naive_query_bounds():
     assert dt_params, "WHERE 절에 datetime 바인드가 없다 — 관측 불가"
     assert all(v.tzinfo is None for v in dt_params), (
         f"moving_average WHERE 경계가 aware: {[p for p in dt_params if p.tzinfo]!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# grep-전수 스윕 대표 소비처 (2026-07-23 회고 P1-B) — #1197 이 3곳만 고친 것 확장
+# ---------------------------------------------------------------------------
+
+
+def test_weekly_summary_normalizes_aware_week_start_and_now():
+    """weekly_summary 가 aware week_start + aware now 를 받아도 naive 경계로 쿼리한다.
+    (min(week_end, _now) 가 naive/aware 혼합으로 TypeError 나지 않고, WHERE 경계는 naive).
+    weekly_summary must accept aware inputs without TypeError and query with naive bounds.
+    """
+    mock_db = MagicMock()
+    mock_db.execute.return_value.one.return_value = MagicMock(count=0)
+    aware_start = datetime(2026, 7, 16, 0, 0, tzinfo=timezone.utc)
+    aware_now = datetime(2026, 7, 23, 12, 0, tzinfo=timezone.utc)
+
+    analytics_service.weekly_summary(mock_db, repo_id=1, week_start=aware_start, now=aware_now)
+
+    stmt = mock_db.execute.call_args.args[0]
+    dt_params = [v for v in stmt.compile().params.values() if isinstance(v, datetime)]
+    assert dt_params, "WHERE 경계 datetime 바인드 없음 — 관측 불가"
+    assert all(v.tzinfo is None for v in dt_params), (
+        f"weekly_summary WHERE 경계가 aware: {[p for p in dt_params if p.tzinfo]!r}"
+    )
+
+
+def test_operations_merge_kpi_uses_naive_bound():
+    """operations _merge_kpi 의 MergeAttempt.attempted_at >= since 경계가 naive UTC."""
+    mock_db = MagicMock()
+    mock_db.scalar.return_value = 0
+    operations_service._merge_kpi(mock_db, days=7)  # pylint: disable=protected-access
+
+    stmt = mock_db.scalar.call_args.args[0]
+    dt_params = [v for v in stmt.compile().params.values() if isinstance(v, datetime)]
+    assert dt_params, "MergeAttempt WHERE 경계 datetime 바인드 없음"
+    assert all(v.tzinfo is None for v in dt_params), (
+        f"_merge_kpi since 경계가 aware: {[p for p in dt_params if p.tzinfo]!r}"
     )
