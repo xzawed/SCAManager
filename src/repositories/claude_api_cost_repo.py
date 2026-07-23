@@ -84,7 +84,12 @@ def _window_cost_rows(  # pylint: disable=too-many-arguments
 def user_cost_summary(db: Session, *, user_id: int, days: int = 30, now: datetime | None = None) -> dict:
     """사용자 귀속 비용 집계 — user_id 직접 OR repo_id 소유 간접. 모델별·delta 포함.
     Aggregate cost attributed to a user (direct user_id OR owned repo_id). By-model + delta."""
+    # 🔴 naive UTC 정규화 (종합감사 P2) — ClaudeApiCall.created_at 은 naive DateTime 컬럼이라 aware
+    #   경계와 비교하면 PG(TIMESTAMP WITHOUT TIME ZONE)에서 세션 타임존 의존 → 비용/KPI 윈도우 경계 흔들림.
+    # Normalize to naive UTC — comparing aware bounds against the naive column is PG session-tz dependent.
     _now = now or datetime.now(timezone.utc)
+    if _now.tzinfo is not None:
+        _now = _now.astimezone(timezone.utc).replace(tzinfo=None)
     cur_since = _now - timedelta(days=days)
     prev_since = _now - timedelta(days=days * 2)
     owner = or_(
