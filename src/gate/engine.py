@@ -664,7 +664,10 @@ async def _notify_merge_failure(
             {"text": text, "parse_mode": "HTML"},
         )
     except httpx.HTTPError as exc:
-        logger.warning("Telegram merge-failure 알림 실패: %s", exc)
+        # 🔴 계층1 근본통제 (security.md) — raw exc 는 Telegram URL(bot<TOKEN>)을 담을 수 있어
+        # type(exc).__name__ 만 로깅(형제 _notify_merge_deferred 와 동일). 계층2 필터는 backstop.
+        # Layer-1 root control: raw exc can carry the bot-token URL — log the type only.
+        logger.warning("Telegram merge-failure 알림 실패: %s", type(exc).__name__)
 
 
 async def _notify_merge_deferred(

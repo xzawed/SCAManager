@@ -281,6 +281,64 @@ def test_redaction_applies_to_lazy_percent_format_args(logging_isolation):
     )
 
 
+def test_inbound_query_param_token_is_redacted(logging_isolation):
+    """🔴 인바운드 쿼리스트링 시크릿 (종합감사 P2) — `?token=<secret>` 이 access 로그에서 마스킹된다.
+
+    uvicorn.access 는 요청 경로+쿼리를 통째로 로깅한다. hook_token 은 deprecated `?token=` 로도
+    전달돼 access 로그에 평문으로 남았다(secret-redaction 필터 미커버). 파라미터명은 보존하고
+    값만 `***` 로 가려야 한다.
+    uvicorn.access logs the full path+query; a `?token=` hook token must be masked (value only).
+    """
+    stream, _ = _fresh_configured_handler()
+
+    logging.getLogger("tests.redaction_probe").info(
+        '127.0.0.1 - "GET /api/hook/owner%%2Frepo/verify?token=SUPERSECRETHOOK HTTP/1.1" 200'
+    )
+    out = stream.getvalue()
+
+    assert "SUPERSECRETHOOK" not in out, (
+        f"인바운드 쿼리 시크릿(?token=)이 access 로그에 평문으로 남았다.\n출력: {out!r}"
+    )
+    # 파라미터명은 보존 — 어떤 종류의 요청이었는지 운영 판독 가능
+    # Param name preserved so operators can still read what kind of request it was
+    assert "token=***" in out, (
+        f"마스킹 형태 불일치 — `token=***` 가 없다.\n출력: {out!r}"
+    )
+    # 경로 구조는 보존
+    assert "/api/hook/" in out and "/verify" in out, (
+        f"경로 구조가 소실 — 요청 대상 판독 불가.\n출력: {out!r}"
+    )
+
+
+def test_query_param_redaction_covers_common_secret_names(logging_isolation):
+    """token 외 흔한 시크릿 파라미터명(api_key/access_token/hook_token)도 마스킹된다.
+    Common secret param names beyond `token` are masked too.
+    """
+    stream, _ = _fresh_configured_handler()
+    for name in ("api_key", "apikey", "access_token", "hook_token", "TOKEN"):
+        logging.getLogger("tests.redaction_probe").info(
+            "GET /x?%s=LEAKME123 HTTP/1.1", name
+        )
+    out = stream.getvalue()
+    assert "LEAKME123" not in out, (
+        f"흔한 시크릿 파라미터명 값이 유출됐다.\n출력: {out!r}"
+    )
+
+
+def test_non_secret_query_param_is_not_over_redacted(logging_isolation):
+    """부정 통제 — 시크릿이 아닌 일반 쿼리 파라미터(page/repo 등)는 마스킹하지 않는다.
+    Negative control: ordinary query params must not be redacted.
+    """
+    stream, _ = _fresh_configured_handler()
+    logging.getLogger("tests.redaction_probe").info(
+        "GET /api/repos?page=2&sort=score HTTP/1.1"
+    )
+    out = stream.getvalue()
+    assert "page=2" in out and "sort=score" in out, (
+        f"비-시크릿 쿼리 파라미터가 잘못 마스킹됐다.\n출력: {out!r}"
+    )
+
+
 def test_non_secret_record_passes_through_untouched(logging_isolation):
     """🔴 부정 통제 — 토큰이 없는 일반 로그는 원문 그대로, `record.args` 도 보존된다.
 

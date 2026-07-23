@@ -220,6 +220,42 @@ class TestRunWeeklyReports:
         assert sent == 1
 
     @patch("src.services.cron_service.telegram_post_message", new_callable=AsyncMock)
+    async def test_run_weekly_reports_does_not_log_bot_token_on_failure(
+        self, mock_tg, db, monkeypatch, caplog
+    ):
+        """🔴 계층1 근본통제 (종합감사 P2) — Telegram 발신 실패 로그가 raw exc(=bot-token URL)를
+        남기지 않는다. httpx 예외 메시지는 요청 URL 전문을 담으므로 type(exc).__name__ 만 로깅해야 한다.
+        The failure log must not carry the raw exception (which embeds the bot-token URL).
+        """
+        import logging as _logging
+        import src.services.cron_service as cs
+        monkeypatch.setattr(cs.settings, "telegram_chat_id", "")
+
+        user = User(github_id=20, github_login="u", email="u@x.com", display_name="U")
+        db.add(user)
+        db.commit()
+        repo = Repository(full_name="owner/leak", user_id=user.id, telegram_chat_id="-100x")
+        db.add(repo)
+        db.commit()
+        db.refresh(repo)
+        for i in range(5):
+            _make_analysis(db, repo.id, score=70, offset_hours=i * 5)
+
+        # httpx 예외 메시지가 봇 토큰 URL 을 담은 실제 형태 재현 (중립 tail — 필터 무관 call-site 검증)
+        # Reproduce a real httpx message embedding the bot-token URL (neutral tail = call-site only)
+        leak_url = "https://api.telegram.org/botTOKENTAIL999/sendMessage"
+        mock_tg.side_effect = httpx.ConnectError(f"Connection failed for url '{leak_url}'")
+
+        with caplog.at_level(_logging.WARNING, logger="src.services.cron_service"):
+            await cs.run_weekly_reports(db, now=datetime.now(timezone.utc))
+
+        logged = "\n".join(r.getMessage() for r in caplog.records)
+        assert "TOKENTAIL999" not in logged, (
+            f"봇 토큰이 cron 실패 로그에 raw exc 로 남았다.\n로그: {logged!r}"
+        )
+        assert "ConnectError" in logged, "예외 타입명이 로깅되지 않았다 — 진단 관측 소실"
+
+    @patch("src.services.cron_service.telegram_post_message", new_callable=AsyncMock)
     @patch("src.services.cron_service._format_weekly_message", return_value="msg")
     @patch("src.services.cron_service.weekly_summary")
     async def test_run_weekly_reports_rolls_back_on_db_error(

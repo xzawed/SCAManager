@@ -44,6 +44,15 @@ _SECRET_URL_PATTERNS = (
     re.compile(r"(api\.telegram\.org/bot)[^/\s]+"),
     re.compile(r"(hooks\.slack\.com/services/)\S+"),
     re.compile(r"(discord(?:app)?\.com/api/webhooks/)\S+"),
+    # 🔴 인바운드 쿼리스트링 시크릿 (종합감사 P2) — uvicorn.access 는 경로+쿼리를 통째로 로깅한다.
+    # `hook_token` 은 `?token=<secret>`(deprecated 하위호환)로도 전달돼 access 로그에 평문으로
+    # 남았다. 파라미터명은 보존하고 값만 마스킹 — 위 필터가 uvicorn.access 핸들러에도 부착된다.
+    # Inbound query-string secrets: uvicorn.access logs the full path+query, so a token/api_key
+    # value would land verbatim. Preserve the param name, mask the value only.
+    # `api[_-]?key` 는 apikey/api_key/api-key 를 모두 커버하므로 별도 apikey 대안 불필요(S5855).
+    # api[_-]?key already matches apikey/api_key/api-key — no separate `apikey` alternative (S5855).
+    re.compile(r"([?&](?:token|api[_-]?key|access[_-]?token|hook[_-]?token)=)[^&\s\"']+",
+               re.IGNORECASE),
 )
 
 # 리댁션 대상이 예외 텍스트일 때 쓰는 기본 포맷터 — exc_info → 문자열 변환 전용.
