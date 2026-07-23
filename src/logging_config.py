@@ -49,7 +49,9 @@ _SECRET_URL_PATTERNS = (
     # 남았다. 파라미터명은 보존하고 값만 마스킹 — 위 필터가 uvicorn.access 핸들러에도 부착된다.
     # Inbound query-string secrets: uvicorn.access logs the full path+query, so a token/api_key
     # value would land verbatim. Preserve the param name, mask the value only.
-    re.compile(r"([?&](?:token|api[_-]?key|apikey|access[_-]?token|hook[_-]?token)=)[^&\s\"']+",
+    # `api[_-]?key` 는 apikey/api_key/api-key 를 모두 커버하므로 별도 apikey 대안 불필요(S5855).
+    # api[_-]?key already matches apikey/api_key/api-key — no separate `apikey` alternative (S5855).
+    re.compile(r"([?&](?:token|api[_-]?key|access[_-]?token|hook[_-]?token)=)[^&\s\"']+",
                re.IGNORECASE),
 )
 
