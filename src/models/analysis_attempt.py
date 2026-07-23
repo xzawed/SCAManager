@@ -69,7 +69,11 @@ class AnalysisAttempt(Base):
     started_at = Column(
         DateTime,
         nullable=False,
-        default=lambda: datetime.now(timezone.utc),
+        # 🔴 naive UTC 삽입 (종합감사 P2) — 컬럼은 naive DateTime(TIMESTAMP WITHOUT TIME ZONE)이고
+        #   orphan sweep 은 `_now_naive()` cutoff(naive)와 비교한다. default 가 aware 값을 넣으면
+        #   PG 에서 삽입/비교가 세션 타임존에 의존해 소실 탐지가 흔들린다 → cutoff 규약과 동일하게 naive UTC.
+        # Insert naive UTC to match the naive column + `_now_naive()` cutoff (PG session-tz safety).
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         server_default=text("CURRENT_TIMESTAMP"),
         index=True,
     )

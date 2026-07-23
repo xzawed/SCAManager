@@ -12,9 +12,13 @@ os.environ.setdefault("SESSION_SECRET", "test-session-secret-32-chars-long!")
 
 from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
-import src.api.hook as _hook_module
 from src.main import app
 from src.constants import COMMIT_MSG_MAX, AI_REVIEW_MAX, TEST_COVERAGE_MAX
+# 🔴 `import src.api.hook as ...` 금지 — L816 `from src.api.hook import _coerce_raw_score` 와
+#   이중 import 로 CodeQL py/import-and-import-from(alert #560) 유발(testing.md). 실 함수는 정의
+#   모듈에서 직접 가져와 spy 로 감싼다(string-path patch 는 아래 patch() 인자로 사용).
+# No `import src.api.hook as ...` (dual-import with the from-import at L816 → CodeQL alert).
+from src.scorer.calculator import calculate_score as _real_calculate_score
 
 client = TestClient(app)
 
@@ -182,11 +186,10 @@ def test_hook_result_coerces_null_ai_fields_without_500():
     # 부족 — 엔드포인트 자체는 null 필드에 크래시하지 않고, 리터럴 "None"·비-dict 는 하류에서 터진다).
     # Capture the AiReviewResult to observe actual coercion (a bare 200 wouldn't distinguish).
     captured = {}
-    real_calc = _hook_module.calculate_score
 
     def _spy(static_results, ai_review):
         captured["ai_review"] = ai_review
-        return real_calc(static_results, ai_review=ai_review)
+        return _real_calculate_score(static_results, ai_review=ai_review)
 
     with patch("src.api.hook.SessionLocal", return_value=_make_session_mock(mock_db)), \
          patch("src.api.hook.calculate_score", side_effect=_spy):

@@ -102,7 +102,12 @@ def moving_average(
     """
     # now 기본값 설정 — 테스트에서 고정 시각 주입 가능
     # Default now — allows injecting a fixed time in tests
+    # 🔴 naive UTC 정규화 (종합감사 P2) — Analysis.created_at 은 naive DateTime 컬럼이라 aware 경계와
+    #   비교하면 PG(TIMESTAMP WITHOUT TIME ZONE)에서 세션 타임존에 의존해 윈도우 경계가 흔들린다.
+    # Normalize to naive UTC — comparing an aware bound against the naive column is PG session-tz dependent.
     _now = now or datetime.now(timezone.utc)
+    if _now.tzinfo is not None:
+        _now = _now.astimezone(timezone.utc).replace(tzinfo=None)
     since = _now - timedelta(days=window_days)
 
     rows = db.scalars(
