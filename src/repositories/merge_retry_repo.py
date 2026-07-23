@@ -346,6 +346,7 @@ def release_claim(
     next_retry_at: datetime,
     last_failure_reason: str | None = None,
     last_detail_message: str | None = None,
+    expected_claim_token: str | None = None,
     now: datetime | None = None,
 ) -> bool:
     """클레임 해제 — pending 재시도 대기 상태로 복귀.
@@ -355,12 +356,20 @@ def release_claim(
     Sets claimed_at=None, claim_token=None, updates next_retry_at.
     행 없으면 False, 있으면 True 반환.
     Returns False if row not found, True if found.
+
+    🔴 소유권 CAS (종합감사 P1-5): expected_claim_token 전달 시 그 토큰 소유 행만 write-back.
+    batch 가 stale 임계(300s)를 넘겨 다른 워커가 재클레임하면 claim_token 이 바뀌므로 0행 매치
+    → False(소유권 상실, skip) → 이중 처리·상태 clobber 차단.
+    Ownership CAS — only the claiming worker writes back; a stale-reclaim changes the token → skip.
     """
     _now = now or _now_naive()
 
-    row = db.query(MergeRetryQueue).filter(MergeRetryQueue.id == row_id).first()
+    q = db.query(MergeRetryQueue).filter(MergeRetryQueue.id == row_id)
+    if expected_claim_token is not None:
+        q = q.filter(MergeRetryQueue.claim_token == expected_claim_token)
+    row = q.first()
     if row is None:
-        return False
+        return False  # 미발견 OR 소유권 상실 / not found OR ownership lost
 
     row.claimed_at = None
     row.claim_token = None
@@ -381,11 +390,18 @@ def _mark_status(
     status: str,
     reason: str | None,
     now: datetime,
+    expected_claim_token: str | None = None,
 ) -> bool:
     """상태 마킹 공통 헬퍼 — claimed_at/claim_token 초기화 포함.
     Common helper for status marking — also clears claimed_at/claim_token.
+
+    🔴 소유권 CAS (P1-5): expected_claim_token 소유 행만 마킹 — 재클레임 시 0행 → False(skip).
+    Ownership CAS — mark only when the row still holds expected_claim_token (else skip).
     """
-    row = db.query(MergeRetryQueue).filter(MergeRetryQueue.id == row_id).first()
+    q = db.query(MergeRetryQueue).filter(MergeRetryQueue.id == row_id)
+    if expected_claim_token is not None:
+        q = q.filter(MergeRetryQueue.claim_token == expected_claim_token)
+    row = q.first()
     if row is None:
         return False
     row.status = status
@@ -404,14 +420,16 @@ def mark_succeeded(
     *,
     reason: str | None = None,
     now: datetime | None = None,
+    expected_claim_token: str | None = None,
 ) -> bool:
     """status='succeeded' 마킹 — 재시도 성공 시 호출.
     Mark status as 'succeeded' — called on successful merge retry.
-    행 없으면 False 반환.
-    Returns False if row not found.
+    행 없으면 False 반환 (또는 expected_claim_token 소유권 상실 시 — CAS, P1-5).
+    Returns False if row not found (or ownership lost via expected_claim_token CAS).
     """
     _now = now or _now_naive()
-    return _mark_status(db, row_id, status="succeeded", reason=reason, now=_now)
+    return _mark_status(db, row_id, status="succeeded", reason=reason, now=_now,
+                        expected_claim_token=expected_claim_token)
 
 
 def mark_terminal(
@@ -420,14 +438,16 @@ def mark_terminal(
     *,
     reason: str,
     now: datetime | None = None,
+    expected_claim_token: str | None = None,
 ) -> bool:
     """status='failed_terminal' 마킹 — 재시도 불가 오류 (권한 없음 등).
     Mark status as 'failed_terminal' — non-retryable error (e.g. permission denied).
-    행 없으면 False 반환.
-    Returns False if row not found.
+    행 없으면 False 반환 (또는 expected_claim_token 소유권 상실 시 — CAS, P1-5).
+    Returns False if row not found (or ownership lost via expected_claim_token CAS).
     """
     _now = now or _now_naive()
-    return _mark_status(db, row_id, status="failed_terminal", reason=reason, now=_now)
+    return _mark_status(db, row_id, status="failed_terminal", reason=reason, now=_now,
+                        expected_claim_token=expected_claim_token)
 
 
 def mark_expired(
@@ -436,6 +456,7 @@ def mark_expired(
     *,
     reason: str | None = None,
     now: datetime | None = None,
+    expected_claim_token: str | None = None,
 ) -> bool:
     """status='expired' 마킹 — 더 이상 머지 시도하지 않는 비-실패 종료(max_age 초과 = aged out).
     🔴 force-push/SHA-drift 는 expired 가 아니라 abandoned(reason='sha_drift') 로 라우팅된다
@@ -445,7 +466,8 @@ def mark_expired(
     행 없으면 False 반환. / Returns False if row not found.
     """
     _now = now or _now_naive()
-    return _mark_status(db, row_id, status="expired", reason=reason, now=_now)
+    return _mark_status(db, row_id, status="expired", reason=reason, now=_now,
+                        expected_claim_token=expected_claim_token)
 
 
 def mark_abandoned(
@@ -454,14 +476,16 @@ def mark_abandoned(
     *,
     reason: str,
     now: datetime | None = None,
+    expected_claim_token: str | None = None,
 ) -> bool:
     """status='abandoned' 마킹 — max_attempts 초과 등 포기 시.
     Mark status as 'abandoned' — when max_attempts is exceeded or caller gives up.
-    행 없으면 False 반환.
-    Returns False if row not found.
+    행 없으면 False 반환 (또는 expected_claim_token 소유권 상실 시 — CAS, P1-5).
+    Returns False if row not found (or ownership lost via expected_claim_token CAS).
     """
     _now = now or _now_naive()
-    return _mark_status(db, row_id, status="abandoned", reason=reason, now=_now)
+    return _mark_status(db, row_id, status="abandoned", reason=reason, now=_now,
+                        expected_claim_token=expected_claim_token)
 
 
 def abandon_stale_for_pr(

@@ -85,6 +85,10 @@ async def process_pending_retries(
     }
 
     for row in claimed:
+        # 🔴 원본 소유권 토큰 캡처 (P1-5) — 예외 복구 시 `db.refresh` 가 재클레임한 새 토큰으로
+        # 덮어쓰기 전에 이 워커의 claim_token 을 확보. `_recover_and_release` 의 CAS 조건으로 전달.
+        # Capture this worker's claim_token before any exception-path db.refresh overwrites it.
+        _orig_tok = row.claim_token
         try:
             await _process_single_retry(db, row, now, counts)
         except (httpx.HTTPError, SQLAlchemyError) as exc:
@@ -93,18 +97,25 @@ async def process_pending_retries(
             logger.warning(
                 "retry worker infra error row_id=%d: %s", row.id, type(exc).__name__
             )
-            _recover_and_release(db, row, now, counts, reason="infra_error", exc=exc)
+            _recover_and_release(
+                db, row, now, counts, reason="infra_error", exc=exc,
+                expected_claim_token=_orig_tok,
+            )
         except Exception as exc:  # pylint: disable=broad-exception-caught  # noqa: BLE001
             # 예상외 단일 행 결함(KeyError/ValueError 등) 격리 — 전체 배치 중단 방지(C3).
             # Isolate an unexpected single-row failure so it can't abort the whole batch (C3).
             logger.exception("retry worker unexpected error row_id=%d", row.id)
-            _recover_and_release(db, row, now, counts, reason="unexpected_error", exc=exc)
+            _recover_and_release(
+                db, row, now, counts, reason="unexpected_error", exc=exc,
+                expected_claim_token=_orig_tok,
+            )
 
     return counts
 
 
 def _recover_and_release(db: Session, row, now: datetime, counts: dict[str, int],
-                         *, reason: str, exc: Exception) -> None:
+                         *, reason: str, exc: Exception,
+                         expected_claim_token: str | None = None) -> None:
     """실패한 행의 세션을 복구하고 클레임을 안전하게 해제한다 — 두 except 핸들러 공용.
 
     Recover the session and safely release a failed row's claim — shared by both handlers.
@@ -121,19 +132,28 @@ def _recover_and_release(db: Session, row, now: datetime, counts: dict[str, int]
     2. `status == "pending"` 가드 — terminal(succeeded 등) 로 이미 커밋된 뒤 부수효과에서 예외가 났으면
        그 완료 행의 `last_failure_reason` 을 덮어쓰지 않는다 (감사 추적 오염·재시도 부활 차단).
     3. 해제 자체 실패도 격리 — 배치는 계속 (5분 stale 재클레임이 안전망).
+
+    🔴 expected_claim_token (P1-5): 호출자 loop 가 처리 前 캡처한 원본 토큰. `db.refresh(row)` 는
+    row 를 DB 최신값으로 덮어써 재클레임 시 새 토큰이 실리므로, refresh 로는 원본 소유권을 알 수 없다
+    → loop 에서 캡처한 원본 토큰을 CAS 조건으로 넘겨, 다른 워커가 재클레임한 행을 이 워커가 되돌리지
+    못하게 한다(released 카운트도 실제 해제 시에만 증가).
+    Threads the pre-refresh ownership token captured by the caller loop, since db.refresh overwrites
+    row with the reclaiming worker's token; CAS ensures we never revert a row another worker owns.
     """
     try:
         db.rollback()
         db.refresh(row)
         if row.status == "pending":
-            merge_retry_repo.release_claim(
+            released = merge_retry_repo.release_claim(
                 db,
                 row.id,
                 next_retry_at=now.replace(tzinfo=None) + timedelta(seconds=30),
                 last_failure_reason=reason,
                 last_detail_message=str(exc)[:200],
+                expected_claim_token=expected_claim_token,
             )
-            counts["released"] += 1
+            if released:
+                counts["released"] += 1
     except Exception:  # pylint: disable=broad-exception-caught  # noqa: BLE001
         # 클레임 해제 자체 실패해도 배치는 계속 (다음 행 처리). 5분 stale 재클레임이 안전망.
         # Even if claim release fails, keep the batch going; the 5-min stale reclaim is the net.
@@ -151,6 +171,13 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
     Process a single retry row (Cycle 93 PR-B — extracted from process_pending_retries).
     counts dict 직접 mutate. 호출자 (process_pending_retries) 가 try/except wrap.
     """
+    # 🔴 소유권 토큰 캡처 (종합감사 P1-5) — claim_batch 가 이 워커에게 부여한 claim_token.
+    # 이 함수의 모든 write-back(mark_*/release_claim/_handle_merge_failure)에 CAS 조건으로 전달해,
+    # 처리 도중 batch 가 stale 임계(300s)를 넘겨 다른 워커가 재클레임하면(토큰 변경) 이 워커의
+    # 뒤늦은 write-back 이 no-op 되게 한다 → 이중 처리·종결 상태 clobber·재시도 부활 차단.
+    # Capture the ownership token this worker was granted; thread it to every write-back as a CAS
+    # guard so a stale-reclaim by another worker makes this worker's late write-back a no-op.
+    _claim_tok = row.claim_token
     # ── a-0. 최대 시도 횟수 초과 (🔴 토큰 조회 前 — no_token 무한루프 방지, 종합감사 P1-11) ──
     # claim 시 attempts_count 가 선증가하므로(merge_retry_repo.claim_batch) 이 검사는 merge_pr 호출 이전 단계다.
     # 따라서 max_attempts=N 설정 시 실제 머지 시도는 N-1회 — 의도된 fail-safe(시도 횟수가 적은 보수적 방향).
@@ -171,7 +198,9 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
             pr_number=row.pr_number, score=row.score,
             threshold=row.threshold_at_enqueue, success=False, reason="max_attempts_exceeded",
         )
-        merge_retry_repo.mark_abandoned(db, row.id, reason="max_attempts_exceeded")
+        merge_retry_repo.mark_abandoned(
+            db, row.id, reason="max_attempts_exceeded", expected_claim_token=_claim_tok,
+        )
         counts["abandoned"] += 1
         return
 
@@ -183,6 +212,7 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
         _now_naive = now.replace(tzinfo=None) + timedelta(seconds=30)
         merge_retry_repo.release_claim(
             db, row.id, next_retry_at=_now_naive, last_failure_reason="no_token",
+            expected_claim_token=_claim_tok,
         )
         counts["released"] += 1
         return
@@ -201,7 +231,9 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
             pr_number=row.pr_number, score=row.score,
             threshold=cfg.merge_threshold, success=False, reason=merge_reasons.CONFIG_CHANGED,
         )
-        merge_retry_repo.mark_abandoned(db, row.id, reason=merge_reasons.CONFIG_CHANGED)
+        merge_retry_repo.mark_abandoned(
+            db, row.id, reason=merge_reasons.CONFIG_CHANGED, expected_claim_token=_claim_tok,
+        )
         await _notify_config_changed(row, cfg, language=language)
         counts["abandoned"] += 1
         return
@@ -212,6 +244,7 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
         _now_naive = now.replace(tzinfo=None) + timedelta(seconds=30)
         merge_retry_repo.release_claim(
             db, row.id, next_retry_at=_now_naive, last_failure_reason="pr_fetch_failed",
+            expected_claim_token=_claim_tok,
         )
         counts["released"] += 1
         return
@@ -224,7 +257,9 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
             pr_number=row.pr_number, score=row.score,
             threshold=cfg.merge_threshold, success=True, reason=None,
         )
-        merge_retry_repo.mark_succeeded(db, row.id, reason=merge_reasons.ALREADY_MERGED)
+        merge_retry_repo.mark_succeeded(
+            db, row.id, reason=merge_reasons.ALREADY_MERGED, expected_claim_token=_claim_tok,
+        )
         counts["succeeded"] += 1
         return
 
@@ -239,7 +274,9 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
             pr_number=row.pr_number, score=row.score,
             threshold=cfg.merge_threshold, success=False, reason=merge_reasons.SHA_DRIFT,
         )
-        merge_retry_repo.mark_abandoned(db, row.id, reason=merge_reasons.SHA_DRIFT)
+        merge_retry_repo.mark_abandoned(
+            db, row.id, reason=merge_reasons.SHA_DRIFT, expected_claim_token=_claim_tok,
+        )
         counts["abandoned"] += 1
         return
 
@@ -267,7 +304,7 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
             pr_number=row.pr_number, score=row.score,
             threshold=cfg.merge_threshold, success=True, reason=None,
         )
-        merge_retry_repo.mark_succeeded(db, row.id)
+        merge_retry_repo.mark_succeeded(db, row.id, expected_claim_token=_claim_tok)
         await _notify_merge_succeeded(row, cfg, language=language)
         counts["succeeded"] += 1
         return
@@ -276,6 +313,7 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
     await _handle_merge_failure(
         db, row=row, cfg=cfg, token=token, pr_data=pr_data,
         reason=reason, now=now, language=language, counts=counts,
+        expected_claim_token=_claim_tok,
     )
 
 
@@ -285,14 +323,18 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
 # ---------------------------------------------------------------------------
 
 
-async def _handle_merge_failure(  # pylint: disable=too-many-arguments
+async def _handle_merge_failure(  # pylint: disable=too-many-arguments,too-many-locals
     db: Session, *, row, cfg: RepoConfigData, token: str, pr_data: dict,
     reason: str, now: datetime, language: str, counts: dict[str, int],
+    expected_claim_token: str | None = None,
 ) -> None:
     """merge_pr 실패 후 처리 — terminal/expired/transient 분류 + 로깅·알림·큐 복귀.
 
     Handle a failed merge_pr outcome: classify terminal/expired/transient, log, notify, requeue.
     `_process_single_retry` 의 실패 경로(f/g)를 분리 — 인지 복잡도 감소.
+    🔴 expected_claim_token (P1-5): 호출자 `_process_single_retry` 가 캡처한 소유권 토큰을 받아 여기
+    3개 write-back(mark_terminal/mark_expired/release_claim)에도 CAS 조건으로 전달 — 재클레임 시 no-op.
+    Receives the caller's ownership token and threads it to all 3 write-backs as a CAS guard.
     """
     reason_tag = parse_reason_tag(reason)
     # F1: pr_data 에 이미 base.ref 가 있으므로 추가 호출 없이 활용
@@ -317,11 +359,15 @@ async def _handle_merge_failure(  # pylint: disable=too-many-arguments
             threshold=cfg.merge_threshold, success=False, reason=reason,
         )
         if is_terminal_failure:
-            merge_retry_repo.mark_terminal(db, row.id, reason=reason_tag)
+            merge_retry_repo.mark_terminal(
+                db, row.id, reason=reason_tag, expected_claim_token=expected_claim_token,
+            )
             counts["terminal"] += 1
         else:
             # 재시도 가능했으나 max_age 초과 — terminal 실패와 구분해 'expired' 기록
-            merge_retry_repo.mark_expired(db, row.id, reason=reason_tag)
+            merge_retry_repo.mark_expired(
+                db, row.id, reason=reason_tag, expected_claim_token=expected_claim_token,
+            )
             counts["expired"] += 1
         # 사이클 149 Sprint 3/4 — 알림 + Issue 사용자 언어 (상단 b 단계에서 결정)
         # Cycle 149 Sprint 3/4 — user language for notify + Issue (resolved in step b above)
@@ -341,6 +387,7 @@ async def _handle_merge_failure(  # pylint: disable=too-many-arguments
         db, row.id,
         next_retry_at=next_retry_at.replace(tzinfo=None),  # naive UTC for DB
         last_failure_reason=reason_tag, last_detail_message=reason,
+        expected_claim_token=expected_claim_token,
     )
     counts["released"] += 1
 
