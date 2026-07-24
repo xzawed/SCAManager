@@ -14,7 +14,7 @@
 **이 파일부터 읽으면 된다.**
 
 🔴 **2026-07-24 세션8 = 종합감사(#1186~1194) + P2 5클러스터(#1195~1199) + 5+1 회고(80 confirmed) + 회고 P1 이행(#1200~1201).** 상세 세션 메모리: `project-retro-2026-07-24`. **미이행 잔여**:
-- **[감사 P2 — 2026-07-24 라운드 처리]**: 명확버그 6(#1204~#1208) + High-tier 설계결정 5 완료. **2026-07-24 후속**(#1210·#1211): pagination(#1210) + webhook issue-close BackgroundTask(#1211) 완료 · approve 민감경로 가드 = **오탐 정정**(대칭·개념 부재) · cron-conn = defer(서비스품질). **잔여 ~9** = 아래 "🟡 2026-07-23 종합감사 잔여 P2" 섹션 (스냅샷 = [`docs/_archive/reports/2026-07-23-comprehensive-review.md`](_archive/reports/2026-07-23-comprehensive-review.md)): 명확버그 1(cron double-send[dedup schema]) · SQL 집계 4 · 가드 self-defect 5 · UI 5(정책 11 시각검증) — 남은 건 전부 schema/perf/meta-guard/시각검증.
+- **[감사 P2 — 2026-07-24 라운드 처리]**: 명확버그 6(#1204~#1208) + High-tier 설계결정 5 완료. **2026-07-24 후속**(#1210·#1211): pagination(#1210) + webhook issue-close BackgroundTask(#1211) 완료 · approve 민감경로 가드 = **오탐 정정**(대칭·개념 부재) · cron-conn = defer(서비스품질). **후속2**(#1213~#1215): 가드 self-defect 3/4 완료(B8 escape/alias·arch-tree cross-dir·wiring-coverage path-comment/tautological). **잔여 ~6** = 아래 "🟡 2026-07-23 종합감사 잔여 P2" 섹션 (스냅샷 = [`docs/_archive/reports/2026-07-23-comprehensive-review.md`](_archive/reports/2026-07-23-comprehensive-review.md)): 명확버그 1(cron double-send[dedup schema]) · SQL 집계 4 · 가드 self-defect 1(security.md 로깅 coverage — 모호, 재검증) · UI 5(정책 11 시각검증) — 남은 건 전부 schema/perf/모호가드/시각검증.
 - **[회고 P1-G ✅]** = Grok claim-review 완료(#1203) — CAS 주장 REFUTED → "이중 처리 차단" overclaim 을 낙관적 동시성으로 정확화.
 
 ---
@@ -35,7 +35,7 @@
 | 상태 | 건수 | 성격 |
 |------|------|------|
 | 🔴 결정 대기 | **1** (B6-b) | AI 자기 머지 거버넌스 (감사 High-tier 6건은 2026-07-24 서비스품질 결정 완료) |
-| 🟡 착수 가능 | **1** (B7) + 감사 자율 **~9** | 명확버그 1(cron dedup) + SQL 집계 4 + 가드 self-defect 5 (pagination #1210·동작1 #1211 완료) |
+| 🟡 착수 가능 | **1** (B7) + 감사 자율 **~6** | 명확버그 1(cron dedup) + SQL 집계 4 + 가드 self-defect 1(security.md 모호) (pagination #1210·동작1 #1211·가드 3건 #1213~#1215 완료) |
 | ⏸️ 보류 | **1** (H2) + 감사 UI **5** | note 등급 + UI 템플릿(정책 11 사용자 시각검증) |
 
 > ✅ **2026-07-24 라운드**: 감사 P2 명확버그 6 + High-tier 설계결정 5(서비스품질 위주) 처리 완료(#1204~#1208). 회고 P1-G(Grok claim-review) 이행(#1203, REFUTED→CAS 정확화). **후속(#1210·#1211)**: security_scan pagination + webhook issue-close BackgroundTask 완료 · approve 민감경로 = 오탐 정정 · cron-conn = defer. 잔여 = SQL 집계·가드 self-defect·UI(정책 11)·cron dedup(schema) — 남은 건 전부 schema/perf/meta-guard/시각검증이라 세션말미 착수 회피(회고 교훈), 다음 세션.
@@ -71,7 +71,7 @@ Phase4 검증. 재개 조건은 원장 참조). 운영등급 `#1072` 1건 (`#107
 | ✅ 완료 (2026-07-24) | **명확 버그 6/8** | ~~security_scan 403 오분류~~(#1204) · ~~secret 캐시 poison~~(#1204) · ~~telegram per-repo chat_id dead~~(#1205) · ~~issue_reg 중복 이슈 무음 폐기~~(#1207) · ~~pre-push max_tokens 절단~~(#1208) · ~~escape_markdown @-멘션~~(#1208) |
 | 🟡 자율 (잔여) | **명확 버그 1** | ~~security_scan per_page=100 무페이지네이션~~(#1210 — 마지막 페이지까지 순회 + 상한 WARNING) · **cron weekly/trend 'already-sent' 미기록 double-send** (🔴 manual+scheduler 중복 발송 — dedup 기록[schema/column] 설계 필요, 단순 상수 아님. 세션말미 schema 변경 회피 — 다음 세션) |
 | 🟡 자율 | **SQL 집계** (중간 위험) | cost/security-alert/trend/frequent_issues 전량 Python 로드(SQL SUM/AVG/GROUP BY 부재) + claude_api_calls·security_alert_process_logs retention GC 부재 |
-| 🟡 자율 | **가드 self-defect** | check_guard_fail_open B8 면제 자체 bare-substring·aliased import 미탐 · check_architecture_tree_sync cross-dir substring fail-open + scripts/ 무커버 · test_guard_wiring_coverage tautological/path-comment 오판 · security.md:36 coverage guard가 logging.Filter 만 스코프 |
+| ✅ 3/4 완료 (2026-07-24) / 🟡 잔여 1 | **가드 self-defect** | ~~check_guard_fail_open B8 면제 bare-substring·aliased import 미탐~~(#1213 tokenize+import해소) · ~~check_architecture_tree_sync cross-dir substring fail-open~~(#1214 트리엔트리 경계) · ~~test_guard_wiring_coverage tautological/path-comment 오판~~(#1215 comment-strip+dead-hook 탐지) · 🟡 **잔여**: security.md 로깅 리댁션 coverage guard(`test_logging_config` 가 root/uvicorn/uvicorn.access **하드코딩 3 로거만** 검사 — 신규 propagate=False 로거 자체 핸들러가 필터 우회해도 미탐 가능성. 🔴 **모호·실재성 재검증 필요**[approve 오탐 전례], enumerate-all-propagate-false 강화 검토, 다음 세션) |
 | ⏹️ 오탐 정정 / 🟡 defer | **misc** | ~~gate/actions/approve auto-approve 민감경로 가드 누락~~ = **오탐 재검증(2026-07-24)**: `approve.py`/`auto_merge.py` **양쪽 모두 동일 3가드**(static_incomplete·ai_truncated·ai_failed) 보유, **민감경로 가드 개념 자체가 두 액션 어디에도 없음** → 비대칭 아님, 수정 대상 없음(감사 오귀속). · cron notify DB 커넥션 per-repo I/O 보유 = **defer 결정(서비스품질)**: 직렬 background cron·≤6 repo·커넥션 수초 보유라 실영향 미미, 세션 lifetime refactor 는 중간위험(rollback 인터리브) — 세션말미 복잡변경 회피(회고 교훈). 다음 세션 |
 | ✅/⏹️ 결정 완료 (2026-07-24, 서비스품질 위주) | **설계/동작 5** | ~~verifier band(고득점 인젝션 우회)~~=**밴드 상한 제거·보안>비용**(#1207) · ~~enqueue find-then-INSERT~~=**first-writer-wins**(#1206) · ~~webhook Closes#N base~~=**default 브랜치만 close**(#1205) · retry `attempts_count` 소진=**바운드 유지**(무한루프 위험>30회 후 abandon, 변경 안 함) · abandon_stale lost-update=**P1-5 CAS 가 이미 커버**(변경 불필요) |
 | ✅ 완료 (2026-07-24) | **동작 1** | ~~webhook issue-close 동기 인라인~~(#1211 — `_close_referenced_issues` BackgroundTask 위임, N개 GitHub 왕복이 ~10s webhook 타임아웃 유발하던 것 봉인) |
