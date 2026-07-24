@@ -99,3 +99,11 @@ def test_discord_preserves_ai_summary_markdown():
     # AI 요약의 markdown 은 보존(escape 안 됨) — 렌더링 품질 유지
     assert "**굵게**" in embed["description"]
     assert "[링크](http://ok)" in embed["description"]
+
+
+# ── @ 멘션 인젝션 차단 (종합감사 P2) ──
+
+def test_escape_markdown_neutralizes_at_mention():
+    """🔴 untrusted issue.message 의 @멘션 차단 — 백슬래시가 멘션 word-boundary 를 깬다."""
+    assert escape_markdown("@everyone") == "\\@everyone"
+    assert escape_markdown("ping @user done") == "ping \\@user done"

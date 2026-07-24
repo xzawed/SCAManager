@@ -120,8 +120,12 @@ def truncate_html_message(text: str, max_length: int, suffix: str = "…") -> st
 
 
 # GFM/CommonMark 활성 문자 — 링크/이미지/코드/강조/표/헤딩 인젝션 차단 대상
-# GFM/CommonMark active chars — neutralize link/image/code/emphasis/table/heading injection
-_MD_SPECIAL_CHARS = set("\\`*_[]()<>~|#!")
+# 🔴 `@` 포함 (종합감사 P2) — untrusted issue.message 의 `@user`/`@everyone` 멘션 인젝션 차단.
+#   백슬래시가 `@` 앞에 오면 멘션 word-boundary 가 깨져 GitHub(`\@user`) · Discord(`\@everyone`)
+#   모두 멘션이 발동하지 않는다(가시적 `\` 는 terse 정적 도구 메시지에서 수용 가능한 비용).
+# GFM/CommonMark active chars (incl. `@`) — a backslash before `@` breaks the mention word-boundary
+#   so neither GitHub nor Discord fires a mention (small cosmetic cost on terse tool messages).
+_MD_SPECIAL_CHARS = set("\\`*_[]()<>~|#!@")
 
 
 def escape_markdown(text: str) -> str:

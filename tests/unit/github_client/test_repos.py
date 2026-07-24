@@ -223,3 +223,12 @@ async def test_get_timeout_returns_false():
 
     assert result is False
     client.put.assert_not_called()
+
+
+def test_prepush_hook_max_tokens_not_truncating():
+    """🔴 pre-push 훅 템플릿이 절단 버그(max_tokens=2048)를 재삽입하지 않는다 (종합감사 P2, #931 대응).
+    한국어 리뷰 JSON(~2660 토큰)이 2048 에서 절단돼 parse_error 나던 것 — 8192 기본 + env 설정.
+    """
+    from src.github_client.repos import _INSTALL_HOOK_SH
+    assert "'max_tokens': 2048" not in _INSTALL_HOOK_SH, "절단 버그(2048) 재삽입"
+    assert "CLAUDE_REVIEW_MAX_TOKENS" in _INSTALL_HOOK_SH and "8192" in _INSTALL_HOOK_SH
