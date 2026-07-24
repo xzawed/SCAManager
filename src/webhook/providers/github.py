@@ -68,9 +68,9 @@ def _extract_closing_issue_numbers(body: str | None) -> list[int]:
     return result
 
 
-async def _handle_merged_pr_event(data: dict) -> dict:
+async def _handle_merged_pr_event(data: dict, background_tasks: BackgroundTasks) -> dict:
     """pull_request.closed + merged=true 시 두 작업 수행:
-    1) PR body 의 Closes #N 키워드로 Issue 를 close (기존 동작).
+    1) PR body 의 Closes #N 키워드로 Issue 를 close (기존 동작 — BackgroundTask 로 위임).
     2) Phase 3 PR-B1: MergeAttempt 의 state 를 enabled_pending_merge → actually_merged 로 전이.
 
     Phase 3 PR-B1: When a PR closes with merged=true:
@@ -111,6 +111,24 @@ async def _handle_merged_pr_event(data: dict) -> dict:
     if not numbers:
         return {"status": "accepted"}
 
+    # 🔴 이슈 close 를 BackgroundTask 로 위임 (종합감사 P2) — close_issue 는 이슈당 GitHub API
+    #   왕복 1회다. PR body 가 여러 `Closes #N` 을 참조하면 이 루프가 webhook 응답을 이슈 수 ×
+    #   왕복시간만큼 지연시켜 GitHub 의 ~10s webhook 배달 타임아웃을 넘길 수 있다(재시도 폭주).
+    #   응답을 즉시 반환하고 close 는 백그라운드에서 수행한다(_run_pipeline·n8n 릴레이와 동일 패턴).
+    # Defer the per-issue GitHub close calls to a background task so the webhook responds immediately —
+    #   N sequential close_issue round-trips could otherwise blow GitHub's ~10s delivery timeout.
+    background_tasks.add_task(_close_referenced_issues, repo_name, numbers)
+    return {"status": "accepted"}
+
+
+async def _close_referenced_issues(repo_name: str, numbers: list[int]) -> None:
+    """백그라운드 이슈 close — `Closes #N` 참조 이슈를 순차 close (webhook 응답 비차단).
+    Guarded background issue-close; runs the sequential GitHub close calls off the response path.
+
+    🔴 예외는 여기서 좁게 흡수해 ASGI 밖으로 전파시키지 않는다 — 무가드 BackgroundTask 예외는
+    응답 송신 후 uvicorn 이 트레이스백으로 로깅한다(`_notify_n8n_issue_guarded` 동일 원칙).
+    Guarded so a background failure never escapes to the ASGI layer.
+    """
     token: str | None = None
     try:
         with SessionLocal() as db:
@@ -129,7 +147,7 @@ async def _handle_merged_pr_event(data: dict) -> dict:
             "merged-pr issue close: no token available for %s — skipped",
             sanitize_for_log(repo_name),
         )
-        return {"status": "accepted"}
+        return
 
     for issue_number in numbers:
         try:
@@ -149,8 +167,6 @@ async def _handle_merged_pr_event(data: dict) -> dict:
                 "Auto-close failed (repo=%s, issue=%d): %s",
                 sanitize_for_log(repo_name), issue_number, type(exc).__name__,
             )
-
-    return {"status": "accepted"}
 
 
 async def _record_actual_merge(repo_name: str, pr_number: int) -> None:
@@ -411,7 +427,9 @@ def _run_pipeline(
     return {"status": "accepted"}
 
 
-async def _preprocess_pull_request(data: dict) -> dict | None:
+async def _preprocess_pull_request(
+    data: dict, background_tasks: BackgroundTasks,
+) -> dict | None:
     """pull_request 이벤트의 action 전처리 — 조기 반환 dict 또는 None(fall-through) 반환.
     Pre-process pull_request action — returns an early-exit dict or None to fall through.
 
@@ -422,7 +440,7 @@ async def _preprocess_pull_request(data: dict) -> dict | None:
     if action not in PR_HANDLED_ACTIONS:
         return {"status": "ignored"}
     if action == "closed":
-        return await _handle_merged_pr_event(data)
+        return await _handle_merged_pr_event(data, background_tasks)
     # Phase 3 PR-B1 — Tier 3 native auto-merge lifecycle 추적
     # GitHub 가 auto-merge 를 자동 비활성화 시 MergeAttempt state 전이
     # Phase 3 PR-B1 — track Tier 3 native auto-merge lifecycle.
@@ -593,7 +611,7 @@ async def github_webhook(
         return {"status": "ignored"}
 
     if x_github_event == "pull_request":
-        early = await _preprocess_pull_request(data)
+        early = await _preprocess_pull_request(data, background_tasks)
         if early is not None:
             return early
 

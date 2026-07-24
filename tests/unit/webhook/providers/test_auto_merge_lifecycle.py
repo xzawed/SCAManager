@@ -7,6 +7,7 @@ import os
 from unittest.mock import MagicMock, patch
 
 import pytest
+from fastapi import BackgroundTasks
 
 # src 임포트 전 환경변수 주입
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
@@ -46,7 +47,7 @@ async def test_handle_merged_pr_event_transitions_state_to_actually_merged():
         mock_session_cls.return_value.__enter__.return_value = MagicMock()
         mock_session_cls.return_value.__exit__.return_value = None
 
-        result = await _handle_merged_pr_event(data)
+        result = await _handle_merged_pr_event(data, BackgroundTasks())
 
     assert result["status"] == "accepted"
     mock_mark.assert_called_once()
@@ -74,7 +75,7 @@ async def test_handle_merged_pr_event_no_op_when_no_merge_attempt():
         mock_session_cls.return_value.__enter__.return_value = MagicMock()
         mock_session_cls.return_value.__exit__.return_value = None
 
-        result = await _handle_merged_pr_event(data)
+        result = await _handle_merged_pr_event(data, BackgroundTasks())
 
     assert result["status"] == "accepted"
     mock_mark.assert_not_called()
@@ -97,7 +98,7 @@ async def test_handle_merged_pr_event_isolates_db_failure():
         side_effect=SQLAlchemyError("connection lost"),
     ):
         # SQLAlchemyError 가 _record_actual_merge 안 try/except 에서 격리됨
-        result = await _handle_merged_pr_event(data)
+        result = await _handle_merged_pr_event(data, BackgroundTasks())
 
     # body 없어 close_issue 단계도 ignored — but record_actual_merge 격리 검증
     assert result["status"] in {"accepted", "ignored"}
