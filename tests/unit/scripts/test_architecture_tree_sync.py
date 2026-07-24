@@ -47,6 +47,37 @@ def test_guard_catches_an_unlisted_entry(monkeypatch):
     )
 
 
+def test_guard_rejects_cross_dir_and_substring_mentions(monkeypatch):
+    """🔴 트리 밖 경로/부분단어 언급은 '등재'로 인정 안 함 — cross-dir/substring fail-open 봉인.
+
+    이전 bare `f"{pkg}/" in text` 는 데이터흐름 fence 의 엔드포인트 `/api/webhook`·타 디렉토리
+    `tests/mcp/`·부분단어 `recapi/` 로도 통과해, src 트리에서 빠져도 미탐이었다(감사 self-defect).
+    트리 엔트리 위치(앞이 word-char/슬래시 아님)만 인정하도록 봉인.
+    """
+    mod = _load()
+    fake_tree = (
+        "POST /api/webhook/telegram\n"  # 앞=/ (엔드포인트 경로)
+        "recapi/ 관련 언급\n"            # 앞=c (부분단어)
+        "tests/mcp/test_x.py\n"         # 앞=/ (타 디렉토리)
+    )
+    monkeypatch.setattr(mod, "_tree_text", lambda: fake_tree)
+    monkeypatch.setattr(mod, "_packages", lambda: ["api", "mcp"])
+    monkeypatch.setattr(mod, "_top_modules", lambda: [])
+    missing = mod.missing_entries()
+    assert any("api" in m for m in missing) and any("mcp" in m for m in missing), (
+        f"cross-dir/부분단어 언급을 트리 등재로 오인(fail-open): missing={missing}"
+    )
+
+
+def test_guard_accepts_proper_tree_entry(monkeypatch):
+    """대조군 — 트리 엔트리 `├── api/` 는 정상 인정(경계 규칙 과탐 방지)."""
+    mod = _load()
+    monkeypatch.setattr(mod, "_tree_text", lambda: "├── api/\n└── mcp/\n")
+    monkeypatch.setattr(mod, "_packages", lambda: ["api", "mcp"])
+    monkeypatch.setattr(mod, "_top_modules", lambda: [])
+    assert mod.missing_entries() == []
+
+
 def test_guard_is_wired():
     """🔴 이 가드가 pre-commit·CI 에 배선됐는지(정의만 하고 미배선 dead 방지).
 
