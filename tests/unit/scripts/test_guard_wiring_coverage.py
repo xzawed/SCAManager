@@ -47,6 +47,15 @@ def _guard_files() -> list[Path]:
     return checks + hooks
 
 
+def _strip_line_comments(text: str) -> str:
+    """라인별 `#`-to-EOL 주석 제거 — 주석 안 경로 언급이 '배선'으로 오판되는 것 차단.
+
+    🔴 실제 호출(`entry:`/`run: python scripts/x.py`)은 `#` 앞에 오므로 제거되지 않는다.
+    Strip `#`-to-EOL comments per line so a path inside a comment isn't counted as an invocation.
+    """
+    return "\n".join(line.split("#", 1)[0] for line in text.splitlines())
+
+
 def _wired_surfaces(stem: str, surfaces: dict[str, str]) -> list[str]:
     """가드가 각 표면에서 **실제로 호출**되는가 — 단순 언급 아님.
 
@@ -56,10 +65,29 @@ def _wired_surfaces(stem: str, surfaces: dict[str, str]) -> list[str]:
     → `python scripts/<stem>.py` / `python .claude/hooks/<stem>.py` 형태의 **실제 호출**
     (pre-commit `entry:`·CI `run:`·settings 훅 command)만 배선으로 인정한다.
     Only an actual invocation counts as wired; a mere mention (comment) does not.
+
+    🔴 path-comment fail-open 봉인 (감사 self-defect): 경로 토큰이 텍스트 어디든(주석 포함) 있으면
+    배선으로 셌다 — `# TODO: wire scripts/check_x.py` 같은 **전체 경로 주석**도 통과시켜, 이 파일이
+    막으려는 anti-pattern 을 자신이 범했다. YAML 표면(pre-commit/ci)은 주석 제거 후 매칭.
     """
     # 실제 호출 형태: scripts/<stem>.py 또는 hooks/<stem>.py 가 명령 토큰으로 등장
     invoke = re.compile(rf"(scripts|\.claude/hooks|hooks)/{re.escape(stem)}\.py")
-    return [name for name, text in surfaces.items() if invoke.search(text)]
+    out = []
+    for name, text in surfaces.items():
+        # settings.json 은 JSON(주석 없음, `#` 가 문자열에 있을 수 있어 미제거) — 나머지 YAML 만 제거
+        haystack = text if name == "settings" else _strip_line_comments(text)
+        if invoke.search(haystack):
+            out.append(name)
+    return out
+
+
+def _dead_hook_references(settings_text: str) -> list[str]:
+    """settings 텍스트가 참조하는 `.claude/hooks/<name>.py` 중 **실파일이 없는** 것.
+
+    죽은 배선(존재하지 않는 훅을 settings 가 참조) 탐지 — 실파일 대조(tautology 아님).
+    """
+    names = re.findall(r"\.claude/hooks/([A-Za-z0-9_]+)\.py", settings_text)
+    return [n for n in names if not (_HOOKS / f"{n}.py").is_file()]
 
 
 # ── 핵심 불변식 ─────────────────────────────────────────────────────────
@@ -110,17 +138,30 @@ def test_inventory_discovers_the_real_guards():
     assert len(files) >= 14, f"가드 탐색이 {len(files)}개 — check_*.py 12 + hooks 4 이상 기대"
 
 
-def test_settings_json_is_valid_and_referenced_guards_resolve():
-    """settings.json 이 참조하는 훅 파일이 실제로 존재하는지(죽은 배선 차단)."""
-    settings_path = _ROOT / ".claude" / "settings.json"
-    data = json.loads(settings_path.read_text(encoding="utf-8"))
-    referenced = json.dumps(data)
-    for hook in _HOOKS.glob("*.py"):
-        if hook.name == "__init__.py":
-            continue
-        # settings 가 이 훅을 언급하면, 파일이 실제로 있어야 한다(있음 — 대조 확인)
-        if hook.stem in referenced:
-            assert hook.is_file()
+def test_settings_json_referenced_hooks_resolve_to_real_files():
+    """🔴 settings.json 이 참조하는 훅 파일이 실제로 존재하는가 — 죽은 배선(부재 훅 참조) 차단.
+
+    이전 판은 `for hook in _HOOKS.glob(): assert hook.is_file()` 로 **항상 참**(tautological) —
+    글롭으로 찾은 파일이 존재하는지 묻는 공허한 단언이라 죽은 배선을 전혀 못 잡았다(감사 self-defect).
+    이제 settings.json 텍스트에서 `.claude/hooks/<name>.py` 참조를 추출해 실파일 대조.
+    """
+    raw = (_ROOT / ".claude" / "settings.json").read_text(encoding="utf-8")
+    json.loads(raw)  # 유효 JSON 확인
+    referenced = re.findall(r"\.claude/hooks/([A-Za-z0-9_]+)\.py", raw)
+    assert referenced, "settings.json 이 훅을 하나도 참조 안 함 — 전제 붕괴(대조군)"
+    dead = _dead_hook_references(raw)
+    assert not dead, f"settings.json 이 존재하지 않는 훅을 참조(죽은 배선): {dead}"
+
+
+def test_dead_hook_reference_detector_catches_missing():
+    """🔴 죽은-배선 탐지기가 공허하지 않은지 — 부재 훅 참조를 실제로 잡는가(뮤테이션).
+
+    tautological 판을 대체한 탐지기가 진짜 죽은 배선을 잡는지 합성 참조로 실증.
+    """
+    synthetic = '{"command": "python .claude/hooks/nonexistent_xyz_hook.py"}'
+    assert _dead_hook_references(synthetic) == ["nonexistent_xyz_hook"], (
+        "존재하지 않는 훅 참조를 탐지 못함 — 탐지기가 공허"
+    )
 
 
 def test_wiring_detection_requires_invocation_not_mention():
@@ -134,3 +175,20 @@ def test_wiring_detection_requires_invocation_not_mention():
     )
     real = {"ci": "run: python scripts/check_fake_guard.py"}
     assert _wired_surfaces("check_fake_guard", real) == ["ci"], "실제 호출을 배선으로 못 잡았다"
+
+
+def test_wiring_detection_ignores_full_path_in_comment():
+    """🔴 주석 안에 **전체 경로**가 있어도 배선으로 오판 안 함 — path-comment fail-open 봉인.
+
+    이전 판은 `scripts/<stem>.py` 를 텍스트 어디서든(주석 포함) 찾아, `# TODO: wire
+    scripts/check_x.py` 같은 언급도 '배선됨' 으로 셌다 — 이 파일이 막으려는 바로 그 anti-pattern.
+    """
+    commented = {"ci": "        # TODO: wire scripts/check_fake_guard.py 나중에\n"}
+    assert _wired_surfaces("check_fake_guard", commented) == [], (
+        "주석 안 전체 경로를 배선으로 오판 — path-comment fail-open"
+    )
+    # 대조군: 인라인 주석이 붙어도 실제 run: 호출은 배선으로 인정
+    inline = {"ci": "        run: python scripts/check_fake_guard.py  # 실행\n"}
+    assert _wired_surfaces("check_fake_guard", inline) == ["ci"], (
+        "인라인 주석 제거가 실제 호출까지 지웠다 — 과제거"
+    )
