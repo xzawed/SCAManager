@@ -205,15 +205,22 @@ class _TelegramNotifier:
 
     name = "telegram"
 
-    def is_enabled(self, ctx: NotifyContext) -> bool:  # pylint: disable=unused-argument
+    def is_enabled(self, ctx: NotifyContext) -> bool:
         """채널 활성화 여부를 반환한다.
 
-        TELEGRAM_BOT_TOKEN 또는 TELEGRAM_CHAT_ID 미설정 시 비활성화.
-        Disabled when TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is not configured.
+        TELEGRAM_BOT_TOKEN 필수 + chat_id 는 **리포별(notify_chat_id) 또는 전역** 중 하나면 활성.
+        Requires TELEGRAM_BOT_TOKEN + a chat_id from EITHER the per-repo config OR the global setting.
+
+        🔴 리포별 chat_id 반영 (종합감사 P2) — 전역 TELEGRAM_CHAT_ID 없이 리포별 notify_chat_id 만
+        설정된 repo 는, send() 가 그 chat_id 를 해소함에도 이 게이트가 전역만 봐서 채널이 죽어 있었다
+        (분석 알림 무음 skip). cron 경로는 같은 chat 에 정상 발송하던 비대칭 봉인.
+        Reflect the per-repo chat_id — a repo with only a per-repo notify_chat_id was silently
+        skipped here even though send() resolves it (cron delivered to the same chat).
         """
-        # 토큰 또는 기본 chat_id 없으면 비활성화 (빈 문자열 허용 안 함)
-        # Disable if token or default chat_id is missing (empty string not allowed)
-        return bool(settings.telegram_bot_token and settings.telegram_chat_id)
+        repo_chat = ctx.config.notify_chat_id if ctx.config else None
+        # 토큰 필수 + (리포별 또는 전역 chat_id) — 빈 문자열 허용 안 함
+        # Token required + (per-repo or global chat_id); empty string not allowed
+        return bool(settings.telegram_bot_token and (repo_chat or settings.telegram_chat_id))
 
     async def send(self, ctx: NotifyContext) -> None:
         """알림을 전송한다 (Phase 3 PR-9 — 사이클 84 i18n 3-layer fallback).

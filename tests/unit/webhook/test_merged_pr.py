@@ -126,6 +126,54 @@ def test_merged_pr_with_closes_keyword_closes_issue():
     assert call_kwargs.get("repo_full_name") == "owner/repo"
 
 
+def _merged_pr_payload_branch(body: str, base_ref: str, default_branch: str) -> bytes:
+    """base 브랜치 + repository.default_branch 포함 merged PR payload (종합감사 P2)."""
+    return json.dumps({
+        "action": "closed",
+        "pull_request": {
+            "merged": True, "body": body,
+            "head": {"sha": "deadbeef"}, "base": {"ref": base_ref},
+        },
+        "repository": {"full_name": "owner/repo", "default_branch": default_branch},
+        "number": 10,
+    }).encode()
+
+
+def _post_merged(payload: bytes):
+    with patch("src.webhook.providers.github.settings") as ms, \
+         patch("src.webhook._helpers.settings") as mhs, \
+         patch("src.webhook.providers.github.close_issue", new_callable=AsyncMock) as mock_close:
+        mhs.github_webhook_secret = SECRET
+        ms.github_webhook_secret = SECRET
+        ms.github_token = "ghp_test"
+        resp = client.post(
+            "/webhooks/github", content=payload,
+            headers={"X-Hub-Signature-256": _sign(payload), "X-GitHub-Event": "pull_request"},
+        )
+    return resp, mock_close
+
+
+def test_merged_pr_non_default_branch_does_not_close_issue():
+    """🔴 비-default 브랜치 머지의 'Closes #N' 은 이슈를 닫지 않는다 (종합감사 P2).
+    GitHub 은 default 브랜치 머지만 자동 close 하므로 develop 등 머지가 이슈를 조기 종료하면 안 된다.
+    """
+    resp, mock_close = _post_merged(
+        _merged_pr_payload_branch("Closes #42", base_ref="develop", default_branch="main")
+    )
+    assert resp.status_code == 202
+    mock_close.assert_not_awaited()
+
+
+def test_merged_pr_default_branch_closes_issue():
+    """default 브랜치 머지는 기존대로 이슈를 닫는다 (회귀 방지)."""
+    resp, mock_close = _post_merged(
+        _merged_pr_payload_branch("Closes #42", base_ref="main", default_branch="main")
+    )
+    assert resp.status_code == 202
+    mock_close.assert_awaited_once()
+    assert mock_close.call_args.kwargs.get("issue_number") == 42
+
+
 def test_merged_pr_fixes_keyword_case_insensitive():
     """소문자 'fixes #7' 키워드도 이슈 7을 닫도록 close_issue를 호출한다."""
     payload = _merged_pr_payload("fixes #7")

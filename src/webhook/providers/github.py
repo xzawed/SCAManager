@@ -92,6 +92,20 @@ async def _handle_merged_pr_event(data: dict) -> dict:
     if pr_number is not None:
         await _record_actual_merge(repo_name, int(pr_number))
 
+    # 🔴 default 브랜치 머지에만 이슈 close (종합감사 P2) — GitHub 은 `Closes #N` 을 **default
+    #   브랜치 머지 시에만** 자동 close 한다. base 브랜치 무관하게 close 하면 비-default 브랜치
+    #   (develop/feature 등) 머지가 이슈를 조기 종료시킨다. _record_actual_merge 는 이 게이트
+    #   앞에서 이미 수행(브랜치 무관 머지 추적).
+    # Only close issues on default-branch merges — GitHub's own `Closes #N` semantics.
+    base_ref = (pr.get("base") or {}).get("ref")
+    default_branch = (data.get("repository") or {}).get("default_branch")
+    if default_branch and base_ref and base_ref != default_branch:
+        logger.info(
+            "merged-pr issue close: base=%s != default=%s — skip (GitHub closes only on default)",
+            sanitize_for_log(base_ref), sanitize_for_log(default_branch),
+        )
+        return {"status": "accepted"}
+
     body = pr.get("body") or ""
     numbers = _extract_closing_issue_numbers(body)
     if not numbers:

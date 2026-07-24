@@ -122,3 +122,39 @@ async def test_send_analysis_result_uses_html_parse_mode():
     assert "sendMessage" in mock_post.call_args[0][0]
     assert call_kwargs["json"]["chat_id"] == "-100123"
     assert call_kwargs["json"]["parse_mode"] == "HTML"
+
+
+# ---------------------------------------------------------------------------
+# _TelegramNotifier.is_enabled — 리포별 chat_id 반영 (종합감사 P2 dead-channel 봉인)
+# ---------------------------------------------------------------------------
+
+def test_telegram_enabled_with_per_repo_chat_id_only(monkeypatch):
+    """🔴 전역 TELEGRAM_CHAT_ID 없이 리포별 notify_chat_id 만 있어도 채널 활성 (종합감사 P2).
+    이전엔 전역만 봐서 리포별 chat_id repo 가 분석 알림을 무음 skip 했다.
+    """
+    from src.notifier.telegram import _TelegramNotifier
+    monkeypatch.setattr("src.notifier.telegram.settings.telegram_bot_token", "123:ABC")
+    monkeypatch.setattr("src.notifier.telegram.settings.telegram_chat_id", "")  # 전역 없음
+    ctx = MagicMock()
+    ctx.config.notify_chat_id = "-100repo"
+    assert _TelegramNotifier().is_enabled(ctx) is True
+
+
+def test_telegram_disabled_when_no_chat_anywhere(monkeypatch):
+    """토큰은 있으나 리포별·전역 chat_id 모두 없으면 비활성 (부정통제)."""
+    from src.notifier.telegram import _TelegramNotifier
+    monkeypatch.setattr("src.notifier.telegram.settings.telegram_bot_token", "123:ABC")
+    monkeypatch.setattr("src.notifier.telegram.settings.telegram_chat_id", "")
+    ctx = MagicMock()
+    ctx.config = None  # 리포 config 없음
+    assert _TelegramNotifier().is_enabled(ctx) is False
+
+
+def test_telegram_disabled_when_no_token(monkeypatch):
+    """토큰 없으면 chat_id 있어도 비활성 (회귀 방지)."""
+    from src.notifier.telegram import _TelegramNotifier
+    monkeypatch.setattr("src.notifier.telegram.settings.telegram_bot_token", "")
+    monkeypatch.setattr("src.notifier.telegram.settings.telegram_chat_id", "-100global")
+    ctx = MagicMock()
+    ctx.config.notify_chat_id = "-100repo"
+    assert _TelegramNotifier().is_enabled(ctx) is False
