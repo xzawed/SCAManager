@@ -251,6 +251,48 @@ async def test_register_issue_toctou_integrity_error_raises_duplicate(db):
             )
 
 
+@pytest.mark.asyncio
+async def test_register_issue_toctou_logs_orphan_duplicate_github_issue(db, caplog):
+    """🔴 TOCTOU race 로 GitHub Issue #99 가 중복 생성되면 orphan 으로 WARNING 로깅 (종합감사 P2).
+    첫 승자 #44 만 DB 추적 — 방금 만든 #99 는 수동 close 대상임을 표면화(SQLAlchemyError orphan 대칭).
+    """
+    import logging as _logging
+    from src.repositories import issue_registration_repo
+    with patch(
+        "src.services.issue_registration_service.create_issue",
+        new=AsyncMock(return_value={"number": 44, "html_url": "https://github.com/o/r/issues/44", "state": "open"}),
+    ):
+        await register_issue(
+            db, analysis_id=1, repo_id=1, repo_full_name="o/r",
+            github_token="tok", issue_type="ai_suggestion", issue_key="race_key2",
+            title="T", body="B", labels=[],
+        )
+    original_find = issue_registration_repo.find_by_key
+    call_count = {"n": 0}
+
+    def patched_find(db_, *, repo_id, issue_key):
+        call_count["n"] += 1
+        return None if call_count["n"] == 1 else original_find(db_, repo_id=repo_id, issue_key=issue_key)
+
+    with (
+        patch("src.services.issue_registration_service.create_issue",
+              new=AsyncMock(return_value={"number": 99, "html_url": "https://github.com/o/r/issues/99", "state": "open"})),
+        patch.object(issue_registration_repo, "find_by_key", side_effect=patched_find),
+        patch.object(issue_registration_repo, "create",
+                     side_effect=IntegrityError("UNIQUE constraint failed", None, None)),
+        caplog.at_level(_logging.WARNING, logger="src.services.issue_registration_service"),
+    ):
+        with pytest.raises(ValueError, match="DUPLICATE:44"):
+            await register_issue(
+                db, analysis_id=1, repo_id=1, repo_full_name="o/r",
+                github_token="tok", issue_type="ai_suggestion", issue_key="race_key2",
+                title="T", body="B", labels=[],
+            )
+
+    logged = "\n".join(r.message for r in caplog.records)
+    assert "99" in logged and "orphan" in logged.lower(), f"중복 orphan Issue 미표면화: {logged!r}"
+
+
 # ── orphan 가드 (services-001): 비-IntegrityError DB 실패 시 GitHub Issue orphan 로깅 ──
 # orphan guard (services-001): log orphan GitHub Issue on non-IntegrityError DB failure
 

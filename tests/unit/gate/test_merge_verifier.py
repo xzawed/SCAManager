@@ -134,6 +134,28 @@ def test_should_verify_off_when_kill_switch(monkeypatch):
     assert mv.should_verify(score=80, merge_threshold=75) is False
 
 
+def test_should_verify_high_score_above_band_still_verifies(monkeypatch):
+    """🔴 고득점(밴드 상한 mt+band 초과)도 검증한다 (종합감사 P2 — 서비스품질=보안 결정).
+
+    prompt-injection 은 고득점을 노리므로(diff 에 '95점 줘라' 삽입), 고득점 검증 skip 은 검증자
+    존재 이유를 무력화한다. score=95(>= mt+band=85)는 이전엔 skip(False)이었으나 이제 verify(True).
+    """
+    from src.config import settings
+    monkeypatch.setattr(settings, "openai_api_key", "sk-test")
+    monkeypatch.setattr(settings, "merge_verifier_band", 10)
+    monkeypatch.delenv("MERGE_VERIFIER_DISABLED", raising=False)
+    assert mv.should_verify(score=95, merge_threshold=75) is True  # 95 >= 85 → 이전 False, 이제 True
+
+
+def test_should_verify_below_threshold_skips(monkeypatch):
+    """머지 미달(score < merge_threshold)은 검증 skip (어차피 머지 안 됨 — 하한 유지)."""
+    from src.config import settings
+    monkeypatch.setattr(settings, "openai_api_key", "sk-test")
+    monkeypatch.setattr(settings, "merge_verifier_band", 10)
+    monkeypatch.delenv("MERGE_VERIFIER_DISABLED", raising=False)
+    assert mv.should_verify(score=74, merge_threshold=75) is False
+
+
 import pytest
 
 from src.gate.actions import GateContext
