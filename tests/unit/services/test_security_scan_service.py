@@ -380,3 +380,31 @@ async def test_scan_repo_alerts_fetches_kinds_concurrently():
     # gather 병렬이면 두 fetch 가 동시에 진입 → max 동시성 2
     # With gather, both fetches enter concurrently → max concurrency 2
     assert concurrency["max"] == 2
+
+
+@pytest.mark.asyncio
+async def test_fetch_alerts_paginates_beyond_100():
+    """🔴 alert 100 개 초과 시 다음 페이지까지 순회해 전량 수집 (종합감사 P2 — silent truncation 봉인)."""
+    fake_client = MagicMock()
+    page1 = _FakeResp(200, payload=[{"number": i} for i in range(100)])   # full page → 계속
+    page2 = _FakeResp(200, payload=[{"number": 100}, {"number": 101}])    # partial → 마지막
+    fake_client.get = AsyncMock(side_effect=[page1, page2])
+    with patch("src.services.security_scan_service.get_http_client", return_value=fake_client):
+        result = await security_scan_service._fetch_alerts("tok", "o/r", "code-scanning")  # noqa: SLF001
+    assert len(result) == 102, "100 초과분 미수집(silent truncation)"
+    assert fake_client.get.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_fetch_alerts_page_cap_warns_not_silent(caplog, monkeypatch):
+    """상한(_MAX_PAGES) 도달 시 silent truncation 이 아니라 WARNING (관측 부재 방지)."""
+    import logging as _logging
+    monkeypatch.setattr(security_scan_service, "_MAX_ALERT_PAGES", 2, raising=False)
+    fake_client = MagicMock()
+    full = _FakeResp(200, payload=[{"number": i} for i in range(100)])   # 항상 full → 상한까지
+    fake_client.get = AsyncMock(return_value=full)
+    with patch("src.services.security_scan_service.get_http_client", return_value=fake_client):
+        with caplog.at_level(_logging.WARNING, logger="src.services.security_scan_service"):
+            result = await security_scan_service._fetch_alerts("tok", "o/r", "code-scanning")  # noqa: SLF001
+    assert len(result) == 200  # 2 페이지 × 100
+    assert any("초과" in r.message for r in caplog.records), "상한 도달 미표면화"
