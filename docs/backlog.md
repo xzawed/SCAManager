@@ -14,8 +14,8 @@
 **이 파일부터 읽으면 된다.**
 
 🔴 **2026-07-24 세션8 = 종합감사(#1186~1194) + P2 5클러스터(#1195~1199) + 5+1 회고(80 confirmed) + 회고 P1 이행(#1200~1201).** 상세 세션 메모리: `project-retro-2026-07-24`. **미이행 잔여**:
-- **[감사 P2 32건]** = 아래 "🟡 2026-07-23 종합감사 잔여 P2" 섹션 (스냅샷 = [`docs/_archive/reports/2026-07-23-comprehensive-review.md`](_archive/reports/2026-07-23-comprehensive-review.md)). 사용자 "전부 진행" 승인 — 명확버그·SQL·가드 = 🟡 자율 / verifier band·retry attempts·webhook Closes#N = 🔴 High-tier 옵션표(정책 15) / UI 템플릿 = 정책 11 사용자 시각검증.
-- **[회고 P1-G]** = Grok claim-review 소급(#1194 CAS·#1195 유출) — 미실행.
+- **[감사 P2 — 2026-07-24 라운드 처리]**: 명확버그 6(#1204~#1208) + High-tier 설계결정 5(서비스품질 위주) 완료. **잔여 ~12** = 아래 "🟡 2026-07-23 종합감사 잔여 P2" 섹션 (스냅샷 = [`docs/_archive/reports/2026-07-23-comprehensive-review.md`](_archive/reports/2026-07-23-comprehensive-review.md)): 명확버그 2(pagination·cron double-send[dedup schema]) · 동작 1(webhook issue-close BackgroundTask) · SQL 집계 4 · 가드 self-defect 5 · UI 5(정책 11 시각검증).
+- **[회고 P1-G ✅]** = Grok claim-review 완료(#1203) — CAS 주장 REFUTED → "이중 처리 차단" overclaim 을 낙관적 동시성으로 정확화.
 
 ---
 
@@ -34,11 +34,11 @@
 
 | 상태 | 건수 | 성격 |
 |------|------|------|
-| 🔴 결정 대기 | **1** (B6-b) + 감사 High-tier **6** | AI 자기 머지 거버넌스 + verifier band·retry attempts·webhook 등(옵션표 대상) |
-| 🟡 착수 가능 | **1** (B7) + 감사 자율 **~21** | Claude 자율 (명확버그·SQL·가드 self-defect) |
+| 🔴 결정 대기 | **1** (B6-b) | AI 자기 머지 거버넌스 (감사 High-tier 6건은 2026-07-24 서비스품질 결정 완료) |
+| 🟡 착수 가능 | **1** (B7) + 감사 자율 **~12** | 명확버그 2 + 동작 1 + SQL 집계 4 + 가드 self-defect 5 |
 | ⏸️ 보류 | **1** (H2) + 감사 UI **5** | note 등급 + UI 템플릿(정책 11 사용자 시각검증) |
 
-> 🔴 감사 잔여 32건 상세 = "🟡 2026-07-23 종합감사 잔여 P2" 섹션. 회고 P1-G(Grok claim-review 소급) 미이행.
+> ✅ **2026-07-24 라운드**: 감사 P2 명확버그 6 + High-tier 설계결정 5(서비스품질 위주) 처리 완료(#1204~#1208). 회고 P1-G(Grok claim-review) 이행(#1203, REFUTED→CAS 정확화). 잔여 = SQL 집계·가드 self-defect·UI(정책 11)·cron dedup(schema) — 다음 세션.
 
 > 🔴 **이 표는 본문 섹션의 행 수와 일치해야 한다** — 회귀 가드
 > `tests/unit/scripts/test_backlog_shape.py` 가 CI 에서 강제한다.
@@ -68,11 +68,13 @@ Phase4 검증. 재개 조건은 원장 참조). 운영등급 `#1072` 1건 (`#107
 
 | tier | 영역 | 항목 (요약) |
 |------|------|------------|
-| 🟡 자율 | **명확 버그** | `escape_markdown` @-멘션 미차단 · security_scan 403→"GHAS 비활성" 오분류(alert 무음 0) · security_scan per_page=100 무페이지네이션 · `get_webhook_secret` transient-DB-error 시 fallback secret 캐시 poison · telegram per-repo-only chat_id 채널 dead · issue_reg IntegrityError 중복 이슈 무음 폐기 · pre-push max_tokens=2048 절단 재발 · cron weekly/trend 'already-sent' 미기록 double-send |
+| ✅ 완료 (2026-07-24) | **명확 버그 6/8** | ~~security_scan 403 오분류~~(#1204) · ~~secret 캐시 poison~~(#1204) · ~~telegram per-repo chat_id dead~~(#1205) · ~~issue_reg 중복 이슈 무음 폐기~~(#1207) · ~~pre-push max_tokens 절단~~(#1208) · ~~escape_markdown @-멘션~~(#1208) |
+| 🟡 자율 (잔여) | **명확 버그 2** | security_scan per_page=100 무페이지네이션(100↑ silent truncation) · **cron weekly/trend 'already-sent' 미기록 double-send** (🔴 manual+scheduler 중복 발송 — dedup 기록[schema/column] 설계 필요, 단순 상수 아님) |
 | 🟡 자율 | **SQL 집계** (중간 위험) | cost/security-alert/trend/frequent_issues 전량 Python 로드(SQL SUM/AVG/GROUP BY 부재) + claude_api_calls·security_alert_process_logs retention GC 부재 |
 | 🟡 자율 | **가드 self-defect** | check_guard_fail_open B8 면제 자체 bare-substring·aliased import 미탐 · check_architecture_tree_sync cross-dir substring fail-open + scripts/ 무커버 · test_guard_wiring_coverage tautological/path-comment 오판 · security.md:36 coverage guard가 logging.Filter 만 스코프 |
 | 🟡 자율 | **misc** | gate/actions/approve auto-approve 경로 민감경로 가드 누락(비대칭) · cron notify DB 커넥션을 per-repo I/O 전체 걸쳐 보유 |
-| 🔴 High-tier (옵션표·정책 15) | **설계/동작** | verifier band 제한(고득점 시 인젝션 검사 우회) · retry `attempts_count` transient 소진(2) · abandon_stale_for_pr webhook↔worker lost-update · enqueue_or_bump find-then-INSERT IntegrityError 부재 · webhook `Closes #N` base-branch 무관 close · webhook issue-close 동기 인라인(10s 타임아웃) |
+| ✅/⏹️ 결정 완료 (2026-07-24, 서비스품질 위주) | **설계/동작 5** | ~~verifier band(고득점 인젝션 우회)~~=**밴드 상한 제거·보안>비용**(#1207) · ~~enqueue find-then-INSERT~~=**first-writer-wins**(#1206) · ~~webhook Closes#N base~~=**default 브랜치만 close**(#1205) · retry `attempts_count` 소진=**바운드 유지**(무한루프 위험>30회 후 abandon, 변경 안 함) · abandon_stale lost-update=**P1-5 CAS 가 이미 커버**(변경 불필요) |
+| 🟡 자율 (잔여) | **동작 1** | webhook issue-close 동기 인라인(~10s webhook 타임아웃 위험 — BackgroundTask 전환. #1205 base-branch 게이트로 close 범위는 축소됨) |
 | ⏸️ 정책 11 (사용자 시각검증) | **UI 템플릿** | analysis_detail·add_repo historyRestore 미배선(뒤로가기 후 버튼 죽음) · overview avg_score 0 Jinja truthiness 숨김 · dashboard chart label `\| e`→`\| tojson` · tweaks.js html data-theme desync |
 
 ## 🔴 사용자 결정 대기
