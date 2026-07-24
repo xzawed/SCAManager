@@ -214,7 +214,7 @@ with open(sys.argv[1]) as f:
     prompt = f.read()
 payload = json.dumps({
     'model': model,
-    'max_tokens': 2048,
+    'max_tokens': int(os.environ.get('CLAUDE_REVIEW_MAX_TOKENS') or 8192),
     'messages': [{'role': 'user', 'content': prompt}]
 }).encode()
 req = urllib.request.Request(
