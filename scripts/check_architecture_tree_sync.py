@@ -10,14 +10,18 @@ CLAUDE.md 는 `docs/architecture.md` 를 src/ 트리 **단일 출처**로 선언
 
 ## 판정 = 실제 파일시스템 ↔ 문서 대조 (산문 아님, AGENTS.md 불변식 1)
 
-`src/` 의 패키지(디렉토리)와 최상위 모듈이 architecture.md 트리에 **문자열로 등장**하는지 본다.
+`src/` 의 패키지(디렉토리)와 최상위 모듈이 architecture.md 트리에 **트리 엔트리로 등장**하는지 본다.
 의도적 축약(트리에 개별 나열 안 하는 것)은 `_ALLOWLIST` 에 사유와 함께. 그래야 "빠뜨림" 과
 "의도적 생략" 이 구별된다.
 
-# fail-open-reviewed: 트리 존재 검사는 본질적으로 substring 이다(마크다운 트리는 AST 파싱 대상
-#   아님). fail-open 위험(패키지명이 산문에만 있고 트리엔 없음)은 `_tree_block()` 으로 코드펜스
-#   트리 블록에 스코프해 축소한다 — B8(check_guard_fail_open) 이 이 가드를 잡아 개선한 결과.
+🔴 **cross-dir/부분단어 fail-open 봉인 (감사 self-defect)**: 이전엔 bare `f"{pkg}/" in text` 라,
+패키지명이 **트리 밖 다른 경로**로 등장하면(예: 데이터흐름 fence 의 `/api/webhook`·`tests/mcp/`·
+최상위 `scripts/`) src 트리에서 빠져도 통과했다(cross-dir 통과). 이제 `re.search` 로 **트리 엔트리
+위치**(앞이 word-char/슬래시 아님)만 인정 — `/api/`(엔드포인트)·`tests/mcp/`(타 디렉토리)·`capi/`
+(부분단어)를 배제한다. 잔여 한계: `src/scripts/` 와 최상위 `scripts/` 는 둘 다 트리 엔트리 형태라
+구별 못 함(전자 미등재 시 후자가 통과시킴) — fence 스코핑은 오탐 위험이 커 backlog 잔여.
 """
+import re
 import sys
 from pathlib import Path
 
@@ -43,9 +47,20 @@ def _tree_text() -> str:
     text = _ARCH.read_text(encoding="utf-8")
     # ``` 로 둘러싸인 코드 블록(트리)들만 이어붙인다. 없으면 전체(하위호환).
     # Concatenate only the fenced code blocks (the tree); fall back to whole doc.
-    import re as _re
-    blocks = _re.findall(r"```[^\n]*\n(.*?)```", text, _re.DOTALL)
+    blocks = re.findall(r"```[^\n]*\n(.*?)```", text, re.DOTALL)
     return "\n".join(blocks) if blocks else text
+
+
+# 트리 엔트리 경계 — 앞이 영숫자/밑줄/슬래시가 아니어야 한다.
+#   `├── api/`(트리 엔트리, 앞=공백) 인정 / `/api/webhook`(앞=`/`)·`capi/`(앞=`c`) 배제.
+# Tree-entry boundary: the name must not be preceded by a word char or slash —
+#   accepts `├── api/` but rejects `/api/webhook` (endpoint) and `capi/` (substring).
+_ENTRY_BOUNDARY = r"(?<![A-Za-z0-9_/])"
+
+
+def _appears_as_tree_entry(name: str, suffix: str, text: str) -> bool:
+    """`name` 이 트리 엔트리(`<경계>name<suffix>`)로 등장하는가 — cross-dir/부분단어 배제."""
+    return bool(re.search(_ENTRY_BOUNDARY + re.escape(name) + suffix, text))
 
 
 def _packages() -> list[str]:
@@ -62,13 +77,13 @@ def missing_entries() -> list[str]:
     for pkg in _packages():
         if pkg in _ALLOWLIST:
             continue
-        # 패키지는 `pkg/` 또는 `` `pkg` `` 형태로 등장해야 한다
-        if f"{pkg}/" not in text and f"`{pkg}`" not in text:
+        # 패키지는 트리 엔트리 `<경계>pkg/` 또는 인라인 `` `pkg` `` 로 등장해야 한다
+        if not _appears_as_tree_entry(pkg, r"/", text) and f"`{pkg}`" not in text:
             missing.append(f"src/{pkg}/ (패키지)")
     for mod in _top_modules():
         if mod in _ALLOWLIST:
             continue
-        if f"{mod}.py" not in text:
+        if not _appears_as_tree_entry(mod, r"\.py", text):
             missing.append(f"src/{mod}.py (최상위 모듈)")
     return missing
 
