@@ -104,6 +104,57 @@ def test_escape_hatch_exempts_reviewed_guards(tmp_path, monkeypatch):
     assert mod.fail_open_candidates() == []
 
 
+def test_escape_in_string_literal_does_not_exempt(tmp_path, monkeypatch):
+    """🔴 문자열/docstring 안의 `# fail-open-reviewed:` 언급은 면제 아님 — 면제 기제 자체 fail-open 봉인.
+
+    이전 `_ESCAPE in src` bare-substring 면제는 docstring/문자열 안 언급도 파일 전체를 면제시켜,
+    이 게이트가 잡으려는 바로 그 클래스(산문 통과)를 면제 기제에서 재생산했다. tokenize 로 실제
+    주석 토큰만 인정하게 봉인.
+    """
+    mod = _load()
+    trap = tmp_path / "check_fake_string_escape.py"
+    trap.write_text(
+        'DOC = "이 가드는 # fail-open-reviewed: 방식 설명"  # 문자열 안 언급(주석 아님)\n'
+        "def main():\n"
+        "    text = open('x').read()\n"
+        "    return 1 if 'X' in text else 0\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(mod, "_SCRIPTS", tmp_path)
+    assert "check_fake_string_escape.py" in mod.fail_open_candidates(), (
+        "문자열 안 escape 언급이 파일 전체를 면제 — 면제 기제 자체가 fail-open"
+    )
+
+
+def test_b8_passes_guard_using_aliased_or_from_structural_import(tmp_path, monkeypatch):
+    """🔴 alias·from-import 구조 도구도 인정 — `import re as r`·`from re import search`.
+
+    이전 `root.id in _STRUCTURAL_MODULES` 는 alias 를 못 봐 정당한 구조 가드를 오탐(false-positive)
+    → 저자가 실제로는 구조 도구를 쓰는데도 거짓 escape 주석을 달아야 했다. import 해소로 봉인.
+    """
+    mod = _load()
+    aliased = tmp_path / "check_fake_aliased.py"
+    aliased.write_text(
+        "import re as _re\n"
+        "def main():\n"
+        "    text = open('x').read()\n"
+        "    return 1 if _re.search(r'p', text) else 0\n",
+        encoding="utf-8",
+    )
+    from_import = tmp_path / "check_fake_fromimport.py"
+    from_import.write_text(
+        "from re import search\n"
+        "def main():\n"
+        "    text = open('x').read()\n"
+        "    return 1 if search(r'p', text) else 0\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(mod, "_SCRIPTS", tmp_path)
+    assert mod.fail_open_candidates() == [], (
+        f"alias/from-import 구조 도구 가드를 오탐: {mod.fail_open_candidates()}"
+    )
+
+
 def test_b8_is_wired():
     """🔴 B8 이 pre-commit·CI 에 배선됐는지."""
     pc = (_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")

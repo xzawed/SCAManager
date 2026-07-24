@@ -29,7 +29,9 @@ review 에서만 잡혔다(#1136 echo · #1156 대기). Grok: "rate-limiting ste
 escape hatch: 정당한 substring-only 가드는 `# fail-open-reviewed: <사유>` 주석으로 면제.
 """
 import ast
+import io
 import sys
+import tokenize
 from pathlib import Path
 
 try:
@@ -55,26 +57,71 @@ def _reads_a_file(tree: ast.AST) -> bool:
     return False
 
 
-def _calls_structural_tool(tree: ast.AST) -> set:
-    """실제로 **호출**되는 구조 분석 도구 — `re.search(...)`·`ast.parse(...)`·`subprocess.run(...)`.
+def _structural_import_names(tree: ast.AST) -> tuple[set, set]:
+    """구조 도구를 가리키는 이름을 import 에서 해소 — alias·from-import 인정.
 
-    🔴 import·주석 언급이 아니라 `<module>.<attr>(...)` 호출을 본다(산문 통과 방지).
+    🔴 `import re as r` / `from re import search` 를 못 보면 정당한 가드를 fail-open 오탐한다.
+    Resolve names that point at a structural tool, honoring aliases and from-imports.
+    Returns (module_aliases, direct_names): `<alias>.attr(...)` 용 alias 집합 + `search(...)` 용 bare 명.
     """
-    used = set()
+    module_aliases = set()  # `import re as r` → {"r"}; `import re` → {"re"}
+    direct_names = set()    # `from re import search as s` → {"s"}
     for n in ast.walk(tree):
-        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute):
-            root = n.func.value
-            if isinstance(root, ast.Name) and root.id in _STRUCTURAL_MODULES:
-                used.add(root.id)
-    return used
+        if isinstance(n, ast.Import):
+            for a in n.names:
+                if a.name in _STRUCTURAL_MODULES:
+                    module_aliases.add(a.asname or a.name)
+        elif isinstance(n, ast.ImportFrom):
+            if n.module in _STRUCTURAL_MODULES:
+                for a in n.names:
+                    direct_names.add(a.asname or a.name)
+    return module_aliases, direct_names
+
+
+def _calls_structural_tool(tree: ast.AST) -> bool:
+    """실제로 **호출**되는 구조 분석 도구가 있는가 — `re.search(...)`·`r.search(...)`·`search(...)`.
+
+    🔴 import·주석 언급이 아니라 `<alias>.<attr>(...)` 호출 또는 from-import 된 이름 호출을 본다
+    (산문 통과 방지). alias·from-import 를 해소해 정당한 가드 오탐도 막는다.
+    """
+    module_aliases, direct_names = _structural_import_names(tree)
+    for n in ast.walk(tree):
+        if not isinstance(n, ast.Call):
+            continue
+        func = n.func
+        # <alias>.attr(...) — 예: re.search / r.search
+        if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+            if func.value.id in module_aliases:
+                return True
+        # from-import 된 함수 호출 — 예: search(...)
+        if isinstance(func, ast.Name) and func.id in direct_names:
+            return True
+    return False
+
+
+def _has_escape_comment(src: str) -> bool:
+    """`# fail-open-reviewed:` 가 **실제 주석 토큰**인가 — docstring/문자열 내 언급은 불인정.
+
+    🔴 bare `_ESCAPE in src` 는 그 자체가 fail-open 이다: 문자열/docstring 안 언급이 파일 전체를
+    면제시켜, 이 게이트가 잡으려는 바로 그 클래스(면제 기제 자체의 산문 통과)를 재생산한다.
+    tokenize 로 COMMENT 토큰만 본다. 토큰화 실패 시 면제 불인정(fail-closed).
+    Recognize the escape only as a real comment token, never a substring in a string/docstring.
+    """
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(src).readline):
+            if tok.type == tokenize.COMMENT and _ESCAPE in tok.string:
+                return True
+    except (tokenize.TokenError, IndentationError, SyntaxError):  # pragma: no cover
+        return False
+    return False
 
 
 def fail_open_candidates() -> list[str]:
     out = []
     for path in sorted(_SCRIPTS.glob("check_*.py")):
         src = path.read_text(encoding="utf-8")
-        if _ESCAPE in src:
-            continue  # 명시 면제
+        if _has_escape_comment(src):
+            continue  # 명시 면제 (실제 주석 토큰에 한함)
         try:
             tree = ast.parse(src)
         except SyntaxError:  # pragma: no cover
