@@ -762,3 +762,27 @@ def test_purge_terminal_never_deletes_pending(db_session):
 
     assert merge_retry_repo.purge_terminal(db_session, older_than_days=7) == 0
     assert db_session.query(MergeRetryQueue).count() == 1
+
+
+def test_enqueue_or_bump_recovers_from_concurrent_insert_race():
+    """🔴 동시 enqueue race — INSERT commit 이 partial-unique IntegrityError 로 막히면 500 대신
+    첫 승자 pending 행을 bump 해 복구한다 (종합감사 P2, first-writer-wins).
+    """
+    from unittest.mock import MagicMock
+    from sqlalchemy.exc import IntegrityError
+
+    db = MagicMock()
+    winner = MagicMock()
+    # 초기 existing 조회=None(신규 INSERT 경로 진입), except 재조회=winner
+    db.query.return_value.filter.return_value.first.side_effect = [None, winner]
+    # INSERT commit 은 IntegrityError, 이어지는 winner bump commit 은 성공
+    db.commit.side_effect = [IntegrityError("dup", None, Exception()), None]
+
+    result = merge_retry_repo.enqueue_or_bump(
+        db, repo_full_name="owner/repo", pr_number=1, analysis_id=1,
+        commit_sha="abc123", score=80, threshold_at_enqueue=75,
+    )
+
+    assert result.is_first_deferral is False, "race 복구 시 기존 행 bump(is_first_deferral=False)"
+    assert result.row is winner
+    db.rollback.assert_called_once()
