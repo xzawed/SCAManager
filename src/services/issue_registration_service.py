@@ -77,6 +77,19 @@ async def register_issue(  # pylint: disable=too-many-arguments
         db.rollback()
         existing = issue_registration_repo.find_by_key(db, repo_id=repo_id, issue_key=issue_key)
         issue_num = existing.github_issue_number if existing else gh_result["number"]
+        # 🔴 방금 생성한 GitHub Issue 가 중복(orphan) 표면화 (종합감사 P2 — SQLAlchemyError orphan
+        #   로깅과 대칭). GitHub Issue 를 먼저 만든 뒤 DB INSERT 하므로, 동시 요청이 GitHub Issue
+        #   **2개**를 만든다 — 첫 승자만 DB 에 기록되고 방금 만든 것(gh_result)은 추적 안 되는 중복
+        #   Issue 로 남는다. 첫 승자와 번호가 다르면 운영자가 수동 close 할 수 있게 WARNING 으로 남긴다.
+        # Surface the just-created duplicate GitHub Issue (symmetric with the SQLAlchemyError orphan
+        #   log). Concurrent requests each create a GitHub Issue; only the first is tracked in the DB.
+        new_num = gh_result.get("number")
+        if existing is not None and new_num is not None and existing.github_issue_number != new_num:
+            logger.warning(
+                "issue_registration duplicate — 방금 생성한 GitHub Issue #%s 는 중복(orphan), "
+                "추적된 첫 승자=#%s. 수동 close 대상. repo_id=%s key=%s url=%s",
+                new_num, existing.github_issue_number, repo_id, issue_key, gh_result.get("html_url"),
+            )
         raise ValueError(f"DUPLICATE:{issue_num}") from None
     except SQLAlchemyError:
         # GitHub Issue 는 이미 생성됐는데 DB 기록이 비-IntegrityError(연결 끊김 등)로 실패 →
