@@ -61,7 +61,12 @@ def _resolve_token(user) -> str | None:
     return os.environ.get("GITHUB_TOKEN") or None
 
 
-async def _fetch_alerts(
+# alert 페이지네이션 안전 상한 (종합감사 P2) — 2000 alert / infinite-loop 가드. 초과 시 WARNING.
+# Pagination safety cap (2000 alerts); on overflow, WARN rather than truncate silently.
+_MAX_ALERT_PAGES = 20
+
+
+async def _fetch_alerts(  # pylint: disable=too-many-return-statements
     token: str, repo_full_name: str, alert_kind: str,
 ) -> list[dict[str, Any]] | None:
     """GitHub Security alerts API 호출 (graceful degradation).
@@ -72,54 +77,66 @@ async def _fetch_alerts(
     """
     url = f"{GITHUB_API}/repos/{repo_full_name}/{alert_kind}/alerts"
     client = get_http_client()
-    try:
-        resp = await client.get(
-            url,
-            params={"state": "open", "per_page": 100},
-            headers={
-                "Authorization": f"token {token}",
-                "Accept": "application/vnd.github+json",
-            },
-        )
-    except httpx.HTTPError as exc:
-        logger.warning(
-            "security_scan: API 호출 실패 repo=%s err=%s",
-            sanitize_for_log(repo_full_name), type(exc).__name__,
-        )
-        return None
-    # 🔴 403 rate-limit ≠ GHAS 비활성 (종합감사 P2) — 둘 다 403 이라 구별 없이 "GHAS off" 로
-    #   silent skip 하면, rate-limit 시 보안 alert 을 조용히 0 으로 보고한다(관측 부재). rate-limit
-    #   신호(X-RateLimit-Remaining=0 또는 Retry-After)면 WARNING 으로 표면화 — 스캔 미수행이지
-    #   "alert 0" 이 아님을 운영자가 인지하게 한다.
-    # A 403 rate-limit is not GHAS-off — surface it as WARNING so a rate-limited scan is not
-    #   silently reported as "0 alerts".
-    if resp.status_code == 403 and (
-        resp.headers.get("X-RateLimit-Remaining") == "0" or resp.headers.get("Retry-After")
-    ):
-        logger.warning(
-            "security_scan: GitHub rate-limited repo=%s (alerts NOT scanned this cycle — retry pending, "
-            "'0 alerts' 로 오인 금지)",
-            sanitize_for_log(repo_full_name),
-        )
-        return None
-    if resp.status_code in (403, 404):
-        # GHAS 비활성 (private repo + Advanced Security off) — silent skip
-        # GHAS inactive (private repo + Advanced Security off) — silent skip
-        logger.info(
-            "security_scan: GHAS 비활성 repo=%s status=%d (skip)",
-            sanitize_for_log(repo_full_name), resp.status_code,
-        )
-        return None
-    if resp.status_code != 200:
-        logger.warning(
-            "security_scan: 비정상 응답 repo=%s status=%d",
-            sanitize_for_log(repo_full_name), resp.status_code,
-        )
-        return None
-    try:
-        return resp.json() or []
-    except (ValueError, KeyError):
-        return None
+    headers = {
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github+json",
+    }
+    # 🔴 페이지네이션 (종합감사 P2) — per_page=100 단일 요청은 alert 100 개 초과분을 조용히
+    #   버렸다(대형 리포에서 보안 alert 을 '0 초과분 없음' 으로 오보고). 마지막 페이지(< 100)까지
+    #   순회해 전량 수집. 상한 도달 시 silent truncation 대신 WARNING(관측 부재 방지 원칙).
+    # Paginate: a single per_page=100 request silently dropped alerts beyond 100. Follow pages until
+    #   the last (< 100); on hitting the cap, WARN rather than truncate silently.
+    alerts: list[dict[str, Any]] = []
+    for page in range(1, _MAX_ALERT_PAGES + 1):
+        try:
+            resp = await client.get(
+                url,
+                params={"state": "open", "per_page": 100, "page": page},
+                headers=headers,
+            )
+        except httpx.HTTPError as exc:
+            logger.warning(
+                "security_scan: API 호출 실패 repo=%s page=%d err=%s",
+                sanitize_for_log(repo_full_name), page, type(exc).__name__,
+            )
+            # 첫 페이지 실패 = 스캔 실패(None) / 이후 페이지 실패 = 부분결과 보존(0 오보고 방지)
+            return None if page == 1 else alerts
+        if page == 1:
+            # 상태 분류는 첫 페이지만 (403/404 GHAS-off vs rate-limit vs non-200). 이후 페이지는 200 기대.
+            if resp.status_code == 403 and (
+                resp.headers.get("X-RateLimit-Remaining") == "0" or resp.headers.get("Retry-After")
+            ):
+                logger.warning(
+                    "security_scan: GitHub rate-limited repo=%s (alerts NOT scanned this cycle — "
+                    "retry pending, '0 alerts' 로 오인 금지)",
+                    sanitize_for_log(repo_full_name),
+                )
+                return None
+            if resp.status_code in (403, 404):
+                logger.info(
+                    "security_scan: GHAS 비활성 repo=%s status=%d (skip)",
+                    sanitize_for_log(repo_full_name), resp.status_code,
+                )
+                return None
+        if resp.status_code != 200:
+            logger.warning(
+                "security_scan: 비정상 응답 repo=%s page=%d status=%d",
+                sanitize_for_log(repo_full_name), page, resp.status_code,
+            )
+            return None if page == 1 else alerts
+        try:
+            batch = resp.json() or []
+        except (ValueError, KeyError):
+            return None if page == 1 else alerts
+        alerts.extend(batch)
+        if len(batch) < 100:
+            return alerts  # 마지막 페이지 도달 / reached the last page
+    # 상한 도달 — 이후 alert 미스캔을 표면화(silent truncation 금지)
+    logger.warning(
+        "security_scan: repo=%s alert 이 %d 페이지(=%d) 초과 — 이후 미스캔(silent 0 오인 금지)",
+        sanitize_for_log(repo_full_name), _MAX_ALERT_PAGES, _MAX_ALERT_PAGES * 100,
+    )
+    return alerts
 
 
 def _alert_metadata(alert: dict[str, Any], alert_kind: str) -> dict[str, Any]:
