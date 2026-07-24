@@ -286,6 +286,47 @@ def test_merged_pr_closes_multiple_issues():
     assert called_numbers == {1, 2}
 
 
+@pytest.mark.asyncio
+async def test_merged_pr_close_dispatched_to_background_not_awaited_inline():
+    """🔴 이슈 close 는 BackgroundTask 로 위임된다 — webhook 응답 경로에서 close_issue 를
+    직접 await 하지 않는다 (종합감사 P2 — N개 GitHub 왕복이 ~10s webhook 타임아웃 유발 방지).
+
+    _handle_merged_pr_event 가 close_issue 를 인라인 await 하지 않고 background_tasks 에
+    _close_referenced_issues 를 등록했는지 검증한다.
+    """
+    from fastapi import BackgroundTasks
+
+    from src.webhook.providers.github import (
+        _close_referenced_issues,
+        _handle_merged_pr_event,
+    )
+
+    data = {
+        "pull_request": {
+            "merged": True, "number": 10, "body": "Closes #1, fixes #2",
+            "head": {"sha": "deadbeef"}, "base": {"ref": "main"},
+        },
+        "repository": {"full_name": "owner/repo", "default_branch": "main"},
+    }
+    bg = BackgroundTasks()
+
+    with patch(
+        "src.webhook.providers.github.close_issue", new_callable=AsyncMock,
+    ) as mock_close, patch(
+        "src.webhook.providers.github._record_actual_merge", new_callable=AsyncMock,
+    ):
+        result = await _handle_merged_pr_event(data, bg)
+
+    # close_issue 는 인라인으로 await 되지 않았다 (background 등록만)
+    mock_close.assert_not_awaited()
+    assert result["status"] == "accepted"
+    # background_tasks 에 _close_referenced_issues 가 numbers 와 함께 등록됐다
+    assert len(bg.tasks) == 1
+    task = bg.tasks[0]
+    assert task.func is _close_referenced_issues
+    assert task.args == ("owner/repo", [1, 2])
+
+
 def test_merged_pr_close_api_failure_does_not_raise():
     """close_issue가 HTTPError를 발생시켜도 webhook은 202를 반환한다 (best-effort)."""
     payload = _merged_pr_payload("Closes #5")
