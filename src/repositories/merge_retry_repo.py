@@ -19,6 +19,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.models.merge_retry import MergeRetryQueue
@@ -182,7 +183,7 @@ class EnqueueResult:
     is_first_deferral: bool
 
 
-def enqueue_or_bump(  # pylint: disable=too-many-arguments
+def enqueue_or_bump(  # pylint: disable=too-many-arguments,too-many-locals
     db: Session,
     *,
     repo_full_name: str,
@@ -248,7 +249,32 @@ def enqueue_or_bump(  # pylint: disable=too-many-arguments
         notify_chat_id=notify_chat_id,
     )
     db.add(new_row)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # 🔴 동시 enqueue race (종합감사 P2) — 두 워커가 동시에 "pending 없음" 을 보고 둘 다 INSERT 하면
+        #   partial unique index(status='pending')가 두 번째를 IntegrityError 로 막는다. 미처리 시 500.
+        #   rollback 후 첫 승자의 pending 행을 재조회해 bump(first-writer-wins) — analysis_repo.save_new 대칭.
+        # Concurrent-enqueue race: the partial unique index rejects the 2nd INSERT; recover by
+        #   rolling back and bumping the first writer's row (first-writer-wins).
+        db.rollback()
+        winner = (
+            db.query(MergeRetryQueue)
+            .filter(
+                MergeRetryQueue.status == "pending",
+                MergeRetryQueue.repo_full_name == repo_full_name,
+                MergeRetryQueue.pr_number == pr_number,
+                MergeRetryQueue.commit_sha == commit_sha,
+            )
+            .first()
+        )
+        if winner is None:
+            raise  # 예상외(unique 외 IntegrityError) — 재전파 / unexpected — re-raise
+        winner.next_retry_at = next_retry
+        winner.updated_at = _now
+        db.commit()
+        db.refresh(winner)
+        return EnqueueResult(row=winner, is_first_deferral=False)
     db.refresh(new_row)
     return EnqueueResult(row=new_row, is_first_deferral=True)
 
