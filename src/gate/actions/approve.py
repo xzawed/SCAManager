@@ -103,7 +103,10 @@ class ApproveAction(GateAction):
         try:
             await post_github_review(
                 ctx.github_token, ctx.repo_name, ctx.pr_number, decision, body,
-                commit_id=ctx.commit_sha,  # 🔴 분석 SHA 결속 — 이동한 head 는 GitHub 422 (준비도 감사 #8)
+                # 🔴 분석 SHA 결속 (준비도 감사 #8) — 강제는 post_github_review 가 POST 전 head 를
+                # 조회해 직접 한다. **GitHub 은 막아주지 않는다**(owed #1072 실측: 구 SHA 200 수락).
+                # 🔴 Enforced client-side by post_github_review; GitHub does NOT reject a stale SHA.
+                commit_id=ctx.commit_sha,
             )
             with SessionLocal() as db:
                 gate_decision_repo.upsert(db, ctx.analysis_id, decision, "auto")

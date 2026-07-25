@@ -358,3 +358,57 @@ def test_safety_selfcert_guard_catches_a_synthetic_claude_verification():
     assert "사용자" not in body, "합성 입력에 사용자 인용이 들어갔다 — 케이스 무효"
     offenders = [pid for pid, st, body in rows if st == "✅" and not any(k in body for k in _USER_VERIFIED)]
     assert offenders == ["#9999"], "합성 자기인증을 탐지하지 못했다"
+
+
+# ── 행 내부 모순 (2026-07-26 5+1 회고 P1) ──────────────────────────────
+
+
+def _row_marker_contradictions(text: str) -> list:
+    """`**#NNNN**` 행에서 본문 머리 마커 ≠ 마지막 상태 셀인 것만 추출 (순수 함수).
+    Return rows whose body's leading status mark disagrees with the final status cell."""
+    marks = (*_TERMINAL, _PENDING_MARK)
+    out = []
+    for line in text.splitlines():
+        if not line.startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) < 4 or not re.match(r"^\*{0,2}#\d+\*{0,2}$", cells[0]):
+            continue
+        body = cells[2].lstrip("* ")
+        lead = next((m for m in marks if body.startswith(m)), None)
+        if lead is None:
+            continue  # 본문이 마커로 시작하지 않으면 상태 주장 없음 — 대상 아님
+        cell = next((m for m in marks if m in cells[-1]), None)
+        if cell is not None and lead != cell:
+            out.append(f"{cells[0]}: 본문={lead} vs 상태셀={cell}")
+    return out
+
+
+def test_row_body_marker_matches_status_cell():
+    """🔴 행이 자기 자신과 모순되면 안 된다 — 본문 머리 마커 == 마지막 상태 셀.
+
+    2026-07-26 실측 사고: `#1072` 본문은 `❌ … 전제 반증(NG)` 로 시작하는데 상태 셀은 `✅` 였다.
+    범례(`:7`)상 `✅ 검증 완료(OK)` / `❌ 이슈 발견(NG)` 이라 정면 모순이고, 더 나쁜 것은 아카이브
+    규칙(`전 행 ✅/⏭️ 확정 시 아카이브 섹션으로 이동`)이 **NG 발견을 아카이브로 매장할 경로**에
+    그 행을 올려 둔다는 점이다. 기존 가드 8건은 전부 '적힌 행의 모양' 만 검사해 **행이 자기
+    자신과 모순되는 클래스**에는 구조적으로 눈이 멀어 있었다.
+    """
+    assert not _row_marker_contradictions(_text()), (
+        "행 내부 모순 (본문 머리 마커 != 상태 셀):\n  "
+        + "\n  ".join(_row_marker_contradictions(_text()))
+        + "\n-> 범례(OK/NG/보류/미검증)에 맞춰 양쪽을 일치시킬 것. "
+        "특히 NG 를 OK 로 적으면 아카이브 규칙이 그 발견을 매장한다."
+    )
+
+
+def test_row_marker_contradiction_detector_is_not_vacuous():
+    """🔴 탐지력 자가 검증 — 합성 모순 행을 실제로 잡는가 (통과만 하는 가드 차단).
+
+    실파일이 정합해도(정상 상태) 규칙 자체가 살아있음을 시점 무관하게 실증한다 —
+    '실파일에 위반이 있다' 를 비공허성의 근거로 삼지 않는다(#1217 학습).
+    """
+    clean = "| **#9001** | 무엇 | ✅ 검증 완료 | 13 | ✅ |\n"
+    assert _row_marker_contradictions(clean) == [], "정합 행을 위반으로 오판"
+    contradictory = "| **#9002** | 무엇 | ❌ 전제 반증(NG) | 13 | ✅ |\n"
+    hits = _row_marker_contradictions(contradictory)
+    assert len(hits) == 1 and "#9002" in hits[0], f"합성 모순을 탐지하지 못했다: {hits}"

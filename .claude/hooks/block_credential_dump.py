@@ -44,15 +44,44 @@ _ALLOWED = (
 _SAFE_IDIOM = 'railway variables --kv | cut -d= -f1 | grep -i CRON'
 
 
-def decide(command):
-    """차단 사유를 반환하거나, 통과면 None.
-    Return a denial reason, or None when the command may proceed."""
-    if not command:
-        return None
-    if any(pattern.search(command) for pattern in _ALLOWED):
+# ── 세그먼트 분해 경계 (2026-07-26 5+1 회고 P0 — 복합 명령 fail-open 봉인) ──
+# 🔴 **단일 `|`(파이프)는 분해하지 않는다.** 파이프라인은 하류 필터가 상류 덤프를 실제로
+# 중화하므로(`railway variables --kv | cut -d= -f1`) 판정 단위가 하나다. 반면 `;`·`&&`·`||`·`&`
+# 로 이어진 명령은 서로를 중화하지 못한다 — 안전한 쪽이 위험한 쪽을 가려주면 안 된다.
+# 이 비대칭이 분해 경계의 근거다. `[;&|]{1,2}` 처럼 파이프까지 쪼개면 훅이 **자기가 가르치는
+# 안전 관용구**(_SAFE_IDIOM)를 차단해 곧 비활성화된다 — 회귀 가드가 그 대조군을 고정한다.
+# 🔴 Do NOT split single `|`: a pipeline's downstream filter genuinely neutralizes the upstream
+# dump, so it is one verdict unit. `;`/`&&`/`||`/`&` chain independent commands that cannot
+# neutralize one another — a safe one must never whitelist a dangerous sibling.
+_SEPARATORS = re.compile(r"&&|\|\||;|\n|&")
+
+
+def _decide_segment(segment):
+    """단일 명령(파이프라인 포함)에 대한 판정 — 예외가 그 세그먼트 안에서만 유효하다.
+    Verdict for one command (pipeline included); an exception only covers its own segment."""
+    if any(pattern.search(segment) for pattern in _ALLOWED):
         return None
     for pattern, reason in _BLOCKED:
-        if pattern.search(command):
+        if pattern.search(segment):
+            return reason
+    return None
+
+
+def decide(command):
+    """차단 사유를 반환하거나, 통과면 None.
+    Return a denial reason, or None when the command may proceed.
+
+    🔴 세그먼트 **하나라도** 차단 대상이면 명령 전체를 deny 한다(fail-closed). 이전 구현은
+    `_ALLOWED` 를 명령 문자열 **전체**에 `_BLOCKED` 보다 먼저 적용해, 안전한 세그먼트 하나가
+    명령 전체를 화이트리스트했다 — 가장 자연스러운 우회가 `_SAFE_IDIOM` 을 앞에 붙이는 것이라
+    ('이름 먼저 보고 값도 하나 확인' 흐름) 실사용 형태 그대로 뚫렸다.
+    🔴 Deny if ANY segment is blocked (fail-closed).
+    """
+    if not command:
+        return None
+    for segment in _SEPARATORS.split(command):
+        reason = _decide_segment(segment)
+        if reason:
             return reason
     return None
 
