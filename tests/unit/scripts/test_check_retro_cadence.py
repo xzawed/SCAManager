@@ -16,6 +16,7 @@ from pathlib import Path
 
 from scripts.check_retro_cadence import (
     RETRO_PR_THRESHOLD,
+    _EMPTY_APPROVAL,
     count_merge_prs,
     deferral_records,
     deferral_status,
@@ -279,10 +280,37 @@ def test_deferral_status_not_breached_is_vacuously_true():
 def test_deferral_ledger_file_exists_and_is_parseable():
     """🔴 배선 — 원장 파일이 실제로 존재하고 파서가 크래시 없이 읽는다(정의≠배선).
 
-    현재 원장은 미결 이월 0건이 정상(2026-07-22 세션은 회고 진입). 그래도 파일은 존재해야
-    check_retro_cadence 가 read_text 할 대상이 있고, 예시 주석 행이 유효 이월로 오인되지 않아야 한다.
+    🔴 **'원장이 비어 있다'는 단언하지 않는다** — 원장은 append-only 이고 이월 기록은 정상 산출물이라
+    `== []` 는 시점 의존 상태를 불변식으로 고정한 것이었다(이 파일 헤더 규칙 위반 — 2026-07-25 에
+    정당한 이월 1건을 기록하자 즉시 red). 시점 무관 불변식만 단언한다:
+      (1) 파일 존재 + 파싱 크래시 없음
+      (2) 기록된 행은 정책 8 진화 (6) 의무 **2요소를 모두** 채운다 — 승인 인용(파서가 강제) +
+          **목표 진입 세션**(파서 미강제 → 여기서 강제. 목표 없는 이월은 무기한 이월과 구분 불가)
+      (3) 주석 예시 행은 유효 이월로 오인되지 않는다 — 주석 표지만 벗기면 같은 행이 파싱되는지
+          **뮤테이션으로 비공허 실증**(guards.md 불변식 2: 예시 행이 지워져도 통과하면 공허하다)
+
+    Assert only time-invariant properties: the ledger is append-only, so "it is empty" is state, not
+    an invariant. Recorded rows must carry BOTH the approval quote and the target session.
     """
     ledger = _ROOT / "docs" / "runbooks" / "retro-cadence-deferrals.md"
     assert ledger.is_file(), "이월 원장 파일 부재 — check_retro_cadence 가 읽을 대상 없음"
-    # 주석(<!-- ... -->)에 든 예시 행은 유효 이월로 카운트되면 안 된다.
-    assert deferral_records(ledger.read_text(encoding="utf-8")) == []
+    text = ledger.read_text(encoding="utf-8")
+
+    # (2) 기록된 이월은 목표 진입 세션이 있어야 한다 (파서는 승인 셀만 강제).
+    # Every recorded deferral must name a target session — the parser only enforces the approval cell.
+    for rec in deferral_records(text):
+        assert rec["target"].lower() not in _EMPTY_APPROVAL, (
+            f"이월 {rec['date']} 에 목표 진입 세션 없음 — 정책 8 진화 (6) 의무 2요소 미충족"
+        )
+
+    # (3) 주석(<!-- ... -->)에 든 예시 행은 유효 이월로 카운트되면 안 된다.
+    example_lines = [ln for ln in text.splitlines() if ln.lstrip().startswith("<!--") and "|" in ln]
+    assert example_lines, "예시 주석 행 소실 — 아래 단언이 공허해진다(뮤테이션 대조군 부재)"
+    assert deferral_records("\n".join(example_lines)) == [], "주석 예시 행이 유효 이월로 오인됨"
+
+    # 뮤테이션 — 주석 표지만 벗기면 동일 행이 유효 이월로 파싱돼야 한다. 이게 red 면 위 단언은
+    # '주석이라서' 걸러낸 게 아니라 '행이 애초에 무효라서' 통과한 공허한 단언이다.
+    unwrapped = [ln[ln.index("|"):].replace("-->", "").strip() for ln in example_lines]
+    assert deferral_records("\n".join(unwrapped)) != [], (
+        "뮤테이션 실패 — 주석을 벗겨도 파싱되지 않는다면 (3) 의 단언은 공허하다"
+    )
