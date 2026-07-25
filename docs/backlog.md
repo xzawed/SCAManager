@@ -9,9 +9,33 @@
 
 ---
 
-## ▶️ 다음 세션 시작점 (2026-07-24 세션8 인수인계)
+## ▶️ 다음 세션 시작점 (2026-07-26 세션9 인수인계)
 
 **이 파일부터 읽으면 된다.**
+
+🔴 **2026-07-26 세션9 = GitHub 정리 + owed #1072 외부계약 반증(#1218) + 5+1 회고(run `wf_47083cad-e71`·197 에이전트·확정 161).** 회고 P0-1 은 #1219 로 봉인, **P0-2 는 미처리**. P1 59건은 관점 중복 포함이라 **루트 ~15 클러스터**로 묶었다. 상세·근거는 [`_archive/reports/2026-07-26-retrospective.md`](_archive/reports/2026-07-26-retrospective.md).
+
+| ID | 상태 | 항목 | 근거 요약 |
+|----|------|------|-----------|
+| **R0-2** | 🔴 결정 대기 | **owed 원장 완전성 축 부재 (P0)** — 훅이 **빈 원장을 green 으로** 읽어, 부채를 등재하지 않는 것이 가장 싼 통과 경로. 창 42 PR 중 **22건이 미체크 `- [ ]` 를 단 채 머지**됐고 세는 관측자가 없다 | 지배 주제("옳은 일 하면 red")의 **쌍대**. 처방: `check_owed_verification.py` 에 완전성 축(원장 최종 커밋 이후 머지 PR 중 미체크 항목 보유분 열거 → loud, gh 부재 시 무음). 🔴 `gh` 의존·advisory 유지 설계 결정 필요 |
+| **R1** | 🟡 착수 가능 | **회고 보고서 아카이브 기계화** — 워크플로가 보고서를 쓰지 않아(`grep -rn '_archive/reports' .claude/workflows/*.mjs` 무결과) 카덴스 기계의 **입력이 인간 기억 의존**. 미아카이브 **3회차** | (a) `retrospective.mjs` 종료 단계가 보고서 직접 기록 (b) STATE·cycle-history 가 회고로 인용한 `wf_[0-9a-f]{8}` 은 전부 아카이브에 존재해야 한다는 가드 |
+| **R2** | 🔴 결정 대기 | **정책 19 Grok CLAIM-REVIEW 집행면 0** — 창 42 커밋 중 **26건이 "봉인/fail-closed" 주장**인데 Grok 흔적 0. 직전 회고 P1 의 즉시 재발 | 산문 의무만 존재. 기계 트리거(커밋/PR 본문 정규식 → 경고)를 만들지, 정책을 완화할지 **사용자 결정 필요** |
+| **R3** | 🟡 착수 가능 | **정책 13 smoke 0/42 발화** — 관측면 0. 🔴 실행 비용 실측 = **~5초·무자격증명**(비싸서가 아니라 아무도 안 봐서 빠졌다) | 6-step ⑤ 또는 SessionStart 에 배선 |
+| **R4** | 🟡 착수 가능 | **형제 유추 외부 계약 2건 미실측 잔존** — `#1208` 의 `@` escape 는 **GitHub 에서 완전 no-op**(라이브 프로빙 반증, 멘션 인젝션 봉인은 **존재하지 않는다**) · GraphQL `expectedHeadOid` 를 `PUT /merge` `sha` 와 "동일 의미"로 단정(비동기 머지라 원리적으로 다름) | 🔴 `@` escape 는 **실사용 영향 재평가** 필요. 세션이 발명한 "가정된 계약 → 라이브 프로빙" 을 **클래스로 확장** |
+| **R5** | 🟡 착수 가능 | **3-불변식에 "시점 의존 상태를 불변식으로 고정" 클래스 없음** — 한 세션에 3건 발생했는데 규칙도 탐지기도 없다 | `AGENTS.md`·`guards.md`(write-time 자동 로드 표면)에 규칙 등재. 2차 주제는 등재됐는데 지배 주제는 안 됨(비대칭) |
+| **R6** | 🟡 착수 가능 | **가드 fail-open 뮤테이션 실증 6건** — repo_detail 차트/bulk i18n 가드 2건(자기 설명 주석이 단언을 만족) · arch-tree-sync · B8 이 `.claude/hooks/**` 미검 · `test_current_tree_is_in_sync` 가 실제 out-of-sync 에서 green 등 | 전부 회고가 뮤테이션으로 red 실증 |
+| **R7** | 🔴 결정 대기 | **e2e 122건이 CI 미배선인데 README/STATE 는 "E2E 122 passing" 단언** — 178 커밋째 미변경. **실행되지 않는 초록 배지** | 배선할지, 배지 문구를 정직하게 바꿀지 결정 필요 |
+| **R8** | 🟡 착수 가능 | **로그 리댁션에 DB URL·userinfo 자격증명 패턴 전무** — SQLAlchemy 가 예외 메시지에 URL 전문(비밀번호 포함)을 담는데 `_SECRET_URL_PATTERNS` 가 통과시킨다 | 보안 |
+| **R9** | 🟡 착수 가능 | **doc_review_gate 가 cp949(Windows)에서 deny 불가** + 심의 대상 집합이 2026-07-21 재구성 이후 stale(AGENTS.md·rules/**·policies/** 전부 skip) | 차단 게이트가 구조적으로 차단 불가 |
+| **R10** | 🟡 착수 가능 | **backlog/원장 정합 4건** — H2 종결 항목이 ⏸️ 로 생존 · 원장 갱신이 delta-scoped · ⏸️ 행에 반증수단 의무 미적용 · owed 파서가 첫 셀 drift 행을 조용히 버림 | |
+| **R11** | 🟡 착수 가능 | **반자동 승인 경로 잔여 2건** — 결정을 GitHub 리뷰보다 **먼저** commit 해 "approve 기록됐는데 승인은 없는" 상태 고착(insert-only claim 이라 재시도 영구 차단) · telegram `HeadMovedError` 분기 **배선 테스트 0건**(삭제해도 499 테스트 green — 뮤테이션 실증) | #1218 신규 회귀 |
+| **R12** | 🟡 착수 가능 | **파괴적 작업 복구 매니페스트가 세션 임시 디렉토리에만 존재** — 브랜치 49건 삭제분. 휘발성·위치 미고지 | |
+
+> P2 100건(관점 중복 포함)은 보고서 본문 참조. 위 R1~R12 에 흡수되지 않는 잔여는 다음 회고에서 재평가.
+
+---
+
+### (역사) 2026-07-24 세션8 인수인계
 
 🔴 **2026-07-24 세션8 = 종합감사(#1186~1194) + P2 5클러스터(#1195~1199) + 5+1 회고(80 confirmed) + 회고 P1 이행(#1200~1201).** 상세 세션 메모리: `project-retro-2026-07-24`. **미이행 잔여**:
 - **[감사 P2 — 2026-07-24 라운드 처리]**: 명확버그 6(#1204~#1208) + High-tier 설계결정 5 완료. **2026-07-24 후속**(#1210·#1211): pagination(#1210) + webhook issue-close BackgroundTask(#1211) 완료 · approve 민감경로 가드 = **오탐 정정**(대칭·개념 부재) · cron-conn = defer(서비스품질). **후속2**(#1213~#1215): 가드 self-defect 3/4 완료(B8 escape/alias·arch-tree cross-dir·wiring-coverage path-comment/tautological). **잔여 ~6** = 아래 "🟡 2026-07-23 종합감사 잔여 P2" 섹션 (스냅샷 = [`docs/_archive/reports/2026-07-23-comprehensive-review.md`](_archive/reports/2026-07-23-comprehensive-review.md)): 명확버그 1(cron double-send[dedup schema]) · SQL 집계 4 · 가드 self-defect 1(security.md 로깅 coverage — 모호, 재검증) · UI 5(정책 11 시각검증) — 남은 건 전부 schema/perf/모호가드/시각검증.
