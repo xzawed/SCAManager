@@ -13,7 +13,7 @@ from src.database import WorkerSessionLocal as SessionLocal
 from src.gate._common import ai_review_failed
 from src.gate._common import score_from_result as _score_from_result
 from src.gate.actions import GateAction, GateContext, register
-from src.gate.github_review import post_github_review
+from src.gate.github_review import HeadMovedError, post_github_review
 from src.gate.telegram_gate import send_gate_request
 from src.i18n.loader import get_text
 from src.notifier._language import resolve_notification_language
@@ -107,15 +107,26 @@ class ApproveAction(GateAction):
             )
             with SessionLocal() as db:
                 gate_decision_repo.upsert(db, ctx.analysis_id, decision, "auto")
+        except HeadMovedError as exc:
+            # 🔴 분석 SHA ≠ 현재 head — **정상 fail-closed** 이므로 INFO(ERROR 아님).
+            # force-push 잦은 리포에서 매 드리프트마다 ERROR 가 쌓여 진짜 실패를 은폐하지 않도록 강등.
+            # gate_decision 은 upsert 미도달로 미기록 — 새 head 는 자신의 synchronize 웹훅이 재게이트.
+            # 🔴 Expected fail-closed (analyzed SHA != current head) — INFO, not ERROR.
+            logger.info(
+                "GitHub Review skipped — head moved since analysis (fail-closed): %s (%s)",
+                ctx.repo_name, exc,
+            )
         except (httpx.HTTPError, KeyError) as exc:
-            # 🔴 SHA 결속 422 = head 이동으로 인한 **정상 fail-closed** — ERROR 아닌 INFO 로 강등.
-            # force-push 잦은 리포에서 매 드리프트마다 ERROR 가 쌓여 진짜 실패(500/네트워크)를 노이즈로
-            # 은폐하지 않도록 구분한다(pipeline-reviewer P2). gate_decision 은 upsert 미도달로 미기록.
-            # 🔴 A 422 from the SHA binding is an expected fail-closed (head moved) — log INFO, not ERROR.
+            # 🔴 422 를 'head 이동'으로 단정하지 않는다 — 실측상 422 는 head 이동에서 오지 **않는다**
+            # (owed #1072: 구 SHA 도 GitHub 은 200 으로 수락). 실제 422 사유는 self-approval
+            # (`Can not approve your own pull request`)·존재하지 않는 commitOID 등이며, head 드리프트는
+            # 위 HeadMovedError 가 POST 전에 잡는다. 원인을 모르는 채 특정 원인을 적으면 운영자가
+            # 엉뚱한 곳을 파므로 사유를 지어내지 않고 WARNING 으로 남긴다.
+            # 🔴 Do NOT attribute a 422 to a moved head — measurements disproved that (owed #1072).
             status = getattr(getattr(exc, "response", None), "status_code", None)
             if status == 422:
-                logger.info(
-                    "GitHub Review skipped — head moved since analysis (commit_id 불일치, fail-closed): %s",
+                logger.warning(
+                    "GitHub Review 거부됨 — HTTP 422 (사유는 응답 본문: self-approval·commitOID 부재 등): %s",
                     ctx.repo_name,
                 )
             else:

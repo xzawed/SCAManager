@@ -20,7 +20,7 @@ from src.config import settings
 from src.config_manager.manager import get_repo_config
 from src.database import WorkerSessionLocal as SessionLocal
 from src.gate._common import ai_review_failed
-from src.gate.github_review import post_github_review
+from src.gate.github_review import HeadMovedError, post_github_review
 from src.i18n.loader import get_text
 from src.notifier._language import resolve_notification_language
 from src.notifier.telegram import telegram_post_message
@@ -155,7 +155,10 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
                 github_token, repo.full_name,
                 analysis.pr_number, decision, body,
                 # 🔴 분석 SHA 결속 — semi-auto 승인 버튼(무만료 HMAC)을 몇 시간 뒤 눌러도 그 사이
-                # 이동한 head 에는 GitHub 이 422 로 APPROVE 를 거부(fail-closed, 준비도 감사 #8).
+                # head 가 이동했으면 리뷰를 붙이지 않는다(fail-closed, 준비도 감사 #8).
+                # 🔴 강제 주체 정정 (owed #1072, 2026-07-26): 이전 주석은 "GitHub 이 422 로 거부"
+                # 라고 적었으나 실측에서 **거짓**으로 확인됐다(구 SHA 도 GitHub 은 200 수락).
+                # 결속은 post_github_review 가 POST 전에 head 를 조회해 직접 강제한다.
                 commit_id=analysis.commit_sha,
             )
             # 결정은 위 claim 단계에서 이미 원자적으로 기록됨 (별도 저장 불필요)
@@ -195,6 +198,17 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
                     analysis_id=analysis_id, result=result_dict,
                     analyzed_sha=analysis.commit_sha,
                 )
+        except HeadMovedError as exc:
+            # 🔴 분석 SHA ≠ 현재 head — 정상 fail-closed. 이 경로는 노출이 가장 크다(무만료 HMAC).
+            # 아래 broad except 는 HeadMovedError 를 잡지 못해(Exception 직계) 미처리 시 ASGI 밖으로
+            # 탈출한다 — 이 콜백은 토큰이 URL 에 실리는 Telegram 경로라 탈출 자체가 유출 위험이다
+            # (_post_message_guarded docstring 참조). 예외 전파로 아래 auto-merge 는 자연 skip 된다.
+            # 🔴 Expected fail-closed; must be caught here — it is not a subclass of the broad tuple
+            # below, and an escaping exception in this callback risks credential-bearing tracebacks.
+            logger.info(
+                "Gate callback: head moved since analysis — GitHub Review 미게시 (fail-closed): "
+                "analysis=%d (%s)", analysis_id, exc,
+            )
         except (httpx.HTTPError, KeyError, ValueError, RuntimeError, SQLAlchemyError):
             # Phase H PR-6A: logger.exception 으로 stack trace 보존
             # RuntimeError 포함 — _run_auto_merge(legacy 경로)가 누출할 수 있어 콜백 격리 보강

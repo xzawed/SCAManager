@@ -18,6 +18,13 @@ logger = logging.getLogger(__name__)
 _MERGEABLE_BLOCK = frozenset({"dirty", "blocked", "behind", "draft", "unstable"})
 
 
+class HeadMovedError(Exception):
+    """분석 SHA 와 PR head 가 어긋나 리뷰를 붙이지 않고 중단했다 (정상 fail-closed).
+
+    Raised instead of posting when the PR head no longer matches the analyzed SHA.
+    """
+
+
 async def post_github_review(
     github_token: str,
     repo_full_name: str,
@@ -29,18 +36,43 @@ async def post_github_review(
 ) -> None:
     """Post an APPROVE or REQUEST_CHANGES review on a GitHub pull request.
 
-    🔴 `commit_id` = 분석된 SHA. 전달 시 GitHub 은 그 커밋에만 리뷰를 부착하고, PR head 가
-    그 사이 이동했으면 **422 로 거부**한다 → 이동한 head 에 SCAManager 의 APPROVE 가 붙어
-    branch protection 의 auto-merge-on-approval 이 **미분석 커밋을 머지**하는 것을 차단(fail-closed).
-    merge 의 `expected_sha`(#1057)와 대칭(준비도 감사 #8). 빈 값/None 은 결속 미적용(하위 호환).
-    🔴 With `commit_id` (the analyzed SHA), GitHub attaches the review only to that commit and 422s
-    if the PR head has moved — closing the window where an APPROVE lands on an unanalyzed head.
+    🔴 `commit_id` = 분석된 SHA. 전달 시 **POST 직전 PR head 를 조회해 일치하지 않으면
+    `HeadMovedError` 를 던지고 POST 하지 않는다**(fail-closed) → 이동한 head 에 SCAManager 의
+    APPROVE 가 붙어 branch protection 의 auto-merge-on-approval 이 **미분석 커밋을 머지**하는
+    것을 차단. merge 의 `expected_sha`(#1057)와 목적은 같으나 **강제 주체가 다르다**(아래).
+    빈 값/None 은 결속 미적용(하위 호환) — head 조회조차 하지 않는다.
+
+    🔴🔴 **GitHub 은 이 결속을 강제해 주지 않는다 — 실측으로 반증됨 (owed #1072, 2026-07-26)**
+    이전 구현은 "구 `commit_id` 를 보내면 GitHub 이 422 로 거부한다"는 전제였으나, 격리 리포
+    실측에서 **구 SHA·force-push 로 PR 에서 사라진 SHA 모두 200** 으로 수락됐다(리뷰가 그 SHA 로
+    기록됨). 422 는 **저장소에 오브젝트가 아예 없을 때만** 난다(`The commitOID is not part of the
+    pull request`). 분석된 SHA 는 정의상 저장소에 존재하므로 그 가드는 **원리적으로 발화 불가**였고,
+    실제로 운영 auto-approve 104 건 중 한 번도 차단하지 않았다. 그래서 **우리 코드가** 강제한다.
+
+    🔴 **정직한 한계**: GET(head 조회) → POST 사이에 head 가 또 움직이는 레이스는 남는다.
+    리뷰 API 에는 merge 의 `sha` 파라미터 같은 **서버측 원자성 수단이 없음이 실측으로 확인**됐으므로
+    이것이 가용 최선이다. 놓친 드리프트는 손실이 아니다 — 새 head 의 synchronize 웹훅이 그 커밋을
+    분석해 자체 게이트를 돈다(`_run_auto_merge_retry` 드롭 논리와 동일).
+
+    Raises:
+        HeadMovedError: commit_id 가 주어졌는데 현재 head 와 다르거나 head 를 판정할 수 없을 때.
     """
     event = "APPROVE" if decision == "approve" else "REQUEST_CHANGES"
-    url = f"{GITHUB_API}/repos/{repo_full_name}/pulls/{pr_number}/reviews"
     payload: dict = {"body": body, "event": event}
     if commit_id:
+        # 🔴 클라이언트 측 결속 — GitHub 이 막아주지 않으므로 POST 전에 우리가 확인한다.
+        # Client-side binding — GitHub does not enforce it, so verify before POSTing.
+        _, head_sha = await get_pr_mergeable_state(github_token, repo_full_name, pr_number)
+        if head_sha != commit_id:
+            # 메시지는 영문 고정 — 운영자용 내부 진단이고, 발신 모듈 한국어 가드의 대상 표면이다.
+            # English-only message: internal diagnostic, and this module is scanned by the
+            # hardcoded-Korean send-path guard (logger args are exempt, raise arguments are not).
+            head_repr = sanitize_for_log(head_sha)[:12] if head_sha else "<undeterminable>"
+            raise HeadMovedError(
+                f"analyzed={sanitize_for_log(commit_id)[:12]} head={head_repr}"
+            )
         payload["commit_id"] = commit_id
+    url = f"{GITHUB_API}/repos/{repo_full_name}/pulls/{pr_number}/reviews"
     client = get_http_client()  # 싱글톤
     r = await client.post(
         url,
