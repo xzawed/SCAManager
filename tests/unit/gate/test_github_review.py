@@ -46,14 +46,17 @@ async def test_post_github_review_raises_on_error():
 
 
 # 🔴 approve SHA 결속 (준비도 감사 #8) — commit_id 로 분석 SHA 에만 APPROVE 부착.
-# GitHub 은 commit_id 가 현재 head 와 불일치하면 422 → 이동한 head 에 승인 미부착(fail-closed).
-# merge 의 expected_sha(#1057)와 대칭.
+# 🔴 강제 주체 정정 (owed #1072, 2026-07-26): "GitHub 이 head 불일치 시 422" 는 실측 반증됨
+# (구 SHA·force-push 로 사라진 SHA 모두 200 수락). 결속은 post_github_review 가 POST 전에
+# head 를 조회해 직접 강제한다 — 드리프트 케이스는 test_approve_head_binding.py 참조.
 
 async def test_post_github_review_binds_commit_id_when_provided():
-    """commit_id 전달 시 POST body 에 포함 — 분석 SHA 에만 APPROVE 결속."""
+    """commit_id 전달 + head 일치 시 POST body 에 포함 — 분석 SHA 에만 APPROVE 결속."""
     mock_response = MagicMock()
     mock_response.raise_for_status = MagicMock()
-    with patch("src.gate.github_review.get_http_client") as mock_get:
+    with patch("src.gate.github_review.get_http_client") as mock_get, \
+         patch("src.gate.github_review.get_pr_mergeable_state",
+               new=AsyncMock(return_value=("clean", "abc123def"))):
         mock_client = AsyncMock()
         mock_get.return_value = mock_client
         mock_client.post = AsyncMock(return_value=mock_response)

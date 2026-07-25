@@ -178,9 +178,13 @@ async def test_approve_action_auto_binds_commit_sha(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_approve_action_auto_422_logged_as_info_not_error(caplog):
-    """🔴 SHA 결속 422(head 이동)는 정상 fail-closed → INFO 로그, ERROR 아님 (pipeline-reviewer P2).
+    """🔴 422 는 ERROR 로 승격하지 않되, **head 이동으로 단정하지도 않는다** (owed #1072 정정).
 
-    force-push 잦은 리포에서 매 드리프트마다 ERROR 가 쌓여 진짜 실패를 은폐하지 않도록 강등.
+    이 테스트는 원래 "422 = head 이동 fail-closed" 를 단언했으나 그 전제가 실측으로 반증됐다 —
+    GitHub 은 구 commit_id 를 **200 으로 수락**하므로 422 는 head 이동에서 오지 않는다(실제 사유는
+    self-approval·존재하지 않는 commitOID 등). head 드리프트는 이제 `HeadMovedError` 가 POST
+    **전에** 잡는다(`test_approve_head_binding.py`). 여기서는 (a) gate_decision 미기록 (b) 진짜
+    실패를 은폐하지 않도록 ERROR 미승격 (c) 원인 날조 금지만 단언한다.
     """
     import logging as _logging  # pylint: disable=import-outside-toplevel
     import httpx  # pylint: disable=import-outside-toplevel
@@ -197,11 +201,13 @@ async def test_approve_action_auto_422_logged_as_info_not_error(caplog):
             await ApproveAction().execute(ctx)
     # gate_decision 은 upsert 미도달 (approve 미기록)
     mock_gd.upsert.assert_not_called()
-    # 422 는 INFO 로만 — ERROR 레벨 레코드 없음
+    # 422 는 ERROR 로 승격하지 않는다 — 진짜 실패(500/네트워크)를 노이즈로 은폐하지 않기 위해
     assert not any(r.levelno >= _logging.ERROR for r in caplog.records), \
-        "SHA 결속 422 가 ERROR 로 로깅됨 (정상 fail-closed 인데 노이즈)"
-    assert any("head moved" in r.message for r in caplog.records), \
-        "422 head-이동 INFO 로그가 없음"
+        "422 가 ERROR 로 로깅됨 (진짜 실패를 노이즈로 은폐)"
+    # 🔴 원인 날조 금지 — 422 를 head 이동으로 단정하면 운영자가 엉뚱한 곳을 판다 (owed #1072)
+    assert not any("head moved" in r.message for r in caplog.records), \
+        "422 를 'head moved' 로 단정 — 실측상 422 는 head 이동에서 오지 않는다"
+    assert any("422" in r.message for r in caplog.records), "422 사실 자체가 로깅되지 않음"
 
 
 @pytest.mark.asyncio

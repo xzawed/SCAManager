@@ -220,10 +220,34 @@ def test_parser_blind_rows_do_not_carry_status_claims():
 
 
 def test_status_parser_matches_the_production_parser_shape():
-    """이 테스트의 파서가 실제 원장을 읽는지 — 0건이면 모든 단언이 공허하다."""
-    statuses = status_by_id(_text())
+    """이 테스트의 파서가 실제 원장을 읽는지 — 0건이면 모든 단언이 공허하다.
+
+    🔴 **'미결 ⏳ 이 최소 1건 있어야 한다'를 단언하지 않는다 (2026-07-26 정정)**: 그것은 비공허성이
+    아니라 **시점 의존 상태**다. 원장의 목적은 미결을 0 으로 만드는 것이므로, 마지막 항목을 종결하면
+    (= 목표 달성) CI 가 빨개진다 — 옳은 일을 하면 실패하는 가드다. 실제로 #1072 종결 시 red 가 났다.
+    같은 세션에 `retro-cadence-deferrals` 가드도 동일 병으로 적발됐다(#1217).
+
+    비공허성은 **파싱이 실제로 일어났는가**로 담보한다: (a) 충분한 행 수 (b) 모든 값이 알려진
+    상태 마크 — 파서가 깨져 쓰레기를 뱉으면 (b)가 잡는다. 미결 유무는 여기서 단언할 사실이 아니다.
+    """
+    text = _text()
+    statuses = status_by_id(text)
     assert len(statuses) >= 5, f"상태 표에서 {len(statuses)}건만 읽혔다 — 형식 확인 필요"
-    assert any(v == _PENDING_MARK for v in statuses.values()), "미결(⏳) 항목이 없다"
+    # 🔴 비공허성의 실제 지점 — `**#NNNN**` 표 행은 **하나도 빠짐없이** 파싱돼야 한다.
+    # status_by_id 는 알려진 마크를 못 찾으면 그 행을 **조용히 버린다**(L57-59). 그래서 마크 오타·
+    # 셀 이동 같은 형식 drift 가 나면 항목이 소리 없이 추적에서 사라진다 — `>= 5` 만으로는 한 행이
+    # 증발해도 통과한다(실측: 상태 셀을 훼손하는 뮤테이션이 red 를 내지 못했다).
+    row_ids = {
+        cells[0].replace("*", "")
+        for line in text.splitlines() if line.startswith("|")
+        for cells in [[c.strip() for c in line.strip().strip("|").split("|")]]
+        if len(cells) >= 3 and re.match(r"^\*{0,2}#\d+\*{0,2}$", cells[0])
+    }
+    dropped = row_ids - set(statuses)
+    assert not dropped, (
+        f"상태 마크를 인식하지 못해 조용히 버려진 행: {sorted(dropped)} — "
+        "형식 drift 로 항목이 추적에서 증발한다"
+    )
     assert any(v in _TERMINAL for v in statuses.values()), "종결 항목이 없다"
 
 
