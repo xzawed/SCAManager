@@ -200,11 +200,17 @@ async def handle_gate_callback(  # pylint: disable=too-many-locals
                 )
         except HeadMovedError as exc:
             # 🔴 분석 SHA ≠ 현재 head — 정상 fail-closed. 이 경로는 노출이 가장 크다(무만료 HMAC).
-            # 아래 broad except 는 HeadMovedError 를 잡지 못해(Exception 직계) 미처리 시 ASGI 밖으로
-            # 탈출한다 — 이 콜백은 토큰이 URL 에 실리는 Telegram 경로라 탈출 자체가 유출 위험이다
-            # (_post_message_guarded docstring 참조). 예외 전파로 아래 auto-merge 는 자연 skip 된다.
-            # 🔴 Expected fail-closed; must be caught here — it is not a subclass of the broad tuple
-            # below, and an escaping exception in this callback risks credential-bearing tracebacks.
+            # 🔴 여기서 잡아야 하는 이유 (실측): HeadMovedError 는 Exception 직계라 (a) 아래 broad
+            # except 튜플에도, (b) 상위 래퍼 `_handle_gate_callback_guarded` 의
+            # `(httpx.HTTPError, SQLAlchemyError)` 에도 걸리지 않는다 → BackgroundTask 밖으로 탈출해
+            # uvicorn 이 트레이스백을 찍는다. 즉 **정상 fail-closed 가 크래시로 보고**돼 진짜 장애와
+            # 구분되지 않는다. 예외 전파로 아래 auto-merge 는 자연 skip 된다.
+            # ⚠️ 정확성 — 이 예외 메시지는 SHA 뿐이라 **credential 을 담지 않는다**. 형제 래퍼가
+            # 존재하는 이유(토큰이 URL 에 실리는 httpx 오류, `_post_message_guarded` docstring)와
+            # 혼동 금지: 여기서의 해악은 유출이 아니라 **오탐 크래시 보고**다.
+            # 🔴 Caught here because it is a subclass of neither the broad tuple below nor the outer
+            # wrapper's — it would escape the BackgroundTask and be logged as a crash.
+            # ⚠️ Its message carries SHAs only, no credential (unlike the httpx case).
             logger.info(
                 "Gate callback: head moved since analysis — GitHub Review 미게시 (fail-closed): "
                 "analysis=%d (%s)", analysis_id, exc,

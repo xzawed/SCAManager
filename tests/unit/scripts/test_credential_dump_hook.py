@@ -119,6 +119,19 @@ _BLOCKED = [
     pytest.param("cat .env", id="cat-dotenv"),
     pytest.param("cat D:/Source/SCAManager/.env", id="cat-dotenv-abspath"),
     pytest.param("type .env", id="type-dotenv-windows"),
+    # 🔴 복합 명령 우회 — 2026-07-26 5+1 회고 P0 실측 원문 4종.
+    # `_ALLOWED` 를 명령 **문자열 전체**에 먼저 적용하면, 안전한 세그먼트 하나가 명령 전체를
+    # 화이트리스트해 다른 세그먼트의 덤프가 통과한다. 가장 자연스러운 우회 형태가 훅 자신이
+    # 가르치는 안전 관용구를 앞에 붙이는 것이라 더 위험하다.
+    # 🔴 Compound-command bypasses (measured, retro 2026-07-26 P0): one safe segment must not
+    # whitelist the whole command line.
+    pytest.param(
+        "railway variables --kv | cut -d= -f1; railway variables --kv | grep -i CRON",
+        id="bypass-semicolon-after-safe-idiom",
+    ),
+    pytest.param("printenv | grep KEY; echo a=b | cut -d= -f1", id="bypass-semicolon-before-safe"),
+    pytest.param("cat .env; echo a=b | cut -d= -f1", id="bypass-catenv-then-safe"),
+    pytest.param("railway variables --set FOO=1 && railway variables --kv", id="bypass-and-after-write"),
 ]
 
 
@@ -158,6 +171,16 @@ _ALLOWED = [
     # CLAUDE.md 핵심 명령(`cp .env.example .env`)에 등장한다 → 통과 대상으로 본다.
     # Spec call: .env.example is a committed, value-free template — allow it.
     pytest.param("cat .env.example", id="cat-dotenv-example"),
+    # 🔴 파이프 보존 대조군 — 세그먼트 분해가 **단일 `|` 까지** 쪼개면 훅이 가르치는 안전
+    # 관용구 자체가 막혀 훅이 곧 비활성화된다. 파이프라인은 하류 필터가 상류 덤프를 실제로
+    # 중화하지만 `;`/`&&` 는 그렇지 않다 — 이 비대칭이 분해 경계의 근거다.
+    # 🔴 Pipes must NOT be split: a downstream filter genuinely neutralizes the upstream dump,
+    # unlike `;`/`&&`. Splitting on `|` would block the hook's own documented safe idiom.
+    pytest.param(
+        "railway variables --kv | cut -d= -f1 | grep -i CRON", id="safe-idiom-three-stage-pipeline",
+    ),
+    pytest.param("railway variables --set A=1 && git status", id="write-then-benign"),
+    pytest.param("git status; ls -la", id="two-benign-segments"),
 ]
 
 
