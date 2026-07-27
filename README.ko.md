@@ -400,6 +400,13 @@ make install
 #    (Railway 에서는 railway.toml `buildCommand` 안에서 같은 빌드가 실행된다.)
 make css-build
 
+# 🔴 로컬 가드 훅 — `.pre-commit-config.yaml` 의 훅 전체(시크릿 스캔 · docs 수치 정합 ·
+#    architecture 트리 싱크 · 이중언어 주석 …)는 pre-commit 을 통해서만 실행된다. 이 단계를
+#    건너뛰면 새 PC 에서 가드가 조용히 사라진 상태로 커밋이 계속 성공한다. 훅 타입 2종 필요
+#    (commit-msg 는 별도 stage). 상세: docs/runbooks/secret-prevention.md
+python -m pip install pre-commit
+python -m pre_commit install --hook-type pre-commit --hook-type commit-msg
+
 # Python 의존성만 (프로덕션 이미지 / Node.js 없는 환경)
 pip install -r requirements.txt      # 런타임
 pip install -r requirements-dev.txt  # + pytest · Playwright
