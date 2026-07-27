@@ -31,6 +31,7 @@ GitHub Push/PR 이벤트 시 정적 분석 + AI 코드 리뷰를 자동 수행�
 | **새 파일 추가 시** | → [CLAUDE.md 아키텍처 동기화 체크리스트](#필수-원칙) |
 | **아키텍처 파악** | → [src/ 트리](#아키텍처) · [핵심 데이터 흐름](docs/architecture.md#핵심-데이터-흐름) |
 | **미해결 일감 확인 (사이클 착수 시)** | → [`docs/backlog.md`](docs/backlog.md) — 결정 대기 🔴 / 착수 가능 🟡 |
+| **다른 PC/새 환경에서 세션 시작** | → [`docs/runbooks/new-machine-setup.md`](docs/runbooks/new-machine-setup.md) — 리포가 **실어 주지 않는** 것(`.env` 값·에이전트 메모리·MCP 설정·`gh` scope)과 "가드가 실제로 실행되는지" 검증 |
 | **규칙 전체 열람** | → [주의사항 카테고리별](#주의사항-카테고리별) |
 
 > **🔴 가장 빈번하게 놓치는 규칙 3가지**

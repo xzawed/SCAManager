@@ -353,6 +353,11 @@ pip install -r requirements.txt      # runtime
 pip install -r requirements-dev.txt  # + pytest · Playwright
 ```
 
+> **Moving to another machine?** The steps above cover everything the repository carries. What it
+> cannot carry — `.env` values, agent memory, MCP configuration, `gh` auth scopes — plus a
+> machine-checkable verification list is in
+> [`docs/runbooks/new-machine-setup.md`](docs/runbooks/new-machine-setup.md).
+
 ### ⚙️ Environment Variables
 
 ```bash

@@ -2,11 +2,20 @@
 
 > 이 파일이 단일 진실 소스(Single Source of Truth)다. Phase 완료·주요 변경 시 여기를 먼저 갱신한다.
 
-## 현재 수치 (2026-07-24 기준)
+## 현재 수치 (2026-07-27 기준)
 
 > 📌 **이전 세션·PR별 누적 작업 서사는 [`docs/cycle-history.md`](cycle-history.md) 단일 출처** (사이클 60~166, 최신순). 본 헤더는 **최신 1건 + 종합 수치만** 유지 — 32KB 단일 라인 SSOT 가독성 복원 (품질감사 docclr-1, 2026-06-17, cycle-history.md 에 서사 전량 보존[append-only] 확인 후 트리밍). 🔴 **다음 세션 갱신 규칙**: 신규 작업 완료 시 (0) **본 섹션 날짜 헤더(line 5 `## 현재 수치 (YYYY-MM-DD 기준)`)를 최신 세션 날짜로 갱신** (회고 2026-07-03 C5 #60 — 절차에서 상시 누락되던 필드), (1) 본 "최신" 블록을 새 작업으로 교체 + 종합 수치 갱신, (2) 직전 작업의 전체 서사는 `docs/cycle-history.md` 최신순 맨 앞에 본문 섹션으로 이관 (헤더에 "직전" 체인 누적 금지 — 본 정리의 회귀 방지), (3) **"최신" 블록은 불릿 5~8줄로 작성 — 단일 라인 금지** (2026-07-09 rank14: 단일 라인은 diff 심의·가독성 저해, doc_review_gate CRITICAL 게이팅 대상. 종합 수치 표·추적셀[테이블 셀]은 단일 라인 유지).
 
-**최신 (2026-07-26 세션9 — GitHub 정리 + owed #1072 외부계약 반증 + 5+1 회고, 3 PR #1217~#1219)** — 직전 세션8 블록은 아래 유지(체인 1단계, 그 이전은 [`cycle-history.md`](cycle-history.md)).
+**최신 (2026-07-27 세션10 — 다른 PC 이식 준비 + git 정리, 3 PR #1223~#1225)** — 직전 세션9 블록은 아래 유지(체인 1단계, 그 이전은 [`cycle-history.md`](cycle-history.md)).
+- **git 정리**: 로컬 브랜치 4 삭제(#1218~#1220 머지분 3 + 본 세션분) · main fast-forward · 원격 = `main` + dependabot 2. 판정 근거 = **PR `state=MERGED` + tip↔`headRefOid` + merge commit 조상성** 3종(삭제 전 복구 매니페스트 저장). `git cherry`/`--merged` 는 squash 오탐이라 재차 배제.
+- 🔴 **README 설치 절차가 새 PC 에서 첫 명령부터 실패**(#1224): clone URL 이 `xzawed31/SCAManager` = **404 실측**(실제 `xzawed/`)인데 같은 문서 배지는 `xzawed` 로 올바른 **문서 내부 자기모순**. `git grep` 전수 = 이 2줄뿐.
+- 🔴 **gitignore 산출물을 템플릿이 링크**(#1224): `src/static/css/dist/tailwind.css` 는 빌드 산출물인데 `base.html:31` 이 링크 → 설치 절차에 CSS 빌드가 없어 새 clone 은 **CSS 404 상태로 기동**. 본 PC 에도 파일이 없어 실증됨(`make css-build` 로 12KB 생성 확인).
+- 🔴 **pre-commit 미등록 = 조용한 무보호**(#1224 fix-up): 로컬 가드 전량이 pre-commit 경유인데 등록 단계가 설치 절차 밖(runbook 1곳)에 있었다 → 새 PC 는 **가드 없이 커밋이 계속 성공**. `stages: [commit-msg]` 훅 때문에 `--hook-type` 2종 필수.
+- **stale 커버리지 산출물 5건 untrack**(#1223): 2026-04-19 이후 미갱신 사본(coverage.json 162KB 등)이 추적돼 `parse_coverage.py` 가 **3개월 전 수치를 조용히 보고**할 수 있었다 → untrack + gitignore 봉인.
+- **새 런북** `docs/runbooks/new-machine-setup.md`(#1225): 리포가 실어 주지 않는 자산(`.env` 값·에이전트 메모리·MCP 설정·`gh` scope) + 기계 검증 체크리스트. 🔴 메모리는 **public 리포 등재 안 함**(보안 발견·내부 서사 · 공개는 비가역).
+- 단위 **5968 불변**(테스트 무변경 — docs/chore 세션) · 통합 158 · 전체 6126 수집. Code Scanning open **0**(정책 14).
+
+**직전 (2026-07-26 세션9 — GitHub 정리 + owed #1072 외부계약 반증 + 5+1 회고, 3 PR #1217~#1219)** — 그 이전(세션8)은 [`cycle-history.md`](cycle-history.md).
 - **GitHub 정리**: 원격 브랜치 4 + 로컬 45 삭제(전건 PR MERGED + tip↔headRefOid 대조 실측) · 워크트리 10 제거(180MB→40K) · Actions 캐시 5.55→1.08 GiB. 🔴 `git cherry`·reverse-apply 는 squash 머지에서 전량 오탐이라 판정 근거에서 배제.
 - 🔴 **owed #1072 = ❌ 전제 반증** (#1218): 격리 스크래치 리포 실측으로 *"head 이동 시 GitHub 이 422 로 거부"* 가 **거짓** 확정(구 SHA·force-push 로 사라진 SHA 모두 **200**, 리뷰가 그 SHA 로 기록). 분석 SHA 는 정의상 저장소에 존재하므로 **원리적으로 발화 불가**였고 운영 auto-approve **104 건 중 차단 0**. 형제 대조 = `merge_pr(expected_sha=)` 는 **409 로 성립** — 형제 유추가 오류의 근원. → 결속을 **클라이언트 측**(POST 전 head 조회 → `HeadMovedError`)으로 전환.
 - **5+1 회고** (run `wf_47083cad-e71`): **197 에이전트**(0 error)·20.23M 토큰·확정 **161**(P0 2·P1 59·P2 100)·verdict_coverage 1.0·FP 12·severity_adjust 53. 지배 주제 = **"옳은 일을 하면 빨개지는 가드" 의 쌍대** — owed 원장이 42 PR 간 **0행**이고 훅은 빈 원장을 green 으로 읽는다(**부채 미등재가 가장 싼 통과 경로**, P0-2).
@@ -15,16 +24,7 @@
 - 🔴 **2026-07-24 회고 보고서 미아카이브 확정 — 복구 불가**: 회고는 수행됐으나 보고서 미생성 + journal 부재. 카덴스가 2.1배 오보(42 PR 발화, 실제 갭 ~20) → **본 회고가 22 PR 중복 재검토**. 미아카이브 3회차.
 - 단위 5959→**5968**(+9) · 통합 158 불변 · 전체 **6126** 수집.
 
-**직전 (2026-07-24 세션8 — 종합감사 이행 + 5+1 회고 + 회고 P1 + 감사 잔여 라운드, 18 PR #1194~#1216)** — 그 이전(세션7)은 [`cycle-history.md`](cycle-history.md).
-- **종합감사 이행** (#1194~#1199): **P1-5 retry claim_token CAS**(마지막 P1 봉인 — stale-reclaim 이중처리/상태 clobber 차단) + P2 안전 5클러스터(SEC-LOG bot-token 로그유출 계층1·NULL-COERCE AI필드·DATETIME naive/aware·CACHE-BOUND 무한캐시·DOCS-COLLAB path-rule/arch/sensitive-path) — 전부 뮤테이션 red 회귀가드.
-- **5+1 회고** (run `wf_1a8ad24b`): **111 에이전트·확정 80**(P0 0·P1 18·P2 62)·verdict_coverage 1.0·FP 10. 지배 테마 = **본 세션 자기 산출물 결함**(정책 8-5 적중 — 7 distinct P1 root).
-- **회고 P1 이행**: check_dual_import **방향 대칭 가드**(#1200) · DATETIME **grep 전수**(#1201 — 공용 `to_naive_utc`) · 감사 잔여 32 P2 **backlog 이관 + 아카이브 보고서** · env-vars/MEMORY defer 정정.
-- **감사 잔여 라운드** (#1202~#1211): 명확버그 8(secret 캐시 poison·보안스캔 403 오분류+**pagination**[#1210]·webhook base-branch·telegram dead-channel·enqueue race·issue_reg orphan·pre-push max_tokens·escape @) · **webhook issue-close BackgroundTask**(#1211 — ~10s 타임아웃 봉인) · High-tier 설계결정 5(서비스품질) · approve 민감경로 가드 = **오탐 정정**(대칭·개념 부재) · cron-conn = defer.
-- 🔴 **자기 process 사고 2건**(정책 8-5 실증): #1196 자초 CodeQL 이중 import(testing.md gotcha 4회차) · `git add -A` 로 DATETIME 작업이 #1197 커밋 무임승차(git 이력 오귀속).
-- **가드 self-defect 라운드** (#1213~#1215): 내가 쓴 가드가 자기 fail-open 을 범한 것 3건 봉인 — B8 escape bare-substring+alias 미탐(#1213) · arch-tree-sync cross-dir/부분단어(#1214) · wiring-coverage path-comment 오판+tautological(#1215). 전부 뮤테이션 red. 잔여 1건(security.md 로깅 리댁션 coverage — 모호, 재검증 필요).
-- 단위 5866→5959(+93) · 통합 158 불변 · 전체 6117 수집 (세션8 시점 기록 — 현재 값은 위 최신 블록·종합 수치가 SSOT).
-
-> (세션7 이하 전체 서사는 [`cycle-history.md`](cycle-history.md) — 세션7·8 포함 최신순 SSOT.)
+> (세션8 이하 전체 서사는 [`cycle-history.md`](cycle-history.md) 단일 출처 — 본 헤더의 세션9·10 도 같은 파일에 본문 등재됨[최신순].)
 
 **종합 수치**: 전체 **6126** 수집 (단위 **5968** + 통합 158) / E2E 122 (110 표준 + 12 perf) / pylint **10.00/10** (src/ — 🔴 **CI `lint-src` job 이 `--fail-under=9.90` + bandit 로 게이트**, #1149. scripts/ 는 미게이트).
 

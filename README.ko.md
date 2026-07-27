@@ -412,6 +412,10 @@ pip install -r requirements.txt      # 런타임
 pip install -r requirements-dev.txt  # + pytest · Playwright
 ```
 
+> **다른 PC 로 옮기는 경우**: 위 절차는 리포가 실어 주는 것 전부다. 리포가 **실어 주지 않는 것**
+> (`.env` 값 · 에이전트 메모리 · MCP 설정 · `gh` 인증 scope)과 기계로 확인 가능한 검증 목록은
+> [`docs/runbooks/new-machine-setup.md`](docs/runbooks/new-machine-setup.md) 참조.
+
 ### ⚙️ 환경변수 설정
 
 ```bash
