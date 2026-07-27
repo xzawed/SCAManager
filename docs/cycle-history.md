@@ -6,6 +6,7 @@
 
 ## 목차
 
+- [다른 PC 이식 준비 + 새 clone 경로 복구 + git 정리 (2026-07-27 세션10, 3 PR #1223~#1225)](#다른-pc-이식-준비--새-clone-경로-복구--git-정리-2026-07-27-세션10-3-pr-12231225)
 - [GitHub 정리 + owed #1072 외부계약 반증 + 5+1 회고 (2026-07-26 세션9, 3 PR #1217~#1219)](#github-정리--owed-1072-외부계약-반증--51-회고-2026-07-26-세션9-3-pr-12171219)
 - [종합감사 이행 + 5+1 회고 + 회고 P1 (2026-07-24 세션8, 8 PR #1194~#1201)](#종합감사-이행--51-회고--회고-p1-2026-07-24-세션8-8-pr-11941201)
 - [SonarCloud QG 복구 + 5+1 회고 + 회고 결정 이행 (2026-07-22 세션7, 8 PR #1168~#1175)](#sonarcloud-qg-복구--51-회고--회고-결정-이행-2026-07-22-세션7-8-pr-11681175)
@@ -145,6 +146,20 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## 다른 PC 이식 준비 + 새 clone 경로 복구 + git 정리 (2026-07-27 세션10, 3 PR #1223~#1225)
+
+사용자 요청 = *"다른PC에서 동일하게 작업할수 있게 Github에 올려주시고 Git 정리해주세요"*. **올릴 것은 이미 없었다** — 미푸시 커밋 0·미커밋 변경 0·스태시 0이고 로컬 브랜치 3개는 전부 #1218~#1220 으로 머지된 상태(로컬 main 만 2 커밋 behind)였다. 그래서 실제 작업은 두 갈래로 갈렸다: (1) git 표면 정리, (2) **"다른 PC 에서 동일하게" 가 정말 성립하는지 문서 절차를 실측 검증**. 후자에서 세 건이 나왔고 셋 다 **실패가 아니라 침묵**으로 어긋나는 형태였다.
+
+**git 정리**: 머지 판정은 `git cherry`/`--merged` 를 쓰지 않고(squash 전량 오탐 — 세션9 학습) **PR `state=MERGED` + 로컬 tip↔`headRefOid` + merge commit 의 `origin/main` 조상성** 3종으로 확정한 뒤 삭제(삭제 전 tip SHA 복구 매니페스트 저장). 최종 상태 = 로컬 `main` 단독·원격 `main` + dependabot 2(#1221 eslint·#1222 production-deps 는 의존성 결정이라 미머지로 남김)·워크트리 1·스태시 0.
+
+🔴 **문서대로 하면 새 PC 는 첫 명령부터 실패했다** (#1224). `README.md:333`·`README.ko.md:392` 의 clone URL 이 `github.com/xzawed31/SCAManager` 인데 `gh api repos/xzawed31/SCAManager` = **404**(실제는 `xzawed/`). 같은 문서 상단 CI/CodeQL 배지는 `xzawed` 로 **올바르다** — 즉 문서 내부에서 이미 자기모순이었고 `git grep` 전수로 이 2줄만 어긋나 있었다. 배지는 렌더되므로 눈에 띄지만 clone 라인은 **새 PC 를 세팅할 때만 실행**되는 경로라 오래 살아남았다.
+
+🔴 **gitignore 산출물을 템플릿이 링크한다** (#1224). `src/static/css/dist/tailwind.css` 는 빌드 산출물(gitignore)인데 `src/templates/base.html:31` 이 이를 링크한다. 그런데 설치 절차에는 `pip install` 만 있어(`make install` 은 pip+npm, CSS 빌드는 별도 `make css-build`) **새 clone 은 그 경로가 404 인 상태로 서버가 뜬다**. 가설이 아니라 **본 PC 에서도 파일이 없었다**(`Test-Path` False) — `make css-build` 로 12,196 bytes 생성 + `git status` 무시까지 실측 확인. `make css-build` 는 "Development Commands" 표에는 있었으나 **설치 절차를 순서대로 따라가는 경로에서는 도달하지 않는다**는 것이 함정의 본질.
+
+🔴 **pre-commit 미등록 = 조용한 무보호** (#1224 fix-up). `.pre-commit-config.yaml` 의 로컬 가드(시크릿 스캔·docs 수치 정합·architecture 트리 싱크·이중언어·config 5-way)는 전부 pre-commit 경유인데 등록 단계가 설치 절차 밖(`docs/runbooks/secret-prevention.md` 한 곳)에 있었다 → 새 PC 는 **가드 0 상태로 커밋이 계속 성공**한다. `check-commit-msg-secrets` 가 `stages: [commit-msg]` 이고 config 에 `default_install_hook_types` 선언이 없어 `--hook-type` **2종 명시**가 필요하다는 점까지 실측 반영. 의존성 핀 추가(`requirements-dev.txt`)는 **하지 않았다** — `ci.yml:111~115` 가 "pre-commit 우회·미설치 시에도 서버측 강제"를 명시한 설계 판단이라 의존성 표면 변경은 사용자 결정으로 남기고 옵션 표만 제시.
+
+**stale 커버리지 산출물 5건 untrack** (#1223). 2026-04-19(`0ca71ef`) 이후 갱신되지 않은 `coverage.json`(162KB)·`cov_db*/cov_ui*` 가 추적돼 있었고, `scripts/parse_coverage.py:24` 가 cwd 의 `coverage.json` 을 그대로 읽는다 → 재생성 없이 실행하면 **3개월 전 수치를 실패 없이 보고**한다. untrack + gitignore 봉인(사유 주석 동반)으로 이제 같은 실행이 시끄럽게 실패한다. **새 런북** `docs/runbooks/new-machine-setup.md`(#1225) = 리포가 실어 주지 않는 자산(`.env` 값·에이전트 메모리·MCP 사용자 스코프 설정·`gh` `workflow` scope)과 기계 검증 체크리스트. 🔴 **에이전트 메모리는 public 리포에 등재하지 않는다**(보안 발견·내부 운영 서사 포함, 공개는 비가역) — 수동 복사 또는 private 동기화 두 안만 제시. 테스트 무변경(단위 5968 불변), Code Scanning open 0.
 
 ## GitHub 정리 + owed #1072 외부계약 반증 + 5+1 회고 (2026-07-26 세션9, 3 PR #1217~#1219)
 

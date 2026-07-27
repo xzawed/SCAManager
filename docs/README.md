@@ -35,6 +35,7 @@
 | 문서 | 작업 |
 |------|------|
 | [runbooks/workflow.md](runbooks/workflow.md) | 작업 유형별 실행 순서 + 모바일 환경 보호 |
+| [runbooks/new-machine-setup.md](runbooks/new-machine-setup.md) | 새 PC 셋업 — 리포가 실어 주지 않는 자산(`.env` 값·에이전트 메모리·MCP·`gh` scope) + 검증 |
 | [runbooks/railway.md](runbooks/railway.md) | Railway 배포·운영 |
 | [runbooks/db-migration.md](runbooks/db-migration.md) | DB 마이그레이션 절차 |
 | [runbooks/merge-retry.md](runbooks/merge-retry.md) | CI-aware Auto Merge 재시도 운영 |
