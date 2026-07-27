@@ -389,14 +389,27 @@ git push origin main
 ### ⬇️ 설치
 
 ```bash
-git clone https://github.com/xzawed31/SCAManager.git
+git clone https://github.com/xzawed/SCAManager.git
 cd SCAManager
 
-# 개발 환경 (pytest + playwright 포함)
-pip install -r requirements-dev.txt
+# 개발 환경 — pip + npm 한 번에 (pytest · Tailwind 툴체인 포함)
+make install
 
-# 프로덕션 환경 (Railway 자동 감지)
-pip install -r requirements.txt
+# 🔴 새 clone 마다 1회 필수: Tailwind 번들은 빌드 산출물이라 gitignore 대상인데
+#    base.html 이 /static/css/dist/tailwind.css 를 링크한다 — 건너뛰면 그 경로가 404.
+#    (Railway 에서는 railway.toml `buildCommand` 안에서 같은 빌드가 실행된다.)
+make css-build
+
+# 🔴 로컬 가드 훅 — `.pre-commit-config.yaml` 의 훅 전체(시크릿 스캔 · docs 수치 정합 ·
+#    architecture 트리 싱크 · 이중언어 주석 …)는 pre-commit 을 통해서만 실행된다. 이 단계를
+#    건너뛰면 새 PC 에서 가드가 조용히 사라진 상태로 커밋이 계속 성공한다. 훅 타입 2종 필요
+#    (commit-msg 는 별도 stage). 상세: docs/runbooks/secret-prevention.md
+python -m pip install pre-commit
+python -m pre_commit install --hook-type pre-commit --hook-type commit-msg
+
+# Python 의존성만 (프로덕션 이미지 / Node.js 없는 환경)
+pip install -r requirements.txt      # 런타임
+pip install -r requirements-dev.txt  # + pytest · Playwright
 ```
 
 ### ⚙️ 환경변수 설정
@@ -433,6 +446,7 @@ cp .env.example .env
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` | Email 알림 SMTP 설정 |
 | `DATABASE_URL_FALLBACK` | Failover용 보조 DB URL (단일 엔진 모드 시 미설정) |
 | `DB_FAILOVER_PROBE_INTERVAL` | Primary DB 복구 확인 주기 초 (기본 30) |
+| `DATABASE_URL_WORKER` | RLS role 분리 Option A 용 백그라운드 전용 DB URL (미설정 시 `DATABASE_URL` 재사용 — BYPASSRLS worker role 자격증명이어야 함) |
 | `DB_SSLMODE` | PostgreSQL SSL 모드 (`require` / `disable`) |
 | `DB_FORCE_IPV4` | IPv4 강제 연결 (`true` — Railway 환경) |
 

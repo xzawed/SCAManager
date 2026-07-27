@@ -330,14 +330,27 @@ git push origin main
 ### ⬇️ Installation
 
 ```bash
-git clone https://github.com/xzawed31/SCAManager.git
+git clone https://github.com/xzawed/SCAManager.git
 cd SCAManager
 
-# Development environment (includes pytest + playwright)
-pip install -r requirements-dev.txt
+# Development environment — pip + npm in one step (includes pytest and the Tailwind toolchain)
+make install
 
-# Production environment (auto-detected by Railway)
-pip install -r requirements.txt
+# 🔴 Required once per fresh clone: the Tailwind bundle is a build artifact and is gitignored,
+#    while base.html links /static/css/dist/tailwind.css — skipping this serves a 404 for it.
+#    (On Railway the same build runs inside railway.toml `buildCommand`.)
+make css-build
+
+# 🔴 Local guard hooks — every hook in .pre-commit-config.yaml (secret scan, docs-number parity,
+#    architecture-tree sync, bilingual comments …) runs ONLY through pre-commit. Skip this and the
+#    guards are silently absent on the new machine; commits still succeed. Two hook types needed
+#    (commit-msg is a separate stage). Details: docs/runbooks/secret-prevention.md
+python -m pip install pre-commit
+python -m pre_commit install --hook-type pre-commit --hook-type commit-msg
+
+# Python deps only (production image / no Node.js available)
+pip install -r requirements.txt      # runtime
+pip install -r requirements-dev.txt  # + pytest · Playwright
 ```
 
 ### ⚙️ Environment Variables
