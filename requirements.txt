@@ -29,7 +29,14 @@ aiosmtplib==5.1.2
 pylint==4.0.6
 flake8==7.3.0
 bandit==1.9.4
-semgrep==1.171.0
+# 🔴 semgrep 은 1.170.1 에 고정 — 1.171.0 은 sqlfluff 와 공존 불가 (2026-07-27 실측)
+#   semgrep 1.171.0 → click~=8.4.2 / sqlfluff 4.2.2(PyPI 최신) → click<8.4.0 = ResolutionImpossible.
+#   sqlfluff 를 올려 해소할 수 없다(4.2.2 가 최신이고 그 제약이 최신). 올리려면 sqlfluff 를 버려야 하므로
+#   SQL 정적분석 유지가 우선. sqlfluff 가 click 제약을 완화하면 dependabot 이 다시 제안한다.
+# 🔴 Pinned to semgrep 1.170.1 — 1.171.0 cannot coexist with sqlfluff (measured 2026-07-27):
+#   semgrep 1.171.0 requires click~=8.4.2 while sqlfluff 4.2.2 (latest on PyPI) requires click<8.4.0.
+#   Bumping sqlfluff cannot fix it (4.2.2 IS latest). Keeping SQL analysis wins; revisit when sqlfluff relaxes.
+semgrep==1.170.1
 slither-analyzer==0.11.5
 sqlfluff==4.2.2
 jinja2==3.1.6
