@@ -89,8 +89,10 @@ lint-strict:
 
 # JS 린트 — eslint-plugin-html 로 src/templates/*.html 인라인 스크립트 검사
 # JS lint — checks inline scripts in src/templates/*.html via eslint-plugin-html
-# Jinja2 {{ }} 인터폴레이션 포함 5개 파일은 .eslintignore 로 제외 (파서 오류 방지)
-# 5 files with Jinja2 {{ }} interpolations excluded via .eslintignore (prevents parse errors)
+# Jinja2 {{ }} 인터폴레이션 포함 5개 파일은 eslint.config.mjs `ignores` 로 제외 (파서 오류 방지)
+# 5 files with Jinja2 {{ }} interpolations excluded via `ignores` in eslint.config.mjs (parse errors)
+# 🔴 eslint 10 은 eslintrc/.eslintignore 를 로드하지 않는다 — 설정 없으면 `|| true` 탓에 0건 검사가 통과로 보인다
+# 🔴 ESLint 10 loads neither eslintrc nor .eslintignore — with no config, `|| true` makes "linted nothing" look green
 lint-js:
 	npx eslint "src/templates/**/*.html" --quiet || true
 
