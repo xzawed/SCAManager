@@ -330,14 +330,20 @@ git push origin main
 ### ⬇️ Installation
 
 ```bash
-git clone https://github.com/xzawed31/SCAManager.git
+git clone https://github.com/xzawed/SCAManager.git
 cd SCAManager
 
-# Development environment (includes pytest + playwright)
-pip install -r requirements-dev.txt
+# Development environment — pip + npm in one step (includes pytest and the Tailwind toolchain)
+make install
 
-# Production environment (auto-detected by Railway)
-pip install -r requirements.txt
+# 🔴 Required once per fresh clone: the Tailwind bundle is a build artifact and is gitignored,
+#    while base.html links /static/css/dist/tailwind.css — skipping this serves a 404 for it.
+#    (On Railway the same build runs inside railway.toml `buildCommand`.)
+make css-build
+
+# Python deps only (production image / no Node.js available)
+pip install -r requirements.txt      # runtime
+pip install -r requirements-dev.txt  # + pytest · Playwright
 ```
 
 ### ⚙️ Environment Variables
