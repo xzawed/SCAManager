@@ -89,12 +89,19 @@ lint-strict:
 
 # JS 린트 — eslint-plugin-html 로 src/templates/*.html 인라인 스크립트 검사
 # JS lint — checks inline scripts in src/templates/*.html via eslint-plugin-html
-# Jinja2 {{ }} 인터폴레이션 포함 5개 파일은 eslint.config.mjs `ignores` 로 제외 (파서 오류 방지)
-# 5 files with Jinja2 {{ }} interpolations excluded via `ignores` in eslint.config.mjs (parse errors)
-# 🔴 eslint 10 은 eslintrc/.eslintignore 를 로드하지 않는다 — 설정 없으면 `|| true` 탓에 0건 검사가 통과로 보인다
-# 🔴 ESLint 10 loads neither eslintrc nor .eslintignore — with no config, `|| true` makes "linted nothing" look green
+# 템플릿 인라인 JS 린트 — **위반은 advisory, 공허화는 fail-closed** (#1227 항목 3, 사용자 결정).
+# `<script>` 안에 Jinja2 구문이 있는 템플릿은 JS 파서가 깨지므로 eslint.config.mjs `ignores` 로
+# 제외하며, 그 목록은 tests/unit/scripts/test_eslint_ignores_sync.py 가 양방향으로 강제한다
+# (하드코딩 카운트는 자연 drift 라 적지 않는다 — 실측 원천은 그 가드다).
+#
+# 🔴 구판은 `npx eslint … || true` 라 **모든 실패를 삼켰다**: 설정을 못 찾아 0개 파일을 검사한
+# 상태와 "위반 0건" 이 구별되지 않았고, 이 타깃은 어떤 CI workflow 에도 배선돼 있지 않았다.
+# 이제 스크립트가 "아무것도 검사하지 않음" 만 실패로 승격하고 위반은 보고만 한다.
+# 🔴 The old version swallowed everything with `|| true`, so "linted nothing" was indistinguishable
+# from "zero violations" — and the target was never wired into CI. The script now fails only on
+# vacuity (nothing checked / partial silent skip) and reports violations without failing.
 lint-js:
-	npx eslint "src/templates/**/*.html" --quiet || true
+	python scripts/check_lint_js_nonvacuous.py
 
 # Phase 완료 게이트 — 테스트 + 정적 분석. 🔴 이름대로 **실패할 수 있어야** 한다.
 # 이전 판은 세 린터를 전부 `|| true` 로 삼켜 **구조적으로 실패 불가**였다(회고 D13):
