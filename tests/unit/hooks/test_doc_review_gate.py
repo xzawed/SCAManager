@@ -319,3 +319,47 @@ class TestGateKillSwitch:
         assert gate_disabled() is False
         monkeypatch.setenv("DOC_REVIEW_GATE_DISABLED", "0")
         assert gate_disabled() is False
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 🔴 심의 스코프 회귀 가드 (backlog R9 · 2026-07-29)
+#
+# 2026-07-21 문서 재구성 이후 **가장 행동에 영향을 주는 규칙 문서들이 전부 `skip`** 이었다 —
+# 심의 게이트가 정작 심의해야 할 표면을 통과시키는 false coverage. 실측: 2026-07-29 세션이
+# `.claude/rules/pipeline.md` 를 수정했는데 게이트가 발화하지 않았다.
+#
+# 🔴 여기서 대조하는 대상은 **디스크의 실제 파일**이다 — 하드코딩 목록끼리 비교하면 파일이
+# 새로 생겨도(예: `.claude/rules/newarea.md`) 영원히 안 걸린다(공허화).
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_behavioural_rule_docs_are_never_skipped():
+    """`AGENTS.md` · `.claude/rules/**` · `.claude/policies/**` 는 `skip` 이면 안 된다.
+
+    디스크를 스캔하므로 신규 rules/policies 파일이 추가돼도 자동으로 검사 대상이 된다.
+    """
+    root = Path(__file__).resolve().parents[3]
+    targets = [root / "AGENTS.md"]
+    targets += sorted((root / ".claude" / "rules").glob("*.md"))
+    targets += sorted((root / ".claude" / "policies").glob("*.md"))
+
+    assert len(targets) > 5, "대조 집합이 비었다 — 스캐너가 고장났거나 경로가 바뀌었다"
+
+    skipped = [
+        p.relative_to(root).as_posix()
+        for p in targets
+        if classify_file_grade(p.relative_to(root).as_posix()) == "skip"
+    ]
+    assert not skipped, (
+        "행동 지시 문서가 심의 대상에서 빠졌다(false coverage): "
+        f"{skipped}\n→ doc_review_gate.py 의 _CRITICAL/_IMPORTANT 패턴을 확인할 것."
+    )
+
+
+def test_rules_are_critical_and_policies_are_important():
+    """등급 구분 고정 — rules/ 는 편집 표면 자동 로드라 critical, policies/ 는 detail 이라 important.
+
+    등급이 뒤바뀌면 consistency-reviewer 의 차단 범위가 달라진다(`apply_veto_matrix` 참조).
+    """
+    assert classify_file_grade("AGENTS.md") == "critical"
+    assert classify_file_grade(".claude/rules/pipeline.md") == "critical"
+    assert classify_file_grade(".claude/policies/active.md") == "important"
