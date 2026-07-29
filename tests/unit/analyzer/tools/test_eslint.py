@@ -512,12 +512,20 @@ class TestESLintRunGracefulDegradation:
 # ──────────────────────────────────────────────────────────────────────────────
 
 class TestESLintRegistration:
+    # 🔴 `import src.analyzer.io.tools.eslint` 문 대신 `importlib.import_module` 를 쓴다 —
+    #    같은 파일의 `from ...eslint import ...` 와 공존하면 CodeQL `py/import-and-import-from`
+    #    을 자초하고 `scripts/check_dual_import.py` 가 신규 diff 를 차단한다
+    #    (testing.md '모듈 패치 시 이중 import 회피 — string-path 우선').
+    # 🔴 Use importlib.import_module instead of a bare `import <module>` statement: coexisting with
+    #    `from <module> import ...` in the same file trips CodeQL py/import-and-import-from and the
+    #    repo's dual-import guard.
+    _MODULE = "src.analyzer.io.tools.eslint"
+
     def test_module_import_registers_eslint_in_registry(self):
         # src.analyzer.io.tools.eslint 임포트 시 REGISTRY에 _ESLintAnalyzer가 자동 등록된다
         import importlib
         from src.analyzer.pure.registry import REGISTRY
-        import src.analyzer.io.tools.eslint  # noqa: F401
-        importlib.reload(src.analyzer.io.tools.eslint)
+        importlib.reload(importlib.import_module(self._MODULE))
         names = [a.name for a in REGISTRY]
         assert "eslint" in names
 
@@ -525,9 +533,9 @@ class TestESLintRegistration:
         # 동일 모듈을 두 번 로드해도 REGISTRY에 "eslint"가 중복 등록되지 않아야 한다
         import importlib
         from src.analyzer.pure.registry import REGISTRY
-        import src.analyzer.io.tools.eslint  # noqa: F401
-        importlib.reload(src.analyzer.io.tools.eslint)
-        importlib.reload(src.analyzer.io.tools.eslint)
+        module = importlib.import_module(self._MODULE)
+        importlib.reload(module)
+        importlib.reload(module)
         eslint_entries = [a for a in REGISTRY if a.name == "eslint"]
         assert len(eslint_entries) == 1
 
