@@ -34,7 +34,7 @@
 
 **SCAManager**는 GitHub 리포지토리의 코드 품질을 자동으로 관리하는 서비스입니다.
 
-Push 또는 PR 이벤트가 발생하면 **정적 분석**(pylint · flake8 · bandit · Semgrep · ESLint · ShellCheck · cppcheck · slither · RuboCop · golangci-lint)과 **Claude AI 리뷰**를 병렬로 실행하고, 100점 만점의 점수와 A~F 등급을 산출합니다.
+Push 또는 PR 이벤트가 발생하면 **정적 분석**(등록 분석기 25종 — pylint · flake8 · bandit · Semgrep · ESLint · ShellCheck · cppcheck · slither · RuboCop · golangci-lint 외 [15종](docs/reference/language-coverage.md))과 **Claude AI 리뷰**를 병렬로 실행하고, 100점 만점의 점수와 A~F 등급을 산출합니다.
 
 결과는 **Telegram · GitHub · Discord · Slack · Email · n8n** 등 다양한 채널로 즉시 전달되며, 점수에 따라 PR을 자동 Approve/Reject하고 squash merge까지 자동화할 수 있습니다.
 
@@ -146,7 +146,7 @@ SCAManager 는 **3 언어** 를 사용자 facing 전 영역 (UI / 알림 / AI �
 
 | 분석 항목 | 도구 | 대상 |
 |-----------|------|------|
-| 코드 품질 | pylint + flake8 + Semgrep + cppcheck + RuboCop + golangci-lint | `.py` + C/C++ + `.rb` (RuboCop) + `.go` (golangci-lint) + **35개+ 언어** (Semgrep) |
+| 코드 품질 | pylint + flake8 + Semgrep + cppcheck + RuboCop + golangci-lint | `.py` + C/C++ + `.rb` (RuboCop) + `.go` (golangci-lint) + **22개 언어** (Semgrep — [semgrep.py](src/analyzer/io/tools/semgrep.py)의 `SUPPORTED_LANGUAGES`) |
 | 보안 취약점 | bandit + Semgrep + slither + RuboCop Security cops + gosec (golangci-lint) | `.py` + Solidity (slither) + Ruby / Go 보안 룰 |
 | JS/TS 품질 | ESLint (flat config) | `.js` `.mjs` `.ts` `.tsx` |
 | Shell 품질 | ShellCheck | `.sh` `.bash` 등 shell 스크립트 |
@@ -244,9 +244,9 @@ Telegram 계정 연동 후 아래 명령을 봇에 전송할 수 있습니다:
 
 #### Telegram 계정 연동 (`/connect` OTP 흐름)
 
-1. **설정 페이지 → Card ⑤ → Telegram 연결** → **"🔗 코드 발급"** 클릭
-2. 6자리 OTP 표시 (5분 유효)
-3. Telegram에서 SCAManager 봇으로 `/connect 123456` 전송
+1. **설정 페이지 → "알림 채널 (발신)" 카드 → Telegram 연결** → **"🔗 코드 발급"** 클릭
+2. 8자리 OTP 표시 (5분 유효)
+3. Telegram에서 SCAManager 봇으로 `/connect 12345678` 전송
 4. 봇이 "✅ Account linked" 회신 — 봇 명령 사용 가능
 
 > 새 OTP 발급 시 이전 OTP는 즉시 무효화됩니다. 연동은 리포 단위가 아닌 계정 단위입니다.
@@ -282,7 +282,7 @@ PR 분석 완료
 - `check_suite.completed` Webhook 또는 1분 cron으로 최대 30회, 24시간 재시도
 - 최종 결과: Telegram 성공/실패 알림 (1회)
 
-> **기존 리포**는 `check_suite` 이벤트 구독을 위해 Webhook 재등록 필요 (설정 → Card ⑤ → "Webhook 재등록")
+> **기존 리포**는 `check_suite` 이벤트 구독을 위해 Webhook 재등록 필요 (설정 → "통합 & 인증 (수신)" 카드 → "Webhook 재등록")
 
 ---
 
@@ -307,7 +307,7 @@ GitHub OAuth로 로그인 후 브라우저에서 모든 기능을 사용할 수 
 - **리포지토리 추가** — GitHub 드롭다운 선택만으로 Webhook 자동 생성
 - **점수 추이 차트** — Chart.js 기반 히스토리 시각화
 - **분석 상세** — AI 리뷰 · 카테고리별 피드백 · 정적 분석 이슈 목록
-- **설정 페이지** — 🚀 프리셋 원클릭 적용 · 4카드 Progressive Disclosure · 토글 연동 show/hide
+- **설정 페이지** — 🚀 프리셋 원클릭 적용 · 6카드 Progressive Disclosure (빠른 설정 · PR 동작 규칙 · 이벤트 후 자동화 · 알림 채널(발신) · 통합 & 인증(수신) · 위험 구역) · 토글 연동 show/hide
 - **테마** — Dark / Light / Pastel / Catppuccin 4가지 테마 완전 지원
 
 ---
@@ -349,12 +349,15 @@ git push origin main
 # → SCAManager 대시보드에 자동 저장
 ```
 
-- **ANTHROPIC_API_KEY 불필요** — 로컬에 설치된 Claude Code CLI(`claude -p`) 활용
+- **`ANTHROPIC_API_KEY` 필요** — 훅이 Anthropic Messages API를 직접 호출합니다. `claude -p` 경유 방식은 2025-06-15 Agent SDK 크레딧 분리 대응으로 폐지됐습니다
+- 비용 절감을 위해 기본 모델은 `claude-haiku-4-5` — `SCAMANAGER_REVIEW_MODEL`로 변경 가능
 - 결과는 터미널 출력 + 대시보드 동시 저장
-- push 차단 없음 — 항상 `exit 0`으로 정상 진행
+- push 차단 없음 — 훅은 항상 `exit 0`으로 정상 진행
 
-> **요구사항:** Claude Code CLI(`claude`)가 설치된 Mac / Linux / Windows 데스크탑 환경
-> 미설치 환경(Codespaces · 모바일 · CI)에서는 조용히 건너뜁니다.
+> **요구사항:** `bash` · `git` · `python3` · `curl` + 셸에 export 된 `ANTHROPIC_API_KEY`.
+> `.scamanager/config.json` 부재 · `python3` 부재 · 서버의 훅 토큰 검증 실패 · diff 없음 —
+> 이 경우들은 조용히 건너뜁니다(그래도 `exit 0`). `ANTHROPIC_API_KEY` 미설정 시에는
+> 경고 한 줄을 출력하고 리뷰를 건너뜁니다.
 
 ---
 
@@ -367,7 +370,7 @@ git push origin main
 | **인증** | GitHub OAuth2 (authlib) + Starlette SessionMiddleware |
 | **데이터베이스** | PostgreSQL · SQLAlchemy 2 · Alembic · FailoverSessionFactory |
 | **AI (서버)** | Anthropic Claude API (claude-sonnet-4-6) |
-| **AI (로컬 Hook)** | Claude Code CLI (`claude -p`) |
+| **AI (로컬 Hook)** | Anthropic Messages API (기본 `claude-haiku-4-5`, `SCAMANAGER_REVIEW_MODEL`로 변경) |
 | **정적 분석** | **Tier1 25종** — pylint · flake8 · bandit (Python) + Semgrep (22개+) + ESLint + ShellCheck + cppcheck + slither + RuboCop + golangci-lint + 15종 추가 (hadolint · ktlint · tflint · tsc · sqlfluff · yamllint · phpstan · swiftlint · stylelint · htmlhint · buf_lint · dart_analyze · psscriptanalyzer · dotnet_format · clippy) — [docs/reference/language-coverage.md](docs/reference/language-coverage.md) 참조 |
 | **테스트** | pytest · pytest-asyncio · httpx TestClient |
 | **E2E 테스트** | Playwright (Chromium) |
@@ -401,7 +404,7 @@ make install
 make css-build
 
 # 🔴 로컬 가드 훅 — `.pre-commit-config.yaml` 의 훅 전체(시크릿 스캔 · docs 수치 정합 ·
-#    architecture 트리 싱크 · 이중언어 주석 …)는 pre-commit 을 통해서만 실행된다. 이 단계를
+#    architecture 트리 싱크 · config 레이어 싱크 …)는 pre-commit 을 통해서만 실행된다. 이 단계를
 #    건너뛰면 새 PC 에서 가드가 조용히 사라진 상태로 커밋이 계속 성공한다. 훅 타입 2종 필요
 #    (commit-msg 는 별도 stage). 상세: docs/runbooks/secret-prevention.md
 python -m pip install pre-commit
@@ -432,6 +435,11 @@ cp .env.example .env
 | `GITHUB_CLIENT_ID` | GitHub OAuth App 클라이언트 ID |
 | `GITHUB_CLIENT_SECRET` | GitHub OAuth App 클라이언트 시크릿 |
 | `SESSION_SECRET` | 세션 쿠키 서명 키 (32자 이상 랜덤 문자열 **필수**) |
+
+> **여기서 "필수"의 의미**: 앱 기동을 막는 것은 `DATABASE_URL` · `TELEGRAM_BOT_TOKEN` ·
+> `TELEGRAM_CHAT_ID` 3개뿐입니다([src/config.py](src/config.py) — 나머지는 기본값 보유).
+> `GITHUB_CLIENT_*` · `SESSION_SECRET` 은 placeholder 기본값이 있어 프로세스는 뜨지만
+> GitHub OAuth 로그인이 동작하지 않고, placeholder 세션 키는 절대 운영에 올라가면 안 됩니다.
 
 **권장 환경변수**
 
@@ -550,7 +558,7 @@ POST /api/webhook/telegram           Telegram Gate 콜백 (HMAC 인증)
 POST /webhooks/railway/{token}       Railway 배포 이벤트 (token 인증)
 ```
 
-**REST API** (X-API-Key 헤더 인증)
+**REST API** (X-API-Key 헤더 인증 — fail-closed: `API_KEY` 미설정 시 모든 요청이 `503`. 로컬 개발에서만 `API_AUTH_DISABLED=1`로 우회)
 ```
 GET    /api/repos                    리포지토리 목록
 GET    /api/repos/{repo}/analyses    분석 이력 (skip · limit 페이지네이션)
@@ -568,7 +576,7 @@ POST /api/hook/result                코드리뷰 결과 저장
 
 **사용자 API** (OAuth 세션 필요)
 ```
-POST /api/users/me/telegram-otp      Telegram /connect 연동용 6자리 OTP 발급
+POST /api/users/me/telegram-otp      Telegram /connect 연동용 8자리 OTP 발급
 ```
 
 **내부 Cron** (INTERNAL_CRON_API_KEY 필요)
@@ -714,8 +722,40 @@ make run     # 개발 서버 (포트 8000 자동 포워딩)
 ANTHROPIC_API_KEY=sk-ant-... python -m src.cli review
 ```
 
-> Codespaces에서는 Claude Code CLI가 없으므로 **CLI Hook은 동작하지 않습니다.**
-> 대신 `python -m src.cli review` 명령을 사용하세요.
+> CLI Hook은 `bash` · `python3` · `curl` 과 export 된 `ANTHROPIC_API_KEY` 가 있으면 Codespaces에서도
+> 동작합니다 — 단 리포에 `.scamanager/config.json`(리포 등록 시 생성)이 이미 있어야 합니다.
+> 없으면 훅이 조용히 종료하므로 `python -m src.cli review` 명령을 사용하세요.
+
+---
+
+## 🤝 기여하기
+
+Issue와 Pull Request 모두 환영합니다. **[CONTRIBUTING.ko.md](CONTRIBUTING.ko.md)** ([English](CONTRIBUTING.md))부터
+읽어주세요 — 이 리포가 실제로 요구하는 로컬 셋업(Tailwind 빌드와 pre-commit 훅 2종은 놓치기 쉽습니다),
+테스트 실행 방법, 브랜치·커밋 규약, PR 체크리스트를 담고 있습니다.
+
+처음 기여할 때 자주 걸리는 3가지:
+
+| 함정 | 왜 중요한가 |
+|------|------------|
+| fresh clone 후 `make css-build` | Tailwind 번들은 gitignore 된 빌드 산출물 — 건너뛰면 `base.html`이 참조하는 스타일시트가 404 |
+| `pre-commit install --hook-type pre-commit --hook-type commit-msg` | 로컬 가드(시크릿 스캔 · docs 수치 정합 · 아키텍처 트리 동기화 · config 레이어 동기화)는 **오직** pre-commit 을 통해서만 실행됩니다. 건너뛰어도 커밋은 성공하므로 **조용히 무방비** 상태가 됩니다 |
+| 이중언어 코드 주석 | 새 주석은 한국어를 먼저 쓰고 바로 다음 줄에 영어를 씁니다. 규약이며 강제 훅은 아닙니다. [CONTRIBUTING.ko.md § 코드 주석](CONTRIBUTING.ko.md#코드-주석-이중-언어) 참조 |
+
+---
+
+## 🔐 보안
+
+보안 취약점은 **공개 Issue로 올리지 마세요.** 대신
+[GitHub 비공개 취약점 신고](https://github.com/xzawed/SCAManager/security/advisories/new)를 이용해 주세요.
+지원 버전 · 신고 범위 · 응답 목표 시간 · 배포본에서 외부로 나가는 데이터 전체 목록은
+**[SECURITY.ko.md](SECURITY.ko.md)** ([English](SECURITY.md))에 있습니다.
+
+SCAManager는 여러분의 소스 코드를 다루므로 데이터 유출 경로를 명확히 밝혀 둡니다. 셀프 호스팅하면
+파이프라인 · DB · 대시보드는 여러분 인프라에 남지만, **AI 리뷰는 diff 를 Anthropic API 로 전송**하고
+활성화한 알림 채널마다 분석 결과가 해당 채널 사업자에게 전송됩니다.
+[SECURITY.ko.md § 코드가 어디로 가는가](SECURITY.ko.md#코드가-어디로-가는가)에 목적지별 목록과
+비활성화 방법을 정리했습니다.
 
 ---
 
