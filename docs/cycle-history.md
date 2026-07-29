@@ -185,6 +185,20 @@
 
 **검증** — `pytest tests/unit` = 6015 passed / 2 failed / 5 skipped. 실패 2건(`test_static_disabled.py`)은 **본 변경 이전부터 존재** — `git stash` 후 clean `main` 에서 동일 재현. 원인은 `pylint`/`flake8`/`bandit` **콘솔 스크립트가 PATH 부재**(`[WinError 2]`, 모듈로는 설치됨 pylint 4.0.6)라 로컬 한정이며 CI 무관. docs-only(`src/` 무변경)라 architecture.md 동기화 대상 없음. 단위 6022·통합 165·전체 6187 불변.
 
+### Grok claim-review 흔적 (정책 19)
+
+세션12 는 정책 19 집행면(`check_claim_review_trace.py`)이 **PR 본문에만** 흔적을 요구하지만, PR 본문은 편집 가능하고 머지 후 추적이 흩어지므로 세션 ID 를 **영구 이력에도** 남긴다.
+
+- session: 019faeb9-b8f3-79c0-ade9-2a9a01883b3c
+- claim: README.md 의 배지 수치·능력 카운트·엔드포인트·환경변수·마케팅 문구가 src/ 실제 코드와 일치하는가 (observer-lie 사냥 포함)
+- verdict: BROKEN — P0 7건 적발. 전건 grep 재검증 결과 **Grok 오탐 0**.
+
+- session: 019faed8-e4b4-7b11-8cc2-335982208fa0
+- claim: 본 세션이 새로 쓴 SECURITY.md egress 목록·보호 조치 표와 CONTRIBUTING.md 프로세스 서술이 실제 코드·CI·pre-commit 설정과 일치하는가
+- verdict: BROKEN — 자기 산출물에서 P0 4건 적발, 머지 전 전건 수정.
+
+🔴 **집행면이 본 PR 을 실제로 잡았다** — 1차 push 에서 `Repo integrity guards` job 이 **fail**. 사유 = 본문의 `fail-closed`·`봉인` 어휘(기존 동작 서술/인용)에 대해 구조화된 흔적이 없었음. **면제 마커로 빠져나가지 않고** 실제 흔적을 기재해 통과시켰다. 세션11 이 만든 가드가 세션12 를 잡은 것 = 집행면이 저자와 무관하게 작동한다는 첫 실증.
+
 ---
 
 ## GitHub Issue 2건 처리 + 정책 19 집행면 + Grok 전반 검토 (2026-07-29~30 세션11, 9 PR #1228~#1237)
