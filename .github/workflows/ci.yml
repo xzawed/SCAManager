@@ -308,6 +308,17 @@ jobs:
       - name: Install global eslint
         run: npm install -g eslint@9 @typescript-eslint/parser @typescript-eslint/eslint-plugin
 
+      # 🔴 `npm ci` 필수 — eslint 분석기의 flat config(`src/analyzer/configs/*.mjs`)가
+      # `@typescript-eslint/parser` 를 **리포 로컬**에서 import 한다. 전역 설치본은 설정 파일
+      # 위치 기준 해석에 걸리지 않아 `ERR_MODULE_NOT_FOUND` 로 죽는다(#1226 CI 실측).
+      # 운영(railway.toml)은 buildCommand 끝에서 이미 `npm ci` 를 돌리므로 이 step 이 CI 를
+      # 운영과 일치시킨다. `--ignore-scripts` = 공급망 hardening(빌드 산출물 미사용).
+      # 🔴 `npm ci` is required: the analyzer's flat config imports @typescript-eslint/parser from
+      # the repo-local node_modules; a global install is not resolvable from the config's location.
+      # Railway already runs `npm ci`, so this aligns CI with production.
+      - name: Install npm dependencies (analyzer eslint flat config)
+        run: npm ci --ignore-scripts
+
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
