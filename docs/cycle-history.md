@@ -6,7 +6,7 @@
 
 ## 목차
 
-- [GitHub Issue 2건 처리 + 정책 19 집행면 신설 (2026-07-29 세션11, 3 PR #1228~#1230)](#github-issue-2건-처리--정책-19-집행면-신설-2026-07-29-세션11-3-pr-12281230)
+- [GitHub Issue 2건 처리 + 정책 19 집행면 + Grok 전반 검토 (2026-07-29~30 세션11, 9 PR #1228~#1237)](#github-issue-2건-처리--정책-19-집행면--grok-전반-검토-2026-07-2930-세션11-9-pr-12281237)
 - [다른 PC 이식 준비 + 새 clone 경로 복구 + git 정리 (2026-07-27 세션10, 3 PR #1223~#1225)](#다른-pc-이식-준비--새-clone-경로-복구--git-정리-2026-07-27-세션10-3-pr-12231225)
 - [GitHub 정리 + owed #1072 외부계약 반증 + 5+1 회고 (2026-07-26 세션9, 3 PR #1217~#1219)](#github-정리--owed-1072-외부계약-반증--51-회고-2026-07-26-세션9-3-pr-12171219)
 - [종합감사 이행 + 5+1 회고 + 회고 P1 (2026-07-24 세션8, 8 PR #1194~#1201)](#종합감사-이행--51-회고--회고-p1-2026-07-24-세션8-8-pr-11941201)
@@ -148,7 +148,7 @@
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
 
-## GitHub Issue 2건 처리 + 정책 19 집행면 신설 (2026-07-29 세션11, 3 PR #1228~#1230)
+## GitHub Issue 2건 처리 + 정책 19 집행면 + Grok 전반 검토 (2026-07-29~30 세션11, 9 PR #1228~#1237)
 
 열린 GitHub Issue 2건(#1226·#1227)을 Grok claim-review 와 함께 처리하고, 그 과정에서 **정책 19 위반이 재발**해 집행면을 신설했다.
 
@@ -166,7 +166,22 @@
 
 **환경**: 이 PC 에 **Python 부재**(WindowsApps 스텁만)라 3.12 설치 후 진행 — 새 PC 이식 실측. Windows 는 `npx`/`eslint`/pylint 등이 `.cmd` 래퍼라 `CreateProcess` 불가(`WinError 2`)여서 가드는 `node <eslint.js>` 직접 호출로 작성.
 
-**수치**: 단위 5968→**6020**(+52) · 통합 158→**165**(+7) · 전체 **6185** 수집. 뮤테이션 실증 = eslint 10/10 · lint-js 가드 10/10 · 정책 19 가드 10/10(각 회차마다 약점 1~2건이 뮤테이션으로 드러나 테스트 보강).
+**세션 후반 — 가드가 실전에서 즉시 작동했다**: 앞서 만든 두 가드가 같은 세션 안에서 실제 회귀를 잡았다. (a) 공허화 차단이 dependabot **#1232**(typescript 5.9.3→7.0.2)를 red 로 적발 — `@typescript-eslint/parser` peer 가 `>=4.8.4 <6.1.0` 이라 `npm ci` 가 **ERESOLVE 로 실패**하고, 그 파서는 eslint 분석기가 `.ts/.tsx` 를 파싱하는 수단이라 머지되면 **#1226 무동작으로 회귀**했을 것이다. 구판(`|| true`)이었다면 조용히 초록이었다 → **#1235** 로 `typescript >=6.1.0` ignore + backlog H4(해제 조건·반증 수단). dependabot 이 #1232 를 자동 종결. (b) 정책 19 게이트는 **#1234** 에서 CI 실행 성공(면제 마커 인식, 오탐 0) — 첫 실사용.
+
+**Grok 전반 검토 (서비스 품질 관점)**: 사용자 요청으로 규칙·가드 체계 전반을 claim-review. 진단 = *"이 시스템은 Claude 가 봉인에 대해 거짓말하는 것을 막는 데 최적화돼 있고, 사용자가 인플레된 점수와 죽은 도구를 받는 것을 막는 데는 덜 최적화돼 있다"* — 오늘 발견(eslint 몇 달 무동작 + 테스트 40건 green)이 그 증거. 실측 규모: check 스크립트 16 · 훅 4 · pre-commit 17 · CI job 10 · 가드 테스트 42파일 · 규칙 문서 255KB · 🔴 마커 198개. 사용자 선택 3건 반영(**#1237**):
+- 🔴 **`doc_review_gate` 심의 스코프 복구(R9)** — 2026-07-21 문서 재구성 이후 `AGENTS.md`(3-불변식 SSOT)·`.claude/rules/*.md`(154KB, 편집 표면 자동 로드)·`.claude/policies/*.md` 가 **전부 `skip`** 이었다. 심의 게이트가 정작 심의해야 할 표면을 통과시키는 false coverage. 실증: 이 세션이 `pipeline.md` 를 고쳤는데 미발화. → critical/important 복구 + **디스크 스캔** 회귀 가드(하드코딩 목록 대조는 신규 파일을 영영 못 잡는다), 뮤테이션 4/4 red.
+- **E2E 배지 정직화(R7)** — `.github/workflows` 에 e2e 실행 0건인데 공개 리포에 초록 `122 passing` 배지. 커버리지는 그대로 두고 **주장만 사실과 맞췄다**(회색 `local only`).
+- **bilingual 주석 훅 해제**(사용자 결정) — 커밋을 막는 유일한 *스타일* 규칙이었고 사고 인용이 없었다. 차단만 해제, CLAUDE.md 원칙·스크립트는 유지. 🔴 훅을 떼자 `test_guard_wiring_coverage` 가 "배선 안 된 가드" 로 red — 의도된 dead-wiring 탐지라 `_ADVISORY_ALLOWLIST` 에 **사유와 함께** 등재해 "그냥 안 배선" 과 구별.
+
+**dependabot 3건 검증 워크플로** (12 에이전트 · 1.22M 토큰 · 적대 반증 3렌즈×3): #1236(typescript 6.0.3)·#1233(production-deps 5)·#1231(trufflehog) 전부 **SAFE**(반증 0/9) 판정 후 머지. #1236 은 격리 worktree 에서 `npm ci`·`npm install`·lock-free 3경로 실측 — semver 확인 결과 `6.0.3=true / 6.1.0=false / 7.0.2=false` 로 **ignore 경계 `>=6.1.0` 이 정확**했다(잔여 헤드룸 0 — 이후 6.0.x 패치뿐). **부수 발견 2건을 이슈로 승격**:
+- **#1238** `tsc` 분석기가 typescript 핀 **밖**에 있다 — `railway.toml:3` 이 `npm install -g typescript` 로 **무핀 전역 설치**하고 `tsc.py:49` 가 `shutil.which("tsc")` 로 그것을 집는다. 즉 "typescript 를 <6.1.0 으로 봉인" 은 **eslint 파싱 축에만 참**이고 운영 tsc 는 7.x 로 drift 해 있을 수 있다 — **#1226 과 동일 클래스**(설치 실패는 `|| echo WARNING` 이 흡수, `is_enabled` 는 which 만 봄).
+- **#1239** trufflehog SHA 핀이 **스캐너를 핀하지 않는다** — action `version` 기본값이 `latest` 라 실제 바이너리는 `ghcr.io/...:latest` 가변 태그(CI 로그 실증). 게다가 SHA 옆 주석이 `v3.95.7` 인데 실제는 v3.96.0 로 **3버전 drift**, 주석에 한국어 설명이 붙어 dependabot 재작성 휴리스틱이 안 먹는 것까지 확인 → 앞으로도 자동으로 벌어진다.
+
+backlog **R13~R15** 추가(slither 실바이너리 테스트 0건 · `_PIP_DISTRIBUTION` 문자열-존재 가드 · fastapi 문서 drift).
+
+🔴 **미결 — 브랜치 보호(R2-b)**: ruleset `PRIMARY` 는 active 지만 규칙이 `deletion`·`non_fast_forward`·`pull_request` 뿐이고 **required_status_checks 0건** → red CI 로도 머지된다(**#1196 이 `Analyze (python)` FAILURE 로 머지**된 실측). 그런데 지금 required 를 켜면 CI pending 중 `mergeable_state=blocked` → `BRANCH_PROTECTION_BLOCKED` 가 `_RETRIABLE_TAGS`(`merge_reasons.py:60`)에 없어 **즉시 terminal** → score-based auto-merge 파손. 과거 브랜치 보호 거부(B6-a)와는 문제가 다르나 **코드 선행 수정 후 설정** 순서가 강제된다. 사용자 결정 = **다음 세션 전용 진행**.
+
+**수치**: 단위 5968→**6022**(+54) · 통합 158→**165**(+7) · 전체 **6187** 수집. 뮤테이션 실증 = eslint 10/10 · lint-js 가드 10/10 · 정책 19 가드 10/10(각 회차마다 약점 1~2건이 뮤테이션으로 드러나 테스트 보강).
 
 ---
 
