@@ -31,8 +31,12 @@
 | **R10** | 🟡 착수 가능 | **backlog/원장 정합 4건** — H2 종결 항목이 ⏸️ 로 생존 · 원장 갱신이 delta-scoped · ⏸️ 행에 반증수단 의무 미적용 · owed 파서가 첫 셀 drift 행을 조용히 버림 | |
 | **R11** | 🟡 착수 가능 | **반자동 승인 경로 잔여 2건** — 결정을 GitHub 리뷰보다 **먼저** commit 해 "approve 기록됐는데 승인은 없는" 상태 고착(insert-only claim 이라 재시도 영구 차단) · telegram `HeadMovedError` 분기 **배선 테스트 0건**(삭제해도 499 테스트 green — 뮤테이션 실증) | #1218 신규 회귀 |
 | **R12** | 🟡 착수 가능 | **파괴적 작업 복구 매니페스트가 세션 임시 디렉토리에만 존재** — 브랜치 49건 삭제분. 휘발성·위치 미고지 | |
+| **R13** | 🟡 착수 가능 | **slither 분석기에 실바이너리 테스트 0건** — 단위 18건이 subprocess/`shutil.which` 전량 mock + 정적 JSON 픽스처. CI green 이 slither 실동작을 전혀 증명하지 않는다 | **기전**: #1226(eslint) 과 동일 클래스 — "설치는 됐는데 아무것도 분석 안 함" 이 관측 불가. eslint 에는 `tests/integration/test_eslint_analyzer.py` 실바이너리 테스트가 있으나 slither 대응물 부재. **반증 수단**: 실 slither 바이너리로 Solidity 픽스처를 분석해 ruleId 있는 진짜 이슈가 나오는지. 관련 이슈 #1238(tsc 동일 축) |
+| **R14** | 🟡 착수 가능 | **`_PIP_DISTRIBUTION` 조달 가드가 문자열 존재만 확인** — `test_build_command_deps.py` 의 `{'solc-select':'slither-analyzer'}` 가 requirements.txt 에 문자열이 있는지만 보고, slither-analyzer 가 **실제로** solc-select 를 조달하는지는 검증 안 함 | **기전**: crytic-compile 이 solc-select 의존을 버리면 가드는 green 유지 → `railway.toml:3` 의 `\|\| echo WARNING` 이 실패 흡수 → `slither.py:47` `shutil.which('slither')` 는 True → solc 없이 실행 → `slither.py:101-102` 가 `[]` → Solidity 이슈 0건 무음 = 점수 인플레. 2026-07-30 실측 시점엔 crytic-compile 0.4.2 가 `solc-select>=1.0.4` 를 유지해 미발동. **반증 수단**: crytic-compile 의 solc-select 의존을 제거한 상태에서 가드가 red 가 되는지 |
+| **R15** | 🟡 착수 가능 | **fastapi 버전 문서 drift** — `.claude/rules/deploy.md:39` 과 `README.md` 배지가 `0.139` 인데 실제 핀은 `0.140.13`(#1233 머지 후) | **기전**: dependabot 은 requirements.txt 만 갱신하고 문서/배지를 동기화하지 않는다(6-step ⑤ 는 사람/Claude 몫). **반증 수단**: `grep -n 'fastapi' .claude/rules/deploy.md README.md README.ko.md` 가 requirements.txt 핀과 일치하는지. 🔴 `check_docs_sync` 는 **테스트 카운트만** 보고 의존성 버전은 안 본다 — 가드 범위 확대 여부도 함께 판단 |
 
-> P2 100건(관점 중복 포함)은 보고서 본문 참조. 위 R1~R12 에 흡수되지 않는 잔여는 다음 회고에서 재평가.
+> P2 100건(관점 중복 포함)은 보고서 본문 참조. 위 R1~R15 에 흡수되지 않는 잔여는 다음 회고에서 재평가.
+> 🔴 **R13~R15 는 2026-07-30 dependabot 검증 워크플로(12 에이전트) 부수 발견** — GitHub 이슈로 승격한 2건은 #1238(tsc 무핀 전역설치)·#1239(trufflehog SHA 핀 실효성).
 
 ---
 
@@ -121,7 +125,7 @@ Phase4 검증. 재개 조건은 원장 참조). 운영등급 `#1072` 1건 (`#107
 | # | 일감 | 보류 사유 |
 |---|------|----------|
 | **H2** | **Code Scanning open alert 2건** — `py/unnecessary-lambda`(note), `tests/unit/scripts/test_guard_git_failclosed.py:26,27` | note 등급·테스트 코드. `#1096` 이 `#1097`(note 게이트)보다 먼저 머지돼 시점상 미포착 |
-| **H4** | **typescript `>=6.1.0` dependabot ignore (#1232 실측)** — `package.json` 은 `^5.9.3` 핀, `.github/dependabot.yml` 이 재제안을 억제 | **기전**: `@typescript-eslint/parser` 8.x peer = `typescript >=4.8.4 <6.1.0` → typescript 7 로 올리면 `npm ci` 가 **ERESOLVE 로 실패**(빌드 자체가 깨짐). 이 파서는 런타임 eslint 분석기가 .ts/.tsx 를 파싱하는 수단이라 버리면 **TS 정적분석이 #1226 상태로 회귀**한다. 🔴 dependabot PR #1232 가 실제로 올라와 `lint-js 공허화 차단` job 이 red 로 잡았다(가드 첫 실전 적발). **반증 수단**: `npm view @typescript-eslint/parser peerDependencies.typescript` 가 7 을 포함하면 해제 가능 = 이 행 제거 + ignore 삭제 + `pytest tests/integration/test_eslint_analyzer.py`(.ts/.tsx 축) 통과 확인 |
+| **H4** | **typescript `>=6.1.0` dependabot ignore (#1232 실측)** — `package.json` 은 `^5.9.3` 핀, `.github/dependabot.yml` 이 재제안을 억제 | **기전**: `@typescript-eslint/parser` 8.x peer = `typescript >=4.8.4 <6.1.0` → typescript 7 로 올리면 `npm ci` 가 **ERESOLVE 로 실패**(빌드 자체가 깨짐). 이 파서는 런타임 eslint 분석기가 .ts/.tsx 를 파싱하는 수단이라 버리면 **TS 정적분석이 #1226 상태로 회귀**한다. 🔴 dependabot PR #1232 가 실제로 올라와 `lint-js 공허화 차단` job 이 red 로 잡았다(가드 첫 실전 적발). 🔴 **2026-07-30 실측 — 잔여 헤드룸 0**: `6.0.3` 은 통과하나 `6.1.0` 도 이미 peer 범위 밖이라(satisfies=false) #1236 머지 후 dependabot 이 제안 가능한 typescript 업데이트는 **6.0.x 패치뿐**이다. **반증 수단**: `npm view @typescript-eslint/parser peerDependencies.typescript` 가 7 을 포함하면 해제 가능 = 이 행 제거 + ignore 삭제 + `pytest tests/integration/test_eslint_analyzer.py`(.ts/.tsx 축) 통과 확인 |
 | **H3** | **semgrep `>=1.171.0` dependabot ignore (#1227 항목 2)** — `requirements.txt` 는 `semgrep==1.170.1` 핀, `.github/dependabot.yml` 이 재제안을 억제 | **기전**: semgrep 1.171.0 → `click~=8.4.2` vs sqlfluff 4.2.2(최신) → `click<8.4.0` = ResolutionImpossible. SQL 정적분석 유지를 우선해 semgrep 을 보류(2026-07-29 사용자 결정). 🔴 **ignore 는 해제 조건 충족을 알려주지 않는다**(silent-disable) — 그래서 여기 등재. **반증 수단**: `pip index versions sqlfluff` 로 신버전 확인 후 `pip install --dry-run -r requirements.txt -r requirements-dev.txt` 가 성공하면 보류 해제 가능 = 이 행 제거 + dependabot ignore 삭제 |
 
 ---
