@@ -168,8 +168,10 @@ jobs:
         run: python scripts/check_claim_review_trace.py
 
   # 🔴 src/ 정적 분석 게이트 — 이전엔 **어떤 자동면에도 없었다** (회고 2026-07-03 D13).
-  # `make lint`/`make gate` 는 pylint·flake8·bandit 를 전부 `|| true` 로 삼켜 **실패할 수 없고**,
-  # `make lint-strict`(fail-under 9.90)는 CI·pre-commit 어디서도 호출되지 않는 문서-only 였다.
+  # `make lint` 은 pylint·flake8·bandit 를 전부 `|| true` 로 삼켜 **실패할 수 없고**(지금도 그렇다 —
+  # 위반 열람 전용), `make lint-strict`(fail-under 9.90)는 CI·pre-commit 어디서도 호출되지 않는
+  # 문서-only 였다. 🔴 그 뒤 도입된 `make gate` 는 `|| true` 없이 pylint·bandit 를 강제하는
+  # **로컬 CI-등가 게이트**다(Makefile `gate:`) — 아래 job 과 린터 기준이 같다. 혼동 금지.
   # 그 상태에서 CLAUDE.md 는 "Phase 완료 조건 = /lint 통과" 를 선언했다 — 즉 커밋 본문의
   # "lint 통과" 주장이 **기계로 검증 불가**했다. 로컬 fail-closed 는 강제력이 아니라 마찰이므로
   # (Grok 적대 검토 2026-07-20), 실제 게이트를 **여기** 둔다.
