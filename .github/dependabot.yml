@@ -92,6 +92,25 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    # typescript 상한 고정 (#1232 실측 — 2026-07-29)
+    # `@typescript-eslint/parser` 8.x 의 peer 범위가 `typescript >=4.8.4 <6.1.0` 이라
+    # typescript 7 을 올리면 `npm ci` 가 ERESOLVE 로 **실패**한다(빌드 자체가 깨짐):
+    #   npm error peer typescript@">=4.8.4 <6.1.0" from @typescript-eslint/parser@8.65.0
+    # 이 파서는 런타임 eslint 분석기(`src/analyzer/configs/*.mjs`)가 .ts/.tsx 를 파싱하는 데
+    # 쓰이므로(#1226/#1228), 버리면 TS 정적분석이 다시 무동작이 된다.
+    #
+    # 🔴 해제 조건: `@typescript-eslint/parser` 가 typescript 7 을 peer 로 받는 버전을 내면
+    #    이 항목 제거 후 `npm install` 해석 성공 + `pytest tests/integration/test_eslint_analyzer.py`
+    #    (.ts/.tsx 축) 통과를 먼저 확인.
+    # 🔴 이 ignore 도 해제 조건 충족을 알려주지 않는다(silent-disable) → `docs/backlog.md` H4 추적.
+    #
+    # Pin typescript below 6.1 (#1232, measured): @typescript-eslint/parser 8.x peers on
+    # `typescript >=4.8.4 <6.1.0`, so bumping to 7 makes `npm ci` fail with ERESOLVE. That parser is
+    # what lets the runtime eslint analyzer parse .ts/.tsx (#1226), so dropping it would make TS
+    # static analysis dead again.
+    ignore:
+      - dependency-name: "typescript"
+        versions: [">=6.1.0"]
 
   # GitHub Actions (workflows 의존성)
   # GitHub Actions workflow dependencies
