@@ -60,7 +60,7 @@
 |------|------|------|
 | 🔴 결정 대기 | **1** (B6-b) | AI 자기 머지 거버넌스 (감사 High-tier 6건은 2026-07-24 서비스품질 결정 완료) |
 | 🟡 착수 가능 | **1** (B7) + 감사 자율 **~6** | 명확버그 1(cron dedup) + SQL 집계 4 + 가드 self-defect 1(security.md 모호) (pagination #1210·동작1 #1211·가드 3건 #1213~#1215 완료) |
-| ⏸️ 보류 | **1** (H2) + 감사 UI **5** | note 등급 + UI 템플릿(정책 11 사용자 시각검증) |
+| ⏸️ 보류 | **2** (H2·H3) + 감사 UI **5** | note 등급 + 상류 대기(semgrep×sqlfluff click 충돌) + UI 템플릿(정책 11 사용자 시각검증) |
 
 > ✅ **2026-07-24 라운드**: 감사 P2 명확버그 6 + High-tier 설계결정 5(서비스품질 위주) 처리 완료(#1204~#1208). 회고 P1-G(Grok claim-review) 이행(#1203, REFUTED→CAS 정확화). **후속(#1210·#1211)**: security_scan pagination + webhook issue-close BackgroundTask 완료 · approve 민감경로 = 오탐 정정 · cron-conn = defer. 잔여 = SQL 집계·가드 self-defect·UI(정책 11)·cron dedup(schema) — 남은 건 전부 schema/perf/meta-guard/시각검증이라 세션말미 착수 회피(회고 교훈), 다음 세션.
 
@@ -120,6 +120,7 @@ Phase4 검증. 재개 조건은 원장 참조). 운영등급 `#1072` 1건 (`#107
 | # | 일감 | 보류 사유 |
 |---|------|----------|
 | **H2** | **Code Scanning open alert 2건** — `py/unnecessary-lambda`(note), `tests/unit/scripts/test_guard_git_failclosed.py:26,27` | note 등급·테스트 코드. `#1096` 이 `#1097`(note 게이트)보다 먼저 머지돼 시점상 미포착 |
+| **H3** | **semgrep `>=1.171.0` dependabot ignore (#1227 항목 2)** — `requirements.txt` 는 `semgrep==1.170.1` 핀, `.github/dependabot.yml` 이 재제안을 억제 | **기전**: semgrep 1.171.0 → `click~=8.4.2` vs sqlfluff 4.2.2(최신) → `click<8.4.0` = ResolutionImpossible. SQL 정적분석 유지를 우선해 semgrep 을 보류(2026-07-29 사용자 결정). 🔴 **ignore 는 해제 조건 충족을 알려주지 않는다**(silent-disable) — 그래서 여기 등재. **반증 수단**: `pip index versions sqlfluff` 로 신버전 확인 후 `pip install --dry-run -r requirements.txt -r requirements-dev.txt` 가 성공하면 보류 해제 가능 = 이 행 제거 + dependabot ignore 삭제 |
 
 ---
 

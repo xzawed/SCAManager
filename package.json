@@ -14,6 +14,7 @@
     "eslint": "^10.8.0",
     "eslint-plugin-html": "^8.1.1",
     "@typescript-eslint/parser": "^8.65.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "globals": "^17.8.0"
   }
 }

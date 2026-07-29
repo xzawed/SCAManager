@@ -183,6 +183,42 @@ jobs:
       - name: bandit 보안 스캔
         run: bandit -r src/ -q
 
+  # 템플릿 인라인 JS 린트 공허화 차단 (#1227 항목 3 — 사용자 결정: advisory + 공허화만 fail-closed).
+  # 🔴 `make lint-js` 는 `npx eslint … || true` 라 모든 실패를 삼켰고, **어떤 workflow 에도 배선돼
+  # 있지 않았다**(`.github/` 전역 참조 0건). 그래서 #1222(eslint 8→10) 창에서 설정이 완전히 깨져
+  # 0개 파일을 검사하는 동안에도 CI 는 초록이었다 — "위반 0건" 과 "아무것도 검사 안 함" 이 구별 불가.
+  # 이 job 은 위반으로는 실패하지 않고(기존 advisory 성격 보존), **검사 범위가 비면** 실패한다.
+  # Anti-vacuity gate for template inline-JS linting (#1227 item 3). `make lint-js` swallowed every
+  # failure and was wired into no workflow at all, so CI stayed green while eslint linted zero files
+  # during the #1222 bump. This job never fails on violations — only when nothing was checked.
+  lint-js-nonvacuous:
+    name: lint-js 공허화 차단 (검사 범위 비면 fail)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      # eslint 는 devDependency — `npm ci` 로 lockfile 그대로 설치(재현성).
+      # `--ignore-scripts` = 공급망 hardening: 이 job 은 eslint 의 JS 만 실행하므로 lifecycle
+      # 스크립트가 필요 없다(빌드 산출물 미사용).
+      # eslint is a devDependency; `npm ci` installs it exactly as locked. `--ignore-scripts` is
+      # supply-chain hardening — this job only runs eslint's JS and needs no lifecycle scripts.
+      - name: Install npm dependencies
+        run: npm ci --ignore-scripts
+
+      - name: lint-js 공허화 차단
+        run: python scripts/check_lint_js_nonvacuous.py
+
   # 의존성 취약점 SCA 게이트 — PyPI Advisory DB(OSV) 대조로 known CVE 차단(회고 2026-07-03 C7).
   # requirements 가 == 핀(CI==Railway 버전 일치)이므로 스캔 대상 = 실제 배포 버전. 신규 CVE 발표 시 CI fail →
   # 의존성 bump 강제(현재 취약점 0 실측). 프로덕션+개발 의존성 모두 대상.

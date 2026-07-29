@@ -49,6 +49,23 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    # semgrep 보류 명시 (#1227 항목 2 — 2026-07-29 사용자 결정)
+    # semgrep 1.171.0+ 는 click~=8.4.2 를 요구하는데 sqlfluff 4.2.2(PyPI 최신)는 click<8.4.0 이라
+    # ResolutionImpossible. sqlfluff 를 올려 해소할 수 없고(4.2.2 가 최신이고 그 제약이 최신),
+    # 올리려면 sqlfluff 를 버려야 하므로 SQL 정적분석 유지를 우선했다. 핀 자체는 requirements.txt
+    # 주석이 단일 출처이며, 여기 규칙은 **반복 제안으로 CI 가 매번 빨개지는 노이즈**만 없앤다.
+    #
+    # 🔴 해제 조건: sqlfluff 가 click 상한을 완화한 릴리스를 내면 이 ignore 항목을 제거하고
+    #    `pip install --dry-run -r requirements.txt -r requirements-dev.txt` 로 해석 성공을 먼저 확인.
+    # 🔴 이 ignore 는 dependabot 의 재제안을 **영구히 막는다** — 해제 조건이 충족돼도 아무도
+    #    알려주지 않는 silent-disable 클래스다. 그래서 `docs/backlog.md` ⏸️ 항목으로 추적한다.
+    #
+    # semgrep hold made explicit (#1227 item 2, user decision 2026-07-29). This rule only removes
+    # the repeated-proposal noise; the pin itself is owned by the requirements.txt comment.
+    # 🔴 It permanently suppresses re-proposals, so the release condition is tracked in backlog.md.
+    ignore:
+      - dependency-name: "semgrep"
+        versions: [">=1.171.0"]
 
   # npm 의존성 (package.json + package-lock.json — scamanager-ui Tailwind/eslint 빌드 툴체인)
   # npm dependencies (UI build toolchain — all devDependencies, not shipped at runtime)
