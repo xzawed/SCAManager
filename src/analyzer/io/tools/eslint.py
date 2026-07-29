@@ -17,17 +17,58 @@ from src.constants import STATIC_ANALYSIS_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
+# 🔴 `..` 2개 필수 — 이 파일은 `src/analyzer/io/tools/` 에 있고 설정은 `src/analyzer/configs/` 에 있다.
+#    `..` 1개는 존재하지 않는 `src/analyzer/io/configs/` 를 가리켰고, eslint 가 ENOENT 로 죽어도
+#    분석기가 조용히 [] 를 반환해 **JS/TS 이슈가 항상 0** 이었다 (#1226 결함 1).
+# 🔴 Two `..` are required — this file lives in `src/analyzer/io/tools/` while the configs live in
+#    `src/analyzer/configs/`. A single `..` pointed at the nonexistent `src/analyzer/io/configs/`,
+#    and since the analyzer silently returned [] on ENOENT, JS/TS issues were always zero (#1226).
 _CONFIG_PATH = os.path.abspath(os.path.join(
-    os.path.dirname(__file__), "..", "configs", "eslint.config.json"
+    os.path.dirname(__file__), "..", "..", "configs", "eslint.config.mjs"
 ))
 
 _REACT_CONFIG_PATH = os.path.abspath(os.path.join(
-    os.path.dirname(__file__), "..", "configs", "eslint_react.config.json"
+    os.path.dirname(__file__), "..", "..", "configs", "eslint_react.config.mjs"
 ))
 
 # JSX/TSX 확장자 — React 전용 eslint 설정 사용 대상
 # File extensions that use the React-specific eslint config
 _REACT_EXTENSIONS: frozenset[str] = frozenset({".jsx", ".tsx"})
+
+# 실패 사유 로그 발췌 길이 — eslint stderr 전문을 그대로 싣지 않는다
+# Excerpt length for failure reasons — avoid dumping the whole eslint stderr into logs
+_ERR_EXCERPT = 200
+
+
+def _to_issues(data: list, ctx: AnalyzeContext) -> list[AnalysisIssue]:
+    """eslint JSON 결과를 AnalysisIssue 목록으로 변환한다.
+
+    🔴 ruleId 가 없고 fatal 도 아닌 메시지 = 파일이 **린트되지 않았다**는 eslint 메타 메시지
+    ("File ignored because ..."). 이슈로 집계하면 없는 결함으로 점수를 깎고, 무시하면 미분석을
+    clean 으로 오인한다 — 둘 다 틀리므로 fail-closed 로 올린다. fatal 파싱 오류는 ruleId 가
+    없어도 분석 대상 코드의 **실제 결함**이므로 이슈로 보존한다 (대비 축).
+    🔴 A message with no ruleId that is not fatal is an eslint meta message meaning the file was
+    never linted ("File ignored because ..."). Counting it deducts points for a nonexistent defect;
+    ignoring it reads "not analyzed" as clean — both are wrong, so fail closed. A fatal parse error
+    has no ruleId either but IS a real defect in the analyzed code, so it is kept as an issue.
+    """
+    issues = []
+    for file_result in data:
+        for msg in file_result.get("messages", []):
+            if msg.get("ruleId") is None and not msg.get("fatal"):
+                raise RuntimeError(
+                    f"eslint did not lint {ctx.tmp_path}: {msg.get('message', '')[:_ERR_EXCERPT]}"
+                )
+            severity = Severity.ERROR if msg.get("severity", 1) == 2 else Severity.WARNING
+            issues.append(AnalysisIssue(
+                tool="eslint",
+                severity=severity,
+                message=msg.get("message", ""),
+                line=msg.get("line", 0),
+                category=Category.CODE_QUALITY,
+                language=ctx.language,
+            ))
+    return issues
 
 
 class _ESLintAnalyzer:
@@ -45,39 +86,63 @@ class _ESLintAnalyzer:
         return shutil.which("eslint") is not None
 
     def run(self, ctx: AnalyzeContext) -> list[AnalysisIssue]:
-        """eslint JSON 출력을 파싱해 AnalysisIssue 목록 반환."""
+        """eslint JSON 출력을 파싱해 AnalysisIssue 목록 반환.
+
+        🔴 실패를 조용히 삼키지 않는다 (#1226) — `RuntimeError` 를 올리면 `static.py` 의
+        broad-except 가 이를 `StaticAnalysisResult.incomplete` 로 승격해 미분석 코드의
+        auto-merge/auto-approve 를 차단한다(#805/#806 fail-closed 대칭). 이전 판은 설정 부재나
+        무효 플래그로 eslint 가 죽어도 `[]` 를 반환해 **"이슈 0건" 과 구별 불가**했고, 그만큼
+        점수가 인플레돼 게이트까지 전파됐다.
+        🔴 Failures are never swallowed (#1226) — raising RuntimeError lets static.py's broad
+        except promote it to StaticAnalysisResult.incomplete, blocking auto-merge/approve of
+        unanalyzed code (fail-closed, symmetric with #805/#806). The previous version returned []
+        when eslint died on a missing config or an invalid flag, making a dead analyzer
+        indistinguishable from "zero issues" and inflating scores into the gate.
+
+        예외: 타임아웃(`ctx.timed_out`)과 바이너리 부재(`OSError`)는 **의도적 미수행** 경로라
+        기존 계약대로 `[]` 를 반환한다 (`static.py` 의 opt-out 경계).
+        Exceptions: timeout and a missing binary are *intentional* non-execution paths and keep
+        returning [] per the existing contract (static.py's opt-out boundary).
+        """
+        # JSX/TSX 파일은 React 설정 사용, 그 외는 기본 설정 사용
+        # Use React config for JSX/TSX files, base config otherwise
+        _cfg = _REACT_CONFIG_PATH if pathlib.Path(ctx.filename).suffix in _REACT_EXTENSIONS else _CONFIG_PATH
         try:
-            # JSX/TSX 파일은 React 설정 사용, 그 외는 기본 설정 사용
-            # Use React config for JSX/TSX files, base config otherwise
-            _cfg = _REACT_CONFIG_PATH if pathlib.Path(ctx.filename).suffix in _REACT_EXTENSIONS else _CONFIG_PATH
             r = subprocess.run(  # nosec B603 B607
-                ["eslint", "--format=json", "--no-eslintrc",
+                ["eslint", "--format=json", "--no-config-lookup",
                  "-c", _cfg, ctx.tmp_path],
+                # 🔴 cwd 필수 — eslint 는 base path(기본값 = cwd) 밖의 파일을 린트하지 않고
+                # "File ignored because outside of base path" 로 넘긴다(9·10 공통). 분석 대상은
+                # tempfile.TemporaryDirectory() 안에 있고 앱 cwd 는 리포 루트라, 지정하지 않으면
+                # 모든 JS/TS 파일이 조용히 스킵된다 (#1226 결함 5).
+                # 🔴 cwd is mandatory — eslint skips files outside its base path (defaults to cwd)
+                # with "File ignored because outside of base path" (both 9 and 10). The target lives
+                # in a TemporaryDirectory while the app cwd is the repo root, so omitting it makes
+                # every JS/TS file silently skipped (#1226 defect 5).
+                cwd=os.path.dirname(ctx.tmp_path),
                 capture_output=True, text=True, timeout=STATIC_ANALYSIS_TIMEOUT, check=False,
             )
-            if not r.stdout.strip().startswith("["):
-                return []
-            data = json.loads(r.stdout)
-            issues = []
-            for file_result in data:
-                for msg in file_result.get("messages", []):
-                    severity = Severity.ERROR if msg.get("severity", 1) == 2 else Severity.WARNING
-                    issues.append(AnalysisIssue(
-                        tool="eslint",
-                        severity=severity,
-                        message=msg.get("message", ""),
-                        line=msg.get("line", 0),
-                        category=Category.CODE_QUALITY,
-                        language=ctx.language,
-                    ))
-            return issues
         except subprocess.TimeoutExpired:
             ctx.timed_out = True
             logger.warning("eslint timed out for %s", ctx.tmp_path)
             return []
-        except (json.JSONDecodeError, OSError) as exc:
-            logger.warning("eslint failed for %s: %s", ctx.tmp_path, exc)
+        except OSError as exc:
+            logger.warning("eslint unavailable for %s: %s", ctx.tmp_path, exc)
             return []
+
+        if not r.stdout.strip().startswith("["):
+            # stdout 이 JSON 이 아니다 = eslint 가 분석을 못 했다. stderr 를 실패 사유로 실어 보낸다.
+            # Non-JSON stdout means eslint never analyzed the file; carry stderr as the reason.
+            raise RuntimeError(
+                f"eslint did not produce JSON for {ctx.tmp_path} "
+                f"(exit={r.returncode}): {(r.stderr or r.stdout).strip()[:_ERR_EXCERPT]}"
+            )
+        try:
+            data = json.loads(r.stdout)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"eslint produced unparseable JSON for {ctx.tmp_path}: {exc}") from exc
+
+        return _to_issues(data, ctx)
 
 
 def _register_eslint_analyzers() -> None:

@@ -83,7 +83,9 @@ src/
 │   ├── pure/                    # registry / language / review_prompt / review_guides (tier1~3 + generic, 49 언어)
 │   ├── io/                      # static.py (Registry 위임) + ai_review.py (Claude API)
 │   │   └── tools/               # 23 분석기 모듈 (Tier1 25종 — python 모듈이 pylint/flake8/bandit 3종 번들): python·semgrep·eslint·shellcheck·cppcheck·slither·rubocop·golangci_lint·hadolint·ktlint·tflint·tsc·sqlfluff·yamllint·phpstan·swiftlint·stylelint·htmlhint·buf_lint·dart_analyze·psscriptanalyzer·dotnet_format·clippy (STATE.md 정적분석 도구 단일출처)
-│   └── configs/                 # eslint.config.json 등 외부 도구 설정
+│   └── configs/                 # eslint.config.mjs · eslint_react.config.mjs (외부 도구 설정)
+│                                #   🔴 `.mjs` 고정 — eslint 9+ flat-config 로더는 ESM import 라
+│                                #   `.json` 은 로드 불가 (#1226). `files` glob 6종 확장자 필수.
 ├── scorer/calculator.py         # calculate_score(ai_review), ScoreResult, _grade
 ├── config_manager/manager.py    # get_repo_config(), upsert_repo_config(), RepoConfigData
 ├── gate/
