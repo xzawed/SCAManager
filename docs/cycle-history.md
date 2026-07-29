@@ -6,6 +6,7 @@
 
 ## 목차
 
+- [GitHub Issue 2건 처리 + 정책 19 집행면 신설 (2026-07-29 세션11, 3 PR #1228~#1230)](#github-issue-2건-처리--정책-19-집행면-신설-2026-07-29-세션11-3-pr-12281230)
 - [다른 PC 이식 준비 + 새 clone 경로 복구 + git 정리 (2026-07-27 세션10, 3 PR #1223~#1225)](#다른-pc-이식-준비--새-clone-경로-복구--git-정리-2026-07-27-세션10-3-pr-12231225)
 - [GitHub 정리 + owed #1072 외부계약 반증 + 5+1 회고 (2026-07-26 세션9, 3 PR #1217~#1219)](#github-정리--owed-1072-외부계약-반증--51-회고-2026-07-26-세션9-3-pr-12171219)
 - [종합감사 이행 + 5+1 회고 + 회고 P1 (2026-07-24 세션8, 8 PR #1194~#1201)](#종합감사-이행--51-회고--회고-p1-2026-07-24-세션8-8-pr-11941201)
@@ -146,6 +147,28 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## GitHub Issue 2건 처리 + 정책 19 집행면 신설 (2026-07-29 세션11, 3 PR #1228~#1230)
+
+열린 GitHub Issue 2건(#1226·#1227)을 Grok claim-review 와 함께 처리하고, 그 과정에서 **정책 19 위반이 재발**해 집행면을 신설했다.
+
+**#1226 — 런타임 eslint 분석기 100% 무동작 (→ #1228)**: JS/TS 이슈가 항상 0 이라 감점 0 → 점수 인플레가 점수 기반 Gate(auto-approve/auto-merge)까지 전파. 이슈는 결함 2건(설정 경로 `..` 개수 · `--no-eslintrc` eslint 9 무효)을 보고했으나 **실측 5건**이었고 각각 단독으로 분석기를 죽인다. 🔴 **이슈가 처방한 수정만 적용하면 여전히 무동작** — 신규 3건: (3) `.json` 설정을 eslint 9+ flat-config 로더가 **ESM import** 하므로 `ERR_IMPORT_ATTRIBUTE_MISSING` (4) `files` glob 부재로 .jsx/.ts/.tsx 미매칭 (5) **cwd 미지정 → 임시파일이 base path 밖**(`tempfile.TemporaryDirectory()` vs 앱 cwd, eslint 9·10 공통). 결함 4·5 는 침묵보다 나쁘다 — 1~3 만 고치면 가짜 `File ignored` 경고가 **없는 결함으로 점수를 깎는다**. 조치 = 경로·플래그(`--no-config-lookup`)·`.mjs` 이식·`files` glob 6확장자·`@typescript-eslint/parser` 결선·cwd 지정 + **fail-open→fail-closed**(비-JSON stdout / ruleId=None 비-fatal 메타 메시지 → `RuntimeError` → `static.py` 가 `incomplete` 승격, #805/#806 대칭. 타임아웃·바이너리 부재는 의도적 미수행이라 `[]` 유지).
+
+🔴 **관측자가 결함을 요구하고 있었다**: 단위 40건이 `subprocess.run` 을 전부 mock 해 "경로 문자열이 argv 에 들어갔는지" 만 보았고, 2건은 결함 자체를 단언했다 — `test_run_includes_no_eslintrc_flag`(운영 eslint 9 를 죽이는 플래그 요구) · `test_run_returns_empty_list_when_stdout_not_starts_with_bracket`(입력이 eslint 9 **실제 출력**인데 `[]` 단언 = 운영 무동작을 정상으로 인증). 반전 + 실바이너리 통합 테스트 신설(mock 이 결함 1·3·4·5 를 원리적으로 못 잡음).
+
+**#1227 — lint-js 공허화 차단 (→ #1229)**: `make lint-js` 가 `npx eslint … || true` 라 모든 실패를 삼켰고 **어떤 CI workflow 에도 배선돼 있지 않았다**(`.github/` 전역 참조 0). settings.html 은 `<script>` 내 Jinja 보간 **17개(전 템플릿 최다)**인데 무시 목록 밖 = 유일 누락(파서 한계이지 JS 결함 아님). 사용자 결정 = **위반은 advisory, 공허화만 fail-closed**. semgrep 보류는 dependabot ignore 로 명시하되 silent-disable 방지를 위해 backlog H3 에 (기전·반증수단) 등재.
+
+🔴 **내가 만든 가드가 그 자체로 observer-lie 였다**: 초판은 `eslint.config.mjs` 를 정규식 파싱해 커버리지를 추론했고, Grok claim-review 가 그 "봉인/양방향 강제" 주장을 **BROKEN** 판정 — 손실 있는 투영이라 (a) 두 번째 config 객체의 `ignores` (b) 작은따옴표 항목 (c) `files:` 축소 (d) 중첩 디렉토리 템플릿 4종이 전부 통과했다. 봉인 근거를 **eslint 실제 린트 결과 역산**(`실제_무시집합 = 디스크 전체(재귀) − 실제 린트된 파일`)으로 교체하니 설정 문법을 어떻게 바꾸든 린트 결과가 달라져 4종 전부 red(실파일 재현 검증).
+
+**정책 19 집행면 신설 (→ #1230, backlog R2)**: 세션 초반 claim-review 1회를 "이행함" 으로 자기 처리한 뒤, 정작 자기가 만든 가드를 seal 주장으로 PR 2건 냈다. 🔴 **원인은 문서량이 아니다** — 트리거 단어를 **자기가 타이핑하고도** 호출하지 않았고(정책 19 는 always-loaded 문서에 3중 중복), Grok 이 문서량 가설을 명시 기각(원인 순위: 집행면 0 > 자기보고 준수 > one-shot 편향 > 마커 인플레[🔴 198개] > 문서량). 정책 8·owed 원장이 이미 밟은 산문→훅 승격 경로를 정책 19 에 적용. **자기 적용 검증 = 이번 세션 PR #1228·#1229 양쪽 차단**. 초판 역시 Grok 이 BROKEN 판정(빈 필드 3줄 통과·`not-required: x` 한 글자 자기면제·어휘 우회·shallow clone 으로 커밋 축 사멸) → 값 요구·본문 한정 면제·어휘 확대·`fetch-depth: 0` 반영. 🔴 **자기 적용에서 결함 1건 추가 발견** — 마커를 **설명하는 문장**이 면제로 오인돼 가드를 문서화하는 PR 이 스스로 면제됐다(seal 13건 통과 실측) → 줄 맨앞·비-백틱 앵커.
+
+🔴 **머지 차단력은 아직 없다 (R2-b)**: ruleset `PRIMARY` 는 active 지만 규칙이 `deletion`·`non_fast_forward`·`pull_request` 뿐이고 **required_status_checks 0건** — red CI 로도 머지된다(실측: #1196 이 `Analyze (python)` FAILURE 상태로 머지). 🔴 그렇다고 지금 required 를 켜면 **score-based auto-merge 가 깨진다**: CI pending 중 `mergeable_state=blocked` → `BRANCH_PROTECTION_BLOCKED` 이고 이 태그는 `_RETRIABLE_TAGS`(`merge_reasons.py:60` = `{UNSTABLE_CI, UNKNOWN_STATE_TIMEOUT}`)에 **없어 즉시 terminal**. 과거 브랜치 보호 거부(B6-a)와는 문제가 달라 충돌하지 않으나, **코드 선행 수정(blocked+pending 을 retriable 로) 후 설정** 순서가 강제된다.
+
+**환경**: 이 PC 에 **Python 부재**(WindowsApps 스텁만)라 3.12 설치 후 진행 — 새 PC 이식 실측. Windows 는 `npx`/`eslint`/pylint 등이 `.cmd` 래퍼라 `CreateProcess` 불가(`WinError 2`)여서 가드는 `node <eslint.js>` 직접 호출로 작성.
+
+**수치**: 단위 5968→**6020**(+52) · 통합 158→**165**(+7) · 전체 **6185** 수집. 뮤테이션 실증 = eslint 10/10 · lint-js 가드 10/10 · 정책 19 가드 10/10(각 회차마다 약점 1~2건이 뮤테이션으로 드러나 테스트 보강).
+
+---
 
 ## 다른 PC 이식 준비 + 새 clone 경로 복구 + git 정리 (2026-07-27 세션10, 3 PR #1223~#1225)
 
