@@ -6,6 +6,7 @@
 
 ## 목차
 
+- [README claim-review 정정 + CONTRIBUTING/SECURITY 신설 + 저장소 메타 (2026-07-30 세션12, 1 PR #1241)](#readme-claim-review-정정--contributingsecurity-신설--저장소-메타-2026-07-30-세션12-1-pr-1241)
 - [GitHub Issue 2건 처리 + 정책 19 집행면 + Grok 전반 검토 (2026-07-29~30 세션11, 9 PR #1228~#1237)](#github-issue-2건-처리--정책-19-집행면--grok-전반-검토-2026-07-2930-세션11-9-pr-12281237)
 - [다른 PC 이식 준비 + 새 clone 경로 복구 + git 정리 (2026-07-27 세션10, 3 PR #1223~#1225)](#다른-pc-이식-준비--새-clone-경로-복구--git-정리-2026-07-27-세션10-3-pr-12231225)
 - [GitHub 정리 + owed #1072 외부계약 반증 + 5+1 회고 (2026-07-26 세션9, 3 PR #1217~#1219)](#github-정리--owed-1072-외부계약-반증--51-회고-2026-07-26-세션9-3-pr-12171219)
@@ -147,6 +148,58 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## README claim-review 정정 + CONTRIBUTING/SECURITY 신설 + 저장소 메타 (2026-07-30 세션12, 1 PR #1241)
+
+사용자 요청 = *"Grok과 함께 Readme내용 검토 및 Topic을 등록해주시고, Contributing, Security 내용도 등록"*. Grok claim-review **2회**(README 1차 → 신규 문서 2차) + 전건 `grep` 실측.
+
+**README P0 7건 (전부 실측 확인)**
+
+1. 🔴 **"no data leaves your environment"**([README.md:51](../README.md)) — AI 리뷰가 `api.anthropic.com` 으로 diff 를 보내고([repos.py:221](../src/github_client/repos.py)) 알림 6채널이 외부로 나간다. self-hosted 를 **컨트롤 플레인 한정**으로 재서술.
+2~5. 🔴 **CLI Hook 섹션 전체** — 훅은 2025-06-15 Agent SDK 크레딧 분리 대응으로 `claude -p` 를 폐지하고 Anthropic Messages API 를 직접 호출한다([repos.py:201-221](../src/github_client/repos.py), 폐지 사유가 **코드 주석에 명시**). 그런데 README 는 "ANTHROPIC_API_KEY 불필요 · 요구사항 = Claude Code CLI · Codespaces 미동작 · Tech Stack `claude -p`" 4곳을 그대로 유지했다. 사용자 결정 = **코드가 정답, README 정정**.
+6. Semgrep **"35+ languages"** → `SUPPORTED_LANGUAGES` 실측 **22**([semgrep.py:23-32](../src/analyzer/io/tools/semgrep.py)). 모듈 docstring 은 "30+" 로 또 다른 값이라 3중 drift.
+7. Telegram OTP **"6자리"** → `_OTP_LENGTH = 8`([users.py:33](../src/api/users.py)). 예시 `/connect 123456` 도 8자리로 교체.
+
+**README P1 4건** — `"10 linters"` → `register()` 실측 **25종** · 설정 `"4카드"` → 실측 **6카드**([ui.md:14](../.claude/rules/ui.md)) · REST API 설명에 **fail-closed 503** 명시([auth.py:31-34](../src/api/auth.py)) · "필수 환경변수" 의미 구분(기동 차단은 `DATABASE_URL` + Telegram 2종뿐, [config.py:15-19](../src/config.py)).
+
+🔴 **카드 번호 인용 자체가 drift 원천** — `Card ⑤` 2곳 중 1곳이 이미 오기(Telegram 연결은 ④ "알림 채널(발신)")이고, 템플릿 인라인 주석의 번호(③⑤⑥)와 `ui.md` 번호가 서로 어긋나 있었다. 번호 대신 **UI 라벨**로 치환해 drift 원천 제거.
+
+**신규 문서 4종** — `CONTRIBUTING.md`/`.ko.md`(하이브리드: 외부 기여자 온보딩 본문 + 내부 20개 정책은 링크 위임 = CLAUDE.md 와 이중 SSOT 회피), `SECURITY.md`/`.ko.md`(비공개 신고 · 지원 버전 `main` only · in/out scope · **§"코드가 어디로 가는가"** 전체 egress · 보호 조치 표 · 알려진 트레이드오프 · 배포 하드닝).
+
+🔴 **내가 쓴 신규 문서가 다시 observer-lie 였다 (Grok 2차, 머지 전 적발 P0 4건)**
+
+정책 19 트리거("fail-closed/봉인/유출 0" 주장)에 해당해 초안에 Grok 을 **다시** 걸었다. 4건 전부 **보호 장치를 지워도 문장이 참으로 읽히는** 유형이었다.
+
+- **"bandit·Semgrep 이 매 변경마다 `src/` 에 실행"** — Semgrep 은 **CI job 이 아니다**(`.github/workflows` 전역 grep 0). bandit 만 `lint-src` 에서 실행([ci.yml:183-208](../.github/workflows/ci.yml)).
+- **"등록 분석기 25종이 네트워크 호출 없음"** — semgrep 이 그 25종에 포함되는데 **바로 위 표에서 `semgrep.dev` 접근을 자백**해 자기모순. → "나머지 24종" + `golangci-lint`/`clippy` 의 패키지 레지스트리 잔여 경로 명시.
+- **"AI 배점 5점 미획득"** — 실측 **11점**(AI 3항목 55점 중 기본값 44점, [constants.py:9-11,23-25](../src/constants.py)).
+- 🔴 **"이중언어 주석을 pre-commit 훅이 검사"** — 그 훅은 **2026-07-29 사용자 결정으로 해제**됐다([.pre-commit-config.yaml:129-139](../.pre-commit-config.yaml) 주석 처리). 세션11 이 해제한 것을 세션12 가 살아있다고 다시 적은 셈. **README 2곳에도 동일 오기재**(내가 새로 쓴 표 + 기존 설치 절차)가 있어 함께 정정.
+
+**Grok P1 5건 반영** — egress 표에 **`DATABASE_URL` 누락 추가**(점수·AI 요약·분석기 이슈 메시지가 영속되므로 Supabase 등 외부 DB = 소스 파생 내용의 목적지) · "외부 전송 0" → **"줄이기"**(GitHub + 외부 DB + Go/Rust 레지스트리 잔여) · rate limit "모든 엔드포인트" 축소(admin/users/internal_cron 미적용) · **5-way sync 가드가 실제로는 Python 3-layer 만** 검사(파일명이 "5way" 라 이름 자체가 observer-lie) · 경로 없는 `pytest` 의 e2e 혼입은 `testpaths=tests` 로 **이미 방어됨**(내 서술이 stale).
+
+**저장소 메타** — Topics **14개** 등록(`code-review`·`ai-code-review`·`static-analysis`·`code-quality`·`pull-request-automation`·`github-webhook`·`claude`·`anthropic`·`fastapi`·`python`·`telegram-bot`·`devsecops`·`self-hosted`·`quality-gate`) + Private vulnerability reporting **활성화**(`{"enabled":true}` 실측).
+
+**SSOT drift 1건** — [STATE.md:39](STATE.md) 통합 테스트 추적셀 158 → **165**. 헤더(line 34)·세션 블록(line 19)은 이미 165 였고 셀만 뒤처져 있었다(#1228 의 +7 미반영). `pytest --collect-only -q tests/integration` = 165 실측.
+
+🔴 **이 PC 에 pre-commit 미등록 실측** — `.git/hooks/` 가 **비어 있고** `pre-commit` 모듈 자체가 미설치 = **이 세션 커밋이 로컬 가드를 전부 우회**했다. 세션10 #1224 가 문서화한 "조용한 무보호"의 실사례가 같은 리포에서 재현된 것. 관련 가드는 수동 실행해 통과 확인(`check_docs_sync` ✅ · `check_architecture_tree_sync` ✅ · 시크릿 패턴/공백/EOF/대용량 ✅).
+
+**검증** — `pytest tests/unit` = 6015 passed / 2 failed / 5 skipped. 실패 2건(`test_static_disabled.py`)은 **본 변경 이전부터 존재** — `git stash` 후 clean `main` 에서 동일 재현. 원인은 `pylint`/`flake8`/`bandit` **콘솔 스크립트가 PATH 부재**(`[WinError 2]`, 모듈로는 설치됨 pylint 4.0.6)라 로컬 한정이며 CI 무관. docs-only(`src/` 무변경)라 architecture.md 동기화 대상 없음. 단위 6022·통합 165·전체 6187 불변.
+
+### Grok claim-review 흔적 (정책 19)
+
+세션12 는 정책 19 집행면(`check_claim_review_trace.py`)이 **PR 본문에만** 흔적을 요구하지만, PR 본문은 편집 가능하고 머지 후 추적이 흩어지므로 세션 ID 를 **영구 이력에도** 남긴다.
+
+- session: 019faeb9-b8f3-79c0-ade9-2a9a01883b3c
+- claim: README.md 의 배지 수치·능력 카운트·엔드포인트·환경변수·마케팅 문구가 src/ 실제 코드와 일치하는가 (observer-lie 사냥 포함)
+- verdict: BROKEN — P0 7건 적발. 전건 grep 재검증 결과 **Grok 오탐 0**.
+
+- session: 019faed8-e4b4-7b11-8cc2-335982208fa0
+- claim: 본 세션이 새로 쓴 SECURITY.md egress 목록·보호 조치 표와 CONTRIBUTING.md 프로세스 서술이 실제 코드·CI·pre-commit 설정과 일치하는가
+- verdict: BROKEN — 자기 산출물에서 P0 4건 적발, 머지 전 전건 수정.
+
+🔴 **집행면이 본 PR 을 실제로 잡았다** — 1차 push 에서 `Repo integrity guards` job 이 **fail**. 사유 = 본문의 `fail-closed`·`봉인` 어휘(기존 동작 서술/인용)에 대해 구조화된 흔적이 없었음. **면제 마커로 빠져나가지 않고** 실제 흔적을 기재해 통과시켰다. 세션11 이 만든 가드가 세션12 를 잡은 것 = 집행면이 저자와 무관하게 작동한다는 첫 실증.
+
+---
 
 ## GitHub Issue 2건 처리 + 정책 19 집행면 + Grok 전반 검토 (2026-07-29~30 세션11, 9 PR #1228~#1237)
 

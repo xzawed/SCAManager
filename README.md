@@ -34,7 +34,7 @@
 
 **SCAManager** automatically manages code quality for your GitHub repositories.
 
-On every Push or PR event, it runs **static analysis** (pylint · flake8 · bandit · Semgrep · ESLint · ShellCheck · cppcheck · slither · rubocop · golangci-lint) and **Claude AI review** in parallel, producing a score out of 100 and a grade from A to F.
+On every Push or PR event, it runs **static analysis** (25 registered analyzers — pylint · flake8 · bandit · Semgrep · ESLint · ShellCheck · cppcheck · slither · RuboCop · golangci-lint and [15 more](docs/reference/language-coverage.md)) and **Claude AI review** in parallel, producing a score out of 100 and a grade from A to F.
 
 Results are delivered instantly via **Telegram · GitHub · Discord · Slack · Email · n8n**, and PRs can be automatically approved, rejected, or squash-merged based on the score.
 
@@ -48,8 +48,8 @@ Most code review tools make you choose between static analysis precision and AI 
 
 **What makes it different:**
 
-- **Self-hosted** — runs entirely on your own infrastructure; no vendor lock-in, no data leaves your environment
-- **Static + AI in one pipeline** — 10 linters/analyzers run alongside Claude AI review; results feed into a single score
+- **Self-hosted control plane** — the pipeline, database, and dashboard run on your own infrastructure; no vendor lock-in and no third-party SaaS account required to operate it. Code you analyze is still sent to the services *you* configure: the Anthropic API for AI review, plus whichever notification channels you enable. See [SECURITY.md § Where your code goes](SECURITY.md#where-your-code-goes) for the exact egress list and how to run with zero external calls.
+- **Static + AI in one pipeline** — 25 registered static analyzers run alongside Claude AI review; results feed into a single score
 - **Score-based PR Gate** — automatically approve, reject, or request human decision via Telegram based on numeric thresholds
 - **Approve from phone** — Telegram inline buttons let you review and merge PRs from anywhere, no laptop required
 - **Push + PR analysis** — not just PRs; bare pushes also trigger analysis, auto-create GitHub Issues, and post commit comments
@@ -87,7 +87,7 @@ Detailed environment variables: [docs/reference/env-vars.md](docs/reference/env-
 
 | Analysis | Tools | Target |
 |----------|-------|--------|
-| Code Quality | pylint + flake8 + Semgrep + cppcheck + RuboCop + golangci-lint | `.py` + C/C++ (cppcheck) + `.rb` (RuboCop) + `.go` (golangci-lint) + **35+ languages** (Semgrep) |
+| Code Quality | pylint + flake8 + Semgrep + cppcheck + RuboCop + golangci-lint | `.py` + C/C++ (cppcheck) + `.rb` (RuboCop) + `.go` (golangci-lint) + **22 languages** (Semgrep — `SUPPORTED_LANGUAGES` in [src/analyzer/io/tools/semgrep.py](src/analyzer/io/tools/semgrep.py)) |
 | Security | bandit + Semgrep + slither + RuboCop Security cops + gosec (via golangci-lint) | `.py` files (tests excluded) + Solidity (slither) + Ruby / Go security rules |
 | JS/TS Quality | ESLint (flat config) | `.js` `.mjs` `.ts` `.tsx` |
 | Shell Quality | ShellCheck | `.sh` `.bash` and other shell scripts |
@@ -185,9 +185,9 @@ After linking your Telegram account (see below), send these commands to the bot:
 
 #### Linking Your Telegram Account (`/connect` OTP flow)
 
-1. Go to **Settings → Card ⑤ → Telegram Connection** and click **"🔗 Issue Code"**
-2. A 6-digit OTP appears (valid for 5 minutes)
-3. Send `/connect 123456` to the SCAManager bot in Telegram
+1. Go to **Settings → "Outbound Channels" card → Telegram Connection** and click **"🔗 Issue Code"**
+2. An 8-digit OTP appears (valid for 5 minutes)
+3. Send `/connect 12345678` to the SCAManager bot in Telegram
 4. The bot replies "✅ Account linked" — bot commands are now available
 
 > Each new OTP immediately invalidates the previous one. The link is per-user, not per-repo.
@@ -223,7 +223,7 @@ When `auto_merge=true` and the merge fails because CI is still running (`mergeab
 - Up to 30 retries over 24 hours via `check_suite.completed` webhook or 1-min cron
 - Final result: Telegram success/failure notification (1×)
 
-> **Existing repos** need Webhook re-registration (Settings → Card ⑤ → "Reinstall Webhook") to subscribe to `check_suite` events.
+> **Existing repos** need Webhook re-registration (Settings → "Integration & Auth (Inbound)" card → "Reinstall Webhook") to subscribe to `check_suite` events.
 
 ---
 
@@ -248,7 +248,7 @@ All features accessible via browser after GitHub OAuth login.
 - **Add Repository** — Webhook auto-created from a GitHub dropdown
 - **Score History Chart** — Chart.js-based visualization
 - **Analysis Detail** — AI review · category feedback · static analysis issues
-- **Settings Page** — 🚀 One-click presets · 4-card Progressive Disclosure · toggle show/hide
+- **Settings Page** — 🚀 One-click presets · 6-card Progressive Disclosure (Quick Settings · PR Behavior Rules · Post-event automation · Outbound Channels · Integration & Auth · Danger zone) · toggle show/hide
 - **Themes** — Dark / Light / Pastel / Catppuccin — all four fully supported
 
 ---
@@ -290,12 +290,15 @@ git push origin main
 # → Saved to SCAManager dashboard automatically
 ```
 
-- **No `ANTHROPIC_API_KEY` required** — uses the locally installed Claude Code CLI (`claude -p`)
+- **Requires `ANTHROPIC_API_KEY`** — the hook calls the Anthropic Messages API directly (it no longer shells out to `claude -p`; that path was dropped when Agent SDK billing was split off on 2025-06-15)
+- Uses `claude-haiku-4-5` by default to keep the per-push cost low — override with `SCAMANAGER_REVIEW_MODEL`
 - Results appear in the terminal and the dashboard simultaneously
-- Push is never blocked — always exits with `0`
+- Push is never blocked — the hook always exits with `0`
 
-> **Requirements:** Claude Code CLI (`claude`) installed on Mac / Linux / Windows desktop
-> Silently skipped in environments without the CLI (Codespaces · CI · mobile)
+> **Requirements:** `bash` · `git` · `python3` · `curl` · `ANTHROPIC_API_KEY` exported in your shell.
+> The hook exits silently (still `0`) when `.scamanager/config.json` is missing, `python3` is unavailable,
+> the server does not verify the hook token, or the diff is empty. When `ANTHROPIC_API_KEY` is unset it
+> prints a one-line warning and skips the review.
 
 ---
 
@@ -308,7 +311,7 @@ git push origin main
 | **Auth** | GitHub OAuth2 (authlib) + Starlette SessionMiddleware |
 | **Database** | PostgreSQL · SQLAlchemy 2 · Alembic · FailoverSessionFactory |
 | **AI (Server)** | Anthropic Claude API (claude-sonnet-4-6) |
-| **AI (Local Hook)** | Claude Code CLI (`claude -p`) |
+| **AI (Local Hook)** | Anthropic Messages API (`claude-haiku-4-5` default, `SCAMANAGER_REVIEW_MODEL` override) |
 | **Static Analysis** | **Tier1 25 tools** — pylint · flake8 · bandit (Python) + Semgrep (22+) + ESLint + ShellCheck + cppcheck + slither + RuboCop + golangci-lint + 15 more (hadolint · ktlint · tflint · tsc · sqlfluff · yamllint · phpstan · swiftlint · stylelint · htmlhint · buf_lint · dart_analyze · psscriptanalyzer · dotnet_format · clippy) — see [docs/reference/language-coverage.md](docs/reference/language-coverage.md) |
 | **Testing** | pytest · pytest-asyncio · httpx TestClient |
 | **E2E Testing** | Playwright (Chromium) |
@@ -342,7 +345,7 @@ make install
 make css-build
 
 # 🔴 Local guard hooks — every hook in .pre-commit-config.yaml (secret scan, docs-number parity,
-#    architecture-tree sync, bilingual comments …) runs ONLY through pre-commit. Skip this and the
+#    architecture-tree sync, config-layer sync …) runs ONLY through pre-commit. Skip this and the
 #    guards are silently absent on the new machine; commits still succeed. Two hook types needed
 #    (commit-msg is a separate stage). Details: docs/runbooks/secret-prevention.md
 python -m pip install pre-commit
@@ -374,6 +377,11 @@ cp .env.example .env
 | `GITHUB_CLIENT_ID` | GitHub OAuth App Client ID |
 | `GITHUB_CLIENT_SECRET` | GitHub OAuth App Client Secret |
 | `SESSION_SECRET` | Session cookie signing key (**32+ random characters, required**) |
+
+> **What "required" means here:** only `DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, and `TELEGRAM_CHAT_ID` are
+> hard-required to boot — the app refuses to start without them ([src/config.py](src/config.py)). The
+> `GITHUB_CLIENT_*` and `SESSION_SECRET` values have placeholder defaults, so the process starts without
+> them, but GitHub OAuth login will not work and the placeholder session key must never reach production.
 
 **Recommended**
 
@@ -492,7 +500,7 @@ POST /api/webhook/telegram           Telegram Gate callback (HMAC auth)
 POST /webhooks/railway/{token}       Railway deploy event (token auth)
 ```
 
-**REST API** (X-API-Key header required)
+**REST API** (X-API-Key header required — fail-closed: with `API_KEY` unset every request gets `503` unless `API_AUTH_DISABLED=1` is set for local development)
 ```
 GET    /api/repos                    Repository list
 GET    /api/repos/{repo}/analyses    Analysis history (skip · limit pagination)
@@ -510,7 +518,7 @@ POST /api/hook/result                Save code review result
 
 **User API** (OAuth session required)
 ```
-POST /api/users/me/telegram-otp      Issue 6-digit OTP for Telegram /connect linking
+POST /api/users/me/telegram-otp      Issue 8-digit OTP for Telegram /connect linking
 ```
 
 **Internal Cron** (INTERNAL_CRON_API_KEY required)
@@ -655,8 +663,39 @@ make run     # Dev server (port 8000 auto-forwarded)
 ANTHROPIC_API_KEY=sk-ant-... python -m src.cli review
 ```
 
-> Claude Code CLI is not available in Codespaces, so the **CLI Hook does not work** there.
-> Use `python -m src.cli review` instead.
+> The CLI Hook works anywhere `bash` · `python3` · `curl` and an exported `ANTHROPIC_API_KEY` are
+> available, including Codespaces — but the repo must already carry `.scamanager/config.json`
+> (created when you register the repo). Without it the hook exits silently; use
+> `python -m src.cli review` instead.
+
+---
+
+## 🤝 Contributing
+
+Issues and pull requests are welcome. Start with **[CONTRIBUTING.md](CONTRIBUTING.md)** ([한국어](CONTRIBUTING.ko.md)) — it covers the local setup that this repo actually requires (the Tailwind build and the two pre-commit hook stages are easy to miss), how to run the test suite, the branch and commit conventions, and the PR checklist.
+
+Three things that trip up first-time contributors:
+
+| Gotcha | Why it matters |
+|--------|----------------|
+| `make css-build` after a fresh clone | The Tailwind bundle is a gitignored build artifact; skip it and `base.html` serves a 404 for its stylesheet |
+| `pre-commit install --hook-type pre-commit --hook-type commit-msg` | Every local guard (secret scan, docs-number parity, architecture-tree sync, config-layer sync) runs **only** through pre-commit. Skip it and commits still succeed — silently unguarded |
+| Bilingual code comments | New comments are written in Korean followed by English on the next line. This is a convention, not an enforced hook. See [CONTRIBUTING.md § Code comments](CONTRIBUTING.md#code-comments-bilingual) |
+
+---
+
+## 🔐 Security
+
+Please **do not open a public issue for a security vulnerability.** Report it through
+[GitHub's private vulnerability reporting](https://github.com/xzawed/SCAManager/security/advisories/new)
+instead. Full policy — supported versions, scope, response targets, and the exact list of data that
+leaves your deployment — is in **[SECURITY.md](SECURITY.md)** ([한국어](SECURITY.ko.md)).
+
+SCAManager processes your source code, so it is worth being explicit about egress: running it
+self-hosted keeps the pipeline, database, and dashboard on your infrastructure, but the AI review
+sends diffs to the Anthropic API and every notification channel you enable sends analysis output to
+that channel's provider. [SECURITY.md § Where your code goes](SECURITY.md#where-your-code-goes)
+lists each destination and how to disable it.
 
 ---
 
