@@ -117,8 +117,15 @@ jobs:
     name: Repo integrity guards (stdlib backstop)
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      # 🔴 fetch-depth: 0 필수 — 정책 19 가드가 `git log base..head` 로 PR 범위 커밋 메시지를
+      # 읽는다. 얕은 clone 이면 base 커밋이 없어 명령이 실패하고, 가드는 커밋 축을 **조용히
+      # 빈 문자열로 처리**한다(= 커밋 메시지에만 있는 seal 주장을 영영 못 본다, Grok 적발).
+      # 🔴 Required: the policy-19 guard reads PR-range commit messages via `git log base..head`.
+      # A shallow clone makes that fail and the commit axis silently degrades to empty.
+      - name: Checkout (full history — 정책 19 가드가 PR 범위 커밋을 읽는다)
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v7
@@ -142,6 +149,23 @@ jobs:
 
       - name: RepoConfig 3-layer 싱크 (check_config_5way_sync)
         run: python scripts/check_config_5way_sync.py
+
+      # 🔴 정책 19 집행면 — seal 주장("봉인/fail-closed/뮤테이션 N/N red")에 claim-review 흔적 강제.
+      # backlog R2 실측: 창 42 커밋 중 26건이 seal 주장인데 Grok 흔적 0(직전 회고 P1 의 즉시 재발).
+      # 2026-07-29 에도 Claude 가 자기 가드를 "봉인/양방향 강제" 로 단언했고 뒤늦은 claim-review 가
+      # 그 주장을 BROKEN 판정했다. 산문 의무만으로는 2회 연속 실패했으므로 기계 집행으로 승격한다
+      # (정책 8 카덴스·owed 원장이 이미 밟은 경로).
+      # 🔴 PR 본문은 신뢰할 수 없는 입력이라 `run:` 에 보간하지 않고 env 로 전달한다(명령 인젝션 차단).
+      # Policy-19 enforcement: seal claims require a claim-review trace. The PR body is untrusted
+      # input, so it is passed via env rather than interpolated into the shell line.
+      - name: 정책 19 — seal 주장 시 claim-review 흔적 강제
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python scripts/check_claim_review_trace.py
 
   # 🔴 src/ 정적 분석 게이트 — 이전엔 **어떤 자동면에도 없었다** (회고 2026-07-03 D13).
   # `make lint`/`make gate` 는 pylint·flake8·bandit 를 전부 `|| true` 로 삼켜 **실패할 수 없고**,
