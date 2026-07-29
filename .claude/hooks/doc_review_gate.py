@@ -12,12 +12,25 @@ from pathlib import Path
 # ─── 파일 등급 분류 ──────────────────────────────────────────────────────────
 # File grade classification
 
+# 🔴 2026-07-29 스코프 복구 (backlog R9 · Grok 전반 검토) — 2026-07-21 문서 재구성 이후
+# **가장 행동에 영향을 주는 규칙 문서들이 전부 `skip` 이었다**:
+#   · `AGENTS.md`            = 가드/관측자 3-불변식 SSOT (Claude·Grok dual-consumer)
+#   · `.claude/rules/*.md`   = path-scoped 규칙 154KB — 편집 표면에 자동 로드돼 행동을 직접 바꾼다
+#   · `.claude/policies/*.md`= 협업 정책 detail 50KB
+# 즉 심의 게이트가 **정작 심의해야 할 표면을 통과시키고 있었다**(false coverage). 실측:
+# 2026-07-29 세션이 `.claude/rules/pipeline.md` 를 수정했는데 게이트가 발화하지 않았다.
+# 🔴 Scope recovery (backlog R9): after the 2026-07-21 doc reorg the highest-behavioral-impact rule
+# files all graded `skip` — the review gate was passing exactly the surfaces it exists to review.
 _CRITICAL = [
     r"^CLAUDE\.md$",
+    r"^AGENTS\.md$",
     r"^docs/STATE\.md$",
     r"^\.claude/settings\.json$",
     r"^\.claude/agents/[^/]+\.md$",
     r"^\.claude/skills/[^/]+\.md$",
+    # rules/ 는 편집 표면에 자동 로드되는 **행동 지시문**이라 critical (policies/ 는 detail → important)
+    # rules/ are behavioural directives auto-loaded at the edit surface; policies/ are detail.
+    r"^\.claude/rules/[^/]+\.md$",
 ]
 
 _IMPORTANT = [
@@ -25,6 +38,7 @@ _IMPORTANT = [
     r"^docs/guides/[^/]+\.md$",
     r"^docs/superpowers/.+\.md$",
     r"^README\.md$",
+    r"^\.claude/policies/[^/]+\.md$",
 ]
 
 _LOW_RISK = [
