@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 # settings가 아직 초기화되지 않은 시점에서 import될 수 있으므로 지연 로딩
 # Lazy-loaded: this module may be imported before settings is initialized.
-_fernet: "Fernet | None | bool" = False  # False = 미초기화 sentinel
+_fernet: "Fernet | None | bool" = False  # False = 미초기화 sentinel  # pylint: disable=invalid-name
 
 
 def _get_fernet() -> "Fernet | None":

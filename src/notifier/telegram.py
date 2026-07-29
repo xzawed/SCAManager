@@ -27,7 +27,7 @@ TELEGRAM_RETRY_AFTER_MAX_SECONDS = 30
 # silent skip + WARNING (단발) + 5회 연속 시 streak WARNING (운영자 인지).
 # Cycle 78 PR 2 — bot blocked silent skip + streak guard (5+1 NEW-P0 — 🅒 P0-1).
 TELEGRAM_BOT_BLOCKED_STREAK_THRESHOLD = 5
-_telegram_bot_blocked_streak: int = 0  # process restart 시 reset (정책 16 단순화)
+_telegram_bot_blocked_streak: int = 0  # process restart 시 reset (정책 16 단순화)  # pylint: disable=invalid-name
 
 
 async def telegram_post_message(bot_token: str, chat_id: str, payload: dict) -> None:

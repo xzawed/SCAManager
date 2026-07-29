@@ -38,7 +38,9 @@ _HTTP_LIMITS = httpx.Limits(
     keepalive_expiry=30.0,
 )
 
-_client: httpx.AsyncClient | None = None
+# 지연 생성되는 싱글톤 캐시 슬롯이라 상수가 아니다 (get_http_client 가 최초 호출 시 대입).
+# Lazily-created singleton cache slot, not a constant (get_http_client assigns it on first call).
+_client: httpx.AsyncClient | None = None  # pylint: disable=invalid-name
 
 
 async def init_http_client() -> None:
