@@ -251,14 +251,48 @@ class TestESLintRunSubprocessCall:
         call_args = mock_run.call_args[0][0]
         assert "/tmp/specific_app.js" in call_args
 
-    def test_run_includes_no_eslintrc_flag(self, make_ctx):
-        # eslint 실행 시 --no-eslintrc 플래그가 포함되어야 한다 (임베디드 config만 사용)
+    def test_run_does_not_pass_no_eslintrc_flag(self, make_ctx):
+        # 🔴 #1226: `--no-eslintrc` 는 eslint 9+ 에서 **무효 옵션**이다. 넘기면 eslint 가
+        # "Invalid option '--eslintrc'" + exit 2 로 죽어 stdout 이 비고, 분석기는 조용히 [] 를
+        # 반환했다 = JS/TS 이슈 항상 0 → 점수 인플레. 이전 판 테스트는 이 플래그를 **요구**해
+        # 결함을 고정하고 있었다.
+        # 🔴 #1226: `--no-eslintrc` is an invalid option on eslint 9+. Passing it kills eslint with
+        # exit 2 and empty stdout, so the analyzer silently returned [] — JS/TS issues were always
+        # zero, inflating scores. The previous version of this test *required* the broken flag.
         from src.analyzer.io.tools.eslint import _ESLintAnalyzer
         ctx = make_ctx(language="javascript", tmp_path="/tmp/app.js")
         with patch("subprocess.run", return_value=_mock_eslint_proc(SAMPLE_OUTPUT_NO_MESSAGES)) as mock_run:
             _ESLintAnalyzer().run(ctx)
         call_args = mock_run.call_args[0][0]
-        assert "--no-eslintrc" in call_args
+        assert "--no-eslintrc" not in call_args
+
+    def test_run_executes_in_the_temp_files_own_directory(self, make_ctx):
+        # 🔴 #1226 결함 5: eslint 는 **base path 밖의 파일을 린트하지 않는다**(9·10 공통 실측).
+        # 분석 대상은 `tempfile.TemporaryDirectory()` 안에 있고(static.py) 앱 cwd 는 리포 루트라,
+        # cwd 를 지정하지 않으면 모든 JS/TS 파일이 "File ignored because outside of base path" 로
+        # 스킵된다 — 경로·플래그·설정형식을 다 고쳐도 분석은 여전히 0건이었다.
+        # 🔴 #1226 defect 5: eslint refuses to lint files outside its base path (measured on both 9
+        # and 10). The target lives in a TemporaryDirectory (static.py) while the app cwd is the repo
+        # root, so without an explicit cwd every JS/TS file is skipped as "outside of base path" —
+        # analysis stayed at zero even after fixing the path, the flag and the config format.
+        from src.analyzer.io.tools.eslint import _ESLintAnalyzer
+        ctx = make_ctx(language="javascript", tmp_path=os.path.join("/tmp", "sub", "app.js"))
+        with patch("subprocess.run", return_value=_mock_eslint_proc(SAMPLE_OUTPUT_NO_MESSAGES)) as mock_run:
+            _ESLintAnalyzer().run(ctx)
+        assert mock_run.call_args.kwargs["cwd"] == os.path.dirname(ctx.tmp_path)
+
+    def test_run_includes_no_config_lookup_flag(self, make_ctx):
+        # `--no-eslintrc` 의 flat-config 대응물 — 임베디드 설정만 쓰겠다는 원래 의도를 보존한다
+        # (분석 대상은 임시 디렉토리라 상위 탐색이 무관한 설정을 주워올 수 있다).
+        # The flat-config counterpart of `--no-eslintrc`, preserving the original intent of using
+        # only the embedded config (the target lives in a temp dir where lookup could pick up
+        # an unrelated config).
+        from src.analyzer.io.tools.eslint import _ESLintAnalyzer
+        ctx = make_ctx(language="javascript", tmp_path="/tmp/app.js")
+        with patch("subprocess.run", return_value=_mock_eslint_proc(SAMPLE_OUTPUT_NO_MESSAGES)) as mock_run:
+            _ESLintAnalyzer().run(ctx)
+        call_args = mock_run.call_args[0][0]
+        assert "--no-config-lookup" in call_args
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -305,22 +339,73 @@ class TestESLintRunOutputParsing:
             issues = _ESLintAnalyzer().run(ctx)
         assert issues == []
 
-    def test_run_returns_empty_list_for_empty_stdout(self, make_ctx):
-        # stdout이 빈 문자열이면 빈 이슈 목록을 반환해야 한다
-        # Empty stdout must return an empty issue list.
+    def test_run_raises_for_empty_stdout(self, make_ctx):
+        # 🔴 #1226 fail-closed: stdout 이 비었다 = eslint 가 죽었다 = **분석 안 됨**.
+        # 조용한 [] 는 "이슈 0건" 과 구별 불가라 점수 인플레로 직결됐다. 이제 예외를 올려
+        # static.py 가 `incomplete=True` 로 승격 → auto-merge/auto-approve 차단(#805/#806 대칭).
+        # 🔴 #1226 fail-closed: empty stdout means eslint died, i.e. the file was NOT analyzed.
+        # A silent [] was indistinguishable from "zero issues" and inflated scores. Raising lets
+        # static.py promote it to incomplete and block auto-merge (symmetric with #805/#806).
         from src.analyzer.io.tools.eslint import _ESLintAnalyzer
         ctx = make_ctx(language="javascript", tmp_path="/tmp/app.js")
+        analyzer = _ESLintAnalyzer()
         with patch("subprocess.run", return_value=_mock_eslint_proc("")):
-            issues = _ESLintAnalyzer().run(ctx)
-        assert issues == []
+            with pytest.raises(RuntimeError):
+                analyzer.run(ctx)
 
-    def test_run_returns_empty_list_when_stdout_not_starts_with_bracket(self, make_ctx):
-        # stdout이 "[" 로 시작하지 않으면 빈 이슈 목록을 반환해야 한다 (ESLint가 에러 텍스트 출력 시)
+    def test_run_raises_when_stdout_not_starts_with_bracket(self, make_ctx):
+        # 🔴 #1226: 이것이 **운영에서 실제로 일어난 경로**다 — 설정 경로 부재/무효 플래그로
+        # eslint 가 에러 텍스트만 뱉었고, 이전 판 테스트는 바로 이 입력에 [] 를 단언해
+        # "설정을 못 찾음" 을 정상으로 인증하고 있었다.
+        # 🔴 #1226: this is the path that actually happened in production — eslint emitted only
+        # error text (missing config path / invalid flag), and the previous test asserted [] for
+        # exactly this input, certifying "config not found" as a healthy result.
         from src.analyzer.io.tools.eslint import _ESLintAnalyzer
         ctx = make_ctx(language="javascript", tmp_path="/tmp/app.js")
+        analyzer = _ESLintAnalyzer()
         with patch("subprocess.run", return_value=_mock_eslint_proc("Error: cannot find eslint config")):
+            with pytest.raises(RuntimeError):
+                analyzer.run(ctx)
+
+    def test_run_raises_when_file_not_matched_by_config(self, make_ctx):
+        # 🔴 #1226 결함 4: flat config 의 기본 매칭은 `**/*.js|mjs|cjs` 뿐이라 `files` glob 이 없으면
+        # .jsx/.ts/.tsx 가 ruleId=null 인 "File ignored" 경고 1건을 낳는다. 그 가짜 경고를 이슈로
+        # 집계하면 **점수를 부당하게 깎는다**(침묵보다 나쁨). 미분석 신호이므로 fail-closed 처리.
+        # 🔴 #1226 defect 4: flat config only matches js/mjs/cjs by default, so without a `files`
+        # glob a .jsx/.ts/.tsx file yields a ruleId=null "File ignored" warning. Counting that bogus
+        # warning as an issue wrongly deducts points — worse than silence. It signals "not analyzed".
+        from src.analyzer.io.tools.eslint import _ESLintAnalyzer
+        ignored_output = json.dumps([{
+            "filePath": "/tmp/app.tsx",
+            "messages": [{
+                "ruleId": None, "fatal": False, "severity": 1,
+                "message": "File ignored because no matching configuration was supplied.",
+            }],
+        }])
+        ctx = make_ctx(language="typescript", filename="app.tsx", tmp_path="/tmp/app.tsx")
+        analyzer = _ESLintAnalyzer()
+        with patch("subprocess.run", return_value=_mock_eslint_proc(ignored_output)):
+            with pytest.raises(RuntimeError):
+                analyzer.run(ctx)
+
+    def test_run_keeps_fatal_parse_error_as_issue(self, make_ctx):
+        # 대비 축: fatal 파싱 오류는 ruleId 가 없어도 **분석 대상 코드의 실제 결함**이므로
+        # 이슈로 보존한다 (위의 "File ignored" 메타 메시지와 구별).
+        # Contrast axis: a fatal parse error has no ruleId but is a genuine defect in the analyzed
+        # code, so it is kept as an issue — distinct from the "File ignored" meta message above.
+        from src.analyzer.io.tools.eslint import _ESLintAnalyzer
+        fatal_output = json.dumps([{
+            "filePath": "/tmp/broken.js",
+            "messages": [{
+                "ruleId": None, "fatal": True, "severity": 2,
+                "message": "Parsing error: Unexpected token }", "line": 3,
+            }],
+        }])
+        ctx = make_ctx(language="javascript", tmp_path="/tmp/broken.js")
+        with patch("subprocess.run", return_value=_mock_eslint_proc(fatal_output)):
             issues = _ESLintAnalyzer().run(ctx)
-        assert issues == []
+        assert len(issues) == 1
+        assert issues[0].severity == "error"
 
     def test_run_sets_category_to_code_quality(self, make_ctx):
         # 모든 ESLint 이슈의 category는 "code_quality"이어야 한다
@@ -394,22 +479,32 @@ class TestESLintRunGracefulDegradation:
             issues = _ESLintAnalyzer().run(ctx)
         assert issues == []
 
-    def test_run_returns_empty_on_json_decode_error(self, make_ctx):
-        # stdout이 유효하지 않은 JSON → JSONDecodeError → 빈 이슈 목록 반환
+    def test_run_raises_on_json_decode_error(self, make_ctx):
+        # 🔴 #1226: 깨진 JSON = 분석 실패. 위 두 축(바이너리 부재·타임아웃)은 **의도적 미수행**이라
+        # [] 가 맞지만, 여기는 eslint 가 실행됐는데 결과를 못 낸 **진짜 실패**라 fail-closed 다.
+        # 🔴 #1226: broken JSON means the analysis failed. The two axes above (missing binary,
+        # timeout) are intentional non-execution and correctly return []; this one is a genuine
+        # failure of an eslint that did run, so it must fail closed.
         from src.analyzer.io.tools.eslint import _ESLintAnalyzer
         ctx = make_ctx(language="javascript", tmp_path="/tmp/app.js")
+        analyzer = _ESLintAnalyzer()
         with patch("subprocess.run", return_value=_mock_eslint_proc("[{broken")):
-            issues = _ESLintAnalyzer().run(ctx)
-        assert issues == []
+            with pytest.raises(RuntimeError):
+                analyzer.run(ctx)
 
-    def test_run_returns_empty_on_non_json_output(self, make_ctx):
-        # stdout이 JSON이 아닌 일반 텍스트로 시작하는 경우 빈 이슈 목록 반환
-        # stdout starting with plain text (not JSON) must return an empty issue list.
+    def test_run_raises_on_non_json_output(self, make_ctx):
+        # 🔴 #1226: 이 입력("Oops, something went wrong")은 **eslint 9 가 실제로 뱉는 문구**다
+        # (`Oops! Something went wrong! :(`). 즉 이 테스트는 운영 무동작 상태를 그대로 재현하면서
+        # [] 를 단언해 **결함을 정상으로 인증**하고 있었다.
+        # 🔴 #1226: this input is verbatim what eslint 9 actually emits (`Oops! Something went
+        # wrong! :(`). The test reproduced the exact production dead-state and asserted [],
+        # certifying the defect as healthy behaviour.
         from src.analyzer.io.tools.eslint import _ESLintAnalyzer
         ctx = make_ctx(language="javascript", tmp_path="/tmp/app.js")
+        analyzer = _ESLintAnalyzer()
         with patch("subprocess.run", return_value=_mock_eslint_proc("Oops, something went wrong")):
-            issues = _ESLintAnalyzer().run(ctx)
-        assert issues == []
+            with pytest.raises(RuntimeError):
+                analyzer.run(ctx)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -478,3 +573,52 @@ class TestEslintReactSupport:
         call_args = mock_run.call_args[0][0]
         assert _CONFIG_PATH in call_args
         assert _REACT_CONFIG_PATH not in call_args
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# TestEslintConfigFilesExist — 🔴 #1226 결함 1·3 회귀 가드 (mock 이 원리적으로 못 잡는 축)
+#
+# 이 클래스는 subprocess 를 mock 하지 않는다. 위쪽 테스트들은 전부 "argv 에 경로 문자열이
+# 들어갔는가" 만 보므로, 그 경로에 **파일이 없어도 40건 전건 통과**했다 — 실제로 운영 분석기가
+# 100% 무동작인 채 CI 는 초록이었다. 여기서는 파일시스템 실측만 단언한다.
+#
+# TestEslintConfigFilesExist — regression guard for #1226 defects 1 & 3, on the axis mocks
+# structurally cannot cover. The tests above only assert that a path string reached argv, so they
+# all passed while the file did not exist — the analyzer was 100% dead and CI was green. These
+# assert against the real filesystem.
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestEslintConfigFilesExist:
+    def test_base_config_path_points_to_existing_file(self):
+        # 결함 1: `..` 1개로는 src/analyzer/io/configs/ (부재) 를 가리켰다. 실제는 `..` 2개.
+        # Defect 1: a single `..` resolved to src/analyzer/io/configs/ (nonexistent); two are needed.
+        from src.analyzer.io.tools.eslint import _CONFIG_PATH
+        assert os.path.isfile(_CONFIG_PATH), f"eslint config not found: {_CONFIG_PATH}"
+
+    def test_react_config_path_points_to_existing_file(self):
+        from src.analyzer.io.tools.eslint import _REACT_CONFIG_PATH
+        assert os.path.isfile(_REACT_CONFIG_PATH), f"eslint react config not found: {_REACT_CONFIG_PATH}"
+
+    def test_configs_are_mjs_not_json(self):
+        # 결함 3: eslint 9+ flat-config 로더는 설정을 ESM 으로 import 한다. `.json` 은
+        # ERR_IMPORT_ATTRIBUTE_MISSING 으로 죽어 **경로·플래그를 고쳐도 분석기가 여전히 무동작**이었다.
+        # Defect 3: the eslint 9+ flat-config loader imports the config as an ES module. A `.json`
+        # file dies with ERR_IMPORT_ATTRIBUTE_MISSING, so fixing the path and flag alone left the
+        # analyzer just as dead.
+        from src.analyzer.io.tools.eslint import _CONFIG_PATH, _REACT_CONFIG_PATH
+        assert _CONFIG_PATH.endswith(".mjs")
+        assert _REACT_CONFIG_PATH.endswith(".mjs")
+
+    def test_configs_declare_files_globs_for_every_supported_extension(self):
+        # 결함 4: `files` glob 이 없으면 .jsx/.ts/.tsx 가 미매칭돼 "File ignored" 가짜 경고를 낳는다.
+        # language.py 가 javascript/typescript 로 매핑하는 6개 확장자를 두 설정이 모두 덮어야 한다.
+        # Defect 4: without a `files` glob, .jsx/.ts/.tsx go unmatched and produce a bogus
+        # "File ignored" warning. The two configs must jointly cover all 6 extensions that
+        # language.py maps to javascript/typescript.
+        from src.analyzer.io.tools.eslint import _CONFIG_PATH, _REACT_CONFIG_PATH
+        combined = ""
+        for path in (_CONFIG_PATH, _REACT_CONFIG_PATH):
+            with open(path, encoding="utf-8") as fh:
+                combined += fh.read()
+        for ext in (".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx"):
+            assert f'"**/*{ext}"' in combined, f"no files glob covers {ext}"
