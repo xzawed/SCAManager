@@ -6,7 +6,17 @@
 
 > 📌 **이전 세션·PR별 누적 작업 서사는 [`docs/cycle-history.md`](cycle-history.md) 단일 출처** (사이클 60~166, 최신순). 본 헤더는 **최신 1건 + 종합 수치만** 유지 — 32KB 단일 라인 SSOT 가독성 복원 (품질감사 docclr-1, 2026-06-17, cycle-history.md 에 서사 전량 보존[append-only] 확인 후 트리밍). 🔴 **다음 세션 갱신 규칙**: 신규 작업 완료 시 (0) **본 섹션 날짜 헤더(line 5 `## 현재 수치 (YYYY-MM-DD 기준)`)를 최신 세션 날짜로 갱신** (회고 2026-07-03 C5 #60 — 절차에서 상시 누락되던 필드), (1) 본 "최신" 블록을 새 작업으로 교체 + 종합 수치 갱신, (2) 직전 작업의 전체 서사는 `docs/cycle-history.md` 최신순 맨 앞에 본문 섹션으로 이관 (헤더에 "직전" 체인 누적 금지 — 본 정리의 회귀 방지), (3) **"최신" 블록은 불릿 5~8줄로 작성 — 단일 라인 금지** (2026-07-09 rank14: 단일 라인은 diff 심의·가독성 저해, doc_review_gate CRITICAL 게이팅 대상. 종합 수치 표·추적셀[테이블 셀]은 단일 라인 유지).
 
-**최신 (2026-07-29~30 세션11 — GitHub Issue 2건 처리 + 정책 19 집행면 + Grok 전반 검토, 9 PR #1228~#1237)** — 직전 세션10 블록은 아래 유지(체인 1단계, 그 이전은 [`cycle-history.md`](cycle-history.md)).
+**최신 (2026-07-30 세션12 — README claim-review 정정 + CONTRIBUTING/SECURITY 신설 + 저장소 메타, 1 PR #1241)** — 직전 세션11 블록은 아래 유지(체인 1단계, 그 이전은 [`cycle-history.md`](cycle-history.md)).
+- 🔴 **CLI Hook 섹션이 통째로 사실과 달랐다**(P0 4건): 훅은 2025-06-15 Agent SDK 크레딧 분리 대응으로 `claude -p` 를 폐지하고 Anthropic Messages API 를 직접 호출하는데([repos.py:201-221](../src/github_client/repos.py)), README 는 **"ANTHROPIC_API_KEY 불필요 · Claude Code CLI 필요 · Codespaces 미동작"** 을 계속 안내했다. 폐지 주석이 코드에 명시돼 있는데도 문서만 남은 전형적 drift — 사용자 결정 = 코드가 정답.
+- 🔴 **최상위 observer-lie = "no data leaves your environment"**(README.md:51): AI 리뷰가 `api.anthropic.com` 으로 diff 를 보내고 알림 6채널이 외부로 나간다. self-hosted 를 **컨트롤 플레인 한정**으로 재서술 + SECURITY.md §"코드가 어디로 가는가" 로 전체 egress 목록 이관.
+- **나머지 P0 3건**: Semgrep `35+ languages` → `SUPPORTED_LANGUAGES` 실측 **22**([semgrep.py:23-32](../src/analyzer/io/tools/semgrep.py)) · Telegram OTP `6자리` → `_OTP_LENGTH = 8`([users.py:33](../src/api/users.py)) · 설정 `4카드` → 실측 **6카드**. 🔴 카드 **번호** 인용은 drift 원천이라(`Card ⑤` 2곳 중 1곳 오기 + 템플릿 주석과 `ui.md` 번호 불일치) **UI 라벨**로 치환.
+- 🔴 **내가 쓴 신규 문서가 다시 observer-lie 였다** — SECURITY/CONTRIBUTING 초안에 Grok 2차 claim-review 를 걸어 **머지 전** P0 4건 적발: "Semgrep 이 매 변경마다 CI 실행"(**CI job 없음** — workflows 전역 grep 0) · "등록 25종 네트워크 호출 없음"(semgrep 이 그 25종에 포함 = 바로 위 표와 자기모순 → "24종") · "AI 미획득 **5점**"(실측 **11점**) · **"이중언어 주석을 pre-commit 훅이 검사"**(그 훅은 2026-07-29 해제됨 — 삭제된 보호장치를 살아있는 것처럼 서술). 마지막 건은 README 2곳에도 동일 오기재.
+- **egress 표에 `DATABASE_URL` 이 빠져 있었다**(Grok P1): 점수·AI 요약·분석기 이슈 메시지가 DB 에 영속되므로 Supabase 등 외부 DB 는 **소스 파생 내용의 목적지**다. "외부 전송 0" 주장도 GitHub + 외부 DB + Go/Rust 레지스트리 잔여로 **"줄이기"** 로 정직화.
+- **저장소 메타**: Topics **14개** 등록 + Private vulnerability reporting **활성화**(`{"enabled":true}` 실측). SSOT drift 1건 시정 — [STATE.md:39](STATE.md) 통합 추적셀 158 → **165**(헤더·세션 블록은 이미 165, 셀만 뒤처짐. `--collect-only` 165 실측).
+- 🔴 **이 PC 에 pre-commit 미등록 실측** — `.git/hooks/` 비어 있음 + `pre-commit` 모듈 미설치 = **이 세션 커밋이 로컬 가드를 전부 우회**했다(세션10 #1224 가 문서화한 "조용한 무보호" 의 실사례). 관련 가드 수동 실행으로 통과 확인(`check_docs_sync`·`check_architecture_tree_sync`·시크릿/공백/EOF/대용량).
+- 단위 **6022 불변** · 통합 **165 불변** · 전체 6187 (docs-only 세션). `pytest tests/unit` = 6015 passed / **2 failed(선재 — clean main 에서 동일 재현**, pylint·flake8·bandit 콘솔 스크립트가 PATH 부재 `[WinError 2]`, 모듈로는 설치됨) / 5 skipped.
+
+**직전 (2026-07-29~30 세션11 — GitHub Issue 2건 처리 + 정책 19 집행면 + Grok 전반 검토, 9 PR #1228~#1237)** — 그 이전은 [`cycle-history.md`](cycle-history.md).
 - 🔴 **런타임 eslint 분석기가 100% 무동작이었다**(#1226→#1228): JS/TS 이슈가 **항상 0** → 감점 0 → 점수 인플레가 auto-merge 까지 전파. 이슈는 결함 2건을 보고했으나 **실제 5건**이고 각각 단독으로 분석기를 죽인다 — 이슈 처방(경로+플래그)만 적용하면 **여전히 무동작**. 신규 3건 = `.json` 설정을 flat-config 로더가 import 불가 · `files` glob 부재로 .jsx/.ts/.tsx 미매칭 · **cwd 미지정으로 임시파일이 base path 밖**(9·10 공통).
 - 🔴 **결함 4·5 는 침묵보다 나쁘다** — 1~3 만 고치면 `[]` 가 아니라 가짜 "File ignored" 경고가 **없는 결함으로 점수를 깎는다**. mock 이 이 클래스를 원리적으로 못 잡아 단위 40건이 전건 통과하는 동안 운영만 죽어 있었다(2건은 결함을 **요구**: 무효 플래그 단언 · eslint 9 실제 출력에 `[]` 단언).
 - **lint-js 공허화 차단 배선**(#1227→#1229): `npx eslint … || true` 가 모든 실패를 삼키고 **어떤 workflow 에도 없었다**(전역 grep 0). settings.html 은 `<script>` 내 Jinja 보간 **17개(최다)**인데 무시 목록 밖 = 유일 누락. 위반은 advisory·**공허화만 fail-closed**(사용자 결정).
@@ -19,17 +29,7 @@
 - 단위 5968→**6022**(+54) · 통합 158→**165**(+7) · 전체 **6187** 수집. Code Scanning open **0**(정책 14). 이 PC 에 **Python 부재**라 3.12 설치 후 진행(툴체인 이식 실측).
 - 🔴 **미결(사용자 결정)**: `main` 브랜치 보호 = ruleset `PRIMARY` 는 active 지만 **required_status_checks 0건** → red CI 로도 머지 가능(#1196 실측). 지금 켜면 `BRANCH_PROTECTION_BLOCKED` 가 `_RETRIABLE_TAGS` 밖이라 auto-merge 가 깨지므로 **코드 선행 수정 필요** → **다음 세션 전용 진행**(backlog R2-b).
 
-**직전 (2026-07-27 세션10 — 다른 PC 이식 준비 + git 정리, 3 PR #1223~#1225)** — 직전 세션9 블록은 아래 유지(체인 1단계, 그 이전은 [`cycle-history.md`](cycle-history.md)).
-- **git 정리**: 로컬 브랜치 4 삭제(#1218~#1220 머지분 3 + 본 세션분) · main fast-forward · 원격 = `main` + dependabot 2. 판정 근거 = **PR `state=MERGED` + tip↔`headRefOid` + merge commit 조상성** 3종(삭제 전 복구 매니페스트 저장). `git cherry`/`--merged` 는 squash 오탐이라 재차 배제.
-- 🔴 **README 설치 절차가 새 PC 에서 첫 명령부터 실패**(#1224): clone URL 이 `xzawed31/SCAManager` = **404 실측**(실제 `xzawed/`)인데 같은 문서 배지는 `xzawed` 로 올바른 **문서 내부 자기모순**. `git grep` 전수 = 이 2줄뿐.
-- 🔴 **gitignore 산출물을 템플릿이 링크**(#1224): `src/static/css/dist/tailwind.css` 는 빌드 산출물인데 `base.html:31` 이 링크 → 설치 절차에 CSS 빌드가 없어 새 clone 은 **CSS 404 상태로 기동**. 본 PC 에도 파일이 없어 실증됨(`make css-build` 로 12KB 생성 확인).
-- 🔴 **pre-commit 미등록 = 조용한 무보호**(#1224 fix-up): 로컬 가드 전량이 pre-commit 경유인데 등록 단계가 설치 절차 밖(runbook 1곳)에 있었다 → 새 PC 는 **가드 없이 커밋이 계속 성공**. `stages: [commit-msg]` 훅 때문에 `--hook-type` 2종 필수.
-- **stale 커버리지 산출물 5건 untrack**(#1223): 2026-04-19 이후 미갱신 사본(coverage.json 162KB 등)이 추적돼 `parse_coverage.py` 가 **3개월 전 수치를 조용히 보고**할 수 있었다 → untrack + gitignore 봉인.
-- **새 런북** `docs/runbooks/new-machine-setup.md`(#1225): 리포가 실어 주지 않는 자산(`.env` 값·에이전트 메모리·MCP 설정·`gh` scope) + 기계 검증 체크리스트. 🔴 메모리는 **public 리포 등재 안 함**(보안 발견·내부 서사 · 공개는 비가역).
-- 단위 **5968 불변**(테스트 무변경 — docs/chore 세션) · 통합 158 · 전체 6126 수집. Code Scanning open **0**(정책 14).
-
-
-> (세션9 이하 전체 서사는 [`cycle-history.md`](cycle-history.md) 단일 출처 — 본 헤더의 세션10·11 도 같은 파일에 본문 등재됨[최신순].)
+> (세션10 이하 전체 서사는 [`cycle-history.md`](cycle-history.md) 단일 출처 — 본 헤더의 세션11·12 도 같은 파일에 본문 등재됨[최신순].)
 
 **종합 수치**: 전체 **6187** 수집 (단위 **6022** + 통합 165) / E2E 122 (110 표준 + 12 perf — 🔴 **CI 미배선: 로컬 `make test-e2e` 로만 실행**, backlog R7) / pylint **10.00/10** (src/ — 🔴 **CI `lint-src` job 이 `--fail-under=9.90` + bandit 로 게이트**, #1149. scripts/ 는 미게이트).
 
