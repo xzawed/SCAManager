@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 
 # tsc 출력 형식: /path/file.ts(LINE,COL): error|warning TSxxxx: message
 # tsc output format: /path/file.ts(LINE,COL): error|warning TSxxxx: message
+# 실패 사유 발췌 길이 — eslint.py 와 동일 값(로그·예외 메시지 폭주 방지).
+# Failure-reason excerpt length; mirrors eslint.py.
+_ERR_EXCERPT = 200
+
 _TSC_DIAG_RE = re.compile(
     r'^[^\n(]+\((\d+),\d+\):\s+(error|warning)\s+TS\d+:[ \t]+(\S[^\n]*)$',
     re.MULTILINE,
@@ -81,6 +85,22 @@ class _TscAnalyzer:
                     category=Category.CODE_QUALITY,
                     language=ctx.language,
                 ))
+            # 🔴 fail-closed (#1238, #1226 동일 클래스) — tsc 가 **비정상 종료했는데 진단을 하나도
+            # 파싱하지 못했으면** 무슨 일이 났는지 모르는 상태다. 이때 `[]` 를 반환하면 "분석했더니
+            # 깨끗함" 과 구별되지 않아 정적 만점 → 점수 인플레 → auto-merge 로 전파된다.
+            # 실측(2026-07-31): 정상=exit 0 · 타입오류=exit 2(+진단 매치) · **무효 플래그=exit 1 이고
+            # 출력이 `error TS5023: Unknown compiler option '--x'.` 라 `file(line,col):` 접두가 없어
+            # 정규식에 안 걸린다** → 조용히 `[]`. major 버전 drift 로 플래그가 바뀌면 그대로 재현된다
+            # (`railway.toml` 은 `npm install -g typescript` 를 **버전 핀 없이** 설치한다).
+            # exit 0 + 진단 0 = 진짜 깨끗함이므로 raise 하지 않는다(정상 경로 보존).
+            # 🔴 Fail-closed: a non-zero exit with ZERO parsed diagnostics means we do not know what
+            # happened; returning [] would be indistinguishable from "analyzed, clean" and inflate the
+            # score. exit 0 + no diagnostics is genuinely clean and is left alone.
+            if r.returncode != 0 and not issues:
+                raise RuntimeError(
+                    f"tsc produced no parsable diagnostics for {ctx.tmp_path} "
+                    f"(exit={r.returncode}): {output.strip()[:_ERR_EXCERPT]}"
+                )
             return issues
         except subprocess.TimeoutExpired:
             ctx.timed_out = True
