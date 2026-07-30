@@ -6,12 +6,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python scripts/check_retro_cadence.py",
+            "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY scripts/check_retro_cadence.py",
             "timeout": 20
           },
           {
             "type": "command",
-            "command": "python scripts/check_owed_verification.py",
+            "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY scripts/check_owed_verification.py",
             "timeout": 10
           }
         ]
@@ -23,7 +23,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python .claude/hooks/block_credential_dump.py",
+            "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY .claude/hooks/block_credential_dump.py",
             "timeout": 10
           }
         ]
@@ -33,12 +33,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python .claude/hooks/check_edit_allowed.py",
+            "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY .claude/hooks/check_edit_allowed.py",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "python .claude/hooks/doc_review_gate.py",
+            "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY .claude/hooks/doc_review_gate.py",
             "timeout": 60
           }
         ]
@@ -50,7 +50,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python .claude/hooks/posttool_pytest_smoke.py",
+            "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY .claude/hooks/posttool_pytest_smoke.py",
             "timeout": 90
           }
         ]

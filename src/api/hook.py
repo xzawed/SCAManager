@@ -270,6 +270,20 @@ def save_hook_result(  # pylint: disable=unused-argument,too-many-locals
         persisted_score = score_result.total if scores_ok else None
         persisted_grade = score_result.grade if scores_ok else None
 
+        # 🔴 CLI 훅은 정적분석을 **한 번도 돌리지 않는다** — code_quality 25 + security 20 = 45점이
+        # 무검증으로 부여된다(위 calculate_score([]) 참조). 이 분석이 동일 SHA PR 로
+        # `_regate_pr_if_needed` 될 때 gate 는 result dict 의 인플레 score 를 읽으므로,
+        # incomplete 마커가 없으면 **정적분석 0회 상태로 auto-merge/auto-approve 가 통과**한다.
+        # 이전엔 `ai_review_failed`(api_error/parse_error) 단일 가드에만 의존했고, AI 리뷰가
+        # 성공한 정상 경로(status="success")에는 차단이 전혀 없었다.
+        # timeout·crash 로 정적분석이 불완전한 경우와 **동일하게** 취급하는 것이 정확하다 —
+        # "돌렸는데 일부 실패" 보다 "아예 안 돌림" 이 덜 신뢰할 이유가 없다.
+        # 🔴 The CLI hook never runs static analysis, yet is credited the full 45 static points.
+        # Without this marker a re-gated PR could auto-merge with zero static analysis; the previous
+        # sole guard (ai_review_failed) does not fire on the normal success path.
+        result_dict = build_analysis_result_dict(ai_review, score_result, [], "cli")
+        result_dict["static_analysis_incomplete"] = True
+
         analysis = Analysis(
             repo_id=repo.id,
             commit_sha=body.commit_sha,
@@ -277,7 +291,7 @@ def save_hook_result(  # pylint: disable=unused-argument,too-many-locals
             pr_number=None,
             score=persisted_score,
             grade=persisted_grade,
-            result=build_analysis_result_dict(ai_review, score_result, [], "cli"),
+            result=result_dict,
         )
 
         # 동시 동일 SHA insert race 안전 저장 — 두 hook 이 위 existing 체크(멱등성)를 동시에

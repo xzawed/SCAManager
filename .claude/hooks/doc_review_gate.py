@@ -278,9 +278,27 @@ def _format_warn(file_path: str, results: list[dict], reasons: list[str]) -> str
 # ─── Hook 진입점 ─────────────────────────────────────────────────────────────
 # Hook entry point
 
+def _make_stdout_safe():
+    """Windows cp949 stdout 에서 이모지/한글 출력 크래시 방지 — UTF-8 재구성(errors=replace).
+    Guard against the cp949 emoji/Korean print crash on Windows (UTF-8, replace on miss).
+
+    🔴 `warn` 분기(`print(_format_warn(...))`)는 한글 원문을 그대로 출력하므로 ensure_ascii
+    만으로는 부족하다. 훅은 standalone 실행이라 공유 헬퍼를 import 할 수 없어 검증된 관용구를
+    복제한다(scripts/check_dual_import.py 정본). 누락 방지 = test_stdout_encoding_guard.py.
+    The warn branch prints raw Korean, so ensure_ascii alone is not enough; hooks run standalone
+    so the verified idiom is duplicated rather than imported.
+    """
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass  # 캡처된 stream 등 reconfigure 미지원 — 무시 / captured streams: ignore
+
+
 def main() -> None:
     """PreToolUse Hook 진입점 — stdin에서 payload 읽고 심의 결과 출력.
     PreToolUse hook entry point — reads payload from stdin and outputs review result."""
+    _make_stdout_safe()
     # 비용 제어 — kill-switch 시 리뷰 없이 즉시 허용(sys.exit(0)=편집 통과, API 호출 0).
     # Cost control — when the kill-switch is on, allow the edit immediately with no review (no API call).
     if gate_disabled():
@@ -329,7 +347,11 @@ def main() -> None:
                 "permissionDecisionReason": _format_block(file_path, results, reasons),
             }
         }
-        print(json.dumps(hook_output, ensure_ascii=False))
+        # 🔴 ensure_ascii=True 의무 — Windows cp949 stdout 에서 한글·em-dash 가 UnicodeEncodeError
+        # 로 훅을 죽인다(실측: '—' cp949 illegal multibyte). 형제 훅 check_edit_allowed.py:115
+        # 와 동일 관용구.
+        # 🔴 ensure_ascii=True is mandatory — non-ASCII crashes the hook on Windows cp949 stdout.
+        print(json.dumps(hook_output, ensure_ascii=True))
     elif decision == "warn":
         print(_format_warn(file_path, results, reasons))
 

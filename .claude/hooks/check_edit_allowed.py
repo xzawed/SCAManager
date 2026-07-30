@@ -28,6 +28,24 @@ import re
 import shutil
 import subprocess
 
+def _make_stdout_safe():
+    """Windows cp949 stdout 에서 이모지/한글 출력 크래시 방지 — UTF-8 재구성(errors=replace).
+    Guard against the cp949 emoji/Korean print crash on Windows (UTF-8, replace on miss).
+
+    현재 출력은 `ensure_ascii=True` JSON 뿐이라 크래시 경로가 없지만, 차단 사유 문구를
+    한 줄 추가하는 순간 훅이 죽는다 — 그 형태가 실제로 doc_review_gate.py 를 죽였다.
+    No crash path today (ASCII-only JSON), but one Korean reason string would introduce one —
+    which is exactly what killed doc_review_gate.py.
+    """
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass  # 캡처된 stream 등 reconfigure 미지원 — 무시 / captured streams: ignore
+
+
+_make_stdout_safe()
+
 # stdin에서 hook payload 읽기
 try:
     data = json.load(sys.stdin)
