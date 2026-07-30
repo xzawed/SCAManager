@@ -38,7 +38,7 @@
 - **가드 2종이 실전에서 즉시 작동**: 공허화 차단이 dependabot #1232(typescript 7 → `npm ci` ERESOLVE)를 red 로 적발 → #1235 로 `>=6.1.0` ignore + backlog H4. 정책 19 게이트는 #1234 에서 CI 실행 성공(면제 마커 인식·오탐 0).
 - **Grok 전반 검토**(서비스 품질 관점) 3건 반영(#1237): 🔴 `doc_review_gate` 가 **AGENTS.md·rules/**·policies/** 를 전부 `skip`** 하고 있었다(false coverage — 이번 세션이 `pipeline.md` 를 고쳤는데 미발화) → critical/important 복구 + 디스크 스캔 회귀 가드(뮤테이션 4/4) · E2E 배지 `122 passing`(초록)이 **CI 미배선인데 초록**이라 정직화 · bilingual 훅 해제(사용자 결정, 원칙은 유지). Grok 진단 = *"이 시스템은 Claude 가 봉인에 대해 거짓말하는 것을 막는 데 최적화됐고, 사용자가 인플레된 점수와 죽은 도구를 받는 것을 막는 데는 덜 최적화됐다."*
 - **dependabot 3건 검증 워크플로**(12 에이전트·적대 반증 9회 전부 실패 → 3건 SAFE, 머지). 부수 발견 2건을 이슈 승격: **#1238** `tsc` 분석기가 typescript 핀 밖(railway 무핀 전역설치 + `shutil.which` — #1226 동일 클래스) · **#1239** trufflehog SHA 핀이 **스캐너를 핀하지 않음**(action `version` 기본값 `latest`) + 버전 주석 3버전 drift. backlog R13~R15 추가.
-- 단위 5968→**6022**(+54) · 통합 158→**165**(+7) · 전체 **6187** 수집. Code Scanning open **0**(정책 14). 이 PC 에 **Python 부재**라 3.12 설치 후 진행(툴체인 이식 실측).
+- 단위 5968→**6022**(+54) · 통합 158→**165**(+7) · 세션11 종료 시점 전체 6187(현재값은 위 §종합 수치 — 볼드 미표기는 의도: 헤더에 "현재 전체" 주장이 둘이면 어느 쪽을 믿을지 알 수 없다, `test_docs_ledger_shape` 가 강제). Code Scanning open **0**(정책 14). 이 PC 에 **Python 부재**라 3.12 설치 후 진행(툴체인 이식 실측).
 - 🔴 **미결(사용자 결정)**: `main` 브랜치 보호 = ruleset `PRIMARY` 는 active 지만 **required_status_checks 0건** → red CI 로도 머지 가능(#1196 실측). 지금 켜면 `BRANCH_PROTECTION_BLOCKED` 가 `_RETRIABLE_TAGS` 밖이라 auto-merge 가 깨지므로 **코드 선행 수정 필요** → **다음 세션 전용 진행**(backlog R2-b).
 
 > (세션10 이하 전체 서사는 [`cycle-history.md`](cycle-history.md) 단일 출처 — 본 헤더의 세션11·12 도 같은 파일에 본문 등재됨[최신순].)
