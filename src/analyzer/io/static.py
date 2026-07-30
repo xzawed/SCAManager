@@ -46,6 +46,11 @@ class StaticAnalysisResult:
     # Whether a tool subprocess timed out (analysis partially missing) — the pipeline aggregates
     # this into the static_analysis_incomplete marker to block auto-merge/approve (#7 fail-closed).
     incomplete: bool = False
+    # 이 파일 언어를 지원하지만 바이너리가 없어 실행되지 못한 도구 이름 — 커버리지 관측.
+    # 이전엔 이 사실이 어디에도 기록되지 않아 "분석했는데 깨끗함" 과 구별 불가였다(감사 P0).
+    # Analyzer names that support this file's language but could not run (binary absent).
+    # Previously unrecorded, making "no analyzer ran" indistinguishable from "analyzed, clean".
+    unavailable_tools: list[str] = field(default_factory=list)
 
 
 def analyze_file(  # pylint: disable=too-many-locals
@@ -93,15 +98,28 @@ def analyze_file(  # pylint: disable=too-many-locals
         # per-repo 비활성화 도구 목록 — 루프 외부에서 한 번만 조회
         # Fetch disabled tools list once before the loop
         _disabled = getattr(ctx.repo_config, 'disabled_tools', None) or []
+        # 커버리지 관측 — 이 언어를 지원하는 도구 중 실제로 **실행된** 개수를 센다.
+        # Coverage observation — count analyzers that actually RAN for this file's language.
+        ran = 0
+        opted_out = 0  # 운영자가 명시적으로 끈 도구 수 — 승격 판정에서 제외(의도된 미분석)
         for analyzer in REGISTRY:
             if not analyzer.supports(ctx):
                 continue
             if not analyzer.is_enabled(ctx):
+                # 바이너리 부재 = 배포 이미지에 조달되지 않음. 기록만 하고 계속 — 승격 판정은
+                # 루프 종료 후 "실행 0개" 일 때만(semgrep 등이 커버하는 언어의 과차단 방지).
+                # Binary absent. Record only; promotion is decided after the loop, and only when
+                # ZERO analyzers ran — otherwise languages covered by semgrep would be over-blocked.
+                result.unavailable_tools.append(analyzer.name)
                 continue
             if analyzer.name in _disabled:
+                # 운영자가 명시적으로 끈 것 — 의도된 opt-out. 미커버로 세지 않고, 이 파일에서
+                # 승격 자체를 억제한다(아래 조건). "내가 껐다" 를 결함으로 되돌려주면 안 된다.
+                opted_out += 1
                 continue
             try:
                 result.issues.extend(analyzer.run(ctx))
+                ran += 1
             except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
                 # 🔴 감사 ④ (옵션 B): 도구가 내부에서 못 잡은 예상외 crash 는 이슈를 무음 폐기하므로
                 # incomplete 로 승격 — 타임아웃(ctx.timed_out)과 동일하게 fail-closed 처리해 미분석
@@ -124,6 +142,27 @@ def analyze_file(  # pylint: disable=too-many-locals
     # incomplete to let the pipeline block auto-merge of unanalyzed code (#7 fail-closed).
     if ctx.timed_out:
         result.incomplete = True
+
+    # 🔴 커버리지 승격 (2026-07-30 감사 P0) — 이 파일 언어를 지원하는 도구가 **하나도 실행되지
+    # 않았고** 그 사유가 바이너리 부재면 incomplete. 실행 0개는 "이슈 0건"(=정적 만점 45/45)과
+    # 구별 불가라, 배포 이미지에 없는 분석기 언어(Dart·PowerShell·Protobuf·CSS 등)가 결함 유무와
+    # 무관하게 만점을 받고 auto-merge 까지 도달했다(실측 재현: 총점 89/B).
+    # 🔴 `ran > 0` 이면 승격하지 않는다 — semgrep 이 커버하는 Rust·PHP·Swift 등에서 optional 도구
+    # 하나가 없다고 영구 차단하면 과차단이다(경계는 "부분 미실행" 이 아니라 "전무").
+    # 🔴 Promote only when ZERO analyzers ran AND the reason was an absent binary. Zero executions is
+    # indistinguishable from "no issues" (= full 45/45 static marks) and reached auto-merge.
+    # 🔴 `opted_out == 0` 조건 (Grok claim-review P1) — `is_enabled()` 는 "바이너리 부재" 와
+    # "이 파일엔 해당 없음"(예: bandit 은 테스트 파일에서 False)을 **구별하지 않는다**. 운영자가
+    # 나머지 도구를 disabled_tools 로 끈 상태면 `ran==0` 이 의도된 결과인데 이를 결함으로
+    # 되돌려주게 된다(Grok 재현). 명시적 opt-out 이 하나라도 있으면 승격하지 않는다.
+    # 🔴 is_enabled() conflates "binary absent" with "not applicable here"; skip promotion when the
+    # operator explicitly disabled tools, otherwise their own opt-out is reported back as a defect.
+    if ran == 0 and result.unavailable_tools and opted_out == 0:
+        result.incomplete = True
+        logger.warning(
+            "no analyzer ran for %s (language=%s) — unavailable: %s",
+            filename, language, ", ".join(sorted(result.unavailable_tools)),
+        )
 
     return result
 

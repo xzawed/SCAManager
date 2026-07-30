@@ -153,13 +153,18 @@ def db_session():
         session.close()
 
 
-async def test_regate_passes_cli_hook_parse_error_result_to_gate(db_session):
-    """_regate→gate 배선 봉인: CLI-hook parse_error Analysis(컬럼 NULL)가 동일 SHA PR 로 _regate 될 때
-    run_gate_check 에 인플레 result(ai_review_status='parse_error', dict score 89)가 변형 없이 전달됨.
+async def test_regate_does_not_gate_on_cli_hook_result(db_session):
+    """🔴 2026-07-30 감사 결정 ① — 반전된 테스트.
 
-    gate 측 차단은 위 orchestrator 테스트가 봉인 — 본 테스트는 _regate 가 컬럼 NULL 과 무관하게
-    인플레 result dict 를 gate 로 흘려보냄을 확인해 #8 ↔ _regate 결합을 봉인(기존 _regate 통합
-    테스트는 run_gate_check 를 mock 한 채 source=push/pr 만 다뤄 본 경로 미보호).
+    이전 이름은 `..._passes_cli_hook_parse_error_result_to_gate` 였고 `assert_awaited_once()` +
+    `analysis.pr_number == 7` 로 **CLI 결과가 gate 로 흘러가는 것을 정상 동작으로 봉인**했다.
+    그 결합이 곧 결함이었다 — CLI 훅은 정적분석을 한 번도 돌리지 않으므로(45/45 무검증),
+    그 result 에 pr_number 를 붙여 gate 를 돌리면 **그 SHA 는 영영 full 분석 없이 확정**된다.
+
+    이제 `_regate_pr_if_needed` 는 CLI 결과를 만나면 gate 를 돌리지 않고 물러난다. 같은 이벤트의
+    full 분석 경로(`_ensure_repo` 가 CLI 행을 중복으로 보지 않음)가 이어서 실행되어 행을 교체한다.
+    상세 봉인: `tests/unit/worker/test_cli_analysis_supersede.py`.
+    🔴 Inverted: the old test pinned the CLI→gate coupling that was itself the defect.
     """
     from src.worker.pipeline import _regate_pr_if_needed  # pylint: disable=import-outside-toplevel
 
@@ -177,8 +182,8 @@ async def test_regate_passes_cli_hook_parse_error_result_to_gate(db_session):
     with patch("src.worker.pipeline.run_gate_check", new_callable=AsyncMock) as mock_gate:
         await _regate_pr_if_needed(db_session, "owner/repo", "cli_sha", pr_number=7)
 
-    mock_gate.assert_awaited_once()
-    passed = mock_gate.await_args.kwargs["result"]
-    assert passed["ai_review_status"] == "parse_error"  # 변형 없이 전달
-    assert passed["score"] == 89                         # 컬럼 NULL 과 무관하게 dict 인플레 점수
-    assert analysis.pr_number == 7                        # pr_number 부여(first-writer) 확인
+    mock_gate.assert_not_awaited()  # CLI 결과로는 게이트하지 않는다
+    db_session.refresh(analysis)
+    assert analysis.pr_number is None, (
+        "CLI 행에 pr_number 가 붙으면 그 SHA 가 무검증 결과로 확정된다"
+    )
