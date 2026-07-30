@@ -438,8 +438,27 @@ def _begin_attempt(repo_id: int, commit_sha: str, pr_number: int | None, event: 
         logger.warning("analysis_attempt 시작 흔적 기록 실패 (sha=%s): %s", commit_sha[:8], exc)
 
 
+def _is_cli_only(analysis: Analysis) -> bool:
+    """이 Analysis 가 CLI 훅 산출물인가 — 즉 정적분석이 한 번도 실행되지 않았는가.
+
+    Whether this Analysis came from the CLI hook, i.e. no analyzer ever ran for it.
+
+    🔴 CLI 훅(`src/api/hook.py`)은 `calculate_score([], ...)` 로 정적 45/45 를 무검증 부여한다.
+    이 판정은 dedup 예외 + supersede 판정의 단일 출처다 — 두 곳이 갈라지면 CLI 행이 dedup 은
+    통과하는데 교체는 안 되는 상태(= full 분석이 매번 버려짐)가 된다.
+    🔴 Single source for both the dedup exception and the supersede decision; if the two diverge,
+    the full analysis would be recomputed and discarded on every event.
+    """
+    result = analysis.result or {}
+    return result.get("source") == "cli"
+
+
 def _ensure_repo(db: Session, repo_name: str, commit_sha: str) -> tuple[Repository, str] | None:
-    """리포를 조회·등록하고 owner token을 결정한다. SHA 중복이면 None을 반환한다."""
+    """리포를 조회·등록하고 owner token을 결정한다. SHA 중복이면 None을 반환한다.
+
+    🔴 예외: 기존 Analysis 가 CLI 훅 산출물이면 중복으로 보지 않고 full 분석을 진행시킨다
+    (`_is_cli_only` 단일 출처 — 감사 결정 ①).
+    """
     owner_token: str = settings.github_token
     repo = repository_repo.find_by_full_name(db, repo_name)
     if not repo:
@@ -475,9 +494,22 @@ def _ensure_repo(db: Session, repo_name: str, commit_sha: str) -> tuple[Reposito
                 raise
     if repo.owner and repo.owner.plaintext_token:
         owner_token = repo.owner.plaintext_token
-    if analysis_repo.find_by_sha(db, commit_sha, repo.id):
+    existing = analysis_repo.find_by_sha(db, commit_sha, repo.id)
+    if existing is not None and not _is_cli_only(existing):
         logger.info("Commit %s already analyzed, skipping", commit_sha)
         return None
+    if existing is not None:
+        # 🔴 CLI 훅 분석은 dedup 을 만족시키지 않는다 (2026-07-30 감사 결정 ①).
+        # CLI 훅은 정적분석을 한 번도 돌리지 않으므로(hook.py `calculate_score([])`), 이 행이
+        # dedup 을 만족시키면 webhook 의 full 정적분석이 **영영 실행되지 않고** PR 이 무검증
+        # 결과로 게이트된다. 즉 CLI 훅이 실제 분석을 **가린다**. full 분석을 진행시키고
+        # `_save_and_gate` 가 이 행을 교체(supersede)한다.
+        # 🔴 A CLI-hook analysis does not satisfy dedup: it ran zero analyzers, so letting it stand
+        # would permanently shadow the webhook's full static analysis for that SHA.
+        logger.info(
+            "Commit %s has a CLI-hook-only analysis — running full analysis to supersede it",
+            commit_sha,
+        )
     return repo, owner_token
 
 
@@ -495,6 +527,16 @@ async def _regate_pr_if_needed(
         return
     existing = analysis_repo.find_by_sha(db, commit_sha, repo.id)
     if existing is None or existing.pr_number == pr_number:
+        return
+    if _is_cli_only(existing):
+        # 🔴 CLI 훅 결과로는 게이트하지 않는다 (감사 결정 ①) — 정적분석 0회 결과에 pr_number 를
+        # 붙여 게이트하면 그 SHA 는 영영 full 분석 없이 확정된다. `_ensure_repo` 가 이 행을
+        # 중복으로 보지 않으므로 같은 이벤트의 full 분석 경로가 이어서 실행·교체한다.
+        # 🔴 Never gate on a CLI-hook result; the full-analysis path supersedes it in the same event.
+        logger.info(
+            "_regate_pr_if_needed: sha=%s is CLI-hook-only — deferring to full analysis",
+            commit_sha[:8],
+        )
         return
     if existing.pr_number is not None:
         # 동일 SHA가 이미 다른 PR#로 gate된 경우 덮어쓰지 않는다 (first-writer-wins) —
@@ -605,6 +647,51 @@ async def _race_recover_existing(
     return repo_config
 
 
+def _claim_and_supersede_cli(
+    db: Session, analysis: Analysis, params: "_AnalysisSaveParams",
+    result_dict: dict, score_unreliable: bool,
+) -> Analysis | None:
+    """CLI 훅 행을 원자적으로 claim 해 full 분석 결과로 **제자리 교체**한다. 패배 시 None.
+
+    Atomically claim the CLI-hook row and supersede it in place; None when the race is lost.
+
+    🔴 제자리 교체인 이유 — row id 를 유지해야 `analysis_feedback`·`gate_decisions` 등 FK 가
+    살아남는다. 교체 후 `source` 가 pr/push 가 되므로 다음 이벤트부터 통상 dedup 이 재개된다
+    (무한 재분석 없음).
+
+    🔴 원자적 claim 인 이유 (Grok claim-review P0) — 동시 webhook 2건이 **둘 다** CLI 행을 보면
+    둘 다 dedup 을 통과해 둘 다 여기 도달한다. 잠금 없이 두면 둘 다 gate+notify 를 실행해
+    **이중 머지 시도·이중 알림**이 난다(기존 코드는 `result_dict=None` race 신호로 이를 억제하는데
+    교체 분기가 그 신호를 우회한다). 행을 잠그고 **여전히 CLI 인 경우에만** 승자가 교체한다.
+    🔴 Two concurrent webhooks can both reach here; only the lock winner supersedes, so the loser
+    falls back to race-recovery and no duplicate gate/notify occurs.
+    """
+    locked = db.query(Analysis).filter(Analysis.id == analysis.id).with_for_update().one_or_none()
+    if locked is None or not _is_cli_only(locked):
+        logger.info(
+            "CLI supersede lost the race (sha=%s) — race-recovery, skipping duplicate gate/notify",
+            params.commit_sha,
+        )
+        return None
+    ai = params.ai_review
+    locked.commit_message = params.commit_message
+    if params.pr_number is not None:
+        locked.pr_number = params.pr_number
+    locked.score = None if score_unreliable else params.score_result.total
+    locked.grade = None if score_unreliable else params.score_result.grade
+    locked.result = result_dict
+    locked.author_login = params.author_login
+    locked.review_model = getattr(ai, "used_model", None)
+    locked.input_tokens = getattr(ai, "input_tokens", None) or None
+    locked.output_tokens = getattr(ai, "output_tokens", None) or None
+    db.commit()
+    logger.info(
+        "Superseded CLI-hook-only analysis with full analysis (sha=%s, id=%d)",
+        params.commit_sha, locked.id,
+    )
+    return locked
+
+
 async def _save_and_gate(db: Session, params: _AnalysisSaveParams):
     """Analysis를 DB에 저장하고 Gate Engine을 실행한다.
 
@@ -623,7 +710,7 @@ async def _save_and_gate(db: Session, params: _AnalysisSaveParams):
     # 멱등성 재확인 — 동시 Webhook 전달로 인한 중복 Analysis 삽입 방지 (TOCTOU 완화)
     # Idempotency re-check — defends against concurrent webhooks racing past the first dedup.
     existing = analysis_repo.find_by_sha(db, params.commit_sha, repo.id)
-    if existing is not None:
+    if existing is not None and not _is_cli_only(existing):
         logger.info("Commit %s already saved (concurrent insert detected), skipping", params.commit_sha)
         repo_config = await _race_recover_existing(db, params, existing)
         return repo_config, None, None
@@ -654,6 +741,13 @@ async def _save_and_gate(db: Session, params: _AnalysisSaveParams):
         input_tokens=getattr(ai, "input_tokens", None) or None,
         output_tokens=getattr(ai, "output_tokens", None) or None,
     ))
+    if not created and _is_cli_only(analysis):
+        analysis = _claim_and_supersede_cli(db, analysis, params, result_dict, _score_unreliable)
+        created = analysis is not None  # None = claim 패배 → 아래 race-recovery 로 강등
+        if analysis is None:
+            existing_row = analysis_repo.find_by_sha(db, params.commit_sha, repo.id)
+            repo_config = await _race_recover_existing(db, params, existing_row)
+            return repo_config, None, None
     if not created:
         # 동시 insert 가 find_by_sha 재확인(410)을 통과했으나 DB unique 제약이 차단 →
         # 기존 레코드 반환. find_by_sha race 경로와 동일 처리: 중복 알림/PR 코멘트 방지
