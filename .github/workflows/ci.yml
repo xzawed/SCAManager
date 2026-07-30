@@ -31,7 +31,18 @@ jobs:
         # PR diff 범위만 스캔 — 2026-05-03 사고 유형 방어
         # Scans PR diff range only — guards against 2026-05-03 incident type
         if: github.event_name == 'pull_request'
-        uses: trufflesecurity/trufflehog@6f3c981e7b77f235fd2702dd74af25fc4b72bf11  # v3.95.7 (SHA 핀 — 공급망 무결성, @main 가변 태그 위험 차단)
+        # 🔴 핀 범위 정직화 (#1239) — 아래 SHA 는 **action 저장소 커밋**만 고정한다. 실제 스캐너는
+        # action 의 `version` 입력 기본값이 `latest` 라 `ghcr.io/trufflesecurity/trufflehog:latest`
+        # **가변 태그**에서 온다. 즉 "가변 태그 위험 차단" 은 절반만 참이었다(구 주석 = observer-lie).
+        # 스캐너까지 핀하려면 `with: version:` 을 추가해야 하는데, dependabot 은 `uses:` ref 만 올리고
+        # `with.version` 은 갱신하지 않아 **새 stale 을 만든다** → 동시성 가드 없이는 도입 금지.
+        # 완화책: `permissions: contents: read`(위 15-16줄)로 피해 범위 제한.
+        # 🔴 The SHA pins the ACTION repo only; the scanner image comes from the mutable `:latest` tag.
+        # 🔴 아래 주석은 **버전 문자열로 끝나야** dependabot 이 SHA 범프 시 함께 재작성한다
+        # (`FileUpdater#updated_version_comment` 가 `comment.end_with?(previous_version)` 로 판정).
+        # 설명을 뒤에 붙이면 재작성이 skip 돼 주석만 stale 로 남는다 — 그게 이 이슈의 원인이었다.
+        # 🔴 Keep the comment ENDING with the version; dependabot only rewrites it in that shape.
+        uses: trufflesecurity/trufflehog@6f3c981e7b77f235fd2702dd74af25fc4b72bf11  # v3.96.0
         with:
           path: ./
           base: ${{ github.event.pull_request.base.sha }}
@@ -42,7 +53,9 @@ jobs:
         # before == zeros(첫 push / force-push) 시 invalid SHA 오류 방지를 위해 건너뜀
         # Skip when before is zeros (first push / force-push) to avoid invalid SHA error
         if: github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000'
-        uses: trufflesecurity/trufflehog@6f3c981e7b77f235fd2702dd74af25fc4b72bf11  # v3.95.7 (SHA 핀 — 공급망 무결성, @main 가변 태그 위험 차단)
+        # 핀 범위·주석 형식 규약은 위 PR 스텝 주석 참조 (#1239). 두 스텝은 항상 동일 SHA·동일 형식.
+        # Pin scope and comment-shape rules: see the PR step above (#1239). Both steps stay in lockstep.
+        uses: trufflesecurity/trufflehog@6f3c981e7b77f235fd2702dd74af25fc4b72bf11  # v3.96.0
         with:
           path: ./
           base: ${{ github.event.before }}
