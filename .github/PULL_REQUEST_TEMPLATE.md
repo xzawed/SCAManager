@@ -13,27 +13,30 @@
 ## 체크리스트
 
 ### 기본
-- [ ] `make test` 통과 (0 failed)
-- [ ] `make lint` 통과 (pylint 10.00 · bandit HIGH 0)
+<!-- 🔴 `make lint` 는 게이트가 아닙니다 — 세 린터를 `|| true` 로 삼켜 항상 exit 0 이라 근거가 될 수
+     없습니다(위반 열람 전용). 검증 가능한 기준은 `make gate` 와 CI `lint-src` job 뿐입니다. -->
+- [ ] `make gate` 통과 (테스트 + pylint ≥ 9.90 + bandit — 린터 기준은 CI `lint-src` 와 동일)
 
 ### 신규 파일 추가 시 (없으면 이 섹션 전체 삭제)
-- [ ] `docs/architecture.md` `src/` 트리 블록에 신규 파일 항목 추가
-- [ ] `docs/architecture.md` `templates/` · `repositories/` · `services/` 카운트·목록 갱신 (해당 시)
-- [ ] `docs/STATE.md` 그룹 이력에 신규 파일 표 추가
+- [ ] `docs/architecture.md` `src/` 트리 + `핵심 데이터 흐름`에 신규 파일·경로 반영
+- [ ] `docs/architecture.md` `templates/` · `repositories/` · `services/` · `models/` · `analyzer/io/tools/` 카운트·목록 갱신 (해당 시)
+- [ ] 해당 영역 `.claude/rules/<area>.md` 본문 갱신 (CLAUDE.md 영역 매트릭스 참조)
 
 ### ORM 컬럼 추가 시 (없으면 이 섹션 전체 삭제)
 - [ ] `alembic/versions/` 마이그레이션 파일 생성 (`make revision m="설명"`)
 - [ ] `server_default` 포함 여부 확인 (`nullable=False` 컬럼은 필수)
-- [ ] `make migrate` 왕복 검증 (`downgrade -1` → `upgrade head`)
+- [ ] 왕복 검증 (`alembic downgrade -1` → `alembic upgrade head` — `make migrate` 는 upgrade 만 한다)
 - [ ] `test_migration_completeness` CI 통과 확인
 
 ### 수치 변경 시 (없으면 이 섹션 전체 삭제)
-- [ ] `docs/STATE.md` 헤더 수치 갱신
+- [ ] `docs/STATE.md` 종합 수치 + 추적셀 시작 헤더 (훅이 대조하는 지점 2곳)
 - [ ] `README.md` + `README.ko.md` 배지 갱신
 
 ## 🔍 사용자 검증 필요
 
-- [ ] CI 통과 확인
+<!-- 🔴 "CI/테스트 통과" 금지 (정책 2) — 위 §기본이 이미 담당합니다. 테스트가 증명할 수 없는 것만
+     1~3개 (예: Railway 배포 후 /health · Telegram 실제 발송 도달 · OAuth 로그인 왕복) -->
+- [ ] {수기 확인 항목}
 - [ ] (UI 변경 시) 4테마(dark/light/pastel/catppuccin) × 2뷰포트(데스크탑/모바일) 8조합 시각 확인
 
 <!-- MCP 자율 실행이 있었으면 아래 섹션을 작성하세요 (정책 12/3). 없으면 삭제. -->
@@ -44,6 +47,15 @@
 - SELECT-only 자율 / 변경·PII SELECT = 사용자 사전 승인 여부: {}
 -->
 
+<!-- "무엇을 닫았다"는 단언이 제목·본문·PR 범위 커밋에 있으면 CI `repo-integrity` 가 아래 3줄의
+     **값**을 요구하고, 없으면 PR 을 실패시킵니다 (정책 19). 해당 없으면 삭제. -->
+<!--
+## Grok claim-review
+
+- session: <Grok sessionId>
+- claim: <한 줄 요약>
+- verdict: <SURVIVES 또는 BROKEN + 근거>
+-->
 
 <!-- UI/CSS/HTML 변경 PR은 아래 8조합 체크리스트를 작성해 주세요 (정책 11) -->
 <!--

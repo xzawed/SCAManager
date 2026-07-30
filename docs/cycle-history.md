@@ -6,7 +6,7 @@
 
 ## 목차
 
-- [README claim-review 정정 + CONTRIBUTING/SECURITY 신설 + 저장소 메타 (2026-07-30 세션12, 1 PR #1241)](#readme-claim-review-정정--contributingsecurity-신설--저장소-메타-2026-07-30-세션12-1-pr-1241)
+- [README claim-review 정정 + CONTRIBUTING/SECURITY 신설 + PR 템플릿 실측 정정 + 저장소 메타 (2026-07-30 세션12, 2 PR #1241·#1242)](#readme-claim-review-정정--contributingsecurity-신설--pr-템플릿-실측-정정--저장소-메타-2026-07-30-세션12-2-pr-12411242)
 - [GitHub Issue 2건 처리 + 정책 19 집행면 + Grok 전반 검토 (2026-07-29~30 세션11, 9 PR #1228~#1237)](#github-issue-2건-처리--정책-19-집행면--grok-전반-검토-2026-07-2930-세션11-9-pr-12281237)
 - [다른 PC 이식 준비 + 새 clone 경로 복구 + git 정리 (2026-07-27 세션10, 3 PR #1223~#1225)](#다른-pc-이식-준비--새-clone-경로-복구--git-정리-2026-07-27-세션10-3-pr-12231225)
 - [GitHub 정리 + owed #1072 외부계약 반증 + 5+1 회고 (2026-07-26 세션9, 3 PR #1217~#1219)](#github-정리--owed-1072-외부계약-반증--51-회고-2026-07-26-세션9-3-pr-12171219)
@@ -149,7 +149,7 @@
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
 
-## README claim-review 정정 + CONTRIBUTING/SECURITY 신설 + 저장소 메타 (2026-07-30 세션12, 1 PR #1241)
+## README claim-review 정정 + CONTRIBUTING/SECURITY 신설 + PR 템플릿 실측 정정 + 저장소 메타 (2026-07-30 세션12, 2 PR #1241·#1242)
 
 사용자 요청 = *"Grok과 함께 Readme내용 검토 및 Topic을 등록해주시고, Contributing, Security 내용도 등록"*. Grok claim-review **2회**(README 1차 → 신규 문서 2차) + 전건 `grep` 실측.
 
@@ -198,6 +198,31 @@
 - verdict: BROKEN — 자기 산출물에서 P0 4건 적발, 머지 전 전건 수정.
 
 🔴 **집행면이 본 PR 을 실제로 잡았다** — 1차 push 에서 `Repo integrity guards` job 이 **fail**. 사유 = 본문의 `fail-closed`·`봉인` 어휘(기존 동작 서술/인용)에 대해 구조화된 흔적이 없었음. **면제 마커로 빠져나가지 않고** 실제 흔적을 기재해 통과시켰다. 세션11 이 만든 가드가 세션12 를 잡은 것 = 집행면이 저자와 무관하게 작동한다는 첫 실증.
+
+---
+
+### PR #1242 — PR 템플릿 실측 정정 + 정책 19 슬롯 + pylint 10.00 복원 + description 영문화
+
+사용자 위임 2건("네 처리 부탁드립니다") = description 갱신 + PR 템플릿 `make lint` 오기재 수정. 템플릿은 **한 줄 문제가 아니었다** — 36 에이전트 워크플로(5 관점 finder → 적대 verify → completeness critic, 21 confirmed / 9 refuted)로 전 항목을 Makefile·CI·소스와 대조.
+
+**실행 불가하거나 죽은 지시 4건**
+
+1. 🔴 `make lint` 통과 (pylint 10.00 · bandit HIGH 0) — [Makefile:78-81](../Makefile)이 세 린터를 `|| true` 로 삼켜 **구조적으로 exit 0**. 체크박스가 반증 불가라 아무것도 증명하지 못한다. 단순 부정확이 아니라 **[CLAUDE.md:342](../CLAUDE.md)와 CONTRIBUTING 양 언어가 "근거로 쓰지 말라"고 명시한 것을 템플릿만 정면 요구**하고 있었다(회고 D13 이 템플릿 면에서 생존).
+2. `pylint 10.00` — CI 강제 수치는 [ci.yml:203](../.github/workflows/ci.yml) `--fail-under=9.90`. 10.00 은 관측값이지 게이트가 아니라, 관측값이 흔들릴 때마다 템플릿이 **가짜 차단**을 만든다.
+3. `make migrate` 왕복 검증 (`downgrade -1` → `upgrade head`) — [Makefile:126-127](../Makefile) `migrate:` 는 `alembic upgrade head` 2줄뿐이고 Makefile 전체에 `downgrade` **0건**. 명령을 실행해도 왕복이 안 되는 **실행 불가 지시**.
+4. `docs/STATE.md 그룹 이력에 신규 파일 표 추가` — STATE.md 헤딩은 3개(현재 수치/주요 파일 역할/작업 이력)뿐. **그런 섹션이 없다.**
+
+**정책 19 슬롯 신설 (유일한 순증)** — [ci.yml:161-168](../.github/workflows/ci.yml)이 매 PR 에 claim-review 흔적을 요구하는데 템플릿에 자리가 없어 **직전 #1241 이 실제 red**(자초). 🔴 **공허 통과 방지 실증**: 예시값이 가드 정규식을 만족하면 *모든* PR 이 가드를 무력화하므로 3 시나리오 실행 검증 — (a) 일반+미기입 exit 0 · (b) **seal+미기입 exit 1** · (c) seal+기입 exit 0. placeholder 를 `<...>` 로 감싸 hex 형식·닫힌 열거형·16자 하한을 전부 빗나가게 했다. Grok(019fb01f) 독립 재현 = **SURVIVES**, 추가로 `find_seal_claims(template)==[]`(템플릿 자체에 seal 어휘 0 = repo 전체 오발화 없음) 확인. 순 결과 62 → 74줄이나 **렌더 본문은 축소**(체크박스 13 → 12, 증가분 전부 주석).
+
+**pylint 10.00 재drift → 복원 (사용자 결정)** — 실측 **9.99**. [STATE.md:46](STATE.md) 기록상 2026-07-19 D3 로 복원한 뒤 **두 번째** 재발이고, **CI 게이트가 9.90 이라 CI 는 이 drift 를 영영 못 잡는다**(관측값을 아무도 단언하지 않는 구조). 감점 6건 전부 C0103 invalid-name, 대상은 모듈 레벨 **가변** 상태 — `SessionLocal`/`WorkerSessionLocal`(세션 팩토리 인스턴스)·`_fernet`(지연 인스턴스)·streak 2종(가변 카운터)·`_client`(지연 싱글톤 슬롯). pylint 가 상수로 오분류한 것이라 UPPER_CASE 개명은 **의미상 틀리고** `SessionLocal` 은 16개 모듈이 쓴다 → inline `# pylint: disable=invalid-name` 6줄 + 사유 이중언어 주석(맥락 없던 2곳). 동작 변경 0. Grok 이 6건 각각 "naming bug 를 덮은 것이 아님" 확인.
+
+**Grok P2 2건 반영** — (1) 템플릿 `CI lint-src 와 동일 기준` → `린터 기준은 CI lint-src 와 동일`(`lint-src` 는 pylint+bandit 만, 테스트는 별도 job) (2) [ci.yml:171](../.github/workflows/ci.yml) stale 주석이 "`make lint`/`make gate` 는 전부 `|| true` 로 삼켜 실패할 수 없고"를 **현재형**으로 서술 — `make gate`([Makefile:115-118](../Makefile))에는 `|| true` 가 없다. 이 주석을 읽으면 방금 템플릿·CONTRIBUTING 에 넣은 `make gate` 권고가 무의미하다고 결론내게 된다. 당시 문제 서술은 history 보존하고 도입 사실만 덧붙임.
+
+🔴 **자기 정정 (본 세션 2번째)** — "`test_migration_completeness` 가 존재하지 않는다"고 판단해 해당 줄을 **삭제하려 했으나 틀렸다**. 내 grep 이 파일 *내용*만 재귀 검색해 파일명을 놓쳤고, 실제로는 `tests/unit/test_migration_completeness.py` 가 git 추적 + 테스트 2건(`:104`, `:141`)을 가진다. 워크플로 검증자가 잡아냈고 원문 보존. **교훈: 부재 증명에 내용 grep 을 쓰지 말 것 — `find`/`git ls-files` 로 파일명을 직접 확인.**
+
+**의도적 DROP** — 워크플로 확정 21건 중 ORM 3건·env-vars 신설 등은 **이미 CI fail-closed**(`test_alembic_env_model_completeness`·`check_env_vars_sync`)라 체크박스 중복 = theater 이고, 전건 적용 시 62 → ~100줄(+60%). **읽히지 않는 템플릿은 조금 틀린 템플릿보다 나쁘다**는 기준으로 잘랐다. 최강 재고 후보 = 정책 13/14 슬롯(둘 다 CLAUDE.md:228,234 가 PR 본문 의무로 명시하나 ~14줄 증가라 보류 → 사용자 판단 요청).
+
+**검증** — pylint **10.00/10**(`--fail-under=10.0` 도 exit 0) · bandit exit 0 · flake8 15(E501 baseline 불변) · `pytest tests/unit` **6017 passed / 5 skipped / 0 failed** · 가드 6종 ✅ · ci.yml YAML 파싱 정상(job 8). 🔴 **#1241 의 "선재 실패 2건" 원인 확정** = `pylint`/`flake8`/`bandit` 콘솔 스크립트 PATH 부재(`Scripts/` 추가 시 3건 전부 통과). 리포 결함 아님·CI 무관.
 
 ---
 

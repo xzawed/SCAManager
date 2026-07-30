@@ -95,7 +95,7 @@ _cache_stats: dict[str, int | float] = {
     "cache_creation_tokens": 0,
     "input_tokens": 0,
 }
-_silent_fallback_streak: int = 0  # 연속 creation>0 + read==0 카운터
+_silent_fallback_streak: int = 0  # 연속 creation>0 + read==0 카운터  # pylint: disable=invalid-name
 
 
 def reset_cache_stats() -> None:

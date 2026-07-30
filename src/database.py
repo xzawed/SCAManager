@@ -228,7 +228,9 @@ class FailoverSessionFactory:  # pylint: disable=too-many-instance-attributes
 
 
 _FALLBACK_URL = settings.database_url_fallback or None
-SessionLocal = FailoverSessionFactory(settings.database_url, _FALLBACK_URL)
+# 세션 팩토리 인스턴스라 상수가 아니다 — UPPER_CASE 개명은 의미상 틀리고 16개 모듈이 이 이름을 쓴다.
+# Session-factory instance, not a constant — UPPER_CASE would be wrong and 16 modules import this name.
+SessionLocal = FailoverSessionFactory(settings.database_url, _FALLBACK_URL)  # pylint: disable=invalid-name
 engine = SessionLocal._primary_engine  # pylint: disable=protected-access  # alembic/env.py 호환
 
 
@@ -293,7 +295,8 @@ def _build_worker_session_factory(worker_url: str, web_factory):
 # 웹 요청 경로는 SessionLocal (비-BYPASSRLS app role 전환 대상) 을 그대로 사용한다.
 # Background-only session factory (webhook/worker/gate/notifier/cron/CLI hook).
 # Web request paths keep using SessionLocal (target of the non-BYPASSRLS app role switch).
-WorkerSessionLocal = _build_worker_session_factory(settings.database_url_worker, SessionLocal)
+WorkerSessionLocal = _build_worker_session_factory(  # pylint: disable=invalid-name
+    settings.database_url_worker, SessionLocal)
 
 
 def get_db():
