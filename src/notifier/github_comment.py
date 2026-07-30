@@ -202,6 +202,15 @@ def _unreliable_score_warning_lines(result: dict, language: str = "en") -> list[
         lines.append(get_text(f"notifier.github_pr_comment.{key}", language))
     if ai_review_failed(result):
         lines.append(get_text("notifier.github_pr_comment.ai_failed_warning", language))
+    # 🔴 미커버 언어 고지 — **차단 마커가 아니다**(가시화 전용). 정적 만점이 "깨끗함" 이 아니라
+    # "이 언어는 검사하지 않음" 임을 사람 리뷰어에게 알린다. 위 두 배너와 독립적으로 표시된다.
+    # 🔴 Informational only — tells a human reviewer that full static marks mean "not inspected".
+    uncovered = result.get("static_uncovered_languages") or []
+    if uncovered:
+        lines.append(get_text(
+            "notifier.github_pr_comment.static_uncovered_warning", language,
+            languages=", ".join(uncovered),
+        ))
     if lines:
         lines.append("")  # 배너와 헤더 사이 빈 줄 / blank line between banner and header
     return lines

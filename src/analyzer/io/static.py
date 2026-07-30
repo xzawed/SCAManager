@@ -51,6 +51,55 @@ class StaticAnalysisResult:
     # Analyzer names that support this file's language but could not run (binary absent).
     # Previously unrecorded, making "no analyzer ran" indistinguishable from "analyzed, clean".
     unavailable_tools: list[str] = field(default_factory=list)
+    # 이 파일의 언어를 **지원하는 분석기 자체가 등록돼 있지 않은** 경우 그 언어명.
+    # `unavailable_tools`(바이너리 부재 → incomplete 로 차단)와 구별된다 — 이쪽은 제품이 애초에
+    # 그 언어의 정적분석을 제공하지 않는다는 뜻이라 **차단하지 않고 가시화만** 한다(사용자 결정).
+    # Language name when NO registered analyzer supports it at all. Distinct from unavailable_tools
+    # (absent binary → blocks): this means the product never covered the language — surface, don't block.
+    uncovered_language: str | None = None
+
+
+def _run_analyzers(ctx: AnalyzeContext, result: StaticAnalysisResult) -> tuple[int, int, int]:
+    """이 파일에 등록 분석기를 돌리고 `(실행 수, opt-out 수, 지원 분석기 수)` 를 반환한다.
+
+    Run the registered analyzers for this file; return (ran, opted_out, supported).
+
+    커버리지 판정 3 축을 분리해 센다 — 셋이 섞이면 "안 돌았다" 의 사유를 구별할 수 없다:
+      - `supported` : 이 언어를 지원한다고 선언한 분석기 수 (0 = 제품이 이 언어를 커버 안 함)
+      - `ran`       : 실제로 실행된 수
+      - `opted_out` : 운영자가 `disabled_tools` 로 끈 수 (의도된 미분석)
+    """
+    disabled = getattr(ctx.repo_config, 'disabled_tools', None) or []
+    ran = opted_out = supported = 0
+    for analyzer in REGISTRY:
+        if not analyzer.supports(ctx):
+            continue
+        supported += 1
+        if not analyzer.is_enabled(ctx):
+            # 바이너리 부재 = 배포 이미지에 조달되지 않음. 기록만 하고 계속 — 승격 판정은
+            # 호출부에서 "실행 0개" 일 때만(semgrep 등이 커버하는 언어의 과차단 방지).
+            # Binary absent. Record only; the caller promotes solely when ZERO analyzers ran.
+            result.unavailable_tools.append(analyzer.name)
+            continue
+        if analyzer.name in disabled:
+            # 운영자가 명시적으로 끈 것 — 의도된 opt-out. "내가 껐다" 를 결함으로 되돌려주지 않는다.
+            opted_out += 1
+            continue
+        try:
+            result.issues.extend(analyzer.run(ctx))
+            ran += 1
+        except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+            # 🔴 감사 ④ (옵션 B): 도구가 내부에서 못 잡은 예상외 crash 는 이슈를 무음 폐기하므로
+            # incomplete 로 승격 — 타임아웃(ctx.timed_out)과 동일하게 fail-closed 처리해 미분석
+            # 코드의 auto-merge/auto-approve 를 차단한다(이전엔 로깅만 하고 삼켜 fail-open).
+            # 의도적 미설치는 이 분기에 도달하지 않아 현행(opt-out) 유지 — 도구들이 내부에서 (1)
+            # `shutil.which` 게이트(supports/is_enabled) 또는 (2) `except (json.JSONDecodeError, OSError)`
+            # (FileNotFoundError 는 OSError 서브클래스)로 [] 를 반환하기 때문(옵션 B 경계).
+            # Audit ④ (option B): an unexpected crash a tool failed to catch silently drops its issues,
+            # so promote to incomplete — fail-closed like the timeout path (ctx.timed_out).
+            logger.warning("analyzer %s failed for %s: %s", analyzer.name, ctx.filename, exc)
+            result.incomplete = True
+    return ran, opted_out, supported
 
 
 def analyze_file(  # pylint: disable=too-many-locals
@@ -95,46 +144,7 @@ def analyze_file(  # pylint: disable=too-many-locals
             tmp_path=tmp_path,
             repo_config=repo_config,
         )
-        # per-repo 비활성화 도구 목록 — 루프 외부에서 한 번만 조회
-        # Fetch disabled tools list once before the loop
-        _disabled = getattr(ctx.repo_config, 'disabled_tools', None) or []
-        # 커버리지 관측 — 이 언어를 지원하는 도구 중 실제로 **실행된** 개수를 센다.
-        # Coverage observation — count analyzers that actually RAN for this file's language.
-        ran = 0
-        opted_out = 0  # 운영자가 명시적으로 끈 도구 수 — 승격 판정에서 제외(의도된 미분석)
-        for analyzer in REGISTRY:
-            if not analyzer.supports(ctx):
-                continue
-            if not analyzer.is_enabled(ctx):
-                # 바이너리 부재 = 배포 이미지에 조달되지 않음. 기록만 하고 계속 — 승격 판정은
-                # 루프 종료 후 "실행 0개" 일 때만(semgrep 등이 커버하는 언어의 과차단 방지).
-                # Binary absent. Record only; promotion is decided after the loop, and only when
-                # ZERO analyzers ran — otherwise languages covered by semgrep would be over-blocked.
-                result.unavailable_tools.append(analyzer.name)
-                continue
-            if analyzer.name in _disabled:
-                # 운영자가 명시적으로 끈 것 — 의도된 opt-out. 미커버로 세지 않고, 이 파일에서
-                # 승격 자체를 억제한다(아래 조건). "내가 껐다" 를 결함으로 되돌려주면 안 된다.
-                opted_out += 1
-                continue
-            try:
-                result.issues.extend(analyzer.run(ctx))
-                ran += 1
-            except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
-                # 🔴 감사 ④ (옵션 B): 도구가 내부에서 못 잡은 예상외 crash 는 이슈를 무음 폐기하므로
-                # incomplete 로 승격 — 타임아웃(ctx.timed_out)과 동일하게 fail-closed 처리해 미분석
-                # 코드의 auto-merge/auto-approve 를 차단한다(이전엔 로깅만 하고 삼켜 fail-open).
-                # 의도적 미설치는 이 분기에 도달하지 않아 현행(opt-out) 유지 — 도구들이 내부에서 (1)
-                # `shutil.which` 게이트(supports/is_enabled) 또는 (2) `except (json.JSONDecodeError, OSError)`
-                # (FileNotFoundError 는 OSError 서브클래스)로 [] 를 반환하기 때문(옵션 B 경계).
-                # Audit ④ (option B): an unexpected crash a tool failed to catch silently drops its issues,
-                # so promote to incomplete — fail-closed like the timeout path (ctx.timed_out) to block
-                # auto-merge/approve of unanalyzed code (previously logged-and-swallowed = fail-open).
-                # Intentional absence never reaches here — tools return [] internally via either (1) a
-                # shutil.which gate or (2) except (json.JSONDecodeError, OSError) (FileNotFoundError is an
-                # OSError subclass) → missing tools keep current behaviour (opt-out, option B boundary).
-                logger.warning("analyzer %s failed for %s: %s", analyzer.name, ctx.filename, exc)
-                result.incomplete = True
+        ran, opted_out, supported = _run_analyzers(ctx, result)
 
     # 도구 subprocess 타임아웃 신호를 결과로 승격 — 타임아웃 도구는 이슈를 무음 폐기하므로
     # incomplete 로 표시해 파이프라인이 미분석 코드 auto-merge 를 차단하게 한다(#7 fail-closed).
@@ -157,6 +167,19 @@ def analyze_file(  # pylint: disable=too-many-locals
     # 되돌려주게 된다(Grok 재현). 명시적 opt-out 이 하나라도 있으면 승격하지 않는다.
     # 🔴 is_enabled() conflates "binary absent" with "not applicable here"; skip promotion when the
     # operator explicitly disabled tools, otherwise their own opt-out is reported back as a defect.
+    # 🔴 미커버 언어 기록 — **차단하지 않는다** (사용자 결정: 가시화만).
+    # 인식 언어 47개 중 21개(lua·perl·haskell·r·julia·elm·erlang·zig·ocaml·graphql·toml·xml 등)는
+    # 지원 분석기가 **애초에 등록돼 있지 않다**. 그 PR 은 정적 45/45 만점을 받는데, 이는 "분석했더니
+    # 깨끗함" 이 아니라 "제품이 이 언어를 분석하지 않음" 이다. 바이너리 부재(위 incomplete)와 달리
+    # 고칠 수 있는 조달 문제가 아니므로 차단하면 해당 언어 리포의 auto-merge 가 영구 불가가 된다
+    # → 점수·게이트는 그대로 두고 사람이 오독하지 않도록 **표면화만** 한다.
+    # 🔴 Record uncovered languages WITHOUT blocking (user decision). 21 of 47 recognised languages
+    # have no registered analyzer at all; blocking would permanently disable auto-merge for those
+    # repos, so surface it instead of gating on it.
+    # `unknown` = 확장자 맵에 없는 파일(.txt·.md 등) — 코드가 아니므로 제외한다.
+    if supported == 0 and language and language != "unknown":
+        result.uncovered_language = language
+
     if ran == 0 and result.unavailable_tools and opted_out == 0:
         result.incomplete = True
         logger.warning(

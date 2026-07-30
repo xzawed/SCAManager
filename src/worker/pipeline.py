@@ -79,6 +79,15 @@ def build_analysis_result_dict(
         # C22: diff-truncation marker — blocks auto-merge/approve (mirrors static_analysis_incomplete).
         # getattr default False keeps legacy records/doubles without the field safe.
         "ai_review_truncated": bool(getattr(ai_review, "truncated", False)),
+        # 🔴 정적분석 미커버 언어 — **차단 마커가 아니다**(가시화 전용, 사용자 결정).
+        # 지원 분석기가 등록조차 안 된 언어(lua·perl·haskell·r 등 21종)는 정적 45/45 만점을 받는데
+        # 그건 "깨끗함" 이 아니라 "검사 안 함" 이다. 게이트는 건드리지 않고 사람에게만 알린다.
+        # 🔴 Uncovered languages — informational only, never gates. Full static marks there mean
+        # "not inspected", not "clean".
+        "static_uncovered_languages": sorted({
+            lang for r in analysis_results
+            if (lang := getattr(r, "uncovered_language", None))
+        }),
         "ai_summary": ai_review.summary,
         "ai_suggestions": ai_review.suggestions,
         "commit_message_feedback": ai_review.commit_message_feedback,
