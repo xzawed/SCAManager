@@ -39,6 +39,12 @@ from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[3]
 _SCRIPTS = _ROOT / "scripts"
+# 🔴 `.claude/hooks/` 도 동일 규칙 대상 — 이전엔 scripts/ 만 봐서 탐지 사각이었다.
+# 실측 사고(2026-07-30 감사): `doc_review_gate.py` 가 `ensure_ascii=False` + 한글 원문 출력으로
+# cp949 에서 UnicodeEncodeError 크래시(훅이 살아나자마자 죽음). 훅도 standalone 실행이라
+# 조건이 scripts/ 와 완전히 동일한데 범위 밖이었다 — docstring 의 "면제 없음" 이 사실이 아니었다.
+# 🔴 Hooks are in scope too — scripts/-only was a detection blind spot that produced a real crash.
+_HOOKS = _ROOT / ".claude" / "hooks"
 
 # 가드로 인정하는 표지 — 두 관용구 모두 허용(기존 자산 보존).
 #   1. sys.stdout.reconfigure(...)              ← 정본(캡처 stream 대비 try/except)
@@ -47,7 +53,14 @@ _GUARD_CALLS = ("reconfigure", "TextIOWrapper")
 
 
 def _script_files() -> list[Path]:
-    return sorted(p for p in _SCRIPTS.glob("*.py") if p.name != "__init__.py")
+    """검사 대상 = `scripts/*.py` + `.claude/hooks/*.py` (둘 다 standalone 실행·비-ASCII 출력).
+    Scope = both standalone-executed, non-ASCII-printing surfaces."""
+    return sorted(
+        p
+        for d in (_SCRIPTS, _HOOKS)
+        for p in d.glob("*.py")
+        if p.name != "__init__.py"
+    )
 
 
 def _calls_guard(source: str) -> bool:
@@ -183,11 +196,14 @@ def test_scripts_without_dunder_main_are_not_exempt():
     `parse_coverage.py`·`parse_bandit.py` 가 그 형태이고, "CLI 진입점" 판정으로 면제하면
     정확히 이 둘이 빠진다(실제로 빠져 있었다).
     """
+    # 🔴 Path 를 그대로 들고 다닌다 — 파일명만 모아 `_SCRIPTS / name` 으로 재조립하면
+    # `.claude/hooks/` 파일이 존재하지 않는 `scripts/<name>` 으로 해석돼 FileNotFoundError.
+    # 🔴 Keep Paths: re-assembling from bare names breaks once hooks/ joined the scope.
     module_level = [
-        p.name for p in _script_files()
+        p for p in _script_files()
         if "__main__" not in p.read_text(encoding="utf-8")
     ]
     assert module_level, "모듈 레벨 스크립트가 없다 — 이 가드의 전제가 사라졌다"
-    for name in module_level:
-        source = (_SCRIPTS / name).read_text(encoding="utf-8")
-        assert _calls_guard(source), f"{name}: 모듈 레벨 스크립트가 무가드다"
+    for path in module_level:
+        source = path.read_text(encoding="utf-8")
+        assert _calls_guard(source), f"{path.name}: 모듈 레벨 스크립트가 무가드다"

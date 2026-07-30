@@ -191,7 +191,15 @@ def _unreliable_score_warning_lines(result: dict, language: str = "en") -> list[
     """
     lines: list[str] = []
     if result.get("static_analysis_incomplete"):
-        lines.append(get_text("notifier.github_pr_comment.static_incomplete_warning", language))
+        # 🔴 CLI 훅은 정적분석을 **의도적으로 안 돌린다** — "타임아웃 또는 오류" 문구는 거짓이고
+        # 운영자를 엉뚱한 진단으로 보낸다. 같은 차단 마커를 쓰되 사유 문구만 분기한다.
+        # 🔴 The CLI hook deliberately skips static analysis; the "timeout or error" wording would be
+        # a lie and misdirect diagnosis. Same blocking marker, accurate reason text.
+        key = (
+            "static_skipped_cli_warning" if result.get("source") == "cli"
+            else "static_incomplete_warning"
+        )
+        lines.append(get_text(f"notifier.github_pr_comment.{key}", language))
     if ai_review_failed(result):
         lines.append(get_text("notifier.github_pr_comment.ai_failed_warning", language))
     if lines:

@@ -2,9 +2,14 @@
 
 #25 가 CLI hook 의 score/grade **컬럼** 만 NULL 화했으나 `result` dict 의 인플레 score(89)는 보존되고
 (build_analysis_result_dict), gate(engine.run_gate_check)는 컬럼이 아닌 **result dict 의 score**
-(engine.py `result.get("score", 0)`)를 읽는다. 따라서 CLI-hook parse_error 분석이 동일 SHA PR 로
-_regate_pr_if_needed 될 때 auto-merge/auto-approve 차단은 **#8 ai_review_failed 단일 가드**에 전적으로
-의존한다(static_analysis_incomplete 가드는 CLI 훅이 정적분석을 안 돌려 incomplete=False 라 무력).
+(engine.py `result.get("score", 0)`)를 읽는다.
+
+🔴 **2026-07-30 감사 정정** — 이 docstring 은 원래 "차단은 #8 ai_review_failed **단일 가드**에 전적으로
+의존한다(static_analysis_incomplete 가드는 CLI 훅이 정적분석을 안 돌려 incomplete=False 라 무력)"
+라고 적어 **갭을 정확히 서술해 두고도 닫지 않았다**. 그 결과 AI 리뷰가 성공한 정상 경로에는 차단이
+전혀 없어, 정적분석 0회 · 45/45 만점 · 총점 89 인 CLI 훅 분석이 auto-merge 를 통과했다.
+이제 `src/api/hook.py` 가 `static_analysis_incomplete=True` 를 항상 부여해 그 경로를 닫는다.
+🔴 The original docstring described this gap precisely and left it open; hook.py now closes it.
 
 본 테스트는 그 단일 가드가 run_gate_check orchestrator 수준에서 CLI-hook 의 인플레 result 를 받아
 실제로 auto-merge·auto-approve 를 차단함을 봉인한다 — #8 가드 제거/우회(AI_REVIEW_FAILED_STATUSES
@@ -38,12 +43,19 @@ def _cli_hook_result(ai_status: str) -> dict:
 
     Build the result dict a CLI hook persists: the score/grade DB columns are NULL on parse_error
     (#25), but the result dict keeps the inflated 89 — which is exactly what the gate reads.
+
+    🔴 `static_analysis_incomplete=True` 는 `src/api/hook.py` 가 **항상** 부여한다(2026-07-30 감사).
+    CLI 훅은 정적분석을 한 번도 돌리지 않으면서 45/45 만점을 받으므로, timeout·crash 로 정적분석이
+    불완전한 경우와 동일하게 취급한다. 이 키가 빠지면 아래 success 경로가 무검증 auto-merge 로 뚫린다.
+    🔴 hook.py always sets static_analysis_incomplete — the CLI hook is credited 45/45 static points
+    without ever running an analyzer, so it is treated exactly like a timed-out/crashed analysis.
     """
     return {
         "score": 89,
         "grade": "B",
         "ai_review_status": ai_status,
         "source": "cli",
+        "static_analysis_incomplete": True,
         "breakdown": {
             "commit_message": 13, "code_quality": 25, "security": 20,
             "ai_review": 21, "test_coverage": 10,
@@ -71,8 +83,19 @@ async def test_run_gate_check_cli_hook_parse_error_blocks_automerge_and_approve(
     mock_review.assert_not_awaited()  # auto-approve 차단 (#8)
 
 
-async def test_run_gate_check_cli_hook_success_allows_automerge():
-    """대조군: ai_review_status='success' 면 동일 인플레 점수라도 정상 auto-merge 진행(가드가 정상 경로 미차단)."""
+async def test_run_gate_check_cli_hook_success_also_blocks_automerge():
+    """🔴 2026-07-30 감사 — 반전된 테스트.
+
+    이전 이름은 `..._success_allows_automerge` 였고 `mock_am.assert_awaited_once()` 로
+    **결함을 정상 동작으로 고정**하고 있었다. AI 리뷰가 성공한 정상 경로(status='success')에서는
+    `ai_review_failed` 가드가 발화하지 않으므로, CLI 훅 분석(정적분석 0회 · 45/45 만점 · 총점 89)이
+    `merge_threshold=75` 를 넘겨 **미검증 코드가 auto-merge** 됐다. 제품의 기본 기능(pre-push 훅)이
+    곧 게이트 우회 경로였다.
+
+    이제 `hook.py` 가 `static_analysis_incomplete=True` 를 부여하므로 정상 경로도 차단된다.
+    🔴 Inverted: the old control test pinned the defect. The success path had no guard at all, so a
+    CLI-hook analysis (zero static analysis, full 45 static points, total 89) auto-merged.
+    """
     config = RepoConfigData(
         repo_full_name="owner/repo",
         auto_merge=True, merge_threshold=75,
@@ -85,7 +108,37 @@ async def test_run_gate_check_cli_hook_success_allows_automerge():
             result=_cli_hook_result("success"),
             github_token="t", db=MagicMock(), config=config,
         )
-    mock_am.assert_awaited_once()  # success → auto-merge 정상 진행 (가드가 정상 경로 미차단)
+    mock_am.assert_not_awaited()  # static_analysis_incomplete 가드가 정상 경로도 차단
+
+
+def test_hook_endpoint_sets_static_analysis_incomplete():
+    """🔴 배선 테스트 (3-불변식 ③) — 가드 자체가 아니라 `hook.py` 가 마커를 **실제로 부여**하는지.
+
+    위 테스트들은 result dict 를 손으로 만들므로, `hook.py` 가 마커 부여를 그만둬도 전부 green 이다.
+    AST 로 `result_dict["static_analysis_incomplete"] = True` 대입이 존재함을 단언해 그 구멍을 막는다.
+    🔴 Wiring test: the tests above hand-build the dict, so they stay green if hook.py stops setting
+    the marker. Assert the assignment exists in the real source.
+    """
+    import ast  # pylint: disable=import-outside-toplevel
+    from pathlib import Path  # pylint: disable=import-outside-toplevel
+
+    src = Path(__file__).resolve().parents[3] / "src" / "api" / "hook.py"
+    tree = ast.parse(src.read_text(encoding="utf-8"))
+    found = any(
+        isinstance(node, ast.Assign)
+        and isinstance(node.value, ast.Constant) and node.value.value is True
+        and any(
+            isinstance(t, ast.Subscript)
+            and isinstance(t.slice, ast.Constant)
+            and t.slice.value == "static_analysis_incomplete"
+            for t in node.targets
+        )
+        for node in ast.walk(tree)
+    )
+    assert found, (
+        "src/api/hook.py 가 static_analysis_incomplete=True 를 부여하지 않는다 — "
+        "CLI 훅 분석이 정적분석 0회 상태로 auto-merge 될 수 있다."
+    )
 
 
 @pytest.fixture
