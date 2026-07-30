@@ -6,7 +6,7 @@
 
 ## 목차
 
-- [README claim-review 정정 + CONTRIBUTING/SECURITY 신설 + PR 템플릿 실측 정정 + 저장소 메타 (2026-07-30 세션12, 2 PR #1241·#1242)](#readme-claim-review-정정--contributingsecurity-신설--pr-템플릿-실측-정정--저장소-메타-2026-07-30-세션12-2-pr-12411242)
+- [문서 claim-review 정정 + CONTRIBUTING/SECURITY 신설 + 전수 감사 P0 이행 (2026-07-30~31 세션12, 5 PR #1241~#1245)](#문서-claim-review-정정--contributingsecurity-신설--전수-감사-p0-이행-2026-07-3031-세션12-5-pr-12411245)
 - [GitHub Issue 2건 처리 + 정책 19 집행면 + Grok 전반 검토 (2026-07-29~30 세션11, 9 PR #1228~#1237)](#github-issue-2건-처리--정책-19-집행면--grok-전반-검토-2026-07-2930-세션11-9-pr-12281237)
 - [다른 PC 이식 준비 + 새 clone 경로 복구 + git 정리 (2026-07-27 세션10, 3 PR #1223~#1225)](#다른-pc-이식-준비--새-clone-경로-복구--git-정리-2026-07-27-세션10-3-pr-12231225)
 - [GitHub 정리 + owed #1072 외부계약 반증 + 5+1 회고 (2026-07-26 세션9, 3 PR #1217~#1219)](#github-정리--owed-1072-외부계약-반증--51-회고-2026-07-26-세션9-3-pr-12171219)
@@ -149,7 +149,7 @@
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
 
-## README claim-review 정정 + CONTRIBUTING/SECURITY 신설 + PR 템플릿 실측 정정 + 저장소 메타 (2026-07-30 세션12, 2 PR #1241·#1242)
+## 문서 claim-review 정정 + CONTRIBUTING/SECURITY 신설 + 전수 감사 P0 이행 (2026-07-30~31 세션12, 5 PR #1241~#1245)
 
 사용자 요청 = *"Grok과 함께 Readme내용 검토 및 Topic을 등록해주시고, Contributing, Security 내용도 등록"*. Grok claim-review **2회**(README 1차 → 신규 문서 2차) + 전건 `grep` 실측.
 
@@ -198,6 +198,43 @@
 - verdict: BROKEN — 자기 산출물에서 P0 4건 적발, 머지 전 전건 수정.
 
 🔴 **집행면이 본 PR 을 실제로 잡았다** — 1차 push 에서 `Repo integrity guards` job 이 **fail**. 사유 = 본문의 `fail-closed`·`봉인` 어휘(기존 동작 서술/인용)에 대해 구조화된 흔적이 없었음. **면제 마커로 빠져나가지 않고** 실제 흔적을 기재해 통과시켰다. 세션11 이 만든 가드가 세션12 를 잡은 것 = 집행면이 저자와 무관하게 작동한다는 첫 실증.
+
+---
+
+### 후반부 — 전수 감사 + P0 이행 (#1243·#1244·#1245)
+
+사용자 요청 = *"Claude와 Grok 전체 코드와 전체 문서를 확인하고 … 서비스의 품질과 은닉성 버그 그리고 사용 편의성"*. Claude 8-관점 워크플로(44 에이전트, 확정 30 / 반증 5) + Grok 독립 적대 감사 병렬.
+
+**🔴 최우선 결함은 코드가 아니라 "가드가 전부 죽어 있음" 이었다 (#1243)**
+
+`.claude/settings.json` 이 bare `python` 을 호출하는데 Windows 에서 그건 Microsoft Store 스텁이라 **exit 49** — 훅 6종이 한 번도 실행된 적이 없다. `block_credential_dump` 는 크리덴셜 덤프를 **0회 차단**했고 `check_edit_allowed` 의 수정 금지 파일 보호도 발화한 적이 없다. `.git/hooks/` 도 비어 있어(pre-commit 미설치) **로컬 보호 2계층이 동시에 내려간 상태**였다. `settings.json` 은 git 추적 대상이라 `py -3` 하드코딩은 타 플랫폼을 깨므로 셸 폴백(`command -v py … || python3`)을 썼다.
+
+**훅이 살아나자 곧바로 다음 결함이 드러났다** — `doc_review_gate.py` 가 cp949 에서 `UnicodeEncodeError` 로 즉사(`ensure_ascii=False` + 한글 원문 출력). 🔴 근본은 인스턴스가 아니라 **가드의 사각**: [`guards.md`](../.claude/rules/guards.md)가 *"stdout UTF-8 가드 의무 … 전 스크립트 강제"* 라 적고 회귀 가드까지 뒀는데, `test_stdout_encoding_guard.py` 는 `scripts/*.py` 만 glob 하고 `.claude/hooks/` 는 범위 밖이었다 — 그 docstring 은 **"면제 없음 — 탐지 사각이 사고의 원인이었다"** 라고 적혀 있었다. 스코프를 넓히자 **위반 2건이 추가로 드러났다**.
+
+**🔴 CLI 훅이 정적분석 0회로 45/45 만점을 받아 auto-merge 에 도달했다 (#1243 → #1244)**
+
+`hook.py:259` 는 `calculate_score([], ...)` 를 부르고 주석이 스스로 *"CLI 훅은 정적 분석 없음 → code_quality=25, security=20 만점"* 이라 적어 뒀다. 더 나쁜 건 **테스트가 그 결함을 정상 동작으로 고정**하고 있었다는 것 — `test_run_gate_check_cli_hook_success_allows_automerge` 가 `assert_awaited_once()` 로 "success 면 머지된다" 를 봉인했고, 같은 파일 docstring 은 *"static_analysis_incomplete 가드는 CLI 훅이 정적분석을 안 돌려 incomplete=False 라 **무력**"* 이라고 **갭을 정확히 서술해 두고도 닫지 않았다**.
+
+#1243 이 마커로 무검증 머지를 막았으나 부작용으로 semi-auto 승인 버튼까지 막혔다(사람 판단 창구 상실). #1244 가 근본 해결 — dedup 이 CLI 행을 **중복으로 보지 않게** 하고 full 분석이 그 행을 **제자리 교체**(row id 유지로 FK 보존). 즉 **CLI 훅이 실제 분석을 가리고 있었다**.
+
+**분석기 커버리지 2단 봉인 (#1244 · #1245)**
+
+| 상황 | 처리 | 근거 |
+|---|---|---|
+| 바이너리 부재로 **실행 0개** | incomplete 차단 | 조달로 고칠 수 있음. `.scss`+`.ps1`+`.dart`+`.proto` PR → **89(B)** 실측 재현 |
+| 지원 분석기가 **애초에 0개**(21개 언어) | **차단 없이 가시화만** | lua·perl·haskell·r·julia·zig 등. 차단 시 해당 언어 리포 auto-merge **영구 불가**(사용자 결정) |
+
+🔴 비대칭이 핵심이었다 — 도구가 *크래시*하면 incomplete 로 승격돼 머지가 막히는데, *부재*하면 조용히 통과했다. 둘 다 "이슈 0건" 인데 신뢰도 취급이 정반대였다.
+
+**Grok 협업 — 자기 산출물에서 P0 를 반복 적발**
+
+매 PR claim-review(5회). 🔴 **Claude 가 방금 쓴 것에서 P0 가 계속 나왔다**: SECURITY/CONTRIBUTING 초안 4건(Semgrep CI job 부재 · 25 vs 24 자기모순 · AI 미획득 5 vs 11점 · **해제된 훅을 살아있다고 서술**) · supersede 동시성 **이중 gate/notify**(기존 race 억제 신호를 교체 분기가 우회) · `is_enabled` 의미 혼동 과차단 · **21개 언어 홀**(내가 "R 하나" 로 축소 보고한 것을 전수로 정정). 전건 머지 전 수정.
+
+**자기 정정 2건** — (1) `test_migration_completeness` 가 없다고 판단해 템플릿 줄을 지우려 했으나 **틀렸다**(내 grep 이 파일 *내용*만 재귀 검색해 파일명을 놓침. 교훈: 부재 증명에 내용 grep 금지, `find`/`git ls-files` 사용). (2) 뮤테이션 검증 1회가 `IndentationError` 를 냈는데 그건 **구문 오류로 인한 가짜 red** 라 판별 근거가 못 된다 — 조건 무력화(`if False and …`) + `ast.parse` 확인으로 재수행.
+
+**검증** — 단위 6022→**6040**(+18) · 통합 165 불변 · 전체 **6205** · pylint **10.00 복원**(9.99 재drift 는 2026-07-19 이후 2번째이고, CI 게이트가 9.90 이라 **CI 는 이 drift 를 영영 못 잡는다**) · bandit exit 0 · CI 12/12 × 5 PR. 저장소 메타: Topics 14 + description 영문화 + Private vulnerability reporting 활성화(`{"enabled":true}` 실측).
+
+**미해결(다음 세션)** — RLS 멀티테넌트 격리 실효성은 **쿼리를 실행할 수 없어 미판정**(감사 최대 미검증 영역, 코드가 "BYPASSRLS 면 RLS 미평가" 를 자인하고 실측 함수까지 둠). `models`·`railway_client`·`config_manager` 패키지는 **미조사**(= clean 아님).
 
 ---
 
