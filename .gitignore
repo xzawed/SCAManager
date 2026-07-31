@@ -94,3 +94,7 @@ docs/design/output/screenshots/
 # 외부 도구(Grok CLI 등)가 리포 안에 만드는 임시 산출물 차단
 # Block temp artifacts external tools write inside the repo
 tmp/
+
+# 리포 루트 아래 worktree — untracked 노출로 `git add -A` 시 통째 스테이징된다(실측 2026-07-31).
+# 루트 grep 결과도 배로 부풀어 정책 6·16 의 입력이 파괴된다.
+.claude/worktrees/

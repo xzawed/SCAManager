@@ -26,10 +26,34 @@ from pathlib import Path
 
 import yaml
 
+from scripts.check_memory_refs import normalize, resolve_memory_dir
+
 _ROOT = Path(__file__).resolve().parents[3]
 _CI = _ROOT / ".github" / "workflows" / "ci.yml"
 _MAKEFILE = _ROOT / "Makefile"
-_MEMORY = Path.home() / ".claude" / "projects" / "d--Source-SCAManager" / "memory"
+# 🔴 하드코딩 금지 (2026-07-31 회고 P0-8) — 이전 판은 구 PC 슬러그(`d--Source-SCAManager`)를
+#   박아 두어 이 테스트가 **모든 환경에서 skip** 됐다: CI 는 메모리 디렉토리가 원래 없어 skip 이
+#   설계이고, 유일하게 돌아야 할 로컬에서는 경로가 틀려 skip. 그 사이 dangling 참조 5건이
+#   누적됐고 그중 하나는 CLAUDE.md 가 자기 정책 근거로 인용하는 메모리였다.
+#   가드와 동일한 유도 로직을 재사용해 drift 를 한 곳으로 모은다.
+# The old hardcoded slug made this skip on every machine; reuse the guard's own resolution.
+_MEMORY = resolve_memory_dir(_ROOT)
+
+# 🔴 모듈 레벨로 뺀 이유 (2026-07-31): 아래 dangling 스캔은 **리포 상태** 단언이라 탐지기가
+#   좁아져도 잡을 대상이 없으면 그대로 초록이다 — 실측으로 확인했다(패턴을 하이픈 전용으로
+#   되돌리는 뮤테이션이 GREEN). 탐지기 자신을 검증하려면 패턴이 테스트 가능해야 한다.
+# Hoisted to module scope: the repo-state assertion below cannot prove the detector works —
+# narrowing the pattern stayed green because nothing dangling remained to catch.
+_MEMORY_REF_RE = re.compile(
+    r"`((?:feedback|project|user)[-_][\w-]+)\.md`"
+    r"|\[\[((?:feedback|project|user)[-_][\w-]+)\]\]"
+)
+
+
+def memory_refs(line: str) -> list[str]:
+    """한 줄에서 메모리 슬러그 참조를 추출한다(백틱·wiki-link 양쪽).
+    Extract memory slug references from one line, in either notation."""
+    return [m.group(1) or m.group(2) for m in _MEMORY_REF_RE.finditer(line)]
 
 
 def _ci_jobs() -> dict:
@@ -108,15 +132,30 @@ def test_no_dangling_memory_references_in_repo():
     여기서는 저장소 전역을 훑되, **취소선으로 소실을 명시한 참조는 허용**한다 —
     조용한 dangling 과 명시된 손실은 다르다.
     """
-    if not _MEMORY.is_dir():          # 다른 머신/CI — 메모리 디렉토리 부재 시 판정 불가
+    if _MEMORY is None or not _MEMORY.is_dir():  # 다른 머신/CI — 메모리 디렉토리 부재 시 판정 불가
         import pytest
         pytest.skip("메모리 디렉토리 없음 — 이 검사는 로컬 전용")
 
-    existing = {p.stem for p in _MEMORY.glob("*.md")}
-    pattern = re.compile(r"`(feedback-[\w-]+|project[-_][\w-]+|user[-_][\w-]+)\.md`")
+    # 🔴 정규화 비교 + 두 표기 모두 인식 (Grok claim-review F6, 실측 재현).
+    #   초판 패턴은 `feedback-` 만 받아 **실제 파일 표기인 `feedback_*.md` 와 wiki-link 를 통째로
+    #   못 봤다** — 가드 본체(`check_memory_refs`)는 둘 다 보는데 이 테스트만 눈이 멀어 있었다.
+    # The old pattern matched only the hyphen form, so the live `feedback_*.md` files and every
+    # wiki-link were invisible here while the guard itself handled both.
+    existing = {normalize(p.stem) for p in _MEMORY.glob("*.md")}
     dangling = []
     for path in _ROOT.rglob("*"):
         if path.suffix not in (".md", ".py") or ".git" in path.parts:
+            continue
+        # 🔴 `.claude/worktrees/` 만 제외한다 — git worktree 는 **같은 파일의 사본**이라 위반을
+        #   중복 보고한다(실측 2026-07-31: `.claude/worktrees/fix-wiring/…` 가 본체와 동일 항목을
+        #   한 번 더 냈다). 회고 P1 "루트 grep 100% 인플레" 가 가드 안에서 구체화된 형태다.
+        #   🔴 초판은 `"worktrees" in path.parts` 라 `docs/worktrees/` 같은 **정당한 경로도 통째로
+        #   제외**했다(Grok claim-review F7) — 화장용 중복 제거를 위해 실제 커버리지를 팔았던 것이라
+        #   경로 접두사로 좁힌다.
+        # Exclude only `.claude/worktrees/`: the bare segment match also dropped legitimate paths,
+        # trading real coverage for cosmetic dedup.
+        rel_parts = path.relative_to(_ROOT).parts
+        if rel_parts[:2] == (".claude", "worktrees"):
             continue
         # 🔴 아카이브는 제외한다 — **append-only 역사 기록**이라 작성 시점엔 참이었고,
         #   지금 와서 고치면 그때의 사실 관계를 왜곡한다(저장소의 기존 원칙: 과거 서사 보존).
@@ -137,10 +176,38 @@ def test_no_dangling_memory_references_in_repo():
         for line in text.splitlines():
             if "~~" in line:          # 소실을 명시한 참조는 허용 / explicitly-marked loss is fine
                 continue
-            for m in pattern.finditer(line):
-                if m.group(1) not in existing:
-                    dangling.append(f"{path.relative_to(_ROOT).as_posix()} → {m.group(1)}.md")
+            for slug in memory_refs(line):
+                if normalize(slug) not in existing:
+                    dangling.append(f"{path.relative_to(_ROOT).as_posix()} → {slug}.md")
     assert not dangling, (
         "존재하지 않는 메모리 파일 참조:\n  " + "\n  ".join(sorted(set(dangling))) +
         "\n→ 실재하는 메모리로 바꾸거나, 소실이면 취소선으로 **명시**할 것."
     )
+
+
+# ── 탐지기 자가 검증 (리포 상태와 무관하게 항상 유효) ────────────────────
+# Detector self-check — valid regardless of current repo state.
+
+_REF_HYPHEN = "feedback-" + "lost-thing"
+_REF_UNDER = "feedback_" + "lost_thing"
+
+
+def test_memory_ref_detector_catches_both_notations():
+    """🔴 탐지기가 백틱 두 표기 + wiki-link 를 **전부** 잡는가.
+
+    위 dangling 스캔은 리포 상태 단언이라, 잡을 대상이 없으면 탐지기가 좁아져도 초록이다
+    (실측: 패턴을 하이픈 전용으로 되돌리는 뮤테이션이 GREEN 이었다). 그래서 탐지기 자신을
+    합성 입력으로 검증한다 — 이 단언은 리포에 dangling 이 0건이어도 유효하다.
+    The repo-state scan cannot prove the detector; a narrowed pattern stayed green because
+    nothing dangling remained. This asserts the detector directly.
+    """
+    assert memory_refs(f"메모리 `{_REF_HYPHEN}.md` 참조") == [_REF_HYPHEN]
+    assert memory_refs(f"메모리 `{_REF_UNDER}.md` 참조") == [_REF_UNDER]
+    assert memory_refs(f"본문 [[{_REF_HYPHEN}]] 링크") == [_REF_HYPHEN]
+    assert memory_refs(f"본문 [[{_REF_UNDER}]] 링크") == [_REF_UNDER]
+
+
+def test_memory_ref_detector_ignores_unrelated_text():
+    """대조군 — 아무 텍스트나 잡으면 탐지기가 공허하다(전건 오탐)."""
+    assert memory_refs("일반 문장 `some-file.md` 와 [[not-a-memory]]") == []
+    assert memory_refs("") == []
