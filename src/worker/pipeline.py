@@ -614,6 +614,18 @@ async def _race_recover_existing(
     except (SQLAlchemyError, KeyError):
         repo_config = None
 
+    # 🔴 `existing` None 가드 (2026-07-31 다관점 검증 P2) — 유일하게 None 이 도달 가능한
+    #   호출처는 `_save_and_gate` 의 `find_by_sha` 직후다. 자매 호출처 2곳은 non-None 을
+    #   보장하는데 여기만 무가드라 계약이 비대칭이었다. 실측: PR 이벤트에서 AttributeError 재현
+    #   (push 이벤트는 `or` 단락 평가로 **우연히** 안전 — 우연에 의존하지 않는다).
+    #   터미널 `except Exception` 이 삼켜 크래시는 없지만 traceback 소음 + orphan attempt 행이 남는다.
+    # Guard the only call site where `existing` can be None; the sibling call sites guarantee non-None.
+    if existing is None:
+        logger.warning(
+            "_race_recover_existing: existing analysis vanished (sha=%s) — skipping gate",
+            params.commit_sha,
+        )
+        return repo_config
     if params.pr_number is None or existing.pr_number is not None:
         return repo_config
     if existing.result is None:
@@ -675,7 +687,26 @@ def _claim_and_supersede_cli(
     🔴 Two concurrent webhooks can both reach here; only the lock winner supersedes, so the loser
     falls back to race-recovery and no duplicate gate/notify occurs.
     """
-    locked = db.query(Analysis).filter(Analysis.id == analysis.id).with_for_update().one_or_none()
+    # 🔴 `populate_existing()` 필수 (2026-07-31 회고 P0-A · 교차 세션 실측 재현).
+    #   `analysis` 는 이미 이 Session 의 identity map 에 **만료되지 않은 채** 존재한다
+    #   (`save_new` 의 IntegrityError → rollback → `find_by_sha` 경로가 방금 로드했다).
+    #   그 상태에서 SQLAlchemy 는 재조회 결과를 **버리고 캐시된 인스턴스를 반환**하므로,
+    #   다른 세션의 승자가 이미 `source` 를 pr/push 로 바꿔 commit 한 뒤에도 패자에게는
+    #   여전히 `source == "cli"` 로 보인다 → 패자도 교체를 강행해 **gate(auto-merge 시도) +
+    #   notify(Telegram/PR 코멘트)가 2회** 실행된다.
+    # 🔴 `with_for_update()` 는 **별개 축**이다 — SQL 잠금만 걸고 ORM 속성은 갱신하지 않는다.
+    #   PG READ COMMITTED 에서 잠금이 없으면 두 트랜잭션이 둘 다 supersede 이전 행을 읽어
+    #   둘 다 술어를 통과하고, `UPDATE … WHERE id=?` 에는 술어 재검증이 없어 둘 다 commit 된다.
+    #   즉 두 호출은 대체재가 아니라 **각각 봉인의 절반**이다(다관점 검증 2026-07-31).
+    # populate_existing() defeats the identity-map stale read; with_for_update() serialises the
+    # readers. Neither substitutes for the other — each carries half the seal.
+    locked = (
+        db.query(Analysis)
+        .populate_existing()
+        .filter(Analysis.id == analysis.id)
+        .with_for_update()
+        .one_or_none()
+    )
     if locked is None or not _is_cli_only(locked):
         logger.info(
             "CLI supersede lost the race (sha=%s) — race-recovery, skipping duplicate gate/notify",

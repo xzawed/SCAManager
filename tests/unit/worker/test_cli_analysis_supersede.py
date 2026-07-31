@@ -184,3 +184,135 @@ def test_claim_returns_none_when_row_already_superseded(db_session):
     assert out is None, "패자가 None 을 못 받으면 gate·notify 가 두 번 실행된다"
     db_session.refresh(cli)
     assert cli.score == 42, "패자가 승자의 결과를 덮어쓰면 안 된다"
+
+
+# ── 교차 세션 race (2026-07-31 회고 P0-A) ────────────────────────────────
+# Cross-session race — the axis the same-session test above cannot reach.
+
+
+def test_loser_gets_none_when_winner_committed_in_another_session(tmp_path):
+    """🔴 **다른 세션**의 승자가 교체를 끝냈으면 패자는 None 을 받아야 한다.
+
+    위 `test_claim_returns_none_when_row_already_superseded` 는 **같은 세션**에서 값을 바꾸고
+    commit 한다. 그러면 identity map 에 이미 갱신값이 있어, 재조회가 stale 을 돌려주는 결함이
+    있어도 통과한다 — 실제 사고 시나리오(두 webhook = 두 세션)를 전혀 건드리지 못한다.
+
+    여기서는 패자가 **승자 commit 이전에** 행을 로드해 identity map 에 CLI 상태를 담은 뒤,
+    다른 세션의 승자가 교체·commit 한 상황을 재현한다. `populate_existing()` 이 없으면
+    SQLAlchemy 는 `with_for_update()` 재조회 결과를 **버리고 캐시된 인스턴스를 반환**하므로
+    패자에게는 여전히 `source == "cli"` 로 보이고, 패자도 교체를 강행해
+    **gate(auto-merge 시도) + notify 가 2회** 실행된다.
+
+    🔴 이 테스트가 증명하는 것 = **stale read 봉인**. 행 잠금 자체는 아니다 —
+    SQLAlchemy 의 SQLite 방언은 `FOR UPDATE` 를 조용히 버리므로 잠금 축은 PG 전용이다.
+    Proves the stale-read fix, not the lock: SQLite silently drops FOR UPDATE.
+    """
+    from types import SimpleNamespace
+
+    from src.worker.pipeline import _claim_and_supersede_cli
+
+    # 파일 기반 SQLite — `:memory:` 는 세션마다 별개 DB 라 교차 세션을 재현할 수 없다.
+    # File-backed SQLite: `:memory:` gives each connection its own database.
+    engine = create_engine(f"sqlite:///{tmp_path / 'race.db'}")
+    Base.metadata.create_all(engine)
+    # 🔴 운영과 동일 설정 — `src/database.py:123` 은 `autoflush=False` 다. 기본값(True)으로
+    #   테스트하면 두 설정이 갈라지는 축(미flush 더티 폐기)을 영영 관측하지 못한다.
+    # Match production: src/database.py uses autoflush=False.
+    make_session = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+
+    setup = make_session()
+    analysis_id = _add(setup, _repo(setup), "sha_race", "cli").id
+    setup.close()
+
+    # 패자가 **먼저** 로드 — identity map 에 CLI 상태가 들어간다(실제 파이프라인과 동일 순서).
+    loser = make_session()
+    loser_row = loser.get(Analysis, analysis_id)
+    assert _is_cli_only(loser_row), "전제 붕괴 — 패자가 CLI 행을 보고 있어야 한다"
+
+    # 승자가 **다른 세션**에서 교체하고 commit.
+    winner = make_session()
+    won = winner.get(Analysis, analysis_id)
+    won.result = {"score": 42, "grade": "D", "source": "pr", "ai_review_status": "success"}
+    won.score, won.grade = 42, "D"
+    winner.commit()
+    winner.close()
+
+    params = SimpleNamespace(
+        commit_sha="sha_race", commit_message="m", pr_number=7,
+        score_result=SimpleNamespace(total=1, grade="F"), author_login=None,
+        ai_review=SimpleNamespace(used_model=None, input_tokens=None, output_tokens=None),
+    )
+    out = _claim_and_supersede_cli(loser, loser_row, params, {"source": "pr"}, False)
+    loser.close()
+
+    assert out is None, (
+        "패자가 승자의 commit 을 보지 못했다 — identity map 의 stale 값을 읽고 있다.\n"
+        "→ gate(auto-merge 시도)와 notify(Telegram/PR 코멘트)가 2회 실행된다."
+    )
+
+    verify = make_session()
+    final = verify.get(Analysis, analysis_id)
+    assert final.score == 42, "패자가 승자의 결과를 덮어썼다"
+    verify.close()
+
+
+def test_claim_uses_row_lock_and_fresh_read(monkeypatch):
+    """🔴 재조회가 **행 잠금 + 캐시 무시**를 둘 다 요구하는가 — 호출 관측.
+
+    봉인은 두 축으로 성립하는데 위 교차세션 테스트는 **stale-read 축만** 증명한다.
+    잠금 축(`with_for_update()`)은 SQLite 가 `FOR UPDATE` 를 조용히 버려 통합 테스트로는
+    관측할 수 없고, 실측 결과 **관측자가 0건**이었다 — `.with_for_update()` 한 줄을 지워도
+    `tests/unit/worker` + `tests/unit/repositories` **323건이 전부 green** 이다.
+
+    🔴 잠금은 장식이 아니라 P0 주장의 **나머지 절반**이다. PG READ COMMITTED 에서 잠금이 없으면
+    두 트랜잭션이 **둘 다 supersede 이전 행**(`source == "cli"`)을 읽어 둘 다 `_is_cli_only` 를
+    통과하고, `UPDATE ... WHERE id=?` 에는 술어 재검증이 없으므로 둘 다 commit 된다 →
+    `populate_existing()` 이 있어도 이중 gate·이중 notify 가 그대로 재현된다.
+
+    이 리포는 이미 같은 축을 SQLite 에서 관측하는 패턴을 갖고 있다
+    (`tests/unit/repositories/test_merge_retry_repo.py:495`) — 그 관용구를 복제한다.
+    Observes the *calls*: the lock axis had zero observers, yet it carries half the seal.
+    """
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+
+    from src.worker import pipeline as mod
+
+    chain = MagicMock()
+    chain.populate_existing.return_value = chain
+    chain.filter.return_value = chain
+    chain.with_for_update.return_value = chain
+    chain.one_or_none.return_value = None      # 패배 경로 — 부수효과 없이 끝난다
+
+    db = MagicMock()
+    db.query.return_value = chain
+
+    params = SimpleNamespace(
+        commit_sha="sha_lock", commit_message="m", pr_number=1,
+        score_result=SimpleNamespace(total=1, grade="F"), author_login=None,
+        ai_review=SimpleNamespace(used_model=None, input_tokens=None, output_tokens=None),
+    )
+    out = mod._claim_and_supersede_cli(db, SimpleNamespace(id=1), params, {}, False)
+
+    assert out is None
+    chain.with_for_update.assert_called_once_with()
+    chain.populate_existing.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_race_recover_tolerates_vanished_analysis():
+    """🔴 `existing=None` 에 무가드였다 — PR 이벤트에서 AttributeError (다관점 검증 P2).
+
+    유일하게 None 이 도달 가능한 호출처는 `_save_and_gate` 의 `find_by_sha` 직후다.
+    자매 호출처 2곳은 non-None 을 보장하는데 여기만 무가드라 계약이 비대칭이었다.
+    push 이벤트(`pr_number=None`)는 `or` 단락 평가로 **우연히** 안전했다 — 우연에 기대지 않는다.
+    """
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock, patch
+
+    from src.worker import pipeline as mod
+
+    params = SimpleNamespace(pr_number=9, repo_name="owner/repo", commit_sha="sha_gone")
+    with patch.object(mod, "get_repo_config", return_value=None):
+        out = await mod._race_recover_existing(MagicMock(), params, None)
+    assert out is None, "None 가드가 없으면 AttributeError 가 난다"
