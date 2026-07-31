@@ -271,7 +271,7 @@ class TestProcessPendingRetries:
         row2 = _seed_queue_row(db_session, commit_sha="bbb222")
         calls: list[int] = []
 
-        async def _flaky(_db, row, _now, _counts):
+        async def _flaky(_db, row, _now, _counts, *, claim_token=None):
             calls.append(row.id)
             if row.id == row1.id:
                 raise ValueError("unexpected single-row defect")
@@ -303,7 +303,7 @@ class TestProcessPendingRetries:
         """
         row = _seed_queue_row(db_session, commit_sha="ccc333")
 
-        async def _commit_then_raise(_db, r, _now, _counts):
+        async def _commit_then_raise(_db, r, _now, _counts, *, claim_token=None):
             # status 확정 커밋(머지 성공 등) 후 알림 단계에서 예외 — 부분 진행 시나리오
             db_session.query(MergeRetryQueue).filter_by(id=r.id).update(
                 {"status": "succeeded", "last_failure_reason": None}
@@ -349,7 +349,10 @@ class TestProcessPendingRetries:
             "src.services.merge_retry_service.merge_retry_repo.release_claim", _spy_release
         )
 
-        async def _raise_infra(_db, _row, _now, _counts):
+        # 🔴 실 시그니처와 정렬 — 루프가 `claim_token=` 을 전달한다. 좁은 fake 는
+        #   TypeError 를 내고 broad except 가 그것을 삼켜 '행이 pending 으로' 로 오독된다.
+        # Match the real signature: the loop passes claim_token=.
+        async def _raise_infra(_db, _row, _now, _counts, *, claim_token=None):
             raise SQLAlchemyError("infra error on commit")
 
         with patch(
@@ -370,7 +373,7 @@ class TestProcessPendingRetries:
         """
         row = _seed_queue_row(db_session, commit_sha="eee555")
 
-        async def _commit_terminal_then_infra(_db, r, _now, _counts):
+        async def _commit_terminal_then_infra(_db, r, _now, _counts, *, claim_token=None):
             db_session.query(MergeRetryQueue).filter_by(id=r.id).update(
                 {"status": "succeeded", "last_failure_reason": None}
             )

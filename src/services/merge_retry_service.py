@@ -84,13 +84,22 @@ async def process_pending_retries(
         "skipped": 0,
     }
 
+    # 🔴 소유권 토큰은 **배치 반환 직후 값으로** 스냅샷한다 (2026-07-31 다관점 검증 P1 — 실측 재현).
+    #   이전 판은 루프 안에서 `row.claim_token` 을 읽었는데, `sessionmaker` 가 `expire_on_commit`
+    #   을 지정하지 않아(기본 True) **직전 행의 write-back commit 이 세션 전체를 만료**시킨다.
+    #   그래서 rows 2..N 의 "캡처" 는 사실 **DB 재조회**이고, 그 사이 다른 워커가 stale(>300s)
+    #   재클레임했다면 캡처값 = **그 워커의 토큰**이 된다. 결과: 이 워커가 남의 claim 을 해제하고,
+    #   정당한 소유자의 `mark_terminal` 이 CAS 0행 매치로 거부돼 **종결 결과가 소실되고 행이
+    #   `pending` 으로 부활**한다 — CAS 가 막으려던 실패 모드가 소유자 쪽으로 뒤집힌 것이다.
+    #   기본 batch=50 에서 **49/50 행이 무방비**였다.
+    # Snapshot ownership tokens as VALUES before any per-row commit: expire_on_commit defaults to
+    # True, so reading row.claim_token inside the loop is a DB re-read for rows 2..N.
+    claim_tokens = {r.id: r.claim_token for r in claimed}
+
     for row in claimed:
-        # 🔴 원본 소유권 토큰 캡처 (P1-5) — 예외 복구 시 `db.refresh` 가 재클레임한 새 토큰으로
-        # 덮어쓰기 전에 이 워커의 claim_token 을 확보. `_recover_and_release` 의 CAS 조건으로 전달.
-        # Capture this worker's claim_token before any exception-path db.refresh overwrites it.
-        _orig_tok = row.claim_token
+        _orig_tok = claim_tokens[row.id]
         try:
-            await _process_single_retry(db, row, now, counts)
+            await _process_single_retry(db, row, now, counts, claim_token=_orig_tok)
         except (httpx.HTTPError, SQLAlchemyError) as exc:
             # 인프라 에러 — 클레임 해제, 짧은 백오프, attempts_count 미증가
             # Infra error — release claim, short backoff, do NOT bump attempts_count
@@ -165,6 +174,8 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
     row,
     now: datetime,
     counts: dict[str, int],
+    *,
+    claim_token: str | None = None,
 ) -> None:
     """단일 retry row 처리 — 사이클 93 PR-B (S3776 26→<15 분리).
 
@@ -184,7 +195,13 @@ async def _process_single_retry(  # pylint: disable=too-many-locals,too-many-ret
     # CAS = optimistic concurrency on queue write-backs (DB clobber prevention), NOT full
     #   double-processing prevention: on a CAS miss the worker has already called merge_pr/notify;
     #   the actual double-merge is prevented by GitHub idempotency + the sha/expected_sha guards.
-    _claim_tok = row.claim_token
+    # 🔴 호출자가 **배치 반환 직후** 스냅샷한 값을 받는다 (2026-07-31 다관점 검증 P1).
+    #   여기서 `row.claim_token` 을 읽으면 직전 행의 commit 이 세션을 만료시킨 뒤라 DB 재조회가 되고,
+    #   그 사이 다른 워커가 재클레임했으면 **남의 토큰**을 자기 것으로 착각한다.
+    #   `claim_token=None` 폴백은 호출자 미지정(구 호출부·직접 테스트) 대비 — 그 경우 종전 동작.
+    # Receives the value snapshotted right after claim_batch; reading row.claim_token here would be
+    # a DB re-read (expire_on_commit) and could pick up another worker's token.
+    _claim_tok = claim_token if claim_token is not None else row.claim_token
     # ── a-0. 최대 시도 횟수 초과 (🔴 토큰 조회 前 — no_token 무한루프 방지, 종합감사 P1-11) ──
     # claim 시 attempts_count 가 선증가하므로(merge_retry_repo.claim_batch) 이 검사는 merge_pr 호출 이전 단계다.
     # 따라서 max_attempts=N 설정 시 실제 머지 시도는 N-1회 — 의도된 fail-safe(시도 횟수가 적은 보수적 방향).
