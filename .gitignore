@@ -54,6 +54,12 @@ cov_*.json
 
 # Worktrees
 .worktrees/
+# 🔴 리포 루트 아래 worktree 는 untracked 로 노출돼 메인 트리에서 `git add -A` 시 통째로
+#    스테이징된다. 더 나쁜 것은 **루트 grep 결과가 배로 부풀어**(회고 2026-07-31 P1 클러스터 11)
+#    정책 6(line 인용 실측)·정책 16(공유 로직 전수 grep)의 입력이 구조적으로 파괴되는 점이다.
+#    Worktrees under the repo root inflate root-level greps, corrupting the input to the
+#    "measure before you cite" and "grep all call sites" policies.
+.claude/worktrees/
 
 # Superpowers session files
 .superpowers/

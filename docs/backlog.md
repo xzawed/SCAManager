@@ -9,7 +9,40 @@
 
 ---
 
-## ▶️ 다음 세션 시작점 (2026-07-26 세션9 인수인계)
+## ▶️ 다음 세션 시작점 (2026-07-31 세션13 인수인계)
+
+**이 파일부터 읽으면 된다.**
+
+🔴 **2026-07-31 세션13 = 5+1 회고(run `wf_d58ff24d-f4d`·188 에이전트·확정 156·verdict_coverage 1.0)
++ 병행 Grok claim-review(session `019fb7fd`) + 뮤테이션 검증(`wf_30d60394-312`·24 에이전트).**
+사용자 결정 = **P0 4뿌리 전량 이행 + P1/P2 는 등재만**. 상세·근거는
+[`_archive/reports/2026-07-31-retrospective.md`](_archive/reports/2026-07-31-retrospective.md).
+
+**이번 세션이 처리한 P0** (아래 표에 없는 이유): A(CLI supersede `populate_existing`) ·
+B(훅 실행 가드) · C(메모리 경로) · D(STATE 수치 4지점). 배선 판정 substring fail-open 은 `#1248`.
+
+| ID | 상태 | 항목 | 근거 요약 |
+|----|------|------|-----------|
+| **R16** | 🟡 착수 가능 | **B8 fail-open floor 가 자기 스캔 범위를 관측하지 않는다** — `scripts/check_*.py` 만 glob 하므로 **test-as-guard 표면은 원리적으로 미탐**이고, 범위를 비워도 `✅ … bare-substring fail-open 0` **성공 문구를 출력**한다 | **기전**: 뮤테이션 GROK-9 실측 — `tests/unit/scripts/` 에 bare substring 판정 가드를 새로 만들어도 `check_guard_fail_open.py` 는 EXIT=0. AGENTS.md 스스로 최다 재발 사고(`#1136`·`#1156`)가 **test-as-guard 에 있었다**고 기록한다. **반증 수단**: 범위를 `tests/**/test_*.py` 로 넓혔을 때 오탐 < 진탐인지(정책 17 guard-suicide 위험 — `X in text` 는 정당한 presence 검사에도 쓰인다). 🔴 **오탐 위험 0인 최소 조치 = 출력 문구를 실제 스캔 범위로 한정** |
+| **R17** | 🟡 착수 가능 | **lint-js 공허화 차단의 false-justification 우회** — 템플릿 인라인 `<script>` 에 비실행 Jinja 유사 토큰(`// {{`)을 넣으면 "정당한 제외" 로 분류돼, 그 파일을 eslint 무시 목록에 넣어도 가드가 통과 | **기전**: 뮤테이션 GROK-12 실측 — 검사 대상이 **6 파일 → 5 파일**로 줄었는데 EXIT=0(양쪽 다). 🔴 **라벨 정정**: Grok 은 `score-lie` 로 분류했으나 대상이 **자사 템플릿**이라 사용자 리포 점수 인플레가 아니다 → `silent-disable`. 사용자 가시 효과 = *"템플릿 JS 가 영영 미린트돼도 CI 초록"*. **반증 수단**: 검사 대상 **파일 수 감소 자체**를 신호로 삼는 축 추가 시 red 가 되는지 |
+| **R18** | ⏸️ 보류 (기지 한계) | **claim-review 게이트의 위조·어휘 우회** — (a) Grok 을 돌리지 않고 손으로 채운 흔적으로 통과 (b) 트리거 어휘를 피한 seal 주장("강화했다·틈을 막았다")은 요구가 발동조차 안 함 | 둘 다 `check_claim_review_trace.py` docstring **§한계 1·3 에 이미 명시된 설계 천장**이고, AGENTS.md 가 *"fail-open 은 semantic 이라 정적 판정 불가 — 남은 방어선은 review-time claim-review"* 를 확정했다. 뮤테이션 GROK-10/11 은 그 천장의 **재확인**이지 신규 결함이 아니다. 🔴 **그래도 등재하는 이유**: "알려진 한계" 가 문서에만 있고 원장에 없으면 다음 세션이 신규 발견으로 착각해 같은 검증을 반복한다 |
+| **R19** | 🟡 착수 가능 | **`tests/unit/verifier/test_openai_client.py` 5건이 의존성 없는 환경에서 red** — `openai==2.50.0` 은 `requirements.txt` 핀이지만 `importorskip` 가드가 없다 | **기전**: 2026-07-31 실측 — 로컬 `pytest tests/unit` = **6079 passed / 5 failed**(`ModuleNotFoundError`), main 에서도 동일. CI 는 설치하므로 초록이라 **누구도 못 본다**. 🔴 진짜 피해는 6-step ② 가 요구하는 "push 전 전체 통과 실측" 이 이 환경에서 **구조적으로 불가능**해져, 실패를 습관적으로 무시하게 되는 것이다(진짜 회귀도 같이 묻힌다) |
+| **R20** | 🟡 착수 가능 | **정책 19 집행면 결함 9건** — 면제 마커가 **계량되지 않는다**(창의 post-guard seal PR 10건 중 **5건이 면제로 통과**, 첫 사용은 가드 생성 **66분 후**) · **HTML 주석 안의 흔적·면제도 인정**(가드는 exit 0 인데 리뷰어에게 비가시) · **session id 재사용 무탐지**(#1245 가 #1244 의 세션 인용) · seal 어휘가 이 리포 관용구 `뮤테이션 N건 red`(단수형)를 못 잡음 · **집행면이 정책 SSOT 4곳 어디에도 없음** | 회고 P1 클러스터 2. 최소 조치 = (a) 면제 사용을 원장에 기록·계량 (b) HTML 주석 제거 후 매칭 (c) 어휘 사전에 단수형 추가 (d) AGENTS.md·CLAUDE.md 정책 19 항에 게이트 존재 명시 |
+| **R21** | 🔴 결정 대기 | **`#1244` 커버리지 승격이 조달 불가 언어의 auto-merge 를 영구 차단** — `unavailable_tools → incomplete` 승격으로 **css/scss·dart·powershell·protobuf** 가 영구 incomplete. `#1245` 가 스스로 *"차단 없이 가시화만"* 이라 적은 것과 정면 모순 | 회고 P1 클러스터 4(7건). 🔴 **결정 필요**: (a) 조달 불가 언어는 incomplete 에서 제외(가시화만) / (b) 현행 유지(보수적 차단) / (c) 언어별 화이트리스트. 부수: 가시화가 **6 알림 채널 중 GitHub PR 코멘트 1곳에만** 구현돼 Telegram·대시보드에는 여전히 만점만 보인다 |
+| **R22** | 🟡 착수 가능 | **eslint fail-closed 오탐 4건** — `ruleId:null` 을 전부 '미린트' 로 오판해 **흔한 `eslint-disable` 주석 하나로 PR 전체가 `static_analysis` 오판**. 또 10-룰 최소 config 때문에 **설정에 없는 룰을 가리키는 `eslint-disable` 주석이 severity=ERROR 오탐으로 집계돼 점수를 깎는다**(실측 재현) | 회고 P1 클러스터 7. 🔴 사용자 리포 점수에 직접 영향 = `score-lie`. **반증 수단**: `eslint-disable-next-line some-external-rule` 만 담은 픽스처를 분석해 이슈 0건·미린트 판정 0 인지 |
+| **R23** | 🟡 착수 가능 | **pre-commit 미설치를 관측하는 면이 리포 전체에 없다** — 시크릿 훅 5종이 창 **22 커밋 내내 0회 실행**. CI TruffleHog `--only-verified` 는 이 클래스를 대체하지 못한다(검증된 시크릿만 본다) | 회고 P1 클러스터 8. 🔴 보안. **반증 수단**: SessionStart 훅이 `pre-commit --version` + `.git/hooks/pre-commit` 실재를 확인해 부재 시 loud(advisory 유지, 정책 17) |
+| **R24** | 🟡 착수 가능 | **backlog 원장 자체의 정확성 6건** — R9 는 창에서 양 축 모두 해소됐는데 여전히 🟡 · **R2-b 의 반증 수단이 원리적으로 측정 불가**(지정 API 가 영원히 404) · 요약표 🔴 1건인데 실제 3건 · 회귀 가드가 원장 23행 중 5행만 본다 | 회고 P1 클러스터 6. "지금 뭐가 남았나" 의 SSOT 가 **완료된 일을 다시 시킨다** |
+| **R25** | 🟡 착수 가능 | **`check_docs_sync` 는 ground truth 를 원리적으로 못 본다** — 문서 사본끼리만 대조하므로 **4지점이 함께 틀리면 항상 GREEN**(뮤테이션 실증). 유일한 수동 backstop 인 `/docs-sync` 스킬은 **통합 카운트를 상수 154 로 하드코딩** | 회고 P1 클러스터 1. 이번 세션이 수치는 정정하지만 **관측 축은 미신설**. 처방 = CI test job 에서 `pytest --collect-only -q` collected 수를 STATE 정규식 값과 대조(로컬 pre-commit 은 속도 때문에 현행 유지) |
+| **R26** | 🟡 착수 가능 | **`docs/architecture.md` 핵심 데이터 흐름 stale 2건** — 창에서 P0 로 정정한 `claude -p` 서술이 **이 문서에만 생존**(수정이 README 에만 적용됨) · `#1247` 이 STATE 최신 블록·cycle-history 어디에도 없음 | 회고 P1 클러스터 10·12 |
+| **R27** | 🟡 착수 가능 | **CONTRIBUTING(양 언어)이 존재하지 않는 기계 강제를 약속** — "커버리지·pylint 점수 drift 를 pre-commit 훅이 차단" · "src/ 신규 파일 트리 등재를 훅이 강제" 둘 다 실재하지 않는다. 또 path-scoped rules 본문 sync 의무(사이클 86 Q2 **사용자 명시 결정**)가 창의 코드 PR **7건 중 6건에서 미이행** | 회고 P1 클러스터 13. 신규 기여자에게 거짓 보증 |
+| **R28** | 🟡 착수 가능 | **owed 운영검증 원장이 22 PR·2 세션 종료 동안 0행** — 창의 헤드라인 봉인들(eslint/tsc/분석기 커버리지)의 **라이브 검증이 추적면 밖으로 소실**. 직전 회고 R0-2(빈 원장을 green 으로 읽음)가 **더 나쁜 형태로 재발** | 회고 P1 클러스터 12. R0-2 와 같은 뿌리이나 창이 실증을 추가했다 |
+
+> P2 76건(관점 중복 포함)은 보고서 본문 참조. 위 R16~R28 에 흡수되지 않는 잔여는 다음 회고에서 재평가.
+> 🔴 **직전 창(2026-07-26)의 R0-2·R2-b·R7 은 여전히 미해결**이며 아래 역사 섹션에 남아 있다.
+
+---
+
+## ▶️ (역사) 다음 세션 시작점 (2026-07-26 세션9 인수인계)
 
 **이 파일부터 읽으면 된다.**
 
