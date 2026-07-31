@@ -165,7 +165,7 @@ def test_snapshot_is_taken_before_any_per_row_commit(make_session):
     루프가 시작돼 첫 write-back 이 commit 되는 순간부터는 더 이상 그렇지 않다.
     """
     setup = make_session()
-    ids = _seed(setup, 2)
+    _seed(setup, 2)   # 반환 id 미사용 — 여기선 토큰 형태만 본다 / ids unused: token shape only
     setup.close()
 
     worker = make_session()
