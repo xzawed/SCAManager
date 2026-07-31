@@ -15,6 +15,7 @@ import pathlib
 import pytest
 import yaml
 
+from tests.unit.scripts._wiring_shape import any_invokes
 from scripts.check_claim_review_trace import (
     commit_messages,
     find_seal_claims,
@@ -103,6 +104,34 @@ def test_each_required_field_is_load_bearing(monkeypatch, drop):
 def test_complete_trace_passes(monkeypatch):
     """seal 주장 + 구조화된 흔적 = exit 0."""
     assert _run(monkeypatch, title=_REAL_SEAL_CLAIMS[0], body=_GOOD_TRACE) == 0
+
+
+@pytest.mark.parametrize("wrapped", [
+    "- session: `019fadda-3609-7ab3-8d94-ebe23699008e`",
+    "- session: '019fadda-3609-7ab3-8d94-ebe23699008e'",
+    '- session: "019fadda-3609-7ab3-8d94-ebe23699008e"',
+])
+def test_session_id_may_be_code_quoted(monkeypatch, wrapped):
+    """🔴 백틱/따옴표로 감싼 sessionId 도 인정 — 가드가 **자기 안내대로 적은 본문**을 막았다.
+
+    실패 메시지의 예시가 `` `019fadf6-523e-...` `` 백틱 형태인데 정규식은 백틱을 거부해,
+    안내를 그대로 따른 PR 본문이 exit 1 로 차단됐다(이 가드를 고치는 PR 자신이 그 사례).
+    마크다운에서 ID 를 코드 표기하는 것은 자연스러우므로 허용한다.
+    The failure message demonstrated a backticked example the regex rejected.
+    """
+    body = _GOOD_TRACE.replace(
+        "- session: 019fadda-3609-7ab3-8d94-ebe23699008e", wrapped,
+    )
+    assert wrapped in body, "치환 미적용 — 픽스처 drift"
+    assert _run(monkeypatch, title=_REAL_SEAL_CLAIMS[0], body=body) == 0
+
+
+def test_empty_session_still_fails_when_quoted(monkeypatch):
+    """대조군 — 따옴표 허용이 **빈 값 통과**로 새지 않는다(초판 결함 재발 방지)."""
+    body = _GOOD_TRACE.replace(
+        "- session: 019fadda-3609-7ab3-8d94-ebe23699008e", "- session: ``",
+    )
+    assert _run(monkeypatch, title=_REAL_SEAL_CLAIMS[0], body=body) == 1
 
 
 def test_no_seal_claim_passes_without_trace(monkeypatch):
@@ -212,7 +241,7 @@ def test_ci_actually_runs_the_guard():
     주석에만 언급되고 실행되지 않는 상태(#1145 형 배선 누락)를 통과시키지 않기 위해
     산문 grep 이 아니라 `jobs.*.steps[].run` 을 파싱한다.
     """
-    assert any(_SCRIPT_REF in step.get("run", "") for step in _ci_steps()), (
+    assert any_invokes([s.get("run", "") for s in _ci_steps()], _SCRIPT_REF), (
         f"{_SCRIPT_REF} 를 실행하는 CI step 이 없다 — 가드가 배선되지 않았다"
     )
 

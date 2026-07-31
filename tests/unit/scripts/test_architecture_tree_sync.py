@@ -10,6 +10,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+from tests.unit.scripts._wiring_shape import surface_invokes
+
 _ROOT = Path(__file__).resolve().parents[3]
 _SCRIPT = _ROOT / "scripts" / "check_architecture_tree_sync.py"
 
@@ -85,5 +87,9 @@ def test_guard_is_wired():
     """
     pc = (_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     ci = "\n".join(p.read_text(encoding="utf-8") for p in (_ROOT / ".github" / "workflows").glob("*.yml"))
-    assert "check_architecture_tree_sync" in pc, "pre-commit 미배선"
-    assert "check_architecture_tree_sync" in ci, "CI 미배선"
+    # 🔴 bare stem substring 이었다 — 실행 엔트리를 지우고 이름만 남겨도 통과했다
+    # (실측 뮤테이션 GROK-20260731-7). 이제 인터프리터 호출을 요구한다.
+    # Was a bare-stem substring: removing the real entry but leaving the name kept it green.
+    ref = "scripts/check_architecture_tree_sync.py"
+    assert surface_invokes(pc, ref), "pre-commit 에서 실행되지 않음 (이름 언급은 배선 아님)"
+    assert surface_invokes(ci, ref), "CI 에서 실행되지 않음 (이름 언급은 배선 아님)"

@@ -13,6 +13,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+from tests.unit.scripts._wiring_shape import surface_invokes
+
 _ROOT = Path(__file__).resolve().parents[3]
 _SCRIPT = _ROOT / "scripts" / "check_guard_fail_open.py"
 
@@ -159,5 +161,9 @@ def test_b8_is_wired():
     """🔴 B8 이 pre-commit·CI 에 배선됐는지."""
     pc = (_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     ci = "\n".join(p.read_text(encoding="utf-8") for p in (_ROOT / ".github" / "workflows").glob("*.yml"))
-    assert "check_guard_fail_open" in pc, "pre-commit 미배선"
-    assert "check_guard_fail_open" in ci, "CI 미배선"
+    # 🔴 bare stem substring 이었다 (실측 뮤테이션 GROK-20260731-7) — B8 자신의 배선 freeze 가
+    # 이 파일이 강제하려는 fail-open 을 범하고 있었다. 이제 인터프리터 호출을 요구한다.
+    # B8's own wiring freeze committed the very fail-open it exists to block.
+    ref = "scripts/check_guard_fail_open.py"
+    assert surface_invokes(pc, ref), "pre-commit 에서 실행되지 않음 (이름 언급은 배선 아님)"
+    assert surface_invokes(ci, ref), "CI 에서 실행되지 않음 (이름 언급은 배선 아님)"

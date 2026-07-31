@@ -10,6 +10,8 @@ from pathlib import Path
 
 import yaml
 
+from tests.unit.scripts._wiring_shape import any_invokes
+
 _ROOT = Path(__file__).resolve().parents[3]
 _CI = _ROOT / ".github" / "workflows" / "ci.yml"
 
@@ -39,7 +41,7 @@ def test_repo_integrity_runs_all_four_guards():
     """🔴 4 whole-repo 가드가 전부 백스톱 job 에서 실행됨 (조용한 제거 차단)."""
     runs = _repo_integrity_runs()
     for guard in _BACKSTOP_GUARDS:
-        assert any(guard in r for r in runs), (
+        assert any_invokes(runs, f"scripts/{guard}"), (
             f"repo-integrity job 이 {guard} 미실행 — pre-commit 우회 시 봉인 갭"
         )
 

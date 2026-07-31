@@ -31,6 +31,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.unit.scripts._wiring_shape import any_invokes
+
 _ROOT = Path(__file__).resolve().parents[3]
 _SETTINGS = _ROOT / ".claude" / "settings.json"
 _HOOK = _ROOT / ".claude" / "hooks" / "block_credential_dump.py"
@@ -306,7 +308,7 @@ def test_settings_json_is_valid():
 def test_hook_wired_to_pretooluse_bash():
     """🔴 훅이 PreToolUse/Bash 에 배선 — 산문 안내가 아니라 기계 집행면."""
     commands = pretooluse_commands_for(_settings(), _TOOL)
-    assert any("block_credential_dump.py" in c for c in commands), (
+    assert any_invokes(commands, ".claude/hooks/block_credential_dump.py"), (
         "block_credential_dump.py 가 PreToolUse(Bash) 에 미배선 — 차단이 인지 의존으로 회귀한다.\n"
         f"현재 Bash 배선: {commands}\n"
         "해결 / Fix: .claude/settings.json 의 hooks.PreToolUse 에 matcher 'Bash' 그룹 추가."
@@ -321,6 +323,6 @@ def test_wired_hook_exists_on_disk():
 def test_existing_edit_hooks_survive():
     """기존 Write/Edit 훅 배선이 유지 — Bash 그룹 추가가 기존 보호를 덮어쓰지 않는다."""
     commands = pretooluse_commands_for(_settings(), "Write")
-    assert any("check_edit_allowed.py" in c for c in commands), (
+    assert any_invokes(commands, ".claude/hooks/check_edit_allowed.py"), (
         "check_edit_allowed.py 배선이 사라졌다 — 모바일 환경 보호가 무력화된다."
     )

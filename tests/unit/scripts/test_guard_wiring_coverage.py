@@ -20,6 +20,10 @@ import json
 import re
 from pathlib import Path
 
+import pytest
+
+from tests.unit.scripts._wiring_shape import surface_invokes
+
 _ROOT = Path(__file__).resolve().parents[3]
 _SCRIPTS = _ROOT / "scripts"
 _HOOKS = _ROOT / ".claude" / "hooks"
@@ -57,15 +61,6 @@ def _guard_files() -> list[Path]:
     return checks + hooks
 
 
-def _strip_line_comments(text: str) -> str:
-    """라인별 `#`-to-EOL 주석 제거 — 주석 안 경로 언급이 '배선'으로 오판되는 것 차단.
-
-    🔴 실제 호출(`entry:`/`run: python scripts/x.py`)은 `#` 앞에 오므로 제거되지 않는다.
-    Strip `#`-to-EOL comments per line so a path inside a comment isn't counted as an invocation.
-    """
-    return "\n".join(line.split("#", 1)[0] for line in text.splitlines())
-
-
 def _wired_surfaces(stem: str, surfaces: dict[str, str]) -> list[str]:
     """가드가 각 표면에서 **실제로 호출**되는가 — 단순 언급 아님.
 
@@ -79,16 +74,20 @@ def _wired_surfaces(stem: str, surfaces: dict[str, str]) -> list[str]:
     🔴 path-comment fail-open 봉인 (감사 self-defect): 경로 토큰이 텍스트 어디든(주석 포함) 있으면
     배선으로 셌다 — `# TODO: wire scripts/check_x.py` 같은 **전체 경로 주석**도 통과시켜, 이 파일이
     막으려는 anti-pattern 을 자신이 범했다. YAML 표면(pre-commit/ci)은 주석 제거 후 매칭.
+
+    🔴 **실행자 앵커 봉인 (2026-07-31 Grok claim-review + 뮤테이션 실측)**: 위 두 차례 강화 뒤에도
+    정규식은 **경로 토큰만** 봤다 — docstring 은 "`python scripts/<stem>.py` 형태의 실제 호출만
+    인정한다" 고 단언했으나 구현에 `python` 요구가 없었다(observer-lie). 그래서 주석이 아닌
+    `echo scripts/check_x.py` 데코이는 그대로 통과했다. 실측: ci.yml 의 실호출을 echo 로 바꿔도
+    `tests/unit/scripts`+`tests/unit/hooks` 498건이 전부 초록(뮤테이션 GROK-20260731-2).
+    이제 판정은 `tests/unit/scripts/_wiring_shape.surface_invokes` — **명령어가 인터프리터인지** 구조 판정한다.
+    Third hardening: the regex still matched a bare path token, so a non-comment `echo` decoy passed.
     """
-    # 실제 호출 형태: scripts/<stem>.py 또는 hooks/<stem>.py 가 명령 토큰으로 등장
-    invoke = re.compile(rf"(scripts|\.claude/hooks|hooks)/{re.escape(stem)}\.py")
-    out = []
-    for name, text in surfaces.items():
-        # settings.json 은 JSON(주석 없음, `#` 가 문자열에 있을 수 있어 미제거) — 나머지 YAML 만 제거
-        haystack = text if name == "settings" else _strip_line_comments(text)
-        if invoke.search(haystack):
-            out.append(name)
-    return out
+    paths = (f"scripts/{stem}.py", f".claude/hooks/{stem}.py")
+    return [
+        name for name, text in surfaces.items()
+        if any(surface_invokes(text, path) for path in paths)
+    ]
 
 
 def _dead_hook_references(settings_text: str) -> list[str]:
@@ -185,6 +184,25 @@ def test_wiring_detection_requires_invocation_not_mention():
     )
     real = {"ci": "run: python scripts/check_fake_guard.py"}
     assert _wired_surfaces("check_fake_guard", real) == ["ci"], "실제 호출을 배선으로 못 잡았다"
+
+
+@pytest.mark.parametrize("decoy", [
+    "      - run: echo scripts/check_fake_guard.py",
+    "      - run: true  # scripts/check_fake_guard.py",
+    "      - run: cat scripts/check_fake_guard.py",
+    '{"hooks": [{"command": "echo \'skipping .claude/hooks/check_fake_guard.py\'"}]}',
+])
+def test_wiring_detection_rejects_non_comment_decoy(decoy):
+    """🔴 **주석이 아닌** 비실행 데코이도 배선 아님 — 실행자 앵커 봉인(2026-07-31).
+
+    이전 두 차례 강화(substring→경로토큰, +주석제거)는 **주석 축만** 막아, `echo <경로>` 처럼
+    주석이 아니면서 실행하지 않는 형태를 통과시켰다. 자가검증의 부정 통제가 주석 사례뿐이라
+    이 구멍을 볼 수 없었다(양성 대조군만 `python` 을 포함).
+    Non-comment, non-executing decoys must also fail: the prior negative control only tested comments.
+    """
+    assert _wired_surfaces("check_fake_guard", {"ci": decoy}) == [], (
+        f"비실행 데코이를 배선으로 오판 — fail-open 재발: {decoy!r}"
+    )
 
 
 def test_wiring_detection_ignores_full_path_in_comment():

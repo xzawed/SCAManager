@@ -16,6 +16,7 @@ from pathlib import Path
 
 import yaml
 
+from tests.unit.scripts._wiring_shape import any_invokes
 from scripts.check_dead_code import (
     count_ast_references,
     parse_added_public_defs,
@@ -119,7 +120,7 @@ def _lint_job_run_blocks():
 
 def test_ci_wires_dead_code_guard():
     """🔴 (R1) lint-changed-tests job 이 check_dead_code.py 를 호출 — 타 job false-pass 차단."""
-    assert any("check_dead_code.py" in r for r in _lint_job_run_blocks()), (
+    assert any_invokes(_lint_job_run_blocks(), "scripts/check_dead_code.py"), (
         "lint-changed-tests job 에 dead-code 가드 배선 누락"
     )
 
