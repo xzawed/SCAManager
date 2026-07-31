@@ -15,12 +15,10 @@ so it silently passed forever. The negative controls below are the point of this
 """
 import pytest
 
-from scripts.check_memory_refs import (
-    collect_referenced,
-    normalize,
-    repo_slug,
-    resolve_memory_dir,
-)
+# 🔴 단일 import 형태 — `import X as mod` 와 `from X import ...` 공존은
+#   CodeQL `py/import-and-import-from` 을 자초하고 CI `check_dual_import` 가 차단한다
+#   (`.claude/rules/testing.md` — 모듈 패치 시 이중 import 회피).
+# Single import form: the dual shape self-inflicts a CodeQL alert and is CI-blocked.
 import scripts.check_memory_refs as mod
 
 
@@ -36,7 +34,7 @@ def test_repo_slug_matches_claude_code_convention(path, expected):
     """🔴 드라이브 콜론과 경로 구분자가 각각 `-` 로 → `f:\\` 가 `f--` 가 된다."""
     from pathlib import PureWindowsPath, PurePosixPath
     p = PureWindowsPath(path) if ":" in path or "\\" in path else PurePosixPath(path)
-    assert repo_slug(p) == expected
+    assert mod.repo_slug(p) == expected
 
 
 # ── 🔴 부정 통제 — drift 는 조용히 통과하면 안 된다 (이 파일의 본체) ────
@@ -70,7 +68,7 @@ def test_main_skips_when_not_a_claude_machine(tmp_path, monkeypatch):
 def test_resolve_prefers_env_override(tmp_path, monkeypatch):
     """`CLAUDE_PROJECT_MEMORY_DIR` 가 최우선 — 슬러그 규약이 바뀌어도 탈출구가 있다."""
     monkeypatch.setenv("CLAUDE_PROJECT_MEMORY_DIR", str(tmp_path))
-    assert resolve_memory_dir(tmp_path / "irrelevant") == tmp_path
+    assert mod.resolve_memory_dir(tmp_path / "irrelevant") == tmp_path
 
 
 def test_env_override_reaches_main_without_projects_root(tmp_path, monkeypatch, capsys):
@@ -129,7 +127,7 @@ def test_resolve_does_not_auto_bind_a_near_miss(tmp_path, monkeypatch):
 
     from pathlib import PureWindowsPath
     target = PureWindowsPath(r"Z:\elsewhere\SCAManager")
-    assert resolve_memory_dir(target) is None, "무관한 접미사 후보를 자동 채택했다"
+    assert mod.resolve_memory_dir(target) is None, "무관한 접미사 후보를 자동 채택했다"
     # 대신 힌트로는 노출해야 한다 — 사람이 판단할 정보는 주되 추측하지 않는다.
     assert mod.near_miss_slugs(target) == ["completely--unrelated-SCAManager"]
 
@@ -157,13 +155,12 @@ def test_collect_stale_normalizes_separators(tmp_path, monkeypatch):
     초판은 여기만 exact `slug in actual` 이라, 문서가 하이픈·파일이 언더스코어면
     '(현재 미생성)' 잔존을 놓쳤다.
     """
-    from scripts.check_memory_refs import collect_stale
     doc = tmp_path / "CLAUDE.md"
     doc.write_text(f"메모리 `{_FIX_HYPHEN}.md` (현재 미생성) 참조\n", encoding="utf-8")
     monkeypatch.setattr(mod, "DOC_FILES", ["CLAUDE.md"])
 
     actual = {f"{_FIX_UNDER}.md"}  # 같은 슬러그, 다른 표기 / same slug, other separator style
-    assert collect_stale(tmp_path, actual) == [("CLAUDE.md", f"{_FIX_HYPHEN}.md")]
+    assert mod.collect_stale(tmp_path, actual) == [("CLAUDE.md", f"{_FIX_HYPHEN}.md")]
 
 
 def test_resolve_finds_exact_slug_case_insensitively(tmp_path, monkeypatch):
@@ -174,7 +171,7 @@ def test_resolve_finds_exact_slug_case_insensitively(tmp_path, monkeypatch):
     monkeypatch.delenv("CLAUDE_PROJECT_MEMORY_DIR", raising=False)
 
     from pathlib import PureWindowsPath
-    assert resolve_memory_dir(PureWindowsPath(r"F:\DEV\SCAManager")) == \
+    assert mod.resolve_memory_dir(PureWindowsPath(r"F:\DEV\SCAManager")) == \
         projects / "f--DEV-SCAManager" / "memory"
 
 
@@ -187,7 +184,7 @@ def test_resolve_returns_none_when_ambiguous(tmp_path, monkeypatch):
     monkeypatch.delenv("CLAUDE_PROJECT_MEMORY_DIR", raising=False)
 
     from pathlib import PureWindowsPath
-    assert resolve_memory_dir(PureWindowsPath(r"Z:\elsewhere\SCAManager")) is None
+    assert mod.resolve_memory_dir(PureWindowsPath(r"Z:\elsewhere\SCAManager")) is None
 
 
 # ── 표기 정규화 ─────────────────────────────────────────────────────────
@@ -195,12 +192,12 @@ def test_resolve_returns_none_when_ambiguous(tmp_path, monkeypatch):
 
 def test_normalize_absorbs_separator_style():
     """🔴 문서는 하이픈, 파일은 언더스코어 — 정규화 없으면 전건 오탐/전건 미탐이 갈린다."""
-    assert normalize("feedback-test-patterns.md") == normalize("feedback_test_patterns.md")
+    assert mod.normalize("feedback-test-patterns.md") == mod.normalize("feedback_test_patterns.md")
 
 
 def test_normalize_is_not_constant():
     """대조군 — 정규화가 서로 다른 슬러그까지 같게 만들면 안 된다(공허한 통과 차단)."""
-    assert normalize("feedback-a.md") != normalize("feedback-b.md")
+    assert mod.normalize("feedback-a.md") != mod.normalize("feedback-b.md")
 
 
 # ── 참조 수집 ───────────────────────────────────────────────────────────
@@ -219,7 +216,7 @@ def test_collect_picks_up_wiki_links(tmp_path, monkeypatch):
     doc = tmp_path / "CLAUDE.md"
     doc.write_text(f"본문 [[{_FIX_HYPHEN}]] 참조\n", encoding="utf-8")
     monkeypatch.setattr(mod, "DOC_FILES", ["CLAUDE.md"])
-    assert f"{_FIX_HYPHEN}.md" in collect_referenced(tmp_path)
+    assert f"{_FIX_HYPHEN}.md" in mod.collect_referenced(tmp_path)
 
 
 def test_collect_picks_up_backtick_form(tmp_path, monkeypatch):
@@ -227,7 +224,7 @@ def test_collect_picks_up_backtick_form(tmp_path, monkeypatch):
     doc = tmp_path / "CLAUDE.md"
     doc.write_text(f"메모리 `{_FIX_UNDER}.md` 참조\n", encoding="utf-8")
     monkeypatch.setattr(mod, "DOC_FILES", ["CLAUDE.md"])
-    assert f"{_FIX_UNDER}.md" in collect_referenced(tmp_path)
+    assert f"{_FIX_UNDER}.md" in mod.collect_referenced(tmp_path)
 
 
 def test_collect_is_not_vacuous(tmp_path, monkeypatch):
@@ -235,4 +232,4 @@ def test_collect_is_not_vacuous(tmp_path, monkeypatch):
     doc = tmp_path / "CLAUDE.md"
     doc.write_text("메모리 언급이 전혀 없는 본문\n", encoding="utf-8")
     monkeypatch.setattr(mod, "DOC_FILES", ["CLAUDE.md"])
-    assert collect_referenced(tmp_path) == {}
+    assert mod.collect_referenced(tmp_path) == {}
