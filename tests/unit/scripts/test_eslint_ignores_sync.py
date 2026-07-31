@@ -21,6 +21,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
+from tests.unit.scripts._wiring_shape import any_invokes, invokes
 from scripts.check_lint_js_nonvacuous import (
     CONFIG_PATH,
     NON_TEMPLATE_IGNORES,
@@ -227,7 +228,7 @@ def test_ci_workflow_actually_runs_the_script():
         for job in workflow["jobs"].values()
         for step in job.get("steps", [])
     ]
-    assert any(_SCRIPT_REF in cmd for cmd in run_commands), (
+    assert any_invokes(run_commands, _SCRIPT_REF), (
         f"{_SCRIPT_REF} 를 실행하는 CI step 이 없다 — 가드가 배선되지 않았다"
     )
 
@@ -242,7 +243,9 @@ def test_makefile_lint_js_target_runs_the_script():
             break
         body.append(line)
     recipe = "\n".join(body)
-    assert _SCRIPT_REF in recipe, f"make lint-js 가 {_SCRIPT_REF} 를 호출하지 않는다:\n{recipe}"
+    assert invokes(recipe, _SCRIPT_REF), (
+        f"make lint-js 가 {_SCRIPT_REF} 를 **실행**하지 않는다 (경로 언급만으로는 배선 아님):\n{recipe}"
+    )
     assert "|| true" not in recipe, (
         "make lint-js 에 `|| true` 가 남아 있다 — 공허화 차단이 다시 삼켜진다"
     )

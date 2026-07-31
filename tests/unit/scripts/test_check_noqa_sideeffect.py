@@ -16,6 +16,7 @@ from pathlib import Path
 
 import yaml
 
+from tests.unit.scripts._wiring_shape import any_invokes
 from scripts.check_noqa_sideeffect import (
     find_violations,
     line_hides_f401,
@@ -144,7 +145,7 @@ def _lint_job_run_blocks():
 def test_ci_wires_noqa_guard_in_lint_job():
     """🔴 (R1) lint-changed-tests job 이 check_noqa_sideeffect.py 를 호출 — 타 job false-pass 차단."""
     runs = _lint_job_run_blocks()
-    assert any("check_noqa_sideeffect.py" in r for r in runs), (
+    assert any_invokes(runs, "scripts/check_noqa_sideeffect.py"), (
         "lint-changed-tests job 에 noqa 가드 배선 누락"
     )
 

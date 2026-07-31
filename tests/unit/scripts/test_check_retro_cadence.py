@@ -10,10 +10,12 @@ converting the trigger from cognition-dependent to measured.
 🔴 순수 함수만 테스트 — 현재 repo 상태(카덴스 breached 여부)는 시점 의존이라 단언 금지(flaky).
 Pure functions only — current-repo cadence state is time-dependent, so not asserted (would flake).
 """
+import json
 import subprocess
 import sys
 from pathlib import Path
 
+from tests.unit.scripts._wiring_shape import any_invokes
 from scripts.check_retro_cadence import (
     RETRO_PR_THRESHOLD,
     _EMPTY_APPROVAL,
@@ -150,15 +152,32 @@ def test_script_runs_without_crashing():
     assert "UnicodeEncodeError" not in r.stderr, "cp949 이모지 크래시 재발"
 
 
-def test_checklist_wires_the_counter():
-    """🔴 CLAUDE.md 작업 시작 전 필수 체크리스트가 카운터를 배선 — 문서-only 재발 방지.
+def test_counter_is_wired_to_a_machine_surface():
+    """🔴 카운터가 **기계 표면**(settings.json SessionStart)에서 실행되는가 — 문서-only 재발 방지.
 
-    본 회고 P0 = 문서-only 정책이 두 번 실패. 스크립트만 있고 체크리스트 미배선이면
-    다시 인지 의존이 된다 → 체크리스트 bash 블록에 스크립트 호출이 존재해야 한다.
+    🔴 2026-07-31 정정 — 이전 판은 `assert "check_retro_cadence.py" in claude_md` 였다.
+    그 단언은 두 가지로 공허했다:
+
+    1. **산문이 통과시킨다** (AGENTS.md 불변식 1 위반). 문서-only 재발을 막겠다는 테스트가
+       정작 판정을 **문서 문자열 존재**에 걸었다.
+    2. **의미가 뒤집혔는데도 초록** — CLAUDE.md 는 현재 *"카운터 2종은 이제 SessionStart 훅이
+       자동 실행한다 … 위 체크리스트에 수동 명령으로 적을 필요 없다"* 고 적혀 있다. 즉 이
+       단언의 명시 목적("체크리스트에 호출이 존재")은 **더 이상 참이 아니며**, 그 사실을
+       설명하는 문단이 문자열을 만족시켜 통과시키고 있었다.
+
+    실측 뮤테이션 GROK-20260731-8: SessionStart 엔트리를 통째로 삭제해도 이 단언은 초록
+    (스위트 전체로는 `test_session_start_wiring` 이 백스톱해 red — 그래서 P2 로 분류).
+    The old assert passed on the very prose explaining that the checklist no longer needs the call.
     """
-    claude_md = (_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
-    assert "check_retro_cadence.py" in claude_md, (
-        "CLAUDE.md 체크리스트에 check_retro_cadence.py 호출 누락 — 카운터가 배선 안 되면 문서-only 재발"
+    settings = json.loads((_ROOT / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    commands = [
+        hook.get("command", "")
+        for entry in settings.get("hooks", {}).get("SessionStart", [])
+        for hook in entry.get("hooks", [])
+    ]
+    assert any_invokes(commands, "scripts/check_retro_cadence.py"), (
+        "카운터가 SessionStart 에서 실행되지 않는다 — 문서-only 재발.\n"
+        f"현재 배선: {commands}"
     )
 
 

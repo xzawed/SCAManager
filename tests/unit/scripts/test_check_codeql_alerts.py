@@ -14,6 +14,7 @@ Never treat "not indexed yet" as clean — verify the analysis exists for the he
 import os
 from pathlib import Path
 
+from tests.unit.scripts._wiring_shape import any_invokes
 from scripts.check_codeql_alerts import (
     analysis_ready,
     format_violations,
@@ -112,7 +113,7 @@ def test_codeql_workflow_wires_the_gate():
     """🔴 게이트가 codeql.yml 에 배선 — 미배선이면 스크립트는 dead code 다."""
     steps = _codeql_workflow()["jobs"]["analyze"]["steps"]
     runs = [s.get("run", "") for s in steps if "run" in s]
-    assert any("check_codeql_alerts.py" in r for r in runs), "codeql.yml 에 게이트 배선 누락"
+    assert any_invokes(runs, "scripts/check_codeql_alerts.py"), "codeql.yml 에 게이트 배선 누락"
 
 
 def test_gate_uses_merge_commit_sha_not_head_sha():

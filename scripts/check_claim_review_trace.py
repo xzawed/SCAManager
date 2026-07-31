@@ -69,7 +69,12 @@ _SEAL_PATTERNS: tuple[tuple[str, str], ...] = (
 # without substance. This raises the forgery cost; it does not prevent forgery.
 _TRACE_HEADING = re.compile(r"^#{1,4}[^\n]*claim-?review", re.IGNORECASE | re.MULTILINE)
 _REQUIRED_FIELDS: tuple[tuple[str, str], ...] = (
-    (r"^[-*|\s]*session\s*[:|]\s*[0-9a-f]{8}-[0-9a-f]{4}",
+    # 🔴 백틱/따옴표 허용 (2026-07-31) — 아래 안내문 예시가 백틱 형태(`019fadf6-...`)인데
+    #    정규식은 백틱을 거부해, **가드가 자기 안내대로 적은 본문을 차단**했다. 실측: 이 가드를
+    #    고치는 PR 자신이 그 이유로 exit 1. 마크다운에서 ID 를 코드 표기하는 것은 자연스럽다.
+    # 🔴 Allow backticks/quotes: the help text below demonstrates a backticked example the regex
+    #    rejected, so the guard blocked bodies written exactly as it instructed.
+    (r"^[-*|\s]*session\s*[:|]\s*[`'\"]?[0-9a-f]{8}-[0-9a-f]{4}",
      "session — Grok sessionId (예: `019fadf6-523e-...`)"),
     (r"^[-*|\s]*verdict\s*[:|]\s*(SURVIVES|BROKEN|CONFIRMED|REFUTED|HOLDS)\b",
      "verdict — SURVIVES | BROKEN | CONFIRMED | REFUTED | HOLDS 중 하나"),

@@ -34,6 +34,29 @@ PR 본문에 실경로 뮤테이션-red + `assert mutated != orig`(불변식 2) 
 `check_guard_fail_open`(B8)은 floor(구조 도구 0)만 자동 차단 — 결정이 bare substring 인 semantic
 잔여는 review-time claim-review(Grok)가 방어선. 천장 상세: [`AGENTS.md`](../../AGENTS.md) §정적 탐지의 천장.
 
+## 🔴 배선 단언은 `_wiring_shape` 술어 의무 (2026-07-31 — substring 배선 판정 11건 fail-open 실측)
+
+"이 가드가 배선됐나" 를 단언할 때 **`"<경로>" in <명령>` substring 금지**. 반드시
+`tests/unit/scripts/_wiring_shape` 의 `invokes` / `any_invokes` / `surface_invokes` 를 쓴다.
+
+- ❌ `assert any("check_x.py" in c for c in commands)` — `echo 'skipping scripts/check_x.py'` 통과
+- ✅ `assert any_invokes(commands, "scripts/check_x.py")` — 명령어가 인터프리터여야 통과
+
+**근거(실측)**: 배선 단언 10곳이 전부 substring 이었고, 격리 worktree 에서 보호 장치를 `echo` 로
+중성화한 실경로 뮤테이션 12건 중 **11건이 GREEN**(`tests/unit/scripts`+`tests/unit/hooks` 498건
+전부 초록). 무력화 대상에 SessionStart 카운터 2종 · 시크릿 덤프 차단 훅 · repo-integrity 백스톱
+4종 · 정책 19 claim-review 집행면이 포함됐다. `#1243` 이 훅 command 6종을
+`python X` → `PY=$(...); $PY X` 로 재작성했을 때 가드가 그 재작성과 `echo X` 를 **구별하지 못한
+것**이 이 클래스의 실제 발동 경로다.
+
+🔴 **술어가 잡지 못하는 것**(정직 기준): 조건부 skip 된 CI step · 인터프리터의 런타임 부재 ·
+배선됐으나 공허한 가드 본문. 이 술어는 **"실행 연결이 끊겼는데 초록"** 만 끝낸다.
+
+🔴 **B8 범위 밖**: `check_guard_fail_open.py` 는 `scripts/check_*.py` 만 glob 하므로
+**test-as-guard(`tests/**/test_*.py`)의 fail-open 은 자동 탐지되지 않는다** — AGENTS.md 가
+기록한 최다 재발 사고(`#1136`·`#1156`)가 바로 그 표면이다. 이 표면은 write-time 규율(이 파일)과
+review-time claim-review 로만 방어된다.
+
 ## 스크립트 관용구 (이 표면 전용)
 
 - 🔴 **stdout UTF-8 가드 의무** — `scripts/*.py` 는 전부 `_make_stdout_safe()`/`reconfigure` 호출

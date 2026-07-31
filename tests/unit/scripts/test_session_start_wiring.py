@@ -7,14 +7,20 @@ Retro: the counters were wired to no enforcement surface, so execution stayed co
 The prior guard asserted only that a prose string existed in CLAUDE.md, pinning the doc-only state.
 
 🔴 이 가드는 산문이 아니라 **실행 기전**(.claude/settings.json 의 SessionStart 훅 엔트리)을 단언한다.
-   settings.json 이 곧 실행 주체이므로, 여기의 배선을 단언하는 것은 실행을 단언하는 것과 같다.
-This asserts the execution mechanism itself — settings.json IS what runs the scripts, so asserting
-its wiring is asserting execution (unlike asserting prose in a markdown file).
+
+🔴 **단, "settings.json 에 적혀 있다 = 실행된다" 는 아니다** (2026-07-31 정정). 초판은 정확히 그
+   추론을 했고, 그래서 command 를 `echo '...'` 로 바꿔도 통과했다 — 파일만 옮긴 산문 grep 이었다.
+   지금은 `tests/unit/scripts/_wiring_shape` 가 **명령어가 인터프리터인지** 구조 판정한다.
+   여전히 잡지 못하는 것: 인터프리터가 그 환경에 실제로 존재하는지(런타임 사실).
+This asserts the execution mechanism, but "present in settings.json" is NOT "executed" — the first
+version made that inference and an `echo` decoy passed. It still cannot prove the interpreter exists.
 """
 import json
 from pathlib import Path
 
 import pytest
+
+from tests.unit.scripts._wiring_shape import any_invokes
 
 _ROOT = Path(__file__).resolve().parents[3]
 _SETTINGS = _ROOT / ".claude" / "settings.json"
@@ -73,12 +79,21 @@ def test_settings_json_is_valid():
 
 @pytest.mark.parametrize("script", _REQUIRED)
 def test_counter_wired_to_session_start(script):
-    """🔴 카운터가 SessionStart 훅에 배선 — 문서 안내가 아니라 기계 실행."""
+    """🔴 카운터가 SessionStart 훅에서 **실제로 실행**되는가 — 경로 문자열 존재가 아니라.
+
+    🔴 2026-07-31 봉인: 이전 판은 `any(script in c for c in commands)` substring 이라,
+    command 를 `echo 'skipping scripts/check_retro_cadence.py'` 로 중성화해도 통과했다
+    (실측 뮤테이션 GROK-20260731-1 — 지정 경로 498건 전부 green, red 0). 즉 이 파일의
+    docstring 이 주장한 "실행 기전 단언" 은 **CLAUDE.md 의 산문 grep 을 settings.json 의 산문
+    grep 으로 옮긴 것**에 불과했다. 판정을 `_wiring_shape.any_invokes` 로 넘긴다.
+    Was a substring test: neutering the command into an `echo` kept all 498 tests green.
+    """
     commands = session_start_commands(_settings())
-    assert any(script in c for c in commands), (
-        f"{script} 가 SessionStart 훅에 미배선 — 실행이 인지 의존으로 회귀한다.\n"
+    assert any_invokes(commands, script), (
+        f"{script} 가 SessionStart 훅에서 실행되지 않는다 — 실행이 인지 의존으로 회귀한다.\n"
         f"현재 배선: {commands}\n"
-        "해결 / Fix: .claude/settings.json 의 hooks.SessionStart 항목에 command 추가."
+        "해결 / Fix: .claude/settings.json 의 hooks.SessionStart 에 **인터프리터 호출** 추가\n"
+        "  (예: `python scripts/x.py` — 경로만 언급하는 echo/주석은 배선이 아니다)."
     )
 
 
