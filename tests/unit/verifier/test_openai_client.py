@@ -19,11 +19,25 @@ def test_log_openai_api_call_does_not_raise():
     )
 
 
+import importlib.util
 import json
 
 import pytest
 
 from src.verifier import openai_client
+
+# 🔴 openai SDK 는 requirements.txt 핀(런타임 의존)이나 **로컬 미설치 환경이 흔하다** —
+#   이 5건이 매 전체 실행마다 red 로 남아 "5 failed = 기지" 육안 필터를 강요했다(회고 R19).
+#   습관화되면 진짜 회귀도 같은 눈으로 넘긴다. CI 는 requirements-dev(-r requirements) 로
+#   설치하므로 skip 되지 않는다. 🔴 skipif(수집 유지)를 쓰고 module-level importorskip
+#   (수집 자체 제거)을 쓰지 않는 이유 = 수집 수가 환경별로 갈라지면
+#   check_test_count_sync 의 ground-truth 축이 로컬에서 오탐한다.
+# skipif keeps collection counts environment-invariant; importorskip would fork them,
+# breaking the ground-truth axis locally. CI installs openai, so these never skip there.
+_HAS_OPENAI = importlib.util.find_spec("openai") is not None
+_requires_openai = pytest.mark.skipif(
+    not _HAS_OPENAI, reason="openai SDK 미설치 (로컬) — CI 는 requirements 로 설치되어 실행됨"
+)
 
 
 class _FakeUsage:
@@ -43,6 +57,7 @@ class _FakeResp:
 
 
 @pytest.mark.asyncio
+@_requires_openai
 async def test_call_openai_verifier_returns_content_text(monkeypatch):
     payload = json.dumps({"safe": True, "manipulation_detected": False, "reasons": []})
 
@@ -68,6 +83,7 @@ async def test_call_openai_verifier_returns_content_text(monkeypatch):
 
 
 @pytest.mark.asyncio
+@_requires_openai
 async def test_call_openai_verifier_raises_on_api_error(monkeypatch):
     class _BoomCompletions:
         async def create(self, **kwargs):
@@ -140,6 +156,7 @@ async def test_call_openai_verifier_falls_back_to_http_when_sdk_absent(monkeypat
 
 
 @pytest.mark.asyncio
+@_requires_openai
 async def test_call_openai_verifier_passes_max_completion_tokens(monkeypatch):
     from src.constants import VERIFIER_MAX_OUTPUT_TOKENS
     seen = {}
@@ -189,6 +206,7 @@ async def test_http_fallback_passes_max_completion_tokens(monkeypatch):
 
 
 @pytest.mark.asyncio
+@_requires_openai
 async def test_call_openai_verifier_passes_base_url_to_sdk(monkeypatch):
     """base_url 지정 시 SDK 클라이언트가 해당 엔드포인트로 생성돼야 한다 (공급자 전환)."""
     seen = {}
@@ -217,6 +235,7 @@ async def test_call_openai_verifier_passes_base_url_to_sdk(monkeypatch):
 
 
 @pytest.mark.asyncio
+@_requires_openai
 async def test_call_openai_verifier_default_base_url_passes_none_to_sdk(monkeypatch):
     """base_url 미지정(기본)이면 SDK base_url=None → OpenAI 기본 엔드포인트 유지 (회귀 방지)."""
     seen = {}
