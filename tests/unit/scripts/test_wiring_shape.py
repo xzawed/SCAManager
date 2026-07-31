@@ -23,6 +23,16 @@ from tests.unit.scripts._wiring_shape import any_invokes, invokes, surface_invok
 _P = "scripts/check_fake_guard.py"
 _HOOK = ".claude/hooks/fake_hook.py"
 
+# `#1243` 이 훅 command 6종을 이 형태로 재작성했다 — 반드시 배선으로 인정돼야 한다.
+# 🔴 리스트 안 암묵적 결합(`"a" "b"`)은 CodeQL `py/implicit-string-concatenation-in-list` 대상
+#    ("쉼표 누락 아닌가?") — 상수로 빼고 명시적 `+` 를 쓴다.
+# #1243 rewrote six hook commands into this shape. Hoisted out of the parametrize list because
+# implicit concatenation there reads as a missing comma (CodeQL rule).
+_PY_LAUNCHER_CALL = (
+    "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); "
+    + f"$PY {_P}"
+)
+
 
 # ── 양성 통제 — 실제 호출은 배선으로 인정해야 한다 ──────────────────────
 # Positive control — real invocations must count as wired.
@@ -31,10 +41,7 @@ _HOOK = ".claude/hooks/fake_hook.py"
     "python scripts/check_fake_guard.py",
     "python3 scripts/check_fake_guard.py",
     "py -3 scripts/check_fake_guard.py",
-    # PR #1243 이 훅 command 6종을 이 형태로 재작성했다 — 반드시 배선으로 인정돼야 한다.
-    # #1243 rewrote six hook commands into this shape; it must still count as wired.
-    "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); "
-    "$PY scripts/check_fake_guard.py",
+    _PY_LAUNCHER_CALL,
     # 인자·리다이렉트가 붙어도 호출은 호출 / arguments and redirects don't change the verdict
     'python scripts/check_fake_guard.py "${{ github.event.pull_request.base.sha }}" HEAD',
     "python scripts/check_fake_guard.py 2>&1",
