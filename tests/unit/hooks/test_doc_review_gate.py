@@ -451,3 +451,223 @@ def test_prompt_does_not_re_truncate_the_context():
     assert "TAIL_SENTINEL" in captured["user"], (
         "컨텍스트 꼬리가 프롬프트에서 잘렸다 — 이중 절단 회귀"
     )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 자격증명 전제 — **게이트가 아무것도 심의하지 않는 상태**를 관측한다
+#
+# 🔴 실측 (2026-08-01): 이 머신에 `ANTHROPIC_API_KEY` 가 없어 3 에이전트가 전부
+#    `{"decision": "warn", "reason": "에이전트 호출 실패"}` 를 반환했고 veto 가 `warn` 으로
+#    떨어져 exit 0. CRITICAL 등급 문서 게이트가 **배선돼 있고 · 실행되고 · 출력도 내면서
+#    아무것도 심의하지 않았다.** 게다가 그 문구는 네트워크 blip 과 구별되지 않는다.
+#
+# 🔴 왜 6188건 스위트가 이걸 못 잡았나 — `tests/conftest.py:17` 이
+#    `os.environ["ANTHROPIC_API_KEY"] = "sk-test-key"` 로 **모든 테스트에 키를 주입**한다.
+#    즉 테스트 환경은 **운영의 실패 조건을 재현할 수 없도록 구성**돼 있었다.
+#    아래 테스트는 그래서 `monkeypatch.delenv` 로 그 조건을 **명시적으로 복원**한다.
+#    (같은 함정: 테스트가 항상 통과하는 이유가 '코드가 옳아서' 가 아닐 수 있다.)
+# ──────────────────────────────────────────────────────────────────────────────
+
+@pytest.fixture
+def no_credentials(monkeypatch, tmp_path):
+    """운영의 실제 조건 — 환경변수도 `.env` 도 없는 상태로 되돌린다.
+
+    🔴 여기에 `import doc_review_gate as mod` 를 두지 말 것 — 이 파일 상단이 이미
+    `from doc_review_gate import ...` 라 **이중 import**(CodeQL `py/import-and-import-from`)가
+    되고 CI `Block new dual-import` 가 차단한다. 이 세션에서 **두 번** 걸린 자리다.
+    monkeypatch 는 string-path 로 충분하다(testing.md).
+    """
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    # `.env` 탐색이 리포 실파일을 보지 않도록 훅 디렉토리를 임시 트리로 돌린다.
+    monkeypatch.setattr("doc_review_gate._HOOKS_DIR", tmp_path / "repo" / ".claude" / "hooks")
+    return tmp_path / "repo"
+
+
+def test_api_key_is_empty_without_env_or_dotenv(no_credentials):
+    """🔴 전제 확인 — 이 조건에서 자격증명은 없다(테스트가 공허하지 않음을 보장)."""
+    from doc_review_gate import _api_key
+
+    assert _api_key() == ""
+
+
+def test_api_key_falls_back_to_dotenv(no_credentials, monkeypatch):
+    """🔴 훅은 pydantic Settings 를 안 거치므로 `.env` 를 직접 읽어야 한다.
+
+    이 fallback 이 없으면 키를 `.env` 에만 넣어 둔 사용자에게 게이트가 영영 죽어 있는다.
+    """
+    from doc_review_gate import _api_key
+
+    repo = no_credentials
+    repo.mkdir(parents=True, exist_ok=True)
+    (repo / ".env").write_text(
+        "OTHER=1\nANTHROPIC_API_KEY='sk-from-dotenv'\n", encoding="utf-8"
+    )
+    assert _api_key() == "sk-from-dotenv"
+
+
+def test_env_var_wins_over_dotenv(no_credentials, monkeypatch):
+    from doc_review_gate import _api_key
+
+    repo = no_credentials
+    repo.mkdir(parents=True, exist_ok=True)
+    (repo / ".env").write_text("ANTHROPIC_API_KEY=sk-from-dotenv\n", encoding="utf-8")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-from-env")
+    assert _api_key() == "sk-from-env"
+
+
+def test_gate_without_credentials_announces_it_is_inoperative(no_credentials, capsys):
+    """🔴 배선 테스트(불변식 3) — 자격증명이 없으면 **에이전트를 부르지 않고** 그 사실을 말한다.
+
+    이전 동작: 3 에이전트를 호출 → 전부 동일한 "에이전트 호출 실패" → veto `warn` → exit 0.
+    리뷰어에게 "일시 오류" 로 읽히고, 게이트가 죽었다는 정보는 어디에도 없었다.
+    """
+    from doc_review_gate import main
+
+    payload = json.dumps({
+        "tool_name": "Edit",
+        "tool_input": {"file_path": "CLAUDE.md", "old_string": "a", "new_string": "b"},
+    })
+    with patch("sys.stdin", io.StringIO(payload)):
+        with patch("doc_review_gate.call_agents_parallel") as mock_agents:
+            with pytest.raises(SystemExit) as exc:
+                main()
+
+    assert exc.value.code == 0, "자격증명 부재는 차단이 아니다(advisory — 정책 17)"
+    assert not mock_agents.called, (
+        "자격증명이 없는데 에이전트를 호출했다 — 실패 3줄이 '일시 오류' 로 위장된다"
+    )
+    out = capsys.readouterr().out
+    assert "INOPERATIVE" in out, f"게이트 무동작이 선언되지 않았다: {out!r}"
+    assert "reviewed NOTHING" in out
+
+
+def test_inoperative_banner_is_distinguishable_from_a_transient_failure():
+    """🔴 이 사고의 핵심 — 두 문구가 **구별 가능**해야 한다.
+
+    구판은 자격증명 부재와 네트워크 blip 이 **같은 문자열**("에이전트 호출 실패")을 냈다.
+    구별 불가능한 신호는 신호가 아니다.
+    """
+    from doc_review_gate import _NO_CREDENTIALS_BANNER
+
+    transient = "에이전트 호출 실패"
+    assert transient not in _NO_CREDENTIALS_BANNER
+    assert "INOPERATIVE" in _NO_CREDENTIALS_BANNER
+    assert "ANTHROPIC_API_KEY" in _NO_CREDENTIALS_BANNER, "복구 방법이 없으면 배너가 무용하다"
+
+
+def test_conftest_injects_a_key_so_the_default_suite_cannot_see_this(no_credentials):
+    """🔴 메타 — 왜 6188건이 이 결함을 못 봤는지 **파일로 고정**한다.
+
+    `tests/conftest.py` 가 모든 테스트에 `ANTHROPIC_API_KEY` 를 주입하므로, 위 fixture 로
+    명시적으로 지우지 않는 한 어떤 테스트도 운영의 실제 조건에 도달하지 못한다.
+    이 단언이 깨지면(주입이 사라지면) 그 자체가 알아야 할 변화다.
+    """
+    conftest = (Path(__file__).resolve().parents[2] / "conftest.py").read_text(encoding="utf-8")
+    assert 'os.environ["ANTHROPIC_API_KEY"]' in conftest, (
+        "conftest 의 키 주입이 사라졌다 — 이 파일의 경고 주석과 격리 fixture 를 재검토할 것"
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 🔴 Grok claim-review `019fbb2d` 적발 — **선점검과 클라이언트가 갈라져 있었다**
+#
+# 초판은 `_api_key()` 로 선점검만 하고, 클라이언트는 `os.environ.get(...)` 를 **따로** 읽었다.
+# 그래서 키가 `.env` 에만 있으면:
+#   선점검 통과(배너 없음) → 클라이언트 빈 키 → 3 에이전트 "에이전트 호출 실패" → warn → exit 0
+# 즉 **이 수정이 도우려던 사용자 계층에서, 배너까지 사라진 더 나쁜 무음 경로**가 됐다.
+# observer-lie 를 고치는 코드가 observer-lie 를 만든 것 — 이 세션 3번째 재생산.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_client_uses_the_same_credential_source_as_the_preflight(no_credentials, monkeypatch):
+    """🔴 배선 테스트(불변식 3) — `.env` 전용 키가 **클라이언트까지** 도달해야 한다.
+
+    이 단언이 없으면 `_api_key()` 가 아무리 옳아도 게이트는 여전히 인증 실패한다.
+    """
+    import asyncio
+
+    from doc_review_gate import call_agents_parallel
+
+    repo = no_credentials
+    repo.mkdir(parents=True, exist_ok=True)
+    (repo / ".env").write_text("ANTHROPIC_API_KEY=sk-only-in-dotenv\n", encoding="utf-8")
+
+    seen = {}
+
+    class _FakeClient:
+        def __init__(self, **kwargs):
+            seen.update(kwargs)
+            self.messages = MagicMock()
+
+    with patch("anthropic.AsyncAnthropic", _FakeClient):
+        with patch("doc_review_gate._call_single_agent", new=AsyncMock(return_value={})):
+            asyncio.run(call_agents_parallel("critical", "diff", "ctx"))
+
+    assert seen.get("api_key") == "sk-only-in-dotenv", (
+        f"클라이언트가 선점검과 다른 원천을 읽는다 — `.env` 전용 키가 조용히 죽는다: {seen!r}"
+    )
+
+
+def test_auth_token_counts_as_a_credential(no_credentials, monkeypatch):
+    """🔴 오경보 방지 — `ANTHROPIC_AUTH_TOKEN` 만 있는 머신을 INOPERATIVE 로 부르면 안 된다.
+
+    올바로 설정된 환경에 거짓 경보를 내는 것은 fail-open 의 반대 방향이지만 똑같이 해롭다
+    (실배선 거부 = 가드 자살, 정책 17 안정성 우선).
+    """
+    from doc_review_gate import _credentials
+
+    assert _credentials() == {}, "전제 붕괴 — 이 상태에서는 자격증명이 없어야 한다"
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "at-valid")
+    assert _credentials() == {"auth_token": "at-valid"}
+
+
+def test_api_key_wins_over_auth_token(no_credentials, monkeypatch):
+    from doc_review_gate import _credentials
+
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "at-valid")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-valid")
+    assert _credentials() == {"api_key": "sk-valid"}
+
+
+@pytest.mark.parametrize(("content", "expected", "shape"), [
+    ("export ANTHROPIC_API_KEY=sk-exported\n", "sk-exported", "export 접두사"),
+    ("\ufeffANTHROPIC_API_KEY=sk-bom\n", "sk-bom", "UTF-8 BOM"),
+    ("ANTHROPIC_API_KEY=sk-plain # 설명\n", "sk-plain", "인라인 주석"),
+    ("ANTHROPIC_API_KEY='sk-with#hash'\n", "sk-with#hash", "따옴표 안의 #(주석 아님)"),
+    ("ANTHROPIC_API_KEY=sk-first\nANTHROPIC_API_KEY=sk-last\n", "sk-last", "중복 키 = 마지막이 이김"),
+    ("ANTHROPIC_API_KEY_OLD=sk-other\n", "", "접두사 충돌은 매칭 금지"),
+    ("ANTHROPIC_API_KEY=   \n", "", "공백만 = 값 없음"),
+])
+def test_dotenv_parser_handles_real_world_shapes(no_credentials, content, expected, shape):
+    """🔴 "키가 있는데 없다고 말하는" 반대 방향 거짓말 차단 — 4형태 전부 실측 재현됐다."""
+    from doc_review_gate import _dotenv_value
+
+    repo = no_credentials
+    repo.mkdir(parents=True, exist_ok=True)
+    (repo / ".env").write_text(content, encoding="utf-8")
+    assert _dotenv_value("ANTHROPIC_API_KEY") == expected, f"형태: {shape}"
+
+
+def test_dotenv_read_failure_does_not_kill_the_hook(no_credentials):
+    """🔴 `.env` 가 디렉토리면 `read_text` 가 던진다 — 훅은 advisory 라 죽으면 안 된다."""
+    from doc_review_gate import _dotenv_value
+
+    repo = no_credentials
+    (repo / ".env").mkdir(parents=True, exist_ok=True)
+    assert _dotenv_value("ANTHROPIC_API_KEY") == ""
+
+
+def test_kill_switch_precedes_the_banner(no_credentials, monkeypatch, capsys):
+    """🔴 kill-switch 가 켜져 있으면 배너도 내지 않는다 — 의도적 비활성에 스팸 금지."""
+    from doc_review_gate import main
+
+    monkeypatch.setenv("DOC_REVIEW_GATE_DISABLED", "1")
+    payload = json.dumps({
+        "tool_name": "Edit",
+        "tool_input": {"file_path": "CLAUDE.md", "old_string": "a", "new_string": "b"},
+    })
+    with patch("sys.stdin", io.StringIO(payload)):
+        with pytest.raises(SystemExit) as exc:
+            main()
+    assert exc.value.code == 0
+    assert capsys.readouterr().out.strip() == "", "비활성 상태에서 배너를 냈다"

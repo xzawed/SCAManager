@@ -159,6 +159,95 @@ _AGENT_TIMEOUT = 25  # seconds per agent
 _DIFF_BUDGET = 4000  # 프롬프트에 싣는 diff 최대 길이(자) / max diff chars in the prompt
 
 
+# ─── 자격증명 전제 ───────────────────────────────────────────────────────────
+# Credential precondition — the gate cannot review anything without one.
+
+def _dotenv_value(name: str) -> str:
+    """리포 `.env` 에서 값을 읽는다 — 없거나 못 읽으면 빈 문자열(fail-soft).
+
+    🔴 훅은 앱과 달리 pydantic `Settings` 를 쓰지 않아 `.env` 를 읽지 않는다.
+    파서는 최소한이지만 **실제 `.env` 에서 흔한 형태**는 처리해야 한다. 안 그러면
+    "키가 있는데 없다고 말하는" 반대 방향의 거짓말이 된다:
+      · `export NAME=v` 접두사 · UTF-8 BOM · 인라인 `# 주석` · 중복 키(셸과 같이 **마지막**이 이김)
+    (2026-08-01 Grok claim-review `019fbb2d` 가 4형태 전부 실측 재현.)
+    Minimal .env parsing that still handles the shapes real .env files actually use.
+    """
+    env_file = _HOOKS_DIR.parent.parent / ".env"
+    try:
+        text = env_file.read_text(encoding="utf-8-sig", errors="replace")
+    except OSError:
+        # 부재·권한·디렉토리 — 훅이 죽으면 안 된다(advisory).
+        # Missing / permission / is-a-directory: the hook must not die.
+        return ""
+    found = ""
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("export "):
+            line = line[len("export "):].lstrip()
+        key, sep, value = line.partition("=")
+        if not sep or key.strip() != name:
+            continue
+        value = value.strip()
+        if value[:1] in ("'", '"') and value[-1:] == value[:1] and len(value) >= 2:
+            value = value[1:-1]        # 따옴표 안은 주석이 아니다 / quoted value keeps '#'
+        else:
+            value = value.split("#", 1)[0].strip()
+        found = value                  # 마지막 할당이 이긴다 / last assignment wins
+    return found
+
+
+def _lookup_credential(name: str) -> str:
+    """환경변수 우선, 없으면 `.env`. / Environment first, then `.env`."""
+    return os.environ.get(name, "").strip() or _dotenv_value(name)
+
+
+def _api_key() -> str:
+    """`ANTHROPIC_API_KEY` 해소값. / Resolved API key."""
+    return _lookup_credential("ANTHROPIC_API_KEY")
+
+
+def _credentials() -> dict:
+    """Anthropic 클라이언트에 넘길 자격증명 kwargs — 없으면 빈 dict.
+
+    🔴 **선점검과 클라이언트가 같은 원천을 봐야 한다.** 이전 판은 `_api_key()` 로 선점검만
+    하고 클라이언트는 `os.environ.get("ANTHROPIC_API_KEY", "")` 를 따로 읽었다. 그래서 키가
+    `.env` 에만 있으면 **선점검은 통과(배너 없음) · 클라이언트는 빈 키** → 3 에이전트가
+    "에이전트 호출 실패" 로 떨어지는 **원래의 무음 경로**로 되돌아갔다. 이 PR 이 도우려던
+    바로 그 사용자 계층에서, 배너까지 사라진 더 나쁜 상태다
+    (Grok claim-review `019fbb2d` 적발 — 내가 observer-lie 수정을 쓰면서 observer-lie 를 만듦).
+    Preflight and client must read the SAME source; previously they diverged on `.env`.
+
+    `ANTHROPIC_AUTH_TOKEN` 도 인정한다 — SDK 가 받는 자격증명인데 모델에서 빠져 있으면
+    올바로 설정된 머신에 INOPERATIVE 오경보를 낸다(가드 자살 방향).
+    """
+    key = _lookup_credential("ANTHROPIC_API_KEY")
+    if key:
+        return {"api_key": key}
+    token = _lookup_credential("ANTHROPIC_AUTH_TOKEN")
+    if token:
+        return {"auth_token": token}
+    return {}
+
+
+# 자격증명이 없을 때의 배너 — **일시 오류와 구별되는 문구**여야 한다.
+# 🔴 실측 사고 (2026-08-01): 키가 없으면 3 에이전트가 전부
+#    `{"decision": "warn", "reason": "에이전트 호출 실패"}` 를 반환하고 veto 가 `warn` 으로
+#    떨어져 **exit 0**. 즉 CRITICAL 등급 문서 게이트가 **배선돼 있고 · 실행되고 · 출력도 내면서
+#    아무것도 심의하지 않는다.** 그런데 그 문구는 네트워크 blip 과 똑같이 읽힌다 —
+#    "이 게이트는 구조적으로 죽어 있다" 는 정보가 어디에도 없었다.
+#    가드가 틀린 게 아니라 **실행 전제가 없는** 클래스(`make` 부재와 동형).
+# Without a key all three agents fail identically to a transient error, so nothing distinguishes
+# "the gate is structurally inoperative" from "one call blipped". This banner does.
+_NO_CREDENTIALS_BANNER = (
+    "\n"
+    "[doc-review-gate] 🔴 INOPERATIVE - no Anthropic credentials\n"
+    "  This gate reviewed NOTHING. It is not a transient failure: without a key the\n"
+    "  three review agents cannot be called at all, so every document change passes.\n"
+    "  Set ANTHROPIC_API_KEY (environment or .env) to arm it; ANTHROPIC_AUTH_TOKEN works too.\n"
+    "  Advisory by design - a missing local credential must not block edits.\n"
+)
+
+
 def _read_agent_prompt(agent: str) -> str:
     """에이전트 .md 파일에서 시스템 프롬프트를 읽는다 (YAML frontmatter 제거).
     Reads system prompt from agent .md file, stripping YAML frontmatter."""
@@ -220,7 +309,9 @@ async def _call_single_agent(
 async def call_agents_parallel(grade: str, diff: str, context: str) -> list[dict]:
     """3개 에이전트를 병렬로 호출하고 결과 목록을 반환한다.
     Calls all three agents in parallel and returns a list of result dicts."""
-    client = anthropic.AsyncAnthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
+    # 🔴 선점검과 **같은 원천**을 쓴다 — 갈라지면 `.env` 전용 키가 조용히 죽는다(위 `_credentials`).
+    # Same source as the preflight; divergence silently killed `.env`-only keys.
+    client = anthropic.AsyncAnthropic(**_credentials())
     tasks = [_call_single_agent(client, agent, diff, context) for agent in _AGENT_NAMES]
     raw = await asyncio.gather(*tasks, return_exceptions=False)
     return list(raw)
@@ -373,6 +464,14 @@ def main() -> None:
         old = tool_input.get("old_string", "") or ""
         new = tool_input.get("new_string", "") or tool_input.get("content", "") or ""
         diff = f"파일: {file_path}\n\n--- 이전 ---\n{old}\n\n+++ 이후 +++\n{new}"
+
+    # 🔴 자격증명 선점검 — 없으면 심의는 **원리적으로 불가**하므로, 3 에이전트를 호출해
+    #    똑같은 실패 3줄을 내는 대신 그 사실 자체를 말한다(위 배너 주석의 사고 참조).
+    # Preflight: without credentials no review is possible, so say that instead of three
+    # indistinguishable per-agent failures.
+    if not _credentials():
+        print(_NO_CREDENTIALS_BANNER)
+        sys.exit(0)
 
     context = _load_context()
     results = asyncio.run(call_agents_parallel(grade, diff, context))
