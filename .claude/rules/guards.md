@@ -82,6 +82,23 @@ GREEN** 이었다(뮤테이션 실측). 기대값은 테스트 쪽에 고정하�
 기록한 최다 재발 사고(`#1136`·`#1156`)가 바로 그 표면이다. 이 표면은 write-time 규율(이 파일)과
 review-time claim-review 로만 방어된다.
 
+## 🔴 push 전 로컬 게이트 = `py -3 scripts/pre_push_gate.py` (2026-08-01 신설)
+
+새 가드를 저술했으면 **push 전에 이걸 돌린다.** CI 가 강제하는 repo-integrity 9종 +
+PR-diff 한정 4종을 `make` 없이 실행한다.
+
+- 🔴 **`make gate` 는 대체가 아니었다** — 그 타깃은 pytest·pylint·bandit 뿐이라 위 13 가드를
+  **하나도** 돌리지 않는다. 게다가 이 개발 머신에는 `make` 자체가 없다(`command not found`).
+  한 세션에서 `Block new dual-import` 에 **두 번** 걸렸고 두 번 다 로컬은 초록이었다(backlog R29).
+- 🔴 **CI 에 가드를 추가하면 러너 목록도 갱신해야 한다** — 손유지 목록이 CI 와 갈라지면
+  "로컬 초록" 이 아무것도 뜻하지 않게 된다. 회귀 가드
+  `tests/unit/scripts/test_pre_push_gate.py::test_runner_covers_every_ci_guard_script` 가
+  기대값을 **`ci.yml` 실파일에서 파싱**해 대조한다(작성 당시 실제 누락 2건을 적발했다).
+- 🔴 **러너가 보지 못하는 축을 매 실행 인쇄한다**(CodeQL·Sonar·Codecov·TruffleHog·pip-audit·
+  lint-js·PG job·통합테스트). "여기 초록 = CI 초록" 으로 읽히면 러너 자신이 새 observer-lie 다.
+- advisory 가드(`check_test_count_sync --advisory-drift`)는 **exit 0 이면서 경고**하므로
+  출력을 항상 표시한다 — 실패 시에만 인쇄하면 그 경고가 삼켜진다.
+
 ## 스크립트 관용구 (이 표면 전용)
 
 - 🔴 **stdout UTF-8 가드 의무** — `scripts/*.py` 는 전부 `_make_stdout_safe()`/`reconfigure` 호출
