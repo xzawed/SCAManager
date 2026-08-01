@@ -298,9 +298,20 @@ class TestHookMain:
                 with patch("doc_review_gate._load_context", return_value=""):
                     with patch("sys.exit") as mock_exit:
                         main()
-        output = capsys.readouterr().out
-        assert "[문서 심의]" in output
-        assert "quality" in output
+        # 🔴 텍스트 포함이 아니라 **전달 채널 형태**를 본다 — plain print 로 되돌려도
+        #    "[문서 심의]" 는 여전히 stdout 에 있으므로 텍스트 단언은 theatre 에서도 통과한다.
+        #    PreToolUse 의 plain stdout 은 Claude 에게 전달되지 않는다(공식 계약).
+        # Assert the delivery shape, not substring presence: plain print keeps the text in
+        # stdout while never reaching Claude.
+        payload_out = json.loads(capsys.readouterr().out)
+        ctx = payload_out["hookSpecificOutput"]["additionalContext"]
+        assert "[문서 심의]" in ctx
+        assert "quality" in ctx
+        assert payload_out["hookSpecificOutput"]["hookEventName"] == "PreToolUse"
+        assert "permissionDecision" not in payload_out["hookSpecificOutput"], (
+            "advisory 경고에 권한 결정을 얹으면 안 된다 — `allow` 는 사용자 확인을 건너뛴다"
+        )
+        assert "[문서 심의]" in payload_out["systemMessage"], "사용자 채널에도 실려야 한다"
         mock_exit.assert_called_with(0)
 
 
@@ -537,9 +548,20 @@ def test_gate_without_credentials_announces_it_is_inoperative(no_credentials, ca
     assert not mock_agents.called, (
         "자격증명이 없는데 에이전트를 호출했다 — 실패 3줄이 '일시 오류' 로 위장된다"
     )
-    out = capsys.readouterr().out
-    assert "INOPERATIVE" in out, f"게이트 무동작이 선언되지 않았다: {out!r}"
-    assert "reviewed NOTHING" in out
+    # 🔴 **채널까지** 단언한다 — `"INOPERATIVE" in out` 만 보면 plain print 로 되돌려도
+    #    통과한다(실측: 이 파일의 초판이 정확히 그랬다). 공식 계약상 PreToolUse 의
+    #    plain stdout 은 Claude 에게 도달하지 않으므로, 텍스트만 보는 단언은 theatre 를
+    #    봉인하지 못한다(Grok claim-review `019fbb65`).
+    # Assert the channel, not just the text: plain print would keep this green while never
+    # reaching Claude.
+    emitted = json.loads(capsys.readouterr().out)
+    ctx = emitted["hookSpecificOutput"]["additionalContext"]
+    assert "INOPERATIVE" in ctx, f"게이트 무동작이 Claude 채널에 실리지 않았다: {ctx!r}"
+    assert "reviewed NOTHING" in ctx
+    assert "INOPERATIVE" in emitted["systemMessage"], "사용자 채널 누락"
+    assert "permissionDecision" not in emitted["hookSpecificOutput"], (
+        "고지에 권한 결정을 얹으면 안 된다 — `allow` 는 사용자 확인을 건너뛸 수 있다"
+    )
 
 
 def test_inoperative_banner_is_distinguishable_from_a_transient_failure():
@@ -671,3 +693,79 @@ def test_kill_switch_precedes_the_banner(no_credentials, monkeypatch, capsys):
             main()
     assert exc.value.code == 0
     assert capsys.readouterr().out.strip() == "", "비활성 상태에서 배너를 냈다"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 🔴 훅 출력 **채널** 계약 (2026-08-01 — Grok claim-review `019fbb65` + 공식 문서 확인)
+#
+# 이 훅의 advisory 는 전부 plain `print()` 였고, 그건 **Claude 에게 도달하지 않는다**:
+#   공식 계약 — "exit 0 의 stdout 은 디버그 로그로만 간다. 예외는 UserPromptSubmit ·
+#   UserPromptExpansion · SessionStart 셋뿐" (PreToolUse 는 목록에 없다).
+# 실측도 일치했다: 배너 도입 후 CRITICAL 문서 3회 편집에서 에이전트 도구 결과에 **0회** 출현.
+#
+# 🔴 내가 처음 내놓은 시정안(SessionStart 로 이관)은 **기각됐다** — SessionStart 는 세션당
+#    1회라 세션 중간에 키가 만료/취소되면 **stale-green** 이 된다. "안 보이지만 live" 가
+#    "보이지만 stale" 보다 낫다. 올바른 채널은 PreToolUse 의 `additionalContext` 다.
+# ──────────────────────────────────────────────────────────────────────────────
+
+_ADVISORY_PATHS = (
+    ("CLAUDE.md", "critical"),
+    ("docs/design/foo.md", "important"),
+)
+
+
+def _emit(monkeypatch, capsys, message="TEST_ADVISORY_MARKER"):
+    from doc_review_gate import _emit_advisory
+
+    _emit_advisory(message)
+    return json.loads(capsys.readouterr().out)
+
+
+def test_advisory_goes_to_the_claude_channel(monkeypatch, capsys):
+    """🔴 `additionalContext` = Claude 가 실제로 보는 유일한 PreToolUse 채널."""
+    emitted = _emit(monkeypatch, capsys)
+    assert emitted["hookSpecificOutput"]["hookEventName"] == "PreToolUse"
+    assert emitted["hookSpecificOutput"]["additionalContext"] == "TEST_ADVISORY_MARKER"
+
+
+def test_advisory_goes_to_the_user_channel(monkeypatch, capsys):
+    """🔴 `systemMessage` = 사용자 터미널 채널. Claude 채널과 **다른 대상**이다."""
+    emitted = _emit(monkeypatch, capsys)
+    assert emitted["systemMessage"] == "TEST_ADVISORY_MARKER"
+
+
+def test_advisory_never_carries_a_permission_decision(monkeypatch, capsys):
+    """🔴 안전 — 고지에 `permissionDecision` 을 얹지 않는다.
+
+    `"allow"` 는 사용자 권한 확인을 **건너뛸 수 있다**. 단순 고지를 전달하려고 권한 흐름을
+    바꾸는 것은 명백한 결함이라, 이 훅이 그 방향으로 진화하는 것을 여기서 막는다.
+    """
+    emitted = _emit(monkeypatch, capsys)
+    assert "permissionDecision" not in emitted["hookSpecificOutput"]
+    assert "permissionDecisionReason" not in emitted["hookSpecificOutput"]
+
+
+def test_advisory_output_is_ascii_safe(monkeypatch, capsys):
+    """🔴 Windows cp949 stdout — 비-ASCII 가 훅을 죽인 전례(#1243)."""
+    from doc_review_gate import _emit_advisory
+
+    _emit_advisory("한글 — em-dash 🔴")
+    raw = capsys.readouterr().out
+    assert raw.isascii(), "ensure_ascii 누락 — cp949 에서 훅이 죽는다"
+    assert json.loads(raw)["systemMessage"] == "한글 — em-dash 🔴"
+
+
+@pytest.mark.parametrize(("path", "grade"), _ADVISORY_PATHS)
+def test_no_advisory_path_uses_bare_print(path, grade):
+    """🔴 소스 감사 — advisory 경로가 다시 bare `print(...)` 로 돌아가지 않게 한다.
+
+    `_emit_advisory` 를 정의만 하고 호출부를 되돌리면 위 단언들은 **여전히 통과**한다
+    (그 함수를 직접 부르는 테스트이므로). 그래서 `main()` 이 실제로 그것을 쓰는지 본다 —
+    정의 ≠ 배선(불변식 3).
+    """
+    source = (Path(__file__).resolve().parents[3] / ".claude" / "hooks"
+              / "doc_review_gate.py").read_text(encoding="utf-8")
+    assert grade in ("critical", "important")   # 파라미터가 공허하지 않음을 표시
+    assert "print(_NO_CREDENTIALS_BANNER)" not in source, "자격증명 배너가 bare print 로 회귀"
+    assert "print(_format_warn(" not in source, "warn 경로가 bare print 로 회귀"
+    assert source.count("_emit_advisory(") >= 3, "정의 1 + 호출 2 이상이어야 한다"

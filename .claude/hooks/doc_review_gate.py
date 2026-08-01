@@ -248,6 +248,38 @@ _NO_CREDENTIALS_BANNER = (
 )
 
 
+def _emit_advisory(message: str) -> None:
+    """차단하지 않는 고지를 **양 채널**로 내보낸다 — Claude(에이전트) + 사용자(터미널).
+
+    🔴 실측 사고 (2026-08-01): 이 훅의 advisory 는 전부 plain `print()` 였다. 공식 훅 계약상
+    **PreToolUse 의 plain stdout 은 Claude 에게 전달되지 않는다** — 디버그 로그로만 간다.
+    plain stdout 이 Claude 컨텍스트가 되는 이벤트는 `UserPromptSubmit`·`UserPromptExpansion`·
+    `SessionStart` **셋뿐**이다. 실측으로도 CRITICAL 문서 3회 편집에서 배너가 한 번도
+    에이전트 도구 결과에 나타나지 않았다. 즉 이 고지는 **theatre** 였다.
+
+    올바른 채널 (공식 문서 확인 + Grok claim-review `019fbb65`):
+      · `hookSpecificOutput.additionalContext` → **Claude** 가 보는 컨텍스트
+      · `systemMessage`                        → **사용자** 터미널에 보이는 경고
+
+    🔴 `permissionDecision` 은 **설정하지 않는다.** `additionalContext` 는 그것과 독립이며,
+    `"allow"` 를 넣으면 사용자 권한 확인을 건너뛸 수 있다(advisory 고지에 권한 우회를 얹는
+    것은 명백한 안전 결함). 미설정 = 정상 권한 흐름 유지.
+
+    Advisory notices must go through additionalContext (Claude) + systemMessage (user);
+    PreToolUse plain stdout never reaches Claude. permissionDecision is deliberately omitted.
+    """
+    payload = {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "additionalContext": message.strip(),
+        },
+        "systemMessage": message.strip(),
+    }
+    # 🔴 ensure_ascii=True 의무 — Windows cp949 stdout 에서 비-ASCII 가 훅을 죽인다(#1243).
+    # ensure_ascii is mandatory: non-ASCII crashes the hook on Windows cp949 stdout.
+    print(json.dumps(payload, ensure_ascii=True))
+
+
 def _read_agent_prompt(agent: str) -> str:
     """에이전트 .md 파일에서 시스템 프롬프트를 읽는다 (YAML frontmatter 제거).
     Reads system prompt from agent .md file, stripping YAML frontmatter."""
@@ -412,11 +444,14 @@ def _make_stdout_safe():
     """Windows cp949 stdout 에서 이모지/한글 출력 크래시 방지 — UTF-8 재구성(errors=replace).
     Guard against the cp949 emoji/Korean print crash on Windows (UTF-8, replace on miss).
 
-    🔴 `warn` 분기(`print(_format_warn(...))`)는 한글 원문을 그대로 출력하므로 ensure_ascii
-    만으로는 부족하다. 훅은 standalone 실행이라 공유 헬퍼를 import 할 수 없어 검증된 관용구를
-    복제한다(scripts/check_dual_import.py 정본). 누락 방지 = test_stdout_encoding_guard.py.
-    The warn branch prints raw Korean, so ensure_ascii alone is not enough; hooks run standalone
-    so the verified idiom is duplicated rather than imported.
+    🔴 2026-08-01 정정 — 이 docstring 은 `warn` 분기가 **한글 원문을 그대로 출력**한다고
+    적고 있었으나, 그 분기는 이제 `_emit_advisory` 를 거쳐 `ensure_ascii=True` JSON 으로
+    나간다. 그래도 이 가드는 유지한다: 훅 진입 직후의 예외 traceback·argparse 오류 등
+    **우리가 통제하지 않는 출력**이 여전히 cp949 stdout 을 통과해야 한다.
+    훅은 standalone 실행이라 공유 헬퍼를 import 할 수 없어 검증된 관용구를 복제한다
+    (scripts/check_dual_import.py 정본). 누락 방지 = test_stdout_encoding_guard.py.
+    Retained for output we do not control (tracebacks, argparse), even though the advisory
+    paths now emit ensure_ascii JSON.
     """
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -470,7 +505,7 @@ def main() -> None:
     # Preflight: without credentials no review is possible, so say that instead of three
     # indistinguishable per-agent failures.
     if not _credentials():
-        print(_NO_CREDENTIALS_BANNER)
+        _emit_advisory(_NO_CREDENTIALS_BANNER)
         sys.exit(0)
 
     context = _load_context()
@@ -491,7 +526,7 @@ def main() -> None:
         # 🔴 ensure_ascii=True is mandatory — non-ASCII crashes the hook on Windows cp949 stdout.
         print(json.dumps(hook_output, ensure_ascii=True))
     elif decision == "warn":
-        print(_format_warn(file_path, results, reasons))
+        _emit_advisory(_format_warn(file_path, results, reasons))
 
     sys.exit(0)
 

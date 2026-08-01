@@ -99,6 +99,41 @@ PR-diff 한정 4종을 `make` 없이 실행한다.
 - advisory 가드(`check_test_count_sync --advisory-drift`)는 **exit 0 이면서 경고**하므로
   출력을 항상 표시한다 — 실패 시에만 인쇄하면 그 경고가 삼켜진다.
 
+## 🔴 훅 출력 채널 — `print()` 는 Claude 에게 도달하지 않는다 (2026-08-01 공식 계약 확인)
+
+**PreToolUse/PostToolUse 훅의 plain stdout 은 디버그 로그로만 간다.** exit 0 의 stdout 이
+Claude 컨텍스트가 되는 이벤트는 `UserPromptSubmit` · `UserPromptExpansion` · `SessionStart`
+**셋뿐**이다. 실측도 일치했다 — `doc_review_gate` 의 advisory 배너가 CRITICAL 문서 3회
+편집에서 에이전트 도구 결과에 **0회** 출현(그 고지는 theatre 였다).
+
+| 목적 | 필드 | 대상 |
+|---|---|---|
+| Claude 가 보게 하려면 | `hookSpecificOutput.additionalContext` | 에이전트 |
+| 사용자가 보게 하려면 | `systemMessage` (top-level) | 터미널 UI |
+| 차단하려면 | `hookSpecificOutput.permissionDecision: "deny"` + `…Reason` | — |
+
+🔴 **advisory 고지에 `permissionDecision` 을 얹지 말 것** — `"allow"` 는 사용자 권한 확인을
+**건너뛸 수 있다**. `additionalContext` 는 권한 결정과 **독립**이라 미설정이면 정상 흐름이 유지된다.
+회귀 가드: `test_advisory_never_carries_a_permission_decision`.
+
+🔴 **SessionStart 로 이관하는 것은 해답이 아니다**(검토 후 기각) — SessionStart 는 세션당 1회라
+세션 중간에 키 만료/취소가 나면 **stale-green** 이 된다. *"안 보이지만 live"* 가
+*"보이지만 stale"* 보다 낫고, 올바른 답은 **live 하면서 보이게** 하는 `additionalContext` 다.
+
+🔴 **텍스트 단언은 채널 회귀를 못 잡는다** — `assert "MARKER" in capsys.out` 은 bare `print` 로
+되돌려도 통과한다. **JSON 형태를 파싱해 단언**할 것(실측: 이 파일의 초판 테스트가 정확히 그랬다).
+
+## 🔴 뮤테이션 유효성 — `mutated != orig` 는 필요조건일 뿐이다
+
+`assert mutated != orig`(불변식 2)를 통과해도 **동작이 안 바뀌는 뮤테이션**이 있다.
+실측: `json.dumps(payload, ensure_ascii=True)` → `json.dumps(payload)` 는 **텍스트가 바뀌지만
+기본값이 이미 `True`** 라 동작 무변경 → GREEN 을 fail-open 으로 오독할 뻔했다. 진짜 회귀는
+`ensure_ascii=False` 로 **뒤집는** 것이었고 그건 즉시 RED 였다.
+
+**default 적용**: 뮤테이션이 GREEN 이면 *"가드가 공허한가"* 를 묻기 **전에**
+*"이 뮤테이션이 동작을 실제로 바꾸는가"* 를 먼저 확인한다. 기본값·no-op·죽은 분기를 건드리는
+뮤테이션은 아무것도 증명하지 않는다.
+
 ## 스크립트 관용구 (이 표면 전용)
 
 - 🔴 **stdout UTF-8 가드 의무** — `scripts/*.py` 는 전부 `_make_stdout_safe()`/`reconfigure` 호출
