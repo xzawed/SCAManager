@@ -470,10 +470,15 @@ def test_prompt_does_not_re_truncate_the_context():
 
 @pytest.fixture
 def no_credentials(monkeypatch, tmp_path):
-    """운영의 실제 조건 — 환경변수도 `.env` 도 없는 상태로 되돌린다."""
-    import doc_review_gate as _drg_mod  # noqa: F401  (아래 monkeypatch 대상 확인용)
+    """운영의 실제 조건 — 환경변수도 `.env` 도 없는 상태로 되돌린다.
 
+    🔴 여기에 `import doc_review_gate as mod` 를 두지 말 것 — 이 파일 상단이 이미
+    `from doc_review_gate import ...` 라 **이중 import**(CodeQL `py/import-and-import-from`)가
+    되고 CI `Block new dual-import` 가 차단한다. 이 세션에서 **두 번** 걸린 자리다.
+    monkeypatch 는 string-path 로 충분하다(testing.md).
+    """
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
     # `.env` 탐색이 리포 실파일을 보지 않도록 훅 디렉토리를 임시 트리로 돌린다.
     monkeypatch.setattr("doc_review_gate._HOOKS_DIR", tmp_path / "repo" / ".claude" / "hooks")
     return tmp_path / "repo"
