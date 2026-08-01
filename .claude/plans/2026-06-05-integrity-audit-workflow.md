@@ -1,11 +1,26 @@
 # 전체 정합성 감사 Workflow 구현 계획
 
+> 🔴 **완료된 이력 문서입니다 — 실행 대상이 아닙니다.**
+> 이 계획이 다루는 기능은 **이미 출시돼 운영 중**입니다(`src/` 에 실재). 아래 `- [ ]` 체크박스는
+> **작성 당시의 스텝 목록**이며 "남은 일" 이 아닙니다. 미체크 상태로 남은 것은 완료 시점에
+> 체크를 되돌려 적지 않았기 때문입니다.
+>
+> 🔴 **에이전트 주의**: 이 문서를 `executing-plans`/`subagent-driven-development` 로 실행하지
+> 마십시오. 실행하면 **이미 있는 기능을 다시 만듭니다**. 지금 할 일의 단일 출처는
+> [`docs/backlog.md`](../../docs/backlog.md) 이고, 현재 상태는 [`docs/STATE.md`](../../docs/STATE.md) 입니다.
+> (2026-08-01 문서 감사 — 9 파일에 미체크 스텝 359개가 "지금 실행하라" 로 읽히던 것을 시정)
+>
+> **This is a completed historical record, not a live plan.** Everything here shipped; the unchecked
+> boxes are the original step list, not remaining work. Do not execute this document.
+
+
 > ⛔ **정책 18 (Claude ↔ Codex mutual 검증) 은 2026-07-10 폐기되었다** — 사용자가 Codex 구독을 해지해 `codex` 실행 파일이 없다.
 > **본 문서에 남아 있는 "Codex 검증 의뢰 / Codex OK 후 push" 류 단계는 수행하지 않는다** (완료된 작업의 역사 기록).  ⛔ *(폐기 2026-07-10 — Codex 단계 수행 안 함)*
 > 대체: Claude 단독 2-layer (정책 8 5+1 + `pipeline-reviewer` / opus whole-branch 적대 리뷰). push 전 게이트 = `pytest tests/unit` 전체 통과.
 # Integrity Audit Workflow Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> ~~**For agentic workers:** REQUIRED SUB-SKILL: … implement this plan task-by-task.~~
+> 🔴 **위 지시는 작성 당시의 것이고 지금은 무효입니다** — 위 완료 표지 참조.
 
 **Goal:** 사이클 104/109의 수동 5+1 전수 감사를 결정론적 `.claude/workflows/integrity-audit.mjs` Workflow 스크립트로 코드화하여, read-only P0/P1/P2 정합성 리포트를 재현 가능하게 생성한다.
 

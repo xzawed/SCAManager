@@ -105,14 +105,28 @@ make test-e2e-headed     # with a visible browser
 ## Lint and the phase gate
 
 ```bash
-make gate     # ← run this before pushing. Same bar as CI.
+py -3 scripts/pre_push_gate.py --full    # ← run this before pushing (guards + pylint + bandit + unit tests)
+py -3 scripts/pre_push_gate.py           # ← guards only, when you just need the fast pass
 ```
 
-`make gate` runs the full test suite, `pylint --fail-under=9.90 src/`, and `bandit -r src/`.
+`pre_push_gate.py` runs the guards CI actually enforces — 9 repo-integrity checks plus 4 diff-scoped
+ones — without depending on `make`. It prints, on every run, the axes it *cannot* see (CodeQL,
+SonarCloud, Codecov, TruffleHog, pip-audit, lint-js, the Postgres job, integration tests), so a green
+run is never mistaken for a green CI.
 
-> ⚠️ **`make lint` is not a gate.** It runs pylint, flake8, and bandit with `|| true` appended, so it
-> prints findings and always exits `0`. It is useful for *reading* violations; it proves nothing.
-> The verifiable bar is `make gate` locally and the `lint-src` job in CI.
+`--full` additionally runs `pylint --fail-under=9.90 src/`, `bandit -r src/` and `pytest tests/unit`.
+🔴 Note what neither form covers: **`tests/integration`**. If your change touches the pipeline,
+the analyzers, or anything that shells out, run `make test-slow` (or `py -3 -m pytest tests/integration`)
+as well — CI does.
+
+> ⚠️ **`make gate` is not the same bar as CI**, and `make` may not exist on your machine at all
+> (it does not on the primary dev PC). That target runs only the test suite,
+> `pylint --fail-under=9.90 src/` and `bandit -r src/` — none of the 13 guards above. Treat it as a
+> convenience, never as evidence. See backlog R29.
+
+> ⚠️ **`make lint` is not a gate either.** It runs pylint, flake8, and bandit with `|| true` appended,
+> so it prints findings and always exits `0`. It is useful for *reading* violations; it proves nothing.
+> The only verifiable bar is the CI job result.
 
 `flake8` is deliberately excluded from `make gate` — `src/` carries a handful of long-line violations
 that would cost a cosmetic rewrite of a dozen files to clear. The meaningful subset (unused imports and
@@ -194,7 +208,8 @@ python scripts/check_bilingual_comments.py
 Opening a PR fills in [the template](.github/PULL_REQUEST_TEMPLATE.md) automatically. Before you mark it
 ready:
 
-- [ ] `make gate` passes locally (tests + pylint ≥ 9.90 + bandit)
+- [ ] `py -3 scripts/pre_push_gate.py --full` passes locally (13 CI-enforced guards + pylint + bandit + unit tests)
+- [ ] For pipeline/analyzer changes: `py -3 -m pytest tests/integration` as well — neither gate form runs it
 - [ ] New behavior has a test that fails without your change
 - [ ] The PR body says **what a reviewer should verify by hand** — not just "tests pass". Anything
       visual, deploy-dependent, or involving a third-party service cannot be verified by the test suite.

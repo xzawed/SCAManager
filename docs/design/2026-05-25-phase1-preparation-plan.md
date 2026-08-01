@@ -1,5 +1,14 @@
 # SCAManager Claude Design UI 재설계 — Phase 1: Preparation Package 구현 계획
 
+> 🔴 **완료된 이력 문서입니다 — 실행 대상이 아닙니다.**
+> 미체크 `- [ ]` 는 **작성 당시의 스텝 목록**이며 "남은 일" 이 아닙니다. 이 문서를
+> `executing-plans` 로 실행하면 **이미 있는 기능을 다시 만듭니다**. 지금 할 일의 단일 출처는
+> [`docs/backlog.md`](../backlog.md), 현재 상태는 [`docs/STATE.md`](../STATE.md) 입니다.
+> (2026-08-01 문서 감사)
+>
+> **Completed historical record — do not execute.** The unchecked boxes are the original step list.
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Claude Design이 SCAManager를 완전히 이해하고 Design System을 구축할 수 있도록, 현재 서비스의 Design Brief Package (스크린샷 + 브리프 문서 6종 + 토큰 JSON)를 `docs/design/brief/`에 생성한다.

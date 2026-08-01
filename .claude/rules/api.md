@@ -12,6 +12,18 @@ paths:
 
 # API / 알림 채널 규칙
 
+- 🔴 **background 세션 라우팅 = `WorkerSessionLocal`** (규칙 본문 = [`db.md`](db.md) §WorkerSessionLocal):
+  이 영역의 background 진입점(`gate/engine`·`gate/actions/*`·`worker/pipeline`·`webhook/*`·
+  `notifier/*` lazy·`api/{hook,internal_cron,repos,stats,repo_report}`)은
+  `from src.database import WorkerSessionLocal as SessionLocal` **alias 의무**다(웹 경로는 bare
+  `SessionLocal` 유지 — 혼용 금지). 신규 진입점 추가 시
+  `tests/unit/test_worker_session_routing.py` 의 `_BACKGROUND_MODULES` 등재 의무(ast 정적 가드가
+  bare import 를 자동 fail). 🔴 **왜 여기 다시 적는가**: 본문은 `db.md` 에 있는데 그 파일의 path
+  매칭은 `alembic/**`·`src/models/**`·`src/database.py`·`src/repositories/**` 뿐이라 **이 영역
+  파일을 편집할 때 자동 로드되지 않는다** (2026-08-01 Grok 시스템 감사 `019fbccf` 적발 — 경로
+  매칭 ≠ 소비자 목록). 사후 가드가 잡더라도 작성 시점에 규칙을 못 보면 틀린 코드를 먼저 쓴다.
+  🔴 hybrid 3 모듈 예외·RLS 맥락 등 세부는 `db.md` 본문을 열 것 — 여기는 포인터다.
+
 - **keyword-only 강제 (`*`)**: 모든 `send_*` notifier 함수는 `def fn(*, arg1, arg2)` 형태 — 테스트에서 positional 호출 시 TypeError, 반드시 키워드 인자로 호출. 🔴 **단, `run_gate_check` 는 positional** (`src/gate/engine.py:45`, 시그니처는 본 파일 아래 항목 참조 — 2026-06-23 정정: 이전 'keyword-only' 단언은 같은 파일 시그니처 항목과 자기모순이었음).
 - **RepoConfig 필드명**: `approve_mode`(구 `gate_mode`), `approve_threshold`(구 `auto_approve_threshold`), `reject_threshold`(구 `auto_reject_threshold`) — 구 필드명 사용 시 AttributeError.
 - **알림 채널 추가 체크리스트**: `RepoConfig` ORM → `RepoConfigData` dataclass → `RepoConfigUpdate` API body → UI 폼 4곳 반드시 동기화. 누락 시 REST API 업데이트 시 해당 필드가 NULL로 덮어써지는 버그 발생.

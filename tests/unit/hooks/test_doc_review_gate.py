@@ -769,3 +769,80 @@ def test_no_advisory_path_uses_bare_print(path, grade):
     assert "print(_NO_CREDENTIALS_BANNER)" not in source, "자격증명 배너가 bare print 로 회귀"
     assert "print(_format_warn(" not in source, "warn 경로가 bare print 로 회귀"
     assert source.count("_emit_advisory(") >= 3, "정의 1 + 호출 2 이상이어야 한다"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 🔴 2차 스코프 복구 회귀 가드 (2026-08-01 문서 감사)
+#
+# R9(2026-07-29)가 AGENTS/rules/policies 를 복구한 뒤에도 **행동 지시를 담은 표면 25개**가
+# `skip` 으로 남아 있었다 — 추적 비-archive 101개 중 50개가 skip 이었다. 대표:
+# `docs/runbooks/ai-collaboration.md`(정책 19 프로토콜 SSOT · "P0/P1 부여 금지"),
+# `docs/architecture.md`("갱신 의무"), `docs/reference/env-vars.md`("운영 절대 설정 금지"),
+# PR 템플릿 · CONTRIBUTING · backlog · agents-index.
+#
+# 🔴 위 `test_behavioural_rule_docs_are_never_skipped` 는 AGENTS/rules/policies 만 스캔해
+#    이 25개를 **한 번도 보지 않았다**. 스캔 범위가 좁은 가드는 "있는데 안 보는" 형태다.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_directive_bearing_surfaces_are_reviewed():
+    """🔴 에이전트가 따르는 지시문을 담은 문서는 `skip` 이면 안 된다.
+
+    디스크를 스캔하므로 신규 런북/가이드가 추가돼도 자동으로 검사 대상이 된다.
+    """
+    root = Path(__file__).resolve().parents[3]
+    targets = sorted((root / "docs" / "runbooks").glob("*.md"))
+    targets += sorted((root / "docs" / "reference").glob("*.md"))
+    targets += sorted((root / ".claude" / "plans").glob("*.md"))
+    targets += [
+        root / "docs" / "architecture.md",
+        root / "docs" / "backlog.md",
+        root / "docs" / "agents-index.md",
+        root / ".github" / "PULL_REQUEST_TEMPLATE.md",
+        root / "CONTRIBUTING.md",
+        root / "CONTRIBUTING.ko.md",
+        root / "SECURITY.md",
+    ]
+    targets = [t for t in targets if t.exists()]
+    assert len(targets) > 25, f"대조 집합이 {len(targets)}개 — 스캐너 고장 또는 경로 변경"
+
+    skipped = [
+        t.relative_to(root).as_posix() for t in targets
+        if classify_file_grade(t.relative_to(root).as_posix()) == "skip"
+    ]
+    assert not skipped, (
+        "지시문을 담은 문서가 심의 대상에서 빠졌다(false coverage): "
+        f"{skipped}\n→ doc_review_gate.py 의 _IMPORTANT 패턴을 확인할 것."
+    )
+
+
+def test_nested_design_docs_are_not_skipped():
+    """🔴 `docs/design/brief/*` 5개가 한 세그먼트 패턴 때문에 빠져 있었다."""
+    root = Path(__file__).resolve().parents[3]
+    nested = sorted((root / "docs" / "design").rglob("*/*.md"))
+    assert nested, "중첩 design 문서를 못 찾았다 — 이 단언이 공허하다"
+    for p in nested:
+        rel = p.relative_to(root).as_posix()
+        assert classify_file_grade(rel) != "skip", f"{rel} 이 skip 이다 — 중첩 경로 패턴 확인"
+
+
+def test_skip_set_is_small_and_deliberate():
+    """🔴 skip 이 다시 불어나면 **아무도 모르게** false coverage 가 돌아온다.
+
+    남겨 둔 skip 은 색인·과거 서사·시점 스냅샷뿐이어야 한다(소스에 사유가 기록돼 있다).
+    """
+    import subprocess  # nosec B404 — 리포 자신의 파일 목록만 읽는다
+
+    root = Path(__file__).resolve().parents[3]
+    files = [
+        f for f in subprocess.run(  # nosec B603 B607
+            ["git", "ls-files", "*.md"], cwd=str(root), capture_output=True,
+            text=True, encoding="utf-8", errors="replace", check=True,
+        ).stdout.split()
+        if "_archive" not in f
+    ]
+    assert len(files) > 80, f"추적 문서를 {len(files)}개만 찾았다 — 스캐너 확인"
+    skipped = sorted(f for f in files if classify_file_grade(f) == "skip")
+    assert len(skipped) <= 8, (
+        f"skip 이 {len(skipped)}개로 늘었다 — false coverage 재발 위험:\n  {skipped}\n"
+        "→ 새로 추가된 문서가 지시문을 담는다면 _IMPORTANT 에 등재할 것."
+    )

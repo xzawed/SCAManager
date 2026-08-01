@@ -8,9 +8,24 @@
 ## 이 저장소가 무엇인가
 
 SCAManager — GitHub Push/PR 시 정적분석 + AI 코드리뷰를 자동 수행하고 점수 기반 PR
-자동/반자동 Gate 와 대시보드를 제공하는 서비스. 핵심 명령: `make test`(전체) ·
-`make lint`(advisory) · `make gate`(pytest + pylint fail-under + bandit, **실제 게이트**) ·
-push 전 `pytest tests/unit` 전체 통과 의무.
+자동/반자동 Gate 와 대시보드를 제공하는 서비스.
+
+🔴 **로컬 검증 명령 (2026-08-01 정정 — 이전 판은 `make gate` 를 "실제 게이트" 라 했고 거짓이었다)**
+
+| 목적 | 명령 | 비고 |
+|---|---|---|
+| **push 전 게이트** | `py -3 scripts/pre_push_gate.py` | CI 가 강제하는 **repo-integrity 9종 + PR-diff 4종**을 실행. `--full` 이면 pylint·bandit·`pytest tests/unit` 도. 자기가 못 보는 축을 매 실행 인쇄한다 |
+| 단위 테스트 | `py -3 -m pytest tests/unit` | push 전 **전체** 통과 의무 (영역 서브셋 대체 금지) |
+| 정적 린트 | `py -3 -m pylint --fail-under=9.90 src/` · `py -3 -m bandit -r src/ -q` | CI `lint-src` job 과 동일 기준 |
+
+⚠️ **`make` 이 없는 머신이 있다**(이 개발 PC 포함 — `make: command not found`). `make test`/`make lint`/
+`make gate` 가 실패하면 환경 문제이지 리포 문제가 아니다. 🔴 그리고 `make gate` 는 있었어도
+**pytest·pylint·bandit 3종뿐**이라 위 13 가드를 하나도 돌리지 않는다 — "CI 와 동일 기준" 이 아니다
+(backlog R29). 유일한 진짜 집행면은 **CI** 다.
+
+🔴 **AGENTS.md 가 아닌 것**: 이 문서는 가드/관측자 저술 규율(3-불변식)의 SSOT 이지, 저장소 전체
+법률이 아니다. 정책 1~19 · 완료 6-step · TDD · PR 템플릿 의무는 [`CLAUDE.md`](CLAUDE.md) 에 있고,
+도메인 규칙은 `.claude/rules/<area>.md` 에 있다(아래 §작업 전 열어야 할 규칙).
 
 ---
 
@@ -107,9 +122,34 @@ HOLDS. 그리고 뮤테이션 대상은 seal 이 **보호한다고 주장하는 
 
 ## 규칙·정책 어디서 찾나 (grep 진입점)
 
-- 영역별 규칙: `.claude/rules/{testing,db,pipeline,api,security,ui,i18n,deploy,services,guards}.md`
-  (Claude 는 매칭 파일 편집 시 자동 로드 / **Grok 은 auto-load 없으므로 이 목록을 grep**).
+🔴 **작업 전 열어야 할 규칙 — 경로별 표** (Grok 은 auto-load 가 **없다**. 이 표를 건너뛰면 규칙을
+건너뛰는 것이다. Claude 도 아래 ⚠️ 행은 경로 매칭이 안 되므로 직접 열어야 한다.)
+
+| 편집 대상 | 반드시 열 것 |
+|---|---|
+| `src/gate/**` · `src/api/**` · `src/notifier/**` · `src/webhook/**` | `api.md` + `pipeline.md` + ⚠️ `db.md` §WorkerSessionLocal |
+| `src/worker/pipeline.py` · `src/analyzer/**` · `src/scorer/**` | `pipeline.md` + ⚠️ `db.md` §WorkerSessionLocal |
+| `src/models/**` · `alembic/**` · `src/repositories/**` | `db.md` |
+| `src/services/**` · `src/verifier/**` · `src/cli/**` | `services.md` + ⚠️ `db.md` §WorkerSessionLocal |
+| `src/auth/**` · `src/crypto.py` · `src/shared/{log_safety,ssrf,secure_compare}.py` | `security.md` |
+| `src/templates/**` · `src/static/**` · `src/ui/**` | `ui.md` |
+| `src/i18n/**` · `src/middleware/locale.py` · `src/notifier/_language.py` | `i18n.md` |
+| `tests/**` · `e2e/**` · `conftest.py` | `testing.md` |
+| `scripts/**` · `.claude/hooks/**` · `.claude/workflows/**` | `guards.md` + 이 문서 §3-불변식 |
+| `railway.toml` · `nixpacks.toml` · `requirements*.txt` | `deploy.md` |
+
+⚠️ **`db.md` 의 `WorkerSessionLocal` 규칙은 background 17 모듈**(`gate/engine`·`worker/pipeline`·
+`webhook/*`·`notifier/*`·`api/{hook,internal_cron,repos,stats,repo_report}` 등)**을 지배하는데,
+`db.md` 의 path 매칭은 그 경로들을 포함하지 않는다** — 즉 그 파일들을 편집할 때 **규칙이 자동으로
+오지 않는다**(2026-08-01 Grok 시스템 감사 `019fbccf` 적발). 위반은 `tests/unit/test_worker_session_routing.py`
+가 사후에 잡지만, 작성 시점에 규칙을 못 보면 틀린 코드를 먼저 쓰게 된다.
+
+- 영역별 규칙 원본: `.claude/rules/{testing,db,pipeline,api,security,ui,i18n,deploy,services,guards}.md`
+  (Claude 는 매칭 파일 편집 시 자동 로드 / **Grok 은 auto-load 없으므로 위 표를 쓴다**).
   🔴 **`guards.md`** = 가드/훅/워크플로 저술 시 로드되는 3-불변식(위 SSOT 의 편집-표면 사본).
+- 🔴 **claim-review 를 수행한다면** `docs/runbooks/ai-collaboration.md` 를 **반드시 연다** —
+  findings 계약 · 소유 금지(정책·backlog 저술 X) · P0/P1 부여 금지가 거기 있고, 이 문서의
+  요약에는 없다.
 - 협업 정책 1~19: `CLAUDE.md` (default rule) + `.claude/policies/{active,history}.md` (detail).
 - 미결 검증 원장: `docs/runbooks/owed-verification.md`. 미해결 일감: `docs/backlog.md`.
 - 현재 수치·상태: `docs/STATE.md`. 아키텍처·가드 배선: `docs/architecture.md`.
