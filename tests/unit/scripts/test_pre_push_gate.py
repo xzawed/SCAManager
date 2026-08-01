@@ -218,3 +218,10 @@ def test_blind_spots_always_prints_interpreter_axis(capsys):
     local = f"{sys.version_info.major}.{sys.version_info.minor}"
     assert "CI" in out, "인터프리터 축에 CI 언급이 없다"
     assert local in out, f"로컬 인터프리터 {local} 가 blind-spot 출력에 없다"
+    # 🔴 --full=True 축도 고정 (Grok `019fbe61` F1) — False 만 단언하면 인쇄를
+    #    `if not full:` 블록 안으로 옮기는 리팩터가 초록인 채 --full 경로의 관측면을 지운다.
+    # Pin the full=True path too: asserting only False lets a refactor nest the print
+    # under `if not full:` and silently drop the axis on --full runs.
+    gate.print_blind_spots(True)
+    out_full = capsys.readouterr().out
+    assert local in out_full, f"--full 경로에서 인터프리터 축이 사라졌다: {out_full!r}"

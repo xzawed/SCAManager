@@ -44,7 +44,11 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[1]
 
 # CI 워크플로의 `python-version: "X.Y"` 지점 — 로컬↔CI 인터프리터 이원 관측용 (backlog R30).
-# The CI workflow's python-version pins, for the local-vs-CI interpreter drift axis.
+# 🔴 기지 한계 (Grok `019fbe61` F2·F3 — 정직 명시): 원시 텍스트 정규식이라 **주석 안의 핀도
+#    집합에 들어간다**(현 ci.yml 은 주석 핀 0). ci.yml 외 워크플로(body-edit 등)와 micro
+#    버전(3.12.x)은 이 축의 범위 밖이다 — 이 축은 minor 이원(3.14↔3.12)의 관측면일 뿐이다.
+# Known limits: a raw-text regex also collects commented pins (none today); other
+# workflows and micro versions are out of scope — this axis observes the minor split only.
 _CI_WORKFLOW = _ROOT / ".github" / "workflows" / "ci.yml"
 _PY_VERSION_RE = re.compile(r"python-version:\s*[\"']?(3\.\d+)")
 

@@ -300,7 +300,9 @@ def test_every_r_row_status_is_a_legal_marker_whole_file():
     """
     rows = whole_file_status_rows(_text())
     assert len(rows) >= 30, (
-        f"전장 스캔이 {len(rows)}행만 읽었다(실측 35행) — 파서 공허화 또는 표 구조 변경"
+        f"전장 스캔이 {len(rows)}행만 읽었다(실측 35행) — 파서 공허화 또는 표 구조 변경.\n"
+        "→ 원장 정리로 실제 R행이 합법적으로 줄었다면 이 하한을 **같은 커밋에서** 함께 "
+        "조정할 것 (하한의 목적은 파서 공허화 차단이지 정리 금지가 아니다 — 정책 17)."
     )
     offenders = illegal_status_rows(rows)
     assert not offenders, (
