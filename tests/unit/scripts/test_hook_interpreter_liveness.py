@@ -35,7 +35,16 @@ _SETTINGS = _ROOT / ".claude" / "settings.json"
 # Hook commands use POSIX shell syntax, so they must be evaluated through a shell.
 _SHELL = shutil.which("sh") or shutil.which("bash")
 
-_MARKER = "HOOK_INTERPRETER_ALIVE"
+# 🔴 oracle 은 **명령 텍스트에 없는 값**이어야 한다.
+#   초판은 마커 문자열을 그대로 출력시키고 "출력에 마커 포함" 으로 판정했다 — 그러면
+#   `echo -c "print('MARKER')"` 가 **명령 텍스트를 되돌려주면서** 마커를 포함해 통과한다
+#   (실측: `_probe('echo')` → 마커 포함 True). 프로브가 "무엇을 해도 통과" 였던 것 —
+#   이 파일이 잡으려던 클래스를 이 파일이 범했다(다각도 근본원인 분석 2026-08-01 적발).
+#   이제 Python 만 낼 수 있는 **계산 결과**를 요구하고 **정확히 일치**를 본다.
+# The oracle must be a value absent from the command text: echoing the source back used to
+# satisfy a "marker in output" check. Now it must COMPUTE something and match exactly.
+_PROBE_EXPR = "print(6*7)"
+_EXPECTED = "42"
 
 
 def hook_commands() -> list[tuple[str, str]]:
@@ -67,7 +76,7 @@ def interpreter_prefix(command: str) -> str:
 
 def _probe(prefix: str) -> subprocess.CompletedProcess:
     """인터프리터 접두사로 사소한 파이썬 한 줄을 실행해 본다."""
-    script = f'{prefix} -c "print(\'{_MARKER}\')"'
+    script = f'{prefix} -c "{_PROBE_EXPR}"'
     return subprocess.run(  # nosec B603
         [_SHELL, "-c", script],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
@@ -102,7 +111,23 @@ def test_probe_detects_a_dead_interpreter():
     """
     result = _probe("definitely_not_a_real_python_zzz")
     assert result.returncode != 0
-    assert _MARKER not in result.stdout
+    assert result.stdout.strip() != _EXPECTED
+
+
+@pytest.mark.skipif(_SHELL is None, reason="POSIX 셸 부재 — 훅 자체가 실행 불가한 환경")
+@pytest.mark.parametrize("prefix", ["echo", "cat", "printf", "true"])
+def test_probe_rejects_interpreters_that_do_not_compute(prefix):
+    """🔴 **exit 0 을 내지만 계산하지 않는** 명령을 거부해야 한다.
+
+    초판은 마커 문자열을 출력시키고 "출력에 마커 포함" 으로 판정했다 — `echo` 는 인자를 그대로
+    되돌려주므로 **명령 텍스트에 든 마커를 출력**해 exit 0 + 마커 포함으로 **통과**했다(실측).
+    죽은 실행파일만 보는 부정 통제로는 이 형태를 못 잡는다: `echo` 는 살아 있고 성공한다.
+    Commands that exit 0 without computing (echo echoes the marker back) must not pass.
+    """
+    result = _probe(prefix)
+    assert result.stdout.strip() != _EXPECTED, (
+        f"{prefix!r} 가 프로브를 통과한다 — 오라클이 계산이 아니라 텍스트를 보고 있다."
+    )
 
 
 # ── 저장소 불변식 ────────────────────────────────────────────────────────
@@ -127,7 +152,7 @@ def test_hook_interpreter_actually_runs_python(event, command):
     assert prefix, f"[{event}] 명령에서 스크립트 경로를 못 찾았다: {command!r}"
 
     result = _probe(prefix)
-    assert result.returncode == 0 and _MARKER in result.stdout, (
+    assert result.returncode == 0 and result.stdout.strip() == _EXPECTED, (
         f"[{event}] 훅의 인터프리터가 Python 을 실행하지 못한다 — 이 훅은 무동작이다.\n"
         f"  명령 / command   : {command}\n"
         f"  인터프리터 / prefix: {prefix}\n"

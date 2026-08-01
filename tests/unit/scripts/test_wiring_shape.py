@@ -85,6 +85,51 @@ def test_non_executing_decoy_is_not_wired(command):
     )
 
 
+# ── 🔴 변수 해소 — `$PY` 를 리터럴로 신뢰하면 이 술어가 스스로 fail-open ────
+# Variable resolution: trusting `$PY` as a literal reopens the very hole this module closes.
+
+@pytest.mark.parametrize("command", [
+    # 🔴 초판(#1248)은 `$PY`/`${PY}` 를 인터프리터 **리터럴 화이트리스트에 넣었다** — 이름만
+    #    맞으면 통과했으므로 아래 세 형태가 전부 '배선' 으로 판정됐다(실측 True). 즉 `echo` 를
+    #    막으려고 만든 술어가 `PY=echo` 한 줄로 우회됐다. 자기가 싸우던 클래스의 재생산이다
+    #    (다각도 근본원인 분석 2026-08-01 적발 — Grok claim-review).
+    # The predicate whitelisted `$PY` by NAME, so `PY=echo; $PY x.py` read as wired.
+    "PY=echo; $PY scripts/check_fake_guard.py",
+    "PY=cat; $PY scripts/check_fake_guard.py",
+    "PY=true; ${PY} scripts/check_fake_guard.py",
+    # 치환 분기 중 **하나라도** 인터프리터가 아니면 거부 (경로에 따라 무동작 가능)
+    # If ANY branch of the substitution is not an interpreter, reject — it can silently no-op.
+    "PY=$(echo cat || echo python3); $PY scripts/check_fake_guard.py",
+    # 할당이 아예 없는 변수 = 빈 문자열로 전개 = 아무것도 실행하지 않는다
+    # An unassigned variable expands to empty and runs nothing.
+    "$PY scripts/check_fake_guard.py",
+    # 다른 변수의 할당은 이 변수를 해소하지 못한다 / another var's assignment resolves nothing
+    "OTHER=python3; $PY scripts/check_fake_guard.py",
+])
+def test_variable_interpreter_must_resolve_to_a_real_interpreter(command):
+    assert invokes(command, _P) is False, (
+        f"변수가 인터프리터로 해소되지 않는데 배선으로 오판 — fail-open 재발: {command!r}"
+    )
+
+
+@pytest.mark.parametrize("command", [
+    # 실제 #1243 런처 형태 — 양 분기가 모두 인터프리터이므로 배선이다
+    _PY_LAUNCHER_CALL,
+    # 리터럴 할당 / literal assignment
+    "PY=python3; $PY scripts/check_fake_guard.py",
+    "PY=py; ${PY} -3 scripts/check_fake_guard.py",
+])
+def test_variable_resolving_to_an_interpreter_counts_as_wired(command):
+    """🔴 양성 통제 — 해소 규칙이 **실제 배선을 거부**하면 가드 자살이다.
+
+    초판 수정 중 `echo` 대상 추출 정규식이 치환의 닫는 괄호까지 삼켜 `python3)` 로 읽었고,
+    그 결과 실제 `#1243` 런처가 False 로 떨어졌다. fail-closed 는 **거짓 거부**까지 정당화하지
+    않는다 — 실배선 6종이 통과해야 이 술어가 저장소에서 살아남는다(정책 17 안정성 우선).
+    Fail-closed must not reject the real launcher; that would be guard suicide.
+    """
+    assert invokes(command, _P) is True, f"실제 배선을 거부 — 가드 자살: {command!r}"
+
+
 def test_other_script_invocation_does_not_count():
     """다른 스크립트를 실행하는 명령은 이 스크립트의 배선이 아니다."""
     assert invokes("python scripts/check_other.py", _P) is False
