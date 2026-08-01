@@ -259,3 +259,123 @@ def test_hook_is_wired_in_settings():
     assert surface_invokes(settings_text, ".claude/hooks/check_edit_allowed.py"), (
         "settings.json 이 check_edit_allowed.py 를 실행하지 않는다 — 보호 훅 배선 소실"
     )
+
+
+# ── main(): stdout 출력 계약 — Grok claim-review 019fbe49 적발 (GROK-20260802-1/2) ──
+# main(): the stdout output contract — Grok claim-review 019fbe49 findings (GROK-20260802-1/2)
+
+
+def test_main_prints_deny_json_for_protected_path(hook, monkeypatch, capsys):
+    """main() 이 deny JSON 을 **stdout 으로 실제 출력**하는 경로를 고정한다 (GROK-20260802-1).
+
+    기존 15건은 decide() 단위까지만 고정 — main() 의 출력 분기(print)를 지워도 전부 green
+    인 채 런타임 보호만 조용히 소멸한다(silent-disable). 이 테스트가 유일한 stdout 관측축이다.
+    🔴 뮤테이션: main 의 print 분기 제거 시 이 테스트만 red — 현행도 통과할 수 있으나
+    (main 이 이미 출력한다) 이 테스트의 존재 이유는 red 가능성 확보다.
+
+    Freezes the path where main() actually PRINTS the deny JSON to stdout (GROK-20260802-1).
+    The existing 15 tests stop at decide(): deleting main()'s print branch keeps them all
+    green while runtime protection silently disappears (silent-disable). Mutation: removing
+    main()'s print branch turns only this test red — it may pass today (main already
+    prints), but red-capability is this test's reason to exist.
+    """
+    # 테스트 환경 없음 강제 + 보호 대상 payload 를 stdin 으로 주입.
+    # Force "no test env" and feed a protected-path payload via stdin.
+    monkeypatch.setattr(hook, "can_run_tests", lambda: False)
+    monkeypatch.setattr(
+        "sys.stdin",
+        io.StringIO(json.dumps({"tool_input": {"file_path": "src/templates/settings.html"}})),
+    )
+
+    assert hook.main() == 0
+
+    # 🔴 텍스트 in 이 아니라 stdout JSON 을 파싱해 dict 키 접근으로 단언 (guards.md).
+    # Parse the stdout JSON and assert via dict-key access, never substring-in-text (guards.md).
+    printed = json.loads(capsys.readouterr().out)
+    out = printed["hookSpecificOutput"]
+    assert out["hookEventName"] == "PreToolUse"
+    assert out["permissionDecision"] == "deny"
+    # 차단 사유에는 대상 경로가 실려야 한다 — 어떤 파일이 막혔는지 사용자가 봐야 한다.
+    # The deny reason must carry the target path — the user must see which file was blocked.
+    assert "src/templates/settings.html" in out["permissionDecisionReason"]
+
+
+def test_main_silent_for_non_protected(hook, monkeypatch, capsys):
+    """비보호 경로에서 main() 은 stdout 에 아무것도 내지 않는다 — deny 출력축의 대조군.
+    On a non-protected path main() prints nothing to stdout — the control group for the
+    deny output axis.
+    """
+    # can_run_tests False 로 고정 — 위 deny 테스트와 유일한 차이가 '경로'가 되도록 한다
+    # (환경 덕분에 통과하는 spurious-pass 차단 + 실 subprocess probe 비용 0).
+    # Pin can_run_tests to False so the ONLY difference from the deny test is the path
+    # (blocks env-dependent spurious pass + zero real subprocess probe cost).
+    monkeypatch.setattr(hook, "can_run_tests", lambda: False)
+    monkeypatch.setattr(
+        "sys.stdin",
+        io.StringIO(json.dumps({"tool_input": {"file_path": "src/api/routes.py"}})),
+    )
+
+    assert hook.main() == 0
+    # 대조군 — 여기서 출력이 나오면 위 deny 테스트의 stdout 관측이 무의미해진다.
+    # Control — any output here would void the deny test's stdout observation.
+    assert capsys.readouterr().out == ""
+
+
+@pytest.mark.parametrize("raw", ["null", "[]", "1"])
+def test_main_treats_non_dict_payload_as_parse_failure(hook, monkeypatch, capsys, raw):
+    """파싱은 성공하지만 dict 가 아닌 payload(null/[]/1)는 traceback 없이 loud fail-open.
+
+    현행: `payload.get` 에서 TypeError/AttributeError traceback — 구판과 같은 잔여 crash
+    클래스 (GROK-20260802-2). 계약: json.load 성공 후 `isinstance(payload, dict)` 가 아니면
+    payload 를 None 으로 강등 → 기존 parse-failure advisory 경로와 합류한다.
+
+    Payloads that parse but are not dicts (null/[]/1) must take the loud fail-open path,
+    not a traceback. Today `payload.get` raises (the residual crash class of the
+    pre-refactor hook, GROK-20260802-2). Contract: after a successful json.load, a
+    non-dict payload demotes to None and joins the existing parse-failure advisory path.
+    """
+    monkeypatch.setattr("sys.stdin", io.StringIO(raw))
+
+    # 예외 없이 0 반환 — 예외가 나면 pytest 가 traceback 으로 그대로 실패 보고한다
+    # (testing.md: does-not-raise 는 wrapper 없이 직접 호출).
+    # Returns 0 with no exception — an exception fails the test directly via its traceback
+    # (testing.md: assert does-not-raise by direct call, no try/except wrapper).
+    assert hook.main() == 0
+
+    printed = json.loads(capsys.readouterr().out)
+    out = printed["hookSpecificOutput"]
+    assert out["hookEventName"] == "PreToolUse"
+    # advisory 채널 존재 + 권한 결정 부재 — parse-failure 출력과 동일 형태 계약.
+    # Advisory channel present, permission decision absent — same shape as parse failure.
+    assert isinstance(out["additionalContext"], str) and out["additionalContext"].strip()
+    assert "permissionDecision" not in out
+    assert "permissionDecisionReason" not in out
+
+
+@pytest.mark.parametrize("raw", ["null", "[]", "1"])
+def test_end_to_end_subprocess_non_dict_payload(raw):
+    """실행 축 — dict 아닌 JSON stdin 에서도 exit 0 + loud advisory JSON (GROK-20260802-2).
+
+    현행 실측: "[]"/"1" 은 `payload.get` traceback 으로 rc=1 (RED 축)이고, "null" 은
+    json.load 가 Python None 을 돌려줘 기존 parse-failure 분기와 우연히 합류해 GREEN —
+    세 케이스 모두 같은 advisory 계약으로 수렴해야 한다. 지시서의 "null" 단일 케이스를
+    포함하되 실제 crash 재현 케이스("[]"/"1")를 같은 실행 축에 고정하기 위해 parametrize
+    로 확장했다 (자율 판단 — 본문 보고).
+
+    Execution axis — non-dict JSON stdin must still exit 0 with the loud advisory JSON.
+    Measured today: "[]"/"1" crash with rc=1 via `payload.get` (the RED axis), while
+    "null" happens to join the parse-failure branch (json null → Python None) and is
+    GREEN. All three must converge on the same advisory contract; the spec's single
+    "null" case is kept and extended by parametrize to pin the actually-crashing cases.
+    """
+    proc = _run_hook(raw)
+
+    assert proc.returncode == 0, f"advisory 훅이 비-0 종료 — stderr: {proc.stderr!r}"
+    payload = json.loads(proc.stdout)
+    out = payload["hookSpecificOutput"]
+    assert out["hookEventName"] == "PreToolUse"
+    assert isinstance(out["additionalContext"], str) and out["additionalContext"].strip()
+    # advisory 에 권한 결정이 실리면 사용자 권한 확인 우회 위험 — 부재를 실행 축에서도 고정.
+    # A permission decision on an advisory can bypass the permission flow — pin its
+    # absence on the execution axis too.
+    assert "permissionDecision" not in out

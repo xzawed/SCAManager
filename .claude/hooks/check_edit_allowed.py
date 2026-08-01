@@ -190,6 +190,13 @@ def main() -> int:
         payload = json.load(sys.stdin)
     except Exception:  # pylint: disable=broad-except
         payload = None
+    # 🔴 파싱은 성공했지만 dict 가 아닌 payload(null·배열·수)는 계약 밖이다 — 구판은
+    #    payload.get 에서 traceback(rc=1) 이었다(Grok `019fbe49` GROK-20260802-2).
+    #    같은 loud fail-open 경로로 강등해 관측 가능하게 한다.
+    # A successfully-parsed non-dict payload (null/array/number) is outside the contract;
+    # the old code crashed on payload.get. Demote it to the same loud fail-open path.
+    if not isinstance(payload, dict):
+        payload = None
     output = decide(payload)
     if output is not None:
         print(json.dumps(output, ensure_ascii=True))
