@@ -176,7 +176,8 @@ def test_drift_line_warns_on_mismatch():
     A mismatch must carry the warning marker plus both version strings in one line."""
     line = gate.interpreter_drift_line("3.14", {"3.12"})
     assert "⚠️" in line, "버전 불일치인데 경고 마커가 없다"
-    assert "3.14" in line and "3.12" in line, f"양쪽 버전이 라인에 없다: {line!r}"
+    assert "3.14" in line, f"로컬 버전이 라인에 없다: {line!r}"
+    assert "3.12" in line, f"CI 버전이 라인에 없다: {line!r}"
 
 
 def test_drift_line_informational_when_matching():
@@ -196,6 +197,12 @@ def test_drift_line_fails_loud_on_empty_ci_set():
     """
     line = gate.interpreter_drift_line("3.14", set())
     assert "⚠️" in line, "파싱 실패가 조용히 지나갔다 — fail-closed 위반"
+    # 🔴 "⚠️ 존재" 만 단언하면 이 분기를 죽여도 mismatch fallthrough 가 우연히 ⚠️ 를 내
+    #    green 이 된다(뮤테이션 M2 실측 — 이 단언이 없던 초판에서 생존). 분기 고유 문구
+    #    (파싱 실패 명시)를 고정해야 분기가 load-bearing 이 된다.
+    # Asserting only the marker let the dead branch survive via the mismatch fallthrough
+    # (mutation M2, measured). Pin the branch-specific wording to make it load-bearing.
+    assert "파싱 실패" in line, f"파싱 실패가 원인으로 명시되지 않았다: {line!r}"
 
 
 def test_blind_spots_always_prints_interpreter_axis(capsys):

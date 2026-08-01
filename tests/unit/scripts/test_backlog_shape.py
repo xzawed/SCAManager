@@ -283,6 +283,10 @@ def illegal_status_rows(rows: list) -> list:
             if not any(status.startswith(m) for m in _MARKERS)]
 
 
+# (강화 이력: 아래 pre_push_gate 의 M2 뮤테이션 학습과 같은 세션 — 단언은 결과가 아니라
+#  **분기 고유의 문구**를 고정해야 죽은 분기를 잡는다.)
+# (Hardening note, same session as the pre_push_gate M2 lesson: assertions must pin
+#  branch-specific wording, not an outcome both branches can produce.)
 def test_every_r_row_status_is_a_legal_marker_whole_file():
     """🔴 R24: 기존 가드는 원장 R행 중 **현재 창만** 관측 — 역사 창 첫 셀 drift 행이
     조용히 버려지는 클래스(R10)의 **전장 legality 백스톱**.
