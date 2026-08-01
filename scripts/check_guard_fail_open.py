@@ -53,11 +53,16 @@ _STRUCTURAL_MODULES = {"ast", "re", "subprocess"}
 
 
 def _reads_a_file(tree: ast.AST) -> bool:
-    """파일을 읽는가 — `.read_text(...)` 또는 `open(...)` 호출."""
+    """파일을 읽는가 — `.read_text(...)`/`.read_bytes(...)` 또는 `open(...)` 호출.
+
+    🔴 `read_bytes` 포함 (Grok claim-review `019fbe1f` GROK-20260802-2 재현 적발) —
+    bytes 로 읽어 decode 후 bare substring 판정하는 가드가 이름 집합 밖이라 미탐이었다.
+    Includes read_bytes: a guard reading bytes then substring-deciding escaped the name set.
+    """
     for n in ast.walk(tree):
         if isinstance(n, ast.Call):
             name = getattr(n.func, "attr", None) or getattr(n.func, "id", None)
-            if name in ("read_text", "open", "read"):
+            if name in ("read_text", "read_bytes", "open", "read"):
                 return True
     return False
 
@@ -139,11 +144,35 @@ def fail_open_candidates() -> list[str]:
             continue  # 명시 면제 (실제 주석 토큰에 한함)
         try:
             tree = ast.parse(src)
-        except SyntaxError:  # pragma: no cover
+        except SyntaxError:
+            # 구문 깨짐은 별도 축(`unparseable_files`)이 main 에서 exit 1 로 승격한다 —
+            # 여기서의 skip 이 조용한 미탐이 되지 않게 한다(GROK-20260802-1).
+            # Broken syntax is escalated to exit 1 by `unparseable_files` in main, so this
+            # skip can no longer become a silent miss.
             continue
         if _reads_a_file(tree) and not _calls_structural_tool(tree):
             out.append(path.name)
     return out
+
+
+def unparseable_files() -> list[str]:
+    """양 표면에서 `ast.parse` 가 SyntaxError 를 내는 파일명 목록.
+
+    🔴 Grok claim-review `019fbe1f` GROK-20260802-1 재현 적발 — 표면에 파일이 있어도
+    **전부 구문 깨짐**이면 후보 skip 으로 ✅ exit 0 이었다("파일 0개" 만 막고 "분석 0개" 는
+    안 막음). scripts/hooks 는 실행돼야 하는 파일이라 구문 깨짐 = 실행 불가능한 가드 = 결함
+    (오탐 0 — 정당하게 파싱 불가한 파일이 이 표면에 있을 수 없다).
+    Files whose ast.parse raises SyntaxError. A guard that cannot parse cannot run — that is
+    a defect, not a skip (zero false positives on these surfaces).
+    """
+    scripts, hooks = _scan_targets()
+    broken = []
+    for path in scripts + hooks:
+        try:
+            ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:
+            broken.append(path.name)
+    return broken
 
 
 def main() -> int:
@@ -156,6 +185,14 @@ def main() -> int:
         print(f"❌ 스캔 범위 붕괴 — scripts/check_*.py {len(scripts)}개 · "
               f".claude/hooks/*.py {len(hooks)}개")
         print("   빈 표면은 '위반 0건' 이 아니라 glob/경로가 무너졌다는 뜻이다(fail-closed).")
+        return 1
+    # 🔴 구문 깨진 파일은 skip 이 아니라 실패다 (GROK-20260802-1 — 전부 깨져도 ✅ 이던 미탐).
+    # A syntax-broken file is a failure, not a skip (all-broken surfaces used to pass green).
+    broken = unparseable_files()
+    if broken:
+        print("❌ 구문 오류로 분석 불가한 가드/훅 파일 — 실행도 불가능한 상태다:")
+        for b in broken:
+            print(f"   - {b}")
         return 1
     candidates = fail_open_candidates()
     if candidates:

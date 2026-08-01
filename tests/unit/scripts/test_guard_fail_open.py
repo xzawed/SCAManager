@@ -271,3 +271,76 @@ def test_success_message_states_the_actual_scan_scope(capsys):
     assert "scripts/check_*.py" in out, "성공 문구에 scripts 스캔 범위 명시 없음 (R16)"
     assert ".claude/hooks" in out, "성공 문구에 hooks 스캔 범위 명시 없음 (R16)"
     assert "tests/" in out, "성공 문구에 범위 밖(tests/** test-as-guard) 명시 없음 (R16)"
+
+
+# ── 잔여 fail-open 2건 (Grok claim-review 019fbe1f-6f5e-7652-bcb2-6d51fa8402be) ──
+# Two residual fail-open holes Grok reproduced against the R16 version of B8.
+
+def test_syntax_broken_guard_file_fails_main(tmp_path, monkeypatch, capsys):
+    """🔴 구문 깨진 가드 파일이 하나라도 있으면 main() = exit 1 (GROK-20260802-1 재현).
+
+    R16 빈-표면 검사는 "파일 0개" 만 막는다 — glob 파일 수 > 0 이어도 **전부(또는 일부)
+    SyntaxError** 면 `fail_open_candidates()` 의 `except SyntaxError: continue` 가 조용히
+    skip 해 분석 0개 위에 ✅ exit 0 이 나온다(Grok 재현: "파일 0개" 는 막고 "분석 0개" 는
+    안 막는다). scripts/hooks 는 **실행돼야 하는** 파일이라 구문 깨짐 = 실행 불가능한 가드
+    = 그 자체로 결함(오탐 0) — 전부/일부 무관하게 red 여야 한다.
+    A guard that cannot parse cannot run: any syntax-broken file on either surface must
+    turn main() red, regardless of how many healthy files sit next to it.
+    """
+    mod = _load()
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    # 술어를 통과하는 정상 가드 1개 — "표면 비어있음" 이 아니라 "구문 깨짐" 만 실패 사유로 격리.
+    # One predicate-passing guard isolates the failure cause to the broken file, not emptiness.
+    (scripts / "check_ok.py").write_text(
+        "import re\n"
+        "def main():\n"
+        "    text = open('x').read()\n"
+        "    return 1 if re.search(r'p', text) else 0\n",
+        encoding="utf-8",
+    )
+    # 확실한 SyntaxError — ast.parse 가 반드시 실패한다.
+    # A guaranteed SyntaxError so ast.parse must fail.
+    (scripts / "check_broken_syntax.py").write_text(
+        "def broken(:\n", encoding="utf-8"
+    )
+    hooks = tmp_path / "hooks"
+    hooks.mkdir()
+    # 정상 훅 1개 — hooks 표면 붕괴(R16)로 오귀속되지 않게 한다.
+    # One healthy hook so the R16 empty-surface check cannot be the failure cause.
+    (hooks / "ok_hook.py").write_text("def main():\n    return 0\n", encoding="utf-8")
+    monkeypatch.setattr(mod, "_SCRIPTS", scripts)
+    monkeypatch.setattr(mod, "_HOOKS", hooks)
+    assert mod.main() == 1, (
+        "구문 깨진 가드가 있는데 성공했다 — SyntaxError silent skip fail-open (GROK-20260802-1)"
+    )
+    out = capsys.readouterr().out
+    assert "✅" not in out, "구문 깨진 가드 위에 성공 문구가 출력됐다"
+    assert "check_broken_syntax.py" in out, (
+        "어느 파일이 구문 깨졌는지 출력에 없다 — 저자가 고칠 대상을 알 수 없다"
+    )
+
+
+def test_read_bytes_reader_is_flagged(tmp_path, monkeypatch):
+    """🔴 `read_bytes` 로 읽는 bare-substring 훅도 후보다 (GROK-20260802-2 재현).
+
+    `_reads_a_file` 의 이름 집합 `("read_text", "open", "read")` 는 `read_bytes` 를 모른다 —
+    `Path('x').read_bytes()` 로 읽고 decode 후 bare `'X' in text` 로 판정하는 훅은 "파일을
+    읽지 않는다" 로 오판돼 후보에서 빠진다(Grok 재현). 읽기 API 를 한 글자 바꾸는 것만으로
+    B8 floor 를 우회할 수 있으면 floor 가 아니다.
+    Switching the read API to `read_bytes` must not tunnel under the floor.
+    """
+    mod = _load()
+    bad = tmp_path / "bytes_probe_hook.py"
+    bad.write_text(
+        "from pathlib import Path\n"
+        "def main():\n"
+        "    text = Path('x').read_bytes().decode('utf-8')\n"
+        "    return 1 if 'X' in text else 0\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(mod, "_HOOKS", tmp_path)
+    assert "bytes_probe_hook.py" in mod.fail_open_candidates(), (
+        "read_bytes 로 읽는 bare-substring 훅을 탐지하지 못했다 — "
+        "_reads_a_file 이름 집합 누락 fail-open (GROK-20260802-2)"
+    )
