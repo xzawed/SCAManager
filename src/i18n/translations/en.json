@@ -752,7 +752,7 @@
       "title": "## {emoji} SCAManager Analysis Result",
       "static_incomplete_warning": "> ⚠️ **Static analysis incomplete (timeout or error)** — the score below may be inflated and is not reliable. Review manually before merging.",
       "static_skipped_cli_warning": "> ⚠️ **Static analysis not run (CLI hook)** — the CLI hook does not run analyzers, so the code-quality and security scores are unverified full marks. Review manually before merging, or wait for the push/PR webhook analysis.",
-      "static_uncovered_warning": "> ℹ️ **Includes languages with no static analyzer: {languages}** — no analyzer is registered for these, so the code-quality and security scores are full marks by default. That means \"not inspected\", not \"clean\" — rely on the AI review and manual inspection.",
+      "static_uncovered_warning": "> ℹ️ **Includes languages that were not statically analysed: {languages}** — no analyzer ran for them in this deployment (either none is registered **or** the binary is not provisioned), so the code-quality and security scores are full marks by default. That means \"not inspected\", not \"clean\" — rely on the AI review and manual inspection.",
       "ai_failed_warning": "> ⚠️ **AI review failed (API error or parse failure)** — the AI portion of the score fell back to defaults, so the total below is inflated. Review manually before merging.",
       "total_line": "**Total: {score}/100** (Grade {grade})",
       "breakdown_header": "### Score Breakdown",
