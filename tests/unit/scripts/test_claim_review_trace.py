@@ -294,3 +294,126 @@ def test_guard_runs_on_pull_request_events():
     assert any("pull_request" in str(s.get("if", "")) for s in steps), (
         "가드 step 에 pull_request 조건이 없다"
     )
+
+
+# ── 축 4: HTML 주석 비가시 영역 + 단수형 관용구 + 면제 가시화 (backlog R20) ────────
+# 🔴 TDD 선행 — 본문 `_strip_html_comments` 스트리핑·단수형 seal 패턴·`::notice` annotation 은
+#    아직 미구현이라 이 축의 비-대조군 테스트는 RED 가 정상이다.
+# 🔴 TDD-first: body comment stripping, singular seal idioms, and the ::notice annotation are
+#    not implemented yet — non-control tests in this axis are expected RED.
+
+
+def test_trace_hidden_in_html_comment_does_not_satisfy(monkeypatch):
+    """🔴 HTML 주석 안의 흔적은 흔적이 아니다 — GitHub 렌더링에서 리뷰어에게 보이지 않는다.
+
+    현재는 exit 0 — 리뷰어에게 안 보이는 흔적이 가드를 통과시킨다(R20 실측 결함).
+    seal 주장은 가시로 두고 흔적만 `<!-- -->` 에 숨기면 "가드 통과 + 리뷰어 비가시" 조합이
+    성립한다 — 정책 19 가 끝내려던 "주장 + 흔적 0 + CI 초록" 무임승차가 형태만 바꿔 되살아난다.
+    구현 계약: `main()` 은 **body 에만** `_strip_html_comments` 를 적용한 뒤 흔적을 찾는다
+    (제목·커밋 메시지는 plain text 로 렌더되므로 스트리핑 없음).
+    A trace hidden inside an HTML comment is invisible to reviewers on GitHub and must not
+    satisfy the guard (today it does — the R20 measured defect).
+    """
+    body = _REAL_SEAL_CLAIMS[1] + "\n\n<!--\n" + _GOOD_TRACE + "\n-->"
+    assert _run(monkeypatch, body=body) == 1
+
+
+def test_exemption_hidden_in_html_comment_does_not_exempt(monkeypatch):
+    """🔴 HTML 주석 안의 면제 마커는 면제가 아니다 — 보이지 않는 자기면제 차단.
+
+    면제가 본문 한정인 이유("리뷰어가 보는 자리에 있어야 한다")와 같은 근거다 — 주석에
+    숨긴 `claim-review-not-required:` 는 렌더링에서 사라지므로, 인정하면 리뷰어 모르게
+    seal 주장이 통과하는 조용한 자기면제 경로가 된다.
+    An exemption marker hidden in an HTML comment must not exempt: reviewers never see it,
+    so honoring it reopens the silent self-exemption path.
+    """
+    body = "봉인했다.\n<!--\nclaim-review-not-required: 과거 회고 인용이라 검증 대상이 아님\n-->"
+    assert _run(monkeypatch, body=body) == 1
+
+
+def test_unterminated_html_comment_hides_the_rest(monkeypatch):
+    """🔴 미종결 `<!--` 이후는 전부 비가시다 — GitHub 는 닫히지 않은 주석 뒤를 렌더하지 않는다.
+
+    종결 쌍(`<!-- -->`)만 지우면 닫는 `-->` 를 빼는 것만으로 스트리핑을 우회할 수 있다.
+    구현 계약: 미종결 `<!--` 이후 끝까지 제거 — GitHub 실제 렌더 동작과 일치시켜야
+    "가드가 보는 텍스트 = 리뷰어가 보는 텍스트" 가 성립한다.
+    GitHub hides everything after an unterminated `<!--`; stripping must drop to EOF, or
+    omitting the closing marker becomes the trivial bypass.
+    """
+    body = _REAL_SEAL_CLAIMS[1] + "\n<!--\n" + _GOOD_TRACE
+    assert _run(monkeypatch, body=body) == 1
+
+
+def test_visible_trace_passes_even_with_comment_blocks_nearby(monkeypatch):
+    """대조군 — 스트리핑이 **가시** 흔적까지 지우면 안 된다 (오탐이 잦으면 가드를 끄게 된다, 정책 17).
+
+    PR 템플릿 표면은 안내 주석과 실작성 본문이 섞이므로, 주석 블록 **밖**의 가시 흔적이
+    여전히 통과하는지를 계약으로 고정한다 (현 구현에서도 통과 — 스트리핑 도입 후 회귀 방지축).
+    Control: a visible trace next to comment blocks must keep passing after stripping lands.
+    """
+    body = "<!-- 안내 주석 -->\n" + _REAL_SEAL_CLAIMS[1] + "\n\n" + _GOOD_TRACE
+    assert _run(monkeypatch, body=body) == 0
+
+
+def test_actual_pr_template_slot_does_not_satisfy_the_trace(monkeypatch):
+    """🔴 실경로 — `.github/PULL_REQUEST_TEMPLATE.md` 의 주석 처리된 예시 슬롯은 흔적이 아니다.
+
+    템플릿에는 `## Grok claim-review` 슬롯 전체가 **HTML 주석 안에** 실려 있다. 이 슬롯이
+    흔적으로 인정되면 템플릿을 그대로 둔 **모든 PR** 이 무임승차한다 — 합성 픽스처가 아니라
+    실파일을 body 로 써서 검증한다(불변식 2). 지금은 슬롯의 placeholder 값(`<Grok sessionId>`)
+    이 필드 값 정규식을 우연히 못 채워 막히지만, 그 방어는 우연이다 — 템플릿에 예시 값이
+    채워지는 순간 무너지므로 주석 스트리핑이 구조적 방어가 돼야 한다.
+    Real-path: the commented-out example slot in the PR template must never satisfy the
+    trace; today it fails only by accident of placeholder values, not by structure.
+    """
+    template = (_REPO / ".github" / "PULL_REQUEST_TEMPLATE.md").read_text(encoding="utf-8")
+    # 템플릿 drift 가드 — 슬롯 자체가 사라지면 이 테스트는 아무것도 검증하지 않는다
+    # Template-drift guard: if the slot vanishes, this test would verify nothing
+    assert "claim-review" in template, "템플릿 drift — claim-review 슬롯이 사라졌다"
+    assert _run(monkeypatch, title=_REAL_SEAL_CLAIMS[0], body=template) == 1
+
+
+def test_singular_count_mutation_idiom_is_detected():
+    """🔴 단수형 카운트 관용구도 seal 주장이다 — 이 리포 실관용구 — STATE.md 세션13 서사가 실제로 쓴 형태.
+
+    기존 `_SEAL_PATTERNS` 는 `N/N` · `N of N` · `전부/모두` 형만 잡아 `뮤테이션 6건 red` ·
+    `뮤테이션 5종 red` 같은 단수형이 통과했다(R20 결함 2). 우회 어휘(§한계 3)가 아니라
+    **이 저장소가 실제로 쓰는 자기 관용구**를 놓친 것이라 합성 문자열이 아닌 실관용구로 고정한다.
+    Singular-count idioms (`뮤테이션 N건/N종 red`) are seal claims this repo actually writes
+    (STATE.md session-13 narrative) and must be detected.
+    """
+    for idiom in ("뮤테이션 6건 red", "mutation 3건 red", "뮤테이션 5종 red"):
+        assert find_seal_claims(idiom), f"단수형 seal 관용구를 놓쳤다: {idiom!r}"
+
+
+def test_singular_idiom_without_red_is_not_flagged():
+    """대조군 — red 없는 단순 개수 서술(`뮤테이션 6건 추가`)은 seal 주장이 아니다.
+
+    단수형을 넓히며 `N건` 만으로 트리거하면 평범한 작업 보고("테스트 6건 추가")가 전부
+    걸린다 — 오탐이 잦으면 가드를 끄게 된다(정책 17). red 동반이 판정선이어야 한다.
+    Control: a plain count without `red` is not a seal claim — widening must not over-trigger.
+    """
+    assert not find_seal_claims("뮤테이션 6건 추가")
+
+
+def test_exemption_use_emits_a_visible_annotation(monkeypatch, capsys):
+    """🔴 면제 사용은 계량돼야 한다 — `::notice` GitHub annotation 으로 가시화(R20-a).
+
+    면제 경로는 조용한 exit 0 이라 남용 추세가 관측되지 않는다("보이지 않는 우회 경로").
+    구현 계약: exit 0 은 유지하되(면제 자체는 정당한 경로 — advisory) stdout 에
+    `::notice` annotation(제목에 claim-review exemption 포함)을 추가 출력해 Actions UI
+    에서 면제 사용이 보이게 한다.
+    The exemption path stays exit 0 but must emit a `::notice` annotation so each use is
+    observable in the Actions UI instead of silently green.
+    """
+    body = (
+        "봉인했다.\n"
+        "claim-review-not-required: 2026-07-19 회고 보고서의 과거 주장 인용문이라 검증 대상 아님"
+    )
+    assert _run(monkeypatch, body=body) == 0
+    out = capsys.readouterr().out
+    notice_lines = [line for line in out.splitlines() if line.startswith("::notice")]
+    assert notice_lines, "면제 사용이 ::notice annotation 으로 가시화되지 않았다"
+    assert any("claim-review" in line for line in notice_lines), (
+        "::notice 라인에 claim-review 식별자가 없다 — 어떤 가드의 면제인지 구분 불가"
+    )

@@ -56,6 +56,12 @@ _SEAL_PATTERNS: tuple[tuple[str, str], ...] = (
     # N/N · N of N · "전부 red" 등 변형 포함 (Grok 적발: `mutation 7 of 7 red` 가 통과했다)
     (r"(뮤테이션|mutation)\s*\d+\s*(/|of|중)\s*\d+\s*red", "뮤테이션 N/N red"),
     (r"(뮤테이션|mutation)\s*(전부|모두|all)\s*red", "뮤테이션 전부 red"),
+    # 단수형 카운트 관용구 — `뮤테이션 6건 red`·`뮤테이션 5종 red` (backlog R20: STATE 세션13
+    # 서사가 실제로 쓴 자기 관용구인데 위 두 패턴 어디에도 안 잡혔다). red 동반이 판정선 —
+    # `뮤테이션 6건 추가` 같은 평범한 개수 서술은 트리거하지 않는다(오탐 방지, 정책 17).
+    # Singular-count idiom this repo actually writes; `red` is required so plain counts
+    # ("added 6 mutations") never trigger.
+    (r"(뮤테이션|mutation)\s*\d+\s*(건|종)\s*(전부|모두)?\s*red", "뮤테이션 N건 red"),
     (r"\bHOLDS\b", "HOLDS"),
     (r"재발\s*(불가|차단|봉쇄)", "재발 불가"),
     (r"구조적으로\s*(불가능|막)", "구조적으로 불가능"),
@@ -98,6 +104,22 @@ _EXEMPT = re.compile(
     r"^[ \t]*(?![`'\"])claim-review-not-required\s*:\s*\S.{15,}",
     re.IGNORECASE | re.MULTILINE,
 )
+
+
+# 🔴 HTML 주석은 GitHub 렌더링에서 **리뷰어에게 보이지 않는다** — 주석 안 흔적/면제를
+#    인정하면 "가드 통과 + 리뷰어 비가시" 조합이 성립한다(backlog R20 결함 1). 종결 쌍을
+#    지운 뒤 남는 미종결 `<!--` 이후도 전부 제거한다 — GitHub 는 닫히지 않은 주석 뒤를
+#    렌더하지 않으므로, 닫는 `-->` 를 빼는 것만으로 스트리핑을 우회할 수 있으면 안 된다.
+# HTML comments are invisible to reviewers on GitHub. Strip terminated pairs, then anything
+# after an unterminated `<!--` (GitHub hides the rest, so omitting `-->` must not bypass).
+_HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
+_UNTERMINATED_COMMENT = re.compile(r"<!--.*\Z", re.DOTALL)
+
+
+def _strip_html_comments(text: str) -> str:
+    """본문에서 리뷰어 비가시 영역(HTML 주석)을 제거 — "가드가 보는 텍스트 = 리뷰어가 보는 텍스트".
+    Strip reviewer-invisible regions so the guard reads exactly what reviewers read."""
+    return _UNTERMINATED_COMMENT.sub("", _HTML_COMMENT.sub("", text))
 
 
 def find_seal_claims(text: str) -> list[tuple[int, str, str]]:
@@ -150,7 +172,11 @@ def main() -> int:
     # 🔴 PR 본문은 **임의 사용자 입력**이라 셸 보간이 아니라 env 로 받는다(명령 인젝션 차단).
     # 🔴 The PR body is untrusted input: read it from env, never interpolate it into a shell line.
     title = os.environ.get("PR_TITLE", "")
-    body = os.environ.get("PR_BODY", "")
+    # 🔴 body 는 HTML 주석 스트리핑 후 판정한다 (backlog R20 결함 1) — 주석 안에 숨긴
+    #    흔적/면제가 exit 0 을 만들면 리뷰어 비가시 무임승차가 된다. 제목·커밋 메시지는
+    #    plain text 로 렌더되므로 스트리핑하지 않는다(기존 동작 보존).
+    # The body is judged after comment stripping; titles/commits render as plain text.
+    body = _strip_html_comments(os.environ.get("PR_BODY", ""))
     base_sha = os.environ.get("PR_BASE_SHA", "")
     head_sha = os.environ.get("PR_HEAD_SHA", "")
 
@@ -165,7 +191,14 @@ def main() -> int:
     # 🔴 면제는 **본문에서만** 유효하다 — haystack(제목·커밋 포함)에서 찾으면 커밋 메시지 한 줄로
     # 자기면제가 가능하다(Grok 적발). 면제는 리뷰어가 보는 자리에 있어야 한다.
     # 🔴 Exemption is body-only: searching the whole haystack would let a commit line self-exempt.
-    if _EXEMPT.search(body):
+    exemption = _EXEMPT.search(body)
+    if exemption:
+        # 🔴 면제 사용은 계량 대상 (backlog R20-a) — 조용한 exit 0 이면 남용 추세가 관측되지
+        #    않는다(창의 post-guard seal PR 10건 중 5건이 면제 통과). Actions UI annotation 으로
+        #    매 사용을 가시화한다. 계량 집계는 회고 시 `gh pr list --search` 로 수행.
+        # Every exemption use is annotated so the trend is observable in the Actions UI.
+        reason = exemption.group(0).strip()[:200].replace("\n", " ")
+        print(f"::notice title=claim-review exemption used::{reason}")
         print(f"⏭️  면제 마커(claim-review-not-required) 확인 — seal 주장 {len(claims)}건 통과")
         return 0
 
