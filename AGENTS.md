@@ -116,6 +116,13 @@ HOLDS. 그리고 뮤테이션 대상은 seal 이 **보호한다고 주장하는 
 - **경계**: Grok 은 정책·backlog 처방을 **저술하지 않는다**(claim-review 는 허용).
 - 실무: 범위 좁게(2 클레임·400자 — 넓으면 타임아웃) · 절대경로 전달(`/tmp` 가 리포 드라이브로
   해석됨) · Grok 심각도 판단 불신(이진 반증 질문으로 우회).
+- 🔴 **집행면 (CI — backlog R20 이 "SSOT 4곳 어디에도 없음" 을 적발해 등재)**: seal 어휘가
+  PR 제목·본문·PR 범위 커밋에 있으면 `repo-integrity` 의 `scripts/check_claim_review_trace.py`
+  가 구조화 흔적(session/claim/verdict **값**) 없이는 exit 1. 면제 = 본문 줄머리
+  `claim-review-not-required: <사유 16자+>` — 사용 시 `::notice` annotation 으로 계량된다.
+  본문 판정은 **HTML 주석 스트리핑 후**다(리뷰어 비가시 영역은 흔적/면제로 불인정).
+  본문 편집 재검증 = `claim-review-on-body-edit.yml`. 위조·의미 진위는 원리적으로 못 잡는다
+  (가드 docstring §한계 — 그 잔여가 바로 이 문서의 claim-review 프로세스다).
 - 🔴 **판정 착지 규약**: Grok 판정(HOLDS/BROKEN)은 외부 `.md` 기록 → Claude 1회 triage →
   영향 계층 라우팅(`wrong-merge`·`secret`·`fail-open` → `owed-verification.md` 안전등급 /
   `silent-disable` → `backlog.md`). 상세 = `ai-collaboration.md` §라우팅·§findings 스키마.

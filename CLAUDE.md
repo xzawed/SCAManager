@@ -293,6 +293,9 @@ Grok CLAIM-REVIEW 기본 포함(2026-07-20 사용자 지시, 건너뛰려면 명
 - **경계 = '소유 금지'**: Grok 은 정책·backlog 를 **저술하지 않는다**(claim-review 는 허용 —
   seal/HOLDS/완전성 주장 시 `owner-interrupt: claim-review` 명시). 호출 금지: 계획·WBS·구현 중간.
 - **회고 카덴스에 Grok full-pass 겹치지 않음**(피로 방지) — 주장 트리거 + ops 불변식 단축 패스만.
+- 🔴 **집행면 (CI)**: seal 어휘 PR 은 `scripts/check_claim_review_trace.py`(repo-integrity)가
+  claim-review 흔적(session/claim/verdict 값)을 강제. 흔적·면제는 **리뷰어 가시 영역만** 인정
+  (HTML 주석 스트리핑) · 면제 사용은 `::notice` 로 계량 (backlog R20 — SSOT 미등재 시정).
 
 ### 작업 시작 전 필수 체크리스트 (매 작업마다)
 
