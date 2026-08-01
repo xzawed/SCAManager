@@ -340,7 +340,7 @@ curl -s -H "Authorization: token $GITHUB_PAT" \
 
 | 검사 영역 | SCAManager 자체 | GitHub Security 탭 등록 알림 | 사용자 의무 |
 |----------|----------------|---------------------|------------|
-| Python 스타일/오류 | pylint 10.00 + flake8 0건 | CodeQL python 룰셋 | 양쪽 둘다 0 |
+| Python 스타일/오류 | pylint **10.00** + bandit **HIGH 0** (🔴 flake8 은 **baseline 15건** — E501 14 + E131 1, `make gate` 에서 의도적 제외) | CodeQL python 룰셋 | pylint 10.00 · bandit HIGH 0 · CodeQL 0 |
 | 보안 정적분석 | bandit HIGH 0 | CodeQL 보안 룰 | 양쪽 둘다 0 |
 | Secret leak | (자체 가드 X) | CodeQL secret-scanning | GitHub Security 탭 |
 | Dependency CVE | (자체 가드 X) | Dependabot alerts | GitHub Security 탭 |

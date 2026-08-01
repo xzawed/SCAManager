@@ -135,7 +135,9 @@ APP_BASE_URL=https://your-domain
 
 # === 선택 ===
 ANTHROPIC_API_KEY=sk-ant-...   # AI 리뷰 (없으면 기본값 적용)
-API_KEY=your-api-key            # REST API 인증 (없으면 인증 생략)
+API_KEY=your-api-key            # REST API 인증 — 🔴 **미설정 시 /api/* 전체 503 fail-closed**
+                                #   (인증 생략 아님. 로컬 개발만 API_AUTH_DISABLED=1 opt-out)
+                                #   상세: docs/reference/env-vars.md §API_KEY / §API_AUTH_DISABLED
 
 # === DB 연결 (온프레미스 기본값) ===
 DB_SSLMODE=                    # 빈 값 = SSL 미적용

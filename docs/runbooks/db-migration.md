@@ -230,7 +230,12 @@ alembic history --verbose
 | `0038_analyses_repo_id_cascade.py` | analyses.repo_id FK ON DELETE CASCADE (PG 전용 round-trip CI) |
 | `0039_repositories_user_id_fk.py` | repositories.user_id FK (SET NULL + 고아 정리) |
 | `0040_rename_users_github_id_index.py` | users github_id 인덱스명 rename |
-| `0041_rls_force.py` | 11 테이블 FORCE ROW LEVEL SECURITY (PG 전용, downgrade NO FORCE) |
+| `0041_rls_force.py` | FORCE ROW LEVEL SECURITY 일괄 적용 (PG 전용, downgrade NO FORCE) |
+| `0042_*` ~ `0045_analysis_attempts.py` | 이후 마이그레이션 — 🔴 **정본은 `ls alembic/versions/`** 다 |
+
+> 🔴 **이 표는 요약이고 정본이 아니다.** 손유지 목록은 자연 drift 한다 — 2026-08-01 감사에서
+> 이 표가 `0041` 에서 끝나 head 를 오인하게 만들던 것이 적발됐다. head 확인은
+> `py -3 -m alembic heads` 또는 `ls alembic/versions/` 로 하라.
 
 ---
 

@@ -26,7 +26,8 @@ GitHub Push/PR 이벤트 시 정적 분석 + AI 코드리뷰를 자동 수행하
 
 ## 점수 시스템
 
-- 0~100점, A(90+) / B(80+) / C(70+) / D(60+) / F(~60) 5등급
+- 0~100점, **A(90+) / B(75+) / C(60+) / D(45+) / F(45 미만)** 5등급
+  (정본 = `src/constants.py::GRADE_THRESHOLDS` · 설명 = [`docs/reference/scoring.md`](../../reference/scoring.md))
 - **등급 색상은 즉시 인지 가능해야 함** — 대시보드와 리스트에서 색상만으로 품질 수준 파악
 
 ## 데이터 밀도 특성

@@ -1,7 +1,16 @@
 # 언어 커버리지 레퍼런스
 
 > 각 파일이 어떤 분석을 받는지 한눈에 확인할 수 있는 단일 참조 문서.
-> 정적분석 도구가 **미설치** 상태이면 `is_enabled()=False`로 조용히 skip — 오류 없이 AI 리뷰만 실행됨.
+> 🔴 **도구 미설치의 결과는 3-way 다** (2026-08-01 `#1261` 이후 — 이전 "조용히 skip" 서술은 거짓):
+>
+> | 상황 | 결과 | auto-merge |
+> |---|---|---|
+> | **조달 계약**(`PROVISIONED_ANALYZERS`) 안 도구 부재 + 실행 0개 | `incomplete` | 🔴 **차단** (실제 배포 회귀) |
+> | 계약 **밖** 도구만 부재 | `uncovered_language` 로 가시화 | 통과 (제품 미제공) |
+> | 일부만 부재 (다른 도구가 실행됨) | 그 도구만 skip | 통과 |
+>
+> 계약 정본 = `src/analyzer/io/static.py::PROVISIONED_ANALYZERS` · 대조 가드 =
+> `tests/unit/analyzer/test_procurement_contract.py`.
 
 ## 동작 방식
 
@@ -108,7 +117,7 @@
 4. Fallback: "unknown" → Generic 가이드 적용, 정적분석 skip
 ```
 
-감지 로직: [src/analyzer/language.py](../../src/analyzer/language.py)
+감지 로직: [src/analyzer/pure/language.py](../../src/analyzer/language.py)
 
 ---
 
@@ -119,4 +128,9 @@
 | 🟢 낮음 | ~~cppcheck (C/C++)~~ ✅ 완료, ~~slither (Solidity)~~ ✅ 완료 | +30~100MB |
 | 🟡 중간 | ~~golangci-lint (Go)~~ ✅ 완료 (2026-04-23), ~~RuboCop (Ruby)~~ ✅ 완료 (2026-04-23) | +80~200MB |
 | 🟠 높음 | detekt (Kotlin), PHPStan (PHP) | +150~350MB |
-| 🔴 최상위 | PMD (Java), cargo clippy (Rust) | +300~700MB, Docker 전환 필요 |
+| 🔴 최상위 | PMD (Java) | +300~700MB, Docker 전환 필요 |
+
+> 🔴 **2026-08-01 정정**: `cargo clippy`(Rust)·`ktlint`(Kotlin)·`phpstan`(PHP) 은 **이미 등록됐다**
+> (`src/analyzer/io/tools/`). 다만 clippy·phpstan 은 배포 이미지에 **조달되지 않아** 운영에서는
+> 실행되지 않고 `uncovered_language` 로 가시화된다 — 위 3-way 표 참조. Tier 표의 정본은
+> 레지스트리(`REGISTRY`)와 조달 계약이지 이 문서가 아니다.

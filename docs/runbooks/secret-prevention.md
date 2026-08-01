@@ -109,7 +109,7 @@ git status --short | grep "\.env"  # .env가 staged 여부 확인
 
 ### 2-B. CI TruffleHog 스캔 (`.github/workflows/ci.yml`)
 
-PR 및 push 시 커밋 이력 전체 + 메시지 본문 자동 스캔 (ci.yml에 추가됨).
+🔴 **diff 범위만** 스캔한다 — PR 은 `base..head`, push 는 `before..after`(`ci.yml` 의 `base:`/`head:` 인자). **커밋 이력 전체 스캔이 아니다**: 첫 push·force-push 는 범위가 성립하지 않아 사실상 skip 되고, 이미 머지된 과거 커밋의 시크릿은 영영 안 본다. `--only-verified` 라 **검증된 시크릿만** 잡는다. 이력 전수는 §2-C 로컬 명령 또는 아래 docker 전체 스캔이 유일 수단이다.
 
 ```bash
 # 로컬에서 전체 이력 스캔 (커밋 메시지 포함)

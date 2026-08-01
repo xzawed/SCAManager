@@ -25,7 +25,10 @@
 |------|------|------|------|
 | `src/static/vendor/chart.umd.min.js` | Chart.js 4.4.0 UMD min | 약 204 KB | `repo_detail`/`analysis_detail`/`dashboard` 페이지 차트 (`insights_me` 폐기 — 그룹 60 Phase 1 PR 2) |
 
-> **주의**: 다른 외부 자원 (Pretendard 폰트, Crimson Pro, Google Fonts) 은 현재 CDN 의존 유지. 후속 단계에서 vendoring 검토.
+| `src/static/vendor/htmx.min.js` | htmx | 약 47 KB | `base.html` 전역 `hx-boost` |
+
+> **주의**: 폰트 자원 (Pretendard, Crimson Pro, Google Fonts) 은 현재 CDN 의존 유지. 후속 단계에서 vendoring 검토.
+> 🔴 이 표는 **vendoring 인벤토리 전량**이어야 한다 — htmx 가 2026-08-01 감사에서 누락으로 적발됐다.
 
 ---
 
@@ -48,7 +51,8 @@ from fastapi.staticfiles import StaticFiles
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 if _STATIC_DIR.exists():
-    app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+    # 🔴 표준 `StaticFiles` 가 아니라 서브클래스다 — Cache-Control/ETag 를 붙인다.
+    app.mount("/static", CachedStaticFiles(directory=str(_STATIC_DIR)), name="static")
 ```
 
 **조건부 mount 이유**: pytest 환경 등 디렉토리 미존재 시 안전 fallback.
