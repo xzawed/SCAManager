@@ -395,11 +395,11 @@ _SOURCE_FINGERPRINTS = (
 @pytest.mark.parametrize(("rel", "needle", "why"), _SOURCE_FINGERPRINTS)
 def test_review_context_contains_the_rules_it_enforces(rel, needle, why):
     """🔴 심의자 컨텍스트에 **실제 규칙 본문**이 들어 있어야 한다."""
-    import doc_review_gate as drg
+    from doc_review_gate import _load_context
 
     disk = (Path(__file__).resolve().parents[3] / rel).read_text(encoding="utf-8")
     assert needle in disk, f"지문이 {rel} 에서 사라졌다 — 이 테스트가 공허해졌다: {needle!r}"
-    assert needle in drg._load_context(), f"심의자가 못 보는 규칙: {needle} ({rel}) — {why}"
+    assert needle in _load_context(), f"심의자가 못 보는 규칙: {needle} ({rel}) — {why}"
 
 
 @pytest.mark.parametrize("rel", _REQUIRED_CONTEXT_SOURCES)
@@ -409,9 +409,9 @@ def test_review_context_labels_declare_what_was_actually_included(rel):
     구판의 헤더 `## 참조 컨텍스트 (CLAUDE.md / STATE.md)` 는 STATE.md 가 0자 실린
     상태에서도 그대로 출력됐다. 라벨은 심의자가 자기 시야의 한계를 아는 유일한 수단이다.
     """
-    import doc_review_gate as drg
+    from doc_review_gate import _load_context
 
-    context = drg._load_context()
+    context = _load_context()
     header = f"=== {rel} "
     assert header in context, f"원천 {rel} 이 심의자 컨텍스트에서 빠졌다"
 
@@ -428,7 +428,9 @@ def test_prompt_does_not_re_truncate_the_context():
     `_call_single_agent` 이 만드는 user 메시지를 가로채, 넘긴 컨텍스트가 **온전히**
     실렸는지 본다. 산문 검사가 아니라 실제 조립 결과를 관측한다.
     """
-    import doc_review_gate as drg
+    import asyncio
+
+    from doc_review_gate import _call_single_agent
 
     context = "X" * 9000 + "TAIL_SENTINEL"
     captured = {}
@@ -440,9 +442,11 @@ def test_prompt_does_not_re_truncate_the_context():
     client = MagicMock()
     client.messages.create = _fake_create
 
-    import asyncio
-    with patch.object(drg, "_read_agent_prompt", return_value="sys"):
-        asyncio.run(drg._call_single_agent(client, "impact", "diff", context))
+    # 🔴 string-path 패치 — `import X as mod` 를 들이면 이 파일의 `from X import ...` 와
+    #    이중 import 가 되어 CodeQL `py/import-and-import-from` 을 자초한다(testing.md).
+    # String-path patching avoids the dual-import form this file's top-level import would create.
+    with patch("doc_review_gate._read_agent_prompt", return_value="sys"):
+        asyncio.run(_call_single_agent(client, "impact", "diff", context))
 
     assert "TAIL_SENTINEL" in captured["user"], (
         "컨텍스트 꼬리가 프롬프트에서 잘렸다 — 이중 절단 회귀"
