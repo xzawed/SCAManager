@@ -259,3 +259,61 @@ def test_status_summary_matches_the_table():
         f"상태 요약이 표와 어긋난다:\n  선언 {declared}\n  실제 {actual}\n"
         "→ 항목 상태를 바꿨으면 **같은 커밋에서** 요약 줄도 갱신할 것."
     )
+
+
+# ── R24 — 전장(whole-file) 상태 legality / whole-file status legality ────────
+#
+# 위 카운트 불변식은 **현재 창 표만** 본다(`current_window` 가 역사 섹션을 잘라낸다).
+# 역사 2026-07-26 창 표는 현재 창과 같은 `| **Rn** | 상태 |` 형태라 같은 파서로
+# 커버 가능한데도 **한 번도 읽히지 않았다**. 아래는 파일 전체를 훑는 legality 백스톱이다.
+# The count invariants above only see the current-window table; the history handover
+# tables share the same row shape yet were never read. This is the whole-file backstop.
+
+
+def whole_file_status_rows(text: str) -> list:
+    """파일 **전체**의 `| **Rn** | 상태 |` 행 — (ID, 상태 셀) 쌍. 창 절단 없음.
+    Every R-row in the whole file as (id, status-cell) pairs — no window slicing."""
+    return [(m.group(1), m.group(2)) for m in _TABLE_ROW_RE.finditer(text)]
+
+
+def illegal_status_rows(rows: list) -> list:
+    """상태 셀이 범례 마커(🔴/🟡/⏸️/✅)로 시작하지 않는 행만 추린다.
+    Rows whose status cell does not start with a legal legend marker."""
+    return [(rid, status) for rid, status in rows
+            if not any(status.startswith(m) for m in _MARKERS)]
+
+
+def test_every_r_row_status_is_a_legal_marker_whole_file():
+    """🔴 R24: 기존 가드는 원장 R행 중 **현재 창만** 관측 — 역사 창 첫 셀 drift 행이
+    조용히 버려지는 클래스(R10)의 **전장 legality 백스톱**.
+
+    파일 전체를 `_TABLE_ROW_RE` 로 전수 스캔해 모든 상태 셀이 범례 마커
+    (🔴/🟡/⏸️/✅) 중 하나로 **시작**함을 강제한다. 행 수 하한(≥30)은 파서가
+    고장 나 0행을 읽고도 초록이 되는 공허화를 막는다 — 실측 35행
+    (현재 창 18 + 역사 창 17, 2026-08-02).
+    Whole-file scan: every status cell must start with a legal marker, and the
+    row-count floor (>=30) keeps a broken parser from passing vacuously on 0 rows.
+    """
+    rows = whole_file_status_rows(_text())
+    assert len(rows) >= 30, (
+        f"전장 스캔이 {len(rows)}행만 읽었다(실측 35행) — 파서 공허화 또는 표 구조 변경"
+    )
+    offenders = illegal_status_rows(rows)
+    assert not offenders, (
+        f"상태 셀이 범례 마커로 시작하지 않는 행: {offenders}\n"
+        "→ 역사 창 포함 **파일 전체**의 R행 상태는 🔴/🟡/⏸️/✅ 로 시작해야 한다."
+    )
+
+
+def test_whole_file_scan_flags_a_malformed_status():
+    """합성 비마커 상태(`진행중?`)를 같은 검사가 실제로 잡는가 — 통과만 하는 가드 차단.
+    Self-verification: the same scan must flag a synthetic non-marker status cell."""
+    synthetic = (
+        "| **R99** | 진행중? | x |\n"
+        "| **R100** | 🟡 착수 가능 | y |\n"
+    )
+    rows = whole_file_status_rows(synthetic)
+    assert rows, "합성 표를 파서가 못 읽었다 — 자가 검증의 전제 붕괴"
+    assert illegal_status_rows(rows) == [("R99", "진행중?")], (
+        "비마커 상태 행을 탐지하지 못했다 — 전장 legality 검사가 공허하다"
+    )
