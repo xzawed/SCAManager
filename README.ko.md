@@ -492,7 +492,8 @@ make lint-strict        # pylint 회귀 가드 (score < 9.90 시 fail)
 make lint-js            # ESLint — src/templates/**/*.html 인라인 스크립트 검사
 make css-build          # Tailwind v4 CSS 빌드 (프로덕션 minified)
 make css-dev            # Tailwind v4 CSS 감시 빌드 (개발 watch 모드)
-make gate               # Phase 완료 게이트 — 테스트 + 정적 분석 일괄
+py -3 scripts/pre_push_gate.py --full   # push 게이트: CI 강제 가드 13종 + pylint + bandit + 단위 테스트
+make gate               # 편의용 — pytest + pylint + bandit 뿐이고 13 가드는 안 돕니다
 make review             # CLI 코드리뷰 (HEAD~1 기준)
 make run                # 개발 서버 (port 8000)
 make migrate            # DB 마이그레이션 실행

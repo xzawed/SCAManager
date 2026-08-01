@@ -32,10 +32,29 @@ _RULES_DIR = _ROOT / ".claude" / "rules"
 # 🔴 "이 심볼을 의무화하는 규칙" ↔ "그 의무가 적용되는 대표 소스 경로".
 #    기대값을 여기 고정하는 이유: rules 본문에서 소비자 목록을 파싱하면 서술 형식에 의존해
 #    깨지기 쉽다. 대신 **경로는 실재해야** 하고(아래 대조군), 규칙 파일 매칭은 실측한다.
-_CROSS_AREA_RULES = (
-    ("WorkerSessionLocal", "src/gate/engine.py"),
-    ("WorkerSessionLocal", "src/worker/pipeline.py"),
-    ("WorkerSessionLocal", "src/api/hook.py"),
+# 🔴 **하드코딩 3핀은 등록 침묵을 만든다** — 새 cross-area 규칙을 추가해도 아무도 알려주지
+#    않고 스위트는 초록으로 남는다(Grok claim-review `019fbd1e` 적발). 그래서 대상 경로를
+#    **디스크에서 유도**한다: `WorkerSessionLocal` 을 실제로 쓰는 소스 파일 전부가 대상이다.
+#    규칙이 지배하는 파일이 늘면 검사 대상도 자동으로 는다.
+# Derived from disk, not pinned: every source file that actually uses the symbol is a target,
+# so adding a consumer automatically widens the check instead of silently passing.
+_CROSS_AREA_SYMBOLS = ("WorkerSessionLocal",)
+
+
+def _consumers(symbol: str) -> list:
+    """이 심볼을 실제로 쓰는 `src/` 파일들 (정의 파일 `database.py` 는 제외)."""
+    out = []
+    for f in sorted((_ROOT / "src").rglob("*.py")):
+        rel = f.relative_to(_ROOT).as_posix()
+        if rel == "src/database.py":
+            continue
+        if symbol in f.read_text(encoding="utf-8", errors="replace"):
+            out.append(rel)
+    return out
+
+
+_CROSS_AREA_RULES = tuple(
+    (sym, path) for sym in _CROSS_AREA_SYMBOLS for path in _consumers(sym)
 )
 
 
@@ -89,8 +108,14 @@ def test_glob_matcher_is_not_vacuous():
 
 @pytest.mark.parametrize(("_symbol", "src_path"), _CROSS_AREA_RULES)
 def test_governed_paths_exist(_symbol, src_path):
-    """규칙이 지배한다고 적은 경로가 실재해야 한다 — 죽은 경로면 이 단언이 공허하다."""
-    assert (_ROOT / src_path).is_file(), f"{src_path} 가 없다 — _CROSS_AREA_RULES 갱신 필요"
+    """유도된 경로가 실재해야 한다 — 파서가 고장 나면 이 단언이 먼저 깨진다."""
+    assert (_ROOT / src_path).is_file(), f"{src_path} 가 없다 — 유도 로직 확인"
+
+
+def test_consumer_derivation_is_not_vacuous():
+    """🔴 대조군 — 소비자를 하나도 못 찾으면 아래 단언 전체가 공허하다."""
+    found = _consumers("WorkerSessionLocal")
+    assert len(found) >= 8, f"소비자를 {len(found)}개만 찾았다 — 유도 로직 확인: {found}"
 
 
 # ── 핵심 불변식 ───────────────────────────────────────────────────────────
@@ -146,4 +171,61 @@ def test_agents_md_carries_the_path_table_for_grok():
         )
     assert "WorkerSessionLocal" in agents, (
         "AGENTS.md 가 path 매칭이 안 되는 cross-area 규칙을 경고하지 않는다"
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 🔴 `AGENTS.md` 경로 표 ↔ rules frontmatter 정합 (Grok `019fbd1e` 적발: 24 경로 누락)
+#
+# Grok 은 auto-load 가 **없어서** 이 표만 보고 움직인다. 표가 frontmatter 와 갈라지면
+# **없는 규칙을 열거나 있는 규칙을 놓친다** — 틀린 표는 표가 없는 것보다 나쁘다.
+#
+# 다만 표는 사람이 읽는 문서라 축약 표기를 쓴다(`requirements*.txt`,
+# `src/shared/{log_safety,ssrf,secure_compare}.py`). 그래서 **문자 일치가 아니라
+# 축약을 인정하는 대조**를 한다 — 안 그러면 이 가드가 정당한 표기를 거부한다(가드 자살).
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _covered_by_table(path: str, table: str) -> bool:
+    """frontmatter 경로가 표에 (축약 표기 포함) 나타나는가."""
+    if path in table:
+        return True
+    # `requirements-dev.txt` ← `requirements*.txt`
+    # 🔴 접두사만 뽑는다 — `[-.\w]+\.txt$` 는 문자열 전체를 삼켜 빈 stem 을 냈다(실측).
+    m = re.fullmatch(r"([A-Za-z_]+)[-.].*\.txt", path)
+    if m and f"{m.group(1)}*.txt" in table:
+        return True
+    # `src/shared/ssrf.py` ← `src/shared/{log_safety,ssrf,secure_compare}.py`
+    m = re.fullmatch(r"(.*/)(\w+)\.py", path)
+    if m and re.search(rf"{re.escape(m.group(1))}\{{[^}}]*\b{re.escape(m.group(2))}\b[^}}]*\}}\.py", table):
+        return True
+    # `tests/unit/hooks/**` ← `tests/unit/{scripts,hooks}/**`
+    m = re.fullmatch(r"(.*/)(\w+)/\*\*", path)
+    if m and re.search(rf"{re.escape(m.group(1))}\{{[^}}]*\b{re.escape(m.group(2))}\b[^}}]*\}}/\*\*", table):
+        return True
+    return False
+
+
+def test_shorthand_matcher_is_not_vacuous():
+    """🔴 축약 매처가 항상 True 면 아래 단언 전체가 무의미하다."""
+    table = "`requirements*.txt` · `src/shared/{log_safety,ssrf}.py` · `tests/unit/{scripts,hooks}/**`"
+    assert _covered_by_table("requirements-dev.txt", table) is True
+    assert _covered_by_table("src/shared/ssrf.py", table) is True
+    assert _covered_by_table("tests/unit/hooks/**", table) is True
+    assert _covered_by_table("src/gate/**", table) is False, "매처가 아무거나 통과시킨다"
+    assert _covered_by_table("src/shared/nope.py", table) is False
+
+
+def test_agents_path_table_covers_every_rule_frontmatter_path():
+    """🔴 표가 frontmatter 를 **전부** 덮어야 한다 — Grok 은 이 표만 본다."""
+    table = (_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    missing = [
+        (f.stem, p)
+        for f in sorted(_RULES_DIR.glob("*.md"))
+        for p in rule_paths(f)
+        if not _covered_by_table(p, table)
+    ]
+    assert not missing, (
+        "AGENTS.md 경로 표가 덮지 않는 rules frontmatter 경로:\n  "
+        + "\n  ".join(f"{s}: {p}" for s, p in missing)
+        + "\n→ Grok 은 auto-load 가 없어 이 표만 보고 움직인다. 표를 갱신하거나 축약 표기를 맞출 것."
     )

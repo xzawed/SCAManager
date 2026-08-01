@@ -127,16 +127,16 @@ HOLDS. 그리고 뮤테이션 대상은 seal 이 **보호한다고 주장하는 
 
 | 편집 대상 | 반드시 열 것 |
 |---|---|
-| `src/gate/**` · `src/api/**` · `src/notifier/**` · `src/webhook/**` | `api.md` + `pipeline.md` + ⚠️ `db.md` §WorkerSessionLocal |
+| `src/gate/**` · `src/api/**` · `src/notifier/**` · `src/webhook/**` · `src/github_client/**` · `src/scheduler.py` · `src/main.py` | `api.md` (+ `gate`/`webhook` 은 `pipeline.md` 도) |
 | `src/worker/pipeline.py` · `src/analyzer/**` · `src/scorer/**` | `pipeline.md` + ⚠️ `db.md` §WorkerSessionLocal |
-| `src/models/**` · `alembic/**` · `src/repositories/**` | `db.md` |
-| `src/services/**` · `src/verifier/**` · `src/cli/**` | `services.md` + ⚠️ `db.md` §WorkerSessionLocal |
-| `src/auth/**` · `src/crypto.py` · `src/shared/{log_safety,ssrf,secure_compare}.py` | `security.md` |
+| `src/models/**` · `alembic/**` · `src/database.py` · `src/repositories/**` | `db.md` |
+| `src/services/**` · `src/verifier/**` · `src/config_manager/**` · `src/railway_client/**` · `src/mcp/**` · `src/cli/**` · `src/shared/**` | `services.md` |
+| `src/auth/**` · `src/crypto.py` · `src/shared/{log_safety,ssrf,secure_compare}.py` · `src/api/auth.py` · `src/webhook/validator.py` · `src/main.py` · `src/logging_config.py` | `security.md` |
 | `src/templates/**` · `src/static/**` · `src/ui/**` | `ui.md` |
-| `src/i18n/**` · `src/middleware/locale.py` · `src/notifier/_language.py` | `i18n.md` |
-| `tests/**` · `e2e/**` · `conftest.py` | `testing.md` |
-| `scripts/**` · `.claude/hooks/**` · `.claude/workflows/**` | `guards.md` + 이 문서 §3-불변식 |
-| `railway.toml` · `nixpacks.toml` · `requirements*.txt` | `deploy.md` |
+| `src/i18n/**` · `src/middleware/locale.py` · `src/notifier/_language.py` · `src/analyzer/pure/review_guides/**` | `i18n.md` |
+| `tests/**` · `e2e/**` · `**/conftest.py` · `pytest.ini` | `testing.md` |
+| `scripts/**` · `.claude/hooks/**` · `.claude/workflows/**` · `tests/unit/{scripts,hooks}/**` | `guards.md` + 이 문서 §3-불변식 |
+| `railway.toml` · `nixpacks.toml` · `requirements.txt` · `requirements-dev.txt` · `.env.example` · `.python-version` · `alembic.ini` · `sonar-project.properties` | `deploy.md` |
 
 ⚠️ **`db.md` 의 `WorkerSessionLocal` 규칙은 background 17 모듈**(`gate/engine`·`worker/pipeline`·
 `webhook/*`·`notifier/*`·`api/{hook,internal_cron,repos,stats,repo_report}` 등)**을 지배하는데,

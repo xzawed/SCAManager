@@ -7,6 +7,9 @@ paths:
   - "src/railway_client/**"
   - "src/mcp/**"
   - "src/cli/**"
+  # 🔴 `src/shared/**` 추가 (2026-08-01) — `claude_metrics.py` 는 background 세션 라우팅
+  #    규칙의 소비자인데 **로드되는 규칙이 0개**였다(Grok `019fbd1e` 적발).
+  - "src/shared/**"
 ---
 
 # 서비스 계층 규칙

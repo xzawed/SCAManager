@@ -14,6 +14,12 @@ paths:
 
 # 보안 규칙
 
+- 🔴 **background/시스템 세션 라우팅 = `WorkerSessionLocal`** (본문 = [`db.md`](db.md) §WorkerSessionLocal):
+  이 영역에도 해당 소비자가 있다 — `src/auth/github.py`(hybrid — callback=worker / logout=bare). `from src.database import WorkerSessionLocal as SessionLocal`
+  **alias 의무**(웹 경로는 bare `SessionLocal` 유지, 혼용 금지). 🔴 hybrid 모듈은 두 심볼을 **구분해**
+  쓴다(alias 금지). `db.md` 의 path 매칭은 이 영역을 포함하지 않아 **자동 로드되지 않으므로** 여기
+  포인터를 둔다(2026-08-01 Grok `019fbccf`·`019fbd1e`). 세부는 반드시 `db.md` 본문을 열 것.
+
 - 🔴 **hook_token 비교**: `!=` 연산자는 타이밍 공격에 취약. `src/shared/secure_compare.py::secure_str_compare(config.hook_token, token)` 단일출처 헬퍼 사용 필수 (내부 `hmac.compare_digest` + UTF-8 인코딩 — 비-ASCII 안전). 직접 `hmac.compare_digest` 재구현 금지 (정책 16 단일출처). 실측: `src/api/hook.py:147`.
 - 🔴 **Telegram 게이트 콜백 HMAC 인증 (Phase H PR-5C 후 정정)**: 콜백 데이터 형식 `gate:{decision}:{id}:{token}` — token 은 `hmac(bot_token, f"gate:{analysis_id}", sha256).hexdigest()[:32]` (128-bit). 발신측 (`telegram_gate._make_callback_token(scope="gate", id)`) 과 수신측 (`webhook/providers/telegram._parse_gate_callback`) 모두 동일 msg 형식 (`f"gate:{id}"`) 사용 의무 — 한쪽만 수정 시 모든 semi-auto 콜백 401 거부 (PR-5C 직전 functional bug 사례). 신규 HMAC 토큰 도입 시 발신/수신 동일 msg 형식 + scope prefix 단위 테스트 강제.
 - 🔴 **`/health` 응답 내부 상태 미노출 (Phase H PR-5B)**: liveness probe 전용 — `active_db` / DB 연결 정보 등 내부 상태 추가 금지. `tests/unit/test_main.py::test_health_returns_status_ok` 가 회귀 차단. failover 모니터링은 logger 로그 (Railway) 경유. 인증된 운영 대시보드 필요 시 별도 엔드포인트 (`INTERNAL_CRON_API_KEY` 기반) 신설.

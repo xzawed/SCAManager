@@ -48,12 +48,42 @@ _LINTERS = ("flake8", "pylint", "bandit", "mypy", "ruff")
 #    준다. 둘을 가르는 것은 거리가 아니라 **절 경계**다(실측 후 전환).
 # Clause boundaries: a negation only excuses a claim inside the SAME clause. A character window
 # could not separate the true sentence from the false one; the clause boundary can.
-_CLAUSE_SPLIT = re.compile(r"[|—\-]{1,2}|[,()]|\. ")
+_CLAUSE_SPLIT = re.compile(r"[|—\-]{1,2}|[,;()]|\. ")
 
 _NEGATED = re.compile(
     r"아니다|아닙니다|아니라|아닌|않는다|않습니다|대체가|거짓|미포함|제외|"
     r"not the same|not a gate|exclud|never"
 )
+
+
+def _quoted_spans(line: str) -> list:
+    """따옴표로 감싼 구간 목록 — `"…"` · `“…”` · `'…'`.
+
+    🔴 **인용은 주장이 아니다.** 이 저장소는 거짓 주장을 *인용해서 정정하는* 기록을 많이 남긴다
+    (`STATE.md`·`backlog.md`·`cycle-history.md` 의 사고 서사, `CLAUDE.md` 의 정정문). 그 인용을
+    거짓 주장으로 세면 **정정 기록을 쓸 수 없게 되고**, 그건 이 저장소가 가장 중요하게 여기는
+    "무엇이 왜 틀렸는지 남기기" 를 가드가 막는 것이다(Grok claim-review `019fbd1e` 후 실측 4건).
+    Quoting a falsehood in order to correct it is not asserting it.
+    """
+    spans, quote, start = [], None, 0
+    pairs = {'"': '"', "“": "”", "'": "'"}
+    for i, ch in enumerate(line):
+        if quote is None and ch in pairs:
+            quote, start = pairs[ch], i
+        elif quote is not None and ch == quote:
+            spans.append((start, i))
+            quote = None
+    return spans
+
+
+def _is_citation(line: str, pos: int) -> bool:
+    """그 위치가 인용 구간 안인가. / Is this position inside a quotation?"""
+    return any(lo <= pos <= hi for lo, hi in _quoted_spans(line))
+
+
+def _mentions(tool: str, text: str) -> bool:
+    """단어 경계로 도구 이름을 찾는다. / Word-boundary match for a tool name."""
+    return re.search(rf"(?<![\w-]){re.escape(tool)}(?![\w-])", text) is not None
 
 
 def gate_target_body() -> str:
@@ -123,18 +153,29 @@ def test_no_doc_claims_make_gate_runs_a_tool_it_does_not(doc):
     실측 사고: `docs/agents-index.md` 가 "pytest + pylint + **flake8** + bandit" 이라 적었는데
     Makefile 은 flake8 을 명시적으로 제외한다.
     """
-    absent = set(_LINTERS) - tools_make_gate_runs()
+    runs = tools_make_gate_runs()
+    absent = set(_LINTERS) - runs
     for lineno, line in _claim_lines(_ROOT / doc):
         for tool in absent:
-            if not re.search(rf"(?<![\w-]){tool}(?![\w-])", line):
+            if not _mentions(tool, line):
                 continue
-            # 🔴 부정 표지는 **그 도구가 들어 있는 절 안에서만** 인정한다. 줄 전체를 보면
-            #    "게이트가 아니다 — … pytest + pylint + flake8 + bandit" 처럼 **다른 것에 대한
-            #    부정**이 거짓 주장을 면제해 준다(실측: 뮤테이션 M2 가 GREEN 이었다).
-            # A negation only excuses the claim when it sits in the same clause as the tool.
-            clauses = [c for c in _CLAUSE_SPLIT.split(line)
-                       if re.search(rf"(?<![\w-]){tool}(?![\w-])", c)]
-            if any(_NEGATED.search(c) for c in clauses):
+            # 🔴 **열거 문맥**으로 판정한다 — 부정어 탐색은 양방향으로 취약했다:
+            #    줄 전체를 보면 다른 것에 대한 부정이 거짓 주장을 면제했고(M2 GREEN),
+            #    문자 창으로 좁히니 참인 문장을 오탐했고, 절 단위로 좁혀도
+            #    "Unlike flake8, make gate only runs pylint and bandit" 같은 **참인 문장**을
+            #    거부했다(Grok claim-review `019fbd1e` 가 6형태 실증).
+            #    거짓 주장은 항상 **"make gate 가 돌리는 것들" 의 열거**로 나타난다:
+            #    `pytest + pylint + flake8 + bandit`. 그러니 그 도구가 **실제로 도는 도구와
+            #    같은 절에 나열돼 있을 때만** 거짓으로 본다. 단순하고, 양방향 오류가 없다.
+            # Enumeration context, not negation hunting: a false claim always lists the absent
+            # tool alongside tools make gate DOES run. Negation scanning failed both ways.
+            enumerating = [
+                c for c in _CLAUSE_SPLIT.split(line)
+                if _mentions(tool, c) and any(_mentions(r, c) for r in runs)
+            ]
+            if not enumerating:
+                continue
+            if any(_NEGATED.search(c) for c in enumerating):
                 continue
             pytest.fail(
                 f"{doc}:{lineno} 가 `make gate` 가 {tool!r} 을 실행한다고 읽힌다.\n"
@@ -158,7 +199,17 @@ def test_no_doc_calls_make_gate_the_real_or_ci_equivalent_gate(doc):
             #    (아·닙·니·다). 이 가드의 초판이 정확히 그 이유로 참인 문장을 두 번 오탐했다.
             #    활용형을 정규식으로 명시한다.
             # Korean inflection: 아닙니다 does not contain 아니 as a substring; enumerate the forms.
-            if phrase in line and not _NEGATED.search(line):
+            # 🔴 형제 단언도 **절 단위**로 본다 — 초판은 줄 전체를 봐서
+            #    "make gate 는 실제 게이트다 — lint 는 대체가 아니다" 가 면제됐다
+            #    (Grok `019fbd1e` 적발: tool 축만 고치고 이 축에 같은 구멍을 남겼다).
+            # Clause-scoped here too; the first version left this sibling hole line-wide.
+            if phrase not in line:
+                continue
+            # 인용문 안이면 주장이 아니라 **정정 기록**이다(위 `_is_citation` 주석).
+            if _is_citation(line, line.index(phrase)):
+                continue
+            owning = [c for c in _CLAUSE_SPLIT.split(line) if phrase in c]
+            if not any(_NEGATED.search(c) for c in owning):
                 pytest.fail(
                     f"{doc}:{lineno} 가 `make gate` 를 {phrase!r} 로 부른다.\n"
                     f"  줄: {line.strip()[:160]}\n"
@@ -183,3 +234,69 @@ def test_the_canonical_gate_is_named_where_agents_enter():
 def test_canonical_gate_script_exists():
     """정본 이름이 실재하는 파일을 가리켜야 한다 — 죽은 이름을 강제하면 더 나쁘다."""
     assert (_ROOT / _CANONICAL_GATE).is_file(), f"{_CANONICAL_GATE} 가 없다"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 🔴 판정기 자체의 양방향 정밀도 (Grok claim-review `019fbd1e` 가 6형태 실증)
+#
+# 이 가드는 설계를 **세 번** 바꿨다:
+#   1. 줄 전체 부정어 탐색 → 다른 것에 대한 부정이 거짓 주장을 면제(뮤테이션 M2 GREEN)
+#   2. 문자 창 ±25 → 참인 문장("`flake8` 은 … `make gate` 에서 제외돼")을 오탐
+#   3. 절 단위 → "Unlike flake8, make gate only runs pylint and bandit" 같은 **참인 문장**을 거부
+#   4. **열거 문맥**(현행) → 거짓 주장은 항상 "make gate 가 돌리는 것들" 의 열거로 나타난다
+#
+# 아래는 그 실측 형태들이다. 판정기를 다시 좁히거나 넓히면 여기서 깨진다.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _tool_claim_fails(line: str) -> bool:
+    """한 줄이 '거짓 도구 주장' 으로 판정되는가 — 위 단언과 같은 로직."""
+    runs = tools_make_gate_runs()
+    for tool in set(_LINTERS) - runs:
+        if not _mentions(tool, line):
+            continue
+        enumerating = [
+            c for c in _CLAUSE_SPLIT.split(line)
+            if _mentions(tool, c) and any(_mentions(r, c) for r in runs)
+        ]
+        if enumerating and not any(_NEGATED.search(c) for c in enumerating):
+            return True
+    return False
+
+
+@pytest.mark.parametrize("line", [
+    # 🔴 전부 **참인 문장**이다 — 거부하면 가드 자살이다.
+    "make gate (see also flake8 elsewhere for unused imports)",
+    "make gate and the CI flake8 job are separate concerns",
+    "Unlike flake8, make gate only runs pylint and bandit",
+    "make gate runs pytest; also flake8 is in CI only",
+    "See `make gate` vs `flake8` in CI",
+    "flake8 is not run by make gate on purpose",
+    "`flake8` 은 의도적으로 `make gate` 에서 제외돼 있습니다",
+    "make gate 는 pytest + pylint + bandit 3종뿐 (flake8 미포함)",
+])
+def test_true_sentences_are_not_flagged(line):
+    assert not _tool_claim_fails(line), f"참인 문장을 거짓 주장으로 오판 — 가드 자살: {line!r}"
+
+
+@pytest.mark.parametrize("line", [
+    # 🔴 전부 **거짓 주장**이다 — 통과시키면 fail-open 이다.
+    "| `make gate` | Phase 게이트 — pytest + pylint + flake8 + bandit |",
+    "make gate runs pytest + pylint + flake8 + bandit",
+    "🔴 **Phase 완료 게이트가 아니다** — pytest + pylint + flake8 + bandit",
+])
+def test_false_claims_are_flagged(line):
+    assert _tool_claim_fails(line), f"거짓 주장을 통과 — fail-open: {line!r}"
+
+
+@pytest.mark.parametrize(("line", "flagged"), [
+    # 인용은 주장이 아니다 — 정정 기록을 쓸 수 있어야 한다.
+    ('CLAUDE.md 의 *"로컬 사전 확인은 `make gate`(CI 와 동일 기준)"* 는 **거짓**이었다', False),
+    ('⚠️ **`make gate` 는 "CI 와 동일 기준" 이 아니었다**(2026-08-01 정정)', False),
+    # 인용 없이 그대로 주장하면 거짓이다.
+    ("로컬 사전 확인은 `make gate` — CI 와 동일 기준이다", True),
+])
+def test_citation_is_not_an_assertion(line, flagged):
+    owning = [c for c in _CLAUSE_SPLIT.split(line) if "CI 와 동일 기준" in c]
+    cited = _is_citation(line, line.index("CI 와 동일 기준"))
+    hit = (not cited) and owning and not any(_NEGATED.search(c) for c in owning)
+    assert bool(hit) is flagged, f"인용/주장 구분 오판: {line!r}"

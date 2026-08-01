@@ -65,6 +65,7 @@ _IMPORTANT = [
     r"^\.claude/plans/[^/]+\.md$",    # 완료 표지가 지워지면 재구현 사고로 이어진다
     r"^SECURITY(\.[a-z]{2})?\.md$",   # 취약점 보고 절차 = 보안 지시문
     r"^scripts/i18n_comments/glossary\.md$",  # "번역 시 아래 용어를 반드시 사용" = 번역 계약
+    r"^src/scripts/README\.md$",     # "Production code MUST NOT import from src/scripts/" = 실제 지시문
 ]
 
 # 🔴 의도적으로 `skip` 으로 남긴 것 (판단 기록 — 다음 세션이 재검토를 반복하지 않도록):
@@ -72,7 +73,9 @@ _IMPORTANT = [
 #     인용하기 때문이지 지금 지시하기 때문이 아니다. 매 trailing sync 마다 3-에이전트 심의를
 #     붙이면 비용만 늘고, 이 파일은 `check_toc_anchors` 가 이미 구조를 지킨다.
 #   · `docs/reports/**` — 시점 스냅샷(감사 보고서). 현재 계약이 아니다.
-#   · `docs/README.md` · `src/scripts/README.md` — 색인/도구 사용법이라 지시 밀도가 낮다.
+#   · `docs/README.md` — 순수 색인이다(지시문 없음). 🔴 `src/scripts/README.md` 는 여기 있었으나
+#     "Production code MUST NOT import from src/scripts/" 라는 **실제 지시문**이 있어 승격했다
+#     (2026-08-01 Grok claim-review `019fbd1e` 적발 — "지시 밀도가 낮다" 는 내 판단이 틀렸다).
 # Deliberately left `skip`, with the reasoning recorded so it is not re-litigated every session.
 
 _LOW_RISK = [

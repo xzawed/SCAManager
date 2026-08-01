@@ -14,7 +14,8 @@
 
 ### 기본
 <!-- 🔴 `make lint` 는 게이트가 아닙니다 — 세 린터를 `|| true` 로 삼켜 항상 exit 0 이라 근거가 될 수
-     없습니다(위반 열람 전용). 검증 가능한 기준은 `make gate` 와 CI `lint-src` job 뿐입니다. -->
+     없습니다(위반 열람 전용). 로컬 검증 기준은 `py -3 scripts/pre_push_gate.py --full` 이고,
+     최종 근거는 CI job 결과입니다. `make gate` 는 편의용이며 13 가드를 돌리지 않습니다. -->
 - [ ] `py -3 scripts/pre_push_gate.py` 통과 (CI 강제 가드 13종 — repo-integrity 9 + PR-diff 4)
 - [ ] `py -3 -m pytest tests/unit` 전체 통과 (영역 서브셋 대체 금지)
 

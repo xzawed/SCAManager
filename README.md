@@ -434,7 +434,8 @@ make lint-strict        # pylint regression guard (fail if score < 9.90)
 make lint-js            # ESLint on src/templates/**/*.html inline scripts
 make css-build          # Build Tailwind v4 CSS (production minified)
 make css-dev            # Watch and rebuild Tailwind v4 CSS (dev mode)
-make gate               # Full phase gate — tests + lint in one command
+py -3 scripts/pre_push_gate.py --full   # push gate: 13 CI-enforced guards + pylint + bandit + unit tests
+make gate               # convenience only — pytest + pylint + bandit; runs none of the 13 guards
 make review             # CLI code review (HEAD~1)
 make run                # Development server (port 8000)
 make migrate            # Run DB migrations
