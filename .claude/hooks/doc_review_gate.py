@@ -156,6 +156,7 @@ _AGENTS_DIR = _HOOKS_DIR.parent / "agents"
 _HAIKU_MODEL = "claude-haiku-4-5-20251001"
 _AGENT_NAMES = ("impact", "consistency", "quality")
 _AGENT_TIMEOUT = 25  # seconds per agent
+_DIFF_BUDGET = 4000  # 프롬프트에 싣는 diff 최대 길이(자) / max diff chars in the prompt
 
 
 def _read_agent_prompt(agent: str) -> str:
@@ -182,9 +183,13 @@ async def _call_single_agent(
     """에이전트 한 개를 호출하고 JSON 결과를 반환한다.
     Calls a single agent and returns a JSON result dict."""
     system_prompt = _read_agent_prompt(agent)
+    # 🔴 `context` 를 여기서 다시 자르지 않는다 — 예산은 `_load_context()` 가 **파일별로**
+    #    한 번만 적용하고 라벨에 비율을 적는다. 이중 절단이 CLAUDE.md 를 10.8% 로 깎고
+    #    STATE.md 를 통째로 지우면서도 헤더는 둘 다 있다고 말했다(2026-08-01 실측).
+    # Do not re-truncate: the budget is applied once, per source, and labelled there.
     user_msg = (
-        f"## 변경 내용 (diff)\n{diff[:4000]}\n\n"
-        f"## 참조 컨텍스트 (CLAUDE.md / STATE.md)\n{context[:3000]}\n\n"
+        f"## 변경 내용 (diff)\n{diff[:_DIFF_BUDGET]}\n\n"
+        f"## 참조 컨텍스트\n{context}\n\n"
         "위 변경을 검토하고 JSON으로만 응답하세요."
     )
     try:
@@ -224,16 +229,50 @@ async def call_agents_parallel(grade: str, diff: str, context: str) -> list[dict
 # ─── 컨텍스트 로드 ────────────────────────────────────────────────────────────
 # Context loading
 
+# 컨텍스트 원천과 **파일별** 예산(자). 규칙을 담은 문서는 전문이 들어가도록 잡는다.
+# Per-source budgets, sized so the rule documents fit whole.
+_CONTEXT_SOURCES: tuple[tuple[str, int], ...] = (
+    ("CLAUDE.md", 40000),     # 27.8k — 전문 (정책 1~19 가 여기 있다)
+    ("AGENTS.md", 12000),     # 5.3k  — 전문 (가드 3-불변식 SSOT)
+    ("docs/STATE.md", 4000),  # 88k   — 수치만 필요하므로 머리만
+)
+
+
 def _load_context() -> str:
-    """CLAUDE.md 와 STATE.md 앞부분을 에이전트 컨텍스트로 읽는다.
-    Loads the front portion of CLAUDE.md and STATE.md as agent context."""
+    """규칙 문서를 에이전트 컨텍스트로 읽는다 — 잘리면 **얼마나 잘렸는지 적는다**.
+
+    🔴 **이전 판은 심의자를 규칙에 대해 눈멀게 했다** (2026-08-01 근본원인 분석 실측).
+    `content[:3000]` 로 파일마다 자른 뒤, 프롬프트가 **합친 문자열을 다시 3000자로**
+    잘랐다(이중 절단). 실효 결과:
+
+    - CLAUDE.md **10.8%** 만 도달 — 링크 중간에서 끊겨 **정책 1~19 를 단 한 줄도 못 봤다**
+    - docs/STATE.md **0% 도달** — 그런데 프롬프트 헤더는 `(CLAUDE.md / STATE.md)` 라고
+      적혀 있었다. 심의자에게 **없는 근거를 있다고 말한** 셈이다(observer-lie).
+
+    "문서가 길어서 규칙이 안 지켜진다" 가 기계 층에서 실제로 발현한 유일한 지점이다.
+    사람/Claude 의 읽기가 아니라 **심의 에이전트의 입력**이 길이로 잘려 있었다.
+
+    이제 (a) 규칙 문서는 전문을 넣고 (b) 잘릴 때는 비율을 라벨에 적어 심의자가
+    "못 본 부분이 있다" 를 알 수 있게 한다.
+    Rule documents are passed whole; any truncation states its own coverage in the label.
+    """
     project_root = _HOOKS_DIR.parent.parent
     parts = []
-    for rel in ("CLAUDE.md", "docs/STATE.md"):
+    for rel, budget in _CONTEXT_SOURCES:
         path = project_root / rel
-        if path.exists():
-            content = path.read_text(encoding="utf-8")
-            parts.append(f"=== {rel} (앞 3000자) ===\n{content[:3000]}")
+        if not path.exists():
+            # 침묵 누락 금지 — 없으면 없다고 말한다 / never drop a source silently
+            parts.append(f"=== {rel} — 파일 없음(이 근거 없이 판정됨) ===")
+            continue
+        content = path.read_text(encoding="utf-8")
+        if len(content) <= budget:
+            parts.append(f"=== {rel} (전문 {len(content)}자) ===\n{content}")
+        else:
+            pct = budget / len(content)
+            parts.append(
+                f"=== {rel} (앞 {budget}자 / 전체 {len(content)}자 = {pct:.0%}만 포함, "
+                f"나머지는 못 봄) ===\n{content[:budget]}"
+            )
     return "\n\n".join(parts)
 
 

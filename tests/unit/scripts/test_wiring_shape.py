@@ -85,6 +85,51 @@ def test_non_executing_decoy_is_not_wired(command):
     )
 
 
+# ── 🔴 변수 해소 — `$PY` 를 리터럴로 신뢰하면 이 술어가 스스로 fail-open ────
+# Variable resolution: trusting `$PY` as a literal reopens the very hole this module closes.
+
+@pytest.mark.parametrize("command", [
+    # 🔴 초판(#1248)은 `$PY`/`${PY}` 를 인터프리터 **리터럴 화이트리스트에 넣었다** — 이름만
+    #    맞으면 통과했으므로 아래 세 형태가 전부 '배선' 으로 판정됐다(실측 True). 즉 `echo` 를
+    #    막으려고 만든 술어가 `PY=echo` 한 줄로 우회됐다. 자기가 싸우던 클래스의 재생산이다
+    #    (다각도 근본원인 분석 2026-08-01 적발 — Grok claim-review).
+    # The predicate whitelisted `$PY` by NAME, so `PY=echo; $PY x.py` read as wired.
+    "PY=echo; $PY scripts/check_fake_guard.py",
+    "PY=cat; $PY scripts/check_fake_guard.py",
+    "PY=true; ${PY} scripts/check_fake_guard.py",
+    # 치환 분기 중 **하나라도** 인터프리터가 아니면 거부 (경로에 따라 무동작 가능)
+    # If ANY branch of the substitution is not an interpreter, reject — it can silently no-op.
+    "PY=$(echo cat || echo python3); $PY scripts/check_fake_guard.py",
+    # 할당이 아예 없는 변수 = 빈 문자열로 전개 = 아무것도 실행하지 않는다
+    # An unassigned variable expands to empty and runs nothing.
+    "$PY scripts/check_fake_guard.py",
+    # 다른 변수의 할당은 이 변수를 해소하지 못한다 / another var's assignment resolves nothing
+    "OTHER=python3; $PY scripts/check_fake_guard.py",
+])
+def test_variable_interpreter_must_resolve_to_a_real_interpreter(command):
+    assert invokes(command, _P) is False, (
+        f"변수가 인터프리터로 해소되지 않는데 배선으로 오판 — fail-open 재발: {command!r}"
+    )
+
+
+@pytest.mark.parametrize("command", [
+    # 실제 #1243 런처 형태 — 양 분기가 모두 인터프리터이므로 배선이다
+    _PY_LAUNCHER_CALL,
+    # 리터럴 할당 / literal assignment
+    "PY=python3; $PY scripts/check_fake_guard.py",
+    "PY=py; ${PY} -3 scripts/check_fake_guard.py",
+])
+def test_variable_resolving_to_an_interpreter_counts_as_wired(command):
+    """🔴 양성 통제 — 해소 규칙이 **실제 배선을 거부**하면 가드 자살이다.
+
+    초판 수정 중 `echo` 대상 추출 정규식이 치환의 닫는 괄호까지 삼켜 `python3)` 로 읽었고,
+    그 결과 실제 `#1243` 런처가 False 로 떨어졌다. fail-closed 는 **거짓 거부**까지 정당화하지
+    않는다 — 실배선 6종이 통과해야 이 술어가 저장소에서 살아남는다(정책 17 안정성 우선).
+    Fail-closed must not reject the real launcher; that would be guard suicide.
+    """
+    assert invokes(command, _P) is True, f"실제 배선을 거부 — 가드 자살: {command!r}"
+
+
 def test_other_script_invocation_does_not_count():
     """다른 스크립트를 실행하는 명령은 이 스크립트의 배선이 아니다."""
     assert invokes("python scripts/check_other.py", _P) is False
@@ -180,3 +225,44 @@ def test_predicate_is_not_constant():
     """🔴 술어가 상수가 아님을 실증 — 항상 True/False 면 아무것도 판정하지 않는다."""
     assert invokes("python scripts/check_fake_guard.py", _P) is True
     assert invokes("echo scripts/check_fake_guard.py", _P) is False
+
+
+# ── 🔴 Grok claim-review `019fbaf8` 적발 3건 — 실측 defeat 를 고정한다 ────────
+# Three defeats found by adversarial claim-review, pinned as regressions.
+
+@pytest.mark.parametrize(("command", "desc"), [
+    # 경계 없는 접미사: 배선을 **다른 파일로 갈아끼워도** 초판은 초록이었다.
+    # A bare endswith let a different file satisfy the wiring assertion.
+    ("python not_scripts/check_fake_guard.py", "경계 없는 접미사"),
+    ("python xscripts/check_fake_guard.py", "경계 없는 접미사(구분자 없음)"),
+    # 죽은 단락평가 분기: 배선을 지우지 않고 `true ||` 만 붙여 중성화하는 수법.
+    # A dead short-circuit branch neutralises wiring without deleting it.
+    ("true || python scripts/check_fake_guard.py", "죽은 || 분기"),
+    (": || python scripts/check_fake_guard.py", "죽은 : || 분기"),
+    ("false && python scripts/check_fake_guard.py", "죽은 && 분기"),
+])
+def test_shapes_that_do_not_actually_run_are_not_wired(command, desc):
+    assert invokes(command, _P) is False, f"실행되지 않는 형태를 배선으로 오판: {desc} — {command!r}"
+
+
+@pytest.mark.parametrize(("command", "desc"), [
+    # 🔴 양성 통제 — 위 좁힘이 실배선을 거부하면 가드 자살이다(정책 17 안정성 우선).
+    ("python path/to/scripts/check_fake_guard.py", "중첩 경로(경계 `/` 있음)"),
+    ("python ./scripts/check_fake_guard.py", "`./` 접두"),
+    ("false || python scripts/check_fake_guard.py", "살아있는 || 분기"),
+    ("true && python scripts/check_fake_guard.py", "살아있는 && 분기"),
+    # 상수가 아닌 명령의 종료 코드는 정적으로 모른다 → 죽었다고 단정하지 않는다.
+    ("set -e && python scripts/check_fake_guard.py", "비상수 선행 명령"),
+])
+def test_narrowing_does_not_reject_genuine_invocations(command, desc):
+    assert invokes(command, _P) is True, f"실배선을 거부 — 가드 자살: {desc} — {command!r}"
+
+
+def test_variable_resolution_follows_shell_last_wins():
+    """🔴 셸은 **마지막 할당**을 쓴다 — 초판의 '모든 할당' 규칙은 실호출을 거부했다.
+
+    `PY=echo; PY=python3; $PY x.py` 는 셸에서 python3 이 돈다. 초판은 False 였다
+    (가드 자살 방향). 반대 순서는 last-wins 로도 정확히 False 다.
+    """
+    assert invokes(f"PY=echo; PY=python3; $PY {_P}", _P) is True
+    assert invokes(f"PY=python3; PY=echo; $PY {_P}", _P) is False

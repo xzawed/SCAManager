@@ -49,8 +49,33 @@ PR 본문에 실경로 뮤테이션-red + `assert mutated != orig`(불변식 2) 
 `python X` → `PY=$(...); $PY X` 로 재작성했을 때 가드가 그 재작성과 `echo X` 를 **구별하지 못한
 것**이 이 클래스의 실제 발동 경로다.
 
-🔴 **술어가 잡지 못하는 것**(정직 기준): 조건부 skip 된 CI step · 인터프리터의 런타임 부재 ·
-배선됐으나 공허한 가드 본문. 이 술어는 **"실행 연결이 끊겼는데 초록"** 만 끝낸다.
+🔴 **술어가 잡지 못하는 것**(정직 기준): 조건부 skip 된 CI step · 배선됐으나 공허한 가드 본문 ·
+`env A=b python x.py` / `sh -c "…"` / backtick / `eval` / `export PY=` / 따옴표 할당(`PY='python3'`)
+같은 **allowlist 밖 호출 형태**(fail-closed 라 *거부*된다 — 그런 형태로 새 배선을 쓰면 이 술어가
+실배선을 거부한다). 이 술어는 **"실행 연결이 끊겼는데 초록"** 만 끝낸다.
+
+🔴 **인터프리터의 런타임 부재는 별도 축이다** — 형태상 `python X` 는 정당하므로 이 술어는
+bare `python` 회귀(Windows Store 스텁 exit 49)를 **구별하지 못한다**. 그 축은
+`tests/unit/scripts/test_hook_interpreter_liveness.py` 가 **실제 실행**으로 닫는다.
+그 프로브의 오라클은 **Python 만 낼 수 있는 계산 결과**(`print(6*7)` → `42` 정확 일치)여야 한다 —
+마커 문자열을 출력시키고 "출력에 마커 포함" 으로 보면 `echo` 가 **명령 텍스트를 되돌려주며**
+통과한다(2026-08-01 실측 defeat).
+
+🔴 **판정 정밀도 3 규칙**(2026-08-01 Grok claim-review `019fbaf8` 적발 — 전부 실측 defeat):
+1. **경로는 경계에서만 일치** — 맨 `endswith` 는 `not_scripts/check_x.py` 를 `scripts/check_x.py`
+   의 배선으로 오판한다(배선을 **다른 파일로 갈아끼워도** 초록).
+2. **죽은 단락평가 분기는 배선 아님** — `true || python x.py` 는 텍스트를 한 글자도 지우지 않고
+   중성화하는 수법이다. 단 **상수 명령(`true`/`:`/`false`)이 앞선 경우만** 죽었다고 본다 —
+   실제 종료 코드 예측은 정적으로 불가하고, 무리하면 `set -e && python x.py` 같은 실배선을
+   거부한다(정책 17).
+3. **변수는 셸과 같이 last-wins** — "모든 할당이 인터프리터" 규칙은 `PY=echo; PY=python3; $PY x.py`
+   (셸에서 python3 이 실제로 도는 형태)를 거부해 **가드 자살**이었다. 단 `$(...)` 치환 내부는
+   분기마다 값이 달라지므로 **모든 후보**가 인터프리터여야 한다.
+
+🔴 **기대값을 피검사 모듈에서 유도하지 말 것**(자기참조 공허화) — `doc_review_gate` 컨텍스트
+가드가 기대 원천 목록을 `_CONTEXT_SOURCES` 에서 읽었더니 **원천을 삭제하면 루프가 안 돌아
+GREEN** 이었다(뮤테이션 실측). 기대값은 테스트 쪽에 고정하고, 지문(fingerprint)도 **그 원천에만
+있는 문구**를 쓴다 — `"3-불변식"` 은 CLAUDE.md 에도 2회 나와서 AGENTS.md 제거를 못 잡았다.
 
 🔴 **B8 범위 밖**: `check_guard_fail_open.py` 는 `scripts/check_*.py` 만 glob 하므로
 **test-as-guard(`tests/**/test_*.py`)의 fail-open 은 자동 탐지되지 않는다** — AGENTS.md 가

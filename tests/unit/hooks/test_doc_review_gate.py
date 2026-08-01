@@ -363,3 +363,91 @@ def test_rules_are_critical_and_policies_are_important():
     assert classify_file_grade("AGENTS.md") == "critical"
     assert classify_file_grade(".claude/rules/pipeline.md") == "critical"
     assert classify_file_grade(".claude/policies/active.md") == "important"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 심의자가 **규칙을 실제로 보는가** — 컨텍스트 절단 회귀 차단
+#
+# 🔴 2026-08-01 근본원인 분석 실측: `_load_context()` 가 파일마다 3000자로 자른 뒤
+#    프롬프트가 **합친 문자열을 다시 3000자로** 잘랐다(이중 절단). 결과는
+#    CLAUDE.md 10.8% 도달(정책 1~19 **0줄**) + STATE.md **0% 도달** —
+#    그런데 프롬프트 헤더는 `(CLAUDE.md / STATE.md)` 라고 적혀 있었다.
+#    "규칙을 집행하는 심의자가 규칙을 못 본다" 는 이 저장소 지배적 결함(observer-lie)의
+#    가장 조용한 형태다: 심의는 계속 돌고, 결과는 계속 초록이다.
+# ──────────────────────────────────────────────────────────────────────────────
+
+# 🔴 **기대값은 `_CONTEXT_SOURCES` 에서 유도하지 않는다.** 유도하면 원천을 **삭제**했을 때
+#    루프가 그냥 안 돌아 초록이 된다(실측: AGENTS.md 원천 제거 뮤테이션 M-C 가 GREEN).
+#    가드가 자기 설정을 기대값으로 읽으면, 설정을 지우는 것이 곧 가드를 지우는 것이 된다.
+# Pinned here, NOT derived from the module: deriving makes source *removal* silently green.
+_REQUIRED_CONTEXT_SOURCES = ("CLAUDE.md", "AGENTS.md", "docs/STATE.md")
+
+# 각 원천에만 있는 문구 — 다른 원천에도 있는 문구를 쓰면 그 원천을 지워도 통과한다.
+# 실측: 초판은 "3-불변식" 을 썼는데 CLAUDE.md 에도 2회 나와 AGENTS.md 제거가 GREEN 이었다.
+_SOURCE_FINGERPRINTS = (
+    ("CLAUDE.md", "#### 정책 7", "PR 단위 의무 — 문서 변경 심의의 핵심 판정 근거"),
+    ("CLAUDE.md", "#### 정책 19", "Grok claim-review — 파일 끝쪽이라 절단에 가장 먼저 사라진다"),
+    ("AGENTS.md", "### 불변식 1 — fail-closed", "가드 저술 규율 — 별도 파일이라 통째로 빠져 있었다"),
+    ("AGENTS.md", "### 불변식 2 — 실경로 뮤테이션", "합성 픽스처 금지 규율"),
+)
+
+
+@pytest.mark.parametrize(("rel", "needle", "why"), _SOURCE_FINGERPRINTS)
+def test_review_context_contains_the_rules_it_enforces(rel, needle, why):
+    """🔴 심의자 컨텍스트에 **실제 규칙 본문**이 들어 있어야 한다."""
+    from doc_review_gate import _load_context
+
+    disk = (Path(__file__).resolve().parents[3] / rel).read_text(encoding="utf-8")
+    assert needle in disk, f"지문이 {rel} 에서 사라졌다 — 이 테스트가 공허해졌다: {needle!r}"
+    assert needle in _load_context(), f"심의자가 못 보는 규칙: {needle} ({rel}) — {why}"
+
+
+@pytest.mark.parametrize("rel", _REQUIRED_CONTEXT_SOURCES)
+def test_review_context_labels_declare_what_was_actually_included(rel):
+    """🔴 라벨이 **실제 포함분과 일치**해야 한다 — 없는 근거를 있다고 말하지 않는다.
+
+    구판의 헤더 `## 참조 컨텍스트 (CLAUDE.md / STATE.md)` 는 STATE.md 가 0자 실린
+    상태에서도 그대로 출력됐다. 라벨은 심의자가 자기 시야의 한계를 아는 유일한 수단이다.
+    """
+    from doc_review_gate import _load_context
+
+    context = _load_context()
+    header = f"=== {rel} "
+    assert header in context, f"원천 {rel} 이 심의자 컨텍스트에서 빠졌다"
+
+    body = context.split(header, 1)[1]
+    # 라벨이 '전문' 이라 주장하면 파일 끝 문장이 실제로 있어야 한다
+    if body.lstrip().startswith("(전문"):
+        disk = (Path(__file__).resolve().parents[3] / rel).read_text(encoding="utf-8")
+        assert disk.rstrip()[-40:] in context, f"{rel} 이 '전문' 이라면서 끝이 잘렸다"
+
+
+def test_prompt_does_not_re_truncate_the_context():
+    """🔴 프롬프트가 컨텍스트를 **다시 자르면** 파일별 예산이 무의미해진다(구판의 실제 기전).
+
+    `_call_single_agent` 이 만드는 user 메시지를 가로채, 넘긴 컨텍스트가 **온전히**
+    실렸는지 본다. 산문 검사가 아니라 실제 조립 결과를 관측한다.
+    """
+    import asyncio
+
+    from doc_review_gate import _call_single_agent
+
+    context = "X" * 9000 + "TAIL_SENTINEL"
+    captured = {}
+
+    async def _fake_create(**kwargs):
+        captured["user"] = kwargs["messages"][0]["content"]
+        raise RuntimeError("stop — 조립만 관측한다")
+
+    client = MagicMock()
+    client.messages.create = _fake_create
+
+    # 🔴 string-path 패치 — `import X as mod` 를 들이면 이 파일의 `from X import ...` 와
+    #    이중 import 가 되어 CodeQL `py/import-and-import-from` 을 자초한다(testing.md).
+    # String-path patching avoids the dual-import form this file's top-level import would create.
+    with patch("doc_review_gate._read_agent_prompt", return_value="sys"):
+        asyncio.run(_call_single_agent(client, "impact", "diff", context))
+
+    assert "TAIL_SENTINEL" in captured["user"], (
+        "컨텍스트 꼬리가 프롬프트에서 잘렸다 — 이중 절단 회귀"
+    )

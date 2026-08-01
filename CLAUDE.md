@@ -297,8 +297,10 @@ Grok CLAIM-REVIEW 기본 포함(2026-07-20 사용자 지시, 건너뛰려면 명
 gh run list --limit 3                                       # CI status (기존 vs 신규 실패 구분)
 gh api repos/xzawed/SCAManager/code-scanning/alerts \      # Code Scanning open alert 카운트 (정책 14)
   --jq '[.[] | select(.state=="open")] | length'            # CI/auth 부재 시 GitHub Security 탭 직접 확인
-ls ~/.claude/projects/d--Source-SCAManager/memory/ | \      # 신규 fixture/테스트/패턴 작성 전 메모리 grep
-  grep -E "pytest-|test-|feedback-"                         # 해당 영역 메모리 본문 read 후 default 적용 의무
+py -3 scripts/check_memory_refs.py                          # 🔴 메모리 경로를 **유도**해 출력 (슬러그 하드코딩 금지)
+ls "$(py -3 -c "import sys;sys.path.insert(0,'.');\
+from scripts.check_memory_refs import resolve_memory_dir;from pathlib import Path;\
+print(resolve_memory_dir(Path.cwd()) or '')")"              # 신규 fixture/테스트/패턴 작성 전 메모리 grep
 git status                                                  # 미커밋 변경 없는지 확인
 git checkout -b <브랜치명>                                  # 브랜치 생성 (main 직접 커밋 금지)
 ```

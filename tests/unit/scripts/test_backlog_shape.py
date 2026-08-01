@@ -193,3 +193,69 @@ def test_section_detection_ignores_prose_mentions():
     """
     prose = "## 갱신 규칙\n\n🔴 결정 대기 항목은 회신 요청 의무.\n\n| **B9** | x |\n"
     assert body_rows(prose) == {}, "산문 섹션이 상태 섹션으로 오인됐다"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 🔴 위 불변식이 보는 범위 = **파일 맨 아래 `## 🔴/🟡/⏸️` 섹션 5행뿐**이다.
+#
+# 실측(2026-08-01): 원장의 실제 항목은 **33행**이고 그중 28행은 두 개의 인수인계 표
+#   (`▶️ 다음 세션 시작점` · `▶️ (역사) …`)에 있는데, 위 파서는 `## ` 제목의 선행 이모지로
+#   섹션을 찾으므로 **그 28행을 한 번도 읽지 않는다**. 회고가 적발한
+#   "회귀 가드가 원장 23행 중 5행만 본다" 가 바로 이것이다.
+#
+# 가드가 **있는데 안 보는** 형태라 가장 조용하다 — 테스트는 계속 초록이고,
+# 원장은 계속 틀린다. 아래가 현재 창 표를 실제로 본다.
+# ──────────────────────────────────────────────────────────────────────────────
+
+# 현재 창 표의 항목 행: `| **R29** | 🟡 착수 가능 | … |`
+_TABLE_ROW_RE = re.compile(r"^\|\s*\*\*(R[\w-]+)\*\*\s*\|\s*([^|]+?)\s*\|", re.M)
+# 선언 요약: `> **상태 요약 — 이 표(현재 창) 16행 기준**: 🔴 결정 대기 **1** · 🟡 … **9** · …`
+_DECLARED_TOTAL_RE = re.compile(r"상태 요약[^:]*?(\d+)행 기준")
+_DECLARED_PART_RE = re.compile(r"(🔴|🟡|⏸️|✅)[^*·]*\*\*(\d+)\*\*")
+
+_MARKERS = ("🔴", "🟡", "⏸️", "✅")
+
+
+def current_window(text: str) -> str:
+    """현재 창 섹션만 잘라낸다 — 역사 섹션의 행이 카운트에 섞이면 안 된다."""
+    head, sep, _ = text.partition("## ▶️ (역사)")
+    assert sep, "역사 섹션 구분자를 못 찾았다 — 파일 구조가 바뀌었다(fail-closed)"
+    return head
+
+
+def table_status_counts(text: str) -> dict:
+    """현재 창 표의 상태 열을 마커별로 센다."""
+    counts = {}
+    for match in _TABLE_ROW_RE.finditer(text):
+        status = match.group(2)
+        marker = next((m for m in _MARKERS if status.startswith(m)), None)
+        assert marker, f"상태 열이 범례 마커로 시작하지 않는다: {status!r}"
+        counts[marker] = counts.get(marker, 0) + 1
+    return counts
+
+
+def test_status_summary_matches_the_table():
+    """🔴 선언된 상태 요약이 **현재 창 표의 실제 행**과 일치해야 한다.
+
+    손유지 카운트는 반드시 drift 한다 — 이 요약을 쓰는 그 자리에서 필자(Claude)가
+    🔴 를 2로 잘못 세었고, 실제는 1이었다(R0-2 는 역사 섹션 소속). 사람이 세는 한
+    같은 실수가 반복되므로 산술만 기계로 고정한다(산문은 보지 않는다 — 위 §설계 원칙).
+    """
+    window = current_window(_text())
+    actual = table_status_counts(window)
+    assert sum(actual.values()) >= 10, f"표를 못 읽었다 — 파서 고장: {actual}"
+
+    declared_total = _DECLARED_TOTAL_RE.search(window)
+    assert declared_total, "상태 요약 줄을 못 찾았다 — 요약 삭제도 실패로 본다(fail-closed)"
+
+    summary_line = window[declared_total.start():].split("\n", 1)[0]
+    declared = {m: int(n) for m, n in _DECLARED_PART_RE.findall(summary_line)}
+    assert declared, f"요약 줄에서 마커별 수를 못 읽었다: {summary_line!r}"
+
+    assert int(declared_total.group(1)) == sum(actual.values()), (
+        f"선언 총행 {declared_total.group(1)} != 실제 {sum(actual.values())}행"
+    )
+    assert declared == actual, (
+        f"상태 요약이 표와 어긋난다:\n  선언 {declared}\n  실제 {actual}\n"
+        "→ 항목 상태를 바꿨으면 **같은 커밋에서** 요약 줄도 갱신할 것."
+    )
