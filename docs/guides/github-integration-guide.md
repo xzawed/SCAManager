@@ -228,7 +228,7 @@ curl -X PUT https://your-domain/api/repos/owner/repo-name/config \
 ```
 점수 ≥ approve_threshold (기본 75) → GitHub PR Approve
 점수 < reject_threshold  (기본 50) → GitHub PR Request Changes
-점수 ≥ merge_threshold   (기본 80) → squash merge 자동 (auto_merge=on 시)
+점수 ≥ merge_threshold   (기본 **75** — `src/constants.py::GATE_DEFAULT_MERGE_THRESHOLD`) → squash merge 자동 (auto_merge=on 시)
 그 사이 (50~75)                     → Gate 없이 통과 (알림만 전달)
 ```
 

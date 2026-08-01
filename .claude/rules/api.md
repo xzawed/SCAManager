@@ -31,7 +31,7 @@ paths:
 - **Webhook 서명**: `X-Hub-Signature-256` 헤더 없거나 서명 불일치 시 401 반환 — 로컬 테스트 시 서명 생성 필요. 빈 시크릿(`GITHUB_WEBHOOK_SECRET` 미설정)이면 즉시 401.
 - **Webhook 서명 실패 일관성**: GitHub / Telegram webhook 모두 서명 불일치 시 `HTTPException(401)` 반환. 200 OK 반환 금지.
 - **알림 독립성**: `_build_notify_tasks()` 디스패처, `asyncio.gather(return_exceptions=True)`로 실행 — 한 채널 실패해도 나머지 채널은 정상 전송. `repo_config` 로드 실패 시에도 Telegram은 global fallback으로 항상 발송.
-- **PR Gate 3-옵션 독립**: `pr_review_comment`·`approve_mode`·`auto_merge+merge_threshold` 완전 독립. `post_pr_comment_from_result(result: dict, ...)` 사용 — `AiReviewResult` 객체 불필요. `run_gate_check` 시그니처: `(repo_name, pr_number, analysis_id, result, github_token, db, config: RepoConfigData | None = None)`.
+- **PR Gate 3-옵션 독립**: `pr_review_comment`·`approve_mode`·`auto_merge+merge_threshold` 완전 독립. `post_pr_comment_from_result(result: dict, ...)` 사용 — `AiReviewResult` 객체 불필요. `run_gate_check` 시그니처: `(repo_name, pr_number, analysis_id, result, github_token, db, config: RepoConfigData | None = None, commit_sha: str | None = None)` (`src/gate/engine.py:45~` — 2026-08-01 실측). 🔴 **신규 호출부는 `commit_sha` 필수** — 분석된 SHA 결속(본 파일 §analyzed SHA) 없이 부르면 head 이동 시 잘못된 커밋을 머지한다.
 - **build_analysis_result_dict**: `src/worker/pipeline.py` 모듈 레벨 함수. pipeline과 hook.py 두 곳에서 Analysis.result dict를 생성할 때 사용. `score`·`grade` 필드 포함.
 - **GRADE 상수 단일 출처**: `src/constants.py`에 `GRADE_EMOJI`, `GRADE_COLOR_DISCORD`, `GRADE_COLOR_HTML`, `GRADE_COLOR_ANSI` 정의. 각 모듈에 로컬 정의 금지.
 - **ChangedFile / github_api_headers 단일 출처**: `src/github_client/models.py`가 ChangedFile 정의 출처. `src/github_client/helpers.py`의 `github_api_headers(token)` 사용.

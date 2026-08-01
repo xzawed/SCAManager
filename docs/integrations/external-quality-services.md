@@ -6,7 +6,7 @@
 
 | 서비스 | 측정 지표 | 워크플로 | 비용 |
 |--------|----------|---------|------|
-| **SonarCloud** | Quality Gate · Maintainability · Security · Reliability · Coverage · Duplication | `.github/workflows/ci.yml` (SonarSource/sonarcloud-github-action) | 공개 저장소 무료 |
+| **SonarCloud** | Quality Gate · Maintainability · Security · Reliability · Coverage · Duplication | `.github/workflows/ci.yml` (SonarSource/sonarqube-scan-action@v8) | 공개 저장소 무료 |
 | **Codecov** | Line coverage · Patch coverage (PR diff) · 추세 | `.github/workflows/ci.yml` (codecov/codecov-action) | 공개 저장소 무료 |
 | **CodeQL** | CWE 기반 보안 advisory (Python) | `.github/workflows/codeql.yml` | GitHub 기본 기능, 무료 |
 
@@ -105,11 +105,12 @@ SonarCloud 가 "워크플로 파일을 추가하세요" 라며 코드 블록을 
 4. Secret: 방금 복사한 토큰
 5. **Add secret**
 
-> 공개 저장소는 토큰 없이도 작동하지만 Codecov v4 action 은 rate limit 회피를 위해 토큰을 권장.
+> 공개 저장소는 토큰 없이도 작동하지만 Codecov v7 action 은 rate limit 회피를 위해 토큰을 권장.
 
 ### 2-5. Codecov 안내 YAML 스니펫은 무시
 
-`.github/workflows/ci.yml` 에 이미 `codecov/codecov-action@v4` 가 포함되어 있다.
+`.github/workflows/ci.yml` 에 이미 `codecov/codecov-action@v7` 가 포함되어 있다.
+🔴 액션 버전은 문서에 리터럴로 두면 자연 drift 한다 — 정본은 `ci.yml` 이다.
 
 ### 2-6. `codecov.yml` 정책 확인
 
