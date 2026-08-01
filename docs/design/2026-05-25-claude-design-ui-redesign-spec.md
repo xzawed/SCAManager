@@ -4,6 +4,15 @@
 **작성자**: Claude Code (브레인스토밍 기획안)
 **상태**: 구현 완료 — 사이클 131 #625~#633 (design-tokens-v3 + base-html-shell + 페이지 redesign P1~P7) + #638 (docs) 머지
 
+> 🔴 **완료된 이력 문서입니다 — 실행 대상이 아닙니다.**
+> 아래 `- [ ]` 항목은 실행 스텝이 아니라 **당시 미결 디자인 질문**(accent 팔레트·테마 명칭·
+> 타이포 스케일 등)입니다. 구현은 사이클 131 에 완료됐고, 그 질문들은 채택되지 않은 채
+> 남았습니다. 지금 그 결정이 필요하면 [`docs/backlog.md`](../backlog.md) 에 등재하십시오 —
+> 이 문서를 실행하지 마십시오. (2026-08-01 문서 감사)
+>
+> **Completed historical record — do not execute.** The unchecked items are open design
+> questions from the time, not implementation steps.
+
 ---
 
 ## 1. 목표

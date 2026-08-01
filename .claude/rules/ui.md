@@ -8,6 +8,12 @@ paths:
 
 # UI / 템플릿 규칙
 
+- 🔴 **background/시스템 세션 라우팅 = `WorkerSessionLocal`** (본문 = [`db.md`](db.md) §WorkerSessionLocal):
+  이 영역에도 해당 소비자가 있다 — `src/ui/routes/admin.py`(hybrid — tenants·operations=worker / rls-audit=bare). `from src.database import WorkerSessionLocal as SessionLocal`
+  **alias 의무**(웹 경로는 bare `SessionLocal` 유지, 혼용 금지). 🔴 hybrid 모듈은 두 심볼을 **구분해**
+  쓴다(alias 금지). `db.md` 의 path 매칭은 이 영역을 포함하지 않아 **자동 로드되지 않으므로** 여기
+  포인터를 둔다(2026-08-01 Grok `019fbccf`·`019fbd1e`). 세부는 반드시 `db.md` 본문을 열 것.
+
 - **landing.html 독립 `<head>` + HX-Redirect 패턴 (사이클 117 PR #570)**: `landing.html`은 `base.html`을 상속하지 않는 standalone 구조 — always-dark 애니메이션 메시 그라데이언트 디자인이 4-테마 시스템과 충돌하기 때문 (의도적 설계). hx-boost body-swap은 `<body>` 만 교체 → `<head>` CSS 미적용 레이아웃 깨짐 발생. **해결 패턴**: 인증 상태가 바뀌는 엔드포인트(`/auth/logout` 등)는 `HX-Request` 헤더 감지 시 `200 + HX-Redirect: /` 반환 → HTMX가 `window.location = "/"` 전체 재로드 수행. `HX-Request` 없으면 `302` redirect 유지. 이 패턴이 필요한 경우: 응답 후 페이지 CSS 구조가 바뀌는 모든 인증/로그아웃 액션.
 - **Telegram HTML 파싱**: `parse_mode: "HTML"` 사용 — 모든 동적 콘텐츠에 `html.escape()` 적용 필수. `_build_message()`가 4096자 초과 시 자동 절단.
 - **analysis_detail 템플릿 context**: `current_user`를 반드시 포함해야 함 — 누락 시 nav 사용자명·로그아웃 버튼 미표시. `analysis.result or {}` 패턴은 None → `{}` 변환으로 `{% if r %}` falsy 평가 → 모든 AI 섹션 숨김 버그 — `{% else %}` 분기로 fallback 처리 필수.

@@ -1,5 +1,14 @@
 # 사이클 143 i18n 완성 + 프로세스 강화 구현 계획
 
+> 🔴 **완료된 이력 문서입니다 — 실행 대상이 아닙니다.**
+> 미체크 `- [ ]` 는 **작성 당시의 스텝 목록**이며 "남은 일" 이 아닙니다. 이 문서를
+> `executing-plans` 로 실행하면 **이미 있는 기능을 다시 만듭니다**. 지금 할 일의 단일 출처는
+> [`docs/backlog.md`](../backlog.md), 현재 상태는 [`docs/STATE.md`](../STATE.md) 입니다.
+> (2026-08-01 문서 감사)
+>
+> **Completed historical record — do not execute.** The unchecked boxes are the original step list.
+
+
 > ⛔ **정책 18 (Claude ↔ Codex mutual 검증) 은 2026-07-10 폐기되었다** — 사용자가 Codex 구독을 해지해 `codex` 실행 파일이 없다.
 > **본 문서에 남아 있는 "Codex 검증 의뢰 / Codex OK 후 push" 류 단계는 수행하지 않는다** (완료된 작업의 역사 기록).  ⛔ *(폐기 2026-07-10 — Codex 단계 수행 안 함)*
 > 대체: Claude 단독 2-layer (정책 8 5+1 + `pipeline-reviewer` / opus whole-branch 적대 리뷰). push 전 게이트 = `pytest tests/unit` 전체 통과.

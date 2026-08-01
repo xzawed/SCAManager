@@ -103,14 +103,26 @@ make test-e2e-headed     # 브라우저 표시
 ## 린트와 Phase 게이트
 
 ```bash
-make gate     # ← push 전에 이걸 돌리세요. CI와 동일 기준입니다.
+py -3 scripts/pre_push_gate.py --full    # ← push 전에 이걸 (가드 + pylint + bandit + 단위 테스트)
+py -3 scripts/pre_push_gate.py           # ← 가드만 빠르게 볼 때
 ```
 
-`make gate` 는 전체 테스트 + `pylint --fail-under=9.90 src/` + `bandit -r src/` 를 실행합니다.
+`pre_push_gate.py` 는 CI 가 실제로 강제하는 가드 — repo-integrity 9종 + PR-diff 한정 4종 — 를
+`make` 없이 실행합니다. 그리고 **자기가 보지 못하는 축**(CodeQL · SonarCloud · Codecov ·
+TruffleHog · pip-audit · lint-js · Postgres job · 통합 테스트)을 매 실행 인쇄하므로, 여기서
+초록이 나와도 CI 초록으로 오해하지 않습니다.
 
-> ⚠️ **`make lint` 는 게이트가 아닙니다.** pylint · flake8 · bandit 를 `|| true` 를 붙여 실행하므로
+`--full` 은 여기에 `pylint --fail-under=9.90 src/` · `bandit -r src/` · `pytest tests/unit` 를 더합니다.
+🔴 **두 형태 모두 `tests/integration` 은 돌지 않습니다.** 파이프라인·분석기·subprocess 를 건드렸다면
+`py -3 -m pytest tests/integration` 도 돌리세요 — CI 는 돕니다.
+
+> ⚠️ **`make gate` 는 CI 와 동일 기준이 아닙니다**, 그리고 머신에 `make` 자체가 없을 수 있습니다
+> (주 개발 PC 에는 없습니다). 그 타깃은 테스트 + `pylint --fail-under=9.90 src/` + `bandit -r src/`
+> 뿐이라 위 13 가드를 **하나도** 돌리지 않습니다. 편의 도구로 쓰되 **근거로 쓰지 마세요**. backlog R29 참조.
+
+> ⚠️ **`make lint` 도 게이트가 아닙니다.** pylint · flake8 · bandit 를 `|| true` 를 붙여 실행하므로
 > 위반을 출력하고도 **항상 `0`으로 종료**합니다. 위반을 *읽는* 용도로는 유용하지만 아무것도 증명하지
-> 못합니다. 검증 가능한 기준은 로컬 `make gate` 와 CI의 `lint-src` job 뿐입니다.
+> 못합니다. 검증 가능한 유일한 기준은 CI job 결과입니다.
 
 `flake8` 은 의도적으로 `make gate` 에서 제외돼 있습니다 — `src/` 에 장문 라인 위반이 몇 건 있는데
 이를 강제하면 십여 개 파일을 미용 목적으로 고쳐야 합니다. 실질 결함에 해당하는 부분(미사용 import·변수)은
@@ -191,7 +203,8 @@ python scripts/check_bilingual_comments.py
 
 PR을 열면 [템플릿](.github/PULL_REQUEST_TEMPLATE.md)이 자동으로 채워집니다. ready 로 표시하기 전에:
 
-- [ ] 로컬에서 `make gate` 통과 (테스트 + pylint ≥ 9.90 + bandit)
+- [ ] 로컬에서 `py -3 scripts/pre_push_gate.py --full` 통과 (가드 13종 + pylint + bandit + 단위 테스트)
+- [ ] 파이프라인·분석기 변경이면 `py -3 -m pytest tests/integration` 도 — 두 게이트 형태 모두 이건 안 돕니다
 - [ ] 새 동작에 대해, 변경 없이는 실패하는 테스트가 있음
 - [ ] PR 본문에 **리뷰어가 손으로 확인해야 할 것**을 적었음 — "테스트 통과"만 적지 마세요. 시각적인
       것, 배포에 의존하는 것, 외부 서비스가 얽힌 것은 테스트 스위트가 검증할 수 없습니다.

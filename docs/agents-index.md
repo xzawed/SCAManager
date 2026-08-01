@@ -46,7 +46,8 @@
 
 | 명령 | 동작 |
 |------|------|
-| `make gate` | **Phase 완료 게이트** — pytest + pylint + flake8 + bandit |
+| `py -3 scripts/pre_push_gate.py` | **push 전 게이트** — CI 강제 가드 13종(repo-integrity 9 + PR-diff 4). `--full` 이면 pylint·bandit·`pytest tests/unit` 도 |
+| `make gate` | ⚠️ **Phase 완료 게이트가 아니다** — pytest + pylint + bandit **3종뿐**(flake8 **미포함** — `Makefile` 주석이 의도적 제외를 명시). 위 13 가드도 안 돈다. 이 머신엔 `make` 자체가 없다(backlog R29) |
 | `make test` | pytest 전체 (빠른 출력) |
 | `make test-cov` | pytest + 커버리지 |
 | `make lint` | pylint + flake8 + bandit |

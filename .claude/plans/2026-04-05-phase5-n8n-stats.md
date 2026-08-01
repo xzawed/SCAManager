@@ -1,6 +1,21 @@
 # Phase 5: n8n 연동 + 통계 고도화 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> 🔴 **완료된 이력 문서입니다 — 실행 대상이 아닙니다.**
+> 이 계획이 다루는 기능은 **이미 출시돼 운영 중**입니다(`src/` 에 실재). 아래 `- [ ]` 체크박스는
+> **작성 당시의 스텝 목록**이며 "남은 일" 이 아닙니다. 미체크 상태로 남은 것은 완료 시점에
+> 체크를 되돌려 적지 않았기 때문입니다.
+>
+> 🔴 **에이전트 주의**: 이 문서를 `executing-plans`/`subagent-driven-development` 로 실행하지
+> 마십시오. 실행하면 **이미 있는 기능을 다시 만듭니다**. 지금 할 일의 단일 출처는
+> [`docs/backlog.md`](../../docs/backlog.md) 이고, 현재 상태는 [`docs/STATE.md`](../../docs/STATE.md) 입니다.
+> (2026-08-01 문서 감사 — 9 파일에 미체크 스텝 359개가 "지금 실행하라" 로 읽히던 것을 시정)
+>
+> **This is a completed historical record, not a live plan.** Everything here shipped; the unchecked
+> boxes are the original step list, not remaining work. Do not execute this document.
+
+
+> ~~**For agentic workers:** REQUIRED SUB-SKILL: … implement this plan task-by-task.~~
+> 🔴 **위 지시는 작성 당시의 것이고 지금은 무효입니다** — 위 완료 표지 참조.
 
 **Goal:** 분석 완료 시 n8n Webhook으로 결과를 POST 전송하고, 개발자별 통계 및 점수 추이 API를 추가한다.
 

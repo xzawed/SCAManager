@@ -92,7 +92,8 @@ gh auth login          # 이후 gh auth status 로 scope 확인
 | 확인 | 명령 | 기대 |
 |---|---|---|
 | 단위 테스트 | `pytest tests/unit` | 전건 통과 (수치 원천 = 실행 결과) |
-| 정적 게이트 (CI 동일 기준) | `make gate` | 통과 — 🔴 `make lint` 는 `\|\| true` advisory 라 근거 아님 |
+| push 전 게이트 | `py -3 scripts/pre_push_gate.py` | 통과 — CI 강제 가드 **13종**(repo-integrity 9 + PR-diff 4). 🔴 **`make gate` 는 대체가 아니다**: pytest·pylint·bandit 3종뿐이라 그 13 가드를 하나도 안 돌리고, 애초에 이 머신에는 `make` 이 없다(backlog R29) |
+| 정적 린트 (CI `lint-src` 동일 기준) | `py -3 -m pylint --fail-under=9.90 src/` + `py -3 -m bandit -r src/ -q` | 통과 — 🔴 `make lint` 는 `\|\| true` advisory 라 근거 아님 |
 | 🔴 **인터프리터 생존** | `py -3 -c "print(1)"` 과 `python -c "print(1)"` **양쪽** | 둘 다 `1` 출력. `python` 이 **exit 49** 면 Windows Store 스텁이다 — 아래 참조 |
 | 가드 훅 등록 | `py -3 -m pre_commit run --all-files` | 훅이 **실행됨** (미등록 시 아무 일도 안 일어남 = 무보호) |
 | 로컬 pre-commit 계층 | 세션 시작 시 SessionStart 훅 배너 | "pre-commit 계층 활성" 이 **출력됨** (내려가 있으면 loud 경고) |

@@ -33,13 +33,50 @@ _CRITICAL = [
     r"^\.claude/rules/[^/]+\.md$",
 ]
 
+# 🔴 2026-08-01 2차 스코프 복구 (문서 감사 91 에이전트 + Grok 시스템 감사 `019fbccf`)
+# R9(2026-07-29)가 AGENTS/rules/policies 를 복구했으나 **행동 지시를 담은 표면이 아직 남아
+# 있었다**: 추적 비-archive 101개 중 **50개가 `skip`** 이었고 그중 **25개가 에이전트가 따르는
+# 지시문**을 담고 있었다. 대표 예:
+#   · `docs/runbooks/ai-collaboration.md` — "Grok 은 정책·backlog 를 **저술하지 않는다**",
+#     "🔴 **P0/P1 부여 금지**" (정책 19 프로토콜 SSOT 인데 심의 대상이 아니었다)
+#   · `docs/runbooks/workflow.md` — "테스트 환경 미구성에서는 **절대 수정하지 않는다**"
+#   · `docs/runbooks/owed-verification.md` — "사용자 회신 전까지 **행 삭제 금지**"
+#   · `docs/architecture.md` — "신규 파일 추가 시 이 문서 갱신 **의무**"
+#   · `docs/reference/env-vars.md` — "운영 절대 설정 금지"(`API_AUTH_DISABLED`)
+#   · `.github/PULL_REQUEST_TEMPLATE.md` · `CONTRIBUTING*.md` · `docs/agents-index.md` · `docs/backlog.md`
+# 즉 심의 게이트가 **지시를 담은 문서의 편집을 검토 없이 통과**시키고 있었다(false coverage).
+# 🔴 `docs/design/**` 이 한 세그먼트만 매칭해 `docs/design/brief/*` 5개가 빠지던 것도 함께 시정.
+# 🔴 Second scope recovery: 25 directive-bearing files were graded `skip`, so the gate passed
+# edits to the very surfaces that tell agents what to do.
 _IMPORTANT = [
-    r"^docs/design/[^/]+\.md$",
+    r"^docs/design/.+\.md$",          # `brief/` 등 하위 디렉토리 포함 (이전엔 한 세그먼트만)
     r"^docs/guides/[^/]+\.md$",
     r"^docs/superpowers/.+\.md$",
-    r"^README\.md$",
+    r"^README(\.[a-z]{2})?\.md$",     # README.ko.md 등 로케일 변형 포함
     r"^\.claude/policies/[^/]+\.md$",
+    # 아래는 2026-08-01 승격분 — 전부 에이전트가 따르는 지시문을 담는다.
+    r"^docs/runbooks/[^/]+\.md$",
+    r"^docs/architecture\.md$",
+    r"^docs/backlog\.md$",
+    r"^docs/agents-index\.md$",
+    r"^docs/reference/[^/]+\.md$",
+    r"^CONTRIBUTING(\.[a-z]{2})?\.md$",
+    r"^\.github/PULL_REQUEST_TEMPLATE\.md$",
+    r"^\.claude/plans/[^/]+\.md$",    # 완료 표지가 지워지면 재구현 사고로 이어진다
+    r"^SECURITY(\.[a-z]{2})?\.md$",   # 취약점 보고 절차 = 보안 지시문
+    r"^scripts/i18n_comments/glossary\.md$",  # "번역 시 아래 용어를 반드시 사용" = 번역 계약
+    r"^src/scripts/README\.md$",     # "Production code MUST NOT import from src/scripts/" = 실제 지시문
 ]
+
+# 🔴 의도적으로 `skip` 으로 남긴 것 (판단 기록 — 다음 세션이 재검토를 반복하지 않도록):
+#   · `docs/cycle-history.md` — append-only **과거 서사**다. 지시 어휘가 많은 이유는 과거 결정을
+#     인용하기 때문이지 지금 지시하기 때문이 아니다. 매 trailing sync 마다 3-에이전트 심의를
+#     붙이면 비용만 늘고, 이 파일은 `check_toc_anchors` 가 이미 구조를 지킨다.
+#   · `docs/reports/**` — 시점 스냅샷(감사 보고서). 현재 계약이 아니다.
+#   · `docs/README.md` — 순수 색인이다(지시문 없음). 🔴 `src/scripts/README.md` 는 여기 있었으나
+#     "Production code MUST NOT import from src/scripts/" 라는 **실제 지시문**이 있어 승격했다
+#     (2026-08-01 Grok claim-review `019fbd1e` 적발 — "지시 밀도가 낮다" 는 내 판단이 틀렸다).
+# Deliberately left `skip`, with the reasoning recorded so it is not re-litigated every session.
 
 _LOW_RISK = [
     r"^docs/reports/artifacts/",

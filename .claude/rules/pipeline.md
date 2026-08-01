@@ -10,6 +10,18 @@ paths:
 
 # 파이프라인 / 비즈니스 로직 규칙
 
+- 🔴 **background 세션 라우팅 = `WorkerSessionLocal`** (규칙 본문 = [`db.md`](db.md) §WorkerSessionLocal):
+  이 영역의 background 진입점(`gate/engine`·`gate/actions/*`·`worker/pipeline`·`webhook/*`·
+  `notifier/*` lazy·`api/{hook,internal_cron,repos,stats,repo_report}`)은
+  `from src.database import WorkerSessionLocal as SessionLocal` **alias 의무**다(웹 경로는 bare
+  `SessionLocal` 유지 — 혼용 금지). 신규 진입점 추가 시
+  `tests/unit/test_worker_session_routing.py` 의 `_BACKGROUND_MODULES` 등재 의무(ast 정적 가드가
+  bare import 를 자동 fail). 🔴 **왜 여기 다시 적는가**: 본문은 `db.md` 에 있는데 그 파일의 path
+  매칭은 `alembic/**`·`src/models/**`·`src/database.py`·`src/repositories/**` 뿐이라 **이 영역
+  파일을 편집할 때 자동 로드되지 않는다** (2026-08-01 Grok 시스템 감사 `019fbccf` 적발 — 경로
+  매칭 ≠ 소비자 목록). 사후 가드가 잡더라도 작성 시점에 규칙을 못 보면 틀린 코드를 먼저 쓴다.
+  🔴 hybrid 3 모듈 예외·RLS 맥락 등 세부는 `db.md` 본문을 열 것 — 여기는 포인터다.
+
 - **멱등성**: `run_analysis_pipeline`은 commit SHA로 중복 체크 — 같은 SHA는 재분석 건너뜀. 단, push 이벤트 먼저 처리 후 PR 이벤트 도착 시(`pr_number=None` Analysis 존재) `_regate_pr_if_needed()`가 `pr_number`를 부여하고 `run_gate_check` 재실행 — 알림 재발송 없음. 🔴 **first-writer-wins (사이클 164 #794)**: 기존 Analysis 의 `pr_number`가 이미 **다른 non-None 값**이면 덮어쓰지 않고 WARNING 후 skip — `_race_recover_existing`(동시 insert race 경로)과 대칭. 동일 head SHA를 두 PR이 공유할 때 댓글/승인/auto-merge가 잘못된 PR에 적용되는 것을 차단. 즉 `pr_number` 갱신은 **None → 최초 PR# 1회만** (동일 PR# 재수신은 no-op).
 - 🔴 **auto-merge fail-open 봉인 3종 (사이클 165 #804/#805/#806)** — 미분석/실패 상태가 인플레 만점으로 auto-merge 되는 fail-open 을 모두 incomplete/실패 마커로 차단:
   - **#804 AI 리뷰 genuine 실패 차단**: `ai_review.status ∈ {api_error, parse_error}` 시 `src/gate/_common.py::ai_review_failed()` 가 `True` → `AutoMergeAction`/`ApproveAction`/telegram 반자동 3경로 모두 auto-merge/auto-approve **차단**. **`no_api_key`/`empty_diff`(의도적 미수행)는 제외**(회귀 방지). `AI_REVIEW_FAILED_STATUSES` frozenset 변경 시 3경로 동시 검토 의무.
