@@ -630,3 +630,71 @@ class TestEslintConfigFilesExist:
                 combined += fh.read()
         for ext in (".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx"):
             assert f'"**/*{ext}"' in combined, f"no files glob covers {ext}"
+
+
+# ── 설정 메타 메시지 드롭 (backlog R22 · Grok 019fbaa0 실측 payload) ─────
+# Config-meta messages must not be counted as code defects.
+
+
+def _ctx(tmp_path):
+    from src.analyzer.pure.registry import AnalyzeContext
+    return AnalyzeContext(
+        filename="app.js", content="", language="javascript",
+        tmp_path=str(tmp_path / "app.js"), is_test=False,
+    )
+
+
+def test_unknown_rule_in_disable_comment_is_not_counted_as_issue(tmp_path):
+    """🔴 대상 리포가 **자기 설정의 룰**로 eslint-disable 을 달면 정상 코드가 감점됐다 (R22).
+
+    우리는 `--no-config-lookup` + 10-룰 최소 설정으로 돌린다. 그래서 eslint 는 그 룰을 모르고
+    다음을 보고한다 — 🔴 `ruleId` 가 **문자열**이고 `severity=2` 라 미린트 판정(ruleId=None)에
+    걸리지 않은 채 그대로 ERROR 이슈가 됐다(`score-lie` — auto-merge 까지 전파).
+
+    payload 는 Grok claim-review `019fbaa0` 의 **eslint 9.39.5 실행 실측**이다(10.8.0 동일).
+    Measured payload: unknown rule names in disable comments surface with a STRING ruleId at
+    severity 2 via eslint's `createDisableDirectives` → `report.addError(...)`.
+    """
+    from src.analyzer.io.tools.eslint import _to_issues
+
+    data = [{"messages": [
+        {"ruleId": "some-rule-not-in-our-config", "severity": 2, "line": 1,
+         "message": "Definition for rule 'some-rule-not-in-our-config' was not found."},
+        {"ruleId": "no-unused-vars", "severity": 1, "line": 2,
+         "message": "'x' is assigned a value but never used."},
+    ]}]
+    issues = _to_issues(data, _ctx(tmp_path))
+
+    assert len(issues) == 1, f"설정 메타 메시지가 이슈로 집계됐다: {[i.message for i in issues]}"
+    assert issues[0].message.startswith("'x' is assigned")
+    assert all("was not found" not in i.message for i in issues)
+
+
+def test_config_meta_message_does_not_mask_unlinted_file(tmp_path):
+    """🔴 대조군 — 메타 드롭이 **미린트 fail-closed(#1226)를 재개방하지 않는다**.
+
+    `ruleId=None` + 비-fatal = 파일이 린트되지 않았다는 신호이므로 여전히 raise 해야 한다.
+    이 단언이 없으면 R22 수정이 #1226(JS/TS 이슈 항상 0 = 점수 인플레)을 되살릴 수 있다.
+    """
+    import pytest
+
+    from src.analyzer.io.tools.eslint import _to_issues
+
+    data = [{"messages": [
+        {"ruleId": None, "severity": 1, "line": 0,
+         "message": "File ignored because outside of base path."},
+    ]}]
+    with pytest.raises(RuntimeError, match="did not lint"):
+        _to_issues(data, _ctx(tmp_path))
+
+
+def test_fatal_parse_error_is_still_kept(tmp_path):
+    """대조군 — fatal 은 `ruleId` 가 없어도 **분석 대상 코드의 실제 결함**이라 보존한다."""
+    from src.analyzer.io.tools.eslint import _to_issues
+
+    data = [{"messages": [
+        {"ruleId": None, "fatal": True, "severity": 2, "line": 3,
+         "message": "Parsing error: Unexpected token"},
+    ]}]
+    issues = _to_issues(data, _ctx(tmp_path))
+    assert len(issues) == 1 and "Parsing error" in issues[0].message

@@ -106,3 +106,44 @@ def test_analyzer_run_end_to_end_with_global_eslint():
 
     assert issues, "전역 eslint 로 실행했는데 이슈가 0건 — 분석기가 무동작이다"
     assert all(i.tool == "eslint" and i.category == "code_quality" for i in issues)
+
+
+@pytest.mark.slow
+@pytest.mark.skipif(shutil.which("eslint") is None, reason="전역 eslint 미설치")
+@pytest.mark.skipif(os.name == "nt", reason="Windows 는 .cmd 를 CreateProcess 로 실행 불가 (CI=Linux 가 담당)")
+def test_unknown_rule_disable_does_not_deduct_score_end_to_end():
+    """🔴 실바이너리 — 대상 리포가 **자기 설정의 룰**로 disable 을 달아도 감점되지 않는다 (R22).
+
+    우리는 `--no-config-lookup` + 10-룰 최소 설정이라, 리포 고유 룰명은 eslint 에 미등록이다.
+    eslint 는 그것을 `ruleId=<문자열>` · `severity=2` · `Definition for rule '…' was not found.`
+    로 보고하는데(Grok `019fbaa0` 실측), 우리 코드가 그걸 **없는 결함**으로 집계해 점수를 깎았다.
+
+    🔴 단위 테스트는 이 payload 를 **손으로 적어** 검증한다 — 그 형태가 eslint 버전에 따라
+    바뀌면 단위는 초록인 채 운영만 깨진다. 여기서 **실제 eslint 가 그 형태를 내는지**까지 고정한다
+    (`#1226` 이 남긴 교훈: mock 은 이 클래스를 원리적으로 못 잡는다).
+    Real-binary counterpart: the unit test hard-codes the measured payload, so only this test can
+    catch eslint changing that message shape.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = os.path.join(tmpdir, "analyze.js")
+        with open(tmp_path, "w", encoding="utf-8") as fh:
+            # 리포 고유 룰(우리 설정에 없음) + 실제 결함 1건(no-var·eqeqeq 발화)
+            fh.write(
+                "// eslint-disable-next-line some-repo-local-rule\n"
+                "var a = 1;\nif (a == 1) { a = 2; }\n"
+            )
+        ctx = AnalyzeContext(
+            filename="analyze.js", content="", language="javascript",
+            is_test=False, tmp_path=tmp_path,
+        )
+        issues = _ESLintAnalyzer().run(ctx)
+
+    assert issues, "실제 결함이 있는데 이슈 0건 — 분석기 무동작"
+    meta = [i for i in issues if "was not found" in i.message]
+    assert not meta, (
+        f"설정 메타 메시지가 이슈로 집계됐다 — 정상 코드가 감점된다: {[i.message for i in meta]}"
+    )
+    fired = {i.message for i in issues}
+    assert any("var" in m or "==" in m for m in fired), (
+        f"실제 결함(no-var/eqeqeq)이 사라졌다 — 드롭이 과도하다: {sorted(fired)}"
+    )
