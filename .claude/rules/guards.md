@@ -77,10 +77,23 @@ bare `python` 회귀(Windows Store 스텁 exit 49)를 **구별하지 못한다**
 GREEN** 이었다(뮤테이션 실측). 기대값은 테스트 쪽에 고정하고, 지문(fingerprint)도 **그 원천에만
 있는 문구**를 쓴다 — `"3-불변식"` 은 CLAUDE.md 에도 2회 나와서 AGENTS.md 제거를 못 잡았다.
 
-🔴 **B8 범위 밖**: `check_guard_fail_open.py` 는 `scripts/check_*.py` 만 glob 하므로
-**test-as-guard(`tests/**/test_*.py`)의 fail-open 은 자동 탐지되지 않는다** — AGENTS.md 가
-기록한 최다 재발 사고(`#1136`·`#1156`)가 바로 그 표면이다. 이 표면은 write-time 규율(이 파일)과
-review-time claim-review 로만 방어된다.
+🔴 **B8 스캔 범위 = `scripts/check_*.py` + `.claude/hooks/*.py`** (R16 — 2026-08-02 훅 표면
+확대, 오탐 0 실측 후). 표면 중 하나라도 glob 0건이면 **범위 붕괴로 exit 1**(빈 범위 위의 ✅ 는
+GROK-9 뮤테이션이 실증한 fail-open 이었다). 성공 배너도 실제 스캔 범위를 명시한다.
+🔴 **여전히 범위 밖**: **test-as-guard(`tests/**/test_*.py`)의 fail-open 은 자동 탐지되지
+않는다** — AGENTS.md 가 기록한 최다 재발 사고(`#1136`·`#1156`)가 바로 그 표면이다
+(`X in text` 는 정당한 presence 검사에도 흔해 확대 시 오탐>진탐 = 가드 자살, 정책 17).
+이 표면은 write-time 규율(이 파일)과 review-time claim-review 로만 방어된다.
+
+## 🔴 lint-js 검사 범위는 baseline 원장과 대조된다 (R17 — 2026-08-02)
+
+`check_lint_js_nonvacuous.py` 는 정당 제외(justified) 집합을 커밋된
+`scripts/lint_js_ignore_baseline.json` 과 대조한다 — 템플릿 `<script>` 에 무해한 Jinja 유사
+토큰(`// {{ 1 }}`)을 심어 "정당 제외" 로 위장하는 우회(뮤테이션 GROK-12: 검사 대상 6→5 인데
+EXIT=0)를 **baseline diff 없는 한 red** 로 만든다. 제외 집합을 바꾸는 변경은
+`py -3 scripts/check_lint_js_nonvacuous.py --update-baseline` 결과를 **같은 PR 에** 포함할 것.
+한계(정직 기준): 같은 PR 이 baseline 도 고치면 통과한다 — 이 축은 감소를 막지 않고 리뷰
+가능한 명시 결정으로 승격할 뿐이며, 잔여는 review-time claim-review 가 방어한다.
 
 ## 🔴 push 전 로컬 게이트 = `py -3 scripts/pre_push_gate.py` (2026-08-01 신설)
 

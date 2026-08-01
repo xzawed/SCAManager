@@ -257,3 +257,99 @@ def test_guard_target_paths_exist():
     assert _CI_YAML.is_file()
     assert _MAKEFILE.is_file()
     assert (REPO_ROOT / _SCRIPT_REF).is_file()
+
+
+# ── 축 4: justified 집합 ↔ 커밋 baseline 원장 (backlog R17 — 뮤테이션 GROK-12 실측) ──
+# GROK-12: a harmless `// {{ 1 }}` token moved a template into the "justified" set, so the
+# checked population silently shrank 6→5 with EXIT=0 — self-justifying coverage reduction.
+# The fix contract: the justified set must equal a COMMITTED baseline ledger, so any drift
+# (growth or shrinkage) is red until a human-reviewed `--update-baseline` diff approves it.
+
+def test_ignore_baseline_file_matches_disk():
+    """🔴 커밋된 승인 원장(baseline) == 디스크 실측 justified 집합 (R17).
+
+    GROK-12 실측: justified 집합이 디스크에서 **그때그때 재계산**되므로 무해 토큰 주입에
+    의한 검사 범위 축소(6→5)가 어떤 원장과도 대조되지 않았다(silent-disable — "템플릿 JS 가
+    영영 미린트돼도 CI 초록"). 커밋된 정렬 JSON 배열이 사람이 리뷰한 승인 원장이 된다.
+    The committed sorted JSON array is the approval ledger; it must equal the measured set.
+    """
+    # 지연 import — 심볼 미구현이면 이 테스트만 RED (모듈 top-level import 는 파일 전체를 깨뜨린다)
+    # Deferred import: an unimplemented symbol must redden only this test, not collection.
+    from scripts.check_lint_js_nonvacuous import BASELINE_PATH
+    committed = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
+    assert committed == sorted(templates_with_jinja_in_script()), (
+        "baseline 원장과 디스크 실측이 다르다 — `--update-baseline` 갱신 + diff 리뷰 필요"
+    )
+
+
+def test_main_fails_when_justified_set_grows_beyond_baseline(eslint_installed):
+    """🔴 GROK-12 재연 — justified 가 baseline 밖으로 늘면 exit 1 (R17 silent-disable 차단).
+
+    무해 토큰(`// {{ 1 }}`) 주입으로 justified 가 1개 늘어난 상황을 patch 로 재연한다.
+    현행 가드는 eslint 실측과 justified 를 대조할 뿐이라 **양쪽이 함께 움직이면**(ignores
+    에도 추가) 검사 대상 6→5 축소가 EXIT=0(뮤테이션 GROK-12 실측)이었다. baseline 미갱신
+    상태의 증가분 = 승인 없는 검사 범위 축소이므로 eslint 조달 확인 **이전에** red 여야 한다.
+    Growth without a baseline update is unapproved coverage reduction — red before eslint.
+    """
+    justified_real = templates_with_jinja_in_script()
+    linted_real = expected_linted_templates()
+    assert linted_real, "대조 집합이 비면 이 테스트는 공허하다"
+    extra = sorted(linted_real)[0]
+    # eslint 결과도 함께 움직인 상황(축소된 검사 대상) — 현행 가드가 통과시키던 정확한 형태.
+    # The eslint result moves in lockstep (shrunken population) — exactly what passed before.
+    with patch("scripts.check_lint_js_nonvacuous.templates_with_jinja_in_script",
+               return_value=justified_real | {extra}), \
+         patch("scripts.check_lint_js_nonvacuous._run_eslint",
+               return_value=_proc(_payload(sorted(linted_real - {extra})))):
+        assert main() == 1, (
+            "검사 대상이 줄었는데(6→5 형) baseline 미갱신 상태로 통과 — GROK-12 fail-open"
+        )
+
+
+def test_main_fails_when_baseline_is_stale(eslint_installed):
+    """🔴 반대 방향 — justified 가 baseline 보다 줄면 exit 1 (stale 승인 정리 강제, R17).
+
+    Jinja 를 `<script>` 밖으로 옮겨 파싱 가능해진 템플릿은 즉시 검사 대상으로 복귀해야 한다.
+    baseline 에 승인이 남아돌면 "이 파일은 제외돼도 된다" 는 죽은 승인이 원장에 계속 살아,
+    다음 drift 때 진짜 축소를 가리는 잡음이 된다 — 양방향 동기화만이 원장을 신뢰 가능하게 한다.
+    A leftover approval is dead ledger noise; sync must be enforced in both directions.
+    """
+    justified_real = templates_with_jinja_in_script()
+    assert justified_real, "대조 집합이 비면 이 테스트는 공허하다"
+    removed = sorted(justified_real)[0]
+    with patch("scripts.check_lint_js_nonvacuous.templates_with_jinja_in_script",
+               return_value=justified_real - {removed}), \
+         patch("scripts.check_lint_js_nonvacuous._run_eslint",
+               return_value=_proc(_payload(sorted(expected_linted_templates() | {removed})))):
+        assert main() == 1, "baseline 에 남아도는 승인이 있는데 통과 — stale 원장 방치"
+
+
+def test_main_fails_when_baseline_file_is_missing(eslint_installed, tmp_path):
+    """🔴 baseline 파일 부재 = exit 1 (fail-closed) — 원장 소실을 통과로 읽으면 안 된다 (R17).
+
+    원장 파일이 지워지면(리네임·경로 오타 포함) 대조 자체가 불가능한 상태다 — "대조할 것이
+    없으니 통과" 는 이 리포 최다 반복 클래스(공허 통과)의 재생산이다. 부재는 즉시 red.
+    A missing ledger means the comparison cannot happen at all — that is red, not green.
+    """
+    missing = tmp_path / "no_such_baseline.json"
+    with patch("scripts.check_lint_js_nonvacuous.BASELINE_PATH", missing):
+        assert main() == 1, "baseline 원장이 없는데 통과 — fail-open"
+
+
+def test_update_baseline_writes_computed_set(tmp_path):
+    """`--update-baseline` = 실측 justified 집합을 정렬 JSON 으로 기록 + eslint 미실행 (R17).
+
+    갱신 경로는 **오프라인 계약**이다 — node/eslint 조달과 무관하게 어디서든(모바일 환경
+    포함) 원장을 갱신해 diff 리뷰에 올릴 수 있어야 한다. eslint 가 호출되면 조달 실패가
+    원장 갱신까지 막아 "가드가 시끄러우니 끄자" 경로(정책 17)로 이어진다.
+    The update path is offline by contract: eslint must never run under --update-baseline.
+    """
+    baseline = tmp_path / "lint_js_ignore_baseline.json"
+    with patch("scripts.check_lint_js_nonvacuous.BASELINE_PATH", baseline), \
+         patch("scripts.check_lint_js_nonvacuous._run_eslint", MagicMock()) as run_eslint:
+        assert main(["--update-baseline"]) == 0
+        run_eslint.assert_not_called()
+    written = json.loads(baseline.read_text(encoding="utf-8"))
+    assert written == sorted(templates_with_jinja_in_script()), (
+        "기록된 baseline 이 실측 justified 집합과 다르다"
+    )

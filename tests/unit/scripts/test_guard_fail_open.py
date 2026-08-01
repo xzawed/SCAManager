@@ -167,3 +167,107 @@ def test_b8_is_wired():
     ref = "scripts/check_guard_fail_open.py"
     assert surface_invokes(pc, ref), "pre-commit 에서 실행되지 않음 (이름 언급은 배선 아님)"
     assert surface_invokes(ci, ref), "CI 에서 실행되지 않음 (이름 언급은 배선 아님)"
+
+
+# ── R16: B8 자기 스캔 범위 관측 (backlog R16 — 뮤테이션 GROK-9 실측) ──────────
+# B8 was blind to its own scan scope: an emptied glob still printed the success line.
+
+def test_main_fails_when_script_scan_scope_is_empty(tmp_path, monkeypatch, capsys):
+    """🔴 scripts 표면 파일 0개 = exit 1 — 범위 붕괴를 성공으로 읽으면 안 된다 (R16).
+
+    현행 main() 은 스캔 범위가 비어도 `✅ … 0개` 성공 문구 + exit 0 이다(backlog R16:
+    "범위를 비워도 성공 문구를 출력" = fail-open). glob 경로가 무너지는(디렉토리 이동·오타)
+    최악의 경우가 가장 조용히 통과하는 구조 — GROK-9 뮤테이션이 실측한 미탐과 같은 뿌리다.
+    범위 붕괴는 fail-closed(exit 1)로 승격돼야 한다.
+    An empty scripts surface must exit 1: scope collapse is not success (fail-closed).
+    """
+    mod = _load()
+    hooks = tmp_path / "hooks"
+    hooks.mkdir()
+    # 후보가 아닌 정상 훅 1개 — 실패 사유를 "scripts 표면 0개" 로 격리한다.
+    # One healthy hook so the only failure cause is the empty scripts surface.
+    (hooks / "ok_hook.py").write_text("def main():\n    return 0\n", encoding="utf-8")
+    monkeypatch.setattr(mod, "_SCRIPTS", tmp_path)   # check_*.py 0개 / zero check_*.py files
+    monkeypatch.setattr(mod, "_HOOKS", hooks)
+    assert mod.main() == 1, "scripts 스캔 범위가 비었는데 성공했다 — 범위 붕괴 fail-open (R16)"
+    assert "✅" not in capsys.readouterr().out, "범위 붕괴인데 성공 문구가 출력됐다"
+
+
+def test_main_fails_when_hook_scan_scope_is_empty(tmp_path, monkeypatch):
+    """🔴 반대 방향 — hooks 표면 파일 0개여도 exit 1 (R16).
+
+    `.claude/hooks/*.py` 는 시크릿 덤프 차단·편집 가드 등 실가드가 사는 표면이다.
+    디렉토리 이동/오타로 glob 이 비면 그 전부가 미탐인데 성공으로 읽으면 안 된다.
+    The hooks surface going empty is the same scope collapse in the other direction.
+    """
+    mod = _load()
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    # 술어를 통과하는 정상 가드 1개 — 실패 사유를 "hooks 표면 0개" 로 격리한다.
+    # One predicate-passing guard so the only failure cause is the empty hooks surface.
+    (scripts / "check_ok.py").write_text(
+        "import re\n"
+        "def main():\n"
+        "    text = open('x').read()\n"
+        "    return 1 if re.search(r'p', text) else 0\n",
+        encoding="utf-8",
+    )
+    hooks = tmp_path / "hooks"
+    hooks.mkdir()  # *.py 0개 / zero hook files
+    monkeypatch.setattr(mod, "_SCRIPTS", scripts)
+    monkeypatch.setattr(mod, "_HOOKS", hooks)
+    assert mod.main() == 1, "hooks 스캔 범위가 비었는데 성공했다 — 범위 붕괴 fail-open (R16)"
+
+
+def test_hook_surface_is_scanned_for_fail_open(tmp_path, monkeypatch):
+    """🔴 `.claude/hooks/*.py` 도 fail-open 판정 대상 — scripts-only 범위 확장 (R16).
+
+    B8 은 `scripts/check_*.py` 만 glob 해서 훅 표면의 bare-substring 판정은 원리적으로
+    미탐이었다(GROK-9 뮤테이션과 같은 뿌리 — 관측자 없는 표면). 훅도 파일을 읽어 pass/fail
+    을 판정하는 관측자이므로 같은 floor 를 적용해야 한다.
+    Hooks read files and decide pass/fail too — the same floor must cover them.
+    """
+    mod = _load()
+    bad = tmp_path / "bad_hook.py"
+    bad.write_text(
+        "def main():\n"
+        "    text = open('x').read()\n"
+        "    return 1 if 'X' in text else 0\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(mod, "_HOOKS", tmp_path)
+    assert "bad_hook.py" in mod.fail_open_candidates(), (
+        "훅 표면의 bare-substring 판정을 탐지하지 못했다 — hooks 미스캔(fail-open, R16)"
+    )
+
+
+def test_real_hooks_pass_the_predicate():
+    """실제 리포 훅은 전부 구조 도구 사용 — 범위 확장의 오탐 0 baseline (R16).
+
+    실측(2026-08-02): `.claude/hooks/*.py` 4개 전부 구조 도구 호출 — 확장해도 오탐 0
+    (정책 17 guard-suicide 위험 없음). hooks 표면이 비면 이 단언이 공허해지므로
+    표면 비어있지 않음을 먼저 고정한다(공허화 방지).
+    Anti-vacuity first: an empty hooks surface would make this baseline vacuously true.
+    """
+    mod = _load()
+    assert list(mod._HOOKS.glob("*.py")), "hooks 표면이 비었다 — 이 baseline 은 공허하다"
+    assert mod.fail_open_candidates() == [], (
+        f"실제 훅에서 fail-open 오탐 발생: {mod.fail_open_candidates()}"
+    )
+
+
+def test_success_message_states_the_actual_scan_scope(capsys):
+    """🔴 성공 문구는 실제 스캔 범위 + 범위 밖을 정직하게 명시해야 한다 (R16 최소 조치).
+
+    현행 ✅ 문구는 전 표면을 검증한 듯 읽히지만 실제 범위는 scripts(+hooks)뿐이다 —
+    AGENTS.md 가 기록한 최다 재발 사고(#1136·#1156)는 정확히 범위 밖(tests/** test-as-guard)
+    에 있었다. backlog R16 이 확정한 오탐 위험 0 의 최소 조치 = 성공 문구를 실제 스캔 범위
+    (`scripts/check_*.py` 개수 + `.claude/hooks/*.py` 개수)로 한정하고 범위 밖을 명시하는 것.
+    The success line must state what was scanned and what was not (tests/** test-as-guard).
+    """
+    mod = _load()
+    assert mod.main() == 0
+    out = capsys.readouterr().out
+    assert "scripts/check_*.py" in out, "성공 문구에 scripts 스캔 범위 명시 없음 (R16)"
+    assert ".claude/hooks" in out, "성공 문구에 hooks 스캔 범위 명시 없음 (R16)"
+    assert "tests/" in out, "성공 문구에 범위 밖(tests/** test-as-guard) 명시 없음 (R16)"

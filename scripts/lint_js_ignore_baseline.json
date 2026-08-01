@@ -1,0 +1,8 @@
+[
+  "src/templates/analysis_detail.html",
+  "src/templates/base.html",
+  "src/templates/dashboard.html",
+  "src/templates/repo_detail.html",
+  "src/templates/repo_insights.html",
+  "src/templates/settings.html"
+]
