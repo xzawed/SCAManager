@@ -107,19 +107,78 @@ _EXEMPT = re.compile(
 
 
 # 🔴 HTML 주석은 GitHub 렌더링에서 **리뷰어에게 보이지 않는다** — 주석 안 흔적/면제를
-#    인정하면 "가드 통과 + 리뷰어 비가시" 조합이 성립한다(backlog R20 결함 1). 종결 쌍을
-#    지운 뒤 남는 미종결 `<!--` 이후도 전부 제거한다 — GitHub 는 닫히지 않은 주석 뒤를
-#    렌더하지 않으므로, 닫는 `-->` 를 빼는 것만으로 스트리핑을 우회할 수 있으면 안 된다.
-# HTML comments are invisible to reviewers on GitHub. Strip terminated pairs, then anything
-# after an unterminated `<!--` (GitHub hides the rest, so omitting `-->` must not bypass).
-_HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
-_UNTERMINATED_COMMENT = re.compile(r"<!--.*\Z", re.DOTALL)
+#    인정하면 "가드 통과 + 리뷰어 비가시" 조합이 성립한다(backlog R20 결함 1). 미종결
+#    `<!--` 이후도 전부 제거한다 — GitHub 는 닫히지 않은 주석 뒤를 렌더하지 않는다.
+# 🔴 단, 마크다운 인지가 필수다 (Grok `019fbe32` GROK-20260802-1/2 재현 적발): 코드펜스·
+#    인라인 코드 안의 `<!--` 는 GitHub 에서 **가시**(주석 아님)인데, 초판 정규식은 그 이후를
+#    전부 지워 — 가시 seal 주장이 탐지를 벗어나고(fail-open) 가시 흔적이 지워졌다(false red).
+#    "가드가 보는 텍스트 = 리뷰어가 보는 텍스트" 는 렌더 규칙을 따라야만 참이다.
+# HTML comments are reviewer-invisible, but `<!--` inside fenced/inline code is VISIBLE on
+# GitHub — the first regex version stripped past it, hiding visible seals from enforcement
+# (fail-open) and visible traces from credit (false red). The stripper must be markdown-aware.
+_FENCE_LINE = re.compile(r"^[ \t]{0,3}(?:```|~~~)")
+_INLINE_CODE = re.compile(r"`[^`\n]+`")
+
+# 개행류 제어문자 전부 — Actions 워크플로 커맨드는 라인 지향이라 이 중 하나라도 남으면
+# 본문이 ::error 등을 위조 주입할 수 있다 (Grok `019fbe32` GROK-20260802-3 — 종전엔 \n 만 중화).
+# Every line-break control char; any survivor lets the body forge workflow commands
+# into the line-oriented Actions log (only \n was neutralized before).
+_LINE_BREAKS = re.compile("[" + "".join(chr(c) for c in (10, 11, 12, 13, 0x85, 0x2028, 0x2029)) + "]+")
 
 
-def _strip_html_comments(text: str) -> str:
-    """본문에서 리뷰어 비가시 영역(HTML 주석)을 제거 — "가드가 보는 텍스트 = 리뷰어가 보는 텍스트".
-    Strip reviewer-invisible regions so the guard reads exactly what reviewers read."""
-    return _UNTERMINATED_COMMENT.sub("", _HTML_COMMENT.sub("", text))
+def _strip_html_comments(text: str) -> str:  # pylint: disable=too-many-branches
+    """리뷰어 비가시 영역(진짜 HTML 주석)만 제거하는 라인 상태기계.
+
+    규칙 (GitHub 렌더 동작 대응 — branch 수는 상태 전이 그대로라 분해하면 오히려 흐려진다):
+      · 펜스(```/~~~) 내부와 인라인 코드 스팬 안의 `<!--` 는 주석 시작이 아니다(가시 보존).
+      · HTML 주석 내부에서는 펜스 토글·인라인 보호가 없다 — `-->` 만 찾는다(GitHub 동작).
+      · 미종결 주석은 문서 끝까지 비가시다.
+    A line state machine that strips only genuinely reviewer-invisible regions, honoring
+    fenced/inline code (visible), comment-interior rules, and unterminated comments.
+    """
+    out: list[str] = []
+    in_comment = False
+    in_fence = False
+    for line in text.split("\n"):
+        if in_comment:
+            close = line.find("-->")
+            if close == -1:
+                continue  # 줄 전체 비가시 / whole line invisible
+            in_comment = False
+            line = line[close + 3:]
+            # 닫힌 뒤 남은 부분은 아래 일반 경로로 계속 처리한다.
+            # The remainder after the close falls through to the normal path below.
+        if in_fence:
+            if _FENCE_LINE.match(line):
+                in_fence = False
+            out.append(line)
+            continue
+        if _FENCE_LINE.match(line):
+            in_fence = True
+            out.append(line)
+            continue
+        # 인라인 코드 스팬을 마스킹해 그 안의 마커가 주석을 열지 못하게 한다(원문은 보존).
+        # Mask inline code spans so their markers cannot open a comment; text is preserved.
+        masked = _INLINE_CODE.sub(lambda m: "\x00" * len(m.group(0)), line)
+        kept: list[str] = []
+        pos = 0
+        while pos < len(line):
+            if in_comment:
+                close = line.find("-->", pos)
+                if close == -1:
+                    break
+                in_comment = False
+                pos = close + 3
+                continue
+            start = masked.find("<!--", pos)
+            if start == -1:
+                kept.append(line[pos:])
+                break
+            kept.append(line[pos:start])
+            pos = start + 4
+            in_comment = True
+        out.append("".join(kept))
+    return "\n".join(out)
 
 
 def find_seal_claims(text: str) -> list[tuple[int, str, str]]:
@@ -197,7 +256,11 @@ def main() -> int:
         #    않는다(창의 post-guard seal PR 10건 중 5건이 면제 통과). Actions UI annotation 으로
         #    매 사용을 가시화한다. 계량 집계는 회고 시 `gh pr list --search` 로 수행.
         # Every exemption use is annotated so the trend is observable in the Actions UI.
-        reason = exemption.group(0).strip()[:200].replace("\n", " ")
+        # 🔴 개행류 제어문자 전부 중화 (Grok `019fbe32` GROK-20260802-3) — `\r` 가 남으면
+        #    워크플로 커맨드 라인이 갈라져 본문이 `::error` 등을 위조 주입할 수 있다.
+        # Neutralize every line-break control char; a surviving `\r` would let the body forge
+        # additional workflow commands into the Actions log.
+        reason = _LINE_BREAKS.sub(" ", exemption.group(0).strip())[:200]
         print(f"::notice title=claim-review exemption used::{reason}")
         print(f"⏭️  면제 마커(claim-review-not-required) 확인 — seal 주장 {len(claims)}건 통과")
         return 0

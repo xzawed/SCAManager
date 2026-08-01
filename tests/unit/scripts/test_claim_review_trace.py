@@ -417,3 +417,117 @@ def test_exemption_use_emits_a_visible_annotation(monkeypatch, capsys):
     assert any("claim-review" in line for line in notice_lines), (
         "::notice 라인에 claim-review 식별자가 없다 — 어떤 가드의 면제인지 구분 불가"
     )
+
+
+# ── 축 5: 마크다운 인지 스트리핑 + 면제 annotation 개행 중성화 (Grok claim-review
+#          `019fbe32-772f-7251-a232-384a556441d8` 재현 적발 F1·F2·F3) ─────────────────
+# 🔴 TDD 선행 — 현행 `_strip_html_comments` 는 마크다운 비인지 정규식이고, 면제 `::notice`
+#    사유는 `\n` 만 치환한다. 아래 비-대조군(F1·F2·F3)은 마크다운 인지 상태기계 +
+#    개행류 전체 중성화 구현 전 RED 가 정상이다.
+# 🔴 TDD-first: the current stripper is a markdown-unaware regex and the exemption reason only
+#    replaces `\n` — non-control tests (F1/F2/F3) are expected RED until the markdown-aware
+#    state machine and full newline-class neutralization land.
+
+
+def test_seal_after_fenced_comment_marker_is_still_detected(monkeypatch):
+    """🔴 F1 (fail-open) — 코드펜스 안의 미종결 `<!--` 는 이후 본문을 숨기지 못한다.
+
+    GitHub 는 펜스 안 `<!--` 를 주석으로 렌더하지 않는다 — 펜스 내용은 리터럴 텍스트로
+    **가시**다. 그런데 현행 `_UNTERMINATED_COMMENT` 정규식은 마크다운 비인지라 그 지점부터
+    끝까지 지워, 펜스 **뒤**의 가시 seal 주장이 탐지를 벗어나 exit 0 이 된다(재현 적발 F1).
+    "가드가 보는 텍스트 = 리뷰어가 보는 텍스트" 계약이 펜스 한 줄로 무너지는 방향 —
+    가시 seal 주장을 숨기는 쪽이라 fail-open 이다.
+    구현 계약: 펜스 라인(```/~~~, 선행 공백 0~3)은 in_comment 아닐 때 fence 를 토글하고,
+    펜스 내부의 `<!--` 는 주석 시작으로 인정하지 않는다.
+    GitHub renders `<!--` inside a code fence as visible literal text, so a visible seal
+    claim after the fence must still be detected (today the regex strips it — fail-open).
+    """
+    body = "서문\n```html\n<!-- note\n```\n" + _REAL_SEAL_CLAIMS[1] + "\n\n흔적 없음"
+    assert _run(monkeypatch, body=body) == 1
+
+
+def test_trace_after_fenced_comment_marker_still_counts(monkeypatch):
+    """🔴 F2 (false red) — 펜스 안 `<!--` 이후의 **가시** claim-review 흔적은 유효해야 한다.
+
+    F1 과 같은 뿌리다: 펜스 안 `<!--` 는 GitHub 에서 가시 리터럴인데 현행 정규식이 그
+    이후 전부를 지워, 정직하게 남긴 흔적이 사라지고 exit 1 이 된다(재현 적발 F2).
+    false red 는 저자가 가드를 끄거나 면제로 도피하게 만든다(정책 17 — 오탐이 잦으면
+    가드를 끄게 된다). 코드 예시가 흔한 PR 본문 표면에서 특히 치명적이다.
+    Same root as F1 but the false-red direction: a visible trace after a fenced `<!--`
+    is stripped today, failing an honest PR and pushing authors toward exemption abuse.
+    """
+    body = _REAL_SEAL_CLAIMS[1] + "\n```\n<!--\n```\n\n" + _GOOD_TRACE
+    assert _run(monkeypatch, body=body) == 0
+
+
+def test_inline_code_comment_marker_does_not_hide_the_rest(monkeypatch):
+    """🔴 인라인 코드 스팬(`` `<!--` ``) 안의 마커는 주석 시작이 아니다 — 이후 본문은 가시다.
+
+    마커 **설명** 문장은 백틱 코드 표기로 쓰는 것이 자연스럽다(이 가드 자신의 안내문이
+    그렇다). 현행 정규식은 스팬을 몰라 그 지점부터 끝까지 지운다 — 서두 한 줄로 seal 도
+    흔적도 함께 사라져, 본 케이스는 우연히 0 / 대조 케이스는 0(기대 1)이 된다.
+    구현 계약: 단일 라인 백틱 스팬 안의 `<!--` 는 주석 시작 불인정(스팬 텍스트는 보존).
+    대조 단언이 함께 있어야 "서두 이후가 통째로 지워져 얻은 우연한 0" 과
+    "가시 텍스트가 실제로 판정된 0" 을 구별할 수 있다.
+    A single-line backtick span must not start a comment: the seal AND the trace after the
+    span stay visible. The contrast assertion distinguishes an accidental 0 (everything
+    stripped) from a genuine 0 (visible text actually judged).
+    """
+    preamble = "본문에 `<!--` 마커 설명.\n"
+    # 본 케이스 — 스팬 뒤의 가시 seal + 가시 흔적 = 정상 통과
+    # Main case: visible seal + visible trace after the span must pass
+    assert _run(monkeypatch, body=preamble + _REAL_SEAL_CLAIMS[1] + "\n\n" + _GOOD_TRACE) == 0
+    # 대조 — 같은 서두에 seal 만 있고 흔적이 없으면 red 여야 한다 (현행은 서두 이후가
+    # 지워져 seal 자체가 사라지고 0 — fail-open 방향의 RED 재현축)
+    # Contrast: same preamble, seal only, no trace — must be red (today the stripper
+    # erases the seal itself and returns 0, the fail-open direction)
+    assert _run(monkeypatch, body=preamble + _REAL_SEAL_CLAIMS[1] + "\n\n흔적 없음") == 1
+
+
+def test_fence_inside_real_comment_does_not_toggle(monkeypatch):
+    """대조군 — 진짜 HTML 주석 **안**의 ``` 는 펜스가 아니다 (GitHub 동작 일치).
+
+    HTML 주석 내부에서 GitHub 는 마크다운을 해석하지 않고 `-->` 만 찾는다. 상태기계가
+    주석 내부에서 펜스를 토글하면 `-->` 를 놓쳐 주석이 닫히지 않은 것으로 오판하고,
+    뒤따르는 **가시** seal+흔적 판정이 무너진다 — 이 테스트가 그 회귀를 잡는다.
+    현 구현(종결 쌍 정규식)에서도 통과 — 상태기계 도입 후 회귀 방지축.
+    Control: a ``` line inside a real HTML comment is not a fence. Inside a comment only
+    `-->` matters (GitHub behavior); a state machine that toggles fences there mis-parses
+    the close and breaks the visible seal+trace after it. Passes today — regression axis.
+    """
+    body = "<!--\n```\n-->\n" + _REAL_SEAL_CLAIMS[1] + "\n\n" + _GOOD_TRACE
+    assert _run(monkeypatch, body=body) == 0
+
+
+def test_exemption_notice_neutralizes_carriage_returns(monkeypatch, capsys):
+    """🔴 F3 — 면제 `::notice` 사유의 `\\r` 로 워크플로 커맨드를 위조할 수 없어야 한다.
+
+    현행은 사유에서 `\\n` 만 공백 치환한다. GitHub Actions 러너는 `\\r` 도 행 경계로
+    처리하므로, 사유에 `\\r::error ...` 를 심으면 annotation 출력이 두 행으로 갈라져
+    저자가 임의 워크플로 커맨드(`::error` 등)를 위조 주입할 수 있다(재현 적발 F3).
+    구현 계약: 사유 출력 전 `\\r`·`\\n` 포함 **모든 개행류 제어문자**를 공백 치환 —
+    면제 exit 0 과 `::notice` 가시화(R20-a)는 유지된다.
+    Today only `\\n` is replaced: a `\\r` smuggled into the exemption reason splits the
+    annotation line and forges arbitrary workflow commands. All newline-class control
+    characters must be replaced with spaces before printing.
+    """
+    body = (
+        "봉인했다.\n"
+        "claim-review-not-required: 과거 회고 인용이라 검증 대상 아님\r::error title=forged::x"
+    )
+    # 면제 경로 자체는 유지 — exit 0 (advisory 계약 불변)
+    # The exemption path itself stays exit 0 (advisory contract unchanged)
+    assert _run(monkeypatch, body=body) == 0
+    out = capsys.readouterr().out
+    # splitlines() 는 \r 도 행 경계로 본다 — 러너가 행을 분해하는 방향과 같은 관측
+    # splitlines() treats \r as a line boundary — same direction as the runner's splitting
+    assert not any(line.startswith("::error") for line in out.splitlines()), (
+        "면제 사유의 \\r 가 행을 갈라 ::error 워크플로 커맨드가 위조됐다"
+    )
+    # \n 기준으로만 갈라 보면 ::notice 행 내부의 잔존 \r 이 그대로 보인다
+    # Splitting on \n only exposes any residual \r inside the ::notice line itself
+    notice_lines = [line for line in out.split("\n") if line.startswith("::notice")]
+    assert notice_lines, "면제 사용이 ::notice annotation 으로 가시화되지 않았다"
+    assert all("\r" not in line for line in notice_lines), (
+        "::notice 라인에 \\r 가 남아 있다 — 러너에서 행이 갈라져 커맨드 위조 표면이 된다"
+    )
