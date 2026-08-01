@@ -34,6 +34,33 @@ from src.analyzer.io.tools.python import _BanditAnalyzer, _Flake8Analyzer, _Pyli
 
 logger = logging.getLogger(__name__)
 
+# 🔴 **조달 계약** — 배포 이미지가 설치를 약속한 분석기 (backlog R21, 사용자 결정 2026-08-01).
+#
+# 이 목록의 도구가 런타임에 없으면 = **실제 배포 회귀** → `incomplete` 로 auto-merge 차단.
+# 목록 밖 도구가 없으면 = **제품이 그 언어를 제공하지 않음** → 차단하지 않고 가시화만
+# (`uncovered_language` 와 동급). 이 구분이 없으면 조달 계획이 없는 언어의 리포는
+# auto-merge 가 **영구 불가**가 된다 — 손댈 수 없는 이유로 차단되는 것이라 게이트가 아니라 벽이다.
+#
+# 🔴 이 목록은 산문이 아니라 **계약**이다. `railway.toml`·`nixpacks.toml`·`requirements.txt`·
+# `package.json` 의 실제 조달과 대조하는 회귀 가드가 있다
+# (`tests/unit/analyzer/test_procurement_contract.py`) — 조달을 추가/제거하면 여기도 바꿔야 한다.
+# 목록이 실제 조달과 갈라지면 (a) 조달했는데 미등재 = 회귀를 못 잡음 (b) 미조달인데 등재 =
+# 영구 차단 재발. 둘 다 이 파일이 막으려는 것이다.
+#
+# PROVISIONED_ANALYZERS is a contract, not prose: a listed tool going missing is a deployment
+# regression (block); an unlisted tool's absence means the product never covered that language
+# (surface only). A guard cross-checks this against the real provisioning files.
+PROVISIONED_ANALYZERS: frozenset[str] = frozenset({
+    # nixpacks.toml aptPkgs
+    "shellcheck", "cppcheck", "rubocop",
+    # railway.toml buildCommand (직접 설치 / installed explicitly)
+    "golangci-lint", "hadolint", "ktlint", "tflint",
+    # Python 의존성 (requirements.txt)
+    "pylint", "flake8", "bandit", "semgrep", "sqlfluff", "yamllint", "slither",
+    # npm (package.json)
+    "eslint", "tsc",
+})
+
 
 @dataclass
 class StaticAnalysisResult:
@@ -181,11 +208,35 @@ def analyze_file(  # pylint: disable=too-many-locals
         result.uncovered_language = language
 
     if ran == 0 and result.unavailable_tools and opted_out == 0:
-        result.incomplete = True
-        logger.warning(
-            "no analyzer ran for %s (language=%s) — unavailable: %s",
-            filename, language, ", ".join(sorted(result.unavailable_tools)),
-        )
+        # 🔴 **조달 계약으로 갈라친다** (backlog R21, 사용자 결정 2026-08-01 — 옵션 C).
+        # `unavailable_tools`(바이너리 부재)를 무조건 incomplete 로 올리면, 배포 이미지가
+        # **애초에 설치하지 않는** 도구의 언어는 auto-merge 가 **영구 불가**가 된다. 실측:
+        # 등록 25 분석기 중 10종(clippy·dart_analyze·dotnet_format·phpstan·psscriptanalyzer·
+        # stylelint·swiftlint·buf_lint·htmlhint …)이 railway.toml·nixpacks.toml·requirements.txt·
+        # package.json 어디에도 조달 흔적이 없다 → rust·dart·C#·php·powershell·css/scss·swift·
+        # protobuf·html 리포는 손댈 수 없는 이유로 영구 차단이었다. `#1245` 본문이 스스로
+        # "차단 없이 가시화만" 이라 적은 것과 정면 모순이기도 하다.
+        #
+        # 갈라치는 기준은 **의도**다:
+        #   · 조달 대상인데 없다 → 실제 배포 회귀 → incomplete (fail-closed 보존)
+        #   · 애초에 조달 대상이 아니다 → 제품 미제공 → `uncovered_language` 와 동급, 가시화만
+        # Split by procurement intent: a PROVISIONED tool going missing is a real deployment
+        # regression (keep blocking); a never-provisioned tool is product scope (surface only).
+        blocking = [t for t in result.unavailable_tools if t in PROVISIONED_ANALYZERS]
+        if blocking:
+            result.incomplete = True
+            logger.warning(
+                "no analyzer ran for %s (language=%s) — provisioned but missing: %s",
+                filename, language, ", ".join(sorted(blocking)),
+            )
+        else:
+            # 조달 대상이 아닌 도구만 부재 — 차단하지 않고 미커버로 표면화한다.
+            # Only never-provisioned tools are absent: surface as uncovered, do not block.
+            result.uncovered_language = result.uncovered_language or language
+            logger.info(
+                "no analyzer ran for %s (language=%s) — not provisioned: %s",
+                filename, language, ", ".join(sorted(result.unavailable_tools)),
+            )
 
     return result
 
