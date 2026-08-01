@@ -31,6 +31,18 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 CONFIG_PATH = REPO_ROOT / "eslint.config.mjs"
 TEMPLATE_DIR = REPO_ROOT / "src" / "templates"
 TEMPLATE_GLOB = "src/templates/**/*.html"
+# 🔴 정당 제외(justified) 집합의 **커밋된 baseline** (backlog R17 — 뮤테이션 GROK-12 실측).
+#    템플릿 `<script>` 에 무해한 Jinja 유사 토큰(`// {{ 1 }}`)을 심으면 그 파일이 "정당 제외" 로
+#    분류돼, 검사 대상이 6→5 로 줄어도 양쪽 가드가 전부 초록이었다. 이제 justified 집합이
+#    이 파일과 다르면 red — 검사 범위 증감이 **리뷰 가능한 명시 결정**(baseline diff)이 된다.
+# 🔴 한계(정직 기준): 같은 PR 이 baseline 도 함께 고치면 통과한다 — 이 축은 감소를 **막지**
+#    않고 diff 에 보이게 승격할 뿐이다. 그 잔여는 review-time claim-review 가 방어선이다.
+# Committed baseline of the justified-ignore set (backlog R17, mutation GROK-12): planting a
+# harmless Jinja-ish token moved a template into the justified set and shrank the linted set
+# from 6 to 5 with every guard green. Now any drift from this file is red, making scope changes
+# an explicit, reviewable decision. Honest limit: a PR that also edits the baseline still
+# passes — this axis promotes shrinkage to a visible diff, it cannot forbid it.
+BASELINE_PATH = REPO_ROOT / "scripts" / "lint_js_ignore_baseline.json"
 
 _JINJA_RE = re.compile(r"\{\{|\{%")
 
@@ -144,6 +156,21 @@ def config_ignores() -> set[str]:
     return set(re.findall(r"""["']([^"']+)["']""", block.group(1)))
 
 
+def baseline_ignores() -> set[str]:
+    """커밋된 baseline 의 정당 제외 집합. 파일 부재/파손은 호출부에서 fail-closed 처리.
+    The committed justified-ignore set; a missing or broken file fails closed in the caller."""
+    return set(json.loads(BASELINE_PATH.read_text(encoding="utf-8")))
+
+
+def write_baseline() -> None:
+    """디스크 실측 justified 집합을 정렬 JSON 으로 기록한다 (`--update-baseline`).
+    Persist the measured justified set as sorted JSON (used by --update-baseline)."""
+    entries = sorted(templates_with_jinja_in_script())
+    BASELINE_PATH.write_text(
+        json.dumps(entries, indent=2, ensure_ascii=False) + "\n", encoding="utf-8",
+    )
+
+
 def expected_linted_templates() -> set[str]:
     """린트돼야 할 템플릿 = 전체 템플릿 − Jinja-in-script 템플릿.
 
@@ -188,7 +215,7 @@ def _make_stdout_safe():
         pass  # 캡처된 stream 등 reconfigure 미지원 — 무시 / stream without reconfigure
 
 
-def main() -> int:  # pylint: disable=too-many-return-statements
+def main(argv: list[str] | None = None) -> int:  # pylint: disable=too-many-return-statements
     """advisory + 공허화 차단 — 위반은 exit 0, "아무것도 검사 안 함" 은 exit 1.
 
     🔴 return 이 많은 것은 의도다 — 각 return 은 **서로 다른 공허화 사유**를 그 자리에서
@@ -197,6 +224,37 @@ def main() -> int:  # pylint: disable=too-many-return-statements
     판단 — 응집을 깨뜨릴 때는 inline disable + 사유).
     """
     _make_stdout_safe()
+    args = sys.argv[1:] if argv is None else argv
+
+    # 🔴 baseline 축은 오프라인이다 — eslint 조달 이전에 판정한다 (backlog R17).
+    #    `--update-baseline` 도 오프라인: eslint 를 실행하지 않고 디스크 실측만 기록한다.
+    # The baseline axis is offline and runs before procurement; --update-baseline never
+    # invokes eslint.
+    justified = templates_with_jinja_in_script()
+    if "--update-baseline" in args:
+        write_baseline()
+        print(f"baseline 갱신: {BASELINE_PATH.name} ← {len(justified)}개 (정당 제외 집합)")
+        return 0
+    try:
+        baseline = baseline_ignores()
+    except (OSError, ValueError) as exc:
+        print(f"FAIL: baseline 을 읽지 못했다 ({BASELINE_PATH}) — {exc}\n"
+              "  → 검사 범위 원장이 없으면 감소를 관측할 수 없다(fail-closed). "
+              "`--update-baseline` 으로 생성 후 커밋할 것.", file=sys.stderr)
+        return 1
+    if justified != baseline:
+        grew = sorted(justified - baseline)
+        shrank = sorted(baseline - justified)
+        print("FAIL: 정당 제외(justified) 집합이 커밋된 baseline 과 다르다 — "
+              "검사 대상 증감은 명시 결정이어야 한다 (backlog R17, GROK-12).", file=sys.stderr)
+        if grew:
+            print(f"  + 새로 제외됨(린트에서 빠짐): {grew}", file=sys.stderr)
+        if shrank:
+            print(f"  - baseline 에만 남음(stale): {shrank}", file=sys.stderr)
+        print("  → 의도한 변경이면 `py -3 scripts/check_lint_js_nonvacuous.py --update-baseline` "
+              "결과를 **같은 PR 에** 포함해 리뷰어에게 보일 것.", file=sys.stderr)
+        return 1
+
     if not ESLINT_JS.is_file():
         # 미설치는 "위반 0건" 이 아니라 **조달 실패**다 — 조용히 통과시키면 가드가 공허해진다.
         # A missing install is a procurement failure, not "zero violations".
@@ -242,8 +300,9 @@ def main() -> int:  # pylint: disable=too-many-return-statements
     # 린트 결과가 달라지므로 여기서 red 가 된다. 설정 파싱으로는 이 우회를 잡을 수 없었다.
     # 🔴 The seal: derive the ignored set from what eslint actually did and compare it against the
     # only legitimate justification. Any config-syntax bypass changes the lint result and fails here.
+    # `justified` 는 위 baseline 축에서 이미 계산했다 — 같은 실측을 재사용한다.
+    # `justified` was computed for the baseline axis above; reuse the same measurement.
     actual_ignored = everything - linted
-    justified = templates_with_jinja_in_script()
 
     unjustified = actual_ignored - justified
     if unjustified:

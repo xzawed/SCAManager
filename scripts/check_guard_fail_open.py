@@ -41,6 +41,11 @@ except Exception:  # pragma: no cover
 
 _ROOT = Path(__file__).resolve().parents[1]
 _SCRIPTS = _ROOT / "scripts"
+# 🔴 훅 표면도 스캔한다 (backlog R16 — R6 이 "B8 이 .claude/hooks/** 미검" 을 적발).
+#    실측(2026-08-02): 현 훅 4종 전부 구조 도구 사용 = 오탐 0 확인 후 확대.
+# Scan the hook surface too (backlog R16; R6 flagged the gap). Measured zero false
+# positives on the four existing hooks before widening.
+_HOOKS = _ROOT / ".claude" / "hooks"
 
 _ESCAPE = "# fail-open-reviewed:"
 # 구조 분석 도구 — 이 중 하나라도 **호출**하면 bare-substring 이 아니다.
@@ -48,11 +53,16 @@ _STRUCTURAL_MODULES = {"ast", "re", "subprocess"}
 
 
 def _reads_a_file(tree: ast.AST) -> bool:
-    """파일을 읽는가 — `.read_text(...)` 또는 `open(...)` 호출."""
+    """파일을 읽는가 — `.read_text(...)`/`.read_bytes(...)` 또는 `open(...)` 호출.
+
+    🔴 `read_bytes` 포함 (Grok claim-review `019fbe1f` GROK-20260802-2 재현 적발) —
+    bytes 로 읽어 decode 후 bare substring 판정하는 가드가 이름 집합 밖이라 미탐이었다.
+    Includes read_bytes: a guard reading bytes then substring-deciding escaped the name set.
+    """
     for n in ast.walk(tree):
         if isinstance(n, ast.Call):
             name = getattr(n.func, "attr", None) or getattr(n.func, "id", None)
-            if name in ("read_text", "open", "read"):
+            if name in ("read_text", "read_bytes", "open", "read"):
                 return True
     return False
 
@@ -116,22 +126,74 @@ def _has_escape_comment(src: str) -> bool:
     return False
 
 
+def _scan_targets() -> tuple[list[Path], list[Path]]:
+    """스캔 표면 2종 — `scripts/check_*.py` + `.claude/hooks/*.py`.
+
+    표면별로 따로 반환한다 — main() 이 **표면별 붕괴**(glob 0건)를 구별해 fail-closed 하기 위함.
+    Two scan surfaces, returned separately so main() can fail closed per-surface on collapse.
+    """
+    return sorted(_SCRIPTS.glob("check_*.py")), sorted(_HOOKS.glob("*.py"))
+
+
 def fail_open_candidates() -> list[str]:
     out = []
-    for path in sorted(_SCRIPTS.glob("check_*.py")):
+    scripts, hooks = _scan_targets()
+    for path in scripts + hooks:
         src = path.read_text(encoding="utf-8")
         if _has_escape_comment(src):
             continue  # 명시 면제 (실제 주석 토큰에 한함)
         try:
             tree = ast.parse(src)
-        except SyntaxError:  # pragma: no cover
+        except SyntaxError:
+            # 구문 깨짐은 별도 축(`unparseable_files`)이 main 에서 exit 1 로 승격한다 —
+            # 여기서의 skip 이 조용한 미탐이 되지 않게 한다(GROK-20260802-1).
+            # Broken syntax is escalated to exit 1 by `unparseable_files` in main, so this
+            # skip can no longer become a silent miss.
             continue
         if _reads_a_file(tree) and not _calls_structural_tool(tree):
             out.append(path.name)
     return out
 
 
+def unparseable_files() -> list[str]:
+    """양 표면에서 `ast.parse` 가 SyntaxError 를 내는 파일명 목록.
+
+    🔴 Grok claim-review `019fbe1f` GROK-20260802-1 재현 적발 — 표면에 파일이 있어도
+    **전부 구문 깨짐**이면 후보 skip 으로 ✅ exit 0 이었다("파일 0개" 만 막고 "분석 0개" 는
+    안 막음). scripts/hooks 는 실행돼야 하는 파일이라 구문 깨짐 = 실행 불가능한 가드 = 결함
+    (오탐 0 — 정당하게 파싱 불가한 파일이 이 표면에 있을 수 없다).
+    Files whose ast.parse raises SyntaxError. A guard that cannot parse cannot run — that is
+    a defect, not a skip (zero false positives on these surfaces).
+    """
+    scripts, hooks = _scan_targets()
+    broken = []
+    for path in scripts + hooks:
+        try:
+            ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:
+            broken.append(path.name)
+    return broken
+
+
 def main() -> int:
+    # 🔴 빈 표면은 "통과" 가 아니라 glob/경로 붕괴다 (backlog R16 — 뮤테이션 GROK-9:
+    #    범위를 비워도 ✅ 성공 문구가 나왔다). 표면 중 하나라도 0건이면 fail-closed.
+    # An empty surface means the glob/path collapsed, not a pass (mutation GROK-9 measured
+    # a green banner over an empty scope). Fail closed if either surface scans zero files.
+    scripts, hooks = _scan_targets()
+    if not scripts or not hooks:
+        print(f"❌ 스캔 범위 붕괴 — scripts/check_*.py {len(scripts)}개 · "
+              f".claude/hooks/*.py {len(hooks)}개")
+        print("   빈 표면은 '위반 0건' 이 아니라 glob/경로가 무너졌다는 뜻이다(fail-closed).")
+        return 1
+    # 🔴 구문 깨진 파일은 skip 이 아니라 실패다 (GROK-20260802-1 — 전부 깨져도 ✅ 이던 미탐).
+    # A syntax-broken file is a failure, not a skip (all-broken surfaces used to pass green).
+    broken = unparseable_files()
+    if broken:
+        print("❌ 구문 오류로 분석 불가한 가드/훅 파일 — 실행도 불가능한 상태다:")
+        for b in broken:
+            print(f"   - {b}")
+        return 1
     candidates = fail_open_candidates()
     if candidates:
         print("❌ 파일을 읽어 판정하나 구조 분석 도구(ast/re/subprocess)를 하나도 안 쓰는 가드:")
@@ -141,8 +203,14 @@ def main() -> int:
         print("   ast.parse/re.search/subprocess 로 **구조**를 보거나, 정당하면")
         print(f"   `{_ESCAPE} <사유>` 주석으로 면제할 것.")
         return 1
-    n = len(list(_SCRIPTS.glob("check_*.py")))
-    print(f"✅ check 가드 {n}개 — 파일 판정 가드가 전부 구조 분석 도구 사용(bare-substring fail-open 0)")
+    # 🔴 성공 문구는 **실제 스캔 범위**를 명시한다 (backlog R16) — "가드 전부 통과" 처럼 읽히면
+    #    범위 밖(test-as-guard)의 fail-open 까지 덮은 것으로 오독된다.
+    # The banner names the exact scope; a generic "all guards pass" would be read as covering
+    # the test-as-guard surface this floor cannot see.
+    print(f"✅ 스캔 {len(scripts)}개(scripts/check_*.py) + {len(hooks)}개(.claude/hooks/*.py) — "
+          "bare-substring fail-open 0")
+    print("   범위 밖: tests/** test-as-guard 표면 — write-time 규율(guards.md) + "
+          "review-time claim-review 로만 방어된다(B8 floor 한계).")
     return 0
 
 

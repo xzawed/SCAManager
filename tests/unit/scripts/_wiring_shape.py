@@ -43,11 +43,6 @@ import re
 import shlex
 from collections.abc import Iterable
 
-# 셸 세그먼트 구분자 — `;` `&&` `||` `|` 개행. 뒷 세그먼트의 실호출을 놓치지 않기 위함
-# (`set -e && python scripts/x.py`).
-# Shell segment separators, so a real call in a later segment is not missed.
-_SEGMENT_SPLIT = re.compile(r";|&&|\|\||\||\n")
-
 # 🔴 세그먼트를 **앞선 연산자와 함께** 자른다 — 죽은 분기를 걸러내기 위해서다.
 #    `true || python scripts/x.py` 는 오른쪽이 **절대 실행되지 않는데** 초판은 배선으로
 #    인정했다(Grok claim-review `019fbaf8` 적발). 배선을 지우지 않고 `true ||` 만 붙여도
