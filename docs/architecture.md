@@ -288,7 +288,8 @@ CLI Hook (로컬 pre-push 자동 코드리뷰):
     → GitHub Contents API로 .scamanager/config.json + install-hook.sh 커밋
   git push 시 (.git/hooks/pre-push):
     → GET /api/hook/verify?repo=&token= (미등록 시 silent skip)
-    → git diff → claude -p "프롬프트+diff" → 터미널 출력
+    → git diff → Anthropic Messages API 직접 호출(haiku 기본, ANTHROPIC_API_KEY 필요) → 터미널 출력
+      (🔴 2025-06-15 Agent SDK 크레딧 분리로 `claude -p` 경로 폐지 — #1241 README 정정과 동기화, R26)
     → POST /api/hook/result → Analysis DB 저장
     → exit 0 (push 항상 진행)
 ```
