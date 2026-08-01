@@ -48,6 +48,18 @@ from collections.abc import Iterable
 # Shell segment separators, so a real call in a later segment is not missed.
 _SEGMENT_SPLIT = re.compile(r";|&&|\|\||\||\n")
 
+# 🔴 세그먼트를 **앞선 연산자와 함께** 자른다 — 죽은 분기를 걸러내기 위해서다.
+#    `true || python scripts/x.py` 는 오른쪽이 **절대 실행되지 않는데** 초판은 배선으로
+#    인정했다(Grok claim-review `019fbaf8` 적발). 배선을 지우지 않고 `true ||` 만 붙여도
+#    가드가 초록인 형태라, 이 모듈이 막으려는 중성화 수법 그대로다.
+# Split keeping the preceding operator so provably-dead branches can be dropped.
+_SEGMENT_SPLIT_KEEP = re.compile(r"(&&|\|\||;|\||\n)")
+
+# 항상 성공/실패하는 상수 명령 — 단락평가의 죽은 분기를 판정하는 데만 쓴다.
+# Constant-outcome commands, used only to decide provably-dead short-circuit branches.
+_ALWAYS_TRUE = frozenset({"true", ":"})
+_ALWAYS_FALSE = frozenset({"false"})
+
 # 선행 환경 할당 (`VAR=value`) — 명령어가 아니라 접두사다.
 # 🔴 `re.ASCII` — 셸 식별자는 ASCII 만 허용되므로 `\w` 의 유니코드 확장을 끈다.
 # Leading `VAR=value` assignment is a prefix, not the command word. ASCII-only: shell identifiers.
@@ -147,20 +159,55 @@ def _resolves_to_interpreter(var: str, command: str) -> bool:
     values = [v for name, v in _ASSIGN_CAPTURE.findall(command) if name == var]
     if not values:
         return False
-    for raw in values:
-        value = raw.strip()
-        if value.startswith("$("):
-            targets = [a or b or c for a, b, c in _ECHO_TARGET.findall(value)]
-            # 출력 후보가 하나도 없으면 무엇이 나올지 모른다 → 거부.
-            # No candidate outputs means we cannot know what runs.
-            if not targets:
-                return False
-            for target in targets:
-                if not _is_interpreter(target.split()[0] if target.split() else ""):
-                    return False
-        elif not _is_interpreter(value.split()[0] if value.split() else ""):
+    # 🔴 셸은 **마지막 할당**을 쓴다(last-wins). 초판은 "모든 할당이 인터프리터여야" 로 두어
+    #    `PY=echo; PY=python3; $PY x.py` 를 거부했다 — 셸은 python3 을 돌리므로 **가드 자살**
+    #    방향의 오판이다(Grok claim-review `019fbaf8` 적발). 실제 셸 의미를 따른다.
+    #    반대 방향 `PY=python3; PY=echo` 는 last-wins 로도 정확히 False 다.
+    # The shell uses the LAST assignment; requiring all of them rejected a genuine invocation.
+    value = values[-1].strip()
+    if value.startswith("$("):
+        targets = [a or b or c for a, b, c in _ECHO_TARGET.findall(value)]
+        # 출력 후보가 하나도 없으면 무엇이 나올지 모른다 → 거부.
+        # No candidate outputs means we cannot know what runs.
+        if not targets:
             return False
-    return True
+        # 치환은 분기마다 다른 값을 낼 수 있으므로 **모든** 후보가 인터프리터여야 한다.
+        # A substitution can yield any branch, so every candidate must be an interpreter.
+        return all(_is_interpreter(_first_word(t)) for t in targets)
+    return _is_interpreter(_first_word(value))
+
+
+def _first_word(value: str) -> str:
+    """값의 첫 단어 (빈 값이면 빈 문자열). / First word of a value, or ""."""
+    parts = value.split()
+    return parts[0] if parts else ""
+
+
+def _segments(command: str) -> list[tuple[str, str]]:
+    """`(표지, 세그먼트)` 목록 — 표지가 `"dead"` 면 **절대 실행되지 않는 분기**다.
+
+    상수 명령(`true`/`:`/`false`)이 앞선 단락평가만 죽은 것으로 본다. 그 이상(실제 종료
+    코드 예측)은 정적으로 불가하고, 무리하면 실배선을 거부하는 가드 자살이 된다(정책 17).
+    Only constant-outcome short circuits are ruled dead; predicting real exit codes is not
+    statically possible and over-reaching would reject genuine wiring.
+    """
+    parts = _SEGMENT_SPLIT_KEEP.split(command)
+    out: list[tuple[str, str]] = []
+    prev_op = ""
+    prev_word = ""
+    for piece in parts:
+        if _SEGMENT_SPLIT_KEEP.fullmatch(piece):
+            prev_op = piece
+            continue
+        text = piece.strip()
+        if not text:
+            continue
+        dead = (prev_op == "||" and prev_word in _ALWAYS_TRUE) or (
+            prev_op == "&&" and prev_word in _ALWAYS_FALSE
+        )
+        out.append(("dead" if dead else "live", text))
+        prev_word = _first_word(text)
+    return out
 
 
 def _command_is_interpreter(word: str, command: str) -> bool:
@@ -174,11 +221,18 @@ def _command_is_interpreter(word: str, command: str) -> bool:
 
 def _mentions_path(tokens: Iterable[str], script_path: str) -> bool:
     """토큰 중 하나가 대상 스크립트를 가리키는가 (경로 구분자 정규화).
-    Does any token point at the target script? Path separators are normalised."""
+
+    🔴 접미사 일치는 **경로 경계**에서만 인정한다. 초판은 맨 `endswith` 라
+    `python not_scripts/check_x.py` 가 대상 `scripts/check_x.py` 의 배선으로 잡혔다
+    (Grok claim-review `019fbaf8` 적발). 배선을 **다른 파일로 몰래 갈아끼워도** 가드가
+    초록인 형태다 — 이 모듈이 막으려는 바로 그 클래스라 좁힌다.
+    `path/scripts/check_x.py`(경계 `/`)와 `./scripts/check_x.py` 는 계속 인정한다.
+    Suffix matches must land on a path boundary; a bare endswith accepted `not_scripts/…`.
+    """
     target = script_path.replace("\\", "/").lstrip("./")
     for token in tokens:
-        norm = token.replace("\\", "/")
-        if norm == script_path or norm.endswith(target):
+        norm = token.replace("\\", "/").lstrip("./")
+        if norm == target or norm.endswith("/" + target):
             return True
     return False
 
@@ -191,9 +245,7 @@ def invokes(command: str, script_path: str) -> bool:
     """
     if not command or not script_path:
         return False
-    for segment in _SEGMENT_SPLIT.split(_join_continuations(_strip_comments(command))):
-        if not segment.strip():
-            continue
+    for op, segment in _segments(_join_continuations(_strip_comments(command))):
         try:
             tokens = shlex.split(segment)
         except ValueError:
@@ -201,6 +253,8 @@ def invokes(command: str, script_path: str) -> bool:
             # Unparseable ⇒ fail closed: unknown is not wired.
             continue
         if not tokens:
+            continue
+        if op == "dead":
             continue
         if _command_is_interpreter(_command_word(tokens), command) and _mentions_path(tokens, script_path):
             return True
