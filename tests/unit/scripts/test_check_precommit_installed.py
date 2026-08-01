@@ -101,3 +101,60 @@ def test_wired_to_session_start():
     assert any_invokes(commands, "scripts/check_precommit_installed.py"), (
         f"SessionStart 미배선 — 매 세션 관측이 일어나지 않는다.\n현재 배선: {commands}"
     )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 🔴 pre-push 게이트 관측 축 (2026-08-01 — Grok 설계 검토 `019fbc8e`)
+#
+# `pre_push_gate.py`(#1258)를 사람이 **기억해서** 돌려야 하는 상태였다. 기억 의존은 이 리포가
+# 반복해 고쳐 온 실패 클래스라 자동화가 필요했는데, `.pre-commit-config.yaml` 에
+# `stages: [pre-push]` 를 적는 안은 **기각**됐다 — pre-commit 이 그 훅 타입을 따로 설치해야
+# 동작하므로, pre-commit 미설치 머신(이 PC 포함)에서는 **한 번도 안 도는 가드**가 된다.
+#
+# 로컬 훅은 git 이 추적하지 않으므로 리포는 **강제할 수 없고 관측만** 할 수 있다.
+# 그 관측이 이 축이다. advisory(비차단) 유지 — 정책 17.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_pre_push_gate_detected_only_when_it_calls_the_runner(tmp_path):
+    """🔴 존재만으로 인정하지 않는다 — 다른 도구가 남긴 훅·빈 파일은 게이트가 아니다."""
+    hooks = tmp_path / "hooks"
+    hooks.mkdir()
+
+    assert mod.pre_push_gate_installed(hooks) is False, "훅 파일이 없는데 인정했다"
+
+    hook = hooks / "pre-push"
+    hook.write_text("#!/bin/sh\necho 'some other tool'\n", encoding="utf-8")
+    assert mod.pre_push_gate_installed(hooks) is False, "러너를 부르지 않는 훅을 인정했다"
+
+    hook.write_text("#!/bin/sh\npy -3 scripts/pre_push_gate.py\n", encoding="utf-8")
+    assert mod.pre_push_gate_installed(hooks) is True
+
+
+def test_pre_push_gate_absent_hooks_dir_is_not_wired(tmp_path):
+    """🔴 fail-closed — 훅 디렉토리를 못 찾으면 '있다' 고 말하지 않는다."""
+    assert mod.pre_push_gate_installed(None) is False
+    assert mod.pre_push_gate_installed(tmp_path / "nope") is False
+
+
+def test_missing_pre_push_gate_is_announced(monkeypatch, capsys, tmp_path):
+    """🔴 없으면 **말한다** — 조용하면 관측면이 아니다."""
+    monkeypatch.setattr(mod, "pre_push_gate_installed", lambda hooks_dir: False)
+    monkeypatch.setattr(mod, "git_hooks_dir", lambda root: tmp_path)
+    monkeypatch.setattr(mod.shutil, "which", lambda name: None)
+    monkeypatch.setattr(mod, "hook_is_precommit", lambda hooks_dir: False)
+
+    assert mod.main() == 0, "advisory 여야 한다(정책 17) — 차단 금지"
+    out = capsys.readouterr().out
+    assert "pre-push 게이트 훅이 없습니다" in out
+    assert "pre_push_gate.py" in out, "복구 방법이 없으면 고지가 무용하다"
+
+
+def test_present_pre_push_gate_is_silent(monkeypatch, capsys, tmp_path):
+    """있으면 조용해야 한다 — 매번 떠들면 배너 피로로 다른 경고까지 묻힌다."""
+    monkeypatch.setattr(mod, "pre_push_gate_installed", lambda hooks_dir: True)
+    monkeypatch.setattr(mod, "git_hooks_dir", lambda root: tmp_path)
+    monkeypatch.setattr(mod.shutil, "which", lambda name: "/usr/bin/pre-commit")
+    monkeypatch.setattr(mod, "hook_is_precommit", lambda hooks_dir: True)
+
+    assert mod.main() == 0
+    assert "pre-push 게이트 훅이 없습니다" not in capsys.readouterr().out

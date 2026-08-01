@@ -98,6 +98,25 @@ PR-diff 한정 4종을 `make` 없이 실행한다.
   lint-js·PG job·통합테스트). "여기 초록 = CI 초록" 으로 읽히면 러너 자신이 새 observer-lie 다.
 - advisory 가드(`check_test_count_sync --advisory-drift`)는 **exit 0 이면서 경고**하므로
   출력을 항상 표시한다 — 실패 시에만 인쇄하면 그 경고가 삼켜진다.
+- 🔴 **`.pre-commit-config.yaml` 에 `stages: [pre-push]` 를 적는 방식은 기각됐다**
+  (2026-08-01 Grok 설계 검토 `019fbc8e`) — pre-commit 이 그 훅 타입을 **따로 설치**해야
+  동작하므로(`pre-commit install --hook-type pre-push`), 미설치 머신에서는 **한 번도 안 도는
+  가드**가 된다. 이 리포가 반복해 고쳐 온 클래스를 새로 만드는 셈이다.
+  대신 **로컬 `.git/hooks/pre-push`**(git 미추적 = 머신 고유)로 자동화하고, 그 존재 여부를
+  `check_precommit_installed.py`(SessionStart, 실증된 채널)가 **관측**한다. 리포는 로컬 훅을
+  강제할 수 없으므로 관측이 할 수 있는 전부다 — 진짜 집행면은 CI 다.
+
+## 🔴 required status check 는 (SHA, 이름) 으로 식별된다 (2026-08-01)
+
+PR 본문만 고쳤을 때 CI 를 다시 돌리려고 워크플로를 추가한다면:
+
+- **같은 job `name:`** 을 써야 required check 가 **갱신**된다. 다른 이름이면 새 check 만 하나
+  더 생기고 이전 빨간 check 는 그대로 남아 머지가 계속 막힌다.
+- **같은 워크플로에서 형제 job 을 `if` 로 skip 시키지 말 것** — skip 은 성공으로 취급돼
+  **직전에 실패한 required check 를 세탁**할 수 있다(fail-open). 별도 워크플로 + 단일 job 이 안전.
+- 같은 이름을 쓰면 **step 목록도 원본과 같아야** 한다. 아니면 그 check 가 자기 의미보다 적은
+  것을 검증하고도 초록이 된다. 형태 가드: `test_claim_review_body_edit_workflow.py`.
+- `gh run rerun` 은 **원래 이벤트 payload**(옛 본문)를 재생하므로 본문 수정 검증에 쓸 수 없다.
 
 ## 🔴 훅 출력 채널 — `print()` 는 Claude 에게 도달하지 않는다 (2026-08-01 공식 계약 확인)
 

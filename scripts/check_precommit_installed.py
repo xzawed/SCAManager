@@ -73,10 +73,46 @@ def hook_is_precommit(hooks_dir: Path | None) -> bool:
         return False
 
 
+def pre_push_gate_installed(hooks_dir: Path | None) -> bool:
+    """`.git/hooks/pre-push` 가 실재하고 **이 리포의 게이트 러너를 부르는지**.
+
+    🔴 존재만 보면 안 된다 — 다른 도구가 남긴 훅일 수 있고 빈 파일일 수도 있다. 배선 판정이므로
+    `scripts/pre_push_gate.py` 호출까지 확인한다.
+
+    🔴 이 훅은 **git 이 추적하지 않는다**(머신 고유). 리포는 그 존재를 강제할 수 없고 **관측만**
+    할 수 있으므로 그 한계를 출력에 명시한다. `.pre-commit-config.yaml` 에 `stages: [pre-push]`
+    를 적는 방식은 pre-commit 이 그 훅 타입을 **따로 설치**해야 동작하므로, 미설치 머신에서는
+    한 번도 안 도는 가드가 된다 — 2026-08-01 Grok 설계 검토(`019fbc8e`)가 그 안을 기각했다.
+    Local hooks are untracked, so the repo can only observe this, never enforce it.
+    """
+    if hooks_dir is None:
+        return False
+    hook = hooks_dir / "pre-push"
+    if not hook.is_file():
+        return False
+    try:
+        return "pre_push_gate.py" in hook.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+
+
 def main() -> int:
     """관측 결과를 보고한다 — **항상 exit 0**(advisory)."""
     binary = shutil.which("pre-commit")
     installed = hook_is_precommit(git_hooks_dir(_ROOT))
+
+    # 🔴 pre-push 게이트는 **별개 축**이다 — pre-commit 이 살아 있어도 이건 없을 수 있다.
+    #    없으면 `pre_push_gate.py` 를 사람이 기억해서 돌려야 하고, 기억 의존은 이 리포가
+    #    반복해 고쳐 온 실패 클래스다. 다만 로컬 훅은 추적 불가라 **관측만** 한다.
+    # Separate axis: the pre-push gate can be absent even when pre-commit is healthy.
+    if not pre_push_gate_installed(git_hooks_dir(_ROOT)):
+        print(
+            "ℹ️ pre-push 게이트 훅이 없습니다 — push 전 13 가드가 **자동 실행되지 않습니다**.\n"
+            "   No pre-push hook: the local CI-guard runner will not run automatically.\n"
+            "   수동 / manual  : `py -3 scripts/pre_push_gate.py`\n"
+            "   자동화 / automate: `.git/hooks/pre-push` 에 그 명령을 넣고 실행 권한 부여\n"
+            "   ⚠️ 로컬 훅은 git 이 추적하지 않아 리포가 강제할 수 없습니다 — 관측만 합니다."
+        )
 
     if binary and installed:
         print("✅ pre-commit 계층 활성 — 시크릿 훅 4종이 커밋 시 실행됩니다")
