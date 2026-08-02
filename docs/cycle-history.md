@@ -6,6 +6,7 @@
 
 ## 목차
 
+- [backlog 잔여 이행 + Grok 4중 claim-review (2026-08-02 세션14, 4 PR #1268~#1271)](#backlog-잔여-이행--grok-4중-claim-review-2026-08-02-세션14-4-pr-12681271)
 - [5+1 회고 + Grok 6중 협업 + 가드 근본원인 분석 (2026-07-31~08-01 세션13, 19 PR #1248~#1266)](#51-회고--grok-6중-협업--가드-근본원인-분석-2026-07-3108-01-세션13-19-pr-12481266)
 - [문서 claim-review 정정 + CONTRIBUTING/SECURITY 신설 + 전수 감사 P0 이행 (2026-07-30~31 세션12, 5 PR #1241~#1245)](#문서-claim-review-정정--contributingsecurity-신설--전수-감사-p0-이행-2026-07-3031-세션12-5-pr-12411245)
 - [GitHub Issue 2건 처리 + 정책 19 집행면 + Grok 전반 검토 (2026-07-29~30 세션11, 9 PR #1228~#1237)](#github-issue-2건-처리--정책-19-집행면--grok-전반-검토-2026-07-2930-세션11-9-pr-12281237)
@@ -149,6 +150,21 @@
 - [사이클 119 (5+1 문서 감사 22건 정확도 수정 Option C, 2026-05-22)](#사이클-119)
 - [사이클 118 (회고 P0/P1 전수 이행 — architecture.md/STATE.md/landing.html, 2026-05-22)](#사이클-118)
 - [사이클 117 (/login 제거 + 오류 배너 + P2 login.html 삭제, 2026-05-22)](#사이클-117)
+
+## backlog 잔여 이행 + Grok 4중 claim-review (2026-08-02 세션14, 4 PR #1268~#1271)
+
+이전 세션 인수인계(backlog 현재 창 🟡 7건)의 착수 가능분 6건 이행 — 사용자 지시 = "잔여 작업을 Grok 과 함께".
+매 PR Grok claim-review(4세션, 전부 HOLDS-with-caveat → 적발분 같은 PR fix-up) + test-writer TDD 선행
+6라운드(worktree 격리) + 실경로 뮤테이션 21건 red. 회고 카덴스(17 PR ≥ 15) 발화에 사용자 결정 =
+"작업 먼저 + 세션 말미 회고" — 5+1 회고(run `wf_d89db046-274`, 21 PR #1250~#1271)를 세션 말미 병행 기동.
+
+- **R16+R17**(#1268, Grok `019fbe1f`): B8 빈 스캔 표면 exit 1 + `.claude/hooks/*.py` 표면 확대(오탐 0 실측) + 구문깨짐·`read_bytes` 미탐 봉합(Grok 적발 2건) · lint-js justified ↔ 커밋 baseline 대조(GROK-12 의 6→5 축소 EXIT=0 를 실경로 재연 red 로 전환). CodeQL #564(note) 시정. 뮤테이션 7/7 red.
+- **R20**(#1269, Grok `019fbe32`): 정책 19 집행면 — HTML 주석 안 흔적/면제 불인정 · 단수형 `뮤테이션 N건/N종 red` 어휘 · 면제 `::notice` 계량 · SSOT 등재. 🔴 Grok 이 초판 정규식의 가시 텍스트 과제거(펜스 안 `<!--` 이후 가시 seal 은닉 fail-open · 가시 흔적 false red · `` 워크플로 커맨드 위조)를 재현 적발 → **마크다운 인지 상태기계** 재설계 + diff 재확인 전건 HOLDS. 뮤테이션 7/7 red. 잔여 = session-id 재사용 축(gh 의존 제외).
+- **R31**(#1270, Grok `019fbe49`): check_edit_allowed 행동 커버리지 0 → 함수 분해 + 23케이스. stdin 파손 silent → **loud fail-open**(additionalContext+systemMessage, deny 기각 사유 = 전 편집 차단 가드 자살). Grok 이 main() deny stdout freeze 갭 재현 적발 → 봉합. 뮤테이션 5/5 red.
+- **R30+R24**(#1271, Grok `019fbe61`): pre_push_gate 인터프리터 이원 매 실행 인쇄(⚠️ 3.14↔3.12) + backlog 전장 R행 legality 백스톱(역사 창 17행 포함 실측 35행 전수). 🔴 생존 뮤테이션 1건 실측(⚠️-only 단언이 mismatch fallthrough 로 우연 통과) → 분기 고유 문구 단언으로 강화 후 red — "단언은 결과가 아니라 분기 고유 문구를 고정해야 한다".
+- 🔴 **R34 신설 — #1263 라이브 반례**: 본문 수정 후 재검증 워크플로가 같은 job 이름으로 success check run 을 냈으나 branch protection 은 BLOCKED 유지(구 failure + 신 success 공존 실측) → 빈 커밋 새 SHA 로 우회. "(SHA,이름) 갱신" 설계 가정이 첫 라이브 사용에서 깨졌다.
+- **라이브 실증**: 로컬 pre-push 훅 발화 · R30 드리프트 라인 · lint-js baseline 축 CI 첫 통과. 🔴 doc_review_gate 3 에이전트 세션 내내 전건 호출 실패(8회+) — R33-a 재개방(키 재확인 요청).
+- 단위 6552→**6607**(+55) · 통합 171 불변 · 전체 **6778**. 프로세스 자기 결함 2건도 실측 시정: 전체 스위트 파이프라인 tail exit 오독(재실측으로 정정) · 이스케이프 3중 레이어 파일 파손 2회(복구 + chr() 기반 ASCII 소스 전환).
 
 ## 5+1 회고 + Grok 6중 협업 + 가드 근본원인 분석 (2026-07-31~08-01 세션13, 19 PR #1248~#1266)
 
