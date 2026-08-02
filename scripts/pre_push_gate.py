@@ -36,11 +36,21 @@
 exit 0 = 덮는 범위 전건 통과 / exit 1 = 하나 이상 실패(어느 것인지 인쇄).
 """
 import argparse
+import re
 import subprocess  # nosec B404 — 리포 자신의 가드 스크립트만 실행한다
 import sys
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[1]
+
+# CI 워크플로의 `python-version: "X.Y"` 지점 — 로컬↔CI 인터프리터 이원 관측용 (backlog R30).
+# 🔴 기지 한계 (Grok `019fbe61` F2·F3 — 정직 명시): 원시 텍스트 정규식이라 **주석 안의 핀도
+#    집합에 들어간다**(현 ci.yml 은 주석 핀 0). ci.yml 외 워크플로(body-edit 등)와 micro
+#    버전(3.12.x)은 이 축의 범위 밖이다 — 이 축은 minor 이원(3.14↔3.12)의 관측면일 뿐이다.
+# Known limits: a raw-text regex also collects commented pins (none today); other
+# workflows and micro versions are out of scope — this axis observes the minor split only.
+_CI_WORKFLOW = _ROOT / ".github" / "workflows" / "ci.yml"
+_PY_VERSION_RE = re.compile(r"python-version:\s*[\"']?(3\.\d+)")
 
 # whole-repo 상태 가드 — CI `repo-integrity` job 과 같은 목록.
 # Whole-repo state guards, mirroring the CI repo-integrity job.
@@ -176,6 +186,34 @@ def run_slow(py: str) -> list[str]:
     return [label for label, argv in checks if not _run(label, argv)]
 
 
+def _ci_python_versions() -> set[str]:
+    """CI 워크플로가 핀한 파이썬 버전 집합 (실측 파싱 — 손유지 상수는 drift 한다).
+    The Python versions the CI workflow pins, parsed from the file (constants drift)."""
+    try:
+        return set(_PY_VERSION_RE.findall(_CI_WORKFLOW.read_text(encoding="utf-8")))
+    except OSError:
+        return set()
+
+
+def interpreter_drift_line(local: str, ci: set[str]) -> str:
+    """로컬↔CI 인터프리터 이원 한 줄 (backlog R30) — 항상 인쇄될 정보 축.
+
+    🔴 로컬 전건 통과 ≠ CI 통과: 6-step ② 의 "push 전 전체 통과 실측" 이 로컬 3.14 에서의
+    통과라면 CI 3.12 의 버전 의존 회귀(문법·표준 라이브러리 deprecation)를 원리적으로 못
+    잡는다. 이 이원을 매 실행 인쇄하는 것이 이 축의 전부다 — 파싱 실패도 조용히 생략하지
+    않는다(빈 집합 = ⚠️ 로 보고, fail-closed).
+    Local green is not CI green when the interpreters differ; parse failure is reported
+    loudly instead of silently omitted.
+    """
+    if not ci:
+        return f"⚠️ CI python-version 파싱 실패 ({_CI_WORKFLOW.name}) — 로컬 {local} 과 대조 불가"
+    joined = "/".join(sorted(ci))
+    if local not in ci:
+        return (f"⚠️ 로컬 인터프리터 {local} ↔ CI {joined} — 여기 전건 통과가 "
+                "CI 통과를 보장하지 않는다 (backlog R30)")
+    return f"· 로컬 인터프리터 {local} = CI {joined} (이원 없음)"
+
+
 def print_blind_spots(full: bool) -> None:
     """🔴 항상 인쇄 — "여기 초록 = CI 초록" 으로 읽히면 새 observer-lie 다.
     Always printed so a green run is never mistaken for a green CI."""
@@ -184,6 +222,10 @@ def print_blind_spots(full: bool) -> None:
         print(f"  · {item}")
     if not full:
         print("  · pylint · bandit · pytest — `--full` 을 붙여야 실행된다")
+    # 🔴 인터프리터 이원은 --full 여부와 무관하게 항상 보인다 (backlog R30).
+    # The interpreter drift line is always visible, regardless of --full.
+    local = f"{sys.version_info.major}.{sys.version_info.minor}"
+    print(f"  {interpreter_drift_line(local, _ci_python_versions())}")
 
 
 def main() -> int:
