@@ -207,8 +207,17 @@ class TestCallAgentsParallel:
         for r in results:
             assert r["decision"] == "warn", f"실패 시 warn 이어야 함: {r}"
 
-    async def test_malformed_json_returns_approve(self):
-        """JSON 파싱 실패 시 approve로 fallback — 작업 차단하지 않음."""
+    async def test_malformed_json_is_inoperative_not_approve(self):
+        """🔴 JSON 파싱 실패는 **미심의**다 — approve 로 통과시키지 않는다 (R35, 회고 2026-08-04 P0).
+
+        이 테스트의 이전 판은 정반대 극성을 고정하고 있었다:
+        `\"\"\"JSON 파싱 실패 시 approve로 fallback — 작업 차단하지 않음.\"\"\"`
+        즉 **스위트가 fail-open 을 정상 동작으로 지키고 있었다**(Grok `019fc81b` GROK-7).
+        심의하지 못한 것과 심의해서 통과시킨 것은 같은 값을 가질 수 없다.
+
+        The previous revision of this test froze the opposite polarity: it blessed the
+        approve-on-parse-failure fail-open. Not-reviewed must never equal reviewed-and-approved.
+        """
         from doc_review_gate import call_agents_parallel
 
         responses = ["JSON 아님", "JSON 아님", "JSON 아님"]
@@ -218,7 +227,49 @@ class TestCallAgentsParallel:
             results = await call_agents_parallel("critical", "diff", "ctx")
 
         for r in results:
-            assert r["decision"] in ("approve", "warn")
+            assert r["decision"] == "warn", f"파싱 실패가 approve 로 샜다: {r}"
+            assert r["inoperative"] is True, f"미심의 표기가 없다: {r}"
+
+    async def test_truncated_response_is_inoperative(self):
+        """🔴 `stop_reason == max_tokens` 는 잘린 응답이다 — 판정으로 읽지 않는다 (R35).
+
+        기전: 출력 예산이 고정이라 **리뷰어가 할 말이 많을수록** 잘린다. 잘린 JSON 은
+        파싱 실패로 떨어지고, 이전 구현은 그것을 approve 로 바꿨다 — 즉 심각도와
+        fail-open 확률이 정비례했다. `stop_reason` 을 읽으면 그 자체가 신호다.
+        """
+        from doc_review_gate import call_agents_parallel
+
+        mock_client = MagicMock()
+        mock_client.messages.create = AsyncMock(return_value=MagicMock(
+            content=[MagicMock(text='{"decision": "block", "reason": "말이 길어서 잘림')],
+            stop_reason="max_tokens",
+        ))
+
+        with patch("doc_review_gate.anthropic.AsyncAnthropic", return_value=mock_client):
+            results = await call_agents_parallel("critical", "diff", "ctx")
+
+        for r in results:
+            assert r["inoperative"] is True, f"절단이 미심의로 표기되지 않았다: {r}"
+            assert r["decision"] == "warn"
+            assert "절단" in r["reason"], f"절단 고유 문구가 없다: {r['reason']}"
+
+    async def test_call_failure_carries_the_exception_text(self):
+        """🔴 실패 원문(`detail`)을 버리지 않는다 (R36).
+
+        세션14 가 8회+ 겪은 전건 실패의 원인을 아무도 몰랐던 이유가 이것이다 —
+        예외 원문이 출력에서 통째로 사라졌다.
+        """
+        from doc_review_gate import call_agents_parallel
+
+        mock_client = MagicMock()
+        mock_client.messages.create = AsyncMock(side_effect=Exception("보이는-원인-문구"))
+
+        with patch("doc_review_gate.anthropic.AsyncAnthropic", return_value=mock_client):
+            results = await call_agents_parallel("critical", "diff", "ctx")
+
+        for r in results:
+            assert r["inoperative"] is True
+            assert "보이는-원인-문구" in r.get("detail", ""), f"예외 원문이 버려졌다: {r}"
 
 
 class TestHookMain:
@@ -846,3 +897,98 @@ def test_skip_set_is_small_and_deliberate():
         f"skip 이 {len(skipped)}개로 늘었다 — false coverage 재발 위험:\n  {skipped}\n"
         "→ 새로 추가된 문서가 지시문을 담는다면 _IMPORTANT 에 등재할 것."
     )
+
+
+# ── R35/R36 — 미심의(inoperative)는 승인이 아니다 / not-reviewed is never approve ──
+#
+# 회고 2026-08-04 확정 P0 + Grok claim-review `019fc81b`(GROK-1·2·6·7).
+# 지배 결함: 게이트가 **아무것도 심의하지 못한 상태**와 **심의해서 통과시킨 상태**가
+# 같은 값을 갖는다. 아래는 그 등가를 깨는 단언들이다.
+# The gate could not distinguish "reviewed nothing" from "reviewed and approved".
+
+
+def test_missing_decision_key_is_not_a_silent_approve():
+    """🔴 스키마 drift(= `decision` 키 없음)가 조용히 approve 가 되면 안 된다 (R35, GROK-6).
+
+    `r.get("decision", "approve")` 기본값이 **판정 부재를 판정으로 바꾼다**. 에이전트가
+    스키마를 바꾸거나 부분 응답을 내면 게이트 전체가 무음 통과한다.
+    """
+    decision, reasons = apply_veto_matrix("critical", [{"agent": "impact", "reason": "키 없음"}])
+    assert decision != "approve", "판정 키가 없는데 승인으로 처리됐다"
+    assert reasons, "사유가 비어 있으면 사용자에게 아무것도 도달하지 않는다"
+
+
+def test_unknown_decision_value_is_not_a_silent_approve():
+    """🔴 범례 밖 판정값(`maybe` 등)도 마찬가지다 (R35, GROK-6)."""
+    decision, _ = apply_veto_matrix(
+        "critical", [{"agent": "impact", "decision": "maybe", "reason": "??"}]
+    )
+    assert decision != "approve", "알 수 없는 판정값이 승인으로 처리됐다"
+
+
+def test_empty_results_is_not_approve():
+    """🔴 결과가 0건이면 심의가 일어나지 않은 것이다 — approve 가 아니다 (R35, GROK-6)."""
+    decision, _ = apply_veto_matrix("critical", [])
+    assert decision != "approve", "빈 결과가 승인으로 처리됐다"
+
+
+def test_inoperative_result_never_reaches_approve():
+    """🔴 `inoperative` 표기가 붙은 결과가 하나라도 있으면 approve 로 끝나지 않는다 (R36)."""
+    results = [
+        {"agent": "impact", "decision": "approve", "reason": "OK"},
+        {"agent": "consistency", "decision": "warn", "reason": "응답 파싱 실패 — 미심의",
+         "inoperative": True, "detail": "원문"},
+        {"agent": "quality", "decision": "approve", "reason": "OK"},
+    ]
+    decision, _ = apply_veto_matrix("critical", results)
+    assert decision != "approve", "3 중 1이 미심의인데 전건 승인으로 보고됐다"
+
+
+def test_all_agents_inoperative_says_it_reviewed_nothing(monkeypatch, capsys):
+    """🔴 3/3 전건 미심의는 '3명이 경고하며 심의함' 과 **문구가 달라야** 한다 (R36).
+
+    세션14 가 8회+ 실제로 앉아 있던 상태다. 그때 출력은 정상 warn 과 구별되지 않았고,
+    그래서 게이트가 무동작이라는 사실이 원장에 오르지 못한 채 다음 세션까지 갔다.
+    단언은 결과(=warn)가 아니라 **분기 고유 문구**를 고정한다 — 그래야 죽은 분기를 잡는다.
+    """
+    # 🔴 `import doc_review_gate as mod` 금지 — 상단이 이미 `from doc_review_gate import ...`
+    #    라 이중 import(CodeQL `py/import-and-import-from`)가 된다. string-path 로 패치한다
+    #    (.claude/rules/testing.md §모듈 패치 시 이중 import 회피 · `check_dual_import.py` 강제).
+    from doc_review_gate import main
+
+    monkeypatch.setattr("doc_review_gate._credentials", lambda: {"api_key": "x"})
+    monkeypatch.setattr("doc_review_gate._load_context", lambda: "ctx")
+    monkeypatch.setattr("doc_review_gate.classify_file_grade", lambda _p: "critical")
+    monkeypatch.setattr("doc_review_gate.call_agents_parallel", AsyncMock(return_value=[
+        {"agent": a, "decision": "warn", "reason": "에이전트 호출 실패",
+         "inoperative": True, "detail": "보이는-원인-문구"}
+        for a in ("impact", "consistency", "quality")
+    ]))
+    monkeypatch.setattr(
+        "sys.stdin",
+        io.StringIO(json.dumps({"tool_input": {
+            "file_path": "CLAUDE.md", "old_string": "a", "new_string": "b"}})),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        main()
+    assert exc.value.code == 0, "advisory 는 편집을 차단하지 않는다(정책 17 안정성)"
+
+    out = capsys.readouterr().out
+    assert out.strip(), "전건 미심의인데 출력이 비었다 — 관측면 0"
+
+    # 🔴 텍스트 substring 이 아니라 **JSON 형태를 파싱**해 단언한다 (guards.md §훅 출력 채널):
+    #    `assert "MARKER" in out` 은 bare print 로 되돌려도 통과해 채널 회귀를 못 잡는다.
+    #    또 출력은 ensure_ascii=True JSON 이라 한글이 \uXXXX 로 escape 된다 — 파싱이 필수다.
+    payload = json.loads(out)
+    hook_out = payload["hookSpecificOutput"]
+    assert hook_out["hookEventName"] == "PreToolUse"
+    assert "permissionDecision" not in hook_out, "advisory 에 권한 결정을 얹으면 안 된다"
+    banner = hook_out["additionalContext"]
+    assert banner == payload["systemMessage"], "Claude 채널과 사용자 채널이 갈라졌다"
+
+    assert "REVIEWED NOTHING" in banner.upper(), (
+        f"'아무것도 심의하지 않았다' 를 말하는 고유 문구가 없다:\n{banner}"
+    )
+    assert "3/3" in banner, f"몇 개가 죽었는지 숫자가 없다:\n{banner}"
+    assert "보이는-원인-문구" in banner, f"예외 원문이 사용자에게 도달하지 않는다:\n{banner}"
