@@ -132,6 +132,24 @@ def gate_disabled() -> bool:
 # Veto matrix
 
 
+# 게이트가 인정하는 판정값. 이 밖의 값(또는 키 부재)은 **판정이 아니라 부재**다.
+# Decisions the gate accepts; anything else (or a missing key) is an absence, not a verdict.
+_LEGAL_DECISIONS = ("approve", "warn", "block")
+
+
+def _inoperative(agent: str, reason: str, detail: str = "") -> dict:
+    """심의가 **일어나지 않은** 결과를 만든다 — 승인과 같은 값을 가질 수 없다 (R35/R36).
+
+    🔴 이 저장소의 지배 결함: "아무것도 심의하지 못했다" 와 "심의해서 통과시켰다" 가
+    같은 값(`approve`)이었다. `inoperative` 표기가 그 등가를 깬다 — 판정 축(`decision`)은
+    `warn` 으로 두어 편집을 차단하지 않되(정책 17 안정성), 관측 축은 분리한다.
+    Marks a result as *not reviewed*: warn on the decision axis (never blocks edits) but
+    carries a separate observability flag so it can never be read as an approval.
+    """
+    return {"agent": agent, "decision": "warn", "inoperative": True,
+            "reason": reason, "detail": detail}
+
+
 def apply_veto_matrix(
     grade: str,
     results: list[dict],
@@ -146,10 +164,25 @@ def apply_veto_matrix(
     block_reasons: list[str] = []
     warn_reasons: list[str] = []
 
+    # 🔴 결과가 0건이면 심의가 일어나지 않은 것이다 — approve 로 떨어뜨리지 않는다 (R35).
+    # Zero results means no review happened; it must not fall through to approve.
+    if not results:
+        return "warn", ["[doc-review-gate] 심의 결과 0건 — 아무 에이전트도 판정하지 않았다"]
+
     for r in results:
         agent = r.get("agent", "unknown")
-        decision = r.get("decision", "approve")
+        decision = r.get("decision")
         reason = r.get("reason", "")
+
+        # 🔴 미심의(`inoperative`) · 판정 키 부재 · 범례 밖 값은 전부 **부재**로 다룬다 (R35).
+        #    이전 판의 `r.get("decision", "approve")` 는 스키마 drift 를 조용히 승인으로 바꿨다
+        #    (Grok `019fc81b` GROK-6: 키 누락 · `"maybe"` · 빈 결과가 모두 approve).
+        # Missing/unknown decisions and inoperative results are absences, never approvals.
+        if r.get("inoperative") or decision not in _LEGAL_DECISIONS:
+            if decision not in _LEGAL_DECISIONS:
+                reason = reason or f"판정값 부재/불명({decision!r}) — 미심의"
+            warn_reasons.append(f"[{_agent_label(agent)}] {reason}")
+            continue
 
         if decision not in ("warn", "block"):
             continue
@@ -361,6 +394,14 @@ async def _call_single_agent(
             timeout=_AGENT_TIMEOUT,
         )
         text = msg.content[0].text
+        # 🔴 응답이 출력 예산에서 잘렸으면 그것은 **판정이 아니다** (R35 — 회고 2026-08-04 P0).
+        #    이전 판은 `stop_reason` 을 읽지 않고 잘린 JSON 을 파싱 실패로 흘려보낸 뒤
+        #    `approve` 로 바꿨다. 출력 예산은 고정인데 리뷰어가 할 말은 위험할수록 길어지므로,
+        #    **심각도와 fail-open 확률이 정비례**했다. Grok `019fc81b` GROK-1 이 로컬 재현.
+        # A truncated reply is not a verdict: the old code turned it into an approval, so the
+        # more a reviewer had to say, the likelier the gate passed it silently.
+        if getattr(msg, "stop_reason", None) == "max_tokens":
+            return _inoperative(agent, "응답 절단(max_tokens) — 미심의", text[:200])
         # 코드 블록 추출 우선, 없으면 전체 텍스트에서 JSON 파싱 시도
         # Prefer code block extraction; fall back to parsing the full text
         code_match = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
@@ -370,9 +411,15 @@ async def _call_single_agent(
             parsed["agent"] = agent
             return parsed
         except (json.JSONDecodeError, ValueError):
-            return {"agent": agent, "decision": "approve", "reason": "JSON 파싱 실패 — 통과", "detail": text[:200]}
+            # 🔴 파싱 실패 = 심의 결과를 **받지 못한 것**이다. 승인이 아니다 (R35).
+            # Parse failure means no verdict was received — that is not an approval.
+            return _inoperative(agent, "응답 파싱 실패 — 미심의", text[:200])
     except Exception as exc:  # pylint: disable=broad-exception-caught
-        return {"agent": agent, "decision": "warn", "reason": "에이전트 호출 실패", "detail": str(exc)}
+        # 🔴 예외 원문(`detail`)을 보존한다 — 세션14 가 8회+ 겪은 전건 실패의 원인을
+        #    아무도 몰랐던 이유가 이 문자열이 출력에서 버려졌기 때문이다 (R36).
+        # Preserve the exception text: it was dropped from output, which is why 8+ identical
+        # failures in session 14 had no diagnosable cause.
+        return _inoperative(agent, "에이전트 호출 실패", str(exc))
 
 
 async def call_agents_parallel(grade: str, diff: str, context: str) -> list[dict]:
@@ -458,6 +505,34 @@ def _format_block(file_path: str, results: list[dict], reasons: list[str]) -> st
     for reason in reasons:
         lines.append(f"  • {reason}")
     lines += ["", "수정 방향을 조정한 후 다시 시도하세요."]
+    return "\n".join(lines)
+
+
+def _format_inoperative(file_path: str, results: list[dict]) -> str:
+    """🔴 전건 미심의 배너 — '3명이 경고하며 심의함' 과 **문구가 달라야** 한다 (R36).
+
+    세션14 가 8회+ 실제로 앉아 있던 상태다(자격증명은 있고 **호출**이 죽은 축).
+    `#1257` 은 자격증명 **부재** 분기만 봉인해서, 정작 발생한 분기는 정상 warn 과
+    구별되지 않은 채 남았다 — 그래서 게이트가 무동작이라는 사실이 원장에 오르지 못했다.
+    문구는 `_NO_CREDENTIALS_BANNER` 와 같은 계열(`INOPERATIVE` / `REVIEWED NOTHING`)로 맞춘다.
+    The all-agents-failed state must not read like a real three-agent verdict.
+    """
+    dead = [r for r in results if r.get("inoperative")]
+    lines = [
+        "",
+        f"[doc-review-gate] 🔴 INOPERATIVE - REVIEWED NOTHING ({len(dead)}/{len(results)} agents)",
+        f"  file: {Path(file_path).name}",
+        "  This is NOT a verdict and NOT a transient blip: every review agent failed, so the",
+        "  change passed without being reviewed. Fix the call path before trusting this gate.",
+    ]
+    for r in dead:
+        lines.append(f"  [x] {_agent_label(r.get('agent', 'unknown'))}: {r.get('reason', '')}")
+        detail = str(r.get("detail") or "").strip()
+        if detail:
+            # 🔴 실패 원문을 반드시 실어 보낸다 — 이게 없어서 8회+ 반복 실패의 원인을 몰랐다.
+            # Carry the failure text: its absence is why 8+ repeats stayed undiagnosed.
+            lines.append(f"      detail: {detail[:200]}")
+    lines.append("  Advisory by design - a broken review path must not block edits.")
     return "\n".join(lines)
 
 
@@ -548,6 +623,13 @@ def main() -> None:
     context = _load_context()
     results = asyncio.run(call_agents_parallel(grade, diff, context))
     decision, reasons = apply_veto_matrix(grade, results)
+
+    # 🔴 전건 미심의는 판정 흐름을 타지 않는다 — 고유 배너로 그 사실 자체를 말한다 (R36).
+    #    부분 미심의(1~2/3)는 아래 warn 경로가 사유 목록에 그대로 싣는다.
+    # All-agents-inoperative gets its own banner instead of masquerading as a warn verdict.
+    if results and all(r.get("inoperative") for r in results):
+        _emit_advisory(_format_inoperative(file_path, results))
+        sys.exit(0)
 
     if decision == "block":
         hook_output = {
