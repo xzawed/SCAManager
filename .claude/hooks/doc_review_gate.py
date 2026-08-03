@@ -191,8 +191,15 @@ def apply_veto_matrix(
             if agent == "impact":
                 # impact-analyzer: 모든 등급 차단 / blocks every grade
                 block_reasons.append(f"[impact-analyzer] {reason}")
-            elif agent == "consistency" and grade == "critical":
+            elif agent == "consistency" and grade == "critical" and not r.get("unable_to_verify"):
                 # consistency-reviewer: critical 등급에서만 차단 / blocks only for critical
+                # 🔴 단, **근거를 못 봐서 낸 block 은 강등**한다 (R37-b — 회고 2026-08-04).
+                #    `important` 경로엔 이미 강등이 있었는데 `critical` 에만 없어서, 6-step ⑤
+                #    (STATE 수치 동기화)라는 **의무 절차**가 차단될 수 있었다. "확인 불가" 는
+                #    불일치의 증거가 아니다 — 증거 부재를 차단 근거로 쓰면 게이트가 절차를 막는다.
+                #    impact-analyzer 는 이 강등 대상이 아니다(행동 변화 위험 = 가드 자살 방지).
+                # Blocks raised because the reviewer could not see the evidence are demoted:
+                # absence of evidence is not evidence of mismatch.
                 block_reasons.append(f"[consistency-reviewer] {reason}")
             else:
                 # 그 외: 경고로 강등 / demote to warning
@@ -365,6 +372,20 @@ def _read_agent_prompt(agent: str) -> str:
     return content
 
 
+def _scrub_surrogates(text: str) -> str:
+    """UTF-8 로 인코딩 불가한 lone surrogate 를 제거한다 (R36-b).
+
+    Windows 에서 stdin/파일 경유로 들어온 문자열에 짝 없는 서로게이트(U+D800~U+DFFF)가
+    섞이면 `str` 로는 멀쩡해 보이지만 **전송 시점**에 `UnicodeEncodeError` 로 터진다.
+    실패가 HTTP 계층에서 나므로 3 에이전트가 동시에 죽고, 그 모양이 "네트워크 blip" 과
+    구별되지 않는다 — 이 리포가 2 세션 동안 겪은 무동작의 정체다.
+
+    `errors="replace"` 로 왕복시켜 인코딩 가능한 문자열만 남긴다(정보 손실 < 게이트 사망).
+    Round-trips through UTF-8 so only encodable characters survive.
+    """
+    return text.encode("utf-8", errors="replace").decode("utf-8")
+
+
 async def _call_single_agent(
     client,
     agent: str,
@@ -373,7 +394,15 @@ async def _call_single_agent(
 ) -> dict:
     """에이전트 한 개를 호출하고 JSON 결과를 반환한다.
     Calls a single agent and returns a JSON result dict."""
-    system_prompt = _read_agent_prompt(agent)
+    # 🔴 lone surrogate 정화 — 이것이 게이트를 2 세션 동안 죽여 온 실제 원인이다 (R36-b).
+    #    2026-08-04 라이브: R36 이 예외 원문을 노출하자마자 9회+ 반복된 "에이전트 호출 실패" 가
+    #    자격증명 축이 아니라 `'utf-8' codec can't encode characters … surrogates not allowed`
+    #    였음이 드러났다. httpx 가 요청 본문을 인코딩할 때 터지므로 **3 에이전트가 동시에** 죽고,
+    #    원장은 엉뚱하게 "키 만료/크레딧 재확인" 을 요청하고 있었다.
+    # Sanitise lone surrogates: this is what actually killed the gate for two sessions.
+    system_prompt = _scrub_surrogates(_read_agent_prompt(agent))
+    diff = _scrub_surrogates(diff)
+    context = _scrub_surrogates(context)
     # 🔴 `context` 를 여기서 다시 자르지 않는다 — 예산은 `_load_context()` 가 **파일별로**
     #    한 번만 적용하고 라벨에 비율을 적는다. 이중 절단이 CLAUDE.md 를 10.8% 로 깎고
     #    STATE.md 를 통째로 지우면서도 헤더는 둘 다 있다고 말했다(2026-08-01 실측).
@@ -441,7 +470,14 @@ async def call_agents_parallel(grade: str, diff: str, context: str) -> list[dict
 _CONTEXT_SOURCES: tuple[tuple[str, int], ...] = (
     ("CLAUDE.md", 40000),     # 27.8k — 전문 (정책 1~19 가 여기 있다)
     ("AGENTS.md", 12000),     # 5.3k  — 전문 (가드 3-불변식 SSOT)
-    ("docs/STATE.md", 4000),  # 88k   — 수치만 필요하므로 머리만
+    # 🔴 4000 → 16000 (R37-a, 회고 2026-08-04). 이전 예산은 STATE.md 의 **4%** 만 실어
+    #    형식 `**종합 수치**` 블록(offset ~11.1k)과 pylint 값(~11.2k)이 통째로 잘렸다.
+    #    그 상태로 consistency 에이전트에게 "STATE 수치와 다르면 block" 을 지시하는 것은
+    #    **볼 수 없는 것을 근거로 차단하라**는 모순이다.
+    #    ⚠️ 주 카운트(6607·6778)는 원래도 예산 안이었다(offset 3023·3105) — Grok `019fc81b`
+    #    GROK-4 가 "심의자가 대조 대상 자체를 못 본다" 는 원 서술을 반증했다. 실제는 **부분 실명**.
+    # Raised so the formal aggregate block and pylint value fit; the primary counts always did.
+    ("docs/STATE.md", 16000),  # 91k
 )
 
 

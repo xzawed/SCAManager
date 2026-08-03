@@ -992,3 +992,118 @@ def test_all_agents_inoperative_says_it_reviewed_nothing(monkeypatch, capsys):
     )
     assert "3/3" in banner, f"몇 개가 죽었는지 숫자가 없다:\n{banner}"
     assert "보이는-원인-문구" in banner, f"예외 원문이 사용자에게 도달하지 않는다:\n{banner}"
+
+
+# ── R37 — "확인 불가" 는 차단 사유가 아니다 / inability to verify is not a block reason ──
+#
+# 회고 2026-08-04 P1 + Grok `019fc81b` GROK-4·5.
+# 🔴 원 finding 의 기전 서술("종합수치 라인이 char 11132 라 심의자가 못 본다")은 **반증됐다** —
+#    `6607`@3023 · `6778`@3105 로 주 카운트는 4000자 예산 **안**에 있었다(부분 실명).
+#    실재하는 결함은 두 개다: (a) 예산 밖인 pylint·커버리지 (b) `critical` 등급에서
+#    consistency 의 block 이 **"확인 불가 ⇒ block 아님" 강등 없이** 곧장 deny 로 간다.
+
+
+def test_state_context_budget_reaches_the_aggregate_numbers():
+    """🔴 심의자에게 대조 대상을 **실제로** 보여준다 (R37-a).
+
+    이전 예산(4000자)은 STATE.md 의 4%만 실어, 형식 `**종합 수치**` 블록과 pylint 값이
+    통째로 잘렸다. 그 상태로 consistency 에이전트에게 "STATE 수치와 다르면 block" 을
+    지시하는 것은 **볼 수 없는 것을 근거로 차단하라**는 모순이다.
+    기대 지문은 테스트 쪽에 고정한다 — 피검사 모듈에서 유도하면 원천 삭제 시 공허해진다
+    (guards.md §기대값을 피검사 모듈에서 유도하지 말 것).
+
+    🔴 이 테스트의 초판은 **공허했다**: 컨텍스트 전문에 대해 `"pylint" in ctx` 를 봤는데
+    그 문자열은 CLAUDE.md 구간에도 있어, STATE 예산을 4000 으로 되돌려도 GREEN 이었다.
+    단언은 반드시 **STATE 구간으로 한정**해야 예산 축을 관측한다.
+    The first revision asserted over the whole context, so the fingerprints matched other
+    sources and the STATE budget axis was never observed.
+    """
+    from doc_review_gate import _load_context
+
+    ctx = _load_context()
+    marker = "=== docs/STATE.md"
+    assert marker in ctx, "STATE 원천이 컨텍스트에서 사라졌다"
+
+    # STATE 헤더부터 다음 원천 헤더(또는 끝)까지가 실제로 실린 STATE 구간이다.
+    # Slice the STATE section only — from its header to the next source header.
+    state_section = ctx[ctx.index(marker):]
+    nxt = state_section.find("\n=== ", len(marker))
+    if nxt != -1:
+        state_section = state_section[:nxt]
+
+    assert "종합 수치" in state_section, "형식 종합수치 블록이 예산 밖이다 — 대조 대상을 못 본다"
+    assert "pylint" in state_section, "pylint 값이 예산 밖이다 — 대조 대상을 못 본다"
+
+
+def test_unable_to_verify_block_is_demoted_to_warn():
+    """🔴 근거를 못 봐서 낸 block 은 deny 가 아니라 warn 이다 (R37-b, GROK-5).
+
+    `critical` 등급에서 consistency 의 block 은 곧장 `deny` 로 간다 — `important` 경로에는
+    이미 강등이 있는데(`_agent_label` 아래 else 분기) `critical` 에만 없었다.
+    그 결과 6-step ⑤(STATE 수치 동기화)라는 **의무 절차**가 차단될 수 있다.
+    """
+    results = [{"agent": "consistency", "decision": "block",
+                "reason": "STATE.md 를 볼 수 없어 확인 불가", "unable_to_verify": True}]
+    decision, reasons = apply_veto_matrix("critical", results)
+    assert decision == "warn", "확인 불가가 deny 로 승격됐다 — 의무 절차가 막힌다"
+    assert reasons, "강등해도 사유는 사용자에게 도달해야 한다"
+
+
+def test_unable_to_verify_does_not_soften_a_real_block():
+    """🔴 대조군 — 근거를 보고 낸 block 은 그대로 차단이다 (강등이 게이트를 죽이면 안 된다)."""
+    results = [{"agent": "consistency", "decision": "block",
+                "reason": "STATE 6607 인데 본문은 6600 — 실제 불일치"}]
+    decision, _ = apply_veto_matrix("critical", results)
+    assert decision == "block", "실 불일치까지 강등되면 게이트가 무의미해진다"
+
+
+def test_unable_to_verify_never_softens_impact_analyzer():
+    """🔴 impact-analyzer 의 block 은 모든 등급에서 차단이다 — 행동 변화 위험은 강등 대상이 아니다."""
+    results = [{"agent": "impact", "decision": "block",
+                "reason": "규칙 삭제", "unable_to_verify": True}]
+    decision, _ = apply_veto_matrix("critical", results)
+    assert decision == "block", "impact 차단이 강등됐다 — 가드 자살"
+
+
+# ── R36-b — lone surrogate 가 게이트를 통째로 죽인다 / lone surrogates killed the gate ──
+#
+# 🔴 **라이브 발견 (2026-08-04)**: R36 의 `detail` 노출이 만들어지자마자, 세션14 이후
+#    9회+ 반복된 "에이전트 호출 실패" 의 진짜 원인이 처음으로 보였다:
+#        'utf-8' codec can't encode characters in position 196-198: surrogates not allowed
+#    자격증명 축이 아니었다. 훅이 조립한 프롬프트에 **lone surrogate** 가 섞여 있어
+#    httpx 가 요청 본문을 UTF-8 로 인코딩할 때 터졌고, 3 에이전트가 동일하게 죽었다.
+#    원장이 "키 만료/크레딧 재확인" 을 요청하고 있던 것은 **틀린 가설**이었다.
+#    Exactly the class R36 exists for: the cause was in the discarded exception text.
+
+
+def test_lone_surrogate_in_diff_does_not_kill_the_call():
+    """🔴 서로게이트가 섞인 입력으로도 호출이 조립돼야 한다 (R36-b).
+
+    뮤테이션 관점: 정화를 제거하면 `client.messages.create` 에 도달하기도 전에
+    UnicodeEncodeError 가 나거나, 도달해도 전송 단계에서 죽는다.
+    """
+    import asyncio
+
+    from doc_review_gate import _call_single_agent
+
+    dirty = "정상 텍스트 " + "\ud83d" + " 뒤쪽"   # lone high surrogate
+    captured = {}
+
+    async def _fake_create(**kwargs):
+        captured["user"] = kwargs["messages"][0]["content"]
+        captured["system"] = kwargs["system"]
+        raise RuntimeError("stop — 조립만 관측한다")
+
+    client = MagicMock()
+    client.messages.create = _fake_create
+
+    with patch("doc_review_gate._read_agent_prompt", return_value="sys " + "\udcff"):
+        asyncio.run(_call_single_agent(client, "impact", dirty, "ctx " + "\ud800"))
+
+    for key in ("user", "system"):
+        payload = captured[key]
+        # 🔴 결과가 아니라 **전송 가능성**을 단언한다 — 이 인코딩이 실제 실패 지점이었다.
+        payload.encode("utf-8")   # 서로게이트가 남아 있으면 여기서 UnicodeEncodeError
+        assert not any("\ud800" <= ch <= "\udfff" for ch in payload), (
+            f"{key} 에 lone surrogate 가 남았다 — 전송 시 3 에이전트가 동시에 죽는다"
+        )
