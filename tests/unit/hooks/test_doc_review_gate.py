@@ -1031,7 +1031,10 @@ def test_state_context_budget_reaches_the_aggregate_numbers():
     if nxt != -1:
         state_section = state_section[:nxt]
 
-    assert "종합 수치" in state_section, "형식 종합수치 블록이 예산 밖이다 — 대조 대상을 못 본다"
+    # 🔴 예산 축을 실제로 지는 지문은 `pylint` 뿐이다 (Grok `019fc878` GROK-3 실측):
+    #    `종합 수치`@offset 236 은 4000 **안**이라 예산을 되돌려도 green 이다.
+    #    그래서 아래 두 단언의 역할이 다르다 — 앞은 원천 존재, 뒤가 예산 축이다.
+    assert "종합 수치" in state_section, "STATE 구간이 비었다 (예산 축 아님 — 원천 존재 확인)"
     assert "pylint" in state_section, "pylint 값이 예산 밖이다 — 대조 대상을 못 본다"
 
 
@@ -1107,3 +1110,40 @@ def test_lone_surrogate_in_diff_does_not_kill_the_call():
         assert not any("\ud800" <= ch <= "\udfff" for ch in payload), (
             f"{key} 에 lone surrogate 가 남았다 — 전송 시 3 에이전트가 동시에 죽는다"
         )
+
+
+# ── R37-b fix-up — Grok `019fc878` GROK-2·4 재현 적발분 / defects Grok reproduced ──
+
+
+def test_non_boolean_unable_to_verify_does_not_demote():
+    """🔴 문자열 `"false"` 가 실제 불일치 block 을 강등시켰다 (GROK-2, 실측 재현).
+
+    진리값 검사(`not r.get(...)`)는 LLM 스키마 drift 로 흔한 `"unable_to_verify": "false"`
+    를 **참**으로 읽는다(`not "false"` == False). 그래서 *확인하고* 낸 차단까지 warn 으로
+    떨어졌다 — 내가 fail-open 을 하나 새로 만든 것이다. `is True` 만 인정한다.
+    """
+    for value in ("false", "true", 1, "yes", []):
+        results = [{"agent": "consistency", "decision": "block",
+                    "reason": "STATE 6607 인데 본문은 6600 — 실제 불일치",
+                    "unable_to_verify": value}]
+        decision, _ = apply_veto_matrix("critical", results)
+        assert decision == "block", f"비-불리언 {value!r} 이 실 불일치를 강등시켰다"
+
+
+def test_demotion_keys_on_the_flag_not_the_reason_text():
+    """🔴 강등 판정의 키가 **플래그**임을 고정한다 (GROK-4).
+
+    기존 픽스처는 플래그와 '확인 불가' 문구를 함께 들고 있어, 구현을 `"확인 불가" in reason`
+    substring 으로 바꿔도 전건 green 이었다. 두 축을 갈라 고정한다 — 산문은 판정 키가 아니다.
+    """
+    # (a) 플래그만 있고 문구는 중립 → 강등돼야 한다
+    decision, _ = apply_veto_matrix("critical", [{
+        "agent": "consistency", "decision": "block",
+        "reason": "판단 보류", "unable_to_verify": True}])
+    assert decision == "warn", "플래그가 있는데 강등되지 않았다 — 판정 키가 산문에 달렸다"
+
+    # (b) 문구만 있고 플래그는 없음 → 그대로 차단이어야 한다
+    decision, _ = apply_veto_matrix("critical", [{
+        "agent": "consistency", "decision": "block",
+        "reason": "STATE.md 를 볼 수 없어 확인 불가"}])
+    assert decision == "block", "산문만으로 강등됐다 — 에이전트가 문구로 게이트를 끌 수 있다"

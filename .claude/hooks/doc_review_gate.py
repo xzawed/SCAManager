@@ -191,13 +191,17 @@ def apply_veto_matrix(
             if agent == "impact":
                 # impact-analyzer: 모든 등급 차단 / blocks every grade
                 block_reasons.append(f"[impact-analyzer] {reason}")
-            elif agent == "consistency" and grade == "critical" and not r.get("unable_to_verify"):
+            elif agent == "consistency" and grade == "critical" and r.get("unable_to_verify") is not True:
                 # consistency-reviewer: critical 등급에서만 차단 / blocks only for critical
                 # 🔴 단, **근거를 못 봐서 낸 block 은 강등**한다 (R37-b — 회고 2026-08-04).
                 #    `important` 경로엔 이미 강등이 있었는데 `critical` 에만 없어서, 6-step ⑤
                 #    (STATE 수치 동기화)라는 **의무 절차**가 차단될 수 있었다. "확인 불가" 는
                 #    불일치의 증거가 아니다 — 증거 부재를 차단 근거로 쓰면 게이트가 절차를 막는다.
                 #    impact-analyzer 는 이 강등 대상이 아니다(행동 변화 위험 = 가드 자살 방지).
+                #    🔴 `is True` 만 인정한다 — Grok `019fc878` GROK-2 재현 적발: 진리값
+                #    검사(`not r.get(...)`)는 LLM 스키마 drift 로 흔한 **문자열 `"false"`**
+                #    를 참으로 읽어 **실제 불일치 block 까지 강등**했다(실측). 부재·False·
+                #    비-불리언은 전부 '확인함' 으로 다룬다 (fail-closed 방향).
                 # Blocks raised because the reviewer could not see the evidence are demoted:
                 # absence of evidence is not evidence of mismatch.
                 block_reasons.append(f"[consistency-reviewer] {reason}")
