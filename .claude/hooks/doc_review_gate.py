@@ -390,6 +390,44 @@ def _scrub_surrogates(text: str) -> str:
     return text.encode("utf-8", errors="replace").decode("utf-8")
 
 
+def prompt_cache_disabled() -> bool:
+    """DISABLE_PROMPT_CACHE=1 시 True — 앱(`src/shared/anthropic_caching.py`)과 같은 opt-out.
+    Same opt-out switch the app uses, so one env var disables caching everywhere."""
+    return os.environ.get("DISABLE_PROMPT_CACHE", "").strip().lower() in ("1", "true", "yes")
+
+
+def build_system_blocks(context: str, agent_prompt: str) -> list[dict]:
+    """system 인자 = [공유 컨텍스트(캐시 breakpoint), 에이전트별 지시].
+
+    🔴 **순서가 절반이다.** 캐시는 프리픽스 매칭이라, 캐시하려는 부분이 **가변 부분보다
+    앞**에 있어야 한다. 3 에이전트가 공유하는 것은 컨텍스트뿐이고(에이전트 지시는 서로
+    다르다), 매 편집마다 달라지는 것은 diff 다. 그래서:
+        system[0] = 컨텍스트  ← breakpoint (3 에이전트 · 연속 편집이 함께 재사용)
+        system[1] = 에이전트별 지시
+        user      = diff (캐시 밖)
+    이전 판은 diff 를 user 맨 앞에 두고 컨텍스트를 그 뒤에 뒀다 — 그 배치는
+    `cache_control` 을 붙여도 **원리적으로 히트가 불가능**하다.
+
+    Ordering is half the fix: the shared, stable context must precede the per-edit diff.
+
+    🔴 렌더 순서는 `tools → system → messages` 이고 `cache_control` 은 **그 블록까지의
+    프리픽스 전체**를 캐시한다. 따라서 breakpoint 를 system[0] 에 걸면 캐시 구간은
+    정확히 '컨텍스트' 하나이고, 3 에이전트가 **같은 캐시 항목 하나**를 공유한다.
+    (system[1] 에 걸면 에이전트마다 별개 항목이 되어 공유가 깨진다.)
+
+    🔴 최소 캐시 길이 = **4096 토큰**(claude-haiku-4-5 — 전 모델 중 가장 큰 값). 미달이면
+    오류 없이 조용히 캐시되지 않는다. 실측 컨텍스트 53,587자로 여유 있게 상회한다 —
+    `_CONTEXT_SOURCES` 예산을 줄일 때 이 하한을 함께 확인할 것.
+
+    opt-out: `DISABLE_PROMPT_CACHE=1` (cache_control 미부착).
+    """
+    blocks: list[dict] = [{"type": "text", "text": f"## 참조 컨텍스트\n{context}"}]
+    if not prompt_cache_disabled():
+        blocks[0]["cache_control"] = {"type": "ephemeral"}
+    blocks.append({"type": "text", "text": agent_prompt})
+    return blocks
+
+
 async def _call_single_agent(
     client,
     agent: str,
@@ -407,13 +445,21 @@ async def _call_single_agent(
     system_prompt = _scrub_surrogates(_read_agent_prompt(agent))
     diff = _scrub_surrogates(diff)
     context = _scrub_surrogates(context)
+    # 🔴 프롬프트 캐시 — 렌더 순서는 tools → system → messages 이고, cache_control 은
+    #    **그 블록까지의 프리픽스 전체**를 캐시한다. 그래서 3 에이전트가 공유하는
+    #    컨텍스트를 system 첫 블록에 두고 거기에 breakpoint 를 건다 (R38).
+    # Cache the shared context as the first system block: the cached prefix then contains
+    # exactly the part all three agents have in common.
+    system_blocks = build_system_blocks(context, system_prompt)
     # 🔴 `context` 를 여기서 다시 자르지 않는다 — 예산은 `_load_context()` 가 **파일별로**
     #    한 번만 적용하고 라벨에 비율을 적는다. 이중 절단이 CLAUDE.md 를 10.8% 로 깎고
     #    STATE.md 를 통째로 지우면서도 헤더는 둘 다 있다고 말했다(2026-08-01 실측).
     # Do not re-truncate: the budget is applied once, per source, and labelled there.
+    # 🔴 컨텍스트는 system 으로 옮겼다 — user 에는 **매번 달라지는 diff 만** 남긴다.
+    #    캐시는 프리픽스 매칭이라 가변 부분이 앞에 있으면 그 뒤가 전부 무효화된다.
+    # The varying diff must come after the cached prefix, or nothing caches.
     user_msg = (
         f"## 변경 내용 (diff)\n{diff[:_DIFF_BUDGET]}\n\n"
-        f"## 참조 컨텍스트\n{context}\n\n"
         "위 변경을 검토하고 JSON으로만 응답하세요."
     )
     try:
@@ -421,7 +467,7 @@ async def _call_single_agent(
             client.messages.create(
                 model=_HAIKU_MODEL,
                 max_tokens=512,
-                system=system_prompt,
+                system=system_blocks,
                 messages=[{"role": "user", "content": user_msg}],
             ),
             timeout=_AGENT_TIMEOUT,
