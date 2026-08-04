@@ -390,21 +390,68 @@ def _scrub_surrogates(text: str) -> str:
     return text.encode("utf-8", errors="replace").decode("utf-8")
 
 
+def corrupted(text: str) -> bool:
+    """디코드 손상 여부 — U+FFFD **또는** lone surrogate.
+
+    🔴 둘 다 봐야 한다. `errors="replace"` 는 잘못된 바이트를 U+FFFD 로 바꾸지만,
+    JSON 의 `\\uD800` 형태 이스케이프는 `json.loads` 를 그대로 통과해 **서로게이트로**
+    남고, 나중에 `_scrub_surrogates` 가 U+FFFD 로 바꾼다. 즉 U+FFFD 만 검사하면 그
+    경로는 검사 시점에 아직 보이지 않아 놓친다 (Grok `019fcd57` 적발).
+    Check both: replacement chars, and lone surrogates that only become U+FFFD later.
+    """
+    return "�" in text or any("\ud800" <= ch <= "\udfff" for ch in text)
+
+
+def cache_usage(msg) -> dict:
+    """응답의 캐시 회계를 뽑는다 — `{"write": n, "read": n}`.
+
+    🔴 이 값이 없으면 캐시가 **조용히 죽어도 아무도 모른다**. 실제 위험 경로:
+    `_CONTEXT_SOURCES` 예산을 줄여 프리픽스가 claude-haiku-4-5 의 최소 캐시 길이
+    (4096 토큰) 아래로 내려가면, API 는 오류를 내지 않고 그냥 캐시하지 않는다
+    (Grok `019fcd10` 지적 — 신규 테스트가 usage 를 전혀 보지 않았다).
+    Without this the cache can die silently — the API does not error below the minimum.
+    """
+    u = getattr(msg, "usage", None)
+    return {
+        "write": getattr(u, "cache_creation_input_tokens", 0) or 0,
+        "read": getattr(u, "cache_read_input_tokens", 0) or 0,
+    }
+
+
+def cache_looks_dead(results: list[dict]) -> bool:
+    """캐시 회계를 보고 **한 번도 캐시되지 않았는지** 판정한다.
+
+    쓰기도 읽기도 0 이면 프리픽스가 아예 캐시 대상이 아니었다는 뜻이다(최소 길이 미달
+    등). 회계가 하나도 없으면(전건 호출 실패) 판정하지 않는다 — 그 상황은 R36 배너 소관이고,
+    여기서 단정하면 **다른 고장을 캐시 고장으로 오진**한다.
+    Only claims death when at least one call actually reported usage.
+    """
+    # 🔴 opt-out 은 고장이 아니다 — `DISABLE_PROMPT_CACHE=1` 이면 마커를 일부러 떼므로
+    #    회계가 0/0 인 것이 정상이다. 이 분기가 없으면 **의도한 설정을 사고로 보고**한다
+    #    (Grok `019fcd57` verdict-B 적발).
+    # Opting out is not a failure: 0/0 is the expected accounting when markers are removed.
+    if prompt_cache_disabled():
+        return False
+    seen = [r["_usage"] for r in results if isinstance(r.get("_usage"), dict)]
+    return bool(seen) and all(u["write"] == 0 and u["read"] == 0 for u in seen)
+
+
 def prompt_cache_disabled() -> bool:
     """DISABLE_PROMPT_CACHE=1 시 True — 앱(`src/shared/anthropic_caching.py`)과 같은 opt-out.
     Same opt-out switch the app uses, so one env var disables caching everywhere."""
     return os.environ.get("DISABLE_PROMPT_CACHE", "").strip().lower() in ("1", "true", "yes")
 
 
-def build_system_blocks(context: str, agent_prompt: str) -> list[dict]:
+def build_system_blocks(context: str, agent_prompt: str, volatile_context: str = "") -> list[dict]:
     """system 인자 = [공유 컨텍스트(캐시 breakpoint), 에이전트별 지시].
 
     🔴 **순서가 절반이다.** 캐시는 프리픽스 매칭이라, 캐시하려는 부분이 **가변 부분보다
     앞**에 있어야 한다. 3 에이전트가 공유하는 것은 컨텍스트뿐이고(에이전트 지시는 서로
     다르다), 매 편집마다 달라지는 것은 diff 다. 그래서:
-        system[0] = 컨텍스트  ← breakpoint (3 에이전트 · 연속 편집이 함께 재사용)
-        system[1] = 에이전트별 지시
-        user      = diff (캐시 밖)
+        system[0]  = 안정 컨텍스트  ← breakpoint 1 (3 에이전트 · 연속 편집이 함께 재사용)
+        system[1]  = 가변 컨텍스트  ← breakpoint 2 (`volatile_context` 가 있을 때만 존재)
+        system[-1] = 에이전트별 지시 (항상 마지막 — volatile 유무로 index 가 1↔2 로 바뀐다)
+        user       = diff (캐시 밖)
     이전 판은 diff 를 user 맨 앞에 두고 컨텍스트를 그 뒤에 뒀다 — 그 배치는
     `cache_control` 을 붙여도 **원리적으로 히트가 불가능**하다.
 
@@ -421,9 +468,22 @@ def build_system_blocks(context: str, agent_prompt: str) -> list[dict]:
 
     opt-out: `DISABLE_PROMPT_CACHE=1` (cache_control 미부착).
     """
+    cache_on = not prompt_cache_disabled()
     blocks: list[dict] = [{"type": "text", "text": f"## 참조 컨텍스트\n{context}"}]
-    if not prompt_cache_disabled():
+    if cache_on:
         blocks[0]["cache_control"] = {"type": "ephemeral"}
+    # 🔴 가변 원천(STATE.md)은 **별도 블록 + 자체 breakpoint**. 두 번째 breakpoint 덕에
+    #    STATE 가 바뀐 편집에서도 앞의 안정 블록은 그대로 히트하고, 재처리 범위가
+    #    전체 ≈34.7k 에서 STATE 분(≈10k)으로 줄어든다. 안 바뀐 편집에서는 둘 다 히트해
+    #    이전과 동일하다 — 즉 어느 쪽으로도 나빠지지 않는다 (Grok `019fcd10` 잔여 (2)).
+    #    breakpoint 는 요청당 최대 4개이고 여기서는 2개를 쓴다.
+    # Second breakpoint after the volatile source: a STATE edit no longer invalidates the
+    # stable prefix, and a non-STATE edit still hits both. Strictly better in both cases.
+    if volatile_context:
+        vol: dict = {"type": "text", "text": f"## 참조 컨텍스트 (변동)\n{volatile_context}"}
+        if cache_on:
+            vol["cache_control"] = {"type": "ephemeral"}
+        blocks.append(vol)
     blocks.append({"type": "text", "text": agent_prompt})
     return blocks
 
@@ -433,6 +493,7 @@ async def _call_single_agent(
     agent: str,
     diff: str,
     context: str,
+    volatile_context: str = "",
 ) -> dict:
     """에이전트 한 개를 호출하고 JSON 결과를 반환한다.
     Calls a single agent and returns a JSON result dict."""
@@ -450,7 +511,8 @@ async def _call_single_agent(
     #    컨텍스트를 system 첫 블록에 두고 거기에 breakpoint 를 건다 (R38).
     # Cache the shared context as the first system block: the cached prefix then contains
     # exactly the part all three agents have in common.
-    system_blocks = build_system_blocks(context, system_prompt)
+    system_blocks = build_system_blocks(context, system_prompt,
+                                        _scrub_surrogates(volatile_context))
     # 🔴 `context` 를 여기서 다시 자르지 않는다 — 예산은 `_load_context()` 가 **파일별로**
     #    한 번만 적용하고 라벨에 비율을 적는다. 이중 절단이 CLAUDE.md 를 10.8% 로 깎고
     #    STATE.md 를 통째로 지우면서도 헤더는 둘 다 있다고 말했다(2026-08-01 실측).
@@ -472,6 +534,7 @@ async def _call_single_agent(
             ),
             timeout=_AGENT_TIMEOUT,
         )
+        usage = cache_usage(msg)
         text = msg.content[0].text
         # 🔴 응답이 출력 예산에서 잘렸으면 그것은 **판정이 아니다** (R35 — 회고 2026-08-04 P0).
         #    이전 판은 `stop_reason` 을 읽지 않고 잘린 JSON 을 파싱 실패로 흘려보낸 뒤
@@ -480,7 +543,8 @@ async def _call_single_agent(
         # A truncated reply is not a verdict: the old code turned it into an approval, so the
         # more a reviewer had to say, the likelier the gate passed it silently.
         if getattr(msg, "stop_reason", None) == "max_tokens":
-            return _inoperative(agent, "응답 절단(max_tokens) — 미심의", text[:200])
+            return {**_inoperative(agent, "응답 절단(max_tokens) — 미심의", text[:200]),
+                    "_usage": usage}
         # 코드 블록 추출 우선, 없으면 전체 텍스트에서 JSON 파싱 시도
         # Prefer code block extraction; fall back to parsing the full text
         code_match = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
@@ -488,11 +552,13 @@ async def _call_single_agent(
         try:
             parsed = json.loads(candidate)
             parsed["agent"] = agent
+            parsed["_usage"] = usage
             return parsed
         except (json.JSONDecodeError, ValueError):
             # 🔴 파싱 실패 = 심의 결과를 **받지 못한 것**이다. 승인이 아니다 (R35).
             # Parse failure means no verdict was received — that is not an approval.
-            return _inoperative(agent, "응답 파싱 실패 — 미심의", text[:200])
+            return {**_inoperative(agent, "응답 파싱 실패 — 미심의", text[:200]),
+                    "_usage": usage}
     except Exception as exc:  # pylint: disable=broad-exception-caught
         # 🔴 예외 원문(`detail`)을 보존한다 — 세션14 가 8회+ 겪은 전건 실패의 원인을
         #    아무도 몰랐던 이유가 이 문자열이 출력에서 버려졌기 때문이다 (R36).
@@ -501,13 +567,15 @@ async def _call_single_agent(
         return _inoperative(agent, "에이전트 호출 실패", str(exc))
 
 
-async def call_agents_parallel(grade: str, diff: str, context: str) -> list[dict]:
+async def call_agents_parallel(grade: str, diff: str, context: str,
+                               volatile_context: str = "") -> list[dict]:
     """3개 에이전트를 병렬로 호출하고 결과 목록을 반환한다.
     Calls all three agents in parallel and returns a list of result dicts."""
     # 🔴 선점검과 **같은 원천**을 쓴다 — 갈라지면 `.env` 전용 키가 조용히 죽는다(위 `_credentials`).
     # Same source as the preflight; divergence silently killed `.env`-only keys.
     client = anthropic.AsyncAnthropic(**_credentials())
-    tasks = [_call_single_agent(client, agent, diff, context) for agent in _AGENT_NAMES]
+    tasks = [_call_single_agent(client, agent, diff, context, volatile_context)
+             for agent in _AGENT_NAMES]
     raw = await asyncio.gather(*tasks, return_exceptions=False)
     return list(raw)
 
@@ -549,24 +617,55 @@ def _load_context() -> str:
     "못 본 부분이 있다" 를 알 수 있게 한다.
     Rule documents are passed whole; any truncation states its own coverage in the label.
     """
+    return "\n\n".join(text for _rel, text in load_context_parts())
+
+
+# 🔴 편집마다 바뀌는 원천 — 캐시 프리픽스에서 **분리**한다 (Grok `019fcd10` 잔여 (2)).
+#    STATE.md 는 trailing sync 마다 바뀌므로 한 덩어리에 섞으면 그 한 번의 편집이
+#    안정 원천(CLAUDE.md·AGENTS.md ≈24.7k 토큰)까지 통째로 무효화한다.
+# Sources that change often; kept out of the stable cache block.
+_VOLATILE_SOURCES: frozenset[str] = frozenset({"docs/STATE.md"})
+
+
+def load_context_parts() -> list[tuple[str, str]]:
+    """`(상대경로, 렌더된 텍스트)` 목록 — 호출부가 안정/가변 원천을 나눌 수 있게 한다.
+
+    문자열 하나로 합쳐 돌려주면 호출부가 그 문자열을 **다시 파싱**해야 나눌 수 있고,
+    그건 자기 출력 형식에 의존하는 취약한 결합이다. 그래서 나누기 전 형태로 준다.
+    Returns parts so callers can split stable/volatile without re-parsing our own output.
+    """
     project_root = _HOOKS_DIR.parent.parent
-    parts = []
+    parts: list[tuple[str, str]] = []
     for rel, budget in _CONTEXT_SOURCES:
         path = project_root / rel
         if not path.exists():
             # 침묵 누락 금지 — 없으면 없다고 말한다 / never drop a source silently
-            parts.append(f"=== {rel} — 파일 없음(이 근거 없이 판정됨) ===")
+            parts.append((rel, f"=== {rel} — 파일 없음(이 근거 없이 판정됨) ==="))
             continue
         content = path.read_text(encoding="utf-8")
         if len(content) <= budget:
-            parts.append(f"=== {rel} (전문 {len(content)}자) ===\n{content}")
+            parts.append((rel, f"=== {rel} (전문 {len(content)}자) ===\n{content}"))
         else:
             pct = budget / len(content)
-            parts.append(
+            parts.append((rel, (
                 f"=== {rel} (앞 {budget}자 / 전체 {len(content)}자 = {pct:.0%}만 포함, "
                 f"나머지는 못 봄) ===\n{content[:budget]}"
-            )
-    return "\n\n".join(parts)
+            )))
+    return parts
+
+
+def split_context() -> tuple[str, str]:
+    """컨텍스트를 `(안정, 가변)` 으로 나눈다 — 캐시 무효화 범위를 줄이기 위해.
+
+    가변 원천(`_VOLATILE_SOURCES`)이 바뀌어도 안정 블록의 캐시는 살아남는다.
+    반대로 가변 원천을 아예 빼면 심의자가 STATE 수치 정합을 못 보게 되므로(R37 이
+    되돌린 축) 빼지 않고 **분리만** 한다.
+    Split rather than drop: dropping STATE would blind the consistency reviewer.
+    """
+    parts = load_context_parts()
+    stable = "\n\n".join(t for rel, t in parts if rel not in _VOLATILE_SOURCES)
+    volatile = "\n\n".join(t for rel, t in parts if rel in _VOLATILE_SOURCES)
+    return stable, volatile
 
 
 # ─── 출력 포맷 ────────────────────────────────────────────────────────────────
@@ -703,7 +802,14 @@ def main() -> None:
 
     try:
         data = read_payload()
-    except Exception:  # pylint: disable=broad-exception-caught
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        # 🔴 payload 를 못 읽으면 심의는 **일어나지 않는다**. 이전 판은 그것을 조용한
+        #    exit 0 으로 처리했다 — 편집은 통과하는데 아무도 그 사실을 몰랐다(R35/R36 클래스).
+        #    차단은 하지 않는다(파일 경로조차 모르므로 판정 근거가 없고, 전 편집 차단은
+        #    가드 자살이다 — 정책 17). 대신 **말한다**.
+        # Never silently allow: we cannot review, so say so instead of exiting mute.
+        _emit_advisory("[문서 심의] INOPERATIVE — payload 판독 실패로 심의하지 않음 "
+                       f"(detail: {type(exc).__name__}: {exc})")
         sys.exit(0)
 
     tool_input = data.get("tool_input", {})
@@ -732,6 +838,16 @@ def main() -> None:
         new = tool_input.get("new_string", "") or tool_input.get("content", "") or ""
         diff = f"파일: {file_path}\n\n--- 이전 ---\n{old}\n\n+++ 이후 +++\n{new}"
 
+    # 🔴 디코드 손상 감지 — `errors="replace"` 는 잘못된 바이트를 U+FFFD 로 바꾸므로
+    #    **예외 없이** 손상된 텍스트가 심의에 들어갈 수 있다. 손상된 diff 를 정상 심의로
+    #    취급하면 mojibake 사고(R49)의 조용한 재판이 된다 — 차단 대신 고지한다.
+    # `errors="replace"` corrupts silently; announce it rather than reviewing garbage as if fine.
+    if corrupted(diff):
+        _emit_advisory("[문서 심의] DEGRADED — diff 에 디코드 손상(U+FFFD 또는 lone "
+                       "surrogate)이 있어 심의자가 원문을 그대로 보지 못한다. "
+                       "🔴 차단하지 않고 심의는 계속한다 — 손상 사실을 알린 뒤의 판정이므로 "
+                       "판정을 그대로 신뢰하지 말 것")
+
     # 🔴 자격증명 선점검 — 없으면 심의는 **원리적으로 불가**하므로, 3 에이전트를 호출해
     #    똑같은 실패 3줄을 내는 대신 그 사실 자체를 말한다(위 배너 주석의 사고 참조).
     # Preflight: without credentials no review is possible, so say that instead of three
@@ -740,9 +856,18 @@ def main() -> None:
         _emit_advisory(_NO_CREDENTIALS_BANNER)
         sys.exit(0)
 
-    context = _load_context()
-    results = asyncio.run(call_agents_parallel(grade, diff, context))
+    stable_context, volatile_context = split_context()
+    results = asyncio.run(
+        call_agents_parallel(grade, diff, stable_context, volatile_context)
+    )
     decision, reasons = apply_veto_matrix(grade, results)
+
+    # 🔴 캐시가 조용히 죽으면 비용이 조용히 10배가 된다 — 그 침묵을 깬다 (R38 잔여 (c)).
+    # A silently dead cache is a silent 10x cost; break the silence.
+    if cache_looks_dead(results):
+        _emit_advisory("[문서 심의] 프롬프트 캐시 미동작 — 쓰기·읽기 모두 0. "
+                       "프리픽스가 최소 캐시 길이(claude-haiku-4-5 = 4096 토큰) 아래로 "
+                       "내려갔는지 `_CONTEXT_SOURCES` 예산을 확인할 것")
 
     # 🔴 전건 미심의는 판정 흐름을 타지 않는다 — 고유 배너로 그 사실 자체를 말한다 (R36).
     #    부분 미심의(1~2/3)는 아래 warn 경로가 사유 목록에 그대로 싣는다.
