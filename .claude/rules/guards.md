@@ -260,6 +260,42 @@ py -3 scripts/check_claim_review_trace.py
 🔴 그리고 본문만 고쳐서는 required check 가 갱신되지 않는다(backlog R34, 2회 실측) —
 **커밋을 하나 더 밀어야** 한다.
 
+## 🔴 LLM 응답 형식은 **부탁이 아니라 스키마로** 강제한다 (R51 — 2026-08-05)
+
+프롬프트에 *"유효한 JSON 한 블록만 출력하라"* 고 적는 것과, API 에 스키마를 강제하는 것은
+다르다. 이 리포가 기록해 온 드리프트는 전부 전자의 한계였다 — 키 누락 · 범례 밖 값
+`"maybe"` · 진리값 자리의 문자열 `"false"` · `[]` 대신 `null`.
+
+- **방법**: `output_config={"format": {"type": "json_schema", "schema": …}}`.
+  object 는 `additionalProperties: false` + 전 필드 `required` 가 **API 계약**이고,
+  `minLength` 같은 수치·문자열 제약은 미지원이다.
+- 🔴 **지원 여부는 문서 표가 아니라 Models API 로 확인할 것** — 캐시된 표에는 빠져 있던
+  모델이 실제로는 지원했다(2026-08-05 실측: `claude-haiku-4-5`·`claude-sonnet-4-6`·
+  `claude-sonnet-5` 전부 `capabilities.structured_outputs.supported = true`).
+  `client.models.retrieve(<id>).capabilities` 가 정본이다.
+- 🔴 **스키마가 닫는 것은 '스키마 축' 하나뿐이다** — 응답 절단(`stop_reason=max_tokens`),
+  호출 실패, 빈 결과는 그대로 열려 있다. 그래서 R35/R36 방어를 **지우지 않는다**.
+  구조화 출력은 방어의 대체물이 아니라 **재발 동인의 제거**다.
+- 🔴 **기대값을 피검사 모듈에서 유도하지 말 것** — 스키마의 `enum` 을
+  `list(_LEGAL_DECISIONS)` 로 단언하면 그 상수를 비워도 초록이다. 테스트는 리터럴
+  `["approve", "warn", "block"]` 로 못박는다(`test_schema_pins_the_legal_decisions_literally`).
+- 🔴 **스키마가 캐시 회계에 들어간다 (2026-08-05 실측)** — 적용 후 `cache_creation_input_tokens`
+  가 갈렸다: 같은 3-필드 스키마인 impact·quality 는 **둘 다 `34,974`**, 필드가 하나 많은
+  consistency 만 `35,004`. **크기가 다르면 프리픽스가 다르다 = 엔트리가 갈린다.**
+  (역은 성립하지 않는다 — 같은 크기라고 같은 엔트리라는 보장은 없다. `usage` 에 엔트리
+  식별자가 없기 때문이다.)
+  🔴 **경쟁 가설을 배제한 근거**(Grok `019fcdab` 가 "스키마 말고 에이전트 프롬프트 차이일 수
+  있다" 고 반박): 에이전트 프롬프트는 impact `1,997B` · quality `2,124B` · consistency
+  `3,845B` 로 **셋 다 다르다**. 프롬프트가 회계에 들어갔다면 impact≠quality 여야 하는데
+  둘은 **정확히 같았고**, consistency 의 초과분은 프롬프트 차이(≈1.8KB)가 아니라 필드
+  하나(**+30 토큰**) 규모였다. 관측은 스키마 가설과만 일치한다.
+  🔴 **측정 출처의 한계**: 임시 계측으로 얻은 값이고 그 계측은 커밋하지 않았다 — 리포
+  트리만으로는 재현되지 않는다(Grok verdict-C 지적 수용). 재측정하려면 훅에
+  `cache_usage()` 결과를 일시적으로 덤프해야 한다.
+  즉 에이전트별 스키마는 캐시 엔트리를 늘린다. 그럼에도 **스키마를 통일하지 않았다** —
+  통일하면 impact·quality 에게 자기 프롬프트에 없는 필드를 만들라고 시키게 된다.
+  캐시 엔트리 하나보다 프롬프트 정직성이 우선이다(비용: 5분 창당 쓰기 1회 추가).
+
 ## 🔴 훅 **입력** 디코딩 — `json.load(sys.stdin)` 금지 (2026-08-04)
 
 아래 "훅 출력 채널" 규칙의 **입력 쪽 짝**이다. 출력이 Claude 에게 닿는지를 그 규칙이 다루듯,
