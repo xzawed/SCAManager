@@ -131,6 +131,32 @@ PR 본문만 고쳤을 때 CI 를 다시 돌리려고 워크플로를 추가한�
   것을 검증하고도 초록이 된다. 형태 가드: `test_claim_review_body_edit_workflow.py`.
 - `gh run rerun` 은 **원래 이벤트 payload**(옛 본문)를 재생하므로 본문 수정 검증에 쓸 수 없다.
 
+## 🔴 훅 **입력** 디코딩 — `json.load(sys.stdin)` 금지 (2026-08-04)
+
+아래 "훅 출력 채널" 규칙의 **입력 쪽 짝**이다. 출력이 Claude 에게 닿는지를 그 규칙이 다루듯,
+이 규칙은 **입력이 훅에게 온전히 닿는지**를 다룬다.
+
+`json.load(sys.stdin)` 는 텍스트 모드라 인터프리터의 stdin 인코딩에 의존한다.
+**실훅 자식 프로세스 계측 (2026-08-04)**: `stdin.encoding=cp949` · `errors=surrogateescape` ·
+`utf8_mode=0` · `PYTHONUTF8`/`PYTHONIOENCODING` 미설정. 결과가 둘 겹친다 —
+(1) 한글이 **mojibake** 가 되고(`'문서 정합 가드'` 8자 → 13자), (2) 디코드 불가 바이트가
+**lone surrogate** 로 escape 돼 이후 httpx UTF-8 인코딩에서 터진다.
+
+- **정답**: `getattr(sys.stdin, "buffer", sys.stdin).read()` 로 바이트를 읽어 UTF-8 로 직접
+  디코드(`doc_review_gate.read_payload`). `.buffer` 부재(StringIO 패치)는 텍스트 폴백.
+- 🔴 **`#1276` 과의 관계**: 그 PR 이 봉인한 lone surrogate 의 **발생원이 이 디코드였다**.
+  `_scrub_surrogates` 는 증상을 지웠고 원인은 남아 있었다 — 그래서 mojibake 심의가 계속됐다.
+- 🔴 **진단 절차 — 반드시 실훅을 계측한다**: 셸에서 손으로 띄운 python 은 다른 환경이다
+  (부모가 `PYTHONUTF8` 을 심으면 값이 달라진다). 훅 안에서 `sys.stdin.encoding` ·
+  `sys.flags.utf8_mode` · 원문 길이를 파일로 덤프한 뒤 실제 편집을 1회 발생시켜 읽는다.
+  이번에도 셸 측정과 Grok 측정이 엇갈렸고, **실훅 계측만이 결판을 냈다**.
+- 🔴 **왕복 착시**: 잘못 디코드한 문자열을 같은 잘못된 인코딩으로 출력하면 원 바이트가
+  복원된다 — "출력이 멀쩡하다" 는 증거가 아니다. **길이·코드포인트로 단언**할 것.
+- 회귀 가드: `tests/unit/hooks/test_doc_review_gate.py::TestReadPayload` — 뮤테이션 4종
+  (배선 되돌림 · **죽은 호출** · `json.loads(sys.stdin.read())` 한 글자 우회 · 텍스트 모드 읽기)
+  전부 red. AST 존재 검사만으로는 죽은 호출이 통과하므로 **에이전트에 닿는 diff 를 직접
+  검사하는 E2E 단언**을 함께 둔다.
+
 ## 🔴 훅 출력 채널 — `print()` 는 Claude 에게 도달하지 않는다 (2026-08-01 공식 계약 확인)
 
 **PreToolUse/PostToolUse 훅의 plain stdout 은 디버그 로그로만 간다.** exit 0 의 stdout 이
