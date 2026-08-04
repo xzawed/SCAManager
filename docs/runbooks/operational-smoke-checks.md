@@ -203,6 +203,14 @@ make test-e2e
 ### 8.4 정책 13 본문 (CLAUDE.md §정책 13) 자동화 가드 인용 정합
 
 manual smoke (3-endpoint) ↔ 자동화 가드 (integration 10 + e2e 21 = test_dashboard 14 + test_theme_mobile_guards 7) 상호 보완 관계:
+
+> 🔴 **아래 표의 e2e 열은 "실행됨" 을 뜻하지 실패 여부를 뜻하지 않는다 (2026-08-05 실측 갱신)**.
+> `#1288` 이 e2e 122건을 CI 에 배선한 결과 **Linux 에서 30건이 실패**한다 — 이 표가 인용하는
+> `test_dashboard`(3 실패) · `test_theme_mobile_guards`(6 실패) · `test_dashboard_insight`(2 실패)
+> 도 포함이다. 배선 전에는 **manual 0회 × automation 미실행 = 양 열 공백**(R47-(c))이었고,
+> 지금은 **automation 이 실행되되 일부가 빨강**이다. 즉 이 열을 근거로 *"자동으로 지켜지고 있다"*
+> 고 읽으면 안 된다 — 해당 행은 여전히 manual 확인이 필요하다. 잔여 = backlog **R52**.
+
 | 영역 | manual (정책 13 default) | 자동화 (PR #208 + #212) |
 |------|----------------------|----------------|
 | /health | curl | TestSmokeCheckMinimal |
