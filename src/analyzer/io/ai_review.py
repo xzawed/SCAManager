@@ -19,6 +19,7 @@ import anthropic
 
 from src.analyzer.pure.review_prompt import (
     MAX_DIFF_CHARS,
+    REVIEW_RESPONSE_SCHEMA,
     build_review_prompt,
     get_system_prompt,
 )
@@ -145,6 +146,14 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
             model=model,
             max_tokens=max_output_tokens,
             system=build_cached_system_param(system_text),
+            # 🔴 응답 형식을 프롬프트로 부탁하지 않고 스키마로 강제한다 (backlog R51).
+            #    닫히는 것은 **스키마 축뿐**이다 — 응답 절단(max_tokens)·호출 실패·
+            #    점수 범위 이탈은 그대로 열려 있고 아래 `_parse_response`/`_coerce_score`
+            #    방어가 계속 맡는다. 즉 스키마는 방어의 대체물이 아니라 재발 동인 제거다.
+            # Enforce the response shape via schema; truncation/failure/range guards stay.
+            output_config={
+                "format": {"type": "json_schema", "schema": REVIEW_RESPONSE_SCHEMA}
+            },
             messages=[{"role": "user", "content": prompt}],
         )
         duration_ms = (time.perf_counter() - start) * 1000

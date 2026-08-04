@@ -211,6 +211,28 @@ class Settings(BaseSettings):
             v += ('&' if parsed.query else '?') + 'sslmode=require'
         return v
 
+    @field_validator("claude_review_model", "claude_insight_model", mode="before")
+    @classmethod
+    def _blank_model_falls_back_to_default(cls, v, info):
+        """빈 환경변수를 **미설정**으로 취급한다 — 빈 값이 기본값을 덮지 않게.
+
+        🔴 실측 사고 (2026-08-05, 라이브 호출로만 발견): `.env` 의 `CLAUDE_REVIEW_MODEL=`
+        (값 없음)이 기본값 `claude-sonnet-4-6` 을 **빈 문자열로 덮어써**, 모든 AI 리뷰가
+        `400 model: String should have at least 1 character` 로 죽고 `api_error` 로
+        기록됐다. pydantic-settings 는 `""` 도 **제공된 값**으로 보기 때문이다.
+
+        🔴 이 클래스가 위험한 이유: 변수를 "비워 두는 것" 은 사람에게 *미설정* 으로
+        읽히지만 기계에는 *빈 문자열 설정* 이다. 단위 테스트는 env 를 안 읽으니 초록이고,
+        고장은 **실 API 호출에서만** 드러난다.
+        A blank env var reads as "unset" to humans but is a provided empty string to
+        pydantic-settings; unit tests never see it and only a live call fails.
+        """
+        if isinstance(v, str) and not v.strip():
+            # 기본값 리터럴을 여기 복제하지 않는다 — 필드 정의에서 가져와 단일 출처 유지.
+            # Read the default from the field definition instead of duplicating the literal.
+            return cls.model_fields[info.field_name].default
+        return v
+
     @field_validator("session_secret")
     @classmethod
     def validate_session_secret(cls, v: str) -> str:

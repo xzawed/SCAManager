@@ -822,6 +822,13 @@ async def _call_insight_claude_api(
             model=model,
             max_tokens=1500,
             system=build_cached_system_param(_INSIGHT_SYSTEM_PROMPT),
+            # 🔴 응답 형식을 스키마로 강제 (backlog R51) — 위 프롬프트가 선언하는 4 카드와
+            #    같은 계약이다. 닫히는 것은 스키마 축뿐이고, non-dict·null 배열 방어
+            #    (`_parse_insight_cards`)는 절단·호출실패를 위해 그대로 둔다.
+            # Schema-enforced shape; the non-dict/null guards below stay for truncation/failure.
+            output_config={
+                "format": {"type": "json_schema", "schema": _INSIGHT_RESPONSE_SCHEMA}
+            },
             messages=[{"role": "user", "content": user_prompt}],
         )
         duration_ms = (time.perf_counter() - start) * 1000
@@ -853,6 +860,34 @@ async def _call_insight_claude_api(
         )
         logger.exception("insight_narrative API call failed, returning api_error")
         return None
+
+
+# 🔴 insight 4 카드 응답 스키마 (구조화 출력, backlog R51) — 위 `_INSIGHT_SYSTEM_PROMPT` 가
+# 선언하는 계약과 같다. `key_metrics` 원소는 프롬프트가 명시한 {label, value, delta} 3키.
+# Response schema mirroring the 4-card contract declared in _INSIGHT_SYSTEM_PROMPT.
+_INSIGHT_RESPONSE_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "positive_highlights": {"type": "array", "items": {"type": "string"}},
+        "focus_areas": {"type": "array", "items": {"type": "string"}},
+        "key_metrics": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "label": {"type": "string"},
+                    "value": {"type": "string"},
+                    "delta": {"type": "string"},
+                },
+                "required": ["label", "value", "delta"],
+                "additionalProperties": False,
+            },
+        },
+        "next_actions": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["positive_highlights", "focus_areas", "key_metrics", "next_actions"],
+    "additionalProperties": False,
+}
 
 
 def _parse_insight_cards(text: str) -> dict[str, list] | None:
