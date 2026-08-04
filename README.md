@@ -18,8 +18,8 @@
 [![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=xzawed_SCAManager&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=xzawed_SCAManager)
 [![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=xzawed_SCAManager&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=xzawed_SCAManager)
 
-[![Tests](https://img.shields.io/badge/Tests-6829%2B_total_(6658_unit_%2B_171_integration)-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
-[![E2E](https://img.shields.io/badge/E2E-122_tests_(local_only%2C_not_in_CI)-lightgrey?style=flat-square&logo=playwright&logoColor=white)](e2e/)
+[![Tests](https://img.shields.io/badge/Tests-6832%2B_total_(6661_unit_%2B_171_integration)-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
+[![E2E](https://img.shields.io/badge/E2E-122_in_CI_(91_pass_%2F_30_fail_on_Linux)-orange?style=flat-square&logo=playwright&logoColor=white)](e2e/)
 [![pylint](https://img.shields.io/badge/pylint-10.00%2F10-brightgreen?style=flat-square&logo=python&logoColor=white)](src/)
 [![bandit](https://img.shields.io/badge/bandit-HIGH_0-brightgreen?style=flat-square&logo=security&logoColor=white)](src/)
 [![Coverage](https://img.shields.io/badge/Coverage-97%25-brightgreen?style=flat-square&logo=codecov&logoColor=white)](tests/)
