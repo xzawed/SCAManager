@@ -239,6 +239,27 @@ PR 본문만 고쳤을 때 CI 를 다시 돌리려고 워크플로를 추가한�
   것을 검증하고도 초록이 된다. 형태 가드: `test_claim_review_body_edit_workflow.py`.
 - `gh run rerun` 은 **원래 이벤트 payload**(옛 본문)를 재생하므로 본문 수정 검증에 쓸 수 없다.
 
+🔴 **claim-review 흔적은 형식이 곧 통과 조건이다 (2026-08-05 실측 2회)** —
+`check_claim_review_trace.py` 는 흔적을 **정규식으로** 찾는다. 의미가 맞아도 형식이 어긋나면 red 다:
+
+| 요구 | 정규식 | 실패한 실제 표기 |
+|---|---|---|
+| 섹션 헤딩 | `^#{1,4}[^\n]*claim-?review` | `## Grok 2차 검토 …` (어휘 없음) |
+| 판정 라인 | `^[-*\|\s]*verdict\s*[:\|]\s*(SURVIVES\|BROKEN\|CONFIRMED\|REFUTED\|HOLDS)` | `verdict-1: HOLDS` (`-1` 이 끼어 매칭 실패) |
+
+**push 전에 로컬로 검증할 수 있다** — 형식 때문에 CI 를 한 바퀴 더 돌리지 말 것:
+
+```bash
+PR_TITLE="$(gh pr view N --json title --jq .title)" \
+PR_BODY="$(gh pr view N --json body --jq .body)" \
+PR_BASE_SHA="$(gh pr view N --json baseRefOid --jq .baseRefOid)" \
+PR_HEAD_SHA="$(gh pr view N --json headRefOid --jq .headRefOid)" \
+py -3 scripts/check_claim_review_trace.py
+```
+
+🔴 그리고 본문만 고쳐서는 required check 가 갱신되지 않는다(backlog R34, 2회 실측) —
+**커밋을 하나 더 밀어야** 한다.
+
 ## 🔴 훅 **입력** 디코딩 — `json.load(sys.stdin)` 금지 (2026-08-04)
 
 아래 "훅 출력 채널" 규칙의 **입력 쪽 짝**이다. 출력이 Claude 에게 닿는지를 그 규칙이 다루듯,
