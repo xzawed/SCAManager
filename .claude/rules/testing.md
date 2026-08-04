@@ -30,6 +30,18 @@ paths:
 - **`@pytest.mark.perf` 선택 실행**: `make test-perf` = `pytest e2e/ -m perf -v --timeout=120 -p no:asyncio`. 일반 E2E(`make test-e2e`)와 분리 실행 — CI `testpaths=tests`에 포함되지 않음(자동 격리). `perf` 마커는 루트 `pytest.ini`와 `e2e/pytest.ini` 양쪽 등록됨.
 - 🔴 **PG 의존 동시성 테스트 CI 활성화 패턴 (사이클 156 S3)**: `FOR UPDATE SKIP LOCKED` 등 PostgreSQL 전용 기능 테스트(`tests/integration/test_retry_concurrency_postgres.py`)는 `@pytest.mark.skipif(not DATABASE_URL_TEST_POSTGRES)` 가드 — 기본 CI(SQLite)에서 **항상 skip**되어 회귀를 못 잡는다. `.github/workflows/ci.yml` 의 별도 `pg-concurrency` job(`services: postgres:16` + health-check)에서 활성화. **(1) env 는 `DATABASE_URL_TEST_POSTGRES` 단일만 — `DATABASE_URL` 은 `conftest.py` 가 sqlite 로 덮어써 무의미.** (2) 명시 단일 파일 경로만 실행 — e2e/integration 혼입 금지(위 🔴 격리 규칙). (3) **동시성 race 테스트는 `threading.Barrier(2, timeout=N)` 동반 의무** — barrier 미동반 시 두 워커 SELECT 윈도우 비중첩으로 회귀(SKIP LOCKED 제거)조차 spurious-pass. `timeout` 은 한 워커 조기 예외 시 deadlock guard. (4) `--timeout=60`.
 
+## 🔴 실 semgrep 을 태우는 테스트는 `--timeout=30` 에 여유가 3배 미만이다 (2026-08-05 실측)
+
+`tests/unit/analyzer/test_static_disabled.py` 는 semgrep 을 **실제 subprocess 로** 돌린다
+(단독 실행 3건 34초 ≈ 11초/건). `pytest.ini` 의 `addopts = --timeout=30` 대비 여유가 3배
+미만이라, 머신 부하가 겹치면 **전체 실행에서만 타임아웃**한다.
+
+- **오진 방지**: 전체 실행이 이 테스트에서 죽으면 **먼저 부하 flake 를 의심**할 것.
+  판정 절차 = (a) main 에서 전체 실행 (b) 해당 파일 단독 실행 (c) 브랜치 재실행.
+  2026-08-05 실측에서 셋 다 통과했고 실패는 재현되지 않았다 — 코드 원인이 아니었다.
+- 🔴 **"재실행하면 통과한다" 를 근거 없이 말하지 말 것** — 위 3중 대조를 실제로 돌린
+  뒤에만 flake 로 판정한다. 그 대조 없이 넘기면 진짜 회귀를 flake 로 덮는다.
+
 ## Mock + Fixture 패턴
 
 - 🔴 **`importlib.reload(src.database)` 는 세션 전체를 오염시킨다 — `database_module_isolation` fixture 의무 (2026-07-19 회고 B1, #1114)**: `reload` 는 모듈 본문을 재실행해 **`Base = declarative_base()` 로 새 Base 객체를 만든다**. 그런데 이미 import 된 13개 ORM 모델 클래스는 **옛 Base 에 묶인 채** 남으므로 새 `Base.metadata.tables` 는 **영구히 빈다**(실측: 모델 import 후 3 테이블 → reload 후 **0 테이블**). 그 결과 `alembic/env.py` 의 모델 완전성 가드(`_REGISTERED_MODELS`)가 이후 **세션 전체**에서 `RuntimeError` 를 내고, env.py 를 실행하는 모든 테스트가 깨진다.

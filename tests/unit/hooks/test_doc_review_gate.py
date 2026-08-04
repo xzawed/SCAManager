@@ -127,6 +127,53 @@ class TestPromptCache:
             "호출부가 실제 응답의 캐시 회계를 붙이지 않는다 — 캐시 사망 감지가 공허해진다"
         )
 
+    # ── 구조화 출력 (R51) ──
+
+    def test_schema_pins_the_legal_decisions_literally(self):
+        """🔴 기대값을 피검사 모듈에서 유도하지 않는다.
+
+        `enum == list(_LEGAL_DECISIONS)` 로 쓰면 그 상수를 비워도 테스트가 통과한다
+        (자기참조 공허화). 리터럴로 못박아야 범례 축소가 red 가 된다.
+        """
+        from doc_review_gate import result_schema  # noqa: PLC0415
+        assert result_schema("impact")["properties"]["decision"]["enum"] == [
+            "approve", "warn", "block"
+        ]
+
+    def test_schema_is_closed_and_fully_required(self):
+        """`additionalProperties: false` + 전 필드 required — 구조화 출력의 API 계약."""
+        from doc_review_gate import result_schema  # noqa: PLC0415
+        for agent in ("impact", "consistency", "quality"):
+            s = result_schema(agent)
+            assert s["additionalProperties"] is False
+            assert sorted(s["required"]) == sorted(s["properties"])
+
+    def test_only_consistency_carries_unable_to_verify(self):
+        """다른 에이전트에 강제하면 프롬프트에 없는 필드를 만들라고 시키는 셈이다."""
+        from doc_review_gate import result_schema  # noqa: PLC0415
+        assert "unable_to_verify" in result_schema("consistency")["properties"]
+        assert "unable_to_verify" not in result_schema("impact")["properties"]
+        assert "unable_to_verify" not in result_schema("quality")["properties"]
+
+    def test_call_site_sends_the_matching_schema_per_agent(self):
+        """🔴 배선 — 에이전트마다 **자기** 스키마가 실려야 한다.
+
+        Grok `019fcdab` 실증 우회: consistency 하나만 잡고 `"unable_to_verify" in schema`
+        만 보면, 호출부가 **전 에이전트에 consistency 스키마를 고정 전송**해도 초록이다.
+        그러면 impact·quality 는 자기 프롬프트에 없는 필드를 만들도록 강제받는다 —
+        per-agent 설계가 막으려던 바로 그 상태다. 3 에이전트를 모두 잡아 대조한다.
+        """
+        sent = {a: self._capture(a, "diff", self._CTX) for a in
+                ("impact", "consistency", "quality")}
+        for agent, req in sent.items():
+            fmt = req["output_config"]["format"]
+            assert fmt["type"] == "json_schema", f"{agent}: json_schema 가 아니다"
+            has = "unable_to_verify" in fmt["schema"]["properties"]
+            assert has == (agent == "consistency"), (
+                f"{agent} 에 {'맞지 않는' if has else '필요한'} 스키마가 실렸다 — "
+                "호출부가 에이전트별 스키마를 쓰지 않는다"
+            )
+
     def test_lone_surrogate_counts_as_corruption(self):
         """U+FFFD 만 보면 JSON `\\uD800` 경로를 놓친다 — scrub 이 나중에 바꾸기 때문."""
         from doc_review_gate import corrupted  # noqa: PLC0415

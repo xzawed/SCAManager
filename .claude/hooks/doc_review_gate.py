@@ -390,6 +390,41 @@ def _scrub_surrogates(text: str) -> str:
     return text.encode("utf-8", errors="replace").decode("utf-8")
 
 
+def result_schema(agent: str) -> dict:
+    """에이전트 응답의 JSON Schema — 구조화 출력(`output_config.format`)용 (R51).
+
+    🔴 **이 리포가 기록해 온 스키마 drift 의 재발 동인을 API 층에서 닫는다.** 기록된
+    실측 사고: 키 누락 · `"maybe"` 같은 범례 밖 값 · 진리값 자리의 문자열 `"false"`
+    (Grok `019fc81b` GROK-6 · `019fc878` GROK-2). 프롬프트로 "JSON 만 출력하라" 고
+    부탁하는 것과, **스키마를 강제**하는 것은 다르다.
+
+    🔴 **기존 방어를 지우지 않는다** — 구조화 출력이 닫는 것은 *스키마* 축이고,
+    응답 절단(`stop_reason=max_tokens`)·호출 실패·빈 결과는 **그대로 열려 있다**(R35/R36).
+    이 스키마는 방어를 대체하지 않고 재발 동인 하나를 제거할 뿐이다.
+    Structured outputs close the schema-drift axis only; truncation and call failure remain.
+
+    🔴 제약(문서 계약): 모든 object 는 `additionalProperties: false` + `required` 필수.
+    `minLength` 같은 수치/문자열 제약은 미지원이라 쓰지 않는다.
+
+    consistency 만 `unable_to_verify` 를 싣는다 — 그 에이전트의 프롬프트 계약이고
+    (`.claude/agents/doc-consistency-reviewer.md`), 다른 둘에 강제하면 프롬프트에 없는
+    필드를 만들라고 시키는 셈이 된다.
+    """
+    props: dict = {
+        "decision": {"type": "string", "enum": list(_LEGAL_DECISIONS)},
+        "reason": {"type": "string"},
+        "detail": {"type": "string"},
+    }
+    if agent == "consistency":
+        props["unable_to_verify"] = {"type": "boolean"}
+    return {
+        "type": "object",
+        "properties": props,
+        "required": list(props),
+        "additionalProperties": False,
+    }
+
+
 def corrupted(text: str) -> bool:
     """디코드 손상 여부 — U+FFFD **또는** lone surrogate.
 
@@ -530,6 +565,12 @@ async def _call_single_agent(
                 model=_HAIKU_MODEL,
                 max_tokens=512,
                 system=system_blocks,
+                # 🔴 스키마 강제 (R51) — 프롬프트로 부탁하는 대신 API 가 형식을 보장한다.
+                #    닫히는 것은 **스키마 축뿐**이고 절단·호출실패는 아래 방어가 계속 맡는다.
+                # Enforce the schema at the API layer; truncation/failure axes stay guarded.
+                output_config={
+                    "format": {"type": "json_schema", "schema": result_schema(agent)}
+                },
                 messages=[{"role": "user", "content": user_msg}],
             ),
             timeout=_AGENT_TIMEOUT,
