@@ -64,13 +64,17 @@ repos:
       # Layer 1-D: docs/repo integrity guards (stdlib scripts — retro WF-2/3/5)
       # 모두 repo 내부만 읽고(또는 부재 시 skip) pass_filenames:false 로 스크립트가 자체 스캔.
       - id: check-docs-sync
-        name: "📊 docs 수치 정합 (STATE↔README 배지)"
+        name: "📊 docs 수치 정합 (STATE↔README 배지 + 의존성 핀)"
         language: system
         entry: python scripts/check_docs_sync.py
-        files: "^(docs/STATE\\.md|README\\.md|README\\.ko\\.md)$"
+        # 🔴 files 는 스크립트가 **읽는 모든 파일**을 덮어야 한다 — 좁으면 그 파일만 바꾼 커밋에서
+        # 훅이 아예 발화하지 않는다(Grok claim-review 019fccd5 적발: 핀 축 신설 후 requirements.txt·
+        # deploy.md 가 빠져 있었다). 회귀 가드 = test_repo_integrity_checks.py 의 배선 테스트.
+        # files must cover every input the script reads; a narrow pattern silently skips the hook.
+        files: "^(docs/STATE\\.md|README\\.md|README\\.ko\\.md|requirements\\.txt|\\.claude/rules/deploy\\.md)$"
         pass_filenames: false
         stages: [pre-commit]
-        description: STATE 종합·추적셀 ↔ README/README.ko Tests 배지 전체/단위 카운트 일치 검사 (과거 #931/#933 drift 차단).
+        description: STATE 종합·추적셀 ↔ README/README.ko Tests 배지 카운트 일치 + requirements.txt 실핀 ↔ deploy.md 인용·FastAPI 배지 일치 검사.
 
       - id: check-toc-anchors
         name: "🔗 cycle-history TOC 앵커 정합"

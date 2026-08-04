@@ -108,6 +108,57 @@ def test_dependency_pins_flag_missing_ground_truth(tmp_path):
     assert any("핀 미발견" in m for m in msgs)
 
 
+def test_dependency_pins_flag_starlette_prose_drift(tmp_path):
+    """fastapi 만이 아니라 `_DOC_PIN_NAMES` 전건이 실제로 검사된다."""
+    root = _pin_fixture(tmp_path)
+    pin = re.search(r"^starlette==(\S+)$", (root / "requirements.txt").read_text(encoding="utf-8"),
+                    re.MULTILINE).group(1)
+    _mutate(root / ".claude" / "rules" / "deploy.md", f"starlette=={pin}", "starlette==0.0.0")
+    ok, msgs = check_docs_sync.check_dependency_pins(root)
+    assert not ok
+    assert any("starlette==0.0.0" in m for m in msgs)
+
+
+def test_dependency_pins_flag_korean_readme_badge_drift(tmp_path):
+    """README.ko.md 도 검사 대상 — 한쪽만 고치고 넘어가는 실수를 막는다."""
+    root = _pin_fixture(tmp_path)
+    badge = re.search(r"FastAPI-(\d+\.\d+)-", (root / "README.ko.md").read_text(encoding="utf-8"))
+    _mutate(root / "README.ko.md", f"FastAPI-{badge.group(1)}-", "FastAPI-0.1-")
+    ok, msgs = check_docs_sync.check_dependency_pins(root)
+    assert not ok
+    assert any("README.ko.md FastAPI 배지" in m for m in msgs)
+
+
+def test_docs_sync_main_fails_when_only_pin_axis_fails(monkeypatch, capsys):
+    """🔴 집계 배선 — 수치 축이 통과해도 핀 축이 실패하면 exit 1 이어야 한다.
+
+    Grok claim-review `019fccd5` 가 지적한 구멍: 신규 테스트가 전부
+    `check_dependency_pins` 를 **직접** 호출해서, `main()` 이 `return 0 if ok else 1` 로
+    퇴화해 핀 축 실패를 삼켜도 전건 green 이었다(live probe 로 실증). 이 테스트가 그 축이다.
+    """
+    monkeypatch.setattr(check_docs_sync, "check_consistency", lambda _root: (True, []))
+    monkeypatch.setattr(
+        check_docs_sync, "check_dependency_pins", lambda _root: (False, ["❌ 핀 축 실패"])
+    )
+    assert check_docs_sync.main() == 1
+    assert "핀 축 실패" in capsys.readouterr().out
+
+
+def test_precommit_hook_watches_every_file_the_check_reads():
+    """🔴 배선 — pre-commit `files` 패턴이 스크립트가 읽는 파일 전건을 덮는가.
+
+    좁은 패턴은 훅을 **조용히 안 돌게** 한다(핀만 바꾼 커밋에서 미발화). 산문 대조가 아니라
+    실제 `files` 정규식을 뽑아 각 입력 경로에 매칭시킨다.
+    """
+    config = (_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+    block = config.split("- id: check-docs-sync", 1)[1]
+    pattern = re.search(r'^\s*files:\s*"(.+)"\s*$', block, re.MULTILINE).group(1)
+    compiled = re.compile(pattern.replace("\\\\", "\\"))
+    for path in ("docs/STATE.md", "README.md", "README.ko.md",
+                 "requirements.txt", ".claude/rules/deploy.md"):
+        assert compiled.match(path), f"pre-commit files 패턴이 {path} 를 놓친다"
+
+
 # --- check_toc_anchors (WF-3) ---
 
 def test_toc_anchors_passes_on_current_repo():
