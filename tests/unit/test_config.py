@@ -561,3 +561,30 @@ def test_is_production_development_does_not_weaken_https():
     """🔴 ENVIRONMENT=development 라도 https 배포면 prod — 명시 신호는 강제만 하고 해제 못 함."""
     import src.config as cfg
     assert cfg.Settings(environment="development", app_base_url="https://x").is_production is True
+
+
+# ── 빈 환경변수가 기본값을 덮는 사고 (2026-08-05 라이브 호출로만 발견) ──
+
+def test_blank_model_env_falls_back_to_default(monkeypatch):
+    """🔴 `CLAUDE_REVIEW_MODEL=` (값 없음)이 기본값을 빈 문자열로 덮으면 안 된다.
+
+    실측 사고: `.env` 의 빈 값이 `claude-sonnet-4-6` 을 `""` 로 덮어 모든 AI 리뷰가
+    `400 model: String should have at least 1 character` → `api_error` 였다.
+    pydantic-settings 는 `""` 도 **제공된 값**으로 보기 때문이다.
+
+    🔴 이 클래스가 단위 테스트를 통과했던 이유: 테스트는 env 를 읽지 않아 기본값만 봤다.
+    고장은 실 API 호출에서만 드러났다 — 그래서 이 테스트는 env 를 **명시적으로 비운다**.
+    """
+    import src.config as cfg  # noqa: PLC0415  # 파일 관용구 — dual-import 가드 준수
+    monkeypatch.setenv("CLAUDE_REVIEW_MODEL", "")
+    monkeypatch.setenv("CLAUDE_INSIGHT_MODEL", "   ")
+    s = cfg.Settings()
+    assert s.claude_review_model == "claude-sonnet-4-6"
+    assert s.claude_insight_model == "claude-haiku-4-5"
+
+
+def test_explicit_model_env_still_wins(monkeypatch):
+    """폴백이 정상 오버라이드까지 삼키면 안 된다 — 가드가 기능을 죽이는 것 방지."""
+    import src.config as cfg  # noqa: PLC0415  # 파일 관용구 — dual-import 가드 준수
+    monkeypatch.setenv("CLAUDE_REVIEW_MODEL", "claude-sonnet-5")
+    assert cfg.Settings().claude_review_model == "claude-sonnet-5"

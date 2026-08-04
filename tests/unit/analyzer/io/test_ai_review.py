@@ -1,5 +1,6 @@
 # tests/test_ai_review.py
 import json
+import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from src.analyzer.io.ai_review import (
     AiReviewResult, review_code, _parse_response, _default_result, _extract_test_score
@@ -363,3 +364,38 @@ async def test_successful_review_has_success_status():
         result = await review_code("sk-test", "feat: add feature", [("app.py", "+ x = 1")])
 
     assert result.status == "success"
+
+
+# ── 구조화 출력 배선 (backlog R51) ──
+
+@pytest.mark.asyncio
+async def test_review_request_carries_the_response_schema():
+    """🔴 배선 — 스키마를 정의해도 요청에 실리지 않으면 API 는 아무것도 강제하지 않는다.
+
+    실측: `output_config` 배선을 통째로 지웠을 때 analyzer 단위 1022건이 **전부 green**
+    이었다(공허한 가드). 이 테스트가 그 구멍을 닫는다.
+    """
+    from src.analyzer.pure.review_prompt import REVIEW_RESPONSE_SCHEMA  # noqa: PLC0415
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text=json.dumps({
+        "commit_message_score": 18, "direction_score": 17, "test_score": 10,
+        "summary": "ok", "suggestions": [],
+    }))]
+    captured: dict = {}
+
+    async def _create(**kwargs):
+        captured.update(kwargs)
+        return mock_response
+
+    with patch("src.analyzer.io.ai_review.anthropic.AsyncAnthropic") as mock_cls:
+        mock_client = AsyncMock()
+        mock_client.messages.create = _create
+        mock_cls.return_value = mock_client
+        await review_code("sk-test", "feat: x", [("app.py", "+ x = 1")])
+
+    fmt = captured["output_config"]["format"]
+    assert fmt["type"] == "json_schema"
+    assert fmt["schema"] is REVIEW_RESPONSE_SCHEMA, "프롬프트와 짝인 스키마가 아니다"
+    # 프롬프트가 선언하는 11 키가 모두 required — 하나라도 빠지면 모델이 안 채운다
+    assert len(fmt["schema"]["required"]) == 11
+    assert fmt["schema"]["additionalProperties"] is False

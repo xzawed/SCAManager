@@ -349,3 +349,49 @@ def build_review_prompt(
         diff_text=diff_text,
     )
     return user_prompt, languages
+
+
+# ─── 응답 스키마 (구조화 출력) ─────────────────────────────────────────────────
+# Response schema for Anthropic structured outputs
+
+# 🔴 위 3개 언어 프롬프트가 선언하는 JSON 계약과 **같은 11 키**다 (KO/EN/JA 파리티 실측).
+#    프롬프트와 스키마가 갈라지면 모델은 스키마를 따르고 프롬프트는 거짓말이 되므로,
+#    둘을 같은 모듈에 두어 한쪽만 고치는 일이 눈에 띄게 한다.
+# Same 11 keys the three language prompts declare; kept beside them so drift is visible.
+#
+# 🔴 수치 제약(minimum/maximum)은 구조화 출력 스키마에서 **미지원**이라 넣지 않는다.
+#    점수 범위는 `ai_review._coerce_score` 가 계속 강제한다(방어 유지 — R51 은 스키마 축만 닫는다).
+# Numeric bounds are unsupported in the schema; `_coerce_score` still enforces ranges.
+REVIEW_RESPONSE_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "commit_message_score": {"type": "integer"},
+        "direction_score": {"type": "integer"},
+        "test_score": {"type": "integer"},
+        "summary": {"type": "string"},
+        "suggestions": {"type": "array", "items": {"type": "string"}},
+        "commit_message_feedback": {"type": "string"},
+        "code_quality_feedback": {"type": "string"},
+        "security_feedback": {"type": "string"},
+        "direction_feedback": {"type": "string"},
+        "test_feedback": {"type": "string"},
+        "file_feedbacks": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "file": {"type": "string"},
+                    "issues": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["file", "issues"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": [
+        "commit_message_score", "direction_score", "test_score", "summary", "suggestions",
+        "commit_message_feedback", "code_quality_feedback", "security_feedback",
+        "direction_feedback", "test_feedback", "file_feedbacks",
+    ],
+    "additionalProperties": False,
+}
