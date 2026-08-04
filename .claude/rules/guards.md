@@ -95,6 +95,29 @@ EXIT=0)를 **baseline diff 없는 한 red** 로 만든다. 제외 집합을 바�
 한계(정직 기준): 같은 PR 이 baseline 도 고치면 통과한다 — 이 축은 감소를 막지 않고 리뷰
 가능한 명시 결정으로 승격할 뿐이며, 잔여는 review-time claim-review 가 방어한다.
 
+## 🔴 뮤테이션 복원 순서 — `git add` 를 먼저 (R15 가드 검증 중 실제 발생, 2026-08-04)
+
+`git checkout -- <파일>` 은 HEAD 가 아니라 **staging area(index)** 에 있는 내용을 되살린다.
+따라서 방금 쓴 편집을 `git add` 하지 않은 채 뮤테이션→복원을 돌리면, 복원이 뮤테이션뿐
+아니라 **내가 쓴 편집까지 지운다**. 그 다음 뮤테이션은 이미 원본으로 돌아간 파일을 건드리므로
+red 가 떠도 그건 내 뮤테이션이 만든 red 가 아니다.
+
+실측: `check_dependency_pins` 검증에서 1번째 복원이 파일을 구값으로 되돌려 놓는 바람에
+3번째 뮤테이션(검사 범위 붕괴)이 **실행되지 않은 채 red 로 보였다**. stage 후 재측정해 4종을
+다시 확인했다.
+
+```bash
+git add -A                      # ① 기준선을 index 에 고정 — 이 상태로 복원된다
+sed -i 's/OLD/NEW/' target.md   # ② 뮤테이션
+git diff --quiet target.md || echo "mutated != orig OK"   # ③ 실제로 바뀌었는지 확인
+pytest ...                      # ④ red 관측
+git checkout -- target.md       # ⑤ ① 의 기준선으로 복원
+pytest ...                      # ⑥ baseline 이 다시 green 인지 확인
+```
+
+CRLF 축(윈도우에서 `write_text` 왕복이 파일을 변경 상태로 남기는 문제)은 별개이며
+[[feedback-mutation-restore-crlf]] 가 정본이다.
+
 ## 🔴 push 전 로컬 게이트 = `py -3 scripts/pre_push_gate.py` (2026-08-01 신설)
 
 새 가드를 저술했으면 **push 전에 이걸 돌린다.** CI 가 강제하는 repo-integrity 9종 +
