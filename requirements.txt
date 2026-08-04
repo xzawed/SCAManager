@@ -44,5 +44,6 @@ jinja2==3.1.6
 # python-multipart>=0.0.32 — CVE-2026-40347 (preamble/epilogue CPU DoS) fix
 python-multipart==0.0.32
 yamllint==1.38.0
-# cryptography>=49.0.0 — CVE-2026-26007/34073/39892 fix
-cryptography==49.0.0
+# cryptography>=50.0.0 — CVE-2026-69247 fix (pkcs7_decrypt_* 가 RecipientInfo 복호 결과를
+#   보고해 padding-oracle 성립). 이전 핀 사유: CVE-2026-26007/34073/39892.
+cryptography==50.0.0

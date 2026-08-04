@@ -132,6 +132,24 @@ def gate_disabled() -> bool:
 # Veto matrix
 
 
+# 게이트가 인정하는 판정값. 이 밖의 값(또는 키 부재)은 **판정이 아니라 부재**다.
+# Decisions the gate accepts; anything else (or a missing key) is an absence, not a verdict.
+_LEGAL_DECISIONS = ("approve", "warn", "block")
+
+
+def _inoperative(agent: str, reason: str, detail: str = "") -> dict:
+    """심의가 **일어나지 않은** 결과를 만든다 — 승인과 같은 값을 가질 수 없다 (R35/R36).
+
+    🔴 이 저장소의 지배 결함: "아무것도 심의하지 못했다" 와 "심의해서 통과시켰다" 가
+    같은 값(`approve`)이었다. `inoperative` 표기가 그 등가를 깬다 — 판정 축(`decision`)은
+    `warn` 으로 두어 편집을 차단하지 않되(정책 17 안정성), 관측 축은 분리한다.
+    Marks a result as *not reviewed*: warn on the decision axis (never blocks edits) but
+    carries a separate observability flag so it can never be read as an approval.
+    """
+    return {"agent": agent, "decision": "warn", "inoperative": True,
+            "reason": reason, "detail": detail}
+
+
 def apply_veto_matrix(
     grade: str,
     results: list[dict],
@@ -146,10 +164,25 @@ def apply_veto_matrix(
     block_reasons: list[str] = []
     warn_reasons: list[str] = []
 
+    # 🔴 결과가 0건이면 심의가 일어나지 않은 것이다 — approve 로 떨어뜨리지 않는다 (R35).
+    # Zero results means no review happened; it must not fall through to approve.
+    if not results:
+        return "warn", ["[doc-review-gate] 심의 결과 0건 — 아무 에이전트도 판정하지 않았다"]
+
     for r in results:
         agent = r.get("agent", "unknown")
-        decision = r.get("decision", "approve")
+        decision = r.get("decision")
         reason = r.get("reason", "")
+
+        # 🔴 미심의(`inoperative`) · 판정 키 부재 · 범례 밖 값은 전부 **부재**로 다룬다 (R35).
+        #    이전 판의 `r.get("decision", "approve")` 는 스키마 drift 를 조용히 승인으로 바꿨다
+        #    (Grok `019fc81b` GROK-6: 키 누락 · `"maybe"` · 빈 결과가 모두 approve).
+        # Missing/unknown decisions and inoperative results are absences, never approvals.
+        if r.get("inoperative") or decision not in _LEGAL_DECISIONS:
+            if decision not in _LEGAL_DECISIONS:
+                reason = reason or f"판정값 부재/불명({decision!r}) — 미심의"
+            warn_reasons.append(f"[{_agent_label(agent)}] {reason}")
+            continue
 
         if decision not in ("warn", "block"):
             continue
@@ -158,8 +191,19 @@ def apply_veto_matrix(
             if agent == "impact":
                 # impact-analyzer: 모든 등급 차단 / blocks every grade
                 block_reasons.append(f"[impact-analyzer] {reason}")
-            elif agent == "consistency" and grade == "critical":
+            elif agent == "consistency" and grade == "critical" and r.get("unable_to_verify") is not True:
                 # consistency-reviewer: critical 등급에서만 차단 / blocks only for critical
+                # 🔴 단, **근거를 못 봐서 낸 block 은 강등**한다 (R37-b — 회고 2026-08-04).
+                #    `important` 경로엔 이미 강등이 있었는데 `critical` 에만 없어서, 6-step ⑤
+                #    (STATE 수치 동기화)라는 **의무 절차**가 차단될 수 있었다. "확인 불가" 는
+                #    불일치의 증거가 아니다 — 증거 부재를 차단 근거로 쓰면 게이트가 절차를 막는다.
+                #    impact-analyzer 는 이 강등 대상이 아니다(행동 변화 위험 = 가드 자살 방지).
+                #    🔴 `is True` 만 인정한다 — Grok `019fc878` GROK-2 재현 적발: 진리값
+                #    검사(`not r.get(...)`)는 LLM 스키마 drift 로 흔한 **문자열 `"false"`**
+                #    를 참으로 읽어 **실제 불일치 block 까지 강등**했다(실측). 부재·False·
+                #    비-불리언은 전부 '확인함' 으로 다룬다 (fail-closed 방향).
+                # Blocks raised because the reviewer could not see the evidence are demoted:
+                # absence of evidence is not evidence of mismatch.
                 block_reasons.append(f"[consistency-reviewer] {reason}")
             else:
                 # 그 외: 경고로 강등 / demote to warning
@@ -332,6 +376,20 @@ def _read_agent_prompt(agent: str) -> str:
     return content
 
 
+def _scrub_surrogates(text: str) -> str:
+    """UTF-8 로 인코딩 불가한 lone surrogate 를 제거한다 (R36-b).
+
+    Windows 에서 stdin/파일 경유로 들어온 문자열에 짝 없는 서로게이트(U+D800~U+DFFF)가
+    섞이면 `str` 로는 멀쩡해 보이지만 **전송 시점**에 `UnicodeEncodeError` 로 터진다.
+    실패가 HTTP 계층에서 나므로 3 에이전트가 동시에 죽고, 그 모양이 "네트워크 blip" 과
+    구별되지 않는다 — 이 리포가 2 세션 동안 겪은 무동작의 정체다.
+
+    `errors="replace"` 로 왕복시켜 인코딩 가능한 문자열만 남긴다(정보 손실 < 게이트 사망).
+    Round-trips through UTF-8 so only encodable characters survive.
+    """
+    return text.encode("utf-8", errors="replace").decode("utf-8")
+
+
 async def _call_single_agent(
     client,
     agent: str,
@@ -340,7 +398,15 @@ async def _call_single_agent(
 ) -> dict:
     """에이전트 한 개를 호출하고 JSON 결과를 반환한다.
     Calls a single agent and returns a JSON result dict."""
-    system_prompt = _read_agent_prompt(agent)
+    # 🔴 lone surrogate 정화 — 이것이 게이트를 2 세션 동안 죽여 온 실제 원인이다 (R36-b).
+    #    2026-08-04 라이브: R36 이 예외 원문을 노출하자마자 9회+ 반복된 "에이전트 호출 실패" 가
+    #    자격증명 축이 아니라 `'utf-8' codec can't encode characters … surrogates not allowed`
+    #    였음이 드러났다. httpx 가 요청 본문을 인코딩할 때 터지므로 **3 에이전트가 동시에** 죽고,
+    #    원장은 엉뚱하게 "키 만료/크레딧 재확인" 을 요청하고 있었다.
+    # Sanitise lone surrogates: this is what actually killed the gate for two sessions.
+    system_prompt = _scrub_surrogates(_read_agent_prompt(agent))
+    diff = _scrub_surrogates(diff)
+    context = _scrub_surrogates(context)
     # 🔴 `context` 를 여기서 다시 자르지 않는다 — 예산은 `_load_context()` 가 **파일별로**
     #    한 번만 적용하고 라벨에 비율을 적는다. 이중 절단이 CLAUDE.md 를 10.8% 로 깎고
     #    STATE.md 를 통째로 지우면서도 헤더는 둘 다 있다고 말했다(2026-08-01 실측).
@@ -361,6 +427,14 @@ async def _call_single_agent(
             timeout=_AGENT_TIMEOUT,
         )
         text = msg.content[0].text
+        # 🔴 응답이 출력 예산에서 잘렸으면 그것은 **판정이 아니다** (R35 — 회고 2026-08-04 P0).
+        #    이전 판은 `stop_reason` 을 읽지 않고 잘린 JSON 을 파싱 실패로 흘려보낸 뒤
+        #    `approve` 로 바꿨다. 출력 예산은 고정인데 리뷰어가 할 말은 위험할수록 길어지므로,
+        #    **심각도와 fail-open 확률이 정비례**했다. Grok `019fc81b` GROK-1 이 로컬 재현.
+        # A truncated reply is not a verdict: the old code turned it into an approval, so the
+        # more a reviewer had to say, the likelier the gate passed it silently.
+        if getattr(msg, "stop_reason", None) == "max_tokens":
+            return _inoperative(agent, "응답 절단(max_tokens) — 미심의", text[:200])
         # 코드 블록 추출 우선, 없으면 전체 텍스트에서 JSON 파싱 시도
         # Prefer code block extraction; fall back to parsing the full text
         code_match = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
@@ -370,9 +444,15 @@ async def _call_single_agent(
             parsed["agent"] = agent
             return parsed
         except (json.JSONDecodeError, ValueError):
-            return {"agent": agent, "decision": "approve", "reason": "JSON 파싱 실패 — 통과", "detail": text[:200]}
+            # 🔴 파싱 실패 = 심의 결과를 **받지 못한 것**이다. 승인이 아니다 (R35).
+            # Parse failure means no verdict was received — that is not an approval.
+            return _inoperative(agent, "응답 파싱 실패 — 미심의", text[:200])
     except Exception as exc:  # pylint: disable=broad-exception-caught
-        return {"agent": agent, "decision": "warn", "reason": "에이전트 호출 실패", "detail": str(exc)}
+        # 🔴 예외 원문(`detail`)을 보존한다 — 세션14 가 8회+ 겪은 전건 실패의 원인을
+        #    아무도 몰랐던 이유가 이 문자열이 출력에서 버려졌기 때문이다 (R36).
+        # Preserve the exception text: it was dropped from output, which is why 8+ identical
+        # failures in session 14 had no diagnosable cause.
+        return _inoperative(agent, "에이전트 호출 실패", str(exc))
 
 
 async def call_agents_parallel(grade: str, diff: str, context: str) -> list[dict]:
@@ -394,7 +474,14 @@ async def call_agents_parallel(grade: str, diff: str, context: str) -> list[dict
 _CONTEXT_SOURCES: tuple[tuple[str, int], ...] = (
     ("CLAUDE.md", 40000),     # 27.8k — 전문 (정책 1~19 가 여기 있다)
     ("AGENTS.md", 12000),     # 5.3k  — 전문 (가드 3-불변식 SSOT)
-    ("docs/STATE.md", 4000),  # 88k   — 수치만 필요하므로 머리만
+    # 🔴 4000 → 16000 (R37-a, 회고 2026-08-04). 이전 예산은 STATE.md 의 **4%** 만 실어
+    #    형식 `**종합 수치**` 블록(offset ~11.1k)과 pylint 값(~11.2k)이 통째로 잘렸다.
+    #    그 상태로 consistency 에이전트에게 "STATE 수치와 다르면 block" 을 지시하는 것은
+    #    **볼 수 없는 것을 근거로 차단하라**는 모순이다.
+    #    ⚠️ 주 카운트(6607·6778)는 원래도 예산 안이었다(offset 3023·3105) — Grok `019fc81b`
+    #    GROK-4 가 "심의자가 대조 대상 자체를 못 본다" 는 원 서술을 반증했다. 실제는 **부분 실명**.
+    # Raised so the formal aggregate block and pylint value fit; the primary counts always did.
+    ("docs/STATE.md", 16000),  # 91k
 )
 
 
@@ -458,6 +545,34 @@ def _format_block(file_path: str, results: list[dict], reasons: list[str]) -> st
     for reason in reasons:
         lines.append(f"  • {reason}")
     lines += ["", "수정 방향을 조정한 후 다시 시도하세요."]
+    return "\n".join(lines)
+
+
+def _format_inoperative(file_path: str, results: list[dict]) -> str:
+    """🔴 전건 미심의 배너 — '3명이 경고하며 심의함' 과 **문구가 달라야** 한다 (R36).
+
+    세션14 가 8회+ 실제로 앉아 있던 상태다(자격증명은 있고 **호출**이 죽은 축).
+    `#1257` 은 자격증명 **부재** 분기만 봉인해서, 정작 발생한 분기는 정상 warn 과
+    구별되지 않은 채 남았다 — 그래서 게이트가 무동작이라는 사실이 원장에 오르지 못했다.
+    문구는 `_NO_CREDENTIALS_BANNER` 와 같은 계열(`INOPERATIVE` / `REVIEWED NOTHING`)로 맞춘다.
+    The all-agents-failed state must not read like a real three-agent verdict.
+    """
+    dead = [r for r in results if r.get("inoperative")]
+    lines = [
+        "",
+        f"[doc-review-gate] 🔴 INOPERATIVE - REVIEWED NOTHING ({len(dead)}/{len(results)} agents)",
+        f"  file: {Path(file_path).name}",
+        "  This is NOT a verdict and NOT a transient blip: every review agent failed, so the",
+        "  change passed without being reviewed. Fix the call path before trusting this gate.",
+    ]
+    for r in dead:
+        lines.append(f"  [x] {_agent_label(r.get('agent', 'unknown'))}: {r.get('reason', '')}")
+        detail = str(r.get("detail") or "").strip()
+        if detail:
+            # 🔴 실패 원문을 반드시 실어 보낸다 — 이게 없어서 8회+ 반복 실패의 원인을 몰랐다.
+            # Carry the failure text: its absence is why 8+ repeats stayed undiagnosed.
+            lines.append(f"      detail: {detail[:200]}")
+    lines.append("  Advisory by design - a broken review path must not block edits.")
     return "\n".join(lines)
 
 
@@ -548,6 +663,13 @@ def main() -> None:
     context = _load_context()
     results = asyncio.run(call_agents_parallel(grade, diff, context))
     decision, reasons = apply_veto_matrix(grade, results)
+
+    # 🔴 전건 미심의는 판정 흐름을 타지 않는다 — 고유 배너로 그 사실 자체를 말한다 (R36).
+    #    부분 미심의(1~2/3)는 아래 warn 경로가 사유 목록에 그대로 싣는다.
+    # All-agents-inoperative gets its own banner instead of masquerading as a warn verdict.
+    if results and all(r.get("inoperative") for r in results):
+        _emit_advisory(_format_inoperative(file_path, results))
+        sys.exit(0)
 
     if decision == "block":
         hook_output = {
