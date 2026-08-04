@@ -1,4 +1,5 @@
 """doc_review_gate.py 단위 테스트."""
+import ast
 import io
 import json
 import sys
@@ -9,7 +10,107 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # 훅 파일 직접 임포트 (src/ 외부)
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / ".claude" / "hooks"))
 
-from doc_review_gate import classify_file_grade, apply_veto_matrix
+from doc_review_gate import classify_file_grade, apply_veto_matrix, read_payload
+
+_HOOK_SRC = (
+    Path(__file__).parent.parent.parent.parent / ".claude" / "hooks" / "doc_review_gate.py"
+)
+
+
+class TestReadPayload:
+    """stdin UTF-8 디코드 회귀 가드 (2026-08-04 — 심의자가 mojibake 를 읽고 차단한 사고).
+
+    Windows 기본 stdin 은 ANSI 코드페이지(cp949)라 UTF-8 한글 payload 가 예외 없이
+    깨진 문자열로 디코드된다. 이 리포 문서는 거의 전부 한글이므로 그 상태의 심의는
+    무의미했고, 실제로 정당한 `.claude/rules/guards.md` 편집이 *"인코딩 오류로 판독 불가"*
+    사유로 차단됐다.
+    """
+
+    @staticmethod
+    def _locale_stdin(payload: bytes, encoding: str = "cp949"):
+        """실훅 자식 프로세스 재현 — 계측값 그대로(`cp949` + `errors=surrogateescape`).
+
+        🔴 `errors` 를 기본(strict)으로 두면 재현이 아니다 — strict 는 예외를 던져
+        훅이 `sys.exit(0)` 로 조용히 빠지지만, 실제 관측된 것은 예외가 아니라
+        **mojibake + lone surrogate** 였다(2026-08-04 실훅 계측).
+        """
+        return io.TextIOWrapper(io.BytesIO(payload), encoding=encoding, errors="surrogateescape")
+
+    def test_korean_survives_locale_encoded_stdin(self, monkeypatch):
+        original = "문서 정합 가드는 ground truth 를 갖고 있어야 한다"
+        payload = json.dumps(
+            {"tool_input": {"file_path": "x.md", "new_string": original}}, ensure_ascii=False
+        ).encode("utf-8")
+        monkeypatch.setattr(sys, "stdin", self._locale_stdin(payload, "cp949"))
+        assert read_payload()["tool_input"]["new_string"] == original
+
+    def test_falls_back_to_text_stdin_without_buffer(self, monkeypatch):
+        """StringIO 처럼 .buffer 가 없는 stdin 도 처리 (테스트 하네스 호환)."""
+        monkeypatch.setattr(sys, "stdin", io.StringIO('{"tool_input": {"file_path": "y.md"}}'))
+        assert read_payload()["tool_input"]["file_path"] == "y.md"
+
+    def test_no_lone_surrogates_from_locale_stdin(self, monkeypatch):
+        """#1276 이 지운 lone surrogate 의 **발생원**이 이 디코드였다 — 재발 시 즉시 red.
+
+        `errors=surrogateescape` 라 cp949 로 디코드 불가한 바이트가 U+DC80~U+DCFF 로
+        escape 되고, 그 문자열을 httpx 가 UTF-8 인코딩할 때 터진다.
+        """
+        original = "훅 입력 디코딩 — json.load 금지"
+        payload = json.dumps(
+            {"tool_input": {"file_path": "x.md", "new_string": original}}, ensure_ascii=False
+        ).encode("utf-8")
+        monkeypatch.setattr(sys, "stdin", self._locale_stdin(payload))
+        got = read_payload()["tool_input"]["new_string"]
+        assert not [c for c in got if 0xD800 <= ord(c) <= 0xDFFF]
+        got.encode("utf-8")  # httpx 가 하는 일 — 예외 없이 통과해야 한다
+
+    def test_source_never_json_loads_text_stdin(self):
+        """구현 봉인 — 텍스트 모드 stdin 을 json 에 직접 먹이면 mojibake 가 되돌아온다.
+
+        `json.load(sys.stdin)` 뿐 아니라 `json.loads(sys.stdin.read())` 도 막는다
+        (전자만 막으면 같은 결함을 한 글자 바꿔 되살릴 수 있다 — Grok `019fccbd` 적발).
+        """
+        for node in ast.walk(ast.parse(_HOOK_SRC.read_text(encoding="utf-8"))):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
+                continue
+            if node.func.attr not in ("load", "loads") or not node.args:
+                continue
+            touches_stdin = any(
+                isinstance(n, ast.Attribute) and n.attr == "stdin"
+                for n in ast.walk(node.args[0])
+            )
+            assert not touches_stdin, (
+                f"json.{node.func.attr}(… sys.stdin …) 금지 — read_payload() 를 쓸 것 (cp949 mojibake)"
+            )
+
+    def test_main_delivers_intact_korean_to_agents(self):
+        """배선 E2E — 에이전트에 실제로 닿는 diff 를 잡는다.
+
+        🔴 AST 로 `read_payload()` 호출 존재만 보면 **죽은 호출**(결과를 버리고 여전히
+        `json.load(sys.stdin)` 를 쓰는 구현)이 통과한다(Grok `019fccbd` 적발). 이 테스트는
+        `call_agents_parallel` 에 전달된 diff 를 직접 검사하므로 그 우회가 red 가 된다.
+        """
+        from doc_review_gate import main
+        original = "훅 입력 디코딩 — 로케일 인코딩에 의존하지 않는다"
+        payload = json.dumps(
+            {"tool_input": {"file_path": "CLAUDE.md", "old_string": "구 내용",
+                            "new_string": original}}, ensure_ascii=False
+        ).encode("utf-8")
+        seen: dict[str, str] = {}
+
+        async def _capture(grade, diff, context):  # noqa: ARG001
+            seen["diff"] = diff
+            return [{"agent": a, "decision": "approve", "reason": ""}
+                    for a in ("impact", "consistency", "quality")]
+
+        with patch("sys.stdin", self._locale_stdin(payload)):
+            with patch("doc_review_gate.call_agents_parallel", _capture):
+                with patch("doc_review_gate._load_context", return_value=""):
+                    with patch("sys.exit"):
+                        main()
+        assert original in seen["diff"], "심의자에게 닿은 diff 가 원문과 다르다 (mojibake)"
+        assert not [c for c in seen["diff"] if 0xD800 <= ord(c) <= 0xDFFF]
+        seen["diff"].encode("utf-8")
 
 
 class TestClassifyFileGrade:

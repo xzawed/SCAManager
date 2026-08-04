@@ -612,6 +612,40 @@ def _make_stdout_safe():
         pass  # 캡처된 stream 등 reconfigure 미지원 — 무시 / captured streams: ignore
 
 
+def read_payload() -> dict:
+    """stdin 을 **바이트로 읽어 UTF-8 로 직접 디코드**한 payload.
+    Read stdin as bytes and decode UTF-8 explicitly.
+
+    🔴 `json.load(sys.stdin)` 를 쓰면 안 된다. **실훅 자식 프로세스 계측 (2026-08-04)**:
+    `stdin.encoding=cp949` · `stdin.errors=surrogateescape` · `utf8_mode=0` ·
+    `PYTHONUTF8`/`PYTHONIOENCODING` 미설정. 즉 UTF-8 한글 payload 가 cp949 로 디코드된다.
+    Measured in the real hook child process, not in a shell-spawned python.
+
+    두 가지 결과가 겹친다:
+      1. **mojibake** — `'문서 정합 가드'`(8자, U+BB38 U+C11C …) → 훅이 본 것 13자
+         U+81FE U+BA84 U+AF4C. 심의 3 에이전트가 줄곧 이걸 읽었고, 결국 *"인코딩 오류로
+         판독 불가"* 를 사유로 정당한 `.claude/rules/guards.md` 편집을 **차단**했다
+         (가드가 자기 손상을 근거로 필수 절차를 막는 R37 클래스).
+      2. 🔴 **lone surrogate 의 발생원** — `errors=surrogateescape` 라 cp949 로 디코드
+         불가한 바이트가 U+DC80~U+DCFF 로 escape 된다. 실측: 같은 문자열에서 lone
+         surrogate 6개 생성 → `.encode("utf-8")` 이 *"can't encode character '\\udcf0' …
+         surrogates not allowed"*. `#1276` 이 2 세션을 죽였다고 기록한 그 예외이고,
+         `_scrub_surrogates` 는 **증상**을 지웠다. 원인은 이 디코드였다.
+
+    🔴 왕복 착시 주의: 잘못 디코드된 문자열을 같은 잘못된 인코딩으로 다시 출력하면 원
+    바이트가 복원돼 **출력만 보면 정상으로 보인다**. 길이·코드포인트로 단언할 것.
+    A wrong-decode → wrong-encode round trip restores the original bytes, so printed
+    output looks fine; assert on length/codepoints instead.
+
+    `sys.stdin.buffer` 가 없는 경우(테스트가 StringIO 로 교체)는 텍스트로 읽는다.
+    Falls back to text mode when stdin has no binary buffer (tests patch it with StringIO).
+    """
+    raw = getattr(sys.stdin, "buffer", sys.stdin).read()
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8", errors="replace")
+    return json.loads(raw)
+
+
 def main() -> None:
     """PreToolUse Hook 진입점 — stdin에서 payload 읽고 심의 결과 출력.
     PreToolUse hook entry point — reads payload from stdin and outputs review result."""
@@ -622,7 +656,7 @@ def main() -> None:
         sys.exit(0)
 
     try:
-        data = json.load(sys.stdin)
+        data = read_payload()
     except Exception:  # pylint: disable=broad-exception-caught
         sys.exit(0)
 
