@@ -421,7 +421,12 @@ jobs:
   pg-concurrency:
     # job name 은 step(SKIP LOCKED + round-trip)을 모두 반영 — 사이클 157 #8 에서 round-trip 추가됐으나
     # 명칭이 미반영이라 GitHub checks UI 에서 round-trip 회귀 담당이 가려졌음 (사이클 159 — 158 회고 P2).
-    # main 은 branch protection 미적용 — required-check 명 변경 영향 없음(2026-06-03 실측 확인).
+    # 🔴 2026-08-05 정정: "main 은 branch protection 미적용 — required-check 명 변경 영향 없음"
+    #    은 더 이상 사실이 아니다. main 은 보호 활성이고 이 job 이름은 **required check 9종에
+    #    포함**된다. job `name:` 을 바꾸면 required 목록의 context 와 어긋나 머지가 영구 차단된다
+    #    — 이름 변경 시 branch protection 의 required_status_checks 도 함께 갱신할 것.
+    # main IS protected now and this job name is one of the 9 required contexts; renaming it
+    # without updating branch protection blocks every merge.
     name: PG-only tests (SKIP LOCKED + migration round-trip)
     runs-on: ubuntu-latest
     needs: secret-scan
@@ -481,3 +486,40 @@ jobs:
             tests/unit/migrations/test_0020_round_trip.py::test_migrations_idempotent_over_prod_drift_postgres \
             tests/unit/migrations/test_orm_alembic_parity.py::test_orm_metadata_matches_migrations \
             -v -rs --timeout=60
+
+  # E2E (Playwright) — backlog R7 해소: 122건이 "로컬 전용" 으로 CI 어디에서도 실행되지
+  # 않던 상태를 끝낸다. 그 상태의 진짜 위험은 미실행 자체가 아니라 **아무도 그것을
+  # 관측하지 않는다는 것**이었다(README 배지는 #1237 로 이미 정직화됐지만 실행은 0이었다).
+  # E2E suite was never executed anywhere in CI (R7). This job ends that.
+  #
+  # 🔴 자족적이라 서비스 컨테이너가 필요 없다 — `e2e/conftest.py` 가 SQLite 임시 DB +
+  #    더미 시크릿을 스스로 넣고 uvicorn 을 별도 스레드로 띄운다(`:103-111`, `:135-159`).
+  # 🔴 `-p no:asyncio` 의무 — `e2e/pytest.ini` 는 `asyncio_mode` 를 의도적으로 생략한다.
+  #    단위 스위트와 같은 프로세스에서 섞이면 이벤트 루프가 충돌한다(testing.md §E2E 격리).
+  # 🔴 required check 로 승격하지 않았다 — 실행 이력이 없어 flakiness 를 모른다.
+  #    안정성 데이터를 몇 사이클 모은 뒤 승격 여부를 판단한다(정책 17 안정성 우선).
+  e2e:
+    name: E2E (Playwright — 122건)
+    runs-on: ubuntu-latest
+    needs: secret-scan
+    # 실측 ~10초/건 → 122건 ≈ 20분. 여유 포함 30분에서 자른다.
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install --retries 5 --timeout 60 -r requirements-dev.txt
+
+      # `--with-deps` 로 브라우저 + OS 라이브러리를 함께 설치 (ubuntu 러너 필수).
+      - name: Install Playwright chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run E2E suite
+        run: python -m pytest e2e/ -q -rs -p no:asyncio
