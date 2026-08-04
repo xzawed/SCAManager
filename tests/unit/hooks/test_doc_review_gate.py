@@ -50,6 +50,96 @@ class TestPromptCache:
         monkeypatch.setenv("DISABLE_PROMPT_CACHE", "1")
         assert "cache_control" not in build_system_blocks(self._CTX, self._AGENT)[0]
 
+    # ── 가변 원천 분리 (Grok `019fcd10` 잔여 (2)) ──
+
+    def test_volatile_source_gets_its_own_block_and_breakpoint(self):
+        """STATE.md 는 별도 블록 + 자체 breakpoint — 그 편집이 안정 블록을 무효화하지 않게."""
+        from doc_review_gate import build_system_blocks as build  # noqa: PLC0415
+        blocks = build(self._CTX, self._AGENT, volatile_context="STATE 본문")
+        assert len(blocks) == 3
+        assert blocks[0]["cache_control"] == {"type": "ephemeral"}   # 안정
+        assert "STATE 본문" in blocks[1]["text"]
+        assert blocks[1]["cache_control"] == {"type": "ephemeral"}   # 가변(2번째 breakpoint)
+        assert "cache_control" not in blocks[2]                      # 에이전트 지시
+
+    def test_stable_block_is_unchanged_when_only_the_volatile_source_changes(self):
+        """🔴 이 분리의 존재 이유 — STATE 만 바뀐 편집에서 안정 프리픽스가 바이트 동일해야 한다."""
+        a = build_system_blocks(self._CTX, self._AGENT, volatile_context="STATE v1")[0]
+        b = build_system_blocks(self._CTX, self._AGENT, volatile_context="STATE v2")[0]
+        assert a == b, "STATE 편집이 안정 블록까지 바꾼다 — 분리가 무의미해진다"
+
+    def test_split_context_keeps_state_out_of_the_stable_part(self):
+        from doc_review_gate import split_context  # noqa: PLC0415
+        stable, volatile = split_context()
+        # 🔴 경로 문자열이 아니라 **섹션 헤더**로 판정한다 — CLAUDE.md 본문이 산문으로
+        #    `docs/STATE.md` 를 언급하므로 단순 부분문자열 검사는 오탐이다.
+        assert "=== docs/STATE.md " in volatile, "STATE 가 가변 파트에 없다"
+        assert "=== docs/STATE.md " not in stable, "STATE 가 안정 파트에 섞였다 — 매 sync 마다 캐시 파괴"
+        assert "=== CLAUDE.md " in stable and "=== AGENTS.md " in stable
+        # 🔴 STATE 를 **빼는** 것이 아니라 나누는 것이다 (R37 이 되돌린 축)
+        assert volatile.strip(), "STATE 를 통째로 제거하면 심의자가 수치 정합을 못 본다"
+
+    # ── 캐시 사망 관측 (R38 잔여 (c)) ──
+
+    def test_cache_death_is_detected_when_nothing_was_cached(self):
+        from doc_review_gate import cache_looks_dead  # noqa: PLC0415
+        assert cache_looks_dead([{"_usage": {"write": 0, "read": 0}}])
+
+    def test_healthy_cache_is_not_reported_as_dead(self):
+        from doc_review_gate import cache_looks_dead  # noqa: PLC0415
+        assert not cache_looks_dead([{"_usage": {"write": 34748, "read": 0}}])
+        assert not cache_looks_dead([{"_usage": {"write": 0, "read": 34748}}])
+
+    def test_opt_out_is_not_misreported_as_cache_death(self, monkeypatch):
+        """🔴 `DISABLE_PROMPT_CACHE=1` 이면 0/0 이 정상이다 — 설정을 사고로 보고하지 않는다.
+
+        Grok `019fcd57` verdict-B 적발: opt-out 시에도 호출은 성공하고 회계만 0/0 이라
+        캐시 사망 고지가 매 편집 발화했다.
+        """
+        from doc_review_gate import cache_looks_dead  # noqa: PLC0415
+        monkeypatch.setenv("DISABLE_PROMPT_CACHE", "1")
+        assert not cache_looks_dead([{"_usage": {"write": 0, "read": 0}}])
+
+    def test_usage_is_attached_by_the_call_site_not_only_by_mocks(self):
+        """🔴 배선 — `_call_single_agent` 이 실제 응답에서 회계를 붙여야 한다.
+
+        Grok `019fcd57` verdict-D 적발: 기존 테스트는 `call_agents_parallel` 을 mock 하며
+        `_usage` 를 **주입**했으므로, 훅에서 `parsed["_usage"] = usage` 를 통째로 지워도
+        전건 green 이었다(실측 확인). 이 테스트가 그 구멍을 닫는다.
+        """
+        import asyncio  # noqa: PLC0415
+        from types import SimpleNamespace  # noqa: PLC0415
+        from doc_review_gate import _call_single_agent  # noqa: PLC0415
+
+        async def _create(**_kwargs):
+            return SimpleNamespace(
+                content=[SimpleNamespace(text='{"decision": "approve", "reason": "ok"}')],
+                stop_reason="end_turn",
+                usage=SimpleNamespace(cache_creation_input_tokens=34748,
+                                      cache_read_input_tokens=0),
+            )
+
+        client = MagicMock()
+        client.messages.create = _create
+        with patch("doc_review_gate._read_agent_prompt", return_value="지시"):
+            result = asyncio.run(_call_single_agent(client, "impact", "diff", "ctx"))
+        assert result["_usage"] == {"write": 34748, "read": 0}, (
+            "호출부가 실제 응답의 캐시 회계를 붙이지 않는다 — 캐시 사망 감지가 공허해진다"
+        )
+
+    def test_lone_surrogate_counts_as_corruption(self):
+        """U+FFFD 만 보면 JSON `\\uD800` 경로를 놓친다 — scrub 이 나중에 바꾸기 때문."""
+        from doc_review_gate import corrupted  # noqa: PLC0415
+        assert corrupted("정상 " + "\ud800" + " 텍스트"), "lone surrogate 를 손상으로 보지 않는다"
+        assert corrupted("정상 � 텍스트")
+        assert not corrupted("완전히 정상인 텍스트")
+
+    def test_total_call_failure_is_not_misreported_as_cache_death(self):
+        """🔴 회계가 하나도 없으면 판정하지 않는다 — 다른 고장을 캐시 고장으로 오진 금지."""
+        from doc_review_gate import cache_looks_dead  # noqa: PLC0415
+        assert not cache_looks_dead([{"agent": "impact", "inoperative": True}])
+        assert not cache_looks_dead([])
+
     @staticmethod
     def _capture(agent: str, diff: str, context: str) -> dict:
         """`_call_single_agent` 이 실제로 보내는 요청 kwargs 를 잡는다."""
@@ -210,14 +300,14 @@ class TestReadPayload:
         ).encode("utf-8")
         seen: dict[str, str] = {}
 
-        async def _capture(grade, diff, context):  # noqa: ARG001
+        async def _capture(grade, diff, *_rest):  # noqa: ARG001 — volatile 컨텍스트 포함
             seen["diff"] = diff
             return [{"agent": a, "decision": "approve", "reason": ""}
                     for a in ("impact", "consistency", "quality")]
 
         with patch("sys.stdin", self._locale_stdin(payload)):
             with patch("doc_review_gate.call_agents_parallel", _capture):
-                with patch("doc_review_gate._load_context", return_value=""):
+                with patch("doc_review_gate.split_context", return_value=("", "")):
                     with patch("sys.exit"):
                         main()
         assert original in seen["diff"], "심의자에게 닿은 diff 가 원문과 다르다 (mojibake)"
@@ -497,9 +587,54 @@ class TestHookMain:
             }
         })
 
+    # ── 조용한 무력화를 깨는 3 경로 (Grok `019fccbd`·`019fcd10` 잔여) ──
+
+    @staticmethod
+    def _advisory_text(out: str) -> str:
+        """advisory JSON 에서 사람이 읽는 문자열을 꺼낸다 (ensure_ascii 이스케이프 해제)."""
+        return json.loads(out)["hookSpecificOutput"]["additionalContext"]
+
+    def test_unreadable_payload_is_announced_not_swallowed(self, capsys):
+        """🔴 payload 를 못 읽으면 심의는 일어나지 않는다 — 조용한 exit 0 은 R35/R36 클래스다."""
+        from doc_review_gate import main  # noqa: PLC0415
+        with patch("sys.stdin", io.StringIO("{ 이건 JSON 이 아니다")):
+            with pytest.raises(SystemExit) as exc:
+                main()
+        assert exc.value.code == 0   # 차단하지 않는다 (정책 17 — 가드 자살 방지)
+        assert "INOPERATIVE" in self._advisory_text(capsys.readouterr().out)
+
+    def test_decode_corruption_in_diff_is_announced(self, capsys):
+        """`errors="replace"` 는 예외 없이 U+FFFD 를 남긴다 — 손상된 diff 를 정상 심의로 보지 않는다."""
+        from doc_review_gate import main  # noqa: PLC0415
+        payload = self._stdin_payload("CLAUDE.md", old="구", new="새 � 내용")
+        decisions = {"impact": "approve", "consistency": "approve", "quality": "approve"}
+        with patch("sys.stdin", io.StringIO(payload)):
+            with patch("doc_review_gate.call_agents_parallel", self._mock_agents(decisions)):
+                with patch("doc_review_gate.split_context", return_value=("", "")):
+                    with patch("sys.exit"):
+                        main()
+        assert "DEGRADED" in capsys.readouterr().out
+
+    def test_dead_cache_is_announced(self, capsys):
+        """캐시가 조용히 죽으면 비용이 조용히 10배가 된다 — 그 침묵을 깬다."""
+        from doc_review_gate import main  # noqa: PLC0415
+
+        async def _no_cache(*_a, **_k):
+            return [{"agent": a, "decision": "approve", "reason": "",
+                     "_usage": {"write": 0, "read": 0}}
+                    for a in ("impact", "consistency", "quality")]
+
+        payload = self._stdin_payload("CLAUDE.md", old="구", new="신")
+        with patch("sys.stdin", io.StringIO(payload)):
+            with patch("doc_review_gate.call_agents_parallel", _no_cache):
+                with patch("doc_review_gate.split_context", return_value=("", "")):
+                    with patch("sys.exit"):
+                        main()
+        assert "4096" in capsys.readouterr().out, "캐시 미동작 고지에 진단 단서가 없다"
+
     def _mock_agents(self, decisions: dict):
         """{'impact': 'approve', 'consistency': 'block', 'quality': 'warn'} 형태."""
-        async def fake_parallel(grade, diff, context):
+        async def fake_parallel(*_args, **_kwargs):   # main 이 volatile 컨텍스트까지 넘긴다
             return [
                 {"agent": a, "decision": d, "reason": f"{a} 사유", "detail": ""}
                 for a, d in decisions.items()
@@ -532,7 +667,7 @@ class TestHookMain:
         decisions = {"impact": "block", "consistency": "approve", "quality": "approve"}
         with patch("sys.stdin", io.StringIO(payload)):
             with patch("doc_review_gate.call_agents_parallel", self._mock_agents(decisions)):
-                with patch("doc_review_gate._load_context", return_value=""):
+                with patch("doc_review_gate.split_context", return_value=("", "")):
                     with patch("sys.exit") as mock_exit:
                         main()
         output = capsys.readouterr().out
@@ -546,7 +681,7 @@ class TestHookMain:
         decisions = {"impact": "approve", "consistency": "approve", "quality": "approve"}
         with patch("sys.stdin", io.StringIO(payload)):
             with patch("doc_review_gate.call_agents_parallel", self._mock_agents(decisions)):
-                with patch("doc_review_gate._load_context", return_value=""):
+                with patch("doc_review_gate.split_context", return_value=("", "")):
                     with patch("sys.exit") as mock_exit:
                         main()
         output = capsys.readouterr().out
@@ -559,7 +694,7 @@ class TestHookMain:
         decisions = {"impact": "approve", "consistency": "approve", "quality": "warn"}
         with patch("sys.stdin", io.StringIO(payload)):
             with patch("doc_review_gate.call_agents_parallel", self._mock_agents(decisions)):
-                with patch("doc_review_gate._load_context", return_value=""):
+                with patch("doc_review_gate.split_context", return_value=("", "")):
                     with patch("sys.exit") as mock_exit:
                         main()
         # 🔴 텍스트 포함이 아니라 **전달 채널 형태**를 본다 — plain print 로 되돌려도
@@ -1173,7 +1308,7 @@ def test_all_agents_inoperative_says_it_reviewed_nothing(monkeypatch, capsys):
     from doc_review_gate import main
 
     monkeypatch.setattr("doc_review_gate._credentials", lambda: {"api_key": "x"})
-    monkeypatch.setattr("doc_review_gate._load_context", lambda: "ctx")
+    monkeypatch.setattr("doc_review_gate.split_context", lambda: ("ctx", ""))
     monkeypatch.setattr("doc_review_gate.classify_file_grade", lambda _p: "critical")
     monkeypatch.setattr("doc_review_gate.call_agents_parallel", AsyncMock(return_value=[
         {"agent": a, "decision": "warn", "reason": "에이전트 호출 실패",

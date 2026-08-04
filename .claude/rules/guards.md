@@ -118,6 +118,58 @@ GROK-9 뮤테이션이 실증한 fail-open 이었다). 성공 배너도 실제 �
   같은 이유로 자연스럽다 — 병렬이라 셋 다 쓴다.
 - **opt-out**: `DISABLE_PROMPT_CACHE=1` (`docs/reference/env-vars.md` 등재분과 같은 변수).
 
+🔴 **관측 지표를 mock 으로 주입하는 테스트는 배선을 증명하지 않는다 (2026-08-05)** —
+캐시 사망 감지를 붙이면서 테스트가 `call_agents_parallel` 을 mock 하고 `_usage` 를 **주입**했다.
+그래서 훅에서 회계 부착(`parsed["_usage"] = usage`)을 통째로 지워도 **전건 green** 이었다
+(실측). 관측 지표는 **생산 경로가 만들어 내는지**를 따로 단언할 것 —
+`test_usage_is_attached_by_the_call_site_not_only_by_mocks` 가 그 축이다.
+
+🔴 **"고장 감지" 는 의도한 설정을 고장으로 보고하지 않아야 한다 (2026-08-05)** —
+캐시 사망 판정이 `DISABLE_PROMPT_CACHE=1`(의도적 opt-out)에서도 참이었다. opt-out 이면
+회계 0/0 이 **정상**이다. 감지기를 쓸 때 *"이 신호가 정상 설정에서도 켜지는가"* 를 자문할 것.
+
+🔴 **`write_text` 는 인코딩 전에 파일을 비운다 (2026-08-05 실제 사고)** — 스크립트로 소스를
+일괄 치환하다 치환 문자열에 lone surrogate 가 섞이자 `UnicodeEncodeError` 가 났고,
+`pathlib.write_text` 는 truncate 후 write 라서 **`doc_review_gate.py` 가 0바이트가 됐다**
+(`git checkout -- <file>` 로 index 에서 복구). 소스 일괄 치환은 (a) 편집 전 `git add` 로
+기준선을 stage 하고 (b) 가능하면 Edit 툴을 쓰며 (c) 부득이 스크립트를 쓰면
+`s.encode("utf-8")` 로 **먼저 인코딩을 검증**한 뒤 쓴다.
+
+🔴 **가변 원천은 캐시 프리픽스에서 분리한다 (2026-08-05)** — 한 원천만 자주 바뀌는데
+한 블록에 섞어 두면 그 한 번의 편집이 **안정 원천까지 통째로** 무효화한다. 실제로
+`docs/STATE.md` 는 trailing sync 마다 바뀌고 나머지(CLAUDE.md·AGENTS.md ≈24.7k 토큰)는
+거의 안 바뀐다. 그래서 블록을 나누고 **breakpoint 를 2개** 쓴다:
+
+| 블록 | 내용 | breakpoint |
+|---|---|---|
+| `system[0]` | CLAUDE.md + AGENTS.md (안정) | ✅ |
+| `system[1]` | docs/STATE.md (가변) | ✅ |
+| `system[2]` | 에이전트별 지시 | — |
+
+- **어느 쪽으로도 나빠지지 않는다**: STATE 가 안 바뀐 편집은 둘 다 히트(이전과 동일),
+  STATE 가 바뀐 편집은 앞 블록이 살아남아 재처리가 전체 ≈34.7k → ≈10k 로 준다.
+- 🔴 **빼는 게 아니라 나누는 것** — STATE 를 컨텍스트에서 제거하면 심의자가 수치 정합을
+  못 본다(R37 이 되돌린 축). 캐시를 위해 심의 품질을 깎지 않는다.
+- breakpoint 는 요청당 **최대 4개**. 여기서는 2개를 쓴다.
+- **실측 (2026-08-05, 편집 3회 연속)**:
+
+  | 편집 | 대상 | write | read |
+  |---|---|---|---|
+  | 1 | guards.md (STATE 미변경) | 34,765 | 0 |
+  | 2 | **docs/STATE.md** | 34,765 | 0 |
+  | 3 | README.md | **10,101** | **24,664** |
+
+  3회차가 **부분 히트**다 — 안정 프리픽스 24,664 를 읽고 STATE 블록 10,101 만 다시 썼다
+  (합 34,765 = 전체 프리픽스). 분리 전이라면 34,765 **전부** 재기록이었다(재처리 **71% 감소**).
+- 🔴 **무효화는 한 편집 늦게 온다** — 훅은 `PreToolUse` 라 **편집이 적용되기 전** 디스크를
+  읽는다. 그래서 STATE 를 고치는 편집(2회차) 자체는 옛 STATE 로 full hit 이고, 새 내용이
+  반영되는 것은 그 **다음** 편집(3회차)이다. 이 시차를 모르면 2회차의 full hit 을 보고
+  "분리가 동작 안 한다" 고 오판하게 된다.
+- 회귀 가드: `TestPromptCache::test_stable_block_is_unchanged_when_only_the_volatile_source_changes`
+  (STATE v1/v2 에서 `system[0]` 바이트 동일) · `test_split_context_keeps_state_out_of_the_stable_part`.
+  🔴 후자는 경로 문자열이 아니라 **섹션 헤더**(`=== docs/STATE.md `)로 판정한다 — CLAUDE.md
+  본문이 산문으로 그 경로를 언급하므로 단순 부분문자열 검사는 오탐이다.
+
 ## 🔴 lint-js 검사 범위는 baseline 원장과 대조된다 (R17 — 2026-08-02)
 
 `check_lint_js_nonvacuous.py` 는 정당 제외(justified) 집합을 커밋된
