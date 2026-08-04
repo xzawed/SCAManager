@@ -10,7 +10,119 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # 훅 파일 직접 임포트 (src/ 외부)
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / ".claude" / "hooks"))
 
-from doc_review_gate import classify_file_grade, apply_veto_matrix, read_payload
+from doc_review_gate import (
+    classify_file_grade,
+    apply_veto_matrix,
+    read_payload,
+    build_system_blocks,
+)
+
+
+class TestPromptCache:
+    """프롬프트 캐시 구조 가드 (backlog R38 — 편집 1회당 실측 85,434 입력 토큰).
+
+    🔴 캐시는 **프리픽스 매칭**이라 '캐시 마커가 붙어 있다' 는 것만으로는 아무것도
+    보장하지 않는다. 가변 부분(diff)이 캐시 구간보다 앞에 있으면 매 요청이 새 항목을
+    쓰고 읽지는 못한다 — 비용은 오히려 1.25배가 된다. 그래서 마커 존재가 아니라
+    **순서**를 단언한다.
+    """
+
+    _CTX = "공유 컨텍스트 " * 200
+    _AGENT = "너는 impact-analyzer 다."
+
+    def test_shared_context_is_first_and_carries_the_breakpoint(self):
+        blocks = build_system_blocks(self._CTX, self._AGENT)
+        assert self._CTX in blocks[0]["text"], "캐시 구간에 공유 컨텍스트가 없다"
+        assert blocks[0]["cache_control"] == {"type": "ephemeral"}
+        # 에이전트별 지시는 breakpoint **뒤**에 와야 3 에이전트가 같은 항목을 공유한다
+        assert blocks[1]["text"] == self._AGENT
+        assert "cache_control" not in blocks[1]
+
+    def test_all_agents_share_one_cached_prefix(self):
+        """에이전트가 달라도 캐시되는 프리픽스는 동일해야 한다 (항목 3개가 아니라 1개)."""
+        cached = [
+            build_system_blocks(self._CTX, f"너는 {a} 다.")[0]
+            for a in ("impact", "consistency", "quality")
+        ]
+        assert len({json.dumps(b, ensure_ascii=False, sort_keys=True) for b in cached}) == 1
+
+    def test_env_opt_out_removes_the_marker(self, monkeypatch):
+        monkeypatch.setenv("DISABLE_PROMPT_CACHE", "1")
+        assert "cache_control" not in build_system_blocks(self._CTX, self._AGENT)[0]
+
+    @staticmethod
+    def _capture(agent: str, diff: str, context: str) -> dict:
+        """`_call_single_agent` 이 실제로 보내는 요청 kwargs 를 잡는다."""
+        import asyncio  # noqa: PLC0415
+        from doc_review_gate import _call_single_agent  # noqa: PLC0415
+        captured: dict = {}
+
+        async def _create(**kwargs):
+            captured.update(kwargs)
+            raise RuntimeError("stop — 조립만 관측한다")
+
+        client = MagicMock()
+        client.messages.create = _create
+        with patch("doc_review_gate._read_agent_prompt", return_value=f"너는 {agent} 다."):
+            asyncio.run(_call_single_agent(client, agent, diff, context))
+        return captured
+
+    def test_call_site_prefix_is_identical_across_agents(self):
+        """🔴 공유 축은 **호출부**에서 봐야 한다.
+
+        Grok `019fcd10` 실증 우회: `build_system_blocks` 를 그대로 두고 `_call_single_agent`
+        에서 `system[0]["text"] += agent_prompt` 로 후처리하면 3 에이전트의 프리픽스가
+        갈라져 공유가 죽는데, 순수함수 테스트만으로는 전건 green 이다. 이 테스트는 실제
+        전송 payload 를 에이전트별로 잡아 캐시 블록이 **바이트 동일**한지 본다.
+        """
+        prefixes = [
+            self._capture(a, f"diff for {a}", self._CTX)["system"][0]
+            for a in ("impact", "consistency", "quality")
+        ]
+        assert len({json.dumps(p, ensure_ascii=False, sort_keys=True) for p in prefixes}) == 1, (
+            "에이전트마다 캐시 프리픽스가 다르다 — 항목이 갈라져 공유가 깨진다"
+        )
+
+    def test_call_site_cached_block_excludes_agent_prompt_and_diff(self):
+        """캐시 블록에 가변 요소(에이전트 지시·diff)가 섞이면 히트율이 무너진다."""
+        sent = self._capture("impact", "DIFF_SENTINEL", self._CTX)
+        cached = sent["system"][0]["text"]
+        assert "DIFF_SENTINEL" not in cached, "diff 가 캐시 구간에 들어갔다 — 편집마다 miss"
+        assert "너는 impact 다." not in cached, "에이전트 지시가 캐시 구간에 들어갔다 — 공유 파괴"
+        assert "DIFF_SENTINEL" in sent["messages"][0]["content"]
+
+    def test_call_site_honours_the_opt_out(self, monkeypatch):
+        """opt-out 이 호출부까지 도달하는가 (헬퍼만 고쳐도 배선이 무시하면 무의미)."""
+        monkeypatch.setenv("DISABLE_PROMPT_CACHE", "1")
+        sent = self._capture("impact", "diff", self._CTX)
+        assert all("cache_control" not in b for b in sent["system"])
+
+    def test_agent_call_sends_blocks_not_a_bare_string(self):
+        """🔴 배선 — 실제 요청이 블록 리스트를 보내야 marker 가 서버에 도달한다.
+
+        `build_system_blocks` 가 옳아도 호출부가 예전처럼 문자열을 넘기면 캐시는
+        영원히 0 이고, 순수함수 테스트만으로는 그것을 못 본다(정의≠배선).
+        """
+        import asyncio  # noqa: PLC0415
+        from doc_review_gate import _call_single_agent  # noqa: PLC0415
+        captured: dict = {}
+
+        async def _create(**kwargs):
+            captured.update(kwargs)
+            raise RuntimeError("stop — 조립만 관측한다")
+
+        client = MagicMock()
+        client.messages.create = _create
+        with patch("doc_review_gate._read_agent_prompt", return_value=self._AGENT):
+            asyncio.run(_call_single_agent(client, "impact", "새 내용 diff", self._CTX))
+
+        system = captured["system"]
+        assert isinstance(system, list), "system 이 문자열이면 cache_control 을 실을 수 없다"
+        assert system[0].get("cache_control") == {"type": "ephemeral"}
+        assert self._CTX in system[0]["text"]
+        # diff 는 캐시 밖(user)에 있어야 편집마다 프리픽스가 유지된다
+        assert "새 내용 diff" in captured["messages"][0]["content"]
+        assert "새 내용 diff" not in system[0]["text"]
 
 _HOOK_SRC = (
     Path(__file__).parent.parent.parent.parent / ".claude" / "hooks" / "doc_review_gate.py"
@@ -600,6 +712,7 @@ def test_prompt_does_not_re_truncate_the_context():
 
     async def _fake_create(**kwargs):
         captured["user"] = kwargs["messages"][0]["content"]
+        captured["system_blocks"] = kwargs["system"]
         raise RuntimeError("stop — 조립만 관측한다")
 
     client = MagicMock()
@@ -611,6 +724,8 @@ def test_prompt_does_not_re_truncate_the_context():
     with patch("doc_review_gate._read_agent_prompt", return_value="sys"):
         asyncio.run(_call_single_agent(client, "impact", "diff", context))
 
+    # 컨텍스트는 R38 이후 system 블록에 실린다 — 이중 절단 여부는 거기서 확인한다.
+    captured["user"] = "\n".join(b["text"] for b in captured["system_blocks"])
     assert "TAIL_SENTINEL" in captured["user"], (
         "컨텍스트 꼬리가 프롬프트에서 잘렸다 — 이중 절단 회귀"
     )
@@ -1204,12 +1319,13 @@ def test_lone_surrogate_in_diff_does_not_kill_the_call():
     with patch("doc_review_gate._read_agent_prompt", return_value="sys " + "\udcff"):
         asyncio.run(_call_single_agent(client, "impact", dirty, "ctx " + "\ud800"))
 
-    for key in ("user", "system"):
-        payload = captured[key]
+    # system 은 캐시 breakpoint 를 싣기 위해 블록 리스트다 (R38) — 전 블록을 검사한다.
+    payloads = [captured["user"]] + [b["text"] for b in captured["system"]]
+    for payload in payloads:
         # 🔴 결과가 아니라 **전송 가능성**을 단언한다 — 이 인코딩이 실제 실패 지점이었다.
         payload.encode("utf-8")   # 서로게이트가 남아 있으면 여기서 UnicodeEncodeError
         assert not any("\ud800" <= ch <= "\udfff" for ch in payload), (
-            f"{key} 에 lone surrogate 가 남았다 — 전송 시 3 에이전트가 동시에 죽는다"
+            "lone surrogate 가 남았다 — 전송 시 3 에이전트가 동시에 죽는다"
         )
 
 
