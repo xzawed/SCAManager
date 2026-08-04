@@ -3,6 +3,7 @@
 현재 repo 에서 통과(pre-commit 이 현 상태를 막지 않음) + 합성 위반 적발(실제 drift 차단)을
 양방향 고정한다. WF-2(docs 수치 정합) / WF-3(TOC 앵커 slug) 자동화의 회귀 가드.
 """
+import re
 import sys
 from pathlib import Path
 
@@ -35,6 +36,76 @@ def test_docs_sync_flags_count_mismatch(tmp_path):
     ok, msgs = check_docs_sync.check_consistency(tmp_path)
     assert not ok
     assert any("불일치" in m for m in msgs)
+
+
+# --- check_docs_sync 의존성 핀 축 (backlog R15 — ground truth 대조) ---
+#
+# 아래 뮤테이션은 합성 문자열이 아니라 **실 리포 파일 내용**을 복사해 깨뜨린다(가드 3-불변식 ②).
+# 기대값은 테스트에 하드코딩하지 않고 현재 핀에서 유도한다 — bump 마다 테스트가 같이 썩지 않도록.
+# Mutations copy the real repo files and break them; expectations derive from the current pin.
+
+def _pin_fixture(tmp_path: Path) -> Path:
+    """핀 검사가 읽는 4개 파일을 실 리포에서 그대로 복사. / Copy the 4 real files the check reads."""
+    (tmp_path / ".claude" / "rules").mkdir(parents=True)
+    for rel in ("requirements.txt", "README.md", "README.ko.md", ".claude/rules/deploy.md"):
+        (tmp_path / rel).write_text((_ROOT / rel).read_text(encoding="utf-8"), encoding="utf-8")
+    return tmp_path
+
+
+def _mutate(path: Path, old: str, new: str) -> None:
+    """실파일 치환 + 실제로 바뀌었는지 단언 (no-op 뮤테이션은 아무것도 증명하지 않는다)."""
+    orig = path.read_text(encoding="utf-8")
+    mutated = orig.replace(old, new)
+    assert mutated != orig, f"뮤테이션 무효 — {path.name} 에 {old!r} 없음"
+    path.write_text(mutated, encoding="utf-8")
+
+
+def test_dependency_pins_pass_on_current_repo():
+    ok, msgs = check_docs_sync.check_dependency_pins(_ROOT)
+    assert ok, msgs
+
+
+def test_dependency_pins_flag_badge_drift(tmp_path):
+    """README 배지만 구버전으로 남으면 red — R15 가 두 번 재발한 바로 그 형태."""
+    root = _pin_fixture(tmp_path)
+    badge = re.search(r"FastAPI-(\d+\.\d+)-", (root / "README.md").read_text(encoding="utf-8"))
+    _mutate(root / "README.md", f"FastAPI-{badge.group(1)}-", "FastAPI-0.1-")
+    ok, msgs = check_docs_sync.check_dependency_pins(root)
+    assert not ok
+    assert any("README.md FastAPI 배지" in m for m in msgs)
+
+
+def test_dependency_pins_flag_prose_drift(tmp_path):
+    """deploy.md 산문의 핀 인용이 실핀과 어긋나면 red."""
+    root = _pin_fixture(tmp_path)
+    pin = re.search(r"^fastapi==(\S+)$", (root / "requirements.txt").read_text(encoding="utf-8"),
+                    re.MULTILINE).group(1)
+    _mutate(root / ".claude" / "rules" / "deploy.md", f"fastapi=={pin}", "fastapi==0.0.0")
+    ok, msgs = check_docs_sync.check_dependency_pins(root)
+    assert not ok
+    assert any("deploy.md `fastapi==0.0.0`" in m for m in msgs)
+
+
+def test_dependency_pins_flag_empty_scope(tmp_path):
+    """인용을 통째로 지워 검사 범위를 비우면 통과가 아니라 red (빈 범위 위의 ✅ = fail-open)."""
+    root = _pin_fixture(tmp_path)
+    pin = re.search(r"^fastapi==(\S+)$", (root / "requirements.txt").read_text(encoding="utf-8"),
+                    re.MULTILINE).group(1)
+    _mutate(root / ".claude" / "rules" / "deploy.md", f"fastapi=={pin}", "fastapi 최신")
+    ok, msgs = check_docs_sync.check_dependency_pins(root)
+    assert not ok
+    assert any("인용 0건" in m for m in msgs)
+
+
+def test_dependency_pins_flag_missing_ground_truth(tmp_path):
+    """기준이 되는 requirements 핀 자체가 사라지면 red — 기대값 소실을 통과로 읽지 않는다."""
+    root = _pin_fixture(tmp_path)
+    pin = re.search(r"^fastapi==(\S+)$", (root / "requirements.txt").read_text(encoding="utf-8"),
+                    re.MULTILINE).group(1)
+    _mutate(root / "requirements.txt", f"fastapi=={pin}", "fastapi")
+    ok, msgs = check_docs_sync.check_dependency_pins(root)
+    assert not ok
+    assert any("핀 미발견" in m for m in msgs)
 
 
 # --- check_toc_anchors (WF-3) ---
