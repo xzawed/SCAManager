@@ -8,70 +8,31 @@
 > 신규 코드 작성 시 즉시 적용하고, 기존 파일은 해당 파일을 수정할 때 함께 갱신한다.
 > 예외: `# TODO`, `# FIXME`, `# type: ignore` 등 단어 하나짜리 표준 태그는 영어 단독 사용 허용.
 >
-> ```python
-> # 레이트 리밋 초과 시 재시도
-> # Retry on rate limit exceeded
->
-> # 같은 SHA가 이미 분석된 경우 건너뜀 (멱등성 보장)
-> # Skip if the same SHA was already analyzed (idempotency guard)
-> ```
 
 GitHub Push/PR 이벤트 시 정적 분석 + AI 코드 리뷰를 자동 수행하고, 점수와 개선사항을 Telegram·GitHub PR Comment·Discord·Slack·Email·n8n으로 전달하며, 점수 기반 PR 자동/반자동 Gate(Approve + 자동 Merge 포함)와 웹 대시보드를 제공하는 서비스. `git push` 시 Claude Code CLI 기반 자동 코드리뷰(pre-push hook)도 지원한다.
 
 ---
 
-## 🧭 이 문서 탐색 가이드
+## 🧭 탐색
 
-| 상황 | 바로 가기 |
-|------|----------|
-| **작업 착수 전 (항상 30초)** | → [작업 시작 전 필수 체크리스트](#작업-시작-전-필수-체크리스트-매-작업마다) |
-| **src/ 수정 후** | → [필수 원칙 — Hook 신뢰](#필수-원칙) |
-| **Phase 완료 직전** | → [필수 원칙 — 완료 6-step(①~⑥) · docs/architecture.md 동기화](#필수-원칙) |
-| **ORM 컬럼 추가 시** | → [DB/마이그레이션 주의사항](.claude/rules/db.md) |
-| **새 파일 추가 시** | → [CLAUDE.md 아키텍처 동기화 체크리스트](#필수-원칙) |
-| **아키텍처 파악** | → [src/ 트리](#아키텍처) · [핵심 데이터 흐름](docs/architecture.md#핵심-데이터-흐름) |
-| **미해결 일감 확인 (사이클 착수 시)** | → [`docs/backlog.md`](docs/backlog.md) — 결정 대기 🔴 / 착수 가능 🟡 |
-| **다른 PC/새 환경에서 세션 시작** | → [`docs/runbooks/new-machine-setup.md`](docs/runbooks/new-machine-setup.md) — 리포가 **실어 주지 않는** 것(`.env` 값·에이전트 메모리·MCP 설정·`gh` scope)과 "가드가 실제로 실행되는지" 검증 |
-| **규칙 전체 열람** | → [주의사항 카테고리별](#주의사항-카테고리별) |
+작업 착수 전 → [작업 시작 전](#작업-시작-전-매-작업-30초) · 완료 시 → [필수 원칙 6-step](#필수-원칙)
+· 미해결 일감 → [`docs/backlog.md`](docs/backlog.md) · 아키텍처 → [`docs/architecture.md`](docs/architecture.md)
+· 영역별 규칙 → `.claude/rules/<area>.md`(해당 파일 편집 시 **자동 로드**)
+· 새 환경 → [`docs/runbooks/new-machine-setup.md`](docs/runbooks/new-machine-setup.md)
 
-> **🔴 가장 빈번하게 놓치는 규칙 3가지**
-> 1. ORM 컬럼 추가 후 `make revision` 마이그레이션 파일 미생성 → 운영 500 에러 (DB/마이그레이션 참조)
-> 2. Phase 완료 후 `docs/architecture.md` 동기화 누락 → 다음 Claude 세션 혼란 (필수 원칙 참조)
-> 3. 경로 없이 `python -m pytest` 실행 시 e2e 혼입 → 446건 false failure (testpaths=tests로 방어됨)
-
----
+> **🔴 반복적으로 놓치는 것**
+> 1. ORM 컬럼 추가 후 마이그레이션 미생성 → 운영 500 ([db.md](.claude/rules/db.md))
+> 2. 신규 파일 추가 후 `docs/architecture.md` 미동기화 → 다음 세션 혼란
+> 3. **측정 도구를 검증하지 않고 그 숫자를 사실로 발행** ([AGENTS.md](AGENTS.md) §측정 규율)
 
 ## 핵심 명령
 
-```bash
-cp .env.example .env   # 최초 설정
-make install           # 의존성 설치 (requirements-dev.txt)
-make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
-```
+🔴 **`make` 이 없는 머신이 있다** (이 개발 PC 포함 — `make: command not found`). `make X` 실패는
+환경 문제이지 리포 문제가 아니다. **push 전 게이트 = `py -3 scripts/pre_push_gate.py`**
+(make 비의존, CI 강제 가드 13종 — backlog R29). 단위 테스트 = `py -3 -m pytest tests/unit`.
 
-> 🔴 **`make` 이 없는 머신이 있다** (2026-08-01 실측: 이 개발 PC 에서 `make: command not found`).
-> 아래 표의 `make X` 가 실패하면 환경 문제이지 리포 문제가 아니다 — 대체 명령을 쓴다:
-> `make test` → `py -3 -m pytest tests/`, `make lint` → `py -3 -m pylint src/` 등.
-> **push 전 게이트는 `py -3 scripts/pre_push_gate.py`** (make 비의존, CI 강제 가드 13종). backlog R29.
-
-| 명령 | 동작 |
-|------|------|
-| `make install` | 의존성 설치 |
-| `make test` | 전체 테스트 (빠른 출력) |
-| `make test-v` | 전체 테스트 (상세 출력) |
-| `make test-fast` | 빠른 단위 테스트만 (`tests/integration/` 제외, `-m "not slow"`) |
-| `make test-slow` | 통합 테스트만 (`tests/integration/` — 실 subprocess 실행) |
-| `make test-cov` | 테스트 + 커버리지 |
-| `make test-file f=tests/test_pipeline.py` | 특정 파일 테스트 |
-| `make lint` | pylint + flake8 + bandit 검사 |
-| `make review` | 로컬 코드리뷰 CLI 실행 (HEAD~1 기준) |
-| `make run` | 개발 서버 실행 (port 8000) |
-| `make migrate` | DB 마이그레이션 실행 |
-| `make revision m="설명"` | 새 마이그레이션 파일 생성 |
-| `make install-playwright` | Playwright + Chromium 설치 |
-| `make test-e2e` | E2E 테스트 실행 (headless) |
-| `make test-e2e-headed` | E2E 테스트 실행 (브라우저 표시) |
-
+전체 타깃 목록은 `Makefile` 이 정본이다 (`make help` 또는 파일 직접 확인 — 여기 복제하지 않는다).
+최초 설정: `cp .env.example .env` → `make install` → `make run`.
 ## 아키텍처
 
 - **src/ 트리 + 모듈 역할**: [`docs/architecture.md`](docs/architecture.md)
@@ -82,29 +43,19 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 
 > 🔴 **신규 파일 추가 시 [`docs/architecture.md`](docs/architecture.md) 동기화 의무** — src/ 트리 항목 + 핵심 데이터 흐름 갱신.
 
-## 환경변수 (필수만)
+## 환경변수
 
-| 변수 | 설명 |
-|------|------|
-| `DATABASE_URL` | PostgreSQL 연결 URL (`postgres://`는 `postgresql://`로 자동 변환) |
-| `TELEGRAM_BOT_TOKEN` | Telegram Bot API 토큰 |
-| `TELEGRAM_CHAT_ID` | Telegram 알림 수신 Chat ID |
-| `GITHUB_CLIENT_ID` | GitHub OAuth 앱 클라이언트 ID |
-| `GITHUB_CLIENT_SECRET` | GitHub OAuth 앱 클라이언트 시크릿 |
-| `SESSION_SECRET` | 세션 쿠키 서명 키 (32자 이상 랜덤 문자열 필수) |
-| `APP_BASE_URL` | Railway 배포 시 HTTPS URL 강제 (OAuth + Webhook 양쪽 적용) — Railway 필수 |
-| `ANTHROPIC_API_KEY` | Claude AI 리뷰 (없으면 기본값 fallback) |
-| `DISABLE_PROMPT_CACHE` | Anthropic prompt caching (5분 ephemeral) opt-out — `1` 시 비활성 (Phase 3 PR 1, default `0`) |
+전체 목록·설명·제약은 [`docs/reference/env-vars.md`](docs/reference/env-vars.md) 가 정본이다
+(여기 복제하면 두 곳이 갈라진다 — 실제로 4건 누락 사고가 있었다).
 
-전체 환경변수 목록: `docs/reference/env-vars.md`
+🔴 **함정만 적는다**: `SESSION_SECRET` 은 32자 이상이 아니면 **기동 실패**(validator) ·
+`APP_BASE_URL` 미설정 시 Railway 에서 OAuth/Webhook 이 `http://` 로 등록돼 전달 실패 ·
+`CLAUDE_REVIEW_MODEL` 을 **빈 값으로 두면** 기본값을 덮어 AI 리뷰가 전부 `api_error`(#1289).
+## 배포
 
-## Railway 배포 + 운영 DB 환경
-
-- **상세 운영 가이드**: [`docs/runbooks/railway.md`](docs/runbooks/railway.md)
-- **운영 DB**: Supabase + 온프레미스 PostgreSQL 이중 setup (Railway 도 호환). 모든 환경 동일 alembic 마이그레이션 적용.
-- **Railway 필수 환경변수**: `DATABASE_URL` (PostgreSQL 플러그인 자동) + `APP_BASE_URL` (HTTPS, OAuth/Webhook 강제) + 나머지 [`docs/reference/env-vars.md`](docs/reference/env-vars.md) 참조.
-- **헬스체크**: `GET /health` → `{"status":"ok"}`. 내부 상태 미노출 (정보 노출 방지).
-
+운영 가이드 [`docs/runbooks/railway.md`](docs/runbooks/railway.md) · 규칙
+[`.claude/rules/deploy.md`](.claude/rules/deploy.md)(배포 파일 편집 시 자동 로드).
+운영 DB = Supabase + 온프레미스 PostgreSQL 이중, 모든 환경 동일 alembic 적용.
 ## Agent 작업 규칙
 
 모든 AI 에이전트(Claude Code 및 서브에이전트)는 SCAManager 작업 시 아래 규칙을 **반드시** 따른다.
@@ -114,236 +65,76 @@ make run               # 개발 서버 (port 8000, DB 마이그레이션 자동)
 
 ### 사용자 협업 정책 (2026-05-01 합의)
 
-#### 정책 1: 옵션 제시 시 **장단점 명시 의무** (반대 X, 정보 ○)
+> 🔴 **아래는 default rule 만이다.** 사용자 발화 인용 · 진화 이력 · 검증 사례 · Why/How 는
+> [`.claude/policies/active.md`](.claude/policies/active.md) 와
+> [`history.md`](.claude/policies/history.md) 가 정본이다(정책 17 원칙 2).
+> 판단이 갈리거나 위반 회복이 필요하면 **그 파일을 열 것** — 여기 요약만 보고 결정하지 않는다.
 
-사용자 발화: *"반대 하기를 원하기 보다 각각의 장단점을 알려주시면 권장을 한다 하더라도 제가 판단하는데 도움이 될거라 생각합니다."*
+| # | default rule | detail |
+|---|---|---|
+| **1** | 옵션 제시 시 **장단점 표**(옵션·장점·단점·위험·권장시점) + ★ 권장 + "고려했으나 제시 안 한 안" 1줄. 🔴 "전부다" 류 일괄 결정 **또는 다중 PR 빠른 진행 신호 ≥10회** 시 **검토 깊이 자가 보고 요청 의무**(누락 시 다음 응답에서 회복). 예외: 단순 머지 보고 + 옵션 표 결정 | [history](.claude/policies/history.md#정책-1-진화) |
+| **2** | 모든 PR 본문에 §"🔍 사용자 검증 필요" — 시각/운영 확인 1~3개 명시. "tests pass" 만 적기 **금지** | [active](.claude/policies/active.md#정책-2) |
+| **3** | 위임받은 작업 중 **Claude 가 판단한 항목**은 PR 본문 또는 응답 끝에 명시 | — |
+| **4** | 단언과 회귀 가드를 **같은 PR** 에 묶는다. 가드 없는 단언은 사고 시 책임 귀속 불가 | — |
+| **5** | 사이클 끝마다 종료 신호 명시. 🔴 다중 단계 발화("A+B+C 진행") 후 일부만 하고 종료하면 **잔여 단계 진행 신호 회신 의무**. 🔴 **Phase 종료 진입 시 정책 2/5/8/11 4 정책 cross-reference 자가 검토 의무**(한 정책만 적용하면 나머지 3 위반). 🔴 **NEW-P0-N(운영 사고 차단)은 매 사이클 회신 의무** — 보류 default·정책 9 완화 **모두 미적용** | [active](.claude/policies/active.md#정책-5-phase-종료-cross-reference) |
+| **6** | 에이전트 프롬프트에 `line:span` 인용 강제. 🔴 정책·메모리 본문의 `file:line` 은 **`grep -n` 실측값**이어야 한다(추정 금지 — drift 실사고 5건) | — |
+| **8** | 회고는 **최소 4~5 에이전트 병렬 + 관점 분리 + cross-verify 1건(5+1)**. Claude 단독 회고 금지. 🔴 직전 정식 회고 이후 **≥3 세션 또는 ≥15 PR** 시 강제 트리거(SessionStart 훅이 경고) · 이월하려면 `docs/runbooks/retro-cadence-deferrals.md` 에 **사용자 승인 인용 + 목표 세션 기록 의무**. 🔴 **회고 범위 = 직전 회고 이후 머지 PR + 본 세션 산출물 전체**(기계 산출 `scripts/retro_scope.py`) — 세션 산출물이 빠지면 **가장 검증 덜 된 코드가 회고를 피한다**. 자기회고 갈음은 **사용자 명시 승인 시에만** | [active](.claude/policies/active.md#정책-8-회고-카덴스) |
+| **9** | 회고 직후 **자유 발언 4 섹션**(바라는 점 / 자성 / 필요한 것 / 수정 제안). 🔴 완화: 회신 부재 시 자율 판단 보고로 대체 OK — 단 (a) 운영 사고 차단 (b) destructive (c) architecture/UX/데이터모델 은 **명시 회신 의무**. **Phase 종료 시** §"🔍 회고 질문(사용자 회신 의무)" 1줄 추가 | [active](.claude/policies/active.md) |
+| **10** | PR 은 **직접 생성**(`gh pr create`) — URL 안내 금지. 🔴 본문은 **임시 파일 + `--body-file`** 로만(`@-`/stdin 금지 — 8건 본문 소실 사고) + 생성 직후 `gh pr view --json body` 길이 검증 | [active](.claude/policies/active.md#정책-10) |
+| **11** | `templates/**`·`static/**` 등 **시각 변경 PR** 은 본문 최상단에 **4테마 × 모바일/데스크탑 8조합** 체크리스트. 🔴 "테스트 통과" 만 적기 금지 — 정적↔시각 비대칭 명시 의무 | [active](.claude/policies/active.md#정책-11) |
+| **12** | MCP: SELECT-only 자율 OK / **INSERT·UPDATE·DELETE·DROP·ALTER + PII·credential SELECT = 사전 승인 의무**. 호출 시 PR 본문에 결과 명시 | [active](.claude/policies/active.md#정책-12) |
+| **13** | 매 사이클/Phase 종료 시 **3-endpoint smoke check** + PR 본문 §결과. 🔴 기대값 SSOT = [`operational-smoke-checks.md`](docs/runbooks/operational-smoke-checks.md) (리터럴 복제 금지 — 3 사본 drift 사고) | [active](.claude/policies/active.md#정책-13) |
+| **14** | 매 사이클 종료 시 **Code Scanning open alert** 직접 검토 → fix / dismiss+사유 / suppress+회고. 🔴 lint 통과 ≠ Security 탭 0 (CodeQL 별도 룰셋) | [active](.claude/policies/active.md#정책-14) |
+| **15** | 모든 Edit/Write/destructive **직전 3 자문**(목적 정합? 영향 범위? 검증 방법?). 이해 부족 시 중단. **3-tier**: High(스키마·API·권한·데이터모델 = 사전 확인) / Medium(자율+보고) / Low(즉시) | [active](.claude/policies/active.md#정책-15) |
+| **16** | 우선순위 **1.정확성 2.성능 3.가독성 4.최소 추상화(사용처 ≥3) 5.토큰 비용**. 🔴 같은 값·로직이 2+곳이면 수정 **직전** `grep -rn` 전수 열거. 🚫 **명시 제외**(사전 확인 의무): `build_review_prompt` 토큰예산 축소 · `review_guides/` 압축 | [active](.claude/policies/active.md#정책-16) |
+| **17** | 문서 정리는 **안정성 > 권장 규격**. 🔴 **Anthropic 200줄 등 외부 권장 규격은 가이드라인 — 안정성과 충돌하면 거부한다.** default rule + 진화 1~2줄은 **본문 보존**, detail 만 external. 🔴 매 분리 단계마다 **5+1 회의 + 운영 검증 + 사용자 옵션 표 결정**. 🔴 **매 작업/회고/PR 의무 영역(정책 8·11·5·9)은 본문 보존 default** — 분리 시 High tier 사전 확인. ≥18 PR 영역은 ≥5 사이클마다 정기 검증 | [active](.claude/policies/active.md#정책-17-why-how) |
 
-**권장 default 표 형식**: `| 옵션 | 장점 | 단점 | 위험 | 권장 시점 |` 5컬럼 + 권장 표시 (★) 보조 + "고려했으나 제시 안 한 안" 1줄 (추론 추적성). 상세 예시: [.claude/policies/history.md#정책-1-진화](.claude/policies/history.md#정책-1-진화).
+#### 정책 7: 모든 작업은 PR 단위 (main 직접 작업 지양)
 
-🔴 **진화 default 요약** — (1) "전부다" 일괄 결정 시 검토 깊이 1줄 자가 보고 요청 의무 (사이클 83). (2) 다중 PR 빠른 진행 신호 ≥ 10회 = 동일 의무 (사이클 84). 예외: 단순 머지 보고 + 옵션 표 결정. 상세: [.claude/policies/history.md#정책-1-진화](.claude/policies/history.md#정책-1-진화).
-
-🔴 **정책 1 진화 회귀 가드 (사이클 86 Q4 — 사용자 명시 결정)** — **자가 검증 의무**: Claude 가 일괄 결정 발화 직후 자가 보고 요청 누락 시 = **다음 응답에서 회복 의무** (자성 1줄 + 검토 깊이 사후 요청 + 자가 보고 1줄). 사이클 85 회고 P0 사례 = 본 회귀 가드 첫 적용. 회복 누락 시 = 다음 사이클 회고 §자성 명시 의무. 회복 패턴 예시: [.claude/policies/history.md#정책-1-진화-회귀-가드](.claude/policies/history.md#정책-1-진화-회귀-가드).
-
-#### 정책 2: PR 본문 "🔍 사용자 검증 필요" 섹션 의무
-
-**default**: 모든 PR 본문 §"🔍 사용자 검증 필요" 섹션 — 시각/운영 확인 항목 1~3개 명시 (Railway 배포 / 테마 토글 / 운영 사고 보고 등). "tests pass" 만 적기 금지. 템플릿 + 진화 (Phase 종료 일괄 회신 묶음) 상세: [.claude/policies/active.md#정책-2](.claude/policies/active.md#정책-2).
-
-#### 정책 3: **자율 판단 결정의 사후 보고 의무**
-
-위임받은 작업 ("권장 방향 진행", "GitHub 정리 수행" 등) 중 Claude 가 판단한 항목은 PR 본문 또는 응답 끝에 명시.
-
-예: *"GitHub 정리 시 미매핑 PR 17건은 보류 결정했습니다 (역사 정리 가치 < 시간 부담). 이의 있으시면 알려주세요."*
-
-#### 정책 4: **단언과 회귀 가드를 같은 PR 에 묶기**
-
-"5-way sync 보존" 같은 단언은 회귀 가드 PR 과 동시 머지. 단언만 있고 가드 없으면 사고 시 책임 귀속 어려움.
-
-#### 정책 5: **사이클 종료 신호 명시 + Phase 단계별 진행/종료 신호 분리**
-
-"권장 진행" 시작된 작업의 종료 시점 모호. 사이클 끝마다 Claude 가 명시 확인:
-- "다음 단계 진행할까요?" (사용자 신호 대기)
-- 사용자 신호 ("여기까지 합시다" / "오늘은 그만") 시 즉시 종료
-
-**Phase 단계별 진행/종료 신호 분리 의무 (사이클 75 진화 — 사이클 74 사고 학습)**: 사용자가 "A+B+C+D 모두 진행" 같은 다중 단계 발화 시 Claude 의 사이클 종료 (예: 회고 진입) 시점에 **잔여 단계 (예: C/D) 진행 신호 명시 회신 의무**. 사이클 74 사례 = Phase 2-A (#247) + Phase 2-B (#248) 머지 후 회고 진입 → Phase 2-C/D 진행 의도 미확인 = 사용자 발화와 Claude 종료 신호 불일치. **default 적용**: 다중 단계 발화 후 일부 단계만 진행하고 사이클 종료 시 = "Phase X-Y 완료. Phase X-Z 잔여 — 다음 사이클 진입 시 결정 회신 의무" 1줄 명시.
-
-🔴 **정책 5 cross-reference 강화 (사이클 83)** — Phase 종료 시점 의무는 **정책 2/5/8/11 4 정책에 분산** (인지 부담 ↑ 위험). **default 적용**: Phase 종료 시점 진입 시 4 정책 cross-reference 자가 검토 의무 (한 정책만 적용 시 다른 3 정책 위반 가능). Claude 가 PR commit body §"Phase 종료 처리" 섹션에 적용 정책 명시 권장. 상세: [.claude/policies/active.md#정책-5-phase-종료-cross-reference](.claude/policies/active.md#정책-5-phase-종료-cross-reference).
-
-🔴 **정책 5 NEW-P0-N 예외 명시 (사이클 83 — 사이클 78~82 회고 Tier B-5 사용자 OK Q5)** — **운영 사고 차단 영역 (NEW-P0-N) 은 Phase 단계별 보류 default 적용 X**: 사이클 78 PR 2 (NEW-P0-1 = Telegram 봇 차단 silent skip) = 정책 5 강화 default 적용 결과 = "PR 2/3/4 = 머지 대기 (사용자 영역)" 명시 → 4 사이클 누적 사용자 머지 대기 → 운영 사고 위험 누적 (메모리 `feedback-stale-blocker-policy.md` 2.5배 자기 위반).
-
-**default 적용**: NEW-P0-N (5+1 cross-verify 신규 발견 P0) 영역 = **매 사이클 진행 신호 회신 의무** (사용자 명시 결정 받기 전까지). Phase 단계별 보류 default 적용 X. 정책 9 완화 default (회신 부재 시 자율 판단 보고로 대체 OK) **미적용 영역**.
-
-#### 정책 6 (보조): **다중 에이전트 디스패치 시 `line:span` 인용 의무 명시 + 정책 본문/메모리 본문 작성 시 `grep -n` 실측 의무**
-
-본 사이클 검증 — 인용 없는 보고는 false-positive 80% 발생. 모든 에이전트 프롬프트에 강제 조건으로 명시.
-
-**정책 본문/메모리 본문 작성 시 line:span 인용 = `grep -n` 실측 의무 (사이클 75 진화 — 사이클 72 정책 16 line:span drift 학습)**: 정책 본문 또는 메모리 본문 작성 시 `src/<file>:<line>` 형식 인용은 **`grep -n` 명령 실측 후 작성 의무**. 추정 line 번호 작성 금지 (자연 drift 가능 — 사이클 72 정책 16 본문의 `ai_review.py:79` / `dashboard_service.py:546` 가 사이클 74 코드 추가로 89/571 drift 사례). **default 적용**: line:span 인용 시 함께 commit hash 명시 권장 (`ai_review.py:89 (#218)` 형식 — 자연 drift 추적 가능).
-
-#### 정책 7: **모든 작업은 PR 단위 (main 직접 작업 지양)**
-
-사용자 발화 (2026-05-01): *"작업 단위를 PR 로 수행 … main 에 직접 작업은 지양"*.
-
-**default 흐름 (예외 0)**: `checkout main && pull` → `checkout -b <type>/<scope>` → 작업+commit
-→ `push -u origin` → **PR 직접 생성**(`gh pr create`) → 사용자 머지. 🔴 **금지**: `git push origin
-main`(main 직접 push) · main 에 commit 후 방치 · "사소한 docs 라 main 에 직접" 예외. 신규 파일·typo·
-docs-only 도 예외 없이 PR. 브랜치 명명·위반 시 회복 상세: [.claude/policies/active.md#정책-7](.claude/policies/active.md#정책-7).
-
-#### 정책 8: **회고는 항상 다중 에이전트로 깊게 진행 의무**
-
-사용자 발화: *"가급적 회고도 모든 에이전트가 깊게 생각하여 진행했으면 합니다."*
-
-**default 패턴** (Claude 단독 회고 금지): **최소 4~5 에이전트 병렬 디스패치** + **관점 분리**
-(비중복 도메인) + 각 프롬프트에 `self-contained`·`line:span 인용`(정책 6)·P0/P1/P2 강제 +
-**cross-verify 1건(= 5+1)**. 실행 = `.claude/workflows/retrospective.mjs`(`/retrospective`).
-🔴 cross-verify 생략 정량 기준·6차 에이전트 규칙·진화 1~3 상세: [.claude/policies/active.md#정책-8-회고-카덴스](.claude/policies/active.md#정책-8-회고-카덴스) · [history.md#정책-8-진화](.claude/policies/history.md#정책-8-진화).
-
-🔴 **진화 default (본문 유지 — 매 세션 트리거)**:
-- **(4) 회고 카덴스 강제 트리거**: 직전 정식 회고 이후 **≥3 세션 또는 ≥15 PR** 시 5+1 회고 강제
-  (SessionStart 훅 `check_retro_cadence.py` 가 기계 경고). 자기회고 갈음은 **사용자 명시 승인 시에만**
-  ("규모가 작아서" 사유 불가). ≥18 PR 정기 검증(정책 17-5)과 시점 차별.
-- **(5) 회고 범위에 "세션 자신의 산출물" 포함 default** (2026-07-19 승인): 세션 중간 회고 시 그
-  세션 PR 이 범위 밖으로 빠져 **가장 검증 덜 된 코드가 회고를 피한다**. 범위 = `직전 회고 이후 머지
-  PR + 본 세션 산출물 전체`(기계 산출 `scripts/retro_scope.py`). 세션 중간 회고 = 잔여분 2차 회고 판정 의무.
-- **(6) 카덴스 이월 승인 기록 의무** (2026-07-22 회고 P1 결정): 카덴스 트리거 발화(≥15 PR) 상태에서
-  **회고 미진입으로 세션 작업을 계속하려면** `docs/runbooks/retro-cadence-deferrals.md` 에 (a) 사용자
-  명시 이월 승인 인용 (b) 목표 진입 세션을 **기록 의무**. 기록 없이 이월 시 `check_retro_cadence.py`
-  가 다음 세션 시작에 **"🔴 이월 승인 기록 없음"** loud 발화 + 다음 회고 §자성 명시 의무. advisory
-  유지(비차단·정책 17) — 집행면 = **이월 결정의 관측 가능성**(순수 배너가 15→57 PR 3.8배 이월을
-  못 막은 근본 시정). 회고에 실제 진입하면 이월 아님(원장 미기재가 정상).
-
-#### 정책 9: **회고 후 반드시 Claude 자유 발언 시간 의무**
-
-사용자 발화: *"회고 이후에 반드시 바라는 점 … 자유롭게 말하는 시간도 있었으면"*.
-
-**default 발언 흐름** (회고 종합 보고 직후 자동) — 4 섹션: (1) 바라는 점 (2) 자성할 점(잘못/누락
-+ 개선 약속) (3) 필요한 부분(데이터/결정 입력) (4) 수정 제안 표. 원칙: 솔직함 + 자성/요청 균형
-+ 구체적 제안 + 사용자 발화 인용 보존. **Phase 종료 시** §"🔍 회고 질문(사용자 회신 의무)" 1줄 추가
-(`[x] 모두 OK / [!] N번 재검토 / [ ] 미수행`).
-
-🔴 **정책 9 완화**: 회신 부재 시 **자율 판단 보고 명시하면 회신 의무 면제 OK**. 단 **미적용 3영역**:
-(a) 운영 사고 차단(NEW-P0-N) (b) destructive(브랜치 삭제/DROP/DELETE) (c) architecture/UX/데이터
-모델 결정 — 사용자 명시 회신 의무 보존. ⚠️ 완화 = "회고 질문 작성 면제" 아님(작성은 의무, 회신
-부재만 대체). 템플릿 상세: [.claude/policies/active.md](.claude/policies/active.md).
-
-#### 정책 10: PR 직접 생성 의무 (URL 안내 X, 자동 생성 ○)
-
-**default 6단계 (PR 생성 — 완료 6-step 과 별개)**: `git checkout main && pull` → `checkout -b <type>/<scope>` → 작업+commit → `push -u origin` → **PR 직접 생성** (gh pr create) → URL 보고.
-
-🔴 **현재 SCAManager 환경**: gh CLI v2.89.0 설치 완료 + xzawed 계정 인증 완료 → **옵션 🅐 (gh pr create) default**.
-
-**fix-up commit default**: 머지 전 CI fail / 회귀 = 동일 PR 브랜치 추가 commit (정책 7 강화 응집 단위). 머지 후 발견 = 별도 fix PR. PR body 템플릿 + 환경별 detail: [.claude/policies/active.md#정책-10](.claude/policies/active.md#정책-10).
-
-🔴 **PR 본문 전달 + 생성 직후 검증 의무 (2026-06-10 사고 학습)**: 본문은 임시 파일 + `--body-file <경로>` 로만 전달 (`@-` / stdin 관용구 금지) + `gh pr create`/`edit` 직후 `gh pr view --json body` 길이 검증 — PR #838~#845 8건 본문이 리터럴 `@-` 로 소실된 사고 (2026-06-10 복원). 상세: [.claude/policies/active.md#정책-10](.claude/policies/active.md#정책-10).
-
-#### 정책 11: **UI/시각 변경 PR 본문에 "Claude 시각 검증 불가" 의무 명시**
-
-사용자 발화 (2026-05-02): *"PR본문 검증의 경우 디테일한 검증은 없었습니다."* — Claude 의 UI/시각
-변경(template/css/html)은 정적 코드만 검증 가능. 4-테마 × 모바일/데스크탑 **8 조합** 시각 정합성은 사용자 의무.
-
-**default**: `src/templates/*.html`·`src/static/**/*.css`·`base.html <style>`·신규 시각 컴포넌트 변경 PR
-= 본문 최상단 8 조합 체크리스트. 🔴 **금지**: 본 섹션 누락 후 "테스트 통과" 만 적기(정적↔시각 비대칭
-명시 의무). **Phase 종료 시** 누적 8 조합 체크리스트 단일 회신 표 묶음(정책 2 진화 페어). 템플릿·정책
-2/3/7 진화 상세: [.claude/policies/active.md#정책-11](.claude/policies/active.md#정책-11) · [history.md](.claude/policies/history.md).
-
-#### 정책 12: MCP scope 제한 의무
-
-**default**: SELECT-only 자율 실행 OK / **INSERT/UPDATE/DELETE/DROP/ALTER + PII·credential SELECT = 사용자 사전 승인 의무** (운영 데이터 변경 + secret 노출 차단). MCP 호출 시 PR 본문 §"MCP 자율 실행 결과" 명시 (정책 3 강화 페어). 상세 + 검증 사례 + 금지 패턴: [.claude/policies/active.md#정책-12](.claude/policies/active.md#정책-12).
-
-#### 정책 13: 운영 endpoint smoke check 의무
-
-**default**: 매 사이클/Phase 종료 시 3-endpoint smoke check(인증/외부 통합 변경 PR). PR 본문 §"운영 smoke check 결과" 섹션 의무. **자동화 가드 ≠ manual smoke check 대체**(CI 통과 ≠ 운영 정상). 🔴 **엔드포인트 기대값 SSOT = [`docs/runbooks/operational-smoke-checks.md`](docs/runbooks/operational-smoke-checks.md)** — 리터럴 상태값은 여기 두지 않는다(사본 drift 방지: `/login` 은 실제 **301**인데 3 사본이 200 으로 어긋났던 사고). 절차 상세: [.claude/policies/active.md#정책-13](.claude/policies/active.md#정책-13).
-
-#### 정책 14: GitHub Code Scanning 알림 운영 체크 의무
-
-사용자 발화: *"시큐리티에서 감지하는 내용도 앞으로 프로젝트 운영시 체크사항으로 부탁드립니다."*
-
-**default**: 매 사이클 종료 시 Security 탭 Code Scanning open alert 직접 검토. 신규 alert = (a) 실제 위반 → fix PR / (b) false-positive → dismiss + 사유 / (c) 의도 패턴 → suppress + 회고. PR 본문 §"Code Scanning open alert" 일괄 회신 OK. **SCAManager lint (pylint/flake8/bandit) 통과 ≠ Security 탭 0 alert** (CodeQL 별도 룰셋). 상세: [.claude/policies/active.md#정책-14](.claude/policies/active.md#정책-14).
-
-#### 정책 15: 코드 작업 (add/edit/delete) 전 사전 사고 의무
-
-사용자 발화: *"앞으로 코드를 추가, 수정, 삭제 작업을 실행하기 이전에 항상 생각을 먼저 하고 진행을 합니다. 이해가 안되면 멈추거나 물어보고 하세요."*
-
-**default**: 모든 Edit/Write/MCP destructive 직전 3 자문 의무 — (a) 목적 = 사용자 의도 정합? (b) 영향 범위 인지? (c) 검증 방법 명확? 이해 부족 시 즉시 중단 (옵션 표 또는 yes/no 사전 확인). **위임 분류 3-tier**: **High** (사전 확인 의무 — DB 스키마/API/권한/데이터 모델) / **Medium** (자율+보고 — 헬퍼/정책 진화) / **Low** (즉시 진입 — 회귀 가드/docstring/typo). 상세: [.claude/policies/active.md#정책-15](.claude/policies/active.md#정책-15).
-
-#### 정책 16: 코드 단순화 default + 가독성 우선
-
-사용자 발화: *"코드를 단순화 … 정확성과 성능은 유지 … 이해하기 쉽게"*.
-
-**default 5 원칙**(우선순위): 1.정확성 2.성능 3.가독성 4.최소 추상화(사용처 ≥3 시 도입) 5.🔴 토큰 비용 효율.
-🔴 **진화 — 공유 로직 grep 전수 default**: 같은 값/로직이 2+곳이면 수정 **직전** `grep -rn <심볼>` 전
-호출처 열거 + diff 에 "전수 확인 N곳" 명시(API+HTML 양 라우트 = High-tier 사전 grep). 사후 리뷰를
-proactive 규율 대체물로 쓰지 말 것(grep=turn-0, 리뷰=backstop). 가능 시 회귀 가드 동반(정책 4).
-**🚫 명시 제외**(AI 리뷰 품질 보존): `build_review_prompt` 토큰예산 축소 / `review_guides/` 압축 = 사용자
-사전 확인 의무. **금지 패턴**: 추상 베이스클래스·Generic·메타클래스·데코레이터 체인·"확장 대비" 분기.
-상세: [.claude/policies/active.md#정책-16](.claude/policies/active.md#정책-16).
-
-#### 정책 17 신설 (2026-05-06 사이클 88 진입): 문서 정리 시 안정성 > 권장 규격 우선순위
-
-사용자 발화 (2026-05-06, 사이클 88 Phase A 머지 후): *"문서정리는 권장하는 규격보다 안정성이 더 우선시 되야합니다. 여러 에이전트는 해당 기준 내용을 토대로 깊게 생각하여 논의후 저에게 제안한 내용이 조건에 타당한지 검토후 진행해주세요."*
-
-**default 의무 5 원칙** (우선순위 순):
-1. **안정성 우선** — 행동 가이드 detail 보존 + 회귀 0 (Anthropic 200줄 hard target 등 외부 권장 규격은 가이드라인 — 안정성 충돌 시 거부)
-2. **default rule + 진화 default 본문 보존** — 정책 본문의 default rule + 진화 default 1~2줄 = CLAUDE.md 본문 보존 의무 / detail · 검증 사례 · Why · How to apply = `.claude/policies/active.md` 또는 `history.md` external (Phase A 검증 패턴)
-3. **단계 분할 + 단계별 검증 의무** — 매 분리 단계마다 5+1 다중 에이전트 회의 + 운영 검증 (행동 가이드 drift 0) + 사용자 옵션 표 결정 (정책 1 + 정책 8 + 정책 7 강화 페어)
-4. **분리 위험 영역 사용자 사전 확인 의무** — 매 작업/회고/PR 의무 영역(정책 8·11·5·9 미적용 영역)은 본문 보존 default + 분리 시 High tier 사전 확인.
-5. **누적 결함 정기 검증 default** — 단일 작업일 ≥18 PR 영역 도입 후 **≥5 사이클 경과 시 정기 5+1 검증**(시간/PR 기반, 회고 cross-verify 와 시점 차별). 상세: [.claude/policies/active.md#정책-17-5번째-default](.claude/policies/active.md#정책-17-5번째-default).
-
-Why + How to apply (자가 검토 4 자문) 상세: [.claude/policies/active.md#정책-17-why-how](.claude/policies/active.md#정책-17-why-how).
+🔴 **예외 0.** 흐름: `git checkout main && pull` → `checkout -b <type>/<scope>` → 작업+commit
+→ `push -u origin` → **`gh pr create`** → 사용자 머지. **금지**: `git push origin main` ·
+main 에 commit 후 방치 · "사소한 docs 라 main 에 직접". 신규 파일·typo·docs-only 도 예외 없다.
+접두사: `feat/` `fix/` `chore/` `docs/`. 위반 시 회복: [active](.claude/policies/active.md#정책-7).
 
 #### ⛔ 정책 18 폐기 (2026-07-10 — Codex 구독 해지)
 
-Codex mutual 검증 폐기 (`codex` 실행 파일 부재). **`codex exec` probe 실패 = 정상**(이상 징후로
-보고·확인 요청 금지). 코드·문서의 "Codex 적발/발견" 주석은 **당시 사실 기록(재작성 금지)**.
-대체 = 정책 19(Grok) + Claude 단독 2-layer(5+1 + whole-branch). 상세·진화 이력:
-[.claude/policies/history.md](.claude/policies/history.md).
+Codex mutual 검증 폐기. **`codex exec` 실패 = 정상**(이상 징후로 보고 금지). 코드·문서의
+"Codex 적발" 주석은 **당시 사실 기록(재작성 금지)**. 대체 = 정책 19 + Claude 단독 2-layer.
 
-#### 정책 19: Claude ↔ Grok 협업 (2026-07-19 승인 · default ON 2026-07-20)
+#### 정책 19: Claude ↔ Grok 협업 (default ON)
 
-**SSOT = [`AGENTS.md`](AGENTS.md)(3-불변식·트리거) + [`docs/runbooks/ai-collaboration.md`](docs/runbooks/ai-collaboration.md)(프로토콜 v2).**
-Grok 은 파이프라인 단계가 아니라 **claim-review/인터럽트**. 별도 지시 없으면 실질 작업마다
-Grok CLAIM-REVIEW 기본 포함(2026-07-20 사용자 지시, 건너뛰려면 명시 지시). 상세: [[feedback-grok-collaboration-default]].
+**SSOT = [`AGENTS.md`](AGENTS.md)(3-불변식·트리거) + [`docs/runbooks/ai-collaboration.md`](docs/runbooks/ai-collaboration.md).**
+별도 지시 없으면 **실질 작업마다 Grok CLAIM-REVIEW 포함**(건너뛰려면 명시 지시).
 
-- **핵심 트리거**: "봉인/완결/fail-closed/유출 0" 주장 → 그 주장 하나로 Grok 뮤테이션 패스
-  (이진 질문이라 Grok 심각도 편향 우회). **1순위 사냥 = observer-lie**: *보호 장치를 삭제해도
-  여전히 참으로 보이는 것은?*
-- 🔴 **2-phase 사용자 보고 게이트**(매 발화 의무): `배포|활성|봉인|운영|cron 실행됨` 포함 문장은
-  라이브 deploy reality 필드 동반 또는 **`UNVERIFIED:` 접두사** 의무. `STATIC-ONLY-UNVERIFIED` 는
+- **트리거**: "봉인/완결/fail-closed/유출 0" 주장 → 그 주장 하나로 Grok 뮤테이션 패스.
+  **1순위 사냥 = observer-lie**: *보호 장치를 삭제해도 여전히 참으로 보이는 것은?*
+- 🔴 **A2**: 새 seal 은 **실경로 뮤테이션 red** 없이 HOLDS 금지(합성 픽스처 불가).
+- 🔴 **2-phase 사용자 보고 게이트**(매 발화 의무): `배포|활성|봉인|운영|cron 실행됨` 포함
+  문장은 라이브 근거 동반 또는 **`UNVERIFIED:` 접두사** 의무. `STATIC-ONLY-UNVERIFIED` 는
   사용자 보고 불가.
-- 🔴 **A2 (신규 관측자 뮤테이션 의무)**: 새 seal 은 **실경로 뮤테이션 red** 없이 HOLDS 금지 —
-  합성 픽스처 불가(#1121). 3-불변식 상세 = [`AGENTS.md`](AGENTS.md).
 - **경계 = '소유 금지'**: Grok 은 정책·backlog 를 **저술하지 않는다**(claim-review 는 허용 —
-  seal/HOLDS/완전성 주장 시 `owner-interrupt: claim-review` 명시). 호출 금지: 계획·WBS·구현 중간.
-- **회고 카덴스에 Grok full-pass 겹치지 않음**(피로 방지) — 주장 트리거 + ops 불변식 단축 패스만.
-- 🔴 **집행면 (CI)**: seal 어휘 PR 은 `scripts/check_claim_review_trace.py`(repo-integrity)가
-  claim-review 흔적(session/claim/verdict 값)을 강제. 흔적·면제는 **리뷰어 가시 영역만** 인정
-  (HTML 주석 스트리핑) · 면제 사용은 `::notice` 로 계량 (backlog R20 — SSOT 미등재 시정).
+  seal/HOLDS 주장 시 `owner-interrupt: claim-review` 명시). 호출 금지: 계획·WBS·구현 중간.
+- 🔴 **집행면(CI)**: seal 어휘 PR 은 `check_claim_review_trace.py` 가 흔적(session/claim/verdict)을 강제.
 
-### 작업 시작 전 필수 체크리스트 (매 작업마다)
+detail: [active](.claude/policies/active.md) · 진화 이력: [history](.claude/policies/history.md)
 
-모든 작업 착수 전 아래를 순서대로 확인한다. 30초면 충분하다.
+### 작업 시작 전 (매 작업 30초)
 
 ```bash
-gh run list --limit 3                                       # CI status (기존 vs 신규 실패 구분)
-gh api repos/xzawed/SCAManager/code-scanning/alerts \      # Code Scanning open alert 카운트 (정책 14)
-  --jq '[.[] | select(.state=="open")] | length'            # CI/auth 부재 시 GitHub Security 탭 직접 확인
-py -3 scripts/check_memory_refs.py                          # 🔴 메모리 경로를 **유도**해 출력 (슬러그 하드코딩 금지)
-ls "$(py -3 -c "import sys;sys.path.insert(0,'.');\
-from scripts.check_memory_refs import resolve_memory_dir;from pathlib import Path;\
-print(resolve_memory_dir(Path.cwd()) or '')")"              # 신규 fixture/테스트/패턴 작성 전 메모리 grep
-git status                                                  # 미커밋 변경 없는지 확인
-git checkout -b <브랜치명>                                  # 브랜치 생성 (main 직접 커밋 금지)
+gh run list --limit 3                 # CI status (기존 vs 신규 실패 구분)
+py -3 scripts/check_memory_refs.py    # 🔴 메모리 경로를 **유도**해 출력 (슬러그 하드코딩 금지)
+git status && git checkout -b <브랜치명>   # main 직접 커밋 금지 (정책 7)
 ```
 
-> 🔴 **카운터 2종은 이제 SessionStart 훅이 자동 실행한다 (2026-07-19 P0 — 배선 누락 학습)**:
-> `check_retro_cadence.py`(회고 카덴스) + `check_owed_verification.py`(owed 원장 미결)가
-> `.claude/settings.json` `hooks.SessionStart`(matcher `startup|resume`)에 배선돼 **세션 시작 시 기계
-> 실행**되고, 훅 stdout 은 Claude 컨텍스트에 주입된다 → **위 체크리스트에 수동 명령으로 적을 필요 없다**.
-> 배선 회귀 가드: `tests/unit/scripts/test_session_start_wiring.py` (산문 문자열이 아니라 settings.json
-> 실행 기전을 단언 — 뮤테이션 3종 탐지 실증).
->
-> - **카덴스**: 직전 정식 회고 이후 머지 PR ≥15 시 loud 경고 → 사이클 종료 전 5+1 회고 진입 판정
->   (자기회고 갈음은 사용자 명시 승인 시에만). 문서-only 정책이 2회 연속 실패(2026-07-03 신설 →
->   2026-07-18 ~46 PR 무회고)해 기계 신호로 승격.
-> - **owed 원장**: 안전등급(정책 5 NEW-P0-N) ⏳ 미회신 건이 있으면 loud 경고 → 다음 사이클 진입 전
->   사용자 회신 요청 의무. #1084 가 원장만 만들고 **배선하지 않아** 같은 세션 첫 창에서 자기위반한
->   것이 근본 (문서-only 시정 3회차).
-> - 양쪽 모두 advisory (비차단·exit 0) — 세션/커밋/PR 미간섭 (정책 17 안정성).
+Code Scanning open alert 확인(정책 14)은 GitHub Security 탭 또는
+`gh api repos/xzawed/SCAManager/code-scanning/alerts`.
 
-**메모리 인덱스**: `~/.claude/.../memory/MEMORY.md` 참조 (매 세션 자동 로드).
-- 신규 메모리 추가 시 MEMORY.md 인덱스 + 카테고리 카운트 동기화 의무 (사이클 75 분류 default).
+> 🔴 **카운터 2종은 SessionStart 훅이 자동 실행한다** — 회고 카덴스(`check_retro_cadence.py`)와
+> owed 원장 미결(`check_owed_verification.py`). 훅 stdout 이 컨텍스트에 주입되므로 **수동 실행
+> 불필요**. 둘 다 advisory(비차단). 배선 회귀 가드: `test_session_start_wiring.py`.
 
-GitHub Code Scanning 점검 detail 절차 + 운영 통합 = `docs/runbooks/operational-smoke-checks.md` §9 (정책 14).
-메모리 grep 의무 detail = 메모리 디렉토리의 `feedback_` prefix 파일 참조 (테스트/CI 패턴 기록).
-
-**브랜치 명명 규칙**
-
-| 접두사 | 사용 시점 |
-|--------|----------|
-| `feat/` | 새 기능 구현 |
-| `fix/` | 버그 수정 |
-| `chore/` | 설정·문서·툴링 변경 |
-| `docs/` | 문서 전용 변경 |
-
-**예외 없음** — `.claude/` 내부 파일(Hook·에이전트·스킬), `CLAUDE.md`, `docs/` 변경도 모두 브랜치 + PR 방식으로 진행한다.
+**메모리 인덱스**는 매 세션 자동 로드된다. 신규 메모리 추가 시 MEMORY.md 인덱스 동기화 의무.
+🔴 신규 fixture/테스트/패턴 작성 전 **메모리 grep 의무** — 같은 함정을 두 번 밟지 않기 위한 교차 세션 학습 반송자다(`feedback_` prefix 파일이 테스트/CI 함정을 기록한다).
 
 ### 필수 원칙
 
@@ -353,17 +144,11 @@ GitHub Code Scanning 점검 detail 절차 + 운영 통합 = `docs/runbooks/opera
 - **완료 시 필수 6-step**: 작업이 완료되면 반드시 ① 커밋 → ② 🔴 **push 전 `pytest tests/unit` 전체 통과 실측** (영역 서브셋[`tests/unit/ui`+`i18n` 등]만 실행으로 대체 금지 — #1041 에서 i18n 키 제거가 타 영역 `test_i18n_settings._KEYS` parametrize 연쇄를 깨뜨렸으나 서브셋만 돌려 놓쳐 CI 6-fail. **인라인 cleanup·docs-only 예외 없음**. 🔴 **로컬 통과 ≠ CI 통과** — 로컬 인터프리터[3.14]와 CI[3.12]가 이원이라 버전 의존 회귀는 로컬이 못 잡는다. `pre_push_gate` 가 이 이원을 매 실행 인쇄한다 — backlog R30) → ③ `git push` → ④ PR 생성(`gh pr create`) → ⑤ `docs/STATE.md` 수치 갱신 (🔴 **손으로 고치는 곳은 §테스트 수 추적 이력 맨 아래 한 줄뿐** — 나머지 4지점[종합 수치·추적셀 머리·README 2배지]은 `py -3 scripts/check_docs_sync.py --fix` 가 그 한 줄에서 **파생**한다. 2026-08-05 문서 감사 P0-3: 같은 정수를 5곳에 손유지하던 것이 실제 drift 사고를 냈다 — N지점 동기화는 N-1번의 실패 기회다) + `docs/cycle-history.md` 사이클 이력 동기화 → ⑥ **docs/architecture.md 동기화** (신규 파일 추가·삭제·이름 변경 시 `src/` 트리와 `### 핵심 데이터 흐름` 내 언급 갱신) 를 순서대로 수행한다. 예외 없음.
   - 🔴 **⑤ 배치-PR 이월 분기 (2026-07-09 rank6 — 병렬 STATE/badge 충돌 자초 학습)**: 세션 내 **동일 파일(STATE.md 수치 라인·README 배지)을 건드리는 미머지 PR 이 1건 이상 in-flight** 이면, per-PR ⑤는 **commit body 에 카운트 delta 만 기록**하고 STATE/배지 실갱신은 **세션 종료 시 단일 trailing sync PR 로 이월**한다. 이유: 여러 PR 이 STATE 동일 라인을 연속 write 하면 git merge conflict 자초(본 세션 ⑤ #1048 이 ③ 머지 후 README 인접-라인 충돌 자초 → 사후 수습). PR 착수 전 `git log --oneline main..<open-branches>` 또는 `gh pr list` 로 동일 파일 touch 미머지 PR 존재 여부 1줄 확인 의무.
 - **README.md 배지 동기화**: 테스트 수·pylint·커버리지 수치가 바뀌면 `README.md` 21~25줄 배지도 함께 갱신한다. 수치 출처는 항상 `docs/STATE.md`.
-- **CLAUDE.md 아키텍처 동기화 체크리스트**: `src/` 하위에 파일 추가 시 아래 항목을 순서대로 확인한다. 누락 시 다음 Phase 착수 전 반드시 보완한다. **전례 3건** (Phase 11 PR #73 / 2026-05-01 UI 감사 cleanup PR-D1 / 2026-05-05 사이클 78~82 5+1 cross-verify 환경변수 4건 누락).
-
-  | 위치 | 확인 사항 |
-  |------|----------|
-  | `docs/architecture.md` `src/` 트리 | 신규 파일 한 줄 항목(경로 + 짧은 역할 설명) 추가 (사이클 85 #320 분리 — CLAUDE.md `src/` 트리 → `docs/architecture.md` 단일 출처) |
-  | `docs/architecture.md` `templates/` 한 줄 | 신규 템플릿 파일명 목록에 추가 |
-  | `docs/architecture.md` `repositories/` 한 줄 | 신규 repo 파일 "N종" 카운트 + 목록 갱신 |
-  | `docs/architecture.md` `services/` 한 줄 | 신규 service 함수 목록 갱신 |
-  | `docs/architecture.md` 핵심 데이터 흐름 | 신규 경로가 흐름도에 포함되어야 하면 추가 |
-  | `docs/reference/env-vars.md` | **신규 환경변수 (`*_DISABLED` kill-switch / `SAAS_*` / 모델 분기 / DB 등) 추가 시 적정 섹션 등재 의무** (사이클 82 5+1 cross-verify P0 학습 — 4건 누적 누락). **+ `config.py` `field_validator`/최솟값 제약 추가·변경 시에도** env-vars.md 해당 행 설명·예시 동기화 의무 (사이클 119 P0-C/P1-D 재발 방지 — SESSION_SECRET 32자 이상 예시 누락·MERGE_UNKNOWN_RETRY 미등재) |
-  | `.claude/rules/<area>.md` | **🔴 사이클 86 Q2 신설 (사용자 명시 결정)** — 영역별 path-scoped rules 본문 sync 의무. `tests/**` / `alembic/**` / `src/<area>/**` 등 path 매칭 영역 변경 시 해당 `.claude/rules/<area>.md` 본문 갱신 의무. 11 영역 매트릭스: testing.md (`tests/**`, `e2e/**`, `pytest.ini`) / db.md (`alembic/**`, `src/models/**`, `src/database.py`, `src/repositories/**`) / pipeline.md (`src/worker/pipeline.py`, `src/analyzer/**`, `src/scorer/**`, `src/webhook/**`, `src/gate/**`) / api.md (`src/api/**`, `src/notifier/**`, `src/webhook/**`, `src/gate/**`, `src/github_client/**`, `src/scheduler.py`, `src/main.py`) / security.md (`src/auth/**`, `src/crypto.py`, `src/shared/log_safety.py`, `src/shared/ssrf.py`, `src/shared/secure_compare.py`, `src/api/auth.py`, `src/webhook/validator.py`, `src/main.py`, `src/logging_config.py`) / ui.md (`src/templates/**`, `src/static/**`, `src/ui/**`) / i18n.md (`src/i18n/**`, `src/middleware/locale.py`, `src/notifier/_language.py`, `src/analyzer/pure/review_guides/**`) / deploy.md (`railway.toml`, `nixpacks.toml`, `requirements.txt`, `sonar-project.properties` 등) / services.md (`src/services/**`, `src/verifier/**`, `src/config_manager/**`, `src/railway_client/**`, `src/mcp/**`, `src/cli/**`) / guards.md (`scripts/**`, `.claude/hooks/**`, `.claude/workflows/**`, `tests/unit/scripts/**`, `tests/unit/hooks/**`) / docs.md (`docs/**`, `README.md`, `README.ko.md`, `CLAUDE.md`, `AGENTS.md`). path 매칭 시 자동 로드 (Anthropic 공식 패턴) — 본문 stale 시 Claude rule guidance drift 위험 |
+- **신규 파일 추가 시 동기화 의무** (전례 3건 — 누락 시 다음 Phase 착수 전 보완):
+  [`docs/architecture.md`](docs/architecture.md) 의 `src/` 트리 · `templates/`·`repositories/`·
+  `services/` 목록 · 핵심 데이터 흐름 / 신규 환경변수는 [`docs/reference/env-vars.md`](docs/reference/env-vars.md)
+  (`config.py` validator·최솟값 변경 시에도) / 해당 영역 [`.claude/rules/<area>.md`](.claude/rules/) 본문.
+  🔴 rules 는 path 매칭으로 **자동 로드**되므로 본문이 stale 하면 Claude 가 틀린 지침을 받는다.
 
 ### 모바일 환경 보호 — 수정 금지 파일
 
@@ -377,46 +162,33 @@ GitHub Code Scanning 점검 detail 절차 + 운영 통합 = `docs/runbooks/opera
 
 ### 파일 편집 에이전트 — 작업트리 격리 (병렬·단일 무관)
 
-🔴 **파일을 편집하는 백그라운드 에이전트는 병렬이든 단일이든 `isolation: worktree` 의무**. 격리 없는 백그라운드 에이전트는 **메인 세션과 같은 작업트리·`.git` 을 공유**하므로, 에이전트의 `git checkout`/편집이 메인의 브랜치·working tree 를 오염시킨다 (레이스).
+🔴 **파일을 편집하는 백그라운드 에이전트는 `isolation: worktree` 의무.** 격리 없는 에이전트는
+메인 세션과 **같은 작업트리·`.git` 을 공유**해 브랜치·working tree 를 오염시킨다.
+전례 2건(2026-04-27 병렬 3 에이전트가 한 브랜치에 커밋 / 2026-07-18 **단일** 에이전트가 메인
+트리 오염) — **"단일이라 격리 불요" 는 오판**이다.
 
-- **전례 1 (병렬)**: 2026-04-27 PR-A·B·C 병렬 작업에서 3개 에이전트 모두 같은 브랜치에 커밋 → PR 3개 대신 1개 생성.
-- **전례 2 (단일 — 2026-07-18)**: Track C docs 편집을 **단일** background 에이전트에 `isolation` 없이 디스패치 → 에이전트가 만든 `git checkout -b` + README/STATE/saas 편집이 메인 세션의 다른 브랜치 working tree 에 미stage 상태로 출현(공유 트리 충돌) → TaskStop 후 산출물 재검증·수동 복구. **"단일이라 격리 불요" = 오판** — 파일 편집이 있으면 단일도 격리.
-
-독립 브랜치 + PR이 필요한 (또는 파일을 편집하는) 백그라운드 에이전트 디스패치 시 아래 세 가지를 반드시 지킨다.
-
-1. **`isolation: worktree` 전원 적용** — 파일을 편집하거나 독립 브랜치가 필요한 모든 백그라운드 에이전트에 예외 없이 적용 (병렬·단일 무관).
-2. **프롬프트 첫 단계에서 고유 브랜치명 명시** — 아래 형식을 프롬프트 Step 1로 고정.
-   ```
-   1. git checkout -b docs/phase12-state-readme  (이미 있으면 switch)
-   ```
-3. **완료 기준에 "PR URL 반환" 포함** — 에이전트가 분석만 하고 멈추는 사고 방지.
-   ```
-   완료 조건: gh pr create 성공 후 PR URL 반환
-   ```
-
-> **나쁜 방식** → 에이전트 프롬프트: "PR-B 작업을 수행해주세요"
-> **좋은 방식** → 프롬프트 Step 1에 `git checkout -b docs/<고유-이름>` 명시 + `isolation: worktree` 설정
+디스패치 3 조건: ① `isolation: worktree` ② 프롬프트 Step 1 에 고유 브랜치명 명시
+(`git checkout -b docs/<고유-이름>`) ③ 완료 기준에 **PR URL 반환** 포함(분석만 하고 멈추는 사고 방지).
 
 ## 주의사항 (카테고리별 — `.claude/rules/<area>.md` path-scoped)
 
 > **사이클 85 정리**: 10 카테고리(2026-07-20 guards 추가) 본문은 `.claude/rules/<area>.md` 로 분리 (Anthropic 공식 path-scoped rules 패턴). Claude Code 가 해당 영역 파일 작업 시 자동 로드. 매 세션 의무 read 부담 0.
 
-| 영역 | path-scoped 파일 | 매칭 경로 |
-|------|----------------|----------|
-| 테스트 | [`.claude/rules/testing.md`](.claude/rules/testing.md) | `tests/**`, `e2e/**`, `**/conftest.py`, `pytest.ini` |
-| DB / 마이그레이션 | [`.claude/rules/db.md`](.claude/rules/db.md) | `alembic/**`, `src/models/**`, `src/database.py`, `src/repositories/**` |
-| 파이프라인 / 비즈니스 로직 | [`.claude/rules/pipeline.md`](.claude/rules/pipeline.md) | `src/worker/pipeline.py`, `src/analyzer/**`, `src/scorer/**`, `src/webhook/**`, `src/gate/**` |
-| API / 알림 채널 | [`.claude/rules/api.md`](.claude/rules/api.md) | `src/api/**`, `src/notifier/**`, `src/webhook/**`, `src/gate/**`, `src/github_client/**`, `src/scheduler.py`, `src/main.py` |
-| 보안 | [`.claude/rules/security.md`](.claude/rules/security.md) | `src/auth/**`, `src/crypto.py`, `src/shared/log_safety.py`, `src/shared/ssrf.py`, `src/shared/secure_compare.py`, `src/api/auth.py`, `src/webhook/validator.py`, `src/main.py`, `src/logging_config.py` |
-| UI / 템플릿 | [`.claude/rules/ui.md`](.claude/rules/ui.md) | `src/templates/**`, `src/static/**`, `src/ui/**` |
-| 다국어 / i18n | [`.claude/rules/i18n.md`](.claude/rules/i18n.md) | `src/i18n/**`, `src/middleware/locale.py`, `src/notifier/_language.py`, `src/analyzer/pure/review_guides/**` |
-| 배포 | [`.claude/rules/deploy.md`](.claude/rules/deploy.md) | `railway.toml`, `nixpacks.toml`, `requirements.txt`, `requirements-dev.txt`, `.env.example`, `.python-version`, `alembic.ini`, `sonar-project.properties` |
-| 서비스 계층 | [`.claude/rules/services.md`](.claude/rules/services.md) | `src/services/**`, `src/verifier/**`, `src/config_manager/**`, `src/railway_client/**`, `src/mcp/**`, `src/cli/**` |
-| 가드 / 훅 / 워크플로 | [`.claude/rules/guards.md`](.claude/rules/guards.md) | `scripts/**`, `.claude/hooks/**`, `.claude/workflows/**`, `tests/unit/scripts/**`, `tests/unit/hooks/**` |
-| 문서 / 원장 | [`.claude/rules/docs.md`](.claude/rules/docs.md) | `docs/**`, `README.md`, `README.ko.md`, `CLAUDE.md`, `AGENTS.md` |
+| 영역 | 규칙 파일 (매칭 경로 — 이 경로 편집 시 **자동 로드**) |
+|------|------------------------------------------------|
+| 테스트 | testing.md (`tests/**`, `e2e/**`, `**/conftest.py`, `pytest.ini`) → [`.claude/rules/testing.md`](.claude/rules/testing.md) |
+| DB / 마이그레이션 | db.md (`alembic/**`, `src/models/**`, `src/database.py`, `src/repositories/**`) → [`.claude/rules/db.md`](.claude/rules/db.md) |
+| 파이프라인 / 비즈니스 로직 | pipeline.md (`src/worker/pipeline.py`, `src/analyzer/**`, `src/scorer/**`, `src/webhook/**`, `src/gate/**`) → [`.claude/rules/pipeline.md`](.claude/rules/pipeline.md) |
+| API / 알림 채널 | api.md (`src/api/**`, `src/notifier/**`, `src/webhook/**`, `src/gate/**`, `src/github_client/**`, `src/scheduler.py`, `src/main.py`) → [`.claude/rules/api.md`](.claude/rules/api.md) |
+| 보안 | security.md (`src/auth/**`, `src/crypto.py`, `src/shared/log_safety.py`, `src/shared/ssrf.py`, `src/shared/secure_compare.py`, `src/api/auth.py`, `src/webhook/validator.py`, `src/main.py`, `src/logging_config.py`) → [`.claude/rules/security.md`](.claude/rules/security.md) |
+| UI / 템플릿 | ui.md (`src/templates/**`, `src/static/**`, `src/ui/**`) → [`.claude/rules/ui.md`](.claude/rules/ui.md) |
+| 다국어 / i18n | i18n.md (`src/i18n/**`, `src/middleware/locale.py`, `src/notifier/_language.py`, `src/analyzer/pure/review_guides/**`) → [`.claude/rules/i18n.md`](.claude/rules/i18n.md) |
+| 배포 | deploy.md (`railway.toml`, `nixpacks.toml`, `requirements.txt`, `requirements-dev.txt`, `.env.example`, `.python-version`, `alembic.ini`, `sonar-project.properties`) → [`.claude/rules/deploy.md`](.claude/rules/deploy.md) |
+| 서비스 계층 | services.md (`src/services/**`, `src/verifier/**`, `src/config_manager/**`, `src/railway_client/**`, `src/mcp/**`, `src/cli/**`) → [`.claude/rules/services.md`](.claude/rules/services.md) |
+| 가드 / 훅 / 워크플로 | guards.md (`scripts/**`, `.claude/hooks/**`, `.claude/workflows/**`, `tests/unit/scripts/**`, `tests/unit/hooks/**`) → [`.claude/rules/guards.md`](.claude/rules/guards.md) |
+| 문서 / 원장 | docs.md (`docs/**`, `README.md`, `README.ko.md`, `CLAUDE.md`, `AGENTS.md`) → [`.claude/rules/docs.md`](.claude/rules/docs.md) |
 
 🔴 표시는 과거 사고로 검증된 고위험 규칙이다 (각 `.claude/rules/<area>.md` 파일 본문 참조).
-
 
 ## 현재 상태
 
