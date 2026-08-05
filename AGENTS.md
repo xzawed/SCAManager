@@ -107,6 +107,42 @@ HOLDS. 그리고 뮤테이션 대상은 seal 이 **보호한다고 주장하는 
 
 ---
 
+## 🔴 측정 규율 — 도구가 낸 숫자를 사실로 발행하지 않는다
+
+> 🔴 **위 3-불변식과 별개 축이다.** 이름을 `4번 불변식` 으로 붙이지 않는 이유는
+> **적용 술어가 다르기 때문**이다 — 3-불변식은 *가드/테스트 파일을 쓸 때*(경로로 라우팅)
+> 적용되지만, 이것은 *숫자나 판정을 내놓을 때* 적용된다. 리포의 30여 곳이 `3-불변식` 을
+> 이름으로 참조하므로 그 이름의 의미도 바꾸지 않는다.
+
+적용 대상은 **숫자나 판정을 내놓는 모든 것** — 스크래치패드의 1회용 스크립트, 셸 파이프라인,
+정규식 한 줄, `git`/`gh` 출력 파싱까지. 이것들은 `.claude/rules` 의 어떤 경로 패턴에도
+매칭되지 않아 **규칙이 도달한 적 없는 표면**이었다(문서 감사 실측: 56 패턴 중 0개 매칭).
+
+**근거 (2026-08-05 문서 감사 — 한 세션 실수 10건 중 5건이 이 한 클래스)**:
+
+| 실수 | 도구 결함 | 발행된 거짓 |
+|---|---|---|
+| 정규식 문자클래스에 소문자만 | `test_[a-z0-9_]+` 가 `test_localStorage…` 를 `test_local` 로 자름 | "로컬 전용 3건" (실제 1건) |
+| 항목 분할 경계 오판 | ` + **` 로 split 했는데 그 패턴이 항목 **내부**에도 9회 | "이력 141개" (실제 132개) |
+| CRLF 로 노드 목록 생성 | 다른 도구가 못 읽음 | 재실행이 전건 not-found → 엉뚱한 스위트 |
+| 파이프라인 뒤 종료코드 | 항상 0 | false green |
+| passed ↔ collected 혼동 | 단위가 다름 | STATE 수치 오기 |
+
+**규칙**:
+
+1. **도구의 출력을 쓰기 전에 도구를 시험한다** — 알려진 정답이 있는 입력에 돌려 본다.
+   (예: 전수 목록의 **총합이 이미 아는 값과 맞는가**, 샘플 하나가 실제로 존재하는 심볼인가)
+2. **분할·추출은 경계를 반증한다** — 구분자가 데이터 **내부**에 나타날 수 있는지 먼저 센다.
+3. **같은 도구로 전후를 재고 "같다"고 하지 않는다** — 도구가 틀렸으면 양쪽이 같이 틀린다.
+   무손실 검증은 **도구 무관 방식**(문자 멀티셋·해시)으로 한다.
+4. **단위를 명시한다** — chars/bytes/passed/collected/tests/nodes 는 서로 다른 것이다.
+5. 🔴 **뮤테이션이 GREEN 이면 가드 공허를 묻기 전에 뮤테이션 유효성부터** —
+   `assert mutated != orig` 없이 "안 잡혔다" 고 결론내지 않는다(실측: no-op 뮤테이션 1건).
+
+> **왜 불변식인가**: 위 5건은 전부 **혼자서는 눈치챌 수 없었다** — Grok claim-review 와
+> 리포 가드가 잡았다. 도구가 틀리면 그 도구로 만든 관측도 틀리므로 **자기 점검이 원리적으로
+> 불가능**하다. 그래서 규율로 앞단에서 막는다.
+
 ## Claude ↔ Grok 협업 (요약 — 상세 = `docs/runbooks/ai-collaboration.md`)
 
 - **Grok default ON** (2026-07-20 사용자 지시): 별도 지시 없으면 실질 작업마다 Grok
@@ -143,6 +179,7 @@ HOLDS. 그리고 뮤테이션 대상은 seal 이 **보호한다고 주장하는 
 | `src/i18n/**` · `src/middleware/locale.py` · `src/notifier/_language.py` · `src/analyzer/pure/review_guides/**` | `i18n.md` |
 | `tests/**` · `e2e/**` · `**/conftest.py` · `pytest.ini` | `testing.md` |
 | `scripts/**` · `.claude/hooks/**` · `.claude/workflows/**` · `tests/unit/{scripts,hooks}/**` | `guards.md` + 이 문서 §3-불변식 |
+| `docs/**` · `README.md` · `README.ko.md` · `CLAUDE.md` · `AGENTS.md` | `docs.md` |
 | `railway.toml` · `nixpacks.toml` · `requirements.txt` · `requirements-dev.txt` · `.env.example` · `.python-version` · `alembic.ini` · `sonar-project.properties` | `deploy.md` |
 
 ⚠️ **`db.md` 의 `WorkerSessionLocal` 규칙은 background 17 모듈**(`gate/engine`·`worker/pipeline`·
