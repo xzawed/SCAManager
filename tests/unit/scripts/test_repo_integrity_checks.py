@@ -26,7 +26,11 @@ def test_docs_sync_flags_count_mismatch(tmp_path):
     (tmp_path / "docs").mkdir()
     (tmp_path / "docs" / "STATE.md").write_text(
         "**종합 수치**: 전체 **5196** 수집 (단위 **5042** + 통합 154)\n"
-        "| 전체 테스트 | **5196 수집** *(...)* | 단위 5042 + 통합 154 (현재). 추적...\n",
+        "| 전체 테스트 | **5196 수집** *(...)* | 단위 5042 + 통합 154 (현재). 이력 → 아래 절\n"
+        # 이력 절은 이제 **필수**다(fail-closed) — 없으면 그 자체로 red 라 픽스처도 갖춘다.
+        # The history section is now mandatory (fail-closed), so the fixture carries one.
+        "\n## 테스트 수 추적 이력\n\n"
+        "- **시드 항목** (5000→**5042** 단위 — 통합 154 = **5196** 수집).\n",
         encoding="utf-8",
     )
     # README 배지가 STATE 와 다른 수치(5195/5041) → 불일치 적발
@@ -72,6 +76,39 @@ def test_docs_sync_flags_stale_history_tail(tmp_path):
     ok, msgs = check_docs_sync.check_consistency(root)
     assert not ok, "이력 꼬리가 어긋났는데 통과했다 — 꼬리 축이 관측되지 않는다"
     assert any("이력 마지막" in m for m in msgs), msgs
+
+
+def test_docs_sync_fails_when_history_section_is_deleted(tmp_path):
+    """이력 절을 **통째로 지우면** red — 초판은 `None → 대조 제외` 라 초록이었다.
+
+    🔴 *보호 장치를 삭제해도 여전히 참으로 보이는 것* 의 정확한 사례였고,
+    Grok claim-review 가 실측으로 적발했다.
+    """
+    root = _count_fixture(tmp_path)
+    state = root / "docs" / "STATE.md"
+    text = state.read_text(encoding="utf-8")
+    assert check_docs_sync._STATE_HIST_HEADING in text
+    state.write_text(text.split(check_docs_sync._STATE_HIST_HEADING)[0], encoding="utf-8")
+
+    ok, msgs = check_docs_sync.check_consistency(root)
+    assert not ok, "이력 절이 사라졌는데 통과했다 — 가드를 지우면 초록이 되는 fail-open"
+    assert any("절이 없다" in m for m in msgs), msgs
+
+
+def test_docs_sync_fails_when_tail_entry_has_no_numbers(tmp_path):
+    """수치 없는 항목을 꼬리에 덧붙이면 red — 초판은 직전 값이 계속 last 라 초록이었다.
+
+    형식 계약이 곧 append 계약이다: 새 항목은 누계와 단위를 모두 적어야 한다.
+    """
+    root = _count_fixture(tmp_path)
+    state = root / "docs" / "STATE.md"
+    orig = state.read_text(encoding="utf-8")
+    state.write_text(orig.rstrip("\n") + "\n- 세션N 임시 메모(수치 없음)\n", encoding="utf-8")
+    assert state.read_text(encoding="utf-8") != orig  # 뮤테이션 유효성 (불변식 2)
+
+    ok, msgs = check_docs_sync.check_consistency(root)
+    assert not ok, "수치 없는 꼬리 항목이 통과했다 — 꼬리 축이 형식을 강제하지 않는다"
+    assert any("형식을 갖추지 않았다" in m for m in msgs), msgs
 
 
 def test_docs_sync_history_tail_is_not_the_head(tmp_path):

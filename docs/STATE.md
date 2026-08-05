@@ -136,7 +136,10 @@
 
 ## 테스트 수 추적 이력
 
-> 🔴 **이 절은 append-only 다 — 새 항목은 맨 아래에 한 줄로 추가한다.**
+> 🔴 **새 항목은 이 절 맨 아래에 한 줄로 추가한다. 위 표 셀에 적지 않는다.**
+> 형식이 곧 계약이다 — 항목은 `… (A→**B** 단위 … = **C** 수집)` 처럼 **단위와 누계를 모두**
+> 담아야 한다. `check_docs_sync.py` 가 **마지막 불릿**을 파싱해 표 헤더·README 배지와 대조하며,
+> 수치가 없는 항목이 꼬리에 오면 **red** 다(형식 미준수 자체가 실패 — Grok claim-review 지적).
 > 단위 baseline **4718**. 최신 누계는 위 표의 헤더 값과 일치해야 하며,
 > `scripts/check_docs_sync.py` 가 **머리(표 헤더)와 꼬리(이 절 마지막 줄)를 양쪽 다** 대조한다.
 >
@@ -259,24 +262,15 @@
 - **2026-07-17 Grok 백로그 NULL-owner IDOR + 워커 내구성 6 PR (#1060~#1066) +98** (#1060 P1-2 워커 내구성 `analysis_attempts` +30 [repo 14 + pipeline attempt durability 11 + saas_service RLS matrix + admin/pipeline 정합] · #1061 선결 복구 경로 +7 [affiliation organization_member 1 + pagination 비회귀 1 + POST 502 전환 4 + 전역 i18n 키 정합 가드 1] · #1062 P1-3 NULL-owner 쓰기 차단 +23 [3축 대칭 — 쓰기 차단 403 × 7 라우트 + 읽기 비회귀 200 × 7 + 소유자 정상 × 5 + i18n detail 2, 기존 test_router 12건 `user_id=None`→`1` 교체는 무증가] · #1063 R4 threshold 불변식 +11 [범위 위반 parametrize 6 + 경계값 0/100 허용 2 + merge<reject 거부 1 + merge==reject 허용 1 + reject=0 시 merge=0 허용 1] · #1064 R3 railway 토큰 노출 +3 [소유자 비회귀 + NULL-owner 미노출 + unclaimed 안내] · #1065 R2 가시화 +5 [생성 경고 2 + 개요 배너 3] · #1066 CodeQL 미사용 import 삭제 무증가; baseline 5282[main 실측] 기준 +30+7+23+11+3+5 = 5361 passed / **5365 수집**[+4 skipped] → 단위 **5365** + 통합 154 = 5519 수집).
 - **2026-07-18 프리미엄 준비도 감사 Wave 0~2 코드전용 8 PR (#1068~#1075) +47** (준비도 감사 P0/P1=0 확인 후 비대칭 결함 하드닝 — #1068 PR 코멘트 AI-실패 경고 · #1069 retry 좁은 except rollback · #1070 result JSON 컬럼-select · #1071 config `is_production` 하드닝 · #1072 approve SHA 결속 · #1073 orphan sweep 배선+finish 위치이동 · #1074 feedback_status owner 필터+배선 가드 · #1075 retention sweep[만료캐시+종결큐 GC]; baseline 5365 → 5408 passed / **5412 수집**[+4 skipped] → 단위 **5412** + 통합 154 = 5566 수집).
 - **2026-07-18 세션2 회고 + fix 4 트랙 (#1077~#1086) +55** (5+1 회고 후 재발방지 기계 가드 — A1 카덴스 카운터 순수함수+셸 회귀 13 · A2 noqa-은닉 가드 순수함수+CI배선 14 · B1 hook 스모크 경로 파생 6 · B2 dead-code AST 참조 순수함수+CI배선 16 · P2#41 dashboard owner-filter parity AST 6; #1077/#1079 CodeQL #545 튜플-참조·C docs drift·D owed 원장은 무증가, baseline 5412 → 5463 passed / **5467 수집**[+4 skipped] → 단위 **5467** + 통합 154 = 5621 수집).
-- **2026-07-18 세션2 후속 (#1088~#1092) +8 단위·+4 통합** (회고 P2 실행 — P2#36 repo-integrity CI backstop 메타 +3 · P2#18 begin_attempt fail-safe durability +1 · P2#17 merge_retry 4 종결경로 미러링 가드 +4; #1088 email/worktree docs·#1085 계열 무증가. 통합 = P2#43 retention PG round-trip 파일 +4[메타 1 + PG 3 skipif]. baseline 5467 → **5475 단위**
-- **158 통합** = 5633 수집).
-- **2026-07-18 후속 2 (#1094) +5 단위** (자초 CodeQL py/empty-except 봉인 — `test_empty_except_guard.py`: 탐지기 긍정/부정 통제 4 + scripts//hooks 전역 AST 불변식 1. 주석 4곳 수정·subprocess encoding 수정은 무증가. baseline 5475 → **5480 단위**
-- **158 통합** = 5638 수집).
-- **2026-07-19 회고 P0 2건 (#1095) +38 단위** (railway cron 무음실패 가드 19[탐지기 통제 8 + cron 5×2] · owed 카운터 순수함수 11 · SessionStart 배선 가드 8. baseline 5480 → **5518 단위**
-- **158 통합** = 5676 수집).
-- **2026-07-19 회고 P1 가드 탐지기 (#1096) +10 단위** (noqa flake8 동형 분리 4 · git fail-CLOSED parity 7 중 신규 파일 7 — 합계 +10 실측). baseline 5518 → **5528 단위**
-- **158 통합** = 5686 수집).
-- **2026-07-19 CodeQL 게이트 + dead-code 한정참조 (#1097·#1098) +23 단위** (CodeQL alert 게이트 12[순수함수 9 + CI 배선 메타 3] · dead-code 한정참조 11). baseline 5528 → **5551 단위**
-- **158 통합** = 5709 수집).
-- **2026-07-19 인앱 스케줄러 (#1099) +1 단위 순증**(스케줄러 27 신규(커버리지 100%) · 구 cron 명령 가드 13 → 재발방지 4 로 대체). baseline 5551 → **5565 단위**
-- **158 통합** = 5723 수집 — 스케줄러 27[시각계산 7·기동조건 3·JOBS 배선 4·job 본문 5·루프 격리 2·생명주기 3·분기 3] + 재발방지 가드 4, 구 cron 명령 가드 13 대체).
-- **2026-07-19 앱 로깅 설정 (#1100) +5 단위**(핸들러 부착·INFO 통과·멱등·DEBUG 부정통제·main 배선). baseline 5565 → **5570 단위**
-- **158 통합** = 5728 수집).
-- **2026-07-19 세션4 — PR 머지 + tflint 조달 출처 가드 +7 단위**(#1116 fix-up +2 [`_scan_security` 본문 서비스 호출 단언 · 주기 daily 04:00 단언 — SonarCloud new-code 50%·codecov/patch fail 복구] · 본 PR +5 [`test_build_command_deps.py` — buildCommand 조달 출처 등재 강제 1 · apt 실존 단언 1 · pip 배포판 1 · nixpacks setup 표지 1 · tflint↔unzip 대조군 1; 뮤테이션 3종 탐지 실증]). 🔴 **직전 트레일 5653 은 실측 5657 대비 4건 과소집계**였음을 worktree 커밋별 `--collect-only` 로 확인 → 실측 baseline 5657 + 2 + 5 = **5664 단위**
-- **158 통합** = 5822 수집).
-- **2026-07-19 세션4 후반 (#1119~#1126) +20 단위** (조달 출처 가드 5[#1119] · webhook URL 유출 3[#1122] · stdout 인코딩 가드 5[#1123] · 스케일링 가드 8[#1121] · 추출기 완전성 4[#1126, 기존 13 중 1건 단언 보강] — #1120·#1124·#1125 는 docs/config only 무증가. baseline 5664 → **5684 단위**
-- **158 통합** = 5842 수집).
+- **2026-07-18 세션2 후속 (#1088~#1092) +8 단위·+4 통합** (회고 P2 실행 — P2#36 repo-integrity CI backstop 메타 +3 · P2#18 begin_attempt fail-safe durability +1 · P2#17 merge_retry 4 종결경로 미러링 가드 +4; #1088 email/worktree docs·#1085 계열 무증가. 통합 = P2#43 retention PG round-trip 파일 +4[메타 1 + PG 3 skipif]. baseline 5467 → **5475 단위** + **158 통합** = 5633 수집).
+- **2026-07-18 후속 2 (#1094) +5 단위** (자초 CodeQL py/empty-except 봉인 — `test_empty_except_guard.py`: 탐지기 긍정/부정 통제 4 + scripts//hooks 전역 AST 불변식 1. 주석 4곳 수정·subprocess encoding 수정은 무증가. baseline 5475 → **5480 단위** + **158 통합** = 5638 수집).
+- **2026-07-19 회고 P0 2건 (#1095) +38 단위** (railway cron 무음실패 가드 19[탐지기 통제 8 + cron 5×2] · owed 카운터 순수함수 11 · SessionStart 배선 가드 8. baseline 5480 → **5518 단위** + **158 통합** = 5676 수집).
+- **2026-07-19 회고 P1 가드 탐지기 (#1096) +10 단위** (noqa flake8 동형 분리 4 · git fail-CLOSED parity 7 중 신규 파일 7 — 합계 +10 실측). baseline 5518 → **5528 단위** + **158 통합** = 5686 수집).
+- **2026-07-19 CodeQL 게이트 + dead-code 한정참조 (#1097·#1098) +23 단위** (CodeQL alert 게이트 12[순수함수 9 + CI 배선 메타 3] · dead-code 한정참조 11). baseline 5528 → **5551 단위** + **158 통합** = 5709 수집).
+- **2026-07-19 인앱 스케줄러 (#1099) +1 단위 순증**(스케줄러 27 신규(커버리지 100%) · 구 cron 명령 가드 13 → 재발방지 4 로 대체). baseline 5551 → **5565 단위** + **158 통합** = 5723 수집 — 스케줄러 27[시각계산 7·기동조건 3·JOBS 배선 4·job 본문 5·루프 격리 2·생명주기 3·분기 3] + 재발방지 가드 4, 구 cron 명령 가드 13 대체).
+- **2026-07-19 앱 로깅 설정 (#1100) +5 단위**(핸들러 부착·INFO 통과·멱등·DEBUG 부정통제·main 배선). baseline 5565 → **5570 단위** + **158 통합** = 5728 수집).
+- **2026-07-19 세션4 — PR 머지 + tflint 조달 출처 가드 +7 단위**(#1116 fix-up +2 [`_scan_security` 본문 서비스 호출 단언 · 주기 daily 04:00 단언 — SonarCloud new-code 50%·codecov/patch fail 복구] · 본 PR +5 [`test_build_command_deps.py` — buildCommand 조달 출처 등재 강제 1 · apt 실존 단언 1 · pip 배포판 1 · nixpacks setup 표지 1 · tflint↔unzip 대조군 1; 뮤테이션 3종 탐지 실증]). 🔴 **직전 트레일 5653 은 실측 5657 대비 4건 과소집계**였음을 worktree 커밋별 `--collect-only` 로 확인 → 실측 baseline 5657 + 2 + 5 = **5664 단위** + **158 통합** = 5822 수집).
+- **2026-07-19 세션4 후반 (#1119~#1126) +20 단위** (조달 출처 가드 5[#1119] · webhook URL 유출 3[#1122] · stdout 인코딩 가드 5[#1123] · 스케일링 가드 8[#1121] · 추출기 완전성 4[#1126, 기존 13 중 1건 단언 보강] — #1120·#1124·#1125 는 docs/config only 무증가. baseline 5664 → **5684 단위** + **158 통합** = 5842 수집).
 - **세션5~7 통합 정산 (#1127~#1175) — 트레일 append 누락분 일괄 (회고 2026-07-22 P2 STATE-drift)** (5684→**5866** 단위·통합 158 불변 = **6024** 수집; 개별 PR 델타는 각 세션 종료 커밋·회고 아카이브[`docs/_archive/reports/`] 참조. 트레일이 세션4 에서 멈춰 헤더와 ~182 갭이던 것을 일괄 정산 — 세션별 재분해는 false-precision 회피 위해 생략).
 - **세션8 종합감사 이행+5+1 회고+회고 P1 (#1194~#1201) +63** (5866→**5929** 단위 — P1-5 CAS·P2 5클러스터·회고 P1-A/B[dual-import 대칭·DATETIME 전수]; docs/backlog 이관·아카이브 보고서는 무증가).
 - **세션8 감사 잔여 라운드 (#1202~#1211) +17** (5929→**5946** 단위 — 명확버그 8[#1204~#1208 · security_scan pagination #1210] · webhook issue-close BackgroundTask #1211 · 설계결정 5; #1202/#1203/#1209 docs·CAS 정확화는 무증가).
