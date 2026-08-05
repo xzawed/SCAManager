@@ -233,3 +233,45 @@ def test_collect_is_not_vacuous(tmp_path, monkeypatch):
     doc.write_text("메모리 언급이 전혀 없는 본문\n", encoding="utf-8")
     monkeypatch.setattr(mod, "DOC_FILES", ["CLAUDE.md"])
     assert mod.collect_referenced(tmp_path) == {}
+
+
+# --- 스캔 범위 (2026-08-05 문서 감사 P2 — 3파일 → 처방적 표면 전체) ---
+
+
+def test_scan_scope_covers_rules_and_runbooks():
+    """🔴 `.claude/rules/**` 와 `docs/runbooks/**` 가 범위에 들어와야 한다.
+
+    확대 전에는 3파일(전체 188 md 의 **1.6%**)만 봤다. 그 범위 밖에서 죽은 슬러그가
+    생기면 가드가 **"✅ 전부 존재"** 를 인쇄한다 — 좁은 범위 위의 초록은 fail-open 이다.
+    """
+    files = set(mod.DOC_FILES)
+    assert "CLAUDE.md" in files and "AGENTS.md" in files
+    assert any(f.startswith(".claude/rules/") for f in files), files
+    assert any(f.startswith("docs/runbooks/") for f in files), files
+    assert len(files) >= 20, f"범위가 다시 좁아졌다: {len(files)}개"
+
+
+def test_scan_scope_excludes_point_in_time_records():
+    """🔴 아카이브·cycle-history 는 **의도적 제외** — 그것들은 당시의 사실 기록이다.
+
+    red 로 만들면 (a) 역사 재작성이나 (b) 복원 불가한 참조 삭제 = 지식 손실을 강요한다.
+    이 단언이 없으면 나중에 "커버리지를 더 넓히자" 며 무심코 포함시키게 된다.
+    """
+    for f in mod.DOC_FILES:
+        assert "_archive" not in f, f"아카이브가 범위에 들어왔다: {f}"
+        assert not f.endswith("cycle-history.md"), f"시점 기록이 범위에 들어왔다: {f}"
+
+
+def test_scan_scope_is_derived_not_hardcoded(tmp_path):
+    """범위가 **글롭 파생**임을 단언 — 새 rules/runbook 이 자동 포함돼야 한다.
+
+    하드코딩 목록이면 파일을 추가할 때마다 손으로 등재해야 하고, 빠뜨리면 조용히 무관측이다.
+    """
+    (tmp_path / ".claude" / "rules").mkdir(parents=True)
+    (tmp_path / "docs" / "runbooks").mkdir(parents=True)
+    (tmp_path / ".claude" / "rules" / "brandnew.md").write_text("x", encoding="utf-8")
+    (tmp_path / "docs" / "runbooks" / "brandnew.md").write_text("x", encoding="utf-8")
+
+    files = mod._doc_files(tmp_path)
+    assert ".claude/rules/brandnew.md" in files, files
+    assert "docs/runbooks/brandnew.md" in files, files

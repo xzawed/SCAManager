@@ -21,11 +21,38 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
 PROJECTS_ROOT = Path.home() / ".claude" / "projects"
-DOC_FILES = [
-    "CLAUDE.md",
-    ".claude/policies/active.md",
-    ".claude/policies/history.md",
-]
+# 🔴 스캔 범위 = **처방적(prescriptive) 표면** — 미래 세션의 *행동을 지시*하는 문서.
+# 2026-08-05 문서 감사 이전에는 아래 3개 리터럴뿐이었다(전체 188 md 중 **1.6%**). 범위가
+# 좁으면 `.claude/rules/*.md` 나 runbook 이 죽은 슬러그를 가리켜도 가드가 **"✅ 전부 존재"**
+# 를 인쇄한다 — 빈/좁은 범위 위의 초록은 fail-open 이다(이 리포가 반복해 고쳐 온 클래스).
+#
+# 🔴 **아카이브와 `cycle-history.md` 는 의도적으로 제외한다**(실측 dangling 59 + 25건).
+# 그것들은 *그 시점의 사실 기록*이고 `.claude/rules/docs.md` 가 "재작성하지 않는다" 로 못박은
+# 표면이다. red 로 만들면 (a) 역사 재작성이나 (b) 참조 삭제 = **지식 손실**을 강요하게 된다
+# (구 PC 슬러그 유실로 실제 소실된 메모리가 있어 복원 불가한 참조가 섞여 있다).
+#
+# Scope = prescriptive docs only. Archive and cycle-history are point-in-time records; making
+# their dangling refs red would force rewriting history or deleting irrecoverable pointers.
+_DOC_GLOBS = (
+    ".claude/policies/*.md",
+    ".claude/rules/*.md",
+    "docs/runbooks/*.md",
+)
+_DOC_LITERALS = ("CLAUDE.md", "AGENTS.md", "docs/backlog.md")
+
+
+def _doc_files(project_root: Path) -> list[str]:
+    """스캔 대상 문서 목록 — 리터럴 + 글롭. / Scan targets: literals plus globs."""
+    files = [f for f in _DOC_LITERALS if (project_root / f).is_file()]
+    for pattern in _DOC_GLOBS:
+        files += sorted(p.relative_to(project_root).as_posix()
+                        for p in project_root.glob(pattern))
+    return files
+
+
+# 하위 호환 — 모듈 로드 시점의 리포 기준 목록(테스트·기존 호출부가 참조).
+# Kept for compatibility; computed against the repo root at import time.
+DOC_FILES = _doc_files(Path(__file__).resolve().parents[1])
 # 백틱으로 감싼 파일명 표기 — 하이픈·언더스코어 구분자 양쪽을 받는다.
 # 🔴 이 주석에 예시 슬러그를 백틱으로 적으면 이 파일 자신이 dangling 참조로 잡힌다(실측).
 # Backtick-quoted filename, hyphen or underscore separated. Deliberately no inline example:

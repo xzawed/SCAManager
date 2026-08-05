@@ -9,19 +9,46 @@ PR 작업 완료/머지 시 테스트 수치·작업 서사를 STATE.md·cycle-h
 
 ## 입력
 - PR 번호(들) + 작업 1줄 요약 + 상세 서사
-- 단위/전체 카운트 — **실측 의무**: `pytest tests/unit --collect-only -q | tail -1` + 통합(154) 합산.
-  (정책 8 진화: 추정 카운트 금지)
+- 단위/통합 카운트 — **실측 의무** (정책 8 진화: 추정 카운트 금지). 두 값 모두 아래 명령으로 얻는다:
+
+  ```bash
+  py -3 -m pytest tests/unit --collect-only -q | tail -1         # 단위
+  py -3 -m pytest tests/integration --collect-only -q | tail -1  # 통합
+  ```
+
+  🔴 이 스킬 본문에 통합 수를 **숫자로 고정해 두지 않는다** — 이전 판이 `154` 를 5곳에
+  박아 두었다가 실제 값이 늘어난 뒤 5주간 stale 이었다(문서 감사 적발). 현재 값은
+  `docs/STATE.md` 종합 수치가 정본이고, 매번 위 명령으로 재확인한다.
 
 ## 갱신 지점
 
-🔴 **`check_docs_sync.py` 가 카운트 정합을 강제하는 4 검사 지점** = ① STATE 종합 수치(전체+단위) · ② STATE 추적셀 시작 헤더(전체+단위) · ⑤ README.md 배지 · ⑤ README.ko.md 배지. 이 4 곳 카운트가 어긋나면 commit 차단. **③ 추적셀 trail · ④ 최신 블록 = 절차적 수동 갱신(훅 미검증)**, ⑥ cycle-history 는 `check_toc_anchors` 가 **앵커만** 검증(카운트 X).
+🔴 **2026-08-05 변경 — 손으로 고치는 곳은 이제 한 곳뿐이다.**
+같은 정수가 5지점에 손으로 복제돼 있었고(**N지점 동기화는 N-1번의 실패 기회**), 실제로
+그중 하나를 빠뜨려 가드가 red 를 냈다. 지금은 **이력 꼬리 한 줄이 SSOT** 이고 나머지는 파생이다.
 
-1. **STATE.md 종합 수치** (header) 🔒훅: `전체 **N** 수집 (단위 **M** + 통합 154)`
-2. **STATE.md 추적셀 시작 헤더** 🔒훅: `**N 수집**` + `단위 M + 통합 154 (현재)`
-3. **STATE.md 추적셀 trail** (절차·훅 미검증): 말미에 `+ **<날짜> <작업> +Δ** (...상세...). (\`pytest --co\` 단위 M + 통합 154 = N 수집).` 추가
-4. **STATE.md 최신 블록** (절차·훅 미검증): 새 작업으로 **교체** (직전 서사는 cycle-history 최신순 맨 앞으로 이관 — 헤더 "직전" 체인 누적 금지)
-5. **README.md + README.ko.md 배지** 🔒훅: `Tests-N%2B_total_(M_unit_%2B_154_integration)` (**양쪽 동일**·`%2B` 인코딩 유지)
-6. **cycle-history.md** (앵커만 🔒`check_toc_anchors`): TOC 엔트리(앵커 = 헤더 slug) + body 섹션(최신순 맨 앞)
+```bash
+# ① 이력 절 맨 아래에 항목 한 줄 추가 (docs/STATE.md §테스트 수 추적 이력)
+#    형식이 곧 계약 — 단위와 누계를 **모두** 담아야 한다:
+#      - **<날짜/작업> (#PR) +Δ** (A→**B** 단위 — 상세; 통합 K 불변 = **C** 수집, collect-only 실측).
+#
+# ② 파생 3지점(STATE 종합·추적셀 머리·README 2배지)을 자동 갱신
+py -3 scripts/check_docs_sync.py --fix
+```
+
+**실측 의무** (정책 8 진화 — 추정 카운트 금지):
+
+```bash
+py -3 -m pytest tests/unit --collect-only -q | tail -1      # 단위
+py -3 -m pytest tests/integration --collect-only -q | tail -1  # 통합 (리터럴로 적지 말 것)
+```
+
+🔴 **통합 수를 문서에 리터럴로 적지 않는다** — 이 스킬 자신이 `154` 를 5곳에 박아 두었다가
+실제 값이 **171** 이 되도록 5주간 방치했다(문서 감사 적발). 항상 위 명령으로 실측한다.
+
+### 손으로 갱신하는 나머지 (수치 아님 — 서사)
+
+- **STATE.md 최신 블록**: 새 작업으로 **교체** (직전 서사는 cycle-history 최신순 맨 앞으로 이관)
+- **cycle-history.md** (앵커만 🔒`check_toc_anchors`): TOC 엔트리 + body 섹션(최신순 맨 앞)
 
 ## slug 계산 (cycle-history TOC 앵커 — 추정 금지·함수 실측)
 ```bash
