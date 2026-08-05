@@ -333,3 +333,61 @@ def test_github_slug_dedup_suffix():
     seen: dict[str, int] = {}
     assert check_toc_anchors.github_slug("동일 제목", seen) == "동일-제목"
     assert check_toc_anchors.github_slug("동일 제목", seen) == "동일-제목-1"
+
+
+# --- Grok claim-review df5ed11d 적발: `--fix` 가 새 **쓰기측** fail-open 이었다 ---
+
+
+def test_apply_fix_refuses_arithmetically_impossible_ssot(tmp_path):
+    """전체 ≠ 단위 + 통합 이면 **아무것도 쓰지 않는다**.
+
+    🔴 `apply_fix` 는 파일을 **쓰는** 코드다. 형식만 보고 쓰면 "형식은 맞는데 틀린 값" 을
+    5곳에 자동 전파하고, 그 오염은 되돌리기 어렵다. 산술은 사본과 무관한 축이라
+    사본끼리 합의된 오류도 잡는다.
+    """
+    root = _count_fixture(tmp_path)
+    state = root / "docs" / "STATE.md"
+    text = state.read_text(encoding="utf-8")
+    idx = text.rindex("= **")
+    end = text.index("**", idx + 4) + 2
+    state.write_text(text[:idx] + "= **99999**" + text[end:], encoding="utf-8")
+    before = state.read_text(encoding="utf-8")
+
+    ok, msgs = check_docs_sync.apply_fix(root)
+    assert not ok
+    assert any("산술적으로 불가능" in m for m in msgs), msgs
+    assert state.read_text(encoding="utf-8") == before, "거부했는데 파일을 건드렸다"
+
+
+def test_duplicate_history_section_is_rejected(tmp_path):
+    """이력 절이 2개면 red — 첫 절만 SSOT 가 되어 진짜 이력이 **가려진다**.
+
+    가짜 절을 앞에 끼워 넣는 것만으로 실제 수치 검사를 우회할 수 있었다.
+    """
+    root = _count_fixture(tmp_path)
+    state = root / "docs" / "STATE.md"
+    head = check_docs_sync._STATE_HIST_HEADING
+    text = state.read_text(encoding="utf-8")
+    state.write_text(
+        text.replace(head, f"{head}\n\n- 가짜 (0→**1** 단위 — 통합 0 = **1** 수집).\n\n## 딴절\n\n{head}", 1),
+        encoding="utf-8")
+
+    ok, msgs = check_docs_sync.check_consistency(root)
+    assert not ok
+    assert any("절이 2개" in m for m in msgs), msgs
+
+
+def test_consistency_catches_agreed_arithmetic_error(tmp_path):
+    """5지점이 **같은 틀린 값으로 합의**해도 산술 축이 잡는다.
+
+    이 파일 docstring 이 인정한 '사본끼리 대조' 의 한계를 메우는 축이다.
+    """
+    root = _count_fixture(tmp_path)
+    state = root / "docs" / "STATE.md"
+    # 통합 수만 바꾼다 → 전체·단위는 5지점 전부 일치하지만 산술이 깨진다
+    text = re.sub(r"통합 \d+ \(현재\)", "통합 99999 (현재)", state.read_text(encoding="utf-8"), count=1)
+    state.write_text(text, encoding="utf-8")
+
+    ok, msgs = check_docs_sync.check_consistency(root)
+    assert not ok, "사본은 전부 일치하는데 산술이 깨진 상태가 통과했다"
+    assert any("산술 불일치" in m for m in msgs), msgs

@@ -76,8 +76,17 @@ def _history_tail(state: str) -> tuple[str | None, str | None, list[str]]:
     Returns (total, unit, errors). 형식 계약이 곧 append 계약이다.
     """
     errs: list[str] = []
-    if _STATE_HIST_HEADING not in state:
+    occurrences = state.count(_STATE_HIST_HEADING)
+    if occurrences == 0:
         return None, None, [f"❌ STATE.md 에 `{_STATE_HIST_HEADING}` 절이 없다 — 이력 꼬리 검사 불가"]
+    if occurrences > 1:
+        # 🔴 절이 둘이면 `split(...)[1]` 이 **첫 절**만 SSOT 로 삼는다 — 두 번째 절에 무엇을
+        # 적어도 무시되고, 반대로 가짜 첫 절을 끼워 넣으면 진짜 이력을 우회할 수 있다.
+        # (Grok claim-review df5ed11d 적발 — 초판은 이 경로가 조용히 통과했다.)
+        # Two sections would silently make the first one the SSOT and shadow the real history.
+        return None, None, [
+            f"❌ `{_STATE_HIST_HEADING}` 절이 {occurrences}개다 — 이력 SSOT 는 **하나**여야 한다"
+        ]
     section = state.split(_STATE_HIST_HEADING, 1)[1].split("\n## ", 1)[0]
     bullets = [ln for ln in section.splitlines() if ln.startswith("- ")]
     if not bullets:
@@ -137,6 +146,19 @@ def check_consistency(project_root: Path) -> tuple[bool, list[str]]:
         msgs.append("❌ 전체 카운트 불일치: " + ", ".join(f"{k}={v}" for k, v in totals.items()))
     if len(set(units.values())) > 1:
         msgs.append("❌ 단위 카운트 불일치: " + ", ".join(f"{k}={v}" for k, v in units.items()))
+
+    # 🔴 **일치 ≠ 정합** — 5지점이 같은 값으로 **함께 틀릴** 수 있다(이 파일 docstring 이
+    # 스스로 인정한 '사본끼리 대조' 의 한계). 전체 = 단위 + 통합 은 사본과 무관한 축이라
+    # 그 합의된 오류를 잡는다.
+    # Agreement is not consistency: all five copies can be wrong together. This axis is
+    # independent of the copies.
+    integ = _first(re.compile(r"통합 (\d+) \(현재\)"), state)
+    if integ is not None and not msgs:
+        if int(cell_total) != int(cell_unit) + int(integ):
+            msgs.append(
+                f"❌ 산술 불일치: 전체 {cell_total} ≠ 단위 {cell_unit} + 통합 {integ}"
+                f" (차 {int(cell_total) - int(cell_unit) - int(integ):+})"
+            )
     return (not msgs), msgs
 
 
@@ -205,6 +227,19 @@ def apply_fix(project_root: Path) -> tuple[bool, list[str]]:
     if integ is None:
         return False, ["❌ 추적셀에서 통합 수를 못 읽었다 — `단위 N + 통합 M (현재)` 형식 확인"]
 
+    # 🔴 **산술 타당성** — 형식만 보고 쓰면 "형식은 맞는데 틀린 값" 을 5곳에 자동 전파한다.
+    # 이 함수는 파일을 **쓰는** 코드라 그 오염이 되돌리기 어렵다. 전체 = 단위 + 통합 이
+    # 성립하지 않으면 **아무것도 쓰지 않는다**. (Grok claim-review df5ed11d 적발 —
+    # 초판은 이 검사가 없어 의미상 불가능한 SSOT 도 그대로 퍼뜨렸다.)
+    # Arithmetic sanity: this function WRITES files, so a format-valid but wrong SSOT would be
+    # propagated to five sinks. Refuse unless total == unit + integration.
+    if int(total) != int(unit) + int(integ):
+        return False, [
+            f"❌ 이력 SSOT 가 산술적으로 불가능하다 — 전체 {total} ≠ 단위 {unit} + 통합 {integ}"
+            f" (차 {int(total) - int(unit) - int(integ):+}). 아무것도 쓰지 않았다.",
+            "→ 이력 마지막 항목의 수치를 먼저 실측값으로 고칠 것 (`--collect-only`).",
+        ]
+
     changed: list[str] = []
     new_state = _STATE_TOTAL.sub(f"전체 **{total}** 수집 (단위 **{unit}**", state, count=1)
     new_state = _STATE_CELL_TOTAL.sub(f"**{total} 수집**", new_state, count=1)
@@ -247,9 +282,11 @@ def main() -> int:
     for m in msgs + pin_msgs:
         print(m)
     print(
-        "\n해결: (수치) STATE.md 종합 수치 + 추적셀 시작 헤더 + README.md/README.ko.md Tests 배지를"
-        " 동일 값으로 동기화. (핀) requirements.txt 실핀에 맞춰 .claude/rules/deploy.md 인용과"
-        " README/README.ko FastAPI 배지를 갱신."
+        "\n해결: (수치) 손으로 고칠 곳은 STATE.md §테스트 수 추적 이력 **마지막 한 줄**뿐이다 —"
+        " 그 줄을 실측값(`--collect-only`)으로 고친 뒤 `py -3 scripts/check_docs_sync.py --fix`"
+        " 를 돌리면 나머지 4지점(종합 수치·추적셀 머리·README 2배지)이 파생된다."
+        " (핀) requirements.txt 실핀에 맞춰 .claude/rules/deploy.md 인용과 README/README.ko"
+        " FastAPI 배지를 갱신."
     )
     return 1
 
