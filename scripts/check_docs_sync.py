@@ -181,8 +181,60 @@ def check_dependency_pins(project_root: Path) -> tuple[bool, list[str]]:
     return (not msgs), msgs
 
 
+def apply_fix(project_root: Path) -> tuple[bool, list[str]]:
+    """이력 **마지막 항목**을 SSOT 로 삼아 파생 3지점을 다시 쓴다.
+
+    🔴 왜 이 방향인가 (2026-08-05 문서 감사 P0-3): 같은 정수가 **5지점**에 손으로 복제돼
+    있었다 — STATE 종합 · STATE 추적셀 머리 · 이력 꼬리 · README 배지 · README.ko 배지.
+    **N지점 동기화 의무는 N-1 번의 실패 기회**이고, 실제로 그중 하나를 빠뜨려 가드가 red 를
+    냈다. 이 함수는 그 5를 **1**로 줄인다: 작성자는 이력에 항목 한 줄만 적고 이걸 돌린다.
+
+    파생 방향이 '이력 꼬리 → 나머지' 인 이유: 새 수치가 자연스럽게 **처음 쓰이는 곳**이
+    거기다. 종합 수치를 SSOT 로 잡으면 작성자가 두 곳(종합 + 이력)을 여전히 손으로 맞춰야 한다.
+
+    Rewrites the three derived sinks from the history tail (the single authored source),
+    cutting hand-maintained copies from 5 to 1.
+    """
+    state_path = project_root / "docs" / "STATE.md"
+    state = state_path.read_text(encoding="utf-8")
+    total, unit, errs = _history_tail(state)
+    if errs:
+        return False, errs + ["→ 이력 마지막 항목을 먼저 올바른 형식으로 적을 것 (그것이 SSOT 다)"]
+
+    integ = _first(re.compile(r"통합 (\d+) \(현재\)"), state)
+    if integ is None:
+        return False, ["❌ 추적셀에서 통합 수를 못 읽었다 — `단위 N + 통합 M (현재)` 형식 확인"]
+
+    changed: list[str] = []
+    new_state = _STATE_TOTAL.sub(f"전체 **{total}** 수집 (단위 **{unit}**", state, count=1)
+    new_state = _STATE_CELL_TOTAL.sub(f"**{total} 수집**", new_state, count=1)
+    new_state = _STATE_CELL_UNIT.sub(f"단위 {unit} + 통합 {integ} (현재)", new_state, count=1)
+    if new_state != state:
+        state_path.write_text(new_state, encoding="utf-8", newline="\n")
+        changed.append(f"✏️ docs/STATE.md — 종합 수치·추적셀 머리 → 전체 {total} / 단위 {unit}")
+
+    badge = f"Tests-{total}%2B_total_({unit}_unit_%2B_{integ}_integration)"
+    for name in ("README.md", "README.ko.md"):
+        path = project_root / name
+        text = path.read_text(encoding="utf-8")
+        fixed = _README_BADGE.sub(badge, text, count=1)
+        if fixed != text:
+            path.write_text(fixed, encoding="utf-8", newline="\n")
+            changed.append(f"✏️ {name} — Tests 배지 → {total} ({unit} unit)")
+
+    return True, changed or ["(이미 일치 — 변경 없음)"]
+
+
 def main() -> int:
     project_root = Path(__file__).resolve().parents[1]
+    if "--fix" in sys.argv:
+        print("=== docs 수치 동기화 (--fix) — SSOT = §테스트 수 추적 이력 마지막 항목 ===\n")
+        ok, msgs = apply_fix(project_root)
+        for m in msgs:
+            print(m)
+        if not ok:
+            return 1
+        print("\n→ 재검증:")
     ok, msgs = check_consistency(project_root)
     pin_ok, pin_msgs = check_dependency_pins(project_root)
     print("=== docs 수치 정합 점검 / Docs Count-Sync Check ===\n")

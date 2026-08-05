@@ -78,6 +78,57 @@ def test_docs_sync_flags_stale_history_tail(tmp_path):
     assert any("이력 마지막" in m for m in msgs), msgs
 
 
+def test_apply_fix_derives_every_sink_from_the_history_tail(tmp_path):
+    """파생 5지점을 전부 훼손해도 `--fix` 가 **이력 꼬리 하나**로부터 복원한다.
+
+    🔴 이것이 P0-3 의 계약이다 — 손으로 유지하는 지점을 5 → 1 로 줄인다.
+    복원 결과가 **원본과 바이트 동일**해야 한다: 아니면 파생이 결정적이지 않다는 뜻이고,
+    그러면 `--fix` 를 돌릴 때마다 값이 흔들려 가드가 무의미해진다.
+    """
+    root = _count_fixture(tmp_path)
+    before = {n: (root / n).read_text(encoding="utf-8")
+              for n in ("docs/STATE.md", "README.md", "README.ko.md")}
+
+    state = root / "docs" / "STATE.md"
+    text = state.read_text(encoding="utf-8")
+    text = re.sub(r"전체 \*\*\d+\*\* 수집 \(단위 \*\*\d+\*\*", "전체 **1111** 수집 (단위 **2222**", text, count=1)
+    text = re.sub(r"\| 전체 테스트 \| \*\*\d+ 수집\*\*", "| 전체 테스트 | **3333 수집**", text, count=1)
+    text = re.sub(r"단위 \d+ \+ (통합 \d+ \(현재\))", r"단위 4444 + \1", text, count=1)
+    state.write_text(text, encoding="utf-8")
+    for name in ("README.md", "README.ko.md"):
+        path = root / name
+        path.write_text(
+            re.sub(r"Tests-\d+%2B_total_\(\d+_unit", "Tests-5555%2B_total_(6666_unit",
+                   path.read_text(encoding="utf-8"), count=1),
+            encoding="utf-8")
+
+    assert not check_docs_sync.check_consistency(root)[0], "훼손이 red 가 아니면 이 테스트는 무의미"
+
+    ok, msgs = check_docs_sync.apply_fix(root)
+    assert ok, msgs
+    for name, original in before.items():
+        assert (root / name).read_text(encoding="utf-8") == original, (
+            f"{name} 이 원본과 다르다 — 파생이 결정적이지 않다")
+    assert check_docs_sync.check_consistency(root)[0]
+
+
+def test_apply_fix_refuses_when_the_ssot_itself_is_malformed(tmp_path):
+    """SSOT(이력 꼬리)가 형식을 안 갖추면 **고치지 않고 거부**한다.
+
+    형식 없는 꼬리에서 값을 추측해 파생을 쓰면, 틀린 값을 5곳에 **자동으로 퍼뜨리게** 된다.
+    """
+    root = _count_fixture(tmp_path)
+    state = root / "docs" / "STATE.md"
+    state.write_text(state.read_text(encoding="utf-8").rstrip("\n") + "\n- 수치 없는 항목\n",
+                     encoding="utf-8")
+    before = state.read_text(encoding="utf-8")
+
+    ok, msgs = check_docs_sync.apply_fix(root)
+    assert not ok
+    assert any("형식" in m for m in msgs), msgs
+    assert state.read_text(encoding="utf-8") == before, "거부했는데 파일을 건드렸다"
+
+
 def test_docs_sync_fails_when_history_section_is_deleted(tmp_path):
     """이력 절을 **통째로 지우면** red — 초판은 `None → 대조 제외` 라 초록이었다.
 
