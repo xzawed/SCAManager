@@ -29,6 +29,12 @@ _STATE_TOTAL = re.compile(r"전체 \*\*(\d+)\*\* 수집 \(단위 \*\*(\d+)\*\*")
 # STATE 추적셀 시작 헤더: "**5196 수집** ... 단위 5042 + 통합 154 (현재)"
 _STATE_CELL_TOTAL = re.compile(r"\*\*(\d+) 수집\*\*")
 _STATE_CELL_UNIT = re.compile(r"단위 (\d+) \+ 통합 \d+ \(현재\)")
+# 🔴 §테스트 수 추적 이력의 **마지막** 항목 (2026-08-05 신설 — 아래 사유)
+# 이력 항목 말미 형식: "... = **6832** 수집, collect-only 실측" / "... → **6661** 단위"
+# 이 두 패턴은 파일 전체에서 여러 번 매치되므로 반드시 **마지막** 매치를 쓴다.
+# Last entry of the tracking-history section. Both patterns match many times — take the LAST.
+_STATE_HIST_TOTAL = re.compile(r"=\s*\*\*(\d+)\*\* 수집")
+_STATE_HIST_UNIT = re.compile(r"→\s*\*\*(\d+)\*\* 단위")
 # README 배지: "Tests-5196%2B_total_(5042_unit_%2B_154_integration)"
 _README_BADGE = re.compile(r"Tests-(\d+)%2B_total_\((\d+)_unit_%2B_\d+_integration\)")
 # README FastAPI 배지: "FastAPI-0.141-009688" — 관례상 핀의 major.minor 만 표기
@@ -47,6 +53,19 @@ def _first(pattern: re.Pattern, text: str, groups: int = 1):
     if not m:
         return None
     return m.group(1) if groups == 1 else tuple(m.group(i) for i in range(1, groups + 1))
+
+
+def _last(pattern: re.Pattern, text: str):
+    """**마지막** 매치의 그룹 1 반환, 없으면 None. / Return the LAST match's group 1.
+
+    🔴 `_first` 와 짝을 이룬다. 추적 이력은 append-only 라 최신값이 **꼬리**에 있는데,
+    가드가 `_first` 만 쓰면 머리(누계)만 검사하고 꼬리는 **검사 대상이 아니게** 된다 —
+    실제로 꼬리만 갱신하고 머리를 빠뜨린 사고가 났고 그 반대(머리만 갱신)는 아예 탐지
+    불가였다. 양끝을 다 봐야 "누계 == 최신 항목" 이 성립한다.
+    Pairs with `_first`: history is append-only, so the newest value lives at the tail.
+    """
+    ms = pattern.findall(text)
+    return ms[-1] if ms else None
 
 
 def check_consistency(project_root: Path) -> tuple[bool, list[str]]:
@@ -72,6 +91,13 @@ def check_consistency(project_root: Path) -> tuple[bool, list[str]]:
     if msgs:
         return False, msgs
 
+    # 🔴 이력 **꼬리** 도 대조 대상에 넣는다 — 머리만 보면 최신 항목이 어긋나도 초록이다.
+    # 이력 절이 아직 없는 과거 리비전과의 호환을 위해 None 이면 대조에서 제외한다
+    # (있는데 어긋난 것과 아예 없는 것을 구별 — 없는 것을 red 로 만들면 hist 절 도입 전
+    #  커밋을 체크아웃했을 때 무관한 실패가 난다).
+    hist_total = _last(_STATE_HIST_TOTAL, state)
+    hist_unit = _last(_STATE_HIST_UNIT, state)
+
     totals = {
         "STATE 종합(전체)": state_total[0], "STATE 추적셀(전체)": cell_total,
         "README.md(전체)": md_badge[0], "README.ko.md(전체)": ko_badge[0],
@@ -80,6 +106,10 @@ def check_consistency(project_root: Path) -> tuple[bool, list[str]]:
         "STATE 종합(단위)": state_total[1], "STATE 추적셀(단위)": cell_unit,
         "README.md(단위)": md_badge[1], "README.ko.md(단위)": ko_badge[1],
     }
+    if hist_total is not None:
+        totals["STATE 이력 마지막(전체)"] = hist_total
+    if hist_unit is not None:
+        units["STATE 이력 마지막(단위)"] = hist_unit
     if len(set(totals.values())) > 1:
         msgs.append("❌ 전체 카운트 불일치: " + ", ".join(f"{k}={v}" for k, v in totals.items()))
     if len(set(units.values())) > 1:

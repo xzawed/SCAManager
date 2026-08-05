@@ -38,6 +38,58 @@ def test_docs_sync_flags_count_mismatch(tmp_path):
     assert any("불일치" in m for m in msgs)
 
 
+# --- 추적 이력 **꼬리** 축 (2026-08-05 — 구 가드가 원리적으로 못 보던 축) ---
+#
+# 🔴 왜 필요한가: 이력은 append-only 라 최신값이 꼬리에 있는데 가드는 `_first()` 로 머리만
+# 읽었다. 그래서 "꼬리만 갱신하고 머리를 빠뜨림"(실제 발생)도, 그 반대도 탐지 대상이 아니었다.
+# 아래 뮤테이션은 **실 리포 파일**을 복사해 마지막 이력 항목만 깨뜨린다(가드 3-불변식 ②).
+
+def _count_fixture(tmp_path: Path) -> Path:
+    """수치 검사가 읽는 3개 파일을 실 리포에서 그대로 복사."""
+    (tmp_path / "docs").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "docs" / "STATE.md").write_text(
+        (_ROOT / "docs" / "STATE.md").read_text(encoding="utf-8"), encoding="utf-8")
+    for rel in ("README.md", "README.ko.md"):
+        (tmp_path / rel).write_text((_ROOT / rel).read_text(encoding="utf-8"), encoding="utf-8")
+    return tmp_path
+
+
+def test_docs_sync_flags_stale_history_tail(tmp_path):
+    """이력 **마지막** 항목만 어긋나도 red — 머리 4곳은 전부 정상인 상태에서.
+
+    구 가드(`_first` 단독)는 이 상태를 초록으로 통과시켰다.
+    """
+    root = _count_fixture(tmp_path)
+    state = root / "docs" / "STATE.md"
+    text = state.read_text(encoding="utf-8")
+    # 이력 절 마지막 줄의 누계만 깨뜨린다 (표 머리·README 배지는 손대지 않는다)
+    last = re.findall(r"=\s*\*\*(\d+)\*\* 수집", text)
+    assert last, "이력 꼬리 패턴 미발견 — 형식이 바뀌었으면 가드도 함께 갱신할 것"
+    tail = f"= **{last[-1]}** 수집"
+    idx = text.rindex(tail)
+    state.write_text(text[:idx] + "= **99999** 수집" + text[idx + len(tail):], encoding="utf-8")
+
+    ok, msgs = check_docs_sync.check_consistency(root)
+    assert not ok, "이력 꼬리가 어긋났는데 통과했다 — 꼬리 축이 관측되지 않는다"
+    assert any("이력 마지막" in m for m in msgs), msgs
+
+
+def test_docs_sync_history_tail_is_not_the_head(tmp_path):
+    """꼬리 검사가 머리를 다시 읽는 것이 아님을 증명 — 머리만 깨면 꼬리는 정상으로 보고된다.
+
+    두 축이 같은 값을 두 번 읽는 것이라면 이 가드는 축이 하나뿐인 것과 같다.
+    """
+    root = _count_fixture(tmp_path)
+    state = root / "docs" / "STATE.md"
+    _mutate(state, "| 전체 테스트 | **", "| 전체 테스트 | **9")  # 머리만 훼손
+
+    ok, msgs = check_docs_sync.check_consistency(root)
+    assert not ok
+    joined = " ".join(msgs)
+    assert "STATE 추적셀(전체)=9" in joined, joined     # 머리는 훼손값
+    assert "STATE 이력 마지막(전체)=9" not in joined, joined  # 꼬리는 원값 — 독립 축
+
+
 # --- check_docs_sync 의존성 핀 축 (backlog R15 — ground truth 대조) ---
 #
 # 아래 뮤테이션은 합성 문자열이 아니라 **실 리포 파일 내용**을 복사해 깨뜨린다(가드 3-불변식 ②).
