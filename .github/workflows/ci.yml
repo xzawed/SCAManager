@@ -519,6 +519,22 @@ jobs:
       - name: Install dependencies
         run: pip install --retries 5 --timeout 60 -r requirements-dev.txt
 
+      # 🔴 CSS 빌드 산출물이 없으면 **운영에 존재할 수 없는 형태**를 검증하게 된다.
+      # `src/static/css/dist/tailwind.css` 는 `.gitignore` 된 빌드 산출물이라 체크아웃에
+      # 없다 → 서버가 404(HTML)를 주고 브라우저가 `Refused to apply style from …` 을 낸다.
+      # 실제로 `test_dashboard_no_js_runtime_errors` 가 이 이유로 red 였고, 그것을 CSP
+      # 결함(#1294)과 **구별할 수 없었다** — 한 테스트에 두 원인이 겹쳐 있었다.
+      # `railway.toml` 의 배포 빌드도 `npm ci && npm run build` 로 끝난다(동일 형태 맞춤).
+      # Without the CSS build the job tests a shape that cannot exist in production.
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Build CSS (운영과 동일 산출물)
+        run: npm ci --ignore-scripts && npm run build
+
       # `--with-deps` 로 브라우저 + OS 라이브러리를 함께 설치 (ubuntu 러너 필수).
       - name: Install Playwright chromium
         run: python -m playwright install --with-deps chromium
