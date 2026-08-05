@@ -449,3 +449,32 @@ Phase 종료 시점 의무는 **정책 2/5/8/11 4 정책에 분산** (사이클 
 - **정책 11 강화**: Phase 종료 누적 회신 묶음 (8 조합 시각 체크리스트 누적 의무)
 
 ---
+
+---
+
+## 정책 19: Claude ↔ Grok 협업 — detail (2026-08-06 CLAUDE.md 본문에서 이관)
+
+> 🔴 **SSOT 는 여전히 [`AGENTS.md`](../../AGENTS.md)(3-불변식·트리거) + [`docs/runbooks/ai-collaboration.md`](../../docs/runbooks/ai-collaboration.md)(프로토콜 v2)** 다.
+> 아래는 CLAUDE.md 가 200줄 기준(Anthropic 공식)을 2.1배 초과해 detail 을 옮긴 것이며,
+> CLAUDE.md 본문에는 default rule 만 남는다(정책 17 원칙 2).
+
+### 정책 19: Claude ↔ Grok 협업 (2026-07-19 승인 · default ON 2026-07-20)
+
+**SSOT = [`AGENTS.md`](../../AGENTS.md)(3-불변식·트리거) + [`docs/runbooks/ai-collaboration.md`](../../docs/runbooks/ai-collaboration.md)(프로토콜 v2).**
+Grok 은 파이프라인 단계가 아니라 **claim-review/인터럽트**. 별도 지시 없으면 실질 작업마다
+Grok CLAIM-REVIEW 기본 포함(2026-07-20 사용자 지시, 건너뛰려면 명시 지시). 상세: [[feedback-grok-collaboration-default]].
+
+- **핵심 트리거**: "봉인/완결/fail-closed/유출 0" 주장 → 그 주장 하나로 Grok 뮤테이션 패스
+  (이진 질문이라 Grok 심각도 편향 우회). **1순위 사냥 = observer-lie**: *보호 장치를 삭제해도
+  여전히 참으로 보이는 것은?*
+- 🔴 **2-phase 사용자 보고 게이트**(매 발화 의무): `배포|활성|봉인|운영|cron 실행됨` 포함 문장은
+  라이브 deploy reality 필드 동반 또는 **`UNVERIFIED:` 접두사** 의무. `STATIC-ONLY-UNVERIFIED` 는
+  사용자 보고 불가.
+- 🔴 **A2 (신규 관측자 뮤테이션 의무)**: 새 seal 은 **실경로 뮤테이션 red** 없이 HOLDS 금지 —
+  합성 픽스처 불가(#1121). 3-불변식 상세 = [`AGENTS.md`](../../AGENTS.md).
+- **경계 = '소유 금지'**: Grok 은 정책·backlog 를 **저술하지 않는다**(claim-review 는 허용 —
+  seal/HOLDS/완전성 주장 시 `owner-interrupt: claim-review` 명시). 호출 금지: 계획·WBS·구현 중간.
+- **회고 카덴스에 Grok full-pass 겹치지 않음**(피로 방지) — 주장 트리거 + ops 불변식 단축 패스만.
+- 🔴 **집행면 (CI)**: seal 어휘 PR 은 `scripts/check_claim_review_trace.py`(repo-integrity)가
+  claim-review 흔적(session/claim/verdict 값)을 강제. 흔적·면제는 **리뷰어 가시 영역만** 인정
+  (HTML 주석 스트리핑) · 면제 사용은 `::notice` 로 계량 (backlog R20 — SSOT 미등재 시정).
