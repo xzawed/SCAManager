@@ -1,7 +1,10 @@
 """E2E 성능 측정 테스트 — @pytest.mark.perf 마커로 선택 실행.
 E2E performance tests — selectively run via @pytest.mark.perf.
 """
+import time
+
 import pytest
+import requests
 
 from e2e._perf_helpers import LCP_INIT_JS as _LCP_INIT_JS
 from e2e._perf_helpers import measure_one as _measure_one
@@ -52,23 +55,26 @@ def analysis_page(browser_instance, live_server, seeded_analysis):
 # ── Public pages ──────────────────────────────────────────────────────────
 
 @pytest.mark.perf
-def test_login_ttfb(perf_page, base_url):
-    """/login 초기 서버 응답 시간 < 500ms."""
-    stats = _measure_page(perf_page, f"{base_url}/login")
+def test_root_ttfb(perf_page, base_url):
+    """`/` 초기 서버 응답 시간 < 500ms.
+
+    🔴 이전엔 `/login` 을 쟀는데 그 라우트는 301 → /auth/github → **github.com** 이라
+    실제로는 **GitHub 의 응답 속도**를 측정하고 있었다(우리 앱 무관 + 네트워크 의존).
+    Previously measured `/login`, which redirects out to github.com — i.e. it timed
+    GitHub, not this app.
+    """
+    stats = _measure_page(perf_page, f"{base_url}/")
     assert stats["ttfb"]["avg"] is not None
     assert stats["ttfb"]["avg"] < THRESHOLDS["ttfb"], (
         f"TTFB {stats['ttfb']['avg']}ms >= {THRESHOLDS['ttfb']}ms"
     )
 
 
-@pytest.mark.perf
-def test_login_load(perf_page, base_url):
-    """/login 전체 로드 시간 < 3000ms."""
-    stats = _measure_page(perf_page, f"{base_url}/login")
-    assert stats["load"]["avg"] is not None
-    assert stats["load"]["avg"] < THRESHOLDS["load"], (
-        f"Load {stats['load']['avg']}ms >= {THRESHOLDS['load']}ms"
-    )
+# 🔴 구 `test_login_load` 는 여기서 **삭제**했다 — `/login` 을 `/` 로 시정하면
+# 아래 `test_root_load` 와 완전히 같은 측정이 되어 중복이다(같은 이름이면 뒤 정의가
+# 앞을 덮어 조용히 죽은 테스트가 된다). TTFB 축은 기존에 없어서 위에 남겨 뒀다.
+# The old `test_login_load` is deleted here: once `/login` is corrected to `/`, it
+# duplicates `test_root_load` below (same name would silently shadow).
 
 
 @pytest.mark.perf

@@ -21,9 +21,18 @@ run: `make test-e2e` (Chromium Playwright, e2e/conftest.py 의 live_server fixtu
 
 
 def test_dashboard_insight_mode_page_loads(page, base_url):
-    """GET /dashboard?mode=insight → 200 + .dash-insight-status (no_api_key fallback) 표시.
+    """GET /dashboard?mode=insight → 200 + `.dash-insight-status` 안내 표시.
 
-    e2e = ANTHROPIC_API_KEY 미설정 → status=no_api_key → 🔑 텍스트 노출.
+    🔴 이전 판은 **`no_api_key` 분기만** 인정했다. 그런데 어느 안내가 뜨는지는
+    시드된 분석 데이터 양에 달려 있다 — 데이터가 부족하면 `insufficient_data`
+    분기가 먼저 걸린다. 그래서 같은 커밋이 CI(🔑 no_api_key)와 로컬(📭 부족)에서
+    **서로 다르게** 실패/통과했다: 122건 중 **유일한 환경 의존 실패**였다(R52 실측).
+    이 테스트의 계약은 "insight 모드가 렌더되고 상태 안내가 뜬다" 이지
+    "어느 사유인가" 가 아니다 — 사유는 시드 상태에 종속시키지 않는다.
+
+    Which status renders depends on how much analysis data happens to be seeded, so
+    pinning it to `no_api_key` made this the suite's only environment-dependent failure.
+    The contract is that insight mode renders *a* status notice.
     """
     response = page.goto(f"{base_url}/dashboard?mode=insight")
     assert response.status == 200, f"5xx 발생: {response.status}"
@@ -33,12 +42,11 @@ def test_dashboard_insight_mode_page_loads(page, base_url):
     status = page.locator(".dash-insight-status")
     assert status.count() >= 1, "dash-insight-status 셀렉터 누락 (no_api_key fallback 미표시)"
 
-    # 본문에 ANTHROPIC_API_KEY 또는 🔑 marker 노출 (template L380~L382 정합)
-    # The body must include the missing-key prompt (dashboard.html L380-L382).
-    text = status.first.inner_text()
-    assert ("ANTHROPIC_API_KEY" in text) or ("🔑" in text), (
-        f"no_api_key 메시지 누락. 실제 텍스트: {text[:120]}"
-    )
+    # 상태 안내가 **비어 있지 않아야** 한다 — 사유(no_api_key / insufficient_data / disabled)는
+    # 시드 데이터에 종속되므로 특정 분기를 못박지 않는다.
+    # The status notice must be non-empty; the specific reason depends on seeded data.
+    text = status.first.inner_text().strip()
+    assert text, "dash-insight-status 가 비어 있다 — 상태 안내가 렌더되지 않았다"
 
 
 def test_dashboard_insight_mode_toggle_visible_in_overview(page, base_url):
@@ -96,44 +104,51 @@ def test_dashboard_insight_mode_no_chart_canvas(page, base_url):
 # ─── B. localStorage persist + URL 우선순위 ─────────────────────────────
 
 
-def test_localStorage_persist_on_mode_toggle_click(page, base_url):
-    """모드 토글 클릭 시 localStorage 'sca-dashboard-mode' 저장 (PR 4 정합).
+def test_mode_toggle_navigates_without_persisting(page, base_url):
+    """모드 토글은 **이동만** 한다 — localStorage 저장은 #649 에서 의도적으로 제거됐다.
 
-    Clicking the mode toggle persists the choice to localStorage (PR 4).
+    🔴 이 테스트는 원래 `localStorage['sca-dashboard-mode']` 저장을 요구했다. 그 JS 는
+    2026-05-26 `e601464`(#649, *"localStorage redirect IIFE 제거 — /dashboard 항상 개요 표시"*)
+    에서 **삭제됐다**. 즉 없어진 기능을 요구하던 테스트라, 되살리는 게 아니라
+    **그 삭제 결정을 지키는 회귀 가드**로 방향을 뒤집는다.
+
+    The mode toggle only navigates. localStorage persistence was deliberately removed in
+    #649; this now guards that removal instead of demanding the deleted behaviour.
     """
     page.goto(f"{base_url}/dashboard?mode=overview")
-
-    # insight 링크 클릭 — 페이지 이동 발생 (handler 가 setItem 후 navigate)
-    # Click the insight link — navigation will follow but the handler stores first.
     page.click('.dash-mode-toggle a[data-mode="insight"]')
-    page.wait_for_load_state("networkidle")
+    # 🔴 `wait_for_load_state("networkidle")` 로는 부족하다 — body 가 hx-boost 라
+    # htmx 가 스왑 후 pushState 를 하는데 networkidle 이 그보다 먼저 풀린다(실측).
+    # networkidle resolves before htmx's pushState under hx-boost; wait on the URL itself.
+    page.wait_for_url("**mode=insight**", timeout=5000)
 
+    assert "mode=insight" in page.url, f"토글이 이동하지 않았다: {page.url}"
     stored = page.evaluate("() => localStorage.getItem('sca-dashboard-mode')")
-    assert stored == "insight", (
-        f"localStorage 'sca-dashboard-mode' 미저장 또는 잘못된 값: {stored!r}"
+    assert stored is None, (
+        f"#649 에서 제거한 localStorage 저장이 되살아났다: {stored!r}"
     )
 
 
-def test_localStorage_redirect_on_no_url_mode(page, base_url):
-    """URL ?mode= 부재 + localStorage 'insight' 저장 → 1회 redirect 로 ?mode=insight 로 이동.
+def test_no_url_mode_always_shows_overview(page, base_url):
+    """`?mode=` 부재 시 localStorage 와 무관하게 **항상 개요**를 보여야 한다 (#649).
 
-    With no ?mode= in URL but localStorage='insight', the page redirects once
-    to add ?mode=insight (template L657-L670 — server initial_mode != stored).
+    🔴 방향 반전: 이전 판은 localStorage='insight' 면 `?mode=insight` 로 **리다이렉트되기를**
+    요구했다. `e601464`(#649)가 그 IIFE 를 제거해 */dashboard 는 항상 개요*가 정본이 됐다.
+    남은 localStorage 값이 있어도 리다이렉트되지 않음을 단언한다.
+
+    Inverted: `#649` removed the localStorage redirect IIFE, so `/dashboard` must always
+    render the overview even when a stale localStorage value is present.
     """
-    # 1단계: dashboard 진입 후 localStorage 직접 setItem
-    # Step 1: visit dashboard, then setItem on localStorage directly.
     page.goto(f"{base_url}/dashboard?mode=overview")
     page.evaluate("() => localStorage.setItem('sca-dashboard-mode', 'insight')")
 
-    # 2단계: URL 에서 ?mode= 제거하고 재진입 — JS 가 stored != initial_mode 감지하여 redirect
-    # Step 2: visit /dashboard with no ?mode=; JS detects stored != initial and redirects.
     page.goto(f"{base_url}/dashboard")
-    page.wait_for_load_state("networkidle")
+    # 부재를 단언하므로 리다이렉트가 일어났다면 발화할 만큼만 기다린다.
+    # Asserting absence: wait just long enough for a redirect to have fired.
+    page.wait_for_timeout(1500)
 
-    # URL 에 mode=insight 가 포함되어야 함 (1회 redirect 후 안정 상태)
-    # Final URL must include mode=insight (post-redirect).
-    assert "mode=insight" in page.url, (
-        f"localStorage='insight' 인데 URL 에 mode=insight 미포함. 실제: {page.url}"
+    assert "mode=insight" not in page.url, (
+        f"#649 에서 제거한 localStorage 리다이렉트가 되살아났다: {page.url}"
     )
 
 

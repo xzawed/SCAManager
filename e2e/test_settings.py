@@ -6,6 +6,23 @@ import pytest
 SETTINGS_URL = "/repos/owner%2Ftestrepo/settings"
 SETTINGS_REPO = "owner/testrepo"
 
+# OTP 자릿수 = **8** (#895 b2bdfe8, C12 보안 하드닝 — 6→8 로 brute-force 공간 100배).
+# 🔴 앱 상수를 그대로 기대값으로 쓰면 안 된다 — 상수를 6 으로 줄여도 테스트가 따라가서
+#    초록이 된다(자기참조 = 보안 회귀를 관측 못 하는 가드). 그래서 리터럴 8 을 못박고,
+#    앱 상수가 8 에서 벗어나면 **그 사실 자체로** 실패하게 둔다(사람이 두 곳을 같이 보게).
+# Do NOT derive the expectation from the app constant: lowering the constant would drag the
+# test along and silently hide a security regression. Pin the literal and cross-check.
+_EXPECTED_OTP_LENGTH = 8
+
+# 프리셋 diff 미리보기 행수 — 전체 9필드 중 **무효(inert) 임계값 행은 생략**된다(#1041).
+# 규칙(settings.html renderPresetDiff): approve_mode=='disabled' → approve/reject_threshold 생략,
+#                                       auto_merge==false      → merge_threshold 생략.
+#   minimal  = disabled + auto_merge false → 9 - 3 = 6
+#   standard = auto     + auto_merge false → 9 - 1 = 8
+#   strict   = auto     + auto_merge true  → 9
+# Row counts for the preset diff preview: inert threshold rows are omitted (#1041).
+_PRESET_DIFF_ROWS = {"minimal": 6, "standard": 8, "strict": 9}
+
 
 def _reset_repo_config(repo_full_name=SETTINGS_REPO):
     """공유 E2E DB의 리포 설정을 기본 상태로 되돌린다."""
@@ -80,7 +97,7 @@ def test_preset_minimal_apply_button_applies_settings(seeded_page, base_url):
     seeded_page.wait_for_timeout(300)
     # 펼침 직후에는 아직 적용되지 않음 — diff 미리보기만 렌더
     # Immediately after expanding, it is not yet applied — only the diff preview is rendered.
-    assert seeded_page.locator("#preset-diff-minimal tr").count() == 9
+    assert seeded_page.locator("#preset-diff-minimal tr").count() == _PRESET_DIFF_ROWS["minimal"]
     # Apply 버튼 클릭 → 적용
     seeded_page.locator("#preset-minimal .preset-apply-btn").click()
     seeded_page.wait_for_timeout(300)
@@ -95,7 +112,7 @@ def test_preset_standard_apply_button_applies_settings(seeded_page, base_url):
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
     seeded_page.locator("#preset-standard summary").click()
     seeded_page.wait_for_timeout(300)
-    assert seeded_page.locator("#preset-diff-standard tr").count() == 9
+    assert seeded_page.locator("#preset-diff-standard tr").count() == _PRESET_DIFF_ROWS["standard"]
     seeded_page.locator("#preset-standard .preset-apply-btn").click()
     seeded_page.wait_for_timeout(300)
     assert seeded_page.locator('input[name="pr_review_comment"]').is_checked()
@@ -110,7 +127,7 @@ def test_preset_strict_apply_button_applies_settings(seeded_page, base_url):
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
     seeded_page.locator("#preset-strict summary").click()
     seeded_page.wait_for_timeout(300)
-    assert seeded_page.locator("#preset-diff-strict tr").count() == 9
+    assert seeded_page.locator("#preset-diff-strict tr").count() == _PRESET_DIFF_ROWS["strict"]
     seeded_page.locator("#preset-strict .preset-apply-btn").click()
     seeded_page.wait_for_timeout(300)
     assert seeded_page.locator('input[name="create_issue"]').is_checked()
@@ -247,8 +264,15 @@ def test_telegram_otp_issue_shows_six_digit_code(seeded_page, base_url):
     # OTP API 응답 및 DOM 업데이트 대기 / Wait for OTP API response and DOM update.
     seeded_page.wait_for_selector("#telegramOtpDisplay", state="visible", timeout=5000)
     otp_text = seeded_page.locator("#telegramOtpCode").inner_text()
-    # 6자리 숫자 문자열이어야 한다 / Must be a 6-digit numeric string.
-    assert len(otp_text) == 6, f"OTP 길이 오류: {otp_text!r}"
+    assert len(otp_text) == _EXPECTED_OTP_LENGTH, f"OTP 길이 오류: {otp_text!r}"
+    # 앱 상수와의 교차 확인 — 상수가 바뀌면 여기서 **먼저** 실패해 사람이 두 곳을 같이 본다.
+    # Cross-check against the app constant so a change fails loudly instead of being followed.
+    from src.api.users import _OTP_LENGTH  # noqa: PLC0415
+
+    assert _OTP_LENGTH == _EXPECTED_OTP_LENGTH, (
+        f"앱 OTP 자릿수가 {_OTP_LENGTH} 로 바뀌었다 — 보안 하드닝(#895) 회귀인지 확인 후 "
+        f"_EXPECTED_OTP_LENGTH 도 함께 갱신할 것"
+    )
     assert otp_text.isdigit(), f"OTP에 비숫자 문자 포함: {otp_text!r}"
 
 
@@ -326,7 +350,7 @@ def test_settings_form_submit_redirects(seeded_page, base_url):
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
     _expand_advanced(seeded_page)
     seeded_page.click('[data-mode="auto"]')
-    seeded_page.locator('button[type="submit"].btn-save-new').click()
+    seeded_page.locator("#saveBtn").click()
     seeded_page.wait_for_load_state("networkidle", timeout=5000)
     assert "/settings" in seeded_page.url
 
@@ -336,7 +360,7 @@ def test_gate_mode_persists_after_save(seeded_page, base_url):
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
     _expand_advanced(seeded_page)
     seeded_page.click('[data-mode="auto"]')
-    seeded_page.locator('button[type="submit"].btn-save-new').click()
+    seeded_page.locator("#saveBtn").click()
     seeded_page.wait_for_load_state("networkidle", timeout=5000)
     # 리로드 후 advanced 모드로 전환해야 approve_mode 버튼이 보임
     # After reload, switch to advanced mode so approve_mode button is visible
@@ -352,7 +376,7 @@ def test_preset_standard_persists_after_save(seeded_page, base_url):
     seeded_page.wait_for_timeout(300)
     seeded_page.locator("#preset-standard .preset-apply-btn").click()
     seeded_page.wait_for_timeout(300)
-    seeded_page.locator('button[type="submit"].btn-save-new').click()
+    seeded_page.locator("#saveBtn").click()
     seeded_page.wait_for_load_state("networkidle", timeout=5000)
     # 저장 후 approve_mode=auto 확인
     cls = seeded_page.get_attribute('[data-mode="auto"]', "class") or ""
@@ -396,19 +420,38 @@ def test_two_column_layout_on_desktop(seeded_page, base_url):
 # ── Settings 재설계 E2E 테스트 (2026-04-21) ──────────────────────────
 
 def test_six_card_titles_present(seeded_page, base_url):
-    """6 카드 의도 기반 제목이 모두 렌더링되어야 한다."""
+    """6 카드 의도 기반 제목이 모두 **렌더된 요소로** 존재해야 한다.
+
+    🔴 이 테스트는 두 겹으로 고장나 있었다 (2026-08-05, R52):
+    (1) 기본 locale 이 en 인데 한국어 리터럴을 기대했고,
+    (2) 더 나쁘게 — `page.content()` 부분문자열 매칭이라 5개 단언 중 4개가
+        **렌더된 제목이 아니라 템플릿에 남은 한국어 HTML 주석**(`<!-- ② PR 동작 규칙 …`)에
+        매칭돼 통과했다. 즉 제목을 전부 지워도 초록인 **거짓 관측자**였다.
+        '위험 구역'만 Jinja 주석(`{# #}`, 출력 제거)이라 매칭이 끊겨 유일하게 빨갛다.
+    그래서 문자열만 영어로 바꾸는 수정은 같은 함정을 재생산한다 — 주석은 여전히 매칭된다.
+    **렌더된 `.hdr-title` 요소의 textContent** 로 본다.
+
+    This test was doubly broken: it expected Korean literals while the default locale
+    is en, and — worse — 4 of 5 assertions matched Korean *HTML comments* in the
+    template rather than rendered titles, so it stayed green even if every title were
+    deleted. Assert on rendered `.hdr-title` elements instead.
+    """
     seeded_page.goto(f"{base_url}{SETTINGS_URL}")
-    body = seeded_page.content()
-    # ① 빠른 설정 제목은 기존 유지 — 개별 프리셋 카드로 대체
-    # ① Quick settings heading is preserved — replaced by individual preset cards.
+    titles = seeded_page.eval_on_selector_all(
+        ".hdr-title", "els => els.map(e => e.textContent.trim())"
+    )
     # Phase 2A Progressive 재설계 — 카드 평탄화 + W2 수신/발신 분리 + 의도 기반 명명
-    # Phase 2A Progressive redesign — cards flattened + W2 inbound/outbound split + intent-based names
-    assert "PR 동작 규칙" in body, "카드 'PR 동작 규칙' 누락"
-    assert "알림 채널 (발신)" in body, "카드 '알림 채널 (발신)' 누락"
-    assert "이벤트 후 자동화" in body, "카드 '이벤트 후 자동화' 누락"
-    assert "통합 &amp; 인증 (수신)" in body or "통합 & 인증 (수신)" in body, "카드 '통합 & 인증 (수신)' 누락"
-    assert "위험 구역" in body, "카드 '위험 구역' 누락"
+    # Phase 2A Progressive redesign — cards flattened + W2 inbound/outbound split
+    for expected in (
+        "PR Behavior Rules",
+        "Outbound Channels",
+        "Post-event automation",
+        "Integration & Auth (Inbound)",
+        "Danger zone",
+    ):
+        assert expected in titles, f"카드 제목 '{expected}' 누락 — 렌더된 제목: {titles}"
     # 구 카드명 잔존 부재 가드 / Old card names must not linger
+    body = seeded_page.content()
     assert "분석 동작 규칙" not in body, "구 카드명 '분석 동작 규칙' 잔존"
     assert "Push / 배포 이벤트" not in body, "구 카드명 'Push / 배포 이벤트' 잔존"
     assert "알림 발신 채널" not in body, "구 카드명 '알림 발신 채널' 잔존"
@@ -424,7 +467,24 @@ def test_preset_diff_preview_has_nine_rows(seeded_page, base_url):
     seeded_page.locator("#preset-minimal summary").click()
     seeded_page.wait_for_timeout(300)
     rows = seeded_page.locator("#preset-diff-minimal tr").count()
-    assert rows == 9, f"프리셋 diff 행 9개 기대, 실제 {rows}"
+    expected = _PRESET_DIFF_ROWS["minimal"]
+    assert rows == expected, f"minimal 프리셋 diff 행 {expected}개 기대, 실제 {rows}"
+    # 🔴 행수만 세면 생략 규칙(#1041)이 죽어도 다른 이유로 6 이 나오면 초록이다 — 규칙을 직접 단언.
+    # Counting rows alone would stay green if the omission rule (#1041) died but some other
+    # change produced 6 anyway. Assert the rule itself: inert thresholds must be absent.
+    diff_text = seeded_page.locator("#preset-diff-minimal").inner_text()
+    # 🔴 **대조군 먼저** — 존재해야 할 라벨이 실제로 잡히는지 확인하지 않으면, 아래 부재 단언은
+    #    "라벨 문자열이 애초에 안 맞아서" 항상 통과하는 공허한 가드가 된다.
+    #    (첫 판이 정확히 그랬다: `label[for=...]` 로 찾았는데 그런 요소가 리포에 0개라
+    #     항상 키 이름으로 폴백해 매칭이 영영 실패 → 규칙을 지워도 초록. Grok claim-review 적발.)
+    #    Positive control first: without it the absence assertions below pass vacuously.
+    assert "Auto Merge" in diff_text, (
+        f"대조군 실패 — 존재해야 할 라벨을 못 찾았다. 아래 부재 단언은 무의미하다. diff={diff_text!r}"
+    )
+    for inert_label in ("Approve Threshold", "Reject Threshold", "Merge Threshold"):
+        assert inert_label not in diff_text, (
+            f"minimal 은 '{inert_label}' 가 무효라 diff 에서 생략돼야 하는데 남아 있다"
+        )
 
 
 def test_preset_diff_has_unchanged_fields_dimmed(seeded_page, base_url):

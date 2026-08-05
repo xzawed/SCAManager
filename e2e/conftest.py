@@ -221,6 +221,31 @@ def browser_instance():
 
 
 @pytest.fixture
+def anonymous_page(page, live_server):  # noqa: F811
+    """비로그인 방문자 시점 — `get_current_user` override 를 이 테스트 동안만 해제한다.
+
+    🔴 왜 필요한가: 이 conftest 는 `get_current_user` 를 전역 override 해서 **모든 요청이
+    로그인 상태**다. 그래서 `/` 는 항상 대시보드를 렌더하고 **랜딩(비로그인) 페이지는
+    e2e 로 도달 불가**였다 — 미로그인 UI 는 원리적으로 미검증 영역이었다(R52 완전성 비평).
+    `require_login` override 는 그대로 두므로 인증 필수 라우트는 영향받지 않는다.
+
+    Temporarily drops the global `get_current_user` override so `/` renders the landing
+    (unauthenticated) page. Without this the landing UI is unreachable from e2e.
+
+    ⚠️ 앱 전역 상태를 건드리므로 **테스트 병렬 실행과 양립하지 않는다**(현재 스위트는 순차).
+    """
+    from src.auth.session import get_current_user  # noqa: PLC0415
+    from src.main import app  # noqa: PLC0415
+
+    saved = app.dependency_overrides.pop(get_current_user, None)
+    try:
+        yield page
+    finally:
+        if saved is not None:
+            app.dependency_overrides[get_current_user] = saved
+
+
+@pytest.fixture
 def page(browser_instance, base_url):  # noqa: F811
     """테스트마다 새로운 브라우저 컨텍스트(격리된 localStorage)를 제공한다.
     JS 런타임 에러(uncaught exception)를 테스트 실패로 자동 전환한다 (hx-boost SyntaxError 감지용).
