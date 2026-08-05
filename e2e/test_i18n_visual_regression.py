@@ -26,8 +26,8 @@ _I18N_ANCHORS = {
         "nav_overview": "Overview",
         "nav_dashboard": "Dashboard",
         "nav_logout": "Logout",
-        "login_subtitle": "Claude reviews your PR",
-        "login_button": "Sign in with GitHub",
+        "landing_sub": "for complete code quality management",
+        "landing_cta": "Get Started",
         "overview_title": "Today's Analyses",
         "overview_title_empty": "Repository Status",
         "dashboard_title": "Dashboard",
@@ -38,8 +38,8 @@ _I18N_ANCHORS = {
         "nav_overview": "개요",
         "nav_dashboard": "대시보드",
         "nav_logout": "로그아웃",
-        "login_subtitle": "PR이 들어오면 Claude가 검토",
-        "login_button": "GitHub로 로그인",
+        "landing_sub": "완성되는 코드 품질 관리",
+        "landing_cta": "지금 시작",
         "overview_title": "오늘의 분석",
         "overview_title_empty": "리포지토리 현황",
         "dashboard_title": "대시보드",
@@ -50,8 +50,8 @@ _I18N_ANCHORS = {
         "nav_overview": "概要",
         "nav_dashboard": "ダッシュボード",
         "nav_logout": "ログアウト",
-        "login_subtitle": "PRが入ってきたらClaude",
-        "login_button": "GitHubでログイン",
+        "landing_sub": "完成するコード品質管理",
+        "landing_cta": "今すぐ始める",
         "overview_title": "本日の分析",
         "overview_title_empty": "リポジトリ状況",
         "dashboard_title": "ダッシュボード",
@@ -73,29 +73,37 @@ def _set_locale_cookie(page, base_url: str, locale: str) -> None:
     }])
 
 
-# ── /login (비로그인 진입 페이지) ──────────────────────────────────────────
+# ── 랜딩 `/` (비로그인 진입 페이지) ────────────────────────────────────────
+#
+# 🔴 이 섹션은 원래 `/login` 을 겨눴다. 그 라우트는 2026-05-21(f4836db)부터
+# **301 → /auth/github → github.com** 이라, 테스트는 우리 페이지가 아니라
+# **실제 github.com 을 로드해 거기서 문자열을 찾고** 있었다(`login.html` 자체도 #578 에서 삭제).
+# 비로그인 진입 페이지의 현재 정본은 `/` → `landing.html`(overview.py:41) 이다.
+# This section used to target `/login`, which has been a 301 to github.com since 2026-05-21 —
+# the tests were asserting against GitHub's own page. The landing page is now `/`.
 
 
 @pytest.mark.parametrize("locale", ["en", "ko", "ja"])
-def test_login_page_i18n_render(page, base_url, locale):
-    """/login 페이지 — 3 언어 (en/ko/ja) 텍스트 렌더링 검증.
+def test_landing_page_i18n_render(anonymous_page, base_url, locale):
+    """랜딩 `/` 페이지 — 3 언어 (en/ko/ja) 텍스트 렌더링 검증.
 
-    /login is unauthenticated, so Cookie-based locale must be respected.
+    비로그인 진입 페이지이므로 Cookie 기반 locale 이 그대로 반영돼야 한다.
+    The landing page is unauthenticated, so the cookie-based locale must be respected.
     """
-    _set_locale_cookie(page, base_url, locale)
-    page.goto(f"{base_url}/login")
-    body = page.content()
+    _set_locale_cookie(anonymous_page, base_url, locale)
+    anonymous_page.goto(f"{base_url}/")
+    body = anonymous_page.content()
 
     anchors = _I18N_ANCHORS[locale]
-    assert anchors["login_subtitle"] in body, (
-        f"login subtitle missing for locale={locale}"
+    assert anchors["landing_sub"] in body, (
+        f"landing subtitle missing for locale={locale}"
     )
-    assert anchors["login_button"] in body, (
-        f"login button missing for locale={locale}"
+    assert anchors["landing_cta"] in body, (
+        f"landing CTA missing for locale={locale}"
     )
 
     # HTML lang attribute 동적 검증
-    html_tag_re = page.locator("html")
+    html_tag_re = anonymous_page.locator("html")
     actual_lang = html_tag_re.get_attribute("lang")
     assert actual_lang == locale, (
         f"<html lang='{actual_lang}'> doesn't match expected '{locale}'"
@@ -181,41 +189,41 @@ def test_settings_page_i18n_render(seeded_page, base_url, locale):
 # ── default locale fallback (Cookie 미설정) ────────────────────────────────
 
 
-def test_no_cookie_falls_to_default_locale(page, base_url):
+def test_no_cookie_falls_to_default_locale(anonymous_page, base_url):
     """Cookie 미설정 시 settings.default_locale ('en') fallback 검증."""
     # Cookie 미설정 — 기존 컨텍스트 cookies 모두 삭제
-    page.context.clear_cookies()
-    page.goto(f"{base_url}/login")
-    body = page.content()
+    anonymous_page.context.clear_cookies()
+    anonymous_page.goto(f"{base_url}/")
+    body = anonymous_page.content()
 
     # default = 'en'
     anchors_en = _I18N_ANCHORS["en"]
-    assert anchors_en["login_subtitle"] in body, (
+    assert anchors_en["landing_sub"] in body, (
         "default locale fallback failed — expected English subtitle"
     )
 
-    actual_lang = page.locator("html").get_attribute("lang")
+    actual_lang = anonymous_page.locator("html").get_attribute("lang")
     assert actual_lang == "en", f"expected default lang='en', got '{actual_lang}'"
 
 
 # ── 언어 전환 일관성 (Cookie 변경 시 즉시 반영) ─────────────────────────
 
 
-def test_locale_switch_via_cookie_takes_effect(page, base_url):
+def test_locale_switch_via_cookie_takes_effect(anonymous_page, base_url):
     """preferred_language Cookie 변경 시 다음 요청에서 즉시 다른 언어 표시."""
     # 1차: en
-    _set_locale_cookie(page, base_url, "en")
-    page.goto(f"{base_url}/login")
-    assert "Sign in with GitHub" in page.content()
+    _set_locale_cookie(anonymous_page, base_url, "en")
+    anonymous_page.goto(f"{base_url}/")
+    assert "Get Started" in anonymous_page.content()
 
     # 2차: ko 로 전환
-    page.context.clear_cookies()
-    _set_locale_cookie(page, base_url, "ko")
-    page.goto(f"{base_url}/login")
-    assert "GitHub로 로그인" in page.content()
+    anonymous_page.context.clear_cookies()
+    _set_locale_cookie(anonymous_page, base_url, "ko")
+    anonymous_page.goto(f"{base_url}/")
+    assert "지금 시작" in anonymous_page.content()
 
     # 3차: ja 로 전환
-    page.context.clear_cookies()
-    _set_locale_cookie(page, base_url, "ja")
-    page.goto(f"{base_url}/login")
-    assert "GitHubでログイン" in page.content()
+    anonymous_page.context.clear_cookies()
+    _set_locale_cookie(anonymous_page, base_url, "ja")
+    anonymous_page.goto(f"{base_url}/")
+    assert "今すぐ始める" in anonymous_page.content()

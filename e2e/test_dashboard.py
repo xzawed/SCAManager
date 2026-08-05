@@ -15,6 +15,11 @@ run: `make test-e2e` (Chromium Playwright, e2e/conftest.py 의 live_server fixtu
 """
 
 
+# KPI 카드 수 — 카드가 늘어날 때마다 이 상수만 갱신한다.
+# KPI card count — bump this single constant when a card is added.
+_KPI_CARD_COUNT = 6
+
+
 # ─── /dashboard 기본 렌더링 ─────────────────────────────────────────────
 
 
@@ -34,16 +39,16 @@ def test_dashboard_page_no_500_error(page, base_url):
 # ─── KPI 5 카드 렌더링 (정책 11 강화 — 시각 자동화) ─────────────────────
 
 
-def test_dashboard_renders_5_kpi_cards(page, base_url):
-    """KPI 그리드 안 5 카드 모두 렌더링.
+def test_dashboard_renders_kpi_cards(page, base_url):
+    """KPI 그리드 카드가 모두 렌더링.
 
-    회고 P0 #3 swap 검증 — Auto-merge 카드 = 5번째 KPI (PR 기준 final).
+    카드 수 이력: Phase 1 = 4 → Phase 2 PR 1 = 5 (Auto-merge) → #1037 = 6 ('이번 달 AI 비용').
+    KPI card count history: 4 → 5 (auto-merge) → 6 (monthly AI cost, #1037).
     """
     page.goto(f"{base_url}/dashboard")
     kpi_cards = page.locator(".dash-kpi")
-    assert kpi_cards.count() == 5, (
-        f"KPI 카드 5개 기대, 실제: {kpi_cards.count()}. "
-        "Phase 1 (KPI 4) + Phase 2 PR 1 (Auto-merge KPI 5번째) 정합 검증."
+    assert kpi_cards.count() == _KPI_CARD_COUNT, (
+        f"KPI 카드 {_KPI_CARD_COUNT}개 기대, 실제: {kpi_cards.count()}."
     )
 
 
@@ -54,7 +59,22 @@ def test_dashboard_kpi_labels_present(page, base_url):
     """
     page.goto(f"{base_url}/dashboard")
     content = page.content()
-    for label in ("Average Score", "Analyses", "Security Issues (HIGH)", "Active Repos", "Auto-Merge Success Rate"):
+    # 🔴 라벨 목록은 카드 수(_KPI_CARD_COUNT)와 **같은 개수**여야 한다 — 6번째 카드(#1037
+    # 'AI cost (30d)')가 라벨 목록에서 빠져 있어, 카드 수 단언을 6 으로 고쳐도 6번째의
+    # **내용**은 아무도 안 보는 상태였다(Grok claim-review 적발).
+    # Keep this list the same size as _KPI_CARD_COUNT: the 6th card's content was unobserved.
+    labels = (
+        "Average Score",
+        "Analyses",
+        "Security Issues (HIGH)",
+        "Active Repos",
+        "Auto-Merge Success Rate",
+        "AI cost (30d)",
+    )
+    assert len(labels) == _KPI_CARD_COUNT, (
+        f"라벨 {len(labels)}개 ≠ 카드 {_KPI_CARD_COUNT}개 — 카드를 추가하고 라벨을 빠뜨렸다"
+    )
+    for label in labels:
         assert label in content, f"KPI 라벨 누락: {label}"
 
 
@@ -116,10 +136,14 @@ def test_dashboard_uses_vendored_chartjs(page, base_url):
 
 
 def test_dashboard_frequent_issues_section_present(page, base_url):
-    """'자주 발생 이슈' 섹션 헤더 노출 (empty 상태 포함)."""
+    """'Frequent Issues' 섹션 헤더 노출 (empty 상태 포함).
+
+    기본 locale 은 en 이다 — 같은 파일의 KPI 라벨 테스트와 동일 규약(사이클 89 P0-2).
+    Default locale is en, matching the sibling KPI-label test.
+    """
     page.goto(f"{base_url}/dashboard")
     content = page.content()
-    assert "자주 발생 이슈" in content, "자주 발생 이슈 섹션 누락"
+    assert "Frequent Issues" in content, "Frequent Issues 섹션 누락"
 
 
 def test_dashboard_no_js_runtime_errors(page, base_url):
@@ -167,12 +191,22 @@ def test_insights_me_legacy_url_redirects_to_dashboard(page, base_url):
 # ─── 정책 11 강화 — 인증 flow 4 endpoint smoke ──────────────────────────
 
 
-def test_login_page_loads(page, base_url):
-    """GET /login → 200 (정책 11 강화 — 인증 flow 1)."""
-    response = page.goto(f"{base_url}/login")
-    # e2e 환경 = require_login override 적용 → 로그인된 상태 → / 로 redirect 가능
-    # 또는 /login 200 (실제 페이지 표시) — 둘 다 OK
-    assert response.status in (200, 302, 303), f"/login 5xx: {response.status}"
+def test_login_route_redirects_to_oauth(page, base_url):
+    """GET /login → 301 /auth/github (하위 호환 리다이렉트).
+
+    🔴 이전 판은 `page.goto` 로 리다이렉트를 **따라가서** 최종 응답 상태만 봤다.
+    /login 은 301 → /auth/github → 302 → github.com 이므로, 그 단언은 실제로는
+    **github.com 이 200 을 주는지**를 검증하고 있었다(우리 앱과 무관 + 네트워크 의존).
+    리다이렉트를 따라가지 않고 우리 쪽 계약만 본다.
+
+    The previous version followed redirects and ended up asserting that github.com
+    returns 200 — unrelated to this app. Assert our own contract without following.
+    """
+    resp = page.request.get(f"{base_url}/login", max_redirects=0)
+    assert resp.status == 301, f"/login 은 301 이어야 하는데 {resp.status}"
+    assert resp.headers.get("location") == "/auth/github", (
+        f"/login → /auth/github 기대, 실제 {resp.headers.get('location')!r}"
+    )
 
 
 # ─── nav 링크 검증 (Phase 1 PR 5 — Insights → Dashboard) ─────────────

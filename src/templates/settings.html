@@ -1545,6 +1545,15 @@
   document.addEventListener('htmx:afterSettle', document._xSaveBarHandler);
   document.addEventListener('htmx:historyRestore', document._xSaveBarHandler);
 
+  // 🔴 URL 쿼리 스냅샷 — 아래 replaceState 가 지우기 **전에** 잡아 둔다.
+  // 토스트 정리가 `save_error` 를 URL 에서 제거한 뒤 initSettingsMode() 가
+  // location.search 를 읽고 있어서, 문서화된 우선순위 2번("save_error → 강제 advanced")이
+  // **한 번도 발화하지 못하는 죽은 코드**였다 (R52, e2e 가 CI 에 배선되고서야 드러남).
+  // Snapshot the query string BEFORE the toast cleanup strips it: initSettingsMode()
+  // read location.search after `save_error` had already been removed, so the documented
+  // priority #2 (save_error → force advanced) was dead code.
+  var _initialSearch = location.search;
+
   // 토스트 클릭 시 즉시 닫기 + URL 쿼리 제거
   // _clickBound 가드로 hx-boost 재실행 시 중복 리스너 방지
   // _clickBound guard prevents duplicate listener on hx-boost re-execution
@@ -1579,7 +1588,9 @@
   //   4) data-initial-mode (서버 신호 — DB 의 비-기본값 존재 시 'advanced')
   //   5) 'simple' (default)
   (function initSettingsMode() {
-    const params = new URLSearchParams(location.search);
+    // 🔴 location.search 가 아니라 스냅샷을 읽는다 — 위 토스트 정리가 이미 지웠기 때문.
+    // Read the snapshot, not location.search: the toast cleanup above already stripped it.
+    const params = new URLSearchParams(_initialSearch);
     const urlMode = params.get('mode');
     const saveErr = params.get('save_error');
     let stored = null;

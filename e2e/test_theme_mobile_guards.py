@@ -28,7 +28,9 @@ def _set_catppuccin(page) -> None:
     # Helper — switch to catppuccin theme and assert it applied (formerly claude-dark).
     page.click("#themeToggle")
     page.wait_for_selector(".theme-switcher.open", timeout=2000)
-    page.click('.theme-option[data-theme="catppuccin"]')
+    # 🔴 항목 속성은 `data-theme-target` (#639) — 적용된 테마를 읽는 body[data-theme] 와 별개 축
+    # Entry attribute is `data-theme-target` (#639); the applied theme is body[data-theme].
+    page.click('.theme-option[data-theme-target="catppuccin"]')
     assert page.get_attribute("body", "data-theme") == "catppuccin"
 
 

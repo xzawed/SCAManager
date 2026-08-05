@@ -499,7 +499,9 @@ jobs:
   # 🔴 required check 로 승격하지 않았다 — 실행 이력이 없어 flakiness 를 모른다.
   #    안정성 데이터를 몇 사이클 모은 뒤 승격 여부를 판단한다(정책 17 안정성 우선).
   e2e:
-    name: E2E (Playwright — 122건)
+    # 잡 이름에 건수를 박지 않는다 — 스위트가 늘면 이름이 조용히 거짓이 된다.
+    # No count in the job name: it silently goes stale as the suite grows.
+    name: E2E (Playwright)
     runs-on: ubuntu-latest
     needs: secret-scan
     # 실측 ~10초/건 → 122건 ≈ 20분. 여유 포함 30분에서 자른다.
@@ -521,5 +523,24 @@ jobs:
       - name: Install Playwright chromium
         run: python -m playwright install --with-deps chromium
 
+      # 🔴 `--timeout` 의무 — 이 잡에만 없었다. 셀렉터가 죽으면 Playwright 가 건당
+      #    30초를 소진하고, 그런 건이 여럿이면 잡 전체가 30분 벽에 붙어 **원인 없이**
+      #    죽는다. 단위 잡은 이미 `--timeout=60` 을 쓴다(R52 완전성 비평 C-2).
       - name: Run E2E suite
-        run: python -m pytest e2e/ -q -rs -p no:asyncio
+        run: python -m pytest e2e/ -q -rs -p no:asyncio --timeout=120
+
+      # 🔴 실패 시 trace/스크린샷을 남긴다 — 이게 없어서 R52 진단이 **로그 고고학**이
+      #    됐다(요약이 잘린 텍스트 로그만으로 30건을 역추적). 다음 회귀는 그러지 않도록.
+      #    Without artifacts the previous diagnosis had to reconstruct failures from a
+      #    truncated text log. Keep evidence for the next regression.
+      - name: Upload Playwright artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failure-artifacts
+          path: |
+            test-results/
+            e2e/**/*.png
+            e2e/**/*.zip
+          if-no-files-found: ignore
+          retention-days: 7
