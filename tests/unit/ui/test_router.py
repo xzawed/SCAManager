@@ -2075,14 +2075,29 @@ def test_external_css_links_in_base_html():
 def test_crimson_pro_removed():
     """사이클 93 Step 1 회귀 가드 — Crimson Pro 폐기 (한글 글리프 미지원).
 
-    사용자 결정 3 (★) = Pretendard 단일화. Google Fonts <link> 에 family=Crimson 미포함.
+    사용자 결정 3 (★) = Pretendard 단일화.
+
+    🔴 **2026-08-06 (R52) 단언 강화**: 초판은 `Google Fonts <link> 가 존재하고 그 안에
+    Crimson 이 없을 것` 을 요구했다. 그런데 그 `<link>` 는 앱 자신의 CSP(`style-src 'self'`)에
+    **차단돼 한 번도 적용된 적이 없었고**(실측: `cssRules` BLOCKED · `document.fonts.size == 0`),
+    `#1294` 가 죽은 링크를 제거했다. 링크의 **존재를 요구하면** 그 제거가 이 테스트를
+    깨뜨린다 — 원 의도(Crimson Pro 가 어디에도 없다)는 링크 부재로 **더 강하게** 충족된다.
+    그래서 "링크 안에 없다" 가 아니라 **"템플릿 어디에도 폰트 참조로 없다"** 로 바꾼다.
+
+    The original assertion required the Google Fonts <link> to exist; that link was blocked by
+    the app's own CSP all along and has been removed. Absence satisfies the intent more strongly.
     """
     base = _read_template("base.html")
-    # <link> 태그 내 Crimson Pro family 미포함 확인 (코멘트 영역은 OK)
-    link_lines = [line for line in base.splitlines() if 'fonts.googleapis.com/css' in line]
-    assert link_lines, "Google Fonts <link> 자체가 누락"
-    for line in link_lines:
-        assert 'Crimson' not in line, f"Crimson Pro 잔존 — Google Fonts <link>: {line}"
+    # 🔴 주석을 **블록 단위로 제거**한 뒤 검사한다 — 줄 단위 접두사 판정은 여러 줄에 걸친
+    # 주석의 둘째 줄부터를 본문으로 오인한다(초판이 정확히 그랬다). 제거 사유를 설명하는
+    # 주석에 "Crimson" 이 나오는 것은 정상이고, 금지하려는 것은 **실제 폰트 참조**다.
+    # Strip comment blocks first: a line-prefix check misreads continuation lines as markup.
+    import re as _re
+
+    markup = _re.sub(r"<!--.*?-->", "", base, flags=_re.S)
+    assert "Crimson" not in markup, (
+        "Crimson Pro 참조 잔존 — 주석 제외 본문에서 발견"
+    )
 
 
 def test_jetbrains_mono_globally_applied():

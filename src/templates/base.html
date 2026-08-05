@@ -12,14 +12,22 @@
   <link rel="apple-touch-icon" href="/static/icons/icon-192.svg">
   <link rel="icon" type="image/svg+xml" href="/static/icons/icon-192.svg">
   <title>{% block title %}SCAManager{% endblock %}</title>
-  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" crossorigin="anonymous">
+  <!-- 🔴 외부 폰트 CDN 링크 제거 (2026-08-06, R52) — **시각 변화 없음**.
+       `src/main.py` 의 CSP 가 `style-src 'self' 'unsafe-inline'` 이라 Pretendard(jsDelivr)와
+       Google Fonts 스타일시트는 **이미 차단돼 있었다**. 실측(Playwright): 두 시트 모두
+       `cssRules` 접근이 BLOCKED 이고 `document.fonts` 에 등록되지 않는다 — 즉 이 페이지는
+       이미 `font-family` 스택의 뒤쪽(system-ui / Segoe UI / Apple SD Gothic Neo)으로
+       렌더되고 있었다. 남겨 두면 매 요청 **실패하는 스타일시트 2건 + preconnect 3건**과
+       콘솔 에러만 낳는다(e2e `test_dashboard_no_js_runtime_errors` 가 그것을 잡았다).
+       `font-family` 스택의 Pretendard/Inter 이름은 **그대로 둔다** — 나중에
+       `src/static/vendor/` 로 vendoring 하면 코드 변경 없이 살아난다(security.md 권장 방향).
+
+       Removed dead external font CDN links: the app's own CSP had been blocking them all
+       along, so the page already renders with system fonts. Removing them changes nothing
+       visually and only drops 2 failing stylesheet requests + 3 preconnects. -->
+
   <!-- 사이클 93 Step 1: Crimson Pro 제거 (한글 글리프 미지원 → Pretendard 단일화).
-       Cycle 93 Step 1: Crimson Pro removed (no Hangul glyphs → consolidate to Pretendard).
-       Inter (body fallback) + JetBrains Mono (code) 보존. -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+       Cycle 93 Step 1: Crimson Pro removed (no Hangul glyphs → consolidate to Pretendard). -->
   <!-- 사이클 93 Step 1: Foundation 토큰 + 4-테마 외부화 (base.html 999→780줄 슬림).
        Cycle 93 Step 1: Foundation tokens + 4 themes externalized.
        tokens.css = 테마 무관 / themes.css = 4 테마 정의. 신규 토큰: elevation 5-step + motion + display + mesh-bg + accent-glow. -->
