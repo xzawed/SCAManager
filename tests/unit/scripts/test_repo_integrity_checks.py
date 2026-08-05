@@ -26,7 +26,11 @@ def test_docs_sync_flags_count_mismatch(tmp_path):
     (tmp_path / "docs").mkdir()
     (tmp_path / "docs" / "STATE.md").write_text(
         "**종합 수치**: 전체 **5196** 수집 (단위 **5042** + 통합 154)\n"
-        "| 전체 테스트 | **5196 수집** *(...)* | 단위 5042 + 통합 154 (현재). 추적...\n",
+        "| 전체 테스트 | **5196 수집** *(...)* | 단위 5042 + 통합 154 (현재). 이력 → 아래 절\n"
+        # 이력 절은 이제 **필수**다(fail-closed) — 없으면 그 자체로 red 라 픽스처도 갖춘다.
+        # The history section is now mandatory (fail-closed), so the fixture carries one.
+        "\n## 테스트 수 추적 이력\n\n"
+        "- **시드 항목** (5000→**5042** 단위 — 통합 154 = **5196** 수집).\n",
         encoding="utf-8",
     )
     # README 배지가 STATE 와 다른 수치(5195/5041) → 불일치 적발
@@ -36,6 +40,142 @@ def test_docs_sync_flags_count_mismatch(tmp_path):
     ok, msgs = check_docs_sync.check_consistency(tmp_path)
     assert not ok
     assert any("불일치" in m for m in msgs)
+
+
+# --- 추적 이력 **꼬리** 축 (2026-08-05 — 구 가드가 원리적으로 못 보던 축) ---
+#
+# 🔴 왜 필요한가: 이력은 append-only 라 최신값이 꼬리에 있는데 가드는 `_first()` 로 머리만
+# 읽었다. 그래서 "꼬리만 갱신하고 머리를 빠뜨림"(실제 발생)도, 그 반대도 탐지 대상이 아니었다.
+# 아래 뮤테이션은 **실 리포 파일**을 복사해 마지막 이력 항목만 깨뜨린다(가드 3-불변식 ②).
+
+def _count_fixture(tmp_path: Path) -> Path:
+    """수치 검사가 읽는 3개 파일을 실 리포에서 그대로 복사."""
+    (tmp_path / "docs").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "docs" / "STATE.md").write_text(
+        (_ROOT / "docs" / "STATE.md").read_text(encoding="utf-8"), encoding="utf-8")
+    for rel in ("README.md", "README.ko.md"):
+        (tmp_path / rel).write_text((_ROOT / rel).read_text(encoding="utf-8"), encoding="utf-8")
+    return tmp_path
+
+
+def test_docs_sync_flags_stale_history_tail(tmp_path):
+    """이력 **마지막** 항목만 어긋나도 red — 머리 4곳은 전부 정상인 상태에서.
+
+    구 가드(`_first` 단독)는 이 상태를 초록으로 통과시켰다.
+    """
+    root = _count_fixture(tmp_path)
+    state = root / "docs" / "STATE.md"
+    text = state.read_text(encoding="utf-8")
+    # 이력 절 마지막 줄의 누계만 깨뜨린다 (표 머리·README 배지는 손대지 않는다)
+    last = re.findall(r"=\s*\*\*(\d+)\*\* 수집", text)
+    assert last, "이력 꼬리 패턴 미발견 — 형식이 바뀌었으면 가드도 함께 갱신할 것"
+    tail = f"= **{last[-1]}** 수집"
+    idx = text.rindex(tail)
+    state.write_text(text[:idx] + "= **99999** 수집" + text[idx + len(tail):], encoding="utf-8")
+
+    ok, msgs = check_docs_sync.check_consistency(root)
+    assert not ok, "이력 꼬리가 어긋났는데 통과했다 — 꼬리 축이 관측되지 않는다"
+    assert any("이력 마지막" in m for m in msgs), msgs
+
+
+def test_apply_fix_derives_every_sink_from_the_history_tail(tmp_path):
+    """파생 5지점을 전부 훼손해도 `--fix` 가 **이력 꼬리 하나**로부터 복원한다.
+
+    🔴 이것이 P0-3 의 계약이다 — 손으로 유지하는 지점을 5 → 1 로 줄인다.
+    복원 결과가 **원본과 바이트 동일**해야 한다: 아니면 파생이 결정적이지 않다는 뜻이고,
+    그러면 `--fix` 를 돌릴 때마다 값이 흔들려 가드가 무의미해진다.
+    """
+    root = _count_fixture(tmp_path)
+    before = {n: (root / n).read_text(encoding="utf-8")
+              for n in ("docs/STATE.md", "README.md", "README.ko.md")}
+
+    state = root / "docs" / "STATE.md"
+    text = state.read_text(encoding="utf-8")
+    text = re.sub(r"전체 \*\*\d+\*\* 수집 \(단위 \*\*\d+\*\*", "전체 **1111** 수집 (단위 **2222**", text, count=1)
+    text = re.sub(r"\| 전체 테스트 \| \*\*\d+ 수집\*\*", "| 전체 테스트 | **3333 수집**", text, count=1)
+    text = re.sub(r"단위 \d+ \+ (통합 \d+ \(현재\))", r"단위 4444 + \1", text, count=1)
+    state.write_text(text, encoding="utf-8")
+    for name in ("README.md", "README.ko.md"):
+        path = root / name
+        path.write_text(
+            re.sub(r"Tests-\d+%2B_total_\(\d+_unit", "Tests-5555%2B_total_(6666_unit",
+                   path.read_text(encoding="utf-8"), count=1),
+            encoding="utf-8")
+
+    assert not check_docs_sync.check_consistency(root)[0], "훼손이 red 가 아니면 이 테스트는 무의미"
+
+    ok, msgs = check_docs_sync.apply_fix(root)
+    assert ok, msgs
+    for name, original in before.items():
+        assert (root / name).read_text(encoding="utf-8") == original, (
+            f"{name} 이 원본과 다르다 — 파생이 결정적이지 않다")
+    assert check_docs_sync.check_consistency(root)[0]
+
+
+def test_apply_fix_refuses_when_the_ssot_itself_is_malformed(tmp_path):
+    """SSOT(이력 꼬리)가 형식을 안 갖추면 **고치지 않고 거부**한다.
+
+    형식 없는 꼬리에서 값을 추측해 파생을 쓰면, 틀린 값을 5곳에 **자동으로 퍼뜨리게** 된다.
+    """
+    root = _count_fixture(tmp_path)
+    state = root / "docs" / "STATE.md"
+    state.write_text(state.read_text(encoding="utf-8").rstrip("\n") + "\n- 수치 없는 항목\n",
+                     encoding="utf-8")
+    before = state.read_text(encoding="utf-8")
+
+    ok, msgs = check_docs_sync.apply_fix(root)
+    assert not ok
+    assert any("형식" in m for m in msgs), msgs
+    assert state.read_text(encoding="utf-8") == before, "거부했는데 파일을 건드렸다"
+
+
+def test_docs_sync_fails_when_history_section_is_deleted(tmp_path):
+    """이력 절을 **통째로 지우면** red — 초판은 `None → 대조 제외` 라 초록이었다.
+
+    🔴 *보호 장치를 삭제해도 여전히 참으로 보이는 것* 의 정확한 사례였고,
+    Grok claim-review 가 실측으로 적발했다.
+    """
+    root = _count_fixture(tmp_path)
+    state = root / "docs" / "STATE.md"
+    text = state.read_text(encoding="utf-8")
+    assert check_docs_sync._STATE_HIST_HEADING in text
+    state.write_text(text.split(check_docs_sync._STATE_HIST_HEADING)[0], encoding="utf-8")
+
+    ok, msgs = check_docs_sync.check_consistency(root)
+    assert not ok, "이력 절이 사라졌는데 통과했다 — 가드를 지우면 초록이 되는 fail-open"
+    assert any("절이 없다" in m for m in msgs), msgs
+
+
+def test_docs_sync_fails_when_tail_entry_has_no_numbers(tmp_path):
+    """수치 없는 항목을 꼬리에 덧붙이면 red — 초판은 직전 값이 계속 last 라 초록이었다.
+
+    형식 계약이 곧 append 계약이다: 새 항목은 누계와 단위를 모두 적어야 한다.
+    """
+    root = _count_fixture(tmp_path)
+    state = root / "docs" / "STATE.md"
+    orig = state.read_text(encoding="utf-8")
+    state.write_text(orig.rstrip("\n") + "\n- 세션N 임시 메모(수치 없음)\n", encoding="utf-8")
+    assert state.read_text(encoding="utf-8") != orig  # 뮤테이션 유효성 (불변식 2)
+
+    ok, msgs = check_docs_sync.check_consistency(root)
+    assert not ok, "수치 없는 꼬리 항목이 통과했다 — 꼬리 축이 형식을 강제하지 않는다"
+    assert any("형식을 갖추지 않았다" in m for m in msgs), msgs
+
+
+def test_docs_sync_history_tail_is_not_the_head(tmp_path):
+    """꼬리 검사가 머리를 다시 읽는 것이 아님을 증명 — 머리만 깨면 꼬리는 정상으로 보고된다.
+
+    두 축이 같은 값을 두 번 읽는 것이라면 이 가드는 축이 하나뿐인 것과 같다.
+    """
+    root = _count_fixture(tmp_path)
+    state = root / "docs" / "STATE.md"
+    _mutate(state, "| 전체 테스트 | **", "| 전체 테스트 | **9")  # 머리만 훼손
+
+    ok, msgs = check_docs_sync.check_consistency(root)
+    assert not ok
+    joined = " ".join(msgs)
+    assert "STATE 추적셀(전체)=9" in joined, joined     # 머리는 훼손값
+    assert "STATE 이력 마지막(전체)=9" not in joined, joined  # 꼬리는 원값 — 독립 축
 
 
 # --- check_docs_sync 의존성 핀 축 (backlog R15 — ground truth 대조) ---
@@ -193,3 +333,61 @@ def test_github_slug_dedup_suffix():
     seen: dict[str, int] = {}
     assert check_toc_anchors.github_slug("동일 제목", seen) == "동일-제목"
     assert check_toc_anchors.github_slug("동일 제목", seen) == "동일-제목-1"
+
+
+# --- Grok claim-review df5ed11d 적발: `--fix` 가 새 **쓰기측** fail-open 이었다 ---
+
+
+def test_apply_fix_refuses_arithmetically_impossible_ssot(tmp_path):
+    """전체 ≠ 단위 + 통합 이면 **아무것도 쓰지 않는다**.
+
+    🔴 `apply_fix` 는 파일을 **쓰는** 코드다. 형식만 보고 쓰면 "형식은 맞는데 틀린 값" 을
+    5곳에 자동 전파하고, 그 오염은 되돌리기 어렵다. 산술은 사본과 무관한 축이라
+    사본끼리 합의된 오류도 잡는다.
+    """
+    root = _count_fixture(tmp_path)
+    state = root / "docs" / "STATE.md"
+    text = state.read_text(encoding="utf-8")
+    idx = text.rindex("= **")
+    end = text.index("**", idx + 4) + 2
+    state.write_text(text[:idx] + "= **99999**" + text[end:], encoding="utf-8")
+    before = state.read_text(encoding="utf-8")
+
+    ok, msgs = check_docs_sync.apply_fix(root)
+    assert not ok
+    assert any("산술적으로 불가능" in m for m in msgs), msgs
+    assert state.read_text(encoding="utf-8") == before, "거부했는데 파일을 건드렸다"
+
+
+def test_duplicate_history_section_is_rejected(tmp_path):
+    """이력 절이 2개면 red — 첫 절만 SSOT 가 되어 진짜 이력이 **가려진다**.
+
+    가짜 절을 앞에 끼워 넣는 것만으로 실제 수치 검사를 우회할 수 있었다.
+    """
+    root = _count_fixture(tmp_path)
+    state = root / "docs" / "STATE.md"
+    head = check_docs_sync._STATE_HIST_HEADING
+    text = state.read_text(encoding="utf-8")
+    state.write_text(
+        text.replace(head, f"{head}\n\n- 가짜 (0→**1** 단위 — 통합 0 = **1** 수집).\n\n## 딴절\n\n{head}", 1),
+        encoding="utf-8")
+
+    ok, msgs = check_docs_sync.check_consistency(root)
+    assert not ok
+    assert any("절이 2개" in m for m in msgs), msgs
+
+
+def test_consistency_catches_agreed_arithmetic_error(tmp_path):
+    """5지점이 **같은 틀린 값으로 합의**해도 산술 축이 잡는다.
+
+    이 파일 docstring 이 인정한 '사본끼리 대조' 의 한계를 메우는 축이다.
+    """
+    root = _count_fixture(tmp_path)
+    state = root / "docs" / "STATE.md"
+    # 통합 수만 바꾼다 → 전체·단위는 5지점 전부 일치하지만 산술이 깨진다
+    text = re.sub(r"통합 \d+ \(현재\)", "통합 99999 (현재)", state.read_text(encoding="utf-8"), count=1)
+    state.write_text(text, encoding="utf-8")
+
+    ok, msgs = check_docs_sync.check_consistency(root)
+    assert not ok, "사본은 전부 일치하는데 산술이 깨진 상태가 통과했다"
+    assert any("산술 불일치" in m for m in msgs), msgs
