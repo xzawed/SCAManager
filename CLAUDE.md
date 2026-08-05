@@ -134,7 +134,7 @@ Code Scanning open alert 확인(정책 14)은 GitHub Security 탭 또는
 > 불필요**. 둘 다 advisory(비차단). 배선 회귀 가드: `test_session_start_wiring.py`.
 
 **메모리 인덱스**는 매 세션 자동 로드된다. 신규 메모리 추가 시 MEMORY.md 인덱스 동기화 의무.
-신규 fixture/테스트/패턴 작성 전 메모리 grep 권장.
+🔴 신규 fixture/테스트/패턴 작성 전 **메모리 grep 의무** — 같은 함정을 두 번 밟지 않기 위한 교차 세션 학습 반송자다(`feedback_` prefix 파일이 테스트/CI 함정을 기록한다).
 
 ### 필수 원칙
 
