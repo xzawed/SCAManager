@@ -542,8 +542,20 @@ jobs:
       # 🔴 `--timeout` 의무 — 이 잡에만 없었다. 셀렉터가 죽으면 Playwright 가 건당
       #    30초를 소진하고, 그런 건이 여럿이면 잡 전체가 30분 벽에 붙어 **원인 없이**
       #    죽는다. 단위 잡은 이미 `--timeout=60` 을 쓴다(R52 완전성 비평 C-2).
+      # 🔴 **검사 범위 baseline** — 수집 건수가 줄면 fail (backlog R58).
+      # `conftest.py` 가 skip 을 실패로 바꿔도 **테스트를 지우거나 조건부로 빼는** 축소는
+      # 여전히 조용히 통과한다. 커밋된 기대값(`e2e/EXPECTED_COUNT`)과 대조해 그 축을 닫는다.
+      # Guards against silent scope shrink: a smaller collection is a failure, not a pass.
+      - name: E2E 검사 범위 확인 (수집 건수 ↔ baseline)
+        run: python scripts/check_e2e_scope.py
+
+      # 🔴 `-p no:randomly` 가 아니라 **최소 통과 건수** 가 핵심이다 (backlog R58 · Grok 71bd2d6c).
+      # 수집 건수 baseline 을 통과해도 **전부 skip 되면** pytest 는 exit 0 을 낸다 —
+      # `pytest.mark.skip`·`skipif`·픽스처 skip 어느 경로든 같은 결말이다.
+      # `--strict-markers` 는 이 축을 못 본다. 통과 건수 하한이 유일한 관측면이다.
+      # A collection-count baseline does not stop mass-skip: pytest exits 0 when all skip.
       - name: Run E2E suite
-        run: python -m pytest e2e/ -q -rs -p no:asyncio --timeout=120
+        run: python -m pytest e2e/ -q -rs -p no:asyncio --timeout=120 --e2e-min-passed=100
 
       # 🔴 실패 시 trace/스크린샷을 남긴다 — 이게 없어서 R52 진단이 **로그 고고학**이
       #    됐다(요약이 잘린 텍스트 로그만으로 30건을 역추적). 다음 회귀는 그러지 않도록.

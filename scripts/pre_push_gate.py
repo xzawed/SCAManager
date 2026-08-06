@@ -65,6 +65,9 @@ _INTEGRITY = (
     # lint-js job — 가드 자체는 순수 파이썬(eslint 검사 **범위**가 비었는지만 본다).
     # The guard itself is pure Python: it only checks the eslint scope is non-empty.
     "check_lint_js_nonvacuous.py",
+    # e2e job — 수집 건수 baseline (backlog R58). 검사 **범위 축소**가 조용히 통과하던 축.
+    # E2E scope: a shrinking collection is a failure, not a pass.
+    "check_e2e_scope.py",
 )
 
 # 인자가 필요한 whole-repo 가드 — CI 와 같은 형태로 부른다.

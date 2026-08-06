@@ -15,6 +15,9 @@ import pytest
 import requests
 
 E2E_PORT = 8001
+# 서버 기동 대기 상한(초) — 초과 시 **실패**(skip 아님, R58)
+# Server startup budget; exceeding it fails the suite rather than skipping it.
+_STARTUP_TIMEOUT = 30
 BASE_URL = f"http://localhost:{E2E_PORT}"
 
 # E2E 테스트용 고정 사용자 ID
@@ -190,7 +193,17 @@ def live_server(tmp_path_factory):
     if not ready:
         server.should_exit = True
         thread.join(timeout=5)
-        pytest.skip("E2E 서버 시작 실패 — 테스트 건너뜁니다")
+        # 🔴 **skip 이 아니라 실패다** (2026-08-06 회고 P1 · backlog R58).
+        # `pytest.skip` 은 성공으로 집계돼 **121건 전건 skip 후 job exit 0** 이 된다 —
+        # 앱이 부팅조차 못 해도 CI 가 초록이고 배지도 초록이다(뮤테이션 실측).
+        # 검사 범위가 0 이 된 상태 위의 초록은 fail-open 이며, 이 리포는 같은 창에서
+        # lint-js·의존성 핀·이력 절 3 표면에 이미 '범위 비면 fail' 을 적용해 두고
+        # **자기가 방금 초록으로 만든 e2e 에만** 적용하지 않았다.
+        # A skip counts as success: the whole suite would pass with the app dead.
+        raise RuntimeError(
+            f"E2E 서버가 {_STARTUP_TIMEOUT}초 안에 {BASE_URL}/health 에 응답하지 않았다 — "
+            "스위트를 skip 하지 않고 실패시킨다(전건 skip 후 exit 0 = 공허한 초록)."
+        )
 
     # E2E 테스트용 User를 DB에 직접 삽입
     _seed_user(db_path)
@@ -398,3 +411,43 @@ def seeded_analysis(live_server):
     db_path = os.environ.get("DATABASE_URL", "").replace("sqlite:///", "")
     _seed_repo(live_server, db_path)
     return _seed_analysis(db_path)
+
+
+# ── 최소 통과 건수 게이트 (backlog R58 · Grok claim-review 71bd2d6c) ────────
+#
+# 🔴 **수집 건수 baseline 만으로는 전건 skip 을 못 막는다.** `scripts/check_e2e_scope.py`
+# 가 121건 수집을 확인해도, 그 121건이 전부 skip 되면 pytest 는 **exit 0** 이다 —
+# `pytest.mark.skip`·`skipif`·픽스처 skip 어느 경로든 결말이 같다. 실제로 이 스위트는
+# `live_server` 가 전건 skip 을 유발해 **앱이 부팅 못 해도 CI 초록**이었다(뮤테이션 실측).
+# 그 한 경로는 `RuntimeError` 로 닫았지만, **다른 skip 경로는 여전히 열려 있다**.
+#
+# 통과 건수 하한이 그 클래스의 유일한 관측면이다. opt-in(`--e2e-min-passed`)이라
+# 로컬 부분 실행(`-k`)에는 영향이 없고, CI 만 하한을 건다.
+#
+# A collection baseline cannot stop mass-skip: pytest exits 0 when everything skips.
+# Only a floor on *passed* observes that class. Opt-in so local `-k` runs are unaffected.
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--e2e-min-passed", type=int, default=0,
+        help="통과 건수 하한 — 미만이면 세션을 실패시킨다(전건 skip 공허화 차단, R58).",
+    )
+
+
+def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001
+    floor = session.config.getoption("--e2e-min-passed")
+    if not floor:
+        return
+    reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+    if reporter is None:
+        return
+    passed = len(reporter.stats.get("passed", []))
+    if passed < floor:
+        skipped = len(reporter.stats.get("skipped", []))
+        reporter.write_line(
+            f"e2e 통과 {passed}건 < 하한 {floor}건 (skip {skipped}) — "
+            "수집은 됐으나 실제로 검증된 것이 부족하다. 초록으로 넘기지 않는다.",
+            red=True,
+        )
+        session.exitstatus = 1
