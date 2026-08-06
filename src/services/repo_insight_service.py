@@ -444,6 +444,20 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
         )
         duration_ms = (time.perf_counter() - start) * 1000
         input_tokens, output_tokens = extract_anthropic_usage(response)
+        # 🔴 **추출·파싱을 로그보다 먼저** (backlog R63). 이전에는 `status="success"` 를 먼저
+        # 기록하고 그 뒤 파싱이 실패하면 except 가 `status="error"` 를 **또** 남겨,
+        # 한 번의 API 호출이 비용 테이블에 **2행**을 만들었다(성공률·비용 집계 왜곡).
+        # Extract and parse before logging: the old order produced two rows for one call.
+        raw = first_text_block(response)
+        data = json.loads(_extract_narrative_json(raw))
+        result: dict[str, Any] = {"text": str(data.get("text", raw)), "status": "success"}
+        # 🔴 로그는 **결과 조립이 끝난 뒤**다 (R63 · Grok `32b9a2f9` 2차 적발).
+        # 1차 수정은 `json.loads` 뒤로만 옮겼는데, 유효 JSON 이 **dict 가 아니면**
+        # (`"문자열"` · `[1,2]`) 그 다음 줄의 `data.get` 이 터져 여전히
+        # `['success', 'error']` 2행이었다. success 로그는 **더 이상 예외가 날 수 없는
+        # 지점** 이후에만 찍는다.
+        # Log only after the result is fully built: a valid but non-dict JSON made
+        # `data.get` raise *after* the success row was already written.
         log_claude_api_call(
             model=settings.claude_insight_model,
             duration_ms=duration_ms,
@@ -453,9 +467,6 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
             repo_id=repo_id,
             user_id=user_id,
         )
-        raw = first_text_block(response)
-        data = json.loads(_extract_narrative_json(raw))
-        result: dict[str, Any] = {"text": str(data.get("text", raw)), "status": "success"}
     except Exception as exc:  # pylint: disable=broad-exception-caught  # noqa: BLE001
         duration_ms = (time.perf_counter() - start) * 1000
         log_claude_api_call(

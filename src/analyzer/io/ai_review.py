@@ -137,6 +137,13 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
     # Phase 4 PR-12 — per-language system prompt (with output language directive).
     system_text = get_system_prompt(language)
     start = time.perf_counter()
+    # 🔴 **API 호출 1건 = 비용 로그 1행** (backlog R63). 이전에는 `log_claude_api_call` 이
+    # try 안에서 `status="success"` 로 **먼저** 불리고, 그 뒤 파싱이 실패하면 except 가
+    # `status="error"` 를 **또** 남겼다 — 한 호출이 2행이 되어 성공률·비용 집계가 왜곡됐다
+    # (실측: 추출 실패 시 status 시퀀스 `['success', 'error']`).
+    # 그래서 결과를 여기 모아 두고 `finally` 에서 **정확히 한 번** 기록한다.
+    # One API call must yield exactly one cost row; the old code logged success then error.
+    _log: dict[str, object] = {"status": "error", "input_tokens": 0, "output_tokens": 0}
     try:
         # 시스템 프롬프트에 cache_control 적용 — 5분 ephemeral 캐시 (공용 헬퍼 경유).
         # `settings.disable_prompt_cache=True` 시 운영 opt-out (cache_control 미적용).
@@ -163,17 +170,16 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
         usage = getattr(response, "usage", None)
         cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
         cache_creation = getattr(usage, "cache_creation_input_tokens", 0) or 0
-        log_claude_api_call(
-            model=model,
+        _log.update(
             duration_ms=duration_ms,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            status="success",
             cache_read_tokens=cache_read,
             cache_creation_tokens=cache_creation,
-            repo_id=repo_id,
         )
+        # 🔴 파싱이 끝난 **뒤에** success 로 승격한다 — 추출/파싱 실패는 성공이 아니다.
         result = _parse_response(first_text_block(response))
+        _log["status"] = "success"
         result.detected_languages = languages
         result.input_tokens = input_tokens
         result.output_tokens = output_tokens
@@ -199,19 +205,14 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
         return result
     except Exception as exc:  # pylint: disable=broad-exception-caught  # noqa: BLE001
         # anthropic/httpx 는 다양한 예외를 발생시킬 수 있음 — 모두 graceful fallback
-        duration_ms = (time.perf_counter() - start) * 1000
-        log_claude_api_call(
-            model=model,
-            duration_ms=duration_ms,
-            input_tokens=0,
-            output_tokens=0,
-            status="error",
-            error_type=type(exc).__name__,
-            repo_id=repo_id,
-        )
+        _log.update(status="error", error_type=type(exc).__name__)
+        _log.setdefault("duration_ms", (time.perf_counter() - start) * 1000)
         logger.exception("AI review failed, using default scores")
         return _default_result("api_error")
     finally:
+        # 🔴 비용 로그는 **여기서 한 번만** — 성공·실패 어느 경로든 호출당 1행 (R63).
+        _log.setdefault("duration_ms", (time.perf_counter() - start) * 1000)
+        log_claude_api_call(model=model, repo_id=repo_id, **_log)  # type: ignore[arg-type]
         # 호출당 생성한 AsyncAnthropic httpx 커넥션 풀 해제 — 미종료 시 FD 누수 (WBS P1).
         # Close the per-call AsyncAnthropic httpx pool — leaks FDs/connections if left open.
         await aclose_anthropic_client(client)
