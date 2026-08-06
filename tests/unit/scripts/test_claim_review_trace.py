@@ -761,8 +761,14 @@ def test_undecidable_paths_do_not_claim_no_change(monkeypatch, capsys):
     )
 
 
-def test_empty_surfaces_still_says_no_change(monkeypatch, capsys):
-    """대조군 — 실제로 변경이 없으면 그렇게 말해야 한다(위 단언이 문구를 죽이지 않았는지)."""
+def test_empty_surface_list_still_says_no_change(monkeypatch, capsys):
+    """대조군 — 실제로 변경이 없으면 그렇게 말해야 한다(위 단언이 문구를 죽이지 않았는지).
+
+    🔴 함수명이 **정확히 40자**이면 안 된다 — TruffleHog 의 Lob 탐지기 정규식이
+    `((live|test)_[A-Za-z0-9_]{35})` 라 `test_` + 35자 식별자를 API 키로 오인하고,
+    Lob API 에 실제로 보내 403/422 를 받아 **"verified" 로 판정**한다(실측: 이 함수의
+    초판 이름이 정확히 그랬고 required 인 secret-scan 이 red 였다).
+    """
     monkeypatch.setenv("PR_TITLE", "")
     monkeypatch.setenv("PR_BODY", "")
     monkeypatch.setenv("PR_BASE_SHA", "aaa")
@@ -799,3 +805,42 @@ def test_unknown_verdict_is_rejected(monkeypatch):
         "- verdict: 아마도 괜찮음",
     )
     assert _run(monkeypatch, title=_REAL_SEAL_CLAIMS[0], body=body) == 1
+
+
+def test_secret_scan_excludes_the_lob_false_positive_detector():
+    """🔴 required 인 secret-scan 이 **테스트 함수명**으로 red 가 되는 것을 막는다.
+
+    TruffleHog 의 Lob 탐지기 정규식은 `\b((live|test)_[A-Za-z0-9_]{35})\b` 다. 파이썬 테스트
+    함수명은 관례상 `test_` 로 시작하므로, 이름이 **정확히 40자**면 그대로 매칭된다. 게다가
+    `--only-verified` 인데도 Lob API 가 403/422(=활성 키)를 돌려주어 **verified 로 확정**된다.
+
+    실측(2026-08-06): 이 PR 의 함수 하나가 정확히 40자라 required 체크가 red 였고,
+    같은 패턴에 걸리는 기존 테스트명이 리포 안에 **188건** 있다 — 그 줄을 건드리는 PR 마다
+    무작위로 red 가 되는 지뢰다. Lob 자격증명은 이 저장소에 존재할 이유가 없으므로 제외한다.
+    """
+    ci = (_REPO / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    uses = ci.count("uses: trufflesecurity/trufflehog@")
+    excluded = ci.count("--exclude-detectors=lob")
+    assert uses > 0, "TruffleHog step 을 못 찾았다 — 이 가드가 공허해졌다"
+    assert excluded == uses, (
+        f"TruffleHog step {uses}곳 중 {excluded}곳만 Lob 탐지기를 제외한다 — "
+        "빠진 곳에서 40자 `test_*` 함수명이 API 키로 오인돼 required 체크가 red 가 된다"
+    )
+
+
+def test_no_new_identifier_matches_the_lob_pattern():
+    """🔴 **이 파일이 새 지뢰를 심지 않는지** — 40자 `test_`/`live_` 식별자 금지.
+
+    탐지기 제외(위)가 1차 방어지만, 다른 표면(GitHub secret scanning·타 스캐너)도 같은
+    패턴을 쓸 수 있으므로 저술 시점에도 막는다. 기존 188건은 범위 밖이다(개명 churn 이
+    이득보다 크다 — 정책 16/17).
+    """
+    import re
+
+    pat = re.compile(r"(?:live|test)_[A-Za-z0-9_]{35}")
+    src = pathlib.Path(__file__).read_text(encoding="utf-8")
+    hits = sorted({m.group(0) for m in pat.finditer(src)})
+    assert not hits, (
+        "정확히 40자인 `test_`/`live_` 식별자가 있다 — TruffleHog Lob 탐지기가 API 키로 "
+        "오인한다. 한 글자 늘리거나 줄일 것: " + ", ".join(hits)
+    )
