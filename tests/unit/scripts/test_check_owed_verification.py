@@ -12,11 +12,19 @@ Pure functions only — the live ledger's pending state is time-dependent, so no
 from pathlib import Path
 
 from scripts.check_owed_verification import (
+    _STALE_PR_THRESHOLD,
     SAFETY_TIER_MARKER,
     evaluate,
+    main,
+    merged_prs_since_ledger,
     parse_rows,
     pending_rows,
 )
+
+# 🔴 패치는 **string-path** 로 한다 (`.claude/rules/testing.md` §모듈 패치 시 이중 import 회피).
+#    `import X as mod` + `from X import ...` 공존은 CodeQL `py/import-and-import-from` 를
+#    자초하고 `check_dual_import.py` 가 신규 도입을 pre-merge 차단한다(실제로 차단당했다).
+_MOD = "scripts.check_owed_verification"
 
 _ROOT = Path(__file__).resolve().parents[3]
 
@@ -128,3 +136,123 @@ def test_safety_marker_present_in_live_ledger():
     """안전등급 섹션 마커가 원장에 실재 — 마커 drift 시 등급 분류가 조용히 무너진다."""
     ledger = _ROOT / "docs" / "runbooks" / "owed-verification.md"
     assert SAFETY_TIER_MARKER in ledger.read_text(encoding="utf-8")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 🔴 완전성 축 (backlog R0-2) — "빈 원장이 green" 의 봉인
+#
+# 이 스크립트는 **원장에 적힌 것만** 셌다. 그래서 부채를 등재하지 않는 것이 가장 싼 통과
+# 경로였다 — 파일이 없으면 아예 무음이었고, 비어 있으면 "미결 0건" 이라는 초록 문구가 나왔다.
+# 실측된 기전: 창 42 PR 중 22건이 미체크 항목을 단 채 머지됐는데 세는 관측자가 0이었다.
+#
+# 두 축을 고정한다. 둘 다 advisory(exit 0)이지만 **판정 불가를 초록으로 흘리지 않는다**.
+#   A. 원장 부재·읽기 실패·데이터 0행 → loud
+#   B. 원장 갱신 이후 머지 PR 수가 임계 초과 → loud (git 전용, `gh`·네트워크 불요)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+
+def _run(monkeypatch, capsys, ledger: Path, *, since=0):
+    """원장 경로와 intake 수를 주입해 main() 을 돌리고 출력을 돌려준다."""
+    monkeypatch.setattr(f"{_MOD}._LEDGER", ledger)
+    monkeypatch.setattr(f"{_MOD}.merged_prs_since_ledger", lambda: since)
+    assert main() == 0, "advisory 계약 위반 — 항상 exit 0 이어야 한다(정책 17)"
+    return capsys.readouterr().out
+
+
+def test_missing_ledger_is_loud_not_silent(monkeypatch, capsys, tmp_path):
+    """🔴 파일이 없으면 **판정 불가**라고 말해야 한다.
+
+    이전 구현은 무음 `return 0` 이었다 — '부채 없음' 과 '원장이 사라짐' 이 구별되지 않았고,
+    후자가 훨씬 나쁜 상태인데 더 조용했다.
+    """
+    out = _run(monkeypatch, capsys, tmp_path / "nope.md")
+    assert "판정 불가" in out, "원장 부재를 조용히 통과시켰다"
+
+
+def test_empty_ledger_is_loud(monkeypatch, capsys, tmp_path):
+    """🔴 데이터 행이 0건이면 loud — 이것이 R0-2 가 지목한 바로 그 상태다.
+
+    비어 있는 원장에 대해 "미결 0건" 이라고 답하면, **등재하지 않는 것**이 가장 싼
+    통과 경로가 된다.
+    """
+    ledger = tmp_path / "owed.md"
+    ledger.write_text("# 원장\n\n표 없음\n", encoding="utf-8")
+    out = _run(monkeypatch, capsys, ledger)
+    assert "0건" in out and "등재" in out, f"빈 원장을 초록으로 보고했다:\n{out}"
+
+
+def test_populated_ledger_still_reports_normally(monkeypatch, capsys, tmp_path):
+    """대조군 — 항목이 있으면 기존 보고를 그대로 한다(무조건 빨강이면 신호가 죽는다)."""
+    ledger = tmp_path / "owed.md"
+    ledger.write_text(
+        "## 운영 등급\n\n| PR | 항목 | 근거 | 정책 | 상태 |\n|---|---|---|---|---|\n"
+        "| **#1** | x | y | 2 | \u23f3 |\n", encoding="utf-8")
+    out = _run(monkeypatch, capsys, ledger)
+    assert "미결" in out
+    assert "판정 불가" not in out
+
+
+def test_stale_intake_is_loud(monkeypatch, capsys, tmp_path):
+    """🔴 원장이 오래 손대지지 않았으면 촉구한다 — 실측 기전이 'intake 172 PR 동안 0건'.
+
+    이 축은 **무엇이 빠졌는지 모른다**. 정체만 관측한다 — 산문으로 '등재 대상인가' 를
+    판정하면 오탐이 진탐을 넘어 가드 자살이 된다(정책 17).
+    """
+    ledger = tmp_path / "owed.md"
+    ledger.write_text(
+        "## 운영 등급\n\n| PR | 항목 | 근거 | 정책 | 상태 |\n|---|---|---|---|---|\n"
+        "| **#1** | x | y | 2 | \u2705 |\n", encoding="utf-8")
+    out = _run(monkeypatch, capsys, ledger, since=_STALE_PR_THRESHOLD)
+    assert "PR** 동안" in out or "동안 손대지" in out, f"정체를 보고하지 않았다:\n{out}"
+
+
+def test_fresh_intake_is_silent_about_staleness(monkeypatch, capsys, tmp_path):
+    """대조군 — 최근에 갱신됐으면 그 축은 조용해야 한다(배너 피로 방지)."""
+    ledger = tmp_path / "owed.md"
+    ledger.write_text(
+        "## 운영 등급\n\n| PR | 항목 | 근거 | 정책 | 상태 |\n|---|---|---|---|---|\n"
+        "| **#1** | x | y | 2 | \u2705 |\n", encoding="utf-8")
+    out = _run(monkeypatch, capsys, ledger, since=_STALE_PR_THRESHOLD - 1)
+    assert "동안 손대지" not in out
+
+
+def test_unknown_intake_is_reported_as_undecidable(monkeypatch, capsys, tmp_path):
+    """🔴 git 이 답을 못 주면 **판정 불가**로 인쇄한다 — 조용한 0 은 초록과 구별되지 않는다."""
+    ledger = tmp_path / "owed.md"
+    ledger.write_text(
+        "## 운영 등급\n\n| PR | 항목 | 근거 | 정책 | 상태 |\n|---|---|---|---|---|\n"
+        "| **#1** | x | y | 2 | \u2705 |\n", encoding="utf-8")
+    out = _run(monkeypatch, capsys, ledger, since=None)
+    assert "판정 불가" in out
+
+
+def test_intake_counter_uses_git_only(monkeypatch):
+    """🔴 `gh`·네트워크에 의존하면 CI·오프라인에서 **항상 무음**이 되어 새 fail-open 이다."""
+    calls = []
+
+    def fake_run(argv, **_kw):
+        calls.append(argv[0])
+
+        class R:  # noqa: D401
+            returncode = 1
+            stdout = ""
+        return R()
+
+    monkeypatch.setattr(f"{_MOD}.subprocess.run", fake_run)
+    merged_prs_since_ledger()
+    assert calls and all(c == "git" for c in calls), f"git 외 도구를 호출했다: {calls}"
+
+
+def test_intake_counter_counts_squash_titles(monkeypatch):
+    """머지 제목 말미의 `(#NNNN)` 만 센다 — 이 저장소의 유일한 머지 형태다."""
+    outputs = iter(["deadbeef\n", "feat: a (#1)\nwip: no pr\nfix: b (#22)\n"])
+
+    def fake_run(_argv, **_kw):
+        class R:
+            returncode = 0
+            stdout = next(outputs)
+        return R()
+
+    monkeypatch.setattr(f"{_MOD}.subprocess.run", fake_run)
+    assert merged_prs_since_ledger() == 2
