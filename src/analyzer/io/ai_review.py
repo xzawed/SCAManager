@@ -28,7 +28,7 @@ from src.constants import (
     AI_DEFAULT_COMMIT_RAW, AI_DEFAULT_DIRECTION_RAW, AI_DEFAULT_TEST_RAW,
     AI_RAW_COMMIT_MAX, AI_RAW_DIRECTION_MAX, AI_RAW_TEST_MAX,
 )
-from src.shared.anthropic_caching import build_cached_system_param
+from src.shared.anthropic_caching import first_text_block, build_cached_system_param
 from src.shared.claude_metrics import aclose_anthropic_client, extract_anthropic_usage, log_claude_api_call
 from src.shared.feature_kill_switch import is_disabled
 
@@ -173,7 +173,7 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
             cache_creation_tokens=cache_creation,
             repo_id=repo_id,
         )
-        result = _parse_response(response.content[0].text)
+        result = _parse_response(first_text_block(response))
         result.detected_languages = languages
         result.input_tokens = input_tokens
         result.output_tokens = output_tokens

@@ -18,6 +18,7 @@ import anthropic
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from src.shared.anthropic_caching import first_text_block
 from src.config import settings
 from src.models.analysis import Analysis
 from src.scorer.calculator import calculate_grade
@@ -452,7 +453,7 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
             repo_id=repo_id,
             user_id=user_id,
         )
-        raw = response.content[0].text
+        raw = first_text_block(response)
         data = json.loads(_extract_narrative_json(raw))
         result: dict[str, Any] = {"text": str(data.get("text", raw)), "status": "success"}
     except Exception as exc:  # pylint: disable=broad-exception-caught  # noqa: BLE001

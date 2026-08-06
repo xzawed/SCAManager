@@ -437,6 +437,37 @@ def corrupted(text: str) -> bool:
     return "�" in text or any("\ud800" <= ch <= "\udfff" for ch in text)
 
 
+
+def _first_text_block(msg: object) -> str:
+    """응답에서 **첫 text 블록**을 꺼낸다 — `content[0].text` 직접 접근 금지 (R61).
+
+    🔴 `content` 는 블록 **배열**이고 thinking·tool_use 가 앞설 수 있다. 첫 블록이 text 라고
+    가정하면 그 순간 `AttributeError` 가 나는데, 이 호출은 broad except 안이라 **조용히
+    실패**하고 심의가 통째로 죽는다(2026-08-06 회고 P1).
+
+    🔴 `src.shared.anthropic_caching.first_text_block` 과 **의도적 중복**이다 — 훅은
+    standalone 실행(`python .claude/hooks/x.py`)이라 `src` 를 import 할 수 없다.
+    양쪽이 갈라지지 않도록 `tests/unit/shared/test_anthropic_first_text_block.py` 의
+    `test_hook_duplicate_matches_the_src_helper_behaviour` 가 동작 동등성을 고정한다.
+    🔴 초판은 존재하지 않는 경로(`tests/unit/hooks/...`)를 가리켰다 — Grok claim-review 적발.
+    Deliberate duplicate of the src helper: hooks run standalone and cannot import `src`.
+    """
+    for block in (getattr(msg, "content", None) or []):
+        btype = getattr(block, "type", None)
+        text = getattr(block, "text", None)
+        # 🔴 판별 순서가 중요하다: **명시적으로 비-text 라고 선언한 블록만** 건너뛰고,
+        #    나머지는 `.text` 가 문자열인지로 받는다. `btype is None` 만 허용하면
+        #    `MagicMock` 목(`.type` 이 자동 생성돼 None 이 아니다)이 전부 탈락한다 —
+        #    실제로 기존 테스트 20건이 이 과엄격을 잡았다.
+        # Skip only blocks that explicitly declare a non-text type; otherwise duck-type on
+        # `.text` being a str. A `btype is None` check alone would reject MagicMock stubs.
+        if isinstance(btype, str) and btype != "text":
+            continue
+        if isinstance(text, str):
+            return text
+    raise ValueError("Anthropic 응답에 text 블록이 없다")
+
+
 def cache_usage(msg) -> dict:
     """응답의 캐시 회계를 뽑는다 — `{"write": n, "read": n}`.
 
@@ -576,7 +607,7 @@ async def _call_single_agent(
             timeout=_AGENT_TIMEOUT,
         )
         usage = cache_usage(msg)
-        text = msg.content[0].text
+        text = _first_text_block(msg)
         # 🔴 응답이 출력 예산에서 잘렸으면 그것은 **판정이 아니다** (R35 — 회고 2026-08-04 P0).
         #    이전 판은 `stop_reason` 을 읽지 않고 잘린 JSON 을 파싱 실패로 흘려보낸 뒤
         #    `approve` 로 바꿨다. 출력 예산은 고정인데 리뷰어가 할 말은 위험할수록 길어지므로,
