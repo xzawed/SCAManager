@@ -834,6 +834,13 @@ async def _call_insight_claude_api(
         duration_ms = (time.perf_counter() - start) * 1000
         input_tokens, output_tokens = extract_anthropic_usage(response)
         usage = getattr(response, "usage", None)
+        # 🔴 **추출을 로그보다 먼저** (backlog R63). 이전에는 `status="success"` 를 먼저
+        # 기록하고 그 뒤 추출이 실패하면 except 가 `status="error"` 를 **또** 남겨,
+        # 한 번의 API 호출이 비용 테이블에 **2행**을 만들었다(성공률·비용 집계 왜곡).
+        # 추출이 실패하면 그것은 성공이 아니므로 success 로그 자체가 남으면 안 된다.
+        # Extract before logging: the old order logged success, then error on failure — two
+        # rows for one call, skewing cost and success-rate aggregates.
+        text = first_text_block(response)
         log_claude_api_call(
             model=model,
             duration_ms=duration_ms,
@@ -844,7 +851,7 @@ async def _call_insight_claude_api(
             cache_creation_tokens=getattr(usage, "cache_creation_input_tokens", 0) or 0,
             user_id=user_id,
         )
-        return first_text_block(response)
+        return text
     except Exception as exc:  # pylint: disable=broad-exception-caught  # noqa: BLE001
         # anthropic / httpx / 네트워크 오류 모두 graceful fallback (caller 가 api_error 처리)
         # All anthropic/httpx/network errors fall through to graceful fallback (caller maps to api_error)

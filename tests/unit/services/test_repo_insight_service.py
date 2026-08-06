@@ -480,3 +480,58 @@ class TestRepoInsightNarrative:
         kwargs = mock_log.call_args.kwargs
         assert kwargs.get("repo_id") == repo.id
         assert kwargs.get("user_id") == user.id
+
+
+class TestApiLogExactlyOnce:
+    """비용 로그 = **API 호출당 정확히 1행** (backlog R63 · Grok `32b9a2f9` 2차 적발).
+
+    🔴 1차 수정은 로그를 `json.loads` 뒤로만 옮겼는데, **유효 JSON 이 dict 가 아니면**
+    (`"문자열"`·`[1,2]`) 그 다음 줄의 `data.get` 이 success 로그 **뒤에서** 터져
+    여전히 `['success', 'error']` 2행이었다. AST 순서 단언은 이 축을 원리적으로 못 본다
+    — **실행으로 관측**한다(Grok 이 명시 요구한 축).
+    """
+
+    @staticmethod
+    async def _statuses(db, repo, user, payload: str) -> list[str]:
+        from src.services.repo_insight_service import repo_insight_narrative
+
+        calls: list[str] = []
+        mock_msg = MagicMock()
+        mock_msg.content = [MagicMock(text=payload)]
+        mock_msg.usage = MagicMock(input_tokens=10, output_tokens=20)
+        mock_client = AsyncMock()
+        mock_client.messages.create = AsyncMock(return_value=mock_msg)
+
+        with patch("src.services.repo_insight_service.settings") as s, \
+             patch("src.services.repo_insight_service.anthropic.AsyncAnthropic", return_value=mock_client), \
+             patch("src.services.repo_insight_service.log_claude_api_call",
+                   side_effect=lambda **kw: calls.append(kw.get("status"))):
+            s.anthropic_api_key = "sk-ant-test"
+            s.claude_insight_model = "claude-haiku-4-5-20251001"
+            await repo_insight_narrative(
+                db, repo.id, user_id=user.id,
+                kpi={"analysis_count": 3, "avg_score": 75, "grade": "C",
+                     "score_delta": -2, "high_security_count": 1,
+                     "top_recurring_issue": "x", "top_recurring_count": 2},
+                recurring=[{"message": "x", "count": 2, "category": "security",
+                            "severity": "error", "tool": "bandit", "language": "python"}],
+            )
+        return calls
+
+    @pytest.mark.asyncio
+    async def test_success_logs_exactly_one_row(self, db, repo, user):
+        assert await self._statuses(db, repo, user, '{"text": "ok"}') == ["success"]
+
+    @pytest.mark.asyncio
+    async def test_valid_json_that_is_not_a_dict_logs_one_error_row(self, db, repo, user):
+        """🔴 Grok 이 찾은 잔여 구멍 — 수정 전에는 `['success', 'error']` 였다."""
+        statuses = await self._statuses(db, repo, user, '"just a string"')
+        assert statuses.count("success") == 0, (
+            f"dict 가 아닌 JSON 인데 success 가 기록됐다: {statuses}"
+        )
+        assert len(statuses) == 1, f"한 호출에 {len(statuses)}행: {statuses}"
+
+    @pytest.mark.asyncio
+    async def test_broken_json_logs_one_error_row(self, db, repo, user):
+        statuses = await self._statuses(db, repo, user, "not json at all")
+        assert len(statuses) == 1, f"한 호출에 {len(statuses)}행: {statuses}"
