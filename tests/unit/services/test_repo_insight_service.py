@@ -535,3 +535,53 @@ class TestApiLogExactlyOnce:
     async def test_broken_json_logs_one_error_row(self, db, repo, user):
         statuses = await self._statuses(db, repo, user, "not json at all")
         assert len(statuses) == 1, f"한 호출에 {len(statuses)}행: {statuses}"
+
+
+class TestErrorPathTokens:
+    """실패 행도 **실제로 쓴 토큰**을 기록한다 (backlog R65 — R63 잔여).
+
+    R63 은 행 수를 1로 고쳤지만 그 1행이 error 경로일 때 토큰을 `0` 리터럴로 적었다.
+    응답을 받은 뒤 파싱이 실패한 경우 토큰은 **이미 과금**됐으므로 0 은 비용 과소 계상이다.
+    (호출 자체 실패는 0 이 맞다 — 그 대조군은 `tests/unit/shared/test_api_log_error_tokens.py`.)
+    """
+
+    @staticmethod
+    async def _rows(db, repo, user, payload: str) -> list[dict]:
+        from src.services.repo_insight_service import repo_insight_narrative
+
+        rows: list[dict] = []
+        mock_msg = MagicMock()
+        mock_msg.content = [MagicMock(text=payload)]
+        mock_msg.usage = MagicMock(input_tokens=1234, output_tokens=567)
+        mock_client = AsyncMock()
+        mock_client.messages.create = AsyncMock(return_value=mock_msg)
+
+        with patch("src.services.repo_insight_service.settings") as s,              patch("src.services.repo_insight_service.anthropic.AsyncAnthropic", return_value=mock_client),              patch("src.services.repo_insight_service.log_claude_api_call",
+                   side_effect=lambda **kw: rows.append(kw)):
+            s.anthropic_api_key = "sk-ant-test"
+            s.claude_insight_model = "claude-haiku-4-5-20251001"
+            await repo_insight_narrative(
+                db, repo.id, user_id=user.id,
+                kpi={"analysis_count": 3, "avg_score": 75, "grade": "C",
+                     "score_delta": -2, "high_security_count": 1,
+                     "top_recurring_issue": "x", "top_recurring_count": 2},
+                recurring=[{"message": "x", "count": 2, "category": "security",
+                            "severity": "error", "tool": "bandit", "language": "python"}],
+            )
+        return rows
+
+    @pytest.mark.asyncio
+    async def test_parse_failure_still_reports_real_tokens(self, db, repo, user):
+        """비-dict JSON — R63 이 고친 바로 그 경로에서 토큰이 살아 있는지."""
+        (row,) = await self._rows(db, repo, user, '"just a string"')
+        assert row["status"] == "error"
+        assert (row["input_tokens"], row["output_tokens"]) == (1234, 567), (
+            f"실패 행의 토큰이 {row['input_tokens']}/{row['output_tokens']} — "
+            "응답을 받은 뒤 실패했는데 0 이면 monthly_cost 가 과소 계상된다."
+        )
+
+    @pytest.mark.asyncio
+    async def test_success_reports_real_tokens(self, db, repo, user):
+        (row,) = await self._rows(db, repo, user, '{"text": "ok"}')
+        assert row["status"] == "success"
+        assert (row["input_tokens"], row["output_tokens"]) == (1234, 567)

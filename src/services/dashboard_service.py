@@ -817,6 +817,17 @@ async def _call_insight_claude_api(
     C1 Phase 3 T3.3 — user_id is for cost attribution (forwarded to log_claude_api_call).
     """
     start = time.perf_counter()
+    # 🔴 **실제로 소비된 토큰은 error 경로에서도 보고한다** (backlog R65).
+    # API 가 응답을 돌려준 뒤 추출·파싱이 실패한 경우 그 토큰은 **이미 과금**됐다.
+    # 0 으로 적으면 `monthly_cost` KPI 가 과소 계상되고, 실패가 잦을수록 오차가 커진다.
+    # (호출 자체가 실패했으면 값이 갱신되지 않아 0 이 남는다 — 그 경우엔 0 이 맞다.)
+    # Report the tokens actually consumed even on the error path: once the API responded,
+    # they are billed. Zeroing them undercounts cost. If the call itself failed the holder
+    # stays 0, which is correct.
+    _tokens: dict[str, int] = {
+        "input_tokens": 0, "output_tokens": 0,
+        "cache_read_tokens": 0, "cache_creation_tokens": 0,
+    }
     try:
         response = await client.messages.create(
             model=model,
@@ -834,6 +845,12 @@ async def _call_insight_claude_api(
         duration_ms = (time.perf_counter() - start) * 1000
         input_tokens, output_tokens = extract_anthropic_usage(response)
         usage = getattr(response, "usage", None)
+        _tokens.update(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cache_read_tokens=getattr(usage, "cache_read_input_tokens", 0) or 0,
+            cache_creation_tokens=getattr(usage, "cache_creation_input_tokens", 0) or 0,
+        )
         # 🔴 **추출을 로그보다 먼저** (backlog R63). 이전에는 `status="success"` 를 먼저
         # 기록하고 그 뒤 추출이 실패하면 except 가 `status="error"` 를 **또** 남겨,
         # 한 번의 API 호출이 비용 테이블에 **2행**을 만들었다(성공률·비용 집계 왜곡).
@@ -844,12 +861,9 @@ async def _call_insight_claude_api(
         log_claude_api_call(
             model=model,
             duration_ms=duration_ms,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
             status="success",
-            cache_read_tokens=getattr(usage, "cache_read_input_tokens", 0) or 0,
-            cache_creation_tokens=getattr(usage, "cache_creation_input_tokens", 0) or 0,
             user_id=user_id,
+            **_tokens,
         )
         return text
     except Exception as exc:  # pylint: disable=broad-exception-caught  # noqa: BLE001
@@ -859,11 +873,10 @@ async def _call_insight_claude_api(
         log_claude_api_call(
             model=model,
             duration_ms=duration_ms,
-            input_tokens=0,
-            output_tokens=0,
             status="error",
             error_type=type(exc).__name__,
             user_id=user_id,
+            **_tokens,
         )
         logger.exception("insight_narrative API call failed, returning api_error")
         return None

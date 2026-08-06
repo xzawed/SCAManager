@@ -157,7 +157,13 @@ def log_claude_api_call(  # pylint: disable=too-many-arguments
     Args:
         model: 호출된 모델 ID (예: "claude-sonnet-4-6")
         duration_ms: API 호출 전체 소요 시간 (ms)
-        input_tokens / output_tokens: 입력/출력 토큰 수 (에러 시 0)
+        input_tokens / output_tokens: 입력/출력 토큰 수.
+            🔴 **에러라고 0 을 넘기지 말 것** (backlog R65). API 가 응답을 돌려준 뒤
+            추출·파싱이 실패한 경우 토큰은 **이미 과금**됐다 — 0 으로 적으면
+            `monthly_cost` 가 과소 계상된다. 호출 자체가 실패해 토큰을 모르는
+            경우에만 0 이다.
+            Do not zero these on failure: tokens are billed once the API responded.
+            0 is correct only when the call itself failed.
         status: "success" | "error" | "timeout"
         error_type: 에러 타입 이름 (status=="error" 일 때)
         cache_read_tokens: prompt cache 에서 읽은 토큰 수 (기본 0).
@@ -228,9 +234,14 @@ def log_claude_api_call(  # pylint: disable=too-many-arguments
             )
             _silent_fallback_streak = 0  # 재 alert 방지
     else:
+        # 🔴 실패 행도 토큰·비용을 **사람이 읽는 줄에** 싣는다 (backlog R65). `extra` 에만
+        # 있으면 로그 shipper 를 안 거치는 운영자에게는 실패의 비용이 보이지 않는다.
+        # Surface tokens/cost on the human-readable line too — `extra` alone is invisible
+        # to an operator reading raw logs.
         logger.warning(
-            "claude_api_call model=%s duration_ms=%.0f status=%s error_type=%s",
-            model, duration_ms, status, error_type,
+            "claude_api_call model=%s duration_ms=%.0f input_tokens=%d output_tokens=%d "
+            "cost_usd=%.4f status=%s error_type=%s",
+            model, duration_ms, input_tokens, output_tokens, cost_usd, status, error_type,
             extra=extra,
         )
 

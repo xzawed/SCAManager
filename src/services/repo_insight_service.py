@@ -421,6 +421,11 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
     )
 
     start = time.perf_counter()
+    # 🔴 **실제로 소비된 토큰은 error 경로에서도 보고한다** (backlog R65).
+    # 응답을 받은 뒤 파싱이 실패해도 토큰은 **이미 과금**됐다 — 0 으로 적으면 비용 과소 계상.
+    # 호출 자체가 실패하면 값이 갱신되지 않아 0 이 남고, 그 경우엔 0 이 맞다.
+    # Report tokens actually consumed on the error path too; they are billed once the API responds.
+    _tokens: dict[str, int] = {"input_tokens": 0, "output_tokens": 0}
     client = anthropic.AsyncAnthropic(api_key=api_key, timeout=60.0, max_retries=2)
     try:
         response = await client.messages.create(
@@ -444,6 +449,7 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
         )
         duration_ms = (time.perf_counter() - start) * 1000
         input_tokens, output_tokens = extract_anthropic_usage(response)
+        _tokens.update(input_tokens=input_tokens, output_tokens=output_tokens)
         # 🔴 **추출·파싱을 로그보다 먼저** (backlog R63). 이전에는 `status="success"` 를 먼저
         # 기록하고 그 뒤 파싱이 실패하면 except 가 `status="error"` 를 **또** 남겨,
         # 한 번의 API 호출이 비용 테이블에 **2행**을 만들었다(성공률·비용 집계 왜곡).
@@ -461,23 +467,21 @@ async def repo_insight_narrative(  # pylint: disable=too-many-arguments,too-many
         log_claude_api_call(
             model=settings.claude_insight_model,
             duration_ms=duration_ms,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
             status="success",
             repo_id=repo_id,
             user_id=user_id,
+            **_tokens,
         )
     except Exception as exc:  # pylint: disable=broad-exception-caught  # noqa: BLE001
         duration_ms = (time.perf_counter() - start) * 1000
         log_claude_api_call(
             model=settings.claude_insight_model,
             duration_ms=duration_ms,
-            input_tokens=0,
-            output_tokens=0,
             status="error",
             error_type=type(exc).__name__,
             repo_id=repo_id,
             user_id=user_id,
+            **_tokens,
         )
         logger.exception("repo_insight_narrative API call failed")
         _record_narrative_error(
