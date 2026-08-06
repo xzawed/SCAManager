@@ -65,6 +65,42 @@ def test_live_server_failure_path_raises():
     assert raises, "live_server 에 실패 경로(raise)가 없다 — 기동 실패가 무시된다"
 
 
+def _live_server_fn():
+    tree = ast.parse((_ROOT / "e2e" / "conftest.py").read_text(encoding="utf-8"))
+    return next(n for n in ast.walk(tree)
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == "live_server")
+
+
+def test_health_poll_does_not_swallow_the_reason():
+    """🔴 폴링 예외를 `pass` 로 버리면 실패가 **읽을 수 없게** 된다 (CodeQL `py/empty-except`).
+
+    R58 이 skip 을 실패로 바꾼 목적은 실패를 **관측 가능**하게 하는 것이다. 그런데
+    "60회 시도했지만 응답 없음" 만 남기고 *왜*(연결 거부 / 500 / 타임아웃)를 버리면
+    절반만 이행한 것이다 — 운영자·CI 로그를 보는 사람은 여전히 원인을 모른다.
+    """
+    empty = [
+        h for h in ast.walk(_live_server_fn())
+        if isinstance(h, ast.ExceptHandler)
+        and all(isinstance(st, ast.Pass) for st in h.body)
+    ]
+    assert not empty, (
+        "live_server 의 except 블록이 `pass` 뿐이다 — 실패 이유가 버려진다.\n"
+        "→ 마지막 오류를 남겨 `RuntimeError` 메시지에 실을 것."
+    )
+
+
+def test_startup_failure_message_carries_the_last_error():
+    """대조군 — 오류를 **잡아만 두고 쓰지 않으면** 위 단언은 통과하지만 여전히 안 보인다."""
+    names = {
+        node.id
+        for raise_node in ast.walk(_live_server_fn()) if isinstance(raise_node, ast.Raise)
+        for node in ast.walk(raise_node) if isinstance(node, ast.Name)
+    }
+    assert "last_error" in names, (
+        "기동 실패 메시지가 마지막 오류를 싣지 않는다 — 잡아 두고 버리는 것과 같다"
+    )
+
+
 # ── ② 검사 범위 baseline ────────────────────────────────────────────────
 
 def test_baseline_file_exists_and_is_an_integer():

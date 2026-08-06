@@ -180,14 +180,22 @@ def live_server(tmp_path_factory):
     # 서버가 200을 반환할 때까지 대기 (최대 30초)
     # Wait until the server returns 200 (up to 30 seconds).
     ready = False
+    # 🔴 마지막 실패 이유를 남긴다 — 없으면 "응답하지 않았다" 만 알고 **왜인지는 모른다**
+    # (연결 거부인지 500 인지 타임아웃인지). R58 이 skip 을 실패로 바꾼 목적은 실패를
+    # **읽을 수 있게** 하는 것이므로, 이유를 버리면 절반만 이행한 것이다.
+    # Keep the last failure so the error can say *why* the server never came up.
+    last_error: str = "(시도 기록 없음)"
     for _ in range(60):
         try:
             r = requests.get(f"{BASE_URL}/health", timeout=1)
             if r.status_code == 200:
                 ready = True
                 break
-        except Exception:
-            pass
+            last_error = f"HTTP {r.status_code}"
+        except requests.RequestException as exc:
+            # 아직 안 떴을 뿐이다 — 폴링 중 예외는 정상이라 재시도한다.
+            # Not up yet; polling exceptions are expected, so retry.
+            last_error = f"{type(exc).__name__}: {exc}"
         time.sleep(0.5)
 
     if not ready:
@@ -201,7 +209,8 @@ def live_server(tmp_path_factory):
         # **자기가 방금 초록으로 만든 e2e 에만** 적용하지 않았다.
         # A skip counts as success: the whole suite would pass with the app dead.
         raise RuntimeError(
-            f"E2E 서버가 {_STARTUP_TIMEOUT}초 안에 {BASE_URL}/health 에 응답하지 않았다 — "
+            f"E2E 서버가 {_STARTUP_TIMEOUT}초 안에 {BASE_URL}/health 에 응답하지 않았다 "
+            f"(마지막 시도: {last_error}) — "
             "스위트를 skip 하지 않고 실패시킨다(전건 skip 후 exit 0 = 공허한 초록)."
         )
 
