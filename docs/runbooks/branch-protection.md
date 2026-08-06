@@ -63,6 +63,22 @@ gh api repos/xzawed/SCAManager/branches/main/protection \
   --jq '{checks:(.required_status_checks.contexts|length), admins:.enforce_admins.enabled}'
 ```
 
+## 체크가 인프라 사유로 실패했을 때 (실사례 2026-08-06)
+
+required 체크는 **코드와 무관한 이유로도** 빨개진다. `#1306` 에서 `Repo integrity guards`
+job 이 `Set up job` 단계에서 실패했다 — 러너 할당 실패이고 리포 코드와 무관하다.
+`enforce_admins: true` 라 그 순간 머지는 물리적으로 막힌다.
+
+**대응 순서** (롤백은 마지막 수단이다):
+
+1. 실패 step 이 `Set up job` · `Checkout` 등 **인프라 단계**인지 확인한다.
+   `gh api repos/xzawed/SCAManager/actions/jobs/<job_id> --jq '.steps[]|select(.conclusion=="failure")'`
+2. **워크플로 run 이 아직 진행 중이면 재실행이 거부된다**(`This workflow is already running`).
+   나머지 job 이 끝날 때까지 기다린 뒤 `gh run rerun <run_id> --failed` 로 실패 job 만 돌린다.
+3. 재실행도 같은 단계에서 실패하면 그때 §승격·롤백 절차의 롤백을 검토한다.
+
+🔴 **`--no-verify`·admin 우회는 선택지가 아니다** — `enforce_admins: true` 는 그러라고 켠 것이다.
+
 ## 🔴 이름이 곧 계약이다
 
 required check 는 **(SHA, 이름)** 으로 식별된다. `ci.yml` 의 job `name:` 을 바꾸면
