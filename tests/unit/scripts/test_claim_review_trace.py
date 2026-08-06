@@ -17,11 +17,16 @@ import yaml
 
 from tests.unit.scripts._wiring_shape import any_invokes
 from scripts.check_claim_review_trace import (
+    _CODE_SURFACES,
+    changed_code_surfaces,
     commit_messages,
     find_seal_claims,
     main,
     missing_trace_fields,
 )
+
+# 🔴 패치는 string-path (`.claude/rules/testing.md` §이중 import 회피 — 신규 코드 규칙).
+_MOD = "scripts.check_claim_review_trace"
 
 _REPO = pathlib.Path(__file__).resolve().parents[3]
 _CI_YAML = _REPO / ".github" / "workflows" / "ci.yml"
@@ -531,3 +536,266 @@ def test_exemption_notice_neutralizes_carriage_returns(monkeypatch, capsys):
     assert all("\r" not in line for line in notice_lines), (
         "::notice 라인에 \\r 가 남아 있다 — 러너에서 행이 갈라져 커맨드 위조 표면이 된다"
     )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 🔴 축 4 — 코드 표면 트리거 (backlog R57)
+#
+# 정책 19 는 *"실질 작업마다 CLAIM-REVIEW 기본 포함"* 인데 가드는 **seal 어휘가 있을 때만**
+# 흔적을 요구했다. 그 간극을 `claim-review-not-required` 자기발급이 메웠다(최근 25 PR 중 6건).
+# 이제 코드·가드 표면을 건드리면 어휘와 무관하게 흔적(또는 사유 있는 면제)을 요구한다.
+#
+# 실측 오탐(2026-08-06, 최근 30 머지 PR): 코드 표면 23 · 문서 전용 7 · 새로 red 3건(10%).
+# ──────────────────────────────────────────────────────────────────────────────
+
+_TRACE = (
+    "## Grok claim-review\n"
+    "- session: 019fd6e8-e995-7b82-9d28-1da13ae95ddd\n"
+    "- claim: 이 변경이 기존 계약을 깨지 않는다는 주장을 검증했다\n"
+    "- verdict: SURVIVES\n"
+)
+# 🔴 claim 은 16자 이상이어야 한다 — 초판 픽스처가 짧아 가드가 거부했고, 그것은
+#    가드가 옳았던 것이다(한 줄짜리 형식적 claim 을 막는 것이 그 규칙의 목적).
+
+
+def _run_with_surfaces(monkeypatch, surfaces, *, title="", body=""):
+    """변경 표면을 주입해 main() 을 돌린다 (git 호출은 대체)."""
+    monkeypatch.setenv("PR_TITLE", title)
+    monkeypatch.setenv("PR_BODY", body)
+    monkeypatch.setenv("PR_BASE_SHA", "aaaaaaa")
+    monkeypatch.setenv("PR_HEAD_SHA", "bbbbbbb")
+    monkeypatch.setattr(f"{_MOD}.changed_code_surfaces", lambda _b, _h: surfaces)
+    monkeypatch.setattr(f"{_MOD}.commit_messages", lambda _b, _h: "")
+    return main()
+
+
+def test_code_surface_without_trace_is_blocked(monkeypatch):
+    """🔴 이것이 R57 의 본체 — seal 어휘가 없어도 코드 변경이면 흔적을 요구한다.
+
+    이전에는 어휘가 없으면 **아무것도 없이** exit 0 이었고, Claude 는 그 가드 트리거를
+    정책 트리거로 오인해 면제를 자기발급했다.
+    """
+    rc = _run_with_surfaces(
+        monkeypatch, ["src/services/foo.py"],
+        title="fix(ui): 카드 정렬 수정", body="테스트 3건 추가.")
+    assert rc == 1, "코드 표면을 바꾸는데 흔적 없이 통과했다"
+
+
+def test_code_surface_with_trace_passes(monkeypatch):
+    """대조군 — 흔적이 있으면 통과한다(가드가 무조건 red 면 곧 꺼진다)."""
+    assert _run_with_surfaces(
+        monkeypatch, ["src/services/foo.py"], body=_TRACE) == 0
+
+
+def test_docs_only_change_is_not_triggered(monkeypatch):
+    """🔴 문서 전용 PR 은 트리거하지 않는다 — 오탐이 진탐을 넘으면 가드 자살(정책 17).
+
+    실측: 최근 30 PR 중 7건이 문서 전용이고, 그 전부가 이 축에서 자유롭다.
+    """
+    assert _run_with_surfaces(monkeypatch, [], body="수치 동기화만.") == 0
+
+
+def test_no_pr_env_falls_back_to_seal_axis_only(monkeypatch):
+    """🔴 PR env 가 없으면(로컬 `pre_push_gate`) 이 축은 쉰다.
+
+    여기서 fail-closed 로 두면 **모든 로컬 push 가 영구 red** 가 된다 —
+    `test_pre_push_gate.py` 가 CI 가드를 러너 목록에 강제 유입하기 때문이다.
+    """
+    for key in ("PR_BASE_SHA", "PR_HEAD_SHA"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("PR_TITLE", "fix: 무언가")
+    monkeypatch.setenv("PR_BODY", "본문")
+    assert main() == 0
+
+
+def test_exemption_still_works_but_is_recorded(monkeypatch, tmp_path):
+    """면제는 계속 유효하되 **사람이 보는 자리**(job summary)에 누적된다.
+
+    🔴 `::notice` 는 Actions 로그 안쪽이라 실질적으로 아무도 보지 않는다. 면제 남용은
+    한 건씩 보면 정상이고 **추세로만** 드러난다.
+    """
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    rc = _run_with_surfaces(
+        monkeypatch, ["scripts/check_x.py"],
+        body="claim-review-not-required: 순수 수치 동기화라 반증 대상 주장이 없습니다.")
+    assert rc == 0
+    text = summary.read_text(encoding="utf-8")
+    assert "면제 사용" in text, f"면제가 job summary 에 기록되지 않았다: {text!r}"
+    assert "반증 대상" in text, "사유가 기록되지 않으면 추세를 읽을 수 없다"
+
+
+def test_summary_write_failure_never_changes_the_verdict(monkeypatch):
+    """🔴 기록 실패가 판정을 바꾸면 안 된다 — 로깅이 게이트를 흔들면 그 자체가 결함이다."""
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", "/nonexistent-dir/summary.md")
+    assert _run_with_surfaces(
+        monkeypatch, ["scripts/check_x.py"],
+        body="claim-review-not-required: 사유가 충분히 긴 문장입니다.") == 0
+
+
+# ── 표면 목록·경로 산출의 계약 ──────────────────────────────────────────
+
+
+def test_surface_list_covers_the_machine_judgment_inputs():
+    """🔴 기계 판정 입력이 '문서' 로 분류돼 무검증 통과하면 안 된다.
+
+    `owed-verification.md` 는 R0-2 이후 판정 입력이고, `tests/unit/{scripts,hooks}` 는
+    가드가 저술되는 표면이다. 리터럴로 못박는다 — 목록을 피검사 모듈에서 유도하면
+    비우는 순간 초록이 된다.
+    """
+    for required in ("src/", "scripts/", ".github/workflows/", ".claude/hooks/",
+                     "tests/unit/scripts/", "docs/runbooks/owed-verification.md"):
+        assert required in _CODE_SURFACES, f"표면 목록에서 빠졌다: {required}"
+
+
+def test_changed_surfaces_uses_three_dot_range(monkeypatch):
+    """🔴 `base...head`(merge-base) 여야 한다 — two-dot 은 base 가 앞서간 만큼을 함께 세어
+    **남의 변경을 이 PR 의 것으로** 오판한다."""
+    seen = {}
+
+    def fake_run(argv, **_kw):
+        seen["argv"] = argv
+
+        class R:
+            returncode = 0
+            stdout = "src/a.py\n"
+        return R()
+
+    monkeypatch.setattr(f"{_MOD}.subprocess.run", fake_run)
+    changed_code_surfaces("aaa", "bbb")
+    assert "aaa...bbb" in seen["argv"], f"three-dot 범위가 아니다: {seen['argv']}"
+
+
+def test_changed_surfaces_returns_none_when_git_fails(monkeypatch):
+    """🔴 판정 불가는 **빈 리스트와 구별**해야 한다 — 같게 두면 git 실패가 '변경 없음' 이 된다."""
+    def fake_run(_argv, **_kw):
+        class R:
+            returncode = 128
+            stdout = ""
+        return R()
+
+    monkeypatch.setattr(f"{_MOD}.subprocess.run", fake_run)
+    assert changed_code_surfaces("aaa", "bbb") is None
+
+
+def test_changed_surfaces_filters_out_unrelated_paths(monkeypatch):
+    """대조군 — 표면 밖 경로는 걸러야 한다(전부 통과시키면 문서 PR 이 전부 red)."""
+    def fake_run(_argv, **_kw):
+        class R:
+            returncode = 0
+            stdout = "docs/STATE.md\nREADME.md\nsrc/main.py\n"
+        return R()
+
+    monkeypatch.setattr(f"{_MOD}.subprocess.run", fake_run)
+    assert changed_code_surfaces("a", "b") == ["src/main.py"]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 🔴 Grok claim-review `019fd786` (verdict: WEAKENED) 지적 이행
+#
+# 지적 요지: 위 축 4 테스트는 `changed_code_surfaces` 를 **통째로 대체**하므로
+#   (a) CI 가 `PR_BASE_SHA`/`PR_HEAD_SHA` 를 실제로 넘기는지
+#   (b) `main()` 이 그 env 를 (base, head) **순서대로** 넘기는지
+# 를 하나도 검증하지 않는다. 둘 다 load-bearing 이고, 지우거나 뒤바꿔도 스위트는 초록이다.
+# 즉 "보호를 삭제해도 참으로 보이는" 형태가 두 개 남아 있었다.
+# ──────────────────────────────────────────────────────────────────────────────
+
+_ENV_SURFACES = ("PR_BASE_SHA", "PR_HEAD_SHA")
+
+
+@pytest.mark.parametrize("workflow", ["ci.yml", "claim-review-on-body-edit.yml"])
+@pytest.mark.parametrize("var", _ENV_SURFACES)
+def test_workflows_pass_the_sha_env_to_the_guard(workflow: str, var: str):
+    """🔴 이 env 가 없으면 코드 표면 축이 **조용히 죽는다**.
+
+    `main()` 은 base/head 가 둘 다 있을 때만 그 축을 켠다. 워크플로에서 두 줄을 지우면
+    seal 어휘가 없는 모든 코드 PR 이 다시 무검증 통과하는데, 그 상태에서도 단위 테스트는
+    전건 초록이다(Grok `019fd786` 1.1). 그래서 **배선을 따로 못박는다**.
+    """
+    text = (_REPO / ".github" / "workflows" / workflow).read_text(encoding="utf-8")
+    assert var in text, (
+        f"{workflow} 이 {var} 를 가드에 넘기지 않는다 — 코드 표면 축이 조용히 꺼진다"
+    )
+
+
+def test_main_passes_base_then_head_in_that_order(monkeypatch):
+    """🔴 인자 순서가 뒤바뀌면 `head...base` 가 되어 **남의 변경**을 이 PR 것으로 본다.
+
+    순수 함수 테스트는 three-dot 형태만 보고, 축 4 테스트는 함수를 대체하므로
+    env→인자 사상은 어디서도 검증되지 않았다(Grok `019fd786` 1.2).
+    """
+    seen = {}
+
+    def spy(base, head):
+        seen["base"], seen["head"] = base, head
+        return []
+
+    monkeypatch.setenv("PR_TITLE", "")
+    monkeypatch.setenv("PR_BODY", "")
+    monkeypatch.setenv("PR_BASE_SHA", "BASE_SENTINEL")
+    monkeypatch.setenv("PR_HEAD_SHA", "HEAD_SENTINEL")
+    monkeypatch.setattr(f"{_MOD}.changed_code_surfaces", spy)
+    monkeypatch.setattr(f"{_MOD}.commit_messages", lambda _b, _h: "")
+    main()
+    assert seen["base"] == "BASE_SENTINEL", f"base 자리에 {seen['base']!r} 가 왔다"
+    assert seen["head"] == "HEAD_SENTINEL", f"head 자리에 {seen['head']!r} 가 왔다"
+
+
+def test_undecidable_paths_do_not_claim_no_change(monkeypatch, capsys):
+    """🔴 경로를 못 구했으면 '변경 없음' 이라고 **말하면 안 된다** — 모르는 것을 안다고 하는 것이다.
+
+    `None`(판정 불가)과 `[]`(변경 없음)은 같은 분기로 오지만 같은 말을 하면 거짓 보고다
+    (Grok `019fd786` 1.4).
+    """
+    monkeypatch.setenv("PR_TITLE", "")
+    monkeypatch.setenv("PR_BODY", "")
+    monkeypatch.setenv("PR_BASE_SHA", "aaa")
+    monkeypatch.setenv("PR_HEAD_SHA", "bbb")
+    monkeypatch.setattr(f"{_MOD}.changed_code_surfaces", lambda _b, _h: None)
+    monkeypatch.setattr(f"{_MOD}.commit_messages", lambda _b, _h: "")
+    assert main() == 0
+    out = capsys.readouterr().out
+    assert "판정 불가" in out, f"판정 불가를 알리지 않았다:\n{out}"
+    assert "코드 표면 변경 없음" not in out, (
+        f"모르는 상태에서 '변경 없음' 이라고 단언했다:\n{out}"
+    )
+
+
+def test_empty_surfaces_still_says_no_change(monkeypatch, capsys):
+    """대조군 — 실제로 변경이 없으면 그렇게 말해야 한다(위 단언이 문구를 죽이지 않았는지)."""
+    monkeypatch.setenv("PR_TITLE", "")
+    monkeypatch.setenv("PR_BODY", "")
+    monkeypatch.setenv("PR_BASE_SHA", "aaa")
+    monkeypatch.setenv("PR_HEAD_SHA", "bbb")
+    monkeypatch.setattr(f"{_MOD}.changed_code_surfaces", lambda _b, _h: [])
+    monkeypatch.setattr(f"{_MOD}.commit_messages", lambda _b, _h: "")
+    assert main() == 0
+    assert "코드 표면 변경 없음" in capsys.readouterr().out
+
+
+_LEGAL_VERDICTS = ("SURVIVES", "WEAKENED", "BROKEN", "CONFIRMED", "REFUTED", "HOLDS")
+
+
+@pytest.mark.parametrize("verdict", _LEGAL_VERDICTS)
+def test_every_legal_verdict_is_accepted(monkeypatch, verdict: str):
+    """🔴 합법 판정 목록을 **리터럴로** 못박는다 — 모듈에서 유도하면 비워도 초록이다.
+
+    `WEAKENED` 는 Grok 이 실제로 내는 판정인데 초판 목록에 없었다. `cycle-history.md:223`
+    이 이미 그 판정을 서사로 기록하고 있는데 가드는 그것을 담은 본문을 **거부**했다 —
+    '부분적으로 성립' 을 표현할 수단이 없으면 저자는 SURVIVES 로 반올림하게 되고,
+    그러면 어휘 부족이 **판정을 낙관 쪽으로 왜곡**한다.
+    """
+    body = _GOOD_TRACE.replace(
+        "- verdict: BROKEN — 설정 파싱이 손실 투영이라 우회 4종 통과",
+        f"- verdict: {verdict} — 근거 요약",
+    )
+    assert _run(monkeypatch, title=_REAL_SEAL_CLAIMS[0], body=body) == 0
+
+
+def test_unknown_verdict_is_rejected(monkeypatch):
+    """대조군 — 아무 단어나 받으면 판정 어휘가 의미를 잃는다."""
+    body = _GOOD_TRACE.replace(
+        "- verdict: BROKEN — 설정 파싱이 손실 투영이라 우회 4종 통과",
+        "- verdict: 아마도 괜찮음",
+    )
+    assert _run(monkeypatch, title=_REAL_SEAL_CLAIMS[0], body=body) == 1

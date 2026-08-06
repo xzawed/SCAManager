@@ -74,6 +74,11 @@ _SEAL_PATTERNS: tuple[tuple[str, str], ...] = (
 # 🔴 Values are required, not just keys: the first version passed on three EMPTY fields — structure
 # without substance. This raises the forgery cost; it does not prevent forgery.
 _TRACE_HEADING = re.compile(r"^#{1,4}[^\n]*claim-?review", re.IGNORECASE | re.MULTILINE)
+# 🔴 `WEAKENED` 추가 (2026-08-06) — Grok 이 실제로 내는 판정인데 합법 토큰이 아니었다.
+#    `docs/cycle-history.md:223` 이 이미 그 판정을 서사로 기록하고 있는데 가드는 거부했다.
+#    '부분적으로 성립' 을 표현할 수단이 없으면 저자는 SURVIVES 로 반올림하게 된다 —
+#    즉 어휘 부족이 **판정을 낙관 쪽으로 왜곡**한다.
+# Grok really emits WEAKENED; without it authors round up to SURVIVES.
 _REQUIRED_FIELDS: tuple[tuple[str, str], ...] = (
     # 🔴 백틱/따옴표 허용 (2026-07-31) — 아래 안내문 예시가 백틱 형태(`019fadf6-...`)인데
     #    정규식은 백틱을 거부해, **가드가 자기 안내대로 적은 본문을 차단**했다. 실측: 이 가드를
@@ -82,8 +87,8 @@ _REQUIRED_FIELDS: tuple[tuple[str, str], ...] = (
     #    rejected, so the guard blocked bodies written exactly as it instructed.
     (r"^[-*|\s]*session\s*[:|]\s*[`'\"]?[0-9a-f]{8}-[0-9a-f]{4}",
      "session — Grok sessionId (예: `019fadf6-523e-...`)"),
-    (r"^[-*|\s]*verdict\s*[:|]\s*(SURVIVES|BROKEN|CONFIRMED|REFUTED|HOLDS)\b",
-     "verdict — SURVIVES | BROKEN | CONFIRMED | REFUTED | HOLDS 중 하나"),
+    (r"^[-*|\s]*verdict\s*[:|]\s*(SURVIVES|WEAKENED|BROKEN|CONFIRMED|REFUTED|HOLDS)\b",
+     "verdict — SURVIVES | WEAKENED | BROKEN | CONFIRMED | REFUTED | HOLDS 중 하나"),
     (r"^[-*|\s]*claim\s*[:|]\s*\S.{15,}",
      "claim — 검증한 주장 (16자 이상)"),
 )
@@ -203,6 +208,62 @@ def missing_trace_fields(text: str) -> list[str]:
     return missing
 
 
+# ── 정책 트리거 ≠ 가드 트리거 (backlog R57) ─────────────────────────────
+#
+# 정책 19 는 *"실질 작업마다 CLAIM-REVIEW 기본 포함"* 이다(사용자 명시 지시). 그런데 이
+# 가드는 **seal 어휘가 있을 때만** 흔적을 요구했다. 그래서 어휘가 없는 PR 은 아무것도 없이
+# 통과했고, Claude 는 그 **가드 트리거를 정책 트리거로 오인**해 seal 어휘가 없는 PR 에
+# `claim-review-not-required` 를 자기발급했다(최근 25 PR 중 6건).
+#
+# 🔴 실측 (2026-08-06, 최근 30 머지 PR):
+#   · 코드 표면 변경 23건 / 문서 전용 7건
+#   · 새 기준에서 흔적도 면제도 없는 것 = **3건(10%)** — 오탐이 진탐을 넘지 않는다.
+# 그 3건은 e2e drift 30건 해소·CodeQL 수정 등 **실질 코드 변경**이라 red 가 옳다.
+#
+# 목록에 `docs/runbooks/owed-verification.md` 가 있는 이유: 그 파일은 R0-2 이후
+# **기계 판정 입력**이다. 행을 지우는 PR 이 '문서' 로 분류돼 무검증 통과하면 안 된다.
+# `tests/unit/{scripts,hooks}/` 는 가드가 저술되는 표면이라 같은 이유로 포함한다.
+#
+# The guard fired only on seal vocabulary while the policy applies to substantive work; that
+# gap is what the self-issued exemptions filled. Measured FP rate with this list: 3/30.
+_CODE_SURFACES = (
+    "src/",
+    "scripts/",
+    "alembic/",
+    "e2e/",
+    ".claude/hooks/",
+    ".claude/workflows/",
+    ".claude/settings.json",
+    ".github/workflows/",
+    ".pre-commit-config.yaml",
+    "tests/unit/scripts/",
+    "tests/unit/hooks/",
+    "docs/runbooks/owed-verification.md",
+)
+
+
+def changed_code_surfaces(base_sha: str, head_sha: str) -> list[str] | None:
+    """PR 이 건드린 코드 표면 경로. **판정 불가면 None**(빈 리스트와 구별한다).
+
+    🔴 `base...head`(three-dot, merge-base 기준)를 쓴다 — `base..head` 는 base 브랜치가
+    앞서간 만큼을 함께 세어 남의 변경을 이 PR 의 것으로 오판한다.
+    """
+    try:
+        proc = subprocess.run(  # nosec B603 B607
+            ["git", "diff", "--name-only", f"{base_sha}...{head_sha}"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=60, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if proc.returncode != 0:
+        return None
+    return [
+        line.strip() for line in (proc.stdout or "").splitlines()
+        if line.strip().startswith(_CODE_SURFACES)
+    ]
+
+
 def commit_messages(base_sha: str, head_sha: str) -> str:
     """PR 범위 커밋 메시지 전문 (실패 시 빈 문자열 — 이 축은 보조)."""
     try:
@@ -214,6 +275,23 @@ def commit_messages(base_sha: str, head_sha: str) -> str:
     except OSError:
         return ""
     return proc.stdout if proc.returncode == 0 else ""
+
+
+def _append_step_summary(markdown: str) -> None:
+    """GitHub Actions job summary 에 한 줄 추가 (없으면 조용히 무시 — 로컬 실행).
+
+    🔴 `::notice` 는 Actions **로그 안쪽**이라 실질적으로 아무도 보지 않는다. 면제 남용은
+    한 건씩 보면 정상이고 **추세로만** 드러나므로, 사람이 실제로 여는 자리(run summary)에
+    누적돼야 한다. 이 리포가 반복해 고쳐 온 "관측은 하는데 아무도 안 보는" 클래스다.
+    """
+    path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not path:
+        return
+    try:
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(markdown)
+    except OSError:
+        pass  # 요약 기록 실패가 판정을 바꾸면 안 된다 / never let logging change the verdict
 
 
 def _make_stdout_safe():
@@ -243,8 +321,28 @@ def main() -> int:
     haystack = "\n".join([title, body, commits])
 
     claims = find_seal_claims(haystack)
-    if not claims:
-        print("✅ seal 주장 없음 — claim-review 요구 대상 아님 / no seal claim")
+
+    # 🔴 두 번째 트리거 — **코드 표면을 건드리면** seal 어휘가 없어도 흔적을 요구한다 (R57).
+    #    정책 19 의 트리거는 '실질 작업' 인데 가드는 '어휘' 만 봤고, 그 간극을 자기발급
+    #    면제가 메웠다. PR env 가 없으면(로컬 `pre_push_gate`) `None` 이라 이 축은 쉰다 —
+    #    거기서 fail-closed 로 두면 모든 로컬 push 가 영구 red 가 된다(정책 17).
+    # Second trigger: touching code surfaces requires a trace even without seal vocabulary.
+    surfaces = changed_code_surfaces(base_sha, head_sha) if base_sha and head_sha else None
+
+    if not claims and not surfaces:
+        # 🔴 `None`(판정 불가)과 `[]`(변경 없음)은 같은 분기로 오지만 **같은 말을 하면 안 된다**
+        #    (Grok claim-review `019fd786` 적발). 이전 문구는 경로를 못 구한 상태에서도
+        #    "코드 표면 변경 없음" 이라고 단언해, 모른다는 사실을 안다는 말로 덮었다.
+        # None (undecidable) and [] (nothing changed) land in the same branch but must not
+        # say the same thing: claiming "no code surfaces changed" when we could not tell is a lie.
+        if surfaces is None and base_sha and head_sha:
+            print(
+                "⚠️ 변경 경로를 산출하지 못했다 — **코드 표면 축 판정 불가**(seal 축만 적용).\n"
+                "   '변경 없음' 이 아니라 '모른다' 다. base/head SHA 와 저장소 히스토리를 확인할 것."
+            )
+            print("✅ seal 주장 없음 — 이 축에서는 요구 대상 아님")
+        else:
+            print("✅ seal 주장 없음 · 코드 표면 변경 없음 — claim-review 요구 대상 아님")
         return 0
 
     # 🔴 면제는 **본문에서만** 유효하다 — haystack(제목·커밋 포함)에서 찾으면 커밋 메시지 한 줄로
@@ -262,16 +360,42 @@ def main() -> int:
         # additional workflow commands into the Actions log.
         reason = _LINE_BREAKS.sub(" ", exemption.group(0).strip())[:200]
         print(f"::notice title=claim-review exemption used::{reason}")
-        print(f"⏭️  면제 마커(claim-review-not-required) 확인 — seal 주장 {len(claims)}건 통과")
+        # 🔴 job summary 에도 남긴다 (R57) — `::notice` 는 Actions 로그 안쪽이라 아무도 안 본다.
+        #    면제 남용은 **추세**로만 보이므로 사람이 보는 자리에 축적돼야 한다.
+        # Also record in the job summary: `::notice` is buried in the log where nobody looks.
+        _append_step_summary(
+            f"- ⏭️ **claim-review 면제 사용** — seal 주장 {len(claims)}건 · "
+            f"코드 표면 {len(surfaces or [])}개 파일\n  - 사유: {reason}\n"
+        )
+        print(
+            f"⏭️  면제 마커(claim-review-not-required) 확인 — "
+            f"seal 주장 {len(claims)}건 · 코드 표면 {len(surfaces or [])}개 통과"
+        )
         return 0
 
     missing = missing_trace_fields(body)
     if not missing:
-        print(f"✅ seal 주장 {len(claims)}건 + claim-review 흔적 확인")
+        print(
+            f"✅ claim-review 흔적 확인 — seal 주장 {len(claims)}건 · "
+            f"코드 표면 {len(surfaces or [])}개"
+        )
         return 0
 
-    print("🔴 seal 주장이 있는데 claim-review 흔적이 없습니다 (정책 19).", file=sys.stderr)
-    print("   This PR asserts a seal without a claim-review trace.\n", file=sys.stderr)
+    if claims:
+        print("🔴 seal 주장이 있는데 claim-review 흔적이 없습니다 (정책 19).", file=sys.stderr)
+    else:
+        print(
+            "🔴 코드 표면을 바꾸는데 claim-review 흔적이 없습니다 (정책 19 default).",
+            file=sys.stderr,
+        )
+        print(
+            "   정책 19 는 *실질 작업마다* CLAIM-REVIEW 를 기본 포함하라고 합니다 —\n"
+            "   seal 어휘가 없다는 것은 면제 사유가 아닙니다(그 오인이 backlog R57 입니다).\n"
+            f"   변경된 표면 {len(surfaces or [])}개: {', '.join((surfaces or [])[:6])}"
+            + (" …" if len(surfaces or []) > 6 else ""),
+            file=sys.stderr,
+        )
+    print("   This PR changes code/guard surfaces without a claim-review trace.\n", file=sys.stderr)
     for lineno, label, line in claims[:8]:
         print(f"   - [{label}] line {lineno}: {line}", file=sys.stderr)
     if len(claims) > 8:
@@ -284,7 +408,7 @@ def main() -> int:
         "     ## Grok claim-review\n"
         "     - session: <grok sessionId>\n"
         "     - claim: <검증한 주장 한 줄>\n"
-        "     - verdict: SURVIVES | BROKEN (근거 요약)\n"
+        "     - verdict: SURVIVES | WEAKENED | BROKEN (근거 요약)\n"
         "   인용·회고 서술이라 검증 대상이 아니면 `claim-review-not-required: <사유>` 를 적으세요.\n"
         "   🔴 이 검사는 흔적의 **존재**만 봅니다 — 위조·판정의 진위는 잡지 못합니다(설계상 한계).",
         file=sys.stderr,
