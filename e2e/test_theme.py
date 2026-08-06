@@ -1,5 +1,4 @@
 """E2E — 테마 전환 테스트."""
-import pytest
 
 
 def _option(theme: str) -> str:
