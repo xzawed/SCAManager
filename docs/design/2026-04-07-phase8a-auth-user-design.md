@@ -1,7 +1,7 @@
 # Phase 8A: Google OAuth 로그인 + User 모델 + 사용자별 대시보드
 
-**날짜:** 2026-04-07  
-**상태:** 승인됨  
+**날짜:** 2026-04-07
+**상태:** 승인됨
 **다음 Phase:** 8B (리포 추가 UI + 사용자별 GitHub 토큰 + Webhook 자동 생성)
 
 ---
@@ -227,7 +227,7 @@ def overview(request: Request, current_user: User = Depends(require_login)):
 | `tests/test_ui_router.py` | 로그인 후 본인 리포만 반환 |
 | `tests/test_ui_router.py` | 타인 리포 접근 시 404 |
 
-Google OAuth 실제 호출은 `unittest.mock.patch`로 mock 처리.  
+Google OAuth 실제 호출은 `unittest.mock.patch`로 mock 처리.
 기존 146개 단위 테스트는 `require_login` 우회를 위해 test client에 세션 주입 방식으로 수정.
 
 ---

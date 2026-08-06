@@ -147,8 +147,8 @@ GITHUB_TOKEN=3-3에서-발급한-PAT
 | bash, python3, curl | 훅 스크립트 실행에 필요 |
 | git | 버전 관리 |
 
-> **GitHub Codespaces · 모바일 환경에서는 CLI Hook이 동작하지 않습니다.**  
-> `command -v claude` 체크 후 조용히 건너뛰므로 push 자체는 정상 진행됩니다.  
+> **GitHub Codespaces · 모바일 환경에서는 CLI Hook이 동작하지 않습니다.**
+> `command -v claude` 체크 후 조용히 건너뛰므로 push 자체는 정상 진행됩니다.
 > 해당 환경에서는 `python -m src.cli review` CLI 도구를 사용하세요.
 
 ### 설치 방법

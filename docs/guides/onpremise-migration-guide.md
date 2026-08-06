@@ -58,7 +58,7 @@ pip install psycopg2
 
 Railway 도메인으로 등록된 OAuth App의 **Authorization callback URL**을 온프레미스 도메인으로 변경해야 합니다.
 
-GitHub → **Settings → Developer settings → OAuth Apps → SCAManager** → Edit →  
+GitHub → **Settings → Developer settings → OAuth Apps → SCAManager** → Edit →
 `Authorization callback URL`: `https://your-domain/auth/callback`
 
 ---
