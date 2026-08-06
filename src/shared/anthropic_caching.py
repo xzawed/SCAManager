@@ -54,3 +54,50 @@ def build_cached_system_param(
     if not disable_cache:
         block["cache_control"] = {"type": "ephemeral"}
     return [block]
+
+
+def first_text_block(response: object) -> str:
+    """Anthropic 응답에서 **첫 번째 text 블록**의 내용을 꺼낸다.
+
+    🔴 왜 `response.content[0].text` 를 직접 쓰면 안 되는가 (2026-08-06 회고 P1 · R61):
+    그 관용구는 **첫 블록이 항상 text 라고 가정**한다. 그러나 Messages API 의 `content` 는
+    블록 **배열**이고, thinking(확장 사고)·tool_use 가 앞설 수 있다. 그러면
+    `.text` 접근이 `AttributeError` 로 떨어지는데, 이 리포의 호출부 4곳은 전부
+    `except Exception` 안에 있어 **조용히 `api_error` 로 삼켜진다** — 즉 모델이나 설정을
+    한 번 바꾸면 AI 리뷰·인사이트가 **전량 사망**하고 원인은 로그에만 남는다.
+
+    Do not use `response.content[0].text`: the first block is not guaranteed to be text
+    (thinking / tool_use may precede it). All four call sites sit inside `except Exception`,
+    so the AttributeError would be swallowed into a silent `api_error`.
+
+    Args:
+        response: Anthropic `Message` (또는 `.content` 를 갖는 동등 객체).
+
+    Returns:
+        첫 text 블록의 문자열.
+
+    Raises:
+        ValueError: text 블록이 하나도 없을 때. 🔴 조용히 `""` 를 반환하지 **않는다** —
+            빈 문자열은 하류 `_parse_response` 에서 "빈 응답" 과 구별되지 않아
+            *무엇이 잘못됐는지 모르는* 실패가 된다. 원인을 말하는 예외가 낫다.
+    """
+    blocks = getattr(response, "content", None) or []
+    for block in blocks:
+        # `type` 이 있으면 그것으로 판별(공식 계약), 없으면 `.text` 존재로 폴백(구 SDK·목).
+        # Prefer the documented `type` discriminator; fall back to duck-typing for mocks.
+        btype = getattr(block, "type", None)
+        text = getattr(block, "text", None)
+        # 🔴 판별 순서가 중요하다: **명시적으로 비-text 라고 선언한 블록만** 건너뛰고,
+        #    나머지는 `.text` 가 문자열인지로 받는다. `btype is None` 만 허용하면
+        #    `MagicMock` 목(`.type` 이 자동 생성돼 None 이 아니다)이 전부 탈락한다 —
+        #    실제로 기존 테스트 20건이 이 과엄격을 잡았다.
+        # Skip only blocks that explicitly declare a non-text type; otherwise duck-type on
+        # `.text` being a str. A `btype is None` check alone would reject MagicMock stubs.
+        if isinstance(btype, str) and btype != "text":
+            continue
+        if isinstance(text, str):
+            return text
+    kinds = [getattr(b, "type", type(b).__name__) for b in blocks]
+    raise ValueError(
+        f"Anthropic 응답에 text 블록이 없다 — 블록 구성: {kinds or '(빈 content)'}"
+    )

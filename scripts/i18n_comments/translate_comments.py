@@ -137,6 +137,23 @@ DOMAIN GLOSSARY (mandatory):
 """
 
 
+def _first_text_block(msg: object) -> str:
+    """응답에서 **첫 text 블록** — `content[0].text` 직접 접근 금지 (backlog R61).
+
+    `content` 는 블록 배열이고 thinking·tool_use 가 앞설 수 있다. 첫 블록을 text 로 가정하면
+    모델/설정 변경 한 번에 조용히 죽는다. `scripts/` 는 standalone 실행이라 `src` 를 import 할
+    수 없어 `src.shared.anthropic_caching.first_text_block` 과 **의도적 중복**이다.
+    """
+    for block in (getattr(msg, "content", None) or []):
+        btype = getattr(block, "type", None)
+        text = getattr(block, "text", None)
+        if isinstance(btype, str) and btype != "text":
+            continue
+        if isinstance(text, str):
+            return text
+    raise ValueError("Anthropic 응답에 text 블록이 없다")
+
+
 def _load_manifest() -> dict:
     if MANIFEST_PATH.exists():
         try:
@@ -242,7 +259,7 @@ def _call_claude_api(items: list[dict], client: anthropic.Anthropic) -> dict[int
                 system=SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": user_content}],
             )
-            raw = response.content[0].text.strip()
+            raw = _first_text_block(response).strip()
             if raw.startswith("```"):
                 raw = re.sub(r"```(?:json)?\n?", "", raw).rstrip("`").strip()
             translations = json.loads(raw)

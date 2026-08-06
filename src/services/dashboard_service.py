@@ -38,7 +38,7 @@ from src.models.analysis_feedback import AnalysisFeedback
 from src.models.merge_attempt import MergeAttempt
 from src.models.repository import Repository
 from src.scorer.calculator import calculate_grade
-from src.shared.anthropic_caching import build_cached_system_param
+from src.shared.anthropic_caching import first_text_block, build_cached_system_param
 from src.shared.claude_metrics import aclose_anthropic_client, extract_anthropic_usage, log_claude_api_call
 from src.shared.feature_kill_switch import is_disabled
 from src.repositories import insight_narrative_cache_repo
@@ -844,7 +844,7 @@ async def _call_insight_claude_api(
             cache_creation_tokens=getattr(usage, "cache_creation_input_tokens", 0) or 0,
             user_id=user_id,
         )
-        return response.content[0].text
+        return first_text_block(response)
     except Exception as exc:  # pylint: disable=broad-exception-caught  # noqa: BLE001
         # anthropic / httpx / 네트워크 오류 모두 graceful fallback (caller 가 api_error 처리)
         # All anthropic/httpx/network errors fall through to graceful fallback (caller maps to api_error)
