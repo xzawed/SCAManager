@@ -1,7 +1,7 @@
 # PR Gate 3-옵션 분리 재설계 — 설계 문서
 
-**날짜:** 2026-04-10  
-**상태:** 구현 완료  
+**날짜:** 2026-04-10
+**상태:** 구현 완료
 **관련 마이그레이션:** `0010_pr_gate_three_options.py`
 
 ---
@@ -70,7 +70,7 @@ async def run_gate_check(
 
 ### `_build_result_dict()` 확장
 
-`src/worker/pipeline.py`의 `_build_result_dict()`가 이제 `score`·`grade` 필드를 포함한다.  
+`src/worker/pipeline.py`의 `_build_result_dict()`가 이제 `score`·`grade` 필드를 포함한다.
 gate engine과 telegram callback 양쪽에서 저장된 result dict만으로 점수를 추출한다.
 
 ### `post_pr_comment_from_result()` 신규 함수
@@ -86,7 +86,7 @@ async def post_pr_comment_from_result(
 ) -> None
 ```
 
-`AiReviewResult` 객체 없이 저장된 result dict만으로 PR 코드리뷰 댓글을 게시한다.  
+`AiReviewResult` 객체 없이 저장된 result dict만으로 PR 코드리뷰 댓글을 게시한다.
 gate engine이 이 함수를 사용하므로 pipeline에서 `post_pr_comment` 제거가 가능해졌다.
 
 ---

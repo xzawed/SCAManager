@@ -1,8 +1,25 @@
 # pre-commit 훅 설정 — 시크릿 유출 3중 가드 Layer 1
 # Pre-commit hook config — Secret leak prevention Layer 1
 #
-# 설치: pip install pre-commit && pre-commit install && pre-commit install --hook-type commit-msg
-# Install: pip install pre-commit && pre-commit install && pre-commit install --hook-type commit-msg
+# 설치 / Install:
+#   py -3 -m pip install pre-commit
+#   git config --unset-all core.hooksPath   # 🔴 설정돼 있으면 pre-commit 이 설치를 거부한다
+#   py -3 -m pre_commit install             # 아래 default_install_hook_types 로 2 타입 동시 설치
+#
+# 🔴 `pre-push` 는 설치하지 **않는다** — `.git/hooks/pre-push` 에 이 리포의 6-step ② 게이트
+#    러너가 이미 있고, pre-commit 은 남의 훅을 `pre-push.legacy` 로 **밀어낸다**(파괴적).
+# 🔴 Never install the pre-push type: pre-commit would displace this repo's own push gate.
+#
+# 🔴 `pre-commit` 실행파일이 PATH 에 없어도 훅은 동작한다 — 생성된 훅이 절대 인터프리터
+#    경로(INSTALL_PYTHON)를 박아 넣기 때문이다. PATH 부재를 '미설치' 로 읽지 말 것.
+
+# 🔴 `pre-commit install` 이 **두 타입을 함께** 설치하게 한다 (backlog R56).
+#    이전에는 `--hook-type commit-msg` 를 따로 쳐야 했고, 그것을 빠뜨리면
+#    `check-commit-msg-secrets`(실제 토큰 유출 사고로 만들어진 훅)만 조용히 죽은 채
+#    나머지가 설치돼 "설치 완료" 로 보였다.
+# Install both hook types by default: forgetting the commit-msg type silently killed the
+# very hook that a real token-leak incident created.
+default_install_hook_types: [pre-commit, commit-msg]
 
 repos:
   # Layer 1-A: gitleaks — 코드 diff + 커밋 메시지 시크릿 탐지
@@ -63,9 +80,18 @@ repos:
       # Layer 1-D: docs/repo 정합 가드 (stdlib 스크립트 — 회고 WF-2/3/5, 2026-06-23)
       # Layer 1-D: docs/repo integrity guards (stdlib scripts — retro WF-2/3/5)
       # 모두 repo 내부만 읽고(또는 부재 시 skip) pass_filenames:false 로 스크립트가 자체 스캔.
+      # 🔴 `language: python` 이지 `system` 이 아니다 (backlog R56 · 실행 실측 2026-08-06).
+      #   `system` 은 PATH 를 손대지 않으므로 `entry: python …` 이 **주변 PATH 의 python**
+      #   으로 해소된다. 이 개발 머신에서 그것은 Microsoft Store 스텁이라 스크립트를 실행하지
+      #   않고 `Python` 한 줄만 찍고 죽는다 — 실측: `system` → **Failed, exit 9009**,
+      #   `python` → **Passed**. 즉 설치만 했다면 문서·가드 훅 7종이 커밋마다 무의미하게
+      #   차단했을 것이다. `language: python` 은 pre-commit 이 만든 venv 의 bin 을 PATH 앞에
+      #   붙이므로 `python` 이 실제 인터프리터로 해소된다(의존성은 여전히 0 — stdlib only).
+      # Must be `python`, not `system`: `system` leaves PATH alone, so `entry: python …`
+      # resolves to the Windows Store stub here (exit 9009). Measured both ways.
       - id: check-docs-sync
         name: "📊 docs 수치 정합 (STATE↔README 배지 + 의존성 핀)"
-        language: system
+        language: python
         entry: python scripts/check_docs_sync.py
         # 🔴 files 는 스크립트가 **읽는 모든 파일**을 덮어야 한다 — 좁으면 그 파일만 바꾼 커밋에서
         # 훅이 아예 발화하지 않는다(Grok claim-review 019fccd5 적발: 핀 축 신설 후 requirements.txt·
@@ -78,7 +104,7 @@ repos:
 
       - id: check-toc-anchors
         name: "🔗 cycle-history TOC 앵커 정합"
-        language: system
+        language: python
         entry: python scripts/check_toc_anchors.py
         files: "^docs/cycle-history\\.md$"
         pass_filenames: false
@@ -87,7 +113,7 @@ repos:
 
       - id: check-memory-refs
         name: "🧠 메모리 슬러그 참조 정합"
-        language: system
+        language: python
         entry: python scripts/check_memory_refs.py
         files: "^(CLAUDE\\.md|\\.claude/policies/.*\\.md)$"
         pass_filenames: false
@@ -96,7 +122,7 @@ repos:
 
       - id: check-guard-fail-open
         name: "🛡️ 가드 fail-open floor (bare-substring 판정 차단, B8)"
-        language: system
+        language: python
         entry: python scripts/check_guard_fail_open.py
         files: "^scripts/check_.*\\.py$"
         pass_filenames: false
@@ -105,7 +131,7 @@ repos:
 
       - id: check-architecture-tree-sync
         name: "🌲 architecture 트리 싱크 (src/ ↔ architecture.md)"
-        language: system
+        language: python
         entry: python scripts/check_architecture_tree_sync.py
         files: "^(src/[^/]+/|src/[^/]+\\.py|docs/architecture\\.md)$"
         pass_filenames: false
@@ -114,7 +140,7 @@ repos:
 
       - id: check-env-vars-sync
         name: "🔑 env-vars 싱크 (config.py ↔ env-vars.md)"
-        language: system
+        language: python
         entry: python scripts/check_env_vars_sync.py
         files: "^(src/config\\.py|docs/reference/env-vars\\.md)$"
         pass_filenames: false
@@ -123,7 +149,7 @@ repos:
 
       - id: check-config-5way-sync
         name: "🧩 config 싱크 — RepoConfig 3-layer (ORM↔Data↔Update)"
-        language: system
+        language: python
         entry: python scripts/check_config_5way_sync.py
         files: "^(src/models/repo_config\\.py|src/config_manager/manager\\.py|src/api/repos\\.py)$"
         pass_filenames: false
@@ -147,8 +173,16 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
+      # 🔴 자동 수정 훅은 **기록·vendor·수정금지 파일**을 건드리면 안 된다 (backlog R56).
+      #   `docs/_archive/**` 는 그 시점의 사실 기록(재작성 금지) · `alembic/versions/**` 는
+      #   CLAUDE.md 수정 금지 파일 · `src/static/vendor/**` 는 외부 산출물이다.
+      #   실측(2026-08-06): 이 제외가 없으면 trailing-whitespace 17 파일 + end-of-file-fixer
+      #   3 파일이 대상이고 그중 대부분이 위 3 부류다.
+      # Autofixers must not rewrite archives (records), vendored assets, or edit-forbidden files.
       - id: trailing-whitespace
+        exclude: "^(docs/_archive/|alembic/versions/|src/static/vendor/)"
       - id: end-of-file-fixer
+        exclude: "^(docs/_archive/|alembic/versions/|src/static/vendor/)"
       - id: check-yaml
       - id: check-added-large-files
         args: ["--maxkb=500"]
