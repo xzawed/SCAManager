@@ -15,24 +15,37 @@
 - 🔴 **fail-closed 는 모드 무관**: collect 프로세스 non-zero(수집 오류·"no tests collected") ·
   파싱 미검출 · STATE 정규식 미매치 → **항상 exit 1**. 이것이 `|| true` 와의 경계다 —
   advisory 가 되는 것은 **drift 판정뿐**이다.
-- 모드: 기본 = drift 시 exit 1 (main push 용). `--advisory-drift` = drift 시 loud 경고 + exit 0
-  (PR 용 — PR 마다 STATE 수정을 강제하면 병렬 PR STATE 충돌을 배치 이월 규칙이 막으려던 그대로
-  재생산하므로, PR 은 신호만 주고 main 에서 빨간다).
+- 모드: **기본 = drift 시 exit 1** — PR·main push 양쪽 모두 차단한다.
+  `--advisory-drift` 는 남겨 두되 **CI 에서는 더 이상 쓰지 않는다**(로컬 진단용).
+
+🔴 **2026-08-07 — PR advisory 를 걷어냈다 (P2).** 이전에는 PR 에서 exit 0 이라
+드리프트가 통과했고 main push 에서만 enforce 돼 **막을 수 없는 곳에서만** 빨개졌다.
+실제 사고: 오판독한 정수 하나가 `--fix` 로 4지점에 전파돼 사본은 완벽히 일치했고
+(`check_docs_sync` ✅) PR 을 통과해 머지된 뒤 **main CI 가 2연속 red** 였다.
+
+배치-PR 이월은 없애지 않고 **명시 면제**로 승격했다 — PR 본문에
+`STATE-sync-deferred: <사유 16자 이상>` 을 적으면 통과하되 job summary 에 계수된다.
+조용한 통과가 아니라 **보이는 결정**이 되는 것이 차이다.
 
 ## 🔴 이 가드가 증명하지 않는 것 (정직 기준)
 
-- **브랜치 보호 부재(R2-b)라 red 는 머지를 물리적으로 막지 못한다** — red 가 어디 보이느냐를
-  바꿀 뿐이다. "기계적 종결" 이 아니라 **프로세스 신호**다.
+- 🔴 **정정(2026-08-07)**: 이전 판에는 `"브랜치 보호 부재라 red 는 머지를 막지 못한다"`
+  는 서술이 있었고, **그것이 PR advisory 를 유지하는 근거로 쓰였다**. 그 서술은 이미
+  거짓이다 — required **10종** + `enforce_admins: true` 가 살아 있다(API 실측).
+  red 는 실제로 머지를 막는다.
+  (구 서술은 인용 부호 안에 둔다 — 회귀 가드가 **따옴표 밖 맨 주장**만 위반으로 본다.)
 - plugin/순서 불변성은 **현재 핀 상대적**이다(pytest 9.x 고정 · deselect 훅 0 · randomly 미설치
   실측). 수집을 바꾸는 플러그인이 들어오면 이 축은 이유를 모른 채 흔들린다.
 - CI(ubuntu, requirements-dev 설치)가 **권위 표면**이다 — 로컬 pytest 버전 차이는 참고용.
 
 Ground-truth axis: compares live `--collect-only` counts against docs/STATE.md. Fail-closed on any
-tool/parse failure in BOTH modes; only the drift verdict is advisory on PRs. Red does not physically
-block merges (no branch protection) — this moves where red appears, nothing more.
+tool/parse failure. Drift now BLOCKS on PRs too (2026-08-07); the batch-carry escape became an
+explicit, counted `STATE-sync-deferred:` marker. Branch protection is live (10 required checks +
+enforce_admins), so red does physically block merges.
 """
 from __future__ import annotations
 
+import os
 import re
 import subprocess  # nosec B404
 import sys
@@ -94,6 +107,33 @@ def state_counts(state_text: str) -> tuple[int, int] | None:
     return (int(m.group(1)), int(m.group(2))) if m else None
 
 
+# 이월 마커 — 사유 16자 이상, PR **본문**에서만 유효.
+# 🔴 백틱/따옴표로 시작하는 줄은 제외한다 — 정책 19 면제 마커가 **자기를 문서화하는 PR** 을
+#    면제해 버린 실사고와 같은 클래스다(`check_claim_review_trace.py` 의 `_EXEMPT` 관용구).
+_DEFERRED = re.compile(
+    r"^[ \t]*(?![`'\"])STATE-sync-deferred\s*:\s*\S.{15,}", re.MULTILINE)
+
+# 개행류 제어문자 — Actions 워크플로 커맨드 위조 차단(`\r` 이 남으면 줄이 갈라진다).
+_LINE_BREAKS = re.compile(r"\s+")
+
+
+def _append_step_summary(markdown: str) -> None:
+    """GitHub Actions job summary 에 한 줄 추가 (없으면 무시 — 로컬 실행).
+
+    🔴 `::notice` 는 Actions **로그 안쪽**이라 사실상 아무도 보지 않는다. 이월 남용은
+    한 건씩 보면 정상이고 **추세로만** 드러나므로 사람이 실제로 여는 자리에 누적돼야 한다.
+    이 저장소가 반복해 고쳐 온 "관측은 하는데 아무도 안 보는" 클래스다.
+    """
+    path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not path:
+        return
+    try:
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(markdown)
+    except OSError:
+        pass  # 기록 실패가 판정을 바꾸면 안 된다 / logging must never change the verdict
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     advisory_drift = "--advisory-drift" in argv
@@ -132,10 +172,32 @@ def main(argv: list[str] | None = None) -> int:
         "   → docs/STATE.md 종합수치 + 추적셀 + README 배지 2곳(6-step ⑤) 동기화 필요.\n"
         "   trailing sync PR 로 갱신하라 — 이 신호가 배치 이월의 종결 신호다."
     )
+    # 🔴 배치-PR 이월은 없애지 않고 **명시 면제**로 승격한다 (P2, 2026-08-07).
+    #    이전에는 `--advisory-drift` 가 **모든** 드리프트를 조용히 통과시켰고, 그 결과
+    #    오판독한 정수가 4지점으로 전파돼 머지됐으며 main 이 2연속 red 였다.
+    #    이제 이월하려면 PR 본문에 그 의도를 **적어야** 하고, 그 사용은 계수된다.
+    # The batch-carry escape is now an explicit, counted marker instead of a silent pass.
+    deferral = _DEFERRED.search(os.environ.get("PR_BODY", "") or "")
+    if deferral:
+        reason = _LINE_BREAKS.sub(" ", deferral.group(0).strip())[:200]
+        print(f"::notice title=STATE sync deferred::{reason}")
+        _append_step_summary(
+            "- ⏭️ **STATE 수치 동기화 이월**\n"
+            f"  - {message.splitlines()[0]}\n  - 사유: {reason}\n"
+        )
+        print(f"⏭️  이월 마커 확인 — {message.splitlines()[0]}")
+        return 0
+
     if advisory_drift:
-        print(f"⚠️  (advisory) {message}\n   PR 은 통과시킨다 — main push 에서 enforce 된다.")
+        print(f"⚠️  (advisory) {message}\n   ⚠️ 이 모드는 CI 에서 더 이상 쓰이지 않는다(로컬 진단용).")
         return 0
     print(f"🔴 {message}", file=sys.stderr)
+    print(
+        "\n   배치-PR 이월이라 이번 PR 에서 동기화하지 않는다면 본문에 아래를 적으세요:\n"
+        "     STATE-sync-deferred: <왜 이 PR 에서 안 하는가 — 16자 이상>\n"
+        "   🔴 그 사용은 job summary 에 계수됩니다 — 조용한 통과가 아닙니다.",
+        file=sys.stderr,
+    )
     return 1
 
 

@@ -162,16 +162,36 @@ def _ci_steps():
     return [s for job in ci["jobs"].values() for s in job.get("steps", [])]
 
 
-def test_ci_wires_advisory_step_for_pull_requests():
-    """🔴 PR 스텝 — `--advisory-drift` + `if: pull_request` (실행 형태 관측, `_wiring_shape`)."""
+def test_ci_wires_blocking_step_for_pull_requests():
+    """🔴 PR 스텝은 **차단**이어야 한다 — `--advisory-drift` 금지 (2026-08-07 계약 변경).
+
+    ## 왜 계약이 바뀌었나
+
+    이 테스트의 초판은 정반대를 못박고 있었다 — *"PR 스텝은 `--advisory-drift` 를 쓴다"*.
+    그 계약이 실제 사고를 냈다: 오판독한 정수 하나가 `check_docs_sync --fix` 로 **4지점에
+    자동 전파**돼 문서 사본은 완벽히 일치했고(그 가드는 ✅), ground-truth 가드는 정확히
+    잡았지만 **PR 에서 exit 0** 이라 통과·머지됐다. 그리고 막을 수 없는 곳(main push)에서만
+    빨개져 **main CI 가 2연속 red** 였다.
+
+    advisory 를 정당화하던 근거는 *"브랜치 보호 부재라 red 가 머지를 막지 못한다"* 는
+    주석이었는데 그것은 이미 거짓이었다(required 10종 + `enforce_admins: true` 실측).
+
+    배치-PR 이월은 사라지지 않았다 — `STATE-sync-deferred:` **명시 마커**로 승격했고
+    그 사용은 job summary 에 계수된다. 조용한 통과 → 보이는 결정.
+    """
     hits = [
         s for s in _ci_steps()
         if invokes(s.get("run", ""), "scripts/check_test_count_sync.py")
-        and "--advisory-drift" in s.get("run", "")
+        and "pull_request" in str(s.get("if", ""))
     ]
-    assert hits, "PR advisory 스텝이 없다"
-    assert any("pull_request" in str(s.get("if", "")) for s in hits), (
-        "advisory 스텝에 `if: github.event_name == 'pull_request'` 조건이 없다"
+    assert hits, "PR 스텝이 없다 — 이 축이 PR 에서 아예 돌지 않는다"
+    for step in hits:
+        assert "--advisory-drift" not in step.get("run", ""), (
+            "PR 스텝이 `--advisory-drift` 를 쓴다 — 드리프트가 PR 을 통과해 "
+            "**막을 수 없는 곳(main push)에서만** 빨개진다(2026-08-07 실사고)."
+        )
+    assert any("PR_BODY" in str(s.get("env", {})) for s in hits), (
+        "PR 스텝이 `PR_BODY` 를 넘기지 않는다 — 이월 마커가 원리적으로 동작하지 않는다"
     )
 
 
