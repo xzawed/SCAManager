@@ -36,7 +36,6 @@ import pytest
 _ROOT = Path(__file__).resolve().parents[3]
 _CI = _ROOT / ".github" / "workflows" / "ci.yml"
 _SCRIPT = _ROOT / "scripts" / "check_test_count_sync.py"
-_MOD = "scripts.check_test_count_sync"
 
 
 # ── ① CI 배선 — PR 에서 advisory 를 쓰지 않는다 ─────────────────────────
