@@ -400,15 +400,24 @@ jobs:
 
       # 🔴 테스트 수치 ground-truth 축 (회고 2026-07-31 P0-D · backlog R25) — check_docs_sync 는
       # 문서 사본끼리만 대조해 5지점 동시 오류가 GREEN 이었다(실측: 문서 6205 vs 실측 6269).
-      # PR = advisory(드리프트만 경고 — 병렬 PR 의 STATE 충돌을 강제하지 않음, 배치 이월 규칙 유지),
-      # main push = enforce(red = trailing sync 필요 신호 — 이월의 종결 신호).
-      # 🔴 도구/파싱 실패는 **양쪽 모드 다 exit 1** (Grok claim-review 019fb930 — `|| true` 와의 경계).
-      # 브랜치 보호 부재라 red 가 머지를 물리적으로 막지는 못한다 — red 의 위치를 바꿀 뿐(정직 명시).
-      # Ground-truth axis: collect-only vs STATE. PR advisory / main-push enforce; tool failure
-      # fails in both modes. With no branch protection this moves where red appears, nothing more.
-      - name: 테스트 수치 ↔ 실측 대조 (PR — advisory)
+      #
+      # 🔴 **2026-08-07: PR 에서도 차단한다** (P2). 이전에는 `--advisory-drift`(exit 0)라
+      #    드리프트가 PR 을 통과했고, main push 에서만 enforce 돼 **막을 수 없는 곳에서만**
+      #    빨개졌다. 실제 사고: 오판독한 정수 하나가 `--fix` 로 4지점에 전파돼 사본은
+      #    완벽히 일치(check_docs_sync ✅) → PR 통과 → 머지 → **main CI 2연속 red**.
+      #    advisory 를 유지하던 근거였던 주석("브랜치 보호 부재라 red 가 머지를 막지 못한다")은
+      #    **이미 거짓**이다 — required 10종 + enforce_admins:true 가 살아 있다(API 실측).
+      #
+      # 🔴 배치-PR 이월은 없애지 않고 **명시 면제**로 승격한다: PR 본문에
+      #    `STATE-sync-deferred: <사유>` 를 적으면 통과하되 job summary 에 계수된다.
+      #    조용한 통과 → 보이는 결정. (정책 19 면제 마커와 같은 관용구.)
+      # 🔴 도구/파싱 실패는 **양쪽 모드 다 exit 1** (Grok claim-review 019fb930 — `|| true` 경계).
+      # Drift now blocks on PRs too; the batch-carry escape became an explicit, counted marker.
+      - name: 테스트 수치 ↔ 실측 대조 (PR — 차단)
         if: github.event_name == 'pull_request'
-        run: python scripts/check_test_count_sync.py --advisory-drift
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: python scripts/check_test_count_sync.py
 
       - name: 테스트 수치 ↔ 실측 대조 (main push — enforce)
         if: github.event_name == 'push'
