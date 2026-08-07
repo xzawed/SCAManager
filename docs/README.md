@@ -41,6 +41,7 @@
 | [runbooks/merge-retry.md](runbooks/merge-retry.md) | CI-aware Auto Merge 재시도 운영 |
 | [runbooks/operational-smoke-checks.md](runbooks/operational-smoke-checks.md) | 운영 endpoint smoke check (정책 13) |
 | [runbooks/secret-prevention.md](runbooks/secret-prevention.md) | 시크릿 유출 방지 |
+| [runbooks/branch-protection.md](runbooks/branch-protection.md) | main 브랜치 보호 — required check 정본 목록 + 승격/롤백 절차 + 관측의 한계 |
 | [runbooks/self-analysis.md](runbooks/self-analysis.md) | 자기 분석 루프 방지 |
 | [runbooks/static-assets.md](runbooks/static-assets.md) | 정적 자산(Tailwind 빌드) 관리 |
 | [runbooks/phase2-data-readiness.md](runbooks/phase2-data-readiness.md) | Phase 2 데이터 준비 |
