@@ -156,6 +156,17 @@ HOLDS. 그리고 뮤테이션 대상은 seal 이 **보호한다고 주장하는 
   PR 제목·본문·PR 범위 커밋에 있으면 `repo-integrity` 의 `scripts/check_claim_review_trace.py`
   가 구조화 흔적(session/claim/verdict **값**) 없이는 exit 1. 면제 = 본문 줄머리
   `claim-review-not-required: <사유 16자+>` — 사용 시 `::notice` annotation 으로 계량된다.
+  🔴 **면제 적용 범위 축소 (2026-08-08 사용자 결정 "필수로 승격" — 의도된 행동 변경)**.
+  판정 규칙은 두 줄이다:
+  1. PR 이 **관측자를 저술하는 표면**(가드 스크립트·훅·워크플로·CI 설정·그 테스트·owed 원장)을
+     건드리면 면제 **무효**. 정확한 경로 집합은 `scripts/check_claim_review_trace.py` 의
+     `_GUARD_SURFACES` 가 집행하며, 그 값이 곧 판정이다(산문 사본을 두면 갈라진다 — R45 전례).
+  2. seal 주장 + 코드 표면 변경도 면제 **무효**.
+  그 밖(문서 전용 PR 의 인용 · seal 주장 없는 일상 코드 변경)은 면제가 그대로 유효하다.
+  근거: 그 창이 만든 게이트 4개 중 3개가 같은 결함이었고 11 에이전트 회고가 하나를 놓쳤다
+  (Grok `019fe026` BROKEN). 🔴 `session` 은 **벤더 중립**(Grok id 또는 워크플로 `wf_…` run id)
+  — 단일 벤더 형식만 받으면 그 서비스 장애가 가드 작업을 영구 차단한다.
+  가드: `tests/unit/scripts/test_claim_review_mandatory_on_guards.py`.
   본문 판정은 **HTML 주석 스트리핑 후**다(리뷰어 비가시 영역은 흔적/면제로 불인정).
   본문 편집 재검증 = `claim-review-on-body-edit.yml`. 위조·의미 진위는 원리적으로 못 잡는다
   (가드 docstring §한계 — 그 잔여가 바로 이 문서의 claim-review 프로세스다).

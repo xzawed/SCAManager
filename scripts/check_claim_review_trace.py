@@ -85,8 +85,17 @@ _REQUIRED_FIELDS: tuple[tuple[str, str], ...] = (
     #    고치는 PR 자신이 그 이유로 exit 1. 마크다운에서 ID 를 코드 표기하는 것은 자연스럽다.
     # 🔴 Allow backticks/quotes: the help text below demonstrates a backticked example the regex
     #    rejected, so the guard blocked bodies written exactly as it instructed.
-    (r"^[-*|\s]*session\s*[:|]\s*[`'\"]?[0-9a-f]{8}-[0-9a-f]{4}",
-     "session — Grok sessionId (예: `019fadf6-523e-...`)"),
+    # 🔴 **벤더 중립화 (2026-08-08 — 면제 필수 승격의 짝)**: 가드 표면 PR 에서 면제를 닫는
+    #    순간, 이 필드가 Grok sessionId **형식만** 받으면 그 서비스가 죽는 날 가드 작업이
+    #    영구 차단된다. 그건 봉인이 아니라 가용성 사고다(정책 17 — 안정성 > 권장 규격).
+    #    그렇다고 아무 문자열이나 받으면 자기 인증이 되므로, **되짚을 수 있는 식별자**만 받는다:
+    #      · Grok sessionId  — `019fadf6-523e-...`
+    #      · 워크플로 run id — `wf_a3ad73e1-eca` (transcript 가 디스크에 남는다)
+    #    둘 다 사후에 원문을 열 수 있다는 것이 요점이다 — 그게 "흔적" 의 정의다.
+    # Vendor-neutral but still retrievable: a Grok sessionId or a Workflow run id, both of
+    # which point at a transcript someone can reopen. A free-form string would be self-certification.
+    (r"^[-*|\s]*session\s*[:|]\s*[`'\"]?(?:[0-9a-f]{8}-[0-9a-f]{4}|wf_[a-z0-9-]{6,})",
+     "session — Grok sessionId (`019fadf6-523e-...`) 또는 워크플로 run id (`wf_a3ad73e1-eca`)"),
     (r"^[-*|\s]*verdict\s*[:|]\s*(SURVIVES|WEAKENED|BROKEN|CONFIRMED|REFUTED|HOLDS)\b",
      "verdict — SURVIVES | WEAKENED | BROKEN | CONFIRMED | REFUTED | HOLDS 중 하나"),
     (r"^[-*|\s]*claim\s*[:|]\s*\S.{15,}",
@@ -264,11 +273,76 @@ _CODE_SURFACES = (
 )
 
 
-def changed_code_surfaces(base_sha: str, head_sha: str) -> list[str] | None:
-    """PR 이 건드린 코드 표면 경로. **판정 불가면 None**(빈 리스트와 구별한다).
+# 🔴 **가드 표면** — 여기를 건드리는 PR 은 면제 마커로 빠져나갈 수 없다 (사용자 결정 2026-08-08).
+#
+# 왜 코드 표면 전체가 아니라 부분집합인가: 면제를 전면 폐지하면 일상 리팩터까지 외부 검증을
+# 기다리게 되어 **오탐이 진탐을 넘는다**(정책 17 — 가드 자살). 반면 *관측자를 저술하는 표면*
+# 에서는 결함이 조용하다 — 가드가 틀리면 그 가드가 지키는 축 전체가 무증상으로 열린다.
+#
+# 🔴 근거 (2026-08-08 세션 실측): 이 창이 만든 게이트 **4개 중 3개가 같은 형태로 결함**이었다
+#    (면제 마커 관용구는 복제하고 하드닝은 복제하지 않음 → HTML 주석 은닉 면제 3중 재발).
+#    11 에이전트 5+1 회고는 그중 하나를 **못 찾았고**, Grok claim-review `019fe026` 가
+#    "이월 마커 봉인" 을 BROKEN 으로 반증했다. *"게이트가 작동하는가"* 와
+#    *"이 봉인을 어떻게 깨는가"* 는 다른 질문이고, 후자만 그 결함을 찾았다.
+#
+# ⚠️ **흔적은 Grok 전용이 아니다** — 요구하는 것은 (session · claim · verdict) 세 필드이지
+#    특정 벤더가 아니다. 외부 서비스가 죽어도 독립 적대 검증(워크플로 적대 패스 등)으로
+#    흔적을 채울 수 있다. 그래야 서비스 장애가 가드 작업을 영구 차단하지 않는다.
+# Guard-authoring surfaces cannot self-exempt; the trace is reviewer-agnostic (three fields),
+# so an outage of any one reviewer never hard-blocks the repo.
+_GUARD_SURFACES = (
+    "scripts/",
+    ".claude/hooks/",
+    ".claude/workflows/",
+    ".claude/settings.json",
+    ".github/workflows/",
+    ".pre-commit-config.yaml",
+    "tests/unit/scripts/",
+    "tests/unit/hooks/",
+    "docs/runbooks/owed-verification.md",
+)
+
+
+# 🔴 **디렉토리 열거만으로는 부족하다** (Grok claim-review `019fe089` 적발 — 실측 반례).
+#    `tools/check_new_guard.py` 처럼 목록 **밖**에 가드를 새로 만들면 위 접두사에 안 걸린다.
+#    AGENTS.md 가 기록하듯 이 리포의 최다 observer-lie 표면은 **test-as-guard** 이고,
+#    그것은 어느 디렉토리에나 생길 수 있다. 그래서 **이름 규칙**을 함께 본다.
+# Directory prefixes alone miss a guard authored outside the list; match by filename too.
+_GUARD_FILENAME = re.compile(r"(?:^|/)(?:check_\w+|test_[a-z0-9_]*guard[a-z0-9_]*)\.py$")
+
+
+def guard_surfaces(paths: list[str] | None) -> list[str]:
+    """변경 경로 중 **가드 표면**만 — 디렉토리 접두사 **또는** 가드 이름 규칙.
+
+    🔴 `None` 에서 빈 리스트를 돌려주는 것이 fail-open 처럼 보이지만 아니다: 그 경우
+    `changed_code_surfaces` 도 `None` 이라 **seal 축만** 남고, 그 축은 그대로 흔적을 요구한다.
+    여기서 fail-closed 로 두면 base/head SHA 가 없는 **모든 로컬 실행**이 영구 red 가 된다
+    (정책 17 — 로컬 게이트가 못 쓰게 되면 아무도 안 돌린다).
+
+    🔴 **정직 기준 — 이 판정은 완전하지 않다**: allowlist + 이름 규칙 둘 다 열거이므로,
+    둘 다 피해 가는 새 가드(예: `tests/unit/gate/test_foo.py` 에 심은 test-as-guard)는
+    잡지 못한다. 이 축을 완전하게 만들려면 *"이 변경이 가드인가"* 를 의미적으로 판정해야
+    하는데 그건 정적으로 불가하다(AGENTS.md §정적 탐지의 천장). 잔여는 backlog 에 등재한다.
+    """
+    if not paths:
+        return []
+    return [
+        p for p in paths
+        if p.startswith(_GUARD_SURFACES) or _GUARD_FILENAME.search(p)
+    ]
+
+
+def changed_paths(base_sha: str, head_sha: str) -> list[str] | None:
+    """PR 이 건드린 **전체** 경로. 판정 불가면 None(빈 리스트와 구별한다).
 
     🔴 `base...head`(three-dot, merge-base 기준)를 쓴다 — `base..head` 는 base 브랜치가
     앞서간 만큼을 함께 세어 남의 변경을 이 PR 의 것으로 오판한다.
+
+    🔴 **왜 필터 전 목록이 따로 필요한가** (Grok claim-review `019fe089`): 가드 표면 판정은
+    `_CODE_SURFACES` 로 **거른 뒤**의 목록에 적용하면 안 된다. `tools/check_x.py` 같은
+    목록 밖 경로는 걸러지는 순간 사라져, 이름 규칙이 있어도 **도달조차 못 한다**.
+    Guard classification must run on the unfiltered list, or paths outside _CODE_SURFACES
+    vanish before the filename rule can see them.
     """
     try:
         proc = subprocess.run(  # nosec B603 B607
@@ -280,10 +354,15 @@ def changed_code_surfaces(base_sha: str, head_sha: str) -> list[str] | None:
         return None
     if proc.returncode != 0:
         return None
-    return [
-        line.strip() for line in (proc.stdout or "").splitlines()
-        if line.strip().startswith(_CODE_SURFACES)
-    ]
+    return [line.strip() for line in (proc.stdout or "").splitlines() if line.strip()]
+
+
+def changed_code_surfaces(base_sha: str, head_sha: str) -> list[str] | None:
+    """PR 이 건드린 코드 표면 경로. **판정 불가면 None**(빈 리스트와 구별한다)."""
+    paths = changed_paths(base_sha, head_sha)
+    if paths is None:
+        return None
+    return [p for p in paths if p.startswith(_CODE_SURFACES)]
 
 
 def commit_messages(base_sha: str, head_sha: str) -> str:
@@ -371,6 +450,46 @@ def main() -> int:
     # 자기면제가 가능하다(Grok 적발). 면제는 리뷰어가 보는 자리에 있어야 한다.
     # 🔴 Exemption is body-only: searching the whole haystack would let a commit line self-exempt.
     exemption = _EXEMPT.search(body)
+
+    # 🔴 **면제가 통하지 않는 경우** (사용자 결정 2026-08-08 — "필수로 승격").
+    #    (a) 가드 표면을 건드렸다 — 관측자를 저술하는 PR 은 자기 승인으로 통과할 수 없다.
+    #    (b) seal 주장 + 코드 표면 — "봉인했다" 는 주장은 코드가 걸려 있을 때 검증이 필요하다.
+    #    문서 전용 PR 이 과거 사고를 **인용**하며 seal 어휘를 쓰는 것은 그대로 면제 가능하다
+    #    (회고 기록·원장 서술이 막히면 이 리포가 가장 중요하게 여기는 "무엇이 왜 틀렸는지
+    #    남기기" 가 불가능해진다 — 인용은 주장이 아니다).
+    # Self-exemption is unavailable when the PR authors a guard, or claims a seal over code.
+    # 🔴 **필터 전** 경로로 판정한다 — `surfaces` 는 `_CODE_SURFACES` 로 걸러진 뒤라
+    #    목록 밖 가드(`tools/check_x.py`)가 이미 사라져 있다(Grok `019fe089` 적발).
+    guarded = guard_surfaces(changed_paths(base_sha, head_sha) if base_sha and head_sha else None)
+    exemption_blocked = bool(guarded) or bool(claims and surfaces)
+
+    if exemption and exemption_blocked:
+        why = (
+            f"가드 표면 {len(guarded)}개 파일 변경" if guarded
+            else f"seal 주장 {len(claims)}건 + 코드 표면 {len(surfaces or [])}개 파일"
+        )
+        reason = _LINE_BREAKS.sub(" ", exemption.group(0).strip())[:200]
+        print(f"::error title=claim-review exemption not allowed::{why}")
+        _append_step_summary(
+            f"- 🔴 **claim-review 면제 거부** — {why}\n  - 시도한 사유: {reason}\n"
+        )
+        print(
+            f"🔴 이 PR 에서는 `claim-review-not-required` 가 **유효하지 않다** — {why}.\n"
+            f"   시도한 사유: {reason}\n\n"
+            "   근거: 2026-08-08 창이 만든 게이트 4개 중 3개가 같은 형태로 결함이었고,\n"
+            "   11 에이전트 회고가 그중 하나를 못 찾았다. Grok claim-review 가 '봉인' 주장을\n"
+            "   BROKEN 으로 반증했다 — *'작동하는가'* 와 *'어떻게 깨는가'* 는 다른 질문이다.\n\n"
+            "   → 독립 적대 검증을 수행하고 본문에 흔적을 남기세요:\n"
+            "     ## Grok claim-review\n"
+            "     - session: <sessionId>\n"
+            "     - claim: <검증한 주장 한 줄>\n"
+            "     - verdict: SURVIVES | WEAKENED | BROKEN (근거 요약)\n"
+            "   ⚠️ 흔적은 **벤더 중립**이다 — 요구하는 것은 세 필드이지 특정 도구가 아니다.\n"
+            "      외부 서비스가 죽었으면 독립 적대 패스(워크플로 등)로 검증하고 그 결과를 적으세요.",
+            file=sys.stderr,
+        )
+        return 1
+
     if exemption:
         # 🔴 면제 사용은 계량 대상 (backlog R20-a) — 조용한 exit 0 이면 남용 추세가 관측되지
         #    않는다(창의 post-guard seal PR 10건 중 5건이 면제 통과). Actions UI annotation 으로

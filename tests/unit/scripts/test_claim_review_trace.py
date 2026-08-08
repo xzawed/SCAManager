@@ -613,11 +613,16 @@ def test_exemption_still_works_but_is_recorded(monkeypatch, tmp_path):
 
     🔴 `::notice` 는 Actions 로그 안쪽이라 실질적으로 아무도 보지 않는다. 면제 남용은
     한 건씩 보면 정상이고 **추세로만** 드러난다.
+
+    🔴 **표면을 `scripts/` → `src/` 로 바꿨다 (2026-08-08 계약 변경)** — 사용자 결정으로
+    **가드 표면 PR 은 면제가 무효**가 됐다(`test_claim_review_mandatory_on_guards.py`).
+    이 테스트의 원래 의도는 *"면제가 job summary 에 기록되는가"* 이지 *"가드 표면에서도
+    면제가 되는가"* 가 아니므로, 의도를 보존하도록 비-가드 표면으로 옮긴다(테스트 삭제 아님).
     """
     summary = tmp_path / "summary.md"
     monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
     rc = _run_with_surfaces(
-        monkeypatch, ["scripts/check_x.py"],
+        monkeypatch, ["src/ui/router.py"],
         body="claim-review-not-required: 순수 수치 동기화라 반증 대상 주장이 없습니다.")
     assert rc == 0
     text = summary.read_text(encoding="utf-8")
@@ -626,10 +631,13 @@ def test_exemption_still_works_but_is_recorded(monkeypatch, tmp_path):
 
 
 def test_summary_write_failure_never_changes_the_verdict(monkeypatch):
-    """🔴 기록 실패가 판정을 바꾸면 안 된다 — 로깅이 게이트를 흔들면 그 자체가 결함이다."""
+    """🔴 기록 실패가 판정을 바꾸면 안 된다 — 로깅이 게이트를 흔들면 그 자체가 결함이다.
+
+    표면을 비-가드(`src/`)로 둔다 — 위 테스트와 같은 사유(2026-08-08 계약 변경).
+    """
     monkeypatch.setenv("GITHUB_STEP_SUMMARY", "/nonexistent-dir/summary.md")
     assert _run_with_surfaces(
-        monkeypatch, ["scripts/check_x.py"],
+        monkeypatch, ["src/ui/router.py"],
         body="claim-review-not-required: 사유가 충분히 긴 문장입니다.") == 0
 
 

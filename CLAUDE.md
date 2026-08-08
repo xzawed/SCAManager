@@ -115,6 +115,9 @@ Codex mutual 검증 폐기. **`codex exec` 실패 = 정상**(이상 징후로 �
 - **경계 = '소유 금지'**: Grok 은 정책·backlog 를 **저술하지 않는다**(claim-review 는 허용 —
   seal/HOLDS 주장 시 `owner-interrupt: claim-review` 명시). 호출 금지: 계획·WBS·구현 중간.
 - 🔴 **집행면(CI)**: seal 어휘 PR 은 `check_claim_review_trace.py` 가 흔적(session/claim/verdict)을 강제.
+- 🔴 **가드 표면 PR 은 면제 불가** (2026-08-08 사용자 결정 "필수로 승격") — 관측자를 저술하는
+  PR 은 `claim-review-not-required` 로 통과할 수 없다. 대상 목록·예외·근거는 AGENTS.md 가 정본.
+  집행: `check_claim_review_trace.py` · `tests/unit/scripts/test_claim_review_mandatory_on_guards.py`.
 
 detail: [active](.claude/policies/active.md) · 진화 이력: [history](.claude/policies/history.md)
 

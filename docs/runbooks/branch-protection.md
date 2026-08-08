@@ -4,6 +4,21 @@
 > 라이브 설정을 관측하지 않는다(사유는 아래 §관측의 한계). 설정을 바꾸면 **여기도 같이**
 > 갱신해야 하고, 그 동기화는 사람이 한다.
 
+## 🔴 허용 머지 방식 — **3종 전부 유지** (2026-08-08 사용자 결정)
+
+`gh api repos/xzawed/SCAManager` 실측: `allow_squash_merge` · `allow_merge_commit` ·
+`allow_rebase_merge` **전부 true**. `squash_merge_commit_message` = `COMMIT_MESSAGES`.
+
+세션17 에서 *"표면을 줄이려면 squash 만 남기는 방법이 있다"* 고 제안했고 사용자가
+**"셋 다 좋습니다"** 로 유지를 결정했다. 따라서 이것은 **영구 제약**이다:
+
+> 🔴 **커밋 메시지를 판정 입력으로 쓰는 모든 가드는 세 방식 전부에서 동작해야 한다.**
+
+이 제약이 실제로 결함을 만든 전례: `STATE-sync-deferred:` 마커 초판이 push 이벤트에서
+`git log -1` 만 읽어, **merge commit 으로 머지하면 tip 에 마커가 없어** "PR 초록 → main red"
+가 재현됐다(Grok claim-review `019fe026` 이 BROKEN 판정, `#1315` 에서 `before..after` **범위**
+조회로 수정). 새 가드가 커밋 메시지를 읽는다면 **범위로 읽어라 — tip 하나로는 부족하다.**
+
 ## 현재 상태 (2026-08-06 실측)
 
 - `enforce_admins`: **true** — 관리자도 우회 불가
