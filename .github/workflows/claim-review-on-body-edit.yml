@@ -89,3 +89,13 @@ jobs:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: python scripts/check_claim_review_trace.py
+
+      # 🔴 P1 역-뮤테이션 — `ci.yml` 과 **동일 step 유지 의무**(패리티 가드가 강제).
+      #    이 워크플로는 본문 편집 시 같은 required check 를 재평가하므로, 가드 집합이
+      #    갈라지면 "본문만 고쳐 통과" 경로가 생긴다.
+      - name: P1 역-뮤테이션 — 이 PR 의 테스트가 이 PR 의 변경을 관측하는가
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python scripts/check_reverse_mutation.py
