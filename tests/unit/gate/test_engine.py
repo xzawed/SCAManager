@@ -937,7 +937,7 @@ async def test_run_auto_merge_records_failed_merge_attempt_with_reason_tag():
         pr_review_comment=False,
         notify_chat_id="-100123",
     )
-    full_reason = "branch_protection_blocked: 머지 조건 미충족 (state=blocked)"
+    full_reason = "dirty_conflict: 머지 조건 미충족 (state=dirty)"  # R68: blocked 는 재시도 가능해졌으므로 종결 태그로 교체
     with patch("src.gate.engine.get_repo_config", return_value=config):
         with patch("src.gate.engine.native_enable_with_path", new_callable=AsyncMock) as mock_merge:
             with patch("src.gate.engine.get_pr_mergeable_state", new_callable=AsyncMock) as mock_state:
@@ -1024,7 +1024,7 @@ async def test_run_auto_merge_creates_issue_when_enabled():
         patch("src.gate.engine._notify_merge_failure", new_callable=AsyncMock),
     ):
         mock_state.return_value = ("clean", "abc123")
-        mock_merge.return_value = MergeOutcome(ok=False, reason="branch_protection_blocked: blocked", head_sha="abc123", path=PATH_REST_FALLBACK)
+        mock_merge.return_value = MergeOutcome(ok=False, reason="dirty_conflict: merge conflict", head_sha="abc123", path=PATH_REST_FALLBACK)  # R68: blocked 는 더 이상 즉시 종결이 아니라 종결 사례를 dirty 로 교체(이 테스트의 요지는 종결 경로다)
         mock_issue.return_value = 42
         # P0-H: db= 인자 제거 — 독립 SessionLocal() 사용
         # P0-H: db= arg removed — uses its own independent SessionLocal()
@@ -1050,7 +1050,7 @@ async def test_run_auto_merge_skips_issue_when_disabled():
         patch("src.gate.engine.log_merge_attempt"),
         patch("src.gate.engine._notify_merge_failure", new_callable=AsyncMock),
     ):
-        mock_merge.return_value = MergeOutcome(ok=False, reason="branch_protection_blocked: blocked", head_sha="abc123", path=PATH_REST_FALLBACK)
+        mock_merge.return_value = MergeOutcome(ok=False, reason="dirty_conflict: merge conflict", head_sha="abc123", path=PATH_REST_FALLBACK)  # R68: blocked 는 더 이상 즉시 종결이 아니라 종결 사례를 dirty 로 교체(이 테스트의 요지는 종결 경로다)
         # P0-H: db= 인자 제거 — 독립 SessionLocal() 사용
         # P0-H: db= arg removed — uses its own independent SessionLocal()
         await _run_auto_merge(

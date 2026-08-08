@@ -40,11 +40,31 @@ def test_is_retriable_tag_unknown_state_timeout_returns_true():
     assert is_retriable_tag(UNKNOWN_STATE_TIMEOUT) is True
 
 
+def test_branch_protection_blocked_is_retriable():
+    """🔴 계약 변경 (2026-08-08, backlog R68 · 사용자 결정) — 이전에는 **종결**이었다.
+
+    `mergeable_state="blocked"` 는 두 가지를 뭉뚱그린다:
+      (a) required check 가 아직 **도는 중** — 몇 분 뒤면 풀린다
+      (b) 규칙상 충족 불가(리뷰 미승인 등) — 기다려도 안 풀린다
+
+    이전 계약은 전부 (b)로 보고 **재시도 없이 영구 포기**했다. 이 리포는 required check
+    **10종**(+`enforce_admins`)을 쓰고 pytest·e2e 는 수 분이 걸리므로 (a)가 일상적이다 —
+    분석이 끝난 시점에 체크가 아직 돌고 있으면 정상 PR 이 버려졌다.
+    `sensitive_paths.py:18~20` 이 이미 이 성질을 실측으로 기록해 뒀다.
+
+    🔴 **무조건 재시도가 아니다** — 여기서는 '대기 가능' 으로만 올리고, (b)의 배제는
+    `should_retry` 가 **CI 가 도는 중일 때만** 확정하는 것으로 달성한다
+    (`test_retry_policy.py` 의 blocked 행렬 참조).
+    """
+    from src.gate.merge_reasons import BRANCH_PROTECTION_BLOCKED
+
+    assert is_retriable_tag(BRANCH_PROTECTION_BLOCKED) is True
+
+
 @pytest.mark.parametrize(
     "tag",
     [
         "dirty_conflict",
-        "branch_protection_blocked",
         "behind_base",
         "draft_pr",
         "permission_denied",

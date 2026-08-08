@@ -57,7 +57,29 @@ CONFIG_CHANGED = "config_changed"
 
 # 재시도 시스템이 대기할 수 있는 태그 집합 (is_retriable_tag 단일 출처)
 # Tag set the retry system can wait out (single source for is_retriable_tag)
-_RETRIABLE_TAGS: frozenset[str] = frozenset({UNSTABLE_CI, UNKNOWN_STATE_TIMEOUT})
+#
+# 🔴 `BRANCH_PROTECTION_BLOCKED` 추가 (2026-08-08, backlog R68 · 사용자 결정).
+#
+# `mergeable_state="blocked"` 는 **두 가지**를 뭉뚱그린다:
+#   (a) required check 가 아직 **도는 중** — 몇 분 뒤면 풀린다
+#   (b) 규칙상 충족 불가(리뷰 미승인 등) — 기다려도 안 풀린다
+# GitHub 은 둘을 구별해 주지 않는다. 이전에는 이 태그를 통째로 **종결**로 처리해,
+# 분석이 끝난 시점에 required check 가 아직 돌고 있으면 그 PR 이 **재시도 없이 영구 포기**됐다.
+#
+# 이 리포는 required check **10종**(+`enforce_admins`)을 쓰고 그중 pytest·e2e 는 수 분이
+# 걸리므로 (a)가 일상적으로 발생한다. `sensitive_paths.py` 가 이미 이 성질을 실측으로
+# 기록해 뒀다 — *"오히려 자동 머지를 죽인다"*.
+#
+# 🔴 **무조건 재시도가 아니다.** 여기서는 '대기 가능' 으로만 올리고, 실제 판정은
+# `retry_policy.should_retry(tag, ci_status)` 가 **CI 가 도는 중일 때만** 재시도로 확정한다.
+# (b)는 CI 가 이미 끝난 상태이므로 그 분기에서 종결로 떨어진다 — 영구 차단 PR 이
+# 재시도 예산을 소모하지 않는다.
+#
+# `blocked` conflates "required checks still running" with "rule cannot be satisfied".
+# Treat it as waitable here; `should_retry` confirms only while CI is actually running.
+_RETRIABLE_TAGS: frozenset[str] = frozenset(
+    {UNSTABLE_CI, UNKNOWN_STATE_TIMEOUT, BRANCH_PROTECTION_BLOCKED}
+)
 
 
 # HTTP 상태 코드 → reason tag 매핑 (`_interpret_merge_error` 용)
