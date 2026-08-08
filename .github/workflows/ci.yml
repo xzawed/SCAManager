@@ -189,6 +189,23 @@ jobs:
       # 🔴 PR 본문은 신뢰할 수 없는 입력이라 `run:` 에 보간하지 않고 env 로 전달한다(명령 인젝션 차단).
       # Policy-19 enforcement: seal claims require a claim-review trace. The PR body is untrusted
       # input, so it is passed via env rather than interpolated into the shell line.
+      # 🔴 P4 🔴-예산제 (2026-08-08 진단 3위 원인 — 사용자 직관이 맞는 유일한 축).
+      #
+      # 실측: 🔴 규칙 **290**건 중 집행자 동반은 **67건(23.1%)** 뿐이고, 실측 준수율
+      # **0/42**(정책 13) · **발화율 100% / 이행률 0%**(R43)인 규칙이 존재한다.
+      # 규칙이 도달해도 지켜지지 않으니 **규칙을 더 쓰는 것은 처방이 아니다.**
+      # 🔴 그렇다고 문서를 줄이는 것도 아니다 — 두 번 시도해 두 번 다 순손실이었다
+      #    (`#1296` 축소 → Grok BROKEN[행동 규칙 8건 소실] / R54 파생화 → 틀린 값 4지점 전파).
+      # 그래서 바이트가 아니라 **집행 비율**만 잰다: 무집행 🔴 이 이 PR 에서 늘었는가.
+      # 늘리는 것 자체는 막지 않는다 — `red-budget-exempt:` 로 명시하면 통과하되 계수된다.
+      # Red budget: fails only when *unenforced* 🔴 rules increase; explicit exemption is counted.
+      - name: P4 🔴-예산 — 집행자 없는 규칙이 늘었는가
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python scripts/check_red_budget.py
+
       - name: 정책 19 — seal 주장 시 claim-review 흔적 강제
         if: github.event_name == 'pull_request'
         env:
