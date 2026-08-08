@@ -303,22 +303,46 @@ _GUARD_SURFACES = (
 )
 
 
+# 🔴 **디렉토리 열거만으로는 부족하다** (Grok claim-review `019fe089` 적발 — 실측 반례).
+#    `tools/check_new_guard.py` 처럼 목록 **밖**에 가드를 새로 만들면 위 접두사에 안 걸린다.
+#    AGENTS.md 가 기록하듯 이 리포의 최다 observer-lie 표면은 **test-as-guard** 이고,
+#    그것은 어느 디렉토리에나 생길 수 있다. 그래서 **이름 규칙**을 함께 본다.
+# Directory prefixes alone miss a guard authored outside the list; match by filename too.
+_GUARD_FILENAME = re.compile(r"(?:^|/)(?:check_\w+|test_[a-z0-9_]*guard[a-z0-9_]*)\.py$")
+
+
 def guard_surfaces(paths: list[str] | None) -> list[str]:
-    """변경 경로 중 **가드 표면**만. 판정 불가(None)면 빈 리스트 — 이 축은 쉰다.
+    """변경 경로 중 **가드 표면**만 — 디렉토리 접두사 **또는** 가드 이름 규칙.
 
     🔴 `None` 에서 빈 리스트를 돌려주는 것이 fail-open 처럼 보이지만 아니다: 그 경우
     `changed_code_surfaces` 도 `None` 이라 **seal 축만** 남고, 그 축은 그대로 흔적을 요구한다.
     여기서 fail-closed 로 두면 base/head SHA 가 없는 **모든 로컬 실행**이 영구 red 가 된다
     (정책 17 — 로컬 게이트가 못 쓰게 되면 아무도 안 돌린다).
+
+    🔴 **정직 기준 — 이 판정은 완전하지 않다**: allowlist + 이름 규칙 둘 다 열거이므로,
+    둘 다 피해 가는 새 가드(예: `tests/unit/gate/test_foo.py` 에 심은 test-as-guard)는
+    잡지 못한다. 이 축을 완전하게 만들려면 *"이 변경이 가드인가"* 를 의미적으로 판정해야
+    하는데 그건 정적으로 불가하다(AGENTS.md §정적 탐지의 천장). 잔여는 backlog 에 등재한다.
     """
-    return [p for p in (paths or []) if p.startswith(_GUARD_SURFACES)]
+    if not paths:
+        return []
+    return [
+        p for p in paths
+        if p.startswith(_GUARD_SURFACES) or _GUARD_FILENAME.search(p)
+    ]
 
 
-def changed_code_surfaces(base_sha: str, head_sha: str) -> list[str] | None:
-    """PR 이 건드린 코드 표면 경로. **판정 불가면 None**(빈 리스트와 구별한다).
+def changed_paths(base_sha: str, head_sha: str) -> list[str] | None:
+    """PR 이 건드린 **전체** 경로. 판정 불가면 None(빈 리스트와 구별한다).
 
     🔴 `base...head`(three-dot, merge-base 기준)를 쓴다 — `base..head` 는 base 브랜치가
     앞서간 만큼을 함께 세어 남의 변경을 이 PR 의 것으로 오판한다.
+
+    🔴 **왜 필터 전 목록이 따로 필요한가** (Grok claim-review `019fe089`): 가드 표면 판정은
+    `_CODE_SURFACES` 로 **거른 뒤**의 목록에 적용하면 안 된다. `tools/check_x.py` 같은
+    목록 밖 경로는 걸러지는 순간 사라져, 이름 규칙이 있어도 **도달조차 못 한다**.
+    Guard classification must run on the unfiltered list, or paths outside _CODE_SURFACES
+    vanish before the filename rule can see them.
     """
     try:
         proc = subprocess.run(  # nosec B603 B607
@@ -330,10 +354,15 @@ def changed_code_surfaces(base_sha: str, head_sha: str) -> list[str] | None:
         return None
     if proc.returncode != 0:
         return None
-    return [
-        line.strip() for line in (proc.stdout or "").splitlines()
-        if line.strip().startswith(_CODE_SURFACES)
-    ]
+    return [line.strip() for line in (proc.stdout or "").splitlines() if line.strip()]
+
+
+def changed_code_surfaces(base_sha: str, head_sha: str) -> list[str] | None:
+    """PR 이 건드린 코드 표면 경로. **판정 불가면 None**(빈 리스트와 구별한다)."""
+    paths = changed_paths(base_sha, head_sha)
+    if paths is None:
+        return None
+    return [p for p in paths if p.startswith(_CODE_SURFACES)]
 
 
 def commit_messages(base_sha: str, head_sha: str) -> str:
@@ -429,7 +458,9 @@ def main() -> int:
     #    (회고 기록·원장 서술이 막히면 이 리포가 가장 중요하게 여기는 "무엇이 왜 틀렸는지
     #    남기기" 가 불가능해진다 — 인용은 주장이 아니다).
     # Self-exemption is unavailable when the PR authors a guard, or claims a seal over code.
-    guarded = guard_surfaces(surfaces)
+    # 🔴 **필터 전** 경로로 판정한다 — `surfaces` 는 `_CODE_SURFACES` 로 걸러진 뒤라
+    #    목록 밖 가드(`tools/check_x.py`)가 이미 사라져 있다(Grok `019fe089` 적발).
+    guarded = guard_surfaces(changed_paths(base_sha, head_sha) if base_sha and head_sha else None)
     exemption_blocked = bool(guarded) or bool(claims and surfaces)
 
     if exemption and exemption_blocked:

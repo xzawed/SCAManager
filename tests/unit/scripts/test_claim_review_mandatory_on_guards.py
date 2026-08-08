@@ -116,6 +116,43 @@ def test_non_guard_surface_is_not_recognised(mod, path: str):
     assert mod.guard_surfaces([path]) == []
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "tools/check_new_guard.py",          # 목록 밖 디렉토리에 만든 가드
+        "tests/unit/gate/test_wiring_guard.py",  # test-as-guard (최다 observer-lie 표면)
+        "anywhere/deep/check_thing.py",
+    ],
+)
+def test_a_guard_authored_outside_the_directory_list_is_still_caught(mod, path: str):
+    """🔴 Grok claim-review `019fe089` 반례 — 디렉토리 열거만으로는 못 잡는다.
+
+    실측 반례: `tools/check_new_guard.py` 를 만들고 면제를 적으면 **exit 0** 이었다.
+    AGENTS.md 가 기록하듯 이 리포의 최다 observer-lie 표면은 **test-as-guard** 이고
+    그것은 어느 디렉토리에나 생긴다. 그래서 이름 규칙을 함께 본다.
+    """
+    assert mod.guard_surfaces([path]) == [path]
+
+
+def test_guard_classification_runs_before_the_code_surface_filter(mod):
+    """🔴 더 깊은 결함 — 판정 순서. 이름 규칙이 있어도 **도달 못 하면** 무의미하다.
+
+    초판은 `guard_surfaces(changed_code_surfaces(...))` 였다. `_CODE_SURFACES` 는
+    `tools/` 를 포함하지 않으므로 그 경로는 걸러진 뒤 사라져, 이름 규칙이 볼 기회조차 없었다.
+    이 단언은 **필터 전 전체 경로**를 돌려주는 함수가 존재하고 그것이 쓰이는지 고정한다.
+    """
+    assert hasattr(mod, "changed_paths"), "필터 전 경로 조회가 사라졌다 — 목록 밖 가드가 다시 비가시"
+    head = _rev("b1eb7110")
+    every = mod.changed_paths(f"{head}~1", head)
+    filtered = mod.changed_code_surfaces(f"{head}~1", head)
+
+    assert every is not None and filtered is not None
+    assert len(every) >= len(filtered), "필터 전 목록이 필터 후보다 작다 — 관계가 뒤집혔다"
+    assert any(p not in filtered for p in every), (
+        "이 범위에 `_CODE_SURFACES` 밖 경로가 하나도 없다 — 대조군으로 쓸 수 없다"
+    )
+
+
 def test_undecidable_paths_do_not_block(mod):
     """🔴 판정 불가(None)에서 fail-closed 로 두면 **모든 로컬 실행이 영구 red** 가 된다."""
     assert mod.guard_surfaces(None) == []
@@ -144,14 +181,41 @@ def test_real_guard_pr_passes_with_a_trace(mod, monkeypatch):
 def test_docs_only_pr_quoting_a_seal_still_exempts(mod, monkeypatch):
     """🔴 인용은 주장이 아니다 — 회고·원장 기록이 막히면 이 리포의 학습이 멈춘다.
 
-    `#1316` 은 회고 기록 PR 이었고 seal 어휘를 8건 인용했다. 그런 PR 까지 외부 검증을
-    강제하면 *"무엇이 왜 틀렸는지 남기기"* 를 가드가 막는 것이다.
+    🔴 **초판은 공허했다** (Grok claim-review `019fe089` 적발). `base == head` 를 써서
+    변경 경로가 **0건**이었고, 그건 *"문서 전용 PR 이 면제된다"* 가 아니라 *"빈 diff 가
+    면제된다"* 만 증명한다 — 승격을 통째로 지워도 통과하는 단언이었다.
+
+    이제 **실제 docs-only 머지 범위**(`e76f2d43` — 비-docs 파일 0건 실측)를 쓴다.
+
+    ⚠️ 함께 정정: 초판 docstring 은 `#1316` 을 예로 들었는데 **틀렸다**. `#1316` 은
+    `tests/unit/scripts/` 가드 2개와 owed 원장을 건드렸으므로 docs-only 가 아니고,
+    새 규칙에서 **차단되는 것이 옳다**(그 가드들은 적대 검증을 받은 적이 없었다).
     """
     body = f"과거에 **봉인**했다고 적혀 있다(인용).\n\n{_EXEMPT_LINE}\n"
-    sha = _rev("main")
+    head = _rev("e76f2d43")
 
-    # base == head → 변경 경로 0건 = 문서 전용보다 더 강한 조건(코드 표면 없음)
-    assert _run(mod, monkeypatch, body=body, base=sha, head=sha) == 0
+    assert _run(mod, monkeypatch, body=body, base=f"{head}~1", head=head) == 0
+
+
+def test_the_docs_only_fixture_really_has_no_code_surface(mod):
+    """🔴 대조군 — 위 테스트의 픽스처가 정말 docs-only 인지.
+
+    이게 없으면 그 범위에 코드가 섞여도 (다른 이유로) 통과하는 것을 못 본다.
+    """
+    head = _rev("e76f2d43")
+
+    assert mod.changed_code_surfaces(f"{head}~1", head) == []
+
+
+def test_a_pr_that_authors_a_guard_is_blocked_even_amid_docs(mod, monkeypatch):
+    """🔴 반대 축 — 문서가 대부분이어도 **가드를 저술했으면** 면제되지 않는다.
+
+    `#1316` 이 정확히 그런 PR 이었다(문서 9 + 가드 테스트 2 + owed 원장).
+    """
+    head = _rev("4d0a8dda")
+    body = f"회고 기록. 과거에 **봉인**했다고 적혀 있다.\n\n{_EXEMPT_LINE}\n"
+
+    assert _run(mod, monkeypatch, body=body, base=f"{head}~1", head=head) == 1
 
 
 # ── ③ 두 번째 트리거 — seal 주장 + 코드 표면 ────────────────────────────
