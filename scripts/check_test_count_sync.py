@@ -122,8 +122,47 @@ def state_counts(state_text: str) -> tuple[int, int] | None:
 # 이월 마커 — 사유 16자 이상, **커밋 메시지**에서만 유효(아래 `deferral_carriers` 참조).
 # 🔴 백틱/따옴표로 시작하는 줄은 제외한다 — 정책 19 면제 마커가 **자기를 문서화하는 PR** 을
 #    면제해 버린 실사고와 같은 클래스다(`check_claim_review_trace.py` 의 `_EXEMPT` 관용구).
+# 🔴 **`* ` 접두를 허용한다** (2026-08-08 적대 검증 F1 — 실측 반례).
+#    GitHub squash 는 커밋이 **2건 이상**이면 각 커밋 제목에 `* ` 를 붙인다
+#    (`b1eb7110`·`4d0a8dda`·`1991cfed` 실물 확인). 이월 흐름은 마커 커밋을 하나 더하므로
+#    **구조적으로 항상 ≥2** 다. 그래서 마커를 커밋 **제목**에 쓰면:
+#      PR 단계  : `git log --format=%B` → `STATE-sync-deferred: …` (col 0) → PASS
+#      push 단계: squash 본문         → `* STATE-sync-deferred: …`      → **FAIL**
+#    운반체는 살아남았는데 **표기가 바뀌어** 관측자가 못 읽는 것 — Grok `019fe026` 이
+#    반증한 것과 정확히 같은 클래스다. 목록 접두(`* `/`- `)를 흡수해 닫는다.
+# GitHub's squash body prefixes each commit subject with `* ` when the PR has 2+ commits.
 _DEFERRED = re.compile(
-    r"^[ \t]*(?![`'\"])STATE-sync-deferred\s*:\s*\S.{15,}", re.MULTILINE)
+    r"^[ \t]*(?:[*-][ \t]+)?(?![`'\"])STATE-sync-deferred\s*:\s*\S.{15,}", re.MULTILINE)
+
+# 🔴 마커를 **설명하는** 문장은 마커가 아니다 (F3 — fail-open 실측).
+#    커밋 메시지에 사용법을 적기만 해도 면제가 발급됐다. 백틱 배제(`(?![`'\"])`)는
+#    산문 인용을 못 막는다 — 안내문은 보통 백틱 없이 쓰인다.
+#    설명문의 표지: 사유 자리에 **꺾쇠 플레이스홀더**가 오거나, 같은 줄에 사용법 동사가 붙는다.
+# A line that merely documents the marker must not issue an exemption.
+_DEFERRED_PROSE = re.compile(
+    r"STATE-sync-deferred\s*:\s*(?:<|&lt;|\[)"          # `: <사유>` 형태의 플레이스홀더
+    r"|(?:형식|형태|처럼|예시|적는다|적으세요|쓰세요|사용법)[^\n]*STATE-sync-deferred",
+    re.MULTILINE,
+)
+
+
+def is_real_deferral(text: str):
+    """실제 이월 선언만 돌려준다 — 설명·인용은 제외 (F3).
+
+    🔴 매치를 **줄 단위로** 재검사한다: 같은 커밋 메시지 안에 안내문과 실제 선언이
+    함께 있을 수 있고, 그때 실제 선언은 살아야 한다(과교정 방지).
+    """
+    for match in _DEFERRED.finditer(text):
+        line = match.group(0)
+        if _DEFERRED_PROSE.search(line):
+            continue
+        # 안내문이 **바로 윗줄**에 있는 형태(`… 적는다:` 다음 줄에 마커)도 설명으로 본다.
+        head = text[: match.start()].rsplit("\n", 2)[-2:]
+        if any(_DEFERRED_PROSE.search(h) or h.rstrip().endswith(("적는다:", "적으세요:", "형식:"))
+               for h in head):
+            continue
+        return match
+    return None
 
 
 def _git_text(*args: str) -> str:
@@ -250,7 +289,7 @@ def main(argv: list[str] | None = None) -> int:
     #    이제 이월하려면 PR 본문에 그 의도를 **적어야** 하고, 그 사용은 계수된다.
     # The batch-carry escape is now an explicit, counted marker instead of a silent pass.
     commits, pr_body = deferral_carriers()
-    deferral = _DEFERRED.search(commits)
+    deferral = is_real_deferral(commits)
     if deferral:
         reason = _LINE_BREAKS.sub(" ", deferral.group(0).strip())[:200]
         print(f"::notice title=STATE sync deferred::{reason}")
@@ -265,7 +304,7 @@ def main(argv: list[str] | None = None) -> int:
     #    빨개지게 두면, 이 마커가 없애려던 사고를 마커가 재생산한다(회고 N-P0-2).
     #    "조용히 무시" 도 답이 아니다: 저자는 면제를 적었다고 믿고 떠난다.
     # A body-only marker fails here rather than after the merge, where it cannot be fixed cheaply.
-    if _DEFERRED.search(pr_body):
+    if is_real_deferral(pr_body):
         print(
             f"🔴 {message}\n\n"
             "   이월 마커가 **PR 본문에만** 있습니다 — 머지 후 push 이벤트에는 PR 본문이\n"

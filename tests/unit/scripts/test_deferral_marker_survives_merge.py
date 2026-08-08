@@ -255,7 +255,82 @@ def test_unreachable_range_does_not_exempt(merged_repo, monkeypatch, mod):
     assert mod._DEFERRED.search(mod.deferral_carriers()[0]) is None
 
 
-# ── ④ 자기문서화 면제 방지 (기존 관용구 유지) ────────────────────────────
+# ── ④ squash 표기 변형 · 설명문 자기면제 (2026-08-08 적대 검증 F1·F3) ────
+
+
+def test_squash_list_prefix_does_not_kill_the_marker(mod):
+    """🔴 F1 — GitHub squash 는 커밋 ≥2 이면 각 제목에 `* ` 를 붙인다 (실물 확인).
+
+    실측 근거: `b1eb7110`·`4d0a8dda`·`1991cfed` 의 squash 본문이 전부 `* <제목>` 형태다.
+    이월 흐름은 마커 커밋을 하나 더하므로 **구조적으로 항상 ≥2** 다.
+
+    초판 정규식은 `^[ \\t]*` 뒤에 리터럴을 요구해 `* STATE-sync-deferred:` 를 놓쳤다 →
+    PR 초록 → main red. **운반체는 살아남았는데 표기가 바뀌어 관측자가 못 읽은 것**으로,
+    Grok `019fe026` 이 반증한 것과 정확히 같은 클래스다.
+    """
+    assert mod.is_real_deferral(f"* {_MARKER}") is not None, "squash `* ` 접두에서 마커를 놓친다"
+    assert mod.is_real_deferral(f"- {_MARKER}") is not None, "`- ` 목록 접두도 흡수해야 한다"
+
+
+def test_the_squash_prefix_is_not_invented(mod):
+    """🔴 대조군 — 이 저장소의 실제 squash 본문이 정말 `* ` 로 시작하는지.
+
+    이게 없으면 위 단언은 존재하지 않는 문제를 막는 장식이 된다.
+    """
+    body = subprocess.run(  # nosec B603 B607
+        ["git", "log", "-1", "--format=%b", "b1eb7110"], cwd=str(_ROOT),
+        capture_output=True, text=True, encoding="utf-8", errors="replace", check=True,
+    ).stdout
+
+    assert body.lstrip().startswith("* "), (
+        f"squash 본문이 `* ` 로 시작하지 않는다 — 전제가 바뀌었다: {body[:80]!r}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("prose", "excluded_by"),
+    [
+        # 🔴 이 두 건이 **줄 단위 배제(`_DEFERRED_PROSE`)를 구별한다** — 앞줄 안내문도,
+        #    `_DEFERRED` 자체의 줄머리 요구도 걸리지 않는 순수 플레이스홀더 형태다.
+        ("STATE-sync-deferred: <왜 이 PR 에서 안 하는가 — 16자 이상>", "줄 단위 배제"),
+        ("* STATE-sync-deferred: [사유를 여기에 적으세요 16자 이상]", "줄 단위 배제"),
+        # 아래는 다른 분기가 담당한다 — 함께 두어 **어느 분기가 죽어도** 하나는 발화한다.
+        ("이월할 때는 아래처럼 적는다:\nSTATE-sync-deferred: 사유를 충분히 길게 적습니다", "앞줄 안내문"),
+        ("형식: STATE-sync-deferred: 사유를 충분히 길게 적으면 통과합니다", "_DEFERRED 줄머리"),
+        ("사용법 안내 — STATE-sync-deferred: 뒤에 사유를 16자 이상 적으세요", "_DEFERRED 줄머리"),
+    ],
+)
+def test_documenting_the_marker_does_not_defer(mod, prose: str, excluded_by: str):
+    """🔴 F3 — 마커를 **설명하기만 한** 커밋이 면제를 발급하던 fail-open.
+
+    백틱 배제만으로는 못 막는다 — 안내문은 보통 백틱 없이 쓰인다.
+    이 리포는 정책 19 면제 마커에서 **같은 사고**를 이미 겪었다(자기 문서화 PR 이 자기 면제).
+
+    🔴 **초판 픽스처 3건은 전부 다른 분기가 걸러서, 줄 단위 배제를 지워도 GREEN 이었다**
+    (뮤테이션 실측). 분기마다 **구별하는** 케이스를 둔다 — 그게 없으면 어느 한 분기는
+    load-bearing 이 아닌 채 남는다.
+    """
+    assert mod.is_real_deferral(prose) is None, (
+        f"설명문이 이월로 인식됐다 ({excluded_by} 담당): {prose[:40]!r}"
+    )
+
+
+def test_a_real_declaration_survives_next_to_its_documentation(mod):
+    """🔴 과교정 대조군 — 안내문과 실제 선언이 **함께** 있으면 실제 선언은 살아야 한다.
+
+    이게 없으면 F3 수정이 "설명 비슷하면 전부 무효" 라는 과교정으로 새고, 그러면
+    이월 경로가 죽어 가드가 곧 꺼진다(정책 17).
+    """
+    both = (
+        "아래 형식으로 적는다:\n"
+        "STATE-sync-deferred: <사유>\n\n"
+        f"* {_MARKER}\n"
+    )
+
+    assert mod.is_real_deferral(both) is not None, "실제 선언까지 설명으로 삼켰다 — 과교정"
+
+
+# ── ⑤ 자기문서화 면제 방지 (기존 관용구 유지) ────────────────────────────
 
 
 def test_this_very_file_does_not_defer_itself(mod):
