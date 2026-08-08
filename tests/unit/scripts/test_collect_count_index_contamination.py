@@ -84,6 +84,21 @@ def _conflicted_repo(tmp_path: Path) -> Path:
     return repo
 
 
+def test_a_space_in_a_filename_does_not_split_into_two_entries(conflicted_repo: Path):
+    """🔴 같은 부류의 계기 거짓말 — `split()` 은 공백 파일명을 두 조각으로 쪼갠다.
+
+    Grok claim-review `019fe026` 지적. 현재 해당 파일은 0건이지만, 하나 생기는 순간
+    parametrize 에 유령 항목 2개가 생겨 수집 수가 조용히 는다.
+    """
+    (conflicted_repo / "with space.md").write_text("x\n", encoding="utf-8")
+    _git(conflicted_repo, "add", "with space.md")
+
+    docs = tracked_docs(root=conflicted_repo)
+
+    assert "with space.md" in docs, f"공백 경로가 온전히 안 들어왔다: {docs}"
+    assert "with" not in docs, f"공백에서 쪼개진 유령 항목이 있다: {docs}"
+
+
 def test_raw_git_ls_files_really_duplicates_conflicted_paths(conflicted_repo: Path):
     """🔴 대조군 — 이게 없으면 아래 단언은 dedupe 를 지워도 통과한다.
 

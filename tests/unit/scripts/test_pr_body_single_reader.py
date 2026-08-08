@@ -41,6 +41,7 @@ import pytest
 
 _ROOT = Path(__file__).resolve().parents[3]
 _SCRIPTS = _ROOT / "scripts"
+_HOOKS = _ROOT / ".claude" / "hooks"
 
 # 🔴 환경에서 PR_BODY 를 직접 읽어도 되는 **유일한** 모듈.
 # 여기를 늘리려면 그 모듈이 스트리핑을 자체 수행함을 증명해야 한다.
@@ -55,21 +56,59 @@ _MARKER_GATES = {
 
 
 def _script_files() -> list[Path]:
-    files = sorted(_SCRIPTS.glob("*.py"))
-    assert files, "scripts/*.py 가 0건 — 범위 붕괴(빈 범위 위의 ✅ 는 fail-open)"
+    """🔴 범위 = `scripts/*.py` **+ `.claude/hooks/*.py`**.
+
+    초판은 `scripts/` 만 봤다 — 훅도 환경을 읽는 실행 표면이라 두 번째 리더가 거기
+    생기면 가드가 침묵했다(Grok claim-review `019fe026` 지적).
+    """
+    files = sorted(_SCRIPTS.glob("*.py")) + sorted(_HOOKS.glob("*.py"))
+    assert _SCRIPTS.glob("*.py"), "scripts/*.py 가 0건 — 범위 붕괴"
+    assert files, "검사 대상이 0건 — 빈 범위 위의 ✅ 는 fail-open"
     return files
 
 
 def _reads_pr_body_literal(source: str) -> bool:
-    """AST 로 `"PR_BODY"` **문자열 리터럴** 사용 여부만 본다.
+    """AST 로 PR_BODY 를 **환경에서 직접 읽는지** 본다.
 
-    주석은 AST 에 없으므로 설명 주석은 걸리지 않는다. docstring 안에 `PR_BODY` 를
-    언급해도 리터럴이 정확히 `"PR_BODY"` 가 아닌 한 걸리지 않는다.
+    주석은 AST 에 없으므로 설명 주석은 걸리지 않는다.
+
+    🔴 정확 일치(`== "PR_BODY"`)만 보면 `"PR_" + "BODY"` 나 f-string 조각으로 빠져나간다
+    (Grok claim-review `019fe026` 실측). 그래서 **부분 문자열 + 상수 접기**로 본다.
+    docstring 은 제외한다 — 이 규칙을 **설명**하는 산문까지 위반이 되면 가드 자살이다.
+
+    🔴 **정직 기준 — 이 탐지기가 잡지 못하는 것**: `"".join(["PR_", "BODY"])` 같은 런타임
+    조립, `chr()` 산술, `GITHUB_EVENT_PATH` JSON 직접 파싱. 이 가드의 목적은 *관용구를
+    복제하다 하드닝을 빠뜨리는* 실제 관찰된 사고를 막는 것이지, 작정한 우회를 막는 것이
+    아니다. 작정한 우회는 정적으로 닫히지 않는다(정책 17 — 오탐>진탐이면 가드 자살).
     """
-    return any(
-        isinstance(node, ast.Constant) and node.value == "PR_BODY"
-        for node in ast.walk(ast.parse(source))
-    )
+    tree = ast.parse(source)
+    docstrings = {
+        ast.get_docstring(n, clean=False)
+        for n in ast.walk(tree)
+        if isinstance(n, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+    }
+
+    def _hits(value: object) -> bool:
+        return isinstance(value, str) and "PR_BODY" in value and value not in docstrings
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and _hits(node.value):
+            return True
+        # `"PR_" + "BODY"` — 상수 접기 없이는 조각 어느 쪽도 매치하지 않는다.
+        # (`ast.literal_eval` 은 문자열 `+` 를 접지 않는다 — 숫자 전용이다.)
+        if isinstance(node, ast.BinOp) and _hits(_fold_str(node)):
+            return True
+    return False
+
+
+def _fold_str(node: ast.AST) -> str | None:
+    """문자열 상수의 `+` 연결만 접는다. 접을 수 없으면 None."""
+    if isinstance(node, ast.Constant):
+        return node.value if isinstance(node.value, str) else None
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left, right = _fold_str(node.left), _fold_str(node.right)
+        return None if left is None or right is None else left + right
+    return None
 
 
 def _calls(source: str, func_name: str) -> bool:
@@ -186,3 +225,38 @@ def test_empty_environment_is_not_an_exemption(monkeypatch):
     trace = importlib.import_module("scripts.check_claim_review_trace")
 
     assert trace.read_pr_body() == ""
+
+
+# ── ④ 우회 형태 (Grok claim-review 019fe026 이 실측한 것) ────────────────
+
+
+@pytest.mark.parametrize(
+    ("snippet", "why"),
+    [
+        ('x = os.environ.get("PR_BODY", "")', "정확 리터럴"),
+        ('x = os.getenv("PR_BODY")', "os.getenv 경유"),
+        ('x = os.environ["PR_" + "BODY"]', "문자열 결합으로 쪼갠 키"),
+        ('k = f"PR_BODY"; x = os.environ[k]', "f-string 경유"),
+        ('x = os.environ.get("PR_BODY")', "기본값 없는 get"),
+    ],
+)
+def test_detector_catches_the_known_evasions(snippet: str, why: str):
+    """🔴 탐지기가 우회 형태를 잡는지 — 이게 없으면 단일 리더 단언이 종잇장이다."""
+    source = "\n".join(["import os", snippet, ""])
+
+    assert _reads_pr_body_literal(source), f"놓친 우회: {why}"
+
+
+def test_detector_does_not_flag_prose_about_the_variable():
+    """🔴 과교정 대조군 — 산문으로 PR_BODY 를 **설명**하는 것은 리더가 아니다.
+
+    이게 없으면 이 파일 자신과 문서화 주석이 전부 위반이 된다(가드 자살).
+    """
+    source = '''"""이 모듈은 PR_BODY 를 설명만 한다."""
+
+
+def helper():
+    """PR_BODY 를 직접 읽지 말고 read_pr_body() 를 쓰라."""
+    return 1
+'''
+    assert not _reads_pr_body_literal(source)

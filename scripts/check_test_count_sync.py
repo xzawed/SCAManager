@@ -158,16 +158,32 @@ def deferral_carriers() -> tuple[str, str]:
     CLAUDE.md 6-step ⑤ 이월 분기가 이미 *"commit body 에 카운트 delta 를 기록"* 하라고
     적어 둔 것과도 일치한다 — 규약을 새로 만드는 게 아니라 집행면을 맞추는 것이다.
 
-    PR 이벤트에서는 `PR_BASE_SHA..PR_HEAD_SHA` 의 커밋 전부를, push 에서는 직전 커밋을 본다.
-    Returns (durable carrier, trap carrier); only the durable one may exempt.
+    🔴 **양쪽 다 "범위" 로 읽는다 — `git log -1` 은 틀린 답이었다** (Grok claim-review
+    `019fe026` 가 초판을 BROKEN 으로 반증). 이 리포는 `allow_merge_commit` 과
+    `allow_rebase_merge` 가 **둘 다 켜져 있다**(API 실측). 머지 커밋으로 머지하면 tip 은
+    *"Merge pull request #N …"* 이라 마커가 없고, rebase-merge 로 여러 커밋이 올라가면
+    마커가 tip 이 아닌 커밋에 있을 수 있다. 두 경우 다 **PR 초록 → main red** 로,
+    이 함수가 없애려던 바로 그 비대칭이 그대로 재현된다.
+
+    그래서 push 에서도 **그 push 가 실제로 들여온 커밋 전부**(`before..after`)를 본다.
+    이러면 squash·merge-commit·rebase-merge 셋 다 마커를 보존한다.
+    `before` 가 all-zero(새 브랜치)이거나 범위 조회가 실패하면 직전 커밋으로 물러난다 —
+    그 경우 마커가 안 보이면 드리프트가 차단되므로 fail-closed 다.
+
+    Both events read a *range*: the PR's commits, or the commits the push actually
+    introduced. `git log -1` was wrong — merge commits and rebase-merges hide the marker.
     """
     base = os.environ.get("PR_BASE_SHA", "")
     head = os.environ.get("PR_HEAD_SHA", "")
-    if base and head:
-        commits = _git_text("log", "--format=%B", f"{base}..{head}")
-    else:
-        commits = _git_text("log", "-1", "--format=%B")
-    return commits, read_pr_body()
+    if not (base and head):
+        # push 이벤트 — `github.event.before` .. `github.sha`
+        base = os.environ.get("PUSH_BEFORE_SHA", "")
+        head = os.environ.get("PUSH_AFTER_SHA", "")
+        if set(base) <= {"0"}:  # 새 브랜치의 all-zero sentinel / new-branch sentinel
+            base = ""
+
+    commits = _git_text("log", "--format=%B", f"{base}..{head}") if base and head else ""
+    return commits or _git_text("log", "-1", "--format=%B"), read_pr_body()
 
 # 개행류 제어문자 — Actions 워크플로 커맨드 위조 차단(`\r` 이 남으면 줄이 갈라진다).
 _LINE_BREAKS = re.compile(r"\s+")

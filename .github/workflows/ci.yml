@@ -470,8 +470,15 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: python scripts/check_test_count_sync.py
 
+      # 🔴 push 도 **범위**로 읽는다 — `git log -1` 은 틀린 답이었다(Grok claim-review 019fe026).
+      #    이 리포는 merge-commit·rebase-merge 가 둘 다 허용돼 있어(API 실측), tip 커밋에
+      #    마커가 없는 머지 방식이 존재한다 → PR 초록 → main red 로 사고가 재현된다.
+      # The push reads every commit it introduced; a merge commit's tip would hide the marker.
       - name: 테스트 수치 ↔ 실측 대조 (main push — enforce)
         if: github.event_name == 'push'
+        env:
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          PUSH_AFTER_SHA: ${{ github.sha }}
         run: python scripts/check_test_count_sync.py
 
       - name: Upload coverage to Codecov

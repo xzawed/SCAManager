@@ -106,7 +106,7 @@ def tools_make_gate_runs() -> set:
 
 
 def tracked_docs(root: Path | None = None) -> list:
-    """추적 중인 `.md` 목록 — 🔴 **인덱스가 아니라 트리의 사실**을 돌려준다.
+    """추적 중인 `.md` 목록 — 경로 하나당 **정확히 한 번**.
 
     ## 사고 (2026-08-08 회고 N-P0-3 — main CI 12시간 49분 red 의 실기전)
 
@@ -123,17 +123,25 @@ def tracked_docs(root: Path | None = None) -> list:
     `--deduplicate` 플래그(git ≥2.31)에 의존하지 않고 **파이썬에서 순서 보존 dedupe** 한다 —
     구버전 git 에서 조용히 옛 동작으로 돌아가지 않게 하기 위해서다.
 
-    Returns tracked ``.md`` paths deduplicated: ``git ls-files`` emits conflicted paths once
+    🔴 **정직 기준** (Grok claim-review `019fe026`): 이 함수는 여전히 **인덱스**를 읽는다
+    (`git ls-files` 가 그렇다). 닫은 것은 *"한 경로가 여러 번 나와 수가 부푸는"* 축 하나다.
+    스테이지되었으나 미커밋인 `.md` 는 여전히 목록에 들어온다 — 그건 별개 축이고,
+    수집 수를 **부풀리지는** 않으므로 6840 사고의 기전이 아니다.
+
+    `-z` 로 NUL 구분해 읽는다 — 공백이 든 파일명이 `split()` 에 두 조각으로 쪼개져
+    유령 항목 2개가 되던 것도 같은 부류의 계기 거짓말이기 때문이다(현재 해당 파일 0건).
+
+    Returns each tracked ``.md`` exactly once. ``git ls-files`` emits a conflicted path once
     per merge stage, which silently inflated the collected-test count and shipped a wrong
-    number to four sinks (see the incident above).
+    number to four sinks. NUL-separated so spaces in names cannot split one path into two.
     """
     out = subprocess.run(  # nosec B603 B607
-        ["git", "ls-files", "*.md"], cwd=str(root or _ROOT),
+        ["git", "ls-files", "-z", "*.md"], cwd=str(root or _ROOT),
         capture_output=True, text=True, encoding="utf-8", errors="replace", check=True,
-    ).stdout.split()
+    ).stdout.split("\0")
     # 🔴 dict.fromkeys = 순서 보존 dedupe. set() 는 parametrize 순서를 비결정적으로 만든다.
     # dict.fromkeys keeps order; set() would make the parametrize order nondeterministic.
-    return list(dict.fromkeys(f for f in out if "_archive" not in f))
+    return list(dict.fromkeys(f for f in out if f and "_archive" not in f))
 
 
 # ── 파서가 공허하지 않은지 ────────────────────────────────────────────────

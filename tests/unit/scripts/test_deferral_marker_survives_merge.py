@@ -149,7 +149,113 @@ def test_git_failure_is_not_an_exemption(monkeypatch, mod):
     assert mod._DEFERRED.search(mod.deferral_carriers()[0]) is None
 
 
-# ── ③ 자기문서화 면제 방지 (기존 관용구 유지) ────────────────────────────
+# ── ③ 🔴 실제 머지 토폴로지 (Grok claim-review 019fe026 이 BROKEN 판정한 축) ─────
+
+
+@pytest.fixture(name="merged_repo")
+def _merged_repo(tmp_path: Path) -> tuple[Path, str, str]:
+    """마커를 **feature 커밋 본문**에 담고 `--no-ff` 로 머지한 리포.
+
+    이 토폴로지에서 tip(머지 커밋)의 메시지에는 마커가 **없다**. 그래서 초판처럼
+    `git log -1` 을 보면 마커를 놓치고 main 이 빨개진다.
+
+    Returns (repo, before_sha, after_sha) — push 이벤트가 주는 것과 같은 두 SHA.
+    """
+    repo = tmp_path / "merged"
+    repo.mkdir()
+
+    def g(*args: str) -> str:
+        return subprocess.run(  # nosec B603 B607
+            ["git", *args], cwd=str(repo), capture_output=True, text=True,
+            encoding="utf-8", errors="replace", check=True,
+        ).stdout
+
+    g("init", "-q")
+    g("config", "user.email", "guard@test.local")
+    g("config", "user.name", "guard")
+    g("config", "commit.gpgsign", "false")
+    (repo / "a.txt").write_text("base\n", encoding="utf-8")
+    g("add", "-A")
+    g("commit", "-qm", "base")
+    trunk = g("rev-parse", "--abbrev-ref", "HEAD").strip()
+    before = g("rev-parse", "HEAD").strip()
+
+    g("checkout", "-qb", "feature")
+    (repo / "a.txt").write_text("feature\n", encoding="utf-8")
+    # 🔴 마커는 feature 커밋의 **본문**에 있다 — 제목이 아니다.
+    g("commit", "-qam", "chore: 작업", "-m", _MARKER)
+
+    g("checkout", "-q", trunk)
+    g("merge", "--no-ff", "-m", "Merge pull request #999 from feature", "feature")
+    after = g("rev-parse", "HEAD").strip()
+    return repo, before, after
+
+
+def test_a_merge_commit_tip_really_hides_the_marker(merged_repo):
+    """🔴 대조군 — `git log -1` 로는 마커가 **안 보인다**.
+
+    이게 거짓이면 아래 봉인 단언은 범위 조회가 없어도 통과한다(가드 자살).
+    Grok claim-review 019fe026 이 초판을 BROKEN 으로 판정한 근거가 정확히 이것이다.
+    """
+    repo, _, _ = merged_repo
+    tip = subprocess.run(  # nosec B603 B607
+        ["git", "log", "-1", "--format=%B"], cwd=str(repo), capture_output=True,
+        text=True, encoding="utf-8", errors="replace", check=True,
+    ).stdout
+
+    assert "STATE-sync-deferred" not in tip, (
+        "머지 커밋 tip 에 마커가 보인다 — 이 토폴로지가 위험을 재현하지 못한다"
+    )
+
+
+def test_push_range_finds_a_marker_the_tip_hides(merged_repo, monkeypatch, mod):
+    """🔴 봉인 본체 — push 는 그 push 가 들여온 **커밋 전부**를 본다.
+
+    실제 git 저장소에 실제 머지 커밋을 만들어 검증한다 — `_git_text` 를 mock 하지 않는다.
+    """
+    repo, before, after = merged_repo
+    monkeypatch.setattr(mod, "_ROOT", repo)
+    for name in ("PR_BASE_SHA", "PR_HEAD_SHA"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("PUSH_BEFORE_SHA", before)
+    monkeypatch.setenv("PUSH_AFTER_SHA", after)
+    monkeypatch.setenv("PR_BODY", "")
+
+    assert mod._DEFERRED.search(mod.deferral_carriers()[0]) is not None, (
+        "머지 커밋으로 머지하면 마커가 사라진다 — PR 초록 → main red 가 그대로 재현된다"
+    )
+
+
+def test_new_branch_zero_sentinel_falls_back(merged_repo, monkeypatch, mod):
+    """`github.event.before` 가 all-zero(새 브랜치)면 범위가 무효 — 물러나되 터지지 않는다."""
+    repo, _, after = merged_repo
+    monkeypatch.setattr(mod, "_ROOT", repo)
+    for name in ("PR_BASE_SHA", "PR_HEAD_SHA"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("PUSH_BEFORE_SHA", "0" * 40)
+    monkeypatch.setenv("PUSH_AFTER_SHA", after)
+    monkeypatch.setenv("PR_BODY", "")
+
+    assert "Merge pull request #999" in mod.deferral_carriers()[0], (
+        "all-zero sentinel 에서 직전 커밋으로 물러나지 않았다"
+    )
+
+
+def test_unreachable_range_does_not_exempt(merged_repo, monkeypatch, mod):
+    """🔴 fail-closed — 범위가 조회 불가여도 '마커 있음' 이 되지 않는다."""
+    repo, _, after = merged_repo
+    monkeypatch.setattr(mod, "_ROOT", repo)
+    for name in ("PR_BASE_SHA", "PR_HEAD_SHA"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("PUSH_BEFORE_SHA", "1" * 40)
+    monkeypatch.setenv("PUSH_AFTER_SHA", after)
+    monkeypatch.setenv("PR_BODY", "")
+
+    # 물러난 tip 에는 마커가 없다 → 면제 아님 → 드리프트가 차단된다.
+    assert mod._DEFERRED.search(mod.deferral_carriers()[0]) is None
+
+
+# ── ④ 자기문서화 면제 방지 (기존 관용구 유지) ────────────────────────────
 
 
 def test_this_very_file_does_not_defer_itself(mod):
