@@ -63,10 +63,15 @@ def test_pr_step_does_not_use_advisory_drift():
     )
 
 
-def test_pr_step_passes_the_body_so_the_marker_can_work():
-    """대조군 — 마커를 볼 수 없으면 이월 경로가 죽고 가드가 곧 꺼진다(정책 17)."""
-    assert "PR_BODY" in _pr_step_block(), (
-        "PR step 이 `PR_BODY` 를 넘기지 않는다 — 이월 마커가 원리적으로 동작하지 않는다"
+@pytest.mark.parametrize("env_name", ["PR_BODY", "PR_BASE_SHA", "PR_HEAD_SHA"])
+def test_pr_step_passes_what_the_marker_path_needs(env_name: str):
+    """대조군 — 마커를 볼 수 없으면 이월 경로가 죽고 가드가 곧 꺼진다(정책 17).
+
+    🔴 `PR_BODY` 만으로는 부족해졌다(회고 N-P0-2). 마커는 이제 **커밋 메시지**에서 유효하고
+    그걸 읽으려면 SHA 범위가 필요하다. 본문은 *"본문에만 적었다"* 를 **명시 실패**시키는 데 쓴다.
+    """
+    assert env_name in _pr_step_block(), (
+        f"PR step 이 `{env_name}` 를 넘기지 않는다 — 이월 마커 경로가 원리적으로 동작하지 않는다"
     )
 
 

@@ -131,7 +131,7 @@ _INLINE_CODE = re.compile(r"`[^`\n]+`")
 _LINE_BREAKS = re.compile("[" + "".join(chr(c) for c in (10, 11, 12, 13, 0x85, 0x2028, 0x2029)) + "]+")
 
 
-def _strip_html_comments(text: str) -> str:  # pylint: disable=too-many-branches
+def strip_html_comments(text: str) -> str:  # pylint: disable=too-many-branches
     """리뷰어 비가시 영역(진짜 HTML 주석)만 제거하는 라인 상태기계.
 
     규칙 (GitHub 렌더 동작 대응 — branch 수는 상태 전이 그대로라 분해하면 오히려 흐려진다):
@@ -184,6 +184,28 @@ def _strip_html_comments(text: str) -> str:  # pylint: disable=too-many-branches
             in_comment = True
         out.append("".join(kept))
     return "\n".join(out)
+
+
+def read_pr_body() -> str:
+    """🔴 **PR 본문을 읽는 유일한 지점** — 리뷰어 비가시 영역을 제거한 뒤 돌려준다.
+
+    ## 왜 함수 하나로 모았나 (2026-08-08 회고 N-P0-1)
+
+    이 모듈이 `strip_html_comments` 로 닫아 둔 축(backlog R20 결함 1 · Grok `019fbe32`)이
+    **세 게이트에서 한꺼번에 재발**했다. `check_reverse_mutation` · `check_test_count_sync` ·
+    `check_red_budget` 이 면제 마커 관용구는 복제하면서 **하드닝은 복제하지 않아**,
+    `os.environ["PR_BODY"]` 원문을 정규식에 그대로 넘겼다. 결과는 리포가 이미 한 번
+    값을 치른 fail-open 그대로다 — 멀티라인 `<!-- … -->` 안에 마커를 적으면
+    **리뷰어에게는 안 보이는데 required check 는 통과**한다.
+
+    🔴 교훈은 "복제하지 말라" 가 아니라 **"읽는 지점을 하나로 두라"** 다. 관용구는 앞으로도
+    복제되겠지만, 그 관용구가 `read_pr_body()` 를 부르는 한 하드닝이 함께 따라온다.
+    `tests/unit/scripts/test_pr_body_single_reader.py` 가 이 단일성을 기계로 강제한다.
+
+    The single place any gate reads the PR body; strips reviewer-invisible regions so a
+    marker hidden in an HTML comment can never satisfy a gate.
+    """
+    return strip_html_comments(os.environ.get("PR_BODY", "") or "")
 
 
 def find_seal_claims(text: str) -> list[tuple[int, str, str]]:
@@ -313,7 +335,7 @@ def main() -> int:
     #    흔적/면제가 exit 0 을 만들면 리뷰어 비가시 무임승차가 된다. 제목·커밋 메시지는
     #    plain text 로 렌더되므로 스트리핑하지 않는다(기존 동작 보존).
     # The body is judged after comment stripping; titles/commits render as plain text.
-    body = _strip_html_comments(os.environ.get("PR_BODY", ""))
+    body = read_pr_body()
     base_sha = os.environ.get("PR_BASE_SHA", "")
     head_sha = os.environ.get("PR_HEAD_SHA", "")
 

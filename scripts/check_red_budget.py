@@ -57,6 +57,18 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
 
 _ROOT = Path(__file__).resolve().parents[1]
 
+# 🔴 PR 본문은 **단일 리더**를 통해서만 읽는다 — 원문을 정규식에 넘기면 HTML 주석 안
+# 마커가 "리뷰어 비가시 + 게이트 통과" 를 성립시킨다(회고 N-P0-1 · backlog R20 결함 1).
+# 스크립트 간 공유 관용구는 `retro_scope.py:34` 선례를 따른다(standalone 실행이라
+# sys.path 조작이 필요하다). 단일성 강제: `tests/unit/scripts/test_pr_body_single_reader.py`.
+# Read the PR body only through the single hardened reader; see the guard test.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from check_claim_review_trace import (  # noqa: E402  # pylint: disable=wrong-import-position
+    read_pr_body,
+)
+
+
 # 🔴 규칙이 사는 표면 — 리터럴로 못박는다(유도하면 비워도 초록이다).
 SURFACE_GLOBS = ("CLAUDE.md", "AGENTS.md", ".claude/rules/*.md", ".claude/policies/*.md")
 
@@ -181,7 +193,7 @@ def main() -> int:
         print("\n✅ 무집행 🔴 이 늘지 않았다.")
         return 0
 
-    exemption = _EXEMPT.search(os.environ.get("PR_BODY", "") or "")
+    exemption = _EXEMPT.search(read_pr_body())
     if exemption:
         reason = _LINE_BREAKS.sub(" ", exemption.group(0).strip())[:200]
         print(f"::notice title=red-budget exempted::{reason}")

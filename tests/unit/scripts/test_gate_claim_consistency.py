@@ -105,12 +105,35 @@ def tools_make_gate_runs() -> set:
     return {t for t in _LINTERS if re.search(rf"(?<![\w-]){t}(?![\w-])", body)}
 
 
-def tracked_docs() -> list:
+def tracked_docs(root: Path | None = None) -> list:
+    """추적 중인 `.md` 목록 — 🔴 **인덱스가 아니라 트리의 사실**을 돌려준다.
+
+    ## 사고 (2026-08-08 회고 N-P0-3 — main CI 12시간 49분 red 의 실기전)
+
+    `git ls-files` 는 **머지 충돌 중인 경로를 stage 1/2/3 로 3번** 출력한다(실측). 이 함수가
+    수집 시점에 호출되고 그 결과가 `parametrize` **2곳**(`:149`·`:188`)에 쓰이므로,
+    충돌 `.md` 1건당 collected 가 **+4** 된다. 즉 충돌 중에 `--collect-only` 를 돌리면
+    계기가 **트리에 없는 테스트 수**를 보고한다.
+
+    실제로 그 일이 일어났다 — 배치-PR 충돌 4건 상태에서 잰 `6824 + 4×4 = 6840` 이
+    STATE 4지점에 전파됐고, 충돌이 풀린 뒤 CI 가 6824 를 재서 main 이 12h49m red 였다.
+    당시 이것은 *"사람의 수치 오판독"* 으로 기록됐다. 아니었다 — **계기가 거짓을 냈고
+    사람은 그 값을 정확히 읽었다.** 관측자가 거짓말하는 이 리포의 지배 결함 그대로다.
+
+    `--deduplicate` 플래그(git ≥2.31)에 의존하지 않고 **파이썬에서 순서 보존 dedupe** 한다 —
+    구버전 git 에서 조용히 옛 동작으로 돌아가지 않게 하기 위해서다.
+
+    Returns tracked ``.md`` paths deduplicated: ``git ls-files`` emits conflicted paths once
+    per merge stage, which silently inflated the collected-test count and shipped a wrong
+    number to four sinks (see the incident above).
+    """
     out = subprocess.run(  # nosec B603 B607
-        ["git", "ls-files", "*.md"], cwd=str(_ROOT),
+        ["git", "ls-files", "*.md"], cwd=str(root or _ROOT),
         capture_output=True, text=True, encoding="utf-8", errors="replace", check=True,
     ).stdout.split()
-    return [f for f in out if "_archive" not in f]
+    # 🔴 dict.fromkeys = 순서 보존 dedupe. set() 는 parametrize 순서를 비결정적으로 만든다.
+    # dict.fromkeys keeps order; set() would make the parametrize order nondeterministic.
+    return list(dict.fromkeys(f for f in out if "_archive" not in f))
 
 
 # ── 파서가 공허하지 않은지 ────────────────────────────────────────────────
