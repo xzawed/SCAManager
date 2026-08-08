@@ -56,6 +56,18 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
 
 _ROOT = Path(__file__).resolve().parents[1]
 
+# 🔴 PR 본문은 **단일 리더**를 통해서만 읽는다 — 원문을 정규식에 넘기면 HTML 주석 안
+# 마커가 "리뷰어 비가시 + 게이트 통과" 를 성립시킨다(회고 N-P0-1 · backlog R20 결함 1).
+# 스크립트 간 공유 관용구는 `retro_scope.py:34` 선례를 따른다(standalone 실행이라
+# sys.path 조작이 필요하다). 단일성 강제: `tests/unit/scripts/test_pr_body_single_reader.py`.
+# Read the PR body only through the single hardened reader; see the guard test.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from check_claim_review_trace import (  # noqa: E402  # pylint: disable=wrong-import-position
+    read_pr_body,
+)
+
+
 # 되돌릴 "생산 표면".
 # 🔴 `src/` 만 되돌리면 안 된다 — `#1298`·`#1305` 는 `src/` 변경이 **0건**이라 원리적으로
 #    미검출된다(설계 적대 검증이 실측으로 짚은 지점). 가드·워크플로·훅도 생산물이다.
@@ -74,7 +86,8 @@ TEST_PREFIXES = ("tests/",)
 
 # 면제 — 이 게이트가 원리적으로 판정할 수 없는 PR 을 저자가 **명시**한다.
 # 🔴 사유 16자 이상. 조용한 통과가 아니라 보이는 결정이 되도록 job summary 에 계수한다.
-import re  # noqa: E402  (stdout 재구성 이후 import — guards.md 관용구)
+import re  # noqa: E402  # pylint: disable=wrong-import-order
+# (stdout 재구성 이후 import — guards.md 관용구. 단일 리더 shim 이 위에 있어 정렬 경고가 뜬다.)
 
 _EXEMPT = re.compile(
     r"^[ \t]*(?![`'\"])reverse-mutation-not-applicable\s*:\s*\S.{15,}", re.MULTILINE)
@@ -244,7 +257,7 @@ def main() -> int:
         print("⏭️  PR 환경변수(PR_BASE_SHA/PR_HEAD_SHA)가 없다 — 로컬 실행에서는 쉰다.")
         return 0
 
-    exemption = _EXEMPT.search(os.environ.get("PR_BODY", "") or "")
+    exemption = _EXEMPT.search(read_pr_body())
     if exemption:
         reason = _LINE_BREAKS.sub(" ", exemption.group(0).strip())[:200]
         print(f"::notice title=reverse-mutation exempted::{reason}")

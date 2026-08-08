@@ -453,19 +453,32 @@ jobs:
       #    advisory 를 유지하던 근거였던 주석("브랜치 보호 부재라 red 가 머지를 막지 못한다")은
       #    **이미 거짓**이다 — required 10종 + enforce_admins:true 가 살아 있다(API 실측).
       #
-      # 🔴 배치-PR 이월은 없애지 않고 **명시 면제**로 승격한다: PR 본문에
-      #    `STATE-sync-deferred: <사유>` 를 적으면 통과하되 job summary 에 계수된다.
-      #    조용한 통과 → 보이는 결정. (정책 19 면제 마커와 같은 관용구.)
+      # 🔴 배치-PR 이월은 없애지 않고 **명시 면제**로 승격한다: `STATE-sync-deferred: <사유>`
+      #    를 적으면 통과하되 job summary 에 계수된다. 조용한 통과 → 보이는 결정.
+      # 🔴 **2026-08-08(회고 N-P0-2): 마커는 커밋 메시지에서만 유효하다.** 초판은 PR 본문에서만
+      #    읽혀서, push 이벤트(머지 후 main)에는 본문이 전달되지 않아 **마커를 처음 쓰는 사람이
+      #    main 을 빨갛게 만드는** 구조였다 — 이 마커가 없애려던 사고 그 자체다. 그래서 두 이벤트가
+      #    같은 운반체(커밋 메시지)를 읽는다. `PR_BODY` 는 여전히 전달하되, 본문에만 있는 마커는
+      #    PR 단계에서 **명시적으로 실패**시켜 저자가 그 자리에서 고치게 한다.
       # 🔴 도구/파싱 실패는 **양쪽 모드 다 exit 1** (Grok claim-review 019fb930 — `|| true` 경계).
-      # Drift now blocks on PRs too; the batch-carry escape became an explicit, counted marker.
+      # Both events read the same durable carrier (commit messages); a body-only marker fails loudly.
       - name: 테스트 수치 ↔ 실측 대조 (PR — 차단)
         if: github.event_name == 'pull_request'
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: python scripts/check_test_count_sync.py
 
+      # 🔴 push 도 **범위**로 읽는다 — `git log -1` 은 틀린 답이었다(Grok claim-review 019fe026).
+      #    이 리포는 merge-commit·rebase-merge 가 둘 다 허용돼 있어(API 실측), tip 커밋에
+      #    마커가 없는 머지 방식이 존재한다 → PR 초록 → main red 로 사고가 재현된다.
+      # The push reads every commit it introduced; a merge commit's tip would hide the marker.
       - name: 테스트 수치 ↔ 실측 대조 (main push — enforce)
         if: github.event_name == 'push'
+        env:
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          PUSH_AFTER_SHA: ${{ github.sha }}
         run: python scripts/check_test_count_sync.py
 
       - name: Upload coverage to Codecov

@@ -60,6 +60,18 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
 
 _ROOT = Path(__file__).resolve().parents[1]
 
+# 🔴 PR 본문은 **단일 리더**를 통해서만 읽는다 — 원문을 정규식에 넘기면 HTML 주석 안
+# 마커가 "리뷰어 비가시 + 게이트 통과" 를 성립시킨다(회고 N-P0-1 · backlog R20 결함 1).
+# 스크립트 간 공유 관용구는 `retro_scope.py:34` 선례를 따른다(standalone 실행이라
+# sys.path 조작이 필요하다). 단일성 강제: `tests/unit/scripts/test_pr_body_single_reader.py`.
+# Read the PR body only through the single hardened reader; see the guard test.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from check_claim_review_trace import (  # noqa: E402  # pylint: disable=wrong-import-position
+    read_pr_body,
+)
+
+
 # 🔴 check_docs_sync._STATE_TOTAL 과 **동일 패턴 유지 의무** (PARITY GUARD — testing.md 패턴).
 #   runtime import 결합 대신 사본 + 동등성 테스트(test_check_test_count_sync.py)로 drift 차단.
 # Must stay identical to check_docs_sync._STATE_TOTAL; parity is test-enforced, not import-coupled.
@@ -107,11 +119,71 @@ def state_counts(state_text: str) -> tuple[int, int] | None:
     return (int(m.group(1)), int(m.group(2))) if m else None
 
 
-# 이월 마커 — 사유 16자 이상, PR **본문**에서만 유효.
+# 이월 마커 — 사유 16자 이상, **커밋 메시지**에서만 유효(아래 `deferral_carriers` 참조).
 # 🔴 백틱/따옴표로 시작하는 줄은 제외한다 — 정책 19 면제 마커가 **자기를 문서화하는 PR** 을
 #    면제해 버린 실사고와 같은 클래스다(`check_claim_review_trace.py` 의 `_EXEMPT` 관용구).
 _DEFERRED = re.compile(
     r"^[ \t]*(?![`'\"])STATE-sync-deferred\s*:\s*\S.{15,}", re.MULTILINE)
+
+
+def _git_text(*args: str) -> str:
+    """리포 자신의 git 출력. 실패는 빈 문자열 — 호출자가 fail-closed 로 처리한다."""
+    try:
+        return subprocess.run(  # nosec B603 B607
+            ["git", *args], cwd=str(_ROOT), capture_output=True, text=True,
+            encoding="utf-8", errors="replace", timeout=60, check=False,
+        ).stdout or ""
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def deferral_carriers() -> tuple[str, str]:
+    """(마커가 **유효한** 곳, 마커가 **함정인** 곳) = (커밋 메시지, PR 본문).
+
+    ## 왜 PR 본문이 아니라 커밋 메시지인가 (2026-08-08 회고 N-P0-2)
+
+    이월 마커의 초판은 PR 본문에서만 읽혔다. 그런데 CI 는 **두 이벤트**에서 이 게이트를 돌린다:
+
+    | 이벤트 | `PR_BODY` | 결과 |
+    |---|---|---|
+    | `pull_request` | 있음 | 마커 인식 → PR 통과 |
+    | `push` (머지 후 main) | **없음** | 마커 소멸 → **main red** |
+
+    🔴 즉 마커를 처음 쓰는 사람이 **main 을 빨갛게 만든다** — 이 마커가 없애려던 사고를
+    마커 자신이 재생산하는 구조였다. 사용 0건이라 아직 발현하지 않았을 뿐이다.
+
+    고치는 방향은 "push 에도 PR 본문을 흘려보내기" 가 아니라 **머지 후에도 남는 곳에만
+    마커를 인정하기** 다. 이월은 *"지금은 안 하고 나중에 한다"* 는 약속이고, 약속은
+    머지 뒤에도 읽혀야 한다. 커밋 메시지는 squash 후에도 남는다.
+    CLAUDE.md 6-step ⑤ 이월 분기가 이미 *"commit body 에 카운트 delta 를 기록"* 하라고
+    적어 둔 것과도 일치한다 — 규약을 새로 만드는 게 아니라 집행면을 맞추는 것이다.
+
+    🔴 **양쪽 다 "범위" 로 읽는다 — `git log -1` 은 틀린 답이었다** (Grok claim-review
+    `019fe026` 가 초판을 BROKEN 으로 반증). 이 리포는 `allow_merge_commit` 과
+    `allow_rebase_merge` 가 **둘 다 켜져 있다**(API 실측). 머지 커밋으로 머지하면 tip 은
+    *"Merge pull request #N …"* 이라 마커가 없고, rebase-merge 로 여러 커밋이 올라가면
+    마커가 tip 이 아닌 커밋에 있을 수 있다. 두 경우 다 **PR 초록 → main red** 로,
+    이 함수가 없애려던 바로 그 비대칭이 그대로 재현된다.
+
+    그래서 push 에서도 **그 push 가 실제로 들여온 커밋 전부**(`before..after`)를 본다.
+    이러면 squash·merge-commit·rebase-merge 셋 다 마커를 보존한다.
+    `before` 가 all-zero(새 브랜치)이거나 범위 조회가 실패하면 직전 커밋으로 물러난다 —
+    그 경우 마커가 안 보이면 드리프트가 차단되므로 fail-closed 다.
+
+    Both events read a *range*: the PR's commits, or the commits the push actually
+    introduced. `git log -1` was wrong — merge commits and rebase-merges hide the marker.
+    """
+    base = os.environ.get("PR_BASE_SHA", "")
+    head = os.environ.get("PR_HEAD_SHA", "")
+    if not (base and head):
+        # push 이벤트 — `github.event.before` .. `github.sha`
+        base = os.environ.get("PUSH_BEFORE_SHA", "")
+        head = os.environ.get("PUSH_AFTER_SHA", "")
+        if set(base) <= {"0"}:  # 새 브랜치의 all-zero sentinel / new-branch sentinel
+            base = ""
+
+    commits = _git_text("log", "--format=%B", f"{base}..{head}") if base and head else ""
+    return commits or _git_text("log", "-1", "--format=%B"), read_pr_body()
 
 # 개행류 제어문자 — Actions 워크플로 커맨드 위조 차단(`\r` 이 남으면 줄이 갈라진다).
 _LINE_BREAKS = re.compile(r"\s+")
@@ -177,7 +249,8 @@ def main(argv: list[str] | None = None) -> int:
     #    오판독한 정수가 4지점으로 전파돼 머지됐으며 main 이 2연속 red 였다.
     #    이제 이월하려면 PR 본문에 그 의도를 **적어야** 하고, 그 사용은 계수된다.
     # The batch-carry escape is now an explicit, counted marker instead of a silent pass.
-    deferral = _DEFERRED.search(os.environ.get("PR_BODY", "") or "")
+    commits, pr_body = deferral_carriers()
+    deferral = _DEFERRED.search(commits)
     if deferral:
         reason = _LINE_BREAKS.sub(" ", deferral.group(0).strip())[:200]
         print(f"::notice title=STATE sync deferred::{reason}")
@@ -188,13 +261,31 @@ def main(argv: list[str] | None = None) -> int:
         print(f"⏭️  이월 마커 확인 — {message.splitlines()[0]}")
         return 0
 
+    # 🔴 마커가 PR 본문에만 있으면 **여기서** 실패시킨다 — 통과시켜 놓고 머지 후 main 에서
+    #    빨개지게 두면, 이 마커가 없애려던 사고를 마커가 재생산한다(회고 N-P0-2).
+    #    "조용히 무시" 도 답이 아니다: 저자는 면제를 적었다고 믿고 떠난다.
+    # A body-only marker fails here rather than after the merge, where it cannot be fixed cheaply.
+    if _DEFERRED.search(pr_body):
+        print(
+            f"🔴 {message}\n\n"
+            "   이월 마커가 **PR 본문에만** 있습니다 — 머지 후 push 이벤트에는 PR 본문이\n"
+            "   전달되지 않아 그대로 main 이 빨개집니다. 마커를 **커밋 메시지**로 옮기세요:\n"
+            '     git commit --allow-empty -m "chore: STATE 동기화 이월" '
+            '-m "STATE-sync-deferred: <왜 이 PR 에서 안 하는가 — 16자 이상>"',
+            file=sys.stderr,
+        )
+        return 1
+
     if advisory_drift:
         print(f"⚠️  (advisory) {message}\n   ⚠️ 이 모드는 CI 에서 더 이상 쓰이지 않는다(로컬 진단용).")
         return 0
     print(f"🔴 {message}", file=sys.stderr)
     print(
-        "\n   배치-PR 이월이라 이번 PR 에서 동기화하지 않는다면 본문에 아래를 적으세요:\n"
-        "     STATE-sync-deferred: <왜 이 PR 에서 안 하는가 — 16자 이상>\n"
+        "\n   배치-PR 이월이라 이번 PR 에서 동기화하지 않는다면 **커밋 메시지**에 적으세요:\n"
+        '     git commit --allow-empty -m "chore: STATE 동기화 이월" '
+        '-m "STATE-sync-deferred: <왜 이 PR 에서 안 하는가 — 16자 이상>"\n'
+        "   🔴 PR 본문이 아니라 커밋 메시지입니다 — 본문은 머지 후 push 이벤트에 전달되지\n"
+        "      않아 main 이 빨개집니다(회고 N-P0-2).\n"
         "   🔴 그 사용은 job summary 에 계수됩니다 — 조용한 통과가 아닙니다.",
         file=sys.stderr,
     )

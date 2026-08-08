@@ -105,12 +105,43 @@ def tools_make_gate_runs() -> set:
     return {t for t in _LINTERS if re.search(rf"(?<![\w-]){t}(?![\w-])", body)}
 
 
-def tracked_docs() -> list:
+def tracked_docs(root: Path | None = None) -> list:
+    """추적 중인 `.md` 목록 — 경로 하나당 **정확히 한 번**.
+
+    ## 사고 (2026-08-08 회고 N-P0-3 — main CI 12시간 49분 red 의 실기전)
+
+    `git ls-files` 는 **머지 충돌 중인 경로를 stage 1/2/3 로 3번** 출력한다(실측). 이 함수가
+    수집 시점에 호출되고 그 결과가 `parametrize` **2곳**(`:149`·`:188`)에 쓰이므로,
+    충돌 `.md` 1건당 collected 가 **+4** 된다. 즉 충돌 중에 `--collect-only` 를 돌리면
+    계기가 **트리에 없는 테스트 수**를 보고한다.
+
+    실제로 그 일이 일어났다 — 배치-PR 충돌 4건 상태에서 잰 `6824 + 4×4 = 6840` 이
+    STATE 4지점에 전파됐고, 충돌이 풀린 뒤 CI 가 6824 를 재서 main 이 12h49m red 였다.
+    당시 이것은 *"사람의 수치 오판독"* 으로 기록됐다. 아니었다 — **계기가 거짓을 냈고
+    사람은 그 값을 정확히 읽었다.** 관측자가 거짓말하는 이 리포의 지배 결함 그대로다.
+
+    `--deduplicate` 플래그(git ≥2.31)에 의존하지 않고 **파이썬에서 순서 보존 dedupe** 한다 —
+    구버전 git 에서 조용히 옛 동작으로 돌아가지 않게 하기 위해서다.
+
+    🔴 **정직 기준** (Grok claim-review `019fe026`): 이 함수는 여전히 **인덱스**를 읽는다
+    (`git ls-files` 가 그렇다). 닫은 것은 *"한 경로가 여러 번 나와 수가 부푸는"* 축 하나다.
+    스테이지되었으나 미커밋인 `.md` 는 여전히 목록에 들어온다 — 그건 별개 축이고,
+    수집 수를 **부풀리지는** 않으므로 6840 사고의 기전이 아니다.
+
+    `-z` 로 NUL 구분해 읽는다 — 공백이 든 파일명이 `split()` 에 두 조각으로 쪼개져
+    유령 항목 2개가 되던 것도 같은 부류의 계기 거짓말이기 때문이다(현재 해당 파일 0건).
+
+    Returns each tracked ``.md`` exactly once. ``git ls-files`` emits a conflicted path once
+    per merge stage, which silently inflated the collected-test count and shipped a wrong
+    number to four sinks. NUL-separated so spaces in names cannot split one path into two.
+    """
     out = subprocess.run(  # nosec B603 B607
-        ["git", "ls-files", "*.md"], cwd=str(_ROOT),
+        ["git", "ls-files", "-z", "*.md"], cwd=str(root or _ROOT),
         capture_output=True, text=True, encoding="utf-8", errors="replace", check=True,
-    ).stdout.split()
-    return [f for f in out if "_archive" not in f]
+    ).stdout.split("\0")
+    # 🔴 dict.fromkeys = 순서 보존 dedupe. set() 는 parametrize 순서를 비결정적으로 만든다.
+    # dict.fromkeys keeps order; set() would make the parametrize order nondeterministic.
+    return list(dict.fromkeys(f for f in out if f and "_archive" not in f))
 
 
 # ── 파서가 공허하지 않은지 ────────────────────────────────────────────────
