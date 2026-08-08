@@ -76,7 +76,12 @@ def test_parse_reason_tag_whitespace_stripped():
         ("unknown_state_timeout", "failed", False),
         ("unknown_state_timeout", "unknown", False),
         ("dirty_conflict", "running", False),
-        ("branch_protection_blocked", "running", False),
+        # 🔴 R68 계약 변경 — `blocked` 은 required check 진행 중일 **때만** 재시도한다.
+        #    CI 가 끝났는데도 blocked = 규칙상 충족 불가 → 종결(예산 낭비 방지).
+        ("branch_protection_blocked", "running", True),
+        ("branch_protection_blocked", "passed", False),
+        ("branch_protection_blocked", "failed", False),
+        ("branch_protection_blocked", "unknown", False),
         ("behind_base", "passed", False),
         ("permission_denied", "running", False),
         ("network_error", "running", False),

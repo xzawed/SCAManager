@@ -1008,7 +1008,7 @@ class TestProcessPendingRetries:
             if sha == "sha_success":
                 return (True, None, sha)
             if sha == "sha_terminal":
-                return (False, "branch_protection_blocked: admin required", "")
+                return (False, "dirty_conflict: merge conflict", "")  # R68: blocked 는 재시도 가능해졌으므로 종결 사례를 dirty 로 교체(이 테스트의 요지는 terminal 1건)
             # sha_transient
             return (False, "unstable_ci: state=unstable", "")
 

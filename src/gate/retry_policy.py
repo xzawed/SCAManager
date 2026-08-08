@@ -7,7 +7,7 @@ No DB / HTTP dependencies — enables fast unit testing.
 import random
 from datetime import datetime, timedelta
 
-from src.gate.merge_reasons import UNKNOWN_STATE_TIMEOUT, UNSTABLE_CI, is_retriable_tag
+from src.gate.merge_reasons import BRANCH_PROTECTION_BLOCKED, UNKNOWN_STATE_TIMEOUT, UNSTABLE_CI, is_retriable_tag
 
 
 def parse_reason_tag(reason: str | None) -> str:
@@ -66,6 +66,20 @@ def should_retry(reason_tag: str, ci_status: str) -> bool:
         # unknown: GitHub API 일시 오류 시 영구 종료 방지 — running으로 간주 재시도
         # unknown: prevents permanent terminal on transient GitHub API errors — treat as running
         return ci_status in ("running", "passed", "unknown")
+
+    if reason_tag == BRANCH_PROTECTION_BLOCKED:
+        # 🔴 `blocked` 은 (a)required check 진행 중 · (b)규칙상 충족 불가 를 뭉뚱그린다
+        #    (backlog R68). **CI 가 도는 중일 때만** 재시도한다 — 그것이 (a)의 유일한 신호다.
+        #
+        # 🔴 `passed` 를 넣지 않는 이유: CI 가 끝났는데도 여전히 blocked 면 그것은 (b)다
+        #    (리뷰 미승인 등) — 기다려도 안 풀리므로 재시도 예산만 태운다.
+        #    `UNSTABLE_CI` 가 `passed` 를 허용하는 것은 merge-API lag 때문인데, 그 축은
+        #    이미 그 태그가 담당한다.
+        # 🔴 `unknown` 도 넣지 않는다: GitHub 응답이 불명확한데 `blocked` 를 재시도로
+        #    확정하면 (b)를 무한히 기다리게 된다. 불명확할 때는 종결이 안전하다 —
+        #    사람이 다시 PR 을 밀면 새 게이트가 돈다.
+        # Retry only while CI is genuinely running; that is the sole signal of case (a).
+        return ci_status == "running"
 
     if reason_tag == UNKNOWN_STATE_TIMEOUT:
         # GitHub가 아직 상태 계산 중일 때만 재시도
