@@ -115,6 +115,42 @@ def test_observing_test_passes(repo: Path):
         f"신호 등급을 assertion 으로 판정하지 않았다:\n" + "\n".join(lines))
 
 
+def test_pytest_runs_without_bytecode_cache(monkeypatch, tmp_path):
+    """🔴 되돌림이 **반영되도록** 바이트코드 캐시를 꺼야 한다 — 없으면 게이트가 fail-open 한다.
+
+    ## 실측 (2026-08-08 CI, Linux 에서만 발현)
+
+    baseline 실행이 `src/x.py` 를 `__pycache__/x.pyc` 로 컴파일한다. 그 뒤
+    `git checkout base -- src/x.py` 가 소스를 되돌리는데, 되돌린 내용이 **같은 바이트 수**
+    이고 두 작업이 **같은 초** 안에 일어나면 Python 의 `(mtime, size)` 검증이 통과해
+    **옛 `.pyc` 를 재사용**한다. 그러면 되돌렸는데도 테스트가 초록이고, 게이트는
+    *"이 테스트는 변경을 관측하지 않는다"* 고 **거짓 보고**한다 — 정상 PR 을 막는 fail-open 이다.
+
+    🔴 Windows 는 파일 연산이 느려 초가 넘어가므로 로컬에서 재현되지 않았다.
+    **플랫폼 비대칭이 이 결함을 숨겼고 CI 가 잡았다.**
+    """
+    seen = {}
+
+    def fake_run(args, **kw):
+        seen["argv"] = args
+        seen["env"] = kw.get("env") or {}
+
+        class R:
+            returncode = 0
+            stdout = "1 passed"
+            stderr = ""
+        return R()
+
+    monkeypatch.setattr(gate.subprocess, "run", fake_run)
+    gate._pytest(["tests/x.py"], tmp_path)
+    assert "-B" in seen["argv"], (
+        f"pytest 를 `-B`(바이트코드 미기록) 없이 돌린다 — 되돌림이 무시될 수 있다: {seen['argv']}"
+    )
+    assert seen["env"].get("PYTHONDONTWRITEBYTECODE") == "1", (
+        "PYTHONDONTWRITEBYTECODE 가 설정되지 않았다 — 하위 프로세스가 .pyc 를 남긴다"
+    )
+
+
 # ── ② 범위 — 대상이 아닌 PR 은 조용히 통과 ──────────────────────────────
 
 

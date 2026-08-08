@@ -198,27 +198,6 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: python scripts/check_claim_review_trace.py
 
-      # 🔴 P1 역-뮤테이션 게이트 (2026-08-07 다중 관점 진단의 **지배 원인** 직격).
-      #
-      # 진단: 이 저장소가 반복해 온 결함의 형태는 하나로 수렴한다 —
-      #   *결함을 고친 당사자가 그 결함을 검증할 관측자를 같은 PR 안에서 만들고,
-      #    그 관측자는 하필 그 PR 이 고친 결함에만 맹목이다.*
-      # 산문 규칙으로는 닫히지 않는다(🔴 337개 중 실측 준수율 0/42 인 정책이 있고,
-      # R43 은 발화율 100% / 이행률 0% 다). 그래서 **기계 질문**으로 바꾼다:
-      #   "이 PR 의 변경을 되돌리면, 이 PR 이 추가한 테스트가 실패하는가?"
-      #
-      # 🔴 소급 검증으로 채택했다 — `#1297`·`#1298`·`#1299`·`#1300`·`#1305` 에 돌려 **5/5 red**
-      #   (채택 기준 ≥4/5). 반대 방향도 실증: 공허한 테스트를 심은 통제 실험에서 exit 1.
-      # 판정 불가(범위 산출 실패·baseline 이미 red·되돌림 no-op)는 **전부 실패**다.
-      # 판정할 수 없는 변경은 `reverse-mutation-not-applicable:` 로 명시 면제(계수됨).
-      # Reverse-mutation gate: revert the PR's production diff, re-run only its tests, require red.
-      - name: P1 역-뮤테이션 — 이 PR 의 테스트가 이 PR 의 변경을 관측하는가
-        if: github.event_name == 'pull_request'
-        env:
-          PR_BODY: ${{ github.event.pull_request.body }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: python scripts/check_reverse_mutation.py
 
   # 🔴 src/ 정적 분석 게이트 — 이전엔 **어떤 자동면에도 없었다** (회고 2026-07-03 D13).
   # `make lint` 은 pylint·flake8·bandit 를 전부 `|| true` 로 삼켜 **실패할 수 없고**(지금도 그렇다 —
@@ -419,6 +398,33 @@ jobs:
             --cov-report=term-missing \
             --junitxml=pytest-results.xml \
             -rs -q
+
+      # 🔴 P1 역-뮤테이션 게이트 (2026-08-07 다중 관점 진단의 **지배 원인** 직격).
+      #
+      # 🔴 **이 job 에 있어야 한다** — 게이트가 pytest 를 돌리기 때문이다. 처음에는
+      #    `repo-integrity`(stdlib 백스톱)에 뒀는데 그 job 은 **의존성 설치 step 이 0개**라
+      #    pytest 를 실행할 수 없었고, 게이트가 *"되돌리기 전에 이미 red — 판정 불가"* 로
+      #    fail-closed 했다(CI 실측). 그 자체는 옳은 동작이지만 배치가 틀렸다.
+      #
+      # 진단: 이 저장소가 반복해 온 결함의 형태는 하나로 수렴한다 —
+      #   *결함을 고친 당사자가 그 결함을 검증할 관측자를 같은 PR 안에서 만들고,
+      #    그 관측자는 하필 그 PR 이 고친 결함에만 맹목이다.*
+      # 산문 규칙으로는 닫히지 않는다(🔴 337개 중 실측 준수율 0/42 인 정책이 있고,
+      # R43 은 발화율 100% / 이행률 0% 다). 그래서 **기계 질문**으로 바꾼다:
+      #   "이 PR 의 변경을 되돌리면, 이 PR 이 추가한 테스트가 실패하는가?"
+      #
+      # 🔴 소급 검증으로 채택했다 — `#1297`·`#1298`·`#1299`·`#1300`·`#1305` 에 돌려 **5/5 red**
+      #   (채택 기준 ≥4/5). 반대 방향도 실증: 공허한 테스트를 심은 통제 실험에서 exit 1.
+      # 판정 불가(범위 산출 실패·baseline 이미 red·되돌림 no-op)는 **전부 실패**다.
+      # 판정할 수 없는 변경은 `reverse-mutation-not-applicable:` 로 명시 면제(계수됨).
+      # Reverse-mutation gate: revert the PR's production diff, re-run only its tests, require red.
+      - name: P1 역-뮤테이션 — 이 PR 의 테스트가 이 PR 의 변경을 관측하는가
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python scripts/check_reverse_mutation.py
 
       # 🔴 테스트 수치 ground-truth 축 (회고 2026-07-31 P0-D · backlog R25) — check_docs_sync 는
       # 문서 사본끼리만 대조해 5지점 동시 오류가 GREEN 이었다(실측: 문서 6205 vs 실측 6269).

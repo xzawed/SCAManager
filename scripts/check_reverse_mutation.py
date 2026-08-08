@@ -121,8 +121,29 @@ def _append_step_summary(markdown: str) -> None:
 
 
 def _pytest(paths: list[str], cwd: Path) -> subprocess.CompletedProcess:
-    return _run([sys.executable, "-m", "pytest", *paths, "-q", "--no-header",
-                 "-p", "no:cacheprovider"], cwd)
+    """되돌림이 **실제로 반영되도록** 바이트코드 캐시를 끄고 실행한다.
+
+    🔴 이것이 없으면 게이트가 **fail-open** 한다 (2026-08-08 CI 실측, Linux 에서만 발현):
+    baseline 실행이 `src/x.py` 를 `__pycache__/x.pyc` 로 컴파일한다. 그 다음
+    `git checkout base -- src/x.py` 가 소스를 되돌리는데, 되돌린 내용이 **같은 바이트 수**
+    이고 두 작업이 **같은 초** 안에 일어나면 Python 의 (mtime, size) 검증이 통과해
+    **옛 `.pyc` 를 그대로 재사용**한다. 그러면 되돌렸는데도 테스트가 초록이고,
+    게이트는 *"이 테스트는 변경을 관측하지 않는다"* 고 **거짓 보고**한다.
+
+    Windows 에서는 파일 연산이 느려 초가 넘어가므로 재현되지 않았다 — 플랫폼 비대칭이
+    이 결함을 로컬에서 숨겼다.
+
+    Disable bytecode caching so the revert is actually observed; otherwise a same-size revert
+    within the same second reuses the stale .pyc and the gate reports a false "vacuous".
+    """
+    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+    proc = subprocess.run(  # nosec B603
+        [sys.executable, "-B", "-m", "pytest", *paths, "-q", "--no-header",
+         "-p", "no:cacheprovider"],
+        cwd=str(cwd), capture_output=True, text=True,
+        encoding="utf-8", errors="replace", timeout=1800, check=False, env=env,
+    )
+    return proc
 
 
 def _grade(proc: subprocess.CompletedProcess) -> str:
