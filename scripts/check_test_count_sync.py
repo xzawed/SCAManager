@@ -258,22 +258,45 @@ def _append_step_summary(markdown: str) -> None:
 # `pytest tests/unit` 앵커가 뮤테이션 표(`**2 failed** / 3 passed`)를 배제한다 —
 # 그 행들은 전체 스위트 주장이 아니라 개별 뮤테이션 결과다.
 # Two real body formats; the `pytest tests/unit` anchor excludes per-mutation rows.
-_BODY_CLAIM = re.compile(
-    r"pytest[`'\"\s]*tests/unit\b[^\n]*?(\d+)\s*passed[^\n]*?(\d+)\s*skipped",
-    re.IGNORECASE,
-)
+# 🔴 **줄 단위 2단 파싱** — 한 정규식으로 두 숫자를 잡으면 `[^\n]*?` 두 개가 중첩돼
+#    백트래킹이 super-linear 가 되고(SonarCloud S8786), 더 나쁘게는 앞 숫자에서 뒤 숫자까지
+#    **전방으로 침범**한다. 후보 줄을 먼저 고르고 그 줄 안에서 각각 찾으면 둘 다 사라진다.
+#
+# 🔴 `(?![\w/])` 가 필수다 — `\b` 는 `tests/unit/scripts` 에서도 성립해, 스코프 실행 증거
+#    (`pytest tests/unit/scripts → 2 failed, 494 passed, 1 skipped`)를 **전체 스위트 주장으로
+#    오독**한다. 이 리포 본문은 뮤테이션 증거표를 일상적으로 담으므로 실제 오탐원이다
+#    (적대 감사 `wf_9a4878aa-eab` 적발).
+_BODY_CLAIM_LINE = re.compile(r"pytest[`'\"\s]*tests/unit(?![\w/])", re.IGNORECASE)
+# 천단위 구분자 허용 — `6,995 passed` 가 `995` 로 읽히던 오탐(같은 감사).
+_PASSED = re.compile(r"(\d[\d,_]*)\s*passed", re.IGNORECASE)
+_SKIPPED = re.compile(r"(\d[\d,_]*)\s*skipped", re.IGNORECASE)
+
+
+def _to_int(raw: str) -> int:
+    return int(raw.replace(",", "").replace("_", ""))
 
 
 def parse_body_claim(body: str) -> tuple[int, int] | None:
     """PR 본문이 주장하는 `(passed, skipped)`. 미검출은 None (빈 값과 구별한다).
 
-    마지막 매치를 쓴다 — `parse_collected` 와 같은 관용구다(앞쪽은 인용일 수 있다).
+    🔴 **첫 매치를 쓴다** — `parse_collected`(pytest 출력)와 반대 관용구이고, 그 차이에
+    이유가 있다. pytest 출력의 순서는 **도구가 정하지만** PR 본문의 순서는 **저자가 정한다**.
+    마지막 매치를 쓰면 헤드라인에 틀린 수를 적고 접힌 `<details>` 부록에 맞는 수를 넣어
+    리뷰어와 가드에게 **다른 것을 보여줄 수 있다**(적대 감사가 실행으로 실증). 첫 매치는
+    리뷰어가 실제로 읽는 자리다.
+
+    🔴 `skipped` 는 **선택**이다 — skip 이 0건이면 pytest 는 그 토큰을 아예 출력하지 않는다.
+    필수로 두면 그 상태에서 축이 조용히 미실행이 된다.
     """
-    matches = list(_BODY_CLAIM.finditer(body or ""))
-    if not matches:
-        return None
-    last = matches[-1]
-    return int(last.group(1)), int(last.group(2))
+    for line in (body or "").splitlines():
+        if not _BODY_CLAIM_LINE.search(line):
+            continue
+        passed = _PASSED.search(line)
+        if not passed:
+            continue
+        skipped = _SKIPPED.search(line)
+        return _to_int(passed.group(1)), _to_int(skipped.group(1)) if skipped else 0
+    return None
 
 
 def check_body_claim(body: str, unit: int) -> int:
@@ -283,10 +306,20 @@ def check_body_claim(body: str, unit: int) -> int:
     검증하지 않은 것이므로 *"미실행"* 을 명시 출력한다. 빈 범위 위의 ✅ 는 이 리포가
     반복해 온 fail-open 이다(`check_lint_js_nonvacuous` 가 같은 이유로 범위 붕괴를 red 로 본다).
 
-    🔴 **이 축이 증명하지 않는 것 (정직 기준)**: 수치를 **아예 안 적으면** 축이 돌지 않는다.
-    그 우회로를 닫으려면 수치 라인을 의무화해야 하는데, 그러면 본문을 기계가 만드는
-    dependabot·봇 PR 이 전부 red 가 된다 — 별도 결정 영역이라 여기서 닫지 않는다.
-    A missing claim means the axis did not run; it is announced, never rendered as green.
+    🔴 **이 축이 무엇을 재는지 정확히 (적대 감사 `wf_9a4878aa-eab` 이 초판 주장을 BROKEN 판정)**:
+    재는 것은 *"전체 스위트를 돌렸는가"* 가 **아니다**. 재는 것은 *"본문 수치가 현재 트리의
+    수집값과 일치하는가"* — 즉 **낡거나 파생되지 않은 수치의 탐지**다. 감사 실측: 이 가드가
+    쓰는 `--collect-only` 는 **11초**인데 실제 스위트는 208~247초라, 저자는 19배 싼 경로로
+    같은 숫자를 만들 수 있다. 게다가 불일치 메시지가 정답(`vs 실측 수집 N`)을 알려 준다.
+    그러므로 6-step ② 가 기계 검증된다고 말하면 **거짓**이다. 실제 사고 3건
+    (#1305·#1310·#1312)이 전부 *낡은 수치* 형태였기에 이 축이 유효했던 것이다.
+    이 축을 진짜 실행 증거로 올리려면 `--junitxml` 산출물을 대조해야 한다(backlog R76).
+
+    🔴 **닫히지 않은 우회로 (정직 기준)**: 수치를 **아예 안 적으면** 축이 돌지 않는다.
+    의무화하면 본문을 기계가 만드는 dependabot·봇 PR 이 전부 red 가 되므로 여기서 닫지 않는다.
+    부작용도 정직하게 적는다 — *틀린 수치는 red · 없는 수치는 green* 이라, 가장 싼 대응이
+    **수치 라인 삭제**다. 이 축은 그 관행 침식을 막지 못한다.
+    Measures freshness of the claimed number, not that the suite ran; see R76.
     """
     claim = parse_body_claim(body)
     if claim is None:
@@ -399,7 +432,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if advisory_drift:
         print(f"⚠️  (advisory) {message}\n   ⚠️ 이 모드는 CI 에서 더 이상 쓰이지 않는다(로컬 진단용).")
-        return 0
+        # 🔴 `return 0` 이 아니다 — advisory 가 완화하는 것은 **STATE 드리프트**뿐이고
+        #    본문 거짓 수치는 그 대상이 아니다. 초판이 여기서 `claim_rc` 를 버렸고
+        #    (`pre_push_gate.py` 가 이 플래그로 부른다) 그것을 잡아야 할 테스트는
+        #    STATE 를 일치시켜 이 분기에 **도달조차 못 했다** — 적대 감사 `wf_9a4878aa-eab` 적발.
+        return claim_rc
     print(f"🔴 {message}", file=sys.stderr)
     print(
         "\n   배치-PR 이월이라 이번 PR 에서 동기화하지 않는다면 **커밋 메시지**에 적으세요:\n"

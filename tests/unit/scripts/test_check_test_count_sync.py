@@ -247,8 +247,40 @@ def test_body_claim_absent_is_none():
     assert mod.parse_body_claim("본문에 수치가 없다") is None
 
 
-def test_body_claim_uses_the_last_match():
-    assert mod.parse_body_claim(f"{_REAL_ARROW}\n{_REAL_TABLE}\n") == (6985, 9)
+def test_body_claim_uses_the_first_match_not_the_last():
+    """🔴 첫 매치다 — 본문 순서는 **저자가 정한다**.
+
+    마지막 매치를 쓰면 헤드라인에 틀린 수를 적고 접힌 `<details>` 부록에 맞는 수를 넣어
+    리뷰어와 가드에게 다른 것을 보여줄 수 있다(적대 감사 `wf_9a4878aa-eab` 이 실행 실증).
+    """
+    assert mod.parse_body_claim(f"{_REAL_ARROW}\n{_REAL_TABLE}\n") == (6800, 9)
+
+
+def test_details_appendix_cannot_override_the_headline():
+    """실제 우회 시나리오 그대로 — 헤드라인은 거짓, 접힌 부록만 참인 본문."""
+    body = (
+        "### 요약\n"
+        "pytest tests/unit  →  6841 passed / 9 skipped / EXIT=0\n"
+        "<details><summary>부록</summary>\n"
+        "pytest tests/unit  →  6842 passed / 9 skipped / EXIT=0\n"
+        "</details>\n"
+    )
+    assert mod.parse_body_claim(body) == (6841, 9), "부록이 헤드라인을 덮으면 리뷰어와 가드가 다른 것을 본다"
+
+
+def test_scoped_run_line_is_not_a_full_suite_claim():
+    """🔴 `\\b` 는 `tests/unit/scripts` 에서도 성립한다 — 스코프 실행 증거를 전체 주장으로 읽으면 오탐."""
+    assert mod.parse_body_claim("pytest tests/unit/scripts → 2 failed, 494 passed, 1 skipped") is None
+
+
+def test_skipped_token_is_optional():
+    """skip 0건이면 pytest 는 그 토큰을 아예 안 찍는다 — 필수로 두면 그 상태에서 축이 죽는다."""
+    assert mod.parse_body_claim("pytest tests/unit  →  7004 passed / EXIT=0") == (7004, 0)
+
+
+def test_thousands_separator_is_not_truncated():
+    """`6,995 passed` 가 `995` 로 읽히면 정직한 저자가 red 가 된다."""
+    assert mod.parse_body_claim("| `pytest tests/unit` | **6,995 passed / 9 skipped** |") == (6995, 9)
 
 
 def _patch_body(monkeypatch, body: str):
@@ -275,11 +307,26 @@ def test_body_claim_match_passes(monkeypatch, tmp_path):
 
 
 def test_body_claim_mismatch_fails_in_advisory_mode_too(monkeypatch, tmp_path):
-    """`--advisory-drift` 가 완화하는 것은 **STATE 드리프트**뿐이다 — 본문 거짓 수치는 아니다."""
+    """`--advisory-drift` 가 완화하는 것은 **STATE 드리프트**뿐이다 — 본문 거짓 수치는 아니다.
+
+    🔴 **초판은 공허했다** (적대 감사 `wf_9a4878aa-eab` 적발): STATE 를 *일치*시켜 놓아
+    `main` 이 STATE-일치 분기에서 먼저 반환했고, advisory 분기에는 **도달조차 못 했다**.
+    그래서 그 분기가 `claim_rc` 를 버리고 있는데도 이 테스트가 초록이었다.
+    이제 STATE 를 **드리프트**시켜 advisory 분기를 실제로 통과시킨다.
+    """
     _patch_state(monkeypatch, tmp_path, 7022, 6851)
-    _patch_counts(monkeypatch, 6851, 171)
-    _patch_body(monkeypatch, _REAL_MISMATCH)
+    _patch_counts(monkeypatch, 6900, 171)          # STATE 와 어긋나야 advisory 분기로 간다
+    _patch_body(monkeypatch, "pytest tests/unit  →  6800 passed / 9 skipped")
     assert mod.main(["--advisory-drift"]) == 1
+
+
+def test_advisory_branch_is_actually_reached_by_that_test(monkeypatch, tmp_path, capsys):
+    """대조군 — 위 테스트가 정말 advisory 분기를 지나는지 배너로 확인한다(도달 증명)."""
+    _patch_state(monkeypatch, tmp_path, 7022, 6851)
+    _patch_counts(monkeypatch, 6900, 171)
+    _patch_body(monkeypatch, "pytest tests/unit  →  6900 passed / 0 skipped")
+    assert mod.main(["--advisory-drift"]) == 0     # 본문은 맞고 STATE 만 드리프트
+    assert "(advisory)" in capsys.readouterr().out, "advisory 분기에 도달하지 못했다 — 단언이 공허하다"
 
 
 def test_absent_claim_is_reported_not_silently_green(monkeypatch, tmp_path, capsys):
