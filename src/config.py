@@ -1,9 +1,12 @@
 """Application settings loaded from environment variables via pydantic-settings."""
 import logging
+from collections.abc import Mapping
+from typing import get_args
 from urllib.parse import urlparse, parse_qs
 from pydantic_settings import BaseSettings
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, ValidationError, field_validator, model_validator
 from src.constants import MERGE_VERIFIER_BAND_DEFAULT
+from src.logging_config import _redact
 
 logger = logging.getLogger(__name__)
 
@@ -451,4 +454,127 @@ class Settings(BaseSettings):
         return self
 
 
-settings = Settings()
+# 🔴 민감 필드 판정 — 이름에 이 조각이 들어가면 **값을 인쇄하지 않는다** (backlog R77).
+# 열거가 아니라 접미/부분 일치인 이유: 새 자격증명 필드가 늘어도 자동으로 보호되는 쪽이
+# 안전 기본값이다. 반대 방향 실수(무해한 필드를 가림)는 진단이 불편해질 뿐 유출이 아니다.
+# Substring hints, not an allowlist: new credential fields inherit protection by default.
+_SENSITIVE_FIELD_HINTS = ("url", "secret", "token", "key", "password", "dsn", "pass", "user")
+
+
+class SettingsValidationError(ValueError):
+    """설정 검증 실패 — **값이 제거된** 메시지만 담는다.
+
+    🔴 `ValueError` 를 상속하는 이유: pydantic 의 `ValidationError` 자체가 `ValueError` 하위라
+    기존 호출부·테스트가 `pytest.raises(ValueError, match=...)` 계약에 의존한다. 이 래퍼가
+    그 계약을 깨면 "보안 수정이 기능을 깨뜨렸다" 가 되므로 타입 호환을 유지한다.
+    Subclasses ValueError so existing `pytest.raises(ValueError)` contracts keep holding.
+    """
+
+
+def _is_sensitive_field(loc: str) -> bool:
+    """이 필드의 **값을 인쇄해도 되는가**를 판정한다.
+
+    🔴 이름 힌트만으로는 과교정한다 — `claude_review_max_tokens` 는 `token` 을 포함하지만
+    자격증명이 아니라 **개수**다(실측으로 잡힌 오탐). 그래서 **선언 타입**을 함께 본다:
+    자격증명은 `str` 이고, `int`/`bool` 필드는 원리적으로 자격증명일 수 없다.
+    Name hints alone over-redact (`..._max_tokens`); credentials are `str`, so non-str
+    fields are never treated as sensitive.
+    """
+    # 🔴 모델 전체를 가리키는 loc 은 **항상 민감**이다 (Grok claim-review 가 BROKEN 으로 반증).
+    #    `model_validator(mode="after")` 실패는 `loc=()` → `(root)` 인데, 그 `input` 은
+    #    **모델 전체 dict** 라 형제 필드의 토큰·키가 한꺼번에 실린다. 필드 하나를 가리려다
+    #    전부를 흘리는 형태였다(실측: telegram_bot_token·anthropic_api_key 동시 노출).
+    if loc in ("(root)", "", "__root__"):
+        return True
+    field = Settings.model_fields.get(loc.split(".")[0])
+    if field is not None and not _annotation_admits_str(field.annotation):
+        return False
+    return any(hint in loc.lower() for hint in _SENSITIVE_FIELD_HINTS)
+
+
+def _annotation_admits_str(annotation) -> bool:
+    """`str` 를 담을 수 있는 타입인가 — `str | None`·`Optional[str]` 포함.
+
+    🔴 `annotation is str` 만 보면 Optional 로 선언된 자격증명이 전부 비민감으로 빠져나간다
+    (Grok 지적). 자격증명은 문자열이므로 **문자열을 담을 수 있으면** 민감 후보로 본다.
+    """
+    if annotation is str:
+        return True
+    return str in get_args(annotation)
+
+
+# URL 계열 — 자격증명만 가리고 나머지는 보여준다(진단 가능성 보존).
+# Opaque secrets — 값 대신 길이만. 빈 값 오설정과 오타를 구분하게 해 준다.
+_URL_FIELD_HINTS = ("url", "dsn")
+
+
+def _render_error_value(loc: str, value) -> str:
+    """검증 실패 메시지에 실을 **입력 표현**을 만든다.
+
+    🔴 **왜 통째로 지우지 않는가 (사용자 지시 2026-08-10)**: 1차 설계는 민감 필드의 값을
+    전부 지웠는데, 그러면 `database_url` 이 *왜* 틀렸는지(호스트 오타·포트·스킴) 알 수 없어
+    운영자가 손댈 곳을 못 찾는다. 기동 실패 메시지가 쓸모없으면 그 자체가 품질 문제다.
+
+    | 종류 | 표현 | 근거 |
+    |---|---|---|
+    | URL 계열 | `_redact` 로 **자격증명만** 마스킹 | R77 트리거인 `[::1:5432`(닫히지 않은 대괄호)가 눈에 보인다 |
+    | 불투명 시크릿 | `(길이 N자)` | 빈 값 vs 오타 구분은 되되 값은 안 샌다 |
+    | 그 외 | 값 그대로 | 자격증명이 아니면 가릴 이유가 없다 |
+
+    🔴 마스킹 로직은 `logging_config._redact` 를 **재사용**한다 — 같은 정규식을 두 곳에 두면
+    한쪽만 하드닝되는 drift 가 난다(이 리포가 반복해 온 형태). `logging_config` 는 stdlib 만
+    import 하므로 순환이 없다(실측).
+    Keep URLs diagnostic by masking only the credential; the startup error must stay actionable.
+    """
+    if not _is_sensitive_field(loc):
+        return f"{value!r}"
+    text = value if isinstance(value, str) else str(value)
+    if any(hint in loc.lower() for hint in _URL_FIELD_HINTS):
+        return _redact(text)
+    return f"(길이 {len(text)}자 — 값은 인쇄하지 않습니다)"
+
+
+def _sanitize_validation_error(exc: ValidationError) -> str:
+    """`ValidationError` 를 **값 없는** 메시지로 바꾼다 (민감 필드 한정).
+
+    🔴 **왜 validator 가 아니라 여기인가 (2026-08-10 실측)**: validator 에서 값 없는 메시지로
+    `raise` 해도 pydantic v2 는 그 메시지 **뒤에** `input_value=...` 를 무조건 덧붙인다.
+    즉 메시지를 아무리 깨끗하게 써도 값은 남는다. 통제 지점은 **생성 지점**뿐이다.
+
+    무해한 필드의 입력값은 **남긴다** — 전부 지우면 운영자가 설정 오류를 못 고친다(과교정).
+    pydantic appends input_value regardless of the validator's message, so the only control
+    point is the construction site; non-sensitive inputs are kept for diagnosability.
+    """
+    lines = []
+    for err in exc.errors():
+        loc = ".".join(str(part) for part in err.get("loc", ())) or "(root)"
+        msg = err.get("msg", "")
+        if _is_sensitive_field(loc) and not isinstance(err.get("input"), Mapping):
+            lines.append(f"  {loc}: {msg} (입력: {_render_error_value(loc, err.get('input'))})")
+        else:
+            value = err.get("input")
+            # 🔴 매핑이면 모델 전체 dump 다 — loc 판정과 **독립**인 2중 방어.
+            #    한쪽만 두면 새 검증자가 다른 loc 으로 같은 dump 를 만들 수 있다.
+            if isinstance(value, Mapping):
+                lines.append(f"  {loc}: {msg} (모델 전체 입력이라 값은 인쇄하지 않습니다)")
+            else:
+                lines.append(f"  {loc}: {msg} (입력: {_render_error_value(loc, value)})")
+    return "설정 검증 실패 — 아래 항목을 확인하세요:\n" + "\n".join(lines)
+
+
+def build_settings(**overrides) -> Settings:
+    """`Settings` 를 만들되, 검증 실패 시 **자격증명 없는** 오류로 바꿔 던진다.
+
+    🔴 `from None` 은 필수다 — `from exc` 로 체인하면 원본 `ValidationError` 가 트레이스백에
+    **다시 인쇄돼** 그대로 유출된다(실측 확인). 회귀 가드가 traceback 전문을 검사한다.
+    🔴 이 축은 로그 필터로 막을 수 없다 — 모듈 import 시점이라 `configure_logging()` 보다
+    먼저이고 애초에 `LogRecord` 가 만들어지지 않는다(R8 이 닫은 excepthook 축과 다른 축).
+    Must use `from None`: chaining re-prints the original error (and its values) in the traceback.
+    """
+    try:
+        return Settings(**overrides)
+    except ValidationError as exc:
+        raise SettingsValidationError(_sanitize_validation_error(exc)) from None
+
+
+settings = build_settings()
