@@ -71,6 +71,22 @@ def test_state_counts_none_on_format_drift():
 # ── main — 모드별 판정 (fail-closed 는 모드 무관) ────────────────────────
 
 
+@pytest.fixture(autouse=True)
+def _no_ambient_pr_body(monkeypatch):
+    """🔴 CI 는 `PR_BODY` 를 **실제로** 넘긴다 — 테스트를 그 환경에서 격리한다.
+
+    본문 수치 축(R48)을 붙이자 기존 테스트 2건이 **CI 에서만** 깨졌다: 테스트는
+    `collect_count` 를 90 같은 합성값으로 패치하는데, `deferral_carriers()` 는 패치되지
+    않아 **진짜 PR 본문**(7000 passed / 9 skipped)을 읽어 왔다 → 불일치 → `main` 이 1.
+    🔴 로컬은 `PR_BODY` 미설정이라 축이 '미실행' 이었고 **전건 초록이었다** — `pre_push_gate`
+    가 매번 인쇄하는 로컬↔CI 이원(backlog R30)이 실제로 발현한 사례다.
+
+    기본값을 비워 두고, 본문을 보는 테스트만 `_patch_body` 로 **명시 주입**한다.
+    CI really sets PR_BODY; default it empty so tests opt in explicitly.
+    """
+    monkeypatch.setattr(mod, "deferral_carriers", lambda: ("", ""))
+
+
 def _patch_counts(monkeypatch, unit: int, integration: int):
     counts = {"tests/unit": unit, "tests/integration": integration}
     monkeypatch.setattr(mod, "collect_count", lambda p: counts[p])
@@ -206,3 +222,148 @@ def test_ci_wires_enforce_step_for_main_push():
     assert any("push" in str(s.get("if", "")) for s in hits), (
         "enforce 스텝에 push 조건이 없다"
     )
+
+
+# ── 본문 수치 축 (R48 — "돌렸는가" 대신 "본문 숫자가 기계값에서 파생됐는가") ──────
+#
+# 🔴 왜 이 축인가 (2026-08-08 회고 권고 + 2026-08-10 실측):
+#   *"전체 테스트를 돌렸는가"* 는 자기 신고라 기계가 진위를 못 잰다. *"본문에 적힌 수가
+#   실측 수집값과 같은가"* 로 바꾸면 잴 수 있다. 실측으로 오라클이 판별함을 확인했다 —
+#   #1305 본문 6800+9=6809 vs 실측 6819(−10) · #1310 6841+9=6850 vs 6851(−1) ·
+#   #1312 6860+9=6869 vs 6885(−16). 🔴 **base drift 가설은 배제됐다**: 브랜치 tip 에서
+#   재측정해도 수집값이 머지 커밋과 같았다(6819·6851·6885) — 저자 수치가 실제로 틀렸다.
+#
+# 🔴 이 축이 증명하지 않는 것 (정직 기준): 수치를 **아예 안 적으면** 축이 돌지 않는다.
+#   그래서 미검출은 조용한 통과가 아니라 *"안 쟀음"* 을 명시 출력한다 — 빈 범위 위의 ✅ 를
+#   만들지 않기 위해서다. 우회로를 닫는 것(수치 라인 의무화)은 dependabot 등 봇 PR 을
+#   깨뜨리므로 별도 결정 영역이다.
+
+# 실제 PR 본문에서 그대로 가져온 형식 2종 (합성 문자열 아님 — 불변식 2)
+_REAL_ARROW = "pytest tests/unit  →  6800 passed / 9 skipped / EXIT=0  (+16)"      # #1305
+_REAL_TABLE = "| `pytest tests/unit` 전체 | **6985 passed / 9 skipped / 0 failed** |"  # #1320
+_REAL_MISMATCH = "pytest tests/unit  →  6841 passed / 9 skipped / EXIT=0  (+16)"   # #1310
+
+
+def test_body_claim_parses_the_arrow_format():
+    assert mod.parse_body_claim(_REAL_ARROW) == (6800, 9)
+
+
+def test_body_claim_parses_the_table_format():
+    """🔴 표 형식이 최근 관행이다 — 화살표만 지원하면 이 축은 현행 PR 에서 영원히 미실행이다."""
+    assert mod.parse_body_claim(_REAL_TABLE) == (6985, 9)
+
+
+def test_body_claim_ignores_mutation_rows():
+    """뮤테이션 표의 `**2 failed** / 3 passed` 는 전체 스위트 주장이 아니다."""
+    body = "| dedupe 제거 | **3 failed** / 2 passed |\n| `read_pr_body()` 회귀 | **2 failed** / 13 passed |\n"
+    assert mod.parse_body_claim(body) is None
+
+
+def test_body_claim_absent_is_none():
+    assert mod.parse_body_claim("본문에 수치가 없다") is None
+
+
+def test_body_claim_uses_the_first_match_not_the_last():
+    """🔴 첫 매치다 — 본문 순서는 **저자가 정한다**.
+
+    마지막 매치를 쓰면 헤드라인에 틀린 수를 적고 접힌 `<details>` 부록에 맞는 수를 넣어
+    리뷰어와 가드에게 다른 것을 보여줄 수 있다(적대 감사 `wf_9a4878aa-eab` 이 실행 실증).
+    """
+    assert mod.parse_body_claim(f"{_REAL_ARROW}\n{_REAL_TABLE}\n") == (6800, 9)
+
+
+def test_details_appendix_cannot_override_the_headline():
+    """실제 우회 시나리오 그대로 — 헤드라인은 거짓, 접힌 부록만 참인 본문."""
+    body = (
+        "### 요약\n"
+        "pytest tests/unit  →  6841 passed / 9 skipped / EXIT=0\n"
+        "<details><summary>부록</summary>\n"
+        "pytest tests/unit  →  6842 passed / 9 skipped / EXIT=0\n"
+        "</details>\n"
+    )
+    assert mod.parse_body_claim(body) == (6841, 9), "부록이 헤드라인을 덮으면 리뷰어와 가드가 다른 것을 본다"
+
+
+def test_scoped_run_line_is_not_a_full_suite_claim():
+    """🔴 `\\b` 는 `tests/unit/scripts` 에서도 성립한다 — 스코프 실행 증거를 전체 주장으로 읽으면 오탐."""
+    assert mod.parse_body_claim("pytest tests/unit/scripts → 2 failed, 494 passed, 1 skipped") is None
+
+
+def test_skipped_token_is_optional():
+    """skip 0건이면 pytest 는 그 토큰을 아예 안 찍는다 — 필수로 두면 그 상태에서 축이 죽는다."""
+    assert mod.parse_body_claim("pytest tests/unit  →  7004 passed / EXIT=0") == (7004, 0)
+
+
+def test_thousands_separator_is_not_truncated():
+    """`6,995 passed` 가 `995` 로 읽히면 정직한 저자가 red 가 된다."""
+    assert mod.parse_body_claim("| `pytest tests/unit` | **6,995 passed / 9 skipped** |") == (6995, 9)
+
+
+def _patch_body(monkeypatch, body: str):
+    monkeypatch.setattr(mod, "deferral_carriers", lambda: ("", body))
+
+
+def test_body_claim_mismatch_fails_even_when_state_matches(monkeypatch, tmp_path):
+    """🔴 이 축의 존재 이유 — STATE 가 맞아도 본문 숫자가 틀리면 red.
+
+    #1310 이 정확히 이 형태였다: STATE·사본은 전부 일치했고 본문만 −1 이었다.
+    """
+    _patch_state(monkeypatch, tmp_path, 7022, 6851)
+    _patch_counts(monkeypatch, 6851, 171)
+    _patch_body(monkeypatch, _REAL_MISMATCH)          # 6841 + 9 = 6850 != 6851
+    assert mod.main([]) == 1
+
+
+def test_body_claim_match_passes(monkeypatch, tmp_path):
+    """대조군 — 같은 경로에서 본문이 맞으면 초록이어야 한다(과교정 방지)."""
+    _patch_state(monkeypatch, tmp_path, 7022, 6851)
+    _patch_counts(monkeypatch, 6851, 171)
+    _patch_body(monkeypatch, "pytest tests/unit  →  6842 passed / 9 skipped / EXIT=0")
+    assert mod.main([]) == 0
+
+
+def test_body_claim_mismatch_fails_in_advisory_mode_too(monkeypatch, tmp_path):
+    """`--advisory-drift` 가 완화하는 것은 **STATE 드리프트**뿐이다 — 본문 거짓 수치는 아니다.
+
+    🔴 **초판은 공허했다** (적대 감사 `wf_9a4878aa-eab` 적발): STATE 를 *일치*시켜 놓아
+    `main` 이 STATE-일치 분기에서 먼저 반환했고, advisory 분기에는 **도달조차 못 했다**.
+    그래서 그 분기가 `claim_rc` 를 버리고 있는데도 이 테스트가 초록이었다.
+    이제 STATE 를 **드리프트**시켜 advisory 분기를 실제로 통과시킨다.
+    """
+    _patch_state(monkeypatch, tmp_path, 7022, 6851)
+    _patch_counts(monkeypatch, 6900, 171)          # STATE 와 어긋나야 advisory 분기로 간다
+    _patch_body(monkeypatch, "pytest tests/unit  →  6800 passed / 9 skipped")
+    assert mod.main(["--advisory-drift"]) == 1
+
+
+def test_advisory_branch_is_actually_reached_by_that_test(monkeypatch, tmp_path, capsys):
+    """대조군 — 위 테스트가 정말 advisory 분기를 지나는지 배너로 확인한다(도달 증명)."""
+    _patch_state(monkeypatch, tmp_path, 7022, 6851)
+    _patch_counts(monkeypatch, 6900, 171)
+    _patch_body(monkeypatch, "pytest tests/unit  →  6900 passed / 0 skipped")
+    assert mod.main(["--advisory-drift"]) == 0     # 본문은 맞고 STATE 만 드리프트
+    assert "(advisory)" in capsys.readouterr().out, "advisory 분기에 도달하지 못했다 — 단언이 공허하다"
+
+
+def test_absent_claim_is_reported_not_silently_green(monkeypatch, tmp_path, capsys):
+    """🔴 빈 범위 위의 ✅ 는 fail-open 이다 — 미검출은 '안 쟀음' 으로 발화해야 한다."""
+    _patch_state(monkeypatch, tmp_path, 7022, 6851)
+    _patch_counts(monkeypatch, 6851, 171)
+    _patch_body(monkeypatch, "수치 라인이 없는 본문")
+    assert mod.main([]) == 0
+    out = capsys.readouterr().out
+    assert "미실행" in out, "미검출이 조용히 통과하면 이 축은 관측되지 않는다"
+
+
+def test_body_claim_axis_reads_the_single_hardened_reader(monkeypatch, tmp_path):
+    """배선(불변식 3) — 새 축이 별도 env 리더를 만들지 않고 기존 단일 리더를 탄다.
+
+    `deferral_carriers()` 를 끊으면 축이 죽어야 한다. 죽지 않으면 어딘가에서 본문을
+    따로 읽고 있다는 뜻이고, 그건 `test_pr_body_single_reader` 가 막는 결함이다.
+    """
+    _patch_state(monkeypatch, tmp_path, 7022, 6851)
+    _patch_counts(monkeypatch, 6851, 171)
+    monkeypatch.setattr(mod, "deferral_carriers", lambda: ("", ""))
+    assert mod.main([]) == 0          # 본문이 없으면 미실행
+    _patch_body(monkeypatch, _REAL_MISMATCH)
+    assert mod.main([]) == 1          # 같은 리더로 본문이 오면 red
