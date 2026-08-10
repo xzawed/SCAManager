@@ -1,5 +1,7 @@
 """Application settings loaded from environment variables via pydantic-settings."""
 import logging
+from collections.abc import Mapping
+from typing import get_args
 from urllib.parse import urlparse, parse_qs
 from pydantic_settings import BaseSettings
 from pydantic import Field, ValidationError, field_validator, model_validator
@@ -455,7 +457,7 @@ class Settings(BaseSettings):
 # 열거가 아니라 접미/부분 일치인 이유: 새 자격증명 필드가 늘어도 자동으로 보호되는 쪽이
 # 안전 기본값이다. 반대 방향 실수(무해한 필드를 가림)는 진단이 불편해질 뿐 유출이 아니다.
 # Substring hints, not an allowlist: new credential fields inherit protection by default.
-_SENSITIVE_FIELD_HINTS = ("url", "secret", "token", "key", "password", "dsn", "pass")
+_SENSITIVE_FIELD_HINTS = ("url", "secret", "token", "key", "password", "dsn", "pass", "user")
 
 
 class SettingsValidationError(ValueError):
@@ -477,10 +479,27 @@ def _is_sensitive_field(loc: str) -> bool:
     Name hints alone over-redact (`..._max_tokens`); credentials are `str`, so non-str
     fields are never treated as sensitive.
     """
+    # 🔴 모델 전체를 가리키는 loc 은 **항상 민감**이다 (Grok claim-review 가 BROKEN 으로 반증).
+    #    `model_validator(mode="after")` 실패는 `loc=()` → `(root)` 인데, 그 `input` 은
+    #    **모델 전체 dict** 라 형제 필드의 토큰·키가 한꺼번에 실린다. 필드 하나를 가리려다
+    #    전부를 흘리는 형태였다(실측: telegram_bot_token·anthropic_api_key 동시 노출).
+    if loc in ("(root)", "", "__root__"):
+        return True
     field = Settings.model_fields.get(loc.split(".")[0])
-    if field is not None and field.annotation is not str:
+    if field is not None and not _annotation_admits_str(field.annotation):
         return False
     return any(hint in loc.lower() for hint in _SENSITIVE_FIELD_HINTS)
+
+
+def _annotation_admits_str(annotation) -> bool:
+    """`str` 를 담을 수 있는 타입인가 — `str | None`·`Optional[str]` 포함.
+
+    🔴 `annotation is str` 만 보면 Optional 로 선언된 자격증명이 전부 비민감으로 빠져나간다
+    (Grok 지적). 자격증명은 문자열이므로 **문자열을 담을 수 있으면** 민감 후보로 본다.
+    """
+    if annotation is str:
+        return True
+    return str in get_args(annotation)
 
 
 def _sanitize_validation_error(exc: ValidationError) -> str:
@@ -501,7 +520,13 @@ def _sanitize_validation_error(exc: ValidationError) -> str:
         if _is_sensitive_field(loc):
             lines.append(f"  {loc}: {msg} (민감 필드라 값은 인쇄하지 않습니다)")
         else:
-            lines.append(f"  {loc}: {msg} (입력: {err.get('input')!r})")
+            value = err.get("input")
+            # 🔴 매핑이면 모델 전체 dump 다 — loc 판정과 **독립**인 2중 방어.
+            #    한쪽만 두면 새 검증자가 다른 loc 으로 같은 dump 를 만들 수 있다.
+            if isinstance(value, Mapping):
+                lines.append(f"  {loc}: {msg} (모델 전체 입력이라 값은 인쇄하지 않습니다)")
+            else:
+                lines.append(f"  {loc}: {msg} (입력: {value!r})")
     return "설정 검증 실패 — 아래 항목을 확인하세요:\n" + "\n".join(lines)
 
 

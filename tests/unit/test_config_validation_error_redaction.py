@@ -122,3 +122,61 @@ def test_session_secret_value_is_not_printed():
         pytest.fail("32자 미만 SESSION_SECRET 인데 통과했다")
     assert weak not in formatted
     assert "session_secret" in formatted
+
+
+# ── 모델 레벨 검증 실패 (Grok claim-review 019fed 가 BROKEN 으로 반증한 축) ──────
+#
+# 🔴 **내 1차 수정이 원래 결함보다 나빴다.** `model_validator(mode="after")` 실패는
+# `loc=()` 라 `"(root)"` 로 정규화되는데, 그건 이름 힌트에 안 걸려 **비민감**으로 분류됐고,
+# 비민감 분기는 `err["input"]` 을 그대로 인쇄한다. 그런데 모델 레벨 오류의 `input` 은
+# **모델 전체 dict** 다 — 즉 `telegram_bot_token`·`anthropic_api_key`·`session_secret` 이
+# 한꺼번에 찍힌다(실측). 필드 하나를 가리려다 전부를 흘리는 형태였다.
+#
+# 규칙: **`input` 이 매핑이거나 loc 이 모델 전체를 가리키면 값은 절대 인쇄하지 않는다.**
+
+
+def test_model_level_validation_failure_does_not_dump_every_secret():
+    """🔴 모델 레벨 실패에서 형제 필드의 시크릿이 새지 않는가 (실경로 · 실제 시크릿 값)."""
+    try:
+        config_mod.build_settings(
+            _env_file=None,
+            database_url="sqlite:///x.db",
+            telegram_bot_token="LEAKTOKEN",
+            telegram_chat_id="1",
+            anthropic_api_key="LEAKKEY",
+            session_secret="S" * 40,
+            merge_retry_max_backoff_seconds=1,
+            merge_retry_initial_backoff_seconds=60,
+        )
+    except config_mod.SettingsValidationError:
+        formatted = traceback.format_exc()
+    else:
+        pytest.fail("백오프 상하한 모순인데 통과했다 — 시나리오 전제가 깨졌다")
+    assert "LEAKTOKEN" not in formatted, "모델 레벨 오류가 형제 필드 시크릿을 통째로 인쇄한다"
+    assert "LEAKKEY" not in formatted
+    assert "merge_retry" in formatted, "무엇이 문제인지는 남아야 한다"
+
+
+def test_optional_str_credential_is_still_treated_as_sensitive():
+    """🔴 `str | None` 로 선언된 자격증명 필드가 비민감으로 새지 않는가.
+
+    타입 판정을 `annotation is not str` 로만 하면 Optional 계열이 전부 빠져나간다.
+    """
+    for name in ("github_token", "openai_api_key", "smtp_pass", "smtp_user"):
+        assert config_mod._is_sensitive_field(name), f"{name} 이 비민감으로 분류됐다"
+
+
+def test_root_loc_is_classified_sensitive():
+    """🔴 축 1 을 **따로** 관측한다 — 통합 테스트만으로는 어느 방어가 잡았는지 알 수 없다.
+
+    `_sanitize_validation_error` 에는 방어가 둘이다: (a) `(root)` loc 을 민감으로 보는 규칙과
+    (b) `input` 이 매핑이면 인쇄하지 않는 규칙. 통합 테스트는 **둘 중 하나만 살아도** 통과하므로,
+    한쪽이 죽어도 초록이다. 그래서 (a)를 직접 단언한다.
+
+    🔴 **(b)는 현재 도달하지 않는다** — `(root)` 규칙이 먼저 이겨 민감 분기로 가기 때문이다.
+    지우지 않고 두는 이유는 *비-root loc 에 매핑 input 이 실리는* 미래 형태의 backstop 이기
+    때문이고, **지금 테스트로 관측되지 않는다는 사실을 여기 적어 둔다**(guards.md — 관측되지
+    않는 중복을 검증된 것으로 오인하지 않기 위해).
+    """
+    assert config_mod._is_sensitive_field("(root)")
+    assert config_mod._is_sensitive_field("")
