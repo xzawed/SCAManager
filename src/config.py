@@ -2,7 +2,7 @@
 import logging
 from urllib.parse import urlparse, parse_qs
 from pydantic_settings import BaseSettings
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, ValidationError, field_validator, model_validator
 from src.constants import MERGE_VERIFIER_BAND_DEFAULT
 
 logger = logging.getLogger(__name__)
@@ -451,4 +451,73 @@ class Settings(BaseSettings):
         return self
 
 
-settings = Settings()
+# 🔴 민감 필드 판정 — 이름에 이 조각이 들어가면 **값을 인쇄하지 않는다** (backlog R77).
+# 열거가 아니라 접미/부분 일치인 이유: 새 자격증명 필드가 늘어도 자동으로 보호되는 쪽이
+# 안전 기본값이다. 반대 방향 실수(무해한 필드를 가림)는 진단이 불편해질 뿐 유출이 아니다.
+# Substring hints, not an allowlist: new credential fields inherit protection by default.
+_SENSITIVE_FIELD_HINTS = ("url", "secret", "token", "key", "password", "dsn", "pass")
+
+
+class SettingsValidationError(ValueError):
+    """설정 검증 실패 — **값이 제거된** 메시지만 담는다.
+
+    🔴 `ValueError` 를 상속하는 이유: pydantic 의 `ValidationError` 자체가 `ValueError` 하위라
+    기존 호출부·테스트가 `pytest.raises(ValueError, match=...)` 계약에 의존한다. 이 래퍼가
+    그 계약을 깨면 "보안 수정이 기능을 깨뜨렸다" 가 되므로 타입 호환을 유지한다.
+    Subclasses ValueError so existing `pytest.raises(ValueError)` contracts keep holding.
+    """
+
+
+def _is_sensitive_field(loc: str) -> bool:
+    """이 필드의 **값을 인쇄해도 되는가**를 판정한다.
+
+    🔴 이름 힌트만으로는 과교정한다 — `claude_review_max_tokens` 는 `token` 을 포함하지만
+    자격증명이 아니라 **개수**다(실측으로 잡힌 오탐). 그래서 **선언 타입**을 함께 본다:
+    자격증명은 `str` 이고, `int`/`bool` 필드는 원리적으로 자격증명일 수 없다.
+    Name hints alone over-redact (`..._max_tokens`); credentials are `str`, so non-str
+    fields are never treated as sensitive.
+    """
+    field = Settings.model_fields.get(loc.split(".")[0])
+    if field is not None and field.annotation is not str:
+        return False
+    return any(hint in loc.lower() for hint in _SENSITIVE_FIELD_HINTS)
+
+
+def _sanitize_validation_error(exc: ValidationError) -> str:
+    """`ValidationError` 를 **값 없는** 메시지로 바꾼다 (민감 필드 한정).
+
+    🔴 **왜 validator 가 아니라 여기인가 (2026-08-10 실측)**: validator 에서 값 없는 메시지로
+    `raise` 해도 pydantic v2 는 그 메시지 **뒤에** `input_value=...` 를 무조건 덧붙인다.
+    즉 메시지를 아무리 깨끗하게 써도 값은 남는다. 통제 지점은 **생성 지점**뿐이다.
+
+    무해한 필드의 입력값은 **남긴다** — 전부 지우면 운영자가 설정 오류를 못 고친다(과교정).
+    pydantic appends input_value regardless of the validator's message, so the only control
+    point is the construction site; non-sensitive inputs are kept for diagnosability.
+    """
+    lines = []
+    for err in exc.errors():
+        loc = ".".join(str(part) for part in err.get("loc", ())) or "(root)"
+        msg = err.get("msg", "")
+        if _is_sensitive_field(loc):
+            lines.append(f"  {loc}: {msg} (민감 필드라 값은 인쇄하지 않습니다)")
+        else:
+            lines.append(f"  {loc}: {msg} (입력: {err.get('input')!r})")
+    return "설정 검증 실패 — 아래 항목을 확인하세요:\n" + "\n".join(lines)
+
+
+def build_settings(**overrides) -> Settings:
+    """`Settings` 를 만들되, 검증 실패 시 **자격증명 없는** 오류로 바꿔 던진다.
+
+    🔴 `from None` 은 필수다 — `from exc` 로 체인하면 원본 `ValidationError` 가 트레이스백에
+    **다시 인쇄돼** 그대로 유출된다(실측 확인). 회귀 가드가 traceback 전문을 검사한다.
+    🔴 이 축은 로그 필터로 막을 수 없다 — 모듈 import 시점이라 `configure_logging()` 보다
+    먼저이고 애초에 `LogRecord` 가 만들어지지 않는다(R8 이 닫은 excepthook 축과 다른 축).
+    Must use `from None`: chaining re-prints the original error (and its values) in the traceback.
+    """
+    try:
+        return Settings(**overrides)
+    except ValidationError as exc:
+        raise SettingsValidationError(_sanitize_validation_error(exc)) from None
+
+
+settings = build_settings()
