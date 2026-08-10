@@ -245,6 +245,112 @@ def _append_step_summary(markdown: str) -> None:
         pass  # 기록 실패가 판정을 바꾸면 안 된다 / logging must never change the verdict
 
 
+# 🔴 본문 수치 주장 — 6-step ② 의 집행 가능한 형태 (backlog R48).
+#
+# 회고 권고(2026-08-08): *"전체 테스트를 돌렸는가"* 는 자기 신고라 기계가 진위를 못 잰다.
+# 질문을 *"본문에 적힌 수가 실측 수집값에서 파생됐는가"* 로 바꾸면 **잴 수 있다**.
+#
+# 형식 2종이 실재한다(2026-08-10, 최근 20 PR 실측) — 둘 다 받아야 한다:
+#   · 화살표 `pytest tests/unit  →  6841 passed / 9 skipped / EXIT=0`        (#1304~#1314)
+#   · 표     `| `pytest tests/unit` 전체 | **6985 passed / 9 skipped / …** |` (#1316~#1320)
+# 화살표만 지원하면 이 축은 **현행 관행에서 영원히 미실행**이 된다.
+#
+# `pytest tests/unit` 앵커가 뮤테이션 표(`**2 failed** / 3 passed`)를 배제한다 —
+# 그 행들은 전체 스위트 주장이 아니라 개별 뮤테이션 결과다.
+# Two real body formats; the `pytest tests/unit` anchor excludes per-mutation rows.
+# 🔴 **줄 단위 2단 파싱** — 한 정규식으로 두 숫자를 잡으면 `[^\n]*?` 두 개가 중첩돼
+#    백트래킹이 super-linear 가 되고(SonarCloud S8786), 더 나쁘게는 앞 숫자에서 뒤 숫자까지
+#    **전방으로 침범**한다. 후보 줄을 먼저 고르고 그 줄 안에서 각각 찾으면 둘 다 사라진다.
+#
+# 🔴 `(?![\w/])` 가 필수다 — `\b` 는 `tests/unit/scripts` 에서도 성립해, 스코프 실행 증거
+#    (`pytest tests/unit/scripts → 2 failed, 494 passed, 1 skipped`)를 **전체 스위트 주장으로
+#    오독**한다. 이 리포 본문은 뮤테이션 증거표를 일상적으로 담으므로 실제 오탐원이다
+#    (적대 감사 `wf_9a4878aa-eab` 적발).
+_BODY_CLAIM_LINE = re.compile(r"pytest[`'\"\s]*tests/unit(?![\w/])", re.IGNORECASE)
+# 천단위 구분자 허용 — `6,995 passed` 가 `995` 로 읽히던 오탐(같은 감사).
+_PASSED = re.compile(r"(\d[\d,_]*)\s*passed", re.IGNORECASE)
+_SKIPPED = re.compile(r"(\d[\d,_]*)\s*skipped", re.IGNORECASE)
+
+
+def _to_int(raw: str) -> int:
+    return int(raw.replace(",", "").replace("_", ""))
+
+
+def parse_body_claim(body: str) -> tuple[int, int] | None:
+    """PR 본문이 주장하는 `(passed, skipped)`. 미검출은 None (빈 값과 구별한다).
+
+    🔴 **첫 매치를 쓴다** — `parse_collected`(pytest 출력)와 반대 관용구이고, 그 차이에
+    이유가 있다. pytest 출력의 순서는 **도구가 정하지만** PR 본문의 순서는 **저자가 정한다**.
+    마지막 매치를 쓰면 헤드라인에 틀린 수를 적고 접힌 `<details>` 부록에 맞는 수를 넣어
+    리뷰어와 가드에게 **다른 것을 보여줄 수 있다**(적대 감사가 실행으로 실증). 첫 매치는
+    리뷰어가 실제로 읽는 자리다.
+
+    🔴 `skipped` 는 **선택**이다 — skip 이 0건이면 pytest 는 그 토큰을 아예 출력하지 않는다.
+    필수로 두면 그 상태에서 축이 조용히 미실행이 된다.
+    """
+    for line in (body or "").splitlines():
+        if not _BODY_CLAIM_LINE.search(line):
+            continue
+        passed = _PASSED.search(line)
+        if not passed:
+            continue
+        skipped = _SKIPPED.search(line)
+        return _to_int(passed.group(1)), _to_int(skipped.group(1)) if skipped else 0
+    return None
+
+
+def check_body_claim(body: str, unit: int) -> int:
+    """본문 수치 ↔ 실측 수집값 대조. 0 = 일치 또는 미실행 / 1 = 불일치.
+
+    🔴 **미검출을 초록으로 위장하지 않는다** — 수치 라인이 없으면 이 축은 아무것도
+    검증하지 않은 것이므로 *"미실행"* 을 명시 출력한다. 빈 범위 위의 ✅ 는 이 리포가
+    반복해 온 fail-open 이다(`check_lint_js_nonvacuous` 가 같은 이유로 범위 붕괴를 red 로 본다).
+
+    🔴 **이 축이 무엇을 재는지 정확히 (적대 감사 `wf_9a4878aa-eab` 이 초판 주장을 BROKEN 판정)**:
+    재는 것은 *"전체 스위트를 돌렸는가"* 가 **아니다**. 재는 것은 *"본문 수치가 현재 트리의
+    수집값과 일치하는가"* — 즉 **낡거나 파생되지 않은 수치의 탐지**다. 감사 실측: 이 가드가
+    쓰는 `--collect-only` 는 **11초**인데 실제 스위트는 208~247초라, 저자는 19배 싼 경로로
+    같은 숫자를 만들 수 있다. 게다가 불일치 메시지가 정답(`vs 실측 수집 N`)을 알려 준다.
+    그러므로 6-step ② 가 기계 검증된다고 말하면 **거짓**이다. 실제 사고 3건
+    (#1305·#1310·#1312)이 전부 *낡은 수치* 형태였기에 이 축이 유효했던 것이다.
+    이 축을 진짜 실행 증거로 올리려면 `--junitxml` 산출물을 대조해야 한다(backlog R76).
+
+    🔴 **닫히지 않은 우회로 (정직 기준)**: 수치를 **아예 안 적으면** 축이 돌지 않는다.
+    의무화하면 본문을 기계가 만드는 dependabot·봇 PR 이 전부 red 가 되므로 여기서 닫지 않는다.
+    부작용도 정직하게 적는다 — *틀린 수치는 red · 없는 수치는 green* 이라, 가장 싼 대응이
+    **수치 라인 삭제**다. 이 축은 그 관행 침식을 막지 못한다.
+    Measures freshness of the claimed number, not that the suite ran; see R76.
+    """
+    claim = parse_body_claim(body)
+    if claim is None:
+        print(
+            "⚠️  본문 수치 축 **미실행** — 본문에서 "
+            "`pytest tests/unit … N passed / M skipped` 를 찾지 못했다.\n"
+            "    이 축은 아무것도 검증하지 않았다(초록이 아니라 '안 쟀음')."
+        )
+        return 0
+    passed, skipped = claim
+    if passed + skipped == unit:
+        print(
+            f"✅ 본문 수치 축 일치 — 본문 {passed}+{skipped}={passed + skipped} "
+            f"== 실측 단위 {unit}"
+        )
+        return 0
+    print(
+        f"🔴 본문 수치가 실측과 다르다 — 본문 {passed} passed + {skipped} skipped "
+        f"= {passed + skipped} vs 실측 수집 {unit} (차 {passed + skipped - unit:+d})\n"
+        "   → 6-step ② 가 요구하는 것은 '돌렸다는 말' 이 아니라 **기계값에서 파생된 수**다.\n"
+        "   `py -3 -m pytest tests/unit -q` 를 다시 돌려 본문 수치를 그 출력으로 갱신하세요.\n"
+        "   🔴 실측 4건이 이 형태였다(#1305 −10 · #1310 −1 · #1312 −16) — base 가 앞서간\n"
+        "      탓이 아니라 본문이 틀린 것이었다(브랜치 tip 재측정으로 배제).",
+        file=sys.stderr,
+    )
+    _append_step_summary(
+        f"- 🔴 **본문 수치 불일치** — 본문 {passed + skipped} vs 실측 {unit}\n"
+    )
+    return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     advisory_drift = "--advisory-drift" in argv
@@ -273,9 +379,19 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     total = unit + integration
+
+    # 🔴 본문 수치 축은 **STATE 축과 독립**이다 (R48) — STATE 가 맞아도 본문이 틀릴 수 있고,
+    #    실제로 #1310 이 정확히 그 형태였다(사본 전부 일치 · 본문만 −1). 그래서 STATE 축의
+    #    조기 return 앞에서 먼저 계산하고, 모든 통과 경로가 이 결과를 함께 들고 나간다.
+    #    이월 마커(`STATE-sync-deferred`)도 이 축을 면제하지 않는다 — 이월은 *"STATE 갱신을
+    #    나중에 한다"* 는 약속이지 *"본문에 틀린 수를 적어도 된다"* 가 아니다.
+    # The body-claim axis is independent of the STATE axis and no escape hatch covers it.
+    commits, pr_body = deferral_carriers()
+    claim_rc = check_body_claim(pr_body, unit)
+
     if (total, unit) == (doc_total, doc_unit):
         print(f"✅ 테스트 수치 일치 — 전체 {total} (단위 {unit} + 통합 {integration}) == STATE")
-        return 0
+        return claim_rc
 
     message = (
         f"테스트 수치 drift — 실측 전체 {total} (단위 {unit} + 통합 {integration}) "
@@ -288,7 +404,6 @@ def main(argv: list[str] | None = None) -> int:
     #    오판독한 정수가 4지점으로 전파돼 머지됐으며 main 이 2연속 red 였다.
     #    이제 이월하려면 PR 본문에 그 의도를 **적어야** 하고, 그 사용은 계수된다.
     # The batch-carry escape is now an explicit, counted marker instead of a silent pass.
-    commits, pr_body = deferral_carriers()
     deferral = is_real_deferral(commits)
     if deferral:
         reason = _LINE_BREAKS.sub(" ", deferral.group(0).strip())[:200]
@@ -298,7 +413,7 @@ def main(argv: list[str] | None = None) -> int:
             f"  - {message.splitlines()[0]}\n  - 사유: {reason}\n"
         )
         print(f"⏭️  이월 마커 확인 — {message.splitlines()[0]}")
-        return 0
+        return claim_rc
 
     # 🔴 마커가 PR 본문에만 있으면 **여기서** 실패시킨다 — 통과시켜 놓고 머지 후 main 에서
     #    빨개지게 두면, 이 마커가 없애려던 사고를 마커가 재생산한다(회고 N-P0-2).
@@ -317,7 +432,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if advisory_drift:
         print(f"⚠️  (advisory) {message}\n   ⚠️ 이 모드는 CI 에서 더 이상 쓰이지 않는다(로컬 진단용).")
-        return 0
+        # 🔴 `return 0` 이 아니다 — advisory 가 완화하는 것은 **STATE 드리프트**뿐이고
+        #    본문 거짓 수치는 그 대상이 아니다. 초판이 여기서 `claim_rc` 를 버렸고
+        #    (`pre_push_gate.py` 가 이 플래그로 부른다) 그것을 잡아야 할 테스트는
+        #    STATE 를 일치시켜 이 분기에 **도달조차 못 했다** — 적대 감사 `wf_9a4878aa-eab` 적발.
+        return claim_rc
     print(f"🔴 {message}", file=sys.stderr)
     print(
         "\n   배치-PR 이월이라 이번 PR 에서 동기화하지 않는다면 **커밋 메시지**에 적으세요:\n"
