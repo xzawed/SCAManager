@@ -71,6 +71,22 @@ def test_state_counts_none_on_format_drift():
 # ── main — 모드별 판정 (fail-closed 는 모드 무관) ────────────────────────
 
 
+@pytest.fixture(autouse=True)
+def _no_ambient_pr_body(monkeypatch):
+    """🔴 CI 는 `PR_BODY` 를 **실제로** 넘긴다 — 테스트를 그 환경에서 격리한다.
+
+    본문 수치 축(R48)을 붙이자 기존 테스트 2건이 **CI 에서만** 깨졌다: 테스트는
+    `collect_count` 를 90 같은 합성값으로 패치하는데, `deferral_carriers()` 는 패치되지
+    않아 **진짜 PR 본문**(7000 passed / 9 skipped)을 읽어 왔다 → 불일치 → `main` 이 1.
+    🔴 로컬은 `PR_BODY` 미설정이라 축이 '미실행' 이었고 **전건 초록이었다** — `pre_push_gate`
+    가 매번 인쇄하는 로컬↔CI 이원(backlog R30)이 실제로 발현한 사례다.
+
+    기본값을 비워 두고, 본문을 보는 테스트만 `_patch_body` 로 **명시 주입**한다.
+    CI really sets PR_BODY; default it empty so tests opt in explicitly.
+    """
+    monkeypatch.setattr(mod, "deferral_carriers", lambda: ("", ""))
+
+
 def _patch_counts(monkeypatch, unit: int, integration: int):
     counts = {"tests/unit": unit, "tests/integration": integration}
     monkeypatch.setattr(mod, "collect_count", lambda p: counts[p])
