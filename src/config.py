@@ -6,6 +6,7 @@ from urllib.parse import urlparse, parse_qs
 from pydantic_settings import BaseSettings
 from pydantic import Field, ValidationError, field_validator, model_validator
 from src.constants import MERGE_VERIFIER_BAND_DEFAULT
+from src.logging_config import _redact
 
 logger = logging.getLogger(__name__)
 
@@ -502,6 +503,37 @@ def _annotation_admits_str(annotation) -> bool:
     return str in get_args(annotation)
 
 
+# URL 계열 — 자격증명만 가리고 나머지는 보여준다(진단 가능성 보존).
+# Opaque secrets — 값 대신 길이만. 빈 값 오설정과 오타를 구분하게 해 준다.
+_URL_FIELD_HINTS = ("url", "dsn")
+
+
+def _render_error_value(loc: str, value) -> str:
+    """검증 실패 메시지에 실을 **입력 표현**을 만든다.
+
+    🔴 **왜 통째로 지우지 않는가 (사용자 지시 2026-08-10)**: 1차 설계는 민감 필드의 값을
+    전부 지웠는데, 그러면 `database_url` 이 *왜* 틀렸는지(호스트 오타·포트·스킴) 알 수 없어
+    운영자가 손댈 곳을 못 찾는다. 기동 실패 메시지가 쓸모없으면 그 자체가 품질 문제다.
+
+    | 종류 | 표현 | 근거 |
+    |---|---|---|
+    | URL 계열 | `_redact` 로 **자격증명만** 마스킹 | R77 트리거인 `[::1:5432`(닫히지 않은 대괄호)가 눈에 보인다 |
+    | 불투명 시크릿 | `(길이 N자)` | 빈 값 vs 오타 구분은 되되 값은 안 샌다 |
+    | 그 외 | 값 그대로 | 자격증명이 아니면 가릴 이유가 없다 |
+
+    🔴 마스킹 로직은 `logging_config._redact` 를 **재사용**한다 — 같은 정규식을 두 곳에 두면
+    한쪽만 하드닝되는 drift 가 난다(이 리포가 반복해 온 형태). `logging_config` 는 stdlib 만
+    import 하므로 순환이 없다(실측).
+    Keep URLs diagnostic by masking only the credential; the startup error must stay actionable.
+    """
+    if not _is_sensitive_field(loc):
+        return f"{value!r}"
+    text = value if isinstance(value, str) else str(value)
+    if any(hint in loc.lower() for hint in _URL_FIELD_HINTS):
+        return _redact(text)
+    return f"(길이 {len(text)}자 — 값은 인쇄하지 않습니다)"
+
+
 def _sanitize_validation_error(exc: ValidationError) -> str:
     """`ValidationError` 를 **값 없는** 메시지로 바꾼다 (민감 필드 한정).
 
@@ -517,8 +549,8 @@ def _sanitize_validation_error(exc: ValidationError) -> str:
     for err in exc.errors():
         loc = ".".join(str(part) for part in err.get("loc", ())) or "(root)"
         msg = err.get("msg", "")
-        if _is_sensitive_field(loc):
-            lines.append(f"  {loc}: {msg} (민감 필드라 값은 인쇄하지 않습니다)")
+        if _is_sensitive_field(loc) and not isinstance(err.get("input"), Mapping):
+            lines.append(f"  {loc}: {msg} (입력: {_render_error_value(loc, err.get('input'))})")
         else:
             value = err.get("input")
             # 🔴 매핑이면 모델 전체 dump 다 — loc 판정과 **독립**인 2중 방어.
@@ -526,7 +558,7 @@ def _sanitize_validation_error(exc: ValidationError) -> str:
             if isinstance(value, Mapping):
                 lines.append(f"  {loc}: {msg} (모델 전체 입력이라 값은 인쇄하지 않습니다)")
             else:
-                lines.append(f"  {loc}: {msg} (입력: {value!r})")
+                lines.append(f"  {loc}: {msg} (입력: {_render_error_value(loc, value)})")
     return "설정 검증 실패 — 아래 항목을 확인하세요:\n" + "\n".join(lines)
 
 
