@@ -53,6 +53,23 @@ _SECRET_URL_PATTERNS = (
     # api[_-]?key already matches apikey/api_key/api-key — no separate `apikey` alternative (S5855).
     re.compile(r"([?&](?:token|api[_-]?key|access[_-]?token|hook[_-]?token)=)[^&\s\"']+",
                re.IGNORECASE),
+    # 🔴 URL userinfo 비밀번호 — `scheme://user:PASSWORD@host` (backlog R8, 범위 정정 후).
+    #
+    # 🔴 **원 기전은 반증됐다 (2026-08-10 실측 7 표면)**: *"SQLAlchemy 가 예외 메시지에 URL
+    # 전문을 담는다"* 는 이 스택에서 거짓이다 — `str(URL)`·`repr(engine)`·`OperationalError`·
+    # psycopg2 직접 연결 실패·`ArgumentError` 전부 비밀번호를 **내지 않는다**(`***` 마스킹 또는
+    # DSN 미포함). 노출되는 곳은 `render_as_string(hide_password=False)` 하나뿐이고 리포 내
+    # 사용처는 0건이며, `logger.*` 에 DB URL 이 실리는 지점도 0건이다.
+    #
+    # 그러므로 이 패턴은 **활성 유출을 막는 것이 아니라 계층 2 backstop 이다** — 누군가 raw
+    # `settings.database_url` 을 로깅하거나 의존성이 DSN 을 되울리는 날의 그물. 계층 1(호출처가
+    # 안 찍는 것)이 본체라는 security.md 원칙은 그대로다.
+    #
+    # 마지막 `(?=@)` 는 lookahead 다 — 위 루프의 치환문이 `\1***` 고정이라 `@` 를 소비하면
+    # 복원할 수 없다. 사용자명·호스트·DB명은 진단에 필요하므로 **비밀번호만** 지운다.
+    # Layer-2 backstop for URL userinfo passwords; the lookahead keeps `@` since the shared
+    # substitution is a fixed `\1***`.
+    re.compile(r"(://[^/\s:@]+:)[^/\s@]+(?=@)"),
 )
 
 # 리댁션 대상이 예외 텍스트일 때 쓰는 기본 포맷터 — exc_info → 문자열 변환 전용.
