@@ -18,7 +18,10 @@ R77 을 등재할 때 나는 *"validator 에서 값 없는 메시지로 재발�
 덧붙인다:
 
     Value error, DATABASE_URL 형식이 올바르지 않습니다
-      [type=value_error, input_value='postgresql://u:s3cr3tPW@[::1:5432/db', input_type=str]
+      [type=value_error, input_value='postgresql://u:<PASSWORD>@[::1:5432/db', input_type=str]
+
+    (위 예시의 `<PASSWORD>` 는 자리표시자다 — 실제 출력에는 값이 그대로 찍혔다. 여기 그 형태를
+    그대로 적으면 시크릿 스캐너가 실자격증명으로 오탐한다.)
 
 그래서 통제 지점은 validator 가 아니라 **생성 지점**이다. `Settings()` 를 감싸 `ValidationError`
 를 잡고, 민감 필드는 값을 빼고 나머지는 값을 남긴 메시지로 바꿔 던진다.
@@ -203,13 +206,10 @@ def test_url_field_shows_everything_except_the_credential():
 def test_opaque_secret_shows_length_not_value():
     """불투명 시크릿은 값 대신 길이 — 빈 값 오설정과 오타를 구분하게 해 준다."""
     weak = "short-but-real-secret-x"
-    try:
+    with pytest.raises(config_mod.SettingsValidationError) as excinfo:
         config_mod.build_settings(database_url="sqlite:///x.db", session_secret=weak,
                                   _env_file=None)
-    except config_mod.SettingsValidationError as exc:
-        message = str(exc)
-    else:
-        pytest.fail("32자 미만인데 통과했다")
+    message = str(excinfo.value)
     assert weak not in message
     assert str(len(weak)) in message, "길이조차 없으면 빈 값인지 오타인지 구분 불가"
 
