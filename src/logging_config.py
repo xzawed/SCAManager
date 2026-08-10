@@ -53,6 +53,31 @@ _SECRET_URL_PATTERNS = (
     # api[_-]?key already matches apikey/api_key/api-key — no separate `apikey` alternative (S5855).
     re.compile(r"([?&](?:token|api[_-]?key|access[_-]?token|hook[_-]?token)=)[^&\s\"']+",
                re.IGNORECASE),
+    # 🔴 URL userinfo 비밀번호 — `scheme://user:PASSWORD@host` (backlog R8, 범위 정정 후).
+    #
+    # 🔴 **원 기전은 반증됐다 (2026-08-10 실측 7 표면)**: *"SQLAlchemy 가 예외 메시지에 URL
+    # 전문을 담는다"* 는 이 스택에서 거짓이다 — `str(URL)`·`repr(engine)`·`OperationalError`·
+    # psycopg2 직접 연결 실패·`ArgumentError` 전부 비밀번호를 **내지 않는다**(`***` 마스킹 또는
+    # DSN 미포함). 노출되는 곳은 `render_as_string(hide_password=False)` 하나뿐이고 리포 내
+    # 사용처는 0건이며, `logger.*` 에 DB URL 이 실리는 지점도 0건이다.
+    #
+    # 그러므로 이 패턴은 **활성 유출을 막는 것이 아니라 계층 2 backstop 이다** — 누군가 raw
+    # `settings.database_url` 을 로깅하거나 의존성이 DSN 을 되울리는 날의 그물. 계층 1(호출처가
+    # 안 찍는 것)이 본체라는 security.md 원칙은 그대로다.
+    #
+    # 마지막 `(?=@)` 는 lookahead 다 — 위 루프의 치환문이 `\1***` 고정이라 `@` 를 소비하면
+    # 복원할 수 없다. 사용자명·호스트·DB명은 진단에 필요하므로 **비밀번호만** 지운다.
+    #
+    # 🔴 문자 클래스 2곳이 적대 검증(Grok `019febc8` · `wf_014af71e-152`)으로 좁혀졌다:
+    #   · 사용자명이 `*` 인 이유 — `redis://:pass@host` 처럼 **사용자명이 빈** 형태가 실재한다.
+    #     `+` 였을 때 그 형태는 통째로 마스킹되지 않았다(실측).
+    #   · 값에서 `"',?&#` 를 제외한 이유 — 이 문자들은 실제 userinfo 에서는 percent-encoding
+    #     되므로 제외해도 비밀번호를 놓치지 않는다. 반면 포함하면 로그를 망가뜨린다(실측):
+    #       `{"url":"https://a.example:443","user":"x@y.com"}` → `{"url":"https://a.example:***@y.com"}`
+    #       `https://example.com:8080?redirect=user@host`      → `https://example.com:***@host`
+    # Empty userinfo usernames are real (`redis://:pass@host`); quote/query chars are excluded
+    # because real userinfo percent-encodes them, while including them mangles ordinary log lines.
+    re.compile(r"(://[^/\s:@]*:)[^/\s@\"',?&#]+(?=@)"),
 )
 
 # 리댁션 대상이 예외 텍스트일 때 쓰는 기본 포맷터 — exc_info → 문자열 변환 전용.

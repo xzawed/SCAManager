@@ -18,7 +18,7 @@ import logging.config
 
 from uvicorn.config import LOGGING_CONFIG as UVICORN_LOGGING_CONFIG
 
-from src.logging_config import _MARKER, _RedactSecretsFilter, configure_logging
+from src.logging_config import _MARKER, _redact, _RedactSecretsFilter, configure_logging
 
 
 def test_configure_logging_attaches_root_handler():
@@ -798,3 +798,86 @@ def test_filter_does_not_synthesize_exc_text_on_plain_record(logging_isolation):
     assert record.args == ("owner/repo", 87), (
         f"변경이 없는데 record.args 를 비웠다.\n실제: {record.args!r}"
     )
+
+
+# ── DB URL userinfo 리댁션 (backlog R8 — 범위 정정 후) ────────────────────
+#
+# 🔴 **R8 의 원 기전은 반증됐다 (2026-08-10 실측)**: *"SQLAlchemy 가 예외 메시지에 URL 전문
+#   (비밀번호 포함)을 담는다"* 는 이 스택에서 **거짓**이다. 7 표면을 직접 프로빙한 결과
+#   비밀번호가 나온 곳은 `URL.render_as_string(hide_password=False)` **하나뿐**이고 그건 명시
+#   opt-in 이다(리포 내 사용처 0건):
+#     str(URL)·repr(URL)·repr(engine)·str(engine.url)  → `***` 마스킹
+#     OperationalError / psycopg2 직접 연결 실패        → DSN 미포함
+#     ArgumentError(잘못된 드라이버)                    → URL 미포함
+#   또 `logger.*` 호출에 DB URL 이 실리는 지점도 리포에 **0건**이다.
+#
+# 그래서 이 테스트가 지키는 것은 *활성 유출 차단* 이 아니라 **계층 2 심층 방어**다
+# (security.md §3계층: 계층 1 = 호출처가 안 찍는 것, 계층 2 = 필터 backstop).
+# 미래에 누구든 raw `settings.database_url` 을 로깅하거나, 의존성이 DSN 을 되울리면
+# 그때 이 패턴이 유일한 그물이 된다. 🔴 **계층 2 를 근본 대책으로 착각 금지**(security.md).
+
+_DB_URL_WITH_PW = "postgresql://appuser:sup3rs3cr3tpw@db.example.com:5432/scadb"
+
+
+def test_db_url_password_is_redacted():
+    """userinfo 비밀번호는 마스킹되고, 나머지 진단 정보(스킴·사용자·호스트·DB)는 보존된다."""
+    out = _redact(_DB_URL_WITH_PW)
+    assert "sup3rs3cr3tpw" not in out
+    assert out == "postgresql://appuser:***@db.example.com:5432/scadb"
+
+
+def test_db_url_redaction_reaches_the_exception_text_axis(logging_isolation):
+    """🔴 배선 — msg 가 아니라 **exc_info 트레이스백**에서도 마스킹돼야 한다 (D1 축).
+
+    #1104 가 "2계층 봉인" 을 선언하고도 이 축이 뚫려 있었다(회고 P0). 같은 실수를
+    새 패턴에서 반복하지 않도록 exc_info 경로로 직접 단언한다.
+    """
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.addFilter(_RedactSecretsFilter())
+    logger = logging.getLogger("test.db.url.redaction")
+    logger.handlers[:] = [handler]
+    logger.propagate = False
+    logger.setLevel(logging.ERROR)
+    try:
+        raise RuntimeError(f"could not connect: {_DB_URL_WITH_PW}")
+    except RuntimeError:
+        logger.exception("db 연결 실패")
+    out = stream.getvalue()
+    assert "sup3rs3cr3tpw" not in out, "트레이스백 축이 뚫렸다 — msg 만 가리는 #1104 결함의 재현"
+    assert "appuser" in out, "사용자명까지 지우면 진단이 불가능해진다(과교정)"
+
+
+def test_empty_username_userinfo_is_still_redacted():
+    """🔴 `redis://:pass@host` — 사용자명이 **빈** userinfo 는 실재한다.
+
+    초판은 사용자명을 `+`(1자 이상)로 요구해 이 형태를 통째로 놓쳤다(적대 검증 실측).
+    """
+    assert _redact("redis://:passw0rd@redis:6379/0") == "redis://:***@redis:6379/0"
+
+
+def test_urls_without_userinfo_are_untouched():
+    """🔴 과교정 대조군 — 평범한 URL·포트 표기를 건드리면 로그가 못 쓰게 된다.
+
+    🔴 아래 뒤쪽 두 건은 적대 검증이 **실제 과교정으로 실증한** 반례다(초판은 둘 다 망가뜨렸다):
+        `{"url":"https://a.example:443","user":"x@y.com"}` → `{"url":"https://a.example:***@y.com"}`
+        `https://example.com:8080?redirect=user@host`      → `https://example.com:***@host`
+    지금은 값 문자 클래스에서 `"',?&#` 를 제외해 막는다. 이 두 줄이 없으면 다음 사람이
+    compact JSON 로깅으로 바꾸는 순간 로그가 조용히 뭉개진다.
+    """
+    for benign in (
+        "http://localhost:8000/health",
+        "https://api.github.com/repos/xzawed/SCAManager",
+        "postgresql://appuser@db.example.com:5432/scadb",   # 비밀번호 없음
+        "git@github.com:owner/repo.git",                   # scp 형식
+        "http://[::1]:8000/",                              # IPv6
+        '{"url":"https://a.example:443","user":"x@y.com"}',  # compact JSON (공백 없음)
+        "https://example.com:8080?redirect=user@host",       # 포트 + 쿼리 뒤의 @
+    ):
+        assert _redact(benign) == benign, f"무해한 문자열이 변형됐다: {benign}"
+
+
+def test_existing_channel_patterns_still_redact():
+    """🔴 대조군 — 새 패턴이 기존 채널 마스킹을 깨뜨리지 않는다(회귀 방지)."""
+    assert "SECRET" not in _redact("https://api.telegram.org/botSECRET/sendMessage")
+    assert "SECRET" not in _redact("https://hooks.slack.com/services/SECRET")

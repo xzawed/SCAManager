@@ -348,9 +348,13 @@ def test_apply_fix_refuses_arithmetically_impossible_ssot(tmp_path):
     root = _count_fixture(tmp_path)
     state = root / "docs" / "STATE.md"
     text = state.read_text(encoding="utf-8")
-    idx = text.rindex("= **")
-    end = text.index("**", idx + 4) + 2
-    state.write_text(text[:idx] + "= **99999**" + text[end:], encoding="utf-8")
+    # 🔴 **숫자를 요구한다** — 초판은 `rindex("= **")` 로 '마지막 `= **`' 를 총계로 가정했다.
+    #    그러다 이력 산문이 `잔여 = **R77**` 로 끝나자 수술이 총계가 아니라 **그 문자열**을
+    #    깨뜨렸고, 총계는 멀쩡하니 `apply_fix` 가 정상 통과해 이 테스트가 red 가 됐다
+    #    (2026-08-10 실발현). 산문이 바뀌었을 뿐인데 가드가 죽는 것은 가드의 결함이다.
+    # Require digits: the last `= **` is not necessarily the total once prose grows.
+    target = list(re.finditer(r"= \*\*\d+\*\*", text))[-1]
+    state.write_text(text[:target.start()] + "= **99999**" + text[target.end():], encoding="utf-8")
     before = state.read_text(encoding="utf-8")
 
     ok, msgs = check_docs_sync.apply_fix(root)

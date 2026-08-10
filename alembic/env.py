@@ -87,7 +87,20 @@ if _unregistered_models:  # pragma: no cover — import 부작용 소실 시에�
 # credential 게이트(owner role 분리). 미설정 시 DATABASE_URL 그대로 사용(현행 동작 보존).
 # effective_migration_url = MIGRATION_DATABASE_URL or DATABASE_URL — RLS Phase 4 migration
 # credential gate (owner role separation). Unset reuses DATABASE_URL (current behavior).
-config.set_main_option(_SQLALCHEMY_URL, settings.effective_migration_url)
+# 🔴 `%` 는 **반드시** 이스케이프한다 (backlog R8 — 2026-08-10 실측 유출).
+# `set_main_option` 의 저장소는 ConfigParser 이고 `BasicInterpolation` 이 `%` 를 보간 문법으로
+# 읽는다. 그래서 비밀번호에 `%` 가 있으면 `ValueError` 가 **URL 전문(비밀번호 포함)** 을 담는다:
+#     ValueError: invalid interpolation syntax in
+#       'postgresql://appuser:p%40ss%2Fword@db.example.com:5432/scadb' at position 22
+# 🔴 이론적 경로가 아니다 — 비밀번호에 특수문자가 있으면 percent-encoding 이 표준 관행이고
+# (`@`→`%40`, `/`→`%2F`), `railway.toml` 의 `preDeployCommand = alembic upgrade head` 가 매
+# 배포마다 이 경로를 탄다. 그 예외는 **excepthook** 으로 나가므로 `_RedactSecretsFilter`(계층 2)가
+# **구조적으로 볼 수 없다** — 여기서 막는 것이 유일한 통제다(계층 1).
+# `%%` 는 두 읽기 경로(`get_main_option` · `get_section` → `engine_from_config`) 모두에서
+# 원본으로 복원되므로 동작은 불변이다. 회귀 가드: `tests/unit/migrations/test_alembic_url_interpolation.py`.
+# Escape `%` before ConfigParser sees it: BasicInterpolation raises a ValueError that embeds the
+# full DSN, and that exception leaves via excepthook where no logging filter can reach it.
+config.set_main_option(_SQLALCHEMY_URL, settings.effective_migration_url.replace("%", "%%"))
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
