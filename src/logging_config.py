@@ -67,9 +67,17 @@ _SECRET_URL_PATTERNS = (
     #
     # 마지막 `(?=@)` 는 lookahead 다 — 위 루프의 치환문이 `\1***` 고정이라 `@` 를 소비하면
     # 복원할 수 없다. 사용자명·호스트·DB명은 진단에 필요하므로 **비밀번호만** 지운다.
-    # Layer-2 backstop for URL userinfo passwords; the lookahead keeps `@` since the shared
-    # substitution is a fixed `\1***`.
-    re.compile(r"(://[^/\s:@]+:)[^/\s@]+(?=@)"),
+    #
+    # 🔴 문자 클래스 2곳이 적대 검증(Grok `019febc8` · `wf_014af71e-152`)으로 좁혀졌다:
+    #   · 사용자명이 `*` 인 이유 — `redis://:pass@host` 처럼 **사용자명이 빈** 형태가 실재한다.
+    #     `+` 였을 때 그 형태는 통째로 마스킹되지 않았다(실측).
+    #   · 값에서 `"',?&#` 를 제외한 이유 — 이 문자들은 실제 userinfo 에서는 percent-encoding
+    #     되므로 제외해도 비밀번호를 놓치지 않는다. 반면 포함하면 로그를 망가뜨린다(실측):
+    #       `{"url":"https://a.example:443","user":"x@y.com"}` → `{"url":"https://a.example:***@y.com"}`
+    #       `https://example.com:8080?redirect=user@host`      → `https://example.com:***@host`
+    # Empty userinfo usernames are real (`redis://:pass@host`); quote/query chars are excluded
+    # because real userinfo percent-encodes them, while including them mangles ordinary log lines.
+    re.compile(r"(://[^/\s:@]*:)[^/\s@\"',?&#]+(?=@)"),
 )
 
 # 리댁션 대상이 예외 텍스트일 때 쓰는 기본 포맷터 — exc_info → 문자열 변환 전용.

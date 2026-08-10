@@ -848,14 +848,33 @@ def test_db_url_redaction_reaches_the_exception_text_axis(logging_isolation):
     assert "appuser" in out, "사용자명까지 지우면 진단이 불가능해진다(과교정)"
 
 
+def test_empty_username_userinfo_is_still_redacted():
+    """🔴 `redis://:pass@host` — 사용자명이 **빈** userinfo 는 실재한다.
+
+    초판은 사용자명을 `+`(1자 이상)로 요구해 이 형태를 통째로 놓쳤다(적대 검증 실측).
+    """
+    assert _redact("redis://:passw0rd@redis:6379/0") == "redis://:***@redis:6379/0"
+
+
 def test_urls_without_userinfo_are_untouched():
-    """🔴 과교정 대조군 — 평범한 URL·포트 표기를 건드리면 로그가 못 쓰게 된다."""
+    """🔴 과교정 대조군 — 평범한 URL·포트 표기를 건드리면 로그가 못 쓰게 된다.
+
+    🔴 아래 뒤쪽 두 건은 적대 검증이 **실제 과교정으로 실증한** 반례다(초판은 둘 다 망가뜨렸다):
+        `{"url":"https://a.example:443","user":"x@y.com"}` → `{"url":"https://a.example:***@y.com"}`
+        `https://example.com:8080?redirect=user@host`      → `https://example.com:***@host`
+    지금은 값 문자 클래스에서 `"',?&#` 를 제외해 막는다. 이 두 줄이 없으면 다음 사람이
+    compact JSON 로깅으로 바꾸는 순간 로그가 조용히 뭉개진다.
+    """
     for benign in (
         "http://localhost:8000/health",
         "https://api.github.com/repos/xzawed/SCAManager",
         "postgresql://appuser@db.example.com:5432/scadb",   # 비밀번호 없음
+        "git@github.com:owner/repo.git",                   # scp 형식
+        "http://[::1]:8000/",                              # IPv6
+        '{"url":"https://a.example:443","user":"x@y.com"}',  # compact JSON (공백 없음)
+        "https://example.com:8080?redirect=user@host",       # 포트 + 쿼리 뒤의 @
     ):
-        assert _redact(benign) == benign, f"무해한 URL 이 변형됐다: {benign}"
+        assert _redact(benign) == benign, f"무해한 문자열이 변형됐다: {benign}"
 
 
 def test_existing_channel_patterns_still_redact():
