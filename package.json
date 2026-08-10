@@ -13,8 +13,8 @@
     "tailwindcss": "^4.1.0",
     "eslint": "^10.8.0",
     "eslint-plugin-html": "^8.1.1",
-    "@typescript-eslint/parser": "^8.65.0",
+    "@typescript-eslint/parser": "^8.66.0",
     "typescript": "^6.0.3",
-    "globals": "^17.8.0"
+    "globals": "^17.9.0"
   }
 }
