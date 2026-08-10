@@ -206,3 +206,101 @@ def test_ci_wires_enforce_step_for_main_push():
     assert any("push" in str(s.get("if", "")) for s in hits), (
         "enforce 스텝에 push 조건이 없다"
     )
+
+
+# ── 본문 수치 축 (R48 — "돌렸는가" 대신 "본문 숫자가 기계값에서 파생됐는가") ──────
+#
+# 🔴 왜 이 축인가 (2026-08-08 회고 권고 + 2026-08-10 실측):
+#   *"전체 테스트를 돌렸는가"* 는 자기 신고라 기계가 진위를 못 잰다. *"본문에 적힌 수가
+#   실측 수집값과 같은가"* 로 바꾸면 잴 수 있다. 실측으로 오라클이 판별함을 확인했다 —
+#   #1305 본문 6800+9=6809 vs 실측 6819(−10) · #1310 6841+9=6850 vs 6851(−1) ·
+#   #1312 6860+9=6869 vs 6885(−16). 🔴 **base drift 가설은 배제됐다**: 브랜치 tip 에서
+#   재측정해도 수집값이 머지 커밋과 같았다(6819·6851·6885) — 저자 수치가 실제로 틀렸다.
+#
+# 🔴 이 축이 증명하지 않는 것 (정직 기준): 수치를 **아예 안 적으면** 축이 돌지 않는다.
+#   그래서 미검출은 조용한 통과가 아니라 *"안 쟀음"* 을 명시 출력한다 — 빈 범위 위의 ✅ 를
+#   만들지 않기 위해서다. 우회로를 닫는 것(수치 라인 의무화)은 dependabot 등 봇 PR 을
+#   깨뜨리므로 별도 결정 영역이다.
+
+# 실제 PR 본문에서 그대로 가져온 형식 2종 (합성 문자열 아님 — 불변식 2)
+_REAL_ARROW = "pytest tests/unit  →  6800 passed / 9 skipped / EXIT=0  (+16)"      # #1305
+_REAL_TABLE = "| `pytest tests/unit` 전체 | **6985 passed / 9 skipped / 0 failed** |"  # #1320
+_REAL_MISMATCH = "pytest tests/unit  →  6841 passed / 9 skipped / EXIT=0  (+16)"   # #1310
+
+
+def test_body_claim_parses_the_arrow_format():
+    assert mod.parse_body_claim(_REAL_ARROW) == (6800, 9)
+
+
+def test_body_claim_parses_the_table_format():
+    """🔴 표 형식이 최근 관행이다 — 화살표만 지원하면 이 축은 현행 PR 에서 영원히 미실행이다."""
+    assert mod.parse_body_claim(_REAL_TABLE) == (6985, 9)
+
+
+def test_body_claim_ignores_mutation_rows():
+    """뮤테이션 표의 `**2 failed** / 3 passed` 는 전체 스위트 주장이 아니다."""
+    body = "| dedupe 제거 | **3 failed** / 2 passed |\n| `read_pr_body()` 회귀 | **2 failed** / 13 passed |\n"
+    assert mod.parse_body_claim(body) is None
+
+
+def test_body_claim_absent_is_none():
+    assert mod.parse_body_claim("본문에 수치가 없다") is None
+
+
+def test_body_claim_uses_the_last_match():
+    assert mod.parse_body_claim(f"{_REAL_ARROW}\n{_REAL_TABLE}\n") == (6985, 9)
+
+
+def _patch_body(monkeypatch, body: str):
+    monkeypatch.setattr(mod, "deferral_carriers", lambda: ("", body))
+
+
+def test_body_claim_mismatch_fails_even_when_state_matches(monkeypatch, tmp_path):
+    """🔴 이 축의 존재 이유 — STATE 가 맞아도 본문 숫자가 틀리면 red.
+
+    #1310 이 정확히 이 형태였다: STATE·사본은 전부 일치했고 본문만 −1 이었다.
+    """
+    _patch_state(monkeypatch, tmp_path, 7022, 6851)
+    _patch_counts(monkeypatch, 6851, 171)
+    _patch_body(monkeypatch, _REAL_MISMATCH)          # 6841 + 9 = 6850 != 6851
+    assert mod.main([]) == 1
+
+
+def test_body_claim_match_passes(monkeypatch, tmp_path):
+    """대조군 — 같은 경로에서 본문이 맞으면 초록이어야 한다(과교정 방지)."""
+    _patch_state(monkeypatch, tmp_path, 7022, 6851)
+    _patch_counts(monkeypatch, 6851, 171)
+    _patch_body(monkeypatch, "pytest tests/unit  →  6842 passed / 9 skipped / EXIT=0")
+    assert mod.main([]) == 0
+
+
+def test_body_claim_mismatch_fails_in_advisory_mode_too(monkeypatch, tmp_path):
+    """`--advisory-drift` 가 완화하는 것은 **STATE 드리프트**뿐이다 — 본문 거짓 수치는 아니다."""
+    _patch_state(monkeypatch, tmp_path, 7022, 6851)
+    _patch_counts(monkeypatch, 6851, 171)
+    _patch_body(monkeypatch, _REAL_MISMATCH)
+    assert mod.main(["--advisory-drift"]) == 1
+
+
+def test_absent_claim_is_reported_not_silently_green(monkeypatch, tmp_path, capsys):
+    """🔴 빈 범위 위의 ✅ 는 fail-open 이다 — 미검출은 '안 쟀음' 으로 발화해야 한다."""
+    _patch_state(monkeypatch, tmp_path, 7022, 6851)
+    _patch_counts(monkeypatch, 6851, 171)
+    _patch_body(monkeypatch, "수치 라인이 없는 본문")
+    assert mod.main([]) == 0
+    out = capsys.readouterr().out
+    assert "미실행" in out, "미검출이 조용히 통과하면 이 축은 관측되지 않는다"
+
+
+def test_body_claim_axis_reads_the_single_hardened_reader(monkeypatch, tmp_path):
+    """배선(불변식 3) — 새 축이 별도 env 리더를 만들지 않고 기존 단일 리더를 탄다.
+
+    `deferral_carriers()` 를 끊으면 축이 죽어야 한다. 죽지 않으면 어딘가에서 본문을
+    따로 읽고 있다는 뜻이고, 그건 `test_pr_body_single_reader` 가 막는 결함이다.
+    """
+    _patch_state(monkeypatch, tmp_path, 7022, 6851)
+    _patch_counts(monkeypatch, 6851, 171)
+    monkeypatch.setattr(mod, "deferral_carriers", lambda: ("", ""))
+    assert mod.main([]) == 0          # 본문이 없으면 미실행
+    _patch_body(monkeypatch, _REAL_MISMATCH)
+    assert mod.main([]) == 1          # 같은 리더로 본문이 오면 red
