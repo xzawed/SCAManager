@@ -2,6 +2,10 @@
 
 # Railway 배포 실패 → GitHub Issue 자동 등록 Implementation Plan
 
+> 🔴 **이 문서는 실행 대상이 아닙니다** — 완료된 과거 계획의 기록입니다.
+> 아래의 `- [ ]` 미체크 항목과 실행 지시 어휘는 **당시 문서의 원문**이며 지금 수행할 일감이 아닙니다.
+> (실행 오인 차단 — `tests/unit/scripts/test_plans_are_not_executable.py`)
+
 > **Status:** ✅ **완료** (2026-04-20). 전 Task 커밋 `8dcbe38` … `022e371` 범위에 반영됨. 후속 수정 `7d3a086`(HTTP 상수) · `0c4bfd0`(hmac no-op 제거) 포함.
 >
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

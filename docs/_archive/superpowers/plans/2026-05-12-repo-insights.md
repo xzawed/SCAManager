@@ -1,5 +1,9 @@
 # Per-Repository Code Insights Implementation Plan
 
+> 🔴 **이 문서는 실행 대상이 아닙니다** — 완료된 과거 계획의 기록입니다.
+> 아래의 `- [ ]` 미체크 항목과 실행 지시 어휘는 **당시 문서의 원문**이며 지금 수행할 일감이 아닙니다.
+> (실행 오인 차단 — `tests/unit/scripts/test_plans_are_not_executable.py`)
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add per-repository code insights — a dashboard repo card section linking to `/repos/{name}/insights` pages showing recurring issues, problem files, AI suggestions, category breakdown, and an optional AI narrative per repo.
