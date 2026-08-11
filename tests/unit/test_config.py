@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import pytest
@@ -588,3 +589,148 @@ def test_explicit_model_env_still_wins(monkeypatch):
     import src.config as cfg  # noqa: PLC0415  # 파일 관용구 — dual-import 가드 준수
     monkeypatch.setenv("CLAUDE_REVIEW_MODEL", "claude-sonnet-5")
     assert cfg.Settings().claude_review_model == "claude-sonnet-5"
+
+
+# ---------------------------------------------------------------------------
+# SESSION_SECRET — 코드 3분기 ↔ 문서 3지점 정합 가드 (문서 감사 PR-3)
+# SESSION_SECRET: parity guard between the three code branches and the three doc points.
+#
+# 🔴 왜 필요한가: 문서 3지점이 전부 "32자 미만이면 기동 실패" 라는 **조건 없는 단언**을
+#    적고 있었으나, 실제로는 **기본값 그대로면 경고만 내고 기동에 성공한다**
+#    (`src/config.py:248-254`). 즉 ENVIRONMENT 미설정 ∧ APP_BASE_URL 이 http/빈값인 배포는
+#    공개된 기본 시크릿으로 기동한다. 문서가 그 구멍을 가리고 있었다.
+# The docs asserted an unconditional startup failure; the default value only warns and boots.
+# ---------------------------------------------------------------------------
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# 실패 모드를 서술하는 **활성** 문서. 아카이브·계획 스냅샷은 시점 기록이라 제외한다.
+# Active docs describing the failure mode; archives/plan snapshots are point-in-time records.
+_SESSION_SECRET_DOC_POINTS = (
+    "CLAUDE.md",
+    "docs/reference/env-vars.md",
+    ".claude/rules/security.md",
+)
+
+# "기동" 을 언급하는 모든 서술. 🔴 어미("실패/오류/차단")로 좁히면 *"기동을 막는다"* 같은
+# 표현이 빠져나가 가드가 조용히 공허해진다 — 술어는 어휘가 아니라 **주제**로 잡는다.
+# Match any startup claim; narrowing by suffix lets rephrasings escape the guard.
+_STARTUP_CLAIM = re.compile(r"기동|하드\s*실패|ValidationError")
+
+# 그 단언이 성립하는 **조건**. 조건 없는 단언은 거짓이다.
+# The condition under which the claim holds; an unconditioned claim is simply false.
+_CLAIM_CONDITION = re.compile(r"커스텀|기본값|dev-secret")
+
+# lifespan 층의 프로덕션 판정 축에서 **빠졌던 신호**. `APP_BASE_URL` 단독 서술은 stale 이다 —
+# `ENVIRONMENT=production` 도 하드닝을 강제한다(`src/config.py:277-279`).
+# 🔴 `is_production` 을 함께 허용하면 안 된다 — 같은 줄이 그 이름을 **부수적으로** 한 번만
+#    언급해도 통과해, 판정 축 서술을 APP_BASE_URL 단독으로 되돌리는 뮤테이션이 green 이었다
+#    (M2 실측). 가드는 **빠졌던 신호의 이름**을 직접 요구한다.
+# Require the previously-missing signal by name; allowing `is_production` let a real
+# mutation pass on an incidental mention elsewhere in the same line.
+_PROD_AXIS = re.compile(r"ENVIRONMENT")
+
+# 🔴 인용 면제 — 이 마커가 없으면 **정정 기록 자체가 막힌다**(과거 산문 가드 사고).
+#    면제는 마커로만 성립한다. 부정어 탐색은 쓰지 않는다 — 양방향으로 틀린다.
+# Quotation escape: without it, a correction record documenting the old wrong claim is blocked.
+_QUOTE_EXEMPT = re.compile(r"<!--\s*session-secret-claim-quote:")
+
+
+def _claim_lines(rel: str, extra: "re.Pattern[str] | None" = None) -> list[tuple[int, str]]:
+    """문서에서 SESSION_SECRET 실패 모드를 단언하는 줄만 뽑는다 (면제 마커 제외)."""
+    path = _REPO_ROOT / rel
+    assert path.exists(), f"문서 지점이 사라졌다 — 가드가 공허해진다: {rel}"
+    hits = []
+    for no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if "SESSION_SECRET" not in line or _QUOTE_EXEMPT.search(line):
+            continue
+        if (extra or _STARTUP_CLAIM).search(line):
+            hits.append((no, line))
+    return hits
+
+
+def test_session_secret_default_value_boots_with_warning_only(caplog):
+    """분기 (2): 기본값이면 **경고만** 내고 기동한다 — 문서 단언의 반례 (`config.py:248-254`).
+
+    🔴 경고를 실제로 단언한다 — 값만 보면 `logger.warning` 을 지워도 green 이라 테스트 이름이
+    거짓이 된다(Grok claim-review `019ff0c3` H9 적발).
+    Assert the warning itself; checking only the value would let the log line be deleted.
+    """
+    import logging  # noqa: PLC0415  # 파일 관용구 — dual-import 가드 준수
+    import src.config as cfg  # noqa: PLC0415  # 파일 관용구 — dual-import 가드 준수
+    # 🔴 `caplog.at_level(...)` 을 쓰지 않는다 — 그것은 로거 레벨을 **강제**하므로
+    #    `logger.setLevel(ERROR)` 로 운영 경고를 죽여도 테스트가 green 이 된다(Grok `019ff145`).
+    #    강제 없이 캡처해야 "운영에서도 실제로 발화하는가" 를 잰다.
+    # Do not force the level: at_level() would hide a logger silenced for operators.
+    settings = cfg.build_settings(session_secret="dev-secret-change-in-production")
+    assert settings.session_secret == "dev-secret-change-in-production"
+    assert any(
+        rec.levelno == logging.WARNING
+        and "SESSION_SECRET" in rec.getMessage()
+        # 메시지 품질도 본다 — `logger.warning("SESSION_SECRET")` 한 단어로는 통과 못 한다.
+        and "default" in rec.getMessage().lower()
+        for rec in caplog.records
+    ), "기본값 기동은 반드시 '기본값을 쓰고 있다'는 경고를 남긴다 — 조용히 뜨면 아무도 모른다"
+
+
+def test_session_secret_custom_value_under_min_length_is_rejected():
+    """분기 (1): 커스텀 값 ∧ 32자 미만만 기동을 막는다 (`config.py:255-260`).
+
+    🔴 운영자가 실제로 보는 예외는 `ValidationError` 가 **아니다** — `build_settings`
+    (`config.py:565-577`)가 자격증명 유출을 막으려고 `SettingsValidationError`
+    (`config.py:464`, `ValueError` 하위)로 바꿔 던진다(`#1327`).
+    The observable exception is SettingsValidationError, not pydantic's ValidationError.
+    """
+    import src.config as cfg  # noqa: PLC0415  # 파일 관용구 — dual-import 가드 준수
+    with pytest.raises(cfg.SettingsValidationError):
+        cfg.build_settings(session_secret="too-short")
+
+
+@pytest.mark.parametrize(
+    ("environment", "app_base_url", "expected"),
+    [
+        # 명시 신호는 http 배포에서도 하드닝을 강제한다 — security.md 가 놓쳤던 축.
+        ("production", "http://box.internal", True),
+        ("", "https://scamanager.example.com", True),
+        # 🔴 구멍: 둘 다 없으면 공개 기본 시크릿으로 기동한다.
+        ("", "http://box.internal", False),
+    ],
+)
+def test_is_production_axis_is_two_signals_not_just_https(environment, app_base_url, expected):
+    """분기 (3)의 판정 축 = `ENVIRONMENT` **또는** https (`config.py:277-279`, `main.py:118`)."""
+    import src.config as cfg  # noqa: PLC0415  # 파일 관용구 — dual-import 가드 준수
+    settings = cfg.build_settings(environment=environment, app_base_url=app_base_url)
+    assert settings.is_production is expected
+
+
+def test_documented_session_secret_failure_modes():
+    """문서 3지점의 기동-실패 단언에는 **조건이 붙어 있어야** 한다.
+
+    조건 없는 단언은 위 `test_..._boots_with_warning_only` 가 실행으로 반증한다.
+    anti-vacuity: 각 지점이 실패 모드 서술을 통째로 지우면 이 가드도 red 다.
+    """
+    for rel in _SESSION_SECRET_DOC_POINTS:
+        lines = _claim_lines(rel)
+        assert lines, f"{rel} 에 SESSION_SECRET 실패 모드 서술이 사라졌다 — 가드 공허화"
+        for no, line in lines:
+            assert _CLAIM_CONDITION.search(line), (
+                f"{rel}:{no} 이 조건 없이 기동 실패를 단언한다. "
+                f"기본값은 경고만 내고 기동한다(src/config.py:248-254): {line.strip()[:120]}"
+            )
+
+
+def test_documented_lifespan_layer_names_the_production_axis():
+    """`RuntimeError` 층을 서술하는 줄은 판정 축을 명시해야 한다.
+
+    🔴 `APP_BASE_URL` 만 적힌 서술은 stale 이다 — `ENVIRONMENT=production` 은 http 배포에서도
+    하드닝을 강제한다(`config.py:277-279`). 위 parametrize 가 그 축을 실행으로 고정한다.
+    """
+    scanned = 0
+    for rel in _SESSION_SECRET_DOC_POINTS:
+        for no, line in _claim_lines(rel, extra=re.compile(r"RuntimeError")):
+            scanned += 1
+            assert _PROD_AXIS.search(line), (
+                f"{rel}:{no} 이 lifespan 차단을 APP_BASE_URL 단독으로 서술한다 — "
+                f"ENVIRONMENT=production 축이 빠졌다(src/config.py:277-279): {line.strip()[:120]}"
+            )
+    assert scanned, "lifespan RuntimeError 층 서술이 어느 문서에도 없다 — 가드 공허화"

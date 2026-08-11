@@ -19,7 +19,7 @@
 [![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=xzawed_SCAManager&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=xzawed_SCAManager)
 
 <<<<<<< HEAD
-[![Tests](https://img.shields.io/badge/Tests-7216%2B_total_(7045_unit_%2B_171_integration)-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-7224%2B_total_(7053_unit_%2B_171_integration)-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
 =======
 [![Tests](https://img.shields.io/badge/Tests-7209%2B_total_(7038_unit_%2B_171_integration)-brightgreen?style=flat-square&logo=pytest&logoColor=white)](tests/)
 >>>>>>> origin/main

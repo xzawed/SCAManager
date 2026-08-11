@@ -9,7 +9,7 @@
 | `TELEGRAM_CHAT_ID` | Telegram 알림 수신 Chat ID | `-100xxxxxxxxx` |
 | `GITHUB_CLIENT_ID` | GitHub OAuth 앱 클라이언트 ID | `Ov23li...` |
 | `GITHUB_CLIENT_SECRET` | GitHub OAuth 앱 클라이언트 시크릿 | `github_...` |
-| `SESSION_SECRET` | 세션 쿠키 서명 키 (**32자 이상 필수** — 미충족 시 `config.py` `ValidationError` 앱 기동 오류) | `your-32-char-or-longer-secret-key-here` |
+| `SESSION_SECRET` | 세션 쿠키 서명 키 (**32자 이상 필수**. 커스텀 값이 32자 미만이면 `config.py` 가 `SettingsValidationError` 로 기동 차단 — 🔴 단 **기본값 그대로면 경고만 내고 기동**하며(집행 = `tests/unit/test_config.py`) 그때 막는 것은 `ENVIRONMENT=production` 또는 https `APP_BASE_URL` 뿐이다. 3분기 정본 = [`.claude/rules/security.md`](../../.claude/rules/security.md)) | `your-32-char-or-longer-secret-key-here` |
 
 ## 선택 환경변수
 
