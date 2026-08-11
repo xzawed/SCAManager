@@ -53,6 +53,8 @@
 | [runbooks/ai-collaboration.md](runbooks/ai-collaboration.md) | 🔴 Claude ↔ Grok 협업 프로토콜 — **정책 19 단일 출처** (주장 트리거·A2 뮤테이션·소유 경계) |
 | [runbooks/owed-verification.md](runbooks/owed-verification.md) | 🔴 미결 검증 원장 — SessionStart 훅이 매 세션 미회신 건을 경고 |
 | [runbooks/cost-controls.md](runbooks/cost-controls.md) | AI 리뷰 비용 제어 (kill-switch·리포별 토글) 검증 절차 |
+| [runbooks/docs-consolidation-status.md](runbooks/docs-consolidation-status.md) | 🔴 **문서·가드 정리 진행 상태 정본** — 착수 전 필독(12 PR 중 PR-1 완료, PR-4→PR-5 순서 강제) |
+| [runbooks/docs-consolidation-plan.md](runbooks/docs-consolidation-plan.md) | 문서·가드 정리 계획 전문 (SPEC→RED→GREEN→GUARD 12 묶음) |
 | [guides/github-integration-guide.md](guides/github-integration-guide.md) | GitHub 연동 가이드 |
 | [guides/onpremise-migration-guide.md](guides/onpremise-migration-guide.md) | 온프레미스 DB 전환 가이드 |
 | [guides/operational-verification.md](guides/operational-verification.md) | 운영 검증 가이드 |
