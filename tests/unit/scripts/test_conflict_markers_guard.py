@@ -135,6 +135,26 @@ def test_guard_exits_nonzero_on_dirty_tree(tmp_path):
     assert proc.returncode != 0, f"더러운 트리인데 exit 0 이다:\n{proc.stdout}{proc.stderr}"
 
 
+@pytest.mark.parametrize(
+    "workflow", [".github/workflows/ci.yml", ".github/workflows/claim-review-on-body-edit.yml"]
+)
+def test_guard_is_actually_invoked_by_each_workflow(workflow):
+    """🔴 **배선** — 워크플로가 이 가드를 **실행**하는가 (substring 아님).
+
+    실측 뮤테이션(MC3): `run: echo skip scripts/check_conflict_markers.py` 로 중성화해도
+    경로 문자열이 남아 기존 목록-파싱 테스트는 green 이었다. guards.md 가 기록한
+    `_wiring_shape` 술어를 써야 `echo` 가 배선으로 오판되지 않는다.
+    Substring wiring passes on `echo <path>`; require an actual interpreter invocation.
+    """
+    # 파일 관용구 — 리포의 다른 배선 테스트와 동일 경로로 import 한다.
+    from tests.unit.scripts._wiring_shape import surface_invokes  # noqa: PLC0415
+
+    text = (_REPO_ROOT / workflow).read_text(encoding="utf-8")
+    assert surface_invokes(text, "scripts/check_conflict_markers.py"), (
+        f"{workflow} 이 가드를 실제로 실행하지 않는다 (echo·주석은 배선이 아니다)"
+    )
+
+
 def test_guard_is_wired_into_push_gate():
     """🔴 **배선** — `pre_push_gate` 의 실제 튜플에 등재됐는가 (산문 grep 아님)."""
     spec = importlib.util.spec_from_file_location(

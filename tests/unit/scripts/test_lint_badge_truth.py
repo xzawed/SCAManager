@@ -105,6 +105,24 @@ def test_local_push_gate_derives_the_same_floor_as_ci():
     assert float(gate.pylint_floor(_REPO_ROOT)) == pytest.approx(badge - 0.005), (
         "로컬 게이트의 floor 가 CI 규칙(배지 − 0.005)과 다르다"
     )
+    # 🔴 함수가 옳은 것과 `run_slow` 가 그것을 **쓰는** 것은 다른 문제다 — 실측 뮤테이션(MG3)에서
+    #    `floor = "9.90"` 으로 바꿔도 위 단언은 green 이었다(정의≠배선, AGENTS.md 불변식 3).
+    # A correct helper proves nothing about the call site; assert run_slow actually calls it.
+    import ast  # noqa: PLC0415  # 이 단언 전용
+
+    tree = ast.parse((_REPO_ROOT / "scripts" / "pre_push_gate.py").read_text(encoding="utf-8"))
+    run_slow = next(
+        (n for n in ast.walk(tree)
+         if isinstance(n, ast.FunctionDef) and n.name == "run_slow"), None
+    )
+    assert run_slow is not None, "run_slow 가 사라졌다"
+    calls = {
+        n.func.id for n in ast.walk(run_slow)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+    }
+    assert "pylint_floor" in calls, (
+        "run_slow 가 pylint_floor 를 호출하지 않는다 — floor 가 리터럴로 고정됐을 수 있다"
+    )
 
 
 def test_ci_floor_allows_exactly_the_badge_rounding_width():
