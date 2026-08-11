@@ -649,6 +649,37 @@ def test_lifespan_raises_when_default_session_secret_in_prod():
                 pass
 
 
+def test_lifespan_consults_is_production_not_the_https_heuristic():
+    """🔴 **배선 축** — `main` 이 판정에 `settings.is_production` 을 쓰는가(https 단독이 아니라).
+
+    위아래 두 S2 테스트는 `mock_settings.is_production` 을 **손으로 심어** 이 축을 보지 못한다.
+    그래서 `main.py:129` 를 `app_base_url.startswith("https")` 단독으로 되돌려도 둘 다 green 이다
+    (Grok claim-review `019ff0c3` H8 적발 — 정의는 맞는데 배선이 안 잡히는 AGENTS.md 불변식 3).
+    여기서는 **실 `Settings`** 를 주입해 프로퍼티를 실제로 계산시킨다: 명시 신호만 있고 URL 은
+    http 인 배포도 차단되어야 한다.
+    Wiring axis: main must consult settings.is_production; mocks hand-set it and hide a revert.
+    """
+    from src.config import build_settings  # pylint: disable=import-outside-toplevel
+
+    # 🔴 픽스처가 뮤테이션을 결정한다 — `app_base_url` 을 **빈 값**으로 둔다.
+    #    `http://box.internal` 로 두면 `if settings.app_base_url:` · `startswith("http")` 같은
+    #    되돌림이 URL 만으로 참이 되어 **ENVIRONMENT 축을 지워도 green** 이다(Grok `019ff145`).
+    #    `environment` 는 공백+대문자로 둬 `strip().lower()` 정규화까지 핀으로 고정한다.
+    # An empty URL is what forces the predicate to come from ENVIRONMENT alone.
+    real_settings = build_settings(
+        environment="  Production  ",
+        app_base_url="",
+        session_secret="dev-secret-change-in-production",
+    )
+    # 전제가 깨지면 이 테스트는 아무것도 재지 않는다 — 명시 단언으로 고정.
+    assert real_settings.is_production is True
+    with patch("src.main._run_migrations"), \
+         patch("src.main.settings", real_settings):
+        with pytest.raises(RuntimeError, match="SESSION_SECRET must be changed in production"):
+            with TestClient(app):
+                pass
+
+
 def test_lifespan_warns_default_session_secret_in_dev(caplog):
     """S2: dev 환경(http)에서는 기본 SESSION_SECRET 사용 시 경고만 출력 — 기동 허용.
     S2: Dev (http) environment should warn but not raise for default SESSION_SECRET.

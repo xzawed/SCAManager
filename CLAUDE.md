@@ -48,7 +48,10 @@ GitHub Push/PR 이벤트 시 정적 분석 + AI 코드 리뷰를 자동 수행�
 전체 목록·설명·제약은 [`docs/reference/env-vars.md`](docs/reference/env-vars.md) 가 정본이다
 (여기 복제하면 두 곳이 갈라진다 — 실제로 4건 누락 사고가 있었다).
 
-🔴 **함정만 적는다**: `SESSION_SECRET` 은 32자 이상이 아니면 **기동 실패**(validator) ·
+🔴 **함정만 적는다**: `SESSION_SECRET` 은 **기본값 그대로면 기동을 막지 못한다** — 32자 미만
+기동 차단은 **커스텀 값에만** 걸린다(3분기 정본 [`security.md`](.claude/rules/security.md)).
+그래서 운영은 `ENVIRONMENT=production` 또는 https `APP_BASE_URL` 을 **반드시** 설정해야 한다 —
+그 둘이 없으면 공개된 기본 시크릿으로 뜬다 ·
 `APP_BASE_URL` 미설정 시 Railway 에서 OAuth/Webhook 이 `http://` 로 등록돼 전달 실패 ·
 `CLAUDE_REVIEW_MODEL` 을 **빈 값으로 두면** 기본값을 덮어 AI 리뷰가 전부 `api_error`(#1289).
 ## 배포
