@@ -315,8 +315,11 @@ def check_lint_badge(project_root: Path) -> tuple[bool, list[str]]:
     return False, [
         "❌ pylint 값이 지점마다 다르다:",
         *[f"   {name}: {value}" for name, value in sites],
-        "   🔴 CI 의 --fail-under 는 README 배지에서 파생되므로, 배지가 실측보다 높으면"
-        " 그 배지가 주장하는 빌드를 그 배지가 실패시킨다.",
+        # 🔴 리스트 안 **암묵적** 문자열 연결 금지 — 쉼표 누락과 구별되지 않아 CodeQL
+        #    `py/implicit-string-concatenation-in-list` 가 잡는다(#1331 에서 실제 red).
+        # Explicit `+`: implicit concatenation inside a list is indistinguishable from a typo.
+        "   🔴 CI 의 --fail-under 는 README 배지에서 파생되므로, 배지가 실측보다 높으면 "
+        + "그 배지가 주장하는 빌드를 그 배지가 실패시킨다.",
     ]
 
 
