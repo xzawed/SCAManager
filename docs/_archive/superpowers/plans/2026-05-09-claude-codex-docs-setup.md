@@ -1,5 +1,9 @@
 # Claude + Codex 협업 문서 구조 정리 Implementation Plan
 
+> 🔴 **이 문서는 실행 대상이 아닙니다** — 완료된 과거 계획의 기록입니다.
+> 아래의 `- [ ]` 미체크 항목과 실행 지시 어휘는 **당시 문서의 원문**이며 지금 수행할 일감이 아닙니다.
+> (실행 오인 차단 — `tests/unit/scripts/test_plans_are_not_executable.py`)
+
 > ⛔ **정책 18 (Claude ↔ Codex mutual 검증) 은 2026-07-10 폐기되었다** — 사용자가 Codex 구독을 해지해 `codex` 실행 파일이 없다.
 > **본 문서에 남아 있는 "Codex 검증 의뢰 / Codex OK 후 push" 류 단계는 수행하지 않는다** (완료된 작업의 역사 기록).  ⛔ *(폐기 2026-07-10 — Codex 단계 수행 안 함)*
 > 대체: Claude 단독 2-layer (정책 8 5+1 + `pipeline-reviewer` / opus whole-branch 적대 리뷰). push 전 게이트 = `pytest tests/unit` 전체 통과.

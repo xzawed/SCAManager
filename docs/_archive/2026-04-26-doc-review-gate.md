@@ -2,6 +2,10 @@
 
 # 문서 변경 다중 에이전트 심의 시스템 구현 계획
 
+> 🔴 **이 문서는 실행 대상이 아닙니다** — 완료된 과거 계획의 기록입니다.
+> 아래의 `- [ ]` 미체크 항목과 실행 지시 어휘는 **당시 문서의 원문**이며 지금 수행할 일감이 아닙니다.
+> (실행 오인 차단 — `tests/unit/scripts/test_plans_are_not_executable.py`)
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Claude가 중요 문서(CLAUDE.md, STATE.md, .claude/agents 등)를 수정하기 직전, 3개 전문 에이전트가 병렬로 심의하여 판단 정확성을 검증하는 PreToolUse Hook 시스템을 구축한다.
