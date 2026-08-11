@@ -55,6 +55,11 @@ _PY_VERSION_RE = re.compile(r"python-version:\s*[\"']?(3\.\d+)")
 # whole-repo 상태 가드 — CI `repo-integrity` job 과 같은 목록.
 # Whole-repo state guards, mirroring the CI repo-integrity job.
 _INTEGRITY = (
+    # 커밋된 병합 충돌 마커 (2026-08-12 실사고 — README 2종이 `#1328` 이래 깨진 채 main 에 있었다).
+    # 🔴 `check_docs_sync.py` **앞**에 둔다 — 그쪽 `--fix` 가 충돌 블록 안쪽을 고쳐 쓰므로,
+    #    마커를 먼저 잡지 않으면 "정합 ✅" 가 깨진 파일 위에서 인쇄된다.
+    # Runs first: the badge autofixer can rewrite a line inside a conflict block.
+    "check_conflict_markers.py",
     "check_docs_sync.py",
     "check_toc_anchors.py",
     "check_architecture_tree_sync.py",
@@ -188,11 +193,31 @@ def run_diff_scoped(py: str, base: str) -> list[str]:
     return failures
 
 
+_PYLINT_BADGE = re.compile(r"badge/pylint-(\d+\.\d+)%2F10")
+# 배지는 소수 2자리 반올림 표기 — 실점수가 그만큼 낮을 수 있다(ci.yml 과 동일 폭).
+_BADGE_ROUNDING = 0.005
+
+
+def pylint_floor(root: Path) -> str:
+    """README pylint 배지에서 `--fail-under` 를 파생한다 (CI 와 같은 규칙).
+
+    🔴 리터럴 9.90 을 쓰던 시절 이 로컬 게이트는 **CI 와 다른 것을 재고 있었다** — CI 는
+    배지에서 파생하는데 여기만 9.90 이면, 배지를 부풀려도 로컬은 초록이다(Grok `019ff301`).
+    Keep the local floor derived the same way as CI, or the two gates measure different things.
+    """
+    m = _PYLINT_BADGE.search((root / "README.md").read_text(encoding="utf-8"))
+    if not m:  # fail-closed — 못 읽으면 옛 보수 floor 로 떨어지지 않는다.
+        raise SystemExit("❌ README pylint 배지를 읽지 못했다 — 배지 형식 drift 의심")
+    return f"{float(m.group(1)) - _BADGE_ROUNDING:.3f}"
+
+
 def run_slow(py: str) -> list[str]:
     """`--full` 전용 — pylint · bandit · 단위 테스트. / Opt-in slow axes."""
     print("\n== --full (느린 축) ==")
+    floor = pylint_floor(Path(__file__).resolve().parents[1])
     checks = (
-        ("pylint --fail-under=9.90 src/", [py, "-m", "pylint", "--fail-under=9.90", "src/"]),
+        (f"pylint --fail-under={floor} src/ (README 배지 파생)",
+         [py, "-m", "pylint", f"--fail-under={floor}", "src/"]),
         ("bandit -r src/ -q", [py, "-m", "bandit", "-r", "src/", "-q"]),
         ("pytest tests/unit", [py, "-m", "pytest", "tests/unit", "-q", "--no-header"]),
     )
