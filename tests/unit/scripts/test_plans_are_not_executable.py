@@ -124,11 +124,6 @@ def test_done_marker_is_not_satisfied_by_a_date_alone():
 # 🔴 면제는 **명시 마커로만** 성립한다 — 산문 판정으로 예외를 만들면 다음 사람이
 # 아무 문서에나 어휘를 넣고 빠져나간다([[feedback-prose-guard-both-ways]]).
 
-# 🔴 **전 추적 마크다운**이 대상이다 (Grok claim-review `019ff074` 가 BROKEN 으로 반증).
-# 초판은 `("docs", ".claude")` 로 한정해 놓고 주석에는 *"리포 어디에 있든"* 이라 적었다 —
-# 리포 루트·`e2e/`·`scripts/`·`tests/` 의 `*.md` 는 아예 보지 않았다. 지금은 cue 가 0이라
-# 잠복이지만, **주석이 코드보다 넓은 약속을 하는 것**이 이 리포가 반복해 온 형태다.
-_CUE_SCAN_BASES = None   # None = 전 추적 *.md
 
 
 def _tracked_md():
@@ -157,7 +152,15 @@ def _tracked_md():
 
 
 def _scan_targets():
-    """스캔 대상 = **git 이 추적하는 전 마크다운**. git 불가 시 rglob 폴백(더 넓다 = fail-closed)."""
+    """스캔 대상 = **git 이 추적하는 전 마크다운**. git 불가 시 rglob 폴백(더 넓다 = fail-closed).
+
+    🔴 왜 전 리포인가 (Grok claim-review `019ff074` 가 초판을 BROKEN 으로 반증):
+    초판은 `("docs", ".claude")` 두 디렉토리로 한정해 놓고 주석에는 *"리포 어디에 있든"*
+    이라 적었다 — 리포 루트·`e2e/`·`scripts/`·`tests/` 의 `*.md` 는 아예 보지 않았다.
+    지금은 그 밖 cue 가 0이라 **잠복**이지만, **주석이 코드보다 넓은 약속을 하는 것**이
+    이 리포가 반복해 온 형태다. 범위 자체는
+    `test_scan_covers_the_whole_repo_not_just_two_directories` 가 구조로 고정한다.
+    """
     tracked = _tracked_md()
     if tracked is not None:
         return tracked

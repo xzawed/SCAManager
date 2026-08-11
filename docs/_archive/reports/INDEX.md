@@ -9,6 +9,8 @@
 
 | 항목 | 위치 |
 |------|------|
+| 2026-08-10 | [docs-system-audit](2026-08-10-docs-system-audit.md) | 문서 체계 감사 — **8 에이전트**·6 렌즈 전건 STRAINED. 🔴 **총량은 비용 문제가 아니다**(게이트 = 세션비용 0.48%, 리포 전체 통독도 2.6%) — 무리한 것은 집행 구조다. 확정 P0 6건 = pylint 배지 10.00 vs CI 9.99(집행자 0) · 예산 가드가 산문으로 충족되는 거짓 집행자 · `security.md` 가 `src/config.py` 에 미도달 · 6-step② vs 메모리 충돌 · claim-review 형식 도달범위<집행범위 · 실행형 계획 가드 4배치 중 2배치만 스캔 |
+| 2026-08-11 | [docs-scoring-report](2026-08-11-docs-scoring-report.md) | 문서 채점 + SDD·TDD 정리 계획 — **10 에이전트**·1.48M 토큰·검증 3라운드. 🔴 **2라운드에서 채점 체계 자체가 BROKEN** — 편집 불변성 없음(공백 커밋 1회로 처분 26건 소멸)·관측자 오염(감사 세션이 분모 안)·접근축 93%가 부수 등장. 그래서 **순위 기반 조치를 전면 철회**하고 조치 채점(AR)으로 대체. 문서 삭제·이동 **0건**, 12 PR 로 집행. 계획 정본 = `runbooks/docs-consolidation-plan.md` |
 | 단위 테스트 수·커버리지·pylint | [STATE.md 헤더](../STATE.md) |
 | 아키텍처·작업 규칙·주의사항 | [CLAUDE.md](../../CLAUDE.md) |
 | README 배지 | [README.md L21-25](../../README.md) |
