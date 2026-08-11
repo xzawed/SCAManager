@@ -44,9 +44,14 @@ _DONE_MARKER = re.compile(r"실행 대상이 아닙니다|do not execute", re.IG
 _UNCHECKED_THRESHOLD = 5
 
 # 🔴 인용 면제 — 실행 지시 어휘를 **서술로** 쓰는 문서(사이클 서사 등)를 위한 유일한 출구.
-# 사유 없는 빈 마커는 자기발급이므로 **10자 이상 사유**를 요구한다
+# 사유 없는 빈 마커는 자기발급이므로 **10자 이상**을 요구한다
 # (`check_claim_review_trace._EXEMPT` · `check_test_count_sync._DEFERRED` 와 같은 관용구).
-# The only exemption for docs that *describe* the vocabulary; a bare marker is self-issued.
+#
+# 🔴 **정직 기준 — 이것은 길이만 잰다** (Grok claim-review `019ff074` 적발):
+# `xxxxxxxxxxxx` 같은 무의미한 10자도 통과한다. 즉 이 요구가 막는 것은 **빈 마커 자기발급**
+# 하나뿐이고, *"사유가 타당한가"* 는 판정하지 않는다 — 자유 산문의 진위는 정적으로 잴 수 없다
+# (`check_claim_review_trace` 가 자기 한계로 적어 둔 것과 같은 축). 위조 비용을 올릴 뿐이다.
+# Length-only: it stops the empty self-issued marker, not a bad-faith reason.
 _CUE_QUOTE_EXEMPT = re.compile(r"<!--\s*guard-cue-quote:\s*\S[^>]{10,}?-->")
 
 
@@ -119,7 +124,11 @@ def test_done_marker_is_not_satisfied_by_a_date_alone():
 # 🔴 면제는 **명시 마커로만** 성립한다 — 산문 판정으로 예외를 만들면 다음 사람이
 # 아무 문서에나 어휘를 넣고 빠져나간다([[feedback-prose-guard-both-ways]]).
 
-_CUE_SCAN_BASES = ("docs", ".claude")
+# 🔴 **전 추적 마크다운**이 대상이다 (Grok claim-review `019ff074` 가 BROKEN 으로 반증).
+# 초판은 `("docs", ".claude")` 로 한정해 놓고 주석에는 *"리포 어디에 있든"* 이라 적었다 —
+# 리포 루트·`e2e/`·`scripts/`·`tests/` 의 `*.md` 는 아예 보지 않았다. 지금은 cue 가 0이라
+# 잠복이지만, **주석이 코드보다 넓은 약속을 하는 것**이 이 리포가 반복해 온 형태다.
+_CUE_SCAN_BASES = None   # None = 전 추적 *.md
 
 
 def _tracked_md():
@@ -147,15 +156,24 @@ def _tracked_md():
     return sorted({x for x in (out.stdout or "").split("\0") if x.strip()})
 
 
+def _scan_targets():
+    """스캔 대상 = **git 이 추적하는 전 마크다운**. git 불가 시 rglob 폴백(더 넓다 = fail-closed)."""
+    tracked = _tracked_md()
+    if tracked is not None:
+        return tracked
+    return sorted(
+        p.relative_to(_ROOT).as_posix()
+        for p in _ROOT.rglob("*.md")
+        if ".git" not in p.parts and "node_modules" not in p.parts
+    )
+
+
 def _cue_docs():
     """실행 지시 어휘를 **자기 문장으로** 담았는데 do-not-execute 표지가 없는 문서."""
-    tracked = _tracked_md()
     out = []
-    for base in _CUE_SCAN_BASES:
-        for p in sorted((_ROOT / base).rglob("*.md")):
-            rel = p.relative_to(_ROOT).as_posix()
-            if tracked is not None and rel not in tracked:
-                continue
+    for rel in _scan_targets():
+        p = _ROOT / rel
+        if p.is_file():
             text = p.read_text(encoding="utf-8", errors="replace")
             if not _EXECUTION_CUE.search(text):
                 continue
@@ -177,18 +195,16 @@ def test_cue_axis_is_global():
 def test_cue_scan_is_not_vacuous():
     """🔴 대조군 — 전역 스캔이 조용히 좁아지면 위 단언이 공허해진다.
 
-    실측(2026-08-11): `docs/**`+`.claude/**` 에서 cue 를 담은 문서 **25건**
-    (docs 16 · .claude 9). 하한 20 은 그 아래 여유이며, 배치 하나가 통째로 빠지면
-    (`.claude` 9건 = 25→16) red 가 되도록 잡았다.
+    실측(2026-08-11): **전 추적 마크다운**에서 cue 를 담은 문서 **23건**.
+    하한 **22** 는 실측 바로 아래다 — 초판의 20 은 3건이 사라져도 초록이라 여유가 과했다
+    (Grok claim-review `019ff074` 적발). 스캔이 좁아지거나 문서가 조용히 사라지면 red 다.
     """
-    tracked = _tracked_md()
     scanned = [
-        p for base in _CUE_SCAN_BASES
-        for p in (_ROOT / base).rglob("*.md")
-        if (tracked is None or p.relative_to(_ROOT).as_posix() in tracked)
-        and _EXECUTION_CUE.search(p.read_text(encoding="utf-8", errors="replace"))
+        rel for rel in _scan_targets()
+        if (_ROOT / rel).is_file()
+        and _EXECUTION_CUE.search((_ROOT / rel).read_text(encoding="utf-8", errors="replace"))
     ]
-    assert len(scanned) >= 20, f"cue 문서를 {len(scanned)}개만 찾았다 — 스캔 범위 붕괴"
+    assert len(scanned) >= 22, f"cue 문서를 {len(scanned)}개만 찾았다 — 스캔 범위 붕괴"
 
 
 def test_quotation_is_exempt_only_with_marker():
@@ -209,6 +225,11 @@ def test_quotation_is_exempt_only_with_marker():
     )
     assert not _DONE_MARKER.search(mutated), (
         "do-not-execute 표지가 따로 있다면 이 문서는 인용 면제가 필요 없다(면제가 공허)"
+    )
+    # 🔴 배선 — 정규식이 아니라 **실제 판정 경로**(`_cue_docs`)에서 면제가 작동하는지
+    #    (Grok 지적: 초판은 정규식만 검사해 판정 경로를 한 번도 지나지 않았다).
+    assert "docs/cycle-history.md" not in _cue_docs(), (
+        "인용 면제가 실제 판정 경로에서 작동하지 않는다"
     )
 
 
@@ -255,3 +276,16 @@ def test_cue_scan_ignores_untracked_files():
     )
     for offender in _cue_docs():
         assert offender in tracked, f"미추적 파일이 위반으로 발행됐다: {offender}"
+
+
+def test_scan_covers_the_whole_repo_not_just_two_directories():
+    """🔴 확대가 **관측되는지** — 지금은 `docs`·`.claude` 밖 cue 가 0이라 행동 차이가 없다.
+
+    그래서 행동 단언만으로는 스캔을 다시 2배치로 좁혀도 초록이다(뮤테이션 M4 실측).
+    범위 자체를 구조로 고정한다 — 초판이 *"리포 어디에 있든"* 이라 적어 놓고 두 디렉토리만
+    보던 것이 이 가드가 고치려는 결함이었다(Grok claim-review `019ff074`).
+    """
+    targets = _scan_targets()
+    outside = [x for x in targets if not x.startswith(("docs/", ".claude/"))]
+    assert outside, "스캔이 docs/.claude 로 좁아졌다 — 루트·e2e·scripts·tests 의 md 를 못 본다"
+    assert "CLAUDE.md" in targets, "리포 루트 마크다운이 스캔 대상에서 빠졌다"
