@@ -730,3 +730,32 @@ async def test_duration_ms_is_logged_even_on_cancellation():
     mock_log.assert_called_once()
     elapsed = mock_log.call_args.kwargs["duration_ms"]
     assert elapsed >= 40, f"취소 경로의 지연이 계측되지 않았다: {elapsed}ms"
+
+
+def test_log_call_passes_duration_ms_explicitly():
+    """🔴 **구조 축** — 호출부가 `duration_ms=` 를 **명시 키워드로** 넘기는가.
+
+    위 4축은 값의 *행동*을 보는데, 그 행동은 `**_log` 로 넘기든 명시로 넘기든 동일하다
+    (이 변경은 의도적으로 동작 보존이다). 그래서 CI 역-뮤테이션 게이트가 *"이 PR 의 테스트가
+    이 PR 의 변경을 관측하지 않는다"* 고 정확히 지적했다 — 되돌려도 43건이 green 이었다.
+    이 단언이 그 축을 관측한다: `**_log` 로 되돌리면 키워드가 사라져 red 다.
+    Structural axis: the refactor is behavior-preserving, so only the call shape observes it.
+    """
+    import ast  # pylint: disable=import-outside-toplevel
+    from pathlib import Path  # pylint: disable=import-outside-toplevel
+
+    src = Path(__file__).resolve().parents[4] / "src" / "analyzer" / "io" / "ai_review.py"
+    tree = ast.parse(src.read_text(encoding="utf-8"))
+    calls = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "log_claude_api_call"
+    ]
+    assert calls, "log_claude_api_call 호출이 사라졌다 — 비용 로그 자체가 없어졌는지 확인"
+    for call in calls:
+        names = {kw.arg for kw in call.keywords if kw.arg is not None}
+        assert "duration_ms" in names, (
+            "duration_ms 가 명시 키워드로 전달되지 않는다 — `**_log` 안에 숨으면 필수 인자가 "
+            "정적으로 보이지 않아 pylint E1125 가 재발한다"
+        )
