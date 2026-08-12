@@ -17,11 +17,19 @@
 3. 아카이브의 각 영역 절이 **비어 있지 않음**(지우고 헤딩만 남기는 우회 차단)
 4. 아카이브가 **실행 대상이 아님**을 자기 선언(원문에 실행 지시 어휘가 그대로 들어 있다)
 
+5. 각 절의 **내용 충실도** — 리터럴 지문 + 인용 다양성 하한
+
+🔴 **5축은 Grok claim-review `019ff591` 이 이 가드의 초판을 WEAKENED 로 판정해 추가됐다.**
+초판은 1~4축뿐이었고, 지적된 반례가 실제로 성립했다: *"각 `## <area>` 절 본문을
+2000자짜리 `X` 로 갈아치우고 전체 길이만 패딩하면 전건 green"*. 즉 **서사를 통째로
+공동화해도 관측자가 참으로 보였다** — 이 저장소가 반복해 온 observer-lie 그 자체다.
+그래서 절마다 그 영역에만 있는 식별자를 **테스트 쪽에 리터럴로 못박고**, 백틱 인용의
+**서로 다른 개수**에 하한을 둔다. 채움 문자열은 둘 다 통과하지 못한다.
+
 ## 이 가드가 닫지 **않는** 축 (정직 기준)
 
-내용이 *옳은지* 는 보지 않는다 — 절이 실재하고 비어 있지 않은지만 본다.
-누군가 아카이브 본문을 다른 글로 통째로 갈아끼우면 이 가드는 통과한다.
-그 축은 review-time claim-review 가 방어한다.
+내용이 *옳은지* 는 여전히 보지 않는다. 지문이 남아 있는 채로 문장을 다시 쓰면 통과한다 —
+5축이 올린 것은 "공동화 비용" 이지 "서사 진위" 가 아니다. 그 축은 claim-review 가 방어한다.
 
 This guard enforces that the compressed rules keep a live path back to the
 narrative that justifies them; it does not judge that narrative's correctness.
@@ -40,9 +48,29 @@ _ARCHIVE = _ROOT / "docs" / "_archive" / "rules-incident-log.md"
 # Pinned literally: deriving this from the rules dir would go green when a file is deleted.
 _COMPRESSED_AREAS = ("ui", "pipeline", "api", "db", "testing", "deploy", "i18n")
 
-# 아카이브 영역 절의 최소 분량. 압축 전 원문이라 가장 작은 절(i18n)도 6천자를 넘는다 —
+# 아카이브 영역 절의 최소 분량. 압축 전 원문이라 가장 작은 절(i18n)도 8천자를 넘는다 —
 # 2000 은 "헤딩만 남기고 본문을 비우는" 우회를 막는 하한이지 품질 기준이 아니다.
 _MIN_SECTION_CHARS = 2000
+
+# 🔴 **분량만으로는 공동화를 막지 못한다** (Grok `019ff591` 반례: 2000자 `X` 로 통과).
+# 그래서 절마다 **그 영역에만 있는 식별자**를 테스트 쪽에 리터럴로 못박는다.
+# 🔴 아카이브에서 **유도하지 않는다** — 유도하면 지우는 순간 기대값도 같이 사라져 초록이 된다
+# (guards.md §기대값을 피검사 모듈에서 유도하지 말 것).
+# Pinned literally on the test side; deriving them from the archive would go green when gutted.
+_SECTION_FINGERPRINTS = {
+    "ui": ("landing.html", "setApproveMode", "ai_review_enabled"),
+    "pipeline": ("_BACKGROUND_MODULES", "run_gate_check", "AutoMergeAction"),
+    "api": ("approve_mode", "auto_approve_threshold", "run_gate_check"),
+    "db": ("effective_migration_url", "_REGISTERED_MODELS", "alembic/env.py"),
+    "testing": ("DATABASE_URL_TEST_POSTGRES", "e2e/pytest.ini", "asyncio_mode"),
+    "deploy": ("numReplicas", "preDeployCommand", "cronSchedule"),
+    "i18n": ("i18n_args", "RepoConfig.notification_language", "review_guides/"),
+}
+
+# 서로 다른 백틱 인용의 최소 개수 — 지문을 남긴 채 나머지를 채움 문자열로 바꾸는 것을 막는다.
+# 실측 최소 절(i18n)이 60종을 넘으므로 25 는 여유 있는 하한이다.
+_MIN_DISTINCT_CITATIONS = 25
+_INLINE = re.compile(r"`([^`\n]+)`")
 
 
 def _read(path: Path) -> str:
@@ -95,6 +123,29 @@ def test_archive_section_is_not_hollowed_out(area: str) -> None:
     assert len(section) >= _MIN_SECTION_CHARS, (
         f"아카이브 `## {area}` 절이 {len(section)}자뿐이다(하한 {_MIN_SECTION_CHARS}). "
         "압축 전 원문 보존이 아니라 껍데기다."
+    )
+
+
+@pytest.mark.parametrize("area", _COMPRESSED_AREAS)
+def test_archive_section_keeps_its_pinned_fingerprints(area: str) -> None:
+    """🔴 분량 하한을 채움 문자열로 통과하는 공동화를 막는다 (Grok `019ff591` 반례)."""
+    section = _archive_sections().get(area, "")
+    missing = [f for f in _SECTION_FINGERPRINTS[area] if f not in section]
+    assert not missing, (
+        f"아카이브 `## {area}` 절에서 지문 {missing} 이 사라졌다 — "
+        "분량은 남아도 원문 서사가 아니다(채움/재작성 의심). "
+        "정당하게 원문이 바뀌었다면 이 테스트의 리터럴 지문을 같은 PR 에서 갱신할 것."
+    )
+
+
+@pytest.mark.parametrize("area", _COMPRESSED_AREAS)
+def test_archive_section_keeps_citation_diversity(area: str) -> None:
+    """지문만 남기고 나머지를 채움으로 바꾸는 우회를 막는다 — 인용 다양성 하한."""
+    section = _archive_sections().get(area, "")
+    distinct = {m.group(1).strip() for m in _INLINE.finditer(section) if m.group(1).strip()}
+    assert len(distinct) >= _MIN_DISTINCT_CITATIONS, (
+        f"아카이브 `## {area}` 절의 서로 다른 인용이 {len(distinct)}종뿐이다"
+        f"(하한 {_MIN_DISTINCT_CITATIONS}) — 사고 재현 로그가 아니라 요약본이다."
     )
 
 
