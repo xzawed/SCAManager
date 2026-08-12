@@ -4,6 +4,9 @@
 
 > 🔴 **이 문서는 상태 스냅샷이다.** 착수 전 `git pull` 후 아래 "먼저 확인" 3줄을 **실행해서**
 > 값을 갱신할 것 — 여기 적힌 수치는 작성 시점이며 손유지라 늙는다.
+>
+> **2026-08-12 종결분**: `#1337`(main red 봉인) · `#1331`(P0 3건) · `#1335`(rules 압축) 머지 완료.
+> 남은 것은 §4 결정 4건 · §6 미완 회고 · trailing sync 다.
 
 ## 먼저 확인 (30초)
 
@@ -38,7 +41,18 @@ py -3 scripts/pre_push_gate.py          # 로컬 게이트 (make 불필요)
 
 ---
 
-## 2. 🔴 지금 main 이 red 다 (이 세션이 유발)
+## 2. ✅ main red — 해소됨 (`#1337`, 2026-08-12 머지)
+
+> 아래는 **종결된 사고의 기록**이다. 현재 main 은 초록이고 이 절은 재발 판별용으로 남긴다.
+> 봉인 커밋: `#1337` · 뮤테이션 3종(초판 복원·과교정·기존 테스트) 전부 red 실증 ·
+> Grok claim-review `019ff68f` verdict WEAKENED → 지적 4건 반영.
+> 🔴 **머지 후 main push 이벤트에서도 이월 마커가 인식되는 것을 실측 확인**했다 —
+> 이 축은 PR 컨텍스트에서 원리적으로 관측 불가했다.
+
+<details>
+<summary>사고 기록 (원문 보존)</summary>
+
+### 🔴 (당시) main 이 red 다 — 이 세션이 유발
 
 **증상**: `tests/unit/scripts/test_deferral_marker_survives_merge.py::test_git_failure_is_not_an_exemption`
 실패. 로컬 재현됨.
@@ -71,22 +85,34 @@ return commits or _git_text("log", "-1", "--format=%B"), read_pr_body()
 **부수 학습**: 메모리 `feedback_activate_skipped_guard_reveals_bug` 의 인접 사례.
 *가드의 첫 실사용이 그 가드의 잠재 결함을 드러낸다.*
 
+</details>
+
+🔴 **남은 규율 질문 (사용자 회신 대기)**: 이 사고는 **게이트가 지시한 대로 따랐더니 그 게이트가
+깨진** 형태다. 게이트가 *"이월 마커는 커밋 메시지에 적으라"* 고 인쇄했고 그대로 했더니 마커가
+tip 에 실려 같은 게이트를 깨뜨렸다. **가드가 처방하는 행동을 그 가드 자신이 견디는지**
+검사하는 축(self-consumption test)을 규율로 올릴지 판단이 필요하다.
+
 ---
 
-## 3. 🔴 머지 대기 — PR #1331
+## 3. ✅ 확정 P0 3건 — 해소됨 (`#1331`, 2026-08-12 머지)
 
-`fix(guards): main 이 깨져 있었다 — README 충돌 마커 + pylint 배지 진리값`
-**MERGEABLE / CLEAN / 체크 13건 전부 SUCCESS**. 머지는 사용자 몫(정책 7).
-
-이 PR 하나가 확정 P0 **3건**을 닫는다:
-
-| # | 결함 | 현재 main 상태 |
+| # | 결함 | 머지 후 실측 |
 |---|---|---|
-| 1 | `README.md`·`README.ko.md` **21·23·25줄 미해결 병합 충돌 마커** | 살아 있음 (공개 첫 화면) |
-| 2 | pylint 배지 5지점이 `10.00` 단언 — 실측 **9.99** | 살아 있음 |
-| 3 | 충돌 마커 가드 **0건** (`scripts/check_conflict_markers.py` 부재) | 살아 있음 |
+| 1 | `README.md`·`README.ko.md` 21·23·25줄 미해결 병합 충돌 마커 | **0건** |
+| 2 | pylint 배지 5지점이 `10.00` 단언 — 실측 9.99 | 배지·STATE 모두 **9.99** |
+| 3 | 충돌 마커 가드 0건 | `scripts/check_conflict_markers.py` 실재 + `ci.yml:169` · `pre_push_gate.py:62` **양쪽 배선** |
 
-⚠️ 그 PR 의 STATE 수치(7254/7083)는 이미 낡았다 — 현재 실측 **7269/7098**. 머지 후 trailing sync 필요.
+🔴 **덤으로 집행면이 하나 올라갔다** — CI `lint-src` 의 `--fail-under` 가 리터럴 `9.90` 에서
+**README 배지 파생**으로 바뀌었다. 이전에는 9.99 든 10.00 주장이든 전부 통과시켰다.
+이제 부풀린 배지가 자기 빌드를 실패시킨다.
+
+⚠️ 다만 `#1331` 이 실은 STATE 수치(7254/7083)는 **머지 시점에 이미 낡았다** — §6 trailing sync 참조.
+
+> 🔴 **왜 가드가 초록이었나** (재발 판별용): `scripts/check_docs_sync.py:52-56` 의 `_first()` 가
+> `pattern.search()` = **첫 매치만** 본다. 첫 배지가 STATE 와 맞으면 그 아래 충돌 잔해가
+> 구조적으로 안 보인다. `--fix` 도 `count=1` 이라 stale 사본을 남긴다.
+> **이 다중매치 잔여는 아직 안 고쳐졌다** — `#1331` 은 별도 가드를 신설했을 뿐 `_first` 를
+> 다중매치로 바꾸지 않았다(Grok `019ff5ed` A2).
 
 > 🔴 왜 가드가 초록이었나: `scripts/check_docs_sync.py:52-56` 의 `_first()` 가
 > `pattern.search()` = **첫 매치만** 본다. 첫 배지가 STATE 와 맞으면 그 아래 충돌 잔해가
