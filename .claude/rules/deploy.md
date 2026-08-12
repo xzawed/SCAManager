@@ -14,32 +14,65 @@ paths:
 # 배포 규칙
 
 > 상세 절차 + Railway 대시보드 설정: [`docs/runbooks/railway.md`](../../docs/runbooks/railway.md)
+> 🔴 **사고 재현·측정 로그는 [`docs/_archive/rules-incident-log.md#deploy`](../../docs/_archive/rules-incident-log.md#deploy) 로 옮겼다 — 규칙을 완화·삭제하려면 아카이브를 먼저 읽을 것** (2026-08-12 밀도 압축).
+> 여기 남은 것은 규칙 · 왜 한 줄 · 가드 파일명뿐이며, 서사가 짧아진 것이 규칙이 약해졌다는 뜻이 아니다.
+> 역링크·앵커·절 보존 집행: `tests/unit/scripts/test_rules_archive_backlink.py`.
 
-## 핵심 주의사항
+## 🔴 조용히 무시되는 것들 — 이 영역 최다 재발 클래스
 
-- **NIXPACKS npm run build 자동 추가**: npm이 환경에 존재하면 `nixpacks.toml [phases.build] cmds` 명시 여부와 무관하게 `npm run build`를 자동 추가. 억제 유일 수단: `railway.toml`의 `buildCommand` (최상위 오버라이드).
-- **slither + solc 빌드타임 준비**: `slither-analyzer` (pip) 설치만으로는 부족 — solc 컴파일러 바이너리 필요. `railway.toml`의 `buildCommand`에 `solc-select install 0.8.20 && solc-select use 0.8.20` 체인 의무.
-- 🔴 **`railway.toml` 신규 키는 공식 레퍼런스 대조 의무 — 무효 키는 조용히 무시된다 (2026-07-19 P0 + B2 덫)**: Railway 는 인식하지 못하는 키를 **에러 없이 버린다**. 그래서 `[[deploy.cronJobs]]`(스키마에 없는 키)가 cron 5종을 출시 이래 미실행 상태로 두었고, 아무도 몰랐다. **같은 덫이 `numReplicas` 에도 있다** — `[deploy]` 유효 키는 `startCommand` · `preDeployCommand` · `multiRegionConfig` · `healthcheckPath` · `healthcheckTimeout` · `restartPolicyType` · `restartPolicyMaxRetries` · `cronSchedule` · `overlapSeconds` · `drainingSeconds` 뿐이고, replica 수는 **`multiRegionConfig.<region>.numReplicas` 로만** 지정된다(`[deploy] numReplicas = N` 은 무시됨). **default 적용**: `railway.toml` 에 키를 추가할 때 [config-as-code 레퍼런스](https://docs.railway.com/config-as-code/reference) 를 실제로 대조하고, 배포 후 Deploy 로그/설정 화면에서 **적용 여부를 직접 확인**할 것. 🔴 무효 키의 진짜 피해는 기능 부재가 아니라 **거짓 안심**이다 — 저장소에 "핀했다" 는 흔적이 남아 다음 사람이 보호받고 있다고 오인한다. 가드: `tests/unit/scripts/test_railway_cron_guard.py`(cron) · `test_railway_scaling_guard.py`(replica — 무효 키 차단 + replica ≥ 2 시 advisory lock 강제).
-- 🔴 **analyzer 는 두 축으로 조달을 강제한다 — 한 축만으로는 클래스가 열려 있다 (2026-07-19 회고 P1)**: `#1119`(tflint) 는 **buildCommand 가 호출하는 명령**의 조달 출처만 강제했다. 그 방향은 "설치 단계가 부르는 헬퍼(`unzip`)가 없다" 는 잡지만, **"등록은 됐는데 바이너리가 아예 조달되지 않는 analyzer"** 는 buildCommand 에 언급조차 없어 검사 대상에 들어오지 않는다. 실측: `static.py` 가 **23종**을 register 하는데 **9종**(buf·cargo·dart·dotnet·pwsh·swiftlint·phpstan·htmlhint·stylelint)의 바이너리가 어디에도 없었다 — tflint 실패 모드의 **9배 일반화**이고, `#1119` 는 이 클래스를 "봉인" 이라 선언했으나 1/10 만 고친 상태였다.
+- 🔴 **`railway.toml` 신규 키는 공식 레퍼런스 대조 의무 — 무효 키는 에러 없이 무시된다.**
+  *왜*: `[[deploy.cronJobs]]` 가 스키마에 없는 키라 **cron 5종이 출시 이래 한 번도 실행되지 않았다**.
+  "설정했으니 동작할 것" 은 근거가 아니다 — 대시보드/API 로 **적용 여부를 확인**할 것.
+  키 형태 집행: `tests/unit/scripts/test_railway_cron_guard.py` · `tests/unit/scripts/test_railway_scaling_guard.py`.
+- 🔴 **analyzer 조달은 두 축으로 강제한다 — 한 축이 다른 축을 대체할 수 없다.**
   - **축 A** `tests/unit/scripts/test_build_command_deps.py` — buildCommand 호출 명령 ⊆ 조달 출처
   - **축 B** `tests/unit/scripts/test_analyzer_provenance.py` — 등록 analyzer → 조달 모드 전단사
-  - 🔴 **한쪽으로 다른 쪽 대체 금지** — 축을 갈아끼우면 `#1119` 의 원래 결함이 다시 열린다.
-  - **모드는 닫힌 집합**: `build_install` · `apt` · `pip` · `nixpacks_setup` · `optional_absent_ok`. 신규 analyzer 추가 시 `_PROVENANCE` 등재 의무(미등재 = CI FAIL).
-  - **`optional_absent_ok` 도피처 차단 3종**: 사유 문자열 의무 / 실제 조달되는 바이너리를 optional 표기 금지(모순) / **전부 optional 금지**(과반 미만). 산술로 막지 않으면 "다 없어도 된다" 로 수렴한다.
-- 🔴 **buildCommand 가 쓰는 명령은 조달 출처 등재 의무 — analyzer silent-disable 차단 (2026-07-19 발견)**: `buildCommand` 의 analyzer 설치 단계는 전부 `|| echo 'WARNING: ... will be disabled'` 로 감싸여 있어 **설치 실패해도 빌드는 성공**한다. 그리고 각 analyzer 는 `shutil.which(<bin>) is None` 이면 `is_enabled()=False` 로 **조용히 skip** 한다 → 설치 실패 = 해당 언어 분석 무동작인데 **에러가 어디에도 남지 않는다**. 실제 사고: tflint 설치가 `unzip` 을 호출하는데 `nixpacks.toml aptPkgs` 에 `unzip` 이 **#654 도입 이래 한 번도 없어** Terraform/HCL 분석이 계속 무동작이었다(`unzip: command not found` → WARNING 으로 삼켜짐). 같은 날 cron P0(`[[deploy.cronJobs]]` 무효 키 → 5종 미실행)와 **같은 실패 모드**(설정 존재·실행 0·무통보). **가드**: `tests/unit/scripts/test_build_command_deps.py` 가 buildCommand 호출 명령을 추출해 `_COMMAND_PROVENANCE`(base-image / apt / nixpacks-setup / pip) 등재를 강제하고, apt 출처는 실제 `aptPkgs` 존재를 단언한다. **buildCommand 에 신규 도구 추가 시 = 레지스트리 등재 + 조달 출처 확인 의무** (미등재 시 CI fail). 🔴 빌드 로그의 `WARNING: ... analyzer will be disabled` 는 무해한 잡음이 아니라 **기능 소실 신호** — 배포 후 1회 grep 권장.
-- **NIXPACKS nixPkgs 오버라이드 함정**: `nixpacks.toml`에 `nixPkgs = ["nodejs"]` 등을 명시하면 Python provider의 nix 자동 설치(python3 + pip 포함)를 **완전히 교체**. Python+Node.js 공존 패턴: `nixPkgs` 사용 금지, `nixpacks.toml` `[phases.setup]` `cmds`에서 NodeSource 스크립트로 Node.js 설치 (예: `curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs`), pip install은 Python provider 자동 처리 (`[phases.install]` 직접 작성 시 exit 127 위험).
-- **Tailwind v4 빌드**: `package.json`에 `npm run build` 스크립트가 `@tailwindcss/cli`로 `src/static/css/dist/tailwind.css`를 생성. `railway.toml` buildCommand 끝의 `npm ci && npm run build`가 이를 수행. 이 두 명령 제거 시 Tailwind CSS 누락으로 UI 깨짐 — buildCommand에서 제거 금지.
-- **APP_BASE_URL**: Railway 리버스 프록시 환경 필수 설정. **OAuth redirect_uri**와 **GitHub Webhook 등록 URL** 양쪽에 HTTPS URL 강제 적용 — 미설정 시 `http://`로 등록.
-- **Railway 빌드 검증 필수**: `git push` 성공 ≠ Railway 빌드 성공. `railway.toml`, `nixpacks.toml`, `requirements.txt` 변경 후 Railway 대시보드 빌드 로그 직접 확인 후 완료 선언.
-- **빌드 실패는 로그 우선, 추측 수정 금지**: Railway/CI 빌드 실패 보고를 받으면 즉각 수정 PR 을 작성하지 말 것. 전체 빌드 로그(실패 구간 위아래 30줄)를 먼저 받아 근본 원인을 특정한 뒤 수정. 상세: [회고](../../docs/_archive/reports/2026-04-23-railway-rubocop-prism-retrospective.md).
-- 🔴 **Railway pre-deploy command = `alembic upgrade head` (config-as-code, 2026-06-15)**: `railway.toml [deploy] preDeployCommand` — 새 컨테이너가 트래픽 받기 전 DB 마이그레이션 실행(loud-fail: 실패 시 배포 중단). `main.py` lifespan 도 동일 `alembic upgrade head` 를 돌리나 30s 타임아웃·broad-except = **silent-fail**(schema drift 무음 누적) → pre-deploy 가 loud 가시화. 양쪽 멱등(alembic head stamp) = 중복 무해. 🔴 **Railway 대시보드 Settings→Deploy→Pre-deploy Command = 빈 값 권장**(railway.toml 단일 출처 — stale 설정 혼동/drift 차단; 부득이 설정 시 `alembic upgrade head` 동일 값 유지). ⚠️ 대시보드 ↔ railway.toml 양쪽 정의 시 적용 우선순위는 Railway 버전/필드별 혼동 가능(일반 config-as-code 는 코드 우선이나 대시보드 command 필드 예외 보고 존재) — Deploy 로그서 실제 실행 명령 확인. 전례(2026-06-15): railway.toml 에 preDeployCommand **미정의** 상태라 대시보드 stale `npm run migrate`(`package.json` 미존재 스크립트)가 사용됨 → "Deploy › Pre-deploy command failed" → 배포 미완료·alembic 0038 고착·`force_applied=False`. build 는 성공해도 deploy(pre-deploy) 단계서 차단되므로 빌드 로그뿐 아니라 **Deploy/Pre-deploy 단계 로그까지 확인**. start/pre-deploy 명령 변경 시 대시보드 ↔ `railway.toml` 양쪽 확인.
-- **gem/npm transitive 의존성 핀**: Ruby gem 또는 npm 패키지의 **직접 의존성만 버전 고정해도 transitive 의존성은 시간에 따라 바뀐다**. rubocop 1.57.2 는 pure Ruby 지만 transitive `rubocop-ast` 가 2024년 이후 prism 네이티브 확장을 필수로 요구하게 변경됨 → Railway 빌드 실패. 해결책은 `gem install rubocop-ast -v 1.36.2` (prism-free 마지막 버전) 를 rubocop 설치 **이전에** 명시 핀.
-- **requirements.txt 분리**: `requirements.txt`(프로덕션 — Railway 자동 감지)와 `requirements-dev.txt`(개발 — `-r requirements.txt` 포함 + pytest/playwright) 분리. `pytest`, `playwright`는 `requirements-dev.txt`에만 유지.
-- 🔴 **의존성 == 완전 핀 + SCA 게이트 (회고 2026-07-03 C7)**: `requirements.txt`·`requirements-dev.txt` 전 직접 의존성을 **`==` 정확 핀**한다 (이전 일부 `>=` floor-pin → CI 가 설치 시점 latest 를 비결정적으로 해석 = **CI 테스트 버전 ≠ Railway 배포 버전 drift**). 핀 버전 = 핀 시점 pip 해석 결과(latest-satisfying, inter-dep 정합) = CI 가 `>=` 로 이미 설치·테스트하던 버전 → 결정성만 부여(신규 위험 0). Railway nixpacks 가 `requirements.txt` 를 직접 설치하므로 CI==Railway 일치. bump 는 Dependabot(`==` → `==`). CI `dependency-audit` job(`pip-audit`, OSV/PyPI Advisory)이 known CVE 를 게이트 — 신규 CVE 발표 시 CI fail → bump 강제. 🔴 **버전 변경 시 로컬 env 신선설치 후 `make test` 재검증**(로컬 stale 시 핀 미검증 — 회고 실측: 로컬 fastapi 0.115 vs 핀 0.139). ⚠️ CI 가 최종 게이트.
-- **FastAPI/starlette 버전 핀**: `requirements.txt` — `fastapi==0.141.1` (starlette 1.0 지원 — 0.137 부터, C7 == 핀) + `starlette==1.4.1` (**현재 핀은 dependabot 정기 bump 결과이며 CVE 대응이 아니다** — 보안 하한은 **≥1.0.1**: PYSEC-2026-161 / CVE-2026-48710 — Host 헤더 미검증 → `request.url.path` 오염 → 경로 인증 우회, ≤1.0.0 전체 취약·1.0.1 단독 수정 / 이전 CVE-2024-47874·CVE-2025-54121 승계. 🔴 핀 숫자는 `requirements.txt` 가 정본이고 이 줄은 그 사본이다 — `check_docs_sync.check_dependency_pins` 가 불일치를 red 로 잡는다). 🔴 **`starlette<1.0` 핀 금지** — 0.x 는 PYSEC-2026-161 미패치(다운그레이드=보안 회귀). 🔴 **fastapi 0.137 `include_router` → `_IncludedRouter` 지연 포함**으로 `app.routes` 가 더 이상 평탄화되지 않음 (`[r.path for r in app.routes]` 직접 순회 시 `_IncludedRouter.path` AttributeError). 라우트 등록 테스트는 `tests/unit/_route_helpers.py` 사용 — `registered_paths`(원본 라우터 + `include_router(prefix=)`·`APIRouter(prefix=)`·중첩 include·`Mount` 재귀 평탄화) / `route_name_count`(중복 name 탐지) / 또는 public `app.url_path_for`. 헬퍼 견고성은 `tests/unit/test_route_helpers.py` 가드. 전례: 2026-06-15 starlette 1.0 마이그레이션 (dependabot 신선설치 시 1.3.1 유입 → 라우트 등록 테스트 6건 fail).
-- 🔴 **Python 버전 핀 — `.python-version` (Railway nixpacks + pyenv, SSOT)**: 루트 `.python-version`(현재 `3.12`)이 **Railway nixpacks Python provider 의 빌드 버전을 핀**한다. nixpacks 는 `NIXPACKS_PYTHON_VERSION` env → `.python-version` → `runtime.txt` → `.tool-versions` 순으로 읽으며 **미지정 시 default 3.11**(nixpacks 공식 — 지원 2.7/3.8~3.13). **SSOT 의무(사이클 166 #22)**: CI(`.github/workflows/ci.yml` `python-version`) · `.python-version` · docs(README/README.ko/STATE 배지·표·Requirements) 3종을 동일 버전 유지. 버전 변경 시 3종 동시 갱신 + nixpacks 지원 범위 확인 + Railway 빌드 로그 직접 검증(`git push` ≠ 빌드 성공). 로컬 dev 는 pyenv 가 `.python-version` 적용(미설치 시 system python fallback — 3.12+ 호환). ⚠️ `.python-version` 미확인으로 'Railway 핀 없음' 오판 금지(#22 정정 학습 — Railway 는 핀 없음이 아니라 `.python-version`=3.12 로 이미 핀).
-- **SMTP_PORT 빈 문자열**: Railway 환경에서 `SMTP_PORT=""`로 설정해도 `config.py`의 `coerce_smtp_port` field_validator가 587로 자동 변환 (크래시 없음). 다만 Railway Variables에서 빈 값 대신 명시적 숫자 설정 권장.
-- **postgres:// URL**: Railway PostgreSQL이 `postgres://`로 제공하는 경우 `config.py`에서 `postgresql://`로 자동 변환. `DATABASE_URL_FALLBACK`/`DATABASE_URL_WORKER` 도 동일 변환 적용.
-- **DATABASE_URL_WORKER (RLS role 분리 옵션 A — 2026-06-10)**: background 전용 DB URL. 미설정 시 `DATABASE_URL` 재사용 (현행 동작 — 배포 환경 변경 불필요). 설정은 [`docs/runbooks/rls-role-separation.md`](../../docs/runbooks/rls-role-separation.md) Phase 1 role 생성 후에만 — 반드시 `BYPASSRLS` worker role(`scamanager_worker`) 자격. ⚠️ worker 경로는 failover 미지원 + 동일 프로세스 연결 풀 2배 (Supabase 연결 상한 고려).
-- 🔴 **Supabase 연결 장애 진단 = host 재도출 + 로컬 secret-safe probe (2026-06-15 prod 다운 학습)**: Railway↔Supabase 연결/auth 실패 시 **redeploy 루프·사용자 outsource 로 검증하지 말 것**. ① canonical host 는 Supabase MCP `get_project` / Dashboard Connect 에서 매번 **재도출** — pooler `aws-N` 클러스터 prefix 는 project-specific·가변이라 첫 배포 로그·기존 `.env` 복사값은 *가설*(2026-06-15 = `aws-0` 미검증 상속 → 수 시간 다운, 정답 `aws-1`). ② 검증은 gitignore 된 `.dbpw` + 1회성 psycopg2 probe 로 `{host}×{user}×{port}` 매트릭스를 직접 돌려 `select 1` OK 확인 — **secret-in-local-file probe 는 검증 capability(블로커/제약 우회 아님)**, "비번 echo 불가" 는 검증 *방법* 제약이지 *여부* 제약 아님. 상세: [`docs/runbooks/railway.md`](../../docs/runbooks/railway.md) §Railway↔Supabase 연결 invariants · 메모리 `feedback-connectivity-probe-first`.
-- **SonarCloud CPD 제외 (`sonar.cpd.exclusions`)**: 신규 기능 PR 에 테스트 파일(반복 패치 블록)과 Jinja2 HTML 템플릿(구조적 반복)이 포함될 경우 `sonar.cpd.exclusions=tests/**,src/templates/**` 가 이미 설정되어 있음. 서비스/API 계층 내 중복 블록(≥10 토큰)은 추출 헬퍼로 제거 의무. 사이클 129 학습: 13줄 TTL 동기화 중복이 `get_analysis_issue_status`·`get_repo_issue_summary` 양쪽에 존재 → CPD 4.8% → `_sync_state_if_stale` 헬퍼 추출로 0.0% 해소. **체크포인트**: 신규 서비스 함수 2개 이상이 동일 로직 블록을 공유하면 PR 완성 전 헬퍼 추출.
+  🔴 축을 갈아끼우면 원래 결함(analyzer silent-disable)이 다시 열린다.
+  모드는 **닫힌 집합**(`build_install`·`apt`·`pip`·`nixpacks_setup`·`optional_absent_ok`),
+  신규 analyzer 는 `_PROVENANCE` 등재 의무(미등재 = CI FAIL).
+  🔴 `optional_absent_ok` 도피처 차단 3종: 사유 문자열 의무 / 실제 조달되는 바이너리를 optional 표기 금지 / **전부 optional 금지**.
+- 🔴 **buildCommand 가 쓰는 명령은 조달 출처 등재 의무** — 설치 단계가 `|| echo` 로 삼켜지면
+  바이너리 없이도 빌드가 초록이고 analyzer 만 조용히 죽는다.
+- **NIXPACKS 는 npm 이 있으면 `npm run build` 를 자동 추가한다** — 명시 여부와 무관. 억제 수단은 제한적이므로
+  `railway.toml buildCommand` 최상위 지정이 우선순위 정본.
+- **`nixpacks.toml` 의 `nixPkgs` 는 오버라이드가 아니라 교체다** — 명시하면 Python provider 의
+  python3+pip 자동 설치가 **완전히 사라진다**.
+
+## 버전 핀
+
+- 🔴 **전 직접 의존성 `==` 정확 핀** + SCA 게이트(`pip-audit`). `>=` 금지.
+  *왜*: transitive 는 시간에 따라 바뀌므로 직접 의존성만 고정해도 빌드가 갈린다.
+- **`.python-version` 이 Railway nixpacks Python 빌드 버전의 SSOT**(현재 `3.12`).
+- **FastAPI/starlette 핀은 dependabot 정기 bump 대상** — 현재 `fastapi==0.141.1` + `starlette==1.4.1`.
+  🔴 **이 인용 리터럴은 장식이 아니라 검사 대상이다** — `check_dependency_pins` 가 `requirements.txt` 실핀과
+  대조하는 ground-truth 축이라, 지우면 *"검사 범위 붕괴"* 로 red 다(2026-08-12 압축 중 실제 발생).
+  핀 변경 시 이 인용 + README FastAPI 배지 동시 갱신(가드: `scripts/check_docs_sync.py`).
+- **`requirements.txt`(프로덕션, Railway 자동 감지) ↔ `requirements-dev.txt`(`-r` 포함 + pytest/playwright) 분리.**
+- **slither 는 `solc` 바이너리가 별도 필요** — pip 설치만으로 부족(`solc-select install/use` 를 buildCommand 에).
+- **Tailwind v4** — `npm run build` 가 `src/static/css/dist/tailwind.css` 생성. buildCommand 끝의 `npm ci && npm run build` 유지.
+
+## 배포 절차
+
+- 🔴 **`git push` 성공 ≠ Railway 빌드 성공** — `railway.toml`·`nixpacks.toml`·`requirements.txt` 변경 후
+  **빌드 로그를 직접 확인**할 것.
+- 🔴 **빌드 실패는 로그 우선, 추측 수정 금지** — 실패 보고를 받고 즉시 수정 PR 을 만들지 말 것.
+  전체 로그(실패 구간 위아래 포함)를 먼저 읽는다.
+- 🔴 **pre-deploy = `alembic upgrade head`**(`railway.toml [deploy] preDeployCommand`) — 새 컨테이너가
+  트래픽을 받기 전 DB 마이그레이션 완료를 보장한다.
+- 🔴 **Supabase 연결 장애는 host 재도출 + 로컬 secret-safe probe 로 진단** — redeploy 루프나
+  사용자 outsource 로 검증하지 말 것. canonical host 는 Supabase 대시보드가 정본이다.
+
+## 환경변수
+
+- 🔴 **`APP_BASE_URL` 은 Railway 필수** — OAuth redirect_uri 와 Webhook 등록 URL 양쪽에 HTTPS 를 강제한다.
+  미설정 시 `http://` 로 등록돼 전달이 실패한다. (SESSION_SECRET 과의 결합 = [`security.md`](security.md))
+- **`SMTP_PORT=""` 는 `coerce_smtp_port` 가 587 로 변환**(크래시 없음) — 그래도 명시 숫자 권장.
+- **`postgres://` URL 은 `postgresql://` 로 자동 변환**(`DATABASE_URL_FALLBACK`·`DATABASE_URL_WORKER` 동일).
+- **`DATABASE_URL_WORKER`** 미설정 시 `DATABASE_URL` 재사용 — 설정 절차는
+  [`docs/runbooks/rls-role-separation.md`](../../docs/runbooks/rls-role-separation.md)
+- 전체 목록·제약은 [`docs/reference/env-vars.md`](../../docs/reference/env-vars.md) 가 정본이다.
+
+## 정적 분석 설정
+
+- **SonarCloud CPD 제외** = `sonar.cpd.exclusions=tests/**,src/templates/**`(테스트 반복 패치·Jinja2 구조 반복).
+  신규 제외 추가 시 사유를 PR 본문에 명시.

@@ -12,69 +12,124 @@ paths:
 
 # API / 알림 채널 규칙
 
-- 🔴 **background 세션 라우팅 = `WorkerSessionLocal`** (규칙 본문 = [`db.md`](db.md) §WorkerSessionLocal):
-  이 영역의 background 진입점(`gate/engine`·`gate/actions/*`·`worker/pipeline`·`webhook/*`·
-  `notifier/*` lazy·`api/{hook,internal_cron,repos,stats,repo_report}`)은
-  `from src.database import WorkerSessionLocal as SessionLocal` **alias 의무**다(웹 경로는 bare
-  `SessionLocal` 유지 — 혼용 금지). 신규 진입점 추가 시
-  `tests/unit/test_worker_session_routing.py` 의 `_BACKGROUND_MODULES` 등재 의무(ast 정적 가드가
-  bare import 를 자동 fail). 🔴 **왜 여기 다시 적는가**: 본문은 `db.md` 에 있는데 그 파일의 path
-  매칭은 `alembic/**`·`src/models/**`·`src/database.py`·`src/repositories/**` 뿐이라 **이 영역
-  파일을 편집할 때 자동 로드되지 않는다** (2026-08-01 Grok 시스템 감사 `019fbccf` 적발 — 경로
-  매칭 ≠ 소비자 목록). 사후 가드가 잡더라도 작성 시점에 규칙을 못 보면 틀린 코드를 먼저 쓴다.
-  🔴 hybrid 3 모듈 예외·RLS 맥락 등 세부는 `db.md` 본문을 열 것 — 여기는 포인터다.
+> 🔴 **사고 재현·측정 로그는 [`docs/_archive/rules-incident-log.md#api`](../../docs/_archive/rules-incident-log.md#api) 로 옮겼다 — 규칙을 완화·삭제하려면 아카이브를 먼저 읽을 것** (2026-08-12 밀도 압축).
+> 여기 남은 것은 규칙 · 왜 한 줄 · 가드 파일명뿐이며, 서사가 짧아진 것이 규칙이 약해졌다는 뜻이 아니다.
+> 역링크·앵커·절 보존 집행: `tests/unit/scripts/test_rules_archive_backlink.py`.
 
-- **keyword-only 강제 (`*`)**: 모든 `send_*` notifier 함수는 `def fn(*, arg1, arg2)` 형태 — 테스트에서 positional 호출 시 TypeError, 반드시 키워드 인자로 호출. 🔴 **단, `run_gate_check` 는 positional** (`src/gate/engine.py:45`, 시그니처는 본 파일 아래 항목 참조 — 2026-06-23 정정: 이전 'keyword-only' 단언은 같은 파일 시그니처 항목과 자기모순이었음).
-- **RepoConfig 필드명**: `approve_mode`(구 `gate_mode`), `approve_threshold`(구 `auto_approve_threshold`), `reject_threshold`(구 `auto_reject_threshold`) — 구 필드명 사용 시 AttributeError.
-- **알림 채널 추가 체크리스트**: `RepoConfig` ORM → `RepoConfigData` dataclass → `RepoConfigUpdate` API body → UI 폼 4곳 반드시 동기화. 누락 시 REST API 업데이트 시 해당 필드가 NULL로 덮어써지는 버그 발생.
-- **`ai_review_enabled` 4-way 동기화 (PRESETS 미포함)**: 리포별 AI 코드리뷰 kill-switch(alembic 0042) — `RepoConfig` ORM ↔ `RepoConfigData` ↔ `RepoConfigUpdate` ↔ settings.html PR 규칙 카드 독립 토글(standalone) 4곳 동기화 대상. `railway_deploy_alerts`(pipeline.md §5-way 동기화)와 달리 **PRESETS(9개 필드)에는 포함되지 않음** — 알림 프리셋(빠른 설정)과 AI 리뷰 on/off는 직교(orthogonal) 개념이라 프리셋 적용 시 덮어쓰지 않는 의도적 설계. 검증 절차: [`docs/runbooks/cost-controls.md`](../../docs/runbooks/cost-controls.md).
-- **Webhook 서명**: `X-Hub-Signature-256` 헤더 없거나 서명 불일치 시 401 반환 — 로컬 테스트 시 서명 생성 필요. 빈 시크릿(`GITHUB_WEBHOOK_SECRET` 미설정)이면 즉시 401.
-- **Webhook 서명 실패 일관성**: GitHub / Telegram webhook 모두 서명 불일치 시 `HTTPException(401)` 반환. 200 OK 반환 금지.
-- **알림 독립성**: `_build_notify_tasks()` 디스패처, `asyncio.gather(return_exceptions=True)`로 실행 — 한 채널 실패해도 나머지 채널은 정상 전송. `repo_config` 로드 실패 시에도 Telegram은 global fallback으로 항상 발송.
-- **PR Gate 3-옵션 독립**: `pr_review_comment`·`approve_mode`·`auto_merge+merge_threshold` 완전 독립. `post_pr_comment_from_result(result: dict, ...)` 사용 — `AiReviewResult` 객체 불필요. `run_gate_check` 시그니처: `(repo_name, pr_number, analysis_id, result, github_token, db, config: RepoConfigData | None = None, commit_sha: str | None = None)` (`src/gate/engine.py:45~` — 2026-08-01 실측). 🔴 **신규 호출부는 `commit_sha` 필수** — 분석된 SHA 결속(본 파일 §analyzed SHA) 없이 부르면 head 이동 시 잘못된 커밋을 머지한다.
-- **build_analysis_result_dict**: `src/worker/pipeline.py` 모듈 레벨 함수. pipeline과 hook.py 두 곳에서 Analysis.result dict를 생성할 때 사용. `score`·`grade` 필드 포함.
-- **GRADE 상수 단일 출처**: `src/constants.py`에 `GRADE_EMOJI`, `GRADE_COLOR_DISCORD`, `GRADE_COLOR_HTML`, `GRADE_COLOR_ANSI` 정의. 각 모듈에 로컬 정의 금지.
-- **ChangedFile / github_api_headers 단일 출처**: `src/github_client/models.py`가 ChangedFile 정의 출처. `src/github_client/helpers.py`의 `github_api_headers(token)` 사용.
-- **telegram_post_message**: `src/notifier/telegram.py`의 공용 헬퍼. `src/gate/telegram_gate.py`도 이 헬퍼 사용 — `httpx` 직접 import 금지.
-- **get_repo_or_404**: `src/api/deps.py`의 `get_repo_or_404(repo_name, db)` 사용.
-- **auto_merge GitHub 권한**: `merge_pr()`은 `repo` 스코프 또는 Fine-grained `pull_requests: write` 권한 필요. Branch Protection Rules가 있으면 APPROVE 후에도 Merge 실패 가능.
-- **http_client 싱글톤 원칙**: 신뢰 API (GitHub/Telegram/Railway) 호출은 `src/shared/http_client.py::get_http_client()` 를 통해 연결 풀 재사용. 외부 untrusted URL (Discord/Slack/custom_webhook/n8n) 은 `src/notifier/_http.py::build_safe_client()` 사용. `async with httpx.AsyncClient()` 매번 생성 금지.
-- **MergeAttempt 관측 (Phase F.1+F.2)**: `log_merge_attempt()`로 모든 머지 시도(성공·실패·deferred·terminal)를 DB에 기록 — `src/gate/engine.py::_run_auto_merge` **단일 출처**(자동/반자동 공통). 반자동(`src/webhook/providers/telegram.py::handle_gate_callback`)은 area=gate Q1 이후 `engine._run_auto_merge`에 위임하므로 자동 경로와 동일하게 retry 큐잉·SHA 가드·CI 재판별·terminal/deferred 알림·관측을 공유한다(반자동 인라인 `merge_pr`+`log_merge_attempt` 제거). `failure_reason`은 `src/gate/merge_reasons.py`의 정규 태그. **Phase F.3**: `engine.py::_run_auto_merge` 실패 시 `get_advice(reason)` + 조건부 `create_merge_failure_issue()` 호출 — `auto_merge_issue_on_failure` 필드(5-way sync 적용)로 Issue 생성 제어.
-- 🔴 **반자동 auto-merge = 자동 경로 위임 (area=gate Q1)**: Telegram 반자동 승인(`handle_gate_callback`)의 auto-merge 는 `engine._run_auto_merge(config, github_token, repo_name, pr_number, score, analysis_id=..., result=result_dict)`에 위임 — 가드는 `AutoMergeAction` 미러링: (1) `decision == "approve"`(reject 시 머지 금지) (2) `config.auto_merge` (3) `not result.get("static_analysis_incomplete")`(#779/#783) (4) `not ai_review_failed(result)`(#804 — api_error/parse_error 시 차단). `score >= merge_threshold` 체크는 `_run_auto_merge` 내부 단일 수행(중복 금지). 🔴 **2nd-LLM 검증자 가드 = `_run_auto_merge` 단일출처 (#859 P1-1 parity)**: 검증 가드(`merge_verifier.verifier_blocks_merge` — should_verify + verify_merge_safety + 차단 시 PR 코멘트)는 `_run_auto_merge` 진입부(threshold 체크 직후·`SessionLocal` 전)에서 1회 수행 → 자동(AutoMergeAction)·반자동(telegram) 양 경로 공유. **이전엔 AutoMergeAction 에만 있어 반자동이 검증자 우회**(parity 갭). 양 호출자는 `result` 를 전달해야 가드가 diff/리뷰 요약을 검증 가능(미전달 시 빈 dict → 키 미설정/밴드 밖이면 skip). retry 서비스(`process_pending_retries`)는 `_run_auto_merge` 미경유라 CI 완료 재시도마다 재검증 안 됨(초기 머지 1회만). 🔴 **단, retry 는 검증자 staleness 안전 (감사 ③ — SHA-bound 불변식, 2026-06-23)**: retry 경로가 (1) `sha_drift` 검사(`merge_retry_service.py` head_sha != row.commit_sha → abandon)와 (2) `merge_pr(..., expected_sha=row.commit_sha)` SHA 원자성(#962)으로 **검증자가 승인한 정확히 동일한 SHA 만 머지**하므로, 동일 커밋(diff/리뷰 요약 불변)은 verdict 가 stale 될 수 없다. 검증자를 retry 에 추가하지 않은 것은 의도 — `expected_sha` 바인딩 제거 금지(force-push 미검증 코드 머지 위험). 회귀 가드: `test_merge_retry_service.py::test_retry_passes_expected_sha_binds_to_queued_commit`. 🔴 **리플레이 가드(#11)**: handle_gate_callback 은 위 부수효과(post_github_review·_run_auto_merge) **전에** `gate_decision_repo.claim_decision()`(insert-only UNIQUE analysis_id first-writer-wins)로 결정을 원자적 claim — 동일 서명 콜백 리플레이/동시 더블클릭 패자는 skip. 상세 룰: [`pipeline.md`](pipeline.md) GateDecision claim 항목.
-- **notifier 공통 헬퍼**: `src/notifier/_common.py`의 `format_ref()`, `get_all_issues()` (호출자 캐시 권장), `truncate_message()`, `truncate_issue_msg()`를 사용.
-- 🔴 **아웃바운드 markdown 인젝션 escape (감사 D — 2026-06-23)**: untrusted 정적 도구 `issue.message`(분석 대상 코드에서 파생) 를 markdown/mrkdwn 채널에 삽입할 때 채널별 escape 의무 — **GitHub·Discord(GFM)** = `_common.escape_markdown()`(백슬래시), **Slack(mrkdwn)** = `_common.escape_slack_mrkdwn()`(`& < >` 엔티티, Slack 은 백슬래시 미지원). 링크/이미지/`<!channel>` 멘션 인젝션 차단. **4 채널 일괄** — github_comment·discord·slack·**github_issue**(`_build_issue_body` high_issues, 회고 P2-1 추가). **telegram** 은 이미 전 동적 값 `html.escape()`(HTML mode). 🔴 **AI 요약/피드백(`ai_summary`·`*_feedback`·`ai_suggestions`)은 escape 금지** — Claude 의도 markdown 프로즈라 escape 시 렌더링 품질 저하(정책 16 명시 제외, Option A). 회귀 가드: `tests/unit/notifier/test_markdown_escape.py`·`test_github_issue.py`. 🔴 **잔여 위험(Option A 수용)**: `ai_summary` 는 untrusted PR diff 를 입력으로 한 AI 출력(`ai_review.py` `summary=str(data.get("summary",""))`)이라 prompt-injection 시 AI 가 악성 markdown(`[x](evil)`·`<!channel>`)을 emit 할 수 있는 **2차 인젝션 경로**(diff→AI→summary→채널) — Option A 는 렌더 품질 보존 위해 이를 의도적 미차단. **채널 비대칭 인지**: email(`email.py`)·telegram 은 ai_summary 도 `html.escape` 하나 github/discord/slack markdown 3채널은 ai_summary 무escape. 향후 활성화 시 ai_review 출력단에서 link/mention 토큰만 sanitize 하는 방안 백로그.
-- **webhook secret TTL 캐시**: `get_webhook_secret(full_name)` 함수가 `_webhook_secret_cache` dict에 5분(WEBHOOK_SECRET_CACHE_TTL=300초) TTL로 per-repo 시크릿을 캐시. 리포 시크릿 변경 후 최대 5분간 구 시크릿으로 검증. 🔴 **캐시 엔트리 상한 의무 (`WEBHOOK_SECRET_CACHE_MAX=2048`, `_store_secret`)**: `get_webhook_secret` 는 **서명 검증 전(pre-auth)** 위조 가능한 `repository.full_name` 으로 호출되므로, 상한 없이는 위조 full_name 으로 캐시가 무한 증가해 메모리 고갈(pre-auth DoS). 초과 시 만료분 정리 → 가장 빨리 만료될 엔트리 evict. 신규 pre-auth 캐시 도입 시 동일 상한 패턴 의무. 회귀 가드: `tests/unit/webhook/test_secret_cache_bound.py`.
-- **Telegram 콜백 도메인 분리**: `_make_callback_token(bot_token, scope, payload_id)`이 `scope ∈ {"gate","cmd"}`별 다른 HMAC 생성. 신규 명령 추가 시 `cmd:<verb>:<id>:<token>` 준수, 64-byte 한도 검증. `test_callback_data_within_64_bytes_all_commands` 단위 테스트 강제.
-- **Cron 엔드포인트 인증**: `POST /api/internal/cron/*`는 `INTERNAL_CRON_API_KEY` 전용 (admin key와 분리). `hmac.compare_digest` 타이밍 안전 비교. 미설정 시 503 반환. 🔴 **트리거는 Railway cron 이 아니라 인앱 스케줄러(`src/scheduler.py`)** — 2026-07-19 P0: `railway.toml [[deploy.cronJobs]]` 는 **Railway 스키마에 없는 키**라 조용히 무시돼 5종이 한 번도 실행되지 않았다(`cronSchedule=null`·`nextCronRunAt=null` 실측). 스케줄러는 엔드포인트를 HTTP 로 부르지 않고 **`cron_service` 함수를 직접 호출**하므로 이 엔드포인트들은 수동/외부 트리거용으로 남는다(인증 규칙 불변). 주기 작업 추가 시 `src/scheduler.py` `JOBS` 에 등록 — 배선은 `tests/unit/test_scheduler.py` 가 단언.
-- **Telegram chat_id 라우팅 우선순위**: cron 알림의 chat_id 결정은 `analytics_service.resolve_chat_id(repo, config)` 단일 헬퍼 — `RepoConfig.notify_chat_id` → `Repository.telegram_chat_id` → `settings.telegram_chat_id` → None(skip + WARNING).
-- **CI-aware Auto Merge 재시도**: `mergeable_state=unstable`+CI running 또는 `unknown` 상태일 때 단일 실패가 아닌 `merge_retry_queue` 큐잉. `check_suite.completed` 웹훅 또는 1분 cron 으로 재시도. 트리거: `src/services/merge_retry_service.py::process_pending_retries`. 첫 지연 시 Telegram 1회, 최종 성공/실패 시 1회. 중간 재시도는 무음.
-- **`merge_pr` SHA atomicity**: `merge_pr(..., expected_sha=...)` 는 `PUT /pulls/{n}/merge` 에 `sha` 파라미터를 포함해 force-push 된 코드의 의도치 않은 머지를 GitHub 측에서 차단. **실측 확인(2026-07-26)**: 틀린 sha → **409 `Head branch was modified` + 머지 미수행**.
-- 🔴🔴 **SHA 결속의 서버측 강제는 merge 에만 있다 — approve 는 없다 (owed #1072, 2026-07-26 실측)**: 두 형제가 대칭이라는 가정은 **거짓**이다.
-  - `post_github_review(commit_id=)` 는 **fail-closed 가 아니다** — 구 SHA·force-push 로 PR 에서 사라진 SHA 모두 **200 으로 수락**되고 리뷰가 그 SHA 로 기록된다. 422 는 **저장소에 오브젝트가 아예 없을 때만** 난다(`The commitOID is not part of the pull request`). 분석된 SHA 는 정의상 저장소에 존재하므로 이 결속은 **원리적으로 발화 불가**였다(운영 auto-approve 104 건 차단 0).
-  - 따라서 approve 결속은 **`post_github_review` 가 POST 직전 head 를 조회해 직접 강제**하고 불일치 시 `HeadMovedError` 를 던진다(POST 안 함). 호출부는 이를 INFO 로 처리하고 `gate_decision` 을 기록하지 않는다.
-  - 🔴 **422 를 'head 이동'으로 단정 금지** — 실제 422 사유는 self-approval(`Can not approve your own pull request`)·존재하지 않는 commitOID 등이다. 원인을 모르는 채 특정 원인을 로그에 적으면 운영자가 엉뚱한 곳을 판다.
-  - **잔여 한계(정직)**: GET→POST 레이스는 남는다. 리뷰 API 에 merge 의 `sha` 같은 서버측 원자성 수단이 **없음이 실측 확인**됐다. 놓친 드리프트는 새 head 의 synchronize 웹훅이 재게이트하므로 손실 0.
-  - 회귀 가드: `tests/unit/gate/test_approve_head_binding.py`(7 — 대조군·드리프트 시 POST 안 함·reject 대칭·판정불가 fail-closed·하위호환·배선·422 원인 날조 금지). 🔴 **신규 외부 API 계약을 "형제가 그러니 이것도 그럴 것" 으로 가정 금지 — 계약별 실측 의무**.
-- 🔴 **analyzed SHA 결속 — auto-merge 는 분석된 커밋에만 (2026-07-17 Grok 리뷰 확정 P1)**: auto-merge 는 **`score` 를 산출한 커밋(`Analysis.commit_sha`)에만 결속**된다. `run_gate_check(..., commit_sha=)` → `GateContext.commit_sha` → `AutoMergeAction` → `engine._run_auto_merge(analyzed_sha=)` → `_run_auto_merge_retry` / `_run_auto_merge_legacy` 로 관통. **이전 결함**: `engine.py` 가 분석 완료 후 live head 를 새로 조회해 그 SHA 로 머지 → 분석(정적 60s + AI 리뷰) 중 push 된 미검증 커밋 B 가 A 의 점수로 머지됐다.
-  - **가드 (fail-closed)**: `_run_auto_merge_retry` 는 head 조회 직후 `analyzed_sha != head_sha` 면 **머지도 큐 등록도 하지 않고 return**. 큐 등록까지 막는 이유 = 잘못된 SHA 로 큐 행이 생기면 나중에 재시도가 `sha_drift` 검사를 통과해 B 를 A 의 점수로 머지한다. 드롭해도 손실 0 — B 의 synchronize 웹훅이 B 를 분석해 자체 게이트를 돈다.
-  - **머지 결속**: `expected_sha=analyzed_sha or head_sha` — head 조회 실패(`head_sha=""`) 시에도 GitHub 이 `sha` 파라미터로 원자성을 검증(위 `merge_pr` SHA atomicity 항목과 동일 지점).
-  - 🔴 **legacy 경로도 필수**: `_run_auto_merge_legacy` 는 `expected_sha` 미전달 시 `native_automerge` 가 **스스로 live head 를 재조회**해 동일 결함이 재현된다 — `expected_sha=analyzed_sha or None` 전달 의무.
-  - 🔴 **semi-auto(telegram) 가 노출 최대**: 콜백 HMAC 은 `gate:{analysis_id}` 만 서명하고 **만료가 없어**, 승인 버튼을 몇 시간 뒤 눌러도 그 시점 head 가 머지된다 — **레이스조차 필요 없다**. `handle_gate_callback` 은 `analyzed_sha=analysis.commit_sha` 전달 의무(analysis 행을 이미 로드하므로 추가 조회 0).
-  - 🔴 **배선이 유일한 단일 실패점**: `commit_sha` 를 주입하는 곳은 `src/worker/pipeline.py` 의 `run_gate_check` 호출 **3곳**(`_regate_pr_if_needed` / `_race_recover_existing` / `_save_and_gate`). 여기가 빠지면 가드는 살아 있으나 `analyzed_sha=None` 으로 **영영 무력화**된다. 신규 `run_gate_check` 호출부 추가 시 `commit_sha=` 전달 의무.
-  - 🔴 **재시도 큐 결속도 analyzed SHA (종합감사 P1-1, 2026-07-23 Grok REAL)**: 1-1 가드 통과(head==A) **직후** force-push 로 `merge_pr` 내부 조회가 드리프트 head B 를 관측하면, `effective_sha = observed_sha or merge_sha` 는 큐를 **B 로 결속**한다 → 재시도 워커의 `head != row.commit_sha` 가 head==B==B 로 드리프트를 놓쳐 미검증 B 를 A 점수로 머지. 수정 = `effective_sha = analyzed_sha or observed_sha or merge_sha`(engine.py:235 — 2026-08-05 재실측, 이전 227 은 drift) — 큐를 A 로 결속해 이후 드리프트를 워커가 abandon. `analyzed_sha` 미상 시만 폴백(하위 호환).
-  - **회귀 가드**: `tests/unit/gate/test_analyzed_sha_binding.py`(12건 — drift 차단·enqueue 차단·결속 값 단언·하위 호환·legacy·telegram 배선·**post-guard drift enqueue=analyzed 결속**[계약 10]) + `tests/unit/worker/test_pipeline_save_and_gate.py::test_*_passes_commit_sha_to_gate_check`(3곳 배선). **하위 호환**: `analyzed_sha=None` 이면 기존 동작과 완전 동일(가드 미적용).
-- **Webhook 이벤트 구독 갱신**: `create_webhook` 이벤트 목록은 `["push","pull_request","issues","check_suite"]`. 기존 등록 리포는 settings 페이지의 "Webhook 재등록" 버튼으로 갱신.
-- 🔴 **외부 SDK timeout/max_retries 명시 의무 (Phase H PR-1A/1B-1)**: 새 외부 SDK (Anthropic/aiosmtplib/유사) 클라이언트 인스턴스화 시 `timeout` 명시 (Anthropic SDK = 60s, httpx 신뢰 API = `HTTP_CLIENT_TIMEOUT` = 10.0s — `src/constants.py`), `max_retries` 명시 (SDK 기본값과 동일 값이라도 명시). SDK 업그레이드로 default 변경 시 silent regression 차단. 회귀 가드 테스트 동반.
-- 🔴 **5xx 자동 재시도 — 신뢰 API 한정 (Phase H PR-1B-2/2B)**: GitHub/Telegram/Anthropic/Railway 등 신뢰 API 의 일시 5xx + transient network error 는 자동 재시도 (exponential backoff, max 3회). Telegram 429 는 `retry_after` 파싱 + cap 30s. **외부 untrusted webhook (Discord/Slack/n8n/custom_webhook) 는 재시도 금지** — idempotency 보장 불가, 중복 발송 부작용. 채널별 (Telegram L80~ / GitHub graphql `_GRAPHQL_*` / Anthropic SDK `max_retries`) 인라인 구현.
-- 🔴 **PyGithub 등 sync I/O 는 `asyncio.to_thread` wrap 의무 (Phase H PR-3A)**: async 컨텍스트(BackgroundTask, lifespan 등) 내부에서 sync HTTP 클라이언트 (PyGithub, requests) 호출 시 반드시 `asyncio.to_thread(fn, ...)` 로 wrap. 직접 호출 시 이벤트 루프 블록 → 다른 webhook/cron 정체.
-- 🔴 **race-recovery 시그널 컨벤션 (Phase H PR-2A)**: 파이프라인 내 race recovery 분기는 `result_dict is None` 을 시그널로 사용. 호출자는 `if result_dict is None: skip notify` 로 명시적 처리.
-- 🔴 **Rate limiting 데코레이터 의무 (사이클 142 Phase C A1 #675)**: 신규 API 엔드포인트 추가 시 `@limiter.limit(RATE_LIMIT_API)` 또는 `@limiter.limit(RATE_LIMIT_HEAVY)` 데코레이터 필수. 누락 시 DoS 취약.
-  - `RATE_LIMIT_API = "60/minute"` — 조회성 엔드포인트 (GET, 상태 조회)
-  - `RATE_LIMIT_HEAVY = "10/minute"` — 쓰기/삭제 엔드포인트 (PUT, DELETE, POST 고비용)
-  - `src/middleware/rate_limiter.py:20-21` 상수 정의 출처 — 직접 문자열 작성 금지, import 사용
-  - **예외**: `Depends(require_login)` 과 `@limiter.limit()` 조합 시 FastAPI 422 충돌 발생 가능 — `users.py` 인증 엔드포인트처럼 require_login 이 이미 DoS 보호 역할이면 미적용 허용 (PR 본문 정책 3 보고 의무)
-  - 🔴 **예외 (webhook provider) — 사이클 165 회고 P2**: secret/HMAC 인증 webhook provider (`src/webhook/providers/*` — github/telegram/railway) 는 `@limiter` **미적용 컨벤션** (3 provider 전부 일관). 이유: (1) webhook secret + per-event HMAC 인증이 미인증 폭주를 동기 경로 401 에서 차단(claim INSERT 등 비용은 인증 통과 후 background task), (2) IP 기반 limiter(`get_remote_address`)가 단일 출처(Telegram/GitHub/Railway 서버 IP 풀) webhook 에 부정확 → 정상 콜백 오차단 위험이 추가 방어 이득보다 큼. 신규 webhook provider 추가 시 동일 컨벤션. (신규 **API** 엔드포인트는 위 의무 적용 — webhook 흉내로 limiter 누락 금지.)
-- 🔴 **`asyncio.gather` 내부 shared Session 금지 (사이클 113 P0-H)**: `asyncio.gather()` 로 동시 실행되는 코루틴들이 단일 `Session` 인스턴스를 공유하면 SQLAlchemy identity map 오염 + 동시 `commit()` 충돌 발생. 각 코루틴은 `with SessionLocal() as db:` 블록을 독립적으로 열어야 함. 전례: `src/gate/engine.py` — `_run_approve_decision` + `_run_auto_merge` 를 gather 전에 db 파라미터 제거 후 각 함수 내부에서 독립 Session 생성으로 수정 (사이클 113 P0-H).
-  - **올바른 패턴**: `await asyncio.gather(_run_approve_decision(...), _run_auto_merge(...))` — 각 함수 내부에서 `with SessionLocal() as db:` 독립 사용
-  - **금지 패턴**: `await asyncio.gather(_run_approve_decision(db=db, ...), _run_auto_merge(db=db, ...))` — 동일 db 공유
-  - 교차 참조: [`.claude/rules/pipeline.md`](.claude/rules/pipeline.md) (파이프라인 레이어 동일 규칙 — 사이클 115 PR #556 추가)
+## 세션 라우팅
+
+- 🔴 **background 진입점은 `WorkerSessionLocal` alias 의무** (본문 = [`db.md`](db.md) §WorkerSessionLocal).
+  대상: `gate/engine`·`gate/actions/*`·`worker/pipeline`·`webhook/*`·`notifier/*` lazy·
+  `api/{hook,internal_cron,repos,stats,repo_report}`. 웹 경로는 bare 유지, **혼용 금지**.
+  신규 진입점은 `tests/unit/test_worker_session_routing.py` 의 `_BACKGROUND_MODULES` 등재 의무.
+  *왜 여기 있나*: `db.md` path 매칭이 이 영역을 포함하지 않아 **자동 로드되지 않는다** — 사후 가드가
+  잡더라도 작성 시점에 규칙을 못 보면 틀린 코드를 먼저 쓴다.
+
+## 🔴 SHA 결속 — 이 영역 최고 위험
+
+- 🔴 **auto-merge 는 `score` 를 산출한 커밋(`Analysis.commit_sha`)에만 결속된다.**
+  *왜*: 분석(정적 60s + AI 리뷰) 중 push 된 **미검증 커밋 B 가 A 의 점수로 머지**됐다.
+  경로: `run_gate_check(..., commit_sha=)` → `GateContext.commit_sha` → `AutoMergeAction`
+  → `_run_auto_merge(analyzed_sha=)` → retry/legacy.
+  - **fail-closed**: `analyzed_sha != head_sha` 면 **머지도 큐 등록도 하지 않고 return**.
+    큐까지 막는 이유 = 잘못된 SHA 로 행이 생기면 재시도가 `sha_drift` 검사를 통과한다. 드롭해도 손실 0.
+  - 🔴 **legacy 경로도 `expected_sha` 전달 의무** — 미전달 시 `native_automerge` 가 스스로 live head 를 재조회해 결함 재현.
+  - 🔴 **semi-auto(telegram) 가 노출 최대** — 콜백 HMAC 에 **만료가 없어** 몇 시간 뒤 눌러도 그 시점 head 가 머지된다(레이스조차 불필요).
+  - 🔴 **배선이 유일한 단일 실패점** — `commit_sha` 주입은 `src/worker/pipeline.py` 의 `run_gate_check` 호출 **3곳**뿐.
+    빠지면 가드는 살아 있으나 `analyzed_sha=None` 으로 **영구 무력화**된다. 신규 호출부 추가 시 전달 의무.
+    배선 집행: `tests/unit/worker/test_pipeline_save_and_gate.py`.
+  - 🔴 **재시도 큐도 analyzed SHA 로 결속** — `effective_sha = analyzed_sha or observed_sha or merge_sha`.
+    관측 head 로 결속하면 워커의 드리프트 검사가 통과해 미검증 커밋이 머지된다.
+    결속 집행: `tests/unit/gate/test_analyzed_sha_binding.py`.
+  - **머지 결속식 = `expected_sha = analyzed_sha or head_sha`** — head 조회에 실패해 `head_sha=""` 여도
+    GitHub 이 `sha` 파라미터로 원자성을 검증한다. 🔴 이 폴백을 지우면 조회 실패 시 결속이 **스스로 풀린다**.
+  - 🔴 **하위 호환**: `analyzed_sha=None` 이면 **기존 동작과 완전 동일**(가드 미적용)이다.
+    이를 fail-closed 로 바꾸지 말 것 — 구 호출부와 의도된 None 경로를 오차단한다.
+  가드: `tests/unit/gate/test_analyzed_sha_binding.py` · `tests/unit/worker/test_pipeline_save_and_gate.py`
+- 🔴 **SHA 결속의 서버측 강제는 merge 에만 있다 — approve 에는 없다.**
+  `merge_pr(..., expected_sha=)` 는 GitHub 이 409 로 차단(실측). 그러나
+  `post_github_review(commit_id=)` 는 **fail-closed 가 아니다** — 구 SHA·사라진 SHA 도 **200 수락**된다
+  (422 는 저장소에 오브젝트가 아예 없을 때만 — 분석된 SHA 는 정의상 존재하므로 **원리적으로 발화 불가**였다).
+  → approve 결속은 **POST 직전 head 를 직접 조회해 강제**하고 불일치 시 `HeadMovedError`(POST 안 함).
+  🔴 **422 를 'head 이동' 으로 단정 금지** — 실제 사유는 self-approval 등이다.
+  ⚠️ 잔여: GET→POST 레이스는 남는다(리뷰 API 에 서버측 원자성 수단 없음이 실측 확인). 새 head 의 synchronize 가 재게이트.
+  🔴 **신규 외부 API 계약을 "형제가 그러니 이것도 그럴 것" 으로 가정 금지 — 계약별 실측 의무.**
+  가드: `tests/unit/gate/test_approve_head_binding.py`
+
+## 게이트 경로 단일화
+
+- 🔴 **반자동(telegram) auto-merge 는 `engine._run_auto_merge` 에 위임** — 가드는 `AutoMergeAction` 미러링:
+  (1) `decision == "approve"` (2) `config.auto_merge` (3) `not static_analysis_incomplete` (4) `not ai_review_failed(result)`.
+  `score >= merge_threshold` 는 `_run_auto_merge` 내부 1회만(중복 금지).
+  위임 집행: `tests/unit/services/test_merge_retry_service.py`.
+- 🔴 **2nd-LLM 검증자 가드도 `_run_auto_merge` 단일출처** — 이전엔 `AutoMergeAction` 에만 있어 **반자동이 검증자를 우회**했다.
+  양 호출자는 `result` 를 전달해야 diff/리뷰 요약을 검증할 수 있다
+  (`tests/unit/services/test_merge_retry_service.py`).
+  ⚠️ retry 서비스는 `_run_auto_merge` 미경유라 재검증하지 않는다 — **의도**다:
+  `sha_drift` 검사 + `expected_sha` 원자성으로 **검증자가 승인한 동일 SHA 만** 머지되므로 verdict 가 stale 될 수 없다.
+  🔴 `expected_sha` 바인딩 제거 금지(force-push 미검증 코드 머지 위험).
+- 🔴 **리플레이 가드** — `handle_gate_callback` 은 부수효과 **전에** `claim_decision()`(insert-only, UNIQUE)로 원자 claim.
+
+## 알림 채널
+
+- **`send_*` 는 keyword-only(`*`)** — positional 호출 시 TypeError. 🔴 단 `run_gate_check` 는 positional.
+- **채널 추가 시 4곳 동기화**: `RepoConfig` ORM → `RepoConfigData` → `RepoConfigUpdate` → UI 폼.
+  *왜*: 누락 시 REST 업데이트가 해당 필드를 **NULL 로 덮어쓴다**.
+- **`ai_review_enabled` 는 4-way 동기화이며 PRESETS 미포함**(의도 — 알림 프리셋과 AI on/off 는 직교).
+  검증 절차 = [`docs/runbooks/cost-controls.md`](../../docs/runbooks/cost-controls.md)
+- **채널 독립성** — `asyncio.gather(return_exceptions=True)`. `repo_config` 로드 실패에도 Telegram 은 global fallback 발송.
+- 🔴 **아웃바운드 markdown 인젝션 escape 의무** — untrusted `issue.message` 를 삽입할 때 채널별로:
+  **GitHub·Discord(GFM)** = `escape_markdown()` / **Slack(mrkdwn)** = `escape_slack_mrkdwn()`(Slack 은 백슬래시 미지원).
+  4채널 일괄(github_comment·discord·slack·github_issue). telegram 은 이미 전 동적 값 `html.escape()`.
+  채널별 escape 집행: `tests/unit/notifier/test_markdown_escape.py`.
+  🔴 **AI 요약·피드백은 escape 금지**(의도 markdown 프로즈 — 정책 16 명시 제외).
+  ⚠️ **잔여 위험 수용**: `ai_summary` 는 untrusted diff 기반 AI 출력이라 **2차 인젝션 경로**이며 markdown 3채널은 무escape 다.
+  가드: `tests/unit/notifier/test_markdown_escape.py` · `tests/unit/notifier/test_github_issue.py`
+- **공통 헬퍼 사용 의무** — `_common.py` 의 `format_ref()`·`get_all_issues()`·`truncate_message()`·`truncate_issue_msg()`,
+  `telegram_post_message`(httpx 직접 import 금지), `get_repo_or_404`, `github_api_headers`.
+- **단일 출처** — GRADE 상수 = `src/constants.py` / `ChangedFile` = `src/github_client/models.py`.
+- **Telegram 콜백 도메인 분리** — `scope ∈ {"gate","cmd"}` 별 HMAC. 신규 명령은 `cmd:<verb>:<id>:<token>` + **64-byte 한도** 검증.
+
+## HTTP / 재시도 / 인증
+
+- **신뢰 API 는 `get_http_client()` 싱글톤**, 외부 untrusted 는 `build_safe_client()`.
+  `async with httpx.AsyncClient()` 매번 생성 금지.
+- 🔴 **외부 SDK 는 `timeout`·`max_retries` 명시 의무**(기본값과 같은 값이라도) — SDK 업그레이드 시 silent regression 차단.
+  **값**: Anthropic SDK = **60s** · 신뢰 httpx = `HTTP_CLIENT_TIMEOUT` = **10.0s**(`src/constants.py`).
+- 🔴 **5xx 자동 재시도는 신뢰 API 한정**(max 3, backoff). Telegram 429 는 `retry_after` + cap 30s.
+  **외부 untrusted webhook 은 재시도 금지** — idempotency 보장 불가라 중복 발송이 된다.
+- 🔴 **sync I/O(PyGithub·requests)는 `asyncio.to_thread` wrap 의무** — 직접 호출 시 이벤트 루프 블록.
+- **Webhook 은 `X-Hub-Signature-256` 헤더가 **없거나** 서명이 불일치하면 GitHub·Telegram 모두 401**
+  (200 반환 금지). 빈 시크릿(`GITHUB_WEBHOOK_SECRET` 미설정)도 즉시 401 — **부재와 불일치를 다른 케이스로 취급 금지**.
+- 🔴 **webhook secret 캐시에 상한 의무**(`WEBHOOK_SECRET_CACHE_MAX`) — `get_webhook_secret` 는
+  **서명 검증 전(pre-auth)** 위조 가능한 `full_name` 으로 호출되므로 상한 없이는 메모리 고갈(pre-auth DoS).
+  신규 pre-auth 캐시도 동일 패턴. 가드: `tests/unit/webhook/test_secret_cache_bound.py`
+- 🔴 **신규 API 엔드포인트는 `@limiter.limit(RATE_LIMIT_API|RATE_LIMIT_HEAVY)` 필수**
+  (상수 출처 = `src/middleware/rate_limiter.py`, 직접 문자열 금지).
+  **예외**: `require_login` 이 이미 보호하면 미적용 허용(정책 3 보고) ·
+  🔴 **webhook provider 는 미적용 컨벤션** — HMAC 이 미인증 폭주를 401 로 차단하고, IP 기반 limiter 는
+  단일 출처 webhook 에 부정확해 정상 콜백을 오차단한다. **API 엔드포인트가 webhook 흉내로 limiter 누락 금지.**
+- **Cron 엔드포인트는 `INTERNAL_CRON_API_KEY` 전용**(admin key 와 분리, `compare_digest`, 미설정 503).
+  🔴 **트리거는 Railway cron 이 아니라 인앱 스케줄러** — `railway.toml [[deploy.cronJobs]]` 는 스키마에 없는 키라
+  조용히 무시돼 5종이 한 번도 실행되지 않았다. 주기 작업 추가 시 `src/scheduler.py` 의 `JOBS` 등재 의무.
+  가드: `tests/unit/test_scheduler.py`
+
+## 기타 계약
+
+- 🔴 **`asyncio.gather` 내 코루틴은 각각 `with SessionLocal() as db:`** — 공유 시 identity map 오염 + commit 충돌.
+  교차 참조: [`pipeline.md`](pipeline.md)
+- 🔴 **race-recovery 시그널 = `result_dict is None`** — 호출자는 `if result_dict is None: skip notify`.
+- **`MergeAttempt` 관측은 `_run_auto_merge` 단일 출처**(자동·반자동 공통). `failure_reason` 은
+  `src/gate/merge_reasons.py` 의 정규 태그. 실패 시 `get_advice()` + `create_merge_failure_issue()` 호출은
+  **`auto_merge_issue_on_failure` 필드로 제어**되며 그 필드는 **5-way 동기화 대상**이다
+  (ORM↔Data↔Update↔폼↔PRESETS) — 동기화를 빠뜨리면 설정이 무력화된다.
+- **CI-aware 재시도** — `unstable`+CI running / `unknown` 은 실패가 아니라 `merge_retry_queue` 큐잉.
+  🔴 **트리거는 둘이다** — `check_suite.completed` **웹훅** 또는 **1분 cron** → `process_pending_retries`
+  (`src/services/merge_retry_service.py`). 한쪽을 "중복" 으로 제거하면 그 축의 재시도가 영구 정지한다.
+  첫 지연·최종 결과만 알림(중간 무음).
+- **`RepoConfig` 필드명** = `approve_mode`·`approve_threshold`·`reject_threshold`(구명 사용 시 AttributeError).
+- **PR Gate 3옵션 독립** — `pr_review_comment`·`approve_mode`·`auto_merge+merge_threshold`.
+- **`build_analysis_result_dict`** = `src/worker/pipeline.py` 모듈 레벨(pipeline·hook 공용).
+- **`auto_merge`** 는 `repo` 스코프 또는 `pull_requests: write` 필요. Branch Protection 시 APPROVE 후에도 실패 가능.
+- **Telegram chat_id 라우팅** = `analytics_service.resolve_chat_id(repo, config)` 단일 헬퍼.
+- **Webhook 이벤트 목록** = `["push","pull_request","issues","check_suite"]`(기존 리포는 재등록 버튼으로 갱신).

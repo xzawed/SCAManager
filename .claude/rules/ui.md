@@ -8,41 +8,90 @@ paths:
 
 # UI / 템플릿 규칙
 
-- 🔴 **background/시스템 세션 라우팅 = `WorkerSessionLocal`** (본문 = [`db.md`](db.md) §WorkerSessionLocal):
-  이 영역에도 해당 소비자가 있다 — `src/ui/routes/admin.py`(hybrid — tenants·operations=worker / rls-audit=bare). `from src.database import WorkerSessionLocal as SessionLocal`
-  **alias 의무**(웹 경로는 bare `SessionLocal` 유지, 혼용 금지). 🔴 hybrid 모듈은 두 심볼을 **구분해**
-  쓴다(alias 금지). `db.md` 의 path 매칭은 이 영역을 포함하지 않아 **자동 로드되지 않으므로** 여기
-  포인터를 둔다(2026-08-01 Grok `019fbccf`·`019fbd1e`). 세부는 반드시 `db.md` 본문을 열 것.
+> 🔴 **사고 재현·측정 로그는 [`docs/_archive/rules-incident-log.md#ui`](../../docs/_archive/rules-incident-log.md#ui) 로 옮겼다 — 규칙을 완화·삭제하려면 아카이브를 먼저 읽을 것** (2026-08-12 밀도 압축).
+> 여기 남은 것은 **결정 시점에 필요한 것만**(규칙 · 왜 한 줄 · 가드 파일명)이며, 서사가 짧아진 것이 규칙이 약해졌다는 뜻이 아니다.
+> 역링크·앵커·절 보존 집행: `tests/unit/scripts/test_rules_archive_backlink.py`.
+> 규칙을 완화·삭제하려면 반드시 아카이브의 사고 기록을 먼저 읽을 것.
 
-- **landing.html 독립 `<head>` + HX-Redirect 패턴 (사이클 117 PR #570)**: `landing.html`은 `base.html`을 상속하지 않는 standalone 구조 — always-dark 애니메이션 메시 그라데이언트 디자인이 4-테마 시스템과 충돌하기 때문 (의도적 설계). hx-boost body-swap은 `<body>` 만 교체 → `<head>` CSS 미적용 레이아웃 깨짐 발생. **해결 패턴**: 인증 상태가 바뀌는 엔드포인트(`/auth/logout` 등)는 `HX-Request` 헤더 감지 시 `200 + HX-Redirect: /` 반환 → HTMX가 `window.location = "/"` 전체 재로드 수행. `HX-Request` 없으면 `302` redirect 유지. 이 패턴이 필요한 경우: 응답 후 페이지 CSS 구조가 바뀌는 모든 인증/로그아웃 액션.
-- **Telegram HTML 파싱**: `parse_mode: "HTML"` 사용 — 모든 동적 콘텐츠에 `html.escape()` 적용 필수. `_build_message()`가 4096자 초과 시 자동 절단.
-- **analysis_detail 템플릿 context**: `current_user`를 반드시 포함해야 함 — 누락 시 nav 사용자명·로그아웃 버튼 미표시. `analysis.result or {}` 패턴은 None → `{}` 변환으로 `{% if r %}` falsy 평가 → 모든 AI 섹션 숨김 버그 — `{% else %}` 분기로 fallback 처리 필수.
-- **settings.html 구조 규약 (settings-simplification 브랜치 반영)**: 의도 기반 6 카드 구성(구 7카드 → review_model 단독 카드 폐지로 축소) — ① 빠른 설정(프리셋 3종 diff 미리보기 + 프리셋별 1줄 `diff_summary`) / ② PR 동작 규칙(AI 리뷰 계층 — `ai_review_enabled`(상위) → `.ai-review-dependent`(`pr_review_comment`, 들여쓰기) → `.ai-review-model`(`review_model` select, 구 단독 카드에서 흡수) — 및 auto_merge·merge_threshold·adv-only approve_mode/threshold) / ③ 이벤트 후 자동화(commit_comment·create_issue, 트리거별 소제목 + toggle-switch 통일) / ④ 알림 채널(masked-field 6종) / ⑤ 통합 & 인증(일회성 셋업 액션[Webhook 재등록·Hook 재커밋]을 접힘 `<details class="setup-actions">` 로 분리 + 단일 `.railway-group`[railway_api_token·railway_deploy_alerts·Railway Webhook URL]) / ⑥ 위험 구역(리포 삭제, 기본 접힘). Progressive Disclosure 기존 JS 헬퍼 5종(`setApproveMode`·`toggleMergeThreshold`·`applyPreset`·`_setPair`·`_showPresetToast`) 시그니처 불변 + 신규 헬퍼 4종(`onPresetToggle`·`renderPresetDiff`·`flashPresetChanges`·`toggleMergeIssueOption`). `renderPresetDiff`는 무효(inert) 임계값 행을 생략 — `approve_mode==='disabled'` 시 approve/reject_threshold, `auto_merge===false` 시 merge_threshold. 메인 `<form id="settingsForm">` + Railway API 토큰·railway_deploy_alerts 토글은 카드 밖(`.railway-group`, `#settingsForm` 바깥)에서 `form="settingsForm"` 속성으로 메인 폼에 포함(단, `.railway-group` 자체는 railway_api_token 유무와 무관하게 상시 노출 — ungated. 내부 `{% if railway_webhook_url %}` 만 값 유무로 분기). 백엔드 필드명(pr_review_comment, approve_mode 등) 및 PRESETS 9개 필드 구성 불변 원칙 — 5-way 동기화 체크리스트(ORM → dataclass → API body → 폼 → PRESETS) 적용 대상.
-- 🔴 **`form=` 멤버십 필수 — orphan 컨트롤 = 데이터손실 (#1041 form= 사고)**: `<form id="settingsForm">`(대략 490~1081줄) **밖**에 배치되는 폼 컨트롤(`<input>`/`<select>`/`<textarea>` with `name=`)은 반드시 `form="settingsForm"` 속성을 가져야 한다. 누락 시 form-owner 가 null → **제출되지 않아** 서버가 미전송 필드를 기본값(예: checkbox False)으로 덮어써 매 저장 시 **데이터손실**(#1041 Task 4 = `railway_deploy_alerts` 가 폼 밖 이동 + `form=` 누락 → opus whole-branch 리뷰만 적발·per-task sonnet 놓침). 회귀 가드: `tests/unit/ui/test_settings_form_membership.py`(html.parser 로 orphan = 어느 `<form>` 에도 안 속하고 `form=` 없는 `name=` 컨트롤 0 강제 — 구조적 멤버십만 검사라 필드-parity 파싱 fragility 회피). 신규 폼 컨트롤을 카드 밖에 둘 때 `form="settingsForm"` 확인 의무.
-- **카드 ② AI 리뷰 계층 (`ai_review_enabled` 상위/부모 스위치, standalone — PRESETS 미포함)**: `ai_review_enabled`가 `pr_review_comment`보다 문서상 **위**에 배치된 상위(부모) 토글 — 리포별 AI 코드리뷰 kill-switch(비용 제어). `.ai-review-dependent`(`pr_review_comment`, 들여쓰기)와 `.ai-review-model`(`review_model` select, 구 단독 카드에서 흡수)이 모두 하위 종속 — CSS `:has()` 셀렉터(`.ai-review-group:has(input[name="ai_review_enabled"]:not(:checked)) .ai-review-dependent, ... .ai-review-model { display:none; }`)가 AI OFF 시 둘 다 **완전 숨김**(JS 0 — auto_merge/approve_mode 의 `is-hidden` 숨김 패턴과 일치, 비활성 세부가 자리 차지 안 함). `display:none`(≠`disabled`)이라 값 보존(AI 재활성 시 이전 설정 복원). 회귀 가드: `test_settings_simplification.py::test_ai_review_dependent_hidden_when_off_css_has`. 다른 ② 카드 필드와 달리 **PRESETS(빠른 설정 3종)에는 포함되지 않는 의도적 설계** — 프리셋 적용 시 이 토글 값을 덮어쓰지 않는다(알림 규칙과 AI 리뷰 on/off는 직교 개념). 4-way 동기화(ORM↔Data↔Update↔폼) 상세: [`.claude/rules/api.md`](api.md) §`ai_review_enabled` 4-way 동기화.
-- **저장 버튼 in-flight 로딩 (htmx-native, JS 0)**: `#settingsForm` 의 `hx-indicator="#saveBtn"` + `hx-disabled-elt="#saveBtn"` 로 저장 요청 중 `#saveBtn` 에 `.htmx-request` 부착(+자동 disable, 중복 제출 방지). 버튼은 `.save-label`/`.save-spinner` 2 span — CSS 가 `.htmx-request` 상태에서 스왑(스피너 = `currentColor` 회전, `prefers-reduced-motion` 존중). 완료/실패는 기존 `.save-toast`(post-swap `?saved=1`/`?save_error=1`) 담당. i18n 키 `settings_page.saving`(ko/en/ja). 회귀 가드: `tests/unit/ui/test_settings_save_feedback.py`.
-- **overview 등급 산출**: `calculate_grade(avg_score)` 사용 (`src/scorer/calculator.py`). 최신 분석 grade가 아닌 평균 점수 기반.
-- **analysis_detail trend_data**: `trend_data`·`prev_id`·`next_id`를 template context에 추가 전달. `trend_data`는 같은 리포 최근 30건 `{id, score, label}` 리스트. `trend_data|length > 1`일 때만 차트 렌더링.
-- **repo_detail 차트 동기화**: `buildChart(data)` 함수는 `data` 인자가 있으면 `_chartData`에 캐시, 없으면 캐시된 데이터 재사용. `applyFilters()` 호출마다 차트를 필터 결과와 동기화. `themechange` 이벤트는 `buildChart()` (인자 없음)으로 색상만 재빌드.
-- **리포 추가 Webhook URL**: `_webhook_base_url(request)` 헬퍼가 `APP_BASE_URL` 설정 시 HTTPS URL 강제. Railway 배포 시 반드시 `APP_BASE_URL` 설정 — 미설정 시 `http://`로 등록되어 Webhook 전달 실패.
-- **기존 Webhook 등록 리포**: `user_id = NULL` 리포는 모든 로그인 사용자에게 표시됨. `/repos/add`로 동일 리포 재등록 시 `user_id=NULL`이면 **현재 사용자 GitHub 접근 권한 검증(`list_user_repos` 멤버십) 후** 현재 사용자 소유 이전 — 권한 없으면 `HTTPException(403, errors.repo_access_denied)` (🔴 WBS P1 IDOR-인접 차단: 폼 `repo_full_name` 만 신뢰해 미소유 리포를 탈취하던 결함 봉인). 이미 소유자 있으면 에러.
-- **🔴 leaderboard_opt_in 컬럼 폐기 — Q3 정정 (그룹 60 후속 / 2026-05-02)**: 팀 리더보드 기능 완전 폐기 (alembic 0025). 향후 SaaS 전환 시 멀티 사용자 인사이트 모델 별도 신설 결정 — 기존 single-user opt-in 모델 부활 X.
-- **/dashboard 페이지 (그룹 60 신설)**: KPI 5 카드 (평균 점수 / 분석 건수 / 보안 HIGH / 활성 리포 / Auto-merge 성공률) + 점수 추세 라인 차트 + 자주 발생 이슈 + Auto-merge 실패 사유 + feedback CTA banner. scoped 디자인 토큰 (`.dashboard-page` wrapper 안 `--d-*` 토큰, base.html 4-테마 공존, claude-dark 분기 alias). KPI 그리드 반응형 4 단계 (desktop 5 / tablet 1024px↓ 3 / mobile 768px↓ 2 / xs 480px↓ 1). Chart.js vendoring 재사용. 신규 KPI 카드 추가 시 동일 높이 정합 (`.dash-kpi` `min-height: 152px` + `.dash-kpi-row` `min-height: 38px` + `.dash-kpi-delta margin-top: auto` 3-rule).
-- **🔴 Auto-merge KPI 시각 우선순위 (그룹 60 P0 #3 후속)**: KPI 메인 (36px 큰 폰트) = `final_success_rate_pct` (PR 기준 retry-aware). sub-text (12px) = 단순 시도 + delta. fallback: `final_success_rate_pct is none` 시 `value` (단순) 메인 표시. **KPI 카드 신설 시 시각 우선순위 = 사용자 가치 기준 결정 의무**.
-- **scoped 디자인 토큰의 4-테마 호환 한계**: `.dashboard-page` 안 자체 토큰 + `claude-dark` 분기 alias 만 정의. `dark/light/glass` 3 테마는 `var(--card-bg, var(--bg-surface, ...))` 다단 fallback 의존. **glass 테마의 `backdrop-filter` 적용 안 됨** → 시각 불일치 가능. 신규 시각 컴포넌트 도입 시 정책 11 8 조합 의무 검증.
-- **Insights 라우트 폐기 + 301 redirect (그룹 60 Phase 1 PR 5)**: `/insights`, `/insights/me` 모두 폐기 → `src/ui/routes/dashboard.py::redirect_insights*` 가 301 Location: /dashboard 응답 (쿼리 파라미터 보존).
-- 🔴 **환각(phantom) 토큰 alias 패턴 (UI 감사 Step A + cleanup PR #169)**: 컴포넌트 CSS 가 정의되지 않은 토큰 (`var(--bg-hover)`, `var(--card-bg)`, `var(--text)`, `var(--accent-blue)`, `var(--c-warning)` 등) 을 참조하면 브라우저는 fallback 없으면 invalid → 다크 테마 시각 깨짐. 발견 시 사용처 치환 대신 `base.html` 의 `:root` 블록에 alias (`--bg-hover: var(--table-row-hover)` 등) 흡수 — consumer 코드 변경 0 으로 4-테마 일괄 해결. 신규 토큰은 항상 `var(--*)` 경유, `#hex` 직접 사용 금지.
-- 🔴 **WCAG 2.5.5 모바일 클릭 영역 ≥44px 의무 (UI 감사 Step A/B/E)**: 모바일 인터랙티브 요소 (`.btn`, `.btn--sm`, `.nav-link`, `.nav-hamburger`, `.gate-mode-btn`, `.filter-btn`, `.page-btn`, `.chip-label`, `.day-selector a`, `.settings-link` 등) 는 `@media (max-width: 768px)` 분기에 `min-height: 44px` (또는 sm: 40px) + `box-sizing: border-box` 적용 필수. 신규 인터랙티브 컴포넌트 추가 시 동일 규칙 자동 적용. iOS Safari focus zoom 회피 위해 input/select font-size 모바일 분기 ≥16px 필수.
-- 🔴 **폼 컨트롤 라벨 의무 — `Web:InputWithoutLabelCheck` (SonarCloud 신뢰성 버그, PR #946)**: `<input>`(type=hidden/submit/button/image 제외)·`<select>`·`<textarea>` 는 접근 가능 이름이 없으면 SonarCloud 가 **MAJOR 신뢰성 버그**로 검출 (누적 시 reliability C → **Quality Gate ERROR**; 2026-06-22 settings.html 15 + repo_detail.html 5 = 20건 ERROR 사고). **해소 = 컨트롤에 `aria-label="{{ '<i18n-key>' | i18n_args(locale | default('ko')) }}"` 부여** (하드코딩 금지 — i18n.md). 권위 룰 소스 [`InputWithoutLabelCheck.registerControl`](https://raw.githubusercontent.com/SonarSource/sonar-html/master/sonar-html-plugin/src/main/java/org/sonar/plugins/html/checks/sonar/InputWithoutLabelCheck.java) 가 `hasProperty("aria-label")` 시 즉시 return — `aria-label` / `aria-labelledby`(유효 id) / `<label for>` / wrapping `<label>` 중 하나면 통과. **placeholder·인접 텍스트만으로는 불충분**. 가시 라벨이 가까우면 동일 i18n 키 재사용, 없으면 신규 키 3 로케일(ko/en/ja) + render-parity 가드 동반. 회귀 가드: `tests/unit/ui/test_input_aria_labels.py` (20 컨트롤 raw 템플릿 aria-label 정적 가드 + count-lock). ⚠️ **IDE/SonarLint 라이브 진단은 편집 직후 stale**(편집 전 라인 번호 잔존) 가능 — 룰 만족 여부는 권위 소스 또는 재분석 후 판단. 페어: i18n.md `<label class="toggle-switch">` aria-label (S6853, 사이클 147 #707).
-- 🔴 **safe-area-inset 적용 의무 (UI 감사 Step A)**: notch (iPhone 12+) / 홈 인디케이터 디바이스 호환 위해 sticky/fixed 요소 (nav, .save-bar, .nav-links.open 모바일 메뉴) 는 `padding-{top,bottom,left,right}: max(*, env(safe-area-inset-*))` 또는 `calc(* + env(safe-area-inset-*, 0px))` 패턴. `<meta name="viewport">` 의 `viewport-fit=cover` 와 페어.
-- **Chart.js vendoring + StaticFiles mount (UI 감사 Step C — PR #166)**: 외부 CDN 차단 환경 호환 위해 `src/static/vendor/chart.umd.min.js` (4.4.0 UMD min, 204KB) 로컬 호스팅. `src/main.py` 가 `_STATIC_DIR` 존재 시 `app.mount("/static", StaticFiles(directory=...), name="static")` 조건부 mount. 신규 정적 자원은 `src/static/vendor/` 하위 배치.
-- **claude-dark 테마 차트 색 동기화 (UI 감사 Step C)**: Chart.js JS 는 CSS 변수 직접 못 읽으므로 `getComputedStyle(document.documentElement).getPropertyValue('--grade-a')` 등 동적 추출 → Chart 옵션에 주입. 테마 전환 시 **remove-before-add 패턴** (PR #436) 으로 chart 재빌드 — `document.addEventListener('themechange', buildChart)` 직접 등록 금지 (hx-boost 재방문 시 stale closure 버그 유발). 올바른 패턴: `if (document._xThemeHandler) { document.removeEventListener('themechange', document._xThemeHandler); } document._xThemeHandler = buildChart; document.addEventListener('themechange', document._xThemeHandler);` — 핸들러 이름은 페이지별로 고유하게 (`_repoThemeHandler` / `_dashThemeHandler` / `_riThemeHandler`).
-- 🔴 **차트(Chart.js) 비동기 로드 race 가드 + onload 재빌드 의무 (PR #921)**: 차트 템플릿(`dashboard`/`analysis_detail`/`repo_insights`/`repo_detail`)은 `new Chart(...)` 앞에 **`if (typeof Chart === 'undefined') return;` early-return 가드** 의무 — 없으면 hx-boost body swap 시 vendored `<script src=chart.umd.min.js>` 가 비동기로 재삽입되는 동안 인라인 `buildXChart()` 가 동기 즉시 실행돼 `Chart is not defined` **throw** → 차트 미표시 + (호출이 재트리거 핸들러 등록보다 앞이면) 핸들러 등록까지 중단(영구 공백/지연). full reload 는 파서 동기 로드라 정상 = **hx-boost 전용 race**. 🔴 vendor `<script>` 에 `fetchpriority="high" onload="if(document._<scope>ChartReady)document._<scope>ChartReady()"` + `document._<scope>ChartReady = function(){ <buildFn>(false); };`(no-anim 재빌드 노출)로 async 로드 완료 즉시 페인트(노출 속도). IIFE 템플릿(analysis_detail/repo_insights)은 내부 빌드 함수를 `document._<scope>ChartReady` 로 노출. 🔴 **`(window.Chart && Chart.getChart)` 는 기존 인스턴스 destroy 가드일 뿐 race 가드 아님** — early-return 가드와 혼동 금지(적대 검증 오분류 정정 전례). 회귀 가드: `tests/unit/ui/test_chart_race_guards.py`(4 템플릿 가드+onload 정적 단언).
-  - 🔴 **#921 후속 — 파일당 다중 차트 가드 + 전 모드 vendor 로드 의무 (2026-06-17, repos 점수추이 차트 공백 회귀)**: (1) **한 템플릿에 `new Chart(` 가 2개 이상이면 각각 가드 의무** — `dashboard.html` 은 `buildDashChart`(overview)와 `buildRepoTrendChart`(repos 점수추이) 2개인데 #921 이 전자만 가드해 후자가 `Chart is not defined` throw 로 **영구 공백**(full-load 부터 — repos 인라인 스크립트가 vendor `<script>` 보다 문서상 앞). 가드 substring 존재 검사는 1개만 가드해도 통과하므로 **`new Chart(` 카운트 ≤ 가드 카운트** 정적 단언으로 봉인. (2) **vendor `chart.umd.min.js` `<script>` 로드 조건이 차트를 렌더하는 모든 분기를 포함해야 함** — 이전엔 `{% if mode != 'insight' and trend %}`(overview `trend`)만 검사해 **repos 모드는 `trend` 가 비어 Chart.js 미로드** → 차트 가드가 있어도 `Chart` 영구 undefined. 수정: `{% set _show_repos_trend = (mode == 'repos' and repo_report and (repo_report.score_trend | length > 1)) %}` 를 OR 로 로드 조건에 포함 + onload 가 `_dashChartReady`·`_reposChartReady` 둘 다 호출 + 각 차트가 `document._<scope>ChartReady` 노출. 회귀 가드: `test_chart_race_guards.py::test_dashboard_loads_chartjs_in_repos_mode` + E2E `e2e/test_repos_mode.py::test_repos_mode_score_trend_chart_renders`(repo 선택 + score_trend≥2 → Chart.getChart 인스턴스 부착 검증, pageerror trap 동반).
-  - 🔴 **#933 — 차트 템플릿 공유 값(I18N 등) 스코프 격리 금지 (2026-06-18, repo_detail scoreChart 영구 공백 운영 사고)**: 한 템플릿에서 여러 `<script>` block 이 공유하는 값(I18N 라벨 객체 등)을 한 block 의 IIFE `const` 로 선언하면, **별도 block 의 함수(예: `buildChart`)가 참조 시 전역 스코프만 탐색** → `ReferenceError` → throw → `new Chart` 미도달 → 차트 미표시. 🔴 **구조적(timing 무관)** — 전역 함수가 IIFE const 를 초기화 후에도 영구 미해결, nonempty 데이터 + 참조 코드 도달 시 **항상**(로컬·라이브 공통; `typeof Chart` race 가드로는 못 잡음 — 그 가드는 Chart.js 로드만 검사). 운영 F12 `Uncaught ReferenceError: I18N is not defined at buildChart` 로 발견(정적 코드 리뷰·5+1 에이전트 미검출 → **운영 JS 미표시는 F12 console 우선**). **수정 패턴**: 공유 값은 `window._<scope>` **고유 전역**으로 노출(범용 `window.I18N` 금지 — 다른 페이지 `var I18N`[add_repo.html:201]과 전역 충돌, hx-boost 왕복 시 덮어쓰기, Codex P2 적발) + 참조측은 지역 `var` 재바인딩 + 미정의 가드. repo_detail.html: `const I18N = window._repoChartI18N = {...}`(block2) + buildChart(block1) `var I18N = window._repoChartI18N; if (!I18N) return;`. 회귀 가드: `test_chart_race_guards.py::test_repo_detail_i18n_accessible_to_buildchart`(고유 전역 노출 + `window.I18N = {` 할당 차단[주석 언급은 허용] + 지역 참조 정적 단언) + E2E `e2e/test_repos_mode.py::test_repo_detail_score_chart_renders`(scoreChart 인스턴스 부착 + pageerror trap).
-- 🔴 **hx-boost 페이지 초기화 함수 패턴 (PR #473)**: `src/templates/**` 에서 DOM 상태에 의존하는 IIFE (`.visible` 추가, 애니메이션 트리거 등) 는 **named function 으로 교체 후 즉시 호출 + remove-before-add 패턴으로 `htmx:afterSettle` + `htmx:historyRestore` 에 등록** 의무. IIFE 단독 실행 시 hx-boost 재방문에서 `opacity:0` 고착 버그 유발 (PR #473 `settings.html` `_initSaveBar` 학습). 올바른 패턴: `function _initXxx() { var el = document.querySelector('.target'); if (!el) { return; } el.classList.remove('state'); requestAnimationFrame(function() { requestAnimationFrame(function() { el.classList.add('state'); }); }); } _initXxx(); if (document._xXxxHandler) { document.removeEventListener('htmx:afterSettle', document._xXxxHandler); document.removeEventListener('htmx:historyRestore', document._xXxxHandler); } document._xXxxHandler = _initXxx; document.addEventListener('htmx:afterSettle', document._xXxxHandler); document.addEventListener('htmx:historyRestore', document._xXxxHandler);` — 핸들러 이름은 `document._<pageScope><Domain>Handler` 형식 (예: `_settingsSaveBarHandler`).
-- 🔴 **외부 `<body>` 스크립트(effects.js)는 hx-boost 마다 IIFE 재실행 = 이중 init → init 에서 일괄 dispose 금지 (PR #936)**: `src/static/js/effects.js` 는 `<body>` 안 `<script src>` 라 hx-boost body swap 마다 **IIFE 가 재실행**(즉시 `init()` 호출) + **`htmx:afterSettle`/`historyRestore` 이벤트로 `init()` 한 번 더** → nav 당 init **2~3회**(e2e 계측 실측: `document._fxEffectsHandler` setter 할당 nav 당 Δ1 + `IntersectionObserver` 생성 ~2-3×). 🔴 **init() 첫 줄에서 IIFE-closure 상태(observer/scroll·resize 리스너)를 일괄 dispose 하지 말 것** — 같은 closure 의 `freshOnly(seen)` WeakMap 가드가 이미 처리한 노드를 EMPTY 로 반환해 재등록을 막으므로, 2번째 init 의 dispose 가 1번째 init 안전망을 해제한 뒤 재등록이 안 돼 **count-up 이 "0" pre-fill 에 영구 고착**(below-fold 운영 사고, PR #936 `_disposers` 회귀). 게다가 `_disposers` 는 IIFE 재실행마다 fresh 라 이전 nav 누수도 못 잡는다(dispose-on-init 목적 미달성 = 순수 해악). **올바른 패턴**: init 에서 일괄 dispose 안 함 + 리스너 누수는 `onceInView` sweep 의 `!el.isConnected` 자가정리(detached 노드를 pending 에서 제거 → 비면 `removeEventListener`)에 위임. 🔴 위 PR #473 패턴(`src/templates/**` 인라인 IIFE 의 named function + remove-before-add)과 **차이**: effects.js 는 외부 스크립트라 재실행 자체가 init 을 부르므로 이벤트 핸들러와 **중복(이중 init)** 되는 것이 핵심 위험. 회귀 가드: `tests/unit/ui/test_hx_boost_listener_guards.py`(`_disposers.pop/push`·`while (_disposers` 부재 단언) + E2E `e2e/test_overview_score.py::test_overview_score_survives_double_init`(below-fold + IO no-op + `document._fxEffectsHandler()` 직접 호출 결정론 재현).
-  - 🔴 **#936 후속 — count-up cross-closure target 오염 봉인 (2026-07-09 개요 0/100 재발)**: 위 이중 init 은 **한 nav 에 서로 다른 IIFE 클로저 2개**를 만들 수 있다(외부 script async 재실행). hx-boost body swap 시 htmx 가 (a) `htmx:afterSettle` 로 **먼저 이전 페이지 클로저**의 init 을 새 개요 DOM 에 실행 → `setupCountUp` 이 점수 텍스트를 `"0"` pre-fill, (b) 뒤늦게 async 재실행된 **새 IIFE 클로저**가 그 `"0"` 을 target 으로 재-parse(`target=0`) → `animateNumber(0→0)` 가 정답을 덮어써 **"0/100" 고착**(등급 배지는 서버 렌더라 정상 = 표시 버그). 🔴 `seen` WeakMap 은 **클로저별**이라 cross-closure 를 못 막고, `onceInView` 안전망은 콜백 **fire 만 보장**하고 오염된 target 값은 못 고친다(오염은 상류 target 캡처에서 확정). 운영(Railway) `no-cache` 정적자산(#938) + 무버전 script → 매 nav 304 왕복 지연이 "이전 클로저 먼저" 순서를 지배 → **로컬 green / 운영 near-deterministic 비대칭**. **수정 패턴**: `setupCountUp` 에서 **DOM 속성(전 클로저 공유) `el.dataset.cuBound` 로 최초 캡처 클로저만 소유** — 이미 바인딩된 노드는 `if (el.dataset.cuBound) return;` 로 skip(재-parse/재-pre-fill 차단). **동일 cross-closure 결함은 pre-fill 하는 모든 effect 에 잠재** → count-up(`dataset.cuBound`) + **score-bar(`dataset.sbBound`) + freq-bar(`dataset.fbBound`)** 3종에 동형 가드 적용(리뷰 발견: score-bar 는 개요 카드의 점수 숫자 **바로 위** = 숫자만 고치면 바가 0% 폭 고착으로 카드 부분 깨짐). 잔여 backlog = `setupChartLines`/`setupChartDonuts`(draw-in/dasharray, 개요 미노출·대시보드/인사이트 한정). 🔴 **가드 패턴 = owned-array + DOM 속성 stamp**: `freshOnly` 반환 요소를 `if (el.dataset.<x>Bound) return;` 로 걸러 최초 클로저만 `dataset.<x>Bound="1"` stamp + 소유 배열 push → `onceInView` 는 소유 요소만(다른 클로저 재-onceInView 차단). 회귀 가드: `test_hx_boost_listener_guards.py::test_setupcountup_has_cross_closure_guard`(cuBound) + `::test_setup_bars_have_cross_closure_guard`(sbBound/fbBound) + E2E `test_overview_score.py::test_overview_score_survives_single_nav_cross_closure`(warmup 없는 단일 hx-boost nav × 8 — 숫자+바 동시 검사, 3회 warmup 이 race 마스킹하던 gap 봉인, 수정 전 로컬 6/8 고착 실측).
-- **색 의미(semantic) 토큰 통일 (UI 감사 Step D — PR #167 + cleanup #169)**: 시각적 의미는 항상 `--success` (A등급/성공/머지/conn-dot ON) / `--warning` (C등급/경고/대기) / `--danger` (F등급/실패/거부) 3종 토큰 사용. `#10b981`, `#ef4444`, `#f59e0b` 등 hex 직접 사용 금지. 등급 색 (`--grade-a/b/c/d/f`) 과 시맨틱 색 혼용 금지. claude-dark 테마는 모든 시맨틱/등급 색을 sage/sand/muted-red/terracotta 톤으로 자동 alias.
-- **claude-dark 테마 토큰 매트릭스 (cleanup PR #169)**: settings 페이지가 사용하는 토큰 8종 (`--grad-gate/merge/notify/hook`, `--title-gradient`, `--btn-gate-active-*`, `--save-btn-*`, `--hint-*`, `--hook-btn-*`) 은 claude-dark 에도 정의 의무 — 미정의 시 invalid var() → 카드 헤더 흰색/투명 등 시각 깨짐.
-- 🔴 **Jinja2 `| lower | default(...)` None 함정 (사이클 99 PR #442 fix `b7b1b07`)**: Jinja2 `lower` 필터는 `None` 을 `'none'` (truthy 문자열) 로 변환 → 뒤의 `default('...')` 는 truthy string 에 발동 안 함 → CSS class 가 의도와 다른 값(`repos-rec-none` 등) 으로 렌더링됨. 올바른 패턴: `{{ (value or 'fallback') | lower }}` — Python `or` 로 먼저 None/빈문자열 치환 후 `lower` 적용. 적용 대상: severity, grade, category 등 DB 값이 `None` 일 수 있는 모든 Jinja2 필터 체인. `| upper` 도 동일 규칙.
+## 세션 라우팅
+
+- 🔴 **background/시스템 세션 = `WorkerSessionLocal` alias 의무** (본문 = [`db.md`](db.md) §WorkerSessionLocal).
+  이 영역 소비자 = `src/ui/routes/admin.py`(hybrid: tenants·operations=worker / rls-audit=bare).
+  **hybrid 모듈은 두 심볼을 구분해 쓴다(alias 금지)**. 웹 경로는 bare `SessionLocal` 유지.
+  *왜 여기 있나*: `db.md` path 매칭이 이 영역을 포함하지 않아 **자동 로드되지 않는다**.
+
+## hx-boost — 이 영역 최다 재발 클래스
+
+- 🔴 **인라인 IIFE 금지 → named function + remove-before-add 재등록.**
+  *왜*: IIFE 단독은 hx-boost 재방문에서 `opacity:0` 고착.
+  핸들러명 = `document._<pageScope><Domain>Handler`. 상세 = 아카이브 §ui.
+- 🔴 **차트는 `new Chart(` **앞**에 `if (typeof Chart === 'undefined') return;` early-return 가드.**
+  *왜*: body swap 중 vendor `<script>` 가 비동기 재삽입되는 동안 인라인 빌더가 동기 실행돼 throw.
+  가드: `tests/unit/ui/test_chart_race_guards.py`
+  🔴 `(window.Chart && Chart.getChart)` 는 **destroy 가드일 뿐 race 가드가 아니다**(오분류 전례) —
+  이 오분류도 같은 가드가 잡는다(`tests/unit/ui/test_chart_race_guards.py`).
+- 🔴 **한 템플릿에 `new Chart(` 가 N개면 가드도 N개** + **vendor 로드 조건이 차트를 렌더하는 모든 분기를 포함**해야 한다.
+  *왜*: substring 검사는 1개만 가드해도 통과했고, `repos` 모드가 vendor 미로드로 영구 공백이었다.
+  개수·분기 축 집행: `tests/unit/ui/test_chart_race_guards.py` · 실브라우저 축 `e2e/test_repos_mode.py`.
+- 🔴 **여러 `<script>` block 이 공유하는 값은 IIFE `const` 로 선언 금지 → 고유 전역(`window._<scope>`) 노출 + 참조측 지역 `var` 재바인딩 + 미정의 가드.**
+  *왜*: 별도 block 의 함수가 IIFE const 를 참조하면 전역만 탐색 → `ReferenceError` → 차트 영구 공백.
+  범용 `window.I18N` 금지(타 페이지 전역 충돌). **운영 JS 미표시는 F12 console 우선**(정적 리뷰·5+1 에이전트 미검출 전례).
+- 🔴 **외부 `<body>` 스크립트(`effects.js`)의 `init()` 에서 일괄 dispose 금지.**
+  *왜*: hx-boost 마다 IIFE 재실행 + 이벤트로 init 이 2~3회 도는데, 2번째 dispose 가 1번째 안전망을
+  해제하고 WeakMap 가드 때문에 재등록이 안 돼 count-up 이 "0" 에 영구 고착.
+  누수는 `onceInView` sweep 의 `!el.isConnected` 자가정리에 위임.
+  가드: `tests/unit/ui/test_hx_boost_listener_guards.py`
+- 🔴 **pre-fill 하는 effect 는 DOM 속성 stamp 로 최초 클로저만 소유** (`dataset.cuBound`·`sbBound`·`fbBound`).
+  *왜*: 이중 init 이 **서로 다른 클로저 2개**를 만들면 `seen` WeakMap(클로저별)이 못 막고,
+  이전 클로저가 pre-fill 한 `"0"` 을 새 클로저가 target 으로 재-parse 해 "0/100" 고착.
+  잔여: `setupChartLines`/`setupChartDonuts` 미적용(개요 미노출).
+  stamp 소유권 집행: `tests/unit/ui/test_hx_boost_listener_guards.py` · 실브라우저 축 `e2e/test_overview_score.py`.
+- **테마 전환도 remove-before-add** — `document.addEventListener('themechange', buildChart)` 직접 등록 금지(stale closure).
+  핸들러명은 페이지별 고유(`_repoThemeHandler`·`_dashThemeHandler`·`_riThemeHandler`).
+
+## 폼 / 접근성
+
+- 🔴 **`<form>` 밖 컨트롤은 `form="settingsForm"` 필수 — 없으면 데이터손실.**
+  *왜*: form-owner 가 null 이면 제출되지 않아 서버가 기본값(checkbox False)으로 덮어쓴다.
+  가드: `tests/unit/ui/test_settings_form_membership.py`
+- 🔴 **`<input>`·`<select>`·`<textarea>` 는 접근 가능 이름 의무** — `aria-label="{{ '<i18n-key>' | i18n_args(locale | default('ko')) }}"`.
+  *왜*: SonarCloud `Web:InputWithoutLabelCheck` MAJOR 신뢰성 버그 → 누적 시 Quality Gate **ERROR**.
+  **placeholder·인접 텍스트는 불충분**. 하드코딩 금지(i18n.md).
+  가드: `tests/unit/ui/test_input_aria_labels.py`
+- 🔴 **모바일 인터랙티브 요소 `min-height: 44px`**(WCAG 2.5.5) + `box-sizing: border-box`,
+  input/select 모바일 `font-size ≥16px`(iOS focus zoom 회피).
+- 🔴 **sticky/fixed 요소는 `env(safe-area-inset-*)` 적용** + `<meta viewport-fit=cover>` 페어.
+
+## 테마 / 토큰
+
+- 🔴 **정의되지 않은 토큰 참조 금지** — 발견 시 사용처 치환이 아니라 `base.html` `:root` 에 **alias 흡수**.
+  *왜*: consumer 변경 0 으로 4-테마 일괄 해결. 신규 토큰은 항상 `var(--*)`, `#hex` 직접 금지.
+- **시맨틱 색은 `--success`/`--warning`/`--danger` 3종만.** 등급 색(`--grade-a~f`)과 혼용 금지.
+- **claude-dark 는 settings 토큰 8종 정의 의무** — 미정의 시 invalid `var()` → 카드 헤더 시각 깨짐.
+- **scoped 토큰(`.dashboard-page --d-*`)은 4-테마 호환이 부분적이다** — glass 의 `backdrop-filter` 미적용.
+  신규 시각 컴포넌트는 **정책 11 8조합 검증 의무**.
+
+## Jinja2 / 템플릿 컨텍스트
+
+- 🔴 **`| lower | default(...)` 금지 → `{{ (value or 'fallback') | lower }}`.**
+  *왜*: `lower` 가 `None` 을 truthy `'none'` 으로 만들어 `default` 가 발동하지 않는다. `| upper` 동일.
+- **`analysis_detail` context 에 `current_user` 필수** — 누락 시 nav 사용자명·로그아웃 미표시.
+  `analysis.result or {}` 는 falsy 평가로 AI 섹션 전체를 숨기므로 `{% else %}` fallback 의무.
+- **Telegram `parse_mode: "HTML"`** — 동적 콘텐츠 전부 `html.escape()`. 4096자 초과 시 자동 절단.
+- **`landing.html` 은 `base.html` 미상속(standalone)** — 인증 상태가 바뀌는 엔드포인트는
+  `HX-Request` 감지 시 `200 + HX-Redirect: /` 로 전체 재로드. 상세 = 아카이브 §ui.
+
+## 구조 / 배치
+
+- **`settings.html` = 의도 기반 6 카드.** 백엔드 필드명·PRESETS 9필드 불변 원칙,
+  **5-way 동기화**(ORM → dataclass → API body → 폼 → PRESETS) 대상. 상세 = 아카이브 §ui.
+- **`ai_review_enabled` 는 상위 토글이며 PRESETS 미포함**(의도) — CSS `:has()` 로 하위 종속 완전 숨김,
+  `display:none` 이라 값 보존. 4-way 동기화 상세 = [`api.md`](api.md).
+  가드: `tests/unit/ui/test_settings_simplification.py`
+- **저장 버튼 in-flight = htmx-native**(`hx-indicator`+`hx-disabled-elt`, JS 0).
+  가드: `tests/unit/ui/test_settings_save_feedback.py`
+- **KPI 카드 신설 시 시각 우선순위 = 사용자 가치 기준 결정 의무**(메인 36px = retry-aware 최종 성공률).
+- **신규 정적 자원은 `src/static/vendor/` 하위**(외부 CDN 차단 환경 호환).
+- **`user_id = NULL` 리포 재등록은 GitHub 멤버십 검증 후 이전** — 권한 없으면 403(IDOR-인접 차단).
+- **overview 등급 = `calculate_grade(avg_score)`**(최신 grade 아님) · `trend_data|length > 1` 일 때만 차트.
+- **`leaderboard_opt_in` 폐기**(alembic 0025) · **`/insights*` → 301 `/dashboard`**(쿼리 보존).

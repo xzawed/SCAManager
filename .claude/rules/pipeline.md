@@ -10,70 +10,111 @@ paths:
 
 # 파이프라인 / 비즈니스 로직 규칙
 
-- 🔴 **background 세션 라우팅 = `WorkerSessionLocal`** (규칙 본문 = [`db.md`](db.md) §WorkerSessionLocal):
-  이 영역의 background 진입점(`gate/engine`·`gate/actions/*`·`worker/pipeline`·`webhook/*`·
-  `notifier/*` lazy·`api/{hook,internal_cron,repos,stats,repo_report}`)은
-  `from src.database import WorkerSessionLocal as SessionLocal` **alias 의무**다(웹 경로는 bare
-  `SessionLocal` 유지 — 혼용 금지). 신규 진입점 추가 시
-  `tests/unit/test_worker_session_routing.py` 의 `_BACKGROUND_MODULES` 등재 의무(ast 정적 가드가
-  bare import 를 자동 fail). 🔴 **왜 여기 다시 적는가**: 본문은 `db.md` 에 있는데 그 파일의 path
-  매칭은 `alembic/**`·`src/models/**`·`src/database.py`·`src/repositories/**` 뿐이라 **이 영역
-  파일을 편집할 때 자동 로드되지 않는다** (2026-08-01 Grok 시스템 감사 `019fbccf` 적발 — 경로
-  매칭 ≠ 소비자 목록). 사후 가드가 잡더라도 작성 시점에 규칙을 못 보면 틀린 코드를 먼저 쓴다.
-  🔴 hybrid 3 모듈 예외·RLS 맥락 등 세부는 `db.md` 본문을 열 것 — 여기는 포인터다.
+> 🔴 **사고 재현·측정 로그는 [`docs/_archive/rules-incident-log.md#pipeline`](../../docs/_archive/rules-incident-log.md#pipeline) 로 옮겼다 — 규칙을 완화·삭제하려면 아카이브의 사고 기록을 먼저 읽을 것** (2026-08-12 밀도 압축).
+> 여기 남은 것은 규칙 · 왜 한 줄 · 가드 파일명뿐이며, 서사가 짧아진 것이 규칙이 약해졌다는 뜻이 아니다.
+> 역링크·앵커·절 보존 집행: `tests/unit/scripts/test_rules_archive_backlink.py`.
 
-- **멱등성**: `run_analysis_pipeline`은 commit SHA로 중복 체크 — 같은 SHA는 재분석 건너뜀. 단, push 이벤트 먼저 처리 후 PR 이벤트 도착 시(`pr_number=None` Analysis 존재) `_regate_pr_if_needed()`가 `pr_number`를 부여하고 `run_gate_check` 재실행 — 알림 재발송 없음. 🔴 **first-writer-wins (사이클 164 #794)**: 기존 Analysis 의 `pr_number`가 이미 **다른 non-None 값**이면 덮어쓰지 않고 WARNING 후 skip — `_race_recover_existing`(동시 insert race 경로)과 대칭. 동일 head SHA를 두 PR이 공유할 때 댓글/승인/auto-merge가 잘못된 PR에 적용되는 것을 차단. 즉 `pr_number` 갱신은 **None → 최초 PR# 1회만** (동일 PR# 재수신은 no-op).
-- 🔴 **auto-merge fail-open 봉인 3종 (사이클 165 #804/#805/#806)** — 미분석/실패 상태가 인플레 만점으로 auto-merge 되는 fail-open 을 모두 incomplete/실패 마커로 차단:
-  - **#804 AI 리뷰 genuine 실패 차단**: `ai_review.status ∈ {api_error, parse_error}` 시 `src/gate/_common.py::ai_review_failed()` 가 `True` → `AutoMergeAction`/`ApproveAction`/telegram 반자동 3경로 모두 auto-merge/auto-approve **차단**. **`no_api_key`/`empty_diff`(의도적 미수행)는 제외**(회귀 방지). `AI_REVIEW_FAILED_STATUSES` frozenset 변경 시 3경로 동시 검토 의무.
-  - **#805 content-fetch transient 실패 → incomplete**: GitHub 파일 콘텐츠 fetch 가 transient(403/5xx) 실패 시 `ChangedFile.fetch_failed` → `_run_static_with_timeout` 가 `incomplete=True`(404·UnicodeDecode 등 영구 실패는 제외).
-  - **#806 per-tool subprocess 타임아웃 → incomplete**: 개별 분석 도구 subprocess 타임아웃 시 `AnalyzeContext.timed_out` 신호(23 tool 25 핸들러) → `StaticAnalysisResult.incomplete` → pipeline incomplete. 🔴 **설계: re-raise 대신 ctx-신호** — re-raise 는 기존 "타임아웃 시 [] 반환" 23+ 테스트 회귀 유발하므로 반환 계약 보존(ctx 신호로 incomplete 전파).
-- 🔴 **바이너리 부재의 차단 여부는 "조달 계약" 으로 갈라친다 (2026-08-01, backlog R21 — 사용자 결정 옵션 C)**: `unavailable_tools`(지원하나 바이너리 없음)를 **무조건** `incomplete` 로 올리면, 배포 이미지가 **애초에 설치하지 않는** 도구의 언어는 auto-merge 가 **영구 불가**가 된다. 실측: 등록 25 분석기 중 **9종**(clippy·dart_analyze·dotnet_format·phpstan·psscriptanalyzer·stylelint·swiftlint·buf_lint·htmlhint)이 `railway.toml`·`nixpacks.toml`·`requirements.txt`·`package.json` 어디에도 조달 흔적이 없어, rust·dart·C#·php·powershell·css/scss·swift·protobuf·html 리포가 **손댈 수 없는 사유로 차단**돼 있었다(`#1245` 본문의 "차단 없이 가시화만" 과 정면 모순). **계약**: `src/analyzer/io/static.py::PROVISIONED_ANALYZERS` 안 도구가 없으면 = **실제 배포 회귀** → `incomplete` 차단 유지 / 계약 밖 도구만 없으면 = **제품 미제공** → `uncovered_language` 로 가시화만. 🔴 이 목록은 산문이 아니라 계약이므로 **조달을 추가/제거하면 함께 갱신** 의무 — 실제 조달 파일과 양방향 대조하는 가드가 있다(`tests/unit/analyzer/test_procurement_contract.py`). 행동 관측은 `test_static_incomplete.py::test_{unprovisioned_tool_absence_surfaces_without_blocking,provisioned_tool_absence_still_blocks}`. ⚠️ 승격 분기는 **실행 0개일 때만** 돈다(semgrep 이 커버하는 언어의 과차단 방지) — 테스트에서 이 축을 태우려면 지원 분석기를 **전부** 부재로 만들어야 한다.
-- 🔴 **외부 린터 "실행됐지만 아무것도 분석 안 함" 봉인 (#1226 eslint)** — 도구가 **실행은 됐는데 대상 파일을 분석하지 않은** 상태는 `[]`(이슈 0건)과 구별 불가라 점수 인플레로 직결된다. eslint 는 이 상태가 **5가지 독립 원인**으로 발생했고 각각 단독으로 JS/TS 분석을 100% 무력화했다: (1) 설정 경로 오산(`..` 개수) (2) `--no-eslintrc`(eslint 9+ 무효 옵션 → `--no-config-lookup` 이 대응물) (3) `.json` 설정(flat-config 로더는 **ESM import** 라 `ERR_IMPORT_ATTRIBUTE_MISSING`) (4) `files` glob 부재(.jsx/.ts/.tsx 미매칭) (5) **cwd 미지정 → 임시파일이 base path 밖**(`tempfile.TemporaryDirectory()` vs 앱 cwd). 🔴 **계약**: subprocess 린터는 (a) 실행 cwd = **분석 대상 파일의 디렉토리** (b) 비-JSON stdout = `RuntimeError` (static.py broad-except 가 `incomplete` 로 승격) (c) `ruleId=None` + 非fatal 메시지 = **"린트되지 않았다"는 메타 메시지**라 이슈 집계 금지 + fail-closed(집계하면 없는 결함으로 감점, 무시하면 미분석을 clean 으로 오인 — 둘 다 틀림). **타임아웃·바이너리 부재는 의도적 미수행이라 `[]` 유지**(#804 의 `no_api_key` 대칭). 🔴 **mock 은 이 클래스를 원리적으로 못 잡는다** — 단위 40건이 전건 통과하는 동안 운영은 무동작이었다. 신규/수정 외부 린터는 `tests/integration/test_eslint_analyzer.py` 형식의 **실바이너리 테스트 동반 의무**.
-- 🔴 **린터 메시지 3분류 — 코드 결함 / 미린트 / "우리 설정에 대한 메타" (backlog R22, 2026-08-01 실측)**: 외부 린터를 **우리 설정으로 강제 실행**(eslint 는 `--no-config-lookup` + 10-룰 최소셋)하면, 대상 리포가 **자기 설정의 룰**을 참조할 때 린터가 그것을 "모르는 룰" 로 보고한다. eslint 9·10 실측: `ruleId="<룰명>"`(**문자열**) · `severity=2` · `fatal` 없음 · `Definition for rule '<룰>' was not found.` — 즉 **미린트 판정(ruleId=None) 분기에 걸리지 않고** 그대로 ERROR 이슈가 돼 **정상 코드를 감점**했다(`score-lie`, auto-merge 까지 전파).
-  - **계약**: 린터 출력은 (a) 코드 결함 → 집계 (b) **미린트** → fail-closed raise(#1226) (c) **우리 설정에 대한 메타** → **드롭**(집계도 실패도 아님) 3분류. (c) 를 (a) 로 세면 감점, (b) 로 세면 정상 PR 이 incomplete 가 된다.
-  - 🔴 **메시지 텍스트 매칭은 취약하다** — 구조 신호(`ruleId`/`fatal`/`severity`)만으로는 (c) 를 (a) 와 구별할 수 없어 텍스트에 의존한다. 그래서 **실바이너리 통합 테스트 동반 의무**: 단위는 payload 를 손으로 적으므로 린터가 문구를 바꾸면 단위는 초록인 채 운영만 깨진다(`tests/integration/test_eslint_analyzer.py` 의 unknown-rule 축).
-  - **일반화**: 우리 설정을 강제하는 모든 린터가 같은 3분류를 갖는다. 신규 린터 도입 시 (c) 부류가 무엇인지 **실행해서** 확인할 것.
-- 🔴 **정적분석 타임아웃/격리 (사이클 164 #795)**: `_run_static_with_timeout`는 `PIPELINE_ANALYSIS_TIMEOUT`(60s) **deadline 기반 파일별 순차** 실행 — (1) 타임아웃 시 완료된 파일 **부분결과 보존**(이전: 전량 폐기) + `incomplete=True`, (2) 단일 파일 `analyze_file` 예외는 빈 `StaticAnalysisResult`로 **격리**(나머지 파일·AI리뷰 계속), (3) **비어있지 않은 배치 전량 실패 → `incomplete=True`**(fail-closed 안전망). `incomplete`(`static_analysis_incomplete` 마커)는 `_save_and_gate`가 `Analysis.result`에 영속 → `AutoMergeAction`/`ApproveAction`이 읽어 auto-merge/auto-approve 차단(#779/#783). 일부 파일만 실패는 incomplete 아님(만점 인플레 미세 위험 수용 — Q2=A 결정).
-- 🔴 **파이프라인 소실 탐지 — `analysis_attempts` 흔적 (0045, 2026-07-17 Grok 리뷰 확정 P1)**: 분석 파이프라인은 **내구 큐 없는 in-process BackgroundTask** 이고, `webhook/providers/github.py` 가 `background_tasks.add_task` 직후 GitHub 에 **200 을 선반환**한다. 유일한 내구 기록인 `Analysis` 행은 파일 수집 + Claude 리뷰(수 분)가 **끝난 뒤** 저장되므로, 그 창의 SIGTERM(Railway 재배포)·OOM·크래시는 분석을 **조용히 증발**시키고 "아직 분석 안 됨"과 영영 구별되지 않았다(탐지 수단 0).
-  - **계약**: 소실을 **막지 않는다 — 탐지 가능하게 만든다**. `analysis_attempt_repo.begin_attempt()` 를 **비싼 작업 전**(`_ensure_repo` 성공 직후)에 호출하고, **정상 종료 3곳**(`if not files` / `if result_dict is None`(race-recovery·repo 누락) / **Analysis 영속화 직후·notify 앞**)에서 `_finish_attempt()`. **남아 있는 오래된 행 = 소실된 분석** (`find_orphaned(older_than_minutes=N)`). 🔴 **finish 는 notify 앞** (준비도 감사 #21) — result_dict non-None ⟺ Analysis 커밋됨(save_new)이므로 이 시점 이후 실패(notify)는 소실 아님. 이전엔 finish 가 notify **뒤**라 notify 예외가 터미널 except 로 삼켜지면 흔적 잔존 → 정상 분석이 orphan 으로 **오탐**됐다(gate 실패 원칙의 notify 판).
-  - **소실 표면화 sweep (준비도 감사 #11 — find_orphaned 배선)**: `cron_service.sweep_analysis_attempts` 가 `find_orphaned(older_than_minutes=30)` → 로그(durable) + 운영자 Telegram(`notifier.cron.orphan_sweep_*`) 표면화 → `analysis_attempt_repo.purge_by_ids([o.id ...])` 로 **표면화한 행 id 만** 삭제(재알림·무한 누적 방지 + TOCTOU 봉인 — cutoff 재계산 금지). `POST /api/internal/cron/sweep-orphans`(router 인증) + **`src/scheduler.py` 의 인프로세스 잡**. 🔴 **`railway.toml` cron 이 아니다** — 그 파일 스스로 *"Railway cron 은 여기서 설정할 수 없다 … `[[deploy.cronJobs]]` 는 Railway 스키마에 존재하지 않는 키라 조용히 무시된다"* 라고 적고 있다(2026-07-19 P0 사고). 엔드포인트는 수동·외부 트리거용이다. `#1060` 은 흔적을 남기기만 했고 이 sweep 이 판독·정리를 완결한다.
-  - 🔴 **터미널 `except Exception` 에서 `_finish_attempt` 호출 금지** — 남은 행이 곧 실패 증거다(로그는 아무도 안 읽지만 orphan 행은 조회된다). SIGTERM/OOM 은 핸들러가 아예 안 돌아 자동으로 행이 남는다 = 신호.
-  - 🔴 **gate 실패는 소실이 아니다 → 흔적 삭제**: `_save_and_gate` 는 `save_new`(영속화) **후에** gate 를 돌리고 gate 예외를 의도적으로 삼키므로 Analysis 행은 남는다. 여기서 행을 보존하면 정상 분석이 orphan 으로 **오탐**돼 신호가 노이즈에 묻힌다. (gate 부수효과 유실은 별개 관심사 — Grok PIPE-P1-4, P2 하향.)
-  - 🔴 **`begin_attempt` 는 dedup 게이트가 아니다** — 반환값 False(동시 webhook 이 먼저 시작)를 **의도적으로 무시**하고 파이프라인을 계속 진행한다. 중복 분석 차단은 `Analysis.find_by_sha` first-writer-wins(#794·#780) **단독 책임**이며, 여기서 조기 return 하면 두 메커니즘이 얽혀 동작이 갈라진다.
-  - 🔴 **`Analysis` 에 pending 상태를 두지 않은 이유**: `_ensure_repo`/`_save_and_gate` 의 `find_by_sha` dedup 이 **자기 자신의 pending 행을 발견**해 결과를 저장하지 않는다(설계 검토 중 실측 확인). 별도 테이블은 first-writer-wins 불변식을 전혀 건드리지 않는다.
-  - **회귀 가드**: `tests/unit/worker/test_pipeline_attempt_durability.py`(12 — 순서·예외 시 보존·정상 종료 3경로·dedup 무간섭·**notify-실패 후 finish**[#21]) + `tests/unit/repositories/test_analysis_attempt_repo.py`(16 — find_orphaned + **purge_by_ids**) + `tests/unit/services/test_cron_service.py::TestSweepAnalysisAttempts`(3 — 표면화+삭제·no-op·Telegram 미설정 시에도 로그+삭제) + `tests/unit/api/test_internal_cron_retry.py`(sweep-orphans 엔드포인트 2). 신규 `run_analysis_pipeline` 조기 return 경로 추가 시 `_finish_attempt` 동반 의무(누락 = false-positive orphan).
-- 🔴 **행 재조회로 race 를 판정할 땐 `populate_existing()` 의무 (2026-07-31 회고 P0-A · 교차 세션 실측 재현)**: `with_for_update()` 는 **SQL 잠금만** 걸고 ORM 속성은 갱신하지 않는다. 재조회 대상이 이미 그 Session 의 identity map 에 **만료되지 않은 채** 있으면 SQLAlchemy 는 새로 읽은 값을 **버리고 캐시된 인스턴스를 반환**한다 — 즉 `locked` 가 stale 이다. `_claim_and_supersede_cli` 가 정확히 그 상태였고(`save_new` IntegrityError → rollback → `find_by_sha` 가 방금 로드), 다른 세션의 승자가 `source` 를 pr/push 로 바꿔 commit 한 뒤에도 **패자에게는 여전히 `source == "cli"`** 로 보여 패자도 교체를 강행 → **gate(auto-merge 시도) + notify(Telegram/PR 코멘트)가 2회** 실행됐다. Postgres 에서도 동일하다.
-  - **계약**: race 판정용 재조회는 `db.query(M).populate_existing().filter(...).with_for_update()` 형태. 잠금만 걸고 캐시를 그대로 읽으면 잠금은 장식이다.
-  - 🔴 **회귀 가드는 반드시 교차 세션으로** — 같은 세션에서 값을 바꾸고 commit 하는 테스트는 identity map 에 이미 갱신값이 있어 **결함이 있어도 통과한다**(기존 `test_claim_returns_none_when_row_already_superseded` 가 그랬다). 파일 기반 SQLite + 독립 Session 2개로 "패자가 먼저 로드 → 승자가 다른 세션에서 commit" 순서를 재현한다(`:memory:` 는 연결마다 별개 DB 라 불가).
-  - ⚠️ **SQLite 는 `FOR UPDATE` 를 조용히 버린다** — 교차세션 가드가 증명하는 것은 **stale read 봉인**이지 행 잠금이 아니다.
-  - 🔴 **잠금 축에도 관측자를 둔다 — 단, 그 관측자가 무엇을 증명하는지 정확히 알 것.** 잠금은 장식이 아니다: PG READ COMMITTED 에서 잠금이 없으면 두 트랜잭션이 **둘 다 supersede 이전 행**을 읽어 둘 다 술어를 통과하고, `UPDATE … WHERE id=?` 에는 술어 재검증이 없으므로 **둘 다 commit** 된다 → `populate_existing()` 이 있어도 이중 gate·notify 가 그대로 재현된다. 즉 두 호출은 **논리적으로 각각 필요**하다.
-    - ⚠️ **그러나 현재 관측자는 `with_for_update` **호출 여부**만 본다**(mock `assert_called_once_with`, 관용구 = `tests/unit/repositories/test_merge_retry_repo.py:495`). 이것은 **삭제 탐지기**이지 *"PG 가 실제로 직렬화한다"* 의 증명이 아니다. 🔴 **"필요하다" 를 "검증됐다" 로 읽지 말 것** — 논리적 필요성과 경험적 검증은 다른 주장이다(Grok claim-review 2026-07-31 지적).
-    - 실측: `.with_for_update()` 한 줄을 지워도 `tests/unit/worker`+`tests/unit/repositories` **323건이 전부 green** 이었다(관측자 0). PG job 이 없어도 **SQLite mock 으로 호출 관측은 가능**하므로 "PG 전용" 이라 미루지 말 것 — 실제 직렬화 검증만 PG 몫이다.
-    - 🔴 **리팩터 취약점**: 판정은 반드시 **재조회한 `locked`** 로 해야 한다. 입력 인스턴스(`analysis`)로 `_is_cli_only` 를 부르도록 바꾸면 두 축이 다 있어도 봉인이 죽는다.
-    - 🔴 **이 줄의 이력 자체가 교훈이다**: 초판은 *"잠금 축 검증은 PG 전용(`ci.yml` `pg-concurrency` job)"* 이라 적었는데, 그 job 은 node-id 가 핀돼 supersede 테스트를 **0건** 실행한다. 즉 **가드가 없는 축을 "검증된다"고 적은 규칙**이었다 — AGENTS.md 가 말하는 observer-lie 를 규칙 본문이 범한 형태다. 다관점 검증에서 두 렌즈가 독립적으로 적발했다.
-  - ⚠️ **`populate_existing()` 은 미flush 더티 속성을 조용히 폐기한다** — 운영 `sessionmaker` 는 `autoflush=False`(`src/database.py:123`)라, 재조회 **직전에 같은 인스턴스를 수정해 두었다면** 그 값이 무예외·무로그로 사라진다(실측). 이 계약은 **race 판정용 재조회**에 한정되며, 그 지점에 미flush 수정을 들고 오는 것은 이미 설계 오류다.
-- **PR action 필터링**: `pull_request` 이벤트 중 `opened`/`synchronize`/`reopened`만 처리, `closed`/`labeled` 등은 무시.
-- 🔴 **리포별 AI 리뷰 kill-switch (`RepoConfig.ai_review_enabled`)**: 컬럼 기본값 `True`(alembic 0042) — `False`면 `run_analysis_pipeline`이 `review_code(..., enabled=False)`로 호출해 API 호출 없이 `disabled` 상태를 반환(비용 0). `get_repo_config` 조회 중 예외가 나도 `_ai_review_enabled`는 fail-safe default `True` 유지(일시적 설정 조회 실패가 AI 리뷰를 실수로 비활성화하지 않음). `disabled`는 `no_api_key`/`empty_diff`와 동일하게 **의도적 skip** 취급 — `AI_REVIEW_FAILED_STATUSES`(`api_error`/`parse_error`)에 미포함되어 auto-merge/auto-approve를 차단하지 않고 점수 컬럼도 NULL이 되지 않는다(중립 AI 기본값 commit13+direction21+test10=44/55 적용, 정적분석 점수와 합산해도 최대 총점 89/B — fail-open 없음). 전역 kill-switch `AI_REVIEW_DISABLED`가 리포별 설정보다 우선(`ai_review.py::review_code` 진입부, `is_disabled("AI_REVIEW")`). 검증 절차 단일 출처: `docs/runbooks/cost-controls.md`.
-- **AI 점수 스케일링**: Claude는 commit 0-20, direction 0-20, test 0-10으로 반환 → calculator가 commit 0-15, direction 0-25, test 0-15로 스케일링. `round()` 사용으로 banker's rounding 적용.
-- **commit_scamanager_files**: GitHub Contents API `PUT /repos/{owner}/{repo}/contents/{path}` 사용. 파일 이미 있으면 GET으로 sha 조회 후 body에 포함해야 200 성공 (sha 누락 시 422 에러).
-- **다언어 AI 리뷰**: `language.py`가 49개 언어를 감지(확장자·shebang·파일명), `review_prompt.py`가 언어별 체크리스트를 토큰 예산(8000 토큰) 내에서 조립. 비-코드 파일만 변경 시 테스트 점수 면제(test_score=10 → 15/15).
-- **Analyzer Registry**: `src/analyzer/pure/registry.py` 의 REGISTRY 전역 목록 + `register()` (동일 name 중복 등록 방지). `src/analyzer/io/static.py` 가 `tools/` 하위 **23개 tool 모듈**(buf_lint·clippy·cppcheck·dart_analyze·dotnet_format·eslint·golangci_lint·hadolint·htmlhint·ktlint·phpstan·psscriptanalyzer·python·rubocop·semgrep·shellcheck·slither·sqlfluff·stylelint·swiftlint·tflint·tsc·yamllint)을 `import` → 모듈 import 시점에 자동 `register()` 호출. 전체 목록 단일 출처는 `docs/architecture.md` `tools/` 항목 (2026-06-23 실측 정정 — 이전 8종 예시는 stale). Phase S.3-B 이후 `pure/` vs `io/` 분리 구조.
-- **category 기반 점수 집계**: `AnalysisIssue.category`("code_quality"|"security") 기준으로 점수 계산. tool 이름 무관 — 새 정적분석 도구 추가 시 category만 올바르게 설정하면 점수에 자동 반영. `CQ_WARNING_CAP=25` 단일 cap (구 pylint 15 + flake8 10 통합).
-- **review_guides 구조**: `get_guide(lang, "full"|"compact")` — Tier1 full ~500토큰, compact 1줄. N≤3 전체 full, N≤6 Tier1 full+나머지 compact, N>10 상위 5개 compact만.
-- **AI 리뷰 JSON 파싱**: Claude가 JSON 앞에 설명 텍스트를 붙이는 경우 `re.search`로 코드 블록 내 JSON만 추출.
-- **봇 PR `create_issue` 루프 방지**: `pr_head_ref`가 `_BOT_PR_PREFIXES` (`claude-fix/`, `bot/`, `renovate/`, `dependabot/`) 중 하나로 시작하면 `create_issue`를 건너뜀.
-- **봇 발신 / 자기 분석 루프 방지**: `src/webhook/providers/github.py::_loop_guard_check()`가 3-layer 체크 — (1) Kill-switch `SCAMANAGER_SELF_ANALYSIS_DISABLED=1`, (2) `loop_guard.is_bot_sender()` + BOT_LOGIN_WHITELIST 비포함 → 즉시 차단, (3) skip marker (`[skip ci]`, `[skip-sca]`, `[ci skip]`) + `BotInteractionLimiter` **화이트리스트 봇 한정** 시간당 6회 상한 (PR #100). 운영 runbook: `docs/runbooks/self-analysis.md`.
-- **stage_metrics 필드 규약**: `issue_count` = 전체 이슈 합계 (`sum(len(r.issues))`), `file_count` = 분석 파일 수. 두 필드를 혼동하지 말 것.
-- **커밋 메시지 추출**: `_extract_commit_message()`는 PR 이벤트 시 `title + "\n\n" + body`, Push 이벤트 시 `head_commit["message"]` 우선 사용.
-- 🔴 **GitHub 페이로드의 None-able 키 정규화**: GitHub 가 `head_commit` / `pull_request` 키 값을 **`None` 으로 보낼 수 있다** (예: 브랜치 삭제 push). `data.get("head_commit", {}).get(...)` 체이닝은 default 가 적용되지 않아 NPE 발생 — 항상 `(data.get("head_commit") or {}).get(...)` 패턴으로 정규화. `_extract_commit_message`(pipeline.py)는 `if head:` 가드, `_loop_guard_check`(webhook/providers/github.py)는 `or {}` 패턴 사용. (PR #124 회귀 사고로 도입)
-- **CLI Hook 인증/점수**: `GET /api/hook/verify`, `POST /api/hook/result`는 `hook_token` 파라미터로 인증(X-API-Key 불필요). pre-push 훅은 정적 분석 없이 AI 리뷰만 실행 → `calculate_score([], ai_review)` 호출.
-- **분석 source 필드**: `pipeline.py`가 result JSON에 `"source": "pr"|"push"` 저장. 기존 레코드 대응으로 `result.get("source") or ("pr" if pr_number else "push")` fallback 파생.
-- 🔴 **AI 실패 시 score/grade NULL-persist (hook #25/#814 ↔ pipeline 대칭)**: AI 리뷰 genuine 실패(`ai_review_status ∈ {api_error, parse_error}`)면 인플레 기본 점수(`_default_result` = `AI_DEFAULT_*_RAW` 17/17/7 → ~89/B)를 `Analysis.score/grade` 컬럼에 저장하지 **않는다(NULL)** — 대시보드/리더보드 집계(`func.avg`·leaderboard)가 NULL 을 자연 제외하므로 오염 차단(쿼리 변경 0). `result` dict 의 `ai_review_status`·`breakdown` 은 보존(진단/배너용 — 컬럼=집계 NULL / result=진단 보존 의도적 비대칭). hook(`api/hook.py` `_coerce_ai_scores`→parse_error) 과 pipeline(`_save_and_gate` `ai_review_failed(result_dict)`) **양 경로 동일 동작 의무** — 한쪽만 수정 시 집계 비대칭 회귀. **`no_api_key`/`empty_diff`(의도적 미수행)는 `ai_review_failed=False` 라 점수 유지**(회귀 방지). 🔴 **입력-diff 절단(`ai_review_truncated`)은 NULL 대상에서 제외 — 점수 유지 (2026-06-22 C22 분리, 사용자 결정 A)**: 절단 리뷰는 status=`success` 이고 점수의 대부분(code_quality/security)이 전체 파일 정적분석 기반이라 신뢰 가능. diff 가 `MAX_DIFF_CHARS`(16,000자)를 넘는 대형 commit/PR 의 절반이 절단되는데 이를 전부 NULL-persist 하면 대시보드/리더보드에서 점수가 통째로 사라진다(운영 DB 실측: 6월 NULL 256건 다수가 절단형, 일 성공률 24~57% 급락 — 이전 #894 C22 트리거의 부작용). 따라서 `_persisted_score_is_unreliable = ai_review_failed(result_dict)` 단독(절단 OR 제거). **절단 시 auto-merge/auto-approve 차단은 result dict 의 `ai_review_truncated` 마커를 직접 읽는 #885 가드(`static_analysis_incomplete` 대칭)가 담당 — 점수 컬럼 NULL 여부와 무관하므로 안전성 영향 0** (마커는 `result_dict` 에 계속 보존). 회귀 가드: `test_pipeline_save_and_gate.py::test_save_and_gate_persists_score_on_ai_truncated`(절단→점수 유지 + 마커 보존) + `test_save_and_gate_nulls_score_on_ai_{api_error,parse_error}`.
-- **GateDecision upsert / claim**: 자동 경로(`ApproveAction`)는 자체 `SessionLocal()` 을 열고 `gate_decision_repo.upsert()`(동일 `analysis_id` 존재 시 UPDATE, 없으면 INSERT)를 **직접 호출**한다. (구 `engine.save_gate_decision()` thin wrapper 는 호출처 0 dead code 로 제거됨 — `chore/gate-remove-dead-save-gate-decision`. upsert UPDATE 분기 커버리지는 `tests/unit/repositories/test_gate_decision_repo.py::test_upsert_updates_existing`.) 🔴 **반자동 telegram 경로(`handle_gate_callback`)는 `gate_decision_repo.claim_decision()`(insert-only, UNIQUE `analysis_id` IntegrityError→False)로 부수효과(GitHub 리뷰·auto-merge) 전에 결정을 원자적으로 claim** — first-writer-wins 로 동일 서명 콜백 리플레이/동시 더블클릭을 차단(#11). upsert 와 달리 update 분기가 없어 결정 뒤집기 불가. 🔴 **멀티워커 원자성**: claim_decision 의 원자성은 DB `UNIQUE(analysis_id)` 제약에 의존하므로 향후 `uvicorn --workers N`/멀티프로세스 전환 시에도 정상 작동(`claim_batch` 의 PG `SKIP LOCKED` = 단일워커 협력스케줄링 가정과 보호 메커니즘 상이 — `--workers` 도입 시 claim_batch 만 재검토, claim_decision 무영향).
-- **Analyzer tools 자동 등록**: `tools/` 하위 23개 도구 모듈(위 Analyzer Registry 항목 전체 목록 참조)은 `src/analyzer/io/static.py` 가 import할 때 자동으로 `register()` 호출. 새 도구 추가 시 (1) `tools/` 아래 클래스 작성 + `register()` 호출, (2) `static.py`에서 import, (3) SUPPORTED_LANGUAGES에 지원 언어 선언 세 단계 필수 + `docs/architecture.md` 도구 목록 동기화.
-- **golangci-lint go.mod 자동생성**: `_GolangciLintAnalyzer.run()` 은 tmp_path 디렉토리에 `go.mod` 가 없으면 `_ensure_go_mod()` 로 최소 모듈 정의 (`module tempmod\ngo 1.21\n`) 를 자동 생성.
-- **`_build_issue_body()` 시그니처**: `high_issues: list[dict]` 파라미터가 추가되어 있음. 직접 호출 시 반드시 high_issues 인자 포함.
-- **Railway Webhook 토큰 인증**: `POST /webhooks/railway/{token}` 엔드포인트는 DB에서 `railway_webhook_token == token` 조회 후 `config is None → 404` 처리. `railway_api_token`은 Fernet 암호화 저장 — `decrypt_token()`으로 백그라운드 핸들러에 전달.
-- **5-way 동기화 Railway 확장**: `railway_deploy_alerts`가 ORM/RepoConfigData/API body/settings 폼/PRESETS 5-way 동기화 적용 대상.
-- **RailwayDeployEvent nested 구조**: `src/railway_client/models.py`의 `RailwayDeployEvent`는 3-그룹 nested dataclass — `event.project.project_id`, `event.commit.commit_sha` 등 sub-dataclass 경로로 접근. 평면(`event.project_id`) 접근은 2026-04-22 이후 제거됨. 신규 필드 추가 시 `RailwayProjectInfo` 또는 `RailwayCommitInfo`에 삽입.
-- **asyncio.gather 내 Session 공유 금지**: `gather()` 내 코루틴은 각각 독립 `with SessionLocal() as db:` 사용 의무 — 세션 공유 시 트랜잭션 충돌. 교차 참조: [`.claude/rules/api.md`](.claude/rules/api.md) (사이클 113 P0-H 학습).
+## 세션 라우팅
+
+- 🔴 **background 진입점은 `WorkerSessionLocal` alias 의무** (본문 = [`db.md`](db.md) §WorkerSessionLocal).
+  대상: `gate/engine`·`gate/actions/*`·`worker/pipeline`·`webhook/*`·`notifier/*` lazy·
+  `api/{hook,internal_cron,repos,stats,repo_report}`. 웹 경로는 bare 유지, **혼용 금지**.
+  신규 진입점은 `tests/unit/test_worker_session_routing.py` 의 `_BACKGROUND_MODULES` 등재 의무.
+  *왜 여기 있나*: `db.md` path 매칭이 이 영역을 포함하지 않아 **자동 로드되지 않는다**.
+
+## fail-open 봉인 — 이 영역 최다 재발 클래스
+
+- 🔴 **미분석·실패 상태가 만점으로 auto-merge 되면 안 된다.** 3축 전부 마커로 차단:
+  - AI 리뷰 genuine 실패(`api_error`·`parse_error`) → `src/gate/_common.py` 의 `ai_review_failed()`
+    → AutoMerge·Approve·telegram 반자동 **3경로 모두 차단**. `AI_REVIEW_FAILED_STATUSES` 변경 시 3경로 동시 검토.
+    🔴 `no_api_key`/`empty_diff`/`disabled` 는 **의도적 미수행이라 제외**(회귀 방지).
+  - content-fetch transient 실패(403/5xx) → `ChangedFile.fetch_failed` → `incomplete`
+    (404·UnicodeDecode 등 영구 실패는 제외).
+  - per-tool subprocess 타임아웃 → `AnalyzeContext.timed_out` → `StaticAnalysisResult.incomplete`.
+    🔴 설계: re-raise 가 아니라 **ctx 신호** — 반환 계약("타임아웃 시 `[]`")을 보존해야 23+ 테스트가 안 깨진다.
+- 🔴 **바이너리 부재의 차단 여부는 "조달 계약" 으로 가른다.**
+  `src/analyzer/io/static.py` 의 `PROVISIONED_ANALYZERS` 안 도구 부재 = **실배포 회귀 → `incomplete` 차단** /
+  계약 밖 도구 부재 = **제품 미제공 → `uncovered_language` 가시화만**.
+  *왜*: 무조건 차단하면 애초에 설치하지 않는 9종 언어가 **영구 auto-merge 불가**가 된다.
+  🔴 조달을 추가/제거하면 이 목록도 갱신 의무.
+  가드: `tests/unit/analyzer/test_procurement_contract.py` · `tests/unit/analyzer/test_static_incomplete.py`
+- 🔴 **외부 린터가 "실행됐지만 아무것도 분석 안 함" 은 `[]` 와 구별 불가 → 점수 인플레.** 계약 3항:
+  (a) 실행 cwd = **분석 대상 파일의 디렉토리** (b) 비-JSON stdout = `RuntimeError`
+  (c) `ruleId=None` + 非fatal = **"린트되지 않았다"** 라 집계 금지 + fail-closed.
+  🔴 **mock 은 이 클래스를 원리적으로 못 잡는다** — 단위 40건 green 중 운영은 무동작이었다.
+  신규/수정 외부 린터는 **실바이너리 통합 테스트 동반 의무**(`tests/integration/test_eslint_analyzer.py` 형식).
+- 🔴 **린터 메시지 3분류**: 코드 결함(집계) / 미린트(fail-closed raise) / **우리 설정에 대한 메타(드롭)**.
+  *왜*: 대상 리포가 자기 설정 룰을 참조하면 린터가 "모르는 룰" 로 보고하는데, 이를 결함으로 세면
+  **정상 코드를 감점**(score-lie → auto-merge 전파)하고 미린트로 세면 정상 PR 이 incomplete 가 된다.
+  🔴 구조 신호만으로 (c)를 (a)와 구별할 수 없어 텍스트에 의존한다 → 실바이너리 테스트가 유일한 방어다.
+
+## 동시성 / 멱등성
+
+- 🔴 **race 판정용 재조회는 `populate_existing()` 의무.**
+  *왜*: `with_for_update()` 는 SQL 잠금만 걸고 ORM 속성을 갱신하지 않아, identity map 의 stale 값으로
+  판정하면 **gate(auto-merge) + notify 가 2회** 실행된다(Postgres 동일).
+  🔴 회귀 가드는 **교차 세션**으로 짤 것 — 같은 세션 테스트는 결함이 있어도 통과한다.
+  ⚠️ SQLite 는 `FOR UPDATE` 를 조용히 버린다 → 그 가드가 증명하는 것은 **stale read 봉인**이지 행 잠금이 아니다.
+  ⚠️ `populate_existing()` 은 **미flush 더티 속성을 무예외로 폐기**한다(운영은 `autoflush=False`).
+- **멱등성 = commit SHA 중복 체크.** `pr_number` 갱신은 **None → 최초 PR# 1회만**(first-writer-wins);
+  다른 non-None 값이면 WARNING 후 skip. *왜*: 동일 head SHA 를 두 PR 이 공유하면 댓글·승인·머지가 오배송된다.
+- **`begin_attempt` 는 dedup 게이트가 아니다** — 반환 False 를 **의도적으로 무시**한다.
+  중복 차단은 `Analysis.find_by_sha` first-writer-wins **단독 책임**이며, 두 메커니즘을 얽으면 동작이 갈라진다.
+- **`claim_decision`(insert-only)** 는 부수효과 전에 결정을 원자적으로 claim — 리플레이·더블클릭 차단.
+  `upsert` 와 달리 update 분기가 없어 **결정 뒤집기 불가**.
+
+## 분석 소실 탐지
+
+- 🔴 **소실을 막지 않는다 — 탐지 가능하게 만든다.** `begin_attempt()` 를 **비싼 작업 전**,
+  `_finish_attempt()` 를 **정상 종료 3곳**(파일 0건 / result None / **Analysis 영속화 직후·notify 앞**)에서 호출.
+  남아 있는 오래된 행 = 소실된 분석(`find_orphaned`).
+  🔴 **터미널 `except` 에서 `_finish_attempt` 금지** — 남은 행이 곧 실패 증거다.
+  🔴 **gate 실패는 소실이 아니다** → 흔적 삭제(보존하면 정상 분석이 orphan 오탐).
+  🔴 finish 는 **notify 앞** — 뒤에 두면 notify 예외가 정상 분석을 orphan 으로 오탐한다.
+  신규 조기 return 경로 추가 시 `_finish_attempt` 동반 의무.
+  가드: `tests/unit/worker/test_pipeline_attempt_durability.py` · `tests/unit/repositories/test_analysis_attempt_repo.py`
+
+## 점수 영속화
+
+- 🔴 **AI genuine 실패 시 score/grade 를 NULL 로 저장**(인플레 89/B 를 집계에 넣지 않는다).
+  hook(`src/api/hook.py`)과 pipeline(`_save_and_gate`) **양 경로 동일 동작 의무** — 한쪽만 고치면 집계 비대칭.
+  🔴 **입력-diff 절단(`ai_review_truncated`)은 제외 — 점수 유지**(대형 PR 절반이 절단인데 전부 NULL 이면
+  대시보드·리더보드에서 점수가 통째로 사라진다). 절단 시 auto-merge 차단은 **마커를 직접 읽는 별도 가드** 담당.
+  가드: `tests/unit/worker/test_pipeline_save_and_gate.py`
+- **AI 점수 스케일링**: Claude commit 0-20 / direction 0-20 / test 0-10 → calculator 가 15/25/15 로 스케일.
+  `round()` = banker's rounding.
+- **category 기반 집계** — tool 이름 무관, `AnalysisIssue.category` 만 본다. `CQ_WARNING_CAP=25` 단일 cap.
+  신규 도구는 category 만 맞으면 점수에 자동 반영된다.
+
+## Webhook / 페이로드
+
+- 🔴 **GitHub 의 None-able 키는 `(data.get(k) or {})` 로 정규화.**
+  *왜*: `.get(k, {})` 체이닝은 값이 `None` 이면 default 가 적용되지 않아 NPE(브랜치 삭제 push 실측).
+- **PR action 필터** = `opened`/`synchronize`/`reopened` 만 처리.
+- **봇 루프 방지 3층** = kill-switch → `is_bot_sender()` + whitelist → skip marker + 시간당 6회 상한.
+  운영 runbook: `docs/runbooks/self-analysis.md`
+- **`_extract_commit_message`** = PR 은 `title + body`, push 는 `head_commit["message"]`.
+- **봇 PR 은 `create_issue` skip** — `pr_head_ref` 가 `claude-fix/`·`bot/`·`renovate/`·`dependabot/` 접두면 건너뛴다.
+
+## Analyzer 등록
+
+- **신규 도구 3단계**: `tools/` 하위 클래스 + `register()` → `static.py` import → `SUPPORTED_LANGUAGES` 선언.
+  **+ `docs/architecture.md` 도구 목록 동기화 의무**(전체 목록 단일 출처).
+- **`review_guides`**: `get_guide(lang, "full"|"compact")` — N≤3 전체 full, N≤6 Tier1 full+나머지 compact, N>10 상위 5 compact.
+- **AI 리뷰 JSON 파싱**: 설명 텍스트가 앞에 붙을 수 있어 `re.search` 로 코드블록 내 JSON 만 추출.
+- **다언어 감지** = 확장자·shebang·파일명 49종. 비-코드 파일만 변경 시 테스트 점수 면제.
+
+## 기타 계약
+
+- 🔴 **리포별 AI kill-switch(`RepoConfig.ai_review_enabled`)** — `False` 면 API 호출 없이 `disabled` 반환(비용 0).
+  설정 조회 예외 시 **fail-safe default `True`**(일시 실패가 AI 를 끄면 안 된다).
+  전역 `AI_REVIEW_DISABLED` 가 리포별보다 우선. 검증 절차 = `docs/runbooks/cost-controls.md`
+- 🔴 **`asyncio.gather` 내 코루틴은 각각 독립 `SessionLocal()`** — 세션 공유 시 트랜잭션 충돌.
+- **`_run_static_with_timeout`** = deadline 기반 **파일별 순차**, 타임아웃 시 부분결과 보존 + `incomplete`.
+  단일 파일 예외는 격리, **비어있지 않은 배치 전량 실패 → `incomplete`**(fail-closed 안전망).
+- **Railway webhook** `POST /webhooks/railway/{token}` — 토큰 미일치 404, `railway_api_token` 은 Fernet 복호화 후 전달.
+  `RailwayDeployEvent` 는 **nested**(`event.project.project_id`) — 평면 접근 불가.
+- **`commit_scamanager_files`** — 기존 파일이면 GET 으로 sha 조회 후 body 포함(누락 시 422).
+- **CLI Hook** `GET /api/hook/verify`·`POST /api/hook/result` 는 `hook_token` 인증(X-API-Key 불필요).
+- **분석 source** = result JSON 의 `"source": "pr"|"push"`, 구 레코드는 `pr_number` 유무로 파생.
+- **`railway_deploy_alerts` 는 5-way 동기화 대상**(ORM↔Data↔API body↔폼↔PRESETS).

@@ -9,48 +9,106 @@ paths:
 
 # DB / 마이그레이션 규칙
 
-- 🔴 **`alembic/env.py` 의 `fileConfig` 는 앱 로깅을 파괴한다 — `is_configured()` 가드 제거 금지 (2026-07-19 P0, #1102)**: `src/main.py` lifespan 은 `configure_logging()` 직후 `command.upgrade()` 로 **인프로세스** 마이그레이션을 돌린다. 그 시점에 `fileConfig(alembic.ini)` 를 그대로 부르면 (a) `[logger_root] level = WARN` + stderr 핸들러가 앱의 stdout 핸들러를 **교체**하고 (b) `fileConfig` 기본값 `disable_existing_loggers=True` 가 `uvicorn.access` 와 **모든 `src.*` 로거를 비활성화**한다. 결과: 앱 INFO 로그·access 로그가 **출시 이래 전부 소실**됐고 `#1100`(로깅 설정 PR)이 운영에서 **무력(inert)** 이었다.
-  - **가드**: `if config.config_file_name is not None and not is_configured():` — 앱이 이미 로깅을 설정했으면 skip. **alembic CLI 단독 실행(`make migrate`)은 앱 설정이 없으므로 기존대로 ini 로깅을 적용**한다(양쪽 다 만족).
-  - 🔴 **피해 규모의 성격**: 이건 "로그가 좀 안 나온다" 가 아니라 **관측 자체가 꺼진 상태**였다. 그 때문에 cron 검증이 3 세션 동안 "로그로 판별 불가" 로 오귀인됐다(`docs/runbooks/owed-verification.md` ⛔ 폐기 섹션 참조). **관측 부재를 외부 인프라 탓으로 돌리기 전에 앱 자신이 관측을 끄고 있는지 먼저 배제할 것.**
-  - 회귀 가드: `tests/unit/migrations/test_alembic_env_logging_guard.py`.
+> 🔴 **사고 재현·측정 로그는 [`docs/_archive/rules-incident-log.md#db`](../../docs/_archive/rules-incident-log.md#db) 로 옮겼다 — 규칙을 완화·삭제하려면 아카이브를 먼저 읽을 것** (2026-08-12 밀도 압축).
+> 여기 남은 것은 규칙 · 왜 한 줄 · 가드 파일명뿐이며, 서사가 짧아진 것이 규칙이 약해졌다는 뜻이 아니다.
+> 역링크·앵커·절 보존 집행: `tests/unit/scripts/test_rules_archive_backlink.py`.
 
-## 🔴 마이그레이션 PR pre-flight 체크리스트 (2026-07-09 rank12 — gotcha 산발→액션화)
+## 마이그레이션 PR pre-flight 체크리스트
 
-신규 마이그레이션/ORM 변경 PR 착수 전 아래를 순서대로 확인한다 (아래 상세 규칙의 액션 요약 — 신규 지식 아님). **PG 전용문은 SQLite 단위 테스트에서 no-op 라 단위 green 이어도 운영 PG 에서만 드러나는 비대칭** 이 반복되므로 사전 점검이 사후발견보다 싸다.
+착수 전 순서대로 확인한다(아래 상세 규칙의 액션 요약).
 
-- [ ] **ORM Boolean/신규 컬럼** = `server_default` 지정 (raw-SQL insert NOT NULL 회귀 방어 — `server_default=true()` 등)
-- [ ] **신규 RLS 테이블** = 같은 마이그레이션에 `ENABLE` + `FORCE` + `src/services/saas_service.py::_RLS_MATRIX` **3 동기화** (bijection 가드가 누락 시 CI fail)
-- [ ] **PG 전용 SQL** = `is_postgresql(op.get_bind())` 분기 (SQLite 단위 테스트 자동 skip)
-- [ ] **env.py URL override 영향** = `effective_migration_url`(= `migration_database_url or database_url`) 경유 — 마이그레이션 테스트는 settings 싱글톤 patch 필요 (cfg URL 단독 무효)
-- [ ] **`alembic/env.py` 모델 import 완전성** = `--autogenerate` 시 미import 모델이 `drop_table` 로 잡히는 footgun 차단 (전 모델 import + `_REGISTERED_MODELS` 참조)
-- [ ] **`make migrate` 왕복** = `downgrade -1` → `upgrade head` 검증 (PG round-trip CI 가드와 페어)
+- [ ] **ORM Boolean/신규 컬럼** = `server_default` 지정(raw-SQL insert NOT NULL 회귀 방어)
+- [ ] **신규 RLS 테이블** = 같은 마이그레이션에 `ENABLE` + `FORCE` + `_RLS_MATRIX` **3 동기화**
+- [ ] **PG 전용 SQL** = `is_postgresql(op.get_bind())` 분기(SQLite 단위 테스트 자동 skip)
+- [ ] **env.py URL override 영향** = `effective_migration_url` 경유
+- [ ] **모델 import 완전성** = 전 모델 import + `_REGISTERED_MODELS`(미import 모델이 `drop_table` 로 잡히는 footgun 차단)
+- [ ] **`make migrate` 왕복** = `downgrade -1` → `upgrade head`
 
-🔴 **MCP 운영 DB 접근 = 정책 12 SELECT-only 자율 / 변경·PII SELECT = 사용자 사전 승인** (Supabase MCP `execute_sql` 로 RLS 실측·검증 시). MCP 호출 시 PR 본문 §"MCP 자율 실행 결과"(정책 3) 명시. 상세: [`.claude/policies/active.md#정책-12`](../policies/active.md).
+🔴 **MCP 운영 DB = 정책 12** — SELECT-only 자율 / 변경·PII SELECT 는 **사용자 사전 승인**.
+**호출했으면 PR 본문에 결과를 명시**한다(정책 3 — 감사 추적).
 
-- 🔴 **Supabase RLS 권한 모델 + 운영 활성화 미들웨어 (Phase 3 PR 5 #223 + postlude #228)**: `alembic/versions/0026_supabase_rls_policies.py` 가 3 테이블 (`repositories`, `analyses`, `merge_attempts`) 에 RLS policy 적용 (PG 전용 + dialect 분기 — SQLite 단위 테스트 자동 skip). 세션 컨텍스트 변수 = `current_setting('app.user_id', true)` 패턴 (Supabase Auth `auth.uid()` 미사용 — GitHub OAuth 정합). 운영 활성화 = `src/middleware/rls_session.py` (request 시작 시 `scope["session"]["user_id"]` → contextvars) + `src/database.py::_set_rls_user_id_per_query` event listener (매 query 직전 `SET LOCAL app.user_id = '<id>'` 발화). 1차 안전망 = 앱 레벨 filter (`src/services/dashboard_service.py::_apply_*_user_filter`, SQLite/PG 호환). 2차 안전망 = RLS policy (PG/Supabase 전용). **🔴 ASGI middleware 의무** (BaseHTTPMiddleware 우회 — Starlette `dispatch` 가 별도 anyio task 에서 `call_next` 호출해 contextvars 전파 X). middleware 등록 순서 = LIFO (RLS inner / SessionMiddleware outer — 후자가 먼저 호출). 🔴 **owner-bypass (Task9 #2) — 해소 절차 진행 중**: 운영 앱이 `postgres`(`rolbypassrls=true`) 로 접속하는 동안 ENABLE-only RLS 는 평가조차 안 됨(2차 안전망 실효 **0**). **FORCE 단독 적용은 무의미**(BYPASSRLS 가 FORCE 무시). 현황(2026-06-10): **Phase 1 완료**(비-BYPASSRLS `scamanager_app` + BYPASSRLS `scamanager_worker` role 운영 생성) + **Phase 2 완료**(#847 worker 세션 분리) + **Phase 3 = alembic 0041**(11 테이블 FORCE, `rls_coverage_summary(db)` 가 `pg_class.relforcerowsecurity` **실측** — 정적 거짓 안심 차단) / **Phase 4 코드 차단 경로 전부 해소**(2026-06-10): (1) OAuth 콜백 옵션 ② — `auth_callback` users upsert 만 `WorkerSessionLocal`(BYPASSRLS), logout 은 bare `SessionLocal`(`src/auth/github.py` hybrid) + (2) Codex 발견 시스템 API 3종 `api/repos`·`stats`·`repo_report`(`require_api_key` cross-tenant) → `WorkerSessionLocal as SessionLocal`(`_SYSTEM_API_MODULES`) + (3) admin 대시보드 `api/admin`·`ui/routes/admin`(hybrid) — tenants/operations(cross-tenant 집계)=`_get_worker_db`(worker), **rls-audit=`_get_db`(web 유지 — connection_bypasses_rls 진단은 app role 로 평가돼야 정확)** / ✅ **Phase 4 운영 전환 검증 완료 (2026-06-16, docs #920)** — 사용자 step 1(PW 교체)+step 2(`DATABASE_URL`→`scamanager_app`·`DATABASE_URL_WORKER`→`scamanager_worker`·`MIGRATION_DATABASE_URL`→owner) 후 재확인: `pg_stat_activity` 라이브 앱=`scamanager_app`(rolbypassrls=false) 실측 + `/admin/rls-audit` 경고 배너 없음 + 로그인 smoke 통과 = connection_bypasses_rls=False. 잔여 = 선택 심층검증(cross-tenant 누출·신규가입·`/admin/tenants`)만. 절차: [`docs/runbooks/rls-role-separation.md`](../../docs/runbooks/rls-role-separation.md). 🔴 RLS 작업 전 `SELECT rolbypassrls FROM pg_roles WHERE rolname=current_user` 실측 의무 (메모리 `project_rls_owner_bypass_finding`).
-- 🔴 **RLS legacy(user_id NULL) 노출 정책 = 테이블별 의도적 비대칭 (정합성 감사 U1, 2026-06-13)**: `0026` analyses/merge_attempts/repositories 정책은 `OR user_id IS NULL` 절로 legacy(미소유) repo 데이터를 **전역 노출**(legacy=admin 영역)하나, `0027` security_alert_process_logs 정책은 이 절을 **의도적으로 생략**(legacy 보안알림 비노출 — 더 엄격, strict multi-tenancy 방향 정합). 감사(U1)가 "0026 대비 누락"을 결함으로 flag 했으나 0027 작성자의 의도된 설계임을 확인 → **false-positive 종결**(운영 실측 legacy repo=0, 영향 0). 🔴 **0027 에 `user_id IS NULL` 추가 금지** — legacy 보안알림 cross-tenant 노출(보안 완화)이며 `#869` per-user tightening 방향 역행. 회귀 가드: `tests/unit/migrations/test_0027_rls_intentional_divergence.py`. 🔴 **app-layer 필터 ↔ RLS 방향 모순 주의 (회고 P1, 2026-06-13)**: 현재 *활성* 1차 안전망인 app-layer 필터(`security_alert_log_repo._apply_owner_filter` + `dashboard_service` 의 `OR Repository.user_id.is_(None)`)는 legacy 보안알림을 **전역 노출**해 0027 RLS 의 'legacy 비노출(strict)' 의도와 **정반대 방향**이다. `#2` 미완(BYPASSRLS) 동안 RLS 미평가라 충돌 0이나, Phase 4 비-BYPASSRLS 전환 시 legacy(`user_id IS NULL`) 행에서 두 레이어가 상반(app=노출 vs RLS 0027=차단) → 더 제한적인 RLS 우선해 app 경로에서도 legacy 알림이 사라지는 행동 변화. 운영 legacy repo=0 이라 현재 영향 0. 전 정책을 strict 로 통일하려면(0026 에서 절 제거 **+ app-layer 필터의 `is_(None)` 절도 동시 제거**) `#2` RLS Phase 4 운영 전환과 묶어 사용자 결정 영역으로 진행.
-- 🔴 **신규 RLS 테이블 추가 시 `_RLS_MATRIX` 동기화 의무 (정합성 감사 P2 가드)**: alembic 에 `ALTER TABLE <t> ENABLE ROW LEVEL SECURITY` 를 추가하면 `src/services/saas_service.py::_RLS_MATRIX`(admin RLS 감사 리포트 `GET /admin/rls-audit` 단일 출처)에도 항목 추가 의무. 누락 시 감사 리포트가 미적용 테이블 갭을 못 잡는다 (0037 `issue_registrations` 가 한동안 매트릭스에서 누락된 전례). 최신 사례: `analysis_attempts`(0045, repo_id 간접 1-hop — legacy NULL 호환) 정상 동기화 (직전 = `claude_api_calls` 0043). 🔴 구체 테이블 목록은 매트릭스 증가로 자연 drift 하므로 **정본은 `_RLS_MATRIX` 정의부**이며, 여기 열거는 예시일 뿐이다. `tests/unit/test_rls_matrix_completeness.py` 가 alembic `ENABLE ROW LEVEL SECURITY` 테이블 집합 ↔ `_RLS_MATRIX` 테이블 집합을 양방향(bijection) 대조로 강제 — 동기화 누락·유령 항목 모두 CI fail. 🔴 **ENABLE + FORCE 페어 의무 (RLS Phase 3, 0041)**: 신규 RLS 테이블은 같은 마이그레이션에서 `ALTER TABLE <t> FORCE ROW LEVEL SECURITY` 도 함께 적용 — `tests/unit/migrations/test_0041_rls_force.py` 의 ENABLE↔FORCE bijection 가드가 누락 시 CI fail. FORCE 문은 **테이블명 리터럴 SQL** 로 작성 (f-string 루프 조립 시 가드가 테이블 인식 불가).
-- **dialect 분기 helper `is_postgresql(bind_or_conn)` (사이클 82 PR 1 #272)**: `src/shared/alembic_dialect.py::is_postgresql(bind_or_conn)` (duck typing — `bind`/`op.get_context()` 양 호환). 사이클 82 당시 11 사용처 일괄 치환, 이후 마이그레이션 추가로 확장 (현재 alembic 0024~0041 다수 + `src/database.py` event listener + `src/services/saas_service.py`). 예외: `alembic/env.py:96` SQLite-specific 분기는 `connection.dialect.name == "sqlite"` 직접 비교 보존(`is_postgresql` 미사용). (2026-06-23 정정 — 이전 `env.py:88`/사용처 카운트 drift.) 사용 패턴: `from src.shared.alembic_dialect import is_postgresql; if not is_postgresql(op.get_bind()): return`.
-- 🔴 **Alembic batch_alter_table 금지**: SQLite 전용 패턴. PostgreSQL에서는 `op.create_unique_constraint('이름', '테이블', ['컬럼'])` 직접 사용. 잘못 사용 시 lifespan 마이그레이션 실패 → Railway 헬스체크 실패. **예외**: `0005_add_users_and_user_id.py`, `0006_phase8b_github_oauth.py`는 이미 프로덕션에 적용된 이력 마이그레이션이므로 수정 금지. 신규 마이그레이션(0007 이후)에만 이 규칙을 적용한다.
-- 🔴 **alembic `env.py` 가 cfg `sqlalchemy.url` 을 `settings.effective_migration_url` 로 무조건 override (사이클 157 #739 + #908)**: `tests/unit/migrations/` 마이그레이션 테스트에서 `cfg.set_main_option("sqlalchemy.url", db_url)` **단독 설정은 무효** — alembic 실행 시 `alembic/env.py` 가 `settings.effective_migration_url`(= `migration_database_url or database_url`, 싱글톤) 로 항상 덮어쓰기 때문. 특정 DB(예: PG) 로 마이그레이션을 돌리려면 `with patch.object(app_settings, "database_url", db_url)` 로 **settings 싱글톤** 을 patch 해야 함 (`migration_database_url` 미설정 시 `effective_migration_url` = `database_url` 이라 유효 — `MIGRATION_DATABASE_URL` 설정 환경을 테스트하면 그 필드도 patch). cfg URL 만 설정하면 settings 기본값(SQLite) 로 실행 → `0009` 등 PG 전용 ALTER 가 `SQLiteImpl` 에서 실패. 전례: round_trip 테스트 CI 활성화(#739) 시 SQLite 실행으로 fail → `patch.object` fix-up. (testing.md 싱글톤 mock 규칙의 alembic-specific 변형.)
-- 🔴 **env.py override 의 운영 결과 — RLS Phase 4 마이그레이션 credential 게이트 (2026-06-15 / #908)**: env.py 가 `effective_migration_url`(= `migration_database_url or database_url`)을 사용하므로 **`MIGRATION_DATABASE_URL` 미설정 시 `DATABASE_URL` 로 fallback**. **현재(Phase 4 전 — `DATABASE_URL`=`postgres`/BYPASSRLS·`MIGRATION_DATABASE_URL` 미설정)는 무해**하나, RLS Phase 4 에서 `DATABASE_URL`=`scamanager_app`(비-BYPASSRLS)로 전환하면서 **`MIGRATION_DATABASE_URL`(owner)을 설정하지 않으면** **pre-deploy `alembic upgrade head`(`railway.toml`)·lifespan `_run_migrations` 가 app role 로 실행** → `alembic_version`(relrowsecurity=true·policy 0건 = default-deny)을 비-owner 가 못 읽어 마이그레이션 실패·배포 차단. ✅ **`MIGRATION_DATABASE_URL`(owner role) 코드 구현됨 (#908)** — `config.py` `effective_migration_url`(= `migration_database_url or database_url`) + `env.py` 가 이를 `sqlalchemy.url` 로 사용(미설정 시 `DATABASE_URL` fallback = 발효 0). 🔴 **Phase 4 시 `MIGRATION_DATABASE_URL`(owner) env 설정만 잔여**. 런타임 `DATABASE_URL`/`DATABASE_URL_WORKER` 를 마이그레이션 credential 로 재사용 금지. 회귀 가드: `tests/unit/migrations/test_alembic_env_migration_url.py`(ast — `effective_migration_url` 사용 강제). 절차: [`docs/runbooks/rls-role-separation.md`](../../docs/runbooks/rls-role-separation.md) §6 게이트.
-- **FailoverSessionFactory**: `DATABASE_URL_FALLBACK` 설정 시 Primary `OperationalError` → Fallback DB 자동 전환. `_probe_primary_loop` daemon 스레드가 복구 확인 후 자동 복귀. 미설정 시 단일 엔진 모드(probe 스레드 없음). 소비자 코드(`SessionLocal()`)는 변경 없이 그대로 사용. `engine = SessionLocal._primary_engine`으로 alembic/env.py 호환성 유지.
-- 🔴 **WorkerSessionLocal — background/시스템 컨텍스트 세션 라우팅 (RLS Phase 2 옵션 A, 2026-06-10)**: background 경로 17 모듈(`worker/pipeline`·`webhook/providers/*`·`webhook/_helpers`·`gate/engine`·`gate/actions/{review_comment,approve}`·`notifier/*` lazy 6종·`api/internal_cron`·`api/hook`·`shared/claude_metrics`[C1, `_persist_cost` 비용 영속화 — 웹/백그라운드 무관 일관 worker 세션]) **+ 시스템 API 3종**(`api/repos`·`api/stats`·`api/repo_report` — `require_api_key` 글로벌 키, 세션 없는 cross-tenant 시스템 엔드포인트, `_SYSTEM_API_MODULES`, RLS Phase 4)은 `from src.database import WorkerSessionLocal as SessionLocal` alias 의무 (모듈 심볼명 `SessionLocal` 유지 — 기존 테스트 patch 대상 불변). 웹 경로(ui/auth/사용자 세션 컨텍스트 api)는 bare `SessionLocal` 유지 — `WorkerSessionLocal` 사용 금지. `DATABASE_URL_WORKER` 미설정 시 `WorkerSessionLocal is SessionLocal`(현행 보존) / 설정 시 독립 단일 엔진(failover 없음 + RLS `SET LOCAL` listener 미등록 — BYPASSRLS worker role 전제). **신규 background 진입점 추가 시 alias 적용 + `tests/unit/test_worker_session_routing.py` `_BACKGROUND_MODULES` 등재 의무** (ast 정적 가드가 bare import 자동 fail). 🔴 **예외 = hybrid 모듈 `_HYBRID_DB_MODULES`(3건: `src/auth/github.py`·`src/api/admin.py`·`src/ui/routes/admin.py`, RLS Phase 4)**: 같은 모듈 안에서 일부 경로는 웹 RLS(세션 존재/진단), 일부는 세션 없는 cross-tenant(시스템 컨텍스트)다. bare `SessionLocal` + `WorkerSessionLocal`(자체 이름, **alias 금지** — 두 심볼 구분 유지) 둘 다 import. github.py: callback=worker / logout=bare. admin 2종: tenants·operations(cross-tenant 집계)=worker(`_get_worker_db`) / **rls-audit=bare(`_get_db` — connection_bypasses_rls 진단은 web app role 로 평가돼야 정확, worker 면 항상 우회 오진단)**. 신규 hybrid 진입점은 `_HYBRID_DB_MODULES` 등재 + 계약 가드(테스트 10) + 엔드포인트별 라우팅 sentinel 가드 적용 의무. 절차: [`docs/runbooks/rls-role-separation.md`](../../docs/runbooks/rls-role-separation.md) §Phase 4.
-- **CurrentUser 데이터클래스 패턴**: `get_current_user()`는 ORM User 컬럼 값을 `CurrentUser` dataclass (`src/auth/session.py:11`) 에 복사 반환 — `db.expunge()` 미사용. 세션 종료 후 속성 접근 안전. 관계 lazy-load 사용 금지 (dataclass 에 복사되지 않은 관계 접근 시 DetachedInstanceError 발생).
-- **ThreadPoolExecutor with 블록 금지**: `with` 문은 `shutdown(wait=True)` 호출 → DNS hang 시 무기한 블록. `try/finally` + `executor.shutdown(wait=False)` 패턴 사용 (database.py 참조).
-- **SQLite hostaddr 제외**: `_ipv4_connect_args`는 hostname이 None(SQLite URL)이면 빈 dict 반환 — 그렇지 않으면 `sqlite3.connect(hostaddr=...)` TypeError 발생.
-- **`Analysis.author_login` NULL 정책**: 신규 컬럼은 backfill 없이 NULL 허용. 모든 집계는 `WHERE author_login IS NOT NULL` 적용. backfill 필요 시 `scripts/backfill_author.py` 별도 실행. PR 이벤트 = `pull_request.user.login`, Push 이벤트 = `head_commit.author.username`.
-- **`Repository.user_id` NULL backfill 스크립트**: `scripts/backfill_repository_user_id.py` (사이클 66 #229) — author_login JOIN 패턴. dry-run default + `--apply` 명시 의무. `_resolve_user_id_for_repo` pure 함수 + 4 카운터 (resolved/skipped_no_analysis/skipped_no_author/skipped_no_user). 실제 적용은 사용자 명시.
-- 🔴 **ORM 컬럼 추가 시 마이그레이션 필수 동반**: `models/*.py`에 `Column(...)` 추가 후 반드시 `make revision m="설명"` 으로 마이그레이션 파일을 함께 생성해야 한다. 단위 테스트는 in-memory SQLite(`Base.metadata.create_all`)로 ORM 정의 그대로 테이블을 만들기 때문에 마이그레이션 파일이 없어도 테스트가 통과한다. 그러나 실제 DB(PostgreSQL/Railway)에는 컬럼이 생성되지 않아 운영 환경에서 500 에러가 발생한다. 전례: `leaderboard_opt_in` 컬럼 (PR #72·#74, 2026-04-26).
-- **`merge_retry_queue` 클레임 패턴**: `claim_batch` 은 단일 SQL `UPDATE … WHERE claimed_at IS NULL RETURNING (attempts_count = 1) AS is_first` 로 원자적 클레임 + 첫-지연 알림 결정 동시 수행. Postgres 는 `FOR UPDATE SKIP LOCKED`, SQLite 는 dialect 분기. 재배포 중 stale claim 은 5분 후 재클레임. 신규 큐 도입 시 동일 패턴 권장.
-- 🔴 **DB 인덱스 정의 — ORM `__table_args__` + alembic 양쪽 의무 (Phase H PR-4A)**: 신규 인덱스 추가 시 `models/*.py` 의 `__table_args__ = (Index(...), ...)` 와 `alembic/versions/NNNN_*.py` 의 `op.create_index(...)` 양쪽 정의 필수. ORM-only 정의는 단위 테스트 (in-memory SQLite `create_all`) 에서는 인식되지만 운영 PG 에 미반영 → 인덱스 활용 실패. 회귀 가드 테스트는 SQLAlchemy `inspect()` 로 인덱스 컬럼 검증 (`tests/unit/migrations/test_0023_composite_indexes.py` 참조).
-- 🔴 **FK ondelete CASCADE 일관성 매트릭스 (Phase H C7)**: child 테이블의 `ForeignKey("parent.id")` 추가 시 다른 child 모델의 `ondelete` 정책 일관성 검토 의무. 현재 `analyses.id` 를 참조하는 child 4종 모두 CASCADE 통일:
+## 🔴 관측을 끄는 결함
 
-  | child 모델 | FK 컬럼 | ondelete | 도입 시점 |
-  |------|------|------|------|
-  | `MergeAttempt.analysis_id` | analyses.id | **CASCADE** | Phase F.1 |
-  | `MergeRetryQueue.analysis_id` | analyses.id | **CASCADE** | Phase 12 |
-  | `AnalysisFeedback.analysis_id` | analyses.id | **CASCADE** | Phase E.3 |
-  | `GateDecision.analysis_id` | analyses.id | **CASCADE** | Phase H C7 (alembic 0024) |
+- 🔴 **`alembic/env.py` 의 `fileConfig` 는 앱 로깅을 파괴한다 — `is_configured()` 가드 제거 금지.**
+  *왜*: lifespan 이 인프로세스로 `command.upgrade()` 를 도는데, 그 시점 `fileConfig` 가
+  (a) root 핸들러를 stderr 로 **교체**하고 (b) `disable_existing_loggers=True` 로 `uvicorn.access` 와
+  **모든 `src.*` 로거를 비활성화**한다. 앱 INFO·access 로그가 **출시 이래 전부 소실**됐다.
+  가드 형태: `if config.config_file_name is not None and not is_configured():`
+  (CLI 단독 실행은 앱 설정이 없으므로 기존대로 ini 로깅 적용 — 양쪽 만족).
+  🔴 **관측 부재를 외부 인프라 탓으로 돌리기 전에 앱 자신이 관측을 끄고 있는지 먼저 배제할 것.**
+  가드: `tests/unit/migrations/test_alembic_env_logging_guard.py`
 
-  신규 child 추가 시 동일 CASCADE 적용 (default), 다른 정책 (RESTRICT/SET NULL) 채택 시 회고에 사유 명시. application-level `delete_repo_cascade` (`ui/_helpers.py`) 는 admin script 우회 경로 보완 — DB 레벨 CASCADE 가 1차 안전망.
+## 세션 라우팅 (이 파일이 본문 — 다른 영역은 여기를 가리킨다)
+
+- 🔴 **`WorkerSessionLocal` — background/시스템 컨텍스트 전용.**
+  `from src.database import WorkerSessionLocal as SessionLocal` **alias 의무**(모듈 심볼명 `SessionLocal` 유지 —
+  기존 테스트 patch 대상 불변), 웹 경로는 bare 유지, **혼용 금지**.
+  대상 = **background 17 모듈**(`worker/pipeline`·`webhook/providers/*`·`webhook/_helpers`·`gate/engine`·
+  `gate/actions/*`·`notifier/*` lazy·`api/internal_cron`·`api/hook`·`shared/claude_metrics`)
+  **+ 시스템 API 3종**(`api/repos`·`api/stats`·`api/repo_report` — `require_api_key` cross-tenant, `_SYSTEM_API_MODULES`).
+  신규 background 진입점은 `tests/unit/test_worker_session_routing.py` 의 `_BACKGROUND_MODULES` 등재 의무(AST 가드가 bare import 를 fail).
+  - 🔴 **hybrid 예외 = `_HYBRID_DB_MODULES` 3건**: `src/auth/github.py` · **`src/api/admin.py`** · `src/ui/routes/admin.py`.
+    두 심볼을 **구분해** import 한다(**alias 금지**). github: callback=worker / logout=bare.
+    admin 2종: tenants·operations(cross-tenant 집계)=worker(`_get_worker_db`) /
+    등재 집행: `tests/unit/test_worker_session_routing.py`.
+    🔴 **rls-audit=bare(`_get_db`) 유지 의무** — `connection_bypasses_rls` 진단은 **app role 로 평가돼야 정확**하고,
+    worker 로 바꾸면 **항상 우회로 오진단**된다.
+    신규 hybrid 는 `_HYBRID_DB_MODULES` 등재 + 계약 가드 + **엔드포인트별 라우팅 sentinel 가드** 의무
+    (`tests/unit/test_worker_session_routing.py`).
+  - `DATABASE_URL_WORKER` 미설정 시 `WorkerSessionLocal is SessionLocal`(현행 보존) / 설정 시 독립 단일 엔진
+    (failover 없음 + RLS `SET LOCAL` listener 미등록 — BYPASSRLS worker role 전제).
+- **`FailoverSessionFactory`** — `DATABASE_URL_FALLBACK` 설정 시 primary `OperationalError` → fallback 전환,
+  daemon probe 스레드가 복구 후 자동 복귀. 소비자 코드 변경 0.
+- **`CurrentUser` dataclass** — ORM 값을 복사 반환(`db.expunge()` 미사용). **관계 lazy-load 금지**(DetachedInstanceError).
+
+## RLS
+
+- 🔴 **RLS 활성화 미들웨어는 ASGI 여야 한다 — `BaseHTTPMiddleware` 금지.**
+  *왜*: Starlette `dispatch` 가 **별도 anyio task** 에서 `call_next` 를 부르므로 **contextvars 가 전파되지 않는다**
+  → `app.user_id` 가 끊겨 정책이 미적용/오적용된다.
+  **등록 순서 = LIFO**(RLS inner / SessionMiddleware outer). 구현 = `src/middleware/rls_session.py` +
+  `src/database.py` 의 `_set_rls_user_id_per_query`(매 query 직전 `SET LOCAL app.user_id`).
+- 🔴 **RLS 작업 전 `SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user` 실측 의무.**
+  *왜*: BYPASSRLS role 로 접속한 채 "RLS 동작 확인" 을 하면 **정책이 평가조차 되지 않는다**(2차 안전망 실효 0).
+  🔴 **FORCE 단독 적용은 무의미하다** — BYPASSRLS 가 FORCE 를 무시한다. role 분리가 선행이다.
+- 🔴 **신규 RLS 테이블 추가 시 `src/services/saas_service.py` 의 `_RLS_MATRIX` 동기화 의무.**
+  *왜*: 누락 시 admin 감사 리포트(`GET /admin/rls-audit`)가 미적용 테이블 갭을 못 잡는다.
+  집행: `tests/unit/test_rls_matrix_completeness.py`.
+  🔴 **`FORCE` SQL 은 테이블명을 리터럴로 적는다** — f-string 루프로 조립하면 ENABLE↔FORCE 페어 가드가
+  테이블을 인식하지 못해 **가드가 공허해진다**(`tests/unit/migrations/test_0041_rls_force.py`).
+- 🔴 **legacy(`user_id IS NULL`) 노출은 테이블별 의도적 비대칭이다** — `0026`(analyses·merge_attempts·
+  repositories)은 `OR user_id IS NULL` 로 전역 노출(legacy=admin 영역), `0027`(security_alert_process_logs)은
+  **의도적으로 생략**한다. 비대칭 고정: `tests/unit/migrations/test_0027_rls_intentional_divergence.py`.
+  🔴 **`0027` 에 `user_id IS NULL` 절을 추가하지 말 것** — "0026 과 일관성" 을 이유로 넣으면
+  **legacy 보안 알림이 cross-tenant 로 노출**된다. 신규 정책은 비대칭을 복사하지 말고 테이블 성격으로 판단한다
+  (`tests/unit/migrations/test_0027_rls_intentional_divergence.py`).
+- 🔴 **env.py 는 `sqlalchemy.url` 을 `settings.effective_migration_url` 로 무조건 override 한다.**
+  *왜*: 테스트에서 `cfg.set_main_option("sqlalchemy.url", ...)` **단독 설정은 무효**다.
+  운영 결과 = `MIGRATION_DATABASE_URL` 미설정 시 `DATABASE_URL` 로 fallback(RLS Phase 4 credential 게이트).
+  집행: `tests/unit/migrations/test_alembic_env_migration_url.py`.
+  🔴 **런타임 URL(`DATABASE_URL`·`DATABASE_URL_WORKER`)을 마이그레이션 credential 로 재사용 금지** —
+  `MIGRATION_DATABASE_URL` 은 **owner** 여야 한다. non-owner 로 돌면 `alembic_version` 갱신이 실패해 배포가 막히거나
+  잘못된 권한으로 DDL 이 나간다(`tests/unit/migrations/test_alembic_env_migration_url.py`).
+
+## alembic 작성 규칙
+
+- 🔴 **`batch_alter_table` 금지** — SQLite 전용 패턴이라 PG 에서 lifespan 마이그레이션 실패 → Railway 헬스체크 실패.
+  PG 는 `op.create_unique_constraint(...)` 직접 사용. **예외**: 이미 운영에 적용된 이력 마이그레이션(`0005`·`0006`).
+- **dialect 분기는 `src/shared/alembic_dialect.py` 의 `is_postgresql(bind_or_conn)`** (duck typing, bind/context 양 호환).
+- 🔴 **ORM 컬럼 추가 시 마이그레이션 필수 동반.**
+  *왜*: 단위 테스트는 in-memory SQLite 에 ORM 정의로 테이블을 만들어서 **마이그레이션이 없어도 통과**한다 → 운영 500.
+- 🔴 **인덱스는 ORM `__table_args__` + alembic 양쪽 정의 의무** — ORM-only 는 단위 테스트만 인식하고 운영 PG 에 미반영.
+- 🔴 **FK `ondelete` 는 형제 child 와 일관성 검토 의무.** `analyses.id` 참조 child 4종은 전부 **CASCADE**
+  (`MergeAttempt`·`MergeRetryQueue`·`AnalysisFeedback`·`GateDecision`). 다른 정책 채택 시 회고에 사유 명시.
+
+## 리포지토리 계층
+
+- **`merge_retry_queue` 클레임** = 단일 SQL `UPDATE … WHERE claimed_at IS NULL RETURNING (attempts_count = 1)`
+  로 원자 클레임 + 첫-지연 알림 결정 동시 수행. PG 는 `FOR UPDATE SKIP LOCKED`, SQLite 는 dialect 분기.
+  재배포 중 stale claim 은 5분 후 재클레임. 신규 큐도 동일 패턴 권장.
+- **`Analysis.author_login`** — backfill 없이 NULL 허용, 집계는 전부 `WHERE author_login IS NOT NULL`.
+  PR = `pull_request.user.login` / Push = `head_commit.author.username`. backfill = `scripts/backfill_author.py`.
+- **`Repository.user_id` backfill** = `scripts/backfill_repository_user_id.py` — dry-run default + `--apply` 명시 의무.
+- **`ThreadPoolExecutor` 를 `with` 로 열지 말 것** — `shutdown(wait=True)` 가 DNS hang 시 무기한 블록.
+  `try/finally` + `shutdown(wait=False)`.
+- **SQLite 는 `hostaddr` 제외** — `_ipv4_connect_args` 가 hostname `None` 이면 빈 dict(아니면 TypeError).
