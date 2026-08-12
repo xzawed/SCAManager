@@ -211,8 +211,21 @@ async def review_code(  # pylint: disable=too-many-locals  # 다국어 + caching
         return _default_result("api_error")
     finally:
         # 🔴 비용 로그는 **여기서 한 번만** — 성공·실패 어느 경로든 호출당 1행 (R63).
+        # 🔴 `duration_ms` 는 **명시 인자**로 넘긴다 — `**_log` 안에 숨기면 필수 keyword-only
+        #    인자가 정적으로 보이지 않아 pylint E1125(missing-kwoa)가 뜬다. 형제 호출부
+        #    (`dashboard_service`·`repo_insight_service`)도 이미 명시 인자를 쓴다.
+        #    🔴 런타임 누락은 원래 없었다 — 아래 setdefault 가 호출 직전에 항상 채우고,
+        #    정말 빠졌다면 `TypeError` 로 터진다(조용한 누락이 아니다). 즉 이 변경은
+        #    **동작 보존 + 정적 가시화**이며 관측자는 `test_ai_review_errors.py` 의 duration 3축이다.
+        # Pass duration_ms explicitly; hidden inside **_log it is invisible to static analysis.
         _log.setdefault("duration_ms", (time.perf_counter() - start) * 1000)
-        log_claude_api_call(model=model, repo_id=repo_id, **_log)  # type: ignore[arg-type]
+        duration_ms = _log.pop("duration_ms")
+        log_claude_api_call(
+            model=model,
+            repo_id=repo_id,
+            duration_ms=duration_ms,  # type: ignore[arg-type]
+            **_log,  # type: ignore[arg-type]
+        )
         # 호출당 생성한 AsyncAnthropic httpx 커넥션 풀 해제 — 미종료 시 FD 누수 (WBS P1).
         # Close the per-call AsyncAnthropic httpx pool — leaks FDs/connections if left open.
         await aclose_anthropic_client(client)
