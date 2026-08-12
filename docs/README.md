@@ -56,6 +56,7 @@
 | [runbooks/docs-consolidation-status.md](runbooks/docs-consolidation-status.md) | 🔴 **문서·가드 정리 진행 상태 정본** — 착수 전 필독(12 PR 중 PR-1 완료, PR-4→PR-5 순서 강제) |
 | [runbooks/docs-consolidation-plan.md](runbooks/docs-consolidation-plan.md) | 문서·가드 정리 계획 전문 (SPEC→RED→GREEN→GUARD 12 묶음) |
 | [runbooks/doc-volume-reduction-plan.md](runbooks/doc-volume-reduction-plan.md) | 🟢 **결정 대기 제안서** — 기록성↔집행성 분리(backlog ✅ 47% · STATE 이력 46% 실측). 실행 0건 |
+| [runbooks/session-handoff-2026-08-12.md](runbooks/session-handoff-2026-08-12.md) | 🔴 **세션 인계 — 다른 머신에서 이어받기**. main red 원인·PR #1331 대기·감사 결정 5건·미완 회고 |
 | [guides/github-integration-guide.md](guides/github-integration-guide.md) | GitHub 연동 가이드 |
 | [guides/onpremise-migration-guide.md](guides/onpremise-migration-guide.md) | 온프레미스 DB 전환 가이드 |
 | [guides/operational-verification.md](guides/operational-verification.md) | 운영 검증 가이드 |
