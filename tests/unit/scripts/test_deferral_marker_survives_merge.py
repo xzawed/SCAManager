@@ -140,8 +140,19 @@ def test_carriers_fall_back_to_the_last_commit_without_a_range(monkeypatch, mod)
     assert last in mod.deferral_carriers()[0]
 
 
-def test_git_failure_is_not_an_exemption(monkeypatch, mod):
-    """🔴 fail-closed — git 이 실패해도 '마커 있음' 으로 읽히지 않는다."""
+def test_git_failure_is_not_an_exemption(monkeypatch, mod, marked_tip_repo):
+    """🔴 fail-closed — git 이 실패해도 '마커 있음' 으로 읽히지 않는다.
+
+    🔴 **초판은 live 리포의 tip 을 부정 사례로 삼았다** — 즉 기대값을 환경에서 유도했다.
+    tip 에 마커가 없는 동안은 초록이었고(수개월), `#1335` 가 마커를 tip 에 올리자
+    비로소 red 가 됐다. 그때 red 를 낸 것은 이 테스트가 옳아서가 아니라 **환경이
+    바뀌어서**였다. 지금은 `marked_tip_repo`(tip 에 마커를 **일부러 심은** 리포)를 써서
+    그 우연을 제거한다 — 보호를 지워도 통과하던 창을 닫는다.
+    """
+    monkeypatch.chdir(marked_tip_repo)
+    # 🔴 봉인은 `_ROOT` 치환이다 — `chdir` 만으로는 `_git_text` 가 실리포를 본다
+    #    (`_git_text` 가 `cwd=str(_ROOT)` 를 쓴다. Grok claim-review 019ff68f A9).
+    monkeypatch.setattr(mod, "_ROOT", marked_tip_repo, raising=False)
     monkeypatch.setenv("PR_BASE_SHA", "0000000000000000000000000000000000000000")
     monkeypatch.setenv("PR_HEAD_SHA", "0000000000000000000000000000000000000000")
     monkeypatch.setenv("PR_BODY", "")
@@ -342,4 +353,94 @@ def test_this_very_file_does_not_defer_itself(mod):
 
     assert mod._DEFERRED.search(prose) is None, (
         "마커를 설명하는 산문이 이월로 인식됐다 — 문서화가 면제를 발급한다"
+    )
+
+
+# ── ⑥ 🔴 범위 조회 실패는 tip 을 상속하지 않는다 (2026-08-13 main red 실사고) ────
+
+
+@pytest.fixture(name="marked_tip_repo")
+def _marked_tip_repo(tmp_path: Path) -> Path:
+    """tip 커밋 **본문에 마커가 있는** 리포.
+
+    `#1335` 가 만든 상태를 밀폐 재현한다 — 이월 마커의 첫 실사용이 squash 로 tip 에
+    실렸고, 그때 이 함수의 잠재 fail-open 이 발현했다.
+    A repo whose tip legitimately carries a marker — the state that exposed the bug.
+    """
+    repo = tmp_path / "marked"
+    repo.mkdir()
+
+    def g(*args: str) -> str:
+        return subprocess.run(  # nosec B603 B607
+            ["git", *args], cwd=str(repo), capture_output=True, text=True,
+            encoding="utf-8", errors="replace", check=True,
+        ).stdout
+
+    g("init", "-q")
+    g("config", "user.email", "guard@test.local")
+    g("config", "user.name", "guard")
+    g("config", "commit.gpgsign", "false")
+    (repo / "a.txt").write_text("base\n", encoding="utf-8")
+    g("add", "-A")
+    g("commit", "-qm", "base")
+    (repo / "a.txt").write_text("next\n", encoding="utf-8")
+    g("commit", "-qam", "docs: 이월을 동반한 머지", "-m", _MARKER)
+    return repo
+
+
+def test_a_failed_range_query_does_not_inherit_the_tips_marker(
+    monkeypatch, mod, marked_tip_repo
+):
+    """🔴 범위를 **요청했는데 조회가 실패**하면 tip 으로 물러나서는 안 된다.
+
+    ## 사고 (2026-08-13 — main 12시간 red)
+
+    초판은 `commits or _git_text("log", "-1", ...)` 였다. 범위 조회가 빈 문자열을
+    돌려주면 **조용히 tip 으로 대체**되므로, tip 에 정당한 마커가 있으면 그 마커가
+    **전혀 다른 push 의 면제**로 상속된다.
+
+    docstring 은 이 폴백을 *"마커가 안 보이면 차단되므로 fail-closed"* 라고 적었다.
+    그 서술은 **tip 에 마커가 없을 때만** 참이었고, `#1335` 가 `STATE-sync-deferred:`
+    의 첫 실사용으로 tip 에 마커를 올리자 즉시 거짓이 됐다.
+
+    🔴 기존 `test_git_failure_is_not_an_exemption` 은 **live 리포의 tip** 을 부정 사례로
+    삼아 수개월간 우연히 초록이었다(기대값을 환경에서 유도한 형태). 이 테스트는 tip 에
+    마커를 **일부러 심어** 그 우연을 제거한다.
+
+    A requested-but-failed range must not silently fall back to the tip, or the tip's
+    legitimate marker becomes an exemption for an unrelated push.
+    """
+    monkeypatch.chdir(marked_tip_repo)
+    monkeypatch.setattr(mod, "_ROOT", marked_tip_repo, raising=False)
+    monkeypatch.setenv("PR_BODY", "")
+    # 존재하지 않는 SHA 범위 — 조회가 실패한다.
+    monkeypatch.setenv("PR_BASE_SHA", "0" * 40)
+    monkeypatch.setenv("PR_HEAD_SHA", "0" * 40)
+
+    carriers = mod.deferral_carriers()[0]
+
+    assert mod._DEFERRED.search(carriers) is None, (
+        "범위 조회가 실패했는데 tip 의 마커를 상속했다 — 다른 push 의 이월이 "
+        "이 실행의 면제로 새어 나온다(fail-open)"
+    )
+
+
+def test_the_tip_fallback_still_works_when_no_range_was_requested(
+    monkeypatch, mod, marked_tip_repo
+):
+    """🔴 과교정 대조군 — 범위를 **요청하지 않은** 경우의 폴백은 살아야 한다.
+
+    새 브랜치 push 는 `before` 가 all-zero 라 범위가 없다. 그때까지 막으면 이월
+    경로가 죽고, 가드가 곧 꺼진다(정책 17 — 안정성 > 엄격성).
+    """
+    monkeypatch.chdir(marked_tip_repo)
+    monkeypatch.setattr(mod, "_ROOT", marked_tip_repo, raising=False)
+    monkeypatch.setenv("PR_BODY", "")
+    for name in ("PR_BASE_SHA", "PR_HEAD_SHA", "PUSH_BEFORE_SHA", "PUSH_AFTER_SHA"):
+        monkeypatch.delenv(name, raising=False)
+
+    carriers = mod.deferral_carriers()[0]
+
+    assert mod._DEFERRED.search(carriers) is not None, (
+        "범위 미요청 폴백까지 막았다 — 새 브랜치 push 에서 이월이 영구 불가해진다(과교정)"
     )

@@ -206,8 +206,17 @@ def deferral_carriers() -> tuple[str, str]:
 
     그래서 push 에서도 **그 push 가 실제로 들여온 커밋 전부**(`before..after`)를 본다.
     이러면 squash·merge-commit·rebase-merge 셋 다 마커를 보존한다.
-    `before` 가 all-zero(새 브랜치)이거나 범위 조회가 실패하면 직전 커밋으로 물러난다 —
-    그 경우 마커가 안 보이면 드리프트가 차단되므로 fail-closed 다.
+    🔴 **범위를 요청했는데 조회가 실패하면 직전 커밋으로 물러나지 않는다** (2026-08-13 정정).
+    초판은 물러났고 그것을 *"마커가 안 보이면 차단되므로 fail-closed"* 라고 적었는데,
+    그 서술은 **tip 에 마커가 없을 때만** 참이었다. `#1335` 가 `STATE-sync-deferred:` 를
+    처음 실사용해 squash 로 tip 에 올리자 즉시 거짓이 됐다 — tip 의 정당한 마커가
+    **전혀 다른 push 의 면제**로 상속됐고 main 이 red 가 됐다.
+    지금은 요청한 범위가 답을 못 주면 **빈 운반체**를 돌린다(면제 없음 = 차단).
+    폴백은 범위를 **애초에 요청하지 않은** 경우(all-zero sentinel)에만 산다.
+
+    ⚠️ **가용성 잔여**(Grok claim-review `019ff68f` A4): force-push 로 `before` 가 도달
+    불가해지면 범위가 비어, tip 에 정당한 마커가 있어도 차단된다. 의도한 방향이지만
+    비용이 0은 아니다 — 그 경우 저자는 마커를 **새 커밋**에 다시 실어야 한다.
 
     Both events read a *range*: the PR's commits, or the commits the push actually
     introduced. `git log -1` was wrong — merge commits and rebase-merges hide the marker.
@@ -221,8 +230,23 @@ def deferral_carriers() -> tuple[str, str]:
         if set(base) <= {"0"}:  # 새 브랜치의 all-zero sentinel / new-branch sentinel
             base = ""
 
-    commits = _git_text("log", "--format=%B", f"{base}..{head}") if base and head else ""
-    return commits or _git_text("log", "-1", "--format=%B"), read_pr_body()
+    # 🔴 **범위를 요청했는가**를 폴백 판정과 분리한다 (2026-08-13 main red 실사고).
+    #
+    # 초판은 `commits or _git_text("log", "-1", ...)` 였다. 범위 조회가 실패해 빈 문자열이
+    # 나오면 **조용히 tip 으로 대체**되므로, tip 에 정당한 마커가 있으면 그 마커가
+    # **전혀 다른 push 의 면제**로 상속된다. 위 docstring 이 이 폴백을 "fail-closed" 라
+    # 서술한 것은 **tip 에 마커가 없을 때만** 참이었고, `#1335` 가 `STATE-sync-deferred:`
+    # 를 처음 실사용해 squash 로 tip 에 올리자 즉시 거짓이 됐다 — 마커의 첫 사용이
+    # 그 마커를 읽는 함수의 잠재 fail-open 을 드러낸 형태다.
+    #
+    # 요청한 범위가 답을 못 주면 **빈 운반체**를 돌린다(면제 없음 = 드리프트 차단).
+    # 범위를 애초에 요청하지 않은 경우(새 브랜치 all-zero sentinel)의 폴백은 유지한다 —
+    # 그것까지 막으면 이월 경로가 죽어 가드가 곧 꺼진다(정책 17).
+    # A requested-but-failed range must not inherit the tip's marker.
+    ranged = bool(base and head)
+    if ranged:
+        return _git_text("log", "--format=%B", f"{base}..{head}"), read_pr_body()
+    return _git_text("log", "-1", "--format=%B"), read_pr_body()
 
 # 개행류 제어문자 — Actions 워크플로 커맨드 위조 차단(`\r` 이 남으면 줄이 갈라진다).
 _LINE_BREAKS = re.compile(r"\s+")
