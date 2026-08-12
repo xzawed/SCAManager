@@ -633,3 +633,129 @@ async def test_review_code_max_tokens_configurable_via_settings(monkeypatch):
         await review_code("sk-test", "feat: x", [("a.py", "+ x = 1")])
     create_kwargs = fake_client.messages.create.call_args.kwargs
     assert create_kwargs["max_tokens"] == 4096
+
+
+# ---------------------------------------------------------------------------
+# duration_ms — 지연 계측 관측자 (2026-08-12, Grok claim-review 019ff38f 지적)
+#
+# 🔴 이 축에는 단언이 **0건**이었다. mock 이 `**kwargs` 를 전부 삼키므로 `duration_ms` 가
+#    빠져도 기존 테스트는 전건 green 이다. 계획서는 pylint E1125 를 *"지연 계측이 조용히
+#    누락 중"* 이라 적었는데 그것은 거짓(오탐)이었고 — 진짜 문제는 **관측자가 없다**는 것이다.
+# The metric had zero assertions; a mock swallowing **kwargs hides its absence entirely.
+# ---------------------------------------------------------------------------
+
+async def test_duration_ms_is_logged_on_success_path():
+    """성공 경로가 `duration_ms` 를 **수치로** 넘기는가."""
+    response_obj = MagicMock()
+    response_obj.content = [MagicMock(text=json.dumps({
+        "commit_message_score": 18, "direction_score": 17, "test_score": 8,
+        "summary": "ok", "suggestions": [],
+        "commit_message_feedback": "", "code_quality_feedback": "",
+        "security_feedback": "", "direction_feedback": "", "test_feedback": "",
+        "file_feedbacks": [],
+    }))]
+    response_obj.usage = MagicMock(
+        input_tokens=10, output_tokens=20,
+        cache_read_input_tokens=0, cache_creation_input_tokens=0,
+    )
+    fake_client = MagicMock()
+    fake_client.messages.create = AsyncMock(return_value=response_obj)
+    with patch("src.analyzer.io.ai_review.anthropic.AsyncAnthropic", return_value=fake_client), \
+         patch("src.analyzer.io.ai_review.log_claude_api_call") as mock_log:
+        await review_code("sk-test", "feat: t", [("a.py", "+ x = 1")])
+    kwargs = mock_log.call_args.kwargs
+    assert "duration_ms" in kwargs, "성공 경로에서 duration_ms 가 누락됐다"
+    assert isinstance(kwargs["duration_ms"], (int, float))
+    assert kwargs["duration_ms"] >= 0
+
+
+async def test_duration_ms_is_logged_on_error_path():
+    """예외 경로도 `duration_ms` 를 넘기는가 (finally 가 항상 채운다)."""
+    fake_client = MagicMock()
+    fake_client.messages.create = AsyncMock(side_effect=httpx.ConnectError("net"))
+    with patch("src.analyzer.io.ai_review.anthropic.AsyncAnthropic", return_value=fake_client), \
+         patch("src.analyzer.io.ai_review.log_claude_api_call") as mock_log:
+        await review_code("sk-test", "feat: t", [("a.py", "+ x = 1")])
+    kwargs = mock_log.call_args.kwargs
+    assert "duration_ms" in kwargs, "예외 경로에서 duration_ms 가 누락됐다"
+    assert isinstance(kwargs["duration_ms"], (int, float))
+    assert kwargs["duration_ms"] >= 0
+
+
+async def test_duration_ms_reflects_real_elapsed_time():
+    """🔴 **의미 축** — 상수 0 을 넣어도 위 두 단언은 통과한다. 실제로 흐른 시간을 재는가.
+
+    API 호출을 인위적으로 지연시키고 그 지연이 계측에 반영되는지 본다.
+    Assert the value tracks real elapsed time; a hardcoded 0 would pass the checks above.
+    """
+    import asyncio  # pylint: disable=import-outside-toplevel
+
+    async def _slow(*_args, **_kwargs):
+        await asyncio.sleep(0.05)
+        raise httpx.ConnectError("net")
+
+    fake_client = MagicMock()
+    fake_client.messages.create = AsyncMock(side_effect=_slow)
+    with patch("src.analyzer.io.ai_review.anthropic.AsyncAnthropic", return_value=fake_client), \
+         patch("src.analyzer.io.ai_review.log_claude_api_call") as mock_log:
+        await review_code("sk-test", "feat: t", [("a.py", "+ x = 1")])
+    elapsed = mock_log.call_args.kwargs["duration_ms"]
+    assert elapsed >= 40, f"50ms 지연이 계측에 반영되지 않았다: {elapsed}ms"
+
+
+async def test_duration_ms_is_logged_even_on_cancellation():
+    """🔴 `finally` 의 setdefault 가 존재하는 **유일한 이유** — `BaseException` 경로.
+
+    성공 경로는 `_log.update`(:174)가, `except Exception` 경로는 `:209` 가 먼저 채우므로
+    finally 의 setdefault 는 그 둘에서 **no-op** 이다. 실제로 그것이 값을 만드는 것은
+    `asyncio.CancelledError` 처럼 `Exception` 하위가 **아닌** 예외뿐이다(Grok `019ff38f`).
+    이 테스트가 없을 때 뮤테이션 MD3(그 setdefault 를 0 으로 고정)가 green 이었다 —
+    즉 취소된 호출의 지연이 조용히 0 으로 기록돼도 아무도 몰랐다.
+    The finally-setdefault only ever fires on BaseException; without this test it was unobserved.
+    """
+    import asyncio  # pylint: disable=import-outside-toplevel
+
+    import pytest as _pytest  # pylint: disable=import-outside-toplevel
+
+    async def _slow_cancel(*_args, **_kwargs):
+        await asyncio.sleep(0.05)
+        raise asyncio.CancelledError()
+
+    fake_client = MagicMock()
+    fake_client.messages.create = AsyncMock(side_effect=_slow_cancel)
+    with patch("src.analyzer.io.ai_review.anthropic.AsyncAnthropic", return_value=fake_client), \
+         patch("src.analyzer.io.ai_review.log_claude_api_call") as mock_log:
+        with _pytest.raises(asyncio.CancelledError):
+            await review_code("sk-test", "feat: t", [("a.py", "+ x = 1")])
+    mock_log.assert_called_once()
+    elapsed = mock_log.call_args.kwargs["duration_ms"]
+    assert elapsed >= 40, f"취소 경로의 지연이 계측되지 않았다: {elapsed}ms"
+
+
+def test_log_call_passes_duration_ms_explicitly():
+    """🔴 **구조 축** — 호출부가 `duration_ms=` 를 **명시 키워드로** 넘기는가.
+
+    위 4축은 값의 *행동*을 보는데, 그 행동은 `**_log` 로 넘기든 명시로 넘기든 동일하다
+    (이 변경은 의도적으로 동작 보존이다). 그래서 CI 역-뮤테이션 게이트가 *"이 PR 의 테스트가
+    이 PR 의 변경을 관측하지 않는다"* 고 정확히 지적했다 — 되돌려도 43건이 green 이었다.
+    이 단언이 그 축을 관측한다: `**_log` 로 되돌리면 키워드가 사라져 red 다.
+    Structural axis: the refactor is behavior-preserving, so only the call shape observes it.
+    """
+    import ast  # pylint: disable=import-outside-toplevel
+    from pathlib import Path  # pylint: disable=import-outside-toplevel
+
+    src = Path(__file__).resolve().parents[4] / "src" / "analyzer" / "io" / "ai_review.py"
+    tree = ast.parse(src.read_text(encoding="utf-8"))
+    calls = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "log_claude_api_call"
+    ]
+    assert calls, "log_claude_api_call 호출이 사라졌다 — 비용 로그 자체가 없어졌는지 확인"
+    for call in calls:
+        names = {kw.arg for kw in call.keywords if kw.arg is not None}
+        assert "duration_ms" in names, (
+            "duration_ms 가 명시 키워드로 전달되지 않는다 — `**_log` 안에 숨으면 필수 인자가 "
+            "정적으로 보이지 않아 pylint E1125 가 재발한다"
+        )
