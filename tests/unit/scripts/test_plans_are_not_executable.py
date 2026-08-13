@@ -213,12 +213,18 @@ def test_cue_scan_is_not_vacuous():
 def test_quotation_is_exempt_only_with_marker():
     """🔴 인용 면제는 **마커가 하중을 받는다** — 마커를 지우면 red 여야 한다 (뮤테이션).
 
-    `docs/cycle-history.md` 는 과거 흐름을 서술하며 어휘를 쓴다. 그 면제가 산문 판정이
-    아니라 마커에 걸려 있음을 실증한다.
+    실행 지시 어휘를 **인용**하는 실물 문서로 실증한다 — 그 면제가 산문 판정이 아니라
+    마커에 걸려 있음을 보인다.
+
+    🔴 **픽스처가 2026-08-13 에 이동했다**: 원래는 `docs/cycle-history.md` 였으나 그 파일이
+    320,800 → 81,416자로 압축되며 어휘를 담은 과거 사이클 143개가 아카이브로 접혔다.
+    픽스처는 **인용 면제만으로 서 있는** 실물이어야 한다 — `실행 대상이 아닙니다` 표지를
+    함께 든 문서는 면제가 중복이라 이 축을 증명하지 못한다(아래 `_DONE_MARKER` 단언).
+    실측(2026-08-13) 결과 그 조건을 만족하는 유일한 문서가 이 감사 보고서다.
     """
-    src = _ROOT / "docs" / "cycle-history.md"
+    src = _ROOT / "docs" / "_archive" / "reports" / "2026-08-10-docs-system-audit.md"
     text = src.read_text(encoding="utf-8", errors="replace")
-    assert _EXECUTION_CUE.search(text), "전제가 깨졌다 — cycle-history 에 어휘가 없다"
+    assert _EXECUTION_CUE.search(text), f"전제가 깨졌다 — {src.name} 에 어휘가 없다"
     assert _CUE_QUOTE_EXEMPT.search(text), "인용 면제 마커가 없다"
     # 마커를 제거한 사본은 위반으로 판정돼야 한다.
     mutated = _CUE_QUOTE_EXEMPT.sub("", text)
@@ -231,7 +237,7 @@ def test_quotation_is_exempt_only_with_marker():
     )
     # 🔴 배선 — 정규식이 아니라 **실제 판정 경로**(`_cue_docs`)에서 면제가 작동하는지
     #    (Grok 지적: 초판은 정규식만 검사해 판정 경로를 한 번도 지나지 않았다).
-    assert "docs/cycle-history.md" not in _cue_docs(), (
+    assert "docs/_archive/reports/2026-08-10-docs-system-audit.md" not in _cue_docs(), (
         "인용 면제가 실제 판정 경로에서 작동하지 않는다"
     )
 
