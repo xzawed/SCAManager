@@ -678,7 +678,7 @@
       "info_li2": "<strong>silent fallback streak</strong> — 5 consecutive cache misses trigger logger WARNING (Railway logs)",
       "info_li3": "<strong>1-week baseline report</strong> = Cycle 81+ separate work (option C — cross-verify NEW-P0-3 alignment)",
       "info_li4": "<strong>kill-switch</strong> = `OPERATIONS_DASHBOARD_DISABLED=1` (separate from `SAAS_MULTITENANT_DISABLED`)",
-      "info_li5": "Cycle 85 — Sentry integration removed (`docs/runbooks/_archive/sentry-activation.md` archived)"
+      "info_li5": "Cycle 85 — Sentry integration removed (`docs/_archive/runbooks/sentry-activation.md` archived)"
     }
   },
   "errors": {

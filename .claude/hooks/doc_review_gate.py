@@ -50,7 +50,7 @@ _CRITICAL = [
 # edits to the very surfaces that tell agents what to do.
 _IMPORTANT = [
     r"^docs/design/.+\.md$",          # `brief/` 등 하위 디렉토리 포함 (이전엔 한 세그먼트만)
-    r"^docs/guides/[^/]+\.md$",
+    r"^docs/runbooks/[^/]+\.md$",
     r"^docs/superpowers/.+\.md$",
     r"^README(\.[a-z]{2})?\.md$",     # README.ko.md 등 로케일 변형 포함
     r"^\.claude/policies/[^/]+\.md$",
@@ -62,7 +62,10 @@ _IMPORTANT = [
     r"^docs/reference/[^/]+\.md$",
     r"^CONTRIBUTING(\.[a-z]{2})?\.md$",
     r"^\.github/PULL_REQUEST_TEMPLATE\.md$",
-    r"^\.claude/plans/[^/]+\.md$",    # 완료 표지가 지워지면 재구현 사고로 이어진다
+    # 🔴 2026-08-13 이동: `.claude/plans/` → `docs/_archive/plans/`.
+    #    아카이브로 옮겼어도 심의 대상으로 남긴다 — 위험은 위치가 아니라 **완료 표지**에 있고,
+    #    그 표지가 지워지면 미래 세션이 출시된 기능을 재구현한다(이 훅이 생긴 이유).
+    r"^docs/_archive/plans/[^/]+\.md$",
     r"^SECURITY(\.[a-z]{2})?\.md$",   # 취약점 보고 절차 = 보안 지시문
     r"^scripts/i18n_comments/glossary\.md$",  # "번역 시 아래 용어를 반드시 사용" = 번역 계약
     r"^src/scripts/README\.md$",     # "Production code MUST NOT import from src/scripts/" = 실제 지시문
@@ -88,7 +91,10 @@ _IMPORTANT = [
 _LOW_RISK = [
     r"^docs/reports/artifacts/",
     r"^docs/history/",
-    r"^docs/integrations/",
+    # 🔴 2026-08-13: 구 `docs/integrations/` 가 `docs/runbooks/` 로 합쳐지며 이 자리에
+    #    `^docs/runbooks/` 가 들어갔었다. `_IMPORTANT` 가 먼저 매칭돼 실제 강등은 없었지만,
+    #    **런북 전체를 low_risk 로 읽히게 하는 죽은 패턴**이라 제거했다.
+    #    통합된 문서는 런북과 같은 등급(important)을 받는 것이 맞다.
 ]
 
 

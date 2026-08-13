@@ -50,7 +50,7 @@
 
 ## Observability (자동 로깅, env 설정 불필요)
 
-> **사이클 85 (2026-05-06)**: Sentry 통합 완전 폐기 (사용자 명시 결정). 환경변수 3건 (`SENTRY_DSN`/`SENTRY_ENVIRONMENT`/`SENTRY_TRACES_SAMPLE_RATE`) + `src/shared/observability.py` + `sentry-sdk` 의존성 제거. Railway 잔존 env vars 는 `model_config = {"extra": "ignore"}` 로 silent skip. 운영 영향 0. 폐기 runbook = [`docs/runbooks/_archive/sentry-activation.md`](_archive/sentry-activation.md) (역사 자산).
+> **사이클 85 (2026-05-06)**: Sentry 통합 완전 폐기 (사용자 명시 결정). 환경변수 3건 (`SENTRY_DSN`/`SENTRY_ENVIRONMENT`/`SENTRY_TRACES_SAMPLE_RATE`) + `src/shared/observability.py` + `sentry-sdk` 의존성 제거. Railway 잔존 env vars 는 `model_config = {"extra": "ignore"}` 로 silent skip. 운영 영향 0. 폐기 runbook = [`docs/_archive/runbooks/sentry-activation.md`](_archive/sentry-activation.md) (역사 자산).
 
 Sentry 외 자동 로깅은 별도 환경변수 없이 동작:
 

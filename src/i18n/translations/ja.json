@@ -678,7 +678,7 @@
       "info_li2": "<strong>silent fallback streak</strong> — 5 回連続 cache 不作動時 logger WARNING 発火 (Railway ログ)",
       "info_li3": "<strong>1 週 baseline レポート</strong> = サイクル 81+ 別作業 (オプション 🅒 — cross-verify NEW-P0-3 整合)",
       "info_li4": "<strong>kill-switch</strong> = `OPERATIONS_DASHBOARD_DISABLED=1` (`SAAS_MULTITENANT_DISABLED` とは別)",
-      "info_li5": "サイクル 85 — Sentry 統合削除 (`docs/runbooks/_archive/sentry-activation.md` archive)"
+      "info_li5": "サイクル 85 — Sentry 統合削除 (`docs/_archive/runbooks/sentry-activation.md` archive)"
     }
   },
   "errors": {

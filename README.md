@@ -140,7 +140,7 @@ Detailed environment variables: [docs/reference/env-vars.md](docs/reference/env-
 | 🔗 Generic Webhook | Generic JSON POST | Per-repo |
 | 🔄 n8n | External workflow trigger (Issue → Claude CLI → auto PR) | Per-repo |
 
-> **n8n Automation**: On Issue creation, n8n + Claude CLI automatically fixes the code and opens a PR. See [docs/integrations/n8n-auto-fix.md](docs/integrations/n8n-auto-fix.md).
+> **n8n Automation**: On Issue creation, n8n + Claude CLI automatically fixes the code and opens a PR. See [docs/runbooks/n8n-auto-fix.md](docs/runbooks/n8n-auto-fix.md).
 
 All channels run independently via `asyncio.gather(return_exceptions=True)` — one channel failure never affects others.
 
@@ -607,7 +607,7 @@ uvicorn src.main:app --host 0.0.0.0 --port 8000 --proxy-headers
 
 **DB Failover** — Set `DATABASE_URL_FALLBACK` to a secondary DB URL for automatic failover on primary failure. The `/health` endpoint returns `{"status": "ok"}` regardless of which DB is active.
 
-See the [on-premises migration guide](docs/guides/onpremise-migration-guide.md) for details.
+See the [on-premises migration guide](docs/runbooks/onpremise-migration-guide.md) for details.
 
 ---
 

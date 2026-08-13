@@ -382,7 +382,14 @@ class TestClassifyFileGrade:
         assert classify_file_grade("docs/design/2026-04-26-foo-design.md") == "important"
 
     def test_guide_doc_is_important(self):
-        assert classify_file_grade("docs/guides/onpremise-migration-guide.md") == "important"
+        """🔴 2026-08-13 통합: `docs/guides/`·`docs/integrations/` → `docs/runbooks/`.
+
+        합친 문서가 런북과 **같은 등급(important)** 을 받아야 한다 — 통합이 등급 강등의
+        경로가 되면 안 된다. 구 `docs/integrations/` 는 `_LOW_RISK` 였고, 그 패턴이
+        `^docs/runbooks/` 로 남으면 런북 전체를 low_risk 로 읽히게 한다(제거했다).
+        """
+        assert classify_file_grade("docs/runbooks/onpremise-migration-guide.md") == "important"
+        assert classify_file_grade("docs/runbooks/n8n-auto-fix.md") == "important"
 
     def test_superpowers_spec_is_important(self):
         assert classify_file_grade("docs/superpowers/specs/2026-04-26-foo.md") == "important"

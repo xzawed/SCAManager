@@ -64,11 +64,11 @@
 | [runbooks/docs-consolidation-plan.md](runbooks/docs-consolidation-plan.md) | 문서·가드 정리 계획 전문 (SPEC→RED→GREEN→GUARD 12 묶음) |
 | [runbooks/doc-volume-reduction-plan.md](runbooks/doc-volume-reduction-plan.md) | 🟢 **결정 대기 제안서** — 기록성↔집행성 분리(backlog ✅ 47% · STATE 이력 46% 실측). 실행 0건 |
 | [runbooks/session-handoff-2026-08-12.md](runbooks/session-handoff-2026-08-12.md) | 🔴 **세션 인계 — 다른 머신에서 이어받기**. main red 원인·PR #1331 대기·감사 결정 5건·미완 회고 |
-| [guides/github-integration-guide.md](guides/github-integration-guide.md) | GitHub 연동 가이드 |
-| [guides/onpremise-migration-guide.md](guides/onpremise-migration-guide.md) | 온프레미스 DB 전환 가이드 |
-| [guides/operational-verification.md](guides/operational-verification.md) | 운영 검증 가이드 |
-| [integrations/external-quality-services.md](integrations/external-quality-services.md) | 외부 품질 서비스(SonarCloud 등) 통합 |
-| [integrations/n8n-auto-fix.md](integrations/n8n-auto-fix.md) | n8n auto-fix 통합 |
+| [runbooks/github-integration-guide.md](runbooks/github-integration-guide.md) | GitHub 연동 가이드 |
+| [runbooks/onpremise-migration-guide.md](runbooks/onpremise-migration-guide.md) | 온프레미스 DB 전환 가이드 |
+| [runbooks/operational-verification.md](runbooks/operational-verification.md) | 운영 검증 가이드 |
+| [runbooks/external-quality-services.md](runbooks/external-quality-services.md) | 외부 품질 서비스(SonarCloud 등) 통합 |
+| [runbooks/n8n-auto-fix.md](runbooks/n8n-auto-fix.md) | n8n auto-fix 통합 |
 
 ## 💡 Explanation — "왜 그런가?" (이해·배경)
 
@@ -90,7 +90,7 @@
 
 | 경로 | 용도 |
 |------|------|
-| [_archive/](_archive/) | 회고 보고서·폐기 계획·과거 산출물 아카이브 (히스토리 보존, 활성 참조 아님) — `_archive/superpowers/` = 완료 plan/spec **tracked** 보존본 |
+| [_archive/](_archive/) | 🔴 **과거 기록 단일 네임스페이스** (2026-08-13 통합) — `reports/`(회고·감사) · `plans/`(완료 계획, 구 `.claude/plans` + `superpowers/plans`) · `specs/` · `runbooks/`(구 `runbooks/_archive`). 히스토리 보존, 활성 참조 아님 |
 | `reports/` | `/integrity-audit`·`/retrospective` 워크플로우 실행 시 생성되는 리포트 산출물 (활성) — 과거 회고 보존본은 `_archive/reports/` |
 | `samples/` | 샘플 산출물 (tracked, 참조 빈도 낮음) |
 | `superpowers/` | 🔴 **로컬 전용 working dir** (`.gitignore` 등재 · GitHub 미푸시) — 완료된 plan/spec 은 `_archive/superpowers/` 로 수동 이동 |

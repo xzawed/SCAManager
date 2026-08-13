@@ -2,7 +2,7 @@
 
 ## 사고 (2026-08-01 문서 감사, 91 에이전트 · 167 파일)
 
-`.claude/plans/` 9개 문서 중 **7개**가 최상단에 이런 배너를 갖고 있었다:
+`docs/_archive/plans/` 9개 문서 중 **7개**가 최상단에 이런 배너를 갖고 있었다:
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement
 > this plan **task-by-task**. Steps use checkbox (`- [ ]`) syntax for tracking.
@@ -11,7 +11,7 @@
 **이미 전부 출시돼 운영 중**이다. 그리고 9 파일에 **미체크 스텝이 359개** 남아 있다 —
 완료 시점에 체크를 되돌려 적지 않았기 때문이다.
 
-🔴 **행동 영향**: 미래 세션이 `.claude/plans/` 를 열면 "REQUIRED: task-by-task 로 구현하라"
+🔴 **행동 영향**: 미래 세션이 `docs/_archive/plans/` 를 열면 "REQUIRED: task-by-task 로 구현하라"
 + 미체크 359개를 보게 되고, **이미 있는 기능을 다시 만들기 시작할 수 있다.** 그리고 그 재구현은
 기존 코드와 충돌하기 전까지 아무 가드도 울리지 않는다.
 
@@ -57,7 +57,10 @@ _CUE_QUOTE_EXEMPT = re.compile(r"<!--\s*guard-cue-quote:\s*\S[^>]{10,}?-->")
 
 def _plan_docs():
     out = []
-    for base in (".claude/plans", "docs/design"):
+    # 🔴 2026-08-13 이동: `.claude/plans/` → `docs/_archive/plans/`
+    #    (`.claude/` 를 **활성 설정만** 담는 공간으로 정리). 여기를 따라 옮기지 않으면
+    #    스캐너가 9→3 으로 줄어 이 가드가 조용히 좁아진다 — 실제로 red 로 잡혔다.
+    for base in ("docs/_archive/plans", "docs/design"):
         for p in sorted((_ROOT / base).rglob("*.md")):
             text = p.read_text(encoding="utf-8", errors="replace")
             unchecked = len(re.findall(r"^\s*- \[ \]", text, re.MULTILINE))
