@@ -110,7 +110,7 @@ def test_unenforced_increase_is_blocked(tmp_path, monkeypatch, capsys):
     """
     monkeypatch.setattr(f"{_MOD}._ROOT", tmp_path)
     _surface(tmp_path, "🔴 새 규칙 — 집행자 없음\n")
-    monkeypatch.setattr(f"{_MOD}.baseline_unenforced", lambda _s, _r: 0)
+    monkeypatch.setattr(f"{_MOD}.baseline_unenforced", lambda _s, _r: (0, set()))
     monkeypatch.setenv("PR_BASE_SHA", "deadbeef")
     monkeypatch.delenv("PR_BODY", raising=False)
     assert gate.main() == 1
@@ -122,7 +122,7 @@ def test_no_increase_passes(tmp_path, monkeypatch, capsys):
     """대조군 — 늘지 않으면 통과한다(무조건 red 면 가드 자살)."""
     monkeypatch.setattr(f"{_MOD}._ROOT", tmp_path)
     _surface(tmp_path, "🔴 새 규칙 — 집행자 없음\n")
-    monkeypatch.setattr(f"{_MOD}.baseline_unenforced", lambda _s, _r: 1)
+    monkeypatch.setattr(f"{_MOD}.baseline_unenforced", lambda _s, _r: (1, set()))
     monkeypatch.setenv("PR_BASE_SHA", "deadbeef")
     assert gate.main() == 0
     assert "늘지 않았다" in capsys.readouterr().out
@@ -137,7 +137,7 @@ def test_adding_a_rule_with_its_guard_passes(tmp_path, monkeypatch):
     (tmp_path / "scripts").mkdir(parents=True, exist_ok=True)
     (tmp_path / "scripts" / "check_new.py").write_text("x = 1\n", encoding="utf-8")
     _surface(tmp_path, "🔴 새 규칙 — `scripts/check_new.py` 가 집행한다\n")
-    monkeypatch.setattr(f"{_MOD}.baseline_unenforced", lambda _s, _r: 0)
+    monkeypatch.setattr(f"{_MOD}.baseline_unenforced", lambda _s, _r: (0, set()))
     monkeypatch.setenv("PR_BASE_SHA", "deadbeef")
     assert gate.main() == 0
 
@@ -204,7 +204,7 @@ def test_exemption_is_recorded_in_the_job_summary(tmp_path, monkeypatch):
     monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
     monkeypatch.setenv("PR_BASE_SHA", "deadbeef")
     monkeypatch.setenv("PR_BODY", "red-budget-exempt: 외부 계약이라 지금 집행할 수 없습니다")
-    monkeypatch.setattr(f"{_MOD}.baseline_unenforced", lambda _s, _r: 0)
+    monkeypatch.setattr(f"{_MOD}.baseline_unenforced", lambda _s, _r: (0, set()))
     assert gate.main() == 0
     assert "예산 면제" in summary.read_text(encoding="utf-8")
 
@@ -239,3 +239,87 @@ def test_ci_passes_base_sha_and_body():
     assert blocks, "step 을 못 찾았다"
     for var in ("PR_BASE_SHA", "PR_BODY"):
         assert var in blocks[0], f"{var} 를 넘기지 않는다 — 그 축이 죽는다"
+
+
+# ── 🔴 표면 삭제는 '개선' 이 아니다 (2026-08-13 회고 P0) ──────────────────
+
+
+def test_surface_names_is_relative_and_stable(tmp_path):
+    """`surface_names` 는 **루트 상대 경로 집합**이어야 base↔head 대조가 성립한다.
+
+    절대 경로를 돌려주면 base worktree(임시 디렉토리)와 head(리포)가 영원히 다른
+    집합이 되어, 대조가 *모든 파일이 사라졌다* 로 오작동한다.
+    """
+    (tmp_path / ".claude" / "rules").mkdir(parents=True)
+    (tmp_path / "CLAUDE.md").write_text("x\n", encoding="utf-8")
+    (tmp_path / ".claude" / "rules" / "a.md").write_text("x\n", encoding="utf-8")
+
+    names = gate.surface_names(tmp_path)
+
+    assert names == {"CLAUDE.md", ".claude/rules/a.md"}, names
+    assert all(not n.startswith(str(tmp_path)) for n in names), "절대 경로가 샜다"
+
+
+def test_missing_surfaces_reports_deletions_only(tmp_path):
+    """base 에 있고 head 에 없는 것만 보고한다 — 신규 추가는 결함이 아니다."""
+    base, head = tmp_path / "b", tmp_path / "h"
+    for root in (base, head):
+        (root / ".claude" / "rules").mkdir(parents=True)
+        (root / "CLAUDE.md").write_text("x\n", encoding="utf-8")
+    (base / ".claude" / "rules" / "guards.md").write_text("x\n", encoding="utf-8")
+    (base / ".claude" / "rules" / "docs.md").write_text("x\n", encoding="utf-8")
+    (head / ".claude" / "rules" / "new.md").write_text("x\n", encoding="utf-8")
+
+    missing = gate.missing_surfaces(base, head)
+
+    assert missing == [".claude/rules/docs.md", ".claude/rules/guards.md"], missing
+
+
+def test_no_deletion_reports_nothing(tmp_path):
+    """🔴 과교정 대조군 — 삭제가 없으면 빈 목록이어야 한다.
+
+    이게 없으면 '항상 red' 로 고쳐도 위 테스트가 통과해 가드가 곧 꺼진다(정책 17).
+    """
+    base, head = tmp_path / "b", tmp_path / "h"
+    for root in (base, head):
+        (root / ".claude" / "rules").mkdir(parents=True)
+        (root / "CLAUDE.md").write_text("x\n", encoding="utf-8")
+        (root / ".claude" / "rules" / "guards.md").write_text("x\n", encoding="utf-8")
+
+    assert gate.missing_surfaces(base, head) == []
+
+
+def test_deletion_is_not_offset_by_a_lower_unenforced_count():
+    """🔴 이 가드의 존재 이유 — 삭제로 무집행 🔴 이 **줄어도** 통과하면 안 된다.
+
+    ## 사고 (2026-08-13 회고 P0, 실경로 재현)
+
+    `.claude/rules/guards.md`(49 🔴) + `docs.md` 를 삭제하면 무집행 🔴 이
+    **221 → 171 (Δ −50)** 이 되고, 게이트가 `✅ 무집행 🔴 이 늘지 않았다` 로 **EXIT 0** 을
+    냈다. 즉 **가드 저술 규칙을 통째로 지우는 것이 이 리포에서 가장 값싼 '집행률 개선'
+    수단**이었다. delta 만 보는 판정은 분모가 사라지는 경우를 원리적으로 못 본다.
+
+    Deleting the rules that *author guards* lowered the unenforced count and the gate
+    called it an improvement. A delta-only verdict cannot see the denominator vanishing.
+    """
+    src = (_ROOT / "scripts" / "check_red_budget.py").read_text(encoding="utf-8")
+
+    assert "missing_surfaces" in src, "표면 삭제 축이 스크립트에 없다"
+    # 🔴 정의만으로는 부족하다 — main() 이 실제로 호출하고 그 결과로 실패해야 한다.
+    body = src.split("def main(")[1]
+    assert "missing_surfaces" in body, "main() 이 호출하지 않는다 — 정의≠배선"
+
+
+def test_deletion_axis_is_not_exemptible_by_the_red_budget_marker():
+    """🔴 `red-budget-exempt:` 는 **증가**를 명시화하는 마커다 — 삭제 면제로 전용되면 안 된다.
+
+    삭제까지 그 마커로 통과시키면 '가드를 지우고 한 줄 적으면 끝' 이 되어
+    이 축이 처음부터 없는 것과 같아진다.
+    """
+    src = (_ROOT / "scripts" / "check_red_budget.py").read_text(encoding="utf-8")
+    body = src.split("def main(")[1]
+    deletion_block = body.split("missing_surfaces")[1].split("return")[0]
+
+    assert "_EXEMPT" not in deletion_block, (
+        "삭제 축이 red-budget-exempt 로 면제된다 — 마커 한 줄로 가드를 지울 수 있다"
+    )
