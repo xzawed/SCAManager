@@ -44,6 +44,7 @@ Adding them is allowed — but only explicitly, via a counted marker.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import subprocess  # nosec B404
@@ -88,6 +89,103 @@ def surfaces(root: Path) -> list[Path]:
     for g in SURFACE_GLOBS:
         out.extend(sorted(root.glob(g)))
     return [p for p in out if p.is_file()]
+
+
+def surface_names(root: Path) -> set[str]:
+    """표면 파일의 **루트 상대 경로** 집합.
+
+    🔴 절대 경로면 base(임시 worktree)와 head(리포)가 영원히 다른 집합이 되어
+    대조가 *"전부 사라졌다"* 로 오작동한다. POSIX 구분자로 정규화한다.
+    Relative, POSIX-normalized — absolute paths would never compare across worktrees.
+    """
+    return {p.relative_to(root).as_posix() for p in surfaces(root)}
+
+
+def missing_surfaces(base_root: Path, head_root: Path) -> list[str]:
+    """base 에 있었는데 head 에서 사라진 표면 — 신규 추가는 결함이 아니다.
+
+    ## 왜 이 축이 따로 필요한가 (2026-08-13 회고 P0, 실경로 재현)
+
+    이 게이트의 판정은 *"무집행 🔴 이 늘었는가"* 라는 **delta** 하나였다. 그런데 delta 는
+    **분모가 사라지는 경우를 원리적으로 못 본다** — `.claude/rules/guards.md`(49 🔴)와
+    `docs.md` 를 삭제하면 무집행 🔴 이 **221 → 171 (Δ −50)** 이 되고 게이트는
+    `✅ 무집행 🔴 이 늘지 않았다` 로 **EXIT 0** 을 냈다.
+
+    즉 **가드 저술 규칙을 통째로 지우는 것이 이 리포에서 가장 값싼 '집행률 개선' 수단**
+    이었다. 규칙을 없애 비율을 올리는 것은 이 게이트가 재려던 것의 정반대다.
+
+    Deleting the rules that author guards *lowered* the unenforced count, so a delta-only
+    verdict scored it as an improvement. This axis watches the denominator itself.
+
+    ## 🔴 이 축이 닫지 **못하는** 것 (Grok claim-review `019ffadc` — 봉인 주장 금지)
+
+    이 축은 **파일 경로**만 본다. 아래는 여전히 통과한다:
+
+    | 우회 | 이 축 | delta 축 |
+    |---|---|---|
+    | 파일 삭제 · `git mv` · glob 밖 이동 | **차단** | 통과 |
+    | **파일을 남기고 🔴 줄만 제거** | 통과 | 통과(줄어드니까) |
+    | 파일을 0바이트로 비우기 | 통과 | 통과 |
+    | 같은 PR 에서 `SURFACE_GLOBS` 축소 | 통과 | 통과 |
+
+    🔴 **가장 값싼 잔여 우회는 "🔴 토큰을 지우고 파일은 남기는 것"** 이다 — 삭제와 경제적
+    효과가 같은데 두 축 다 발화하지 않는다. 0바이트 비우기는
+    `tests/unit/scripts/test_rules_and_index_coverage.py` 의 `paths:` 요구가 잡지만,
+    `paths:` 를 남긴 껍데기는 잡지 못한다. `SURFACE_GLOBS` 축소는
+    `test_surface_list_covers_every_rule_home` 이 glob 문자열을 pin 해 **리뷰에 노출**되지만
+    기계 차단은 아니다.
+
+    **그러므로 이 함수는 봉인을 주장하지 않는다** — 닫은 것은 *삭제* 한 클래스뿐이다.
+    Path-only. Stripping the 🔴 tokens while keeping the file is the cheapest remaining bypass.
+    """
+    return missing_surfaces_from(surface_names(base_root), head_root)
+
+
+def missing_surfaces_from(base_names: set[str], head_root: Path) -> list[str]:
+    """`missing_surfaces` 의 집합-입력판 — base 를 이미 스냅숏으로 들고 있을 때 쓴다.
+
+    base worktree 는 판정 전에 제거되므로(`baseline_unenforced` 의 finally), main() 은
+    경로가 아니라 **집합**을 넘긴다. 두 함수가 같은 뺄셈을 쓰도록 여기 한 곳에 둔다.
+    """
+    return sorted(base_names - surface_names(head_root))
+
+
+def base_blob(base_sha: str, name: str, root: Path) -> str:
+    """base 시점 파일 내용. 못 읽으면 빈 문자열.
+
+    rename 판정 전용이라 **실패가 곧 '삭제로 본다'** 가 된다(fail-closed) — 내용을
+    확인하지 못하면 rename 이라고 우기지 못한다.
+    """
+    out = _run(["git", "show", f"{base_sha}:{name}"], root)
+    return out.stdout if out.returncode == 0 else ""
+
+
+def _digest(text: str) -> str:
+    """줄바꿈 정규화 후 해시 — CRLF/LF 왕복이 rename 을 삭제로 오판하지 않게."""
+    return hashlib.sha256(text.replace("\r\n", "\n").encode("utf-8")).hexdigest()
+
+
+def deleted_not_renamed(
+    missing: list[str], base_sha: str, head_root: Path, root: Path,
+) -> list[str]:
+    """사라진 표면 중 **rename 이 아닌 것**만 — 내용이 같은 파일이 남아 있으면 rename.
+
+    🔴 왜 필요한가 (Grok claim-review `019ffadc` C2): 초판은 파일 **경로**만 뺐다.
+    그래서 `git mv .claude/rules/services.md …` 같은 정상 rename 이 면제 경로 없이
+    hard-block 됐고, docstring 이 처방한 *"같은 PR 에서 SURFACE_GLOBS 를 고쳐라"* 는
+    **fiction** 이었다 — 그 상수는 glob 튜플이고 단위 테스트가 그 문자열을 pin 한다.
+    실측: `git log --diff-filter=R -- .claude/rules/` 는 비어 있어 rename 이 아직
+    없었지만, 없다는 것이 앞으로도 없다는 뜻은 아니다(가드 자살 예방 — 정책 17).
+
+    A path-only diff would hard-block a legitimate `git mv`. Content hashing lets a
+    rename through while a real deletion still fails.
+    """
+    if not missing:
+        return []
+    head_digests = {_digest(p.read_text(encoding="utf-8", errors="replace"))
+                    for p in surfaces(head_root)}
+    return [name for name in missing
+            if _digest(base_blob(base_sha, name, root)) not in head_digests]
 
 
 def rule_blocks(text: str) -> list[str]:
@@ -147,8 +245,8 @@ def _append_step_summary(markdown: str) -> None:
         pass  # 기록 실패가 판정을 바꾸면 안 된다 / logging must never change the verdict
 
 
-def baseline_unenforced(base_sha: str, root: Path) -> int | None:
-    """base 시점의 무집행 🔴 수. 판정 불가면 None.
+def baseline_unenforced(base_sha: str, root: Path) -> tuple[int, set[str]] | None:
+    """base 시점의 `(무집행 🔴 수, 표면 파일 집합)`. 판정 불가면 None.
 
     🔴 base 를 **worktree 로 꺼내서** 센다 — `git show` 로 파일만 읽으면
     `has_enforcer` 의 '파일 실재' 판정이 **현재 트리**를 보게 되어, 이 PR 이 추가한
@@ -163,7 +261,10 @@ def baseline_unenforced(base_sha: str, root: Path) -> int | None:
             return None
         try:
             count, _total = unenforced_count(wt)
-            return count
+            # 🔴 표면 삭제 축도 **같은 worktree 에서** 얻는다 — base 를 두 번 꺼내면
+            #    두 스냅숏이 갈릴 수 있고, worktree 생성 비용도 두 배가 된다.
+            #    Same worktree serves both axes; two checkouts could diverge.
+            return count, surface_names(wt)
         finally:
             _run(["git", "worktree", "remove", "--force", str(wt)], root, timeout=600)
 
@@ -179,15 +280,35 @@ def main() -> int:
         return 0
 
     current, total = unenforced_count(_ROOT)
-    base = baseline_unenforced(base_sha, _ROOT)
-    if base is None:
+    snapshot = baseline_unenforced(base_sha, _ROOT)
+    if snapshot is None:
         print("🔴 base 시점을 산출하지 못했다 — **판정 불가**(fail-closed).", file=sys.stderr)
         return 1
+    base, base_surfaces = snapshot
 
     delta = current - base
     print(f"무집행 🔴 — base {base} → head {current} (Δ {delta:+d})")
     print(f"전체 🔴 {total}건 · 집행자 동반 {total - current}건 "
           f"({(total - current) / total * 100:.1f}%)")
+
+    # 🔴 **분모 축 — delta 보다 먼저 본다** (2026-08-13 회고 P0).
+    #    표면 파일이 사라지면 무집행 🔴 이 줄어 delta 가 음수가 되고, delta 만 보는
+    #    판정은 그것을 '개선' 으로 인쇄한다(실측: guards.md+docs.md 삭제 → Δ −50 · EXIT 0).
+    #    🔴 `red-budget-exempt:` 로 면제하지 **않는다** — 그 마커는 *증가*를 명시화하는
+    #    장치이고, 삭제까지 덮으면 "가드를 지우고 한 줄 적으면 끝" 이 되어 축이 무의미해진다.
+    #    표면을 정말로 없애야 한다면 SURFACE_GLOBS 를 같은 PR 에서 고쳐 **리뷰에 노출**한다.
+    #    Deletion is checked before delta and is deliberately not exemptible.
+    gone = deleted_not_renamed(
+        missing_surfaces_from(base_surfaces, _ROOT), base_sha, _ROOT, _ROOT)
+    if gone:
+        print(f"\n🔴 **🔴 규칙이 사는 표면이 {len(gone)}개 사라졌다** — 삭제는 개선이 아니다.")
+        for name in gone:
+            print(f"   · {name}")
+        print("\n   무집행 🔴 이 줄어든 것은 규칙을 지켰기 때문이 아니라 **규칙을 지웠기 때문**이다.")
+        print("   의도한 삭제라면 같은 PR 에서 SURFACE_GLOBS 를 고쳐 리뷰에 노출할 것.")
+        _append_step_summary(
+            f"- 🔴 **표면 삭제 {len(gone)}건** — {', '.join(gone)}\n")
+        return 1
 
     if delta <= 0:
         print("\n✅ 무집행 🔴 이 늘지 않았다.")
