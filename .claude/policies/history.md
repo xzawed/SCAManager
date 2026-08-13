@@ -209,7 +209,7 @@ Claude: "감사합니다. 본 사이클 단일 작업일 누적 X PR 진행 = �
 - **정책 14** (GitHub Code Scanning 운영 체크) — 신설 정책 (사이클 62)
 - **정책 15** (코드 작업 전 사전 사고) — 신설 정책 (사이클 70)
 - **정책 16** (코드 단순화 default 5 원칙) — 신설 정책 (사이클 70)
-- **⛔ 정책 18** (Claude ↔ Codex 양방향 mutual 검증) — **2026-07-10 폐기** (사용자 Codex 구독 해지 → `codex` 실행 파일 부재 → 수행 불가능). 신설 사이클 93, 진화 사이클 94/119/125/161/165/167. 대체 = **Claude 단독 2-layer**(정책 8 5+1 + `pipeline-reviewer`/opus whole-branch 적대 리뷰). 존치 규칙 = push 전 전체 `pytest tests/unit` 게이트(CLAUDE.md 6-step ②). 폐기 요약: `.claude/policies/active.md#정책-18` / 폐기 이전 상세 본문은 **git 이력** 보존. cross-vendor 가치 실증 근거(2026-06-29 심층감사 P1 2건 Codex-only)는 대체 검증자 도입 시 참조.
+- **정책 18** (Claude ↔ Codex 양방향 mutual 검증) — **2026-07-10 폐기** (사용자 Codex 구독 해지 → `codex` 실행 파일 부재 → 수행 불가능). 신설 사이클 93, 진화 사이클 94/119/125/161/165/167. 대체 = **Claude 단독 2-layer**(정책 8 5+1 + `pipeline-reviewer`/opus whole-branch 적대 리뷰). 존치 규칙 = push 전 전체 `pytest tests/unit` 게이트(CLAUDE.md 6-step ②). 폐기 요약: `.claude/policies/active.md#정책-18` / 폐기 이전 상세 본문은 **git 이력** 보존. cross-vendor 가치 실증 근거(2026-06-29 심층감사 P1 2건 Codex-only)는 대체 검증자 도입 시 참조.
 
 위 정책들은 default rule + WHY/HOW 가 본문 자체이므로 분리 X (CLAUDE.md 보존). 추후 사이클 87+ 점진적 분리 default — 정책 5/6/9/10/16 강화 entry 누적 시 본 문서로 추가 이전.
 

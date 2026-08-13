@@ -66,6 +66,13 @@ _IMPORTANT = [
     r"^SECURITY(\.[a-z]{2})?\.md$",   # 취약점 보고 절차 = 보안 지시문
     r"^scripts/i18n_comments/glossary\.md$",  # "번역 시 아래 용어를 반드시 사용" = 번역 계약
     r"^src/scripts/README\.md$",     # "Production code MUST NOT import from src/scripts/" = 실제 지시문
+    # 2026-08-13 승격분 — 3층 분리(프로세스·함정·규칙)로 신설된 지시 표면.
+    # 🔴 `docs/process/**` 는 *어떻게 수행하는가* 를 단계로 규정한다 = 지시문이다.
+    #    `.claude/traps.md` 는 서술 같지만 각 항목이 "→ 이렇게 하라" 로 끝난다.
+    #    둘 다 등재하지 않으면 심의 게이트가 **지시 표면 자체의 편집을 통과**시킨다
+    #    (2026-08-01 에 정확히 이 클래스로 25 파일이 false coverage 였다).
+    r"^docs/process/[^/]+\.md$",
+    r"^\.claude/traps\.md$",
 ]
 
 # 🔴 의도적으로 `skip` 으로 남긴 것 (판단 기록 — 다음 세션이 재검토를 반복하지 않도록):

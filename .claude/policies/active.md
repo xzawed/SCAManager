@@ -35,7 +35,7 @@
 
 **기본 PR body 템플릿**: §Summary + §🔍 사용자 검증 필요 (정책 2) + §자율 판단 보고 (정책 3) + 🤖 Generated with [Claude Code](https://claude.com/claude-code) 푸터.
 
-> ⛔ 구 §🔍 Codex 검증 의뢰 (정책 18) 항목은 **2026-07-10 Codex 구독 해지로 폐기** — PR 본문에 넣지 않는다.
+> 구 §🔍 Codex 검증 의뢰 (정책 18) 항목은 **2026-07-10 Codex 구독 해지로 폐기** — PR 본문에 넣지 않는다.
 
 **PR 본문 전달 + 생성 직후 검증 의무 (2026-06-10 사고 학습)**:
 
@@ -73,7 +73,7 @@ git push -u origin <branch>
 **적용 대상 파일**: `src/templates/*.html` / `src/static/**/*.css` / `base.html` `<style>` 블록 / 신규 시각 컴포넌트
 
 ```markdown
-## 🚨 Claude 시각 검증 불가 — 사용자 의무 (정책 11)
+## Claude 시각 검증 불가 — 사용자 의무 (정책 11)
 
 본 PR 은 UI/시각 변경 포함. Claude 는 정적 코드만 검증 가능 — 다음 8 조합 시각 정합성은 사용자 직접 확인 부탁드립니다:
 
@@ -256,7 +256,7 @@ git push -u origin <branch>
 4. **최소 추상화** — 시스템 프롬프트 "Don't add features, refactor, or introduce abstractions beyond what the task requires" 강화
 5. **토큰 비용 효율** (사이클 72 추가 — 사용자 의도 정합) — 운영 토큰 사용량 ↓ + 분산 + caching 활용. 단, **AI 리뷰 품질 영향 영역 = 단순화 금지** (사용자 명시 제외 — 아래 명시 제외 영역). **caching 4 단계 활성화 사례 (사이클 63 → 74 — 사이클 75 진화)**: 1단계 인프라 도입 (사이클 63 #218 — `build_cached_system_param`) → 2단계 baseline 정확화 (사이클 72 #242 — cache 비용 모델 + `get_cache_stats` + silent fallback streak) → 3단계 활성화 (사이클 74 #247 — 1024 토큰 패딩 + Haiku 모델 분기) → 4단계 호출 빈도 제한 (사이클 74 #248 — DB 캐싱 1h TTL). 운영 baseline 측정 의무 (1주 후 cache_hit_rate / silent_cache_fallback streak 검증).
 
-**🚫 명시 제외 영역 (사용자 결정 — AI 리뷰 품질 보존 의무)**:
+**명시 제외 영역 (사용자 결정 — AI 리뷰 품질 보존 의무)**:
 - ❌ `build_review_prompt` 토큰 예산 8000 → 축소 (사이클 72 사용자 명시 보류 — 품질 저하 원치 않음)
 - ❌ `review_guides/` 49개 언어 Tier1 full ~500 토큰 압축 (사이클 72 사용자 명시 보류 — 체크리스트 ↓ → 리뷰 깊이 ↓ 위험)
 - ✅ 진행 OK 영역 (사이클 72 검증): `review_code` prompt caching = **이미 100% 적용** (사이클 63 #218 — `src/analyzer/io/ai_review.py:100-107`) — multi-block 확장 (system + lang_guides 분리) 만 Phase 3 후보 (단 `build_review_prompt` 시그니처 변경 = High tier 사전 확인 의무) / 모델 분기 (Haiku/Sonnet/Opus) — Phase 2 (1주 운영 데이터 후 결정, AI 리뷰 품질 영향 = High tier) / 동일 SHA 결과 재사용 = **이미 100% 적용** (3-tier dedup — `src/worker/pipeline.py:206-218`) / Insight narrative 호출 빈도 제한 — Phase 2 (DB 캐싱 1h TTL 후보) / **cache hit rate 모니터링 인프라 = 사이클 72 PR 2 (#242) 도입** (`src/shared/claude_metrics.py::get_cache_stats` + cache 비용 모델 정확화 + silent fallback streak WARNING)
@@ -363,7 +363,7 @@ git push -u origin <branch>
 
 <a id="정책-18"></a>
 
-## ⛔ 정책 18 폐기: 구 "Claude ↔ Codex 양방향 mutual 검증 의무" (2026-05-09 신설 → 2026-07-10 폐기)
+## 정책 18 폐기: 구 "Claude ↔ Codex 양방향 mutual 검증 의무" (2026-05-09 신설 → 2026-07-10 폐기)
 
 **폐기 사유**: 사용자가 Codex 유료 구독을 해지 (2026-07-10). `@openai/codex` npm 패키지 · Claude Code 플러그인 제거로 `codex` 실행 파일이 존재하지 않는다 → mutual 검증 **수행 불가능**.
 

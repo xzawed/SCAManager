@@ -29,13 +29,20 @@ GitHub Push/PR 이벤트 시 정적 분석 + AI 코드 리뷰를 자동 수행�
 | **규칙** | `.claude/rules/` · `.claude/policies/` | *하지 마라* — 🔴 는 **집행자 동반분만**<br>(`scripts/check_red_budget.py`) |
 
 🔴 **새 마커를 붙이려면 그것을 집행하는 가드를 같은 PR 에 넣어야 한다 — 예외 없음.**
-무집행 마커는 이 저장소에 **0건**이어야 하고, 기계가 그것을 강제한다:
-`scripts/check_red_budget.py` · `tests/unit/scripts/test_red_budget.py` (1건이라도 생기면 red).
 집행 가드를 만들 수 **없는** 내용이면 마커 없이 평문 규칙으로 적는다(규칙문 자체는 그대로 유효하다).
 과거 사고의 **실패 기전**이면 [`.claude/traps.md`](.claude/traps.md) 에 이름 붙여 넣는다.
-2026-08-13 에 무집행 마커 **221개를 제거**했고(규칙 본문은 한 줄도 지우지 않았다) 집행 비율은
-28% → **100%** 가 됐다. 근거: 이 세션 실측에서 실수를 막은 것은
+집행: `scripts/check_red_budget.py` · `tests/unit/scripts/test_red_budget.py` — 무집행이 1건이라도 생기면 red.
+
+**실측 (2026-08-13)**: 마커 **309 → 89건** · 무집행 **221 → 0건** · 집행자 동반 비율 **28% → 100%**.
+221개는 **마커만** 뗐고 규칙 본문은 한 줄도 지우지 않았다. 세는 대상은 🔴 하나가 아니라 **빨강 계열
+필수 표기 전부**이며(다른 기호로 바꿔 카운터를 피하는 통로를 막는다), 그 목록의 정본은
+`scripts/check_red_budget.py` 의 `_RED_MARKERS` 상수다. 근거: 이 세션에서 실수를 막은 것은
 **기계 가드 12회 · 함정 기억 7회 · 외부 검증 4회**였고 **룰 텍스트는 ≈0회**였다.
+
+⚠️ **이 가드는 프록시다 — 봉인이 아니다** (Grok claim-review `019ffb93` 가 실경로에서 실증).
+재는 것은 *"규칙 블록에 실재하는 가드 파일명이 있는가"* 뿐이며, **그 가드가 그 규칙을 집행하는지는
+판정하지 않는다** — 무관한 가드 이름을 적어도 통과한다. 표면 파일 삭제 축은 **CI(PR)에서만** 돌고
+로컬 실행은 그 축을 재지 않는다(로컬 EXIT 0 = "통과" 아님, "안 쟀음"). 이 한계를 지우지 말 것.
 
 > **반복적으로 놓치는 것**
 > 1. ORM 컬럼 추가 후 마이그레이션 미생성 → 운영 500 ([db.md](.claude/rules/db.md))
@@ -106,7 +113,7 @@ GitHub Push/PR 이벤트 시 정적 분석 + AI 코드 리뷰를 자동 수행�
 | **13** | 매 사이클/Phase 종료 시 **3-endpoint smoke check** + PR 본문 §결과. 기대값 SSOT = [`operational-smoke-checks.md`](docs/runbooks/operational-smoke-checks.md) (리터럴 복제 금지 — 3 사본 drift 사고) | [active](.claude/policies/active.md#정책-13) |
 | **14** | 매 사이클 종료 시 **Code Scanning open alert** 직접 검토 → fix / dismiss+사유 / suppress+회고. lint 통과 ≠ Security 탭 0 (CodeQL 별도 룰셋) | [active](.claude/policies/active.md#정책-14) |
 | **15** | 모든 Edit/Write/destructive **직전 3 자문**(목적 정합? 영향 범위? 검증 방법?). 이해 부족 시 중단. **3-tier**: High(스키마·API·권한·데이터모델 = 사전 확인) / Medium(자율+보고) / Low(즉시) | [active](.claude/policies/active.md#정책-15) |
-| **16** | 우선순위 **1.정확성 2.성능 3.가독성 4.최소 추상화(사용처 ≥3) 5.토큰 비용**. 같은 값·로직이 2+곳이면 수정 **직전** `grep -rn` 전수 열거. 🚫 **명시 제외**(사전 확인 의무): `build_review_prompt` 토큰예산 축소 · `review_guides/` 압축 | [active](.claude/policies/active.md#정책-16) |
+| **16** | 우선순위 **1.정확성 2.성능 3.가독성 4.최소 추상화(사용처 ≥3) 5.토큰 비용**. 같은 값·로직이 2+곳이면 수정 **직전** `grep -rn` 전수 열거. **명시 제외**(사전 확인 의무): `build_review_prompt` 토큰예산 축소 · `review_guides/` 압축 | [active](.claude/policies/active.md#정책-16) |
 | **17** | 문서 정리는 **안정성 > 권장 규격**. **Anthropic 200줄 등 외부 권장 규격은 가이드라인 — 안정성과 충돌하면 거부한다.** default rule + 진화 1~2줄은 **본문 보존**, detail 만 external. 매 분리 단계마다 **5+1 회의 + 운영 검증 + 사용자 옵션 표 결정**. **매 작업/회고/PR 의무 영역(정책 8·11·5·9)은 본문 보존 default** — 분리 시 High tier 사전 확인. ≥18 PR 영역은 ≥5 사이클마다 정기 검증 | [active](.claude/policies/active.md#정책-17-why-how) |
 
 #### 정책 7: 모든 작업은 PR 단위 (main 직접 작업 지양)
@@ -116,7 +123,7 @@ GitHub Push/PR 이벤트 시 정적 분석 + AI 코드 리뷰를 자동 수행�
 main 에 commit 후 방치 · "사소한 docs 라 main 에 직접". 신규 파일·typo·docs-only 도 예외 없다.
 접두사: `feat/` `fix/` `chore/` `docs/`. 위반 시 회복: [active](.claude/policies/active.md#정책-7).
 
-#### ⛔ 정책 18 폐기 (2026-07-10 — Codex 구독 해지)
+#### 정책 18 폐기 (2026-07-10 — Codex 구독 해지)
 
 Codex mutual 검증 폐기. **`codex exec` 실패 = 정상**(이상 징후로 보고 금지). 코드·문서의
 "Codex 적발" 주석은 **당시 사실 기록(재작성 금지)**. 대체 = 정책 19 + Claude 단독 2-layer.

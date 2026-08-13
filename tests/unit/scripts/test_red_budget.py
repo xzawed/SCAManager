@@ -393,3 +393,90 @@ def test_a_deletion_is_not_disguised_as_a_rename(tmp_path, monkeypatch):
     monkeypatch.delenv("PR_BODY", raising=False)
 
     assert gate.main() == 1, "rename 예외가 삭제까지 통과시킨다"
+
+
+# ── ⑥ 마커 위장 · 로컬 배너 정직성 (2026-08-13 Grok claim-review `019ffb93`) ──
+#
+# 적대 검토가 CLAIM 1("무집행 🔴 은 0이고 기계가 강제한다")을 **BROKEN** 으로 판정했다.
+# 실경로 뮤테이션 2건이 초록으로 살아남았다:
+#   (e) `.claude/rules/` 에 **🛑** 로 표시한 집행자 없는 필수 규칙 → 25 passed
+#   (d) 🔴 표면 파일 하나를 통째로 삭제 → 25 passed · 스크립트 EXIT 0 · `100.0%` 배너
+# 아래 4 테스트가 그 두 축을 고정한다. (b) 프록시 축은 **닫지 않는다** — 아래 마지막 참조.
+
+
+def test_lookalike_red_markers_are_counted_too(tmp_path):
+    """🔴 **빨강 계열 위장 마커도 필수 규칙으로 센다** — 반례 하나가 아니라 클래스를 닫는다.
+
+    Grok 반례 (e): 카운터가 `"🔴" in line` 이던 시절, 독자에게는 빨간 필수 마커로
+    보이는 **🛑** 줄이 카운터에는 존재하지 않았다. *"무집행 🔴 = 0"* 이 참인 채로
+    집행자 없는 필수 규칙을 무한히 쌓을 수 있었다(A5 = 거짓 집행자).
+
+    AGENTS.md §불변식 2-b 에 따라 받은 인스턴스(🛑)만 막지 않고 **클래스 전체**를
+    리터럴 집합으로 못박는다. 집합은 여기서 리터럴로 재확인한다 — 피검사 모듈에서
+    유도하면 원천을 비워도 초록이다(A4).
+    """
+    for marker in ("🔴", "🛑", "🟥", "⛔", "🚨", "🚫", "🔺", "‼", "🆘"):
+        blocks = gate.rule_blocks(f"{marker} 집행자 없는 필수 규칙\n")
+        assert len(blocks) == 1, f"{marker} 가 규칙 마커로 인식되지 않는다 — 위장 통로"
+        assert not gate.has_enforcer(blocks[0], tmp_path)
+
+
+def test_caution_and_bad_example_glyphs_are_not_rule_markers():
+    """대조군 — ⚠/❌ 까지 세면 '한계 고지'·'나쁜 예시' 가 규칙으로 둔갑한다.
+
+    과교정 방지축이다. 이 둘을 넣으면 기존 33 occurrence 가 무집행 규칙으로 잡혀
+    저자가 **한계를 적는 것 자체에 벌점**을 받는다 — 이 리포가 지키려는 것의 정반대다.
+    """
+    assert gate.rule_blocks("⚠️ 이 축은 X 를 보지 못한다\n") == []
+    assert gate.rule_blocks("❌ `binary in build_text` — echo 로 통과\n") == []
+
+
+def test_lookalike_marker_makes_the_repo_gate_red(tmp_path, monkeypatch):
+    """실행 관측 — 위장 마커로 무집행 규칙을 늘리면 `main()` 이 1을 낸다."""
+    monkeypatch.setattr(f"{_MOD}._ROOT", tmp_path)
+    _surface(tmp_path, "🛑 집행자 없는 필수 규칙\n")
+    monkeypatch.setattr(f"{_MOD}.baseline_unenforced", lambda _s, _r: (0, set()))
+    monkeypatch.setenv("PR_BASE_SHA", "deadbeef")
+    monkeypatch.delenv("PR_BODY", raising=False)
+
+    assert gate.main() == 1, "🛑 로 쓴 무집행 규칙이 증가로 잡히지 않는다"
+
+
+def test_local_run_says_the_denominator_axis_was_not_measured(
+        tmp_path, monkeypatch, capsys):
+    """🔴 PR env 없는 실행의 EXIT 0 은 **'통과' 가 아니라 '안 쟀음'** 이라고 말해야 한다.
+
+    Grok 반례 (d): 🔴 표면 파일을 삭제한 상태에서 env 없이 돌리면 출력이
+    `100.0% · 무집행 0건` + EXIT 0 이었다 — 분모가 줄어든 것이 **개선으로 읽힌다**.
+    `deleted_not_renamed` 는 `PR_BASE_SHA` 분기에만 살아서 로컬은 그 축을 한 번도
+    돌리지 않는다. 로컬에서 판정을 만들 수는 없으니(base 가 없다) **배너가 봉인처럼
+    읽히지 않게** 하는 것이 할 수 있는 전부다.
+
+    통과 조건을 문자열 존재로 두면 A1(산문 통과)이 되므로, 배너가 **분모 축과
+    증감 축 둘 다** 미측정으로 명시하는지를 본다.
+    """
+    monkeypatch.setattr(f"{_MOD}._ROOT", tmp_path)
+    _surface(tmp_path, "🔴 규칙 `scripts/check_red_budget.py`\n")
+    monkeypatch.delenv("PR_BASE_SHA", raising=False)
+
+    assert gate.main() == 0
+    out = capsys.readouterr().out
+    assert "안 쟀다" in out, "EXIT 0 이 '통과' 로 읽힌다 — 미측정임을 말하지 않는다"
+    assert "분모" in out, "분모 축(표면 삭제) 미측정 고지가 없다"
+    assert "증감" in out, "증감 축 미측정 고지가 없다"
+
+
+def test_the_proxy_ceiling_is_documented_not_claimed_closed():
+    """이 게이트가 **닫지 못하는** 축을 문서가 인정하고 있는가.
+
+    Grok 반례 (b): DB 규칙 옆에 `scripts/check_toc_anchors.py`(실재하지만 그 규칙과
+    무관)를 적으면 `unenforced == 0` 이 유지된다 — **25 passed**. 이 축은 정적으로
+    닫을 수 없다(어떤 가드가 어떤 규칙을 집행하는지는 의미 판정이다).
+
+    그래서 봉인하지 않고 **한계를 명시**한다. 이 리포가 값을 치른 것은 못 한 것이
+    아니라 한 것보다 크게 말한 것이었다(traps A5 · docs/process/claim-and-verify.md §3).
+    한계 문장이 사라지면 다음 세션이 이 게이트를 봉인으로 읽는다.
+    """
+    doc = (_ROOT / "scripts" / "check_red_budget.py").read_text(encoding="utf-8")
+    assert "이것은 프록시다" in doc
+    assert "집행하는 것은 다르다" in doc

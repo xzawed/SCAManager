@@ -86,7 +86,11 @@ def test_grok_protocol_is_its_own_policy_section():
         f"Grok 협업이 독립 정책 섹션이 아니다. 현재 섹션 제목: {titles[-6:]}"
     )
     # 폐기 섹션보다 **뒤**에 와야 한다(하위로 다시 흡수되지 않도록)
-    dep = text.index("⛔ 정책 18 폐기")
+    # 🔴 앵커에 마커(⛔)를 넣지 않는다 — 2026-08-13 에 무집행 마커를 정리하면서 헤딩에서
+    #    ⛔ 가 빠지자 이 `index()` 가 ValueError 로 죽었다. 판정에 필요한 것은 **텍스트**이지
+    #    장식이 아니다. 마커를 앵커로 쓰면 표기 정책이 바뀔 때마다 무관한 가드가 깨진다.
+    #    Anchor on the words, not the decoration — markers are a separate, changeable axis.
+    dep = text.index("정책 18 폐기")
     grok = next(text.index(t) for t in titles if "Grok" in t and "정책" in t)
     assert grok > dep, "Grok 정책이 폐기 섹션보다 앞에 있다 — 하위로 읽힐 위험"
 
