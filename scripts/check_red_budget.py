@@ -73,6 +73,13 @@ from check_claim_review_trace import (  # noqa: E402  # pylint: disable=wrong-im
 # 🔴 규칙이 사는 표면 — 리터럴로 못박는다(유도하면 비워도 초록이다).
 SURFACE_GLOBS = ("CLAUDE.md", "AGENTS.md", ".claude/rules/*.md", ".claude/policies/*.md")
 
+# **필수 규칙 마커 집합** — 독자에게 "빨강 = 반드시" 로 읽히는 표기 전부.
+# 리터럴 집합으로 못박는다: 유도(예: 이모지 카테고리 조회)하면 원천을 비워도 초록이다.
+# `has_marker()` docstring 에 이 집합이 왜 단일 문자가 아닌지와 무엇이 열려 있는지 적었다.
+# ⚠️ ⚠/❌ 는 의도적으로 **제외** — 이 리포에서 각각 '한계 고지'·'나쁜 예시' 로 이미
+#    자리잡은 표기라 필수 규칙으로 읽히지 않는다(실측 20/13 occurrence).
+_RED_MARKERS = ("🔴", "🛑", "🟥", "⛔", "🚨", "🚫", "🔺", "‼", "🆘")
+
 # 집행자로 인정하는 이름 형태.
 _ENFORCER = re.compile(
     r"(?:tests/[\w/]*test_\w+\.py|scripts/check_\w+\.py|\.claude/hooks/\w+\.py"
@@ -188,17 +195,40 @@ def deleted_not_renamed(
             if _digest(base_blob(base_sha, name, root)) not in head_digests]
 
 
+def has_marker(line: str) -> bool:
+    """이 줄이 **필수 규칙 마커**를 달고 있는가 — 🔴 만이 아니다.
+
+    ## 왜 집합인가 (2026-08-13 Grok claim-review `019ffb93` 반례 (e))
+
+    초판은 `"🔴" in line` 이었다. 적대 검토가 `.claude/rules/` 에 **🛑** 로 표시한
+    집행자 없는 필수 규칙 1줄을 넣었고 스위트는 **25 passed** 였다 — 독자에게는
+    빨간 필수 마커로 보이는데 카운터에는 존재하지 않는다. *"무집행 🔴 = 0"* 이
+    참인 채로 무집행 필수 규칙을 얼마든지 쌓을 수 있었다.
+
+    반례 하나를 막는 것으로 끝내지 않는다(AGENTS.md §불변식 2-b) — **클래스는
+    '빨강 계열 필수 마커 위장'** 이므로 그 클래스를 집합으로 닫는다.
+
+    ⚠️ **여전히 열려 있는 것**: 이 집합 밖의 임의 기호(예: `**[필수]**`, `<!-- red -->`,
+    새 이모지)는 통과한다. 열거는 원리적으로 완결되지 않는다 — 이 축이 끝내는 것은
+    *"현행 리포에서 빨강으로 읽히는 표기"* 뿐이다.
+
+    Look-alike red markers used to be invisible to the counter; the class is closed
+    as a set, not as a single-instance patch. Arbitrary new notations remain open.
+    """
+    return any(m in line for m in _RED_MARKERS)
+
+
 def rule_blocks(text: str) -> list[str]:
-    """🔴 줄 + 뒤따르는 연속 줄 = 규칙 블록."""
+    """필수 마커 줄 + 뒤따르는 연속 줄 = 규칙 블록."""
     lines = text.split("\n")
     out: list[str] = []
     for i, line in enumerate(lines):
-        if "🔴" not in line:
+        if not has_marker(line):
             continue
         buf = [line]
         for j in range(i + 1, len(lines)):
             nxt = lines[j]
-            if not nxt.strip() or "🔴" in nxt:
+            if not nxt.strip() or has_marker(nxt):
                 break
             buf.append(nxt)
         out.append("\n".join(buf))
@@ -276,7 +306,17 @@ def main() -> int:
         current, total = unenforced_count(_ROOT)
         print(f"현재: 🔴 {total}건 · 집행자 동반 {total - current}건 "
               f"({(total - current) / total * 100:.1f}%) · **무집행 {current}건**")
-        print("⏭️  PR 환경변수(PR_BASE_SHA)가 없다 — 증감 판정은 CI 몫이다.")
+        # 🔴 **이 exit 0 은 "통과" 가 아니라 "안 쟀음" 이다** (2026-08-13 Grok 반례 (d)).
+        #    적대 검토가 `.claude/rules/i18n.md`(🔴 표면 하나)를 통째로 삭제한 뒤 이 스크립트를
+        #    env 없이 돌렸고, 출력은 `100.0% · 무집행 0건` + EXIT 0 이었다 — 분모가 88→85 로
+        #    줄어든 것이 **개선으로 읽혔다**. 분모 축(`deleted_not_renamed`)은 PR_BASE_SHA
+        #    분기에만 살고, 로컬 실행은 그 축을 **한 번도 돌리지 않는다**.
+        #    배너가 봉인처럼 읽히지 않게 하는 것이 로컬에서 할 수 있는 전부다.
+        #    Local runs never evaluate the denominator axis; say so instead of printing green.
+        print("\n⏭️  PR 환경변수(PR_BASE_SHA)가 없다 — **두 축을 안 쟀다**:")
+        print("     · 증감 판정 (무집행 🔴 이 늘었는가)")
+        print("     · 🔴 **분모 축** (🔴 표면 파일이 사라졌는가) — 표면을 지우면 위 비율은")
+        print("       올라간다. 이 실행은 그것을 구별하지 못한다. 판정은 CI 몫이다.")
         return 0
 
     current, total = unenforced_count(_ROOT)

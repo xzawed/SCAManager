@@ -12,6 +12,8 @@
 | 에이전트(Claude) 작업 규칙 | [CLAUDE.md](../CLAUDE.md) |
 | 시스템 구조 파악 | [architecture.md](architecture.md) — `src/` 트리 + 핵심 데이터 흐름 (단일 출처) |
 | 최신 수치·상태 | [STATE.md](STATE.md) — 테스트·커버리지·등급 단일 출처 |
+| **어떻게 수행하는가** (프로세스·플로우) | [process/](process/) — 가드 저술 · 주장 검증 · 문서 압축 · PR 수명 |
+| **이렇게 틀렸었다** (실패 클래스) | [`.claude/traps.md`](../.claude/traps.md) — 실제로 밟은 함정 16종 |
 
 ---
 
@@ -34,6 +36,11 @@
 
 | 문서 | 작업 |
 |------|------|
+| [process/README.md](process/README.md) | **흐름 진입점** — 어떤 작업에 어떤 흐름을 여는가 |
+| [process/guard-authoring.md](process/guard-authoring.md) | 가드·테스트를 **새로 저술**할 때 (TDD → 뮤테이션 → 배선 → 한계 기술) |
+| [process/claim-and-verify.md](process/claim-and-verify.md) | *"고쳤다 · 닫았다 · 0건이다"* 를 **말하기 직전** |
+| [process/doc-compression.md](process/doc-compression.md) | 문서를 **압축·삭제·이동하기 직전** (소비자 grep → 이동 → 검증) |
+| [process/pr-lifecycle.md](process/pr-lifecycle.md) | 커밋부터 머지까지 — 막히는 지점과 뚫는 법 |
 | [runbooks/workflow.md](runbooks/workflow.md) | 작업 유형별 실행 순서 + 모바일 환경 보호 |
 | [runbooks/new-machine-setup.md](runbooks/new-machine-setup.md) | 새 PC 셋업 — 리포가 실어 주지 않는 자산(`.env` 값·에이전트 메모리·MCP·`gh` scope) + 검증 |
 | [runbooks/railway.md](runbooks/railway.md) | Railway 배포·운영 |
@@ -53,7 +60,7 @@
 | [runbooks/ai-collaboration.md](runbooks/ai-collaboration.md) | 🔴 Claude ↔ Grok 협업 프로토콜 — **정책 19 단일 출처** (주장 트리거·A2 뮤테이션·소유 경계) |
 | [runbooks/owed-verification.md](runbooks/owed-verification.md) | 🔴 미결 검증 원장 — SessionStart 훅이 매 세션 미회신 건을 경고 |
 | [runbooks/cost-controls.md](runbooks/cost-controls.md) | AI 리뷰 비용 제어 (kill-switch·리포별 토글) 검증 절차 |
-| [runbooks/docs-consolidation-status.md](runbooks/docs-consolidation-status.md) | 🔴 **문서·가드 정리 진행 상태 정본** — 착수 전 필독(12 PR 중 PR-1 완료, PR-4→PR-5 순서 강제) |
+| [runbooks/docs-consolidation-status.md](runbooks/docs-consolidation-status.md) | 🔴 **문서·가드 정리 진행 상태 정본** — 착수 전 필독(12 PR 중 PR-1·2·3 완료, PR-4→PR-5 순서 강제) |
 | [runbooks/docs-consolidation-plan.md](runbooks/docs-consolidation-plan.md) | 문서·가드 정리 계획 전문 (SPEC→RED→GREEN→GUARD 12 묶음) |
 | [runbooks/doc-volume-reduction-plan.md](runbooks/doc-volume-reduction-plan.md) | 🟢 **결정 대기 제안서** — 기록성↔집행성 분리(backlog ✅ 47% · STATE 이력 46% 실측). 실행 0건 |
 | [runbooks/session-handoff-2026-08-12.md](runbooks/session-handoff-2026-08-12.md) | 🔴 **세션 인계 — 다른 머신에서 이어받기**. main red 원인·PR #1331 대기·감사 결정 5건·미완 회고 |

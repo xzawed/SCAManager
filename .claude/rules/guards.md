@@ -10,13 +10,20 @@ paths:
 
 # 가드·훅·워크플로 저술 규칙
 
-> 🔴 이 파일이 자동 로드된다 = 당신은 지금 **가드가 실제로 저술되는 표면**을 편집 중이다.
+> 이 파일이 자동 로드된다 = 당신은 지금 **가드가 실제로 저술되는 표면**을 편집 중이다.
 > 이곳이 이 저장소가 가장 자주 실수하는 곳이다 — #1145 훅이 자기가 없애려던 false-green 을
 > **3형태로 재생산**한 게 정확히 이 표면이었다.
+>
+> **먼저 열 것 2건** (2026-08-13 3층 분리):
+> · 순서 = [`docs/process/guard-authoring.md`](../../docs/process/guard-authoring.md) — *어떻게 저술하는가* 8단계
+> · 함정 = [`.claude/traps.md`](../traps.md) — *이렇게 틀렸었다* 16 클래스 (A1~A6 · B1~B5 · C1~C6 · D · E)
+>
+> 아래 본문은 **이 표면에만 있는 세부 계약**이다. 일반 실패 클래스는 위 두 곳이 정본이며,
+> 여기에 다시 서술하지 않는다.
 
-## 🔴🔴 3-불변식 (정본 SSOT = [`AGENTS.md`](../../AGENTS.md) — 여기는 요약)
+## 3-불변식 (정본 SSOT = [`AGENTS.md`](../../AGENTS.md) — 여기는 요약)
 
-> 🔴 **full 규정·근거는 AGENTS.md 가 단일 body.** 아래는 write-time 리마인더 요약이다(drift 방지 —
+> **full 규정·근거는 AGENTS.md 가 단일 body.** 아래는 write-time 리마인더 요약이다(drift 방지 —
 > 상세를 여기 재서술하지 않는다). 저술 前 AGENTS.md §3-불변식을 정본으로 볼 것.
 
 새 가드/훅/워크플로/검증 스크립트 저술 시 **예외 없이**:
@@ -28,13 +35,13 @@ paths:
 3. **배선 테스트** — 정의≠배선, 순수함수 옳음≠진입점 도달(#1145). 산문 grep 아닌 실제 실행/호출 관측 +
    "실제 게이트(ci/pre-commit/SessionStart/PostToolUse)에 배선됐나" 동반 검증.
 
-🔴 **신규 seal 프로세스 규율 (정적 오라클로 완전 자동화 불가 — Grok 확정)**: fail-open 은 산문
+**신규 seal 프로세스 규율 (정적 오라클로 완전 자동화 불가 — Grok 확정)**: fail-open 은 산문
 진위처럼 semantic 이라 구문적 완전 탐지기는 오탐>진탐(guard-suicide). 대신 **새 가드/테스트는
 PR 본문에 실경로 뮤테이션-red + `assert mutated != orig`(불변식 2) 실증** 을 규율로 강제한다.
 `check_guard_fail_open`(B8)은 floor(구조 도구 0)만 자동 차단 — 결정이 bare substring 인 semantic
 잔여는 review-time claim-review(Grok)가 방어선. 천장 상세: [`AGENTS.md`](../../AGENTS.md) §정적 탐지의 천장.
 
-## 🔴 배선 단언은 `_wiring_shape` 술어 의무 (2026-07-31 — substring 배선 판정 11건 fail-open 실측)
+## 배선 단언은 `_wiring_shape` 술어 의무 (2026-07-31 — substring 배선 판정 11건 fail-open 실측)
 
 "이 가드가 배선됐나" 를 단언할 때 **`"<경로>" in <명령>` substring 금지**. 반드시
 `tests/unit/scripts/_wiring_shape` 의 `invokes` / `any_invokes` / `surface_invokes` 를 쓴다.
@@ -49,7 +56,7 @@ PR 본문에 실경로 뮤테이션-red + `assert mutated != orig`(불변식 2) 
 `python X` → `PY=$(...); $PY X` 로 재작성했을 때 가드가 그 재작성과 `echo X` 를 **구별하지 못한
 것**이 이 클래스의 실제 발동 경로다.
 
-🔴 **술어가 잡지 못하는 것**(정직 기준): 조건부 skip 된 CI step · 배선됐으나 공허한 가드 본문 ·
+**술어가 잡지 못하는 것**(정직 기준): 조건부 skip 된 CI step · 배선됐으나 공허한 가드 본문 ·
 `env A=b python x.py` / `sh -c "…"` / backtick / `eval` / `export PY=` / 따옴표 할당(`PY='python3'`)
 같은 **allowlist 밖 호출 형태**(fail-closed 라 *거부*된다 — 그런 형태로 새 배선을 쓰면 이 술어가
 실배선을 거부한다). 이 술어는 **"실행 연결이 끊겼는데 초록"** 만 끝낸다.
@@ -61,7 +68,7 @@ bare `python` 회귀(Windows Store 스텁 exit 49)를 **구별하지 못한다**
 마커 문자열을 출력시키고 "출력에 마커 포함" 으로 보면 `echo` 가 **명령 텍스트를 되돌려주며**
 통과한다(2026-08-01 실측 defeat).
 
-🔴 **판정 정밀도 3 규칙**(2026-08-01 Grok claim-review `019fbaf8` 적발 — 전부 실측 defeat):
+**판정 정밀도 3 규칙**(2026-08-01 Grok claim-review `019fbaf8` 적발 — 전부 실측 defeat):
 1. **경로는 경계에서만 일치** — 맨 `endswith` 는 `not_scripts/check_x.py` 를 `scripts/check_x.py`
    의 배선으로 오판한다(배선을 **다른 파일로 갈아끼워도** 초록).
 2. **죽은 단락평가 분기는 배선 아님** — `true || python x.py` 는 텍스트를 한 글자도 지우지 않고
@@ -72,20 +79,20 @@ bare `python` 회귀(Windows Store 스텁 exit 49)를 **구별하지 못한다**
    (셸에서 python3 이 실제로 도는 형태)를 거부해 **가드 자살**이었다. 단 `$(...)` 치환 내부는
    분기마다 값이 달라지므로 **모든 후보**가 인터프리터여야 한다.
 
-🔴 **기대값을 피검사 모듈에서 유도하지 말 것**(자기참조 공허화) — `doc_review_gate` 컨텍스트
+**기대값을 피검사 모듈에서 유도하지 말 것**(자기참조 공허화) — `doc_review_gate` 컨텍스트
 가드가 기대 원천 목록을 `_CONTEXT_SOURCES` 에서 읽었더니 **원천을 삭제하면 루프가 안 돌아
 GREEN** 이었다(뮤테이션 실측). 기대값은 테스트 쪽에 고정하고, 지문(fingerprint)도 **그 원천에만
 있는 문구**를 쓴다 — `"3-불변식"` 은 CLAUDE.md 에도 2회 나와서 AGENTS.md 제거를 못 잡았다.
 
-🔴 **B8 스캔 범위 = `scripts/check_*.py` + `.claude/hooks/*.py`** (R16 — 2026-08-02 훅 표면
+**B8 스캔 범위 = `scripts/check_*.py` + `.claude/hooks/*.py`** (R16 — 2026-08-02 훅 표면
 확대, 오탐 0 실측 후). 표면 중 하나라도 glob 0건이면 **범위 붕괴로 exit 1**(빈 범위 위의 ✅ 는
 GROK-9 뮤테이션이 실증한 fail-open 이었다). 성공 배너도 실제 스캔 범위를 명시한다.
-🔴 **여전히 범위 밖**: **test-as-guard(`tests/**/test_*.py`)의 fail-open 은 자동 탐지되지
+**여전히 범위 밖**: **test-as-guard(`tests/**/test_*.py`)의 fail-open 은 자동 탐지되지
 않는다** — AGENTS.md 가 기록한 최다 재발 사고(`#1136`·`#1156`)가 바로 그 표면이다
 (`X in text` 는 정당한 presence 검사에도 흔해 확대 시 오탐>진탐 = 가드 자살, 정책 17).
 이 표면은 write-time 규율(이 파일)과 review-time claim-review 로만 방어된다.
 
-## 🔴 훅이 LLM 을 부르면 프롬프트 캐시는 **순서** 문제다 (R38 — 2026-08-04)
+## 훅이 LLM 을 부르면 프롬프트 캐시는 **순서** 문제다 (R38 — 2026-08-04)
 
 `cache_control` 마커를 붙였다는 사실만으로는 아무것도 보장하지 않는다. 캐시는 프리픽스
 매칭이라 **가변 부분이 캐시 구간보다 앞에 있으면 매 요청이 새 항목을 쓰고 읽지는 못한다** —
@@ -102,7 +109,7 @@ GROK-9 뮤테이션이 실증한 fail-open 이었다). 성공 배너도 실제 �
 
 - **breakpoint 를 `system[0]` 에 거는 이유**: 캐시 구간이 '공통 부분' 하나로 끝나 **3 에이전트가
   같은 항목을 공유**한다. `system[1]` 에 걸면 에이전트마다 별개 항목이 되어 공유가 깨진다.
-- 🔴 **최소 캐시 길이는 모델마다 다르고 단조롭지 않다** — `claude-haiku-4-5` 는 **4096 토큰**으로
+- **최소 캐시 길이는 모델마다 다르고 단조롭지 않다** — `claude-haiku-4-5` 는 **4096 토큰**으로
   전 모델 중 가장 크다. 미달이면 **오류 없이 조용히** 캐시되지 않는다(`cache_creation_input_tokens`
   가 0). 컨텍스트 예산을 줄이는 변경은 이 하한을 함께 확인할 것.
 - 🔴 **병렬 호출은 첫 편집에서 전부 miss** — 캐시 항목은 첫 응답이 스트리밍을 시작해야 읽을 수
@@ -110,7 +117,7 @@ GROK-9 뮤테이션이 실증한 fail-open 이었다). 성공 배너도 실제 �
 - **반증 수단**: 마커 존재가 아니라 `usage.cache_read_input_tokens` 가 2회차에 0이 아닌지 볼 것.
   구조 회귀는 `tests/unit/hooks/test_doc_review_gate.py::TestPromptCache` 가 고정한다.
 - **실측 (2026-08-04)**: 1회차 `write=34,748 · read=0` ×3 → 2회차 `write=0 · read=34,748` ×3.
-  🔴 **이 숫자가 증명하는 것과 아닌 것을 구분할 것** — 증명되는 것은 *캐시가 동작한다*(2회차
+  **이 숫자가 증명하는 것과 아닌 것을 구분할 것** — 증명되는 것은 *캐시가 동작한다*(2회차
   입력의 ~96%가 캐시에서 옴). 증명되지 **않는** 것은 *3 에이전트가 항목 하나를 공유한다*:
   `usage` 에는 캐시 항목 식별자가 없어 '항목 1개를 3번 읽음' 과 '같은 크기 항목 3개를 각각
   읽음' 이 외부에서 구별되지 않는다. 공유는 **설계상 그렇다**(프리픽스 바이트+모델이 캐시 키
@@ -118,24 +125,24 @@ GROK-9 뮤테이션이 실증한 fail-open 이었다). 성공 배너도 실제 �
   같은 이유로 자연스럽다 — 병렬이라 셋 다 쓴다.
 - **opt-out**: `DISABLE_PROMPT_CACHE=1` (`docs/reference/env-vars.md` 등재분과 같은 변수).
 
-🔴 **관측 지표를 mock 으로 주입하는 테스트는 배선을 증명하지 않는다 (2026-08-05)** —
+**관측 지표를 mock 으로 주입하는 테스트는 배선을 증명하지 않는다 (2026-08-05)** —
 캐시 사망 감지를 붙이면서 테스트가 `call_agents_parallel` 을 mock 하고 `_usage` 를 **주입**했다.
 그래서 훅에서 회계 부착(`parsed["_usage"] = usage`)을 통째로 지워도 **전건 green** 이었다
 (실측). 관측 지표는 **생산 경로가 만들어 내는지**를 따로 단언할 것 —
 `test_usage_is_attached_by_the_call_site_not_only_by_mocks` 가 그 축이다.
 
-🔴 **"고장 감지" 는 의도한 설정을 고장으로 보고하지 않아야 한다 (2026-08-05)** —
+**"고장 감지" 는 의도한 설정을 고장으로 보고하지 않아야 한다 (2026-08-05)** —
 캐시 사망 판정이 `DISABLE_PROMPT_CACHE=1`(의도적 opt-out)에서도 참이었다. opt-out 이면
 회계 0/0 이 **정상**이다. 감지기를 쓸 때 *"이 신호가 정상 설정에서도 켜지는가"* 를 자문할 것.
 
-🔴 **`write_text` 는 인코딩 전에 파일을 비운다 (2026-08-05 실제 사고)** — 스크립트로 소스를
+**`write_text` 는 인코딩 전에 파일을 비운다 (2026-08-05 실제 사고)** — 스크립트로 소스를
 일괄 치환하다 치환 문자열에 lone surrogate 가 섞이자 `UnicodeEncodeError` 가 났고,
 `pathlib.write_text` 는 truncate 후 write 라서 **`doc_review_gate.py` 가 0바이트가 됐다**
 (`git checkout -- <file>` 로 index 에서 복구). 소스 일괄 치환은 (a) 편집 전 `git add` 로
 기준선을 stage 하고 (b) 가능하면 Edit 툴을 쓰며 (c) 부득이 스크립트를 쓰면
 `s.encode("utf-8")` 로 **먼저 인코딩을 검증**한 뒤 쓴다.
 
-🔴 **가변 원천은 캐시 프리픽스에서 분리한다 (2026-08-05)** — 한 원천만 자주 바뀌는데
+**가변 원천은 캐시 프리픽스에서 분리한다 (2026-08-05)** — 한 원천만 자주 바뀌는데
 한 블록에 섞어 두면 그 한 번의 편집이 **안정 원천까지 통째로** 무효화한다. 실제로
 `docs/STATE.md` 는 trailing sync 마다 바뀌고 나머지(CLAUDE.md·AGENTS.md ≈24.7k 토큰)는
 거의 안 바뀐다. 그래서 블록을 나누고 **breakpoint 를 2개** 쓴다:
@@ -148,7 +155,7 @@ GROK-9 뮤테이션이 실증한 fail-open 이었다). 성공 배너도 실제 �
 
 - **어느 쪽으로도 나빠지지 않는다**: STATE 가 안 바뀐 편집은 둘 다 히트(이전과 동일),
   STATE 가 바뀐 편집은 앞 블록이 살아남아 재처리가 전체 ≈34.7k → ≈10k 로 준다.
-- 🔴 **빼는 게 아니라 나누는 것** — STATE 를 컨텍스트에서 제거하면 심의자가 수치 정합을
+- **빼는 게 아니라 나누는 것** — STATE 를 컨텍스트에서 제거하면 심의자가 수치 정합을
   못 본다(R37 이 되돌린 축). 캐시를 위해 심의 품질을 깎지 않는다.
 - breakpoint 는 요청당 **최대 4개**. 여기서는 2개를 쓴다.
 - **실측 (2026-08-05, 편집 3회 연속)**:
@@ -161,16 +168,16 @@ GROK-9 뮤테이션이 실증한 fail-open 이었다). 성공 배너도 실제 �
 
   3회차가 **부분 히트**다 — 안정 프리픽스 24,664 를 읽고 STATE 블록 10,101 만 다시 썼다
   (합 34,765 = 전체 프리픽스). 분리 전이라면 34,765 **전부** 재기록이었다(재처리 **71% 감소**).
-- 🔴 **무효화는 한 편집 늦게 온다** — 훅은 `PreToolUse` 라 **편집이 적용되기 전** 디스크를
+- **무효화는 한 편집 늦게 온다** — 훅은 `PreToolUse` 라 **편집이 적용되기 전** 디스크를
   읽는다. 그래서 STATE 를 고치는 편집(2회차) 자체는 옛 STATE 로 full hit 이고, 새 내용이
   반영되는 것은 그 **다음** 편집(3회차)이다. 이 시차를 모르면 2회차의 full hit 을 보고
   "분리가 동작 안 한다" 고 오판하게 된다.
 - 회귀 가드: `TestPromptCache::test_stable_block_is_unchanged_when_only_the_volatile_source_changes`
   (STATE v1/v2 에서 `system[0]` 바이트 동일) · `test_split_context_keeps_state_out_of_the_stable_part`.
-  🔴 후자는 경로 문자열이 아니라 **섹션 헤더**(`=== docs/STATE.md `)로 판정한다 — CLAUDE.md
+  후자는 경로 문자열이 아니라 **섹션 헤더**(`=== docs/STATE.md `)로 판정한다 — CLAUDE.md
   본문이 산문으로 그 경로를 언급하므로 단순 부분문자열 검사는 오탐이다.
 
-## 🔴 lint-js 검사 범위는 baseline 원장과 대조된다 (R17 — 2026-08-02)
+## lint-js 검사 범위는 baseline 원장과 대조된다 (R17 — 2026-08-02)
 
 `check_lint_js_nonvacuous.py` 는 정당 제외(justified) 집합을 커밋된
 `scripts/lint_js_ignore_baseline.json` 과 대조한다 — 템플릿 `<script>` 에 무해한 Jinja 유사
@@ -180,7 +187,7 @@ EXIT=0)를 **baseline diff 없는 한 red** 로 만든다. 제외 집합을 바�
 한계(정직 기준): 같은 PR 이 baseline 도 고치면 통과한다 — 이 축은 감소를 막지 않고 리뷰
 가능한 명시 결정으로 승격할 뿐이며, 잔여는 review-time claim-review 가 방어한다.
 
-## 🔴 뮤테이션 복원 순서 — `git add` 를 먼저 (R15 가드 검증 중 실제 발생, 2026-08-04)
+## 뮤테이션 복원 순서 — `git add` 를 먼저 (R15 가드 검증 중 실제 발생, 2026-08-04)
 
 `git checkout -- <파일>` 은 HEAD 가 아니라 **staging area(index)** 에 있는 내용을 되살린다.
 따라서 방금 쓴 편집을 `git add` 하지 않은 채 뮤테이션→복원을 돌리면, 복원이 뮤테이션뿐
@@ -203,19 +210,19 @@ pytest ...                      # ⑥ baseline 이 다시 green 인지 확인
 CRLF 축(윈도우에서 `write_text` 왕복이 파일을 변경 상태로 남기는 문제)은 별개이며
 [[feedback-mutation-restore-crlf]] 가 정본이다.
 
-## 🔴 push 전 로컬 게이트 = `py -3 scripts/pre_push_gate.py` (2026-08-01 신설)
+## push 전 로컬 게이트 = `py -3 scripts/pre_push_gate.py` (2026-08-01 신설)
 
 새 가드를 저술했으면 **push 전에 이걸 돌린다.** CI 가 강제하는 repo-integrity 9종 +
 PR-diff 한정 4종을 `make` 없이 실행한다.
 
-- 🔴 **`make gate` 는 대체가 아니었다** — 그 타깃은 pytest·pylint·bandit 뿐이라 위 13 가드를
+- **`make gate` 는 대체가 아니었다** — 그 타깃은 pytest·pylint·bandit 뿐이라 위 13 가드를
   **하나도** 돌리지 않는다. 게다가 이 개발 머신에는 `make` 자체가 없다(`command not found`).
   한 세션에서 `Block new dual-import` 에 **두 번** 걸렸고 두 번 다 로컬은 초록이었다(backlog R29).
 - 🔴 **CI 에 가드를 추가하면 러너 목록도 갱신해야 한다** — 손유지 목록이 CI 와 갈라지면
   "로컬 초록" 이 아무것도 뜻하지 않게 된다. 회귀 가드
   `tests/unit/scripts/test_pre_push_gate.py::test_runner_covers_every_ci_guard_script` 가
   기대값을 **`ci.yml` 실파일에서 파싱**해 대조한다(작성 당시 실제 누락 2건을 적발했다).
-- 🔴 **러너가 보지 못하는 축을 매 실행 인쇄한다**(CodeQL·Sonar·Codecov·TruffleHog·pip-audit·
+- **러너가 보지 못하는 축을 매 실행 인쇄한다**(CodeQL·Sonar·Codecov·TruffleHog·pip-audit·
   lint-js·PG job·통합테스트). "여기 초록 = CI 초록" 으로 읽히면 러너 자신이 새 observer-lie 다.
 - advisory 가드(`check_test_count_sync --advisory-drift`)는 **exit 0 이면서 경고**하므로
   출력을 항상 표시한다 — 실패 시에만 인쇄하면 그 경고가 삼켜진다.
@@ -227,7 +234,7 @@ PR-diff 한정 4종을 `make` 없이 실행한다.
   `check_precommit_installed.py`(SessionStart, 실증된 채널)가 **관측**한다. 리포는 로컬 훅을
   강제할 수 없으므로 관측이 할 수 있는 전부다 — 진짜 집행면은 CI 다.
 
-## 🔴 required status check 는 (SHA, 이름) 으로 식별된다 (2026-08-01)
+## required status check 는 (SHA, 이름) 으로 식별된다 (2026-08-01)
 
 PR 본문만 고쳤을 때 CI 를 다시 돌리려고 워크플로를 추가한다면:
 
@@ -257,10 +264,10 @@ PR_HEAD_SHA="$(gh pr view N --json headRefOid --jq .headRefOid)" \
 py -3 scripts/check_claim_review_trace.py
 ```
 
-🔴 그리고 본문만 고쳐서는 required check 가 갱신되지 않는다(backlog R34, 2회 실측) —
+그리고 본문만 고쳐서는 required check 가 갱신되지 않는다(backlog R34, 2회 실측) —
 **커밋을 하나 더 밀어야** 한다.
 
-## 🔴 LLM 응답 형식은 **부탁이 아니라 스키마로** 강제한다 (R51 — 2026-08-05)
+## LLM 응답 형식은 **부탁이 아니라 스키마로** 강제한다 (R51 — 2026-08-05)
 
 프롬프트에 *"유효한 JSON 한 블록만 출력하라"* 고 적는 것과, API 에 스키마를 강제하는 것은
 다르다. 이 리포가 기록해 온 드리프트는 전부 전자의 한계였다 — 키 누락 · 범례 밖 값
@@ -269,34 +276,34 @@ py -3 scripts/check_claim_review_trace.py
 - **방법**: `output_config={"format": {"type": "json_schema", "schema": …}}`.
   object 는 `additionalProperties: false` + 전 필드 `required` 가 **API 계약**이고,
   `minLength` 같은 수치·문자열 제약은 미지원이다.
-- 🔴 **지원 여부는 문서 표가 아니라 Models API 로 확인할 것** — 캐시된 표에는 빠져 있던
+- **지원 여부는 문서 표가 아니라 Models API 로 확인할 것** — 캐시된 표에는 빠져 있던
   모델이 실제로는 지원했다(2026-08-05 실측: `claude-haiku-4-5`·`claude-sonnet-4-6`·
   `claude-sonnet-5` 전부 `capabilities.structured_outputs.supported = true`).
   `client.models.retrieve(<id>).capabilities` 가 정본이다.
-- 🔴 **스키마가 닫는 것은 '스키마 축' 하나뿐이다** — 응답 절단(`stop_reason=max_tokens`),
+- **스키마가 닫는 것은 '스키마 축' 하나뿐이다** — 응답 절단(`stop_reason=max_tokens`),
   호출 실패, 빈 결과는 그대로 열려 있다. 그래서 R35/R36 방어를 **지우지 않는다**.
   구조화 출력은 방어의 대체물이 아니라 **재발 동인의 제거**다.
-- 🔴 **기대값을 피검사 모듈에서 유도하지 말 것** — 스키마의 `enum` 을
+- **기대값을 피검사 모듈에서 유도하지 말 것** — 스키마의 `enum` 을
   `list(_LEGAL_DECISIONS)` 로 단언하면 그 상수를 비워도 초록이다. 테스트는 리터럴
   `["approve", "warn", "block"]` 로 못박는다(`test_schema_pins_the_legal_decisions_literally`).
-- 🔴 **스키마가 캐시 회계에 들어간다 (2026-08-05 실측)** — 적용 후 `cache_creation_input_tokens`
+- **스키마가 캐시 회계에 들어간다 (2026-08-05 실측)** — 적용 후 `cache_creation_input_tokens`
   가 갈렸다: 같은 3-필드 스키마인 impact·quality 는 **둘 다 `34,974`**, 필드가 하나 많은
   consistency 만 `35,004`. **크기가 다르면 프리픽스가 다르다 = 엔트리가 갈린다.**
   (역은 성립하지 않는다 — 같은 크기라고 같은 엔트리라는 보장은 없다. `usage` 에 엔트리
   식별자가 없기 때문이다.)
-  🔴 **경쟁 가설을 배제한 근거**(Grok `019fcdab` 가 "스키마 말고 에이전트 프롬프트 차이일 수
+  **경쟁 가설을 배제한 근거**(Grok `019fcdab` 가 "스키마 말고 에이전트 프롬프트 차이일 수
   있다" 고 반박): 에이전트 프롬프트는 impact `1,997B` · quality `2,124B` · consistency
   `3,845B` 로 **셋 다 다르다**. 프롬프트가 회계에 들어갔다면 impact≠quality 여야 하는데
   둘은 **정확히 같았고**, consistency 의 초과분은 프롬프트 차이(≈1.8KB)가 아니라 필드
   하나(**+30 토큰**) 규모였다. 관측은 스키마 가설과만 일치한다.
-  🔴 **측정 출처의 한계**: 임시 계측으로 얻은 값이고 그 계측은 커밋하지 않았다 — 리포
+  **측정 출처의 한계**: 임시 계측으로 얻은 값이고 그 계측은 커밋하지 않았다 — 리포
   트리만으로는 재현되지 않는다(Grok verdict-C 지적 수용). 재측정하려면 훅에
   `cache_usage()` 결과를 일시적으로 덤프해야 한다.
   즉 에이전트별 스키마는 캐시 엔트리를 늘린다. 그럼에도 **스키마를 통일하지 않았다** —
   통일하면 impact·quality 에게 자기 프롬프트에 없는 필드를 만들라고 시키게 된다.
   캐시 엔트리 하나보다 프롬프트 정직성이 우선이다(비용: 5분 창당 쓰기 1회 추가).
 
-## 🔴 훅 **입력** 디코딩 — `json.load(sys.stdin)` 금지 (2026-08-04)
+## 훅 **입력** 디코딩 — `json.load(sys.stdin)` 금지 (2026-08-04)
 
 아래 "훅 출력 채널" 규칙의 **입력 쪽 짝**이다. 출력이 Claude 에게 닿는지를 그 규칙이 다루듯,
 이 규칙은 **입력이 훅에게 온전히 닿는지**를 다룬다.
@@ -309,9 +316,9 @@ py -3 scripts/check_claim_review_trace.py
 
 - **정답**: `getattr(sys.stdin, "buffer", sys.stdin).read()` 로 바이트를 읽어 UTF-8 로 직접
   디코드(`doc_review_gate.read_payload`). `.buffer` 부재(StringIO 패치)는 텍스트 폴백.
-- 🔴 **`#1276` 과의 관계**: 그 PR 이 봉인한 lone surrogate 의 **발생원이 이 디코드였다**.
+- **`#1276` 과의 관계**: 그 PR 이 봉인한 lone surrogate 의 **발생원이 이 디코드였다**.
   `_scrub_surrogates` 는 증상을 지웠고 원인은 남아 있었다 — 그래서 mojibake 심의가 계속됐다.
-- 🔴 **진단 절차 — 반드시 실훅을 계측한다**: 셸에서 손으로 띄운 python 은 다른 환경이다
+- **진단 절차 — 반드시 실훅을 계측한다**: 셸에서 손으로 띄운 python 은 다른 환경이다
   (부모가 `PYTHONUTF8` 을 심으면 값이 달라진다). 훅 안에서 `sys.stdin.encoding` ·
   `sys.flags.utf8_mode` · 원문 길이를 파일로 덤프한 뒤 실제 편집을 1회 발생시켜 읽는다.
   이번에도 셸 측정과 Grok 측정이 엇갈렸고, **실훅 계측만이 결판을 냈다**.
@@ -322,7 +329,7 @@ py -3 scripts/check_claim_review_trace.py
   전부 red. AST 존재 검사만으로는 죽은 호출이 통과하므로 **에이전트에 닿는 diff 를 직접
   검사하는 E2E 단언**을 함께 둔다.
 
-## 🔴 훅 출력 채널 — `print()` 는 Claude 에게 도달하지 않는다 (2026-08-01 공식 계약 확인)
+## 훅 출력 채널 — `print()` 는 Claude 에게 도달하지 않는다 (2026-08-01 공식 계약 확인)
 
 **PreToolUse/PostToolUse 훅의 plain stdout 은 디버그 로그로만 간다.** exit 0 의 stdout 이
 Claude 컨텍스트가 되는 이벤트는 `UserPromptSubmit` · `UserPromptExpansion` · `SessionStart`
@@ -335,18 +342,18 @@ Claude 컨텍스트가 되는 이벤트는 `UserPromptSubmit` · `UserPromptExpa
 | 사용자가 보게 하려면 | `systemMessage` (top-level) | 터미널 UI |
 | 차단하려면 | `hookSpecificOutput.permissionDecision: "deny"` + `…Reason` | — |
 
-🔴 **advisory 고지에 `permissionDecision` 을 얹지 말 것** — `"allow"` 는 사용자 권한 확인을
+**advisory 고지에 `permissionDecision` 을 얹지 말 것** — `"allow"` 는 사용자 권한 확인을
 **건너뛸 수 있다**. `additionalContext` 는 권한 결정과 **독립**이라 미설정이면 정상 흐름이 유지된다.
 회귀 가드: `test_advisory_never_carries_a_permission_decision`.
 
-🔴 **SessionStart 로 이관하는 것은 해답이 아니다**(검토 후 기각) — SessionStart 는 세션당 1회라
+**SessionStart 로 이관하는 것은 해답이 아니다**(검토 후 기각) — SessionStart 는 세션당 1회라
 세션 중간에 키 만료/취소가 나면 **stale-green** 이 된다. *"안 보이지만 live"* 가
 *"보이지만 stale"* 보다 낫고, 올바른 답은 **live 하면서 보이게** 하는 `additionalContext` 다.
 
-🔴 **텍스트 단언은 채널 회귀를 못 잡는다** — `assert "MARKER" in capsys.out` 은 bare `print` 로
+**텍스트 단언은 채널 회귀를 못 잡는다** — `assert "MARKER" in capsys.out` 은 bare `print` 로
 되돌려도 통과한다. **JSON 형태를 파싱해 단언**할 것(실측: 이 파일의 초판 테스트가 정확히 그랬다).
 
-## 🔴 뮤테이션 유효성 — `mutated != orig` 는 필요조건일 뿐이다
+## 뮤테이션 유효성 — `mutated != orig` 는 필요조건일 뿐이다
 
 `assert mutated != orig`(불변식 2)를 통과해도 **동작이 안 바뀌는 뮤테이션**이 있다.
 실측: `json.dumps(payload, ensure_ascii=True)` → `json.dumps(payload)` 는 **텍스트가 바뀌지만

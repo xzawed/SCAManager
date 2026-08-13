@@ -31,13 +31,13 @@
 
 **구현 옵션** (환경별 우선순위 — gh CLI > API + GITHUB_TOKEN > URL 안내 폴백). PR 생성은 사용자 수동 위임 금지 (정책 7 PR 단위와 모순).
 
-🔴 **현재 SCAManager 환경**: gh CLI v2.89.0 설치 완료 + xzawed 계정 인증 완료 → **옵션 🅐 (gh pr create) default 운영**.
+**현재 SCAManager 환경**: gh CLI v2.89.0 설치 완료 + xzawed 계정 인증 완료 → **옵션 🅐 (gh pr create) default 운영**.
 
 **기본 PR body 템플릿**: §Summary + §🔍 사용자 검증 필요 (정책 2) + §자율 판단 보고 (정책 3) + 🤖 Generated with [Claude Code](https://claude.com/claude-code) 푸터.
 
-> ⛔ 구 §🔍 Codex 검증 의뢰 (정책 18) 항목은 **2026-07-10 Codex 구독 해지로 폐기** — PR 본문에 넣지 않는다.
+> 구 §🔍 Codex 검증 의뢰 (정책 18) 항목은 **2026-07-10 Codex 구독 해지로 폐기** — PR 본문에 넣지 않는다.
 
-🔴 **PR 본문 전달 + 생성 직후 검증 의무 (2026-06-10 사고 학습)**:
+**PR 본문 전달 + 생성 직후 검증 의무 (2026-06-10 사고 학습)**:
 
 - **전달 방식**: 본문은 **임시 파일 작성 후 `--body-file <경로>`** 로만 전달. `--body @-` (curl 식 관용구 — gh 미지원, 리터럴 저장) 및 PowerShell 에서의 `--body-file -` stdin 파이프 금지.
 - **검증 의무**: `gh pr create`/`gh pr edit` 직후 `gh pr view <n> --json body --jq '.body | length'` 1줄 실행 — 길이가 비정상(< 50자)이거나 본문이 `@-` 면 즉시 `--body-file` 로 재전송.
@@ -73,7 +73,7 @@ git push -u origin <branch>
 **적용 대상 파일**: `src/templates/*.html` / `src/static/**/*.css` / `base.html` `<style>` 블록 / 신규 시각 컴포넌트
 
 ```markdown
-## 🚨 Claude 시각 검증 불가 — 사용자 의무 (정책 11)
+## Claude 시각 검증 불가 — 사용자 의무 (정책 11)
 
 본 PR 은 UI/시각 변경 포함. Claude 는 정적 코드만 검증 가능 — 다음 8 조합 시각 정합성은 사용자 직접 확인 부탁드립니다:
 
@@ -104,7 +104,7 @@ git push -u origin <branch>
 
 ## 정책 11 강화 (사이클 62 P0 OAuth 사고 후속): 인증 flow 검증 추가
 
-🔴 **진화 default 요약**: 인증/외부 통합 변경 PR 시 8 조합 시각 체크리스트 + **인증 flow 4 endpoint 종단간 검증** 의무 — `/login` **301**(→/auth/github, 로그인 페이지 제거·북마크 하위호환) + `/auth/github` 302 + `/auth/callback` redirect + `/auth/logout` redirect (기대값 SSOT: operational-smoke-checks.md). 상세: [.claude/policies/history.md#정책-11-강화](history.md#정책-11-강화).
+**진화 default 요약**: 인증/외부 통합 변경 PR 시 8 조합 시각 체크리스트 + **인증 flow 4 endpoint 종단간 검증** 의무 — `/login` **301**(→/auth/github, 로그인 페이지 제거·북마크 하위호환) + `/auth/github` 302 + `/auth/callback` redirect + `/auth/logout` redirect (기대값 SSOT: operational-smoke-checks.md). 상세: [.claude/policies/history.md#정책-11-강화](history.md#정책-11-강화).
 
 ---
 
@@ -167,7 +167,7 @@ git push -u origin <branch>
 - `tests/integration/conftest.py` autouse fixture (PR #209): webhook secret 환경 의존성 격리 (24 fail 해소)
 - 상세: `docs/runbooks/operational-smoke-checks.md` §8
 
-🔴 **자동화 가드는 manual smoke check 의무를 대체하지 않는다** — CI 통과 ≠ 운영 정상. PR 본문 §"운영 smoke check 결과" 섹션은 인증/외부 통합 변경 PR 마다 여전히 의무 (정책 13 default). 자동화는 회귀 차단 보조이며 외부 의존 (GitHub OAuth App callback URL 등) 검증은 manual / 사용자 영역.
+**자동화 가드는 manual smoke check 의무를 대체하지 않는다** — CI 통과 ≠ 운영 정상. PR 본문 §"운영 smoke check 결과" 섹션은 인증/외부 통합 변경 PR 마다 여전히 의무 (정책 13 default). 자동화는 회귀 차단 보조이며 외부 의존 (GitHub OAuth App callback URL 등) 검증은 manual / 사용자 영역.
 
 ---
 
@@ -254,9 +254,9 @@ git push -u origin <branch>
 2. **성능 유지** — 단순화로 hot-path latency / memory 증가 시 단순화 포기 (실측 의무)
 3. **가독성 우선** — 위 두 조건 충족 시 가독성 ↑ 패턴 채택
 4. **최소 추상화** — 시스템 프롬프트 "Don't add features, refactor, or introduce abstractions beyond what the task requires" 강화
-5. **🔴 토큰 비용 효율** (사이클 72 추가 — 사용자 의도 정합) — 운영 토큰 사용량 ↓ + 분산 + caching 활용. 단, **AI 리뷰 품질 영향 영역 = 단순화 금지** (사용자 명시 제외 — 아래 명시 제외 영역). **caching 4 단계 활성화 사례 (사이클 63 → 74 — 사이클 75 진화)**: 1단계 인프라 도입 (사이클 63 #218 — `build_cached_system_param`) → 2단계 baseline 정확화 (사이클 72 #242 — cache 비용 모델 + `get_cache_stats` + silent fallback streak) → 3단계 활성화 (사이클 74 #247 — 1024 토큰 패딩 + Haiku 모델 분기) → 4단계 호출 빈도 제한 (사이클 74 #248 — DB 캐싱 1h TTL). 운영 baseline 측정 의무 (1주 후 cache_hit_rate / silent_cache_fallback streak 검증).
+5. **토큰 비용 효율** (사이클 72 추가 — 사용자 의도 정합) — 운영 토큰 사용량 ↓ + 분산 + caching 활용. 단, **AI 리뷰 품질 영향 영역 = 단순화 금지** (사용자 명시 제외 — 아래 명시 제외 영역). **caching 4 단계 활성화 사례 (사이클 63 → 74 — 사이클 75 진화)**: 1단계 인프라 도입 (사이클 63 #218 — `build_cached_system_param`) → 2단계 baseline 정확화 (사이클 72 #242 — cache 비용 모델 + `get_cache_stats` + silent fallback streak) → 3단계 활성화 (사이클 74 #247 — 1024 토큰 패딩 + Haiku 모델 분기) → 4단계 호출 빈도 제한 (사이클 74 #248 — DB 캐싱 1h TTL). 운영 baseline 측정 의무 (1주 후 cache_hit_rate / silent_cache_fallback streak 검증).
 
-**🚫 명시 제외 영역 (사용자 결정 — AI 리뷰 품질 보존 의무)**:
+**명시 제외 영역 (사용자 결정 — AI 리뷰 품질 보존 의무)**:
 - ❌ `build_review_prompt` 토큰 예산 8000 → 축소 (사이클 72 사용자 명시 보류 — 품질 저하 원치 않음)
 - ❌ `review_guides/` 49개 언어 Tier1 full ~500 토큰 압축 (사이클 72 사용자 명시 보류 — 체크리스트 ↓ → 리뷰 깊이 ↓ 위험)
 - ✅ 진행 OK 영역 (사이클 72 검증): `review_code` prompt caching = **이미 100% 적용** (사이클 63 #218 — `src/analyzer/io/ai_review.py:100-107`) — multi-block 확장 (system + lang_guides 분리) 만 Phase 3 후보 (단 `build_review_prompt` 시그니처 변경 = High tier 사전 확인 의무) / 모델 분기 (Haiku/Sonnet/Opus) — Phase 2 (1주 운영 데이터 후 결정, AI 리뷰 품질 영향 = High tier) / 동일 SHA 결과 재사용 = **이미 100% 적용** (3-tier dedup — `src/worker/pipeline.py:206-218`) / Insight narrative 호출 빈도 제한 — Phase 2 (DB 캐싱 1h TTL 후보) / **cache hit rate 모니터링 인프라 = 사이클 72 PR 2 (#242) 도입** (`src/shared/claude_metrics.py::get_cache_stats` + cache 비용 모델 정확화 + silent fallback streak WARNING)
@@ -300,7 +300,7 @@ git push -u origin <branch>
 **배경 (동형 안티패턴 2회 재발)**: 같은 값/로직이 2+곳에 존재할 때 "한 곳만 수정"하는 결함이 한 세션 창에서 2회 재발.
 - **#1015 → #1019**: Claude 가격을 `claude_metrics.py` 한 곳만 갱신 → `constants.py`·i18n `model_hint` stale → split-fix.
 - **#1021 N1**: `operations_kpi` 상한을 API 라우트(`api/admin.py`)만 추가 → 동일 서비스 호출 HTML 라우트(`ui/routes/admin.py`) 미수정(HTTP 500 노출) → **Codex mutual 이 사후 적발**.
-두 번째 사례가 turn-0 grep 규율이 아닌 **사후 리뷰**(당시 외부 Codex)로만 잡힌 것이 핵심 — 🔴 **사후 리뷰(5+1·whole-branch·외부 검증자)를 proactive discipline 의 대체물로 쓰지 말 것.** 리뷰는 backstop 이지 1차 방어선이 아니다.
+두 번째 사례가 turn-0 grep 규율이 아닌 **사후 리뷰**(당시 외부 Codex)로만 잡힌 것이 핵심 — **사후 리뷰(5+1·whole-branch·외부 검증자)를 proactive discipline 의 대체물로 쓰지 말 것.** 리뷰는 backstop 이지 1차 방어선이 아니다.
 
 **default rule**:
 1. 값/로직 수정 **직전** `grep -rn <심볼>` 으로 전 호출처 열거 → diff/PR 본문에 "전수 확인 N곳" 1줄 명시.
@@ -363,17 +363,17 @@ git push -u origin <branch>
 
 <a id="정책-18"></a>
 
-## ⛔ 정책 18 폐기: 구 "Claude ↔ Codex 양방향 mutual 검증 의무" (2026-05-09 신설 → 2026-07-10 폐기)
+## 정책 18 폐기: 구 "Claude ↔ Codex 양방향 mutual 검증 의무" (2026-05-09 신설 → 2026-07-10 폐기)
 
 **폐기 사유**: 사용자가 Codex 유료 구독을 해지 (2026-07-10). `@openai/codex` npm 패키지 · Claude Code 플러그인 제거로 `codex` 실행 파일이 존재하지 않는다 → mutual 검증 **수행 불가능**.
 
 **지금부터**:
 - Codex mutual 검증은 **전건 면제**. `codex exec` probe 실패는 **정상**이며 이상 징후로 보고하거나 사용자 확인을 요청하지 않는다.
-- 대체 = **Claude 단독 2-layer 자체 검증** — (a) 정책 8 5+1 다중 에이전트 cross-verify(관점 다양성) + (b) `pipeline-reviewer` / opus whole-branch 적대적 리뷰(리뷰 계층 다양성). 🔴 whole-branch 리뷰는 cross-cutting 결함(`form=` 데이터손실 등)의 유일 방어선 — 비용 절감 명목 생략·강등 금지.
+- 대체 = **Claude 단독 2-layer 자체 검증** — (a) 정책 8 5+1 다중 에이전트 cross-verify(관점 다양성) + (b) `pipeline-reviewer` / opus whole-branch 적대적 리뷰(리뷰 계층 다양성). whole-branch 리뷰는 cross-cutting 결함(`form=` 데이터손실 등)의 유일 방어선 — 비용 절감 명목 생략·강등 금지.
 - **사이클 종료 = 2 조건 AND** (사용자 신호 + Claude OK). 구 (c) Codex OK 조건 삭제 (정책 5 페어).
 - 구 §2 의 **push 전 전체 `pytest tests/unit` 게이트**는 Codex 와 무관하게 유효 → CLAUDE.md 필수 원칙 6-step ② 로 이관·존치.
 
-**함께 제거된 자산** (2026-07-10): ~~`AGENTS.md`~~ 🔴 **2026-07-20 재신설됨**(Codex 잔재 아님 — Claude·Grok dual-consumer SSOT, 문서 재구성 Phase 0. 삭제 금지) · `.codex/`(agents 5 · rules 8 · hooks) · `.claude/skills/codex-verify.md`(`/codex-verify`) · PR 템플릿 §Codex 검증 의뢰 · 시작 체크리스트 turn-0 probe.
+**함께 제거된 자산** (2026-07-10): ~~`AGENTS.md`~~ **2026-07-20 재신설됨**(Codex 잔재 아님 — Claude·Grok dual-consumer SSOT, 문서 재구성 Phase 0. 삭제 금지) · `.codex/`(agents 5 · rules 8 · hooks) · `.claude/skills/codex-verify.md`(`/codex-verify`) · PR 템플릿 §Codex 검증 의뢰 · 시작 체크리스트 turn-0 probe.
 
 **역사 (실증된 가치)**: cross-vendor 검증은 실효가 있었다 — 2026-06-29 심층 감사에서 **P1 2건(crypto 평문 fallback · STRICT_MIGRATION)은 Codex 만 발견**하고 Claude 8 에이전트가 놓쳤다. 향후 대체 검증자(무료 OpenAI-호환 등) 도입 검토 시 이 근거를 참조. 폐기 이전 상세 본문(양방향 흐름 · 환경 통합 · `codex exec` 운용 도구 · 17 정책 cross-ref 표 · NG 회기 가드 · 4-way sync)은 **git 이력**에 보존한다.
 
@@ -416,7 +416,7 @@ git push -u origin <branch>
 
 ## 정책 8 — cross-verify 6차 에이전트 규칙 (사이클 64 학습 — 2026-07-20 CLAUDE.md 슬림 시 이관)
 
-🔴 **1차 5 에이전트 결과 받은 후 별도 cross-verify 에이전트 1건 디스패치 (= 5+1 = 6 패턴)**:
+**1차 5 에이전트 결과 받은 후 별도 cross-verify 에이전트 1건 디스패치 (= 5+1 = 6 패턴)**:
 - ❌ **cross-verify 6차 에이전트로 `doc-consistency-reviewer` 사용 금지** (사이클 64: 회고
   cross-verify scope 거절) / ✅ **`general-purpose` 또는 task-specific specialist** — 단,
   문서 diff 일관성 검토 단독 목적의 호출은 허용.
@@ -454,7 +454,7 @@ Phase 종료 시점 의무는 **정책 2/5/8/11 4 정책에 분산** (사이클 
 
 ## 정책 19: Claude ↔ Grok 협업 — detail (2026-08-06 CLAUDE.md 본문에서 이관)
 
-> 🔴 **SSOT 는 여전히 [`AGENTS.md`](../../AGENTS.md)(3-불변식·트리거) + [`docs/runbooks/ai-collaboration.md`](../../docs/runbooks/ai-collaboration.md)(프로토콜 v2)** 다.
+> **SSOT 는 여전히 [`AGENTS.md`](../../AGENTS.md)(3-불변식·트리거) + [`docs/runbooks/ai-collaboration.md`](../../docs/runbooks/ai-collaboration.md)(프로토콜 v2)** 다.
 > 아래는 CLAUDE.md 가 200줄 기준(Anthropic 공식)을 2.1배 초과해 detail 을 옮긴 것이며,
 > CLAUDE.md 본문에는 default rule 만 남는다(정책 17 원칙 2).
 
@@ -467,10 +467,10 @@ Grok CLAIM-REVIEW 기본 포함(2026-07-20 사용자 지시, 건너뛰려면 명
 - **핵심 트리거**: "봉인/완결/fail-closed/유출 0" 주장 → 그 주장 하나로 Grok 뮤테이션 패스
   (이진 질문이라 Grok 심각도 편향 우회). **1순위 사냥 = observer-lie**: *보호 장치를 삭제해도
   여전히 참으로 보이는 것은?*
-- 🔴 **2-phase 사용자 보고 게이트**(매 발화 의무): `배포|활성|봉인|운영|cron 실행됨` 포함 문장은
+- **2-phase 사용자 보고 게이트**(매 발화 의무): `배포|활성|봉인|운영|cron 실행됨` 포함 문장은
   라이브 deploy reality 필드 동반 또는 **`UNVERIFIED:` 접두사** 의무. `STATIC-ONLY-UNVERIFIED` 는
   사용자 보고 불가.
-- 🔴 **A2 (신규 관측자 뮤테이션 의무)**: 새 seal 은 **실경로 뮤테이션 red** 없이 HOLDS 금지 —
+- **A2 (신규 관측자 뮤테이션 의무)**: 새 seal 은 **실경로 뮤테이션 red** 없이 HOLDS 금지 —
   합성 픽스처 불가(#1121). 3-불변식 상세 = [`AGENTS.md`](../../AGENTS.md).
 - **경계 = '소유 금지'**: Grok 은 정책·backlog 를 **저술하지 않는다**(claim-review 는 허용 —
   seal/HOLDS/완전성 주장 시 `owner-interrupt: claim-review` 명시). 호출 금지: 계획·WBS·구현 중간.
