@@ -50,7 +50,6 @@ _CRITICAL = [
 # edits to the very surfaces that tell agents what to do.
 _IMPORTANT = [
     r"^docs/design/.+\.md$",          # `brief/` 등 하위 디렉토리 포함 (이전엔 한 세그먼트만)
-    r"^docs/runbooks/[^/]+\.md$",
     r"^docs/superpowers/.+\.md$",
     r"^README(\.[a-z]{2})?\.md$",     # README.ko.md 등 로케일 변형 포함
     r"^\.claude/policies/[^/]+\.md$",
