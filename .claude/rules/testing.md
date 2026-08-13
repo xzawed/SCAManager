@@ -84,7 +84,7 @@ paths:
   `py/uninitialized-local-variable` 이 **서로를 유발**한다. 해결 = wrapper 제거하고 직접 호출.
   기계 집행: `tests/unit/scripts/test_does_not_raise_wrapper_guard.py`(AST 차단, `# does-not-raise-ok:` 로 면제).
 - 🔴 **`<script>` top-level `const`/`let` 금지** — hx-boost 재실행 시 SyntaxError. IIFE 또는 `var`.
-  정적 축 집행: `tests/unit/ui/test_hx_boost_listener_guards.py`.
+  정적 축 집행: `tests/unit/ui/test_template_js_const.py`(`src/templates/*.html` 의 `<script>` 블록 전수 스캔).
 - 🔴 **`base.html` `<script>` 변경 시 3회 이상 hx-boost 재방문 E2E 의무** — `page.goto()` 단독은
   fresh JS 컨텍스트라 재선언 SyntaxError 를 감지하지 못한다. 실브라우저 축: `e2e/test_navigation.py`.
 - 🔴 **`pageerror` 트랩 의무** — Playwright 는 uncaught JS exception 을 기본 묵살한다.
