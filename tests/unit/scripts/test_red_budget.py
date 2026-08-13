@@ -85,17 +85,33 @@ def test_prose_without_a_guard_name_is_unenforced(tmp_path):
     assert gate.has_enforcer("🔴 **반드시** 지킬 것. 예외 없음.", tmp_path) is False
 
 
-def test_current_ratio_is_reproducible():
-    """🔴 산식이 이 저장소에서 **재현**돼야 한다 — 22%/29% 가 공존하던 것을 고정한다.
+def test_every_red_rule_now_has_an_enforcer():
+    """🔴 **집행자 없는 🔴 은 0이어야 한다** (2026-08-13 사용자 결정 이후의 계약).
 
-    판단자가 채택 조건으로 요구한 축이다. 값이 크게 흔들리면 산식이 결정론적이지 않다.
+    ## 왜 하한이 아니라 0인가
+
+    초판은 *"비율이 10~60% 사이인가"* 를 봤다 — 산식이 결정론적인지만 재는 축이었고,
+    실측 23.1%(2026-08-08) → 28.0%(2026-08-13) 를 그대로 통과시켰다. 즉 **무집행 🔴 이
+    221건 쌓이는 동안 이 테스트는 계속 초록**이었다.
+
+    사용자 결정(2026-08-13): *"룰과 규칙은 최소한의 기준으로 남기고, 핵심 이외는 필요 없다."*
+    그래서 집행자 없는 🔴 **221개를 전량 제거**했다(규칙문은 보존 — 🔴 마커만 뗐다).
+    🔴 는 이제 *"과거 사고로 검증됐고 기계가 지킨다"* 는 뜻이며, 그렇지 않으면 붙이지 않는다.
+
+    실측 근거: 이 세션에서 실수를 막은 것은 기계 가드 12회 · 함정 기억 7회 ·
+    외부 적대 검증 4회였고 **룰 텍스트는 ≈0회**였다.
+
+    Every 🔴 must now carry a machine enforcer; the old ratio-band test stayed green
+    while 221 unenforced rules accumulated.
     """
     unenforced, total = gate.unenforced_count(_ROOT)
-    assert total >= 200, f"🔴 규칙을 {total}건만 찾았다 — 파서 확인(공허 방지)"
-    ratio = (total - unenforced) / total
-    assert 0.10 <= ratio <= 0.60, (
-        f"집행자 동반 비율 {ratio:.1%} — 산식이 흔들렸는지 확인할 것 "
-        f"(2026-08-08 실측 23.1%: {total - unenforced}/{total})"
+
+    assert total >= 50, f"🔴 규칙을 {total}건만 찾았다 — 파서 확인(공허 방지)"
+    assert unenforced == 0, (
+        f"집행자 없는 🔴 이 {unenforced}건이다 (전체 {total}). "
+        "🔴 을 새로 붙이려면 같은 PR 에서 그것을 집행하는 가드를 만들 것 — "
+        "집행할 수 없는 규칙이면 🔴 없이 평문으로 적고, 실패 기전이라면 "
+        "`.claude/traps.md` 에 넣는다."
     )
 
 

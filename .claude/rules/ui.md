@@ -15,14 +15,14 @@ paths:
 
 ## 세션 라우팅
 
-- 🔴 **background/시스템 세션 = `WorkerSessionLocal` alias 의무** (본문 = [`db.md`](db.md) §WorkerSessionLocal).
+- **background/시스템 세션 = `WorkerSessionLocal` alias 의무** (본문 = [`db.md`](db.md) §WorkerSessionLocal).
   이 영역 소비자 = `src/ui/routes/admin.py`(hybrid: tenants·operations=worker / rls-audit=bare).
   **hybrid 모듈은 두 심볼을 구분해 쓴다(alias 금지)**. 웹 경로는 bare `SessionLocal` 유지.
   *왜 여기 있나*: `db.md` path 매칭이 이 영역을 포함하지 않아 **자동 로드되지 않는다**.
 
 ## hx-boost — 이 영역 최다 재발 클래스
 
-- 🔴 **인라인 IIFE 금지 → named function + remove-before-add 재등록.**
+- **인라인 IIFE 금지 → named function + remove-before-add 재등록.**
   *왜*: IIFE 단독은 hx-boost 재방문에서 `opacity:0` 고착.
   핸들러명 = `document._<pageScope><Domain>Handler`. 상세 = 아카이브 §ui.
 - 🔴 **차트는 `new Chart(` **앞**에 `if (typeof Chart === 'undefined') return;` early-return 가드.**
@@ -33,7 +33,7 @@ paths:
 - 🔴 **한 템플릿에 `new Chart(` 가 N개면 가드도 N개** + **vendor 로드 조건이 차트를 렌더하는 모든 분기를 포함**해야 한다.
   *왜*: substring 검사는 1개만 가드해도 통과했고, `repos` 모드가 vendor 미로드로 영구 공백이었다.
   개수·분기 축 집행: `tests/unit/ui/test_chart_race_guards.py` · 실브라우저 축 `e2e/test_repos_mode.py`.
-- 🔴 **여러 `<script>` block 이 공유하는 값은 IIFE `const` 로 선언 금지 → 고유 전역(`window._<scope>`) 노출 + 참조측 지역 `var` 재바인딩 + 미정의 가드.**
+- **여러 `<script>` block 이 공유하는 값은 IIFE `const` 로 선언 금지 → 고유 전역(`window._<scope>`) 노출 + 참조측 지역 `var` 재바인딩 + 미정의 가드.**
   *왜*: 별도 block 의 함수가 IIFE const 를 참조하면 전역만 탐색 → `ReferenceError` → 차트 영구 공백.
   범용 `window.I18N` 금지(타 페이지 전역 충돌). **운영 JS 미표시는 F12 console 우선**(정적 리뷰·5+1 에이전트 미검출 전례).
 - 🔴 **외부 `<body>` 스크립트(`effects.js`)의 `init()` 에서 일괄 dispose 금지.**
@@ -58,13 +58,13 @@ paths:
   *왜*: SonarCloud `Web:InputWithoutLabelCheck` MAJOR 신뢰성 버그 → 누적 시 Quality Gate **ERROR**.
   **placeholder·인접 텍스트는 불충분**. 하드코딩 금지(i18n.md).
   가드: `tests/unit/ui/test_input_aria_labels.py`
-- 🔴 **모바일 인터랙티브 요소 `min-height: 44px`**(WCAG 2.5.5) + `box-sizing: border-box`,
+- **모바일 인터랙티브 요소 `min-height: 44px`**(WCAG 2.5.5) + `box-sizing: border-box`,
   input/select 모바일 `font-size ≥16px`(iOS focus zoom 회피).
-- 🔴 **sticky/fixed 요소는 `env(safe-area-inset-*)` 적용** + `<meta viewport-fit=cover>` 페어.
+- **sticky/fixed 요소는 `env(safe-area-inset-*)` 적용** + `<meta viewport-fit=cover>` 페어.
 
 ## 테마 / 토큰
 
-- 🔴 **정의되지 않은 토큰 참조 금지** — 발견 시 사용처 치환이 아니라 `base.html` `:root` 에 **alias 흡수**.
+- **정의되지 않은 토큰 참조 금지** — 발견 시 사용처 치환이 아니라 `base.html` `:root` 에 **alias 흡수**.
   *왜*: consumer 변경 0 으로 4-테마 일괄 해결. 신규 토큰은 항상 `var(--*)`, `#hex` 직접 금지.
 - **시맨틱 색은 `--success`/`--warning`/`--danger` 3종만.** 등급 색(`--grade-a~f`)과 혼용 금지.
 - **claude-dark 는 settings 토큰 8종 정의 의무** — 미정의 시 invalid `var()` → 카드 헤더 시각 깨짐.
@@ -73,7 +73,7 @@ paths:
 
 ## Jinja2 / 템플릿 컨텍스트
 
-- 🔴 **`| lower | default(...)` 금지 → `{{ (value or 'fallback') | lower }}`.**
+- **`| lower | default(...)` 금지 → `{{ (value or 'fallback') | lower }}`.**
   *왜*: `lower` 가 `None` 을 truthy `'none'` 으로 만들어 `default` 가 발동하지 않는다. `| upper` 동일.
 - **`analysis_detail` context 에 `current_user` 필수** — 누락 시 nav 사용자명·로그아웃 미표시.
   `analysis.result or {}` 는 falsy 평가로 AI 섹션 전체를 숨기므로 `{% else %}` fallback 의무.

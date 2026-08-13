@@ -24,12 +24,12 @@ paths:
 - [ ] **모델 import 완전성** = 전 모델 import + `_REGISTERED_MODELS`(미import 모델이 `drop_table` 로 잡히는 footgun 차단)
 - [ ] **`make migrate` 왕복** = `downgrade -1` → `upgrade head`
 
-🔴 **MCP 운영 DB = 정책 12** — SELECT-only 자율 / 변경·PII SELECT 는 **사용자 사전 승인**.
+**MCP 운영 DB = 정책 12** — SELECT-only 자율 / 변경·PII SELECT 는 **사용자 사전 승인**.
 **호출했으면 PR 본문에 결과를 명시**한다(정책 3 — 감사 추적).
 
-## 🔴 관측을 끄는 결함
+## 관측을 끄는 결함
 
-- 🔴 **`alembic/env.py` 의 `fileConfig` 는 앱 로깅을 파괴한다 — `is_configured()` 가드 제거 금지.**
+- **`alembic/env.py` 의 `fileConfig` 는 앱 로깅을 파괴한다 — `is_configured()` 가드 제거 금지.**
   *왜*: lifespan 이 인프로세스로 `command.upgrade()` 를 도는데, 그 시점 `fileConfig` 가
   (a) root 핸들러를 stderr 로 **교체**하고 (b) `disable_existing_loggers=True` 로 `uvicorn.access` 와
   **모든 `src.*` 로거를 비활성화**한다. 앱 INFO·access 로그가 **출시 이래 전부 소실**됐다.
@@ -63,14 +63,14 @@ paths:
 
 ## RLS
 
-- 🔴 **RLS 활성화 미들웨어는 ASGI 여야 한다 — `BaseHTTPMiddleware` 금지.**
+- **RLS 활성화 미들웨어는 ASGI 여야 한다 — `BaseHTTPMiddleware` 금지.**
   *왜*: Starlette `dispatch` 가 **별도 anyio task** 에서 `call_next` 를 부르므로 **contextvars 가 전파되지 않는다**
   → `app.user_id` 가 끊겨 정책이 미적용/오적용된다.
   **등록 순서 = LIFO**(RLS inner / SessionMiddleware outer). 구현 = `src/middleware/rls_session.py` +
   `src/database.py` 의 `_set_rls_user_id_per_query`(매 query 직전 `SET LOCAL app.user_id`).
-- 🔴 **RLS 작업 전 `SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user` 실측 의무.**
+- **RLS 작업 전 `SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user` 실측 의무.**
   *왜*: BYPASSRLS role 로 접속한 채 "RLS 동작 확인" 을 하면 **정책이 평가조차 되지 않는다**(2차 안전망 실효 0).
-  🔴 **FORCE 단독 적용은 무의미하다** — BYPASSRLS 가 FORCE 를 무시한다. role 분리가 선행이다.
+  **FORCE 단독 적용은 무의미하다** — BYPASSRLS 가 FORCE 를 무시한다. role 분리가 선행이다.
 - 🔴 **신규 RLS 테이블 추가 시 `src/services/saas_service.py` 의 `_RLS_MATRIX` 동기화 의무.**
   *왜*: 누락 시 admin 감사 리포트(`GET /admin/rls-audit`)가 미적용 테이블 갭을 못 잡는다.
   집행: `tests/unit/test_rls_matrix_completeness.py`.
@@ -92,13 +92,13 @@ paths:
 
 ## alembic 작성 규칙
 
-- 🔴 **`batch_alter_table` 금지** — SQLite 전용 패턴이라 PG 에서 lifespan 마이그레이션 실패 → Railway 헬스체크 실패.
+- **`batch_alter_table` 금지** — SQLite 전용 패턴이라 PG 에서 lifespan 마이그레이션 실패 → Railway 헬스체크 실패.
   PG 는 `op.create_unique_constraint(...)` 직접 사용. **예외**: 이미 운영에 적용된 이력 마이그레이션(`0005`·`0006`).
 - **dialect 분기는 `src/shared/alembic_dialect.py` 의 `is_postgresql(bind_or_conn)`** (duck typing, bind/context 양 호환).
-- 🔴 **ORM 컬럼 추가 시 마이그레이션 필수 동반.**
+- **ORM 컬럼 추가 시 마이그레이션 필수 동반.**
   *왜*: 단위 테스트는 in-memory SQLite 에 ORM 정의로 테이블을 만들어서 **마이그레이션이 없어도 통과**한다 → 운영 500.
-- 🔴 **인덱스는 ORM `__table_args__` + alembic 양쪽 정의 의무** — ORM-only 는 단위 테스트만 인식하고 운영 PG 에 미반영.
-- 🔴 **FK `ondelete` 는 형제 child 와 일관성 검토 의무.** `analyses.id` 참조 child 4종은 전부 **CASCADE**
+- **인덱스는 ORM `__table_args__` + alembic 양쪽 정의 의무** — ORM-only 는 단위 테스트만 인식하고 운영 PG 에 미반영.
+- **FK `ondelete` 는 형제 child 와 일관성 검토 의무.** `analyses.id` 참조 child 4종은 전부 **CASCADE**
   (`MergeAttempt`·`MergeRetryQueue`·`AnalysisFeedback`·`GateDecision`). 다른 정책 채택 시 회고에 사유 명시.
 
 ## 리포지토리 계층
