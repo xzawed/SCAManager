@@ -199,7 +199,7 @@ SCAManager 는 **3 언어** 를 사용자 facing 전 영역 (UI / 알림 / AI �
 | 🔗 Generic Webhook | 범용 JSON POST | 리포별 설정 |
 | 🔄 n8n | 외부 워크플로우 트리거 (Issue → Claude CLI → PR 자동화 포함) | 리포별 설정 |
 
-> **n8n 자동화**: Issue 등록 시 n8n + Claude CLI가 자동으로 코드를 수정하고 PR을 생성합니다. 구성 방법은 [docs/integrations/n8n-auto-fix.md](docs/integrations/n8n-auto-fix.md)를 참고하세요.
+> **n8n 자동화**: Issue 등록 시 n8n + Claude CLI가 자동으로 코드를 수정하고 PR을 생성합니다. 구성 방법은 [docs/runbooks/n8n-auto-fix.md](docs/runbooks/n8n-auto-fix.md)를 참고하세요.
 
 모든 채널은 `asyncio.gather(return_exceptions=True)`로 **독립 실행** — 한 채널의 실패가 다른 채널에 영향을 주지 않습니다.
 
@@ -666,7 +666,7 @@ uvicorn src.main:app --host 0.0.0.0 --port 8000 --proxy-headers
 **DB Failover 설정** — `DATABASE_URL_FALLBACK`에 보조 DB URL을 설정하면 Primary 장애 시 자동 전환됩니다.
 상태 확인: `GET /health` → `{"status":"ok"}` (primary/fallback 어느 DB 가 active 든 동일 응답 — 내부 상태 미노출 보안 강화 / Phase H PR-5B)
 
-자세한 내용은 [온프레미스 마이그레이션 가이드](docs/guides/onpremise-migration-guide.md)를 참고하세요.
+자세한 내용은 [온프레미스 마이그레이션 가이드](docs/runbooks/onpremise-migration-guide.md)를 참고하세요.
 
 ---
 

@@ -58,7 +58,7 @@
 `_UNCHECKED_THRESHOLD ≥5` 축을 전역 확장하면 **살아 있는 운영 절차에 "실행하지 마라" 를 붙이게 된다**.
 
 - **인용 오탐 1건** — `docs/cycle-history.md` 는 미체크 0인데 `cue=True` 다. 실제 매칭은 `:37` `:970` 의 *"brainstorming→writing-plans→**subagent-driven-development**"* 라는 **과거 흐름 서술**이다. (메모리 `feedback-prose-guard-both-ways`: 인용 면제 없는 산문 가드는 정정 기록을 막는다.)
-- **살아있는 체크리스트 오탐 10건** — `.claude/policies/active.md`(11, 정책 11 4테마 시각 확인 목록) · `.claude/rules/db.md`(6) · `docs/runbooks/rls-role-separation.md`(7, RLS Phase 4 운영 게이트) · `docs/guides/operational-verification.md`(6) · `docs/integrations/external-quality-services.md`(7) · `docs/runbooks/_archive/sentry-activation.md`(5) 등.
+- **살아있는 체크리스트 오탐 10건** — `.claude/policies/active.md`(11, 정책 11 4테마 시각 확인 목록) · `.claude/rules/db.md`(6) · `docs/runbooks/rls-role-separation.md`(7, RLS Phase 4 운영 게이트) · `docs/runbooks/operational-verification.md`(6) · `docs/runbooks/external-quality-services.md`(7) · `docs/_archive/runbooks/sentry-activation.md`(5) 등.
 
 → **결론**: 전역 확장은 `cue` 축(실행 어휘 자기 발화)만 하고, `unchecked` 축은 계획 디렉토리에 묶어 둔다. (묶음 B)
 
@@ -140,18 +140,18 @@ i (independence) ∈ {0.5, 1} 1 = 선행 묶음 없이 착수 / 0.5 = 선행 의
 
   | # | 문서 | 미체크 |
   |---|---|---|
-  | 1 | `docs/_archive/superpowers/plans/2026-05-11-ui-redesign.md` | 87 |
-  | 2 | `docs/_archive/superpowers/plans/2026-05-24-ai-issue-registration.md` | 62 |
+  | 1 | `docs/_archive/plans/2026-05-11-ui-redesign.md` | 87 |
+  | 2 | `docs/_archive/plans/2026-05-24-ai-issue-registration.md` | 62 |
   | 3 | `docs/superpowers/plans/2026-05-30-sprint-roadmap.md` | 45 |
   | 4 | `docs/_archive/2026-04-21-settings-redesign.md` | 44 |
-  | 5 | `docs/_archive/superpowers/plans/2026-05-12-repo-insights.md` | 40 |
+  | 5 | `docs/_archive/plans/2026-05-12-repo-insights.md` | 40 |
   | 6 | `docs/_archive/2026-04-26-doc-review-gate.md` | 39 |
   | 7 | `docs/_archive/2026-04-24-auto-merge-f3-advisor.md` | 35 |
   | 8 | `docs/_archive/2026-04-27-settings-ux-redesign.md` | 35 |
   | 9 | `docs/_archive/2026-04-21-cppcheck.md` | 34 |
   | 10 | `docs/superpowers/plans/2026-05-30-phase-e-gate-action-registry.md` | 29 |
-  | 11 | `docs/_archive/superpowers/plans/2026-05-09-claude-codex-docs-setup.md` | 25 |
-  | 12 | `docs/_archive/superpowers/plans/2026-05-20-multilang-insight-docs-sync.md` | 20 |
+  | 11 | `docs/_archive/plans/2026-05-09-claude-codex-docs-setup.md` | 25 |
+  | 12 | `docs/_archive/plans/2026-05-20-multilang-insight-docs-sync.md` | 20 |
   | 13 | `docs/_archive/2026-04-20-railway-deploy-failure-issue.md` | 0 (어휘만) |
 
 **GREEN — 최소 변경**

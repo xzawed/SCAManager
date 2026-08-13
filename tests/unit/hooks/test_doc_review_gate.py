@@ -381,8 +381,37 @@ class TestClassifyFileGrade:
     def test_design_doc_is_important(self):
         assert classify_file_grade("docs/design/2026-04-26-foo-design.md") == "important"
 
-    def test_guide_doc_is_important(self):
-        assert classify_file_grade("docs/guides/onpremise-migration-guide.md") == "important"
+    def test_merged_guides_keep_runbook_grade(self):
+        """🔴 2026-08-13 통합: `docs/guides/`·`docs/integrations/` → `docs/runbooks/`.
+
+        합친 문서가 런북과 **같은 등급(important)** 을 받아야 한다 — 통합이 등급 강등의
+        경로가 되면 안 된다. 구 `docs/integrations/` 는 `_LOW_RISK` 였고, 그 패턴이
+        `^docs/runbooks/` 로 남으면 런북 전체를 low_risk 로 읽히게 한다(제거했다).
+        """
+        assert classify_file_grade("docs/runbooks/onpremise-migration-guide.md") == "important"
+        assert classify_file_grade("docs/runbooks/n8n-auto-fix.md") == "important"
+
+    def test_moved_plans_stay_under_review(self):
+        """🔴 **이 PR 의 이동을 실제로 관측하는 축** — `.claude/plans/` → `docs/_archive/plans/`.
+
+        ## 왜 이 테스트를 따로 두는가 (2026-08-14 — 역-뮤테이션 가드가 잡아낸 공허)
+
+        초판은 위 `test_guide_doc_is_important` 하나였고, 그 단언
+        (`docs/runbooks/…` == important)은 **base 에서도 참**이었다 —
+        `_IMPORTANT` 에 `^docs/runbooks/[^/]+\.md$` 가 **이미 있었는데** `docs/guides/`
+        패턴을 같은 정규식으로 치환해 **중복**을 만들었기 때문이다.
+        그래서 `scripts/check_reverse_mutation.py` 가 *"이 테스트는 이 변경을 관측하지
+        않는다"* 로 red 를 냈다(traps A3 = 정의 ≠ 배선의 테스트 판).
+
+        중복을 제거하고, **이 PR 에서만 참이 되는 축**을 여기서 단언한다:
+        계획서는 아카이브로 옮겨도 심의 대상으로 남는다. 위험은 위치가 아니라
+        **완료 표지**에 있고, 그 표지가 지워지면 미래 세션이 출시된 기능을 재구현한다.
+
+        The original assertion held in base too; this one only holds after the move.
+        """
+        assert classify_file_grade("docs/_archive/plans/2026-05-11-ui-redesign.md") == "important"
+        # 대조군 — 아카이브 전체가 승격되면 안 된다. `plans/` 만이다.
+        assert classify_file_grade("docs/_archive/reports/2026-08-13-retrospective.md") != "important"
 
     def test_superpowers_spec_is_important(self):
         assert classify_file_grade("docs/superpowers/specs/2026-04-26-foo.md") == "important"
