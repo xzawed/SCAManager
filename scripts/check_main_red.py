@@ -123,11 +123,12 @@ def red_span(runs: list[dict], now: datetime | None = None) -> tuple[bool, float
 
 
 def failing_jobs(run_id: int) -> list[str]:
+    # 🔴 jq 필터를 `_RED_CONCLUSIONS` 에서 **파생**한다 — 손으로 나열하면 두 곳이 갈라지고,
+    #    리스트 원소 자리의 인접 문자열은 CodeQL `py/implicit-string-concatenation-in-list` 다.
+    # Derive the jq filter from the red set: no duplicated literals, no implicit concatenation.
+    _sel = " or ".join(f'.conclusion=="{c}"' for c in sorted(_RED_CONCLUSIONS))
     raw = _gh(["api", f"repos/{_REPO}/actions/runs/{run_id}/jobs",
-               "--jq",
-               '[.jobs[] | select(.conclusion=="failure"'
-               ' or .conclusion=="timed_out"'
-               ' or .conclusion=="startup_failure") | .name] | .[]'])
+               "--jq", f"[.jobs[] | select({_sel}) | .name] | .[]"])
     if raw is None:
         return []
     return [line.strip() for line in raw.splitlines() if line.strip()][:5]
@@ -147,7 +148,7 @@ def main() -> int:
         # A silent kill-switch is indistinguishable from "main is green".
         print(
             "⚠️ SKIP_MAIN_RED_CHECK 설정 — main red 관측을 **건너뛴다**. "
-            "초록이라는 뜻이 아니다."
+            + "초록이라는 뜻이 아니다."
         )
         return 0
 
@@ -171,7 +172,7 @@ def main() -> int:
             # Non-success that is not in _RED still must not print 초록.
             print(
                 f"main CI — 최신 run 결론 `{conc}` "
-                f"(초록이 아니다 — `failure`/`success` 이외)."
+                + "(초록이 아니다 — `failure`/`success` 이외)."
             )
         else:
             print("main CI — 완료된 run 이 없다 (초록이라는 뜻이 아니다).")
