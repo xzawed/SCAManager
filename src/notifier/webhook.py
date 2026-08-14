@@ -7,6 +7,7 @@ from src.scorer.calculator import ScoreResult
 from src.analyzer.io.static import StaticAnalysisResult
 from src.analyzer.io.ai_review import AiReviewResult
 from src.notifier._common import get_all_issues
+from src.notifier.score_warnings import reliability_payload
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +19,10 @@ def _build_payload(  # pylint: disable=too-many-positional-arguments
     analysis_results: list[StaticAnalysisResult],
     pr_number: int | None,
     ai_review: AiReviewResult | None = None,
+    result: dict | None = None,
 ) -> dict:
     all_issues = get_all_issues(analysis_results)
+    rel = reliability_payload(result)
     return {
         "event": "analysis_complete",
         "repo": repo_name,
@@ -29,7 +32,11 @@ def _build_payload(  # pylint: disable=too-many-positional-arguments
             "total": score_result.total,
             "grade": score_result.grade,
             "breakdown": score_result.breakdown,
+            "unreliable": rel["score_unreliable"],
+            "reliability_reasons": rel["reliability_reasons"],
         },
+        "score_unreliable": rel["score_unreliable"],
+        "reliability_reasons": rel["reliability_reasons"],
         "ai_summary": ai_review.summary if ai_review else "",
         "ai_suggestions": list(ai_review.suggestions) if ai_review else [],
         "issues_count": len(all_issues),
@@ -46,6 +53,7 @@ async def send_webhook_notification(
     analysis_results: list[StaticAnalysisResult],
     pr_number: int | None = None,
     ai_review: AiReviewResult | None = None,
+    result: dict | None = None,
 ) -> None:
     """범용 Webhook URL로 분석 결과 JSON을 POST한다."""
     if not webhook_url:
@@ -53,7 +61,10 @@ async def send_webhook_notification(
     if not await validate_external_url(webhook_url):
         logger.warning("send_webhook_notification: blocked unsafe URL (host=%s)", url_host_for_log(webhook_url))
         return
-    payload = _build_payload(repo_name, commit_sha, score_result, analysis_results, pr_number, ai_review)
+    payload = _build_payload(
+        repo_name, commit_sha, score_result, analysis_results, pr_number, ai_review,
+        result=result,
+    )
     async with build_safe_client() as client:
         r = await client.post(webhook_url, json=payload)
         r.raise_for_status()
@@ -84,6 +95,7 @@ class _WebhookNotifier:
             analysis_results=ctx.analysis_results,
             pr_number=ctx.pr_number,
             ai_review=ctx.ai_review,
+            result=ctx.result_dict,
         )
 
 

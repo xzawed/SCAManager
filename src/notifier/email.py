@@ -17,6 +17,7 @@ from src.analyzer.io.static import StaticAnalysisResult
 from src.analyzer.io.ai_review import AiReviewResult
 from src.constants import GRADE_COLOR_HTML, HTTP_CLIENT_TIMEOUT, NOTIFIER_MAX_ISSUES_LONG
 from src.notifier._common import format_ref, get_all_issues, resolve_ai_summary, truncate_issue_msg
+from src.notifier.score_warnings import unreliable_score_warning_lines
 
 logger = logging.getLogger(__name__)
 
@@ -37,10 +38,16 @@ def _build_html_body(  # pylint: disable=too-many-positional-arguments,too-many-
     pr_number: int | None,
     ai_review: AiReviewResult | None = None,
     language: str = "en",
+    result: dict | None = None,
 ) -> str:
     ref = format_ref(commit_sha, pr_number, language)
     bd = score_result.breakdown
     color = GRADE_COLOR_HTML.get(score_result.grade, "#6366f1")
+    # R46: 점수 위 신뢰도 고지
+    warning_html = "".join(
+        f"<p style='color:#b45309;margin:0 0 8px'>{line}</p>"
+        for line in unreliable_score_warning_lines(result, language, flavor="html")
+    )
 
     rows = "".join(
         f"<tr><td style='padding:4px 8px'>{escape(name)}</td>"
@@ -85,6 +92,7 @@ def _build_html_body(  # pylint: disable=too-many-positional-arguments,too-many-
     <p style="margin:4px 0 0;opacity:0.9">{escape(ref)}</p>
   </div>
   <div style="border:1px solid #e2e8f0;border-top:none;padding:20px;border-radius:0 0 8px 8px">
+    {warning_html}
     <p style="font-size:20px;margin:0 0 16px"><b>{total_label}</b> ({grade_label})</p>
     <table style="width:100%;border-collapse:collapse;font-size:14px">
       <thead><tr style="background:#f8fafc">
@@ -121,6 +129,7 @@ async def send_email_notification(  # pylint: disable=too-many-arguments,too-man
     smtp_user: str | None = None,
     smtp_pass: str | None = None,
     language: str = "en",
+    result: dict | None = None,
 ) -> None:
     """SMTP를 통해 HTML 분석 리포트 이메일을 전송한다 (Phase 3 PR-10 — i18n + RFC 2047)."""
     if not recipients or not smtp_host:
@@ -128,7 +137,7 @@ async def send_email_notification(  # pylint: disable=too-many-arguments,too-man
 
     html = _build_html_body(
         repo_name, commit_sha, score_result, analysis_results, pr_number, ai_review,
-        language=language,
+        language=language, result=result,
     )
 
     msg = MIMEMultipart("alternative")
@@ -216,6 +225,7 @@ class _EmailNotifier:
             smtp_user=settings.smtp_user,
             smtp_pass=settings.smtp_pass,
             language=language,
+            result=ctx.result_dict,
         )
 
 

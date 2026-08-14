@@ -81,6 +81,13 @@ paths:
   🔴 **입력-diff 절단(`ai_review_truncated`)은 제외 — 점수 유지**(대형 PR 절반이 절단인데 전부 NULL 이면
   대시보드·리더보드에서 점수가 통째로 사라진다). 절단 시 auto-merge 차단은 **마커를 직접 읽는 별도 가드** 담당.
   가드: `tests/unit/worker/test_pipeline_save_and_gate.py`
+  🔴 **R46 — 신뢰 불가 분류는 `src/scorer/reliability.py` 단일 출처**:
+  - `should_null_persist_score` = genuine AI 실패만 (NULL 컬럼)
+  - `score_is_unreliable` = CLI·incomplete·AI 기본값/disabled·uncovered 포함 → **점수는 남기고 집계만 제외**
+    (상세 페이지 표시 유지 · 역사 행 rewrite 0). 대시보드 KPI 는 제외 건수를 공개한다.
+  가드: `tests/unit/scorer/test_score_reliability.py`
+  · `tests/unit/services/test_score_aggregate_reliability.py`
+  · `tests/unit/notifier/test_score_reliability_disclosure_parity.py`
 - **AI 점수 스케일링**: Claude commit 0-20 / direction 0-20 / test 0-10 → calculator 가 15/25/15 로 스케일.
   `round()` = banker's rounding.
 - **category 기반 집계** — tool 이름 무관, `AnalysisIssue.category` 만 본다. `CQ_WARNING_CAP=25` 단일 cap.

@@ -181,6 +181,7 @@
       "recurring_count": "{count}회 반복"
     },
     "kpi_foot_avg": "최근 {days}일 평균",
+    "kpi_avg_excludes_unreliable": "검증된 점수만 — 미완료/미검증 {count}건 제외",
     "kpi_unit_count": "건",
     "score_trend_subtitle": "점수 추세",
     "repo_insights_title": "🗂 리포별 인사이트",
@@ -754,6 +755,7 @@
       "static_skipped_cli_warning": "> ⚠️ **정적분석 미수행 (CLI 훅 분석)** — CLI 훅은 정적분석을 돌리지 않으므로 코드품질·보안 점수가 무검증 만점입니다. 머지 전 수동 검토하거나 push/PR 웹훅 분석을 기다리세요.",
       "static_uncovered_warning": "> ℹ️ **정적분석이 수행되지 않은 언어 포함: {languages}** — 이 배포에서 해당 언어를 검사할 분석기가 실행되지 않아(분석기 미등록 **또는** 바이너리 미조달) 코드품질·보안 점수가 검사 없이 만점 처리됩니다. \"깨끗함\" 이 아니라 \"검사 안 함\" 입니다 — AI 리뷰와 수동 검토로 보완하세요.",
       "ai_failed_warning": "> ⚠️ **AI 리뷰 실패 (API 오류 또는 파싱 실패)** — AI 항목 점수가 기본값으로 대체되어 아래 총점이 인플레이션되었습니다. 머지 전 수동 검토하세요.",
+      "ai_defaults_warning": "> ⚠️ **AI 리뷰가 완전 검증되지 않음** — 기본값이 적용됐습니다(비활성/API 키 없음/빈 diff). AI 배점은 측정값이 아니므로 총점을 부분 점수로 보세요.",
       "total_line": "**총점: {score}/100** (등급 {grade})",
       "breakdown_header": "### 점수 상세",
       "table_header": "| 항목 | 점수 | 만점 |",
@@ -857,6 +859,7 @@
       "tg_review_title": "🔍 *PR 검토 요청*",
       "tg_repo_line": "리포: `{repo}` — PR #{pr}",
       "tg_score_line": "점수: *{score}점* ({grade}등급)",
+      "tg_reliability_warning": "⚠️ *미검증·미완료 점수* — 승인/반려 전에 신중히 확인하세요.",
       "tg_choose": "승인 또는 반려를 선택하세요.",
       "tg_btn_approve": "✅ 승인",
       "tg_btn_reject": "❌ 반려",

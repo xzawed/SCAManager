@@ -87,6 +87,7 @@ src/
 │                                #   🔴 `.mjs` 고정 — eslint 9+ flat-config 로더는 ESM import 라
 │                                #   `.json` 은 로드 불가 (#1226). `files` glob 6종 확장자 필수.
 ├── scorer/calculator.py         # calculate_score(ai_review), ScoreResult, _grade
+├── scorer/reliability.py        # score_is_unreliable / should_null_persist_score (R46)
 ├── config_manager/manager.py    # get_repo_config(), upsert_repo_config(), RepoConfigData
 ├── gate/
 │   ├── actions/                 # Gate 실행 액션 패키지 — engine 이 GATE_ACTIONS Registry 로 디스패치
@@ -106,6 +107,7 @@ src/
 │   ├── _merge_attempt_states.py # MergeAttempt.state lifecycle 정규 상수
 │   └── merge_verifier.py        # 2nd-LLM 머지 검증자 (cross-vendor) — is_in_verification_band/should_verify/diff_exceeds_cap/build_verifier_prompt/interpret_verdict/verify_merge_safety/verifier_blocks_merge (자동·반자동 단일출처 가드 #859 P1-1, diff cap fail-closed #863)
 ├── notifier/                    # `__init__.py` 가 자동 로드 → REGISTRY 등록
+│   └── score_warnings.py        # 점수 신뢰도 고지 단일 출처 (R46)
 │   ├── _common.py               # format_ref, get_all_issues, truncate_message
 │   ├── _http.py                 # build_safe_client() — SSRF 방어
 │   ├── _language.py             # resolve_notification_language() — 3-layer fallback (사이클 84 i18n)

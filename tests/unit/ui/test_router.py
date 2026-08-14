@@ -1787,14 +1787,17 @@ def test_overview_grade_derived_from_avg_score():
     mock_repo = MagicMock(id=1, full_name="owner/repo", user_id=1, created_at="2026-01-01")
     mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [mock_repo]
 
-    # count_map → [(repo_id=1, count=1)], avg_map → [(repo_id=1, avg=92.0)]
-    # .group_by().all() 호출이 count_map, avg_map 순서로 발생
-    mock_db.query.return_value.filter.return_value.group_by.return_value.all.side_effect = [
-        [(1, 1)],     # count_map: [(repo_id, count)]
-        [(1, 92.0)],  # avg_map: [(repo_id, avg_score)]
+    # count_map 만 `.group_by().all()` 을 쓴다.
+    mock_db.query.return_value.filter.return_value.group_by.return_value.all.return_value = [
+        (1, 1),       # count_map: [(repo_id, count)]
     ]
-    # latest_id_subq / latest_map 조회는 제거 예정 — 포함하지 않음
-    mock_db.query.return_value.filter.return_value.all.return_value = []
+    # 🔴 평균은 이제 SQL AVG 가 아니라 **행을 읽어 Python 으로 접는다** (R46 Axis B, 2026-08-15).
+    #    신뢰도는 `result` JSON 안에 있어 SQL 로 판정할 수 없고, SQL AVG 를 두면 이 카드가
+    #    대시보드 KPI 와 **다른 평균**을 보인다. 그래서 `(repo_id, score, result)` 를 돌려준다.
+    #    Averages are folded in Python now; SQL AVG cannot see the reliability flags.
+    mock_db.query.return_value.filter.return_value.all.return_value = [
+        (1, 92, {"source": "pr", "ai_review_status": "success", "breakdown": {}}),
+    ]
 
     with patch("src.ui.routes.overview.SessionLocal", return_value=_ctx(mock_db)):
         r = client.get("/")

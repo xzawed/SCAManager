@@ -7,13 +7,14 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.config import settings
 from src.models.analysis import Analysis
 from src.models.repo_config import RepoConfig
 from src.models.repository import Repository
+from src.scorer.reliability import score_is_unreliable
 from src.shared.time_utils import to_naive_utc
 
 logger = logging.getLogger(__name__)
@@ -54,30 +55,33 @@ def weekly_summary(
     # Clamp week_end to now if it exceeds the current time
     week_end = min(week_end, _now)
 
-    row = db.execute(
-        select(
-            func.count(Analysis.id).label("count"),  # pylint: disable=not-callable
-            func.avg(Analysis.score).label("avg_score"),  # pylint: disable=not-callable
-            func.min(Analysis.score).label("min_score"),  # pylint: disable=not-callable
-            func.max(Analysis.score).label("max_score"),  # pylint: disable=not-callable
-        )
+    # R46: score+result 를 읽어 신뢰 불가 점수를 파이썬에서 제외 (SQLite/PG JSON 분기 회피).
+    # R46: load score+result and drop unreliable scores in Python (avoid dialect JSON filters).
+    rows = db.execute(
+        select(Analysis.score, Analysis.result)
         .where(Analysis.repo_id == repo_id)
         .where(Analysis.score.isnot(None))
         .where(Analysis.created_at >= week_start)
         .where(Analysis.created_at < week_end)
-    ).one()
+    ).all()
+    scores = [
+        float(r.score)
+        for r in rows
+        if not score_is_unreliable(r.result if isinstance(r.result, dict) else None)
+    ]
 
-    # 분석 건수가 0이면 집계 없음 → None 반환
-    # No analyses in the window → return None
-    if not row.count:
+    # 검증된 점수가 0건이면 집계 없음 → None
+    # No verified scores in the window → return None
+    if not scores:
         return None
 
     return {
-        "count": row.count,
-        "avg_score": round(float(row.avg_score), 1),
-        "min_score": row.min_score,
-        "max_score": row.max_score,
+        "count": len(scores),
+        "avg_score": round(sum(scores) / len(scores), 1),
+        "min_score": min(scores),
+        "max_score": max(scores),
         "week_start": week_start.isoformat(),
+        "excluded_unreliable": len(rows) - len(scores),
     }
 
 
@@ -113,8 +117,8 @@ def moving_average(
     _now = to_naive_utc(now or datetime.now(timezone.utc))
     since = _now - timedelta(days=window_days)
 
-    rows = db.scalars(
-        select(Analysis.score)
+    rows = db.execute(
+        select(Analysis.score, Analysis.result)
         .where(Analysis.repo_id == repo_id)
         .where(Analysis.score.isnot(None))
         .where(Analysis.created_at >= since)
@@ -128,13 +132,20 @@ def moving_average(
         .where(Analysis.created_at <= _now)
         .order_by(Analysis.created_at.desc())
     ).all()
+    # R46: 신뢰 불가 점수 제외 후 샘플 수·평균 계산
+    # R46: drop unreliable scores before sample threshold + average
+    scores = [
+        float(r.score)
+        for r in rows
+        if not score_is_unreliable(r.result if isinstance(r.result, dict) else None)
+    ]
 
     # 최소 샘플 수 미만이면 신뢰할 수 없는 평균 → None 반환
     # Fewer than min_samples → unreliable average → return None
-    if len(rows) < min_samples:
+    if len(scores) < min_samples:
         return None
 
-    return round(sum(rows) / len(rows), 1)
+    return round(sum(scores) / len(scores), 1)
 
 
 def resolve_chat_id(repo: Repository, config: RepoConfig | None) -> str | None:

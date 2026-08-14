@@ -38,6 +38,7 @@ from src.models.analysis_feedback import AnalysisFeedback
 from src.models.merge_attempt import MergeAttempt
 from src.models.repository import Repository
 from src.scorer.calculator import calculate_grade
+from src.scorer.reliability import score_is_unreliable
 from src.shared.anthropic_caching import first_text_block, build_cached_system_param
 from src.shared.claude_metrics import aclose_anthropic_client, extract_anthropic_usage, log_claude_api_call
 from src.shared.feature_kill_switch import is_disabled
@@ -166,21 +167,54 @@ def _kpi_cost(db: Session, user_id: int | None, now: datetime) -> dict[str, Any]
     return {"value": s["total_usd"], "delta": s["delta_usd"], "by_model": s["by_model"]}
 
 
+def _analysis_result(row: Any) -> dict | None:
+    """Row/ORM 에서 result dict 를 꺼낸다 (없으면 None).
+    Extract the result dict from a Row or ORM object (None when absent).
+    """
+    result = getattr(row, "result", None)
+    return result if isinstance(result, dict) else None
+
+
+def _reliable_scores(rows: list[Any]) -> list[float]:
+    """검증된 점수만 — score 가 있고 `score_is_unreliable(result)` 가 아닌 행.
+    Verified scores only — non-NULL score and not score_is_unreliable(result).
+    """
+    out: list[float] = []
+    for row in rows:
+        if row.score is None:
+            continue
+        if score_is_unreliable(_analysis_result(row)):
+            continue
+        out.append(float(row.score))
+    return out
+
+
 def _kpi_avg(cur: list[Any], prev: list[Any]) -> dict[str, Any]:
-    """평균 점수 + 등급 + delta 카드 빌더.
+    """평균 점수 + 등급 + delta 카드 빌더 (R46: 신뢰 불가 점수 제외 + 제외 건수 공개).
 
     cur/prev 는 (score, repo_id, result) Row 또는 Analysis ORM 객체 모두 허용.
-    cur/prev accept (score, repo_id, result) Row tuples or full Analysis ORM objects.
+    R46: verified scores only; expose how many scored rows were excluded as unreliable.
     """
-    cur_scored = [a.score for a in cur if a.score is not None]
-    prev_scored = [a.score for a in prev if a.score is not None]
+    cur_scored_total = sum(1 for a in cur if a.score is not None)
+    prev_scored_total = sum(1 for a in prev if a.score is not None)
+    cur_scored = _reliable_scores(cur)
+    prev_scored = _reliable_scores(prev)
     avg_value = round(sum(cur_scored) / len(cur_scored), 1) if cur_scored else None
     prev_avg = round(sum(prev_scored) / len(prev_scored), 1) if prev_scored else None
     grade = calculate_grade(int(avg_value)) if avg_value is not None else None
     delta = (
         round(avg_value - prev_avg, 1) if (avg_value is not None and prev_avg is not None) else None
     )
-    return {"value": avg_value, "grade": grade, "delta": delta}
+    return {
+        "value": avg_value,
+        "grade": grade,
+        "delta": delta,
+        # 사용자가 숫자가 내려간 이유를 볼 수 있게 제외 건수를 공개 (R46 Axis B 가시성).
+        # Surface exclusion count so the lower average is explainable (R46 Axis B visibility).
+        "excluded_unreliable": cur_scored_total - len(cur_scored),
+        "scored_total": cur_scored_total,
+        "prev_excluded_unreliable": prev_scored_total - len(prev_scored),
+    }
 
 
 def _kpi_security(cur: list[Any], prev: list[Any]) -> dict[str, int]:
@@ -248,12 +282,10 @@ def dashboard_trend(
     _now = to_naive_utc(now or datetime.now(timezone.utc))
     since = _now - timedelta(days=days)
 
-    # 🔴 score + created_at 만 select — 이전엔 `select(Analysis)` full ORM 이 result JSON blob
-    # 까지 로드했으나 아래 그룹화는 두 스칼라만 쓴다(준비도 감사 #17, 순수 낭비 제거).
-    # 🔴 Select only score + created_at; the grouping below uses just these two scalars, so the
-    # previous `select(Analysis)` loaded the result blob for nothing.
+    # R46: score + result + created_at — 신뢰 불가 점수는 일자 평균에서 제외.
+    # R46: score + result + created_at — exclude unreliable scores from daily averages.
     base = (
-        select(Analysis.score, Analysis.created_at)
+        select(Analysis.score, Analysis.result, Analysis.created_at)
         .where(Analysis.created_at >= since)
         .where(Analysis.score.isnot(None))
         .order_by(Analysis.created_at.asc())
@@ -261,11 +293,13 @@ def dashboard_trend(
     rows = db.execute(_apply_analysis_user_filter(base, user_id)).all()
 
     # Python-side 날짜별 그룹화 — SQLite/PG 날짜 함수 불일치 회피
-    daily: dict[str, list[int]] = {}
-    for score, created_at in rows:
+    daily: dict[str, list[float]] = {}
+    for score, result, created_at in rows:
+        if score_is_unreliable(result if isinstance(result, dict) else None):
+            continue
         date_str = created_at.strftime("%Y-%m-%d") if created_at else ""
         if date_str:
-            daily.setdefault(date_str, []).append(score)
+            daily.setdefault(date_str, []).append(float(score))
 
     return [
         {
@@ -1150,15 +1184,21 @@ def dashboard_usage(
     )
     recent_analyses = db.scalar(recent_analyses_q) or 0
 
-    avg_score_q = (
-        select(func.avg(Analysis.score))  # pylint: disable=not-callable
+    # R46: 신뢰 불가 점수 제외 — SQL AVG 단독은 result 마커를 못 본다.
+    # R46: exclude unreliable scores — bare SQL AVG cannot see result markers.
+    avg_rows = db.execute(
+        select(Analysis.score, Analysis.result)
         .join(Repository, Analysis.repo_id == Repository.id)
         .where(Repository.user_id == user_id)
         .where(Analysis.created_at >= since)
         .where(Analysis.score.isnot(None))
-    )
-    avg_score = db.scalar(avg_score_q)
-    avg_score_value = round(float(avg_score), 1) if avg_score is not None else None
+    ).all()
+    reliable = [
+        float(r.score)
+        for r in avg_rows
+        if not score_is_unreliable(r.result if isinstance(r.result, dict) else None)
+    ]
+    avg_score_value = round(sum(reliable) / len(reliable), 1) if reliable else None
 
     last_analysis_q = (
         select(func.max(Analysis.created_at))

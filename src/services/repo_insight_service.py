@@ -22,6 +22,7 @@ from src.shared.anthropic_caching import first_text_block
 from src.config import settings
 from src.models.analysis import Analysis
 from src.scorer.calculator import calculate_grade
+from src.scorer.reliability import score_is_unreliable
 from src.shared.claude_metrics import aclose_anthropic_client, extract_anthropic_usage, log_claude_api_call
 from src.shared.feature_kill_switch import is_disabled
 from src.shared.lang_names import LANG_NAMES
@@ -55,15 +56,30 @@ def _fetch_analyses(
     )
 
 
+def _reliable_score_list(rows: list) -> list[float]:
+    """score 가 있고 신뢰 가능한 행의 점수 목록 (R46).
+    Scores from rows that have a score and are not score_is_unreliable (R46).
+    """
+    out: list[float] = []
+    for row in rows:
+        if row.score is None:
+            continue
+        result = getattr(row, "result", None)
+        if score_is_unreliable(result if isinstance(result, dict) else None):
+            continue
+        out.append(float(row.score))
+    return out
+
+
 def compute_score_kpi(
     cur: list,
     prev: list,
 ) -> tuple[float | None, float | None, str]:
-    """평균점수/score_delta/등급 계산 공유 헬퍼.
-    Shared helper: compute avg_score, score_delta, grade from two analysis lists.
+    """평균점수/score_delta/등급 계산 공유 헬퍼 (R46: 신뢰 불가 점수 제외).
+    Shared helper: compute avg_score, score_delta, grade — excludes unreliable scores (R46).
     """
-    cur_scores = [a.score for a in cur if a.score is not None]
-    prev_scores = [a.score for a in prev if a.score is not None]
+    cur_scores = _reliable_score_list(cur)
+    prev_scores = _reliable_score_list(prev)
     avg_score = round(sum(cur_scores) / len(cur_scores), 1) if cur_scores else None
     prev_avg = round(sum(prev_scores) / len(prev_scores), 1) if prev_scores else None
     score_delta = (

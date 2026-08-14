@@ -181,6 +181,7 @@
       "recurring_count": "{count}回繰り返し"
     },
     "kpi_foot_avg": "直近{days}日平均",
+    "kpi_avg_excludes_unreliable": "検証済みのみ — 未完了/未検証 {count}件を除外",
     "kpi_unit_count": "件",
     "score_trend_subtitle": "スコアトレンド",
     "repo_insights_title": "🗂 リポ別インサイト",
@@ -754,6 +755,7 @@
       "static_skipped_cli_warning": "> ⚠️ **静的解析未実行 (CLI フック)** — CLI フックは静的解析を実行しないため、コード品質・セキュリティスコアは未検証の満点です。マージ前に手動で確認するか、push/PR webhook 解析を待ってください。",
       "static_uncovered_warning": "> ℹ️ **静的解析が実行されなかった言語を含みます: {languages}** — このデプロイでは該当言語のアナライザーが実行されませんでした（未登録 **または** バイナリ未配備）。そのためコード品質・セキュリティのスコアは無検査で満点扱いになります。「クリーン」ではなく「未検査」です — AI レビューと手動確認で補ってください。",
       "ai_failed_warning": "> ⚠️ **AIレビュー失敗 (APIエラーまたは解析失敗)** — AI項目のスコアがデフォルト値に置き換えられ、以下の合計が過大評価されています。マージ前に手動で確認してください。",
+      "ai_defaults_warning": "> ⚠️ **AIレビューは完全には検証されていません** — デフォルトが適用されています（無効/APIキーなし/空diff）。AI配点は実測値ではないため、合計は部分スコアとして扱ってください。",
       "total_line": "**合計: {score}/100** (グレード {grade})",
       "breakdown_header": "### スコア詳細",
       "table_header": "| 項目 | スコア | 満点 |",
@@ -857,6 +859,7 @@
       "tg_review_title": "🔍 *PRレビュー依頼*",
       "tg_repo_line": "リポ: `{repo}` — PR #{pr}",
       "tg_score_line": "スコア: *{score}点* ({grade})",
+      "tg_reliability_warning": "⚠️ *未検証・未完了のスコア* — 承認/却下の前によく確認してください。",
       "tg_choose": "承認または却下を選択してください。",
       "tg_btn_approve": "✅ 承認",
       "tg_btn_reject": "❌ 却下",

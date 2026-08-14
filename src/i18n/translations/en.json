@@ -181,6 +181,7 @@
       "recurring_count": "{count} occurrences"
     },
     "kpi_foot_avg": "Recent {days}-day avg",
+    "kpi_avg_excludes_unreliable": "Verified only — excludes {count} incomplete/unverified score(s)",
     "kpi_unit_count": "analyses",
     "score_trend_subtitle": "Score Trend",
     "repo_insights_title": "🗂 Per-Repo Insights",
@@ -754,6 +755,7 @@
       "static_skipped_cli_warning": "> ⚠️ **Static analysis not run (CLI hook)** — the CLI hook does not run analyzers, so the code-quality and security scores are unverified full marks. Review manually before merging, or wait for the push/PR webhook analysis.",
       "static_uncovered_warning": "> ℹ️ **Includes languages that were not statically analysed: {languages}** — no analyzer ran for them in this deployment (either none is registered **or** the binary is not provisioned), so the code-quality and security scores are full marks by default. That means \"not inspected\", not \"clean\" — rely on the AI review and manual inspection.",
       "ai_failed_warning": "> ⚠️ **AI review failed (API error or parse failure)** — the AI portion of the score fell back to defaults, so the total below is inflated. Review manually before merging.",
+      "ai_defaults_warning": "> ⚠️ **AI review was not fully verified** — defaults were applied (disabled / no API key / empty diff), so the AI portion of the total is not a measured score. Treat the total as partial.",
       "total_line": "**Total: {score}/100** (Grade {grade})",
       "breakdown_header": "### Score Breakdown",
       "table_header": "| Item | Score | Max |",
@@ -857,6 +859,7 @@
       "tg_review_title": "🔍 *PR Review Request*",
       "tg_repo_line": "Repo: `{repo}` — PR #{pr}",
       "tg_score_line": "Score: *{score}* ({grade})",
+      "tg_reliability_warning": "⚠️ *Unverified or incomplete score* — review carefully before Approve/Reject.",
       "tg_choose": "Please choose approve or reject.",
       "tg_btn_approve": "✅ Approve",
       "tg_btn_reject": "❌ Reject",

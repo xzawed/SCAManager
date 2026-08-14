@@ -12,6 +12,7 @@ from src.constants import GITHUB_API
 from src.github_client.helpers import github_api_headers
 from src.i18n.loader import get_text
 from src.notifier._common import escape_markdown
+from src.notifier.score_warnings import unreliable_score_warning_lines
 from src.shared.http_client import get_http_client
 from src.shared.log_safety import sanitize_for_log
 
@@ -51,9 +52,14 @@ def _build_issue_body(  # pylint: disable=too-many-locals,too-many-positional-ar
     link_path = f"/repos/{repo_name}/analyses/{analysis_id}"
     full_link = f"{base_url}{link_path}" if base_url else link_path
 
+    # R46: 점수 줄 위 신뢰도 고지
+    warning_lines = unreliable_score_warning_lines(result, language, flavor="md")
     lines = [
         get_text("notifier.github_issue.header", language, sha=commit_sha[:7]),
         "",
+    ]
+    lines.extend(warning_lines)
+    lines += [
         get_text("notifier.github_issue.score_line", language, score=score, grade=grade),
         get_text("notifier.github_issue.detail_line", language, link=full_link),
     ]
