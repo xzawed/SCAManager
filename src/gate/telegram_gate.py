@@ -3,8 +3,10 @@ import hashlib
 import hmac
 
 from src.i18n.loader import get_text
+from src.notifier.score_warnings import unreliable_score_warning_lines
 from src.notifier.telegram import telegram_post_message
 from src.scorer.calculator import ScoreResult
+from src.scorer.reliability import score_is_unreliable
 
 
 def _make_callback_token(bot_token: str, scope: str, payload_id: int) -> str:
@@ -51,6 +53,7 @@ async def send_gate_request(
     pr_number: int,
     score_result: ScoreResult,
     language: str = "ko",
+    result: dict | None = None,
 ) -> None:
     """반자동 Gate PR 검토 요청을 Telegram 인라인 키보드로 전송한다.
     Send a semi-auto gate PR review request via Telegram inline keyboard.
@@ -59,21 +62,32 @@ async def send_gate_request(
     language: recipient's language (ko/en/ja) — i18n for message body and button labels.
     Telegram Markdown(백틱/별표)은 키 값에 보존되어 parse_mode="Markdown"으로 렌더된다.
     Telegram Markdown (backtick/asterisk) is preserved in key values and rendered via parse_mode="Markdown".
+
+    result: 분석 result dict — 신뢰 불가 점수면 Approve/Reject 버튼 위에 경고 (R46).
     """
     # 4개 i18n 키를 Python 측에서 줄바꿈으로 조합 (제목/리포/점수/선택)
     # Compose the 4 i18n keys with newlines on the Python side (title/repo/score/choose)
-    text = (
-        get_text("notifier.gate.tg_review_title", language) + "\n"
-        + get_text(
+    parts = [
+        get_text("notifier.gate.tg_review_title", language),
+        get_text(
             "notifier.gate.tg_repo_line", language,
             repo=repo_full_name, pr=pr_number,
-        ) + "\n"
-        + get_text(
+        ),
+        get_text(
             "notifier.gate.tg_score_line", language,
             score=score_result.total, grade=score_result.grade,
-        ) + "\n\n"
-        + get_text("notifier.gate.tg_choose", language)
-    )
+        ),
+    ]
+    # R46: 승인 버튼 옆 신뢰도 경고 — incomplete/uncovered/defaults 가 여기 없으면 0 고지였다.
+    # R46: reliability warning next to approve buttons (was zero disclosure here).
+    if score_is_unreliable(result):
+        # 상세 사유(채널 공통 배너) + gate 전용 한 줄
+        detail = unreliable_score_warning_lines(result, language, flavor="plain")
+        parts.extend(detail)
+        parts.append(get_text("notifier.gate.tg_reliability_warning", language))
+    parts.append("")
+    parts.append(get_text("notifier.gate.tg_choose", language))
+    text = "\n".join(parts)
     token = _gate_callback_token(bot_token, analysis_id)
     reply_markup = {
         "inline_keyboard": [[

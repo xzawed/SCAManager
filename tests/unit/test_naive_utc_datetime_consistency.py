@@ -87,12 +87,13 @@ def test_moving_average_uses_naive_query_bounds():
     moving_average's WHERE-bound datetimes must be naive UTC even when an aware `now` is injected.
     """
     mock_db = MagicMock()
-    mock_db.scalars.return_value.all.return_value = []
+    # R46: score+result 를 execute().all() 로 읽음 (scalars 아님)
+    mock_db.execute.return_value.all.return_value = []
 
     aware_now = datetime(2026, 7, 23, 12, 0, tzinfo=timezone.utc)
     analytics_service.moving_average(mock_db, repo_id=1, window_days=7, now=aware_now)
 
-    stmt = mock_db.scalars.call_args.args[0]
+    stmt = mock_db.execute.call_args.args[0]
     dt_params = [v for v in stmt.compile().params.values() if isinstance(v, datetime)]
     assert dt_params, "WHERE 절에 datetime 바인드가 없다 — 관측 불가"
     assert all(v.tzinfo is None for v in dt_params), (
@@ -111,7 +112,8 @@ def test_weekly_summary_normalizes_aware_week_start_and_now():
     weekly_summary must accept aware inputs without TypeError and query with naive bounds.
     """
     mock_db = MagicMock()
-    mock_db.execute.return_value.one.return_value = MagicMock(count=0)
+    # R46: weekly_summary 는 execute().all() 로 score+result 행을 읽음
+    mock_db.execute.return_value.all.return_value = []
     aware_start = datetime(2026, 7, 16, 0, 0, tzinfo=timezone.utc)
     aware_now = datetime(2026, 7, 23, 12, 0, tzinfo=timezone.utc)
 

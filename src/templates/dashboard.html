@@ -946,6 +946,11 @@
       {% else %}
         <div class="kpi__delta kpi__delta--flat">— {{ 'dashboard.delta.no_comparison' | i18n_args(locale | default('ko')) }}</div>
       {% endif %}
+      {% if kpi.avg_score.excluded_unreliable %}
+      <div class="kpi__foot" style="opacity:0.85;color:var(--warning, #d97706);">
+        {{ 'dashboard.kpi_avg_excludes_unreliable' | i18n_args(locale | default('ko'), count=kpi.avg_score.excluded_unreliable) }}
+      </div>
+      {% endif %}
       <div class="kpi__foot">{{ 'dashboard.kpi_foot_avg' | i18n_args(locale | default('ko'), days=days) }}</div>
     </div>
 

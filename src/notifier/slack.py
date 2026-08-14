@@ -15,6 +15,7 @@ from src.notifier._common import (
     escape_slack_mrkdwn, format_ref, get_all_issues, resolve_ai_summary,
     truncate_issue_msg, truncate_message,
 )
+from src.notifier.score_warnings import unreliable_score_warning_lines
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ def _build_payload(  # pylint: disable=too-many-positional-arguments,too-many-lo
     pr_number: int | None,
     ai_review: AiReviewResult | None = None,
     language: str = "en",
+    result: dict | None = None,
 ) -> dict:
     grade_emoji = _SLACK_GRADE_EMOJI.get(score_result.grade, ":white_circle:")
     ref = format_ref(commit_sha, pr_number, language)
@@ -47,10 +49,13 @@ def _build_payload(  # pylint: disable=too-many-positional-arguments,too-many-lo
         "notifier.slack.fallback", language,
         repo=repo_name, total=score_result.total, grade=score_result.grade,
     )
-    pretext = get_text(
+    # R46: 점수 줄 앞에 신뢰도 고지
+    warning_lines = unreliable_score_warning_lines(result, language, flavor="plain")
+    score_pretext = get_text(
         "notifier.slack.pretext", language,
         total=score_result.total, grade=score_result.grade,
     )
+    pretext = "\n".join(warning_lines + [score_pretext]) if warning_lines else score_pretext
 
     blocks = []
     # AI 요약은 resolve_ai_summary 경유 — 실패(status != success) 시 현지화된 unavailable 메시지로 대체
@@ -109,6 +114,7 @@ async def send_slack_notification(
     pr_number: int | None = None,
     ai_review: AiReviewResult | None = None,
     language: str = "en",
+    result: dict | None = None,
 ) -> None:
     """Slack Incoming Webhook으로 분석 결과 메시지를 전송한다 (Phase 3 PR-10 — i18n)."""
     if not webhook_url:
@@ -118,7 +124,7 @@ async def send_slack_notification(
         return
     payload = _build_payload(
         repo_name, commit_sha, score_result, analysis_results, pr_number, ai_review,
-        language=language,
+        language=language, result=result,
     )
     async with build_safe_client() as client:
         r = await client.post(webhook_url, json=payload)
@@ -157,6 +163,7 @@ class _SlackNotifier:
             pr_number=ctx.pr_number,
             ai_review=ctx.ai_review,
             language=language,
+            result=ctx.result_dict,
         )
 
 

@@ -18,6 +18,7 @@ from src.notifier._common import (
     escape_markdown, format_ref, get_all_issues, resolve_ai_summary,
     truncate_issue_msg, truncate_message,
 )
+from src.notifier.score_warnings import unreliable_score_warning_lines
 
 logger = logging.getLogger(__name__)
 
@@ -32,17 +33,23 @@ def _build_embed(  # pylint: disable=too-many-positional-arguments,too-many-loca
     pr_number: int | None,
     ai_review: AiReviewResult | None = None,
     language: str = "en",
+    result: dict | None = None,
 ) -> dict:
     grade_emoji = GRADE_EMOJI.get(score_result.grade, "⚪")
     ref = format_ref(commit_sha, pr_number, language)
     bd = score_result.breakdown
 
-    lines = [
+    # R46: 점수 위 신뢰도 고지
+    warning_lines = unreliable_score_warning_lines(result, language, flavor="plain")
+    lines = list(warning_lines)
+    if warning_lines:
+        lines.append("")
+    lines.append(
         get_text(
             "notifier.discord.summary_line", language,
             emoji=grade_emoji, total=score_result.total, grade=score_result.grade, ref=ref,
         ),
-    ]
+    )
 
     ai_summary = resolve_ai_summary(ai_review, language)
     if ai_summary:
@@ -93,6 +100,7 @@ async def send_discord_notification(
     pr_number: int | None = None,
     ai_review: AiReviewResult | None = None,
     language: str = "en",
+    result: dict | None = None,
 ) -> None:
     """Discord Embed 메시지를 Webhook URL로 전송한다 (Phase 3 PR-10 — i18n)."""
     if not webhook_url:
@@ -102,7 +110,7 @@ async def send_discord_notification(
         return
     embed = _build_embed(
         repo_name, commit_sha, score_result, analysis_results, pr_number, ai_review,
-        language=language,
+        language=language, result=result,
     )
     async with build_safe_client() as client:
         r = await client.post(webhook_url, json={"embeds": [embed]})
@@ -142,6 +150,7 @@ class _DiscordNotifier:
             pr_number=ctx.pr_number,
             ai_review=ctx.ai_review,
             language=language,
+            result=ctx.result_dict,
         )
 
 

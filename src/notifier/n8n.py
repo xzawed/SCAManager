@@ -6,6 +6,7 @@ import logging
 from datetime import datetime, timezone
 
 from src.notifier._http import build_safe_client, url_host_for_log, validate_external_url
+from src.notifier.score_warnings import reliability_payload
 from src.scorer.calculator import ScoreResult
 from src.constants import N8N_BODY_MAX_BYTES
 
@@ -45,6 +46,7 @@ async def notify_n8n(
     pr_number: int | None,
     score_result: ScoreResult,
     n8n_secret: str = "",
+    result: dict | None = None,
 ) -> None:
     """n8n Webhook으로 분석 점수 페이로드를 POST한다 (envelope 구조)."""
     if not webhook_url:
@@ -52,6 +54,8 @@ async def notify_n8n(
     if not await validate_external_url(webhook_url):
         logger.warning("notify_n8n: blocked unsafe URL (host=%s)", url_host_for_log(webhook_url))
         return
+    # R46: 기계 채널도 신뢰도 필드를 실어 다운스트림이 미검증 점수를 구분하게 한다.
+    rel = reliability_payload(result)
     payload = _build_envelope(
         event_type="analysis",
         repo=repo_full_name,
@@ -61,6 +65,8 @@ async def notify_n8n(
             "score": score_result.total,
             "grade": score_result.grade,
             "breakdown": score_result.breakdown,
+            "score_unreliable": rel["score_unreliable"],
+            "reliability_reasons": rel["reliability_reasons"],
         },
     )
     await _post_to_n8n(webhook_url, payload, n8n_secret)
@@ -132,6 +138,7 @@ class _N8nNotifier:
             pr_number=ctx.pr_number,
             score_result=ctx.score_result,
             n8n_secret=settings.n8n_webhook_secret,
+            result=ctx.result_dict,
         )
 
 

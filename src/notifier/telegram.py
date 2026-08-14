@@ -12,6 +12,7 @@ from src.analyzer.io.ai_review import AiReviewResult
 from src.notifier._common import (
     format_ref, get_all_issues, resolve_ai_summary, truncate_html_message, truncate_issue_msg,
 )
+from src.notifier.score_warnings import unreliable_score_warning_lines
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +109,7 @@ def _build_message(  # pylint: disable=too-many-positional-arguments,too-many-lo
     pr_number: int | None,
     ai_review: AiReviewResult | None = None,
     language: str = "en",
+    result: dict | None = None,
 ) -> str:
     """분석 결과를 Telegram HTML 메시지로 빌드 (Phase 3 PR-9 — 사이클 84 i18n).
 
@@ -115,6 +117,7 @@ def _build_message(  # pylint: disable=too-many-positional-arguments,too-many-lo
 
     Args:
         language: 사용자 언어 ('ko'/'en'/'ja'). 3-layer fallback (resolve_notification_language).
+        result: 저장된 분석 result dict — 신뢰도 고지용 (R46).
     """
     ref = format_ref(commit_sha, pr_number, language)
     all_issues = get_all_issues(analysis_results)
@@ -128,7 +131,13 @@ def _build_message(  # pylint: disable=too-many-positional-arguments,too-many-lo
     issues_text = "\n".join(top_issues) if top_issues else no_issues_text
     bd = score_result.breakdown
 
-    lines = [
+    # R46: 점수 위 신뢰도 고지 (github_comment 패리티)
+    # R46: reliability banner above the score (parity with github_comment)
+    warning_lines = unreliable_score_warning_lines(result, language, flavor="html")
+    lines = list(warning_lines)
+    if warning_lines:
+        lines.append("")
+    lines += [
         get_text("notifier.telegram.title", language, emoji=grade_emoji),
         get_text("notifier.telegram.ref_line", language, repo=escape(repo_name), ref=escape(ref)),
         "",
@@ -181,6 +190,7 @@ async def send_analysis_result(  # pylint: disable=too-many-arguments
     pr_number: int | None = None,
     ai_review: AiReviewResult | None = None,
     language: str = "en",
+    result: dict | None = None,
 ) -> None:
     """분석 결과를 Telegram HTML 메시지로 전송한다 (Phase 3 PR-9 — i18n).
 
@@ -188,7 +198,7 @@ async def send_analysis_result(  # pylint: disable=too-many-arguments
     """
     text = _build_message(
         repo_name, commit_sha, score_result, analysis_results, pr_number,
-        ai_review=ai_review, language=language,
+        ai_review=ai_review, language=language, result=result,
     )
     await telegram_post_message(bot_token, chat_id, {"text": text, "parse_mode": "HTML"})
 
@@ -246,6 +256,7 @@ class _TelegramNotifier:
             pr_number=ctx.pr_number,
             ai_review=ctx.ai_review,
             language=language,
+            result=ctx.result_dict,
         )
 
 

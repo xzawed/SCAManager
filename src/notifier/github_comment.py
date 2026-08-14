@@ -8,6 +8,7 @@ from src.gate._common import ai_review_failed
 from src.github_client.helpers import github_api_headers
 from src.i18n.loader import get_text
 from src.notifier._common import escape_markdown, resolve_ai_summary
+from src.notifier.score_warnings import unreliable_score_warning_lines
 from src.shared.http_client import get_http_client
 from src.scorer.calculator import ScoreResult
 from src.analyzer.io.static import StaticAnalysisResult
@@ -178,48 +179,10 @@ def _static_issues_lines(result: dict, language: str = "en") -> list[str]:
     return lines
 
 
-def _unreliable_score_warning_lines(result: dict, language: str = "en") -> list[str]:
-    """점수 신뢰 불가 경고 배너 — 정적분석 미완료 + AI 리뷰 실패 (premium audit #7, 5채널 대칭).
-    Warning banner when the rendered score is inflated/unreliable — static-incomplete or AI-failed.
-
-    두 마커 모두 auto-merge/auto-approve 만 차단(#779/#783/#804)할 뿐 PR 코멘트 점수에는
-    무경고 노출된다 → 사람이 수동 머지 시 인플레 점수를 신뢰하는 오판 위험. 점수 위에 배너 삽입.
-    🔴 AI 실패는 `ai_review_failed`(gate/_common 단일출처, api_error/parse_error) 로 판정 —
-    의도적 skip(no_api_key/empty_diff/disabled)은 점수 유지·비차단이므로 경고 대상 아님.
-    Both markers block only auto-merge/approve; surface them so a manual reviewer does not trust
-    an inflated score. AI failure uses ai_review_failed (single source, mirrors the gate guard).
-    """
-    lines: list[str] = []
-    if result.get("static_analysis_incomplete"):
-        # 🔴 CLI 훅은 정적분석을 **의도적으로 안 돌린다** — "타임아웃 또는 오류" 문구는 거짓이고
-        # 운영자를 엉뚱한 진단으로 보낸다. 같은 차단 마커를 쓰되 사유 문구만 분기한다.
-        # 🔴 The CLI hook deliberately skips static analysis; the "timeout or error" wording would be
-        # a lie and misdirect diagnosis. Same blocking marker, accurate reason text.
-        key = (
-            "static_skipped_cli_warning" if result.get("source") == "cli"
-            else "static_incomplete_warning"
-        )
-        lines.append(get_text(f"notifier.github_pr_comment.{key}", language))
-    if ai_review_failed(result):
-        lines.append(get_text("notifier.github_pr_comment.ai_failed_warning", language))
-    # 🔴 미커버 언어 고지 — **차단 마커가 아니다**(가시화 전용). 정적 만점이 "깨끗함" 이 아니라
-    # "이 언어는 검사하지 않음" 임을 사람 리뷰어에게 알린다. 위 두 배너와 독립적으로 표시된다.
-    # 🔴 Informational only — tells a human reviewer that full static marks mean "not inspected".
-    uncovered = result.get("static_uncovered_languages") or []
-    if uncovered:
-        lines.append(get_text(
-            "notifier.github_pr_comment.static_uncovered_warning", language,
-            languages=", ".join(uncovered),
-        ))
-    if lines:
-        lines.append("")  # 배너와 헤더 사이 빈 줄 / blank line between banner and header
-    return lines
-
-
 def _build_comment_from_result(result: dict, language: str = "en") -> str:
     """Build a formatted PR comment body from a stored analysis result dict (Phase 3 PR-11 — i18n)."""
     return "\n".join(
-        _unreliable_score_warning_lines(result, language)
+        unreliable_score_warning_lines(result, language, flavor="md")
         + _header_lines(result, language)
         + _ai_summary_lines(result, language)
         + _category_feedback_lines(result, language)

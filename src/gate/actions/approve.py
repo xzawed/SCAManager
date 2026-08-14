@@ -188,6 +188,7 @@ class ApproveAction(GateAction):
                 pr_number=ctx.pr_number,
                 score_result=score_result,
                 language=language,
+                result=ctx.result,
             )
         except (httpx.HTTPError, KeyError) as exc:
             logger.error("Telegram Gate 요청 실패: %s", type(exc).__name__)
