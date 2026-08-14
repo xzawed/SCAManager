@@ -44,6 +44,16 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
 _REPO = "xzawed/SCAManager"
 _LIMIT = 25
 
+# GitHub run conclusions that mean "main is not green".
+# `failure` 만 보면 timed_out·startup_failure 가 "초록" 으로 인쇄된다 (backlog R70).
+# Only these are red; cancelled/stale/neutral are not recoveries either, but they
+# are not "the build failed" — main() must still refuse to print 초록 for them.
+# 워크플로 YAML 파손 = startup_failure, 러너 한도 = timed_out — 둘 다 관측이 가장 필요한 순간.
+_RED_CONCLUSIONS = frozenset({"failure", "timed_out", "startup_failure"})
+# 지속시간 역추적에서 구간을 끊지 않는 결론 — cancelled 는 "고쳤다" 가 아니다.
+# Do not treat these as the end of a red span; a mid-streak cancel collapsed 60h → 1.0h.
+_SPAN_CONTINUE = frozenset({"cancelled"})
+
 
 def _gh(args: list[str], timeout: int = 60) -> str | None:
     """`gh` 출력 또는 None(판정 불가)."""
@@ -89,13 +99,22 @@ def red_span(runs: list[dict], now: datetime | None = None) -> tuple[bool, float
     if not finished:
         return False, 0.0, None
     latest = finished[0]
-    if latest.get("conclusion") != "failure":
-        return False, 0.0, None
+    # 🔴 최신이 `failure` 가 아니라고 해서 초록이 아니다 — latest 를 돌려줘야
+    #    main() 이 실제 결론을 인쇄할 수 있다 (None 이면 무조건 "초록" 이 된다).
+    # Returning latest on the non-red path lets main() refuse to print 초록
+    # for cancelled/timed_out/startup_failure/action_required/stale/neutral.
+    if latest.get("conclusion") not in _RED_CONCLUSIONS:
+        return False, 0.0, latest
 
     started = _parse(latest.get("createdAt", ""))
     for r in finished:
-        if r.get("conclusion") == "failure":
+        conc = r.get("conclusion")
+        if conc in _RED_CONCLUSIONS:
             started = _parse(r.get("createdAt", "")) or started
+        elif conc in _SPAN_CONTINUE:
+            # cancelled: 구간을 끊지 않는다. 시작 시각도 당기지 않는다.
+            # A cancel is not a recovery and not a new red start.
+            continue
         else:
             break
     ref = now or datetime.now(timezone.utc)
@@ -105,7 +124,10 @@ def red_span(runs: list[dict], now: datetime | None = None) -> tuple[bool, float
 
 def failing_jobs(run_id: int) -> list[str]:
     raw = _gh(["api", f"repos/{_REPO}/actions/runs/{run_id}/jobs",
-               "--jq", '[.jobs[] | select(.conclusion=="failure") | .name] | .[]'])
+               "--jq",
+               '[.jobs[] | select(.conclusion=="failure"'
+               ' or .conclusion=="timed_out"'
+               ' or .conclusion=="startup_failure") | .name] | .[]'])
     if raw is None:
         return []
     return [line.strip() for line in raw.splitlines() if line.strip()][:5]
@@ -121,6 +143,12 @@ def _make_stdout_safe() -> None:
 def main() -> int:
     _make_stdout_safe()
     if os.environ.get("SKIP_MAIN_RED_CHECK"):
+        # 🔴 무음 skip 은 초록과 구별되지 않는다 (R70). 끈 사실을 인쇄한다.
+        # A silent kill-switch is indistinguishable from "main is green".
+        print(
+            "⚠️ SKIP_MAIN_RED_CHECK 설정 — main red 관측을 **건너뛴다**. "
+            "초록이라는 뜻이 아니다."
+        )
         return 0
 
     runs = fetch_runs()
@@ -135,7 +163,18 @@ def main() -> int:
 
     is_red, hours, latest = red_span(runs)
     if not is_red:
-        print("main CI — 최신 run 초록.")
+        conc = (latest or {}).get("conclusion")
+        if conc == "success":
+            print("main CI — 최신 run 초록.")
+        elif conc:
+            # timed_out 등이 여기로 오면 회귀 — _RED_CONCLUSIONS 가 빠져 있다는 뜻.
+            # Non-success that is not in _RED still must not print 초록.
+            print(
+                f"main CI — 최신 run 결론 `{conc}` "
+                f"(초록이 아니다 — `failure`/`success` 이외)."
+            )
+        else:
+            print("main CI — 완료된 run 이 없다 (초록이라는 뜻이 아니다).")
         return 0
 
     jobs = failing_jobs(latest.get("databaseId", 0)) if latest else []
