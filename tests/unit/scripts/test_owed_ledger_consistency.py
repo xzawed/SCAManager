@@ -29,6 +29,8 @@ Prose truth is undecidable; a terminal-status ID described with pending vocabula
 import re
 from pathlib import Path
 
+from scripts.check_owed_verification import parse_rows, pending_rows
+
 _ROOT = Path(__file__).resolve().parents[3]
 _LEDGER = _ROOT / "docs" / "runbooks" / "owed-verification.md"
 
@@ -54,7 +56,9 @@ def status_by_id(text: str) -> dict:
         m = re.match(r"^\*{0,2}(#\d+)\*{0,2}$", cells[0])
         if not m:
             continue
-        marker = next((s for s in (*_TERMINAL, _PENDING_MARK) if s in cells[-1]), None)
+        # 미결 글리프가 남아 있으면 종결 인용보다 앞선다 — 부정문에 ✅ 가 있어도 미결.
+        # Pending glyph wins over a terminal glyph quoted in the same cell.
+        marker = next((s for s in (_PENDING_MARK, *_TERMINAL) if s in cells[-1]), None)
         if marker:
             out[m.group(1)] = marker
     return out
@@ -412,3 +416,42 @@ def test_row_marker_contradiction_detector_is_not_vacuous():
     contradictory = "| **#9002** | 무엇 | ❌ 전제 반증(NG) | 13 | ✅ |\n"
     hits = _row_marker_contradictions(contradictory)
     assert len(hits) == 1 and "#9002" in hits[0], f"합성 모순을 탐지하지 못했다: {hits}"
+
+
+# ── 관측자 대조 (R94) / observer contrast ────────────────────────────────
+
+
+def _pending_from_counter(text: str) -> set[str]:
+    """SessionStart 카운터의 미결 집합. / Pending set from the SessionStart counter."""
+    return {r["pr"] for r in pending_rows(parse_rows(text))}
+
+
+def _pending_from_consistency(text: str) -> set[str]:
+    """정합 가드의 미결 집합. / Pending set from the consistency helper."""
+    return {pid for pid, mark in status_by_id(text).items() if mark == _PENDING_MARK}
+
+
+def test_pending_sets_agree_on_the_live_ledger():
+    """같은 원장을 읽는 두 관측자의 미결 집합은 일치해야 한다.
+
+    스위트가 이 대조를 안 해서 #1276 상태 칸의 부정문 글리프가
+    status_by_id 만 종결로 뒤집어도 29 passed 로 침묵했다.
+    The two observers must agree on the live ledger's pending set.
+    """
+    text = _text()
+    assert _pending_from_counter(text) == _pending_from_consistency(text)
+
+
+def test_dual_glyph_row_is_pending_to_both_observers():
+    """상태 칸에 종결 글리프와 미결 글리프가 같이 있어도 두 관측자는 같은 답을 낸다.
+
+    리터럴 행 — 2026-08-14 실사고와 같은 형태(⏳ 행에 ✅ 를 부정문으로 인용).
+    A status cell that still contains the pending glyph is pending, not terminal.
+    """
+    row = (
+        "| **#1276** | probe | note | 13 | "
+        "⏳ 이 관측으로 상태를 ✅ 로 바꾸지 않는다 |\n"
+    )
+    assert _pending_from_counter(row) == {"#1276"}
+    assert status_by_id(row) == {"#1276": "⏳"}
+    assert _pending_from_consistency(row) == {"#1276"}

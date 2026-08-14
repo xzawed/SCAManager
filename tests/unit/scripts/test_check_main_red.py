@@ -47,7 +47,8 @@ def test_green_latest_is_not_red():
     is_red, hours, latest = mod.red_span(runs, now=_NOW)
     assert is_red is False
     assert hours == 0.0
-    assert latest is None
+    assert latest is not None
+    assert latest["conclusion"] == "success"
 
 
 def test_single_failure_measures_from_that_run():
@@ -168,6 +169,97 @@ def test_green_report_is_quiet(monkeypatch, capsys):
     assert "빨갛다" not in out
 
 
+# ── ⑤ R70 — failure 이외 결론 + 킬스위치 가시화 ─────────────────────────────
+
+_NON_SUCCESS = (
+    "cancelled",
+    "timed_out",
+    "action_required",
+    "startup_failure",
+    "stale",
+    "neutral",
+    "skipped",
+)
+# 🔴 기대 red 집합은 리터럴 — 피검사 모듈에서 유도하면 집합을 줄여도 GREEN 이다.
+# Pin the expected red set literally; deriving it from the module under test
+# makes shrinking `_RED_CONCLUSIONS` pass (measured: M1 GREEN).
+_EXPECT_RED = ("failure", "timed_out", "startup_failure")
+
+
+@pytest.mark.parametrize("conclusion", _NON_SUCCESS)
+def test_non_success_latest_is_never_printed_green(conclusion, monkeypatch, capsys):
+    """🔴 `failure` 가 아니라고 해서 초록이 아니다 (R70).
+
+    GitHub 결론값: timed_out·startup_failure 는 빌드 실패와 같고,
+    cancelled·action_required·stale·neutral·skipped 도 '고쳤다' 가 아니다.
+    이전 판은 전부 `conclusion != "failure"` → "초록" 한 줄이었다.
+    """
+    runs = [_run("2026-08-08T09:00:00Z", conclusion), _run("2026-08-08T08:00:00Z", "success")]
+    is_red, _hours, latest = mod.red_span(runs, now=_NOW)
+    if conclusion in _EXPECT_RED:
+        assert is_red is True, f"{conclusion} 을 red 로 보지 않았다"
+    else:
+        assert is_red is False
+        assert latest is not None and latest["conclusion"] == conclusion
+
+    monkeypatch.setattr(f"{_MOD}.fetch_runs", lambda: runs)
+    monkeypatch.setattr(f"{_MOD}.failing_jobs", lambda _i: ["job-x"])
+    assert mod.main() == 0
+    out = capsys.readouterr().out
+    assert "최신 run 초록" not in out, f"{conclusion} 을 초록으로 인쇄했다: {out!r}"
+    if conclusion in _EXPECT_RED:
+        assert "빨갛다" in out
+    else:
+        assert conclusion in out, f"실제 결론을 알리지 않았다: {out!r}"
+
+
+def test_cancelled_in_the_middle_does_not_collapse_the_span():
+    """🔴 중간의 cancelled 1건이 red 지속시간을 끊으면 안 된다 (R70-b).
+
+    시나리오: success → failure(60h 전) → cancelled → failure(1h 전).
+    이전 판은 cancelled 에서 역추적을 멈춰 60h → 1.0h 로 붕괴했다.
+    """
+    runs = [
+        _run("2026-08-08T11:00:00Z", "failure", 4),
+        _run("2026-08-07T06:00:00Z", "cancelled", 3),
+        _run("2026-08-06T00:00:00Z", "failure", 2),
+        _run("2026-08-05T14:00:00Z", "success", 1),
+    ]
+    is_red, hours, latest = mod.red_span(runs, now=_NOW)
+    assert is_red is True
+    assert latest["databaseId"] == 4
+    assert hours == pytest.approx(60.0, abs=0.01), (
+        f"cancelled 가 구간을 끊었다 — {hours}시간 (기대 60h)"
+    )
+
+
+def test_skip_env_is_loud_not_silent(monkeypatch, capsys):
+    """🔴 킬스위치가 출력 0줄이면 초록과 구별되지 않는다 (R70-c)."""
+    monkeypatch.setenv("SKIP_MAIN_RED_CHECK", "1")
+    monkeypatch.setattr(f"{_MOD}.fetch_runs", lambda: (_ for _ in ()).throw(
+        AssertionError("skip 인데 fetch 를 불렀다")))
+    assert mod.main() == 0
+    out = capsys.readouterr().out
+    assert out, "킬스위치가 무음이다 — 초록과 구별 불가"
+    assert "SKIP_MAIN_RED_CHECK" in out
+    assert "최신 run 초록" not in out
+
+
+def test_skip_env_is_documented_in_env_vars():
+    """🔴 킬스위치가 env-vars.md 표에 없으면 다시 무문서가 된다 (R70-c).
+
+    산문 언급이 아니라 표 셀 `| ``SKIP_MAIN_RED_CHECK`` |` 형태여야 한다 —
+    `check_env_vars_sync` 가 Settings 필드만 보기 때문에 이 축은 여기 고정한다.
+    """
+    from pathlib import Path
+
+    ev = (Path(__file__).resolve().parents[3] / "docs" / "reference" / "env-vars.md")
+    text = ev.read_text(encoding="utf-8")
+    assert "| `SKIP_MAIN_RED_CHECK` |" in text, (
+        "docs/reference/env-vars.md 표에 SKIP_MAIN_RED_CHECK 가 없다"
+    )
+
+
 def test_always_advisory(monkeypatch, capsys):
     """어떤 상태에서도 exit 0 — SessionStart 를 막으면 세션 자체가 안 열린다(정책 17)."""
     for runs in ([_run("2026-08-08T09:00:00Z", "failure")],
@@ -188,7 +280,9 @@ def test_no_state_file_is_written(tmp_path, monkeypatch):
 
     src = (tmp_path / "x")  # 존재만 확인용
     assert not src.exists()
-    source = __import__("pathlib").Path(m.__file__).read_text(encoding="utf-8")
+    from pathlib import Path
+
+    source = Path(m.__file__).read_text(encoding="utf-8")
     for bad in ("open(", "write_text", "mkdir("):
         assert bad not in source.replace("# ", ""), (
             f"상태 저장으로 보이는 호출이 있다: {bad}"
@@ -201,11 +295,11 @@ def test_no_state_file_is_written(tmp_path, monkeypatch):
 def test_wired_into_session_start():
     """정의 ≠ 배선 — SessionStart 에서 **실제로 실행**되는지."""
     import json as _json
-    import pathlib
 
+    from pathlib import Path
     from tests.unit.scripts._wiring_shape import any_invokes
 
-    root = pathlib.Path(__file__).resolve().parents[3]
+    root = Path(__file__).resolve().parents[3]
     settings = _json.loads((root / ".claude" / "settings.json").read_text(encoding="utf-8"))
     commands = [
         hook.get("command", "")
