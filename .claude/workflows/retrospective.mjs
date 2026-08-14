@@ -228,6 +228,64 @@ if (dryRun) {
   return { scope, dryRun: true, domains: domains.map((d) => d.id), context }
 }
 
+// ── 🔴 범위는 기계에서 얻는다 — 호출자 문자열을 믿지 않는다 (2026-08-14 회고 P0-B) ──
+//
+// 정책 8-(5)의 SSOT 는 `scripts/retro_scope.py` 이고 그 스크립트는 매 실행 말미에
+// *"회고 착수 직전에 다시 실행할 것"* 을 인쇄한다. 그런데 이 워크플로에는 그 값을
+// 가져오는 배선이 **없었다** — `scope`/`context` 를 호출자 문자열로만 받았고, 집행은
+// `.claude/skills/retrospective.md` 의 산문 한 줄이었다. 결과: 2026-08-08 은 17 vs 18,
+// 2026-08-14 는 #1347 이 통째로 빠졌다(하필 범위 안 PR 의 결함을 수습한 PR). **2회 연속
+// 같은 자리**이고, 두 번 다 도구는 옳은 값을 인쇄했으며 사람이 옮겨 적는 단계만 깨졌다.
+//
+// 🔴 **이 스크립트는 파일시스템도 자식 프로세스 실행도 할 수 없다**(워크플로 런타임 제약).
+//    그래서 "진입부에서 retro_scope.py 를 직접 실행" 하는 방식은 구현 불가다.
+//    대신 **Scope 단계에 에이전트를 세워** 그 명령을 실제로 돌리고 값을 받아온다 —
+//    에이전트는 Bash 를 쓸 수 있다. 산문 대신 실행이 남는다.
+//
+// The workflow runtime has no filesystem or subprocess access, so the scope is obtained by
+// an agent that actually runs the machine oracle, then compared against the caller's string.
+const SCOPE_SCHEMA = {
+  type: 'object', additionalProperties: false,
+  required: ['ok', 'pr_count', 'prs', 'head', 'raw'],
+  properties: {
+    ok: { type: 'boolean' },
+    pr_count: { type: 'integer' },
+    prs: { type: 'array', items: { type: 'integer' } },
+    head: { type: 'string' },
+    raw: { type: 'string', description: 'retro_scope.py --json 의 stdout 원문' },
+  },
+}
+
+const machineScope = await agent(
+  '이 리포에서 아래 한 줄을 **그대로 실행**하고 그 출력을 보고하세요. 다른 조사·수정 금지.\n\n' +
+  '```\nPYTHONIOENCODING=utf-8 py -3 scripts/retro_scope.py --json\n```\n\n' +
+  '· 출력 JSON 의 `pr_count`·`prs`·`head` 를 그대로 옮기고, stdout 전문을 `raw` 에 넣으세요.\n' +
+  '· 명령이 실패하면 `ok: false` 로 하고 `raw` 에 stderr 를 넣으세요. **추정값을 만들지 마세요.**',
+  { label: 'scope:machine', phase: 'Scope', schema: SCOPE_SCHEMA, effort: 'low' },
+)
+
+let scopeNote = ''
+if (!machineScope || machineScope.ok !== true) {
+  scopeNote = '🔴 기계 범위 산출 실패 — 호출자 범위로 진행(정직 기준: 이 회고의 범위는 미검증)'
+  log(scopeNote)
+} else {
+  const missing = machineScope.prs.filter((n) => !String(context ?? '').includes(String(n)))
+  if (missing.length) {
+    // 🔴 덮어쓰지 않고 **주입**한다 — 호출자 맥락(무엇을 왜 의심할지)에는 사람의 판단이
+    //    들어 있고 그것을 버리면 회고 품질이 떨어진다. 빠진 범위만 강제로 얹는다.
+    scopeNote =
+      `🔴 **호출자 범위가 기계 산출과 다르다** — 브리프에 없는 PR ${missing.length}건: ` +
+      `${missing.map((n) => '#' + n).join(', ')}. 기계값(HEAD ${machineScope.head} · ` +
+      `${machineScope.pr_count}건)을 범위에 **추가**한다. 정책 8-(5): 가장 검증 덜 된 산출물이 회고를 피한다.`
+    log(scopeNote)
+  } else {
+    log(`✅ 범위 일치 — 기계 산출 ${machineScope.pr_count}건 (HEAD ${machineScope.head})`)
+  }
+}
+
+const scopedContext = [context, scopeNote && `\n\n---\n${scopeNote}\n기계 산출 원문:\n${machineScope?.raw ?? ''}`]
+  .filter(Boolean).join('')
+
 // ── loop-until-dry — 정본 파라미터 (정본: _lib/loop-until-dry.template.mjs) ──
 // 🔴 정본 값과 동일 유지 의무 — drift 는 tests/unit/scripts/test_workflow_loop_sync.py 가드 차단.
 // Canonical params — must match _lib/loop-until-dry.template.mjs (drift blocked by the guard test).
@@ -248,7 +306,7 @@ phase('Discover')
 while (dry < DRY_THRESHOLD && round < MAX_ROUNDS && (!budget.total || budget.remaining() > BUDGET_FLOOR)) {
   round++
   const found = (await parallel(domains.map((d) => () =>
-    agent(finderPrompt(d, context, round), { label: `retro:${d.id}:r${round}`, phase: 'Discover', schema: FINDINGS_SCHEMA })
+    agent(finderPrompt(d, scopedContext, round), { label: `retro:${d.id}:r${round}`, phase: 'Discover', schema: FINDINGS_SCHEMA })
   ))).filter(Boolean).flatMap((r) => r.findings ?? [])
 
   const fresh = found.filter((f) => !seen.has(key(f)))
@@ -257,7 +315,7 @@ while (dry < DRY_THRESHOLD && round < MAX_ROUNDS && (!budget.total || budget.rem
   fresh.forEach((f) => seen.add(key(f)))
   log(`라운드 ${round}: 신규 ${fresh.length}건 → cross-verify`)
 
-  verified.push(...(await verifyAll(fresh, context)))
+  verified.push(...(await verifyAll(fresh, scopedContext)))
 }
 
 // ── completeness critic + 표적 gap 라운드 ──
@@ -272,10 +330,10 @@ try {
   if (gaps?.items?.length) {
     log(`completeness: gap ${gaps.items.length}건 → 표적 라운드`)
     const gapFound = (await parallel(gaps.items.map((g) => () =>
-      agent(gapFinderPrompt(g, context), { label: `gap:${g.domain}`, phase: 'Discover', schema: FINDINGS_SCHEMA })
+      agent(gapFinderPrompt(g, scopedContext), { label: `gap:${g.domain}`, phase: 'Discover', schema: FINDINGS_SCHEMA })
     ))).filter(Boolean).flatMap((r) => r.findings ?? []).filter((f) => !seen.has(key(f)))
     gapFound.forEach((f) => seen.add(key(f)))
-    if (gapFound.length) verified.push(...(await verifyAll(gapFound, context)))
+    if (gapFound.length) verified.push(...(await verifyAll(gapFound, scopedContext)))
   }
 } catch (e) {
   // 검증된 verified[] 는 그대로 Report 로 진행 — 부분 결과 보존 (조용한 전체 실패 방지).
@@ -291,7 +349,7 @@ const unresolved = verified.filter((v) => v.verdict === 'UNVERIFIED')
 if (unresolved.length) {
   log(`UNVERIFIED ${unresolved.length}건 → coverage 보강 1회 bounded 재검증`)
   const reResolved = new Map(
-    (await verifyAll(unresolved, context))
+    (await verifyAll(unresolved, scopedContext))
       .filter((v) => v.verdict !== 'UNVERIFIED')
       .map((v) => [key(v), v]),
   )
@@ -306,6 +364,41 @@ if (unresolved.length) {
 // ── Report (구조화 데이터 반환 — 리포트 파일 작성은 호출자/스킬 책임) ──
 // Report (returns structured data — writing the report file is the caller/skill's job)
 phase('Report')
+
+// ── 🔴 종료 시 범위 재확인 — **디스패치 시점 신탁으로는 원리적으로 못 잡는 축** ──
+//
+// 2026-08-14 회고 P0-B 의 실제 기전은 *"범위를 손으로 적었다"* 가 아니었다.
+// 오라클(`retro_scope.py`)은 디스패치 **직전에 실행됐고 그 값이 맞았다**.
+// 그 뒤 **회고가 3시간 도는 동안 세션이 `#1347` 을 새로 머지**했다 —
+// 진입 시점의 어떤 검사도 미래의 머지를 볼 수 없다.
+// (2026-08-08 의 17 vs 18 은 다른 기전 — 그쪽은 스킬이 손 조립을 지시했고
+//  `tests/unit/scripts/test_retro_scope_is_machine_derived.py` 가 이미 닫았다.)
+//
+// 그래서 **끝에서 다시 잰다.** 회고 중 늘어난 분은 이 회고가 보지 못했다는 사실을
+// 산출물에 실어, 다음 회고 하한으로 이월한다. 닫는 것이 아니라 **드러내는** 축이다.
+//
+// Dispatch-time oracles cannot see merges that happen *during* the run; re-measure at the end
+// and surface the delta as the next retrospective's floor.
+let scopeDriftDuringRun = null
+try {
+  const closing = await agent(
+    '이 리포에서 아래를 **그대로 실행**하고 출력을 보고하세요. 다른 조사·수정 금지.\n\n' +
+    '```\nPYTHONIOENCODING=utf-8 py -3 scripts/retro_scope.py --json\n```\n\n' +
+    '실패하면 `ok: false` + stderr 를 `raw` 에 넣으세요. **추정값을 만들지 마세요.**',
+    { label: 'scope:closing', phase: 'Report', schema: SCOPE_SCHEMA, effort: 'low' },
+  )
+  if (closing?.ok === true && Array.isArray(machineScope?.prs)) {
+    const started = new Set(machineScope.prs)
+    const added = closing.prs.filter((n) => !started.has(n))
+    if (added.length) {
+      scopeDriftDuringRun = { added, head_at_start: machineScope.head, head_at_end: closing.head }
+      log(`🔴 **회고 실행 중 머지 ${added.length}건** — 이 회고 범위 밖이다: ` +
+          `${added.map((n) => '#' + n).join(', ')}. 다음 회고 하한으로 이월할 것.`)
+    }
+  }
+} catch (e) {
+  log(`종료 시 범위 재확인 실패 — best-effort 건너뜀: ${e?.message ?? e}`)
+}
 const all = dedupe(verified)
 const confirmed = all.filter((v) => v.verdict === 'CONFIRMED' || v.verdict === 'SEVERITY_ADJUST')
 const falsePositives = all.filter((v) => v.verdict === 'FALSE_POSITIVE')
@@ -332,6 +425,10 @@ return {
     recommendation: f.recommendation ?? null, verdict: f.verdict, reason: f.reason,
   })),
   unverified_findings: unverified.map((f) => ({ domain: f.domain, severity: f.severity, title: f.title })),
+  // 🔴 회고가 도는 동안 머지된 분 — 이 회고는 그것을 보지 못했다. 다음 회고 하한이다.
+  //    null 이면 드리프트 없음 또는 재확인 실패(로그에 사유가 남는다).
+  // PRs merged *during* this run — outside this retrospective's evidence base.
+  scope_drift_during_run: scopeDriftDuringRun,
   roi: {
     fp_blocked: falsePositives.length,
     confirmed: confirmed.length,

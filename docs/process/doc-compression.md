@@ -37,7 +37,7 @@ grep -nE "잔여|미해결|미이행|TODO|GROK-[0-9]" <파일>
 실측: `backlog.md` 의 ✅ 40행 중 **21행이 미해결 잔여**를 담고 있었고,
 그중 **17행은 어느 열린 행에도 귀속되지 않았다**. 맹목 삭제였으면 통째로 사라졌다.
 
-🔴 **정규식 추출을 검증 없이 믿지 마라** — 위 21건 중 4건은 표기가 달라 정규식이 놓쳤다.
+**정규식 추출을 검증 없이 믿지 마라** — 위 21건 중 4건은 표기가 달라 정규식이 놓쳤다.
 원문에서 읽고 손으로 채웠다.
 
 ---
@@ -58,6 +58,7 @@ grep -nE "잔여|미해결|미이행|TODO|GROK-[0-9]" <파일>
 - 무엇을 왜 접었는지 · 무엇이 **여기에만** 남았는지
 
 🔴 **`docs/_archive/**` 내부 참조는 고치지 않는다** — 시점 기록이라 재작성 금지
+(집행: `tests/unit/scripts/test_precommit_entry_interpreter.py` 의 `_PROTECTED`)
 ([`docs.md`](../../.claude/rules/docs.md)). 그 대가로 아카이브 내부 링크가 깨진다. 수용하거나
 별도 결정으로 다룬다.
 
@@ -75,7 +76,7 @@ git ls-files | xargs grep -l "<옛 경로>" 2>/dev/null    # 전 추적 파일
 |---|---|
 | 스캐너 범위 | `_plan_docs()` 가 옛 경로를 봐 **9→3 으로 좁아짐** |
 | 등급 패턴 | 구 `integrations`(low_risk) 가 `runbooks` 로 합쳐지며 **런북 전체를 강등시킬 뻔** |
-| 치환 잔재 | `^\.claude/plans/` → `^\docs/...` 이스케이프 깨짐 |
+| 치환 잔재 | 구 `^\.claude/plans/` → 새 경로 치환에서 이스케이프 깨짐 |
 
 ---
 
@@ -87,7 +88,7 @@ py -3 -m pytest tests/unit -q             # 전체 스위트 (예외 없음)
 py -3 scripts/check_red_budget.py         # 🔴 분모가 사라지지 않았는지
 ```
 
-🔴 **`git stash` 를 쓰지 마라.** 이동(`git mv`)이 unstage 돼 `git ls-files` 가 옛 경로를
+**`git stash` 를 쓰지 마라.** 이동(`git mv`)이 unstage 돼 `git ls-files` 가 옛 경로를
 반환하고, 그 목록으로 parametrize 하는 테스트가 무더기로 red 가 된다(실측 29건).
 비교가 필요하면 **격리 worktree** 를 쓴다:
 

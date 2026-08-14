@@ -74,7 +74,7 @@ backlog 등재뿐이었고, 그 등재는 `#1329` 가 **`R78` 한 행**으로 �
 
 ## 검증이 닿지 않은 범위 (정직 표기)
 
-`.claude/agents|skills` 본문 ↔ 코드 · `docs/guides/**` · `docs/integrations/**` ·
+`.claude/agents|skills` 본문 ↔ 코드 · `docs/runbooks/**`(구 `guides`·`integrations` 통합분) ·
 `docs/runbooks/**`(1건 외) · ko 번역쌍 원본 대조 · `docs/_archive/**` 62건.
 3라운드 검증 어디에서도 대조되지 않았다 — 여기서 나온 주장은 근거가 없다고 보아야 한다.
 

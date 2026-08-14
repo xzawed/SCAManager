@@ -229,9 +229,60 @@ def test_exemption_is_recorded_in_the_job_summary(tmp_path, monkeypatch):
 
 
 def test_surface_list_covers_every_rule_home():
-    """🔴 표면을 빠뜨리면 거기서 늘어나는 🔴 은 영원히 안 보인다. 리터럴로 못박는다."""
-    for required in ("CLAUDE.md", "AGENTS.md", ".claude/rules/*.md", ".claude/policies/*.md"):
+    """🔴 표면을 빠뜨리면 거기서 늘어나는 🔴 은 영원히 안 보인다. 리터럴로 못박는다.
+
+    ## 2026-08-14 확대 — 이름이 'every rule home' 인데 새 rule home 을 안 요구했다
+
+    회고(`wf_2b615d5e-8c5`) P0-A: `#1345` 가 `docs/process/**`·`.claude/traps.md` 를
+    **지시문 층으로 신설**했는데 이 목록이 넷으로 고정돼 있어 카운터가 두 층을 한 번도
+    읽지 않았다 — 그 안에 무집행 마커 **27건**. *"무집행 0건 · 100%"* 는 그 27건을
+    **뺀 값**이었다. 테스트 이름은 옳았고 내용이 이름을 따라가지 못했다.
+
+    The list is literal on purpose (deriving it would let an empty source pass), so it
+    must be widened by hand whenever a new rule-authoring surface is created.
+    """
+    for required in (
+        "CLAUDE.md",
+        "AGENTS.md",
+        ".claude/rules/*.md",
+        ".claude/policies/*.md",
+        ".claude/traps.md",
+        "docs/process/*.md",
+    ):
         assert required in gate.SURFACE_GLOBS, f"표면 목록에서 빠졌다: {required}"
+
+
+def test_new_layers_are_actually_counted(tmp_path):
+    """🔴 목록에 있다 ≠ 계수된다 — 두 신설 층에서 실제로 블록이 잡히는지 본다.
+
+    위 테스트는 **문자열 존재**만 본다. glob 이 0개를 반환하거나 파일이 사라지면
+    단언은 통과하는데 계수는 0이다(A4 자기참조 공허화의 사촌). 실제 파일에서
+    마커 블록이 나오는지 실행으로 확인한다.
+    """
+    names = {p.relative_to(_ROOT).as_posix() for p in gate.surfaces(_ROOT)}
+    assert ".claude/traps.md" in names, "traps.md 가 표면으로 해소되지 않는다"
+    assert any(n.startswith("docs/process/") for n in names), "docs/process/ 가 비었다"
+
+    counted = sum(
+        len(gate.rule_blocks((_ROOT / n).read_text(encoding="utf-8")))
+        for n in names if n.startswith("docs/process/") or n == ".claude/traps.md"
+    )
+    assert counted >= 3, f"신설 층에서 마커 블록을 {counted}개만 찾았다 — 계수가 공허하다"
+
+
+def test_marker_inside_code_is_a_mention_not_a_rule():
+    """🔴 인용 배제 — 코드 스팬·펜스 안의 마커는 **설명**이지 규칙 표시가 아니다.
+
+    이 배제가 없으면 저자가 마커 제도 자체를 문서로 설명할 수 없다
+    (`*"무집행 🔴 이 늘었는가"*` 같은 문장이 무집행 규칙으로 잡힌다).
+    traps B5 · 메모리 `feedback-prose-guard-both-ways` 의 *"인용 면제 필수"* 축이다.
+    """
+    inline = "규칙은 집행자가 지킨다(`🔴` = 집행자 동반).\n"
+    fenced = "```\n# 🔴 예외 없음\n```\n"
+    assert gate.rule_blocks(inline) == []
+    assert gate.rule_blocks(fenced) == []
+    # 대조군 — 인용이 아닌 실제 마커는 그대로 잡혀야 한다(과교정 방지).
+    assert len(gate.rule_blocks("🔴 **집행자 없는 진짜 규칙**\n")) == 1
 
 
 def test_surfaces_resolve_in_this_repo():
@@ -480,3 +531,35 @@ def test_the_proxy_ceiling_is_documented_not_claimed_closed():
     doc = (_ROOT / "scripts" / "check_red_budget.py").read_text(encoding="utf-8")
     assert "이것은 프록시다" in doc
     assert "집행하는 것은 다르다" in doc
+
+
+def test_claude_md_discloses_all_three_ceilings():
+    """🔴 **한계 고지 3축이 `CLAUDE.md` 에서 살아 있어야 한다** — 지우면 봉인으로 읽힌다.
+
+    ## 왜 (2026-08-14 회고 P0-A)
+
+    2026-08-13 판 `CLAUDE.md` 는 한계를 **둘만** 밝혔다(프록시 · 표면 삭제 축 CI 전용).
+    밝히지 않은 세 번째가 **계수 범위**였고, 그 침묵 위에서 «무집행 0건 · 100%» 이
+    조건 없이 단언됐다. 회고 실측: 계수 안 92 vs 계수 밖 505 — 그리고 그 선언을 한
+    바로 그 커밋이 계수 밖에 마커 30개를 새로 만들었다.
+
+    한계 고지는 **본문에 있을 때만** 작동한다(읽히지 않으면 0이다). 고지가 조용히
+    사라지는 것을 막는 유일한 방법은 그 생존을 기계로 고정하는 것이다 —
+    이 리포가 traps A5 로 이름 붙인 *"거짓 집행자가 무집행보다 나쁘다"* 의 예방판이다.
+
+    Three ceilings must stay disclosed in CLAUDE.md; silently dropping one turns the gate
+    into a perceived seal.
+    """
+    body = (_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+
+    # 축 1 — 프록시(가드가 그 규칙을 집행하는지는 판정하지 않는다)
+    assert "프록시" in body and "무관한 가드 이름을 적어도 통과한다" in body, (
+        "프록시 한계 고지가 CLAUDE.md 에서 사라졌다"
+    )
+    # 축 2 — 표면 삭제 축은 CI 전용(로컬 EXIT 0 은 '안 쟀음')
+    assert "안 쟀음" in body, "로컬 EXIT 0 의 의미 고지가 사라졌다"
+    # 축 3 — 계수 범위(2026-08-14 신설. 이것이 빠진 채 100% 를 단언한 것이 P0-A 였다)
+    assert "계수 범위가 리포 전체가 아니다" in body, (
+        "계수 범위 한계 고지가 사라졌다 — 이 축의 침묵이 P0-A 의 직접 원인이었다"
+    )
+    assert "SURFACE_GLOBS" in body, "범위 한계가 어느 상수를 가리키는지 없다"

@@ -156,3 +156,66 @@ def test_the_workflow_cannot_and_does_not_shell_out():
         "워크플로가 child_process 를 쓴다 — Workflow 런타임은 이를 제공하지 않는다.\n"
         "→ 범위 산출은 스킬(진입점)에서 하고 `args` 로 주입할 것."
     )
+
+
+# ── ④ 실행 중 머지는 진입 시점 신탁이 원리적으로 못 본다 (2026-08-14 P0-B) ──
+
+
+def _workflow_src() -> str:
+    return (_ROOT / ".claude" / "workflows" / "retrospective.mjs").read_text(encoding="utf-8")
+
+
+def test_scope_is_remeasured_at_the_end_not_only_at_dispatch():
+    """🔴 회고가 **도는 동안** 머지된 분을 산출물이 드러내야 한다.
+
+    ## 왜 이 축이 따로 필요한가
+
+    2026-08-14 회고 P0-B 의 실제 기전은 *"범위를 손으로 적었다"* 가 **아니었다**.
+    오라클(`scripts/retro_scope.py`)은 디스패치 직전에 실행됐고 그 값이 맞았다 —
+    그 뒤 회고가 3시간 도는 동안 세션이 `#1347` 을 새로 머지했다. **진입 시점의 어떤
+    검사도 미래의 머지를 볼 수 없다.** 위 ①~③ 축(스킬이 오라클을 부르는가)은
+    2026-08-08 의 다른 기전(손 조립)을 닫은 것이고, 이 축은 그것과 별개다.
+
+    닫는 것이 아니라 **드러내는** 축이다 — 실행 중 늘어난 분을 반환값에 실어
+    다음 회고의 하한으로 이월한다.
+
+    Dispatch-time oracles cannot see merges that happen during the run; the workflow must
+    re-measure at the end and surface the delta.
+    """
+    src = _workflow_src()
+
+    assert "scope:closing" in src, (
+        "종료 시 범위 재확인 에이전트가 없다 — 실행 중 머지분을 아무도 보지 않는다."
+    )
+    assert "scope_drift_during_run" in src, (
+        "재확인 결과가 반환값에 노출되지 않는다 — 로그만으로는 다음 회고가 못 읽는다."
+    )
+
+
+def test_the_closing_check_actually_runs_the_oracle():
+    """🔴 배선 단언 — 종료 검사가 **그 스크립트를 실제로 실행**하라고 지시하는가.
+
+    `"scope:closing" in src` 만 보면 라벨만 남기고 프롬프트를 비워도 통과한다
+    (A1 = 산문이 가드를 통과시킨다). 종료 에이전트 프롬프트가 오라클 실행 명령을
+    담고 있는지 확인한다.
+    """
+    src = _workflow_src()
+    closing = src[src.index("scope:closing") - 1200:src.index("scope:closing")]
+    assert "retro_scope.py" in closing, (
+        "종료 검사가 오라클을 부르지 않는다 — 라벨만 있고 실행이 없다."
+    )
+    assert "추정값을 만들지 마세요" in closing, (
+        "추정 금지 지시가 없다 — 에이전트가 값을 지어내면 이 축은 거짓을 발행한다."
+    )
+
+
+def test_drift_is_computed_against_the_dispatch_time_scope():
+    """대조군 — 종료값만 보고하면 '늘었는지' 를 판정할 수 없다.
+
+    진입 시점 산출(`machineScope`)과 대조해야 delta 가 나온다. 종료값 단독 보고는
+    *"지금 범위는 8건"* 이라고만 말하고 **그중 무엇이 회고 밖인지**는 말하지 않는다.
+    """
+    src = _workflow_src()
+    assert "machineScope?.prs" in src or "machineScope.prs" in src, (
+        "종료 검사가 진입 시점 범위와 대조하지 않는다 — delta 가 산출되지 않는다."
+    )
