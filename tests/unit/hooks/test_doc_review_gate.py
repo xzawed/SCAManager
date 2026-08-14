@@ -1472,31 +1472,47 @@ def test_state_context_budget_reaches_the_aggregate_numbers():
     #    지금은 **README 배지가 주장하는 값 문자열**을 STATE 슬라이스에서 찾는다:
     #    심의자가 실제로 대조할 수 있어야 예산이 제 역할을 한 것이다.
     #    The old assertion passed on the mere word "pylint"; now the badge's *value* must be visible.
+    # ── 축 1: 심의자가 **현행 점수 표기**를 볼 수 있는가 ──────────────────
+    #
+    # 🔴 **bare 값 substring 은 약하다** (2026-08-14 Grok `01a00012` 반례 (d)).
+    #    `"9.99" in state_section` 은 슬라이스 안에서 **5회** 매칭되는데 그중 3회가
+    #    역사 서술이다(`이전 리터럴 9.90 은 9.99 도 …`). 실제로 STATE 의 **현행 점수
+    #    2곳을 8.88 로 바꿔도** 그 단언은 green 이었다 — 심의자가 대조해야 하는 것은
+    #    현행 값인데, 역사 문장이 그 자리를 대신 채워 준다.
+    #    그래서 **현행 점수 표기 형태**(`pylint **9.99/10**`)를 찾는다.
+    #    A bare value matched historical prose; assert the *current-score* rendering.
     badge = (_ROOT / "README.md").read_text(encoding="utf-8")
     m = re.search(r"pylint-(\d+\.\d+)%2F10", badge)
     assert m, "README 배지에서 pylint 값을 파싱하지 못했다 — 이 축의 기대값 원천이 사라졌다"
-    value = m.group(1)
-    assert value in state_section, (
-        f"README 배지 값 {value} 이 STATE 예산 구간 밖이다 — 심의자가 대조할 수 없다"
+    current = f"pylint **{m.group(1)}/10**"
+    assert current in state_section, (
+        f"현행 점수 표기 `{current}` 가 STATE 예산 구간에 없다 — 심의자가 대조할 수 없다. "
+        "(역사 서술의 같은 숫자는 대조 대상이 아니다)"
     )
 
-    # 🔴 **예산 축은 지문으로 못 잰다 — 길이로 잰다** (2026-08-14 실측 정정).
-    #    문서감사 계획서는 *"STATE 예산을 4000 으로 되돌리면 red"* 를 RED 조건으로 적었다.
-    #    그 예측은 **stale** 이었다: 당시 pylint 값은 offset ~11.2k 였는데 2026-08-05
-    #    STATE 재구조화로 종합 헤더가 맨 위로 올라와 지금은 **offset 1,915** 다.
-    #    즉 예산을 4000 으로 낮춰도 값은 여전히 보이고 지문 단언은 green 이다 —
-    #    지문이 우연히 앞쪽에 있으면 예산 축을 관측하지 못한다.
-    #    슬라이스 **길이**는 그 우연에 의존하지 않는다.
-    #    Fingerprints move; slice length observes the budget directly.
-    # 🔴 **기대값을 피검사 모듈에서 유도하지 않는다** — 리터럴로 못박는다.
-    #    초판은 `dict(_CONTEXT_SOURCES)["docs/STATE.md"]` 로 기대값을 읽었고, 그래서
-    #    예산을 4000 으로 낮추면 **기대값도 함께 낮아져** green 이었다(A4 자기참조 공허화).
-    #    이 리포가 `guards.md §기대값을 피검사 모듈에서 유도하지 말 것` 으로 이름 붙인 형태다.
-    #    Deriving the expectation from the module under test made the axis vacuous.
-    _MIN_STATE_SLICE = 15000        # 예산 16,000 의 하한 — 낮추려면 이 리터럴을 함께 고친다
-    assert len(state_section) >= _MIN_STATE_SLICE, (
-        f"STATE 슬라이스가 {len(state_section):,}자뿐이다 — 예산이 실제로 실리지 않았다. "
-        f"의도적으로 낮췄다면 이 테스트의 `_MIN_STATE_SLICE` 도 같은 PR 에서 고칠 것."
+    # ── 축 2: 슬라이스가 **실제 STATE 내용**인가 (junk 방지) ─────────────
+    #
+    # 🔴 Grok 반례 (c): 본문을 `"종합 수치 pylint 9.99" + "X"*16000` 으로 바꾸면
+    #    지문·길이 단언이 **전부 green** 이었다 — 교체하려던 `"pylint" in …` 과 같은 클래스다.
+    #    지문은 위조할 수 있고 길이는 패딩할 수 있다. **원문과의 동일성**은 둘 다 막는다.
+    state_head = (_ROOT / "docs" / "STATE.md").read_text(encoding="utf-8")[:2000]
+    assert state_head in state_section, (
+        "슬라이스가 STATE.md 실내용으로 시작하지 않는다 — 지문만 든 패딩일 수 있다"
+    )
+
+    # ── 축 3: 예산이 실제로 그 값인가 (길이 하한만으로는 못 잡는다) ───────
+    #
+    # 🔴 Grok 반례 (c′): 예산을 16000 → **14950** 으로 줄여도 길이 하한(15000)에 걸리지 않아
+    #    4 가드 전부 green 이었다. 하한은 큰 하락만 잡는다.
+    #    🔴 기대값은 **리터럴**로 못박는다 — 피검사 모듈에서 읽으면 낮출 때 같이 낮아진다(A4).
+    from doc_review_gate import _CONTEXT_SOURCES
+
+    _STATE_BUDGET = 16000        # 계약값. 바꾸려면 이 리터럴을 같은 PR 에서 고친다.
+    assert dict(_CONTEXT_SOURCES)["docs/STATE.md"] == _STATE_BUDGET, (
+        "STATE 예산이 계약값과 다르다 — 의도한 변경이면 이 테스트의 리터럴도 함께 고칠 것"
+    )
+    assert len(state_section) >= _STATE_BUDGET, (
+        f"STATE 슬라이스가 {len(state_section):,}자뿐이다 — 예산이 실제로 실리지 않았다"
     )
 
 
@@ -1555,6 +1571,31 @@ def test_size_literals_are_not_hand_written_in_comments():
     (`+72%` 과대 · **2배 과소** · 오차 2.5%), 그 과소가 너무 작은 예산을 정당화했다.
     `load_context_parts()` 가 `f"(전문 {len(content)}자)"` 로 파생하므로 주석은 복제였다.
     traps C1 — N지점 손유지는 N−1번의 실패 기회다.
+
+    ## 🔴 이 가드가 못 막는 것 (2026-08-14 Grok `01a00012` CLAIM 3 = WEAKENED)
+
+    적대 검증이 **우회 5종**을 실측했다 — 전부 green 이다:
+
+    | 우회 | 형태 |
+    |---|---|
+    | `# 전문 12,004자` | 쉼표 + `자` — `k` 없음 |
+    | `# 16000자 전문` | 숫자 그대로 |
+    | `# 16K 전문` | 대문자 K |
+    | 다음 줄 단독 `# 16k` | 항목 줄이 아님 |
+    | 계속 줄 `("AGENTS.md",
+ 16000), # 16k` | 항목 줄 정규식 밖 |
+
+    **넓히지 않는다.** 넓히면 설명 주석의 역사 기록(`offset ~11.1k`)을 다시 잡고, 그것이
+    이 가드가 한 번 밟은 형태다(traps B5 = 산문 가드는 양방향으로 틀린다). 초판 정규식이
+    정확히 그랬다.
+
+    🔴 **이 축의 실질 방어는 이 가드가 아니다** — 틀린 크기 주석의 *결과*(너무 작은 예산 →
+    조용한 절단)는 `test_whole_sources_actually_fit` 과 `test_whole_source_headroom_warns_at_85pct`
+    가 **주석 내용과 무관하게** 잡는다. 이 가드는 defense-in-depth 이고, 잡는 것은
+    *"계획서가 지목한 바로 그 형태(`# 27.8k — 전문`)"* 하나다.
+
+    This catches only the exact original form; widening reintroduces false positives on
+    historical prose. The real defense is the fit/headroom pair, which observes the effect.
     """
     src = (_ROOT / ".claude" / "hooks" / "doc_review_gate.py").read_text(encoding="utf-8")
     block = src[src.index("_CONTEXT_SOURCES: tuple"):]
