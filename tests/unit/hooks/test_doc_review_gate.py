@@ -2,13 +2,15 @@
 import ast
 import io
 import json
+import re
 import sys
 import pytest
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 # 훅 파일 직접 임포트 (src/ 외부)
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / ".claude" / "hooks"))
+_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(_ROOT / ".claude" / "hooks"))
 
 from doc_review_gate import (
     classify_file_grade,
@@ -1462,7 +1464,113 @@ def test_state_context_budget_reaches_the_aggregate_numbers():
     #    `종합 수치`@offset 236 은 4000 **안**이라 예산을 되돌려도 green 이다.
     #    그래서 아래 두 단언의 역할이 다르다 — 앞은 원천 존재, 뒤가 예산 축이다.
     assert "종합 수치" in state_section, "STATE 구간이 비었다 (예산 축 아님 — 원천 존재 확인)"
-    assert "pylint" in state_section, "pylint 값이 예산 밖이다 — 대조 대상을 못 본다"
+
+    # 🔴 **`"pylint" in …` 은 거짓 집행자였다** (2026-08-14 문서감사 PR-5).
+    #    그 단언은 *"STATE 앞 16,000자 안에 `pylint` 라는 낱말이 있는가"* 만 봤다.
+    #    값이 무엇인지, 대조가 **가능한지**는 보지 않는다 — 직전 감사가 P0 로 확정한
+    #    *"예산 가드가 산문으로 충족되는 거짓 집행자"* 가 정확히 이 줄이었다.
+    #    지금은 **README 배지가 주장하는 값 문자열**을 STATE 슬라이스에서 찾는다:
+    #    심의자가 실제로 대조할 수 있어야 예산이 제 역할을 한 것이다.
+    #    The old assertion passed on the mere word "pylint"; now the badge's *value* must be visible.
+    badge = (_ROOT / "README.md").read_text(encoding="utf-8")
+    m = re.search(r"pylint-(\d+\.\d+)%2F10", badge)
+    assert m, "README 배지에서 pylint 값을 파싱하지 못했다 — 이 축의 기대값 원천이 사라졌다"
+    value = m.group(1)
+    assert value in state_section, (
+        f"README 배지 값 {value} 이 STATE 예산 구간 밖이다 — 심의자가 대조할 수 없다"
+    )
+
+    # 🔴 **예산 축은 지문으로 못 잰다 — 길이로 잰다** (2026-08-14 실측 정정).
+    #    문서감사 계획서는 *"STATE 예산을 4000 으로 되돌리면 red"* 를 RED 조건으로 적었다.
+    #    그 예측은 **stale** 이었다: 당시 pylint 값은 offset ~11.2k 였는데 2026-08-05
+    #    STATE 재구조화로 종합 헤더가 맨 위로 올라와 지금은 **offset 1,915** 다.
+    #    즉 예산을 4000 으로 낮춰도 값은 여전히 보이고 지문 단언은 green 이다 —
+    #    지문이 우연히 앞쪽에 있으면 예산 축을 관측하지 못한다.
+    #    슬라이스 **길이**는 그 우연에 의존하지 않는다.
+    #    Fingerprints move; slice length observes the budget directly.
+    # 🔴 **기대값을 피검사 모듈에서 유도하지 않는다** — 리터럴로 못박는다.
+    #    초판은 `dict(_CONTEXT_SOURCES)["docs/STATE.md"]` 로 기대값을 읽었고, 그래서
+    #    예산을 4000 으로 낮추면 **기대값도 함께 낮아져** green 이었다(A4 자기참조 공허화).
+    #    이 리포가 `guards.md §기대값을 피검사 모듈에서 유도하지 말 것` 으로 이름 붙인 형태다.
+    #    Deriving the expectation from the module under test made the axis vacuous.
+    _MIN_STATE_SLICE = 15000        # 예산 16,000 의 하한 — 낮추려면 이 리터럴을 함께 고친다
+    assert len(state_section) >= _MIN_STATE_SLICE, (
+        f"STATE 슬라이스가 {len(state_section):,}자뿐이다 — 예산이 실제로 실리지 않았다. "
+        f"의도적으로 낮췄다면 이 테스트의 `_MIN_STATE_SLICE` 도 같은 PR 에서 고칠 것."
+    )
+
+
+def test_whole_sources_actually_fit():
+    """🔴 **'전문' 이라 적힌 원천은 실제로 예산 안에 들어와야 한다** (문서감사 PR-5 SPEC 1).
+
+    실측 사고: `AGENTS.md` 는 주석이 `# 5.3k — 전문` 이었는데 실제 **12,004자**로
+    예산(12,000)을 넘겨 **조용히 잘리고 있었다**. 그 파일은 가드 3-불변식 SSOT 이고
+    심의 에이전트가 그것으로 판정한다 — 부분 실명 상태로 *"규칙과 어긋나면 block"* 을
+    지시하는 것은 모순이다(R37-a 와 같은 형태).
+
+    "전문" 을 주장하는 원천만 대상이다. `docs/STATE.md` 는 설계상 슬라이스라 제외한다.
+    """
+    from doc_review_gate import _CONTEXT_SOURCES
+
+    whole = {"CLAUDE.md", "AGENTS.md"}          # 리터럴 고정 — 유도하면 비워도 초록이다
+    checked = 0
+    for name, budget in _CONTEXT_SOURCES:
+        if name not in whole:
+            continue
+        checked += 1
+        size = len((_ROOT / name).read_text(encoding="utf-8"))
+        assert size <= budget, (
+            f"{name} 이 '전문' 을 주장하는데 {size:,} > 예산 {budget:,} 이라 잘린다. "
+            "예산을 올리거나 '전문' 주장을 내릴 것."
+        )
+    assert checked == len(whole), f"전문 원천 {len(whole)}개 중 {checked}개만 검사했다 — 목록 확인"
+
+
+def test_whole_source_headroom_warns_at_85pct():
+    """🔴 **85% 초과 시 실패** — 절단은 silent·이산 실패라 임계 직전이 가장 위험하다.
+
+    파일이 예산을 넘는 순간 잘리는데, 그 절단은 **오류를 내지 않는다**. 그래서
+    "아직 안 넘었다" 는 안전 신호가 아니다 — 다음 한 문단이면 넘어간다. 실제로
+    `AGENTS.md` 는 계획서 작성 시점 0.9006 이었고 3일 뒤 1.0003(절단)이 됐다.
+
+    Truncation is silent and discrete, so the danger zone is just below the limit.
+    """
+    from doc_review_gate import _CONTEXT_SOURCES
+
+    whole = {"CLAUDE.md", "AGENTS.md"}
+    for name, budget in _CONTEXT_SOURCES:
+        if name not in whole:
+            continue
+        ratio = len((_ROOT / name).read_text(encoding="utf-8")) / budget
+        assert ratio <= 0.85, (
+            f"{name} 이 예산의 {ratio:.1%} 를 쓴다 (임계 85%). "
+            "절단은 오류 없이 일어나므로 여유가 없으면 다음 편집에서 조용히 잘린다."
+        )
+
+
+def test_size_literals_are_not_hand_written_in_comments():
+    """🔴 주석의 크기 리터럴은 존재하지 않는다 — 라벨이 이미 파생한다 (SPEC 3).
+
+    이전 판의 `# 27.8k` · `# 5.3k` · `# 91k` 는 전부 실측과 갈라져 있었고
+    (`+72%` 과대 · **2배 과소** · 오차 2.5%), 그 과소가 너무 작은 예산을 정당화했다.
+    `load_context_parts()` 가 `f"(전문 {len(content)}자)"` 로 파생하므로 주석은 복제였다.
+    traps C1 — N지점 손유지는 N−1번의 실패 기회다.
+    """
+    src = (_ROOT / ".claude" / "hooks" / "doc_review_gate.py").read_text(encoding="utf-8")
+    block = src[src.index("_CONTEXT_SOURCES: tuple"):]
+    block = block[:block.index(chr(10) + ")")]
+
+    # 🔴 **예산 항목 줄의 꼬리 주석만** 본다 — 설명 주석의 역사 기록(`offset ~11.1k` 등)은
+    #    금지 대상이 아니다. 초판 정규식은 그것까지 잡았다(traps B5 = 산문 가드는 양방향으로
+    #    틀린다). SPEC 이 금지한 것은 *"원천 크기를 예산 옆에 손으로 적는 것"* 하나다.
+    entry = re.compile(r'^\s*\("[^"]+",\s*\d+\),\s*#(.*)$')
+    stray = [
+        m.group(1).strip()
+        for line in block.split(chr(10))
+        for m in [entry.match(line)]
+        if m and re.search(r"\d+(?:\.\d+)?k", m.group(1))
+    ]
+    assert not stray, f"예산 튜플 주석에 크기 리터럴이 남아 있다(파생값과 갈라진다): {stray}"
 
 
 def test_unable_to_verify_block_is_demoted_to_warn():
