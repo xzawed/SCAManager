@@ -58,6 +58,19 @@ def test_hook_path_invocation_counts():
     assert invokes(f"python {_HOOK}", _HOOK) is True
 
 
+def test_repeated_dot_slash_on_lookup_target_still_matches():
+    """`while` 이 아니라 `if` 면 `././scripts/x.py` 타깃이 한 겹만 벗겨져 실호출을 거부한다.
+
+    `endswith("/"+target)` 는 토큰 쪽 `././` 는 구제하지만, **조회 타깃**이
+    `././scripts/x.py` 이면 `if` 한 번 뒤 남는 `./scripts/x.py` 와 토큰
+    `scripts/x.py` 가 맞지 않는다. 이 단언이 `while` 계약을 핀한다.
+    A single `if` leaves the lookup target as `./scripts/x.py` and rejects
+    a genuine `python scripts/x.py` invocation.
+    """
+    assert invokes(f"python {_P}", f"././{_P}") is True
+    assert invokes(f"python ././{_P}", _P) is True
+
+
 def test_project_dir_default_expansion_on_scripts_path_is_wired():
     """R67 — `${CLAUDE_PROJECT_DIR:-.}/scripts/X.py` 는 실배선이고 `echo` 는 아니다.
 

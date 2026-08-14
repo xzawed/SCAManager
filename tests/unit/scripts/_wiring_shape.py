@@ -225,6 +225,11 @@ def _normalize_script_path(path: str) -> str:
     which eats the leading dot of `.claude/hooks/…`.
     """
     norm = path.replace("\\", "/")
+    # 🔴 `while` 유지 — `if` 한 번만 벗기면 조회 타깃 `././scripts/x.py` 가
+    #    `./scripts/x.py` 로 남아 토큰 `scripts/x.py` 와 불일치한다(가드 자살).
+    #    계약 핀: test_wiring_shape.test_repeated_dot_slash_on_lookup_target_still_matches
+    # Keep `while`: a single `if` leaves `././scripts/x.py` as `./scripts/x.py`,
+    # which then fails to match a bare `scripts/x.py` token.
     while norm.startswith("./"):
         norm = norm[2:]
     return norm
