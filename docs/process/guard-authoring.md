@@ -18,6 +18,7 @@
 테스트를 먼저 쓰고 **red 를 확인**한다. red 가 안 나오면 그 테스트는 아직 아무것도 안 잰다.
 
 🔴 **통과 조건이 `X in text` 면 그 순간 fail-open 이다.** 산문·주석·`echo` 로 충족되면 안 된다.
+(floor 집행: `scripts/check_guard_fail_open.py` — 구조 도구 0인 경우만 차단한다)
 실측: `"missing_surfaces" in main_body` 로 배선을 검사한 테스트가
 **보호 장치를 지워도 초록**이었다(2026-08-13, Grok C3 BROKEN).
 → **실행 관측**을 쓴다 — `main()` 을 실제로 호출하고 exit code 를 단언한다.
@@ -56,7 +57,7 @@ from tests.unit.scripts._wiring_shape import surface_invokes
 assert surface_invokes(ci_yml, "scripts/check_x.py")   # substring 금지
 ```
 
-🔴 `"check_x.py" in commands` 는 `echo 'skipping scripts/check_x.py'` 로 통과한다(실측 11건).
+`"check_x.py" in commands` 는 `echo 'skipping scripts/check_x.py'` 로 통과한다(실측 11건).
 
 ---
 
@@ -82,7 +83,7 @@ assert surface_invokes(ci_yml, "scripts/check_x.py")   # substring 금지
 
 ## 8. 규칙 옆에 가드 이름을 적는다 — 단, 실제로 그 규칙을 검사하는 것으로
 
-🔴 `check_red_budget` 은 **파일명 실재만** 본다(스스로 프록시라 인정).
+🔴 `scripts/check_red_budget.py` 는 **파일명 실재만** 본다(스스로 프록시라 인정).
 2026-08-13 에 규칙과 무관한 가드 파일명을 붙였고 게이트는 통과했다 —
 31-에이전트 감사가 잡을 때까지 살아 있었다.
 → 이름을 적기 전에 **그 파일을 열어** 그 규칙을 검사하는지 확인한다.

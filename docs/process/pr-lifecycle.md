@@ -13,7 +13,7 @@ git checkout -b <type>/<scope>          # feat/ fix/ chore/ docs/
 gh pr list --state open                 # 같은 파일 건드리는 미머지 PR 확인
 ```
 
-🔴 마지막 줄이 6-step ⑤ 분기를 가른다 — STATE·README 배지를 건드리는 미머지 PR 이 있으면
+**마지막 줄이 6-step ⑤ 분기를 가른다 — STATE·README 배지를 건드리는 미머지 PR 이 있으면
 수치 갱신을 **trailing sync 로 이월**한다.
 
 ---
@@ -25,7 +25,7 @@ py -3 -m pytest tests/unit -q      # 🔴 예외 없음 — 문서 전용 PR 도
 py -3 scripts/pre_push_gate.py     # 게이트 전건
 ```
 
-🔴 **문서만 바꿨으니 생략해도 된다는 판단은 틀렸다** — 2026-08-13 에 그렇게 판단했고
+**문서만 바꿨으니 생략해도 된다는 판단은 틀렸다** — 2026-08-13 에 그렇게 판단했고
 본문 수치 축이 red 로 반증했다. 6-step ② 에 예외가 없다고 적혀 있다.
 
 ---
@@ -43,6 +43,7 @@ pre-commit 이 `end-of-file-fixer` 등으로 파일을 고치면 **커밋은 실
 
 본문에 `pytest tests/unit … N passed / M skipped` 를 적으면 **실측과 대조된다**.
 🔴 리베이스했으면 **다시 재고 적는다** — base 가 앞서가면 직전 수치가 그 순간 stale 이다.
+(집행: `scripts/check_test_count_sync.py` 본문 수치 축)
 
 ### 4-b. 정책 19 흔적
 
@@ -55,8 +56,9 @@ pre-commit 이 `end-of-file-fixer` 등으로 파일을 고치면 **커밋은 실
 ```
 
 🔴 **`verdict:` 뒤 첫 토큰이 enum 이어야 한다.** `**C1 WEAKENED …` 처럼 쓰면 매칭 실패다.
-🔴 흔적은 **벤더 무관** — 회고 cross-verify 패스도 유효하다.
-🔴 **정정 기록이 가장 걸리기 쉽다** — *"내 봉인 주장은 거짓이었다"* 도 어휘 탐지에 걸린다.
+(집행: `scripts/check_claim_review_trace.py`)
+흔적은 **벤더 무관** — 회고 cross-verify 패스도 유효하다.
+**정정 기록이 가장 걸리기 쉽다** — *"내 봉인 주장은 거짓이었다"* 도 어휘 탐지에 걸린다.
 
 **push 전 로컬 검증으로 CI 왕복을 아낀다**:
 
@@ -83,10 +85,10 @@ gh run list --branch main --limit 2       # main 이 초록인지
 git merge-base --is-ancestor <sha> origin/main   # 내 커밋이 실제로 들어갔는지
 ```
 
-🔴 **머지된 브랜치에 커밋을 얹지 마라.** push 출력의 `* [new branch]` 는
+**머지된 브랜치에 커밋을 얹지 마라.** push 출력의 `* [new branch]` 는
 브랜치가 삭제됐다가 재생성됐다는 신호다 — 그 커밋은 고아가 된다(2026-08-13 실사고).
 
-🔴 **PR 컨텍스트에서 관측 불가한 축이 있다** — 이월 마커가 push 이벤트에서도 인식되는지는
+**PR 컨텍스트에서 관측 불가한 축이 있다** — 이월 마커가 push 이벤트에서도 인식되는지는
 **머지 후에만** 확인된다.
 
 ---
@@ -95,6 +97,7 @@ git merge-base --is-ancestor <sha> origin/main   # 내 커밋이 실제로 들�
 
 `STATE-sync-deferred:` 를 썼다면 그 세션 안에 **trailing sync PR** 로 닫는다.
 🔴 마커는 **PR 본문이 아니라 커밋 메시지**에 — 본문은 push 이벤트에 전달되지 않는다.
+(집행: `scripts/check_test_count_sync.py`)
 
 ⚠️ 이월의 비용: 여러 PR 이 배치로 미루면 **per-PR 귀속이 사후에 재구성되지 않는다**.
 종결 PR 에 per-PR 실측을 남기는 편이 낫다.

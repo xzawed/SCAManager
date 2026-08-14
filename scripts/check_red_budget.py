@@ -71,7 +71,34 @@ from check_claim_review_trace import (  # noqa: E402  # pylint: disable=wrong-im
 
 
 # 🔴 규칙이 사는 표면 — 리터럴로 못박는다(유도하면 비워도 초록이다).
-SURFACE_GLOBS = ("CLAUDE.md", "AGENTS.md", ".claude/rules/*.md", ".claude/policies/*.md")
+#
+# ## 2026-08-14 확대 — 분모가 규칙보다 좁으면 '이주' 가 우회로가 된다
+#
+# 회고(`wf_2b615d5e-8c5`) P0-A 실측: `#1345` 가 *"무집행 0건 · 집행률 100%"* 를 선언한
+# **바로 그 커밋**에서 `docs/process/**`(마커 22)와 `.claude/traps.md`(8)를 만들었는데,
+# 두 표면 모두 이 목록 밖이라 카운터가 한 번도 읽지 않았다 — 그중 **무집행 27건**.
+#
+# 🔴 **가장 값싼 우회로는 기호 치환이 아니라 경로 이동이었다.** 🔴 줄을 `docs/process/`
+# 로 옮겨 적으면 규칙은 독자에게 그대로 작동하는데 delta 축은 무집행 *감소*를 개선으로
+# 채점한다. `deleted_not_renamed()` 분모 축도 같은 glob 만 보므로 두 층을 통째로
+# 삭제해도 발화하지 않았다(뮤테이션 실증: 6파일 삭제 → EXIT 0).
+#
+# ⚠️ **이 확대로도 전수는 아니다.** 활성 문서 전체로 재면 계수 밖 마커가 여전히
+# 약 475건 남는다(`docs/backlog.md` 92 · `docs/STATE.md` 41 · `docs/runbooks/**` 등).
+# 그 표면들은 **원장·시점 기록**이라 규칙 층과 성격이 다르다 — 편입하면 이력 한 줄이
+# 규칙으로 둔갑한다. 그래서 넓힌 것은 *"이 세션이 지시문으로 저술한 두 층"* 까지이고,
+# 남은 범위 한계는 `CLAUDE.md` §3층 분리가 명시한다(숨기지 않는다).
+#
+# The denominator must cover every surface that *authors rules*; otherwise relocating a
+# rule out of scope is the cheapest way to score an improvement.
+SURFACE_GLOBS = (
+    "CLAUDE.md",
+    "AGENTS.md",
+    ".claude/rules/*.md",
+    ".claude/policies/*.md",
+    ".claude/traps.md",       # 2026-08-14 편입 — 실패 클래스 층(지시문)
+    "docs/process/*.md",      # 2026-08-14 편입 — 프로세스 층(지시문)
+)
 
 # **필수 규칙 마커 집합** — 독자에게 "빨강 = 반드시" 로 읽히는 표기 전부.
 # 리터럴 집합으로 못박는다: 유도(예: 이모지 카테고리 조회)하면 원천을 비워도 초록이다.
@@ -218,19 +245,59 @@ def has_marker(line: str) -> bool:
     return any(m in line for m in _RED_MARKERS)
 
 
+_FENCE = re.compile(r"^\s*(```|~~~)")
+_CODE_SPAN = re.compile(r"`[^`]*`")
+
+
+def _strip_code(text: str) -> str:
+    """코드 스팬·펜스 안의 마커는 **인용**이지 규칙 표시가 아니다 — 계수에서 뺀다.
+
+    ## 왜 (2026-08-14 회고 P0-A 정리 중 실측)
+
+    `SURFACE_GLOBS` 를 넓히자 무집행 27건이 드러났는데, 그중 다수가 **마커를 설명하는
+    문장**이었다: `"무집행 🔴 이 늘었는가"` · `| 🔴 규칙 | 307건 |` ·
+    ```py 블록 안의 `# 🔴 예외 없음` 주석```. 이것들을 규칙으로 세면 저자가
+    **마커 제도 자체를 문서로 설명하지 못하게** 된다 — traps B5(산문 가드는 양방향으로
+    틀린다)와 메모리 `feedback-prose-guard-both-ways` 의 *"인용 면제 필수(정정 기록이
+    막힌다)"* 가 정확히 이 형태다. 같은 취지의 선례가 이미 있다: `_EXEMPT` 정규식의
+    `(?![\\`'\"])` 인용 배제.
+
+    ⚠️ **대가**: 규칙을 코드 펜스 안에 숨기면 계수를 피한다. 다만 펜스 안은 **코드로
+    렌더링**되므로 독자에게 빨간 필수 규칙으로 보이지 않는다 — 이 게이트가 재는 것은
+    *"독자에게 필수로 보이는데 기계가 안 지키는 것"* 이고, 그 축은 유지된다.
+
+    Markers inside code spans/fences are mentions, not marks; counting them would stop
+    authors from documenting the marker system itself.
+    """
+    out, in_fence = [], False
+    for line in text.split("\n"):
+        if _FENCE.match(line):
+            in_fence = not in_fence
+            out.append("")
+            continue
+        out.append("" if in_fence else _CODE_SPAN.sub("", line))
+    return "\n".join(out)
+
+
 def rule_blocks(text: str) -> list[str]:
-    """필수 마커 줄 + 뒤따르는 연속 줄 = 규칙 블록."""
-    lines = text.split("\n")
+    """필수 마커 줄 + 뒤따르는 연속 줄 = 규칙 블록.
+
+    🔴 **인용 배제는 마커 탐지에만 적용하고 블록 본문은 원문을 돌려준다.**
+    집행자 이름은 관례상 백틱 안에 적힌다(`` `scripts/check_x.py` ``) — 스트립한
+    텍스트를 그대로 돌려주면 `has_enforcer()` 가 **모든 집행자를 못 보게** 된다
+    (2026-08-14 자초 실측: 무집행 0 → 118). 탐지용 사본과 반환용 원문을 분리한다.
+    """
+    raw = text.split("\n")
+    probe = _strip_code(text).split("\n")   # 마커 탐지 전용 — 인용/코드 제거본
     out: list[str] = []
-    for i, line in enumerate(lines):
+    for i, line in enumerate(probe):
         if not has_marker(line):
             continue
-        buf = [line]
-        for j in range(i + 1, len(lines)):
-            nxt = lines[j]
-            if not nxt.strip() or has_marker(nxt):
+        buf = [raw[i]]
+        for j in range(i + 1, len(probe)):
+            if not probe[j].strip() or has_marker(probe[j]):
                 break
-            buf.append(nxt)
+            buf.append(raw[j])
         out.append("\n".join(buf))
     return out
 
