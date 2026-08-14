@@ -610,7 +610,38 @@ def test_ci_mode_also_prints_absolutes_only(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("PR_BASE_SHA", "deadbeef")
     monkeypatch.delenv("PR_BODY", raising=False)
     gate.main()
-    out = capsys.readouterr().out
+    cap = capsys.readouterr()
 
-    assert "%" not in out, f"CI 분기 출력에 비율이 남아 있다:\n{out}"
-    assert "계측 표면" in out
+    assert "%" not in cap.out, f"CI 분기 stdout 에 비율이 남아 있다:\n{cap.out}"
+    assert "%" not in cap.err, f"CI 분기 stderr 에 비율이 남아 있다:\n{cap.err}"
+    assert "계측 표면" in cap.out
+
+
+def test_the_failure_path_prints_no_ratio_either(tmp_path, monkeypatch, capsys):
+    """🔴 **실패 분기의 stderr 까지** 비율이 없어야 한다 — 거기가 사람이 읽는 자리다.
+
+    ## 왜 이 테스트가 따로 필요한가 (2026-08-14 Grok `019fffde` CLAIM 2 = BROKEN)
+
+    위 두 테스트는 `capsys.readouterr().out` **만** 보았고, 둘 다
+    `baseline_unenforced → (0, set())` + 집행자 있는 표면이라 **delta ≤ 0 성공 분기만**
+    탔다. 그래서 실패 경로 stderr 에 남아 있던 `23.1%` · `100%` · `0%` 를 한 번도
+    관측하지 못했다 — *"비율을 없앴다"* 는 주장이 **가장 중요한 출력면에서 거짓**이었다.
+
+    성공 경로만 재는 테스트로 출력 계약을 주장하지 않는다.
+
+    The original tests exercised only the success branch and read only stdout, so ratios
+    surviving on the failure path went unobserved.
+    """
+    monkeypatch.setattr(f"{_MOD}._ROOT", tmp_path)
+    _surface(tmp_path, "🔴 집행자 없는 새 규칙\n")            # 무집행 → delta +1
+    monkeypatch.setattr(f"{_MOD}.baseline_unenforced", lambda _s, _r: (0, set()))
+    monkeypatch.setenv("PR_BASE_SHA", "deadbeef")
+    monkeypatch.delenv("PR_BODY", raising=False)
+
+    assert gate.main() == 1, "이 픽스처는 실패 분기를 타야 한다 — 성공하면 이 테스트가 공허하다"
+    cap = capsys.readouterr()
+
+    assert "%" not in cap.err, f"실패 stderr 에 비율이 남아 있다:\n{cap.err}"
+    assert "%" not in cap.out, f"실패 stdout 에 비율이 남아 있다:\n{cap.out}"
+    # 대조군 — 비율을 지우면서 근거까지 지우면 메시지가 공허해진다.
+    assert "67건" in cap.err, "절대값 근거가 사라졌다 — 비율 제거가 곧 근거 제거는 아니다"

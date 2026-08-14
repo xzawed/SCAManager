@@ -20,6 +20,13 @@ backlog 🔴 행은 보지 않는다. 즉 **Claude 가 닫을 수 없는 유일�
   산문 판정은 이 리포에서 양방향으로 틀린다(traps B5) — 그래서 이 검사는
   **판정이 아니라 촉구**다: *"이 5건이 여전히 대기 중인 게 맞는가?"*
 
+🔴 **배너는 자기 계수를 증명하지 못한다** (2026-08-14 Grok `019fffde` 반례 (a) 잔여).
+`open_decisions()` 를 통째로 죽이면 *"결정 대기 없음"* 이 인쇄되고, 그것은 진짜 0건과
+**같은 문구**다 — 계수 함수 자신이 계수의 유일한 근거이므로 원리적으로 그렇다.
+파서 파손(행 0개)만 다른 문구로 구별된다. 이 축의 실제 관측자는
+`tests/unit/scripts/test_open_decisions.py` 이며, 계수를 죽이면 **8건이 red** 다.
+배너를 계수 건강의 증거로 읽지 말 것.
+
 🔴 비차단(advisory) — 항상 exit 0. 배너만 출력한다(정책 17 안정성).
 Non-blocking: always exit 0; prints a banner only.
 
@@ -39,22 +46,69 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
 
 _BACKLOG = Path("docs/backlog.md")
 
-# 🔴 행 형태: `| **R83** | 🔴 결정 대기 … |`
-# 상태 셀 **선두**에서만 찾는다 — 본문 산문의 🔴 은 상태가 아니다(오탐 차단).
-_ROW = re.compile(r"^\|\s*\*\*(R\d+)\*\*\s*\|\s*(\S)", re.MULTILINE)
+# 원장 행: `| **R83** | 🔴 결정 대기 … |`
+#
+# 🔴 **ID 를 `R\d+` 로 좁히면 위음성이 난다** (2026-08-14 Grok `019fffde` 반례 (e)).
+#    초판은 `R\d+` 만 봐서 실원장의 `R0-2` · `B6-b` · `B2` · `H2` 를 **한 번도 세지 않았다**.
+#    이 카운터에서 거짓 음성은 거짓 양성보다 나쁘다 — 안 보이면 영원히 정체한다.
+_ROW = re.compile(r"^\|\s*\*{0,2}([A-Z][0-9A-Za-z.\-]*)\*{0,2}\s*\|([^|]*)\|", re.MULTILINE)
+
+# 상태 셀 선두의 마커. 셀이 `**🔴 결정 대기**` 처럼 볼드일 수 있다(반례 (e) 위음성).
+_BOLD = re.compile(r"^\**\s*")
+
+# 🔴 이 원장에는 **섹션 소속으로만** 결정 대기인 행이 있다 — `## 🔴 사용자 결정 대기`
+#    아래 표는 상태 셀에 🔴 이 없다(B6-b·B7 등). 상태 셀만 보면 그 전부가 위음성이다.
+_SECTION = re.compile(r"^##\s+(.*)$", re.MULTILINE)
+
+# 요약이 "현재 창" 과 "역사" 를 구분하므로 카운터도 구분한다 — 한 숫자로 뭉개면
+# `test_backlog_shape.current_window()` 와 갈라진다(반례 (f)).
+_HISTORY_MARK = "(역사)"
 
 # 이 수를 넘게 손대지 않았으면 정체로 본다. owed 원장 축(_STALE_PR_THRESHOLD=10)과
 # 같은 크기 — 두 원장의 정체 기준이 갈라지면 어느 쪽을 믿을지 알 수 없다.
 _STALE_PR_THRESHOLD = 10
 
 
-def open_decisions(text: str) -> list[str]:
-    """🔴 상태인 행의 ID 목록.
+def _sections(text: str) -> list[tuple[int, str]]:
+    """(오프셋, 헤딩) — 각 행이 어느 섹션에 속하는지 판정하는 데 쓴다."""
+    return [(m.start(), m.group(1)) for m in _SECTION.finditer(text)]
 
-    🔴 **상태 셀 선두 문자로만** 판정한다. 본문에 🔴 이 흔한 리포라
-    행 전체를 훑으면 거의 모든 행이 잡힌다(과교정 = 가드 자살).
+
+def _section_of(pos: int, sections: list[tuple[int, str]]) -> str:
+    head = ""
+    for off, title in sections:
+        if off > pos:
+            break
+        head = title
+    return head
+
+
+def open_decisions(text: str) -> list[tuple[str, str]]:
+    """결정 대기 행 — `(ID, 구역)` 목록. 구역은 `현재` 또는 `역사`.
+
+    ## 두 가지 형태를 **둘 다** 센다 (2026-08-14 Grok 반례 (e)(f))
+
+    1. **상태 셀 선두가 🔴** — `| **R48** | 🔴 결정 대기 | …`
+    2. **`## 🔴 …` 섹션 소속** — 그 표의 행은 상태 셀에 마커가 없다(`B6-b`·`B7`).
+       초판은 1만 봐서 2를 통째로 놓쳤다.
+
+    🔴 **상태 셀 선두로만** 판정하는 원칙은 유지한다 — 본문 산문에 🔴 이 흔한 리포라
+    행 전체를 훑으면 거의 모든 행이 잡힌다(과교정 = 가드 자살). 볼드(`**🔴 …**`)는 벗긴다.
+
+    Counts both status-cell rows and rows that are open purely by section membership;
+    narrowing the ID pattern or ignoring sections produced silent false negatives.
     """
-    return [rid for rid, state in _ROW.findall(text) if state == "🔴"]
+    sections = _sections(text)
+    out: list[tuple[str, str]] = []
+    for m in _ROW.finditer(text):
+        rid, cell = m.group(1), m.group(2)
+        head = _section_of(m.start(), sections)
+        zone = "역사" if _HISTORY_MARK in head else "현재"
+        by_cell = _BOLD.sub("", cell.strip()).startswith("🔴")
+        by_section = head.strip().startswith("🔴")
+        if by_cell or by_section:
+            out.append((rid, zone))
+    return out
 
 
 def _git(*args: str) -> str | None:
@@ -103,11 +157,22 @@ def main() -> int:
 
     pending = open_decisions(text)
     if not pending:
-        print(f"✅ backlog 🔴 결정 대기 **0건** (전체 {len(rows)}행).")
+        # 🔴 **파서 파손과 '진짜 0건' 을 문구로 구별한다** (2026-08-14 Grok 반례 (a)(b)).
+        #    초판은 둘 다 «0건» 을 인쇄해 사람이 배너만 보고는 구별할 수 없었다 —
+        #    계수 함수를 죽여도 건강한 상태와 같아 보였다(observer-lie).
+        #    행은 찾았는데 대기가 0이면 그 사실을 **행 수와 함께** 말한다.
+        print(f"✅ 결정 대기 **없음** — 원장 {len(rows)}행을 읽었고 그중 🔴 은 0건이다.")
         return 0
 
-    print(f"🔴 **사용자 결정 대기 {len(pending)}건** — Claude 가 닫을 수 없는 클래스다: "
-          f"{' · '.join(pending)}")
+    now = [r for r, z in pending if z == "현재"]
+    past = [r for r, z in pending if z == "역사"]
+    print(f"🔴 **사용자 결정 대기 {len(pending)}건** — Claude 가 닫을 수 없는 클래스다.")
+    if now:
+        print(f"   현재 창 {len(now)}건: {' · '.join(now)}")
+    # 역사 섹션은 원장 요약이 카운트에서 제외하는 구역이다. 그래도 **결정은 열려 있다** —
+    # 한 숫자로 뭉개면 `test_backlog_shape.current_window()` 와 갈라지므로 나눠 인쇄한다.
+    if past:
+        print(f"   역사 구역 {len(past)}건(요약 카운트 제외분): {' · '.join(past)}")
     print(f"   원장 / ledger: {_BACKLOG.as_posix()}")
 
     since = merged_prs_since_backlog_touch()
