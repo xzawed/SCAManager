@@ -371,8 +371,14 @@ def main() -> int:
     base_sha = os.environ.get("PR_BASE_SHA", "")
     if not base_sha:
         current, total = unenforced_count(_ROOT)
-        print(f"현재: 🔴 {total}건 · 집행자 동반 {total - current}건 "
-              f"({(total - current) / total * 100:.1f}%) · **무집행 {current}건**")
+        # 🔴 **비율을 인쇄하지 않는다** (2026-08-14 사용자 결정 — 회고 P0-A 후속).
+        #    이 리포는 «28% → 100%» 에 두 번 당했고 두 번 다 **분자가 아니라 분모가
+        #    움직인 것**이었다: 한 번은 무집행 221개의 마커를 떼서(분모 307→92),
+        #    한 번은 규칙을 계측 표면 밖으로 옮겨서. 비율은 그 이동을 **개선처럼**
+        #    보이게 하는 성질이 있다 — 절대값과 분모를 함께 적으면 그 성질이 사라진다.
+        #    Ratios hide denominator moves; print absolutes and name the surfaces.
+        print(f"현재: 무집행 **{current}건** · 집행자 동반 {total - current}건 "
+              f"(계측 표면 {len(surfaces(_ROOT))}개 위 마커 {total}건)")
         # 🔴 **이 exit 0 은 "통과" 가 아니라 "안 쟀음" 이다** (2026-08-13 Grok 반례 (d)).
         #    적대 검토가 `.claude/rules/i18n.md`(🔴 표면 하나)를 통째로 삭제한 뒤 이 스크립트를
         #    env 없이 돌렸고, 출력은 `100.0% · 무집행 0건` + EXIT 0 이었다 — 분모가 88→85 로
@@ -382,8 +388,8 @@ def main() -> int:
         #    Local runs never evaluate the denominator axis; say so instead of printing green.
         print("\n⏭️  PR 환경변수(PR_BASE_SHA)가 없다 — **두 축을 안 쟀다**:")
         print("     · 증감 판정 (무집행 🔴 이 늘었는가)")
-        print("     · 🔴 **분모 축** (🔴 표면 파일이 사라졌는가) — 표면을 지우면 위 비율은")
-        print("       올라간다. 이 실행은 그것을 구별하지 못한다. 판정은 CI 몫이다.")
+        print("     · 🔴 **분모 축** (🔴 표면 파일이 사라졌는가) — 표면을 지우면 위 무집행 수는")
+        print("       줄어든다. 이 실행은 그것을 구별하지 못한다. 판정은 CI 몫이다.")
         return 0
 
     current, total = unenforced_count(_ROOT)
@@ -395,8 +401,8 @@ def main() -> int:
 
     delta = current - base
     print(f"무집행 🔴 — base {base} → head {current} (Δ {delta:+d})")
-    print(f"전체 🔴 {total}건 · 집행자 동반 {total - current}건 "
-          f"({(total - current) / total * 100:.1f}%)")
+    # 비율 미인쇄 — 위 로컬 분기와 같은 이유(분모 이동을 개선으로 보이게 한다).
+    print(f"집행자 동반 {total - current}건 · 계측 표면 {len(surfaces(_ROOT))}개 위 마커 {total}건")
 
     # 🔴 **분모 축 — delta 보다 먼저 본다** (2026-08-13 회고 P0).
     #    표면 파일이 사라지면 무집행 🔴 이 줄어 delta 가 음수가 되고, delta 만 보는
@@ -432,8 +438,11 @@ def main() -> int:
 
     print(
         f"\n🔴 **집행자 없는 🔴 규칙이 {delta}건 늘었다.**\n"
-        "   이 저장소의 실측: 🔴 290건 중 집행자 동반은 23.1% 뿐이고,\n"
-        "   실측 준수율 0/42 인 정책과 '발화율 100% / 이행률 0%' 인 의무가 존재한다.\n"
+        # 🔴 **실패 메시지에도 비율을 쓰지 않는다** (2026-08-14 Grok `019fffde` CLAIM 2 BROKEN).
+        #    stdout 두 분기만 고치고 이 stderr 를 남겨 뒀더니 `23.1%`·`100%`·`0%` 가 그대로
+        #    인쇄됐다 — 그리고 **사람이 읽는 자리는 실패 로그**다. 절대값이 더 강한 근거다.
+        "   이 저장소의 실측(2026-08-08): 🔴 290건 중 집행자 동반은 **67건뿐**이었다.\n"
+        "   42회 발화에 준수 0회인 정책이 있고, 발화만 있고 이행 기록이 없는 의무가 있다.\n"
         "   규칙을 더 쓰는 것은 처방이 아니다 — **같은 PR 에서 그것을 집행하는 가드를 만들 것.**\n"
         "\n   해결 / Fix:\n"
         "     · 규칙 블록에 그 규칙을 집행하는 테스트/스크립트 이름을 적고 그 파일을 만든다\n"

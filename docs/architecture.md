@@ -183,6 +183,8 @@ scripts/
 │                                # retro cadence counter — loud warn at ≥15 merged PRs since last formal retro
 ├── check_owed_verification.py   # owed 원장 미결 카운터 — 안전등급 ⏳ ≥1 시 loud 경고(SessionStart 훅, #1095)
 │                                # owed-ledger counter — loud warn on ≥1 safety-tier ⏳ (SessionStart hook)
+├── check_open_decisions.py      # backlog 🔴 결정 대기 카운터 — 사용자만 닫을 수 있는 행이 정체하면 loud 경고(SessionStart 훅, R92)
+│                                # open-decision counter — only the user can close 🔴 rows (SessionStart hook)
 ├── check_architecture_tree_sync.py # architecture 트리 싱크 가드 — 실제 src/ 트리 ↔ architecture.md `src/` 트리 항목 대조(6-step ⑥ drift 차단, pre-commit)
 │                                # architecture tree-sync guard — actual src/ tree ↔ architecture.md src/ listing
 ├── check_guard_fail_open.py     # 가드 fail-open floor(B8) — bare-substring 판정(문자열 존재만으로 통과) 구조적 가드 차단(guards.md 3-불변식, pre-commit)
