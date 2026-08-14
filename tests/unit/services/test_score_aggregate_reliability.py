@@ -4,7 +4,6 @@ Pin expected numbers as literals. Do not derive expectations from production hel
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from src.services.dashboard_service import _kpi_avg

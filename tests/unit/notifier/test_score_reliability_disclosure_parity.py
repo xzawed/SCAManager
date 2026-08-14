@@ -7,10 +7,20 @@ Expectations are literal fingerprints — never imported from production modules
 """
 from __future__ import annotations
 
-from types import SimpleNamespace
-
-import src.notifier  # noqa: F401 — populate REGISTRY
+import src.notifier
 from src.notifier.registry import REGISTRY
+
+# 🔴 **`# noqa: F401` 단독 금지** — noqa 는 flake8 전용이라 CodeQL `py/unused-import` 는
+#    계속 발화한다(이 리포가 3회 재발로 기록한 클래스, `.claude/rules/testing.md`).
+#    튜플 참조로 CodeQL 에게 'used' 를 보이면서, side-effect(REGISTRY 채우기)가 사라지면
+#    **loud-fail** 하게 만든다 — 조용히 빈 레지스트리를 순회하는 공허를 막는다.
+#    A bare noqa silences flake8 only; the tuple reference is what CodeQL sees.
+_REGISTRY_POPULATORS = (src.notifier,)
+if not REGISTRY:
+    raise RuntimeError(
+        "notifier REGISTRY 가 비었다 — side-effect import 소실 "
+        + f"(populators={_REGISTRY_POPULATORS})"
+    )
 from src.scorer.calculator import ScoreResult
 
 # 레지스트리에 등록된 점수 렌더 채널 — 리터럴 고정 (피검사 모듈에서 유도 금지).
