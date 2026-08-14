@@ -371,8 +371,14 @@ def main() -> int:
     base_sha = os.environ.get("PR_BASE_SHA", "")
     if not base_sha:
         current, total = unenforced_count(_ROOT)
-        print(f"현재: 🔴 {total}건 · 집행자 동반 {total - current}건 "
-              f"({(total - current) / total * 100:.1f}%) · **무집행 {current}건**")
+        # 🔴 **비율을 인쇄하지 않는다** (2026-08-14 사용자 결정 — 회고 P0-A 후속).
+        #    이 리포는 «28% → 100%» 에 두 번 당했고 두 번 다 **분자가 아니라 분모가
+        #    움직인 것**이었다: 한 번은 무집행 221개의 마커를 떼서(분모 307→92),
+        #    한 번은 규칙을 계측 표면 밖으로 옮겨서. 비율은 그 이동을 **개선처럼**
+        #    보이게 하는 성질이 있다 — 절대값과 분모를 함께 적으면 그 성질이 사라진다.
+        #    Ratios hide denominator moves; print absolutes and name the surfaces.
+        print(f"현재: 무집행 **{current}건** · 집행자 동반 {total - current}건 "
+              f"(계측 표면 {len(surfaces(_ROOT))}개 위 마커 {total}건)")
         # 🔴 **이 exit 0 은 "통과" 가 아니라 "안 쟀음" 이다** (2026-08-13 Grok 반례 (d)).
         #    적대 검토가 `.claude/rules/i18n.md`(🔴 표면 하나)를 통째로 삭제한 뒤 이 스크립트를
         #    env 없이 돌렸고, 출력은 `100.0% · 무집행 0건` + EXIT 0 이었다 — 분모가 88→85 로
@@ -382,8 +388,8 @@ def main() -> int:
         #    Local runs never evaluate the denominator axis; say so instead of printing green.
         print("\n⏭️  PR 환경변수(PR_BASE_SHA)가 없다 — **두 축을 안 쟀다**:")
         print("     · 증감 판정 (무집행 🔴 이 늘었는가)")
-        print("     · 🔴 **분모 축** (🔴 표면 파일이 사라졌는가) — 표면을 지우면 위 비율은")
-        print("       올라간다. 이 실행은 그것을 구별하지 못한다. 판정은 CI 몫이다.")
+        print("     · 🔴 **분모 축** (🔴 표면 파일이 사라졌는가) — 표면을 지우면 위 무집행 수는")
+        print("       줄어든다. 이 실행은 그것을 구별하지 못한다. 판정은 CI 몫이다.")
         return 0
 
     current, total = unenforced_count(_ROOT)
@@ -395,8 +401,8 @@ def main() -> int:
 
     delta = current - base
     print(f"무집행 🔴 — base {base} → head {current} (Δ {delta:+d})")
-    print(f"전체 🔴 {total}건 · 집행자 동반 {total - current}건 "
-          f"({(total - current) / total * 100:.1f}%)")
+    # 비율 미인쇄 — 위 로컬 분기와 같은 이유(분모 이동을 개선으로 보이게 한다).
+    print(f"집행자 동반 {total - current}건 · 계측 표면 {len(surfaces(_ROOT))}개 위 마커 {total}건")
 
     # 🔴 **분모 축 — delta 보다 먼저 본다** (2026-08-13 회고 P0).
     #    표면 파일이 사라지면 무집행 🔴 이 줄어 delta 가 음수가 되고, delta 만 보는

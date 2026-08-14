@@ -563,3 +563,54 @@ def test_claude_md_discloses_all_three_ceilings():
         "계수 범위 한계 고지가 사라졌다 — 이 축의 침묵이 P0-A 의 직접 원인이었다"
     )
     assert "SURFACE_GLOBS" in body, "범위 한계가 어느 상수를 가리키는지 없다"
+
+
+# ── ⑦ 지표 형식 — 비율 금지, 절대값 + 분모 (2026-08-14 사용자 결정) ──────
+
+
+def test_output_never_prints_a_ratio(tmp_path, monkeypatch, capsys):
+    """🔴 **비율을 인쇄하지 않는다** — 분모 이동을 개선처럼 보이게 하기 때문이다.
+
+    ## 왜 (사용자 결정 2026-08-14, 회고 P0-A 후속)
+
+    이 리포는 «28% → 100%» 에 **두 번** 당했고 두 번 다 **분자가 아니라 분모가 움직인**
+    것이었다:
+
+    | 시점 | 겉보기 | 실제 |
+    |---|---|---|
+    | 2026-08-13 | 28% → 100% | 무집행 221개의 **마커를 떼서** 분모 307 → 92 |
+    | 2026-08-13 | 여전히 100% | 규칙을 **계측 표면 밖으로 옮겨** 30개가 계수에서 사라짐 |
+
+    비율은 그 이동을 숨긴다. 절대값(무집행 N건)과 분모(표면 M개 위 마커 K건)를 함께
+    적으면 같은 이동이 **수치로 드러난다**.
+
+    사용자 선택지 중 (b) — *"비율 대신 절대값만 발행"*.
+
+    Ratios conceal denominator moves; print absolutes with the surface count instead.
+    """
+    monkeypatch.setattr(f"{_MOD}._ROOT", tmp_path)
+    _surface(tmp_path, "🔴 규칙 `scripts/check_red_budget.py`\n")
+    monkeypatch.delenv("PR_BASE_SHA", raising=False)
+    gate.main()
+    out = capsys.readouterr().out
+
+    assert "%" not in out, f"출력에 비율이 남아 있다 — 분모 이동을 숨긴다:\n{out}"
+    assert "무집행" in out, "절대값(무집행 N건)이 없다"
+    assert "계측 표면" in out, "분모(표면 수)를 밝히지 않는다 — 절대값만으로는 범위를 모른다"
+
+
+def test_ci_mode_also_prints_absolutes_only(tmp_path, monkeypatch, capsys):
+    """대조군 — 로컬 분기만 고치고 CI 분기에 비율이 남으면 실제 발행면이 그대로다.
+
+    사람이 읽는 자리는 **CI job 출력**이다. 두 분기를 따로 고쳤으므로 따로 단언한다.
+    """
+    monkeypatch.setattr(f"{_MOD}._ROOT", tmp_path)
+    _surface(tmp_path, "🔴 규칙 `scripts/check_red_budget.py`\n")
+    monkeypatch.setattr(f"{_MOD}.baseline_unenforced", lambda _s, _r: (0, set()))
+    monkeypatch.setenv("PR_BASE_SHA", "deadbeef")
+    monkeypatch.delenv("PR_BODY", raising=False)
+    gate.main()
+    out = capsys.readouterr().out
+
+    assert "%" not in out, f"CI 분기 출력에 비율이 남아 있다:\n{out}"
+    assert "계측 표면" in out

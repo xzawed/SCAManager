@@ -169,9 +169,11 @@ git status && git checkout -b <브랜치명>   # main 직접 커밋 금지 (정�
 Code Scanning open alert 확인(정책 14)은 GitHub Security 탭 또는
 `gh api repos/xzawed/SCAManager/code-scanning/alerts`.
 
-> 🔴 **카운터 2종은 SessionStart 훅이 자동 실행한다** — 회고 카덴스(`check_retro_cadence.py`)와
-> owed 원장 미결(`check_owed_verification.py`). 훅 stdout 이 컨텍스트에 주입되므로 **수동 실행
-> 불필요**. 둘 다 advisory(비차단). 배선 회귀 가드: `test_session_start_wiring.py`.
+> 🔴 **카운터 3종은 SessionStart 훅이 자동 실행한다** — 회고 카덴스(`check_retro_cadence.py`) ·
+> owed 원장 미결(`check_owed_verification.py`) · **backlog 🔴 결정 대기**(`check_open_decisions.py`,
+> 2026-08-14 신설 — 🔴 은 **사용자만** 닫을 수 있는데 다시 올리는 장치가 없어 R81·R82 가 6 PR 동안
+> 정체했다). 훅 stdout 이 컨텍스트에 주입되므로 **수동 실행 불필요**. 셋 다 advisory(비차단).
+> 배선 회귀 가드: `test_session_start_wiring.py`.
 
 **메모리 인덱스**는 매 세션 자동 로드된다. 신규 메모리 추가 시 MEMORY.md 인덱스 동기화 의무.
 신규 fixture/테스트/패턴 작성 전 **메모리 grep 의무** — 같은 함정을 두 번 밟지 않기 위한 교차 세션 학습 반송자다(`feedback_` prefix 파일이 테스트/CI 함정을 기록한다).

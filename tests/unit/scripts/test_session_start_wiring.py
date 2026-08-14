@@ -27,7 +27,15 @@ _SETTINGS = _ROOT / ".claude" / "settings.json"
 
 # 세션 시작 시 기계 실행돼야 하는 카운터 — 스크립트 경로로 식별.
 # Counters that must run mechanically at session start, identified by script path.
-_REQUIRED = ("scripts/check_retro_cadence.py", "scripts/check_owed_verification.py")
+_REQUIRED = (
+    "scripts/check_retro_cadence.py",
+    "scripts/check_owed_verification.py",
+    # 2026-08-14 추가 (회고 P1-H → backlog R92, 사용자 결정 (a)):
+    # 🔴 결정 대기 행은 **사용자만** 닫을 수 있는데 그것을 다시 올리는 장치가 0이었다.
+    #    R81·R82 가 등재 1회로 끝나고 6 PR 동안 재등장하지 않은 것이 실측 기전이다.
+    #    🟡 는 Claude 가 자율 착수해 자연 소멸하므로 이 축이 필요한 것은 🔴 뿐이다.
+    "scripts/check_open_decisions.py",
+)
 
 
 def _settings():
