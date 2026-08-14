@@ -669,9 +669,20 @@ async def call_agents_parallel(grade: str, diff: str, context: str,
 
 # 컨텍스트 원천과 **파일별** 예산(자). 규칙을 담은 문서는 전문이 들어가도록 잡는다.
 # Per-source budgets, sized so the rule documents fit whole.
+# 🔴 **주석에 크기 리터럴을 적지 않는다** (2026-08-14 문서감사 PR-5).
+#    이전 판은 `# 27.8k` · `# 5.3k` · `# 91k` 를 손으로 적어 뒀는데 실측과 갈라졌다:
+#    CLAUDE.md 는 +72% 과대, AGENTS.md 는 **2배 과소**였다. 그 과소 때문에 예산이
+#    12,000 으로 잡혔고, 2026-08-14 실측에서 AGENTS.md 가 **12,004자 = 절단 상태**가 됐다 —
+#    *"전문"* 이라 적힌 원천이 조용히 잘리고 있었다. 라벨은 이미 `load_context_parts()` 가
+#    `f"(전문 {len(content)}자)"` 로 **파생**하므로 주석은 복제였을 뿐이다.
+#    Size literals in comments drifted from reality and silently justified a too-small budget.
 _CONTEXT_SOURCES: tuple[tuple[str, int], ...] = (
-    ("CLAUDE.md", 40000),     # 27.8k — 전문 (정책 1~19 가 여기 있다)
-    ("AGENTS.md", 12000),     # 5.3k  — 전문 (가드 3-불변식 SSOT)
+    ("CLAUDE.md", 40000),     # 전문 (정책 1~19 가 여기 있다)
+    # 🔴 12000 → 16000 (2026-08-14 사용자 결정, 문서감사 PR-5 §6 결정 2 ★권장).
+    #    이전 예산에서 AGENTS.md 는 12,004/12,000 = **1.0003 로 이미 잘리고 있었다**.
+    #    이 파일은 가드 3-불변식 SSOT 이고 심의 에이전트가 그것으로 판정한다 —
+    #    부분 실명 상태로 "규칙과 어긋나면 block" 을 지시하는 것은 모순이다(R37-a 와 같은 형태).
+    ("AGENTS.md", 16000),     # 전문 (가드 3-불변식 SSOT)
     # 🔴 4000 → 16000 (R37-a, 회고 2026-08-04). 이전 예산은 STATE.md 의 **4%** 만 실어
     #    형식 `**종합 수치**` 블록(offset ~11.1k)과 pylint 값(~11.2k)이 통째로 잘렸다.
     #    그 상태로 consistency 에이전트에게 "STATE 수치와 다르면 block" 을 지시하는 것은
@@ -679,7 +690,7 @@ _CONTEXT_SOURCES: tuple[tuple[str, int], ...] = (
     #    ⚠️ 주 카운트(6607·6778)는 원래도 예산 안이었다(offset 3023·3105) — Grok `019fc81b`
     #    GROK-4 가 "심의자가 대조 대상 자체를 못 본다" 는 원 서술을 반증했다. 실제는 **부분 실명**.
     # Raised so the formal aggregate block and pylint value fit; the primary counts always did.
-    ("docs/STATE.md", 16000),  # 91k
+    ("docs/STATE.md", 16000),  # 슬라이스 — 전문이 아니다(크기는 라벨이 파생한다)
 )
 
 
