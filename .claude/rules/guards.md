@@ -16,7 +16,7 @@ paths:
 >
 > **먼저 열 것 2건** (2026-08-13 3층 분리):
 > · 순서 = [`docs/process/guard-authoring.md`](../../docs/process/guard-authoring.md) — *어떻게 저술하는가* 8단계
-> · 함정 = [`.claude/traps.md`](../traps.md) — *이렇게 틀렸었다* 16 클래스 (A1~A6 · B1~B5 · C1~C6 · D · E)
+> · 함정 = [`.claude/traps.md`](../traps.md) — *이렇게 틀렸었다* (관측자 A · 검증 B · 문서 C · 파괴 D · 협업 E)
 >
 > 아래 본문은 **이 표면에만 있는 세부 계약**이다. 일반 실패 클래스는 위 두 곳이 정본이며,
 > 여기에 다시 서술하지 않는다.

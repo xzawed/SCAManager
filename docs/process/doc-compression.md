@@ -76,7 +76,7 @@ git ls-files | xargs grep -l "<옛 경로>" 2>/dev/null    # 전 추적 파일
 |---|---|
 | 스캐너 범위 | `_plan_docs()` 가 옛 경로를 봐 **9→3 으로 좁아짐** |
 | 등급 패턴 | 구 `integrations`(low_risk) 가 `runbooks` 로 합쳐지며 **런북 전체를 강등시킬 뻔** |
-| 치환 잔재 | `^\.claude/plans/` → `^\docs/...` 이스케이프 깨짐 |
+| 치환 잔재 | 구 `^\.claude/plans/` → 새 경로 치환에서 이스케이프 깨짐 |
 
 ---
 

@@ -13,7 +13,7 @@
 | 시스템 구조 파악 | [architecture.md](architecture.md) — `src/` 트리 + 핵심 데이터 흐름 (단일 출처) |
 | 최신 수치·상태 | [STATE.md](STATE.md) — 테스트·커버리지·등급 단일 출처 |
 | **어떻게 수행하는가** (프로세스·플로우) | [process/](process/) — 가드 저술 · 주장 검증 · 문서 압축 · PR 수명 |
-| **이렇게 틀렸었다** (실패 클래스) | [`.claude/traps.md`](../.claude/traps.md) — 실제로 밟은 함정 16종 |
+| **이렇게 틀렸었다** (실패 클래스) | [`.claude/traps.md`](../.claude/traps.md) — 실제로 밟은 함정 (계열 A~E) |
 
 ---
 
@@ -93,7 +93,7 @@
 | [_archive/](_archive/) | 🔴 **과거 기록 단일 네임스페이스** (2026-08-13 통합) — `reports/`(회고·감사) · `plans/`(완료 계획, 구 `.claude/plans` + `superpowers/plans`) · `specs/` · `runbooks/`(구 `runbooks/_archive`). 히스토리 보존, 활성 참조 아님 |
 | `reports/` | `/integrity-audit`·`/retrospective` 워크플로우 실행 시 생성되는 리포트 산출물 (활성) — 과거 회고 보존본은 `_archive/reports/` |
 | `samples/` | 샘플 산출물 (tracked, 참조 빈도 낮음) |
-| `superpowers/` | 🔴 **로컬 전용 working dir** (`.gitignore` 등재 · GitHub 미푸시) — 완료된 plan/spec 은 `_archive/superpowers/` 로 수동 이동 |
+| `superpowers/` | 🔴 **로컬 전용 working dir** (`.gitignore` 등재 · GitHub 미푸시) — 완료된 plan/spec 은 `docs/_archive/plans/`·`docs/_archive/specs/` 로 수동 이동 |
 
 > **유지보수 원칙**: 새 문서 추가 시 본 인덱스의 해당 유형 표에 한 줄 등재. Diátaxis 유형 혼합
 > (한 문서가 how-to + explanation 을 섞음) 은 지양 — 유형별 분리가 문서 명확성의 핵심이다.
