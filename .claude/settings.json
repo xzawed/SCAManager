@@ -6,27 +6,27 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY scripts/check_retro_cadence.py",
+            "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY ${CLAUDE_PROJECT_DIR:-.}/scripts/check_retro_cadence.py",
             "timeout": 20
           },
           {
             "type": "command",
-            "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY scripts/check_owed_verification.py",
+            "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY ${CLAUDE_PROJECT_DIR:-.}/scripts/check_owed_verification.py",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY scripts/check_open_decisions.py",
+            "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY ${CLAUDE_PROJECT_DIR:-.}/scripts/check_open_decisions.py",
             "timeout": 15
           },
           {
             "type": "command",
-            "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY scripts/check_main_red.py",
+            "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY ${CLAUDE_PROJECT_DIR:-.}/scripts/check_main_red.py",
             "timeout": 30
           },
           {
             "type": "command",
-            "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY scripts/check_precommit_installed.py",
+            "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY ${CLAUDE_PROJECT_DIR:-.}/scripts/check_precommit_installed.py",
             "timeout": 15
           }
         ]
@@ -38,7 +38,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY .claude/hooks/block_credential_dump.py",
+            "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY ${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/block_credential_dump.py",
             "timeout": 10
           }
         ]
@@ -48,12 +48,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY .claude/hooks/check_edit_allowed.py",
+            "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY ${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/check_edit_allowed.py",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY .claude/hooks/doc_review_gate.py",
+            "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY ${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/doc_review_gate.py",
             "timeout": 60
           }
         ]
@@ -65,7 +65,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY .claude/hooks/posttool_pytest_smoke.py",
+            "command": "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); $PY ${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/posttool_pytest_smoke.py",
             "timeout": 90
           }
         ]

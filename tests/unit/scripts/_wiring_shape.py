@@ -214,6 +214,27 @@ def _command_is_interpreter(word: str, command: str) -> bool:
     return _is_interpreter(word)
 
 
+def _normalize_script_path(path: str) -> str:
+    """경로 구분자 정규화 + 선행 `./` 접두만 제거.
+
+    🔴 `str.lstrip("./")` 금지 — 문자 집합 strip 이라 `.claude/hooks/x.py` 의 선행 `.` 까지
+    먹어 `claude/hooks/x.py` 가 된다. 접두 없는 상대 경로 `.claude/...` 는 양쪽이 같이
+    잘려 우연히 맞았지만, `${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/x.py` 는 토큰이 `$` 로
+    시작해 한쪽만 잘리므로 **실배선을 미배선으로 오판**(가드 자살)한다.
+    Normalize separators and strip a `./` prefix only — never `str.lstrip("./")`,
+    which eats the leading dot of `.claude/hooks/…`.
+    """
+    norm = path.replace("\\", "/")
+    # 🔴 `while` 유지 — `if` 한 번만 벗기면 조회 타깃 `././scripts/x.py` 가
+    #    `./scripts/x.py` 로 남아 토큰 `scripts/x.py` 와 불일치한다(가드 자살).
+    #    계약 핀: test_wiring_shape.test_repeated_dot_slash_on_lookup_target_still_matches
+    # Keep `while`: a single `if` leaves `././scripts/x.py` as `./scripts/x.py`,
+    # which then fails to match a bare `scripts/x.py` token.
+    while norm.startswith("./"):
+        norm = norm[2:]
+    return norm
+
+
 def _mentions_path(tokens: Iterable[str], script_path: str) -> bool:
     """토큰 중 하나가 대상 스크립트를 가리키는가 (경로 구분자 정규화).
 
@@ -224,9 +245,9 @@ def _mentions_path(tokens: Iterable[str], script_path: str) -> bool:
     `path/scripts/check_x.py`(경계 `/`)와 `./scripts/check_x.py` 는 계속 인정한다.
     Suffix matches must land on a path boundary; a bare endswith accepted `not_scripts/…`.
     """
-    target = script_path.replace("\\", "/").lstrip("./")
+    target = _normalize_script_path(script_path)
     for token in tokens:
-        norm = token.replace("\\", "/").lstrip("./")
+        norm = _normalize_script_path(token)
         if norm == target or norm.endswith("/" + target):
             return True
     return False

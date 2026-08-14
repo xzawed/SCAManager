@@ -58,6 +58,47 @@ def test_hook_path_invocation_counts():
     assert invokes(f"python {_HOOK}", _HOOK) is True
 
 
+def test_repeated_dot_slash_on_lookup_target_still_matches():
+    """`while` 이 아니라 `if` 면 `././scripts/x.py` 타깃이 한 겹만 벗겨져 실호출을 거부한다.
+
+    `endswith("/"+target)` 는 토큰 쪽 `././` 는 구제하지만, **조회 타깃**이
+    `././scripts/x.py` 이면 `if` 한 번 뒤 남는 `./scripts/x.py` 와 토큰
+    `scripts/x.py` 가 맞지 않는다. 이 단언이 `while` 계약을 핀한다.
+    A single `if` leaves the lookup target as `./scripts/x.py` and rejects
+    a genuine `python scripts/x.py` invocation.
+    """
+    assert invokes(f"python {_P}", f"././{_P}") is True
+    assert invokes(f"python ././{_P}", _P) is True
+
+
+def test_project_dir_default_expansion_on_scripts_path_is_wired():
+    """R67 — `${CLAUDE_PROJECT_DIR:-.}/scripts/X.py` 는 실배선이고 `echo` 는 아니다.
+
+    기본값 전개 접두는 경로 경계 `/` 뒤에서 끝나므로 기존 `_mentions_path` 가 인정한다.
+    The default-expansion prefix ends on a `/` boundary, so the existing matcher accepts it.
+    """
+    cmd = (
+        "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); "
+        + f"$PY ${{CLAUDE_PROJECT_DIR:-.}}/{_P}"
+    )
+    assert invokes(cmd, _P) is True
+    assert invokes(f"echo ${{CLAUDE_PROJECT_DIR:-.}}/{_P}", _P) is False
+
+
+def test_project_dir_default_expansion_on_hook_path_is_wired():
+    """R67 — `${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/X.py` 도 실배선이어야 한다.
+
+    `str.lstrip("./")` 는 `.claude` 의 점을 먹어 이 형태를 거부했다(가드 자살).
+    Character-class lstrip ate the dot of `.claude` and rejected this real wiring.
+    """
+    cmd = (
+        "PY=$(command -v py >/dev/null 2>&1 && echo 'py -3' || echo python3); "
+        + f"$PY ${{CLAUDE_PROJECT_DIR:-.}}/{_HOOK}"
+    )
+    assert invokes(cmd, _HOOK) is True
+    assert invokes(f"echo ${{CLAUDE_PROJECT_DIR:-.}}/{_HOOK}", _HOOK) is False
+
+
 # ── 🔴 부정 통제 — 실행하지 않는 데코이는 거부해야 한다 (이 파일의 본체) ──
 # Negative control — non-executing decoys must be rejected. This is the point of the module.
 
