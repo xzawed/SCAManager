@@ -1733,15 +1733,23 @@ def test_demotion_keys_on_the_flag_not_the_reason_text():
 #    `_CONTEXT_SOURCES` 에서 읽으면 원천 삭제 뮤테이션이 GREEN). 리터럴로 못박는다.
 # ──────────────────────────────────────────────────────────────────────────────
 
-# T1.3 본문 유출 지문 — 이 문자열이 원장 줄에 나타나면 본문을 기록한 것이다.
-# Body-leak fingerprint: its presence in a ledger line means a document body was stored.
+# T1.3 본문 유출 지문 — 평문 유출의 보조 축. 본 계약은 아래 허용 키 집합이다.
+# Body-leak fingerprint (secondary). The contract is the allowlist below.
 _LEDGER_BODY_SENTINEL = "LEDGER_BODY_LEAK_SENTINEL_x7f3a9c2e"
 
-# append_ledger 가 받아서는 안 되는 키 — 본문·diff·발췌 자리.
-# Keys that must never appear on a written ledger record.
-_LEDGER_FORBIDDEN_BODY_KEYS = (
-    "diff", "old_string", "new_string", "content", "excerpt", "body", "text",
-)
+# 🔴 허용 키는 **이 테스트에 리터럴** 로 못박는다. 모듈에서 유도하면 키를 추가하는
+#    뮤테이션이 기댓값을 같이 키워 GREEN 이 된다 (이 파일 :867-871 A4 함정).
+# Pinned here, NOT imported from the module under test.
+_LEDGER_ALLOWED_KEYS = frozenset({
+    "ts", "file", "grade", "decision", "agents",
+    "cache_write", "cache_read", "prefix_sha8",
+    "diff_chars", "diff_truncated", "src", "unbacked_citations",
+})
+_LEDGER_AGENT_KEYS = frozenset({"a", "d", "uv", "inop", "stop"})
+_LEDGER_DECISIONS = frozenset({"approve", "warn", "block", "inoperative"})
+_LEDGER_GRADES = frozenset({"critical", "important", "low_risk", "skip"})
+_LEDGER_MAX_PATH = 4096
+_LEDGER_MAX_TOKEN = 64
 
 
 @pytest.fixture(autouse=True)
@@ -1779,7 +1787,8 @@ class TestLedger:
         return fake_parallel
 
     def _run_main(self, monkeypatch, *, file_path="CLAUDE.md", old="old", new="new",
-                  decisions=None, usage=None, inoperative=False):
+                  decisions=None, usage=None, inoperative=False,
+                  split=("", "")):
         from doc_review_gate import main  # noqa: PLC0415
         if decisions is None:
             decisions = {"impact": "approve", "consistency": "approve", "quality": "approve"}
@@ -1794,10 +1803,62 @@ class TestLedger:
         monkeypatch.setattr("sys.stdin", io.StringIO(
             self._stdin_payload(file_path, old=old, new=new)))
         with patch("doc_review_gate.call_agents_parallel", agents):
-            with patch("doc_review_gate.split_context", return_value=("", "")):
+            with patch("doc_review_gate.split_context", return_value=split):
                 with pytest.raises(SystemExit) as exc:
                     main()
         return exc.value.code
+
+    @staticmethod
+    def _assert_record_shape(rec: dict) -> None:
+        """구조 계약 — 허용 키의 부분집합 + 키별 형태. 모듈에서 유도하지 않는다.
+        Structural contract: key ⊆ allowlist and per-key shapes. Not derived from the module."""
+        extra = set(rec) - _LEDGER_ALLOWED_KEYS
+        assert not extra, f"원장에 허용 밖 키가 있다: {sorted(extra)}"
+        assert set(rec) <= _LEDGER_ALLOWED_KEYS
+
+        ts = rec.get("ts")
+        assert isinstance(ts, str) and len(ts) <= _LEDGER_MAX_TOKEN
+        assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", ts), ts
+
+        file_v = rec.get("file")
+        assert isinstance(file_v, str) and len(file_v) <= _LEDGER_MAX_PATH
+        assert "\n" not in file_v and "\r" not in file_v
+
+        grade = rec.get("grade")
+        assert grade is None or grade in _LEDGER_GRADES, grade
+        assert rec.get("decision") in _LEDGER_DECISIONS
+
+        assert type(rec.get("cache_write")) is int  # noqa: E721 — bool 을 거절한다
+        assert type(rec.get("cache_read")) is int
+        assert rec["cache_write"] >= 0 and rec["cache_read"] >= 0
+
+        prefix = rec.get("prefix_sha8")
+        assert prefix is None or (
+            isinstance(prefix, str) and re.fullmatch(r"[0-9a-f]{8}", prefix)
+        ), prefix
+
+        assert type(rec.get("diff_chars")) is int
+        assert rec["diff_chars"] >= 0
+        assert type(rec.get("diff_truncated")) is bool
+
+        assert rec.get("src") is None, "PR-1 에서 src 는 null 이어야 한다"
+        cites = rec.get("unbacked_citations")
+        assert cites == [], f"unbacked_citations 는 빈 리스트여야 한다: {cites!r}"
+
+        agents = rec.get("agents")
+        assert isinstance(agents, list)
+        for row in agents:
+            assert isinstance(row, dict)
+            bad = set(row) - _LEDGER_AGENT_KEYS
+            assert not bad, f"agent 칸에 허용 밖 키(reason/detail 등): {sorted(bad)}"
+            for key in ("a", "d", "stop"):
+                val = row.get(key)
+                if val is None:
+                    continue
+                assert isinstance(val, str) and len(val) <= _LEDGER_MAX_TOKEN, (key, val)
+            assert type(row.get("inop")) is bool
+            uv = row.get("uv")
+            assert uv is None or type(uv) is bool
 
     def test_ledger_line_is_written_by_the_real_call_path(
             self, isolated_ledger, monkeypatch):
@@ -1867,11 +1928,11 @@ class TestLedger:
 
     def test_ledger_never_records_document_bodies(
             self, isolated_ledger, monkeypatch):
-        """T1.3 — 원장에 diff/본문을 넣는 뮤테이션(M-J)을 red 로 만든다.
+        """T1.3 — 구조 계약. hex blob · 40자 head · 임의 citations · agent reason 이 red.
 
-        고유 sentinel 이 든 편집을 main() 으로 돌린 뒤, 원장 줄에 그 문자열이
-        **없어야** 한다. 금지 키(`diff`·`old_string` 등)도 없어야 한다.
-        A unique sentinel in the edit must be absent from the ledger line.
+        평문 sentinel 검색만으로는 hex/절단/리스트 칸이 GREEN 이었다 (claim-review M11/M12/M5a/M13).
+        허용 키 부분집합 + 키별 형태가 그 네 뮤테이션을 잡는다.
+        A structural allowlist, not a sentinel search: encoded/truncated/list leaks go red.
         """
         code = self._run_main(
             monkeypatch,
@@ -1881,31 +1942,107 @@ class TestLedger:
         assert code == 0
         raw = isolated_ledger.read_text(encoding="utf-8")
         assert _LEDGER_BODY_SENTINEL not in raw, (
-            "원장에 편집 본문 sentinel 이 있다 — diff/본문을 기록했다 (M-J)"
+            "원장에 편집 본문 sentinel 이 있다 — diff/본문을 기록했다"
         )
         rec = json.loads(raw.strip())
-        leaked = [k for k in _LEDGER_FORBIDDEN_BODY_KEYS if k in rec]
-        assert not leaked, f"원장 레코드에 본문 키가 있다: {leaked}"
-        # 값이 문자열인 칸에도 sentinel 이 없어야 한다.
-        # No string field may carry the sentinel either.
-        for key, val in rec.items():
-            if isinstance(val, str):
-                assert _LEDGER_BODY_SENTINEL not in val, f"{key} 칸에 본문이 실렸다"
+        self._assert_record_shape(rec)
+        assert rec["file"] == "CLAUDE.md"
+
+    def test_ledger_record_raise_does_not_suppress_deny(
+            self, monkeypatch, capsys):
+        """P0 — `_ledger_record` 가 던져도 block 경로의 deny 는 나가야 한다.
+
+        Mutating `_ledger_record` to raise used to yield exit-uncaught + empty stdout.
+        """
+        def _boom(*_a, **_k):
+            raise RuntimeError("record boom")
+        monkeypatch.setattr("doc_review_gate._ledger_record", _boom)
+        code = self._run_main(
+            monkeypatch,
+            decisions={"impact": "block", "consistency": "approve", "quality": "approve"},
+        )
+        assert code == 0, "원장 조립 예외가 훅을 죽였다"
+        out = capsys.readouterr().out
+        assert out.strip(), "deny 출력이 비었다 — 심의가 삼켜졌다"
+        parsed = json.loads(out)
+        assert parsed["hookSpecificOutput"]["permissionDecision"] == "deny"
 
     def test_ledger_failure_does_not_kill_the_hook(
             self, tmp_path, monkeypatch, capsys):
-        """T1.4 — append_ledger 의 try 를 벗기면 red (원장 경로 = 디렉터리 → OSError).
+        """T1.4 — 쓰기 실패(경로=디렉터리)에도 deny 가 나간다.
 
-        Removing the try/except around append_ledger must kill this test.
+        Removing the try/except around ledger handling must kill this test.
         """
         bad = tmp_path / "ledger_is_a_dir"
         bad.mkdir()
         monkeypatch.setattr("doc_review_gate._LEDGER_FILE", bad)
-        code = self._run_main(monkeypatch)
+        code = self._run_main(
+            monkeypatch,
+            decisions={"impact": "block", "consistency": "approve", "quality": "approve"},
+        )
         assert code == 0, "원장 쓰기가 실패했는데 훅이 죽었다 — 원장이 훅을 죽이면 안 된다"
-        # 심의 자체는 계속돼야 한다 (approve = 출력 없음도 정상).
-        # The review itself must still finish (silent approve is a valid outcome).
-        capsys.readouterr()
+        out = capsys.readouterr().out
+        parsed = json.loads(out)
+        assert parsed["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+    def test_ledger_is_written_on_unreadable_payload(
+            self, isolated_ledger, monkeypatch):
+        """payload 파싱 실패 경로의 append 를 지우면 red (M8a 가 GREEN 이던 축)."""
+        from doc_review_gate import main  # noqa: PLC0415
+        monkeypatch.setattr("sys.stdin", io.StringIO("{ 이건 JSON 이 아니다"))
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 0
+        assert isolated_ledger.is_file(), "payload 실패 경로가 원장에 쓰지 않았다"
+        rec = json.loads(isolated_ledger.read_text(encoding="utf-8").strip())
+        self._assert_record_shape(rec)
+        assert rec["decision"] == "inoperative"
+        assert rec["file"] == ""
+
+    def test_ledger_is_written_on_missing_credentials(
+            self, isolated_ledger, no_credentials, monkeypatch):
+        """credentials 부재 경로의 append 를 지우면 red (M8b 가 GREEN 이던 축)."""
+        from doc_review_gate import main  # noqa: PLC0415
+        monkeypatch.setattr("sys.stdin", io.StringIO(
+            self._stdin_payload("CLAUDE.md", old="a", new="b")))
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 0
+        assert isolated_ledger.is_file(), "자격증명 부재 경로가 원장에 쓰지 않았다"
+        rec = json.loads(isolated_ledger.read_text(encoding="utf-8").strip())
+        self._assert_record_shape(rec)
+        assert rec["decision"] == "inoperative"
+        assert rec["file"] == "CLAUDE.md"
+        assert rec["grade"] == "critical"
+
+    def test_disabled_gate_writes_no_ledger(
+            self, isolated_ledger, monkeypatch):
+        """gate_disabled 는 원장에 쓰지 않는다 — 매 편집 한 줄이면 실판정을 밀어낸다."""
+        from doc_review_gate import main  # noqa: PLC0415
+        monkeypatch.setenv("DOC_REVIEW_GATE_DISABLED", "1")
+        monkeypatch.setattr("sys.stdin", io.StringIO(
+            self._stdin_payload("CLAUDE.md")))
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 0
+        assert not isolated_ledger.exists(), "꺼진 게이트가 원장에 썼다"
+
+    def test_empty_path_and_skip_write_no_ledger(
+            self, isolated_ledger, monkeypatch):
+        """file_path 공백 · skip/low_risk 는 원장에 쓰지 않는다 (소스 편집 범람 방지)."""
+        from doc_review_gate import main  # noqa: PLC0415
+        for payload in (
+            json.dumps({"tool_input": {}}),
+            self._stdin_payload("src/main.py"),
+            self._stdin_payload("docs/reports/artifacts/foo.log"),
+        ):
+            if isolated_ledger.exists():
+                isolated_ledger.unlink()
+            monkeypatch.setattr("sys.stdin", io.StringIO(payload))
+            with pytest.raises(SystemExit) as exc:
+                main()
+            assert exc.value.code == 0
+            assert not isolated_ledger.exists(), f"비심의 경로가 원장에 썼다: {payload[:60]}"
 
     def test_persistent_cold_write_is_reported(self):
         """T1.5 — `cache_trouble` 의 연속 축을 지우면 red (M-K).
@@ -1958,10 +2095,9 @@ class TestLedger:
 
     def test_prefix_sha8_is_hash_of_the_first_two_blocks(
             self, isolated_ledger, monkeypatch):
-        """prefix_sha8 공식을 바꾸거나 비우면 red.
+        """blocks[1] 부재 경로 — 빈 volatile 의 해시를 리터럴 공식으로 고정.
 
-        sha256(system_blocks[0].text [+ blocks[1].text])[:8].
-        split_context 를 ("","") 로 고정해 blocks[1] 부재 경로를 잰다.
+        The absent-volatile path only. The next test pins the present-volatile path.
         """
         import hashlib  # noqa: PLC0415
         code = self._run_main(monkeypatch)
@@ -1973,3 +2109,61 @@ class TestLedger:
         )
         assert len(rec["prefix_sha8"]) == 8
         assert rec["src"] is None
+
+    def test_prefix_sha8_includes_the_volatile_block(
+            self, isolated_ledger, monkeypatch):
+        """가변 블록이 있을 때 blocks[0] 만 해시하면 red (M7).
+
+        sha256(b0 + '\\x00' + b1)[:8]. 구분자와 래퍼 문자열은 테스트 리터럴.
+        """
+        import hashlib  # noqa: PLC0415
+        stable = "STABLE_PIN_x1"
+        volatile = "VOLATILE_PIN_x2"
+        code = self._run_main(monkeypatch, split=(stable, volatile))
+        assert code == 0
+        rec = json.loads(isolated_ledger.read_text(encoding="utf-8").strip())
+        block0 = f"## 참조 컨텍스트\n{stable}"
+        block1 = f"## 참조 컨텍스트 (변동)\n{volatile}"
+        expected = hashlib.sha256(
+            (block0 + "\x00" + block1).encode("utf-8")
+        ).hexdigest()[:8]
+        only_first = hashlib.sha256(block0.encode("utf-8")).hexdigest()[:8]
+        assert rec["prefix_sha8"] == expected, (
+            f"가변 블록이 해시에 안 실렸다: {rec.get('prefix_sha8')!r} "
+            f"(only-blocks[0] 이면 {only_first})"
+        )
+        assert rec["prefix_sha8"] != only_first, (
+            "해시가 blocks[0] 단독과 같다 — 가변 축이 빠져 있다 (M7)"
+        )
+
+    def test_prefix_sha8_separates_the_two_blocks(self):
+        """구분자 없으면 ("AB","C") 와 ("A","BC") 가 충돌한다."""
+        from doc_review_gate import _prefix_sha8  # noqa: PLC0415
+        left = _prefix_sha8([{"text": "AB"}, {"text": "C"}])
+        right = _prefix_sha8([{"text": "A"}, {"text": "BC"}])
+        assert left is not None and right is not None
+        assert left != right, "블록 쌍이 다른데 해시가 같다 — 연결 바이트를 해시하고 있다"
+
+    def test_ledger_ring_buffer_cap_applies(self, isolated_ledger, monkeypatch):
+        """캡이 적용되지 않으면 red (M10: _LEDGER_MAX_LINES → huge).
+
+        동작: 작은 캡+여유로 10줄을 넣고 마지막 5줄만 남는지.
+        계약값: 소스의 `_LEDGER_MAX_LINES = 500` 대입문이 그대로인지 (10**9 로 올리면 red).
+        """
+        from doc_review_gate import append_ledger  # noqa: PLC0415
+        src = _HOOK_SRC.read_text(encoding="utf-8")
+        assert re.search(r"^_LEDGER_MAX_LINES = 500\b", src, re.M), (
+            "원장 캡 대입문이 500 이 아니다 — 캡을 올리거나 지웠다 (M10)"
+        )
+        monkeypatch.setattr("doc_review_gate._LEDGER_MAX_LINES", 5)
+        monkeypatch.setattr("doc_review_gate._LEDGER_TRIM_SLACK", 2)
+        # 8 > 5+2 에서 rewrite 가 발화하고 마지막 5줄만 남는다.
+        # The rewrite fires once 8 > 5+2 and keeps the last 5.
+        for i in range(8):
+            append_ledger({"n": i, "decision": "approve"})
+        lines = [
+            ln for ln in isolated_ledger.read_text(encoding="utf-8").splitlines()
+            if ln.strip()
+        ]
+        assert len(lines) == 5, f"캡이 적용되지 않았다: {len(lines)}줄"
+        assert [json.loads(ln)["n"] for ln in lines] == [3, 4, 5, 6, 7]

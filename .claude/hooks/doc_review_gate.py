@@ -257,7 +257,11 @@ _DIFF_BUDGET = 4000  # 프롬프트에 싣는 diff 최대 길이(자) / max diff
 # Local verdict ledger (gitignored). Never stores document bodies, diffs, or excerpts.
 _LEDGER_FILE = _HOOKS_DIR / ".doc_review_ledger.jsonl"
 _LEDGER_MAX_LINES = 500          # 링 버퍼 상한 / ring buffer cap
+_LEDGER_TRIM_SLACK = 64          # 캡을 이만큼 넘길 때만 rewrite / rewrite only after this overshoot
 _CACHE_TROUBLE_STREAK = 3        # 연속 cold-write 판정 길이 / consecutive cold writes
+# 두 캐시 블록을 잇는 구분자 — 없으면 ("AB","C") 와 ("A","BC") 가 같은 해시.
+# Separator so the hash is over the block *pair*, not the concatenated bytes.
+_PREFIX_BLOCK_SEP = "\x00"
 
 
 # ─── 자격증명 전제 ───────────────────────────────────────────────────────────
@@ -539,25 +543,48 @@ def ledger_enabled() -> bool:
 def append_ledger(record: dict) -> None:
     """원장 1줄 append — 예외를 **절대 밖으로 내지 않는다**.
     🔴 본문(문서 텍스트·diff·발췌 내용)은 기록하지 않는다 — 경로·개수·판정·회계만.
-    Never records document bodies: paths, counts, verdicts and usage only."""
+    Never records document bodies: paths, counts, verdicts and usage only.
+
+    🔴 매 호출 `write_text`(먼저 truncate) 하지 않는다. 한 줄을 `open(..., "a")` 로
+    붙이고, 줄 수가 캡+여유를 넘을 때만 rewrite 한다. 이전 판은 매 편집이
+    truncate→rewrite 라 겹친 훅 프로세스가 빈 파일을 읽고 원장 전체를 덮었다
+    (claim-review 실측: 2스레드×80 = 155/160 소실).
+    Append one line; the truncating rewrite runs only when over cap+slack.
+    """
     try:
         if not ledger_enabled():
             return
         line = json.dumps(record, ensure_ascii=True)
-        existing: list[str] = []
-        if _LEDGER_FILE.is_file():
-            existing = [
-                ln for ln in _LEDGER_FILE.read_text(encoding="utf-8").splitlines()
-                if ln.strip()
-            ]
-        existing.append(line)
-        if len(existing) > _LEDGER_MAX_LINES:
-            existing = existing[-_LEDGER_MAX_LINES:]
-        _LEDGER_FILE.write_text("\n".join(existing) + "\n", encoding="utf-8")
+        # 🔴 한 줄 append. POSIX 는 작은 write(≤PIPE_BUF, 보통 4096바이트)가 원자적이다.
+        #    Windows 는 그 보장이 없다 — best-effort. 측정한 것 이상으로 주장하지 않는다.
+        # A single small append is atomic on POSIX (≤PIPE_BUF); on Windows it is
+        # best-effort. Do not claim more than measured.
+        with _LEDGER_FILE.open("a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+        _maybe_trim_ledger()
     except Exception:  # pylint: disable=broad-exception-caught
         # 원장이 훅을 죽이면 심의 자체가 사라진다 — 빈 stdout + 편집 통과가 더 나쁘다.
         # A ledger that can kill the hook is worse than no ledger (empty stdout, edit passes).
         return
+
+
+def _maybe_trim_ledger() -> None:
+    """캡+여유를 넘을 때만 앞줄을 잘라 rewrite 한다 — 매 호출 truncate 금지.
+    Rewrite (truncate) only when over cap+slack; never on the every-call path."""
+    n = 0
+    with _LEDGER_FILE.open("r", encoding="utf-8") as fh:
+        for _ in fh:
+            n += 1
+    if n <= _LEDGER_MAX_LINES + _LEDGER_TRIM_SLACK:
+        return
+    lines = [
+        ln for ln in _LEDGER_FILE.read_text(encoding="utf-8").splitlines()
+        if ln.strip()
+    ]
+    if len(lines) > _LEDGER_MAX_LINES:
+        _LEDGER_FILE.write_text(
+            "\n".join(lines[-_LEDGER_MAX_LINES:]) + "\n", encoding="utf-8"
+        )
 
 
 def ledger_tail(n: int) -> list[dict]:
@@ -600,16 +627,19 @@ def _prefix_sha8(system_blocks: list[dict]) -> str | None:
     """캐시 프리픽스 지문 — 본문은 남기지 않고 해시만.
     Cache-prefix fingerprint; hash only, never the body.
 
-    prefix_sha8 = sha256(system_blocks[0]["text"] + system_blocks[1]["text"])[:8]
-    🔴 blocks[1](가변 STATE)은 없을 수 있다 — 그때는 blocks[0] 만 해시한다.
-    blocks[1] (volatile STATE) may be absent; hash only blocks[0] then.
+    prefix_sha8 = sha256(blocks[0].text + SEP + blocks[1].text)[:8]
+    🔴 SEP(`\\x00`) 가 없으면 ("AB","C") 와 ("A","BC") 가 같은 해시가 된다 —
+    해시는 블록 *쌍* 위여야 하고, 연결 바이트 위가 아니다.
+    Without the separator the hash is over concatenated bytes, not the pair.
+    🔴 blocks[1](가변 STATE)은 없을 수 있다 — 그때는 blocks[0] 만 해시한다 (SEP 없음).
+    blocks[1] (volatile STATE) may be absent; hash only blocks[0] then (no SEP).
     """
     if not system_blocks:
         return None
     try:
         text = system_blocks[0].get("text") or ""
         if len(system_blocks) > 1:
-            text += system_blocks[1].get("text") or ""
+            text += _PREFIX_BLOCK_SEP + (system_blocks[1].get("text") or "")
         return hashlib.sha256(text.encode("utf-8")).hexdigest()[:8]
     except Exception:  # pylint: disable=broad-exception-caught
         return None
@@ -626,11 +656,58 @@ def _cache_prefix_blocks(stable: str, volatile: str) -> list[dict]:
     return blocks
 
 
+def _write_ledger_guarded(*, file_path: str, grade: str | None, decision: str,
+                          results: list[dict], diff: str,
+                          stable: str, volatile: str,
+                          check_cache_trouble: bool = False) -> None:
+    """원장 조립 + (선택) 연속-cold-write 고지 + 기록. 예외를 밖으로 내지 않는다.
+
+    🔴 조립(`_ledger_record`)과 쓰기(`append_ledger`)를 **같은 가드 구역**에 둔다.
+    심의 출력은 이 함수 *밖*·*뒤*에서 나간다 — 원장 예외가 deny/warn 을 삼키면
+    편집은 통과하고 Claude 는 아무것도 못 본다 (R67 과 동형, claim-review 실측
+    `RECORD_RAISE_out_len 0`).
+    Assembly and write share one try; review output is emitted after this returns.
+    """
+    try:
+        record = _ledger_record(
+            file_path=file_path, grade=grade, decision=decision,
+            results=results, diff=diff, stable=stable, volatile=volatile,
+        )
+        if check_cache_trouble and cache_trouble(
+            ledger_tail(_CACHE_TROUBLE_STREAK - 1) + [record]
+        ):
+            _emit_advisory(
+                f"[문서 심의] 프롬프트 캐시 연속 cold-write {_CACHE_TROUBLE_STREAK}회 — "
+                "프리픽스가 매 편집 달라진다. 가변 텍스트(src 발췌·diff)가 "
+                "마지막 breakpoint 앞으로 들어갔는지 확인할 것"
+            )
+        append_ledger(record)
+    except Exception:  # pylint: disable=broad-exception-caught
+        return
+
+
 def _ledger_record(*, file_path: str, grade: str | None, decision: str,
                    results: list[dict], diff: str,
                    stable: str, volatile: str) -> dict:
     """원장 1줄용 레코드 — 본문 키를 넣지 않는다 (`diff` 는 길이와 절단 여부만).
-    One ledger line: paths/counts/verdicts/usage/hash only. Never the diff body."""
+    One ledger line: paths/counts/verdicts/usage/hash only. Never the diff body.
+
+    기록하는 경로 / paths that write a row:
+      payload 파싱 실패 · credentials 부재 ·
+      block / warn / approve / 전건 inoperative
+
+    기록하지 않는 경로 (의도) / paths that deliberately write nothing:
+      · `gate_disabled` — kill-switch 는 payload 도 안 읽는다(API 비용 0).
+        줄을 안 남기면 «편집 없음» 과 «게이트 꺼짐» 을 원장만으로 구별할 수 없다.
+        끄면 매 Edit/Write 가 한 줄씩 쌓여 실판정 500줄을 밀어내므로 쓰지 않는다.
+        잔여 = silent-disable 관측 구멍. 스위치 자체는 env 가 정본이다.
+        Kill-switch writes nothing: a row per edit would evict real verdicts,
+        and we have not read the payload yet. Residual: ledger cannot tell
+        "no edits" from "gate off". The env var is the source of truth.
+      · `file_path` 공백 — 대상 파일이 없다 / no file to review.
+      · skip / low_risk — 심의 대상이 아니다. 쓰면 원장이 소스 편집으로 가득 찬다.
+        Not a review target; writing would flood the ring with non-reviews.
+    """
     usages = [r["_usage"] for r in results if isinstance(r.get("_usage"), dict)]
     usage = usages[0] if usages else {"write": 0, "read": 0}
     return {
@@ -1032,6 +1109,8 @@ def main() -> None:
     # 비용 제어 — kill-switch 시 리뷰 없이 즉시 허용(sys.exit(0)=편집 통과, API 호출 0).
     # Cost control — when the kill-switch is on, allow the edit immediately with no review (no API call).
     if gate_disabled():
+        # 원장에 쓰지 않는다 — `_ledger_record` docstring «기록하지 않는 경로».
+        # Deliberately no ledger row (see `_ledger_record` "paths that write nothing").
         sys.exit(0)
 
     try:
@@ -1044,20 +1123,24 @@ def main() -> None:
         # Never silently allow: we cannot review, so say so instead of exiting mute.
         _emit_advisory("[문서 심의] INOPERATIVE — payload 판독 실패로 심의하지 않음 "
                        f"(detail: {type(exc).__name__}: {exc})")
-        append_ledger(_ledger_record(
+        _write_ledger_guarded(
             file_path="", grade=None, decision="inoperative",
             results=[], diff="", stable="", volatile="",
-        ))
+        )
         sys.exit(0)
 
     tool_input = data.get("tool_input", {})
     file_path = (tool_input.get("file_path", "") or "").replace("\\", "/")
 
     if not file_path:
+        # 대상 파일 없음 — 원장에 쓰지 않는다 (`_ledger_record` docstring).
+        # No file to review: no ledger row.
         sys.exit(0)
 
     grade = classify_file_grade(file_path)
     if grade in ("skip", "low_risk"):
+        # 심의 대상 아님 — 원장에 쓰지 않는다 (소스 편집으로 링이 가득 차는 것을 막음).
+        # Not a review target: no ledger row (would flood the ring with source edits).
         sys.exit(0)
 
     # diff 구성 — Edit/Write 단일 변경 또는 MultiEdit 배열 모두 처리
@@ -1092,10 +1175,10 @@ def main() -> None:
     # indistinguishable per-agent failures.
     if not _credentials():
         _emit_advisory(_NO_CREDENTIALS_BANNER)
-        append_ledger(_ledger_record(
+        _write_ledger_guarded(
             file_path=file_path, grade=grade, decision="inoperative",
             results=[], diff=diff, stable="", volatile="",
-        ))
+        )
         sys.exit(0)
 
     stable_context, volatile_context = split_context()
@@ -1105,7 +1188,19 @@ def main() -> None:
     decision, reasons = apply_veto_matrix(grade, results)
 
     all_inoperative = bool(results) and all(r.get("inoperative") for r in results)
-    record = _ledger_record(
+
+    # 🔴 캐시가 조용히 죽으면 비용이 조용히 10배가 된다 — 그 침묵을 깬다 (R38 잔여 (c)).
+    #    `results` 만 보므로 원장 조립과 무관 — 가드 구역 밖에 둔다.
+    # A silently dead cache is a silent 10x cost; this check does not touch the ledger.
+    if cache_looks_dead(results):
+        _emit_advisory("[문서 심의] 프롬프트 캐시 미동작 — 쓰기·읽기 모두 0. "
+                       "(a) 가변 텍스트가 캐시 프리픽스 안에 들어갔는가 "
+                       "(b) 예산이 최소 캐시 길이(claude-haiku-4-5 = 4096 토큰) 아래로 "
+                       "내려갔는가 — 둘 다 확인할 것")
+
+    # 조립·연속-cold-write 고지·기록을 한 가드 구역에서. 아래 심의 출력은 그 뒤에 나간다.
+    # Assembly + cache-trouble + write in one guarded region; review output follows.
+    _write_ledger_guarded(
         file_path=file_path,
         grade=grade,
         decision="inoperative" if all_inoperative else decision,
@@ -1113,28 +1208,8 @@ def main() -> None:
         diff=diff,
         stable=stable_context,
         volatile=volatile_context,
+        check_cache_trouble=True,
     )
-
-    # 🔴 캐시가 조용히 죽으면 비용이 조용히 10배가 된다 — 그 침묵을 깬다 (R38 잔여 (c)).
-    # A silently dead cache is a silent 10x cost; break the silence.
-    if cache_looks_dead(results):
-        _emit_advisory("[문서 심의] 프롬프트 캐시 미동작 — 쓰기·읽기 모두 0. "
-                       "(a) 가변 텍스트가 캐시 프리픽스 안에 들어갔는가 "
-                       "(b) 예산이 최소 캐시 길이(claude-haiku-4-5 = 4096 토큰) 아래로 "
-                       "내려갔는가 — 둘 다 확인할 것")
-
-    # 연속 cold-write 는 0/0 과 다른 축 — 프리픽스가 매 편집 달라지는 신호.
-    # A streak of cold writes is a different axis from 0/0: the prefix is changing every edit.
-    if cache_trouble(ledger_tail(_CACHE_TROUBLE_STREAK - 1) + [record]):
-        _emit_advisory(
-            f"[문서 심의] 프롬프트 캐시 연속 cold-write {_CACHE_TROUBLE_STREAK}회 — "
-            "프리픽스가 매 편집 달라진다. 가변 텍스트(src 발췌·diff)가 "
-            "마지막 breakpoint 앞으로 들어갔는지 확인할 것"
-        )
-
-    # 모든 종료 경로(block / warn / approve / inoperative)에서 한 번.
-    # Once on every review exit path (block / warn / approve / inoperative).
-    append_ledger(record)
 
     # 🔴 전건 미심의는 판정 흐름을 타지 않는다 — 고유 배너로 그 사실 자체를 말한다 (R36).
     #    부분 미심의(1~2/3)는 아래 warn 경로가 사유 목록에 그대로 싣는다.
