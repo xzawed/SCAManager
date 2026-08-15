@@ -161,6 +161,8 @@ scripts/
 │                                # Memory reference validator — slug ↔ actual file cross-check
 ├── check_docs_sync.py           # docs 수치 정합 — STATE.md 종합/추적셀 헤더 ↔ README/README.ko 배지 drift 차단 (repo-integrity pre-commit, #967/#968)
 │                                # docs count-sync — STATE totals/header ↔ README badges; blocks drift at pre-commit
+├── check_state_ledger.py        # STATE 원장 하한 — §추적 이력 항목·문자 수 baseline + 수치 사슬 (repo-integrity, 단위 2)
+│                                # STATE ledger floor — item/char baselines + numeric chain (repo-integrity)
 ├── check_toc_anchors.py         # cycle-history TOC 앵커 정합 — 목차 `](#anchor)` 링크 ↔ 실제 헤딩 slug (GitHub slug 모사, #958)
 │                                # cycle-history TOC anchor checker — TOC links ↔ heading slugs
 ├── check_env_vars_sync.py       # env-vars 싱크 — src/config.py Settings 필드 ↔ env-vars.md 등재 정합 (사이클 82/119 반복 적발 차단)

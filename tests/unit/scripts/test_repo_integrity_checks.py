@@ -3,6 +3,7 @@
 현재 repo 에서 통과(pre-commit 이 현 상태를 막지 않음) + 합성 위반 적발(실제 drift 차단)을
 양방향 고정한다. WF-2(docs 수치 정합) / WF-3(TOC 앵커 slug) 자동화의 회귀 가드.
 """
+import ast
 import re
 import sys
 from pathlib import Path
@@ -176,6 +177,265 @@ def test_docs_sync_history_tail_is_not_the_head(tmp_path):
     joined = " ".join(msgs)
     assert "STATE 추적셀(전체)=9" in joined, joined     # 머리는 훼손값
     assert "STATE 이력 마지막(전체)=9" not in joined, joined  # 꼬리는 원값 — 독립 축
+
+
+# --- P0-1: `_STATE_CELL_TOTAL` 전역 첫-매치가 원장을 덮어쓴다 ---
+#
+# 실측 재현 (사본, 원본 무수정): §현재 수치 line 27 `**7421 수집**` 을 `**7421**` 로
+# 바꾸면 apply_fix 가 line 253 원장 항목 `**5365 수집**` 을 `**7421 수집**` 으로 덮고
+# ok=True + 재검증 True. 원장은 append-only 라 그 쓰기는 기록을 거짓으로 만든다.
+
+
+def test_apply_fix_does_not_rewrite_ledger_when_current_cell_pattern_vanishes(tmp_path):
+    """현재 영역의 `**N 수집**` 이 사라지면 apply_fix 는 원장에 쓰지 않고 거부한다.
+
+    구 코드는 파일 전역 첫-매치라 원장 `**5365 수집**` 을 덮고 ok=True 였다.
+    """
+    root = _count_fixture(tmp_path)
+    state = root / "docs" / "STATE.md"
+    orig = state.read_text(encoding="utf-8")
+    heading = check_docs_sync._STATE_HIST_HEADING
+    assert orig.count(heading) == 1
+    current, _, hist = orig.partition(heading)
+    cell = check_docs_sync._STATE_CELL_TOTAL.search(current)
+    assert cell is not None, "현재 영역에 **N 수집** 이 없다 — 픽스처 전제 붕괴"
+    # `**7421 수집**` → `**7421**` (패턴 소실). 숫자만 남기면 전역 첫-매치가 원장으로 미끄러진다.
+    # Drop the 수집 token so the global first-match slides into the ledger.
+    mutated = current[: cell.start()] + f"**{cell.group(1)}**" + current[cell.end() :]
+    mutated = mutated + heading + hist
+    assert mutated != orig
+    state.write_text(mutated, encoding="utf-8")
+
+    ok, msgs = check_docs_sync.apply_fix(root)
+    after = state.read_text(encoding="utf-8")
+    _, _, after_hist = after.partition(heading)
+    assert after_hist == hist, (
+        "apply_fix 가 원장 절을 바꿨다 — 전역 첫-매치가 이력 항목을 덮어썼다. "
+        f"msgs={msgs}"
+    )
+    assert not ok, (
+        "현재 영역 패턴 소실인데 apply_fix 가 ok=True — 원장으로 미끄러진 채 재검증이 초록이다"
+    )
+    joined = " ".join(msgs)
+    assert any(tok in joined for tok in ("못 찾", "미발견", "범위 붕괴", "영역")), msgs
+
+
+def test_check_consistency_does_not_read_ledger_as_the_current_cell(tmp_path):
+    """현재 영역에서 패턴이 없으면 '원장 첫 매치와 헤더 불일치'가 아니라 범위 붕괴로 red.
+
+    전역 첫-매치는 원장 `**5365 수집**` 을 추적셀로 읽어 불일치 메시지를 낸다.
+    그건 원장을 검사 대상으로 삼는 것이라 fail-closed 가 아니다 — 영역을 못 찾은 것이다.
+    """
+    root = _count_fixture(tmp_path)
+    state = root / "docs" / "STATE.md"
+    orig = state.read_text(encoding="utf-8")
+    heading = check_docs_sync._STATE_HIST_HEADING
+    current, _, hist = orig.partition(heading)
+    cell = check_docs_sync._STATE_CELL_TOTAL.search(current)
+    assert cell is not None
+    mutated = current[: cell.start()] + f"**{cell.group(1)}**" + current[cell.end() :]
+    state.write_text(mutated + heading + hist, encoding="utf-8")
+    assert state.read_text(encoding="utf-8") != orig
+
+    ok, msgs = check_docs_sync.check_consistency(root)
+    assert not ok
+    joined = " ".join(msgs)
+    # 원장 값(5365)을 추적셀로 인용하면 전역 첫-매치가 아직 살아있는 것이다.
+    # Citing the ledger value as the tracking cell means the global first-match is still live.
+    assert "5365" not in joined, (
+        f"추적셀 판정이 원장 항목으로 미끄러졌다: {msgs}"
+    )
+    assert any(tok in joined for tok in ("미발견", "못 찾", "범위 붕괴")), msgs
+
+
+def test_apply_fix_refuses_decoy_full_pair_on_the_last_bullet(tmp_path):
+    """마지막 불릿 앞에 산술 유효 decoy 쌍을 붙이면 apply_fix 는 쓰지 않는다.
+
+    구 `_first(TOTAL)`/`_first(UNIT)` 는 total=1171 unit=1000 을 SSOT 로 읽어
+    §현재 수치와 README 2곳에 퍼뜨렸다 (claim-review 01a00434).
+    """
+    root = _count_fixture(tmp_path)
+    state = root / "docs" / "STATE.md"
+    orig = state.read_text(encoding="utf-8")
+    heading = check_docs_sync._STATE_HIST_HEADING
+    current, sep, hist = orig.partition(heading)
+    lines = hist.splitlines(keepends=True)
+    last_i = max(i for i, ln in enumerate(lines) if ln.startswith("- "))
+    decoy = "(0000→**1000** 단위 = **1171** 수집) "
+    lines[last_i] = lines[last_i][:2] + decoy + lines[last_i][2:]
+    mutated = current + sep + "".join(lines)
+    assert mutated != orig
+    state.write_text(mutated, encoding="utf-8")
+    before_readme = (root / "README.md").read_text(encoding="utf-8")
+
+    ok, msgs = check_docs_sync.apply_fix(root)
+    after = state.read_text(encoding="utf-8")
+    after_cur = after.split(heading, 1)[0]
+    cell = check_docs_sync._STATE_CELL_TOTAL.search(after_cur)
+    assert not ok, msgs
+    assert cell is not None and cell.group(1) != "1171", cell.group(0) if cell else None
+    assert (root / "README.md").read_text(encoding="utf-8") == before_readme
+    assert any("모호" in m or "형식 쌍" in m for m in msgs), msgs
+
+
+def test_apply_fix_refuses_readme_badge_decoy(tmp_path):
+    """README 선두 decoy 배지에 apply_fix 가 쓰지 않는다. 파일은 그대로."""
+    root = _count_fixture(tmp_path)
+    readme = root / "README.md"
+    decoy = "Tests-1111%2B_total_(2222_unit_%2B_0_integration)"
+    orig = readme.read_text(encoding="utf-8")
+    readme.write_text(decoy + "\n" + orig, encoding="utf-8")
+    state = root / "docs" / "STATE.md"
+    text = state.read_text(encoding="utf-8")
+    state.write_text(
+        re.sub(
+            r"\| 전체 테스트 \| \*\*\d+ 수집\*\*",
+            "| 전체 테스트 | **3333 수집**",
+            text,
+            count=1,
+        ),
+        encoding="utf-8",
+    )
+    before_readme = readme.read_text(encoding="utf-8")
+    before_state = state.read_text(encoding="utf-8")
+
+    ok, msgs = check_docs_sync.apply_fix(root)
+    assert not ok, msgs
+    assert readme.read_text(encoding="utf-8") == before_readme
+    assert state.read_text(encoding="utf-8") == before_state
+    assert before_readme.startswith(decoy)
+    assert any("배지 매치" in m or "1개" in m for m in msgs), msgs
+
+
+def test_check_consistency_flags_duplicate_readme_badge(tmp_path):
+    """배지가 2개면 불일치 숫자가 아니라 개수 붕괴로 red."""
+    root = _count_fixture(tmp_path)
+    readme = root / "README.md"
+    readme.write_text(
+        "Tests-1111%2B_total_(2222_unit_%2B_0_integration)\n"
+        + readme.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    ok, msgs = check_docs_sync.check_consistency(root)
+    assert not ok
+    joined = " ".join(msgs)
+    assert "1111" not in joined, f"decoy 수치를 배지로 읽었다: {msgs}"
+    assert any("매치" in m and "2" in m for m in msgs), msgs
+
+
+def test_apply_fix_happy_path_leaves_history_bytes_unchanged(tmp_path):
+    """정상 `--fix` 도 원장 절 바이트를 건드리지 않는다 (파생은 현재 영역만)."""
+    root = _count_fixture(tmp_path)
+    state = root / "docs" / "STATE.md"
+    orig = state.read_text(encoding="utf-8")
+    heading = check_docs_sync._STATE_HIST_HEADING
+    orig_hist = orig.split(heading, 1)[1]
+    # 현재 영역 숫자만 훼손 — 기존 파생 테스트와 같은 축, 원장 불변만 추가로 단언.
+    text = re.sub(
+        r"\| 전체 테스트 \| \*\*\d+ 수집\*\*",
+        "| 전체 테스트 | **3333 수집**",
+        orig,
+        count=1,
+    )
+    assert text != orig
+    state.write_text(text, encoding="utf-8")
+
+    ok, msgs = check_docs_sync.apply_fix(root)
+    assert ok, msgs
+    after_hist = state.read_text(encoding="utf-8").split(heading, 1)[1]
+    assert after_hist == orig_hist
+
+
+def _apply_fix_ast() -> ast.FunctionDef:
+    src = (_ROOT / "scripts" / "check_docs_sync.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == "apply_fix":
+            return node
+    raise AssertionError("apply_fix 가 없다")
+
+
+def _history_tail_ast() -> ast.FunctionDef:
+    src = (_ROOT / "scripts" / "check_docs_sync.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == "_history_tail":
+            return node
+    raise AssertionError("_history_tail 이 없다")
+
+
+def test_apply_fix_cell_total_sub_targets_new_current_only():
+    """M1a — `_STATE_CELL_TOTAL.sub` 의 대상은 `new_current` 뿐.
+
+    sub 만 전역 `new_state` 로 되돌려도 조기 검사가 막아서 행동 테스트는
+    4 passed 였다. 호출 대상을 AST 로 고정한다.
+    """
+    fn = _apply_fix_ast()
+    targets: list[str] = []
+    for node in ast.walk(fn):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if not (isinstance(func, ast.Attribute) and func.attr == "sub"):
+            continue
+        if not (isinstance(func.value, ast.Name) and func.value.id == "_STATE_CELL_TOTAL"):
+            continue
+        assert len(node.args) >= 2, ast.dump(node)
+        target = node.args[1]
+        assert isinstance(target, ast.Name), ast.dump(target)
+        targets.append(target.id)
+    assert targets, "_STATE_CELL_TOTAL.sub 호출이 없다"
+    assert all(name == "new_current" for name in targets), targets
+
+
+def test_apply_fix_hist_bytes_assertion_is_live():
+    """M3 — `orig_hist != new_hist` 가 살아 있는 if 조건이어야 한다.
+
+    `if False and orig_hist != new_hist` 는 행동 테스트 4 passed 였다.
+    """
+    fn = _apply_fix_ast()
+    live = False
+    for node in ast.walk(fn):
+        if not isinstance(node, ast.If):
+            continue
+        test = node.test
+        if (
+            isinstance(test, ast.BoolOp)
+            and isinstance(test.op, ast.And)
+            and any(isinstance(v, ast.Constant) and v.value is False for v in test.values)
+        ):
+            continue
+        names: set[str] = set()
+        for child in ast.walk(test):
+            if isinstance(child, ast.Name):
+                names.add(child.id)
+        if {"orig_hist", "new_hist"} <= names:
+            live = True
+    assert live, "orig_hist != new_hist 가 살아 있는 if 조건이 아니다"
+
+
+def test_history_tail_uses_full_pairs_not_independent_first():
+    """읽기 규약 통일 — `_history_tail` 은 `full_pairs` 를 호출하고
+    `_first(_STATE_HIST_*)` 로 독립 첫-매치하지 않는다.
+    """
+    fn = _history_tail_ast()
+    called_full = False
+    independent_first = False
+    for node in ast.walk(fn):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Name) and func.id == "full_pairs":
+            called_full = True
+        if isinstance(func, ast.Name) and func.id == "_first" and node.args:
+            arg0 = node.args[0]
+            if isinstance(arg0, ast.Name) and arg0.id in {
+                "_STATE_HIST_TOTAL",
+                "_STATE_HIST_UNIT",
+            }:
+                independent_first = True
+    assert called_full, "_history_tail 이 full_pairs 를 호출하지 않는다"
+    assert not independent_first, "_history_tail 이 _STATE_HIST_* 를 독립 _first 한다"
 
 
 # --- check_docs_sync 의존성 핀 축 (backlog R15 — ground truth 대조) ---
