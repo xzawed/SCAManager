@@ -61,6 +61,7 @@ _INTEGRITY = (
     # Runs first: the badge autofixer can rewrite a line inside a conflict block.
     "check_conflict_markers.py",
     "check_docs_sync.py",
+    "check_state_ledger.py",
     "check_toc_anchors.py",
     "check_architecture_tree_sync.py",
     "check_guard_fail_open.py",

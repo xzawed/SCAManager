@@ -24,6 +24,12 @@ from pathlib import Path
 if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
+# 이력 형식 쌍의 단일 읽기 규약 — 이 파일의 `_first(TOTAL)`/`_first(UNIT)` 과
+# check_state_ledger.parse_chain 의 "첫 A · 마지막 B" 가 갈리면, 불릿 안 decoy 가
+# SSOT 를 조작한다 (claim-review 01a00434).
+# Single pair grammar. Independent first-matches assembled a forged SSOT.
+from check_state_ledger import full_pairs  # noqa: E402
+
 # STATE 종합 수치: "전체 **5196** 수집 (단위 **5042** + 통합 154)"
 _STATE_TOTAL = re.compile(r"전체 \*\*(\d+)\*\* 수집 \(단위 \*\*(\d+)\*\*")
 # STATE 추적셀 시작 헤더: "**5196 수집** ... 단위 5042 + 통합 154 (현재)"
@@ -57,6 +63,45 @@ def _first(pattern: re.Pattern, text: str, groups: int = 1):
     return m.group(1) if groups == 1 else tuple(m.group(i) for i in range(1, groups + 1))
 
 
+def _exactly_one(pattern: re.Pattern, text: str, groups: int = 1):
+    """매치가 정확히 1개일 때만 그룹을 돌려준다. 0 또는 2+ 는 (None, 개수).
+
+    `_README_BADGE` 전역 첫-매치는 README 선두 decoy 에 쓴다 (claim-review 01a00434).
+    개수가 1이 아니면 어느 것이 배지인지 모호하다 — 추측해서 쓰지 않는다.
+    Exactly one match. 0 or 2+ is ambiguous; callers must refuse to write.
+    """
+    found = list(pattern.finditer(text))
+    if len(found) != 1:
+        return None, len(found)
+    match = found[0]
+    value = (
+        match.group(1) if groups == 1
+        else tuple(match.group(i) for i in range(1, groups + 1))
+    )
+    return value, 1
+
+
+def _region_before_history(state: str) -> tuple[str | None, list[str]]:
+    """원장 절 **밖** — `_STATE_HIST_HEADING` 앞만 돌려준다.
+
+    🔴 `_STATE_CELL_TOTAL` 을 파일 전역에서 `_first` 하면 원장 항목
+    (`**5365 수집**`)이 추적셀 머리로 잡힌다. `apply_fix` 가 그 자리에 최신
+    누계를 덮어쓰고 ok=True. 영역을 못 찾으면 None — 전역 매치로 되돌아가지 않는다.
+    Only the text before the append-only ledger. A global first-match rewrites a
+    history item; missing the heading is fail-closed, not a fallback to the whole file.
+    """
+    occurrences = state.count(_STATE_HIST_HEADING)
+    if occurrences == 0:
+        return None, [
+            f"❌ STATE.md 에 `{_STATE_HIST_HEADING}` 절이 없다 — 추적셀 영역 한정 불가"
+        ]
+    if occurrences > 1:
+        return None, [
+            f"❌ `{_STATE_HIST_HEADING}` 절이 {occurrences}개다 — 영역 한정 불가"
+        ]
+    return state.split(_STATE_HIST_HEADING, 1)[0], []
+
+
 def _history_tail(state: str) -> tuple[str | None, str | None, list[str]]:
     """§테스트 수 추적 이력의 **마지막 항목**에서 (누계, 단위) 를 뽑는다.
 
@@ -70,8 +115,11 @@ def _history_tail(state: str) -> tuple[str | None, str | None, list[str]]:
          다른 요구다 — 보호 장치를 지워도 참으로 보이는 전형).
       2. 마지막 **불릿**을 앵커로 쓴다. 파일 전체에서 마지막 매치를 찾으면 절이 사라져도
          엉뚱한 곳이 매치돼 초록이 된다.
-      3. 그 불릿이 형식(`= **N** 수집` · `→ **N** 단위`)을 갖추지 않으면 red. 초판은
-         **패턴 없는 줄을 덧붙이면** 이전 값이 계속 last 로 잡혀 초록이었다.
+      3. 그 불릿의 **full pair** 가 정확히 1개여야 한다. `_first(TOTAL)` 과
+         `_first(UNIT)` 를 따로 쓰면 불릿 안 decoy 가 틀린 C/B 를 조립한다.
+         0개 = 형식 붕괴, 2+ = SSOT 모호 → 둘 다 red. 초판은 패턴 없는 줄을
+         덧붙이면 이전 값이 계속 last 라 초록이었고, decoy 쌍을 앞에 붙이면
+         1171 이 파생 3지점에 퍼졌다.
 
     Returns (total, unit, errors). 형식 계약이 곧 append 계약이다.
     """
@@ -92,14 +140,26 @@ def _history_tail(state: str) -> tuple[str | None, str | None, list[str]]:
     if not bullets:
         return None, None, ["❌ 이력 절에 항목(`- `)이 하나도 없다 — 검사 범위 붕괴"]
     tail = bullets[-1]
-    total = _first(_STATE_HIST_TOTAL, tail)
-    unit = _first(_STATE_HIST_UNIT, tail)
-    if total is None or unit is None:
+    # 🔴 불릿 *안* 첫 매치가 아니다. full pair `(A→**B** 단위 … = **C** 수집)` 가
+    #    이 불릿에 정확히 1개여야 SSOT 다. 0 이면 형식 붕괴, 2+ 이면 어느 C 를
+    #    쓸지 모호하므로 쓰지 않는다 (decoy 를 앞에 붙이면 1171 이 4지점에 퍼졌다).
+    # Not first-match inside the bullet. Exactly one full pair, else refuse.
+    found = full_pairs(tail)
+    if len(found) == 0:
         errs.append(
-            "❌ 이력 마지막 항목이 형식을 갖추지 않았다 — `= **N** 수집` 과 `→ **N** 단위` 를 "
-            f"모두 포함해야 한다. 실제: {tail[:90]!r}"
+            "❌ 이력 마지막 항목이 형식을 갖추지 않았다 — "
+            "`(A→**B** 단위` 와 `= **C** 수집` 을 한 쌍으로 포함해야 한다. "
+            f"실제: {tail[:90]!r}"
         )
-    return total, unit, errs
+        return None, None, errs
+    if len(found) > 1:
+        errs.append(
+            f"❌ 이력 마지막 항목에 형식 쌍이 {len(found)}개다 — SSOT 모호, 쓰지 않는다. "
+            "불릿을 나누거나 한 쌍만 남겨야 한다."
+        )
+        return None, None, errs
+    _start, unit_n, total_n = found[0]
+    return str(total_n), str(unit_n), errs
 
 
 def check_consistency(project_root: Path) -> tuple[bool, list[str]]:
@@ -109,19 +169,36 @@ def check_consistency(project_root: Path) -> tuple[bool, list[str]]:
     readme = (project_root / "README.md").read_text(encoding="utf-8")
     readme_ko = (project_root / "README.ko.md").read_text(encoding="utf-8")
 
-    state_total = _first(_STATE_TOTAL, state, 2)         # (전체, 단위) — 종합 수치
-    cell_total = _first(_STATE_CELL_TOTAL, state)         # 추적셀 시작 전체
-    cell_unit = _first(_STATE_CELL_UNIT, state)           # 추적셀 시작 단위
-    md_badge = _first(_README_BADGE, readme, 2)           # (전체, 단위)
-    ko_badge = _first(_README_BADGE, readme_ko, 2)        # (전체, 단위)
+    # 🔴 추적셀 패턴은 원장 절 **밖**에서만 읽는다. 전역 첫-매치는 이력 항목을
+    #    현재 값으로 오인한다 (단위 2 재현: line 253 `**5365 수집**`).
+    # Tracking-cell patterns are scoped outside the ledger. A global first-match
+    # treats a history item as the live cell.
+    current, region_errs = _region_before_history(state)
+    if region_errs:
+        return False, region_errs
+
+    state_total = _first(_STATE_TOTAL, current, 2)         # (전체, 단위) — 종합 수치
+    cell_total = _first(_STATE_CELL_TOTAL, current)         # 추적셀 시작 전체
+    cell_unit = _first(_STATE_CELL_UNIT, current)           # 추적셀 시작 단위
+    md_badge, md_n = _exactly_one(_README_BADGE, readme, 2)   # (전체, 단위)
+    ko_badge, ko_n = _exactly_one(_README_BADGE, readme_ko, 2)
 
     for label, val in [
         ("STATE 종합 수치", state_total), ("STATE 추적셀 전체", cell_total),
-        ("STATE 추적셀 단위", cell_unit), ("README.md 배지", md_badge),
-        ("README.ko.md 배지", ko_badge),
+        ("STATE 추적셀 단위", cell_unit),
     ]:
         if val is None:
             msgs.append(f"❌ {label} 패턴 미발견 (형식 변경됐는지 확인)")
+    if md_badge is None:
+        msgs.append(
+            f"❌ README.md Tests 배지 매치 {md_n}개 — 정확히 1개여야 한다 "
+            "(선두 decoy 가 첫-매치로 쓰이는 것을 막는다)"
+        )
+    if ko_badge is None:
+        msgs.append(
+            f"❌ README.ko.md Tests 배지 매치 {ko_n}개 — 정확히 1개여야 한다 "
+            "(선두 decoy 가 첫-매치로 쓰이는 것을 막는다)"
+        )
     if msgs:
         return False, msgs
 
@@ -152,7 +229,7 @@ def check_consistency(project_root: Path) -> tuple[bool, list[str]]:
     # 그 합의된 오류를 잡는다.
     # Agreement is not consistency: all five copies can be wrong together. This axis is
     # independent of the copies.
-    integ = _first(re.compile(r"통합 (\d+) \(현재\)"), state)
+    integ = _first(re.compile(r"통합 (\d+) \(현재\)"), current)
     if integ is not None and not msgs:
         if int(cell_total) != int(cell_unit) + int(integ):
             msgs.append(
@@ -219,11 +296,19 @@ def apply_fix(project_root: Path) -> tuple[bool, list[str]]:
     """
     state_path = project_root / "docs" / "STATE.md"
     state = state_path.read_text(encoding="utf-8")
+    current, region_errs = _region_before_history(state)
+    if region_errs:
+        return False, region_errs + ["→ 원장 절 밖을 한정할 수 없으면 쓰지 않는다"]
+    if _first(_STATE_CELL_TOTAL, current) is None:
+        return False, [
+            "❌ §현재 수치 영역에서 `**N 수집**` 을 못 찾았다 — 검사 범위 붕괴. 원장에 쓰지 않았다.",
+        ]
+
     total, unit, errs = _history_tail(state)
     if errs:
         return False, errs + ["→ 이력 마지막 항목을 먼저 올바른 형식으로 적을 것 (그것이 SSOT 다)"]
 
-    integ = _first(re.compile(r"통합 (\d+) \(현재\)"), state)
+    integ = _first(re.compile(r"통합 (\d+) \(현재\)"), current)
     if integ is None:
         return False, ["❌ 추적셀에서 통합 수를 못 읽었다 — `단위 N + 통합 M (현재)` 형식 확인"]
 
@@ -241,14 +326,44 @@ def apply_fix(project_root: Path) -> tuple[bool, list[str]]:
         ]
 
     changed: list[str] = []
-    new_state = _STATE_TOTAL.sub(f"전체 **{total}** 수집 (단위 **{unit}**", state, count=1)
-    new_state = _STATE_CELL_TOTAL.sub(f"**{total} 수집**", new_state, count=1)
-    new_state = _STATE_CELL_UNIT.sub(f"단위 {unit} + 통합 {integ} (현재)", new_state, count=1)
+    # 🔴 치환은 현재 영역만. 전역 sub 는 원장 `**5365 수집**` 을 덮는다 (단위 2 재현).
+    # Substitutions stay in the current region. A global sub rewrites a ledger item.
+    new_current = _STATE_TOTAL.sub(f"전체 **{total}** 수집 (단위 **{unit}**", current, count=1)
+    new_current = _STATE_CELL_TOTAL.sub(f"**{total} 수집**", new_current, count=1)
+    new_current = _STATE_CELL_UNIT.sub(
+        f"단위 {unit} + 통합 {integ} (현재)", new_current, count=1
+    )
+    heading_and_hist = state[len(current):]
+    new_state = new_current + heading_and_hist
+    # 사후 단언 — 원장 바이트가 바뀌면 쓰지 않는다 (구성이 틀려도 fail-closed).
+    # Post-condition: refuse to write if the ledger bytes moved.
+    _, _, orig_hist = state.partition(_STATE_HIST_HEADING)
+    _, _, new_hist = new_state.partition(_STATE_HIST_HEADING)
+    if orig_hist != new_hist:
+        return False, [
+            "❌ apply_fix 가 원장 절을 바꿨다 — 쓰지 않았다. "
+            "치환이 §테스트 수 추적 이력 으로 미끄러졌다.",
+        ]
+
+    badge = f"Tests-{total}%2B_total_({unit}_unit_%2B_{integ}_integration)"
+    # 🔴 어떤 파일도 쓰기 전에 양쪽 배지 매치가 1개인지 본다. 2개면
+    #    count=1 sub 가 선두 decoy 를 덮는다 (CLAIM 4). STATE 를 먼저
+    #    쓰면 부분 기록이 남는다.
+    # Check before any write — a partial STATE write plus a refused README is worse.
+    for name in ("README.md", "README.ko.md"):
+        path = project_root / name
+        text = path.read_text(encoding="utf-8")
+        _val, n = _exactly_one(_README_BADGE, text, 2)
+        if n != 1:
+            return False, [
+                f"❌ {name} Tests 배지 매치 {n}개 — 정확히 1개가 아니면 쓰지 않는다. "
+                "선두 decoy 에 최신 누계를 덮어쓰지 않기 위함이다.",
+            ]
+
     if new_state != state:
         state_path.write_text(new_state, encoding="utf-8", newline="\n")
         changed.append(f"✏️ docs/STATE.md — 종합 수치·추적셀 머리 → 전체 {total} / 단위 {unit}")
 
-    badge = f"Tests-{total}%2B_total_({unit}_unit_%2B_{integ}_integration)"
     for name in ("README.md", "README.ko.md"):
         path = project_root / name
         text = path.read_text(encoding="utf-8")

@@ -102,6 +102,15 @@ repos:
         stages: [pre-commit]
         description: STATE 종합·추적셀 ↔ README/README.ko Tests 배지 카운트 일치 + requirements.txt 실핀 ↔ deploy.md 인용·FastAPI 배지 일치 검사.
 
+      - id: check-state-ledger
+        name: "📒 STATE 원장 하한 (항목·문자·사슬)"
+        language: python
+        entry: python scripts/check_state_ledger.py
+        files: "^(docs/STATE\\.md|scripts/state_ledger_baseline\\.json)$"
+        pass_filenames: false
+        stages: [pre-commit]
+        description: STATE §테스트 수 추적 이력 항목 수·문자 수 하한 + 수치 사슬. 감소는 baseline 을 같은 PR 에서 낮추는 명시 결정.
+
       - id: check-toc-anchors
         name: "🔗 cycle-history TOC 앵커 정합"
         language: python
