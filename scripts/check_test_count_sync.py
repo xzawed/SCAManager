@@ -323,8 +323,43 @@ def parse_body_claim(body: str) -> tuple[int, int] | None:
     return None
 
 
-def check_body_claim(body: str, unit: int) -> int:
-    """본문 수치 ↔ 실측 수집값 대조. 0 = 일치 또는 미실행 / 1 = 불일치.
+# CI 가 넘기는 저자 신원. 본문에서 읽지 않는다 — 본문 마커는 자기인증
+# (`check_claim_review_trace` 가 이미 배운 함정).
+# Author identity comes from CI env, never from the PR body (self-certification trap).
+_AUTHOR_LOGIN_ENV = "PR_AUTHOR_LOGIN"
+_AUTHOR_TYPE_ENV = "PR_AUTHOR_TYPE"
+
+
+def is_bot_author() -> bool:
+    """CI env 기준 봇 여부. 본문을 보지 않는다.
+
+    GitHub App 은 `user.type == "Bot"` 이고, dependabot 로그인은 `dependabot[bot]`.
+    둘 중 하나면 봇으로 본다.
+
+    🔴 **부재·공백은 봇이 아니다.** 저자 env 가 비는 순간 전 PR 이 면제되면
+    이 리포의 fail-open 사고와 같은 클래스다. 호출자가 변수를 안 넘기는 것이
+    만능 면제가 되면 안 된다.
+    Absent/empty author env is NOT a bot — that must not become a universal exemption.
+    """
+    login = (os.environ.get(_AUTHOR_LOGIN_ENV) or "").strip()
+    typ = (os.environ.get(_AUTHOR_TYPE_ENV) or "").strip()
+    if not login and not typ:
+        return False
+    return typ.casefold() == "bot" or login.casefold().endswith("[bot]")
+
+
+def check_body_claim(body: str, unit: int, *, advisory: bool = False) -> int:
+    """본문 수치 ↔ 실측 수집값 대조.
+
+    반환: 0 = 일치 · 봇/advisory 의 미실행 / 1 = 불일치 · 비봇의 수치 라인 부재.
+
+    ## 모드 (각각 다른 것을 한다 — 섞지 말 것)
+
+    - **기본 (CI PR)**: 수치 라인 없음 + 비봇 → red(1). 저자 env 부재/공백 = 비봇.
+    - **봇 PR**: 수치 라인 없음 → 기존 *"미실행"* 문구 + 0.
+      무조건 의무화하면 본문을 기계가 만드는 dependabot PR 이 전부 red 다.
+    - **`advisory=True`** (`--advisory-drift` / 로컬 `pre_push_gate` / CI push):
+      수치 라인 없음 → *"미실행"* + 0. 로컬·push 에는 PR 본문이 없다.
 
     🔴 **미검출을 초록으로 위장하지 않는다** — 수치 라인이 없으면 이 축은 아무것도
     검증하지 않은 것이므로 *"미실행"* 을 명시 출력한다. 빈 범위 위의 ✅ 는 이 리포가
@@ -339,10 +374,12 @@ def check_body_claim(body: str, unit: int) -> int:
     (#1305·#1310·#1312)이 전부 *낡은 수치* 형태였기에 이 축이 유효했던 것이다.
     이 축을 진짜 실행 증거로 올리려면 `--junitxml` 산출물을 대조해야 한다(backlog R76).
 
-    🔴 **닫히지 않은 우회로 (정직 기준)**: 수치를 **아예 안 적으면** 축이 돌지 않는다.
-    의무화하면 본문을 기계가 만드는 dependabot·봇 PR 이 전부 red 가 되므로 여기서 닫지 않는다.
-    부작용도 정직하게 적는다 — *틀린 수치는 red · 없는 수치는 green* 이라, 가장 싼 대응이
-    **수치 라인 삭제**다. 이 축은 그 관행 침식을 막지 못한다.
+    🔴 **닫힌 것 / 닫히지 않은 것 (2026-08-15 사용자 결정 — 공허 통과 차단)**:
+    - 닫힘: 비봇 PR 에 수치 라인이 없으면 red. (#1272 가 자기 면제한 바로 그 구멍.
+      저자 신원은 CI env 에서만 읽는다 — 본문 마커는 자기인증이다.)
+    - 닫히지 않음: 봇 PR. 무조건 의무화하면 dependabot 본문이 전부 red 다.
+    - 닫히지 않음: 이 축은 수치의 *신선도* 만 잰다. 스위트를 돌렸다는 증거가 아니다
+      (`--collect-only` 11s vs 실스위트 208-247s — 위 단락과 backlog R76).
     Measures freshness of the claimed number, not that the suite ran; see R76.
     """
     claim = parse_body_claim(body)
@@ -352,7 +389,18 @@ def check_body_claim(body: str, unit: int) -> int:
             "`pytest tests/unit … N passed / M skipped` 를 찾지 못했다.\n"
             "    이 축은 아무것도 검증하지 않았다(초록이 아니라 '안 쟀음')."
         )
-        return 0
+        # 봇·advisory 만 미실행으로 끝낸다. 비봇 기본은 red — 수치 라인 삭제가
+        # 가장 싼 대응이던 구멍을 닫는다 (2026-08-15).
+        # Bot/advisory keep the "not measured" pass; non-bot missing claim is now red.
+        if advisory or is_bot_author():
+            return 0
+        print(
+            "🔴 본문에 테스트 수치 라인이 없다 — 비봇 PR 은 수치를 적어야 한다.\n"
+            "   `pytest tests/unit → N passed / M skipped` 를 본문에 넣으세요.\n"
+            "   봇 PR 만 이 축을 건너뛴다(dependabot 본문은 기계가 만든다).",
+            file=sys.stderr,
+        )
+        return 1
     passed, skipped = claim
     if passed + skipped == unit:
         print(
@@ -411,7 +459,19 @@ def main(argv: list[str] | None = None) -> int:
     #    나중에 한다"* 는 약속이지 *"본문에 틀린 수를 적어도 된다"* 가 아니다.
     # The body-claim axis is independent of the STATE axis and no escape hatch covers it.
     commits, pr_body = deferral_carriers()
-    claim_rc = check_body_claim(pr_body, unit)
+    # 모드 (본문 수치 축 — STATE 축과 독립):
+    # · `--advisory-drift` : 로컬 `pre_push_gate`. PR 본문이 없다. 수치 부재 = 미실행(0).
+    # · CI `pull_request`  : `PR_HEAD_SHA`/`PR_BASE_SHA` 가 있다. 비봇 수치 부재 = red.
+    # · CI `push`          : SHA env 가 없다. 본문 자체가 전달되지 않는다. 수치 부재 = 미실행.
+    #   여기서 요구하면 머지마다 main 이 빨개진다.
+    # `--advisory-drift` keeps local pre-push usable; push has no PR body by construction.
+    in_pr = bool(
+        (os.environ.get("PR_HEAD_SHA") or "").strip()
+        or (os.environ.get("PR_BASE_SHA") or "").strip()
+    )
+    claim_rc = check_body_claim(
+        pr_body, unit, advisory=advisory_drift or not in_pr,
+    )
 
     if (total, unit) == (doc_total, doc_unit):
         print(f"✅ 테스트 수치 일치 — 전체 {total} (단위 {unit} + 통합 {integration}) == STATE")

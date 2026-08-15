@@ -492,6 +492,10 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # 저자 신원은 이벤트에서만 — 본문 마커는 자기인증 (R48 공허 통과 차단).
+          # Author identity from the event, never from the body (self-certification trap).
+          PR_AUTHOR_LOGIN: ${{ github.event.pull_request.user.login }}
+          PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
         run: python scripts/check_test_count_sync.py
 
       # 🔴 push 도 **범위**로 읽는다 — `git log -1` 은 틀린 답이었다(Grok claim-review 019fe026).
