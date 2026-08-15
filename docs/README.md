@@ -64,7 +64,7 @@
 | [runbooks/docs-consolidation-plan.md](runbooks/docs-consolidation-plan.md) | 문서·가드 정리 계획 전문 (SPEC→RED→GREEN→GUARD 12 묶음) |
 | [runbooks/doc-volume-reduction-plan.md](runbooks/doc-volume-reduction-plan.md) | 🟢 **결정 대기 제안서** — 기록성↔집행성 분리(backlog ✅ 47% · STATE 이력 46% 실측). 실행 0건 |
 | [runbooks/session-handoff-2026-08-12.md](runbooks/session-handoff-2026-08-12.md) | 🔴 **세션 인계 — 다른 머신에서 이어받기**. main red 원인·PR #1331 대기·감사 결정 5건·미완 회고 |
-| [runbooks/state-reduction-handoff.md](runbooks/state-reduction-handoff.md) | **STATE.md 감축 인계 (2026-08-15)** — 단위 1~4 결과 · 지켜야 할 가드 계약 · 압축 시 «무엇을 남기는가»(traps C7) · 고치지 않고 보고만 한 것 4건 · 미결 결정 5건 |
+| [runbooks/state-reduction-handoff.md](runbooks/state-reduction-handoff.md) | **STATE.md 감축 인계 (2026-08-15)** — 단위 1~4 결과 · 지켜야 할 가드 계약 · 압축 시 «무엇을 남기는가»(traps C7) · 고치지 않고 보고만 한 것 5건 · 미결 결정 5건 |
 | [runbooks/github-integration-guide.md](runbooks/github-integration-guide.md) | GitHub 연동 가이드 |
 | [runbooks/onpremise-migration-guide.md](runbooks/onpremise-migration-guide.md) | 온프레미스 DB 전환 가이드 |
 | [runbooks/operational-verification.md](runbooks/operational-verification.md) | 운영 검증 가이드 |
